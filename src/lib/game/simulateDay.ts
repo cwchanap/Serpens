@@ -61,6 +61,7 @@ export function simulateDay(game: GameState): GameState {
 	const postDayGame = {
 		...game,
 		day: game.day + 1,
+		rngState: rng.getState(),
 		cash: cashAfter,
 		scorecard
 	};

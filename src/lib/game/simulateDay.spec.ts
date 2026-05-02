@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest';
+import { generateDecisions } from './events';
 import { createNewGame, updatePolicy } from './state';
 import { simulateDay } from './simulateDay';
 import type { DecisionItem, GameState } from './types';
@@ -119,5 +120,31 @@ describe('daily simulation', () => {
 		const result = simulateDay({ ...game, decisions: [activeDecision] });
 
 		expect(result.decisions.some((decision) => decision.id === activeDecision.id)).toBe(true);
+	});
+
+	test('generates decisions from the returned post-day rng state', () => {
+		expect.assertions(1);
+		const game = createNewGame('convenience', 1);
+		const activeDecision: DecisionItem = {
+			id: 'active',
+			title: 'Active',
+			context: 'Still relevant.',
+			expiresOnDay: game.day + 2,
+			options: []
+		};
+		const result = simulateDay({ ...game, decisions: [activeDecision] });
+		const preservedDecisions = result.decisions.filter(
+			(decision) => decision.id === activeDecision.id
+		);
+		const generatedDecisions = result.decisions.filter(
+			(decision) => !preservedDecisions.some((preserved) => preserved.id === decision.id)
+		);
+
+		expect(generatedDecisions).toEqual(
+			generateDecisions({
+				...result,
+				decisions: preservedDecisions
+			})
+		);
 	});
 });
