@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { createNewGame, updatePolicy } from './state';
 import { simulateDay } from './simulateDay';
+import type { GameState } from './types';
 
 describe('daily simulation', () => {
 	test('advances one day deterministically for the same seed and actions', () => {
@@ -61,15 +62,30 @@ describe('daily simulation', () => {
 	});
 
 	test('resumes persisted rng state across sequential days', () => {
-		expect.assertions(1);
+		expect.assertions(6);
 		const initial = updatePolicy(createNewGame('electronics', 1234), {
 			inventory: 'generous',
 			marketing: 'promotions',
 			pricing: 'competitive'
 		});
-		const resumed = simulateDay(simulateDay(initial));
-		const sequential = [simulateDay, simulateDay].reduce((state, step) => step(state), initial);
+		const uninterruptedDayOne = simulateDay(initial);
+		const uninterruptedDayTwo = simulateDay(uninterruptedDayOne);
+		const persistedDayOne = JSON.parse(JSON.stringify(uninterruptedDayOne)) as GameState;
+		const resumedDayTwo = simulateDay(persistedDayOne);
+		const staleRngDayTwo = simulateDay({
+			...persistedDayOne,
+			rngState: initial.rngState
+		});
 
-		expect(resumed).toEqual(sequential);
+		expect(resumedDayTwo.day).toBe(uninterruptedDayTwo.day);
+		expect(resumedDayTwo.rngState).toBe(uninterruptedDayTwo.rngState);
+		expect(resumedDayTwo.cash).toBe(uninterruptedDayTwo.cash);
+		expect(resumedDayTwo.reports[1]?.netIncome).toBe(uninterruptedDayTwo.reports[1]?.netIncome);
+		expect(resumedDayTwo.reports[1]?.storeReports).toEqual(
+			uninterruptedDayTwo.reports[1]?.storeReports
+		);
+		expect(staleRngDayTwo.reports[1]?.storeReports).not.toEqual(
+			uninterruptedDayTwo.reports[1]?.storeReports
+		);
 	});
 });
