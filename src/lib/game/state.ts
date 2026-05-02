@@ -1,6 +1,6 @@
 import { getArchetype } from './archetypes';
 import { clampScore } from './reports';
-import { createRng, randomInt } from './rng';
+import { createRng, normalizeSeed, randomInt } from './rng';
 import type {
 	ArchetypeId,
 	CompanyPolicy,
@@ -29,7 +29,8 @@ const EXPANSION_SETUP_COST = 14_000;
 
 export function createNewGame(archetypeId: ArchetypeId, seed = Date.now()): GameState {
 	const archetype = getArchetype(archetypeId);
-	const rng = createRng(seed);
+	const normalizedSeed = normalizeSeed(seed);
+	const rng = createRng(normalizedSeed);
 	const openingStore = createStore({
 		id: 'store-1',
 		name: archetype.name,
@@ -40,8 +41,8 @@ export function createNewGame(archetypeId: ArchetypeId, seed = Date.now()): Game
 	});
 
 	return {
-		seed,
-		rngState: rng.getState(),
+		seed: normalizedSeed,
+		rngState: normalizedSeed,
 		day: 1,
 		cash: archetype.startingCash,
 		debt: archetype.startingDebt,

@@ -14,6 +14,17 @@ describe('game state', () => {
 		expect(game.scorecard.customerSatisfaction).toBeGreaterThan(0);
 	});
 
+	test('stores normalized seed values', () => {
+		expect.assertions(4);
+		const zeroSeed = createNewGame('convenience', 0);
+		const negativeSeed = createNewGame('convenience', -5);
+
+		expect(zeroSeed.seed).toBe(1);
+		expect(zeroSeed.rngState).toBe(1);
+		expect(negativeSeed.seed).toBe(5);
+		expect(negativeSeed.rngState).toBe(5);
+	});
+
 	test('updates company policy immutably', () => {
 		expect.assertions(3);
 		const game = createNewGame('convenience', 22);
