@@ -42,7 +42,7 @@ export function createNewGame(archetypeId: ArchetypeId, seed = Date.now()): Game
 
 	return {
 		seed: normalizedSeed,
-		rngState: normalizedSeed,
+		rngState: rng.getState(),
 		day: 1,
 		cash: archetype.startingCash,
 		debt: archetype.startingDebt,
@@ -167,6 +167,10 @@ function applyStoreEffects(store: Store, option: DecisionOption): Store {
 }
 
 function appendDecision(game: GameState, decision: DecisionItem): GameState {
+	if (game.decisions.some((candidate) => candidate.id === decision.id)) {
+		return game;
+	}
+
 	return {
 		...game,
 		decisions: [...game.decisions, decision]

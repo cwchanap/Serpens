@@ -30,6 +30,13 @@ describe('reports', () => {
 		expect(clampScore(140)).toBe(100);
 	});
 
+	test('clamps non-finite score values to zero', () => {
+		expect.assertions(3);
+		expect(clampScore(Number.NaN)).toBe(0);
+		expect(clampScore(Number.POSITIVE_INFINITY)).toBe(0);
+		expect(clampScore(Number.NEGATIVE_INFINITY)).toBe(0);
+	});
+
 	test('summarizes available history for 7-day and 30-day windows', () => {
 		expect.assertions(6);
 		const reports = Array.from({ length: 10 }, (_, index) => report(index + 1, 100 + index));
