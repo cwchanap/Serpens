@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { createNewGame, updatePolicy } from './state';
 import { simulateDay } from './simulateDay';
-import type { GameState } from './types';
+import type { DecisionItem, GameState } from './types';
 
 describe('daily simulation', () => {
 	test('advances one day deterministically for the same seed and actions', () => {
@@ -87,5 +87,37 @@ describe('daily simulation', () => {
 		expect(staleRngDayTwo.reports[1]?.storeReports).not.toEqual(
 			uninterruptedDayTwo.reports[1]?.storeReports
 		);
+	});
+
+	test('removes expired decisions after a simulated day', () => {
+		expect.assertions(1);
+		const game = createNewGame('convenience', 55);
+		const expiredDecision: DecisionItem = {
+			id: 'expired',
+			title: 'Expired',
+			context: 'No longer relevant.',
+			expiresOnDay: game.day,
+			options: []
+		};
+
+		const result = simulateDay({ ...game, decisions: [expiredDecision] });
+
+		expect(result.decisions.some((decision) => decision.id === expiredDecision.id)).toBe(false);
+	});
+
+	test('preserves non-expired existing decisions after a simulated day', () => {
+		expect.assertions(1);
+		const game = createNewGame('convenience', 56);
+		const activeDecision: DecisionItem = {
+			id: 'active',
+			title: 'Active',
+			context: 'Still relevant.',
+			expiresOnDay: game.day + 2,
+			options: []
+		};
+
+		const result = simulateDay({ ...game, decisions: [activeDecision] });
+
+		expect(result.decisions.some((decision) => decision.id === activeDecision.id)).toBe(true);
 	});
 });

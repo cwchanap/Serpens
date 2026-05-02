@@ -1,4 +1,5 @@
 import { getArchetype } from './archetypes';
+import { generateDecisions, pruneExpiredDecisions } from './events';
 import { clampScore } from './reports';
 import { createRngFromState, randomBetween } from './rng';
 import type {
@@ -57,6 +58,13 @@ export function simulateDay(game: GameState): GameState {
 	const cashAfter = Math.round(game.cash + netIncome);
 	const warnings = collectWarnings(storeReports, cashAfter);
 	const scorecard = buildScorecard(game.scorecard, storeReports, netIncome);
+	const postDayGame = {
+		...game,
+		day: game.day + 1,
+		cash: cashAfter,
+		scorecard
+	};
+	const preservedDecisions = pruneExpiredDecisions(postDayGame);
 
 	const report: DailyReport = {
 		day: game.day,
@@ -78,6 +86,14 @@ export function simulateDay(game: GameState): GameState {
 		cash: cashAfter,
 		scorecard,
 		stores: storeResults.map((result) => result.store),
+		decisions: [
+			...preservedDecisions,
+			...generateDecisions({
+				...postDayGame,
+				decisions: preservedDecisions,
+				stores: storeResults.map((result) => result.store)
+			})
+		],
 		reports: [...game.reports, report]
 	};
 }
