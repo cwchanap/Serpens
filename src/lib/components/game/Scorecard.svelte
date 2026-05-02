@@ -21,7 +21,9 @@
 					<span>{item.label}</span>
 					<strong>{scorecard[item.key]}</strong>
 				</div>
-				<meter min="0" max="100" value={scorecard[item.key]}>{scorecard[item.key]}</meter>
+				<meter aria-label={item.label} min="0" max="100" value={scorecard[item.key]}>
+					{scorecard[item.key]}
+				</meter>
 			</div>
 		{/each}
 	</div>
