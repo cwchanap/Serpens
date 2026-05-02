@@ -1,6 +1,24 @@
 import type { ArchetypeId, StoreArchetype } from './types';
 
-export const ARCHETYPES: StoreArchetype[] = [
+function cloneArchetype(archetype: StoreArchetype): StoreArchetype {
+	return {
+		...archetype,
+		startingCategories: archetype.startingCategories.map((category) => ({ ...category })),
+		risks: [...archetype.risks]
+	};
+}
+
+function freezeArchetype(archetype: StoreArchetype): StoreArchetype {
+	return Object.freeze({
+		...archetype,
+		startingCategories: Object.freeze(
+			archetype.startingCategories.map((category) => Object.freeze({ ...category }))
+		),
+		risks: Object.freeze([...archetype.risks])
+	}) as StoreArchetype;
+}
+
+const RAW_ARCHETYPES: StoreArchetype[] = [
 	{
 		id: 'convenience',
 		name: 'Convenience Store',
@@ -71,12 +89,18 @@ export const ARCHETYPES: StoreArchetype[] = [
 	}
 ];
 
+const ARCHETYPE_DEFINITIONS: StoreArchetype[] = RAW_ARCHETYPES.map(freezeArchetype);
+
+export const ARCHETYPES: StoreArchetype[] = Object.freeze(
+	ARCHETYPE_DEFINITIONS.map(cloneArchetype).map(freezeArchetype)
+) as StoreArchetype[];
+
 export function getArchetype(id: ArchetypeId): StoreArchetype {
-	const archetype = ARCHETYPES.find((candidate) => candidate.id === id);
+	const archetype = ARCHETYPE_DEFINITIONS.find((candidate) => candidate.id === id);
 
 	if (!archetype) {
 		throw new Error(`Unknown archetype: ${id}`);
 	}
 
-	return archetype;
+	return cloneArchetype(archetype);
 }

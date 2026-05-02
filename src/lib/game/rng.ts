@@ -7,6 +7,10 @@ const MODULUS = 2_147_483_647;
 const MULTIPLIER = 48_271;
 
 export function normalizeSeed(seed: number): number {
+	if (!Number.isFinite(seed)) {
+		return 1;
+	}
+
 	const normalized = Math.floor(Math.abs(seed)) % MODULUS;
 	return normalized === 0 ? 1 : normalized;
 }

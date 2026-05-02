@@ -27,4 +27,24 @@ describe('retail archetypes', () => {
 		expect.assertions(1);
 		expect(getArchetype('electronics').name).toBe('Electronics & Games');
 	});
+
+	test('protects global archetype definitions from caller mutation', () => {
+		expect.assertions(4);
+		const returned = getArchetype('electronics');
+
+		returned.name = 'Mutated Electronics';
+		returned.startingCategories[0]!.name = 'Mutated Category';
+		returned.risks.push('Mutated Risk');
+
+		expect(ARCHETYPES.find((archetype) => archetype.id === 'electronics')?.name).toBe(
+			'Electronics & Games'
+		);
+		expect(
+			ARCHETYPES.find((archetype) => archetype.id === 'electronics')?.startingCategories[0]?.name
+		).toBe('Games');
+		expect(ARCHETYPES.find((archetype) => archetype.id === 'electronics')?.risks).not.toContain(
+			'Mutated Risk'
+		);
+		expect(getArchetype('electronics').name).toBe('Electronics & Games');
+	});
 });
