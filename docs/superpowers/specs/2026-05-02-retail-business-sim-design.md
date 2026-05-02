@@ -209,6 +209,17 @@ The simulation should be deterministic for a given seed and sequence of player a
 
 Persistence can be added with local storage after the state shape is stable. A backend is not required for the MVP.
 
+## Engine Decision
+
+Phaser should not be part of the MVP's core engine. The first version is primarily a Control Tower business simulation made of policies, reports, decision cards, and dashboard interactions, which are a better fit for Svelte components and pure TypeScript domain logic.
+
+The architecture should remain renderer-agnostic:
+
+- Business state and simulation logic live in pure TypeScript modules.
+- Svelte owns the MVP interface and user input.
+- Phaser can be added later as an optional visual layer for a city map, animated store view, competitor visualization, or event scenes.
+- Phaser should not own core business rules, persistence, or economic calculations.
+
 ## Error Handling and Edge Cases
 
 The game should handle:
