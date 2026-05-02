@@ -43,6 +43,7 @@ const SERVICE = {
 } as const;
 
 const BASE_TICKET = 34;
+type SummedStoreReportKey = 'revenue' | 'costOfGoods' | 'operatingCosts';
 
 export function simulateDay(game: GameState): GameState {
 	const rng = createRngFromState(game.rngState);
@@ -106,7 +107,8 @@ function simulateStore(
 			competitionDrag *
 			variance
 	);
-	const stockLimit = store.localDemand * inventory.capacity * Math.max(0.18, store.stockHealth / 72);
+	const stockLimit =
+		store.localDemand * inventory.capacity * Math.max(0.18, store.stockHealth / 72);
 	const staffLimit =
 		store.staffCapacity * staffing.capacity * service.throughput * (0.72 + store.staffMorale / 220);
 	const customersServed = Math.max(0, Math.floor(Math.min(demand, stockLimit, staffLimit)));
@@ -127,7 +129,6 @@ function simulateStore(
 			supplierCost(archetype, inventory.cost, customersServed)
 	);
 	const netIncome = grossMargin - operatingCosts;
-	const warnings = buildStoreWarnings(store, customersServed, demandMissed, stockLimit, staffLimit);
 	const stockHealth = clampScore(
 		store.stockHealth +
 			inventory.recovery -
@@ -154,15 +155,23 @@ function simulateStore(
 	const marketPosition = clampScore(
 		35 + store.localDemand / 5 + reputation / 3 - store.competition / 4 + marketing.market
 	);
+	const updatedStore = {
+		...store,
+		daysOpen: store.daysOpen + 1,
+		stockHealth,
+		staffMorale,
+		reputation
+	};
+	const warnings = buildStoreWarnings(
+		updatedStore,
+		customersServed,
+		demandMissed,
+		stockLimit,
+		staffLimit
+	);
 
 	return {
-		store: {
-			...store,
-			daysOpen: store.daysOpen + 1,
-			stockHealth,
-			staffMorale,
-			reputation
-		},
+		store: updatedStore,
 		report: {
 			storeId: store.id,
 			revenue,
@@ -206,8 +215,14 @@ function averageCategoryMargin(archetype: StoreArchetype): number {
 	);
 }
 
-function supplierCost(archetype: StoreArchetype, inventoryCost: number, customersServed: number): number {
-	return Math.round(customersServed * inventoryCost * (1.4 + archetype.startingCategories.length * 0.35));
+function supplierCost(
+	archetype: StoreArchetype,
+	inventoryCost: number,
+	customersServed: number
+): number {
+	return Math.round(
+		customersServed * inventoryCost * (1.4 + archetype.startingCategories.length * 0.35)
+	);
 }
 
 function buildStoreWarnings(
@@ -289,10 +304,9 @@ function collectWarnings(storeReports: DailyStoreReport[], cashAfter: number): s
 	return warnings;
 }
 
-function sum(reports: DailyStoreReport[], key: keyof DailyStoreReport): number {
+function sum(reports: DailyStoreReport[], key: SummedStoreReportKey): number {
 	return reports.reduce((total, report) => {
-		const value = report[key];
-		return typeof value === 'number' ? total + value : total;
+		return total + report[key];
 	}, 0);
 }
 

@@ -36,4 +36,40 @@ describe('daily simulation', () => {
 
 		expect(result.reports[0]?.warnings.some((warning) => warning.includes('stock'))).toBe(true);
 	});
+
+	test('warnings use post-day store health', () => {
+		expect.assertions(2);
+		const game = updatePolicy(createNewGame('convenience', 41), {
+			staffing: 'minimal',
+			service: 'speed'
+		});
+		const result = simulateDay({
+			...game,
+			stores: game.stores.map((store) => ({
+				...store,
+				localDemand: 30,
+				stockHealth: 80,
+				staffCapacity: 100,
+				staffMorale: 37,
+				managerQuality: 0
+			}))
+		});
+		const report = result.reports[0]?.storeReports[0];
+
+		expect(report?.staffMorale).toBeLessThan(30);
+		expect(report?.warnings.some((warning) => warning.includes('staff'))).toBe(true);
+	});
+
+	test('resumes persisted rng state across sequential days', () => {
+		expect.assertions(1);
+		const initial = updatePolicy(createNewGame('electronics', 1234), {
+			inventory: 'generous',
+			marketing: 'promotions',
+			pricing: 'competitive'
+		});
+		const resumed = simulateDay(simulateDay(initial));
+		const sequential = [simulateDay, simulateDay].reduce((state, step) => step(state), initial);
+
+		expect(resumed).toEqual(sequential);
+	});
 });
