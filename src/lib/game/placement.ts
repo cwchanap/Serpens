@@ -1,7 +1,7 @@
 import { ARCHETYPES, getArchetype } from './archetypes';
 import { getTileById } from './city';
 import { clampScore } from './reports';
-import { createNewGame, openStore } from './state';
+import { createNewGame, getExpansionSetupCost, openStore } from './state';
 import type {
 	ArchetypeId,
 	City,
@@ -76,16 +76,13 @@ export function forecastOpening(tile: CityTile, archetypeId: ArchetypeId): Openi
 	const archetype = getArchetype(archetypeId);
 	const fitScore = scoreTileForArchetype(tile, archetypeId);
 	const demandScore = clampScore((tile.demand + tile.footTraffic + fitScore) / 3);
-	const setupCost = Math.round(
-		9_000 + tile.rent * 2.5 + archetype.baseRent * 18 + demandScore * 24
-	);
 	const projectedDailyRevenue = Math.round(
 		(archetype.baseTraffic * 7 + tile.demand * 10 + tile.footTraffic * 6) * (fitScore / 100)
 	);
 
 	return {
 		tileId: tile.id,
-		setupCost,
+		setupCost: getExpansionSetupCost(tile, archetypeId),
 		projectedDailyRevenue,
 		projectedDailyRent: tile.rent,
 		demandScore,
@@ -135,7 +132,8 @@ export function openStoreAtTile(
 
 	const expanded = openStore(game, {
 		name: input.name,
-		location: formatLocation(tile)
+		location: formatLocation(tile),
+		tileId: tile.id
 	});
 
 	if (expanded.stores.length === game.stores.length) {

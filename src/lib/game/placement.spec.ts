@@ -94,4 +94,33 @@ describe('tile placement', () => {
 		expect(result.stores).toHaveLength(1);
 		expect(result.decisions.at(-1)?.title).toBe('Location unavailable');
 	});
+
+	test('deducts the forecast setup cost when opening at a tile', () => {
+		expect.assertions(4);
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 20,
+			height: 20,
+			seed: 202
+		});
+		const foundingTile = city.tiles.find((candidate) => !candidate.locked)!;
+		const expansionTile = city.tiles.find(
+			(candidate) => !candidate.locked && candidate.id !== foundingTile.id
+		)!;
+		const game = createFoundingGameAtTile({
+			archetypeId: 'electronics',
+			city,
+			tileId: foundingTile.id,
+			seed: 202
+		});
+		const forecast = forecastOpening(expansionTile, 'electronics');
+
+		const result = openStoreAtTile(game, { tileId: expansionTile.id, name: 'Expansion Store' });
+
+		expect(result.stores).toHaveLength(2);
+		expect(result.cash).toBe(game.cash - forecast.setupCost);
+		expect(result.stores.at(-1)?.tileId).toBe(expansionTile.id);
+		expect(result.decisions).toHaveLength(0);
+	});
 });

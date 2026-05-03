@@ -54,6 +54,20 @@ describe('game state', () => {
 		expect(fourth.decisions.at(-1)?.title).toBe('Expansion unavailable');
 	});
 
+	test('direct store opening uses a map tile in the active city', () => {
+		expect.assertions(5);
+		const game = createNewGame('electronics', 44);
+
+		const result = openStore(game, { name: 'Mall Kiosk', location: 'West Mall' });
+		const openedStore = result.stores.at(-1);
+
+		expect(result.stores).toHaveLength(2);
+		expect(openedStore?.cityId).toBe(game.activeCityId);
+		expect(openedStore?.tileId).not.toContain('unplaced');
+		expect(openedStore?.mapX).toBeGreaterThanOrEqual(0);
+		expect(openedStore?.tileId).not.toBe(game.stores[0]?.tileId);
+	});
+
 	test('does not duplicate same-day blocked expansion decisions', () => {
 		expect.assertions(2);
 		const game = createNewGame('electronics', 44);

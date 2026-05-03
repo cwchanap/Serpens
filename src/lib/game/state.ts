@@ -4,6 +4,8 @@ import { clampScore } from './reports';
 import { createRng, normalizeSeed, randomInt } from './rng';
 import type {
 	ArchetypeId,
+	City,
+	CityTile,
 	CompanyPolicy,
 	DecisionItem,
 	DecisionOption,
@@ -24,9 +26,8 @@ export const DEFAULT_POLICY: CompanyPolicy = {
 interface OpenStoreInput {
 	name: string;
 	location: string;
+	tileId?: string;
 }
-
-const EXPANSION_SETUP_COST = 14_000;
 
 export function createNewGame(archetypeId: ArchetypeId, seed = Date.now()): GameState {
 	const archetype = getArchetype(archetypeId);
@@ -91,15 +92,23 @@ export function updatePolicy(game: GameState, patch: Partial<CompanyPolicy>): Ga
 }
 
 export function openStore(game: GameState, input: OpenStoreInput): GameState {
+	const archetypeId = game.stores[0]?.archetypeId ?? 'convenience';
+	const tile = getExpansionTile(game, input.tileId);
+
+	if (!tile) {
+		return appendDecision(game, locationUnavailableDecision(game));
+	}
+
 	if (game.stores.length >= MAX_STORES) {
 		return appendDecision(game, expansionUnavailableDecision(game));
 	}
 
-	if (game.cash < EXPANSION_SETUP_COST) {
-		return appendDecision(game, expansionCashBlockedDecision(game));
+	const setupCost = getExpansionSetupCost(tile, archetypeId);
+
+	if (game.cash < setupCost) {
+		return appendDecision(game, expansionCashBlockedDecision(game, setupCost));
 	}
 
-	const archetypeId = game.stores[0]?.archetypeId ?? 'convenience';
 	const rng = createRng(game.rngState);
 	const store = createStore({
 		id: `store-${game.stores.length + 1}`,
@@ -109,17 +118,25 @@ export function openStore(game: GameState, input: OpenStoreInput): GameState {
 		daysOpen: 0,
 		rng
 	});
+	const placedStore = placeStore(store, tile);
 
 	return {
 		...game,
 		rngState: rng.getState(),
-		cash: game.cash - EXPANSION_SETUP_COST,
-		stores: [...game.stores, store],
+		cash: game.cash - setupCost,
+		stores: [...game.stores, placedStore],
 		scorecard: {
 			...game.scorecard,
 			marketPosition: clampScore(game.scorecard.marketPosition + 4)
 		}
 	};
+}
+
+export function getExpansionSetupCost(tile: CityTile, archetypeId: ArchetypeId): number {
+	const archetype = getArchetype(archetypeId);
+	const demandScore = clampScore((tile.demand + tile.footTraffic + tile.customerFit) / 3);
+
+	return Math.round(9_000 + tile.rent * 2.5 + archetype.baseRent * 18 + demandScore * 24);
 }
 
 export function resolveDecision(game: GameState, decisionId: string, optionId: string): GameState {
@@ -189,6 +206,49 @@ function applyStoreEffects(store: Store, option: DecisionOption): Store {
 	};
 }
 
+function getExpansionTile(
+	game: GameState,
+	requestedTileId: string | undefined
+): CityTile | undefined {
+	const city = getActiveCity(game);
+
+	if (!city) {
+		return undefined;
+	}
+
+	if (requestedTileId) {
+		const requestedTile = city.tiles.find((tile) => tile.id === requestedTileId);
+
+		if (!requestedTile || requestedTile.locked || isTileOccupied(game, requestedTile.id)) {
+			return undefined;
+		}
+
+		return requestedTile;
+	}
+
+	return city.tiles.find((tile) => !tile.locked && !isTileOccupied(game, tile.id));
+}
+
+function getActiveCity(game: GameState): City | undefined {
+	return game.cities.find((city) => city.id === game.activeCityId);
+}
+
+function isTileOccupied(game: GameState, tileId: string): boolean {
+	return game.stores.some((store) => store.tileId === tileId);
+}
+
+function placeStore(store: Store, tile: CityTile): Store {
+	return {
+		...store,
+		cityId: tile.cityId,
+		tileId: tile.id,
+		mapX: tile.x,
+		mapY: tile.y,
+		location: `${store.location} (${tile.x}, ${tile.y})`,
+		localDemand: Math.max(1, Math.round((tile.demand + tile.footTraffic) / 2))
+	};
+}
+
 function appendDecision(game: GameState, decision: DecisionItem): GameState {
 	if (game.decisions.some((candidate) => candidate.id === decision.id)) {
 		return game;
@@ -210,11 +270,21 @@ function expansionUnavailableDecision(game: GameState): DecisionItem {
 	};
 }
 
-function expansionCashBlockedDecision(game: GameState): DecisionItem {
+function expansionCashBlockedDecision(game: GameState, setupCost: number): DecisionItem {
 	return {
 		id: `expansion-cash-blocked-${game.day}`,
 		title: 'Expansion delayed',
-		context: `Opening another store requires ${EXPANSION_SETUP_COST.toLocaleString('en-US')} cash.`,
+		context: `Opening another store requires ${setupCost.toLocaleString('en-US')} cash.`,
+		expiresOnDay: game.day + 1,
+		options: [acknowledgeOption()]
+	};
+}
+
+function locationUnavailableDecision(game: GameState): DecisionItem {
+	return {
+		id: `location-unavailable-${game.day}`,
+		title: 'Location unavailable',
+		context: 'Choose an unlocked, unoccupied city tile before opening this store.',
 		expiresOnDay: game.day + 1,
 		options: [acknowledgeOption()]
 	};
