@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { asset } from '$app/paths';
+	import { SHOP_STOREFRONT_ALT, SHOP_STOREFRONT_PATH } from '$lib/assets/gameArt';
 	import { getArchetype } from '$lib/game/archetypes';
 	import type { ArchetypeId, CityTile, OpeningForecast, Store } from '$lib/game/types';
 
@@ -50,6 +52,8 @@
 		return 'Unavailable location';
 	});
 
+	const shopStorefrontSrc = asset(SHOP_STOREFRONT_PATH);
+
 	function label(value: string): string {
 		return value.replace(/([A-Z])/g, ' $1').replace(/^./, (character) => character.toUpperCase());
 	}
@@ -78,6 +82,16 @@
 
 		{#if store}
 			<section aria-label="Store details">
+				<div class="store-art">
+					<img
+						src={shopStorefrontSrc}
+						alt={SHOP_STOREFRONT_ALT}
+						width="1024"
+						height="1024"
+						loading="lazy"
+						decoding="async"
+					/>
+				</div>
 				<h3>{store.name}</h3>
 				<p class="location">{store.location}</p>
 				<dl>
@@ -240,6 +254,21 @@
 	section {
 		display: grid;
 		gap: 0.75rem;
+	}
+
+	.store-art {
+		aspect-ratio: 16 / 11;
+		overflow: hidden;
+		border: 1px solid #3f4a42;
+		border-radius: 8px;
+		background: #111814;
+	}
+
+	.store-art img {
+		display: block;
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
 	}
 
 	dl {
