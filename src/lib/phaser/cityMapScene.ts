@@ -109,10 +109,6 @@ export class CityMapScene extends Phaser.Scene {
 	}
 
 	private createTileZone(tile: CityMapTileRender): void {
-		if (tile.locked) {
-			return;
-		}
-
 		const zone = this.add
 			.zone(tile.x * TILE_SIZE, tile.y * TILE_SIZE, TILE_SIZE, TILE_SIZE)
 			.setOrigin(0)
