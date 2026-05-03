@@ -34,6 +34,10 @@ test('player expands from a selected city tile', async ({ page }) => {
 	await page.getByRole('button', { name: /open store here/i }).click();
 
 	await expect(
+		page.getByLabel('Store details').getByRole('heading', { name: 'Store #2', exact: true })
+	).toBeVisible();
+	await expect(page.getByLabel('Store details').getByText(/\(2, 1\)/)).toBeVisible();
+	await expect(
 		page.getByLabel('Stores').getByRole('heading', { name: 'Store #2', exact: true })
 	).toBeVisible();
 });
