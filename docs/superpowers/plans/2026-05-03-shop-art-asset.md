@@ -52,11 +52,7 @@ Create `src/lib/assets/gameArt.spec.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest';
-import {
-	SHOP_STOREFRONT_ALT,
-	SHOP_STOREFRONT_PATH,
-	SHOP_STOREFRONT_TEXTURE_KEY
-} from './gameArt';
+import { SHOP_STOREFRONT_ALT, SHOP_STOREFRONT_PATH, SHOP_STOREFRONT_TEXTURE_KEY } from './gameArt';
 
 describe('game art asset constants', () => {
 	it('defines the first shop storefront asset contract', () => {
@@ -183,15 +179,17 @@ const store: Store = {
 	managerQuality: 60
 };
 
-function renderInspector(overrides: Partial<{
-	tile: CityTile | null;
-	store: Store | null;
-	forecast: OpeningForecast | null;
-	recommendations: ArchetypeId[];
-	gameStarted: boolean;
-	canOpenStore: boolean;
-	disabledReason: string | null;
-}> = {}) {
+function renderInspector(
+	overrides: Partial<{
+		tile: CityTile | null;
+		store: Store | null;
+		forecast: OpeningForecast | null;
+		recommendations: ArchetypeId[];
+		gameStarted: boolean;
+		canOpenStore: boolean;
+		disabledReason: string | null;
+	}> = {}
+) {
 	render(TileInspector, {
 		tile,
 		store: null,
@@ -221,10 +219,9 @@ describe('TileInspector storefront art', () => {
 
 		const image = page.getByRole('img', { name: SHOP_STOREFRONT_ALT });
 		await expect.element(image).toBeVisible();
-		await expect.element(image).toHaveAttribute(
-			'src',
-			/\/assets\/game\/shops\/anime-storefront\.png$/
-		);
+		await expect
+			.element(image)
+			.toHaveAttribute('src', /\/assets\/game\/shops\/anime-storefront\.png$/);
 	});
 });
 ```
@@ -254,7 +251,7 @@ Modify the top of `src/lib/components/game/TileInspector.svelte` so the script i
 Add this constant after `let { ... }: Props = $props();`:
 
 ```svelte
-	const shopStorefrontSrc = asset(SHOP_STOREFRONT_PATH);
+const shopStorefrontSrc = asset(SHOP_STOREFRONT_PATH);
 ```
 
 - [ ] **Step 4: Render the artwork inside the store details section**
@@ -269,16 +266,16 @@ In `src/lib/components/game/TileInspector.svelte`, inside:
 insert this block before the store heading:
 
 ```svelte
-				<div class="store-art">
-					<img
-						src={shopStorefrontSrc}
-						alt={SHOP_STOREFRONT_ALT}
-						width="1024"
-						height="1024"
-						loading="lazy"
-						decoding="async"
-					/>
-				</div>
+<div class="store-art">
+	<img
+		src={shopStorefrontSrc}
+		alt={SHOP_STOREFRONT_ALT}
+		width="1024"
+		height="1024"
+		loading="lazy"
+		decoding="async"
+	/>
+</div>
 ```
 
 - [ ] **Step 5: Add scoped artwork styles**
@@ -286,20 +283,20 @@ insert this block before the store heading:
 Add these styles inside the existing `<style>` block in `src/lib/components/game/TileInspector.svelte`:
 
 ```css
-	.store-art {
-		aspect-ratio: 16 / 11;
-		overflow: hidden;
-		border: 1px solid #3f4a42;
-		border-radius: 8px;
-		background: #111814;
-	}
+.store-art {
+	aspect-ratio: 16 / 11;
+	overflow: hidden;
+	border: 1px solid #3f4a42;
+	border-radius: 8px;
+	background: #111814;
+}
 
-	.store-art img {
-		display: block;
-		width: 100%;
-		height: 100%;
-		object-fit: cover;
-	}
+.store-art img {
+	display: block;
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+}
 ```
 
 - [ ] **Step 6: Run the Svelte autofixer**
@@ -348,17 +345,17 @@ git commit -m "feat: show shop art in store inspector"
 In `src/routes/retail-sim.e2e.ts`, update the first test after the founding-store click:
 
 ```ts
-	await page
-		.getByRole('button', { name: /open .* here/i })
-		.first()
-		.click();
+await page
+	.getByRole('button', { name: /open .* here/i })
+	.first()
+	.click();
 
-	const mapCanvas = page.locator('.map-canvas canvas');
-	await expect(mapCanvas).toHaveAttribute('data-store-marker-mode', 'image');
-	await expect(mapCanvas).toHaveAttribute('data-store-sprite-count', '1');
-	await expect(
-		page.getByRole('img', { name: /anime-style storefront for an owned shop/i })
-	).toBeVisible();
+const mapCanvas = page.locator('.map-canvas canvas');
+await expect(mapCanvas).toHaveAttribute('data-store-marker-mode', 'image');
+await expect(mapCanvas).toHaveAttribute('data-store-sprite-count', '1');
+await expect(
+	page.getByRole('img', { name: /anime-style storefront for an owned shop/i })
+).toBeVisible();
 ```
 
 - [ ] **Step 2: Run the focused e2e test to verify it fails**
@@ -419,17 +416,17 @@ Add this method to `CityMapScene`:
 Replace the first three graphics lines in `create()`:
 
 ```ts
-		this.mapGraphics = this.add.graphics();
-		this.outlineGraphics = this.add.graphics();
-		this.markerGraphics = this.add.graphics();
+this.mapGraphics = this.add.graphics();
+this.outlineGraphics = this.add.graphics();
+this.markerGraphics = this.add.graphics();
 ```
 
 with:
 
 ```ts
-		this.mapGraphics = this.add.graphics().setDepth(TERRAIN_DEPTH);
-		this.markerGraphics = this.add.graphics().setDepth(STORE_MARKER_DEPTH);
-		this.outlineGraphics = this.add.graphics().setDepth(OUTLINE_DEPTH);
+this.mapGraphics = this.add.graphics().setDepth(TERRAIN_DEPTH);
+this.markerGraphics = this.add.graphics().setDepth(STORE_MARKER_DEPTH);
+this.outlineGraphics = this.add.graphics().setDepth(OUTLINE_DEPTH);
 ```
 
 - [ ] **Step 7: Rebuild sprites when the snapshot changes**
@@ -437,16 +434,16 @@ with:
 In `renderSnapshot()`, replace the body after `this.setCameraBounds();` with this sequence:
 
 ```ts
-		this.destroyStoreSprites();
+this.destroyStoreSprites();
 
-		for (const tile of this.snapshot.tiles) {
-			this.drawTile(tile);
-			this.createTileZone(tile);
-		}
+for (const tile of this.snapshot.tiles) {
+	this.drawTile(tile);
+	this.createTileZone(tile);
+}
 
-		this.createStoreSprites();
-		this.drawInteractionOutlines();
-		this.drawStoreMarkers(0);
+this.createStoreSprites();
+this.drawInteractionOutlines();
+this.drawStoreMarkers(0);
 ```
 
 - [ ] **Step 8: Add sprite creation, fallback detection, and canvas test attributes**
@@ -535,7 +532,7 @@ Replace `drawStoreMarkers(time: number): void` with:
 At the start of `destroySceneObjects()`, add:
 
 ```ts
-		this.destroyStoreSprites();
+this.destroyStoreSprites();
 ```
 
 - [ ] **Step 11: Run the focused e2e test to verify it passes**
