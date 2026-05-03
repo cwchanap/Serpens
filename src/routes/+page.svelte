@@ -159,11 +159,23 @@
 			name: `Store #${next}`
 		});
 	}
+
+	function closeInspector() {
+		selectedTileId = null;
+	}
+
+	function handleKeydown(event: KeyboardEvent) {
+		if (event.key === 'Escape' && selectedTileId !== null) {
+			selectedTileId = null;
+		}
+	}
 </script>
 
 <svelte:head>
 	<title>Retail City Map</title>
 </svelte:head>
+
+<svelte:window onkeydown={handleKeydown} />
 
 <main class="app">
 	<header>
@@ -184,17 +196,22 @@
 
 	<section class="map-layout" aria-label="City planning">
 		<CityMap snapshot={mapSnapshot} onTileSelected={selectTile} />
-		<TileInspector
-			tile={selectedTile}
-			store={selectedStore}
-			{forecast}
-			{recommendations}
-			gameStarted={game !== null}
-			{canOpenStore}
-			disabledReason={openStoreDisabledReason}
-			onFoundStore={foundStore}
-			onOpenStore={addStoreAtSelectedTile}
-		/>
+		{#if selectedTile}
+			<div class="inspector-overlay" role="dialog" aria-modal="false" aria-label="Tile details">
+				<TileInspector
+					tile={selectedTile}
+					store={selectedStore}
+					{forecast}
+					{recommendations}
+					gameStarted={game !== null}
+					{canOpenStore}
+					disabledReason={openStoreDisabledReason}
+					onFoundStore={foundStore}
+					onOpenStore={addStoreAtSelectedTile}
+					onClose={closeInspector}
+				/>
+			</div>
+		{/if}
 	</section>
 
 	{#if game}
@@ -285,11 +302,16 @@
 	}
 
 	.map-layout {
-		display: grid;
-		grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
-		gap: 1rem;
-		align-items: stretch;
-		min-height: 680px;
+		position: relative;
+		min-height: 620px;
+	}
+
+	.inspector-overlay {
+		position: absolute;
+		top: 1rem;
+		right: 1rem;
+		z-index: 10;
+		width: min(360px, calc(100% - 2rem));
 	}
 
 	.grid {
@@ -300,13 +322,20 @@
 	}
 
 	@media (max-width: 980px) {
-		.map-layout,
 		.grid {
 			grid-template-columns: 1fr;
 		}
 
 		.map-layout {
-			min-height: 0;
+			min-height: 460px;
+		}
+
+		.inspector-overlay {
+			position: fixed;
+			inset: auto 0 0;
+			width: auto;
+			padding: 0.75rem;
+			background: linear-gradient(to top, rgb(0 0 0 / 0.5), transparent);
 		}
 
 		header,

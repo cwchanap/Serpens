@@ -12,6 +12,7 @@
 		disabledReason: string | null;
 		onFoundStore: (archetypeId: ArchetypeId) => void;
 		onOpenStore: () => void;
+		onClose: () => void;
 	}
 
 	let {
@@ -23,7 +24,8 @@
 		canOpenStore,
 		disabledReason,
 		onFoundStore,
-		onOpenStore
+		onOpenStore,
+		onClose
 	}: Props = $props();
 
 	const currency = new Intl.NumberFormat('en-US', {
@@ -54,6 +56,7 @@
 </script>
 
 <aside class="inspector" aria-label="Tile inspector">
+	<button type="button" class="close" aria-label="Close tile inspector" onclick={onClose}>×</button>
 	{#if !tile}
 		<h2>Select a city tile</h2>
 		{#if gameStarted}
@@ -164,15 +167,27 @@
 
 <style>
 	.inspector {
+		position: relative;
 		display: grid;
 		align-content: start;
 		gap: 1rem;
 		min-width: 0;
-		min-height: 100%;
 		border: 1px solid #343434;
 		border-radius: 8px;
 		background: #1a1a18;
 		padding: 1rem;
+		box-shadow: 0 24px 70px rgb(0 0 0 / 0.38);
+	}
+
+	.close {
+		position: absolute;
+		top: 0.65rem;
+		right: 0.65rem;
+		width: 2rem;
+		height: 2rem;
+		border-radius: 999px;
+		padding: 0;
+		text-align: center;
 	}
 
 	.heading {

@@ -19,6 +19,7 @@ test('player can found a store from the city map and advance a day', async ({ pa
 	await expect(page.getByText(/harbor city/i)).toBeVisible();
 	await expect(page.getByRole('button', { name: /select tile/i })).toHaveCount(0);
 	await clickMapTile(page, 1, 1);
+	await expect(page.getByRole('dialog', { name: /tile details/i })).toBeVisible();
 	await expect(page.getByText(/recommended/i)).toBeVisible();
 	await page
 		.getByRole('button', { name: /open .* here/i })
@@ -33,6 +34,22 @@ test('player can found a store from the city map and advance a day', async ({ pa
 
 	await expect(page.getByText(/^Day 2$/i)).toBeVisible();
 	await expect(page.getByText(/latest daily result/i)).toBeVisible();
+});
+
+test('tile popup can be closed from the map', async ({ page }) => {
+	await page.goto('/');
+
+	await clickMapTile(page, 1, 1);
+	await expect(page.getByRole('dialog', { name: /tile details/i })).toBeVisible();
+
+	await page.getByRole('button', { name: /close tile inspector/i }).click();
+	await expect(page.getByRole('dialog', { name: /tile details/i })).toHaveCount(0);
+
+	await clickMapTile(page, 1, 1);
+	await expect(page.getByRole('dialog', { name: /tile details/i })).toBeVisible();
+
+	await page.keyboard.press('Escape');
+	await expect(page.getByRole('dialog', { name: /tile details/i })).toHaveCount(0);
 });
 
 test('locked map tiles still show inspector feedback', async ({ page }) => {
@@ -57,6 +74,7 @@ test('player expands from a selected city tile', async ({ page }) => {
 	await clickMapTile(page, 2, 1);
 	await page.getByRole('button', { name: /open store here/i }).click();
 
+	await expect(page.getByRole('dialog', { name: /tile details/i })).toBeVisible();
 	await expect(
 		page.getByLabel('Store details').getByRole('heading', { name: 'Store #2', exact: true })
 	).toBeVisible();
