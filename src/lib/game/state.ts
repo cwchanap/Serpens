@@ -55,6 +55,8 @@ export function createNewGame(archetypeId: ArchetypeId, seed = Date.now()): Game
 			staffMorale: openingStore.staffMorale,
 			marketPosition: clampScore(35 + Math.round(archetype.baseTraffic / 10))
 		},
+		cities: [],
+		activeCityId: 'harbor-city',
 		stores: [openingStore],
 		decisions: [],
 		reports: []
@@ -135,6 +137,10 @@ function createStore(input: {
 		name: input.name,
 		archetypeId: input.archetypeId,
 		location: input.location,
+		cityId: 'harbor-city',
+		tileId: `${input.id}-unplaced`,
+		mapX: 0,
+		mapY: 0,
 		daysOpen: input.daysOpen,
 		reputation: clampScore(archetype.customerExpectation + randomInt(input.rng, -4, 4)),
 		stockHealth: clampScore(62 + randomInt(input.rng, -5, 5)),

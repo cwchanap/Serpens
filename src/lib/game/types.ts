@@ -7,6 +7,16 @@ export type StaffingPosture = 'minimal' | 'efficient' | 'service';
 export type MarketingFocus = 'none' | 'awareness' | 'promotions' | 'loyalty';
 export type ServicePriority = 'speed' | 'balanced' | 'highTouch';
 export type ScoreKey = 'profit' | 'customerSatisfaction' | 'staffMorale' | 'marketPosition';
+export type NeighborhoodId =
+	| 'downtown'
+	| 'campus'
+	| 'residential'
+	| 'mall'
+	| 'transit'
+	| 'industrial'
+	| 'suburb'
+	| 'parkEdge';
+export type TerrainId = 'commercial' | 'residential' | 'green' | 'transit' | 'industrial';
 
 export interface CompanyPolicy {
 	pricing: PricingPosture;
@@ -49,6 +59,10 @@ export interface Store {
 	name: string;
 	archetypeId: ArchetypeId;
 	location: string;
+	cityId: string;
+	tileId: string;
+	mapX: number;
+	mapY: number;
 	daysOpen: number;
 	reputation: number;
 	stockHealth: number;
@@ -57,6 +71,38 @@ export interface Store {
 	localDemand: number;
 	competition: number;
 	managerQuality: number;
+}
+
+export interface CityTile {
+	id: string;
+	cityId: string;
+	x: number;
+	y: number;
+	neighborhood: NeighborhoodId;
+	terrain: TerrainId;
+	demand: number;
+	rent: number;
+	footTraffic: number;
+	customerFit: number;
+	locked: boolean;
+}
+
+export interface City {
+	id: string;
+	name: string;
+	width: number;
+	height: number;
+	tiles: CityTile[];
+}
+
+export interface OpeningForecast {
+	tileId: string;
+	setupCost: number;
+	projectedDailyRevenue: number;
+	projectedDailyRent: number;
+	demandScore: number;
+	customerFit: number;
+	risks: string[];
 }
 
 export interface DailyStoreReport {
@@ -116,6 +162,8 @@ export interface GameState {
 	debt: number;
 	policy: CompanyPolicy;
 	scorecard: Scorecard;
+	cities: City[];
+	activeCityId: string;
 	stores: Store[];
 	decisions: DecisionItem[];
 	reports: DailyReport[];
