@@ -56,6 +56,14 @@
 <aside class="inspector" aria-label="Tile inspector">
 	{#if !tile}
 		<h2>Select a city tile</h2>
+		{#if gameStarted}
+			<section aria-label="Expansion action">
+				<button type="button" class="primary" disabled onclick={onOpenStore}>
+					Open store here
+				</button>
+				<p class="disabled-copy">{disabledReason ?? defaultDisabledReason}</p>
+			</section>
+		{/if}
 	{:else}
 		<div class="heading">
 			<div>
@@ -84,6 +92,14 @@
 					</div>
 				</dl>
 			</section>
+			{#if gameStarted && !canOpenStore}
+				<section aria-label="Expansion action">
+					<button type="button" class="primary" disabled onclick={onOpenStore}>
+						Open store here
+					</button>
+					<p class="disabled-copy">{disabledReason ?? defaultDisabledReason}</p>
+				</section>
+			{/if}
 		{:else}
 			<section aria-label="Tile stats">
 				<dl>
