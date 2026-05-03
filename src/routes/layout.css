@@ -2,7 +2,7 @@
 
 :root {
 	color: #edf2f7;
-	background: #0b111a;
+	background: #11110f;
 	font-family:
 		Inter,
 		ui-sans-serif,
@@ -17,8 +17,16 @@ body {
 	margin: 0;
 	min-width: 320px;
 	min-height: 100vh;
-	background: #0b111a;
+	background:
+		linear-gradient(180deg, rgba(34, 31, 25, 0.96), rgba(17, 17, 15, 1) 38rem),
+		#11110f;
 	color: #edf2f7;
+}
+
+html,
+body,
+#svelte {
+	min-height: 100%;
 }
 
 button,

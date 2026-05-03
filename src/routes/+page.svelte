@@ -1,23 +1,95 @@
 <script lang="ts">
 	import DecisionQueue from '$lib/components/game/DecisionQueue.svelte';
+	import CityMap from '$lib/components/game/CityMap.svelte';
 	import PolicyPanel from '$lib/components/game/PolicyPanel.svelte';
 	import ReportsPanel from '$lib/components/game/ReportsPanel.svelte';
 	import Scorecard from '$lib/components/game/Scorecard.svelte';
 	import StoreOverview from '$lib/components/game/StoreOverview.svelte';
-	import { ARCHETYPES } from '$lib/game/archetypes';
+	import TileInspector from '$lib/components/game/TileInspector.svelte';
+	import { generateCity, getTileById } from '$lib/game/city';
+	import { createCityMapSnapshot } from '$lib/game/mapRender';
+	import {
+		createFoundingGameAtTile,
+		forecastOpening,
+		getRecommendedArchetypes,
+		openStoreAtTile
+	} from '$lib/game/placement';
 	import { summarizeReports } from '$lib/game/reports';
-	import { createNewGame, openStore, resolveDecision, updatePolicy } from '$lib/game/state';
+	import { DEFAULT_POLICY, resolveDecision, updatePolicy } from '$lib/game/state';
 	import { simulateDay } from '$lib/game/simulateDay';
 	import type { ArchetypeId, CompanyPolicy, GameState } from '$lib/game/types';
 
+	const starterCity = generateCity({
+		id: 'harbor-city',
+		name: 'Harbor City',
+		width: 20,
+		height: 20,
+		seed: 20260503
+	});
+
+	const starterMapState: GameState = {
+		seed: 20260503,
+		rngState: 0,
+		day: 1,
+		cash: 0,
+		debt: 0,
+		policy: { ...DEFAULT_POLICY },
+		scorecard: {
+			profit: 0,
+			customerSatisfaction: 0,
+			staffMorale: 0,
+			marketPosition: 0
+		},
+		cities: [starterCity],
+		activeCityId: starterCity.id,
+		stores: [],
+		decisions: [],
+		reports: []
+	};
+
 	let game: GameState | null = $state(null);
+	let selectedTileId = $state<string | null>(null);
 	let summary = $derived.by(() => {
 		const currentGame: GameState | null = game;
 		return currentGame ? summarizeReports(currentGame.reports) : summarizeReports([]);
 	});
+	let activeCity = $derived.by(() => {
+		const currentGame: GameState | null = game;
+		return (
+			currentGame?.cities.find((city) => city.id === currentGame.activeCityId) ?? starterCity
+		);
+	});
+	let selectedTile = $derived(selectedTileId ? (getTileById(activeCity, selectedTileId) ?? null) : null);
+	let selectedStore = $derived.by(() => {
+		const currentGame: GameState | null = game;
+		return selectedTileId
+			? (currentGame?.stores.find((store) => store.tileId === selectedTileId) ?? null)
+			: null;
+	});
+	let recommendations = $derived(selectedTile ? getRecommendedArchetypes(selectedTile) : []);
+	let forecast = $derived(
+		selectedTile && recommendations[0] ? forecastOpening(selectedTile, recommendations[0]) : null
+	);
+	let canOpenStore = $derived(Boolean(game && selectedTile && !selectedTile.locked && !selectedStore));
+	let mapSnapshot = $derived(
+		createCityMapSnapshot(game ?? starterMapState, selectedTileId)
+	);
 
-	function start(archetypeId: ArchetypeId) {
-		game = createNewGame(archetypeId, 20260502);
+	function selectTile(tileId: string) {
+		selectedTileId = tileId;
+	}
+
+	function foundStore(archetypeId: ArchetypeId) {
+		if (!selectedTileId || !selectedTile || selectedTile.locked) {
+			return;
+		}
+
+		game = createFoundingGameAtTile({
+			archetypeId,
+			city: starterCity,
+			tileId: selectedTileId,
+			seed: 20260503
+		});
 	}
 
 	function advanceDay() {
@@ -38,53 +110,55 @@
 		}
 	}
 
-	function addStore() {
-		if (!game) {
+	function addStoreAtSelectedTile() {
+		if (!game || !selectedTileId) {
 			return;
 		}
 
 		const next = game.stores.length + 1;
-		game = openStore(game, {
-			name: `Store #${next}`,
-			location: next === 2 ? 'West Mall' : 'North Campus'
+		game = openStoreAtTile(game, {
+			tileId: selectedTileId,
+			name: `Store #${next}`
 		});
 	}
 </script>
 
 <svelte:head>
-	<title>Retail Control Tower</title>
+	<title>Retail City Map</title>
 </svelte:head>
 
-{#if game === null}
-	<main class="start">
-		<section>
-			<p class="eyebrow">Retail Business Simulation</p>
-			<h1>Choose your first store</h1>
-			<div class="archetypes">
-				{#each ARCHETYPES as archetype (archetype.id)}
-					<button type="button" onclick={() => start(archetype.id)}>
-						<strong>{archetype.name}</strong>
-						<span>{archetype.description}</span>
-					</button>
-				{/each}
-			</div>
-		</section>
-	</main>
-{:else}
-	<main class="app">
-		<header>
-			<div>
-				<p class="eyebrow">Control Tower</p>
-				<h1>Day {game.day}</h1>
-			</div>
+<main class="app">
+	<header>
+		<div>
+			<p class="eyebrow">Retail City Map</p>
+			<h1>{activeCity.name}</h1>
+		</div>
 
+		{#if game}
 			<div class="top-actions">
 				<strong>${game.cash.toLocaleString('en-US')} cash</strong>
-				<button type="button" onclick={addStore}>Open store</button>
 				<button type="button" class="primary" onclick={advanceDay}>Advance day</button>
 			</div>
-		</header>
+		{:else}
+			<p class="status">Select an unlocked tile to found your first store.</p>
+		{/if}
+	</header>
 
+	<section class="map-layout" aria-label="City planning">
+		<CityMap snapshot={mapSnapshot} onTileSelected={selectTile} />
+		<TileInspector
+			tile={selectedTile}
+			store={selectedStore}
+			forecast={forecast}
+			{recommendations}
+			gameStarted={game !== null}
+			{canOpenStore}
+			onFoundStore={foundStore}
+			onOpenStore={addStoreAtSelectedTile}
+		/>
+	</section>
+
+	{#if game}
 		<Scorecard scorecard={game.scorecard} />
 		<PolicyPanel policy={game.policy} onChange={changePolicy} />
 
@@ -94,30 +168,21 @@
 		</div>
 
 		<ReportsPanel {summary} />
-	</main>
-{/if}
+	{/if}
+</main>
 
 <style>
-	.start,
 	.app {
-		width: min(1180px, calc(100vw - 2rem));
+		width: min(1440px, calc(100vw - 2rem));
 		margin: 0 auto;
 		padding: 1.5rem 0;
-	}
-
-	.start {
 		display: grid;
-		min-height: 100vh;
-		align-items: center;
-	}
-
-	.start section {
-		max-width: 980px;
+		gap: 1rem;
 	}
 
 	.eyebrow {
 		margin: 0 0 0.35rem;
-		color: #81b4ff;
+		color: #f0bd68;
 		font-size: 0.76rem;
 		font-weight: 700;
 		text-transform: uppercase;
@@ -125,18 +190,10 @@
 
 	h1 {
 		margin: 0;
-		font-size: 2.6rem;
+		font-size: 2rem;
 		line-height: 1;
 	}
 
-	.archetypes {
-		display: grid;
-		grid-template-columns: repeat(4, minmax(0, 1fr));
-		gap: 0.8rem;
-		margin-top: 1.5rem;
-	}
-
-	.archetypes button,
 	.top-actions button {
 		border: 1px solid #31445c;
 		border-radius: 8px;
@@ -144,30 +201,10 @@
 		color: #edf2f7;
 	}
 
-	.archetypes button {
-		display: grid;
-		min-width: 0;
-		gap: 0.55rem;
-		padding: 1rem;
-		text-align: left;
-	}
-
-	.archetypes button:hover,
-	.archetypes button:focus-visible,
 	.top-actions button:hover,
 	.top-actions button:focus-visible {
 		border-color: #5f8fd0;
 		background: #1b2a3d;
-	}
-
-	.archetypes span {
-		color: #a7b4c8;
-		font-size: 0.9rem;
-	}
-
-	.app {
-		display: grid;
-		gap: 1rem;
 	}
 
 	header {
@@ -175,6 +212,12 @@
 		align-items: center;
 		justify-content: space-between;
 		gap: 1rem;
+	}
+
+	.status {
+		margin: 0;
+		color: #b8b3a7;
+		font-size: 0.9rem;
 	}
 
 	.top-actions {
@@ -202,6 +245,14 @@
 		background: #2b72cd !important;
 	}
 
+	.map-layout {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
+		gap: 1rem;
+		align-items: stretch;
+		min-height: 680px;
+	}
+
 	.grid {
 		display: grid;
 		grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.85fr);
@@ -210,9 +261,13 @@
 	}
 
 	@media (max-width: 980px) {
-		.archetypes,
+		.map-layout,
 		.grid {
 			grid-template-columns: 1fr;
+		}
+
+		.map-layout {
+			min-height: 0;
 		}
 
 		header,
@@ -222,7 +277,7 @@
 		}
 
 		h1 {
-			font-size: 2.1rem;
+			font-size: 1.7rem;
 		}
 	}
 </style>
