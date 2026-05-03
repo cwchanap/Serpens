@@ -13,6 +13,12 @@ async function clickMapTile(page: import('@playwright/test').Page, x: number, y:
 	await page.mouse.click(box.x + x * tileSize + tileSize / 2, box.y + y * tileSize + tileSize / 2);
 }
 
+async function openControlTower(page: import('@playwright/test').Page) {
+	await page.getByRole('button', { name: /views/i }).click();
+	await page.getByRole('menuitem', { name: /control tower/i }).click();
+	await expect(page.getByRole('dialog', { name: /control tower/i })).toBeVisible();
+}
+
 test('player can found a store from the city map and advance a day', async ({ page }) => {
 	await page.goto('/');
 
@@ -26,14 +32,19 @@ test('player can found a store from the city map and advance a day', async ({ pa
 		.first()
 		.click();
 
-	await expect(page.getByRole('heading', { name: /scorecard/i })).toBeVisible();
-	await expect(page.getByText(/^Day 1$/i)).toBeVisible();
+	await expect(page.getByRole('heading', { name: /scorecard/i })).toHaveCount(0);
+	await openControlTower(page);
+	const controlTower = page.getByRole('dialog', { name: /control tower/i });
+	const controlTowerStatus = controlTower.getByRole('group', { name: /control tower status/i });
 
-	await page.getByLabel(/pricing/i).selectOption('premium');
-	await page.getByRole('button', { name: /advance day/i }).click();
+	await expect(controlTower.getByRole('heading', { name: /scorecard/i })).toBeVisible();
+	await expect(controlTowerStatus.getByText(/^Day 1$/i)).toBeVisible();
 
-	await expect(page.getByText(/^Day 2$/i)).toBeVisible();
-	await expect(page.getByText(/latest daily result/i)).toBeVisible();
+	await controlTower.getByLabel(/pricing/i).selectOption('premium');
+	await controlTower.getByRole('button', { name: /advance day/i }).click();
+
+	await expect(controlTowerStatus.getByText(/^Day 2$/i)).toBeVisible();
+	await expect(controlTower.getByText(/latest daily result/i)).toBeVisible();
 });
 
 test('tile popup can be closed from the map', async ({ page }) => {
@@ -50,6 +61,24 @@ test('tile popup can be closed from the map', async ({ page }) => {
 
 	await page.keyboard.press('Escape');
 	await expect(page.getByRole('dialog', { name: /tile details/i })).toHaveCount(0);
+});
+
+test('control tower opens from the map views menu and closes as an overlay', async ({ page }) => {
+	await page.goto('/');
+
+	await clickMapTile(page, 1, 1);
+	await page
+		.getByRole('button', { name: /open .* here/i })
+		.first()
+		.click();
+
+	await openControlTower(page);
+	await page.getByRole('button', { name: /close control tower/i }).click();
+	await expect(page.getByRole('dialog', { name: /control tower/i })).toHaveCount(0);
+
+	await openControlTower(page);
+	await page.keyboard.press('Escape');
+	await expect(page.getByRole('dialog', { name: /control tower/i })).toHaveCount(0);
 });
 
 test('locked map tiles still show inspector feedback', async ({ page }) => {
@@ -79,7 +108,10 @@ test('player expands from a selected city tile', async ({ page }) => {
 		page.getByLabel('Store details').getByRole('heading', { name: 'Store #2', exact: true })
 	).toBeVisible();
 	await expect(page.getByLabel('Store details').getByText(/\(2, 1\)/)).toBeVisible();
+
+	await openControlTower(page);
+	const controlTower = page.getByRole('dialog', { name: /control tower/i });
 	await expect(
-		page.getByLabel('Stores').getByRole('heading', { name: 'Store #2', exact: true })
+		controlTower.getByLabel('Stores').getByRole('heading', { name: 'Store #2', exact: true })
 	).toBeVisible();
 });

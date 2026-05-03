@@ -55,6 +55,8 @@
 
 	let game: GameState | null = $state(null);
 	let selectedTileId = $state<string | null>(null);
+	let isViewMenuOpen = $state(false);
+	let isControlTowerOpen = $state(false);
 	let summary = $derived.by(() => {
 		const currentGame: GameState | null = game;
 		return currentGame ? summarizeReports(currentGame.reports) : summarizeReports([]);
@@ -117,6 +119,19 @@
 		selectedTileId = tileId;
 	}
 
+	function toggleViewMenu() {
+		isViewMenuOpen = !isViewMenuOpen;
+	}
+
+	function openControlTower() {
+		isViewMenuOpen = false;
+		isControlTowerOpen = true;
+	}
+
+	function closeControlTower() {
+		isControlTowerOpen = false;
+	}
+
 	function foundStore(archetypeId: ArchetypeId) {
 		if (!selectedTileId || !selectedTile || selectedTile.locked) {
 			return;
@@ -165,7 +180,22 @@
 	}
 
 	function handleKeydown(event: KeyboardEvent) {
-		if (event.key === 'Escape' && selectedTileId !== null) {
+		if (event.key !== 'Escape') {
+			return;
+		}
+
+		if (isControlTowerOpen) {
+			isControlTowerOpen = false;
+			isViewMenuOpen = false;
+			return;
+		}
+
+		if (isViewMenuOpen) {
+			isViewMenuOpen = false;
+			return;
+		}
+
+		if (selectedTileId !== null) {
 			selectedTileId = null;
 		}
 	}
@@ -186,6 +216,25 @@
 
 		{#if game}
 			<div class="top-actions">
+				<div class="view-menu">
+					<button
+						type="button"
+						class="view-menu-toggle"
+						aria-haspopup="menu"
+						aria-expanded={isViewMenuOpen}
+						onclick={toggleViewMenu}
+					>
+						Views
+					</button>
+
+					{#if isViewMenuOpen}
+						<div class="view-dropdown" role="menu" aria-label="Map views">
+							<button type="button" role="menuitem" onclick={openControlTower}>
+								Control Tower
+							</button>
+						</div>
+					{/if}
+				</div>
 				<strong>${game.cash.toLocaleString('en-US')} cash</strong>
 				<button type="button" class="primary" onclick={advanceDay}>Advance day</button>
 			</div>
@@ -214,16 +263,46 @@
 		{/if}
 	</section>
 
-	{#if game}
-		<Scorecard scorecard={game.scorecard} />
-		<PolicyPanel policy={game.policy} onChange={changePolicy} />
+	{#if game && isControlTowerOpen}
+		<div class="tower-backdrop">
+			<button
+				type="button"
+				class="tower-backdrop-button"
+				aria-label="Dismiss control tower"
+				onclick={closeControlTower}
+			></button>
+			<div class="control-tower-overlay" role="dialog" aria-modal="true" aria-label="Control Tower">
+				<div class="tower-header">
+					<div>
+						<p class="eyebrow">Control Tower</p>
+						<h2>Management View</h2>
+					</div>
+					<div class="tower-actions" role="group" aria-label="Control tower status">
+						<span>Day {game.day}</span>
+						<strong>${game.cash.toLocaleString('en-US')} cash</strong>
+						<button type="button" class="primary" onclick={advanceDay}>Advance day</button>
+						<button
+							type="button"
+							class="close-tower"
+							aria-label="Close control tower"
+							onclick={closeControlTower}
+						>
+							Close
+						</button>
+					</div>
+				</div>
 
-		<div class="grid">
-			<StoreOverview stores={game.stores} latestReports={summary.latest?.storeReports ?? []} />
-			<DecisionQueue decisions={game.decisions} onResolve={chooseDecision} />
+				<Scorecard scorecard={game.scorecard} />
+				<PolicyPanel policy={game.policy} onChange={changePolicy} />
+
+				<div class="grid">
+					<StoreOverview stores={game.stores} latestReports={summary.latest?.storeReports ?? []} />
+					<DecisionQueue decisions={game.decisions} onResolve={chooseDecision} />
+				</div>
+
+				<ReportsPanel {summary} />
+			</div>
 		</div>
-
-		<ReportsPanel {summary} />
 	{/if}
 </main>
 
@@ -282,6 +361,10 @@
 		gap: 0.75rem;
 	}
 
+	.view-menu {
+		position: relative;
+	}
+
 	.top-actions strong {
 		white-space: nowrap;
 	}
@@ -289,6 +372,33 @@
 	.top-actions button {
 		padding: 0.7rem 0.9rem;
 		white-space: nowrap;
+	}
+
+	.view-dropdown {
+		position: absolute;
+		top: calc(100% + 0.45rem);
+		right: 0;
+		z-index: 30;
+		min-width: 180px;
+		padding: 0.35rem;
+		border: 1px solid #31445c;
+		border-radius: 8px;
+		background: #0f1724;
+		box-shadow: 0 18px 40px rgb(0 0 0 / 0.35);
+	}
+
+	.view-dropdown button {
+		width: 100%;
+		padding: 0.65rem 0.7rem;
+		border-color: transparent;
+		background: transparent;
+		text-align: left;
+	}
+
+	.view-dropdown button:hover,
+	.view-dropdown button:focus-visible {
+		border-color: #31445c;
+		background: #172235;
 	}
 
 	.primary {
@@ -312,6 +422,94 @@
 		right: 1rem;
 		z-index: 10;
 		width: min(360px, calc(100% - 2rem));
+	}
+
+	.tower-backdrop {
+		position: fixed;
+		inset: 0;
+		z-index: 40;
+		display: grid;
+		place-items: center;
+		padding: 1rem;
+		background: rgb(4 8 13 / 0.72);
+		backdrop-filter: blur(4px);
+	}
+
+	.tower-backdrop-button {
+		position: absolute;
+		inset: 0;
+		padding: 0;
+		border: 0;
+		background: transparent;
+	}
+
+	.control-tower-overlay {
+		position: relative;
+		z-index: 1;
+		width: min(1180px, 100%);
+		max-height: calc(100vh - 2rem);
+		overflow: auto;
+		display: grid;
+		gap: 1rem;
+		padding: 1rem;
+		border: 1px solid #31445c;
+		border-radius: 8px;
+		background: #0b111b;
+		box-shadow: 0 24px 80px rgb(0 0 0 / 0.45);
+	}
+
+	.tower-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 1rem;
+	}
+
+	.tower-actions {
+		display: flex;
+		align-items: center;
+		gap: 0.65rem;
+	}
+
+	.tower-actions span,
+	.tower-actions strong {
+		white-space: nowrap;
+	}
+
+	.tower-actions button {
+		padding: 0.65rem 0.85rem;
+		border: 1px solid #31445c;
+		border-radius: 8px;
+		background: #151f2d;
+		color: #edf2f7;
+		white-space: nowrap;
+	}
+
+	.tower-actions button:hover,
+	.tower-actions button:focus-visible {
+		border-color: #5f8fd0;
+		background: #1b2a3d;
+	}
+
+	h2 {
+		margin: 0;
+		font-size: 1.35rem;
+		line-height: 1.1;
+	}
+
+	.close-tower {
+		padding: 0.65rem 0.85rem;
+		border: 1px solid #31445c;
+		border-radius: 8px;
+		background: #151f2d;
+		color: #edf2f7;
+		white-space: nowrap;
+	}
+
+	.close-tower:hover,
+	.close-tower:focus-visible {
+		border-color: #5f8fd0;
+		background: #1b2a3d;
 	}
 
 	.grid {
@@ -340,6 +538,26 @@
 
 		header,
 		.top-actions {
+			align-items: stretch;
+			flex-direction: column;
+		}
+
+		.view-dropdown {
+			left: 0;
+			right: auto;
+		}
+
+		.control-tower-overlay {
+			max-height: calc(100vh - 1rem);
+			padding: 0.75rem;
+		}
+
+		.tower-header {
+			align-items: stretch;
+			flex-direction: column;
+		}
+
+		.tower-actions {
 			align-items: stretch;
 			flex-direction: column;
 		}
