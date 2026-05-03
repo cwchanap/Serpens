@@ -15,7 +15,12 @@
 		openStoreAtTile
 	} from '$lib/game/placement';
 	import { summarizeReports } from '$lib/game/reports';
-	import { DEFAULT_POLICY, getExpansionSetupCost, resolveDecision, updatePolicy } from '$lib/game/state';
+	import {
+		DEFAULT_POLICY,
+		getExpansionSetupCost,
+		resolveDecision,
+		updatePolicy
+	} from '$lib/game/state';
 	import { simulateDay } from '$lib/game/simulateDay';
 	import type { ArchetypeId, CompanyPolicy, GameState } from '$lib/game/types';
 	import { MAX_STORES } from '$lib/game/types';
@@ -56,11 +61,11 @@
 	});
 	let activeCity = $derived.by(() => {
 		const currentGame: GameState | null = game;
-		return (
-			currentGame?.cities.find((city) => city.id === currentGame.activeCityId) ?? starterCity
-		);
+		return currentGame?.cities.find((city) => city.id === currentGame.activeCityId) ?? starterCity;
 	});
-	let selectedTile = $derived(selectedTileId ? (getTileById(activeCity, selectedTileId) ?? null) : null);
+	let selectedTile = $derived(
+		selectedTileId ? (getTileById(activeCity, selectedTileId) ?? null) : null
+	);
 	let selectedStore = $derived.by(() => {
 		const currentGame: GameState | null = game;
 		return selectedTileId
@@ -106,9 +111,7 @@
 		return null;
 	});
 	let canOpenStore = $derived(openStoreDisabledReason === null);
-	let mapSnapshot = $derived(
-		createCityMapSnapshot(game ?? starterMapState, selectedTileId)
-	);
+	let mapSnapshot = $derived(createCityMapSnapshot(game ?? starterMapState, selectedTileId));
 
 	function selectTile(tileId: string) {
 		selectedTileId = tileId;
@@ -184,7 +187,7 @@
 		<TileInspector
 			tile={selectedTile}
 			store={selectedStore}
-			forecast={forecast}
+			{forecast}
 			{recommendations}
 			gameStarted={game !== null}
 			{canOpenStore}

@@ -11,13 +11,11 @@
 
 	let container: HTMLDivElement | undefined = $state();
 	let loadFailed = $state(false);
-	let scene:
-		| import('$lib/phaser/cityMapScene').CityMapScene
-		| undefined = $state();
+	let scene: import('$lib/phaser/cityMapScene').CityMapScene | undefined = $state();
 	let game: import('phaser').Game | undefined;
 	let destroyed = false;
 
-	const keyboardTiles = $derived(snapshot.tiles.filter((tile) => !tile.locked).slice(0, 40));
+	const keyboardTiles = $derived(snapshot.tiles.filter((tile) => !tile.locked));
 
 	onMount(() => {
 		void startPhaser();
@@ -134,16 +132,17 @@
 	}
 
 	.tile-picker {
-		display: flex;
+		display: grid;
+		max-height: 8.5rem;
+		grid-template-columns: repeat(auto-fill, minmax(7.4rem, 1fr));
 		gap: 0.4rem;
-		overflow-x: auto;
+		overflow: auto;
 		border-top: 1px solid #343434;
 		background: #1d1d1b;
 		padding: 0.55rem;
 	}
 
 	button {
-		flex: 0 0 auto;
 		border: 1px solid #3f3f3c;
 		border-radius: 6px;
 		background: #282724;

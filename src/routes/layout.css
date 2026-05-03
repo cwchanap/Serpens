@@ -17,9 +17,7 @@ body {
 	margin: 0;
 	min-width: 320px;
 	min-height: 100vh;
-	background:
-		linear-gradient(180deg, rgba(34, 31, 25, 0.96), rgba(17, 17, 15, 1) 38rem),
-		#11110f;
+	background: linear-gradient(180deg, rgba(34, 31, 25, 0.96), rgba(17, 17, 15, 1) 38rem), #11110f;
 	color: #edf2f7;
 }
 
