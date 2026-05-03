@@ -3,7 +3,7 @@ import { createNewGame, openStore, resolveDecision, updatePolicy } from './state
 
 describe('game state', () => {
 	test('creates a new game from an archetype', () => {
-		expect.assertions(6);
+		expect.assertions(10);
 		const game = createNewGame('boutique', 1001);
 
 		expect(game.seed).toBe(1001);
@@ -12,6 +12,10 @@ describe('game state', () => {
 		expect(game.stores[0]?.archetypeId).toBe('boutique');
 		expect(game.policy.pricing).toBe('standard');
 		expect(game.scorecard.customerSatisfaction).toBeGreaterThan(0);
+		expect(game.cities).toHaveLength(1);
+		expect(game.activeCityId).toBe(game.cities[0]?.id);
+		expect(game.stores[0]?.tileId).toBeTruthy();
+		expect(game.stores[0]?.mapX).toBeGreaterThanOrEqual(0);
 	});
 
 	test('stores normalized seed values and advances rng state during setup', () => {

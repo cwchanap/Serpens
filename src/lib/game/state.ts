@@ -1,4 +1,5 @@
 import { getArchetype } from './archetypes';
+import { generateCity } from './city';
 import { clampScore } from './reports';
 import { createRng, normalizeSeed, randomInt } from './rng';
 import type {
@@ -39,6 +40,22 @@ export function createNewGame(archetypeId: ArchetypeId, seed = Date.now()): Game
 		daysOpen: 1,
 		rng
 	});
+	const city = generateCity({
+		id: 'harbor-city',
+		name: 'Harbor City',
+		width: 20,
+		height: 20,
+		seed: normalizedSeed
+	});
+	const fallbackTile = city.tiles.find((tile) => !tile.locked) ?? city.tiles[0]!;
+	const placedOpeningStore = {
+		...openingStore,
+		cityId: city.id,
+		tileId: fallbackTile.id,
+		mapX: fallbackTile.x,
+		mapY: fallbackTile.y,
+		location: `Founding location (${fallbackTile.x}, ${fallbackTile.y})`
+	};
 
 	return {
 		seed: normalizedSeed,
@@ -52,12 +69,12 @@ export function createNewGame(archetypeId: ArchetypeId, seed = Date.now()): Game
 				50 + Math.round((archetype.startingCash - archetype.startingDebt) / 2_000)
 			),
 			customerSatisfaction: clampScore(archetype.customerExpectation),
-			staffMorale: openingStore.staffMorale,
+			staffMorale: placedOpeningStore.staffMorale,
 			marketPosition: clampScore(35 + Math.round(archetype.baseTraffic / 10))
 		},
-		cities: [],
-		activeCityId: 'harbor-city',
-		stores: [openingStore],
+		cities: [city],
+		activeCityId: city.id,
+		stores: [placedOpeningStore],
 		decisions: [],
 		reports: []
 	};
