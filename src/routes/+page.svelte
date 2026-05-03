@@ -15,9 +15,10 @@
 		openStoreAtTile
 	} from '$lib/game/placement';
 	import { summarizeReports } from '$lib/game/reports';
-	import { DEFAULT_POLICY, resolveDecision, updatePolicy } from '$lib/game/state';
+	import { DEFAULT_POLICY, getExpansionSetupCost, resolveDecision, updatePolicy } from '$lib/game/state';
 	import { simulateDay } from '$lib/game/simulateDay';
 	import type { ArchetypeId, CompanyPolicy, GameState } from '$lib/game/types';
+	import { MAX_STORES } from '$lib/game/types';
 
 	const starterCity = generateCity({
 		id: 'harbor-city',
@@ -70,7 +71,41 @@
 	let forecast = $derived(
 		selectedTile && recommendations[0] ? forecastOpening(selectedTile, recommendations[0]) : null
 	);
-	let canOpenStore = $derived(Boolean(game && selectedTile && !selectedTile.locked && !selectedStore));
+	let expansionSetupCost = $derived.by(() => {
+		const currentGame: GameState | null = game;
+		const archetypeId = currentGame?.stores[0]?.archetypeId;
+		return selectedTile && archetypeId ? getExpansionSetupCost(selectedTile, archetypeId) : null;
+	});
+	let openStoreDisabledReason = $derived.by(() => {
+		const currentGame: GameState | null = game;
+
+		if (!currentGame) {
+			return 'Game not started';
+		}
+
+		if (!selectedTile) {
+			return 'Select a tile';
+		}
+
+		if (selectedTile.locked) {
+			return 'Locked location';
+		}
+
+		if (selectedStore) {
+			return 'Occupied location';
+		}
+
+		if (currentGame.stores.length >= MAX_STORES) {
+			return 'Store limit reached';
+		}
+
+		if (expansionSetupCost !== null && currentGame.cash < expansionSetupCost) {
+			return `Requires ${expansionSetupCost.toLocaleString('en-US')} cash`;
+		}
+
+		return null;
+	});
+	let canOpenStore = $derived(openStoreDisabledReason === null);
 	let mapSnapshot = $derived(
 		createCityMapSnapshot(game ?? starterMapState, selectedTileId)
 	);
@@ -153,6 +188,7 @@
 			{recommendations}
 			gameStarted={game !== null}
 			{canOpenStore}
+			disabledReason={openStoreDisabledReason}
 			onFoundStore={foundStore}
 			onOpenStore={addStoreAtSelectedTile}
 		/>

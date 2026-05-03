@@ -9,6 +9,7 @@
 		recommendations: ArchetypeId[];
 		gameStarted: boolean;
 		canOpenStore: boolean;
+		disabledReason: string | null;
 		onFoundStore: (archetypeId: ArchetypeId) => void;
 		onOpenStore: () => void;
 	}
@@ -20,6 +21,7 @@
 		recommendations,
 		gameStarted,
 		canOpenStore,
+		disabledReason,
 		onFoundStore,
 		onOpenStore
 	}: Props = $props();
@@ -30,7 +32,7 @@
 		maximumFractionDigits: 0
 	});
 
-	const disabledReason = $derived.by(() => {
+	const defaultDisabledReason = $derived.by(() => {
 		if (!tile) {
 			return 'Select a tile';
 		}
@@ -136,7 +138,7 @@
 						Open store here
 					</button>
 					{#if !canOpenStore}
-						<p class="disabled-copy">{disabledReason}</p>
+						<p class="disabled-copy">{disabledReason ?? defaultDisabledReason}</p>
 					{/if}
 				</section>
 			{/if}
