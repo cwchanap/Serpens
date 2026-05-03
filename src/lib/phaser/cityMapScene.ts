@@ -20,6 +20,7 @@ export class CityMapScene extends Phaser.Scene {
 	private snapshot: CityMapSnapshot | null = null;
 	private eventHandler: CityMapEventHandler | null = null;
 	private mapGraphics?: Phaser.GameObjects.Graphics;
+	private outlineGraphics?: Phaser.GameObjects.Graphics;
 	private markerGraphics?: Phaser.GameObjects.Graphics;
 	private tileZones: Phaser.GameObjects.Zone[] = [];
 	private hoverTileId: string | null = null;
@@ -34,6 +35,7 @@ export class CityMapScene extends Phaser.Scene {
 
 	create(): void {
 		this.mapGraphics = this.add.graphics();
+		this.outlineGraphics = this.add.graphics();
 		this.markerGraphics = this.add.graphics();
 		this.cameras.main.setZoom(1);
 		this.input.on('pointermove', this.handlePointerMove, this);
@@ -75,6 +77,7 @@ export class CityMapScene extends Phaser.Scene {
 			this.createTileZone(tile);
 		}
 
+		this.drawInteractionOutlines();
 		this.drawStoreMarkers(0);
 	}
 
@@ -103,32 +106,26 @@ export class CityMapScene extends Phaser.Scene {
 			graphics.lineStyle(3, 0x1f8a70, 0.95);
 			graphics.strokeRect(x + 3, y + 3, TILE_SIZE - 6, TILE_SIZE - 6);
 		}
-
-		if (tile.id === this.hoverTileId) {
-			graphics.lineStyle(3, 0xf5c542, 0.85);
-			graphics.strokeRect(x + 2, y + 2, TILE_SIZE - 4, TILE_SIZE - 4);
-		}
-
-		if (tile.selected) {
-			graphics.lineStyle(4, 0x2563eb, 1);
-			graphics.strokeRect(x + 1, y + 1, TILE_SIZE - 2, TILE_SIZE - 2);
-		}
 	}
 
 	private createTileZone(tile: CityMapTileRender): void {
+		if (tile.locked) {
+			return;
+		}
+
 		const zone = this.add
 			.zone(tile.x * TILE_SIZE, tile.y * TILE_SIZE, TILE_SIZE, TILE_SIZE)
 			.setOrigin(0)
-			.setInteractive({ useHandCursor: !tile.locked });
+			.setInteractive({ useHandCursor: true });
 
 		zone.on('pointerover', () => {
 			this.hoverTileId = tile.id;
-			this.renderSnapshot();
+			this.drawInteractionOutlines();
 		});
 		zone.on('pointerout', () => {
 			if (this.hoverTileId === tile.id) {
 				this.hoverTileId = null;
-				this.renderSnapshot();
+				this.drawInteractionOutlines();
 			}
 		});
 		zone.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
@@ -228,6 +225,29 @@ export class CityMapScene extends Phaser.Scene {
 		});
 	}
 
+	private drawInteractionOutlines(): void {
+		if (!this.outlineGraphics || !this.snapshot) {
+			return;
+		}
+
+		this.outlineGraphics.clear();
+
+		for (const tile of this.snapshot.tiles) {
+			const x = tile.x * TILE_SIZE;
+			const y = tile.y * TILE_SIZE;
+
+			if (tile.id === this.hoverTileId) {
+				this.outlineGraphics.lineStyle(3, 0xf5c542, 0.85);
+				this.outlineGraphics.strokeRect(x + 2, y + 2, TILE_SIZE - 4, TILE_SIZE - 4);
+			}
+
+			if (tile.selected) {
+				this.outlineGraphics.lineStyle(4, 0x2563eb, 1);
+				this.outlineGraphics.strokeRect(x + 1, y + 1, TILE_SIZE - 2, TILE_SIZE - 2);
+			}
+		}
+	}
+
 	private destroyTileZones(): void {
 		for (const zone of this.tileZones) {
 			zone.destroy();
@@ -242,8 +262,10 @@ export class CityMapScene extends Phaser.Scene {
 		this.input.off('pointerup', this.handlePointerUp, this);
 		this.input.off('wheel', this.handleWheel, this);
 		this.mapGraphics?.destroy();
+		this.outlineGraphics?.destroy();
 		this.markerGraphics?.destroy();
 		this.mapGraphics = undefined;
+		this.outlineGraphics = undefined;
 		this.markerGraphics = undefined;
 	}
 }
