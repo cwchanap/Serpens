@@ -38,6 +38,49 @@ describe('city generation', () => {
 		expect(city.tiles.at(-1)?.id).toBe('test-city-11-7');
 	});
 
+	test('normalizes fractional city dimensions before generating tiles', () => {
+		expect.assertions(4);
+		const city = generateCity({
+			id: 'fractional-city',
+			name: 'Fractional City',
+			width: 12.8,
+			height: 8.3,
+			seed: 42
+		});
+
+		expect(city.width).toBe(12);
+		expect(city.height).toBe(8);
+		expect(city.tiles).toHaveLength(96);
+		expect(city.tiles.at(-1)?.id).toBe('fractional-city-11-7');
+	});
+
+	test('normalizes non-positive and non-finite city dimensions to one', () => {
+		expect.assertions(8);
+		const nonPositiveCity = generateCity({
+			id: 'non-positive-city',
+			name: 'Non-positive City',
+			width: 0,
+			height: -4,
+			seed: 42
+		});
+		const nonFiniteCity = generateCity({
+			id: 'non-finite-city',
+			name: 'Non-finite City',
+			width: Number.POSITIVE_INFINITY,
+			height: Number.NaN,
+			seed: 42
+		});
+
+		expect(nonPositiveCity.width).toBe(1);
+		expect(nonPositiveCity.height).toBe(1);
+		expect(nonPositiveCity.tiles).toHaveLength(1);
+		expect(nonPositiveCity.tiles[0]?.id).toBe('non-positive-city-0-0');
+		expect(nonFiniteCity.width).toBe(1);
+		expect(nonFiniteCity.height).toBe(1);
+		expect(nonFiniteCity.tiles).toHaveLength(1);
+		expect(nonFiniteCity.tiles[0]?.id).toBe('non-finite-city-0-0');
+	});
+
 	test('generates stable coordinates and bounded economic traits', () => {
 		expect.assertions(7);
 		const city = generateCity({

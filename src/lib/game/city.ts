@@ -87,11 +87,13 @@ const NEIGHBORHOOD_PROFILES: Record<NeighborhoodId, NeighborhoodProfile> = {
 
 export function generateCity(input: GenerateCityInput): City {
 	const rng = createRng(input.seed);
+	const width = normalizeDimension(input.width);
+	const height = normalizeDimension(input.height);
 	const tiles: CityTile[] = [];
 
-	for (let y = 0; y < input.height; y += 1) {
-		for (let x = 0; x < input.width; x += 1) {
-			const profile = NEIGHBORHOOD_PROFILES[getNeighborhood(input.width, input.height, x, y)];
+	for (let y = 0; y < height; y += 1) {
+		for (let x = 0; x < width; x += 1) {
+			const profile = NEIGHBORHOOD_PROFILES[getNeighborhood(width, height, x, y)];
 
 			tiles.push({
 				id: `${input.id}-${x}-${y}`,
@@ -104,7 +106,7 @@ export function generateCity(input: GenerateCityInput): City {
 				rent: clamp(profile.rent + randomInt(rng, -180, 180), 400, 2600),
 				footTraffic: clamp(profile.footTraffic + randomInt(rng, -12, 12), 20, 100),
 				customerFit: clamp(profile.customerFit + randomInt(rng, -10, 10), 20, 100),
-				locked: x === 0 || y === 0 || x === input.width - 1 || y === input.height - 1
+				locked: x === 0 || y === 0 || x === width - 1 || y === height - 1
 			});
 		}
 	}
@@ -112,8 +114,8 @@ export function generateCity(input: GenerateCityInput): City {
 	return {
 		id: input.id,
 		name: input.name,
-		width: input.width,
-		height: input.height,
+		width,
+		height,
 		tiles
 	};
 }
@@ -170,4 +172,12 @@ function getNeighborhood(width: number, height: number, x: number, y: number): N
 
 function clamp(value: number, min: number, max: number): number {
 	return Math.min(max, Math.max(min, value));
+}
+
+function normalizeDimension(value: number): number {
+	if (!Number.isFinite(value)) {
+		return 1;
+	}
+
+	return Math.max(1, Math.floor(value));
 }
