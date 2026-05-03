@@ -1,4 +1,6 @@
+import { asset } from '$app/paths';
 import Phaser from 'phaser';
+import { SHOP_STOREFRONT_PATH, SHOP_STOREFRONT_TEXTURE_KEY } from '../assets/gameArt';
 import type { CityMapSnapshot, CityMapTileRender } from '../game/mapRender';
 
 export type CityMapEvent = { type: 'tileSelected'; tileId: string };
@@ -7,6 +9,10 @@ export type CityMapEventHandler = (event: CityMapEvent) => void;
 const TILE_SIZE = 32;
 const MIN_ZOOM = 0.6;
 const MAX_ZOOM = 2.2;
+const SHOP_STOREFRONT_URL = asset(SHOP_STOREFRONT_PATH);
+const TERRAIN_DEPTH = 0;
+const STORE_MARKER_DEPTH = 10;
+const OUTLINE_DEPTH = 20;
 
 const TERRAIN_COLORS: Record<CityMapTileRender['terrain'], number> = {
 	commercial: 0xc9d7f0,
@@ -16,6 +22,13 @@ const TERRAIN_COLORS: Record<CityMapTileRender['terrain'], number> = {
 	industrial: 0xc8c2ba
 };
 
+interface StoreSpriteRender {
+	sprite: Phaser.GameObjects.Image;
+	baseX: number;
+	baseY: number;
+	index: number;
+}
+
 export class CityMapScene extends Phaser.Scene {
 	private snapshot: CityMapSnapshot | null = null;
 	private eventHandler: CityMapEventHandler | null = null;
@@ -23,6 +36,7 @@ export class CityMapScene extends Phaser.Scene {
 	private outlineGraphics?: Phaser.GameObjects.Graphics;
 	private markerGraphics?: Phaser.GameObjects.Graphics;
 	private tileZones: Phaser.GameObjects.Zone[] = [];
+	private storeSprites: StoreSpriteRender[] = [];
 	private hoverTileId: string | null = null;
 	private isDragging = false;
 	private hasDragged = false;
@@ -33,10 +47,14 @@ export class CityMapScene extends Phaser.Scene {
 		super({ key: 'CityMapScene' });
 	}
 
+	preload(): void {
+		this.load.image(SHOP_STOREFRONT_TEXTURE_KEY, SHOP_STOREFRONT_URL);
+	}
+
 	create(): void {
-		this.mapGraphics = this.add.graphics();
-		this.outlineGraphics = this.add.graphics();
-		this.markerGraphics = this.add.graphics();
+		this.mapGraphics = this.add.graphics().setDepth(TERRAIN_DEPTH);
+		this.outlineGraphics = this.add.graphics().setDepth(OUTLINE_DEPTH);
+		this.markerGraphics = this.add.graphics().setDepth(STORE_MARKER_DEPTH);
 		this.cameras.main.setZoom(1);
 		this.input.on('pointermove', this.handlePointerMove, this);
 		this.input.on('pointerup', this.handlePointerUp, this);
@@ -69,6 +87,7 @@ export class CityMapScene extends Phaser.Scene {
 		}
 
 		this.mapGraphics.clear();
+		this.destroyStoreSprites();
 		this.destroyTileZones();
 		this.setCameraBounds();
 
@@ -77,6 +96,7 @@ export class CityMapScene extends Phaser.Scene {
 			this.createTileZone(tile);
 		}
 
+		this.createStoreSprites();
 		this.drawInteractionOutlines();
 		this.drawStoreMarkers(0);
 	}
@@ -208,6 +228,17 @@ export class CityMapScene extends Phaser.Scene {
 
 		this.markerGraphics.clear();
 
+		if (this.storeSprites.length > 0) {
+			for (const storeSprite of this.storeSprites) {
+				storeSprite.sprite.setPosition(
+					storeSprite.baseX,
+					storeSprite.baseY + Math.sin(time / 350 + storeSprite.index) * 2
+				);
+			}
+
+			return;
+		}
+
 		this.snapshot.stores.forEach((store, index) => {
 			const x = store.x * TILE_SIZE + TILE_SIZE / 2;
 			const y = store.y * TILE_SIZE + TILE_SIZE / 2 + Math.sin(time / 350 + index) * 2;
@@ -244,6 +275,59 @@ export class CityMapScene extends Phaser.Scene {
 		}
 	}
 
+	private createStoreSprites(): void {
+		if (!this.snapshot || !this.hasStorefrontTexture()) {
+			this.updateCanvasStoreMarkerAttributes('circle', 0);
+			return;
+		}
+
+		this.storeSprites = this.snapshot.stores.map((store, index) => {
+			const baseX = store.x * TILE_SIZE + TILE_SIZE / 2;
+			const baseY = store.y * TILE_SIZE + TILE_SIZE / 2;
+			const sprite = this.add
+				.image(baseX, baseY, SHOP_STOREFRONT_TEXTURE_KEY)
+				.setOrigin(0.5, 0.82)
+				.setDisplaySize(TILE_SIZE * 1.35, TILE_SIZE * 1.35)
+				.setDepth(STORE_MARKER_DEPTH);
+
+			return {
+				sprite,
+				baseX,
+				baseY,
+				index
+			};
+		});
+
+		this.updateCanvasStoreMarkerAttributes(
+			this.storeSprites.length > 0 ? 'image' : 'circle',
+			this.storeSprites.length
+		);
+	}
+
+	private hasStorefrontTexture(): boolean {
+		return this.textures.exists(SHOP_STOREFRONT_TEXTURE_KEY);
+	}
+
+	private updateCanvasStoreMarkerAttributes(mode: 'circle' | 'image', spriteCount: number): void {
+		const canvas = this.game?.canvas;
+
+		if (!canvas) {
+			return;
+		}
+
+		canvas.dataset.storeMarkerMode = mode;
+		canvas.dataset.storeSpriteCount = String(spriteCount);
+	}
+
+	private destroyStoreSprites(): void {
+		for (const storeSprite of this.storeSprites) {
+			storeSprite.sprite.destroy();
+		}
+
+		this.storeSprites = [];
+		this.updateCanvasStoreMarkerAttributes('circle', 0);
+	}
+
 	private destroyTileZones(): void {
 		for (const zone of this.tileZones) {
 			zone.destroy();
@@ -253,6 +337,7 @@ export class CityMapScene extends Phaser.Scene {
 	}
 
 	private destroySceneObjects(): void {
+		this.destroyStoreSprites();
 		this.destroyTileZones();
 		this.input.off('pointermove', this.handlePointerMove, this);
 		this.input.off('pointerup', this.handlePointerUp, this);

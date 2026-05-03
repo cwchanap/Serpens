@@ -31,6 +31,12 @@ test('player can found a store from the city map and advance a day', async ({ pa
 		.getByRole('button', { name: /open .* here/i })
 		.first()
 		.click();
+	const mapCanvas = page.locator('.map-canvas canvas');
+	await expect(mapCanvas).toHaveAttribute('data-store-marker-mode', 'image');
+	await expect(mapCanvas).toHaveAttribute('data-store-sprite-count', '1');
+	await expect(
+		page.getByRole('img', { name: /anime-style storefront for an owned shop/i })
+	).toBeVisible();
 
 	await expect(page.getByRole('heading', { name: /scorecard/i })).toHaveCount(0);
 	await openControlTower(page);
