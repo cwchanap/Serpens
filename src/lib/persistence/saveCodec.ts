@@ -15,6 +15,13 @@ export class SaveDataError extends Error {
 	}
 }
 
+const PRICING_POSTURES = ['discount', 'competitive', 'standard', 'premium'] as const;
+const INVENTORY_BUFFERS = ['lean', 'balanced', 'generous'] as const;
+const STAFFING_POSTURES = ['minimal', 'efficient', 'service'] as const;
+const MARKETING_FOCUSES = ['none', 'awareness', 'promotions', 'loyalty'] as const;
+const SERVICE_PRIORITIES = ['speed', 'balanced', 'highTouch'] as const;
+const ARCHETYPE_IDS = ['convenience', 'boutique', 'electronics', 'grocery'] as const;
+
 export function createEmptySaveStore(): SaveStoreSnapshot {
 	return {
 		schemaVersion: SAVE_SCHEMA_VERSION,
@@ -96,10 +103,14 @@ export function validateSaveStoreSnapshot(value: unknown): SaveStoreSnapshot {
 		throw new SaveDataError(`Unsupported save schema version: ${schemaVersion}`);
 	}
 
+	const autoSave = record.autoSave === null ? null : validateSaveRecord(record.autoSave);
+	const manualSlots = requireArray(record.manualSlots, 'manualSlots').map(validateSaveRecord);
+	validateSlotInvariants(autoSave, manualSlots);
+
 	return {
 		schemaVersion: SAVE_SCHEMA_VERSION,
-		autoSave: record.autoSave === null ? null : validateSaveRecord(record.autoSave),
-		manualSlots: requireArray(record.manualSlots, 'manualSlots').map(validateSaveRecord)
+		autoSave,
+		manualSlots
 	};
 }
 
@@ -134,28 +145,87 @@ function validateSavedGame(value: unknown): Record<string, unknown> {
 	const game = requireRecord(value, 'Saved game');
 	const policy = requireRecord(game.policy, 'Saved game policy');
 	const scorecard = requireRecord(game.scorecard, 'Saved game scorecard');
+	const cities = requireArray(game.cities, 'Saved game cities');
+	const stores = requireArray(game.stores, 'Saved game stores');
 
 	requireNumber(game.seed, 'Saved game seed');
 	requireNumber(game.rngState, 'Saved game rngState');
 	requireNumber(game.day, 'Saved game day');
 	requireNumber(game.cash, 'Saved game cash');
 	requireNumber(game.debt, 'Saved game debt');
-	requireString(policy.pricing, 'Saved game policy pricing');
-	requireString(policy.inventory, 'Saved game policy inventory');
-	requireString(policy.staffing, 'Saved game policy staffing');
-	requireString(policy.marketing, 'Saved game policy marketing');
-	requireString(policy.service, 'Saved game policy service');
+	requireOneOf(policy.pricing, 'Saved game policy pricing', PRICING_POSTURES);
+	requireOneOf(policy.inventory, 'Saved game policy inventory', INVENTORY_BUFFERS);
+	requireOneOf(policy.staffing, 'Saved game policy staffing', STAFFING_POSTURES);
+	requireOneOf(policy.marketing, 'Saved game policy marketing', MARKETING_FOCUSES);
+	requireOneOf(policy.service, 'Saved game policy service', SERVICE_PRIORITIES);
 	requireNumber(scorecard.profit, 'Saved game scorecard profit');
 	requireNumber(scorecard.customerSatisfaction, 'Saved game scorecard customerSatisfaction');
 	requireNumber(scorecard.staffMorale, 'Saved game scorecard staffMorale');
 	requireNumber(scorecard.marketPosition, 'Saved game scorecard marketPosition');
-	requireArray(game.cities, 'Saved game cities');
+	cities.forEach((city, index) => validateSavedCity(city, `Saved game cities[${index}]`));
 	requireString(game.activeCityId, 'Saved game activeCityId');
-	requireArray(game.stores, 'Saved game stores');
+	stores.forEach((store, index) => validateSavedStore(store, `Saved game stores[${index}]`));
 	requireArray(game.decisions, 'Saved game decisions');
 	requireArray(game.reports, 'Saved game reports');
 
 	return game;
+}
+
+function validateSlotInvariants(autoSave: SaveRecord | null, manualSlots: SaveRecord[]): void {
+	if (autoSave && autoSave.metadata.kind !== 'auto') {
+		throw new SaveDataError(`Auto-save must have auto metadata kind: ${autoSave.metadata.id}`);
+	}
+
+	if (autoSave && autoSave.metadata.id !== AUTO_SAVE_SLOT_ID) {
+		throw new SaveDataError(`Auto-save must use slot id: ${AUTO_SAVE_SLOT_ID}`);
+	}
+
+	const manualSlotIds = new Set<string>();
+
+	for (const slot of manualSlots) {
+		if (slot.metadata.kind !== 'manual') {
+			throw new SaveDataError(
+				`Manual save slot must have manual metadata kind: ${slot.metadata.id}`
+			);
+		}
+
+		if (manualSlotIds.has(slot.metadata.id)) {
+			throw new SaveDataError(`Manual save slot ids must be unique: ${slot.metadata.id}`);
+		}
+
+		manualSlotIds.add(slot.metadata.id);
+	}
+}
+
+function validateSavedCity(value: unknown, label: string): void {
+	const city = requireRecord(value, label);
+
+	requireString(city.id, `${label} id`);
+	requireString(city.name, `${label} name`);
+	requireNumber(city.width, `${label} width`);
+	requireNumber(city.height, `${label} height`);
+	requireArray(city.tiles, `${label} tiles`);
+}
+
+function validateSavedStore(value: unknown, label: string): void {
+	const store = requireRecord(value, label);
+
+	requireString(store.id, `${label} id`);
+	requireString(store.name, `${label} name`);
+	requireOneOf(store.archetypeId, `${label} archetypeId`, ARCHETYPE_IDS);
+	requireString(store.location, `${label} location`);
+	requireString(store.cityId, `${label} cityId`);
+	requireString(store.tileId, `${label} tileId`);
+	requireNumber(store.mapX, `${label} mapX`);
+	requireNumber(store.mapY, `${label} mapY`);
+	requireNumber(store.daysOpen, `${label} daysOpen`);
+	requireNumber(store.reputation, `${label} reputation`);
+	requireNumber(store.stockHealth, `${label} stockHealth`);
+	requireNumber(store.staffMorale, `${label} staffMorale`);
+	requireNumber(store.staffCapacity, `${label} staffCapacity`);
+	requireNumber(store.localDemand, `${label} localDemand`);
+	requireNumber(store.competition, `${label} competition`);
+	requireNumber(store.managerQuality, `${label} managerQuality`);
 }
 
 function cloneJson<T>(value: T): T {
@@ -184,6 +254,14 @@ function requireString(value: unknown, label: string): string {
 	}
 
 	return value;
+}
+
+function requireOneOf<T extends string>(value: unknown, label: string, allowed: readonly T[]): T {
+	if (typeof value !== 'string' || !allowed.includes(value as T)) {
+		throw new SaveDataError(`${label} must be one of: ${allowed.join(', ')}`);
+	}
+
+	return value as T;
 }
 
 function requireNumber(value: unknown, label: string): number {

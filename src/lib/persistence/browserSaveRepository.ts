@@ -20,7 +20,7 @@ class BrowserSaveStoreDriver implements SaveStoreDriver {
 
 	async read(): Promise<SaveStoreSnapshot> {
 		const serialized = this.storage.getItem(BROWSER_SAVE_STORAGE_KEY);
-		return serialized ? parseSaveStoreSnapshot(serialized) : createEmptySaveStore();
+		return serialized === null ? createEmptySaveStore() : parseSaveStoreSnapshot(serialized);
 	}
 
 	async write(snapshot: SaveStoreSnapshot): Promise<void> {

@@ -1,13 +1,17 @@
 import { describe, expect, test } from 'vitest';
 import type { GameState } from '$lib/game/types';
-import { SAVE_SCHEMA_VERSION, type SaveStoreSnapshot } from './saveTypes';
+import { SAVE_SCHEMA_VERSION, type SaveRecord, type SaveStoreSnapshot } from './saveTypes';
 import {
 	SaveDataError,
 	createEmptySaveStore,
 	createSaveRecord,
 	validateSaveStoreSnapshot
 } from './saveCodec';
-import { createBrowserSaveRepository, type StorageLike } from './browserSaveRepository';
+import {
+	BROWSER_SAVE_STORAGE_KEY,
+	createBrowserSaveRepository,
+	type StorageLike
+} from './browserSaveRepository';
 import { SaveRepositoryFromDriver, type SaveStoreDriver } from './saveStoreRepository';
 
 class FakeStorage implements StorageLike {
@@ -110,6 +114,33 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 	};
 }
 
+type SaveRecordOverrides = Partial<Omit<SaveRecord, 'game' | 'metadata'>> & {
+	game?: Partial<GameState>;
+	metadata?: Partial<SaveRecord['metadata']>;
+};
+
+function createManualSaveRecord(overrides: SaveRecordOverrides = {}) {
+	const record = createSaveRecord(createGame(), {
+		id: 'manual-test-run',
+		name: 'Test Run',
+		kind: 'manual',
+		updatedAt: new Date('2026-05-05T12:00:00.000Z')
+	});
+
+	return {
+		...record,
+		...overrides,
+		metadata: {
+			...record.metadata,
+			...overrides.metadata
+		},
+		game: {
+			...record.game,
+			...overrides.game
+		}
+	};
+}
+
 describe('save records', () => {
 	test('creates versioned metadata from game state', () => {
 		expect.assertions(8);
@@ -163,13 +194,106 @@ describe('save records', () => {
 		});
 		const snapshot = {
 			schemaVersion: SAVE_SCHEMA_VERSION,
-			autoSave: { ...record, game: gameWithoutPolicy },
-			manualSlots: []
+			autoSave: null,
+			manualSlots: [{ ...record, game: gameWithoutPolicy }]
 		};
 
 		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
 		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
 			'Saved game policy must be an object'
+		);
+	});
+
+	test('rejects saved games with invalid policy enum values', () => {
+		expect.assertions(2);
+		const record = createManualSaveRecord({
+			game: {
+				...createGame(),
+				policy: {
+					...createGame().policy,
+					pricing: 'surge' as GameState['policy']['pricing']
+				}
+			}
+		});
+		const snapshot = {
+			schemaVersion: SAVE_SCHEMA_VERSION,
+			autoSave: null,
+			manualSlots: [record]
+		};
+
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
+			'Saved game policy pricing must be one of: discount, competitive, standard, premium'
+		);
+	});
+
+	test('rejects saved games with invalid store shapes', () => {
+		expect.assertions(2);
+		const game = createGame();
+		const [store] = game.stores;
+		const record = createManualSaveRecord({
+			game: {
+				...game,
+				stores: [
+					{ ...store, archetypeId: 'bookstore' as GameState['stores'][number]['archetypeId'] }
+				]
+			}
+		});
+		const snapshot = {
+			schemaVersion: SAVE_SCHEMA_VERSION,
+			autoSave: null,
+			manualSlots: [record]
+		};
+
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
+			'Saved game stores[0] archetypeId must be one of: convenience, boutique, electronics, grocery'
+		);
+	});
+
+	test('rejects duplicate persisted manual slot ids', () => {
+		expect.assertions(2);
+		const first = createManualSaveRecord({
+			metadata: {
+				id: 'manual-duplicate',
+				name: 'First'
+			}
+		});
+		const second = createManualSaveRecord({
+			metadata: {
+				id: 'manual-duplicate',
+				name: 'Second'
+			}
+		});
+		const snapshot = {
+			schemaVersion: SAVE_SCHEMA_VERSION,
+			autoSave: null,
+			manualSlots: [first, second]
+		};
+
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
+			'Manual save slot ids must be unique: manual-duplicate'
+		);
+	});
+
+	test('rejects manual slots with non-manual metadata kind', () => {
+		expect.assertions(2);
+		const slot = createManualSaveRecord({
+			metadata: {
+				id: 'manual-wrong-kind',
+				kind: 'auto'
+			}
+		});
+		const snapshot = {
+			schemaVersion: SAVE_SCHEMA_VERSION,
+			autoSave: null,
+			manualSlots: [slot]
+		};
+
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
+			'Manual save slot must have manual metadata kind: manual-wrong-kind'
 		);
 	});
 });
@@ -237,6 +361,16 @@ describe('browser save repository', () => {
 		await expect(
 			repository.overwriteManualSlot('missing-slot', 'Missing', createGame())
 		).rejects.toThrow('Manual save slot not found: missing-slot');
+	});
+
+	test('treats empty browser storage data as invalid JSON', async () => {
+		expect.assertions(2);
+		const storage = new FakeStorage();
+		storage.setItem(BROWSER_SAVE_STORAGE_KEY, '');
+		const repository = createBrowserSaveRepository(storage);
+
+		await expect(repository.getSummary()).rejects.toThrow(SaveDataError);
+		await expect(repository.getSummary()).rejects.toThrow('Save data is not valid JSON');
 	});
 
 	test('creates unique manual slot ids for duplicate names in the same millisecond', async () => {
