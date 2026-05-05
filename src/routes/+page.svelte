@@ -728,10 +728,11 @@
 		}
 
 		.inspector-overlay {
-			position: static;
+			position: fixed;
+			inset: auto 0 0;
 			width: auto;
-			padding-top: 0.75rem;
-			background: transparent;
+			padding: 0.75rem;
+			background: linear-gradient(to top, rgb(0 0 0 / 0.5), transparent);
 		}
 
 		header,

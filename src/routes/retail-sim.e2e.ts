@@ -71,6 +71,7 @@ test('player can confirm a founding store from a narrow viewport', async ({ page
 
 	await clickMapTile(page, 1, 1);
 	await expect(page.getByRole('dialog', { name: /tile details/i })).toBeVisible();
+	await expectOverlayToCoverMap(page);
 	await expect(page.getByRole('button', { name: /open .* here/i }).first()).toBeVisible();
 
 	const mapCanvas = page.locator('.map-canvas canvas');
@@ -82,6 +83,18 @@ test('player can confirm a founding store from a narrow viewport', async ({ page
 	await expect(page.getByText(/\$[0-9,]+ cash/i)).toBeVisible();
 	await expect(page.getByLabel('Store details').getByText(/\(1, 1\)/)).toBeVisible();
 });
+
+async function expectOverlayToCoverMap(page: import('@playwright/test').Page) {
+	const canvas = page.locator('.map-canvas canvas');
+	const overlay = page.getByRole('dialog', { name: /tile details/i });
+	const [canvasBox, overlayBox] = await Promise.all([canvas.boundingBox(), overlay.boundingBox()]);
+
+	if (!canvasBox || !overlayBox) {
+		throw new Error('Map canvas or tile details overlay has no bounding box');
+	}
+
+	expect(overlayBox.y).toBeLessThan(canvasBox.y + canvasBox.height);
+}
 
 test('tile popup can be closed from the map', async ({ page }) => {
 	await page.goto('/');

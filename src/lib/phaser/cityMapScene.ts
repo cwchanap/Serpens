@@ -147,7 +147,7 @@ export class CityMapScene extends Phaser.Scene {
 			}
 		});
 		zone.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-			if (pointer.leftButtonDown()) {
+			if (this.isCanvasPointer(pointer) && pointer.leftButtonDown()) {
 				this.isDragging = true;
 				this.hasDragged = false;
 				this.dragStartPoint = { x: pointer.x, y: pointer.y };
@@ -155,6 +155,10 @@ export class CityMapScene extends Phaser.Scene {
 			}
 		});
 		zone.on('pointerup', (pointer: Phaser.Input.Pointer) => {
+			if (!this.didPointerStartOnCanvas(pointer)) {
+				return;
+			}
+
 			if (this.didDrag(pointer)) {
 				return;
 			}
@@ -163,6 +167,14 @@ export class CityMapScene extends Phaser.Scene {
 		});
 
 		this.tileZones.push(zone);
+	}
+
+	private isCanvasPointer(pointer: Phaser.Input.Pointer): boolean {
+		return pointer.event.target === this.game.canvas;
+	}
+
+	private didPointerStartOnCanvas(pointer: Phaser.Input.Pointer): boolean {
+		return pointer.downElement === this.game.canvas;
 	}
 
 	private handlePointerMove(pointer: Phaser.Input.Pointer): void {
