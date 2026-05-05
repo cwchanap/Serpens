@@ -1,6 +1,11 @@
 node_modules
 .worktrees/
 
+# AI tooling
+.claude/
+.codex/
+.superpowers/
+
 # Output
 .output
 .vercel
