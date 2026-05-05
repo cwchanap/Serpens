@@ -1,4 +1,5 @@
 import {
+	SaveDataError,
 	createEmptySaveStore,
 	parseSaveStoreSnapshot,
 	validateSaveStoreSnapshot
@@ -30,8 +31,12 @@ class BrowserSaveStoreDriver implements SaveStoreDriver {
 }
 
 export function createBrowserSaveRepository(
-	storage: StorageLike = globalThis.localStorage,
+	storage: StorageLike | undefined = globalThis.localStorage,
 	now: () => Date = () => new Date()
 ): SaveRepository {
+	if (!storage) {
+		throw new SaveDataError('Browser save storage is unavailable');
+	}
+
 	return new SaveRepositoryFromDriver(new BrowserSaveStoreDriver(storage), now);
 }

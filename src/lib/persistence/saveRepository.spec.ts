@@ -141,6 +141,18 @@ function createManualSaveRecord(overrides: SaveRecordOverrides = {}) {
 	};
 }
 
+function createSnapshotWithGame(game: Partial<GameState>) {
+	return {
+		schemaVersion: SAVE_SCHEMA_VERSION,
+		autoSave: null,
+		manualSlots: [
+			createManualSaveRecord({
+				game
+			})
+		]
+	};
+}
+
 describe('save records', () => {
 	test('creates versioned metadata from game state', () => {
 		expect.assertions(8);
@@ -296,6 +308,161 @@ describe('save records', () => {
 			'Manual save slot must have manual metadata kind: manual-wrong-kind'
 		);
 	});
+
+	test('rejects saved city tiles with invalid shapes', () => {
+		expect.assertions(2);
+		const game = createGame();
+		const snapshot = createSnapshotWithGame({
+			...game,
+			cities: [
+				{
+					...game.cities[0]!,
+					tiles: [
+						{
+							id: 'tile-1',
+							cityId: 'harbor-city',
+							x: 1,
+							y: 1,
+							neighborhood:
+								'moonbase' as GameState['cities'][number]['tiles'][number]['neighborhood'],
+							terrain: 'commercial',
+							demand: 72,
+							rent: 180,
+							footTraffic: 66,
+							customerFit: 70,
+							locked: false
+						}
+					]
+				}
+			]
+		});
+
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
+			'Saved game cities[0] tiles[0] neighborhood must be one of: downtown, campus, residential, mall, transit, industrial, suburb, parkEdge'
+		);
+	});
+
+	test('rejects saved decision options with invalid effect shapes', () => {
+		expect.assertions(2);
+		const snapshot = createSnapshotWithGame({
+			...createGame(),
+			decisions: [
+				{
+					id: 'decision-1',
+					title: 'Staffing choice',
+					context: 'A manager asks for overtime.',
+					expiresOnDay: 4,
+					options: [
+						{
+							id: 'option-1',
+							label: 'Approve',
+							description: 'Cover the shift.',
+							effects: {
+								cash: 'expensive' as unknown as number
+							}
+						}
+					]
+				}
+			]
+		});
+
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
+			'Saved game decisions[0] options[0] effects cash must be a finite number'
+		);
+	});
+
+	test('rejects saved reports with invalid warning arrays', () => {
+		expect.assertions(2);
+		const snapshot = createSnapshotWithGame({
+			...createGame(),
+			reports: [
+				{
+					day: 3,
+					revenue: 1000,
+					costOfGoods: 350,
+					grossMargin: 650,
+					operatingCosts: 250,
+					netIncome: 400,
+					cashAfter: 12900,
+					scorecard: {
+						profit: 55,
+						customerSatisfaction: 60,
+						staffMorale: 65,
+						marketPosition: 50
+					},
+					storeReports: [
+						{
+							storeId: 'store-1',
+							revenue: 1000,
+							costOfGoods: 350,
+							grossMargin: 650,
+							operatingCosts: 250,
+							netIncome: 400,
+							customersServed: 42,
+							demandMissed: 5,
+							stockHealth: 70,
+							staffMorale: 65,
+							reputation: 60,
+							marketPosition: 50,
+							warnings: ['Low inventory']
+						}
+					],
+					warnings: ['Healthy day', 5 as unknown as string]
+				}
+			]
+		});
+
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
+			'Saved game reports[0] warnings[1] must be a non-empty string'
+		);
+	});
+
+	test('rejects manual slots using the reserved autosave id', () => {
+		expect.assertions(2);
+		const slot = createManualSaveRecord({
+			metadata: {
+				id: 'autosave'
+			}
+		});
+		const snapshot = {
+			schemaVersion: SAVE_SCHEMA_VERSION,
+			autoSave: null,
+			manualSlots: [slot]
+		};
+
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
+			'Manual save slot id is reserved for auto-save: autosave'
+		);
+	});
+
+	test('rejects auto and manual slot id collisions', () => {
+		expect.assertions(2);
+		const autoSave = createSaveRecord(createGame(), {
+			id: 'autosave',
+			name: 'Auto-save',
+			kind: 'auto',
+			updatedAt: new Date('2026-05-05T12:00:00.000Z')
+		});
+		const manualSlot = createManualSaveRecord({
+			metadata: {
+				id: 'autosave'
+			}
+		});
+		const snapshot = {
+			schemaVersion: SAVE_SCHEMA_VERSION,
+			autoSave,
+			manualSlots: [manualSlot]
+		};
+
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
+			'Save slot ids must not collide between auto-save and manual slots: autosave'
+		);
+	});
 });
 
 describe('browser save repository', () => {
@@ -371,6 +538,27 @@ describe('browser save repository', () => {
 
 		await expect(repository.getSummary()).rejects.toThrow(SaveDataError);
 		await expect(repository.getSummary()).rejects.toThrow('Save data is not valid JSON');
+	});
+
+	test('throws a clear error when default browser storage is unavailable', () => {
+		expect.assertions(2);
+		const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+
+		try {
+			Object.defineProperty(globalThis, 'localStorage', {
+				configurable: true,
+				value: undefined
+			});
+
+			expect(() => createBrowserSaveRepository()).toThrow(SaveDataError);
+			expect(() => createBrowserSaveRepository()).toThrow('Browser save storage is unavailable');
+		} finally {
+			if (descriptor) {
+				Object.defineProperty(globalThis, 'localStorage', descriptor);
+			} else {
+				delete (globalThis as Partial<typeof globalThis>).localStorage;
+			}
+		}
 	});
 
 	test('creates unique manual slot ids for duplicate names in the same millisecond', async () => {

@@ -21,6 +21,26 @@ const STAFFING_POSTURES = ['minimal', 'efficient', 'service'] as const;
 const MARKETING_FOCUSES = ['none', 'awareness', 'promotions', 'loyalty'] as const;
 const SERVICE_PRIORITIES = ['speed', 'balanced', 'highTouch'] as const;
 const ARCHETYPE_IDS = ['convenience', 'boutique', 'electronics', 'grocery'] as const;
+const NEIGHBORHOOD_IDS = [
+	'downtown',
+	'campus',
+	'residential',
+	'mall',
+	'transit',
+	'industrial',
+	'suburb',
+	'parkEdge'
+] as const;
+const TERRAIN_IDS = ['commercial', 'residential', 'green', 'transit', 'industrial'] as const;
+const DECISION_EFFECT_NUMBER_FIELDS = [
+	'profit',
+	'customerSatisfaction',
+	'staffMorale',
+	'marketPosition',
+	'cash',
+	'stockHealth',
+	'reputation'
+] as const;
 
 export function createEmptySaveStore(): SaveStoreSnapshot {
 	return {
@@ -147,6 +167,8 @@ function validateSavedGame(value: unknown): Record<string, unknown> {
 	const scorecard = requireRecord(game.scorecard, 'Saved game scorecard');
 	const cities = requireArray(game.cities, 'Saved game cities');
 	const stores = requireArray(game.stores, 'Saved game stores');
+	const decisions = requireArray(game.decisions, 'Saved game decisions');
+	const reports = requireArray(game.reports, 'Saved game reports');
 
 	requireNumber(game.seed, 'Saved game seed');
 	requireNumber(game.rngState, 'Saved game rngState');
@@ -165,8 +187,10 @@ function validateSavedGame(value: unknown): Record<string, unknown> {
 	cities.forEach((city, index) => validateSavedCity(city, `Saved game cities[${index}]`));
 	requireString(game.activeCityId, 'Saved game activeCityId');
 	stores.forEach((store, index) => validateSavedStore(store, `Saved game stores[${index}]`));
-	requireArray(game.decisions, 'Saved game decisions');
-	requireArray(game.reports, 'Saved game reports');
+	decisions.forEach((decision, index) =>
+		validateSavedDecision(decision, `Saved game decisions[${index}]`)
+	);
+	reports.forEach((report, index) => validateSavedReport(report, `Saved game reports[${index}]`));
 
 	return game;
 }
@@ -189,6 +213,18 @@ function validateSlotInvariants(autoSave: SaveRecord | null, manualSlots: SaveRe
 			);
 		}
 
+		if (autoSave && slot.metadata.id === autoSave.metadata.id) {
+			throw new SaveDataError(
+				`Save slot ids must not collide between auto-save and manual slots: ${slot.metadata.id}`
+			);
+		}
+
+		if (slot.metadata.id === AUTO_SAVE_SLOT_ID) {
+			throw new SaveDataError(
+				`Manual save slot id is reserved for auto-save: ${AUTO_SAVE_SLOT_ID}`
+			);
+		}
+
 		if (manualSlotIds.has(slot.metadata.id)) {
 			throw new SaveDataError(`Manual save slot ids must be unique: ${slot.metadata.id}`);
 		}
@@ -204,7 +240,25 @@ function validateSavedCity(value: unknown, label: string): void {
 	requireString(city.name, `${label} name`);
 	requireNumber(city.width, `${label} width`);
 	requireNumber(city.height, `${label} height`);
-	requireArray(city.tiles, `${label} tiles`);
+	requireArray(city.tiles, `${label} tiles`).forEach((tile, index) =>
+		validateSavedCityTile(tile, `${label} tiles[${index}]`)
+	);
+}
+
+function validateSavedCityTile(value: unknown, label: string): void {
+	const tile = requireRecord(value, label);
+
+	requireString(tile.id, `${label} id`);
+	requireString(tile.cityId, `${label} cityId`);
+	requireNumber(tile.x, `${label} x`);
+	requireNumber(tile.y, `${label} y`);
+	requireOneOf(tile.neighborhood, `${label} neighborhood`, NEIGHBORHOOD_IDS);
+	requireOneOf(tile.terrain, `${label} terrain`, TERRAIN_IDS);
+	requireNumber(tile.demand, `${label} demand`);
+	requireNumber(tile.rent, `${label} rent`);
+	requireNumber(tile.footTraffic, `${label} footTraffic`);
+	requireNumber(tile.customerFit, `${label} customerFit`);
+	requireBoolean(tile.locked, `${label} locked`);
 }
 
 function validateSavedStore(value: unknown, label: string): void {
@@ -226,6 +280,81 @@ function validateSavedStore(value: unknown, label: string): void {
 	requireNumber(store.localDemand, `${label} localDemand`);
 	requireNumber(store.competition, `${label} competition`);
 	requireNumber(store.managerQuality, `${label} managerQuality`);
+}
+
+function validateSavedDecision(value: unknown, label: string): void {
+	const decision = requireRecord(value, label);
+
+	requireString(decision.id, `${label} id`);
+	requireString(decision.title, `${label} title`);
+	requireString(decision.context, `${label} context`);
+	requireNumber(decision.expiresOnDay, `${label} expiresOnDay`);
+	requireArray(decision.options, `${label} options`).forEach((option, index) =>
+		validateSavedDecisionOption(option, `${label} options[${index}]`)
+	);
+}
+
+function validateSavedDecisionOption(value: unknown, label: string): void {
+	const option = requireRecord(value, label);
+	const effects = requireRecord(option.effects, `${label} effects`);
+
+	requireString(option.id, `${label} id`);
+	requireString(option.label, `${label} label`);
+	requireString(option.description, `${label} description`);
+
+	for (const field of DECISION_EFFECT_NUMBER_FIELDS) {
+		if (field in effects) {
+			requireNumber(effects[field], `${label} effects ${field}`);
+		}
+	}
+}
+
+function validateSavedReport(value: unknown, label: string): void {
+	const report = requireRecord(value, label);
+
+	requireNumber(report.day, `${label} day`);
+	requireNumber(report.revenue, `${label} revenue`);
+	requireNumber(report.costOfGoods, `${label} costOfGoods`);
+	requireNumber(report.grossMargin, `${label} grossMargin`);
+	requireNumber(report.operatingCosts, `${label} operatingCosts`);
+	requireNumber(report.netIncome, `${label} netIncome`);
+	requireNumber(report.cashAfter, `${label} cashAfter`);
+	validateSavedScorecard(report.scorecard, `${label} scorecard`);
+	requireArray(report.storeReports, `${label} storeReports`).forEach((storeReport, index) =>
+		validateSavedStoreReport(storeReport, `${label} storeReports[${index}]`)
+	);
+	validateStringArray(report.warnings, `${label} warnings`);
+}
+
+function validateSavedStoreReport(value: unknown, label: string): void {
+	const report = requireRecord(value, label);
+
+	requireString(report.storeId, `${label} storeId`);
+	requireNumber(report.revenue, `${label} revenue`);
+	requireNumber(report.costOfGoods, `${label} costOfGoods`);
+	requireNumber(report.grossMargin, `${label} grossMargin`);
+	requireNumber(report.operatingCosts, `${label} operatingCosts`);
+	requireNumber(report.netIncome, `${label} netIncome`);
+	requireNumber(report.customersServed, `${label} customersServed`);
+	requireNumber(report.demandMissed, `${label} demandMissed`);
+	requireNumber(report.stockHealth, `${label} stockHealth`);
+	requireNumber(report.staffMorale, `${label} staffMorale`);
+	requireNumber(report.reputation, `${label} reputation`);
+	requireNumber(report.marketPosition, `${label} marketPosition`);
+	validateStringArray(report.warnings, `${label} warnings`);
+}
+
+function validateSavedScorecard(value: unknown, label: string): void {
+	const scorecard = requireRecord(value, label);
+
+	requireNumber(scorecard.profit, `${label} profit`);
+	requireNumber(scorecard.customerSatisfaction, `${label} customerSatisfaction`);
+	requireNumber(scorecard.staffMorale, `${label} staffMorale`);
+	requireNumber(scorecard.marketPosition, `${label} marketPosition`);
+}
+
+function validateStringArray(value: unknown, label: string): void {
+	requireArray(value, label).forEach((item, index) => requireString(item, `${label}[${index}]`));
 }
 
 function cloneJson<T>(value: T): T {
@@ -262,6 +391,14 @@ function requireOneOf<T extends string>(value: unknown, label: string, allowed: 
 	}
 
 	return value as T;
+}
+
+function requireBoolean(value: unknown, label: string): boolean {
+	if (typeof value !== 'boolean') {
+		throw new SaveDataError(`${label} must be a boolean`);
+	}
+
+	return value;
 }
 
 function requireNumber(value: unknown, label: string): number {
