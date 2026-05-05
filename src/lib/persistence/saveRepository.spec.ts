@@ -1,8 +1,14 @@
 import { describe, expect, test } from 'vitest';
 import type { GameState } from '$lib/game/types';
-import { SAVE_SCHEMA_VERSION } from './saveTypes';
-import { SaveDataError, createSaveRecord, validateSaveStoreSnapshot } from './saveCodec';
+import { SAVE_SCHEMA_VERSION, type SaveStoreSnapshot } from './saveTypes';
+import {
+	SaveDataError,
+	createEmptySaveStore,
+	createSaveRecord,
+	validateSaveStoreSnapshot
+} from './saveCodec';
 import { createBrowserSaveRepository, type StorageLike } from './browserSaveRepository';
+import { SaveRepositoryFromDriver, type SaveStoreDriver } from './saveStoreRepository';
 
 class FakeStorage implements StorageLike {
 	private values = new Map<string, string>();
@@ -18,6 +24,34 @@ class FakeStorage implements StorageLike {
 	removeItem(key: string): void {
 		this.values.delete(key);
 	}
+}
+
+class MemorySaveStoreDriver implements SaveStoreDriver {
+	constructor(private snapshot: SaveStoreSnapshot = createEmptySaveStore()) {}
+
+	async read(): Promise<SaveStoreSnapshot> {
+		return this.snapshot;
+	}
+
+	async write(snapshot: SaveStoreSnapshot): Promise<void> {
+		this.snapshot = snapshot;
+	}
+}
+
+class DelayedMemorySaveStoreDriver extends MemorySaveStoreDriver {
+	override async read(): Promise<SaveStoreSnapshot> {
+		await delay();
+		return super.read();
+	}
+
+	override async write(snapshot: SaveStoreSnapshot): Promise<void> {
+		await delay();
+		await super.write(snapshot);
+	}
+}
+
+function delay(): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 function createGame(overrides: Partial<GameState> = {}): GameState {
@@ -115,6 +149,29 @@ describe('save records', () => {
 			})
 		).toThrow('Unsupported save schema version: 99');
 	});
+
+	test('rejects saved games missing current game state fields', () => {
+		expect.assertions(2);
+		const game = createGame();
+		const gameWithoutPolicy: Partial<GameState> = { ...game };
+		delete gameWithoutPolicy.policy;
+		const record = createSaveRecord(game, {
+			id: 'manual-test-run',
+			name: 'Test Run',
+			kind: 'manual',
+			updatedAt: new Date('2026-05-05T12:00:00.000Z')
+		});
+		const snapshot = {
+			schemaVersion: SAVE_SCHEMA_VERSION,
+			autoSave: { ...record, game: gameWithoutPolicy },
+			manualSlots: []
+		};
+
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
+			'Saved game policy must be an object'
+		);
+	});
 });
 
 describe('browser save repository', () => {
@@ -180,5 +237,67 @@ describe('browser save repository', () => {
 		await expect(
 			repository.overwriteManualSlot('missing-slot', 'Missing', createGame())
 		).rejects.toThrow('Manual save slot not found: missing-slot');
+	});
+
+	test('creates unique manual slot ids for duplicate names in the same millisecond', async () => {
+		expect.assertions(3);
+		const repository = createBrowserSaveRepository(
+			new FakeStorage(),
+			() => new Date('2026-05-05T12:00:00.000Z')
+		);
+
+		const first = await repository.createManualSlot('Harbor Run', createGame({ day: 4 }));
+		const second = await repository.createManualSlot('Harbor Run', createGame({ day: 5 }));
+
+		expect(first.id).toBe('manual-harbor-run-1777982400000');
+		expect(second.id).toBe('manual-harbor-run-1777982400000-2');
+		expect((await repository.getSummary()).manualSlots).toHaveLength(2);
+	});
+
+	test('serializes concurrent mutating operations so writes do not clobber each other', async () => {
+		expect.assertions(2);
+		const repository = new SaveRepositoryFromDriver(
+			new DelayedMemorySaveStoreDriver(),
+			() => new Date('2026-05-05T12:00:00.000Z')
+		);
+
+		await Promise.all([
+			repository.createManualSlot('Harbor Run', createGame({ day: 4 })),
+			repository.createManualSlot('Campus Run', createGame({ day: 5 }))
+		]);
+		const summary = await repository.getSummary();
+
+		expect(summary.manualSlots).toHaveLength(2);
+		expect(summary.manualSlots.map((slot) => slot.name).sort()).toEqual([
+			'Campus Run',
+			'Harbor Run'
+		]);
+	});
+
+	test('clones records and summaries across repository boundaries', async () => {
+		expect.assertions(4);
+		const game = createGame({ day: 4 });
+		const repository = new SaveRepositoryFromDriver(
+			new MemorySaveStoreDriver(),
+			() => new Date('2026-05-05T12:00:00.000Z')
+		);
+
+		const created = await repository.createManualSlot('Harbor Run', game);
+		game.day = 99;
+
+		const firstLoad = await repository.loadManualSlot(created.id);
+		const firstSummary = await repository.getSummary();
+		expect(firstLoad?.game.day).toBe(4);
+
+		firstLoad!.game.day = 88;
+		firstLoad!.metadata.name = 'Mutated Load';
+		firstSummary.manualSlots[0]!.name = 'Mutated Summary';
+
+		const secondLoad = await repository.loadManualSlot(created.id);
+		const secondSummary = await repository.getSummary();
+
+		expect(secondLoad?.game.day).toBe(4);
+		expect(secondLoad?.metadata.name).toBe('Harbor Run');
+		expect(secondSummary.manualSlots[0]?.name).toBe('Harbor Run');
 	});
 });

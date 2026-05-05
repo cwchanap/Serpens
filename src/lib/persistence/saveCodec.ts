@@ -67,9 +67,13 @@ export function createManualSlotId(name: string, updatedAt: Date): string {
 
 export function createSaveSummary(snapshot: SaveStoreSnapshot): SaveSummary {
 	return {
-		autoSave: snapshot.autoSave?.metadata ?? null,
-		manualSlots: snapshot.manualSlots.map((record) => record.metadata)
+		autoSave: snapshot.autoSave ? { ...snapshot.autoSave.metadata } : null,
+		manualSlots: snapshot.manualSlots.map((record) => ({ ...record.metadata }))
 	};
+}
+
+export function cloneSaveStoreSnapshot(snapshot: SaveStoreSnapshot): SaveStoreSnapshot {
+	return validateSaveStoreSnapshot(cloneJson(snapshot));
 }
 
 export function parseSaveStoreSnapshot(serialized: string): SaveStoreSnapshot {
@@ -108,7 +112,7 @@ export function validateSaveRecord(value: unknown): SaveRecord {
 	}
 
 	const metadata = requireRecord(record.metadata, 'Save metadata');
-	const game = requireRecord(record.game, 'Saved game');
+	validateSavedGame(record.game);
 	const kind = requireString(metadata.kind, 'Save metadata kind');
 
 	if (kind !== 'auto' && kind !== 'manual') {
@@ -122,12 +126,40 @@ export function validateSaveRecord(value: unknown): SaveRecord {
 	requireNumber(metadata.cash, 'Save metadata cash');
 	requireNumber(metadata.storeCount, 'Save metadata storeCount');
 	requireString(metadata.activeCityName, 'Save metadata activeCityName');
-	requireNumber(game.day, 'Saved game day');
-	requireNumber(game.cash, 'Saved game cash');
-	requireArray(game.stores, 'Saved game stores');
-	requireArray(game.cities, 'Saved game cities');
 
 	return value as SaveRecord;
+}
+
+function validateSavedGame(value: unknown): Record<string, unknown> {
+	const game = requireRecord(value, 'Saved game');
+	const policy = requireRecord(game.policy, 'Saved game policy');
+	const scorecard = requireRecord(game.scorecard, 'Saved game scorecard');
+
+	requireNumber(game.seed, 'Saved game seed');
+	requireNumber(game.rngState, 'Saved game rngState');
+	requireNumber(game.day, 'Saved game day');
+	requireNumber(game.cash, 'Saved game cash');
+	requireNumber(game.debt, 'Saved game debt');
+	requireString(policy.pricing, 'Saved game policy pricing');
+	requireString(policy.inventory, 'Saved game policy inventory');
+	requireString(policy.staffing, 'Saved game policy staffing');
+	requireString(policy.marketing, 'Saved game policy marketing');
+	requireString(policy.service, 'Saved game policy service');
+	requireNumber(scorecard.profit, 'Saved game scorecard profit');
+	requireNumber(scorecard.customerSatisfaction, 'Saved game scorecard customerSatisfaction');
+	requireNumber(scorecard.staffMorale, 'Saved game scorecard staffMorale');
+	requireNumber(scorecard.marketPosition, 'Saved game scorecard marketPosition');
+	requireArray(game.cities, 'Saved game cities');
+	requireString(game.activeCityId, 'Saved game activeCityId');
+	requireArray(game.stores, 'Saved game stores');
+	requireArray(game.decisions, 'Saved game decisions');
+	requireArray(game.reports, 'Saved game reports');
+
+	return game;
+}
+
+function cloneJson<T>(value: T): T {
+	return JSON.parse(JSON.stringify(value)) as T;
 }
 
 function requireRecord(value: unknown, label: string): Record<string, unknown> {
