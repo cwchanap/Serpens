@@ -43,9 +43,21 @@ describe('game state', () => {
 	test('opens stores up to the local chain limit', () => {
 		expect.assertions(5);
 		const game = createNewGame('electronics', 44);
-		const second = openStore(game, { name: 'Mall Kiosk', location: 'West Mall' });
-		const third = openStore(second, { name: 'Campus Shop', location: 'North Campus' });
-		const fourth = openStore(third, { name: 'Airport Shop', location: 'Airport' });
+		const second = openStore(game, {
+			name: 'Mall Kiosk',
+			archetypeId: 'electronics',
+			location: 'West Mall'
+		});
+		const third = openStore(second, {
+			name: 'Campus Shop',
+			archetypeId: 'electronics',
+			location: 'North Campus'
+		});
+		const fourth = openStore(third, {
+			name: 'Airport Shop',
+			archetypeId: 'electronics',
+			location: 'Airport'
+		});
 
 		expect(second.stores).toHaveLength(2);
 		expect(second.cash).toBeLessThan(game.cash);
@@ -58,7 +70,11 @@ describe('game state', () => {
 		expect.assertions(5);
 		const game = createNewGame('electronics', 44);
 
-		const result = openStore(game, { name: 'Mall Kiosk', location: 'West Mall' });
+		const result = openStore(game, {
+			name: 'Mall Kiosk',
+			archetypeId: 'electronics',
+			location: 'West Mall'
+		});
 		const openedStore = result.stores.at(-1);
 
 		expect(result.stores).toHaveLength(2);
@@ -68,13 +84,43 @@ describe('game state', () => {
 		expect(openedStore?.tileId).not.toBe(game.stores[0]?.tileId);
 	});
 
+	test('direct store opening uses the selected expansion archetype', () => {
+		expect.assertions(2);
+		const game = createNewGame('boutique', 44);
+
+		const result = openStore(game, {
+			name: 'Tech Kiosk',
+			archetypeId: 'electronics',
+			location: 'West Mall'
+		});
+
+		expect(game.stores[0]?.archetypeId).toBe('boutique');
+		expect(result.stores.at(-1)?.archetypeId).toBe('electronics');
+	});
+
 	test('does not duplicate same-day blocked expansion decisions', () => {
 		expect.assertions(2);
 		const game = createNewGame('electronics', 44);
-		const second = openStore(game, { name: 'Mall Kiosk', location: 'West Mall' });
-		const third = openStore(second, { name: 'Campus Shop', location: 'North Campus' });
-		const fourth = openStore(third, { name: 'Airport Shop', location: 'Airport' });
-		const fifth = openStore(fourth, { name: 'Station Shop', location: 'Station' });
+		const second = openStore(game, {
+			name: 'Mall Kiosk',
+			archetypeId: 'electronics',
+			location: 'West Mall'
+		});
+		const third = openStore(second, {
+			name: 'Campus Shop',
+			archetypeId: 'electronics',
+			location: 'North Campus'
+		});
+		const fourth = openStore(third, {
+			name: 'Airport Shop',
+			archetypeId: 'electronics',
+			location: 'Airport'
+		});
+		const fifth = openStore(fourth, {
+			name: 'Station Shop',
+			archetypeId: 'electronics',
+			location: 'Station'
+		});
 
 		expect(fifth.decisions).toHaveLength(1);
 		expect(fifth.decisions[0]?.id).toBe('expansion-unavailable-1');

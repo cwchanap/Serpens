@@ -1,10 +1,86 @@
+import { existsSync, readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { SHOP_STOREFRONT_ALT, SHOP_STOREFRONT_PATH, SHOP_STOREFRONT_TEXTURE_KEY } from './gameArt';
+import {
+	ARCHETYPE_STORE_ART,
+	SHOP_STOREFRONT_ALT,
+	SHOP_STOREFRONT_PATH,
+	SHOP_STOREFRONT_TEXTURE_KEY,
+	STORE_ART_LIST,
+	getStoreArt
+} from './gameArt';
+import type { ArchetypeId } from '$lib/game/types';
+
+const archetypeIds: ArchetypeId[] = ['convenience', 'boutique', 'electronics', 'grocery'];
+const require = createRequire(import.meta.url);
+const { PNG } = require('pngjs') as {
+	PNG: {
+		sync: {
+			read(buffer: Buffer): { data: Uint8Array };
+		};
+	};
+};
+
+function staticPath(assetPath: string): string {
+	return join(process.cwd(), 'static', assetPath.replace(/^\//, ''));
+}
+
+function alphaStats(assetPath: string): { opaquePixels: number; transparentPixels: number } {
+	const png = PNG.sync.read(readFileSync(staticPath(assetPath)));
+	let opaquePixels = 0;
+	let transparentPixels = 0;
+
+	for (let index = 3; index < png.data.length; index += 4) {
+		if (png.data[index] === 0) {
+			transparentPixels += 1;
+		}
+
+		if (png.data[index] === 255) {
+			opaquePixels += 1;
+		}
+	}
+
+	return { opaquePixels, transparentPixels };
+}
 
 describe('game art asset constants', () => {
-	it('defines the first shop storefront asset contract', () => {
-		expect(SHOP_STOREFRONT_PATH).toBe('/assets/game/shops/anime-storefront.png');
-		expect(SHOP_STOREFRONT_TEXTURE_KEY).toBe('shop-storefront');
+	it('defines storefront art for every store archetype', () => {
+		expect(Object.keys(ARCHETYPE_STORE_ART).sort()).toEqual([...archetypeIds].sort());
+		expect(STORE_ART_LIST).toHaveLength(archetypeIds.length);
+
+		for (const archetypeId of archetypeIds) {
+			const art = getStoreArt(archetypeId);
+
+			expect(art.archetypeId).toBe(archetypeId);
+			expect(art.path).toMatch(/^\/assets\/game\/shops\/.+\.png$/);
+			expect(art.textureKey).toBe(`shop-storefront-${archetypeId}`);
+			expect(art.alt.toLowerCase()).toContain(
+				archetypeId === 'electronics' ? 'electronics' : archetypeId
+			);
+			expect(existsSync(staticPath(art.path))).toBe(true);
+		}
+	});
+
+	it('keeps legacy storefront exports compatible with existing integrations', () => {
+		const convenienceArt = ARCHETYPE_STORE_ART.convenience;
+
+		expect(SHOP_STOREFRONT_PATH).toBe(convenienceArt.path);
+		expect(SHOP_STOREFRONT_TEXTURE_KEY).toBe(convenienceArt.textureKey);
 		expect(SHOP_STOREFRONT_ALT).toBe('Anime-style storefront for an owned shop');
+	});
+
+	it('uses transparent PNG storefront cutouts', () => {
+		for (const art of STORE_ART_LIST) {
+			const { opaquePixels, transparentPixels } = alphaStats(art.path);
+
+			expect(
+				transparentPixels,
+				`${art.path} should include transparent background pixels`
+			).toBeGreaterThan(0);
+			expect(opaquePixels, `${art.path} should preserve visible storefront pixels`).toBeGreaterThan(
+				0
+			);
+		}
 	});
 });

@@ -105,6 +105,12 @@ export interface OpeningForecast {
 	risks: string[];
 }
 
+export interface OpeningOption {
+	archetypeId: ArchetypeId;
+	forecast: OpeningForecast;
+	disabledReason: string | null;
+}
+
 export interface DailyStoreReport {
 	storeId: string;
 	revenue: number;

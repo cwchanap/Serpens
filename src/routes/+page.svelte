@@ -15,14 +15,9 @@
 		openStoreAtTile
 	} from '$lib/game/placement';
 	import { summarizeReports } from '$lib/game/reports';
-	import {
-		DEFAULT_POLICY,
-		getExpansionSetupCost,
-		resolveDecision,
-		updatePolicy
-	} from '$lib/game/state';
+	import { DEFAULT_POLICY, resolveDecision, updatePolicy } from '$lib/game/state';
 	import { simulateDay } from '$lib/game/simulateDay';
-	import type { ArchetypeId, CompanyPolicy, GameState } from '$lib/game/types';
+	import type { ArchetypeId, CompanyPolicy, GameState, OpeningOption } from '$lib/game/types';
 	import { MAX_STORES } from '$lib/game/types';
 
 	const starterCity = generateCity({
@@ -75,20 +70,32 @@
 			: null;
 	});
 	let recommendations = $derived(selectedTile ? getRecommendedArchetypes(selectedTile) : []);
-	let forecast = $derived(
-		selectedTile && recommendations[0] ? forecastOpening(selectedTile, recommendations[0]) : null
-	);
-	let expansionSetupCost = $derived.by(() => {
-		const currentGame: GameState | null = game;
-		const archetypeId = currentGame?.stores[0]?.archetypeId;
-		return selectedTile && archetypeId ? getExpansionSetupCost(selectedTile, archetypeId) : null;
-	});
-	let openStoreDisabledReason = $derived.by(() => {
-		const currentGame: GameState | null = game;
+	let openingOptions = $derived.by<OpeningOption[]>(() => {
+		const tile = selectedTile;
 
-		if (!currentGame) {
-			return 'Game not started';
+		if (!tile) {
+			return [];
 		}
+
+		return recommendations.map((archetypeId) => {
+			const optionForecast = forecastOpening(tile, archetypeId);
+
+			return {
+				archetypeId,
+				forecast: optionForecast,
+				disabledReason: getOpenStoreDisabledReason(optionForecast.setupCost)
+			};
+		});
+	});
+	let selectedTileDisabledReason = $derived.by(() => getSelectedTileDisabledReason());
+	let mapSnapshot = $derived(createCityMapSnapshot(game ?? starterMapState, selectedTileId));
+
+	function selectTile(tileId: string) {
+		selectedTileId = tileId;
+	}
+
+	function getSelectedTileDisabledReason(): string | null {
+		const currentGame: GameState | null = game;
 
 		if (!selectedTile) {
 			return 'Select a tile';
@@ -102,21 +109,26 @@
 			return 'Occupied location';
 		}
 
-		if (currentGame.stores.length >= MAX_STORES) {
+		if (currentGame && currentGame.stores.length >= MAX_STORES) {
 			return 'Store limit reached';
 		}
 
-		if (expansionSetupCost !== null && currentGame.cash < expansionSetupCost) {
-			return `Requires ${expansionSetupCost.toLocaleString('en-US')} cash`;
+		return null;
+	}
+
+	function getOpenStoreDisabledReason(setupCost: number): string | null {
+		const tileReason = getSelectedTileDisabledReason();
+		const currentGame: GameState | null = game;
+
+		if (tileReason) {
+			return tileReason;
+		}
+
+		if (currentGame && currentGame.cash < setupCost) {
+			return `Requires ${setupCost.toLocaleString('en-US')} cash`;
 		}
 
 		return null;
-	});
-	let canOpenStore = $derived(openStoreDisabledReason === null);
-	let mapSnapshot = $derived(createCityMapSnapshot(game ?? starterMapState, selectedTileId));
-
-	function selectTile(tileId: string) {
-		selectedTileId = tileId;
 	}
 
 	function toggleViewMenu() {
@@ -163,7 +175,7 @@
 		}
 	}
 
-	function addStoreAtSelectedTile() {
+	function addStoreAtSelectedTile(archetypeId: ArchetypeId) {
 		if (!game || !selectedTileId) {
 			return;
 		}
@@ -171,7 +183,8 @@
 		const next = game.stores.length + 1;
 		game = openStoreAtTile(game, {
 			tileId: selectedTileId,
-			name: `Store #${next}`
+			name: `Store #${next}`,
+			archetypeId
 		});
 	}
 
@@ -250,11 +263,9 @@
 				<TileInspector
 					tile={selectedTile}
 					store={selectedStore}
-					{forecast}
-					{recommendations}
+					{openingOptions}
 					gameStarted={game !== null}
-					{canOpenStore}
-					disabledReason={openStoreDisabledReason}
+					disabledReason={selectedTileDisabledReason}
 					onFoundStore={foundStore}
 					onOpenStore={addStoreAtSelectedTile}
 					onClose={closeInspector}

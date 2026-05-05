@@ -25,6 +25,7 @@ export const DEFAULT_POLICY: CompanyPolicy = {
 
 interface OpenStoreInput {
 	name: string;
+	archetypeId: ArchetypeId;
 	location: string;
 	tileId?: string;
 }
@@ -92,7 +93,7 @@ export function updatePolicy(game: GameState, patch: Partial<CompanyPolicy>): Ga
 }
 
 export function openStore(game: GameState, input: OpenStoreInput): GameState {
-	const archetypeId = game.stores[0]?.archetypeId ?? 'convenience';
+	const archetypeId = input.archetypeId;
 	const tile = getExpansionTile(game, input.tileId);
 
 	if (!tile) {

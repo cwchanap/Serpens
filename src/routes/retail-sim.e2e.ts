@@ -19,6 +19,13 @@ async function openControlTower(page: import('@playwright/test').Page) {
 	await expect(page.getByRole('dialog', { name: /control tower/i })).toBeVisible();
 }
 
+async function chooseStoreType(page: import('@playwright/test').Page, storeTypeName: RegExp) {
+	await page.getByRole('button', { name: storeTypeName }).first().click();
+	const confirmDialog = page.getByRole('dialog', { name: /confirm store opening/i });
+	await expect(confirmDialog).toBeVisible();
+	await confirmDialog.getByRole('button', { name: /confirm opening/i }).click();
+}
+
 test('player can found a store from the city map and advance a day', async ({ page }) => {
 	await page.goto('/');
 
@@ -26,16 +33,21 @@ test('player can found a store from the city map and advance a day', async ({ pa
 	await expect(page.getByRole('button', { name: /select tile/i })).toHaveCount(0);
 	await clickMapTile(page, 1, 1);
 	await expect(page.getByRole('dialog', { name: /tile details/i })).toBeVisible();
-	await expect(page.getByText(/recommended/i)).toBeVisible();
-	await page
-		.getByRole('button', { name: /open .* here/i })
-		.first()
-		.click();
 	const mapCanvas = page.locator('.map-canvas canvas');
+	await expect(page.getByText(/store type/i)).toBeVisible();
+	await expect(mapCanvas).toHaveAttribute('data-store-sprite-count', '0');
+	await page.getByRole('button', { name: /open boutique goods here/i }).click();
+	const confirmDialog = page.getByRole('dialog', { name: /confirm store opening/i });
+	await expect(confirmDialog).toBeVisible();
+	await expect(
+		confirmDialog.getByRole('img', { name: /anime-style boutique storefront for an owned shop/i })
+	).toBeVisible();
+	await expect(mapCanvas).toHaveAttribute('data-store-sprite-count', '0');
+	await confirmDialog.getByRole('button', { name: /confirm opening/i }).click();
 	await expect(mapCanvas).toHaveAttribute('data-store-marker-mode', 'image');
 	await expect(mapCanvas).toHaveAttribute('data-store-sprite-count', '1');
 	await expect(
-		page.getByRole('img', { name: /anime-style storefront for an owned shop/i })
+		page.getByRole('img', { name: /anime-style boutique storefront for an owned shop/i })
 	).toBeVisible();
 
 	await expect(page.getByRole('heading', { name: /scorecard/i })).toHaveCount(0);
@@ -73,10 +85,7 @@ test('control tower opens from the map views menu and closes as an overlay', asy
 	await page.goto('/');
 
 	await clickMapTile(page, 1, 1);
-	await page
-		.getByRole('button', { name: /open .* here/i })
-		.first()
-		.click();
+	await chooseStoreType(page, /open .* here/i);
 
 	await openControlTower(page);
 	await page.getByRole('button', { name: /close control tower/i }).click();
@@ -101,19 +110,28 @@ test('player expands from a selected city tile', async ({ page }) => {
 	await page.goto('/');
 
 	await clickMapTile(page, 1, 1);
-	await page
-		.getByRole('button', { name: /open .* here/i })
-		.first()
-		.click();
+	await chooseStoreType(page, /open .* here/i);
 
 	await clickMapTile(page, 2, 1);
-	await page.getByRole('button', { name: /open store here/i }).click();
+	await expect(page.getByText(/store type/i)).toBeVisible();
+	const mapCanvas = page.locator('.map-canvas canvas');
+	await expect(mapCanvas).toHaveAttribute('data-store-sprite-count', '1');
+	await page.getByRole('button', { name: /open electronics & games here/i }).click();
+	const confirmDialog = page.getByRole('dialog', { name: /confirm store opening/i });
+	await expect(confirmDialog).toBeVisible();
+	await expect(mapCanvas).toHaveAttribute('data-store-sprite-count', '1');
+	await confirmDialog.getByRole('button', { name: /confirm opening/i }).click();
 
 	await expect(page.getByRole('dialog', { name: /tile details/i })).toBeVisible();
 	await expect(
 		page.getByLabel('Store details').getByRole('heading', { name: 'Store #2', exact: true })
 	).toBeVisible();
 	await expect(page.getByLabel('Store details').getByText(/\(2, 1\)/)).toBeVisible();
+	await expect(
+		page.getByRole('img', {
+			name: /anime-style electronics and games storefront for an owned shop/i
+		})
+	).toBeVisible();
 
 	await openControlTower(page);
 	const controlTower = page.getByRole('dialog', { name: /control tower/i });

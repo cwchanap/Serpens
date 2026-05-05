@@ -1,4 +1,4 @@
-import type { CityTile, GameState, Store } from './types';
+import type { ArchetypeId, CityTile, GameState, Store } from './types';
 
 export interface CityMapTileRender {
 	id: string;
@@ -18,6 +18,7 @@ export interface CityMapTileRender {
 export interface CityMapStoreRender {
 	id: string;
 	name: string;
+	archetypeId: ArchetypeId;
 	tileId: string;
 	x: number;
 	y: number;
@@ -87,6 +88,7 @@ function createStoreRender(store: Store): CityMapStoreRender {
 	return {
 		id: store.id,
 		name: store.name,
+		archetypeId: store.archetypeId,
 		tileId: store.tileId,
 		x: store.mapX,
 		y: store.mapY

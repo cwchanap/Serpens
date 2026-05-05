@@ -1,6 +1,6 @@
 import { asset } from '$app/paths';
 import Phaser from 'phaser';
-import { SHOP_STOREFRONT_PATH, SHOP_STOREFRONT_TEXTURE_KEY } from '../assets/gameArt';
+import { STORE_ART_LIST, getStoreArt } from '../assets/gameArt';
 import type { CityMapSnapshot, CityMapTileRender } from '../game/mapRender';
 
 export type CityMapEvent = { type: 'tileSelected'; tileId: string };
@@ -9,7 +9,7 @@ export type CityMapEventHandler = (event: CityMapEvent) => void;
 const TILE_SIZE = 32;
 const MIN_ZOOM = 0.6;
 const MAX_ZOOM = 2.2;
-const SHOP_STOREFRONT_URL = asset(SHOP_STOREFRONT_PATH);
+const STORE_SPRITE_SIZE = TILE_SIZE * 0.82;
 const TERRAIN_DEPTH = 0;
 const STORE_MARKER_DEPTH = 10;
 const OUTLINE_DEPTH = 20;
@@ -48,7 +48,9 @@ export class CityMapScene extends Phaser.Scene {
 	}
 
 	preload(): void {
-		this.load.image(SHOP_STOREFRONT_TEXTURE_KEY, SHOP_STOREFRONT_URL);
+		for (const art of STORE_ART_LIST) {
+			this.load.image(art.textureKey, asset(art.path));
+		}
 	}
 
 	create(): void {
@@ -276,7 +278,16 @@ export class CityMapScene extends Phaser.Scene {
 	}
 
 	private createStoreSprites(): void {
-		if (!this.snapshot || !this.hasStorefrontTexture()) {
+		if (!this.snapshot) {
+			this.updateCanvasStoreMarkerAttributes('circle', 0);
+			return;
+		}
+
+		const canRenderStorefronts = this.snapshot.stores.every((store) =>
+			this.hasStorefrontTexture(getStoreArt(store.archetypeId).textureKey)
+		);
+
+		if (!canRenderStorefronts) {
 			this.updateCanvasStoreMarkerAttributes('circle', 0);
 			return;
 		}
@@ -284,10 +295,11 @@ export class CityMapScene extends Phaser.Scene {
 		this.storeSprites = this.snapshot.stores.map((store, index) => {
 			const baseX = store.x * TILE_SIZE + TILE_SIZE / 2;
 			const baseY = store.y * TILE_SIZE + TILE_SIZE / 2;
+			const art = getStoreArt(store.archetypeId);
 			const sprite = this.add
-				.image(baseX, baseY, SHOP_STOREFRONT_TEXTURE_KEY)
-				.setOrigin(0.5, 0.82)
-				.setDisplaySize(TILE_SIZE * 1.35, TILE_SIZE * 1.35)
+				.image(baseX, baseY, art.textureKey)
+				.setOrigin(0.5)
+				.setDisplaySize(STORE_SPRITE_SIZE, STORE_SPRITE_SIZE)
 				.setDepth(STORE_MARKER_DEPTH);
 
 			return {
@@ -304,8 +316,8 @@ export class CityMapScene extends Phaser.Scene {
 		);
 	}
 
-	private hasStorefrontTexture(): boolean {
-		return this.textures.exists(SHOP_STOREFRONT_TEXTURE_KEY);
+	private hasStorefrontTexture(textureKey: string): boolean {
+		return this.textures.exists(textureKey);
 	}
 
 	private updateCanvasStoreMarkerAttributes(mode: 'circle' | 'image', spriteCount: number): void {

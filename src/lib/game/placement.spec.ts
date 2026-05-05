@@ -89,14 +89,18 @@ describe('tile placement', () => {
 			seed: 101
 		});
 
-		const result = openStoreAtTile(game, { tileId: tile.id, name: 'Duplicate Store' });
+		const result = openStoreAtTile(game, {
+			tileId: tile.id,
+			name: 'Duplicate Store',
+			archetypeId: 'boutique'
+		});
 
 		expect(result.stores).toHaveLength(1);
 		expect(result.decisions.at(-1)?.title).toBe('Location unavailable');
 	});
 
-	test('deducts the forecast setup cost when opening at a tile', () => {
-		expect.assertions(4);
+	test('deducts the chosen archetype setup cost when opening at a tile', () => {
+		expect.assertions(5);
 		const city = generateCity({
 			id: 'harbor-city',
 			name: 'Harbor City',
@@ -109,18 +113,23 @@ describe('tile placement', () => {
 			(candidate) => !candidate.locked && candidate.id !== foundingTile.id
 		)!;
 		const game = createFoundingGameAtTile({
-			archetypeId: 'electronics',
+			archetypeId: 'boutique',
 			city,
 			tileId: foundingTile.id,
 			seed: 202
 		});
-		const forecast = forecastOpening(expansionTile, 'electronics');
+		const forecast = forecastOpening(expansionTile, 'grocery');
 
-		const result = openStoreAtTile(game, { tileId: expansionTile.id, name: 'Expansion Store' });
+		const result = openStoreAtTile(game, {
+			tileId: expansionTile.id,
+			name: 'Expansion Store',
+			archetypeId: 'grocery'
+		});
 
 		expect(result.stores).toHaveLength(2);
 		expect(result.cash).toBe(game.cash - forecast.setupCost);
 		expect(result.stores.at(-1)?.tileId).toBe(expansionTile.id);
+		expect(result.stores.at(-1)?.archetypeId).toBe('grocery');
 		expect(result.decisions).toHaveLength(0);
 	});
 });
