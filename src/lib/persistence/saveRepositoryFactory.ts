@@ -1,4 +1,5 @@
 import { browser } from '$app/environment';
+import { isTauri } from '@tauri-apps/api/core';
 import { createBrowserSaveRepository } from './browserSaveRepository';
 import type { SaveRepository } from './saveRepository';
 
@@ -16,5 +17,8 @@ export async function createSaveRepository(): Promise<SaveRepository> {
 }
 
 function isTauriRuntime(): boolean {
-	return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in (window as TauriRuntimeWindow);
+	return (
+		isTauri() ||
+		(typeof window !== 'undefined' && (window as TauriRuntimeWindow).__TAURI_INTERNALS__ != null)
+	);
 }

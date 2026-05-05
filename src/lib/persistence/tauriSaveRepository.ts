@@ -19,7 +19,7 @@ class TauriSaveStoreDriver implements SaveStoreDriver {
 	async read(): Promise<SaveStoreSnapshot> {
 		const store = await this.storePromise;
 		const snapshot = await store.get<unknown>(SAVE_STORE_KEY);
-		return snapshot ? validateSaveStoreSnapshot(snapshot) : createEmptySaveStore();
+		return snapshot === undefined ? createEmptySaveStore() : validateSaveStoreSnapshot(snapshot);
 	}
 
 	async write(snapshot: SaveStoreSnapshot): Promise<void> {
