@@ -299,16 +299,19 @@
 		}
 	}
 
-	function foundStore(archetypeId: ArchetypeId) {
-		if (!selectedTileId || !selectedTile || selectedTile.locked) {
+	function foundStore(archetypeId: ArchetypeId, tileId: string) {
+		const tile = getTileById(starterCity, tileId);
+
+		if (!tile || tile.locked) {
 			return;
 		}
 
+		selectedTileId = tile.id;
 		setGameAndAutosave(
 			createFoundingGameAtTile({
 				archetypeId,
 				city: starterCity,
-				tileId: selectedTileId,
+				tileId: tile.id,
 				seed: 20260503
 			})
 		);
@@ -332,15 +335,16 @@
 		}
 	}
 
-	function addStoreAtSelectedTile(archetypeId: ArchetypeId) {
-		if (!game || !selectedTileId) {
+	function addStoreAtSelectedTile(archetypeId: ArchetypeId, tileId: string) {
+		if (!game || !getTileById(activeCity, tileId)) {
 			return;
 		}
 
 		const next = game.stores.length + 1;
+		selectedTileId = tileId;
 		setGameAndAutosave(
 			openStoreAtTile(game, {
-				tileId: selectedTileId,
+				tileId,
 				name: `Store #${next}`,
 				archetypeId
 			})
@@ -724,11 +728,10 @@
 		}
 
 		.inspector-overlay {
-			position: fixed;
-			inset: auto 0 0;
+			position: static;
 			width: auto;
-			padding: 0.75rem;
-			background: linear-gradient(to top, rgb(0 0 0 / 0.5), transparent);
+			padding-top: 0.75rem;
+			background: transparent;
 		}
 
 		header,

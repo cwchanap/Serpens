@@ -3,6 +3,8 @@
 	import { getStoreArt } from '$lib/assets/gameArt';
 	import { getArchetype } from '$lib/game/archetypes';
 	import type { ArchetypeId, CityTile, OpeningOption, Store } from '$lib/game/types';
+	import type { Attachment } from 'svelte/attachments';
+	import { on } from 'svelte/events';
 
 	interface Props {
 		tile: CityTile | null;
@@ -10,8 +12,8 @@
 		openingOptions: OpeningOption[];
 		gameStarted: boolean;
 		disabledReason: string | null;
-		onFoundStore: (archetypeId: ArchetypeId) => void;
-		onOpenStore: (archetypeId: ArchetypeId) => void;
+		onFoundStore: (archetypeId: ArchetypeId, tileId: string) => void;
+		onOpenStore: (archetypeId: ArchetypeId, tileId: string) => void;
 		onClose: () => void;
 	}
 
@@ -76,17 +78,18 @@
 	}
 
 	function confirmOpening(): void {
-		if (!pendingOption || !pendingIsCurrent) {
+		if (!pendingOption || !pendingTileId || !pendingIsCurrent) {
 			return;
 		}
 
 		const archetypeId = pendingOption.archetypeId;
+		const tileId = pendingTileId;
 		cancelOpening();
 
 		if (gameStarted) {
-			onOpenStore(archetypeId);
+			onOpenStore(archetypeId, tileId);
 		} else {
-			onFoundStore(archetypeId);
+			onFoundStore(archetypeId, tileId);
 		}
 	}
 
@@ -94,9 +97,27 @@
 		cancelOpening();
 		onClose();
 	}
+
+	function stopMapInteraction(event: Event): void {
+		event.stopPropagation();
+	}
+
+	const blockMapInteraction: Attachment<HTMLElement> = (node) => {
+		const cleanups = [
+			on(node, 'pointerdown', stopMapInteraction),
+			on(node, 'pointerup', stopMapInteraction),
+			on(node, 'click', stopMapInteraction)
+		];
+
+		return () => {
+			for (const cleanup of cleanups) {
+				cleanup();
+			}
+		};
+	};
 </script>
 
-<aside class="inspector" aria-label="Tile inspector">
+<aside class="inspector" aria-label="Tile inspector" {@attach blockMapInteraction}>
 	<button type="button" class="close" aria-label="Close tile inspector" onclick={closeInspector}
 		>×</button
 	>

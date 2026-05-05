@@ -45,8 +45,8 @@ function renderInspector(
 		openingOptions: OpeningOption[];
 		gameStarted: boolean;
 		disabledReason: string | null;
-		onFoundStore: (archetypeId: ArchetypeId) => void;
-		onOpenStore: (archetypeId: ArchetypeId) => void;
+		onFoundStore: (archetypeId: ArchetypeId, tileId: string) => void;
+		onOpenStore: (archetypeId: ArchetypeId, tileId: string) => void;
 		onClose: () => void;
 	}> = {}
 ) {
@@ -162,7 +162,7 @@ describe('TileInspector opening choices', () => {
 
 		await dialog.getByRole('button', { name: 'Confirm opening' }).click();
 
-		expect(onOpenStore).toHaveBeenCalledWith('electronics');
+		expect(onOpenStore).toHaveBeenCalledWith('electronics', tile.id);
 	});
 
 	it('cancels a pending store type confirmation without opening a store', async () => {
@@ -199,6 +199,6 @@ describe('TileInspector opening choices', () => {
 			.getByRole('button', { name: 'Confirm opening' })
 			.click();
 
-		expect(onFoundStore).toHaveBeenCalledWith('grocery');
+		expect(onFoundStore).toHaveBeenCalledWith('grocery', tile.id);
 	});
 });

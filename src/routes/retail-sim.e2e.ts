@@ -65,6 +65,24 @@ test('player can found a store from the city map and advance a day', async ({ pa
 	await expect(controlTower.getByText(/latest daily result/i)).toBeVisible();
 });
 
+test('player can confirm a founding store from a narrow viewport', async ({ page }) => {
+	await page.setViewportSize({ width: 390, height: 700 });
+	await page.goto('/');
+
+	await clickMapTile(page, 1, 1);
+	await expect(page.getByRole('dialog', { name: /tile details/i })).toBeVisible();
+	await expect(page.getByRole('button', { name: /open .* here/i }).first()).toBeVisible();
+
+	const mapCanvas = page.locator('.map-canvas canvas');
+	await expect(mapCanvas).toHaveAttribute('data-store-sprite-count', '0');
+	await chooseStoreType(page, /open boutique goods here/i);
+
+	await expect(mapCanvas).toHaveAttribute('data-store-marker-mode', 'image');
+	await expect(mapCanvas).toHaveAttribute('data-store-sprite-count', '1');
+	await expect(page.getByText(/\$[0-9,]+ cash/i)).toBeVisible();
+	await expect(page.getByLabel('Store details').getByText(/\(1, 1\)/)).toBeVisible();
+});
+
 test('tile popup can be closed from the map', async ({ page }) => {
 	await page.goto('/');
 
