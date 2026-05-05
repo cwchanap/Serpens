@@ -139,3 +139,25 @@ test('player expands from a selected city tile', async ({ page }) => {
 		controlTower.getByLabel('Stores').getByRole('heading', { name: 'Store #2', exact: true })
 	).toBeVisible();
 });
+
+test('player can save to a manual slot and load it after reload', async ({ page }) => {
+	await page.goto('/');
+
+	await clickMapTile(page, 1, 1);
+	await chooseStoreType(page, /open .* here/i);
+	await page.getByRole('button', { name: /saves/i }).click();
+	await expect(page.getByRole('dialog', { name: /saves/i })).toBeVisible();
+	await expect(page.getByText(/Day 1 · 1 stores/i)).toBeVisible();
+
+	await page.getByRole('textbox', { name: /slot name/i }).fill('Harbor test');
+	await page.getByRole('button', { name: /save slot/i }).click();
+	await expect(page.getByText(/Saved Harbor test/i)).toBeVisible();
+	await page.getByRole('button', { name: /close saves/i }).click();
+
+	await page.reload();
+	await page.getByRole('button', { name: /saves/i }).click();
+	await expect(page.getByRole('heading', { name: /Harbor test/i })).toBeVisible();
+	await page.getByRole('button', { name: /^Load$/i }).click();
+	await expect(page.locator('.map-canvas canvas')).toHaveAttribute('data-store-sprite-count', '1');
+	await expect(page.getByText(/Loaded Harbor test/i)).toBeVisible();
+});

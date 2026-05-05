@@ -1,8 +1,10 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import DecisionQueue from '$lib/components/game/DecisionQueue.svelte';
 	import CityMap from '$lib/components/game/CityMap.svelte';
 	import PolicyPanel from '$lib/components/game/PolicyPanel.svelte';
 	import ReportsPanel from '$lib/components/game/ReportsPanel.svelte';
+	import SavePanel from '$lib/components/game/SavePanel.svelte';
 	import Scorecard from '$lib/components/game/Scorecard.svelte';
 	import StoreOverview from '$lib/components/game/StoreOverview.svelte';
 	import TileInspector from '$lib/components/game/TileInspector.svelte';
@@ -19,6 +21,9 @@
 	import { simulateDay } from '$lib/game/simulateDay';
 	import type { ArchetypeId, CompanyPolicy, GameState, OpeningOption } from '$lib/game/types';
 	import { MAX_STORES } from '$lib/game/types';
+	import type { SaveRepository } from '$lib/persistence/saveRepository';
+	import { createSaveRepository } from '$lib/persistence/saveRepositoryFactory';
+	import type { SaveSlotMetadata } from '$lib/persistence/saveTypes';
 
 	const starterCity = generateCity({
 		id: 'harbor-city',
@@ -52,6 +57,12 @@
 	let selectedTileId = $state<string | null>(null);
 	let isViewMenuOpen = $state(false);
 	let isControlTowerOpen = $state(false);
+	let saveRepository: SaveRepository | null = $state(null);
+	let autoSave = $state<SaveSlotMetadata | null>(null);
+	let manualSaveSlots = $state<SaveSlotMetadata[]>([]);
+	let isSavePanelOpen = $state(false);
+	let saveStatus = $state('');
+	let saveError = $state<string | null>(null);
 	let summary = $derived.by(() => {
 		const currentGame: GameState | null = game;
 		return currentGame ? summarizeReports(currentGame.reports) : summarizeReports([]);
@@ -90,8 +101,54 @@
 	let selectedTileDisabledReason = $derived.by(() => getSelectedTileDisabledReason());
 	let mapSnapshot = $derived(createCityMapSnapshot(game ?? starterMapState, selectedTileId));
 
+	onMount(() => {
+		void initializeSaves();
+	});
+
 	function selectTile(tileId: string) {
 		selectedTileId = tileId;
+	}
+
+	async function initializeSaves(): Promise<void> {
+		try {
+			saveRepository = await createSaveRepository();
+
+			if (game) {
+				await writeAutoSave(game);
+			} else {
+				await refreshSaveSummary();
+			}
+		} catch (error) {
+			saveError = describeSaveError(error);
+		}
+	}
+
+	async function refreshSaveSummary(): Promise<void> {
+		if (!saveRepository) {
+			return;
+		}
+
+		const saveSummary = await saveRepository.getSummary();
+		autoSave = saveSummary.autoSave;
+		manualSaveSlots = saveSummary.manualSlots;
+	}
+
+	function openSavePanel(): void {
+		isViewMenuOpen = false;
+		isSavePanelOpen = true;
+		saveStatus = '';
+		saveError = null;
+		void refreshSaveSummary().catch((error) => {
+			saveError = describeSaveError(error);
+		});
+	}
+
+	function closeSavePanel(): void {
+		isSavePanelOpen = false;
+	}
+
+	function describeSaveError(error: unknown): string {
+		return error instanceof Error ? error.message : 'Save operation failed';
 	}
 
 	function getSelectedTileDisabledReason(): string | null {
@@ -144,34 +201,134 @@
 		isControlTowerOpen = false;
 	}
 
+	function setGameAndAutosave(nextGame: GameState): void {
+		game = nextGame;
+		void writeAutoSave(nextGame);
+	}
+
+	async function writeAutoSave(nextGame: GameState): Promise<void> {
+		if (!saveRepository) {
+			return;
+		}
+
+		try {
+			const metadata = await saveRepository.saveAuto(nextGame);
+			autoSave = metadata;
+			saveStatus = `Auto-saved day ${metadata.day}`;
+			saveError = null;
+		} catch (error) {
+			saveError = describeSaveError(error);
+		}
+	}
+
+	async function resumeAutoSave(): Promise<void> {
+		if (!saveRepository) {
+			return;
+		}
+
+		try {
+			const record = await saveRepository.getAutoSave();
+
+			if (!record) {
+				saveStatus = 'No auto-save found';
+				return;
+			}
+
+			game = record.game;
+			selectedTileId = null;
+			saveStatus = 'Loaded auto-save';
+			saveError = null;
+			await refreshSaveSummary();
+		} catch (error) {
+			saveError = describeSaveError(error);
+		}
+	}
+
+	async function saveManualSlot(name: string, slotId?: string): Promise<void> {
+		if (!saveRepository || !game) {
+			return;
+		}
+
+		try {
+			const metadata = slotId
+				? await saveRepository.overwriteManualSlot(slotId, name, game)
+				: await saveRepository.createManualSlot(name, game);
+			saveStatus = `Saved ${metadata.name}`;
+			saveError = null;
+			await refreshSaveSummary();
+		} catch (error) {
+			saveError = describeSaveError(error);
+		}
+	}
+
+	async function loadManualSlot(slotId: string): Promise<void> {
+		if (!saveRepository) {
+			return;
+		}
+
+		try {
+			const record = await saveRepository.loadManualSlot(slotId);
+
+			if (!record) {
+				saveStatus = 'Manual save slot not found';
+				return;
+			}
+
+			game = record.game;
+			selectedTileId = null;
+			saveStatus = `Loaded ${record.metadata.name}`;
+			saveError = null;
+			await refreshSaveSummary();
+		} catch (error) {
+			saveError = describeSaveError(error);
+		}
+	}
+
+	async function deleteManualSlot(slotId: string): Promise<void> {
+		if (!saveRepository) {
+			return;
+		}
+
+		try {
+			await saveRepository.deleteManualSlot(slotId);
+			saveStatus = 'Deleted save slot';
+			saveError = null;
+			await refreshSaveSummary();
+		} catch (error) {
+			saveError = describeSaveError(error);
+		}
+	}
+
 	function foundStore(archetypeId: ArchetypeId) {
 		if (!selectedTileId || !selectedTile || selectedTile.locked) {
 			return;
 		}
 
-		game = createFoundingGameAtTile({
-			archetypeId,
-			city: starterCity,
-			tileId: selectedTileId,
-			seed: 20260503
-		});
+		setGameAndAutosave(
+			createFoundingGameAtTile({
+				archetypeId,
+				city: starterCity,
+				tileId: selectedTileId,
+				seed: 20260503
+			})
+		);
 	}
 
 	function advanceDay() {
 		if (game) {
-			game = simulateDay(game);
+			setGameAndAutosave(simulateDay(game));
 		}
 	}
 
 	function changePolicy(patch: Partial<CompanyPolicy>) {
 		if (game) {
-			game = updatePolicy(game, patch);
+			setGameAndAutosave(updatePolicy(game, patch));
 		}
 	}
 
 	function chooseDecision(decisionId: string, optionId: string) {
 		if (game) {
-			game = resolveDecision(game, decisionId, optionId);
+			setGameAndAutosave(resolveDecision(game, decisionId, optionId));
 		}
 	}
 
@@ -181,11 +338,13 @@
 		}
 
 		const next = game.stores.length + 1;
-		game = openStoreAtTile(game, {
-			tileId: selectedTileId,
-			name: `Store #${next}`,
-			archetypeId
-		});
+		setGameAndAutosave(
+			openStoreAtTile(game, {
+				tileId: selectedTileId,
+				name: `Store #${next}`,
+				archetypeId
+			})
+		);
 	}
 
 	function closeInspector() {
@@ -194,6 +353,12 @@
 
 	function handleKeydown(event: KeyboardEvent) {
 		if (event.key !== 'Escape') {
+			return;
+		}
+
+		if (isSavePanelOpen) {
+			isSavePanelOpen = false;
+			isViewMenuOpen = false;
 			return;
 		}
 
@@ -229,6 +394,7 @@
 
 		{#if game}
 			<div class="top-actions">
+				<button type="button" onclick={openSavePanel}>Saves</button>
 				<div class="view-menu">
 					<button
 						type="button"
@@ -252,7 +418,10 @@
 				<button type="button" class="primary" onclick={advanceDay}>Advance day</button>
 			</div>
 		{:else}
-			<p class="status">Select an unlocked tile to found your first store.</p>
+			<div class="top-actions">
+				<button type="button" onclick={openSavePanel}>Saves</button>
+				<p class="status">Select an unlocked tile to found your first store.</p>
+			</div>
 		{/if}
 	</header>
 
@@ -314,6 +483,21 @@
 				<ReportsPanel {summary} />
 			</div>
 		</div>
+	{/if}
+
+	{#if isSavePanelOpen}
+		<SavePanel
+			activeGame={game}
+			{autoSave}
+			slots={manualSaveSlots}
+			status={saveStatus}
+			error={saveError}
+			onResumeAutoSave={resumeAutoSave}
+			onSaveSlot={saveManualSlot}
+			onLoadSlot={loadManualSlot}
+			onDeleteSlot={deleteManualSlot}
+			onClose={closeSavePanel}
+		/>
 	{/if}
 </main>
 
