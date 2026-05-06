@@ -33,10 +33,6 @@ interface StoreSpriteRender {
 	index: number;
 }
 
-interface TerrainSpriteRender {
-	sprite: Phaser.GameObjects.Image;
-}
-
 export class CityMapScene extends Phaser.Scene {
 	private snapshot: CityMapSnapshot | null = null;
 	private eventHandler: CityMapEventHandler | null = null;
@@ -45,7 +41,7 @@ export class CityMapScene extends Phaser.Scene {
 	private markerGraphics?: Phaser.GameObjects.Graphics;
 	private tileZones: Phaser.GameObjects.Zone[] = [];
 	private storeSprites: StoreSpriteRender[] = [];
-	private terrainSprites: TerrainSpriteRender[] = [];
+	private terrainSprites: Phaser.GameObjects.Image[] = [];
 	private terrainFeatureSpriteCount = 0;
 	private terrainDecorationSpriteCount = 0;
 	private hoverTileId: string | null = null;
@@ -375,27 +371,32 @@ export class CityMapScene extends Phaser.Scene {
 		}
 
 		let featureSpriteCount = 0;
+		let expectedFeatureTileCount = 0;
 		let decorationSpriteCount = 0;
 
 		for (const tile of this.snapshot.tiles) {
-			if (tile.feature && this.hasTerrainTexture(tile.feature)) {
-				this.terrainSprites.push({
-					sprite: this.add
-						.image(
-							tile.x * TILE_SIZE + TILE_SIZE / 2,
-							tile.y * TILE_SIZE + TILE_SIZE / 2,
-							getTerrainTextureKey(tile.feature)
-						)
-						.setOrigin(0.5)
-						.setDisplaySize(TERRAIN_FEATURE_SIZE, TERRAIN_FEATURE_SIZE)
-						.setDepth(TERRAIN_FEATURE_DEPTH)
-				});
-				featureSpriteCount += 1;
+			if (tile.feature) {
+				expectedFeatureTileCount += 1;
+
+				if (this.hasTerrainTexture(tile.feature)) {
+					this.terrainSprites.push(
+						this.add
+							.image(
+								tile.x * TILE_SIZE + TILE_SIZE / 2,
+								tile.y * TILE_SIZE + TILE_SIZE / 2,
+								getTerrainTextureKey(tile.feature)
+							)
+							.setOrigin(0.5)
+							.setDisplaySize(TERRAIN_FEATURE_SIZE, TERRAIN_FEATURE_SIZE)
+							.setDepth(TERRAIN_FEATURE_DEPTH)
+					);
+					featureSpriteCount += 1;
+				}
 			}
 
 			if (this.shouldDrawTreeDecoration(tile) && this.textures.exists(TERRAIN_ART.tree.textureKey)) {
-				this.terrainSprites.push({
-					sprite: this.add
+				this.terrainSprites.push(
+					this.add
 						.image(
 							tile.x * TILE_SIZE + TILE_SIZE / 2,
 							tile.y * TILE_SIZE + TILE_SIZE / 2,
@@ -404,7 +405,7 @@ export class CityMapScene extends Phaser.Scene {
 						.setOrigin(0.5)
 						.setDisplaySize(TREE_DECORATION_SIZE, TREE_DECORATION_SIZE)
 						.setDepth(TERRAIN_DECORATION_DEPTH)
-				});
+				);
 				decorationSpriteCount += 1;
 			}
 		}
@@ -412,7 +413,7 @@ export class CityMapScene extends Phaser.Scene {
 		this.terrainFeatureSpriteCount = featureSpriteCount;
 		this.terrainDecorationSpriteCount = decorationSpriteCount;
 		this.updateCanvasTerrainAttributes(
-			featureSpriteCount > 0 ? 'image' : 'fallback',
+			getTerrainAssetMode(expectedFeatureTileCount, featureSpriteCount),
 			featureSpriteCount,
 			decorationSpriteCount
 		);
@@ -442,7 +443,7 @@ export class CityMapScene extends Phaser.Scene {
 	}
 
 	private updateCanvasTerrainAttributes(
-		mode: 'fallback' | 'image',
+		mode: 'fallback' | 'image' | 'mixed',
 		featureSpriteCount: number,
 		decorationSpriteCount: number
 	): void {
@@ -468,7 +469,7 @@ export class CityMapScene extends Phaser.Scene {
 
 	private destroyTerrainSprites(): void {
 		for (const terrainSprite of this.terrainSprites) {
-			terrainSprite.sprite.destroy();
+			terrainSprite.destroy();
 		}
 
 		this.terrainSprites = [];
@@ -502,5 +503,25 @@ export class CityMapScene extends Phaser.Scene {
 }
 
 function getTerrainTextureKey(feature: NonNullable<CityMapTileRender['feature']>): string {
-	return feature === 'road' ? TERRAIN_ART.road.textureKey : TERRAIN_ART.river.textureKey;
+	switch (feature) {
+		case 'road':
+			return TERRAIN_ART.road.textureKey;
+		case 'river':
+			return TERRAIN_ART.river.textureKey;
+	}
+}
+
+function getTerrainAssetMode(
+	expectedFeatureTileCount: number,
+	featureSpriteCount: number
+): 'fallback' | 'image' | 'mixed' {
+	if (expectedFeatureTileCount === 0 || featureSpriteCount === 0) {
+		return 'fallback';
+	}
+
+	if (featureSpriteCount === expectedFeatureTileCount) {
+		return 'image';
+	}
+
+	return 'mixed';
 }
