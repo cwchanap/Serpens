@@ -20,7 +20,7 @@ const require = createRequire(import.meta.url);
 const { PNG } = require('pngjs') as {
 	PNG: {
 		sync: {
-			read(buffer: Buffer): { data: Uint8Array };
+			read(buffer: Buffer): { width: number; height: number; data: Uint8Array };
 		};
 	};
 };
@@ -29,7 +29,12 @@ function staticPath(assetPath: string): string {
 	return join(process.cwd(), 'static', assetPath.replace(/^\//, ''));
 }
 
-function alphaStats(assetPath: string): { opaquePixels: number; transparentPixels: number } {
+function imageStats(assetPath: string): {
+	width: number;
+	height: number;
+	opaquePixels: number;
+	transparentPixels: number;
+} {
 	const png = PNG.sync.read(readFileSync(staticPath(assetPath)));
 	let opaquePixels = 0;
 	let transparentPixels = 0;
@@ -44,7 +49,12 @@ function alphaStats(assetPath: string): { opaquePixels: number; transparentPixel
 		}
 	}
 
-	return { opaquePixels, transparentPixels };
+	return {
+		width: png.width,
+		height: png.height,
+		opaquePixels,
+		transparentPixels
+	};
 }
 
 describe('game art asset constants', () => {
@@ -75,7 +85,7 @@ describe('game art asset constants', () => {
 
 	it('uses transparent PNG storefront cutouts', () => {
 		for (const art of STORE_ART_LIST) {
-			const { opaquePixels, transparentPixels } = alphaStats(art.path);
+			const { opaquePixels, transparentPixels } = imageStats(art.path);
 
 			expect(
 				transparentPixels,
@@ -101,7 +111,21 @@ describe('game art asset constants', () => {
 				`/assets/game/terrain/${terrainId === 'tree' ? 'tree-decoration' : `${terrainId}-tile`}.png`
 			);
 			expect(art.textureKey).toBe(`terrain-${terrainId}`);
-			expect(existsSync(staticPath(art.path))).toBe(true);
+
+			const { width, height, opaquePixels, transparentPixels } = imageStats(art.path);
+
+			expect(width).toBe(64);
+			expect(height).toBe(64);
+			expect(opaquePixels, `${art.path} should preserve visible terrain pixels`).toBeGreaterThan(
+				0
+			);
+
+			if (terrainId === 'tree') {
+				expect(
+					transparentPixels,
+					`${art.path} should include transparent background pixels`
+				).toBeGreaterThan(0);
+			}
 		}
 	});
 });
