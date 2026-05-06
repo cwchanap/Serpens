@@ -146,13 +146,31 @@ export class CityMapScene extends Phaser.Scene {
 	}
 
 	private drawTerrainFeatureFallback(tile: CityMapTileRender, x: number, y: number): void {
-		if (!this.mapGraphics || !tile.feature || this.hasTerrainTexture(tile.feature)) {
+		if (!this.mapGraphics || !tile.feature || this.hasTerrainTexture(tile)) {
 			return;
 		}
 
 		if (tile.feature === 'road') {
 			this.mapGraphics.fillStyle(0x50545a, 0.92);
-			if (tile.roadOrientation === 'horizontal') {
+			if (tile.roadVariant === 'intersection') {
+				this.mapGraphics.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+				this.mapGraphics.lineStyle(1, 0xd7d2c3, 0.65);
+				this.mapGraphics.lineBetween(
+					x + 4,
+					y + TILE_SIZE / 2,
+					x + TILE_SIZE - 4,
+					y + TILE_SIZE / 2
+				);
+				this.mapGraphics.lineBetween(
+					x + TILE_SIZE / 2,
+					y + 4,
+					x + TILE_SIZE / 2,
+					y + TILE_SIZE - 4
+				);
+				return;
+			}
+
+			if (tile.roadVariant === 'horizontal') {
 				this.mapGraphics.fillRect(x, y + TILE_SIZE * 0.32, TILE_SIZE, TILE_SIZE * 0.36);
 				this.mapGraphics.lineStyle(1, 0xd7d2c3, 0.65);
 				this.mapGraphics.lineBetween(
@@ -390,18 +408,18 @@ export class CityMapScene extends Phaser.Scene {
 			if (tile.feature) {
 				expectedFeatureTileCount += 1;
 
-				if (this.hasTerrainTexture(tile.feature)) {
+				if (this.hasTerrainTexture(tile)) {
 					const sprite = this.add
 						.image(
 							tile.x * TILE_SIZE + TILE_SIZE / 2,
 							tile.y * TILE_SIZE + TILE_SIZE / 2,
-							getTerrainTextureKey(tile.feature)
+							getTerrainTextureKey(tile)
 						)
 						.setOrigin(0.5)
 						.setDisplaySize(TERRAIN_FEATURE_SIZE, TERRAIN_FEATURE_SIZE)
 						.setDepth(TERRAIN_FEATURE_DEPTH);
 
-					if (tile.feature === 'road' && tile.roadOrientation === 'horizontal') {
+					if (tile.feature === 'road' && tile.roadVariant === 'horizontal') {
 						sprite.setAngle(90);
 					}
 
@@ -442,8 +460,8 @@ export class CityMapScene extends Phaser.Scene {
 		return tile.feature === null && tile.terrain === 'green' && (tile.x + tile.y) % 3 === 0;
 	}
 
-	private hasTerrainTexture(feature: NonNullable<CityMapTileRender['feature']>): boolean {
-		return this.textures.exists(getTerrainTextureKey(feature));
+	private hasTerrainTexture(tile: CityMapTileRender): boolean {
+		return tile.feature !== null && this.textures.exists(getTerrainTextureKey(tile));
 	}
 
 	private hasStorefrontTexture(textureKey: string): boolean {
@@ -521,12 +539,18 @@ export class CityMapScene extends Phaser.Scene {
 	}
 }
 
-function getTerrainTextureKey(feature: NonNullable<CityMapTileRender['feature']>): string {
-	switch (feature) {
+function getTerrainTextureKey(tile: CityMapTileRender): string {
+	switch (tile.feature) {
 		case 'road':
+			if (tile.roadVariant === 'intersection') {
+				return TERRAIN_ART.roadIntersection.textureKey;
+			}
+
 			return TERRAIN_ART.road.textureKey;
 		case 'river':
 			return TERRAIN_ART.river.textureKey;
+		case null:
+			return '';
 	}
 }
 

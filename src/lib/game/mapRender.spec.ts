@@ -58,7 +58,7 @@ describe('city map render snapshot', () => {
 		expect(snapshot.tiles).toHaveLength(0);
 	});
 
-	test('marks generated road tiles with their render orientation', () => {
+	test('marks generated road tiles with their render variant', () => {
 		const city = generateCity({
 			id: 'harbor-city',
 			name: 'Harbor City',
@@ -77,13 +77,14 @@ describe('city map render snapshot', () => {
 		const snapshot = createCityMapSnapshot(game, null);
 
 		expect(
-			snapshot.tiles.find((candidate) => candidate.id === 'harbor-city-10-1')?.roadOrientation
+			snapshot.tiles.find((candidate) => candidate.id === 'harbor-city-10-1')?.roadVariant
 		).toBe('vertical');
 		expect(
-			snapshot.tiles.find((candidate) => candidate.id === 'harbor-city-1-10')?.roadOrientation
+			snapshot.tiles.find((candidate) => candidate.id === 'harbor-city-1-10')?.roadVariant
 		).toBe('horizontal');
 		expect(
-			snapshot.tiles.find((candidate) => candidate.id === tile.id)?.roadOrientation
-		).toBeNull();
+			snapshot.tiles.find((candidate) => candidate.id === 'harbor-city-10-10')?.roadVariant
+		).toBe('intersection');
+		expect(snapshot.tiles.find((candidate) => candidate.id === tile.id)?.roadVariant).toBeNull();
 	});
 });

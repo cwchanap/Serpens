@@ -1,6 +1,6 @@
 import type { ArchetypeId, CityTile, GameState, Store } from './types';
 
-export type CityMapRoadOrientation = 'horizontal' | 'vertical';
+export type CityMapRoadVariant = 'horizontal' | 'vertical' | 'intersection';
 
 export interface CityMapTileRender {
 	id: string;
@@ -9,7 +9,7 @@ export interface CityMapTileRender {
 	neighborhood: CityTile['neighborhood'];
 	terrain: CityTile['terrain'];
 	feature: CityTile['feature'];
-	roadOrientation: CityMapRoadOrientation | null;
+	roadVariant: CityMapRoadVariant | null;
 	locked: boolean;
 	owned: boolean;
 	selected: boolean;
@@ -87,7 +87,7 @@ function createTileRender(
 		neighborhood: tile.neighborhood,
 		terrain: tile.terrain,
 		feature: tile.feature ?? null,
-		roadOrientation: getRoadRenderOrientation(tile, roadCoordinates),
+		roadVariant: getRoadRenderVariant(tile, roadCoordinates),
 		locked: tile.locked,
 		owned: ownedTileIds.has(tile.id),
 		selected: tile.id === selectedTileId,
@@ -98,10 +98,10 @@ function createTileRender(
 	};
 }
 
-function getRoadRenderOrientation(
+function getRoadRenderVariant(
 	tile: CityTile,
 	roadCoordinates: ReadonlySet<string>
-): CityMapRoadOrientation | null {
+): CityMapRoadVariant | null {
 	if (tile.feature !== 'road') {
 		return null;
 	}
@@ -112,6 +112,10 @@ function getRoadRenderOrientation(
 	const verticalNeighborCount =
 		Number(roadCoordinates.has(`${tile.x},${tile.y - 1}`)) +
 		Number(roadCoordinates.has(`${tile.x},${tile.y + 1}`));
+
+	if (horizontalNeighborCount > 0 && verticalNeighborCount > 0) {
+		return 'intersection';
+	}
 
 	return horizontalNeighborCount > verticalNeighborCount ? 'horizontal' : 'vertical';
 }

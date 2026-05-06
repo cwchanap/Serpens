@@ -7,7 +7,7 @@ export interface StoreArt {
 	alt: string;
 }
 
-export type TerrainArtId = 'road' | 'river' | 'tree';
+export type TerrainArtId = 'road' | 'roadIntersection' | 'river' | 'tree';
 
 export interface TerrainArt {
 	id: TerrainArtId;
@@ -57,6 +57,12 @@ export const TERRAIN_ART: Readonly<Record<TerrainArtId, TerrainArt>> = Object.fr
 		path: '/assets/game/terrain/road-tile.png',
 		textureKey: 'terrain-road',
 		alt: 'Stylized city road terrain tile'
+	}),
+	roadIntersection: Object.freeze({
+		id: 'roadIntersection',
+		path: '/assets/game/terrain/road-intersection-tile.png',
+		textureKey: 'terrain-road-intersection',
+		alt: 'Stylized city road intersection terrain tile'
 	}),
 	river: Object.freeze({
 		id: 'river',

@@ -98,7 +98,19 @@ describe('game art asset constants', () => {
 	});
 
 	it('defines terrain art for road, river, and tree decoration', () => {
-		const terrainIds = ['road', 'river', 'tree'] as const;
+		const terrainPaths = {
+			road: '/assets/game/terrain/road-tile.png',
+			roadIntersection: '/assets/game/terrain/road-intersection-tile.png',
+			river: '/assets/game/terrain/river-tile.png',
+			tree: '/assets/game/terrain/tree-decoration.png'
+		} as const;
+		const terrainTextureKeys = {
+			road: 'terrain-road',
+			roadIntersection: 'terrain-road-intersection',
+			river: 'terrain-river',
+			tree: 'terrain-tree'
+		} as const;
+		const terrainIds = Object.keys(terrainPaths) as Array<keyof typeof terrainPaths>;
 
 		expect(Object.keys(TERRAIN_ART).sort()).toEqual([...terrainIds].sort());
 		expect(TERRAIN_ART_LIST).toHaveLength(terrainIds.length);
@@ -107,10 +119,8 @@ describe('game art asset constants', () => {
 			const art = getTerrainArt(terrainId);
 
 			expect(art.id).toBe(terrainId);
-			expect(art.path).toBe(
-				`/assets/game/terrain/${terrainId === 'tree' ? 'tree-decoration' : `${terrainId}-tile`}.png`
-			);
-			expect(art.textureKey).toBe(`terrain-${terrainId}`);
+			expect(art.path).toBe(terrainPaths[terrainId]);
+			expect(art.textureKey).toBe(terrainTextureKeys[terrainId]);
 
 			const { width, height, opaquePixels, transparentPixels } = imageStats(art.path);
 
