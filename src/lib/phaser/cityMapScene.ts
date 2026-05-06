@@ -1,6 +1,6 @@
 import { asset } from '$app/paths';
 import Phaser from 'phaser';
-import { STORE_ART_LIST, getStoreArt } from '../assets/gameArt';
+import { STORE_ART_LIST, TERRAIN_ART, TERRAIN_ART_LIST, getStoreArt } from '../assets/gameArt';
 import type { CityMapSnapshot, CityMapTileRender } from '../game/mapRender';
 
 export type CityMapEvent = { type: 'tileSelected'; tileId: string };
@@ -11,6 +11,10 @@ const MIN_ZOOM = 0.6;
 const MAX_ZOOM = 2.2;
 const STORE_SPRITE_SIZE = TILE_SIZE * 0.82;
 const TERRAIN_DEPTH = 0;
+const TERRAIN_FEATURE_DEPTH = 2;
+const TERRAIN_DECORATION_DEPTH = 3;
+const TERRAIN_FEATURE_SIZE = TILE_SIZE;
+const TREE_DECORATION_SIZE = TILE_SIZE * 0.72;
 const STORE_MARKER_DEPTH = 10;
 const OUTLINE_DEPTH = 20;
 
@@ -29,6 +33,10 @@ interface StoreSpriteRender {
 	index: number;
 }
 
+interface TerrainSpriteRender {
+	sprite: Phaser.GameObjects.Image;
+}
+
 export class CityMapScene extends Phaser.Scene {
 	private snapshot: CityMapSnapshot | null = null;
 	private eventHandler: CityMapEventHandler | null = null;
@@ -37,6 +45,9 @@ export class CityMapScene extends Phaser.Scene {
 	private markerGraphics?: Phaser.GameObjects.Graphics;
 	private tileZones: Phaser.GameObjects.Zone[] = [];
 	private storeSprites: StoreSpriteRender[] = [];
+	private terrainSprites: TerrainSpriteRender[] = [];
+	private terrainFeatureSpriteCount = 0;
+	private terrainDecorationSpriteCount = 0;
 	private hoverTileId: string | null = null;
 	private isDragging = false;
 	private hasDragged = false;
@@ -49,6 +60,10 @@ export class CityMapScene extends Phaser.Scene {
 
 	preload(): void {
 		for (const art of STORE_ART_LIST) {
+			this.load.image(art.textureKey, asset(art.path));
+		}
+
+		for (const art of TERRAIN_ART_LIST) {
 			this.load.image(art.textureKey, asset(art.path));
 		}
 	}
@@ -90,6 +105,7 @@ export class CityMapScene extends Phaser.Scene {
 
 		this.mapGraphics.clear();
 		this.destroyStoreSprites();
+		this.destroyTerrainSprites();
 		this.destroyTileZones();
 		this.setCameraBounds();
 
@@ -98,6 +114,7 @@ export class CityMapScene extends Phaser.Scene {
 			this.createTileZone(tile);
 		}
 
+		this.createTerrainSprites();
 		this.createStoreSprites();
 		this.drawInteractionOutlines();
 		this.drawStoreMarkers(0);
@@ -124,9 +141,32 @@ export class CityMapScene extends Phaser.Scene {
 			graphics.fillRect(x, y, TILE_SIZE, TILE_SIZE);
 		}
 
+		this.drawTerrainFeatureFallback(tile, x, y);
+
 		if (tile.owned) {
 			graphics.lineStyle(3, 0x1f8a70, 0.95);
 			graphics.strokeRect(x + 3, y + 3, TILE_SIZE - 6, TILE_SIZE - 6);
+		}
+	}
+
+	private drawTerrainFeatureFallback(tile: CityMapTileRender, x: number, y: number): void {
+		if (!this.mapGraphics || !tile.feature || this.hasTerrainTexture(tile.feature)) {
+			return;
+		}
+
+		if (tile.feature === 'road') {
+			this.mapGraphics.fillStyle(0x50545a, 0.92);
+			this.mapGraphics.fillRect(x, y + TILE_SIZE * 0.32, TILE_SIZE, TILE_SIZE * 0.36);
+			this.mapGraphics.lineStyle(1, 0xd7d2c3, 0.65);
+			this.mapGraphics.lineBetween(x + 4, y + TILE_SIZE / 2, x + TILE_SIZE - 4, y + TILE_SIZE / 2);
+			return;
+		}
+
+		if (tile.feature === 'river') {
+			this.mapGraphics.fillStyle(0x3ca7d8, 0.92);
+			this.mapGraphics.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+			this.mapGraphics.lineStyle(2, 0xb9ecff, 0.55);
+			this.mapGraphics.lineBetween(x + 4, y + 8, x + TILE_SIZE - 4, y + TILE_SIZE - 8);
 		}
 	}
 
@@ -328,6 +368,64 @@ export class CityMapScene extends Phaser.Scene {
 		);
 	}
 
+	private createTerrainSprites(): void {
+		if (!this.snapshot) {
+			this.updateCanvasTerrainAttributes('fallback', 0, 0);
+			return;
+		}
+
+		let featureSpriteCount = 0;
+		let decorationSpriteCount = 0;
+
+		for (const tile of this.snapshot.tiles) {
+			if (tile.feature && this.hasTerrainTexture(tile.feature)) {
+				this.terrainSprites.push({
+					sprite: this.add
+						.image(
+							tile.x * TILE_SIZE + TILE_SIZE / 2,
+							tile.y * TILE_SIZE + TILE_SIZE / 2,
+							getTerrainTextureKey(tile.feature)
+						)
+						.setOrigin(0.5)
+						.setDisplaySize(TERRAIN_FEATURE_SIZE, TERRAIN_FEATURE_SIZE)
+						.setDepth(TERRAIN_FEATURE_DEPTH)
+				});
+				featureSpriteCount += 1;
+			}
+
+			if (this.shouldDrawTreeDecoration(tile) && this.textures.exists(TERRAIN_ART.tree.textureKey)) {
+				this.terrainSprites.push({
+					sprite: this.add
+						.image(
+							tile.x * TILE_SIZE + TILE_SIZE / 2,
+							tile.y * TILE_SIZE + TILE_SIZE / 2,
+							TERRAIN_ART.tree.textureKey
+						)
+						.setOrigin(0.5)
+						.setDisplaySize(TREE_DECORATION_SIZE, TREE_DECORATION_SIZE)
+						.setDepth(TERRAIN_DECORATION_DEPTH)
+				});
+				decorationSpriteCount += 1;
+			}
+		}
+
+		this.terrainFeatureSpriteCount = featureSpriteCount;
+		this.terrainDecorationSpriteCount = decorationSpriteCount;
+		this.updateCanvasTerrainAttributes(
+			featureSpriteCount > 0 ? 'image' : 'fallback',
+			featureSpriteCount,
+			decorationSpriteCount
+		);
+	}
+
+	private shouldDrawTreeDecoration(tile: CityMapTileRender): boolean {
+		return tile.feature === null && tile.terrain === 'green' && (tile.x + tile.y) % 3 === 0;
+	}
+
+	private hasTerrainTexture(feature: NonNullable<CityMapTileRender['feature']>): boolean {
+		return this.textures.exists(getTerrainTextureKey(feature));
+	}
+
 	private hasStorefrontTexture(textureKey: string): boolean {
 		return this.textures.exists(textureKey);
 	}
@@ -343,6 +441,22 @@ export class CityMapScene extends Phaser.Scene {
 		canvas.dataset.storeSpriteCount = String(spriteCount);
 	}
 
+	private updateCanvasTerrainAttributes(
+		mode: 'fallback' | 'image',
+		featureSpriteCount: number,
+		decorationSpriteCount: number
+	): void {
+		const canvas = this.game?.canvas;
+
+		if (!canvas) {
+			return;
+		}
+
+		canvas.dataset.terrainAssetMode = mode;
+		canvas.dataset.terrainFeatureSpriteCount = String(featureSpriteCount);
+		canvas.dataset.terrainDecorationSpriteCount = String(decorationSpriteCount);
+	}
+
 	private destroyStoreSprites(): void {
 		for (const storeSprite of this.storeSprites) {
 			storeSprite.sprite.destroy();
@@ -350,6 +464,17 @@ export class CityMapScene extends Phaser.Scene {
 
 		this.storeSprites = [];
 		this.updateCanvasStoreMarkerAttributes('circle', 0);
+	}
+
+	private destroyTerrainSprites(): void {
+		for (const terrainSprite of this.terrainSprites) {
+			terrainSprite.sprite.destroy();
+		}
+
+		this.terrainSprites = [];
+		this.terrainFeatureSpriteCount = 0;
+		this.terrainDecorationSpriteCount = 0;
+		this.updateCanvasTerrainAttributes('fallback', 0, 0);
 	}
 
 	private destroyTileZones(): void {
@@ -362,6 +487,7 @@ export class CityMapScene extends Phaser.Scene {
 
 	private destroySceneObjects(): void {
 		this.destroyStoreSprites();
+		this.destroyTerrainSprites();
 		this.destroyTileZones();
 		this.input.off('pointermove', this.handlePointerMove, this);
 		this.input.off('pointerup', this.handlePointerUp, this);
@@ -373,4 +499,8 @@ export class CityMapScene extends Phaser.Scene {
 		this.outlineGraphics = undefined;
 		this.markerGraphics = undefined;
 	}
+}
+
+function getTerrainTextureKey(feature: NonNullable<CityMapTileRender['feature']>): string {
+	return feature === 'road' ? TERRAIN_ART.road.textureKey : TERRAIN_ART.river.textureKey;
 }
