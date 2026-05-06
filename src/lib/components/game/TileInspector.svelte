@@ -52,6 +52,7 @@
 
 	const storeArt = $derived(store ? getStoreArt(store.archetypeId) : null);
 	const storeArtSrc = $derived(storeArt ? asset(storeArt.path) : '');
+	const tileLabel = $derived(tile?.feature ? label(tile.feature) : tile ? label(tile.terrain) : '');
 	let pendingOption = $state<OpeningOption | null>(null);
 	let pendingTileId = $state<string | null>(null);
 	const pendingIsCurrent = $derived(Boolean(pendingOption && tile && pendingTileId === tile.id));
@@ -136,7 +137,7 @@
 				<p>{label(tile.neighborhood)}</p>
 				<h2>Tile {tile.x}, {tile.y}</h2>
 			</div>
-			<span>{label(tile.terrain)}</span>
+			<span>{tileLabel}</span>
 		</div>
 
 		{#if store}

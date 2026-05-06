@@ -13,6 +13,17 @@ async function clickMapTile(page: import('@playwright/test').Page, x: number, y:
 	await page.mouse.click(box.x + x * tileSize + tileSize / 2, box.y + y * tileSize + tileSize / 2);
 }
 
+async function expectTerrainAssets(page: import('@playwright/test').Page) {
+	const canvas = page.locator('.map-canvas canvas');
+	await expect(canvas).toHaveAttribute('data-terrain-asset-mode', 'image');
+
+	const featureCount = Number(await canvas.getAttribute('data-terrain-feature-sprite-count'));
+	const decorationCount = Number(await canvas.getAttribute('data-terrain-decoration-sprite-count'));
+
+	expect(featureCount).toBe(52);
+	expect(decorationCount).toBeGreaterThan(0);
+}
+
 async function openControlTower(page: import('@playwright/test').Page) {
 	await page.getByRole('button', { name: /views/i }).click();
 	await page.getByRole('menuitem', { name: /control tower/i }).click();
@@ -62,6 +73,25 @@ test('player can found a store from the city map and advance a day', async ({ pa
 
 	await expect(controlTowerStatus.getByText(/^Day 2$/i)).toBeVisible();
 	await expect(controlTower.getByText(/latest daily result/i)).toBeVisible();
+});
+
+test('city map renders terrain assets and blocks road and river placement', async ({ page }) => {
+	await page.goto('/');
+
+	await expectTerrainAssets(page);
+
+	await clickMapTile(page, 10, 1);
+	const roadDialog = page.getByRole('dialog', { name: /tile details/i });
+	await expect(roadDialog).toBeVisible();
+	await expect(roadDialog.getByText(/road location/i).first()).toBeVisible();
+	await expect(roadDialog.getByRole('button', { name: /open .* here/i }).first()).toBeDisabled();
+	await page.getByRole('button', { name: /close tile inspector/i }).click();
+
+	await clickMapTile(page, 5, 1);
+	const riverDialog = page.getByRole('dialog', { name: /tile details/i });
+	await expect(riverDialog).toBeVisible();
+	await expect(riverDialog.getByText(/river location/i).first()).toBeVisible();
+	await expect(riverDialog.getByRole('button', { name: /open .* here/i }).first()).toBeDisabled();
 });
 
 test('player can confirm a founding store from a narrow viewport', async ({ page }) => {

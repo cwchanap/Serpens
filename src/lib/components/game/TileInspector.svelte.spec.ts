@@ -208,4 +208,34 @@ describe('TileInspector opening choices', () => {
 		expect(onFoundStore).toHaveBeenCalledWith('grocery', tile.id);
 		expect(onClose).toHaveBeenCalledOnce();
 	});
+
+	it('shows road placement feedback on a road tile', async () => {
+		const roadTile: CityTile = { ...tile, feature: 'road' };
+		const openingOptions: OpeningOption[] = [
+			{ archetypeId: 'boutique', forecast: forecastFor('boutique'), disabledReason: 'Road location' }
+		];
+
+		renderInspector({ tile: roadTile, openingOptions, disabledReason: 'Road location' });
+
+		await expect.element(page.getByText('Road', { exact: true })).toBeVisible();
+		await expect.element(page.getByText('Road location')).toBeVisible();
+		await expect
+			.element(page.getByRole('button', { name: /Open Boutique Goods here/ }))
+			.toBeDisabled();
+	});
+
+	it('shows river placement feedback on a river tile', async () => {
+		const riverTile: CityTile = { ...tile, feature: 'river' };
+		const openingOptions: OpeningOption[] = [
+			{ archetypeId: 'grocery', forecast: forecastFor('grocery'), disabledReason: 'River location' }
+		];
+
+		renderInspector({ tile: riverTile, openingOptions, disabledReason: 'River location' });
+
+		await expect.element(page.getByText('River', { exact: true })).toBeVisible();
+		await expect.element(page.getByText('River location')).toBeVisible();
+		await expect
+			.element(page.getByRole('button', { name: /Open Grocery Market here/ }))
+			.toBeDisabled();
+	});
 });
