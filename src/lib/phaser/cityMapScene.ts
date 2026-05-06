@@ -152,9 +152,21 @@ export class CityMapScene extends Phaser.Scene {
 
 		if (tile.feature === 'road') {
 			this.mapGraphics.fillStyle(0x50545a, 0.92);
-			this.mapGraphics.fillRect(x, y + TILE_SIZE * 0.32, TILE_SIZE, TILE_SIZE * 0.36);
+			if (tile.roadOrientation === 'horizontal') {
+				this.mapGraphics.fillRect(x, y + TILE_SIZE * 0.32, TILE_SIZE, TILE_SIZE * 0.36);
+				this.mapGraphics.lineStyle(1, 0xd7d2c3, 0.65);
+				this.mapGraphics.lineBetween(
+					x + 4,
+					y + TILE_SIZE / 2,
+					x + TILE_SIZE - 4,
+					y + TILE_SIZE / 2
+				);
+				return;
+			}
+
+			this.mapGraphics.fillRect(x + TILE_SIZE * 0.32, y, TILE_SIZE * 0.36, TILE_SIZE);
 			this.mapGraphics.lineStyle(1, 0xd7d2c3, 0.65);
-			this.mapGraphics.lineBetween(x + 4, y + TILE_SIZE / 2, x + TILE_SIZE - 4, y + TILE_SIZE / 2);
+			this.mapGraphics.lineBetween(x + TILE_SIZE / 2, y + 4, x + TILE_SIZE / 2, y + TILE_SIZE - 4);
 			return;
 		}
 
@@ -379,17 +391,21 @@ export class CityMapScene extends Phaser.Scene {
 				expectedFeatureTileCount += 1;
 
 				if (this.hasTerrainTexture(tile.feature)) {
-					this.terrainSprites.push(
-						this.add
-							.image(
-								tile.x * TILE_SIZE + TILE_SIZE / 2,
-								tile.y * TILE_SIZE + TILE_SIZE / 2,
-								getTerrainTextureKey(tile.feature)
-							)
-							.setOrigin(0.5)
-							.setDisplaySize(TERRAIN_FEATURE_SIZE, TERRAIN_FEATURE_SIZE)
-							.setDepth(TERRAIN_FEATURE_DEPTH)
-					);
+					const sprite = this.add
+						.image(
+							tile.x * TILE_SIZE + TILE_SIZE / 2,
+							tile.y * TILE_SIZE + TILE_SIZE / 2,
+							getTerrainTextureKey(tile.feature)
+						)
+						.setOrigin(0.5)
+						.setDisplaySize(TERRAIN_FEATURE_SIZE, TERRAIN_FEATURE_SIZE)
+						.setDepth(TERRAIN_FEATURE_DEPTH);
+
+					if (tile.feature === 'road' && tile.roadOrientation === 'horizontal') {
+						sprite.setAngle(90);
+					}
+
+					this.terrainSprites.push(sprite);
 					featureSpriteCount += 1;
 				}
 			}

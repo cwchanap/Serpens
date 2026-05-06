@@ -57,4 +57,33 @@ describe('city map render snapshot', () => {
 		expect(snapshot.height).toBe(0);
 		expect(snapshot.tiles).toHaveLength(0);
 	});
+
+	test('marks generated road tiles with their render orientation', () => {
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 20,
+			height: 20,
+			seed: 9
+		});
+		const tile = city.tiles.find((candidate) => !candidate.locked && candidate.feature === null)!;
+		const game = createFoundingGameAtTile({
+			archetypeId: 'convenience',
+			city,
+			tileId: tile.id,
+			seed: 9
+		});
+
+		const snapshot = createCityMapSnapshot(game, null);
+
+		expect(
+			snapshot.tiles.find((candidate) => candidate.id === 'harbor-city-10-1')?.roadOrientation
+		).toBe('vertical');
+		expect(
+			snapshot.tiles.find((candidate) => candidate.id === 'harbor-city-1-10')?.roadOrientation
+		).toBe('horizontal');
+		expect(
+			snapshot.tiles.find((candidate) => candidate.id === tile.id)?.roadOrientation
+		).toBeNull();
+	});
 });

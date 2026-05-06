@@ -1,5 +1,7 @@
 import type { ArchetypeId, CityTile, GameState, Store } from './types';
 
+export type CityMapRoadOrientation = 'horizontal' | 'vertical';
+
 export interface CityMapTileRender {
 	id: string;
 	x: number;
@@ -7,6 +9,7 @@ export interface CityMapTileRender {
 	neighborhood: CityTile['neighborhood'];
 	terrain: CityTile['terrain'];
 	feature: CityTile['feature'];
+	roadOrientation: CityMapRoadOrientation | null;
 	locked: boolean;
 	owned: boolean;
 	selected: boolean;
@@ -53,19 +56,27 @@ export function createCityMapSnapshot(
 
 	const activeCityStores = game.stores.filter((store) => store.cityId === city.id);
 	const ownedTileIds = new Set(activeCityStores.map((store) => store.tileId));
+	const roadCoordinates = new Set(
+		city.tiles
+			.filter((candidate) => candidate.feature === 'road')
+			.map((candidate) => `${candidate.x},${candidate.y}`)
+	);
 
 	return {
 		cityId: city.id,
 		width: city.width,
 		height: city.height,
 		selectedTileId,
-		tiles: city.tiles.map((tile) => createTileRender(tile, ownedTileIds, selectedTileId)),
+		tiles: city.tiles.map((tile) =>
+			createTileRender(tile, roadCoordinates, ownedTileIds, selectedTileId)
+		),
 		stores: activeCityStores.map(createStoreRender)
 	};
 }
 
 function createTileRender(
 	tile: CityTile,
+	roadCoordinates: ReadonlySet<string>,
 	ownedTileIds: ReadonlySet<string>,
 	selectedTileId: string | null
 ): CityMapTileRender {
@@ -76,6 +87,7 @@ function createTileRender(
 		neighborhood: tile.neighborhood,
 		terrain: tile.terrain,
 		feature: tile.feature ?? null,
+		roadOrientation: getRoadRenderOrientation(tile, roadCoordinates),
 		locked: tile.locked,
 		owned: ownedTileIds.has(tile.id),
 		selected: tile.id === selectedTileId,
@@ -84,6 +96,24 @@ function createTileRender(
 		footTraffic: tile.footTraffic,
 		customerFit: tile.customerFit
 	};
+}
+
+function getRoadRenderOrientation(
+	tile: CityTile,
+	roadCoordinates: ReadonlySet<string>
+): CityMapRoadOrientation | null {
+	if (tile.feature !== 'road') {
+		return null;
+	}
+
+	const horizontalNeighborCount =
+		Number(roadCoordinates.has(`${tile.x - 1},${tile.y}`)) +
+		Number(roadCoordinates.has(`${tile.x + 1},${tile.y}`));
+	const verticalNeighborCount =
+		Number(roadCoordinates.has(`${tile.x},${tile.y - 1}`)) +
+		Number(roadCoordinates.has(`${tile.x},${tile.y + 1}`));
+
+	return horizontalNeighborCount > verticalNeighborCount ? 'horizontal' : 'vertical';
 }
 
 function createStoreRender(store: Store): CityMapStoreRender {
