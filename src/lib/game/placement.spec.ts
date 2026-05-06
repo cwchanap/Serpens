@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { generateCity } from './city';
+import { generateCity, isTileBuildable } from './city';
 import {
 	createFoundingGameAtTile,
 	forecastOpening,
@@ -34,7 +34,7 @@ describe('tile placement', () => {
 			height: 20,
 			seed: 77
 		});
-		const tile = city.tiles.find((candidate) => !candidate.locked)!;
+		const tile = city.tiles.find(isTileBuildable)!;
 		const first = forecastOpening(tile, 'grocery');
 		const second = forecastOpening(tile, 'grocery');
 
@@ -53,7 +53,7 @@ describe('tile placement', () => {
 			height: 20,
 			seed: 101
 		});
-		const tile = city.tiles.find((candidate) => !candidate.locked)!;
+		const tile = city.tiles.find(isTileBuildable)!;
 
 		const game = createFoundingGameAtTile({
 			archetypeId: 'boutique',
@@ -123,7 +123,7 @@ describe('tile placement', () => {
 			height: 20,
 			seed: 202
 		});
-		const foundingTile = city.tiles.find((tile) => !tile.locked && tile.feature === null)!;
+		const foundingTile = city.tiles.find(isTileBuildable)!;
 		const roadTile = city.tiles.find((tile) => tile.feature === 'road')!;
 		const riverTile = city.tiles.find((tile) => tile.feature === 'river')!;
 		const game = createFoundingGameAtTile({
@@ -154,6 +154,45 @@ describe('tile placement', () => {
 		);
 	});
 
+	test('keeps same-day road and river blocked placement feedback separately', () => {
+		expect.assertions(3);
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 20,
+			height: 20,
+			seed: 202
+		});
+		const foundingTile = city.tiles.find(isTileBuildable)!;
+		const roadTile = city.tiles.find((tile) => tile.feature === 'road')!;
+		const riverTile = city.tiles.find((tile) => tile.feature === 'river')!;
+		const game = createFoundingGameAtTile({
+			archetypeId: 'boutique',
+			city,
+			tileId: foundingTile.id,
+			seed: 202
+		});
+
+		const roadResult = openStoreAtTile(game, {
+			tileId: roadTile.id,
+			name: 'Road Store',
+			archetypeId: 'boutique'
+		});
+		const riverResult = openStoreAtTile(roadResult, {
+			tileId: riverTile.id,
+			name: 'River Store',
+			archetypeId: 'grocery'
+		});
+
+		expect(riverResult.stores).toHaveLength(1);
+		expect(riverResult.decisions.map((decision) => decision.context)).toContain(
+			'Road location blocks store placement. Choose another city tile.'
+		);
+		expect(riverResult.decisions.map((decision) => decision.context)).toContain(
+			'River location blocks store placement. Choose another city tile.'
+		);
+	});
+
 	test('blocks opening on an occupied tile', () => {
 		expect.assertions(2);
 		const city = generateCity({
@@ -163,7 +202,7 @@ describe('tile placement', () => {
 			height: 20,
 			seed: 101
 		});
-		const tile = city.tiles.find((candidate) => !candidate.locked)!;
+		const tile = city.tiles.find(isTileBuildable)!;
 		const game = createFoundingGameAtTile({
 			archetypeId: 'boutique',
 			city,
@@ -190,9 +229,9 @@ describe('tile placement', () => {
 			height: 20,
 			seed: 202
 		});
-		const foundingTile = city.tiles.find((candidate) => !candidate.locked)!;
+		const foundingTile = city.tiles.find(isTileBuildable)!;
 		const expansionTile = city.tiles.find(
-			(candidate) => !candidate.locked && candidate.id !== foundingTile.id
+			(candidate) => isTileBuildable(candidate) && candidate.id !== foundingTile.id
 		)!;
 		const game = createFoundingGameAtTile({
 			archetypeId: 'boutique',

@@ -246,7 +246,7 @@ function appendLocationUnavailableDecision(game: GameState, reason?: string | nu
 
 function locationUnavailableDecision(game: GameState, reason?: string | null): DecisionItem {
 	return {
-		id: `location-unavailable-${game.day}`,
+		id: `location-unavailable${getLocationUnavailableIdSuffix(reason)}-${game.day}`,
 		title: 'Location unavailable',
 		context: reason
 			? `${reason} blocks store placement. Choose another city tile.`
@@ -261,4 +261,17 @@ function locationUnavailableDecision(game: GameState, reason?: string | null): D
 			}
 		]
 	};
+}
+
+function getLocationUnavailableIdSuffix(reason?: string | null): string {
+	switch (reason) {
+		case 'Locked location':
+			return '-locked';
+		case 'Road location':
+			return '-road';
+		case 'River location':
+			return '-river';
+		default:
+			return '';
+	}
 }
