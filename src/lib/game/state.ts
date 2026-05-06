@@ -1,5 +1,5 @@
 import { getArchetype } from './archetypes';
-import { generateCity } from './city';
+import { generateCity, isTileBuildable } from './city';
 import { clampScore } from './reports';
 import { createRng, normalizeSeed, randomInt } from './rng';
 import type {
@@ -49,7 +49,7 @@ export function createNewGame(archetypeId: ArchetypeId, seed = Date.now()): Game
 		height: 20,
 		seed: normalizedSeed
 	});
-	const fallbackTile = city.tiles.find((tile) => !tile.locked) ?? city.tiles[0]!;
+	const fallbackTile = city.tiles.find(isTileBuildable) ?? city.tiles[0]!;
 	const placedOpeningStore = {
 		...openingStore,
 		cityId: city.id,
@@ -220,14 +220,18 @@ function getExpansionTile(
 	if (requestedTileId) {
 		const requestedTile = city.tiles.find((tile) => tile.id === requestedTileId);
 
-		if (!requestedTile || requestedTile.locked || isTileOccupied(game, requestedTile.id)) {
+		if (
+			!requestedTile ||
+			!isTileBuildable(requestedTile) ||
+			isTileOccupied(game, requestedTile.id)
+		) {
 			return undefined;
 		}
 
 		return requestedTile;
 	}
 
-	return city.tiles.find((tile) => !tile.locked && !isTileOccupied(game, tile.id));
+	return city.tiles.find((tile) => isTileBuildable(tile) && !isTileOccupied(game, tile.id));
 }
 
 function getActiveCity(game: GameState): City | undefined {

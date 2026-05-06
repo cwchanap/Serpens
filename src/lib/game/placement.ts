@@ -1,5 +1,5 @@
 import { ARCHETYPES, getArchetype } from './archetypes';
-import { getTileById } from './city';
+import { getTileById, getTilePlacementBlockReason } from './city';
 import { clampScore } from './reports';
 import { createNewGame, getExpansionSetupCost, openStore } from './state';
 import type {
@@ -125,8 +125,14 @@ export function openStoreAtTile(
 	const city = game.cities.find((candidate) => candidate.id === game.activeCityId);
 	const tile = city ? getTileById(city, input.tileId) : undefined;
 
-	if (!city || !tile || tile.locked || game.stores.some((store) => store.tileId === input.tileId)) {
+	if (!city || !tile) {
 		return appendLocationUnavailableDecision(game);
+	}
+
+	const blockReason = getTilePlacementBlockReason(tile);
+
+	if (blockReason || game.stores.some((store) => store.tileId === input.tileId)) {
+		return appendLocationUnavailableDecision(game, blockReason);
 	}
 
 	const expanded = openStore(game, {
@@ -190,8 +196,10 @@ function getAvailableTileOrThrow(city: City, tileId: string): CityTile {
 		throw new Error(`Unknown tile: ${tileId}`);
 	}
 
-	if (tile.locked) {
-		throw new Error(`Tile is locked: ${tileId}`);
+	const blockReason = getTilePlacementBlockReason(tile);
+
+	if (blockReason) {
+		throw new Error(`${blockReason}: ${tileId}`);
 	}
 
 	return tile;
@@ -223,8 +231,8 @@ function formatNeighborhood(neighborhood: CityTile['neighborhood']): string {
 		.replace(/^./, (character) => character.toUpperCase());
 }
 
-function appendLocationUnavailableDecision(game: GameState): GameState {
-	const decision = locationUnavailableDecision(game);
+function appendLocationUnavailableDecision(game: GameState, reason?: string | null): GameState {
+	const decision = locationUnavailableDecision(game, reason);
 
 	if (game.decisions.some((candidate) => candidate.id === decision.id)) {
 		return game;
@@ -236,11 +244,13 @@ function appendLocationUnavailableDecision(game: GameState): GameState {
 	};
 }
 
-function locationUnavailableDecision(game: GameState): DecisionItem {
+function locationUnavailableDecision(game: GameState, reason?: string | null): DecisionItem {
 	return {
 		id: `location-unavailable-${game.day}`,
 		title: 'Location unavailable',
-		context: 'Choose an unlocked, unoccupied city tile before opening this store.',
+		context: reason
+			? `${reason} blocks store placement. Choose another city tile.`
+			: 'Choose an unlocked, unoccupied city tile before opening this store.',
 		expiresOnDay: game.day + 1,
 		options: [
 			{

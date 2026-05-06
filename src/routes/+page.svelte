@@ -8,7 +8,7 @@
 	import Scorecard from '$lib/components/game/Scorecard.svelte';
 	import StoreOverview from '$lib/components/game/StoreOverview.svelte';
 	import TileInspector from '$lib/components/game/TileInspector.svelte';
-	import { generateCity, getTileById } from '$lib/game/city';
+	import { generateCity, getTileById, getTilePlacementBlockReason } from '$lib/game/city';
 	import { createCityMapSnapshot } from '$lib/game/mapRender';
 	import {
 		createFoundingGameAtTile,
@@ -158,8 +158,10 @@
 			return 'Select a tile';
 		}
 
-		if (selectedTile.locked) {
-			return 'Locked location';
+		const tileBlockReason = getTilePlacementBlockReason(selectedTile);
+
+		if (tileBlockReason) {
+			return tileBlockReason;
 		}
 
 		if (selectedStore) {
@@ -302,7 +304,7 @@
 	function foundStore(archetypeId: ArchetypeId, tileId: string) {
 		const tile = getTileById(starterCity, tileId);
 
-		if (!tile || tile.locked) {
+		if (!tile || getTilePlacementBlockReason(tile)) {
 			return;
 		}
 

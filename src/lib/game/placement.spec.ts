@@ -72,6 +72,88 @@ describe('tile placement', () => {
 		expect(game.stores[0]?.localDemand).toBeGreaterThan(0);
 	});
 
+	test('blocks founding a store on a road tile', () => {
+		expect.assertions(1);
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 20,
+			height: 20,
+			seed: 101
+		});
+		const roadTile = city.tiles.find((tile) => tile.feature === 'road')!;
+
+		expect(() =>
+			createFoundingGameAtTile({
+				archetypeId: 'boutique',
+				city,
+				tileId: roadTile.id,
+				seed: 101
+			})
+		).toThrow(`Road location: ${roadTile.id}`);
+	});
+
+	test('blocks founding a store on a river tile', () => {
+		expect.assertions(1);
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 20,
+			height: 20,
+			seed: 101
+		});
+		const riverTile = city.tiles.find((tile) => tile.feature === 'river')!;
+
+		expect(() =>
+			createFoundingGameAtTile({
+				archetypeId: 'grocery',
+				city,
+				tileId: riverTile.id,
+				seed: 101
+			})
+		).toThrow(`River location: ${riverTile.id}`);
+	});
+
+	test('blocks expansion on road and river tiles', () => {
+		expect.assertions(4);
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 20,
+			height: 20,
+			seed: 202
+		});
+		const foundingTile = city.tiles.find((tile) => !tile.locked && tile.feature === null)!;
+		const roadTile = city.tiles.find((tile) => tile.feature === 'road')!;
+		const riverTile = city.tiles.find((tile) => tile.feature === 'river')!;
+		const game = createFoundingGameAtTile({
+			archetypeId: 'boutique',
+			city,
+			tileId: foundingTile.id,
+			seed: 202
+		});
+
+		const roadResult = openStoreAtTile(game, {
+			tileId: roadTile.id,
+			name: 'Road Store',
+			archetypeId: 'boutique'
+		});
+		const riverResult = openStoreAtTile(game, {
+			tileId: riverTile.id,
+			name: 'River Store',
+			archetypeId: 'grocery'
+		});
+
+		expect(roadResult.stores).toHaveLength(1);
+		expect(roadResult.decisions.at(-1)?.context).toBe(
+			'Road location blocks store placement. Choose another city tile.'
+		);
+		expect(riverResult.stores).toHaveLength(1);
+		expect(riverResult.decisions.at(-1)?.context).toBe(
+			'River location blocks store placement. Choose another city tile.'
+		);
+	});
+
 	test('blocks opening on an occupied tile', () => {
 		expect.assertions(2);
 		const city = generateCity({

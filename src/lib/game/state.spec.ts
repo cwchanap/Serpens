@@ -84,6 +84,24 @@ describe('game state', () => {
 		expect(openedStore?.tileId).not.toBe(game.stores[0]?.tileId);
 	});
 
+	test('direct store opening skips road and river tiles', () => {
+		expect.assertions(3);
+		const game = createNewGame('electronics', 44);
+
+		const result = openStore(game, {
+			name: 'Mall Kiosk',
+			archetypeId: 'electronics',
+			location: 'West Mall'
+		});
+		const openedTile = result.cities[0]?.tiles.find(
+			(tile) => tile.id === result.stores.at(-1)?.tileId
+		);
+
+		expect(result.stores).toHaveLength(2);
+		expect(openedTile?.feature).toBeNull();
+		expect(openedTile?.locked).toBe(false);
+	});
+
 	test('direct store opening uses the selected expansion archetype', () => {
 		expect.assertions(2);
 		const game = createNewGame('boutique', 44);
