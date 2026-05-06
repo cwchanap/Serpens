@@ -47,7 +47,6 @@
 ## Task 1: Static SvelteKit Desktop Build
 
 **Files:**
-
 - Modify: `package.json`
 - Modify: `bun.lock`
 - Modify: `svelte.config.js`
@@ -141,7 +140,6 @@ git commit -m "build: configure SvelteKit for Tauri static output"
 ## Task 2: Save Snapshot Format and Browser Repository
 
 **Files:**
-
 - Create: `src/lib/persistence/saveTypes.ts`
 - Create: `src/lib/persistence/saveCodec.ts`
 - Create: `src/lib/persistence/saveRepository.ts`
@@ -276,10 +274,7 @@ describe('save records', () => {
 describe('browser save repository', () => {
 	test('saves and loads auto-save records', async () => {
 		expect.assertions(4);
-		const repository = createBrowserSaveRepository(
-			new FakeStorage(),
-			() => new Date('2026-05-05T12:00:00.000Z')
-		);
+		const repository = createBrowserSaveRepository(new FakeStorage(), () => new Date('2026-05-05T12:00:00.000Z'));
 		const game = createGame();
 
 		const metadata = await repository.saveAuto(game);
@@ -294,10 +289,7 @@ describe('browser save repository', () => {
 
 	test('creates, overwrites, loads, and deletes manual slots', async () => {
 		expect.assertions(8);
-		const repository = createBrowserSaveRepository(
-			new FakeStorage(),
-			() => new Date('2026-05-05T12:00:00.000Z')
-		);
+		const repository = createBrowserSaveRepository(new FakeStorage(), () => new Date('2026-05-05T12:00:00.000Z'));
 		const firstGame = createGame({ day: 4, cash: 15000 });
 		const secondGame = createGame({ day: 8, cash: 22000 });
 
@@ -325,17 +317,14 @@ describe('browser save repository', () => {
 
 	test('throws when overwriting a missing manual slot', async () => {
 		expect.assertions(2);
-		const repository = createBrowserSaveRepository(
-			new FakeStorage(),
-			() => new Date('2026-05-05T12:00:00.000Z')
-		);
+		const repository = createBrowserSaveRepository(new FakeStorage(), () => new Date('2026-05-05T12:00:00.000Z'));
 
-		await expect(
-			repository.overwriteManualSlot('missing-slot', 'Missing', createGame())
-		).rejects.toThrow(SaveDataError);
-		await expect(
-			repository.overwriteManualSlot('missing-slot', 'Missing', createGame())
-		).rejects.toThrow('Manual save slot not found: missing-slot');
+		await expect(repository.overwriteManualSlot('missing-slot', 'Missing', createGame())).rejects.toThrow(
+			SaveDataError
+		);
+		await expect(repository.overwriteManualSlot('missing-slot', 'Missing', createGame())).rejects.toThrow(
+			'Manual save slot not found: missing-slot'
+		);
 	});
 });
 ```
@@ -658,7 +647,9 @@ export class SaveRepositoryFromDriver implements SaveRepository {
 		await this.driver.write({
 			...snapshot,
 			manualSlots: sortSlots(
-				snapshot.manualSlots.map((slot) => (slot.metadata.id === slotId ? replacement : slot))
+				snapshot.manualSlots.map((slot) =>
+					slot.metadata.id === slotId ? replacement : slot
+				)
 			)
 		});
 		return replacement.metadata;
@@ -679,9 +670,7 @@ export class SaveRepositoryFromDriver implements SaveRepository {
 }
 
 function sortSlots(slots: SaveRecord[]): SaveRecord[] {
-	return [...slots].sort((left, right) =>
-		right.metadata.updatedAt.localeCompare(left.metadata.updatedAt)
-	);
+	return [...slots].sort((left, right) => right.metadata.updatedAt.localeCompare(left.metadata.updatedAt));
 }
 ```
 
@@ -751,7 +740,6 @@ git commit -m "feat: add desktop save repository core"
 ## Task 3: Tauri Store Repository
 
 **Files:**
-
 - Create: `src/lib/persistence/tauriSaveRepository.ts`
 - Create: `src/lib/persistence/tauriSaveRepository.spec.ts`
 - Create: `src/lib/persistence/saveRepositoryFactory.ts`
@@ -763,11 +751,7 @@ Create `src/lib/persistence/tauriSaveRepository.spec.ts`:
 ```ts
 import { describe, expect, test } from 'vitest';
 import type { GameState } from '$lib/game/types';
-import {
-	createTauriSaveRepositoryFromStore,
-	SAVE_STORE_KEY,
-	type StoreLike
-} from './tauriSaveRepository';
+import { createTauriSaveRepositoryFromStore, SAVE_STORE_KEY, type StoreLike } from './tauriSaveRepository';
 
 class FakeStore implements StoreLike {
 	readonly values = new Map<string, unknown>();
@@ -819,10 +803,7 @@ describe('Tauri save repository', () => {
 	test('persists save snapshot through the Tauri store key', async () => {
 		expect.assertions(5);
 		const store = new FakeStore();
-		const repository = createTauriSaveRepositoryFromStore(
-			Promise.resolve(store),
-			() => new Date('2026-05-05T12:00:00.000Z')
-		);
+		const repository = createTauriSaveRepositoryFromStore(Promise.resolve(store), () => new Date('2026-05-05T12:00:00.000Z'));
 
 		await repository.saveAuto(createGame({ day: 6 }));
 		const slot = await repository.createManualSlot('Desktop Run', createGame({ day: 7 }));
@@ -853,7 +834,10 @@ Create `src/lib/persistence/tauriSaveRepository.ts`:
 
 ```ts
 import { load } from '@tauri-apps/plugin-store';
-import { createEmptySaveStore, validateSaveStoreSnapshot } from './saveCodec';
+import {
+	createEmptySaveStore,
+	validateSaveStoreSnapshot
+} from './saveCodec';
 import type { SaveRepository } from './saveRepository';
 import { SaveRepositoryFromDriver, type SaveStoreDriver } from './saveStoreRepository';
 import type { SaveStoreSnapshot } from './saveTypes';
@@ -944,7 +928,6 @@ git commit -m "feat: add Tauri save repository"
 ## Task 4: Minimal Tauri Shell
 
 **Files:**
-
 - Create: `src-tauri/.gitignore`
 - Create: `src-tauri/Cargo.toml`
 - Create: `src-tauri/build.rs`
@@ -1095,7 +1078,6 @@ git commit -m "feat: add Tauri desktop shell"
 ## Task 5: Save Panel Component
 
 **Files:**
-
 - Create: `src/lib/components/game/SavePanel.svelte`
 - Create: `src/lib/components/game/SavePanel.svelte.spec.ts`
 
@@ -1295,8 +1277,7 @@ Create `src/lib/components/game/SavePanel.svelte`. This component code was check
 </script>
 
 <div class="save-backdrop">
-	<button type="button" class="save-backdrop-button" aria-label="Close saves" onclick={onClose}
-	></button>
+	<button type="button" class="save-backdrop-button" aria-label="Close saves" onclick={onClose}></button>
 	<div class="save-panel" role="dialog" aria-modal="true" aria-label="Saves">
 		<header>
 			<div>
@@ -1310,18 +1291,12 @@ Create `src/lib/components/game/SavePanel.svelte`. This component code was check
 			<div>
 				<h3>Auto-save</h3>
 				{#if autoSave}
-					<p>
-						Day {autoSave.day} · {autoSave.storeCount} stores · {formatUpdatedAt(
-							autoSave.updatedAt
-						)}
-					</p>
+					<p>Day {autoSave.day} · {autoSave.storeCount} stores · {formatUpdatedAt(autoSave.updatedAt)}</p>
 				{:else}
 					<p>No auto-save yet.</p>
 				{/if}
 			</div>
-			<button type="button" disabled={!autoSave} onclick={() => void onResumeAutoSave()}
-				>Resume</button
-			>
+			<button type="button" disabled={!autoSave} onclick={() => void onResumeAutoSave()}>Resume</button>
 		</section>
 
 		<section aria-label="Create save slot">
@@ -1347,11 +1322,7 @@ Create `src/lib/components/game/SavePanel.svelte`. This component code was check
 							</div>
 							<div class="slot-actions">
 								<button type="button" onclick={() => void onLoadSlot(slot.id)}>Load</button>
-								<button
-									type="button"
-									disabled={!activeGame}
-									onclick={() => void onSaveSlot(slot.name, slot.id)}
-								>
+								<button type="button" disabled={!activeGame} onclick={() => void onSaveSlot(slot.name, slot.id)}>
 									Overwrite
 								</button>
 								<button type="button" onclick={() => void onDeleteSlot(slot.id)}>Delete</button>
@@ -1556,7 +1527,6 @@ git commit -m "feat: add save slot panel"
 ## Task 6: Route Save Integration and E2E Coverage
 
 **Files:**
-
 - Modify: `src/routes/+page.svelte`
 - Modify: `src/routes/retail-sim.e2e.ts`
 
@@ -1911,7 +1881,6 @@ git commit -m "feat: wire save slots into game route"
 ## Task 7: Final Verification
 
 **Files:**
-
 - No planned code changes.
 
 - [ ] **Step 1: Run full Svelte and TypeScript checks**

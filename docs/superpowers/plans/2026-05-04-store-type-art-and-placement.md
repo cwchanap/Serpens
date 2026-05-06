@@ -44,7 +44,6 @@ Expected: `src/lib/components/game/TileInspector.svelte` and `src/lib/phaser/cit
 ### Task 1: Storefront Art Registry and Assets
 
 **Files:**
-
 - Modify: `src/lib/assets/gameArt.ts`
 - Modify: `src/lib/assets/gameArt.spec.ts`
 - Create: `static/assets/game/shops/boutique-storefront.png`
@@ -103,9 +102,7 @@ describe('game art asset constants', () => {
 			expect(art.archetypeId).toBe(archetypeId);
 			expect(art.path).toMatch(/^\/assets\/game\/shops\/.+\.png$/);
 			expect(art.textureKey).toBe(`shop-storefront-${archetypeId}`);
-			expect(art.alt.toLowerCase()).toContain(
-				archetypeId === 'electronics' ? 'electronics' : archetypeId
-			);
+			expect(art.alt.toLowerCase()).toContain(archetypeId === 'electronics' ? 'electronics' : archetypeId);
 			expect(existsSync(staticPath(art.path))).toBe(true);
 		}
 	});
@@ -194,7 +191,6 @@ git commit -m "feat: add store type art registry"
 ### Task 2: Selected Store Type in State and Placement
 
 **Files:**
-
 - Modify: `src/lib/game/types.ts`
 - Modify: `src/lib/game/state.ts`
 - Modify: `src/lib/game/state.spec.ts`
@@ -206,60 +202,60 @@ git commit -m "feat: add store type art registry"
 In `src/lib/game/placement.spec.ts`, replace the test named `deducts the forecast setup cost when opening at a tile` with:
 
 ```ts
-test('deducts the chosen archetype setup cost when opening at a tile', () => {
-	expect.assertions(5);
-	const city = generateCity({
-		id: 'harbor-city',
-		name: 'Harbor City',
-		width: 20,
-		height: 20,
-		seed: 202
-	});
-	const foundingTile = city.tiles.find((candidate) => !candidate.locked)!;
-	const expansionTile = city.tiles.find(
-		(candidate) => !candidate.locked && candidate.id !== foundingTile.id
-	)!;
-	const game = createFoundingGameAtTile({
-		archetypeId: 'electronics',
-		city,
-		tileId: foundingTile.id,
-		seed: 202
-	});
-	const forecast = forecastOpening(expansionTile, 'grocery');
+	test('deducts the chosen archetype setup cost when opening at a tile', () => {
+		expect.assertions(5);
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 20,
+			height: 20,
+			seed: 202
+		});
+		const foundingTile = city.tiles.find((candidate) => !candidate.locked)!;
+		const expansionTile = city.tiles.find(
+			(candidate) => !candidate.locked && candidate.id !== foundingTile.id
+		)!;
+		const game = createFoundingGameAtTile({
+			archetypeId: 'electronics',
+			city,
+			tileId: foundingTile.id,
+			seed: 202
+		});
+		const forecast = forecastOpening(expansionTile, 'grocery');
 
-	const result = openStoreAtTile(game, {
-		tileId: expansionTile.id,
-		name: 'Expansion Store',
-		archetypeId: 'grocery'
-	});
+		const result = openStoreAtTile(game, {
+			tileId: expansionTile.id,
+			name: 'Expansion Store',
+			archetypeId: 'grocery'
+		});
 
-	expect(result.stores).toHaveLength(2);
-	expect(result.cash).toBe(game.cash - forecast.setupCost);
-	expect(result.stores.at(-1)?.archetypeId).toBe('grocery');
-	expect(result.stores.at(-1)?.tileId).toBe(expansionTile.id);
-	expect(result.decisions).toHaveLength(0);
-});
+		expect(result.stores).toHaveLength(2);
+		expect(result.cash).toBe(game.cash - forecast.setupCost);
+		expect(result.stores.at(-1)?.archetypeId).toBe('grocery');
+		expect(result.stores.at(-1)?.tileId).toBe(expansionTile.id);
+		expect(result.decisions).toHaveLength(0);
+	});
 ```
 
 Add this test below `recommends archetypes from selected tile traits`:
 
 ```ts
-test('returns all archetypes sorted by selected tile fit', () => {
-	expect.assertions(2);
-	const city = generateCity({
-		id: 'harbor-city',
-		name: 'Harbor City',
-		width: 20,
-		height: 20,
-		seed: 77
+	test('returns all archetypes sorted by selected tile fit', () => {
+		expect.assertions(2);
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 20,
+			height: 20,
+			seed: 77
+		});
+		const tile = city.tiles.find((candidate) => candidate.neighborhood === 'campus')!;
+
+		const recommendations = getRecommendedArchetypes(tile);
+
+		expect(recommendations).toHaveLength(4);
+		expect(recommendations[0]).toBe('electronics');
 	});
-	const tile = city.tiles.find((candidate) => candidate.neighborhood === 'campus')!;
-
-	const recommendations = getRecommendedArchetypes(tile);
-
-	expect(recommendations).toHaveLength(4);
-	expect(recommendations[0]).toBe('electronics');
-});
 ```
 
 - [ ] **Step 2: Run the failing placement test**
@@ -300,15 +296,15 @@ interface OpenStoreInput {
 In `openStore`, replace:
 
 ```ts
-const archetypeId = game.stores[0]?.archetypeId ?? 'convenience';
-const tile = getExpansionTile(game, input.tileId);
+	const archetypeId = game.stores[0]?.archetypeId ?? 'convenience';
+	const tile = getExpansionTile(game, input.tileId);
 ```
 
 with:
 
 ```ts
-const archetypeId = input.archetypeId;
-const tile = getExpansionTile(game, input.tileId);
+	const archetypeId = input.archetypeId;
+	const tile = getExpansionTile(game, input.tileId);
 ```
 
 - [ ] **Step 5: Update direct state tests to pass a type**
@@ -316,56 +312,56 @@ const tile = getExpansionTile(game, input.tileId);
 In `src/lib/game/state.spec.ts`, update `opens stores up to the local chain limit` to pass the founding type:
 
 ```ts
-const second = openStore(game, {
-	name: 'Mall Kiosk',
-	location: 'West Mall',
-	archetypeId: 'electronics'
-});
-const third = openStore(second, {
-	name: 'Campus Shop',
-	location: 'North Campus',
-	archetypeId: 'electronics'
-});
-const fourth = openStore(third, {
-	name: 'Airport Shop',
-	location: 'Airport',
-	archetypeId: 'electronics'
-});
+		const second = openStore(game, {
+			name: 'Mall Kiosk',
+			location: 'West Mall',
+			archetypeId: 'electronics'
+		});
+		const third = openStore(second, {
+			name: 'Campus Shop',
+			location: 'North Campus',
+			archetypeId: 'electronics'
+		});
+		const fourth = openStore(third, {
+			name: 'Airport Shop',
+			location: 'Airport',
+			archetypeId: 'electronics'
+		});
 ```
 
 Update `direct store opening uses a map tile in the active city`:
 
 ```ts
-const result = openStore(game, {
-	name: 'Mall Kiosk',
-	location: 'West Mall',
-	archetypeId: 'electronics'
-});
+		const result = openStore(game, {
+			name: 'Mall Kiosk',
+			location: 'West Mall',
+			archetypeId: 'electronics'
+		});
 ```
 
 Update `does not duplicate same-day blocked expansion decisions`:
 
 ```ts
-const second = openStore(game, {
-	name: 'Mall Kiosk',
-	location: 'West Mall',
-	archetypeId: 'electronics'
-});
-const third = openStore(second, {
-	name: 'Campus Shop',
-	location: 'North Campus',
-	archetypeId: 'electronics'
-});
-const fourth = openStore(third, {
-	name: 'Airport Shop',
-	location: 'Airport',
-	archetypeId: 'electronics'
-});
-const fifth = openStore(fourth, {
-	name: 'Station Shop',
-	location: 'Station',
-	archetypeId: 'electronics'
-});
+		const second = openStore(game, {
+			name: 'Mall Kiosk',
+			location: 'West Mall',
+			archetypeId: 'electronics'
+		});
+		const third = openStore(second, {
+			name: 'Campus Shop',
+			location: 'North Campus',
+			archetypeId: 'electronics'
+		});
+		const fourth = openStore(third, {
+			name: 'Airport Shop',
+			location: 'Airport',
+			archetypeId: 'electronics'
+		});
+		const fifth = openStore(fourth, {
+			name: 'Station Shop',
+			location: 'Station',
+			archetypeId: 'electronics'
+		});
 ```
 
 - [ ] **Step 6: Pass selected type through placement**
@@ -395,12 +391,12 @@ export function openStoreAtTile(
 Add `archetypeId` to the `openStore` call:
 
 ```ts
-const expanded = openStore(game, {
-	name: input.name,
-	location: formatLocation(tile),
-	archetypeId: input.archetypeId,
-	tileId: tile.id
-});
+	const expanded = openStore(game, {
+		name: input.name,
+		location: formatLocation(tile),
+		archetypeId: input.archetypeId,
+		tileId: tile.id
+	});
 ```
 
 - [ ] **Step 7: Update occupied tile test call**
@@ -437,7 +433,6 @@ git commit -m "feat: choose store type for openings"
 ### Task 3: Store Type in Map Snapshot and Phaser Rendering
 
 **Files:**
-
 - Modify: `src/lib/game/mapRender.ts`
 - Modify: `src/lib/game/mapRender.spec.ts`
 - Modify: `src/lib/phaser/cityMapScene.ts`
@@ -608,7 +603,6 @@ git commit -m "feat: render store type art on map"
 ### Task 4: Type-Specific Tile Inspector UI
 
 **Files:**
-
 - Modify: `src/lib/components/game/TileInspector.svelte`
 - Modify: `src/lib/components/game/TileInspector.svelte.spec.ts`
 
@@ -701,18 +695,10 @@ describe('TileInspector opening choices', () => {
 			onOpenStore
 		});
 
-		await expect
-			.element(page.getByRole('button', { name: /open electronics & games here/i }))
-			.toBeVisible();
-		await expect
-			.element(page.getByRole('button', { name: /open boutique goods here/i }))
-			.toBeVisible();
-		await expect
-			.element(page.getByRole('button', { name: /open convenience store here/i }))
-			.toBeVisible();
-		await expect
-			.element(page.getByRole('button', { name: /open grocery market here/i }))
-			.toBeDisabled();
+		await expect.element(page.getByRole('button', { name: /open electronics & games here/i })).toBeVisible();
+		await expect.element(page.getByRole('button', { name: /open boutique goods here/i })).toBeVisible();
+		await expect.element(page.getByRole('button', { name: /open convenience store here/i })).toBeVisible();
+		await expect.element(page.getByRole('button', { name: /open grocery market here/i })).toBeDisabled();
 
 		await page.getByRole('button', { name: /open electronics & games here/i }).click();
 
@@ -754,18 +740,19 @@ Expected: FAIL because the component still expects `forecast`, `recommendations`
 In `src/lib/components/game/TileInspector.svelte`, replace the imports:
 
 ```svelte
-import {asset} from '$app/paths'; import {(SHOP_STOREFRONT_ALT, SHOP_STOREFRONT_PATH)} from '$lib/assets/gameArt';
-import {getArchetype} from '$lib/game/archetypes'; import type {(ArchetypeId,
-CityTile,
-OpeningForecast,
-Store)} from '$lib/game/types';
+	import { asset } from '$app/paths';
+	import { SHOP_STOREFRONT_ALT, SHOP_STOREFRONT_PATH } from '$lib/assets/gameArt';
+	import { getArchetype } from '$lib/game/archetypes';
+	import type { ArchetypeId, CityTile, OpeningForecast, Store } from '$lib/game/types';
 ```
 
 with:
 
 ```svelte
-import {asset} from '$app/paths'; import {getStoreArt} from '$lib/assets/gameArt'; import {getArchetype}
-from '$lib/game/archetypes'; import type {(ArchetypeId, CityTile, OpeningOption, Store)} from '$lib/game/types';
+	import { asset } from '$app/paths';
+	import { getStoreArt } from '$lib/assets/gameArt';
+	import { getArchetype } from '$lib/game/archetypes';
+	import type { ArchetypeId, CityTile, OpeningOption, Store } from '$lib/game/types';
 ```
 
 Replace the props interface with:
@@ -786,21 +773,23 @@ Replace the props interface with:
 Update prop destructuring:
 
 ```svelte
-let {(tile,
-store,
-openingOptions,
-gameStarted,
-disabledReason,
-onFoundStore,
-onOpenStore,
-onClose)}: Props = $props();
+	let {
+		tile,
+		store,
+		openingOptions,
+		gameStarted,
+		disabledReason,
+		onFoundStore,
+		onOpenStore,
+		onClose
+	}: Props = $props();
 ```
 
 Replace `const shopStorefrontSrc = asset(SHOP_STOREFRONT_PATH);` with:
 
 ```svelte
-const storeArt = $derived(store ? getStoreArt(store.archetypeId) : null); const storeArtSrc =
-$derived(storeArt ? asset(storeArt.path) : '');
+	const storeArt = $derived(store ? getStoreArt(store.archetypeId) : null);
+	const storeArtSrc = $derived(storeArt ? asset(storeArt.path) : '');
 ```
 
 - [ ] **Step 4: Render type-specific store art**
@@ -808,18 +797,18 @@ $derived(storeArt ? asset(storeArt.path) : '');
 In the store details section, replace the image block with:
 
 ```svelte
-{#if storeArt}
-	<div class="store-art">
-		<img
-			src={storeArtSrc}
-			alt={storeArt.alt}
-			width="1024"
-			height="1024"
-			loading="lazy"
-			decoding="async"
-		/>
-	</div>
-{/if}
+				{#if storeArt}
+					<div class="store-art">
+						<img
+							src={storeArtSrc}
+							alt={storeArt.alt}
+							width="1024"
+							height="1024"
+							loading="lazy"
+							decoding="async"
+						/>
+					</div>
+				{/if}
 ```
 
 Keep the existing `.store-art` and `.store-art img` CSS sizing rules.
@@ -829,48 +818,50 @@ Keep the existing `.store-art` and `.store-art img` CSS sizing rules.
 Replace the `Recommended archetypes` section and the `Expansion action` section for empty tiles with this single section:
 
 ```svelte
-{#if !tile.locked}
-	<section aria-label="Store type choices">
-		<h3>Store type</h3>
-		<div class="actions store-type-actions">
-			{#each openingOptions as option (option.archetypeId)}
-				{@const archetype = getArchetype(option.archetypeId)}
-				<button
-					type="button"
-					disabled={option.disabledReason !== null}
-					onclick={() =>
-						gameStarted ? onOpenStore(option.archetypeId) : onFoundStore(option.archetypeId)}
-				>
-					<span>Open {archetype.name} here</span>
-					<small>
-						Setup {currency.format(option.forecast.setupCost)} · Revenue {currency.format(
-							option.forecast.projectedDailyRevenue
-						)}/day
-					</small>
-				</button>
-			{/each}
-		</div>
-		{#each openingOptions as option (option.archetypeId)}
-			{#if option.disabledReason}
-				<p class="disabled-copy">{option.disabledReason}</p>
+			{#if !tile.locked}
+				<section aria-label="Store type choices">
+					<h3>Store type</h3>
+					<div class="actions store-type-actions">
+						{#each openingOptions as option (option.archetypeId)}
+							{@const archetype = getArchetype(option.archetypeId)}
+							<button
+								type="button"
+								disabled={option.disabledReason !== null}
+								onclick={() =>
+									gameStarted
+										? onOpenStore(option.archetypeId)
+										: onFoundStore(option.archetypeId)}
+							>
+								<span>Open {archetype.name} here</span>
+								<small>
+									Setup {currency.format(option.forecast.setupCost)} · Revenue {currency.format(
+										option.forecast.projectedDailyRevenue
+									)}/day
+								</small>
+							</button>
+						{/each}
+					</div>
+					{#each openingOptions as option (option.archetypeId)}
+						{#if option.disabledReason}
+							<p class="disabled-copy">{option.disabledReason}</p>
+						{/if}
+					{/each}
+				</section>
+			{:else}
+				<section aria-label="Expansion action">
+					<p class="disabled-copy">Locked location</p>
+				</section>
 			{/if}
-		{/each}
-	</section>
-{:else}
-	<section aria-label="Expansion action">
-		<p class="disabled-copy">Locked location</p>
-	</section>
-{/if}
 ```
 
 In the occupied store branch, remove the disabled `Open store here` button. Keep a concise disabled copy:
 
 ```svelte
-{#if gameStarted && disabledReason}
-	<section aria-label="Expansion action">
-		<p class="disabled-copy">{disabledReason ?? defaultDisabledReason}</p>
-	</section>
-{/if}
+			{#if gameStarted && disabledReason}
+				<section aria-label="Expansion action">
+					<p class="disabled-copy">{disabledReason ?? defaultDisabledReason}</p>
+				</section>
+			{/if}
 ```
 
 - [ ] **Step 6: Style stacked button content**
@@ -918,7 +909,6 @@ git commit -m "feat: choose store type in inspector"
 ### Task 5: Route Wiring and End-to-End Flow
 
 **Files:**
-
 - Modify: `src/routes/+page.svelte`
 - Modify: `src/routes/retail-sim.e2e.ts`
 
@@ -927,32 +917,32 @@ git commit -m "feat: choose store type in inspector"
 In `src/routes/retail-sim.e2e.ts`, update the founding test after tile click:
 
 ```ts
-await expect(page.getByText(/store type/i)).toBeVisible();
-await expect(page.locator('.map-canvas canvas')).toHaveAttribute('data-store-sprite-count', '0');
-await page.getByRole('button', { name: /open boutique goods here/i }).click();
+	await expect(page.getByText(/store type/i)).toBeVisible();
+	await expect(page.locator('.map-canvas canvas')).toHaveAttribute('data-store-sprite-count', '0');
+	await page.getByRole('button', { name: /open boutique goods here/i }).click();
 ```
 
 Replace the shared storefront image assertion with:
 
 ```ts
-await expect(
-	page.getByRole('img', { name: /anime-style boutique storefront for an owned shop/i })
-).toBeVisible();
+	await expect(
+		page.getByRole('img', { name: /anime-style boutique storefront for an owned shop/i })
+	).toBeVisible();
 ```
 
 In `player expands from a selected city tile`, replace the expansion click:
 
 ```ts
-await expect(page.getByText(/store type/i)).toBeVisible();
-await page.getByRole('button', { name: /open electronics & games here/i }).click();
+	await expect(page.getByText(/store type/i)).toBeVisible();
+	await page.getByRole('button', { name: /open electronics & games here/i }).click();
 ```
 
 Add this assertion after the store details heading assertion:
 
 ```ts
-await expect(
-	page.getByRole('img', { name: /anime-style electronics and games storefront for an owned shop/i })
-).toBeVisible();
+	await expect(
+		page.getByRole('img', { name: /anime-style electronics and games storefront for an owned shop/i })
+	).toBeVisible();
 ```
 
 - [ ] **Step 2: Run the failing e2e file**
@@ -970,7 +960,7 @@ Expected: FAIL because route props and handlers still use the old generic expans
 In `src/routes/+page.svelte`, update the type import:
 
 ```svelte
-import type {(ArchetypeId, CompanyPolicy, GameState, OpeningOption)} from '$lib/game/types';
+	import type { ArchetypeId, CompanyPolicy, GameState, OpeningOption } from '$lib/game/types';
 ```
 
 Remove the old `forecast`, `expansionSetupCost`, `openStoreDisabledReason`, and `canOpenStore` derived values. Add:
@@ -1060,16 +1050,16 @@ In `src/routes/+page.svelte`, replace `addStoreAtSelectedTile` with:
 Update the `TileInspector` props:
 
 ```svelte
-<TileInspector
-	tile={selectedTile}
-	store={selectedStore}
-	{openingOptions}
-	gameStarted={game !== null}
-	disabledReason={selectedTileDisabledReason}
-	onFoundStore={foundStore}
-	onOpenStore={addStoreAtSelectedTile}
-	onClose={closeInspector}
-/>
+				<TileInspector
+					tile={selectedTile}
+					store={selectedStore}
+					{openingOptions}
+					gameStarted={game !== null}
+					disabledReason={selectedTileDisabledReason}
+					onFoundStore={foundStore}
+					onOpenStore={addStoreAtSelectedTile}
+					onClose={closeInspector}
+				/>
 ```
 
 - [ ] **Step 5: Update any remaining old API calls**
@@ -1108,7 +1098,6 @@ git commit -m "feat: require store type before placement"
 ### Task 6: Full Verification and Browser Check
 
 **Files:**
-
 - No planned code changes unless verification finds a concrete defect.
 
 - [ ] **Step 1: Run focused formatting check**
