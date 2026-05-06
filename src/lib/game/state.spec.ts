@@ -85,21 +85,46 @@ describe('game state', () => {
 	});
 
 	test('direct store opening skips road and river tiles', () => {
-		expect.assertions(3);
+		expect.assertions(4);
 		const game = createNewGame('electronics', 44);
+		const city = game.cities[0]!;
+		const foundingTileId = game.stores[0]?.tileId;
+		const riverTile = city.tiles.find((tile) => tile.feature === 'river')!;
+		const roadTile = city.tiles.find((tile) => tile.feature === 'road')!;
+		const buildableTile = city.tiles.find(
+			(tile) => tile.feature === null && !tile.locked && tile.id !== foundingTileId
+		)!;
+		const reorderedTileIds = new Set([
+			city.tiles[0]!.id,
+			riverTile.id,
+			roadTile.id,
+			buildableTile.id
+		]);
+		const reorderedCity = {
+			...city,
+			tiles: [
+				city.tiles[0]!,
+				riverTile,
+				roadTile,
+				buildableTile,
+				...city.tiles.filter((tile) => !reorderedTileIds.has(tile.id))
+			]
+		};
 
-		const result = openStore(game, {
-			name: 'Mall Kiosk',
-			archetypeId: 'electronics',
-			location: 'West Mall'
-		});
-		const openedTile = result.cities[0]?.tiles.find(
-			(tile) => tile.id === result.stores.at(-1)?.tileId
+		const result = openStore(
+			{ ...game, cities: [reorderedCity] },
+			{
+				name: 'Mall Kiosk',
+				archetypeId: 'electronics',
+				location: 'West Mall'
+			}
 		);
+		const openedStore = result.stores.at(-1);
 
 		expect(result.stores).toHaveLength(2);
-		expect(openedTile?.feature).toBeNull();
-		expect(openedTile?.locked).toBe(false);
+		expect(openedStore?.tileId).toBe(buildableTile.id);
+		expect(openedStore?.tileId).not.toBe(riverTile.id);
+		expect(openedStore?.tileId).not.toBe(roadTile.id);
 	});
 
 	test('direct store opening uses the selected expansion archetype', () => {
