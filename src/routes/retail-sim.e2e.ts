@@ -24,6 +24,7 @@ async function chooseStoreType(page: import('@playwright/test').Page, storeTypeN
 	const confirmDialog = page.getByRole('dialog', { name: /confirm store opening/i });
 	await expect(confirmDialog).toBeVisible();
 	await confirmDialog.getByRole('button', { name: /confirm opening/i }).click();
+	await expect(page.getByRole('dialog', { name: /tile details/i })).toHaveCount(0);
 }
 
 test('player can found a store from the city map and advance a day', async ({ page }) => {
@@ -44,11 +45,9 @@ test('player can found a store from the city map and advance a day', async ({ pa
 	).toBeVisible();
 	await expect(mapCanvas).toHaveAttribute('data-store-sprite-count', '0');
 	await confirmDialog.getByRole('button', { name: /confirm opening/i }).click();
+	await expect(page.getByRole('dialog', { name: /tile details/i })).toHaveCount(0);
 	await expect(mapCanvas).toHaveAttribute('data-store-marker-mode', 'image');
 	await expect(mapCanvas).toHaveAttribute('data-store-sprite-count', '1');
-	await expect(
-		page.getByRole('img', { name: /anime-style boutique storefront for an owned shop/i })
-	).toBeVisible();
 
 	await expect(page.getByRole('heading', { name: /scorecard/i })).toHaveCount(0);
 	await openControlTower(page);
@@ -81,7 +80,6 @@ test('player can confirm a founding store from a narrow viewport', async ({ page
 	await expect(mapCanvas).toHaveAttribute('data-store-marker-mode', 'image');
 	await expect(mapCanvas).toHaveAttribute('data-store-sprite-count', '1');
 	await expect(page.getByText(/\$[0-9,]+ cash/i)).toBeVisible();
-	await expect(page.getByLabel('Store details').getByText(/\(1, 1\)/)).toBeVisible();
 });
 
 async function expectOverlayToCoverMap(page: import('@playwright/test').Page) {
@@ -153,16 +151,7 @@ test('player expands from a selected city tile', async ({ page }) => {
 	await expect(mapCanvas).toHaveAttribute('data-store-sprite-count', '1');
 	await confirmDialog.getByRole('button', { name: /confirm opening/i }).click();
 
-	await expect(page.getByRole('dialog', { name: /tile details/i })).toBeVisible();
-	await expect(
-		page.getByLabel('Store details').getByRole('heading', { name: 'Store #2', exact: true })
-	).toBeVisible();
-	await expect(page.getByLabel('Store details').getByText(/\(2, 1\)/)).toBeVisible();
-	await expect(
-		page.getByRole('img', {
-			name: /anime-style electronics and games storefront for an owned shop/i
-		})
-	).toBeVisible();
+	await expect(page.getByRole('dialog', { name: /tile details/i })).toHaveCount(0);
 
 	await openControlTower(page);
 	const controlTower = page.getByRole('dialog', { name: /control tower/i });

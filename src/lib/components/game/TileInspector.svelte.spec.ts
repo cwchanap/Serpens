@@ -128,8 +128,9 @@ describe('TileInspector opening choices', () => {
 			}
 		];
 		const onOpenStore = vi.fn();
+		const onClose = vi.fn();
 
-		renderInspector({ openingOptions, onOpenStore });
+		renderInspector({ openingOptions, onOpenStore, onClose });
 
 		const electronicsButton = page.getByRole('button', { name: /Open Electronics & Games here/ });
 		await expect.element(electronicsButton).toBeVisible();
@@ -163,6 +164,7 @@ describe('TileInspector opening choices', () => {
 		await dialog.getByRole('button', { name: 'Confirm opening' }).click();
 
 		expect(onOpenStore).toHaveBeenCalledWith('electronics', tile.id);
+		expect(onClose).toHaveBeenCalledOnce();
 	});
 
 	it('cancels a pending store type confirmation without opening a store', async () => {
@@ -170,8 +172,9 @@ describe('TileInspector opening choices', () => {
 			{ archetypeId: 'boutique', forecast: forecastFor('boutique'), disabledReason: null }
 		];
 		const onOpenStore = vi.fn();
+		const onClose = vi.fn();
 
-		renderInspector({ openingOptions, onOpenStore });
+		renderInspector({ openingOptions, onOpenStore, onClose });
 
 		await page.getByRole('button', { name: /Open Boutique Goods here/ }).click();
 		const dialog = page.getByRole('dialog', { name: 'Confirm store opening' });
@@ -180,6 +183,7 @@ describe('TileInspector opening choices', () => {
 		await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
 
 		expect(onOpenStore).not.toHaveBeenCalled();
+		expect(onClose).not.toHaveBeenCalled();
 		await expect.element(dialog).not.toBeInTheDocument();
 	});
 
@@ -188,8 +192,9 @@ describe('TileInspector opening choices', () => {
 			{ archetypeId: 'grocery', forecast: forecastFor('grocery'), disabledReason: null }
 		];
 		const onFoundStore = vi.fn();
+		const onClose = vi.fn();
 
-		renderInspector({ openingOptions, gameStarted: false, onFoundStore });
+		renderInspector({ openingOptions, gameStarted: false, onFoundStore, onClose });
 
 		await page.getByRole('button', { name: /Open Grocery Market here/ }).click();
 		expect(onFoundStore).not.toHaveBeenCalled();
@@ -200,5 +205,6 @@ describe('TileInspector opening choices', () => {
 			.click();
 
 		expect(onFoundStore).toHaveBeenCalledWith('grocery', tile.id);
+		expect(onClose).toHaveBeenCalledOnce();
 	});
 });

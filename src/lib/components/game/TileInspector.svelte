@@ -91,6 +91,8 @@
 		} else {
 			onFoundStore(archetypeId, tileId);
 		}
+
+		onClose();
 	}
 
 	function closeInspector(): void {
