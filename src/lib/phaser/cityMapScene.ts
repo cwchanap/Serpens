@@ -394,7 +394,10 @@ export class CityMapScene extends Phaser.Scene {
 				}
 			}
 
-			if (this.shouldDrawTreeDecoration(tile) && this.textures.exists(TERRAIN_ART.tree.textureKey)) {
+			if (
+				this.shouldDrawTreeDecoration(tile) &&
+				this.textures.exists(TERRAIN_ART.tree.textureKey)
+			) {
 				this.terrainSprites.push(
 					this.add
 						.image(
