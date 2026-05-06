@@ -344,6 +344,72 @@ describe('save records', () => {
 		);
 	});
 
+	test('accepts saved city tiles without feature for old-save compatibility', () => {
+		expect.assertions(1);
+		const game = createGame();
+		const snapshot = createSnapshotWithGame({
+			...game,
+			cities: [
+				{
+					...game.cities[0]!,
+					tiles: [
+						{
+							id: 'tile-1',
+							cityId: 'harbor-city',
+							x: 1,
+							y: 1,
+							neighborhood: 'downtown',
+							terrain: 'commercial',
+							demand: 72,
+							rent: 180,
+							footTraffic: 66,
+							customerFit: 70,
+							locked: false
+						} as unknown as GameState['cities'][number]['tiles'][number]
+					]
+				}
+			]
+		});
+
+		expect(
+			validateSaveStoreSnapshot(snapshot).manualSlots[0]?.game.cities[0]?.tiles[0]?.feature
+		).toBeNull();
+	});
+
+	test('rejects saved city tiles with invalid feature values', () => {
+		expect.assertions(2);
+		const game = createGame();
+		const snapshot = createSnapshotWithGame({
+			...game,
+			cities: [
+				{
+					...game.cities[0]!,
+					tiles: [
+						{
+							id: 'tile-1',
+							cityId: 'harbor-city',
+							x: 1,
+							y: 1,
+							neighborhood: 'downtown',
+							terrain: 'commercial',
+							feature: 'rail' as GameState['cities'][number]['tiles'][number]['feature'],
+							demand: 72,
+							rent: 180,
+							footTraffic: 66,
+							customerFit: 70,
+							locked: false
+						}
+					]
+				}
+			]
+		});
+
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
+			'Saved game cities[0] tiles[0] feature must be null, road, or river'
+		);
+	});
+
 	test('rejects saved decision options with invalid effect shapes', () => {
 		expect.assertions(2);
 		const snapshot = createSnapshotWithGame({

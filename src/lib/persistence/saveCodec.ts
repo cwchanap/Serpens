@@ -32,6 +32,7 @@ const NEIGHBORHOOD_IDS = [
 	'parkEdge'
 ] as const;
 const TERRAIN_IDS = ['commercial', 'residential', 'green', 'transit', 'industrial'] as const;
+const CITY_TILE_FEATURES = ['road', 'river'] as const;
 const DECISION_EFFECT_NUMBER_FIELDS = [
 	'profit',
 	'customerSatisfaction',
@@ -254,11 +255,26 @@ function validateSavedCityTile(value: unknown, label: string): void {
 	requireNumber(tile.y, `${label} y`);
 	requireOneOf(tile.neighborhood, `${label} neighborhood`, NEIGHBORHOOD_IDS);
 	requireOneOf(tile.terrain, `${label} terrain`, TERRAIN_IDS);
+	validateSavedCityTileFeature(tile, `${label} feature`);
 	requireNumber(tile.demand, `${label} demand`);
 	requireNumber(tile.rent, `${label} rent`);
 	requireNumber(tile.footTraffic, `${label} footTraffic`);
 	requireNumber(tile.customerFit, `${label} customerFit`);
 	requireBoolean(tile.locked, `${label} locked`);
+}
+
+function validateSavedCityTileFeature(tile: Record<string, unknown>, label: string): void {
+	if (tile.feature === undefined || tile.feature === null) {
+		tile.feature = null;
+		return;
+	}
+
+	if (
+		typeof tile.feature !== 'string' ||
+		!CITY_TILE_FEATURES.includes(tile.feature as (typeof CITY_TILE_FEATURES)[number])
+	) {
+		throw new SaveDataError(`${label} must be null, road, or river`);
+	}
 }
 
 function validateSavedStore(value: unknown, label: string): void {

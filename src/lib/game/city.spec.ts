@@ -121,7 +121,7 @@ describe('city generation', () => {
 	});
 
 	test('adds deterministic road and river features to playable cities', () => {
-		expect.assertions(8);
+		expect.assertions(10);
 		const first = generateCity({
 			id: 'harbor-city',
 			name: 'Harbor City',
@@ -138,15 +138,34 @@ describe('city generation', () => {
 		});
 		const roadTiles = first.tiles.filter((tile) => tile.feature === 'road');
 		const riverTiles = first.tiles.filter((tile) => tile.feature === 'river');
+		const roadXs = new Set(roadTiles.map((tile) => tile.x));
+		const roadYs = new Set(roadTiles.map((tile) => tile.y));
+		const riverXs = new Set(riverTiles.map((tile) => tile.x));
 
 		expect(first).toEqual(second);
 		expect(roadTiles.length).toBeGreaterThan(0);
 		expect(riverTiles.length).toBeGreaterThan(0);
 		expect(roadTiles.every((tile) => !tile.locked)).toBe(true);
 		expect(riverTiles.every((tile) => !tile.locked)).toBe(true);
+		expect(roadXs.has(10) || roadYs.has(10)).toBe(true);
+		expect(riverXs.size).toBeGreaterThanOrEqual(2);
 		expect(getTileById(first, 'harbor-city-10-1')?.feature).toBe('road');
 		expect(getTileById(first, 'harbor-city-5-1')?.feature).toBe('river');
 		expect(first.tiles.some((tile) => !tile.locked && tile.feature === null)).toBe(true);
+	});
+
+	test('does not add road or river features to cities smaller than five by five', () => {
+		expect.assertions(2);
+		const city = generateCity({
+			id: 'tiny-city',
+			name: 'Tiny City',
+			width: 4,
+			height: 4,
+			seed: 77
+		});
+
+		expect(city.tiles).toHaveLength(16);
+		expect(city.tiles.every((tile) => tile.feature === null)).toBe(true);
 	});
 
 	test('returns placement block reasons for locked, road, and river tiles', () => {
