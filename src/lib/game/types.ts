@@ -17,6 +17,7 @@ export type NeighborhoodId =
 	| 'suburb'
 	| 'parkEdge';
 export type TerrainId = 'commercial' | 'residential' | 'green' | 'transit' | 'industrial';
+export type CityTileFeature = 'road' | 'river' | null;
 
 export interface CompanyPolicy {
 	pricing: PricingPosture;
@@ -80,6 +81,7 @@ export interface CityTile {
 	y: number;
 	neighborhood: NeighborhoodId;
 	terrain: TerrainId;
+	feature?: CityTileFeature;
 	demand: number;
 	rent: number;
 	footTraffic: number;

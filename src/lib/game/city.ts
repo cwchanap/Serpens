@@ -1,5 +1,5 @@
 import { createRng, randomInt } from './rng';
-import type { City, CityTile, NeighborhoodId, TerrainId } from './types';
+import type { City, CityTile, CityTileFeature, NeighborhoodId, TerrainId } from './types';
 
 interface GenerateCityInput {
 	id: string;
@@ -94,6 +94,8 @@ export function generateCity(input: GenerateCityInput): City {
 	for (let y = 0; y < height; y += 1) {
 		for (let x = 0; x < width; x += 1) {
 			const profile = NEIGHBORHOOD_PROFILES[getNeighborhood(width, height, x, y)];
+			const locked = x === 0 || y === 0 || x === width - 1 || y === height - 1;
+			const feature = getTileFeature(width, height, x, y, locked);
 
 			tiles.push({
 				id: `${input.id}-${x}-${y}`,
@@ -102,11 +104,12 @@ export function generateCity(input: GenerateCityInput): City {
 				y,
 				neighborhood: profile.id,
 				terrain: profile.terrain,
+				feature,
 				demand: clamp(profile.demand + randomInt(rng, -10, 10), 20, 100),
 				rent: clamp(profile.rent + randomInt(rng, -180, 180), 400, 2600),
 				footTraffic: clamp(profile.footTraffic + randomInt(rng, -12, 12), 20, 100),
 				customerFit: clamp(profile.customerFit + randomInt(rng, -10, 10), 20, 100),
-				locked: x === 0 || y === 0 || x === width - 1 || y === height - 1
+				locked
 			});
 		}
 	}
@@ -126,6 +129,26 @@ export function getTileById(city: City, tileId: string): CityTile | undefined {
 
 export function getTilesByNeighborhood(city: City, neighborhood: NeighborhoodId): CityTile[] {
 	return city.tiles.filter((tile) => tile.neighborhood === neighborhood);
+}
+
+export function getTilePlacementBlockReason(tile: CityTile): string | null {
+	if (tile.locked) {
+		return 'Locked location';
+	}
+
+	if (tile.feature === 'road') {
+		return 'Road location';
+	}
+
+	if (tile.feature === 'river') {
+		return 'River location';
+	}
+
+	return null;
+}
+
+export function isTileBuildable(tile: CityTile): boolean {
+	return getTilePlacementBlockReason(tile) === null;
 }
 
 function getNeighborhood(width: number, height: number, x: number, y: number): NeighborhoodId {
@@ -168,6 +191,50 @@ function getNeighborhood(width: number, height: number, x: number, y: number): N
 	}
 
 	return 'residential';
+}
+
+function getTileFeature(
+	width: number,
+	height: number,
+	x: number,
+	y: number,
+	locked: boolean
+): CityTileFeature {
+	if (locked || width < 5 || height < 5) {
+		return null;
+	}
+
+	if (isRoadTile(width, height, x, y)) {
+		return 'road';
+	}
+
+	if (isRiverTile(width, height, x, y)) {
+		return 'river';
+	}
+
+	return null;
+}
+
+function isRoadTile(width: number, height: number, x: number, y: number): boolean {
+	const spineX = Math.floor(width / 2);
+	const crossY = Math.floor(height / 2);
+
+	return x === spineX || y === crossY;
+}
+
+function isRiverTile(width: number, height: number, x: number, y: number): boolean {
+	const upperX = Math.max(1, Math.floor(width / 4));
+	const bendY = Math.max(2, Math.floor(height * 0.55));
+	const lowerX = Math.max(1, Math.min(width - 2, upperX + Math.max(1, Math.floor(width / 5))));
+
+	if (y <= bendY) {
+		return x === upperX;
+	}
+
+	const bendProgress = y - bendY;
+	const expectedX = Math.min(lowerX, upperX + bendProgress);
+
+	return x === expectedX;
 }
 
 function clamp(value: number, min: number, max: number): number {

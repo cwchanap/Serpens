@@ -1,5 +1,10 @@
 import { describe, expect, test } from 'vitest';
-import { generateCity, getTileById, getTilesByNeighborhood } from './city';
+import {
+	generateCity,
+	getTileById,
+	getTilePlacementBlockReason,
+	getTilesByNeighborhood
+} from './city';
 
 describe('city generation', () => {
 	test('generates deterministic city tiles for the same seed', () => {
@@ -113,5 +118,60 @@ describe('city generation', () => {
 
 		expect(getTilesByNeighborhood(city, 'downtown').length).toBeGreaterThan(0);
 		expect(getTilesByNeighborhood(city, 'campus').length).toBeGreaterThan(0);
+	});
+
+	test('adds deterministic road and river features to playable cities', () => {
+		expect.assertions(8);
+		const first = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 20,
+			height: 20,
+			seed: 77
+		});
+		const second = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 20,
+			height: 20,
+			seed: 77
+		});
+		const roadTiles = first.tiles.filter((tile) => tile.feature === 'road');
+		const riverTiles = first.tiles.filter((tile) => tile.feature === 'river');
+
+		expect(first).toEqual(second);
+		expect(roadTiles.length).toBeGreaterThan(0);
+		expect(riverTiles.length).toBeGreaterThan(0);
+		expect(roadTiles.every((tile) => !tile.locked)).toBe(true);
+		expect(riverTiles.every((tile) => !tile.locked)).toBe(true);
+		expect(getTileById(first, 'harbor-city-10-1')?.feature).toBe('road');
+		expect(getTileById(first, 'harbor-city-5-1')?.feature).toBe('river');
+		expect(first.tiles.some((tile) => !tile.locked && tile.feature === null)).toBe(true);
+	});
+
+	test('returns placement block reasons for locked, road, and river tiles', () => {
+		expect.assertions(4);
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 20,
+			height: 20,
+			seed: 77
+		});
+
+		expect(getTilePlacementBlockReason(getTileById(city, 'harbor-city-0-0')!)).toBe(
+			'Locked location'
+		);
+		expect(getTilePlacementBlockReason(getTileById(city, 'harbor-city-10-1')!)).toBe(
+			'Road location'
+		);
+		expect(getTilePlacementBlockReason(getTileById(city, 'harbor-city-5-1')!)).toBe(
+			'River location'
+		);
+		expect(
+			getTilePlacementBlockReason(
+				city.tiles.find((tile) => !tile.locked && tile.feature === null)!
+			)
+		).toBeNull();
 	});
 });
