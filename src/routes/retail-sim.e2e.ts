@@ -19,9 +19,11 @@ async function expectTerrainAssets(page: import('@playwright/test').Page) {
 	const canvas = page.locator('.map-canvas canvas');
 	await expect(canvas).toHaveAttribute('data-terrain-asset-mode', 'image');
 
+	const baseCount = Number(await canvas.getAttribute('data-terrain-base-sprite-count'));
 	const featureCount = Number(await canvas.getAttribute('data-terrain-feature-sprite-count'));
 	const decorationCount = Number(await canvas.getAttribute('data-terrain-decoration-sprite-count'));
 
+	expect(baseCount).toBe(400);
 	expect(featureCount).toBe(52);
 	expect(decorationCount).toBeGreaterThan(0);
 }

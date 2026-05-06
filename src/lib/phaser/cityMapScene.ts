@@ -10,7 +10,8 @@ const TILE_SIZE = 32;
 const MIN_ZOOM = 0.6;
 const MAX_ZOOM = 2.2;
 const STORE_SPRITE_SIZE = TILE_SIZE * 0.82;
-const TERRAIN_DEPTH = 0;
+const TERRAIN_BASE_DEPTH = 0;
+const TERRAIN_OVERLAY_DEPTH = 1;
 const TERRAIN_FEATURE_DEPTH = 2;
 const TERRAIN_DECORATION_DEPTH = 3;
 const TERRAIN_FEATURE_SIZE = TILE_SIZE;
@@ -65,7 +66,7 @@ export class CityMapScene extends Phaser.Scene {
 	}
 
 	create(): void {
-		this.mapGraphics = this.add.graphics().setDepth(TERRAIN_DEPTH);
+		this.mapGraphics = this.add.graphics().setDepth(TERRAIN_OVERLAY_DEPTH);
 		this.outlineGraphics = this.add.graphics().setDepth(OUTLINE_DEPTH);
 		this.markerGraphics = this.add.graphics().setDepth(STORE_MARKER_DEPTH);
 		this.cameras.main.setZoom(1);
@@ -127,8 +128,11 @@ export class CityMapScene extends Phaser.Scene {
 		const y = tile.y * TILE_SIZE;
 		const fillAlpha = tile.locked ? 0.38 : 1;
 
-		graphics.fillStyle(TERRAIN_COLORS[tile.terrain], fillAlpha);
-		graphics.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+		if (!this.hasBaseTerrainTexture(tile.terrain)) {
+			graphics.fillStyle(TERRAIN_COLORS[tile.terrain], fillAlpha);
+			graphics.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+		}
+
 		graphics.lineStyle(1, 0xffffff, 0.35);
 		graphics.strokeRect(x, y, TILE_SIZE, TILE_SIZE);
 
@@ -396,15 +400,31 @@ export class CityMapScene extends Phaser.Scene {
 
 	private createTerrainSprites(): void {
 		if (!this.snapshot) {
-			this.updateCanvasTerrainAttributes('fallback', 0, 0);
+			this.updateCanvasTerrainAttributes('fallback', 0, 0, 0);
 			return;
 		}
 
 		let featureSpriteCount = 0;
 		let expectedFeatureTileCount = 0;
+		let baseSpriteCount = 0;
 		let decorationSpriteCount = 0;
 
 		for (const tile of this.snapshot.tiles) {
+			if (this.hasBaseTerrainTexture(tile.terrain)) {
+				this.terrainSprites.push(
+					this.add
+						.image(
+							tile.x * TILE_SIZE + TILE_SIZE / 2,
+							tile.y * TILE_SIZE + TILE_SIZE / 2,
+							TERRAIN_ART[tile.terrain].textureKey
+						)
+						.setOrigin(0.5)
+						.setDisplaySize(TILE_SIZE, TILE_SIZE)
+						.setDepth(TERRAIN_BASE_DEPTH)
+				);
+				baseSpriteCount += 1;
+			}
+
 			if (tile.feature) {
 				expectedFeatureTileCount += 1;
 
@@ -451,6 +471,7 @@ export class CityMapScene extends Phaser.Scene {
 		this.terrainDecorationSpriteCount = decorationSpriteCount;
 		this.updateCanvasTerrainAttributes(
 			getTerrainAssetMode(expectedFeatureTileCount, featureSpriteCount),
+			baseSpriteCount,
 			featureSpriteCount,
 			decorationSpriteCount
 		);
@@ -462,6 +483,10 @@ export class CityMapScene extends Phaser.Scene {
 
 	private hasTerrainTexture(tile: CityMapTileRender): boolean {
 		return tile.feature !== null && this.textures.exists(getTerrainTextureKey(tile));
+	}
+
+	private hasBaseTerrainTexture(terrain: CityMapTileRender['terrain']): boolean {
+		return this.textures.exists(TERRAIN_ART[terrain].textureKey);
 	}
 
 	private hasStorefrontTexture(textureKey: string): boolean {
@@ -481,6 +506,7 @@ export class CityMapScene extends Phaser.Scene {
 
 	private updateCanvasTerrainAttributes(
 		mode: 'fallback' | 'image' | 'mixed',
+		baseSpriteCount: number,
 		featureSpriteCount: number,
 		decorationSpriteCount: number
 	): void {
@@ -491,6 +517,7 @@ export class CityMapScene extends Phaser.Scene {
 		}
 
 		canvas.dataset.terrainAssetMode = mode;
+		canvas.dataset.terrainBaseSpriteCount = String(baseSpriteCount);
 		canvas.dataset.terrainFeatureSpriteCount = String(featureSpriteCount);
 		canvas.dataset.terrainDecorationSpriteCount = String(decorationSpriteCount);
 	}
@@ -512,7 +539,7 @@ export class CityMapScene extends Phaser.Scene {
 		this.terrainSprites = [];
 		this.terrainFeatureSpriteCount = 0;
 		this.terrainDecorationSpriteCount = 0;
-		this.updateCanvasTerrainAttributes('fallback', 0, 0);
+		this.updateCanvasTerrainAttributes('fallback', 0, 0, 0);
 	}
 
 	private destroyTileZones(): void {

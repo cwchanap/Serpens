@@ -99,15 +99,25 @@ describe('game art asset constants', () => {
 
 	it('defines terrain art for road, river, and tree decoration', () => {
 		const terrainPaths = {
+			commercial: '/assets/game/terrain/commercial-tile.png',
+			green: '/assets/game/terrain/green-tile.png',
+			industrial: '/assets/game/terrain/industrial-tile.png',
 			road: '/assets/game/terrain/road-tile.png',
 			roadIntersection: '/assets/game/terrain/road-intersection-tile.png',
 			river: '/assets/game/terrain/river-tile.png',
+			residential: '/assets/game/terrain/residential-tile.png',
+			transit: '/assets/game/terrain/transit-tile.png',
 			tree: '/assets/game/terrain/tree-decoration.png'
 		} as const;
 		const terrainTextureKeys = {
+			commercial: 'terrain-commercial',
+			green: 'terrain-green',
+			industrial: 'terrain-industrial',
 			road: 'terrain-road',
 			roadIntersection: 'terrain-road-intersection',
 			river: 'terrain-river',
+			residential: 'terrain-residential',
+			transit: 'terrain-transit',
 			tree: 'terrain-tree'
 		} as const;
 		const terrainIds = Object.keys(terrainPaths) as Array<keyof typeof terrainPaths>;

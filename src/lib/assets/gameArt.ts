@@ -1,4 +1,4 @@
-import type { ArchetypeId } from '$lib/game/types';
+import type { ArchetypeId, TerrainId } from '$lib/game/types';
 
 export interface StoreArt {
 	archetypeId: ArchetypeId;
@@ -7,7 +7,7 @@ export interface StoreArt {
 	alt: string;
 }
 
-export type TerrainArtId = 'road' | 'roadIntersection' | 'river' | 'tree';
+export type TerrainArtId = TerrainId | 'road' | 'roadIntersection' | 'river' | 'tree';
 
 export interface TerrainArt {
 	id: TerrainArtId;
@@ -52,6 +52,36 @@ export const SHOP_STOREFRONT_TEXTURE_KEY = ARCHETYPE_STORE_ART.convenience.textu
 export const SHOP_STOREFRONT_ALT = 'Anime-style storefront for an owned shop';
 
 export const TERRAIN_ART: Readonly<Record<TerrainArtId, TerrainArt>> = Object.freeze({
+	commercial: Object.freeze({
+		id: 'commercial',
+		path: '/assets/game/terrain/commercial-tile.png',
+		textureKey: 'terrain-commercial',
+		alt: 'Stylized commercial city terrain tile'
+	}),
+	residential: Object.freeze({
+		id: 'residential',
+		path: '/assets/game/terrain/residential-tile.png',
+		textureKey: 'terrain-residential',
+		alt: 'Stylized residential city terrain tile'
+	}),
+	green: Object.freeze({
+		id: 'green',
+		path: '/assets/game/terrain/green-tile.png',
+		textureKey: 'terrain-green',
+		alt: 'Stylized grass terrain tile'
+	}),
+	transit: Object.freeze({
+		id: 'transit',
+		path: '/assets/game/terrain/transit-tile.png',
+		textureKey: 'terrain-transit',
+		alt: 'Stylized transit city terrain tile'
+	}),
+	industrial: Object.freeze({
+		id: 'industrial',
+		path: '/assets/game/terrain/industrial-tile.png',
+		textureKey: 'terrain-industrial',
+		alt: 'Stylized industrial city terrain tile'
+	}),
 	road: Object.freeze({
 		id: 'road',
 		path: '/assets/game/terrain/road-tile.png',
