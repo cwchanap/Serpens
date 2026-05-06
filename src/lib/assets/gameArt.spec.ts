@@ -116,9 +116,7 @@ describe('game art asset constants', () => {
 
 			expect(width).toBe(64);
 			expect(height).toBe(64);
-			expect(opaquePixels, `${art.path} should preserve visible terrain pixels`).toBeGreaterThan(
-				0
-			);
+			expect(opaquePixels, `${art.path} should preserve visible terrain pixels`).toBeGreaterThan(0);
 
 			if (terrainId === 'tree') {
 				expect(

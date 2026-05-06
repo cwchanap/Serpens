@@ -161,6 +161,7 @@ export interface GameState {
 ## Task 1: Deterministic Foundations and Archetypes
 
 **Files:**
+
 - Create: `src/lib/game/types.ts`
 - Create: `src/lib/game/rng.ts`
 - Create: `src/lib/game/archetypes.ts`
@@ -388,6 +389,7 @@ git commit -m "feat: add retail sim foundations"
 ## Task 2: Game State, Policies, and Expansion
 
 **Files:**
+
 - Create: `src/lib/game/state.ts`
 - Test: `src/lib/game/state.spec.ts`
 
@@ -477,7 +479,14 @@ Create `src/lib/game/state.ts`:
 import { getArchetype } from './archetypes';
 import { clampScore } from './reports';
 import { normalizeSeed } from './rng';
-import { MAX_STORES, type ArchetypeId, type CompanyPolicy, type DecisionItem, type GameState, type Store } from './types';
+import {
+	MAX_STORES,
+	type ArchetypeId,
+	type CompanyPolicy,
+	type DecisionItem,
+	type GameState,
+	type Store
+} from './types';
 
 export const DEFAULT_POLICY: CompanyPolicy = {
 	pricing: 'standard',
@@ -547,7 +556,8 @@ export function openStore(
 				{
 					id: `expansion-blocked-${game.day}`,
 					title: 'Expansion unavailable',
-					context: 'The MVP local-chain limit is 3 stores. Improve the current stores before expanding further.',
+					context:
+						'The MVP local-chain limit is 3 stores. Improve the current stores before expanding further.',
 					expiresOnDay: game.day + 1,
 					options: [
 						{
@@ -621,7 +631,9 @@ export function resolveDecision(game: GameState, decisionId: string, optionId: s
 				game.scorecard.customerSatisfaction + (option.effects.customerSatisfaction ?? 0)
 			),
 			staffMorale: clampScore(game.scorecard.staffMorale + (option.effects.staffMorale ?? 0)),
-			marketPosition: clampScore(game.scorecard.marketPosition + (option.effects.marketPosition ?? 0))
+			marketPosition: clampScore(
+				game.scorecard.marketPosition + (option.effects.marketPosition ?? 0)
+			)
 		},
 		stores: game.stores.map((store) => ({
 			...store,
@@ -664,6 +676,7 @@ Do not commit this task until Task 3 adds `reports.ts` and all state tests pass.
 ## Task 3: Reports and Scorecard Helpers
 
 **Files:**
+
 - Create: `src/lib/game/reports.ts`
 - Test: `src/lib/game/reports.spec.ts`
 
@@ -790,6 +803,7 @@ git commit -m "feat: add retail sim state and reports"
 ## Task 4: Daily Simulation
 
 **Files:**
+
 - Create: `src/lib/game/simulateDay.ts`
 - Test: `src/lib/game/simulateDay.spec.ts`
 
@@ -898,11 +912,14 @@ export function simulateDay(game: GameState): GameState {
 	const cashAfter = roundMoney(game.cash + netIncome);
 	const warnings = storeReports.flatMap((report) => report.warnings);
 	const averageSatisfaction =
-		storeReports.reduce((total, report) => total + report.reputation, 0) / Math.max(1, storeReports.length);
+		storeReports.reduce((total, report) => total + report.reputation, 0) /
+		Math.max(1, storeReports.length);
 	const averageMorale =
-		storeReports.reduce((total, report) => total + report.staffMorale, 0) / Math.max(1, storeReports.length);
+		storeReports.reduce((total, report) => total + report.staffMorale, 0) /
+		Math.max(1, storeReports.length);
 	const averageMarket =
-		storeReports.reduce((total, report) => total + report.marketPosition, 0) / Math.max(1, storeReports.length);
+		storeReports.reduce((total, report) => total + report.marketPosition, 0) /
+		Math.max(1, storeReports.length);
 
 	const report: DailyReport = {
 		day: game.day,
@@ -943,14 +960,21 @@ export function simulateDay(game: GameState): GameState {
 	};
 }
 
-function simulateStoreDay(game: GameState, store: Store, rng: ReturnType<typeof createRngFromState>): DailyStoreReport {
+function simulateStoreDay(
+	game: GameState,
+	store: Store,
+	rng: ReturnType<typeof createRngFromState>
+): DailyStoreReport {
 	const archetype = getArchetype(store.archetypeId);
 	const pricing = PRICING[game.policy.pricing];
 	const inventory = INVENTORY[game.policy.inventory];
 	const staffing = STAFFING[game.policy.staffing];
 	const marketing = MARKETING[game.policy.marketing];
 	const service = SERVICE[game.policy.service];
-	const categoryDemand = archetype.startingCategories.reduce((total, category) => total + category.baseDemand, 0);
+	const categoryDemand = archetype.startingCategories.reduce(
+		(total, category) => total + category.baseDemand,
+		0
+	);
 	const averageMargin =
 		archetype.startingCategories.reduce((total, category) => total + category.margin, 0) /
 		archetype.startingCategories.length;
@@ -962,24 +986,49 @@ function simulateStoreDay(game: GameState, store: Store, rng: ReturnType<typeof 
 		(store.reputation / 70) *
 		(1 - store.competition / 240) *
 		variance;
-	const capacity = archetype.baseTraffic * store.staffCapacity * staffing.capacity * service.capacity;
+	const capacity =
+		archetype.baseTraffic * store.staffCapacity * staffing.capacity * service.capacity;
 	const stockLimitedDemand = demand * Math.min(1, Math.max(0.2, store.stockHealth / 70));
 	const customersServed = Math.max(0, Math.round(Math.min(stockLimitedDemand, capacity)));
 	const demandMissed = Math.max(0, Math.round(demand - customersServed));
 	const averageTicket = archetype.id === 'electronics' ? 84 : archetype.id === 'boutique' ? 46 : 18;
-	const revenue = roundMoney(customersServed * averageTicket * (game.policy.pricing === 'discount' ? 0.9 : game.policy.pricing === 'premium' ? 1.14 : 1));
+	const revenue = roundMoney(
+		customersServed *
+			averageTicket *
+			(game.policy.pricing === 'discount' ? 0.9 : game.policy.pricing === 'premium' ? 1.14 : 1)
+	);
 	const effectiveMargin = averageMargin * pricing.margin;
 	const costOfGoods = roundMoney(revenue * (1 - effectiveMargin));
 	const grossMargin = roundMoney(revenue - costOfGoods);
-	const operatingCosts = roundMoney(archetype.baseRent + archetype.baseWage * staffing.wage + marketing.cost + 35 * inventory.carryingCost);
-	const netIncome = roundMoney(grossMargin - operatingCosts);
-	const stockHealth = clampScore(store.stockHealth - customersServed / 18 * inventory.stockUse + (game.policy.inventory === 'generous' ? 4 : 1));
-	const staffPressure = customersServed / Math.max(1, capacity);
-	const staffMorale = clampScore(store.staffMorale + staffing.morale - Math.max(0, staffPressure - 0.82) * 7);
-	const reputation = clampScore(
-		store.reputation + pricing.satisfaction + inventory.satisfaction + service.satisfaction - demandMissed / 35
+	const operatingCosts = roundMoney(
+		archetype.baseRent +
+			archetype.baseWage * staffing.wage +
+			marketing.cost +
+			35 * inventory.carryingCost
 	);
-	const marketPosition = clampScore(game.scorecard.marketPosition + marketing.market + customersServed / 120 - store.competition / 200);
+	const netIncome = roundMoney(grossMargin - operatingCosts);
+	const stockHealth = clampScore(
+		store.stockHealth -
+			(customersServed / 18) * inventory.stockUse +
+			(game.policy.inventory === 'generous' ? 4 : 1)
+	);
+	const staffPressure = customersServed / Math.max(1, capacity);
+	const staffMorale = clampScore(
+		store.staffMorale + staffing.morale - Math.max(0, staffPressure - 0.82) * 7
+	);
+	const reputation = clampScore(
+		store.reputation +
+			pricing.satisfaction +
+			inventory.satisfaction +
+			service.satisfaction -
+			demandMissed / 35
+	);
+	const marketPosition = clampScore(
+		game.scorecard.marketPosition +
+			marketing.market +
+			customersServed / 120 -
+			store.competition / 200
+	);
 	const warnings = [
 		...(stockHealth < 25 ? [`${store.name} has low stock health.`] : []),
 		...(staffMorale < 35 ? [`${store.name} staff morale is under pressure.`] : []),
@@ -1003,7 +1052,13 @@ function simulateStoreDay(game: GameState, store: Store, rng: ReturnType<typeof 
 	};
 }
 
-function sum(reports: DailyStoreReport[], key: keyof Pick<DailyStoreReport, 'revenue' | 'costOfGoods' | 'grossMargin' | 'operatingCosts' | 'netIncome'>): number {
+function sum(
+	reports: DailyStoreReport[],
+	key: keyof Pick<
+		DailyStoreReport,
+		'revenue' | 'costOfGoods' | 'grossMargin' | 'operatingCosts' | 'netIncome'
+	>
+): number {
 	return reports.reduce((total, report) => total + report[key], 0);
 }
 
@@ -1028,6 +1083,7 @@ git commit -m "feat: simulate retail business days"
 ## Task 5: Decision Queue Generation
 
 **Files:**
+
 - Create: `src/lib/game/events.ts`
 - Test: `src/lib/game/events.spec.ts`
 - Modify: `src/lib/game/simulateDay.ts`
@@ -1074,7 +1130,9 @@ describe('decision generation', () => {
 			}
 		};
 
-		expect(generateDecisions(game).some((decision) => decision.id.startsWith('expansion-'))).toBe(true);
+		expect(generateDecisions(game).some((decision) => decision.id.startsWith('expansion-'))).toBe(
+			true
+		);
 	});
 });
 ```
@@ -1136,7 +1194,8 @@ export function generateDecisions(game: GameState): DecisionItem[] {
 		decisions.push({
 			id: `expansion-${game.stores.length + 1}`,
 			title: 'Expansion opportunity',
-			context: 'A promising local site is available. Opening it would grow market position and fixed costs.',
+			context:
+				'A promising local site is available. Opening it would grow market position and fixed costs.',
 			expiresOnDay: game.day + 5,
 			options: [
 				{
@@ -1160,7 +1219,8 @@ export function generateDecisions(game: GameState): DecisionItem[] {
 		decisions.push({
 			id: `supplier-${game.day}`,
 			title: 'Supplier terms',
-			context: 'A supplier offers better prices if you accept a less flexible replenishment schedule.',
+			context:
+				'A supplier offers better prices if you accept a less flexible replenishment schedule.',
 			expiresOnDay: game.day + 3,
 			options: [
 				{
@@ -1217,6 +1277,7 @@ git commit -m "feat: add retail decision queue"
 ## Task 6: Control Tower UI
 
 **Files:**
+
 - Create: `src/lib/components/game/Scorecard.svelte`
 - Create: `src/lib/components/game/StoreOverview.svelte`
 - Create: `src/lib/components/game/PolicyPanel.svelte`
@@ -1342,10 +1403,22 @@ Create `src/lib/components/game/StoreOverview.svelte`:
 					<p>{store.location}</p>
 				</div>
 				<dl>
-					<div><dt>Revenue</dt><dd>${(report?.revenue ?? 0).toLocaleString()}</dd></div>
-					<div><dt>Margin</dt><dd>${(report?.grossMargin ?? 0).toLocaleString()}</dd></div>
-					<div><dt>Stock</dt><dd>{store.stockHealth}</dd></div>
-					<div><dt>Staff</dt><dd>{store.staffMorale}</dd></div>
+					<div>
+						<dt>Revenue</dt>
+						<dd>${(report?.revenue ?? 0).toLocaleString()}</dd>
+					</div>
+					<div>
+						<dt>Margin</dt>
+						<dd>${(report?.grossMargin ?? 0).toLocaleString()}</dd>
+					</div>
+					<div>
+						<dt>Stock</dt>
+						<dd>{store.stockHealth}</dd>
+					</div>
+					<div>
+						<dt>Staff</dt>
+						<dd>{store.staffMorale}</dd>
+					</div>
 				</dl>
 				{#if report?.warnings.length}
 					<ul>
@@ -1367,7 +1440,9 @@ Create `src/lib/components/game/StoreOverview.svelte`:
 		padding: 1rem;
 	}
 
-	h2, h3, p {
+	h2,
+	h3,
+	p {
 		margin: 0;
 	}
 
@@ -1385,7 +1460,8 @@ Create `src/lib/components/game/StoreOverview.svelte`:
 		background: #171d29;
 	}
 
-	p, dt {
+	p,
+	dt {
 		color: #aab4c4;
 	}
 
@@ -1426,10 +1502,18 @@ Create `src/lib/components/game/PolicyPanel.svelte`:
 	} = $props();
 
 	const fields = [
-		{ key: 'pricing', label: 'Pricing', options: ['discount', 'competitive', 'standard', 'premium'] },
+		{
+			key: 'pricing',
+			label: 'Pricing',
+			options: ['discount', 'competitive', 'standard', 'premium']
+		},
 		{ key: 'inventory', label: 'Inventory', options: ['lean', 'balanced', 'generous'] },
 		{ key: 'staffing', label: 'Staffing', options: ['minimal', 'efficient', 'service'] },
-		{ key: 'marketing', label: 'Marketing', options: ['none', 'awareness', 'promotions', 'loyalty'] },
+		{
+			key: 'marketing',
+			label: 'Marketing',
+			options: ['none', 'awareness', 'promotions', 'loyalty']
+		},
 		{ key: 'service', label: 'Service', options: ['speed', 'balanced', 'highTouch'] }
 	] as const;
 
@@ -1552,15 +1636,20 @@ Create `src/lib/components/game/DecisionQueue.svelte`:
 		padding: 1rem;
 	}
 
-	h2, h3, p {
+	h2,
+	h3,
+	p {
 		margin: 0;
 	}
 
-	.empty, p {
+	.empty,
+	p {
 		color: #aab4c4;
 	}
 
-	.queue, article, .options {
+	.queue,
+	article,
+	.options {
 		display: grid;
 		gap: 0.75rem;
 	}
@@ -1601,11 +1690,20 @@ Create `src/lib/components/game/ReportsPanel.svelte`:
 	<h2>Reports</h2>
 	{#if summary.latest}
 		<div class="metrics">
-			<div><span>Latest Daily Result</span><strong>${summary.latest.netIncome.toLocaleString()}</strong></div>
+			<div>
+				<span>Latest Daily Result</span><strong>${summary.latest.netIncome.toLocaleString()}</strong
+				>
+			</div>
 			<div><span>Revenue</span><strong>${summary.latest.revenue.toLocaleString()}</strong></div>
-			<div><span>Cash After</span><strong>${summary.latest.cashAfter.toLocaleString()}</strong></div>
-			<div><span>7-Day Net</span><strong>${summary.sevenDay.netIncome.toLocaleString()}</strong></div>
-			<div><span>30-Day Net</span><strong>${summary.thirtyDay.netIncome.toLocaleString()}</strong></div>
+			<div>
+				<span>Cash After</span><strong>${summary.latest.cashAfter.toLocaleString()}</strong>
+			</div>
+			<div>
+				<span>7-Day Net</span><strong>${summary.sevenDay.netIncome.toLocaleString()}</strong>
+			</div>
+			<div>
+				<span>30-Day Net</span><strong>${summary.thirtyDay.netIncome.toLocaleString()}</strong>
+			</div>
 		</div>
 		{#if summary.latest.warnings.length}
 			<ul>
@@ -1627,7 +1725,8 @@ Create `src/lib/components/game/ReportsPanel.svelte`:
 		padding: 1rem;
 	}
 
-	h2, p {
+	h2,
+	p {
 		margin: 0;
 	}
 
@@ -1642,7 +1741,8 @@ Create `src/lib/components/game/ReportsPanel.svelte`:
 		gap: 0.25rem;
 	}
 
-	span, p {
+	span,
+	p {
 		color: #aab4c4;
 	}
 
@@ -1702,7 +1802,10 @@ Modify `src/routes/+page.svelte`:
 	function addStore() {
 		if (!game) return;
 		const next = game.stores.length + 1;
-		game = openStore(game, { name: `Store #${next}`, location: next === 2 ? 'West Mall' : 'North Campus' });
+		game = openStore(game, {
+			name: `Store #${next}`,
+			location: next === 2 ? 'West Mall' : 'North Campus'
+		});
 	}
 </script>
 
@@ -1750,7 +1853,8 @@ Modify `src/routes/+page.svelte`:
 {/if}
 
 <style>
-	.start, .app {
+	.start,
+	.app {
 		width: min(1180px, calc(100vw - 2rem));
 		margin: 0 auto;
 		padding: 2rem 0;
@@ -1782,7 +1886,8 @@ Modify `src/routes/+page.svelte`:
 		margin-top: 1.5rem;
 	}
 
-	.archetypes button, .top-actions button {
+	.archetypes button,
+	.top-actions button {
 		border: 1px solid #344256;
 		border-radius: 8px;
 		background: #151c28;
@@ -1831,11 +1936,13 @@ Modify `src/routes/+page.svelte`:
 	}
 
 	@media (max-width: 980px) {
-		.archetypes, .grid {
+		.archetypes,
+		.grid {
 			grid-template-columns: 1fr;
 		}
 
-		header, .top-actions {
+		header,
+		.top-actions {
 			align-items: stretch;
 			flex-direction: column;
 		}
@@ -1854,7 +1961,13 @@ Modify `src/routes/layout.css` to keep Tailwind imported and add global base sty
 	color: #edf2f7;
 	background: #0c1118;
 	font-family:
-		Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+		Inter,
+		ui-sans-serif,
+		system-ui,
+		-apple-system,
+		BlinkMacSystemFont,
+		'Segoe UI',
+		sans-serif;
 }
 
 body {
@@ -1903,6 +2016,7 @@ git commit -m "feat: build retail control tower UI"
 ## Task 7: E2E Flow and Final Verification
 
 **Files:**
+
 - Create: `src/routes/retail-sim.e2e.ts`
 
 - [ ] **Step 1: Write Playwright e2e test**

@@ -188,9 +188,7 @@ describe('city generation', () => {
 			'River location'
 		);
 		expect(
-			getTilePlacementBlockReason(
-				city.tiles.find((tile) => !tile.locked && tile.feature === null)!
-			)
+			getTilePlacementBlockReason(city.tiles.find((tile) => !tile.locked && tile.feature === null)!)
 		).toBeNull();
 	});
 });

@@ -212,7 +212,11 @@ describe('TileInspector opening choices', () => {
 	it('shows road placement feedback on a road tile', async () => {
 		const roadTile: CityTile = { ...tile, feature: 'road' };
 		const openingOptions: OpeningOption[] = [
-			{ archetypeId: 'boutique', forecast: forecastFor('boutique'), disabledReason: 'Road location' }
+			{
+				archetypeId: 'boutique',
+				forecast: forecastFor('boutique'),
+				disabledReason: 'Road location'
+			}
 		];
 
 		renderInspector({ tile: roadTile, openingOptions, disabledReason: 'Road location' });

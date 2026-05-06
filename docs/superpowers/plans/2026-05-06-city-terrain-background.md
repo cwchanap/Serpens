@@ -45,6 +45,7 @@ Expected: clean or only this plan file if it has not been committed yet. Preserv
 ### Task 1: Tile Feature Model and City Generation
 
 **Files:**
+
 - Modify: `src/lib/game/types.ts`
 - Modify: `src/lib/game/city.ts`
 - Modify: `src/lib/game/city.spec.ts`
@@ -54,56 +55,54 @@ Expected: clean or only this plan file if it has not been committed yet. Preserv
 Append these tests inside the existing `describe('city generation', () => { ... })` block in `src/lib/game/city.spec.ts`:
 
 ```ts
-	test('adds deterministic road and river features to playable cities', () => {
-		expect.assertions(8);
-		const first = generateCity({
-			id: 'harbor-city',
-			name: 'Harbor City',
-			width: 20,
-			height: 20,
-			seed: 77
-		});
-		const second = generateCity({
-			id: 'harbor-city',
-			name: 'Harbor City',
-			width: 20,
-			height: 20,
-			seed: 77
-		});
-		const roadTiles = first.tiles.filter((tile) => tile.feature === 'road');
-		const riverTiles = first.tiles.filter((tile) => tile.feature === 'river');
+test('adds deterministic road and river features to playable cities', () => {
+	expect.assertions(8);
+	const first = generateCity({
+		id: 'harbor-city',
+		name: 'Harbor City',
+		width: 20,
+		height: 20,
+		seed: 77
+	});
+	const second = generateCity({
+		id: 'harbor-city',
+		name: 'Harbor City',
+		width: 20,
+		height: 20,
+		seed: 77
+	});
+	const roadTiles = first.tiles.filter((tile) => tile.feature === 'road');
+	const riverTiles = first.tiles.filter((tile) => tile.feature === 'river');
 
-		expect(first).toEqual(second);
-		expect(roadTiles.length).toBeGreaterThan(0);
-		expect(riverTiles.length).toBeGreaterThan(0);
-		expect(roadTiles.every((tile) => !tile.locked)).toBe(true);
-		expect(riverTiles.every((tile) => !tile.locked)).toBe(true);
-		expect(getTileById(first, 'harbor-city-10-1')?.feature).toBe('road');
-		expect(getTileById(first, 'harbor-city-5-1')?.feature).toBe('river');
-		expect(first.tiles.some((tile) => !tile.locked && tile.feature === null)).toBe(true);
+	expect(first).toEqual(second);
+	expect(roadTiles.length).toBeGreaterThan(0);
+	expect(riverTiles.length).toBeGreaterThan(0);
+	expect(roadTiles.every((tile) => !tile.locked)).toBe(true);
+	expect(riverTiles.every((tile) => !tile.locked)).toBe(true);
+	expect(getTileById(first, 'harbor-city-10-1')?.feature).toBe('road');
+	expect(getTileById(first, 'harbor-city-5-1')?.feature).toBe('river');
+	expect(first.tiles.some((tile) => !tile.locked && tile.feature === null)).toBe(true);
+});
+
+test('returns placement block reasons for locked, road, and river tiles', () => {
+	expect.assertions(4);
+	const city = generateCity({
+		id: 'harbor-city',
+		name: 'Harbor City',
+		width: 20,
+		height: 20,
+		seed: 77
 	});
 
-	test('returns placement block reasons for locked, road, and river tiles', () => {
-		expect.assertions(4);
-		const city = generateCity({
-			id: 'harbor-city',
-			name: 'Harbor City',
-			width: 20,
-			height: 20,
-			seed: 77
-		});
-
-		expect(getTilePlacementBlockReason(getTileById(city, 'harbor-city-0-0')!)).toBe(
-			'Locked location'
-		);
-		expect(getTilePlacementBlockReason(getTileById(city, 'harbor-city-10-1')!)).toBe(
-			'Road location'
-		);
-		expect(getTilePlacementBlockReason(getTileById(city, 'harbor-city-5-1')!)).toBe(
-			'River location'
-		);
-		expect(getTilePlacementBlockReason(city.tiles.find((tile) => !tile.locked && tile.feature === null)!)).toBeNull();
-	});
+	expect(getTilePlacementBlockReason(getTileById(city, 'harbor-city-0-0')!)).toBe(
+		'Locked location'
+	);
+	expect(getTilePlacementBlockReason(getTileById(city, 'harbor-city-10-1')!)).toBe('Road location');
+	expect(getTilePlacementBlockReason(getTileById(city, 'harbor-city-5-1')!)).toBe('River location');
+	expect(
+		getTilePlacementBlockReason(city.tiles.find((tile) => !tile.locked && tile.feature === null)!)
+	).toBeNull();
+});
 ```
 
 Update the import in `src/lib/game/city.spec.ts`:
@@ -165,23 +164,23 @@ import type { City, CityTile, CityTileFeature, NeighborhoodId, TerrainId } from 
 Inside `generateCity`, compute `locked` and `feature` before pushing each tile:
 
 ```ts
-			const locked = x === 0 || y === 0 || x === width - 1 || y === height - 1;
-			const feature = getTileFeature(width, height, x, y, locked);
+const locked = x === 0 || y === 0 || x === width - 1 || y === height - 1;
+const feature = getTileFeature(width, height, x, y, locked);
 
-			tiles.push({
-				id: `${input.id}-${x}-${y}`,
-				cityId: input.id,
-				x,
-				y,
-				neighborhood: profile.id,
-				terrain: profile.terrain,
-				feature,
-				demand: clamp(profile.demand + randomInt(rng, -10, 10), 20, 100),
-				rent: clamp(profile.rent + randomInt(rng, -180, 180), 400, 2600),
-				footTraffic: clamp(profile.footTraffic + randomInt(rng, -12, 12), 20, 100),
-				customerFit: clamp(profile.customerFit + randomInt(rng, -10, 10), 20, 100),
-				locked
-			});
+tiles.push({
+	id: `${input.id}-${x}-${y}`,
+	cityId: input.id,
+	x,
+	y,
+	neighborhood: profile.id,
+	terrain: profile.terrain,
+	feature,
+	demand: clamp(profile.demand + randomInt(rng, -10, 10), 20, 100),
+	rent: clamp(profile.rent + randomInt(rng, -180, 180), 400, 2600),
+	footTraffic: clamp(profile.footTraffic + randomInt(rng, -12, 12), 20, 100),
+	customerFit: clamp(profile.customerFit + randomInt(rng, -10, 10), 20, 100),
+	locked
+});
 ```
 
 Add these helpers above `getNeighborhood`:
@@ -220,8 +219,7 @@ function getTileFeature(
 
 	const riverColumn = clampFeatureCoordinate(Math.floor(width * 0.28), width);
 	const riverBendRow = clampFeatureCoordinate(Math.floor(height * 0.5), height);
-	const riverX =
-		y < riverBendRow ? riverColumn : clampFeatureCoordinate(riverColumn + 1, width);
+	const riverX = y < riverBendRow ? riverColumn : clampFeatureCoordinate(riverColumn + 1, width);
 
 	if (x === riverX) {
 		return 'river';
@@ -270,6 +268,7 @@ git commit -m "feat: add city terrain features"
 ### Task 2: Placement Blocking for Roads and Rivers
 
 **Files:**
+
 - Modify: `src/lib/game/placement.ts`
 - Modify: `src/lib/game/placement.spec.ts`
 - Modify: `src/lib/game/state.ts`
@@ -281,87 +280,87 @@ git commit -m "feat: add city terrain features"
 Append these tests inside `src/lib/game/placement.spec.ts`:
 
 ```ts
-	test('blocks founding a store on a road tile', () => {
-		expect.assertions(1);
-		const city = generateCity({
-			id: 'harbor-city',
-			name: 'Harbor City',
-			width: 20,
-			height: 20,
-			seed: 101
-		});
-		const roadTile = city.tiles.find((tile) => tile.feature === 'road')!;
-
-		expect(() =>
-			createFoundingGameAtTile({
-				archetypeId: 'boutique',
-				city,
-				tileId: roadTile.id,
-				seed: 101
-			})
-		).toThrow(`Road location: ${roadTile.id}`);
+test('blocks founding a store on a road tile', () => {
+	expect.assertions(1);
+	const city = generateCity({
+		id: 'harbor-city',
+		name: 'Harbor City',
+		width: 20,
+		height: 20,
+		seed: 101
 	});
+	const roadTile = city.tiles.find((tile) => tile.feature === 'road')!;
 
-	test('blocks founding a store on a river tile', () => {
-		expect.assertions(1);
-		const city = generateCity({
-			id: 'harbor-city',
-			name: 'Harbor City',
-			width: 20,
-			height: 20,
-			seed: 101
-		});
-		const riverTile = city.tiles.find((tile) => tile.feature === 'river')!;
-
-		expect(() =>
-			createFoundingGameAtTile({
-				archetypeId: 'grocery',
-				city,
-				tileId: riverTile.id,
-				seed: 101
-			})
-		).toThrow(`River location: ${riverTile.id}`);
-	});
-
-	test('blocks expansion on road and river tiles', () => {
-		expect.assertions(4);
-		const city = generateCity({
-			id: 'harbor-city',
-			name: 'Harbor City',
-			width: 20,
-			height: 20,
-			seed: 202
-		});
-		const foundingTile = city.tiles.find((tile) => !tile.locked && tile.feature === null)!;
-		const roadTile = city.tiles.find((tile) => tile.feature === 'road')!;
-		const riverTile = city.tiles.find((tile) => tile.feature === 'river')!;
-		const game = createFoundingGameAtTile({
+	expect(() =>
+		createFoundingGameAtTile({
 			archetypeId: 'boutique',
 			city,
-			tileId: foundingTile.id,
-			seed: 202
-		});
-
-		const roadResult = openStoreAtTile(game, {
 			tileId: roadTile.id,
-			name: 'Road Store',
-			archetypeId: 'boutique'
-		});
-		const riverResult = openStoreAtTile(game, {
-			tileId: riverTile.id,
-			name: 'River Store',
-			archetypeId: 'grocery'
-		});
+			seed: 101
+		})
+	).toThrow(`Road location: ${roadTile.id}`);
+});
 
-		expect(roadResult.stores).toHaveLength(1);
-		expect(roadResult.decisions.at(-1)?.context).toBe(
-			'Road location blocks store placement. Choose another city tile.'
-		);
-		expect(riverResult.stores).toHaveLength(1);
-		expect(riverResult.decisions.at(-1)?.context).toBe(
-			'River location blocks store placement. Choose another city tile.'
-		);
+test('blocks founding a store on a river tile', () => {
+	expect.assertions(1);
+	const city = generateCity({
+		id: 'harbor-city',
+		name: 'Harbor City',
+		width: 20,
+		height: 20,
+		seed: 101
 	});
+	const riverTile = city.tiles.find((tile) => tile.feature === 'river')!;
+
+	expect(() =>
+		createFoundingGameAtTile({
+			archetypeId: 'grocery',
+			city,
+			tileId: riverTile.id,
+			seed: 101
+		})
+	).toThrow(`River location: ${riverTile.id}`);
+});
+
+test('blocks expansion on road and river tiles', () => {
+	expect.assertions(4);
+	const city = generateCity({
+		id: 'harbor-city',
+		name: 'Harbor City',
+		width: 20,
+		height: 20,
+		seed: 202
+	});
+	const foundingTile = city.tiles.find((tile) => !tile.locked && tile.feature === null)!;
+	const roadTile = city.tiles.find((tile) => tile.feature === 'road')!;
+	const riverTile = city.tiles.find((tile) => tile.feature === 'river')!;
+	const game = createFoundingGameAtTile({
+		archetypeId: 'boutique',
+		city,
+		tileId: foundingTile.id,
+		seed: 202
+	});
+
+	const roadResult = openStoreAtTile(game, {
+		tileId: roadTile.id,
+		name: 'Road Store',
+		archetypeId: 'boutique'
+	});
+	const riverResult = openStoreAtTile(game, {
+		tileId: riverTile.id,
+		name: 'River Store',
+		archetypeId: 'grocery'
+	});
+
+	expect(roadResult.stores).toHaveLength(1);
+	expect(roadResult.decisions.at(-1)?.context).toBe(
+		'Road location blocks store placement. Choose another city tile.'
+	);
+	expect(riverResult.stores).toHaveLength(1);
+	expect(riverResult.decisions.at(-1)?.context).toBe(
+		'River location blocks store placement. Choose another city tile.'
+	);
+});
 ```
 
 - [ ] **Step 2: Write failing direct state test**
@@ -369,21 +368,23 @@ Append these tests inside `src/lib/game/placement.spec.ts`:
 Append this test inside `src/lib/game/state.spec.ts`:
 
 ```ts
-	test('direct store opening skips road and river tiles', () => {
-		expect.assertions(3);
-		const game = createNewGame('electronics', 44);
+test('direct store opening skips road and river tiles', () => {
+	expect.assertions(3);
+	const game = createNewGame('electronics', 44);
 
-		const result = openStore(game, {
-			name: 'Mall Kiosk',
-			archetypeId: 'electronics',
-			location: 'West Mall'
-		});
-		const openedTile = result.cities[0]?.tiles.find((tile) => tile.id === result.stores.at(-1)?.tileId);
-
-		expect(result.stores).toHaveLength(2);
-		expect(openedTile?.feature).toBeNull();
-		expect(openedTile?.locked).toBe(false);
+	const result = openStore(game, {
+		name: 'Mall Kiosk',
+		archetypeId: 'electronics',
+		location: 'West Mall'
 	});
+	const openedTile = result.cities[0]?.tiles.find(
+		(tile) => tile.id === result.stores.at(-1)?.tileId
+	);
+
+	expect(result.stores).toHaveLength(2);
+	expect(openedTile?.feature).toBeNull();
+	expect(openedTile?.locked).toBe(false);
+});
 ```
 
 - [ ] **Step 3: Run failing placement tests**
@@ -407,26 +408,26 @@ import { getTileById, getTilePlacementBlockReason } from './city';
 In `openStoreAtTile`, replace the unavailable check with:
 
 ```ts
-	const tileBlockReason = tile ? getTilePlacementBlockReason(tile) : 'Location unavailable';
+const tileBlockReason = tile ? getTilePlacementBlockReason(tile) : 'Location unavailable';
 
-	if (
-		!city ||
-		!tile ||
-		tileBlockReason ||
-		game.stores.some((store) => store.tileId === input.tileId)
-	) {
-		return appendLocationUnavailableDecision(game, tileBlockReason);
-	}
+if (
+	!city ||
+	!tile ||
+	tileBlockReason ||
+	game.stores.some((store) => store.tileId === input.tileId)
+) {
+	return appendLocationUnavailableDecision(game, tileBlockReason);
+}
 ```
 
 In `getAvailableTileOrThrow`, replace the locked check with:
 
 ```ts
-	const blockReason = getTilePlacementBlockReason(tile);
+const blockReason = getTilePlacementBlockReason(tile);
 
-	if (blockReason) {
-		throw new Error(`${blockReason}: ${tileId}`);
-	}
+if (blockReason) {
+	throw new Error(`${blockReason}: ${tileId}`);
+}
 ```
 
 Change `appendLocationUnavailableDecision` and `locationUnavailableDecision` to accept the reason:
@@ -479,21 +480,22 @@ import { generateCity, isTileBuildable } from './city';
 Replace fallback tile selection in `createNewGame`:
 
 ```ts
-	const fallbackTile = city.tiles.find(isTileBuildable) ?? city.tiles.find((tile) => !tile.locked) ?? city.tiles[0]!;
+const fallbackTile =
+	city.tiles.find(isTileBuildable) ?? city.tiles.find((tile) => !tile.locked) ?? city.tiles[0]!;
 ```
 
 In `getExpansionTile`, replace the requested tile check:
 
 ```ts
-		if (!requestedTile || !isTileBuildable(requestedTile) || isTileOccupied(game, requestedTile.id)) {
-			return undefined;
-		}
+if (!requestedTile || !isTileBuildable(requestedTile) || isTileOccupied(game, requestedTile.id)) {
+	return undefined;
+}
 ```
 
 Replace the automatic fallback return:
 
 ```ts
-	return city.tiles.find((tile) => isTileBuildable(tile) && !isTileOccupied(game, tile.id));
+return city.tiles.find((tile) => isTileBuildable(tile) && !isTileOccupied(game, tile.id));
 ```
 
 - [ ] **Step 6: Update route disabled reasons and founding guard**
@@ -501,43 +503,43 @@ Replace the automatic fallback return:
 In `src/routes/+page.svelte`, update the city import:
 
 ```ts
-	import { generateCity, getTileById, getTilePlacementBlockReason } from '$lib/game/city';
+import { generateCity, getTileById, getTilePlacementBlockReason } from '$lib/game/city';
 ```
 
 Replace `getSelectedTileDisabledReason()` with:
 
 ```ts
-	function getSelectedTileDisabledReason(): string | null {
-		const currentGame: GameState | null = game;
+function getSelectedTileDisabledReason(): string | null {
+	const currentGame: GameState | null = game;
 
-		if (!selectedTile) {
-			return 'Select a tile';
-		}
-
-		const tileBlockReason = getTilePlacementBlockReason(selectedTile);
-
-		if (tileBlockReason) {
-			return tileBlockReason;
-		}
-
-		if (selectedStore) {
-			return 'Occupied location';
-		}
-
-		if (currentGame && currentGame.stores.length >= MAX_STORES) {
-			return 'Store limit reached';
-		}
-
-		return null;
+	if (!selectedTile) {
+		return 'Select a tile';
 	}
+
+	const tileBlockReason = getTilePlacementBlockReason(selectedTile);
+
+	if (tileBlockReason) {
+		return tileBlockReason;
+	}
+
+	if (selectedStore) {
+		return 'Occupied location';
+	}
+
+	if (currentGame && currentGame.stores.length >= MAX_STORES) {
+		return 'Store limit reached';
+	}
+
+	return null;
+}
 ```
 
 In `foundStore`, replace the locked guard:
 
 ```ts
-		if (!tile || getTilePlacementBlockReason(tile)) {
-			return;
-		}
+if (!tile || getTilePlacementBlockReason(tile)) {
+	return;
+}
 ```
 
 - [ ] **Step 7: Run placement tests**
@@ -564,6 +566,7 @@ git commit -m "feat: block stores on road and river tiles"
 ### Task 3: Snapshot Metadata, Terrain Art Registry, and Assets
 
 **Files:**
+
 - Modify: `src/lib/game/mapRender.ts`
 - Modify: `src/lib/game/mapRender.spec.ts`
 - Modify: `src/lib/assets/gameArt.ts`
@@ -577,7 +580,7 @@ git commit -m "feat: block stores on road and river tiles"
 In `src/lib/game/mapRender.spec.ts`, change the first test assertion count from `7` to `8` and add this assertion after the selected tile assertion:
 
 ```ts
-		expect(snapshot.tiles.find((candidate) => candidate.feature === 'road')?.feature).toBe('road');
+expect(snapshot.tiles.find((candidate) => candidate.feature === 'road')?.feature).toBe('road');
 ```
 
 - [ ] **Step 2: Write failing terrain registry test**
@@ -601,21 +604,23 @@ import {
 Append this test inside `describe('game art asset constants', () => { ... })`:
 
 ```ts
-	it('defines terrain art for road, river, and tree decoration', () => {
-		const terrainIds = ['road', 'river', 'tree'] as const;
+it('defines terrain art for road, river, and tree decoration', () => {
+	const terrainIds = ['road', 'river', 'tree'] as const;
 
-		expect(Object.keys(TERRAIN_ART).sort()).toEqual([...terrainIds].sort());
-		expect(TERRAIN_ART_LIST).toHaveLength(terrainIds.length);
+	expect(Object.keys(TERRAIN_ART).sort()).toEqual([...terrainIds].sort());
+	expect(TERRAIN_ART_LIST).toHaveLength(terrainIds.length);
 
-		for (const terrainId of terrainIds) {
-			const art = getTerrainArt(terrainId);
+	for (const terrainId of terrainIds) {
+		const art = getTerrainArt(terrainId);
 
-			expect(art.id).toBe(terrainId);
-			expect(art.path).toBe(`/assets/game/terrain/${terrainId === 'tree' ? 'tree-decoration' : `${terrainId}-tile`}.png`);
-			expect(art.textureKey).toBe(`terrain-${terrainId}`);
-			expect(existsSync(staticPath(art.path))).toBe(true);
-		}
-	});
+		expect(art.id).toBe(terrainId);
+		expect(art.path).toBe(
+			`/assets/game/terrain/${terrainId === 'tree' ? 'tree-decoration' : `${terrainId}-tile`}.png`
+		);
+		expect(art.textureKey).toBe(`terrain-${terrainId}`);
+		expect(existsSync(staticPath(art.path))).toBe(true);
+	}
+});
 ```
 
 - [ ] **Step 3: Run failing snapshot and registry tests**
@@ -633,7 +638,7 @@ Expected: FAIL because snapshot tiles and terrain art exports do not exist.
 In `src/lib/game/mapRender.ts`, add `feature` to `CityMapTileRender`:
 
 ```ts
-	feature: CityTile['feature'];
+feature: CityTile['feature'];
 ```
 
 In `createTileRender`, add:
@@ -744,6 +749,7 @@ git commit -m "feat: add terrain art registry"
 ### Task 4: Phaser Terrain Rendering
 
 **Files:**
+
 - Modify: `src/lib/phaser/cityMapScene.ts`
 
 - [ ] **Step 1: Write the intended canvas contract**
@@ -796,9 +802,9 @@ Add these fields inside `CityMapScene`:
 In `preload()`, after the storefront loop, add:
 
 ```ts
-		for (const art of TERRAIN_ART_LIST) {
-			this.load.image(art.textureKey, asset(art.path));
-		}
+for (const art of TERRAIN_ART_LIST) {
+	this.load.image(art.textureKey, asset(art.path));
+}
 ```
 
 - [ ] **Step 5: Clear terrain sprites on rerender**
@@ -806,13 +812,13 @@ In `preload()`, after the storefront loop, add:
 In `renderSnapshot()`, add this after `this.destroyStoreSprites();`:
 
 ```ts
-		this.destroyTerrainSprites();
+this.destroyTerrainSprites();
 ```
 
 Add this after the tile loop and before `this.createStoreSprites();`:
 
 ```ts
-		this.createTerrainSprites();
+this.createTerrainSprites();
 ```
 
 - [ ] **Step 6: Draw feature fallbacks**
@@ -820,7 +826,7 @@ Add this after the tile loop and before `this.createStoreSprites();`:
 At the end of `drawTile`, before the owned outline, add:
 
 ```ts
-		this.drawTerrainFeatureFallback(tile, x, y);
+this.drawTerrainFeatureFallback(tile, x, y);
 ```
 
 Add this method below `drawTile`:
@@ -960,7 +966,7 @@ Add this method near `destroyStoreSprites`:
 In `destroySceneObjects()`, add:
 
 ```ts
-		this.destroyTerrainSprites();
+this.destroyTerrainSprites();
 ```
 
 - [ ] **Step 9: Run focused TypeScript check**
@@ -987,6 +993,7 @@ git commit -m "feat: render city terrain assets"
 ### Task 5: Svelte Feedback and Browser Tests
 
 **Files:**
+
 - Modify: `src/lib/components/game/TileInspector.svelte`
 - Modify: `src/lib/components/game/TileInspector.svelte.spec.ts`
 - Modify: `src/routes/retail-sim.e2e.ts`
@@ -1000,31 +1007,35 @@ In `src/lib/components/game/TileInspector.svelte.spec.ts`, add `feature: null,` 
 Append these tests inside `describe('TileInspector opening choices', () => { ... })`:
 
 ```ts
-	it('shows road placement feedback on a road tile', async () => {
-		const roadTile: CityTile = { ...tile, feature: 'road' };
-		const openingOptions: OpeningOption[] = [
-			{ archetypeId: 'boutique', forecast: forecastFor('boutique'), disabledReason: 'Road location' }
-		];
+it('shows road placement feedback on a road tile', async () => {
+	const roadTile: CityTile = { ...tile, feature: 'road' };
+	const openingOptions: OpeningOption[] = [
+		{ archetypeId: 'boutique', forecast: forecastFor('boutique'), disabledReason: 'Road location' }
+	];
 
-		renderInspector({ tile: roadTile, openingOptions, disabledReason: 'Road location' });
+	renderInspector({ tile: roadTile, openingOptions, disabledReason: 'Road location' });
 
-		await expect.element(page.getByText('Road')).toBeVisible();
-		await expect.element(page.getByText('Road location')).toBeVisible();
-		await expect.element(page.getByRole('button', { name: /Open Boutique Goods here/ })).toBeDisabled();
-	});
+	await expect.element(page.getByText('Road')).toBeVisible();
+	await expect.element(page.getByText('Road location')).toBeVisible();
+	await expect
+		.element(page.getByRole('button', { name: /Open Boutique Goods here/ }))
+		.toBeDisabled();
+});
 
-	it('shows river placement feedback on a river tile', async () => {
-		const riverTile: CityTile = { ...tile, feature: 'river' };
-		const openingOptions: OpeningOption[] = [
-			{ archetypeId: 'grocery', forecast: forecastFor('grocery'), disabledReason: 'River location' }
-		];
+it('shows river placement feedback on a river tile', async () => {
+	const riverTile: CityTile = { ...tile, feature: 'river' };
+	const openingOptions: OpeningOption[] = [
+		{ archetypeId: 'grocery', forecast: forecastFor('grocery'), disabledReason: 'River location' }
+	];
 
-		renderInspector({ tile: riverTile, openingOptions, disabledReason: 'River location' });
+	renderInspector({ tile: riverTile, openingOptions, disabledReason: 'River location' });
 
-		await expect.element(page.getByText('River')).toBeVisible();
-		await expect.element(page.getByText('River location')).toBeVisible();
-		await expect.element(page.getByRole('button', { name: /Open Grocery Market here/ })).toBeDisabled();
-	});
+	await expect.element(page.getByText('River')).toBeVisible();
+	await expect.element(page.getByText('River location')).toBeVisible();
+	await expect
+		.element(page.getByRole('button', { name: /Open Grocery Market here/ }))
+		.toBeDisabled();
+});
 ```
 
 - [ ] **Step 3: Run failing TileInspector tests**
@@ -1042,13 +1053,13 @@ Expected: FAIL because the feature label is not displayed yet.
 In `src/lib/components/game/TileInspector.svelte`, add this derived value near `storeArtSrc`:
 
 ```ts
-	const tileLabel = $derived(tile?.feature ? label(tile.feature) : tile ? label(tile.terrain) : '');
+const tileLabel = $derived(tile?.feature ? label(tile.feature) : tile ? label(tile.terrain) : '');
 ```
 
 Replace the heading badge:
 
 ```svelte
-			<span>{tileLabel}</span>
+<span>{tileLabel}</span>
 ```
 
 Run the Svelte autofixer on the full updated `TileInspector.svelte` file and apply any returned fixes before continuing.
@@ -1127,6 +1138,7 @@ git commit -m "test: cover terrain placement feedback"
 ### Task 6: Final Verification
 
 **Files:**
+
 - Verify all files changed by Tasks 1-5.
 
 - [ ] **Step 1: Run formatting**

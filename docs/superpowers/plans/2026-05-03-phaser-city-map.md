@@ -32,6 +32,7 @@
 ## Task 1: Add Scalable City Domain
 
 **Files:**
+
 - Modify: `package.json`
 - Modify: `bun.lock`
 - Modify: `src/lib/game/types.ts`
@@ -60,15 +61,33 @@ import { generateCity, getTileById, getTilesByNeighborhood } from './city';
 describe('city generation', () => {
 	test('generates deterministic city tiles for the same seed', () => {
 		expect.assertions(1);
-		const first = generateCity({ id: 'harbor-city', name: 'Harbor City', width: 20, height: 20, seed: 99 });
-		const second = generateCity({ id: 'harbor-city', name: 'Harbor City', width: 20, height: 20, seed: 99 });
+		const first = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 20,
+			height: 20,
+			seed: 99
+		});
+		const second = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 20,
+			height: 20,
+			seed: 99
+		});
 
 		expect(first).toEqual(second);
 	});
 
 	test('supports city dimensions that are not 20 by 20', () => {
 		expect.assertions(4);
-		const city = generateCity({ id: 'test-city', name: 'Test City', width: 12, height: 8, seed: 42 });
+		const city = generateCity({
+			id: 'test-city',
+			name: 'Test City',
+			width: 12,
+			height: 8,
+			seed: 42
+		});
 
 		expect(city.width).toBe(12);
 		expect(city.height).toBe(8);
@@ -78,7 +97,13 @@ describe('city generation', () => {
 
 	test('generates stable coordinates and bounded economic traits', () => {
 		expect.assertions(7);
-		const city = generateCity({ id: 'harbor-city', name: 'Harbor City', width: 20, height: 20, seed: 77 });
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 20,
+			height: 20,
+			seed: 77
+		});
 		const tile = getTileById(city, 'harbor-city-3-4');
 
 		expect(tile?.x).toBe(3);
@@ -92,7 +117,13 @@ describe('city generation', () => {
 
 	test('creates readable neighborhood clusters', () => {
 		expect.assertions(2);
-		const city = generateCity({ id: 'harbor-city', name: 'Harbor City', width: 20, height: 20, seed: 77 });
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 20,
+			height: 20,
+			seed: 77
+		});
 
 		expect(getTilesByNeighborhood(city, 'downtown').length).toBeGreaterThan(0);
 		expect(getTilesByNeighborhood(city, 'campus').length).toBeGreaterThan(0);
@@ -163,10 +194,10 @@ export interface OpeningForecast {
 Add these fields to `Store`:
 
 ```ts
-	cityId: string;
-	tileId: string;
-	mapX: number;
-	mapY: number;
+cityId: string;
+tileId: string;
+mapX: number;
+mapY: number;
 ```
 
 Add these fields to `GameState`:
@@ -220,14 +251,70 @@ interface NeighborhoodProfile {
 }
 
 const PROFILES: NeighborhoodProfile[] = [
-	{ neighborhood: 'downtown', terrain: 'commercial', demand: 88, rent: 2300, footTraffic: 92, customerFit: 76 },
-	{ neighborhood: 'campus', terrain: 'commercial', demand: 72, rent: 1250, footTraffic: 84, customerFit: 82 },
-	{ neighborhood: 'residential', terrain: 'residential', demand: 62, rent: 980, footTraffic: 48, customerFit: 70 },
-	{ neighborhood: 'mall', terrain: 'commercial', demand: 82, rent: 2100, footTraffic: 88, customerFit: 78 },
-	{ neighborhood: 'transit', terrain: 'transit', demand: 76, rent: 1600, footTraffic: 96, customerFit: 64 },
-	{ neighborhood: 'industrial', terrain: 'industrial', demand: 42, rent: 720, footTraffic: 36, customerFit: 44 },
-	{ neighborhood: 'suburb', terrain: 'residential', demand: 54, rent: 840, footTraffic: 42, customerFit: 68 },
-	{ neighborhood: 'parkEdge', terrain: 'green', demand: 46, rent: 760, footTraffic: 50, customerFit: 60 }
+	{
+		neighborhood: 'downtown',
+		terrain: 'commercial',
+		demand: 88,
+		rent: 2300,
+		footTraffic: 92,
+		customerFit: 76
+	},
+	{
+		neighborhood: 'campus',
+		terrain: 'commercial',
+		demand: 72,
+		rent: 1250,
+		footTraffic: 84,
+		customerFit: 82
+	},
+	{
+		neighborhood: 'residential',
+		terrain: 'residential',
+		demand: 62,
+		rent: 980,
+		footTraffic: 48,
+		customerFit: 70
+	},
+	{
+		neighborhood: 'mall',
+		terrain: 'commercial',
+		demand: 82,
+		rent: 2100,
+		footTraffic: 88,
+		customerFit: 78
+	},
+	{
+		neighborhood: 'transit',
+		terrain: 'transit',
+		demand: 76,
+		rent: 1600,
+		footTraffic: 96,
+		customerFit: 64
+	},
+	{
+		neighborhood: 'industrial',
+		terrain: 'industrial',
+		demand: 42,
+		rent: 720,
+		footTraffic: 36,
+		customerFit: 44
+	},
+	{
+		neighborhood: 'suburb',
+		terrain: 'residential',
+		demand: 54,
+		rent: 840,
+		footTraffic: 42,
+		customerFit: 68
+	},
+	{
+		neighborhood: 'parkEdge',
+		terrain: 'green',
+		demand: 46,
+		rent: 760,
+		footTraffic: 50,
+		customerFit: 60
+	}
 ];
 
 export function generateCity(input: GenerateCityInput): City {
@@ -324,6 +411,7 @@ git commit -m "feat: add city map domain"
 ## Task 2: Add Tile Placement and Forecast Rules
 
 **Files:**
+
 - Create: `src/lib/game/placement.ts`
 - Create: `src/lib/game/placement.spec.ts`
 - Modify: `src/lib/game/state.ts`
@@ -346,7 +434,13 @@ import {
 describe('tile placement', () => {
 	test('recommends archetypes from selected tile traits', () => {
 		expect.assertions(2);
-		const city = generateCity({ id: 'harbor-city', name: 'Harbor City', width: 20, height: 20, seed: 77 });
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 20,
+			height: 20,
+			seed: 77
+		});
 		const tile = city.tiles.find((candidate) => candidate.neighborhood === 'campus')!;
 
 		const recommendations = getRecommendedArchetypes(tile);
@@ -357,7 +451,13 @@ describe('tile placement', () => {
 
 	test('forecasts opening economics deterministically', () => {
 		expect.assertions(4);
-		const city = generateCity({ id: 'harbor-city', name: 'Harbor City', width: 20, height: 20, seed: 77 });
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 20,
+			height: 20,
+			seed: 77
+		});
 		const tile = city.tiles.find((candidate) => !candidate.locked)!;
 		const first = forecastOpening(tile, 'grocery');
 		const second = forecastOpening(tile, 'grocery');
@@ -370,10 +470,21 @@ describe('tile placement', () => {
 
 	test('creates the founding game at the selected tile', () => {
 		expect.assertions(8);
-		const city = generateCity({ id: 'harbor-city', name: 'Harbor City', width: 20, height: 20, seed: 101 });
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 20,
+			height: 20,
+			seed: 101
+		});
 		const tile = city.tiles.find((candidate) => !candidate.locked)!;
 
-		const game = createFoundingGameAtTile({ archetypeId: 'boutique', city, tileId: tile.id, seed: 101 });
+		const game = createFoundingGameAtTile({
+			archetypeId: 'boutique',
+			city,
+			tileId: tile.id,
+			seed: 101
+		});
 
 		expect(game.activeCityId).toBe(city.id);
 		expect(game.cities).toHaveLength(1);
@@ -387,9 +498,20 @@ describe('tile placement', () => {
 
 	test('blocks opening on an occupied tile', () => {
 		expect.assertions(2);
-		const city = generateCity({ id: 'harbor-city', name: 'Harbor City', width: 20, height: 20, seed: 101 });
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 20,
+			height: 20,
+			seed: 101
+		});
 		const tile = city.tiles.find((candidate) => !candidate.locked)!;
-		const game = createFoundingGameAtTile({ archetypeId: 'boutique', city, tileId: tile.id, seed: 101 });
+		const game = createFoundingGameAtTile({
+			archetypeId: 'boutique',
+			city,
+			tileId: tile.id,
+			seed: 101
+		});
 
 		const result = openStoreAtTile(game, { tileId: tile.id, name: 'Duplicate Store' });
 
@@ -418,7 +540,14 @@ import { getArchetype } from './archetypes';
 import { getTileById } from './city';
 import { clampScore } from './reports';
 import { createNewGame, openStore } from './state';
-import type { ArchetypeId, City, CityTile, DecisionItem, GameState, OpeningForecast } from './types';
+import type {
+	ArchetypeId,
+	City,
+	CityTile,
+	DecisionItem,
+	GameState,
+	OpeningForecast
+} from './types';
 
 const MAP_EXPANSION_COST = 14_000;
 
@@ -433,7 +562,10 @@ export function getRecommendedArchetypes(tile: CityTile): ArchetypeId[] {
 	return (['convenience', 'boutique', 'electronics', 'grocery'] as const)
 		.map((archetypeId) => ({
 			archetypeId,
-			score: tile.customerFit + tile.footTraffic / 2 + (ARCHETYPE_FIT[archetypeId][tile.neighborhood] ?? 0) * 5
+			score:
+				tile.customerFit +
+				tile.footTraffic / 2 +
+				(ARCHETYPE_FIT[archetypeId][tile.neighborhood] ?? 0) * 5
 		}))
 		.sort((a, b) => b.score - a.score)
 		.slice(0, 3)
@@ -489,7 +621,10 @@ export function createFoundingGameAtTile(input: {
 	};
 }
 
-export function openStoreAtTile(game: GameState, input: { tileId: string; name: string }): GameState {
+export function openStoreAtTile(
+	game: GameState,
+	input: { tileId: string; name: string }
+): GameState {
 	const city = game.cities.find((candidate) => candidate.id === game.activeCityId);
 	const tile = city ? getTileById(city, input.tileId) : undefined;
 
@@ -513,7 +648,11 @@ export function openStoreAtTile(game: GameState, input: { tileId: string; name: 
 	};
 }
 
-function applyTileToStore<T extends GameState['stores'][number]>(store: T, city: City, tile: CityTile): T {
+function applyTileToStore<T extends GameState['stores'][number]>(
+	store: T,
+	city: City,
+	tile: CityTile
+): T {
 	return {
 		...store,
 		cityId: city.id,
@@ -521,7 +660,10 @@ function applyTileToStore<T extends GameState['stores'][number]>(store: T, city:
 		mapX: tile.x,
 		mapY: tile.y,
 		location: readableLocation(tile),
-		localDemand: Math.max(0, Math.round((store.localDemand + tile.demand + tile.footTraffic) / 2.6)),
+		localDemand: Math.max(
+			0,
+			Math.round((store.localDemand + tile.demand + tile.footTraffic) / 2.6)
+		),
 		competition: clampScore(Math.round(store.competition * 0.7)),
 		reputation: clampScore(Math.round((store.reputation + tile.customerFit) / 2)),
 		staffCapacity: clampScore(Math.round(store.staffCapacity + (tile.footTraffic - 50) / 8))
@@ -580,22 +722,22 @@ import { generateCity, getTileById } from './city';
 Inside `createNewGame`, before returning:
 
 ```ts
-	const city = generateCity({
-		id: 'harbor-city',
-		name: 'Harbor City',
-		width: 20,
-		height: 20,
-		seed: normalizedSeed
-	});
-	const fallbackTile = city.tiles.find((tile) => !tile.locked) ?? city.tiles[0]!;
-	const placedOpeningStore = {
-		...openingStore,
-		cityId: city.id,
-		tileId: fallbackTile.id,
-		mapX: fallbackTile.x,
-		mapY: fallbackTile.y,
-		location: `Founding location (${fallbackTile.x}, ${fallbackTile.y})`
-	};
+const city = generateCity({
+	id: 'harbor-city',
+	name: 'Harbor City',
+	width: 20,
+	height: 20,
+	seed: normalizedSeed
+});
+const fallbackTile = city.tiles.find((tile) => !tile.locked) ?? city.tiles[0]!;
+const placedOpeningStore = {
+	...openingStore,
+	cityId: city.id,
+	tileId: fallbackTile.id,
+	mapX: fallbackTile.x,
+	mapY: fallbackTile.y,
+	location: `Founding location (${fallbackTile.x}, ${fallbackTile.y})`
+};
 ```
 
 Use `placedOpeningStore` in `scorecard.staffMorale` and `stores`, and include:
@@ -612,10 +754,10 @@ If TypeScript reports an unused `getTileById` import, remove that import and kee
 Modify the first test in `src/lib/game/state.spec.ts` to include these expectations and update `expect.assertions(6)` to `expect.assertions(10)`:
 
 ```ts
-		expect(game.cities).toHaveLength(1);
-		expect(game.activeCityId).toBe(game.cities[0]?.id);
-		expect(game.stores[0]?.tileId).toBeTruthy();
-		expect(game.stores[0]?.mapX).toBeGreaterThanOrEqual(0);
+expect(game.cities).toHaveLength(1);
+expect(game.activeCityId).toBe(game.cities[0]?.id);
+expect(game.stores[0]?.tileId).toBeTruthy();
+expect(game.stores[0]?.mapX).toBeGreaterThanOrEqual(0);
 ```
 
 - [ ] **Step 6: Run placement and state tests**
@@ -640,6 +782,7 @@ git commit -m "feat: add tile-based store placement"
 ## Task 3: Add Renderer Snapshot and Phaser Scene
 
 **Files:**
+
 - Create: `src/lib/game/mapRender.ts`
 - Create: `src/lib/game/mapRender.spec.ts`
 - Create: `src/lib/phaser/cityMapScene.ts`
@@ -657,9 +800,20 @@ import { createCityMapSnapshot } from './mapRender';
 describe('city map render snapshot', () => {
 	test('creates a serializable snapshot for the active city', () => {
 		expect.assertions(7);
-		const city = generateCity({ id: 'harbor-city', name: 'Harbor City', width: 20, height: 20, seed: 9 });
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 20,
+			height: 20,
+			seed: 9
+		});
 		const tile = city.tiles.find((candidate) => !candidate.locked)!;
-		const game = createFoundingGameAtTile({ archetypeId: 'convenience', city, tileId: tile.id, seed: 9 });
+		const game = createFoundingGameAtTile({
+			archetypeId: 'convenience',
+			city,
+			tileId: tile.id,
+			seed: 9
+		});
 
 		const snapshot = createCityMapSnapshot(game, tile.id);
 
@@ -674,9 +828,20 @@ describe('city map render snapshot', () => {
 
 	test('returns an empty safe snapshot when the active city is missing', () => {
 		expect.assertions(4);
-		const city = generateCity({ id: 'harbor-city', name: 'Harbor City', width: 20, height: 20, seed: 9 });
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 20,
+			height: 20,
+			seed: 9
+		});
 		const tile = city.tiles.find((candidate) => !candidate.locked)!;
-		const game = createFoundingGameAtTile({ archetypeId: 'convenience', city, tileId: tile.id, seed: 9 });
+		const game = createFoundingGameAtTile({
+			archetypeId: 'convenience',
+			city,
+			tileId: tile.id,
+			seed: 9
+		});
 
 		const snapshot = createCityMapSnapshot({ ...game, activeCityId: 'missing-city' }, null);
 
@@ -845,10 +1010,13 @@ export class CityMapScene extends Phaser.Scene {
 			this.cameras.main.scrollY -= (pointer.y - this.dragStart.y) / this.cameras.main.zoom;
 			this.dragStart.set(pointer.x, pointer.y);
 		});
-		this.input.on('wheel', (_pointer: Phaser.Input.Pointer, _objects: unknown, _dx: number, dy: number) => {
-			const zoom = Phaser.Math.Clamp(this.cameras.main.zoom + (dy > 0 ? -0.08 : 0.08), 0.45, 1.8);
-			this.cameras.main.setZoom(zoom);
-		});
+		this.input.on(
+			'wheel',
+			(_pointer: Phaser.Input.Pointer, _objects: unknown, _dx: number, dy: number) => {
+				const zoom = Phaser.Math.Clamp(this.cameras.main.zoom + (dy > 0 ? -0.08 : 0.08), 0.45, 1.8);
+				this.cameras.main.setZoom(zoom);
+			}
+		);
 		this.redraw();
 	}
 
@@ -881,7 +1049,12 @@ export class CityMapScene extends Phaser.Scene {
 			this.markerLayer.add(marker);
 		}
 
-		this.cameras.main.setBounds(0, 0, this.snapshot.width * TILE_SIZE, this.snapshot.height * TILE_SIZE);
+		this.cameras.main.setBounds(
+			0,
+			0,
+			this.snapshot.width * TILE_SIZE,
+			this.snapshot.height * TILE_SIZE
+		);
 	}
 
 	private drawTile(tile: CityMapTileRender): void {
@@ -895,7 +1068,9 @@ export class CityMapScene extends Phaser.Scene {
 			.setInteractive({ useHandCursor: true });
 
 		rect.on('pointerover', () => rect.setStrokeStyle(2, 0xf8d978));
-		rect.on('pointerout', () => rect.setStrokeStyle(tile.selected ? 3 : 1, tile.selected ? 0xffffff : 0x172033));
+		rect.on('pointerout', () =>
+			rect.setStrokeStyle(tile.selected ? 3 : 1, tile.selected ? 0xffffff : 0x172033)
+		);
 		rect.on('pointerup', () => this.onEvent({ type: 'tileSelected', tileId: tile.id }));
 		this.tileLayer?.add(rect);
 
@@ -930,6 +1105,7 @@ git commit -m "feat: add Phaser city map scene"
 ## Task 4: Add Svelte Map Bridge and Inspector
 
 **Files:**
+
 - Create: `src/lib/components/game/CityMap.svelte`
 - Create: `src/lib/components/game/TileInspector.svelte`
 - Modify: `src/routes/+page.svelte`
@@ -978,7 +1154,11 @@ onMount(async () => {
 			type: Phaser.AUTO,
 			parent: container,
 			backgroundColor: '#0f1724',
-			scale: { mode: Phaser.Scale.RESIZE, width: container.clientWidth, height: container.clientHeight },
+			scale: {
+				mode: Phaser.Scale.RESIZE,
+				width: container.clientWidth,
+				height: container.clientHeight
+			},
 			scene
 		});
 		scene.updateSnapshot(snapshot);
@@ -1059,6 +1239,7 @@ git commit -m "feat: build map-first Svelte game shell"
 ## Task 5: Add End-to-End Flow and Final Verification
 
 **Files:**
+
 - Modify: `src/routes/retail-sim.e2e.ts`
 
 - [ ] **Step 1: Update Playwright test for map-first founding**
@@ -1074,7 +1255,10 @@ test('player can found a store from the city map and advance a day', async ({ pa
 	await expect(page.getByText(/harbor city/i)).toBeVisible();
 	await page.getByRole('button', { name: /select tile 0, 0/i }).click();
 	await expect(page.getByText(/recommended/i)).toBeVisible();
-	await page.getByRole('button', { name: /open .* here/i }).first().click();
+	await page
+		.getByRole('button', { name: /open .* here/i })
+		.first()
+		.click();
 
 	await expect(page.getByText(/control tower/i)).toBeVisible();
 	await expect(page.getByRole('heading', { name: /day 1/i })).toBeVisible();
@@ -1090,7 +1274,10 @@ test('player expands from a selected city tile', async ({ page }) => {
 	await page.goto('/');
 
 	await page.getByRole('button', { name: /select tile 0, 0/i }).click();
-	await page.getByRole('button', { name: /open .* here/i }).first().click();
+	await page
+		.getByRole('button', { name: /open .* here/i })
+		.first()
+		.click();
 
 	await page.getByRole('button', { name: /select tile 1, 0/i }).click();
 	await page.getByRole('button', { name: /open store here/i }).click();
