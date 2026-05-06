@@ -1,5 +1,10 @@
 import { getArchetype } from './archetypes';
-import { generateCity, isTileBuildable } from './city';
+import {
+	generateCity,
+	getTilePlacementBlockDecisionIdPart,
+	getTilePlacementBlockReason,
+	isTileBuildable
+} from './city';
 import { clampScore } from './reports';
 import { createRng, normalizeSeed, randomInt } from './rng';
 import type {
@@ -13,6 +18,7 @@ import type {
 	Scorecard,
 	Store
 } from './types';
+import type { TilePlacementBlockReason } from './city';
 import { MAX_STORES } from './types';
 
 export const DEFAULT_POLICY: CompanyPolicy = {
@@ -28,6 +34,11 @@ interface OpenStoreInput {
 	archetypeId: ArchetypeId;
 	location: string;
 	tileId?: string;
+}
+
+interface ExpansionTileResult {
+	tile?: CityTile;
+	blockReason?: TilePlacementBlockReason | null;
 }
 
 export function createNewGame(archetypeId: ArchetypeId, seed = Date.now()): GameState {
@@ -94,10 +105,11 @@ export function updatePolicy(game: GameState, patch: Partial<CompanyPolicy>): Ga
 
 export function openStore(game: GameState, input: OpenStoreInput): GameState {
 	const archetypeId = input.archetypeId;
-	const tile = getExpansionTile(game, input.tileId);
+	const expansionTile = getExpansionTile(game, input.tileId);
+	const tile = expansionTile.tile;
 
 	if (!tile) {
-		return appendDecision(game, locationUnavailableDecision(game));
+		return appendDecision(game, locationUnavailableDecision(game, expansionTile.blockReason));
 	}
 
 	if (game.stores.length >= MAX_STORES) {
@@ -210,28 +222,32 @@ function applyStoreEffects(store: Store, option: DecisionOption): Store {
 function getExpansionTile(
 	game: GameState,
 	requestedTileId: string | undefined
-): CityTile | undefined {
+): ExpansionTileResult {
 	const city = getActiveCity(game);
 
 	if (!city) {
-		return undefined;
+		return {};
 	}
 
 	if (requestedTileId) {
 		const requestedTile = city.tiles.find((tile) => tile.id === requestedTileId);
 
-		if (
-			!requestedTile ||
-			!isTileBuildable(requestedTile) ||
-			isTileOccupied(game, requestedTile.id)
-		) {
-			return undefined;
+		if (!requestedTile) {
+			return {};
 		}
 
-		return requestedTile;
+		const blockReason = getTilePlacementBlockReason(requestedTile);
+
+		if (blockReason || isTileOccupied(game, requestedTile.id)) {
+			return { blockReason };
+		}
+
+		return { tile: requestedTile };
 	}
 
-	return city.tiles.find((tile) => isTileBuildable(tile) && !isTileOccupied(game, tile.id));
+	return {
+		tile: city.tiles.find((tile) => isTileBuildable(tile) && !isTileOccupied(game, tile.id))
+	};
 }
 
 function getActiveCity(game: GameState): City | undefined {
@@ -285,11 +301,18 @@ function expansionCashBlockedDecision(game: GameState, setupCost: number): Decis
 	};
 }
 
-function locationUnavailableDecision(game: GameState): DecisionItem {
+function locationUnavailableDecision(
+	game: GameState,
+	reason?: TilePlacementBlockReason | null
+): DecisionItem {
+	const idPart = getTilePlacementBlockDecisionIdPart(reason);
+
 	return {
-		id: `location-unavailable-${game.day}`,
+		id: `location-unavailable${idPart ? `-${idPart}` : ''}-${game.day}`,
 		title: 'Location unavailable',
-		context: 'Choose an unlocked, unoccupied city tile before opening this store.',
+		context: reason
+			? `${reason} blocks store placement. Choose another city tile.`
+			: 'Choose an unlocked, unoccupied city tile before opening this store.',
 		expiresOnDay: game.day + 1,
 		options: [acknowledgeOption()]
 	};

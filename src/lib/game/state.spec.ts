@@ -127,6 +127,26 @@ describe('game state', () => {
 		expect(openedStore?.tileId).not.toBe(roadTile.id);
 	});
 
+	test('direct store opening reports requested road tile as unavailable', () => {
+		expect.assertions(3);
+		const game = createNewGame('electronics', 44);
+		const city = game.cities[0]!;
+		const roadTile = city.tiles.find((tile) => tile.feature === 'road')!;
+
+		const result = openStore(game, {
+			name: 'Road Kiosk',
+			archetypeId: 'electronics',
+			location: 'Roadside',
+			tileId: roadTile.id
+		});
+
+		expect(result.stores).toHaveLength(1);
+		expect(result.decisions.at(-1)?.id).toBe('location-unavailable-road-1');
+		expect(result.decisions.at(-1)?.context).toBe(
+			'Road location blocks store placement. Choose another city tile.'
+		);
+	});
+
 	test('direct store opening uses the selected expansion archetype', () => {
 		expect.assertions(2);
 		const game = createNewGame('boutique', 44);

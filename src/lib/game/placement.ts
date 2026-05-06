@@ -1,5 +1,9 @@
 import { ARCHETYPES, getArchetype } from './archetypes';
-import { getTileById, getTilePlacementBlockReason } from './city';
+import {
+	getTileById,
+	getTilePlacementBlockDecisionIdPart,
+	getTilePlacementBlockReason
+} from './city';
 import { clampScore } from './reports';
 import { createNewGame, getExpansionSetupCost, openStore } from './state';
 import type {
@@ -11,6 +15,7 @@ import type {
 	OpeningForecast,
 	Store
 } from './types';
+import type { TilePlacementBlockReason } from './city';
 
 const ARCHETYPE_NEIGHBORHOOD_FIT: Record<
 	ArchetypeId,
@@ -231,7 +236,10 @@ function formatNeighborhood(neighborhood: CityTile['neighborhood']): string {
 		.replace(/^./, (character) => character.toUpperCase());
 }
 
-function appendLocationUnavailableDecision(game: GameState, reason?: string | null): GameState {
+function appendLocationUnavailableDecision(
+	game: GameState,
+	reason?: TilePlacementBlockReason | null
+): GameState {
 	const decision = locationUnavailableDecision(game, reason);
 
 	if (game.decisions.some((candidate) => candidate.id === decision.id)) {
@@ -244,9 +252,14 @@ function appendLocationUnavailableDecision(game: GameState, reason?: string | nu
 	};
 }
 
-function locationUnavailableDecision(game: GameState, reason?: string | null): DecisionItem {
+function locationUnavailableDecision(
+	game: GameState,
+	reason?: TilePlacementBlockReason | null
+): DecisionItem {
+	const idPart = getTilePlacementBlockDecisionIdPart(reason);
+
 	return {
-		id: `location-unavailable${getLocationUnavailableIdSuffix(reason)}-${game.day}`,
+		id: `location-unavailable${idPart ? `-${idPart}` : ''}-${game.day}`,
 		title: 'Location unavailable',
 		context: reason
 			? `${reason} blocks store placement. Choose another city tile.`
@@ -261,17 +274,4 @@ function locationUnavailableDecision(game: GameState, reason?: string | null): D
 			}
 		]
 	};
-}
-
-function getLocationUnavailableIdSuffix(reason?: string | null): string {
-	switch (reason) {
-		case 'Locked location':
-			return '-locked';
-		case 'Road location':
-			return '-road';
-		case 'River location':
-			return '-river';
-		default:
-			return '';
-	}
 }

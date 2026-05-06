@@ -1,6 +1,14 @@
 import { createRng, randomInt } from './rng';
 import type { City, CityTile, CityTileFeature, NeighborhoodId, TerrainId } from './types';
 
+export type TilePlacementBlockReason = 'Locked location' | 'Road location' | 'River location';
+
+const TILE_PLACEMENT_BLOCK_DECISION_ID_PART: Record<TilePlacementBlockReason, string> = {
+	'Locked location': 'locked',
+	'Road location': 'road',
+	'River location': 'river'
+};
+
 interface GenerateCityInput {
 	id: string;
 	name: string;
@@ -131,7 +139,7 @@ export function getTilesByNeighborhood(city: City, neighborhood: NeighborhoodId)
 	return city.tiles.filter((tile) => tile.neighborhood === neighborhood);
 }
 
-export function getTilePlacementBlockReason(tile: CityTile): string | null {
+export function getTilePlacementBlockReason(tile: CityTile): TilePlacementBlockReason | null {
 	if (tile.locked) {
 		return 'Locked location';
 	}
@@ -149,6 +157,12 @@ export function getTilePlacementBlockReason(tile: CityTile): string | null {
 
 export function isTileBuildable(tile: CityTile): boolean {
 	return getTilePlacementBlockReason(tile) === null;
+}
+
+export function getTilePlacementBlockDecisionIdPart(
+	reason?: TilePlacementBlockReason | null
+): string | null {
+	return reason ? TILE_PLACEMENT_BLOCK_DECISION_ID_PART[reason] : null;
 }
 
 function getNeighborhood(width: number, height: number, x: number, y: number): NeighborhoodId {

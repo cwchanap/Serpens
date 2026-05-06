@@ -155,7 +155,7 @@ describe('tile placement', () => {
 	});
 
 	test('keeps same-day road and river blocked placement feedback separately', () => {
-		expect.assertions(3);
+		expect.assertions(5);
 		const city = generateCity({
 			id: 'harbor-city',
 			name: 'Harbor City',
@@ -178,13 +178,25 @@ describe('tile placement', () => {
 			name: 'Road Store',
 			archetypeId: 'boutique'
 		});
-		const riverResult = openStoreAtTile(roadResult, {
+		const duplicateRoadResult = openStoreAtTile(roadResult, {
+			tileId: roadTile.id,
+			name: 'Second Road Store',
+			archetypeId: 'boutique'
+		});
+		const riverResult = openStoreAtTile(duplicateRoadResult, {
 			tileId: riverTile.id,
 			name: 'River Store',
 			archetypeId: 'grocery'
 		});
 
 		expect(riverResult.stores).toHaveLength(1);
+		expect(duplicateRoadResult.decisions.map((decision) => decision.id)).toEqual([
+			'location-unavailable-road-1'
+		]);
+		expect(riverResult.decisions.map((decision) => decision.id)).toEqual([
+			'location-unavailable-road-1',
+			'location-unavailable-river-1'
+		]);
 		expect(riverResult.decisions.map((decision) => decision.context)).toContain(
 			'Road location blocks store placement. Choose another city tile.'
 		);
