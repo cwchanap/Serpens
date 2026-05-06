@@ -8,7 +8,10 @@ import {
 	SHOP_STOREFRONT_PATH,
 	SHOP_STOREFRONT_TEXTURE_KEY,
 	STORE_ART_LIST,
-	getStoreArt
+	TERRAIN_ART,
+	TERRAIN_ART_LIST,
+	getStoreArt,
+	getTerrainArt
 } from './gameArt';
 import type { ArchetypeId } from '$lib/game/types';
 
@@ -81,6 +84,24 @@ describe('game art asset constants', () => {
 			expect(opaquePixels, `${art.path} should preserve visible storefront pixels`).toBeGreaterThan(
 				0
 			);
+		}
+	});
+
+	it('defines terrain art for road, river, and tree decoration', () => {
+		const terrainIds = ['road', 'river', 'tree'] as const;
+
+		expect(Object.keys(TERRAIN_ART).sort()).toEqual([...terrainIds].sort());
+		expect(TERRAIN_ART_LIST).toHaveLength(terrainIds.length);
+
+		for (const terrainId of terrainIds) {
+			const art = getTerrainArt(terrainId);
+
+			expect(art.id).toBe(terrainId);
+			expect(art.path).toBe(
+				`/assets/game/terrain/${terrainId === 'tree' ? 'tree-decoration' : `${terrainId}-tile`}.png`
+			);
+			expect(art.textureKey).toBe(`terrain-${terrainId}`);
+			expect(existsSync(staticPath(art.path))).toBe(true);
 		}
 	});
 });

@@ -5,7 +5,7 @@ import { createCityMapSnapshot } from './mapRender';
 
 describe('city map render snapshot', () => {
 	test('creates a serializable snapshot for the active city', () => {
-		expect.assertions(7);
+		expect.assertions(8);
 		const city = generateCity({
 			id: 'harbor-city',
 			name: 'Harbor City',
@@ -30,6 +30,7 @@ describe('city map render snapshot', () => {
 		expect(snapshot.stores).toHaveLength(1);
 		expect(snapshot.selectedTileId).toBe(tile.id);
 		expect(snapshot.tiles.find((candidate) => candidate.id === tile.id)?.owned).toBe(true);
+		expect(snapshot.tiles.find((candidate) => candidate.feature === 'road')?.feature).toBe('road');
 	});
 
 	test('returns an empty safe snapshot when the active city is missing', () => {

@@ -6,6 +6,7 @@ export interface CityMapTileRender {
 	y: number;
 	neighborhood: CityTile['neighborhood'];
 	terrain: CityTile['terrain'];
+	feature: CityTile['feature'];
 	locked: boolean;
 	owned: boolean;
 	selected: boolean;
@@ -74,6 +75,7 @@ function createTileRender(
 		y: tile.y,
 		neighborhood: tile.neighborhood,
 		terrain: tile.terrain,
+		feature: tile.feature ?? null,
 		locked: tile.locked,
 		owned: ownedTileIds.has(tile.id),
 		selected: tile.id === selectedTileId,

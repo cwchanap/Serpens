@@ -7,6 +7,15 @@ export interface StoreArt {
 	alt: string;
 }
 
+export type TerrainArtId = 'road' | 'river' | 'tree';
+
+export interface TerrainArt {
+	id: TerrainArtId;
+	path: string;
+	textureKey: string;
+	alt: string;
+}
+
 export const ARCHETYPE_STORE_ART: Readonly<Record<ArchetypeId, StoreArt>> = Object.freeze({
 	convenience: Object.freeze({
 		archetypeId: 'convenience',
@@ -42,6 +51,33 @@ export const SHOP_STOREFRONT_PATH = ARCHETYPE_STORE_ART.convenience.path;
 export const SHOP_STOREFRONT_TEXTURE_KEY = ARCHETYPE_STORE_ART.convenience.textureKey;
 export const SHOP_STOREFRONT_ALT = 'Anime-style storefront for an owned shop';
 
+export const TERRAIN_ART: Readonly<Record<TerrainArtId, TerrainArt>> = Object.freeze({
+	road: Object.freeze({
+		id: 'road',
+		path: '/assets/game/terrain/road-tile.png',
+		textureKey: 'terrain-road',
+		alt: 'Stylized city road terrain tile'
+	}),
+	river: Object.freeze({
+		id: 'river',
+		path: '/assets/game/terrain/river-tile.png',
+		textureKey: 'terrain-river',
+		alt: 'Stylized river terrain tile'
+	}),
+	tree: Object.freeze({
+		id: 'tree',
+		path: '/assets/game/terrain/tree-decoration.png',
+		textureKey: 'terrain-tree',
+		alt: 'Stylized tree decoration for green city tiles'
+	})
+});
+
+export const TERRAIN_ART_LIST: readonly TerrainArt[] = Object.freeze(Object.values(TERRAIN_ART));
+
 export function getStoreArt(archetypeId: ArchetypeId): StoreArt {
 	return ARCHETYPE_STORE_ART[archetypeId];
+}
+
+export function getTerrainArt(id: TerrainArtId): TerrainArt {
+	return TERRAIN_ART[id];
 }
