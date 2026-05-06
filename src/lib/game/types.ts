@@ -81,7 +81,7 @@ export interface CityTile {
 	y: number;
 	neighborhood: NeighborhoodId;
 	terrain: TerrainId;
-	feature?: CityTileFeature;
+	feature: CityTileFeature;
 	demand: number;
 	rent: number;
 	footTraffic: number;

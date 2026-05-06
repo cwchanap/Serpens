@@ -326,6 +326,7 @@ describe('save records', () => {
 							neighborhood:
 								'moonbase' as GameState['cities'][number]['tiles'][number]['neighborhood'],
 							terrain: 'commercial',
+							feature: null,
 							demand: 72,
 							rent: 180,
 							footTraffic: 66,

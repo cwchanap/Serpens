@@ -12,6 +12,7 @@ const tile: CityTile = {
 	y: 1,
 	neighborhood: 'downtown',
 	terrain: 'commercial',
+	feature: null,
 	demand: 72,
 	rent: 190,
 	footTraffic: 76,
