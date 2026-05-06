@@ -3,6 +3,8 @@ import { expect, test } from '@playwright/test';
 async function clickMapTile(page: import('@playwright/test').Page, x: number, y: number) {
 	const canvas = page.locator('.map-canvas canvas');
 	await expect(canvas).toBeVisible();
+	await expect(canvas).toHaveAttribute('data-store-sprite-count', /\d+/);
+	await expect(canvas).toHaveAttribute('data-terrain-asset-mode', /^(fallback|image|mixed)$/);
 	const box = await canvas.boundingBox();
 
 	if (!box) {
