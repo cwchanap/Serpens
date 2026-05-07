@@ -54,6 +54,19 @@ class DelayedMemorySaveStoreDriver extends MemorySaveStoreDriver {
 	}
 }
 
+class SaveDataErrorOnceDriver extends MemorySaveStoreDriver {
+	private hasFailed = false;
+
+	override async read(): Promise<SaveStoreSnapshot> {
+		if (!this.hasFailed) {
+			this.hasFailed = true;
+			throw new SaveDataError('Persisted save is obsolete');
+		}
+
+		return super.read();
+	}
+}
+
 function delay(): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, 0));
 }
@@ -599,14 +612,16 @@ describe('browser save repository', () => {
 		).rejects.toThrow('Manual save slot not found: missing-slot');
 	});
 
-	test('treats empty browser storage data as invalid JSON', async () => {
+	test('resets invalid browser storage data to an empty save store', async () => {
 		expect.assertions(2);
 		const storage = new FakeStorage();
 		storage.setItem(BROWSER_SAVE_STORAGE_KEY, '');
 		const repository = createBrowserSaveRepository(storage);
 
-		await expect(repository.getSummary()).rejects.toThrow(SaveDataError);
-		await expect(repository.getSummary()).rejects.toThrow('Save data is not valid JSON');
+		const summary = await repository.getSummary();
+
+		expect(summary.autoSave).toBeNull();
+		expect(summary.manualSlots).toEqual([]);
 	});
 
 	test('throws a clear error when default browser storage is unavailable', () => {
@@ -663,6 +678,25 @@ describe('browser save repository', () => {
 			'Campus Run',
 			'Harbor Run'
 		]);
+	});
+
+	test('resets save data errors during reads and writes a valid autosave afterward', async () => {
+		expect.assertions(5);
+		const driver = new SaveDataErrorOnceDriver();
+		const repository = new SaveRepositoryFromDriver(
+			driver,
+			() => new Date('2026-05-05T12:00:00.000Z')
+		);
+		const game = createGame({ day: 9 });
+
+		const metadata = await repository.saveAuto(game);
+		const snapshot = await driver.read();
+
+		expect(metadata.kind).toBe('auto');
+		expect(metadata.day).toBe(9);
+		expect(snapshot.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
+		expect(snapshot.autoSave?.game.staff).toEqual([]);
+		expect(snapshot.autoSave?.game.hiringCandidates).toEqual([]);
 	});
 
 	test('clones records and summaries across repository boundaries', async () => {

@@ -3,6 +3,7 @@ import {
 	SaveDataError,
 	cloneSaveStoreSnapshot,
 	createAutoSaveRecord,
+	createEmptySaveStore,
 	createManualSlotId,
 	createSaveRecord,
 	createSaveSummary
@@ -102,7 +103,15 @@ export class SaveRepositoryFromDriver implements SaveRepository {
 	}
 
 	private async readSnapshot(): Promise<SaveStoreSnapshot> {
-		return cloneSaveStoreSnapshot(await this.driver.read());
+		try {
+			return cloneSaveStoreSnapshot(await this.driver.read());
+		} catch (error) {
+			if (error instanceof SaveDataError) {
+				return createEmptySaveStore();
+			}
+
+			throw error;
+		}
 	}
 
 	private async writeSnapshot(snapshot: SaveStoreSnapshot): Promise<void> {
