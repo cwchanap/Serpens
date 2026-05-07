@@ -8,7 +8,7 @@ import type { SaveRepository } from './saveRepository';
 import { SaveRepositoryFromDriver, type SaveStoreDriver } from './saveStoreRepository';
 import type { SaveStoreSnapshot } from './saveTypes';
 
-export const BROWSER_SAVE_STORAGE_KEY = 'serpens.saves.v1';
+export const BROWSER_SAVE_STORAGE_KEY = 'serpens.saves.v2';
 
 export interface StorageLike {
 	getItem(key: string): string | null;

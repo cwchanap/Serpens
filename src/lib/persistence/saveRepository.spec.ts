@@ -67,6 +67,12 @@ class SaveDataErrorOnceDriver extends MemorySaveStoreDriver {
 	}
 }
 
+class NonSaveDataErrorDriver extends MemorySaveStoreDriver {
+	override async read(): Promise<SaveStoreSnapshot> {
+		throw new TypeError('Driver is unavailable');
+	}
+}
+
 function delay(): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, 0));
 }
@@ -677,6 +683,12 @@ describe('save records', () => {
 });
 
 describe('browser save repository', () => {
+	test('uses the current browser storage key', () => {
+		expect.assertions(1);
+
+		expect(BROWSER_SAVE_STORAGE_KEY).toBe('serpens.saves.v2');
+	});
+
 	test('saves and loads auto-save records', async () => {
 		expect.assertions(4);
 		const repository = createBrowserSaveRepository(
@@ -826,6 +838,14 @@ describe('browser save repository', () => {
 		expect(snapshot.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
 		expect(snapshot.autoSave?.game.staff).toEqual([]);
 		expect(snapshot.autoSave?.game.hiringCandidates).toEqual([]);
+	});
+
+	test('does not reset non-save data driver read errors', async () => {
+		expect.assertions(2);
+		const repository = new SaveRepositoryFromDriver(new NonSaveDataErrorDriver());
+
+		await expect(repository.getSummary()).rejects.toThrow(TypeError);
+		await expect(repository.getSummary()).rejects.toThrow('Driver is unavailable');
 	});
 
 	test('clones records and summaries across repository boundaries', async () => {

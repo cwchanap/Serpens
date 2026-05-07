@@ -5,7 +5,6 @@ import {
 	SAVE_STORE_KEY,
 	type StoreLike
 } from './tauriSaveRepository';
-import { SaveDataError } from './saveCodec';
 
 class FakeStore implements StoreLike {
 	readonly values = new Map<string, unknown>();
@@ -75,13 +74,15 @@ describe('Tauri save repository', () => {
 		expect((await repository.loadManualSlot(slot.id))?.game.day).toBe(7);
 	});
 
-	test('rejects null save data stored under the Tauri store key', async () => {
+	test('resets null save data stored under the Tauri store key', async () => {
 		expect.assertions(2);
 		const store = new FakeStore();
 		store.values.set(SAVE_STORE_KEY, null);
 		const repository = createTauriSaveRepositoryFromStore(Promise.resolve(store));
 
-		await expect(repository.getSummary()).rejects.toThrow(SaveDataError);
-		await expect(repository.getSummary()).rejects.toThrow('Save store must be an object');
+		const summary = await repository.getSummary();
+
+		expect(summary.autoSave).toBeNull();
+		expect(summary.manualSlots).toEqual([]);
 	});
 });
