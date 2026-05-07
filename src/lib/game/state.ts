@@ -7,7 +7,11 @@ import {
 } from './city';
 import { clampScore } from './reports';
 import { createRng, normalizeSeed, randomInt } from './rng';
-import { generateHiringCandidates, generateStarterStaffForStore } from './staffing';
+import {
+	generateHiringCandidates,
+	generateStarterStaffForStore,
+	HIRING_CANDIDATE_COUNT
+} from './staffing';
 import type {
 	ArchetypeId,
 	City,
@@ -76,7 +80,7 @@ export function createNewGame(archetypeId: ArchetypeId, seed = Date.now()): Game
 		day: 1,
 		rng
 	});
-	const hiringCandidates = generateHiringCandidates({ count: 5, day: 1, rng });
+	const hiringCandidates = generateHiringCandidates({ count: HIRING_CANDIDATE_COUNT, day: 1, rng });
 
 	return {
 		seed: normalizedSeed,

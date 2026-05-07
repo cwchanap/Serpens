@@ -2,7 +2,14 @@ import { getArchetype } from './archetypes';
 import { generateDecisions, pruneExpiredDecisions } from './events';
 import { clampScore } from './reports';
 import { createRngFromState, randomBetween } from './rng';
-import { calculateMonthlyPayroll, isPayrollDay, summarizeStoreStaffing } from './staffing';
+import {
+	calculateMonthlyPayroll,
+	generateHiringCandidates,
+	HIRING_CANDIDATE_COUNT,
+	isPayrollDay,
+	shouldRefreshHiringMarket,
+	summarizeStoreStaffing
+} from './staffing';
 import type {
 	DailyReport,
 	DailyStoreReport,
@@ -52,6 +59,7 @@ export function simulateDay(game: GameState): GameState {
 	const rng = createRngFromState(game.rngState);
 	const storeResults = game.stores.map((store) => simulateStore(store, game, rng));
 	const storeReports = storeResults.map((result) => result.report);
+	const nextDay = game.day + 1;
 	const revenue = sum(storeReports, 'revenue');
 	const costOfGoods = sum(storeReports, 'costOfGoods');
 	const grossMargin = revenue - costOfGoods;
@@ -61,12 +69,16 @@ export function simulateDay(game: GameState): GameState {
 	const cashAfter = Math.round(game.cash + netIncome);
 	const warnings = collectWarnings(storeReports, cashAfter);
 	const scorecard = buildScorecard(game.scorecard, storeReports, netIncome);
+	const hiringCandidates = shouldRefreshHiringMarket(nextDay)
+		? generateHiringCandidates({ count: HIRING_CANDIDATE_COUNT, day: nextDay, rng })
+		: game.hiringCandidates;
 	const postDayGame = {
 		...game,
-		day: game.day + 1,
+		day: nextDay,
 		rngState: rng.getState(),
 		cash: cashAfter,
-		scorecard
+		scorecard,
+		hiringCandidates
 	};
 	const preservedDecisions = pruneExpiredDecisions(postDayGame);
 
@@ -86,11 +98,12 @@ export function simulateDay(game: GameState): GameState {
 
 	return {
 		...game,
-		day: game.day + 1,
+		day: nextDay,
 		rngState: rng.getState(),
 		cash: cashAfter,
 		scorecard,
 		stores: storeResults.map((result) => result.store),
+		hiringCandidates,
 		decisions: [
 			...preservedDecisions,
 			...generateDecisions({

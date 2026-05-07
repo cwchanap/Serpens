@@ -48,12 +48,19 @@ describe('staffing rules', () => {
 	});
 
 	test('generates deterministic varied hiring candidates', () => {
-		expect.assertions(4);
+		expect.assertions(5);
 		const first = generateHiringCandidates({ count: 5, day: 3, rng: createRng(2026) });
 		const second = generateHiringCandidates({ count: 5, day: 3, rng: createRng(2026) });
 
 		expect(first).toEqual(second);
 		expect(first).toHaveLength(5);
+		expect(first.map((candidate) => candidate.role)).toEqual([
+			'manager',
+			'general',
+			'general',
+			'manager',
+			'general'
+		]);
 		expect(new Set(first.map((candidate) => candidate.name)).size).toBeGreaterThan(1);
 		expect(first.map((candidate) => candidate.id)).toEqual([
 			'candidate-3-1',

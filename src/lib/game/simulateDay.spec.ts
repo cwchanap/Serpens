@@ -148,6 +148,36 @@ describe('daily simulation', () => {
 		);
 	});
 
+	test('refreshes the hiring market each week with staffed role coverage', () => {
+		expect.assertions(5);
+		const game = createNewGame('convenience', 94);
+		const staleCandidateIds = game.hiringCandidates.map((candidate) => candidate.id);
+		const refreshed = simulateDay({
+			...game,
+			day: 7,
+			hiringCandidates: []
+		});
+		const preserved = simulateDay({ ...game, day: 6 });
+
+		expect(refreshed.day).toBe(8);
+		expect(refreshed.hiringCandidates).toHaveLength(5);
+		expect(refreshed.hiringCandidates.map((candidate) => candidate.id)).toEqual([
+			'candidate-8-1',
+			'candidate-8-2',
+			'candidate-8-3',
+			'candidate-8-4',
+			'candidate-8-5'
+		]);
+		expect(refreshed.hiringCandidates.map((candidate) => candidate.role)).toEqual([
+			'manager',
+			'general',
+			'general',
+			'manager',
+			'general'
+		]);
+		expect(preserved.hiringCandidates.map((candidate) => candidate.id)).toEqual(staleCandidateIds);
+	});
+
 	test('charges monthly payroll on payroll days only', () => {
 		expect.assertions(8);
 		const startingCash = 50_000;

@@ -18,6 +18,9 @@ const STAFFING_REQUIREMENTS: Record<ArchetypeId, StaffingRequirement> = {
 	grocery: { manager: 1, general: 3 }
 };
 
+export const HIRING_CANDIDATE_COUNT = 5;
+export const HIRING_MARKET_REFRESH_INTERVAL_DAYS = 7;
+
 const FIRST_NAMES = [
 	'Avery',
 	'Blake',
@@ -68,7 +71,7 @@ export function generateHiringCandidates(input: {
 	rng: Rng;
 }): HiringCandidate[] {
 	return Array.from({ length: input.count }, (_, index) => {
-		const role: StaffRole = input.rng.next() < 0.25 ? 'manager' : 'general';
+		const role: StaffRole = index % 3 === 0 ? 'manager' : 'general';
 		const firstName = FIRST_NAMES[randomInt(input.rng, 0, FIRST_NAMES.length - 1)]!;
 		const lastName = LAST_NAMES[randomInt(input.rng, 0, LAST_NAMES.length - 1)]!;
 		const baseSalary = role === 'manager' ? 4_300 : 2_700;
@@ -84,6 +87,10 @@ export function generateHiringCandidates(input: {
 			morale: clampScore(50 + randomInt(input.rng, 0, 35))
 		};
 	});
+}
+
+export function shouldRefreshHiringMarket(day: number): boolean {
+	return day > 1 && (day - 1) % HIRING_MARKET_REFRESH_INTERVAL_DAYS === 0;
 }
 
 export function hireCandidate(game: GameState, candidateId: string): GameState {
