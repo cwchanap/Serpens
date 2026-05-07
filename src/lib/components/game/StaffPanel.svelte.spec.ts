@@ -198,7 +198,9 @@ describe('StaffPanel', () => {
 		renderStaffPanel({ stores: [store, secondStore], onAssign });
 
 		await page
-			.getByLabelText('Assign Alex Chen, Manager staff staff-alex, currently assigned to Founding Store')
+			.getByLabelText(
+				'Assign Alex Chen, Manager staff staff-alex, currently assigned to Founding Store'
+			)
 			.selectOptions('store-2');
 
 		expect(onAssign).toHaveBeenCalledWith('staff-alex', 'store-2');
@@ -211,7 +213,9 @@ describe('StaffPanel', () => {
 		renderStaffPanel({ onUnassign });
 
 		await page
-			.getByLabelText('Assign Alex Chen, Manager staff staff-alex, currently assigned to Founding Store')
+			.getByLabelText(
+				'Assign Alex Chen, Manager staff staff-alex, currently assigned to Founding Store'
+			)
 			.selectOptions('');
 
 		expect(onUnassign).toHaveBeenCalledWith('staff-alex');

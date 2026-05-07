@@ -181,8 +181,7 @@
 									type="button"
 									class="secondary"
 									aria-label={unassignActionLabel(member, item.store)}
-									onclick={() => onUnassign(member.id)}
-									>Unassign {member.name}</button
+									onclick={() => onUnassign(member.id)}>Unassign {member.name}</button
 								>
 							</div>
 						</div>
