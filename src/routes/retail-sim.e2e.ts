@@ -42,6 +42,10 @@ async function chooseStoreType(page: import('@playwright/test').Page, storeTypeN
 	await expect(page.getByRole('dialog', { name: /tile details/i })).toHaveCount(0);
 }
 
+function escapeRegExp(value: string): string {
+	return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 test('player can found a store from the city map and advance a day', async ({ page }) => {
 	await page.goto('/');
 
@@ -170,12 +174,19 @@ test('hire and assign named staff from the Control Tower', async ({ page }) => {
 	await expect(controlTower.getByRole('heading', { name: 'Staff' })).toBeVisible();
 	await expect(controlTower.getByText('Boutique Goods: 1/1 managers, 2/2 general')).toBeVisible();
 
-	await controlTower
-		.getByRole('button', { name: /Hire .*, General candidate candidate-1-1/ })
+	const staffPanel = controlTower.getByRole('region', { name: 'Staff' });
+	const candidatesSection = staffPanel.getByRole('region', { name: 'Candidates' });
+	const firstCandidate = candidatesSection.locator('article').first();
+	const candidateName = (await firstCandidate.getByRole('heading', { level: 4 }).innerText()).trim();
+	const candidateNamePattern = escapeRegExp(candidateName);
+
+	await firstCandidate
+		.getByRole('button', { name: new RegExp(`^Hire ${candidateNamePattern},`) })
 		.click();
-	await controlTower
-		.getByLabel(/Assign .*, General staff staff-candidate-1-1, currently unassigned/)
-		.selectOption('store-1');
+	await staffPanel
+		.getByRole('region', { name: 'Unassigned' })
+		.getByLabel(new RegExp(`^Assign ${candidateNamePattern},`))
+		.selectOption({ label: 'Boutique Goods' });
 
 	await expect(controlTower.getByText('Boutique Goods: 1/1 managers, 3/2 general')).toBeVisible();
 });
