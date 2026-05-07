@@ -50,7 +50,7 @@
 					</div>
 					<div>
 						<dt>Staff</dt>
-						<dd>{report?.staffingCoverage ?? Math.round(staffing.coverage)}%</dd>
+						<dd>{Math.round(staffing.coverage)}%</dd>
 					</div>
 					<div>
 						<dt>Coverage</dt>
