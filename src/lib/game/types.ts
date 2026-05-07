@@ -4,6 +4,7 @@ export type ArchetypeId = 'convenience' | 'boutique' | 'electronics' | 'grocery'
 export type PricingPosture = 'discount' | 'competitive' | 'standard' | 'premium';
 export type InventoryBuffer = 'lean' | 'balanced' | 'generous';
 export type StaffingPosture = 'minimal' | 'efficient' | 'service';
+export type StaffRole = 'manager' | 'general';
 export type MarketingFocus = 'none' | 'awareness' | 'promotions' | 'loyalty';
 export type ServicePriority = 'speed' | 'balanced' | 'highTouch';
 export type ScoreKey = 'profit' | 'customerSatisfaction' | 'staffMorale' | 'marketPosition';
@@ -72,6 +73,34 @@ export interface Store {
 	localDemand: number;
 	competition: number;
 	managerQuality: number;
+}
+
+export interface StaffingRequirement {
+	manager: number;
+	general: number;
+}
+
+export interface StaffingSummary {
+	requirement: StaffingRequirement;
+	assigned: StaffingRequirement;
+	shortage: StaffingRequirement;
+	coverage: number;
+	averageSkill: number;
+	averageMorale: number;
+}
+
+export interface HiringCandidate {
+	id: string;
+	name: string;
+	role: StaffRole;
+	monthlySalary: number;
+	skill: number;
+	morale: number;
+}
+
+export interface StaffMember extends HiringCandidate {
+	assignedStoreId: string | null;
+	hiredOnDay: number;
 }
 
 export interface CityTile {
@@ -173,6 +202,8 @@ export interface GameState {
 	cities: City[];
 	activeCityId: string;
 	stores: Store[];
+	staff: StaffMember[];
+	hiringCandidates: HiringCandidate[];
 	decisions: DecisionItem[];
 	reports: DailyReport[];
 }

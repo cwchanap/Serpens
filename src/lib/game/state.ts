@@ -7,6 +7,7 @@ import {
 } from './city';
 import { clampScore } from './reports';
 import { createRng, normalizeSeed, randomInt } from './rng';
+import { generateHiringCandidates, generateStarterStaffForStore } from './staffing';
 import type {
 	ArchetypeId,
 	City,
@@ -69,6 +70,13 @@ export function createNewGame(archetypeId: ArchetypeId, seed = Date.now()): Game
 		mapY: fallbackTile.y,
 		location: `Founding location (${fallbackTile.x}, ${fallbackTile.y})`
 	};
+	const staff = generateStarterStaffForStore({
+		storeId: placedOpeningStore.id,
+		archetypeId,
+		day: 1,
+		rng
+	});
+	const hiringCandidates = generateHiringCandidates({ count: 5, day: 1, rng });
 
 	return {
 		seed: normalizedSeed,
@@ -88,6 +96,8 @@ export function createNewGame(archetypeId: ArchetypeId, seed = Date.now()): Game
 		cities: [city],
 		activeCityId: city.id,
 		stores: [placedOpeningStore],
+		staff,
+		hiringCandidates,
 		decisions: [],
 		reports: []
 	};

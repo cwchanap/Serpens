@@ -49,6 +49,8 @@
 		cities: [starterCity],
 		activeCityId: starterCity.id,
 		stores: [],
+		staff: [],
+		hiringCandidates: [],
 		decisions: [],
 		reports: []
 	};

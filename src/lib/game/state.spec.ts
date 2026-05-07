@@ -3,19 +3,24 @@ import { createNewGame, openStore, resolveDecision, updatePolicy } from './state
 
 describe('game state', () => {
 	test('creates a new game from an archetype', () => {
-		expect.assertions(10);
+		expect.assertions(14);
 		const game = createNewGame('boutique', 1001);
+		const foundingStore = game.stores[0];
 
 		expect(game.seed).toBe(1001);
 		expect(game.day).toBe(1);
 		expect(game.stores).toHaveLength(1);
-		expect(game.stores[0]?.archetypeId).toBe('boutique');
+		expect(foundingStore?.archetypeId).toBe('boutique');
 		expect(game.policy.pricing).toBe('standard');
 		expect(game.scorecard.customerSatisfaction).toBeGreaterThan(0);
 		expect(game.cities).toHaveLength(1);
 		expect(game.activeCityId).toBe(game.cities[0]?.id);
-		expect(game.stores[0]?.tileId).toBeTruthy();
-		expect(game.stores[0]?.mapX).toBeGreaterThanOrEqual(0);
+		expect(foundingStore?.tileId).toBeTruthy();
+		expect(foundingStore?.mapX).toBeGreaterThanOrEqual(0);
+		expect(game.staff).toHaveLength(3);
+		expect(game.staff.filter((staff) => staff.role === 'manager')).toHaveLength(1);
+		expect(game.staff.every((staff) => staff.assignedStoreId === foundingStore?.id)).toBe(true);
+		expect(game.hiringCandidates).toHaveLength(5);
 	});
 
 	test('stores normalized seed values and advances rng state during setup', () => {
