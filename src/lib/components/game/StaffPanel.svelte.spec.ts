@@ -23,6 +23,15 @@ const store: Store = {
 	managerQuality: 60
 };
 
+const secondStore: Store = {
+	...store,
+	id: 'store-2',
+	name: 'Mall Store',
+	tileId: 'harbor-city-2-2',
+	mapX: 2,
+	mapY: 2
+};
+
 const staff: StaffMember[] = [
 	{
 		id: 'staff-alex',
@@ -102,7 +111,9 @@ describe('StaffPanel', () => {
 
 		renderStaffPanel({ onHire });
 
-		await page.getByRole('button', { name: 'Hire Casey Rivera' }).click();
+		await page
+			.getByRole('button', { name: 'Hire Casey Rivera, General candidate candidate-casey' })
+			.click();
 
 		expect(onHire).toHaveBeenCalledWith('candidate-casey');
 	});
@@ -113,7 +124,9 @@ describe('StaffPanel', () => {
 
 		renderStaffPanel({ onAssign });
 
-		await page.getByLabelText('Assign Blair Kim').selectOptions('store-1');
+		await page
+			.getByLabelText('Assign Blair Kim, General staff staff-blair, currently unassigned')
+			.selectOptions('store-1');
 
 		expect(onAssign).toHaveBeenCalledWith('staff-blair', 'store-1');
 	});
@@ -124,7 +137,82 @@ describe('StaffPanel', () => {
 
 		renderStaffPanel({ onUnassign });
 
-		await page.getByRole('button', { name: 'Unassign Alex Chen' }).click();
+		await page
+			.getByRole('button', {
+				name: 'Unassign Alex Chen, Manager staff staff-alex from Founding Store'
+			})
+			.click();
+
+		expect(onUnassign).toHaveBeenCalledWith('staff-alex');
+	});
+
+	it('disambiguates duplicate names in actionable control labels', async () => {
+		expect.assertions(3);
+		const onHire = vi.fn();
+		const onAssign = vi.fn();
+		const onUnassign = vi.fn();
+
+		renderStaffPanel({
+			onHire,
+			onAssign,
+			onUnassign,
+			hiringCandidates: [
+				...hiringCandidates,
+				{
+					...hiringCandidates[0]!,
+					id: 'candidate-casey-manager',
+					role: 'manager'
+				}
+			],
+			staff: [
+				...staff,
+				{
+					...staff[1]!,
+					id: 'staff-blair-assigned',
+					assignedStoreId: 'store-1'
+				}
+			]
+		});
+
+		await page
+			.getByRole('button', { name: 'Hire Casey Rivera, Manager candidate candidate-casey-manager' })
+			.click();
+		await page
+			.getByLabelText('Assign Blair Kim, General staff staff-blair, currently unassigned')
+			.selectOptions('store-1');
+		await page
+			.getByRole('button', {
+				name: 'Unassign Blair Kim, General staff staff-blair-assigned from Founding Store'
+			})
+			.click();
+
+		expect(onHire).toHaveBeenCalledWith('candidate-casey-manager');
+		expect(onAssign).toHaveBeenCalledWith('staff-blair', 'store-1');
+		expect(onUnassign).toHaveBeenCalledWith('staff-blair-assigned');
+	});
+
+	it('calls onAssign with assigned staff id and target store id when transferring stores', async () => {
+		expect.assertions(1);
+		const onAssign = vi.fn();
+
+		renderStaffPanel({ stores: [store, secondStore], onAssign });
+
+		await page
+			.getByLabelText('Assign Alex Chen, Manager staff staff-alex, currently assigned to Founding Store')
+			.selectOptions('store-2');
+
+		expect(onAssign).toHaveBeenCalledWith('staff-alex', 'store-2');
+	});
+
+	it('calls onUnassign when selecting Unassigned from an assigned staff select', async () => {
+		expect.assertions(1);
+		const onUnassign = vi.fn();
+
+		renderStaffPanel({ onUnassign });
+
+		await page
+			.getByLabelText('Assign Alex Chen, Manager staff staff-alex, currently assigned to Founding Store')
+			.selectOptions('');
 
 		expect(onUnassign).toHaveBeenCalledWith('staff-alex');
 	});

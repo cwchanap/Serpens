@@ -32,6 +32,28 @@
 		return role === 'manager' ? 'Manager' : 'General';
 	}
 
+	function hireActionLabel(candidate: HiringCandidate): string {
+		return `Hire ${candidate.name}, ${roleLabel(candidate.role)} candidate ${candidate.id}`;
+	}
+
+	function assignmentContext(member: StaffMember): string {
+		const store = stores.find((item) => item.id === member.assignedStoreId);
+
+		if (store) {
+			return `currently assigned to ${store.name}`;
+		}
+
+		return 'currently unassigned';
+	}
+
+	function assignActionLabel(member: StaffMember): string {
+		return `Assign ${member.name}, ${roleLabel(member.role)} staff ${member.id}, ${assignmentContext(member)}`;
+	}
+
+	function unassignActionLabel(member: StaffMember, store: Store): string {
+		return `Unassign ${member.name}, ${roleLabel(member.role)} staff ${member.id} from ${store.name}`;
+	}
+
 	function handleAssignment(member: StaffMember, storeId: string): void {
 		if (storeId) {
 			onAssign(member.id, storeId);
@@ -72,7 +94,11 @@
 							<dd>{candidate.morale}</dd>
 						</div>
 					</dl>
-					<button type="button" onclick={() => onHire(candidate.id)}>Hire {candidate.name}</button>
+					<button
+						type="button"
+						aria-label={hireActionLabel(candidate)}
+						onclick={() => onHire(candidate.id)}>Hire {candidate.name}</button
+					>
 				</article>
 			{:else}
 				<p class="empty">No candidates available</p>
@@ -103,7 +129,7 @@
 						</div>
 					</dl>
 					<select
-						aria-label={`Assign ${member.name}`}
+						aria-label={assignActionLabel(member)}
 						value=""
 						onchange={(event) => handleAssignment(member, event.currentTarget.value)}
 					>
@@ -142,7 +168,7 @@
 							</div>
 							<div class="assignment-actions">
 								<select
-									aria-label={`Assign ${member.name}`}
+									aria-label={assignActionLabel(member)}
 									value={member.assignedStoreId ?? ''}
 									onchange={(event) => handleAssignment(member, event.currentTarget.value)}
 								>
@@ -151,7 +177,11 @@
 										<option value={store.id}>{store.name}</option>
 									{/each}
 								</select>
-								<button type="button" class="secondary" onclick={() => onUnassign(member.id)}
+								<button
+									type="button"
+									class="secondary"
+									aria-label={unassignActionLabel(member, item.store)}
+									onclick={() => onUnassign(member.id)}
 									>Unassign {member.name}</button
 								>
 							</div>
@@ -183,6 +213,14 @@
 		align-items: flex-start;
 		justify-content: space-between;
 		gap: 0.75rem;
+		min-width: 0;
+	}
+
+	.panel-heading > *,
+	.store-heading > *,
+	.person-heading > *,
+	.assigned-row > * {
+		min-width: 0;
 	}
 
 	h2,
@@ -190,6 +228,19 @@
 	h4,
 	p {
 		margin: 0;
+	}
+
+	h2,
+	h3,
+	h4,
+	p,
+	dt,
+	dd,
+	strong,
+	button,
+	select,
+	option {
+		overflow-wrap: anywhere;
 	}
 
 	h2 {
@@ -213,24 +264,26 @@
 	strong {
 		color: #edf2f7;
 		font-size: 0.8rem;
-		white-space: nowrap;
 	}
 
 	.section-group {
 		display: grid;
 		gap: 0.75rem;
+		min-width: 0;
 	}
 
 	.people-grid {
 		display: grid;
 		grid-template-columns: repeat(2, minmax(0, 1fr));
 		gap: 0.75rem;
+		min-width: 0;
 	}
 
 	.person-card,
 	.store-card {
 		display: grid;
 		gap: 0.75rem;
+		min-width: 0;
 		border: 1px solid #253244;
 		border-radius: 8px;
 		background: #0b111a;
@@ -241,12 +294,14 @@
 		display: grid;
 		grid-template-columns: repeat(2, minmax(0, 1fr));
 		gap: 0.5rem;
+		min-width: 0;
 		margin: 0;
 	}
 
 	.metrics div {
 		display: grid;
 		gap: 0.15rem;
+		min-width: 0;
 	}
 
 	dd {
@@ -259,6 +314,7 @@
 	.people-list {
 		display: grid;
 		gap: 0.6rem;
+		min-width: 0;
 	}
 
 	.assigned-row {
@@ -271,6 +327,7 @@
 		flex-wrap: wrap;
 		justify-content: flex-end;
 		gap: 0.5rem;
+		min-width: 0;
 	}
 
 	button,
@@ -281,6 +338,7 @@
 		color: #edf2f7;
 		padding: 0.55rem 0.65rem;
 		font: inherit;
+		min-width: 0;
 	}
 
 	button {
@@ -288,8 +346,17 @@
 		font-weight: 700;
 	}
 
-	button:hover {
+	button:hover,
+	select:hover,
+	button:focus-visible,
+	select:focus-visible {
 		border-color: #4f86c6;
+	}
+
+	button:focus-visible,
+	select:focus-visible {
+		outline: 2px solid #6aa8f7;
+		outline-offset: 2px;
 	}
 
 	.secondary {
@@ -297,6 +364,7 @@
 	}
 
 	select {
+		max-width: 100%;
 		min-width: 11rem;
 	}
 
