@@ -320,7 +320,9 @@ function validateSavedStaffMember(value: unknown, label: string): void {
 	const member = requireRecord(value, label);
 
 	validateSavedHiringCandidate(member, label);
-	validateNullableString(member.assignedStoreId, `${label} assignedStoreId`);
+	if (member.assignedStoreId !== null) {
+		requireString(member.assignedStoreId, `${label} assignedStoreId`);
+	}
 	requireNumber(member.hiredOnDay, `${label} hiredOnDay`);
 }
 
@@ -451,12 +453,6 @@ function requireBoolean(value: unknown, label: string): boolean {
 	}
 
 	return value;
-}
-
-function validateNullableString(value: unknown, label: string): void {
-	if (value !== null && typeof value !== 'string') {
-		throw new SaveDataError(`${label} must be a string or null`);
-	}
 }
 
 function requireNumber(value: unknown, label: string): number {

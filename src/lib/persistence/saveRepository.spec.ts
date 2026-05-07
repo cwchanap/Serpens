@@ -372,6 +372,30 @@ describe('save records', () => {
 		);
 	});
 
+	test('rejects saved staff with empty assigned store ids', () => {
+		expect.assertions(2);
+		const snapshot = createSnapshotWithGame({
+			...createGame(),
+			staff: [
+				{
+					id: 'staff-1',
+					name: 'Avery Chen',
+					role: 'manager',
+					monthlySalary: 3200,
+					skill: 65,
+					morale: 70,
+					assignedStoreId: '',
+					hiredOnDay: 1
+				}
+			]
+		});
+
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
+			'Saved game staff[0] assignedStoreId must be a non-empty string'
+		);
+	});
+
 	test('rejects saved hiring candidates with invalid salaries', () => {
 		expect.assertions(2);
 		const snapshot = createSnapshotWithGame({
@@ -843,9 +867,10 @@ describe('browser save repository', () => {
 	test('does not reset non-save data driver read errors', async () => {
 		expect.assertions(2);
 		const repository = new SaveRepositoryFromDriver(new NonSaveDataErrorDriver());
+		const summaryPromise = repository.getSummary();
 
-		await expect(repository.getSummary()).rejects.toThrow(TypeError);
-		await expect(repository.getSummary()).rejects.toThrow('Driver is unavailable');
+		await expect(summaryPromise).rejects.toThrow(TypeError);
+		await expect(summaryPromise).rejects.toThrow('Driver is unavailable');
 	});
 
 	test('clones records and summaries across repository boundaries', async () => {
