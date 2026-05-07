@@ -25,7 +25,7 @@ describe('staffing rules', () => {
 	});
 
 	test('generates assigned starter staff for a store archetype requirement', () => {
-		expect.assertions(6);
+		expect.assertions(7);
 		const staff = generateStarterStaffForStore({
 			storeId: 'store-1',
 			archetypeId: 'grocery',
@@ -34,6 +34,12 @@ describe('staffing rules', () => {
 		});
 
 		expect(staff).toHaveLength(4);
+		expect(staff.map((member) => member.id)).toEqual([
+			'staff-store-1-manager-1',
+			'staff-store-1-general-1',
+			'staff-store-1-general-2',
+			'staff-store-1-general-3'
+		]);
 		expect(staff.filter((member) => member.role === 'manager')).toHaveLength(1);
 		expect(staff.filter((member) => member.role === 'general')).toHaveLength(3);
 		expect(staff.every((member) => member.assignedStoreId === 'store-1')).toBe(true);
@@ -87,6 +93,34 @@ describe('staffing rules', () => {
 		expect(summary.coverage).toBe(50);
 		expect(summary.averageSkill).toBe(60);
 		expect(summary.averageMorale).toBe(70);
+	});
+
+	test('summarizes fallback averages when no staff are assigned', () => {
+		expect.assertions(4);
+		const store = createStore({ id: 'store-1', archetypeId: 'convenience', staffMorale: 62 });
+		const summary = summarizeStoreStaffing({ staff: [] }, store);
+
+		expect(summary.assigned).toEqual({ manager: 0, general: 0 });
+		expect(summary.coverage).toBe(0);
+		expect(summary.averageSkill).toBe(50);
+		expect(summary.averageMorale).toBe(62);
+	});
+
+	test('caps coverage by required role when one role is overstaffed', () => {
+		expect.assertions(4);
+		const store = createStore({ id: 'store-1', archetypeId: 'boutique' });
+		const staff = [
+			createStaff({ id: 'staff-1', role: 'manager', assignedStoreId: store.id }),
+			createStaff({ id: 'staff-2', role: 'manager', assignedStoreId: store.id }),
+			createStaff({ id: 'staff-3', role: 'manager', assignedStoreId: store.id })
+		];
+
+		const summary = summarizeStoreStaffing({ staff }, store);
+
+		expect(summary.requirement).toEqual({ manager: 1, general: 2 });
+		expect(summary.assigned).toEqual({ manager: 3, general: 0 });
+		expect(summary.shortage).toEqual({ manager: 0, general: 2 });
+		expect(summary.coverage).toBe(33);
 	});
 
 	test('hires a candidate as an unassigned staff member', () => {

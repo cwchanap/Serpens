@@ -108,6 +108,8 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 				managerQuality: 58
 			}
 		],
+		staff: [],
+		hiringCandidates: [],
 		decisions: [],
 		reports: [],
 		...overrides

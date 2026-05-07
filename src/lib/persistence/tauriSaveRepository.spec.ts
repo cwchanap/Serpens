@@ -47,6 +47,8 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 		cities: [{ id: 'harbor-city', name: 'Harbor City', width: 1, height: 1, tiles: [] }],
 		activeCityId: 'harbor-city',
 		stores: [],
+		staff: [],
+		hiringCandidates: [],
 		decisions: [],
 		reports: [],
 		...overrides
