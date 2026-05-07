@@ -1,11 +1,14 @@
 <script lang="ts">
-	import type { DailyStoreReport, Store } from '$lib/game/types';
+	import { summarizeStoreStaffing } from '$lib/game/staffing';
+	import type { DailyStoreReport, StaffMember, Store } from '$lib/game/types';
 
 	let {
 		stores,
+		staff,
 		latestReports
 	}: {
 		stores: Store[];
+		staff: StaffMember[];
 		latestReports: DailyStoreReport[];
 	} = $props();
 
@@ -22,6 +25,7 @@
 	<div class="stores">
 		{#each stores as store (store.id)}
 			{@const report = latestReports.find((item) => item.storeId === store.id)}
+			{@const staffing = summarizeStoreStaffing({ staff }, store)}
 			<article class="store">
 				<header>
 					<div>
@@ -46,7 +50,14 @@
 					</div>
 					<div>
 						<dt>Staff</dt>
-						<dd>{report?.staffMorale ?? store.staffMorale}</dd>
+						<dd>{report?.staffingCoverage ?? Math.round(staffing.coverage)}%</dd>
+					</div>
+					<div>
+						<dt>Coverage</dt>
+						<dd>
+							{staffing.assigned.manager}/{staffing.requirement.manager} mgr,
+							{staffing.assigned.general}/{staffing.requirement.general} gen
+						</dd>
 					</div>
 				</dl>
 
@@ -121,14 +132,19 @@
 
 	dl {
 		display: grid;
-		grid-template-columns: repeat(4, minmax(0, 1fr));
+		grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
 		gap: 0.6rem;
 		margin: 0;
+	}
+
+	dl div {
+		min-width: 0;
 	}
 
 	dd {
 		margin: 0.2rem 0 0;
 		font-weight: 700;
+		overflow-wrap: anywhere;
 	}
 
 	ul {

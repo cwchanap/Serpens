@@ -6,6 +6,7 @@
 	import ReportsPanel from '$lib/components/game/ReportsPanel.svelte';
 	import SavePanel from '$lib/components/game/SavePanel.svelte';
 	import Scorecard from '$lib/components/game/Scorecard.svelte';
+	import StaffPanel from '$lib/components/game/StaffPanel.svelte';
 	import StoreOverview from '$lib/components/game/StoreOverview.svelte';
 	import TileInspector from '$lib/components/game/TileInspector.svelte';
 	import { generateCity, getTileById, getTilePlacementBlockReason } from '$lib/game/city';
@@ -17,6 +18,7 @@
 		openStoreAtTile
 	} from '$lib/game/placement';
 	import { summarizeReports } from '$lib/game/reports';
+	import { assignStaffToStore, hireCandidate, unassignStaff } from '$lib/game/staffing';
 	import { DEFAULT_POLICY, resolveDecision, updatePolicy } from '$lib/game/state';
 	import { simulateDay } from '$lib/game/simulateDay';
 	import type { ArchetypeId, CompanyPolicy, GameState, OpeningOption } from '$lib/game/types';
@@ -339,6 +341,24 @@
 		}
 	}
 
+	function hireStaff(candidateId: string) {
+		if (game) {
+			setGameAndAutosave(hireCandidate(game, candidateId));
+		}
+	}
+
+	function assignStaff(staffId: string, storeId: string) {
+		if (game) {
+			setGameAndAutosave(assignStaffToStore(game, staffId, storeId));
+		}
+	}
+
+	function unassignStoreStaff(staffId: string) {
+		if (game) {
+			setGameAndAutosave(unassignStaff(game, staffId));
+		}
+	}
+
 	function addStoreAtSelectedTile(archetypeId: ArchetypeId, tileId: string) {
 		if (!game || !getTileById(activeCity, tileId)) {
 			return;
@@ -482,9 +502,21 @@
 
 				<Scorecard scorecard={game.scorecard} />
 				<PolicyPanel policy={game.policy} onChange={changePolicy} />
+				<StaffPanel
+					stores={game.stores}
+					staff={game.staff}
+					hiringCandidates={game.hiringCandidates}
+					onHire={hireStaff}
+					onAssign={assignStaff}
+					onUnassign={unassignStoreStaff}
+				/>
 
 				<div class="grid">
-					<StoreOverview stores={game.stores} latestReports={summary.latest?.storeReports ?? []} />
+					<StoreOverview
+						stores={game.stores}
+						staff={game.staff}
+						latestReports={summary.latest?.storeReports ?? []}
+					/>
 					<DecisionQueue decisions={game.decisions} onResolve={chooseDecision} />
 				</div>
 

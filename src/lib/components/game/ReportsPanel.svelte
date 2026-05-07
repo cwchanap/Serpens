@@ -28,6 +28,10 @@
 				<strong>{currency.format(summary.latest.cashAfter)}</strong>
 			</div>
 			<div>
+				<span>Payroll</span>
+				<strong>{currency.format(summary.latest.payrollCost)}</strong>
+			</div>
+			<div>
 				<span>7-day net</span>
 				<strong>{currency.format(summary.sevenDay.netIncome)}</strong>
 			</div>
@@ -69,7 +73,7 @@
 
 	.metrics {
 		display: grid;
-		grid-template-columns: repeat(5, minmax(0, 1fr));
+		grid-template-columns: repeat(6, minmax(0, 1fr));
 		gap: 0.75rem;
 	}
 

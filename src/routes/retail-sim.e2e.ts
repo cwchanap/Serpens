@@ -159,6 +159,27 @@ test('control tower opens from the map views menu and closes as an overlay', asy
 	await expect(page.getByRole('dialog', { name: /control tower/i })).toHaveCount(0);
 });
 
+test('hire and assign named staff from the Control Tower', async ({ page }) => {
+	await page.goto('/');
+
+	await clickMapTile(page, 1, 1);
+	await chooseStoreType(page, /open boutique goods here/i);
+	await openControlTower(page);
+
+	const controlTower = page.getByRole('dialog', { name: /control tower/i });
+	await expect(controlTower.getByRole('heading', { name: 'Staff' })).toBeVisible();
+	await expect(controlTower.getByText('Boutique Goods: 1/1 managers, 2/2 general')).toBeVisible();
+
+	await controlTower
+		.getByRole('button', { name: /Hire .*, General candidate candidate-1-1/ })
+		.click();
+	await controlTower
+		.getByLabel(/Assign .*, General staff staff-candidate-1-1, currently unassigned/)
+		.selectOption('store-1');
+
+	await expect(controlTower.getByText('Boutique Goods: 1/1 managers, 3/2 general')).toBeVisible();
+});
+
 test('locked map tiles still show inspector feedback', async ({ page }) => {
 	await page.goto('/');
 
