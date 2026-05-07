@@ -52,7 +52,7 @@ describe('daily simulation', () => {
 				localDemand: 30,
 				stockHealth: 80,
 				staffCapacity: 100,
-				staffMorale: 37,
+				staffMorale: 35,
 				managerQuality: 0
 			}))
 		});
@@ -146,5 +146,62 @@ describe('daily simulation', () => {
 				decisions: preservedDecisions
 			})
 		);
+	});
+
+	test('charges monthly payroll on payroll days only', () => {
+		expect.assertions(5);
+		const baseGame = {
+			...createNewGame('convenience', 90),
+			cash: 50_000,
+			reports: []
+		};
+		const payroll = baseGame.staff.reduce((sum, member) => sum + member.monthlySalary, 0);
+		const payrollDay = simulateDay({ ...baseGame, day: 30 });
+		const nonPayrollDay = simulateDay({ ...baseGame, day: 29 });
+
+		expect(payrollDay.reports[0]?.payrollCost).toBe(payroll);
+		expect(nonPayrollDay.reports[0]?.payrollCost).toBe(0);
+		expect(payrollDay.cash).toBeLessThan(nonPayrollDay.cash);
+		expect(payrollDay.reports[0]?.operatingCosts).toBeGreaterThan(
+			nonPayrollDay.reports[0]?.operatingCosts ?? 0
+		);
+		expect(payroll).toBeGreaterThan(0);
+	});
+
+	test('understaffing reduces served demand and reports role shortages', () => {
+		expect.assertions(6);
+		const baseGame = updatePolicy(createNewGame('grocery', 91), {
+			pricing: 'discount',
+			inventory: 'generous',
+			marketing: 'promotions'
+		});
+		const stores = baseGame.stores.map((store) => ({
+			...store,
+			localDemand: 220,
+			stockHealth: 100,
+			staffCapacity: 100,
+			staffMorale: 85
+		}));
+		const staffed = simulateDay({
+			...baseGame,
+			stores,
+			staff: baseGame.staff.map((member) => ({ ...member, skill: 88, morale: 82 }))
+		});
+		const understaffed = simulateDay({
+			...baseGame,
+			stores,
+			staff: baseGame.staff
+				.filter((member) => member.role === 'manager')
+				.map((member) => ({ ...member, skill: 88, morale: 82 }))
+		});
+		const staffedReport = staffed.reports[0]?.storeReports[0];
+		const understaffedReport = understaffed.reports[0]?.storeReports[0];
+
+		expect(understaffedReport?.customersServed).toBeLessThan(staffedReport?.customersServed ?? 0);
+		expect(understaffedReport?.staffingCoverage).toBeLessThan(100);
+		expect(understaffedReport?.staffingShortage).toEqual({ manager: 0, general: 3 });
+		expect(understaffedReport?.warnings).toContain('Grocery Market is short 3 general staff');
+		expect(understaffedReport?.staffMorale).toBeLessThan(staffedReport?.staffMorale ?? 0);
+		expect(staffedReport?.staffingCoverage).toBe(100);
 	});
 });

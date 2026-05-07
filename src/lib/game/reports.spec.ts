@@ -9,6 +9,7 @@ function report(day: number, netIncome: number): DailyReport {
 		costOfGoods: 400,
 		grossMargin: 600,
 		operatingCosts: 300,
+		payrollCost: 0,
 		netIncome,
 		cashAfter: 10_000 + netIncome,
 		scorecard: {

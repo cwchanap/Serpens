@@ -533,6 +533,7 @@ describe('save records', () => {
 					costOfGoods: 350,
 					grossMargin: 650,
 					operatingCosts: 250,
+					payrollCost: 0,
 					netIncome: 400,
 					cashAfter: 12900,
 					scorecard: {
@@ -551,6 +552,8 @@ describe('save records', () => {
 							netIncome: 400,
 							customersServed: 42,
 							demandMissed: 5,
+							staffingCoverage: 100,
+							staffingShortage: { manager: 0, general: 0 },
 							stockHealth: 70,
 							staffMorale: 65,
 							reputation: 60,

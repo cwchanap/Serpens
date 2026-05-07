@@ -151,6 +151,8 @@ export interface DailyStoreReport {
 	netIncome: number;
 	customersServed: number;
 	demandMissed: number;
+	staffingCoverage: number;
+	staffingShortage: StaffingRequirement;
 	stockHealth: number;
 	staffMorale: number;
 	reputation: number;
@@ -164,6 +166,7 @@ export interface DailyReport {
 	costOfGoods: number;
 	grossMargin: number;
 	operatingCosts: number;
+	payrollCost: number;
 	netIncome: number;
 	cashAfter: number;
 	scorecard: Scorecard;

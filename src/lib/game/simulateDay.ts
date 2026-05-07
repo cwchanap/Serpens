@@ -2,11 +2,13 @@ import { getArchetype } from './archetypes';
 import { generateDecisions, pruneExpiredDecisions } from './events';
 import { clampScore } from './reports';
 import { createRngFromState, randomBetween } from './rng';
+import { calculateMonthlyPayroll, isPayrollDay, summarizeStoreStaffing } from './staffing';
 import type {
 	DailyReport,
 	DailyStoreReport,
 	GameState,
 	Scorecard,
+	StaffingRequirement,
 	Store,
 	StoreArchetype
 } from './types';
@@ -53,7 +55,8 @@ export function simulateDay(game: GameState): GameState {
 	const revenue = sum(storeReports, 'revenue');
 	const costOfGoods = sum(storeReports, 'costOfGoods');
 	const grossMargin = revenue - costOfGoods;
-	const operatingCosts = sum(storeReports, 'operatingCosts');
+	const payrollCost = isPayrollDay(game.day) ? calculateMonthlyPayroll(game.staff) : 0;
+	const operatingCosts = sum(storeReports, 'operatingCosts') + payrollCost;
 	const netIncome = grossMargin - operatingCosts;
 	const cashAfter = Math.round(game.cash + netIncome);
 	const warnings = collectWarnings(storeReports, cashAfter);
@@ -73,6 +76,7 @@ export function simulateDay(game: GameState): GameState {
 		costOfGoods: Math.round(costOfGoods),
 		grossMargin: Math.round(grossMargin),
 		operatingCosts: Math.round(operatingCosts),
+		payrollCost,
 		netIncome: Math.round(netIncome),
 		cashAfter,
 		scorecard,
@@ -110,6 +114,10 @@ function simulateStore(
 	const staffing = STAFFING[game.policy.staffing];
 	const marketing = MARKETING[game.policy.marketing];
 	const service = SERVICE[game.policy.service];
+	const staffingSummary = summarizeStoreStaffing(game, store);
+	const staffingCoverageRatio = Math.max(0.22, staffingSummary.coverage / 100);
+	const skillMultiplier = 0.82 + staffingSummary.averageSkill / 250;
+	const moraleMultiplier = 0.82 + staffingSummary.averageMorale / 260;
 	const variance = randomBetween(rng, 0.92, 1.08);
 	const productFit = productDemandFit(archetype);
 	const reputationDemand = 0.72 + store.reputation / 180;
@@ -127,7 +135,13 @@ function simulateStore(
 	const stockLimit =
 		store.localDemand * inventory.capacity * Math.max(0.18, store.stockHealth / 72);
 	const staffLimit =
-		store.staffCapacity * staffing.capacity * service.throughput * (0.72 + store.staffMorale / 220);
+		store.staffCapacity *
+		staffing.capacity *
+		service.throughput *
+		(0.72 + store.staffMorale / 220) *
+		staffingCoverageRatio *
+		skillMultiplier *
+		moraleMultiplier;
 	const customersServed = Math.max(0, Math.floor(Math.min(demand, stockLimit, staffLimit)));
 	const demandMissed = Math.max(0, Math.round(demand - customersServed));
 	const averageMargin = clampRatio(averageCategoryMargin(archetype) + pricing.margin, 0.12, 0.68);
@@ -141,11 +155,13 @@ function simulateStore(
 	const grossMargin = revenue - costOfGoods;
 	const operatingCosts = Math.round(
 		archetype.baseRent * (0.92 + store.competition / 450) +
-			archetype.baseWage * staffing.wage +
 			marketing.cost +
 			supplierCost(archetype, inventory.cost, customersServed)
 	);
 	const netIncome = grossMargin - operatingCosts;
+	const managerPenalty = staffingSummary.shortage.manager > 0 ? 5 : 0;
+	const generalPenalty = staffingSummary.shortage.general * 2;
+	const assignedMoraleDelta = (staffingSummary.averageMorale - 60) / 18;
 	const stockHealth = clampScore(
 		store.stockHealth +
 			inventory.recovery -
@@ -157,6 +173,9 @@ function simulateStore(
 			staffing.morale +
 			service.morale +
 			store.managerQuality / 40 -
+			managerPenalty -
+			generalPenalty +
+			assignedMoraleDelta -
 			3 -
 			(customersServed >= staffLimit - 1 ? 2 : 0)
 	);
@@ -166,7 +185,8 @@ function simulateStore(
 			inventory.satisfaction +
 			staffing.satisfaction +
 			service.satisfaction +
-			marketing.reputation +
+			marketing.reputation -
+			managerPenalty +
 			(demandMissed > demand * 0.18 ? -3 : 1)
 	);
 	const marketPosition = clampScore(
@@ -184,7 +204,8 @@ function simulateStore(
 		customersServed,
 		demandMissed,
 		stockLimit,
-		staffLimit
+		staffLimit,
+		staffingSummary.shortage
 	);
 
 	return {
@@ -198,6 +219,8 @@ function simulateStore(
 			netIncome,
 			customersServed,
 			demandMissed,
+			staffingCoverage: Math.round(staffingSummary.coverage),
+			staffingShortage: staffingSummary.shortage,
 			stockHealth,
 			staffMorale,
 			reputation,
@@ -247,7 +270,8 @@ function buildStoreWarnings(
 	customersServed: number,
 	demandMissed: number,
 	stockLimit: number,
-	staffLimit: number
+	staffLimit: number,
+	staffingShortage: StaffingRequirement
 ): string[] {
 	const warnings: string[] = [];
 
@@ -257,6 +281,14 @@ function buildStoreWarnings(
 
 	if (store.staffMorale < 30 || staffLimit <= customersServed + 1) {
 		warnings.push(`${store.name} is near staff capacity`);
+	}
+
+	if (staffingShortage.manager > 0) {
+		warnings.push(`${store.name} is short ${staffingShortage.manager} manager`);
+	}
+
+	if (staffingShortage.general > 0) {
+		warnings.push(`${store.name} is short ${staffingShortage.general} general staff`);
 	}
 
 	if (store.reputation < 35) {
