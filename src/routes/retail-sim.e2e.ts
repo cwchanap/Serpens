@@ -176,11 +176,15 @@ test('hire and assign named staff from the Control Tower', async ({ page }) => {
 
 	const staffPanel = controlTower.getByRole('region', { name: 'Staff' });
 	const candidatesSection = staffPanel.getByRole('region', { name: 'Candidates' });
-	const firstCandidate = candidatesSection.locator('article').first();
-	const candidateName = (await firstCandidate.getByRole('heading', { level: 4 }).innerText()).trim();
+	const generalCandidate = candidatesSection
+		.locator('article')
+		.filter({ has: page.getByText('General', { exact: true }) })
+		.first();
+	await expect(generalCandidate).toBeVisible();
+	const candidateName = (await generalCandidate.getByRole('heading', { level: 4 }).innerText()).trim();
 	const candidateNamePattern = escapeRegExp(candidateName);
 
-	await firstCandidate
+	await generalCandidate
 		.getByRole('button', { name: new RegExp(`^Hire ${candidateNamePattern},`) })
 		.click();
 	await staffPanel
