@@ -627,9 +627,7 @@ describe('save records', () => {
 			...createGame(),
 			reports: [
 				createDailyReport({
-					storeReports: [
-						createDailyStoreReport({ staffingCoverage: Number.NaN })
-					]
+					storeReports: [createDailyStoreReport({ staffingCoverage: Number.NaN })]
 				})
 			]
 		});

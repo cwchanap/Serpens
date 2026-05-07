@@ -87,7 +87,7 @@ describe('decision generation', () => {
 
 	test('does not duplicate an existing supplier terms decision', () => {
 		expect.assertions(2);
-		const game = createNewGame('convenience', 43);
+		const game = { ...createNewGame('convenience', 43), rngState: 1 };
 
 		expect(generateDecisions(game)[0]?.id).toBe('supplier-terms');
 		expect(

@@ -181,7 +181,9 @@ test('hire and assign named staff from the Control Tower', async ({ page }) => {
 		.filter({ has: page.getByText('General', { exact: true }) })
 		.first();
 	await expect(generalCandidate).toBeVisible();
-	const candidateName = (await generalCandidate.getByRole('heading', { level: 4 }).innerText()).trim();
+	const candidateName = (
+		await generalCandidate.getByRole('heading', { level: 4 }).innerText()
+	).trim();
 	const candidateNamePattern = escapeRegExp(candidateName);
 
 	await generalCandidate
