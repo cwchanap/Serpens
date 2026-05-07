@@ -359,6 +359,7 @@ function validateSavedReport(value: unknown, label: string): void {
 	requireNumber(report.costOfGoods, `${label} costOfGoods`);
 	requireNumber(report.grossMargin, `${label} grossMargin`);
 	requireNumber(report.operatingCosts, `${label} operatingCosts`);
+	requireNumber(report.payrollCost, `${label} payrollCost`);
 	requireNumber(report.netIncome, `${label} netIncome`);
 	requireNumber(report.cashAfter, `${label} cashAfter`);
 	validateSavedScorecard(report.scorecard, `${label} scorecard`);
@@ -379,11 +380,20 @@ function validateSavedStoreReport(value: unknown, label: string): void {
 	requireNumber(report.netIncome, `${label} netIncome`);
 	requireNumber(report.customersServed, `${label} customersServed`);
 	requireNumber(report.demandMissed, `${label} demandMissed`);
+	requireNumber(report.staffingCoverage, `${label} staffingCoverage`);
+	validateSavedStaffingShortage(report.staffingShortage, `${label} staffingShortage`);
 	requireNumber(report.stockHealth, `${label} stockHealth`);
 	requireNumber(report.staffMorale, `${label} staffMorale`);
 	requireNumber(report.reputation, `${label} reputation`);
 	requireNumber(report.marketPosition, `${label} marketPosition`);
 	validateStringArray(report.warnings, `${label} warnings`);
+}
+
+function validateSavedStaffingShortage(value: unknown, label: string): void {
+	const shortage = requireRecord(value, label);
+
+	requireNumber(shortage.manager, `${label} manager`);
+	requireNumber(shortage.general, `${label} general`);
 }
 
 function validateSavedScorecard(value: unknown, label: string): void {

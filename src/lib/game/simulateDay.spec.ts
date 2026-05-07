@@ -149,23 +149,32 @@ describe('daily simulation', () => {
 	});
 
 	test('charges monthly payroll on payroll days only', () => {
-		expect.assertions(5);
+		expect.assertions(8);
+		const startingCash = 50_000;
 		const baseGame = {
 			...createNewGame('convenience', 90),
-			cash: 50_000,
+			cash: startingCash,
 			reports: []
 		};
 		const payroll = baseGame.staff.reduce((sum, member) => sum + member.monthlySalary, 0);
 		const payrollDay = simulateDay({ ...baseGame, day: 30 });
 		const nonPayrollDay = simulateDay({ ...baseGame, day: 29 });
+		const payrollReport = payrollDay.reports[0]!;
+		const storeOperatingCosts = payrollReport.storeReports.reduce(
+			(sum, report) => sum + report.operatingCosts,
+			0
+		);
 
-		expect(payrollDay.reports[0]?.payrollCost).toBe(payroll);
+		expect(payrollReport.payrollCost).toBe(payroll);
 		expect(nonPayrollDay.reports[0]?.payrollCost).toBe(0);
 		expect(payrollDay.cash).toBeLessThan(nonPayrollDay.cash);
-		expect(payrollDay.reports[0]?.operatingCosts).toBeGreaterThan(
+		expect(payrollReport.operatingCosts).toBeGreaterThan(
 			nonPayrollDay.reports[0]?.operatingCosts ?? 0
 		);
 		expect(payroll).toBeGreaterThan(0);
+		expect(payrollReport.operatingCosts).toBe(storeOperatingCosts + payrollReport.payrollCost);
+		expect(payrollReport.netIncome).toBe(payrollReport.grossMargin - payrollReport.operatingCosts);
+		expect(payrollReport.cashAfter).toBe(startingCash + payrollReport.netIncome);
 	});
 
 	test('understaffing reduces served demand and reports role shortages', () => {

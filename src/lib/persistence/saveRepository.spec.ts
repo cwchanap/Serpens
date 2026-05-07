@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import type { GameState } from '$lib/game/types';
+import type { DailyReport, DailyStoreReport, GameState } from '$lib/game/types';
 import { SAVE_SCHEMA_VERSION, type SaveRecord, type SaveStoreSnapshot } from './saveTypes';
 import {
 	SaveDataError,
@@ -165,6 +165,49 @@ function createSnapshotWithGame(game: Partial<GameState>) {
 				game
 			})
 		]
+	};
+}
+
+function createDailyStoreReport(overrides: Partial<DailyStoreReport> = {}): DailyStoreReport {
+	return {
+		storeId: 'store-1',
+		revenue: 1000,
+		costOfGoods: 350,
+		grossMargin: 650,
+		operatingCosts: 250,
+		netIncome: 400,
+		customersServed: 42,
+		demandMissed: 5,
+		staffingCoverage: 100,
+		staffingShortage: { manager: 0, general: 0 },
+		stockHealth: 70,
+		staffMorale: 65,
+		reputation: 60,
+		marketPosition: 50,
+		warnings: ['Low inventory'],
+		...overrides
+	};
+}
+
+function createDailyReport(overrides: Partial<DailyReport> = {}): DailyReport {
+	return {
+		day: 3,
+		revenue: 1000,
+		costOfGoods: 350,
+		grossMargin: 650,
+		operatingCosts: 250,
+		payrollCost: 0,
+		netIncome: 400,
+		cashAfter: 12900,
+		scorecard: {
+			profit: 55,
+			customerSatisfaction: 60,
+			staffMorale: 65,
+			marketPosition: 50
+		},
+		storeReports: [createDailyStoreReport()],
+		warnings: ['Healthy day'],
+		...overrides
 	};
 }
 
@@ -526,49 +569,65 @@ describe('save records', () => {
 		expect.assertions(2);
 		const snapshot = createSnapshotWithGame({
 			...createGame(),
-			reports: [
-				{
-					day: 3,
-					revenue: 1000,
-					costOfGoods: 350,
-					grossMargin: 650,
-					operatingCosts: 250,
-					payrollCost: 0,
-					netIncome: 400,
-					cashAfter: 12900,
-					scorecard: {
-						profit: 55,
-						customerSatisfaction: 60,
-						staffMorale: 65,
-						marketPosition: 50
-					},
-					storeReports: [
-						{
-							storeId: 'store-1',
-							revenue: 1000,
-							costOfGoods: 350,
-							grossMargin: 650,
-							operatingCosts: 250,
-							netIncome: 400,
-							customersServed: 42,
-							demandMissed: 5,
-							staffingCoverage: 100,
-							staffingShortage: { manager: 0, general: 0 },
-							stockHealth: 70,
-							staffMorale: 65,
-							reputation: 60,
-							marketPosition: 50,
-							warnings: ['Low inventory']
-						}
-					],
-					warnings: ['Healthy day', 5 as unknown as string]
-				}
-			]
+			reports: [createDailyReport({ warnings: ['Healthy day', 5 as unknown as string] })]
 		});
 
 		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
 		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
 			'Saved game reports[0] warnings[1] must be a non-empty string'
+		);
+	});
+
+	test('rejects saved reports with invalid payroll cost', () => {
+		expect.assertions(2);
+		const snapshot = createSnapshotWithGame({
+			...createGame(),
+			reports: [createDailyReport({ payrollCost: 'missing' as unknown as number })]
+		});
+
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
+			'Saved game reports[0] payrollCost must be a finite number'
+		);
+	});
+
+	test('rejects saved store reports with invalid staffing coverage', () => {
+		expect.assertions(2);
+		const snapshot = createSnapshotWithGame({
+			...createGame(),
+			reports: [
+				createDailyReport({
+					storeReports: [
+						createDailyStoreReport({ staffingCoverage: Number.NaN })
+					]
+				})
+			]
+		});
+
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
+			'Saved game reports[0] storeReports[0] staffingCoverage must be a finite number'
+		);
+	});
+
+	test('rejects saved store reports with invalid general staffing shortage', () => {
+		expect.assertions(2);
+		const snapshot = createSnapshotWithGame({
+			...createGame(),
+			reports: [
+				createDailyReport({
+					storeReports: [
+						createDailyStoreReport({
+							staffingShortage: { manager: 0, general: 'three' as unknown as number }
+						})
+					]
+				})
+			]
+		});
+
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
+			'Saved game reports[0] storeReports[0] staffingShortage general must be a finite number'
 		);
 	});
 

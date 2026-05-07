@@ -27,9 +27,9 @@ const INVENTORY = {
 } as const;
 
 const STAFFING = {
-	minimal: { capacity: 0.78, wage: 0.82, morale: -4, satisfaction: -4 },
-	efficient: { capacity: 1, wage: 1, morale: 0, satisfaction: 0 },
-	service: { capacity: 1.18, wage: 1.24, morale: 3, satisfaction: 4 }
+	minimal: { capacity: 0.78, morale: -4, satisfaction: -4 },
+	efficient: { capacity: 1, morale: 0, satisfaction: 0 },
+	service: { capacity: 1.18, morale: 3, satisfaction: 4 }
 } as const;
 
 const MARKETING = {
