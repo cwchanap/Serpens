@@ -18,6 +18,7 @@ export class SaveDataError extends Error {
 const PRICING_POSTURES = ['discount', 'competitive', 'standard', 'premium'] as const;
 const INVENTORY_BUFFERS = ['lean', 'balanced', 'generous'] as const;
 const STAFFING_POSTURES = ['minimal', 'efficient', 'service'] as const;
+const STAFF_ROLES = ['manager', 'general'] as const;
 const MARKETING_FOCUSES = ['none', 'awareness', 'promotions', 'loyalty'] as const;
 const SERVICE_PRIORITIES = ['speed', 'balanced', 'highTouch'] as const;
 const ARCHETYPE_IDS = ['convenience', 'boutique', 'electronics', 'grocery'] as const;
@@ -168,6 +169,8 @@ function validateSavedGame(value: unknown): Record<string, unknown> {
 	const scorecard = requireRecord(game.scorecard, 'Saved game scorecard');
 	const cities = requireArray(game.cities, 'Saved game cities');
 	const stores = requireArray(game.stores, 'Saved game stores');
+	const staff = requireArray(game.staff, 'Saved game staff');
+	const hiringCandidates = requireArray(game.hiringCandidates, 'Saved game hiringCandidates');
 	const decisions = requireArray(game.decisions, 'Saved game decisions');
 	const reports = requireArray(game.reports, 'Saved game reports');
 
@@ -188,6 +191,10 @@ function validateSavedGame(value: unknown): Record<string, unknown> {
 	cities.forEach((city, index) => validateSavedCity(city, `Saved game cities[${index}]`));
 	requireString(game.activeCityId, 'Saved game activeCityId');
 	stores.forEach((store, index) => validateSavedStore(store, `Saved game stores[${index}]`));
+	staff.forEach((member, index) => validateSavedStaffMember(member, `Saved game staff[${index}]`));
+	hiringCandidates.forEach((candidate, index) =>
+		validateSavedHiringCandidate(candidate, `Saved game hiringCandidates[${index}]`)
+	);
 	decisions.forEach((decision, index) =>
 		validateSavedDecision(decision, `Saved game decisions[${index}]`)
 	);
@@ -296,6 +303,25 @@ function validateSavedStore(value: unknown, label: string): void {
 	requireNumber(store.localDemand, `${label} localDemand`);
 	requireNumber(store.competition, `${label} competition`);
 	requireNumber(store.managerQuality, `${label} managerQuality`);
+}
+
+function validateSavedHiringCandidate(value: unknown, label: string): void {
+	const candidate = requireRecord(value, label);
+
+	requireString(candidate.id, `${label} id`);
+	requireString(candidate.name, `${label} name`);
+	requireOneOf(candidate.role, `${label} role`, STAFF_ROLES);
+	requireNumber(candidate.monthlySalary, `${label} monthlySalary`);
+	requireNumber(candidate.skill, `${label} skill`);
+	requireNumber(candidate.morale, `${label} morale`);
+}
+
+function validateSavedStaffMember(value: unknown, label: string): void {
+	const member = requireRecord(value, label);
+
+	validateSavedHiringCandidate(member, label);
+	validateNullableString(member.assignedStoreId, `${label} assignedStoreId`);
+	requireNumber(member.hiredOnDay, `${label} hiredOnDay`);
 }
 
 function validateSavedDecision(value: unknown, label: string): void {
@@ -415,6 +441,12 @@ function requireBoolean(value: unknown, label: string): boolean {
 	}
 
 	return value;
+}
+
+function validateNullableString(value: unknown, label: string): void {
+	if (value !== null && typeof value !== 'string') {
+		throw new SaveDataError(`${label} must be a string or null`);
+	}
 }
 
 function requireNumber(value: unknown, label: string): number {

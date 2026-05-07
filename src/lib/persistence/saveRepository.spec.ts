@@ -231,6 +231,27 @@ describe('save records', () => {
 		);
 	});
 
+	test('rejects saved games missing staff arrays', () => {
+		expect.assertions(2);
+		const game = createGame();
+		const gameWithoutStaff: Partial<GameState> = { ...game };
+		delete gameWithoutStaff.staff;
+		const record = createSaveRecord(game, {
+			id: 'manual-test-run',
+			name: 'Test Run',
+			kind: 'manual',
+			updatedAt: new Date('2026-05-05T12:00:00.000Z')
+		});
+		const snapshot = {
+			schemaVersion: SAVE_SCHEMA_VERSION,
+			autoSave: null,
+			manualSlots: [{ ...record, game: gameWithoutStaff }]
+		};
+
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow('Saved game staff must be an array');
+	});
+
 	test('rejects saved games with invalid policy enum values', () => {
 		expect.assertions(2);
 		const record = createManualSaveRecord({
@@ -275,6 +296,52 @@ describe('save records', () => {
 		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
 		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
 			'Saved game stores[0] archetypeId must be one of: convenience, boutique, electronics, grocery'
+		);
+	});
+
+	test('rejects saved staff with invalid role values', () => {
+		expect.assertions(2);
+		const snapshot = createSnapshotWithGame({
+			...createGame(),
+			staff: [
+				{
+					id: 'staff-1',
+					name: 'Avery Chen',
+					role: 'supervisor' as GameState['staff'][number]['role'],
+					monthlySalary: 3200,
+					skill: 65,
+					morale: 70,
+					assignedStoreId: 'store-1',
+					hiredOnDay: 1
+				}
+			]
+		});
+
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
+			'Saved game staff[0] role must be one of: manager, general'
+		);
+	});
+
+	test('rejects saved hiring candidates with invalid salaries', () => {
+		expect.assertions(2);
+		const snapshot = createSnapshotWithGame({
+			...createGame(),
+			hiringCandidates: [
+				{
+					id: 'candidate-1',
+					name: 'Blake Patel',
+					role: 'general',
+					monthlySalary: Number.NaN,
+					skill: 62,
+					morale: 68
+				}
+			]
+		});
+
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
+			'Saved game hiringCandidates[0] monthlySalary must be a finite number'
 		);
 	});
 
