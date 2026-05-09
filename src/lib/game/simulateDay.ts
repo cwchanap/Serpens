@@ -63,6 +63,7 @@ type SummedStoreReportKey = 'revenue' | 'costOfGoods' | 'operatingCosts' | 'impo
 interface StoreOperationProfile {
 	store: Store;
 	staffLimit: number;
+	salesCapacity: number;
 	staffingCoverage: number;
 	staffingShortage: StaffingRequirement;
 	staffMorale: number;
@@ -70,13 +71,14 @@ interface StoreOperationProfile {
 	marketPosition: number;
 	operatingCosts: number;
 	startingStockHealth: number;
+	stockPressureThreshold: number;
 }
 
 export function simulateDay(game: GameState): GameState {
 	const rng = createRngFromState(game.rngState);
 	const profiles = game.stores.map((store) => buildStoreOperationProfile(store, game, rng));
 	const profileByStoreId = new Map(profiles.map((profile) => [profile.store.id, profile]));
-	const storeCapacity = new Map(profiles.map((profile) => [profile.store.id, profile.staffLimit]));
+	const storeCapacity = new Map(profiles.map((profile) => [profile.store.id, profile.salesCapacity]));
 	const pricedSalesGame = {
 		...game,
 		stores: applyPolicyPricingToStores(game.stores, PRICING[game.policy.pricing].price)
@@ -175,6 +177,7 @@ function buildStoreOperationProfile(
 	rng: ReturnType<typeof createRngFromState>
 ): StoreOperationProfile {
 	const staffing = STAFFING[game.policy.staffing];
+	const inventory = INVENTORY[game.policy.inventory];
 	const marketing = MARKETING[game.policy.marketing];
 	const service = SERVICE[game.policy.service];
 	const staffingSummary = summarizeStoreStaffing(game, store);
@@ -206,6 +209,7 @@ function buildStoreOperationProfile(
 	);
 	const reputation = clampScore(
 		store.reputation +
+			inventory.satisfaction +
 			staffing.satisfaction +
 			service.satisfaction +
 			marketing.reputation -
@@ -222,13 +226,15 @@ function buildStoreOperationProfile(
 	return {
 		store,
 		staffLimit: Math.max(0, Math.floor(staffLimit)),
+		salesCapacity: Math.max(0, Math.floor(staffLimit * inventory.capacity)),
 		staffingCoverage: staffingSummary.coverage,
 		staffingShortage: staffingSummary.shortage,
 		staffMorale,
 		reputation,
 		marketPosition,
 		operatingCosts,
-		startingStockHealth: store.stockHealth
+		startingStockHealth: store.stockHealth,
+		stockPressureThreshold: 25 * inventory.stockStress
 	};
 }
 
@@ -255,6 +261,7 @@ function buildDailyStoreReport(
 		updatedStore,
 		productReports,
 		profile.startingStockHealth,
+		profile.stockPressureThreshold,
 		profile.staffLimit,
 		profile.staffingShortage,
 		profile.reputation
@@ -288,6 +295,7 @@ function buildStoreWarnings(
 	store: Store,
 	productReports: DailyProductReport[],
 	startingStockHealth: number,
+	stockPressureThreshold: number,
 	staffLimit: number,
 	staffingShortage: StaffingRequirement,
 	reputation: number
@@ -297,8 +305,8 @@ function buildStoreWarnings(
 	const demandMissed = productReports.reduce((total, report) => total + report.demandMissed, 0);
 
 	if (
-		store.stockHealth < 25 ||
-		startingStockHealth < 25 ||
+		store.stockHealth < stockPressureThreshold ||
+		startingStockHealth < stockPressureThreshold ||
 		productReports.some((report) => report.endingStock === 0)
 	) {
 		warnings.push(`${store.name} has stock pressure`);

@@ -237,6 +237,30 @@ describe('daily simulation', () => {
 		expect(report.stockHealth).toBe(result.stores[0]!.stockHealth);
 	});
 
+	test('inventory posture changes daily product sales capacity', () => {
+		expect.assertions(3);
+		const game = createNewGame('convenience', 20260508);
+		const stores = game.stores.map((store) => ({
+			...store,
+			products: store.products.map((product) => ({
+				...product,
+				stock: 500,
+				targetStock: 500
+			})),
+			stockHealth: 100,
+			staffCapacity: 140,
+			staffMorale: 90
+		}));
+		const lean = simulateDay(updatePolicy({ ...game, stores }, { inventory: 'lean' }));
+		const generous = simulateDay(updatePolicy({ ...game, stores }, { inventory: 'generous' }));
+		const leanReport = lean.reports[0]!.storeReports[0]!;
+		const generousReport = generous.reports[0]!.storeReports[0]!;
+
+		expect(generousReport.customersServed).toBeGreaterThan(leanReport.customersServed);
+		expect(generousReport.reputation).toBeGreaterThanOrEqual(leanReport.reputation);
+		expect(generousReport.revenue).toBeGreaterThan(leanReport.revenue);
+	});
+
 	test('weekly imports subtract cash even when cash goes negative', () => {
 		expect.assertions(5);
 		const game = {

@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { calculateStockHealth } from './stock';
 import { createNewGame, openStore, resolveDecision, updatePolicy } from './state';
+import { simulateDay } from './simulateDay';
 
 describe('game state', () => {
 	test('creates a new game from an archetype', () => {
@@ -268,5 +269,48 @@ describe('game state', () => {
 		expect(resolved.stores[0]?.staffMorale).toBe(0);
 		expect(resolved.stores[0]?.reputation).toBe(100);
 		expect(resolved.decisions).toHaveLength(0);
+	});
+
+	test('stock health decision effects adjust product rows and survive the next day', () => {
+		expect.assertions(6);
+		const game = createNewGame('grocery', 55);
+		const decision = {
+			id: 'inventory-plan-1',
+			title: 'Inventory plan',
+			context: 'A manager changes inventory depth.',
+			expiresOnDay: 3,
+			options: [
+				{
+					id: 'stock-up',
+					label: 'Stock up',
+					description: 'Add more stock.',
+					effects: { stockHealth: 20 }
+				}
+			]
+		};
+		const store = {
+			...game.stores[0]!,
+			products: game.stores[0]!.products.map((product) => ({
+				...product,
+				stock: Math.floor(product.targetStock / 2)
+			}))
+		};
+		const storeWithHealth = { ...store, stockHealth: calculateStockHealth(store.products) };
+		const resolved = resolveDecision(
+			{ ...game, stores: [storeWithHealth], decisions: [decision] },
+			'inventory-plan-1',
+			'stock-up'
+		);
+		const unboostedNextDay = simulateDay({ ...game, stores: [storeWithHealth] });
+		const nextDay = simulateDay(resolved);
+
+		expect(resolved.stores[0]!.products[0]!.stock).toBeGreaterThan(
+			storeWithHealth.products[0]!.stock
+		);
+		expect(resolved.stores[0]!.stockHealth).toBe(calculateStockHealth(resolved.stores[0]!.products));
+		expect(resolved.stores[0]!.stockHealth).toBeGreaterThan(storeWithHealth.stockHealth);
+		expect(nextDay.stores[0]!.stockHealth).toBe(calculateStockHealth(nextDay.stores[0]!.products));
+		expect(nextDay.stores[0]!.stockHealth).toBeGreaterThan(unboostedNextDay.stores[0]!.stockHealth);
+		expect(nextDay.stores[0]!.stockHealth).toBeGreaterThan(0);
 	});
 });

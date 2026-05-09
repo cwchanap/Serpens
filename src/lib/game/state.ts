@@ -228,9 +228,24 @@ function applyScoreEffects(scorecard: Scorecard, option: DecisionOption): Scorec
 }
 
 function applyStoreEffects(store: Store, option: DecisionOption): Store {
+	const products =
+		option.effects.stockHealth === undefined
+			? store.products
+			: store.products.map((product) => ({
+					...product,
+					stock: Math.max(
+						0,
+						product.stock + Math.round(product.targetStock * (option.effects.stockHealth ?? 0) * 0.01)
+					)
+				}));
+
 	return {
 		...store,
-		stockHealth: clampScore(store.stockHealth + (option.effects.stockHealth ?? 0)),
+		products,
+		stockHealth:
+			option.effects.stockHealth === undefined
+				? store.stockHealth
+				: calculateStockHealth(products),
 		staffMorale: clampScore(store.staffMorale + (option.effects.staffMorale ?? 0)),
 		reputation: clampScore(store.reputation + (option.effects.reputation ?? 0))
 	};
