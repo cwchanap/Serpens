@@ -232,6 +232,37 @@ test('player expands from a selected city tile', async ({ page }) => {
 	).toBeVisible();
 });
 
+test('manage selected store stock and see weekly imports', async ({ page }) => {
+	await page.goto('/');
+
+	await clickMapTile(page, 1, 1);
+	await chooseStoreType(page, /open convenience store here/i);
+
+	const mapCanvas = page.locator('.map-canvas canvas');
+	await expect(mapCanvas).toHaveAttribute('data-store-sprite-count', '1');
+
+	await clickMapTile(page, 1, 1);
+	const inspector = page.getByRole('dialog', { name: /tile details/i });
+	await expect(inspector).toBeVisible();
+	await expect(inspector.getByRole('table', { name: /convenience store stock/i })).toBeVisible();
+	await expect(inspector.getByRole('cell', { name: 'Snacks' })).toBeVisible();
+
+	const snacksPrice = inspector.getByRole('spinbutton', { name: /selling price for snacks/i });
+	await snacksPrice.fill('7');
+	await snacksPrice.blur();
+	await expect(snacksPrice).toHaveValue('7');
+
+	for (let day = 0; day < 7; day += 1) {
+		await page.getByRole('button', { name: /^advance day$/i }).click();
+	}
+
+	await openControlTower(page);
+	const controlTower = page.getByRole('dialog', { name: /control tower/i });
+	await expect(
+		controlTower.getByLabel('Reports').getByText('Imports', { exact: true })
+	).toBeVisible();
+});
+
 test('player can save to a manual slot and load it after reload', async ({ page }) => {
 	await page.goto('/');
 

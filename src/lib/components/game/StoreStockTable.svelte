@@ -51,7 +51,7 @@
 	<h3 id={`${store.id}-stock-heading`}>{store.name} stock</h3>
 
 	<div class="table-scroll">
-		<table>
+		<table aria-label={`${store.name} stock`}>
 			<thead>
 				<tr>
 					<th scope="col">Product</th>
