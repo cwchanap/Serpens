@@ -61,7 +61,7 @@ const latestReport: DailyStoreReport = {
 
 describe('StoreStockTable', () => {
 	it('renders product stock rows with fixed cost and latest report demand', async () => {
-		expect.assertions(4);
+		expect.assertions(7);
 
 		render(StoreStockTable, {
 			store,
@@ -73,9 +73,36 @@ describe('StoreStockTable', () => {
 		await expect.element(page.getByRole('cell', { name: 'Snacks' })).toBeVisible();
 		await expect.element(page.getByRole('cell', { name: '$3' })).toBeVisible();
 		await expect.element(page.getByText('12 sold / 2 missed')).toBeVisible();
+		await expect
+			.element(page.getByRole('spinbutton', { name: 'Selling price for Snacks' }))
+			.toBeVisible();
+		await expect
+			.element(page.getByRole('spinbutton', { name: 'Reorder threshold for Snacks' }))
+			.toBeVisible();
+		await expect
+			.element(page.getByRole('spinbutton', { name: 'Target stock for Snacks' }))
+			.toBeVisible();
 	});
 
-	it('sends a numeric selling price update for the edited product', async () => {
+	it('sends one numeric selling price update for the edited product', async () => {
+		expect.assertions(2);
+		const onUpdate = vi.fn();
+
+		render(StoreStockTable, {
+			store,
+			latestReport,
+			onUpdate
+		});
+
+		const sellingPrice = page.getByRole('spinbutton', { name: 'Selling price for Snacks' });
+		await sellingPrice.fill('7');
+		await page.getByRole('cell', { name: 'Snacks' }).click();
+
+		expect(onUpdate).toHaveBeenCalledTimes(1);
+		expect(onUpdate).toHaveBeenCalledWith('store-1', 'snacks', { sellingPrice: 7 });
+	});
+
+	it('does not send an update for invalid numeric input', async () => {
 		expect.assertions(1);
 		const onUpdate = vi.fn();
 
@@ -85,9 +112,10 @@ describe('StoreStockTable', () => {
 			onUpdate
 		});
 
-		const sellingPrice = page.getByRole('spinbutton', { name: 'Snacks selling price' });
-		await sellingPrice.fill('7');
+		const sellingPrice = page.getByRole('spinbutton', { name: 'Selling price for Snacks' });
+		await sellingPrice.fill('');
+		await page.getByRole('cell', { name: 'Snacks' }).click();
 
-		expect(onUpdate).toHaveBeenCalledWith('store-1', 'snacks', { sellingPrice: 7 });
+		expect(onUpdate).not.toHaveBeenCalled();
 	});
 });

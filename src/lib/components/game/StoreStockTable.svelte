@@ -37,7 +37,13 @@
 		event: Event
 	): void {
 		const input = event.currentTarget as HTMLInputElement;
-		onUpdate(store.id, categoryId, { [field]: input.valueAsNumber });
+		const value = input.valueAsNumber;
+
+		if (!Number.isFinite(value)) {
+			return;
+		}
+
+		onUpdate(store.id, categoryId, { [field]: value });
 	}
 </script>
 
@@ -72,10 +78,8 @@
 								min="1"
 								step="1"
 								value={product.sellingPrice}
-								aria-label={`${categoryName} selling price`}
-								oninput={(event) => updateNumber(product.categoryId, 'sellingPrice', event)}
+								aria-label={`Selling price for ${categoryName}`}
 								onchange={(event) => updateNumber(product.categoryId, 'sellingPrice', event)}
-								onblur={(event) => updateNumber(product.categoryId, 'sellingPrice', event)}
 							/>
 						</td>
 						<td>
@@ -84,10 +88,8 @@
 								min="0"
 								step="1"
 								value={product.reorderThreshold}
-								aria-label={`${categoryName} reorder threshold`}
-								oninput={(event) => updateNumber(product.categoryId, 'reorderThreshold', event)}
+								aria-label={`Reorder threshold for ${categoryName}`}
 								onchange={(event) => updateNumber(product.categoryId, 'reorderThreshold', event)}
-								onblur={(event) => updateNumber(product.categoryId, 'reorderThreshold', event)}
 							/>
 						</td>
 						<td>
@@ -96,10 +98,8 @@
 								min="0"
 								step="1"
 								value={product.targetStock}
-								aria-label={`${categoryName} target stock`}
-								oninput={(event) => updateNumber(product.categoryId, 'targetStock', event)}
+								aria-label={`Target stock for ${categoryName}`}
 								onchange={(event) => updateNumber(product.categoryId, 'targetStock', event)}
-								onblur={(event) => updateNumber(product.categoryId, 'targetStock', event)}
 							/>
 						</td>
 						<td>{getStoreProductStatus(product)}</td>
@@ -137,7 +137,7 @@
 
 	table {
 		width: 100%;
-		min-width: 46rem;
+		min-width: 40rem;
 		border-collapse: collapse;
 		font-size: 0.76rem;
 	}
