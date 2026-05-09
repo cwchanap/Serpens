@@ -252,15 +252,29 @@ test('manage selected store stock and see weekly imports', async ({ page }) => {
 	await snacksPrice.blur();
 	await expect(snacksPrice).toHaveValue('7');
 
+	const snacksTarget = inspector.getByRole('spinbutton', { name: /target stock for snacks/i });
+	await snacksTarget.fill('140');
+	await snacksTarget.blur();
+	await expect(snacksTarget).toHaveValue('140');
+
+	const snacksReorder = inspector.getByRole('spinbutton', {
+		name: /reorder threshold for snacks/i
+	});
+	await snacksReorder.fill('100');
+	await snacksReorder.blur();
+	await expect(snacksReorder).toHaveValue('100');
+
 	for (let day = 0; day < 7; day += 1) {
 		await page.getByRole('button', { name: /^advance day$/i }).click();
 	}
 
 	await openControlTower(page);
 	const controlTower = page.getByRole('dialog', { name: /control tower/i });
-	await expect(
-		controlTower.getByLabel('Reports').getByText('Imports', { exact: true })
-	).toBeVisible();
+	const importsMetric = controlTower
+		.getByLabel('Reports')
+		.locator('.metrics > div')
+		.filter({ hasText: /^Imports\s+\$[1-9][\d,]*$/ });
+	await expect(importsMetric).toBeVisible();
 });
 
 test('player can save to a manual slot and load it after reload', async ({ page }) => {
