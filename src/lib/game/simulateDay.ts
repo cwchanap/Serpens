@@ -83,8 +83,9 @@ export function simulateDay(game: GameState): GameState {
 		...game,
 		stores: applyPolicyPricingToStores(game.stores, PRICING[game.policy.pricing].price)
 	};
+	const storeCityIds = new Set(game.stores.map((store) => store.cityId));
 	const citySales = game.cities
-		.filter((city) => city.id === game.activeCityId)
+		.filter((city) => storeCityIds.has(city.id))
 		.reduce(
 			(result, city) => {
 				const sales = simulateProductSalesForCity({
@@ -95,13 +96,13 @@ export function simulateDay(game: GameState): GameState {
 				});
 
 				return {
-					stores: restoreProductSettings(sales.stores, game.stores),
+					stores: sales.stores,
 					productReports: mergeProductReportMaps(result.productReports, sales.productReports)
 				};
 			},
 			{ stores: pricedSalesGame.stores, productReports: new Map<string, DailyProductReport[]>() }
 		);
-	const stockGame = { ...game, stores: citySales.stores };
+	const stockGame = { ...game, stores: restoreProductSettings(citySales.stores, game.stores) };
 	const importResult = isImportDay(game.day)
 		? applyWeeklyImports({ game: stockGame, storeReports: citySales.productReports })
 		: { stores: stockGame.stores, productReports: citySales.productReports, importSpend: 0 };

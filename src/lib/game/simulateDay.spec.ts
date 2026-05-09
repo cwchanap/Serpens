@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { generateDecisions } from './events';
+import { generateCity } from './city';
 import { createNewGame, updatePolicy } from './state';
 import { simulateDay } from './simulateDay';
 import type { DecisionItem, GameState } from './types';
@@ -259,6 +260,59 @@ describe('daily simulation', () => {
 		expect(generousReport.customersServed).toBeGreaterThan(leanReport.customersServed);
 		expect(generousReport.reputation).toBeGreaterThanOrEqual(leanReport.reputation);
 		expect(generousReport.revenue).toBeGreaterThan(leanReport.revenue);
+	});
+
+	test('simulates product demand for stores in every city', () => {
+		expect.assertions(6);
+		const game = createNewGame('convenience', 20260508);
+		const secondCity = generateCity({
+			id: 'second-city',
+			name: 'Second City',
+			width: 20,
+			height: 20,
+			seed: 20260509
+		});
+		const firstStore = {
+			...game.stores[0]!,
+			products: game.stores[0]!.products.map((product) => ({
+				...product,
+				stock: 500,
+				targetStock: 500
+			})),
+			stockHealth: 100,
+			staffCapacity: 140,
+			staffMorale: 90
+		};
+		const secondTile = secondCity.tiles.find((tile) => !tile.locked && tile.feature === null)!;
+		const secondStore = {
+			...firstStore,
+			id: 'store-2',
+			name: 'Second City Store',
+			cityId: secondCity.id,
+			tileId: secondTile.id,
+			mapX: secondTile.x,
+			mapY: secondTile.y,
+			location: 'Second City'
+		};
+		const result = simulateDay({
+			...game,
+			cities: [...game.cities, secondCity],
+			activeCityId: game.cities[0]!.id,
+			stores: [firstStore, secondStore]
+		});
+		const firstReport = result.reports[0]!.storeReports.find(
+			(report) => report.storeId === firstStore.id
+		)!;
+		const secondReport = result.reports[0]!.storeReports.find(
+			(report) => report.storeId === secondStore.id
+		)!;
+
+		expect(firstReport.productReports.some((report) => report.unitsSold > 0)).toBe(true);
+		expect(secondReport.productReports.some((report) => report.unitsSold > 0)).toBe(true);
+		expect(firstReport.customersServed).toBeGreaterThan(0);
+		expect(secondReport.customersServed).toBeGreaterThan(0);
+		expect(firstReport.revenue).toBeGreaterThan(0);
+		expect(secondReport.revenue).toBeGreaterThan(0);
 	});
 
 	test('weekly imports subtract cash even when cash goes negative', () => {
