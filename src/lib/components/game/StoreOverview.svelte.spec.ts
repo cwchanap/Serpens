@@ -31,6 +31,7 @@ const staleReport: DailyStoreReport = {
 	costOfGoods: 420,
 	grossMargin: 780,
 	operatingCosts: 300,
+	importSpend: 0,
 	netIncome: 480,
 	customersServed: 42,
 	demandMissed: 0,
@@ -40,6 +41,7 @@ const staleReport: DailyStoreReport = {
 	staffMorale: 82,
 	reputation: 55,
 	marketPosition: 45,
+	productReports: [],
 	warnings: []
 };
 

@@ -161,12 +161,27 @@ export interface OpeningOption {
 	disabledReason: string | null;
 }
 
+export interface DailyProductReport {
+	categoryId: string;
+	name: string;
+	unitsSold: number;
+	demandMissed: number;
+	revenue: number;
+	costOfGoods: number;
+	grossMargin: number;
+	endingStock: number;
+	importedUnits: number;
+	importCost: number;
+	importSpend: number;
+}
+
 export interface DailyStoreReport {
 	storeId: string;
 	revenue: number;
 	costOfGoods: number;
 	grossMargin: number;
 	operatingCosts: number;
+	importSpend: number;
 	netIncome: number;
 	customersServed: number;
 	demandMissed: number;
@@ -176,6 +191,7 @@ export interface DailyStoreReport {
 	staffMorale: number;
 	reputation: number;
 	marketPosition: number;
+	productReports: DailyProductReport[];
 	warnings: string[];
 }
 
@@ -186,6 +202,7 @@ export interface DailyReport {
 	grossMargin: number;
 	operatingCosts: number;
 	payrollCost: number;
+	importSpend: number;
 	netIncome: number;
 	cashAfter: number;
 	scorecard: Scorecard;

@@ -183,6 +183,7 @@ function createDailyStoreReport(overrides: Partial<DailyStoreReport> = {}): Dail
 		costOfGoods: 350,
 		grossMargin: 650,
 		operatingCosts: 250,
+		importSpend: 0,
 		netIncome: 400,
 		customersServed: 42,
 		demandMissed: 5,
@@ -192,6 +193,7 @@ function createDailyStoreReport(overrides: Partial<DailyStoreReport> = {}): Dail
 		staffMorale: 65,
 		reputation: 60,
 		marketPosition: 50,
+		productReports: [],
 		warnings: ['Low inventory'],
 		...overrides
 	};
@@ -205,6 +207,7 @@ function createDailyReport(overrides: Partial<DailyReport> = {}): DailyReport {
 		grossMargin: 650,
 		operatingCosts: 250,
 		payrollCost: 0,
+		importSpend: 0,
 		netIncome: 400,
 		cashAfter: 12900,
 		scorecard: {

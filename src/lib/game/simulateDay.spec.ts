@@ -203,8 +203,66 @@ describe('daily simulation', () => {
 		);
 		expect(payroll).toBeGreaterThan(0);
 		expect(payrollReport.operatingCosts).toBe(storeOperatingCosts + payrollReport.payrollCost);
-		expect(payrollReport.netIncome).toBe(payrollReport.grossMargin - payrollReport.operatingCosts);
+		expect(payrollReport.netIncome).toBe(
+			payrollReport.revenue - payrollReport.operatingCosts - payrollReport.importSpend
+		);
 		expect(payrollReport.cashAfter).toBe(startingCash + payrollReport.netIncome);
+	});
+
+	test('records product reports and aggregates store report totals', () => {
+		expect.assertions(8);
+		const game = createNewGame('convenience', 20260508);
+		const result = simulateDay(game);
+		const report = result.reports[0]!.storeReports[0]!;
+		const productTotals = report.productReports.reduce(
+			(totals, product) => ({
+				revenue: totals.revenue + product.revenue,
+				costOfGoods: totals.costOfGoods + product.costOfGoods,
+				importSpend: totals.importSpend + product.importSpend,
+				unitsSold: totals.unitsSold + product.unitsSold,
+				demandMissed: totals.demandMissed + product.demandMissed
+			}),
+			{ revenue: 0, costOfGoods: 0, importSpend: 0, unitsSold: 0, demandMissed: 0 }
+		);
+
+		expect(report.productReports).toHaveLength(game.stores[0]!.products.length);
+		expect(report.revenue).toBe(productTotals.revenue);
+		expect(report.costOfGoods).toBe(productTotals.costOfGoods);
+		expect(report.importSpend).toBe(productTotals.importSpend);
+		expect(report.customersServed).toBe(productTotals.unitsSold);
+		expect(report.demandMissed).toBe(productTotals.demandMissed);
+		expect(result.stores[0]!.products[0]!.stock).toBeLessThanOrEqual(
+			game.stores[0]!.products[0]!.stock
+		);
+		expect(report.stockHealth).toBe(result.stores[0]!.stockHealth);
+	});
+
+	test('weekly imports subtract cash even when cash goes negative', () => {
+		expect.assertions(5);
+		const game = {
+			...createNewGame('convenience', 20260508),
+			day: 7,
+			cash: 10
+		};
+		const store = {
+			...game.stores[0]!,
+			products: game.stores[0]!.products.map((product) => ({
+				...product,
+				stock: 0,
+				reorderThreshold: 5,
+				targetStock: 20
+			}))
+		};
+		const result = simulateDay({ ...game, stores: [store] });
+		const report = result.reports[0]!;
+
+		expect(report.importSpend).toBeGreaterThan(10);
+		expect(result.cash).toBeLessThan(0);
+		expect(result.stores[0]!.products.every((product) => product.stock >= 20)).toBe(true);
+		expect(
+			report.storeReports[0]?.productReports.some((product) => product.importedUnits > 0)
+		).toBe(true);
+		expect(report.cashAfter).toBe(result.cash);
 	});
 
 	test('understaffing reduces served demand and reports role shortages', () => {

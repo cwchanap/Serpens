@@ -10,14 +10,20 @@ import {
 	shouldRefreshHiringMarket,
 	summarizeStoreStaffing
 } from './staffing';
+import {
+	applyWeeklyImports,
+	calculateStockHealth,
+	isImportDay,
+	simulateProductSalesForCity
+} from './stock';
 import type {
+	DailyProductReport,
 	DailyReport,
 	DailyStoreReport,
 	GameState,
 	Scorecard,
 	StaffingRequirement,
-	Store,
-	StoreArchetype
+	Store
 } from './types';
 
 const PRICING = {
@@ -52,12 +58,57 @@ const SERVICE = {
 	highTouch: { throughput: 0.9, satisfaction: 4, morale: 1 }
 } as const;
 
-const BASE_TICKET = 34;
-type SummedStoreReportKey = 'revenue' | 'costOfGoods' | 'operatingCosts';
+type SummedStoreReportKey = 'revenue' | 'costOfGoods' | 'operatingCosts' | 'importSpend';
+
+interface StoreOperationProfile {
+	store: Store;
+	staffLimit: number;
+	staffingCoverage: number;
+	staffingShortage: StaffingRequirement;
+	staffMorale: number;
+	reputation: number;
+	marketPosition: number;
+	operatingCosts: number;
+	startingStockHealth: number;
+}
 
 export function simulateDay(game: GameState): GameState {
 	const rng = createRngFromState(game.rngState);
-	const storeResults = game.stores.map((store) => simulateStore(store, game, rng));
+	const profiles = game.stores.map((store) => buildStoreOperationProfile(store, game, rng));
+	const profileByStoreId = new Map(profiles.map((profile) => [profile.store.id, profile]));
+	const storeCapacity = new Map(profiles.map((profile) => [profile.store.id, profile.staffLimit]));
+	const pricedSalesGame = {
+		...game,
+		stores: applyPolicyPricingToStores(game.stores, PRICING[game.policy.pricing].price)
+	};
+	const citySales = game.cities
+		.filter((city) => city.id === game.activeCityId)
+		.reduce(
+			(result, city) => {
+				const sales = simulateProductSalesForCity({
+					game: { ...pricedSalesGame, stores: result.stores },
+					city,
+					rng,
+					storeCapacity
+				});
+
+				return {
+					stores: restoreProductSettings(sales.stores, game.stores),
+					productReports: mergeProductReportMaps(result.productReports, sales.productReports)
+				};
+			},
+			{ stores: pricedSalesGame.stores, productReports: new Map<string, DailyProductReport[]>() }
+		);
+	const stockGame = { ...game, stores: citySales.stores };
+	const importResult = isImportDay(game.day)
+		? applyWeeklyImports({ game: stockGame, storeReports: citySales.productReports })
+		: { stores: stockGame.stores, productReports: citySales.productReports, importSpend: 0 };
+	const storeResults = importResult.stores.map((store) =>
+		buildDailyStoreReport(
+			{ ...profileByStoreId.get(store.id)!, store },
+			getStoreProductReports(store, importResult.productReports)
+		)
+	);
 	const storeReports = storeResults.map((result) => result.report);
 	const nextDay = game.day + 1;
 	const revenue = sum(storeReports, 'revenue');
@@ -65,7 +116,8 @@ export function simulateDay(game: GameState): GameState {
 	const grossMargin = revenue - costOfGoods;
 	const payrollCost = isPayrollDay(game.day) ? calculateMonthlyPayroll(game.staff) : 0;
 	const operatingCosts = sum(storeReports, 'operatingCosts') + payrollCost;
-	const netIncome = grossMargin - operatingCosts;
+	const importSpend = sum(storeReports, 'importSpend');
+	const netIncome = revenue - operatingCosts - importSpend;
 	const cashAfter = Math.round(game.cash + netIncome);
 	const warnings = collectWarnings(storeReports, cashAfter);
 	const scorecard = buildScorecard(game.scorecard, storeReports, netIncome);
@@ -89,6 +141,7 @@ export function simulateDay(game: GameState): GameState {
 		grossMargin: Math.round(grossMargin),
 		operatingCosts: Math.round(operatingCosts),
 		payrollCost,
+		importSpend: Math.round(importSpend),
 		netIncome: Math.round(netIncome),
 		cashAfter,
 		scorecard,
@@ -116,14 +169,11 @@ export function simulateDay(game: GameState): GameState {
 	};
 }
 
-function simulateStore(
+function buildStoreOperationProfile(
 	store: Store,
 	game: GameState,
 	rng: ReturnType<typeof createRngFromState>
-): { store: Store; report: DailyStoreReport } {
-	const archetype = getArchetype(store.archetypeId);
-	const pricing = PRICING[game.policy.pricing];
-	const inventory = INVENTORY[game.policy.inventory];
+): StoreOperationProfile {
 	const staffing = STAFFING[game.policy.staffing];
 	const marketing = MARKETING[game.policy.marketing];
 	const service = SERVICE[game.policy.service];
@@ -131,22 +181,6 @@ function simulateStore(
 	const staffingCoverageRatio = Math.max(0.22, staffingSummary.coverage / 100);
 	const skillMultiplier = 0.82 + staffingSummary.averageSkill / 250;
 	const moraleMultiplier = 0.82 + staffingSummary.averageMorale / 260;
-	const variance = randomBetween(rng, 0.92, 1.08);
-	const productFit = productDemandFit(archetype);
-	const reputationDemand = 0.72 + store.reputation / 180;
-	const competitionDrag = 1 - store.competition / 260;
-	const demand = Math.max(
-		0,
-		store.localDemand *
-			productFit *
-			pricing.demand *
-			marketing.demand *
-			reputationDemand *
-			competitionDrag *
-			variance
-	);
-	const stockLimit =
-		store.localDemand * inventory.capacity * Math.max(0.18, store.stockHealth / 72);
 	const staffLimit =
 		store.staffCapacity *
 		staffing.capacity *
@@ -154,33 +188,11 @@ function simulateStore(
 		(0.72 + store.staffMorale / 220) *
 		staffingCoverageRatio *
 		skillMultiplier *
-		moraleMultiplier;
-	const customersServed = Math.max(0, Math.floor(Math.min(demand, stockLimit, staffLimit)));
-	const demandMissed = Math.max(0, Math.round(demand - customersServed));
-	const averageMargin = clampRatio(averageCategoryMargin(archetype) + pricing.margin, 0.12, 0.68);
-	const averageTicket =
-		BASE_TICKET *
-		pricing.price *
-		(0.82 + archetype.customerExpectation / 250) *
+		moraleMultiplier *
 		randomBetween(rng, 0.96, 1.04);
-	const revenue = Math.round(customersServed * averageTicket);
-	const costOfGoods = Math.round(revenue * (1 - averageMargin));
-	const grossMargin = revenue - costOfGoods;
-	const operatingCosts = Math.round(
-		archetype.baseRent * (0.92 + store.competition / 450) +
-			marketing.cost +
-			supplierCost(archetype, inventory.cost, customersServed)
-	);
-	const netIncome = grossMargin - operatingCosts;
 	const managerPenalty = staffingSummary.shortage.manager > 0 ? 5 : 0;
 	const generalPenalty = staffingSummary.shortage.general * 2;
 	const assignedMoraleDelta = (staffingSummary.averageMorale - 60) / 18;
-	const stockHealth = clampScore(
-		store.stockHealth +
-			inventory.recovery -
-			(customersServed / Math.max(1, store.localDemand)) * 18 * inventory.stockStress -
-			randomBetween(rng, 0, 2)
-	);
 	const staffMorale = clampScore(
 		store.staffMorale +
 			staffing.morale +
@@ -190,105 +202,105 @@ function simulateStore(
 			generalPenalty +
 			assignedMoraleDelta -
 			3 -
-			(customersServed >= staffLimit - 1 ? 2 : 0)
+			(staffLimit <= store.staffCapacity * 0.45 ? 2 : 0)
 	);
 	const reputation = clampScore(
 		store.reputation +
-			pricing.satisfaction +
-			inventory.satisfaction +
 			staffing.satisfaction +
 			service.satisfaction +
 			marketing.reputation -
 			managerPenalty +
-			(demandMissed > demand * 0.18 ? -3 : 1)
+			(staffingSummary.coverage < 80 ? -2 : 1)
 	);
 	const marketPosition = clampScore(
 		35 + store.localDemand / 5 + reputation / 3 - store.competition / 4 + marketing.market
 	);
-	const updatedStore = {
-		...store,
-		daysOpen: store.daysOpen + 1,
-		stockHealth,
+	const operatingCosts = Math.round(
+		getArchetype(store.archetypeId).baseRent * (0.92 + store.competition / 450) + marketing.cost
+	);
+
+	return {
+		store,
+		staffLimit: Math.max(0, Math.floor(staffLimit)),
+		staffingCoverage: staffingSummary.coverage,
+		staffingShortage: staffingSummary.shortage,
 		staffMorale,
-		reputation
+		reputation,
+		marketPosition,
+		operatingCosts,
+		startingStockHealth: store.stockHealth
+	};
+}
+
+function buildDailyStoreReport(
+	profile: StoreOperationProfile,
+	productReports: DailyProductReport[]
+): { store: Store; report: DailyStoreReport } {
+	const revenue = productReports.reduce((total, report) => total + report.revenue, 0);
+	const costOfGoods = productReports.reduce((total, report) => total + report.costOfGoods, 0);
+	const importSpend = productReports.reduce((total, report) => total + report.importSpend, 0);
+	const customersServed = productReports.reduce((total, report) => total + report.unitsSold, 0);
+	const demandMissed = productReports.reduce((total, report) => total + report.demandMissed, 0);
+	const stockHealth = calculateStockHealth(profile.store.products);
+	const grossMargin = revenue - costOfGoods;
+	const operatingCosts = profile.operatingCosts;
+	const updatedStore = {
+		...profile.store,
+		daysOpen: profile.store.daysOpen + 1,
+		stockHealth,
+		staffMorale: profile.staffMorale,
+		reputation: profile.reputation
 	};
 	const warnings = buildStoreWarnings(
 		updatedStore,
-		customersServed,
-		demandMissed,
-		stockLimit,
-		staffLimit,
-		staffingSummary.shortage
+		productReports,
+		profile.startingStockHealth,
+		profile.staffLimit,
+		profile.staffingShortage,
+		profile.reputation
 	);
 
 	return {
 		store: updatedStore,
 		report: {
-			storeId: store.id,
+			storeId: profile.store.id,
 			revenue,
 			costOfGoods,
 			grossMargin,
 			operatingCosts,
-			netIncome,
+			importSpend,
+			netIncome: revenue - operatingCosts - importSpend,
 			customersServed,
 			demandMissed,
-			staffingCoverage: Math.round(staffingSummary.coverage),
-			staffingShortage: staffingSummary.shortage,
+			staffingCoverage: Math.round(profile.staffingCoverage),
+			staffingShortage: profile.staffingShortage,
 			stockHealth,
-			staffMorale,
-			reputation,
-			marketPosition,
+			staffMorale: profile.staffMorale,
+			reputation: profile.reputation,
+			marketPosition: profile.marketPosition,
+			productReports,
 			warnings
 		}
 	};
 }
 
-function productDemandFit(archetype: StoreArchetype): number {
-	const categoryDemand = archetype.startingCategories.reduce(
-		(total, category) => total + category.baseDemand,
-		0
-	);
-
-	return clampRatio(categoryDemand / Math.max(1, archetype.baseTraffic * 1.45), 0.72, 1.22);
-}
-
-function averageCategoryMargin(archetype: StoreArchetype): number {
-	const totalDemand = archetype.startingCategories.reduce(
-		(total, category) => total + category.baseDemand,
-		0
-	);
-
-	if (totalDemand === 0) {
-		return 0.3;
-	}
-
-	return archetype.startingCategories.reduce(
-		(total, category) => total + category.margin * (category.baseDemand / totalDemand),
-		0
-	);
-}
-
-function supplierCost(
-	archetype: StoreArchetype,
-	inventoryCost: number,
-	customersServed: number
-): number {
-	return Math.round(
-		customersServed * inventoryCost * (1.4 + archetype.startingCategories.length * 0.35)
-	);
-}
-
 function buildStoreWarnings(
 	store: Store,
-	customersServed: number,
-	demandMissed: number,
-	stockLimit: number,
+	productReports: DailyProductReport[],
+	startingStockHealth: number,
 	staffLimit: number,
-	staffingShortage: StaffingRequirement
+	staffingShortage: StaffingRequirement,
+	reputation: number
 ): string[] {
 	const warnings: string[] = [];
+	const customersServed = productReports.reduce((total, report) => total + report.unitsSold, 0);
+	const demandMissed = productReports.reduce((total, report) => total + report.demandMissed, 0);
 
-	if (store.stockHealth < 25 || (demandMissed > 0 && stockLimit <= customersServed + 1)) {
+	if (
+		store.stockHealth < 25 ||
+		startingStockHealth < 25 ||
+		productReports.some((report) => report.endingStock === 0)
+	) {
 		warnings.push(`${store.name} has stock pressure`);
 	}
 
@@ -304,7 +316,11 @@ function buildStoreWarnings(
 		warnings.push(`${store.name} is short ${staffingShortage.general} general staff`);
 	}
 
-	if (store.reputation < 35) {
+	if (demandMissed > customersServed * 0.2) {
+		warnings.push(`${store.name} missed product demand`);
+	}
+
+	if (reputation < 35) {
 		warnings.push(`${store.name} reputation is slipping`);
 	}
 
@@ -376,6 +392,81 @@ function average(values: number[]): number {
 	return values.reduce((total, value) => total + value, 0) / values.length;
 }
 
-function clampRatio(value: number, min: number, max: number): number {
-	return Math.max(min, Math.min(max, value));
+function applyPolicyPricingToStores(stores: Store[], priceMultiplier: number): Store[] {
+	return stores.map((store) => ({
+		...store,
+		products: store.products.map((product) => ({
+			...product,
+			sellingPrice: product.sellingPrice * priceMultiplier
+		}))
+	}));
+}
+
+function restoreProductSettings(soldStores: Store[], originalStores: Store[]): Store[] {
+	const originalProductsByStoreId = new Map(
+		originalStores.map((store) => [
+			store.id,
+			new Map(store.products.map((product) => [product.categoryId, product]))
+		])
+	);
+
+	return soldStores.map((store) => {
+		const products = store.products.map((product) => {
+			const originalProduct = originalProductsByStoreId.get(store.id)?.get(product.categoryId);
+
+			return originalProduct ? { ...originalProduct, stock: product.stock } : product;
+		});
+
+		return {
+			...store,
+			products,
+			stockHealth: calculateStockHealth(products)
+		};
+	});
+}
+
+function mergeProductReportMaps(
+	left: Map<string, DailyProductReport[]>,
+	right: Map<string, DailyProductReport[]>
+): Map<string, DailyProductReport[]> {
+	const merged = new Map(left);
+
+	for (const [storeId, reports] of right.entries()) {
+		merged.set(storeId, [...(merged.get(storeId) ?? []), ...reports]);
+	}
+
+	return merged;
+}
+
+function getStoreProductReports(
+	store: Store,
+	productReports: Map<string, DailyProductReport[]>
+): DailyProductReport[] {
+	const reports = productReports.get(store.id) ?? [];
+
+	return store.products.map((product) => {
+		const existing = reports.find((report) => report.categoryId === product.categoryId);
+
+		if (existing) {
+			return existing;
+		}
+
+		const category = getArchetype(store.archetypeId).startingCategories.find(
+			(candidate) => candidate.id === product.categoryId
+		);
+
+		return {
+			categoryId: product.categoryId,
+			name: category?.name ?? product.categoryId,
+			unitsSold: 0,
+			demandMissed: 0,
+			revenue: 0,
+			costOfGoods: 0,
+			grossMargin: 0,
+			endingStock: product.stock,
+			importedUnits: 0,
+			importCost: category?.importCost ?? 0,
+			importSpend: 0
+		};
+	});
 }

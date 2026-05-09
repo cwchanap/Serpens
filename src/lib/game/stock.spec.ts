@@ -1,9 +1,14 @@
 import { describe, expect, test } from 'vitest';
+import { createRng } from './rng';
 import { createNewGame } from './state';
 import {
+	applyWeeklyImports,
+	buildCityDemandPools,
 	calculateStockHealth,
 	getStoreProductStatus,
 	initializeStoreProducts,
+	isImportDay,
+	simulateProductSalesForCity,
 	updateStoreProduct
 } from './stock';
 import type { GameState, StoreProduct } from './types';
@@ -172,5 +177,141 @@ describe('stock rules', () => {
 				{ categoryId: 'snacks', stock: 0, reorderThreshold: 20, targetStock: 100, sellingPrice: 5 }
 			])
 		).toBe(0);
+	});
+
+	test('builds city-wide demand pools from city demand and product weights', () => {
+		expect.assertions(2);
+		const game = createNewGame('convenience', 20260508);
+		const pools = buildCityDemandPools(game, game.cities[0]!);
+
+		expect(pools.snacks).toBeGreaterThan(0);
+		expect(pools.drinks).toBeGreaterThan(pools.essentials ?? 0);
+	});
+
+	test('shared city demand is consumed across stores selling the same category', () => {
+		expect.assertions(4);
+		const game = createNewGame('convenience', 20260508);
+		const firstStore = {
+			...game.stores[0]!,
+			stockHealth: 100,
+			products: [
+				{
+					categoryId: 'snacks',
+					stock: 100,
+					reorderThreshold: 10,
+					targetStock: 100,
+					sellingPrice: 5
+				}
+			]
+		};
+		const secondStore = {
+			...firstStore,
+			id: 'store-2',
+			name: 'Second Store',
+			tileId: 'store-2-tile'
+		};
+		const result = simulateProductSalesForCity({
+			game: { ...game, stores: [firstStore, secondStore] },
+			city: game.cities[0]!,
+			rng: createRng(5),
+			storeCapacity: new Map([
+				[firstStore.id, 100],
+				[secondStore.id, 100]
+			])
+		});
+		const sold = [...result.productReports.values()]
+			.flat()
+			.reduce((sum, report) => sum + report.unitsSold, 0);
+
+		expect(result.productReports.get(firstStore.id)?.[0]?.unitsSold).toBeGreaterThan(0);
+		expect(result.productReports.get(secondStore.id)?.[0]?.unitsSold).toBeGreaterThan(0);
+		expect(sold).toBeLessThanOrEqual(result.initialDemand.snacks ?? 0);
+		expect(result.remainingDemand.snacks).toBe((result.initialDemand.snacks ?? 0) - sold);
+	});
+
+	test('higher selling price reduces category units sold under stable conditions', () => {
+		expect.assertions(1);
+		const game = createNewGame('convenience', 20260508);
+		const baseStore = {
+			...game.stores[0]!,
+			products: [
+				{
+					categoryId: 'snacks',
+					stock: 100,
+					reorderThreshold: 10,
+					targetStock: 100,
+					sellingPrice: 5
+				}
+			]
+		};
+		const premiumStore = {
+			...baseStore,
+			products: [{ ...baseStore.products[0]!, sellingPrice: 10 }]
+		};
+		const standard = simulateProductSalesForCity({
+			game: { ...game, stores: [baseStore] },
+			city: game.cities[0]!,
+			rng: createRng(12),
+			storeCapacity: new Map([[baseStore.id, 100]])
+		});
+		const premium = simulateProductSalesForCity({
+			game: { ...game, stores: [premiumStore] },
+			city: game.cities[0]!,
+			rng: createRng(12),
+			storeCapacity: new Map([[premiumStore.id, 100]])
+		});
+
+		expect(premium.productReports.get(premiumStore.id)?.[0]?.unitsSold).toBeLessThan(
+			standard.productReports.get(baseStore.id)?.[0]?.unitsSold ?? 0
+		);
+	});
+
+	test('weekly imports refill below-threshold rows to target and report spend', () => {
+		expect.assertions(6);
+		const game = createNewGame('convenience', 20260508);
+		const store = {
+			...game.stores[0]!,
+			products: [
+				{
+					categoryId: 'snacks',
+					stock: 4,
+					reorderThreshold: 10,
+					targetStock: 25,
+					sellingPrice: 5
+				}
+			]
+		};
+		const result = applyWeeklyImports({
+			game: { ...game, stores: [store] },
+			storeReports: new Map([
+				[
+					store.id,
+					[
+						{
+							categoryId: 'snacks',
+							name: 'Snacks',
+							unitsSold: 0,
+							demandMissed: 0,
+							revenue: 0,
+							costOfGoods: 0,
+							grossMargin: 0,
+							endingStock: 4,
+							importedUnits: 0,
+							importCost: 3,
+							importSpend: 0
+						}
+					]
+				]
+			])
+		});
+		const product = result.stores[0]!.products[0]!;
+		const report = result.productReports.get(store.id)![0]!;
+
+		expect(isImportDay(7)).toBe(true);
+		expect(product.stock).toBe(25);
+		expect(report.endingStock).toBe(25);
+		expect(report.importedUnits).toBe(21);
+		expect(report.importSpend).toBe(63);
+		expect(result.importSpend).toBe(63);
 	});
 });
