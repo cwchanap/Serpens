@@ -32,6 +32,10 @@
 				<strong>{currency.format(summary.latest.payrollCost)}</strong>
 			</div>
 			<div>
+				<span>Imports</span>
+				<strong>{currency.format(summary.latest.importSpend)}</strong>
+			</div>
+			<div>
 				<span>7-day net</span>
 				<strong>{currency.format(summary.sevenDay.netIncome)}</strong>
 			</div>
@@ -73,7 +77,7 @@
 
 	.metrics {
 		display: grid;
-		grid-template-columns: repeat(6, minmax(0, 1fr));
+		grid-template-columns: repeat(7, minmax(0, 1fr));
 		gap: 0.75rem;
 	}
 

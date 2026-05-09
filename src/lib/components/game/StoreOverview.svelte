@@ -49,6 +49,10 @@
 						<dd>{report?.stockHealth ?? store.stockHealth}</dd>
 					</div>
 					<div>
+						<dt>Imports</dt>
+						<dd>{currency.format(report?.importSpend ?? 0)}</dd>
+					</div>
+					<div>
 						<dt>Staff</dt>
 						<dd>{Math.round(staffing.coverage)}%</dd>
 					</div>

@@ -298,6 +298,9 @@ function validateSavedStore(value: unknown, label: string): void {
 	requireNumber(store.daysOpen, `${label} daysOpen`);
 	requireNumber(store.reputation, `${label} reputation`);
 	requireNumber(store.stockHealth, `${label} stockHealth`);
+	requireArray(store.products, `${label} products`).forEach((product, index) =>
+		validateSavedStoreProduct(product, `${label} products[${index}]`)
+	);
 	requireNumber(store.staffMorale, `${label} staffMorale`);
 	requireNumber(store.staffCapacity, `${label} staffCapacity`);
 	requireNumber(store.localDemand, `${label} localDemand`);
@@ -362,6 +365,7 @@ function validateSavedReport(value: unknown, label: string): void {
 	requireNumber(report.grossMargin, `${label} grossMargin`);
 	requireNumber(report.operatingCosts, `${label} operatingCosts`);
 	requireNumber(report.payrollCost, `${label} payrollCost`);
+	requireNumber(report.importSpend, `${label} importSpend`);
 	requireNumber(report.netIncome, `${label} netIncome`);
 	requireNumber(report.cashAfter, `${label} cashAfter`);
 	validateSavedScorecard(report.scorecard, `${label} scorecard`);
@@ -379,6 +383,7 @@ function validateSavedStoreReport(value: unknown, label: string): void {
 	requireNumber(report.costOfGoods, `${label} costOfGoods`);
 	requireNumber(report.grossMargin, `${label} grossMargin`);
 	requireNumber(report.operatingCosts, `${label} operatingCosts`);
+	requireNumber(report.importSpend, `${label} importSpend`);
 	requireNumber(report.netIncome, `${label} netIncome`);
 	requireNumber(report.customersServed, `${label} customersServed`);
 	requireNumber(report.demandMissed, `${label} demandMissed`);
@@ -388,7 +393,36 @@ function validateSavedStoreReport(value: unknown, label: string): void {
 	requireNumber(report.staffMorale, `${label} staffMorale`);
 	requireNumber(report.reputation, `${label} reputation`);
 	requireNumber(report.marketPosition, `${label} marketPosition`);
+	requireArray(report.productReports, `${label} productReports`).forEach((productReport, index) =>
+		validateSavedProductReport(productReport, `${label} productReports[${index}]`)
+	);
 	validateStringArray(report.warnings, `${label} warnings`);
+}
+
+function validateSavedStoreProduct(value: unknown, label: string): void {
+	const product = requireRecord(value, label);
+
+	requireString(product.categoryId, `${label} categoryId`);
+	requireNumber(product.stock, `${label} stock`);
+	requireNumber(product.reorderThreshold, `${label} reorderThreshold`);
+	requireNumber(product.targetStock, `${label} targetStock`);
+	requireNumber(product.sellingPrice, `${label} sellingPrice`);
+}
+
+function validateSavedProductReport(value: unknown, label: string): void {
+	const report = requireRecord(value, label);
+
+	requireString(report.categoryId, `${label} categoryId`);
+	requireString(report.name, `${label} name`);
+	requireNumber(report.unitsSold, `${label} unitsSold`);
+	requireNumber(report.demandMissed, `${label} demandMissed`);
+	requireNumber(report.revenue, `${label} revenue`);
+	requireNumber(report.costOfGoods, `${label} costOfGoods`);
+	requireNumber(report.grossMargin, `${label} grossMargin`);
+	requireNumber(report.endingStock, `${label} endingStock`);
+	requireNumber(report.importedUnits, `${label} importedUnits`);
+	requireNumber(report.importCost, `${label} importCost`);
+	requireNumber(report.importSpend, `${label} importSpend`);
 }
 
 function validateSavedStaffingShortage(value: unknown, label: string): void {

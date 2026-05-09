@@ -1,11 +1,14 @@
 import { describe, expect, test } from 'vitest';
 import { initializeStoreProducts } from '$lib/game/stock';
+import { simulateDay } from '$lib/game/simulateDay';
+import { createNewGame } from '$lib/game/state';
 import type { DailyReport, DailyStoreReport, GameState } from '$lib/game/types';
 import { SAVE_SCHEMA_VERSION, type SaveRecord, type SaveStoreSnapshot } from './saveTypes';
 import {
 	SaveDataError,
 	createEmptySaveStore,
 	createSaveRecord,
+	validateSaveRecord,
 	validateSaveStoreSnapshot
 } from './saveCodec';
 import {
@@ -351,6 +354,58 @@ describe('save records', () => {
 		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
 			'Saved game stores[0] archetypeId must be one of: convenience, boutique, electronics, grocery'
 		);
+	});
+
+	test('accepts current simulated games with product inventory and reports', () => {
+		expect.assertions(4);
+		const game = simulateDay(createNewGame('convenience', 20260508));
+		const record = createSaveRecord(game, {
+			id: 'manual-stock',
+			name: 'Stock Save',
+			kind: 'manual',
+			updatedAt: new Date('2026-05-08T12:00:00.000Z')
+		});
+
+		const validated = validateSaveRecord(record);
+
+		expect(validated).toBe(record);
+		expect(validated.game.stores[0]?.products.length).toBeGreaterThan(0);
+		expect(validated.game.reports[0]?.importSpend).toBeGreaterThanOrEqual(0);
+		expect(validated.game.reports[0]?.storeReports[0]?.productReports.length).toBeGreaterThan(0);
+	});
+
+	test('rejects saved games with invalid store product rows', () => {
+		expect.assertions(2);
+		const game = createNewGame('convenience', 20260508);
+		const [store] = game.stores;
+		const record = createSaveRecord(
+			{
+				...game,
+				stores: [
+					{
+						...store!,
+						products: [
+							{
+								categoryId: '',
+								stock: Number.NaN,
+								reorderThreshold: 1,
+								targetStock: 1,
+								sellingPrice: 1
+							}
+						]
+					}
+				]
+			},
+			{
+				id: 'manual-broken-stock',
+				name: 'Broken Stock Save',
+				kind: 'manual',
+				updatedAt: new Date('2026-05-08T12:00:00.000Z')
+			}
+		);
+
+		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+		expect(() => validateSaveRecord(record)).toThrow('products[0]');
 	});
 
 	test('rejects saved staff with invalid role values', () => {

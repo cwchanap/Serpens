@@ -31,7 +31,7 @@ const staleReport: DailyStoreReport = {
 	costOfGoods: 420,
 	grossMargin: 780,
 	operatingCosts: 300,
-	importSpend: 0,
+	importSpend: 125,
 	netIncome: 480,
 	customersServed: 42,
 	demandMissed: 0,
@@ -47,7 +47,7 @@ const staleReport: DailyStoreReport = {
 
 describe('StoreOverview', () => {
 	it('shows current staff coverage instead of stale report coverage', async () => {
-		expect.assertions(2);
+		expect.assertions(3);
 
 		render(StoreOverview, {
 			stores: [store],
@@ -59,5 +59,6 @@ describe('StoreOverview', () => {
 
 		await expect.element(storeRegion.getByText('100%', { exact: true })).not.toBeInTheDocument();
 		await expect.element(storeRegion.getByText('0/1 mgr, 0/2 gen')).toBeVisible();
+		await expect.element(storeRegion.getByText('$125')).toBeVisible();
 	});
 });

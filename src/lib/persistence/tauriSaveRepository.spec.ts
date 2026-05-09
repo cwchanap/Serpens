@@ -1,4 +1,6 @@
 import { describe, expect, test } from 'vitest';
+import { simulateDay } from '$lib/game/simulateDay';
+import { createNewGame } from '$lib/game/state';
 import type { GameState } from '$lib/game/types';
 import {
 	createTauriSaveRepositoryFromStore,
@@ -72,6 +74,23 @@ describe('Tauri save repository', () => {
 		expect(summary.autoSave?.day).toBe(6);
 		expect(summary.manualSlots[0]?.id).toBe(slot.id);
 		expect((await repository.loadManualSlot(slot.id))?.game.day).toBe(7);
+	});
+
+	test('persists simulated stock reports through the Tauri store key', async () => {
+		expect.assertions(3);
+		const store = new FakeStore();
+		const repository = createTauriSaveRepositoryFromStore(
+			Promise.resolve(store),
+			() => new Date('2026-05-08T12:00:00.000Z')
+		);
+		const game = simulateDay(createNewGame('convenience', 20260508));
+
+		const slot = await repository.createManualSlot('Stock Run', game);
+		const saved = await repository.loadManualSlot(slot.id);
+
+		expect(saved?.game.stores[0]?.products.length).toBeGreaterThan(0);
+		expect(saved?.game.reports[0]?.importSpend).toBeGreaterThanOrEqual(0);
+		expect(saved?.game.reports[0]?.storeReports[0]?.productReports.length).toBeGreaterThan(0);
 	});
 
 	test('resets null save data stored under the Tauri store key', async () => {
