@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { createRng } from './rng';
+import { initializeStoreProducts } from './stock';
 import {
 	assignStaffToStore,
 	calculateMonthlyPayroll,
@@ -265,6 +266,7 @@ function createStore(input: {
 		daysOpen: 1,
 		reputation: 50,
 		stockHealth: 50,
+		products: initializeStoreProducts(input.archetypeId),
 		staffMorale: input.staffMorale ?? 50,
 		staffCapacity: 50,
 		localDemand: 50,

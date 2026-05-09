@@ -12,6 +12,7 @@ import {
 	generateStarterStaffForStore,
 	HIRING_CANDIDATE_COUNT
 } from './staffing';
+import { calculateStockHealth, initializeStoreProducts } from './stock';
 import type {
 	ArchetypeId,
 	City,
@@ -192,6 +193,7 @@ function createStore(input: {
 	rng: ReturnType<typeof createRng>;
 }): Store {
 	const archetype = getArchetype(input.archetypeId);
+	const products = initializeStoreProducts(input.archetypeId);
 
 	return {
 		id: input.id,
@@ -204,7 +206,8 @@ function createStore(input: {
 		mapY: 0,
 		daysOpen: input.daysOpen,
 		reputation: clampScore(archetype.customerExpectation + randomInt(input.rng, -4, 4)),
-		stockHealth: clampScore(62 + randomInt(input.rng, -5, 5)),
+		stockHealth: calculateStockHealth(products),
+		products,
 		staffMorale: clampScore(60 + randomInt(input.rng, -6, 6)),
 		staffCapacity: clampScore(64 + randomInt(input.rng, -5, 5)),
 		localDemand: Math.max(0, archetype.baseTraffic + randomInt(input.rng, -8, 8)),

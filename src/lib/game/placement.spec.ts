@@ -233,7 +233,7 @@ describe('tile placement', () => {
 	});
 
 	test('deducts the chosen archetype setup cost when opening at a tile', () => {
-		expect.assertions(5);
+		expect.assertions(6);
 		const city = generateCity({
 			id: 'harbor-city',
 			name: 'Harbor City',
@@ -263,6 +263,11 @@ describe('tile placement', () => {
 		expect(result.cash).toBe(game.cash - forecast.setupCost);
 		expect(result.stores.at(-1)?.tileId).toBe(expansionTile.id);
 		expect(result.stores.at(-1)?.archetypeId).toBe('grocery');
+		expect(result.stores.at(-1)?.products.map((product) => product.categoryId)).toEqual([
+			'produce',
+			'pantry',
+			'prepared'
+		]);
 		expect(result.decisions).toHaveLength(0);
 	});
 });

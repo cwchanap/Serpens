@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import TileInspector from './TileInspector.svelte';
 import { getStoreArt } from '$lib/assets/gameArt';
+import { initializeStoreProducts } from '$lib/game/stock';
 import type { ArchetypeId, CityTile, OpeningForecast, OpeningOption, Store } from '$lib/game/types';
 
 const tile: CityTile = {
@@ -32,6 +33,7 @@ const store: Store = {
 	daysOpen: 0,
 	reputation: 50,
 	stockHealth: 80,
+	products: initializeStoreProducts('convenience'),
 	staffMorale: 75,
 	staffCapacity: 70,
 	localDemand: 72,
@@ -96,7 +98,13 @@ describe('TileInspector storefront art', () => {
 	it('shows electronics storefront art for an electronics store tile', async () => {
 		const electronicsArt = getStoreArt('electronics');
 
-		renderInspector({ store: { ...store, archetypeId: 'electronics' } });
+		renderInspector({
+			store: {
+				...store,
+				archetypeId: 'electronics',
+				products: initializeStoreProducts('electronics')
+			}
+		});
 
 		const image = page.getByRole('img', { name: electronicsArt.alt });
 		await expect.element(image).toBeVisible();

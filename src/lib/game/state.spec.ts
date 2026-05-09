@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest';
+import { calculateStockHealth } from './stock';
 import { createNewGame, openStore, resolveDecision, updatePolicy } from './state';
 
 describe('game state', () => {
@@ -33,6 +34,20 @@ describe('game state', () => {
 		expect(negativeSeed.seed).toBe(5);
 		expect(negativeSeed.rngState).not.toBe(5);
 		expect(Number.isFinite(zeroSeed.rngState)).toBe(true);
+	});
+
+	test('creates product stock rows for the founding store', () => {
+		expect.assertions(3);
+		const game = createNewGame('grocery', 20260508);
+		const store = game.stores[0]!;
+
+		expect(store.products.map((product) => product.categoryId)).toEqual([
+			'produce',
+			'pantry',
+			'prepared'
+		]);
+		expect(store.products.every((product) => product.stock > 0)).toBe(true);
+		expect(store.stockHealth).toBe(calculateStockHealth(store.products));
 	});
 
 	test('updates company policy immutably', () => {
@@ -153,7 +168,7 @@ describe('game state', () => {
 	});
 
 	test('direct store opening uses the selected expansion archetype', () => {
-		expect.assertions(2);
+		expect.assertions(3);
 		const game = createNewGame('boutique', 44);
 
 		const result = openStore(game, {
@@ -164,6 +179,11 @@ describe('game state', () => {
 
 		expect(game.stores[0]?.archetypeId).toBe('boutique');
 		expect(result.stores.at(-1)?.archetypeId).toBe('electronics');
+		expect(result.stores.at(-1)?.products.map((product) => product.categoryId)).toEqual([
+			'games',
+			'accessories',
+			'devices'
+		]);
 	});
 
 	test('does not duplicate same-day blocked expansion decisions', () => {

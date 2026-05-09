@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest';
+import { initializeStoreProducts } from '$lib/game/stock';
 import type { DailyReport, DailyStoreReport, GameState } from '$lib/game/types';
 import { SAVE_SCHEMA_VERSION, type SaveRecord, type SaveStoreSnapshot } from './saveTypes';
 import {
@@ -120,6 +121,7 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 				daysOpen: 2,
 				reputation: 60,
 				stockHealth: 70,
+				products: initializeStoreProducts('boutique'),
 				staffMorale: 65,
 				staffCapacity: 66,
 				localDemand: 72,

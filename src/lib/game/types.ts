@@ -40,6 +40,24 @@ export interface ProductCategory {
 	name: string;
 	baseDemand: number;
 	margin: number;
+	demandWeight: number;
+	importCost: number;
+	defaultSellingPrice: number;
+	priceSensitivity: number;
+}
+
+export interface StoreProduct {
+	categoryId: string;
+	stock: number;
+	reorderThreshold: number;
+	targetStock: number;
+	sellingPrice: number;
+}
+
+export interface StoreProductPatch {
+	sellingPrice?: number;
+	reorderThreshold?: number;
+	targetStock?: number;
 }
 
 export interface StoreArchetype {
@@ -68,6 +86,7 @@ export interface Store {
 	daysOpen: number;
 	reputation: number;
 	stockHealth: number;
+	products: StoreProduct[];
 	staffMorale: number;
 	staffCapacity: number;
 	localDemand: number;

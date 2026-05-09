@@ -2,6 +2,7 @@ import { page } from 'vitest/browser';
 import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import StaffPanel from './StaffPanel.svelte';
+import { initializeStoreProducts } from '$lib/game/stock';
 import type { HiringCandidate, StaffMember, Store } from '$lib/game/types';
 
 const store: Store = {
@@ -16,6 +17,7 @@ const store: Store = {
 	daysOpen: 0,
 	reputation: 50,
 	stockHealth: 80,
+	products: initializeStoreProducts('boutique'),
 	staffMorale: 75,
 	staffCapacity: 70,
 	localDemand: 72,

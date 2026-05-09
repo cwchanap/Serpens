@@ -2,6 +2,7 @@ import { page } from 'vitest/browser';
 import { describe, expect, it } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import StoreOverview from './StoreOverview.svelte';
+import { initializeStoreProducts } from '$lib/game/stock';
 import type { DailyStoreReport, Store } from '$lib/game/types';
 
 const store: Store = {
@@ -16,6 +17,7 @@ const store: Store = {
 	daysOpen: 1,
 	reputation: 50,
 	stockHealth: 80,
+	products: initializeStoreProducts('boutique'),
 	staffMorale: 75,
 	staffCapacity: 70,
 	localDemand: 72,
