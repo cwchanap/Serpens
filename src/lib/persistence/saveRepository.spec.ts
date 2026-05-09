@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest';
 import { initializeStoreProducts } from '$lib/game/stock';
 import { simulateDay } from '$lib/game/simulateDay';
 import { createNewGame } from '$lib/game/state';
-import type { DailyReport, DailyStoreReport, GameState } from '$lib/game/types';
+import type { DailyReport, DailyStoreReport, GameState, StoreProduct } from '$lib/game/types';
 import { SAVE_SCHEMA_VERSION, type SaveRecord, type SaveStoreSnapshot } from './saveTypes';
 import {
 	SaveDataError,
@@ -177,6 +177,29 @@ function createSnapshotWithGame(game: Partial<GameState>) {
 			})
 		]
 	};
+}
+
+function createSaveRecordWithProducts(products: StoreProduct[]): SaveRecord {
+	const game = createNewGame('convenience', 20260508);
+	const [store] = game.stores;
+
+	return createSaveRecord(
+		{
+			...game,
+			stores: [
+				{
+					...store!,
+					products
+				}
+			]
+		},
+		{
+			id: 'manual-broken-stock',
+			name: 'Broken Stock Save',
+			kind: 'manual',
+			updatedAt: new Date('2026-05-08T12:00:00.000Z')
+		}
+	);
 }
 
 function createDailyStoreReport(overrides: Partial<DailyStoreReport> = {}): DailyStoreReport {
@@ -376,36 +399,95 @@ describe('save records', () => {
 
 	test('rejects saved games with invalid store product rows', () => {
 		expect.assertions(2);
-		const game = createNewGame('convenience', 20260508);
-		const [store] = game.stores;
-		const record = createSaveRecord(
+		const record = createSaveRecordWithProducts([
 			{
-				...game,
-				stores: [
-					{
-						...store!,
-						products: [
-							{
-								categoryId: '',
-								stock: Number.NaN,
-								reorderThreshold: 1,
-								targetStock: 1,
-								sellingPrice: 1
-							}
-						]
-					}
-				]
-			},
-			{
-				id: 'manual-broken-stock',
-				name: 'Broken Stock Save',
-				kind: 'manual',
-				updatedAt: new Date('2026-05-08T12:00:00.000Z')
+				categoryId: '',
+				stock: Number.NaN,
+				reorderThreshold: 1,
+				targetStock: 1,
+				sellingPrice: 1
 			}
-		);
+		]);
 
 		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
 		expect(() => validateSaveRecord(record)).toThrow('products[0]');
+	});
+
+	test.each([
+		{
+			name: 'negative stock',
+			products: [
+				{ categoryId: 'snacks', stock: -1, reorderThreshold: 1, targetStock: 2, sellingPrice: 5 },
+				{ categoryId: 'drinks', stock: 10, reorderThreshold: 1, targetStock: 2, sellingPrice: 4 },
+				{ categoryId: 'essentials', stock: 10, reorderThreshold: 1, targetStock: 2, sellingPrice: 8 }
+			],
+			message: 'Saved game stores[0] products[0] stock must be at least 0'
+		},
+		{
+			name: 'negative reorder threshold',
+			products: [
+				{ categoryId: 'snacks', stock: 10, reorderThreshold: -1, targetStock: 2, sellingPrice: 5 },
+				{ categoryId: 'drinks', stock: 10, reorderThreshold: 1, targetStock: 2, sellingPrice: 4 },
+				{ categoryId: 'essentials', stock: 10, reorderThreshold: 1, targetStock: 2, sellingPrice: 8 }
+			],
+			message: 'Saved game stores[0] products[0] reorderThreshold must be at least 0'
+		},
+		{
+			name: 'target below reorder threshold',
+			products: [
+				{ categoryId: 'snacks', stock: 10, reorderThreshold: 5, targetStock: 4, sellingPrice: 5 },
+				{ categoryId: 'drinks', stock: 10, reorderThreshold: 1, targetStock: 2, sellingPrice: 4 },
+				{ categoryId: 'essentials', stock: 10, reorderThreshold: 1, targetStock: 2, sellingPrice: 8 }
+			],
+			message:
+				'Saved game stores[0] products[0] targetStock must be greater than or equal to reorderThreshold'
+		},
+		{
+			name: 'zero selling price',
+			products: [
+				{ categoryId: 'snacks', stock: 10, reorderThreshold: 1, targetStock: 2, sellingPrice: 0 },
+				{ categoryId: 'drinks', stock: 10, reorderThreshold: 1, targetStock: 2, sellingPrice: 4 },
+				{ categoryId: 'essentials', stock: 10, reorderThreshold: 1, targetStock: 2, sellingPrice: 8 }
+			],
+			message: 'Saved game stores[0] products[0] sellingPrice must be greater than 0'
+		}
+	])('rejects saved store product rows with $name', ({ products, message }) => {
+		expect.assertions(1);
+
+		expect(() => validateSaveRecord(createSaveRecordWithProducts(products))).toThrow(message);
+	});
+
+	test.each([
+		{
+			name: 'duplicate categories',
+			products: [
+				{ categoryId: 'snacks', stock: 10, reorderThreshold: 1, targetStock: 2, sellingPrice: 5 },
+				{ categoryId: 'snacks', stock: 10, reorderThreshold: 1, targetStock: 2, sellingPrice: 5 },
+				{ categoryId: 'essentials', stock: 10, reorderThreshold: 1, targetStock: 2, sellingPrice: 8 }
+			],
+			message: 'Saved game stores[0] products[1] categoryId must be unique for archetype convenience'
+		},
+		{
+			name: 'missing category',
+			products: [
+				{ categoryId: 'snacks', stock: 10, reorderThreshold: 1, targetStock: 2, sellingPrice: 5 },
+				{ categoryId: 'drinks', stock: 10, reorderThreshold: 1, targetStock: 2, sellingPrice: 4 }
+			],
+			message: 'Saved game stores[0] products must include categories: snacks, drinks, essentials'
+		},
+		{
+			name: 'unknown category',
+			products: [
+				{ categoryId: 'snacks', stock: 10, reorderThreshold: 1, targetStock: 2, sellingPrice: 5 },
+				{ categoryId: 'drinks', stock: 10, reorderThreshold: 1, targetStock: 2, sellingPrice: 4 },
+				{ categoryId: 'unknown', stock: 10, reorderThreshold: 1, targetStock: 2, sellingPrice: 8 }
+			],
+			message: 'Saved game stores[0] products[2] categoryId must belong to archetype convenience'
+		}
+	])('rejects saved store products with $name', ({ products, message }) => {
+		expect.assertions(1);
+
+		expect(() => validateSaveRecord(createSaveRecordWithProducts(products))).toThrow(message);
 	});
 
 	test('rejects saved staff with invalid role values', () => {

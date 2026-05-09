@@ -1,4 +1,5 @@
 import type { GameState } from '$lib/game/types';
+import { getArchetype } from '$lib/game/archetypes';
 import {
 	AUTO_SAVE_SLOT_ID,
 	SAVE_SCHEMA_VERSION,
@@ -298,9 +299,7 @@ function validateSavedStore(value: unknown, label: string): void {
 	requireNumber(store.daysOpen, `${label} daysOpen`);
 	requireNumber(store.reputation, `${label} reputation`);
 	requireNumber(store.stockHealth, `${label} stockHealth`);
-	requireArray(store.products, `${label} products`).forEach((product, index) =>
-		validateSavedStoreProduct(product, `${label} products[${index}]`)
-	);
+	validateSavedStoreProducts(store, label);
 	requireNumber(store.staffMorale, `${label} staffMorale`);
 	requireNumber(store.staffCapacity, `${label} staffCapacity`);
 	requireNumber(store.localDemand, `${label} localDemand`);
@@ -399,14 +398,71 @@ function validateSavedStoreReport(value: unknown, label: string): void {
 	validateStringArray(report.warnings, `${label} warnings`);
 }
 
-function validateSavedStoreProduct(value: unknown, label: string): void {
+function validateSavedStoreProducts(store: Record<string, unknown>, label: string): void {
+	const archetypeId = requireOneOf(store.archetypeId, `${label} archetypeId`, ARCHETYPE_IDS);
+	const expectedCategoryIds = getArchetype(archetypeId).startingCategories.map(
+		(category) => category.id
+	);
+	const expectedCategories = new Set(expectedCategoryIds);
+	const seenCategories = new Set<string>();
+	const products = requireArray(store.products, `${label} products`);
+
+	for (const [index, productValue] of products.entries()) {
+		const product = validateSavedStoreProduct(productValue, `${label} products[${index}]`);
+
+		if (!expectedCategories.has(product.categoryId)) {
+			throw new SaveDataError(
+				`${label} products[${index}] categoryId must belong to archetype ${archetypeId}`
+			);
+		}
+
+		if (seenCategories.has(product.categoryId)) {
+			throw new SaveDataError(
+				`${label} products[${index}] categoryId must be unique for archetype ${archetypeId}`
+			);
+		}
+
+		seenCategories.add(product.categoryId);
+	}
+
+	if (
+		products.length !== expectedCategoryIds.length ||
+		expectedCategoryIds.some((categoryId) => !seenCategories.has(categoryId))
+	) {
+		throw new SaveDataError(
+			`${label} products must include categories: ${expectedCategoryIds.join(', ')}`
+		);
+	}
+}
+
+function validateSavedStoreProduct(value: unknown, label: string): { categoryId: string } {
 	const product = requireRecord(value, label);
 
-	requireString(product.categoryId, `${label} categoryId`);
-	requireNumber(product.stock, `${label} stock`);
-	requireNumber(product.reorderThreshold, `${label} reorderThreshold`);
-	requireNumber(product.targetStock, `${label} targetStock`);
-	requireNumber(product.sellingPrice, `${label} sellingPrice`);
+	const categoryId = requireString(product.categoryId, `${label} categoryId`);
+	const stock = requireNumber(product.stock, `${label} stock`);
+	const reorderThreshold = requireNumber(product.reorderThreshold, `${label} reorderThreshold`);
+	const targetStock = requireNumber(product.targetStock, `${label} targetStock`);
+	const sellingPrice = requireNumber(product.sellingPrice, `${label} sellingPrice`);
+
+	if (stock < 0) {
+		throw new SaveDataError(`${label} stock must be at least 0`);
+	}
+
+	if (reorderThreshold < 0) {
+		throw new SaveDataError(`${label} reorderThreshold must be at least 0`);
+	}
+
+	if (targetStock < reorderThreshold) {
+		throw new SaveDataError(
+			`${label} targetStock must be greater than or equal to reorderThreshold`
+		);
+	}
+
+	if (sellingPrice <= 0) {
+		throw new SaveDataError(`${label} sellingPrice must be greater than 0`);
+	}
+
+	return { categoryId };
 }
 
 function validateSavedProductReport(value: unknown, label: string): void {
