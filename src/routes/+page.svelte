@@ -20,8 +20,15 @@
 	import { summarizeReports } from '$lib/game/reports';
 	import { assignStaffToStore, hireCandidate, unassignStaff } from '$lib/game/staffing';
 	import { DEFAULT_POLICY, resolveDecision, updatePolicy } from '$lib/game/state';
+	import { updateStoreProduct } from '$lib/game/stock';
 	import { simulateDay } from '$lib/game/simulateDay';
-	import type { ArchetypeId, CompanyPolicy, GameState, OpeningOption } from '$lib/game/types';
+	import type {
+		ArchetypeId,
+		CompanyPolicy,
+		GameState,
+		OpeningOption,
+		StoreProductPatch
+	} from '$lib/game/types';
 	import { MAX_STORES } from '$lib/game/types';
 	import type { SaveRepository } from '$lib/persistence/saveRepository';
 	import { createSaveRepository } from '$lib/persistence/saveRepositoryFactory';
@@ -82,6 +89,12 @@
 		const currentGame: GameState | null = game;
 		return selectedTileId
 			? (currentGame?.stores.find((store) => store.tileId === selectedTileId) ?? null)
+			: null;
+	});
+	let latestSelectedStoreReport = $derived.by(() => {
+		const store = selectedStore;
+		return store
+			? (summary.latest?.storeReports.find((report) => report.storeId === store.id) ?? null)
 			: null;
 	});
 	let recommendations = $derived(selectedTile ? getRecommendedArchetypes(selectedTile) : []);
@@ -359,6 +372,16 @@
 		}
 	}
 
+	function changeStoreProduct(
+		storeId: string,
+		categoryId: string,
+		patch: StoreProductPatch
+	): void {
+		if (game) {
+			setGameAndAutosave(updateStoreProduct(game, storeId, categoryId, patch));
+		}
+	}
+
 	function addStoreAtSelectedTile(archetypeId: ArchetypeId, tileId: string) {
 		if (!game || !getTileById(activeCity, tileId)) {
 			return;
@@ -463,8 +486,10 @@
 					{openingOptions}
 					gameStarted={game !== null}
 					disabledReason={selectedTileDisabledReason}
+					latestStoreReport={latestSelectedStoreReport}
 					onFoundStore={foundStore}
 					onOpenStore={addStoreAtSelectedTile}
+					onUpdateStoreProduct={changeStoreProduct}
 					onClose={closeInspector}
 				/>
 			</div>

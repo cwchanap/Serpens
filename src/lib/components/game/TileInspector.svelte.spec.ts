@@ -4,7 +4,15 @@ import { render } from 'vitest-browser-svelte';
 import TileInspector from './TileInspector.svelte';
 import { getStoreArt } from '$lib/assets/gameArt';
 import { initializeStoreProducts } from '$lib/game/stock';
-import type { ArchetypeId, CityTile, OpeningForecast, OpeningOption, Store } from '$lib/game/types';
+import type {
+	ArchetypeId,
+	CityTile,
+	DailyStoreReport,
+	OpeningForecast,
+	OpeningOption,
+	Store,
+	StoreProductPatch
+} from '$lib/game/types';
 
 const tile: CityTile = {
 	id: 'harbor-city-1-1',
@@ -41,6 +49,40 @@ const store: Store = {
 	managerQuality: 60
 };
 
+const latestStoreReport: DailyStoreReport = {
+	storeId: 'store-1',
+	revenue: 84,
+	costOfGoods: 36,
+	grossMargin: 48,
+	operatingCosts: 120,
+	importSpend: 0,
+	netIncome: -36,
+	customersServed: 12,
+	demandMissed: 2,
+	staffingCoverage: 100,
+	staffingShortage: { manager: 0, general: 0 },
+	stockHealth: 80,
+	staffMorale: 75,
+	reputation: 50,
+	marketPosition: 40,
+	productReports: [
+		{
+			categoryId: 'snacks',
+			name: 'Snacks',
+			unitsSold: 12,
+			demandMissed: 2,
+			revenue: 60,
+			costOfGoods: 36,
+			grossMargin: 24,
+			endingStock: 58,
+			importedUnits: 0,
+			importCost: 3,
+			importSpend: 0
+		}
+	],
+	warnings: []
+};
+
 function renderInspector(
 	overrides: Partial<{
 		tile: CityTile | null;
@@ -48,8 +90,14 @@ function renderInspector(
 		openingOptions: OpeningOption[];
 		gameStarted: boolean;
 		disabledReason: string | null;
+		latestStoreReport: DailyStoreReport | null;
 		onFoundStore: (archetypeId: ArchetypeId, tileId: string) => void;
 		onOpenStore: (archetypeId: ArchetypeId, tileId: string) => void;
+		onUpdateStoreProduct: (
+			storeId: string,
+			categoryId: string,
+			patch: StoreProductPatch
+		) => void;
 		onClose: () => void;
 	}> = {}
 ) {
@@ -59,8 +107,10 @@ function renderInspector(
 		openingOptions: [],
 		gameStarted: true,
 		disabledReason: null,
+		latestStoreReport: null,
 		onFoundStore: vi.fn(),
 		onOpenStore: vi.fn(),
+		onUpdateStoreProduct: vi.fn(),
 		onClose: vi.fn(),
 		...overrides
 	};
@@ -109,6 +159,19 @@ describe('TileInspector storefront art', () => {
 		const image = page.getByRole('img', { name: electronicsArt.alt });
 		await expect.element(image).toBeVisible();
 		await expect.element(image).toHaveAttribute('src', electronicsArt.path);
+	});
+});
+
+describe('TileInspector stock management', () => {
+	it('shows stock row count instead of local demand and renders the stock table', async () => {
+		expect.assertions(4);
+
+		renderInspector({ store, latestStoreReport });
+
+		await expect.element(page.getByText('Stock rows')).toBeVisible();
+		await expect.element(page.getByRole('cell', { name: 'Snacks' })).toBeVisible();
+		await expect.element(page.getByRole('heading', { name: 'Founding Store stock' })).toBeVisible();
+		await expect.element(page.getByText('Local demand')).not.toBeInTheDocument();
 	});
 });
 

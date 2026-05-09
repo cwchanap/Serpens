@@ -1,8 +1,16 @@
 <script lang="ts">
 	import { asset } from '$app/paths';
 	import { getStoreArt } from '$lib/assets/gameArt';
+	import StoreStockTable from '$lib/components/game/StoreStockTable.svelte';
 	import { getArchetype } from '$lib/game/archetypes';
-	import type { ArchetypeId, CityTile, OpeningOption, Store } from '$lib/game/types';
+	import type {
+		ArchetypeId,
+		CityTile,
+		DailyStoreReport,
+		OpeningOption,
+		Store,
+		StoreProductPatch
+	} from '$lib/game/types';
 	import type { Attachment } from 'svelte/attachments';
 	import { on } from 'svelte/events';
 
@@ -12,8 +20,14 @@
 		openingOptions: OpeningOption[];
 		gameStarted: boolean;
 		disabledReason: string | null;
+		latestStoreReport: DailyStoreReport | null;
 		onFoundStore: (archetypeId: ArchetypeId, tileId: string) => void;
 		onOpenStore: (archetypeId: ArchetypeId, tileId: string) => void;
+		onUpdateStoreProduct: (
+			storeId: string,
+			categoryId: string,
+			patch: StoreProductPatch
+		) => void;
 		onClose: () => void;
 	}
 
@@ -23,8 +37,10 @@
 		openingOptions,
 		gameStarted,
 		disabledReason,
+		latestStoreReport,
 		onFoundStore,
 		onOpenStore,
+		onUpdateStoreProduct,
 		onClose
 	}: Props = $props();
 
@@ -166,11 +182,16 @@
 						<dd>{store.staffMorale}</dd>
 					</div>
 					<div>
-						<dt>Local demand</dt>
-						<dd>{store.localDemand}</dd>
+						<dt>Stock rows</dt>
+						<dd>{store.products.length}</dd>
 					</div>
 				</dl>
 			</section>
+			<StoreStockTable
+				{store}
+				latestReport={latestStoreReport}
+				onUpdate={onUpdateStoreProduct}
+			/>
 			{#if gameStarted && disabledReason}
 				<section aria-label="Expansion action">
 					<p class="disabled-copy">{disabledReason}</p>
