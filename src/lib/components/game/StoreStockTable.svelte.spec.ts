@@ -2,6 +2,7 @@ import { page } from 'vitest/browser';
 import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import StoreStockTable from './StoreStockTable.svelte';
+import { getProductArt } from '$lib/assets/gameArt';
 import { initializeStoreProducts } from '$lib/game/stock';
 import type { DailyStoreReport, Store } from '$lib/game/types';
 
@@ -61,7 +62,7 @@ const latestReport: DailyStoreReport = {
 
 describe('StoreStockTable', () => {
 	it('renders product stock rows with fixed cost and latest report demand', async () => {
-		expect.assertions(7);
+		expect.assertions(9);
 
 		render(StoreStockTable, {
 			store,
@@ -71,6 +72,12 @@ describe('StoreStockTable', () => {
 
 		await expect.element(page.getByRole('heading', { name: 'Founding Store stock' })).toBeVisible();
 		await expect.element(page.getByRole('cell', { name: 'Snacks' })).toBeVisible();
+		const snacksArt = getProductArt('snacks');
+
+		await expect.element(page.getByRole('img', { name: snacksArt.alt })).toBeVisible();
+		await expect
+			.element(page.getByRole('img', { name: snacksArt.alt }))
+			.toHaveAttribute('src', snacksArt.path);
 		await expect.element(page.getByRole('cell', { name: '$3' })).toBeVisible();
 		await expect.element(page.getByText('12 sold / 2 missed')).toBeVisible();
 		await expect

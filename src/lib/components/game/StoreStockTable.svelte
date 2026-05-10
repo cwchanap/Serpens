@@ -1,7 +1,14 @@
 <script lang="ts">
+	import { asset } from '$app/paths';
+	import { getProductArt } from '$lib/assets/gameArt';
 	import { getArchetype } from '$lib/game/archetypes';
 	import { getStoreProductStatus } from '$lib/game/stock';
-	import type { DailyProductReport, DailyStoreReport, Store, StoreProductPatch } from '$lib/game/types';
+	import type {
+		DailyProductReport,
+		DailyStoreReport,
+		Store,
+		StoreProductPatch
+	} from '$lib/game/types';
 
 	interface Props {
 		store: Store;
@@ -31,11 +38,7 @@
 		return latestReport?.productReports.find((report) => report.categoryId === categoryId) ?? null;
 	}
 
-	function updateNumber(
-		categoryId: string,
-		field: keyof StoreProductPatch,
-		event: Event
-	): void {
+	function updateNumber(categoryId: string, field: keyof StoreProductPatch, event: Event): void {
 		const input = event.currentTarget as HTMLInputElement;
 		const value = input.valueAsNumber;
 
@@ -67,9 +70,24 @@
 			<tbody>
 				{#each store.products as product (product.categoryId)}
 					{@const categoryName = getCategoryName(product.categoryId)}
+					{@const productArt = getProductArt(product.categoryId)}
 					{@const report = getProductReport(product.categoryId)}
 					<tr>
-						<td>{categoryName}</td>
+						<td>
+							<div class="product-cell">
+								<span class="product-thumb">
+									<img
+										src={asset(productArt.path)}
+										alt={productArt.alt}
+										width="96"
+										height="96"
+										loading="lazy"
+										decoding="async"
+									/>
+								</span>
+								<span>{categoryName}</span>
+							</div>
+						</td>
 						<td>{product.stock}</td>
 						<td>{currency.format(getImportCost(product.categoryId))}</td>
 						<td>
@@ -137,7 +155,7 @@
 
 	table {
 		width: 100%;
-		min-width: 40rem;
+		min-width: 42rem;
 		border-collapse: collapse;
 		font-size: 0.76rem;
 	}
@@ -158,6 +176,30 @@
 
 	tbody tr:last-child td {
 		border-bottom: 0;
+	}
+
+	.product-cell {
+		display: flex;
+		align-items: center;
+		gap: 0.55rem;
+		min-width: 8rem;
+	}
+
+	.product-thumb {
+		display: grid;
+		place-items: center;
+		width: 2.5rem;
+		height: 2.5rem;
+		border: 1px solid #3f3d36;
+		border-radius: 6px;
+		background: #24231f;
+	}
+
+	.product-thumb img {
+		display: block;
+		width: 2.1rem;
+		height: 2.1rem;
+		object-fit: contain;
 	}
 
 	input {
