@@ -84,17 +84,19 @@
 
 <style>
 	.map-shell {
+		height: 100%;
 		min-width: 0;
-		min-height: 620px;
+		min-height: 0;
 		overflow: hidden;
-		border: 1px solid #343434;
-		border-radius: 8px;
+		border: 0;
+		border-radius: 0;
 		background: #151514;
 	}
 
 	.map-canvas {
 		position: relative;
-		min-height: 520px;
+		height: 100%;
+		min-height: 0;
 		background: #101418;
 	}
 
@@ -115,12 +117,9 @@
 	}
 
 	@media (max-width: 820px) {
-		.map-shell {
-			min-height: 460px;
-		}
-
+		.map-shell,
 		.map-canvas {
-			min-height: 420px;
+			min-height: 0;
 		}
 	}
 </style>

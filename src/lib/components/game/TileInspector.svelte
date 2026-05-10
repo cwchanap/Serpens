@@ -1,13 +1,16 @@
 <script lang="ts">
 	import { asset } from '$app/paths';
 	import { getStoreArt } from '$lib/assets/gameArt';
+	import StoreStaffPanel from '$lib/components/game/StoreStaffPanel.svelte';
 	import StoreStockTable from '$lib/components/game/StoreStockTable.svelte';
 	import { getArchetype } from '$lib/game/archetypes';
 	import type {
 		ArchetypeId,
 		CityTile,
 		DailyStoreReport,
+		HiringCandidate,
 		OpeningOption,
+		StaffMember,
 		Store,
 		StoreProductPatch
 	} from '$lib/game/types';
@@ -18,12 +21,17 @@
 		tile: CityTile | null;
 		store: Store | null;
 		openingOptions: OpeningOption[];
+		staff: StaffMember[];
+		hiringCandidates: HiringCandidate[];
 		gameStarted: boolean;
 		disabledReason: string | null;
 		latestStoreReport: DailyStoreReport | null;
 		onFoundStore: (archetypeId: ArchetypeId, tileId: string) => void;
 		onOpenStore: (archetypeId: ArchetypeId, tileId: string) => void;
 		onUpdateStoreProduct: (storeId: string, categoryId: string, patch: StoreProductPatch) => void;
+		onHireStaff: (candidateId: string) => void;
+		onAssignStaff: (staffId: string, storeId: string) => void;
+		onUnassignStaff: (staffId: string) => void;
 		onClose: () => void;
 	}
 
@@ -31,16 +39,21 @@
 		tile,
 		store,
 		openingOptions,
+		staff,
+		hiringCandidates,
 		gameStarted,
 		disabledReason,
 		latestStoreReport,
 		onFoundStore,
 		onOpenStore,
 		onUpdateStoreProduct,
+		onHireStaff,
+		onAssignStaff,
+		onUnassignStaff,
 		onClose
 	}: Props = $props();
 
-	type StoreInspectorTab = 'details' | 'stock';
+	type StoreInspectorTab = 'details' | 'stock' | 'staff';
 
 	const currency = new Intl.NumberFormat('en-US', {
 		style: 'currency',
@@ -139,7 +152,12 @@
 	};
 </script>
 
-<aside class="inspector" aria-label="Tile inspector" {@attach blockMapInteraction}>
+<aside
+	class="inspector"
+	class:store-inspector={store !== null}
+	aria-label="Tile inspector"
+	{@attach blockMapInteraction}
+>
 	<button type="button" class="close" aria-label="Close tile inspector" onclick={closeInspector}
 		>×</button
 	>
@@ -186,6 +204,19 @@
 					onclick={() => selectStoreTab('stock')}
 				>
 					Stock
+				</button>
+				<button
+					type="button"
+					class="store-tab"
+					class:active={activeStoreTab === 'staff'}
+					role="tab"
+					id={`${store.id}-staff-tab`}
+					aria-selected={activeStoreTab === 'staff'}
+					aria-controls={`${store.id}-staff-panel`}
+					tabindex={activeStoreTab === 'staff' ? 0 : -1}
+					onclick={() => selectStoreTab('staff')}
+				>
+					Staff
 				</button>
 			</div>
 
@@ -241,6 +272,24 @@
 						{store}
 						latestReport={latestStoreReport}
 						onUpdate={onUpdateStoreProduct}
+					/>
+				</div>
+				<div
+					class="store-panel store-staff-panel"
+					class:active={activeStoreTab === 'staff'}
+					id={`${store.id}-staff-panel`}
+					role="tabpanel"
+					aria-labelledby={`${store.id}-staff-tab`}
+					aria-hidden={activeStoreTab !== 'staff'}
+					inert={activeStoreTab !== 'staff'}
+				>
+					<StoreStaffPanel
+						{store}
+						{staff}
+						{hiringCandidates}
+						onHire={onHireStaff}
+						onAssign={onAssignStaff}
+						onUnassign={onUnassignStaff}
 					/>
 				</div>
 			</div>
@@ -386,6 +435,12 @@
 		box-shadow: 0 24px 70px rgb(0 0 0 / 0.38);
 	}
 
+	.inspector.store-inspector {
+		grid-template-rows: auto auto minmax(0, 1fr) auto;
+		height: min(37rem, calc(100dvh - 6.9rem));
+		overflow: hidden;
+	}
+
 	.close {
 		position: absolute;
 		top: 0.65rem;
@@ -451,23 +506,31 @@
 		display: grid;
 	}
 
+	.inspector.store-inspector .store-tab-panels {
+		min-height: 0;
+		overflow: hidden;
+	}
+
 	.store-panel {
-		grid-area: 1 / 1;
-		display: grid;
-		visibility: hidden;
-		pointer-events: none;
+		display: none;
 	}
 
 	.store-panel.active {
-		visibility: visible;
-		pointer-events: auto;
+		display: grid;
+	}
+
+	.inspector.store-inspector .store-panel.active {
+		min-height: 0;
+		overflow: auto;
+		padding-right: 0.15rem;
 	}
 
 	.store-details {
 		gap: 0.75rem;
 	}
 
-	.store-stock-panel {
+	.store-stock-panel,
+	.store-staff-panel {
 		align-content: start;
 	}
 
@@ -507,7 +570,7 @@
 
 	.store-tabs {
 		display: grid;
-		grid-template-columns: repeat(2, minmax(0, 1fr));
+		grid-template-columns: repeat(3, minmax(0, 1fr));
 		gap: 0.4rem;
 	}
 

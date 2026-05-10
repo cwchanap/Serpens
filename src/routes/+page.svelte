@@ -372,11 +372,7 @@
 		}
 	}
 
-	function changeStoreProduct(
-		storeId: string,
-		categoryId: string,
-		patch: StoreProductPatch
-	): void {
+	function changeStoreProduct(storeId: string, categoryId: string, patch: StoreProductPatch): void {
 		if (game) {
 			setGameAndAutosave(updateStoreProduct(game, storeId, categoryId, patch));
 		}
@@ -437,59 +433,82 @@
 <svelte:window onkeydown={handleKeydown} />
 
 <main class="app">
-	<header>
-		<div>
-			<p class="eyebrow">Retail City Map</p>
-			<h1>{activeCity.name}</h1>
-		</div>
+	<section class="map-layout" aria-label="City planning">
+		<CityMap snapshot={mapSnapshot} onTileSelected={selectTile} />
+		<div class="map-hud" aria-label="Map controls">
+			<div class="map-title">
+				<p class="eyebrow">Retail City Map</p>
+				<h1>{activeCity.name}</h1>
+				{#if game}
+					<p class="status">Day {game.day} · ${game.cash.toLocaleString('en-US')} cash</p>
+				{:else}
+					<p class="status">Select an unlocked tile to found your first store.</p>
+				{/if}
+			</div>
 
-		{#if game}
-			<div class="top-actions">
-				<button type="button" onclick={openSavePanel}>Saves</button>
-				<div class="view-menu">
+			<div class="map-actions">
+				{#if game}
+					<div class="hud-status" role="status" aria-label="Company status">
+						<strong>${game.cash.toLocaleString('en-US')}</strong>
+						<span>cash</span>
+					</div>
 					<button
 						type="button"
-						class="view-menu-toggle"
+						class="map-icon-button primary"
+						aria-label="Advance day"
+						onclick={advanceDay}
+					>
+						<svg aria-hidden="true" viewBox="0 0 24 24">
+							<path d="M5 4.75v14.5l6.75-7.25L5 4.75Z" />
+							<path d="M13 4.75v14.5L19.75 12 13 4.75Z" />
+						</svg>
+					</button>
+				{/if}
+
+				<div class="hud-menu">
+					<button
+						type="button"
+						class="map-icon-button"
+						aria-label="Open menu"
 						aria-haspopup="menu"
 						aria-expanded={isViewMenuOpen}
 						onclick={toggleViewMenu}
 					>
-						Views
+						<svg aria-hidden="true" viewBox="0 0 24 24">
+							<path d="M4 6.5h16" />
+							<path d="M4 12h16" />
+							<path d="M4 17.5h16" />
+						</svg>
 					</button>
 
 					{#if isViewMenuOpen}
-						<div class="view-dropdown" role="menu" aria-label="Map views">
-							<button type="button" role="menuitem" onclick={openControlTower}>
+						<div class="hud-dropdown" role="menu" aria-label="Map menu">
+							<button type="button" role="menuitem" onclick={openSavePanel}>Saves</button>
+							<button type="button" role="menuitem" disabled={!game} onclick={openControlTower}>
 								Control Tower
 							</button>
 						</div>
 					{/if}
 				</div>
-				<strong>${game.cash.toLocaleString('en-US')} cash</strong>
-				<button type="button" class="primary" onclick={advanceDay}>Advance day</button>
 			</div>
-		{:else}
-			<div class="top-actions">
-				<button type="button" onclick={openSavePanel}>Saves</button>
-				<p class="status">Select an unlocked tile to found your first store.</p>
-			</div>
-		{/if}
-	</header>
-
-	<section class="map-layout" aria-label="City planning">
-		<CityMap snapshot={mapSnapshot} onTileSelected={selectTile} />
+		</div>
 		{#if selectedTile}
 			<div class="inspector-overlay" role="dialog" aria-modal="false" aria-label="Tile details">
 				<TileInspector
 					tile={selectedTile}
 					store={selectedStore}
 					{openingOptions}
+					staff={game?.staff ?? []}
+					hiringCandidates={game?.hiringCandidates ?? []}
 					gameStarted={game !== null}
 					disabledReason={selectedTileDisabledReason}
 					latestStoreReport={latestSelectedStoreReport}
 					onFoundStore={foundStore}
 					onOpenStore={addStoreAtSelectedTile}
 					onUpdateStoreProduct={changeStoreProduct}
+					onHireStaff={hireStaff}
+					onAssignStaff={assignStaff}
+					onUnassignStaff={unassignStoreStaff}
 					onClose={closeInspector}
 				/>
 			</div>
@@ -513,7 +532,6 @@
 					<div class="tower-actions" role="group" aria-label="Control tower status">
 						<span>Day {game.day}</span>
 						<strong>${game.cash.toLocaleString('en-US')} cash</strong>
-						<button type="button" class="primary" onclick={advanceDay}>Advance day</button>
 						<button
 							type="button"
 							class="close-tower"
@@ -568,11 +586,11 @@
 
 <style>
 	.app {
-		width: min(1440px, calc(100vw - 2rem));
-		margin: 0 auto;
-		padding: 1.5rem 0;
-		display: grid;
-		gap: 1rem;
+		width: 100vw;
+		height: 100dvh;
+		min-height: 100vh;
+		overflow: hidden;
+		display: block;
 	}
 
 	.eyebrow {
@@ -589,24 +607,45 @@
 		line-height: 1;
 	}
 
-	.top-actions button {
+	.map-icon-button,
+	.hud-dropdown button {
 		border: 1px solid #31445c;
 		border-radius: 8px;
 		background: #151f2d;
 		color: #edf2f7;
 	}
 
-	.top-actions button:hover,
-	.top-actions button:focus-visible {
+	.map-icon-button:hover,
+	.map-icon-button:focus-visible,
+	.hud-dropdown button:hover,
+	.hud-dropdown button:focus-visible {
 		border-color: #5f8fd0;
 		background: #1b2a3d;
 	}
 
-	header {
+	.map-hud {
+		position: absolute;
+		inset: 1rem 1rem auto;
+		z-index: 20;
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
 		gap: 1rem;
+		pointer-events: none;
+	}
+
+	.map-actions {
+		pointer-events: auto;
+	}
+
+	.map-title {
+		max-width: min(24rem, calc(100vw - 8rem));
+		border: 1px solid rgb(49 68 92 / 0.82);
+		border-radius: 8px;
+		background: rgb(11 17 27 / 0.86);
+		box-shadow: 0 18px 40px rgb(0 0 0 / 0.32);
+		padding: 0.75rem 0.85rem;
+		backdrop-filter: blur(6px);
 	}
 
 	.status {
@@ -615,26 +654,63 @@
 		font-size: 0.9rem;
 	}
 
-	.top-actions {
+	.map-actions {
 		display: flex;
 		align-items: center;
 		gap: 0.75rem;
 	}
 
-	.view-menu {
+	.hud-menu {
 		position: relative;
 	}
 
-	.top-actions strong {
+	.hud-status {
+		display: grid;
+		gap: 0.05rem;
+		min-width: 7.5rem;
+		border: 1px solid rgb(49 68 92 / 0.82);
+		border-radius: 8px;
+		background: rgb(11 17 27 / 0.86);
+		box-shadow: 0 18px 40px rgb(0 0 0 / 0.32);
+		padding: 0.55rem 0.7rem;
+		backdrop-filter: blur(6px);
+	}
+
+	.hud-status strong,
+	.hud-status span {
 		white-space: nowrap;
 	}
 
-	.top-actions button {
-		padding: 0.7rem 0.9rem;
-		white-space: nowrap;
+	.hud-status span {
+		color: #a7b4c8;
+		font-size: 0.72rem;
 	}
 
-	.view-dropdown {
+	.map-icon-button {
+		display: grid;
+		place-items: center;
+		width: 2.75rem;
+		height: 2.75rem;
+		padding: 0;
+		box-shadow: 0 18px 40px rgb(0 0 0 / 0.32);
+		backdrop-filter: blur(6px);
+	}
+
+	.map-icon-button svg {
+		width: 1.25rem;
+		height: 1.25rem;
+		fill: currentColor;
+		stroke: currentColor;
+		stroke-linecap: round;
+		stroke-linejoin: round;
+		stroke-width: 2;
+	}
+
+	.map-icon-button svg path {
+		vector-effect: non-scaling-stroke;
+	}
+
+	.hud-dropdown {
 		position: absolute;
 		top: calc(100% + 0.45rem);
 		right: 0;
@@ -647,7 +723,7 @@
 		box-shadow: 0 18px 40px rgb(0 0 0 / 0.35);
 	}
 
-	.view-dropdown button {
+	.hud-dropdown button {
 		width: 100%;
 		padding: 0.65rem 0.7rem;
 		border-color: transparent;
@@ -655,10 +731,9 @@
 		text-align: left;
 	}
 
-	.view-dropdown button:hover,
-	.view-dropdown button:focus-visible {
-		border-color: #31445c;
-		background: #172235;
+	.hud-dropdown button:disabled {
+		cursor: not-allowed;
+		opacity: 0.5;
 	}
 
 	.primary {
@@ -673,15 +748,20 @@
 
 	.map-layout {
 		position: relative;
-		min-height: 620px;
+		width: 100%;
+		height: 100%;
+		min-height: 100vh;
+		overflow: hidden;
 	}
 
 	.inspector-overlay {
 		position: absolute;
-		top: 1rem;
+		top: 5.9rem;
 		right: 1rem;
 		z-index: 10;
 		width: min(360px, calc(100% - 2rem));
+		max-height: calc(100dvh - 6.9rem);
+		overflow: auto;
 	}
 
 	.tower-backdrop {
@@ -784,8 +864,9 @@
 			grid-template-columns: 1fr;
 		}
 
-		.map-layout {
-			min-height: 460px;
+		.map-hud {
+			align-items: flex-start;
+			inset: 0.75rem 0.75rem auto;
 		}
 
 		.inspector-overlay {
@@ -796,15 +877,17 @@
 			background: linear-gradient(to top, rgb(0 0 0 / 0.5), transparent);
 		}
 
-		header,
-		.top-actions {
-			align-items: stretch;
-			flex-direction: column;
+		.map-title {
+			max-width: min(18rem, calc(100vw - 7rem));
+			padding: 0.65rem 0.7rem;
 		}
 
-		.view-dropdown {
-			left: 0;
-			right: auto;
+		.map-actions {
+			gap: 0.5rem;
+		}
+
+		.hud-status {
+			display: none;
 		}
 
 		.control-tower-overlay {
@@ -823,7 +906,7 @@
 		}
 
 		h1 {
-			font-size: 1.7rem;
+			font-size: 1.25rem;
 		}
 	}
 </style>

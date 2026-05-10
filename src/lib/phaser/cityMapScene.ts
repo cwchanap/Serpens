@@ -50,6 +50,7 @@ export class CityMapScene extends Phaser.Scene {
 	private hasDragged = false;
 	private dragStartPoint: { x: number; y: number } | null = null;
 	private lastDragPoint: { x: number; y: number } | null = null;
+	private hasUserAdjustedCamera = false;
 
 	constructor() {
 		super({ key: 'CityMapScene' });
@@ -70,6 +71,7 @@ export class CityMapScene extends Phaser.Scene {
 		this.outlineGraphics = this.add.graphics().setDepth(OUTLINE_DEPTH);
 		this.markerGraphics = this.add.graphics().setDepth(STORE_MARKER_DEPTH);
 		this.cameras.main.setZoom(1);
+		this.scale.on(Phaser.Scale.Events.RESIZE, this.handleResize, this);
 		this.input.on('pointermove', this.handlePointerMove, this);
 		this.input.on('pointerup', this.handlePointerUp, this);
 		this.input.on('wheel', this.handleWheel, this);
@@ -79,6 +81,7 @@ export class CityMapScene extends Phaser.Scene {
 
 	update(time: number): void {
 		this.drawStoreMarkers(time);
+		this.updateCanvasCameraAttributes();
 	}
 
 	setEventHandler(handler: CityMapEventHandler | null): void {
@@ -254,8 +257,10 @@ export class CityMapScene extends Phaser.Scene {
 
 		const camera = this.cameras.main;
 		const zoom = camera.zoom || 1;
+		this.hasUserAdjustedCamera = true;
 		camera.scrollX -= (pointer.x - this.lastDragPoint.x) / zoom;
 		camera.scrollY -= (pointer.y - this.lastDragPoint.y) / zoom;
+		this.updateCanvasCameraAttributes();
 
 		if (this.dragStartPoint && this.didMoveBeyondClickSlop(pointer, this.dragStartPoint)) {
 			this.hasDragged = true;
@@ -282,7 +287,13 @@ export class CityMapScene extends Phaser.Scene {
 
 		const camera = this.cameras.main;
 		const nextZoom = Phaser.Math.Clamp(camera.zoom - deltaY * 0.001, MIN_ZOOM, MAX_ZOOM);
+		this.hasUserAdjustedCamera = true;
 		camera.setZoom(nextZoom);
+		this.updateCanvasCameraAttributes();
+	}
+
+	private handleResize(): void {
+		this.fitCameraToViewport();
 	}
 
 	private didDrag(pointer: Phaser.Input.Pointer): boolean {
@@ -303,6 +314,28 @@ export class CityMapScene extends Phaser.Scene {
 		const width = Math.max(TILE_SIZE, (this.snapshot?.width ?? 0) * TILE_SIZE);
 		const height = Math.max(TILE_SIZE, (this.snapshot?.height ?? 0) * TILE_SIZE);
 		this.cameras.main.setBounds(0, 0, width, height);
+		this.fitCameraToViewport();
+	}
+
+	private fitCameraToViewport(): void {
+		if (!this.snapshot || this.hasUserAdjustedCamera) {
+			this.updateCanvasCameraAttributes();
+			return;
+		}
+
+		const worldWidth = Math.max(TILE_SIZE, this.snapshot.width * TILE_SIZE);
+		const worldHeight = Math.max(TILE_SIZE, this.snapshot.height * TILE_SIZE);
+		const viewportWidth = Math.max(1, this.scale.width);
+		const viewportHeight = Math.max(1, this.scale.height);
+		const zoom = Phaser.Math.Clamp(
+			Math.max(viewportWidth / worldWidth, viewportHeight / worldHeight),
+			MIN_ZOOM,
+			MAX_ZOOM
+		);
+
+		this.cameras.main.setZoom(zoom);
+		this.cameras.main.setScroll(0, 0);
+		this.updateCanvasCameraAttributes();
 	}
 
 	private drawStoreMarkers(time: number): void {
@@ -522,6 +555,34 @@ export class CityMapScene extends Phaser.Scene {
 		canvas.dataset.terrainDecorationSpriteCount = String(decorationSpriteCount);
 	}
 
+	private updateCanvasCameraAttributes(): void {
+		const canvas = this.game?.canvas;
+
+		if (!canvas) {
+			return;
+		}
+
+		const zoom = this.cameras.main.zoom || 1;
+		const worldWidth = Math.max(TILE_SIZE, (this.snapshot?.width ?? 1) * TILE_SIZE);
+		const worldHeight = Math.max(TILE_SIZE, (this.snapshot?.height ?? 1) * TILE_SIZE);
+		const worldView = this.cameras.main.worldView;
+		const viewWidth = Math.max(1, worldView.width || this.scale.width / zoom);
+		const viewHeight = Math.max(1, worldView.height || this.scale.height / zoom);
+		const viewX = Phaser.Math.Clamp(worldView.x || 0, 0, Math.max(0, worldWidth - viewWidth));
+		const viewY = Phaser.Math.Clamp(worldView.y || 0, 0, Math.max(0, worldHeight - viewHeight));
+
+		canvas.dataset.mapZoom = zoom.toFixed(4);
+		canvas.dataset.mapTileSize = (TILE_SIZE * zoom).toFixed(4);
+		canvas.dataset.mapScrollX = this.cameras.main.scrollX.toFixed(4);
+		canvas.dataset.mapScrollY = this.cameras.main.scrollY.toFixed(4);
+		canvas.dataset.mapWorldWidth = worldWidth.toFixed(4);
+		canvas.dataset.mapWorldHeight = worldHeight.toFixed(4);
+		canvas.dataset.mapViewX = viewX.toFixed(4);
+		canvas.dataset.mapViewY = viewY.toFixed(4);
+		canvas.dataset.mapViewWidth = viewWidth.toFixed(4);
+		canvas.dataset.mapViewHeight = viewHeight.toFixed(4);
+	}
+
 	private destroyStoreSprites(): void {
 		for (const storeSprite of this.storeSprites) {
 			storeSprite.sprite.destroy();
@@ -557,6 +618,7 @@ export class CityMapScene extends Phaser.Scene {
 		this.input.off('pointermove', this.handlePointerMove, this);
 		this.input.off('pointerup', this.handlePointerUp, this);
 		this.input.off('wheel', this.handleWheel, this);
+		this.scale.off(Phaser.Scale.Events.RESIZE, this.handleResize, this);
 		this.mapGraphics?.destroy();
 		this.outlineGraphics?.destroy();
 		this.markerGraphics?.destroy();

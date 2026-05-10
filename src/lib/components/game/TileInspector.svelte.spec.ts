@@ -8,8 +8,10 @@ import type {
 	ArchetypeId,
 	CityTile,
 	DailyStoreReport,
+	HiringCandidate,
 	OpeningForecast,
 	OpeningOption,
+	StaffMember,
 	Store,
 	StoreProductPatch
 } from '$lib/game/types';
@@ -88,12 +90,17 @@ function renderInspector(
 		tile: CityTile | null;
 		store: Store | null;
 		openingOptions: OpeningOption[];
+		staff: StaffMember[];
+		hiringCandidates: HiringCandidate[];
 		gameStarted: boolean;
 		disabledReason: string | null;
 		latestStoreReport: DailyStoreReport | null;
 		onFoundStore: (archetypeId: ArchetypeId, tileId: string) => void;
 		onOpenStore: (archetypeId: ArchetypeId, tileId: string) => void;
 		onUpdateStoreProduct: (storeId: string, categoryId: string, patch: StoreProductPatch) => void;
+		onHireStaff: (candidateId: string) => void;
+		onAssignStaff: (staffId: string, storeId: string) => void;
+		onUnassignStaff: (staffId: string) => void;
 		onClose: () => void;
 	}> = {}
 ) {
@@ -101,12 +108,17 @@ function renderInspector(
 		tile,
 		store: null,
 		openingOptions: [],
+		staff: [],
+		hiringCandidates: [],
 		gameStarted: true,
 		disabledReason: null,
 		latestStoreReport: null,
 		onFoundStore: vi.fn(),
 		onOpenStore: vi.fn(),
 		onUpdateStoreProduct: vi.fn(),
+		onHireStaff: vi.fn(),
+		onAssignStaff: vi.fn(),
+		onUnassignStaff: vi.fn(),
 		onClose: vi.fn(),
 		...overrides
 	};
@@ -160,7 +172,7 @@ describe('TileInspector storefront art', () => {
 
 describe('TileInspector stock management', () => {
 	it('shows stock row count in details and renders stock on a separate tab', async () => {
-		expect.assertions(8);
+		expect.assertions(9);
 
 		renderInspector({ store, latestStoreReport });
 
@@ -169,8 +181,10 @@ describe('TileInspector stock management', () => {
 
 		const detailsTab = page.getByRole('tab', { name: 'Details' });
 		const stockTab = page.getByRole('tab', { name: 'Stock' });
+		const staffTab = page.getByRole('tab', { name: 'Staff' });
 		await expect.element(detailsTab).toHaveAttribute('aria-selected', 'true');
 		await expect.element(stockTab).toHaveAttribute('aria-selected', 'false');
+		await expect.element(staffTab).toHaveAttribute('aria-selected', 'false');
 		await expect
 			.element(page.getByRole('heading', { name: 'Founding Store stock' }))
 			.not.toBeInTheDocument();
@@ -180,6 +194,86 @@ describe('TileInspector stock management', () => {
 		await expect.element(stockTab).toHaveAttribute('aria-selected', 'true');
 		await expect.element(page.getByRole('cell', { name: 'Snacks' })).toBeVisible();
 		await expect.element(page.getByRole('heading', { name: 'Founding Store stock' })).toBeVisible();
+	});
+});
+
+describe('TileInspector staff management', () => {
+	it('renders store staff on a dedicated tab and dispatches staffing actions', async () => {
+		expect.assertions(8);
+		const onHireStaff = vi.fn();
+		const onAssignStaff = vi.fn();
+		const onUnassignStaff = vi.fn();
+		const staff: StaffMember[] = [
+			{
+				id: 'staff-alex',
+				name: 'Alex Chen',
+				role: 'manager',
+				monthlySalary: 4_800,
+				skill: 72,
+				morale: 68,
+				assignedStoreId: store.id,
+				hiredOnDay: 0
+			},
+			{
+				id: 'staff-blair',
+				name: 'Blair Kim',
+				role: 'general',
+				monthlySalary: 3_000,
+				skill: 61,
+				morale: 74,
+				assignedStoreId: null,
+				hiredOnDay: 2
+			}
+		];
+		const hiringCandidates: HiringCandidate[] = [
+			{
+				id: 'candidate-casey',
+				name: 'Casey Rivera',
+				role: 'general',
+				monthlySalary: 2_900,
+				skill: 64,
+				morale: 70
+			}
+		];
+
+		renderInspector({
+			store,
+			staff,
+			hiringCandidates,
+			onHireStaff,
+			onAssignStaff,
+			onUnassignStaff
+		});
+
+		const staffTab = page.getByRole('tab', { name: 'Staff' });
+		await expect.element(staffTab).toHaveAttribute('aria-selected', 'false');
+
+		await staffTab.click();
+
+		await expect.element(staffTab).toHaveAttribute('aria-selected', 'true');
+		await expect.element(page.getByRole('heading', { name: 'Founding Store staff' })).toBeVisible();
+		await expect.element(page.getByText('1/1 managers, 0/1 general')).toBeVisible();
+
+		await page
+			.getByRole('button', {
+				name: 'Assign Blair Kim, General staff staff-blair to Founding Store'
+			})
+			.click();
+		await page
+			.getByRole('button', {
+				name: 'Hire Casey Rivera, General candidate candidate-casey'
+			})
+			.click();
+		await page
+			.getByRole('button', {
+				name: 'Unassign Alex Chen, Manager staff staff-alex from Founding Store'
+			})
+			.click();
+
+		expect(onAssignStaff).toHaveBeenCalledWith('staff-blair', store.id);
+		expect(onHireStaff).toHaveBeenCalledWith('candidate-casey');
+		expect(onUnassignStaff).toHaveBeenCalledWith('staff-alex');
+		expect(onAssignStaff).toHaveBeenCalledOnce();
 	});
 });
 
