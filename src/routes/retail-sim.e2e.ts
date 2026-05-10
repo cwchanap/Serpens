@@ -244,6 +244,25 @@ test('manage selected store stock and see weekly imports', async ({ page }) => {
 	await clickMapTile(page, 1, 1);
 	const inspector = page.getByRole('dialog', { name: /tile details/i });
 	await expect(inspector).toBeVisible();
+	await expect(inspector.getByRole('tab', { name: /details/i })).toHaveAttribute(
+		'aria-selected',
+		'true'
+	);
+	await expect(inspector.getByRole('table', { name: /convenience store stock/i })).toHaveCount(0);
+	const detailsInspectorBox = await inspector.boundingBox();
+
+	if (!detailsInspectorBox) {
+		throw new Error('Tile details inspector has no bounding box on the details tab');
+	}
+
+	await inspector.getByRole('tab', { name: /stock/i }).click();
+	const stockInspectorBox = await inspector.boundingBox();
+
+	if (!stockInspectorBox) {
+		throw new Error('Tile details inspector has no bounding box on the stock tab');
+	}
+
+	expect(Math.abs(stockInspectorBox.height - detailsInspectorBox.height)).toBeLessThanOrEqual(1);
 	await expect(inspector.getByRole('table', { name: /convenience store stock/i })).toBeVisible();
 	await expect(inspector.getByRole('cell', { name: 'Snacks' })).toBeVisible();
 

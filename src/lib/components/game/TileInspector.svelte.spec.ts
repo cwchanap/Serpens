@@ -93,11 +93,7 @@ function renderInspector(
 		latestStoreReport: DailyStoreReport | null;
 		onFoundStore: (archetypeId: ArchetypeId, tileId: string) => void;
 		onOpenStore: (archetypeId: ArchetypeId, tileId: string) => void;
-		onUpdateStoreProduct: (
-			storeId: string,
-			categoryId: string,
-			patch: StoreProductPatch
-		) => void;
+		onUpdateStoreProduct: (storeId: string, categoryId: string, patch: StoreProductPatch) => void;
 		onClose: () => void;
 	}> = {}
 ) {
@@ -163,15 +159,27 @@ describe('TileInspector storefront art', () => {
 });
 
 describe('TileInspector stock management', () => {
-	it('shows stock row count instead of local demand and renders the stock table', async () => {
-		expect.assertions(4);
+	it('shows stock row count in details and renders stock on a separate tab', async () => {
+		expect.assertions(8);
 
 		renderInspector({ store, latestStoreReport });
 
 		await expect.element(page.getByText('Stock rows')).toBeVisible();
+		await expect.element(page.getByText('Local demand')).not.toBeInTheDocument();
+
+		const detailsTab = page.getByRole('tab', { name: 'Details' });
+		const stockTab = page.getByRole('tab', { name: 'Stock' });
+		await expect.element(detailsTab).toHaveAttribute('aria-selected', 'true');
+		await expect.element(stockTab).toHaveAttribute('aria-selected', 'false');
+		await expect
+			.element(page.getByRole('heading', { name: 'Founding Store stock' }))
+			.not.toBeInTheDocument();
+
+		await stockTab.click();
+
+		await expect.element(stockTab).toHaveAttribute('aria-selected', 'true');
 		await expect.element(page.getByRole('cell', { name: 'Snacks' })).toBeVisible();
 		await expect.element(page.getByRole('heading', { name: 'Founding Store stock' })).toBeVisible();
-		await expect.element(page.getByText('Local demand')).not.toBeInTheDocument();
 	});
 });
 

@@ -23,11 +23,7 @@
 		latestStoreReport: DailyStoreReport | null;
 		onFoundStore: (archetypeId: ArchetypeId, tileId: string) => void;
 		onOpenStore: (archetypeId: ArchetypeId, tileId: string) => void;
-		onUpdateStoreProduct: (
-			storeId: string,
-			categoryId: string,
-			patch: StoreProductPatch
-		) => void;
+		onUpdateStoreProduct: (storeId: string, categoryId: string, patch: StoreProductPatch) => void;
 		onClose: () => void;
 	}
 
@@ -43,6 +39,8 @@
 		onUpdateStoreProduct,
 		onClose
 	}: Props = $props();
+
+	type StoreInspectorTab = 'details' | 'stock';
 
 	const currency = new Intl.NumberFormat('en-US', {
 		style: 'currency',
@@ -71,6 +69,7 @@
 	const tileLabel = $derived(tile?.feature ? label(tile.feature) : tile ? label(tile.terrain) : '');
 	let pendingOption = $state<OpeningOption | null>(null);
 	let pendingTileId = $state<string | null>(null);
+	let activeStoreTab = $state<StoreInspectorTab>('details');
 	const pendingIsCurrent = $derived(Boolean(pendingOption && tile && pendingTileId === tile.id));
 	const pendingArchetype = $derived(pendingOption ? getArchetype(pendingOption.archetypeId) : null);
 	const pendingArt = $derived(pendingOption ? getStoreArt(pendingOption.archetypeId) : null);
@@ -117,6 +116,10 @@
 		onClose();
 	}
 
+	function selectStoreTab(tab: StoreInspectorTab): void {
+		activeStoreTab = tab;
+	}
+
 	function stopMapInteraction(event: Event): void {
 		event.stopPropagation();
 	}
@@ -157,41 +160,90 @@
 		</div>
 
 		{#if store}
-			<section aria-label="Store details">
-				{#if storeArt}
-					<div class="store-art">
-						<img
-							src={storeArtSrc}
-							alt={storeArt.alt}
-							width="1024"
-							height="1024"
-							loading="lazy"
-							decoding="async"
-						/>
-					</div>
-				{/if}
-				<h3>{store.name}</h3>
-				<p class="location">{store.location}</p>
-				<dl>
-					<div>
-						<dt>Stock health</dt>
-						<dd>{store.stockHealth}</dd>
-					</div>
-					<div>
-						<dt>Staff morale</dt>
-						<dd>{store.staffMorale}</dd>
-					</div>
-					<div>
-						<dt>Stock rows</dt>
-						<dd>{store.products.length}</dd>
-					</div>
-				</dl>
-			</section>
-			<StoreStockTable
-				{store}
-				latestReport={latestStoreReport}
-				onUpdate={onUpdateStoreProduct}
-			/>
+			<div class="store-tabs" role="tablist" aria-label={`${store.name} sections`}>
+				<button
+					type="button"
+					class="store-tab"
+					class:active={activeStoreTab === 'details'}
+					role="tab"
+					id={`${store.id}-details-tab`}
+					aria-selected={activeStoreTab === 'details'}
+					aria-controls={`${store.id}-details-panel`}
+					tabindex={activeStoreTab === 'details' ? 0 : -1}
+					onclick={() => selectStoreTab('details')}
+				>
+					Details
+				</button>
+				<button
+					type="button"
+					class="store-tab"
+					class:active={activeStoreTab === 'stock'}
+					role="tab"
+					id={`${store.id}-stock-tab`}
+					aria-selected={activeStoreTab === 'stock'}
+					aria-controls={`${store.id}-stock-panel`}
+					tabindex={activeStoreTab === 'stock' ? 0 : -1}
+					onclick={() => selectStoreTab('stock')}
+				>
+					Stock
+				</button>
+			</div>
+
+			<div class="store-tab-panels">
+				<div
+					class="store-panel store-details"
+					class:active={activeStoreTab === 'details'}
+					id={`${store.id}-details-panel`}
+					role="tabpanel"
+					aria-labelledby={`${store.id}-details-tab`}
+					aria-hidden={activeStoreTab !== 'details'}
+					inert={activeStoreTab !== 'details'}
+				>
+					{#if storeArt}
+						<div class="store-art">
+							<img
+								src={storeArtSrc}
+								alt={storeArt.alt}
+								width="1024"
+								height="1024"
+								loading="lazy"
+								decoding="async"
+							/>
+						</div>
+					{/if}
+					<h3>{store.name}</h3>
+					<p class="location">{store.location}</p>
+					<dl>
+						<div>
+							<dt>Stock health</dt>
+							<dd>{store.stockHealth}</dd>
+						</div>
+						<div>
+							<dt>Staff morale</dt>
+							<dd>{store.staffMorale}</dd>
+						</div>
+						<div>
+							<dt>Stock rows</dt>
+							<dd>{store.products.length}</dd>
+						</div>
+					</dl>
+				</div>
+				<div
+					class="store-panel store-stock-panel"
+					class:active={activeStoreTab === 'stock'}
+					id={`${store.id}-stock-panel`}
+					role="tabpanel"
+					aria-labelledby={`${store.id}-stock-tab`}
+					aria-hidden={activeStoreTab !== 'stock'}
+					inert={activeStoreTab !== 'stock'}
+				>
+					<StoreStockTable
+						{store}
+						latestReport={latestStoreReport}
+						onUpdate={onUpdateStoreProduct}
+					/>
+				</div>
+			</div>
 			{#if gameStarted && disabledReason}
 				<section aria-label="Expansion action">
 					<p class="disabled-copy">{disabledReason}</p>
@@ -395,6 +447,30 @@
 		gap: 0.75rem;
 	}
 
+	.store-tab-panels {
+		display: grid;
+	}
+
+	.store-panel {
+		grid-area: 1 / 1;
+		display: grid;
+		visibility: hidden;
+		pointer-events: none;
+	}
+
+	.store-panel.active {
+		visibility: visible;
+		pointer-events: auto;
+	}
+
+	.store-details {
+		gap: 0.75rem;
+	}
+
+	.store-stock-panel {
+		align-content: start;
+	}
+
 	.store-art {
 		justify-self: start;
 		width: min(100%, 22rem);
@@ -429,6 +505,12 @@
 		gap: 0.5rem;
 	}
 
+	.store-tabs {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 0.4rem;
+	}
+
 	button {
 		width: 100%;
 		border: 1px solid #4a4a45;
@@ -437,6 +519,18 @@
 		color: #f7f2e8;
 		padding: 0.65rem 0.75rem;
 		text-align: left;
+	}
+
+	.store-tab {
+		min-height: 2.3rem;
+		padding: 0.45rem 0.65rem;
+		text-align: center;
+	}
+
+	.store-tab.active {
+		border-color: #d59b45;
+		background: #4a3217;
+		color: #ffe7b7;
 	}
 
 	.store-type-actions button {
