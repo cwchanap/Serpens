@@ -2,20 +2,29 @@ import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { ARCHETYPES } from '$lib/game/archetypes';
 import {
 	ARCHETYPE_STORE_ART,
+	PRODUCT_ART,
+	PRODUCT_ART_LIST,
 	SHOP_STOREFRONT_ALT,
 	SHOP_STOREFRONT_PATH,
 	SHOP_STOREFRONT_TEXTURE_KEY,
 	STORE_ART_LIST,
 	TERRAIN_ART,
 	TERRAIN_ART_LIST,
+	getProductArt,
 	getStoreArt,
 	getTerrainArt
 } from './gameArt';
 import type { ArchetypeId } from '$lib/game/types';
 
 const archetypeIds: ArchetypeId[] = ['convenience', 'boutique', 'electronics', 'grocery'];
+const productCategoryIds = [
+	...new Set(
+		ARCHETYPES.flatMap((archetype) => archetype.startingCategories.map((category) => category.id))
+	)
+].sort();
 const require = createRequire(import.meta.url);
 const { PNG } = require('pngjs') as {
 	PNG: {
@@ -94,6 +103,30 @@ describe('game art asset constants', () => {
 			expect(opaquePixels, `${art.path} should preserve visible storefront pixels`).toBeGreaterThan(
 				0
 			);
+		}
+	});
+
+	it('defines product art for every product category', () => {
+		expect(Object.keys(PRODUCT_ART).sort()).toEqual(productCategoryIds);
+		expect(PRODUCT_ART_LIST).toHaveLength(productCategoryIds.length);
+
+		for (const categoryId of productCategoryIds) {
+			const art = getProductArt(categoryId);
+
+			expect(art.categoryId).toBe(categoryId);
+			expect(art.path).toBe(`/assets/game/products/${categoryId}.png`);
+			expect(art.alt).toContain('Product icon');
+			expect(existsSync(staticPath(art.path))).toBe(true);
+
+			const { width, height, opaquePixels, transparentPixels } = imageStats(art.path);
+
+			expect(width).toBe(96);
+			expect(height).toBe(96);
+			expect(
+				transparentPixels,
+				`${art.path} should include transparent background pixels`
+			).toBeGreaterThan(0);
+			expect(opaquePixels, `${art.path} should preserve visible product pixels`).toBeGreaterThan(0);
 		}
 	});
 

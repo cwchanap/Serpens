@@ -51,6 +51,91 @@ export const SHOP_STOREFRONT_PATH = ARCHETYPE_STORE_ART.convenience.path;
 export const SHOP_STOREFRONT_TEXTURE_KEY = ARCHETYPE_STORE_ART.convenience.textureKey;
 export const SHOP_STOREFRONT_ALT = 'Anime-style storefront for an owned shop';
 
+export type ProductArtCategoryId =
+	| 'snacks'
+	| 'drinks'
+	| 'essentials'
+	| 'apparel'
+	| 'home-goods'
+	| 'gifts'
+	| 'games'
+	| 'accessories'
+	| 'devices'
+	| 'produce'
+	| 'pantry'
+	| 'prepared';
+
+export interface ProductArt {
+	categoryId: ProductArtCategoryId;
+	path: string;
+	alt: string;
+}
+
+export const PRODUCT_ART: Readonly<Record<ProductArtCategoryId, ProductArt>> = Object.freeze({
+	snacks: Object.freeze({
+		categoryId: 'snacks',
+		path: '/assets/game/products/snacks.png',
+		alt: 'Product icon for snacks'
+	}),
+	drinks: Object.freeze({
+		categoryId: 'drinks',
+		path: '/assets/game/products/drinks.png',
+		alt: 'Product icon for drinks'
+	}),
+	essentials: Object.freeze({
+		categoryId: 'essentials',
+		path: '/assets/game/products/essentials.png',
+		alt: 'Product icon for essentials'
+	}),
+	apparel: Object.freeze({
+		categoryId: 'apparel',
+		path: '/assets/game/products/apparel.png',
+		alt: 'Product icon for apparel'
+	}),
+	'home-goods': Object.freeze({
+		categoryId: 'home-goods',
+		path: '/assets/game/products/home-goods.png',
+		alt: 'Product icon for home goods'
+	}),
+	gifts: Object.freeze({
+		categoryId: 'gifts',
+		path: '/assets/game/products/gifts.png',
+		alt: 'Product icon for gifts'
+	}),
+	games: Object.freeze({
+		categoryId: 'games',
+		path: '/assets/game/products/games.png',
+		alt: 'Product icon for games'
+	}),
+	accessories: Object.freeze({
+		categoryId: 'accessories',
+		path: '/assets/game/products/accessories.png',
+		alt: 'Product icon for accessories'
+	}),
+	devices: Object.freeze({
+		categoryId: 'devices',
+		path: '/assets/game/products/devices.png',
+		alt: 'Product icon for devices'
+	}),
+	produce: Object.freeze({
+		categoryId: 'produce',
+		path: '/assets/game/products/produce.png',
+		alt: 'Product icon for produce'
+	}),
+	pantry: Object.freeze({
+		categoryId: 'pantry',
+		path: '/assets/game/products/pantry.png',
+		alt: 'Product icon for pantry'
+	}),
+	prepared: Object.freeze({
+		categoryId: 'prepared',
+		path: '/assets/game/products/prepared.png',
+		alt: 'Product icon for prepared food'
+	})
+});
+
+export const PRODUCT_ART_LIST: readonly ProductArt[] = Object.freeze(Object.values(PRODUCT_ART));
+
 export const TERRAIN_ART: Readonly<Record<TerrainArtId, TerrainArt>> = Object.freeze({
 	commercial: Object.freeze({
 		id: 'commercial',
@@ -112,6 +197,16 @@ export const TERRAIN_ART_LIST: readonly TerrainArt[] = Object.freeze(Object.valu
 
 export function getStoreArt(archetypeId: ArchetypeId): StoreArt {
 	return ARCHETYPE_STORE_ART[archetypeId];
+}
+
+export function getProductArt(categoryId: string): ProductArt {
+	const productArt = PRODUCT_ART[categoryId as ProductArtCategoryId];
+
+	if (!productArt) {
+		throw new Error(`Unknown product art category: ${categoryId}`);
+	}
+
+	return productArt;
 }
 
 export function getTerrainArt(id: TerrainArtId): TerrainArt {
