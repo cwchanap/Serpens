@@ -93,8 +93,8 @@ describe('Tauri save repository', () => {
 		expect((await repository.loadManualSlot(slot.id))?.game.day).toBe(7);
 	});
 
-	test('persists simulated stock reports through the Tauri store key', async () => {
-		expect.assertions(3);
+	test('persists simulated stock and production reports through the Tauri store key', async () => {
+		expect.assertions(6);
 		const store = new FakeStore();
 		const repository = createTauriSaveRepositoryFromStore(
 			Promise.resolve(store),
@@ -104,10 +104,15 @@ describe('Tauri save repository', () => {
 
 		const slot = await repository.createManualSlot('Stock Run', game);
 		const saved = await repository.loadManualSlot(slot.id);
+		const report = saved?.game.reports[0];
+		const productReport = report?.storeReports[0]?.productReports[0];
 
 		expect(saved?.game.stores[0]?.products.length).toBeGreaterThan(0);
-		expect(saved?.game.reports[0]?.importSpend).toBeGreaterThanOrEqual(0);
-		expect(saved?.game.reports[0]?.storeReports[0]?.productReports.length).toBeGreaterThan(0);
+		expect(report?.importSpend).toBeGreaterThanOrEqual(0);
+		expect(report?.productionReport.importSpend).toBeGreaterThanOrEqual(0);
+		expect(report?.storeReports[0]?.productReports.length).toBeGreaterThan(0);
+		expect(productReport?.warehouseUnits).toBeGreaterThanOrEqual(0);
+		expect(productReport?.warehouseValue).toBeGreaterThanOrEqual(0);
 	});
 
 	test('resets null save data stored under the Tauri store key', async () => {

@@ -555,7 +555,7 @@ describe('save records', () => {
 	});
 
 	test('accepts current simulated games with product inventory and reports', () => {
-		expect.assertions(4);
+		expect.assertions(8);
 		const game = simulateDay(createNewGame('convenience', 20260508));
 		const record = createSaveRecord(game, {
 			id: 'manual-stock',
@@ -565,11 +565,17 @@ describe('save records', () => {
 		});
 
 		const validated = validateSaveRecord(record);
+		const report = validated.game.reports[0];
+		const productReport = report?.storeReports[0]?.productReports[0];
 
 		expect(validated).toBe(record);
 		expect(validated.game.stores[0]?.products.length).toBeGreaterThan(0);
-		expect(validated.game.reports[0]?.importSpend).toBeGreaterThanOrEqual(0);
-		expect(validated.game.reports[0]?.storeReports[0]?.productReports.length).toBeGreaterThan(0);
+		expect(report?.importSpend).toBeGreaterThanOrEqual(0);
+		expect(report?.productionReport.importSpend).toBeGreaterThanOrEqual(0);
+		expect(report?.productionReport.warehouseUsed).toBeGreaterThanOrEqual(0);
+		expect(report?.storeReports[0]?.productReports.length).toBeGreaterThan(0);
+		expect(productReport?.warehouseUnits).toBeGreaterThanOrEqual(0);
+		expect(productReport?.warehouseValue).toBeGreaterThanOrEqual(0);
 	});
 
 	test('accepts boutique weekly import reports without material shop imports', () => {
@@ -625,7 +631,13 @@ describe('save records', () => {
 			products: [
 				{ categoryId: 'snacks', stock: -1, reorderThreshold: 1, targetStock: 2, sellingPrice: 5 },
 				{ categoryId: 'drinks', stock: 10, reorderThreshold: 1, targetStock: 2, sellingPrice: 4 },
-				{ categoryId: 'essentials', stock: 10, reorderThreshold: 1, targetStock: 2, sellingPrice: 8 }
+				{
+					categoryId: 'essentials',
+					stock: 10,
+					reorderThreshold: 1,
+					targetStock: 2,
+					sellingPrice: 8
+				}
 			],
 			message: 'Saved game stores[0] products[0] stock must be at least 0'
 		},
@@ -634,7 +646,13 @@ describe('save records', () => {
 			products: [
 				{ categoryId: 'snacks', stock: 10, reorderThreshold: -1, targetStock: 2, sellingPrice: 5 },
 				{ categoryId: 'drinks', stock: 10, reorderThreshold: 1, targetStock: 2, sellingPrice: 4 },
-				{ categoryId: 'essentials', stock: 10, reorderThreshold: 1, targetStock: 2, sellingPrice: 8 }
+				{
+					categoryId: 'essentials',
+					stock: 10,
+					reorderThreshold: 1,
+					targetStock: 2,
+					sellingPrice: 8
+				}
 			],
 			message: 'Saved game stores[0] products[0] reorderThreshold must be at least 0'
 		},
@@ -643,7 +661,13 @@ describe('save records', () => {
 			products: [
 				{ categoryId: 'snacks', stock: 10, reorderThreshold: 5, targetStock: 4, sellingPrice: 5 },
 				{ categoryId: 'drinks', stock: 10, reorderThreshold: 1, targetStock: 2, sellingPrice: 4 },
-				{ categoryId: 'essentials', stock: 10, reorderThreshold: 1, targetStock: 2, sellingPrice: 8 }
+				{
+					categoryId: 'essentials',
+					stock: 10,
+					reorderThreshold: 1,
+					targetStock: 2,
+					sellingPrice: 8
+				}
 			],
 			message:
 				'Saved game stores[0] products[0] targetStock must be greater than or equal to reorderThreshold'
@@ -653,7 +677,13 @@ describe('save records', () => {
 			products: [
 				{ categoryId: 'snacks', stock: 10, reorderThreshold: 1, targetStock: 2, sellingPrice: 0 },
 				{ categoryId: 'drinks', stock: 10, reorderThreshold: 1, targetStock: 2, sellingPrice: 4 },
-				{ categoryId: 'essentials', stock: 10, reorderThreshold: 1, targetStock: 2, sellingPrice: 8 }
+				{
+					categoryId: 'essentials',
+					stock: 10,
+					reorderThreshold: 1,
+					targetStock: 2,
+					sellingPrice: 8
+				}
 			],
 			message: 'Saved game stores[0] products[0] sellingPrice must be greater than 0'
 		}
@@ -669,9 +699,16 @@ describe('save records', () => {
 			products: [
 				{ categoryId: 'snacks', stock: 10, reorderThreshold: 1, targetStock: 2, sellingPrice: 5 },
 				{ categoryId: 'snacks', stock: 10, reorderThreshold: 1, targetStock: 2, sellingPrice: 5 },
-				{ categoryId: 'essentials', stock: 10, reorderThreshold: 1, targetStock: 2, sellingPrice: 8 }
+				{
+					categoryId: 'essentials',
+					stock: 10,
+					reorderThreshold: 1,
+					targetStock: 2,
+					sellingPrice: 8
+				}
 			],
-			message: 'Saved game stores[0] products[1] categoryId must be unique for archetype convenience'
+			message:
+				'Saved game stores[0] products[1] categoryId must be unique for archetype convenience'
 		},
 		{
 			name: 'missing category',

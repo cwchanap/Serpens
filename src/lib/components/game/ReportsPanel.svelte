@@ -36,6 +36,14 @@
 				<strong>{currency.format(summary.latest.importSpend)}</strong>
 			</div>
 			<div>
+				<span>Production imports</span>
+				<strong>{currency.format(summary.latest.productionReport.importSpend)}</strong>
+			</div>
+			<div>
+				<span>Warehouse overflow</span>
+				<strong>{currency.format(summary.latest.productionReport.overflowCost)}</strong>
+			</div>
+			<div>
 				<span>7-day net</span>
 				<strong>{currency.format(summary.sevenDay.netIncome)}</strong>
 			</div>
@@ -77,7 +85,7 @@
 
 	.metrics {
 		display: grid;
-		grid-template-columns: repeat(7, minmax(0, 1fr));
+		grid-template-columns: repeat(auto-fit, minmax(6.5rem, 1fr));
 		gap: 0.75rem;
 	}
 

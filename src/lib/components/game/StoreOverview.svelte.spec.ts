@@ -41,13 +41,29 @@ const staleReport: DailyStoreReport = {
 	staffMorale: 82,
 	reputation: 55,
 	marketPosition: 45,
-	productReports: [],
+	productReports: [
+		{
+			categoryId: 'snacks',
+			name: 'Snacks',
+			unitsSold: 6,
+			demandMissed: 1,
+			revenue: 36,
+			costOfGoods: 18,
+			grossMargin: 18,
+			endingStock: 14,
+			warehouseUnits: 3,
+			warehouseValue: 24,
+			importedUnits: 2,
+			importCost: 3,
+			importSpend: 6
+		}
+	],
 	warnings: []
 };
 
 describe('StoreOverview', () => {
-	it('shows current staff coverage instead of stale report coverage', async () => {
-		expect.assertions(3);
+	it('shows current staff coverage while preserving stock and import metrics', async () => {
+		expect.assertions(5);
 
 		render(StoreOverview, {
 			stores: [store],
@@ -59,6 +75,8 @@ describe('StoreOverview', () => {
 
 		await expect.element(storeRegion.getByText('100%', { exact: true })).not.toBeInTheDocument();
 		await expect.element(storeRegion.getByText('0/1 mgr, 0/2 gen')).toBeVisible();
+		await expect.element(storeRegion.getByText('Stock')).toBeVisible();
+		await expect.element(storeRegion.getByText('90')).toBeVisible();
 		await expect.element(storeRegion.getByText('$125')).toBeVisible();
 	});
 });

@@ -61,6 +61,34 @@ const summary: ReportSummary = {
 };
 
 describe('ReportsPanel', () => {
+	it('shows production import and warehouse overflow metrics with daily imports', async () => {
+		expect.assertions(6);
+
+		render(ReportsPanel, {
+			summary: {
+				...summary,
+				latest: {
+					...summary.latest!,
+					productionReport: {
+						...emptyProductionReport(),
+						importSpend: 222,
+						overflowUnits: 8,
+						overflowCost: 44
+					}
+				}
+			}
+		});
+
+		const reportsRegion = page.getByRole('region', { name: 'Reports' });
+
+		await expect.element(reportsRegion.getByText('Imports', { exact: true })).toBeVisible();
+		await expect.element(reportsRegion.getByText('$456')).toBeVisible();
+		await expect.element(reportsRegion.getByText('Production imports')).toBeVisible();
+		await expect.element(reportsRegion.getByText('$222')).toBeVisible();
+		await expect.element(reportsRegion.getByText('Warehouse overflow')).toBeVisible();
+		await expect.element(reportsRegion.getByText('$44')).toBeVisible();
+	});
+
 	it('shows latest import spend with the daily metrics', async () => {
 		expect.assertions(2);
 
@@ -68,7 +96,7 @@ describe('ReportsPanel', () => {
 
 		const reportsRegion = page.getByRole('region', { name: 'Reports' });
 
-		await expect.element(reportsRegion.getByText('Imports')).toBeVisible();
+		await expect.element(reportsRegion.getByText('Imports', { exact: true })).toBeVisible();
 		await expect.element(reportsRegion.getByText('$456')).toBeVisible();
 	});
 });
