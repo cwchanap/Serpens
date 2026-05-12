@@ -95,6 +95,15 @@ async function openSaves(page: import('@playwright/test').Page) {
 	await expect(page.getByRole('dialog', { name: /saves/i })).toBeVisible();
 }
 
+async function readCompanyCash(page: import('@playwright/test').Page): Promise<number> {
+	const cashText = await page
+		.getByRole('status', { name: /company status/i })
+		.locator('strong')
+		.innerText();
+
+	return Number(cashText.replace(/[^0-9.-]/g, ''));
+}
+
 async function chooseStoreType(page: import('@playwright/test').Page, storeTypeName: RegExp) {
 	await page.getByRole('button', { name: storeTypeName }).first().click();
 	const confirmDialog = page.getByRole('dialog', { name: /confirm store opening/i });
@@ -273,6 +282,30 @@ test('player can switch to the industry city map and back to retail', async ({ p
 	await expect(industryInspector).toBeVisible();
 	await expect(industryInspector.getByRole('heading', { name: /industry tile/i })).toBeVisible();
 	await expect(industryInspector.getByRole('button', { name: /build water pump/i })).toBeVisible();
+	const cashBeforeBuild = await readCompanyCash(page);
+
+	await industryInspector.getByRole('button', { name: /build water pump/i }).click();
+	await expect(industryCanvas).toHaveAttribute('data-industry-building-count', '1');
+	const buildingDetails = industryInspector.getByRole('region', {
+		name: /industrial building details/i
+	});
+	await expect(buildingDetails.getByRole('heading', { name: /water pump/i })).toBeVisible();
+	await expect(buildingDetails.getByText(/^Status$/i)).toBeVisible();
+	await expect(
+		buildingDetails.getByRole('definition').filter({ hasText: /^Idle$/i })
+	).toBeVisible();
+	expect(await readCompanyCash(page)).toBeLessThan(cashBeforeBuild);
+
+	await openSaves(page);
+	const savePanel = page.getByRole('dialog', { name: /saves/i });
+	const autoSave = savePanel.getByLabel('Auto-save');
+	await expect(autoSave.getByText(/Day 1 · 1 stores/i)).toBeVisible();
+	await expect(savePanel.getByRole('button', { name: /^Resume$/i })).toBeEnabled();
+	await savePanel.getByRole('button', { name: /^Resume$/i }).click();
+	await expect(savePanel.getByRole('status')).toContainText(/Loaded auto-save/i);
+	await savePanel.getByRole('button', { name: /close saves/i }).click();
+	await expectIndustryMapReady(page);
+	await expect(industryCanvas).toHaveAttribute('data-industry-building-count', '1');
 
 	await page.getByRole('button', { name: /open menu/i }).click();
 	await page.getByRole('menuitem', { name: /retail city map/i }).click();

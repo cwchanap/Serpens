@@ -25,6 +25,27 @@ describe('IndustryTileInspector', () => {
 		await expect.element(page.getByRole('button', { name: /build grain farm/i })).toBeVisible();
 	});
 
+	it('dispatches a build request for the selected resource tile', async () => {
+		expect.assertions(3);
+		const game = createNewGame('convenience', 20260512);
+		const tile = getIndustryTilesByResource(game.industryCities[0]!, 'grain-field')[0]!;
+		const onBuild = vi.fn();
+
+		render(IndustryTileInspector, {
+			game,
+			tile,
+			building: null,
+			onBuild,
+			onClose: vi.fn()
+		});
+
+		await page.getByRole('button', { name: /build grain farm/i }).click();
+
+		expect(onBuild).toHaveBeenCalledTimes(1);
+		expect(onBuild).toHaveBeenCalledWith('grain-farm', tile.id);
+		expect(onBuild).not.toHaveBeenCalledWith('salt-mine', tile.id);
+	});
+
 	it('shows warehouse capacity and material totals for a warehouse building', async () => {
 		expect.assertions(4);
 		const game = {
