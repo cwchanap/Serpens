@@ -310,6 +310,23 @@ async function waitForAutoSaveDay(page: Page, day: number): Promise<SavedGame> {
 	return readAutoSaveGame(page);
 }
 
+async function waitForSavedProductSettings(
+	page: Page,
+	categoryId: string,
+	expected: { day: number; reorderThreshold: number; targetStock: number }
+): Promise<SavedGame> {
+	await expect
+		.poll(async () => {
+			const game = await readAutoSaveGame(page);
+			const product = getSavedProduct(game, categoryId);
+
+			return [game.day, product.reorderThreshold, product.targetStock].join(':');
+		})
+		.toBe([expected.day, expected.reorderThreshold, expected.targetStock].join(':'));
+
+	return readAutoSaveGame(page);
+}
+
 function getSavedProduct(game: SavedGame, categoryId: string) {
 	const product = game.stores[0]?.products.find((item) => item.categoryId === categoryId);
 
@@ -593,7 +610,11 @@ test('player builds convenience production and refills from warehouse', async ({
 	await setStoreProductNumber(inspector, /reorder threshold for drinks/i, 0);
 	await setStoreProductNumber(inspector, /reorder threshold for essentials/i, 0);
 
-	const preWeeklyGame = await waitForAutoSaveDay(page, 7);
+	const preWeeklyGame = await waitForSavedProductSettings(page, 'snacks', {
+		day: 7,
+		reorderThreshold: 10,
+		targetStock: 25
+	});
 	const preWeeklySnacks = getSavedProduct(preWeeklyGame, 'snacks');
 	const warehouseSnacksBeforeWeekly = preWeeklyGame.warehouse.materials.snacks ?? 0;
 	await page.getByRole('button', { name: /^advance day$/i }).click();
@@ -622,6 +643,8 @@ test('player builds convenience production and refills from warehouse', async ({
 
 	expect(neededUnits).toBeGreaterThan(0);
 	expect(snacksReport.endingStock).toBe(preWeeklySnacks.targetStock);
+	expect(snacksReport.warehouseUnits).toBeGreaterThan(0);
+	expect(snacksReport.importedUnits).toBeGreaterThan(0);
 	expect(snacksReport.warehouseUnits).toBe(expectedWarehouseUnits);
 	expect(snacksReport.importedUnits).toBe(expectedImportedUnits);
 	expect(snacksReport.importSpend).toBe(expectedImportedUnits * snacksReport.importCost);
@@ -636,6 +659,12 @@ test('player builds convenience production and refills from warehouse', async ({
 	const controlTower = page.getByRole('dialog', { name: /control tower/i });
 	await expect(controlTower.getByRole('region', { name: /reports/i })).toBeVisible();
 	await expect(controlTower.getByText(/latest daily result/i)).toBeVisible();
+	const productSources = controlTower.getByRole('list', {
+		name: /convenience store product source split/i
+	});
+	await expect(productSources.getByText('Snacks')).toBeVisible();
+	await expect(productSources.getByText(`${snacksReport.warehouseUnits} warehouse`)).toBeVisible();
+	await expect(productSources.getByText(`${snacksReport.importedUnits} imported`)).toBeVisible();
 	await expect(
 		controlTower
 			.getByLabel('Stores')

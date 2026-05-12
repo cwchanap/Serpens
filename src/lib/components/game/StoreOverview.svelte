@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { summarizeStoreStaffing } from '$lib/game/staffing';
-	import type { DailyStoreReport, StaffMember, Store } from '$lib/game/types';
+	import type { DailyProductReport, DailyStoreReport, StaffMember, Store } from '$lib/game/types';
 
 	let {
 		stores,
@@ -17,6 +17,14 @@
 		currency: 'USD',
 		maximumFractionDigits: 0
 	});
+
+	function getProductSourceReports(report: DailyStoreReport | undefined): DailyProductReport[] {
+		return (
+			report?.productReports.filter(
+				(product) => product.warehouseUnits > 0 || product.importedUnits > 0
+			) ?? []
+		);
+	}
 </script>
 
 <section class="panel" aria-labelledby="stores-heading">
@@ -26,6 +34,7 @@
 		{#each stores as store (store.id)}
 			{@const report = latestReports.find((item) => item.storeId === store.id)}
 			{@const staffing = summarizeStoreStaffing({ staff }, store)}
+			{@const productSourceReports = getProductSourceReports(report)}
 			<article class="store">
 				<header>
 					<div>
@@ -64,6 +73,18 @@
 						</dd>
 					</div>
 				</dl>
+
+				{#if productSourceReports.length > 0}
+					<ul class="product-sources" aria-label={`${store.name} product source split`}>
+						{#each productSourceReports as product (product.categoryId)}
+							<li>
+								<span>{product.name}</span>
+								<small>{product.warehouseUnits} warehouse</small>
+								<small>{product.importedUnits} imported</small>
+							</li>
+						{/each}
+					</ul>
+				{/if}
 
 				{#if report?.warnings.length}
 					<ul aria-label={`${store.name} warnings`}>
@@ -156,6 +177,30 @@
 		padding-left: 1rem;
 		color: #f4c56f;
 		font-size: 0.86rem;
+	}
+
+	.product-sources {
+		display: grid;
+		gap: 0.35rem;
+		padding-left: 0;
+		color: #d8e2f2;
+		list-style: none;
+	}
+
+	.product-sources li {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.4rem 0.65rem;
+		align-items: baseline;
+	}
+
+	.product-sources span {
+		font-weight: 700;
+	}
+
+	.product-sources small {
+		color: #a7b4c8;
+		font-size: 0.76rem;
 	}
 
 	.quiet {

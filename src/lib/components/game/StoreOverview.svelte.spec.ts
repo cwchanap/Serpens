@@ -79,4 +79,23 @@ describe('StoreOverview', () => {
 		await expect.element(storeRegion.getByText('90')).toBeVisible();
 		await expect.element(storeRegion.getByText('$125')).toBeVisible();
 	});
+
+	it('shows latest product warehouse and import source split', async () => {
+		expect.assertions(3);
+
+		render(StoreOverview, {
+			stores: [store],
+			staff: [],
+			latestReports: [staleReport]
+		});
+
+		const storeRegion = page.getByRole('region', { name: 'Stores' });
+		const productSources = storeRegion.getByRole('list', {
+			name: 'Founding Store product source split'
+		});
+
+		await expect.element(productSources.getByText('Snacks')).toBeVisible();
+		await expect.element(productSources.getByText('3 warehouse')).toBeVisible();
+		await expect.element(productSources.getByText('2 imported')).toBeVisible();
+	});
 });
