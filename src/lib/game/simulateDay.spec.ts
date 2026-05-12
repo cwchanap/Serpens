@@ -36,8 +36,8 @@ describe('daily simulation', () => {
 		});
 	});
 
-	test('keeps placeholder production report zero-cost for over-capacity warehouse stock', () => {
-		expect.assertions(5);
+	test('charges production overflow cost for over-capacity warehouse stock', () => {
+		expect.assertions(6);
 		const startingCash = 50_000;
 		const result = simulateDay({
 			...createNewGame('convenience', 20260512),
@@ -50,10 +50,17 @@ describe('daily simulation', () => {
 			}
 		});
 		const report = result.reports[0]!;
+		const storeOperatingCosts = report.storeReports.reduce(
+			(sum, storeReport) => sum + storeReport.operatingCosts,
+			0
+		);
 
-		expect(report.productionReport.overflowUnits).toBe(0);
-		expect(report.productionReport.overflowCost).toBe(0);
+		expect(report.productionReport.overflowUnits).toBe(12);
+		expect(report.productionReport.overflowCost).toBe(24);
 		expect(report.productionReport.operatingCost).toBe(0);
+		expect(report.operatingCosts).toBe(
+			storeOperatingCosts + report.payrollCost + report.productionReport.overflowCost
+		);
 		expect(report.netIncome).toBe(report.revenue - report.operatingCosts - report.importSpend);
 		expect(report.cashAfter).toBe(startingCash + report.netIncome);
 	});
@@ -382,6 +389,43 @@ describe('daily simulation', () => {
 			report.storeReports[0]?.productReports.some((product) => product.importedUnits > 0)
 		).toBe(true);
 		expect(report.cashAfter).toBe(result.cash);
+	});
+
+	test('runs industry production before weekly shop refill', () => {
+		expect.assertions(4);
+		const baseGame = {
+			...createNewGame('convenience', 20260508),
+			day: 7,
+			cash: 50_000
+		};
+		const store = {
+			...baseGame.stores[0]!,
+			products: [
+				{
+					categoryId: 'snacks',
+					stock: 0,
+					reorderThreshold: 5,
+					targetStock: 20,
+					sellingPrice: 5
+				}
+			]
+		};
+		const noWarehouse = simulateDay({
+			...baseGame,
+			stores: [store],
+			warehouse: { capacity: 200, materials: {}, overflowUnits: 0, overflowCost: 0 }
+		});
+		const withWarehouse = simulateDay({
+			...baseGame,
+			stores: [store],
+			warehouse: { capacity: 200, materials: { snacks: 12 }, overflowUnits: 0, overflowCost: 0 }
+		});
+		const warehouseReport = withWarehouse.reports[0]!.storeReports[0]!.productReports[0]!;
+
+		expect(noWarehouse.reports[0]!.storeReports[0]!.productReports[0]!.importedUnits).toBe(20);
+		expect(warehouseReport.warehouseUnits).toBe(12);
+		expect(warehouseReport.importedUnits).toBe(8);
+		expect(withWarehouse.reports[0]!.importSpend).toBeLessThan(noWarehouse.reports[0]!.importSpend);
 	});
 
 	test('understaffing reduces served demand and reports role shortages', () => {

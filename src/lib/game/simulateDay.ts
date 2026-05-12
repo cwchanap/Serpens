@@ -1,6 +1,6 @@
 import { getArchetype } from './archetypes';
 import { generateDecisions, pruneExpiredDecisions } from './events';
-import { createEmptyProductionReport } from './industryProduction';
+import { simulateIndustryProduction } from './industryProduction';
 import { clampScore } from './reports';
 import { createRngFromState, randomBetween } from './rng';
 import {
@@ -18,10 +18,13 @@ import {
 	simulateProductSalesForCity
 } from './stock';
 import type {
+	DailyMaterialMovement,
 	DailyProductReport,
+	DailyProductionReport,
 	DailyReport,
 	DailyStoreReport,
 	GameState,
+	MaterialId,
 	Scorecard,
 	StaffingRequirement,
 	Store
@@ -76,18 +79,25 @@ interface StoreOperationProfile {
 }
 
 export function simulateDay(game: GameState): GameState {
-	const rng = createRngFromState(game.rngState);
-	const profiles = game.stores.map((store) => buildStoreOperationProfile(store, game, rng));
+	const industryResult = simulateIndustryProduction(game);
+	const productionGame = industryResult.game;
+	const rng = createRngFromState(productionGame.rngState);
+	const profiles = productionGame.stores.map((store) =>
+		buildStoreOperationProfile(store, productionGame, rng)
+	);
 	const profileByStoreId = new Map(profiles.map((profile) => [profile.store.id, profile]));
 	const storeCapacity = new Map(
 		profiles.map((profile) => [profile.store.id, profile.salesCapacity])
 	);
 	const pricedSalesGame = {
-		...game,
-		stores: applyPolicyPricingToStores(game.stores, PRICING[game.policy.pricing].price)
+		...productionGame,
+		stores: applyPolicyPricingToStores(
+			productionGame.stores,
+			PRICING[productionGame.policy.pricing].price
+		)
 	};
-	const storeCityIds = new Set(game.stores.map((store) => store.cityId));
-	const citySales = game.cities
+	const storeCityIds = new Set(productionGame.stores.map((store) => store.cityId));
+	const citySales = productionGame.cities
 		.filter((city) => storeCityIds.has(city.id))
 		.reduce(
 			(result, city) => {
@@ -105,10 +115,18 @@ export function simulateDay(game: GameState): GameState {
 			},
 			{ stores: pricedSalesGame.stores, productReports: new Map<string, DailyProductReport[]>() }
 		);
-	const stockGame = { ...game, stores: restoreProductSettings(citySales.stores, game.stores) };
-	const importResult = isImportDay(game.day)
+	const stockGame = {
+		...productionGame,
+		stores: restoreProductSettings(citySales.stores, productionGame.stores)
+	};
+	const importResult = isImportDay(productionGame.day)
 		? applyWeeklyImports({ game: stockGame, storeReports: citySales.productReports })
-		: { stores: stockGame.stores, productReports: citySales.productReports, importSpend: 0 };
+		: {
+				stores: stockGame.stores,
+				productReports: citySales.productReports,
+				warehouse: stockGame.warehouse,
+				importSpend: 0
+			};
 	const storeResults = importResult.stores.map((store) =>
 		buildDailyStoreReport(
 			{ ...profileByStoreId.get(store.id)!, store },
@@ -120,28 +138,33 @@ export function simulateDay(game: GameState): GameState {
 	const revenue = sum(storeReports, 'revenue');
 	const costOfGoods = sum(storeReports, 'costOfGoods');
 	const grossMargin = revenue - costOfGoods;
-	const payrollCost = isPayrollDay(game.day) ? calculateMonthlyPayroll(game.staff) : 0;
-	const operatingCosts = sum(storeReports, 'operatingCosts') + payrollCost;
-	const importSpend = sum(storeReports, 'importSpend');
+	const payrollCost = isPayrollDay(productionGame.day)
+		? calculateMonthlyPayroll(productionGame.staff)
+		: 0;
+	const productionReport = mergeProductionRefillReport(
+		industryResult.report,
+		importResult.productReports
+	);
+	const operatingCosts =
+		sum(storeReports, 'operatingCosts') +
+		payrollCost +
+		productionReport.operatingCost +
+		productionReport.overflowCost;
+	const importSpend = sum(storeReports, 'importSpend') + productionReport.importSpend;
 	const netIncome = revenue - operatingCosts - importSpend;
 	const cashAfter = Math.round(game.cash + netIncome);
 	const warnings = collectWarnings(storeReports, cashAfter);
 	const scorecard = buildScorecard(game.scorecard, storeReports, netIncome);
-	const productionReport = createEmptyProductionReport({
-		capacity: 0,
-		materials: {},
-		overflowUnits: 0,
-		overflowCost: 0
-	});
 	const hiringCandidates = shouldRefreshHiringMarket(nextDay)
 		? generateHiringCandidates({ count: HIRING_CANDIDATE_COUNT, day: nextDay, rng })
-		: game.hiringCandidates;
+		: productionGame.hiringCandidates;
 	const postDayGame = {
-		...game,
+		...productionGame,
 		day: nextDay,
 		rngState: rng.getState(),
 		cash: cashAfter,
 		scorecard,
+		warehouse: importResult.warehouse,
 		hiringCandidates
 	};
 	const preservedDecisions = pruneExpiredDecisions(postDayGame);
@@ -163,12 +186,13 @@ export function simulateDay(game: GameState): GameState {
 	};
 
 	return {
-		...game,
+		...productionGame,
 		day: nextDay,
 		rngState: rng.getState(),
 		cash: cashAfter,
 		scorecard,
 		stores: storeResults.map((result) => result.store),
+		warehouse: importResult.warehouse,
 		hiringCandidates,
 		decisions: [
 			...preservedDecisions,
@@ -178,7 +202,7 @@ export function simulateDay(game: GameState): GameState {
 				stores: storeResults.map((result) => result.store)
 			})
 		],
-		reports: [...game.reports, report]
+		reports: [...productionGame.reports, report]
 	};
 }
 
@@ -483,9 +507,44 @@ function getStoreProductReports(
 			costOfGoods: 0,
 			grossMargin: 0,
 			endingStock: product.stock,
+			warehouseUnits: 0,
+			warehouseValue: 0,
 			importedUnits: 0,
 			importCost: category?.importCost ?? 0,
 			importSpend: 0
 		};
 	});
+}
+
+function mergeProductionRefillReport(
+	productionReport: DailyProductionReport,
+	productReports: Map<string, DailyProductReport[]>
+): DailyProductionReport {
+	const reports = [...productReports.values()].flat();
+	const warehousePulls = reports
+		.filter((report) => report.warehouseUnits > 0)
+		.map(
+			(report): DailyMaterialMovement => ({
+				materialId: report.categoryId as MaterialId,
+				quantity: report.warehouseUnits,
+				value: report.warehouseValue,
+				source: 'warehouse'
+			})
+		);
+	const shopImports = reports
+		.filter((report) => report.importedUnits > 0)
+		.map(
+			(report): DailyMaterialMovement => ({
+				materialId: report.categoryId as MaterialId,
+				quantity: report.importedUnits,
+				value: report.importSpend,
+				source: 'import'
+			})
+		);
+
+	return {
+		...productionReport,
+		warehousePulls: [...productionReport.warehousePulls, ...warehousePulls],
+		shopImports
+	};
 }

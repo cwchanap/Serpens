@@ -296,6 +296,8 @@ describe('stock rules', () => {
 							costOfGoods: 0,
 							grossMargin: 0,
 							endingStock: 4,
+							warehouseUnits: 0,
+							warehouseValue: 0,
 							importedUnits: 0,
 							importCost: 3,
 							importSpend: 0
@@ -313,5 +315,44 @@ describe('stock rules', () => {
 		expect(report.importedUnits).toBe(21);
 		expect(report.importSpend).toBe(63);
 		expect(result.importSpend).toBe(63);
+	});
+
+	test('weekly refill pulls finished goods from warehouse before imports', () => {
+		expect.assertions(7);
+		const game = {
+			...createNewGame('convenience', 20260508),
+			warehouse: {
+				capacity: 200,
+				materials: { snacks: 12 },
+				overflowUnits: 0,
+				overflowCost: 0
+			}
+		};
+		const store = {
+			...game.stores[0]!,
+			products: [
+				{
+					categoryId: 'snacks',
+					stock: 4,
+					reorderThreshold: 10,
+					targetStock: 25,
+					sellingPrice: 5
+				}
+			]
+		};
+		const result = applyWeeklyImports({
+			game: { ...game, stores: [store] },
+			storeReports: new Map()
+		});
+		const product = result.stores[0]!.products[0]!;
+		const report = result.productReports.get(store.id)![0]!;
+
+		expect(product.stock).toBe(25);
+		expect(result.warehouse.materials.snacks).toBe(0);
+		expect(report.warehouseUnits).toBe(12);
+		expect(report.warehouseValue).toBe(96);
+		expect(report.importedUnits).toBe(9);
+		expect(report.importSpend).toBe(27);
+		expect(result.importSpend).toBe(27);
 	});
 });

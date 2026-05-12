@@ -1,5 +1,7 @@
 import { getArchetype } from './archetypes';
 import { getTilePlacementBlockReason } from './city';
+import { MATERIALS } from './industry';
+import { removeWarehouseMaterial } from './industryProduction';
 import { clampScore } from './reports';
 import { randomBetween, type Rng } from './rng';
 import type {
@@ -8,10 +10,12 @@ import type {
 	CompanyPolicy,
 	DailyProductReport,
 	GameState,
+	MaterialId,
 	ProductCategory,
 	Store,
 	StoreProduct,
-	StoreProductPatch
+	StoreProductPatch,
+	WarehouseInventory
 } from './types';
 
 export type StoreProductStatus = 'Out of stock' | 'Needs import' | 'Healthy';
@@ -28,6 +32,7 @@ export interface ProductSalesResult {
 export interface WeeklyImportResult {
 	stores: Store[];
 	productReports: Map<string, DailyProductReport[]>;
+	warehouse: WarehouseInventory;
 	importSpend: number;
 }
 
@@ -167,7 +172,9 @@ export function simulateProductSalesForCity(input: {
 	const cityStoreIds = new Set(
 		input.game.stores.filter((store) => store.cityId === input.city.id).map((store) => store.id)
 	);
-	const storesById = new Map(input.game.stores.map((store) => [store.id, cloneStoreForStock(store)]));
+	const storesById = new Map(
+		input.game.stores.map((store) => [store.id, cloneStoreForStock(store)])
+	);
 
 	for (const categoryId of Object.keys(initialDemand).sort()) {
 		const sellers = input.game.stores
@@ -227,6 +234,8 @@ export function simulateProductSalesForCity(input: {
 				costOfGoods,
 				grossMargin: revenue - costOfGoods,
 				endingStock,
+				warehouseUnits: 0,
+				warehouseValue: 0,
 				importedUnits: 0,
 				importCost: category.importCost,
 				importSpend: 0
@@ -247,6 +256,7 @@ export function applyWeeklyImports(input: {
 	storeReports: Map<string, DailyProductReport[]>;
 }): WeeklyImportResult {
 	let importSpend = 0;
+	let warehouse = input.game.warehouse;
 	const productReports = cloneProductReports(input.storeReports);
 	const stores = input.game.stores.map((store) => {
 		const categories = getArchetype(store.archetypeId).startingCategories;
@@ -256,15 +266,28 @@ export function applyWeeklyImports(input: {
 			}
 
 			const category = categories.find((candidate) => candidate.id === product.categoryId);
-			const importedUnits = Math.max(0, product.targetStock - product.stock);
+			const neededUnits = Math.max(0, product.targetStock - product.stock);
 
-			if (!category || importedUnits === 0) {
+			if (!category || neededUnits === 0) {
 				return product;
 			}
 
+			const materialId = product.categoryId as MaterialId;
+			const removal = removeWarehouseMaterial(warehouse, materialId, neededUnits);
+			const importedUnits = removal.shortage;
 			const spend = importedUnits * category.importCost;
+			const warehouseUnits = removal.quantityRemoved;
+			const warehouseValue =
+				warehouseUnits * (MATERIALS[materialId]?.localValue ?? category.importCost);
+			warehouse = removal.warehouse;
 			importSpend += spend;
-			mergeImportReport(productReports, store.id, category, importedUnits, spend, product.targetStock);
+			mergeImportReport(productReports, store.id, category, {
+				endingStock: product.targetStock,
+				warehouseUnits,
+				warehouseValue,
+				importedUnits,
+				importSpend: spend
+			});
 
 			return { ...product, stock: product.targetStock };
 		});
@@ -276,7 +299,7 @@ export function applyWeeklyImports(input: {
 		};
 	});
 
-	return { stores, productReports, importSpend };
+	return { stores, productReports, warehouse, importSpend };
 }
 
 function roundedFiniteOrFallback(value: number | undefined, fallback: number): number {
@@ -359,7 +382,10 @@ function cloneProductReports(
 	);
 }
 
-function findStoreCategory(store: Store | undefined, categoryId: string): ProductCategory | undefined {
+function findStoreCategory(
+	store: Store | undefined,
+	categoryId: string
+): ProductCategory | undefined {
 	return store
 		? getArchetype(store.archetypeId).startingCategories.find(
 				(category) => category.id === categoryId
@@ -397,9 +423,13 @@ function mergeImportReport(
 	reports: Map<string, DailyProductReport[]>,
 	storeId: string,
 	category: ProductCategory,
-	importedUnits: number,
-	importSpend: number,
-	endingStock: number
+	refill: {
+		endingStock: number;
+		warehouseUnits: number;
+		warehouseValue: number;
+		importedUnits: number;
+		importSpend: number;
+	}
 ): void {
 	const storeReports = reports.get(storeId) ?? [];
 	const existingIndex = storeReports.findIndex((report) => report.categoryId === category.id);
@@ -407,9 +437,11 @@ function mergeImportReport(
 	if (existingIndex >= 0) {
 		storeReports[existingIndex] = {
 			...storeReports[existingIndex]!,
-			endingStock,
-			importedUnits,
-			importSpend
+			endingStock: refill.endingStock,
+			warehouseUnits: refill.warehouseUnits,
+			warehouseValue: refill.warehouseValue,
+			importedUnits: refill.importedUnits,
+			importSpend: refill.importSpend
 		};
 		reports.set(storeId, storeReports);
 		return;
@@ -423,9 +455,11 @@ function mergeImportReport(
 		revenue: 0,
 		costOfGoods: 0,
 		grossMargin: 0,
-		endingStock,
-		importedUnits,
+		endingStock: refill.endingStock,
+		warehouseUnits: refill.warehouseUnits,
+		warehouseValue: refill.warehouseValue,
+		importedUnits: refill.importedUnits,
 		importCost: category.importCost,
-		importSpend
+		importSpend: refill.importSpend
 	});
 }

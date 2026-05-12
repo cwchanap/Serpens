@@ -52,6 +52,8 @@ const latestReport: DailyStoreReport = {
 			costOfGoods: 36,
 			grossMargin: 24,
 			endingStock: 58,
+			warehouseUnits: 0,
+			warehouseValue: 0,
 			importedUnits: 0,
 			importCost: 3,
 			importSpend: 0

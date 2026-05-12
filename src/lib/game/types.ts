@@ -342,6 +342,8 @@ export interface DailyProductReport {
 	costOfGoods: number;
 	grossMargin: number;
 	endingStock: number;
+	warehouseUnits: number;
+	warehouseValue: number;
 	importedUnits: number;
 	importCost: number;
 	importSpend: number;

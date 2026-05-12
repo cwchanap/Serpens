@@ -45,6 +45,7 @@ const summary: ReportSummary = {
 	sevenDay: {
 		days: 1,
 		revenue: 1_250,
+		importSpend: 456,
 		netIncome: 69,
 		averageRevenue: 1_250,
 		averageNetIncome: 69
@@ -52,6 +53,7 @@ const summary: ReportSummary = {
 	thirtyDay: {
 		days: 1,
 		revenue: 1_250,
+		importSpend: 456,
 		netIncome: 69,
 		averageRevenue: 1_250,
 		averageNetIncome: 69
