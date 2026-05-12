@@ -36,6 +36,28 @@ describe('daily simulation', () => {
 		});
 	});
 
+	test('keeps placeholder production report zero-cost for over-capacity warehouse stock', () => {
+		expect.assertions(5);
+		const startingCash = 50_000;
+		const result = simulateDay({
+			...createNewGame('convenience', 20260512),
+			cash: startingCash,
+			warehouse: {
+				capacity: 0,
+				materials: { snacks: 12 },
+				overflowUnits: 12,
+				overflowCost: 24
+			}
+		});
+		const report = result.reports[0]!;
+
+		expect(report.productionReport.overflowUnits).toBe(0);
+		expect(report.productionReport.overflowCost).toBe(0);
+		expect(report.productionReport.operatingCost).toBe(0);
+		expect(report.netIncome).toBe(report.revenue - report.operatingCosts - report.importSpend);
+		expect(report.cashAfter).toBe(startingCash + report.netIncome);
+	});
+
 	test('premium pricing improves gross margin but can reduce customers served', () => {
 		expect.assertions(2);
 		const base = createNewGame('boutique', 900);

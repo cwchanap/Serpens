@@ -30,7 +30,7 @@ describe('warehouse operations', () => {
 		expect(warehouse.materials.snacks).toBe(8);
 		expect(warehouse.capacity).toBe(5);
 		expect(warehouse.overflowUnits).toBe(3);
-		expect(warehouse.overflowCost).toBeGreaterThan(0);
+		expect(warehouse.overflowCost).toBe(6);
 	});
 
 	test('removes available stock and returns shortage', () => {
@@ -79,7 +79,7 @@ describe('industry production simulation', () => {
 	});
 
 	test('processors import missing inputs and report import spend', () => {
-		expect.assertions(4);
+		expect.assertions(7);
 		let game = { ...createNewGame('convenience', 20260512), cash: 100_000 };
 		const industrialTile = game.industryCities[0]!.tiles.find(
 			(tile) => tile.terrain === 'industrial' && !tile.locked
@@ -92,9 +92,17 @@ describe('industry production simulation', () => {
 		const result = simulateIndustryProduction(game);
 
 		expect(result.report.importedInputs.some((item) => item.materialId === 'grain')).toBe(true);
-		expect(result.report.importSpend).toBeGreaterThan(0);
-		expect(result.game.cash).toBeLessThan(game.cash);
-		expect(result.game.warehouse.materials.flour).toBeGreaterThan(0);
+		expect(result.report.importSpend).toBe(20);
+		expect(result.report.operatingCost).toBe(42);
+		expect(result.report.overflowCost).toBe(16);
+		expect(result.game.cash).toBe(
+			game.cash -
+				result.report.importSpend -
+				result.report.operatingCost -
+				result.report.overflowCost
+		);
+		expect(result.game.warehouse.materials.flour).toBe(8);
+		expect(game.warehouse.materials.flour).toBeUndefined();
 	});
 
 	test('runs raw production before processors can withdraw local inputs', () => {

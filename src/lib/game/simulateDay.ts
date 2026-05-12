@@ -1,10 +1,6 @@
 import { getArchetype } from './archetypes';
 import { generateDecisions, pruneExpiredDecisions } from './events';
-import {
-	createEmptyProductionReport,
-	getWarehouseCapacity,
-	recalculateWarehousePressure
-} from './industryProduction';
+import { createEmptyProductionReport } from './industryProduction';
 import { clampScore } from './reports';
 import { createRngFromState, randomBetween } from './rng';
 import {
@@ -131,13 +127,12 @@ export function simulateDay(game: GameState): GameState {
 	const cashAfter = Math.round(game.cash + netIncome);
 	const warnings = collectWarnings(storeReports, cashAfter);
 	const scorecard = buildScorecard(game.scorecard, storeReports, netIncome);
-	const productionReport = createEmptyProductionReport(
-		recalculateWarehousePressure({
-			...game.warehouse,
-			capacity: getWarehouseCapacity(game),
-			materials: { ...game.warehouse.materials }
-		})
-	);
+	const productionReport = createEmptyProductionReport({
+		capacity: 0,
+		materials: {},
+		overflowUnits: 0,
+		overflowCost: 0
+	});
 	const hiringCandidates = shouldRefreshHiringMarket(nextDay)
 		? generateHiringCandidates({ count: HIRING_CANDIDATE_COUNT, day: nextDay, rng })
 		: game.hiringCandidates;
