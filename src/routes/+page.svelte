@@ -2,6 +2,8 @@
 	import { onMount } from 'svelte';
 	import DecisionQueue from '$lib/components/game/DecisionQueue.svelte';
 	import CityMap from '$lib/components/game/CityMap.svelte';
+	import IndustryMap from '$lib/components/game/IndustryMap.svelte';
+	import IndustryTileInspector from '$lib/components/game/IndustryTileInspector.svelte';
 	import PolicyPanel from '$lib/components/game/PolicyPanel.svelte';
 	import ReportsPanel from '$lib/components/game/ReportsPanel.svelte';
 	import SavePanel from '$lib/components/game/SavePanel.svelte';
@@ -10,6 +12,9 @@
 	import StoreOverview from '$lib/components/game/StoreOverview.svelte';
 	import TileInspector from '$lib/components/game/TileInspector.svelte';
 	import { generateCity, getTileById, getTilePlacementBlockReason } from '$lib/game/city';
+	import { generateIndustryCity, getIndustryTileById } from '$lib/game/industry';
+	import { createIndustryMapSnapshot } from '$lib/game/industryMapRender';
+	import { buildIndustrialBuilding } from '$lib/game/industryPlacement';
 	import { createCityMapSnapshot } from '$lib/game/mapRender';
 	import {
 		createFoundingGameAtTile,
@@ -26,6 +31,7 @@
 		ArchetypeId,
 		CompanyPolicy,
 		GameState,
+		IndustrialBuildingTypeId,
 		OpeningOption,
 		StoreProductPatch
 	} from '$lib/game/types';
@@ -40,6 +46,13 @@
 		width: 20,
 		height: 20,
 		seed: 20260503
+	});
+	const starterIndustryCity = generateIndustryCity({
+		id: 'industry-city',
+		name: 'Industry City',
+		width: 18,
+		height: 18,
+		seed: 20260512
 	});
 
 	const starterMapState: GameState = {
@@ -57,16 +70,8 @@
 		},
 		cities: [starterCity],
 		activeCityId: starterCity.id,
-		industryCities: [
-			{
-				id: 'industry-city',
-				name: 'Industry City',
-				width: 1,
-				height: 1,
-				tiles: []
-			}
-		],
-		activeIndustryCityId: 'industry-city',
+		industryCities: [starterIndustryCity],
+		activeIndustryCityId: starterIndustryCity.id,
 		industrialBuildings: [],
 		warehouse: {
 			capacity: 0,
@@ -82,7 +87,9 @@
 	};
 
 	let game: GameState | null = $state(null);
+	let activeMapView = $state<'retail' | 'industry'>('retail');
 	let selectedTileId = $state<string | null>(null);
+	let selectedIndustryTileId = $state<string | null>(null);
 	let isViewMenuOpen = $state(false);
 	let isControlTowerOpen = $state(false);
 	let saveRepository: SaveRepository | null = $state(null);
@@ -99,13 +106,33 @@
 		const currentGame: GameState | null = game;
 		return currentGame?.cities.find((city) => city.id === currentGame.activeCityId) ?? starterCity;
 	});
+	let industryCity = $derived.by(() => {
+		const currentGame: GameState | null = game;
+		return (
+			currentGame?.industryCities.find((city) => city.id === currentGame.activeIndustryCityId) ??
+			starterIndustryCity
+		);
+	});
 	let selectedTile = $derived(
 		selectedTileId ? (getTileById(activeCity, selectedTileId) ?? null) : null
+	);
+	let selectedIndustryTile = $derived(
+		selectedIndustryTileId
+			? (getIndustryTileById(industryCity, selectedIndustryTileId) ?? null)
+			: null
 	);
 	let selectedStore = $derived.by(() => {
 		const currentGame: GameState | null = game;
 		return selectedTileId
 			? (currentGame?.stores.find((store) => store.tileId === selectedTileId) ?? null)
+			: null;
+	});
+	let selectedIndustryBuilding = $derived.by(() => {
+		const currentGame: GameState | null = game;
+		return selectedIndustryTileId
+			? (currentGame?.industrialBuildings.find(
+					(building) => building.tileId === selectedIndustryTileId
+				) ?? null)
 			: null;
 	});
 	let latestSelectedStoreReport = $derived.by(() => {
@@ -134,6 +161,9 @@
 	});
 	let selectedTileDisabledReason = $derived.by(() => getSelectedTileDisabledReason());
 	let mapSnapshot = $derived(createCityMapSnapshot(game ?? starterMapState, selectedTileId));
+	let industryMapSnapshot = $derived(
+		createIndustryMapSnapshot(game ?? starterMapState, selectedIndustryTileId)
+	);
 
 	onMount(() => {
 		void initializeSaves();
@@ -141,6 +171,12 @@
 
 	function selectTile(tileId: string) {
 		selectedTileId = tileId;
+		selectedIndustryTileId = null;
+	}
+
+	function selectIndustryTile(tileId: string) {
+		selectedIndustryTileId = tileId;
+		selectedTileId = null;
 	}
 
 	async function initializeSaves(): Promise<void> {
@@ -228,6 +264,18 @@
 		isViewMenuOpen = !isViewMenuOpen;
 	}
 
+	function showRetailMap() {
+		activeMapView = 'retail';
+		selectedIndustryTileId = null;
+		isViewMenuOpen = false;
+	}
+
+	function showIndustryMap() {
+		activeMapView = 'industry';
+		selectedTileId = null;
+		isViewMenuOpen = false;
+	}
+
 	function openControlTower() {
 		isViewMenuOpen = false;
 		isControlTowerOpen = true;
@@ -272,6 +320,7 @@
 
 			game = record.game;
 			selectedTileId = null;
+			selectedIndustryTileId = null;
 			saveStatus = 'Loaded auto-save';
 			saveError = null;
 			await refreshSaveSummary();
@@ -312,6 +361,7 @@
 
 			game = record.game;
 			selectedTileId = null;
+			selectedIndustryTileId = null;
 			saveStatus = `Loaded ${record.metadata.name}`;
 			saveError = null;
 			await refreshSaveSummary();
@@ -343,6 +393,7 @@
 		}
 
 		selectedTileId = tile.id;
+		selectedIndustryTileId = null;
 		setGameAndAutosave(
 			createFoundingGameAtTile({
 				archetypeId,
@@ -402,6 +453,7 @@
 
 		const next = game.stores.length + 1;
 		selectedTileId = tileId;
+		selectedIndustryTileId = null;
 		setGameAndAutosave(
 			openStoreAtTile(game, {
 				tileId,
@@ -411,8 +463,22 @@
 		);
 	}
 
+	function buildIndustryAtTile(buildingTypeId: IndustrialBuildingTypeId, tileId: string) {
+		if (!game || !getIndustryTileById(industryCity, tileId)) {
+			return;
+		}
+
+		selectedIndustryTileId = tileId;
+		selectedTileId = null;
+		setGameAndAutosave(buildIndustrialBuilding(game, { tileId, buildingTypeId }));
+	}
+
 	function closeInspector() {
 		selectedTileId = null;
+	}
+
+	function closeIndustryInspector() {
+		selectedIndustryTileId = null;
 	}
 
 	function handleKeydown(event: KeyboardEvent) {
@@ -439,24 +505,43 @@
 
 		if (selectedTileId !== null) {
 			selectedTileId = null;
+			return;
+		}
+
+		if (selectedIndustryTileId !== null) {
+			selectedIndustryTileId = null;
 		}
 	}
 </script>
 
 <svelte:head>
-	<title>Retail City Map</title>
+	<title>{activeMapView === 'industry' ? 'Industry City Map' : 'Retail City Map'}</title>
 </svelte:head>
 
 <svelte:window onkeydown={handleKeydown} />
 
 <main class="app">
 	<section class="map-layout" aria-label="City planning">
-		<CityMap snapshot={mapSnapshot} onTileSelected={selectTile} />
+		{#if activeMapView === 'retail'}
+			<CityMap snapshot={mapSnapshot} onTileSelected={selectTile} />
+		{:else}
+			<IndustryMap snapshot={industryMapSnapshot} onTileSelected={selectIndustryTile} />
+		{/if}
 		<div class="map-hud" aria-label="Map controls">
 			<div class="map-title">
-				<p class="eyebrow">Retail City Map</p>
-				<h1>{activeCity.name}</h1>
-				{#if game}
+				<p class="eyebrow">
+					{activeMapView === 'industry' ? 'Industry City Map' : 'Retail City Map'}
+				</p>
+				<h1>{activeMapView === 'industry' ? industryCity.name : activeCity.name}</h1>
+				{#if activeMapView === 'industry'}
+					{#if game}
+						<p class="status">
+							Day {game.day} · {game.industrialBuildings.length} industrial buildings
+						</p>
+					{:else}
+						<p class="status">Found a store to unlock construction.</p>
+					{/if}
+				{:else if game}
 					<p class="status">Day {game.day} · ${game.cash.toLocaleString('en-US')} cash</p>
 				{:else}
 					<p class="status">Select an unlocked tile to found your first store.</p>
@@ -500,6 +585,22 @@
 
 					{#if isViewMenuOpen}
 						<div class="hud-dropdown" role="menu" aria-label="Map menu">
+							<button
+								type="button"
+								role="menuitem"
+								class:active-view={activeMapView === 'retail'}
+								onclick={showRetailMap}
+							>
+								Retail City Map
+							</button>
+							<button
+								type="button"
+								role="menuitem"
+								class:active-view={activeMapView === 'industry'}
+								onclick={showIndustryMap}
+							>
+								Industry City Map
+							</button>
 							<button type="button" role="menuitem" onclick={openSavePanel}>Saves</button>
 							<button type="button" role="menuitem" disabled={!game} onclick={openControlTower}>
 								Control Tower
@@ -527,6 +628,22 @@
 					onAssignStaff={assignStaff}
 					onUnassignStaff={unassignStoreStaff}
 					onClose={closeInspector}
+				/>
+			</div>
+		{/if}
+		{#if game && selectedIndustryTile}
+			<div
+				class="inspector-overlay"
+				role="dialog"
+				aria-modal="false"
+				aria-label="Industry tile details"
+			>
+				<IndustryTileInspector
+					{game}
+					tile={selectedIndustryTile}
+					building={selectedIndustryBuilding}
+					onBuild={buildIndustryAtTile}
+					onClose={closeIndustryInspector}
 				/>
 			</div>
 		{/if}
@@ -751,6 +868,12 @@
 	.hud-dropdown button:disabled {
 		cursor: not-allowed;
 		opacity: 0.5;
+	}
+
+	.hud-dropdown button.active-view {
+		border-color: #5f8fd0;
+		background: #1b2a3d;
+		color: #ffffff;
 	}
 
 	.primary {
