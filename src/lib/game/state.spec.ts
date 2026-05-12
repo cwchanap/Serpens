@@ -2,6 +2,20 @@ import { describe, expect, test } from 'vitest';
 import { calculateStockHealth } from './stock';
 import { createNewGame, openStore, resolveDecision, updatePolicy } from './state';
 import { simulateDay } from './simulateDay';
+import type { GameState } from './types';
+
+type OptionalKeys<T> = {
+	[K in keyof T]-?: undefined extends T[K] ? K : never;
+}[keyof T];
+
+type OptionalIndustryStateKeys = Extract<
+	OptionalKeys<GameState>,
+	'industryCities' | 'activeIndustryCityId' | 'industrialBuildings' | 'warehouse'
+>;
+
+const industryStateKeysAreRequired: OptionalIndustryStateKeys extends never ? true : false = true;
+
+void industryStateKeysAreRequired;
 
 describe('game state', () => {
 	test('creates a new game from an archetype', () => {

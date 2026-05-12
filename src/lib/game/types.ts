@@ -178,13 +178,6 @@ export interface IndustrialBuilding {
 	blockedDays: number;
 }
 
-export interface GameIndustryState {
-	industryCities: IndustryCity[];
-	activeIndustryCityId: string;
-	industrialBuildings: IndustrialBuilding[];
-	warehouse: WarehouseInventory;
-}
-
 export interface CompanyPolicy {
 	pricing: PricingPosture;
 	inventory: InventoryBuffer;
@@ -405,10 +398,10 @@ export interface GameState {
 	scorecard: Scorecard;
 	cities: City[];
 	activeCityId: string;
-	industryCities?: IndustryCity[];
-	activeIndustryCityId?: string;
-	industrialBuildings?: IndustrialBuilding[];
-	warehouse?: WarehouseInventory;
+	industryCities: IndustryCity[];
+	activeIndustryCityId: string;
+	industrialBuildings: IndustrialBuilding[];
+	warehouse: WarehouseInventory;
 	stores: Store[];
 	staff: StaffMember[];
 	hiringCandidates: HiringCandidate[];

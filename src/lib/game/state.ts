@@ -22,7 +22,6 @@ import type {
 	DecisionItem,
 	DecisionOption,
 	GameState,
-	GameIndustryState,
 	Scorecard,
 	Store
 } from './types';
@@ -49,10 +48,7 @@ interface ExpansionTileResult {
 	blockReason?: TilePlacementBlockReason | null;
 }
 
-export function createNewGame(
-	archetypeId: ArchetypeId,
-	seed = Date.now()
-): GameState & GameIndustryState {
+export function createNewGame(archetypeId: ArchetypeId, seed = Date.now()): GameState {
 	const archetype = getArchetype(archetypeId);
 	const normalizedSeed = normalizeSeed(seed);
 	const rng = createRng(normalizedSeed);
