@@ -19,6 +19,114 @@ export type NeighborhoodId =
 	| 'parkEdge';
 export type TerrainId = 'commercial' | 'residential' | 'green' | 'transit' | 'industrial';
 export type CityTileFeature = 'road' | 'river' | null;
+export type MaterialId =
+	| 'grain'
+	| 'salt'
+	| 'oilseeds'
+	| 'water'
+	| 'fruit'
+	| 'sugar'
+	| 'pulpwood'
+	| 'chemical-feedstock'
+	| 'flour'
+	| 'cooking-oil'
+	| 'filtered-water'
+	| 'syrup'
+	| 'paper-pulp'
+	| 'plastic'
+	| 'packaging'
+	| 'cleaning-base'
+	| 'snacks'
+	| 'drinks'
+	| 'essentials';
+export type MaterialKind = 'raw' | 'intermediate' | 'finished';
+export type IndustryTerrainId =
+	| 'farmland'
+	| 'forest'
+	| 'water'
+	| 'deposit'
+	| 'industrial'
+	| 'blocked';
+export type IndustryResourceId =
+	| 'grain-field'
+	| 'salt-deposit'
+	| 'oilseed-field'
+	| 'water-source'
+	| 'fruit-orchard'
+	| 'sugar-field'
+	| 'pulpwood-forest'
+	| 'chemical-feedstock';
+export type IndustrialBuildingTypeId =
+	| 'grain-farm'
+	| 'salt-mine'
+	| 'oilseed-farm'
+	| 'water-pump'
+	| 'fruit-farm'
+	| 'sugar-farm'
+	| 'pulpwood-grove'
+	| 'chemical-feedstock-well'
+	| 'flour-mill'
+	| 'oil-press'
+	| 'water-filtration-plant'
+	| 'syrup-plant'
+	| 'pulp-mill'
+	| 'plastic-plant'
+	| 'packaging-plant'
+	| 'chemical-plant'
+	| 'snack-factory'
+	| 'drink-bottling-plant'
+	| 'household-goods-factory'
+	| 'warehouse';
+
+export interface MaterialDefinition {
+	id: MaterialId;
+	name: string;
+	kind: MaterialKind;
+	importCost: number;
+	localValue: number;
+}
+
+export interface MaterialQuantity {
+	materialId: MaterialId;
+	quantity: number;
+}
+
+export interface IndustryTile {
+	id: string;
+	cityId: string;
+	x: number;
+	y: number;
+	terrain: IndustryTerrainId;
+	resource: IndustryResourceId | null;
+	locked: boolean;
+}
+
+export interface IndustryCity {
+	id: string;
+	name: string;
+	width: number;
+	height: number;
+	tiles: IndustryTile[];
+}
+
+export interface ProductionRecipe {
+	id: string;
+	inputs: MaterialQuantity[];
+	outputs: MaterialQuantity[];
+	operatingCost: number;
+	stage: 'raw' | 'process' | 'final';
+}
+
+export interface IndustrialBuildingType {
+	id: IndustrialBuildingTypeId;
+	name: string;
+	buildCost: number;
+	dailyOperatingCost: number;
+	requiredResource: IndustryResourceId | null;
+	requiresIndustrialTile: boolean;
+	recipeId: string | null;
+	warehouseCapacity: number;
+}
 
 export interface CompanyPolicy {
 	pricing: PricingPosture;
