@@ -155,6 +155,20 @@ export interface DailyMaterialMovement {
 	source: 'local' | 'import' | 'warehouse' | 'overflow';
 }
 
+export interface DailyProductionReport {
+	produced: DailyMaterialMovement[];
+	consumed: DailyMaterialMovement[];
+	importedInputs: DailyMaterialMovement[];
+	warehousePulls: DailyMaterialMovement[];
+	shopImports: DailyMaterialMovement[];
+	importSpend: number;
+	operatingCost: number;
+	overflowUnits: number;
+	overflowCost: number;
+	warehouseCapacity: number;
+	warehouseUsed: number;
+}
+
 export interface WarehouseInventory {
 	capacity: number;
 	materials: Partial<Record<MaterialId, number>>;
