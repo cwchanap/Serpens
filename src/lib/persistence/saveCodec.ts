@@ -614,6 +614,8 @@ function validateSavedProductReport(value: unknown, label: string): void {
 	requireNumber(report.costOfGoods, `${label} costOfGoods`);
 	requireNumber(report.grossMargin, `${label} grossMargin`);
 	requireNumber(report.endingStock, `${label} endingStock`);
+	requireNumber(report.warehouseUnits, `${label} warehouseUnits`);
+	requireNumber(report.warehouseValue, `${label} warehouseValue`);
 	requireNumber(report.importedUnits, `${label} importedUnits`);
 	requireNumber(report.importCost, `${label} importCost`);
 	requireNumber(report.importSpend, `${label} importSpend`);

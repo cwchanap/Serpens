@@ -3,6 +3,7 @@ import { initializeStoreProducts } from '$lib/game/stock';
 import { simulateDay } from '$lib/game/simulateDay';
 import { createNewGame } from '$lib/game/state';
 import type {
+	DailyProductReport,
 	DailyProductionReport,
 	DailyReport,
 	DailyStoreReport,
@@ -249,6 +250,25 @@ function createDailyStoreReport(overrides: Partial<DailyStoreReport> = {}): Dail
 		marketPosition: 50,
 		productReports: [],
 		warnings: ['Low inventory'],
+		...overrides
+	};
+}
+
+function createDailyProductReport(overrides: Partial<DailyProductReport> = {}): DailyProductReport {
+	return {
+		categoryId: 'snacks',
+		name: 'Snacks',
+		unitsSold: 4,
+		demandMissed: 1,
+		revenue: 20,
+		costOfGoods: 12,
+		grossMargin: 8,
+		endingStock: 18,
+		warehouseUnits: 2,
+		warehouseValue: 16,
+		importedUnits: 0,
+		importCost: 3,
+		importSpend: 0,
 		...overrides
 	};
 }
@@ -916,6 +936,56 @@ describe('save records', () => {
 		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
 		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
 			'Saved game reports[0] productionReport importSpend must be a finite number'
+		);
+	});
+
+	test('rejects saved product reports missing warehouse unit totals', () => {
+		expect.assertions(2);
+		const invalidProductReport = {
+			...createDailyProductReport(),
+			warehouseUnits: undefined
+		} as unknown as DailyProductReport;
+		const snapshot = createSnapshotWithGame({
+			...createGame(),
+			reports: [
+				createDailyReport({
+					storeReports: [
+						createDailyStoreReport({
+							productReports: [invalidProductReport]
+						})
+					]
+				})
+			]
+		});
+
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
+			'Saved game reports[0] storeReports[0] productReports[0] warehouseUnits must be a finite number'
+		);
+	});
+
+	test('rejects saved product reports with invalid warehouse value totals', () => {
+		expect.assertions(2);
+		const snapshot = createSnapshotWithGame({
+			...createGame(),
+			reports: [
+				createDailyReport({
+					storeReports: [
+						createDailyStoreReport({
+							productReports: [
+								createDailyProductReport({
+									warehouseValue: Number.NaN
+								})
+							]
+						})
+					]
+				})
+			]
+		});
+
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
+			'Saved game reports[0] storeReports[0] productReports[0] warehouseValue must be a finite number'
 		);
 	});
 

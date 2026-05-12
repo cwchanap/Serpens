@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { generateDecisions } from './events';
 import { generateCity } from './city';
+import { buildIndustrialBuilding } from './industryPlacement';
 import { createNewGame, updatePolicy } from './state';
 import { simulateDay } from './simulateDay';
 import type { DecisionItem, GameState } from './types';
@@ -426,6 +427,74 @@ describe('daily simulation', () => {
 		expect(warehouseReport.warehouseUnits).toBe(12);
 		expect(warehouseReport.importedUnits).toBe(8);
 		expect(withWarehouse.reports[0]!.importSpend).toBeLessThan(noWarehouse.reports[0]!.importSpend);
+	});
+
+	test('uses same-day finished production for weekly shop refill before importing shortage', () => {
+		expect.assertions(7);
+		let game = {
+			...createNewGame('convenience', 20260508),
+			day: 7,
+			cash: 100_000
+		};
+		const industrialTiles = game.industryCities[0]!.tiles.filter(
+			(tile) => tile.terrain === 'industrial' && !tile.locked
+		);
+		game = buildIndustrialBuilding(game, {
+			tileId: industrialTiles[0]!.id,
+			buildingTypeId: 'snack-factory'
+		});
+		game = buildIndustrialBuilding(game, {
+			tileId: industrialTiles[1]!.id,
+			buildingTypeId: 'warehouse'
+		});
+		const store = {
+			...game.stores[0]!,
+			products: [
+				{
+					categoryId: 'snacks',
+					stock: 0,
+					reorderThreshold: 5,
+					targetStock: 20,
+					sellingPrice: 5
+				}
+			]
+		};
+		const result = simulateDay({
+			...game,
+			cash: 50_000,
+			stores: [store],
+			warehouse: {
+				capacity: 200,
+				materials: {
+					flour: 6,
+					'cooking-oil': 2,
+					salt: 1,
+					packaging: 2
+				},
+				overflowUnits: 0,
+				overflowCost: 0
+			}
+		});
+		const dailyReport = result.reports[0]!;
+		const productReport = dailyReport.storeReports[0]!.productReports[0]!;
+
+		expect(dailyReport.productionReport.produced).toContainEqual({
+			materialId: 'snacks',
+			quantity: 8,
+			value: 64,
+			source: 'local'
+		});
+		expect(dailyReport.productionReport.warehousePulls).toContainEqual({
+			materialId: 'snacks',
+			quantity: 8,
+			value: 64,
+			source: 'warehouse'
+		});
+		expect(productReport.warehouseUnits).toBe(8);
+		expect(productReport.importedUnits).toBe(12);
+		expect(productReport.importSpend).toBe(36);
+		expect(result.stores[0]!.products[0]!.stock).toBe(20);
+		expect(result.warehouse.materials.snacks).toBe(0);
 	});
 
 	test('understaffing reduces served demand and reports role shortages', () => {
