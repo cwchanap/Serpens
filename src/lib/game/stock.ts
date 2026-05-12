@@ -132,9 +132,15 @@ export function isImportDay(day: number): boolean {
 }
 
 export function getFinishedMaterialIdForCategory(categoryId: string): MaterialId | null {
-	const material = MATERIALS[categoryId as MaterialId];
+	if (!isMaterialId(categoryId)) {
+		return null;
+	}
 
-	return material?.kind === 'finished' ? (categoryId as MaterialId) : null;
+	return MATERIALS[categoryId].kind === 'finished' ? categoryId : null;
+}
+
+function isMaterialId(value: string): value is MaterialId {
+	return Object.hasOwn(MATERIALS, value);
 }
 
 export function buildCityDemandPools(

@@ -430,7 +430,8 @@ describe('daily simulation', () => {
 	});
 
 	test('uses same-day finished production for weekly shop refill before importing shortage', () => {
-		expect.assertions(7);
+		expect.assertions(13);
+		const startingCash = 50_000;
 		let game = {
 			...createNewGame('convenience', 20260508),
 			day: 7,
@@ -461,22 +462,25 @@ describe('daily simulation', () => {
 		};
 		const result = simulateDay({
 			...game,
-			cash: 50_000,
+			cash: startingCash,
 			stores: [store],
 			warehouse: {
 				capacity: 200,
-				materials: {
-					flour: 6,
-					'cooking-oil': 2,
-					salt: 1,
-					packaging: 2
-				},
+				materials: {},
 				overflowUnits: 0,
 				overflowCost: 0
 			}
 		});
 		const dailyReport = result.reports[0]!;
 		const productReport = dailyReport.storeReports[0]!.productReports[0]!;
+		const storeOperatingCosts = dailyReport.storeReports.reduce(
+			(total, report) => total + report.operatingCosts,
+			0
+		);
+		const storeImportSpend = dailyReport.storeReports.reduce(
+			(total, report) => total + report.importSpend,
+			0
+		);
 
 		expect(dailyReport.productionReport.produced).toContainEqual({
 			materialId: 'snacks',
@@ -495,6 +499,19 @@ describe('daily simulation', () => {
 		expect(productReport.importSpend).toBe(36);
 		expect(result.stores[0]!.products[0]!.stock).toBe(20);
 		expect(result.warehouse.materials.snacks).toBe(0);
+		expect(dailyReport.productionReport.operatingCost).toBeGreaterThan(0);
+		expect(dailyReport.productionReport.importSpend).toBeGreaterThan(0);
+		expect(dailyReport.operatingCosts).toBe(
+			storeOperatingCosts +
+				dailyReport.payrollCost +
+				dailyReport.productionReport.operatingCost +
+				dailyReport.productionReport.overflowCost
+		);
+		expect(dailyReport.importSpend).toBe(storeImportSpend + dailyReport.productionReport.importSpend);
+		expect(dailyReport.netIncome).toBe(
+			dailyReport.revenue - dailyReport.operatingCosts - dailyReport.importSpend
+		);
+		expect(dailyReport.cashAfter).toBe(startingCash + dailyReport.netIncome);
 	});
 
 	test('understaffing reduces served demand and reports role shortages', () => {
