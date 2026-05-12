@@ -45,6 +45,19 @@ describe('warehouse operations', () => {
 		expect(result.shortage).toBe(4);
 		expect(result.warehouse.materials.snacks).toBe(0);
 	});
+
+	test('clamps negative stored stock before removing material', () => {
+		expect.assertions(3);
+		const result = removeWarehouseMaterial(
+			{ capacity: 20, materials: { snacks: -4 }, overflowUnits: 0, overflowCost: 0 },
+			'snacks',
+			10
+		);
+
+		expect(result.quantityRemoved).toBe(0);
+		expect(result.shortage).toBe(10);
+		expect(result.warehouse.materials.snacks).toBe(0);
+	});
 });
 
 describe('industry production simulation', () => {

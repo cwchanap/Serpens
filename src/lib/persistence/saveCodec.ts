@@ -390,7 +390,10 @@ function validateSavedWarehouse(value: unknown, label: string): void {
 			throw new SaveDataError(`${label} materials ${materialId} must be a known material`);
 		}
 
-		requireNumber(quantity, `${label} materials ${materialId}`);
+		const materialQuantity = requireNumber(quantity, `${label} materials ${materialId}`);
+		if (materialQuantity < 0) {
+			throw new SaveDataError(`${label} materials ${materialId} must be at least 0`);
+		}
 	}
 	requireNumber(warehouse.overflowUnits, `${label} overflowUnits`);
 	requireNumber(warehouse.overflowCost, `${label} overflowCost`);

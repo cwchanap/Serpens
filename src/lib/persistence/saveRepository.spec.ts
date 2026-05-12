@@ -431,6 +431,24 @@ describe('save records', () => {
 		);
 	});
 
+	test('rejects negative warehouse material quantities', () => {
+		expect.assertions(2);
+		const game = createGame({
+			warehouse: {
+				capacity: 20,
+				materials: { snacks: -1 },
+				overflowUnits: 0,
+				overflowCost: 0
+			}
+		});
+		const snapshot = createSnapshotWithGame(game);
+
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
+			'Saved game warehouse materials snacks must be at least 0'
+		);
+	});
+
 	test('rejects industry city tiles with unknown resource ids', () => {
 		expect.assertions(2);
 		const game = createGame({

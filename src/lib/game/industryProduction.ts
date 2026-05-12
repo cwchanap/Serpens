@@ -62,7 +62,7 @@ export function removeWarehouseMaterial(
 	requestedQuantity: number
 ): RemoveWarehouseMaterialResult {
 	const requested = Math.max(0, requestedQuantity);
-	const available = warehouse.materials[materialId] ?? 0;
+	const available = Math.max(0, warehouse.materials[materialId] ?? 0);
 	const quantityRemoved = Math.min(available, requested);
 	const materials = {
 		...warehouse.materials,
