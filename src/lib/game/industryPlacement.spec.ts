@@ -43,7 +43,7 @@ describe('industrial placement', () => {
 		expect(game.industrialBuildings).toHaveLength(0);
 	});
 
-	test('rejects occupied tiles and insufficient cash with decisions', () => {
+	test('rejects insufficient cash with a construction decision', () => {
 		expect.assertions(3);
 		const game = { ...createNewGame('convenience', 20260512), cash: 0 };
 		const city = game.industryCities[0]!;
@@ -56,6 +56,47 @@ describe('industrial placement', () => {
 		expect(blocked.industrialBuildings).toHaveLength(0);
 		expect(blocked.decisions.at(-1)?.title).toBe('Industrial construction delayed');
 		expect(blocked.decisions.at(-1)?.context).toContain('requires');
+	});
+
+	test('blocks locked industrial tiles before resource checks', () => {
+		expect.assertions(3);
+		const game = { ...createNewGame('convenience', 20260512), cash: 100_000 };
+		const city = game.industryCities[0]!;
+		const lockedTile = city.tiles.find((tile) => tile.locked)!;
+		const blocked = buildIndustrialBuilding(game, {
+			tileId: lockedTile.id,
+			buildingTypeId: 'grain-farm'
+		});
+
+		expect(getIndustrialPlacementBlockReason(game, lockedTile.id, 'grain-farm')).toBe(
+			'Locked industrial tile'
+		);
+		expect(blocked.industrialBuildings).toHaveLength(0);
+		expect(blocked.decisions.at(-1)?.context).toContain('Locked industrial tile');
+	});
+
+	test('keeps different same-day construction failures as separate decisions', () => {
+		expect.assertions(4);
+		const game = { ...createNewGame('convenience', 20260512), cash: 0 };
+		const city = game.industryCities[0]!;
+		const grainTile = getIndustryTilesByResource(city, 'grain-field')[0]!;
+		const saltTile = getIndustryTilesByResource(city, 'salt-deposit')[0]!;
+		const cashBlocked = buildIndustrialBuilding(game, {
+			tileId: grainTile.id,
+			buildingTypeId: 'grain-farm'
+		});
+		const resourceBlocked = buildIndustrialBuilding(cashBlocked, {
+			tileId: saltTile.id,
+			buildingTypeId: 'grain-farm'
+		});
+
+		expect(resourceBlocked.industrialBuildings).toHaveLength(0);
+		expect(resourceBlocked.decisions).toHaveLength(2);
+		expect(new Set(resourceBlocked.decisions.map((decision) => decision.id)).size).toBe(2);
+		expect(resourceBlocked.decisions.map((decision) => decision.context)).toEqual([
+			'Grain Farm requires 600 cash.',
+			'Requires grain field'
+		]);
 	});
 
 	test('blocks occupied industrial tiles after construction', () => {

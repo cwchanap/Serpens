@@ -16,6 +16,12 @@ export interface BuildIndustrialBuildingInput {
 	buildingTypeId: IndustrialBuildingTypeId;
 }
 
+interface IndustrialConstructionDelay {
+	tileId: string;
+	buildingTypeId: IndustrialBuildingTypeId;
+	context: string;
+}
+
 export function getIndustrialPlacementBlockReason(
 	game: GameState,
 	tileId: string,
@@ -31,6 +37,10 @@ export function getIndustrialPlacementBlockReason(
 
 	if (!buildingType) {
 		return 'Unknown industrial building type';
+	}
+
+	if (tile.locked) {
+		return 'Locked industrial tile';
 	}
 
 	if (game.industrialBuildings.some((building) => building.tileId === tile.id)) {
@@ -67,23 +77,35 @@ export function buildIndustrialBuilding(
 	const blockReason = getIndustrialPlacementBlockReason(game, input.tileId, input.buildingTypeId);
 
 	if (blockReason) {
-		return appendDecision(game, industrialConstructionDelayedDecision(game, blockReason));
+		return appendDecision(
+			game,
+			industrialConstructionDelayedDecision(game, {
+				tileId: input.tileId,
+				buildingTypeId: input.buildingTypeId,
+				context: blockReason
+			})
+		);
 	}
 
 	if (!city || !tile || !buildingType) {
 		return appendDecision(
 			game,
-			industrialConstructionDelayedDecision(game, 'Unknown industrial tile')
+			industrialConstructionDelayedDecision(game, {
+				tileId: input.tileId,
+				buildingTypeId: input.buildingTypeId,
+				context: 'Unknown industrial tile'
+			})
 		);
 	}
 
 	if (game.cash < buildingType.buildCost) {
 		return appendDecision(
 			game,
-			industrialConstructionDelayedDecision(
-				game,
-				`${buildingType.name} requires ${buildingType.buildCost.toLocaleString('en-US')} cash.`
-			)
+			industrialConstructionDelayedDecision(game, {
+				tileId: input.tileId,
+				buildingTypeId: input.buildingTypeId,
+				context: `${buildingType.name} requires ${buildingType.buildCost.toLocaleString('en-US')} cash.`
+			})
 		);
 	}
 
@@ -132,11 +154,20 @@ function appendDecision(game: GameState, decision: DecisionItem): GameState {
 	};
 }
 
-function industrialConstructionDelayedDecision(game: GameState, context: string): DecisionItem {
+function industrialConstructionDelayedDecision(
+	game: GameState,
+	delay: IndustrialConstructionDelay
+): DecisionItem {
 	return {
-		id: `industrial-construction-delayed-${game.day}`,
+		id: [
+			'industrial-construction-delayed',
+			toDecisionIdPart(delay.buildingTypeId),
+			toDecisionIdPart(delay.tileId),
+			toDecisionIdPart(delay.context),
+			game.day
+		].join('-'),
 		title: 'Industrial construction delayed',
-		context,
+		context: delay.context,
 		expiresOnDay: game.day + 1,
 		options: [acknowledgeOption()]
 	};
@@ -153,4 +184,11 @@ function acknowledgeOption(): DecisionOption {
 
 function formatIndustryResourceLabel(resource: IndustryResourceId): string {
 	return resource.replaceAll('-', ' ');
+}
+
+function toDecisionIdPart(value: string): string {
+	return value
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, '-')
+		.replace(/^-|-$/g, '');
 }
