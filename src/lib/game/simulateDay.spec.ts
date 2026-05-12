@@ -17,6 +17,25 @@ describe('daily simulation', () => {
 		expect(first.rngState).toBe(second.rngState);
 	});
 
+	test('includes an empty production report in the daily report', () => {
+		expect.assertions(1);
+		const result = simulateDay(createNewGame('convenience', 20260512));
+
+		expect(result.reports[0]?.productionReport).toEqual({
+			produced: [],
+			consumed: [],
+			importedInputs: [],
+			warehousePulls: [],
+			shopImports: [],
+			importSpend: 0,
+			operatingCost: 0,
+			overflowUnits: 0,
+			overflowCost: 0,
+			warehouseCapacity: 0,
+			warehouseUsed: 0
+		});
+	});
+
 	test('premium pricing improves gross margin but can reduce customers served', () => {
 		expect.assertions(2);
 		const base = createNewGame('boutique', 900);

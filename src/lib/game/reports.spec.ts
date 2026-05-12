@@ -1,6 +1,22 @@
 import { describe, expect, test } from 'vitest';
 import { clampScore, summarizeReports } from './reports';
-import type { DailyReport } from './types';
+import type { DailyProductionReport, DailyReport } from './types';
+
+function emptyProductionReport(): DailyProductionReport {
+	return {
+		produced: [],
+		consumed: [],
+		importedInputs: [],
+		warehousePulls: [],
+		shopImports: [],
+		importSpend: 0,
+		operatingCost: 0,
+		overflowUnits: 0,
+		overflowCost: 0,
+		warehouseCapacity: 0,
+		warehouseUsed: 0
+	};
+}
 
 function report(day: number, netIncome: number): DailyReport {
 	return {
@@ -19,6 +35,7 @@ function report(day: number, netIncome: number): DailyReport {
 			staffMorale: 70,
 			marketPosition: 20
 		},
+		productionReport: emptyProductionReport(),
 		storeReports: [],
 		warnings: []
 	};

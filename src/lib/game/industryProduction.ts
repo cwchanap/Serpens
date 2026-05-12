@@ -201,7 +201,7 @@ export function simulateIndustryProduction(game: GameState): {
 	};
 }
 
-function createEmptyProductionReport(warehouse: WarehouseInventory): DailyProductionReport {
+export function createEmptyProductionReport(warehouse: WarehouseInventory): DailyProductionReport {
 	return {
 		produced: [],
 		consumed: [],

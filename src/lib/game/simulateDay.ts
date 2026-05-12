@@ -1,5 +1,10 @@
 import { getArchetype } from './archetypes';
 import { generateDecisions, pruneExpiredDecisions } from './events';
+import {
+	createEmptyProductionReport,
+	getWarehouseCapacity,
+	recalculateWarehousePressure
+} from './industryProduction';
 import { clampScore } from './reports';
 import { createRngFromState, randomBetween } from './rng';
 import {
@@ -78,7 +83,9 @@ export function simulateDay(game: GameState): GameState {
 	const rng = createRngFromState(game.rngState);
 	const profiles = game.stores.map((store) => buildStoreOperationProfile(store, game, rng));
 	const profileByStoreId = new Map(profiles.map((profile) => [profile.store.id, profile]));
-	const storeCapacity = new Map(profiles.map((profile) => [profile.store.id, profile.salesCapacity]));
+	const storeCapacity = new Map(
+		profiles.map((profile) => [profile.store.id, profile.salesCapacity])
+	);
 	const pricedSalesGame = {
 		...game,
 		stores: applyPolicyPricingToStores(game.stores, PRICING[game.policy.pricing].price)
@@ -124,6 +131,13 @@ export function simulateDay(game: GameState): GameState {
 	const cashAfter = Math.round(game.cash + netIncome);
 	const warnings = collectWarnings(storeReports, cashAfter);
 	const scorecard = buildScorecard(game.scorecard, storeReports, netIncome);
+	const productionReport = createEmptyProductionReport(
+		recalculateWarehousePressure({
+			...game.warehouse,
+			capacity: getWarehouseCapacity(game),
+			materials: { ...game.warehouse.materials }
+		})
+	);
 	const hiringCandidates = shouldRefreshHiringMarket(nextDay)
 		? generateHiringCandidates({ count: HIRING_CANDIDATE_COUNT, day: nextDay, rng })
 		: game.hiringCandidates;
@@ -148,6 +162,7 @@ export function simulateDay(game: GameState): GameState {
 		netIncome: Math.round(netIncome),
 		cashAfter,
 		scorecard,
+		productionReport,
 		storeReports,
 		warnings
 	};

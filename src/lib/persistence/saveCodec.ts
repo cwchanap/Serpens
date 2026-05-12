@@ -479,10 +479,37 @@ function validateSavedReport(value: unknown, label: string): void {
 	requireNumber(report.netIncome, `${label} netIncome`);
 	requireNumber(report.cashAfter, `${label} cashAfter`);
 	validateSavedScorecard(report.scorecard, `${label} scorecard`);
+	validateSavedProductionReport(report.productionReport, `${label} productionReport`);
 	requireArray(report.storeReports, `${label} storeReports`).forEach((storeReport, index) =>
 		validateSavedStoreReport(storeReport, `${label} storeReports[${index}]`)
 	);
 	validateStringArray(report.warnings, `${label} warnings`);
+}
+
+function validateSavedProductionReport(value: unknown, label: string): void {
+	const report = requireRecord(value, label);
+
+	requireArray(report.produced, `${label} produced`).forEach((movement, index) =>
+		validateSavedDailyMaterialMovement(movement, `${label} produced[${index}]`)
+	);
+	requireArray(report.consumed, `${label} consumed`).forEach((movement, index) =>
+		validateSavedDailyMaterialMovement(movement, `${label} consumed[${index}]`)
+	);
+	requireArray(report.importedInputs, `${label} importedInputs`).forEach((movement, index) =>
+		validateSavedDailyMaterialMovement(movement, `${label} importedInputs[${index}]`)
+	);
+	requireArray(report.warehousePulls, `${label} warehousePulls`).forEach((movement, index) =>
+		validateSavedDailyMaterialMovement(movement, `${label} warehousePulls[${index}]`)
+	);
+	requireArray(report.shopImports, `${label} shopImports`).forEach((movement, index) =>
+		validateSavedDailyMaterialMovement(movement, `${label} shopImports[${index}]`)
+	);
+	requireNumber(report.importSpend, `${label} importSpend`);
+	requireNumber(report.operatingCost, `${label} operatingCost`);
+	requireNumber(report.overflowUnits, `${label} overflowUnits`);
+	requireNumber(report.overflowCost, `${label} overflowCost`);
+	requireNumber(report.warehouseCapacity, `${label} warehouseCapacity`);
+	requireNumber(report.warehouseUsed, `${label} warehouseUsed`);
 }
 
 function validateSavedStoreReport(value: unknown, label: string): void {

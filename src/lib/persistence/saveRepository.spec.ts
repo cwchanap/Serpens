@@ -3,6 +3,7 @@ import { initializeStoreProducts } from '$lib/game/stock';
 import { simulateDay } from '$lib/game/simulateDay';
 import { createNewGame } from '$lib/game/state';
 import type {
+	DailyProductionReport,
 	DailyReport,
 	DailyStoreReport,
 	GameState,
@@ -252,6 +253,25 @@ function createDailyStoreReport(overrides: Partial<DailyStoreReport> = {}): Dail
 	};
 }
 
+function createDailyProductionReport(
+	overrides: Partial<DailyProductionReport> = {}
+): DailyProductionReport {
+	return {
+		produced: [],
+		consumed: [],
+		importedInputs: [],
+		warehousePulls: [],
+		shopImports: [],
+		importSpend: 0,
+		operatingCost: 0,
+		overflowUnits: 0,
+		overflowCost: 0,
+		warehouseCapacity: 0,
+		warehouseUsed: 0,
+		...overrides
+	};
+}
+
 function createDailyReport(overrides: Partial<DailyReport> = {}): DailyReport {
 	return {
 		day: 3,
@@ -269,6 +289,7 @@ function createDailyReport(overrides: Partial<DailyReport> = {}): DailyReport {
 			staffMorale: 65,
 			marketPosition: 50
 		},
+		productionReport: createDailyProductionReport(),
 		storeReports: [createDailyStoreReport()],
 		warnings: ['Healthy day'],
 		...overrides
@@ -876,6 +897,25 @@ describe('save records', () => {
 		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
 		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
 			'Saved game reports[0] payrollCost must be a finite number'
+		);
+	});
+
+	test('rejects saved reports with invalid production report totals', () => {
+		expect.assertions(2);
+		const snapshot = createSnapshotWithGame({
+			...createGame(),
+			reports: [
+				createDailyReport({
+					productionReport: createDailyProductionReport({
+						importSpend: Number.NaN
+					})
+				})
+			]
+		});
+
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
+			'Saved game reports[0] productionReport importSpend must be a finite number'
 		);
 	});
 

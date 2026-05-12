@@ -378,6 +378,7 @@ export interface DailyReport {
 	netIncome: number;
 	cashAfter: number;
 	scorecard: Scorecard;
+	productionReport: DailyProductionReport;
 	storeReports: DailyStoreReport[];
 	warnings: string[];
 }
