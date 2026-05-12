@@ -1,5 +1,6 @@
-import type { GameState } from '$lib/game/types';
 import { getArchetype } from '$lib/game/archetypes';
+import { INDUSTRIAL_BUILDING_TYPES, MATERIALS } from '$lib/game/industry';
+import type { GameState } from '$lib/game/types';
 import {
 	AUTO_SAVE_SLOT_ID,
 	SAVE_SCHEMA_VERSION,
@@ -35,6 +36,23 @@ const NEIGHBORHOOD_IDS = [
 ] as const;
 const TERRAIN_IDS = ['commercial', 'residential', 'green', 'transit', 'industrial'] as const;
 const CITY_TILE_FEATURES = ['road', 'river'] as const;
+const INDUSTRY_TERRAIN_IDS = [
+	'farmland',
+	'forest',
+	'water',
+	'deposit',
+	'industrial',
+	'blocked'
+] as const;
+const INDUSTRIAL_BUILDING_STATUSES = ['idle', 'produced', 'imported-inputs', 'blocked'] as const;
+const MATERIAL_MOVEMENT_SOURCES = ['local', 'import', 'warehouse', 'overflow'] as const;
+const MATERIAL_ID_SET = new Set<string>(Object.keys(MATERIALS));
+const INDUSTRIAL_BUILDING_TYPE_ID_SET = new Set<string>(Object.keys(INDUSTRIAL_BUILDING_TYPES));
+const INDUSTRY_RESOURCE_ID_SET = new Set<string>(
+	Object.values(INDUSTRIAL_BUILDING_TYPES).flatMap((buildingType) =>
+		buildingType.requiredResource === null ? [] : [buildingType.requiredResource]
+	)
+);
 const DECISION_EFFECT_NUMBER_FIELDS = [
 	'profit',
 	'customerSatisfaction',
@@ -169,6 +187,11 @@ function validateSavedGame(value: unknown): Record<string, unknown> {
 	const policy = requireRecord(game.policy, 'Saved game policy');
 	const scorecard = requireRecord(game.scorecard, 'Saved game scorecard');
 	const cities = requireArray(game.cities, 'Saved game cities');
+	const industryCities = requireArray(game.industryCities, 'Saved game industryCities');
+	const industrialBuildings = requireArray(
+		game.industrialBuildings,
+		'Saved game industrialBuildings'
+	);
 	const stores = requireArray(game.stores, 'Saved game stores');
 	const staff = requireArray(game.staff, 'Saved game staff');
 	const hiringCandidates = requireArray(game.hiringCandidates, 'Saved game hiringCandidates');
@@ -191,6 +214,14 @@ function validateSavedGame(value: unknown): Record<string, unknown> {
 	requireNumber(scorecard.marketPosition, 'Saved game scorecard marketPosition');
 	cities.forEach((city, index) => validateSavedCity(city, `Saved game cities[${index}]`));
 	requireString(game.activeCityId, 'Saved game activeCityId');
+	industryCities.forEach((city, index) =>
+		validateSavedIndustryCity(city, `Saved game industryCities[${index}]`)
+	);
+	requireString(game.activeIndustryCityId, 'Saved game activeIndustryCityId');
+	industrialBuildings.forEach((building, index) =>
+		validateSavedIndustrialBuilding(building, `Saved game industrialBuildings[${index}]`)
+	);
+	validateSavedWarehouse(game.warehouse, 'Saved game warehouse');
 	stores.forEach((store, index) => validateSavedStore(store, `Saved game stores[${index}]`));
 	staff.forEach((member, index) => validateSavedStaffMember(member, `Saved game staff[${index}]`));
 	hiringCandidates.forEach((candidate, index) =>
@@ -283,6 +314,86 @@ function validateSavedCityTileFeature(tile: Record<string, unknown>, label: stri
 	) {
 		throw new SaveDataError(`${label} must be null, road, or river`);
 	}
+}
+
+function validateSavedIndustryCity(value: unknown, label: string): void {
+	const city = requireRecord(value, label);
+
+	requireString(city.id, `${label} id`);
+	requireString(city.name, `${label} name`);
+	requireNumber(city.width, `${label} width`);
+	requireNumber(city.height, `${label} height`);
+	requireArray(city.tiles, `${label} tiles`).forEach((tile, index) =>
+		validateSavedIndustryTile(tile, `${label} tiles[${index}]`)
+	);
+}
+
+function validateSavedIndustryTile(value: unknown, label: string): void {
+	const tile = requireRecord(value, label);
+
+	requireString(tile.id, `${label} id`);
+	requireString(tile.cityId, `${label} cityId`);
+	requireNumber(tile.x, `${label} x`);
+	requireNumber(tile.y, `${label} y`);
+	requireOneOf(tile.terrain, `${label} terrain`, INDUSTRY_TERRAIN_IDS);
+	validateSavedIndustryResource(tile.resource, `${label} resource`);
+	requireBoolean(tile.locked, `${label} locked`);
+}
+
+function validateSavedIndustryResource(value: unknown, label: string): void {
+	if (value === null) {
+		return;
+	}
+
+	requireKnownId(value, label, INDUSTRY_RESOURCE_ID_SET, 'industry resource');
+}
+
+function validateSavedIndustrialBuilding(value: unknown, label: string): void {
+	const building = requireRecord(value, label);
+
+	requireString(building.id, `${label} id`);
+	requireKnownId(
+		building.typeId,
+		`${label} typeId`,
+		INDUSTRIAL_BUILDING_TYPE_ID_SET,
+		'industrial building type'
+	);
+	requireString(building.cityId, `${label} cityId`);
+	requireString(building.tileId, `${label} tileId`);
+	requireNumber(building.mapX, `${label} mapX`);
+	requireNumber(building.mapY, `${label} mapY`);
+	requireOneOf(building.status, `${label} status`, INDUSTRIAL_BUILDING_STATUSES);
+	requireArray(building.lastProduction, `${label} lastProduction`).forEach((movement, index) =>
+		validateSavedDailyMaterialMovement(movement, `${label} lastProduction[${index}]`)
+	);
+	requireNumber(building.producedTotal, `${label} producedTotal`);
+	requireNumber(building.importedInputTotal, `${label} importedInputTotal`);
+	requireNumber(building.blockedDays, `${label} blockedDays`);
+}
+
+function validateSavedDailyMaterialMovement(value: unknown, label: string): void {
+	const movement = requireRecord(value, label);
+
+	requireKnownId(movement.materialId, `${label} materialId`, MATERIAL_ID_SET, 'material');
+	requireNumber(movement.quantity, `${label} quantity`);
+	requireNumber(movement.value, `${label} value`);
+	requireOneOf(movement.source, `${label} source`, MATERIAL_MOVEMENT_SOURCES);
+}
+
+function validateSavedWarehouse(value: unknown, label: string): void {
+	const warehouse = requireRecord(value, label);
+	const materials = requireRecord(warehouse.materials, `${label} materials`);
+
+	requireNumber(warehouse.capacity, `${label} capacity`);
+	for (const [materialId, quantity] of Object.entries(materials)) {
+		if (!MATERIAL_ID_SET.has(materialId)) {
+			throw new SaveDataError(`${label} materials ${materialId} must be a known material`);
+		}
+
+		requireNumber(quantity, `${label} materials ${materialId}`);
+	}
+	requireNumber(warehouse.overflowUnits, `${label} overflowUnits`);
+	requireNumber(warehouse.overflowCost, `${label} overflowCost`);
 }
 
 function validateSavedStore(value: unknown, label: string): void {
@@ -535,6 +646,21 @@ function requireOneOf<T extends string>(value: unknown, label: string, allowed: 
 	}
 
 	return value as T;
+}
+
+function requireKnownId(
+	value: unknown,
+	label: string,
+	knownIds: ReadonlySet<string>,
+	kind: string
+): string {
+	const id = requireString(value, label);
+
+	if (!knownIds.has(id)) {
+		throw new SaveDataError(`${label} ${id} must be a known ${kind}`);
+	}
+
+	return id;
 }
 
 function requireBoolean(value: unknown, label: string): boolean {

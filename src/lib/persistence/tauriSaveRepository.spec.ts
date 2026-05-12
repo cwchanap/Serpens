@@ -47,6 +47,23 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 		},
 		cities: [{ id: 'harbor-city', name: 'Harbor City', width: 1, height: 1, tiles: [] }],
 		activeCityId: 'harbor-city',
+		industryCities: [
+			{
+				id: 'industry-city',
+				name: 'Industry City',
+				width: 1,
+				height: 1,
+				tiles: []
+			}
+		],
+		activeIndustryCityId: 'industry-city',
+		industrialBuildings: [],
+		warehouse: {
+			capacity: 0,
+			materials: {},
+			overflowUnits: 0,
+			overflowCost: 0
+		},
 		stores: [],
 		staff: [],
 		hiringCandidates: [],

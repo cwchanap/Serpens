@@ -1,6 +1,6 @@
 import type { GameState } from '$lib/game/types';
 
-export const SAVE_SCHEMA_VERSION = 3;
+export const SAVE_SCHEMA_VERSION = 4;
 export const AUTO_SAVE_SLOT_ID = 'autosave';
 
 export type SaveSlotKind = 'auto' | 'manual';

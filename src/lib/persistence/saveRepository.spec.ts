@@ -2,7 +2,14 @@ import { describe, expect, test } from 'vitest';
 import { initializeStoreProducts } from '$lib/game/stock';
 import { simulateDay } from '$lib/game/simulateDay';
 import { createNewGame } from '$lib/game/state';
-import type { DailyReport, DailyStoreReport, GameState, StoreProduct } from '$lib/game/types';
+import type {
+	DailyReport,
+	DailyStoreReport,
+	GameState,
+	IndustrialBuildingTypeId,
+	IndustryResourceId,
+	StoreProduct
+} from '$lib/game/types';
 import { SAVE_SCHEMA_VERSION, type SaveRecord, type SaveStoreSnapshot } from './saveTypes';
 import {
 	SaveDataError,
@@ -111,6 +118,23 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 			}
 		],
 		activeCityId: 'harbor-city',
+		industryCities: [
+			{
+				id: 'industry-city',
+				name: 'Industry City',
+				width: 1,
+				height: 1,
+				tiles: []
+			}
+		],
+		activeIndustryCityId: 'industry-city',
+		industrialBuildings: [],
+		warehouse: {
+			capacity: 0,
+			materials: {},
+			overflowUnits: 0,
+			overflowCost: 0
+		},
 		stores: [
 			{
 				id: 'store-1',
@@ -168,14 +192,17 @@ function createManualSaveRecord(overrides: SaveRecordOverrides = {}) {
 }
 
 function createSnapshotWithGame(game: Partial<GameState>) {
+	const record = createSaveRecord(createGame(), {
+		id: 'manual-test-run',
+		name: 'Test Run',
+		kind: 'manual',
+		updatedAt: new Date('2026-05-05T12:00:00.000Z')
+	});
+
 	return {
 		schemaVersion: SAVE_SCHEMA_VERSION,
 		autoSave: null,
-		manualSlots: [
-			createManualSaveRecord({
-				game
-			})
-		]
+		manualSlots: [{ ...record, game: game as GameState }]
 	};
 }
 
@@ -330,6 +357,95 @@ describe('save records', () => {
 
 		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
 		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow('Saved game staff must be an array');
+	});
+
+	test('rejects saved games missing industry state fields', () => {
+		expect.assertions(2);
+		const game = createGame();
+		const gameWithoutIndustry: Partial<GameState> = { ...game };
+		delete gameWithoutIndustry.industryCities;
+		const snapshot = createSnapshotWithGame(gameWithoutIndustry);
+
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
+			'Saved game industryCities must be an array'
+		);
+	});
+
+	test('rejects warehouse materials with unknown ids', () => {
+		expect.assertions(2);
+		const game = createGame({
+			warehouse: {
+				capacity: 20,
+				materials: { snacks: 5, 'bad-material': 1 } as Record<string, number>,
+				overflowUnits: 0,
+				overflowCost: 0
+			}
+		});
+		const snapshot = createSnapshotWithGame(game);
+
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
+			'Saved game warehouse materials bad-material must be a known material'
+		);
+	});
+
+	test('rejects industry city tiles with unknown resource ids', () => {
+		expect.assertions(2);
+		const game = createGame({
+			industryCities: [
+				{
+					id: 'industry-city',
+					name: 'Industry City',
+					width: 1,
+					height: 1,
+					tiles: [
+						{
+							id: 'industry-city-0-0',
+							cityId: 'industry-city',
+							x: 0,
+							y: 0,
+							terrain: 'farmland',
+							resource: 'bad-resource' as IndustryResourceId,
+							locked: false
+						}
+					]
+				}
+			]
+		});
+		const snapshot = createSnapshotWithGame(game);
+
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
+			'Saved game industryCities[0] tiles[0] resource bad-resource must be a known industry resource'
+		);
+	});
+
+	test('rejects industrial buildings with unknown type ids', () => {
+		expect.assertions(2);
+		const game = createGame({
+			industrialBuildings: [
+				{
+					id: 'building-1',
+					typeId: 'bad-building' as IndustrialBuildingTypeId,
+					cityId: 'industry-city',
+					tileId: 'industry-city-0-0',
+					mapX: 0,
+					mapY: 0,
+					status: 'idle',
+					lastProduction: [],
+					producedTotal: 0,
+					importedInputTotal: 0,
+					blockedDays: 0
+				}
+			]
+		});
+		const snapshot = createSnapshotWithGame(game);
+
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
+			'Saved game industrialBuildings[0] typeId bad-building must be a known industrial building type'
+		);
 	});
 
 	test('rejects saved games with invalid policy enum values', () => {

@@ -5,6 +5,7 @@ import {
 	getTilePlacementBlockReason,
 	isTileBuildable
 } from './city';
+import { generateIndustryCity } from './industry';
 import { clampScore } from './reports';
 import { createRng, normalizeSeed, randomInt } from './rng';
 import {
@@ -21,6 +22,7 @@ import type {
 	DecisionItem,
 	DecisionOption,
 	GameState,
+	GameIndustryState,
 	Scorecard,
 	Store
 } from './types';
@@ -47,7 +49,10 @@ interface ExpansionTileResult {
 	blockReason?: TilePlacementBlockReason | null;
 }
 
-export function createNewGame(archetypeId: ArchetypeId, seed = Date.now()): GameState {
+export function createNewGame(
+	archetypeId: ArchetypeId,
+	seed = Date.now()
+): GameState & GameIndustryState {
 	const archetype = getArchetype(archetypeId);
 	const normalizedSeed = normalizeSeed(seed);
 	const rng = createRng(normalizedSeed);
@@ -65,6 +70,13 @@ export function createNewGame(archetypeId: ArchetypeId, seed = Date.now()): Game
 		width: 20,
 		height: 20,
 		seed: normalizedSeed
+	});
+	const industryCity = generateIndustryCity({
+		id: 'industry-city',
+		name: 'Industry City',
+		width: 18,
+		height: 18,
+		seed: normalizedSeed + 101
 	});
 	const fallbackTile = city.tiles.find(isTileBuildable) ?? city.tiles[0]!;
 	const placedOpeningStore = {
@@ -100,6 +112,15 @@ export function createNewGame(archetypeId: ArchetypeId, seed = Date.now()): Game
 		},
 		cities: [city],
 		activeCityId: city.id,
+		industryCities: [industryCity],
+		activeIndustryCityId: industryCity.id,
+		industrialBuildings: [],
+		warehouse: {
+			capacity: 0,
+			materials: {},
+			overflowUnits: 0,
+			overflowCost: 0
+		},
 		stores: [placedOpeningStore],
 		staff,
 		hiringCandidates,

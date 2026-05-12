@@ -148,6 +148,43 @@ export interface IndustrialBuildingType {
 	warehouseCapacity: number;
 }
 
+export interface DailyMaterialMovement {
+	materialId: MaterialId;
+	quantity: number;
+	value: number;
+	source: 'local' | 'import' | 'warehouse' | 'overflow';
+}
+
+export interface WarehouseInventory {
+	capacity: number;
+	materials: Partial<Record<MaterialId, number>>;
+	overflowUnits: number;
+	overflowCost: number;
+}
+
+export type IndustrialBuildingStatus = 'idle' | 'produced' | 'imported-inputs' | 'blocked';
+
+export interface IndustrialBuilding {
+	id: string;
+	typeId: IndustrialBuildingTypeId;
+	cityId: string;
+	tileId: string;
+	mapX: number;
+	mapY: number;
+	status: IndustrialBuildingStatus;
+	lastProduction: DailyMaterialMovement[];
+	producedTotal: number;
+	importedInputTotal: number;
+	blockedDays: number;
+}
+
+export interface GameIndustryState {
+	industryCities: IndustryCity[];
+	activeIndustryCityId: string;
+	industrialBuildings: IndustrialBuilding[];
+	warehouse: WarehouseInventory;
+}
+
 export interface CompanyPolicy {
 	pricing: PricingPosture;
 	inventory: InventoryBuffer;
@@ -368,6 +405,10 @@ export interface GameState {
 	scorecard: Scorecard;
 	cities: City[];
 	activeCityId: string;
+	industryCities?: IndustryCity[];
+	activeIndustryCityId?: string;
+	industrialBuildings?: IndustrialBuilding[];
+	warehouse?: WarehouseInventory;
 	stores: Store[];
 	staff: StaffMember[];
 	hiringCandidates: HiringCandidate[];

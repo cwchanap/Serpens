@@ -25,6 +25,18 @@ describe('game state', () => {
 		expect(game.hiringCandidates).toHaveLength(5);
 	});
 
+	test('creates industry state for a new game', () => {
+		expect.assertions(6);
+		const game = createNewGame('convenience', 20260512);
+
+		expect(game.industryCities).toHaveLength(1);
+		expect(game.activeIndustryCityId).toBe(game.industryCities[0]?.id);
+		expect(game.industrialBuildings).toEqual([]);
+		expect(game.warehouse.capacity).toBe(0);
+		expect(game.warehouse.materials).toEqual({});
+		expect(game.warehouse.overflowUnits).toBe(0);
+	});
+
 	test('stores normalized seed values and advances rng state during setup', () => {
 		expect.assertions(5);
 		const zeroSeed = createNewGame('convenience', 0);
