@@ -554,6 +554,37 @@ describe('save records', () => {
 		expect(validated.game.reports[0]?.storeReports[0]?.productReports.length).toBeGreaterThan(0);
 	});
 
+	test('accepts boutique weekly import reports without material shop imports', () => {
+		expect.assertions(2);
+		const game = {
+			...createNewGame('boutique', 20260508),
+			day: 7
+		};
+		const store = {
+			...game.stores[0]!,
+			products: game.stores[0]!.products.map((product) =>
+				product.categoryId === 'apparel'
+					? {
+							...product,
+							stock: 0,
+							reorderThreshold: 5,
+							targetStock: 20
+						}
+					: product
+			)
+		};
+		const simulated = simulateDay({ ...game, stores: [store] });
+		const record = createSaveRecord(simulated, {
+			id: 'manual-boutique-imports',
+			name: 'Boutique Imports',
+			kind: 'manual',
+			updatedAt: new Date('2026-05-08T12:00:00.000Z')
+		});
+
+		expect(simulated.reports[0]?.productionReport.shopImports).toEqual([]);
+		expect(() => validateSaveRecord(record)).not.toThrow();
+	});
+
 	test('rejects saved games with invalid store product rows', () => {
 		expect.assertions(2);
 		const record = createSaveRecordWithProducts([

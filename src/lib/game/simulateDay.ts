@@ -14,6 +14,7 @@ import {
 import {
 	applyWeeklyImports,
 	calculateStockHealth,
+	getFinishedMaterialIdForCategory,
 	isImportDay,
 	simulateProductSalesForCity
 } from './stock';
@@ -24,7 +25,6 @@ import type {
 	DailyReport,
 	DailyStoreReport,
 	GameState,
-	MaterialId,
 	Scorecard,
 	StaffingRequirement,
 	Store
@@ -523,24 +523,36 @@ function mergeProductionRefillReport(
 	const reports = [...productReports.values()].flat();
 	const warehousePulls = reports
 		.filter((report) => report.warehouseUnits > 0)
-		.map(
-			(report): DailyMaterialMovement => ({
-				materialId: report.categoryId as MaterialId,
-				quantity: report.warehouseUnits,
-				value: report.warehouseValue,
-				source: 'warehouse'
-			})
-		);
+		.flatMap((report): DailyMaterialMovement[] => {
+			const materialId = getFinishedMaterialIdForCategory(report.categoryId);
+
+			return materialId
+				? [
+						{
+							materialId,
+							quantity: report.warehouseUnits,
+							value: report.warehouseValue,
+							source: 'warehouse'
+						}
+					]
+				: [];
+		});
 	const shopImports = reports
 		.filter((report) => report.importedUnits > 0)
-		.map(
-			(report): DailyMaterialMovement => ({
-				materialId: report.categoryId as MaterialId,
-				quantity: report.importedUnits,
-				value: report.importSpend,
-				source: 'import'
-			})
-		);
+		.flatMap((report): DailyMaterialMovement[] => {
+			const materialId = getFinishedMaterialIdForCategory(report.categoryId);
+
+			return materialId
+				? [
+						{
+							materialId,
+							quantity: report.importedUnits,
+							value: report.importSpend,
+							source: 'import'
+						}
+					]
+				: [];
+		});
 
 	return {
 		...productionReport,

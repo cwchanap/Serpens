@@ -355,4 +355,43 @@ describe('stock rules', () => {
 		expect(report.importSpend).toBe(27);
 		expect(result.importSpend).toBe(27);
 	});
+
+	test('weekly imports non-material categories without writing warehouse keys', () => {
+		expect.assertions(7);
+		const game = {
+			...createNewGame('boutique', 20260508),
+			warehouse: {
+				capacity: 200,
+				materials: { snacks: 12 },
+				overflowUnits: 0,
+				overflowCost: 0
+			}
+		};
+		const store = {
+			...game.stores[0]!,
+			products: [
+				{
+					categoryId: 'apparel',
+					stock: 4,
+					reorderThreshold: 10,
+					targetStock: 25,
+					sellingPrice: 38
+				}
+			]
+		};
+		const result = applyWeeklyImports({
+			game: { ...game, stores: [store] },
+			storeReports: new Map()
+		});
+		const product = result.stores[0]!.products[0]!;
+		const report = result.productReports.get(store.id)![0]!;
+
+		expect(product.stock).toBe(25);
+		expect(result.warehouse.materials).toEqual({ snacks: 12 });
+		expect('apparel' in result.warehouse.materials).toBe(false);
+		expect(report.warehouseUnits).toBe(0);
+		expect(report.importedUnits).toBe(21);
+		expect(report.importSpend).toBe(378);
+		expect(result.importSpend).toBe(378);
+	});
 });

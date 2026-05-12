@@ -131,6 +131,12 @@ export function isImportDay(day: number): boolean {
 	return day > 0 && day % IMPORT_INTERVAL_DAYS === 0;
 }
 
+export function getFinishedMaterialIdForCategory(categoryId: string): MaterialId | null {
+	const material = MATERIALS[categoryId as MaterialId];
+
+	return material?.kind === 'finished' ? (categoryId as MaterialId) : null;
+}
+
 export function buildCityDemandPools(
 	game: Pick<GameState, 'stores' | 'policy'>,
 	city: City,
@@ -272,14 +278,16 @@ export function applyWeeklyImports(input: {
 				return product;
 			}
 
-			const materialId = product.categoryId as MaterialId;
-			const removal = removeWarehouseMaterial(warehouse, materialId, neededUnits);
-			const importedUnits = removal.shortage;
+			const materialId = getFinishedMaterialIdForCategory(product.categoryId);
+			const removal = materialId
+				? removeWarehouseMaterial(warehouse, materialId, neededUnits)
+				: null;
+			const importedUnits = removal?.shortage ?? neededUnits;
 			const spend = importedUnits * category.importCost;
-			const warehouseUnits = removal.quantityRemoved;
+			const warehouseUnits = removal?.quantityRemoved ?? 0;
 			const warehouseValue =
-				warehouseUnits * (MATERIALS[materialId]?.localValue ?? category.importCost);
-			warehouse = removal.warehouse;
+				warehouseUnits * (materialId ? MATERIALS[materialId].localValue : category.importCost);
+			warehouse = removal?.warehouse ?? warehouse;
 			importSpend += spend;
 			mergeImportReport(productReports, store.id, category, {
 				endingStock: product.targetStock,
