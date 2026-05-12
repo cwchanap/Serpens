@@ -77,6 +77,26 @@ export type IndustrialBuildingTypeId =
 	| 'drink-bottling-plant'
 	| 'household-goods-factory'
 	| 'warehouse';
+export type ProductionRecipeId =
+	| 'grain-harvest'
+	| 'salt-mining'
+	| 'oilseed-harvest'
+	| 'water-pumping'
+	| 'fruit-harvest'
+	| 'sugar-harvest'
+	| 'pulpwood-harvest'
+	| 'chemical-feedstock-extraction'
+	| 'flour-milling'
+	| 'oil-pressing'
+	| 'water-filtration'
+	| 'syrup-production'
+	| 'pulp-milling'
+	| 'plastic-production'
+	| 'packaging-production'
+	| 'cleaning-base-production'
+	| 'snack-production'
+	| 'drink-bottling'
+	| 'household-goods-production';
 
 export interface MaterialDefinition {
 	id: MaterialId;
@@ -110,7 +130,7 @@ export interface IndustryCity {
 }
 
 export interface ProductionRecipe {
-	id: string;
+	id: ProductionRecipeId;
 	inputs: MaterialQuantity[];
 	outputs: MaterialQuantity[];
 	operatingCost: number;
@@ -124,7 +144,7 @@ export interface IndustrialBuildingType {
 	dailyOperatingCost: number;
 	requiredResource: IndustryResourceId | null;
 	requiresIndustrialTile: boolean;
-	recipeId: string | null;
+	recipeId: ProductionRecipeId | null;
 	warehouseCapacity: number;
 }
 

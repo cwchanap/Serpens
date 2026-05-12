@@ -8,7 +8,8 @@ import type {
 	IndustryTile,
 	MaterialDefinition,
 	MaterialId,
-	ProductionRecipe
+	ProductionRecipe,
+	ProductionRecipeId
 } from './types';
 
 interface GenerateIndustryCityInput {
@@ -171,7 +172,7 @@ export const MATERIALS: Readonly<Record<MaterialId, MaterialDefinition>> = {
 	}
 };
 
-export const PRODUCTION_RECIPES: Readonly<Record<string, ProductionRecipe>> = {
+export const PRODUCTION_RECIPES: Readonly<Record<ProductionRecipeId, ProductionRecipe>> = {
 	'grain-harvest': {
 		id: 'grain-harvest',
 		inputs: [],

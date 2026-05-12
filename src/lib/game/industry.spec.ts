@@ -8,6 +8,21 @@ import {
 	getIndustryTileById,
 	getIndustryTilesByResource
 } from './industry';
+import type { IndustrialBuildingType } from './types';
+
+function acceptIndustrialBuildingType(_building: IndustrialBuildingType): void {}
+
+acceptIndustrialBuildingType({
+	id: 'warehouse',
+	name: 'Invalid Recipe Reference Probe',
+	buildCost: 0,
+	dailyOperatingCost: 0,
+	requiredResource: null,
+	requiresIndustrialTile: true,
+	// @ts-expect-error recipeId must reference a known production recipe id.
+	recipeId: 'missing-recipe',
+	warehouseCapacity: 0
+});
 
 describe('industry domain catalog', () => {
 	test('defines every convenience finished material and required building', () => {
@@ -28,6 +43,16 @@ describe('industry domain catalog', () => {
 		]);
 
 		expect(recipeMaterialIds.every((materialId) => materialIds.has(materialId))).toBe(true);
+	});
+
+	test('connects industrial buildings to known recipes', () => {
+		expect.assertions(1);
+		const recipeIds = new Set(Object.keys(PRODUCTION_RECIPES));
+		const buildingRecipeIds = Object.values(INDUSTRIAL_BUILDING_TYPES)
+			.map((building) => building.recipeId)
+			.filter((recipeId) => recipeId !== null);
+
+		expect(buildingRecipeIds.every((recipeId) => recipeIds.has(recipeId))).toBe(true);
 	});
 });
 
