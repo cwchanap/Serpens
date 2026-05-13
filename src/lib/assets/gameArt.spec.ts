@@ -5,6 +5,15 @@ import { describe, expect, it } from 'vitest';
 import { ARCHETYPES } from '$lib/game/archetypes';
 import {
 	ARCHETYPE_STORE_ART,
+	INDUSTRIAL_BUILDING_ART,
+	INDUSTRIAL_BUILDING_ART_LIST,
+	INDUSTRY_ART_LIST,
+	INDUSTRY_MATERIAL_ART,
+	INDUSTRY_MATERIAL_ART_LIST,
+	INDUSTRY_RESOURCE_ART,
+	INDUSTRY_RESOURCE_ART_LIST,
+	INDUSTRY_TERRAIN_ART,
+	INDUSTRY_TERRAIN_ART_LIST,
 	PRODUCT_ART,
 	PRODUCT_ART_LIST,
 	SHOP_STOREFRONT_ALT,
@@ -13,6 +22,10 @@ import {
 	STORE_ART_LIST,
 	TERRAIN_ART,
 	TERRAIN_ART_LIST,
+	getIndustrialBuildingArt,
+	getIndustryMaterialArt,
+	getIndustryResourceArt,
+	getIndustryTerrainArt,
 	getProductArt,
 	getStoreArt,
 	getTerrainArt
@@ -25,6 +38,67 @@ const productCategoryIds = [
 		ARCHETYPES.flatMap((archetype) => archetype.startingCategories.map((category) => category.id))
 	)
 ].sort();
+const industryTerrainPaths = {
+	farmland: '/assets/game/industry/terrain/farmland-tile.png',
+	forest: '/assets/game/industry/terrain/forest-tile.png',
+	water: '/assets/game/industry/terrain/water-tile.png',
+	deposit: '/assets/game/industry/terrain/deposit-tile.png',
+	industrial: '/assets/game/industry/terrain/industrial-tile.png',
+	blocked: '/assets/game/industry/terrain/blocked-tile.png'
+} as const;
+const industryResourcePaths = {
+	'grain-field': '/assets/game/industry/resources/grain-field.png',
+	'salt-deposit': '/assets/game/industry/resources/salt-deposit.png',
+	'oilseed-field': '/assets/game/industry/resources/oilseed-field.png',
+	'water-source': '/assets/game/industry/resources/water-source.png',
+	'fruit-orchard': '/assets/game/industry/resources/fruit-orchard.png',
+	'sugar-field': '/assets/game/industry/resources/sugar-field.png',
+	'pulpwood-forest': '/assets/game/industry/resources/pulpwood-forest.png',
+	'chemical-feedstock': '/assets/game/industry/resources/chemical-feedstock.png'
+} as const;
+const industryMaterialPaths = {
+	grain: '/assets/game/industry/materials/grain.png',
+	salt: '/assets/game/industry/materials/salt.png',
+	oilseeds: '/assets/game/industry/materials/oilseeds.png',
+	water: '/assets/game/industry/materials/water.png',
+	fruit: '/assets/game/industry/materials/fruit.png',
+	sugar: '/assets/game/industry/materials/sugar.png',
+	pulpwood: '/assets/game/industry/materials/pulpwood.png',
+	'chemical-feedstock': '/assets/game/industry/materials/chemical-feedstock.png',
+	flour: '/assets/game/industry/materials/flour.png',
+	'cooking-oil': '/assets/game/industry/materials/cooking-oil.png',
+	'filtered-water': '/assets/game/industry/materials/filtered-water.png',
+	syrup: '/assets/game/industry/materials/syrup.png',
+	'paper-pulp': '/assets/game/industry/materials/paper-pulp.png',
+	plastic: '/assets/game/industry/materials/plastic.png',
+	packaging: '/assets/game/industry/materials/packaging.png',
+	'cleaning-base': '/assets/game/industry/materials/cleaning-base.png',
+	snacks: '/assets/game/industry/materials/snacks.png',
+	drinks: '/assets/game/industry/materials/drinks.png',
+	essentials: '/assets/game/industry/materials/essentials.png'
+} as const;
+const industrialBuildingPaths = {
+	'grain-farm': '/assets/game/industry/buildings/grain-farm.png',
+	'salt-mine': '/assets/game/industry/buildings/salt-mine.png',
+	'oilseed-farm': '/assets/game/industry/buildings/oilseed-farm.png',
+	'water-pump': '/assets/game/industry/buildings/water-pump.png',
+	'fruit-farm': '/assets/game/industry/buildings/fruit-farm.png',
+	'sugar-farm': '/assets/game/industry/buildings/sugar-farm.png',
+	'pulpwood-grove': '/assets/game/industry/buildings/pulpwood-grove.png',
+	'chemical-feedstock-well': '/assets/game/industry/buildings/chemical-feedstock-well.png',
+	'flour-mill': '/assets/game/industry/buildings/flour-mill.png',
+	'oil-press': '/assets/game/industry/buildings/oil-press.png',
+	'water-filtration-plant': '/assets/game/industry/buildings/water-filtration-plant.png',
+	'syrup-plant': '/assets/game/industry/buildings/syrup-plant.png',
+	'pulp-mill': '/assets/game/industry/buildings/pulp-mill.png',
+	'plastic-plant': '/assets/game/industry/buildings/plastic-plant.png',
+	'packaging-plant': '/assets/game/industry/buildings/packaging-plant.png',
+	'chemical-plant': '/assets/game/industry/buildings/chemical-plant.png',
+	'snack-factory': '/assets/game/industry/buildings/snack-factory.png',
+	'drink-bottling-plant': '/assets/game/industry/buildings/drink-bottling-plant.png',
+	'household-goods-factory': '/assets/game/industry/buildings/household-goods-factory.png',
+	warehouse: '/assets/game/industry/buildings/warehouse.png'
+} as const;
 const require = createRequire(import.meta.url);
 const { PNG } = require('pngjs') as {
 	PNG: {
@@ -178,5 +252,121 @@ describe('game art asset constants', () => {
 				).toBeGreaterThan(0);
 			}
 		}
+	});
+
+	it('defines separate industry terrain art without changing retail terrain keys', () => {
+		const terrainIds = Object.keys(industryTerrainPaths) as Array<
+			keyof typeof industryTerrainPaths
+		>;
+
+		expect(Object.keys(INDUSTRY_TERRAIN_ART).sort()).toEqual([...terrainIds].sort());
+		expect(INDUSTRY_TERRAIN_ART_LIST).toEqual(Object.values(industryTerrainPaths));
+		expect(Object.keys(TERRAIN_ART).sort()).toEqual([
+			'commercial',
+			'green',
+			'industrial',
+			'residential',
+			'river',
+			'road',
+			'roadIntersection',
+			'transit',
+			'tree'
+		]);
+
+		for (const terrainId of terrainIds) {
+			const path = getIndustryTerrainArt(terrainId);
+			const { width, height, opaquePixels, transparentPixels } = imageStats(path);
+
+			expect(path).toBe(industryTerrainPaths[terrainId]);
+			expect(existsSync(staticPath(path))).toBe(true);
+			expect(width).toBe(64);
+			expect(height).toBe(64);
+			expect(opaquePixels, `${path} should preserve visible terrain pixels`).toBeGreaterThan(0);
+			expect(transparentPixels, `${path} should be an opaque terrain tile`).toBe(0);
+		}
+	});
+
+	it('defines transparent industry resource art for every resource type', () => {
+		const resourceIds = Object.keys(industryResourcePaths) as Array<
+			keyof typeof industryResourcePaths
+		>;
+
+		expect(Object.keys(INDUSTRY_RESOURCE_ART).sort()).toEqual([...resourceIds].sort());
+		expect(INDUSTRY_RESOURCE_ART_LIST).toEqual(Object.values(industryResourcePaths));
+
+		for (const resourceId of resourceIds) {
+			const path = getIndustryResourceArt(resourceId);
+			const { width, height, opaquePixels, transparentPixels } = imageStats(path);
+
+			expect(path).toBe(industryResourcePaths[resourceId]);
+			expect(existsSync(staticPath(path))).toBe(true);
+			expect(width).toBe(96);
+			expect(height).toBe(96);
+			expect(
+				transparentPixels,
+				`${path} should include transparent background pixels`
+			).toBeGreaterThan(0);
+			expect(opaquePixels, `${path} should preserve visible resource pixels`).toBeGreaterThan(0);
+		}
+	});
+
+	it('defines transparent industry material art for every material type', () => {
+		const materialIds = Object.keys(industryMaterialPaths) as Array<
+			keyof typeof industryMaterialPaths
+		>;
+
+		expect(Object.keys(INDUSTRY_MATERIAL_ART).sort()).toEqual([...materialIds].sort());
+		expect(INDUSTRY_MATERIAL_ART_LIST).toEqual(Object.values(industryMaterialPaths));
+
+		for (const materialId of materialIds) {
+			const path = getIndustryMaterialArt(materialId);
+			const { width, height, opaquePixels, transparentPixels } = imageStats(path);
+
+			expect(path).toBe(industryMaterialPaths[materialId]);
+			expect(existsSync(staticPath(path))).toBe(true);
+			expect(width).toBe(96);
+			expect(height).toBe(96);
+			expect(
+				transparentPixels,
+				`${path} should include transparent background pixels`
+			).toBeGreaterThan(0);
+			expect(opaquePixels, `${path} should preserve visible material pixels`).toBeGreaterThan(0);
+		}
+	});
+
+	it('defines transparent industry building art for every building type', () => {
+		const buildingTypeIds = Object.keys(industrialBuildingPaths) as Array<
+			keyof typeof industrialBuildingPaths
+		>;
+
+		expect(Object.keys(INDUSTRIAL_BUILDING_ART).sort()).toEqual([...buildingTypeIds].sort());
+		expect(INDUSTRIAL_BUILDING_ART_LIST).toEqual(Object.values(industrialBuildingPaths));
+
+		for (const buildingTypeId of buildingTypeIds) {
+			const path = getIndustrialBuildingArt(buildingTypeId);
+			const { width, height, opaquePixels, transparentPixels } = imageStats(path);
+
+			expect(path).toBe(industrialBuildingPaths[buildingTypeId]);
+			expect(existsSync(staticPath(path))).toBe(true);
+			expect(width).toBe(96);
+			expect(height).toBe(96);
+			expect(
+				transparentPixels,
+				`${path} should include transparent background pixels`
+			).toBeGreaterThan(0);
+			expect(opaquePixels, `${path} should preserve visible building pixels`).toBeGreaterThan(0);
+		}
+	});
+
+	it('exports a combined industry art path list', () => {
+		const expectedPaths = [
+			...Object.values(industryTerrainPaths),
+			...Object.values(industryResourcePaths),
+			...Object.values(industryMaterialPaths),
+			...Object.values(industrialBuildingPaths)
+		];
+
+		expect(INDUSTRY_ART_LIST).toEqual(expectedPaths);
+		expect(new Set(INDUSTRY_ART_LIST).size).toBe(expectedPaths.length);
 	});
 });

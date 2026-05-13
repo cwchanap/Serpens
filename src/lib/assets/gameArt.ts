@@ -1,4 +1,11 @@
-import type { ArchetypeId, TerrainId } from '$lib/game/types';
+import type {
+	ArchetypeId,
+	IndustrialBuildingTypeId,
+	IndustryResourceId,
+	IndustryTerrainId,
+	MaterialId,
+	TerrainId
+} from '$lib/game/types';
 
 export interface StoreArt {
 	archetypeId: ArchetypeId;
@@ -195,6 +202,91 @@ export const TERRAIN_ART: Readonly<Record<TerrainArtId, TerrainArt>> = Object.fr
 
 export const TERRAIN_ART_LIST: readonly TerrainArt[] = Object.freeze(Object.values(TERRAIN_ART));
 
+export const INDUSTRY_TERRAIN_ART: Readonly<Record<IndustryTerrainId, string>> = Object.freeze({
+	farmland: '/assets/game/industry/terrain/farmland-tile.png',
+	forest: '/assets/game/industry/terrain/forest-tile.png',
+	water: '/assets/game/industry/terrain/water-tile.png',
+	deposit: '/assets/game/industry/terrain/deposit-tile.png',
+	industrial: '/assets/game/industry/terrain/industrial-tile.png',
+	blocked: '/assets/game/industry/terrain/blocked-tile.png'
+});
+
+export const INDUSTRY_RESOURCE_ART: Readonly<Record<IndustryResourceId, string>> = Object.freeze({
+	'grain-field': '/assets/game/industry/resources/grain-field.png',
+	'salt-deposit': '/assets/game/industry/resources/salt-deposit.png',
+	'oilseed-field': '/assets/game/industry/resources/oilseed-field.png',
+	'water-source': '/assets/game/industry/resources/water-source.png',
+	'fruit-orchard': '/assets/game/industry/resources/fruit-orchard.png',
+	'sugar-field': '/assets/game/industry/resources/sugar-field.png',
+	'pulpwood-forest': '/assets/game/industry/resources/pulpwood-forest.png',
+	'chemical-feedstock': '/assets/game/industry/resources/chemical-feedstock.png'
+});
+
+export const INDUSTRY_MATERIAL_ART: Readonly<Record<MaterialId, string>> = Object.freeze({
+	grain: '/assets/game/industry/materials/grain.png',
+	salt: '/assets/game/industry/materials/salt.png',
+	oilseeds: '/assets/game/industry/materials/oilseeds.png',
+	water: '/assets/game/industry/materials/water.png',
+	fruit: '/assets/game/industry/materials/fruit.png',
+	sugar: '/assets/game/industry/materials/sugar.png',
+	pulpwood: '/assets/game/industry/materials/pulpwood.png',
+	'chemical-feedstock': '/assets/game/industry/materials/chemical-feedstock.png',
+	flour: '/assets/game/industry/materials/flour.png',
+	'cooking-oil': '/assets/game/industry/materials/cooking-oil.png',
+	'filtered-water': '/assets/game/industry/materials/filtered-water.png',
+	syrup: '/assets/game/industry/materials/syrup.png',
+	'paper-pulp': '/assets/game/industry/materials/paper-pulp.png',
+	plastic: '/assets/game/industry/materials/plastic.png',
+	packaging: '/assets/game/industry/materials/packaging.png',
+	'cleaning-base': '/assets/game/industry/materials/cleaning-base.png',
+	snacks: '/assets/game/industry/materials/snacks.png',
+	drinks: '/assets/game/industry/materials/drinks.png',
+	essentials: '/assets/game/industry/materials/essentials.png'
+});
+
+export const INDUSTRIAL_BUILDING_ART: Readonly<Record<IndustrialBuildingTypeId, string>> =
+	Object.freeze({
+		'grain-farm': '/assets/game/industry/buildings/grain-farm.png',
+		'salt-mine': '/assets/game/industry/buildings/salt-mine.png',
+		'oilseed-farm': '/assets/game/industry/buildings/oilseed-farm.png',
+		'water-pump': '/assets/game/industry/buildings/water-pump.png',
+		'fruit-farm': '/assets/game/industry/buildings/fruit-farm.png',
+		'sugar-farm': '/assets/game/industry/buildings/sugar-farm.png',
+		'pulpwood-grove': '/assets/game/industry/buildings/pulpwood-grove.png',
+		'chemical-feedstock-well': '/assets/game/industry/buildings/chemical-feedstock-well.png',
+		'flour-mill': '/assets/game/industry/buildings/flour-mill.png',
+		'oil-press': '/assets/game/industry/buildings/oil-press.png',
+		'water-filtration-plant': '/assets/game/industry/buildings/water-filtration-plant.png',
+		'syrup-plant': '/assets/game/industry/buildings/syrup-plant.png',
+		'pulp-mill': '/assets/game/industry/buildings/pulp-mill.png',
+		'plastic-plant': '/assets/game/industry/buildings/plastic-plant.png',
+		'packaging-plant': '/assets/game/industry/buildings/packaging-plant.png',
+		'chemical-plant': '/assets/game/industry/buildings/chemical-plant.png',
+		'snack-factory': '/assets/game/industry/buildings/snack-factory.png',
+		'drink-bottling-plant': '/assets/game/industry/buildings/drink-bottling-plant.png',
+		'household-goods-factory': '/assets/game/industry/buildings/household-goods-factory.png',
+		warehouse: '/assets/game/industry/buildings/warehouse.png'
+	});
+
+export const INDUSTRY_TERRAIN_ART_LIST: readonly string[] = Object.freeze(
+	Object.values(INDUSTRY_TERRAIN_ART)
+);
+export const INDUSTRY_RESOURCE_ART_LIST: readonly string[] = Object.freeze(
+	Object.values(INDUSTRY_RESOURCE_ART)
+);
+export const INDUSTRY_MATERIAL_ART_LIST: readonly string[] = Object.freeze(
+	Object.values(INDUSTRY_MATERIAL_ART)
+);
+export const INDUSTRIAL_BUILDING_ART_LIST: readonly string[] = Object.freeze(
+	Object.values(INDUSTRIAL_BUILDING_ART)
+);
+export const INDUSTRY_ART_LIST: readonly string[] = Object.freeze([
+	...INDUSTRY_TERRAIN_ART_LIST,
+	...INDUSTRY_RESOURCE_ART_LIST,
+	...INDUSTRY_MATERIAL_ART_LIST,
+	...INDUSTRIAL_BUILDING_ART_LIST
+]);
+
 export function getStoreArt(archetypeId: ArchetypeId): StoreArt {
 	return ARCHETYPE_STORE_ART[archetypeId];
 }
@@ -211,4 +303,20 @@ export function getProductArt(categoryId: string): ProductArt {
 
 export function getTerrainArt(id: TerrainArtId): TerrainArt {
 	return TERRAIN_ART[id];
+}
+
+export function getIndustryTerrainArt(terrain: IndustryTerrainId): string {
+	return INDUSTRY_TERRAIN_ART[terrain];
+}
+
+export function getIndustryResourceArt(resource: IndustryResourceId): string {
+	return INDUSTRY_RESOURCE_ART[resource];
+}
+
+export function getIndustryMaterialArt(material: MaterialId): string {
+	return INDUSTRY_MATERIAL_ART[material];
+}
+
+export function getIndustrialBuildingArt(buildingType: IndustrialBuildingTypeId): string {
+	return INDUSTRIAL_BUILDING_ART[buildingType];
 }
