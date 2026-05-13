@@ -83,6 +83,8 @@ async function expectIndustryMapReady(page: Page): Promise<Locator> {
 	await expect(canvas).toBeVisible();
 	await expect(canvas).toHaveAttribute('data-industry-resource-count', /\d+/);
 	await expect(canvas).toHaveAttribute('data-industry-building-count', /\d+/);
+	await expect(canvas).toHaveAttribute('data-industry-terrain-asset-mode', 'image');
+	await expect(canvas).toHaveAttribute('data-industry-terrain-sprite-count', '324');
 	await expectMapCameraReady(canvas);
 
 	return canvas;
