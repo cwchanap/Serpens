@@ -226,6 +226,7 @@ async function buildIndustryBuildingAt(
 	await industryInspector.getByRole('button', { name: input.buildingName }).click();
 	const confirmDialog = page.getByRole('dialog', { name: /confirm industrial build/i });
 	await expect(confirmDialog).toBeVisible();
+	await expect(confirmDialog.getByRole('heading', { name: input.buildingName })).toBeVisible();
 	await expect(confirmDialog.getByRole('button', { name: /confirm build/i })).toBeVisible();
 	await confirmDialog.getByRole('button', { name: /confirm build/i }).click();
 	await expect(industryInspector).toHaveCount(0);
@@ -509,6 +510,7 @@ test('player can switch to the industry city map and back to retail', async ({ p
 	await industryInspector.getByRole('button', { name: /build water pump/i }).click();
 	const confirmDialog = page.getByRole('dialog', { name: /confirm industrial build/i });
 	await expect(confirmDialog).toBeVisible();
+	await expect(confirmDialog.getByRole('heading', { name: /build water pump/i })).toBeVisible();
 	await expect(confirmDialog.getByRole('button', { name: /confirm build/i })).toBeVisible();
 	await confirmDialog.getByRole('button', { name: /confirm build/i }).click();
 	await expect(industryInspector).toHaveCount(0);
