@@ -61,6 +61,11 @@ const STAGE_OUTLINE_COLORS: Record<BuildingStage, number> = {
 	warehouse: 0x4c1d95
 };
 
+interface BuildingSpriteEntry {
+	id: string;
+	sprite: Phaser.GameObjects.Image;
+}
+
 function industryTextureKey(path: string): string {
 	return `industry:${path}`;
 }
@@ -83,6 +88,8 @@ export class IndustryMapScene extends Phaser.Scene {
 	private terrainSprites: Phaser.GameObjects.Image[] = [];
 	private resourceSprites: Phaser.GameObjects.Image[] = [];
 	private buildingSprites: Phaser.GameObjects.Image[] = [];
+	private buildingSpriteEntries: BuildingSpriteEntry[] = [];
+	private buildingSpriteById = new Map<string, Phaser.GameObjects.Image>();
 	private hoverTileId: string | null = null;
 	private isDragging = false;
 	private hasDragged = false;
@@ -106,7 +113,7 @@ export class IndustryMapScene extends Phaser.Scene {
 
 	create(): void {
 		this.mapGraphics = this.add.graphics().setDepth(TERRAIN_DEPTH + 1);
-		this.markerGraphics = this.add.graphics().setDepth(MARKER_DEPTH);
+		this.markerGraphics = this.add.graphics().setDepth(MARKER_DEPTH + 1);
 		this.outlineGraphics = this.add.graphics().setDepth(OUTLINE_DEPTH);
 		this.cameras.main.setZoom(1);
 		this.scale.on(Phaser.Scale.Events.RESIZE, this.handleResize, this);
@@ -118,7 +125,8 @@ export class IndustryMapScene extends Phaser.Scene {
 	}
 
 	update(time: number): void {
-		this.drawMarkers(time);
+		this.updateBuildingSprites(time);
+		this.drawMarkerGraphics(time);
 		this.updateCanvasCameraAttributes();
 	}
 
@@ -152,7 +160,8 @@ export class IndustryMapScene extends Phaser.Scene {
 			this.createTileZone(tile);
 		}
 
-		this.drawMarkers(0);
+		this.rebuildMarkerSprites();
+		this.drawMarkerGraphics(0);
 		this.drawInteractionOutlines();
 	}
 
@@ -239,12 +248,7 @@ export class IndustryMapScene extends Phaser.Scene {
 		this.tileZones.push(zone);
 	}
 
-	private drawMarkers(time: number): void {
-		if (!this.markerGraphics) {
-			return;
-		}
-
-		this.markerGraphics.clear();
+	private rebuildMarkerSprites(): void {
 		this.destroyResourceSprites();
 		this.destroyBuildingSprites();
 
@@ -255,18 +259,70 @@ export class IndustryMapScene extends Phaser.Scene {
 
 		for (const tile of this.snapshot.tiles) {
 			if (tile.resource) {
-				this.drawResourceMarker(tile);
+				this.createResourceSprite(tile);
+			}
+		}
+
+		for (const building of this.snapshot.buildings) {
+			this.createBuildingSprite(building);
+		}
+
+		this.updateBuildingSprites(0);
+		this.updateCanvasIndustryAttributes();
+	}
+
+	private drawMarkerGraphics(time: number): void {
+		if (!this.markerGraphics) {
+			return;
+		}
+
+		this.markerGraphics.clear();
+
+		if (!this.snapshot) {
+			this.updateCanvasIndustryAttributes();
+			return;
+		}
+
+		for (const tile of this.snapshot.tiles) {
+			if (tile.resource && !this.hasResourceTexture(tile.resource)) {
+				this.drawResourceMarkerFallback(tile);
 			}
 		}
 
 		this.snapshot.buildings.forEach((building, index) => {
-			this.drawBuildingMarker(building, index, time);
+			if (this.buildingSpriteById.has(building.id)) {
+				this.drawBuildingStatusRing(building, index, time);
+			} else {
+				this.drawBuildingMarkerFallback(building, index, time);
+			}
 		});
 
 		this.updateCanvasIndustryAttributes();
 	}
 
-	private drawResourceMarker(tile: IndustryMapTileRender): void {
+	private createResourceSprite(tile: IndustryMapTileRender): void {
+		if (!tile.resource) {
+			return;
+		}
+
+		const x = tile.x * TILE_SIZE + TILE_SIZE * 0.72;
+		const y = tile.y * TILE_SIZE + TILE_SIZE * 0.28;
+		const resourcePath = INDUSTRY_RESOURCE_ART[tile.resource];
+		const resourceTextureKey = industryTextureKey(resourcePath);
+
+		if (!this.textures.exists(resourceTextureKey)) {
+			return;
+		}
+
+		const resourceSprite = this.add
+			.image(x, y, resourceTextureKey)
+			.setDisplaySize(22, 22)
+			.setDepth(MARKER_DEPTH);
+
+		this.resourceSprites.push(resourceSprite);
+	}
+
+	private drawResourceMarkerFallback(tile: IndustryMapTileRender): void {
 		if (!tile.resource || !this.markerGraphics) {
 			return;
 		}
@@ -274,18 +330,6 @@ export class IndustryMapScene extends Phaser.Scene {
 		const x = tile.x * TILE_SIZE + TILE_SIZE * 0.72;
 		const y = tile.y * TILE_SIZE + TILE_SIZE * 0.28;
 		const color = RESOURCE_COLORS[tile.resource];
-		const resourcePath = INDUSTRY_RESOURCE_ART[tile.resource];
-		const resourceTextureKey = industryTextureKey(resourcePath);
-
-		if (this.textures.exists(resourceTextureKey)) {
-			const resourceSprite = this.add
-				.image(x, y, resourceTextureKey)
-				.setDisplaySize(22, 22)
-				.setDepth(MARKER_DEPTH);
-
-			this.resourceSprites.push(resourceSprite);
-			return;
-		}
 
 		this.markerGraphics.fillStyle(0x0f172a, 0.3);
 		this.drawResourceShape(tile.resource, x + 1, y + 1, 5, 0x0f172a, 0x0f172a, 0.15);
@@ -341,7 +385,58 @@ export class IndustryMapScene extends Phaser.Scene {
 		}
 	}
 
-	private drawBuildingMarker(
+	private createBuildingSprite(building: IndustryMapBuildingRender): void {
+		const buildingPath = INDUSTRIAL_BUILDING_ART[building.typeId];
+		const buildingTextureKey = industryTextureKey(buildingPath);
+
+		if (!this.textures.exists(buildingTextureKey)) {
+			return;
+		}
+
+		const x = building.x * TILE_SIZE + TILE_SIZE / 2;
+		const y = building.y * TILE_SIZE + TILE_SIZE / 2;
+		const buildingSprite = this.add
+			.image(x, y, buildingTextureKey)
+			.setDisplaySize(28, 28)
+			.setDepth(MARKER_DEPTH);
+
+		this.applyBuildingSpriteStatus(buildingSprite, building);
+		this.buildingSprites.push(buildingSprite);
+		this.buildingSpriteEntries.push({ id: building.id, sprite: buildingSprite });
+		this.buildingSpriteById.set(building.id, buildingSprite);
+	}
+
+	private updateBuildingSprites(time: number): void {
+		if (!this.snapshot) {
+			return;
+		}
+
+		this.snapshot.buildings.forEach((building, index) => {
+			const sprite = this.buildingSpriteById.get(building.id);
+
+			if (!sprite) {
+				return;
+			}
+
+			const position = this.getBuildingMarkerPosition(building, index, time);
+			sprite.setPosition(position.x, position.y);
+			this.applyBuildingSpriteStatus(sprite, building);
+		});
+	}
+
+	private applyBuildingSpriteStatus(
+		sprite: Phaser.GameObjects.Image,
+		building: IndustryMapBuildingRender
+	): void {
+		sprite.clearTint();
+		sprite.setAlpha(1);
+
+		if (building.status === 'idle') {
+			sprite.setAlpha(0.68).setTint(0x94a3b8);
+		}
+	}
+
+	private drawBuildingStatusRing(
 		building: IndustryMapBuildingRender,
 		index: number,
 		time: number
@@ -351,34 +446,56 @@ export class IndustryMapScene extends Phaser.Scene {
 		}
 
 		const stage = getBuildingStage(building.typeId);
-		const x = building.x * TILE_SIZE + TILE_SIZE / 2;
-		const y = building.y * TILE_SIZE + TILE_SIZE / 2 + Math.sin(time / 360 + index) * 1.8;
+		const position = this.getBuildingMarkerPosition(building, index, time);
 		const fillColor = STATUS_COLORS[building.status];
 		const outlineColor = STAGE_OUTLINE_COLORS[stage];
-		const buildingPath = INDUSTRIAL_BUILDING_ART[building.typeId];
-		const buildingTextureKey = industryTextureKey(buildingPath);
 
-		if (this.textures.exists(buildingTextureKey)) {
-			const buildingSprite = this.add
-				.image(x, y, buildingTextureKey)
-				.setDisplaySize(28, 28)
-				.setDepth(MARKER_DEPTH);
+		this.markerGraphics.lineStyle(3, outlineColor, 0.95);
+		this.markerGraphics.strokeCircle(position.x, position.y, 15);
+		this.markerGraphics.lineStyle(2, fillColor, 0.98);
+		this.markerGraphics.strokeCircle(position.x, position.y, 12);
+		this.markerGraphics.fillStyle(fillColor, 0.98);
+		this.markerGraphics.fillCircle(position.x + 10, position.y - 10, 4);
+		this.markerGraphics.lineStyle(1, 0xffffff, 0.9);
+		this.markerGraphics.strokeCircle(position.x + 10, position.y - 10, 4);
+	}
 
-			if (building.status === 'idle') {
-				buildingSprite.setAlpha(0.68).setTint(0x94a3b8);
-			}
-
-			this.buildingSprites.push(buildingSprite);
+	private drawBuildingMarkerFallback(
+		building: IndustryMapBuildingRender,
+		index: number,
+		time: number
+	): void {
+		if (!this.markerGraphics) {
 			return;
 		}
 
+		const stage = getBuildingStage(building.typeId);
+		const position = this.getBuildingMarkerPosition(building, index, time);
+		const fillColor = STATUS_COLORS[building.status];
+		const outlineColor = STAGE_OUTLINE_COLORS[stage];
+
 		this.markerGraphics.fillStyle(0x0f172a, 0.22);
-		this.markerGraphics.fillCircle(x + 2, y + 3, 10);
+		this.markerGraphics.fillCircle(position.x + 2, position.y + 3, 10);
 		this.markerGraphics.fillStyle(fillColor, 0.98);
 		this.markerGraphics.lineStyle(3, outlineColor, 0.95);
-		this.drawBuildingShape(stage, x, y, 9);
+		this.drawBuildingShape(stage, position.x, position.y, 9);
 		this.markerGraphics.lineStyle(1, 0xffffff, 0.85);
-		this.markerGraphics.strokeCircle(x, y, 12);
+		this.markerGraphics.strokeCircle(position.x, position.y, 12);
+	}
+
+	private getBuildingMarkerPosition(
+		building: IndustryMapBuildingRender,
+		index: number,
+		time: number
+	): { x: number; y: number } {
+		return {
+			x: building.x * TILE_SIZE + TILE_SIZE / 2,
+			y: building.y * TILE_SIZE + TILE_SIZE / 2 + Math.sin(time / 360 + index) * 1.8
+		};
+	}
+
+	private hasResourceTexture(resource: IndustryResourceId): boolean {
+		return this.textures.exists(industryTextureKey(INDUSTRY_RESOURCE_ART[resource]));
 	}
 
 	private drawBuildingShape(stage: BuildingStage, x: number, y: number, radius: number): void {
@@ -627,11 +744,13 @@ export class IndustryMapScene extends Phaser.Scene {
 	}
 
 	private destroyBuildingSprites(): void {
-		for (const sprite of this.buildingSprites) {
+		for (const { sprite } of this.buildingSpriteEntries) {
 			sprite.destroy();
 		}
 
 		this.buildingSprites = [];
+		this.buildingSpriteEntries = [];
+		this.buildingSpriteById.clear();
 	}
 
 	private destroySceneObjects(): void {
