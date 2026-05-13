@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
@@ -138,6 +139,23 @@ function imageStats(assetPath: string): {
 		opaquePixels,
 		transparentPixels
 	};
+}
+
+function assetHash(assetPath: string): string {
+	return createHash('sha256')
+		.update(readFileSync(staticPath(assetPath)))
+		.digest('hex');
+}
+
+function duplicateAssetPaths(assetPaths: readonly string[]): string[] {
+	const pathsByHash = new Map<string, string[]>();
+
+	for (const assetPath of assetPaths) {
+		const hash = assetHash(assetPath);
+		pathsByHash.set(hash, [...(pathsByHash.get(hash) ?? []), assetPath]);
+	}
+
+	return [...pathsByHash.values()].filter((paths) => paths.length > 1).flat();
 }
 
 describe('game art asset constants', () => {
@@ -368,5 +386,11 @@ describe('game art asset constants', () => {
 
 		expect(INDUSTRY_ART_LIST).toEqual(expectedPaths);
 		expect(new Set(INDUSTRY_ART_LIST).size).toBe(expectedPaths.length);
+	});
+
+	it('keeps generated industry catalog sprites byte-distinct within each catalog', () => {
+		expect(duplicateAssetPaths(INDUSTRY_RESOURCE_ART_LIST)).toEqual([]);
+		expect(duplicateAssetPaths(INDUSTRY_MATERIAL_ART_LIST)).toEqual([]);
+		expect(duplicateAssetPaths(INDUSTRIAL_BUILDING_ART_LIST)).toEqual([]);
 	});
 });

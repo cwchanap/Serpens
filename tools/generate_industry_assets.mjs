@@ -363,12 +363,30 @@ function drawMaterial(id) {
 	if (['grain', 'oilseeds', 'snacks'].includes(id)) {
 		circle(png, 48, 48, 25, id === 'oilseeds' ? [62, 70, 63, 255] : PALETTE.yellow);
 		for (let i = 0; i < 8; i += 1) circle(png, 30 + i * 5, 48 + (i % 2) * 6, 4, PALETTE.cream);
+		if (id === 'grain') {
+			for (let x = 38; x <= 58; x += 5) thickLine(png, x, 67, x - 6, 29, PALETTE.brown, 2);
+		}
+		if (id === 'snacks') {
+			rect(png, 29, 34, 38, 30, PALETTE.red);
+			triangle(png, 29, 34, 48, 25, 67, 34, PALETTE.orange);
+			rect(png, 38, 42, 20, 12, PALETTE.cream);
+		}
 	}
 	if (id === 'salt') rockCluster(png, PALETTE.salt, [212, 214, 205, 255]);
 	if (id === 'water' || id === 'filtered-water' || id === 'drinks') {
 		rect(png, 35, 27, 26, 44, id === 'drinks' ? PALETTE.orange : PALETTE.water);
 		rect(png, 39, 20, 18, 9, PALETTE.waterLight);
 		rect(png, 39, 36, 18, 18, PALETTE.white);
+		if (id === 'water') {
+			thickLine(png, 39, 61, 57, 43, PALETTE.blue, 2);
+		}
+		if (id === 'filtered-water') {
+			rect(png, 31, 33, 34, 8, PALETTE.metal);
+			circle(png, 48, 56, 5, PALETTE.white);
+		}
+		if (id === 'drinks') {
+			circle(png, 48, 47, 7, PALETTE.yellow);
+		}
 	}
 	if (id === 'fruit') {
 		circle(png, 43, 51, 17, PALETTE.red);
@@ -393,6 +411,17 @@ function drawMaterial(id) {
 	if (bags.includes(id)) {
 		rect(png, 30, 29, 36, 44, id === 'packaging' ? PALETTE.brown : PALETTE.cream);
 		rect(png, 36, 37, 24, 12, PALETTE.white);
+		if (id === 'flour') {
+			drawSheaf(png, 48, 52, PALETTE.yellow);
+		}
+		if (id === 'packaging') {
+			thickLine(png, 30, 29, 66, 73, PALETTE.outline, 2);
+			thickLine(png, 66, 29, 30, 73, PALETTE.outline, 2);
+		}
+		if (id === 'essentials') {
+			rect(png, 43, 32, 10, 34, PALETTE.blue);
+			rect(png, 36, 44, 24, 10, PALETTE.blue);
+		}
 	}
 	if (id === 'cooking-oil' || id === 'syrup') {
 		rect(png, 37, 24, 22, 49, id === 'syrup' ? PALETTE.orange : PALETTE.yellow);
@@ -468,8 +497,72 @@ function drawBuilding(id) {
 		const body =
 			id.includes('chemical') || id.includes('plastic') ? [185, 172, 205, 255] : PALETTE.concrete;
 		drawFactoryBase(png, body, roof);
-		if (id.includes('mill')) circle(png, 48, 50, 13, PALETTE.white);
-		if (id.includes('plant') || id.includes('factory')) rect(png, 33, 34, 18, 8, PALETTE.yellow);
+		if (id === 'flour-mill') {
+			circle(png, 48, 50, 13, PALETTE.white);
+			for (let angle = 0; angle < 4; angle += 1) {
+				const x = angle % 2 === 0 ? 48 : angle === 1 ? 64 : 32;
+				const y = angle % 2 === 1 ? 50 : angle === 0 ? 34 : 66;
+				thickLine(png, 48, 50, x, y, PALETTE.outline, 2);
+			}
+		}
+		if (id === 'oil-press') {
+			rect(png, 33, 34, 18, 8, PALETTE.yellow);
+			circle(png, 40, 58, 10, [68, 74, 67, 255]);
+			thickLine(png, 52, 63, 64, 63, PALETTE.yellow, 3);
+		}
+		if (id === 'water-filtration-plant') {
+			rect(png, 33, 34, 18, 8, PALETTE.waterLight);
+			rect(png, 31, 51, 34, 8, PALETTE.metal);
+			circle(png, 48, 64, 5, PALETTE.water);
+		}
+		if (id === 'syrup-plant') {
+			rect(png, 33, 34, 18, 8, PALETTE.yellow);
+			rect(png, 57, 48, 8, 19, PALETTE.orange);
+			circle(png, 61, 44, 5, PALETTE.orange);
+		}
+		if (id === 'pulp-mill') {
+			circle(png, 48, 50, 13, [219, 218, 198, 255]);
+			for (let y = 58; y <= 68; y += 5) rect(png, 29, y, 21, 3, PALETTE.brown);
+		}
+		if (id === 'plastic-plant') {
+			rect(png, 33, 34, 18, 8, PALETTE.plastic);
+			for (const [x, y] of [
+				[37, 57],
+				[48, 62],
+				[59, 55]
+			]) {
+				diamond(png, x, y, 5, PALETTE.plastic);
+			}
+		}
+		if (id === 'packaging-plant') {
+			rect(png, 33, 34, 18, 8, PALETTE.yellow);
+			rect(png, 34, 52, 15, 13, PALETTE.brown);
+			rect(png, 52, 49, 12, 17, PALETTE.cream);
+		}
+		if (id === 'chemical-plant') {
+			rect(png, 33, 34, 18, 8, PALETTE.chemical);
+			circle(png, 40, 60, 7, PALETTE.chemical);
+			circle(png, 56, 55, 5, [176, 120, 220, 255]);
+			thickLine(png, 40, 53, 56, 50, PALETTE.outline, 2);
+		}
+		if (id === 'snack-factory') {
+			rect(png, 33, 34, 18, 8, PALETTE.yellow);
+			rect(png, 35, 52, 24, 13, PALETTE.red);
+			triangle(png, 35, 52, 47, 45, 59, 52, PALETTE.orange);
+		}
+		if (id === 'drink-bottling-plant') {
+			rect(png, 33, 34, 18, 8, PALETTE.waterLight);
+			for (let x = 35; x <= 58; x += 8) {
+				rect(png, x, 49, 5, 17, PALETTE.orange);
+				rect(png, x + 1, 45, 3, 5, PALETTE.waterLight);
+			}
+		}
+		if (id === 'household-goods-factory') {
+			rect(png, 33, 34, 18, 8, PALETTE.yellow);
+			rect(png, 37, 48, 18, 20, PALETTE.blue);
+			rect(png, 41, 40, 10, 28, PALETTE.blue);
+			circle(png, 62, 59, 5, PALETTE.white);
+		}
 	}
 	if (id === 'warehouse') {
 		ellipseShadow(png);
