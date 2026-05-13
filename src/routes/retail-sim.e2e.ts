@@ -224,10 +224,16 @@ async function buildIndustryBuildingAt(
 		await describeCanvasClick(canvas, input.x, input.y)
 	).toBeVisible();
 	await industryInspector.getByRole('button', { name: input.buildingName }).click();
+	const confirmDialog = page.getByRole('dialog', { name: /confirm industrial build/i });
+	await expect(confirmDialog).toBeVisible();
+	await expect(confirmDialog.getByRole('button', { name: /confirm build/i })).toBeVisible();
+	await confirmDialog.getByRole('button', { name: /confirm build/i }).click();
+	await expect(industryInspector).toHaveCount(0);
 	await expect(canvas).toHaveAttribute(
 		'data-industry-building-count',
 		String(input.expectedBuildingCount)
 	);
+	await expect(canvas).toHaveAttribute('data-industry-building-sprite-count', /^[1-9]\d*$/);
 }
 
 async function describeCanvasClick(canvas: Locator, x: number, y: number): Promise<string> {
@@ -501,7 +507,17 @@ test('player can switch to the industry city map and back to retail', async ({ p
 	const cashBeforeBuild = await readCompanyCash(page);
 
 	await industryInspector.getByRole('button', { name: /build water pump/i }).click();
+	const confirmDialog = page.getByRole('dialog', { name: /confirm industrial build/i });
+	await expect(confirmDialog).toBeVisible();
+	await expect(confirmDialog.getByRole('button', { name: /confirm build/i })).toBeVisible();
+	await confirmDialog.getByRole('button', { name: /confirm build/i }).click();
+	await expect(industryInspector).toHaveCount(0);
 	await expect(industryCanvas).toHaveAttribute('data-industry-building-count', '1');
+	await expect(industryCanvas).toHaveAttribute('data-industry-building-sprite-count', /^[1-9]\d*$/);
+	expect(await readCompanyCash(page)).toBeLessThan(cashBeforeBuild);
+
+	await clickCanvasTile(page, industryCanvas, 1, 7);
+	await expect(industryInspector).toBeVisible();
 	const buildingDetails = industryInspector.getByRole('region', {
 		name: /industrial building details/i
 	});
@@ -510,7 +526,6 @@ test('player can switch to the industry city map and back to retail', async ({ p
 	await expect(
 		buildingDetails.getByRole('definition').filter({ hasText: /^Idle$/i })
 	).toBeVisible();
-	expect(await readCompanyCash(page)).toBeLessThan(cashBeforeBuild);
 
 	await openSaves(page);
 	const savePanel = page.getByRole('dialog', { name: /saves/i });
