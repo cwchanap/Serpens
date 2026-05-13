@@ -26,7 +26,7 @@ describe('IndustryTileInspector', () => {
 	});
 
 	it('opens a confirmation dialog before building on the selected resource tile', async () => {
-		expect.assertions(4);
+		expect.assertions(5);
 		const game = createNewGame('convenience', 20260512);
 		const tile = getIndustryTilesByResource(game.industryCities[0]!, 'grain-field')[0]!;
 		const onBuild = vi.fn();
@@ -42,9 +42,9 @@ describe('IndustryTileInspector', () => {
 		await page.getByRole('button', { name: /build grain farm/i }).click();
 
 		expect(onBuild).not.toHaveBeenCalled();
-		await expect
-			.element(page.getByRole('dialog', { name: /confirm industrial build/i }))
-			.toBeVisible();
+		const dialog = page.getByRole('dialog', { name: /confirm industrial build/i });
+		await expect.element(dialog).toBeVisible();
+		await expect.element(dialog).not.toHaveAttribute('aria-modal', 'true');
 		await expect.element(page.getByRole('heading', { name: /grain farm/i })).toBeVisible();
 		await expect.element(page.getByRole('button', { name: /confirm build/i })).toBeVisible();
 	});
@@ -97,6 +97,49 @@ describe('IndustryTileInspector', () => {
 		expect(onClose).toHaveBeenCalledTimes(1);
 	});
 
+	it('clears a pending build when the same tile becomes occupied', async () => {
+		expect.assertions(2);
+		const game = createNewGame('convenience', 20260512);
+		const tile = getIndustryTilesByResource(game.industryCities[0]!, 'grain-field')[0]!;
+		const onBuild = vi.fn();
+		const occupiedBuilding: IndustrialBuilding = {
+			id: 'industry-building-grain-farm',
+			typeId: 'grain-farm',
+			cityId: tile.cityId,
+			tileId: tile.id,
+			mapX: tile.x,
+			mapY: tile.y,
+			status: 'idle',
+			lastProduction: [],
+			producedTotal: 0,
+			importedInputTotal: 0,
+			blockedDays: 0
+		};
+
+		const { rerender } = render(IndustryTileInspector, {
+			game,
+			tile,
+			building: null,
+			onBuild,
+			onClose: vi.fn()
+		});
+
+		await page.getByRole('button', { name: /build grain farm/i }).click();
+
+		await rerender({
+			game,
+			tile,
+			building: occupiedBuilding,
+			onBuild,
+			onClose: vi.fn()
+		});
+
+		await expect
+			.element(page.getByRole('dialog', { name: /confirm industrial build/i }))
+			.not.toBeInTheDocument();
+		expect(onBuild).not.toHaveBeenCalled();
+	});
+
 	it('renders building and material thumbnails with asset sources', async () => {
 		expect.assertions(3);
 		const game = {
@@ -144,7 +187,7 @@ describe('IndustryTileInspector', () => {
 		});
 
 		await expect
-			.element(page.getByRole('img', { name: /grain farm industrial building/i }))
+			.element(page.getByTestId('industry-building-option-grain-farm'))
 			.toHaveAttribute('src', '/assets/game/industry/buildings/grain-farm.png');
 
 		await rerender({
@@ -156,7 +199,7 @@ describe('IndustryTileInspector', () => {
 		});
 
 		await expect
-			.element(page.getByRole('img', { name: /snacks material/i }).first())
+			.element(page.getByTestId('industry-warehouse-material-snacks'))
 			.toHaveAttribute('src', '/assets/game/industry/materials/snacks.png');
 		await expect.element(page.getByText(/snacks: 42/i)).toBeVisible();
 	});

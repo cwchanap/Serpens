@@ -49,7 +49,11 @@
 	let pendingBuilding = $state<IndustrialBuildingType | null>(null);
 	let pendingTileId = $state<string | null>(null);
 	let lastTileId = $state<string | null>(null);
+	let lastBuildingId = $state<string | null>(null);
 	const pendingIsCurrent = $derived(Boolean(pendingBuilding && tile && pendingTileId === tile.id));
+	const pendingIsAllowed = $derived(
+		Boolean(pendingBuilding && allowedBuildingTypes.some((type) => type.id === pendingBuilding?.id))
+	);
 	const pendingBuildingArtSrc = $derived(
 		pendingBuilding ? asset(getIndustrialBuildingArt(pendingBuilding.id)) : ''
 	);
@@ -59,11 +63,13 @@
 
 	$effect(() => {
 		const currentTileId = tile?.id ?? null;
+		const currentBuildingId = building && building.tileId === currentTileId ? building.id : null;
 
-		if (lastTileId !== currentTileId) {
+		if (lastTileId !== currentTileId || lastBuildingId !== currentBuildingId) {
 			pendingBuilding = null;
 			pendingTileId = null;
 			lastTileId = currentTileId;
+			lastBuildingId = currentBuildingId;
 		}
 	});
 
@@ -86,7 +92,8 @@
 	}
 
 	function confirmBuild(): void {
-		if (!pendingBuilding || !pendingTileId || !pendingIsCurrent) {
+		if (!pendingBuilding || !pendingTileId || !pendingIsCurrent || building || !pendingIsAllowed) {
+			cancelBuild();
 			return;
 		}
 
@@ -230,7 +237,8 @@
 									<span class="material-line">
 										<img
 											src={materialArtSrc(movement.materialId)}
-											alt={`${materialName(movement.materialId)} material`}
+											alt=""
+											data-testid={`industry-production-material-${movement.materialId}`}
 											width="24"
 											height="24"
 											loading="lazy"
@@ -276,7 +284,8 @@
 									<span class="material-line">
 										<img
 											src={materialArtSrc(material.id)}
-											alt={`${material.name} material`}
+											alt=""
+											data-testid={`industry-warehouse-material-${material.id}`}
 											width="24"
 											height="24"
 											loading="lazy"
@@ -306,7 +315,8 @@
 							<button type="button" onclick={() => chooseBuilding(type)}>
 								<img
 									src={buildingArtSrc(type.id)}
-									alt={`${type.name} industrial building`}
+									alt=""
+									data-testid={`industry-building-option-${type.id}`}
 									width="32"
 									height="32"
 									loading="lazy"
@@ -332,7 +342,7 @@
 
 	{#if pendingBuilding && pendingIsCurrent}
 		<div class="confirm-backdrop" {@attach blockMapInteraction}>
-			<div class="confirm-popup" role="dialog" aria-modal="true" aria-label="Confirm industrial build">
+			<div class="confirm-popup" role="dialog" aria-label="Confirm industrial build">
 				<div class="confirm-heading">
 					<div>
 						<p>Confirm build</p>
@@ -351,7 +361,8 @@
 					<span class="confirm-thumb">
 						<img
 							src={pendingBuildingArtSrc}
-							alt={`${pendingBuilding.name} industrial building`}
+							alt=""
+							data-testid={`industry-confirm-building-${pendingBuilding.id}`}
 							width="96"
 							height="96"
 							loading="lazy"
