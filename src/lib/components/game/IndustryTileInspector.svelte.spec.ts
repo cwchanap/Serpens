@@ -25,8 +25,8 @@ describe('IndustryTileInspector', () => {
 		await expect.element(page.getByRole('button', { name: /build grain farm/i })).toBeVisible();
 	});
 
-	it('dispatches a build request for the selected resource tile', async () => {
-		expect.assertions(3);
+	it('opens a confirmation dialog before building on the selected resource tile', async () => {
+		expect.assertions(4);
 		const game = createNewGame('convenience', 20260512);
 		const tile = getIndustryTilesByResource(game.industryCities[0]!, 'grain-field')[0]!;
 		const onBuild = vi.fn();
@@ -41,9 +41,124 @@ describe('IndustryTileInspector', () => {
 
 		await page.getByRole('button', { name: /build grain farm/i }).click();
 
+		expect(onBuild).not.toHaveBeenCalled();
+		await expect
+			.element(page.getByRole('dialog', { name: /confirm industrial build/i }))
+			.toBeVisible();
+		await expect.element(page.getByRole('heading', { name: /grain farm/i })).toBeVisible();
+		await expect.element(page.getByRole('button', { name: /confirm build/i })).toBeVisible();
+	});
+
+	it('cancels a pending industrial build without closing the inspector', async () => {
+		expect.assertions(3);
+		const game = createNewGame('convenience', 20260512);
+		const tile = getIndustryTilesByResource(game.industryCities[0]!, 'grain-field')[0]!;
+		const onBuild = vi.fn();
+		const onClose = vi.fn();
+
+		render(IndustryTileInspector, {
+			game,
+			tile,
+			building: null,
+			onBuild,
+			onClose
+		});
+
+		await page.getByRole('button', { name: /build grain farm/i }).click();
+		await page.getByRole('button', { name: /^cancel$/i }).click();
+
+		await expect
+			.element(page.getByRole('dialog', { name: /confirm industrial build/i }))
+			.not.toBeInTheDocument();
+		expect(onBuild).not.toHaveBeenCalled();
+		expect(onClose).not.toHaveBeenCalled();
+	});
+
+	it('confirms an industrial build once and closes the inspector', async () => {
+		expect.assertions(3);
+		const game = createNewGame('convenience', 20260512);
+		const tile = getIndustryTilesByResource(game.industryCities[0]!, 'grain-field')[0]!;
+		const onBuild = vi.fn();
+		const onClose = vi.fn();
+
+		render(IndustryTileInspector, {
+			game,
+			tile,
+			building: null,
+			onBuild,
+			onClose
+		});
+
+		await page.getByRole('button', { name: /build grain farm/i }).click();
+		await page.getByRole('button', { name: /confirm build/i }).click();
+
 		expect(onBuild).toHaveBeenCalledTimes(1);
 		expect(onBuild).toHaveBeenCalledWith('grain-farm', tile.id);
-		expect(onBuild).not.toHaveBeenCalledWith('salt-mine', tile.id);
+		expect(onClose).toHaveBeenCalledTimes(1);
+	});
+
+	it('renders building and material thumbnails with asset sources', async () => {
+		expect.assertions(3);
+		const game = {
+			...createNewGame('convenience', 20260512),
+			warehouse: {
+				capacity: 200,
+				materials: {
+					snacks: 42
+				},
+				overflowUnits: 0,
+				overflowCost: 0
+			}
+		};
+		const grainTile = getIndustryTilesByResource(game.industryCities[0]!, 'grain-field')[0]!;
+		const warehouseTile = game.industryCities[0]!.tiles.find(
+			(candidate) => candidate.terrain === 'industrial' && !candidate.locked
+		)!;
+		const warehouseBuilding: IndustrialBuilding = {
+			id: 'industry-building-warehouse',
+			typeId: 'warehouse',
+			cityId: warehouseTile.cityId,
+			tileId: warehouseTile.id,
+			mapX: warehouseTile.x,
+			mapY: warehouseTile.y,
+			status: 'idle',
+			lastProduction: [
+				{
+					materialId: 'snacks',
+					quantity: 8,
+					value: 120,
+					source: 'local'
+				}
+			],
+			producedTotal: 8,
+			importedInputTotal: 0,
+			blockedDays: 0
+		};
+
+		const { rerender } = render(IndustryTileInspector, {
+			game,
+			tile: grainTile,
+			building: null,
+			onBuild: vi.fn(),
+			onClose: vi.fn()
+		});
+
+		await expect
+			.element(page.getByRole('img', { name: /grain farm industrial building/i }))
+			.toHaveAttribute('src', '/assets/game/industry/buildings/grain-farm.png');
+
+		await rerender({
+			game,
+			tile: warehouseTile,
+			building: warehouseBuilding,
+			onBuild: vi.fn(),
+			onClose: vi.fn()
+		});
+
+		await expect
+			.element(page.getByRole('img', { name: /snacks material/i }).first())
+			.toHaveAttribute('src', '/assets/game/industry/materials/snacks.png');
+		await expect.element(page.getByText(/snacks: 42/i)).toBeVisible();
 	});
 
 	it('shows warehouse capacity and material totals for a warehouse building', async () => {
