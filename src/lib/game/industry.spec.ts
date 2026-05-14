@@ -9,9 +9,27 @@ import {
 	getIndustryTileById,
 	getIndustryTilesByResource
 } from './industry';
-import type { IndustrialBuildingType } from './types';
+import type {
+	IndustrialBuildingType,
+	IndustryCity,
+	IndustryTerrainId,
+	IndustryTile
+} from './types';
 
-function acceptIndustrialBuildingType(_building: IndustrialBuildingType): void {}
+function acceptIndustrialBuildingType(building: IndustrialBuildingType): void {
+	void building;
+}
+
+function tilesInRegion(
+	city: IndustryCity,
+	predicate: (tile: IndustryTile) => boolean
+): IndustryTile[] {
+	return city.tiles.filter(predicate);
+}
+
+function countTerrain(tiles: IndustryTile[], terrain: IndustryTerrainId): number {
+	return tiles.filter((tile) => tile.terrain === terrain).length;
+}
 
 acceptIndustrialBuildingType({
 	id: 'warehouse',
@@ -163,5 +181,41 @@ describe('industry city generation', () => {
 		expect(getIndustryTilesByResource(city, 'chemical-feedstock').length).toBeGreaterThan(0);
 		expect(city.tiles.some((tile) => tile.terrain === 'industrial' && !tile.locked)).toBe(true);
 		expect(getIndustryTileById(city, 'industry-city-1-1')?.cityId).toBe(city.id);
+	});
+
+	test('organizes filler terrain into planned districts', () => {
+		expect.assertions(5);
+		const city = generateIndustryCity({
+			id: 'industry-city',
+			name: 'Industry City',
+			width: 18,
+			height: 18,
+			seed: 20260512
+		});
+		const cropBelt = tilesInRegion(city, (tile) => tile.x >= 1 && tile.x <= 8 && tile.y <= 3);
+		const extractionPocket = tilesInRegion(
+			city,
+			(tile) => tile.x >= 1 && tile.x <= 5 && tile.y >= 4 && tile.y <= 6
+		);
+		const utilityBelt = tilesInRegion(
+			city,
+			(tile) => tile.x >= 1 && tile.x <= 7 && tile.y >= 7 && tile.y <= 10
+		);
+		const industrialPark = tilesInRegion(
+			city,
+			(tile) => tile.x >= 9 && tile.y >= 6 && tile.x <= 16 && tile.y <= 16
+		);
+		const internalBlockedTiles = tilesInRegion(
+			city,
+			(tile) => tile.terrain === 'blocked' && tile.x > 0 && tile.y > 0 && tile.x < 17 && tile.y < 17
+		);
+
+		expect(countTerrain(cropBelt, 'farmland')).toBeGreaterThanOrEqual(20);
+		expect(countTerrain(extractionPocket, 'deposit')).toBeGreaterThanOrEqual(11);
+		expect(
+			countTerrain(utilityBelt, 'water') + countTerrain(utilityBelt, 'forest')
+		).toBeGreaterThanOrEqual(22);
+		expect(countTerrain(industrialPark, 'industrial')).toBeGreaterThanOrEqual(82);
+		expect(internalBlockedTiles).toHaveLength(18);
 	});
 });

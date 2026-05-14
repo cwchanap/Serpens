@@ -1,4 +1,3 @@
-import { createRng, randomInt, type Rng } from './rng';
 import type {
 	IndustrialBuildingType,
 	IndustrialBuildingTypeId,
@@ -644,7 +643,6 @@ function isMaterialId(value: string): value is MaterialId {
 }
 
 export function generateIndustryCity(input: GenerateIndustryCityInput): IndustryCity {
-	const rng = createRng(input.seed);
 	const width = normalizeDimension(input.width);
 	const height = normalizeDimension(input.height);
 	const tiles: IndustryTile[] = [];
@@ -667,7 +665,7 @@ export function generateIndustryCity(input: GenerateIndustryCityInput): Industry
 				continue;
 			}
 
-			const terrain = border ? 'blocked' : getFillerTerrain(width, height, x, y, rng);
+			const terrain = border ? 'blocked' : getFillerTerrain(width, height, x, y);
 
 			tiles.push({
 				id: `${input.id}-${x}-${y}`,
@@ -705,40 +703,61 @@ function getResourceAnchor(x: number, y: number): (typeof RESOURCE_ANCHORS)[numb
 	return RESOURCE_ANCHORS.find((anchor) => anchor.x === x && anchor.y === y);
 }
 
-function getFillerTerrain(
-	width: number,
-	height: number,
-	x: number,
-	y: number,
-	rng: Rng
-): IndustryTerrainId {
-	if (isIndustrialDistrict(width, height, x, y)) {
-		return randomInt(rng, 0, 99) < 85 ? 'industrial' : 'blocked';
+function getFillerTerrain(width: number, height: number, x: number, y: number): IndustryTerrainId {
+	if (isInternalServiceSeparator(width, height, x, y)) {
+		return 'blocked';
 	}
 
-	const roll = randomInt(rng, 0, 99);
-
-	if (roll < 30) {
+	if (isCropDistrict(x, y)) {
 		return 'farmland';
 	}
 
-	if (roll < 45) {
-		return 'forest';
-	}
-
-	if (roll < 55) {
-		return 'water';
-	}
-
-	if (roll < 65) {
+	if (isExtractionDistrict(x, y)) {
 		return 'deposit';
 	}
 
-	if (roll < 82) {
+	if (isUtilityDistrict(x, y)) {
+		return x <= 3 ? 'water' : 'forest';
+	}
+
+	if (isIndustrialDistrict(width, height, x, y)) {
 		return 'industrial';
 	}
 
-	return 'blocked';
+	if (y <= 5) {
+		return 'farmland';
+	}
+
+	if (x <= 5) {
+		return 'deposit';
+	}
+
+	if (x >= Math.floor(width * 0.48)) {
+		return 'industrial';
+	}
+
+	return y <= Math.floor(height * 0.68) ? 'forest' : 'water';
+}
+
+function isInternalServiceSeparator(width: number, height: number, x: number, y: number): boolean {
+	const separatorX = Math.max(1, Math.floor(width * 0.45));
+	const isVerticalSeparator = width >= 10 && x === separatorX && y > 0 && y < height - 1;
+	const isLowerAccessBlock =
+		width >= 10 && height >= 12 && y === Math.floor(height * 0.62) && (x === 1 || x === 2);
+
+	return isVerticalSeparator || isLowerAccessBlock;
+}
+
+function isCropDistrict(x: number, y: number): boolean {
+	return x >= 1 && x <= 8 && y >= 1 && y <= 3;
+}
+
+function isExtractionDistrict(x: number, y: number): boolean {
+	return x >= 1 && x <= 5 && y >= 4 && y <= 6;
+}
+
+function isUtilityDistrict(x: number, y: number): boolean {
+	return x >= 1 && x <= 7 && y >= 7 && y <= 10;
 }
 
 function isIndustrialDistrict(width: number, height: number, x: number, y: number): boolean {
