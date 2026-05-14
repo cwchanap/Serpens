@@ -25,6 +25,47 @@ describe('IndustryTileInspector', () => {
 		await expect.element(page.getByRole('button', { name: /build grain farm/i })).toBeVisible();
 	});
 
+	it('filters building choices through a searchable product popup', async () => {
+		expect.assertions(9);
+		const game = createNewGame('convenience', 20260512);
+		const tile = game.industryCities[0]!.tiles.find(
+			(candidate) => candidate.terrain === 'industrial' && !candidate.locked
+		)!;
+
+		render(IndustryTileInspector, {
+			game,
+			tile,
+			building: null,
+			onBuild: vi.fn(),
+			onClose: vi.fn()
+		});
+
+		await page.getByRole('button', { name: /filter: all products/i }).click();
+		const filterDialog = page.getByRole('dialog', { name: /product chain filter/i });
+		await expect.element(filterDialog).toBeVisible();
+		await expect.element(filterDialog).toHaveAttribute('aria-modal', 'true');
+		const filterDialogNode = document.querySelector<HTMLElement>(
+			'[aria-label="Product chain filter"]'
+		)!;
+		expect(window.getComputedStyle(filterDialogNode).position).toBe('fixed');
+		await page.getByLabelText(/search products/i).fill('gift');
+
+		await expect.element(page.getByRole('button', { name: /gifts/i })).toBeVisible();
+		await expect
+			.element(page.getByRole('button', { name: /snacks/i }))
+			.not.toBeInTheDocument();
+		await page.getByRole('button', { name: /gifts/i }).click();
+
+		await expect.element(page.getByRole('button', { name: /filter: gifts/i })).toBeVisible();
+		await expect.element(page.getByRole('button', { name: /build gift workshop/i })).toBeVisible();
+		await expect
+			.element(page.getByRole('button', { name: /build packaging plant/i }))
+			.toBeVisible();
+		await expect
+			.element(page.getByRole('button', { name: /build drink bottling plant/i }))
+			.not.toBeInTheDocument();
+	});
+
 	it('opens a confirmation dialog before building on the selected resource tile', async () => {
 		expect.assertions(5);
 		const game = createNewGame('convenience', 20260512);

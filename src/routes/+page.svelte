@@ -160,6 +160,9 @@
 		});
 	});
 	let selectedTileDisabledReason = $derived.by(() => getSelectedTileDisabledReason());
+	let industryConstructionDisabledReason = $derived(
+		game ? null : 'Found a retail store to unlock construction.'
+	);
 	let mapSnapshot = $derived(createCityMapSnapshot(game ?? starterMapState, selectedTileId));
 	let industryMapSnapshot = $derived(
 		createIndustryMapSnapshot(game ?? starterMapState, selectedIndustryTileId)
@@ -631,7 +634,7 @@
 				/>
 			</div>
 		{/if}
-		{#if game && selectedIndustryTile}
+		{#if selectedIndustryTile}
 			<div
 				class="inspector-overlay"
 				role="dialog"
@@ -639,9 +642,10 @@
 				aria-label="Industry tile details"
 			>
 				<IndustryTileInspector
-					{game}
+					game={game ?? starterMapState}
 					tile={selectedIndustryTile}
 					building={selectedIndustryBuilding}
+					constructionDisabledReason={industryConstructionDisabledReason}
 					onBuild={buildIndustryAtTile}
 					onClose={closeIndustryInspector}
 				/>

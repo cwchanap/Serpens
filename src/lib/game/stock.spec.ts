@@ -5,6 +5,7 @@ import {
 	applyWeeklyImports,
 	buildCityDemandPools,
 	calculateStockHealth,
+	getFinishedMaterialIdForCategory,
 	getStoreProductStatus,
 	initializeStoreProducts,
 	isImportDay,
@@ -59,6 +60,12 @@ describe('stock rules', () => {
 			sellingPrice: 8
 		});
 		expect(new Set(products.map((product) => product.categoryId)).size).toBe(products.length);
+	});
+
+	test('maps boutique gifts to a locally producible finished material', () => {
+		expect.assertions(1);
+
+		expect(getFinishedMaterialIdForCategory('gifts')).toBe('gifts');
 	});
 
 	test('updates a store product immutably and clamps numeric input', () => {

@@ -548,6 +548,47 @@ test('player can switch to the industry city map and back to retail', async ({ p
 	await expect(page.getByRole('dialog', { name: /industry tile details/i })).toHaveCount(0);
 });
 
+test('industry map tile click shows construction status before founding a store', async ({ page }) => {
+	await page.goto('/');
+
+	await openMapMenuItem(page, /industry city map/i);
+	await expect(page.getByRole('heading', { name: /industry city/i })).toBeVisible();
+	const industryCanvas = await expectIndustryMapReady(page);
+
+	await clickCanvasTile(page, industryCanvas, 1, 7);
+	const industryInspector = page.getByRole('dialog', { name: /industry tile details/i });
+	await expect(industryInspector).toBeVisible();
+	await expect(industryInspector.getByRole('heading', { name: /industry tile/i })).toBeVisible();
+	await expect(
+		industryInspector.getByText(/found a retail store to unlock construction/i)
+	).toBeVisible();
+	await industryInspector.getByRole('button', { name: /filter: all products/i }).click();
+	const filterPopup = page.getByRole('dialog', { name: /product chain filter/i });
+	await expect(filterPopup).toBeVisible();
+	await expect(filterPopup).toHaveAttribute('aria-modal', 'true');
+	const [inspectorBox, filterBox] = await Promise.all([
+		industryInspector.boundingBox(),
+		filterPopup.boundingBox()
+	]);
+	if (!inspectorBox || !filterBox) {
+		throw new Error('Industry inspector or product filter popup has no bounding box');
+	}
+	expect(filterBox.width).toBeGreaterThan(inspectorBox.width);
+	expect(filterBox.height).toBeLessThanOrEqual((page.viewportSize()?.height ?? 720) - 24);
+	await filterPopup.getByLabel(/search products/i).fill('gift');
+	await expect(filterPopup.getByRole('button', { name: /gifts/i })).toBeVisible();
+	await expect(filterPopup.getByRole('button', { name: /snacks/i })).toHaveCount(0);
+	await filterPopup.getByRole('button', { name: /gifts/i }).click();
+	await expect(industryInspector.getByRole('button', { name: /filter: gifts/i })).toBeVisible();
+	await expect(industryInspector.getByRole('button', { name: /build gift workshop/i })).toBeVisible();
+	await expect(
+		industryInspector.getByRole('button', { name: /build packaging plant/i })
+	).toBeVisible();
+	await expect(
+		industryInspector.getByRole('button', { name: /build drink bottling plant/i })
+	).toHaveCount(0);
+});
+
 test('player builds convenience production and refills from warehouse', async ({ page }) => {
 	await page.setViewportSize({ width: 900, height: 900 });
 	await page.goto('/');

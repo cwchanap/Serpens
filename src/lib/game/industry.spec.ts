@@ -5,6 +5,7 @@ import {
 	MATERIALS,
 	PRODUCTION_RECIPES,
 	generateIndustryCity,
+	getIndustrialBuildingTypesForProductChain,
 	getIndustryTileById,
 	getIndustryTilesByResource
 } from './industry';
@@ -26,11 +27,12 @@ acceptIndustrialBuildingType({
 
 describe('industry domain catalog', () => {
 	test('defines every convenience finished material and required building', () => {
-		expect.assertions(4);
+		expect.assertions(5);
 
 		expect(MATERIALS.snacks.kind).toBe('finished');
 		expect(MATERIALS.drinks.kind).toBe('finished');
 		expect(MATERIALS.essentials.kind).toBe('finished');
+		expect(MATERIALS.gifts.kind).toBe('finished');
 		expect(CONVENIENCE_BUILDING_TYPE_IDS.every((id) => INDUSTRIAL_BUILDING_TYPES[id])).toBe(true);
 	});
 
@@ -53,6 +55,70 @@ describe('industry domain catalog', () => {
 			.filter((recipeId) => recipeId !== null);
 
 		expect(buildingRecipeIds.every((recipeId) => recipeIds.has(recipeId))).toBe(true);
+	});
+
+	test('resolves the full upstream building chain for snacks', () => {
+		expect.assertions(3);
+		const buildingTypeIds = getIndustrialBuildingTypesForProductChain('snacks').map(
+			(buildingType) => buildingType.id
+		);
+
+		expect(buildingTypeIds).toEqual([
+			'grain-farm',
+			'salt-mine',
+			'oilseed-farm',
+			'pulpwood-grove',
+			'chemical-feedstock-well',
+			'flour-mill',
+			'oil-press',
+			'pulp-mill',
+			'plastic-plant',
+			'packaging-plant',
+			'snack-factory'
+		]);
+		expect(buildingTypeIds).not.toContain('drink-bottling-plant');
+		expect(buildingTypeIds).not.toContain('warehouse');
+	});
+
+	test('resolves the full upstream building chain for drinks', () => {
+		expect.assertions(3);
+		const buildingTypeIds = getIndustrialBuildingTypesForProductChain('drinks').map(
+			(buildingType) => buildingType.id
+		);
+
+		expect(buildingTypeIds).toEqual([
+			'water-pump',
+			'fruit-farm',
+			'sugar-farm',
+			'pulpwood-grove',
+			'chemical-feedstock-well',
+			'water-filtration-plant',
+			'syrup-plant',
+			'pulp-mill',
+			'plastic-plant',
+			'packaging-plant',
+			'drink-bottling-plant'
+		]);
+		expect(buildingTypeIds).not.toContain('snack-factory');
+		expect(buildingTypeIds).not.toContain('warehouse');
+	});
+
+	test('resolves the full upstream building chain for gifts', () => {
+		expect.assertions(3);
+		const buildingTypeIds = getIndustrialBuildingTypesForProductChain('gifts').map(
+			(buildingType) => buildingType.id
+		);
+
+		expect(buildingTypeIds).toEqual([
+			'pulpwood-grove',
+			'chemical-feedstock-well',
+			'pulp-mill',
+			'plastic-plant',
+			'packaging-plant',
+			'gift-workshop'
+		]);
+		expect(buildingTypeIds).not.toContain('snack-factory');
+		expect(buildingTypeIds).not.toContain('warehouse');
 	});
 });
 

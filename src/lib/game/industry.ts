@@ -169,6 +169,13 @@ export const MATERIALS: Readonly<Record<MaterialId, MaterialDefinition>> = {
 		kind: 'finished',
 		importCost: 14,
 		localValue: 9
+	},
+	gifts: {
+		id: 'gifts',
+		name: 'Gifts',
+		kind: 'finished',
+		importCost: 9,
+		localValue: 6
 	}
 };
 
@@ -327,6 +334,17 @@ export const PRODUCTION_RECIPES: Readonly<Record<ProductionRecipeId, ProductionR
 		],
 		outputs: [{ materialId: 'essentials', quantity: 6 }],
 		operatingCost: 34,
+		stage: 'final'
+	},
+	'gift-production': {
+		id: 'gift-production',
+		inputs: [
+			{ materialId: 'paper-pulp', quantity: 4 },
+			{ materialId: 'plastic', quantity: 2 },
+			{ materialId: 'packaging', quantity: 2 }
+		],
+		outputs: [{ materialId: 'gifts', quantity: 6 }],
+		operatingCost: 26,
 		stage: 'final'
 	}
 };
@@ -524,6 +542,16 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		recipeId: 'household-goods-production',
 		warehouseCapacity: 0
 	},
+	'gift-workshop': {
+		id: 'gift-workshop',
+		name: 'Gift Workshop',
+		buildCost: 1500,
+		dailyOperatingCost: 30,
+		requiredResource: null,
+		requiresIndustrialTile: true,
+		recipeId: 'gift-production',
+		warehouseCapacity: 0
+	},
 	warehouse: {
 		id: 'warehouse',
 		name: 'Warehouse',
@@ -556,8 +584,64 @@ export const CONVENIENCE_BUILDING_TYPE_IDS = [
 	'snack-factory',
 	'drink-bottling-plant',
 	'household-goods-factory',
+	'gift-workshop',
 	'warehouse'
 ] as const satisfies readonly IndustrialBuildingTypeId[];
+
+export const FINISHED_PRODUCT_MATERIAL_IDS = [
+	'snacks',
+	'drinks',
+	'essentials',
+	'gifts'
+] as const satisfies readonly MaterialId[];
+
+export type FinishedProductMaterialId = (typeof FINISHED_PRODUCT_MATERIAL_IDS)[number];
+
+export function getIndustrialBuildingTypesForProductChain(
+	productId: string
+): IndustrialBuildingType[] {
+	if (!isMaterialId(productId) || MATERIALS[productId].kind !== 'finished') {
+		return [];
+	}
+
+	const requiredMaterialIds = new Set<MaterialId>([productId]);
+	const recipeIds = new Set<ProductionRecipeId>();
+	let changed = true;
+
+	while (changed) {
+		changed = false;
+
+		for (const recipe of Object.values(PRODUCTION_RECIPES)) {
+			const producesRequiredMaterial = recipe.outputs.some((output) =>
+				requiredMaterialIds.has(output.materialId)
+			);
+
+			if (!producesRequiredMaterial) {
+				continue;
+			}
+
+			if (!recipeIds.has(recipe.id)) {
+				recipeIds.add(recipe.id);
+				changed = true;
+			}
+
+			for (const input of recipe.inputs) {
+				if (!requiredMaterialIds.has(input.materialId)) {
+					requiredMaterialIds.add(input.materialId);
+					changed = true;
+				}
+			}
+		}
+	}
+
+	return Object.values(INDUSTRIAL_BUILDING_TYPES).filter(
+		(buildingType) => buildingType.recipeId !== null && recipeIds.has(buildingType.recipeId)
+	);
+}
+
+function isMaterialId(value: string): value is MaterialId {
+	return Object.hasOwn(MATERIALS, value);
+}
 
 export function generateIndustryCity(input: GenerateIndustryCityInput): IndustryCity {
 	const rng = createRng(input.seed);

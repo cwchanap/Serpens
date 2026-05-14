@@ -76,7 +76,8 @@ const industryMaterialPaths = {
 	'cleaning-base': '/assets/game/industry/materials/cleaning-base.png',
 	snacks: '/assets/game/industry/materials/snacks.png',
 	drinks: '/assets/game/industry/materials/drinks.png',
-	essentials: '/assets/game/industry/materials/essentials.png'
+	essentials: '/assets/game/industry/materials/essentials.png',
+	gifts: '/assets/game/industry/materials/gifts.png'
 } as const;
 const industrialBuildingPaths = {
 	'grain-farm': '/assets/game/industry/buildings/grain-farm.png',
@@ -98,6 +99,7 @@ const industrialBuildingPaths = {
 	'snack-factory': '/assets/game/industry/buildings/snack-factory.png',
 	'drink-bottling-plant': '/assets/game/industry/buildings/drink-bottling-plant.png',
 	'household-goods-factory': '/assets/game/industry/buildings/household-goods-factory.png',
+	'gift-workshop': '/assets/game/industry/buildings/gift-workshop.png',
 	warehouse: '/assets/game/industry/buildings/warehouse.png'
 } as const;
 const require = createRequire(import.meta.url);

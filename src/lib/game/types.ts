@@ -38,7 +38,8 @@ export type MaterialId =
 	| 'cleaning-base'
 	| 'snacks'
 	| 'drinks'
-	| 'essentials';
+	| 'essentials'
+	| 'gifts';
 export type MaterialKind = 'raw' | 'intermediate' | 'finished';
 export type IndustryTerrainId =
 	| 'farmland'
@@ -76,6 +77,7 @@ export type IndustrialBuildingTypeId =
 	| 'snack-factory'
 	| 'drink-bottling-plant'
 	| 'household-goods-factory'
+	| 'gift-workshop'
 	| 'warehouse';
 export type ProductionRecipeId =
 	| 'grain-harvest'
@@ -96,7 +98,8 @@ export type ProductionRecipeId =
 	| 'cleaning-base-production'
 	| 'snack-production'
 	| 'drink-bottling'
-	| 'household-goods-production';
+	| 'household-goods-production'
+	| 'gift-production';
 
 export interface MaterialDefinition {
 	id: MaterialId;
