@@ -46,7 +46,7 @@
 	}
 </script>
 
-<section class="panel" aria-labelledby="policy-heading">
+<section class="panel paper" aria-labelledby="policy-heading">
 	<h2 id="policy-heading">Policies</h2>
 
 	<div class="policy-grid">
@@ -69,21 +69,21 @@
 
 <style>
 	.panel {
-		border: 1px solid #253244;
-		border-radius: 8px;
-		background: #111823;
-		padding: 1rem;
+		padding: 1.1rem 1.2rem;
 	}
 
 	h2 {
 		margin: 0 0 0.75rem;
-		font-size: 0.95rem;
+		font-family: var(--font-display);
+		font-size: 1.1rem;
+		font-weight: 400;
+		color: var(--ink-700);
 	}
 
 	.policy-grid {
 		display: grid;
 		grid-template-columns: repeat(5, minmax(0, 1fr));
-		gap: 0.75rem;
+		gap: 0.85rem;
 	}
 
 	label {
@@ -93,17 +93,24 @@
 	}
 
 	span {
-		color: #a7b4c8;
-		font-size: 0.78rem;
+		color: var(--brass-700);
+		font-family: var(--font-ui);
+		font-size: 0.7rem;
+		font-weight: 700;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
 	}
 
 	select {
 		width: 100%;
-		border: 1px solid #31445c;
-		border-radius: 6px;
-		background: #0b111a;
-		color: #edf2f7;
-		padding: 0.55rem 0.6rem;
+		border: 1px solid var(--ink-700);
+		border-top-color: var(--brass-500);
+		border-radius: 2px;
+		background: var(--paper-50);
+		color: var(--ink-700);
+		padding: 0.55rem 0.7rem;
+		font-family: var(--font-ui);
+		font-size: 0.9rem;
 	}
 
 	@media (max-width: 980px) {
