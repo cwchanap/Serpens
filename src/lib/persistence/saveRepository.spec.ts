@@ -579,7 +579,7 @@ describe('save records', () => {
 	});
 
 	test('accepts boutique weekly import reports without material shop imports', () => {
-		expect.assertions(2);
+		expect.assertions(3);
 		const game = {
 			...createNewGame('boutique', 20260508),
 			day: 7
@@ -594,10 +594,16 @@ describe('save records', () => {
 							reorderThreshold: 5,
 							targetStock: 20
 						}
-					: product
+					: {
+							...product,
+							reorderThreshold: 0
+						}
 			)
 		};
 		const simulated = simulateDay({ ...game, stores: [store] });
+		const apparelReport = simulated.reports[0]?.storeReports[0]?.productReports.find(
+			(report) => report.categoryId === 'apparel'
+		);
 		const record = createSaveRecord(simulated, {
 			id: 'manual-boutique-imports',
 			name: 'Boutique Imports',
@@ -605,6 +611,7 @@ describe('save records', () => {
 			updatedAt: new Date('2026-05-08T12:00:00.000Z')
 		});
 
+		expect(apparelReport?.importedUnits).toBe(20);
 		expect(simulated.reports[0]?.productionReport.shopImports).toEqual([]);
 		expect(() => validateSaveRecord(record)).not.toThrow();
 	});
