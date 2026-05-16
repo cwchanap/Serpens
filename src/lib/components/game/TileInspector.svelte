@@ -117,6 +117,8 @@
 					tabindex={activeStoreTab === 'details' ? 0 : -1}
 					onclick={() => selectStoreTab('details')}
 				>
+					{#if activeStoreTab === 'details'}<span class="bookmark tab-bookmark" aria-hidden="true"
+						></span>{/if}
 					Details
 				</button>
 				<button
@@ -130,6 +132,8 @@
 					tabindex={activeStoreTab === 'stock' ? 0 : -1}
 					onclick={() => selectStoreTab('stock')}
 				>
+					{#if activeStoreTab === 'stock'}<span class="bookmark tab-bookmark" aria-hidden="true"
+						></span>{/if}
 					Stock
 				</button>
 				<button
@@ -143,6 +147,8 @@
 					tabindex={activeStoreTab === 'staff' ? 0 : -1}
 					onclick={() => selectStoreTab('staff')}
 				>
+					{#if activeStoreTab === 'staff'}<span class="bookmark tab-bookmark" aria-hidden="true"
+						></span>{/if}
 					Staff
 				</button>
 			</div>
@@ -252,11 +258,18 @@
 		align-content: start;
 		gap: 1rem;
 		min-width: 0;
-		border: 1px solid #343434;
-		border-radius: 8px;
-		background: #1a1a18;
-		padding: 1rem;
-		box-shadow: 0 24px 70px rgb(0 0 0 / 0.38);
+		padding: 1rem 1.1rem 1.1rem;
+		border: 1px solid var(--ink-700);
+		border-radius: 2px;
+		background-color: var(--paper-100);
+		background-image: var(--grain-svg);
+		background-blend-mode: multiply;
+		background-size: 200px 200px;
+		color: var(--ink-700);
+		box-shadow:
+			inset 0 0 0 2px var(--paper-100),
+			inset 0 0 0 3px var(--brass-500),
+			var(--shadow-paper);
 	}
 
 	.inspector.store-inspector {
@@ -267,13 +280,22 @@
 
 	.close {
 		position: absolute;
-		top: 0.65rem;
-		right: 0.65rem;
-		width: 2rem;
-		height: 2rem;
-		border-radius: 999px;
+		top: 0.7rem;
+		right: 0.7rem;
+		width: 1.9rem;
+		height: 1.9rem;
 		padding: 0;
+		border: 1px solid var(--ink-700);
+		border-radius: 999px;
+		background: var(--paper-50);
+		color: var(--ink-700);
+		font-family: var(--font-ui);
+		font-weight: 700;
 		text-align: center;
+	}
+
+	.close:hover {
+		background: var(--paper-200);
 	}
 
 	.heading {
@@ -281,6 +303,7 @@
 		align-items: flex-start;
 		justify-content: space-between;
 		gap: 0.75rem;
+		padding-right: 2.2rem;
 	}
 
 	h2,
@@ -291,46 +314,111 @@
 	}
 
 	h2 {
-		font-size: 1.2rem;
-		line-height: 1.15;
+		font-family: var(--font-display);
+		font-size: 1.25rem;
+		font-weight: 400;
+		line-height: 1.1;
+		color: var(--ink-700);
 	}
 
 	h3 {
-		font-size: 0.94rem;
+		font-family: var(--font-display);
+		font-size: 1rem;
+		font-weight: 400;
+		color: var(--ink-700);
 	}
 
-	.heading p,
+	.heading p {
+		color: var(--brass-700);
+		font-family: var(--font-ui);
+		font-size: 0.7rem;
+		font-weight: 700;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+	}
+
 	.location,
 	dt {
-		color: #b8b3a7;
+		color: var(--ink-500);
+		font-family: var(--font-body);
+		font-size: 0.86rem;
 	}
 
-	.heading p,
-	.heading span,
 	dt {
-		font-size: 0.78rem;
+		font-family: var(--font-ui);
+		font-size: 0.7rem;
+		font-weight: 700;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		color: var(--brass-700);
 	}
 
 	.heading span {
 		flex: 0 0 auto;
-		border: 1px solid #504a3f;
+		border: 1px solid var(--brass-500);
 		border-radius: 999px;
-		color: #f3d28d;
-		padding: 0.2rem 0.45rem;
+		color: var(--ink-700);
+		background: var(--paper-50);
+		padding: 0.2rem 0.55rem;
+		font-family: var(--font-ui);
+		font-size: 0.74rem;
+		font-weight: 600;
 	}
 
-	section {
+	dl {
 		display: grid;
-		gap: 0.75rem;
+		grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
+		gap: 0.6rem;
+	}
+
+	dd {
+		margin: 0.2rem 0 0;
+		font-family: var(--font-mono);
+		font-variant-numeric: tabular-nums lining-nums;
+		font-weight: 700;
+		color: var(--ink-700);
+		overflow-wrap: anywhere;
+	}
+
+	.store-tabs {
+		display: flex;
+		gap: 0.4rem;
+		border-bottom: 1px solid var(--brass-500);
+	}
+
+	.store-tab {
+		position: relative;
+		flex: 1 1 auto;
+		padding: 0.55rem 0.75rem 0.7rem;
+		border: 1px solid var(--paper-edge);
+		border-bottom: 0;
+		border-radius: 2px 2px 0 0;
+		background: var(--paper-50);
+		color: var(--ink-500);
+		font-family: var(--font-ui);
+		font-size: 0.85rem;
+		font-weight: 600;
+	}
+
+	.store-tab.active {
+		color: var(--ink-900);
+		background: var(--paper-200);
+		border-color: var(--brass-500);
+	}
+
+	.tab-bookmark {
+		left: 50%;
+		top: -2px;
+		transform: translateX(-50%);
+		width: 0.6rem;
+		height: 1.2rem;
 	}
 
 	.store-tab-panels {
-		display: grid;
-	}
-
-	.inspector.store-inspector .store-tab-panels {
+		position: relative;
+		flex: 1 1 auto;
 		min-height: 0;
-		overflow: hidden;
+		overflow: auto;
 	}
 
 	.store-panel {
@@ -339,84 +427,20 @@
 
 	.store-panel.active {
 		display: grid;
-	}
-
-	.inspector.store-inspector .store-panel.active {
-		min-height: 0;
-		overflow: auto;
-		padding-right: 0.15rem;
-	}
-
-	.store-details {
-		gap: 0.75rem;
-	}
-
-	.store-stock-panel,
-	.store-staff-panel {
-		align-content: start;
+		gap: 0.85rem;
 	}
 
 	.store-art {
-		justify-self: start;
-		width: min(100%, 22rem);
-		max-height: 14rem;
-		aspect-ratio: 16 / 11;
-		overflow: hidden;
-		border: 1px solid #3f4a42;
-		border-radius: 8px;
-		background: #f6efe2;
+		display: grid;
+		place-items: center;
+		padding: 0.5rem;
+		background: var(--paper-50);
+		border: 1px solid var(--paper-edge);
+		border-radius: 2px;
 	}
 
 	.store-art img {
-		display: block;
-		width: 100%;
-		height: 100%;
-		object-fit: contain;
-	}
-
-	dl {
-		display: grid;
-		grid-template-columns: repeat(2, minmax(0, 1fr));
-		gap: 0.75rem;
-	}
-
-	dd {
-		margin: 0.18rem 0 0;
-		font-weight: 750;
-	}
-
-	.store-tabs {
-		display: grid;
-		grid-template-columns: repeat(3, minmax(0, 1fr));
-		gap: 0.4rem;
-	}
-
-	button {
-		width: 100%;
-		border: 1px solid #4a4a45;
-		border-radius: 6px;
-		background: #282724;
-		color: #f7f2e8;
-		padding: 0.65rem 0.75rem;
-		text-align: left;
-	}
-
-	.store-tab {
-		min-height: 2.3rem;
-		padding: 0.45rem 0.65rem;
-		text-align: center;
-	}
-
-	.store-tab.active {
-		border-color: #d59b45;
-		background: #4a3217;
-		color: #ffe7b7;
-	}
-
-	button:hover:not(:disabled),
-	button:focus-visible:not(:disabled) {
-		border-color: #d59b45;
-		background: #3a2b18;
-		outline: none;
+		width: min(160px, 100%);
+		height: auto;
 	}
 </style>
