@@ -6,7 +6,7 @@ import { createNewGame } from './state';
 
 describe('industry map render snapshot', () => {
 	test('creates a serializable snapshot for the active industry city', () => {
-		expect.assertions(8);
+		expect.assertions(9);
 		const game = createNewGame('convenience', 20260512);
 		const city = game.industryCities[0]!;
 		const tile = city.tiles.find((candidate) => !candidate.locked)!;
@@ -18,13 +18,14 @@ describe('industry map render snapshot', () => {
 		expect(snapshot.height).toBe(18);
 		expect(snapshot.tiles).toHaveLength(324);
 		expect(snapshot.selectedTileId).toBe(tile.id);
+		expect(snapshot.placementPreview).toBeNull();
 		expect(snapshot.tiles.find((candidate) => candidate.id === tile.id)?.selected).toBe(true);
 		expect(snapshot.buildings).toHaveLength(0);
 		expect(snapshot.tiles.find((candidate) => candidate.id === tile.id)?.occupied).toBe(false);
 	});
 
 	test('returns an empty safe snapshot when the active industry city is missing', () => {
-		expect.assertions(5);
+		expect.assertions(6);
 		const game = createNewGame('convenience', 20260512);
 
 		const snapshot = createIndustryMapSnapshot(
@@ -35,8 +36,30 @@ describe('industry map render snapshot', () => {
 		expect(snapshot.cityId).toBe('missing-industry-city');
 		expect(snapshot.width).toBe(0);
 		expect(snapshot.height).toBe(0);
+		expect(snapshot.placementPreview).toBeNull();
 		expect(snapshot.tiles).toHaveLength(0);
 		expect(snapshot.buildings).toHaveLength(0);
+	});
+
+	test('includes industry placement preview metadata when provided', () => {
+		expect.assertions(4);
+		const game = createNewGame('convenience', 20260512);
+		const placementPreview = {
+			validTileIds: ['industry-city-1-1'],
+			invalidTileIds: ['industry-city-1-4']
+		};
+
+		const snapshot = createIndustryMapSnapshot(game, null, placementPreview);
+		const missingCitySnapshot = createIndustryMapSnapshot(
+			{ ...game, activeIndustryCityId: 'missing-industry-city' },
+			null,
+			placementPreview
+		);
+
+		expect(snapshot.placementPreview?.validTileIds).toEqual(['industry-city-1-1']);
+		expect(snapshot.placementPreview?.invalidTileIds).toEqual(['industry-city-1-4']);
+		expect(missingCitySnapshot.placementPreview).toEqual(placementPreview);
+		expect(createIndustryMapSnapshot(game, null).placementPreview).toBeNull();
 	});
 
 	test('marks occupied tiles and renders active city buildings', () => {

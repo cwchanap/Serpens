@@ -1,4 +1,5 @@
 import { INDUSTRIAL_BUILDING_TYPES } from './industry';
+import type { PlacementPreview } from './placementPreview';
 import type {
 	GameState,
 	IndustrialBuilding,
@@ -35,13 +36,15 @@ export interface IndustryMapSnapshot {
 	width: number;
 	height: number;
 	selectedTileId: string | null;
+	placementPreview: PlacementPreview | null;
 	tiles: IndustryMapTileRender[];
 	buildings: IndustryMapBuildingRender[];
 }
 
 export function createIndustryMapSnapshot(
 	game: GameState,
-	selectedTileId: string | null
+	selectedTileId: string | null,
+	placementPreview: PlacementPreview | null = null
 ): IndustryMapSnapshot {
 	const city = game.industryCities.find((candidate) => candidate.id === game.activeIndustryCityId);
 
@@ -51,6 +54,7 @@ export function createIndustryMapSnapshot(
 			width: 0,
 			height: 0,
 			selectedTileId,
+			placementPreview,
 			tiles: [],
 			buildings: []
 		};
@@ -66,6 +70,7 @@ export function createIndustryMapSnapshot(
 		width: city.width,
 		height: city.height,
 		selectedTileId,
+		placementPreview,
 		tiles: city.tiles.map((tile) => createTileRender(tile, occupiedTileIds, selectedTileId)),
 		buildings: activeCityBuildings.map(createBuildingRender)
 	};

@@ -1,4 +1,5 @@
 import type { ArchetypeId, CityTile, GameState, Store } from './types';
+import type { PlacementPreview } from './placementPreview';
 
 export type CityMapRoadVariant = 'horizontal' | 'vertical' | 'intersection';
 
@@ -33,13 +34,15 @@ export interface CityMapSnapshot {
 	width: number;
 	height: number;
 	selectedTileId: string | null;
+	placementPreview: PlacementPreview | null;
 	tiles: CityMapTileRender[];
 	stores: CityMapStoreRender[];
 }
 
 export function createCityMapSnapshot(
 	game: GameState,
-	selectedTileId: string | null
+	selectedTileId: string | null,
+	placementPreview: PlacementPreview | null = null
 ): CityMapSnapshot {
 	const city = game.cities.find((candidate) => candidate.id === game.activeCityId);
 
@@ -49,6 +52,7 @@ export function createCityMapSnapshot(
 			width: 0,
 			height: 0,
 			selectedTileId,
+			placementPreview,
 			tiles: [],
 			stores: []
 		};
@@ -67,6 +71,7 @@ export function createCityMapSnapshot(
 		width: city.width,
 		height: city.height,
 		selectedTileId,
+		placementPreview,
 		tiles: city.tiles.map((tile) =>
 			createTileRender(tile, roadCoordinates, ownedTileIds, selectedTileId)
 		),
