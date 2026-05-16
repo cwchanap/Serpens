@@ -1,0 +1,24 @@
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 1%
+        informational: true
+    patch:
+      default:
+        target: auto
+        informational: true
+
+comment:
+  layout: 'reach, diff, flags, files'
+  behavior: default
+  require_changes: false
+
+ignore:
+  - 'src/lib/vitest-examples'
+  - 'src/routes/demo'
+  - 'src/**/*.spec.ts'
+  - 'src/**/*.svelte.spec.ts'
+  - 'src/**/*.e2e.ts'
+  - 'src/app.d.ts'
