@@ -13,6 +13,8 @@ node_modules
 .wrangler
 /.svelte-kit
 /build
+/src-tauri/target
+/src-tauri/gen
 
 # OS
 .DS_Store
