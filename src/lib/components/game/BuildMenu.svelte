@@ -8,6 +8,7 @@
 	} from '$lib/game/industry';
 	import type { RetailBuildMenuOption } from '$lib/game/placementPreview';
 	import type { ArchetypeId, IndustrialBuildingTypeId } from '$lib/game/types';
+	import type { Attachment } from 'svelte/attachments';
 
 	interface ProductChainFilter {
 		id: string;
@@ -38,7 +39,16 @@
 		currency: 'USD',
 		maximumFractionDigits: 0
 	});
+	const focusableSelector = [
+		'button:not([disabled]):not([tabindex="-1"])',
+		'input:not([disabled]):not([tabindex="-1"])',
+		'select:not([disabled]):not([tabindex="-1"])',
+		'textarea:not([disabled]):not([tabindex="-1"])',
+		'a[href]:not([tabindex="-1"])',
+		'[tabindex]:not([tabindex="-1"])'
+	].join(',');
 
+	let dialogElement: HTMLElement | null = null;
 	let selectedProductFilterId = $state<string | null>(null);
 	let productFilterOpen = $state(false);
 	let productFilterSearch = $state('');
@@ -68,6 +78,19 @@
 			? getIndustrialBuildingTypesForProductChain(selectedProductFilterId)
 			: Object.values(INDUSTRIAL_BUILDING_TYPES)
 	);
+
+	const focusDialogOnMount: Attachment<HTMLElement> = (node) => {
+		dialogElement = node;
+		queueMicrotask(() => {
+			getDialogFocusableElements(node)[0]?.focus();
+		});
+
+		return () => {
+			if (dialogElement === node) {
+				dialogElement = null;
+			}
+		};
+	};
 
 	function formatRange(range: { min: number; max: number }): string {
 		if (range.min === range.max) {
@@ -105,6 +128,10 @@
 		productFilterOpen = !productFilterOpen;
 	}
 
+	function closeProductFilter(): void {
+		productFilterOpen = false;
+	}
+
 	function selectProductFilter(filterId: string | null): void {
 		selectedProductFilterId = filterId;
 		productFilterOpen = false;
@@ -122,13 +149,85 @@
 
 		onChooseIndustry(buildingTypeId);
 	}
+
+	function handleDialogKeydown(event: KeyboardEvent): void {
+		if (event.key === 'Escape') {
+			event.preventDefault();
+			event.stopPropagation();
+
+			if (productFilterOpen) {
+				closeProductFilter();
+				return;
+			}
+
+			onClose();
+			return;
+		}
+
+		if (event.key === 'Tab') {
+			trapDialogFocus(event);
+		}
+	}
+
+	function trapDialogFocus(event: KeyboardEvent): void {
+		const focusableElements = getDialogFocusableElements();
+		const firstElement = focusableElements[0];
+		const lastElement = focusableElements.at(-1);
+
+		if (!dialogElement || !firstElement || !lastElement) {
+			event.preventDefault();
+			dialogElement?.focus();
+			return;
+		}
+
+		const activeElement = document.activeElement;
+
+		if (
+			event.shiftKey &&
+			(activeElement === firstElement || !dialogElement.contains(activeElement))
+		) {
+			event.preventDefault();
+			lastElement.focus();
+			return;
+		}
+
+		if (!event.shiftKey && activeElement === lastElement) {
+			event.preventDefault();
+			firstElement.focus();
+		}
+	}
+
+	function getDialogFocusableElements(root: HTMLElement | null = dialogElement): HTMLElement[] {
+		if (!root) {
+			return [];
+		}
+
+		return Array.from(root.querySelectorAll<HTMLElement>(focusableSelector)).filter(
+			(element) =>
+				!element.hasAttribute('disabled') &&
+				(element.offsetWidth > 0 || element.offsetHeight > 0 || element.getClientRects().length > 0)
+		);
+	}
 </script>
 
 <div class="build-backdrop">
-	<button type="button" class="backdrop-button" aria-label="Close build menu" onclick={onClose}
+	<button
+		type="button"
+		class="backdrop-button"
+		tabindex="-1"
+		aria-label="Close build menu"
+		onclick={onClose}
 	></button>
 
-	<div class="build-menu" role="dialog" aria-modal="true" aria-label="Build menu">
+	<div
+		{@attach focusDialogOnMount}
+		class="build-menu"
+		role="dialog"
+		aria-modal="true"
+		aria-label="Build menu"
+		tabindex="-1"
+		onkeydown={handleDialogKeydown}
+	>
 		<header>
 			<div>
 				<p>{activeMapView === 'retail' ? 'Retail city' : 'Industry city'}</p>
@@ -148,7 +247,7 @@
 						disabled={option.disabledReason !== null}
 						onclick={() => chooseRetail(option.archetypeId)}
 					>
-						<img src={asset(art.path)} alt={art.alt} width="64" height="48" />
+						<img src={asset(art.path)} alt="" width="64" height="48" />
 						<span>
 							<strong>Build {archetype.name}</strong>
 							<small>
@@ -193,7 +292,18 @@
 			{/if}
 
 			{#if productFilterOpen}
-				<div class="filter-popup" role="dialog" aria-modal="true" aria-label="Product chain filter">
+				<div class="filter-popup" role="dialog" aria-label="Product chain filter">
+					<div class="filter-popup-heading">
+						<h3>Product filter</h3>
+						<button
+							type="button"
+							class="filter-close"
+							aria-label="Close product chain filter"
+							onclick={closeProductFilter}
+						>
+							x
+						</button>
+					</div>
 					<label>
 						<span>Search products</span>
 						<input type="search" bind:value={productFilterSearch} />
@@ -356,6 +466,7 @@
 	}
 
 	.close,
+	.filter-close,
 	.filter-clear {
 		flex: 0 0 auto;
 		width: 2rem;
@@ -393,6 +504,18 @@
 		border-radius: 8px;
 		background: #0d1511;
 		padding: 0.7rem;
+	}
+
+	.filter-popup-heading {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.75rem;
+	}
+
+	h3 {
+		margin: 0;
+		font-size: 0.86rem;
 	}
 
 	input {
