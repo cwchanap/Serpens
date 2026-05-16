@@ -146,7 +146,13 @@ export type MaterialId =
 	| 'essentials';
 
 export type MaterialKind = 'raw' | 'intermediate' | 'finished';
-export type IndustryTerrainId = 'farmland' | 'forest' | 'water' | 'deposit' | 'industrial' | 'blocked';
+export type IndustryTerrainId =
+	| 'farmland'
+	| 'forest'
+	| 'water'
+	| 'deposit'
+	| 'industrial'
+	| 'blocked';
 export type IndustryResourceId =
 	| 'grain-field'
 	| 'salt-deposit'
@@ -245,7 +251,12 @@ Create `src/lib/game/industry.ts` exporting:
 Use deterministic fixed resource anchors plus seeded filler tiles so tests do not depend on a rare random resource:
 
 ```ts
-const RESOURCE_ANCHORS: Array<{ x: number; y: number; resource: IndustryResourceId; terrain: IndustryTerrainId }> = [
+const RESOURCE_ANCHORS: Array<{
+	x: number;
+	y: number;
+	resource: IndustryResourceId;
+	terrain: IndustryTerrainId;
+}> = [
 	{ x: 1, y: 1, resource: 'grain-field', terrain: 'farmland' },
 	{ x: 3, y: 1, resource: 'oilseed-field', terrain: 'farmland' },
 	{ x: 5, y: 1, resource: 'fruit-orchard', terrain: 'farmland' },
@@ -632,7 +643,11 @@ import {
 } from './industryProduction';
 import { createNewGame } from './state';
 
-function buildOnResource(game: ReturnType<typeof createNewGame>, resource: Parameters<typeof getIndustryTilesByResource>[1], typeId: Parameters<typeof buildIndustrialBuilding>[1]['buildingTypeId']) {
+function buildOnResource(
+	game: ReturnType<typeof createNewGame>,
+	resource: Parameters<typeof getIndustryTilesByResource>[1],
+	typeId: Parameters<typeof buildIndustrialBuilding>[1]['buildingTypeId']
+) {
 	const tile = getIndustryTilesByResource(game.industryCities[0]!, resource)[0]!;
 	return buildIndustrialBuilding(game, { tileId: tile.id, buildingTypeId: typeId });
 }
@@ -864,9 +879,7 @@ test('runs industry production before weekly shop refill', () => {
 	expect(noWarehouse.reports[0]!.storeReports[0]!.productReports[0]!.importedUnits).toBe(20);
 	expect(warehouseReport.warehouseUnits).toBe(12);
 	expect(warehouseReport.importedUnits).toBe(8);
-	expect(withWarehouse.reports[0]!.importSpend).toBeLessThan(
-		noWarehouse.reports[0]!.importSpend
-	);
+	expect(withWarehouse.reports[0]!.importSpend).toBeLessThan(noWarehouse.reports[0]!.importSpend);
 });
 ```
 
@@ -917,7 +930,11 @@ Use `productionGame` as the base for sales and imports. When weekly imports run,
 Set `report.productionReport = { ...industryResult.report, warehousePulls, shopImports }` after weekly refill. Include overflow cost in daily cash flow:
 
 ```ts
-const operatingCosts = sum(storeReports, 'operatingCosts') + payrollCost + productionReport.operatingCost + productionReport.overflowCost;
+const operatingCosts =
+	sum(storeReports, 'operatingCosts') +
+	payrollCost +
+	productionReport.operatingCost +
+	productionReport.overflowCost;
 const importSpend = sum(storeReports, 'importSpend') + productionReport.importSpend;
 ```
 

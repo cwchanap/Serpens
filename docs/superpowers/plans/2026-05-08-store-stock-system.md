@@ -151,8 +151,20 @@ describe('stock rules', () => {
 		expect(calculateStockHealth([])).toBe(100);
 		expect(
 			calculateStockHealth([
-				{ categoryId: 'snacks', stock: 50, reorderThreshold: 20, targetStock: 100, sellingPrice: 5 },
-				{ categoryId: 'drinks', stock: 100, reorderThreshold: 20, targetStock: 100, sellingPrice: 4 }
+				{
+					categoryId: 'snacks',
+					stock: 50,
+					reorderThreshold: 20,
+					targetStock: 100,
+					sellingPrice: 5
+				},
+				{
+					categoryId: 'drinks',
+					stock: 100,
+					reorderThreshold: 20,
+					targetStock: 100,
+					sellingPrice: 4
+				}
 			])
 		).toBe(75);
 		expect(
@@ -549,7 +561,9 @@ test('higher selling price reduces category units sold under stable conditions',
 	const game = createNewGame('convenience', 20260508);
 	const baseStore = {
 		...game.stores[0]!,
-		products: [{ categoryId: 'snacks', stock: 100, reorderThreshold: 10, targetStock: 100, sellingPrice: 5 }]
+		products: [
+			{ categoryId: 'snacks', stock: 100, reorderThreshold: 10, targetStock: 100, sellingPrice: 5 }
+		]
 	};
 	const premiumStore = {
 		...baseStore,
@@ -578,7 +592,9 @@ test('weekly imports refill below-threshold rows to target and report spend', ()
 	const game = createNewGame('convenience', 20260508);
 	const store = {
 		...game.stores[0]!,
-		products: [{ categoryId: 'snacks', stock: 4, reorderThreshold: 10, targetStock: 25, sellingPrice: 5 }]
+		products: [
+			{ categoryId: 'snacks', stock: 4, reorderThreshold: 10, targetStock: 25, sellingPrice: 5 }
+		]
 	};
 	const result = applyWeeklyImports({
 		game: { ...game, stores: [store] },
@@ -656,20 +672,32 @@ export function isImportDay(day: number): boolean {
 export function buildCityDemandPools(
 	game: Pick<GameState, 'stores'>,
 	city: City,
-	policy: Pick<CompanyPolicy, 'marketing' | 'pricing'> = { marketing: 'awareness', pricing: 'standard' }
+	policy: Pick<CompanyPolicy, 'marketing' | 'pricing'> = {
+		marketing: 'awareness',
+		pricing: 'standard'
+	}
 ): Record<string, number> {
 	const buildableTiles = city.tiles.filter((tile) => !getTilePlacementBlockReason(tile));
 	const cityDemand =
-		buildableTiles.reduce((sum, tile) => sum + tile.demand + tile.footTraffic * 0.6 + tile.customerFit * 0.35, 0) /
-		Math.max(1, buildableTiles.length);
-	const categories = getCityStoreCategories(game.stores.filter((store) => store.cityId === city.id));
-	const marketingMultiplier = policy.marketing === 'none' ? 0.92 : policy.marketing === 'promotions' ? 1.16 : 1.06;
-	const pricingMultiplier = policy.pricing === 'discount' ? 1.08 : policy.pricing === 'premium' ? 0.93 : 1;
+		buildableTiles.reduce(
+			(sum, tile) => sum + tile.demand + tile.footTraffic * 0.6 + tile.customerFit * 0.35,
+			0
+		) / Math.max(1, buildableTiles.length);
+	const categories = getCityStoreCategories(
+		game.stores.filter((store) => store.cityId === city.id)
+	);
+	const marketingMultiplier =
+		policy.marketing === 'none' ? 0.92 : policy.marketing === 'promotions' ? 1.16 : 1.06;
+	const pricingMultiplier =
+		policy.pricing === 'discount' ? 1.08 : policy.pricing === 'premium' ? 0.93 : 1;
 
 	return Object.fromEntries(
 		categories.map((category) => [
 			category.id,
-			Math.max(0, Math.round(cityDemand * category.demandWeight * marketingMultiplier * pricingMultiplier))
+			Math.max(
+				0,
+				Math.round(cityDemand * category.demandWeight * marketingMultiplier * pricingMultiplier)
+			)
 		])
 	);
 }
@@ -684,14 +712,27 @@ export function simulateProductSalesForCity(input: {
 	const remainingDemand = { ...initialDemand };
 	const reports = new Map<string, DailyProductReport[]>();
 	const capacityRemaining = new Map(input.storeCapacity);
-	const storesById = new Map(input.game.stores.map((store) => [store.id, cloneStoreForStock(store)]));
+	const storesById = new Map(
+		input.game.stores.map((store) => [store.id, cloneStoreForStock(store)])
+	);
 	const categoryIds = Object.keys(initialDemand).sort();
 
 	for (const categoryId of categoryIds) {
 		const sellers = input.game.stores
-			.filter((store) => store.cityId === input.city.id && store.products.some((product) => product.categoryId === categoryId))
-			.sort((left, right) => scoreStoreForCategory(right, categoryId) - scoreStoreForCategory(left, categoryId) || left.id.localeCompare(right.id));
-		const totalScore = sellers.reduce((sum, store) => sum + scoreStoreForCategory(store, categoryId), 0);
+			.filter(
+				(store) =>
+					store.cityId === input.city.id &&
+					store.products.some((product) => product.categoryId === categoryId)
+			)
+			.sort(
+				(left, right) =>
+					scoreStoreForCategory(right, categoryId) - scoreStoreForCategory(left, categoryId) ||
+					left.id.localeCompare(right.id)
+			);
+		const totalScore = sellers.reduce(
+			(sum, store) => sum + scoreStoreForCategory(store, categoryId),
+			0
+		);
 		const category = findStoreCategory(sellers[0], categoryId);
 
 		if (!category || totalScore <= 0) {
@@ -700,12 +741,19 @@ export function simulateProductSalesForCity(input: {
 
 		for (const store of sellers) {
 			const currentStore = storesById.get(store.id)!;
-			const product = currentStore.products.find((candidate) => candidate.categoryId === categoryId)!;
+			const product = currentStore.products.find(
+				(candidate) => candidate.categoryId === categoryId
+			)!;
 			const demandShare = scoreStoreForCategory(store, categoryId) / totalScore;
 			const priceMultiplier = priceDemandMultiplier(category, product.sellingPrice);
 			const desiredUnits = Math.max(
 				0,
-				Math.round((initialDemand[categoryId] ?? 0) * demandShare * priceMultiplier * randomBetween(input.rng, 0.94, 1.06))
+				Math.round(
+					(initialDemand[categoryId] ?? 0) *
+						demandShare *
+						priceMultiplier *
+						randomBetween(input.rng, 0.94, 1.06)
+				)
 			);
 			const capacity = Math.max(0, Math.floor(capacityRemaining.get(store.id) ?? 0));
 			const availableDemand = Math.max(0, remainingDemand[categoryId] ?? 0);
@@ -764,7 +812,14 @@ export function applyWeeklyImports(input: {
 
 			const spend = importedUnits * category.importCost;
 			importSpend += spend;
-			mergeImportReport(productReports, store.id, category, importedUnits, spend, product.targetStock);
+			mergeImportReport(
+				productReports,
+				store.id,
+				category,
+				importedUnits,
+				spend,
+				product.targetStock
+			);
 
 			return { ...product, stock: product.targetStock };
 		});
@@ -802,9 +857,14 @@ function cloneStoreForStock(store: Store): Store {
 	};
 }
 
-function findStoreCategory(store: Store | undefined, categoryId: string): ProductCategory | undefined {
+function findStoreCategory(
+	store: Store | undefined,
+	categoryId: string
+): ProductCategory | undefined {
 	return store
-		? getArchetype(store.archetypeId).startingCategories.find((category) => category.id === categoryId)
+		? getArchetype(store.archetypeId).startingCategories.find(
+				(category) => category.id === categoryId
+			)
 		: undefined;
 }
 
@@ -815,7 +875,10 @@ function scoreStoreForCategory(store: Store, categoryId: string): number {
 		return 0;
 	}
 
-	return Math.max(1, store.reputation * 0.55 + store.staffCapacity * 0.25 + (100 - store.competition) * 0.2);
+	return Math.max(
+		1,
+		store.reputation * 0.55 + store.staffCapacity * 0.25 + (100 - store.competition) * 0.2
+	);
 }
 
 function priceDemandMultiplier(category: ProductCategory, sellingPrice: number): number {
@@ -968,7 +1031,9 @@ function buildDailyStoreReport(
 	const demandMissed = productReports.reduce((sum, report) => sum + report.demandMissed, 0);
 	const stockHealth = calculateStockHealth(profile.store.products);
 	const grossMargin = revenue - costOfGoods;
-	const operatingCosts = Math.round(getArchetype(profile.store.archetypeId).baseRent * (0.92 + profile.store.competition / 450));
+	const operatingCosts = Math.round(
+		getArchetype(profile.store.archetypeId).baseRent * (0.92 + profile.store.competition / 450)
+	);
 	const warnings = buildProductStoreWarnings(
 		profile.store,
 		productReports,
@@ -1077,7 +1142,9 @@ test('records product reports and aggregates store report totals', () => {
 	expect(report.importSpend).toBe(productTotals.importSpend);
 	expect(report.customersServed).toBe(productTotals.unitsSold);
 	expect(report.demandMissed).toBe(productTotals.demandMissed);
-	expect(result.stores[0]!.products[0]!.stock).toBeLessThanOrEqual(game.stores[0]!.products[0]!.stock);
+	expect(result.stores[0]!.products[0]!.stock).toBeLessThanOrEqual(
+		game.stores[0]!.products[0]!.stock
+	);
 	expect(report.stockHealth).toBe(result.stores[0]!.stockHealth);
 });
 
@@ -1103,7 +1170,9 @@ test('weekly imports subtract cash even when cash goes negative', () => {
 	expect(report.importSpend).toBeGreaterThan(10);
 	expect(result.cash).toBeLessThan(0);
 	expect(result.stores[0]!.products.every((product) => product.stock >= 20)).toBe(true);
-	expect(report.storeReports[0]?.productReports.some((product) => product.importedUnits > 0)).toBe(true);
+	expect(report.storeReports[0]?.productReports.some((product) => product.importedUnits > 0)).toBe(
+		true
+	);
 	expect(report.cashAfter).toBe(result.cash);
 });
 ```
@@ -1175,7 +1244,15 @@ test('save validation rejects invalid store product rows', () => {
 		stores: [
 			{
 				...game.stores[0]!,
-				products: [{ categoryId: '', stock: Number.NaN, reorderThreshold: 1, targetStock: 1, sellingPrice: 1 }]
+				products: [
+					{
+						categoryId: '',
+						stock: Number.NaN,
+						reorderThreshold: 1,
+						targetStock: 1,
+						sellingPrice: 1
+					}
+				]
 			}
 		]
 	};
@@ -1523,9 +1600,7 @@ Create `src/lib/components/game/StoreStockTable.svelte` with this autofixer-clea
 				</div>
 				<div role="cell">
 					<strong>{row.product.stock}</strong>
-					<meter min="0" max="1" value={row.stockRatio}
-						>{Math.round(row.stockRatio * 100)}%</meter
-					>
+					<meter min="0" max="1" value={row.stockRatio}>{Math.round(row.stockRatio * 100)}%</meter>
 				</div>
 				<span role="cell">{currency.format(row.category?.importCost ?? 0)}</span>
 				<div role="cell">
@@ -1591,15 +1666,12 @@ Add the CSS from the autofixer-clean snippet used during planning, preserving th
 Modify `src/lib/components/game/TileInspector.svelte`:
 
 ```svelte
-import StoreStockTable from './StoreStockTable.svelte';
-import type {
-	ArchetypeId,
-	CityTile,
-	DailyStoreReport,
-	OpeningOption,
-	Store,
-	StoreProductPatch
-} from '$lib/game/types';
+import StoreStockTable from './StoreStockTable.svelte'; import type {(ArchetypeId,
+CityTile,
+DailyStoreReport,
+OpeningOption,
+Store,
+StoreProductPatch)} from '$lib/game/types';
 ```
 
 Extend props:
@@ -1612,11 +1684,7 @@ onUpdateStoreProduct: (storeId: string, categoryId: string, patch: StoreProductP
 Render inside the owned-store branch after the store details:
 
 ```svelte
-<StoreStockTable
-	{store}
-	latestReport={latestStoreReport}
-	onUpdate={onUpdateStoreProduct}
-/>
+<StoreStockTable {store} latestReport={latestStoreReport} onUpdate={onUpdateStoreProduct} />
 ```
 
 Replace the `Local demand` display with a city-wide wording such as:
@@ -1654,11 +1722,7 @@ let latestSelectedStoreReport = $derived.by(() => {
 Add handler:
 
 ```ts
-function changeStoreProduct(
-	storeId: string,
-	categoryId: string,
-	patch: StoreProductPatch
-): void {
+function changeStoreProduct(storeId: string, categoryId: string, patch: StoreProductPatch): void {
 	if (!game) {
 		return;
 	}

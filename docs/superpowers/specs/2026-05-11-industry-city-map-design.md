@@ -66,20 +66,20 @@ Deferred:
 
 The game continues to sell the existing category-level shop products. The industry system adds detailed upstream materials and buildings behind those categories.
 
-| Shop category | Chain |
-| --- | --- |
-| `snacks` | Grain Farm + Salt Mine + Oilseed Farm -> Flour Mill + Oil Press -> Snack Factory -> Packaged Snacks |
-| `drinks` | Water Pump + Fruit Farm + Sugar Farm -> Water Filtration Plant + Syrup Plant -> Drink Bottling Plant -> Bottled Drinks |
-| `essentials` | Pulpwood Grove + Chemical Feedstock Well + Oilseed Farm -> Pulp Mill + Chemical Plant + Plastic Plant -> Household Goods Factory -> Essentials |
-| `apparel` | Cotton Farm + Dye Plant -> Textile Mill -> Garment Factory -> Apparel |
-| `home-goods` | Timber Camp + Clay Quarry + Cotton Farm -> Sawmill + Ceramics Workshop + Textile Mill -> Home Goods Workshop -> Home Goods |
-| `gifts` | Timber Camp + Glassworks + Metalworks -> Craft Workshop -> Gift Goods |
-| `games` | Pulpwood Grove + Plastic Plant + Electronics Parts Plant -> Game Pressing Plant -> Games |
-| `accessories` | Plastic Plant + Copper Mine + Textile Mill -> Accessories Assembly -> Accessories |
-| `devices` | Silica Quarry + Copper Mine + Rare Metals Mine + Plastic Plant -> Chip Plant -> Device Assembly -> Devices |
-| `produce` | Vegetable Farm and Fruit Farm -> Cold Storage -> Produce |
-| `pantry` | Grain Farm + Fruit Farm + Vegetable Farm -> Canning Plant + Drying Plant -> Pantry Goods |
-| `prepared` | Produce + Pantry Goods + Packaging Plant -> Commissary Kitchen -> Prepared Food |
+| Shop category | Chain                                                                                                                                          |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `snacks`      | Grain Farm + Salt Mine + Oilseed Farm -> Flour Mill + Oil Press -> Snack Factory -> Packaged Snacks                                            |
+| `drinks`      | Water Pump + Fruit Farm + Sugar Farm -> Water Filtration Plant + Syrup Plant -> Drink Bottling Plant -> Bottled Drinks                         |
+| `essentials`  | Pulpwood Grove + Chemical Feedstock Well + Oilseed Farm -> Pulp Mill + Chemical Plant + Plastic Plant -> Household Goods Factory -> Essentials |
+| `apparel`     | Cotton Farm + Dye Plant -> Textile Mill -> Garment Factory -> Apparel                                                                          |
+| `home-goods`  | Timber Camp + Clay Quarry + Cotton Farm -> Sawmill + Ceramics Workshop + Textile Mill -> Home Goods Workshop -> Home Goods                     |
+| `gifts`       | Timber Camp + Glassworks + Metalworks -> Craft Workshop -> Gift Goods                                                                          |
+| `games`       | Pulpwood Grove + Plastic Plant + Electronics Parts Plant -> Game Pressing Plant -> Games                                                       |
+| `accessories` | Plastic Plant + Copper Mine + Textile Mill -> Accessories Assembly -> Accessories                                                              |
+| `devices`     | Silica Quarry + Copper Mine + Rare Metals Mine + Plastic Plant -> Chip Plant -> Device Assembly -> Devices                                     |
+| `produce`     | Vegetable Farm and Fruit Farm -> Cold Storage -> Produce                                                                                       |
+| `pantry`      | Grain Farm + Fruit Farm + Vegetable Farm -> Canning Plant + Drying Plant -> Pantry Goods                                                       |
+| `prepared`    | Produce + Pantry Goods + Packaging Plant -> Commissary Kitchen -> Prepared Food                                                                |
 
 For the first playable slice, implement enough materials and buildings to complete `snacks`, `drinks`, and `essentials`. The full catalog should live in the design and be reflected in type-friendly definitions so later categories can be added without changing the shape of the system.
 

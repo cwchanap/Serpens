@@ -333,7 +333,9 @@ describe('game state', () => {
 		expect(resolved.stores[0]!.products[0]!.stock).toBeGreaterThan(
 			storeWithHealth.products[0]!.stock
 		);
-		expect(resolved.stores[0]!.stockHealth).toBe(calculateStockHealth(resolved.stores[0]!.products));
+		expect(resolved.stores[0]!.stockHealth).toBe(
+			calculateStockHealth(resolved.stores[0]!.products)
+		);
 		expect(resolved.stores[0]!.stockHealth).toBeGreaterThan(storeWithHealth.stockHealth);
 		expect(nextDay.stores[0]!.stockHealth).toBe(calculateStockHealth(nextDay.stores[0]!.products));
 		expect(nextDay.stores[0]!.stockHealth).toBeGreaterThan(unboostedNextDay.stores[0]!.stockHealth);

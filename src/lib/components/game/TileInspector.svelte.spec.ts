@@ -260,7 +260,9 @@ describe('TileInspector empty tile details', () => {
 		await expect.element(page.getByText('Demand')).toBeVisible();
 		await expect.element(page.getByText('$190')).toBeVisible();
 		await expect.element(page.getByRole('heading', { name: 'Store type' })).not.toBeInTheDocument();
-		await expect.element(page.getByRole('button', { name: /open .* here/i })).not.toBeInTheDocument();
+		await expect
+			.element(page.getByRole('button', { name: /open .* here/i }))
+			.not.toBeInTheDocument();
 		await expect
 			.element(page.getByRole('dialog', { name: 'Confirm store opening' }))
 			.not.toBeInTheDocument();

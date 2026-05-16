@@ -252,7 +252,8 @@ function applyStoreEffects(store: Store, option: DecisionOption): Store {
 					...product,
 					stock: Math.max(
 						0,
-						product.stock + Math.round(product.targetStock * (option.effects.stockHealth ?? 0) * 0.01)
+						product.stock +
+							Math.round(product.targetStock * (option.effects.stockHealth ?? 0) * 0.01)
 					)
 				}));
 
@@ -260,9 +261,7 @@ function applyStoreEffects(store: Store, option: DecisionOption): Store {
 		...store,
 		products,
 		stockHealth:
-			option.effects.stockHealth === undefined
-				? store.stockHealth
-				: calculateStockHealth(products),
+			option.effects.stockHealth === undefined ? store.stockHealth : calculateStockHealth(products),
 		staffMorale: clampScore(store.staffMorale + (option.effects.staffMorale ?? 0)),
 		reputation: clampScore(store.reputation + (option.effects.reputation ?? 0))
 	};

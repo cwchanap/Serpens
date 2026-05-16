@@ -507,7 +507,9 @@ describe('daily simulation', () => {
 				dailyReport.productionReport.operatingCost +
 				dailyReport.productionReport.overflowCost
 		);
-		expect(dailyReport.importSpend).toBe(storeImportSpend + dailyReport.productionReport.importSpend);
+		expect(dailyReport.importSpend).toBe(
+			storeImportSpend + dailyReport.productionReport.importSpend
+		);
 		expect(dailyReport.netIncome).toBe(
 			dailyReport.revenue - dailyReport.operatingCosts - dailyReport.importSpend
 		);
