@@ -25,7 +25,6 @@
 		onAssignStaff: (staffId: string, storeId: string) => void;
 		onUnassignStaff: (staffId: string) => void;
 		onClose: () => void;
-		[key: string]: unknown;
 	}
 
 	let {

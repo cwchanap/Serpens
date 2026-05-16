@@ -18,7 +18,6 @@
 		tile: IndustryTile | null;
 		building: IndustrialBuilding | null;
 		onClose: () => void;
-		[key: string]: unknown;
 	}
 
 	interface WarehouseMaterialRow {

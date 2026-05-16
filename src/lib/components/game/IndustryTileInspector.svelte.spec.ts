@@ -8,7 +8,7 @@ import type { IndustrialBuilding } from '$lib/game/types';
 
 describe('IndustryTileInspector', () => {
 	it('shows empty industry tile stats without construction controls or product filters', async () => {
-		expect.assertions(7);
+		expect.assertions(9);
 		const game = createNewGame('convenience', 20260512);
 		const tile = getIndustryTilesByResource(game.industryCities[0]!, 'grain-field')[0]!;
 
@@ -29,13 +29,15 @@ describe('IndustryTileInspector', () => {
 			.element(page.getByRole('button', { name: /build grain farm/i }))
 			.not.toBeInTheDocument();
 		await expect.element(page.getByRole('button', { name: /filter:/i })).not.toBeInTheDocument();
+		await expect.element(page.getByLabelText(/search products/i)).not.toBeInTheDocument();
+		await expect.element(page.getByText('Search products')).not.toBeInTheDocument();
 		await expect
 			.element(page.getByRole('dialog', { name: /confirm industrial build/i }))
 			.not.toBeInTheDocument();
 	});
 
-	it('renders building and material thumbnails with asset sources', async () => {
-		expect.assertions(3);
+	it('renders building details and material thumbnails with asset sources', async () => {
+		expect.assertions(8);
 		const game = {
 			...createNewGame('convenience', 20260512),
 			warehouse: {
@@ -81,10 +83,22 @@ describe('IndustryTileInspector', () => {
 		await expect
 			.element(page.getByTestId('industry-building-thumbnail-warehouse'))
 			.toHaveAttribute('src', '/assets/game/industry/buildings/warehouse.png');
+		const buildingDetails = page.getByLabelText('Industrial building details');
+		const buildingDetailsElement = document.querySelector(
+			'section[aria-label="Industrial building details"]'
+		);
+		const detailValues = Array.from(buildingDetailsElement?.querySelectorAll('dd') ?? []).map(
+			(element) => element.textContent?.trim()
+		);
+		expect(buildingDetailsElement?.textContent).toContain('Status');
+		expect(buildingDetailsElement?.textContent).toContain('Produced total');
+		expect(buildingDetailsElement?.textContent).toContain('Imported inputs');
+		expect(buildingDetailsElement?.textContent).toContain('Blocked days');
+		expect(detailValues).toEqual(['Idle', '8', '0', '0']);
 		await expect
-			.element(page.getByTestId('industry-warehouse-material-snacks'))
+			.element(page.getByTestId('industry-production-material-snacks'))
 			.toHaveAttribute('src', '/assets/game/industry/materials/snacks.png');
-		await expect.element(page.getByText(/snacks: 42/i)).toBeVisible();
+		await expect.element(buildingDetails.getByText(/snacks: 8/i)).toBeVisible();
 	});
 
 	it('shows warehouse capacity and material totals for a warehouse building', async () => {

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import BuildMenu from '$lib/components/game/BuildMenu.svelte';
 	import DecisionQueue from '$lib/components/game/DecisionQueue.svelte';
 	import CityMap from '$lib/components/game/CityMap.svelte';
 	import IndustryMap from '$lib/components/game/IndustryMap.svelte';
@@ -11,17 +12,19 @@
 	import StaffPanel from '$lib/components/game/StaffPanel.svelte';
 	import StoreOverview from '$lib/components/game/StoreOverview.svelte';
 	import TileInspector from '$lib/components/game/TileInspector.svelte';
-	import { generateCity, getTileById, getTilePlacementBlockReason } from '$lib/game/city';
+	import { generateCity, getTileById } from '$lib/game/city';
 	import { generateIndustryCity, getIndustryTileById } from '$lib/game/industry';
 	import { createIndustryMapSnapshot } from '$lib/game/industryMapRender';
 	import { buildIndustrialBuilding } from '$lib/game/industryPlacement';
 	import { createCityMapSnapshot } from '$lib/game/mapRender';
+	import { createFoundingGameAtTile, openStoreAtTile } from '$lib/game/placement';
 	import {
-		createFoundingGameAtTile,
-		forecastOpening,
-		getRecommendedArchetypes,
-		openStoreAtTile
-	} from '$lib/game/placement';
+		createIndustryPlacementPreview,
+		createRetailPlacementPreview,
+		getIndustryBuildPlacementBlockReason,
+		getRetailBuildMenuOptions,
+		getRetailPlacementBlockReason
+	} from '$lib/game/placementPreview';
 	import { summarizeReports } from '$lib/game/reports';
 	import { assignStaffToStore, hireCandidate, unassignStaff } from '$lib/game/staffing';
 	import { DEFAULT_POLICY, resolveDecision, updatePolicy } from '$lib/game/state';
@@ -32,10 +35,8 @@
 		CompanyPolicy,
 		GameState,
 		IndustrialBuildingTypeId,
-		OpeningOption,
 		StoreProductPatch
 	} from '$lib/game/types';
-	import { MAX_STORES } from '$lib/game/types';
 	import type { SaveRepository } from '$lib/persistence/saveRepository';
 	import { createSaveRepository } from '$lib/persistence/saveRepositoryFactory';
 	import type { SaveSlotMetadata } from '$lib/persistence/saveTypes';
@@ -91,7 +92,11 @@
 	let selectedTileId = $state<string | null>(null);
 	let selectedIndustryTileId = $state<string | null>(null);
 	let isViewMenuOpen = $state(false);
+	let isBuildMenuOpen = $state(false);
 	let isControlTowerOpen = $state(false);
+	let retailPlacementArchetypeId = $state<ArchetypeId | null>(null);
+	let industryPlacementBuildingTypeId = $state<IndustrialBuildingTypeId | null>(null);
+	let placementFeedback = $state<string | null>(null);
 	let saveRepository: SaveRepository | null = $state(null);
 	let autoSave = $state<SaveSlotMetadata | null>(null);
 	let manualSaveSlots = $state<SaveSlotMetadata[]>([]);
@@ -141,31 +146,37 @@
 			? (summary.latest?.storeReports.find((report) => report.storeId === store.id) ?? null)
 			: null;
 	});
-	let recommendations = $derived(selectedTile ? getRecommendedArchetypes(selectedTile) : []);
-	let openingOptions = $derived.by<OpeningOption[]>(() => {
-		const tile = selectedTile;
-
-		if (!tile) {
-			return [];
-		}
-
-		return recommendations.map((archetypeId) => {
-			const optionForecast = forecastOpening(tile, archetypeId);
-
-			return {
-				archetypeId,
-				forecast: optionForecast,
-				disabledReason: getOpenStoreDisabledReason(optionForecast.setupCost)
-			};
-		});
-	});
-	let selectedTileDisabledReason = $derived.by(() => getSelectedTileDisabledReason());
-	let industryConstructionDisabledReason = $derived(
-		game ? null : 'Found a retail store to unlock construction.'
+	let isPlacementModeActive = $derived(
+		retailPlacementArchetypeId !== null || industryPlacementBuildingTypeId !== null
 	);
-	let mapSnapshot = $derived(createCityMapSnapshot(game ?? starterMapState, selectedTileId));
+	let retailBuildOptions = $derived(getRetailBuildMenuOptions({ game, city: activeCity }));
+	let retailPlacementPreview = $derived(
+		retailPlacementArchetypeId
+			? createRetailPlacementPreview({
+					game,
+					city: activeCity,
+					archetypeId: retailPlacementArchetypeId
+				})
+			: null
+	);
+	let industryPlacementPreview = $derived(
+		industryPlacementBuildingTypeId
+			? createIndustryPlacementPreview({
+					game,
+					buildingTypeId: industryPlacementBuildingTypeId
+				})
+			: null
+	);
+	let industryLockedReason = $derived(game ? null : 'Found a retail store to unlock construction.');
+	let mapSnapshot = $derived(
+		createCityMapSnapshot(game ?? starterMapState, selectedTileId, retailPlacementPreview)
+	);
 	let industryMapSnapshot = $derived(
-		createIndustryMapSnapshot(game ?? starterMapState, selectedIndustryTileId)
+		createIndustryMapSnapshot(
+			game ?? starterMapState,
+			selectedIndustryTileId,
+			industryPlacementPreview
+		)
 	);
 
 	onMount(() => {
@@ -173,11 +184,21 @@
 	});
 
 	function selectTile(tileId: string) {
+		if (retailPlacementArchetypeId) {
+			placeRetailAtTile(retailPlacementArchetypeId, tileId);
+			return;
+		}
+
 		selectedTileId = tileId;
 		selectedIndustryTileId = null;
 	}
 
 	function selectIndustryTile(tileId: string) {
+		if (industryPlacementBuildingTypeId) {
+			placeIndustryAtTile(industryPlacementBuildingTypeId, tileId);
+			return;
+		}
+
 		selectedIndustryTileId = tileId;
 		selectedTileId = null;
 	}
@@ -224,59 +245,32 @@
 		return error instanceof Error ? error.message : 'Save operation failed';
 	}
 
-	function getSelectedTileDisabledReason(): string | null {
-		const currentGame: GameState | null = game;
-
-		if (!selectedTile) {
-			return 'Select a tile';
-		}
-
-		const tileBlockReason = getTilePlacementBlockReason(selectedTile);
-
-		if (tileBlockReason) {
-			return tileBlockReason;
-		}
-
-		if (selectedStore) {
-			return 'Occupied location';
-		}
-
-		if (currentGame && currentGame.stores.length >= MAX_STORES) {
-			return 'Store limit reached';
-		}
-
-		return null;
-	}
-
-	function getOpenStoreDisabledReason(setupCost: number): string | null {
-		const tileReason = getSelectedTileDisabledReason();
-		const currentGame: GameState | null = game;
-
-		if (tileReason) {
-			return tileReason;
-		}
-
-		if (currentGame && currentGame.cash < setupCost) {
-			return `Requires ${setupCost.toLocaleString('en-US')} cash`;
-		}
-
-		return null;
-	}
-
 	function toggleViewMenu() {
 		isViewMenuOpen = !isViewMenuOpen;
+	}
+
+	function openBuildMenu(): void {
+		isViewMenuOpen = false;
+		isSavePanelOpen = false;
+		isBuildMenuOpen = true;
+	}
+
+	function closeBuildMenu(): void {
+		isBuildMenuOpen = false;
 	}
 
 	function showRetailMap() {
 		activeMapView = 'retail';
 		selectedIndustryTileId = null;
 		isViewMenuOpen = false;
+		cancelPlacement();
 	}
 
 	function showIndustryMap() {
 		activeMapView = 'industry';
 		selectedTileId = null;
 		isViewMenuOpen = false;
+		cancelPlacement();
 	}
 
 	function openControlTower() {
@@ -388,23 +382,28 @@
 		}
 	}
 
-	function foundStore(archetypeId: ArchetypeId, tileId: string) {
-		const tile = getTileById(starterCity, tileId);
-
-		if (!tile || getTilePlacementBlockReason(tile)) {
-			return;
-		}
-
-		selectedTileId = tile.id;
+	function armRetailPlacement(archetypeId: ArchetypeId): void {
+		retailPlacementArchetypeId = archetypeId;
+		industryPlacementBuildingTypeId = null;
+		selectedTileId = null;
 		selectedIndustryTileId = null;
-		setGameAndAutosave(
-			createFoundingGameAtTile({
-				archetypeId,
-				city: starterCity,
-				tileId: tile.id,
-				seed: 20260503
-			})
-		);
+		placementFeedback = null;
+		isBuildMenuOpen = false;
+	}
+
+	function armIndustryPlacement(buildingTypeId: IndustrialBuildingTypeId): void {
+		industryPlacementBuildingTypeId = buildingTypeId;
+		retailPlacementArchetypeId = null;
+		selectedTileId = null;
+		selectedIndustryTileId = null;
+		placementFeedback = null;
+		isBuildMenuOpen = false;
+	}
+
+	function cancelPlacement(): void {
+		retailPlacementArchetypeId = null;
+		industryPlacementBuildingTypeId = null;
+		placementFeedback = null;
 	}
 
 	function advanceDay() {
@@ -449,31 +448,76 @@
 		}
 	}
 
-	function addStoreAtSelectedTile(archetypeId: ArchetypeId, tileId: string) {
-		if (!game || !getTileById(activeCity, tileId)) {
+	function placeRetailAtTile(archetypeId: ArchetypeId, tileId: string): void {
+		const blockReason = getRetailPlacementBlockReason({
+			game,
+			city: activeCity,
+			tileId,
+			archetypeId
+		});
+
+		if (blockReason) {
+			selectedTileId = tileId;
+			selectedIndustryTileId = null;
+			placementFeedback = blockReason;
 			return;
 		}
 
-		const next = game.stores.length + 1;
-		selectedTileId = tileId;
+		if (!game) {
+			const tile = getTileById(activeCity, tileId);
+
+			if (!tile) {
+				placementFeedback = 'Unknown city tile';
+				return;
+			}
+
+			setGameAndAutosave(
+				createFoundingGameAtTile({
+					archetypeId,
+					city: activeCity,
+					tileId: tile.id,
+					seed: 20260503
+				})
+			);
+		} else {
+			const next = game.stores.length + 1;
+			setGameAndAutosave(
+				openStoreAtTile(game, {
+					tileId,
+					name: `Store #${next}`,
+					archetypeId
+				})
+			);
+		}
+
+		selectedTileId = null;
 		selectedIndustryTileId = null;
-		setGameAndAutosave(
-			openStoreAtTile(game, {
-				tileId,
-				name: `Store #${next}`,
-				archetypeId
-			})
-		);
+		cancelPlacement();
 	}
 
-	function buildIndustryAtTile(buildingTypeId: IndustrialBuildingTypeId, tileId: string) {
-		if (!game || !getIndustryTileById(industryCity, tileId)) {
+	function placeIndustryAtTile(buildingTypeId: IndustrialBuildingTypeId, tileId: string): void {
+		const blockReason = getIndustryBuildPlacementBlockReason({
+			game,
+			tileId,
+			buildingTypeId
+		});
+
+		if (blockReason) {
+			selectedIndustryTileId = tileId;
+			selectedTileId = null;
+			placementFeedback = blockReason;
 			return;
 		}
 
-		selectedIndustryTileId = tileId;
-		selectedTileId = null;
+		if (!game) {
+			placementFeedback = 'Found a retail store to unlock construction.';
+			return;
+		}
+
 		setGameAndAutosave(buildIndustrialBuilding(game, { tileId, buildingTypeId }));
+		selectedIndustryTileId = null;
+		selectedTileId = null;
+		cancelPlacement();
 	}
 
 	function closeInspector() {
@@ -486,6 +530,17 @@
 
 	function handleKeydown(event: KeyboardEvent) {
 		if (event.key !== 'Escape') {
+			return;
+		}
+
+		if (isBuildMenuOpen) {
+			isBuildMenuOpen = false;
+			isViewMenuOpen = false;
+			return;
+		}
+
+		if (isPlacementModeActive) {
+			cancelPlacement();
 			return;
 		}
 
@@ -552,6 +607,20 @@
 			</div>
 
 			<div class="map-actions">
+				<button
+					type="button"
+					class="map-icon-button"
+					aria-label="Build"
+					aria-pressed={isPlacementModeActive}
+					onclick={openBuildMenu}
+				>
+					<svg aria-hidden="true" viewBox="0 0 24 24">
+						<path d="M4 20h16" />
+						<path d="M6 20V8l6-4 6 4v12" />
+						<path d="M9 20v-6h6v6" />
+					</svg>
+				</button>
+
 				{#if game}
 					<div class="hud-status" role="status" aria-label="Company status">
 						<strong>${game.cash.toLocaleString('en-US')}</strong>
@@ -613,19 +682,30 @@
 				</div>
 			</div>
 		</div>
-		{#if selectedTile}
+		{#if isPlacementModeActive}
+			<div class="placement-status" role="status" aria-label="Placement status">
+				<span>{placementFeedback ?? 'Choose a highlighted tile to build.'}</span>
+				<button type="button" onclick={cancelPlacement}>Cancel</button>
+			</div>
+		{/if}
+		{#if isBuildMenuOpen}
+			<BuildMenu
+				{activeMapView}
+				retailOptions={retailBuildOptions}
+				{industryLockedReason}
+				onChooseRetail={armRetailPlacement}
+				onChooseIndustry={armIndustryPlacement}
+				onClose={closeBuildMenu}
+			/>
+		{/if}
+		{#if selectedTile && !isPlacementModeActive}
 			<div class="inspector-overlay" role="dialog" aria-modal="false" aria-label="Tile details">
 				<TileInspector
 					tile={selectedTile}
 					store={selectedStore}
-					{openingOptions}
 					staff={game?.staff ?? []}
 					hiringCandidates={game?.hiringCandidates ?? []}
-					gameStarted={game !== null}
-					disabledReason={selectedTileDisabledReason}
 					latestStoreReport={latestSelectedStoreReport}
-					onFoundStore={foundStore}
-					onOpenStore={addStoreAtSelectedTile}
 					onUpdateStoreProduct={changeStoreProduct}
 					onHireStaff={hireStaff}
 					onAssignStaff={assignStaff}
@@ -634,7 +714,7 @@
 				/>
 			</div>
 		{/if}
-		{#if selectedIndustryTile}
+		{#if selectedIndustryTile && !isPlacementModeActive}
 			<div
 				class="inspector-overlay"
 				role="dialog"
@@ -645,8 +725,6 @@
 					game={game ?? starterMapState}
 					tile={selectedIndustryTile}
 					building={selectedIndustryBuilding}
-					constructionDisabledReason={industryConstructionDisabledReason}
-					onBuild={buildIndustryAtTile}
 					onClose={closeIndustryInspector}
 				/>
 			</div>
@@ -790,6 +868,45 @@
 		margin: 0;
 		color: #b8b3a7;
 		font-size: 0.9rem;
+	}
+
+	.placement-status {
+		position: absolute;
+		left: 1rem;
+		bottom: 1rem;
+		z-index: 22;
+		display: flex;
+		align-items: center;
+		gap: 0.6rem;
+		max-width: min(32rem, calc(100vw - 2rem));
+		border: 1px solid rgb(49 68 92 / 0.82);
+		border-radius: 8px;
+		background: rgb(11 17 27 / 0.9);
+		box-shadow: 0 18px 40px rgb(0 0 0 / 0.32);
+		color: #edf2f7;
+		padding: 0.65rem 0.75rem;
+		backdrop-filter: blur(6px);
+	}
+
+	.placement-status span {
+		min-width: 0;
+		color: #d8e2ef;
+		font-size: 0.86rem;
+	}
+
+	.placement-status button {
+		flex: 0 0 auto;
+		border: 1px solid #31445c;
+		border-radius: 8px;
+		background: #151f2d;
+		color: #edf2f7;
+		padding: 0.45rem 0.65rem;
+	}
+
+	.placement-status button:hover,
+	.placement-status button:focus-visible {
+		border-color: #5f8fd0;
+		background: #1b2a3d;
 	}
 
 	.map-actions {
