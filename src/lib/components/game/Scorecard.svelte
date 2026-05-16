@@ -11,7 +11,7 @@
 	];
 </script>
 
-<section class="panel" aria-labelledby="scorecard-heading">
+<section class="panel paper" aria-labelledby="scorecard-heading">
 	<h2 id="scorecard-heading">Scorecard</h2>
 
 	<div class="score-grid">
@@ -31,28 +31,27 @@
 
 <style>
 	.panel {
-		border: 1px solid #253244;
-		border-radius: 8px;
-		background: #111823;
-		padding: 1rem;
+		padding: 1.1rem 1.2rem;
 	}
 
 	h2 {
 		margin: 0 0 0.75rem;
-		font-size: 0.95rem;
-		font-weight: 700;
+		font-family: var(--font-display);
+		font-size: 1.1rem;
+		font-weight: 400;
+		color: var(--ink-700);
 	}
 
 	.score-grid {
 		display: grid;
 		grid-template-columns: repeat(4, minmax(0, 1fr));
-		gap: 0.75rem;
+		gap: 1rem;
 	}
 
 	.score-item {
 		display: grid;
 		min-width: 0;
-		gap: 0.45rem;
+		gap: 0.4rem;
 	}
 
 	.score-label {
@@ -64,18 +63,26 @@
 
 	span {
 		min-width: 0;
-		color: #a7b4c8;
-		font-size: 0.78rem;
+		color: var(--brass-700);
+		font-family: var(--font-ui);
+		font-size: 0.7rem;
+		font-weight: 700;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
 	}
 
 	strong {
-		font-size: 1.25rem;
+		font-family: var(--font-mono);
+		font-variant-numeric: tabular-nums lining-nums;
+		font-size: 1.4rem;
+		color: var(--ink-700);
 		line-height: 1;
 	}
 
 	meter {
 		width: 100%;
-		height: 0.55rem;
+		height: 0.45rem;
+		border-radius: 0;
 	}
 
 	@media (max-width: 760px) {
