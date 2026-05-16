@@ -7,178 +7,31 @@ import { createNewGame } from '$lib/game/state';
 import type { IndustrialBuilding } from '$lib/game/types';
 
 describe('IndustryTileInspector', () => {
-	it('shows allowed raw building for a matching resource tile', async () => {
-		expect.assertions(2);
+	it('shows empty industry tile stats without construction controls or product filters', async () => {
+		expect.assertions(7);
 		const game = createNewGame('convenience', 20260512);
 		const tile = getIndustryTilesByResource(game.industryCities[0]!, 'grain-field')[0]!;
-		const onBuild = vi.fn();
 
 		render(IndustryTileInspector, {
 			game,
 			tile,
 			building: null,
-			onBuild,
 			onClose: vi.fn()
 		});
 
-		await expect.element(page.getByRole('heading', { name: /industry tile/i })).toBeVisible();
-		await expect.element(page.getByRole('button', { name: /build grain farm/i })).toBeVisible();
-	});
-
-	it('filters building choices through a searchable product popup', async () => {
-		expect.assertions(9);
-		const game = createNewGame('convenience', 20260512);
-		const tile = game.industryCities[0]!.tiles.find(
-			(candidate) => candidate.terrain === 'industrial' && !candidate.locked
-		)!;
-
-		render(IndustryTileInspector, {
-			game,
-			tile,
-			building: null,
-			onBuild: vi.fn(),
-			onClose: vi.fn()
-		});
-
-		await page.getByRole('button', { name: /filter: all products/i }).click();
-		const filterDialog = page.getByRole('dialog', { name: /product chain filter/i });
-		await expect.element(filterDialog).toBeVisible();
-		await expect.element(filterDialog).toHaveAttribute('aria-modal', 'true');
-		const filterDialogNode = document.querySelector<HTMLElement>(
-			'[aria-label="Product chain filter"]'
-		)!;
-		expect(window.getComputedStyle(filterDialogNode).position).toBe('fixed');
-		await page.getByLabelText(/search products/i).fill('gift');
-
-		await expect.element(page.getByRole('button', { name: /gifts/i })).toBeVisible();
 		await expect
-			.element(page.getByRole('button', { name: /snacks/i }))
-			.not.toBeInTheDocument();
-		await page.getByRole('button', { name: /gifts/i }).click();
-
-		await expect.element(page.getByRole('button', { name: /filter: gifts/i })).toBeVisible();
-		await expect.element(page.getByRole('button', { name: /build gift workshop/i })).toBeVisible();
-		await expect
-			.element(page.getByRole('button', { name: /build packaging plant/i }))
+			.element(page.getByRole('heading', { name: `Industry Tile ${tile.x}, ${tile.y}` }))
 			.toBeVisible();
+		await expect.element(page.getByText('Terrain')).toBeVisible();
+		await expect.element(page.getByText('Grain Field')).toBeVisible();
+		await expect.element(page.getByRole('heading', { name: 'Build' })).not.toBeInTheDocument();
 		await expect
-			.element(page.getByRole('button', { name: /build drink bottling plant/i }))
+			.element(page.getByRole('button', { name: /build grain farm/i }))
 			.not.toBeInTheDocument();
-	});
-
-	it('opens a confirmation dialog before building on the selected resource tile', async () => {
-		expect.assertions(5);
-		const game = createNewGame('convenience', 20260512);
-		const tile = getIndustryTilesByResource(game.industryCities[0]!, 'grain-field')[0]!;
-		const onBuild = vi.fn();
-
-		render(IndustryTileInspector, {
-			game,
-			tile,
-			building: null,
-			onBuild,
-			onClose: vi.fn()
-		});
-
-		await page.getByRole('button', { name: /build grain farm/i }).click();
-
-		expect(onBuild).not.toHaveBeenCalled();
-		const dialog = page.getByRole('dialog', { name: /confirm industrial build/i });
-		await expect.element(dialog).toBeVisible();
-		await expect.element(dialog).not.toHaveAttribute('aria-modal', 'true');
-		await expect.element(page.getByRole('heading', { name: /grain farm/i })).toBeVisible();
-		await expect.element(page.getByRole('button', { name: /confirm build/i })).toBeVisible();
-	});
-
-	it('cancels a pending industrial build without closing the inspector', async () => {
-		expect.assertions(3);
-		const game = createNewGame('convenience', 20260512);
-		const tile = getIndustryTilesByResource(game.industryCities[0]!, 'grain-field')[0]!;
-		const onBuild = vi.fn();
-		const onClose = vi.fn();
-
-		render(IndustryTileInspector, {
-			game,
-			tile,
-			building: null,
-			onBuild,
-			onClose
-		});
-
-		await page.getByRole('button', { name: /build grain farm/i }).click();
-		await page.getByRole('button', { name: /^cancel$/i }).click();
-
+		await expect.element(page.getByRole('button', { name: /filter:/i })).not.toBeInTheDocument();
 		await expect
 			.element(page.getByRole('dialog', { name: /confirm industrial build/i }))
 			.not.toBeInTheDocument();
-		expect(onBuild).not.toHaveBeenCalled();
-		expect(onClose).not.toHaveBeenCalled();
-	});
-
-	it('confirms an industrial build once and closes the inspector', async () => {
-		expect.assertions(3);
-		const game = createNewGame('convenience', 20260512);
-		const tile = getIndustryTilesByResource(game.industryCities[0]!, 'grain-field')[0]!;
-		const onBuild = vi.fn();
-		const onClose = vi.fn();
-
-		render(IndustryTileInspector, {
-			game,
-			tile,
-			building: null,
-			onBuild,
-			onClose
-		});
-
-		await page.getByRole('button', { name: /build grain farm/i }).click();
-		await page.getByRole('button', { name: /confirm build/i }).click();
-
-		expect(onBuild).toHaveBeenCalledTimes(1);
-		expect(onBuild).toHaveBeenCalledWith('grain-farm', tile.id);
-		expect(onClose).toHaveBeenCalledTimes(1);
-	});
-
-	it('clears a pending build when the same tile becomes occupied', async () => {
-		expect.assertions(2);
-		const game = createNewGame('convenience', 20260512);
-		const tile = getIndustryTilesByResource(game.industryCities[0]!, 'grain-field')[0]!;
-		const onBuild = vi.fn();
-		const occupiedBuilding: IndustrialBuilding = {
-			id: 'industry-building-grain-farm',
-			typeId: 'grain-farm',
-			cityId: tile.cityId,
-			tileId: tile.id,
-			mapX: tile.x,
-			mapY: tile.y,
-			status: 'idle',
-			lastProduction: [],
-			producedTotal: 0,
-			importedInputTotal: 0,
-			blockedDays: 0
-		};
-
-		const { rerender } = render(IndustryTileInspector, {
-			game,
-			tile,
-			building: null,
-			onBuild,
-			onClose: vi.fn()
-		});
-
-		await page.getByRole('button', { name: /build grain farm/i }).click();
-
-		await rerender({
-			game,
-			tile,
-			building: occupiedBuilding,
-			onBuild,
-			onClose: vi.fn()
-		});
-
-		await expect
-			.element(page.getByRole('dialog', { name: /confirm industrial build/i }))
-			.not.toBeInTheDocument();
-		expect(onBuild).not.toHaveBeenCalled();
 	});
 
 	it('renders building and material thumbnails with asset sources', async () => {
@@ -194,7 +47,6 @@ describe('IndustryTileInspector', () => {
 				overflowCost: 0
 			}
 		};
-		const grainTile = getIndustryTilesByResource(game.industryCities[0]!, 'grain-field')[0]!;
 		const warehouseTile = game.industryCities[0]!.tiles.find(
 			(candidate) => candidate.terrain === 'industrial' && !candidate.locked
 		)!;
@@ -219,26 +71,16 @@ describe('IndustryTileInspector', () => {
 			blockedDays: 0
 		};
 
-		const { rerender } = render(IndustryTileInspector, {
+		render(IndustryTileInspector, {
 			game,
-			tile: grainTile,
-			building: null,
-			onBuild: vi.fn(),
+			tile: warehouseTile,
+			building: warehouseBuilding,
 			onClose: vi.fn()
 		});
 
 		await expect
-			.element(page.getByTestId('industry-building-option-grain-farm'))
-			.toHaveAttribute('src', '/assets/game/industry/buildings/grain-farm.png');
-
-		await rerender({
-			game,
-			tile: warehouseTile,
-			building: warehouseBuilding,
-			onBuild: vi.fn(),
-			onClose: vi.fn()
-		});
-
+			.element(page.getByTestId('industry-building-thumbnail-warehouse'))
+			.toHaveAttribute('src', '/assets/game/industry/buildings/warehouse.png');
 		await expect
 			.element(page.getByTestId('industry-warehouse-material-snacks'))
 			.toHaveAttribute('src', '/assets/game/industry/materials/snacks.png');
@@ -280,7 +122,6 @@ describe('IndustryTileInspector', () => {
 			game,
 			tile,
 			building,
-			onBuild: vi.fn(),
 			onClose: vi.fn()
 		});
 
