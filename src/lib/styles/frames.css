@@ -134,10 +134,16 @@
 }
 
 .btn:active,
-.paper button:active,
-.plaque button:active {
+.paper button:not(.btn-primary):not(.btn-danger):not(.btn-icon):not(.bookmark-tab):active,
+.plaque button:not(.btn-primary):not(.btn-danger):not(.btn-icon):not(.bookmark-tab):active {
 	transform: translateY(1px);
 	box-shadow: none;
+}
+
+.btn-primary:active,
+.btn-danger:active,
+.btn-icon:active {
+	transform: translateY(1px);
 }
 
 .btn-primary {
