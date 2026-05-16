@@ -23,7 +23,11 @@ const MIN_ZOOM = 0.6;
 const MAX_ZOOM = 2.2;
 const TERRAIN_DEPTH = 0;
 const MARKER_DEPTH = 10;
+const PLACEMENT_PREVIEW_DEPTH = MARKER_DEPTH - 1;
 const OUTLINE_DEPTH = 20;
+const PLACEMENT_PREVIEW_VALID_COLOR = 0x22c55e;
+const PLACEMENT_PREVIEW_INVALID_COLOR = 0xef4444;
+const PLACEMENT_PREVIEW_ALPHA = 0.28;
 
 const TERRAIN_COLORS: Record<IndustryMapTileRender['terrain'], number> = {
 	farmland: 0xb8d889,
@@ -82,6 +86,7 @@ export class IndustryMapScene extends Phaser.Scene {
 	private snapshot: IndustryMapSnapshot | null = null;
 	private eventHandler: IndustryMapEventHandler | null = null;
 	private mapGraphics?: Phaser.GameObjects.Graphics;
+	private placementPreviewGraphics?: Phaser.GameObjects.Graphics;
 	private markerGraphics?: Phaser.GameObjects.Graphics;
 	private outlineGraphics?: Phaser.GameObjects.Graphics;
 	private tileZones: Phaser.GameObjects.Zone[] = [];
@@ -113,6 +118,7 @@ export class IndustryMapScene extends Phaser.Scene {
 
 	create(): void {
 		this.mapGraphics = this.add.graphics().setDepth(TERRAIN_DEPTH + 1);
+		this.placementPreviewGraphics = this.add.graphics().setDepth(PLACEMENT_PREVIEW_DEPTH);
 		this.markerGraphics = this.add.graphics().setDepth(MARKER_DEPTH + 1);
 		this.outlineGraphics = this.add.graphics().setDepth(OUTLINE_DEPTH);
 		this.cameras.main.setZoom(1);
@@ -146,11 +152,14 @@ export class IndustryMapScene extends Phaser.Scene {
 
 	private renderSnapshot(): void {
 		if (!this.mapGraphics || !this.snapshot) {
+			this.placementPreviewGraphics?.clear();
+			this.updateCanvasPlacementPreviewAttributes(0, 0);
 			this.updateCanvasIndustryAttributes();
 			return;
 		}
 
 		this.mapGraphics.clear();
+		this.placementPreviewGraphics?.clear();
 		this.destroyTileZones();
 		this.destroyTerrainSprites();
 		this.setCameraBounds();
@@ -160,6 +169,7 @@ export class IndustryMapScene extends Phaser.Scene {
 			this.createTileZone(tile);
 		}
 
+		this.drawPlacementPreview();
 		this.rebuildMarkerSprites();
 		this.drawMarkerGraphics(0);
 		this.drawInteractionOutlines();
@@ -269,6 +279,38 @@ export class IndustryMapScene extends Phaser.Scene {
 
 		this.updateBuildingSprites(0);
 		this.updateCanvasIndustryAttributes();
+	}
+
+	private drawPlacementPreview(): void {
+		if (!this.placementPreviewGraphics || !this.snapshot?.placementPreview) {
+			this.placementPreviewGraphics?.clear();
+			this.updateCanvasPlacementPreviewAttributes(0, 0);
+			return;
+		}
+
+		this.placementPreviewGraphics.clear();
+		const validTileIds = new Set(this.snapshot.placementPreview.validTileIds);
+		const invalidTileIds = new Set(this.snapshot.placementPreview.invalidTileIds);
+
+		for (const tile of this.snapshot.tiles) {
+			const isValid = validTileIds.has(tile.id);
+			const isInvalid = invalidTileIds.has(tile.id);
+
+			if (!isValid && !isInvalid) {
+				continue;
+			}
+
+			const x = tile.x * TILE_SIZE;
+			const y = tile.y * TILE_SIZE;
+			const color = isValid ? PLACEMENT_PREVIEW_VALID_COLOR : PLACEMENT_PREVIEW_INVALID_COLOR;
+
+			this.placementPreviewGraphics.fillStyle(color, PLACEMENT_PREVIEW_ALPHA);
+			this.placementPreviewGraphics.fillRect(x + 2, y + 2, TILE_SIZE - 4, TILE_SIZE - 4);
+			this.placementPreviewGraphics.lineStyle(2, color, 0.55);
+			this.placementPreviewGraphics.strokeRect(x + 2, y + 2, TILE_SIZE - 4, TILE_SIZE - 4);
+		}
+
+		this.updateCanvasPlacementPreviewAttributes(validTileIds.size, invalidTileIds.size);
 	}
 
 	private drawMarkerGraphics(time: number): void {
@@ -691,6 +733,18 @@ export class IndustryMapScene extends Phaser.Scene {
 		canvas.dataset.industryBuildingSpriteCount = String(this.buildingSprites.length);
 	}
 
+	private updateCanvasPlacementPreviewAttributes(validCount: number, invalidCount: number): void {
+		const canvas = this.game?.canvas;
+
+		if (!canvas) {
+			return;
+		}
+
+		canvas.dataset.placementPreviewMode = validCount + invalidCount > 0 ? 'active' : 'inactive';
+		canvas.dataset.placementValidTileCount = String(validCount);
+		canvas.dataset.placementInvalidTileCount = String(invalidCount);
+	}
+
 	private updateCanvasCameraAttributes(): void {
 		const canvas = this.game?.canvas;
 
@@ -763,9 +817,11 @@ export class IndustryMapScene extends Phaser.Scene {
 		this.input.off('wheel', this.handleWheel, this);
 		this.scale.off(Phaser.Scale.Events.RESIZE, this.handleResize, this);
 		this.mapGraphics?.destroy();
+		this.placementPreviewGraphics?.destroy();
 		this.markerGraphics?.destroy();
 		this.outlineGraphics?.destroy();
 		this.mapGraphics = undefined;
+		this.placementPreviewGraphics = undefined;
 		this.markerGraphics = undefined;
 		this.outlineGraphics = undefined;
 	}
