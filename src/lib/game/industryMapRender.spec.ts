@@ -62,6 +62,29 @@ describe('industry map render snapshot', () => {
 		expect(createIndustryMapSnapshot(game, null).placementPreview).toBeNull();
 	});
 
+	test('clones industry placement preview arrays at the snapshot boundary', () => {
+		expect.assertions(4);
+		const game = createNewGame('convenience', 20260512);
+		const placementPreview = {
+			validTileIds: ['industry-city-1-1'],
+			invalidTileIds: ['industry-city-1-4']
+		};
+
+		const snapshot = createIndustryMapSnapshot(game, null, placementPreview);
+		const missingCitySnapshot = createIndustryMapSnapshot(
+			{ ...game, activeIndustryCityId: 'missing-industry-city' },
+			null,
+			placementPreview
+		);
+		placementPreview.validTileIds.push('industry-city-2-2');
+		placementPreview.invalidTileIds[0] = 'industry-city-3-3';
+
+		expect(snapshot.placementPreview?.validTileIds).toEqual(['industry-city-1-1']);
+		expect(snapshot.placementPreview?.invalidTileIds).toEqual(['industry-city-1-4']);
+		expect(missingCitySnapshot.placementPreview?.validTileIds).toEqual(['industry-city-1-1']);
+		expect(missingCitySnapshot.placementPreview?.invalidTileIds).toEqual(['industry-city-1-4']);
+	});
+
 	test('marks occupied tiles and renders active city buildings', () => {
 		expect.assertions(8);
 		const baseGame = { ...createNewGame('convenience', 20260512), cash: 100_000 };

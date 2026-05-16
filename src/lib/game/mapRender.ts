@@ -52,7 +52,7 @@ export function createCityMapSnapshot(
 			width: 0,
 			height: 0,
 			selectedTileId,
-			placementPreview,
+			placementPreview: clonePlacementPreview(placementPreview),
 			tiles: [],
 			stores: []
 		};
@@ -71,11 +71,22 @@ export function createCityMapSnapshot(
 		width: city.width,
 		height: city.height,
 		selectedTileId,
-		placementPreview,
+		placementPreview: clonePlacementPreview(placementPreview),
 		tiles: city.tiles.map((tile) =>
 			createTileRender(tile, roadCoordinates, ownedTileIds, selectedTileId)
 		),
 		stores: activeCityStores.map(createStoreRender)
+	};
+}
+
+function clonePlacementPreview(preview: PlacementPreview | null): PlacementPreview | null {
+	if (!preview) {
+		return null;
+	}
+
+	return {
+		validTileIds: [...preview.validTileIds],
+		invalidTileIds: [...preview.invalidTileIds]
 	};
 }
 

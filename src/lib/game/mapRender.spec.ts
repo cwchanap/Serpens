@@ -94,6 +94,42 @@ describe('city map render snapshot', () => {
 		expect(createCityMapSnapshot(game, null).placementPreview).toBeNull();
 	});
 
+	test('clones retail placement preview arrays at the snapshot boundary', () => {
+		expect.assertions(4);
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 20,
+			height: 20,
+			seed: 9
+		});
+		const tile = city.tiles.find((candidate) => !candidate.locked && candidate.feature === null)!;
+		const game = createFoundingGameAtTile({
+			archetypeId: 'convenience',
+			city,
+			tileId: tile.id,
+			seed: 9
+		});
+		const placementPreview = {
+			validTileIds: ['harbor-city-1-1'],
+			invalidTileIds: ['harbor-city-10-6']
+		};
+
+		const snapshot = createCityMapSnapshot(game, null, placementPreview);
+		const missingCitySnapshot = createCityMapSnapshot(
+			{ ...game, activeCityId: 'missing-city' },
+			null,
+			placementPreview
+		);
+		placementPreview.validTileIds.push('harbor-city-2-2');
+		placementPreview.invalidTileIds[0] = 'harbor-city-3-3';
+
+		expect(snapshot.placementPreview?.validTileIds).toEqual(['harbor-city-1-1']);
+		expect(snapshot.placementPreview?.invalidTileIds).toEqual(['harbor-city-10-6']);
+		expect(missingCitySnapshot.placementPreview?.validTileIds).toEqual(['harbor-city-1-1']);
+		expect(missingCitySnapshot.placementPreview?.invalidTileIds).toEqual(['harbor-city-10-6']);
+	});
+
 	test('marks generated road tiles with their render variant', () => {
 		const city = generateCity({
 			id: 'harbor-city',
