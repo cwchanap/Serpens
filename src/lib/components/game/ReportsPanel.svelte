@@ -10,7 +10,7 @@
 	});
 </script>
 
-<section class="panel" aria-labelledby="reports-heading">
+<section class="panel paper" aria-labelledby="reports-heading">
 	<h2 id="reports-heading">Reports</h2>
 
 	{#if summary.latest}
@@ -54,7 +54,7 @@
 		</div>
 
 		{#if summary.latest.warnings.length}
-			<ul aria-label="Daily warnings">
+			<ul class="warnings" aria-label="Daily warnings">
 				{#each summary.latest.warnings as warning (warning)}
 					<li>{warning}</li>
 				{/each}
@@ -67,10 +67,7 @@
 
 <style>
 	.panel {
-		border: 1px solid #253244;
-		border-radius: 8px;
-		background: #111823;
-		padding: 1rem;
+		padding: 1.1rem 1.2rem;
 	}
 
 	h2,
@@ -80,40 +77,57 @@
 
 	h2 {
 		margin-bottom: 0.75rem;
-		font-size: 0.95rem;
+		font-family: var(--font-display);
+		font-size: 1.1rem;
+		font-weight: 400;
+		color: var(--ink-700);
 	}
 
 	.metrics {
 		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(6.5rem, 1fr));
-		gap: 0.75rem;
+		grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
+		gap: 0.85rem;
 	}
 
 	.metrics div {
 		display: grid;
 		min-width: 0;
-		gap: 0.25rem;
+		gap: 0.3rem;
 	}
 
 	span,
 	p {
-		color: #a7b4c8;
+		color: var(--brass-700);
+		font-family: var(--font-ui);
+		font-size: 0.7rem;
+		font-weight: 700;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
 	}
 
-	span {
-		font-size: 0.78rem;
+	p {
+		color: var(--ink-500);
+		font-family: var(--font-body);
+		font-size: 0.92rem;
+		font-weight: 400;
+		letter-spacing: 0;
+		text-transform: none;
 	}
 
 	strong {
 		overflow-wrap: anywhere;
+		font-family: var(--font-mono);
+		font-variant-numeric: tabular-nums lining-nums;
 		font-size: 1.05rem;
+		color: var(--ink-700);
 	}
 
-	ul {
-		margin: 0.8rem 0 0;
+	.warnings {
+		margin: 0.9rem 0 0;
 		padding-left: 1rem;
-		color: #f4c56f;
-		font-size: 0.86rem;
+		color: var(--wax-red);
+		font-family: var(--font-body);
+		font-size: 0.92rem;
 	}
 
 	@media (max-width: 980px) {
