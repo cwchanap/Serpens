@@ -1,0 +1,44 @@
+:root {
+	/* Parchment */
+	--paper-50: #fbf3dc;
+	--paper-100: #f4e8ce;
+	--paper-200: #e9dbb5;
+	--paper-300: #d7c28c;
+	--paper-edge: #b8a271;
+
+	/* Ink */
+	--ink-900: #1b130a;
+	--ink-700: #2a1f12;
+	--ink-500: #4a3b27;
+	--ink-400: #6e5c42;
+
+	/* Walnut stage */
+	--walnut-900: #14100a;
+	--walnut-800: #1f1810;
+	--walnut-700: #2c2316;
+
+	/* Brass */
+	--brass-700: #8e6420;
+	--brass-500: #b8862f;
+	--brass-300: #d4a852;
+	--brass-100: #efd79a;
+
+	/* State colors */
+	--wax-red: #8e2a1f;
+	--wax-red-2: #b53b2e;
+	--moss: #4b5a2b;
+	--moss-2: #6b7e3a;
+	--royal-ink: #1e3a5f;
+
+	/* Typography */
+	--font-display: 'DM Serif Display', 'Cormorant Garamond', Georgia, serif;
+	--font-body: 'Spectral', 'IBM Plex Serif', Georgia, serif;
+	--font-ui: 'IBM Plex Sans', system-ui, sans-serif;
+	--font-mono: 'JetBrains Mono', 'IBM Plex Mono', monospace;
+
+	/* Paper grain (200x200 noise tile, semi-transparent, inlined as data URI) */
+	--grain-svg: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.5 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.55'/></svg>");
+
+	/* Shared shadow */
+	--shadow-paper: 0 16px 36px rgba(15, 10, 3, 0.45);
+}
