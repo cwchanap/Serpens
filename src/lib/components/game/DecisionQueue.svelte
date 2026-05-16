@@ -10,7 +10,7 @@
 	} = $props();
 </script>
 
-<section class="panel" aria-labelledby="decision-heading">
+<section class="panel paper" aria-labelledby="decision-heading">
 	<h2 id="decision-heading">Decision Queue</h2>
 
 	{#if decisions.length === 0}
@@ -22,7 +22,7 @@
 					<div class="decision-copy">
 						<h3>{decision.title}</h3>
 						<p>{decision.context}</p>
-						<span>Expires day {decision.expiresOnDay}</span>
+						<span class="expires"><span class="seal" data-urgent="true">Day {decision.expiresOnDay}</span></span>
 					</div>
 
 					<div class="options">
@@ -41,10 +41,7 @@
 
 <style>
 	.panel {
-		border: 1px solid #253244;
-		border-radius: 8px;
-		background: #111823;
-		padding: 1rem;
+		padding: 1.1rem 1.2rem;
 	}
 
 	h2,
@@ -55,14 +52,25 @@
 
 	h2 {
 		margin-bottom: 0.75rem;
-		font-size: 0.95rem;
+		font-family: var(--font-display);
+		font-size: 1.1rem;
+		font-weight: 400;
+		color: var(--ink-700);
+	}
+
+	h3 {
+		font-family: var(--font-display);
+		font-size: 1rem;
+		font-weight: 400;
+		color: var(--ink-700);
 	}
 
 	.empty,
 	p,
 	.decision-copy span,
 	button span {
-		color: #a7b4c8;
+		color: var(--ink-500);
+		font-family: var(--font-body);
 	}
 
 	.queue,
@@ -70,39 +78,51 @@
 	.decision-copy,
 	.options {
 		display: grid;
-		gap: 0.75rem;
+		gap: 0.65rem;
 	}
 
 	article {
-		border: 1px solid #26374d;
-		border-radius: 8px;
-		background: #151f2d;
+		border: 1px solid var(--paper-edge);
+		border-radius: 2px;
+		background: var(--paper-50);
 		padding: 0.85rem;
 	}
 
 	.decision-copy {
-		gap: 0.3rem;
+		gap: 0.4rem;
 	}
 
-	.decision-copy span,
-	button span {
-		font-size: 0.82rem;
+	.decision-copy p {
+		font-size: 0.92rem;
+	}
+
+	.expires {
+		display: inline-flex;
 	}
 
 	button {
 		display: grid;
 		gap: 0.25rem;
-		border: 1px solid #345172;
-		border-radius: 8px;
-		background: #16283b;
-		color: #edf2f7;
 		padding: 0.75rem;
+		border: 1px solid var(--ink-700);
+		border-top-color: var(--brass-500);
+		border-radius: 2px;
+		background: var(--paper-100);
+		color: var(--ink-700);
+		font-family: var(--font-ui);
 		text-align: left;
 	}
 
 	button:hover,
 	button:focus-visible {
-		border-color: #5f8fd0;
-		background: #1c334d;
+		background: var(--paper-200);
+	}
+
+	button strong {
+		font-weight: 700;
+	}
+
+	button span {
+		font-size: 0.85rem;
 	}
 </style>
