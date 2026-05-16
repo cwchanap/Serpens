@@ -6,7 +6,7 @@
 
 ## Motivation
 
-The current UI is a generic dark blue-grey SaaS dashboard (`#11110f` body, `#5f8fd0` navy accents, Inter typography, flat 1px-bordered cards). The actual game is a retail + industry tycoon set in "Harbor City" with hand-drawn pixel-art shopfronts and factories — closer in spirit to *Anno*, *Two Point Hospital*, and cozy shopkeeper sims. The chrome and the content disagree.
+The current UI is a generic dark blue-grey SaaS dashboard (`#11110f` body, `#5f8fd0` navy accents, Inter typography, flat 1px-bordered cards). The actual game is a retail + industry tycoon set in "Harbor City" with hand-drawn pixel-art shopfronts and factories — closer in spirit to _Anno_, _Two Point Hospital_, and cozy shopkeeper sims. The chrome and the content disagree.
 
 The chosen aesthetic — **Mercantile Ledger** — frames the game as flipping through a tycoon's account book: warm parchment panels, brass hardware, aged-ink typography, occasional wax-seal accents, all floating on a deep walnut stage that preserves the map's tile legibility.
 
@@ -31,47 +31,47 @@ A single `src/lib/styles/tokens.css` defines CSS custom properties. Components r
 
 ```css
 /* Parchment */
---paper-50:   #FBF3DC;
---paper-100:  #F4E8CE;
---paper-200:  #E9DBB5;
---paper-300:  #D7C28C;
---paper-edge: #B8A271;
+--paper-50: #fbf3dc;
+--paper-100: #f4e8ce;
+--paper-200: #e9dbb5;
+--paper-300: #d7c28c;
+--paper-edge: #b8a271;
 
 /* Ink */
---ink-900:    #1B130A;
---ink-700:    #2A1F12;
---ink-500:    #4A3B27;
---ink-400:    #6E5C42;
+--ink-900: #1b130a;
+--ink-700: #2a1f12;
+--ink-500: #4a3b27;
+--ink-400: #6e5c42;
 
 /* Walnut stage */
---walnut-900: #14100A;
---walnut-800: #1F1810;
---walnut-700: #2C2316;
+--walnut-900: #14100a;
+--walnut-800: #1f1810;
+--walnut-700: #2c2316;
 
 /* Brass */
---brass-700:  #8E6420;
---brass-500:  #B8862F;
---brass-300:  #D4A852;
---brass-100:  #EFD79A;
+--brass-700: #8e6420;
+--brass-500: #b8862f;
+--brass-300: #d4a852;
+--brass-100: #efd79a;
 
 /* State colors */
---wax-red:    #8E2A1F;  /* urgent, errors, cancel */
---wax-red-2:  #B53B2E;
---moss:       #4B5A2B;  /* healthy, approve, primary action */
---moss-2:     #6B7E3A;
---royal-ink:  #1E3A5F;  /* links, info */
+--wax-red: #8e2a1f; /* urgent, errors, cancel */
+--wax-red-2: #b53b2e;
+--moss: #4b5a2b; /* healthy, approve, primary action */
+--moss-2: #6b7e3a;
+--royal-ink: #1e3a5f; /* links, info */
 
 /* Paper grain (inlined SVG, ~200×200 noise tile, ~6% opacity overlay) */
---grain-svg:  url("data:image/svg+xml;…");
+--grain-svg: url('data:image/svg+xml;…');
 ```
 
 ### Typography
 
 ```css
 --font-display: 'DM Serif Display', 'Cormorant Garamond', Georgia, serif;
---font-body:    'Spectral', 'IBM Plex Serif', Georgia, serif;
---font-ui:      'IBM Plex Sans', system-ui, sans-serif;
---font-mono:    'JetBrains Mono', 'IBM Plex Mono', monospace;
+--font-body: 'Spectral', 'IBM Plex Serif', Georgia, serif;
+--font-ui: 'IBM Plex Sans', system-ui, sans-serif;
+--font-mono: 'JetBrains Mono', 'IBM Plex Mono', monospace;
 ```
 
 Usage rules:

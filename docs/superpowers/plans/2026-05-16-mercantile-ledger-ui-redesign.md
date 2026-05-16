@@ -15,11 +15,13 @@
 ## File Structure
 
 **New files (3):**
+
 - `src/lib/styles/tokens.css` — CSS custom properties (palette, typography, grain).
 - `src/lib/styles/frames.css` — `.paper`, `.plaque`, `.stage`, `.seal`, `.bookmark`, `.ledger-rule`, `.eyebrow`, button variants. All global.
 - `src/lib/assets/paper-grain.svg` — single 200×200 noise tile (referenced inline as data URI from tokens.css).
 
 **Modified (16):**
+
 - `src/routes/layout.css` — import tokens + frames, swap body background to walnut, default `font-family` to UI sans.
 - `src/routes/+layout.svelte` — Google Fonts preconnect + `<link>` for DM Serif Display, Spectral, IBM Plex Sans, JetBrains Mono.
 - `src/routes/+page.svelte` — `<style>` block only: replace hex with vars, swap class names. A few decorative `<span>` elements in markup for HUD plaque ornament.
@@ -41,6 +43,7 @@
 - `src/lib/phaser/industryMapScene.ts` — same.
 
 **Untouched:**
+
 - All `src/lib/game/*` (pure logic).
 - All `*.spec.ts` and `*.e2e.ts` files.
 - `src-tauri/` and Tauri config.
@@ -51,6 +54,7 @@
 ## Task 1: Design tokens + paper grain
 
 **Files:**
+
 - Create: `src/lib/styles/tokens.css`
 - Create: `src/lib/assets/paper-grain.svg`
 
@@ -75,35 +79,35 @@ Write `src/lib/styles/tokens.css`:
 ```css
 :root {
 	/* Parchment */
-	--paper-50: #FBF3DC;
-	--paper-100: #F4E8CE;
-	--paper-200: #E9DBB5;
-	--paper-300: #D7C28C;
-	--paper-edge: #B8A271;
+	--paper-50: #fbf3dc;
+	--paper-100: #f4e8ce;
+	--paper-200: #e9dbb5;
+	--paper-300: #d7c28c;
+	--paper-edge: #b8a271;
 
 	/* Ink */
-	--ink-900: #1B130A;
-	--ink-700: #2A1F12;
-	--ink-500: #4A3B27;
-	--ink-400: #6E5C42;
+	--ink-900: #1b130a;
+	--ink-700: #2a1f12;
+	--ink-500: #4a3b27;
+	--ink-400: #6e5c42;
 
 	/* Walnut stage */
-	--walnut-900: #14100A;
-	--walnut-800: #1F1810;
-	--walnut-700: #2C2316;
+	--walnut-900: #14100a;
+	--walnut-800: #1f1810;
+	--walnut-700: #2c2316;
 
 	/* Brass */
-	--brass-700: #8E6420;
-	--brass-500: #B8862F;
-	--brass-300: #D4A852;
-	--brass-100: #EFD79A;
+	--brass-700: #8e6420;
+	--brass-500: #b8862f;
+	--brass-300: #d4a852;
+	--brass-100: #efd79a;
 
 	/* State colors */
-	--wax-red: #8E2A1F;
-	--wax-red-2: #B53B2E;
-	--moss: #4B5A2B;
-	--moss-2: #6B7E3A;
-	--royal-ink: #1E3A5F;
+	--wax-red: #8e2a1f;
+	--wax-red-2: #b53b2e;
+	--moss: #4b5a2b;
+	--moss-2: #6b7e3a;
+	--royal-ink: #1e3a5f;
 
 	/* Typography */
 	--font-display: 'DM Serif Display', 'Cormorant Garamond', Georgia, serif;
@@ -136,6 +140,7 @@ git commit -m "feat(ui): add mercantile-ledger design tokens"
 ## Task 2: Frames stylesheet
 
 **Files:**
+
 - Create: `src/lib/styles/frames.css`
 
 - [ ] **Step 1: Write frames.css**
@@ -219,7 +224,13 @@ Write `src/lib/styles/frames.css`:
 	height: 1px;
 	margin: 0.6rem 0;
 	border: 0;
-	background: linear-gradient(to right, transparent, var(--brass-500) 8%, var(--brass-500) 92%, transparent);
+	background: linear-gradient(
+		to right,
+		transparent,
+		var(--brass-500) 8%,
+		var(--brass-500) 92%,
+		transparent
+	);
 }
 
 .seal {
@@ -357,7 +368,8 @@ Write `src/lib/styles/frames.css`:
 }
 
 @keyframes seal-pulse {
-	0%, 100% {
+	0%,
+	100% {
 		box-shadow: 0 0 0 0 rgba(142, 42, 31, 0.5);
 	}
 	50% {
@@ -403,6 +415,7 @@ git commit -m "feat(ui): add mercantile-ledger frame, hardware, and motion style
 ## Task 3: Wire fonts and base layout
 
 **Files:**
+
 - Modify: `src/routes/+layout.svelte`
 - Modify: `src/routes/layout.css`
 
@@ -451,11 +464,12 @@ body {
 	min-height: 100vh;
 	overflow: hidden;
 	background:
-		radial-gradient(ellipse at top, var(--walnut-800) 0%, var(--walnut-900) 60%),
-		var(--walnut-900);
+		radial-gradient(ellipse at top, var(--walnut-800) 0%, var(--walnut-900) 60%), var(--walnut-900);
 	color: var(--paper-50);
 	font-family: var(--font-ui);
-	font-feature-settings: 'liga' 1, 'kern' 1;
+	font-feature-settings:
+		'liga' 1,
+		'kern' 1;
 }
 
 html,
@@ -503,6 +517,7 @@ git commit -m "feat(ui): wire fonts and walnut-stage base layout"
 ## Task 4: Phaser placement preview colors
 
 **Files:**
+
 - Modify: `src/lib/phaser/cityMapScene.ts:22-23`
 - Modify: `src/lib/phaser/industryMapScene.ts` (corresponding constants)
 
@@ -545,6 +560,7 @@ git commit -m "feat(ui): retune Phaser placement preview tints to mercantile pal
 ## Task 5: Map shell components
 
 **Files:**
+
 - Modify: `src/lib/components/game/CityMap.svelte:85-124`
 - Modify: `src/lib/components/game/IndustryMap.svelte` (style block)
 
@@ -639,6 +655,7 @@ git commit -m "feat(ui): swap map shell to walnut-stage colors"
 ## Task 6: Page HUD restyle
 
 **Files:**
+
 - Modify: `src/routes/+page.svelte` (markup additions + `<style>` block)
 
 This is the largest task — the main page HUD has the most styling. We do it in one task because the changes are tightly coupled.
@@ -648,25 +665,35 @@ This is the largest task — the main page HUD has the most styling. We do it in
 In `src/routes/+page.svelte`, locate the `<main class="app">` block (around line 589) and apply these markup changes only:
 
 1. **Map title block.** Find the `<div class="map-title">` element (around line 597) and replace its opening tag with:
+
    ```svelte
    <div class="map-title plaque" aria-label="Map title">
      <span class="bookmark map-title-bookmark" aria-hidden="true"></span>
    ```
+
    The `<p class="eyebrow">` and `<h1>` already inside remain unchanged. Update the trailing `<p class="status">` to use a `<span class="ticker">` wrapper around any monospace numerals.
 
    Specifically the day/cash status line becomes:
+
    ```svelte
-   <p class="status">Day <span class="ticker">{game.day}</span> · <span class="ticker">${game.cash.toLocaleString('en-US')}</span> cash</p>
+   <p class="status">
+   	Day <span class="ticker">{game.day}</span> ·
+   	<span class="ticker">${game.cash.toLocaleString('en-US')}</span> cash
+   </p>
    ```
+
    Make the equivalent edit for the industry status line ("Day N · {count} industrial buildings"), wrapping `{game.day}` and `{game.industrialBuildings.length}` in `<span class="ticker">…</span>`.
 
 2. **Icon buttons.** For each of the three icon buttons (Build, Open menu, Advance day) change `class="map-icon-button"` → `class="map-icon-button btn-icon"`. Keep the existing `primary` class on the Advance Day button (it now stacks with `btn-icon`).
 
 3. **HUD status chip.** Replace the existing `<div class="hud-status">` opening with:
+
    ```svelte
    <div class="hud-status plaque" role="status" aria-label="Company status">
    ```
+
    Inside, wrap the `<strong>` cash value as a ticker:
+
    ```svelte
    <strong class="ticker">${game.cash.toLocaleString('en-US')}</strong>
    ```
@@ -1011,7 +1038,7 @@ Expected: PASS.
 - [ ] **Step 4: Run page e2e**
 
 Run: `bun run test:e2e -- src/routes/retail-sim.e2e.ts`
-Expected: PASS — aria labels and data-* attributes preserved.
+Expected: PASS — aria labels and data-\* attributes preserved.
 
 - [ ] **Step 5: Visual smoke check**
 
@@ -1032,6 +1059,7 @@ git commit -m "feat(ui): restyle page HUD to mercantile-ledger plaques and frame
 ## Task 7: Scorecard.svelte
 
 **Files:**
+
 - Modify: `src/lib/components/game/Scorecard.svelte`
 
 - [ ] **Step 1: Apply `.paper` class to root and restyle**
@@ -1122,6 +1150,7 @@ git commit -m "feat(ui): restyle Scorecard to parchment paper frame"
 ## Task 8: DecisionQueue.svelte
 
 **Files:**
+
 - Modify: `src/lib/components/game/DecisionQueue.svelte`
 
 - [ ] **Step 1: Apply `.paper` and seal styling**
@@ -1129,7 +1158,8 @@ git commit -m "feat(ui): restyle Scorecard to parchment paper frame"
 In the template, change `<section class="panel" …>` to `<section class="panel paper" …>`. Inside the article, wrap the `<span>Expires day N</span>` like this:
 
 ```svelte
-<span class="expires"><span class="seal" data-urgent="true">Day {decision.expiresOnDay}</span></span>
+<span class="expires"><span class="seal" data-urgent="true">Day {decision.expiresOnDay}</span></span
+>
 ```
 
 Replace the `<style>` block with:
@@ -1241,6 +1271,7 @@ git commit -m "feat(ui): restyle DecisionQueue with paper frame and wax-seal exp
 ## Task 9: PolicyPanel.svelte
 
 **Files:**
+
 - Modify: `src/lib/components/game/PolicyPanel.svelte`
 
 - [ ] **Step 1: Apply `.paper` and restyle**
@@ -1325,6 +1356,7 @@ git commit -m "feat(ui): restyle PolicyPanel to parchment paper frame"
 ## Task 10: ReportsPanel.svelte
 
 **Files:**
+
 - Modify: `src/lib/components/game/ReportsPanel.svelte`
 
 - [ ] **Step 1: Apply `.paper` and restyle**
@@ -1428,6 +1460,7 @@ git commit -m "feat(ui): restyle ReportsPanel with parchment paper and mono nume
 ## Task 11: StoreOverview.svelte
 
 **Files:**
+
 - Modify: `src/lib/components/game/StoreOverview.svelte`
 
 - [ ] **Step 1: Apply `.paper` and restyle**
@@ -1589,6 +1622,7 @@ git commit -m "feat(ui): restyle StoreOverview with parchment frame and mono num
 ## Task 12: StaffPanel.svelte
 
 **Files:**
+
 - Modify: `src/lib/components/game/StaffPanel.svelte`
 
 - [ ] **Step 1: Apply `.paper` and restyle**
@@ -1780,6 +1814,7 @@ git commit -m "feat(ui): restyle StaffPanel with parchment cards and ink-stamp b
 ## Task 13: TileInspector.svelte (overlay + bookmark tabs)
 
 **Files:**
+
 - Modify: `src/lib/components/game/TileInspector.svelte`
 
 - [ ] **Step 1: Add bookmark span to active tab**
@@ -1787,7 +1822,8 @@ git commit -m "feat(ui): restyle StaffPanel with parchment cards and ink-stamp b
 In the template, locate the three `<button class="store-tab" …>` elements (Details / Stock / Staff). For each, after the opening tag's `onclick`, add:
 
 ```svelte
-{#if activeStoreTab === '<TAB-ID>'}<span class="bookmark tab-bookmark" aria-hidden="true"></span>{/if}
+{#if activeStoreTab === '<TAB-ID>'}<span class="bookmark tab-bookmark" aria-hidden="true"
+	></span>{/if}
 ```
 
 Replace `<TAB-ID>` with `details`, `stock`, `staff` respectively for each button.
@@ -2009,6 +2045,7 @@ git commit -m "feat(ui): restyle TileInspector with paper frame and bookmark tab
 ## Task 14: IndustryTileInspector.svelte
 
 **Files:**
+
 - Modify: `src/lib/components/game/IndustryTileInspector.svelte`
 
 - [ ] **Step 1: Read the current file to understand its tab/section structure**
@@ -2042,6 +2079,7 @@ git commit -m "feat(ui): restyle IndustryTileInspector to match TileInspector fr
 ## Task 15: StoreStockTable.svelte and StoreStaffPanel.svelte (nested in TileInspector)
 
 **Files:**
+
 - Modify: `src/lib/components/game/StoreStockTable.svelte`
 - Modify: `src/lib/components/game/StoreStaffPanel.svelte`
 
@@ -2087,6 +2125,7 @@ git commit -m "feat(ui): restyle nested store stock/staff panels for parchment c
 ## Task 16: BuildMenu.svelte (catalog rows)
 
 **Files:**
+
 - Modify: `src/lib/components/game/BuildMenu.svelte`
 
 - [ ] **Step 1: Apply `.paper` and widen modal**
@@ -2393,6 +2432,7 @@ git commit -m "feat(ui): restyle BuildMenu as parchment catalog with brass thumb
 ## Task 17: SavePanel.svelte (wax-seal slots)
 
 **Files:**
+
 - Modify: `src/lib/components/game/SavePanel.svelte`
 
 - [ ] **Step 1: Apply `.paper` and seal markup**
@@ -2675,6 +2715,7 @@ git commit -m "feat(ui): restyle SavePanel with wax-seal slot stamps and brass a
 - [ ] **Step 1: Scan for stray hex literals in component style blocks**
 
 Run:
+
 ```bash
 grep -rn '#[0-9a-fA-F]\{3,6\}' src/lib/components/game src/routes/+page.svelte src/routes/layout.css 2>/dev/null | grep -v '/\*' | grep -v '//' || echo "CLEAN"
 ```
@@ -2703,6 +2744,7 @@ Expected: PASS.
 Run: `bun run dev`.
 
 Manually walk through:
+
 1. Initial load — walnut stage, parchment title plaque (top-left) with bookmark, parchment HUD chips (top-right), brass-rimmed icon buttons.
 2. Open Build menu via the brass-rimmed Build button — catalog rows with brass-bordered sprite thumbs, wax-red hover edge.
 3. Found a retail store on a highlighted tile (moss-green preview tiles); placement bar at bottom-left reads as parchment plaque with brass compass styling.
