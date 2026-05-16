@@ -1,16 +1,11 @@
 @import 'tailwindcss';
+@import '../lib/styles/tokens.css';
+@import '../lib/styles/frames.css';
 
 :root {
-	color: #edf2f7;
-	background: #11110f;
-	font-family:
-		Inter,
-		ui-sans-serif,
-		system-ui,
-		-apple-system,
-		BlinkMacSystemFont,
-		'Segoe UI',
-		sans-serif;
+	color: var(--paper-50);
+	background: var(--walnut-900);
+	font-family: var(--font-ui);
 }
 
 body {
@@ -18,8 +13,13 @@ body {
 	min-width: 320px;
 	min-height: 100vh;
 	overflow: hidden;
-	background: linear-gradient(180deg, rgba(34, 31, 25, 0.96), rgba(17, 17, 15, 1) 38rem), #11110f;
-	color: #edf2f7;
+	background:
+		radial-gradient(ellipse at top, var(--walnut-800) 0%, var(--walnut-900) 60%), var(--walnut-900);
+	color: var(--paper-50);
+	font-family: var(--font-ui);
+	font-feature-settings:
+		'liga' 1,
+		'kern' 1;
 }
 
 html,
@@ -29,7 +29,8 @@ body,
 }
 
 button,
-select {
+select,
+input {
 	font: inherit;
 }
 
