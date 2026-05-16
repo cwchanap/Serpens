@@ -183,11 +183,45 @@ describe('retail placement preview', () => {
 
 		expect(options.map((option) => option.validTileCount)).toEqual([0, 0, 0, 0]);
 		expect(options.map((option) => option.disabledReason)).toEqual([
-			'No valid tiles',
-			'No valid tiles',
-			'No valid tiles',
-			'No valid tiles'
+			'Store limit reached',
+			'Store limit reached',
+			'Store limit reached',
+			'Store limit reached'
 		]);
+	});
+
+	test('uses the cheapest cash blocker when build menu options only fail affordability', () => {
+		expect.assertions(2);
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 20,
+			height: 20,
+			seed: 20260503
+		});
+		const foundingTile = city.tiles.find((tile) => !tile.locked && tile.feature === null)!;
+		const game = createFoundingGameAtTile({
+			archetypeId: 'convenience',
+			city,
+			tileId: foundingTile.id,
+			seed: 20260503
+		});
+		const availableTiles = city.tiles.filter(
+			(tile) => !tile.locked && tile.feature === null && tile.id !== foundingTile.id
+		);
+		const cheapestElectronicsSetupCost = Math.min(
+			...availableTiles.map((tile) => forecastOpening(tile, 'electronics').setupCost)
+		);
+
+		const electronicsOption = getRetailBuildMenuOptions({
+			game: { ...game, cash: 0 },
+			city
+		}).find((option) => option.archetypeId === 'electronics')!;
+
+		expect(electronicsOption.validTileCount).toBe(0);
+		expect(electronicsOption.disabledReason).toBe(
+			`Requires ${cheapestElectronicsSetupCost.toLocaleString('en-US')} cash`
+		);
 	});
 });
 
@@ -257,5 +291,39 @@ describe('industry placement preview', () => {
 				buildingTypeId: 'warehouse'
 			})
 		).toBe('Warehouse requires 1,000 cash.');
+	});
+
+	test('marks non-industrial tiles invalid for buildings that require industrial terrain', () => {
+		expect.assertions(4);
+		const game = { ...createNewGame('convenience', 20260512), cash: 100_000 };
+		const city = game.industryCities[0]!;
+		const nonIndustrialTile = city.tiles.find(
+			(tile) => !tile.locked && tile.terrain !== 'industrial'
+		)!;
+		const industrialTile = city.tiles.find(
+			(tile) => tile.terrain === 'industrial' && !tile.locked
+		)!;
+
+		const preview = createIndustryPlacementPreview({
+			game,
+			buildingTypeId: 'warehouse'
+		});
+
+		expect(preview.invalidTileIds).toContain(nonIndustrialTile.id);
+		expect(preview.validTileIds).toContain(industrialTile.id);
+		expect(
+			getIndustryBuildPlacementBlockReason({
+				game,
+				tileId: nonIndustrialTile.id,
+				buildingTypeId: 'warehouse'
+			})
+		).toBe('Requires industrial tile');
+		expect(
+			getIndustryBuildPlacementBlockReason({
+				game,
+				tileId: industrialTile.id,
+				buildingTypeId: 'warehouse'
+			})
+		).toBeNull();
 	});
 });

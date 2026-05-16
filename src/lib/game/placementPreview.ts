@@ -123,7 +123,7 @@ export function getRetailBuildMenuOptions(input: RetailBuildMenuInput): RetailBu
 				setupCostRange: { min: 0, max: 0 },
 				projectedDailyRevenueRange: { min: 0, max: 0 },
 				validTileCount: 0,
-				disabledReason: 'No valid tiles'
+				disabledReason: getRetailBuildMenuDisabledReason(input, archetype.id)
 			};
 		}
 
@@ -137,6 +137,56 @@ export function getRetailBuildMenuOptions(input: RetailBuildMenuInput): RetailBu
 			disabledReason: null
 		};
 	});
+}
+
+function getRetailBuildMenuDisabledReason(
+	input: RetailBuildMenuInput,
+	archetypeId: ArchetypeId
+): string {
+	if (input.game && input.game.stores.length >= MAX_STORES) {
+		return 'Store limit reached';
+	}
+
+	const cashBlockedSetupCosts = input.city.tiles
+		.filter((tile) => {
+			if (getTilePlacementBlockReason(tile)) {
+				return false;
+			}
+
+			return !input.game?.stores.some((store) => store.tileId === tile.id);
+		})
+		.map((tile) => forecastOpening(tile, archetypeId).setupCost)
+		.filter((setupCost) => input.game && input.game.cash < setupCost);
+
+	if (cashBlockedSetupCosts.length > 0) {
+		return `Requires ${Math.min(...cashBlockedSetupCosts).toLocaleString('en-US')} cash`;
+	}
+
+	const tileReasons = new Set(
+		input.city.tiles
+			.map((tile) =>
+				getRetailPlacementBlockReason({
+					game: input.game,
+					city: input.city,
+					tileId: tile.id,
+					archetypeId
+				})
+			)
+			.filter((reason) => reason !== null)
+	);
+
+	for (const reason of [
+		'Occupied location',
+		'Locked location',
+		'Road location',
+		'River location'
+	]) {
+		if (tileReasons.has(reason)) {
+			return reason;
+		}
+	}
+
+	return 'No valid tiles';
 }
 
 export function createIndustryPlacementPreview(input: IndustryPreviewInput): PlacementPreview {
