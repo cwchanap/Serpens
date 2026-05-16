@@ -27,7 +27,7 @@
 	}
 </script>
 
-<section class="panel" aria-labelledby="stores-heading">
+<section class="panel paper" aria-labelledby="stores-heading">
 	<h2 id="stores-heading">Stores</h2>
 
 	<div class="stores">
@@ -102,10 +102,7 @@
 
 <style>
 	.panel {
-		border: 1px solid #253244;
-		border-radius: 8px;
-		background: #111823;
-		padding: 1rem;
+		padding: 1.1rem 1.2rem;
 	}
 
 	h2,
@@ -116,21 +113,24 @@
 
 	h2 {
 		margin-bottom: 0.75rem;
-		font-size: 0.95rem;
+		font-family: var(--font-display);
+		font-size: 1.1rem;
+		font-weight: 400;
+		color: var(--ink-700);
 	}
 
 	.stores {
 		display: grid;
-		gap: 0.75rem;
+		gap: 0.8rem;
 	}
 
 	.store {
 		display: grid;
 		gap: 0.75rem;
-		border: 1px solid #26374d;
-		border-radius: 8px;
-		background: #151f2d;
-		padding: 0.85rem;
+		border: 1px solid var(--paper-edge);
+		border-radius: 2px;
+		background: var(--paper-50);
+		padding: 0.9rem;
 	}
 
 	header {
@@ -141,24 +141,37 @@
 	}
 
 	h3 {
-		font-size: 0.98rem;
+		font-family: var(--font-display);
+		font-size: 1.05rem;
+		font-weight: 400;
+		color: var(--ink-700);
 	}
 
 	p,
 	dt,
 	header span {
-		color: #a7b4c8;
+		color: var(--brass-700);
+		font-family: var(--font-ui);
+	}
+
+	p {
+		font-family: var(--font-body);
+		font-size: 0.92rem;
+		color: var(--ink-500);
 	}
 
 	header span,
 	dt {
-		font-size: 0.76rem;
+		font-size: 0.7rem;
+		font-weight: 700;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
 	}
 
 	dl {
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
-		gap: 0.6rem;
+		gap: 0.7rem;
 		margin: 0;
 	}
 
@@ -168,22 +181,26 @@
 
 	dd {
 		margin: 0.2rem 0 0;
+		font-family: var(--font-mono);
+		font-variant-numeric: tabular-nums lining-nums;
 		font-weight: 700;
+		color: var(--ink-700);
 		overflow-wrap: anywhere;
 	}
 
 	ul {
 		margin: 0;
 		padding-left: 1rem;
-		color: #f4c56f;
-		font-size: 0.86rem;
+		color: var(--wax-red);
+		font-family: var(--font-body);
+		font-size: 0.9rem;
 	}
 
 	.product-sources {
 		display: grid;
 		gap: 0.35rem;
 		padding-left: 0;
-		color: #d8e2f2;
+		color: var(--ink-700);
 		list-style: none;
 	}
 
@@ -195,16 +212,21 @@
 	}
 
 	.product-sources span {
+		font-family: var(--font-body);
 		font-weight: 700;
+		color: var(--ink-700);
 	}
 
 	.product-sources small {
-		color: #a7b4c8;
-		font-size: 0.76rem;
+		color: var(--ink-500);
+		font-family: var(--font-mono);
+		font-size: 0.78rem;
 	}
 
 	.quiet {
-		font-size: 0.84rem;
+		font-family: var(--font-body);
+		font-size: 0.88rem;
+		color: var(--ink-500);
 	}
 
 	@media (max-width: 640px) {
