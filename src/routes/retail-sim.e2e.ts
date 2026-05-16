@@ -228,13 +228,7 @@ async function buildIndustryBuildingAt(
 	input: { x: number; y: number; buildingName: RegExp; expectedBuildingCount: number }
 ) {
 	await closeIndustryInspectorIfOpen(page);
-	await page.getByRole('button', { name: /^build$/i }).click();
-	const buildMenu = page.getByRole('dialog', { name: /build menu/i });
-	await expect(buildMenu).toBeVisible();
-	await buildMenu.getByRole('button', { name: input.buildingName }).click();
-	await expect(buildMenu).toHaveCount(0);
-	await expect(canvas).toHaveAttribute('data-placement-preview-mode', 'active');
-	await expect(canvas).toHaveAttribute('data-placement-valid-tile-count', /^[1-9]\d*$/);
+	await chooseIndustryBuildTool(page, canvas, input.buildingName);
 	await clickCanvasTile(page, canvas, input.x, input.y);
 	await expect(page.getByRole('dialog', { name: /confirm industrial build/i })).toHaveCount(0);
 	await expect(page.getByRole('dialog', { name: /industry tile details/i })).toHaveCount(0);
@@ -244,6 +238,16 @@ async function buildIndustryBuildingAt(
 	);
 	await expect(canvas).toHaveAttribute('data-industry-building-sprite-count', /^[1-9]\d*$/);
 	await expect(canvas).toHaveAttribute('data-placement-preview-mode', 'inactive');
+}
+
+async function chooseIndustryBuildTool(page: Page, canvas: Locator, buildingName: RegExp) {
+	await page.getByRole('button', { name: /^build$/i }).click();
+	const buildMenu = page.getByRole('dialog', { name: /build menu/i });
+	await expect(buildMenu).toBeVisible();
+	await buildMenu.getByRole('button', { name: buildingName }).click();
+	await expect(buildMenu).toHaveCount(0);
+	await expect(canvas).toHaveAttribute('data-placement-preview-mode', 'active');
+	await expect(canvas).toHaveAttribute('data-placement-valid-tile-count', /^[1-9]\d*$/);
 }
 
 async function closeIndustryInspectorIfOpen(page: Page): Promise<void> {
@@ -363,7 +367,7 @@ test('player can found a store from the city map and advance a day', async ({ pa
 	await expectMapToFillViewport(page);
 	await expect(page.getByText(/harbor city/i)).toBeVisible();
 	await expect(page.getByRole('button', { name: /select tile/i })).toHaveCount(0);
-	const mapCanvas = page.locator('.map-canvas canvas');
+	const mapCanvas = await expectRetailMapReady(page);
 	await expect(mapCanvas).toHaveAttribute('data-store-sprite-count', '0');
 	await chooseRetailBuildTool(page, /build boutique goods/i);
 	await clickCanvasTile(page, mapCanvas, 1, 6);
@@ -417,8 +421,10 @@ test('city map renders terrain assets and blocks road and river placement', asyn
 	await expect(canvas).toHaveAttribute('data-placement-preview-mode', 'active');
 	await expect(canvas).toHaveAttribute('data-placement-invalid-tile-count', /^[1-9]\d*$/);
 	await expect(page.getByRole('dialog', { name: /confirm store opening/i })).toHaveCount(0);
-	await expect(roadDialog).toBeVisible();
-	await expect(roadDialog.getByRole('button', { name: /open .* here/i })).toHaveCount(0);
+	const invalidRoadDialog = page.getByRole('dialog', { name: /tile details/i });
+	await expect(invalidRoadDialog.getByRole('heading', { name: /tile 10, 6/i })).toBeVisible();
+	await expect(invalidRoadDialog.getByText(/^Road$/i)).toBeVisible();
+	await expect(invalidRoadDialog.getByRole('button', { name: /open .* here/i })).toHaveCount(0);
 });
 
 test('player can found a store from a narrow viewport', async ({ page }) => {
@@ -432,7 +438,7 @@ test('player can found a store from a narrow viewport', async ({ page }) => {
 	await page.getByRole('button', { name: /close tile inspector/i }).click();
 	await expect(page.getByRole('dialog', { name: /tile details/i })).toHaveCount(0);
 
-	const mapCanvas = page.locator('.map-canvas canvas');
+	const mapCanvas = await expectRetailMapReady(page);
 	await expect(mapCanvas).toHaveAttribute('data-store-sprite-count', '0');
 	await chooseRetailBuildTool(page, /build boutique goods/i);
 	await clickCanvasTile(page, mapCanvas, 6, 6);
@@ -504,12 +510,46 @@ test('player can switch to the industry city map and back to retail', async ({ p
 	await page.getByRole('button', { name: /open menu/i }).click();
 	await page.getByRole('menuitem', { name: /industry city map/i }).click();
 	await expect(page.getByRole('heading', { name: /industry city/i })).toBeVisible();
-	await expectIndustryMapReady(page);
-	const industryCanvas = page.locator('.map-canvas canvas');
+	const industryCanvas = await expectIndustryMapReady(page);
 	const resourceCount = Number(await industryCanvas.getAttribute('data-industry-resource-count'));
 	expect(resourceCount).toBeGreaterThan(0);
 
 	const industryInspector = page.getByRole('dialog', { name: /industry tile details/i });
+
+	await clickCanvasTile(page, industryCanvas, 9, 6);
+	await expect(
+		industryInspector.getByRole('heading', { name: /industry tile 9, 6/i })
+	).toBeVisible();
+	await expect(industryInspector.getByText(/^Industrial$/i).first()).toBeVisible();
+	await expect(
+		industryInspector.getByRole('region', { name: /industry tile stats/i })
+	).toBeVisible();
+	await expect(industryInspector.getByRole('button', { name: /filter:/i })).toHaveCount(0);
+	await expect(industryInspector.getByLabel(/search products/i)).toHaveCount(0);
+	await expect(industryInspector.getByRole('button', { name: /build /i })).toHaveCount(0);
+	await closeIndustryInspectorIfOpen(page);
+
+	await chooseIndustryBuildTool(page, industryCanvas, /build water pump/i);
+	await expect(industryCanvas).toHaveAttribute('data-industry-building-count', '0');
+	await clickCanvasTile(page, industryCanvas, 9, 6);
+	await expect(page.getByRole('status', { name: /placement status/i })).toContainText(
+		/requires water source/i
+	);
+	await expect(industryCanvas).toHaveAttribute('data-placement-preview-mode', 'active');
+	await expect(industryCanvas).toHaveAttribute('data-placement-invalid-tile-count', /^[1-9]\d*$/);
+	await expect(page.getByRole('dialog', { name: /confirm industrial build/i })).toHaveCount(0);
+	await expect(industryCanvas).toHaveAttribute('data-industry-building-count', '0');
+	await expect(
+		industryInspector.getByRole('heading', { name: /industry tile 9, 6/i })
+	).toBeVisible();
+	await expect(industryInspector.getByText(/^Industrial$/i).first()).toBeVisible();
+	await page
+		.getByRole('status', { name: /placement status/i })
+		.getByRole('button', { name: /^cancel$/i })
+		.click();
+	await expect(industryCanvas).toHaveAttribute('data-placement-preview-mode', 'inactive');
+	await closeIndustryInspectorIfOpen(page);
+
 	const cashBeforeBuild = await readCompanyCash(page);
 	await buildIndustryBuildingAt(page, industryCanvas, {
 		x: 1,
