@@ -59,7 +59,7 @@
 				parent: container,
 				width: Math.max(container.clientWidth, 640),
 				height: Math.max(container.clientHeight, 520),
-				backgroundColor: '#101512',
+				backgroundColor: '#14100A',
 				scene: nextScene,
 				scale: {
 					mode: Phaser.Scale.RESIZE,
@@ -89,15 +89,14 @@
 		min-height: 0;
 		overflow: hidden;
 		border: 0;
-		border-radius: 0;
-		background: #151714;
+		background: var(--walnut-900);
 	}
 
 	.map-canvas {
 		position: relative;
 		height: 100%;
 		min-height: 0;
-		background: #101512;
+		background: var(--walnut-900);
 	}
 
 	.map-canvas :global(canvas) {
@@ -108,12 +107,14 @@
 		position: absolute;
 		inset: 1rem auto auto 1rem;
 		margin: 0;
-		border: 1px solid #53633d;
-		border-radius: 6px;
-		background: #171f14;
-		color: #d8ef9f;
+		border: 1px solid var(--brass-500);
+		border-radius: 2px;
+		background: var(--paper-100);
+		color: var(--ink-700);
 		padding: 0.65rem 0.8rem;
+		font-family: var(--font-body);
 		font-size: 0.86rem;
+		box-shadow: var(--shadow-paper);
 	}
 
 	@media (max-width: 820px) {
