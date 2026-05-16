@@ -64,7 +64,7 @@
 	}
 </script>
 
-<section class="panel" aria-labelledby="staff-heading">
+<section class="panel paper" aria-labelledby="staff-heading">
 	<div class="panel-heading">
 		<div>
 			<h2 id="staff-heading">Staff</h2>
@@ -198,10 +198,7 @@
 	.panel {
 		display: grid;
 		gap: 1rem;
-		border: 1px solid #253244;
-		border-radius: 8px;
-		background: #111823;
-		padding: 1rem;
+		padding: 1.1rem 1.2rem;
 	}
 
 	.panel-heading,
@@ -231,164 +228,134 @@
 
 	h2,
 	h3,
-	h4,
-	p,
-	dt,
-	dd,
-	strong,
-	button,
-	select,
-	option {
-		overflow-wrap: anywhere;
+	h4 {
+		font-family: var(--font-display);
+		font-weight: 400;
+		color: var(--ink-700);
 	}
 
 	h2 {
-		font-size: 0.95rem;
+		font-size: 1.1rem;
 	}
 
 	h3 {
-		font-size: 0.86rem;
+		font-size: 0.95rem;
 	}
 
 	h4 {
-		font-size: 0.85rem;
+		font-size: 0.92rem;
 	}
 
 	p,
 	dt {
-		color: #a7b4c8;
-		font-size: 0.78rem;
+		color: var(--ink-500);
+		font-family: var(--font-body);
 	}
 
-	strong {
-		color: #edf2f7;
-		font-size: 0.8rem;
+	dt {
+		font-family: var(--font-ui);
+		font-size: 0.7rem;
+		font-weight: 700;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		color: var(--brass-700);
+	}
+
+	dd {
+		margin: 0.2rem 0 0;
+		font-family: var(--font-mono);
+		font-variant-numeric: tabular-nums lining-nums;
+		font-weight: 700;
+		color: var(--ink-700);
+	}
+
+	dl.metrics {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 0.5rem;
+		margin: 0;
 	}
 
 	.section-group {
 		display: grid;
 		gap: 0.75rem;
-		min-width: 0;
 	}
 
 	.people-grid {
 		display: grid;
-		grid-template-columns: repeat(2, minmax(0, 1fr));
+		grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
 		gap: 0.75rem;
-		min-width: 0;
 	}
 
 	.person-card,
 	.store-card {
 		display: grid;
-		gap: 0.75rem;
-		min-width: 0;
-		border: 1px solid #253244;
-		border-radius: 8px;
-		background: #0b111a;
+		gap: 0.6rem;
+		border: 1px solid var(--paper-edge);
+		border-radius: 2px;
+		background: var(--paper-50);
 		padding: 0.85rem;
 	}
 
-	.metrics {
-		display: grid;
-		grid-template-columns: repeat(2, minmax(0, 1fr));
-		gap: 0.5rem;
-		min-width: 0;
-		margin: 0;
-	}
-
-	.metrics div {
-		display: grid;
-		gap: 0.15rem;
-		min-width: 0;
-	}
-
-	dd {
-		margin: 0;
-		color: #edf2f7;
-		font-size: 0.9rem;
-		font-weight: 700;
-	}
-
-	.people-list {
-		display: grid;
-		gap: 0.6rem;
-		min-width: 0;
-	}
-
-	.assigned-row {
-		border-top: 1px solid #253244;
-		padding-top: 0.65rem;
-	}
-
-	.assignment-actions {
-		display: flex;
-		flex-wrap: wrap;
-		justify-content: flex-end;
-		gap: 0.5rem;
-		min-width: 0;
+	strong {
+		font-family: var(--font-mono);
+		font-variant-numeric: tabular-nums lining-nums;
+		color: var(--ink-700);
 	}
 
 	button,
 	select {
-		border: 1px solid #31445c;
-		border-radius: 6px;
-		background: #0f1a27;
-		color: #edf2f7;
-		padding: 0.55rem 0.65rem;
-		font: inherit;
-		min-width: 0;
-	}
-
-	button {
-		cursor: pointer;
-		font-weight: 700;
+		border: 1px solid var(--ink-700);
+		border-top-color: var(--brass-500);
+		border-radius: 2px;
+		background: var(--paper-100);
+		color: var(--ink-700);
+		font-family: var(--font-ui);
+		font-size: 0.86rem;
+		padding: 0.55rem 0.75rem;
 	}
 
 	button:hover,
+	button:focus-visible,
 	select:hover,
-	button:focus-visible,
 	select:focus-visible {
-		border-color: #4f86c6;
+		background: var(--paper-200);
+		outline: none;
 	}
 
-	button:focus-visible,
-	select:focus-visible {
-		outline: 2px solid #6aa8f7;
-		outline-offset: 2px;
+	button.secondary {
+		background: transparent;
+		color: var(--wax-red);
+		border-color: var(--wax-red);
 	}
 
-	.secondary {
-		background: #172131;
+	button.secondary:hover {
+		background: var(--paper-200);
 	}
 
-	select {
-		max-width: 100%;
-		min-width: 11rem;
+	.people-list {
+		display: grid;
+		gap: 0.5rem;
 	}
 
 	.empty {
-		border: 1px dashed #31445c;
-		border-radius: 8px;
-		padding: 0.75rem;
+		color: var(--ink-500);
+		font-family: var(--font-body);
+		font-style: italic;
 	}
 
-	@media (max-width: 760px) {
-		.people-grid {
-			grid-template-columns: 1fr;
-		}
+	.assignment-actions {
+		display: flex;
+		gap: 0.5rem;
+		flex-wrap: wrap;
+	}
 
-		.assigned-row {
-			display: grid;
-		}
-
-		.assignment-actions {
-			justify-content: stretch;
-		}
-
-		select,
-		button {
-			width: 100%;
+	@media (max-width: 720px) {
+		.assigned-row,
+		.store-heading,
+		.person-heading {
+			flex-direction: column;
+			align-items: stretch;
 		}
 	}
 </style>
