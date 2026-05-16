@@ -594,7 +594,8 @@
 			<IndustryMap snapshot={industryMapSnapshot} onTileSelected={selectIndustryTile} />
 		{/if}
 		<div class="map-hud" aria-label="Map controls">
-			<div class="map-title">
+			<div class="map-title plaque" aria-label="Map title">
+				<span class="bookmark map-title-bookmark" aria-hidden="true"></span>
 				<p class="eyebrow">
 					{activeMapView === 'industry' ? 'Industry City Map' : 'Retail City Map'}
 				</p>
@@ -602,13 +603,17 @@
 				{#if activeMapView === 'industry'}
 					{#if game}
 						<p class="status">
-							Day {game.day} · {game.industrialBuildings.length} industrial buildings
+							Day <span class="ticker">{game.day}</span> ·
+							<span class="ticker">{game.industrialBuildings.length}</span> industrial buildings
 						</p>
 					{:else}
 						<p class="status">Found a store to unlock construction.</p>
 					{/if}
 				{:else if game}
-					<p class="status">Day {game.day} · ${game.cash.toLocaleString('en-US')} cash</p>
+					<p class="status">
+						Day <span class="ticker">{game.day}</span> ·
+						<span class="ticker">${game.cash.toLocaleString('en-US')}</span> cash
+					</p>
 				{:else}
 					<p class="status">Select an unlocked tile to found your first store.</p>
 				{/if}
@@ -617,7 +622,7 @@
 			<div class="map-actions">
 				<button
 					type="button"
-					class="map-icon-button"
+					class="map-icon-button btn-icon"
 					aria-label="Build"
 					aria-pressed={isPlacementModeActive}
 					onclick={openBuildMenu}
@@ -630,13 +635,13 @@
 				</button>
 
 				{#if game}
-					<div class="hud-status" role="status" aria-label="Company status">
-						<strong>${game.cash.toLocaleString('en-US')}</strong>
+					<div class="hud-status plaque" role="status" aria-label="Company status">
+						<strong class="ticker">${game.cash.toLocaleString('en-US')}</strong>
 						<span>cash</span>
 					</div>
 					<button
 						type="button"
-						class="map-icon-button primary"
+						class="map-icon-button btn-icon primary"
 						aria-label="Advance day"
 						onclick={advanceDay}
 					>
@@ -650,7 +655,7 @@
 				<div class="hud-menu">
 					<button
 						type="button"
-						class="map-icon-button"
+						class="map-icon-button btn-icon"
 						aria-label="Open menu"
 						aria-haspopup="menu"
 						aria-expanded={isViewMenuOpen}
@@ -664,7 +669,7 @@
 					</button>
 
 					{#if isViewMenuOpen}
-						<div class="hud-dropdown" role="menu" aria-label="Map menu">
+						<div class="hud-dropdown paper" role="menu" aria-label="Map menu">
 							<button
 								type="button"
 								role="menuitem"
@@ -691,9 +696,9 @@
 			</div>
 		</div>
 		{#if isPlacementModeActive}
-			<div class="placement-status" role="status" aria-label="Placement status">
+			<div class="placement-status plaque" role="status" aria-label="Placement status">
 				<span>{placementFeedback ?? 'Choose a highlighted tile to build.'}</span>
-				<button type="button" onclick={cancelPlacement}>Cancel</button>
+				<button type="button" class="btn-danger" onclick={cancelPlacement}>Cancel</button>
 			</div>
 		{/if}
 		{#if isBuildMenuOpen}
@@ -707,7 +712,12 @@
 			/>
 		{/if}
 		{#if selectedTile && shouldShowRetailInspector}
-			<div class="inspector-overlay" role="dialog" aria-modal="false" aria-label="Tile details">
+			<div
+				class="inspector-overlay paper"
+				role="dialog"
+				aria-modal="false"
+				aria-label="Tile details"
+			>
 				<TileInspector
 					tile={selectedTile}
 					store={selectedStore}
@@ -724,7 +734,7 @@
 		{/if}
 		{#if selectedIndustryTile && shouldShowIndustryInspector}
 			<div
-				class="inspector-overlay"
+				class="inspector-overlay paper"
 				role="dialog"
 				aria-modal="false"
 				aria-label="Industry tile details"
@@ -747,18 +757,23 @@
 				aria-label="Dismiss control tower"
 				onclick={closeControlTower}
 			></button>
-			<div class="control-tower-overlay" role="dialog" aria-modal="true" aria-label="Control Tower">
+			<div
+				class="control-tower-overlay paper"
+				role="dialog"
+				aria-modal="true"
+				aria-label="Control Tower"
+			>
 				<div class="tower-header">
 					<div>
 						<p class="eyebrow">Control Tower</p>
 						<h2>Management View</h2>
 					</div>
 					<div class="tower-actions" role="group" aria-label="Control tower status">
-						<span>Day {game.day}</span>
-						<strong>${game.cash.toLocaleString('en-US')} cash</strong>
+						<span class="ticker">Day {game.day}</span>
+						<strong class="ticker">${game.cash.toLocaleString('en-US')} cash</strong>
 						<button
 							type="button"
-							class="close-tower"
+							class="close-tower btn-danger"
 							aria-label="Close control tower"
 							onclick={closeControlTower}
 						>
@@ -817,34 +832,39 @@
 		display: block;
 	}
 
-	.eyebrow {
-		margin: 0 0 0.35rem;
-		color: #f0bd68;
-		font-size: 0.76rem;
-		font-weight: 700;
-		text-transform: uppercase;
-	}
-
 	h1 {
 		margin: 0;
+		font-family: var(--font-display);
 		font-size: 2rem;
-		line-height: 1;
+		font-weight: 400;
+		line-height: 1.05;
+		color: var(--ink-700);
 	}
 
-	.map-icon-button,
-	.hud-dropdown button {
-		border: 1px solid #31445c;
-		border-radius: 8px;
-		background: #151f2d;
-		color: #edf2f7;
+	h1::before {
+		content: '';
+		display: block;
+		width: 2.5rem;
+		height: 1px;
+		margin-bottom: 0.5rem;
+		background: var(--brass-500);
 	}
 
-	.map-icon-button:hover,
-	.map-icon-button:focus-visible,
-	.hud-dropdown button:hover,
-	.hud-dropdown button:focus-visible {
-		border-color: #5f8fd0;
-		background: #1b2a3d;
+	h2 {
+		margin: 0;
+		font-family: var(--font-display);
+		font-size: 1.35rem;
+		font-weight: 400;
+		line-height: 1.1;
+		color: var(--ink-700);
+	}
+
+	.map-layout {
+		position: relative;
+		width: 100%;
+		height: 100%;
+		min-height: 100vh;
+		overflow: hidden;
 	}
 
 	.map-hud {
@@ -859,23 +879,33 @@
 	}
 
 	.map-actions {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
 		pointer-events: auto;
 	}
 
 	.map-title {
+		position: relative;
 		max-width: min(24rem, calc(100vw - 8rem));
-		border: 1px solid rgb(49 68 92 / 0.82);
-		border-radius: 8px;
-		background: rgb(11 17 27 / 0.86);
-		box-shadow: 0 18px 40px rgb(0 0 0 / 0.32);
-		padding: 0.75rem 0.85rem;
-		backdrop-filter: blur(6px);
+		padding: 0.75rem 0.95rem;
+	}
+
+	.map-title-bookmark {
+		left: 1rem;
 	}
 
 	.status {
 		margin: 0;
-		color: #b8b3a7;
+		color: var(--ink-500);
+		font-family: var(--font-body);
 		font-size: 0.9rem;
+	}
+
+	.ticker {
+		font-family: var(--font-mono);
+		font-variant-numeric: tabular-nums lining-nums;
+		color: var(--ink-700);
 	}
 
 	.placement-status {
@@ -887,40 +917,15 @@
 		align-items: center;
 		gap: 0.6rem;
 		max-width: min(32rem, calc(100vw - 2rem));
-		border: 1px solid rgb(49 68 92 / 0.82);
-		border-radius: 8px;
-		background: rgb(11 17 27 / 0.9);
-		box-shadow: 0 18px 40px rgb(0 0 0 / 0.32);
-		color: #edf2f7;
-		padding: 0.65rem 0.75rem;
-		backdrop-filter: blur(6px);
+		padding: 0.65rem 0.8rem;
 	}
 
 	.placement-status span {
 		min-width: 0;
-		color: #d8e2ef;
-		font-size: 0.86rem;
-	}
-
-	.placement-status button {
-		flex: 0 0 auto;
-		border: 1px solid #31445c;
-		border-radius: 8px;
-		background: #151f2d;
-		color: #edf2f7;
-		padding: 0.45rem 0.65rem;
-	}
-
-	.placement-status button:hover,
-	.placement-status button:focus-visible {
-		border-color: #5f8fd0;
-		background: #1b2a3d;
-	}
-
-	.map-actions {
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
+		color: var(--ink-700);
+		font-family: var(--font-body);
+		font-size: 0.9rem;
+		font-style: italic;
 	}
 
 	.hud-menu {
@@ -931,46 +936,23 @@
 		display: grid;
 		gap: 0.05rem;
 		min-width: 7.5rem;
-		border: 1px solid rgb(49 68 92 / 0.82);
-		border-radius: 8px;
-		background: rgb(11 17 27 / 0.86);
-		box-shadow: 0 18px 40px rgb(0 0 0 / 0.32);
-		padding: 0.55rem 0.7rem;
-		backdrop-filter: blur(6px);
+		padding: 0.55rem 0.75rem;
 	}
 
-	.hud-status strong,
-	.hud-status span {
+	.hud-status strong {
+		font-family: var(--font-mono);
+		font-size: 1rem;
+		color: var(--ink-700);
 		white-space: nowrap;
 	}
 
 	.hud-status span {
-		color: #a7b4c8;
-		font-size: 0.72rem;
-	}
-
-	.map-icon-button {
-		display: grid;
-		place-items: center;
-		width: 2.75rem;
-		height: 2.75rem;
-		padding: 0;
-		box-shadow: 0 18px 40px rgb(0 0 0 / 0.32);
-		backdrop-filter: blur(6px);
-	}
-
-	.map-icon-button svg {
-		width: 1.25rem;
-		height: 1.25rem;
-		fill: currentColor;
-		stroke: currentColor;
-		stroke-linecap: round;
-		stroke-linejoin: round;
-		stroke-width: 2;
-	}
-
-	.map-icon-button svg path {
-		vector-effect: non-scaling-stroke;
+		color: var(--brass-700);
+		font-family: var(--font-ui);
+		font-size: 0.7rem;
+		letter-spacing: 0.18em;
+		text-transform: uppercase;
+		white-space: nowrap;
 	}
 
 	.hud-dropdown {
@@ -978,20 +960,26 @@
 		top: calc(100% + 0.45rem);
 		right: 0;
 		z-index: 30;
-		min-width: 180px;
-		padding: 0.35rem;
-		border: 1px solid #31445c;
-		border-radius: 8px;
-		background: #0f1724;
-		box-shadow: 0 18px 40px rgb(0 0 0 / 0.35);
+		min-width: 200px;
+		padding: 0.45rem;
+		animation: none;
 	}
 
 	.hud-dropdown button {
 		width: 100%;
-		padding: 0.65rem 0.7rem;
-		border-color: transparent;
+		padding: 0.6rem 0.7rem;
+		border: 0;
 		background: transparent;
+		color: var(--ink-700);
+		font-family: var(--font-ui);
+		font-size: 0.88rem;
 		text-align: left;
+		border-radius: 2px;
+	}
+
+	.hud-dropdown button:hover,
+	.hud-dropdown button:focus-visible {
+		background: var(--paper-200);
 	}
 
 	.hud-dropdown button:disabled {
@@ -1000,27 +988,21 @@
 	}
 
 	.hud-dropdown button.active-view {
-		border-color: #5f8fd0;
-		background: #1b2a3d;
-		color: #ffffff;
+		background: var(--paper-300);
+		color: var(--ink-900);
+		font-weight: 700;
 	}
 
 	.primary {
-		border-color: #3574d6 !important;
-		background: #235fae !important;
+		background-color: var(--moss) !important;
+		border-color: var(--ink-900) !important;
+		color: var(--paper-50) !important;
+		transform: rotate(-0.6deg);
 	}
 
 	.primary:hover,
 	.primary:focus-visible {
-		background: #2b72cd !important;
-	}
-
-	.map-layout {
-		position: relative;
-		width: 100%;
-		height: 100%;
-		min-height: 100vh;
-		overflow: hidden;
+		background-color: var(--moss-2) !important;
 	}
 
 	.inspector-overlay {
@@ -1031,6 +1013,7 @@
 		width: min(360px, calc(100% - 2rem));
 		max-height: calc(100dvh - 6.9rem);
 		overflow: auto;
+		padding: 0;
 	}
 
 	.tower-backdrop {
@@ -1040,7 +1023,7 @@
 		display: grid;
 		place-items: center;
 		padding: 1rem;
-		background: rgb(4 8 13 / 0.72);
+		background: rgba(20, 16, 10, 0.74);
 		backdrop-filter: blur(4px);
 	}
 
@@ -1060,11 +1043,8 @@
 		overflow: auto;
 		display: grid;
 		gap: 1rem;
-		padding: 1rem;
-		border: 1px solid #31445c;
-		border-radius: 8px;
-		background: #0b111b;
-		box-shadow: 0 24px 80px rgb(0 0 0 / 0.45);
+		padding: 1.25rem;
+		animation-delay: 160ms;
 	}
 
 	.tower-header {
@@ -1072,6 +1052,8 @@
 		align-items: center;
 		justify-content: space-between;
 		gap: 1rem;
+		padding-bottom: 0.75rem;
+		border-bottom: 1px solid var(--brass-500);
 	}
 
 	.tower-actions {
@@ -1082,43 +1064,18 @@
 
 	.tower-actions span,
 	.tower-actions strong {
+		color: var(--ink-700);
+		font-family: var(--font-mono);
+		font-variant-numeric: tabular-nums lining-nums;
 		white-space: nowrap;
 	}
 
-	.tower-actions button {
-		padding: 0.65rem 0.85rem;
-		border: 1px solid #31445c;
-		border-radius: 8px;
-		background: #151f2d;
-		color: #edf2f7;
-		white-space: nowrap;
-	}
-
-	.tower-actions button:hover,
-	.tower-actions button:focus-visible {
-		border-color: #5f8fd0;
-		background: #1b2a3d;
-	}
-
-	h2 {
-		margin: 0;
-		font-size: 1.35rem;
-		line-height: 1.1;
+	.tower-actions strong {
+		font-weight: 700;
 	}
 
 	.close-tower {
-		padding: 0.65rem 0.85rem;
-		border: 1px solid #31445c;
-		border-radius: 8px;
-		background: #151f2d;
-		color: #edf2f7;
 		white-space: nowrap;
-	}
-
-	.close-tower:hover,
-	.close-tower:focus-visible {
-		border-color: #5f8fd0;
-		background: #1b2a3d;
 	}
 
 	.grid {
@@ -1142,8 +1099,7 @@
 			position: fixed;
 			inset: auto 0 0;
 			width: auto;
-			padding: 0.75rem;
-			background: linear-gradient(to top, rgb(0 0 0 / 0.5), transparent);
+			max-height: 60dvh;
 		}
 
 		.map-title {
@@ -1161,7 +1117,7 @@
 
 		.control-tower-overlay {
 			max-height: calc(100vh - 1rem);
-			padding: 0.75rem;
+			padding: 0.85rem;
 		}
 
 		.tower-header {
@@ -1175,7 +1131,7 @@
 		}
 
 		h1 {
-			font-size: 1.25rem;
+			font-size: 1.5rem;
 		}
 	}
 </style>
