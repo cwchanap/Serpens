@@ -149,6 +149,12 @@
 	let isPlacementModeActive = $derived(
 		retailPlacementArchetypeId !== null || industryPlacementBuildingTypeId !== null
 	);
+	let shouldShowRetailInspector = $derived(
+		selectedTile !== null && (!isPlacementModeActive || placementFeedback !== null)
+	);
+	let shouldShowIndustryInspector = $derived(
+		selectedIndustryTile !== null && (!isPlacementModeActive || placementFeedback !== null)
+	);
 	let retailBuildOptions = $derived(getRetailBuildMenuOptions({ game, city: activeCity }));
 	let retailPlacementPreview = $derived(
 		retailPlacementArchetypeId
@@ -318,6 +324,7 @@
 			game = record.game;
 			selectedTileId = null;
 			selectedIndustryTileId = null;
+			cancelPlacement();
 			saveStatus = 'Loaded auto-save';
 			saveError = null;
 			await refreshSaveSummary();
@@ -359,6 +366,7 @@
 			game = record.game;
 			selectedTileId = null;
 			selectedIndustryTileId = null;
+			cancelPlacement();
 			saveStatus = `Loaded ${record.metadata.name}`;
 			saveError = null;
 			await refreshSaveSummary();
@@ -476,7 +484,7 @@
 					archetypeId,
 					city: activeCity,
 					tileId: tile.id,
-					seed: 20260503
+					seed: starterMapState.seed
 				})
 			);
 		} else {
@@ -698,7 +706,7 @@
 				onClose={closeBuildMenu}
 			/>
 		{/if}
-		{#if selectedTile && !isPlacementModeActive}
+		{#if selectedTile && shouldShowRetailInspector}
 			<div class="inspector-overlay" role="dialog" aria-modal="false" aria-label="Tile details">
 				<TileInspector
 					tile={selectedTile}
@@ -714,7 +722,7 @@
 				/>
 			</div>
 		{/if}
-		{#if selectedIndustryTile && !isPlacementModeActive}
+		{#if selectedIndustryTile && shouldShowIndustryInspector}
 			<div
 				class="inspector-overlay"
 				role="dialog"
