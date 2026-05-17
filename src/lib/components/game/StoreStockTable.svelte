@@ -144,13 +144,15 @@
 
 	h3 {
 		margin: 0;
+		font-family: var(--font-display);
 		font-size: 0.94rem;
+		font-weight: 400;
 	}
 
 	.table-scroll {
 		overflow-x: auto;
-		border: 1px solid #3f3d36;
-		border-radius: 6px;
+		border: 1px solid var(--paper-edge);
+		border-radius: 2px;
 	}
 
 	table {
@@ -163,15 +165,19 @@
 	th,
 	td {
 		padding: 0.4rem 0.45rem;
-		border-bottom: 1px solid #34322d;
+		border-bottom: 1px solid var(--paper-edge);
 		text-align: left;
 		vertical-align: middle;
 		white-space: nowrap;
 	}
 
 	th {
-		color: #b8b3a7;
+		font-family: var(--font-ui);
+		font-size: 0.7rem;
 		font-weight: 700;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		color: var(--brass-700);
 	}
 
 	tbody tr:last-child td {
@@ -190,9 +196,9 @@
 		place-items: center;
 		width: 2.5rem;
 		height: 2.5rem;
-		border: 1px solid #3f3d36;
-		border-radius: 6px;
-		background: #24231f;
+		border: 1px solid var(--paper-edge);
+		border-radius: 2px;
+		background: var(--paper-50);
 	}
 
 	.product-thumb img {
@@ -205,16 +211,17 @@
 	input {
 		width: 4.5rem;
 		min-height: 2rem;
-		border: 1px solid #4a4a45;
-		border-radius: 6px;
-		background: #24231f;
-		color: #f7f2e8;
+		border: 1px solid var(--paper-edge);
+		border-radius: 2px;
+		background: var(--paper-50);
+		color: var(--ink-700);
 		padding: 0.25rem 0.35rem;
-		font: inherit;
+		font-family: var(--font-mono);
+		font-variant-numeric: tabular-nums lining-nums;
 	}
 
 	input:focus {
-		border-color: #d59b45;
+		border-color: var(--brass-500);
 		outline: none;
 	}
 </style>
