@@ -266,12 +266,6 @@
 			var(--shadow-paper);
 	}
 
-	.inspector.store-inspector {
-		grid-template-rows: auto auto minmax(0, 1fr);
-		height: min(37rem, calc(100dvh - 6.9rem));
-		overflow: hidden;
-	}
-
 	.close {
 		position: absolute;
 		top: 0.7rem;
@@ -331,7 +325,6 @@
 		text-transform: uppercase;
 	}
 
-	.location,
 	dt {
 		color: var(--ink-500);
 		font-family: var(--font-body);
