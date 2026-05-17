@@ -326,12 +326,6 @@
 	}
 
 	dt {
-		color: var(--ink-500);
-		font-family: var(--font-body);
-		font-size: 0.86rem;
-	}
-
-	dt {
 		font-family: var(--font-ui);
 		font-size: 0.7rem;
 		font-weight: 700;

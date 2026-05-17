@@ -337,8 +337,7 @@
 		text-transform: uppercase;
 	}
 
-	.location,
-	dt {
+	.location {
 		color: var(--ink-500);
 		font-family: var(--font-body);
 		font-size: 0.86rem;
