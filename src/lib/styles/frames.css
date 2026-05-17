@@ -251,4 +251,9 @@
 	.btn-primary {
 		transform: none;
 	}
+	.btn-primary:active,
+	.btn-danger:active,
+	.btn-icon:active {
+		transform: none;
+	}
 }

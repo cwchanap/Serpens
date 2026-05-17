@@ -337,8 +337,9 @@
 		display: grid;
 		place-items: center;
 		flex: 0 0 auto;
-		width: 2.4rem;
+		min-width: 2.4rem;
 		height: 2.4rem;
+		padding: 0 0.5rem;
 		border-radius: 999px;
 		background: var(--wax-red);
 		color: var(--paper-50);

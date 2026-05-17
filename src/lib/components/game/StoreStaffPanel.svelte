@@ -230,7 +230,7 @@
 		margin: 0.15rem 0 0;
 		font-family: var(--font-mono);
 		font-variant-numeric: tabular-nums lining-nums;
-		font-weight: 750;
+		font-weight: 700;
 		color: var(--ink-700);
 	}
 
