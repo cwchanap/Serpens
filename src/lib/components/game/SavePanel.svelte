@@ -70,7 +70,7 @@
 	<button type="button" class="save-backdrop-button" aria-label="Dismiss saves" onclick={onClose}
 	></button>
 
-	<div class="save-panel" role="dialog" aria-modal="true" aria-label="Saves">
+	<div class="save-panel paper" role="dialog" aria-modal="true" aria-label="Saves">
 		<header>
 			<div>
 				<p class="eyebrow">Saves</p>
@@ -81,7 +81,7 @@
 
 		<section class="auto-save" aria-label="Auto-save">
 			<div>
-				<h3>Auto-save</h3>
+				<h3>Auto-save <span class="auto-chip">AUTO</span></h3>
 				{#if autoSave}
 					<p>{formatSlotDetails(autoSave)}</p>
 				{:else}
@@ -110,6 +110,7 @@
 				<div class="slots">
 					{#each slots as slot (slot.id)}
 						<article>
+							<span class="slot-seal" aria-hidden="true">{slot.day}</span>
 							<div>
 								<h4>{slot.name}</h4>
 								<p>{formatManualSlotDetails(slot)}</p>
@@ -150,7 +151,8 @@
 		display: grid;
 		place-items: center;
 		padding: 1rem;
-		background: rgb(10 10 9 / 0.72);
+		background: rgba(20, 16, 10, 0.74);
+		backdrop-filter: blur(4px);
 	}
 
 	.save-backdrop-button {
@@ -169,11 +171,8 @@
 		max-height: calc(100vh - 2rem);
 		gap: 1rem;
 		overflow: auto;
-		border: 1px solid #343434;
-		border-radius: 8px;
-		background: #1a1a18;
-		padding: 1rem;
-		box-shadow: 0 24px 70px rgb(0 0 0 / 0.38);
+		padding: 1.1rem 1.25rem;
+		color: var(--ink-700);
 	}
 
 	header,
@@ -192,6 +191,11 @@
 		justify-content: space-between;
 	}
 
+	header {
+		padding-bottom: 0.75rem;
+		border-bottom: 1px solid var(--brass-500);
+	}
+
 	h2,
 	h3,
 	h4,
@@ -199,24 +203,34 @@
 		margin: 0;
 	}
 
-	h2 {
-		font-size: 1.2rem;
-		line-height: 1.15;
-	}
-
+	h2,
 	h3,
 	h4 {
-		font-size: 0.94rem;
+		font-family: var(--font-display);
+		font-weight: 400;
+		color: var(--ink-700);
+	}
+
+	h2 {
+		font-size: 1.35rem;
+	}
+
+	h3 {
+		font-size: 1rem;
+	}
+
+	h4 {
+		font-size: 0.98rem;
 	}
 
 	section,
 	article {
 		display: grid;
 		gap: 0.75rem;
-		border: 1px solid #3f4a42;
-		border-radius: 8px;
-		background: #201f1c;
-		padding: 0.85rem;
+		border: 1px solid var(--paper-edge);
+		border-radius: 2px;
+		background: var(--paper-50);
+		padding: 0.9rem;
 	}
 
 	.auto-save,
@@ -240,6 +254,15 @@
 		gap: 0.35rem;
 	}
 
+	label span {
+		color: var(--brass-700);
+		font-family: var(--font-ui);
+		font-size: 0.7rem;
+		font-weight: 700;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+	}
+
 	input,
 	button {
 		font: inherit;
@@ -247,19 +270,23 @@
 
 	input {
 		width: 100%;
-		border: 1px solid #4a4a45;
-		border-radius: 6px;
-		background: #11110f;
-		color: #f7f2e8;
+		border: 1px solid var(--ink-700);
+		border-radius: 2px;
+		background: var(--paper-100);
+		color: var(--ink-700);
 		padding: 0.65rem 0.75rem;
+		font-family: var(--font-ui);
 	}
 
 	button {
-		border: 1px solid #4a4a45;
-		border-radius: 6px;
-		background: #282724;
-		color: #f7f2e8;
-		padding: 0.65rem 0.85rem;
+		border: 1px solid var(--ink-700);
+		border-top-color: var(--brass-500);
+		border-radius: 2px;
+		background: var(--paper-100);
+		color: var(--ink-700);
+		padding: 0.6rem 0.85rem;
+		font-family: var(--font-ui);
+		font-size: 0.86rem;
 		text-align: center;
 		white-space: nowrap;
 	}
@@ -271,8 +298,7 @@
 
 	button:hover:not(:disabled),
 	button:focus-visible:not(:disabled) {
-		border-color: #d59b45;
-		background: #3a2b18;
+		background: var(--paper-200);
 		outline: none;
 	}
 
@@ -284,25 +310,60 @@
 	}
 
 	.eyebrow {
-		color: #f3d28d;
-		font-size: 0.76rem;
+		color: var(--brass-700);
+		font-family: var(--font-ui);
+		font-size: 0.7rem;
 		font-weight: 700;
+		letter-spacing: 0.18em;
 		text-transform: uppercase;
 	}
 
+	.auto-chip {
+		display: inline-flex;
+		align-items: center;
+		margin-left: 0.4rem;
+		padding: 0.1rem 0.45rem;
+		border: 1px solid var(--brass-500);
+		border-radius: 2px;
+		background: var(--brass-100);
+		color: var(--ink-700);
+		font-family: var(--font-ui);
+		font-size: 0.6rem;
+		font-weight: 700;
+		letter-spacing: 0.18em;
+	}
+
+	.slot-seal {
+		display: grid;
+		place-items: center;
+		flex: 0 0 auto;
+		width: 2.4rem;
+		height: 2.4rem;
+		border-radius: 999px;
+		background: var(--wax-red);
+		color: var(--paper-50);
+		font-family: var(--font-mono);
+		font-variant-numeric: tabular-nums lining-nums;
+		font-size: 0.78rem;
+		font-weight: 700;
+	}
+
 	.status {
-		color: #a7d8b8;
+		color: var(--moss);
+		font-family: var(--font-body);
 	}
 
 	.error {
-		color: #f4a6a6;
+		color: var(--wax-red);
+		font-family: var(--font-body);
 	}
 
 	.empty,
 	section p,
 	article p,
 	label span {
-		color: #b8b3a7;
+		color: var(--ink-500);
+		font-family: var(--font-body);
 	}
 
 	@media (max-width: 700px) {
