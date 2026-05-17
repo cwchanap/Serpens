@@ -23,7 +23,8 @@
 						<h3>{decision.title}</h3>
 						<p>{decision.context}</p>
 						<span class="expires"
-							><span class="seal" data-urgent="true">Expires day {decision.expiresOnDay}</span></span
+							><span class="seal" data-urgent="true">Expires day {decision.expiresOnDay}</span
+							></span
 						>
 					</div>
 
