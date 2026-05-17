@@ -178,29 +178,39 @@
 	}
 
 	h3 {
+		font-family: var(--font-display);
 		font-size: 0.95rem;
+		font-weight: 400;
 	}
 
 	h4 {
-		font-size: 0.82rem;
+		font-family: var(--font-ui);
+		font-size: 0.7rem;
+		font-weight: 700;
+		letter-spacing: 0.14em;
 		text-transform: uppercase;
-		letter-spacing: 0.04em;
+		color: var(--brass-700);
 	}
 
 	h5 {
+		font-family: var(--font-display);
 		font-size: 0.85rem;
+		font-weight: 400;
 	}
 
 	p,
 	dt,
 	small,
 	.empty {
-		color: #b8b3a7;
+		font-family: var(--font-body);
+		color: var(--ink-500);
 		font-size: 0.76rem;
 	}
 
 	strong {
-		color: #ffe7b7;
+		font-family: var(--font-mono);
+		font-variant-numeric: tabular-nums lining-nums;
+		color: var(--brass-500);
 	}
 
 	.metrics {
@@ -210,15 +220,18 @@
 	}
 
 	.metrics div {
-		border: 1px solid #504a3f;
-		border-radius: 6px;
-		background: #211f1a;
+		border: 1px solid var(--paper-edge);
+		border-radius: 2px;
+		background: var(--paper-50);
 		padding: 0.55rem;
 	}
 
 	dd {
 		margin: 0.15rem 0 0;
+		font-family: var(--font-mono);
+		font-variant-numeric: tabular-nums lining-nums;
 		font-weight: 750;
+		color: var(--ink-700);
 	}
 
 	.staff-section {
@@ -235,27 +248,28 @@
 
 	.person-row,
 	.empty {
-		border: 1px solid #403d35;
-		border-radius: 6px;
-		background: #201f1c;
+		border: 1px solid var(--paper-edge);
+		border-radius: 2px;
+		background: var(--paper-50);
 		padding: 0.65rem;
 	}
 
 	button {
 		flex: 0 0 auto;
 		width: auto;
-		border: 1px solid #4a4a45;
-		border-radius: 6px;
-		background: #282724;
-		color: #f7f2e8;
+		border: 1px solid var(--paper-edge);
+		border-radius: 2px;
+		background: var(--paper-50);
+		color: var(--ink-700);
+		font-family: var(--font-ui);
 		padding: 0.45rem 0.6rem;
 		text-align: center;
 	}
 
 	button:hover,
 	button:focus-visible {
-		border-color: #d59b45;
-		background: #3a2b18;
+		border-color: var(--brass-500);
+		background: var(--paper-50);
 		outline: none;
 	}
 
