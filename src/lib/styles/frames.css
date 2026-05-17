@@ -113,7 +113,8 @@
 /* --- Buttons ------------------------------------------------------------ */
 
 .btn,
-:where(.paper, .plaque) button:where(:not(.btn-primary):not(.btn-danger):not(.btn-icon):not(.bookmark-tab)) {
+:where(.paper, .plaque)
+	button:where(:not(.btn-primary):not(.btn-danger):not(.btn-icon):not(.bookmark-tab)) {
 	font-family: var(--font-ui);
 	font-size: 0.86rem;
 	font-weight: 600;
@@ -127,12 +128,14 @@
 }
 
 .btn:hover,
-:where(.paper, .plaque) button:where(:not(.btn-primary):not(.btn-danger):not(.btn-icon):not(.bookmark-tab)):hover {
+:where(.paper, .plaque)
+	button:where(:not(.btn-primary):not(.btn-danger):not(.btn-icon):not(.bookmark-tab)):hover {
 	background: var(--paper-200);
 }
 
 .btn:active,
-:where(.paper, .plaque) button:where(:not(.btn-primary):not(.btn-danger):not(.btn-icon):not(.bookmark-tab)):active {
+:where(.paper, .plaque)
+	button:where(:not(.btn-primary):not(.btn-danger):not(.btn-icon):not(.bookmark-tab)):active {
 	transform: translateY(1px);
 	box-shadow: none;
 }
