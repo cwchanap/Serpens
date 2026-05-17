@@ -221,7 +221,7 @@
 
 	<div
 		{@attach focusDialogOnMount}
-		class="build-menu"
+		class="build-menu paper"
 		role="dialog"
 		aria-modal="true"
 		aria-label="Build menu"
@@ -233,7 +233,9 @@
 				<p>{activeMapView === 'retail' ? 'Retail city' : 'Industry city'}</p>
 				<h2>{activeMapView === 'retail' ? 'Build Retail' : 'Build Industry'}</h2>
 			</div>
-			<button type="button" class="close" aria-label="Close build menu" onclick={onClose}>x</button>
+			<button type="button" class="close btn-danger" aria-label="Close build menu" onclick={onClose}
+				>×</button
+			>
 		</header>
 
 		{#if activeMapView === 'retail'}
@@ -372,7 +374,7 @@
 		display: grid;
 		place-items: center;
 		padding: 1rem;
-		background: rgb(5 8 10 / 0.58);
+		background: rgba(20, 16, 10, 0.7);
 		backdrop-filter: blur(4px);
 	}
 
@@ -389,20 +391,15 @@
 		position: relative;
 		z-index: 1;
 		display: grid;
-		gap: 0.8rem;
-		width: min(31rem, 100%);
+		gap: 0.85rem;
+		width: min(36rem, 100%);
 		max-height: calc(100dvh - 2rem);
 		overflow: auto;
-		border: 1px solid #33423a;
-		border-radius: 8px;
-		background: #121a16;
-		color: #edf3ec;
-		padding: 1rem;
-		box-shadow: 0 24px 80px rgb(0 0 0 / 0.45);
+		padding: 1.1rem 1.2rem;
+		color: var(--ink-700);
 	}
 
 	header,
-	.build-option,
 	.product-filter {
 		display: flex;
 		align-items: center;
@@ -411,31 +408,50 @@
 
 	header {
 		justify-content: space-between;
+		padding-bottom: 0.75rem;
+		border-bottom: 1px solid var(--brass-500);
 	}
 
 	h2,
+	h3,
 	p {
 		margin: 0;
 	}
 
 	h2 {
-		font-size: 1.2rem;
-		line-height: 1.15;
+		font-family: var(--font-display);
+		font-size: 1.35rem;
+		font-weight: 400;
+		color: var(--ink-700);
 	}
 
 	header p,
 	small,
 	.disabled-copy,
 	.muted {
-		color: #b7c3b2;
+		color: var(--ink-500);
+		font-family: var(--font-body);
 	}
 
-	header p,
-	small,
-	.disabled-copy,
-	.muted,
-	label span {
+	header p {
+		color: var(--brass-700);
+		font-family: var(--font-ui);
+		font-size: 0.7rem;
+		font-weight: 700;
+		letter-spacing: 0.18em;
+		text-transform: uppercase;
+	}
+
+	small {
+		font-family: var(--font-mono);
 		font-size: 0.78rem;
+		color: var(--ink-500);
+	}
+
+	.disabled-copy,
+	.muted {
+		font-family: var(--font-body);
+		font-size: 0.86rem;
 	}
 
 	.option-list,
@@ -446,28 +462,73 @@
 		gap: 0.55rem;
 	}
 
-	button {
-		border: 1px solid #3a4d43;
-		border-radius: 8px;
-		background: #1a261f;
-		color: inherit;
+	.build-option {
+		display: flex;
+		align-items: center;
+		gap: 0.85rem;
+		width: 100%;
+		padding: 0.75rem;
+		border: 1px solid var(--paper-edge);
+		border-left: 0;
+		border-radius: 0 2px 2px 0;
+		background: var(--paper-50);
+		color: var(--ink-700);
 		font: inherit;
+		text-align: left;
+		position: relative;
 	}
 
-	button:hover,
-	button:focus-visible {
-		border-color: #87a759;
-		background: #233227;
+	.build-option:hover:not(:disabled),
+	.build-option:focus-visible:not(:disabled) {
+		background: var(--paper-200);
+		border-color: var(--brass-500);
+		box-shadow: inset 3px 0 0 var(--wax-red);
+		outline: none;
 	}
 
-	button:disabled {
+	.build-option:disabled {
 		cursor: not-allowed;
 		opacity: 0.55;
 	}
 
-	.close,
-	.filter-close,
-	.filter-clear {
+	.build-option:disabled::after {
+		content: 'UNAVAILABLE';
+		position: absolute;
+		top: 0.3rem;
+		right: 0.5rem;
+		font-family: var(--font-ui);
+		font-size: 0.6rem;
+		font-weight: 700;
+		letter-spacing: 0.18em;
+		color: var(--wax-red);
+		border: 1px solid var(--wax-red);
+		padding: 0.1rem 0.3rem;
+		transform: rotate(-3deg);
+	}
+
+	.build-option img {
+		flex: 0 0 auto;
+		border: 1px solid var(--brass-500);
+		border-radius: 2px;
+		background: var(--paper-200);
+		padding: 0.2rem;
+		object-fit: cover;
+	}
+
+	.build-option > span {
+		display: grid;
+		gap: 0.22rem;
+		min-width: 0;
+	}
+
+	.build-option strong {
+		font-family: var(--font-display);
+		font-size: 1rem;
+		font-weight: 400;
+		color: var(--ink-700);
+	}
+
+	.close {
 		flex: 0 0 auto;
 		width: 2rem;
 		height: 2rem;
@@ -475,35 +536,41 @@
 		text-align: center;
 	}
 
-	.build-option {
-		width: 100%;
-		padding: 0.65rem;
-		text-align: left;
-	}
-
-	.build-option img {
+	.filter-clear,
+	.filter-close {
 		flex: 0 0 auto;
-		border-radius: 6px;
-		object-fit: cover;
-	}
-
-	.build-option > span {
-		display: grid;
-		gap: 0.18rem;
-		min-width: 0;
+		width: 2rem;
+		height: 2rem;
+		padding: 0;
+		text-align: center;
+		border: 1px solid var(--ink-700);
+		border-radius: 2px;
+		background: var(--paper-50);
+		color: var(--ink-700);
 	}
 
 	.filter-trigger {
 		flex: 1 1 auto;
-		padding: 0.6rem 0.7rem;
+		padding: 0.6rem 0.75rem;
 		text-align: left;
+		border: 1px solid var(--ink-700);
+		border-top-color: var(--brass-500);
+		border-radius: 2px;
+		background: var(--paper-50);
+		color: var(--ink-700);
+		font-family: var(--font-ui);
+	}
+
+	.filter-trigger:hover,
+	.filter-trigger:focus-visible {
+		background: var(--paper-200);
 	}
 
 	.filter-popup {
-		border: 1px solid #3a4d43;
-		border-radius: 8px;
-		background: #0d1511;
-		padding: 0.7rem;
+		border: 1px solid var(--paper-edge);
+		border-radius: 2px;
+		background: var(--paper-50);
+		padding: 0.8rem;
 	}
 
 	.filter-popup-heading {
@@ -514,24 +581,56 @@
 	}
 
 	h3 {
-		margin: 0;
-		font-size: 0.86rem;
+		font-family: var(--font-display);
+		font-size: 0.95rem;
+		font-weight: 400;
+		color: var(--ink-700);
 	}
 
 	input {
 		min-width: 0;
-		border: 1px solid #3a4d43;
-		border-radius: 6px;
-		background: #09100c;
-		color: #edf3ec;
-		padding: 0.55rem;
-		font: inherit;
+		border: 1px solid var(--ink-700);
+		border-radius: 2px;
+		background: var(--paper-50);
+		color: var(--ink-700);
+		padding: 0.55rem 0.7rem;
+		font-family: var(--font-ui);
+	}
+
+	label span {
+		color: var(--brass-700);
+		font-family: var(--font-ui);
+		font-size: 0.7rem;
+		font-weight: 700;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
 	}
 
 	.filter-list button {
 		display: grid;
-		gap: 0.15rem;
-		padding: 0.55rem 0.65rem;
+		gap: 0.18rem;
+		padding: 0.6rem 0.75rem;
+		border: 1px solid var(--paper-edge);
+		border-radius: 2px;
+		background: var(--paper-50);
+		color: var(--ink-700);
+		font-family: var(--font-ui);
 		text-align: left;
+	}
+
+	.filter-list button:hover:not(:disabled) {
+		background: var(--paper-200);
+		border-color: var(--brass-500);
+	}
+
+	.filter-list button[aria-pressed='true'] {
+		background: var(--paper-200);
+		border-color: var(--brass-500);
+		box-shadow: inset 3px 0 0 var(--wax-red);
+	}
+
+	.filter-list button:disabled {
+		cursor: not-allowed;
+		opacity: 0.55;
 	}
 </style>
