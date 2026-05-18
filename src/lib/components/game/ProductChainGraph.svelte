@@ -29,11 +29,29 @@
 	type ChainFlowEdge = Edge<{ health: ProductChainHealth }, 'smoothstep'>;
 
 	let { graph, selectedNodeId, compact = false, onSelectNode }: Props = $props();
+	let previousGraphId = $state<string | null>(null);
 
 	const flowNodes = $derived.by(() => graph.nodes.map((node) => toFlowNode(node)));
 	const flowEdges = $derived.by(() => graph.edges.map((edge) => toFlowEdge(edge)));
 	const selectedNode = $derived(selectedNodeId ? graph.details[selectedNodeId] : null);
 	const hasGraph = $derived(graph.nodes.length > 0);
+
+	$effect(() => {
+		if (previousGraphId === null) {
+			previousGraphId = graph.id;
+			return;
+		}
+
+		if (graph.id !== previousGraphId) {
+			previousGraphId = graph.id;
+			onSelectNode(null);
+			return;
+		}
+
+		if (selectedNodeId && !graph.details[selectedNodeId]) {
+			onSelectNode(null);
+		}
+	});
 
 	function toFlowNode(node: ProductChainNode): ChainFlowNode {
 		const xStep = compact ? 155 : 210;
@@ -142,11 +160,7 @@
 	}
 </script>
 
-<section
-	class={['graph-shell', compact && 'compact']}
-	data-testid={`product-chain-graph-${graph.id}`}
-	aria-label={graph.title}
->
+<section class={['graph-shell', compact && 'compact']} aria-label={graph.title}>
 	<div class="graph-heading">
 		<div>
 			<p>Product chain</p>
@@ -160,7 +174,11 @@
 	{#if graph.emptyReason}
 		<p class="empty">{graph.emptyReason}</p>
 	{:else if hasGraph}
-		<div class="flow-frame" aria-label={`${graph.title} graph`}>
+		<div
+			class="flow-frame"
+			data-testid={`product-chain-graph-${graph.id}`}
+			aria-label={`${graph.title} graph`}
+		>
 			<SvelteFlow
 				id={`product-chain-flow-${graph.id}`}
 				class="product-chain-flow"
@@ -194,7 +212,9 @@
 					gap={compact ? 18 : 24}
 					patternColor="color-mix(in srgb, var(--paper-edge) 72%, transparent)"
 				/>
-				<Controls showLock={false} fitViewOptions={{ padding: compact ? 0.18 : 0.24 }} />
+				{#if !compact}
+					<Controls showLock={false} fitViewOptions={{ padding: 0.24 }} />
+				{/if}
 			</SvelteFlow>
 		</div>
 
