@@ -328,7 +328,7 @@ export function buildStoreCategoryChainSummaries(game: GameState): ProductChainC
 				continue;
 			}
 
-			const graph = buildProductChainGraph({ game, store, categoryId: category.id });
+			const graph = buildProductChainGraph({ game, store: null, categoryId: category.id });
 			const rootNode = graph.nodes.find((node) => node.id === `material:${category.id}`);
 			summaries.set(category.id, {
 				categoryId: category.id,
@@ -559,16 +559,56 @@ function latestStoreProductReport(
 	store: Store | null,
 	categoryId: string
 ): DailyProductReport | null {
+	const storeReports = game.reports.at(-1)?.storeReports ?? [];
+
 	if (!store) {
-		return null;
+		return aggregateProductReports(
+			categoryId,
+			storeReports.flatMap((report) =>
+				report.productReports.filter((productReport) => productReport.categoryId === categoryId)
+			)
+		);
 	}
 
 	return (
-		game.reports
-			.at(-1)
-			?.storeReports.find((report) => report.storeId === store.id)
+		storeReports
+			.find((report) => report.storeId === store.id)
 			?.productReports.find((report) => report.categoryId === categoryId) ?? null
 	);
+}
+
+function aggregateProductReports(
+	categoryId: string,
+	productReports: DailyProductReport[]
+): DailyProductReport | null {
+	if (productReports.length === 0) {
+		return null;
+	}
+
+	const firstReport = productReports[0]!;
+
+	return {
+		categoryId,
+		name: firstReport.name,
+		unitsSold: sumProductReports(productReports, (report) => report.unitsSold),
+		demandMissed: sumProductReports(productReports, (report) => report.demandMissed),
+		revenue: sumProductReports(productReports, (report) => report.revenue),
+		costOfGoods: sumProductReports(productReports, (report) => report.costOfGoods),
+		grossMargin: sumProductReports(productReports, (report) => report.grossMargin),
+		endingStock: sumProductReports(productReports, (report) => report.endingStock),
+		warehouseUnits: sumProductReports(productReports, (report) => report.warehouseUnits),
+		warehouseValue: sumProductReports(productReports, (report) => report.warehouseValue),
+		importedUnits: sumProductReports(productReports, (report) => report.importedUnits),
+		importCost: firstReport.importCost,
+		importSpend: sumProductReports(productReports, (report) => report.importSpend)
+	};
+}
+
+function sumProductReports(
+	productReports: DailyProductReport[],
+	getValue: (report: DailyProductReport) => number
+): number {
+	return productReports.reduce((total, report) => total + getValue(report), 0);
 }
 
 function latestCategoryUnitsSold(game: GameState, categoryId: string): number {
@@ -752,6 +792,10 @@ function materialHealth(input: {
 }): ProductChainHealth {
 	if (!input.hasReport) {
 		return 'no-report';
+	}
+
+	if (input.actual.demandMissed > 0) {
+		return 'shortage';
 	}
 
 	if (input.actual.importedInput > 0 || input.actual.shopImported > 0) {

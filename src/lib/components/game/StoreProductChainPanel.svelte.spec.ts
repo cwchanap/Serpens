@@ -47,8 +47,8 @@ describe('StoreProductChainPanel', () => {
 			.toBeVisible();
 	});
 
-	it('resets the selected category when the selected store changes', async () => {
-		expect.assertions(2);
+	it('resets the selected category whenever the selected store changes', async () => {
+		expect.assertions(3);
 		const game = createNewGame('convenience', 20260518);
 		const secondStore: Store = {
 			...game.stores[0]!,
@@ -63,5 +63,9 @@ describe('StoreProductChainPanel', () => {
 
 		await expect.element(page.getByTestId('product-chain-graph-chain:snacks')).toBeVisible();
 		await expect.element(page.getByText('Snacks chain')).toBeVisible();
+
+		view.rerender({ game, store: game.stores[0]! });
+
+		await expect.element(page.getByTestId('product-chain-graph-chain:snacks')).toBeVisible();
 	});
 });

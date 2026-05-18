@@ -213,6 +213,56 @@ describe('product chain graph metrics', () => {
 		expect(graph.nodes).toEqual([]);
 		expect(graph.emptyReason).toBe('No local production chain available for this category yet.');
 	});
+
+	test('marks missed finished demand as a shortage even without import movement', () => {
+		expect.assertions(3);
+		let game = createNewGame('convenience', 20260518);
+		game = {
+			...game,
+			industrialBuildings: [
+				...game.industrialBuildings,
+				{
+					id: 'industry-building-snacks',
+					typeId: 'snack-factory',
+					cityId: game.activeIndustryCityId,
+					tileId: 'manual-snack-factory',
+					mapX: 0,
+					mapY: 0,
+					status: 'produced',
+					lastProduction: [],
+					producedTotal: 0,
+					importedInputTotal: 0,
+					blockedDays: 0
+				}
+			]
+		};
+		game = withLatestReport(
+			game,
+			emptyProductionReport({
+				produced: [{ materialId: 'snacks', quantity: 16, value: 128, source: 'local' }]
+			})
+		);
+		game = {
+			...game,
+			reports: [
+				{
+					...game.reports[0]!,
+					storeReports: [
+						latestStoreReport({
+							productReports: [snackProductReport({ unitsSold: 8, demandMissed: 12 })]
+						})
+					]
+				}
+			]
+		};
+
+		const graph = buildProductChainGraph({ game, store: game.stores[0]!, categoryId: 'snacks' });
+		const snacks = graph.nodes.find((node) => node.id === 'material:snacks');
+
+		expect(snacks?.actual.demandMissed).toBe(12);
+		expect(snacks?.health).toBe('shortage');
+		expect(snacks?.bottleneck).toBe('Snacks relied on imports or had a local shortage today.');
+	});
 });
 
 describe('product chain graph edge allocation', () => {
@@ -353,6 +403,72 @@ describe('store category chain summaries', () => {
 		expect(snacks?.produced).toBe(8);
 		expect(snacks?.consumed).toBe(13);
 		expect(snacks?.imported).toBe(0);
+	});
+
+	test('builds aggregate finished-product metrics when no specific store is selected', () => {
+		expect.assertions(4);
+		let game = { ...createNewGame('convenience', 20260518), cash: 100_000 };
+		const expansionTile = game.cities[0]!.tiles.find(
+			(tile) => !tile.locked && tile.feature === null && tile.id !== game.stores[0]!.tileId
+		)!;
+		game = openStoreAtTile(game, {
+			tileId: expansionTile.id,
+			name: 'Store #2',
+			archetypeId: 'convenience'
+		});
+		const firstStore = game.stores[0]!;
+		const secondStore = game.stores[1]!;
+		game = {
+			...game,
+			reports: [
+				{
+					day: game.day,
+					revenue: 120,
+					costOfGoods: 50,
+					grossMargin: 70,
+					operatingCosts: 30,
+					payrollCost: 0,
+					importSpend: 0,
+					netIncome: 40,
+					cashAfter: game.cash + 40,
+					scorecard: game.scorecard,
+					productionReport: emptyProductionReport({
+						produced: [{ materialId: 'snacks', quantity: 18, value: 144, source: 'local' }],
+						warehousePulls: [
+							{ materialId: 'snacks', quantity: 11, value: 88, source: 'warehouse' }
+						],
+						shopImports: [{ materialId: 'snacks', quantity: 2, value: 24, source: 'import' }]
+					}),
+					storeReports: [
+						latestStoreReport({
+							storeId: firstStore.id,
+							productReports: [snackProductReport({ unitsSold: 8, demandMissed: 1 })]
+						}),
+						latestStoreReport({
+							storeId: secondStore.id,
+							productReports: [
+								snackProductReport({
+									unitsSold: 5,
+									demandMissed: 3,
+									warehouseUnits: 5,
+									importedUnits: 0,
+									importSpend: 0
+								})
+							]
+						})
+					],
+					warnings: []
+				}
+			]
+		};
+
+		const graph = buildProductChainGraph({ game, store: null, categoryId: 'snacks' });
+		const snacks = graph.nodes.find((node) => node.id === 'material:snacks');
+
+		expect(snacks?.actual.unitsSold).toBe(13);
+		expect(snacks?.actual.demandMissed).toBe(4);
+		expect(snacks?.actual.warehousePulled).toBe(11);
+		expect(snacks?.actual.shopImported).toBe(2);
 	});
 });
 

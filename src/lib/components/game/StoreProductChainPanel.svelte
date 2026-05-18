@@ -25,6 +25,7 @@
 		categoryId: null,
 		nodeId: null
 	});
+	let previousStoreId = $state<string | null>(null);
 
 	const selectId = $props.id();
 	const supportedCategories = $derived(getSupportedStoreChainCategories(store));
@@ -52,6 +53,19 @@
 	const selectedNode = $derived(
 		graph && activeSelection.nodeId ? graph.details[activeSelection.nodeId] : null
 	);
+
+	$effect(() => {
+		if (previousStoreId === store.id) {
+			return;
+		}
+
+		previousStoreId = store.id;
+		selection = {
+			storeId: store.id,
+			categoryId: null,
+			nodeId: null
+		};
+	});
 
 	function selectCategory(event: Event): void {
 		selection = {

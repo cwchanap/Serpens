@@ -7,7 +7,7 @@
 		buildWarehouseFlowGraph,
 		getSupportedStoreChainCategories
 	} from '$lib/game/productChainGraph';
-	import type { GameState, Store } from '$lib/game/types';
+	import type { GameState } from '$lib/game/types';
 
 	interface Props {
 		game: GameState;
@@ -37,14 +37,11 @@
 			summaries[0] ??
 			null
 	);
-	const activeStore = $derived.by(() =>
-		activeCategory ? findStoreForCategory(game.stores, activeCategory.categoryId) : null
-	);
 	const categoryGraph = $derived(
 		activeCategory
 			? buildProductChainGraph({
 					game,
-					store: activeStore,
+					store: null,
 					categoryId: activeCategory.categoryId
 				})
 			: null
@@ -55,14 +52,6 @@
 		graph && nodeSelection.graphId === graph.id ? nodeSelection.nodeId : null
 	);
 	const selectedNode = $derived(graph && activeNodeId ? graph.details[activeNodeId] : null);
-
-	function findStoreForCategory(stores: Store[], categoryId: string): Store | null {
-		return (
-			stores.find((store) =>
-				getSupportedStoreChainCategories(store).some((category) => category.id === categoryId)
-			) ?? null
-		);
-	}
 
 	function selectCategory(categoryId: string): void {
 		mode = 'store-categories';
