@@ -64,6 +64,8 @@ export interface ProductChainEdge {
 	target: string;
 	materialId: MaterialId | null;
 	label: string;
+	requiredPerCycle: number;
+	actualPerDay: number;
 	health: ProductChainHealth;
 }
 
@@ -239,44 +241,64 @@ export function buildProductChainGraph(input: {
 		};
 		recipeNode.bottleneck = bottleneckText(recipeNode);
 		nodes.set(recipeNode.id, recipeNode);
-		addEdge(`recipe:${recipeId}`, `material:${outputMaterialId}`, outputMaterialId);
+		addEdge({
+			source: `recipe:${recipeId}`,
+			target: `material:${outputMaterialId}`,
+			materialId: outputMaterialId,
+			requiredPerCycle:
+				recipe.outputs.find((output) => output.materialId === outputMaterialId)?.quantity ?? 0,
+			direction: 'output'
+		});
 
 		for (const inputMaterial of recipe.inputs) {
 			collectMaterial(inputMaterial.materialId);
-			addEdge(
-				`material:${inputMaterial.materialId}`,
-				`recipe:${recipeId}`,
-				inputMaterial.materialId
-			);
+			addEdge({
+				source: `material:${inputMaterial.materialId}`,
+				target: `recipe:${recipeId}`,
+				materialId: inputMaterial.materialId,
+				requiredPerCycle: inputMaterial.quantity,
+				direction: 'input'
+			});
 		}
 	}
 
-	function addEdge(source: string, target: string, materialId: MaterialId): void {
+	function addEdge(edge: {
+		source: string;
+		target: string;
+		materialId: MaterialId;
+		requiredPerCycle: number;
+		direction: 'input' | 'output';
+	}): void {
 		const actual = materialActualMetrics(
 			report,
-			materialId,
-			materialId === rootMaterialId ? productReport : null
+			edge.materialId,
+			edge.materialId === rootMaterialId ? productReport : null
 		);
-		const producerRecipeId = MATERIAL_PRODUCER_RECIPES.get(materialId);
+		const producerRecipeId = MATERIAL_PRODUCER_RECIPES.get(edge.materialId);
 		const health = materialHealth({
 			hasReport: report !== null,
 			actual,
-			warehouseStock: input.game.warehouse.materials[materialId] ?? 0,
+			warehouseStock: input.game.warehouse.materials[edge.materialId] ?? 0,
 			producerBuildingCount: producerRecipeId
 				? buildingsForRecipe(input.game.industrialBuildings, producerRecipeId).length
 				: 0,
 			hasProducerRecipe: producerRecipeId !== undefined
 		});
-		const imported = actual.importedInput + actual.shopImported;
-		const localMovement = actual.produced + actual.warehousePulled;
-		const label =
-			imported > 0 ? `${localMovement} local / ${imported} imported` : `${localMovement} local`;
-		edges.set(`${source}->${target}`, {
-			id: `${source}->${target}`,
-			source,
-			target,
-			materialId,
+		const actualPerDay = edge.direction === 'output' ? actual.produced : actual.consumed;
+		const label = formatRecipeEdgeLabel({
+			actualPerDay,
+			requiredPerCycle: edge.requiredPerCycle,
+			direction: edge.direction,
+			imported: edge.direction === 'input' ? actual.importedInput : 0
+		});
+		edges.set(`${edge.source}->${edge.target}`, {
+			id: `${edge.source}->${edge.target}`,
+			source: edge.source,
+			target: edge.target,
+			materialId: edge.materialId,
 			label,
+			requiredPerCycle: edge.requiredPerCycle,
+			actualPerDay,
 			health
 		});
 	}
@@ -301,7 +323,7 @@ export function buildStoreCategoryChainSummaries(game: GameState): ProductChainC
 				bottleneck: rootNode?.bottleneck ?? 'No graph data available.',
 				warehouseStock: rootNode?.warehouseStock ?? 0,
 				produced: rootNode?.actual.produced ?? 0,
-				consumed: rootNode?.actual.consumed ?? 0,
+				consumed: rootNode?.actual.unitsSold ?? 0,
 				imported: (rootNode?.actual.importedInput ?? 0) + (rootNode?.actual.shopImported ?? 0)
 			});
 		}
@@ -402,24 +424,28 @@ export function buildWarehouseFlowGraph(game: GameState): ProductChainGraph {
 		materialNode.bottleneck = bottleneckText(materialNode);
 		nodes.push(materialNode);
 
-		if (actual.produced > 0 || actual.importedInput > 0) {
+		if (actual.produced > 0) {
 			edges.push({
 				id: `material:${materialId}->warehouse`,
 				source: `material:${materialId}`,
 				target: 'warehouse',
 				materialId,
-				label: `${actual.produced + actual.importedInput} in`,
+				label: `${actual.produced}/day in`,
+				requiredPerCycle: 0,
+				actualPerDay: actual.produced,
 				health
 			});
 		}
 
-		if (actual.consumed > 0 || actual.warehousePulled > 0 || actual.shopImported > 0) {
+		if (actual.warehousePulled > 0) {
 			edges.push({
 				id: `warehouse->material:${materialId}`,
 				source: 'warehouse',
 				target: `material:${materialId}`,
 				materialId,
-				label: `${actual.consumed + actual.warehousePulled + actual.shopImported} out`,
+				label: `${actual.warehousePulled}/day out`,
+				requiredPerCycle: 0,
+				actualPerDay: actual.warehousePulled,
 				health
 			});
 		}
@@ -556,6 +582,18 @@ function healthLabel(health: ProductChainHealth): string {
 	}
 
 	return 'No report yet';
+}
+
+function formatRecipeEdgeLabel(input: {
+	actualPerDay: number;
+	requiredPerCycle: number;
+	direction: 'input' | 'output';
+	imported: number;
+}): string {
+	const verb = input.direction === 'output' ? 'produced' : 'used';
+	const importLabel = input.imported > 0 ? ' · import' : '';
+
+	return `${input.actualPerDay}/day ${verb} · ${input.requiredPerCycle}/cycle${importLabel}`;
 }
 
 function materialHealth(input: {

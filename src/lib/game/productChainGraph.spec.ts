@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import {
 	buildProductChainGraph,
+	buildStoreCategoryChainSummaries,
 	buildWarehouseFlowGraph,
 	getSupportedStoreChainCategories
 } from './productChainGraph';
@@ -9,7 +10,9 @@ import { addWarehouseMaterial } from './industryProduction';
 import { createNewGame } from './state';
 import type { DailyProductionReport, DailyStoreReport, GameState } from './types';
 
-function emptyProductionReport(overrides: Partial<DailyProductionReport> = {}): DailyProductionReport {
+function emptyProductionReport(
+	overrides: Partial<DailyProductionReport> = {}
+): DailyProductionReport {
 	return {
 		produced: [],
 		consumed: [],
@@ -111,7 +114,7 @@ describe('product chain graph discovery', () => {
 
 describe('product chain graph metrics', () => {
 	test('builds a snacks graph with latest movement, capacity, warehouse stock, and import exposure', () => {
-		expect.assertions(8);
+		expect.assertions(15);
 		let game = { ...createNewGame('convenience', 20260518), cash: 100_000 };
 		game = buildWarehouse(game);
 		game = { ...game, warehouse: addWarehouseMaterial(game.warehouse, 'snacks', 12) };
@@ -137,6 +140,15 @@ describe('product chain graph metrics', () => {
 		const snacks = graph.nodes.find((node) => node.id === 'material:snacks');
 		const packaging = graph.nodes.find((node) => node.id === 'material:packaging');
 		const snackRecipe = graph.nodes.find((node) => node.id === 'recipe:snack-production');
+		const snackOutputEdge = graph.edges.find(
+			(edge) => edge.id === 'recipe:snack-production->material:snacks'
+		);
+		const packagingInputEdge = graph.edges.find(
+			(edge) => edge.id === 'material:packaging->recipe:snack-production'
+		);
+		const flourInputEdge = graph.edges.find(
+			(edge) => edge.id === 'material:flour->recipe:snack-production'
+		);
 
 		expect(graph.emptyReason).toBeNull();
 		expect(graph.edges.some((edge) => edge.materialId === 'packaging')).toBe(true);
@@ -146,6 +158,13 @@ describe('product chain graph metrics', () => {
 		expect(packaging?.health).toBe('shortage');
 		expect(snackRecipe?.capacity.outputPerDay).toBe(0);
 		expect(snackRecipe?.health).toBe('no-local-capacity');
+		expect(snackOutputEdge?.requiredPerCycle).toBe(8);
+		expect(snackOutputEdge?.actualPerDay).toBe(8);
+		expect(snackOutputEdge?.label).toBe('8/day produced · 8/cycle');
+		expect(packagingInputEdge?.requiredPerCycle).toBe(2);
+		expect(packagingInputEdge?.label).toBe('2/day used · 2/cycle · import');
+		expect(flourInputEdge?.actualPerDay).toBe(6);
+		expect(flourInputEdge?.label).toBe('6/day used · 6/cycle');
 	});
 
 	test('marks graphs without daily reports as no-report while preserving chain structure', () => {
@@ -171,9 +190,33 @@ describe('product chain graph metrics', () => {
 	});
 });
 
+describe('store category chain summaries', () => {
+	test('uses store sales as consume rate for finished category summaries', () => {
+		expect.assertions(4);
+		let game = createNewGame('convenience', 20260518);
+		game = withLatestReport(
+			game,
+			emptyProductionReport({
+				produced: [{ materialId: 'snacks', quantity: 8, value: 64, source: 'local' }],
+				consumed: [{ materialId: 'flour', quantity: 6, value: 18, source: 'warehouse' }],
+				warehousePulls: [{ materialId: 'snacks', quantity: 6, value: 48, source: 'warehouse' }],
+				shopImports: [{ materialId: 'snacks', quantity: 4, value: 48, source: 'import' }]
+			})
+		);
+
+		const summaries = buildStoreCategoryChainSummaries(game);
+		const snacks = summaries.find((summary) => summary.categoryId === 'snacks');
+
+		expect(snacks?.produced).toBe(8);
+		expect(snacks?.consumed).toBe(8);
+		expect(snacks?.imported).toBe(4);
+		expect(snacks?.warehouseStock).toBe(0);
+	});
+});
+
 describe('warehouse flow graph', () => {
 	test('builds a warehouse-centered graph from stock and latest material movement', () => {
-		expect.assertions(7);
+		expect.assertions(11);
 		let game = createNewGame('convenience', 20260518);
 		game = { ...game, warehouse: addWarehouseMaterial(game.warehouse, 'snacks', 14) };
 		game = withLatestReport(
@@ -195,6 +238,8 @@ describe('warehouse flow graph', () => {
 		const graph = buildWarehouseFlowGraph(game);
 		const warehouse = graph.nodes.find((node) => node.id === 'warehouse');
 		const snacks = graph.nodes.find((node) => node.id === 'material:snacks');
+		const snacksInEdge = graph.edges.find((edge) => edge.id === 'material:snacks->warehouse');
+		const snacksOutEdge = graph.edges.find((edge) => edge.id === 'warehouse->material:snacks');
 
 		expect(graph.emptyReason).toBeNull();
 		expect(warehouse?.label).toBe('Warehouse');
@@ -203,5 +248,9 @@ describe('warehouse flow graph', () => {
 		expect(snacks?.actual.warehousePulled).toBe(6);
 		expect(snacks?.actual.shopImported).toBe(4);
 		expect(graph.edges.some((edge) => edge.id === 'material:snacks->warehouse')).toBe(true);
+		expect(snacksInEdge?.actualPerDay).toBe(8);
+		expect(snacksInEdge?.label).toBe('8/day in');
+		expect(snacksOutEdge?.actualPerDay).toBe(6);
+		expect(snacksOutEdge?.label).toBe('6/day out');
 	});
 });
