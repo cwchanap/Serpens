@@ -1,0 +1,663 @@
+import { getArchetype } from './archetypes';
+import { INDUSTRIAL_BUILDING_TYPES, MATERIALS, PRODUCTION_RECIPES } from './industry';
+import { getWarehouseUsed } from './industryProduction';
+import type {
+	DailyMaterialMovement,
+	DailyProductReport,
+	DailyProductionReport,
+	GameState,
+	IndustrialBuilding,
+	IndustrialBuildingType,
+	MaterialId,
+	MaterialKind,
+	ProductCategory,
+	ProductionRecipe,
+	ProductionRecipeId,
+	Store
+} from './types';
+
+export type ProductChainHealth =
+	| 'healthy'
+	| 'watch'
+	| 'shortage'
+	| 'no-local-capacity'
+	| 'no-report';
+
+export type ProductChainNodeKind = 'material' | 'recipe' | 'warehouse';
+
+export interface ProductChainActualMetrics {
+	produced: number;
+	consumed: number;
+	importedInput: number;
+	warehousePulled: number;
+	shopImported: number;
+	unitsSold: number;
+	demandMissed: number;
+}
+
+export interface ProductChainCapacityMetrics {
+	buildingCount: number;
+	outputPerDay: number;
+	inputPerDay: number;
+}
+
+export interface ProductChainNode {
+	id: string;
+	kind: ProductChainNodeKind;
+	label: string;
+	materialId: MaterialId | null;
+	recipeId: ProductionRecipeId | null;
+	stage: ProductionRecipe['stage'] | MaterialKind | 'warehouse' | null;
+	layer: number;
+	row: number;
+	health: ProductChainHealth;
+	healthLabel: string;
+	warehouseStock: number;
+	capacity: ProductChainCapacityMetrics;
+	actual: ProductChainActualMetrics;
+	bottleneck: string;
+}
+
+export interface ProductChainEdge {
+	id: string;
+	source: string;
+	target: string;
+	materialId: MaterialId | null;
+	label: string;
+	health: ProductChainHealth;
+}
+
+export interface ProductChainGraph {
+	id: string;
+	title: string;
+	nodes: ProductChainNode[];
+	edges: ProductChainEdge[];
+	details: Record<string, ProductChainNode>;
+	warnings: string[];
+	emptyReason: string | null;
+}
+
+export interface ProductChainCategorySummary {
+	categoryId: string;
+	name: string;
+	health: ProductChainHealth;
+	healthLabel: string;
+	bottleneck: string;
+	warehouseStock: number;
+	produced: number;
+	consumed: number;
+	imported: number;
+}
+
+export const SUPPORTED_FINISHED_MATERIALS = [
+	'snacks',
+	'drinks',
+	'essentials',
+	'gifts'
+] as const satisfies readonly MaterialId[];
+
+const MATERIAL_PRODUCER_RECIPES = createMaterialProducerRecipeMap();
+
+export function getSupportedStoreChainCategories(store: Store): ProductCategory[] {
+	const supported = new Set<string>(SUPPORTED_FINISHED_MATERIALS);
+
+	return getArchetype(store.archetypeId).startingCategories.filter((category) =>
+		supported.has(category.id)
+	);
+}
+
+export function buildProductChainGraph(input: {
+	game: GameState;
+	store: Store | null;
+	categoryId: string;
+}): ProductChainGraph {
+	if (!isSupportedFinishedMaterial(input.categoryId)) {
+		return emptyGraph(
+			`chain:${input.categoryId}`,
+			'Product chain',
+			'No local production chain available for this category yet.'
+		);
+	}
+
+	const rootMaterialId = input.categoryId as MaterialId;
+	const rootRecipeId = MATERIAL_PRODUCER_RECIPES.get(rootMaterialId);
+
+	if (!rootRecipeId) {
+		return emptyGraph(
+			`chain:${rootMaterialId}`,
+			MATERIALS[rootMaterialId]?.name ?? rootMaterialId,
+			'No local production chain available for this category yet.'
+		);
+	}
+
+	const report = latestProductionReport(input.game);
+	const productReport = latestStoreProductReport(input.game, input.store, rootMaterialId);
+	const nodes = new Map<string, ProductChainNode>();
+	const edges = new Map<string, ProductChainEdge>();
+	const visitedMaterials = new Set<MaterialId>();
+	const warnings: string[] = [];
+
+	collectMaterial(rootMaterialId);
+
+	if (!report) {
+		warnings.push('No daily report yet; latest-day flow is unavailable.');
+	}
+
+	const sortedNodes = sortNodes([...nodes.values()]);
+	const details = Object.fromEntries(sortedNodes.map((node) => [node.id, node]));
+
+	return {
+		id: `chain:${rootMaterialId}`,
+		title: `${MATERIALS[rootMaterialId].name} chain`,
+		nodes: sortedNodes,
+		edges: sortEdges([...edges.values()]),
+		details,
+		warnings,
+		emptyReason: null
+	};
+
+	function collectMaterial(materialId: MaterialId): void {
+		if (visitedMaterials.has(materialId)) {
+			return;
+		}
+
+		visitedMaterials.add(materialId);
+		const producerRecipeId = MATERIAL_PRODUCER_RECIPES.get(materialId) ?? null;
+		const producerRecipe = producerRecipeId ? PRODUCTION_RECIPES[producerRecipeId] : null;
+		const producerBuildingCount = producerRecipeId
+			? buildingsForRecipe(input.game.industrialBuildings, producerRecipeId).length
+			: 0;
+		const actual = materialActualMetrics(
+			report,
+			materialId,
+			materialId === rootMaterialId ? productReport : null
+		);
+		const warehouseStock = input.game.warehouse.materials[materialId] ?? 0;
+		const health = materialHealth({
+			hasReport: report !== null,
+			actual,
+			warehouseStock,
+			producerBuildingCount,
+			hasProducerRecipe: producerRecipe !== null
+		});
+		const materialNode: ProductChainNode = {
+			id: `material:${materialId}`,
+			kind: 'material',
+			label: MATERIALS[materialId]?.name ?? materialId,
+			materialId,
+			recipeId: null,
+			stage: producerRecipe?.stage ?? MATERIALS[materialId]?.kind ?? null,
+			layer: 0,
+			row: 0,
+			health,
+			healthLabel: healthLabel(health),
+			warehouseStock,
+			capacity: {
+				buildingCount: producerBuildingCount,
+				outputPerDay: producerRecipe
+					? recipeOutputPerDay(producerRecipe, producerBuildingCount)
+					: 0,
+				inputPerDay: producerRecipe ? recipeInputPerDay(producerRecipe, producerBuildingCount) : 0
+			},
+			actual,
+			bottleneck: ''
+		};
+		materialNode.bottleneck = bottleneckText(materialNode);
+		nodes.set(materialNode.id, materialNode);
+
+		if (!producerRecipeId || !producerRecipe) {
+			warnings.push(`No production recipe found for ${materialNode.label}.`);
+			return;
+		}
+
+		collectRecipe(producerRecipeId, materialId);
+	}
+
+	function collectRecipe(recipeId: ProductionRecipeId, outputMaterialId: MaterialId): void {
+		const recipe = PRODUCTION_RECIPES[recipeId];
+		const buildingCount = buildingsForRecipe(input.game.industrialBuildings, recipeId).length;
+		const health = recipeHealth({ hasReport: report !== null, buildingCount });
+		const recipeNode: ProductChainNode = {
+			id: `recipe:${recipeId}`,
+			kind: 'recipe',
+			label: buildingTypesForRecipe(recipeId)[0]?.name ?? recipeId,
+			materialId: null,
+			recipeId,
+			stage: recipe.stage,
+			layer: 0,
+			row: 0,
+			health,
+			healthLabel: healthLabel(health),
+			warehouseStock: 0,
+			capacity: {
+				buildingCount,
+				outputPerDay: recipeOutputPerDay(recipe, buildingCount),
+				inputPerDay: recipeInputPerDay(recipe, buildingCount)
+			},
+			actual: emptyActualMetrics(),
+			bottleneck: ''
+		};
+		recipeNode.bottleneck = bottleneckText(recipeNode);
+		nodes.set(recipeNode.id, recipeNode);
+		addEdge(`recipe:${recipeId}`, `material:${outputMaterialId}`, outputMaterialId);
+
+		for (const inputMaterial of recipe.inputs) {
+			collectMaterial(inputMaterial.materialId);
+			addEdge(
+				`material:${inputMaterial.materialId}`,
+				`recipe:${recipeId}`,
+				inputMaterial.materialId
+			);
+		}
+	}
+
+	function addEdge(source: string, target: string, materialId: MaterialId): void {
+		const actual = materialActualMetrics(
+			report,
+			materialId,
+			materialId === rootMaterialId ? productReport : null
+		);
+		const producerRecipeId = MATERIAL_PRODUCER_RECIPES.get(materialId);
+		const health = materialHealth({
+			hasReport: report !== null,
+			actual,
+			warehouseStock: input.game.warehouse.materials[materialId] ?? 0,
+			producerBuildingCount: producerRecipeId
+				? buildingsForRecipe(input.game.industrialBuildings, producerRecipeId).length
+				: 0,
+			hasProducerRecipe: producerRecipeId !== undefined
+		});
+		const imported = actual.importedInput + actual.shopImported;
+		const localMovement = actual.produced + actual.warehousePulled;
+		const label =
+			imported > 0 ? `${localMovement} local / ${imported} imported` : `${localMovement} local`;
+		edges.set(`${source}->${target}`, {
+			id: `${source}->${target}`,
+			source,
+			target,
+			materialId,
+			label,
+			health
+		});
+	}
+}
+
+export function buildStoreCategoryChainSummaries(game: GameState): ProductChainCategorySummary[] {
+	const summaries = new Map<string, ProductChainCategorySummary>();
+
+	for (const store of game.stores) {
+		for (const category of getSupportedStoreChainCategories(store)) {
+			if (summaries.has(category.id)) {
+				continue;
+			}
+
+			const graph = buildProductChainGraph({ game, store, categoryId: category.id });
+			const rootNode = graph.nodes.find((node) => node.id === `material:${category.id}`);
+			summaries.set(category.id, {
+				categoryId: category.id,
+				name: category.name,
+				health: rootNode?.health ?? 'no-report',
+				healthLabel: rootNode?.healthLabel ?? 'No report yet',
+				bottleneck: rootNode?.bottleneck ?? 'No graph data available.',
+				warehouseStock: rootNode?.warehouseStock ?? 0,
+				produced: rootNode?.actual.produced ?? 0,
+				consumed: rootNode?.actual.consumed ?? 0,
+				imported: (rootNode?.actual.importedInput ?? 0) + (rootNode?.actual.shopImported ?? 0)
+			});
+		}
+	}
+
+	return [...summaries.values()].sort((first, second) => first.name.localeCompare(second.name));
+}
+
+export function buildWarehouseFlowGraph(game: GameState): ProductChainGraph {
+	const report = latestProductionReport(game);
+	const materialIds = new Set<MaterialId>();
+
+	for (const materialId of Object.keys(game.warehouse.materials) as MaterialId[]) {
+		materialIds.add(materialId);
+	}
+
+	for (const movement of [
+		...(report?.produced ?? []),
+		...(report?.consumed ?? []),
+		...(report?.importedInputs ?? []),
+		...(report?.warehousePulls ?? []),
+		...(report?.shopImports ?? [])
+	]) {
+		materialIds.add(movement.materialId);
+	}
+
+	if (materialIds.size === 0 && !report) {
+		return emptyGraph(
+			'warehouse-flow',
+			'Warehouse flow',
+			'No warehouse stock or daily report yet.'
+		);
+	}
+
+	const warehouseHealth: ProductChainHealth =
+		game.warehouse.capacity <= 0 || game.warehouse.overflowUnits > 0 ? 'shortage' : 'healthy';
+	const warehouseNode: ProductChainNode = {
+		id: 'warehouse',
+		kind: 'warehouse',
+		label: 'Warehouse',
+		materialId: null,
+		recipeId: null,
+		stage: 'warehouse',
+		layer: 1,
+		row: 0,
+		health: warehouseHealth,
+		healthLabel: healthLabel(warehouseHealth),
+		warehouseStock: getWarehouseUsed(game.warehouse),
+		capacity: {
+			buildingCount: game.industrialBuildings.filter((building) => building.typeId === 'warehouse')
+				.length,
+			outputPerDay: 0,
+			inputPerDay: game.warehouse.capacity
+		},
+		actual: emptyActualMetrics(),
+		bottleneck:
+			game.warehouse.capacity <= 0
+				? 'No warehouse capacity is available.'
+				: game.warehouse.overflowUnits > 0
+					? `${game.warehouse.overflowUnits} units are in overflow storage.`
+					: 'Warehouse capacity is available.'
+	};
+	const nodes: ProductChainNode[] = [warehouseNode];
+	const edges: ProductChainEdge[] = [];
+
+	for (const [index, materialId] of [...materialIds].sort().entries()) {
+		const actual = materialActualMetrics(report, materialId, null);
+		const producerRecipeId = MATERIAL_PRODUCER_RECIPES.get(materialId);
+		const health = materialHealth({
+			hasReport: report !== null,
+			actual,
+			warehouseStock: game.warehouse.materials[materialId] ?? 0,
+			producerBuildingCount: producerRecipeId
+				? buildingsForRecipe(game.industrialBuildings, producerRecipeId).length
+				: 0,
+			hasProducerRecipe: producerRecipeId !== undefined
+		});
+		const materialNode: ProductChainNode = {
+			id: `material:${materialId}`,
+			kind: 'material',
+			label: MATERIALS[materialId]?.name ?? materialId,
+			materialId,
+			recipeId: null,
+			stage: MATERIALS[materialId]?.kind ?? null,
+			layer: actual.produced > 0 || actual.importedInput > 0 ? 0 : 2,
+			row: index,
+			health,
+			healthLabel: healthLabel(health),
+			warehouseStock: game.warehouse.materials[materialId] ?? 0,
+			capacity: {
+				buildingCount: 0,
+				outputPerDay: 0,
+				inputPerDay: 0
+			},
+			actual,
+			bottleneck: ''
+		};
+		materialNode.bottleneck = bottleneckText(materialNode);
+		nodes.push(materialNode);
+
+		if (actual.produced > 0 || actual.importedInput > 0) {
+			edges.push({
+				id: `material:${materialId}->warehouse`,
+				source: `material:${materialId}`,
+				target: 'warehouse',
+				materialId,
+				label: `${actual.produced + actual.importedInput} in`,
+				health
+			});
+		}
+
+		if (actual.consumed > 0 || actual.warehousePulled > 0 || actual.shopImported > 0) {
+			edges.push({
+				id: `warehouse->material:${materialId}`,
+				source: 'warehouse',
+				target: `material:${materialId}`,
+				materialId,
+				label: `${actual.consumed + actual.warehousePulled + actual.shopImported} out`,
+				health
+			});
+		}
+	}
+
+	const sortedNodes = nodes.sort(
+		(first, second) => first.layer - second.layer || first.label.localeCompare(second.label)
+	);
+	const details = Object.fromEntries(sortedNodes.map((node) => [node.id, node]));
+
+	return {
+		id: 'warehouse-flow',
+		title: 'Warehouse flow',
+		nodes: sortedNodes,
+		edges: sortEdges(edges),
+		details,
+		warnings: report ? [] : ['No daily report yet; latest-day flow is unavailable.'],
+		emptyReason: null
+	};
+}
+
+function createMaterialProducerRecipeMap(): ReadonlyMap<MaterialId, ProductionRecipeId> {
+	const entries: Array<[MaterialId, ProductionRecipeId]> = [];
+
+	for (const recipe of Object.values(PRODUCTION_RECIPES)) {
+		for (const output of recipe.outputs) {
+			entries.push([output.materialId, recipe.id]);
+		}
+	}
+
+	return new Map(entries);
+}
+
+function isSupportedFinishedMaterial(categoryId: string): categoryId is MaterialId {
+	return (SUPPORTED_FINISHED_MATERIALS as readonly string[]).includes(categoryId);
+}
+
+function latestProductionReport(game: GameState): DailyProductionReport | null {
+	return game.reports.at(-1)?.productionReport ?? null;
+}
+
+function latestStoreProductReport(
+	game: GameState,
+	store: Store | null,
+	categoryId: string
+): DailyProductReport | null {
+	if (!store) {
+		return null;
+	}
+
+	return (
+		game.reports
+			.at(-1)
+			?.storeReports.find((report) => report.storeId === store.id)
+			?.productReports.find((report) => report.categoryId === categoryId) ?? null
+	);
+}
+
+function sumMovements(
+	movements: DailyMaterialMovement[] | undefined,
+	materialId: MaterialId,
+	source?: DailyMaterialMovement['source']
+): number {
+	return (movements ?? [])
+		.filter((movement) => movement.materialId === materialId)
+		.filter((movement) => (source ? movement.source === source : true))
+		.reduce((total, movement) => total + movement.quantity, 0);
+}
+
+function buildingTypesForRecipe(recipeId: ProductionRecipeId): IndustrialBuildingType[] {
+	return Object.values(INDUSTRIAL_BUILDING_TYPES).filter((type) => type.recipeId === recipeId);
+}
+
+function buildingsForRecipe(
+	buildings: IndustrialBuilding[],
+	recipeId: ProductionRecipeId
+): IndustrialBuilding[] {
+	const typeIds = new Set(buildingTypesForRecipe(recipeId).map((type) => type.id));
+
+	return buildings.filter((building) => typeIds.has(building.typeId));
+}
+
+function recipeOutputPerDay(recipe: ProductionRecipe, buildingCount: number): number {
+	return recipe.outputs.reduce((total, output) => total + output.quantity * buildingCount, 0);
+}
+
+function recipeInputPerDay(recipe: ProductionRecipe, buildingCount: number): number {
+	return recipe.inputs.reduce((total, input) => total + input.quantity * buildingCount, 0);
+}
+
+function emptyActualMetrics(): ProductChainActualMetrics {
+	return {
+		produced: 0,
+		consumed: 0,
+		importedInput: 0,
+		warehousePulled: 0,
+		shopImported: 0,
+		unitsSold: 0,
+		demandMissed: 0
+	};
+}
+
+function materialActualMetrics(
+	report: DailyProductionReport | null,
+	materialId: MaterialId,
+	productReport: DailyProductReport | null
+): ProductChainActualMetrics {
+	return {
+		produced: sumMovements(report?.produced, materialId, 'local'),
+		consumed: sumMovements(report?.consumed, materialId),
+		importedInput: sumMovements(report?.importedInputs, materialId, 'import'),
+		warehousePulled: sumMovements(report?.warehousePulls, materialId, 'warehouse'),
+		shopImported: sumMovements(report?.shopImports, materialId, 'import'),
+		unitsSold: productReport?.unitsSold ?? 0,
+		demandMissed: productReport?.demandMissed ?? 0
+	};
+}
+
+function healthLabel(health: ProductChainHealth): string {
+	if (health === 'healthy') {
+		return 'Healthy';
+	}
+
+	if (health === 'watch') {
+		return 'Watch';
+	}
+
+	if (health === 'shortage') {
+		return 'Shortage';
+	}
+
+	if (health === 'no-local-capacity') {
+		return 'No local capacity';
+	}
+
+	return 'No report yet';
+}
+
+function materialHealth(input: {
+	hasReport: boolean;
+	actual: ProductChainActualMetrics;
+	warehouseStock: number;
+	producerBuildingCount: number;
+	hasProducerRecipe: boolean;
+}): ProductChainHealth {
+	if (!input.hasReport) {
+		return 'no-report';
+	}
+
+	if (input.actual.importedInput > 0 || input.actual.shopImported > 0) {
+		return 'shortage';
+	}
+
+	if (input.hasProducerRecipe && input.producerBuildingCount === 0) {
+		return 'no-local-capacity';
+	}
+
+	if (input.actual.consumed > 0 && input.warehouseStock < input.actual.consumed) {
+		return 'watch';
+	}
+
+	return 'healthy';
+}
+
+function recipeHealth(input: { hasReport: boolean; buildingCount: number }): ProductChainHealth {
+	if (input.buildingCount === 0) {
+		return 'no-local-capacity';
+	}
+
+	if (!input.hasReport) {
+		return 'no-report';
+	}
+
+	return 'healthy';
+}
+
+function bottleneckText(node: Pick<ProductChainNode, 'kind' | 'health' | 'label'>): string {
+	if (node.health === 'healthy') {
+		return `${node.label} is flowing locally.`;
+	}
+
+	if (node.health === 'watch') {
+		return `${node.label} stock is below latest downstream use.`;
+	}
+
+	if (node.health === 'shortage') {
+		return `${node.label} relied on imports or had a local shortage today.`;
+	}
+
+	if (node.health === 'no-local-capacity') {
+		return `${node.label} has no placed local producer.`;
+	}
+
+	return `${node.label} has no latest daily flow yet.`;
+}
+
+function sortNodes(nodes: ProductChainNode[]): ProductChainNode[] {
+	const stageOrder = new Map<NonNullable<ProductChainNode['stage']>, number>([
+		['raw', 0],
+		['intermediate', 2],
+		['process', 2],
+		['finished', 4],
+		['final', 4],
+		['warehouse', 5]
+	]);
+
+	return nodes
+		.map((node) => ({
+			...node,
+			layer:
+				node.kind === 'material'
+					? Math.max(0, stageOrder.get(node.stage ?? 'raw') ?? 0) + 1
+					: (stageOrder.get(node.stage ?? 'warehouse') ?? 0)
+		}))
+		.sort((first, second) => first.layer - second.layer || first.label.localeCompare(second.label))
+		.map((node, index, sorted) => ({
+			...node,
+			row: sorted.filter((candidate) => candidate.layer === node.layer).indexOf(node)
+		}));
+}
+
+function sortEdges(edges: ProductChainEdge[]): ProductChainEdge[] {
+	return edges.sort(
+		(first, second) =>
+			first.source.localeCompare(second.source) ||
+			first.target.localeCompare(second.target) ||
+			first.id.localeCompare(second.id)
+	);
+}
+
+function emptyGraph(id: string, title: string, emptyReason: string): ProductChainGraph {
+	return {
+		id,
+		title,
+		nodes: [],
+		edges: [],
+		details: {},
+		warnings: [],
+		emptyReason
+	};
+}
