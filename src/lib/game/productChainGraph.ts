@@ -95,6 +95,7 @@ interface ChainInputWeight {
 	recipeId: ProductionRecipeId;
 	requiredPerCycle: number;
 	requiredPerDay: number;
+	inferredPerDay: number;
 }
 
 export const SUPPORTED_FINISHED_MATERIALS = [
@@ -144,7 +145,7 @@ export function buildProductChainGraph(input: {
 	const edges = new Map<string, ProductChainEdge>();
 	const visitedMaterials = new Set<MaterialId>();
 	const warnings: string[] = [];
-	const inputWeights = createChainInputWeightMap(rootRecipeId, input.game.industrialBuildings);
+	const inputWeights = createInputWeightMap(input.game.industrialBuildings, report);
 
 	collectMaterial(rootMaterialId);
 
@@ -493,42 +494,56 @@ function createMaterialProducerRecipeMap(): ReadonlyMap<MaterialId, ProductionRe
 	return new Map(entries);
 }
 
-function createChainInputWeightMap(
-	rootRecipeId: ProductionRecipeId,
-	buildings: IndustrialBuilding[]
+function createInputWeightMap(
+	buildings: IndustrialBuilding[],
+	report: DailyProductionReport | null
 ): ReadonlyMap<MaterialId, readonly ChainInputWeight[]> {
 	const weights = new Map<MaterialId, ChainInputWeight[]>();
-	const visitedRecipes = new Set<ProductionRecipeId>();
+	const inferredCycles = inferRecipeCycles(report);
 
-	visitRecipe(rootRecipeId);
-
-	return weights;
-
-	function visitRecipe(recipeId: ProductionRecipeId): void {
-		if (visitedRecipes.has(recipeId)) {
-			return;
-		}
-
-		visitedRecipes.add(recipeId);
-		const recipe = PRODUCTION_RECIPES[recipeId];
-		const buildingCount = buildingsForRecipe(buildings, recipeId).length;
+	for (const recipe of Object.values(PRODUCTION_RECIPES)) {
+		const buildingCount = buildingsForRecipe(buildings, recipe.id).length;
 
 		for (const input of recipe.inputs) {
 			const materialWeights = weights.get(input.materialId) ?? [];
 			materialWeights.push({
-				recipeId,
+				recipeId: recipe.id,
 				requiredPerCycle: input.quantity,
-				requiredPerDay: input.quantity * buildingCount
+				requiredPerDay: input.quantity * buildingCount,
+				inferredPerDay: input.quantity * (inferredCycles.get(recipe.id) ?? 0)
 			});
 			weights.set(input.materialId, materialWeights);
-
-			const producerRecipeId = MATERIAL_PRODUCER_RECIPES.get(input.materialId);
-
-			if (producerRecipeId) {
-				visitRecipe(producerRecipeId);
-			}
 		}
 	}
+
+	return weights;
+}
+
+function inferRecipeCycles(
+	report: DailyProductionReport | null
+): ReadonlyMap<ProductionRecipeId, number> {
+	const cycles = new Map<ProductionRecipeId, number>();
+
+	for (const movement of report?.produced ?? []) {
+		const recipeId = MATERIAL_PRODUCER_RECIPES.get(movement.materialId);
+
+		if (!recipeId) {
+			continue;
+		}
+
+		const recipe = PRODUCTION_RECIPES[recipeId];
+		const outputQuantity = recipe.outputs.find(
+			(output) => output.materialId === movement.materialId
+		)?.quantity;
+
+		if (!outputQuantity || outputQuantity <= 0) {
+			continue;
+		}
+
+		cycles.set(recipeId, (cycles.get(recipeId) ?? 0) + movement.quantity / outputQuantity);
+	}
+
+	return cycles;
 }
 
 function isSupportedFinishedMaterial(categoryId: string): categoryId is MaterialId {
@@ -645,12 +660,23 @@ function allocateInputMovement(
 		return 0;
 	}
 
-	const weightedTotal = materialWeights.reduce((total, weight) => total + weight.requiredPerDay, 0);
-	const useDailyWeights = weightedTotal > 0;
-	const denominator = useDailyWeights
-		? weightedTotal
+	const inferredTotal = materialWeights.reduce((total, weight) => total + weight.inferredPerDay, 0);
+
+	if (inferredTotal > 0) {
+		const inferredQuantity =
+			materialTotal >= inferredTotal
+				? matchingWeight.inferredPerDay
+				: (materialTotal * matchingWeight.inferredPerDay) / inferredTotal;
+
+		return roundFlowQuantity(inferredQuantity);
+	}
+
+	const capacityTotal = materialWeights.reduce((total, weight) => total + weight.requiredPerDay, 0);
+	const useCapacityWeights = capacityTotal > 0;
+	const denominator = useCapacityWeights
+		? capacityTotal
 		: materialWeights.reduce((total, weight) => total + weight.requiredPerCycle, 0);
-	const numerator = useDailyWeights
+	const numerator = useCapacityWeights
 		? matchingWeight.requiredPerDay
 		: matchingWeight.requiredPerCycle;
 

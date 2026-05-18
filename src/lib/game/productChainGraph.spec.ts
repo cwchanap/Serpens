@@ -239,6 +239,43 @@ describe('product chain graph edge allocation', () => {
 		expect(syrupInput?.requiredPerCycle).toBe(4);
 		expect(syrupInput?.actualPerDay).toBe(4);
 	});
+
+	test('does not absorb shared input movement from other finished chains', () => {
+		expect.assertions(4);
+		const game = withLatestReport(
+			createNewGame('convenience', 20260518),
+			emptyProductionReport({
+				produced: [
+					{ materialId: 'snacks', quantity: 8, value: 64, source: 'local' },
+					{ materialId: 'drinks', quantity: 10, value: 70, source: 'local' }
+				],
+				consumed: [{ materialId: 'packaging', quantity: 4, value: 12, source: 'warehouse' }],
+				warehousePulls: [{ materialId: 'packaging', quantity: 4, value: 12, source: 'warehouse' }]
+			})
+		);
+
+		const snacksGraph = buildProductChainGraph({
+			game,
+			store: game.stores[0]!,
+			categoryId: 'snacks'
+		});
+		const drinksGraph = buildProductChainGraph({
+			game,
+			store: game.stores[0]!,
+			categoryId: 'drinks'
+		});
+		const snacksPackaging = snacksGraph.edges.find(
+			(edge) => edge.id === 'material:packaging->recipe:snack-production'
+		);
+		const drinksPackaging = drinksGraph.edges.find(
+			(edge) => edge.id === 'material:packaging->recipe:drink-bottling'
+		);
+
+		expect(snacksPackaging?.actualPerDay).toBe(2);
+		expect(snacksPackaging?.label).toBe('2/day used · 2/cycle');
+		expect(drinksPackaging?.actualPerDay).toBe(2);
+		expect(drinksPackaging?.label).toBe('2/day used · 2/cycle');
+	});
 });
 
 describe('store category chain summaries', () => {
