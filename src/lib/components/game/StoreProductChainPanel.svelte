@@ -12,16 +12,35 @@
 		store: Store;
 	}
 
+	interface StoreChainSelection {
+		storeId: string | null;
+		categoryId: string | null;
+		nodeId: string | null;
+	}
+
 	let { game, store }: Props = $props();
 
-	let selectedCategoryOverride = $state<string | null>(null);
-	let selectedNodeId = $state<string | null>(null);
+	let selection = $state<StoreChainSelection>({
+		storeId: null,
+		categoryId: null,
+		nodeId: null
+	});
 
 	const selectId = $props.id();
 	const supportedCategories = $derived(getSupportedStoreChainCategories(store));
+	const activeSelection = $derived.by(
+		(): StoreChainSelection =>
+			selection.storeId === store.id
+				? selection
+				: {
+						storeId: store.id,
+						categoryId: null,
+						nodeId: null
+					}
+	);
 	const selectedCategory = $derived.by(
 		() =>
-			supportedCategories.find((category) => category.id === selectedCategoryOverride) ??
+			supportedCategories.find((category) => category.id === activeSelection.categoryId) ??
 			supportedCategories[0] ??
 			null
 	);
@@ -30,15 +49,24 @@
 			? buildProductChainGraph({ game, store, categoryId: selectedCategory.id })
 			: null
 	);
-	const selectedNode = $derived(graph && selectedNodeId ? graph.details[selectedNodeId] : null);
+	const selectedNode = $derived(
+		graph && activeSelection.nodeId ? graph.details[activeSelection.nodeId] : null
+	);
 
 	function selectCategory(event: Event): void {
-		selectedCategoryOverride = (event.currentTarget as HTMLSelectElement).value;
-		selectedNodeId = null;
+		selection = {
+			storeId: store.id,
+			categoryId: (event.currentTarget as HTMLSelectElement).value,
+			nodeId: null
+		};
 	}
 
 	function selectNode(nodeId: string | null): void {
-		selectedNodeId = nodeId;
+		selection = {
+			storeId: store.id,
+			categoryId: selectedCategory?.id ?? activeSelection.categoryId,
+			nodeId
+		};
 	}
 </script>
 
@@ -54,7 +82,12 @@
 		</div>
 
 		<div class="chain-content">
-			<ProductChainGraph {graph} selectedNodeId={selectedNodeId} compact onSelectNode={selectNode} />
+			<ProductChainGraph
+				{graph}
+				selectedNodeId={activeSelection.nodeId}
+				compact
+				onSelectNode={selectNode}
+			/>
 			<ProductChainNodeDetail node={selectedNode} />
 		</div>
 	{:else}

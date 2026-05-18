@@ -5,8 +5,8 @@ import { createNewGame } from '$lib/game/state';
 import type { GameState, Store } from '$lib/game/types';
 import StoreProductChainPanel from './StoreProductChainPanel.svelte';
 
-function renderProductChainPanel(game: GameState, store: Store): void {
-	render(StoreProductChainPanel, { game, store });
+function renderProductChainPanel(game: GameState, store: Store) {
+	return render(StoreProductChainPanel, { game, store });
 }
 
 describe('StoreProductChainPanel', () => {
@@ -45,5 +45,23 @@ describe('StoreProductChainPanel', () => {
 				page.getByText("No local production chain available for this store's categories yet.")
 			)
 			.toBeVisible();
+	});
+
+	it('resets the selected category when the selected store changes', async () => {
+		expect.assertions(2);
+		const game = createNewGame('convenience', 20260518);
+		const secondStore: Store = {
+			...game.stores[0]!,
+			id: 'store-2',
+			name: 'Second Store'
+		};
+		const view = renderProductChainPanel(game, game.stores[0]!);
+
+		await page.getByLabelText('Product category').selectOptions('drinks');
+
+		view.rerender({ game, store: secondStore });
+
+		await expect.element(page.getByTestId('product-chain-graph-chain:snacks')).toBeVisible();
+		await expect.element(page.getByText('Snacks chain')).toBeVisible();
 	});
 });
