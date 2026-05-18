@@ -719,6 +719,7 @@
 				aria-label="Tile details"
 			>
 				<TileInspector
+					game={game ?? starterMapState}
 					tile={selectedTile}
 					store={selectedStore}
 					staff={game?.staff ?? []}

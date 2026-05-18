@@ -3,10 +3,12 @@ import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import TileInspector from './TileInspector.svelte';
 import { getStoreArt } from '$lib/assets/gameArt';
+import { createNewGame } from '$lib/game/state';
 import { initializeStoreProducts } from '$lib/game/stock';
 import type {
 	CityTile,
 	DailyStoreReport,
+	GameState,
 	HiringCandidate,
 	StaffMember,
 	Store,
@@ -48,6 +50,11 @@ const store: Store = {
 	managerQuality: 60
 };
 
+const defaultGame: GameState = {
+	...createNewGame('convenience', 20260518),
+	stores: [store]
+};
+
 const latestStoreReport: DailyStoreReport = {
 	storeId: 'store-1',
 	revenue: 84,
@@ -86,6 +93,7 @@ const latestStoreReport: DailyStoreReport = {
 
 function renderInspector(
 	overrides: Partial<{
+		game: GameState;
 		tile: CityTile | null;
 		store: Store | null;
 		staff: StaffMember[];
@@ -99,6 +107,7 @@ function renderInspector(
 	}> = {}
 ) {
 	const props = {
+		game: defaultGame,
 		tile,
 		store: null,
 		staff: [],
@@ -146,8 +155,8 @@ describe('TileInspector storefront art', () => {
 });
 
 describe('TileInspector stock management', () => {
-	it('shows stock row count in details and renders stock on a separate tab', async () => {
-		expect.assertions(9);
+	it('shows stock row count in details and renders stock and product chain on separate tabs', async () => {
+		expect.assertions(12);
 
 		renderInspector({ store, latestStoreReport });
 
@@ -156,9 +165,11 @@ describe('TileInspector stock management', () => {
 
 		const detailsTab = page.getByRole('tab', { name: 'Details' });
 		const stockTab = page.getByRole('tab', { name: 'Stock' });
+		const chainTab = page.getByRole('tab', { name: 'Product Chain' });
 		const staffTab = page.getByRole('tab', { name: 'Staff' });
 		await expect.element(detailsTab).toHaveAttribute('aria-selected', 'true');
 		await expect.element(stockTab).toHaveAttribute('aria-selected', 'false');
+		await expect.element(chainTab).toHaveAttribute('aria-selected', 'false');
 		await expect.element(staffTab).toHaveAttribute('aria-selected', 'false');
 		await expect
 			.element(page.getByRole('heading', { name: 'Founding Store stock' }))
@@ -169,6 +180,11 @@ describe('TileInspector stock management', () => {
 		await expect.element(stockTab).toHaveAttribute('aria-selected', 'true');
 		await expect.element(page.getByRole('cell', { name: 'Snacks' })).toBeVisible();
 		await expect.element(page.getByRole('heading', { name: 'Founding Store stock' })).toBeVisible();
+
+		await chainTab.click();
+
+		await expect.element(chainTab).toHaveAttribute('aria-selected', 'true');
+		await expect.element(page.getByLabelText('Product category')).toBeVisible();
 	});
 });
 

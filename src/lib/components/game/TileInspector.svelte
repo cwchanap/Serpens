@@ -1,11 +1,13 @@
 <script lang="ts">
 	import { asset } from '$app/paths';
 	import { getStoreArt } from '$lib/assets/gameArt';
+	import StoreProductChainPanel from '$lib/components/game/StoreProductChainPanel.svelte';
 	import StoreStaffPanel from '$lib/components/game/StoreStaffPanel.svelte';
 	import StoreStockTable from '$lib/components/game/StoreStockTable.svelte';
 	import type {
 		CityTile,
 		DailyStoreReport,
+		GameState,
 		HiringCandidate,
 		StaffMember,
 		Store,
@@ -15,6 +17,7 @@
 	import { on } from 'svelte/events';
 
 	interface Props {
+		game: GameState;
 		tile: CityTile | null;
 		store: Store | null;
 		staff: StaffMember[];
@@ -28,6 +31,7 @@
 	}
 
 	let {
+		game,
 		tile,
 		store,
 		staff,
@@ -40,7 +44,7 @@
 		onClose
 	}: Props = $props();
 
-	type StoreInspectorTab = 'details' | 'stock' | 'staff';
+	type StoreInspectorTab = 'details' | 'stock' | 'chain' | 'staff';
 
 	const currency = new Intl.NumberFormat('en-US', {
 		style: 'currency',
@@ -139,6 +143,21 @@
 				<button
 					type="button"
 					class="store-tab"
+					class:active={activeStoreTab === 'chain'}
+					role="tab"
+					id={`${store.id}-chain-tab`}
+					aria-selected={activeStoreTab === 'chain'}
+					aria-controls={`${store.id}-chain-panel`}
+					tabindex={activeStoreTab === 'chain' ? 0 : -1}
+					onclick={() => selectStoreTab('chain')}
+				>
+					{#if activeStoreTab === 'chain'}<span class="bookmark tab-bookmark" aria-hidden="true"
+						></span>{/if}
+					Product Chain
+				</button>
+				<button
+					type="button"
+					class="store-tab"
 					class:active={activeStoreTab === 'staff'}
 					role="tab"
 					id={`${store.id}-staff-tab`}
@@ -206,6 +225,17 @@
 						latestReport={latestStoreReport}
 						onUpdate={onUpdateStoreProduct}
 					/>
+				</div>
+				<div
+					class="store-panel store-chain-panel"
+					class:active={activeStoreTab === 'chain'}
+					id={`${store.id}-chain-panel`}
+					role="tabpanel"
+					aria-labelledby={`${store.id}-chain-tab`}
+					aria-hidden={activeStoreTab !== 'chain'}
+					inert={activeStoreTab !== 'chain'}
+				>
+					<StoreProductChainPanel {game} {store} />
 				</div>
 				<div
 					class="store-panel store-staff-panel"
