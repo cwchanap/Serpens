@@ -212,6 +212,7 @@ async function getStorePanelLayout(page: Page) {
 			height: rect.height,
 			details: readPanel('.store-details'),
 			stock: readPanel('.store-stock-panel'),
+			chain: readPanel('.store-panel.store-chain-panel'),
 			staff: readPanel('.store-staff-panel')
 		};
 	});
@@ -755,6 +756,13 @@ test('player builds convenience production and refills from warehouse', async ({
 	await expect(productSources.getByText('Snacks')).toBeVisible();
 	await expect(productSources.getByText(`${snacksReport.warehouseUnits} warehouse`)).toBeVisible();
 	await expect(productSources.getByText(`${snacksReport.importedUnits} imported`)).toBeVisible();
+	const productChains = controlTower.getByRole('region', { name: 'Product Chains' });
+	await expect(productChains).toBeVisible();
+	await expect(productChains.getByRole('button', { name: /Snacks/ })).toBeVisible();
+	await expect(productChains.getByTestId('product-chain-graph-chain:snacks')).toBeVisible();
+	await productChains.getByRole('button', { name: 'Warehouse flow' }).click();
+	await expect(productChains.getByTestId('product-chain-graph-warehouse-flow')).toBeVisible();
+	await expect(productChains.getByRole('heading', { name: 'Warehouse flow' })).toBeVisible();
 	await expect(
 		controlTower
 			.getByLabel('Stores')
@@ -878,6 +886,7 @@ test('manage selected store stock and see weekly imports', async ({ page }) => {
 	const detailsPanelLayout = await getStorePanelLayout(page);
 	expect(detailsPanelLayout.details.display).toBe('grid');
 	expect(detailsPanelLayout.stock.display).toBe('none');
+	expect(detailsPanelLayout.chain.display).toBe('none');
 	expect(detailsPanelLayout.staff.display).toBe('none');
 	expect(detailsPanelLayout.height).toBeLessThan(520);
 
@@ -891,12 +900,30 @@ test('manage selected store stock and see weekly imports', async ({ page }) => {
 	const stockPanelLayout = await getStorePanelLayout(page);
 	expect(stockPanelLayout.details.display).toBe('none');
 	expect(stockPanelLayout.stock.display).toBe('grid');
+	expect(stockPanelLayout.chain.display).toBe('none');
 	expect(stockPanelLayout.staff.display).toBe('none');
 	expect(Math.abs(stockInspectorBox.height - detailsInspectorBox.height)).toBeLessThanOrEqual(1);
 	expect(Math.abs(stockPanelLayout.height - detailsPanelLayout.height)).toBeLessThanOrEqual(1);
 
 	await expect(inspector.getByRole('table', { name: /convenience store stock/i })).toBeVisible();
 	await expect(inspector.getByRole('cell', { name: 'Snacks' })).toBeVisible();
+
+	await inspector.getByRole('tab', { name: /product chain/i }).click();
+	const chainInspectorBox = await inspector.boundingBox();
+
+	if (!chainInspectorBox) {
+		throw new Error('Tile details inspector has no bounding box on the product chain tab');
+	}
+
+	const chainPanelLayout = await getStorePanelLayout(page);
+	expect(chainPanelLayout.details.display).toBe('none');
+	expect(chainPanelLayout.stock.display).toBe('none');
+	expect(chainPanelLayout.chain.display).toBe('grid');
+	expect(chainPanelLayout.staff.display).toBe('none');
+	expect(Math.abs(chainInspectorBox.height - detailsInspectorBox.height)).toBeLessThanOrEqual(1);
+	expect(Math.abs(chainPanelLayout.height - detailsPanelLayout.height)).toBeLessThanOrEqual(1);
+	await expect(inspector.getByLabel('Product category')).toBeVisible();
+	await expect(inspector.getByTestId('product-chain-graph-chain:snacks')).toBeVisible();
 
 	await inspector.getByRole('tab', { name: /staff/i }).click();
 	const staffInspectorBox = await inspector.boundingBox();
@@ -908,6 +935,7 @@ test('manage selected store stock and see weekly imports', async ({ page }) => {
 	const staffPanelLayout = await getStorePanelLayout(page);
 	expect(staffPanelLayout.details.display).toBe('none');
 	expect(staffPanelLayout.stock.display).toBe('none');
+	expect(staffPanelLayout.chain.display).toBe('none');
 	expect(staffPanelLayout.staff.display).toBe('grid');
 	expect(Math.abs(staffInspectorBox.height - detailsInspectorBox.height)).toBeLessThanOrEqual(1);
 	expect(Math.abs(staffPanelLayout.height - detailsPanelLayout.height)).toBeLessThanOrEqual(1);
