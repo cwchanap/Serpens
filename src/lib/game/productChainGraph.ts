@@ -91,6 +91,12 @@ export interface ProductChainCategorySummary {
 	imported: number;
 }
 
+interface ChainInputWeight {
+	recipeId: ProductionRecipeId;
+	requiredPerCycle: number;
+	requiredPerDay: number;
+}
+
 export const SUPPORTED_FINISHED_MATERIALS = [
 	'snacks',
 	'drinks',
@@ -138,6 +144,7 @@ export function buildProductChainGraph(input: {
 	const edges = new Map<string, ProductChainEdge>();
 	const visitedMaterials = new Set<MaterialId>();
 	const warnings: string[] = [];
+	const inputWeights = createChainInputWeightMap(rootRecipeId, input.game.industrialBuildings);
 
 	collectMaterial(rootMaterialId);
 
@@ -284,12 +291,19 @@ export function buildProductChainGraph(input: {
 				: 0,
 			hasProducerRecipe: producerRecipeId !== undefined
 		});
-		const actualPerDay = edge.direction === 'output' ? actual.produced : actual.consumed;
+		const actualPerDay =
+			edge.direction === 'output'
+				? actual.produced
+				: allocateInputMovement(inputWeights, edge.materialId, edge.target, actual.consumed);
+		const importedPerDay =
+			edge.direction === 'input'
+				? allocateInputMovement(inputWeights, edge.materialId, edge.target, actual.importedInput)
+				: 0;
 		const label = formatRecipeEdgeLabel({
 			actualPerDay,
 			requiredPerCycle: edge.requiredPerCycle,
 			direction: edge.direction,
-			imported: edge.direction === 'input' ? actual.importedInput : 0
+			imported: importedPerDay
 		});
 		edges.set(`${edge.source}->${edge.target}`, {
 			id: `${edge.source}->${edge.target}`,
@@ -323,7 +337,7 @@ export function buildStoreCategoryChainSummaries(game: GameState): ProductChainC
 				bottleneck: rootNode?.bottleneck ?? 'No graph data available.',
 				warehouseStock: rootNode?.warehouseStock ?? 0,
 				produced: rootNode?.actual.produced ?? 0,
-				consumed: rootNode?.actual.unitsSold ?? 0,
+				consumed: latestCategoryUnitsSold(game, category.id),
 				imported: (rootNode?.actual.importedInput ?? 0) + (rootNode?.actual.shopImported ?? 0)
 			});
 		}
@@ -479,6 +493,44 @@ function createMaterialProducerRecipeMap(): ReadonlyMap<MaterialId, ProductionRe
 	return new Map(entries);
 }
 
+function createChainInputWeightMap(
+	rootRecipeId: ProductionRecipeId,
+	buildings: IndustrialBuilding[]
+): ReadonlyMap<MaterialId, readonly ChainInputWeight[]> {
+	const weights = new Map<MaterialId, ChainInputWeight[]>();
+	const visitedRecipes = new Set<ProductionRecipeId>();
+
+	visitRecipe(rootRecipeId);
+
+	return weights;
+
+	function visitRecipe(recipeId: ProductionRecipeId): void {
+		if (visitedRecipes.has(recipeId)) {
+			return;
+		}
+
+		visitedRecipes.add(recipeId);
+		const recipe = PRODUCTION_RECIPES[recipeId];
+		const buildingCount = buildingsForRecipe(buildings, recipeId).length;
+
+		for (const input of recipe.inputs) {
+			const materialWeights = weights.get(input.materialId) ?? [];
+			materialWeights.push({
+				recipeId,
+				requiredPerCycle: input.quantity,
+				requiredPerDay: input.quantity * buildingCount
+			});
+			weights.set(input.materialId, materialWeights);
+
+			const producerRecipeId = MATERIAL_PRODUCER_RECIPES.get(input.materialId);
+
+			if (producerRecipeId) {
+				visitRecipe(producerRecipeId);
+			}
+		}
+	}
+}
+
 function isSupportedFinishedMaterial(categoryId: string): categoryId is MaterialId {
 	return (SUPPORTED_FINISHED_MATERIALS as readonly string[]).includes(categoryId);
 }
@@ -501,6 +553,16 @@ function latestStoreProductReport(
 			.at(-1)
 			?.storeReports.find((report) => report.storeId === store.id)
 			?.productReports.find((report) => report.categoryId === categoryId) ?? null
+	);
+}
+
+function latestCategoryUnitsSold(game: GameState, categoryId: string): number {
+	return (
+		game.reports
+			.at(-1)
+			?.storeReports.flatMap((report) => report.productReports)
+			.filter((report) => report.categoryId === categoryId)
+			.reduce((total, report) => total + report.unitsSold, 0) ?? 0
 	);
 }
 
@@ -564,6 +626,57 @@ function materialActualMetrics(
 	};
 }
 
+function allocateInputMovement(
+	weights: ReadonlyMap<MaterialId, readonly ChainInputWeight[]>,
+	materialId: MaterialId,
+	recipeNodeId: string,
+	materialTotal: number
+): number {
+	const recipeId = parseRecipeNodeId(recipeNodeId);
+
+	if (!recipeId || materialTotal <= 0) {
+		return 0;
+	}
+
+	const materialWeights = weights.get(materialId) ?? [];
+	const matchingWeight = materialWeights.find((weight) => weight.recipeId === recipeId);
+
+	if (!matchingWeight) {
+		return 0;
+	}
+
+	const weightedTotal = materialWeights.reduce((total, weight) => total + weight.requiredPerDay, 0);
+	const useDailyWeights = weightedTotal > 0;
+	const denominator = useDailyWeights
+		? weightedTotal
+		: materialWeights.reduce((total, weight) => total + weight.requiredPerCycle, 0);
+	const numerator = useDailyWeights
+		? matchingWeight.requiredPerDay
+		: matchingWeight.requiredPerCycle;
+
+	if (denominator <= 0) {
+		return 0;
+	}
+
+	return roundFlowQuantity((materialTotal * numerator) / denominator);
+}
+
+function parseRecipeNodeId(nodeId: string): ProductionRecipeId | null {
+	const prefix = 'recipe:';
+
+	if (!nodeId.startsWith(prefix)) {
+		return null;
+	}
+
+	const recipeId = nodeId.slice(prefix.length);
+
+	return Object.hasOwn(PRODUCTION_RECIPES, recipeId) ? (recipeId as ProductionRecipeId) : null;
+}
+
+function roundFlowQuantity(quantity: number): number {
+	return Number(quantity.toFixed(2));
+}
+
 function healthLabel(health: ProductChainHealth): string {
 	if (health === 'healthy') {
 		return 'Healthy';
@@ -593,7 +706,15 @@ function formatRecipeEdgeLabel(input: {
 	const verb = input.direction === 'output' ? 'produced' : 'used';
 	const importLabel = input.imported > 0 ? ' · import' : '';
 
-	return `${input.actualPerDay}/day ${verb} · ${input.requiredPerCycle}/cycle${importLabel}`;
+	return `${formatQuantity(input.actualPerDay)}/day ${verb} · ${formatQuantity(
+		input.requiredPerCycle
+	)}/cycle${importLabel}`;
+}
+
+function formatQuantity(quantity: number): string {
+	return Number.isInteger(quantity)
+		? String(quantity)
+		: quantity.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
 }
 
 function materialHealth(input: {

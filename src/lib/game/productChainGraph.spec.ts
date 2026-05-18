@@ -7,8 +7,14 @@ import {
 } from './productChainGraph';
 import { buildIndustrialBuilding } from './industryPlacement';
 import { addWarehouseMaterial } from './industryProduction';
+import { openStoreAtTile } from './placement';
 import { createNewGame } from './state';
-import type { DailyProductionReport, DailyStoreReport, GameState } from './types';
+import type {
+	DailyProductReport,
+	DailyProductionReport,
+	DailyStoreReport,
+	GameState
+} from './types';
 
 function emptyProductionReport(
 	overrides: Partial<DailyProductionReport> = {}
@@ -64,6 +70,25 @@ function latestStoreReport(overrides: Partial<DailyStoreReport> = {}): DailyStor
 			}
 		],
 		warnings: [],
+		...overrides
+	};
+}
+
+function snackProductReport(overrides: Partial<DailyProductReport> = {}): DailyProductReport {
+	return {
+		categoryId: 'snacks',
+		name: 'Snacks',
+		unitsSold: 8,
+		demandMissed: 2,
+		revenue: 80,
+		costOfGoods: 32,
+		grossMargin: 48,
+		endingStock: 17,
+		warehouseUnits: 6,
+		warehouseValue: 48,
+		importedUnits: 4,
+		importCost: 12,
+		importSpend: 48,
 		...overrides
 	};
 }
@@ -190,6 +215,32 @@ describe('product chain graph metrics', () => {
 	});
 });
 
+describe('product chain graph edge allocation', () => {
+	test('splits shared input movement across recipe edges in one chain', () => {
+		expect.assertions(4);
+		const game = withLatestReport(
+			createNewGame('convenience', 20260518),
+			emptyProductionReport({
+				consumed: [{ materialId: 'water', quantity: 16, value: 16, source: 'warehouse' }],
+				warehousePulls: [{ materialId: 'water', quantity: 16, value: 16, source: 'warehouse' }]
+			})
+		);
+
+		const graph = buildProductChainGraph({ game, store: game.stores[0]!, categoryId: 'drinks' });
+		const filtrationInput = graph.edges.find(
+			(edge) => edge.id === 'material:water->recipe:water-filtration'
+		);
+		const syrupInput = graph.edges.find(
+			(edge) => edge.id === 'material:water->recipe:syrup-production'
+		);
+
+		expect(filtrationInput?.requiredPerCycle).toBe(12);
+		expect(filtrationInput?.actualPerDay).toBe(12);
+		expect(syrupInput?.requiredPerCycle).toBe(4);
+		expect(syrupInput?.actualPerDay).toBe(4);
+	});
+});
+
 describe('store category chain summaries', () => {
 	test('uses store sales as consume rate for finished category summaries', () => {
 		expect.assertions(4);
@@ -211,6 +262,60 @@ describe('store category chain summaries', () => {
 		expect(snacks?.consumed).toBe(8);
 		expect(snacks?.imported).toBe(4);
 		expect(snacks?.warehouseStock).toBe(0);
+	});
+
+	test('aggregates consume rate across every store carrying the same category', () => {
+		expect.assertions(3);
+		let game = { ...createNewGame('convenience', 20260518), cash: 100_000 };
+		const expansionTile = game.cities[0]!.tiles.find(
+			(tile) => !tile.locked && tile.feature === null && tile.id !== game.stores[0]!.tileId
+		)!;
+		game = openStoreAtTile(game, {
+			tileId: expansionTile.id,
+			name: 'Store #2',
+			archetypeId: 'convenience'
+		});
+		const firstStore = game.stores[0]!;
+		const secondStore = game.stores[1]!;
+		game = {
+			...game,
+			reports: [
+				{
+					day: game.day,
+					revenue: 120,
+					costOfGoods: 50,
+					grossMargin: 70,
+					operatingCosts: 30,
+					payrollCost: 0,
+					importSpend: 0,
+					netIncome: 40,
+					cashAfter: game.cash + 40,
+					scorecard: game.scorecard,
+					productionReport: emptyProductionReport({
+						produced: [{ materialId: 'snacks', quantity: 8, value: 64, source: 'local' }]
+					}),
+					storeReports: [
+						latestStoreReport({
+							storeId: firstStore.id,
+							productReports: [snackProductReport({ unitsSold: 8 })]
+						}),
+						latestStoreReport({
+							storeId: secondStore.id,
+							productReports: [snackProductReport({ unitsSold: 5 })]
+						})
+					],
+					warnings: []
+				}
+			]
+		};
+
+		const snacks = buildStoreCategoryChainSummaries(game).find(
+			(summary) => summary.categoryId === 'snacks'
+		);
+
+		expect(snacks?.produced).toBe(8);
+		expect(snacks?.consumed).toBe(13);
+		expect(snacks?.imported).toBe(0);
 	});
 });
 
