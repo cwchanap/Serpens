@@ -6,6 +6,7 @@
 	import IndustryMap from '$lib/components/game/IndustryMap.svelte';
 	import IndustryTileInspector from '$lib/components/game/IndustryTileInspector.svelte';
 	import PolicyPanel from '$lib/components/game/PolicyPanel.svelte';
+	import ProductChainsPanel from '$lib/components/game/ProductChainsPanel.svelte';
 	import ReportsPanel from '$lib/components/game/ReportsPanel.svelte';
 	import SavePanel from '$lib/components/game/SavePanel.svelte';
 	import Scorecard from '$lib/components/game/Scorecard.svelte';
@@ -804,6 +805,7 @@
 				</div>
 
 				<ReportsPanel {summary} />
+				<ProductChainsPanel {game} />
 			</div>
 		</div>
 	{/if}
