@@ -16,6 +16,7 @@
 		ProductChainHealth,
 		ProductChainNode
 	} from '$lib/game/productChainGraph';
+	import { formatQuantity } from '$lib/game/productChainGraph';
 	import ProductChainSelectionBridge from './ProductChainSelectionBridge.svelte';
 
 	interface Props {
@@ -110,12 +111,6 @@
 				: `stock ${formatQuantity(node.warehouseStock)}`;
 
 		return `${node.label}\n${node.healthLabel} - ${stockLabel}`;
-	}
-
-	function formatQuantity(quantity: number): string {
-		return Number.isInteger(quantity)
-			? String(quantity)
-			: quantity.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
 	}
 
 	function nodeStyle(health: ProductChainHealth, selected: boolean): string {

@@ -4,8 +4,10 @@ import {
 	buildProductChainGraph,
 	buildStoreCategoryChainSummaries,
 	buildWarehouseFlowGraph,
-	getSupportedStoreChainCategories
+	getSupportedStoreChainCategories,
+	SUPPORTED_FINISHED_MATERIALS
 } from './productChainGraph';
+import { MATERIALS, PRODUCTION_RECIPES } from './industry';
 import { buildIndustrialBuilding } from './industryPlacement';
 import { addWarehouseMaterial } from './industryProduction';
 import { openStoreAtTile } from './placement';
@@ -135,6 +137,25 @@ describe('product chain graph discovery', () => {
 
 		expect(categories.map((category) => category.id)).toEqual(['snacks', 'drinks', 'essentials']);
 		expect(categories.every((category) => category.name.length > 0)).toBe(true);
+	});
+
+	test('keeps supported finished materials aligned with recipe outputs', () => {
+		expect.assertions(2);
+		const producedMaterialIds = Object.values(PRODUCTION_RECIPES).flatMap((recipe) =>
+			recipe.outputs.map((output) => output.materialId)
+		);
+		const duplicateMaterialIds = producedMaterialIds.filter(
+			(materialId, index) => producedMaterialIds.indexOf(materialId) !== index
+		);
+		const finishedMaterialIds = Object.values(MATERIALS)
+			.filter(
+				(material) => material.kind === 'finished' && producedMaterialIds.includes(material.id)
+			)
+			.map((material) => material.id)
+			.sort();
+
+		expect(duplicateMaterialIds).toEqual([]);
+		expect([...SUPPORTED_FINISHED_MATERIALS].sort()).toEqual(finishedMaterialIds);
 	});
 });
 
@@ -330,17 +351,23 @@ describe('product chain graph edge allocation', () => {
 });
 
 describe('store category chain summaries', () => {
-	test('weights aggregate import cost by imported units', () => {
-		expect.assertions(3);
+	test('weights aggregate import cost by imported units and reports zero without imports', () => {
+		expect.assertions(5);
 
 		const aggregate = aggregateProductReports('snacks', [
 			snackProductReport({ importedUnits: 2, importCost: 12, importSpend: 24 }),
 			snackProductReport({ importedUnits: 6, importCost: 9, importSpend: 54 })
 		]);
+		const noImportAggregate = aggregateProductReports('snacks', [
+			snackProductReport({ importedUnits: 0, importCost: 12, importSpend: 0 }),
+			snackProductReport({ importedUnits: 0, importCost: 9, importSpend: 0 })
+		]);
 
 		expect(aggregate?.importedUnits).toBe(8);
 		expect(aggregate?.importSpend).toBe(78);
 		expect(aggregate?.importCost).toBe(9.75);
+		expect(noImportAggregate?.importedUnits).toBe(0);
+		expect(noImportAggregate?.importCost).toBe(0);
 	});
 
 	test('uses store sales as consume rate for finished category summaries', () => {

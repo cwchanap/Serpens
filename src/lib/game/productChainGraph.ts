@@ -98,14 +98,8 @@ interface ChainInputWeight {
 	inferredPerDay: number;
 }
 
-export const SUPPORTED_FINISHED_MATERIALS = [
-	'snacks',
-	'drinks',
-	'essentials',
-	'gifts'
-] as const satisfies readonly MaterialId[];
-
 const MATERIAL_PRODUCER_RECIPES = createMaterialProducerRecipeMap();
+export const SUPPORTED_FINISHED_MATERIALS = createSupportedFinishedMaterials();
 
 export function getSupportedStoreChainCategories(store: Store): ProductCategory[] {
 	const supported = new Set<string>(SUPPORTED_FINISHED_MATERIALS);
@@ -190,14 +184,16 @@ export function buildProductChainGraph(input: {
 			producerBuildingCount,
 			hasProducerRecipe: producerRecipe !== null
 		});
+		const materialLabel = MATERIALS[materialId]?.name ?? materialId;
+		const materialStage = producerRecipe?.stage ?? MATERIALS[materialId]?.kind ?? null;
 		const materialNode: ProductChainNode = {
 			id: `material:${materialId}`,
 			kind: 'material',
-			label: MATERIALS[materialId]?.name ?? materialId,
+			label: materialLabel,
 			materialId,
 			recipeId: null,
-			stage: producerRecipe?.stage ?? MATERIALS[materialId]?.kind ?? null,
-			layer: 0,
+			stage: materialStage,
+			layer: graphLayer({ kind: 'material', stage: materialStage }),
 			row: 0,
 			health,
 			healthLabel: healthLabel(health),
@@ -210,9 +206,8 @@ export function buildProductChainGraph(input: {
 				inputPerDay: producerRecipe ? recipeInputPerDay(producerRecipe, producerBuildingCount) : 0
 			},
 			actual,
-			bottleneck: ''
+			bottleneck: bottleneckText({ kind: 'material', health, label: materialLabel })
 		};
-		materialNode.bottleneck = bottleneckText(materialNode);
 		nodes.set(materialNode.id, materialNode);
 
 		if (!producerRecipeId || !producerRecipe) {
@@ -227,14 +222,15 @@ export function buildProductChainGraph(input: {
 		const recipe = PRODUCTION_RECIPES[recipeId];
 		const buildingCount = buildingsForRecipe(input.game.industrialBuildings, recipeId).length;
 		const health = recipeHealth({ hasReport: report !== null, buildingCount });
+		const recipeLabel = buildingTypesForRecipe(recipeId)[0]?.name ?? recipeId;
 		const recipeNode: ProductChainNode = {
 			id: `recipe:${recipeId}`,
 			kind: 'recipe',
-			label: buildingTypesForRecipe(recipeId)[0]?.name ?? recipeId,
+			label: recipeLabel,
 			materialId: null,
 			recipeId,
 			stage: recipe.stage,
-			layer: 0,
+			layer: graphLayer({ kind: 'recipe', stage: recipe.stage }),
 			row: 0,
 			health,
 			healthLabel: healthLabel(health),
@@ -245,9 +241,8 @@ export function buildProductChainGraph(input: {
 				inputPerDay: recipeInputPerDay(recipe, buildingCount)
 			},
 			actual: emptyActualMetrics(),
-			bottleneck: ''
+			bottleneck: bottleneckText({ kind: 'recipe', health, label: recipeLabel })
 		};
-		recipeNode.bottleneck = bottleneckText(recipeNode);
 		nodes.set(recipeNode.id, recipeNode);
 		addEdge({
 			source: `recipe:${recipeId}`,
@@ -416,10 +411,11 @@ export function buildWarehouseFlowGraph(game: GameState): ProductChainGraph {
 				: 0,
 			hasProducerRecipe: producerRecipeId !== undefined
 		});
+		const materialLabel = MATERIALS[materialId]?.name ?? materialId;
 		const materialNode: ProductChainNode = {
 			id: `material:${materialId}`,
 			kind: 'material',
-			label: MATERIALS[materialId]?.name ?? materialId,
+			label: materialLabel,
 			materialId,
 			recipeId: null,
 			stage: MATERIALS[materialId]?.kind ?? null,
@@ -434,9 +430,8 @@ export function buildWarehouseFlowGraph(game: GameState): ProductChainGraph {
 				inputPerDay: 0
 			},
 			actual,
-			bottleneck: ''
+			bottleneck: bottleneckText({ kind: 'material', health, label: materialLabel })
 		};
-		materialNode.bottleneck = bottleneckText(materialNode);
 		nodes.push(materialNode);
 
 		if (actual.produced > 0) {
@@ -483,15 +478,31 @@ export function buildWarehouseFlowGraph(game: GameState): ProductChainGraph {
 }
 
 function createMaterialProducerRecipeMap(): ReadonlyMap<MaterialId, ProductionRecipeId> {
-	const entries: Array<[MaterialId, ProductionRecipeId]> = [];
+	const producerRecipes = new Map<MaterialId, ProductionRecipeId>();
 
 	for (const recipe of Object.values(PRODUCTION_RECIPES)) {
 		for (const output of recipe.outputs) {
-			entries.push([output.materialId, recipe.id]);
+			const existingRecipeId = producerRecipes.get(output.materialId);
+
+			if (existingRecipeId) {
+				throw new Error(
+					`Material ${output.materialId} is produced by both ${existingRecipeId} and ${recipe.id}. Product chain graphs require one producer recipe per material.`
+				);
+			}
+
+			producerRecipes.set(output.materialId, recipe.id);
 		}
 	}
 
-	return new Map(entries);
+	return producerRecipes;
+}
+
+function createSupportedFinishedMaterials(): readonly MaterialId[] {
+	return Object.values(MATERIALS)
+		.filter(
+			(material) => material.kind === 'finished' && MATERIAL_PRODUCER_RECIPES.has(material.id)
+		)
+		.map((material) => material.id);
 }
 
 function createInputWeightMap(
@@ -612,9 +623,7 @@ function aggregateImportCost(productReports: DailyProductReport[]): number {
 		return importSpend / importedUnits;
 	}
 
-	return (
-		sumProductReports(productReports, (report) => report.importCost) / productReports.length
-	);
+	return 0;
 }
 
 function sumProductReports(
@@ -790,7 +799,7 @@ function formatRecipeEdgeLabel(input: {
 	)}/cycle${importLabel}`;
 }
 
-function formatQuantity(quantity: number): string {
+export function formatQuantity(quantity: number): string {
 	return Number.isInteger(quantity)
 		? String(quantity)
 		: quantity.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
@@ -858,7 +867,7 @@ function bottleneckText(node: Pick<ProductChainNode, 'kind' | 'health' | 'label'
 	return `${node.label} has no latest daily flow yet.`;
 }
 
-function sortNodes(nodes: ProductChainNode[]): ProductChainNode[] {
+function graphLayer(node: Pick<ProductChainNode, 'kind' | 'stage'>): number {
 	const stageOrder = new Map<NonNullable<ProductChainNode['stage']>, number>([
 		['raw', 0],
 		['intermediate', 2],
@@ -868,14 +877,13 @@ function sortNodes(nodes: ProductChainNode[]): ProductChainNode[] {
 		['warehouse', 5]
 	]);
 
+	return node.kind === 'material'
+		? Math.max(0, stageOrder.get(node.stage ?? 'raw') ?? 0) + 1
+		: (stageOrder.get(node.stage ?? 'warehouse') ?? 0);
+}
+
+function sortNodes(nodes: ProductChainNode[]): ProductChainNode[] {
 	return nodes
-		.map((node) => ({
-			...node,
-			layer:
-				node.kind === 'material'
-					? Math.max(0, stageOrder.get(node.stage ?? 'raw') ?? 0) + 1
-					: (stageOrder.get(node.stage ?? 'warehouse') ?? 0)
-		}))
 		.sort((first, second) => first.layer - second.layer || first.label.localeCompare(second.label))
 		.map((node, index, sorted) => ({
 			...node,

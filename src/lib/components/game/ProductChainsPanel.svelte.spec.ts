@@ -37,9 +37,7 @@ describe('ProductChainsPanel', () => {
 		await page.getByRole('button', { name: 'Warehouse flow' }).click();
 
 		await expect.element(page.getByTestId('product-chain-graph-warehouse-flow')).toBeVisible();
-		await expect
-			.element(page.getByRole('button', { name: 'Store category chains' }))
-			.toBeVisible();
+		await expect.element(page.getByRole('button', { name: 'Store category chains' })).toBeVisible();
 		await expect.element(page.getByRole('heading', { name: 'Warehouse flow' })).toBeVisible();
 	});
 });

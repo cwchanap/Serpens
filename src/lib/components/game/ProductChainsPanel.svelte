@@ -5,6 +5,7 @@
 		buildProductChainGraph,
 		buildStoreCategoryChainSummaries,
 		buildWarehouseFlowGraph,
+		formatQuantity,
 		getSupportedStoreChainCategories
 	} from '$lib/game/productChainGraph';
 	import type { GameState } from '$lib/game/types';
@@ -70,12 +71,6 @@
 			nodeId
 		};
 	}
-
-	function formatQuantity(value: number): string {
-		return Number.isInteger(value)
-			? String(value)
-			: value.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
-	}
 </script>
 
 <section class="panel paper product-chains-panel" aria-labelledby="product-chains-heading">
@@ -109,8 +104,10 @@
 			{#each summaries as summary (summary.categoryId)}
 				<button
 					type="button"
-					class:active={mode === 'store-categories' && activeCategory?.categoryId === summary.categoryId}
-					aria-pressed={mode === 'store-categories' && activeCategory?.categoryId === summary.categoryId}
+					class:active={mode === 'store-categories' &&
+						activeCategory?.categoryId === summary.categoryId}
+					aria-pressed={mode === 'store-categories' &&
+						activeCategory?.categoryId === summary.categoryId}
 					onclick={() => selectCategory(summary.categoryId)}
 				>
 					<span class={['status', `status-${summary.health}`]}>{summary.healthLabel}</span>
