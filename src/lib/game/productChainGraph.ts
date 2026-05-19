@@ -577,7 +577,7 @@ function latestStoreProductReport(
 	);
 }
 
-function aggregateProductReports(
+export function aggregateProductReports(
 	categoryId: string,
 	productReports: DailyProductReport[]
 ): DailyProductReport | null {
@@ -599,9 +599,22 @@ function aggregateProductReports(
 		warehouseUnits: sumProductReports(productReports, (report) => report.warehouseUnits),
 		warehouseValue: sumProductReports(productReports, (report) => report.warehouseValue),
 		importedUnits: sumProductReports(productReports, (report) => report.importedUnits),
-		importCost: firstReport.importCost,
+		importCost: aggregateImportCost(productReports),
 		importSpend: sumProductReports(productReports, (report) => report.importSpend)
 	};
+}
+
+function aggregateImportCost(productReports: DailyProductReport[]): number {
+	const importedUnits = sumProductReports(productReports, (report) => report.importedUnits);
+	const importSpend = sumProductReports(productReports, (report) => report.importSpend);
+
+	if (importedUnits > 0) {
+		return importSpend / importedUnits;
+	}
+
+	return (
+		sumProductReports(productReports, (report) => report.importCost) / productReports.length
+	);
 }
 
 function sumProductReports(

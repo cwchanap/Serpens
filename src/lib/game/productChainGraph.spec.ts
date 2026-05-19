@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import {
+	aggregateProductReports,
 	buildProductChainGraph,
 	buildStoreCategoryChainSummaries,
 	buildWarehouseFlowGraph,
@@ -329,6 +330,19 @@ describe('product chain graph edge allocation', () => {
 });
 
 describe('store category chain summaries', () => {
+	test('weights aggregate import cost by imported units', () => {
+		expect.assertions(3);
+
+		const aggregate = aggregateProductReports('snacks', [
+			snackProductReport({ importedUnits: 2, importCost: 12, importSpend: 24 }),
+			snackProductReport({ importedUnits: 6, importCost: 9, importSpend: 54 })
+		]);
+
+		expect(aggregate?.importedUnits).toBe(8);
+		expect(aggregate?.importSpend).toBe(78);
+		expect(aggregate?.importCost).toBe(9.75);
+	});
+
 	test('uses store sales as consume rate for finished category summaries', () => {
 		expect.assertions(4);
 		let game = createNewGame('convenience', 20260518);
