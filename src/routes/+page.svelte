@@ -42,6 +42,20 @@
 	import { createSaveRepository } from '$lib/persistence/saveRepositoryFactory';
 	import type { SaveSlotMetadata } from '$lib/persistence/saveTypes';
 
+	type ManagementPanelId =
+		| 'dashboard'
+		| 'policies'
+		| 'staff'
+		| 'stores'
+		| 'decisions'
+		| 'reports'
+		| 'productChains';
+
+	interface ManagementPanelMenuItem {
+		id: ManagementPanelId;
+		label: string;
+	}
+
 	const starterCity = generateCity({
 		id: 'harbor-city',
 		name: 'Harbor City',
@@ -87,6 +101,15 @@
 		decisions: [],
 		reports: []
 	};
+	const managementPanelMenuItems: ManagementPanelMenuItem[] = [
+		{ id: 'dashboard', label: 'Dashboard' },
+		{ id: 'policies', label: 'Policies' },
+		{ id: 'staff', label: 'Staff' },
+		{ id: 'stores', label: 'Stores' },
+		{ id: 'decisions', label: 'Decisions' },
+		{ id: 'reports', label: 'Reports' },
+		{ id: 'productChains', label: 'Product Chains' }
+	];
 
 	let game: GameState | null = $state(null);
 	let activeMapView = $state<'retail' | 'industry'>('retail');
@@ -94,7 +117,7 @@
 	let selectedIndustryTileId = $state<string | null>(null);
 	let isViewMenuOpen = $state(false);
 	let isBuildMenuOpen = $state(false);
-	let isControlTowerOpen = $state(false);
+	let activeManagementPanelId = $state<ManagementPanelId | null>(null);
 	let retailPlacementArchetypeId = $state<ArchetypeId | null>(null);
 	let industryPlacementBuildingTypeId = $state<IndustrialBuildingTypeId | null>(null);
 	let placementFeedback = $state<string | null>(null);
@@ -104,6 +127,9 @@
 	let isSavePanelOpen = $state(false);
 	let saveStatus = $state('');
 	let saveError = $state<string | null>(null);
+	let activeManagementPanel = $derived.by(
+		() => managementPanelMenuItems.find((item) => item.id === activeManagementPanelId) ?? null
+	);
 	let summary = $derived.by(() => {
 		const currentGame: GameState | null = game;
 		return currentGame ? summarizeReports(currentGame.reports) : summarizeReports([]);
@@ -236,6 +262,7 @@
 
 	function openSavePanel(): void {
 		isViewMenuOpen = false;
+		activeManagementPanelId = null;
 		isSavePanelOpen = true;
 		saveStatus = '';
 		saveError = null;
@@ -259,6 +286,7 @@
 	function openBuildMenu(): void {
 		isViewMenuOpen = false;
 		isSavePanelOpen = false;
+		activeManagementPanelId = null;
 		isBuildMenuOpen = true;
 	}
 
@@ -280,13 +308,15 @@
 		cancelPlacement();
 	}
 
-	function openControlTower() {
+	function openManagementPanel(panelId: ManagementPanelId): void {
 		isViewMenuOpen = false;
-		isControlTowerOpen = true;
+		isSavePanelOpen = false;
+		isBuildMenuOpen = false;
+		activeManagementPanelId = panelId;
 	}
 
-	function closeControlTower() {
-		isControlTowerOpen = false;
+	function closeManagementPanel(): void {
+		activeManagementPanelId = null;
 	}
 
 	function setGameAndAutosave(nextGame: GameState): void {
@@ -559,8 +589,8 @@
 			return;
 		}
 
-		if (isControlTowerOpen) {
-			isControlTowerOpen = false;
+		if (activeManagementPanelId !== null) {
+			activeManagementPanelId = null;
 			isViewMenuOpen = false;
 			return;
 		}
@@ -688,9 +718,16 @@
 								Industry City Map
 							</button>
 							<button type="button" role="menuitem" onclick={openSavePanel}>Saves</button>
-							<button type="button" role="menuitem" disabled={!game} onclick={openControlTower}>
-								Control Tower
-							</button>
+							{#each managementPanelMenuItems as item (item.id)}
+								<button
+									type="button"
+									role="menuitem"
+									disabled={!game}
+									onclick={() => openManagementPanel(item.id)}
+								>
+									{item.label}
+								</button>
+							{/each}
 						</div>
 					{/if}
 				</div>
@@ -751,61 +788,69 @@
 		{/if}
 	</section>
 
-	{#if game && isControlTowerOpen}
+	{#if game && activeManagementPanel}
 		<div class="tower-backdrop">
 			<button
 				type="button"
 				class="tower-backdrop-button"
-				aria-label="Dismiss control tower"
-				onclick={closeControlTower}
+				aria-label={`Dismiss ${activeManagementPanel.label}`}
+				onclick={closeManagementPanel}
 			></button>
 			<div
 				class="control-tower-overlay paper"
 				role="dialog"
 				aria-modal="true"
-				aria-label="Control Tower"
+				aria-label={activeManagementPanel.label}
 			>
 				<div class="tower-header">
 					<div>
-						<p class="eyebrow">Control Tower</p>
-						<h2>Management View</h2>
+						<p class="eyebrow">Management</p>
+						<h2>{activeManagementPanel.label}</h2>
 					</div>
-					<div class="tower-actions" role="group" aria-label="Control tower status">
+					<div
+						class="tower-actions"
+						role="group"
+						aria-label={`${activeManagementPanel.label} status`}
+					>
 						<span class="ticker">Day {game.day}</span>
 						<strong class="ticker">${game.cash.toLocaleString('en-US')} cash</strong>
 						<button
 							type="button"
 							class="close-tower btn-danger"
-							aria-label="Close control tower"
-							onclick={closeControlTower}
+							aria-label={`Close ${activeManagementPanel.label}`}
+							onclick={closeManagementPanel}
 						>
 							Close
 						</button>
 					</div>
 				</div>
 
-				<Scorecard scorecard={game.scorecard} />
-				<PolicyPanel policy={game.policy} onChange={changePolicy} />
-				<StaffPanel
-					stores={game.stores}
-					staff={game.staff}
-					hiringCandidates={game.hiringCandidates}
-					onHire={hireStaff}
-					onAssign={assignStaff}
-					onUnassign={unassignStoreStaff}
-				/>
-
-				<div class="grid">
+				{#if activeManagementPanel.id === 'dashboard'}
+					<Scorecard scorecard={game.scorecard} />
+				{:else if activeManagementPanel.id === 'policies'}
+					<PolicyPanel policy={game.policy} onChange={changePolicy} />
+				{:else if activeManagementPanel.id === 'staff'}
+					<StaffPanel
+						stores={game.stores}
+						staff={game.staff}
+						hiringCandidates={game.hiringCandidates}
+						onHire={hireStaff}
+						onAssign={assignStaff}
+						onUnassign={unassignStoreStaff}
+					/>
+				{:else if activeManagementPanel.id === 'stores'}
 					<StoreOverview
 						stores={game.stores}
 						staff={game.staff}
 						latestReports={summary.latest?.storeReports ?? []}
 					/>
+				{:else if activeManagementPanel.id === 'decisions'}
 					<DecisionQueue decisions={game.decisions} onResolve={chooseDecision} />
-				</div>
-
-				<ReportsPanel {summary} />
-				<ProductChainsPanel {game} />
+				{:else if activeManagementPanel.id === 'reports'}
+					<ReportsPanel {summary} />
+				{:else if activeManagementPanel.id === 'productChains'}
+					<ProductChainsPanel {game} />
+				{/if}
 			</div>
 		</div>
 	{/if}
@@ -1081,18 +1126,7 @@
 		white-space: nowrap;
 	}
 
-	.grid {
-		display: grid;
-		grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.85fr);
-		gap: 1rem;
-		align-items: start;
-	}
-
 	@media (max-width: 980px) {
-		.grid {
-			grid-template-columns: 1fr;
-		}
-
 		.map-hud {
 			align-items: flex-start;
 			inset: 0.75rem 0.75rem auto;

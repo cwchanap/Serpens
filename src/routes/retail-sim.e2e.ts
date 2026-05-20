@@ -141,10 +141,12 @@ async function expectMapToFillViewport(page: Page) {
 	expect(box.height).toBeGreaterThanOrEqual(viewport.height - 2);
 }
 
-async function openControlTower(page: Page) {
+async function openManagementPanel(page: Page, panelName: string | RegExp): Promise<Locator> {
 	await page.getByRole('button', { name: /open menu/i }).click();
-	await page.getByRole('menuitem', { name: /control tower/i }).click();
-	await expect(page.getByRole('dialog', { name: /control tower/i })).toBeVisible();
+	await page.getByRole('menuitem', { name: panelName }).click();
+	const panel = page.getByRole('dialog', { name: panelName });
+	await expect(panel).toBeVisible();
+	return panel;
 }
 
 async function openSaves(page: Page) {
@@ -378,20 +380,23 @@ test('player can found a store from the city map and advance a day', async ({ pa
 	await expect(mapCanvas).toHaveAttribute('data-store-sprite-count', '1');
 
 	await expect(page.getByRole('heading', { name: /scorecard/i })).toHaveCount(0);
-	await openControlTower(page);
-	const controlTower = page.getByRole('dialog', { name: /control tower/i });
-	const controlTowerStatus = controlTower.getByRole('group', { name: /control tower status/i });
+	const dashboard = await openManagementPanel(page, /dashboard/i);
+	const dashboardStatus = dashboard.getByRole('group', { name: /dashboard status/i });
 
-	await expect(controlTower.getByRole('heading', { name: /scorecard/i })).toBeVisible();
-	await expect(controlTowerStatus.getByText(/^Day 1$/i)).toBeVisible();
+	await expect(dashboard.getByRole('heading', { name: /scorecard/i })).toBeVisible();
+	await expect(dashboardStatus.getByText(/^Day 1$/i)).toBeVisible();
 
-	await controlTower.getByLabel(/pricing/i).selectOption('premium');
-	await controlTower.getByRole('button', { name: /close control tower/i }).click();
+	await dashboard.getByRole('button', { name: /close dashboard/i }).click();
+	const policies = await openManagementPanel(page, /policies/i);
+	await policies.getByLabel(/pricing/i).selectOption('premium');
+	await policies.getByRole('button', { name: /close policies/i }).click();
 	await page.getByRole('button', { name: /^advance day$/i }).click();
-	await openControlTower(page);
+	const reports = await openManagementPanel(page, /reports/i);
 
-	await expect(controlTowerStatus.getByText(/^Day 2$/i)).toBeVisible();
-	await expect(controlTower.getByText(/latest daily result/i)).toBeVisible();
+	await expect(
+		reports.getByRole('group', { name: /reports status/i }).getByText(/^Day 2$/i)
+	).toBeVisible();
+	await expect(reports.getByText(/latest daily result/i)).toBeVisible();
 });
 
 test('city map renders terrain assets and blocks road and river placement', async ({ page }) => {
@@ -479,7 +484,7 @@ test('tile popup can be closed from the map', async ({ page }) => {
 	await expect(page.getByRole('dialog', { name: /tile details/i })).toHaveCount(0);
 });
 
-test('control tower opens from the map views menu and closes as an overlay', async ({ page }) => {
+test('management panels open from the map menu and close as overlays', async ({ page }) => {
 	await page.goto('/');
 
 	await buildRetailStoreAt(page, {
@@ -489,13 +494,13 @@ test('control tower opens from the map views menu and closes as an overlay', asy
 		expectedStoreCount: 1
 	});
 
-	await openControlTower(page);
-	await page.getByRole('button', { name: /close control tower/i }).click();
-	await expect(page.getByRole('dialog', { name: /control tower/i })).toHaveCount(0);
+	const dashboard = await openManagementPanel(page, /dashboard/i);
+	await dashboard.getByRole('button', { name: /close dashboard/i }).click();
+	await expect(page.getByRole('dialog', { name: /dashboard/i })).toHaveCount(0);
 
-	await openControlTower(page);
+	await openManagementPanel(page, /reports/i);
 	await page.keyboard.press('Escape');
-	await expect(page.getByRole('dialog', { name: /control tower/i })).toHaveCount(0);
+	await expect(page.getByRole('dialog', { name: /reports/i })).toHaveCount(0);
 });
 
 test('player can switch to the industry city map and back to retail', async ({ page }) => {
@@ -746,38 +751,36 @@ test('player builds convenience production and refills from warehouse', async ({
 		sumMaterialMovementQuantity(latestReport.productionReport.shopImports, 'snacks', 'import')
 	).toBe(snacksReport.importedUnits);
 
-	await openControlTower(page);
-	const controlTower = page.getByRole('dialog', { name: /control tower/i });
-	await expect(controlTower.getByRole('region', { name: /reports/i })).toBeVisible();
-	await expect(controlTower.getByText(/latest daily result/i)).toBeVisible();
-	const productSources = controlTower.getByRole('list', {
+	const reports = await openManagementPanel(page, /reports/i);
+	await expect(reports.getByText(/latest daily result/i)).toBeVisible();
+	await reports.getByRole('button', { name: /close reports/i }).click();
+	const storesPanel = await openManagementPanel(page, /stores/i);
+	const productSources = storesPanel.getByRole('list', {
 		name: /convenience store product source split/i
 	});
 	await expect(productSources.getByText('Snacks')).toBeVisible();
 	await expect(productSources.getByText(`${snacksReport.warehouseUnits} warehouse`)).toBeVisible();
 	await expect(productSources.getByText(`${snacksReport.importedUnits} imported`)).toBeVisible();
-	const productChains = controlTower.getByRole('region', { name: 'Product Chains' });
+	await expect(
+		storesPanel.locator('article').filter({
+			hasText: new RegExp(
+				`^Convenience Store[\\s\\S]*Imports\\s+\\$${escapeRegExp(
+					snacksReport.importSpend.toLocaleString('en-US')
+				)}`
+			)
+		})
+	).toBeVisible();
+	await storesPanel.getByRole('button', { name: /close stores/i }).click();
+	const productChains = await openManagementPanel(page, /product chains/i);
 	await expect(productChains).toBeVisible();
 	await expect(productChains.getByRole('button', { name: /Snacks/ })).toBeVisible();
 	await expect(productChains.getByTestId('product-chain-graph-chain:snacks')).toBeVisible();
 	await productChains.getByRole('button', { name: 'Warehouse flow' }).click();
 	await expect(productChains.getByTestId('product-chain-graph-warehouse-flow')).toBeVisible();
 	await expect(productChains.getByRole('heading', { name: 'Warehouse flow' })).toBeVisible();
-	await expect(
-		controlTower
-			.getByLabel('Stores')
-			.locator('article')
-			.filter({
-				hasText: new RegExp(
-					`^Convenience Store[\\s\\S]*Imports\\s+\\$${escapeRegExp(
-						snacksReport.importSpend.toLocaleString('en-US')
-					)}`
-				)
-			})
-	).toBeVisible();
 });
 
-test('hire and assign named staff from the Control Tower', async ({ page }) => {
+test('hire and assign named staff from the staff menu', async ({ page }) => {
 	await page.goto('/');
 
 	await buildRetailStoreAt(page, {
@@ -786,13 +789,11 @@ test('hire and assign named staff from the Control Tower', async ({ page }) => {
 		storeTypeName: /build boutique goods/i,
 		expectedStoreCount: 1
 	});
-	await openControlTower(page);
+	const staffDialog = await openManagementPanel(page, /staff/i);
 
-	const controlTower = page.getByRole('dialog', { name: /control tower/i });
-	await expect(controlTower.getByRole('heading', { name: 'Staff' })).toBeVisible();
-	await expect(controlTower.getByText('Boutique Goods: 1/1 managers, 2/2 general')).toBeVisible();
-
-	const staffPanel = controlTower.getByRole('region', { name: 'Staff' });
+	const staffPanel = staffDialog.getByRole('region', { name: 'Staff' });
+	await expect(staffPanel.getByRole('heading', { name: 'Staff' })).toBeVisible();
+	await expect(staffDialog.getByText('Boutique Goods: 1/1 managers, 2/2 general')).toBeVisible();
 	const candidatesSection = staffPanel.getByRole('region', { name: 'Candidates' });
 	const generalCandidate = candidatesSection
 		.locator('article')
@@ -812,7 +813,7 @@ test('hire and assign named staff from the Control Tower', async ({ page }) => {
 		.getByLabel(new RegExp(`^Assign ${candidateNamePattern},`))
 		.selectOption({ label: 'Boutique Goods' });
 
-	await expect(controlTower.getByText('Boutique Goods: 1/1 managers, 3/2 general')).toBeVisible();
+	await expect(staffDialog.getByText('Boutique Goods: 1/1 managers, 3/2 general')).toBeVisible();
 });
 
 test('locked map tiles still show inspector feedback', async ({ page }) => {
@@ -845,10 +846,9 @@ test('player expands from a selected city tile', async ({ page }) => {
 	await expect(mapCanvas).toHaveAttribute('data-store-sprite-count', '2');
 	await expect(mapCanvas).toHaveAttribute('data-placement-preview-mode', 'inactive');
 
-	await openControlTower(page);
-	const controlTower = page.getByRole('dialog', { name: /control tower/i });
+	const storesPanel = await openManagementPanel(page, /stores/i);
 	await expect(
-		controlTower.getByLabel('Stores').getByRole('heading', { name: 'Store #2', exact: true })
+		storesPanel.getByLabel('Stores').getByRole('heading', { name: 'Store #2', exact: true })
 	).toBeVisible();
 });
 
@@ -963,9 +963,8 @@ test('manage selected store stock and see weekly imports', async ({ page }) => {
 		await page.getByRole('button', { name: /^advance day$/i }).click();
 	}
 
-	await openControlTower(page);
-	const controlTower = page.getByRole('dialog', { name: /control tower/i });
-	const importsMetric = controlTower
+	const reports = await openManagementPanel(page, /reports/i);
+	const importsMetric = reports
 		.getByLabel('Reports')
 		.locator('.metrics > div')
 		.filter({ hasText: /^Imports\s+\$[1-9][\d,]*$/ });
