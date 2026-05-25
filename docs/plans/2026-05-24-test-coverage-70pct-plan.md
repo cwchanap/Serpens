@@ -13,6 +13,7 @@
 ### Task 1: `saveRepositoryFactory.spec.ts` — Browser path
 
 **Files:**
+
 - Create: `src/lib/persistence/saveRepositoryFactory.spec.ts`
 
 **Step 1: Write the failing test**
@@ -55,6 +56,7 @@ git commit -m "test: cover saveRepositoryFactory browser path"
 ### Task 2: `Scorecard.svelte.spec.ts`
 
 **Files:**
+
 - Create: `src/lib/components/game/Scorecard.svelte.spec.ts`
 
 **Step 1: Write the failing test**
@@ -112,6 +114,7 @@ git commit -m "test: cover Scorecard component"
 ### Task 3: `DecisionQueue.svelte.spec.ts`
 
 **Files:**
+
 - Create: `src/lib/components/game/DecisionQueue.svelte.spec.ts`
 
 **Step 1: Write the failing test**
@@ -130,8 +133,18 @@ const decisions: DecisionItem[] = [
 		context: 'Two employees are arguing over shift assignments.',
 		expiresOnDay: 5,
 		options: [
-			{ id: 'opt-a', label: 'Mediate', description: 'Sit them down and talk it out', effects: { staffMorale: 5 } },
-			{ id: 'opt-b', label: 'Ignore', description: 'Let them figure it out', effects: { staffMorale: -3 } }
+			{
+				id: 'opt-a',
+				label: 'Mediate',
+				description: 'Sit them down and talk it out',
+				effects: { staffMorale: 5 }
+			},
+			{
+				id: 'opt-b',
+				label: 'Ignore',
+				description: 'Let them figure it out',
+				effects: { staffMorale: -3 }
+			}
 		]
 	}
 ];
@@ -192,6 +205,7 @@ git commit -m "test: cover DecisionQueue component"
 ### Task 4: `PolicyPanel.svelte.spec.ts`
 
 **Files:**
+
 - Create: `src/lib/components/game/PolicyPanel.svelte.spec.ts`
 
 **Step 1: Write the failing test**
@@ -257,6 +271,7 @@ git commit -m "test: cover PolicyPanel component"
 ### Task 5: `CityMap.svelte.spec.ts`
 
 **Files:**
+
 - Create: `src/lib/components/game/CityMap.svelte.spec.ts`
 
 **Step 1: Write the failing test**
@@ -315,9 +330,7 @@ describe('CityMap', () => {
 			onTileSelected: vi.fn()
 		});
 
-		await expect
-			.element(page.getByRole('region', { name: 'City map' }))
-			.toBeVisible();
+		await expect.element(page.getByRole('region', { name: 'City map' })).toBeVisible();
 	});
 
 	it('shows fallback when Phaser fails to load', async () => {
@@ -331,9 +344,7 @@ describe('CityMap', () => {
 			onTileSelected: vi.fn()
 		});
 
-		await expect
-			.element(page.getByText('Map renderer unavailable.'))
-			.toBeVisible();
+		await expect.element(page.getByText('Map renderer unavailable.')).toBeVisible();
 	});
 });
 ```
@@ -355,6 +366,7 @@ git commit -m "test: cover CityMap component"
 ### Task 6: `IndustryMap.svelte.spec.ts`
 
 **Files:**
+
 - Create: `src/lib/components/game/IndustryMap.svelte.spec.ts`
 
 **Step 1: Write the failing test**
@@ -410,9 +422,7 @@ describe('IndustryMap', () => {
 			onTileSelected: vi.fn()
 		});
 
-		await expect
-			.element(page.getByRole('region', { name: 'Industry map' }))
-			.toBeVisible();
+		await expect.element(page.getByRole('region', { name: 'Industry map' })).toBeVisible();
 	});
 
 	it('shows fallback when Phaser fails to load', async () => {
@@ -423,9 +433,7 @@ describe('IndustryMap', () => {
 			onTileSelected: vi.fn()
 		});
 
-		await expect
-			.element(page.getByText('Industry map renderer unavailable.'))
-			.toBeVisible();
+		await expect.element(page.getByText('Industry map renderer unavailable.')).toBeVisible();
 	});
 });
 ```
@@ -460,6 +468,7 @@ Run: `bun run test:unit -- --coverage --run`
 ### Task 8 (Insurance): `cityMapScene.spec.ts`
 
 **Files:**
+
 - Create: `src/lib/phaser/cityMapScene.spec.ts`
 
 This task requires a comprehensive Phaser mock. Only implement if coverage is still below 70% after Tasks 1-6.

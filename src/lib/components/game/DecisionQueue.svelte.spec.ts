@@ -74,10 +74,16 @@ describe('DecisionQueue', () => {
 		renderQueue();
 
 		await expect.element(page.getByRole('heading', { name: 'Decision Queue' })).toBeVisible();
-		await expect.element(page.getByRole('heading', { level: 3, name: 'Staff Dispute' })).toBeVisible();
-		await expect.element(page.getByText('Two employees are arguing over shift schedules.')).toBeVisible();
+		await expect
+			.element(page.getByRole('heading', { level: 3, name: 'Staff Dispute' }))
+			.toBeVisible();
+		await expect
+			.element(page.getByText('Two employees are arguing over shift schedules.'))
+			.toBeVisible();
 		await expect.element(page.getByText('Expires day 12')).toBeVisible();
-		await expect.element(page.getByRole('heading', { level: 3, name: 'Supplier Delay' })).toBeVisible();
+		await expect
+			.element(page.getByRole('heading', { level: 3, name: 'Supplier Delay' }))
+			.toBeVisible();
 		await expect.element(page.getByRole('button', { name: /Mediate/ })).toBeVisible();
 	});
 

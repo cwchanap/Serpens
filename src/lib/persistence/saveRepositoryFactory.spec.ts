@@ -30,7 +30,9 @@ describe('saveRepositoryFactory', () => {
 		expect.assertions(2);
 		mockBrowser = false;
 		mockIsTauri = false;
-		const fakeRepo = { kind: 'browser' } as unknown as ReturnType<typeof createBrowserSaveRepository>;
+		const fakeRepo = { kind: 'browser' } as unknown as ReturnType<
+			typeof createBrowserSaveRepository
+		>;
 		(createBrowserSaveRepository as Mock).mockReturnValue(fakeRepo);
 
 		const repo = await createSaveRepository();
@@ -43,7 +45,9 @@ describe('saveRepositoryFactory', () => {
 		expect.assertions(2);
 		mockBrowser = true;
 		mockIsTauri = false;
-		const fakeRepo = { kind: 'browser' } as unknown as ReturnType<typeof createBrowserSaveRepository>;
+		const fakeRepo = { kind: 'browser' } as unknown as ReturnType<
+			typeof createBrowserSaveRepository
+		>;
 		(createBrowserSaveRepository as Mock).mockReturnValue(fakeRepo);
 
 		const repo = await createSaveRepository();

@@ -73,8 +73,6 @@ describe('CityMap', () => {
 			onTileSelected: vi.fn()
 		});
 
-		await expect
-			.element(page.getByText('Map renderer unavailable.'))
-			.toBeVisible();
+		await expect.element(page.getByText('Map renderer unavailable.')).toBeVisible();
 	});
 });
