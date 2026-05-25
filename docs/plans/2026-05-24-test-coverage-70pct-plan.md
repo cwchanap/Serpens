@@ -10,6 +10,8 @@
 
 ---
 
+## Tasks
+
 ### Task 1: `saveRepositoryFactory.spec.ts` — Browser path
 
 **Files:**
@@ -47,6 +49,11 @@ Expected: PASS (browser path is the default, existing code handles it)
 **Step 3: Commit**
 
 ```bash
+bun run check
+bun run lint
+# If lint fails on formatting, run:
+# bun run format
+# bun run lint
 git add src/lib/persistence/saveRepositoryFactory.spec.ts
 git commit -m "test: cover saveRepositoryFactory browser path"
 ```
@@ -105,6 +112,11 @@ Expected: PASS
 **Step 3: Commit**
 
 ```bash
+bun run check
+bun run lint
+# If lint fails on formatting, run:
+# bun run format
+# bun run lint
 git add src/lib/components/game/Scorecard.svelte.spec.ts
 git commit -m "test: cover Scorecard component"
 ```
@@ -196,6 +208,11 @@ Expected: PASS
 **Step 3: Commit**
 
 ```bash
+bun run check
+bun run lint
+# If lint fails on formatting, run:
+# bun run format
+# bun run lint
 git add src/lib/components/game/DecisionQueue.svelte.spec.ts
 git commit -m "test: cover DecisionQueue component"
 ```
@@ -262,6 +279,11 @@ Expected: PASS
 **Step 3: Commit**
 
 ```bash
+bun run check
+bun run lint
+# If lint fails on formatting, run:
+# bun run format
+# bun run lint
 git add src/lib/components/game/PolicyPanel.svelte.spec.ts
 git commit -m "test: cover PolicyPanel component"
 ```
@@ -357,6 +379,11 @@ Expected: PASS
 **Step 3: Commit**
 
 ```bash
+bun run check
+bun run lint
+# If lint fails on formatting, run:
+# bun run format
+# bun run lint
 git add src/lib/components/game/CityMap.svelte.spec.ts
 git commit -m "test: cover CityMap component"
 ```
@@ -446,6 +473,11 @@ Expected: PASS
 **Step 3: Commit**
 
 ```bash
+bun run check
+bun run lint
+# If lint fails on formatting, run:
+# bun run format
+# bun run lint
 git add src/lib/components/game/IndustryMap.svelte.spec.ts
 git commit -m "test: cover IndustryMap component"
 ```
@@ -484,6 +516,11 @@ Test `preload`, `create`, `updateSnapshot`, `setEventHandler`, `update`, and the
 **Step 3: Commit**
 
 ```bash
+bun run check
+bun run lint
+# If lint fails on formatting, run:
+# bun run format
+# bun run lint
 git add src/lib/phaser/cityMapScene.spec.ts
 git commit -m "test: cover CityMapScene with Phaser mocks"
 ```

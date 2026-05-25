@@ -55,8 +55,8 @@ describe('Scorecard', () => {
 		await expect.element(page.getByRole('meter', { name: 'Market' })).toBeVisible();
 	});
 
-	it('reflects updated values when scorecard changes', async () => {
-		expect.assertions(2);
+	it('updates rendered values when scorecard prop changes', async () => {
+		expect.assertions(4);
 
 		const lowScorecard: ScorecardData = {
 			profit: 10,
@@ -64,13 +64,24 @@ describe('Scorecard', () => {
 			staffMorale: 30,
 			marketPosition: 40
 		};
+		const highScorecard: ScorecardData = {
+			profit: 95,
+			customerSatisfaction: 80,
+			staffMorale: 70,
+			marketPosition: 85
+		};
 
-		render(Scorecard, { scorecard: lowScorecard });
+		const view = render(Scorecard, { scorecard: lowScorecard });
 
 		const profitMeter = page.getByRole('meter', { name: 'Profit' });
 		const marketMeter = page.getByRole('meter', { name: 'Market' });
 
 		await expect.element(profitMeter).toHaveAttribute('value', '10');
 		await expect.element(marketMeter).toHaveAttribute('value', '40');
+
+		view.rerender({ scorecard: highScorecard });
+
+		await expect.element(profitMeter).toHaveAttribute('value', '95');
+		await expect.element(marketMeter).toHaveAttribute('value', '85');
 	});
 });

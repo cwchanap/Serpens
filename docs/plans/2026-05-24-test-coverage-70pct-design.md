@@ -6,7 +6,7 @@
 
 ## Current State
 
-```
+```text
 Statements   : 69.5% (2988/4299)
 Branches     : 57.15% (1006/1760)
 Functions    : 77.58% (803/1035)

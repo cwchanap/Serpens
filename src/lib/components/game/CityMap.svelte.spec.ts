@@ -1,5 +1,5 @@
 import { page } from 'vitest/browser';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import type { CityMapSnapshot } from '$lib/game/mapRender';
 import CityMap from './CityMap.svelte';
@@ -51,6 +51,11 @@ async function waitForMock(fn: ReturnType<typeof vi.fn>): Promise<void> {
 }
 
 describe('CityMap', () => {
+	beforeEach(() => {
+		shouldFail = false;
+		vi.clearAllMocks();
+	});
+
 	it('renders the city map section and initializes the scene', async () => {
 		expect.assertions(2);
 

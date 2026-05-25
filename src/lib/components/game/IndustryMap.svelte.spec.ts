@@ -57,18 +57,26 @@ describe('IndustryMap', () => {
 		expect.assertions(1);
 
 		vi.resetModules();
-		vi.doMock('phaser', () => ({ default: undefined }));
-		vi.doMock('$lib/phaser/industryMapScene', () => ({
-			IndustryMapScene: undefined
-		}));
+		try {
+			vi.doMock('phaser', () => ({ default: undefined }));
+			vi.doMock('$lib/phaser/industryMapScene', () => ({
+				IndustryMapScene: undefined
+			}));
 
-		const { default: IndustryMapFresh } = await import('./IndustryMap.svelte');
+			const { default: IndustryMapFresh } = await import('./IndustryMap.svelte');
 
-		render(IndustryMapFresh, {
-			snapshot: emptySnapshot,
-			onTileSelected: vi.fn()
-		});
+			render(IndustryMapFresh, {
+				snapshot: emptySnapshot,
+				onTileSelected: vi.fn()
+			});
 
-		await expect.element(page.getByText('Industry map renderer unavailable.')).toBeInTheDocument();
+			await expect
+				.element(page.getByText('Industry map renderer unavailable.'))
+				.toBeInTheDocument();
+		} finally {
+			vi.doUnmock('phaser');
+			vi.doUnmock('$lib/phaser/industryMapScene');
+			vi.resetModules();
+		}
 	});
 });
