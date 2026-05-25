@@ -12,7 +12,12 @@ const defaultPolicy: CompanyPolicy = {
 	service: 'balanced'
 };
 
-function renderPolicyPanel(overrides: Partial<{ policy: CompanyPolicy; onChange: (patch: Partial<CompanyPolicy>) => void }> = {}) {
+function renderPolicyPanel(
+	overrides: Partial<{
+		policy: CompanyPolicy;
+		onChange: (patch: Partial<CompanyPolicy>) => void;
+	}> = {}
+) {
 	const props = {
 		policy: defaultPolicy,
 		onChange: vi.fn(),

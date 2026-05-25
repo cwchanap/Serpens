@@ -50,9 +50,7 @@ describe('IndustryMap', () => {
 			onTileSelected: vi.fn()
 		});
 
-		await expect
-			.element(page.getByRole('region', { name: 'Industry map' }))
-			.toBeInTheDocument();
+		await expect.element(page.getByRole('region', { name: 'Industry map' })).toBeInTheDocument();
 	});
 
 	it('shows fallback message when phaser import fails', async () => {
@@ -71,8 +69,6 @@ describe('IndustryMap', () => {
 			onTileSelected: vi.fn()
 		});
 
-		await expect
-			.element(page.getByText('Industry map renderer unavailable.'))
-			.toBeInTheDocument();
+		await expect.element(page.getByText('Industry map renderer unavailable.')).toBeInTheDocument();
 	});
 });
