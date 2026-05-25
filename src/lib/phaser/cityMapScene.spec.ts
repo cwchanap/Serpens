@@ -773,9 +773,7 @@ describe('CityMapScene', () => {
 			const zoomBefore = s(scene).cameras.main.zoom;
 			s(scene).hasUserAdjustedCamera = true;
 			const resizeHandler = getHandler(s(scene).scale.on as Mock, 'resize');
-			if ((resizeHandler as Mock).mockClear) {
-				(s(scene).cameras.main.setZoom as Mock).mockClear();
-			}
+			(s(scene).cameras.main.setZoom as Mock).mockClear();
 			resizeHandler.call(scene);
 			expect(s(scene).cameras.main.zoom).toBe(zoomBefore);
 		});

@@ -1,4 +1,4 @@
-import { describe, expect, test, vi, type Mock } from 'vitest';
+import { beforeEach, describe, expect, test, vi, type Mock } from 'vitest';
 
 let mockBrowser = false;
 let mockIsTauri = false;
@@ -26,6 +26,12 @@ import { createBrowserSaveRepository } from './browserSaveRepository';
 import { createTauriSaveRepository } from './tauriSaveRepository';
 
 describe('saveRepositoryFactory', () => {
+	beforeEach(() => {
+		mockBrowser = false;
+		mockIsTauri = false;
+		vi.clearAllMocks();
+	});
+
 	test('returns browser repository when not in browser environment', async () => {
 		expect.assertions(2);
 		mockBrowser = false;
@@ -38,7 +44,7 @@ describe('saveRepositoryFactory', () => {
 		const repo = await createSaveRepository();
 
 		expect(repo).toBe(fakeRepo);
-		expect(createBrowserSaveRepository).toHaveBeenCalled();
+		expect(createBrowserSaveRepository).toHaveBeenCalledTimes(1);
 	});
 
 	test('returns browser repository when in browser but not Tauri', async () => {
@@ -53,7 +59,7 @@ describe('saveRepositoryFactory', () => {
 		const repo = await createSaveRepository();
 
 		expect(repo).toBe(fakeRepo);
-		expect(createBrowserSaveRepository).toHaveBeenCalled();
+		expect(createBrowserSaveRepository).toHaveBeenCalledTimes(1);
 	});
 
 	test('returns tauri repository when in browser and Tauri runtime', async () => {
@@ -66,7 +72,7 @@ describe('saveRepositoryFactory', () => {
 		const repo = await createSaveRepository();
 
 		expect(repo).toBe(fakeRepo);
-		expect(createTauriSaveRepository).toHaveBeenCalled();
+		expect(createTauriSaveRepository).toHaveBeenCalledTimes(1);
 	});
 
 	test('returns tauri repository when __TAURI_INTERNALS__ is present', async () => {
@@ -74,19 +80,22 @@ describe('saveRepositoryFactory', () => {
 		mockBrowser = true;
 		mockIsTauri = false;
 		const originalWindow = globalThis.window;
-		(globalThis as Record<string, unknown>).window = { __TAURI_INTERNALS__: {} };
 		const fakeRepo = { kind: 'tauri' } as unknown as ReturnType<typeof createTauriSaveRepository>;
 		(createTauriSaveRepository as Mock).mockReturnValue(fakeRepo);
 
-		const repo = await createSaveRepository();
+		try {
+			(globalThis as Record<string, unknown>).window = { __TAURI_INTERNALS__: {} };
 
-		expect(repo).toBe(fakeRepo);
-		expect(createTauriSaveRepository).toHaveBeenCalled();
+			const repo = await createSaveRepository();
 
-		if (originalWindow === undefined) {
-			delete (globalThis as Record<string, unknown>).window;
-		} else {
-			(globalThis as Record<string, unknown>).window = originalWindow;
+			expect(repo).toBe(fakeRepo);
+			expect(createTauriSaveRepository).toHaveBeenCalledTimes(1);
+		} finally {
+			if (originalWindow === undefined) {
+				delete (globalThis as Record<string, unknown>).window;
+			} else {
+				(globalThis as Record<string, unknown>).window = originalWindow;
+			}
 		}
 	});
 });

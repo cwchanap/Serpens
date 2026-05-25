@@ -1,5 +1,7 @@
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import type { IndustryMapSnapshot } from '../game/industryMapRender';
+
+type Listener = (...args: unknown[]) => void;
 
 vi.mock('$app/paths', () => ({
 	asset: (path: string) => path
@@ -59,11 +61,11 @@ function createImageMock() {
 }
 
 function createZoneMock() {
-	const listeners: Record<string, Function[]> = {};
+	const listeners: Record<string, Listener[]> = {};
 	const mock = {
 		setOrigin: vi.fn(),
 		setInteractive: vi.fn(),
-		on: vi.fn((event: string, handler: Function) => {
+		on: vi.fn((event: string, handler: Listener) => {
 			if (!listeners[event]) listeners[event] = [];
 			listeners[event].push(handler);
 		}),
@@ -124,9 +126,9 @@ function setupScene() {
 	const canvas = createCanvasElement();
 	const loadImageSpy = vi.fn();
 	const texturesExistsSpy = vi.fn(() => false);
-	const inputListeners: Record<string, Function[]> = {};
-	const scaleListeners: Record<string, Function[]> = {};
-	let sceneEventsListeners: Record<string, Function[]> = {};
+	const inputListeners: Record<string, Listener[]> = {};
+	const scaleListeners: Record<string, Listener[]> = {};
+	let sceneEventsListeners: Record<string, Listener[]> = {};
 
 	const graphicsInstances: ReturnType<typeof createGraphicsMock>[] = [];
 	const imageInstances: ReturnType<typeof createImageMock>[] = [];
@@ -151,12 +153,12 @@ function setupScene() {
 				graphicsInstances.push(g);
 				return g.chainable;
 			}),
-			image: vi.fn((_x: number, _y: number, _key: string) => {
+			image: vi.fn(() => {
 				const img = createImageMock();
 				imageInstances.push(img);
 				return img.chainable;
 			}),
-			zone: vi.fn((_x: number, _y: number, _w: number, _h: number) => {
+			zone: vi.fn(() => {
 				const z = createZoneMock();
 				zoneInstances.push(z);
 				return z.chainable;
@@ -168,11 +170,11 @@ function setupScene() {
 
 	Object.defineProperty(scene, 'input', {
 		value: {
-			on: vi.fn((event: string, handler: Function) => {
+			on: vi.fn((event: string, handler: Listener) => {
 				if (!inputListeners[event]) inputListeners[event] = [];
 				inputListeners[event].push(handler);
 			}),
-			off: vi.fn((event: string, handler: Function) => {
+			off: vi.fn((event: string, handler: Listener) => {
 				if (inputListeners[event]) {
 					inputListeners[event] = inputListeners[event].filter((h) => h !== handler);
 				}
@@ -184,11 +186,11 @@ function setupScene() {
 
 	Object.defineProperty(scene, 'scale', {
 		value: {
-			on: vi.fn((event: string, handler: Function) => {
+			on: vi.fn((event: string, handler: Listener) => {
 				if (!scaleListeners[event]) scaleListeners[event] = [];
 				scaleListeners[event].push(handler);
 			}),
-			off: vi.fn((event: string, handler: Function) => {
+			off: vi.fn((event: string, handler: Listener) => {
 				if (scaleListeners[event]) {
 					scaleListeners[event] = scaleListeners[event].filter((h) => h !== handler);
 				}
@@ -214,7 +216,7 @@ function setupScene() {
 
 	Object.defineProperty(scene, 'events', {
 		value: {
-			once: vi.fn((event: string, handler: Function, _context?: unknown) => {
+			once: vi.fn((event: string, handler: Listener) => {
 				if (!sceneEventsListeners[event]) sceneEventsListeners[event] = [];
 				sceneEventsListeners[event].push(handler);
 			})
@@ -383,7 +385,7 @@ describe('IndustryMapScene', () => {
 		test('sets scene key to IndustryMapScene', () => {
 			expect.assertions(1);
 			const { scene } = setupScene();
-			expect(scene.key).toBe('IndustryMapScene');
+			expect((scene as unknown as { key: string }).key).toBe('IndustryMapScene');
 		});
 	});
 
@@ -436,7 +438,9 @@ describe('IndustryMapScene', () => {
 			expect.assertions(2);
 			const { scene } = setupScene();
 			scene.create();
-			const eventsOnce = (scene.events as Record<string, unknown>).once as ReturnType<typeof vi.fn>;
+			const eventsOnce = (scene.events as unknown as Record<string, unknown>).once as ReturnType<
+				typeof vi.fn
+			>;
 			expect(eventsOnce).toHaveBeenCalled();
 			expect(eventsOnce.mock.calls[0][0]).toBe(SHUTDOWN_EVENT);
 		});
@@ -576,7 +580,7 @@ describe('IndustryMapScene', () => {
 
 		test('zone pointerup triggers tileSelected event on handler', () => {
 			expect.assertions(1);
-			const { scene, zoneInstances, canvas, makePointer } = setupScene();
+			const { scene, zoneInstances, makePointer } = setupScene();
 			const handler = vi.fn();
 			scene.setEventHandler(handler);
 			scene.create();
@@ -624,7 +628,7 @@ describe('IndustryMapScene', () => {
 			zoneInstances[0].fire('pointerdown', pointer);
 			const movePointer = makePointer({ x: 200, y: 200, isDown: true });
 			inputListeners['pointermove'][0].call(scene, movePointer);
-			expect(true).toBe(true);
+			expect((scene as unknown as { isDragging: boolean }).isDragging).toBe(true);
 		});
 
 		test('handlePointerMove scrolls camera when dragging', () => {
@@ -651,7 +655,7 @@ describe('IndustryMapScene', () => {
 		});
 
 		test('handlePointerUp resets drag state', () => {
-			expect.assertions(1);
+			expect.assertions(2);
 			const { scene, zoneInstances, inputListeners, makePointer } = setupScene();
 			scene.create();
 			const snapshot = makeSnapshot();
@@ -659,7 +663,10 @@ describe('IndustryMapScene', () => {
 			const pointer = makePointer({ x: 100, y: 100, isDown: true });
 			zoneInstances[0].fire('pointerdown', pointer);
 			inputListeners['pointerup'][0].call(scene);
-			expect(true).toBe(true);
+			expect((scene as unknown as { isDragging: boolean }).isDragging).toBe(false);
+			expect(
+				(scene as unknown as { lastDragPoint: { x: number; y: number } | null }).lastDragPoint
+			).toBeNull();
 		});
 
 		test('tile selection is suppressed after drag', () => {
@@ -1186,7 +1193,7 @@ describe('IndustryMapScene', () => {
 			scene.create();
 			scene.updateSnapshot(makeSnapshot());
 			fireSceneShutdown();
-			const input = scene.input as Record<string, unknown>;
+			const input = scene.input as unknown as Record<string, unknown>;
 			const offCalls = (input.off as ReturnType<typeof vi.fn>).mock.calls.length;
 			expect(offCalls).toBeGreaterThanOrEqual(3);
 		});
