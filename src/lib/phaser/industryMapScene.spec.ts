@@ -459,7 +459,7 @@ describe('IndustryMapScene', () => {
 			const { scene } = setupScene();
 			const handler = vi.fn();
 			scene.setEventHandler(handler);
-			expect(scene.setEventHandler).toBeDefined();
+			expect((scene as unknown as { eventHandler: typeof handler }).eventHandler).toBe(handler);
 		});
 	});
 
@@ -474,17 +474,32 @@ describe('IndustryMapScene', () => {
 		});
 
 		test('clears hoverTileId when tile no longer exists in new snapshot', () => {
-			expect.assertions(1);
+			expect.assertions(2);
 			const { scene, zoneInstances } = setupScene();
 			scene.create();
 			const snapshot = makeSnapshot();
 			scene.updateSnapshot(snapshot);
 			const zone = zoneInstances[0];
 			zone.fire('pointerover');
-			const pointerUp = zone.mock.on.mock.calls.find(
-				(c: unknown[]) => (c as [string])[0] === 'pointerup'
+			expect((scene as unknown as { hoverTileId: string | null }).hoverTileId).toBe(
+				snapshot.tiles[0].id
 			);
-			expect(pointerUp).toBeDefined();
+			const snapshotWithoutTile = makeSnapshot({
+				tiles: [
+					{
+						id: 't-1-0',
+						x: 1,
+						y: 0,
+						terrain: 'forest',
+						resource: null,
+						locked: false,
+						selected: false,
+						occupied: false
+					}
+				]
+			});
+			scene.updateSnapshot(snapshotWithoutTile);
+			expect((scene as unknown as { hoverTileId: string | null }).hoverTileId).toBeNull();
 		});
 	});
 
