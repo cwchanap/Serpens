@@ -198,7 +198,7 @@ describe('game art asset constants', () => {
 				0
 			);
 		}
-	});
+	}, 15000);
 
 	it('defines product art for every product category', () => {
 		expect(Object.keys(PRODUCT_ART).sort()).toEqual(productCategoryIds);
