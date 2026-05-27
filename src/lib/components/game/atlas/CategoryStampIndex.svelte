@@ -25,6 +25,7 @@
 			type="button"
 			class={['stamp', `stamp-${summary.health}`, active && 'is-active']}
 			data-category-id={summary.categoryId}
+			data-testid={`category-stamp-${summary.categoryId}`}
 			aria-pressed={active}
 			onclick={() => onSelectCategory(summary.categoryId)}
 		>

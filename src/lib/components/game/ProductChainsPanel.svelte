@@ -1,11 +1,11 @@
 <script lang="ts">
-	import ProductChainGraph from '$lib/components/game/ProductChainGraph.svelte';
-	import ProductChainNodeDetail from '$lib/components/game/ProductChainNodeDetail.svelte';
+	import CategoryStampIndex from '$lib/components/game/atlas/CategoryStampIndex.svelte';
+	import NodeBroadside from '$lib/components/game/atlas/NodeBroadside.svelte';
+	import ProductChainAtlas from '$lib/components/game/atlas/ProductChainAtlas.svelte';
 	import {
 		buildProductChainGraph,
 		buildStoreCategoryChainSummaries,
 		buildWarehouseFlowGraph,
-		formatQuantity,
 		getSupportedStoreChainCategories
 	} from '$lib/game/productChainGraph';
 	import type { GameState } from '$lib/game/types';
@@ -53,6 +53,9 @@
 		graph && nodeSelection.graphId === graph.id ? nodeSelection.nodeId : null
 	);
 	const selectedNode = $derived(graph && activeNodeId ? graph.details[activeNodeId] : null);
+	const headingText = $derived(
+		mode === 'warehouse-flow' ? 'Warehouse flow' : (activeCategory?.name ?? 'Product Chains')
+	);
 
 	function selectCategory(categoryId: string): void {
 		mode = 'store-categories';
@@ -66,18 +69,18 @@
 	}
 
 	function selectNode(nodeId: string | null): void {
-		nodeSelection = {
-			graphId: graph?.id ?? null,
-			nodeId
-		};
+		nodeSelection = { graphId: graph?.id ?? null, nodeId };
 	}
 </script>
 
-<section class="panel paper product-chains-panel" aria-labelledby="product-chains-heading">
-	<div class="panel-heading">
+<section class="panel paper product-chains-panel atlas-sheet" aria-label="Product Chains">
+	<div class="sheet-head">
 		<div>
-			<p class="eyebrow">Control board</p>
-			<h2 id="product-chains-heading">Product Chains</h2>
+			<p class="eyebrow">Folio II · Production Chain</p>
+			<h2>{headingText}</h2>
+			{#if graph}
+				<p class="chain-title">{graph.title}</p>
+			{/if}
 		</div>
 		<div class="mode-toggle" role="group" aria-label="Product chain view">
 			<button
@@ -99,50 +102,25 @@
 		</div>
 	</div>
 
+	<div class="sheet-rule" aria-hidden="true"></div>
+
 	{#if summaries.length > 0}
-		<div class="summary-grid" aria-label="Store category chains">
-			{#each summaries as summary (summary.categoryId)}
-				<button
-					type="button"
-					class:active={mode === 'store-categories' &&
-						activeCategory?.categoryId === summary.categoryId}
-					aria-pressed={mode === 'store-categories' &&
-						activeCategory?.categoryId === summary.categoryId}
-					onclick={() => selectCategory(summary.categoryId)}
-				>
-					<span class={['status', `status-${summary.health}`]}>{summary.healthLabel}</span>
-					<strong>{summary.name}</strong>
-					<span>{summary.bottleneck}</span>
-					<dl>
-						<div>
-							<dt>Stock</dt>
-							<dd>{formatQuantity(summary.warehouseStock)}</dd>
-						</div>
-						<div>
-							<dt>Made</dt>
-							<dd>{formatQuantity(summary.produced)}/day</dd>
-						</div>
-						<div>
-							<dt>Sold</dt>
-							<dd>{formatQuantity(summary.consumed)}/day</dd>
-						</div>
-						<div>
-							<dt>Imports</dt>
-							<dd>{formatQuantity(summary.imported)}/day</dd>
-						</div>
-					</dl>
-				</button>
-			{/each}
-		</div>
+		<CategoryStampIndex
+			{summaries}
+			activeCategoryId={activeCategory?.categoryId ?? null}
+			{mode}
+			onSelectCategory={selectCategory}
+		/>
 	{:else}
 		<p class="empty">No store categories have local production chains yet.</p>
 	{/if}
 
 	{#if graph}
-		<div class="graph-layout">
-			<ProductChainGraph {graph} selectedNodeId={activeNodeId} onSelectNode={selectNode} />
-			<ProductChainNodeDetail node={selectedNode} />
-		</div>
+		<ProductChainAtlas {graph} selectedNodeId={activeNodeId} onSelectNode={selectNode}>
+			{#snippet broadside()}
+				<NodeBroadside node={selectedNode} />
+			{/snippet}
+		</ProductChainAtlas>
 	{:else}
 		<p class="empty">No chain graph is available.</p>
 	{/if}
@@ -155,34 +133,50 @@
 		padding: 1.1rem 1.2rem;
 	}
 
-	.panel-heading {
+	.sheet-head {
 		display: flex;
 		align-items: flex-start;
 		justify-content: space-between;
 		gap: 1rem;
 	}
 
+	.sheet-head > div:first-child {
+		min-width: 0;
+		display: grid;
+		gap: 2px;
+	}
+
+	.sheet-rule {
+		border-top: 1px solid var(--brass-700);
+		border-bottom: 3px double var(--brass-700);
+		height: 5px;
+	}
+
 	h2,
-	p,
-	dl {
+	p {
 		margin: 0;
 	}
 
 	h2 {
 		font-family: var(--font-display);
-		font-size: 1.1rem;
+		font-size: 1.4rem;
 		font-weight: 400;
 		color: var(--ink-700);
 	}
 
-	.eyebrow,
-	.status,
-	dt {
+	.chain-title {
+		font-family: var(--font-body);
+		font-size: 0.85rem;
+		font-style: italic;
+		color: var(--ink-500);
+	}
+
+	.eyebrow {
 		color: var(--brass-700);
 		font-family: var(--font-ui);
 		font-size: 0.68rem;
 		font-weight: 700;
-		letter-spacing: 0.14em;
+		letter-spacing: 0.22em;
 		text-transform: uppercase;
 	}
 
@@ -193,108 +187,22 @@
 		justify-content: flex-end;
 	}
 
-	.mode-toggle button,
-	.summary-grid button {
-		border: 1px solid var(--paper-edge);
-		border-radius: 2px;
-		background: var(--paper-50);
-		color: var(--ink-700);
-	}
-
 	.mode-toggle button {
 		min-height: 2rem;
+		padding: 0.35rem 0.55rem;
 		font-family: var(--font-ui);
 		font-size: 0.72rem;
 		font-weight: 700;
-		padding: 0.35rem 0.55rem;
-	}
-
-	.mode-toggle button.active,
-	.summary-grid button.active {
-		border-color: var(--brass-700);
-		box-shadow: 0 0 0 2px color-mix(in srgb, var(--brass-700) 16%, transparent);
-	}
-
-	.summary-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
-		gap: 0.75rem;
-	}
-
-	.summary-grid button {
-		display: grid;
-		min-width: 0;
-		gap: 0.45rem;
-		padding: 0.75rem;
-		text-align: left;
-	}
-
-	.summary-grid button:hover,
-	.mode-toggle button:hover {
-		border-color: var(--brass-700);
-	}
-
-	.summary-grid strong {
-		overflow-wrap: anywhere;
-		font-family: var(--font-display);
-		font-size: 1rem;
-		font-weight: 400;
-		color: var(--ink-700);
-	}
-
-	.summary-grid span:not(.status) {
-		color: var(--ink-500);
-		font-family: var(--font-body);
-		font-size: 0.82rem;
-		line-height: 1.35;
-	}
-
-	.status {
-		width: fit-content;
+		background: var(--paper-50);
 		border: 1px solid var(--paper-edge);
 		border-radius: 2px;
-		background: color-mix(in srgb, var(--paper-50) 82%, white);
-		padding: 0.18rem 0.35rem;
-	}
-
-	.status-healthy {
-		color: var(--moss);
-	}
-
-	.status-watch,
-	.status-no-report {
-		color: var(--brass-700);
-	}
-
-	.status-shortage,
-	.status-no-local-capacity {
-		color: var(--wax-red);
-	}
-
-	dl {
-		display: grid;
-		grid-template-columns: repeat(4, minmax(0, 1fr));
-		gap: 0.45rem;
-	}
-
-	dl div {
-		min-width: 0;
-	}
-
-	dd {
-		margin: 0.12rem 0 0;
-		overflow-wrap: anywhere;
-		font-family: var(--font-mono);
-		font-size: 0.82rem;
-		font-variant-numeric: tabular-nums lining-nums;
 		color: var(--ink-700);
+		cursor: pointer;
 	}
 
-	.graph-layout {
-		display: grid;
-		grid-template-columns: minmax(0, 1fr) minmax(13rem, 17rem);
-		gap: 1rem;
-		min-width: 0;
+	.mode-toggle button.active {
+		border-color: var(--brass-700);
+		box-shadow: 0 0 0 2px color-mix(in srgb, var(--brass-700) 16%, transparent);
 	}
 
 	.empty {
@@ -305,23 +213,12 @@
 	}
 
 	@media (max-width: 980px) {
-		.panel-heading,
-		.graph-layout {
-			grid-template-columns: 1fr;
-		}
-
-		.panel-heading {
+		.sheet-head {
 			display: grid;
 		}
 
 		.mode-toggle {
 			justify-content: flex-start;
-		}
-	}
-
-	@media (max-width: 620px) {
-		dl {
-			grid-template-columns: repeat(2, minmax(0, 1fr));
 		}
 	}
 </style>
