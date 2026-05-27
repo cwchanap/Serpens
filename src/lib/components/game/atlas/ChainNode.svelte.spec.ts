@@ -70,11 +70,11 @@ describe('ChainNode', () => {
 		const onSelect = vi.fn();
 		render(ChainNode, {
 			node: materialNode({
-				id: 'recipe:flour-from-grain',
+				id: 'recipe:flour-milling',
 				kind: 'recipe',
 				label: 'Flour mill',
 				materialId: null,
-				recipeId: 'flour-from-grain',
+				recipeId: 'flour-milling',
 				health: 'shortage',
 				healthLabel: 'Shortage',
 				capacity: { buildingCount: 1, outputPerDay: 20, inputPerDay: 20 }
