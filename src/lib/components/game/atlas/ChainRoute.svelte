@@ -28,7 +28,8 @@
 	function healthStroke(health: ProductChainHealth): string {
 		if (health === 'healthy') return 'var(--moss)';
 		if (health === 'shortage' || health === 'no-local-capacity') return 'var(--wax-red)';
-		if (health === 'no-report') return 'color-mix(in srgb, var(--brass-700) 50%, var(--paper-edge))';
+		if (health === 'no-report')
+			return 'color-mix(in srgb, var(--brass-700) 50%, var(--paper-edge))';
 		return 'var(--brass-700)';
 	}
 
@@ -48,7 +49,7 @@
 	<title>{ariaLabel}</title>
 	<path
 		d={path}
-		stroke={stroke}
+		{stroke}
 		stroke-width="2.5"
 		stroke-dasharray={dashArray}
 		fill="none"

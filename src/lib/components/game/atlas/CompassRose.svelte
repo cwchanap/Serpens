@@ -25,8 +25,8 @@
 		text-anchor="middle"
 		font-family="var(--font-display)"
 		font-size="6"
-		fill="var(--brass-700)"
-	>N</text>
+		fill="var(--brass-700)">N</text
+	>
 </svg>
 
 <style>

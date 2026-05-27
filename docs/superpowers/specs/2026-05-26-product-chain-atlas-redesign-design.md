@@ -51,11 +51,11 @@ Existing tokens from `src/lib/styles/tokens.css` are used as-is. No new tokens i
 
 **Three node typologies** encode kind:
 
-| `node.kind` | Frame shape | Inner decoration | Icon source |
-| --- | --- | --- | --- |
-| `material` | circle, 90×90 | dashed inner ring | `INDUSTRY_MATERIAL_ART[node.materialId]` |
-| `recipe` | octagon, 100×100 (clip-path) | dashed inner octagon | building art for the recipe's primary building type (new map; see Data Flow) |
-| `warehouse` | slab, 98×82 with 4 px radius | thin inner rule | `/assets/game/industry/buildings/warehouse.png` |
+| `node.kind` | Frame shape                  | Inner decoration     | Icon source                                                                  |
+| ----------- | ---------------------------- | -------------------- | ---------------------------------------------------------------------------- |
+| `material`  | circle, 90×90                | dashed inner ring    | `INDUSTRY_MATERIAL_ART[node.materialId]`                                     |
+| `recipe`    | octagon, 100×100 (clip-path) | dashed inner octagon | building art for the recipe's primary building type (new map; see Data Flow) |
+| `warehouse` | slab, 98×82 with 4 px radius | thin inner rule      | `/assets/game/industry/buildings/warehouse.png`                              |
 
 Each node carries:
 
@@ -65,13 +65,13 @@ Each node carries:
 
 **Routes** are SVG `<path>` curves between source / target node centers, with bezier control points offset horizontally from each end (`±xStep / 2`) so routes flow left-to-right. Stroke styles:
 
-| `edge.health` | Stroke | Pattern | Animation |
-| --- | --- | --- | --- |
-| `healthy` | `var(--moss)` | solid + dash-animation | 1.4 s loop |
-| `watch` | `var(--brass-700)` | solid + dash-animation | 1.4 s loop |
-| `shortage` / `no-local-capacity` | `var(--wax-red)` | dashed (8 4) | 0.8 s loop |
-| imports (special) | `var(--royal-ink)` | dotted (2 4) | none |
-| `no-report` | `color-mix(brass-700, 50% paper-edge)` | solid, no animation | none |
+| `edge.health`                    | Stroke                                 | Pattern                | Animation  |
+| -------------------------------- | -------------------------------------- | ---------------------- | ---------- |
+| `healthy`                        | `var(--moss)`                          | solid + dash-animation | 1.4 s loop |
+| `watch`                          | `var(--brass-700)`                     | solid + dash-animation | 1.4 s loop |
+| `shortage` / `no-local-capacity` | `var(--wax-red)`                       | dashed (8 4)           | 0.8 s loop |
+| imports (special)                | `var(--royal-ink)`                     | dotted (2 4)           | none       |
+| `no-report`                      | `color-mix(brass-700, 50% paper-edge)` | solid, no animation    | none       |
 
 Animation is suppressed under `prefers-reduced-motion: reduce`.
 
@@ -118,10 +118,10 @@ src/lib/assets/
 
 ```ts
 interface Props {
-  graph: ProductChainGraph;
-  selectedNodeId: string | null;
-  compact?: boolean;
-  onSelectNode: (nodeId: string | null) => void;
+	graph: ProductChainGraph;
+	selectedNodeId: string | null;
+	compact?: boolean;
+	onSelectNode: (nodeId: string | null) => void;
 }
 ```
 
@@ -137,11 +137,11 @@ Same props shape as today's `ProductChainGraph`. Internals:
 
 ```ts
 interface Props {
-  node: ProductChainNode;
-  selected: boolean;
-  compact: boolean;
-  position: { x: number; y: number };  // pre-computed by parent
-  onSelect: (nodeId: string) => void;
+	node: ProductChainNode;
+	selected: boolean;
+	compact: boolean;
+	position: { x: number; y: number }; // pre-computed by parent
+	onSelect: (nodeId: string) => void;
 }
 ```
 
@@ -151,9 +151,9 @@ Renders the appropriate frame (circle / octagon / slab), the icon resolved via `
 
 ```ts
 interface Props {
-  edge: ProductChainEdge;
-  source: { x: number; y: number };  // pixel-space center of the source node
-  target: { x: number; y: number };
+	edge: ProductChainEdge;
+	source: { x: number; y: number }; // pixel-space center of the source node
+	target: { x: number; y: number };
 }
 ```
 
@@ -165,10 +165,10 @@ Replaces today's `.summary-grid` block. Props:
 
 ```ts
 interface Props {
-  summaries: ProductChainCategorySummary[];
-  activeCategoryId: string | null;
-  mode: 'store-categories' | 'warehouse-flow';
-  onSelectCategory: (categoryId: string) => void;
+	summaries: ProductChainCategorySummary[];
+	activeCategoryId: string | null;
+	mode: 'store-categories' | 'warehouse-flow';
+	onSelectCategory: (categoryId: string) => void;
 }
 ```
 
@@ -186,9 +186,9 @@ No changes to `productChainGraph.ts`.
 
 ```ts
 interface ChainNodeArt {
-  src: string;
-  alt: string;
-  fallbackGlyph: 'material' | 'recipe' | 'warehouse';
+	src: string;
+	alt: string;
+	fallbackGlyph: 'material' | 'recipe' | 'warehouse';
 }
 
 export function chainNodeArt(node: ProductChainNode): ChainNodeArt;

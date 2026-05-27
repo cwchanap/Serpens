@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { SvelteMap } from 'svelte/reactivity';
 	import type { ProductChainGraph } from '$lib/game/productChainGraph';
 	import ChainMap from './ChainMap.svelte';
 	import ChainNode from './ChainNode.svelte';
@@ -32,7 +33,7 @@
 	);
 
 	const centers = $derived.by(() => {
-		const map = new Map<string, { x: number; y: number }>();
+		const map = new SvelteMap<string, { x: number; y: number }>();
 		const halfX = compact ? 52 : 66;
 		const halfY = compact ? 46 : 60;
 		for (const { node, position } of positioned) {

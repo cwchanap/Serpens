@@ -51,6 +51,7 @@
 ### Task 1: Add `RECIPE_BUILDING_ART` map to `gameArt.ts`
 
 **Files:**
+
 - Modify: `src/lib/assets/gameArt.ts`
 - Test: `src/lib/assets/gameArt.spec.ts`
 
@@ -137,6 +138,7 @@ git commit -m "feat: add RECIPE_BUILDING_ART map derived from INDUSTRIAL_BUILDIN
 ### Task 2: Add `chainNodeArt()` resolver
 
 **Files:**
+
 - Modify: `src/lib/assets/gameArt.ts`
 - Test: `src/lib/assets/gameArt.spec.ts`
 
@@ -179,9 +181,7 @@ function nodeStub(overrides: Partial<ProductChainNode>): ProductChainNode {
 describe('chainNodeArt', () => {
 	it('returns material art for a material node', () => {
 		expect.assertions(1);
-		const art: ChainNodeArt = chainNodeArt(
-			nodeStub({ kind: 'material', materialId: 'flour' })
-		);
+		const art: ChainNodeArt = chainNodeArt(nodeStub({ kind: 'material', materialId: 'flour' }));
 		expect(art).toEqual({
 			src: '/assets/game/industry/materials/flour.png',
 			alt: 'Flour',
@@ -291,6 +291,7 @@ git commit -m "feat: add chainNodeArt resolver for ProductChainNode → PNG"
 ### Task 3: Scaffold `ChainNode.svelte` (material variant + spec)
 
 **Files:**
+
 - Create: `src/lib/components/game/atlas/ChainNode.svelte`
 - Create: `src/lib/components/game/atlas/ChainNode.svelte.spec.ts`
 
@@ -463,10 +464,16 @@ Create `src/lib/components/game/atlas/ChainNode.svelte`:
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		background:
-			radial-gradient(circle at 50% 38%, color-mix(in srgb, var(--paper-50) 99%, white) 0%, var(--paper-50) 60%, color-mix(in srgb, var(--paper-50) 86%, var(--brass-100)) 100%);
+		background: radial-gradient(
+			circle at 50% 38%,
+			color-mix(in srgb, var(--paper-50) 99%, white) 0%,
+			var(--paper-50) 60%,
+			color-mix(in srgb, var(--paper-50) 86%, var(--brass-100)) 100%
+		);
 		border: 2px solid var(--ink-700);
-		box-shadow: 0 3px 0 var(--paper-edge), 0 6px 14px rgba(20, 12, 4, 0.18);
+		box-shadow:
+			0 3px 0 var(--paper-edge),
+			0 6px 14px rgba(20, 12, 4, 0.18);
 	}
 
 	.is-compact .frame {
@@ -491,8 +498,11 @@ Create `src/lib/components/game/atlas/ChainNode.svelte`:
 		width: 100px;
 		height: 100px;
 		clip-path: polygon(28% 0, 72% 0, 100% 28%, 100% 72%, 72% 100%, 28% 100%, 0 72%, 0 28%);
-		background:
-			radial-gradient(circle at 50% 35%, color-mix(in srgb, var(--brass-100) 80%, var(--paper-50)) 0%, color-mix(in srgb, var(--paper-50) 90%, var(--brass-100)) 75%);
+		background: radial-gradient(
+			circle at 50% 35%,
+			color-mix(in srgb, var(--brass-100) 80%, var(--paper-50)) 0%,
+			color-mix(in srgb, var(--paper-50) 90%, var(--brass-100)) 75%
+		);
 	}
 
 	.is-compact.chain-node-recipe .frame {
@@ -504,8 +514,11 @@ Create `src/lib/components/game/atlas/ChainNode.svelte`:
 		width: 98px;
 		height: 82px;
 		border-radius: 4px;
-		background:
-			linear-gradient(180deg, color-mix(in srgb, var(--brass-100) 75%, var(--paper-50)) 0%, color-mix(in srgb, var(--paper-50) 85%, var(--brass-100)) 100%);
+		background: linear-gradient(
+			180deg,
+			color-mix(in srgb, var(--brass-100) 75%, var(--paper-50)) 0%,
+			color-mix(in srgb, var(--paper-50) 85%, var(--brass-100)) 100%
+		);
 	}
 
 	.is-compact.chain-node-warehouse .frame {
@@ -659,6 +672,7 @@ git commit -m "feat: add ChainNode atlas component (material/recipe/warehouse va
 ### Task 4: Add recipe and warehouse variant tests for `ChainNode`
 
 **Files:**
+
 - Modify: `src/lib/components/game/atlas/ChainNode.svelte.spec.ts`
 
 - [ ] **Step 1: Write the failing tests**
@@ -731,6 +745,7 @@ git commit -m "test: cover recipe and warehouse ChainNode variants"
 ### Task 5: Add `ChainRoute.svelte`
 
 **Files:**
+
 - Create: `src/lib/components/game/atlas/ChainRoute.svelte`
 
 > ChainRoute has no standalone spec — it's exercised through `ProductChainAtlas.svelte.spec.ts` in Task 8. SVG-path geometry is too implementation-detail to test in isolation; the structural assertions (one path per edge, correct stroke color) live at the parent level.
@@ -770,7 +785,8 @@ Create `src/lib/components/game/atlas/ChainRoute.svelte`:
 	function healthStroke(health: ProductChainHealth): string {
 		if (health === 'healthy') return 'var(--moss)';
 		if (health === 'shortage' || health === 'no-local-capacity') return 'var(--wax-red)';
-		if (health === 'no-report') return 'color-mix(in srgb, var(--brass-700) 50%, var(--paper-edge))';
+		if (health === 'no-report')
+			return 'color-mix(in srgb, var(--brass-700) 50%, var(--paper-edge))';
 		return 'var(--brass-700)';
 	}
 
@@ -790,7 +806,7 @@ Create `src/lib/components/game/atlas/ChainRoute.svelte`:
 	<title>{ariaLabel}</title>
 	<path
 		d={path}
-		stroke={stroke}
+		{stroke}
 		stroke-width="2.5"
 		stroke-dasharray={dashArray}
 		fill="none"
@@ -857,6 +873,7 @@ git commit -m "feat: add ChainRoute atlas SVG path component"
 ### Task 6: Add `CompassRose.svelte` and `LegendCartouche.svelte`
 
 **Files:**
+
 - Create: `src/lib/components/game/atlas/CompassRose.svelte`
 - Create: `src/lib/components/game/atlas/LegendCartouche.svelte`
 
@@ -892,8 +909,8 @@ git commit -m "feat: add ChainRoute atlas SVG path component"
 		text-anchor="middle"
 		font-family="var(--font-display)"
 		font-size="6"
-		fill="var(--brass-700)"
-	>N</text>
+		fill="var(--brass-700)">N</text
+	>
 </svg>
 
 <style>
@@ -916,8 +933,11 @@ git commit -m "feat: add ChainRoute atlas SVG path component"
 
 <style>
 	.legend {
-		background:
-			linear-gradient(180deg, color-mix(in srgb, var(--paper-50) 96%, var(--brass-100)) 0%, var(--paper-50) 100%);
+		background: linear-gradient(
+			180deg,
+			color-mix(in srgb, var(--paper-50) 96%, var(--brass-100)) 0%,
+			var(--paper-50) 100%
+		);
 		border: 1px solid var(--brass-700);
 		box-shadow:
 			inset 0 0 0 3px var(--paper-50),
@@ -984,6 +1004,7 @@ git commit -m "feat: add CompassRose and LegendCartouche atlas decorations"
 ### Task 7: Add `ChainMap.svelte` (canvas + decoration wrapper)
 
 **Files:**
+
 - Create: `src/lib/components/game/atlas/ChainMap.svelte`
 
 > No standalone spec — exercised through `ProductChainAtlas` in Task 8.
@@ -1041,12 +1062,11 @@ Create `src/lib/components/game/atlas/ChainMap.svelte`:
 		width: 100%;
 		min-height: var(--map-height);
 		border: 1px solid var(--paper-edge);
-		background:
-			linear-gradient(
-				135deg,
-				color-mix(in srgb, var(--paper-50) 96%, var(--brass-100)) 0%,
-				var(--paper-50) 70%
-			);
+		background: linear-gradient(
+			135deg,
+			color-mix(in srgb, var(--paper-50) 96%, var(--brass-100)) 0%,
+			var(--paper-50) 70%
+		);
 		overflow: hidden;
 	}
 
@@ -1119,6 +1139,7 @@ git commit -m "feat: add ChainMap atlas canvas wrapper with compass/legend slots
 ### Task 8: Add `ProductChainAtlas.svelte` + spec (selection + empty-state)
 
 **Files:**
+
 - Create: `src/lib/components/game/atlas/ProductChainAtlas.svelte`
 - Create: `src/lib/components/game/atlas/ProductChainAtlas.svelte.spec.ts`
 
@@ -1207,9 +1228,7 @@ describe('ProductChainAtlas', () => {
 			onSelectNode
 		});
 
-		await expect
-			.poll(() => onSelectNode.mock.calls.some(([nodeId]) => nodeId === null))
-			.toBe(true);
+		await expect.poll(() => onSelectNode.mock.calls.some(([nodeId]) => nodeId === null)).toBe(true);
 	});
 
 	it('emits the node id when a node button is clicked', async () => {
@@ -1456,6 +1475,7 @@ git commit -m "feat: add ProductChainAtlas renderer with SVG routes and DOM node
 ### Task 9: Add `NodeBroadside.svelte` + spec
 
 **Files:**
+
 - Create: `src/lib/components/game/atlas/NodeBroadside.svelte`
 - Create: `src/lib/components/game/atlas/NodeBroadside.svelte.spec.ts`
 
@@ -1591,8 +1611,11 @@ Create `src/lib/components/game/atlas/NodeBroadside.svelte`:
 		gap: 0.65rem;
 		min-width: 0;
 		padding: 14px 14px 12px;
-		background:
-			linear-gradient(180deg, color-mix(in srgb, var(--paper-50) 96%, var(--brass-100)) 0%, var(--paper-50) 100%);
+		background: linear-gradient(
+			180deg,
+			color-mix(in srgb, var(--paper-50) 96%, var(--brass-100)) 0%,
+			var(--paper-50) 100%
+		);
 		border: 1px solid var(--brass-700);
 		box-shadow:
 			inset 0 0 0 3px var(--paper-50),
@@ -1702,6 +1725,7 @@ git commit -m "feat: add NodeBroadside detail card to replace ProductChainNodeDe
 ### Task 10: Add `CategoryStampIndex.svelte` + spec
 
 **Files:**
+
 - Create: `src/lib/components/game/atlas/CategoryStampIndex.svelte`
 - Create: `src/lib/components/game/atlas/CategoryStampIndex.svelte.spec.ts`
 
@@ -1737,7 +1761,12 @@ describe('CategoryStampIndex', () => {
 		const onSelectCategory = vi.fn();
 		render(CategoryStampIndex, {
 			summaries: [
-				summary({ categoryId: 'snacks', name: 'Snacks', health: 'shortage', healthLabel: 'Shortage' }),
+				summary({
+					categoryId: 'snacks',
+					name: 'Snacks',
+					health: 'shortage',
+					healthLabel: 'Shortage'
+				}),
 				summary({ categoryId: 'drinks', name: 'Drinks' })
 			],
 			activeCategoryId: 'snacks',
@@ -1841,8 +1870,7 @@ Create `src/lib/components/game/atlas/CategoryStampIndex.svelte`:
 				<span class="icons"><img src={icon} alt={summary.name} /></span>
 			{/if}
 			<span class="nums">
-				stock {formatQuantity(summary.warehouseStock)} ·
-				made {formatQuantity(summary.produced)}/d ·
+				stock {formatQuantity(summary.warehouseStock)} · made {formatQuantity(summary.produced)}/d ·
 				sold {formatQuantity(summary.consumed)}/d
 			</span>
 		</button>
@@ -1950,6 +1978,7 @@ git commit -m "feat: add CategoryStampIndex to replace summary-grid"
 ### Task 11: Refit `ProductChainsPanel.svelte` to use the new atlas components
 
 **Files:**
+
 - Modify: `src/lib/components/game/ProductChainsPanel.svelte`
 - Modify: `src/lib/components/game/ProductChainsPanel.svelte.spec.ts`
 
@@ -2035,7 +2064,10 @@ Replace the contents of `src/lib/components/game/ProductChainsPanel.svelte` with
 	}
 </script>
 
-<section class="panel paper product-chains-panel atlas-sheet" aria-labelledby="product-chains-heading">
+<section
+	class="panel paper product-chains-panel atlas-sheet"
+	aria-labelledby="product-chains-heading"
+>
 	<div class="sheet-head">
 		<div>
 			<p class="eyebrow">Folio II · Production Chain</p>
@@ -2201,6 +2233,7 @@ git commit -m "feat: refit ProductChainsPanel as atlas sheet with stamp index an
 ### Task 12: Refit `StoreProductChainPanel.svelte`
 
 **Files:**
+
 - Modify: `src/lib/components/game/StoreProductChainPanel.svelte`
 - Modify: `src/lib/components/game/StoreProductChainPanel.svelte.spec.ts`
 
@@ -2379,6 +2412,7 @@ git commit -m "feat: refit StoreProductChainPanel to use compact atlas"
 ### Task 13: Delete old `ProductChainGraph`, `ProductChainNodeDetail`, `ProductChainSelectionBridge`
 
 **Files:**
+
 - Delete: `src/lib/components/game/ProductChainGraph.svelte`
 - Delete: `src/lib/components/game/ProductChainGraph.svelte.spec.ts`
 - Delete: `src/lib/components/game/ProductChainNodeDetail.svelte`
@@ -2415,6 +2449,7 @@ git commit -m "refactor: remove ProductChainGraph and its xyflow dependencies"
 ### Task 14: Remove `@xyflow/svelte` from `package.json`
 
 **Files:**
+
 - Modify: `package.json`
 
 - [ ] **Step 1: Confirm no remaining imports of xyflow**
@@ -2434,10 +2469,12 @@ Expected: lockfile updates; no install errors.
 - [ ] **Step 4: Verify build + check still work**
 
 Run in parallel:
+
 ```
 bun run check
 bun run build
 ```
+
 Expected: both succeed.
 
 - [ ] **Step 5: Commit**
@@ -2454,6 +2491,7 @@ git commit -m "chore: drop @xyflow/svelte after atlas redesign"
 ### Task 15: Extend `retail-sim.e2e.ts` with one stamp-click assertion
 
 **Files:**
+
 - Modify: `src/routes/retail-sim.e2e.ts`
 
 - [ ] **Step 1: Find the right insertion point**
@@ -2514,10 +2552,12 @@ Expected: PASS for every spec.
 - [ ] **Step 3: Run lint and type check**
 
 Run in parallel:
+
 ```
 bun run lint
 bun run check
 ```
+
 Expected: zero errors.
 
 - [ ] **Step 4: Manual smoke test**

@@ -35,8 +35,7 @@
 				<span class="icons"><img src={icon} alt={summary.name} /></span>
 			{/if}
 			<span class="nums">
-				stock {formatQuantity(summary.warehouseStock)} ·
-				made {formatQuantity(summary.produced)}/d ·
+				stock {formatQuantity(summary.warehouseStock)} · made {formatQuantity(summary.produced)}/d ·
 				sold {formatQuantity(summary.consumed)}/d
 			</span>
 		</button>

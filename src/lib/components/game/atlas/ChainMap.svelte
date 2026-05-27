@@ -46,12 +46,11 @@
 		width: 100%;
 		min-height: var(--map-height);
 		border: 1px solid var(--paper-edge);
-		background:
-			linear-gradient(
-				135deg,
-				color-mix(in srgb, var(--paper-50) 96%, var(--brass-100)) 0%,
-				var(--paper-50) 70%
-			);
+		background: linear-gradient(
+			135deg,
+			color-mix(in srgb, var(--paper-50) 96%, var(--brass-100)) 0%,
+			var(--paper-50) 70%
+		);
 		overflow: hidden;
 	}
 
