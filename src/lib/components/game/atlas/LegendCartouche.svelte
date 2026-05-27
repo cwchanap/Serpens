@@ -7,8 +7,11 @@
 
 <style>
 	.legend {
-		background:
-			linear-gradient(180deg, color-mix(in srgb, var(--paper-50) 96%, var(--brass-100)) 0%, var(--paper-50) 100%);
+		background: linear-gradient(
+			180deg,
+			color-mix(in srgb, var(--paper-50) 96%, var(--brass-100)) 0%,
+			var(--paper-50) 100%
+		);
 		border: 1px solid var(--brass-700);
 		box-shadow:
 			inset 0 0 0 3px var(--paper-50),

@@ -77,9 +77,7 @@ describe('ProductChainAtlas', () => {
 			onSelectNode
 		});
 
-		await expect
-			.poll(() => onSelectNode.mock.calls.some(([nodeId]) => nodeId === null))
-			.toBe(true);
+		await expect.poll(() => onSelectNode.mock.calls.some(([nodeId]) => nodeId === null)).toBe(true);
 	});
 
 	it('emits the node id when a node button is clicked', async () => {
