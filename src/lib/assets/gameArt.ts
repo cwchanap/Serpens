@@ -350,7 +350,7 @@ const WAREHOUSE_ART_PATH = INDUSTRIAL_BUILDING_ART.warehouse;
 export function chainNodeArt(node: ProductChainNode): ChainNodeArt {
 	if (node.kind === 'material' && node.materialId) {
 		return {
-			src: INDUSTRY_MATERIAL_ART[node.materialId] ?? null,
+			src: INDUSTRY_MATERIAL_ART[node.materialId],
 			alt: node.label,
 			fallbackGlyph: 'material'
 		};
@@ -358,7 +358,7 @@ export function chainNodeArt(node: ProductChainNode): ChainNodeArt {
 
 	if (node.kind === 'recipe' && node.recipeId) {
 		return {
-			src: RECIPE_BUILDING_ART[node.recipeId] ?? null,
+			src: RECIPE_BUILDING_ART[node.recipeId],
 			alt: node.label,
 			fallbackGlyph: 'recipe'
 		};

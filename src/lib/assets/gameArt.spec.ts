@@ -487,11 +487,11 @@ describe('chainNodeArt', () => {
 
 	it('returns a null src with kind-keyed fallback when nothing matches', () => {
 		expect.assertions(1);
-		const art = chainNodeArt(nodeStub({ kind: 'material', materialId: null }));
+		const art = chainNodeArt(nodeStub({ kind: 'recipe', recipeId: null }));
 		expect(art).toEqual({
 			src: null,
 			alt: 'Stub',
-			fallbackGlyph: 'material'
+			fallbackGlyph: 'recipe'
 		});
 	});
 });
