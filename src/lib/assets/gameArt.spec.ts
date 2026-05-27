@@ -25,14 +25,17 @@ import {
 	STORE_ART_LIST,
 	TERRAIN_ART,
 	TERRAIN_ART_LIST,
+	chainNodeArt,
 	getIndustrialBuildingArt,
 	getIndustryMaterialArt,
 	getIndustryResourceArt,
 	getIndustryTerrainArt,
 	getProductArt,
 	getStoreArt,
-	getTerrainArt
+	getTerrainArt,
+	type ChainNodeArt
 } from './gameArt';
+import type { ProductChainNode } from '$lib/game/productChainGraph';
 import type { ArchetypeId, ProductionRecipeId } from '$lib/game/types';
 
 const archetypeIds: ArchetypeId[] = ['convenience', 'boutique', 'electronics', 'grocery'];
@@ -422,5 +425,73 @@ describe('RECIPE_BUILDING_ART', () => {
 		const recipeIdsInMap = new Set(Object.keys(RECIPE_BUILDING_ART));
 		const missing = [...recipeIdsWithBuildings].filter((id) => !recipeIdsInMap.has(id));
 		expect(missing).toEqual([]);
+	});
+});
+
+function nodeStub(overrides: Partial<ProductChainNode>): ProductChainNode {
+	return {
+		id: 'stub',
+		kind: 'material',
+		label: 'Stub',
+		materialId: null,
+		recipeId: null,
+		stage: null,
+		layer: 0,
+		row: 0,
+		health: 'healthy',
+		healthLabel: 'Healthy',
+		warehouseStock: 0,
+		capacity: { buildingCount: 0, outputPerDay: 0, inputPerDay: 0 },
+		actual: {
+			produced: 0,
+			consumed: 0,
+			importedInput: 0,
+			warehousePulled: 0,
+			shopImported: 0,
+			unitsSold: 0,
+			demandMissed: 0
+		},
+		bottleneck: '',
+		...overrides
+	};
+}
+
+describe('chainNodeArt', () => {
+	it('returns material art for a material node', () => {
+		expect.assertions(1);
+		const art: ChainNodeArt = chainNodeArt(nodeStub({ kind: 'material', materialId: 'flour' }));
+		expect(art).toEqual({
+			src: '/assets/game/industry/materials/flour.png',
+			alt: 'Stub',
+			fallbackGlyph: 'material'
+		});
+	});
+
+	it('returns recipe building art for a recipe node', () => {
+		expect.assertions(1);
+		const art = chainNodeArt(
+			nodeStub({ kind: 'recipe', recipeId: 'flour-milling', label: 'Flour mill' })
+		);
+		expect(art.src).toBe('/assets/game/industry/buildings/flour-mill.png');
+	});
+
+	it('returns warehouse art for a warehouse node', () => {
+		expect.assertions(1);
+		const art = chainNodeArt(nodeStub({ kind: 'warehouse', label: 'Warehouse' }));
+		expect(art).toEqual({
+			src: '/assets/game/industry/buildings/warehouse.png',
+			alt: 'Warehouse',
+			fallbackGlyph: 'warehouse'
+		});
+	});
+
+	it('returns a null src with kind-keyed fallback when nothing matches', () => {
+		expect.assertions(1);
+		const art = chainNodeArt(nodeStub({ kind: 'material', materialId: null }));
+		expect(art).toEqual({
+			src: null,
+			alt: 'Stub',
+			fallbackGlyph: 'material'
+		});
 	});
 });

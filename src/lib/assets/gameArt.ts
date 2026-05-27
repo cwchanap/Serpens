@@ -1,4 +1,5 @@
 import { INDUSTRIAL_BUILDING_TYPES } from '$lib/game/industry';
+import type { ProductChainNode } from '$lib/game/productChainGraph';
 import type {
 	ArchetypeId,
 	IndustrialBuildingTypeId,
@@ -336,4 +337,40 @@ export function getIndustryMaterialArt(material: MaterialId): string {
 
 export function getIndustrialBuildingArt(buildingType: IndustrialBuildingTypeId): string {
 	return INDUSTRIAL_BUILDING_ART[buildingType];
+}
+
+export interface ChainNodeArt {
+	src: string | null;
+	alt: string;
+	fallbackGlyph: 'material' | 'recipe' | 'warehouse';
+}
+
+const WAREHOUSE_ART_PATH = INDUSTRIAL_BUILDING_ART.warehouse;
+
+export function chainNodeArt(node: ProductChainNode): ChainNodeArt {
+	if (node.kind === 'material' && node.materialId) {
+		return {
+			src: INDUSTRY_MATERIAL_ART[node.materialId] ?? null,
+			alt: node.label,
+			fallbackGlyph: 'material'
+		};
+	}
+
+	if (node.kind === 'recipe' && node.recipeId) {
+		return {
+			src: RECIPE_BUILDING_ART[node.recipeId] ?? null,
+			alt: node.label,
+			fallbackGlyph: 'recipe'
+		};
+	}
+
+	if (node.kind === 'warehouse') {
+		return {
+			src: WAREHOUSE_ART_PATH,
+			alt: node.label,
+			fallbackGlyph: 'warehouse'
+		};
+	}
+
+	return { src: null, alt: node.label, fallbackGlyph: node.kind };
 }
