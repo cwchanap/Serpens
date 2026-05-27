@@ -1,6 +1,6 @@
 <script lang="ts">
-	import ProductChainGraph from '$lib/components/game/ProductChainGraph.svelte';
-	import ProductChainNodeDetail from '$lib/components/game/ProductChainNodeDetail.svelte';
+	import NodeBroadside from '$lib/components/game/atlas/NodeBroadside.svelte';
+	import ProductChainAtlas from '$lib/components/game/atlas/ProductChainAtlas.svelte';
 	import {
 		buildProductChainGraph,
 		getSupportedStoreChainCategories
@@ -20,11 +20,7 @@
 
 	let { game, store }: Props = $props();
 
-	let selection = $state<StoreChainSelection>({
-		storeId: null,
-		categoryId: null,
-		nodeId: null
-	});
+	let selection = $state<StoreChainSelection>({ storeId: null, categoryId: null, nodeId: null });
 	let previousStoreId = $state<string | null>(null);
 
 	const selectId = $props.id();
@@ -33,11 +29,7 @@
 		(): StoreChainSelection =>
 			selection.storeId === store.id
 				? selection
-				: {
-						storeId: store.id,
-						categoryId: null,
-						nodeId: null
-					}
+				: { storeId: store.id, categoryId: null, nodeId: null }
 	);
 	const selectedCategory = $derived.by(
 		() =>
@@ -55,16 +47,9 @@
 	);
 
 	$effect(() => {
-		if (previousStoreId === store.id) {
-			return;
-		}
-
+		if (previousStoreId === store.id) return;
 		previousStoreId = store.id;
-		selection = {
-			storeId: store.id,
-			categoryId: null,
-			nodeId: null
-		};
+		selection = { storeId: store.id, categoryId: null, nodeId: null };
 	});
 
 	function selectCategory(event: Event): void {
@@ -93,16 +78,17 @@
 					<option value={category.id}>{category.name}</option>
 				{/each}
 			</select>
+			<p class="chain-title">{graph.title}</p>
 		</div>
 
 		<div class="chain-content">
-			<ProductChainGraph
+			<ProductChainAtlas
 				{graph}
 				selectedNodeId={activeSelection.nodeId}
 				compact
 				onSelectNode={selectNode}
 			/>
-			<ProductChainNodeDetail node={selectedNode} />
+			<NodeBroadside node={selectedNode} />
 		</div>
 	{:else}
 		<p class="empty">No local production chain available for this store's categories yet.</p>
@@ -140,6 +126,14 @@
 		font-family: var(--font-ui);
 		font-size: 0.92rem;
 		padding: 0.45rem 0.55rem;
+	}
+
+	.chain-title {
+		margin: 0.15rem 0 0;
+		font-family: var(--font-body);
+		font-size: 0.85rem;
+		font-style: italic;
+		color: var(--ink-500);
 	}
 
 	.chain-content {
