@@ -1175,8 +1175,9 @@ describe('ProductChainAtlas', () => {
 
 		const buttons = page.getByRole('button');
 		await expect.element(buttons.first()).toBeVisible();
+		// Vitest 4's BrowserPage has no .locator(); use getByRole with the aria-label.
 		await expect
-			.element(page.locator(`button[data-node-id="${firstNode.id}"]`))
+			.element(page.getByRole('button', { name: `${firstNode.label}, ${firstNode.healthLabel}` }))
 			.toHaveAttribute('aria-pressed', 'true');
 	});
 
@@ -1227,7 +1228,10 @@ describe('ProductChainAtlas', () => {
 			onSelectNode
 		});
 
-		await page.locator(`button[data-node-id="${firstNode.id}"]`).click();
+		// Vitest 4's BrowserPage has no .locator(); use getByRole with the aria-label.
+		await page
+			.getByRole('button', { name: `${firstNode.label}, ${firstNode.healthLabel}` })
+			.click();
 		expect(onSelectNode).toHaveBeenCalledWith(firstNode.id);
 	});
 });
