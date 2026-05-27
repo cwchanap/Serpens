@@ -773,7 +773,7 @@ test('player builds convenience production and refills from warehouse', async ({
 	await storesPanel.getByRole('button', { name: /close stores/i }).click();
 	const productChains = await openManagementPanel(page, /product chains/i);
 	await expect(productChains).toBeVisible();
-	await expect(productChains.getByRole('button', { name: /Snacks/ })).toBeVisible();
+	await expect(productChains.getByTestId('category-stamp-snacks')).toBeVisible();
 	await expect(productChains.getByTestId('product-chain-graph-chain:snacks')).toBeVisible();
 	await productChains.getByRole('button', { name: 'Warehouse flow' }).click();
 	await expect(productChains.getByTestId('product-chain-graph-warehouse-flow')).toBeVisible();
