@@ -1,9 +1,11 @@
+import { INDUSTRIAL_BUILDING_TYPES } from '$lib/game/industry';
 import type {
 	ArchetypeId,
 	IndustrialBuildingTypeId,
 	IndustryResourceId,
 	IndustryTerrainId,
 	MaterialId,
+	ProductionRecipeId,
 	TerrainId
 } from '$lib/game/types';
 
@@ -269,6 +271,19 @@ export const INDUSTRIAL_BUILDING_ART: Readonly<Record<IndustrialBuildingTypeId, 
 		'gift-workshop': '/assets/game/industry/buildings/gift-workshop.png',
 		warehouse: '/assets/game/industry/buildings/warehouse.png'
 	});
+
+export const RECIPE_BUILDING_ART: Readonly<Record<ProductionRecipeId, string>> = Object.freeze(
+	(() => {
+		const map: Partial<Record<ProductionRecipeId, string>> = {};
+		for (const building of Object.values(INDUSTRIAL_BUILDING_TYPES)) {
+			if (!building.recipeId) continue;
+			const art = INDUSTRIAL_BUILDING_ART[building.id];
+			if (!art) continue;
+			map[building.recipeId] = art;
+		}
+		return map as Record<ProductionRecipeId, string>;
+	})()
+);
 
 export const INDUSTRY_TERRAIN_ART_LIST: readonly string[] = Object.freeze(
 	Object.values(INDUSTRY_TERRAIN_ART)
