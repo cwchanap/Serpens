@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { ARCHETYPES } from '$lib/game/archetypes';
+import { INDUSTRIAL_BUILDING_TYPES } from '$lib/game/industry';
 import {
 	ARCHETYPE_STORE_ART,
 	INDUSTRIAL_BUILDING_ART,
@@ -17,6 +18,7 @@ import {
 	INDUSTRY_TERRAIN_ART_LIST,
 	PRODUCT_ART,
 	PRODUCT_ART_LIST,
+	RECIPE_BUILDING_ART,
 	SHOP_STOREFRONT_ALT,
 	SHOP_STOREFRONT_PATH,
 	SHOP_STOREFRONT_TEXTURE_KEY,
@@ -31,7 +33,7 @@ import {
 	getStoreArt,
 	getTerrainArt
 } from './gameArt';
-import type { ArchetypeId } from '$lib/game/types';
+import type { ArchetypeId, ProductionRecipeId } from '$lib/game/types';
 
 const archetypeIds: ArchetypeId[] = ['convenience', 'boutique', 'electronics', 'grocery'];
 const productCategoryIds = [
@@ -394,5 +396,31 @@ describe('game art asset constants', () => {
 		expect(duplicateAssetPaths(INDUSTRY_RESOURCE_ART_LIST)).toEqual([]);
 		expect(duplicateAssetPaths(INDUSTRY_MATERIAL_ART_LIST)).toEqual([]);
 		expect(duplicateAssetPaths(INDUSTRIAL_BUILDING_ART_LIST)).toEqual([]);
+	});
+});
+
+describe('RECIPE_BUILDING_ART', () => {
+	it('maps every recipe with a registered building to that building art', () => {
+		expect.assertions(1);
+		const expected: Record<string, string> = {};
+		for (const building of Object.values(INDUSTRIAL_BUILDING_TYPES)) {
+			if (!building.recipeId) continue;
+			const art = INDUSTRIAL_BUILDING_ART[building.id];
+			if (!art) continue;
+			expected[building.recipeId] = art;
+		}
+		expect(RECIPE_BUILDING_ART).toEqual(expected);
+	});
+
+	it('covers every recipe that has a building bound to it', () => {
+		expect.assertions(1);
+		const recipeIdsWithBuildings = new Set(
+			Object.values(INDUSTRIAL_BUILDING_TYPES)
+				.map((building) => building.recipeId)
+				.filter((id): id is ProductionRecipeId => Boolean(id))
+		);
+		const recipeIdsInMap = new Set(Object.keys(RECIPE_BUILDING_ART));
+		const missing = [...recipeIdsWithBuildings].filter((id) => !recipeIdsInMap.has(id));
+		expect(missing).toEqual([]);
 	});
 });
