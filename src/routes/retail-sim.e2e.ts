@@ -995,3 +995,20 @@ test('player can save to a manual slot and load it after reload', async ({ page 
 	await expect(page.locator('.map-canvas canvas')).toHaveAttribute('data-store-sprite-count', '1');
 	await expect(page.getByText(/Loaded Harbor test/i)).toBeVisible();
 });
+
+test('clicking a category stamp updates the atlas heading', async ({ page }) => {
+	await page.goto('/');
+	await buildRetailStoreAt(page, {
+		x: 1,
+		y: 6,
+		storeTypeName: /build convenience store/i,
+		expectedStoreCount: 1
+	});
+
+	const panel = await openManagementPanel(page, /product chains/i);
+	const drinksStamp = panel.getByTestId('category-stamp-drinks');
+	await expect(drinksStamp).toBeVisible();
+	await drinksStamp.click();
+
+	await expect(panel.getByRole('heading', { level: 2, name: 'Drinks' })).toBeVisible();
+});
