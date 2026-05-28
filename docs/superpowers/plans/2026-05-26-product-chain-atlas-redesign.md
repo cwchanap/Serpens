@@ -107,18 +107,19 @@ import type { ProductionRecipeId } from '$lib/game/types';
 Add after the existing `INDUSTRIAL_BUILDING_ART` constant (around line 271):
 
 ```ts
-export const RECIPE_BUILDING_ART: Readonly<Record<ProductionRecipeId, string>> = Object.freeze(
-	(() => {
-		const map: Partial<Record<ProductionRecipeId, string>> = {};
-		for (const building of Object.values(INDUSTRIAL_BUILDING_TYPES)) {
-			if (!building.recipeId) continue;
-			const art = INDUSTRIAL_BUILDING_ART[building.id];
-			if (!art) continue;
-			map[building.recipeId] = art;
-		}
-		return map as Record<ProductionRecipeId, string>;
-	})()
-);
+export const RECIPE_BUILDING_ART: Readonly<Partial<Record<ProductionRecipeId, string>>> =
+	Object.freeze(
+		(() => {
+			const map: Partial<Record<ProductionRecipeId, string>> = {};
+			for (const building of Object.values(INDUSTRIAL_BUILDING_TYPES)) {
+				if (!building.recipeId) continue;
+				const art = INDUSTRIAL_BUILDING_ART[building.id];
+				if (!art) continue;
+				map[building.recipeId] = art;
+			}
+			return map;
+		})()
+	);
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
@@ -179,12 +180,12 @@ function nodeStub(overrides: Partial<ProductChainNode>): ProductChainNode {
 }
 
 describe('chainNodeArt', () => {
-	it('returns material art for a material node', () => {
+ 	it('returns material art for a material node', () => {
 		expect.assertions(1);
 		const art: ChainNodeArt = chainNodeArt(nodeStub({ kind: 'material', materialId: 'flour' }));
 		expect(art).toEqual({
 			src: '/assets/game/industry/materials/flour.png',
-			alt: 'Flour',
+			alt: 'Stub',
 			fallbackGlyph: 'material'
 		});
 	});
@@ -192,7 +193,7 @@ describe('chainNodeArt', () => {
 	it('returns recipe building art for a recipe node', () => {
 		expect.assertions(1);
 		const art = chainNodeArt(
-			nodeStub({ kind: 'recipe', recipeId: 'flour-from-grain', label: 'Flour mill' })
+			nodeStub({ kind: 'recipe', recipeId: 'flour-milling', label: 'Flour mill' })
 		);
 		expect(art.src).toBe('/assets/game/industry/buildings/flour-mill.png');
 	});
@@ -248,7 +249,7 @@ const WAREHOUSE_ART_PATH = INDUSTRIAL_BUILDING_ART.warehouse;
 export function chainNodeArt(node: ProductChainNode): ChainNodeArt {
 	if (node.kind === 'material' && node.materialId) {
 		return {
-			src: INDUSTRY_MATERIAL_ART[node.materialId] ?? null,
+			src: INDUSTRY_MATERIAL_ART[node.materialId],
 			alt: node.label,
 			fallbackGlyph: 'material'
 		};
@@ -685,11 +686,11 @@ it('renders a recipe node with the building icon and shortage styling', async ()
 	const onSelect = vi.fn();
 	render(ChainNode, {
 		node: materialNode({
-			id: 'recipe:flour-from-grain',
+			id: 'recipe:flour-milling',
 			kind: 'recipe',
 			label: 'Flour mill',
 			materialId: null,
-			recipeId: 'flour-from-grain',
+			recipeId: 'flour-milling',
 			health: 'shortage',
 			healthLabel: 'Shortage',
 			capacity: { buildingCount: 1, outputPerDay: 20, inputPerDay: 20 }
@@ -1492,11 +1493,11 @@ import NodeBroadside from './NodeBroadside.svelte';
 
 function shortageRecipeNode(): ProductChainNode {
 	return {
-		id: 'recipe:flour-from-grain',
+		id: 'recipe:flour-milling',
 		kind: 'recipe',
 		label: 'Flour mill',
 		materialId: null,
-		recipeId: 'flour-from-grain',
+		recipeId: 'flour-milling',
 		stage: 'process',
 		layer: 1,
 		row: 0,
@@ -2470,7 +2471,7 @@ Expected: lockfile updates; no install errors.
 
 Run in parallel:
 
-```
+```bash
 bun run check
 bun run build
 ```
@@ -2553,7 +2554,7 @@ Expected: PASS for every spec.
 
 Run in parallel:
 
-```
+```bash
 bun run lint
 bun run check
 ```

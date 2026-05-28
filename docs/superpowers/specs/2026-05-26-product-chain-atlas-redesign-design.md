@@ -93,7 +93,7 @@ Animation is suppressed under `prefers-reduced-motion: reduce`.
 
 ## Architecture
 
-```
+```text
 src/lib/components/game/
 ├─ ProductChainsPanel.svelte          (refit)
 ├─ StoreProductChainPanel.svelte      (refit)
@@ -186,9 +186,9 @@ No changes to `productChainGraph.ts`.
 
 ```ts
 interface ChainNodeArt {
-	src: string;
-	alt: string;
-	fallbackGlyph: 'material' | 'recipe' | 'warehouse';
+  src: string | null;
+  alt: string;
+  fallbackGlyph: 'material' | 'recipe' | 'warehouse';
 }
 
 export function chainNodeArt(node: ProductChainNode): ChainNodeArt;
@@ -201,13 +201,13 @@ Resolution rules:
 - `kind === 'warehouse'` → `INDUSTRY_BUILDING_ART['warehouse']` (a constant).
 - Anything missing → fallback glyph (no `src`, the component renders an inline SVG keyed by `fallbackGlyph`).
 
-**Recipe → building art map:** recipes already reference building types in `industry.ts` (`PRODUCTION_RECIPES`). Surface a derived map in `gameArt.ts`:
+**Recipe → building art map:** building types already reference recipe IDs in `industry.ts` (`INDUSTRIAL_BUILDING_TYPES`). Surface a derived map in `gameArt.ts`:
 
 ```ts
 export const RECIPE_BUILDING_ART: Readonly<Record<ProductionRecipeId, string>>;
 ```
 
-This map is computed at module load by joining `PRODUCTION_RECIPES` with `INDUSTRY_BUILDING_ART`. If a recipe's building has no art, the entry is omitted (the resolver falls through to glyph).
+This map is computed at module load by iterating `INDUSTRIAL_BUILDING_TYPES` and reading each building's associated `recipeId` and art from `INDUSTRIAL_BUILDING_ART`. If a building type has no registered art entry, its recipe is omitted (the resolver falls back to glyph).
 
 The existing `gameArt.spec.ts` invariant ("every PNG under `static/assets/game/` is wired up") is extended: every `ProductionRecipeId` either has a `RECIPE_BUILDING_ART` entry or the corresponding recipe is documented as glyph-only.
 

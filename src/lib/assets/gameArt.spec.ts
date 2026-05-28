@@ -426,6 +426,11 @@ describe('RECIPE_BUILDING_ART', () => {
 		const missing = [...recipeIdsWithBuildings].filter((id) => !recipeIdsInMap.has(id));
 		expect(missing).toEqual([]);
 	});
+
+	it('returns undefined for recipe IDs without a registered building', () => {
+		expect.assertions(1);
+		expect(RECIPE_BUILDING_ART['nonexistent-recipe' as ProductionRecipeId]).toBeUndefined();
+	});
 });
 
 function nodeStub(overrides: Partial<ProductChainNode>): ProductChainNode {
@@ -491,6 +496,22 @@ describe('chainNodeArt', () => {
 		expect(art).toEqual({
 			src: null,
 			alt: 'Stub',
+			fallbackGlyph: 'recipe'
+		});
+	});
+
+	it('returns a null src for a recipe node whose recipeId is not in RECIPE_BUILDING_ART', () => {
+		expect.assertions(1);
+		const art = chainNodeArt(
+			nodeStub({
+				kind: 'recipe',
+				recipeId: 'nonexistent-recipe' as ProductionRecipeId,
+				label: 'Unknown'
+			})
+		);
+		expect(art).toEqual({
+			src: null,
+			alt: 'Unknown',
 			fallbackGlyph: 'recipe'
 		});
 	});
