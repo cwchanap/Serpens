@@ -91,7 +91,11 @@ describe('ChainRoute', () => {
 		const text = group.querySelector('text');
 		expect(text?.textContent).toBe(shortLabel);
 
-		view.rerender({ edge: makeEdge({ label: longLabel }), source: { x: 0, y: 0 }, target: { x: 200, y: 0 } });
+		view.rerender({
+			edge: makeEdge({ label: longLabel }),
+			source: { x: 0, y: 0 },
+			target: { x: 200, y: 0 }
+		});
 
 		await new Promise((r) => setTimeout(r, 0));
 

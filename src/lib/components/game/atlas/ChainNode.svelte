@@ -16,7 +16,7 @@
 	const ariaLabel = $derived(`${node.label}, ${node.healthLabel}`);
 	const statLine = $derived.by(() => {
 		if (node.kind === 'recipe') {
-			return `${node.capacity.buildingCount} bldg · ${formatQuantity(node.actual.produced)}/d`;
+			return `${node.capacity.buildingCount} bldg · ${formatQuantity(node.capacity.outputPerDay)}/d`;
 		}
 		return `stock ${formatQuantity(node.warehouseStock)}`;
 	});
