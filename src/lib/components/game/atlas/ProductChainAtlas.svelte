@@ -18,7 +18,7 @@
 	let previousGraphId = $state<string | null>(null);
 
 	const xStep = $derived(compact ? 155 : 210);
-	const yStep = $derived(compact ? 92 : 124);
+	const yStep = $derived(compact ? 112 : 156);
 	const xPad = $derived(compact ? 30 : 60);
 	const yPad = $derived(compact ? 30 : 60);
 
@@ -35,7 +35,7 @@
 	const centers = $derived.by(() => {
 		const map = new SvelteMap<string, { x: number; y: number }>();
 		const halfX = compact ? 52 : 66;
-		const halfY = compact ? 46 : 60;
+		const halfY = compact ? 56 : 78;
 		for (const { node, position } of positioned) {
 			map.set(node.id, { x: position.x + halfX, y: position.y + halfY });
 		}
@@ -47,7 +47,7 @@
 		let maxY = 0;
 		for (const { position } of positioned) {
 			maxX = Math.max(maxX, position.x + (compact ? 104 : 132));
-			maxY = Math.max(maxY, position.y + (compact ? 110 : 150));
+			maxY = Math.max(maxY, position.y + (compact ? 110 : 152));
 		}
 		return {
 			width: Math.max(maxX + xPad, compact ? 520 : 880),
