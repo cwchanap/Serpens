@@ -2,7 +2,6 @@
 	<h4>· Routes ·</h4>
 	<div class="row"><span class="line healthy"></span> Healthy flow</div>
 	<div class="row"><span class="line shortage"></span> Shortage</div>
-	<div class="row"><span class="line imports"></span> Imports</div>
 </aside>
 
 <style>
@@ -53,9 +52,5 @@
 
 	.line.shortage {
 		border-top: 2px dashed var(--wax-red);
-	}
-
-	.line.imports {
-		border-top: 2px dotted var(--royal-ink);
 	}
 </style>

@@ -101,4 +101,23 @@ describe('ProductChainAtlas', () => {
 			.click();
 		expect(onSelectNode).toHaveBeenCalledWith(firstNode.id);
 	});
+
+	it('renders SVG route groups for every graph edge', async () => {
+		expect.assertions(1);
+		const game = createNewGame('convenience', 20260518);
+		const graph = buildProductChainGraph({
+			game,
+			store: game.stores[0]!,
+			categoryId: 'snacks'
+		});
+		const onSelectNode = vi.fn();
+		render(ProductChainAtlas, {
+			graph,
+			selectedNodeId: null,
+			onSelectNode
+		});
+
+		const edgeGroups = document.querySelectorAll('g[data-edge-id]');
+		expect(edgeGroups).toHaveLength(graph.edges.length);
+	});
 });

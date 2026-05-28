@@ -351,7 +351,7 @@ const WAREHOUSE_ART_PATH = INDUSTRIAL_BUILDING_ART.warehouse;
 export function chainNodeArt(node: ProductChainNode): ChainNodeArt {
 	if (node.kind === 'material' && node.materialId) {
 		return {
-			src: INDUSTRY_MATERIAL_ART[node.materialId],
+			src: INDUSTRY_MATERIAL_ART[node.materialId] ?? null,
 			alt: node.label,
 			fallbackGlyph: 'material'
 		};
