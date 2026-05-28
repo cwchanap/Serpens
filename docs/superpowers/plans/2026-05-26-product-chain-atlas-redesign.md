@@ -180,7 +180,7 @@ function nodeStub(overrides: Partial<ProductChainNode>): ProductChainNode {
 }
 
 describe('chainNodeArt', () => {
- 	it('returns material art for a material node', () => {
+	it('returns material art for a material node', () => {
 		expect.assertions(1);
 		const art: ChainNodeArt = chainNodeArt(nodeStub({ kind: 'material', materialId: 'flour' }));
 		expect(art).toEqual({

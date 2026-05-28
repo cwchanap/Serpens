@@ -51,7 +51,7 @@
 			color-mix(in srgb, var(--paper-50) 96%, var(--brass-100)) 0%,
 			var(--paper-50) 70%
 		);
-		overflow: hidden;
+		overflow: auto;
 	}
 
 	.canvas {

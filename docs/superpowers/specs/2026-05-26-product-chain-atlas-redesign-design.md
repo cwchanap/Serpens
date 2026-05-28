@@ -186,9 +186,9 @@ No changes to `productChainGraph.ts`.
 
 ```ts
 interface ChainNodeArt {
-  src: string | null;
-  alt: string;
-  fallbackGlyph: 'material' | 'recipe' | 'warehouse';
+	src: string | null;
+	alt: string;
+	fallbackGlyph: 'material' | 'recipe' | 'warehouse';
 }
 
 export function chainNodeArt(node: ProductChainNode): ChainNodeArt;
