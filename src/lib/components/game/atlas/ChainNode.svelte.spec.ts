@@ -90,6 +90,38 @@ describe('ChainNode', () => {
 		await expect.element(button).toHaveAttribute('data-node-health', 'shortage');
 	});
 
+	it('shows capacity outputPerDay in recipe node stat, not actual.produced', async () => {
+		expect.assertions(1);
+		const onSelect = vi.fn();
+		render(ChainNode, {
+			node: materialNode({
+				id: 'recipe:flour-milling',
+				kind: 'recipe',
+				label: 'Flour mill',
+				materialId: null,
+				recipeId: 'flour-milling',
+				health: 'healthy',
+				healthLabel: 'Healthy',
+				capacity: { buildingCount: 3, outputPerDay: 60, inputPerDay: 60 },
+				actual: {
+					produced: 0,
+					consumed: 0,
+					importedInput: 0,
+					warehousePulled: 0,
+					shopImported: 0,
+					unitsSold: 0,
+					demandMissed: 0
+				}
+			}),
+			selected: false,
+			compact: false,
+			position: { x: 0, y: 0 },
+			onSelect
+		});
+
+		await expect.element(page.getByText('3 bldg · 60/d')).toBeVisible();
+	});
+
 	it('renders a warehouse node with the warehouse icon and stock stat', async () => {
 		expect.assertions(2);
 		const onSelect = vi.fn();

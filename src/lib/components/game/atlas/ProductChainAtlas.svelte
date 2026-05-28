@@ -97,7 +97,6 @@
 					width={layout.width}
 					height={layout.height}
 					viewBox={`0 0 ${layout.width} ${layout.height}`}
-					aria-hidden="true"
 				>
 					<defs>
 						{#each ['healthy', 'watch', 'shortage', 'no-local-capacity', 'no-report'] as health (health)}

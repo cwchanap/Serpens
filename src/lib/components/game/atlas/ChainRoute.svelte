@@ -30,7 +30,8 @@
 
 	$effect(() => {
 		if (textEl) {
-			edge.label;
+			const _label = edge.label;
+			void _label;
 			labelWidth = textEl.getComputedTextLength();
 		}
 	});
