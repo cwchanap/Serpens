@@ -273,18 +273,19 @@ export const INDUSTRIAL_BUILDING_ART: Readonly<Record<IndustrialBuildingTypeId, 
 		warehouse: '/assets/game/industry/buildings/warehouse.png'
 	});
 
-export const RECIPE_BUILDING_ART: Readonly<Record<ProductionRecipeId, string>> = Object.freeze(
-	(() => {
-		const map: Partial<Record<ProductionRecipeId, string>> = {};
-		for (const building of Object.values(INDUSTRIAL_BUILDING_TYPES)) {
-			if (!building.recipeId) continue;
-			const art = INDUSTRIAL_BUILDING_ART[building.id];
-			if (!art) continue;
-			map[building.recipeId] = art;
-		}
-		return map as Record<ProductionRecipeId, string>;
-	})()
-);
+export const RECIPE_BUILDING_ART: Readonly<Partial<Record<ProductionRecipeId, string>>> =
+	Object.freeze(
+		(() => {
+			const map: Partial<Record<ProductionRecipeId, string>> = {};
+			for (const building of Object.values(INDUSTRIAL_BUILDING_TYPES)) {
+				if (!building.recipeId) continue;
+				const art = INDUSTRIAL_BUILDING_ART[building.id];
+				if (!art) continue;
+				map[building.recipeId] = art;
+			}
+			return map;
+		})()
+	);
 
 export const INDUSTRY_TERRAIN_ART_LIST: readonly string[] = Object.freeze(
 	Object.values(INDUSTRY_TERRAIN_ART)
@@ -358,7 +359,7 @@ export function chainNodeArt(node: ProductChainNode): ChainNodeArt {
 
 	if (node.kind === 'recipe' && node.recipeId) {
 		return {
-			src: RECIPE_BUILDING_ART[node.recipeId],
+			src: RECIPE_BUILDING_ART[node.recipeId] ?? null,
 			alt: node.label,
 			fallbackGlyph: 'recipe'
 		};
