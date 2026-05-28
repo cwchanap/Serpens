@@ -25,6 +25,19 @@
 	const dashArray = $derived(healthDash(edge.health));
 	const ariaLabel = $derived(`${edge.label}, ${edge.health.replace(/-/g, ' ')}`);
 
+	let textEl: SVGTextElement | null = $state(null);
+	let labelWidth = $state(44);
+
+	$effect(() => {
+		if (textEl) {
+			labelWidth = textEl.getComputedTextLength();
+		}
+	});
+
+	const rectPad = 6;
+	const rectWidth = $derived(Math.max(44, labelWidth + rectPad * 2));
+	const rectX = $derived(-rectWidth / 2);
+
 	function healthStroke(health: ProductChainHealth): string {
 		if (health === 'healthy') return 'var(--moss)';
 		if (health === 'shortage' || health === 'no-local-capacity') return 'var(--wax-red)';
@@ -56,8 +69,16 @@
 		marker-end={`url(#chain-route-arrow-${edge.health})`}
 	/>
 	<g transform={`translate(${mid.x}, ${mid.y - 8})`}>
-		<rect x="-22" y="-9" width="44" height="14" fill="var(--paper-50)" stroke="var(--paper-edge)" />
+		<rect
+			x={rectX}
+			y="-9"
+			width={rectWidth}
+			height="14"
+			fill="var(--paper-50)"
+			stroke="var(--paper-edge)"
+		/>
 		<text
+			bind:this={textEl}
 			text-anchor="middle"
 			dominant-baseline="middle"
 			y="-2"
