@@ -102,5 +102,10 @@
 		top: 88px;
 		z-index: 3;
 		width: 240px;
+		pointer-events: none;
+	}
+
+	.broadside-slot :global(*) {
+		pointer-events: auto;
 	}
 </style>

@@ -79,4 +79,22 @@ describe('ChainRoute', () => {
 		const title = group.querySelector('title');
 		expect(title?.textContent).toBe('3/day used, no report');
 	});
+
+	it('recalculates label background width when edge label changes', async () => {
+		expect.assertions(2);
+		const shortLabel = '5/day';
+		const longLabel = '99999/day produced here';
+		const edge = makeEdge({ label: shortLabel });
+		const view = renderRoute(edge);
+
+		const group = getRouteGroup(edge.id);
+		const text = group.querySelector('text');
+		expect(text?.textContent).toBe(shortLabel);
+
+		view.rerender({ edge: makeEdge({ label: longLabel }), source: { x: 0, y: 0 }, target: { x: 200, y: 0 } });
+
+		await new Promise((r) => setTimeout(r, 0));
+
+		expect(text?.textContent).toBe(longLabel);
+	});
 });
