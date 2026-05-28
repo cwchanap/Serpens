@@ -111,4 +111,27 @@ describe('ChainNode', () => {
 		await expect.element(button).toHaveAttribute('data-node-kind', 'warehouse');
 		await expect.element(button).toHaveAttribute('aria-pressed', 'true');
 	});
+
+	it('renders a glyph fallback with data-art-missing when art src is null', async () => {
+		expect.assertions(2);
+		const onSelect = vi.fn();
+		render(ChainNode, {
+			node: materialNode({
+				id: 'recipe:unknown',
+				kind: 'recipe',
+				label: 'Unknown recipe',
+				materialId: null,
+				recipeId: null
+			}),
+			selected: false,
+			compact: false,
+			position: { x: 0, y: 0 },
+			onSelect
+		});
+
+		const button = page.getByRole('button', { name: /Unknown recipe/i });
+		await expect.element(button).toBeVisible();
+		const glyph = page.getByText('U').first();
+		await expect.element(glyph).toHaveAttribute('data-art-missing');
+	});
 });

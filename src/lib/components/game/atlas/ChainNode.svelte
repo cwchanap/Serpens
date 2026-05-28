@@ -48,7 +48,7 @@
 		{#if art.src}
 			<img src={art.src} alt={art.alt} class="icon" />
 		{:else}
-			<span class="glyph" aria-hidden="true">{node.label.charAt(0)}</span>
+			<span class="glyph" data-art-missing aria-hidden="true">{node.label.charAt(0)}</span>
 		{/if}
 		<span class={['pin', `pin-${node.health}`]}>{node.healthLabel}</span>
 	</span>

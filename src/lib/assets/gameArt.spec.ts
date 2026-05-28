@@ -36,7 +36,7 @@ import {
 	type ChainNodeArt
 } from './gameArt';
 import type { ProductChainNode } from '$lib/game/productChainGraph';
-import type { ArchetypeId, ProductionRecipeId } from '$lib/game/types';
+import type { ArchetypeId, MaterialId, ProductionRecipeId } from '$lib/game/types';
 
 const archetypeIds: ArchetypeId[] = ['convenience', 'boutique', 'electronics', 'grocery'];
 const productCategoryIds = [
@@ -497,6 +497,22 @@ describe('chainNodeArt', () => {
 			src: null,
 			alt: 'Stub',
 			fallbackGlyph: 'recipe'
+		});
+	});
+
+	it('returns a null src for a material node whose materialId is not in INDUSTRY_MATERIAL_ART', () => {
+		expect.assertions(1);
+		const art = chainNodeArt(
+			nodeStub({
+				kind: 'material',
+				materialId: 'nonexistent-material' as MaterialId,
+				label: 'Unknown'
+			})
+		);
+		expect(art).toEqual({
+			src: null,
+			alt: 'Unknown',
+			fallbackGlyph: 'material'
 		});
 	});
 
