@@ -105,7 +105,5 @@
 		pointer-events: none;
 	}
 
-	.broadside-slot :global(*) {
-		pointer-events: auto;
-	}
+
 </style>
