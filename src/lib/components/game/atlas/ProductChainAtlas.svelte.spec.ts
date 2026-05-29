@@ -148,10 +148,7 @@ describe('ProductChainAtlas', () => {
 		for (const sheet of sheets) {
 			try {
 				for (const r of sheet.cssRules) {
-					if (
-						r instanceof CSSStyleRule &&
-						r.selectorText.includes('broadside-slot')
-					) {
+					if (r instanceof CSSStyleRule && r.selectorText.includes('broadside-slot')) {
 						foundRule = true;
 						rule = r;
 						break;
