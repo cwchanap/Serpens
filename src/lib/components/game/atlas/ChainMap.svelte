@@ -104,6 +104,4 @@
 		width: 240px;
 		pointer-events: none;
 	}
-
-
 </style>
