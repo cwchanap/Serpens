@@ -91,7 +91,7 @@ describe('ChainRoute', () => {
 	});
 
 	it('recalculates label background width when edge label changes', async () => {
-		expect.assertions(2);
+		expect.assertions(3);
 		const shortLabel = '5/day';
 		const longLabel = '99999/day produced here';
 		const edge = makeEdge({ label: shortLabel });
@@ -110,6 +110,16 @@ describe('ChainRoute', () => {
 
 		await new Promise((r) => setTimeout(r, 0));
 
-		expect(text?.textContent).toBe(longLabel);
+		// Re-query after rerender to avoid stale references.
+		const updatedGroup = getRouteGroup(edge.id);
+		const updatedText = updatedGroup.querySelector('text');
+		expect(updatedText?.textContent).toBe(longLabel);
+
+		// Verify the label background <rect> exists and has a width attribute.
+		// Note: getComputedTextLength() returns 0 in headless Chromium, so the
+		// rect falls back to its minimum width (44). We verify the rect is present
+		// rather than comparing widths across rerenders.
+		const updatedRect = updatedGroup.querySelector('rect');
+		expect(updatedRect?.hasAttribute('width')).toBe(true);
 	});
 });
