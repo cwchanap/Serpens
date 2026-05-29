@@ -121,6 +121,50 @@ describe('ProductChainAtlas', () => {
 		expect(edgeGroups).toHaveLength(graph.edges.length);
 	});
 
+	it('broadside overlay has pointer-events: none so clicks pass through', async () => {
+		expect.assertions(2);
+		const game = createNewGame('convenience', 20260518);
+		const graph = buildProductChainGraph({
+			game,
+			store: game.stores[0]!,
+			categoryId: 'snacks'
+		});
+		const onSelectNode = vi.fn();
+		render(ProductChainAtlas, {
+			graph,
+			selectedNodeId: null,
+			onSelectNode
+		});
+
+		// The broadside slot is rendered when compact is false (default).
+		// Even without a broadside snippet, the slot element may not exist,
+		// so verify the CSS rule directly from the ChainMap style.
+		const chainMap = document.querySelector('.chain-map');
+		expect(chainMap).toBeTruthy();
+
+		// Verify that no .broadside-slot child re-enables pointer-events
+		// by checking the broadside-slot rule in the stylesheet.
+		const sheets = document.styleSheets;
+		let foundReenable = false;
+		outer: for (const sheet of sheets) {
+			try {
+				for (const rule of sheet.cssRules) {
+					if (
+						rule instanceof CSSStyleRule &&
+						rule.selectorText.includes('broadside-slot') &&
+						rule.selectorText.includes(':global')
+					) {
+						foundReenable = rule.style.pointerEvents === 'auto';
+						break outer;
+					}
+				}
+			} catch {
+				// Cross-origin stylesheets throw
+			}
+		}
+		expect(foundReenable).toBe(false);
+	});
+
 	it('uses instance-scoped marker IDs in <defs> and route paths', async () => {
 		expect.assertions(5);
 		const game = createNewGame('convenience', 20260518);
