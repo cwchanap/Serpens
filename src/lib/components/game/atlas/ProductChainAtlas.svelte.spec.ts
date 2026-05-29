@@ -137,36 +137,35 @@ describe('ProductChainAtlas', () => {
 		});
 
 		// The broadside slot is rendered when compact is false (default).
-		// Even without a broadside snippet, the slot element may not exist,
-		// so verify the CSS rule directly from the ChainMap style.
-		const chainMap = document.querySelector('.chain-map');
+		// Verify the CSS rule directly from the stylesheet.
+		const chainMap = document.querySelector('[class*="chain-map"]');
 		expect(chainMap).toBeTruthy();
 
-		// Verify that no .broadside-slot child re-enables pointer-events
-		// by checking the broadside-slot rule in the stylesheet.
+		// Find the scoped broadside-slot rule and verify pointer-events: none.
 		const sheets = document.styleSheets;
-		let foundReenable = false;
-		outer: for (const sheet of sheets) {
+		let foundRule = false;
+		let rule: CSSStyleRule | null = null;
+		for (const sheet of sheets) {
 			try {
-				for (const rule of sheet.cssRules) {
+				for (const r of sheet.cssRules) {
 					if (
-						rule instanceof CSSStyleRule &&
-						rule.selectorText.includes('broadside-slot') &&
-						rule.selectorText.includes(':global')
+						r instanceof CSSStyleRule &&
+						r.selectorText.includes('broadside-slot')
 					) {
-						foundReenable = rule.style.pointerEvents === 'auto';
-						break outer;
+						foundRule = true;
+						rule = r;
+						break;
 					}
 				}
 			} catch {
 				// Cross-origin stylesheets throw
 			}
+			if (foundRule) break;
 		}
-		expect(foundReenable).toBe(false);
+		expect(rule?.style.pointerEvents).toBe('none');
 	});
 
-	it('uses instance-scoped marker IDs in <defs> and route paths', async () => {
-		expect.assertions(5);
+	it('uses instance-scoped marker IDs in <defs>', async () => {
 		const game = createNewGame('convenience', 20260518);
 		const graph = buildProductChainGraph({
 			game,
@@ -181,6 +180,8 @@ describe('ProductChainAtlas', () => {
 		});
 
 		const markers = document.querySelectorAll('svg defs marker[id]');
+		expect(markers.length).toBeGreaterThan(0);
+		expect.assertions(markers.length + 1);
 		for (const marker of markers) {
 			const id = marker.getAttribute('id')!;
 			expect(id).toMatch(/^[a-z]\d+-chain-route-arrow-/);
