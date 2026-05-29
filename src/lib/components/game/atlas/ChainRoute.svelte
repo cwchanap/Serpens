@@ -5,9 +5,10 @@
 		edge: ProductChainEdge;
 		source: { x: number; y: number };
 		target: { x: number; y: number };
+		markerPrefix: string;
 	}
 
-	let { edge, source, target }: Props = $props();
+	let { edge, source, target, markerPrefix }: Props = $props();
 
 	const path = $derived.by(() => {
 		const dx = Math.max(40, (target.x - source.x) / 2);
@@ -68,7 +69,7 @@
 		stroke-width="2.5"
 		stroke-dasharray={dashArray}
 		fill="none"
-		marker-end={`url(#chain-route-arrow-${edge.health})`}
+		marker-end={`url(#${markerPrefix}-chain-route-arrow-${edge.health})`}
 	/>
 	<g transform={`translate(${mid.x}, ${mid.y - 8})`}>
 		<rect
