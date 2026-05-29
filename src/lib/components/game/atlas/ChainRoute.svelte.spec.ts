@@ -18,7 +18,7 @@ function makeEdge(overrides: Partial<ProductChainEdge> = {}): ProductChainEdge {
 }
 
 function renderRoute(edge: ProductChainEdge, source = { x: 0, y: 0 }, target = { x: 200, y: 0 }) {
-	return render(ChainRoute, { props: { edge, source, target } });
+	return render(ChainRoute, { props: { edge, source, target, markerPrefix: 'test' } });
 }
 
 function getRouteGroup(edgeId: string): SVGGElement {
@@ -80,6 +80,16 @@ describe('ChainRoute', () => {
 		expect(title?.textContent).toBe('3/day used, no report');
 	});
 
+	it('uses instance-scoped marker prefix in marker-end URL', async () => {
+		expect.assertions(1);
+		const edge = makeEdge();
+		renderRoute(edge);
+
+		const group = getRouteGroup(edge.id);
+		const path = group.querySelector('path');
+		expect(path?.getAttribute('marker-end')).toBe('url(#test-chain-route-arrow-healthy)');
+	});
+
 	it('recalculates label background width when edge label changes', async () => {
 		expect.assertions(2);
 		const shortLabel = '5/day';
@@ -94,7 +104,8 @@ describe('ChainRoute', () => {
 		view.rerender({
 			edge: makeEdge({ label: longLabel }),
 			source: { x: 0, y: 0 },
-			target: { x: 200, y: 0 }
+			target: { x: 200, y: 0 },
+			markerPrefix: 'test'
 		});
 
 		await new Promise((r) => setTimeout(r, 0));

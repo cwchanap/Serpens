@@ -120,4 +120,26 @@ describe('ProductChainAtlas', () => {
 		const edgeGroups = document.querySelectorAll('g[data-edge-id]');
 		expect(edgeGroups).toHaveLength(graph.edges.length);
 	});
+
+	it('uses instance-scoped marker IDs in <defs> and route paths', async () => {
+		expect.assertions(5);
+		const game = createNewGame('convenience', 20260518);
+		const graph = buildProductChainGraph({
+			game,
+			store: game.stores[0]!,
+			categoryId: 'snacks'
+		});
+		const onSelectNode = vi.fn();
+		render(ProductChainAtlas, {
+			graph,
+			selectedNodeId: null,
+			onSelectNode
+		});
+
+		const markers = document.querySelectorAll('svg defs marker[id]');
+		for (const marker of markers) {
+			const id = marker.getAttribute('id')!;
+			expect(id).toMatch(/^[a-z]\d+-chain-route-arrow-/);
+		}
+	});
 });

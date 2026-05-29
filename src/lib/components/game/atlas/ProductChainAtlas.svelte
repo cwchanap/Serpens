@@ -15,6 +15,7 @@
 
 	let { graph, selectedNodeId, compact = false, onSelectNode, broadside }: Props = $props();
 
+	const markerPrefix = $props.id();
 	let previousGraphId = $state<string | null>(null);
 
 	const xStep = $derived(compact ? 155 : 210);
@@ -101,7 +102,7 @@
 					<defs>
 						{#each ['healthy', 'watch', 'shortage', 'no-local-capacity', 'no-report'] as health (health)}
 							<marker
-								id={`chain-route-arrow-${health}`}
+								id={`${markerPrefix}-chain-route-arrow-${health}`}
 								viewBox="0 0 10 10"
 								refX="9"
 								refY="5"
@@ -124,7 +125,7 @@
 						{@const source = centers.get(edge.source)}
 						{@const target = centers.get(edge.target)}
 						{#if source && target}
-							<ChainRoute {edge} {source} {target} />
+							<ChainRoute {edge} {source} {target} {markerPrefix} />
 						{/if}
 					{/each}
 				</svg>
