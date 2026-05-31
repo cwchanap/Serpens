@@ -477,6 +477,61 @@ describe('save records', () => {
 		expect(validated.game.world.claimedMilestoneIds).toContain('reveal-campus-junction');
 	});
 
+	test('infers opened cities from saved city arrays when world progress is missing', () => {
+		expect.assertions(6);
+		const game = createGame({
+			cities: [
+				{
+					id: 'harbor-city',
+					name: 'Harbor City',
+					width: 1,
+					height: 1,
+					tiles: []
+				},
+				{
+					id: 'campus-junction',
+					name: 'Campus Junction',
+					width: 1,
+					height: 1,
+					tiles: []
+				}
+			],
+			industryCities: [
+				{
+					id: 'industry-city',
+					name: 'Industry City',
+					width: 1,
+					height: 1,
+					tiles: []
+				},
+				{
+					id: 'breadbasket-basin',
+					name: 'Breadbasket Basin',
+					width: 1,
+					height: 1,
+					tiles: []
+				}
+			]
+		});
+		const record = createSaveRecord(game, {
+			id: 'manual-infer-cities',
+			name: 'Infer Cities Save',
+			kind: 'manual',
+			updatedAt: new Date('2026-05-31T12:00:00.000Z')
+		});
+		const oldGame = { ...record.game } as Partial<GameState>;
+		delete oldGame.world;
+
+		const validated = validateSaveRecord({ ...record, game: oldGame as GameState });
+
+		expect(validated.game.world.openedCityIds).toContain('harbor-city');
+		expect(validated.game.world.openedCityIds).toContain('industry-city');
+		expect(validated.game.world.openedCityIds).toContain('campus-junction');
+		expect(validated.game.world.openedCityIds).toContain('breadbasket-basin');
+		expect(validated.game.world.revealedCityIds).toContain('campus-junction');
+		expect(validated.game.world.revealedCityIds).toContain('breadbasket-basin');
+	});
+
 	test.each([
 		{
 			name: 'invalid revealed city id',
