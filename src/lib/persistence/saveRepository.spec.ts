@@ -459,6 +459,24 @@ describe('save records', () => {
 		expect(validated.game.storeCap).toBe(3);
 	});
 
+	test('refreshes world progress for migrated saves that already satisfy reveal conditions', () => {
+		expect.assertions(2);
+		const game = createGame({ day: 8 });
+		const record = createSaveRecord(game, {
+			id: 'manual-old-world-refresh',
+			name: 'Old World Save Day 8',
+			kind: 'manual',
+			updatedAt: new Date('2026-05-30T12:00:00.000Z')
+		});
+		const oldGame = { ...record.game } as Partial<GameState>;
+		delete oldGame.world;
+
+		const validated = validateSaveRecord({ ...record, game: oldGame as GameState });
+
+		expect(validated.game.world.revealedCityIds).toContain('campus-junction');
+		expect(validated.game.world.claimedMilestoneIds).toContain('reveal-campus-junction');
+	});
+
 	test.each([
 		{
 			name: 'invalid revealed city id',

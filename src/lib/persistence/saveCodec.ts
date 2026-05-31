@@ -1,7 +1,7 @@
 import { getArchetype } from '$lib/game/archetypes';
 import { INDUSTRIAL_BUILDING_TYPES, MATERIALS } from '$lib/game/industry';
 import type { GameState } from '$lib/game/types';
-import { STARTER_STORE_CAP, createInitialWorldProgress } from '$lib/game/world';
+import { STARTER_STORE_CAP, createInitialWorldProgress, refreshWorldProgress } from '$lib/game/world';
 import {
 	AUTO_SAVE_SLOT_ID,
 	SAVE_SCHEMA_VERSION,
@@ -255,7 +255,7 @@ function validateSavedGame(value: unknown): GameState {
 		throw new SaveDataError('Saved game storeCap must be at least the current store count');
 	}
 
-	return game;
+	return refreshWorldProgress(game);
 }
 
 function validateSlotInvariants(autoSave: SaveRecord | null, manualSlots: SaveRecord[]): void {
