@@ -459,6 +459,70 @@ describe('save records', () => {
 		expect(validated.game.storeCap).toBe(3);
 	});
 
+	test.each([
+		{
+			name: 'invalid revealed city id',
+			game: {
+				world: {
+					...createInitialWorldProgress(),
+					revealedCityIds: [
+						'harbor-city',
+						'industry-city',
+						'moonbase' as GameState['world']['revealedCityIds'][number]
+					]
+				}
+			},
+			message:
+				'Saved game world revealedCityIds[2] must be one of: harbor-city, campus-junction, garden-borough, industry-city, breadbasket-basin, quarry-works'
+		},
+		{
+			name: 'invalid claimed milestone id',
+			game: {
+				world: {
+					...createInitialWorldProgress(),
+					claimedMilestoneIds: [
+						'reveal-moonbase' as GameState['world']['claimedMilestoneIds'][number]
+					]
+				}
+			},
+			message:
+				'Saved game world claimedMilestoneIds[0] must be one of: reveal-campus-junction, reveal-breadbasket-basin, reveal-garden-borough, reveal-quarry-works, positive-income-store-cap'
+		},
+		{
+			name: 'opened city id that has not been revealed',
+			game: {
+				world: {
+					...createInitialWorldProgress(),
+					openedCityIds: ['harbor-city', 'industry-city', 'campus-junction']
+				}
+			},
+			message: 'Saved game world opened city must also be revealed: campus-junction'
+		},
+		{
+			name: 'non-number store cap',
+			game: {
+				storeCap: 'three' as unknown as number
+			},
+			message: 'Saved game storeCap must be a finite number'
+		},
+		{
+			name: 'store cap below the current store count',
+			game: {
+				storeCap: 0
+			},
+			message: 'Saved game storeCap must be at least the current store count'
+		}
+	] satisfies Array<{ name: string; game: Partial<GameState>; message: string }>)(
+		'rejects saved world progress and store caps with $name',
+		({ game, message }) => {
+			expect.assertions(2);
+			const record = createManualSaveRecord({ game });
+
+			expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+			expect(() => validateSaveRecord(record)).toThrow(message);
+		}
+	);
+
 	test('rejects warehouse materials with unknown ids', () => {
 		expect.assertions(2);
 		const game = createGame({
