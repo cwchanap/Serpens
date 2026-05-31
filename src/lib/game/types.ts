@@ -1,5 +1,3 @@
-export const MAX_STORES = 3;
-
 export type ArchetypeId = 'convenience' | 'boutique' | 'electronics' | 'grocery';
 export type PricingPosture = 'discount' | 'competitive' | 'standard' | 'premium';
 export type InventoryBuffer = 'lean' | 'balanced' | 'generous';
@@ -57,6 +55,50 @@ export type IndustryResourceId =
 	| 'sugar-field'
 	| 'pulpwood-forest'
 	| 'chemical-feedstock';
+export type WorldCityId =
+	| 'harbor-city'
+	| 'campus-junction'
+	| 'garden-borough'
+	| 'industry-city'
+	| 'breadbasket-basin'
+	| 'quarry-works';
+export type WorldCityKind = 'retail' | 'industry';
+export type WorldCityState = 'opened' | 'revealed' | 'locked';
+export type WorldMilestoneId =
+	| 'reveal-campus-junction'
+	| 'reveal-breadbasket-basin'
+	| 'reveal-garden-borough'
+	| 'reveal-quarry-works'
+	| 'positive-income-store-cap';
+
+export interface WorldProgress {
+	revealedCityIds: WorldCityId[];
+	openedCityIds: WorldCityId[];
+	claimedMilestoneIds: WorldMilestoneId[];
+}
+
+export type RetailDemandProfile = Partial<Record<string, number>>;
+
+export interface IndustryResourceProfile {
+	resourceIds: IndustryResourceId[];
+	industrialBias: number;
+}
+
+export interface WorldCityDefinition {
+	id: WorldCityId;
+	name: string;
+	kind: WorldCityKind;
+	worldX: number;
+	worldY: number;
+	seed: number;
+	openingCost: number;
+	initiallyOpened: boolean;
+	unlockRequirement: string;
+	specialtySummary: string;
+	storeCapBonus: number;
+	retailDemandProfile: RetailDemandProfile;
+	industryResourceProfile: IndustryResourceProfile | null;
+}
 export type IndustrialBuildingTypeId =
 	| 'grain-farm'
 	| 'salt-mine'
@@ -416,6 +458,8 @@ export interface GameState {
 	debt: number;
 	policy: CompanyPolicy;
 	scorecard: Scorecard;
+	world: WorldProgress;
+	storeCap: number;
 	cities: City[];
 	activeCityId: string;
 	industryCities: IndustryCity[];
