@@ -38,15 +38,16 @@ describe('WorldMap', () => {
 	});
 
 	it('selects cities and opens a revealed city from the inspector', async () => {
-		expect.assertions(3);
+		expect.assertions(4);
 		const onSelectCity = vi.fn();
 		const onOpenCity = vi.fn();
+		const onCloseInspector = vi.fn();
 		render(WorldMap, {
 			statuses: [status('campus-junction', 'revealed')],
 			selectedCityId: 'campus-junction',
 			onSelectCity,
 			onOpenCity,
-			onCloseInspector: vi.fn()
+			onCloseInspector
 		});
 
 		await page.getByRole('button', { name: /campus junction/i }).click();
@@ -54,6 +55,8 @@ describe('WorldMap', () => {
 		await expect.element(page.getByRole('dialog', { name: /city details/i })).toBeVisible();
 		await page.getByRole('button', { name: /open for/i }).click();
 		expect(onOpenCity).toHaveBeenCalledWith('campus-junction');
+		await page.getByRole('button', { name: /close city details/i }).click();
+		expect(onCloseInspector).toHaveBeenCalledTimes(1);
 	});
 
 	it('disables opening when a revealed city is unaffordable', async () => {
