@@ -24,6 +24,28 @@
 	function kindLabel(status: WorldCityStatus): string {
 		return status.city.kind === 'retail' ? 'Retail' : 'Industry';
 	}
+
+	function cityDescriptionId(status: WorldCityStatus): string {
+		return `world-city-${status.city.id}-description`;
+	}
+
+	function cityRequirementId(status: WorldCityStatus): string {
+		return `world-city-${status.city.id}-requirement`;
+	}
+
+	function cityTitleId(status: WorldCityStatus): string {
+		return `world-city-${status.city.id}-title`;
+	}
+
+	function cityDescriptionIds(status: WorldCityStatus): string {
+		return status.state === 'locked' && status.blockedReason
+			? `${cityDescriptionId(status)} ${cityRequirementId(status)}`
+			: cityDescriptionId(status);
+	}
+
+	function inspectorReasonId(status: WorldCityStatus): string {
+		return `world-city-${status.city.id}-reason`;
+	}
 </script>
 
 <section class="world-map" aria-label="World map">
@@ -57,14 +79,18 @@
 					revealed: status.state === 'revealed',
 					locked: status.state === 'locked'
 				}}
-				aria-pressed={selectedCityId === status.city.id}
+				aria-labelledby={cityTitleId(status)}
+				aria-describedby={cityDescriptionIds(status)}
+				aria-current={selectedCityId === status.city.id ? 'true' : undefined}
+				aria-expanded={selectedCityId === status.city.id}
 				onclick={() => onSelectCity(status.city.id)}
 			>
-				<strong>{status.city.name}</strong>
-				<span>{kindLabel(status)} - {statusLabel(status)}</span>
-				<small>{status.city.specialtySummary}</small>
+				<strong id={cityTitleId(status)}>{status.city.name}</strong>
+				<span id={cityDescriptionId(status)}>
+					{kindLabel(status)} - {statusLabel(status)}. {status.city.specialtySummary}
+				</span>
 				{#if status.state === 'locked' && status.blockedReason}
-					<small>{status.blockedReason}</small>
+					<small id={cityRequirementId(status)}>{status.blockedReason}</small>
 				{/if}
 			</button>
 		{/each}
@@ -90,15 +116,22 @@
 					type="button"
 					class="open-city"
 					disabled={!selectedStatus.canOpen}
+					aria-describedby={selectedStatus.blockedReason
+						? inspectorReasonId(selectedStatus)
+						: undefined}
 					onclick={() => onOpenCity(selectedStatus.city.id)}
 				>
 					Open for {selectedStatus.city.openingCost.toLocaleString('en-US')} cash
 				</button>
 				{#if selectedStatus.blockedReason}
-					<p class="blocked-reason">{selectedStatus.blockedReason}</p>
+					<p id={inspectorReasonId(selectedStatus)} class="blocked-reason">
+						{selectedStatus.blockedReason}
+					</p>
 				{/if}
 			{:else if selectedStatus.state === 'locked'}
-				<p class="blocked-reason">{selectedStatus.blockedReason}</p>
+				<p id={inspectorReasonId(selectedStatus)} class="blocked-reason">
+					{selectedStatus.blockedReason}
+				</p>
 			{:else}
 				<p>
 					{selectedStatus.storeCount} stores - {selectedStatus.buildingCount} industrial buildings
@@ -172,7 +205,7 @@
 
 	.world-node-card:hover,
 	.world-node-card:focus-visible,
-	.world-node-card[aria-pressed='true'] {
+	.world-node-card[aria-current='true'] {
 		border-color: var(--paper-50);
 		outline: 2px solid var(--brass-300);
 		outline-offset: 1px;
@@ -195,12 +228,17 @@
 		font-family: var(--font-display);
 		font-size: 1rem;
 		font-weight: 400;
+		min-width: 0;
+		overflow-wrap: anywhere;
 	}
 
 	span,
 	small,
-	p {
+	p,
+	h2 {
 		font-family: var(--font-ui);
+		min-width: 0;
+		overflow-wrap: anywhere;
 	}
 
 	span {
