@@ -286,4 +286,37 @@ describe('industry city generation', () => {
 		expect(quarryIndustrial).toBeGreaterThan(breadbasketIndustrial);
 		expect(quarryIndustrial).toBeGreaterThan(0);
 	});
+
+	test('clamps zero or negative industrialBias to a positive minimum', () => {
+		expect.assertions(2);
+		const zeroBias = generateIndustryCity({
+			id: 'zero-bias',
+			name: 'Zero Bias',
+			width: 18,
+			height: 18,
+			seed: 20260535,
+			resourceProfile: {
+				resourceIds: ['grain-field', 'salt-deposit'],
+				industrialBias: 0
+			}
+		});
+		const negativeBias = generateIndustryCity({
+			id: 'negative-bias',
+			name: 'Negative Bias',
+			width: 18,
+			height: 18,
+			seed: 20260536,
+			resourceProfile: {
+				resourceIds: ['grain-field', 'salt-deposit'],
+				industrialBias: -1
+			}
+		});
+
+		expect(zeroBias.tiles.every((tile) => Number.isFinite(tile.x) && Number.isFinite(tile.y))).toBe(
+			true
+		);
+		expect(
+			negativeBias.tiles.every((tile) => Number.isFinite(tile.x) && Number.isFinite(tile.y))
+		).toBe(true);
+	});
 });
