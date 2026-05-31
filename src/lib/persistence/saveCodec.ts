@@ -250,7 +250,6 @@ function validateSavedGame(value: unknown): GameState {
 		validateSavedDecision(decision, `Saved game decisions[${index}]`)
 	);
 	reports.forEach((report, index) => validateSavedReport(report, `Saved game reports[${index}]`));
-	validateSavedWorld(game.world, 'Saved game world');
 	requireNumber(game.storeCap, 'Saved game storeCap');
 	if (game.storeCap < game.stores.length) {
 		throw new SaveDataError('Saved game storeCap must be at least the current store count');

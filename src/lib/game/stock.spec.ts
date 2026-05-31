@@ -196,7 +196,7 @@ describe('stock rules', () => {
 	});
 
 	test('applies retail city demand multipliers to city demand pools', () => {
-		expect.assertions(2);
+		expect.assertions(5);
 		const game = createNewGame('electronics', 20260508);
 		const campusCity = {
 			...game.cities[0]!,
@@ -208,6 +208,9 @@ describe('stock rules', () => {
 				cityId: 'campus-junction'
 			}))
 		};
+		expect(campusCity.id).toContain('campus-junction');
+		expect(campusCity.tiles.every((t) => t.cityId === 'campus-junction')).toBe(true);
+
 		const campusGame = {
 			...game,
 			cities: [campusCity],
@@ -218,6 +221,7 @@ describe('stock rules', () => {
 				tileId: store.tileId.replace('harbor-city', 'campus-junction')
 			}))
 		};
+		expect(campusGame.stores.every((s) => s.tileId.includes('campus-junction'))).toBe(true);
 
 		const harborPools = buildCityDemandPools(game, game.cities[0]!);
 		const campusPools = buildCityDemandPools(campusGame, campusCity);
