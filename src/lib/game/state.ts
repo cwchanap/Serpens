@@ -14,7 +14,7 @@ import {
 	HIRING_CANDIDATE_COUNT
 } from './staffing';
 import { calculateStockHealth, initializeStoreProducts } from './stock';
-import { STARTER_STORE_CAP, createInitialWorldProgress } from './world';
+import { STARTER_STORE_CAP, createInitialWorldProgress, refreshWorldProgress } from './world';
 import type {
 	ArchetypeId,
 	City,
@@ -167,7 +167,7 @@ export function openStore(game: GameState, input: OpenStoreInput): GameState {
 	});
 	const placedStore = placeStore(store, tile);
 
-	return {
+	return refreshWorldProgress({
 		...game,
 		rngState: rng.getState(),
 		cash: game.cash - setupCost,
@@ -176,7 +176,7 @@ export function openStore(game: GameState, input: OpenStoreInput): GameState {
 			...game.scorecard,
 			marketPosition: clampScore(game.scorecard.marketPosition + 4)
 		}
-	};
+	});
 }
 
 export function getExpansionSetupCost(tile: CityTile, archetypeId: ArchetypeId): number {
