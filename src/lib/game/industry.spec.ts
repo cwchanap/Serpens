@@ -244,4 +244,40 @@ describe('industry city generation', () => {
 		expect(countTerrain(industrialPark, 'industrial')).toBeGreaterThanOrEqual(82);
 		expect(internalBlockedTiles).toHaveLength(18);
 	});
+
+	test('high industrial bias produces more industrial terrain than low bias', () => {
+		expect.assertions(2);
+		const quarryCity = generateIndustryCity({
+			id: 'quarry-works',
+			name: 'Quarry Works',
+			width: 18,
+			height: 18,
+			seed: 20260534,
+			resourceProfile: {
+				resourceIds: ['salt-deposit', 'chemical-feedstock', 'pulpwood-forest', 'water-source'],
+				industrialBias: 1.25
+			}
+		});
+		const breadbasketCity = generateIndustryCity({
+			id: 'breadbasket-basin',
+			name: 'Breadbasket Basin',
+			width: 18,
+			height: 18,
+			seed: 20260533,
+			resourceProfile: {
+				resourceIds: ['grain-field', 'oilseed-field', 'fruit-orchard', 'sugar-field', 'water-source'],
+				industrialBias: 0.9
+			}
+		});
+
+		const quarryIndustrial = quarryCity.tiles.filter(
+			(tile) => tile.terrain === 'industrial' && !tile.locked
+		).length;
+		const breadbasketIndustrial = breadbasketCity.tiles.filter(
+			(tile) => tile.terrain === 'industrial' && !tile.locked
+		).length;
+
+		expect(quarryIndustrial).toBeGreaterThan(breadbasketIndustrial);
+		expect(quarryIndustrial).toBeGreaterThan(0);
+	});
 });
