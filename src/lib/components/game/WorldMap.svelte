@@ -78,7 +78,7 @@
 				aria-label="Close city details"
 				onclick={onCloseInspector}
 			>
-				Close
+				X
 			</button>
 			<p class="eyebrow">
 				{selectedStatus.city.kind === 'retail' ? 'Retail city' : 'Industrial city'}
@@ -114,18 +114,7 @@
 		height: 100%;
 		min-height: 0;
 		overflow: hidden;
-		background:
-			radial-gradient(
-				circle at 28% 52%,
-				color-mix(in srgb, var(--brass-500) 16%, transparent),
-				transparent 15%
-			),
-			radial-gradient(
-				circle at 72% 36%,
-				color-mix(in srgb, var(--moss) 20%, transparent),
-				transparent 18%
-			),
-			var(--walnut-900);
+		background: var(--walnut-900);
 		color: var(--paper-100);
 	}
 
