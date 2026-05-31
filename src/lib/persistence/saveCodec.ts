@@ -1,6 +1,7 @@
 import { getArchetype } from '$lib/game/archetypes';
 import { INDUSTRIAL_BUILDING_TYPES, MATERIALS } from '$lib/game/industry';
 import type { GameState } from '$lib/game/types';
+import { STARTER_STORE_CAP, createInitialWorldProgress } from '$lib/game/world';
 import {
 	AUTO_SAVE_SLOT_ID,
 	SAVE_SCHEMA_VERSION,
@@ -53,6 +54,21 @@ const INDUSTRY_RESOURCE_ID_SET = new Set<string>(
 		buildingType.requiredResource === null ? [] : [buildingType.requiredResource]
 	)
 );
+const WORLD_CITY_IDS = [
+	'harbor-city',
+	'campus-junction',
+	'garden-borough',
+	'industry-city',
+	'breadbasket-basin',
+	'quarry-works'
+] as const;
+const WORLD_MILESTONE_IDS = [
+	'reveal-campus-junction',
+	'reveal-breadbasket-basin',
+	'reveal-garden-borough',
+	'reveal-quarry-works',
+	'positive-income-store-cap'
+] as const;
 const DECISION_EFFECT_NUMBER_FIELDS = [
 	'profit',
 	'customerSatisfaction',
@@ -164,7 +180,7 @@ export function validateSaveRecord(value: unknown): SaveRecord {
 	}
 
 	const metadata = requireRecord(record.metadata, 'Save metadata');
-	validateSavedGame(record.game);
+	const game = validateSavedGame(record.game);
 	const kind = requireString(metadata.kind, 'Save metadata kind');
 
 	if (kind !== 'auto' && kind !== 'manual') {
@@ -179,11 +195,14 @@ export function validateSaveRecord(value: unknown): SaveRecord {
 	requireNumber(metadata.storeCount, 'Save metadata storeCount');
 	requireString(metadata.activeCityName, 'Save metadata activeCityName');
 
-	return value as SaveRecord;
+	return {
+		...(value as SaveRecord),
+		game
+	};
 }
 
-function validateSavedGame(value: unknown): Record<string, unknown> {
-	const game = requireRecord(value, 'Saved game');
+function validateSavedGame(value: unknown): GameState {
+	const game = normalizeSavedGame(requireRecord(value, 'Saved game'));
 	const policy = requireRecord(game.policy, 'Saved game policy');
 	const scorecard = requireRecord(game.scorecard, 'Saved game scorecard');
 	const cities = requireArray(game.cities, 'Saved game cities');
@@ -231,6 +250,11 @@ function validateSavedGame(value: unknown): Record<string, unknown> {
 		validateSavedDecision(decision, `Saved game decisions[${index}]`)
 	);
 	reports.forEach((report, index) => validateSavedReport(report, `Saved game reports[${index}]`));
+	validateSavedWorld(game.world, 'Saved game world');
+	requireNumber(game.storeCap, 'Saved game storeCap');
+	if (game.storeCap < game.stores.length) {
+		throw new SaveDataError('Saved game storeCap must be at least the current store count');
+	}
 
 	return game;
 }
@@ -271,6 +295,54 @@ function validateSlotInvariants(autoSave: SaveRecord | null, manualSlots: SaveRe
 
 		manualSlotIds.add(slot.metadata.id);
 	}
+}
+
+function normalizeSavedGame(game: Record<string, unknown>): GameState {
+	const normalizedWorld =
+		game.world === undefined
+			? createInitialWorldProgress()
+			: validateSavedWorld(game.world, 'Saved game world');
+	const normalizedStoreCap =
+		game.storeCap === undefined
+			? Math.max(
+					STARTER_STORE_CAP,
+					Array.isArray(game.stores) ? game.stores.length : STARTER_STORE_CAP
+				)
+			: game.storeCap;
+
+	return {
+		...game,
+		world: normalizedWorld,
+		storeCap: normalizedStoreCap
+	} as GameState;
+}
+
+function validateSavedWorld(value: unknown, label: string): GameState['world'] {
+	const world = requireRecord(value, label);
+	const revealedCityIds = requireArray(world.revealedCityIds, `${label} revealedCityIds`).map(
+		(cityId, index) => requireOneOf(cityId, `${label} revealedCityIds[${index}]`, WORLD_CITY_IDS)
+	);
+	const openedCityIds = requireArray(world.openedCityIds, `${label} openedCityIds`).map(
+		(cityId, index) => requireOneOf(cityId, `${label} openedCityIds[${index}]`, WORLD_CITY_IDS)
+	);
+	const claimedMilestoneIds = requireArray(
+		world.claimedMilestoneIds,
+		`${label} claimedMilestoneIds`
+	).map((milestoneId, index) =>
+		requireOneOf(milestoneId, `${label} claimedMilestoneIds[${index}]`, WORLD_MILESTONE_IDS)
+	);
+
+	for (const cityId of openedCityIds) {
+		if (!revealedCityIds.includes(cityId)) {
+			throw new SaveDataError(`${label} opened city must also be revealed: ${cityId}`);
+		}
+	}
+
+	return {
+		revealedCityIds,
+		openedCityIds,
+		claimedMilestoneIds
+	};
 }
 
 function validateSavedCity(value: unknown, label: string): void {
@@ -672,12 +744,17 @@ function requireString(value: unknown, label: string): string {
 	return value;
 }
 
-function requireOneOf<T extends string>(value: unknown, label: string, allowed: readonly T[]): T {
-	if (typeof value !== 'string' || !allowed.includes(value as T)) {
+function requireOneOf<T extends readonly string[]>(
+	value: unknown,
+	label: string,
+	allowed: T
+): T[number] {
+	const text = requireString(value, label);
+	if (!(allowed as readonly string[]).includes(text)) {
 		throw new SaveDataError(`${label} must be one of: ${allowed.join(', ')}`);
 	}
 
-	return value as T;
+	return text;
 }
 
 function requireKnownId(
