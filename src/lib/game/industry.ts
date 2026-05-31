@@ -653,6 +653,7 @@ export function generateIndustryCity(input: GenerateIndustryCityInput): Industry
 	const resourceAnchors = RESOURCE_ANCHORS.filter((anchor) =>
 		enabledResourceIds.has(anchor.resource)
 	);
+	const industrialBias = Math.max(0.1, input.resourceProfile?.industrialBias ?? 1);
 	const tiles: IndustryTile[] = [];
 
 	for (let y = 0; y < height; y += 1) {
@@ -673,9 +674,7 @@ export function generateIndustryCity(input: GenerateIndustryCityInput): Industry
 				continue;
 			}
 
-			const terrain = border
-				? 'blocked'
-				: getFillerTerrain(width, height, x, y, input.resourceProfile?.industrialBias ?? 1);
+			const terrain = border ? 'blocked' : getFillerTerrain(width, height, x, y, industrialBias);
 
 			tiles.push({
 				id: `${input.id}-${x}-${y}`,
