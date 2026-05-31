@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import { initializeStoreProducts } from '$lib/game/stock';
 import { simulateDay } from '$lib/game/simulateDay';
 import { createNewGame } from '$lib/game/state';
+import { STARTER_STORE_CAP, createInitialWorldProgress } from '$lib/game/world';
 import type {
 	DailyProductReport,
 	DailyProductionReport,
@@ -110,6 +111,8 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 			staffMorale: 65,
 			marketPosition: 50
 		},
+		world: createInitialWorldProgress(),
+		storeCap: STARTER_STORE_CAP,
 		cities: [
 			{
 				id: 'harbor-city',
@@ -413,6 +416,49 @@ describe('save records', () => {
 		);
 	});
 
+	test('validates and preserves world progress and store cap in save records', () => {
+		expect.assertions(3);
+		const game = createGame({
+			world: {
+				revealedCityIds: ['harbor-city', 'industry-city', 'campus-junction'],
+				openedCityIds: ['harbor-city', 'industry-city'],
+				claimedMilestoneIds: ['reveal-campus-junction']
+			},
+			storeCap: 4
+		});
+		const record = createSaveRecord(game, {
+			id: 'manual-world',
+			name: 'World Save',
+			kind: 'manual',
+			updatedAt: new Date('2026-05-30T12:00:00.000Z')
+		});
+
+		const validated = validateSaveRecord(record);
+
+		expect(validated.game.world.revealedCityIds).toContain('campus-junction');
+		expect(validated.game.world.claimedMilestoneIds).toContain('reveal-campus-junction');
+		expect(validated.game.storeCap).toBe(4);
+	});
+
+	test('normalizes old save records that do not have world progress or store cap', () => {
+		expect.assertions(3);
+		const record = createSaveRecord(createGame(), {
+			id: 'manual-old-world',
+			name: 'Old World Save',
+			kind: 'manual',
+			updatedAt: new Date('2026-05-30T12:00:00.000Z')
+		});
+		const oldGame = { ...record.game } as Partial<GameState>;
+		delete oldGame.world;
+		delete oldGame.storeCap;
+
+		const validated = validateSaveRecord({ ...record, game: oldGame as GameState });
+
+		expect(validated.game.world.openedCityIds).toEqual(['harbor-city', 'industry-city']);
+		expect(validated.game.world.revealedCityIds).toEqual(['harbor-city', 'industry-city']);
+		expect(validated.game.storeCap).toBe(3);
+	});
+
 	test('rejects warehouse materials with unknown ids', () => {
 		expect.assertions(2);
 		const game = createGame({
@@ -568,7 +614,7 @@ describe('save records', () => {
 		const report = validated.game.reports[0];
 		const productReport = report?.storeReports[0]?.productReports[0];
 
-		expect(validated).toBe(record);
+		expect(validated).toEqual(record);
 		expect(validated.game.stores[0]?.products.length).toBeGreaterThan(0);
 		expect(report?.importSpend).toBeGreaterThanOrEqual(0);
 		expect(report?.productionReport.importSpend).toBeGreaterThanOrEqual(0);
