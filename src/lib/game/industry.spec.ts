@@ -247,44 +247,39 @@ describe('industry city generation', () => {
 
 	test('high industrial bias produces more industrial terrain than low bias', () => {
 		expect.assertions(2);
-		const quarryCity = generateIndustryCity({
-			id: 'quarry-works',
-			name: 'Quarry Works',
+		const sharedResourceIds = ['salt-deposit', 'chemical-feedstock', 'pulpwood-forest', 'water-source'];
+		const highBiasCity = generateIndustryCity({
+			id: 'high-bias',
+			name: 'High Bias',
 			width: 18,
 			height: 18,
 			seed: 20260534,
 			resourceProfile: {
-				resourceIds: ['salt-deposit', 'chemical-feedstock', 'pulpwood-forest', 'water-source'],
+				resourceIds: sharedResourceIds,
 				industrialBias: 1.25
 			}
 		});
-		const breadbasketCity = generateIndustryCity({
-			id: 'breadbasket-basin',
-			name: 'Breadbasket Basin',
+		const lowBiasCity = generateIndustryCity({
+			id: 'low-bias',
+			name: 'Low Bias',
 			width: 18,
 			height: 18,
-			seed: 20260533,
+			seed: 20260534,
 			resourceProfile: {
-				resourceIds: [
-					'grain-field',
-					'oilseed-field',
-					'fruit-orchard',
-					'sugar-field',
-					'water-source'
-				],
+				resourceIds: sharedResourceIds,
 				industrialBias: 0.9
 			}
 		});
 
-		const quarryIndustrial = quarryCity.tiles.filter(
+		const highBiasIndustrial = highBiasCity.tiles.filter(
 			(tile) => tile.terrain === 'industrial' && !tile.locked
 		).length;
-		const breadbasketIndustrial = breadbasketCity.tiles.filter(
+		const lowBiasIndustrial = lowBiasCity.tiles.filter(
 			(tile) => tile.terrain === 'industrial' && !tile.locked
 		).length;
 
-		expect(quarryIndustrial).toBeGreaterThan(breadbasketIndustrial);
-		expect(quarryIndustrial).toBeGreaterThan(0);
+		expect(highBiasIndustrial).toBeGreaterThan(lowBiasIndustrial);
+		expect(highBiasIndustrial).toBeGreaterThan(0);
 	});
 
 	test('clamps zero or negative industrialBias to a positive minimum', () => {
