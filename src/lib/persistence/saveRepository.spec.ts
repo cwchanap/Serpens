@@ -523,6 +523,42 @@ describe('save records', () => {
 		}
 	);
 
+	test('deduplicates repeated city and milestone ids in saved world progress', () => {
+		expect.assertions(3);
+		const game = createGame({
+			world: {
+				revealedCityIds: [
+					'harbor-city',
+					'industry-city',
+					'harbor-city',
+					'campus-junction',
+					'industry-city'
+				],
+				openedCityIds: ['harbor-city', 'industry-city', 'harbor-city'],
+				claimedMilestoneIds: [
+					'reveal-campus-junction',
+					'reveal-campus-junction'
+				]
+			}
+		});
+		const record = createSaveRecord(game, {
+			id: 'manual-dedup',
+			name: 'Dedup Save',
+			kind: 'manual',
+			updatedAt: new Date('2026-05-30T12:00:00.000Z')
+		});
+
+		const validated = validateSaveRecord(record);
+
+		expect(validated.game.world.revealedCityIds).toEqual([
+			'harbor-city',
+			'industry-city',
+			'campus-junction'
+		]);
+		expect(validated.game.world.openedCityIds).toEqual(['harbor-city', 'industry-city']);
+		expect(validated.game.world.claimedMilestoneIds).toEqual(['reveal-campus-junction']);
+	});
+
 	test('rejects warehouse materials with unknown ids', () => {
 		expect.assertions(2);
 		const game = createGame({

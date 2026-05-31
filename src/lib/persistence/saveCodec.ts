@@ -339,9 +339,9 @@ function validateSavedWorld(value: unknown, label: string): GameState['world'] {
 	}
 
 	return {
-		revealedCityIds,
-		openedCityIds,
-		claimedMilestoneIds
+		revealedCityIds: [...new Set(revealedCityIds)],
+		openedCityIds: [...new Set(openedCityIds)],
+		claimedMilestoneIds: [...new Set(claimedMilestoneIds)]
 	};
 }
 
