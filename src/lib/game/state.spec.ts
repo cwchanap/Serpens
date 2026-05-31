@@ -19,7 +19,7 @@ void industryStateKeysAreRequired;
 
 describe('game state', () => {
 	test('creates a new game from an archetype', () => {
-		expect.assertions(14);
+		expect.assertions(18);
 		const game = createNewGame('boutique', 1001);
 		const foundingStore = game.stores[0];
 
@@ -37,6 +37,10 @@ describe('game state', () => {
 		expect(game.staff.filter((staff) => staff.role === 'manager')).toHaveLength(1);
 		expect(game.staff.every((staff) => staff.assignedStoreId === foundingStore?.id)).toBe(true);
 		expect(game.hiringCandidates).toHaveLength(5);
+		expect(game.world.openedCityIds).toEqual(['harbor-city', 'industry-city']);
+		expect(game.world.revealedCityIds).toEqual(['harbor-city', 'industry-city']);
+		expect(game.world.claimedMilestoneIds).toEqual([]);
+		expect(game.storeCap).toBe(3);
 	});
 
 	test('creates industry state for a new game', () => {
@@ -49,6 +53,16 @@ describe('game state', () => {
 		expect(game.warehouse.capacity).toBe(0);
 		expect(game.warehouse.materials).toEqual({});
 		expect(game.warehouse.overflowUnits).toBe(0);
+	});
+
+	test('new games keep world progress aligned with generated starter maps', () => {
+		expect.assertions(4);
+		const game = createNewGame('convenience', 20260512);
+
+		expect(game.cities.map((city) => city.id)).toEqual(['harbor-city']);
+		expect(game.industryCities.map((city) => city.id)).toEqual(['industry-city']);
+		expect(game.world.openedCityIds).toEqual(['harbor-city', 'industry-city']);
+		expect(game.storeCap).toBeGreaterThan(game.stores.length);
 	});
 
 	test('stores normalized seed values and advances rng state during setup', () => {

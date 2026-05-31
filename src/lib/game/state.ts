@@ -14,6 +14,7 @@ import {
 	HIRING_CANDIDATE_COUNT
 } from './staffing';
 import { calculateStockHealth, initializeStoreProducts } from './stock';
+import { STARTER_STORE_CAP, createInitialWorldProgress } from './world';
 import type {
 	ArchetypeId,
 	City,
@@ -26,7 +27,6 @@ import type {
 	Store
 } from './types';
 import type { TilePlacementBlockReason } from './city';
-import { MAX_STORES } from './types';
 
 export const DEFAULT_POLICY: CompanyPolicy = {
 	pricing: 'standard',
@@ -106,6 +106,8 @@ export function createNewGame(archetypeId: ArchetypeId, seed = Date.now()): Game
 			staffMorale: placedOpeningStore.staffMorale,
 			marketPosition: clampScore(35 + Math.round(archetype.baseTraffic / 10))
 		},
+		world: createInitialWorldProgress(),
+		storeCap: STARTER_STORE_CAP,
 		cities: [city],
 		activeCityId: city.id,
 		industryCities: [industryCity],
@@ -144,7 +146,7 @@ export function openStore(game: GameState, input: OpenStoreInput): GameState {
 		return appendDecision(game, locationUnavailableDecision(game, expansionTile.blockReason));
 	}
 
-	if (game.stores.length >= MAX_STORES) {
+	if (game.stores.length >= game.storeCap) {
 		return appendDecision(game, expansionUnavailableDecision(game));
 	}
 
@@ -333,7 +335,7 @@ function expansionUnavailableDecision(game: GameState): DecisionItem {
 	return {
 		id: `expansion-unavailable-${game.day}`,
 		title: 'Expansion unavailable',
-		context: `This local chain can operate up to ${MAX_STORES} stores for now.`,
+		context: `This local chain can operate up to ${game.storeCap} stores for now.`,
 		expiresOnDay: game.day + 1,
 		options: [acknowledgeOption()]
 	};
