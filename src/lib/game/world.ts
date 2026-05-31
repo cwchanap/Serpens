@@ -419,7 +419,8 @@ function ensureWorldCityMap(game: GameState, city: WorldCityDefinition): GameSta
 				name: city.name,
 				width: 18,
 				height: 18,
-				seed: city.seed
+				seed: city.seed,
+				resourceProfile: city.industryResourceProfile ?? undefined
 			})
 		]
 	};

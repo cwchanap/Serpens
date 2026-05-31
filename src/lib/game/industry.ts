@@ -2,6 +2,7 @@ import type {
 	IndustrialBuildingType,
 	IndustrialBuildingTypeId,
 	IndustryCity,
+	IndustryResourceProfile,
 	IndustryResourceId,
 	IndustryTerrainId,
 	IndustryTile,
@@ -17,6 +18,7 @@ interface GenerateIndustryCityInput {
 	width: number;
 	height: number;
 	seed: number;
+	resourceProfile?: IndustryResourceProfile | null;
 }
 
 const RESOURCE_ANCHORS: Array<{
@@ -645,12 +647,18 @@ function isMaterialId(value: string): value is MaterialId {
 export function generateIndustryCity(input: GenerateIndustryCityInput): IndustryCity {
 	const width = normalizeDimension(input.width);
 	const height = normalizeDimension(input.height);
+	const enabledResourceIds = new Set(
+		input.resourceProfile?.resourceIds ?? RESOURCE_ANCHORS.map((anchor) => anchor.resource)
+	);
+	const resourceAnchors = RESOURCE_ANCHORS.filter((anchor) =>
+		enabledResourceIds.has(anchor.resource)
+	);
 	const tiles: IndustryTile[] = [];
 
 	for (let y = 0; y < height; y += 1) {
 		for (let x = 0; x < width; x += 1) {
 			const border = x === 0 || y === 0 || x === width - 1 || y === height - 1;
-			const anchor = getResourceAnchor(x, y);
+			const anchor = getResourceAnchor(resourceAnchors, x, y);
 
 			if (!border && anchor) {
 				tiles.push({
@@ -699,8 +707,12 @@ export function getIndustryTilesByResource(
 	return city.tiles.filter((tile) => tile.resource === resource);
 }
 
-function getResourceAnchor(x: number, y: number): (typeof RESOURCE_ANCHORS)[number] | undefined {
-	return RESOURCE_ANCHORS.find((anchor) => anchor.x === x && anchor.y === y);
+function getResourceAnchor(
+	resourceAnchors: typeof RESOURCE_ANCHORS,
+	x: number,
+	y: number
+): (typeof RESOURCE_ANCHORS)[number] | undefined {
+	return resourceAnchors.find((anchor) => anchor.x === x && anchor.y === y);
 }
 
 function getFillerTerrain(width: number, height: number, x: number, y: number): IndustryTerrainId {

@@ -183,6 +183,26 @@ describe('industry city generation', () => {
 		expect(getIndustryTileById(city, 'industry-city-1-1')?.cityId).toBe(city.id);
 	});
 
+	test('can generate a specialized industry city with only selected resource anchors', () => {
+		expect.assertions(4);
+		const city = generateIndustryCity({
+			id: 'breadbasket-basin',
+			name: 'Breadbasket Basin',
+			width: 18,
+			height: 18,
+			seed: 20260533,
+			resourceProfile: {
+				resourceIds: ['grain-field', 'oilseed-field', 'fruit-orchard', 'sugar-field', 'water-source'],
+				industrialBias: 0.9
+			}
+		});
+
+		expect(getIndustryTilesByResource(city, 'grain-field')).toHaveLength(1);
+		expect(getIndustryTilesByResource(city, 'fruit-orchard')).toHaveLength(1);
+		expect(getIndustryTilesByResource(city, 'salt-deposit')).toHaveLength(0);
+		expect(city.tiles.some((tile) => tile.terrain === 'industrial' && !tile.locked)).toBe(true);
+	});
+
 	test('organizes filler terrain into planned districts', () => {
 		expect.assertions(5);
 		const city = generateIndustryCity({

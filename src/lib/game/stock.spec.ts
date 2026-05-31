@@ -195,6 +195,37 @@ describe('stock rules', () => {
 		expect(pools.drinks).toBeGreaterThan(pools.essentials ?? 0);
 	});
 
+	test('applies retail city demand multipliers to city demand pools', () => {
+		expect.assertions(2);
+		const game = createNewGame('electronics', 20260508);
+		const campusCity = {
+			...game.cities[0]!,
+			id: 'campus-junction',
+			name: 'Campus Junction',
+			tiles: game.cities[0]!.tiles.map((tile) => ({
+				...tile,
+				id: tile.id.replace('harbor-city', 'campus-junction'),
+				cityId: 'campus-junction'
+			}))
+		};
+		const campusGame = {
+			...game,
+			cities: [campusCity],
+			activeCityId: 'campus-junction',
+			stores: game.stores.map((store) => ({
+				...store,
+				cityId: 'campus-junction',
+				tileId: store.tileId.replace('harbor-city', 'campus-junction')
+			}))
+		};
+
+		const harborPools = buildCityDemandPools(game, game.cities[0]!);
+		const campusPools = buildCityDemandPools(campusGame, campusCity);
+
+		expect(campusPools.games).toBeGreaterThan(harborPools.games ?? 0);
+		expect(campusPools.devices).toBeGreaterThan(harborPools.devices ?? 0);
+	});
+
 	test('shared city demand is consumed across stores selling the same category', () => {
 		expect.assertions(4);
 		const game = createNewGame('convenience', 20260508);
