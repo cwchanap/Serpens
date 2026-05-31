@@ -9,7 +9,8 @@ import {
 	getWorldCityDefinition,
 	getWorldCityStatus,
 	openWorldCity,
-	refreshWorldProgress
+	refreshWorldProgress,
+	selectWorldCity
 } from './world';
 import type { GameState } from './types';
 
@@ -157,7 +158,7 @@ describe('world progression and city opening', () => {
 	});
 
 	test('blocked city openings append decisions instead of throwing', () => {
-		expect.assertions(3);
+		expect.assertions(6);
 		const game = createNewGame('convenience', 20260530);
 		const revealedWithoutCash: GameState = {
 			...game,
@@ -172,8 +173,26 @@ describe('world progression and city opening', () => {
 		const unknown = openWorldCity(game, 'missing-city');
 
 		expect(locked.decisions.at(-1)?.title).toBe('City is not available yet');
+		expect(locked.decisions.at(-1)?.context).toBe(
+			'Reach 4 stores or hold positive cash after daily reports.'
+		);
 		expect(unaffordable.decisions.at(-1)?.title).toBe('City opening delayed');
+		expect(unaffordable.decisions.at(-1)?.context).toBe('Opening this city requires 18,000 cash.');
+		expect(unknown.decisions.at(-1)?.title).toBe('City unavailable');
 		expect(unknown.decisions.at(-1)?.context).toBe('Unknown city.');
+	});
+
+	test('selecting unknown or unopened cities leaves game unchanged without decisions', () => {
+		expect.assertions(4);
+		const game = createNewGame('convenience', 20260530);
+
+		const unknown = selectWorldCity(game, 'missing-city' as Parameters<typeof selectWorldCity>[1]);
+		const unopened = selectWorldCity(game, 'campus-junction');
+
+		expect(unknown).toBe(game);
+		expect(unknown.decisions).toHaveLength(0);
+		expect(unopened).toBe(game);
+		expect(unopened.decisions).toHaveLength(0);
 	});
 
 	test('reveals industrial and later retail milestones from production and reports', () => {
