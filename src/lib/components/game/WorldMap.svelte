@@ -46,6 +46,10 @@
 	function inspectorReasonId(status: WorldCityStatus): string {
 		return `world-city-${status.city.id}-reason`;
 	}
+
+	function inspectorId(status: WorldCityStatus): string {
+		return `world-city-${status.city.id}-inspector`;
+	}
 </script>
 
 <section class="world-map" aria-label="World map">
@@ -83,6 +87,7 @@
 				aria-describedby={cityDescriptionIds(status)}
 				aria-current={selectedCityId === status.city.id ? 'true' : undefined}
 				aria-expanded={selectedCityId === status.city.id}
+				aria-controls={selectedCityId === status.city.id ? inspectorId(status) : undefined}
 				onclick={() => onSelectCity(status.city.id)}
 			>
 				<strong id={cityTitleId(status)}>{status.city.name}</strong>
@@ -97,7 +102,13 @@
 	</div>
 
 	{#if selectedStatus}
-		<div class="world-inspector paper" role="dialog" aria-label="City details" aria-modal="false">
+		<div
+			id={inspectorId(selectedStatus)}
+			class="world-inspector paper"
+			role="dialog"
+			aria-label="City details"
+			aria-modal="false"
+		>
 			<button
 				type="button"
 				class="close"

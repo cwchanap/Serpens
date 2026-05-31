@@ -32,8 +32,8 @@ describe('WorldMap', () => {
 		});
 
 		await expect.element(page.getByRole('region', { name: /world map/i })).toBeVisible();
-		await expect.element(page.getByRole('button', { name: /harbor city/i })).toBeVisible();
-		await expect.element(page.getByRole('button', { name: /campus junction/i })).toBeVisible();
+		await expect.element(page.getByRole('button', { name: /^Harbor City$/i })).toBeVisible();
+		await expect.element(page.getByRole('button', { name: /^Campus Junction$/i })).toBeVisible();
 		await expect.element(page.getByText(/reach 4 stores/i)).toBeVisible();
 	});
 
@@ -50,7 +50,7 @@ describe('WorldMap', () => {
 			onCloseInspector
 		});
 
-		await page.getByRole('button', { name: /campus junction/i }).click();
+		await page.getByRole('button', { name: /^Campus Junction$/i }).click();
 		expect(onSelectCity).toHaveBeenCalledWith('campus-junction');
 		await expect.element(page.getByRole('dialog', { name: /city details/i })).toBeVisible();
 		await page.getByRole('button', { name: /open for/i }).click();
