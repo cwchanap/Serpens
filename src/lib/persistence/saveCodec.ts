@@ -1,7 +1,11 @@
 import { getArchetype } from '$lib/game/archetypes';
 import { INDUSTRIAL_BUILDING_TYPES, MATERIALS } from '$lib/game/industry';
-import type { GameState } from '$lib/game/types';
-import { STARTER_STORE_CAP, createInitialWorldProgress, refreshWorldProgress } from '$lib/game/world';
+import type { GameState, WorldCityId } from '$lib/game/types';
+import {
+	STARTER_STORE_CAP,
+	createInitialWorldProgress,
+	refreshWorldProgress
+} from '$lib/game/world';
 import {
 	AUTO_SAVE_SLOT_ID,
 	SAVE_SCHEMA_VERSION,
@@ -299,7 +303,7 @@ function validateSlotInvariants(autoSave: SaveRecord | null, manualSlots: SaveRe
 function normalizeSavedGame(game: Record<string, unknown>): GameState {
 	const normalizedWorld =
 		game.world === undefined
-			? createInitialWorldProgress()
+			? inferWorldProgress(game)
 			: validateSavedWorld(game.world, 'Saved game world');
 	const normalizedStoreCap =
 		game.storeCap === undefined
@@ -314,6 +318,42 @@ function normalizeSavedGame(game: Record<string, unknown>): GameState {
 		world: normalizedWorld,
 		storeCap: normalizedStoreCap
 	} as GameState;
+}
+
+/**
+ * When loading a save that predates the `world` field, infer which cities
+ * were already opened by inspecting the saved `cities` and `industryCities`
+ * arrays. Cities present in those arrays but not in the starter set are
+ * marked as both revealed and opened so the world map reflects reality.
+ */
+function inferWorldProgress(game: Record<string, unknown>): GameState['world'] {
+	const progress = createInitialWorldProgress();
+	const starterSet = new Set<string>(progress.openedCityIds);
+	const worldCityIdSet = new Set<string>(WORLD_CITY_IDS);
+
+	const savedCityIds = extractCityIds(game.cities);
+	const savedIndustryCityIds = extractCityIds(game.industryCities);
+	const allSavedCityIds = [...savedCityIds, ...savedIndustryCityIds];
+
+	for (const cityId of allSavedCityIds) {
+		if (worldCityIdSet.has(cityId) && !starterSet.has(cityId)) {
+			progress.revealedCityIds.push(cityId as WorldCityId);
+			progress.openedCityIds.push(cityId as WorldCityId);
+		}
+	}
+
+	return progress;
+}
+
+function extractCityIds(value: unknown): string[] {
+	if (!Array.isArray(value)) return [];
+	return value
+		.filter(
+			(item): item is Record<string, unknown> =>
+				typeof item === 'object' && item !== null && 'id' in item
+		)
+		.map((item) => item.id)
+		.filter((id): id is string => typeof id === 'string');
 }
 
 function validateSavedWorld(value: unknown, label: string): GameState['world'] {
