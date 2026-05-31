@@ -322,7 +322,7 @@ export function openWorldCity(game: GameState, cityId: string): GameState {
 			worldDecision(
 				game,
 				'City opening delayed',
-				`Opening ${city.name} requires ${city.openingCost.toLocaleString('en-US')} cash.`
+				`Opening this city requires ${city.openingCost.toLocaleString('en-US')} cash.`
 			)
 		);
 	}
@@ -338,58 +338,16 @@ export function openWorldCity(game: GameState, cityId: string): GameState {
 		}
 	};
 
-	return refreshWorldProgress(selectWorldCity(openedGame, city.id));
+	return refreshWorldProgress(selectWorldCity(ensureWorldCityMap(openedGame, city), city.id));
 }
 
 export function selectWorldCity(game: GameState, cityId: WorldCityId): GameState {
 	const city = getWorldCityDefinition(cityId);
 
-	if (!city) {
-		return appendDecision(game, worldDecision(game, 'City unavailable', 'Unknown city.'));
-	}
-
-	if (!game.world.openedCityIds.includes(city.id)) {
-		return appendDecision(
-			game,
-			worldDecision(game, 'City is not available yet', city.unlockRequirement)
-		);
-	}
-
-	if (city.kind === 'retail') {
-		return {
-			...game,
-			cities: game.cities.some((candidate) => candidate.id === city.id)
-				? game.cities
-				: [
-						...game.cities,
-						generateCity({
-							id: city.id,
-							name: city.name,
-							width: 20,
-							height: 20,
-							seed: city.seed
-						})
-					],
-			activeCityId: city.id
-		};
-	}
-
-	return {
-		...game,
-		industryCities: game.industryCities.some((candidate) => candidate.id === city.id)
-			? game.industryCities
-			: [
-					...game.industryCities,
-					generateIndustryCity({
-						id: city.id,
-						name: city.name,
-						width: 18,
-						height: 18,
-						seed: city.seed
-					})
-				],
-		activeIndustryCityId: city.id
-	};
+	if (!city || !game.world.openedCityIds.includes(city.id)) return game;
+	return city.kind === 'retail'
+		? { ...game, activeCityId: city.id }
+		: { ...game, activeIndustryCityId: city.id };
 }
 
 export function getRetailCityDemandMultiplier(
@@ -429,6 +387,42 @@ function hasOpenedNonHarborRetailCity(game: GameState): boolean {
 		const city = getWorldCityDefinition(cityId);
 		return city?.kind === 'retail' && city.id !== 'harbor-city';
 	});
+}
+
+function ensureWorldCityMap(game: GameState, city: WorldCityDefinition): GameState {
+	if (city.kind === 'retail') {
+		if (game.cities.some((candidate) => candidate.id === city.id)) return game;
+
+		return {
+			...game,
+			cities: [
+				...game.cities,
+				generateCity({
+					id: city.id,
+					name: city.name,
+					width: 20,
+					height: 20,
+					seed: city.seed
+				})
+			]
+		};
+	}
+
+	if (game.industryCities.some((candidate) => candidate.id === city.id)) return game;
+
+	return {
+		...game,
+		industryCities: [
+			...game.industryCities,
+			generateIndustryCity({
+				id: city.id,
+				name: city.name,
+				width: 18,
+				height: 18,
+				seed: city.seed
+			})
+		]
+	};
 }
 
 function acknowledgeOption(): DecisionOption {
