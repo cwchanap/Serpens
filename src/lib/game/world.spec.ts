@@ -195,6 +195,63 @@ describe('world progression and city opening', () => {
 		expect(unopened.decisions).toHaveLength(0);
 	});
 
+	test('reveals quarry-works when finished material was produced locally even if warehouse is empty', () => {
+		expect.assertions(2);
+		const game = { ...createNewGame('convenience', 20260530), cash: 100_000 };
+		const warehouseTile = game.industryCities[0]!.tiles.find(
+			(tile) => tile.terrain === 'industrial' && !tile.locked
+		)!;
+		const warehouseGame = buildIndustrialBuilding(game, {
+			tileId: warehouseTile.id,
+			buildingTypeId: 'warehouse'
+		});
+		const rawTile = warehouseGame.industryCities[0]!.tiles.find(
+			(tile) => tile.resource === 'grain-field'
+		)!;
+		const rawGame = buildIndustrialBuilding(warehouseGame, {
+			tileId: rawTile.id,
+			buildingTypeId: 'grain-farm'
+		});
+
+		// Warehouse is empty but the latest report records locally produced snacks.
+		const withProducedReport = refreshWorldProgress({
+			...rawGame,
+			warehouse: { ...rawGame.warehouse, materials: {} },
+			reports: [
+				{
+					day: rawGame.day,
+					revenue: 0,
+					costOfGoods: 0,
+					grossMargin: 0,
+					operatingCosts: 0,
+					payrollCost: 0,
+					importSpend: 0,
+					netIncome: 0,
+					cashAfter: rawGame.cash,
+					scorecard: rawGame.scorecard,
+					productionReport: {
+						produced: [{ materialId: 'snacks', quantity: 8, value: 64, source: 'local' }],
+						consumed: [],
+						importedInputs: [],
+						warehousePulls: [{ materialId: 'snacks', quantity: 8, value: 64, source: 'warehouse' }],
+						shopImports: [],
+						importSpend: 0,
+						operatingCost: 0,
+						overflowUnits: 0,
+						overflowCost: 0,
+						warehouseCapacity: 100,
+						warehouseUsed: 0
+					},
+					storeReports: [],
+					warnings: []
+				}
+			]
+		});
+
+		expect(withProducedReport.world.revealedCityIds).toContain('breadbasket-basin');
+		expect(withProducedReport.world.revealedCityIds).toContain('quarry-works');
+	});
+
 	test('reveals industrial and later retail milestones from production and reports', () => {
 		expect.assertions(3);
 		const game = { ...createNewGame('convenience', 20260530), cash: 100_000 };

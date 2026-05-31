@@ -879,9 +879,7 @@ test('player opens a revealed retail city from the world map and builds there', 
 		const game = saveStore.autoSave.game;
 		game.cash = 100_000;
 		game.storeCap = 4;
-		game.world.revealedCityIds = [
-			...new Set([...game.world.revealedCityIds, 'campus-junction'])
-		];
+		game.world.revealedCityIds = [...new Set([...game.world.revealedCityIds, 'campus-junction'])];
 		window.localStorage.setItem('serpens.saves.v2', JSON.stringify(saveStore));
 	});
 	await page.reload();

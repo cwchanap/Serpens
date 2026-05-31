@@ -192,7 +192,13 @@ describe('industry city generation', () => {
 			height: 18,
 			seed: 20260533,
 			resourceProfile: {
-				resourceIds: ['grain-field', 'oilseed-field', 'fruit-orchard', 'sugar-field', 'water-source'],
+				resourceIds: [
+					'grain-field',
+					'oilseed-field',
+					'fruit-orchard',
+					'sugar-field',
+					'water-source'
+				],
 				industrialBias: 0.9
 			}
 		});
