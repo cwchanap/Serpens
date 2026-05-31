@@ -13,6 +13,7 @@
 	import StaffPanel from '$lib/components/game/StaffPanel.svelte';
 	import StoreOverview from '$lib/components/game/StoreOverview.svelte';
 	import TileInspector from '$lib/components/game/TileInspector.svelte';
+	import WorldMap from '$lib/components/game/WorldMap.svelte';
 	import { generateCity, getTileById } from '$lib/game/city';
 	import { generateIndustryCity, getIndustryTileById } from '$lib/game/industry';
 	import { createIndustryMapSnapshot } from '$lib/game/industryMapRender';
@@ -31,6 +32,14 @@
 	import { DEFAULT_POLICY, resolveDecision, updatePolicy } from '$lib/game/state';
 	import { updateStoreProduct } from '$lib/game/stock';
 	import { simulateDay } from '$lib/game/simulateDay';
+	import {
+		STARTER_STORE_CAP,
+		WORLD_CITY_CATALOG,
+		createInitialWorldProgress,
+		getWorldCityStatus,
+		openWorldCity,
+		selectWorldCity
+	} from '$lib/game/world';
 	import type {
 		ArchetypeId,
 		CompanyPolicy,
@@ -38,6 +47,7 @@
 		IndustrialBuildingTypeId,
 		StoreProductPatch
 	} from '$lib/game/types';
+	import type { WorldCityStatus } from '$lib/game/world';
 	import type { SaveRepository } from '$lib/persistence/saveRepository';
 	import { createSaveRepository } from '$lib/persistence/saveRepositoryFactory';
 	import type { SaveSlotMetadata } from '$lib/persistence/saveTypes';
@@ -84,6 +94,8 @@
 			staffMorale: 0,
 			marketPosition: 0
 		},
+		world: createInitialWorldProgress(),
+		storeCap: STARTER_STORE_CAP,
 		cities: [starterCity],
 		activeCityId: starterCity.id,
 		industryCities: [starterIndustryCity],
@@ -112,7 +124,8 @@
 	];
 
 	let game: GameState | null = $state(null);
-	let activeMapView = $state<'retail' | 'industry'>('retail');
+	let activeMapView = $state<'world' | 'retail' | 'industry'>('retail');
+	let selectedWorldCityId = $state<string | null>(null);
 	let selectedTileId = $state<string | null>(null);
 	let selectedIndustryTileId = $state<string | null>(null);
 	let isViewMenuOpen = $state(false);
@@ -144,6 +157,21 @@
 			currentGame?.industryCities.find((city) => city.id === currentGame.activeIndustryCityId) ??
 			starterIndustryCity
 		);
+	});
+	let worldCityStatuses = $derived.by((): WorldCityStatus[] => {
+		const currentGame: GameState | null = game;
+		return WORLD_CITY_CATALOG.map((city) =>
+			currentGame
+				? getWorldCityStatus(currentGame, city.id)
+				: {
+						city,
+						state: city.initiallyOpened ? 'opened' : 'locked',
+						canOpen: false,
+						blockedReason: city.unlockRequirement,
+						storeCount: 0,
+						buildingCount: 0
+					}
+		).filter((status): status is WorldCityStatus => status !== null);
 	});
 	let selectedTile = $derived(
 		selectedTileId ? (getTileById(activeCity, selectedTileId) ?? null) : null
@@ -224,6 +252,7 @@
 
 		selectedTileId = tileId;
 		selectedIndustryTileId = null;
+		selectedWorldCityId = null;
 	}
 
 	function selectIndustryTile(tileId: string) {
@@ -234,6 +263,7 @@
 
 		selectedIndustryTileId = tileId;
 		selectedTileId = null;
+		selectedWorldCityId = null;
 	}
 
 	async function initializeSaves(): Promise<void> {
@@ -284,6 +314,10 @@
 	}
 
 	function openBuildMenu(): void {
+		if (activeMapView === 'world') {
+			return;
+		}
+
 		isViewMenuOpen = false;
 		isSavePanelOpen = false;
 		activeManagementPanelId = null;
@@ -297,6 +331,7 @@
 	function showRetailMap() {
 		activeMapView = 'retail';
 		selectedIndustryTileId = null;
+		selectedWorldCityId = null;
 		isViewMenuOpen = false;
 		cancelPlacement();
 	}
@@ -304,8 +339,60 @@
 	function showIndustryMap() {
 		activeMapView = 'industry';
 		selectedTileId = null;
+		selectedWorldCityId = null;
 		isViewMenuOpen = false;
 		cancelPlacement();
+	}
+
+	function showWorldMap(): void {
+		activeMapView = 'world';
+		selectedTileId = null;
+		selectedIndustryTileId = null;
+		isViewMenuOpen = false;
+		isBuildMenuOpen = false;
+		cancelPlacement();
+	}
+
+	function selectWorldCityNode(cityId: string): void {
+		if (!game) {
+			selectedWorldCityId = cityId;
+			return;
+		}
+
+		const status = getWorldCityStatus(game, cityId);
+
+		if (!status) {
+			return;
+		}
+
+		selectedWorldCityId = cityId;
+
+		if (status.state !== 'opened') {
+			return;
+		}
+
+		const nextGame = selectWorldCity(game, status.city.id);
+		game = nextGame;
+		activeMapView = status.city.kind === 'retail' ? 'retail' : 'industry';
+		selectedWorldCityId = null;
+		selectedTileId = null;
+		selectedIndustryTileId = null;
+		cancelPlacement();
+		void writeAutoSave(nextGame);
+	}
+
+	function openSelectedWorldCity(cityId: string): void {
+		if (!game) {
+			return;
+		}
+
+		const nextGame = openWorldCity(game, cityId);
+		setGameAndAutosave(nextGame);
+		selectedWorldCityId = cityId;
+	}
+
+	function closeWorldInspector(): void {
+		selectedWorldCityId = null;
 	}
 
 	function openManagementPanel(panelId: ManagementPanelId): void {
@@ -355,6 +442,7 @@
 			game = record.game;
 			selectedTileId = null;
 			selectedIndustryTileId = null;
+			selectedWorldCityId = null;
 			cancelPlacement();
 			saveStatus = 'Loaded auto-save';
 			saveError = null;
@@ -397,6 +485,7 @@
 			game = record.game;
 			selectedTileId = null;
 			selectedIndustryTileId = null;
+			selectedWorldCityId = null;
 			cancelPlacement();
 			saveStatus = `Loaded ${record.metadata.name}`;
 			saveError = null;
@@ -426,6 +515,7 @@
 		industryPlacementBuildingTypeId = null;
 		selectedTileId = null;
 		selectedIndustryTileId = null;
+		selectedWorldCityId = null;
 		placementFeedback = null;
 		isBuildMenuOpen = false;
 	}
@@ -435,6 +525,7 @@
 		retailPlacementArchetypeId = null;
 		selectedTileId = null;
 		selectedIndustryTileId = null;
+		selectedWorldCityId = null;
 		placementFeedback = null;
 		isBuildMenuOpen = false;
 	}
@@ -498,6 +589,7 @@
 		if (blockReason) {
 			selectedTileId = tileId;
 			selectedIndustryTileId = null;
+			selectedWorldCityId = null;
 			placementFeedback = blockReason;
 			return;
 		}
@@ -531,6 +623,7 @@
 
 		selectedTileId = null;
 		selectedIndustryTileId = null;
+		selectedWorldCityId = null;
 		cancelPlacement();
 	}
 
@@ -544,6 +637,7 @@
 		if (blockReason) {
 			selectedIndustryTileId = tileId;
 			selectedTileId = null;
+			selectedWorldCityId = null;
 			placementFeedback = blockReason;
 			return;
 		}
@@ -556,6 +650,7 @@
 		setGameAndAutosave(buildIndustrialBuilding(game, { tileId, buildingTypeId }));
 		selectedIndustryTileId = null;
 		selectedTileId = null;
+		selectedWorldCityId = null;
 		cancelPlacement();
 	}
 
@@ -600,6 +695,11 @@
 			return;
 		}
 
+		if (selectedWorldCityId !== null) {
+			selectedWorldCityId = null;
+			return;
+		}
+
 		if (selectedTileId !== null) {
 			selectedTileId = null;
 			return;
@@ -612,14 +712,28 @@
 </script>
 
 <svelte:head>
-	<title>{activeMapView === 'industry' ? 'Industry City Map' : 'Retail City Map'}</title>
+	<title>
+		{activeMapView === 'world'
+			? 'World Map'
+			: activeMapView === 'industry'
+				? 'Industry City Map'
+				: 'Retail City Map'}
+	</title>
 </svelte:head>
 
 <svelte:window onkeydown={handleKeydown} />
 
 <main class="app">
 	<section class="map-layout" aria-label="City planning">
-		{#if activeMapView === 'retail'}
+		{#if activeMapView === 'world'}
+			<WorldMap
+				statuses={worldCityStatuses}
+				selectedCityId={selectedWorldCityId}
+				onSelectCity={selectWorldCityNode}
+				onOpenCity={openSelectedWorldCity}
+				onCloseInspector={closeWorldInspector}
+			/>
+		{:else if activeMapView === 'retail'}
 			<CityMap snapshot={mapSnapshot} onTileSelected={selectTile} />
 		{:else}
 			<IndustryMap snapshot={industryMapSnapshot} onTileSelected={selectIndustryTile} />
@@ -628,10 +742,29 @@
 			<div class="map-title plaque" aria-label="Map title">
 				<span class="bookmark map-title-bookmark" aria-hidden="true"></span>
 				<p class="eyebrow">
-					{activeMapView === 'industry' ? 'Industry City Map' : 'Retail City Map'}
+					{activeMapView === 'world'
+						? 'World Map'
+						: activeMapView === 'industry'
+							? 'Industry City Map'
+							: 'Retail City Map'}
 				</p>
-				<h1>{activeMapView === 'industry' ? industryCity.name : activeCity.name}</h1>
-				{#if activeMapView === 'industry'}
+				<h1>
+					{activeMapView === 'world'
+						? 'Regional Network'
+						: activeMapView === 'industry'
+							? industryCity.name
+							: activeCity.name}
+				</h1>
+				{#if activeMapView === 'world'}
+					{#if game}
+						<p class="status">
+							Day <span class="ticker">{game.day}</span> ·
+							<span class="ticker">{game.world.openedCityIds.length}</span> cities open
+						</p>
+					{:else}
+						<p class="status">Found a store to unlock the regional network.</p>
+					{/if}
+				{:else if activeMapView === 'industry'}
 					{#if game}
 						<p class="status">
 							Day <span class="ticker">{game.day}</span> ·
@@ -656,6 +789,7 @@
 					class="map-icon-button btn-icon"
 					aria-label="Build"
 					aria-pressed={isPlacementModeActive}
+					disabled={activeMapView === 'world'}
 					onclick={openBuildMenu}
 				>
 					<svg aria-hidden="true" viewBox="0 0 24 24">
@@ -704,6 +838,15 @@
 							<button
 								type="button"
 								role="menuitem"
+								class:active-view={activeMapView === 'world'}
+								disabled={!game}
+								onclick={showWorldMap}
+							>
+								World Map
+							</button>
+							<button
+								type="button"
+								role="menuitem"
 								class:active-view={activeMapView === 'retail'}
 								onclick={showRetailMap}
 							>
@@ -739,9 +882,9 @@
 				<button type="button" class="btn-danger" onclick={cancelPlacement}>Cancel</button>
 			</div>
 		{/if}
-		{#if isBuildMenuOpen}
+		{#if isBuildMenuOpen && activeMapView !== 'world'}
 			<BuildMenu
-				{activeMapView}
+				activeMapView={activeMapView === 'industry' ? 'industry' : 'retail'}
 				retailOptions={retailBuildOptions}
 				{industryLockedReason}
 				onChooseRetail={armRetailPlacement}
