@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { createRng } from './rng';
 import { initializeStoreProducts } from './stock';
+import { STARTER_STORE_CAP, createInitialWorldProgress } from './world';
 import {
 	assignStaffToStore,
 	calculateMonthlyPayroll,
@@ -238,6 +239,8 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 			staffMorale: 50,
 			marketPosition: 50
 		},
+		world: createInitialWorldProgress(),
+		storeCap: STARTER_STORE_CAP,
 		cities: [],
 		activeCityId: 'city-1',
 		industryCities: [

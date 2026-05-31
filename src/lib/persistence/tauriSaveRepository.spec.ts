@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import { simulateDay } from '$lib/game/simulateDay';
 import { createNewGame } from '$lib/game/state';
 import type { GameState } from '$lib/game/types';
+import { STARTER_STORE_CAP, createInitialWorldProgress } from '$lib/game/world';
 import {
 	createTauriSaveRepositoryFromStore,
 	SAVE_STORE_KEY,
@@ -45,6 +46,8 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 			staffMorale: 65,
 			marketPosition: 50
 		},
+		world: createInitialWorldProgress(),
+		storeCap: STARTER_STORE_CAP,
 		cities: [{ id: 'harbor-city', name: 'Harbor City', width: 1, height: 1, tiles: [] }],
 		activeCityId: 'harbor-city',
 		industryCities: [

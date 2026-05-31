@@ -852,6 +852,59 @@ test('player expands from a selected city tile', async ({ page }) => {
 	).toBeVisible();
 });
 
+test('player opens a revealed retail city from the world map and builds there', async ({
+	page
+}) => {
+	await page.goto('/');
+
+	await buildRetailStoreAt(page, {
+		x: 1,
+		y: 6,
+		storeTypeName: /build convenience store/i,
+		expectedStoreCount: 1
+	});
+
+	await openMapMenuItem(page, /world map/i);
+	await expect(page.getByRole('region', { name: /world map/i })).toBeVisible();
+	await expect(page.getByRole('button', { name: /harbor city/i })).toBeVisible();
+
+	await page.evaluate(() => {
+		const serialized = window.localStorage.getItem('serpens.saves.v2');
+
+		if (!serialized) {
+			throw new Error('Missing save data');
+		}
+
+		const saveStore = JSON.parse(serialized);
+		const game = saveStore.autoSave.game;
+		game.cash = 100_000;
+		game.storeCap = 4;
+		game.world.revealedCityIds = [
+			...new Set([...game.world.revealedCityIds, 'campus-junction'])
+		];
+		window.localStorage.setItem('serpens.saves.v2', JSON.stringify(saveStore));
+	});
+	await page.reload();
+	await openSaves(page);
+	await page.getByRole('button', { name: /^resume$/i }).click();
+	await page.getByRole('button', { name: /close saves/i }).click();
+
+	await openMapMenuItem(page, /world map/i);
+	await page.getByRole('button', { name: /campus junction/i }).click();
+	await page.getByRole('button', { name: /open for/i }).click();
+	await page.getByRole('button', { name: /campus junction/i }).click();
+	await openMapMenuItem(page, /retail city map/i);
+	await expect(page.getByRole('heading', { name: /campus junction/i })).toBeVisible();
+
+	await buildRetailStoreAt(page, {
+		x: 1,
+		y: 6,
+		storeTypeName: /build electronics & games/i,
+		expectedStoreCount: 1
+	});
+	await expect.poll(async () => (await readAutoSaveGame(page)).stores.length).toBe(2);
+});
+
 test('manage selected store stock and see weekly imports', async ({ page }) => {
 	await page.goto('/');
 
