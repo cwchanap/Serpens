@@ -18,6 +18,7 @@ import {
 	isImportDay,
 	simulateProductSalesForCity
 } from './stock';
+import { refreshWorldProgress } from './world';
 import type {
 	DailyMaterialMovement,
 	DailyProductReport,
@@ -185,7 +186,7 @@ export function simulateDay(game: GameState): GameState {
 		warnings
 	};
 
-	return {
+	return refreshWorldProgress({
 		...productionGame,
 		day: nextDay,
 		rngState: rng.getState(),
@@ -203,7 +204,7 @@ export function simulateDay(game: GameState): GameState {
 			})
 		],
 		reports: [...productionGame.reports, report]
-	};
+	});
 }
 
 function buildStoreOperationProfile(

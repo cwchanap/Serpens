@@ -1,4 +1,5 @@
 import { INDUSTRIAL_BUILDING_TYPES, getIndustryTileById } from './industry';
+import { refreshWorldProgress } from './world';
 import type {
 	DecisionItem,
 	DecisionOption,
@@ -109,14 +110,14 @@ export function buildIndustrialBuilding(
 		);
 	}
 
-	return {
+	return refreshWorldProgress({
 		...game,
 		cash: game.cash - buildingType.buildCost,
 		industrialBuildings: [
 			...game.industrialBuildings,
 			createIndustrialBuilding(game, tile, buildingType)
 		]
-	};
+	});
 }
 
 function getActiveIndustryCity(game: GameState): IndustryCity | undefined {
