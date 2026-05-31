@@ -334,7 +334,13 @@ function inferStoreCap(world: GameState['world'], storeCount: number): number {
 		cap += 1;
 	}
 
-	return Math.max(cap, storeCount);
+	if (storeCount > cap) {
+		throw new SaveDataError(
+			`Legacy save has ${storeCount} stores but inferred store cap is ${cap}`
+		);
+	}
+
+	return cap;
 }
 
 /**
@@ -353,10 +359,15 @@ function inferWorldProgress(game: Record<string, unknown>): GameState['world'] {
 	const allSavedCityIds = [...savedCityIds, ...savedIndustryCityIds];
 
 	for (const cityId of allSavedCityIds) {
-		if (worldCityIdSet.has(cityId) && !starterSet.has(cityId)) {
-			progress.revealedCityIds.push(cityId as WorldCityId);
-			progress.openedCityIds.push(cityId as WorldCityId);
+		if (starterSet.has(cityId)) continue;
+
+		if (!worldCityIdSet.has(cityId)) {
+			console.warn(`inferWorldProgress: skipping unknown city id "${cityId}" not in catalog`);
+			continue;
 		}
+
+		progress.revealedCityIds.push(cityId as WorldCityId);
+		progress.openedCityIds.push(cityId as WorldCityId);
 	}
 
 	return progress;

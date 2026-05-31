@@ -182,6 +182,133 @@ describe('world progression and city opening', () => {
 		expect(unknown.decisions.at(-1)?.context).toBe('Unknown city.');
 	});
 
+	test('re-opening an already-opened city selects it without deducting cash or changing store cap', () => {
+		expect.assertions(4);
+		const game = createNewGame('convenience', 20260530);
+		const revealed: GameState = {
+			...game,
+			cash: 50_000,
+			world: {
+				...game.world,
+				revealedCityIds: [...game.world.revealedCityIds, 'campus-junction']
+			}
+		};
+		const opened = openWorldCity(revealed, 'campus-junction');
+		const cashAfterOpen = opened.cash;
+		const capAfterOpen = opened.storeCap;
+
+		const reopened = openWorldCity(opened, 'campus-junction');
+
+		expect(reopened.cash).toBe(cashAfterOpen);
+		expect(reopened.storeCap).toBe(capAfterOpen);
+		expect(reopened.activeCityId).toBe('campus-junction');
+		expect(reopened.decisions).toHaveLength(opened.decisions.length);
+	});
+
+	test('does not reveal quarry-works when finished material was imported rather than produced locally', () => {
+		expect.assertions(1);
+		const game = { ...createNewGame('convenience', 20260530), cash: 100_000 };
+		const refreshed = refreshWorldProgress({
+			...game,
+			reports: [
+				{
+					day: game.day,
+					revenue: 0,
+					costOfGoods: 0,
+					grossMargin: 0,
+					operatingCosts: 0,
+					payrollCost: 0,
+					importSpend: 0,
+					netIncome: 0,
+					cashAfter: game.cash,
+					scorecard: game.scorecard,
+					productionReport: {
+						produced: [{ materialId: 'snacks', quantity: 8, value: 64, source: 'import' }],
+						consumed: [],
+						importedInputs: [],
+						warehousePulls: [],
+						shopImports: [],
+						importSpend: 0,
+						operatingCost: 0,
+						overflowUnits: 0,
+						overflowCost: 0,
+						warehouseCapacity: 0,
+						warehouseUsed: 0
+					},
+					storeReports: [],
+					warnings: []
+				}
+			]
+		});
+
+		expect(refreshed.world.revealedCityIds).not.toContain('quarry-works');
+	});
+
+	test('reveals garden-borough when the company has four or more stores', () => {
+		expect.assertions(1);
+		const game = gameStub({
+			stores: [
+				{ id: 's1', cityId: 'harbor-city' } as GameState['stores'][number],
+				{ id: 's2', cityId: 'harbor-city' } as GameState['stores'][number],
+				{ id: 's3', cityId: 'harbor-city' } as GameState['stores'][number],
+				{ id: 's4', cityId: 'harbor-city' } as GameState['stores'][number]
+			]
+		});
+
+		expect(refreshWorldProgress(game).world.revealedCityIds).toContain('garden-borough');
+	});
+
+	test('does not reveal garden-borough with three stores and no positive report', () => {
+		expect.assertions(1);
+		const game = gameStub({
+			stores: [
+				{ id: 's1', cityId: 'harbor-city' } as GameState['stores'][number],
+				{ id: 's2', cityId: 'harbor-city' } as GameState['stores'][number],
+				{ id: 's3', cityId: 'harbor-city' } as GameState['stores'][number]
+			]
+		});
+
+		expect(refreshWorldProgress(game).world.revealedCityIds).not.toContain('garden-borough');
+	});
+
+	test('reveals garden-borough with positive cash and positive report even with fewer than four stores', () => {
+		expect.assertions(1);
+		const game = gameStub({
+			cash: 1,
+			reports: [
+				{
+					day: 1,
+					revenue: 1,
+					costOfGoods: 0,
+					grossMargin: 1,
+					operatingCosts: 0,
+					payrollCost: 0,
+					importSpend: 0,
+					netIncome: 1,
+					cashAfter: 1,
+					scorecard: { profit: 50, customerSatisfaction: 50, staffMorale: 50, marketPosition: 50 },
+					productionReport: {
+						produced: [],
+						consumed: [],
+						importedInputs: [],
+						warehousePulls: [],
+						shopImports: [],
+						importSpend: 0,
+						operatingCost: 0,
+						overflowUnits: 0,
+						overflowCost: 0,
+						warehouseCapacity: 0,
+						warehouseUsed: 0
+					},
+					storeReports: [],
+					warnings: []
+				}
+			]
+		});
+
+		expect(refreshWorldProgress(game).world.revealedCityIds).toContain('garden-borough');
+	});
+
 	test('selecting unknown or unopened cities leaves game unchanged without decisions', () => {
 		expect.assertions(4);
 		const game = createNewGame('convenience', 20260530);
@@ -310,5 +437,103 @@ describe('world progression and city opening', () => {
 		expect(rawGame.world.revealedCityIds).toContain('breadbasket-basin');
 		expect(finishedGame.world.revealedCityIds).toContain('quarry-works');
 		expect(reportedGame.world.revealedCityIds).toContain('garden-borough');
+	});
+
+	test('claims positive-income-store-cap milestone when a non-harbor retail city is open and a report has positive income', () => {
+		expect.assertions(4);
+		const game = createNewGame('convenience', 20260530);
+		const opened: GameState = {
+			...game,
+			cash: 50_000,
+			world: {
+				revealedCityIds: [...game.world.revealedCityIds, 'campus-junction'],
+				openedCityIds: [...game.world.openedCityIds],
+				claimedMilestoneIds: []
+			}
+		};
+		const withCampus = openWorldCity(opened, 'campus-junction');
+		const baseCap = withCampus.storeCap;
+
+		const withReport = refreshWorldProgress({
+			...withCampus,
+			reports: [
+				{
+					day: withCampus.day,
+					revenue: 1,
+					costOfGoods: 0,
+					grossMargin: 1,
+					operatingCosts: 0,
+					payrollCost: 0,
+					importSpend: 0,
+					netIncome: 1,
+					cashAfter: withCampus.cash + 1,
+					scorecard: withCampus.scorecard,
+					productionReport: {
+						produced: [],
+						consumed: [],
+						importedInputs: [],
+						warehousePulls: [],
+						shopImports: [],
+						importSpend: 0,
+						operatingCost: 0,
+						overflowUnits: 0,
+						overflowCost: 0,
+						warehouseCapacity: 0,
+						warehouseUsed: 0
+					},
+					storeReports: [],
+					warnings: []
+				}
+			]
+		});
+
+		expect(withReport.world.claimedMilestoneIds).toContain('positive-income-store-cap');
+		expect(withReport.storeCap).toBe(baseCap + 1);
+
+		// Idempotent: second refresh with same state does not increase cap again
+		const refreshed = refreshWorldProgress(withReport);
+		expect(refreshed.storeCap).toBe(withReport.storeCap);
+		expect(
+			refreshed.world.claimedMilestoneIds.filter((id) => id === 'positive-income-store-cap')
+		).toHaveLength(1);
+	});
+
+	test('does not claim positive-income-store-cap when only harbor-city is open', () => {
+		expect.assertions(1);
+		const game = createNewGame('convenience', 20260530);
+		const withReport = refreshWorldProgress({
+			...game,
+			reports: [
+				{
+					day: game.day,
+					revenue: 1,
+					costOfGoods: 0,
+					grossMargin: 1,
+					operatingCosts: 0,
+					payrollCost: 0,
+					importSpend: 0,
+					netIncome: 1,
+					cashAfter: game.cash + 1,
+					scorecard: game.scorecard,
+					productionReport: {
+						produced: [],
+						consumed: [],
+						importedInputs: [],
+						warehousePulls: [],
+						shopImports: [],
+						importSpend: 0,
+						operatingCost: 0,
+						overflowUnits: 0,
+						overflowCost: 0,
+						warehouseCapacity: 0,
+						warehouseUsed: 0
+					},
+					storeReports: [],
+					warnings: []
+				}
+			]
+		});
+
+		expect(withReport.world.claimedMilestoneIds).not.toContain('positive-income-store-cap');
 	});
 });
