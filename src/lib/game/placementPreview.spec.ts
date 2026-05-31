@@ -10,7 +10,6 @@ import {
 } from './placementPreview';
 import { createFoundingGameAtTile, forecastOpening } from './placement';
 import { createNewGame } from './state';
-import { MAX_STORES } from './types';
 
 describe('retail placement preview', () => {
 	test('marks every retail tile as valid or invalid before founding', () => {
@@ -53,7 +52,7 @@ describe('retail placement preview', () => {
 	});
 
 	test('blocks occupied retail tiles, max store count, unaffordable expansion tiles, and unknown tiles', () => {
-		expect.assertions(5);
+		expect.assertions(6);
 		const city = generateCity({
 			id: 'harbor-city',
 			name: 'Harbor City',
@@ -72,13 +71,14 @@ describe('retail placement preview', () => {
 		const expansionSetupCost = forecastOpening(expansionTile, 'electronics').setupCost;
 		const cappedGame = {
 			...game,
-			stores: Array.from({ length: MAX_STORES }, (_, index) => ({
+			stores: Array.from({ length: game.storeCap }, (_, index) => ({
 				...game.stores[0]!,
 				id: `store-${index + 1}`,
 				tileId: buildableTiles[index]!.id
 			}))
 		};
 
+		expect(game.storeCap).toBeGreaterThan(1);
 		expect(
 			getRetailPlacementBlockReason({
 				game,
@@ -99,7 +99,7 @@ describe('retail placement preview', () => {
 			getRetailPlacementBlockReason({
 				game: cappedGame,
 				city,
-				tileId: buildableTiles[MAX_STORES]!.id,
+				tileId: buildableTiles[game.storeCap]!.id,
 				archetypeId: 'grocery'
 			})
 		).toBe('Store limit reached');
@@ -172,7 +172,7 @@ describe('retail placement preview', () => {
 		});
 		const cappedGame = {
 			...game,
-			stores: Array.from({ length: MAX_STORES }, (_, index) => ({
+			stores: Array.from({ length: game.storeCap }, (_, index) => ({
 				...game.stores[0]!,
 				id: `store-${index + 1}`,
 				tileId: buildableTiles[index]!.id
