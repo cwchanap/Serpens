@@ -4,6 +4,7 @@ import { MATERIALS } from './industry';
 import { removeWarehouseMaterial } from './industryProduction';
 import { clampScore } from './reports';
 import { randomBetween, type Rng } from './rng';
+import { getRetailCityDemandMultiplier } from './world';
 import type {
 	ArchetypeId,
 	City,
@@ -144,7 +145,7 @@ function isMaterialId(value: string): value is MaterialId {
 }
 
 export function buildCityDemandPools(
-	game: Pick<GameState, 'stores' | 'policy'>,
+	game: Pick<GameState, 'stores' | 'policy' | 'world'>,
 	city: City,
 	policy: Pick<CompanyPolicy, 'marketing' | 'pricing'> = game.policy
 ): Record<string, number> {
@@ -161,13 +162,22 @@ export function buildCityDemandPools(
 	const pricingMultiplier = getPricingDemandMultiplier(policy.pricing);
 
 	return Object.fromEntries(
-		categories.map((category) => [
-			category.id,
-			Math.max(
-				0,
-				Math.round(cityDemand * category.demandWeight * marketingMultiplier * pricingMultiplier)
-			)
-		])
+		categories.map((category) => {
+			const cityMultiplier = getRetailCityDemandMultiplier(game, city.id, category.id);
+			return [
+				category.id,
+				Math.max(
+					0,
+					Math.round(
+						cityDemand *
+							category.demandWeight *
+							marketingMultiplier *
+							pricingMultiplier *
+							cityMultiplier
+					)
+				)
+			];
+		})
 	);
 }
 
