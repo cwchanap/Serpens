@@ -4,6 +4,7 @@ import type { GameState, WorldCityId } from '$lib/game/types';
 import {
 	STARTER_STORE_CAP,
 	createInitialWorldProgress,
+	getWorldCityDefinition,
 	refreshWorldProgress
 } from '$lib/game/world';
 import {
@@ -307,10 +308,7 @@ function normalizeSavedGame(game: Record<string, unknown>): GameState {
 			: validateSavedWorld(game.world, 'Saved game world');
 	const normalizedStoreCap =
 		game.storeCap === undefined
-			? Math.max(
-					STARTER_STORE_CAP,
-					Array.isArray(game.stores) ? game.stores.length : STARTER_STORE_CAP
-				)
+			? inferStoreCap(normalizedWorld, Array.isArray(game.stores) ? game.stores.length : 0)
 			: game.storeCap;
 
 	return {
@@ -318,6 +316,25 @@ function normalizeSavedGame(game: Record<string, unknown>): GameState {
 		world: normalizedWorld,
 		storeCap: normalizedStoreCap
 	} as GameState;
+}
+
+function inferStoreCap(world: GameState['world'], storeCount: number): number {
+	const starterIds = new Set<string>(createInitialWorldProgress().openedCityIds);
+	let cap = STARTER_STORE_CAP;
+
+	for (const cityId of world.openedCityIds) {
+		if (starterIds.has(cityId)) continue;
+		const city = getWorldCityDefinition(cityId);
+		if (city) {
+			cap += city.storeCapBonus;
+		}
+	}
+
+	if (world.claimedMilestoneIds.includes('positive-income-store-cap')) {
+		cap += 1;
+	}
+
+	return Math.max(cap, storeCount);
 }
 
 /**

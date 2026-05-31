@@ -459,6 +459,64 @@ describe('save records', () => {
 		expect(validated.game.storeCap).toBe(3);
 	});
 
+	test('infers store cap from opened city bonuses when store cap is missing', () => {
+		expect.assertions(1);
+		const game = createGame({
+			cities: [
+				{
+					id: 'harbor-city',
+					name: 'Harbor City',
+					width: 1,
+					height: 1,
+					tiles: []
+				},
+				{
+					id: 'campus-junction',
+					name: 'Campus Junction',
+					width: 1,
+					height: 1,
+					tiles: []
+				}
+			]
+		});
+		const record = createSaveRecord(game, {
+			id: 'manual-infer-cap',
+			name: 'Infer Cap Save',
+			kind: 'manual',
+			updatedAt: new Date('2026-05-31T12:00:00.000Z')
+		});
+		const oldGame = { ...record.game } as Partial<GameState>;
+		delete oldGame.world;
+		delete oldGame.storeCap;
+
+		const validated = validateSaveRecord({ ...record, game: oldGame as GameState });
+
+		expect(validated.game.storeCap).toBe(4);
+	});
+
+	test('infers store cap from claimed milestones when store cap is missing', () => {
+		expect.assertions(1);
+		const game = createGame({
+			world: {
+				revealedCityIds: ['harbor-city', 'industry-city'],
+				openedCityIds: ['harbor-city', 'industry-city'],
+				claimedMilestoneIds: ['positive-income-store-cap']
+			}
+		});
+		const record = createSaveRecord(game, {
+			id: 'manual-infer-cap-milestone',
+			name: 'Infer Cap Milestone Save',
+			kind: 'manual',
+			updatedAt: new Date('2026-05-31T12:00:00.000Z')
+		});
+		const oldGame = { ...record.game } as Partial<GameState>;
+		delete oldGame.storeCap;
+
+		const validated = validateSaveRecord({ ...record, game: oldGame as GameState });
+
+		expect(validated.game.storeCap).toBe(4);
+	});
+
 	test('refreshes world progress for migrated saves that already satisfy reveal conditions', () => {
 		expect.assertions(2);
 		const game = createGame({ day: 8 });
