@@ -373,8 +373,18 @@ function hasWarehouseAndRawProducer(game: GameState): boolean {
 }
 
 function hasFinishedMaterialInWarehouse(game: GameState): boolean {
-	return FINISHED_MATERIAL_IDS.some(
-		(materialId) => (game.warehouse.materials[materialId] ?? 0) > 0
+	if (FINISHED_MATERIAL_IDS.some((materialId) => (game.warehouse.materials[materialId] ?? 0) > 0)) {
+		return true;
+	}
+
+	// Produced materials may have been pulled from the warehouse on the same
+	// day, so also check the latest production report for locally-made
+	// finished materials.
+	const latestReport = game.reports.at(-1);
+	if (!latestReport) return false;
+
+	return latestReport.productionReport.produced.some(
+		(movement) => movement.source === 'local' && FINISHED_MATERIAL_IDS.includes(movement.materialId)
 	);
 }
 

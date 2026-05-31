@@ -86,14 +86,14 @@ Each world city definition should include:
 
 First catalog:
 
-| ID | Kind | Role |
-| --- | --- | --- |
-| `harbor-city` | retail | Balanced starter market. |
-| `campus-junction` | retail | Strong electronics and gifts demand, weaker grocery and essentials demand. |
-| `garden-borough` | retail | Strong grocery and essentials demand, moderate convenience demand. |
-| `industry-city` | industry | Balanced starter resources and processing space. |
-| `breadbasket-basin` | industry | Grain, oilseed, sugar, fruit, and food-chain raw production emphasis. |
-| `quarry-works` | industry | Salt, chemical feedstock, pulpwood, and processing/factory emphasis. |
+| ID                  | Kind     | Role                                                                       |
+| ------------------- | -------- | -------------------------------------------------------------------------- |
+| `harbor-city`       | retail   | Balanced starter market.                                                   |
+| `campus-junction`   | retail   | Strong electronics and gifts demand, weaker grocery and essentials demand. |
+| `garden-borough`    | retail   | Strong grocery and essentials demand, moderate convenience demand.         |
+| `industry-city`     | industry | Balanced starter resources and processing space.                           |
+| `breadbasket-basin` | industry | Grain, oilseed, sugar, fruit, and food-chain raw production emphasis.      |
+| `quarry-works`      | industry | Salt, chemical feedstock, pulpwood, and processing/factory emphasis.       |
 
 The detailed city names and numbers can be tuned during implementation, but the catalog should remain small, explicit, and testable in this first version.
 
@@ -181,7 +181,7 @@ Retail city profiles affect demand only. They do not change store archetype defi
 `buildCityDemandPools` should apply city-level category multipliers after the current tile average and policy multipliers. Example:
 
 ```ts
-cityDemand * category.demandWeight * policyMultipliers * cityCategoryMultiplier
+cityDemand * category.demandWeight * policyMultipliers * cityCategoryMultiplier;
 ```
 
 Demand profiles should be keyed by product category ID, with a default multiplier of `1`.

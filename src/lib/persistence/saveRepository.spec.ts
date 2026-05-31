@@ -535,10 +535,7 @@ describe('save records', () => {
 					'industry-city'
 				],
 				openedCityIds: ['harbor-city', 'industry-city', 'harbor-city'],
-				claimedMilestoneIds: [
-					'reveal-campus-junction',
-					'reveal-campus-junction'
-				]
+				claimedMilestoneIds: ['reveal-campus-junction', 'reveal-campus-junction']
 			}
 		});
 		const record = createSaveRecord(game, {

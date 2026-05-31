@@ -216,8 +216,8 @@ export interface WorldCityDefinition {
 Add these fields to `GameState`:
 
 ```ts
-	world: WorldProgress;
-	storeCap: number;
+world: WorldProgress;
+storeCap: number;
 ```
 
 - [ ] **Step 4: Create `src/lib/game/world.ts`**
@@ -298,7 +298,8 @@ export const WORLD_CITY_CATALOG: readonly WorldCityDefinition[] = [
 		openingCost: 28_000,
 		initiallyOpened: false,
 		unlockRequirement: 'Reach 4 stores or hold positive cash after daily reports.',
-		specialtySummary: 'Residential neighborhoods favor groceries, essentials, and convenience goods.',
+		specialtySummary:
+			'Residential neighborhoods favor groceries, essentials, and convenience goods.',
 		storeCapBonus: 1,
 		retailDemandProfile: {
 			produce: 1.3,
@@ -367,7 +368,8 @@ export const WORLD_CITY_CATALOG: readonly WorldCityDefinition[] = [
 		openingCost: 26_000,
 		initiallyOpened: false,
 		unlockRequirement: 'Produce a finished material locally.',
-		specialtySummary: 'Extraction and factory district for salt, chemicals, pulpwood, and packaging chains.',
+		specialtySummary:
+			'Extraction and factory district for salt, chemicals, pulpwood, and packaging chains.',
 		storeCapBonus: 0,
 		retailDemandProfile: {},
 		industryResourceProfile: {
@@ -397,7 +399,9 @@ export function getWorldCityStatus(game: GameState, cityId: string): WorldCitySt
 	const revealed = game.world.revealedCityIds.includes(city.id);
 	const state: WorldCityState = opened ? 'opened' : revealed ? 'revealed' : 'locked';
 	const storeCount = game.stores.filter((store) => store.cityId === city.id).length;
-	const buildingCount = game.industrialBuildings.filter((building) => building.cityId === city.id).length;
+	const buildingCount = game.industrialBuildings.filter(
+		(building) => building.cityId === city.id
+	).length;
 	const blockedReason =
 		state === 'locked'
 			? city.unlockRequirement
@@ -544,7 +548,6 @@ import { openWorldCity, refreshWorldProgress } from './world';
 Append this describe block to `src/lib/game/world.spec.ts`:
 
 ```ts
-
 describe('world progression and city opening', () => {
 	test('reveals the second retail city after the company reaches two stores', () => {
 		expect.assertions(1);
@@ -767,9 +770,11 @@ export function refreshWorldProgress(game: GameState): GameState {
 		reveal('breadbasket-basin', 'reveal-breadbasket-basin');
 	}
 
-	const hasFinishedMaterial = Object.entries(game.warehouse.materials).some(([materialId, quantity]) =>
-		(['snacks', 'drinks', 'essentials', 'gifts'] as MaterialId[]).includes(materialId as MaterialId) &&
-		(quantity ?? 0) > 0
+	const hasFinishedMaterial = Object.entries(game.warehouse.materials).some(
+		([materialId, quantity]) =>
+			(['snacks', 'drinks', 'essentials', 'gifts'] as MaterialId[]).includes(
+				materialId as MaterialId
+			) && (quantity ?? 0) > 0
 	);
 	if (hasFinishedMaterial) {
 		reveal('quarry-works', 'reveal-quarry-works');
@@ -904,46 +909,46 @@ export function selectWorldCity(game: GameState, cityId: WorldCityId): GameState
 In `src/lib/game/state.ts`, add `refreshWorldProgress` to the world import and wrap the successful return in `openStore`:
 
 ```ts
-	return refreshWorldProgress({
-		...game,
-		rngState: rng.getState(),
-		cash: game.cash - setupCost,
-		stores: [...game.stores, placedStore],
-		scorecard: {
-			...game.scorecard,
-			marketPosition: clampScore(game.scorecard.marketPosition + 4)
-		}
-	});
+return refreshWorldProgress({
+	...game,
+	rngState: rng.getState(),
+	cash: game.cash - setupCost,
+	stores: [...game.stores, placedStore],
+	scorecard: {
+		...game.scorecard,
+		marketPosition: clampScore(game.scorecard.marketPosition + 4)
+	}
+});
 ```
 
 In `src/lib/game/industryPlacement.ts`, import `refreshWorldProgress` and wrap the successful construction return:
 
 ```ts
-	return refreshWorldProgress({
-		...game,
-		cash: game.cash - buildingType.buildCost,
-		industrialBuildings: [
-			...game.industrialBuildings,
-			createIndustrialBuilding(game, tile, buildingType)
-		]
-	});
+return refreshWorldProgress({
+	...game,
+	cash: game.cash - buildingType.buildCost,
+	industrialBuildings: [
+		...game.industrialBuildings,
+		createIndustrialBuilding(game, tile, buildingType)
+	]
+});
 ```
 
 In `src/lib/game/simulateDay.ts`, import `refreshWorldProgress` and wrap the final returned game object at the end of `simulateDay`:
 
 ```ts
-	return refreshWorldProgress({
-		...importResult.game,
-		day: game.day + 1,
-		rngState: rng.getState(),
-		cash: cashAfter,
-		scorecard,
-		stores,
-		staff,
-		hiringCandidates,
-		decisions,
-		reports: [...game.reports, report]
-	});
+return refreshWorldProgress({
+	...importResult.game,
+	day: game.day + 1,
+	rngState: rng.getState(),
+	cash: cashAfter,
+	scorecard,
+	stores,
+	staff,
+	hiringCandidates,
+	decisions,
+	reports: [...game.reports, report]
+});
 ```
 
 Use the exact existing return object fields from `simulateDay`; only add the `refreshWorldProgress(...)` wrapper, do not rename local variables.
@@ -1070,13 +1075,13 @@ In `src/lib/game/events.ts`:
 - Replace:
 
 ```ts
-game.stores.length < MAX_STORES
+game.stores.length < MAX_STORES;
 ```
 
 with:
 
 ```ts
-game.stores.length < game.storeCap
+game.stores.length < game.storeCap;
 ```
 
 In `src/lib/game/types.ts`, confirm there is no `MAX_STORES` export.
@@ -1202,7 +1207,9 @@ Change the resource-anchor placement loop so it iterates over filtered anchors:
 const enabledResourceIds = new Set(
 	input.resourceProfile?.resourceIds ?? RESOURCE_ANCHORS.map((anchor) => anchor.resource)
 );
-const resourceAnchors = RESOURCE_ANCHORS.filter((anchor) => enabledResourceIds.has(anchor.resource));
+const resourceAnchors = RESOURCE_ANCHORS.filter((anchor) =>
+	enabledResourceIds.has(anchor.resource)
+);
 ```
 
 Use `resourceAnchors` anywhere the generator currently uses `RESOURCE_ANCHORS`.
@@ -1219,7 +1226,7 @@ generateIndustryCity({
 	height: 18,
 	seed: city.seed,
 	resourceProfile: city.industryResourceProfile ?? undefined
-})
+});
 ```
 
 - [ ] **Step 4: Apply retail city demand multipliers**
@@ -1239,11 +1246,7 @@ return [
 	Math.max(
 		0,
 		Math.round(
-			cityDemand *
-				category.demandWeight *
-				marketingMultiplier *
-				pricingMultiplier *
-				cityMultiplier
+			cityDemand * category.demandWeight * marketingMultiplier * pricingMultiplier * cityMultiplier
 		)
 	)
 ];
@@ -1410,10 +1413,15 @@ Add helpers near other validation helpers:
 ```ts
 function normalizeSavedGame(game: Record<string, unknown>): GameState {
 	const normalizedWorld =
-		game.world === undefined ? createInitialWorldProgress() : validateSavedWorld(game.world, 'Saved game world');
+		game.world === undefined
+			? createInitialWorldProgress()
+			: validateSavedWorld(game.world, 'Saved game world');
 	const normalizedStoreCap =
 		game.storeCap === undefined
-			? Math.max(STARTER_STORE_CAP, Array.isArray(game.stores) ? game.stores.length : STARTER_STORE_CAP)
+			? Math.max(
+					STARTER_STORE_CAP,
+					Array.isArray(game.stores) ? game.stores.length : STARTER_STORE_CAP
+				)
 			: game.storeCap;
 
 	return {
@@ -1455,7 +1463,11 @@ function validateSavedWorld(value: unknown, label: string): GameState['world'] {
 Change `requireOneOf` so it returns the narrowed string:
 
 ```ts
-function requireOneOf<T extends readonly string[]>(value: unknown, label: string, allowed: T): T[number] {
+function requireOneOf<T extends readonly string[]>(
+	value: unknown,
+	label: string,
+	allowed: T
+): T[number] {
 	const text = requireString(value, label);
 	if (!(allowed as readonly string[]).includes(text)) {
 		throw new SaveDataError(`${label} must be one of: ${allowed.join(', ')}`);
@@ -1637,18 +1649,26 @@ Create `src/lib/components/game/WorldMap.svelte` with the final code that has pa
 
 	{#if selectedStatus}
 		<div class="world-inspector paper" role="dialog" aria-label="City details" aria-modal="false">
-			<button type="button" class="close" aria-label="Close city details" onclick={onCloseInspector}>×</button>
+			<button type="button" class="close" aria-label="Close city details" onclick={onCloseInspector}
+				>×</button
+			>
 			<p>{selectedStatus.city.kind === 'retail' ? 'Retail city' : 'Industrial city'}</p>
 			<h2>{selectedStatus.city.name}</h2>
 			<p>{selectedStatus.city.specialtySummary}</p>
 			{#if selectedStatus.state === 'revealed'}
-				<button type="button" disabled={!selectedStatus.canOpen} onclick={() => onOpenCity(selectedStatus.city.id)}>
+				<button
+					type="button"
+					disabled={!selectedStatus.canOpen}
+					onclick={() => onOpenCity(selectedStatus.city.id)}
+				>
 					Open for {selectedStatus.city.openingCost.toLocaleString('en-US')} cash
 				</button>
 			{:else if selectedStatus.state === 'locked'}
 				<p>{selectedStatus.blockedReason}</p>
 			{:else}
-				<p>{selectedStatus.storeCount} stores · {selectedStatus.buildingCount} industrial buildings</p>
+				<p>
+					{selectedStatus.storeCount} stores · {selectedStatus.buildingCount} industrial buildings
+				</p>
 			{/if}
 		</div>
 	{/if}
@@ -1750,7 +1770,9 @@ Use the Svelte MCP workflow before editing `+page.svelte`: docs first, then `sve
 Append to `src/routes/retail-sim.e2e.ts`:
 
 ```ts
-test('player opens a revealed retail city from the world map and builds there', async ({ page }) => {
+test('player opens a revealed retail city from the world map and builds there', async ({
+	page
+}) => {
 	await page.goto('/');
 
 	await buildRetailStoreAt(page, {
@@ -1839,14 +1861,14 @@ let worldCityStatuses = $derived.by((): WorldCityStatus[] => {
 	return WORLD_CITY_CATALOG.map((city) =>
 		currentGame
 			? getWorldCityStatus(currentGame, city.id)
-			: {
+			: ({
 					city,
 					state: city.initiallyOpened ? 'opened' : 'locked',
 					canOpen: false,
 					blockedReason: city.unlockRequirement,
 					storeCount: 0,
 					buildingCount: 0
-				} satisfies WorldCityStatus
+				} satisfies WorldCityStatus)
 	).filter((status): status is WorldCityStatus => status !== null);
 });
 ```
@@ -1964,7 +1986,11 @@ In the map title eyebrow and heading expressions, handle `world`:
 For the `<h1>`, use:
 
 ```svelte
-{activeMapView === 'world' ? 'Regional Network' : activeMapView === 'industry' ? industryCity.name : activeCity.name}
+{activeMapView === 'world'
+	? 'Regional Network'
+	: activeMapView === 'industry'
+		? industryCity.name
+		: activeCity.name}
 ```
 
 Add the menu item before Retail City Map:
