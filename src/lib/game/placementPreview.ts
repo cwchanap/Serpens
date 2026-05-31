@@ -4,7 +4,6 @@ import { INDUSTRIAL_BUILDING_TYPES } from './industry';
 import { getIndustrialPlacementBlockReason } from './industryPlacement';
 import { forecastOpening } from './placement';
 import type { ArchetypeId, City, GameState, IndustrialBuildingTypeId, IndustryCity } from './types';
-import { MAX_STORES } from './types';
 
 export interface PlacementPreview {
 	validTileIds: string[];
@@ -90,7 +89,7 @@ export function getRetailPlacementBlockReason(input: RetailPlacementInput): stri
 		return 'Occupied location';
 	}
 
-	if (input.game && input.game.stores.length >= MAX_STORES) {
+	if (input.game && input.game.stores.length >= input.game.storeCap) {
 		return 'Store limit reached';
 	}
 
@@ -143,7 +142,7 @@ function getRetailBuildMenuDisabledReason(
 	input: RetailBuildMenuInput,
 	archetypeId: ArchetypeId
 ): string {
-	if (input.game && input.game.stores.length >= MAX_STORES) {
+	if (input.game && input.game.stores.length >= input.game.storeCap) {
 		return 'Store limit reached';
 	}
 

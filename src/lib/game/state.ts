@@ -335,7 +335,7 @@ function expansionUnavailableDecision(game: GameState): DecisionItem {
 	return {
 		id: `expansion-unavailable-${game.day}`,
 		title: 'Expansion unavailable',
-		context: `This local chain can operate up to ${game.storeCap} stores for now.`,
+		context: `This chain can operate up to ${game.storeCap} stores for now.`,
 		expiresOnDay: game.day + 1,
 		options: [acknowledgeOption()]
 	};

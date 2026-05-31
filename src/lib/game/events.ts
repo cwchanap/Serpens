@@ -1,5 +1,5 @@
 import { createRngFromState } from './rng';
-import { MAX_STORES, type DecisionItem, type GameState } from './types';
+import type { DecisionItem, GameState } from './types';
 
 const CASH_PRESSURE_ID = 'cash-pressure';
 const EXPANSION_ID = 'expansion-opportunity';
@@ -17,7 +17,7 @@ export function generateDecisions(game: GameState): DecisionItem[] {
 		decisions.length === 0 &&
 		game.day >= 14 &&
 		game.cash >= 55_000 &&
-		game.stores.length < MAX_STORES &&
+		game.stores.length < game.storeCap &&
 		game.scorecard.profit >= 62 &&
 		!existingIds.has(EXPANSION_ID)
 	) {

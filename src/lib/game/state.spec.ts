@@ -101,9 +101,9 @@ describe('game state', () => {
 		expect(game.policy.pricing).toBe('standard');
 	});
 
-	test('opens stores up to the local chain limit', () => {
-		expect.assertions(5);
-		const game = createNewGame('electronics', 44);
+	test('opens stores up to the company store cap', () => {
+		expect.assertions(6);
+		const game = { ...createNewGame('electronics', 44), storeCap: 2 };
 		const second = openStore(game, {
 			name: 'Mall Kiosk',
 			archetypeId: 'electronics',
@@ -114,17 +114,21 @@ describe('game state', () => {
 			archetypeId: 'electronics',
 			location: 'North Campus'
 		});
-		const fourth = openStore(third, {
-			name: 'Airport Shop',
-			archetypeId: 'electronics',
-			location: 'Airport'
-		});
+		const expandedCap = openStore(
+			{ ...second, storeCap: 3 },
+			{
+				name: 'Campus Shop',
+				archetypeId: 'electronics',
+				location: 'North Campus'
+			}
+		);
 
 		expect(second.stores).toHaveLength(2);
 		expect(second.cash).toBeLessThan(game.cash);
-		expect(third.stores).toHaveLength(3);
-		expect(fourth.stores).toHaveLength(3);
-		expect(fourth.decisions.at(-1)?.title).toBe('Expansion unavailable');
+		expect(third.stores).toHaveLength(2);
+		expect(third.decisions.at(-1)?.title).toBe('Expansion unavailable');
+		expect(third.decisions.at(-1)?.context).toBe('This chain can operate up to 2 stores for now.');
+		expect(expandedCap.stores).toHaveLength(3);
 	});
 
 	test('direct store opening uses a map tile in the active city', () => {
