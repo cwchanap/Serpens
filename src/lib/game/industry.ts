@@ -673,7 +673,7 @@ export function generateIndustryCity(input: GenerateIndustryCityInput): Industry
 				continue;
 			}
 
-			const terrain = border ? 'blocked' : getFillerTerrain(width, height, x, y);
+			const terrain = border ? 'blocked' : getFillerTerrain(width, height, x, y, input.resourceProfile?.industrialBias ?? 1);
 
 			tiles.push({
 				id: `${input.id}-${x}-${y}`,
@@ -715,7 +715,7 @@ function getResourceAnchor(
 	return resourceAnchors.find((anchor) => anchor.x === x && anchor.y === y);
 }
 
-function getFillerTerrain(width: number, height: number, x: number, y: number): IndustryTerrainId {
+function getFillerTerrain(width: number, height: number, x: number, y: number, industrialBias: number): IndustryTerrainId {
 	if (isInternalServiceSeparator(width, height, x, y)) {
 		return 'blocked';
 	}
@@ -732,7 +732,7 @@ function getFillerTerrain(width: number, height: number, x: number, y: number): 
 		return x <= 3 ? 'water' : 'forest';
 	}
 
-	if (isIndustrialDistrict(width, height, x, y)) {
+	if (isIndustrialDistrict(width, height, x, y, industrialBias)) {
 		return 'industrial';
 	}
 
@@ -744,7 +744,7 @@ function getFillerTerrain(width: number, height: number, x: number, y: number): 
 		return 'deposit';
 	}
 
-	if (x >= Math.floor(width * 0.48)) {
+	if (x >= Math.floor(width * 0.48 / industrialBias)) {
 		return 'industrial';
 	}
 
@@ -772,8 +772,8 @@ function isUtilityDistrict(x: number, y: number): boolean {
 	return x >= 1 && x <= 7 && y >= 7 && y <= 10;
 }
 
-function isIndustrialDistrict(width: number, height: number, x: number, y: number): boolean {
-	return x >= Math.floor(width * 0.55) && y >= Math.floor(height * 0.35);
+function isIndustrialDistrict(width: number, height: number, x: number, y: number, industrialBias: number): boolean {
+	return x >= Math.floor(width * 0.55 / industrialBias) && y >= Math.floor(height * 0.35 / industrialBias);
 }
 
 function normalizeDimension(value: number): number {
