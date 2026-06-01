@@ -12,6 +12,7 @@ import {
 import type {
 	IndustrialBuildingType,
 	IndustryCity,
+	IndustryResourceId,
 	IndustryTerrainId,
 	IndustryTile
 } from './types';
@@ -247,7 +248,7 @@ describe('industry city generation', () => {
 
 	test('high industrial bias produces more industrial terrain than low bias', () => {
 		expect.assertions(2);
-		const sharedResourceIds = ['salt-deposit', 'chemical-feedstock', 'pulpwood-forest', 'water-source'];
+		const sharedResourceIds: IndustryResourceId[] = ['salt-deposit', 'chemical-feedstock', 'pulpwood-forest', 'water-source'];
 		const highBiasCity = generateIndustryCity({
 			id: 'high-bias',
 			name: 'High Bias',
