@@ -37,6 +37,43 @@ describe('WorldMap', () => {
 		await expect.element(page.getByText(/reach 4 stores/i)).toBeVisible();
 	});
 
+	it('renders the regional background and image markers for city states', async () => {
+		expect.assertions(7);
+		render(WorldMap, {
+			statuses: [
+				status('harbor-city', 'opened'),
+				status('industry-city', 'opened'),
+				status('garden-borough', 'locked')
+			],
+			selectedCityId: null,
+			onSelectCity: vi.fn(),
+			onOpenCity: vi.fn(),
+			onCloseInspector: vi.fn()
+		});
+
+		const background = page.getByTestId('world-map-background');
+		await expect.element(background).toBeVisible();
+		await expect
+			.element(background)
+			.toHaveAttribute('src', '/assets/game/world/regional-map.png');
+
+		const retailMarker = page.getByTestId('world-city-marker-harbor-city');
+		const industryMarker = page.getByTestId('world-city-marker-industry-city');
+		const lockedMarker = page.getByTestId('world-city-marker-garden-borough');
+
+		await expect
+			.element(retailMarker)
+			.toHaveAttribute('src', '/assets/game/world/city-retail.png');
+		await expect
+			.element(industryMarker)
+			.toHaveAttribute('src', '/assets/game/world/city-industry.png');
+		await expect
+			.element(lockedMarker)
+			.toHaveAttribute('src', '/assets/game/world/city-locked.png');
+		await expect.element(retailMarker).toHaveAttribute('aria-hidden', 'true');
+		await expect.element(lockedMarker).toHaveAttribute('aria-hidden', 'true');
+	});
+
 	it('selects cities and opens a revealed city from the inspector', async () => {
 		expect.assertions(4);
 		const onSelectCity = vi.fn();

@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { asset } from '$app/paths';
+	import { WORLD_MAP_ART } from '$lib/assets/gameArt';
 	import type { WorldCityStatus } from '$lib/game/world';
 
 	interface Props {
@@ -23,6 +25,16 @@
 
 	function kindLabel(status: WorldCityStatus): string {
 		return status.city.kind === 'retail' ? 'Retail' : 'Industry';
+	}
+
+	function markerPath(status: WorldCityStatus): string {
+		if (status.state === 'locked') {
+			return WORLD_MAP_ART.markers.locked.path;
+		}
+
+		return status.city.kind === 'retail'
+			? WORLD_MAP_ART.markers.retail.path
+			: WORLD_MAP_ART.markers.industry.path;
 	}
 
 	function cityDescriptionId(status: WorldCityStatus): string {
@@ -53,6 +65,17 @@
 </script>
 
 <section class="world-map" aria-label="World map">
+	<img
+		data-testid="world-map-background"
+		class="world-map-background"
+		src={asset(WORLD_MAP_ART.background.path)}
+		alt=""
+		aria-hidden="true"
+		width="1024"
+		height="1024"
+		decoding="async"
+		fetchpriority="high"
+	/>
 	<svg class="world-map-canvas" viewBox="0 0 100 100" role="img" aria-label="Regional city network">
 		{#each statuses as status (status.city.id)}
 			<circle
@@ -70,6 +93,28 @@
 			/>
 		{/each}
 	</svg>
+
+	<div class="world-marker-layer" aria-hidden="true">
+		{#each statuses as status (status.city.id)}
+			<img
+				data-testid={`world-city-marker-${status.city.id}`}
+				class={{
+					'world-city-marker': true,
+					retail: status.city.kind === 'retail',
+					industry: status.city.kind === 'industry',
+					opened: status.state === 'opened',
+					revealed: status.state === 'revealed',
+					locked: status.state === 'locked'
+				}}
+				src={asset(markerPath(status))}
+				alt=""
+				aria-hidden="true"
+				width="96"
+				height="96"
+				style={`--world-x: ${status.city.worldX}%; --world-y: ${status.city.worldY}%;`}
+			/>
+		{/each}
+	</div>
 
 	<div class="world-node-list" aria-label="Cities">
 		{#each statuses as status (status.city.id)}
@@ -162,9 +207,20 @@
 		color: var(--paper-100);
 	}
 
+	.world-map-background {
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		object-position: center;
+		filter: saturate(0.9) contrast(0.94) brightness(0.82);
+	}
+
 	.world-map-canvas {
 		position: absolute;
 		inset: 0;
+		z-index: 1;
 		width: 100%;
 		height: 100%;
 	}
@@ -172,6 +228,7 @@
 	.city-node {
 		stroke: var(--ink-900);
 		stroke-width: 1.4;
+		opacity: 0.28;
 	}
 
 	.city-node.retail {
@@ -184,20 +241,50 @@
 
 	.city-node.revealed {
 		stroke: var(--paper-50);
+		opacity: 0.46;
 	}
 
 	.city-node.locked {
-		opacity: 0.36;
+		opacity: 0.2;
+	}
+
+	.world-marker-layer {
+		position: absolute;
+		inset: 0;
+		z-index: 2;
+		pointer-events: none;
+	}
+
+	.world-city-marker {
+		position: absolute;
+		left: var(--world-x);
+		top: var(--world-y);
+		width: clamp(2.5rem, 6vw, 4.2rem);
+		height: clamp(2.5rem, 6vw, 4.2rem);
+		object-fit: contain;
+		transform: translate(-50%, -82%);
+		filter: drop-shadow(0 0.28rem 0.22rem rgba(18, 13, 8, 0.5));
+	}
+
+	.world-city-marker.revealed {
+		filter: drop-shadow(0 0 0.45rem rgba(245, 232, 192, 0.88))
+			drop-shadow(0 0.28rem 0.22rem rgba(18, 13, 8, 0.5));
+	}
+
+	.world-city-marker.locked {
+		opacity: 0.64;
+		filter: grayscale(0.22) drop-shadow(0 0.22rem 0.18rem rgba(18, 13, 8, 0.45));
 	}
 
 	.world-node-list {
 		position: absolute;
 		left: 1rem;
+		top: 8.5rem;
 		bottom: 1rem;
+		z-index: 3;
 		display: grid;
 		gap: 0.5rem;
 		width: min(24rem, calc(100% - 2rem));
-		max-height: calc(100% - 2rem);
 		overflow: auto;
 	}
 
@@ -269,6 +356,7 @@
 		position: absolute;
 		top: 5.9rem;
 		right: 1rem;
+		z-index: 4;
 		display: grid;
 		gap: 0.65rem;
 		width: min(360px, calc(100% - 2rem));
@@ -337,6 +425,7 @@
 
 		.world-node-list {
 			right: 1rem;
+			top: auto;
 			width: auto;
 			max-height: 45%;
 		}

@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { ARCHETYPES } from '$lib/game/archetypes';
 import { INDUSTRIAL_BUILDING_TYPES } from '$lib/game/industry';
+import * as gameArt from './gameArt';
 import {
 	ARCHETYPE_STORE_ART,
 	INDUSTRIAL_BUILDING_ART,
@@ -106,6 +107,12 @@ const industrialBuildingPaths = {
 	'household-goods-factory': '/assets/game/industry/buildings/household-goods-factory.png',
 	'gift-workshop': '/assets/game/industry/buildings/gift-workshop.png',
 	warehouse: '/assets/game/industry/buildings/warehouse.png'
+} as const;
+const worldMapPaths = {
+	background: '/assets/game/world/regional-map.png',
+	retailMarker: '/assets/game/world/city-retail.png',
+	industryMarker: '/assets/game/world/city-industry.png',
+	lockedMarker: '/assets/game/world/city-locked.png'
 } as const;
 const require = createRequire(import.meta.url);
 const { PNG } = require('pngjs') as {
@@ -399,6 +406,42 @@ describe('game art asset constants', () => {
 		expect(duplicateAssetPaths(INDUSTRY_RESOURCE_ART_LIST)).toEqual([]);
 		expect(duplicateAssetPaths(INDUSTRY_MATERIAL_ART_LIST)).toEqual([]);
 		expect(duplicateAssetPaths(INDUSTRIAL_BUILDING_ART_LIST)).toEqual([]);
+	});
+
+	it('defines real bitmap art for the world map background and city markers', () => {
+		type WorldMapArtCatalog = {
+			WORLD_MAP_ART?: {
+				background: { path: string; alt: string };
+				markers: {
+					retail: { path: string; alt: string };
+					industry: { path: string; alt: string };
+					locked: { path: string; alt: string };
+				};
+			};
+			WORLD_MAP_ART_LIST?: readonly string[];
+		};
+		const artCatalog = gameArt as WorldMapArtCatalog;
+
+		expect(artCatalog.WORLD_MAP_ART?.background.path).toBe(worldMapPaths.background);
+		expect(artCatalog.WORLD_MAP_ART?.markers.retail.path).toBe(worldMapPaths.retailMarker);
+		expect(artCatalog.WORLD_MAP_ART?.markers.industry.path).toBe(worldMapPaths.industryMarker);
+		expect(artCatalog.WORLD_MAP_ART?.markers.locked.path).toBe(worldMapPaths.lockedMarker);
+		expect(artCatalog.WORLD_MAP_ART_LIST).toEqual(Object.values(worldMapPaths));
+
+		const backgroundStats = imageStats(worldMapPaths.background);
+		expect(backgroundStats.width).toBe(1024);
+		expect(backgroundStats.height).toBe(1024);
+		expect(backgroundStats.opaquePixels).toBeGreaterThan(900_000);
+
+		for (const markerPath of Object.values(worldMapPaths).slice(1)) {
+			const { width, height, opaquePixels, transparentPixels } = imageStats(markerPath);
+
+			expect(existsSync(staticPath(markerPath))).toBe(true);
+			expect(width).toBe(96);
+			expect(height).toBe(96);
+			expect(transparentPixels, `${markerPath} should include transparent pixels`).toBeGreaterThan(0);
+			expect(opaquePixels, `${markerPath} should preserve visible marker pixels`).toBeGreaterThan(0);
+		}
 	});
 });
 
