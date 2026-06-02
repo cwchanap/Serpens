@@ -76,24 +76,6 @@
 		decoding="async"
 		fetchpriority="high"
 	/>
-	<svg class="world-map-canvas" viewBox="0 0 100 100" role="img" aria-label="Regional city network">
-		{#each statuses as status (status.city.id)}
-			<circle
-				class={{
-					'city-node': true,
-					retail: status.city.kind === 'retail',
-					industry: status.city.kind === 'industry',
-					opened: status.state === 'opened',
-					revealed: status.state === 'revealed',
-					locked: status.state === 'locked'
-				}}
-				cx={status.city.worldX}
-				cy={status.city.worldY}
-				r="4"
-			/>
-		{/each}
-	</svg>
-
 	<div class="world-marker-layer" aria-hidden="true">
 		{#each statuses as status (status.city.id)}
 			<img
@@ -215,37 +197,6 @@
 		object-fit: cover;
 		object-position: center;
 		filter: saturate(0.9) contrast(0.94) brightness(0.82);
-	}
-
-	.world-map-canvas {
-		position: absolute;
-		inset: 0;
-		z-index: 1;
-		width: 100%;
-		height: 100%;
-	}
-
-	.city-node {
-		stroke: var(--ink-900);
-		stroke-width: 1.4;
-		opacity: 0.28;
-	}
-
-	.city-node.retail {
-		fill: var(--brass-500);
-	}
-
-	.city-node.industry {
-		fill: var(--moss);
-	}
-
-	.city-node.revealed {
-		stroke: var(--paper-50);
-		opacity: 0.46;
-	}
-
-	.city-node.locked {
-		opacity: 0.2;
 	}
 
 	.world-marker-layer {
