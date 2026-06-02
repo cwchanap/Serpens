@@ -439,8 +439,12 @@ describe('game art asset constants', () => {
 			expect(existsSync(staticPath(markerPath))).toBe(true);
 			expect(width).toBe(96);
 			expect(height).toBe(96);
-			expect(transparentPixels, `${markerPath} should include transparent pixels`).toBeGreaterThan(0);
-			expect(opaquePixels, `${markerPath} should preserve visible marker pixels`).toBeGreaterThan(0);
+			expect(transparentPixels, `${markerPath} should include transparent pixels`).toBeGreaterThan(
+				0
+			);
+			expect(opaquePixels, `${markerPath} should preserve visible marker pixels`).toBeGreaterThan(
+				0
+			);
 		}
 	});
 });

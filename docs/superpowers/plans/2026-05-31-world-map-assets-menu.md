@@ -13,6 +13,7 @@
 ### Task 1: World Art Registry
 
 **Files:**
+
 - Modify: `src/lib/assets/gameArt.ts`
 - Modify: `src/lib/assets/gameArt.spec.ts`
 - Create: `static/assets/game/world/regional-map.png`
@@ -45,6 +46,7 @@ Expected: pass.
 ### Task 2: World Map Rendering
 
 **Files:**
+
 - Modify: `src/lib/components/game/WorldMap.svelte`
 - Modify: `src/lib/components/game/WorldMap.svelte.spec.ts`
 
@@ -73,6 +75,7 @@ Expected: pass.
 ### Task 3: Menu Availability
 
 **Files:**
+
 - Modify: `src/routes/+page.svelte`
 - Modify: `src/routes/retail-sim.e2e.ts`
 

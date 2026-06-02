@@ -867,11 +867,7 @@
 							</button>
 							<button type="button" role="menuitem" onclick={openSavePanel}>Saves</button>
 							{#each managementPanelMenuItems as item (item.id)}
-								<button
-									type="button"
-									role="menuitem"
-									onclick={() => openManagementPanel(item.id)}
-								>
+								<button type="button" role="menuitem" onclick={() => openManagementPanel(item.id)}>
 									{item.label}
 								</button>
 							{/each}
