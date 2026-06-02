@@ -10,7 +10,7 @@
 
 ---
 
-### Task 1: World Art Registry
+## Task 1: World Art Registry
 
 **Files:**
 
@@ -43,7 +43,7 @@ Export `WORLD_MAP_ART` and `WORLD_MAP_ART_LIST` from `src/lib/assets/gameArt.ts`
 Run: `bun run test:unit -- src/lib/assets/gameArt.spec.ts --run`
 Expected: pass.
 
-### Task 2: World Map Rendering
+## Task 2: World Map Rendering
 
 **Files:**
 
@@ -72,7 +72,7 @@ Run `svelte-autofixer` on the full updated `WorldMap.svelte` contents until it r
 Run: `bun run test:unit -- src/lib/components/game/WorldMap.svelte.spec.ts --run --project client`
 Expected: pass.
 
-### Task 3: Menu Availability
+## Task 3: Menu Availability
 
 **Files:**
 

@@ -38,7 +38,7 @@ describe('WorldMap', () => {
 	});
 
 	it('renders the regional background and image markers for city states', async () => {
-		expect.assertions(7);
+		expect.assertions(8);
 		render(WorldMap, {
 			statuses: [
 				status('harbor-city', 'opened'),
@@ -65,6 +65,7 @@ describe('WorldMap', () => {
 			.toHaveAttribute('src', '/assets/game/world/city-industry.png');
 		await expect.element(lockedMarker).toHaveAttribute('src', '/assets/game/world/city-locked.png');
 		await expect.element(retailMarker).toHaveAttribute('aria-hidden', 'true');
+		await expect.element(industryMarker).toHaveAttribute('aria-hidden', 'true');
 		await expect.element(lockedMarker).toHaveAttribute('aria-hidden', 'true');
 	});
 
