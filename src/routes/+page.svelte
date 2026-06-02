@@ -399,6 +399,12 @@
 		isViewMenuOpen = false;
 		isSavePanelOpen = false;
 		isBuildMenuOpen = false;
+
+		if (!game) {
+			activeManagementPanelId = null;
+			return;
+		}
+
 		activeManagementPanelId = panelId;
 	}
 
@@ -839,7 +845,6 @@
 								type="button"
 								role="menuitem"
 								class:active-view={activeMapView === 'world'}
-								disabled={!game}
 								onclick={showWorldMap}
 							>
 								World Map
@@ -865,7 +870,6 @@
 								<button
 									type="button"
 									role="menuitem"
-									disabled={!game}
 									onclick={() => openManagementPanel(item.id)}
 								>
 									{item.label}

@@ -306,6 +306,55 @@ export const INDUSTRY_ART_LIST: readonly string[] = Object.freeze([
 	...INDUSTRIAL_BUILDING_ART_LIST
 ]);
 
+export interface WorldMapArt {
+	background: {
+		path: string;
+		alt: string;
+	};
+	markers: {
+		retail: {
+			path: string;
+			alt: string;
+		};
+		industry: {
+			path: string;
+			alt: string;
+		};
+		locked: {
+			path: string;
+			alt: string;
+		};
+	};
+}
+
+export const WORLD_MAP_ART: Readonly<WorldMapArt> = Object.freeze({
+	background: Object.freeze({
+		path: '/assets/game/world/regional-map.png',
+		alt: 'Illustrated regional world map with retail districts, industrial zones, rivers, farms, and harbor routes'
+	}),
+	markers: Object.freeze({
+		retail: Object.freeze({
+			path: '/assets/game/world/city-retail.png',
+			alt: 'Retail city marker'
+		}),
+		industry: Object.freeze({
+			path: '/assets/game/world/city-industry.png',
+			alt: 'Industrial city marker'
+		}),
+		locked: Object.freeze({
+			path: '/assets/game/world/city-locked.png',
+			alt: 'Locked city marker'
+		})
+	})
+});
+
+export const WORLD_MAP_ART_LIST: readonly string[] = Object.freeze([
+	WORLD_MAP_ART.background.path,
+	WORLD_MAP_ART.markers.retail.path,
+	WORLD_MAP_ART.markers.industry.path,
+	WORLD_MAP_ART.markers.locked.path
+]);
+
 export function getStoreArt(archetypeId: ArchetypeId): StoreArt {
 	return ARCHETYPE_STORE_ART[archetypeId];
 }

@@ -487,6 +487,25 @@ test('tile popup can be closed from the map', async ({ page }) => {
 test('management panels open from the map menu and close as overlays', async ({ page }) => {
 	await page.goto('/');
 
+	await page.getByRole('button', { name: /open menu/i }).click();
+	const mapMenu = page.getByRole('menu', { name: /map menu/i });
+	for (const itemName of [
+		/world map/i,
+		/retail city map/i,
+		/industry city map/i,
+		/saves/i,
+		/dashboard/i,
+		/policies/i,
+		/staff/i,
+		/stores/i,
+		/decisions/i,
+		/reports/i,
+		/product chains/i
+	]) {
+		await expect(mapMenu.getByRole('menuitem', { name: itemName })).toBeEnabled();
+	}
+	await page.keyboard.press('Escape');
+
 	await buildRetailStoreAt(page, {
 		x: 1,
 		y: 6,

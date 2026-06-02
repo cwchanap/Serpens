@@ -15,7 +15,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Run via `bun run <script>` (or `npm run` — both work):
 
-- `dev` — Vite dev server (port 5173).
+- `dev` — Vite dev server (port 5544).
 - `build` / `preview` — production build / preview server (port 4173, used by Playwright).
 - `check` — `svelte-kit sync && svelte-check` for type/diagnostics.
 - `lint` — `prettier --check . && eslint .`. `format` writes Prettier fixes.
