@@ -845,6 +845,7 @@
 								type="button"
 								role="menuitem"
 								class:active-view={activeMapView === 'world'}
+								disabled={!game}
 								onclick={showWorldMap}
 							>
 								World Map

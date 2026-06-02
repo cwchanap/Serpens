@@ -38,7 +38,7 @@ describe('WorldMap', () => {
 	});
 
 	it('renders the regional background and image markers for city states', async () => {
-		expect.assertions(8);
+		expect.assertions(9);
 		render(WorldMap, {
 			statuses: [
 				status('harbor-city', 'opened'),
@@ -67,6 +67,10 @@ describe('WorldMap', () => {
 		await expect.element(retailMarker).toHaveAttribute('aria-hidden', 'true');
 		await expect.element(industryMarker).toHaveAttribute('aria-hidden', 'true');
 		await expect.element(lockedMarker).toHaveAttribute('aria-hidden', 'true');
+
+		const map = page.getByRole('region', { name: /world map/i });
+		const viewport = map.element().querySelector('.world-map-viewport');
+		expect(viewport).toBeTruthy();
 	});
 
 	it('selects cities and opens a revealed city from the inspector', async () => {
