@@ -65,37 +65,39 @@
 </script>
 
 <section class="world-map" aria-label="World map">
-	<img
-		data-testid="world-map-background"
-		class="world-map-background"
-		src={asset(WORLD_MAP_ART.background.path)}
-		alt=""
-		aria-hidden="true"
-		width="1024"
-		height="1024"
-		decoding="async"
-		fetchpriority="high"
-	/>
-	<div class="world-marker-layer" aria-hidden="true">
-		{#each statuses as status (status.city.id)}
-			<img
-				data-testid={`world-city-marker-${status.city.id}`}
-				class={{
-					'world-city-marker': true,
-					retail: status.city.kind === 'retail',
-					industry: status.city.kind === 'industry',
-					opened: status.state === 'opened',
-					revealed: status.state === 'revealed',
-					locked: status.state === 'locked'
-				}}
-				src={asset(markerPath(status))}
-				alt=""
-				aria-hidden="true"
-				width="96"
-				height="96"
-				style={`--world-x: ${status.city.worldX}%; --world-y: ${status.city.worldY}%;`}
-			/>
-		{/each}
+	<div class="world-map-viewport">
+		<img
+			data-testid="world-map-background"
+			class="world-map-background"
+			src={asset(WORLD_MAP_ART.background.path)}
+			alt=""
+			aria-hidden="true"
+			width="1024"
+			height="1024"
+			decoding="async"
+			fetchpriority="high"
+		/>
+		<div class="world-marker-layer" aria-hidden="true">
+			{#each statuses as status (status.city.id)}
+				<img
+					data-testid={`world-city-marker-${status.city.id}`}
+					class={{
+						'world-city-marker': true,
+						retail: status.city.kind === 'retail',
+						industry: status.city.kind === 'industry',
+						opened: status.state === 'opened',
+						revealed: status.state === 'revealed',
+						locked: status.state === 'locked'
+					}}
+					src={asset(markerPath(status))}
+					alt=""
+					aria-hidden="true"
+					width="96"
+					height="96"
+					style={`--world-x: ${status.city.worldX}%; --world-y: ${status.city.worldY}%;`}
+				/>
+			{/each}
+		</div>
 	</div>
 
 	<div class="world-node-list" aria-label="Cities">
@@ -187,6 +189,17 @@
 		overflow: hidden;
 		background: var(--walnut-900);
 		color: var(--paper-100);
+	}
+
+	.world-map-viewport {
+		position: relative;
+		aspect-ratio: 1;
+		max-width: 100%;
+		max-height: 100%;
+		width: auto;
+		height: 100%;
+		margin: auto;
+		overflow: hidden;
 	}
 
 	.world-map-background {
