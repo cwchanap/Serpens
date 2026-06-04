@@ -3,6 +3,12 @@
 	import { getIndustrialBuildingArt, getIndustryMaterialArt } from '$lib/assets/gameArt';
 	import { INDUSTRIAL_BUILDING_TYPES, MATERIALS } from '$lib/game/industry';
 	import { getWarehouseUsed } from '$lib/game/industryProduction';
+	import {
+		MAX_BUILDING_LEVEL,
+		canUpgradeBuilding,
+		getBuildingThroughputMultiplier,
+		getBuildingUpgradeCost
+	} from '$lib/game/leveling';
 	import type {
 		DailyMaterialMovement,
 		GameState,
@@ -18,6 +24,7 @@
 		tile: IndustryTile | null;
 		building: IndustrialBuilding | null;
 		onClose: () => void;
+		onUpgradeBuilding?: (buildingId: string) => void;
 	}
 
 	interface WarehouseMaterialRow {
@@ -26,7 +33,7 @@
 		quantity: number;
 	}
 
-	let { game, tile, building, onClose }: Props = $props();
+	let { game, tile, building, onClose, onUpgradeBuilding = () => {} }: Props = $props();
 
 	const currency = new Intl.NumberFormat('en-US', {
 		style: 'currency',
@@ -39,6 +46,10 @@
 	const tileResource = $derived(tile?.resource ? label(tile.resource) : 'None');
 	const warehouseUsed = $derived(getWarehouseUsed(game.warehouse));
 	const warehouseMaterials = $derived.by(() => getWarehouseMaterialRows());
+	const buildingUpgradeCost = $derived(building ? getBuildingUpgradeCost(building.level) : 0);
+	const buildingCanUpgrade = $derived(building ? canUpgradeBuilding(building.level) : false);
+	const canAffordBuildingUpgrade = $derived(building ? game.cash >= buildingUpgradeCost : false);
+	const throughput = $derived(building ? getBuildingThroughputMultiplier(building.level) : 1);
 
 	function label(value: string): string {
 		return value.replaceAll('-', ' ').replace(/\b\w/g, (character) => character.toUpperCase());
@@ -162,6 +173,22 @@
 						<dd>{building.blockedDays}</dd>
 					</div>
 				</dl>
+
+				<div class="building-level">
+					<p class="level-label">Level {building.level} / {MAX_BUILDING_LEVEL}</p>
+					<p class="level-next">{throughput.toFixed(1)}× output</p>
+					<button
+						type="button"
+						class="upgrade"
+						disabled={!buildingCanUpgrade || !canAffordBuildingUpgrade}
+						onclick={() => onUpgradeBuilding(building.id)}
+					>
+						{buildingCanUpgrade ? `Upgrade — ${currency.format(buildingUpgradeCost)}` : 'Max level'}
+					</button>
+					{#if buildingCanUpgrade && !canAffordBuildingUpgrade}
+						<p class="level-hint">Not enough cash.</p>
+					{/if}
+				</div>
 
 				<div class="production-log">
 					<h4>Last production</h4>
@@ -465,5 +492,32 @@
 		width: 1.5rem;
 		height: 1.5rem;
 		object-fit: contain;
+	}
+
+	.building-level {
+		display: grid;
+		gap: 0.4rem;
+	}
+
+	.level-label {
+		font-family: var(--font-ui);
+		font-size: 0.82rem;
+		font-weight: 700;
+		color: var(--ink-700);
+		margin: 0;
+	}
+
+	.level-next {
+		font-family: var(--font-mono);
+		font-size: 0.82rem;
+		color: var(--ink-500);
+		margin: 0;
+	}
+
+	.level-hint {
+		font-family: var(--font-body);
+		font-size: 0.78rem;
+		color: var(--ink-500);
+		margin: 0;
 	}
 </style>
