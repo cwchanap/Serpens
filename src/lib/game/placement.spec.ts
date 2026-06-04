@@ -263,7 +263,9 @@ describe('tile placement', () => {
 		expect(result.cash).toBe(game.cash - forecast.setupCost);
 		expect(result.stores.at(-1)?.tileId).toBe(expansionTile.id);
 		expect(result.stores.at(-1)?.archetypeId).toBe('grocery');
-		expect(result.stores.at(-1)?.products.map((product) => product.categoryId)).toEqual(['produce']);
+		expect(result.stores.at(-1)?.products.map((product) => product.categoryId)).toEqual([
+			'produce'
+		]);
 		expect(result.decisions).toHaveLength(0);
 	});
 });
