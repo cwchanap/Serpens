@@ -59,6 +59,16 @@ const RAW_ARCHETYPES: StoreArchetype[] = [
 				importCost: 6,
 				defaultSellingPrice: 8,
 				priceSensitivity: 0.45
+			},
+			{
+				id: 'household',
+				name: 'Household',
+				baseDemand: 30,
+				margin: 0.28,
+				demandWeight: 0.7,
+				importCost: 7,
+				defaultSellingPrice: 11,
+				priceSensitivity: 0.5
 			}
 		],
 		risks: ['Stockouts', 'Low margins', 'High foot traffic pressure']
@@ -103,6 +113,16 @@ const RAW_ARCHETYPES: StoreArchetype[] = [
 				importCost: 9,
 				defaultSellingPrice: 20,
 				priceSensitivity: 0.95
+			},
+			{
+				id: 'accessories',
+				name: 'Accessories',
+				baseDemand: 24,
+				margin: 0.52,
+				demandWeight: 0.7,
+				importCost: 12,
+				defaultSellingPrice: 26,
+				priceSensitivity: 1.0
 			}
 		],
 		risks: ['Trend mismatch', 'Reputation swings', 'Premium service expectations']
@@ -147,6 +167,16 @@ const RAW_ARCHETYPES: StoreArchetype[] = [
 				importCost: 180,
 				defaultSellingPrice: 240,
 				priceSensitivity: 0.5
+			},
+			{
+				id: 'peripherals',
+				name: 'Peripherals',
+				baseDemand: 28,
+				margin: 0.4,
+				demandWeight: 0.7,
+				importCost: 24,
+				defaultSellingPrice: 44,
+				priceSensitivity: 0.85
 			}
 		],
 		risks: ['Launch volatility', 'Shrink', 'Expensive inventory']
@@ -191,6 +221,16 @@ const RAW_ARCHETYPES: StoreArchetype[] = [
 				importCost: 5,
 				defaultSellingPrice: 10,
 				priceSensitivity: 0.85
+			},
+			{
+				id: 'bakery',
+				name: 'Bakery',
+				baseDemand: 34,
+				margin: 0.4,
+				demandWeight: 0.7,
+				importCost: 3,
+				defaultSellingPrice: 7,
+				priceSensitivity: 0.8
 			}
 		],
 		risks: ['Freshness', 'Waste', 'Staffing pressure']
