@@ -8,6 +8,7 @@ import type { DailyStoreReport, Store } from '$lib/game/types';
 
 const store: Store = {
 	id: 'store-1',
+	level: 1,
 	name: 'Founding Store',
 	archetypeId: 'convenience',
 	location: 'Downtown (1, 1)',

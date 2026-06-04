@@ -131,6 +131,7 @@ function createIndustrialBuilding(
 ): IndustrialBuilding {
 	return {
 		id: `industry-building-${game.industrialBuildings.length + 1}`,
+		level: 1,
 		typeId: buildingType.id,
 		cityId: tile.cityId,
 		tileId: tile.id,
