@@ -1466,6 +1466,47 @@ describe('save records', () => {
 		});
 		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
 	});
+
+	test('rejects a non-integer store level', () => {
+		expect.assertions(2);
+		const game = createNewGame('convenience', 20260603);
+		const snapshot = createSnapshotWithGame({
+			...game,
+			stores: [{ ...game.stores[0]!, level: 1.5 }]
+		});
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
+			'Saved game stores[0] level must be an integer between 1 and 10'
+		);
+	});
+
+	test('rejects a non-integer industrial building level', () => {
+		expect.assertions(2);
+		const game = createGame({
+			industrialBuildings: [
+				{
+					id: 'building-1',
+					level: 2.7,
+					typeId: 'forester' as IndustrialBuildingTypeId,
+					cityId: 'industry-city',
+					tileId: 'industry-city-0-0',
+					mapX: 0,
+					mapY: 0,
+					status: 'idle',
+					lastProduction: [],
+					producedTotal: 0,
+					importedInputTotal: 0,
+					blockedDays: 0
+				}
+			]
+		});
+		const snapshot = createSnapshotWithGame(game);
+
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
+			'Saved game industrialBuildings[0] level must be an integer between 1 and 10'
+		);
+	});
 });
 
 describe('browser save repository', () => {
