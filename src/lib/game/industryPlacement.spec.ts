@@ -6,7 +6,7 @@ import {
 	getIndustrialPlacementBlockReason,
 	upgradeBuilding
 } from './industryPlacement';
-import { getBuildingUpgradeCost } from './leveling';
+import { getBuildingUpgradeCost, MAX_BUILDING_LEVEL } from './leveling';
 import { createNewGame } from './state';
 
 describe('industrial placement', () => {
@@ -153,5 +153,45 @@ describe('industrial placement', () => {
 		const broke = { ...game, cash: 0 };
 
 		expect(upgradeBuilding(broke, game.industrialBuildings[0]!.id)).toBe(broke);
+	});
+
+	test('upgradeBuilding is a no-op for warehouse buildings (no recipe)', () => {
+		expect.assertions(1);
+		const base = { ...createNewGame('convenience', 20260512), cash: 1_000_000 };
+		const city = base.industryCities[0]!;
+		const grainTile = getIndustryTilesByResource(city, 'grain-field')[0]!;
+		const game = buildIndustrialBuilding(base, {
+			tileId: grainTile.id,
+			buildingTypeId: 'grain-farm'
+		});
+		const buildingId = game.industrialBuildings[0]!.id;
+		const clone = {
+			...game,
+			industrialBuildings: game.industrialBuildings.map((building) =>
+				building.id === buildingId ? { ...building, typeId: 'warehouse' as const } : building
+			)
+		};
+
+		expect(upgradeBuilding(clone, buildingId)).toBe(clone);
+	});
+
+	test('upgradeBuilding is a no-op at max level', () => {
+		expect.assertions(1);
+		const base = { ...createNewGame('convenience', 20260512), cash: 1_000_000 };
+		const city = base.industryCities[0]!;
+		const grainTile = getIndustryTilesByResource(city, 'grain-field')[0]!;
+		const game = buildIndustrialBuilding(base, {
+			tileId: grainTile.id,
+			buildingTypeId: 'grain-farm'
+		});
+		const maxed = {
+			...game,
+			industrialBuildings: game.industrialBuildings.map((building) => ({
+				...building,
+				level: MAX_BUILDING_LEVEL
+			}))
+		};
+
+		expect(upgradeBuilding(maxed, maxed.industrialBuildings[0]!.id)).toBe(maxed);
 	});
 });
