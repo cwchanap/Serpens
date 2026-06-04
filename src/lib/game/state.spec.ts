@@ -82,11 +82,7 @@ describe('game state', () => {
 		const game = createNewGame('grocery', 20260508);
 		const store = game.stores[0]!;
 
-		expect(store.products.map((product) => product.categoryId)).toEqual([
-			'produce',
-			'pantry',
-			'prepared'
-		]);
+		expect(store.products.map((product) => product.categoryId)).toEqual(['produce']);
 		expect(store.products.every((product) => product.stock > 0)).toBe(true);
 		expect(store.stockHealth).toBe(calculateStockHealth(store.products));
 	});
@@ -224,11 +220,7 @@ describe('game state', () => {
 
 		expect(game.stores[0]?.archetypeId).toBe('boutique');
 		expect(result.stores.at(-1)?.archetypeId).toBe('electronics');
-		expect(result.stores.at(-1)?.products.map((product) => product.categoryId)).toEqual([
-			'games',
-			'accessories',
-			'devices'
-		]);
+		expect(result.stores.at(-1)?.products.map((product) => product.categoryId)).toEqual(['games']);
 	});
 
 	test('does not duplicate same-day blocked expansion decisions', () => {
@@ -336,7 +328,8 @@ describe('game state', () => {
 			...game.stores[0]!,
 			products: game.stores[0]!.products.map((product) => ({
 				...product,
-				stock: Math.floor(product.targetStock / 2)
+				stock: product.targetStock * 3,
+				targetStock: product.targetStock * 6
 			}))
 		};
 		const storeWithHealth = { ...store, stockHealth: calculateStockHealth(store.products) };

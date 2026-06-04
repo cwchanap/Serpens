@@ -29,37 +29,31 @@ function withOneStoreProducts(products: StoreProduct[]): GameState {
 }
 
 describe('stock rules', () => {
-	test('initializes store products from convenience category defaults', () => {
-		expect.assertions(5);
+	test('initializes a single product at level 1', () => {
+		expect.assertions(2);
 		const products = initializeStoreProducts('convenience');
 
-		expect(products.map((product) => product.categoryId)).toEqual([
+		expect(products.map((product) => product.categoryId)).toEqual(['snacks']);
+		expect(products[0]!.sellingPrice).toBe(5);
+	});
+
+	test('initializes unlocked categories for a given level', () => {
+		expect.assertions(3);
+		expect(initializeStoreProducts('convenience', 4).map((p) => p.categoryId)).toEqual([
+			'snacks',
+			'drinks'
+		]);
+		expect(initializeStoreProducts('convenience', 7).map((p) => p.categoryId)).toEqual([
 			'snacks',
 			'drinks',
 			'essentials'
 		]);
-		expect(products[0]).toEqual({
-			categoryId: 'snacks',
-			stock: 70,
-			reorderThreshold: 25,
-			targetStock: 90,
-			sellingPrice: 5
-		});
-		expect(products[1]).toEqual({
-			categoryId: 'drinks',
-			stock: 81,
-			reorderThreshold: 29,
-			targetStock: 104,
-			sellingPrice: 4
-		});
-		expect(products[2]).toEqual({
-			categoryId: 'essentials',
-			stock: 56,
-			reorderThreshold: 20,
-			targetStock: 72,
-			sellingPrice: 8
-		});
-		expect(new Set(products.map((product) => product.categoryId)).size).toBe(products.length);
+		expect(initializeStoreProducts('convenience', 10).map((p) => p.categoryId)).toEqual([
+			'snacks',
+			'drinks',
+			'essentials',
+			'household'
+		]);
 	});
 
 	test('maps boutique gifts to a locally producible finished material', () => {
@@ -192,7 +186,7 @@ describe('stock rules', () => {
 		const pools = buildCityDemandPools(game, game.cities[0]!);
 
 		expect(pools.snacks).toBeGreaterThan(0);
-		expect(pools.drinks).toBeGreaterThan(pools.essentials ?? 0);
+		expect(pools.drinks).toBeUndefined();
 	});
 
 	test('applies retail city demand multipliers to city demand pools', () => {
@@ -227,7 +221,7 @@ describe('stock rules', () => {
 		const campusPools = buildCityDemandPools(campusGame, campusCity);
 
 		expect(campusPools.games).toBeGreaterThan(harborPools.games ?? 0);
-		expect(campusPools.devices).toBeGreaterThan(harborPools.devices ?? 0);
+		expect(campusPools.devices).toBeUndefined();
 	});
 
 	test('shared city demand is consumed across stores selling the same category', () => {

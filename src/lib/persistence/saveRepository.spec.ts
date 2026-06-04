@@ -994,14 +994,6 @@ describe('save records', () => {
 				'Saved game stores[0] products[1] categoryId must be unique for archetype convenience'
 		},
 		{
-			name: 'missing category',
-			products: [
-				{ categoryId: 'snacks', stock: 10, reorderThreshold: 1, targetStock: 2, sellingPrice: 5 },
-				{ categoryId: 'drinks', stock: 10, reorderThreshold: 1, targetStock: 2, sellingPrice: 4 }
-			],
-			message: 'Saved game stores[0] products must include categories: snacks, drinks, essentials'
-		},
-		{
 			name: 'unknown category',
 			products: [
 				{ categoryId: 'snacks', stock: 10, reorderThreshold: 1, targetStock: 2, sellingPrice: 5 },
