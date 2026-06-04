@@ -73,7 +73,10 @@ export type ProductArtCategoryId =
 	| 'devices'
 	| 'produce'
 	| 'pantry'
-	| 'prepared';
+	| 'prepared'
+	| 'household'
+	| 'peripherals'
+	| 'bakery';
 
 export interface ProductArt {
 	categoryId: ProductArtCategoryId;
@@ -141,6 +144,21 @@ export const PRODUCT_ART: Readonly<Record<ProductArtCategoryId, ProductArt>> = O
 		categoryId: 'prepared',
 		path: '/assets/game/products/prepared.png',
 		alt: 'Product icon for prepared food'
+	}),
+	household: Object.freeze({
+		categoryId: 'household',
+		path: '/assets/game/products/household.png',
+		alt: 'Product icon for household'
+	}),
+	peripherals: Object.freeze({
+		categoryId: 'peripherals',
+		path: '/assets/game/products/peripherals.png',
+		alt: 'Product icon for peripherals'
+	}),
+	bakery: Object.freeze({
+		categoryId: 'bakery',
+		path: '/assets/game/products/bakery.png',
+		alt: 'Product icon for bakery'
 	})
 });
 
