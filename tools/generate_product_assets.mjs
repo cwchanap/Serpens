@@ -82,22 +82,6 @@ function line(png, x0, y0, x1, y1, c) {
 	}
 }
 
-function triangle(png, ax, ay, bx, by, cx, cy, c) {
-	const minX = Math.min(ax, bx, cx),
-		maxX = Math.max(ax, bx, cx);
-	const minY = Math.min(ay, by, cy),
-		maxY = Math.max(ay, by, cy);
-	const area = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
-	for (let y = minY; y <= maxY; y++)
-		for (let x = minX; x <= maxX; x++) {
-			const w0 = (bx - ax) * (y - ay) - (by - ay) * (x - ax);
-			const w1 = (cx - bx) * (y - by) - (cy - by) * (x - bx);
-			const w2 = (ax - cx) * (y - cy) - (ay - cy) * (x - cx);
-			if (area >= 0 ? w0 >= 0 && w1 >= 0 && w2 >= 0 : w0 <= 0 && w1 <= 0 && w2 <= 0)
-				setPixel(png, x, y, c);
-		}
-}
-
 function ellipseShadow(png) {
 	for (let y = 66; y <= 78; y++)
 		for (let x = 22; x <= 74; x++) {
