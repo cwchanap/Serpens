@@ -28,6 +28,21 @@ describe('retail archetypes', () => {
 		expect(getArchetype('electronics').name).toBe('Electronics & Games');
 	});
 
+	test('each archetype defines exactly four product categories', () => {
+		expect.assertions(ARCHETYPES.length);
+		for (const archetype of ARCHETYPES) {
+			expect(archetype.startingCategories).toHaveLength(4);
+		}
+	});
+
+	test('category ids are unique within each archetype', () => {
+		expect.assertions(ARCHETYPES.length);
+		for (const archetype of ARCHETYPES) {
+			const ids = archetype.startingCategories.map((category) => category.id);
+			expect(new Set(ids).size).toBe(ids.length);
+		}
+	});
+
 	test('protects global archetype definitions from caller mutation', () => {
 		expect.assertions(4);
 		const returned = getArchetype('electronics');
