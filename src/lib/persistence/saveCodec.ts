@@ -705,13 +705,8 @@ function validateSavedStoreProducts(store: Record<string, unknown>, label: strin
 		seenCategories.add(product.categoryId);
 	}
 
-	if (
-		products.length !== expectedCategoryIds.length ||
-		expectedCategoryIds.some((categoryId) => !seenCategories.has(categoryId))
-	) {
-		throw new SaveDataError(
-			`${label} products must include categories: ${expectedCategoryIds.join(', ')}`
-		);
+	if (products.length === 0) {
+		throw new SaveDataError(`${label} products must have at least one category`);
 	}
 }
 

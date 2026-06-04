@@ -298,7 +298,7 @@ describe('daily simulation', () => {
 				targetStock: 500
 			})),
 			stockHealth: 100,
-			staffCapacity: 140,
+			staffCapacity: 80,
 			staffMorale: 90
 		}));
 		const lean = simulateDay(updatePolicy({ ...game, stores }, { inventory: 'lean' }));

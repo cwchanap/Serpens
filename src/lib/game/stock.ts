@@ -2,6 +2,7 @@ import { getArchetype } from './archetypes';
 import { getTilePlacementBlockReason } from './city';
 import { MATERIALS } from './industry';
 import { removeWarehouseMaterial } from './industryProduction';
+import { getUnlockedCategoryCount } from './leveling';
 import { clampScore } from './reports';
 import { randomBetween, type Rng } from './rng';
 import { getRetailCityDemandMultiplier } from './world';
@@ -37,16 +38,21 @@ export interface WeeklyImportResult {
 	importSpend: number;
 }
 
-export function initializeStoreProducts(archetypeId: ArchetypeId): StoreProduct[] {
-	const archetype = getArchetype(archetypeId);
-
-	return archetype.startingCategories.map((category) => ({
+export function createStoreProduct(category: ProductCategory): StoreProduct {
+	return {
 		categoryId: category.id,
 		stock: Math.max(1, roundStockDefault(category.demandWeight * 70)),
 		reorderThreshold: Math.max(0, roundStockDefault(category.demandWeight * 25)),
 		targetStock: Math.max(1, roundStockDefault(category.demandWeight * 90)),
 		sellingPrice: category.defaultSellingPrice
-	}));
+	};
+}
+
+export function initializeStoreProducts(archetypeId: ArchetypeId, level = 1): StoreProduct[] {
+	const archetype = getArchetype(archetypeId);
+	const unlockedCount = getUnlockedCategoryCount(level);
+
+	return archetype.startingCategories.slice(0, unlockedCount).map(createStoreProduct);
 }
 
 export function updateStoreProduct(
