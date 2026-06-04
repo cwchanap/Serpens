@@ -118,6 +118,25 @@ describe('industry production simulation', () => {
 		expect(game.warehouse.materials.flour).toBeUndefined();
 	});
 
+	test('building level scales produced output', () => {
+		expect.assertions(1);
+		const game = {
+			...buildOnResource(createNewGame('convenience', 20260603), 'grain-field', 'grain-farm'),
+			cash: 1_000_000
+		};
+		const level1 = simulateIndustryProduction(game);
+		const leveled = {
+			...game,
+			industrialBuildings: game.industrialBuildings.map((building) => ({ ...building, level: 6 })) // x2.0
+		};
+		const level6 = simulateIndustryProduction(leveled);
+
+		const produced1 = level1.report.produced.reduce((total, movement) => total + movement.quantity, 0);
+		const produced6 = level6.report.produced.reduce((total, movement) => total + movement.quantity, 0);
+
+		expect(produced6).toBeGreaterThan(produced1);
+	});
+
 	test('runs raw production before processors can withdraw local inputs', () => {
 		expect.assertions(5);
 		let game = { ...createNewGame('convenience', 20260512), cash: 100_000 };
