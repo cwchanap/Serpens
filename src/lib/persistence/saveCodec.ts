@@ -1,5 +1,6 @@
 import { getArchetype } from '$lib/game/archetypes';
 import { INDUSTRIAL_BUILDING_TYPES, MATERIALS } from '$lib/game/industry';
+import { MAX_STORE_LEVEL, MAX_BUILDING_LEVEL } from '$lib/game/leveling';
 import type { GameState, WorldCityId } from '$lib/game/types';
 import {
 	STARTER_STORE_CAP,
@@ -301,6 +302,31 @@ function validateSlotInvariants(autoSave: SaveRecord | null, manualSlots: SaveRe
 	}
 }
 
+const LEGACY_LEVEL_BY_PRODUCT_COUNT: Record<number, number> = { 1: 1, 2: 4, 3: 7, 4: 10 };
+
+function normalizeSavedStoreLevel(store: unknown): unknown {
+	if (typeof store !== 'object' || store === null) {
+		return store;
+	}
+
+	const record = store as Record<string, unknown>;
+	if (record.level !== undefined) {
+		return record;
+	}
+
+	const productCount = Array.isArray(record.products) ? record.products.length : 1;
+	return { ...record, level: LEGACY_LEVEL_BY_PRODUCT_COUNT[productCount] ?? 1 };
+}
+
+function normalizeSavedBuildingLevel(building: unknown): unknown {
+	if (typeof building !== 'object' || building === null) {
+		return building;
+	}
+
+	const record = building as Record<string, unknown>;
+	return record.level === undefined ? { ...record, level: 1 } : record;
+}
+
 function normalizeSavedGame(game: Record<string, unknown>): GameState {
 	const normalizedWorld =
 		game.world === undefined
@@ -311,8 +337,17 @@ function normalizeSavedGame(game: Record<string, unknown>): GameState {
 			? inferStoreCap(normalizedWorld, Array.isArray(game.stores) ? game.stores.length : 0)
 			: game.storeCap;
 
+	const normalizedStores = Array.isArray(game.stores)
+		? game.stores.map((store) => normalizeSavedStoreLevel(store))
+		: game.stores;
+	const normalizedBuildings = Array.isArray(game.industrialBuildings)
+		? game.industrialBuildings.map((building) => normalizeSavedBuildingLevel(building))
+		: game.industrialBuildings;
+
 	return {
 		...game,
+		stores: normalizedStores,
+		industrialBuildings: normalizedBuildings,
 		world: normalizedWorld,
 		storeCap: normalizedStoreCap
 	} as GameState;
@@ -491,6 +526,10 @@ function validateSavedIndustrialBuilding(value: unknown, label: string): void {
 	const building = requireRecord(value, label);
 
 	requireString(building.id, `${label} id`);
+	const buildingLevel = requireNumber(building.level, `${label} level`);
+	if (buildingLevel < 1 || buildingLevel > MAX_BUILDING_LEVEL) {
+		throw new SaveDataError(`${label} level must be between 1 and ${MAX_BUILDING_LEVEL}`);
+	}
 	requireKnownId(
 		building.typeId,
 		`${label} typeId`,
@@ -542,6 +581,10 @@ function validateSavedStore(value: unknown, label: string): void {
 	const store = requireRecord(value, label);
 
 	requireString(store.id, `${label} id`);
+	const storeLevel = requireNumber(store.level, `${label} level`);
+	if (storeLevel < 1 || storeLevel > MAX_STORE_LEVEL) {
+		throw new SaveDataError(`${label} level must be between 1 and ${MAX_STORE_LEVEL}`);
+	}
 	requireString(store.name, `${label} name`);
 	requireOneOf(store.archetypeId, `${label} archetypeId`, ARCHETYPE_IDS);
 	requireString(store.location, `${label} location`);
