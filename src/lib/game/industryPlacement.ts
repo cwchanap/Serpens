@@ -1,4 +1,5 @@
 import { INDUSTRIAL_BUILDING_TYPES, getIndustryTileById } from './industry';
+import { canUpgradeBuilding, getBuildingUpgradeCost } from './leveling';
 import { refreshWorldProgress } from './world';
 import type {
 	DecisionItem,
@@ -118,6 +119,34 @@ export function buildIndustrialBuilding(
 			createIndustrialBuilding(game, tile, buildingType)
 		]
 	});
+}
+
+export function upgradeBuilding(game: GameState, buildingId: string): GameState {
+	const index = game.industrialBuildings.findIndex((building) => building.id === buildingId);
+
+	if (index === -1) {
+		return game;
+	}
+
+	const building = game.industrialBuildings[index]!;
+
+	if (!canUpgradeBuilding(building.level)) {
+		return game;
+	}
+
+	const cost = getBuildingUpgradeCost(building.level);
+
+	if (game.cash < cost) {
+		return game;
+	}
+
+	return {
+		...game,
+		cash: game.cash - cost,
+		industrialBuildings: game.industrialBuildings.map((candidate, candidateIndex) =>
+			candidateIndex === index ? { ...candidate, level: building.level + 1 } : candidate
+		)
+	};
 }
 
 function getActiveIndustryCity(game: GameState): IndustryCity | undefined {
