@@ -17,7 +17,7 @@
 	import { generateCity, getTileById } from '$lib/game/city';
 	import { generateIndustryCity, getIndustryTileById } from '$lib/game/industry';
 	import { createIndustryMapSnapshot } from '$lib/game/industryMapRender';
-	import { buildIndustrialBuilding } from '$lib/game/industryPlacement';
+	import { buildIndustrialBuilding, upgradeBuilding } from '$lib/game/industryPlacement';
 	import { createCityMapSnapshot } from '$lib/game/mapRender';
 	import { createFoundingGameAtTile, openStoreAtTile } from '$lib/game/placement';
 	import {
@@ -29,7 +29,7 @@
 	} from '$lib/game/placementPreview';
 	import { summarizeReports } from '$lib/game/reports';
 	import { assignStaffToStore, hireCandidate, unassignStaff } from '$lib/game/staffing';
-	import { DEFAULT_POLICY, resolveDecision, updatePolicy } from '$lib/game/state';
+	import { DEFAULT_POLICY, resolveDecision, updatePolicy, upgradeStore } from '$lib/game/state';
 	import { updateStoreProduct } from '$lib/game/stock';
 	import { simulateDay } from '$lib/game/simulateDay';
 	import {
@@ -584,6 +584,18 @@
 		}
 	}
 
+	function upgradeStoreHandler(storeId: string): void {
+		if (game) {
+			setGameAndAutosave(upgradeStore(game, storeId));
+		}
+	}
+
+	function upgradeBuildingHandler(buildingId: string): void {
+		if (game) {
+			setGameAndAutosave(upgradeBuilding(game, buildingId));
+		}
+	}
+
 	function placeRetailAtTile(archetypeId: ArchetypeId, tileId: string): void {
 		const blockReason = getRetailPlacementBlockReason({
 			game,
@@ -907,6 +919,7 @@
 					hiringCandidates={game?.hiringCandidates ?? []}
 					latestStoreReport={latestSelectedStoreReport}
 					onUpdateStoreProduct={changeStoreProduct}
+					onUpgradeStore={upgradeStoreHandler}
 					onHireStaff={hireStaff}
 					onAssignStaff={assignStaff}
 					onUnassignStaff={unassignStoreStaff}
@@ -925,6 +938,7 @@
 					game={game ?? starterMapState}
 					tile={selectedIndustryTile}
 					building={selectedIndustryBuilding}
+					onUpgradeBuilding={upgradeBuildingHandler}
 					onClose={closeIndustryInspector}
 				/>
 			</div>
