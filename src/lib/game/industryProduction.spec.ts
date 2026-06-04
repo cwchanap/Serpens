@@ -131,8 +131,14 @@ describe('industry production simulation', () => {
 		};
 		const level6 = simulateIndustryProduction(leveled);
 
-		const produced1 = level1.report.produced.reduce((total, movement) => total + movement.quantity, 0);
-		const produced6 = level6.report.produced.reduce((total, movement) => total + movement.quantity, 0);
+		const produced1 = level1.report.produced.reduce(
+			(total, movement) => total + movement.quantity,
+			0
+		);
+		const produced6 = level6.report.produced.reduce(
+			(total, movement) => total + movement.quantity,
+			0
+		);
 
 		expect(produced6).toBeGreaterThan(produced1);
 	});

@@ -18,7 +18,7 @@ const P = {
 	green: [91, 157, 95, 255],
 	leaf: [65, 139, 84, 255],
 	concrete: [181, 184, 176, 255],
-	plastic: [104, 196, 202, 255],
+	plastic: [104, 196, 202, 255]
 };
 
 function makePng(size, fill = [0, 0, 0, 0]) {
@@ -35,7 +35,10 @@ function makePng(size, fill = [0, 0, 0, 0]) {
 function setPixel(png, x, y, c) {
 	if (x < 0 || y < 0 || x >= png.width || y >= png.height) return;
 	const i = (Math.floor(y) * png.width + Math.floor(x)) * 4;
-	png.data[i] = c[0]; png.data[i+1] = c[1]; png.data[i+2] = c[2]; png.data[i+3] = c[3];
+	png.data[i] = c[0];
+	png.data[i + 1] = c[1];
+	png.data[i + 2] = c[2];
+	png.data[i + 3] = c[3];
 }
 
 function rect(png, x, y, w, h, c) {
@@ -57,21 +60,33 @@ function thickLine(png, x0, y0, x1, y1, c, w = 2) {
 }
 
 function line(png, x0, y0, x1, y1, c) {
-	const dx = Math.abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
-	const dy = -Math.abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
-	let err = dx + dy, x = x0, y = y0;
+	const dx = Math.abs(x1 - x0),
+		sx = x0 < x1 ? 1 : -1;
+	const dy = -Math.abs(y1 - y0),
+		sy = y0 < y1 ? 1 : -1;
+	let err = dx + dy,
+		x = x0,
+		y = y0;
 	while (true) {
 		setPixel(png, x, y, c);
 		if (x === x1 && y === y1) break;
 		const e2 = err * 2;
-		if (e2 >= dy) { err += dy; x += sx; }
-		if (e2 <= dx) { err += dx; y += sy; }
+		if (e2 >= dy) {
+			err += dy;
+			x += sx;
+		}
+		if (e2 <= dx) {
+			err += dx;
+			y += sy;
+		}
 	}
 }
 
 function triangle(png, ax, ay, bx, by, cx, cy, c) {
-	const minX = Math.min(ax, bx, cx), maxX = Math.max(ax, bx, cx);
-	const minY = Math.min(ay, by, cy), maxY = Math.max(ay, by, cy);
+	const minX = Math.min(ax, bx, cx),
+		maxX = Math.max(ax, bx, cx);
+	const minY = Math.min(ay, by, cy),
+		maxY = Math.max(ay, by, cy);
 	const area = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
 	for (let y = minY; y <= maxY; y++)
 		for (let x = minX; x <= maxX; x++) {
@@ -86,7 +101,8 @@ function triangle(png, ax, ay, bx, by, cx, cy, c) {
 function ellipseShadow(png) {
 	for (let y = 66; y <= 78; y++)
 		for (let x = 22; x <= 74; x++) {
-			const dx = (x - 48) / 27, dy = (y - 72) / 7;
+			const dx = (x - 48) / 27,
+				dy = (y - 72) / 7;
 			if (dx * dx + dy * dy <= 1) setPixel(png, x, y, P.shadow);
 		}
 }
