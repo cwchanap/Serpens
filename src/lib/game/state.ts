@@ -1,5 +1,12 @@
 import { getArchetype } from './archetypes';
 import {
+	canUpgradeStore,
+	getStoreUpgradeCost,
+	getStoreStaffCapacityBonus,
+	getUnlockedCategoryCount,
+	isMilestoneLevel
+} from './leveling';
+import {
 	generateCity,
 	getTilePlacementBlockDecisionIdPart,
 	getTilePlacementBlockReason,
@@ -13,7 +20,7 @@ import {
 	generateStarterStaffForStore,
 	HIRING_CANDIDATE_COUNT
 } from './staffing';
-import { calculateStockHealth, initializeStoreProducts } from './stock';
+import { calculateStockHealth, createStoreProduct, initializeStoreProducts } from './stock';
 import { STARTER_STORE_CAP, createInitialWorldProgress, refreshWorldProgress } from './world';
 import type {
 	ArchetypeId,
@@ -200,6 +207,62 @@ export function resolveDecision(game: GameState, decisionId: string, optionId: s
 		scorecard: applyScoreEffects(game.scorecard, option),
 		stores: game.stores.map((store) => applyStoreEffects(store, option)),
 		decisions: game.decisions.filter((candidate) => candidate.id !== decisionId)
+	};
+}
+
+export function upgradeStore(game: GameState, storeId: string): GameState {
+	const index = game.stores.findIndex((store) => store.id === storeId);
+
+	if (index === -1) {
+		return game;
+	}
+
+	const store = game.stores[index]!;
+
+	if (!canUpgradeStore(store.level)) {
+		return game;
+	}
+
+	const cost = getStoreUpgradeCost(store.level);
+
+	if (game.cash < cost) {
+		return game;
+	}
+
+	const nextLevel = store.level + 1;
+	let products = store.products;
+	let staffCapacity = store.staffCapacity;
+
+	if (isMilestoneLevel(nextLevel)) {
+		const archetype = getArchetype(store.archetypeId);
+		const unlockedCount = getUnlockedCategoryCount(nextLevel);
+		const newCategory = archetype.startingCategories[unlockedCount - 1];
+
+		if (newCategory && !products.some((product) => product.categoryId === newCategory.id)) {
+			products = [...products, createStoreProduct(newCategory)];
+		}
+
+		staffCapacity = clampScore(
+			store.staffCapacity +
+				getStoreStaffCapacityBonus(nextLevel) -
+				getStoreStaffCapacityBonus(store.level)
+		);
+	}
+
+	const upgradedStore: Store = {
+		...store,
+		level: nextLevel,
+		products,
+		staffCapacity,
+		stockHealth: calculateStockHealth(products)
+	};
+
+	return {
+		...game,
+		cash: game.cash - cost,
+		stores: game.stores.map((candidate, candidateIndex) =>
+			candidateIndex === index ? upgradedStore : candidate
+		)
 	};
 }
 
