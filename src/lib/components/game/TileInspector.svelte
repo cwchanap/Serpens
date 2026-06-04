@@ -4,6 +4,13 @@
 	import StoreProductChainPanel from '$lib/components/game/StoreProductChainPanel.svelte';
 	import StoreStaffPanel from '$lib/components/game/StoreStaffPanel.svelte';
 	import StoreStockTable from '$lib/components/game/StoreStockTable.svelte';
+	import {
+		MAX_STORE_LEVEL,
+		canUpgradeStore,
+		getStoreUpgradeCost,
+		getUnlockedCategoryCount,
+		isMilestoneLevel
+	} from '$lib/game/leveling';
 	import type {
 		CityTile,
 		DailyStoreReport,
@@ -28,6 +35,7 @@
 		onAssignStaff: (staffId: string, storeId: string) => void;
 		onUnassignStaff: (staffId: string) => void;
 		onClose: () => void;
+		onUpgradeStore?: (storeId: string) => void;
 	}
 
 	let {
@@ -41,7 +49,8 @@
 		onHireStaff,
 		onAssignStaff,
 		onUnassignStaff,
-		onClose
+		onClose,
+		onUpgradeStore = () => {}
 	}: Props = $props();
 
 	type StoreInspectorTab = 'details' | 'stock' | 'chain' | 'staff';
@@ -56,6 +65,16 @@
 	const storeArtSrc = $derived(storeArt ? asset(storeArt.path) : '');
 	const tileLabel = $derived(tile?.feature ? label(tile.feature) : tile ? label(tile.terrain) : '');
 	let activeStoreTab = $state<StoreInspectorTab>('details');
+
+	const upgradeCost = $derived(store ? getStoreUpgradeCost(store.level) : 0);
+	const canAffordUpgrade = $derived(store ? game.cash >= upgradeCost : false);
+	const storeCanUpgrade = $derived(store ? canUpgradeStore(store.level) : false);
+	const nextBenefit = $derived.by(() => {
+		if (!store || !storeCanUpgrade) return 'Max level';
+		return isMilestoneLevel(store.level + 1)
+			? `Unlocks product #${getUnlockedCategoryCount(store.level + 1)} + 1 staff`
+			: '+10% revenue';
+	});
 
 	function label(value: string): string {
 		return value.replace(/([A-Z])/g, ' $1').replace(/^./, (character) => character.toUpperCase());
@@ -210,6 +229,21 @@
 							<dd>{store.products.length}</dd>
 						</div>
 					</dl>
+					<div class="store-level">
+						<p class="level-label">Level {store.level} / {MAX_STORE_LEVEL}</p>
+						<p class="level-next">Next: {nextBenefit}</p>
+						<button
+							type="button"
+							class="upgrade"
+							disabled={!storeCanUpgrade || !canAffordUpgrade}
+							onclick={() => onUpgradeStore(store.id)}
+						>
+							{storeCanUpgrade ? `Upgrade — ${currency.format(upgradeCost)}` : 'Max level'}
+						</button>
+						{#if storeCanUpgrade && !canAffordUpgrade}
+							<p class="level-hint">Not enough cash.</p>
+						{/if}
+					</div>
 				</div>
 				<div
 					class="store-panel store-stock-panel"
@@ -471,5 +505,55 @@
 	.store-art img {
 		width: min(160px, 100%);
 		height: auto;
+	}
+
+	.store-level {
+		display: grid;
+		gap: 0.4rem;
+		padding: 0.75rem;
+		border: 1px solid var(--brass-500);
+		border-radius: 2px;
+		background: var(--paper-50);
+	}
+
+	.level-label {
+		font-family: var(--font-ui);
+		font-size: 0.8rem;
+		font-weight: 700;
+		letter-spacing: 0.08em;
+		color: var(--ink-700);
+	}
+
+	.level-next {
+		font-family: var(--font-body);
+		font-size: 0.8rem;
+		color: var(--ink-500);
+	}
+
+	.level-hint {
+		font-family: var(--font-body);
+		font-size: 0.78rem;
+		color: var(--ink-500);
+	}
+
+	.upgrade {
+		padding: 0.45rem 0.85rem;
+		border: 1px solid var(--brass-500);
+		border-radius: 2px;
+		background: var(--paper-100);
+		color: var(--ink-700);
+		font-family: var(--font-ui);
+		font-size: 0.82rem;
+		font-weight: 600;
+		cursor: pointer;
+	}
+
+	.upgrade:hover:not(:disabled) {
+		background: var(--paper-200);
+	}
+
+	.upgrade:disabled {
+		opacity: 0.45;
+		cursor: not-allowed;
 	}
 </style>
