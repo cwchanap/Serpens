@@ -3,8 +3,10 @@ import { getIndustryTilesByResource } from './industry';
 import {
 	buildIndustrialBuilding,
 	getAllowedIndustrialBuildingTypes,
-	getIndustrialPlacementBlockReason
+	getIndustrialPlacementBlockReason,
+	upgradeBuilding
 } from './industryPlacement';
+import { getBuildingUpgradeCost } from './leveling';
 import { createNewGame } from './state';
 
 describe('industrial placement', () => {
@@ -119,5 +121,37 @@ describe('industrial placement', () => {
 		expect(blocked.industrialBuildings).toHaveLength(1);
 		expect(blocked.decisions.at(-1)?.title).toBe('Industrial construction delayed');
 		expect(blocked.decisions.at(-1)?.context).toContain('Occupied industrial tile');
+	});
+
+	test('upgradeBuilding deducts cost and increments level', () => {
+		expect.assertions(2);
+		const base = { ...createNewGame('convenience', 20260512), cash: 1_000_000 };
+		const city = base.industryCities[0]!;
+		const grainTile = getIndustryTilesByResource(city, 'grain-field')[0]!;
+		const game = buildIndustrialBuilding(base, {
+			tileId: grainTile.id,
+			buildingTypeId: 'grain-farm'
+		});
+		const buildingId = game.industrialBuildings[0]!.id;
+		const cashBefore = game.cash;
+
+		const next = upgradeBuilding(game, buildingId);
+
+		expect(next.industrialBuildings[0]!.level).toBe(2);
+		expect(next.cash).toBe(cashBefore - getBuildingUpgradeCost(1));
+	});
+
+	test('upgradeBuilding is a no-op when cash is insufficient', () => {
+		expect.assertions(1);
+		const base = { ...createNewGame('convenience', 20260512), cash: 100_000 };
+		const city = base.industryCities[0]!;
+		const grainTile = getIndustryTilesByResource(city, 'grain-field')[0]!;
+		const game = buildIndustrialBuilding(base, {
+			tileId: grainTile.id,
+			buildingTypeId: 'grain-farm'
+		});
+		const broke = { ...game, cash: 0 };
+
+		expect(upgradeBuilding(broke, game.industrialBuildings[0]!.id)).toBe(broke);
 	});
 });
