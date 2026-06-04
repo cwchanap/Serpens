@@ -217,6 +217,14 @@ describe('staffing rules', () => {
 
 		expect(getAssignedStaff(staff, 'store-1').map((member) => member.id)).toEqual(['staff-1']);
 	});
+
+	test('staffing requirement grows by one general per milestone level', () => {
+		expect.assertions(4);
+		expect(getStaffingRequirement('convenience', 1)).toEqual({ manager: 1, general: 1 });
+		expect(getStaffingRequirement('convenience', 4)).toEqual({ manager: 1, general: 2 });
+		expect(getStaffingRequirement('convenience', 7)).toEqual({ manager: 1, general: 3 });
+		expect(getStaffingRequirement('convenience', 10)).toEqual({ manager: 1, general: 4 });
+	});
 });
 
 function createGame(overrides: Partial<GameState> = {}): GameState {

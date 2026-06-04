@@ -1,4 +1,5 @@
 import { clampScore } from './reports';
+import { getUnlockedCategoryCount } from './leveling';
 import { randomInt, type Rng } from './rng';
 import type {
 	ArchetypeId,
@@ -47,8 +48,11 @@ const LAST_NAMES = [
 	'Walker'
 ];
 
-export function getStaffingRequirement(archetypeId: ArchetypeId): StaffingRequirement {
-	return { ...STAFFING_REQUIREMENTS[archetypeId] };
+export function getStaffingRequirement(archetypeId: ArchetypeId, level = 1): StaffingRequirement {
+	const base = STAFFING_REQUIREMENTS[archetypeId];
+	const milestoneStaff = getUnlockedCategoryCount(level) - 1;
+
+	return { manager: base.manager, general: base.general + milestoneStaff };
 }
 
 export function generateStarterStaffForStore(input: {
@@ -152,7 +156,7 @@ export function summarizeStoreStaffing(
 	game: { staff: StaffMember[] },
 	store: Store
 ): StaffingSummary {
-	const requirement = getStaffingRequirement(store.archetypeId);
+	const requirement = getStaffingRequirement(store.archetypeId, store.level);
 	const assignedStaff = getAssignedStaff(game.staff, store.id);
 	const assigned = countRoles(assignedStaff);
 	const requiredTotal = requirement.manager + requirement.general;
