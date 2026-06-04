@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'vitest';
 import { calculateStockHealth } from './stock';
-import { createNewGame, openStore, resolveDecision, updatePolicy } from './state';
+import { createNewGame, openStore, resolveDecision, updatePolicy, upgradeStore } from './state';
 import { simulateDay } from './simulateDay';
+import { getStoreUpgradeCost, MAX_STORE_LEVEL } from './leveling';
 import type { GameState } from './types';
 
 type OptionalKeys<T> = {
@@ -351,5 +352,52 @@ describe('game state', () => {
 		expect(nextDay.stores[0]!.stockHealth).toBe(calculateStockHealth(nextDay.stores[0]!.products));
 		expect(nextDay.stores[0]!.stockHealth).toBeGreaterThan(unboostedNextDay.stores[0]!.stockHealth);
 		expect(nextDay.stores[0]!.stockHealth).toBeGreaterThan(0);
+	});
+
+	test('upgradeStore deducts cost and increments level on a non-milestone level', () => {
+		expect.assertions(3);
+		const base = createNewGame('convenience', 20260603);
+		const game = { ...base, cash: 100_000 };
+		const storeId = game.stores[0]!.id;
+
+		const next = upgradeStore(game, storeId);
+
+		expect(next.stores[0]!.level).toBe(2);
+		expect(next.cash).toBe(100_000 - getStoreUpgradeCost(1));
+		expect(next.stores[0]!.products).toHaveLength(1); // no new product below level 4
+	});
+
+	test('upgradeStore at a milestone unlocks a product and raises capacity', () => {
+		expect.assertions(3);
+		let game = { ...createNewGame('convenience', 20260603), cash: 1_000_000 };
+		const storeId = game.stores[0]!.id;
+		const startCapacity = game.stores[0]!.staffCapacity;
+		for (let i = 0; i < 3; i++) {
+			game = upgradeStore(game, storeId); // reach level 4
+		}
+
+		const store = game.stores.find((candidate) => candidate.id === storeId)!;
+		expect(store.level).toBe(4);
+		expect(store.products.map((product) => product.categoryId)).toEqual(['snacks', 'drinks']);
+		expect(store.staffCapacity).toBeGreaterThan(startCapacity);
+	});
+
+	test('upgradeStore is a no-op when cash is insufficient', () => {
+		expect.assertions(1);
+		const game = { ...createNewGame('convenience', 20260603), cash: 0 };
+		const next = upgradeStore(game, game.stores[0]!.id);
+		expect(next).toBe(game);
+	});
+
+	test('upgradeStore is a no-op at max level', () => {
+		expect.assertions(1);
+		const base = createNewGame('convenience', 20260603);
+		const maxed = {
+			...base,
+			cash: 1_000_000,
+			stores: [{ ...base.stores[0]!, level: MAX_STORE_LEVEL }]
+		};
+		const next = upgradeStore(maxed, maxed.stores[0]!.id);
+		expect(next.stores[0]!.level).toBe(MAX_STORE_LEVEL);
 	});
 });
