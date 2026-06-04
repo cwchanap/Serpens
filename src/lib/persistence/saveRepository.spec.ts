@@ -1431,6 +1431,41 @@ describe('save records', () => {
 			'Save slot ids must not collide between auto-save and manual slots: autosave'
 		);
 	});
+
+	test('accepts a store with a subset of its archetype categories', () => {
+		expect.assertions(1);
+		const game = createNewGame('convenience', 20260603); // store starts with 1 product, level 1
+		const snapshot = createSnapshotWithGame(game);
+		expect(() => validateSaveStoreSnapshot(snapshot)).not.toThrow();
+	});
+
+	test('migrates a legacy three-product store to level 7', () => {
+		expect.assertions(1);
+		const game = createNewGame('convenience', 20260603);
+		const legacyStore = {
+			...game.stores[0]!,
+			products: initializeStoreProducts('convenience', 7) // 3 products
+		};
+		// strip the level field to simulate a pre-leveling save
+		// eslint-disable-next-line @typescript-eslint/no-unused-vars
+		const { level: _omit, ...legacyWithoutLevel } = legacyStore;
+		const snapshot = createSnapshotWithGame({
+			...game,
+			stores: [legacyWithoutLevel as unknown as (typeof game.stores)[number]]
+		});
+		const validated = validateSaveStoreSnapshot(snapshot);
+		expect(validated.manualSlots[0]!.game.stores[0]!.level).toBe(7);
+	});
+
+	test('rejects a store level outside 1..10', () => {
+		expect.assertions(1);
+		const game = createNewGame('convenience', 20260603);
+		const snapshot = createSnapshotWithGame({
+			...game,
+			stores: [{ ...game.stores[0]!, level: 99 }]
+		});
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
+	});
 });
 
 describe('browser save repository', () => {
