@@ -5,7 +5,6 @@ import IndustryTileInspector from './IndustryTileInspector.svelte';
 import { getIndustryTilesByResource } from '$lib/game/industry';
 import { createNewGame } from '$lib/game/state';
 import type { IndustrialBuilding } from '$lib/game/types';
-import { getBuildingThroughputMultiplier } from '$lib/game/leveling';
 
 describe('IndustryTileInspector', () => {
 	it('shows empty industry tile stats without construction controls or product filters', async () => {
