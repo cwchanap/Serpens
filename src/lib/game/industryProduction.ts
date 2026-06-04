@@ -1,4 +1,5 @@
 import { INDUSTRIAL_BUILDING_TYPES, MATERIALS, PRODUCTION_RECIPES } from './industry';
+import { getBuildingThroughputMultiplier } from './leveling';
 import type {
 	DailyMaterialMovement,
 	DailyProductionReport,
@@ -122,11 +123,17 @@ export function simulateIndustryProduction(game: GameState): {
 			continue;
 		}
 
+		const throughput = getBuildingThroughputMultiplier(building.level);
+
 		let importSpend = 0;
 		let importedInputQuantity = 0;
 
 		for (const input of recipe.inputs) {
-			const removal = removeWarehouseMaterial(warehouse, input.materialId, input.quantity);
+			const removal = removeWarehouseMaterial(
+				warehouse,
+				input.materialId,
+				Math.round(input.quantity * throughput)
+			);
 			warehouse = removal.warehouse;
 
 			if (removal.quantityRemoved > 0) {
@@ -157,7 +164,7 @@ export function simulateIndustryProduction(game: GameState): {
 		const produced = recipe.outputs.map((output) =>
 			createMovement(
 				output.materialId,
-				output.quantity,
+				Math.round(output.quantity * throughput),
 				MATERIALS[output.materialId].localValue,
 				'local'
 			)
@@ -168,7 +175,7 @@ export function simulateIndustryProduction(game: GameState): {
 			report.produced.push(movement);
 		}
 
-		const operatingCost = recipe.operatingCost + buildingType.dailyOperatingCost;
+		const operatingCost = recipe.operatingCost * throughput + buildingType.dailyOperatingCost;
 		report.importSpend += importSpend;
 		report.operatingCost += operatingCost;
 		buildingUpdates.set(building.id, {
