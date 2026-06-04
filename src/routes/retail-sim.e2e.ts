@@ -722,8 +722,6 @@ test('player builds convenience production and refills from warehouse', async ({
 	await expect(inspector.getByRole('table', { name: /convenience store stock/i })).toBeVisible();
 	await setStoreProductNumber(inspector, /reorder threshold for snacks/i, 10);
 	await setStoreProductNumber(inspector, /target stock for snacks/i, 25);
-	await setStoreProductNumber(inspector, /reorder threshold for drinks/i, 0);
-	await setStoreProductNumber(inspector, /reorder threshold for essentials/i, 0);
 
 	const preWeeklyGame = await waitForSavedProductSettings(page, 'snacks', {
 		day: 7,
