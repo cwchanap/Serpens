@@ -54,6 +54,7 @@ describe('IndustryTileInspector', () => {
 		)!;
 		const warehouseBuilding: IndustrialBuilding = {
 			id: 'industry-building-warehouse',
+			level: 1,
 			typeId: 'warehouse',
 			cityId: warehouseTile.cityId,
 			tileId: warehouseTile.id,
@@ -120,6 +121,7 @@ describe('IndustryTileInspector', () => {
 		)!;
 		const building: IndustrialBuilding = {
 			id: 'industry-building-warehouse',
+			level: 1,
 			typeId: 'warehouse',
 			cityId: tile.cityId,
 			tileId: tile.id,

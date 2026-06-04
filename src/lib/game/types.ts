@@ -225,6 +225,7 @@ export type IndustrialBuildingStatus = 'idle' | 'produced' | 'imported-inputs' |
 
 export interface IndustrialBuilding {
 	id: string;
+	level: number;
 	typeId: IndustrialBuildingTypeId;
 	cityId: string;
 	tileId: string;
@@ -293,6 +294,7 @@ export interface StoreArchetype {
 
 export interface Store {
 	id: string;
+	level: number;
 	name: string;
 	archetypeId: ArchetypeId;
 	location: string;

@@ -216,6 +216,7 @@ function createStore(input: {
 
 	return {
 		id: input.id,
+		level: 1,
 		name: input.name,
 		archetypeId: input.archetypeId,
 		location: input.location,

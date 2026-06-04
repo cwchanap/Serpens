@@ -245,6 +245,7 @@ describe('product chain graph metrics', () => {
 				...game.industrialBuildings,
 				{
 					id: 'industry-building-snacks',
+					level: 1,
 					typeId: 'snack-factory',
 					cityId: game.activeIndustryCityId,
 					tileId: 'manual-snack-factory',

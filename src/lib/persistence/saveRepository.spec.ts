@@ -143,6 +143,7 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 		stores: [
 			{
 				id: 'store-1',
+				level: 1,
 				name: 'Founding Store',
 				archetypeId: 'boutique',
 				location: 'Downtown (1, 1)',
@@ -760,6 +761,7 @@ describe('save records', () => {
 			industrialBuildings: [
 				{
 					id: 'building-1',
+					level: 1,
 					typeId: 'bad-building' as IndustrialBuildingTypeId,
 					cityId: 'industry-city',
 					tileId: 'industry-city-0-0',
