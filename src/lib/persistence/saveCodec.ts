@@ -527,8 +527,10 @@ function validateSavedIndustrialBuilding(value: unknown, label: string): void {
 
 	requireString(building.id, `${label} id`);
 	const buildingLevel = requireNumber(building.level, `${label} level`);
-	if (buildingLevel < 1 || buildingLevel > MAX_BUILDING_LEVEL) {
-		throw new SaveDataError(`${label} level must be between 1 and ${MAX_BUILDING_LEVEL}`);
+	if (!Number.isInteger(buildingLevel) || buildingLevel < 1 || buildingLevel > MAX_BUILDING_LEVEL) {
+		throw new SaveDataError(
+			`${label} level must be an integer between 1 and ${MAX_BUILDING_LEVEL}`
+		);
 	}
 	requireKnownId(
 		building.typeId,
@@ -582,8 +584,8 @@ function validateSavedStore(value: unknown, label: string): void {
 
 	requireString(store.id, `${label} id`);
 	const storeLevel = requireNumber(store.level, `${label} level`);
-	if (storeLevel < 1 || storeLevel > MAX_STORE_LEVEL) {
-		throw new SaveDataError(`${label} level must be between 1 and ${MAX_STORE_LEVEL}`);
+	if (!Number.isInteger(storeLevel) || storeLevel < 1 || storeLevel > MAX_STORE_LEVEL) {
+		throw new SaveDataError(`${label} level must be an integer between 1 and ${MAX_STORE_LEVEL}`);
 	}
 	requireString(store.name, `${label} name`);
 	requireOneOf(store.archetypeId, `${label} archetypeId`, ARCHETYPE_IDS);
