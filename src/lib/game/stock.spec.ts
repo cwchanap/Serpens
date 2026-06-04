@@ -392,6 +392,36 @@ describe('stock rules', () => {
 		expect(result.importSpend).toBe(27);
 	});
 
+	test('store level multiplies product revenue without changing cost of goods', () => {
+		expect.assertions(2);
+		const base = createNewGame('convenience', 20260603);
+		const city = base.cities[0]!;
+		const storeCapacity = new Map(base.stores.map((store) => [store.id, 10_000]));
+
+		const level1 = simulateProductSalesForCity({
+			game: base,
+			city,
+			rng: createRng(base.rngState),
+			storeCapacity
+		});
+		const leveledGame = { ...base, stores: [{ ...base.stores[0]!, level: 9 }] };
+		const level9 = simulateProductSalesForCity({
+			game: leveledGame,
+			city,
+			rng: createRng(base.rngState),
+			storeCapacity: new Map(leveledGame.stores.map((store) => [store.id, 10_000]))
+		});
+
+		const storeId = base.stores[0]!.id;
+		const rev1 = (level1.productReports.get(storeId) ?? []).reduce((t, r) => t + r.revenue, 0);
+		const cog1 = (level1.productReports.get(storeId) ?? []).reduce((t, r) => t + r.costOfGoods, 0);
+		const rev9 = (level9.productReports.get(storeId) ?? []).reduce((t, r) => t + r.revenue, 0);
+		const cog9 = (level9.productReports.get(storeId) ?? []).reduce((t, r) => t + r.costOfGoods, 0);
+
+		expect(rev9).toBeGreaterThan(rev1);
+		expect(cog9).toBe(cog1);
+	});
+
 	test('weekly imports non-material categories without writing warehouse keys', () => {
 		expect.assertions(7);
 		const game = {
