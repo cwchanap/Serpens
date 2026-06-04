@@ -105,6 +105,7 @@ function renderInspector(
 		onAssignStaff: (staffId: string, storeId: string) => void;
 		onUnassignStaff: (staffId: string) => void;
 		onClose: () => void;
+		onUpgradeStore: (storeId: string) => void;
 	}> = {}
 ) {
 	const props = {
@@ -266,6 +267,33 @@ describe('TileInspector staff management', () => {
 		expect(onHireStaff).toHaveBeenCalledWith('candidate-casey');
 		expect(onUnassignStaff).toHaveBeenCalledWith('staff-alex');
 		expect(onAssignStaff).toHaveBeenCalledOnce();
+	});
+});
+
+describe('TileInspector store upgrade', () => {
+	it('shows store level and fires upgrade callback', async () => {
+		expect.assertions(2);
+		const onUpgradeStore = vi.fn();
+		const level2Store: Store = { ...store, id: 'store-upgrade-1', level: 2 };
+		const richGame: GameState = {
+			...defaultGame,
+			cash: 100_000,
+			stores: [level2Store]
+		};
+
+		renderInspector({
+			game: richGame,
+			store: level2Store,
+			onUpgradeStore
+		});
+
+		// Details tab is active by default — level text should be visible
+		const heading = page.getByText(/Level 2 \/ 10/i);
+		await expect.element(heading).toBeInTheDocument();
+
+		const button = page.getByRole('button', { name: /Upgrade/i });
+		await button.click();
+		expect(onUpgradeStore).toHaveBeenCalledWith('store-upgrade-1');
 	});
 });
 
