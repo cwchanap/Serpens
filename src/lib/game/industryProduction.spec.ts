@@ -119,7 +119,7 @@ describe('industry production simulation', () => {
 	});
 
 	test('building level scales produced output', () => {
-		expect.assertions(1);
+		expect.assertions(2);
 		const game = {
 			...buildOnResource(createNewGame('convenience', 20260603), 'grain-field', 'grain-farm'),
 			cash: 1_000_000
@@ -141,6 +141,7 @@ describe('industry production simulation', () => {
 		);
 
 		expect(produced6).toBeGreaterThan(produced1);
+		expect(produced6 / produced1).toBeCloseTo(2.0, 1);
 	});
 
 	test('runs raw production before processors can withdraw local inputs', () => {

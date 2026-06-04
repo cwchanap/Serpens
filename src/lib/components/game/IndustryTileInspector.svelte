@@ -47,7 +47,9 @@
 	const warehouseUsed = $derived(getWarehouseUsed(game.warehouse));
 	const warehouseMaterials = $derived.by(() => getWarehouseMaterialRows());
 	const buildingUpgradeCost = $derived(building ? getBuildingUpgradeCost(building.level) : 0);
-	const buildingCanUpgrade = $derived(building ? canUpgradeBuilding(building.level) : false);
+	const buildingCanUpgrade = $derived(
+		building && buildingType?.recipeId ? canUpgradeBuilding(building.level) : false
+	);
 	const canAffordBuildingUpgrade = $derived(building ? game.cash >= buildingUpgradeCost : false);
 	const throughput = $derived(building ? getBuildingThroughputMultiplier(building.level) : 1);
 
@@ -176,17 +178,21 @@
 
 				<div class="building-level">
 					<p class="level-label">Level {building.level} / {MAX_BUILDING_LEVEL}</p>
-					<p class="level-next">{throughput.toFixed(1)}× output</p>
-					<button
-						type="button"
-						class="upgrade"
-						disabled={!buildingCanUpgrade || !canAffordBuildingUpgrade}
-						onclick={() => onUpgradeBuilding(building.id)}
-					>
-						{buildingCanUpgrade ? `Upgrade — ${currency.format(buildingUpgradeCost)}` : 'Max level'}
-					</button>
-					{#if buildingCanUpgrade && !canAffordBuildingUpgrade}
-						<p class="level-hint">Not enough cash.</p>
+					{#if buildingType.recipeId}
+						<p class="level-next">{throughput.toFixed(1)}× output</p>
+						<button
+							type="button"
+							class="upgrade"
+							disabled={!buildingCanUpgrade || !canAffordBuildingUpgrade}
+							onclick={() => onUpgradeBuilding(building.id)}
+						>
+							{buildingCanUpgrade
+								? `Upgrade — ${currency.format(buildingUpgradeCost)}`
+								: 'Max level'}
+						</button>
+						{#if buildingCanUpgrade && !canAffordBuildingUpgrade}
+							<p class="level-hint">Not enough cash.</p>
+						{/if}
 					{/if}
 				</div>
 
@@ -519,5 +525,26 @@
 		font-size: 0.78rem;
 		color: var(--ink-500);
 		margin: 0;
+	}
+
+	.upgrade {
+		padding: 0.45rem 0.85rem;
+		border: 1px solid var(--brass-500);
+		border-radius: 2px;
+		background: var(--paper-100);
+		color: var(--ink-700);
+		font-family: var(--font-ui);
+		font-size: 0.82rem;
+		font-weight: 600;
+		cursor: pointer;
+	}
+
+	.upgrade:hover:not(:disabled) {
+		background: var(--paper-200);
+	}
+
+	.upgrade:disabled {
+		opacity: 0.45;
+		cursor: not-allowed;
 	}
 </style>

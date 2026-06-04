@@ -134,6 +134,11 @@ export function upgradeBuilding(game: GameState, buildingId: string): GameState 
 		return game;
 	}
 
+	const buildingType = INDUSTRIAL_BUILDING_TYPES[building.typeId];
+	if (!buildingType || buildingType.recipeId === null) {
+		return game;
+	}
+
 	const cost = getBuildingUpgradeCost(building.level);
 
 	if (game.cash < cost) {

@@ -109,14 +109,12 @@ describe('IndustryTileInspector', () => {
 			...createNewGame('convenience', 20260512),
 			cash: 999_999
 		};
-		const tile = game.industryCities[0]!.tiles.find(
-			(candidate) => candidate.terrain === 'industrial' && !candidate.locked
-		)!;
+		const tile = getIndustryTilesByResource(game.industryCities[0]!, 'grain-field')[0]!;
 		const buildingId = 'industry-building-upgrade-test';
 		const building: IndustrialBuilding = {
 			id: buildingId,
 			level: 1,
-			typeId: 'warehouse',
+			typeId: 'grain-farm',
 			cityId: tile.cityId,
 			tileId: tile.id,
 			mapX: tile.x,

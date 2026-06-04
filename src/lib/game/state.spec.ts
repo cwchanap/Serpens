@@ -397,7 +397,6 @@ describe('game state', () => {
 			cash: 1_000_000,
 			stores: [{ ...base.stores[0]!, level: MAX_STORE_LEVEL }]
 		};
-		const next = upgradeStore(maxed, maxed.stores[0]!.id);
-		expect(next.stores[0]!.level).toBe(MAX_STORE_LEVEL);
+		expect(upgradeStore(maxed, maxed.stores[0]!.id)).toBe(maxed);
 	});
 });
