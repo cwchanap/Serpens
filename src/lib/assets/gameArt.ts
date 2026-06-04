@@ -145,6 +145,11 @@ export const PRODUCT_ART: Readonly<Record<ProductArtCategoryId, ProductArt>> = O
 		path: '/assets/game/products/prepared.png',
 		alt: 'Product icon for prepared food'
 	}),
+	bakery: Object.freeze({
+		categoryId: 'bakery',
+		path: '/assets/game/products/bakery.png',
+		alt: 'Product icon for bakery'
+	}),
 	household: Object.freeze({
 		categoryId: 'household',
 		path: '/assets/game/products/household.png',
@@ -154,11 +159,6 @@ export const PRODUCT_ART: Readonly<Record<ProductArtCategoryId, ProductArt>> = O
 		categoryId: 'peripherals',
 		path: '/assets/game/products/peripherals.png',
 		alt: 'Product icon for peripherals'
-	}),
-	bakery: Object.freeze({
-		categoryId: 'bakery',
-		path: '/assets/game/products/bakery.png',
-		alt: 'Product icon for bakery'
 	})
 });
 
