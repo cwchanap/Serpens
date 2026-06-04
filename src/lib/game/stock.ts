@@ -2,7 +2,7 @@ import { getArchetype } from './archetypes';
 import { getTilePlacementBlockReason } from './city';
 import { MATERIALS } from './industry';
 import { removeWarehouseMaterial } from './industryProduction';
-import { getUnlockedCategoryCount } from './leveling';
+import { getStoreRevenueMultiplier, getUnlockedCategoryCount } from './leveling';
 import { clampScore } from './reports';
 import { randomBetween, type Rng } from './rng';
 import { getRetailCityDemandMultiplier } from './world';
@@ -247,7 +247,8 @@ export function simulateProductSalesForCity(input: {
 			const unitsSold = Math.min(desiredUnits, product.stock, capacity, availableDemand);
 			const demandMissed = Math.max(0, desiredUnits - unitsSold);
 			const endingStock = product.stock - unitsSold;
-			const revenue = Math.round(unitsSold * product.sellingPrice);
+			const revenueMultiplier = getStoreRevenueMultiplier(store.level);
+			const revenue = Math.round(unitsSold * product.sellingPrice * revenueMultiplier);
 			const costOfGoods = Math.round(unitsSold * category.importCost);
 
 			product.stock = endingStock;
