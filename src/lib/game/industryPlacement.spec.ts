@@ -8,6 +8,7 @@ import {
 } from './industryPlacement';
 import { getBuildingUpgradeCost, MAX_BUILDING_LEVEL } from './leveling';
 import { createNewGame } from './state';
+import type { IndustrialBuildingTypeId } from './types';
 
 describe('industrial placement', () => {
 	test('allows raw buildings only on matching resource tiles', () => {
@@ -193,5 +194,39 @@ describe('industrial placement', () => {
 		};
 
 		expect(upgradeBuilding(maxed, maxed.industrialBuildings[0]!.id)).toBe(maxed);
+	});
+
+	test('upgradeBuilding is a no-op when the building id does not exist', () => {
+		expect.assertions(1);
+		const base = { ...createNewGame('convenience', 20260512), cash: 1_000_000 };
+		const city = base.industryCities[0]!;
+		const grainTile = getIndustryTilesByResource(city, 'grain-field')[0]!;
+		const game = buildIndustrialBuilding(base, {
+			tileId: grainTile.id,
+			buildingTypeId: 'grain-farm'
+		});
+
+		expect(upgradeBuilding(game, 'building-does-not-exist')).toBe(game);
+	});
+
+	test('upgradeBuilding is a no-op when the building typeId is unknown', () => {
+		expect.assertions(1);
+		const base = { ...createNewGame('convenience', 20260512), cash: 1_000_000 };
+		const city = base.industryCities[0]!;
+		const grainTile = getIndustryTilesByResource(city, 'grain-field')[0]!;
+		const game = buildIndustrialBuilding(base, {
+			tileId: grainTile.id,
+			buildingTypeId: 'grain-farm'
+		});
+		const clone = {
+			...game,
+			industrialBuildings: game.industrialBuildings.map((building) =>
+				building.id === game.industrialBuildings[0]!.id
+					? { ...building, typeId: 'missing-type' as IndustrialBuildingTypeId }
+					: building
+			)
+		};
+
+		expect(upgradeBuilding(clone, game.industrialBuildings[0]!.id)).toBe(clone);
 	});
 });

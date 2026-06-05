@@ -295,6 +295,69 @@ describe('TileInspector store upgrade', () => {
 		await button.click();
 		expect(onUpgradeStore).toHaveBeenCalledWith('store-upgrade-1');
 	});
+
+	it('shows Max level button text and hides the cash hint at MAX_STORE_LEVEL', async () => {
+		expect.assertions(3);
+		const maxStore: Store = { ...store, id: 'store-max', level: 10 };
+		const richGame: GameState = {
+			...defaultGame,
+			cash: 1_000_000,
+			stores: [maxStore]
+		};
+
+		renderInspector({ game: richGame, store: maxStore });
+
+		await expect.element(page.getByText(/Level 10 \/ 10/i)).toBeInTheDocument();
+		const button = page.getByRole('button', { name: /Max level/i });
+		await expect.element(button).toBeDisabled();
+		await expect.element(page.getByText('Not enough cash.')).not.toBeInTheDocument();
+	});
+
+	it('shows the cash hint when the store can upgrade but cash is insufficient', async () => {
+		expect.assertions(3);
+		const level2Store: Store = { ...store, id: 'store-broke', level: 2 };
+		const brokeGame: GameState = {
+			...defaultGame,
+			cash: 0,
+			stores: [level2Store]
+		};
+
+		renderInspector({ game: brokeGame, store: level2Store });
+
+		await expect.element(page.getByText(/Level 2 \/ 10/i)).toBeInTheDocument();
+		const button = page.getByRole('button', { name: /Upgrade/i });
+		await expect.element(button).toBeDisabled();
+		await expect.element(page.getByText('Not enough cash.')).toBeVisible();
+	});
+
+	it('describes the next milestone benefit when approaching a milestone level', async () => {
+		expect.assertions(2);
+		const level3Store: Store = { ...store, id: 'store-milestone', level: 3 };
+		const richGame: GameState = {
+			...defaultGame,
+			cash: 1_000_000,
+			stores: [level3Store]
+		};
+
+		renderInspector({ game: richGame, store: level3Store });
+
+		await expect.element(page.getByText(/Level 3 \/ 10/i)).toBeInTheDocument();
+		await expect.element(page.getByText('Next: Unlocks product #2 + 1 staff')).toBeVisible();
+	});
+
+	it('describes the revenue benefit when the next level is not a milestone', async () => {
+		expect.assertions(1);
+		const level2Store: Store = { ...store, id: 'store-revenue', level: 2 };
+		const richGame: GameState = {
+			...defaultGame,
+			cash: 1_000_000,
+			stores: [level2Store]
+		};
+
+		renderInspector({ game: richGame, store: level2Store });
+
+		await expect.element(page.getByText('Next: +10% revenue')).toBeVisible();
+	});
 });
 
 describe('TileInspector empty tile details', () => {

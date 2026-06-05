@@ -1080,3 +1080,82 @@ test('clicking a category stamp updates the atlas heading', async ({ page }) => 
 
 	await expect(panel.getByRole('heading', { level: 2, name: 'Drinks' })).toBeVisible();
 });
+
+async function injectCashAndReload(page: Page, cash: number): Promise<void> {
+	await page.evaluate((amount) => {
+		const serialized = window.localStorage.getItem('serpens.saves.v2');
+
+		if (!serialized) {
+			throw new Error('Missing save data');
+		}
+
+		const saveStore = JSON.parse(serialized);
+		saveStore.autoSave.game.cash = amount;
+		window.localStorage.setItem('serpens.saves.v2', JSON.stringify(saveStore));
+	}, cash);
+	await page.reload();
+	await openSaves(page);
+	await page.getByRole('button', { name: /^resume$/i }).click();
+	await page.getByRole('button', { name: /close saves/i }).click();
+}
+
+test('player upgrades a store from the tile inspector', async ({ page }) => {
+	await page.goto('/');
+
+	await buildRetailStoreAt(page, {
+		x: 1,
+		y: 6,
+		storeTypeName: /build convenience store/i,
+		expectedStoreCount: 1
+	});
+
+	await injectCashAndReload(page, 1_000_000);
+
+	await clickMapTile(page, 1, 6);
+	const inspector = page.getByRole('dialog', { name: /tile details/i });
+	await expect(inspector).toBeVisible();
+	await expect(inspector.getByText(/Level 1 \/ 10/i)).toBeVisible();
+
+	const upgradeButton = inspector.getByRole('button', { name: /Upgrade/i });
+	await upgradeButton.click();
+
+	await expect(inspector.getByText(/Level 2 \/ 10/i)).toBeVisible();
+});
+
+test('player upgrades an industrial building from the tile inspector', async ({ page }) => {
+	await page.setViewportSize({ width: 900, height: 900 });
+	await page.goto('/');
+
+	await buildRetailStoreAt(page, {
+		x: 1,
+		y: 6,
+		storeTypeName: /build convenience store/i,
+		expectedStoreCount: 1
+	});
+
+	await openMapMenuItem(page, /industry city map/i);
+	await expect(page.getByRole('heading', { name: /industry city/i })).toBeVisible();
+	const industryCanvas = await expectIndustryMapReady(page);
+
+	await buildIndustryBuildingAt(page, industryCanvas, {
+		x: 1,
+		y: 1,
+		buildingName: /build grain farm/i,
+		expectedBuildingCount: 1
+	});
+
+	await injectCashAndReload(page, 1_000_000);
+
+	await openMapMenuItem(page, /industry city map/i);
+	const reloadedCanvas = await expectIndustryMapReady(page);
+
+	await clickCanvasTile(page, reloadedCanvas, 1, 1);
+	const industryInspector = page.getByRole('dialog', { name: /industry tile details/i });
+	await expect(industryInspector).toBeVisible();
+	await expect(industryInspector.getByText(/Level 1 \/ 10/i)).toBeVisible();
+
+	const upgradeButton = industryInspector.getByRole('button', { name: /Upgrade/i });
+	await upgradeButton.click();
+
+	await expect(industryInspector.getByText(/Level 2 \/ 10/i)).toBeVisible();
+});
