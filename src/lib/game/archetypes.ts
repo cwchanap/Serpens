@@ -115,7 +115,7 @@ const RAW_ARCHETYPES: StoreArchetype[] = [
 				priceSensitivity: 0.95
 			},
 			{
-				id: 'accessories',
+				id: 'fashion-accessories',
 				name: 'Accessories',
 				baseDemand: 24,
 				margin: 0.52,
