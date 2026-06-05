@@ -342,7 +342,9 @@ describe('TileInspector store upgrade', () => {
 		renderInspector({ game: richGame, store: level3Store });
 
 		await expect.element(page.getByText(/Level 3 \/ 10/i)).toBeInTheDocument();
-		await expect.element(page.getByText('Next: Unlocks product #2 + 1 staff')).toBeVisible();
+		await expect
+			.element(page.getByText('Next: Unlocks product #2 + 8 staff capacity'))
+			.toBeVisible();
 	});
 
 	it('describes the revenue benefit when the next level is not a milestone', async () => {

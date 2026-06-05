@@ -158,4 +158,7 @@ rect(peripherals, 64, 48, 4, 5, [130, 135, 140, 255]);
 thickLine(peripherals, 66, 42, 66, 36, [70, 75, 80, 255], 2);
 save(peripherals, 'peripherals');
 
-console.log('Generated 3 product PNGs: bakery, household, peripherals');
+console.log(
+	'Generated 3 procedural product PNGs: bakery, household, peripherals. ' +
+		'fashion-accessories.png is sourced separately and is not produced by this script.'
+);

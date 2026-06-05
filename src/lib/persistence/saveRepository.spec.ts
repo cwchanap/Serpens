@@ -1589,6 +1589,52 @@ describe('save records', () => {
 		}
 	);
 
+	test('a legacy store with an unknown product count falls back to level 1 (legacy migration contract)', () => {
+		expect.assertions(2);
+		const game = createNewGame('convenience', 20260603);
+		const baseStore = game.stores[0]!;
+		// The migration maps known product counts {1,2,3,4} → levels {1,4,7,10};
+		// an unknown count is intentionally mapped to 1 to avoid rejecting
+		// legacy saves outright. The level-1 fallback is therefore the
+		// characterization contract we pin here.
+		const products: StoreProduct[] = initializeStoreProducts('convenience', 1);
+		const legacyStore = { ...baseStore, products };
+		// eslint-disable-next-line @typescript-eslint/no-unused-vars
+		const { level: _omit, ...legacyWithoutLevel } = legacyStore;
+		const snapshot = createSnapshotWithGame({
+			...game,
+			stores: [legacyWithoutLevel as unknown as (typeof game.stores)[number]]
+		});
+
+		const validated = validateSaveStoreSnapshot(snapshot);
+		expect(validated.manualSlots[0]!.game.stores[0]!.level).toBe(1);
+		// The ?? 1 fallback path is therefore a deliberate legacy-migration
+		// shortcut: it always produces a (level=1, products.length=1) save,
+		// which the level↔products coupling check accepts.
+		expect(validated.manualSlots[0]!.game.stores[0]!.products).toHaveLength(1);
+	});
+
+	test('rejects a save whose level disagrees with its product count (level↔products coupling check)', () => {
+		expect.assertions(2);
+		// A store claiming level 1 but carrying 4 products is not a valid shape
+		// in this codebase. The coupling check is the safety net behind the
+		// `?? 1` legacy fallback — any path that produces a mismatched
+		// (level, products) pair must be rejected on load.
+		const game = createNewGame('convenience', 20260603);
+		const baseStore = game.stores[0]!;
+		const products: StoreProduct[] = initializeStoreProducts('convenience', 10);
+		const mismatchedStore = { ...baseStore, level: 1, products };
+		const snapshot = createSnapshotWithGame({
+			...game,
+			stores: [mismatchedStore]
+		});
+
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
+			'products length (4) must equal unlocked category count (1) for level 1'
+		);
+	});
+
 	test('migrates a legacy industrial building without a level field to level 1', () => {
 		expect.assertions(1);
 		const fullBuilding = {
@@ -1771,6 +1817,44 @@ describe('save records', () => {
 			expect(() => validateSaveStoreSnapshot(v3Snapshot)).toThrow(
 				'Unsupported save schema version: 3'
 			);
+		});
+
+		test('migrates a v4 boutique save without a level field: renames category and infers level from product count', () => {
+			expect.assertions(4);
+			const game = createNewGame('boutique', 20260604);
+			const fullBoutiqueStore = {
+				...game.stores[0]!,
+				products: initializeStoreProducts('boutique', 10).map((product) =>
+					product.categoryId === 'fashion-accessories'
+						? { ...product, categoryId: 'accessories' as const }
+						: product
+				)
+			};
+			// eslint-disable-next-line @typescript-eslint/no-unused-vars
+			const { level: _omit, ...legacyWithoutLevel } = fullBoutiqueStore;
+			const record = createSaveRecord(
+				{ ...game, stores: [legacyWithoutLevel as unknown as (typeof game.stores)[number]] },
+				{
+					id: 'manual-v4-boutique-legacy',
+					name: 'V4 Boutique Save (no level)',
+					kind: 'manual',
+					updatedAt: new Date('2026-06-04T12:00:00.000Z')
+				}
+			);
+			const v4Snapshot = {
+				schemaVersion: 4,
+				autoSave: null,
+				manualSlots: [{ ...record, schemaVersion: 4 } as unknown as SaveRecord]
+			};
+
+			const validated = validateSaveStoreSnapshot(v4Snapshot);
+
+			expect(validated.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
+			const migratedStore = validated.manualSlots[0]!.game.stores[0]!;
+			expect(migratedStore.level).toBe(10);
+			const productCategoryIds = migratedStore.products.map((product) => product.categoryId);
+			expect(productCategoryIds).toContain('fashion-accessories');
+			expect(productCategoryIds).not.toContain('accessories');
 		});
 	});
 });

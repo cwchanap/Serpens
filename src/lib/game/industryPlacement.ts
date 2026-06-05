@@ -125,6 +125,7 @@ export function upgradeBuilding(game: GameState, buildingId: string): GameState 
 	const index = game.industrialBuildings.findIndex((building) => building.id === buildingId);
 
 	if (index === -1) {
+		console.warn(`upgradeBuilding: buildingId "${buildingId}" not found in game state`);
 		return game;
 	}
 
@@ -136,6 +137,9 @@ export function upgradeBuilding(game: GameState, buildingId: string): GameState 
 
 	const buildingType = INDUSTRIAL_BUILDING_TYPES[building.typeId];
 	if (!buildingType || buildingType.recipeId === null) {
+		console.warn(
+			`upgradeBuilding: buildingId "${buildingId}" has unresolved typeId "${building.typeId}"`
+		);
 		return game;
 	}
 

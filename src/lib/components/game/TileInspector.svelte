@@ -6,6 +6,7 @@
 	import StoreStockTable from '$lib/components/game/StoreStockTable.svelte';
 	import {
 		MAX_STORE_LEVEL,
+		STORE_MILESTONE_CAPACITY_BONUS,
 		canUpgradeStore,
 		getStoreUpgradeCost,
 		getUnlockedCategoryCount,
@@ -72,7 +73,7 @@
 	const nextBenefit = $derived.by(() => {
 		if (!store || !storeCanUpgrade) return 'Max level';
 		return isMilestoneLevel(store.level + 1)
-			? `Unlocks product #${getUnlockedCategoryCount(store.level + 1)} + 1 staff`
+			? `Unlocks product #${getUnlockedCategoryCount(store.level + 1)} + ${STORE_MILESTONE_CAPACITY_BONUS} staff capacity`
 			: '+10% revenue';
 	});
 

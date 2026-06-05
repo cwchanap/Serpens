@@ -2,6 +2,7 @@ import { getArchetype } from '$lib/game/archetypes';
 import { INDUSTRIAL_BUILDING_TYPES, MATERIALS } from '$lib/game/industry';
 import {
 	getStoreStaffCapacityBonus,
+	getUnlockedCategoryCount,
 	MAX_STORE_LEVEL,
 	MAX_BUILDING_LEVEL
 } from '$lib/game/leveling';
@@ -854,6 +855,7 @@ function validateSavedStoreProducts(store: Record<string, unknown>, label: strin
 	const expectedCategories = new Set(expectedCategoryIds);
 	const seenCategories = new Set<string>();
 	const products = requireArray(store.products, `${label} products`);
+	const storeLevel = requireNumber(store.level, `${label} level`);
 
 	for (const [index, productValue] of products.entries()) {
 		const product = validateSavedStoreProduct(productValue, `${label} products[${index}]`);
@@ -875,6 +877,13 @@ function validateSavedStoreProducts(store: Record<string, unknown>, label: strin
 
 	if (products.length === 0) {
 		throw new SaveDataError(`${label} products must have at least one category`);
+	}
+
+	const unlockedCount = getUnlockedCategoryCount(storeLevel);
+	if (products.length !== unlockedCount) {
+		throw new SaveDataError(
+			`${label} products length (${products.length}) must equal unlocked category count (${unlockedCount}) for level ${storeLevel}`
+		);
 	}
 }
 

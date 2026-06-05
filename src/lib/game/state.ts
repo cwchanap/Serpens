@@ -214,6 +214,7 @@ export function upgradeStore(game: GameState, storeId: string): GameState {
 	const index = game.stores.findIndex((store) => store.id === storeId);
 
 	if (index === -1) {
+		console.warn(`upgradeStore: storeId "${storeId}" not found in game state`);
 		return game;
 	}
 

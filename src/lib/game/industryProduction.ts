@@ -123,6 +123,11 @@ export function simulateIndustryProduction(game: GameState): {
 			continue;
 		}
 
+		// Throughput is a pure function of building level: 1 + 0.2 × (level - 1).
+		// The deterministic daily production chain must round both inputs (imported
+		// pulls at line 135, produced output at line 167) and operating cost
+		// (line 178) so that two runs at the same seed + level produce identical
+		// warehouse state and identical cash.
 		const throughput = getBuildingThroughputMultiplier(building.level);
 
 		let importSpend = 0;
@@ -175,7 +180,9 @@ export function simulateIndustryProduction(game: GameState): {
 			report.produced.push(movement);
 		}
 
-		const operatingCost = recipe.operatingCost * throughput + buildingType.dailyOperatingCost;
+		const operatingCost = Math.round(
+			recipe.operatingCost * throughput + buildingType.dailyOperatingCost
+		);
 		report.importSpend += importSpend;
 		report.operatingCost += operatingCost;
 		buildingUpdates.set(building.id, {

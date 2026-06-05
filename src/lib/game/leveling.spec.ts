@@ -46,11 +46,15 @@ describe('leveling math', () => {
 	});
 
 	test('revenue multiplier adds 10% per non-milestone level', () => {
-		expect.assertions(5);
+		expect.assertions(9);
 		expect(getStoreRevenueMultiplier(1)).toBeCloseTo(1.0, 5);
+		expect(getStoreRevenueMultiplier(2)).toBeCloseTo(1.1, 5);
 		expect(getStoreRevenueMultiplier(3)).toBeCloseTo(1.2, 5);
-		expect(getStoreRevenueMultiplier(4)).toBeCloseTo(1.2, 5);
-		expect(getStoreRevenueMultiplier(7)).toBeCloseTo(1.4, 5);
+		expect(getStoreRevenueMultiplier(4)).toBeCloseTo(1.2, 5); // milestone: no bump
+		expect(getStoreRevenueMultiplier(5)).toBeCloseTo(1.3, 5);
+		expect(getStoreRevenueMultiplier(6)).toBeCloseTo(1.4, 5);
+		expect(getStoreRevenueMultiplier(7)).toBeCloseTo(1.4, 5); // milestone: no bump
+		expect(getStoreRevenueMultiplier(8)).toBeCloseTo(1.5, 5);
 		expect(getStoreRevenueMultiplier(10)).toBeCloseTo(1.6, 5);
 	});
 
@@ -69,9 +73,11 @@ describe('leveling math', () => {
 	});
 
 	test('building throughput adds 20% per level', () => {
-		expect.assertions(3);
+		expect.assertions(5);
 		expect(getBuildingThroughputMultiplier(1)).toBeCloseTo(1.0, 5);
+		expect(getBuildingThroughputMultiplier(3)).toBeCloseTo(1.4, 5);
 		expect(getBuildingThroughputMultiplier(5)).toBeCloseTo(1.8, 5);
+		expect(getBuildingThroughputMultiplier(8)).toBeCloseTo(2.4, 5);
 		expect(getBuildingThroughputMultiplier(10)).toBeCloseTo(2.8, 5);
 	});
 
