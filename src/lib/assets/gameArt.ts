@@ -70,6 +70,7 @@ export type ProductArtCategoryId =
 	| 'gifts'
 	| 'games'
 	| 'accessories'
+	| 'fashion-accessories'
 	| 'devices'
 	| 'produce'
 	| 'pantry'
@@ -124,6 +125,11 @@ export const PRODUCT_ART: Readonly<Record<ProductArtCategoryId, ProductArt>> = O
 		categoryId: 'accessories',
 		path: '/assets/game/products/accessories.png',
 		alt: 'Product icon for accessories'
+	}),
+	'fashion-accessories': Object.freeze({
+		categoryId: 'fashion-accessories',
+		path: '/assets/game/products/fashion-accessories.png',
+		alt: 'Product icon for fashion accessories'
 	}),
 	devices: Object.freeze({
 		categoryId: 'devices',

@@ -460,4 +460,59 @@ describe('stock rules', () => {
 		expect(report.importSpend).toBe(378);
 		expect(result.importSpend).toBe(378);
 	});
+
+	test('boutique and electronics accessories keep separate category ids in the same city', () => {
+		expect.assertions(4);
+		const boutiqueGame = createNewGame('boutique', 20260604);
+		const electronicsGame = createNewGame('electronics', 20260604);
+		const boutiqueStore = {
+			...boutiqueGame.stores[0]!,
+			level: 10,
+			products: initializeStoreProducts('boutique', 10)
+		};
+		const electronicsStore = {
+			...electronicsGame.stores[0]!,
+			id: 'store-electronics',
+			name: 'Electronics Store',
+			tileId: boutiqueStore.tileId + '-alt',
+			level: 10,
+			products: initializeStoreProducts('electronics', 10)
+		};
+		const boutiqueIds = boutiqueStore.products.map((product) => product.categoryId);
+		const electronicsIds = electronicsStore.products.map((product) => product.categoryId);
+
+		expect(boutiqueIds).toContain('fashion-accessories');
+		expect(electronicsIds).toContain('accessories');
+		expect(boutiqueIds).not.toContain('accessories');
+		expect(electronicsIds).not.toContain('fashion-accessories');
+	});
+
+	test('boutique and electronics accessories resolve independent demand pools when co-located', () => {
+		expect.assertions(3);
+		const boutiqueGame = createNewGame('boutique', 20260604);
+		const electronicsGame = createNewGame('electronics', 20260604);
+		const city = boutiqueGame.cities[0]!;
+		const boutiqueStore = {
+			...boutiqueGame.stores[0]!,
+			level: 10,
+			products: initializeStoreProducts('boutique', 10)
+		};
+		const electronicsStore = {
+			...electronicsGame.stores[0]!,
+			id: 'store-electronics',
+			name: 'Electronics Store',
+			tileId: boutiqueStore.tileId + '-alt',
+			level: 10,
+			products: initializeStoreProducts('electronics', 10)
+		};
+		const combinedGame: GameState = {
+			...boutiqueGame,
+			stores: [boutiqueStore, electronicsStore]
+		};
+		const pools = buildCityDemandPools(combinedGame, city);
+
+		expect(pools.accessories).toBeGreaterThan(0);
+		expect(pools['fashion-accessories']).toBeGreaterThan(0);
+		expect(pools.accessories).not.toBe(pools['fashion-accessories']);
+	});
 });

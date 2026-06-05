@@ -43,6 +43,14 @@ describe('retail archetypes', () => {
 		}
 	});
 
+	test('category ids are unique across all archetypes', () => {
+		expect.assertions(1);
+		const allIds = ARCHETYPES.flatMap((archetype) =>
+			archetype.startingCategories.map((category) => category.id)
+		);
+		expect(new Set(allIds).size).toBe(allIds.length);
+	});
+
 	test('protects global archetype definitions from caller mutation', () => {
 		expect.assertions(4);
 		const returned = getArchetype('electronics');
