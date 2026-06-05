@@ -460,6 +460,36 @@ describe('save records', () => {
 		expect(validated.game.storeCap).toBe(3);
 	});
 
+	test('infers legacy store level and applies milestone staff capacity bonus', () => {
+		expect.assertions(4);
+		const game = createNewGame('convenience', 20260603);
+		const store = game.stores[0]!;
+		const legacyStore = {
+			...store,
+			products: initializeStoreProducts('convenience', 4),
+			staffCapacity: 64
+		};
+		delete (legacyStore as Partial<typeof legacyStore>).level;
+
+		const record = createSaveRecord(
+			{ ...game, stores: [legacyStore as GameState['stores'][number]] },
+			{
+				id: 'manual-legacy-store',
+				name: 'Legacy Store Save',
+				kind: 'manual',
+				updatedAt: new Date('2026-06-03T12:00:00.000Z')
+			}
+		);
+
+		const validated = validateSaveRecord(record);
+		const migrated = validated.game.stores[0]!;
+
+		expect(migrated.level).toBe(4);
+		expect(migrated.products).toHaveLength(2);
+		expect(migrated.staffCapacity).toBe(72); // 64 + 8 milestone bonus for level 4
+		expect(migrated.staffCapacity).toBeGreaterThan(store.staffCapacity);
+	});
+
 	test('infers store cap from opened city bonuses when store cap is missing', () => {
 		expect.assertions(1);
 		const game = createGame({
