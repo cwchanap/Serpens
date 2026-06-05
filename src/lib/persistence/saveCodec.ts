@@ -1,6 +1,11 @@
 import { getArchetype } from '$lib/game/archetypes';
 import { INDUSTRIAL_BUILDING_TYPES, MATERIALS } from '$lib/game/industry';
-import { MAX_STORE_LEVEL, MAX_BUILDING_LEVEL } from '$lib/game/leveling';
+import {
+	getStoreStaffCapacityBonus,
+	MAX_STORE_LEVEL,
+	MAX_BUILDING_LEVEL
+} from '$lib/game/leveling';
+import { clampScore } from '$lib/game/reports';
 import type { GameState, WorldCityId } from '$lib/game/types';
 import {
 	STARTER_STORE_CAP,
@@ -428,7 +433,12 @@ function normalizeSavedStoreLevel(store: unknown): unknown {
 	}
 
 	const productCount = Array.isArray(record.products) ? record.products.length : 1;
-	return { ...record, level: LEGACY_LEVEL_BY_PRODUCT_COUNT[productCount] ?? 1 };
+	const level = LEGACY_LEVEL_BY_PRODUCT_COUNT[productCount] ?? 1;
+	const staffCapacity =
+		typeof record.staffCapacity === 'number'
+			? clampScore(record.staffCapacity + getStoreStaffCapacityBonus(level))
+			: record.staffCapacity;
+	return { ...record, level, staffCapacity };
 }
 
 function normalizeSavedBuildingLevel(building: unknown): unknown {
