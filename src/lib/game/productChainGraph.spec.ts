@@ -286,6 +286,69 @@ describe('product chain graph metrics', () => {
 		expect(snacks?.health).toBe('shortage');
 		expect(snacks?.bottleneck).toBe('Snacks relied on imports or had a local shortage today.');
 	});
+
+	test('scales capacity by throughput multiplier when a producer is upgraded', () => {
+		// Snack factory: outputs 8 snacks/cycle; inputs total 11/cycle (6 flour + 2 cooking-oil + 1 salt + 2 packaging).
+		// At level 1 (throughput 1.0): output 8, input 11.
+		// At level 3 (throughput 1.4): output 11.2, input 15.4.
+		expect.assertions(8);
+		const base = createNewGame('convenience', 20260518);
+		const level1Game: GameState = {
+			...base,
+			industrialBuildings: [
+				...base.industrialBuildings,
+				{
+					id: 'industry-building-snacks',
+					level: 1,
+					typeId: 'snack-factory',
+					cityId: base.activeIndustryCityId,
+					tileId: 'manual-snack-factory',
+					mapX: 0,
+					mapY: 0,
+					status: 'idle',
+					lastProduction: [],
+					producedTotal: 0,
+					importedInputTotal: 0,
+					blockedDays: 0
+				}
+			]
+		};
+		const level3Game: GameState = {
+			...level1Game,
+			industrialBuildings: level1Game.industrialBuildings.map((building) =>
+				building.id === 'industry-building-snacks' ? { ...building, level: 3 } : building
+			)
+		};
+
+		const level1Graph = buildProductChainGraph({
+			game: level1Game,
+			store: level1Game.stores[0]!,
+			categoryId: 'snacks'
+		});
+		const level3Graph = buildProductChainGraph({
+			game: level3Game,
+			store: level3Game.stores[0]!,
+			categoryId: 'snacks'
+		});
+
+		const level1Recipe = level1Graph.nodes.find((node) => node.id === 'recipe:snack-production');
+		const level3Recipe = level3Graph.nodes.find((node) => node.id === 'recipe:snack-production');
+		const level3Material = level3Graph.nodes.find((node) => node.id === 'material:snacks');
+
+		// buildingCount stays as the raw placed-building count.
+		expect(level1Recipe?.capacity.buildingCount).toBe(1);
+		expect(level3Recipe?.capacity.buildingCount).toBe(1);
+		// Level-1 capacity is unscaled.
+		expect(level1Recipe?.capacity.outputPerDay).toBe(8);
+		expect(level1Recipe?.capacity.inputPerDay).toBe(11);
+		// Level-3 capacity is scaled by the 1.4 throughput multiplier. (Capacity is a
+		// forecast, so we keep fractional units rather than rounding to integers.)
+		expect(level3Recipe?.capacity.outputPerDay).toBeCloseTo(11.2, 5);
+		expect(level3Recipe?.capacity.inputPerDay).toBeCloseTo(15.4, 5);
+		// The material node inherits the same throughput-scaled capacity.
+		expect(level3Material?.capacity.outputPerDay).toBeCloseTo(11.2, 5);
+		expect(level3Material?.capacity.inputPerDay).toBeCloseTo(15.4, 5);
+	});
 });
 
 describe('product chain graph edge allocation', () => {
