@@ -141,6 +141,134 @@ describe('IndustryTileInspector', () => {
 		expect(onUpgradeBuilding).toHaveBeenCalledWith(buildingId);
 	});
 
+	it('shows Max level button text and hides the cash hint at MAX_BUILDING_LEVEL', async () => {
+		expect.assertions(3);
+		const game = { ...createNewGame('convenience', 20260512), cash: 1_000_000 };
+		const tile = getIndustryTilesByResource(game.industryCities[0]!, 'grain-field')[0]!;
+		const building: IndustrialBuilding = {
+			id: 'industry-building-max',
+			level: 10,
+			typeId: 'grain-farm',
+			cityId: tile.cityId,
+			tileId: tile.id,
+			mapX: tile.x,
+			mapY: tile.y,
+			status: 'idle',
+			lastProduction: [],
+			producedTotal: 0,
+			importedInputTotal: 0,
+			blockedDays: 0
+		};
+
+		render(IndustryTileInspector, {
+			game,
+			tile,
+			building,
+			onClose: vi.fn()
+		});
+
+		await expect.element(page.getByText(/Level 10 \/ 10/i)).toBeInTheDocument();
+		const button = page.getByRole('button', { name: /Max level/i });
+		await expect.element(button).toBeDisabled();
+		await expect.element(page.getByText('Not enough cash.')).not.toBeInTheDocument();
+	});
+
+	it('shows the cash hint when the building can upgrade but cash is insufficient', async () => {
+		expect.assertions(3);
+		const game = { ...createNewGame('convenience', 20260512), cash: 0 };
+		const tile = getIndustryTilesByResource(game.industryCities[0]!, 'grain-field')[0]!;
+		const building: IndustrialBuilding = {
+			id: 'industry-building-broke',
+			level: 2,
+			typeId: 'grain-farm',
+			cityId: tile.cityId,
+			tileId: tile.id,
+			mapX: tile.x,
+			mapY: tile.y,
+			status: 'idle',
+			lastProduction: [],
+			producedTotal: 0,
+			importedInputTotal: 0,
+			blockedDays: 0
+		};
+
+		render(IndustryTileInspector, {
+			game,
+			tile,
+			building,
+			onClose: vi.fn()
+		});
+
+		await expect.element(page.getByText(/Level 2 \/ 10/i)).toBeInTheDocument();
+		const button = page.getByRole('button', { name: /Upgrade/i });
+		await expect.element(button).toBeDisabled();
+		await expect.element(page.getByText('Not enough cash.')).toBeVisible();
+	});
+
+	it('displays the throughput multiplier scaled by building level', async () => {
+		expect.assertions(2);
+		const game = { ...createNewGame('convenience', 20260512), cash: 1_000_000 };
+		const tile = getIndustryTilesByResource(game.industryCities[0]!, 'grain-field')[0]!;
+		const building: IndustrialBuilding = {
+			id: 'industry-building-throughput',
+			level: 3,
+			typeId: 'grain-farm',
+			cityId: tile.cityId,
+			tileId: tile.id,
+			mapX: tile.x,
+			mapY: tile.y,
+			status: 'idle',
+			lastProduction: [],
+			producedTotal: 0,
+			importedInputTotal: 0,
+			blockedDays: 0
+		};
+
+		render(IndustryTileInspector, {
+			game,
+			tile,
+			building,
+			onClose: vi.fn()
+		});
+
+		await expect.element(page.getByText(/Level 3 \/ 10/i)).toBeInTheDocument();
+		// throughput = 1 + 0.2 * (level - 1) = 1.4 at level 3
+		await expect.element(page.getByText('1.4× output')).toBeVisible();
+	});
+
+	it('hides the upgrade section for warehouse buildings (no recipe)', async () => {
+		expect.assertions(3);
+		const game = { ...createNewGame('convenience', 20260512), cash: 1_000_000 };
+		const warehouseTile = game.industryCities[0]!.tiles.find(
+			(candidate) => candidate.terrain === 'industrial' && !candidate.locked
+		)!;
+		const building: IndustrialBuilding = {
+			id: 'industry-building-warehouse-norecipe',
+			level: 1,
+			typeId: 'warehouse',
+			cityId: warehouseTile.cityId,
+			tileId: warehouseTile.id,
+			mapX: warehouseTile.x,
+			mapY: warehouseTile.y,
+			status: 'idle',
+			lastProduction: [],
+			producedTotal: 0,
+			importedInputTotal: 0,
+			blockedDays: 0
+		};
+
+		render(IndustryTileInspector, {
+			game,
+			tile: warehouseTile,
+			building,
+			onClose: vi.fn()
+		});
+
+		await expect.element(page.getByText(/Level 1 \/ 10/i)).toBeInTheDocument();
+		await expect.element(page.getByRole('button', { name: /Upgrade/i })).not.toBeInTheDocument();
+		await expect.element(page.getByText(/× output/)).not.toBeInTheDocument();
+	});
+
 	it('shows warehouse capacity and material totals for a warehouse building', async () => {
 		expect.assertions(4);
 		const game = {

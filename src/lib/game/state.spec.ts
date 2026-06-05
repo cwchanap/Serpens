@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
-import { calculateStockHealth } from './stock';
+import { getArchetype } from './archetypes';
+import { calculateStockHealth, createStoreProduct } from './stock';
 import { createNewGame, openStore, resolveDecision, updatePolicy, upgradeStore } from './state';
 import { simulateDay } from './simulateDay';
 import { getStoreUpgradeCost, MAX_STORE_LEVEL } from './leveling';
@@ -398,5 +399,33 @@ describe('game state', () => {
 			stores: [{ ...base.stores[0]!, level: MAX_STORE_LEVEL }]
 		};
 		expect(upgradeStore(maxed, maxed.stores[0]!.id)).toBe(maxed);
+	});
+
+	test('upgradeStore is a no-op when the store id does not exist', () => {
+		expect.assertions(1);
+		const game = { ...createNewGame('convenience', 20260603), cash: 1_000_000 };
+		expect(upgradeStore(game, 'store-does-not-exist')).toBe(game);
+	});
+
+	test('upgradeStore milestone skips duplicate category and still raises staff capacity', () => {
+		expect.assertions(2);
+		const base = createNewGame('convenience', 20260603);
+		const store = base.stores[0]!;
+		const drinksCategory = getArchetype('convenience').startingCategories[1]!;
+		const game = {
+			...base,
+			cash: 1_000_000,
+			stores: [
+				{
+					...store,
+					level: 3,
+					products: [store.products[0]!, createStoreProduct(drinksCategory)]
+				}
+			]
+		};
+		const result = upgradeStore(game, store.id);
+		const upgraded = result.stores[0]!;
+		expect(upgraded.products.map((product) => product.categoryId)).toEqual(['snacks', 'drinks']);
+		expect(upgraded.staffCapacity).toBeGreaterThan(store.staffCapacity);
 	});
 });

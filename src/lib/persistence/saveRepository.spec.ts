@@ -1507,6 +1507,112 @@ describe('save records', () => {
 			'Saved game industrialBuildings[0] level must be an integer between 1 and 10'
 		);
 	});
+
+	test('rejects an industrial building level above MAX_BUILDING_LEVEL', () => {
+		expect.assertions(2);
+		const game = createGame({
+			industrialBuildings: [
+				{
+					id: 'building-1',
+					level: 11,
+					typeId: 'forester' as IndustrialBuildingTypeId,
+					cityId: 'industry-city',
+					tileId: 'industry-city-0-0',
+					mapX: 0,
+					mapY: 0,
+					status: 'idle',
+					lastProduction: [],
+					producedTotal: 0,
+					importedInputTotal: 0,
+					blockedDays: 0
+				}
+			]
+		});
+		const snapshot = createSnapshotWithGame(game);
+
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
+			'Saved game industrialBuildings[0] level must be an integer between 1 and 10'
+		);
+	});
+
+	test.each([
+		{ productLevel: 4, productCount: 2, expectedLevel: 4 },
+		{ productLevel: 10, productCount: 4, expectedLevel: 10 }
+	])(
+		'migrates a legacy $productCount-product store to level $expectedLevel',
+		({ productLevel, expectedLevel }) => {
+			expect.assertions(1);
+			const game = createNewGame('convenience', 20260603);
+			const legacyStore = {
+				...game.stores[0]!,
+				products: initializeStoreProducts('convenience', productLevel)
+			};
+			// eslint-disable-next-line @typescript-eslint/no-unused-vars
+			const { level: _omit, ...legacyWithoutLevel } = legacyStore;
+			const snapshot = createSnapshotWithGame({
+				...game,
+				stores: [legacyWithoutLevel as unknown as (typeof game.stores)[number]]
+			});
+			const validated = validateSaveStoreSnapshot(snapshot);
+			expect(validated.manualSlots[0]!.game.stores[0]!.level).toBe(expectedLevel);
+		}
+	);
+
+	test('migrates a legacy industrial building without a level field to level 1', () => {
+		expect.assertions(1);
+		const fullBuilding = {
+			id: 'building-1',
+			level: 1,
+			typeId: 'grain-farm' as IndustrialBuildingTypeId,
+			cityId: 'industry-city',
+			tileId: 'industry-city-0-0',
+			mapX: 0,
+			mapY: 0,
+			status: 'idle' as const,
+			lastProduction: [],
+			producedTotal: 0,
+			importedInputTotal: 0,
+			blockedDays: 0
+		};
+		// eslint-disable-next-line @typescript-eslint/no-unused-vars
+		const { level: _omit, ...legacyWithoutLevel } = fullBuilding;
+		const game = createGame({
+			industrialBuildings: [
+				legacyWithoutLevel as unknown as GameState['industrialBuildings'][number]
+			]
+		});
+		const snapshot = createSnapshotWithGame(game);
+
+		const validated = validateSaveStoreSnapshot(snapshot);
+		expect(validated.manualSlots[0]!.game.industrialBuildings[0]!.level).toBe(1);
+	});
+
+	test('preserves an explicit industrial building level during validation', () => {
+		expect.assertions(1);
+		const game = createGame({
+			industrialBuildings: [
+				{
+					id: 'building-1',
+					level: 5,
+					typeId: 'grain-farm' as IndustrialBuildingTypeId,
+					cityId: 'industry-city',
+					tileId: 'industry-city-0-0',
+					mapX: 0,
+					mapY: 0,
+					status: 'idle',
+					lastProduction: [],
+					producedTotal: 0,
+					importedInputTotal: 0,
+					blockedDays: 0
+				}
+			]
+		});
+		const snapshot = createSnapshotWithGame(game);
+
+		const validated = validateSaveStoreSnapshot(snapshot);
+		expect(validated.manualSlots[0]!.game.industrialBuildings[0]!.level).toBe(5);
+	});
 });
 
 describe('browser save repository', () => {
