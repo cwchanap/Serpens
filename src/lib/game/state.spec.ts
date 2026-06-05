@@ -428,4 +428,30 @@ describe('game state', () => {
 		expect(upgraded.products.map((product) => product.categoryId)).toEqual(['snacks', 'drinks']);
 		expect(upgraded.staffCapacity).toBeGreaterThan(store.staffCapacity);
 	});
+
+	test('simulateDay reflects upgradeStore milestone effects: more products, larger staffCapacity, raised daily staffing requirement', () => {
+		expect.assertions(5);
+		let game = { ...createNewGame('convenience', 20260603), cash: 1_000_000 };
+		const storeId = game.stores[0]!.id;
+		const baselineReport = simulateDay(game).reports.at(-1)!;
+		const baselineStoreReport = baselineReport.storeReports[0]!;
+
+		for (let i = 0; i < 3; i++) {
+			game = upgradeStore(game, storeId); // reach level 4
+		}
+		expect(game.stores[0]!.level).toBe(4);
+		const level4Report = simulateDay(game).reports.at(-1)!;
+		const level4StoreReport = level4Report.storeReports[0]!;
+		const baselineStore = baselineStoreReport;
+
+		// Milestone grants a new product category.
+		expect(level4Report.storeReports[0]!.productReports).toHaveLength(2);
+		expect(baselineStore.productReports).toHaveLength(1);
+
+		// Level 4 raises the general-staff requirement from 1 to 2. The store
+		// still only has the level-1 starter roster (1 general), so the daily
+		// report must show a non-zero general shortage.
+		expect(level4StoreReport.staffingShortage.general).toBe(1);
+		expect(baselineStore.staffingShortage.general).toBe(0);
+	});
 });

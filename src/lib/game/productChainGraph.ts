@@ -676,6 +676,11 @@ function getRecipeThroughputUnits(
 	buildings: IndustrialBuilding[],
 	recipeId: ProductionRecipeId
 ): number {
+	// Recipe throughput is the sum of per-building throughput multipliers.
+	// The product-chain graph is a derived view; the actual production tick
+	// lives in industryProduction and rounds per-building output. This sum
+	// stays non-rounded on purpose so the chain graph can show fractional
+	// expected per-day units; rounding happens at the cash/stock boundary.
 	return buildingsForRecipe(buildings, recipeId).reduce(
 		(total, building) => total + getBuildingThroughputMultiplier(building.level),
 		0
