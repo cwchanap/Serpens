@@ -1613,6 +1613,136 @@ describe('save records', () => {
 		const validated = validateSaveStoreSnapshot(snapshot);
 		expect(validated.manualSlots[0]!.game.industrialBuildings[0]!.level).toBe(5);
 	});
+
+	describe('schema v4 → v5 migration', () => {
+		function createBoutiqueV4Snapshot() {
+			const game = createNewGame('boutique', 20260604);
+			// Force all four boutique categories onto the founding store so we
+			// exercise the renamed `accessories` category from schema v4.
+			const fullBoutiqueStore = {
+				...game.stores[0]!,
+				level: 10,
+				products: initializeStoreProducts('boutique', 10).map((product) =>
+					product.categoryId === 'fashion-accessories'
+						? { ...product, categoryId: 'accessories' as const }
+						: product
+				)
+			};
+			const record = createSaveRecord(
+				{ ...game, stores: [fullBoutiqueStore] },
+				{
+					id: 'manual-v4-boutique',
+					name: 'V4 Boutique Save',
+					kind: 'manual',
+					updatedAt: new Date('2026-06-04T12:00:00.000Z')
+				}
+			);
+			const v4Record = { ...record, schemaVersion: 4 } as unknown as SaveRecord;
+			return {
+				schemaVersion: 4,
+				autoSave: null,
+				manualSlots: [v4Record]
+			};
+		}
+
+		test('migrates schema v4 boutique accessories to fashion-accessories and bumps schemaVersion', () => {
+			expect.assertions(4);
+			const v4Snapshot = createBoutiqueV4Snapshot();
+
+			const validated = validateSaveStoreSnapshot(v4Snapshot);
+
+			expect(validated.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
+			expect(validated.manualSlots[0]!.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
+			const productCategoryIds = validated.manualSlots[0]!.game.stores[0]!.products.map(
+				(product) => product.categoryId
+			);
+			expect(productCategoryIds).toContain('fashion-accessories');
+			expect(productCategoryIds).not.toContain('accessories');
+		});
+
+		test('migrates an auto-save marked as schema v4', () => {
+			expect.assertions(2);
+			const boutiqueSnapshot = createBoutiqueV4Snapshot();
+			const autoSaveRecord = createSaveRecord(boutiqueSnapshot.manualSlots[0]!.game, {
+				id: 'autosave',
+				name: 'Auto-save',
+				kind: 'auto',
+				updatedAt: new Date('2026-06-04T12:00:00.000Z')
+			});
+			const v4Snapshot = {
+				schemaVersion: 4,
+				autoSave: { ...autoSaveRecord, schemaVersion: 4 },
+				manualSlots: []
+			};
+
+			const validated = validateSaveStoreSnapshot(v4Snapshot);
+
+			expect(validated.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
+			expect(validated.autoSave?.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
+		});
+
+		test('preserves electronics accessories when migrating a schema v4 snapshot', () => {
+			expect.assertions(2);
+			const game = createNewGame('electronics', 20260604);
+			const electronicsStore = {
+				...game.stores[0]!,
+				level: 10,
+				products: initializeStoreProducts('electronics', 10)
+			};
+			const record = createSaveRecord(
+				{ ...game, stores: [electronicsStore] },
+				{
+					id: 'manual-v4-electronics',
+					name: 'V4 Electronics Save',
+					kind: 'manual',
+					updatedAt: new Date('2026-06-04T12:00:00.000Z')
+				}
+			);
+			const v4Snapshot = {
+				schemaVersion: 4,
+				autoSave: null,
+				manualSlots: [{ ...record, schemaVersion: 4 }]
+			};
+
+			const validated = validateSaveStoreSnapshot(v4Snapshot);
+
+			const productCategoryIds = validated.manualSlots[0]!.game.stores[0]!.products.map(
+				(product) => product.categoryId
+			);
+			expect(productCategoryIds).toContain('accessories');
+			expect(validated.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
+		});
+
+		test('migrates a v4 record passed directly to validateSaveRecord', () => {
+			expect.assertions(2);
+			const boutiqueSnapshot = createBoutiqueV4Snapshot();
+			const v4Record = boutiqueSnapshot.manualSlots[0]!;
+
+			const validated = validateSaveRecord(v4Record);
+
+			expect(validated.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
+			expect(
+				validated.game.stores[0]!.products.some(
+					(product) => product.categoryId === 'fashion-accessories'
+				)
+			).toBe(true);
+		});
+
+		test('still rejects schema versions older than the migration floor', () => {
+			expect.assertions(2);
+			const snapshot = createBoutiqueV4Snapshot();
+			const v3Snapshot = {
+				...snapshot,
+				schemaVersion: 3,
+				manualSlots: snapshot.manualSlots.map((slot) => ({ ...slot, schemaVersion: 3 }))
+			};
+
+			expect(() => validateSaveStoreSnapshot(v3Snapshot)).toThrow(SaveDataError);
+			expect(() => validateSaveStoreSnapshot(v3Snapshot)).toThrow(
+				'Unsupported save schema version: 3'
+			);
+		});
+	});
 });
 
 describe('browser save repository', () => {

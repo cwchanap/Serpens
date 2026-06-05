@@ -24,6 +24,116 @@ export class SaveDataError extends Error {
 	}
 }
 
+/**
+ * Schema versions that we accept on read and migrate forward to the current
+ * {@link SAVE_SCHEMA_VERSION}. Keep this in sync with the migration table in
+ * {@link migrateSaveStoreSnapshot} and {@link migrateSaveRecord}.
+ */
+const MIGRATABLE_SCHEMA_VERSIONS = new Set<number>([4]);
+
+function isMigratableSchemaVersion(version: unknown): version is number {
+	return typeof version === 'number' && MIGRATABLE_SCHEMA_VERSIONS.has(version);
+}
+
+/**
+ * v4 → v5: boutique's `accessories` category was renamed to
+ * `fashion-accessories` to disambiguate it from the electronics archetype's
+ * own `accessories` category. Electronics keeps `accessories` as-is.
+ */
+const BOUTIQUE_LEGACY_CATEGORY_RENAMES: Record<string, string> = {
+	accessories: 'fashion-accessories'
+};
+
+function migrateV4Store(store: unknown): unknown {
+	if (typeof store !== 'object' || store === null) return store;
+	const storeRecord = store as Record<string, unknown>;
+	if (storeRecord.archetypeId !== 'boutique' || !Array.isArray(storeRecord.products)) {
+		return store;
+	}
+
+	let changed = false;
+	const migratedProducts = storeRecord.products.map((product) => {
+		if (typeof product !== 'object' || product === null) return product;
+		const productRecord = product as Record<string, unknown>;
+		const rename = BOUTIQUE_LEGACY_CATEGORY_RENAMES[productRecord.categoryId as string];
+		if (rename === undefined) return product;
+		changed = true;
+		return { ...productRecord, categoryId: rename };
+	});
+
+	return changed ? { ...storeRecord, products: migratedProducts } : store;
+}
+
+function migrateV4Game(game: unknown): unknown {
+	if (typeof game !== 'object' || game === null) return game;
+	const gameRecord = game as Record<string, unknown>;
+	if (!Array.isArray(gameRecord.stores)) return game;
+
+	let changed = false;
+	const migratedStores = gameRecord.stores.map((store) => {
+		const migrated = migrateV4Store(store);
+		if (migrated !== store) changed = true;
+		return migrated;
+	});
+
+	return changed ? { ...gameRecord, stores: migratedStores } : game;
+}
+
+function migrateV4SaveRecord(record: unknown): unknown {
+	if (typeof record !== 'object' || record === null) return record;
+	const recordObject = record as Record<string, unknown>;
+	const migratedGame = migrateV4Game(recordObject.game);
+	return {
+		...recordObject,
+		schemaVersion: SAVE_SCHEMA_VERSION,
+		game: migratedGame
+	};
+}
+
+/**
+ * Bring a serialized save store snapshot forward to the current
+ * {@link SAVE_SCHEMA_VERSION}. Returns the value untouched when it is already
+ * current or when we cannot recognise the schema version (so the caller's
+ * subsequent strict validation can throw a precise error).
+ */
+function migrateSaveStoreSnapshot(value: unknown): unknown {
+	if (typeof value !== 'object' || value === null) return value;
+	const snapshot = value as Record<string, unknown>;
+
+	if (!isMigratableSchemaVersion(snapshot.schemaVersion)) return value;
+	if (snapshot.schemaVersion === SAVE_SCHEMA_VERSION) return value;
+
+	let migratedAutoSave = snapshot.autoSave;
+	if (migratedAutoSave !== null && migratedAutoSave !== undefined) {
+		migratedAutoSave = migrateV4SaveRecord(migratedAutoSave);
+	}
+
+	let migratedManualSlots = snapshot.manualSlots;
+	if (Array.isArray(migratedManualSlots)) {
+		migratedManualSlots = migratedManualSlots.map(migrateV4SaveRecord);
+	}
+
+	return {
+		...snapshot,
+		schemaVersion: SAVE_SCHEMA_VERSION,
+		autoSave: migratedAutoSave,
+		manualSlots: migratedManualSlots
+	};
+}
+
+/**
+ * Record-level mirror of {@link migrateSaveStoreSnapshot} for callers that
+ * validate a single {@link SaveRecord} without going through the snapshot
+ * validator first.
+ */
+function migrateSaveRecord(value: unknown): unknown {
+	if (typeof value !== 'object' || value === null) return value;
+	const record = value as Record<string, unknown>;
+	if (!isMigratableSchemaVersion(record.schemaVersion)) return value;
+	if (record.schemaVersion === SAVE_SCHEMA_VERSION) return value;
+	return migrateV4SaveRecord(record);
+}
+
 const PRICING_POSTURES = ['discount', 'competitive', 'standard', 'premium'] as const;
 const INVENTORY_BUFFERS = ['lean', 'balanced', 'generous'] as const;
 const STAFFING_POSTURES = ['minimal', 'efficient', 'service'] as const;
@@ -159,7 +269,8 @@ export function parseSaveStoreSnapshot(serialized: string): SaveStoreSnapshot {
 }
 
 export function validateSaveStoreSnapshot(value: unknown): SaveStoreSnapshot {
-	const record = requireRecord(value, 'Save store');
+	const migrated = migrateSaveStoreSnapshot(value);
+	const record = requireRecord(migrated, 'Save store');
 	const schemaVersion = requireNumber(record.schemaVersion, 'Save store schemaVersion');
 
 	if (schemaVersion !== SAVE_SCHEMA_VERSION) {
@@ -178,7 +289,8 @@ export function validateSaveStoreSnapshot(value: unknown): SaveStoreSnapshot {
 }
 
 export function validateSaveRecord(value: unknown): SaveRecord {
-	const record = requireRecord(value, 'Save record');
+	const migrated = migrateSaveRecord(value);
+	const record = requireRecord(migrated, 'Save record');
 	const schemaVersion = requireNumber(record.schemaVersion, 'Save record schemaVersion');
 
 	if (schemaVersion !== SAVE_SCHEMA_VERSION) {
@@ -202,7 +314,8 @@ export function validateSaveRecord(value: unknown): SaveRecord {
 	requireString(metadata.activeCityName, 'Save metadata activeCityName');
 
 	return {
-		...(value as SaveRecord),
+		...(migrated as SaveRecord),
+		schemaVersion: SAVE_SCHEMA_VERSION,
 		game
 	};
 }
