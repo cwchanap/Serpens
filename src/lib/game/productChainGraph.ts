@@ -1,6 +1,7 @@
 import { getArchetype } from './archetypes';
 import { INDUSTRIAL_BUILDING_TYPES, MATERIALS, PRODUCTION_RECIPES } from './industry';
 import { getWarehouseUsed } from './industryProduction';
+import { getBuildingThroughputMultiplier } from './leveling';
 import type {
 	DailyMaterialMovement,
 	DailyProductReport,
@@ -171,6 +172,9 @@ export function buildProductChainGraph(input: {
 		const producerBuildingCount = producerRecipeId
 			? buildingsForRecipe(input.game.industrialBuildings, producerRecipeId).length
 			: 0;
+		const producerThroughputUnits = producerRecipeId
+			? getRecipeThroughputUnits(input.game.industrialBuildings, producerRecipeId)
+			: 0;
 		const actual = materialActualMetrics(
 			report,
 			materialId,
@@ -201,9 +205,9 @@ export function buildProductChainGraph(input: {
 			capacity: {
 				buildingCount: producerBuildingCount,
 				outputPerDay: producerRecipe
-					? recipeOutputPerDay(producerRecipe, producerBuildingCount)
+					? recipeOutputPerDay(producerRecipe, producerThroughputUnits)
 					: 0,
-				inputPerDay: producerRecipe ? recipeInputPerDay(producerRecipe, producerBuildingCount) : 0
+				inputPerDay: producerRecipe ? recipeInputPerDay(producerRecipe, producerThroughputUnits) : 0
 			},
 			actual,
 			bottleneck: bottleneckText({ kind: 'material', health, label: materialLabel })
@@ -221,6 +225,7 @@ export function buildProductChainGraph(input: {
 	function collectRecipe(recipeId: ProductionRecipeId, outputMaterialId: MaterialId): void {
 		const recipe = PRODUCTION_RECIPES[recipeId];
 		const buildingCount = buildingsForRecipe(input.game.industrialBuildings, recipeId).length;
+		const throughputUnits = getRecipeThroughputUnits(input.game.industrialBuildings, recipeId);
 		const health = recipeHealth({ hasReport: report !== null, buildingCount });
 		const recipeLabel = buildingTypesForRecipe(recipeId)[0]?.name ?? recipeId;
 		const recipeNode: ProductChainNode = {
@@ -237,8 +242,8 @@ export function buildProductChainGraph(input: {
 			warehouseStock: 0,
 			capacity: {
 				buildingCount,
-				outputPerDay: recipeOutputPerDay(recipe, buildingCount),
-				inputPerDay: recipeInputPerDay(recipe, buildingCount)
+				outputPerDay: recipeOutputPerDay(recipe, throughputUnits),
+				inputPerDay: recipeInputPerDay(recipe, throughputUnits)
 			},
 			actual: emptyActualMetrics(),
 			bottleneck: bottleneckText({ kind: 'recipe', health, label: recipeLabel })
@@ -513,14 +518,14 @@ function createInputWeightMap(
 	const inferredCycles = inferRecipeCycles(report);
 
 	for (const recipe of Object.values(PRODUCTION_RECIPES)) {
-		const buildingCount = buildingsForRecipe(buildings, recipe.id).length;
+		const throughputUnits = getRecipeThroughputUnits(buildings, recipe.id);
 
 		for (const input of recipe.inputs) {
 			const materialWeights = weights.get(input.materialId) ?? [];
 			materialWeights.push({
 				recipeId: recipe.id,
 				requiredPerCycle: input.quantity,
-				requiredPerDay: input.quantity * buildingCount,
+				requiredPerDay: input.quantity * throughputUnits,
 				inferredPerDay: input.quantity * (inferredCycles.get(recipe.id) ?? 0)
 			});
 			weights.set(input.materialId, materialWeights);
@@ -665,6 +670,16 @@ function buildingsForRecipe(
 	const typeIds = new Set(buildingTypesForRecipe(recipeId).map((type) => type.id));
 
 	return buildings.filter((building) => typeIds.has(building.typeId));
+}
+
+function getRecipeThroughputUnits(
+	buildings: IndustrialBuilding[],
+	recipeId: ProductionRecipeId
+): number {
+	return buildingsForRecipe(buildings, recipeId).reduce(
+		(total, building) => total + getBuildingThroughputMultiplier(building.level),
+		0
+	);
 }
 
 function recipeOutputPerDay(recipe: ProductionRecipe, buildingCount: number): number {
