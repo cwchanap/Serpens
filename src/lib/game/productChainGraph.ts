@@ -687,12 +687,12 @@ function getRecipeThroughputUnits(
 	);
 }
 
-function recipeOutputPerDay(recipe: ProductionRecipe, buildingCount: number): number {
-	return recipe.outputs.reduce((total, output) => total + output.quantity * buildingCount, 0);
+function recipeOutputPerDay(recipe: ProductionRecipe, throughputUnits: number): number {
+	return recipe.outputs.reduce((total, output) => total + output.quantity * throughputUnits, 0);
 }
 
-function recipeInputPerDay(recipe: ProductionRecipe, buildingCount: number): number {
-	return recipe.inputs.reduce((total, input) => total + input.quantity * buildingCount, 0);
+function recipeInputPerDay(recipe: ProductionRecipe, throughputUnits: number): number {
+	return recipe.inputs.reduce((total, input) => total + input.quantity * throughputUnits, 0);
 }
 
 function emptyActualMetrics(): ProductChainActualMetrics {
