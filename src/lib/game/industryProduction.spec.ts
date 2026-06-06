@@ -144,6 +144,32 @@ describe('industry production simulation', () => {
 		expect(produced6 / produced1).toBeCloseTo(2.0, 1);
 	});
 
+	test('operating cost is integerized at non-integer throughput levels', () => {
+		expect.assertions(2);
+		let game = { ...createNewGame('convenience', 20260512), cash: 100_000 };
+		const industrialTile = game.industryCities[0]!.tiles.find(
+			(tile) => tile.terrain === 'industrial' && !tile.locked
+		)!;
+		game = buildIndustrialBuilding(game, {
+			tileId: industrialTile.id,
+			buildingTypeId: 'flour-mill'
+		});
+		// Level 2 → throughput 1.2 → recipe operatingCost 18 × 1.2 = 21.6 (fractional
+		// without rounding). Adding dailyOperatingCost 24 gives 45.6 before rounding.
+		const leveled = {
+			...game,
+			industrialBuildings: game.industrialBuildings.map((building) => ({
+				...building,
+				level: 2
+			}))
+		};
+
+		const result = simulateIndustryProduction(leveled);
+
+		expect(Number.isInteger(result.report.operatingCost)).toBe(true);
+		expect(result.report.operatingCost).toBe(46); // Math.round(18 * 1.2 + 24)
+	});
+
 	test('runs raw production before processors can withdraw local inputs', () => {
 		expect.assertions(5);
 		let game = { ...createNewGame('convenience', 20260512), cash: 100_000 };
