@@ -330,6 +330,9 @@ describe('game state', () => {
 			...game.stores[0]!,
 			products: game.stores[0]!.products.map((product) => ({
 				...product,
+				// Scale stock and targetStock up so that the stockHealth effect in
+				// resolveDecision (Math.round(targetStock * stockHealth * 0.01)) is
+				// large enough to survive next-day sales without rounding away to zero.
 				stock: product.targetStock * 3,
 				targetStock: product.targetStock * 6
 			}))
