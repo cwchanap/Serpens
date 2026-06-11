@@ -370,10 +370,14 @@ describe('product chain graph edge allocation', () => {
 			(edge) => edge.id === 'material:water->recipe:syrup-production'
 		);
 
+		// Zero-capacity fallback splits the 16 consumed water across all
+		// water-consuming recipes weighted by requiredPerCycle: filtration (12) +
+		// syrup (4) + bottling (10) = 26. So filtration gets 16*12/26 = 7.38 and
+		// syrup gets 16*4/26 = 2.46 (rounded to 2 decimals by roundFlowQuantity).
 		expect(filtrationInput?.requiredPerCycle).toBe(12);
-		expect(filtrationInput?.actualPerDay).toBe(12);
+		expect(filtrationInput?.actualPerDay).toBe(7.38);
 		expect(syrupInput?.requiredPerCycle).toBe(4);
-		expect(syrupInput?.actualPerDay).toBe(4);
+		expect(syrupInput?.actualPerDay).toBe(2.46);
 	});
 
 	test('does not absorb shared input movement from other finished chains', () => {

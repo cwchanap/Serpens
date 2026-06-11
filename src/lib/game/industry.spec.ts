@@ -1,10 +1,12 @@
-import { describe, expect, test } from 'vitest';
+import { describe, expect, it, test } from 'vitest';
 import {
 	CONVENIENCE_BUILDING_TYPE_IDS,
+	FINISHED_PRODUCT_MATERIAL_IDS,
 	INDUSTRIAL_BUILDING_TYPES,
 	MATERIALS,
 	PRODUCTION_RECIPES,
 	generateIndustryCity,
+	getCategoryTier,
 	getIndustrialBuildingTypesForProductChain,
 	getIndustryTileById,
 	getIndustryTilesByResource
@@ -319,5 +321,94 @@ describe('industry city generation', () => {
 		expect(
 			negativeBias.tiles.every((tile) => Number.isFinite(tile.x) && Number.isFinite(tile.y))
 		).toBe(true);
+	});
+});
+
+describe('tier 1 chains', () => {
+	it('defines the three new finished materials with one producer recipe each', () => {
+		for (const id of ['bottled-water', 'produce', 'pantry'] as const) {
+			expect(MATERIALS[id].kind).toBe('finished');
+			const producers = Object.values(PRODUCTION_RECIPES).filter((recipe) =>
+				recipe.outputs.some((output) => output.materialId === id)
+			);
+			expect(producers, `${id} must have exactly one producer recipe`).toHaveLength(1);
+		}
+	});
+
+	it('lists the new finished materials as supported products', () => {
+		expect(FINISHED_PRODUCT_MATERIAL_IDS).toContain('bottled-water');
+		expect(FINISHED_PRODUCT_MATERIAL_IDS).toContain('produce');
+		expect(FINISHED_PRODUCT_MATERIAL_IDS).toContain('pantry');
+		expect(FINISHED_PRODUCT_MATERIAL_IDS).toHaveLength(7);
+	});
+
+	it('keeps the bottled water chain at two buildings under the tier 1 cost ceiling', () => {
+		const types = getIndustrialBuildingTypesForProductChain('bottled-water');
+		expect(types.map((type) => type.id).sort()).toEqual(['water-bottler', 'water-pump']);
+		expect(types.reduce((sum, type) => sum + type.buildCost, 0)).toBeLessThanOrEqual(1_500);
+	});
+
+	it('keeps the produce chain at two buildings and the pantry chain at three', () => {
+		expect(
+			getIndustrialBuildingTypesForProductChain('produce')
+				.map((type) => type.id)
+				.sort()
+		).toEqual(['fruit-farm', 'produce-packhouse']);
+		expect(
+			getIndustrialBuildingTypesForProductChain('pantry')
+				.map((type) => type.id)
+				.sort()
+		).toEqual(['flour-mill', 'grain-farm', 'pantry-works']);
+	});
+
+	it('runs each tier 1 chain at a positive daily margin', () => {
+		for (const materialId of ['bottled-water', 'produce'] as const) {
+			const chainTypes = getIndustrialBuildingTypesForProductChain(materialId);
+			const finalRecipe = Object.values(PRODUCTION_RECIPES).find((recipe) =>
+				recipe.outputs.some((output) => output.materialId === materialId)
+			)!;
+			const outputValuePerDay = finalRecipe.outputs.reduce(
+				(sum, output) => sum + output.quantity * MATERIALS[output.materialId].importCost,
+				0
+			);
+			const dailyCost =
+				chainTypes.reduce((sum, type) => sum + type.dailyOperatingCost, 0) +
+				finalRecipe.operatingCost;
+			expect(outputValuePerDay, `${materialId} chain must clear its daily costs`).toBeGreaterThan(
+				dailyCost
+			);
+		}
+	});
+
+	it('assigns a tier between 1 and 3 to every industrial building type', () => {
+		for (const type of Object.values(INDUSTRIAL_BUILDING_TYPES)) {
+			expect([1, 2, 3], `${type.id} needs a tier`).toContain(type.tier);
+		}
+	});
+
+	it('derives category tiers from the final factory of each chain', () => {
+		expect(getCategoryTier('bottled-water')).toBe(1);
+		expect(getCategoryTier('produce')).toBe(1);
+		expect(getCategoryTier('pantry')).toBe(1);
+		expect(getCategoryTier('snacks')).toBe(3);
+		expect(getCategoryTier('gifts')).toBe(3);
+		expect(getCategoryTier('apparel')).toBeNull();
+	});
+
+	it('terminates every finished chain in raw materials', () => {
+		for (const materialId of FINISHED_PRODUCT_MATERIAL_IDS) {
+			const seen = new Set<string>();
+			const queue: string[] = [materialId];
+			while (queue.length > 0) {
+				const current = queue.pop()!;
+				if (seen.has(current)) continue;
+				seen.add(current);
+				const producer = Object.values(PRODUCTION_RECIPES).find((recipe) =>
+					recipe.outputs.some((output) => output.materialId === current)
+				);
+				expect(producer, `${current} in ${materialId} chain needs a producer`).toBeDefined();
+				for (const input of producer!.inputs) queue.push(input.materialId);
+			}
+		}
 	});
 });

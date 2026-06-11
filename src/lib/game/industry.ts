@@ -177,6 +177,27 @@ export const MATERIALS: Readonly<Record<MaterialId, MaterialDefinition>> = {
 		kind: 'finished',
 		importCost: 9,
 		localValue: 6
+	},
+	'bottled-water': {
+		id: 'bottled-water',
+		name: 'Bottled Water',
+		kind: 'finished',
+		importCost: 3,
+		localValue: 2
+	},
+	produce: {
+		id: 'produce',
+		name: 'Produce',
+		kind: 'finished',
+		importCost: 6,
+		localValue: 4
+	},
+	pantry: {
+		id: 'pantry',
+		name: 'Pantry Goods',
+		kind: 'finished',
+		importCost: 8,
+		localValue: 5
 	}
 };
 
@@ -347,6 +368,27 @@ export const PRODUCTION_RECIPES: Readonly<Record<ProductionRecipeId, ProductionR
 		outputs: [{ materialId: 'gifts', quantity: 6 }],
 		operatingCost: 26,
 		stage: 'final'
+	},
+	'water-bottling': {
+		id: 'water-bottling',
+		inputs: [{ materialId: 'water', quantity: 10 }],
+		outputs: [{ materialId: 'bottled-water', quantity: 10 }],
+		operatingCost: 5,
+		stage: 'final'
+	},
+	'produce-packing': {
+		id: 'produce-packing',
+		inputs: [{ materialId: 'fruit', quantity: 8 }],
+		outputs: [{ materialId: 'produce', quantity: 8 }],
+		operatingCost: 6,
+		stage: 'final'
+	},
+	'pantry-goods-production': {
+		id: 'pantry-goods-production',
+		inputs: [{ materialId: 'flour', quantity: 6 }],
+		outputs: [{ materialId: 'pantry', quantity: 8 }],
+		operatingCost: 8,
+		stage: 'final'
 	}
 };
 
@@ -361,7 +403,8 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		requiredResource: 'grain-field',
 		requiresIndustrialTile: false,
 		recipeId: 'grain-harvest',
-		warehouseCapacity: 0
+		warehouseCapacity: 0,
+		tier: 1
 	},
 	'salt-mine': {
 		id: 'salt-mine',
@@ -371,7 +414,8 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		requiredResource: 'salt-deposit',
 		requiresIndustrialTile: false,
 		recipeId: 'salt-mining',
-		warehouseCapacity: 0
+		warehouseCapacity: 0,
+		tier: 2
 	},
 	'oilseed-farm': {
 		id: 'oilseed-farm',
@@ -381,7 +425,8 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		requiredResource: 'oilseed-field',
 		requiresIndustrialTile: false,
 		recipeId: 'oilseed-harvest',
-		warehouseCapacity: 0
+		warehouseCapacity: 0,
+		tier: 2
 	},
 	'water-pump': {
 		id: 'water-pump',
@@ -391,7 +436,8 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		requiredResource: 'water-source',
 		requiresIndustrialTile: false,
 		recipeId: 'water-pumping',
-		warehouseCapacity: 0
+		warehouseCapacity: 0,
+		tier: 1
 	},
 	'fruit-farm': {
 		id: 'fruit-farm',
@@ -401,7 +447,8 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		requiredResource: 'fruit-orchard',
 		requiresIndustrialTile: false,
 		recipeId: 'fruit-harvest',
-		warehouseCapacity: 0
+		warehouseCapacity: 0,
+		tier: 1
 	},
 	'sugar-farm': {
 		id: 'sugar-farm',
@@ -411,7 +458,8 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		requiredResource: 'sugar-field',
 		requiresIndustrialTile: false,
 		recipeId: 'sugar-harvest',
-		warehouseCapacity: 0
+		warehouseCapacity: 0,
+		tier: 2
 	},
 	'pulpwood-grove': {
 		id: 'pulpwood-grove',
@@ -421,7 +469,8 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		requiredResource: 'pulpwood-forest',
 		requiresIndustrialTile: false,
 		recipeId: 'pulpwood-harvest',
-		warehouseCapacity: 0
+		warehouseCapacity: 0,
+		tier: 2
 	},
 	'chemical-feedstock-well': {
 		id: 'chemical-feedstock-well',
@@ -431,7 +480,8 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		requiredResource: 'chemical-feedstock',
 		requiresIndustrialTile: false,
 		recipeId: 'chemical-feedstock-extraction',
-		warehouseCapacity: 0
+		warehouseCapacity: 0,
+		tier: 2
 	},
 	'flour-mill': {
 		id: 'flour-mill',
@@ -441,7 +491,8 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		requiredResource: null,
 		requiresIndustrialTile: true,
 		recipeId: 'flour-milling',
-		warehouseCapacity: 0
+		warehouseCapacity: 0,
+		tier: 1
 	},
 	'oil-press': {
 		id: 'oil-press',
@@ -451,7 +502,8 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		requiredResource: null,
 		requiresIndustrialTile: true,
 		recipeId: 'oil-pressing',
-		warehouseCapacity: 0
+		warehouseCapacity: 0,
+		tier: 2
 	},
 	'water-filtration-plant': {
 		id: 'water-filtration-plant',
@@ -461,7 +513,8 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		requiredResource: null,
 		requiresIndustrialTile: true,
 		recipeId: 'water-filtration',
-		warehouseCapacity: 0
+		warehouseCapacity: 0,
+		tier: 2
 	},
 	'syrup-plant': {
 		id: 'syrup-plant',
@@ -471,7 +524,8 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		requiredResource: null,
 		requiresIndustrialTile: true,
 		recipeId: 'syrup-production',
-		warehouseCapacity: 0
+		warehouseCapacity: 0,
+		tier: 2
 	},
 	'pulp-mill': {
 		id: 'pulp-mill',
@@ -481,7 +535,8 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		requiredResource: null,
 		requiresIndustrialTile: true,
 		recipeId: 'pulp-milling',
-		warehouseCapacity: 0
+		warehouseCapacity: 0,
+		tier: 2
 	},
 	'plastic-plant': {
 		id: 'plastic-plant',
@@ -491,7 +546,8 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		requiredResource: null,
 		requiresIndustrialTile: true,
 		recipeId: 'plastic-production',
-		warehouseCapacity: 0
+		warehouseCapacity: 0,
+		tier: 2
 	},
 	'packaging-plant': {
 		id: 'packaging-plant',
@@ -501,7 +557,8 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		requiredResource: null,
 		requiresIndustrialTile: true,
 		recipeId: 'packaging-production',
-		warehouseCapacity: 0
+		warehouseCapacity: 0,
+		tier: 2
 	},
 	'chemical-plant': {
 		id: 'chemical-plant',
@@ -511,7 +568,8 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		requiredResource: null,
 		requiresIndustrialTile: true,
 		recipeId: 'cleaning-base-production',
-		warehouseCapacity: 0
+		warehouseCapacity: 0,
+		tier: 2
 	},
 	'snack-factory': {
 		id: 'snack-factory',
@@ -521,7 +579,8 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		requiredResource: null,
 		requiresIndustrialTile: true,
 		recipeId: 'snack-production',
-		warehouseCapacity: 0
+		warehouseCapacity: 0,
+		tier: 3
 	},
 	'drink-bottling-plant': {
 		id: 'drink-bottling-plant',
@@ -531,7 +590,8 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		requiredResource: null,
 		requiresIndustrialTile: true,
 		recipeId: 'drink-bottling',
-		warehouseCapacity: 0
+		warehouseCapacity: 0,
+		tier: 3
 	},
 	'household-goods-factory': {
 		id: 'household-goods-factory',
@@ -541,7 +601,8 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		requiredResource: null,
 		requiresIndustrialTile: true,
 		recipeId: 'household-goods-production',
-		warehouseCapacity: 0
+		warehouseCapacity: 0,
+		tier: 3
 	},
 	'gift-workshop': {
 		id: 'gift-workshop',
@@ -551,7 +612,41 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		requiredResource: null,
 		requiresIndustrialTile: true,
 		recipeId: 'gift-production',
-		warehouseCapacity: 0
+		warehouseCapacity: 0,
+		tier: 3
+	},
+	'water-bottler': {
+		id: 'water-bottler',
+		name: 'Water Bottler',
+		buildCost: 600,
+		dailyOperatingCost: 6,
+		requiredResource: null,
+		requiresIndustrialTile: true,
+		recipeId: 'water-bottling',
+		warehouseCapacity: 0,
+		tier: 1
+	},
+	'produce-packhouse': {
+		id: 'produce-packhouse',
+		name: 'Produce Packhouse',
+		buildCost: 650,
+		dailyOperatingCost: 8,
+		requiredResource: null,
+		requiresIndustrialTile: true,
+		recipeId: 'produce-packing',
+		warehouseCapacity: 0,
+		tier: 1
+	},
+	'pantry-works': {
+		id: 'pantry-works',
+		name: 'Pantry Works',
+		buildCost: 900,
+		dailyOperatingCost: 10,
+		requiredResource: null,
+		requiresIndustrialTile: true,
+		recipeId: 'pantry-goods-production',
+		warehouseCapacity: 0,
+		tier: 1
 	},
 	warehouse: {
 		id: 'warehouse',
@@ -561,7 +656,8 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		requiredResource: null,
 		requiresIndustrialTile: true,
 		recipeId: null,
-		warehouseCapacity: 200
+		warehouseCapacity: 200,
+		tier: 1
 	}
 };
 
@@ -586,6 +682,9 @@ export const CONVENIENCE_BUILDING_TYPE_IDS = [
 	'drink-bottling-plant',
 	'household-goods-factory',
 	'gift-workshop',
+	'water-bottler',
+	'produce-packhouse',
+	'pantry-works',
 	'warehouse'
 ] as const satisfies readonly IndustrialBuildingTypeId[];
 
@@ -593,7 +692,10 @@ export const FINISHED_PRODUCT_MATERIAL_IDS = [
 	'snacks',
 	'drinks',
 	'essentials',
-	'gifts'
+	'gifts',
+	'bottled-water',
+	'produce',
+	'pantry'
 ] as const satisfies readonly MaterialId[];
 
 export type FinishedProductMaterialId = (typeof FINISHED_PRODUCT_MATERIAL_IDS)[number];
@@ -638,6 +740,22 @@ export function getIndustrialBuildingTypesForProductChain(
 	return Object.values(INDUSTRIAL_BUILDING_TYPES).filter(
 		(buildingType) => buildingType.recipeId !== null && recipeIds.has(buildingType.recipeId)
 	);
+}
+
+export function getCategoryTier(categoryId: string): 1 | 2 | 3 | null {
+	if (!isMaterialId(categoryId) || MATERIALS[categoryId].kind !== 'finished') {
+		return null;
+	}
+
+	const finalFactory = Object.values(INDUSTRIAL_BUILDING_TYPES).find(
+		(buildingType) =>
+			buildingType.recipeId !== null &&
+			PRODUCTION_RECIPES[buildingType.recipeId].outputs.some(
+				(output) => output.materialId === categoryId
+			)
+	);
+
+	return finalFactory?.tier ?? null;
 }
 
 function isMaterialId(value: string): value is MaterialId {
