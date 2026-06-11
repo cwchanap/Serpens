@@ -23,6 +23,7 @@ Run via `bun run <script>` (or `npm run` — both work):
   - `client` — browser project (Playwright/Chromium headless), matches `src/**/*.svelte.{test,spec}.{js,ts}`.
   - `server` — node, matches the rest of `src/**/*.{test,spec}.{js,ts}`.
   - Run a single file: `bun run test:unit -- src/lib/game/city.spec.ts --run`. Filter by name with `-t "<pattern>"`. `--project client` / `--project server` restricts to one environment.
+  - `test:coverage` — Vitest one-shot run with v8 coverage.
 - `test:e2e` — Playwright (`testMatch: **/*.e2e.{ts,js}`). It builds + previews the app first; expect a slow first run. Single test: `bun run test:e2e -- src/routes/retail-sim.e2e.ts -g "<name>"`.
 - `test` — runs unit (`--run`) then e2e.
 - `tauri:dev` / `tauri:build` — desktop app via `src-tauri/`. Tauri's `beforeDevCommand` invokes `bun run dev`.
@@ -50,6 +51,9 @@ Key modules in `src/lib/game/`:
 - `stock.ts` — store product catalog, warehouse imports (7-day cycle), daily product sales resolution, and `StoreProductStatus` (`Out of stock` / `Needs import` / `Healthy`).
 - `industry.ts`, `industryPlacement.ts`, `industryProduction.ts` — parallel industry simulation: deterministic district-based `IndustryCity`, raw resources (farmland/forest/mine anchors), `MaterialDefinition` + `ProductionRecipe`, industrial building placement, and daily production chain that feeds warehouses consumed by `stock.ts`.
 - `mapRender.ts` / `industryMapRender.ts` — convert `GameState` / `IndustryCity` into `CityMapSnapshot` / `IndustryMapSnapshot` for the renderers. Tests live as `*.spec.ts` next to each module.
+- `leveling.ts` — store/industrial-building leveling model: revenue/throughput/upgrade-cost curves, milestone levels (4, 7, 10) that gate product categories and staff-capacity bonuses. **Read the file header before touching balance**: milestone levels are deliberately excluded from the revenue multiplier, and upgrade cost uses the *pre-upgrade* level — naive formulas silently change game balance.
+- `world.ts` — multi-city world progression: `WorldProgress` / `WorldCityState`, the starter cities (`harbor-city`, `industry-city`), and milestone-gated unlock logic for opening additional cities.
+- `productChainGraph.ts` — builds the production-chain health graph (material → recipe → warehouse nodes with `ProductChainHealth`) linking industry output to retail demand for the control-tower UI.
 
 The Svelte page (`src/routes/+page.svelte`) holds reactive state (`$state`, `$derived`) for `game`, `selectedTileId`, save panel/control-tower toggles, etc. After every transition it calls `setGameAndAutosave`, which assigns the new state and triggers an autosave. The map snapshot is `$derived` from `game` (or the starter city when `game` is null) and passed to `<CityMap>`.
 
