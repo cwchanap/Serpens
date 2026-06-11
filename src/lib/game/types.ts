@@ -37,7 +37,10 @@ export type MaterialId =
 	| 'snacks'
 	| 'drinks'
 	| 'essentials'
-	| 'gifts';
+	| 'gifts'
+	| 'bottled-water'
+	| 'produce'
+	| 'pantry';
 export type MaterialKind = 'raw' | 'intermediate' | 'finished';
 export type IndustryTerrainId =
 	| 'farmland'
@@ -120,6 +123,9 @@ export type IndustrialBuildingTypeId =
 	| 'drink-bottling-plant'
 	| 'household-goods-factory'
 	| 'gift-workshop'
+	| 'water-bottler'
+	| 'produce-packhouse'
+	| 'pantry-works'
 	| 'warehouse';
 export type ProductionRecipeId =
 	| 'grain-harvest'
@@ -141,7 +147,10 @@ export type ProductionRecipeId =
 	| 'snack-production'
 	| 'drink-bottling'
 	| 'household-goods-production'
-	| 'gift-production';
+	| 'gift-production'
+	| 'water-bottling'
+	| 'produce-packing'
+	| 'pantry-goods-production';
 
 export interface MaterialDefinition {
 	id: MaterialId;
@@ -191,6 +200,13 @@ export interface IndustrialBuildingType {
 	requiresIndustrialTile: boolean;
 	recipeId: ProductionRecipeId | null;
 	warehouseCapacity: number;
+	/**
+	 * Build-menu/chart grouping only — no gameplay gating. 1 = tier-1 chain
+	 * buildings (cheap onboarding chains), 2 = deep-chain raw/process
+	 * buildings, 3 = deep-chain final factories. A building shared by a tier-1
+	 * and a deeper chain takes the lower tier.
+	 */
+	tier: 1 | 2 | 3;
 }
 
 export interface DailyMaterialMovement {

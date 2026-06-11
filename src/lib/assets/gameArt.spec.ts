@@ -83,7 +83,10 @@ const industryMaterialPaths = {
 	snacks: '/assets/game/industry/materials/snacks.png',
 	drinks: '/assets/game/industry/materials/drinks.png',
 	essentials: '/assets/game/industry/materials/essentials.png',
-	gifts: '/assets/game/industry/materials/gifts.png'
+	gifts: '/assets/game/industry/materials/gifts.png',
+	'bottled-water': '/assets/game/industry/materials/bottled-water.png',
+	produce: '/assets/game/industry/materials/produce.png',
+	pantry: '/assets/game/industry/materials/pantry.png'
 } as const;
 const industrialBuildingPaths = {
 	'grain-farm': '/assets/game/industry/buildings/grain-farm.png',
@@ -106,6 +109,9 @@ const industrialBuildingPaths = {
 	'drink-bottling-plant': '/assets/game/industry/buildings/drink-bottling-plant.png',
 	'household-goods-factory': '/assets/game/industry/buildings/household-goods-factory.png',
 	'gift-workshop': '/assets/game/industry/buildings/gift-workshop.png',
+	'water-bottler': '/assets/game/industry/buildings/water-bottler.png',
+	'produce-packhouse': '/assets/game/industry/buildings/produce-packhouse.png',
+	'pantry-works': '/assets/game/industry/buildings/pantry-works.png',
 	warehouse: '/assets/game/industry/buildings/warehouse.png'
 } as const;
 const worldMapPaths = {
