@@ -44,7 +44,10 @@ const MATERIALS = {
 	'cleaning-base': '/assets/game/industry/materials/cleaning-base.png',
 	snacks: '/assets/game/industry/materials/snacks.png',
 	drinks: '/assets/game/industry/materials/drinks.png',
-	essentials: '/assets/game/industry/materials/essentials.png'
+	essentials: '/assets/game/industry/materials/essentials.png',
+	'bottled-water': '/assets/game/industry/materials/bottled-water.png',
+	produce: '/assets/game/industry/materials/produce.png',
+	pantry: '/assets/game/industry/materials/pantry.png'
 };
 
 const BUILDINGS = {
@@ -67,7 +70,14 @@ const BUILDINGS = {
 	'snack-factory': '/assets/game/industry/buildings/snack-factory.png',
 	'drink-bottling-plant': '/assets/game/industry/buildings/drink-bottling-plant.png',
 	'household-goods-factory': '/assets/game/industry/buildings/household-goods-factory.png',
+	'water-bottler': '/assets/game/industry/buildings/water-bottler.png',
+	'produce-packhouse': '/assets/game/industry/buildings/produce-packhouse.png',
+	'pantry-works': '/assets/game/industry/buildings/pantry-works.png',
 	warehouse: '/assets/game/industry/buildings/warehouse.png'
+};
+
+const PRODUCTS = {
+	'bottled-water': '/assets/game/products/bottled-water.png'
 };
 
 const PALETTE = {
@@ -435,6 +445,24 @@ function drawMaterial(id) {
 		diamond(png, 48, 49, 27, PALETTE.plastic);
 		diamond(png, 48, 49, 15, [151, 224, 225, 255]);
 	}
+	if (id === 'bottled-water') {
+		rect(png, 39, 25, 18, 46, PALETTE.waterLight);
+		rect(png, 43, 17, 10, 9, PALETTE.blue);
+		rect(png, 42, 40, 12, 16, PALETTE.white);
+		circle(png, 48, 62, 5, PALETTE.water);
+	}
+	if (id === 'produce') {
+		circle(png, 40, 52, 14, PALETTE.green);
+		circle(png, 57, 54, 12, PALETTE.orange);
+		circle(png, 49, 38, 10, PALETTE.red);
+		rect(png, 47, 27, 4, 9, PALETTE.brown);
+	}
+	if (id === 'pantry') {
+		rect(png, 28, 32, 40, 40, PALETTE.cream);
+		rect(png, 33, 40, 30, 8, PALETTE.brown);
+		rect(png, 33, 54, 30, 8, PALETTE.yellow);
+		rect(png, 40, 24, 16, 8, PALETTE.metal);
+	}
 	return png;
 }
 
@@ -564,12 +592,40 @@ function drawBuilding(id) {
 			circle(png, 62, 59, 5, PALETTE.white);
 		}
 	}
+	if (id === 'water-bottler') {
+		drawFactoryBase(png, PALETTE.concrete, PALETTE.blue);
+		rect(png, 33, 34, 18, 8, PALETTE.waterLight);
+		rect(png, 37, 50, 6, 16, PALETTE.waterLight);
+		rect(png, 50, 50, 6, 16, PALETTE.waterLight);
+	}
+	if (id === 'produce-packhouse') {
+		drawFactoryBase(png, [218, 190, 119, 255], PALETTE.green);
+		circle(png, 38, 58, 6, PALETTE.red);
+		circle(png, 52, 60, 6, PALETTE.orange);
+	}
+	if (id === 'pantry-works') {
+		drawFactoryBase(png, PALETTE.concrete, PALETTE.yellow);
+		rect(png, 34, 52, 12, 14, PALETTE.cream);
+		rect(png, 50, 52, 12, 14, PALETTE.brown);
+	}
 	if (id === 'warehouse') {
 		ellipseShadow(png);
 		rect(png, 20, 38, 56, 35, [168, 138, 97, 255]);
 		triangle(png, 17, 38, 48, 20, 79, 38, [111, 95, 84, 255]);
 		rect(png, 37, 51, 22, 22, [108, 91, 72, 255]);
 		rect(png, 25, 45, 10, 9, PALETTE.cream);
+	}
+	return png;
+}
+
+function drawProduct(id) {
+	const png = makePng(96);
+	if (id === 'bottled-water') {
+		ellipseShadow(png);
+		rect(png, 36, 22, 24, 52, PALETTE.waterLight);
+		rect(png, 41, 13, 14, 10, PALETTE.blue);
+		rect(png, 40, 40, 16, 20, PALETTE.white);
+		circle(png, 48, 66, 6, PALETTE.water);
 	}
 	return png;
 }
@@ -590,6 +646,10 @@ for (const [id, path] of Object.entries(BUILDINGS)) {
 	save(drawBuilding(id), path);
 }
 
+for (const [id, path] of Object.entries(PRODUCTS)) {
+	save(drawProduct(id), path);
+}
+
 console.log(
-	`Generated ${Object.keys(TERRAIN).length + Object.keys(RESOURCES).length + Object.keys(MATERIALS).length + Object.keys(BUILDINGS).length} industry assets.`
+	`Generated ${Object.keys(TERRAIN).length + Object.keys(RESOURCES).length + Object.keys(MATERIALS).length + Object.keys(BUILDINGS).length + Object.keys(PRODUCTS).length} industry assets.`
 );
