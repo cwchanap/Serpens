@@ -11,17 +11,17 @@ function renderProductChainsPanel(game: GameState) {
 }
 
 describe('ProductChainsPanel', () => {
-	it('shows store category chains and the default snacks graph', async () => {
+	it('shows store category chains and the default bottled water graph', async () => {
 		expect.assertions(5);
 		const game = createNewGame('convenience', 20260518);
 
 		renderProductChainsPanel(game);
 
 		await expect.element(page.getByRole('region', { name: 'Product Chains' })).toBeVisible();
-		await expect.element(page.getByTestId('category-stamp-snacks')).toBeVisible();
+		await expect.element(page.getByTestId('category-stamp-bottled-water')).toBeVisible();
 		await expect.element(page.getByRole('button', { name: 'Warehouse flow' })).toBeVisible();
-		await expect.element(page.getByTestId('product-chain-graph-chain:snacks')).toBeVisible();
-		await expect.element(page.getByText('Snacks chain')).toBeVisible();
+		await expect.element(page.getByTestId('product-chain-graph-chain:bottled-water')).toBeVisible();
+		await expect.element(page.getByText('Bottled Water chain')).toBeVisible();
 	});
 
 	it('toggles from store category chains to warehouse flow', async () => {

@@ -45,8 +45,8 @@ const latestReport: DailyStoreReport = {
 	marketPosition: 40,
 	productReports: [
 		{
-			categoryId: 'snacks',
-			name: 'Snacks',
+			categoryId: 'bottled-water',
+			name: 'Bottled Water',
 			unitsSold: 12,
 			demandMissed: 2,
 			revenue: 60,
@@ -56,7 +56,7 @@ const latestReport: DailyStoreReport = {
 			warehouseUnits: 0,
 			warehouseValue: 0,
 			importedUnits: 0,
-			importCost: 3,
+			importCost: 2,
 			importSpend: 0
 		}
 	],
@@ -74,23 +74,23 @@ describe('StoreStockTable', () => {
 		});
 
 		await expect.element(page.getByRole('heading', { name: 'Founding Store stock' })).toBeVisible();
-		await expect.element(page.getByRole('cell', { name: 'Snacks' })).toBeVisible();
-		const snacksArt = getProductArt('snacks');
+		await expect.element(page.getByRole('cell', { name: 'Bottled Water' })).toBeVisible();
+		const bottledWaterArt = getProductArt('bottled-water');
 
-		await expect.element(page.getByRole('img', { name: snacksArt.alt })).toBeVisible();
+		await expect.element(page.getByRole('img', { name: bottledWaterArt.alt })).toBeVisible();
 		await expect
-			.element(page.getByRole('img', { name: snacksArt.alt }))
-			.toHaveAttribute('src', snacksArt.path);
-		await expect.element(page.getByRole('cell', { name: '$3' })).toBeVisible();
+			.element(page.getByRole('img', { name: bottledWaterArt.alt }))
+			.toHaveAttribute('src', bottledWaterArt.path);
+		await expect.element(page.getByRole('cell', { name: '$2' })).toBeVisible();
 		await expect.element(page.getByText('12 sold / 2 missed')).toBeVisible();
 		await expect
-			.element(page.getByRole('spinbutton', { name: 'Selling price for Snacks' }))
+			.element(page.getByRole('spinbutton', { name: 'Selling price for Bottled Water' }))
 			.toBeVisible();
 		await expect
-			.element(page.getByRole('spinbutton', { name: 'Reorder threshold for Snacks' }))
+			.element(page.getByRole('spinbutton', { name: 'Reorder threshold for Bottled Water' }))
 			.toBeVisible();
 		await expect
-			.element(page.getByRole('spinbutton', { name: 'Target stock for Snacks' }))
+			.element(page.getByRole('spinbutton', { name: 'Target stock for Bottled Water' }))
 			.toBeVisible();
 	});
 
@@ -104,12 +104,12 @@ describe('StoreStockTable', () => {
 			onUpdate
 		});
 
-		const sellingPrice = page.getByRole('spinbutton', { name: 'Selling price for Snacks' });
+		const sellingPrice = page.getByRole('spinbutton', { name: 'Selling price for Bottled Water' });
 		await sellingPrice.fill('7');
-		await page.getByRole('cell', { name: 'Snacks' }).click();
+		await page.getByRole('cell', { name: 'Bottled Water' }).click();
 
 		expect(onUpdate).toHaveBeenCalledTimes(1);
-		expect(onUpdate).toHaveBeenCalledWith('store-1', 'snacks', { sellingPrice: 7 });
+		expect(onUpdate).toHaveBeenCalledWith('store-1', 'bottled-water', { sellingPrice: 7 });
 	});
 
 	it('does not send an update for invalid numeric input', async () => {
@@ -122,9 +122,9 @@ describe('StoreStockTable', () => {
 			onUpdate
 		});
 
-		const sellingPrice = page.getByRole('spinbutton', { name: 'Selling price for Snacks' });
+		const sellingPrice = page.getByRole('spinbutton', { name: 'Selling price for Bottled Water' });
 		await sellingPrice.fill('');
-		await page.getByRole('cell', { name: 'Snacks' }).click();
+		await page.getByRole('cell', { name: 'Bottled Water' }).click();
 
 		expect(onUpdate).not.toHaveBeenCalled();
 	});

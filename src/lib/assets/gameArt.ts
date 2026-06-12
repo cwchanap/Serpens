@@ -77,7 +77,8 @@ export type ProductArtCategoryId =
 	| 'prepared'
 	| 'household'
 	| 'peripherals'
-	| 'bakery';
+	| 'bakery'
+	| 'bottled-water';
 
 export interface ProductArt {
 	categoryId: ProductArtCategoryId;
@@ -165,6 +166,11 @@ export const PRODUCT_ART: Readonly<Record<ProductArtCategoryId, ProductArt>> = O
 		categoryId: 'peripherals',
 		path: '/assets/game/products/peripherals.png',
 		alt: 'Product icon for peripherals'
+	}),
+	'bottled-water': Object.freeze({
+		categoryId: 'bottled-water',
+		path: '/assets/game/products/bottled-water.png',
+		alt: 'Product icon for bottled water'
 	})
 });
 

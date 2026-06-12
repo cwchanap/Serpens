@@ -135,7 +135,12 @@ describe('product chain graph discovery', () => {
 
 		const categories = getSupportedStoreChainCategories(store);
 
-		expect(categories.map((category) => category.id)).toEqual(['snacks', 'drinks', 'essentials']);
+		expect(categories.map((category) => category.id)).toEqual([
+			'bottled-water',
+			'snacks',
+			'drinks',
+			'essentials'
+		]);
 		expect(categories.every((category) => category.name.length > 0)).toBe(true);
 	});
 

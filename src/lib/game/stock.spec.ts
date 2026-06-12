@@ -33,26 +33,26 @@ describe('stock rules', () => {
 		expect.assertions(2);
 		const products = initializeStoreProducts('convenience');
 
-		expect(products.map((product) => product.categoryId)).toEqual(['snacks']);
-		expect(products[0]!.sellingPrice).toBe(5);
+		expect(products.map((product) => product.categoryId)).toEqual(['bottled-water']);
+		expect(products[0]!.sellingPrice).toBe(3);
 	});
 
 	test('initializes unlocked categories for a given level', () => {
 		expect.assertions(3);
 		expect(initializeStoreProducts('convenience', 4).map((p) => p.categoryId)).toEqual([
+			'bottled-water',
+			'snacks'
+		]);
+		expect(initializeStoreProducts('convenience', 7).map((p) => p.categoryId)).toEqual([
+			'bottled-water',
 			'snacks',
 			'drinks'
 		]);
-		expect(initializeStoreProducts('convenience', 7).map((p) => p.categoryId)).toEqual([
+		expect(initializeStoreProducts('convenience', 10).map((p) => p.categoryId)).toEqual([
+			'bottled-water',
 			'snacks',
 			'drinks',
 			'essentials'
-		]);
-		expect(initializeStoreProducts('convenience', 10).map((p) => p.categoryId)).toEqual([
-			'snacks',
-			'drinks',
-			'essentials',
-			'household'
 		]);
 	});
 
@@ -185,7 +185,7 @@ describe('stock rules', () => {
 		const game = createNewGame('convenience', 20260508);
 		const pools = buildCityDemandPools(game, game.cities[0]!);
 
-		expect(pools.snacks).toBeGreaterThan(0);
+		expect(pools['bottled-water']).toBeGreaterThan(0);
 		expect(pools.drinks).toBeUndefined();
 	});
 
@@ -514,5 +514,20 @@ describe('stock rules', () => {
 		expect(pools.accessories).toBeGreaterThan(0);
 		expect(pools['fashion-accessories']).toBeGreaterThan(0);
 		expect(pools.accessories).not.toBe(pools['fashion-accessories']);
+	});
+});
+
+describe('tier 1 store products', () => {
+	test('gives a new level-1 convenience store only bottled water', () => {
+		expect.assertions(1);
+		const products = initializeStoreProducts('convenience');
+		expect(products.map((product) => product.categoryId)).toEqual(['bottled-water']);
+	});
+
+	test('maps the new categories to finished materials', () => {
+		expect.assertions(3);
+		expect(getFinishedMaterialIdForCategory('bottled-water')).toBe('bottled-water');
+		expect(getFinishedMaterialIdForCategory('produce')).toBe('produce');
+		expect(getFinishedMaterialIdForCategory('pantry')).toBe('pantry');
 	});
 });

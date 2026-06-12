@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest';
+import { describe, expect, it, test } from 'vitest';
 import { ARCHETYPES, getArchetype } from './archetypes';
 
 describe('retail archetypes', () => {
@@ -31,7 +31,10 @@ describe('retail archetypes', () => {
 	test('each archetype defines exactly four product categories', () => {
 		expect.assertions(ARCHETYPES.length);
 		for (const archetype of ARCHETYPES) {
-			expect(archetype.startingCategories).toHaveLength(4);
+			// Convenience carries a 5th (unreachable) category, `household`, for
+			// legacy-save compatibility — see archetypes.ts and stock.ts.
+			const expectedLength = archetype.id === 'convenience' ? 5 : 4;
+			expect(archetype.startingCategories).toHaveLength(expectedLength);
 		}
 	});
 
@@ -69,5 +72,18 @@ describe('retail archetypes', () => {
 			'Mutated Risk'
 		);
 		expect(getArchetype('electronics').name).toBe('Electronics & Games');
+	});
+});
+
+describe('convenience tier 1 lineup', () => {
+	it('starts with bottled water so a level-1 store gets a tier 1 chain', () => {
+		const convenience = getArchetype('convenience');
+		expect(convenience.startingCategories.map((category) => category.id)).toEqual([
+			'bottled-water',
+			'snacks',
+			'drinks',
+			'essentials',
+			'household'
+		]);
 	});
 });
