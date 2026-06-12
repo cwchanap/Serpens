@@ -86,4 +86,32 @@ describe('CategoryStampIndex', () => {
 		await page.getByRole('button', { name: /Snacks/i }).click();
 		expect(onSelectCategory).toHaveBeenCalledWith('snacks');
 	});
+
+	it('shows a tier badge on tiered categories', async () => {
+		expect.assertions(1);
+		const onSelectCategory = vi.fn();
+		render(CategoryStampIndex, {
+			summaries: [summary({ categoryId: 'bottled-water', name: 'Bottled Water', tier: 1 })],
+			activeCategoryId: null,
+			mode: 'store-categories',
+			onSelectCategory
+		});
+
+		const stamp = document.querySelector('[data-testid="category-stamp-bottled-water"]');
+		expect(stamp?.textContent).toContain('Tier 1');
+	});
+
+	it('does not show a tier badge for categories without a tier', async () => {
+		expect.assertions(1);
+		const onSelectCategory = vi.fn();
+		render(CategoryStampIndex, {
+			summaries: [summary({ categoryId: 'snacks', name: 'Snacks', tier: null })],
+			activeCategoryId: null,
+			mode: 'store-categories',
+			onSelectCategory
+		});
+
+		const stamp = document.querySelector('[data-testid="category-stamp-snacks"]');
+		expect(stamp?.textContent).not.toContain('Tier');
+	});
 });
