@@ -1,4 +1,4 @@
-import { MATERIALS, PRODUCTION_RECIPES } from './industry';
+import { getCategoryTier, MATERIALS, PRODUCTION_RECIPES } from './industry';
 import {
 	MATERIAL_PRODUCER_RECIPES,
 	allocateInputMovement,
@@ -9,8 +9,10 @@ import {
 	emptyGraph,
 	formatRecipeEdgeLabel,
 	getRecipeThroughputUnits,
+	getSupportedStoreChainCategories,
 	healthLabel,
 	isSupportedFinishedMaterial,
+	latestCategoryUnitsSold,
 	latestProductionReport,
 	latestStoreProductReport,
 	materialActualMetrics,
@@ -18,6 +20,7 @@ import {
 	recipeInputPerDay,
 	recipeOutputPerDay,
 	sortEdges,
+	type ProductChainCategorySummary,
 	type ProductChainEdge,
 	type ProductChainGraph,
 	type ProductChainHealth,
@@ -252,6 +255,39 @@ export function buildProductChainTree(input: {
 		warnings,
 		emptyReason: null
 	};
+}
+
+export function buildStoreCategoryChainSummaries(game: GameState): ProductChainCategorySummary[] {
+	const summaries = new Map<string, ProductChainCategorySummary>();
+
+	for (const store of game.stores) {
+		for (const category of getSupportedStoreChainCategories(store)) {
+			if (summaries.has(category.id)) {
+				continue;
+			}
+
+			const tree = buildProductChainTree({ game, store: null, categoryId: category.id });
+			const rootNode = tree.nodes.find((node) => node.id === `product:${category.id}`);
+			summaries.set(category.id, {
+				categoryId: category.id,
+				name: category.name,
+				tier: getCategoryTier(category.id),
+				health: rootNode?.health ?? 'no-report',
+				healthLabel: rootNode?.healthLabel ?? 'No report yet',
+				bottleneck: rootNode?.bottleneck ?? 'No graph data available.',
+				warehouseStock: rootNode?.warehouseStock ?? 0,
+				produced: rootNode?.actual.produced ?? 0,
+				consumed: latestCategoryUnitsSold(game, category.id),
+				imported: (rootNode?.actual.importedInput ?? 0) + (rootNode?.actual.shopImported ?? 0)
+			});
+		}
+	}
+
+	return [...summaries.values()].sort(
+		(first, second) =>
+			(first.tier ?? Number.MAX_SAFE_INTEGER) - (second.tier ?? Number.MAX_SAFE_INTEGER) ||
+			first.name.localeCompare(second.name)
+	);
 }
 
 /**

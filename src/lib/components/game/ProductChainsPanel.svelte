@@ -4,10 +4,10 @@
 	import ProductChainAtlas from '$lib/components/game/atlas/ProductChainAtlas.svelte';
 	import {
 		buildProductChainGraph,
-		buildStoreCategoryChainSummaries,
 		buildWarehouseFlowGraph,
 		getSupportedStoreChainCategories
 	} from '$lib/game/productChainGraph';
+	import { buildStoreCategoryChainSummaries } from '$lib/game/productChainTree';
 	import type { GameState } from '$lib/game/types';
 
 	interface Props {

@@ -2,7 +2,6 @@ import { describe, expect, test } from 'vitest';
 import {
 	aggregateProductReports,
 	buildProductChainGraph,
-	buildStoreCategoryChainSummaries,
 	buildWarehouseFlowGraph,
 	getSupportedStoreChainCategories,
 	SUPPORTED_FINISHED_MATERIALS
@@ -441,82 +440,6 @@ describe('store category chain summaries', () => {
 		expect(aggregate?.importCost).toBe(9.75);
 		expect(noImportAggregate?.importedUnits).toBe(0);
 		expect(noImportAggregate?.importCost).toBe(0);
-	});
-
-	test('uses store sales as consume rate for finished category summaries', () => {
-		expect.assertions(4);
-		let game = createNewGame('convenience', 20260518);
-		game = withLatestReport(
-			game,
-			emptyProductionReport({
-				produced: [{ materialId: 'snacks', quantity: 8, value: 64, source: 'local' }],
-				consumed: [{ materialId: 'flour', quantity: 6, value: 18, source: 'warehouse' }],
-				warehousePulls: [{ materialId: 'snacks', quantity: 6, value: 48, source: 'warehouse' }],
-				shopImports: [{ materialId: 'snacks', quantity: 4, value: 48, source: 'import' }]
-			})
-		);
-
-		const summaries = buildStoreCategoryChainSummaries(game);
-		const snacks = summaries.find((summary) => summary.categoryId === 'snacks');
-
-		expect(snacks?.produced).toBe(8);
-		expect(snacks?.consumed).toBe(8);
-		expect(snacks?.imported).toBe(4);
-		expect(snacks?.warehouseStock).toBe(0);
-	});
-
-	test('aggregates consume rate across every store carrying the same category', () => {
-		expect.assertions(3);
-		let game = { ...createNewGame('convenience', 20260518), cash: 100_000 };
-		const expansionTile = game.cities[0]!.tiles.find(
-			(tile) => !tile.locked && tile.feature === null && tile.id !== game.stores[0]!.tileId
-		)!;
-		game = openStoreAtTile(game, {
-			tileId: expansionTile.id,
-			name: 'Store #2',
-			archetypeId: 'convenience'
-		});
-		const firstStore = game.stores[0]!;
-		const secondStore = game.stores[1]!;
-		game = {
-			...game,
-			reports: [
-				{
-					day: game.day,
-					revenue: 120,
-					costOfGoods: 50,
-					grossMargin: 70,
-					operatingCosts: 30,
-					payrollCost: 0,
-					importSpend: 0,
-					netIncome: 40,
-					cashAfter: game.cash + 40,
-					scorecard: game.scorecard,
-					productionReport: emptyProductionReport({
-						produced: [{ materialId: 'snacks', quantity: 8, value: 64, source: 'local' }]
-					}),
-					storeReports: [
-						latestStoreReport({
-							storeId: firstStore.id,
-							productReports: [snackProductReport({ unitsSold: 8 })]
-						}),
-						latestStoreReport({
-							storeId: secondStore.id,
-							productReports: [snackProductReport({ unitsSold: 5 })]
-						})
-					],
-					warnings: []
-				}
-			]
-		};
-
-		const snacks = buildStoreCategoryChainSummaries(game).find(
-			(summary) => summary.categoryId === 'snacks'
-		);
-
-		expect(snacks?.produced).toBe(8);
-		expect(snacks?.consumed).toBe(13);
-		expect(snacks?.imported).toBe(0);
 	});
 
 	test('builds aggregate finished-product metrics when no specific store is selected', () => {

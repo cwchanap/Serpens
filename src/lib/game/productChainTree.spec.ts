@@ -1,10 +1,116 @@
 import { describe, expect, it } from 'vitest';
-import { buildProductChainTree } from './productChainTree';
+import { openStoreAtTile } from './placement';
+import { buildProductChainTree, buildStoreCategoryChainSummaries } from './productChainTree';
 import { createNewGame } from './state';
-import type { GameState } from './types';
+import type {
+	DailyProductReport,
+	DailyProductionReport,
+	DailyStoreReport,
+	GameState
+} from './types';
 
 function convenienceGame(): GameState {
 	return { ...createNewGame('convenience', 20260611), cash: 1_000_000 };
+}
+
+function emptyProductionReport(
+	overrides: Partial<DailyProductionReport> = {}
+): DailyProductionReport {
+	return {
+		produced: [],
+		consumed: [],
+		importedInputs: [],
+		warehousePulls: [],
+		shopImports: [],
+		importSpend: 0,
+		operatingCost: 0,
+		overflowUnits: 0,
+		overflowCost: 0,
+		warehouseCapacity: 0,
+		warehouseUsed: 0,
+		...overrides
+	};
+}
+
+function snackProductReport(overrides: Partial<DailyProductReport> = {}): DailyProductReport {
+	return {
+		categoryId: 'snacks',
+		name: 'Snacks',
+		unitsSold: 8,
+		demandMissed: 2,
+		revenue: 80,
+		costOfGoods: 32,
+		grossMargin: 48,
+		endingStock: 17,
+		warehouseUnits: 6,
+		warehouseValue: 48,
+		importedUnits: 4,
+		importCost: 12,
+		importSpend: 48,
+		...overrides
+	};
+}
+
+function latestStoreReport(overrides: Partial<DailyStoreReport> = {}): DailyStoreReport {
+	return {
+		storeId: 'store-1',
+		revenue: 120,
+		costOfGoods: 50,
+		grossMargin: 70,
+		operatingCosts: 30,
+		importSpend: 0,
+		netIncome: 40,
+		customersServed: 10,
+		demandMissed: 2,
+		staffingCoverage: 100,
+		staffingShortage: { manager: 0, general: 0 },
+		stockHealth: 82,
+		staffMorale: 75,
+		reputation: 55,
+		marketPosition: 48,
+		productReports: [
+			{
+				categoryId: 'snacks',
+				name: 'Snacks',
+				unitsSold: 8,
+				demandMissed: 2,
+				revenue: 80,
+				costOfGoods: 32,
+				grossMargin: 48,
+				endingStock: 17,
+				warehouseUnits: 6,
+				warehouseValue: 48,
+				importedUnits: 4,
+				importCost: 12,
+				importSpend: 48
+			}
+		],
+		warnings: [],
+		...overrides
+	};
+}
+
+function withLatestReport(game: GameState, productionReport: DailyProductionReport): GameState {
+	return {
+		...game,
+		reports: [
+			{
+				day: game.day,
+				revenue: 120,
+				costOfGoods: 50,
+				grossMargin: 70,
+				operatingCosts: 30,
+				payrollCost: 0,
+				importSpend: 48,
+				netIncome: 40,
+				cashAfter: game.cash + 40,
+				scorecard: game.scorecard,
+				productionReport,
+				storeReports: [latestStoreReport()],
+				warnings: []
+			}
+		]
+	};
 }
 
 describe('buildProductChainTree', () => {
@@ -125,5 +231,96 @@ describe('buildProductChainTree', () => {
 
 		expect(tree.nodes).toEqual([]);
 		expect(tree.emptyReason).toBe('No local production chain available for this category yet.');
+	});
+});
+
+describe('buildStoreCategoryChainSummaries (tree)', () => {
+	it('lists tier 1 categories first and carries the tier', () => {
+		const game = convenienceGame();
+		const summaries = buildStoreCategoryChainSummaries(game);
+
+		expect(summaries[0]?.categoryId).toBe('bottled-water');
+		expect(summaries[0]?.tier).toBe(1);
+		expect(summaries.map((summary) => summary.categoryId)).toContain('snacks');
+		const snacks = summaries.find((summary) => summary.categoryId === 'snacks');
+		expect(snacks?.tier).toBe(3);
+		const tiers = summaries.map((summary) => summary.tier ?? 99);
+		expect(tiers).toEqual([...tiers].sort((a, b) => a - b));
+	});
+
+	it('uses store sales as consume rate for finished category summaries', () => {
+		expect.assertions(4);
+		let game = createNewGame('convenience', 20260518);
+		game = withLatestReport(
+			game,
+			emptyProductionReport({
+				produced: [{ materialId: 'snacks', quantity: 8, value: 64, source: 'local' }],
+				consumed: [{ materialId: 'flour', quantity: 6, value: 18, source: 'warehouse' }],
+				warehousePulls: [{ materialId: 'snacks', quantity: 6, value: 48, source: 'warehouse' }],
+				shopImports: [{ materialId: 'snacks', quantity: 4, value: 48, source: 'import' }]
+			})
+		);
+
+		const summaries = buildStoreCategoryChainSummaries(game);
+		const snacks = summaries.find((summary) => summary.categoryId === 'snacks');
+
+		expect(snacks?.produced).toBe(8);
+		expect(snacks?.consumed).toBe(8);
+		expect(snacks?.imported).toBe(4);
+		expect(snacks?.warehouseStock).toBe(0);
+	});
+
+	it('aggregates consume rate across every store carrying the same category', () => {
+		expect.assertions(3);
+		let game = { ...createNewGame('convenience', 20260518), cash: 100_000 };
+		const expansionTile = game.cities[0]!.tiles.find(
+			(tile) => !tile.locked && tile.feature === null && tile.id !== game.stores[0]!.tileId
+		)!;
+		game = openStoreAtTile(game, {
+			tileId: expansionTile.id,
+			name: 'Store #2',
+			archetypeId: 'convenience'
+		});
+		const firstStore = game.stores[0]!;
+		const secondStore = game.stores[1]!;
+		game = {
+			...game,
+			reports: [
+				{
+					day: game.day,
+					revenue: 120,
+					costOfGoods: 50,
+					grossMargin: 70,
+					operatingCosts: 30,
+					payrollCost: 0,
+					importSpend: 0,
+					netIncome: 40,
+					cashAfter: game.cash + 40,
+					scorecard: game.scorecard,
+					productionReport: emptyProductionReport({
+						produced: [{ materialId: 'snacks', quantity: 8, value: 64, source: 'local' }]
+					}),
+					storeReports: [
+						latestStoreReport({
+							storeId: firstStore.id,
+							productReports: [snackProductReport({ unitsSold: 8 })]
+						}),
+						latestStoreReport({
+							storeId: secondStore.id,
+							productReports: [snackProductReport({ unitsSold: 5 })]
+						})
+					],
+					warnings: []
+				}
+			]
+		};
+
+		const snacks = buildStoreCategoryChainSummaries(game).find(
+			(summary) => summary.categoryId === 'snacks'
+		);
+
+		expect(snacks?.produced).toBe(8);
+		expect(snacks?.consumed).toBe(13);
+		expect(snacks?.imported).toBe(0);
 	});
 });
