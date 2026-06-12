@@ -669,48 +669,24 @@ test('player builds convenience production and refills from warehouse', async ({
 	});
 	await buildIndustryBuildingAt(page, industryCanvas, {
 		x: 1,
-		y: 1,
-		buildingName: /build grain farm/i,
+		y: 7,
+		buildingName: /build water pump/i,
 		expectedBuildingCount: 2
-	});
-	await buildIndustryBuildingAt(page, industryCanvas, {
-		x: 1,
-		y: 4,
-		buildingName: /build salt mine/i,
-		expectedBuildingCount: 3
-	});
-	await buildIndustryBuildingAt(page, industryCanvas, {
-		x: 3,
-		y: 1,
-		buildingName: /build oilseed farm/i,
-		expectedBuildingCount: 4
 	});
 	await buildIndustryBuildingAt(page, industryCanvas, {
 		x: 11,
 		y: 6,
-		buildingName: /build flour mill/i,
-		expectedBuildingCount: 5
+		buildingName: /build water bottler/i,
+		expectedBuildingCount: 3
 	});
-	await buildIndustryBuildingAt(page, industryCanvas, {
-		x: 12,
-		y: 6,
-		buildingName: /build oil press/i,
-		expectedBuildingCount: 6
-	});
-	await buildIndustryBuildingAt(page, industryCanvas, {
-		x: 13,
-		y: 6,
-		buildingName: /build snack factory/i,
-		expectedBuildingCount: 7
-	});
-	await expect(industryCanvas).toHaveAttribute('data-industry-building-count', '7');
+	await expect(industryCanvas).toHaveAttribute('data-industry-building-count', '3');
 
 	await page.getByRole('button', { name: /^advance day$/i }).click();
 	await waitForAutoSaveDay(page, 7);
-	await expect(industryCanvas).toHaveAttribute('data-industry-building-count', '7');
+	await expect(industryCanvas).toHaveAttribute('data-industry-building-count', '3');
 	await clickCanvasTile(page, industryCanvas, 9, 6);
-	const visibleWarehouseSnacks = await readWarehouseMaterialQuantity(page, 'Snacks');
-	expect(visibleWarehouseSnacks).toBeGreaterThan(0);
+	const visibleWarehouseBottledWater = await readWarehouseMaterialQuantity(page, 'Bottled Water');
+	expect(visibleWarehouseBottledWater).toBeGreaterThan(0);
 
 	await openMapMenuItem(page, /retail city map/i);
 	await expect(page.getByRole('heading', { name: /harbor city/i })).toBeVisible();
@@ -720,53 +696,65 @@ test('player builds convenience production and refills from warehouse', async ({
 	await expect(inspector).toBeVisible();
 	await inspector.getByRole('tab', { name: /stock/i }).click();
 	await expect(inspector.getByRole('table', { name: /convenience store stock/i })).toBeVisible();
-	await setStoreProductNumber(inspector, /reorder threshold for snacks/i, 10);
-	await setStoreProductNumber(inspector, /target stock for snacks/i, 25);
+	await setStoreProductNumber(inspector, /reorder threshold for bottled water/i, 10);
+	await setStoreProductNumber(inspector, /target stock for bottled water/i, 25);
 
-	const preWeeklyGame = await waitForSavedProductSettings(page, 'snacks', {
+	const preWeeklyGame = await waitForSavedProductSettings(page, 'bottled-water', {
 		day: 7,
 		reorderThreshold: 10,
 		targetStock: 25
 	});
-	const preWeeklySnacks = getSavedProduct(preWeeklyGame, 'snacks');
-	const warehouseSnacksBeforeWeekly = preWeeklyGame.warehouse.materials.snacks ?? 0;
+	const preWeeklyBottledWater = getSavedProduct(preWeeklyGame, 'bottled-water');
+	const warehouseBottledWaterBeforeWeekly = preWeeklyGame.warehouse.materials['bottled-water'] ?? 0;
 	await page.getByRole('button', { name: /^advance day$/i }).click();
 	const postWeeklyGame = await waitForAutoSaveDay(page, 8);
 	const latestReport = getLatestReport(postWeeklyGame);
 	const storeReport = latestReport.storeReports[0];
-	const snacksReport = storeReport?.productReports.find((report) => report.categoryId === 'snacks');
+	const bottledWaterReport = storeReport?.productReports.find(
+		(report) => report.categoryId === 'bottled-water'
+	);
 
-	if (!storeReport || !snacksReport) {
-		throw new Error('Missing latest Snacks report');
+	if (!storeReport || !bottledWaterReport) {
+		throw new Error('Missing latest Bottled Water report');
 	}
 
-	const producedSnacks = sumMaterialMovementQuantity(
+	const producedBottledWater = sumMaterialMovementQuantity(
 		latestReport.productionReport.produced,
-		'snacks',
+		'bottled-water',
 		'local'
 	);
-	const stockBeforeRefill = Math.max(0, preWeeklySnacks.stock - snacksReport.unitsSold);
+	const stockBeforeRefill = Math.max(0, preWeeklyBottledWater.stock - bottledWaterReport.unitsSold);
 	const neededUnits =
-		stockBeforeRefill < preWeeklySnacks.reorderThreshold
-			? Math.max(0, preWeeklySnacks.targetStock - stockBeforeRefill)
+		stockBeforeRefill < preWeeklyBottledWater.reorderThreshold
+			? Math.max(0, preWeeklyBottledWater.targetStock - stockBeforeRefill)
 			: 0;
-	const warehouseSnacksAvailable = warehouseSnacksBeforeWeekly + producedSnacks;
-	const expectedWarehouseUnits = Math.min(warehouseSnacksAvailable, neededUnits);
-	const expectedImportedUnits = Math.max(0, neededUnits - warehouseSnacksAvailable);
+	const warehouseBottledWaterAvailable = warehouseBottledWaterBeforeWeekly + producedBottledWater;
+	const expectedWarehouseUnits = Math.min(warehouseBottledWaterAvailable, neededUnits);
+	const expectedImportedUnits = Math.max(0, neededUnits - warehouseBottledWaterAvailable);
 
 	expect(neededUnits).toBeGreaterThan(0);
-	expect(snacksReport.endingStock).toBe(preWeeklySnacks.targetStock);
-	expect(snacksReport.warehouseUnits).toBeGreaterThan(0);
-	expect(snacksReport.importedUnits).toBeGreaterThan(0);
-	expect(snacksReport.warehouseUnits).toBe(expectedWarehouseUnits);
-	expect(snacksReport.importedUnits).toBe(expectedImportedUnits);
-	expect(snacksReport.importSpend).toBe(expectedImportedUnits * snacksReport.importCost);
+	expect(bottledWaterReport.endingStock).toBe(preWeeklyBottledWater.targetStock);
+	expect(bottledWaterReport.warehouseUnits).toBeGreaterThan(0);
+	expect(bottledWaterReport.importedUnits).toBeGreaterThan(0);
+	expect(bottledWaterReport.warehouseUnits).toBe(expectedWarehouseUnits);
+	expect(bottledWaterReport.importedUnits).toBe(expectedImportedUnits);
+	expect(bottledWaterReport.importSpend).toBe(
+		expectedImportedUnits * bottledWaterReport.importCost
+	);
 	expect(
-		sumMaterialMovementQuantity(latestReport.productionReport.warehousePulls, 'snacks', 'warehouse')
-	).toBe(snacksReport.warehouseUnits);
+		sumMaterialMovementQuantity(
+			latestReport.productionReport.warehousePulls,
+			'bottled-water',
+			'warehouse'
+		)
+	).toBe(bottledWaterReport.warehouseUnits);
 	expect(
-		sumMaterialMovementQuantity(latestReport.productionReport.shopImports, 'snacks', 'import')
-	).toBe(snacksReport.importedUnits);
+		sumMaterialMovementQuantity(
+			latestReport.productionReport.shopImports,
+			'bottled-water',
+			'import'
+		)
+	).toBe(bottledWaterReport.importedUnits);
 
 	const reports = await openManagementPanel(page, /reports/i);
 	await expect(reports.getByText(/latest daily result/i)).toBeVisible();
@@ -775,14 +763,18 @@ test('player builds convenience production and refills from warehouse', async ({
 	const productSources = storesPanel.getByRole('list', {
 		name: /convenience store product source split/i
 	});
-	await expect(productSources.getByText('Snacks')).toBeVisible();
-	await expect(productSources.getByText(`${snacksReport.warehouseUnits} warehouse`)).toBeVisible();
-	await expect(productSources.getByText(`${snacksReport.importedUnits} imported`)).toBeVisible();
+	await expect(productSources.getByText('Bottled Water')).toBeVisible();
+	await expect(
+		productSources.getByText(`${bottledWaterReport.warehouseUnits} warehouse`)
+	).toBeVisible();
+	await expect(
+		productSources.getByText(`${bottledWaterReport.importedUnits} imported`)
+	).toBeVisible();
 	await expect(
 		storesPanel.locator('article').filter({
 			hasText: new RegExp(
 				`^Convenience Store[\\s\\S]*Imports\\s+\\$${escapeRegExp(
-					snacksReport.importSpend.toLocaleString('en-US')
+					bottledWaterReport.importSpend.toLocaleString('en-US')
 				)}`
 			)
 		})
@@ -790,7 +782,9 @@ test('player builds convenience production and refills from warehouse', async ({
 	await storesPanel.getByRole('button', { name: /close stores/i }).click();
 	const productChains = await openManagementPanel(page, /product chains/i);
 	await expect(productChains).toBeVisible();
-	await expect(productChains.getByTestId('category-stamp-snacks')).toBeVisible();
+	await expect(productChains.getByTestId('category-stamp-bottled-water')).toBeVisible();
+	await expect(productChains.getByTestId('product-chain-graph-chain:bottled-water')).toBeVisible();
+	await productChains.getByTestId('category-stamp-snacks').click();
 	await expect(productChains.getByTestId('product-chain-graph-chain:snacks')).toBeVisible();
 	await productChains.getByRole('button', { name: 'Warehouse flow' }).click();
 	await expect(productChains.getByTestId('product-chain-graph-warehouse-flow')).toBeVisible();
@@ -974,7 +968,7 @@ test('manage selected store stock and see weekly imports', async ({ page }) => {
 	expect(Math.abs(stockPanelLayout.height - detailsPanelLayout.height)).toBeLessThanOrEqual(1);
 
 	await expect(inspector.getByRole('table', { name: /convenience store stock/i })).toBeVisible();
-	await expect(inspector.getByRole('cell', { name: 'Snacks' })).toBeVisible();
+	await expect(inspector.getByRole('cell', { name: 'Bottled Water' })).toBeVisible();
 
 	await inspector.getByRole('tab', { name: /product chain/i }).click();
 	const chainInspectorBox = await inspector.boundingBox();
@@ -990,7 +984,10 @@ test('manage selected store stock and see weekly imports', async ({ page }) => {
 	expect(chainPanelLayout.staff.display).toBe('none');
 	expect(Math.abs(chainInspectorBox.height - detailsInspectorBox.height)).toBeLessThanOrEqual(1);
 	expect(Math.abs(chainPanelLayout.height - detailsPanelLayout.height)).toBeLessThanOrEqual(1);
-	await expect(inspector.getByLabel('Product category')).toBeVisible();
+	const productCategorySelect = inspector.getByLabel('Product category');
+	await expect(productCategorySelect).toBeVisible();
+	await expect(inspector.getByTestId('product-chain-graph-chain:bottled-water')).toBeVisible();
+	await productCategorySelect.selectOption('snacks');
 	await expect(inspector.getByTestId('product-chain-graph-chain:snacks')).toBeVisible();
 
 	await inspector.getByRole('tab', { name: /staff/i }).click();
@@ -1010,22 +1007,26 @@ test('manage selected store stock and see weekly imports', async ({ page }) => {
 
 	await inspector.getByRole('tab', { name: /stock/i }).click();
 
-	const snacksPrice = inspector.getByRole('spinbutton', { name: /selling price for snacks/i });
-	await snacksPrice.fill('7');
-	await snacksPrice.blur();
-	await expect(snacksPrice).toHaveValue('7');
-
-	const snacksTarget = inspector.getByRole('spinbutton', { name: /target stock for snacks/i });
-	await snacksTarget.fill('140');
-	await snacksTarget.blur();
-	await expect(snacksTarget).toHaveValue('140');
-
-	const snacksReorder = inspector.getByRole('spinbutton', {
-		name: /reorder threshold for snacks/i
+	const bottledWaterPrice = inspector.getByRole('spinbutton', {
+		name: /selling price for bottled water/i
 	});
-	await snacksReorder.fill('100');
-	await snacksReorder.blur();
-	await expect(snacksReorder).toHaveValue('100');
+	await bottledWaterPrice.fill('7');
+	await bottledWaterPrice.blur();
+	await expect(bottledWaterPrice).toHaveValue('7');
+
+	const bottledWaterTarget = inspector.getByRole('spinbutton', {
+		name: /target stock for bottled water/i
+	});
+	await bottledWaterTarget.fill('140');
+	await bottledWaterTarget.blur();
+	await expect(bottledWaterTarget).toHaveValue('140');
+
+	const bottledWaterReorder = inspector.getByRole('spinbutton', {
+		name: /reorder threshold for bottled water/i
+	});
+	await bottledWaterReorder.fill('100');
+	await bottledWaterReorder.blur();
+	await expect(bottledWaterReorder).toHaveValue('100');
 
 	for (let day = 0; day < 7; day += 1) {
 		await page.getByRole('button', { name: /^advance day$/i }).click();
