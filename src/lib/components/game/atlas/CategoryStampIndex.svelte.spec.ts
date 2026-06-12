@@ -8,6 +8,7 @@ function summary(overrides: Partial<ProductChainCategorySummary>): ProductChainC
 	return {
 		categoryId: 'snacks',
 		name: 'Snacks',
+		tier: 3,
 		health: 'healthy',
 		healthLabel: 'Healthy',
 		bottleneck: '',

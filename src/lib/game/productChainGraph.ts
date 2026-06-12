@@ -87,6 +87,7 @@ export interface ProductChainGraph {
 export interface ProductChainCategorySummary {
 	categoryId: string;
 	name: string;
+	tier: 1 | 2 | 3 | null;
 	health: ProductChainHealth;
 	healthLabel: string;
 	bottleneck: string;
@@ -321,34 +322,6 @@ export function buildProductChainGraph(input: {
 			health
 		});
 	}
-}
-
-export function buildStoreCategoryChainSummaries(game: GameState): ProductChainCategorySummary[] {
-	const summaries = new Map<string, ProductChainCategorySummary>();
-
-	for (const store of game.stores) {
-		for (const category of getSupportedStoreChainCategories(store)) {
-			if (summaries.has(category.id)) {
-				continue;
-			}
-
-			const graph = buildProductChainGraph({ game, store: null, categoryId: category.id });
-			const rootNode = graph.nodes.find((node) => node.id === `material:${category.id}`);
-			summaries.set(category.id, {
-				categoryId: category.id,
-				name: category.name,
-				health: rootNode?.health ?? 'no-report',
-				healthLabel: rootNode?.healthLabel ?? 'No report yet',
-				bottleneck: rootNode?.bottleneck ?? 'No graph data available.',
-				warehouseStock: rootNode?.warehouseStock ?? 0,
-				produced: rootNode?.actual.produced ?? 0,
-				consumed: latestCategoryUnitsSold(game, category.id),
-				imported: (rootNode?.actual.importedInput ?? 0) + (rootNode?.actual.shopImported ?? 0)
-			});
-		}
-	}
-
-	return [...summaries.values()].sort((first, second) => first.name.localeCompare(second.name));
 }
 
 export function buildWarehouseFlowGraph(game: GameState): ProductChainGraph {
@@ -642,7 +615,7 @@ function sumProductReports(
 	return productReports.reduce((total, report) => total + getValue(report), 0);
 }
 
-function latestCategoryUnitsSold(game: GameState, categoryId: string): number {
+export function latestCategoryUnitsSold(game: GameState, categoryId: string): number {
 	return (
 		game.reports
 			.at(-1)
