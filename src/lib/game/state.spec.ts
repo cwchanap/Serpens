@@ -413,7 +413,7 @@ describe('game state', () => {
 		expect(upgradeStore(game, 'store-does-not-exist')).toBe(game);
 	});
 
-	test('upgradeStore milestone skips duplicate category and still raises staff capacity', () => {
+	test('upgradeStore milestone at the unlock-count cap adds no category but still raises staff capacity', () => {
 		expect.assertions(2);
 		const base = createNewGame('convenience', 20260603);
 		const store = base.stores[0]!;
@@ -462,5 +462,41 @@ describe('game state', () => {
 		// report must show a non-zero general shortage.
 		expect(level4StoreReport.staffingShortage.general).toBe(1);
 		expect(baselineStore.staffingShortage.general).toBe(0);
+	});
+
+	describe('milestone category unlock with reordered lineups', () => {
+		test('adds the first starting category the store does not already stock', () => {
+			expect.assertions(2);
+			// Legacy store: saved before bottled water existed — level 3, stocking snacks only.
+			let game = createNewGame('convenience', 20260611);
+			const legacyStore = {
+				...game.stores[0]!,
+				level: 3,
+				products: [createStoreProduct(getArchetype('convenience').startingCategories[1]!)]
+			};
+			game = { ...game, cash: 1_000_000, stores: [legacyStore] };
+
+			const upgraded = upgradeStore(game, legacyStore.id);
+
+			expect(upgraded.stores[0]!.level).toBe(4);
+			expect(upgraded.stores[0]!.products.map((product) => product.categoryId)).toEqual([
+				'snacks',
+				'bottled-water'
+			]);
+		});
+
+		test('never adds a duplicate across successive milestones', () => {
+			expect.assertions(2);
+			let game = createNewGame('convenience', 20260611);
+			game = { ...game, cash: 10_000_000 };
+
+			for (let level = game.stores[0]!.level; level < 10; level++) {
+				game = upgradeStore(game, game.stores[0]!.id);
+			}
+
+			const categoryIds = game.stores[0]!.products.map((product) => product.categoryId);
+			expect(new Set(categoryIds).size).toBe(categoryIds.length);
+			expect(categoryIds).toEqual(['bottled-water', 'snacks', 'drinks', 'essentials']);
+		});
 	});
 });
