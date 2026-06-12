@@ -74,8 +74,8 @@ const latestStoreReport: DailyStoreReport = {
 	marketPosition: 40,
 	productReports: [
 		{
-			categoryId: 'snacks',
-			name: 'Snacks',
+			categoryId: 'bottled-water',
+			name: 'Bottled Water',
 			unitsSold: 12,
 			demandMissed: 2,
 			revenue: 60,
@@ -85,7 +85,7 @@ const latestStoreReport: DailyStoreReport = {
 			warehouseUnits: 0,
 			warehouseValue: 0,
 			importedUnits: 0,
-			importCost: 3,
+			importCost: 2,
 			importSpend: 0
 		}
 	],
@@ -180,7 +180,7 @@ describe('TileInspector stock management', () => {
 		await stockTab.click();
 
 		await expect.element(stockTab).toHaveAttribute('aria-selected', 'true');
-		await expect.element(page.getByRole('cell', { name: 'Snacks' })).toBeVisible();
+		await expect.element(page.getByRole('cell', { name: 'Bottled Water' })).toBeVisible();
 		await expect.element(page.getByRole('heading', { name: 'Founding Store stock' })).toBeVisible();
 
 		await chainTab.click();

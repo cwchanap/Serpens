@@ -10,7 +10,7 @@ function renderProductChainPanel(game: GameState, store: Store) {
 }
 
 describe('StoreProductChainPanel', () => {
-	it('shows supported convenience store product categories and the default snacks graph', async () => {
+	it('shows supported convenience store product categories and the default bottled water graph', async () => {
 		expect.assertions(4);
 		const game = createNewGame('convenience', 20260518);
 
@@ -19,7 +19,7 @@ describe('StoreProductChainPanel', () => {
 		await expect.element(page.getByLabelText('Product category')).toBeVisible();
 		await expect.element(page.getByRole('option', { name: 'Snacks' })).toBeInTheDocument();
 		await expect.element(page.getByRole('option', { name: 'Drinks' })).toBeInTheDocument();
-		await expect.element(page.getByTestId('product-chain-graph-chain:snacks')).toBeVisible();
+		await expect.element(page.getByTestId('product-chain-graph-chain:bottled-water')).toBeVisible();
 	});
 
 	it('switches the graph when the product category changes', async () => {
@@ -61,11 +61,11 @@ describe('StoreProductChainPanel', () => {
 
 		view.rerender({ game, store: secondStore });
 
-		await expect.element(page.getByTestId('product-chain-graph-chain:snacks')).toBeVisible();
-		await expect.element(page.getByText('Snacks chain')).toBeVisible();
+		await expect.element(page.getByTestId('product-chain-graph-chain:bottled-water')).toBeVisible();
+		await expect.element(page.getByText('Bottled Water chain')).toBeVisible();
 
 		view.rerender({ game, store: game.stores[0]! });
 
-		await expect.element(page.getByTestId('product-chain-graph-chain:snacks')).toBeVisible();
+		await expect.element(page.getByTestId('product-chain-graph-chain:bottled-water')).toBeVisible();
 	});
 });

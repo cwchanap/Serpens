@@ -382,7 +382,10 @@ describe('game state', () => {
 
 		const store = game.stores.find((candidate) => candidate.id === storeId)!;
 		expect(store.level).toBe(4);
-		expect(store.products.map((product) => product.categoryId)).toEqual(['snacks', 'drinks']);
+		expect(store.products.map((product) => product.categoryId)).toEqual([
+			'bottled-water',
+			'snacks'
+		]);
 		expect(store.staffCapacity).toBeGreaterThan(startCapacity);
 	});
 
@@ -414,7 +417,7 @@ describe('game state', () => {
 		expect.assertions(2);
 		const base = createNewGame('convenience', 20260603);
 		const store = base.stores[0]!;
-		const drinksCategory = getArchetype('convenience').startingCategories[1]!;
+		const milestoneUnlockCategory = getArchetype('convenience').startingCategories[1]!;
 		const game = {
 			...base,
 			cash: 1_000_000,
@@ -422,13 +425,16 @@ describe('game state', () => {
 				{
 					...store,
 					level: 3,
-					products: [store.products[0]!, createStoreProduct(drinksCategory)]
+					products: [store.products[0]!, createStoreProduct(milestoneUnlockCategory)]
 				}
 			]
 		};
 		const result = upgradeStore(game, store.id);
 		const upgraded = result.stores[0]!;
-		expect(upgraded.products.map((product) => product.categoryId)).toEqual(['snacks', 'drinks']);
+		expect(upgraded.products.map((product) => product.categoryId)).toEqual([
+			'bottled-water',
+			'snacks'
+		]);
 		expect(upgraded.staffCapacity).toBeGreaterThan(store.staffCapacity);
 	});
 

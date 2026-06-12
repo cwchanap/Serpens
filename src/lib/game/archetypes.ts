@@ -31,6 +31,16 @@ const RAW_ARCHETYPES: StoreArchetype[] = [
 		customerExpectation: 58,
 		startingCategories: [
 			{
+				id: 'bottled-water',
+				name: 'Bottled Water',
+				baseDemand: 96,
+				margin: 0.3,
+				demandWeight: 1.2,
+				importCost: 2,
+				defaultSellingPrice: 3,
+				priceSensitivity: 0.7
+			},
+			{
 				id: 'snacks',
 				name: 'Snacks',
 				baseDemand: 72,
