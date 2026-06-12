@@ -46,6 +46,10 @@ export interface ProductChainNode {
 	id: string;
 	kind: ProductChainNodeKind;
 	label: string;
+	/** Output material name shown under the building name on merged tree cards. */
+	subLabel?: string;
+	/** Set when a tree duplicates this producer into multiple branches. */
+	sharedBranchCount?: number;
 	materialId: MaterialId | null;
 	recipeId: ProductionRecipeId | null;
 	stage: ProductionRecipe['stage'] | MaterialKind | 'warehouse' | null;
@@ -92,14 +96,14 @@ export interface ProductChainCategorySummary {
 	imported: number;
 }
 
-interface ChainInputWeight {
+export interface ChainInputWeight {
 	recipeId: ProductionRecipeId;
 	requiredPerCycle: number;
 	requiredPerDay: number;
 	inferredPerDay: number;
 }
 
-const MATERIAL_PRODUCER_RECIPES = createMaterialProducerRecipeMap();
+export const MATERIAL_PRODUCER_RECIPES = createMaterialProducerRecipeMap();
 export const SUPPORTED_FINISHED_MATERIALS = createSupportedFinishedMaterials();
 
 export function getSupportedStoreChainCategories(store: Store): ProductCategory[] {
@@ -510,7 +514,7 @@ function createSupportedFinishedMaterials(): readonly MaterialId[] {
 		.map((material) => material.id);
 }
 
-function createInputWeightMap(
+export function createInputWeightMap(
 	buildings: IndustrialBuilding[],
 	report: DailyProductionReport | null
 ): ReadonlyMap<MaterialId, readonly ChainInputWeight[]> {
@@ -562,15 +566,15 @@ function inferRecipeCycles(
 	return cycles;
 }
 
-function isSupportedFinishedMaterial(categoryId: string): categoryId is MaterialId {
+export function isSupportedFinishedMaterial(categoryId: string): categoryId is MaterialId {
 	return (SUPPORTED_FINISHED_MATERIALS as readonly string[]).includes(categoryId);
 }
 
-function latestProductionReport(game: GameState): DailyProductionReport | null {
+export function latestProductionReport(game: GameState): DailyProductionReport | null {
 	return game.reports.at(-1)?.productionReport ?? null;
 }
 
-function latestStoreProductReport(
+export function latestStoreProductReport(
 	game: GameState,
 	store: Store | null,
 	categoryId: string
@@ -659,11 +663,11 @@ function sumMovements(
 		.reduce((total, movement) => total + movement.quantity, 0);
 }
 
-function buildingTypesForRecipe(recipeId: ProductionRecipeId): IndustrialBuildingType[] {
+export function buildingTypesForRecipe(recipeId: ProductionRecipeId): IndustrialBuildingType[] {
 	return Object.values(INDUSTRIAL_BUILDING_TYPES).filter((type) => type.recipeId === recipeId);
 }
 
-function buildingsForRecipe(
+export function buildingsForRecipe(
 	buildings: IndustrialBuilding[],
 	recipeId: ProductionRecipeId
 ): IndustrialBuilding[] {
@@ -672,7 +676,7 @@ function buildingsForRecipe(
 	return buildings.filter((building) => typeIds.has(building.typeId));
 }
 
-function getRecipeThroughputUnits(
+export function getRecipeThroughputUnits(
 	buildings: IndustrialBuilding[],
 	recipeId: ProductionRecipeId
 ): number {
@@ -687,15 +691,15 @@ function getRecipeThroughputUnits(
 	);
 }
 
-function recipeOutputPerDay(recipe: ProductionRecipe, throughputUnits: number): number {
+export function recipeOutputPerDay(recipe: ProductionRecipe, throughputUnits: number): number {
 	return recipe.outputs.reduce((total, output) => total + output.quantity * throughputUnits, 0);
 }
 
-function recipeInputPerDay(recipe: ProductionRecipe, throughputUnits: number): number {
+export function recipeInputPerDay(recipe: ProductionRecipe, throughputUnits: number): number {
 	return recipe.inputs.reduce((total, input) => total + input.quantity * throughputUnits, 0);
 }
 
-function emptyActualMetrics(): ProductChainActualMetrics {
+export function emptyActualMetrics(): ProductChainActualMetrics {
 	return {
 		produced: 0,
 		consumed: 0,
@@ -707,7 +711,7 @@ function emptyActualMetrics(): ProductChainActualMetrics {
 	};
 }
 
-function materialActualMetrics(
+export function materialActualMetrics(
 	report: DailyProductionReport | null,
 	materialId: MaterialId,
 	productReport: DailyProductReport | null
@@ -723,7 +727,7 @@ function materialActualMetrics(
 	};
 }
 
-function allocateInputMovement(
+export function allocateInputMovement(
 	weights: ReadonlyMap<MaterialId, readonly ChainInputWeight[]>,
 	materialId: MaterialId,
 	recipeNodeId: string,
@@ -785,7 +789,7 @@ function roundFlowQuantity(quantity: number): number {
 	return Number(quantity.toFixed(2));
 }
 
-function healthLabel(health: ProductChainHealth): string {
+export function healthLabel(health: ProductChainHealth): string {
 	if (health === 'healthy') {
 		return 'Healthy';
 	}
@@ -805,7 +809,7 @@ function healthLabel(health: ProductChainHealth): string {
 	return 'No report yet';
 }
 
-function formatRecipeEdgeLabel(input: {
+export function formatRecipeEdgeLabel(input: {
 	actualPerDay: number;
 	requiredPerCycle: number;
 	direction: 'input' | 'output';
@@ -825,7 +829,7 @@ export function formatQuantity(quantity: number): string {
 		: quantity.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
 }
 
-function materialHealth(input: {
+export function materialHealth(input: {
 	hasReport: boolean;
 	actual: ProductChainActualMetrics;
 	warehouseStock: number;
@@ -867,7 +871,7 @@ function recipeHealth(input: { hasReport: boolean; buildingCount: number }): Pro
 	return 'healthy';
 }
 
-function bottleneckText(node: Pick<ProductChainNode, 'kind' | 'health' | 'label'>): string {
+export function bottleneckText(node: Pick<ProductChainNode, 'kind' | 'health' | 'label'>): string {
 	if (node.health === 'healthy') {
 		return `${node.label} is flowing locally.`;
 	}
@@ -911,7 +915,7 @@ function sortNodes(nodes: ProductChainNode[]): ProductChainNode[] {
 		}));
 }
 
-function sortEdges(edges: ProductChainEdge[]): ProductChainEdge[] {
+export function sortEdges(edges: ProductChainEdge[]): ProductChainEdge[] {
 	return edges.sort(
 		(first, second) =>
 			first.source.localeCompare(second.source) ||
@@ -920,7 +924,7 @@ function sortEdges(edges: ProductChainEdge[]): ProductChainEdge[] {
 	);
 }
 
-function emptyGraph(id: string, title: string, emptyReason: string): ProductChainGraph {
+export function emptyGraph(id: string, title: string, emptyReason: string): ProductChainGraph {
 	return {
 		id,
 		title,
