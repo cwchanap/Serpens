@@ -31,6 +31,9 @@
 		>
 			<span class={['seal', `seal-${summary.health}`]}>{summary.healthLabel}</span>
 			<span class="name">{summary.name}</span>
+			{#if summary.tier !== null}
+				<span class="tier">Tier {summary.tier}</span>
+			{/if}
 			{#if icon}
 				<span class="icons"><img src={icon} alt={summary.name} /></span>
 			{/if}
@@ -99,6 +102,19 @@
 		font-size: 17px;
 		line-height: 1.1;
 		color: var(--ink-700);
+	}
+
+	.tier {
+		width: fit-content;
+		padding: 1px 5px;
+		font-family: var(--font-ui);
+		font-size: 8.5px;
+		font-weight: 700;
+		letter-spacing: 0.16em;
+		text-transform: uppercase;
+		color: var(--brass-700);
+		border: 1px solid var(--brass-700);
+		border-radius: 1px;
 	}
 
 	.icons {

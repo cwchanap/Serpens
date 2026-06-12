@@ -157,6 +157,29 @@ describe('BuildMenu', () => {
 		expect(onClose).not.toHaveBeenCalled();
 	});
 
+	it('sorts industry building options by tier, then cost, then name', async () => {
+		expect.assertions(1);
+
+		render(BuildMenu, {
+			activeMapView: 'industry',
+			retailOptions,
+			industryLockedReason: null,
+			onChooseRetail: vi.fn(),
+			onChooseIndustry: vi.fn(),
+			onClose: vi.fn()
+		});
+
+		const dialog = getBuildMenuDialog();
+		const labels = Array.from(
+			dialog.querySelectorAll<HTMLElement>('button.build-option strong')
+		).map((element) => element.textContent ?? '');
+
+		const waterBottlerIndex = labels.findIndex((label) => label.includes('Water Bottler'));
+		const snackFactoryIndex = labels.findIndex((label) => label.includes('Snack Factory'));
+
+		expect(waterBottlerIndex).toBeLessThan(snackFactoryIndex);
+	});
+
 	it('explains locked industry construction before a store exists', async () => {
 		expect.assertions(2);
 

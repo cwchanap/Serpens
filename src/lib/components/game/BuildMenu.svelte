@@ -73,11 +73,17 @@
 				filter.name.toLowerCase().includes(query) || filter.id.toLowerCase().includes(query)
 		);
 	});
-	const visibleIndustryBuildingTypes = $derived.by(() =>
-		selectedProductFilterId
+	const visibleIndustryBuildingTypes = $derived.by(() => {
+		const types = selectedProductFilterId
 			? getIndustrialBuildingTypesForProductChain(selectedProductFilterId)
-			: Object.values(INDUSTRIAL_BUILDING_TYPES)
-	);
+			: Object.values(INDUSTRIAL_BUILDING_TYPES);
+		return [...types].sort(
+			(first, second) =>
+				first.tier - second.tier ||
+				first.buildCost - second.buildCost ||
+				first.name.localeCompare(second.name)
+		);
+	});
 
 	const focusDialogOnMount: Attachment<HTMLElement> = (node) => {
 		dialogElement = node;
