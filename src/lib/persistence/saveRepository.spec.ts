@@ -11,6 +11,7 @@ import type {
 	GameState,
 	IndustrialBuildingTypeId,
 	IndustryResourceId,
+	MaterialId,
 	StoreProduct
 } from '$lib/game/types';
 import { SAVE_SCHEMA_VERSION, type SaveRecord, type SaveStoreSnapshot } from './saveTypes';
@@ -2051,5 +2052,31 @@ describe('browser save repository', () => {
 		expect(secondLoad?.game.day).toBe(4);
 		expect(secondLoad?.metadata.name).toBe('Harbor Run');
 		expect(secondSummary.manualSlots[0]?.name).toBe('Harbor Run');
+	});
+});
+
+describe('pre-tier-1 save compatibility', () => {
+	test('round-trips a save whose warehouse lacks the new material keys', async () => {
+		expect.assertions(2);
+		const game = createNewGame('convenience', 20260611);
+		const legacyGame: GameState = {
+			...game,
+			warehouse: {
+				...game.warehouse,
+				// Simulate an old save: only legacy materials present.
+				materials: { grain: 12, snacks: 3 } satisfies Partial<Record<MaterialId, number>>
+			}
+		};
+
+		const repository = new SaveRepositoryFromDriver(
+			new MemorySaveStoreDriver(),
+			() => new Date('2026-06-11T12:00:00.000Z')
+		);
+
+		await repository.saveAuto(legacyGame);
+		const loaded = await repository.getAutoSave();
+
+		expect(loaded?.game.warehouse.materials).toEqual({ grain: 12, snacks: 3 });
+		expect(loaded?.game.warehouse.materials['bottled-water']).toBeUndefined();
 	});
 });
