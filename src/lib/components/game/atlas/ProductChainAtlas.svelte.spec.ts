@@ -1,7 +1,7 @@
 import { page } from 'vitest/browser';
 import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
-import { buildProductChainGraph } from '$lib/game/productChainGraph';
+import { buildProductChainTree } from '$lib/game/productChainTree';
 import { createNewGame } from '$lib/game/state';
 import ProductChainAtlas from './ProductChainAtlas.svelte';
 
@@ -31,7 +31,7 @@ describe('ProductChainAtlas', () => {
 	it('renders one button per graph node with correct aria-pressed for the selected one', async () => {
 		expect.assertions(2);
 		const game = createNewGame('convenience', 20260518);
-		const graph = buildProductChainGraph({
+		const graph = buildProductChainTree({
 			game,
 			store: game.stores[0]!,
 			categoryId: 'snacks'
@@ -54,12 +54,12 @@ describe('ProductChainAtlas', () => {
 	it('clears selection when the graph id changes', async () => {
 		expect.assertions(1);
 		const game = createNewGame('convenience', 20260518);
-		const snacks = buildProductChainGraph({
+		const snacks = buildProductChainTree({
 			game,
 			store: game.stores[0]!,
 			categoryId: 'snacks'
 		});
-		const drinks = buildProductChainGraph({
+		const drinks = buildProductChainTree({
 			game,
 			store: game.stores[0]!,
 			categoryId: 'drinks'
@@ -83,7 +83,7 @@ describe('ProductChainAtlas', () => {
 	it('emits the node id when a node button is clicked', async () => {
 		expect.assertions(1);
 		const game = createNewGame('convenience', 20260518);
-		const graph = buildProductChainGraph({
+		const graph = buildProductChainTree({
 			game,
 			store: game.stores[0]!,
 			categoryId: 'snacks'
@@ -105,7 +105,7 @@ describe('ProductChainAtlas', () => {
 	it('renders SVG route groups for every graph edge', async () => {
 		expect.assertions(1);
 		const game = createNewGame('convenience', 20260518);
-		const graph = buildProductChainGraph({
+		const graph = buildProductChainTree({
 			game,
 			store: game.stores[0]!,
 			categoryId: 'snacks'
@@ -124,7 +124,7 @@ describe('ProductChainAtlas', () => {
 	it('broadside overlay has pointer-events: none so clicks pass through', async () => {
 		expect.assertions(2);
 		const game = createNewGame('convenience', 20260518);
-		const graph = buildProductChainGraph({
+		const graph = buildProductChainTree({
 			game,
 			store: game.stores[0]!,
 			categoryId: 'snacks'
@@ -164,7 +164,7 @@ describe('ProductChainAtlas', () => {
 
 	it('uses instance-scoped marker IDs in <defs>', async () => {
 		const game = createNewGame('convenience', 20260518);
-		const graph = buildProductChainGraph({
+		const graph = buildProductChainTree({
 			game,
 			store: game.stores[0]!,
 			categoryId: 'snacks'

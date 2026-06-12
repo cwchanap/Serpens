@@ -17,9 +17,19 @@
 		return `M ${source.x} ${source.y} C ${c1.x} ${c1.y} ${c2.x} ${c2.y} ${target.x} ${target.y}`;
 	});
 
-	const mid = $derived({
-		x: (source.x + target.x) / 2,
-		y: (source.y + target.y) / 2
+	// Anchor the label at t = 0.3 along the same cubic bezier as `path` so
+	// labels on edges that converge into the same target don't stack on top
+	// of each other at the midpoint.
+	const labelPoint = $derived.by(() => {
+		const t = 0.3;
+		const u = 1 - t;
+		const dx = Math.max(40, (target.x - source.x) / 2);
+		const c1 = { x: source.x + dx, y: source.y };
+		const c2 = { x: target.x - dx, y: target.y };
+		return {
+			x: u * u * u * source.x + 3 * u * u * t * c1.x + 3 * u * t * t * c2.x + t * t * t * target.x,
+			y: u * u * u * source.y + 3 * u * u * t * c1.y + 3 * u * t * t * c2.y + t * t * t * target.y
+		};
 	});
 
 	const stroke = $derived(healthStroke(edge.health));
@@ -71,7 +81,7 @@
 		fill="none"
 		marker-end={`url(#${markerPrefix}-chain-route-arrow-${edge.health})`}
 	/>
-	<g transform={`translate(${mid.x}, ${mid.y - 8})`}>
+	<g transform={`translate(${labelPoint.x}, ${labelPoint.y - 8})`}>
 		<rect
 			x={rectX}
 			y="-9"

@@ -166,4 +166,41 @@ describe('ChainNode', () => {
 		const glyph = page.getByText('U').first();
 		await expect.element(glyph).toHaveAttribute('data-art-missing');
 	});
+
+	it('renders a sub-cartouche with the subLabel for merged recipe cards', async () => {
+		expect.assertions(2);
+		const onSelect = vi.fn();
+		render(ChainNode, {
+			node: materialNode({
+				id: 'recipe:flour-milling',
+				kind: 'recipe',
+				label: 'Flour Mill',
+				subLabel: 'Flour',
+				materialId: 'flour',
+				recipeId: 'flour-milling'
+			}),
+			selected: false,
+			compact: false,
+			position: { x: 0, y: 0 },
+			onSelect
+		});
+
+		const subCartouche = document.querySelector('.sub-cartouche');
+		expect(subCartouche).not.toBeNull();
+		expect(subCartouche?.textContent).toBe('Flour');
+	});
+
+	it('omits the sub-cartouche when the node has no subLabel', async () => {
+		expect.assertions(1);
+		const onSelect = vi.fn();
+		render(ChainNode, {
+			node: materialNode(),
+			selected: false,
+			compact: false,
+			position: { x: 0, y: 0 },
+			onSelect
+		});
+
+		expect(document.querySelector('.sub-cartouche')).toBeNull();
+	});
 });

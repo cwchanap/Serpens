@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { addWarehouseMaterial } from './industryProduction';
 import { openStoreAtTile } from './placement';
 import { buildProductChainTree, buildStoreCategoryChainSummaries } from './productChainTree';
 import { createNewGame } from './state';
@@ -135,6 +136,28 @@ describe('buildProductChainTree', () => {
 		]);
 	});
 
+	it('surfaces warehouse stock on a recipe node and labels imported input edges', () => {
+		expect.assertions(2);
+		let game = convenienceGame();
+		game = { ...game, warehouse: addWarehouseMaterial(game.warehouse, 'snacks', 12) };
+		game = withLatestReport(
+			game,
+			emptyProductionReport({
+				consumed: [{ materialId: 'packaging', quantity: 2, value: 6, source: 'import' }],
+				importedInputs: [{ materialId: 'packaging', quantity: 2, value: 10, source: 'import' }]
+			})
+		);
+
+		const tree = buildProductChainTree({ game, store: game.stores[0]!, categoryId: 'snacks' });
+		const snackFactory = tree.details['recipe:snack-production']!;
+		const packagingEdge = tree.edges.find(
+			(edge) => edge.id === 'recipe:packaging-production@snack-production->recipe:snack-production'
+		);
+
+		expect(snackFactory.warehouseStock).toBe(12);
+		expect(packagingEdge?.label).toContain('· import');
+	});
+
 	it('gives every non-root node exactly one outgoing edge (tree property)', () => {
 		const game = convenienceGame();
 		const tree = buildProductChainTree({ game, store: null, categoryId: 'snacks' });
@@ -223,6 +246,7 @@ describe('buildProductChainTree', () => {
 		const bottler = tree.details['recipe:water-bottling']!;
 		expect(bottler.health).toBe('no-local-capacity');
 		expect(bottler.capacity.buildingCount).toBe(0);
+		expect(tree.details['product:bottled-water']!.health).toBe('no-report');
 	});
 
 	it('returns an empty graph for categories without chains', () => {
@@ -231,6 +255,193 @@ describe('buildProductChainTree', () => {
 
 		expect(tree.nodes).toEqual([]);
 		expect(tree.emptyReason).toBe('No local production chain available for this category yet.');
+	});
+
+	it('marks missed finished demand as a shortage even without import movement', () => {
+		expect.assertions(3);
+		let game = createNewGame('convenience', 20260518);
+		game = {
+			...game,
+			industrialBuildings: [
+				...game.industrialBuildings,
+				{
+					id: 'industry-building-snacks',
+					level: 1,
+					typeId: 'snack-factory',
+					cityId: game.activeIndustryCityId,
+					tileId: 'manual-snack-factory',
+					mapX: 0,
+					mapY: 0,
+					status: 'produced',
+					lastProduction: [],
+					producedTotal: 0,
+					importedInputTotal: 0,
+					blockedDays: 0
+				}
+			]
+		};
+		game = withLatestReport(
+			game,
+			emptyProductionReport({
+				produced: [{ materialId: 'snacks', quantity: 16, value: 128, source: 'local' }]
+			})
+		);
+		game = {
+			...game,
+			reports: [
+				{
+					...game.reports[0]!,
+					storeReports: [
+						latestStoreReport({
+							productReports: [snackProductReport({ unitsSold: 8, demandMissed: 12 })]
+						})
+					]
+				}
+			]
+		};
+
+		const tree = buildProductChainTree({ game, store: game.stores[0]!, categoryId: 'snacks' });
+		const root = tree.details['product:snacks']!;
+
+		expect(root.actual.demandMissed).toBe(12);
+		expect(root.health).toBe('shortage');
+		expect(root.bottleneck).toBe('Snacks relied on imports or had a local shortage today.');
+	});
+
+	it('scales capacity by throughput multiplier when a producer is upgraded', () => {
+		// Snack factory: outputs 8 snacks/cycle; inputs total 11/cycle (6 flour + 2 cooking-oil + 1 salt + 2 packaging).
+		// At level 1 (throughput 1.0): output 8, input 11.
+		// At level 3 (throughput 1.4): output 11.2, input 15.4.
+		expect.assertions(7);
+		const base = createNewGame('convenience', 20260518);
+		const level1Game: GameState = {
+			...base,
+			industrialBuildings: [
+				...base.industrialBuildings,
+				{
+					id: 'industry-building-snacks',
+					level: 1,
+					typeId: 'snack-factory',
+					cityId: base.activeIndustryCityId,
+					tileId: 'manual-snack-factory',
+					mapX: 0,
+					mapY: 0,
+					status: 'idle',
+					lastProduction: [],
+					producedTotal: 0,
+					importedInputTotal: 0,
+					blockedDays: 0
+				}
+			]
+		};
+		const level3Game: GameState = {
+			...level1Game,
+			industrialBuildings: level1Game.industrialBuildings.map((building) =>
+				building.id === 'industry-building-snacks' ? { ...building, level: 3 } : building
+			)
+		};
+
+		const level1Tree = buildProductChainTree({
+			game: level1Game,
+			store: level1Game.stores[0]!,
+			categoryId: 'snacks'
+		});
+		const level3Tree = buildProductChainTree({
+			game: level3Game,
+			store: level3Game.stores[0]!,
+			categoryId: 'snacks'
+		});
+
+		const level1Recipe = level1Tree.details['recipe:snack-production']!;
+		const level3Recipe = level3Tree.details['recipe:snack-production']!;
+
+		// buildingCount stays as the raw placed-building count.
+		expect(level1Recipe.capacity.buildingCount).toBe(1);
+		expect(level3Recipe.capacity.buildingCount).toBe(1);
+		// Level-1 capacity is unscaled.
+		expect(level1Recipe.capacity.outputPerDay).toBe(8);
+		expect(level1Recipe.capacity.inputPerDay).toBe(11);
+		// Level-3 capacity is scaled by the 1.4 throughput multiplier. (Capacity is a
+		// forecast, so we keep fractional units rather than rounding to integers.)
+		expect(level3Recipe.capacity.outputPerDay).toBeCloseTo(11.2, 5);
+		expect(level3Recipe.capacity.inputPerDay).toBeCloseTo(15.4, 5);
+		// The root product card carries retail metrics; capacity lives on the
+		// factory card, so the root node's capacity is intentionally all-zero
+		// even though a factory is built and upgraded.
+		expect(level3Tree.details['product:snacks']!.capacity).toEqual({
+			buildingCount: 0,
+			outputPerDay: 0,
+			inputPerDay: 0
+		});
+	});
+
+	it('splits shared input movement across recipe edges feeding different branches', () => {
+		expect.assertions(4);
+		const game = withLatestReport(
+			createNewGame('convenience', 20260518),
+			emptyProductionReport({
+				consumed: [{ materialId: 'water', quantity: 16, value: 16, source: 'warehouse' }],
+				warehousePulls: [{ materialId: 'water', quantity: 16, value: 16, source: 'warehouse' }]
+			})
+		);
+
+		const tree = buildProductChainTree({ game, store: game.stores[0]!, categoryId: 'drinks' });
+		const filtrationInput = tree.edges.find(
+			(edge) =>
+				edge.id ===
+				'recipe:water-pumping@drink-bottling/water-filtration->recipe:water-filtration@drink-bottling'
+		);
+		const syrupInput = tree.edges.find(
+			(edge) =>
+				edge.id ===
+				'recipe:water-pumping@drink-bottling/syrup-production->recipe:syrup-production@drink-bottling'
+		);
+
+		// Zero-capacity fallback splits the 16 consumed water across all
+		// water-consuming recipes weighted by requiredPerCycle: filtration (12) +
+		// syrup (4) + bottling (10) = 26. So filtration gets 16*12/26 = 7.38 and
+		// syrup gets 16*4/26 = 2.46 (rounded to 2 decimals by roundFlowQuantity).
+		expect(filtrationInput?.requiredPerCycle).toBe(12);
+		expect(filtrationInput?.actualPerDay).toBe(7.38);
+		expect(syrupInput?.requiredPerCycle).toBe(4);
+		expect(syrupInput?.actualPerDay).toBe(2.46);
+	});
+
+	it('does not absorb shared input movement from other finished chains', () => {
+		expect.assertions(4);
+		const game = withLatestReport(
+			createNewGame('convenience', 20260518),
+			emptyProductionReport({
+				produced: [
+					{ materialId: 'snacks', quantity: 8, value: 64, source: 'local' },
+					{ materialId: 'drinks', quantity: 10, value: 70, source: 'local' }
+				],
+				consumed: [{ materialId: 'packaging', quantity: 4, value: 12, source: 'warehouse' }],
+				warehousePulls: [{ materialId: 'packaging', quantity: 4, value: 12, source: 'warehouse' }]
+			})
+		);
+
+		const snacksTree = buildProductChainTree({
+			game,
+			store: game.stores[0]!,
+			categoryId: 'snacks'
+		});
+		const drinksTree = buildProductChainTree({
+			game,
+			store: game.stores[0]!,
+			categoryId: 'drinks'
+		});
+		const snacksPackaging = snacksTree.edges.find(
+			(edge) => edge.id === 'recipe:packaging-production@snack-production->recipe:snack-production'
+		);
+		const drinksPackaging = drinksTree.edges.find(
+			(edge) => edge.id === 'recipe:packaging-production@drink-bottling->recipe:drink-bottling'
+		);
+
+		expect(snacksPackaging?.actualPerDay).toBe(2);
+		expect(snacksPackaging?.label).toBe('2/day used · 2/cycle');
+		expect(drinksPackaging?.actualPerDay).toBe(2);
+		expect(drinksPackaging?.label).toBe('2/day used · 2/cycle');
 	});
 });
 
@@ -268,6 +479,72 @@ describe('buildStoreCategoryChainSummaries (tree)', () => {
 		expect(snacks?.consumed).toBe(8);
 		expect(snacks?.imported).toBe(4);
 		expect(snacks?.warehouseStock).toBe(0);
+	});
+
+	it('aggregates root-node movement metrics across stores when no store is selected', () => {
+		expect.assertions(4);
+		let game = { ...createNewGame('convenience', 20260518), cash: 100_000 };
+		const expansionTile = game.cities[0]!.tiles.find(
+			(tile) => !tile.locked && tile.feature === null && tile.id !== game.stores[0]!.tileId
+		)!;
+		game = openStoreAtTile(game, {
+			tileId: expansionTile.id,
+			name: 'Store #2',
+			archetypeId: 'convenience'
+		});
+		const firstStore = game.stores[0]!;
+		const secondStore = game.stores[1]!;
+		game = {
+			...game,
+			reports: [
+				{
+					day: game.day,
+					revenue: 120,
+					costOfGoods: 50,
+					grossMargin: 70,
+					operatingCosts: 30,
+					payrollCost: 0,
+					importSpend: 0,
+					netIncome: 40,
+					cashAfter: game.cash + 40,
+					scorecard: game.scorecard,
+					productionReport: emptyProductionReport({
+						produced: [{ materialId: 'snacks', quantity: 18, value: 144, source: 'local' }],
+						warehousePulls: [
+							{ materialId: 'snacks', quantity: 11, value: 88, source: 'warehouse' }
+						],
+						shopImports: [{ materialId: 'snacks', quantity: 2, value: 24, source: 'import' }]
+					}),
+					storeReports: [
+						latestStoreReport({
+							storeId: firstStore.id,
+							productReports: [snackProductReport({ unitsSold: 8, demandMissed: 1 })]
+						}),
+						latestStoreReport({
+							storeId: secondStore.id,
+							productReports: [
+								snackProductReport({
+									unitsSold: 5,
+									demandMissed: 3,
+									warehouseUnits: 5,
+									importedUnits: 0,
+									importSpend: 0
+								})
+							]
+						})
+					],
+					warnings: []
+				}
+			]
+		};
+
+		const tree = buildProductChainTree({ game, store: null, categoryId: 'snacks' });
+		const root = tree.details['product:snacks']!;
+
+		expect(root.actual.unitsSold).toBe(13);
+		expect(root.actual.demandMissed).toBe(4);
+		expect(root.actual.warehousePulled).toBe(11);
+		expect(root.actual.shopImported).toBe(2);
 	});
 
 	it('aggregates consume rate across every store carrying the same category', () => {

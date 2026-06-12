@@ -1,10 +1,8 @@
 <script lang="ts">
 	import NodeBroadside from '$lib/components/game/atlas/NodeBroadside.svelte';
 	import ProductChainAtlas from '$lib/components/game/atlas/ProductChainAtlas.svelte';
-	import {
-		buildProductChainGraph,
-		getSupportedStoreChainCategories
-	} from '$lib/game/productChainGraph';
+	import { getSupportedStoreChainCategories } from '$lib/game/productChainGraph';
+	import { buildProductChainTree } from '$lib/game/productChainTree';
 	import type { GameState, Store } from '$lib/game/types';
 
 	interface Props {
@@ -39,7 +37,7 @@
 	);
 	const graph = $derived(
 		selectedCategory
-			? buildProductChainGraph({ game, store, categoryId: selectedCategory.id })
+			? buildProductChainTree({ game, store, categoryId: selectedCategory.id })
 			: null
 	);
 	const selectedNode = $derived(
