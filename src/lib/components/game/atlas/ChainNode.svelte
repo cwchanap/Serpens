@@ -53,6 +53,9 @@
 		<span class={['pin', `pin-${node.health}`]}>{node.healthLabel}</span>
 	</span>
 	<span class="cartouche">{node.label}</span>
+	{#if node.subLabel}
+		<span class="sub-cartouche">{node.subLabel}</span>
+	{/if}
 	<span class="stat">{statLine}</span>
 </button>
 
@@ -237,6 +240,17 @@
 	.is-compact .cartouche {
 		font-size: 11px;
 		padding: 2px 6px;
+	}
+
+	.sub-cartouche {
+		font-family: var(--font-body);
+		font-size: 11px;
+		font-style: italic;
+		color: var(--ink-500);
+	}
+
+	.is-compact .sub-cartouche {
+		font-size: 9.5px;
 	}
 
 	.chain-node-shortage .cartouche,

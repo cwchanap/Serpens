@@ -41,6 +41,11 @@
 		{#if node.bottleneck}
 			<p class="verdict">{node.bottleneck}</p>
 		{/if}
+		{#if node.sharedBranchCount}
+			<p class="shared-note">
+				Shared producer — drawn in {node.sharedBranchCount} branches of this chain.
+			</p>
+		{/if}
 		<dl>
 			{#each metrics as metric (metric.label)}
 				<div>
@@ -124,6 +129,14 @@
 		font-size: 12.5px;
 		color: var(--ink-700);
 		line-height: 1.45;
+	}
+
+	.shared-note {
+		margin: 0;
+		font-family: var(--font-body);
+		font-size: 11.5px;
+		font-style: italic;
+		color: var(--ink-500);
 	}
 
 	dl {
