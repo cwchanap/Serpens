@@ -191,6 +191,14 @@ export interface ProductionRecipe {
 	stage: 'raw' | 'process' | 'final';
 }
 
+/**
+ * Build-menu/chart grouping only — no gameplay gating. 1 = tier-1 chain
+ * buildings (cheap onboarding chains), 2 = deep-chain raw/process
+ * buildings, 3 = deep-chain final factories. A building shared by a tier-1
+ * and a deeper chain takes the lower tier.
+ */
+export type BuildingTier = 1 | 2 | 3;
+
 export interface IndustrialBuildingType {
 	id: IndustrialBuildingTypeId;
 	name: string;
@@ -200,13 +208,7 @@ export interface IndustrialBuildingType {
 	requiresIndustrialTile: boolean;
 	recipeId: ProductionRecipeId | null;
 	warehouseCapacity: number;
-	/**
-	 * Build-menu/chart grouping only — no gameplay gating. 1 = tier-1 chain
-	 * buildings (cheap onboarding chains), 2 = deep-chain raw/process
-	 * buildings, 3 = deep-chain final factories. A building shared by a tier-1
-	 * and a deeper chain takes the lower tier.
-	 */
-	tier: 1 | 2 | 3;
+	tier: BuildingTier;
 }
 
 export interface DailyMaterialMovement {

@@ -137,7 +137,7 @@ describe('buildProductChainTree', () => {
 	});
 
 	it('surfaces warehouse stock on a recipe node and labels imported input edges', () => {
-		expect.assertions(2);
+		expect.assertions(3);
 		let game = convenienceGame();
 		game = { ...game, warehouse: addWarehouseMaterial(game.warehouse, 'snacks', 12) };
 		game = withLatestReport(
@@ -150,12 +150,16 @@ describe('buildProductChainTree', () => {
 
 		const tree = buildProductChainTree({ game, store: game.stores[0]!, categoryId: 'snacks' });
 		const snackFactory = tree.details['recipe:snack-production']!;
+		const packagingNode = tree.details['recipe:packaging-production@snack-production']!;
 		const packagingEdge = tree.edges.find(
 			(edge) => edge.id === 'recipe:packaging-production@snack-production->recipe:snack-production'
 		);
 
 		expect(snackFactory.warehouseStock).toBe(12);
 		expect(packagingEdge?.label).toContain('· import');
+		// Zero placed packaging buildings overrides the material-level shortage
+		// signal — the player must build before reports matter.
+		expect(packagingNode.health).toBe('no-local-capacity');
 	});
 
 	it('gives every non-root node exactly one outgoing edge (tree property)', () => {

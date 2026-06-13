@@ -395,6 +395,12 @@ describe('tier 1 chains', () => {
 		expect(getCategoryTier('apparel')).toBeNull();
 	});
 
+	it('resolves every finished product material to a non-null tier', () => {
+		for (const materialId of FINISHED_PRODUCT_MATERIAL_IDS) {
+			expect(getCategoryTier(materialId), `${materialId} must resolve to a tier`).not.toBeNull();
+		}
+	});
+
 	it('terminates every finished chain in raw materials', () => {
 		for (const materialId of FINISHED_PRODUCT_MATERIAL_IDS) {
 			const seen = new Set<string>();

@@ -1,4 +1,5 @@
 import type {
+	BuildingTier,
 	IndustrialBuildingType,
 	IndustrialBuildingTypeId,
 	IndustryCity,
@@ -742,20 +743,25 @@ export function getIndustrialBuildingTypesForProductChain(
 	);
 }
 
-export function getCategoryTier(categoryId: string): 1 | 2 | 3 | null {
+export function getCategoryTier(categoryId: string): BuildingTier | null {
 	if (!isMaterialId(categoryId) || MATERIALS[categoryId].kind !== 'finished') {
 		return null;
 	}
 
-	const finalFactory = Object.values(INDUSTRIAL_BUILDING_TYPES).find(
-		(buildingType) =>
-			buildingType.recipeId !== null &&
-			PRODUCTION_RECIPES[buildingType.recipeId].outputs.some(
-				(output) => output.materialId === categoryId
-			)
-	);
+	// A finished material may be produced by building types at different tiers
+	// (e.g. a shared building that also serves a tier-1 chain). Per the
+	// IndustrialBuildingType.tier doc, the shared building takes the lower tier.
+	const matchingTiers = Object.values(INDUSTRIAL_BUILDING_TYPES)
+		.filter(
+			(buildingType) =>
+				buildingType.recipeId !== null &&
+				PRODUCTION_RECIPES[buildingType.recipeId].outputs.some(
+					(output) => output.materialId === categoryId
+				)
+		)
+		.map((buildingType) => buildingType.tier);
 
-	return finalFactory?.tier ?? null;
+	return matchingTiers.length > 0 ? (Math.min(...matchingTiers) as BuildingTier) : null;
 }
 
 function isMaterialId(value: string): value is MaterialId {

@@ -28,6 +28,12 @@ import {
 } from './productChainGraph';
 import type { GameState, MaterialId, ProductionRecipeId, Store } from './types';
 
+/**
+ * Safety cap to prevent infinite recursion if a cyclic recipe is ever
+ * introduced. Current chains max out at depth 4.
+ */
+const MAX_CHAIN_DEPTH = 16;
+
 interface TreeEntry {
 	node: ProductChainNode;
 	depth: number;
@@ -100,14 +106,19 @@ export function buildProductChainTree(input: {
 		path: string,
 		depth: number
 	): TreeEntry {
+		if (depth > MAX_CHAIN_DEPTH) {
+			throw new Error(
+				`product chain exceeded max depth ${MAX_CHAIN_DEPTH} at recipe ${recipeId} — possible cycle`
+			);
+		}
 		const recipe = PRODUCTION_RECIPES[recipeId];
 		const id = path === '' ? `recipe:${recipeId}` : `recipe:${recipeId}@${path}`;
 		const childPath = path === '' ? recipeId : `${path}/${recipeId}`;
 		const buildingCount = buildingsForRecipe(input.game.industrialBuildings, recipeId).length;
 		const throughputUnits = getRecipeThroughputUnits(input.game.industrialBuildings, recipeId);
 		const { actual, health: outputHealth } = materialMetrics(outputMaterialId);
-		// Zero placed buildings outranks "no report yet", matching the old
-		// recipeHealth precedence: the player must build before reports matter.
+		// Zero placed buildings outranks "no report yet": the player must build
+		// before reports matter.
 		const health: ProductChainHealth = buildingCount === 0 ? 'no-local-capacity' : outputHealth;
 		const label = buildingTypesForRecipe(recipeId)[0]?.name ?? recipeId;
 		const node: ProductChainNode = {
@@ -268,17 +279,22 @@ export function buildStoreCategoryChainSummaries(game: GameState): ProductChainC
 
 			const tree = buildProductChainTree({ game, store: null, categoryId: category.id });
 			const rootNode = tree.nodes.find((node) => node.id === `product:${category.id}`);
+
+			if (!rootNode) {
+				throw new Error(`chain tree for supported category ${category.id} produced no root node`);
+			}
+
 			summaries.set(category.id, {
 				categoryId: category.id,
 				name: category.name,
 				tier: getCategoryTier(category.id),
-				health: rootNode?.health ?? 'no-report',
-				healthLabel: rootNode?.healthLabel ?? 'No report yet',
-				bottleneck: rootNode?.bottleneck ?? 'No graph data available.',
-				warehouseStock: rootNode?.warehouseStock ?? 0,
-				produced: rootNode?.actual.produced ?? 0,
+				health: rootNode.health,
+				healthLabel: rootNode.healthLabel,
+				bottleneck: rootNode.bottleneck,
+				warehouseStock: rootNode.warehouseStock,
+				produced: rootNode.actual.produced,
 				consumed: latestCategoryUnitsSold(game, category.id),
-				imported: (rootNode?.actual.importedInput ?? 0) + (rootNode?.actual.shopImported ?? 0)
+				imported: rootNode.actual.importedInput + rootNode.actual.shopImported
 			});
 		}
 	}

@@ -71,6 +71,9 @@ const RAW_ARCHETYPES: StoreArchetype[] = [
 				priceSensitivity: 0.45
 			},
 			{
+				// Household is intentionally unreachable: prepending bottled-water
+				// gives convenience 5 categories, but the milestone cap unlocks only
+				// 4 product categories. Tested in state.spec.ts.
 				id: 'household',
 				name: 'Household',
 				baseDemand: 30,
