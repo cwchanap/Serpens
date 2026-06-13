@@ -74,6 +74,7 @@ const BUILDINGS = {
 	'water-bottler': '/assets/game/industry/buildings/water-bottler.png',
 	'produce-packhouse': '/assets/game/industry/buildings/produce-packhouse.png',
 	'pantry-works': '/assets/game/industry/buildings/pantry-works.png',
+	'gift-workshop': '/assets/game/industry/buildings/gift-workshop.png',
 	warehouse: '/assets/game/industry/buildings/warehouse.png'
 };
 
@@ -614,6 +615,16 @@ function drawBuilding(id) {
 		drawFactoryBase(png, PALETTE.concrete, PALETTE.yellow);
 		rect(png, 34, 52, 12, 14, PALETTE.cream);
 		rect(png, 50, 52, 12, 14, PALETTE.brown);
+	}
+	if (id === 'gift-workshop') {
+		drawFactoryBase(png, PALETTE.concrete, PALETTE.pink);
+		rect(png, 33, 34, 18, 8, PALETTE.cream);
+		// gift box
+		rect(png, 36, 50, 24, 18, PALETTE.red);
+		rect(png, 45, 50, 6, 18, PALETTE.yellow);
+		rect(png, 36, 57, 24, 3, PALETTE.yellow);
+		// bow
+		circle(png, 48, 47, 4, PALETTE.yellow);
 	}
 	if (id === 'warehouse') {
 		ellipseShadow(png);
