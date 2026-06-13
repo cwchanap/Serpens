@@ -45,6 +45,7 @@ const MATERIALS = {
 	snacks: '/assets/game/industry/materials/snacks.png',
 	drinks: '/assets/game/industry/materials/drinks.png',
 	essentials: '/assets/game/industry/materials/essentials.png',
+	gifts: '/assets/game/industry/materials/gifts.png',
 	'bottled-water': '/assets/game/industry/materials/bottled-water.png',
 	produce: '/assets/game/industry/materials/produce.png',
 	pantry: '/assets/game/industry/materials/pantry.png'
@@ -462,6 +463,12 @@ function drawMaterial(id) {
 		rect(png, 33, 40, 30, 8, PALETTE.brown);
 		rect(png, 33, 54, 30, 8, PALETTE.yellow);
 		rect(png, 40, 24, 16, 8, PALETTE.metal);
+	}
+	if (id === 'gifts') {
+		rect(png, 31, 38, 34, 30, PALETTE.red);
+		rect(png, 44, 38, 8, 30, PALETTE.yellow);
+		rect(png, 31, 50, 34, 8, PALETTE.yellow);
+		triangle(png, 40, 38, 48, 24, 56, 38, PALETTE.yellow);
 	}
 	return png;
 }
