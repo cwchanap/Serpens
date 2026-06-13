@@ -3,6 +3,7 @@ import { INDUSTRIAL_BUILDING_TYPES, MATERIALS, PRODUCTION_RECIPES } from './indu
 import { getWarehouseUsed } from './industryProduction';
 import { getBuildingThroughputMultiplier } from './leveling';
 import type {
+	BuildingTier,
 	DailyMaterialMovement,
 	DailyProductReport,
 	DailyProductionReport,
@@ -87,7 +88,7 @@ export interface ProductChainGraph {
 export interface ProductChainCategorySummary {
 	categoryId: string;
 	name: string;
-	tier: 1 | 2 | 3 | null;
+	tier: BuildingTier | null;
 	health: ProductChainHealth;
 	healthLabel: string;
 	bottleneck: string;
