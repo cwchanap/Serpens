@@ -362,7 +362,7 @@ describe('tier 1 chains', () => {
 	});
 
 	it('runs each tier 1 chain at a positive daily margin', () => {
-		for (const materialId of ['bottled-water', 'produce'] as const) {
+		for (const materialId of ['bottled-water', 'produce', 'pantry'] as const) {
 			const chainTypes = getIndustrialBuildingTypesForProductChain(materialId);
 			const finalRecipe = Object.values(PRODUCTION_RECIPES).find((recipe) =>
 				recipe.outputs.some((output) => output.materialId === materialId)

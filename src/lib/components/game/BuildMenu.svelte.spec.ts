@@ -158,7 +158,7 @@ describe('BuildMenu', () => {
 	});
 
 	it('sorts industry building options by tier, then cost, then name', async () => {
-		expect.assertions(1);
+		expect.assertions(3);
 
 		render(BuildMenu, {
 			activeMapView: 'industry',
@@ -177,6 +177,8 @@ describe('BuildMenu', () => {
 		const waterBottlerIndex = labels.findIndex((label) => label.includes('Water Bottler'));
 		const snackFactoryIndex = labels.findIndex((label) => label.includes('Snack Factory'));
 
+		expect(waterBottlerIndex).toBeGreaterThanOrEqual(0);
+		expect(snackFactoryIndex).toBeGreaterThanOrEqual(0);
 		expect(waterBottlerIndex).toBeLessThan(snackFactoryIndex);
 	});
 
