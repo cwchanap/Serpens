@@ -401,14 +401,55 @@ describe('buildProductChainTree', () => {
 				'recipe:water-pumping@drink-bottling/syrup-production->recipe:syrup-production@drink-bottling'
 		);
 
-		// Zero-capacity fallback splits the 16 consumed water across all
-		// water-consuming recipes weighted by requiredPerCycle: filtration (12) +
-		// syrup (4) + bottling (10) = 26. So filtration gets 16*12/26 = 7.38 and
-		// syrup gets 16*4/26 = 2.46 (rounded to 2 decimals by roundFlowQuantity).
+		// The weight map is scoped to recipes reachable in the Drinks tree, so
+		// water is split only between filtration (12) + syrup (4) = 16, not the
+		// sibling bottled-water chain. filtration gets 16*12/16 = 12 and syrup
+		// gets 16*4/16 = 4 — the full 16 units stay inside the displayed chain.
 		expect(filtrationInput?.requiredPerCycle).toBe(12);
-		expect(filtrationInput?.actualPerDay).toBe(7.38);
+		expect(filtrationInput?.actualPerDay).toBe(12);
 		expect(syrupInput?.requiredPerCycle).toBe(4);
-		expect(syrupInput?.actualPerDay).toBe(2.46);
+		expect(syrupInput?.actualPerDay).toBe(4);
+	});
+
+	it('does not leak input flow to a sibling chain with active production', () => {
+		// Regression: when bottled-water is produced, its inferred water use
+		// would previously dilute the Drinks tree's allocation even though
+		// water-bottling is not part of the Drinks chain. With scoped weights
+		// the Drinks tree fully accounts for its own water on its own edges.
+		expect.assertions(3);
+		const game = withLatestReport(
+			createNewGame('convenience', 20260518),
+			emptyProductionReport({
+				produced: [
+					{ materialId: 'filtered-water', quantity: 10, value: 20, source: 'local' },
+					{ materialId: 'syrup', quantity: 8, value: 40, source: 'local' },
+					{ materialId: 'bottled-water', quantity: 10, value: 50, source: 'local' }
+				],
+				consumed: [{ materialId: 'water', quantity: 26, value: 26, source: 'warehouse' }],
+				warehousePulls: [{ materialId: 'water', quantity: 26, value: 26, source: 'warehouse' }]
+			})
+		);
+
+		const tree = buildProductChainTree({ game, store: game.stores[0]!, categoryId: 'drinks' });
+		const filtrationInput = tree.edges.find(
+			(edge) =>
+				edge.id ===
+				'recipe:water-pumping@drink-bottling/water-filtration->recipe:water-filtration@drink-bottling'
+		);
+		const syrupInput = tree.edges.find(
+			(edge) =>
+				edge.id ===
+				'recipe:water-pumping@drink-bottling/syrup-production->recipe:syrup-production@drink-bottling'
+		);
+
+		// inferredPerDay: filtration used 12 water/cycle * 1 cycle (10 produced /
+		// 10 output) = 12; syrup used 4 water/cycle * 1 cycle (8 produced / 8
+		// output) = 4. water-bottling's inferred 10 is excluded from the Drinks
+		// tree, so the two edges sum to 16 — the water the Drinks chain actually
+		// used — instead of being diluted across all 26 consumed units.
+		expect(filtrationInput?.actualPerDay).toBe(12);
+		expect(syrupInput?.actualPerDay).toBe(4);
+		expect((filtrationInput?.actualPerDay ?? 0) + (syrupInput?.actualPerDay ?? 0)).toBe(16);
 	});
 
 	it('does not absorb shared input movement from other finished chains', () => {

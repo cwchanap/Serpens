@@ -72,7 +72,12 @@ export function buildProductChainTree(input: {
 
 	const report = latestProductionReport(input.game);
 	const productReport = latestStoreProductReport(input.game, input.store, rootMaterialId);
-	const inputWeights = createInputWeightMap(input.game.industrialBuildings, report);
+	const reachableRecipes = collectReachableRecipeIds(rootRecipeId);
+	const inputWeights = createInputWeightMap(
+		input.game.industrialBuildings,
+		report,
+		reachableRecipes
+	);
 	const warnings: string[] = [];
 	const edges: ProductChainEdge[] = [];
 	const recipeCopies = new Map<ProductionRecipeId, ProductChainNode[]>();
@@ -341,4 +346,42 @@ function visit(entry: TreeEntry, callback: (entry: TreeEntry) => void): void {
 	for (const child of entry.children) {
 		visit(child, callback);
 	}
+}
+
+/**
+ * Walks the recipe graph from the root producer and collects every recipe
+ * reachable through its inputs. Used to scope the input-weight map so edge
+ * flow allocation only accounts for recipes that actually appear in this tree
+ * — otherwise a material shared with a sibling finished chain (e.g. water
+ * consumed by both the Drinks tree and the bottled-water chain) leaks part of
+ * its consumed flow out of the displayed edges.
+ */
+function collectReachableRecipeIds(rootRecipeId: ProductionRecipeId): Set<ProductionRecipeId> {
+	const visited = new Set<ProductionRecipeId>();
+	const stack: ProductionRecipeId[] = [rootRecipeId];
+
+	while (stack.length > 0) {
+		const recipeId = stack.pop()!;
+
+		if (visited.has(recipeId)) {
+			continue;
+		}
+
+		visited.add(recipeId);
+		const recipe = PRODUCTION_RECIPES[recipeId];
+
+		if (!recipe) {
+			continue;
+		}
+
+		for (const inputMaterial of recipe.inputs) {
+			const producerRecipeId = MATERIAL_PRODUCER_RECIPES.get(inputMaterial.materialId);
+
+			if (producerRecipeId && !visited.has(producerRecipeId)) {
+				stack.push(producerRecipeId);
+			}
+		}
+	}
+
+	return visited;
 }
