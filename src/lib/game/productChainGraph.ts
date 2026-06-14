@@ -281,12 +281,17 @@ function createSupportedFinishedMaterials(): readonly MaterialId[] {
 
 export function createInputWeightMap(
 	buildings: IndustrialBuilding[],
-	report: DailyProductionReport | null
+	report: DailyProductionReport | null,
+	allowedRecipeIds?: ReadonlySet<ProductionRecipeId>
 ): ReadonlyMap<MaterialId, readonly ChainInputWeight[]> {
 	const weights = new Map<MaterialId, ChainInputWeight[]>();
 	const inferredCycles = inferRecipeCycles(report);
 
 	for (const recipe of Object.values(PRODUCTION_RECIPES)) {
+		if (allowedRecipeIds && !allowedRecipeIds.has(recipe.id)) {
+			continue;
+		}
+
 		const throughputUnits = getRecipeThroughputUnits(buildings, recipe.id);
 
 		for (const input of recipe.inputs) {
