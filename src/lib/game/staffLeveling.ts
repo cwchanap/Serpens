@@ -27,7 +27,12 @@ export function getStaffSalaryAfterPromotion(salary: number): number {
 	return Math.round(salary * (1 + STAFF_SALARY_BONUS_PER_LEVEL));
 }
 
-/** Daily XP for an assigned member; `utilization` is customersServed / staffLimit. */
+/**
+ * Daily XP for an assigned member; `utilization` is customersServed / staffLimit.
+ * Returns an integer: base XP plus the activity bonus rounded to the nearest
+ * whole point (so fractional utilization yields base + round(bonus * utilization),
+ * not base + bonus * utilization).
+ */
 export function getStaffDailyXp(utilization: number): number {
 	const clamped = Math.max(0, Math.min(1, utilization));
 	return STAFF_BASE_XP_PER_DAY + Math.round(STAFF_ACTIVITY_XP_PER_DAY * clamped);
