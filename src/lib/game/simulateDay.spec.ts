@@ -4,7 +4,7 @@ import { generateCity } from './city';
 import { buildIndustrialBuilding } from './industryPlacement';
 import { createNewGame, updatePolicy } from './state';
 import { simulateDay } from './simulateDay';
-import type { DecisionItem, GameState } from './types';
+import type { DecisionItem, GameState, StaffMember } from './types';
 
 describe('daily simulation', () => {
 	test('advances one day deterministically for the same seed and actions', () => {
@@ -16,6 +16,29 @@ describe('daily simulation', () => {
 		expect(first.cash).toBe(second.cash);
 		expect(first.reports[0]?.netIncome).toBe(second.reports[0]?.netIncome);
 		expect(first.rngState).toBe(second.rngState);
+	});
+
+	test('assigned staff accrue xp each day while unassigned staff do not', () => {
+		expect.assertions(3);
+		const base = createNewGame('grocery', 20260615);
+		const idle: StaffMember = {
+			id: 'staff-idle',
+			name: 'Idle Worker',
+			role: 'general',
+			monthlySalary: 2_800,
+			skill: 60,
+			morale: 65,
+			assignedStoreId: null,
+			hiredOnDay: 1,
+			level: 1,
+			xp: 0
+		};
+		const result = simulateDay({ ...base, staff: [...base.staff, idle] });
+		const assigned = result.staff.filter((member) => member.assignedStoreId !== null);
+
+		expect(assigned.length).toBeGreaterThan(0);
+		expect(assigned.every((member) => member.xp > 0)).toBe(true);
+		expect(result.staff.find((member) => member.id === 'staff-idle')?.xp).toBe(0);
 	});
 
 	test('includes an empty production report in the daily report', () => {

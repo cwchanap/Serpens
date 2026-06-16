@@ -11,6 +11,7 @@ import {
 	shouldRefreshHiringMarket,
 	summarizeStoreStaffing
 } from './staffing';
+import { getStaffDailyXp, getStaffXpForLevel, MAX_STAFF_LEVEL } from './staffLeveling';
 import {
 	applyWeeklyImports,
 	calculateStockHealth,
@@ -135,6 +136,7 @@ export function simulateDay(game: GameState): GameState {
 		)
 	);
 	const storeReports = storeResults.map((result) => result.report);
+	const staffWithXp = accrueStaffXp(productionGame.staff, storeReports, profileByStoreId);
 	const nextDay = game.day + 1;
 	const revenue = sum(storeReports, 'revenue');
 	const costOfGoods = sum(storeReports, 'costOfGoods');
@@ -195,6 +197,7 @@ export function simulateDay(game: GameState): GameState {
 		stores: storeResults.map((result) => result.store),
 		warehouse: importResult.warehouse,
 		hiringCandidates,
+		staff: staffWithXp,
 		decisions: [
 			...preservedDecisions,
 			...generateDecisions({
@@ -272,6 +275,38 @@ function buildStoreOperationProfile(
 		startingStockHealth: store.stockHealth,
 		stockPressureThreshold: 25 * inventory.stockStress
 	};
+}
+
+function accrueStaffXp(
+	staff: GameState['staff'],
+	storeReports: DailyStoreReport[],
+	profileByStoreId: Map<string, StoreOperationProfile>
+): GameState['staff'] {
+	const utilizationByStoreId = new Map<string, number>();
+	for (const report of storeReports) {
+		const staffLimit = profileByStoreId.get(report.storeId)?.staffLimit ?? 0;
+		const utilization = staffLimit > 0 ? report.customersServed / staffLimit : 0;
+		utilizationByStoreId.set(report.storeId, utilization);
+	}
+
+	let changed = false;
+	const next = staff.map((member) => {
+		if (member.assignedStoreId === null || member.level >= MAX_STAFF_LEVEL) {
+			return member;
+		}
+		const utilization = utilizationByStoreId.get(member.assignedStoreId);
+		if (utilization === undefined) {
+			return member;
+		}
+		const cap = getStaffXpForLevel(member.level);
+		if (member.xp >= cap) {
+			return member;
+		}
+		changed = true;
+		return { ...member, xp: Math.min(cap, member.xp + getStaffDailyXp(utilization)) };
+	});
+
+	return changed ? next : staff;
 }
 
 function buildDailyStoreReport(
