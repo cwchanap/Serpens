@@ -28,7 +28,12 @@
 		getRetailPlacementBlockReason
 	} from '$lib/game/placementPreview';
 	import { summarizeReports } from '$lib/game/reports';
-	import { assignStaffToStore, hireCandidate, unassignStaff } from '$lib/game/staffing';
+	import {
+		assignStaffToStore,
+		hireCandidate,
+		promoteStaff,
+		unassignStaff
+	} from '$lib/game/staffing';
 	import { DEFAULT_POLICY, resolveDecision, updatePolicy, upgradeStore } from '$lib/game/state';
 	import { updateStoreProduct } from '$lib/game/stock';
 	import { simulateDay } from '$lib/game/simulateDay';
@@ -578,6 +583,12 @@
 		}
 	}
 
+	function promoteStaffMember(staffId: string) {
+		if (game) {
+			setGameAndAutosave(promoteStaff(game, staffId));
+		}
+	}
+
 	function changeStoreProduct(storeId: string, categoryId: string, patch: StoreProductPatch): void {
 		if (game) {
 			setGameAndAutosave(updateStoreProduct(game, storeId, categoryId, patch));
@@ -991,9 +1002,11 @@
 						stores={game.stores}
 						staff={game.staff}
 						hiringCandidates={game.hiringCandidates}
+						cash={game.cash}
 						onHire={hireStaff}
 						onAssign={assignStaff}
 						onUnassign={unassignStoreStaff}
+						onPromote={promoteStaffMember}
 					/>
 				{:else if activeManagementPanel.id === 'stores'}
 					<StoreOverview

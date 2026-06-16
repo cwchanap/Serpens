@@ -78,18 +78,22 @@ function renderStaffPanel(
 		stores: Store[];
 		staff: StaffMember[];
 		hiringCandidates: HiringCandidate[];
+		cash: number;
 		onHire: (candidateId: string) => void;
 		onAssign: (staffId: string, storeId: string) => void;
 		onUnassign: (staffId: string) => void;
+		onPromote: (staffId: string) => void;
 	}> = {}
 ) {
 	const props = {
 		stores: [store],
 		staff,
 		hiringCandidates,
+		cash: 100_000,
 		onHire: vi.fn(),
 		onAssign: vi.fn(),
 		onUnassign: vi.fn(),
+		onPromote: vi.fn(),
 		...overrides
 	};
 
@@ -226,5 +230,58 @@ describe('StaffPanel', () => {
 			.selectOptions('');
 
 		expect(onUnassign).toHaveBeenCalledWith('staff-alex');
+	});
+
+	it('fires onPromote for an eligible, affordable staff member', async () => {
+		expect.assertions(1);
+		const onPromote = vi.fn();
+
+		renderStaffPanel({
+			cash: 100_000,
+			onPromote,
+			staff: [
+				{
+					id: 'staff-grow',
+					name: 'Drew Stone',
+					role: 'general',
+					monthlySalary: 2_800,
+					skill: 60,
+					morale: 70,
+					assignedStoreId: null,
+					hiredOnDay: 0,
+					level: 1,
+					xp: 100
+				}
+			]
+		});
+
+		await page.getByRole('button', { name: /Promote Drew Stone/ }).click();
+
+		expect(onPromote).toHaveBeenCalledWith('staff-grow');
+	});
+
+	it('does not render a promote button for staff without enough xp', async () => {
+		expect.assertions(1);
+
+		renderStaffPanel({
+			staff: [
+				{
+					id: 'staff-new',
+					name: 'Quinn Walker',
+					role: 'general',
+					monthlySalary: 2_800,
+					skill: 60,
+					morale: 70,
+					assignedStoreId: null,
+					hiredOnDay: 0,
+					level: 1,
+					xp: 0
+				}
+			]
+		});
+
+		await expect
+			.element(page.getByRole('button', { name: /Promote Quinn Walker/ }))
+			.not.toBeInTheDocument();
 	});
 });
