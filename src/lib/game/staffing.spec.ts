@@ -11,6 +11,7 @@ import {
 	getStaffingRequirement,
 	hireCandidate,
 	isPayrollDay,
+	promoteStaff,
 	summarizeStoreStaffing,
 	unassignStaff
 } from './staffing';
@@ -251,6 +252,49 @@ describe('staffing rules', () => {
 		expect(starter.every((member) => member.level === 1)).toBe(true);
 		expect(starter.every((member) => member.xp === 0)).toBe(true);
 		expect(hired.staff[0]).toMatchObject({ level: 1, xp: 0 });
+	});
+
+	test('promotes an eligible staff member: pays fee, raises level, skill, salary, resets xp', () => {
+		expect.assertions(6);
+		const game = createGame({
+			cash: 10_000,
+			staff: [createStaff({ id: 'staff-1', level: 1, xp: 100, skill: 60, monthlySalary: 2_800 })]
+		});
+
+		const promoted = promoteStaff(game, 'staff-1');
+		const member = promoted.staff[0]!;
+
+		expect(promoted.cash).toBe(8_000); // 10_000 - 2_000 training fee
+		expect(member.level).toBe(2);
+		expect(member.xp).toBe(0);
+		expect(member.skill).toBe(68);
+		expect(member.monthlySalary).toBe(3_136);
+		expect(promoted).not.toBe(game);
+	});
+
+	test('does not promote when xp is short, level is maxed, cash is short, or id is unknown', () => {
+		expect.assertions(4);
+		const lowXp = createGame({
+			cash: 10_000,
+			staff: [createStaff({ id: 'staff-1', level: 1, xp: 99 })]
+		});
+		const maxed = createGame({
+			cash: 10_000,
+			staff: [createStaff({ id: 'staff-1', level: 5, xp: 10_000 })]
+		});
+		const broke = createGame({
+			cash: 1_000,
+			staff: [createStaff({ id: 'staff-1', level: 1, xp: 100 })]
+		});
+		const unknown = createGame({
+			cash: 10_000,
+			staff: [createStaff({ id: 'staff-1', level: 1, xp: 100 })]
+		});
+
+		expect(promoteStaff(lowXp, 'staff-1')).toBe(lowXp);
+		expect(promoteStaff(maxed, 'staff-1')).toBe(maxed);
+		expect(promoteStaff(broke, 'staff-1')).toBe(broke);
+		expect(promoteStaff(unknown, 'missing')).toBe(unknown);
 	});
 });
 
