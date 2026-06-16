@@ -1,17 +1,26 @@
 <script lang="ts">
 	import { summarizeStoreStaffing } from '$lib/game/staffing';
+	import {
+		canPromoteStaff,
+		getStaffTrainingFee,
+		getStaffXpForLevel,
+		MAX_STAFF_LEVEL
+	} from '$lib/game/staffLeveling';
 	import type { HiringCandidate, StaffMember, StaffRole, Store } from '$lib/game/types';
 
 	interface Props {
 		stores: Store[];
 		staff: StaffMember[];
 		hiringCandidates: HiringCandidate[];
+		cash: number;
 		onHire: (candidateId: string) => void;
 		onAssign: (staffId: string, storeId: string) => void;
 		onUnassign: (staffId: string) => void;
+		onPromote: (staffId: string) => void;
 	}
 
-	let { stores, staff, hiringCandidates, onHire, onAssign, onUnassign }: Props = $props();
+	let { stores, staff, hiringCandidates, cash, onHire, onAssign, onUnassign, onPromote }: Props =
+		$props();
 
 	const currency = new Intl.NumberFormat('en-US', {
 		style: 'currency',
@@ -61,6 +70,20 @@
 		}
 
 		onUnassign(member.id);
+	}
+
+	function canAffordPromotion(member: StaffMember): boolean {
+		return cash >= getStaffTrainingFee(member.level);
+	}
+
+	function promoteActionLabel(member: StaffMember): string {
+		return `Promote ${member.name}, ${roleLabel(member.role)} staff ${member.id} to level ${member.level + 1} for ${currency.format(getStaffTrainingFee(member.level))}`;
+	}
+
+	function levelProgress(member: StaffMember): string {
+		return member.level >= MAX_STAFF_LEVEL
+			? 'Max level'
+			: `XP ${member.xp}/${getStaffXpForLevel(member.level)}`;
 	}
 </script>
 
@@ -120,6 +143,10 @@
 					</div>
 					<dl class="metrics">
 						<div>
+							<dt>Level</dt>
+							<dd>{member.level}</dd>
+						</div>
+						<div>
 							<dt>Skill</dt>
 							<dd>{member.skill}</dd>
 						</div>
@@ -128,6 +155,7 @@
 							<dd>{member.morale}</dd>
 						</div>
 					</dl>
+					<p class="progress">{levelProgress(member)}</p>
 					<select
 						aria-label={assignActionLabel(member)}
 						value=""
@@ -138,6 +166,16 @@
 							<option value={store.id}>{store.name}</option>
 						{/each}
 					</select>
+					{#if canPromoteStaff(member)}
+						<button
+							type="button"
+							disabled={!canAffordPromotion(member)}
+							aria-label={promoteActionLabel(member)}
+							onclick={() => onPromote(member.id)}
+						>
+							Promote {member.name} ({currency.format(getStaffTrainingFee(member.level))})
+						</button>
+					{/if}
 				</article>
 			{:else}
 				<p class="empty">No unassigned staff</p>
@@ -164,7 +202,10 @@
 						<div class="assigned-row">
 							<div>
 								<h4>{member.name}</h4>
-								<p>{roleLabel(member.role)} · Skill {member.skill} · Morale {member.morale}</p>
+								<p>
+									{roleLabel(member.role)} · Lvl {member.level} · Skill {member.skill} · Morale {member.morale}
+								</p>
+								<p class="progress">{levelProgress(member)}</p>
 							</div>
 							<div class="assignment-actions">
 								<select
@@ -177,6 +218,16 @@
 										<option value={store.id}>{store.name}</option>
 									{/each}
 								</select>
+								{#if canPromoteStaff(member)}
+									<button
+										type="button"
+										disabled={!canAffordPromotion(member)}
+										aria-label={promoteActionLabel(member)}
+										onclick={() => onPromote(member.id)}
+									>
+										Promote {member.name} ({currency.format(getStaffTrainingFee(member.level))})
+									</button>
+								{/if}
 								<button
 									type="button"
 									class="secondary"
@@ -342,6 +393,13 @@
 		color: var(--ink-500);
 		font-family: var(--font-body);
 		font-style: italic;
+	}
+
+	.progress {
+		font-family: var(--font-mono);
+		font-variant-numeric: tabular-nums lining-nums;
+		font-size: 0.78rem;
+		color: var(--ink-500);
 	}
 
 	.assignment-actions {
