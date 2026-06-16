@@ -168,7 +168,8 @@ export function simulateDay(game: GameState): GameState {
 		cash: cashAfter,
 		scorecard,
 		warehouse: importResult.warehouse,
-		hiringCandidates
+		hiringCandidates,
+		staff: staffWithXp
 	};
 	const preservedDecisions = pruneExpiredDecisions(postDayGame);
 

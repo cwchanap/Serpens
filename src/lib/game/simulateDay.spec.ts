@@ -3,12 +3,13 @@ import { generateDecisions } from './events';
 import { generateCity } from './city';
 import { buildIndustrialBuilding } from './industryPlacement';
 import { createNewGame, updatePolicy } from './state';
+import { getStaffXpForLevel } from './staffLeveling';
 import { simulateDay } from './simulateDay';
 import type { DecisionItem, GameState, StaffMember } from './types';
 
 describe('daily simulation', () => {
 	test('advances one day deterministically for the same seed and actions', () => {
-		expect.assertions(4);
+		expect.assertions(5);
 		const first = simulateDay(createNewGame('convenience', 2026));
 		const second = simulateDay(createNewGame('convenience', 2026));
 
@@ -16,6 +17,7 @@ describe('daily simulation', () => {
 		expect(first.cash).toBe(second.cash);
 		expect(first.reports[0]?.netIncome).toBe(second.reports[0]?.netIncome);
 		expect(first.rngState).toBe(second.rngState);
+		expect(first.staff).toEqual(second.staff);
 	});
 
 	test('assigned staff accrue xp each day while unassigned staff do not', () => {
@@ -39,6 +41,24 @@ describe('daily simulation', () => {
 		expect(assigned.length).toBeGreaterThan(0);
 		expect(assigned.every((member) => member.xp > 0)).toBe(true);
 		expect(result.staff.find((member) => member.id === 'staff-idle')?.xp).toBe(0);
+	});
+
+	test('xp accrual is capped at the next-level threshold', () => {
+		expect.assertions(3);
+		const base = createNewGame('grocery', 20260615);
+		const assigned = base.staff.filter((member) => member.assignedStoreId !== null)[0]!;
+		const cap = getStaffXpForLevel(assigned.level);
+		const nearCap = { ...assigned, xp: cap - 1 };
+		const game = {
+			...base,
+			staff: base.staff.map((member) => (member.id === nearCap.id ? nearCap : member))
+		};
+		const result = simulateDay(game);
+		const updated = result.staff.find((member) => member.id === nearCap.id)!;
+
+		expect(updated.xp).toBeGreaterThanOrEqual(nearCap.xp);
+		expect(updated.xp).toBeLessThanOrEqual(cap);
+		expect(updated.xp).not.toBeGreaterThan(cap);
 	});
 
 	test('includes an empty production report in the daily report', () => {

@@ -46,6 +46,14 @@ describe('staff leveling curves', () => {
 		expect(getStaffDailyXp(-1)).toBe(STAFF_BASE_XP_PER_DAY);
 	});
 
+	test('daily xp rounds the activity bonus to an integer for fractional utilization', () => {
+		expect.assertions(2);
+		// 5 + round(5 * 0.5) = 5 + round(2.5) = 5 + 3
+		expect(getStaffDailyXp(0.5)).toBe(STAFF_BASE_XP_PER_DAY + 3);
+		// 5 + round(5 * 0.3) = 5 + round(1.5) = 5 + 2
+		expect(getStaffDailyXp(0.3)).toBe(STAFF_BASE_XP_PER_DAY + 2);
+	});
+
 	test('canPromoteStaff requires enough xp and a level below the max', () => {
 		expect.assertions(4);
 		expect(canPromoteStaff({ level: 1, xp: 100 })).toBe(true);
