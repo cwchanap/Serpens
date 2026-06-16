@@ -44,7 +44,9 @@ const staff: StaffMember[] = [
 		skill: 72,
 		morale: 68,
 		assignedStoreId: 'store-1',
-		hiredOnDay: 0
+		hiredOnDay: 0,
+		level: 1,
+		xp: 0
 	},
 	{
 		id: 'staff-blair',
@@ -54,7 +56,9 @@ const staff: StaffMember[] = [
 		skill: 61,
 		morale: 74,
 		assignedStoreId: null,
-		hiredOnDay: 2
+		hiredOnDay: 2,
+		level: 1,
+		xp: 0
 	}
 ];
 

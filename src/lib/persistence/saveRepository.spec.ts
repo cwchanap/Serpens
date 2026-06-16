@@ -1052,7 +1052,9 @@ describe('save records', () => {
 					skill: 65,
 					morale: 70,
 					assignedStoreId: 'store-1',
-					hiredOnDay: 1
+					hiredOnDay: 1,
+					level: 1,
+					xp: 0
 				}
 			]
 		});
@@ -1076,7 +1078,9 @@ describe('save records', () => {
 					skill: 65,
 					morale: 70,
 					assignedStoreId: '',
-					hiredOnDay: 1
+					hiredOnDay: 1,
+					level: 1,
+					xp: 0
 				}
 			]
 		});

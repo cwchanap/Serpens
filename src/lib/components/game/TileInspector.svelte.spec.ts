@@ -205,7 +205,9 @@ describe('TileInspector staff management', () => {
 				skill: 72,
 				morale: 68,
 				assignedStoreId: store.id,
-				hiredOnDay: 0
+				hiredOnDay: 0,
+				level: 1,
+				xp: 0
 			},
 			{
 				id: 'staff-blair',
@@ -215,7 +217,9 @@ describe('TileInspector staff management', () => {
 				skill: 61,
 				morale: 74,
 				assignedStoreId: null,
-				hiredOnDay: 2
+				hiredOnDay: 2,
+				level: 1,
+				xp: 0
 			}
 		];
 		const hiringCandidates: HiringCandidate[] = [

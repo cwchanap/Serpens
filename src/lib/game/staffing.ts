@@ -112,7 +112,9 @@ export function hireCandidate(game: GameState, candidateId: string): GameState {
 				...candidate,
 				id: `staff-${candidate.id}`,
 				assignedStoreId: null,
-				hiredOnDay: game.day
+				hiredOnDay: game.day,
+				level: 1,
+				xp: 0
 			}
 		],
 		hiringCandidates: game.hiringCandidates.filter((item) => item.id !== candidateId)
@@ -201,7 +203,9 @@ function createStarterStaffForRole(
 			...candidate,
 			id: `staff-${input.storeId}-${role}-${index + 1}`,
 			assignedStoreId: input.storeId,
-			hiredOnDay: input.day
+			hiredOnDay: input.day,
+			level: 1,
+			xp: 0
 		};
 	});
 }
