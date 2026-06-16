@@ -1167,7 +1167,9 @@ describe('save records', () => {
 		});
 
 		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
-		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow('Saved game staff[0] xp must be at least 0');
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
+			'Saved game staff[0] xp must be at least 0'
+		);
 	});
 
 	test('rejects saved hiring candidates with invalid salaries', () => {
