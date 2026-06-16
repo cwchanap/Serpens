@@ -575,4 +575,44 @@ describe('daily simulation', () => {
 		expect(understaffedReport?.staffMorale).toBeLessThan(staffedReport?.staffMorale ?? 0);
 		expect(staffedReport?.staffingCoverage).toBe(100);
 	});
+
+	test('reports reputation warning when store reputation falls below threshold', () => {
+		expect.assertions(1);
+		const game = updatePolicy(createNewGame('convenience', 41), {
+			staffing: 'minimal',
+			service: 'speed'
+		});
+		const result = simulateDay({
+			...game,
+			stores: game.stores.map((store) => ({
+				...store,
+				localDemand: 30,
+				stockHealth: 80,
+				staffCapacity: 100,
+				staffMorale: 35,
+				managerQuality: 0,
+				reputation: 30
+			}))
+		});
+
+		expect(result.reports[0]?.storeReports[0]?.warnings).toContain(
+			'Convenience Store reputation is slipping'
+		);
+	});
+
+	test('uses fallback averages when no store reports exist', () => {
+		expect.assertions(1);
+		const game = createNewGame('convenience', 1);
+		const result = simulateDay({
+			...game,
+			stores: []
+		});
+
+		expect(result.scorecard).toEqual({
+			profit: expect.any(Number),
+			customerSatisfaction: expect.any(Number),
+			staffMorale: expect.any(Number),
+			marketPosition: expect.any(Number)
+		});
+	});
 });

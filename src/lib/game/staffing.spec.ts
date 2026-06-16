@@ -296,6 +296,18 @@ describe('staffing rules', () => {
 		expect(promoteStaff(broke, 'staff-1')).toBe(broke);
 		expect(promoteStaff(unknown, 'missing')).toBe(unknown);
 	});
+
+	test('promotes staff with exact xp threshold and deducts training fee', () => {
+		expect.assertions(1);
+		const game = createGame({
+			cash: 7_000,
+			staff: [createStaff({ id: 'staff-1', level: 2, xp: 200, skill: 65, monthlySalary: 3_000 })]
+		});
+
+		const promoted = promoteStaff(game, 'staff-1');
+
+		expect(promoted.cash).toBe(3_000); // 7_000 - 4_000 training fee for level 2
+	});
 });
 
 function createGame(overrides: Partial<GameState> = {}): GameState {
