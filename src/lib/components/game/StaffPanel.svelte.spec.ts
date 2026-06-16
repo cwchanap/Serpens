@@ -284,4 +284,76 @@ describe('StaffPanel', () => {
 			.element(page.getByRole('button', { name: /Promote Quinn Walker/ }))
 			.not.toBeInTheDocument();
 	});
+
+	it('disables promote button when staff cannot afford promotion', async () => {
+		expect.assertions(2);
+
+		renderStaffPanel({
+			cash: 100,
+			staff: [
+				{
+					id: 'staff-broke',
+					name: 'Jordan Brooks',
+					role: 'general',
+					monthlySalary: 2_800,
+					skill: 60,
+					morale: 70,
+					assignedStoreId: null,
+					hiredOnDay: 0,
+					level: 1,
+					xp: 100
+				}
+			]
+		});
+
+		const promoteButton = page.getByRole('button', { name: /Promote Jordan Brooks/ });
+		await expect.element(promoteButton).toBeVisible();
+		await expect.element(promoteButton).toBeDisabled();
+	});
+
+	it('shows max level text for staff at maximum level', async () => {
+		expect.assertions(1);
+
+		renderStaffPanel({
+			staff: [
+				{
+					id: 'staff-maxed',
+					name: 'Morgan Singh',
+					role: 'general',
+					monthlySalary: 2_800,
+					skill: 60,
+					morale: 70,
+					assignedStoreId: null,
+					hiredOnDay: 0,
+					level: 5,
+					xp: 500
+				}
+			]
+		});
+
+		await expect.element(page.getByText('Max level')).toBeVisible();
+	});
+
+	it('shows xp progress for staff below maximum level', async () => {
+		expect.assertions(1);
+
+		renderStaffPanel({
+			staff: [
+				{
+					id: 'staff-growing',
+					name: 'Finley Kim',
+					role: 'general',
+					monthlySalary: 2_800,
+					skill: 60,
+					morale: 70,
+					assignedStoreId: null,
+					hiredOnDay: 0,
+					level: 1,
+					xp: 50
+				}
+			]
+		});
+
+		await expect.element(page.getByText(/XP \d+\/\d+/)).toBeVisible();
+	});
 });

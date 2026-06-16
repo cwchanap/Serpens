@@ -755,6 +755,45 @@ describe('save records', () => {
 		);
 	});
 
+	test('rejects duplicate product category ids in store products', () => {
+		expect.assertions(2);
+		const game = createGame({
+			stores: [
+				{
+					...createGame().stores[0]!,
+					products: [
+						{ categoryId: 'apparel', stock: 10, targetStock: 20, sellingPrice: 38, reorderThreshold: 5 },
+						{ categoryId: 'apparel', stock: 15, targetStock: 25, sellingPrice: 40, reorderThreshold: 5 }
+					]
+				}
+			]
+		});
+		const snapshot = createSnapshotWithGame(game);
+
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
+			'Saved game stores[0] products[1] categoryId must be unique for archetype boutique'
+		);
+	});
+
+	test('rejects empty product arrays in store products', () => {
+		expect.assertions(2);
+		const game = createGame({
+			stores: [
+				{
+					...createGame().stores[0]!,
+					products: []
+				}
+			]
+		});
+		const snapshot = createSnapshotWithGame(game);
+
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
+			'Saved game stores[0] products must have at least one category'
+		);
+	});
+
 	test('rejects industry city tiles with unknown resource ids', () => {
 		expect.assertions(2);
 		const game = createGame({
