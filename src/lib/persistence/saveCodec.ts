@@ -6,6 +6,7 @@ import {
 	MAX_STORE_LEVEL,
 	MAX_BUILDING_LEVEL
 } from '$lib/game/leveling';
+import { MAX_STAFF_LEVEL } from '$lib/game/staffLeveling';
 import { clampScore } from '$lib/game/reports';
 import type { GameState, WorldCityId } from '$lib/game/types';
 import {
@@ -451,6 +452,17 @@ function normalizeSavedBuildingLevel(building: unknown): unknown {
 	return record.level === undefined ? { ...record, level: 1 } : record;
 }
 
+function normalizeSavedStaffLevel(member: unknown): unknown {
+	if (typeof member !== 'object' || member === null) {
+		return member;
+	}
+
+	const record = member as Record<string, unknown>;
+	const level = record.level === undefined ? 1 : record.level;
+	const xp = record.xp === undefined ? 0 : record.xp;
+	return { ...record, level, xp };
+}
+
 function normalizeSavedGame(game: Record<string, unknown>): GameState {
 	const normalizedWorld =
 		game.world === undefined
@@ -467,10 +479,14 @@ function normalizeSavedGame(game: Record<string, unknown>): GameState {
 	const normalizedBuildings = Array.isArray(game.industrialBuildings)
 		? game.industrialBuildings.map((building) => normalizeSavedBuildingLevel(building))
 		: game.industrialBuildings;
+	const normalizedStaff = Array.isArray(game.staff)
+		? game.staff.map((member) => normalizeSavedStaffLevel(member))
+		: game.staff;
 
 	return {
 		...game,
 		stores: normalizedStores,
+		staff: normalizedStaff,
 		industrialBuildings: normalizedBuildings,
 		world: normalizedWorld,
 		storeCap: normalizedStoreCap
@@ -748,6 +764,14 @@ function validateSavedStaffMember(value: unknown, label: string): void {
 		requireString(member.assignedStoreId, `${label} assignedStoreId`);
 	}
 	requireNumber(member.hiredOnDay, `${label} hiredOnDay`);
+	const level = requireNumber(member.level, `${label} level`);
+	if (!Number.isInteger(level) || level < 1 || level > MAX_STAFF_LEVEL) {
+		throw new SaveDataError(`${label} level must be an integer between 1 and ${MAX_STAFF_LEVEL}`);
+	}
+	const xp = requireNumber(member.xp, `${label} xp`);
+	if (xp < 0) {
+		throw new SaveDataError(`${label} xp must be at least 0`);
+	}
 }
 
 function validateSavedDecision(value: unknown, label: string): void {

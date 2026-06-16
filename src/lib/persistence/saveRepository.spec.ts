@@ -1091,6 +1091,85 @@ describe('save records', () => {
 		);
 	});
 
+	test('migrates legacy staff without level/xp to level 1 and xp 0', () => {
+		expect.assertions(2);
+		const game = createNewGame('convenience', 20260615);
+		const legacyStaff = {
+			id: 'staff-legacy',
+			name: 'Avery Chen',
+			role: 'general' as const,
+			monthlySalary: 2_800,
+			skill: 60,
+			morale: 65,
+			assignedStoreId: null,
+			hiredOnDay: 1
+		};
+		const record = createSaveRecord(
+			{ ...game, staff: [legacyStaff as GameState['staff'][number]] },
+			{
+				id: 'manual-legacy-staff',
+				name: 'Legacy Staff Save',
+				kind: 'manual',
+				updatedAt: new Date('2026-06-15T12:00:00.000Z')
+			}
+		);
+
+		const migrated = validateSaveRecord(record).game.staff[0]!;
+
+		expect(migrated.level).toBe(1);
+		expect(migrated.xp).toBe(0);
+	});
+
+	test('rejects saved staff with an out-of-range level', () => {
+		expect.assertions(2);
+		const snapshot = createSnapshotWithGame({
+			...createGame(),
+			staff: [
+				{
+					id: 'staff-1',
+					name: 'Avery Chen',
+					role: 'general',
+					monthlySalary: 2_800,
+					skill: 60,
+					morale: 65,
+					assignedStoreId: 'store-1',
+					hiredOnDay: 1,
+					level: 9,
+					xp: 0
+				}
+			]
+		});
+
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
+			'Saved game staff[0] level must be an integer between 1 and 5'
+		);
+	});
+
+	test('rejects saved staff with negative xp', () => {
+		expect.assertions(2);
+		const snapshot = createSnapshotWithGame({
+			...createGame(),
+			staff: [
+				{
+					id: 'staff-1',
+					name: 'Avery Chen',
+					role: 'general',
+					monthlySalary: 2_800,
+					skill: 60,
+					morale: 65,
+					assignedStoreId: 'store-1',
+					hiredOnDay: 1,
+					level: 1,
+					xp: -5
+				}
+			]
+		});
+
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow('Saved game staff[0] xp must be at least 0');
+	});
+
 	test('rejects saved hiring candidates with invalid salaries', () => {
 		expect.assertions(2);
 		const snapshot = createSnapshotWithGame({
