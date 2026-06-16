@@ -1,5 +1,12 @@
 import { clampScore } from './reports';
 import { getUnlockedCategoryCount } from './leveling';
+import {
+	canPromoteStaff,
+	getStaffSalaryAfterPromotion,
+	getStaffSkillAfterPromotion,
+	getStaffTrainingFee,
+	getStaffXpForLevel
+} from './staffLeveling';
 import { randomInt, type Rng } from './rng';
 import type {
 	ArchetypeId,
@@ -118,6 +125,36 @@ export function hireCandidate(game: GameState, candidateId: string): GameState {
 			}
 		],
 		hiringCandidates: game.hiringCandidates.filter((item) => item.id !== candidateId)
+	};
+}
+
+export function promoteStaff(game: GameState, staffId: string): GameState {
+	const member = game.staff.find((item) => item.id === staffId);
+
+	if (!member || !canPromoteStaff(member)) {
+		return game;
+	}
+
+	const fee = getStaffTrainingFee(member.level);
+
+	if (game.cash < fee) {
+		return game;
+	}
+
+	return {
+		...game,
+		cash: game.cash - fee,
+		staff: game.staff.map((item) =>
+			item.id === staffId
+				? {
+						...item,
+						level: item.level + 1,
+						xp: item.xp - getStaffXpForLevel(item.level),
+						skill: getStaffSkillAfterPromotion(item.skill),
+						monthlySalary: getStaffSalaryAfterPromotion(item.monthlySalary)
+					}
+				: item
+		)
 	};
 }
 
