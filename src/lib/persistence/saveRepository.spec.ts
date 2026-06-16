@@ -762,8 +762,20 @@ describe('save records', () => {
 				{
 					...createGame().stores[0]!,
 					products: [
-						{ categoryId: 'apparel', stock: 10, targetStock: 20, sellingPrice: 38, reorderThreshold: 5 },
-						{ categoryId: 'apparel', stock: 15, targetStock: 25, sellingPrice: 40, reorderThreshold: 5 }
+						{
+							categoryId: 'apparel',
+							stock: 10,
+							targetStock: 20,
+							sellingPrice: 38,
+							reorderThreshold: 5
+						},
+						{
+							categoryId: 'apparel',
+							stock: 15,
+							targetStock: 25,
+							sellingPrice: 40,
+							reorderThreshold: 5
+						}
 					]
 				}
 			]
