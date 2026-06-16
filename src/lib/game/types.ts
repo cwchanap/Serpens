@@ -357,6 +357,8 @@ export interface HiringCandidate {
 export interface StaffMember extends HiringCandidate {
 	assignedStoreId: string | null;
 	hiredOnDay: number;
+	level: number;
+	xp: number;
 }
 
 export interface CityTile {

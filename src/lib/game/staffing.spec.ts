@@ -225,6 +225,33 @@ describe('staffing rules', () => {
 		expect(getStaffingRequirement('convenience', 7)).toEqual({ manager: 1, general: 3 });
 		expect(getStaffingRequirement('convenience', 10)).toEqual({ manager: 1, general: 4 });
 	});
+
+	test('starter staff and hired candidates begin at level 1 with zero xp', () => {
+		expect.assertions(3);
+		const starter = generateStarterStaffForStore({
+			storeId: 'store-1',
+			archetypeId: 'convenience',
+			day: 1,
+			rng: createRng(7)
+		});
+		const game = createGame({
+			hiringCandidates: [
+				{
+					id: 'candidate-4-1',
+					name: 'Avery Chen',
+					role: 'general',
+					monthlySalary: 2_900,
+					skill: 64,
+					morale: 71
+				}
+			]
+		});
+		const hired = hireCandidate(game, 'candidate-4-1');
+
+		expect(starter.every((member) => member.level === 1)).toBe(true);
+		expect(starter.every((member) => member.xp === 0)).toBe(true);
+		expect(hired.staff[0]).toMatchObject({ level: 1, xp: 0 });
+	});
 });
 
 function createGame(overrides: Partial<GameState> = {}): GameState {
@@ -314,6 +341,8 @@ function createStaff(overrides: Partial<StaffMember> = {}): StaffMember {
 		morale: 65,
 		assignedStoreId: 'store-1',
 		hiredOnDay: 1,
+		level: 1,
+		xp: 0,
 		...overrides
 	};
 }
