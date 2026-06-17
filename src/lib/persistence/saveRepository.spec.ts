@@ -1239,7 +1239,7 @@ describe('save records', () => {
 					status: 'produced',
 					lastProduction: [
 						{
-							materialId: 'unknown-material',
+							materialId: 'grain',
 							quantity: 10,
 							value: 50,
 							source: 'local'
@@ -1262,7 +1262,7 @@ describe('save records', () => {
 			productionReport: createDailyProductionReport({
 				produced: [
 					{
-						materialId: 'unknown-material',
+						materialId: 'grain',
 						quantity: 10,
 						value: 50,
 						source: 'local'
