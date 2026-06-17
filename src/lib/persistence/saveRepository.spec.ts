@@ -1224,7 +1224,7 @@ describe('save records', () => {
 	});
 
 	test('rejects saved industrial building with invalid lastProduction material movement', () => {
-		expect.assertions(1);
+		expect.assertions(2);
 		const snapshot = createSnapshotWithGame({
 			...createGame(),
 			industrialBuildings: [
@@ -1239,7 +1239,7 @@ describe('save records', () => {
 					status: 'produced',
 					lastProduction: [
 						{
-							materialId: 'grain',
+							materialId: 'invalid-material' as MaterialId,
 							quantity: 10,
 							value: 50,
 							source: 'local'
@@ -1253,16 +1253,19 @@ describe('save records', () => {
 		});
 
 		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
+			'Saved game industrialBuildings[0] lastProduction[0] materialId invalid-material must be a known material'
+		);
 	});
 
 	test('rejects saved production report with invalid material movement', () => {
-		expect.assertions(1);
+		expect.assertions(2);
 		const game = createGame();
 		const report = createDailyReport({
 			productionReport: createDailyProductionReport({
 				produced: [
 					{
-						materialId: 'grain',
+						materialId: 'invalid-material' as MaterialId,
 						quantity: 10,
 						value: 50,
 						source: 'local'
@@ -1273,6 +1276,9 @@ describe('save records', () => {
 		const snapshot = createSnapshotWithGame({ ...game, reports: [report] });
 
 		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
+			'Saved game reports[0] productionReport produced[0] materialId invalid-material must be a known material'
+		);
 	});
 
 	test('rejects saved hiring candidates with invalid salaries', () => {
