@@ -1223,6 +1223,58 @@ describe('save records', () => {
 		);
 	});
 
+	test('rejects saved industrial building with invalid lastProduction material movement', () => {
+		expect.assertions(1);
+		const snapshot = createSnapshotWithGame({
+			...createGame(),
+			industrialBuildings: [
+				{
+					id: 'building-1',
+					typeId: 'snack-factory',
+					cityId: 'industry-city',
+					tileId: 'industry-city-1-1',
+					mapX: 1,
+					mapY: 1,
+					level: 1,
+					status: 'produced',
+					lastProduction: [
+						{
+							materialId: 'unknown-material',
+							quantity: 10,
+							value: 50,
+							source: 'local'
+						}
+					],
+					producedTotal: 100,
+					importedInputTotal: 0,
+					blockedDays: 0
+				}
+			]
+		});
+
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
+	});
+
+	test('rejects saved production report with invalid material movement', () => {
+		expect.assertions(1);
+		const game = createGame();
+		const report = createDailyReport({
+			productionReport: createDailyProductionReport({
+				produced: [
+					{
+						materialId: 'unknown-material',
+						quantity: 10,
+						value: 50,
+						source: 'local'
+					}
+				]
+			})
+		});
+		const snapshot = createSnapshotWithGame({ ...game, reports: [report] });
+
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
+	});
+
 	test('rejects saved hiring candidates with invalid salaries', () => {
 		expect.assertions(2);
 		const snapshot = createSnapshotWithGame({
