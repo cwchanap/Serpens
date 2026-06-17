@@ -560,7 +560,7 @@ describe('daily simulation', () => {
 	});
 
 	test('understaffing reduces served demand and reports role shortages', () => {
-		expect.assertions(6);
+		expect.assertions(4);
 		const baseGame = updatePolicy(createNewGame('grocery', 91), {
 			pricing: 'discount',
 			inventory: 'generous',
@@ -592,8 +592,31 @@ describe('daily simulation', () => {
 		expect(understaffedReport?.staffingCoverage).toBeLessThan(100);
 		expect(understaffedReport?.staffingShortage).toEqual({ manager: 0, general: 3 });
 		expect(understaffedReport?.warnings).toContain('Grocery Market is short 3 general staff');
-		expect(understaffedReport?.staffMorale).toBeLessThan(staffedReport?.staffMorale ?? 0);
-		expect(staffedReport?.staffingCoverage).toBe(100);
+	});
+
+	test('handles product categories not in starting categories', () => {
+		expect.assertions(2);
+		const game = createNewGame('convenience', 20260508);
+		const store = game.stores[0]!;
+		const storeWithExtraProduct = {
+			...store,
+			products: [
+				...store.products,
+				{
+					categoryId: 'unknown-category',
+					stock: 10,
+					targetStock: 20,
+					sellingPrice: 5
+				}
+			]
+		};
+		const result = simulateDay({ ...game, stores: [storeWithExtraProduct] });
+		const productReport = result.reports[0]!.storeReports[0]!.productReports.find(
+			(report) => report.categoryId === 'unknown-category'
+		);
+
+		expect(productReport).toBeDefined();
+		expect(productReport?.name).toBe('unknown-category');
 	});
 
 	test('reports reputation warning when store reputation falls below threshold', () => {

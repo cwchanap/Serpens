@@ -356,4 +356,32 @@ describe('StaffPanel', () => {
 
 		await expect.element(page.getByText(/XP \d+\/\d+/)).toBeVisible();
 	});
+
+	it('fires onPromote for an eligible, affordable assigned staff member', async () => {
+		expect.assertions(1);
+		const onPromote = vi.fn();
+
+		renderStaffPanel({
+			cash: 100_000,
+			onPromote,
+			staff: [
+				{
+					id: 'staff-assigned',
+					name: 'Taylor Morgan',
+					role: 'general',
+					monthlySalary: 2_800,
+					skill: 60,
+					morale: 70,
+					assignedStoreId: 'store-1',
+					hiredOnDay: 0,
+					level: 1,
+					xp: 100
+				}
+			]
+		});
+
+		await page.getByRole('button', { name: /Promote Taylor Morgan/ }).click();
+
+		expect(onPromote).toHaveBeenCalledWith('staff-assigned');
+	});
 });
