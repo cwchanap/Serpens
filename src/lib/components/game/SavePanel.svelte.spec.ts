@@ -110,4 +110,13 @@ describe('SavePanel', () => {
 		await expect.element(page.getByRole('button', { name: 'Resume' })).toBeDisabled();
 		await expect.element(page.getByRole('button', { name: 'Save slot' })).toBeDisabled();
 	});
+
+	it('renders status and error messages when provided', async () => {
+		expect.assertions(2);
+
+		renderPanel({ status: 'Saved successfully.', error: 'Save failed.' });
+
+		await expect.element(page.getByRole('status')).toHaveTextContent('Saved successfully.');
+		await expect.element(page.getByRole('alert')).toHaveTextContent('Save failed.');
+	});
 });

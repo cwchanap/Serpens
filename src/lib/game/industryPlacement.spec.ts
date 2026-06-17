@@ -209,6 +209,42 @@ describe('industrial placement', () => {
 		expect(upgradeBuilding(game, 'building-does-not-exist')).toBe(game);
 	});
 
+	test('reports unknown industrial tile and unknown industrial building type block reasons', () => {
+		expect.assertions(2);
+		const game = { ...createNewGame('convenience', 20260512), cash: 100_000 };
+		const city = game.industryCities[0]!;
+		const grainTile = getIndustryTilesByResource(city, 'grain-field')[0]!;
+
+		expect(getIndustrialPlacementBlockReason(game, 'missing-tile', 'warehouse')).toBe(
+			'Unknown industrial tile'
+		);
+		expect(
+			getIndustrialPlacementBlockReason(
+				game,
+				grainTile.id,
+				'missing-type' as IndustrialBuildingTypeId
+			)
+		).toBe('Unknown industrial building type');
+	});
+
+	test('deduplicates identical same-day construction failures into a single decision', () => {
+		expect.assertions(2);
+		const game = { ...createNewGame('convenience', 20260512), cash: 0 };
+		const city = game.industryCities[0]!;
+		const grainTile = getIndustryTilesByResource(city, 'grain-field')[0]!;
+		const first = buildIndustrialBuilding(game, {
+			tileId: grainTile.id,
+			buildingTypeId: 'grain-farm'
+		});
+		const duplicate = buildIndustrialBuilding(first, {
+			tileId: grainTile.id,
+			buildingTypeId: 'grain-farm'
+		});
+
+		expect(duplicate).toBe(first);
+		expect(duplicate.decisions).toHaveLength(1);
+	});
+
 	test('upgradeBuilding is a no-op when the building typeId is unknown', () => {
 		expect.assertions(1);
 		const base = { ...createNewGame('convenience', 20260512), cash: 1_000_000 };

@@ -464,6 +464,57 @@ describe('game state', () => {
 		expect(baselineStore.staffingShortage.general).toBe(0);
 	});
 
+	test('openStore appends an expansion-delayed decision when cash is below the setup cost', () => {
+		expect.assertions(3);
+		const game = { ...createNewGame('electronics', 44), cash: 0 };
+		const result = openStore(game, {
+			name: 'Mall Kiosk',
+			archetypeId: 'electronics',
+			location: 'West Mall'
+		});
+
+		expect(result.stores).toHaveLength(1);
+		expect(result.decisions.at(-1)?.id).toBe('expansion-cash-blocked-1');
+		expect(result.decisions.at(-1)?.title).toBe('Expansion delayed');
+	});
+
+	test('resolveDecision returns the game unchanged when the decision id is unknown', () => {
+		expect.assertions(2);
+		const game = createNewGame('grocery', 55);
+
+		const resolved = resolveDecision(game, 'nonexistent-id', 'whatever');
+
+		expect(resolved).toBe(game);
+		expect(resolved.decisions).toBe(game.decisions);
+	});
+
+	test('openStore reports no location when the active city is missing', () => {
+		expect.assertions(2);
+		const game = { ...createNewGame('electronics', 44), activeCityId: 'missing-city' };
+		const result = openStore(game, {
+			name: 'Mall Kiosk',
+			archetypeId: 'electronics',
+			location: 'West Mall'
+		});
+
+		expect(result.stores).toHaveLength(1);
+		expect(result.decisions.at(-1)?.id).toBe('location-unavailable-1');
+	});
+
+	test('openStore reports no location when the requested tile id is unknown', () => {
+		expect.assertions(2);
+		const game = createNewGame('electronics', 44);
+		const result = openStore(game, {
+			name: 'Mall Kiosk',
+			archetypeId: 'electronics',
+			location: 'West Mall',
+			tileId: 'does-not-exist'
+		});
+
+		expect(result.stores).toHaveLength(1);
+		expect(result.decisions.at(-1)?.id).toBe('location-unavailable-1');
+	});
+
 	describe('milestone category unlock with reordered lineups', () => {
 		test('adds the first starting category the store does not already stock', () => {
 			expect.assertions(2);

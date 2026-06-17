@@ -99,4 +99,22 @@ describe('StoreOverview', () => {
 		await expect.element(productSources.getByText('3 warehouse')).toBeVisible();
 		await expect.element(productSources.getByText('2 imported')).toBeVisible();
 	});
+
+	it('lists store warnings when the latest report includes them', async () => {
+		expect.assertions(2);
+
+		const reportWithWarnings: DailyStoreReport = { ...staleReport, warnings: ['Low stock alert'] };
+
+		render(StoreOverview, {
+			stores: [store],
+			staff: [],
+			latestReports: [reportWithWarnings]
+		});
+
+		const storeRegion = page.getByRole('region', { name: 'Stores' });
+		const warningsList = storeRegion.getByRole('list', { name: 'Founding Store warnings' });
+
+		await expect.element(warningsList.getByText('Low stock alert')).toBeVisible();
+		await expect.element(storeRegion.getByText('No current warnings.')).not.toBeInTheDocument();
+	});
 });

@@ -99,4 +99,29 @@ describe('ReportsPanel', () => {
 		await expect.element(reportsRegion.getByText('Imports', { exact: true })).toBeVisible();
 		await expect.element(reportsRegion.getByText('$456')).toBeVisible();
 	});
+
+	it('lists the latest daily warnings when present', async () => {
+		expect.assertions(1);
+
+		render(ReportsPanel, {
+			summary: {
+				...summary,
+				latest: { ...summary.latest!, warnings: ['Supply chain shortage', 'Staffing gap'] }
+			}
+		});
+
+		const warningsList = page.getByRole('list', { name: 'Daily warnings' });
+
+		await expect.element(warningsList.getByText('Supply chain shortage')).toBeVisible();
+	});
+
+	it('shows the empty state when there is no latest report', async () => {
+		expect.assertions(1);
+
+		render(ReportsPanel, { summary: { ...summary, latest: undefined } });
+
+		await expect
+			.element(page.getByText('No reports yet. Advance the first day to generate results.'))
+			.toBeVisible();
+	});
 });
