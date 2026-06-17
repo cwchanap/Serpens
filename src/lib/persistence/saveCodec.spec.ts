@@ -262,7 +262,7 @@ describe('saveCodec', () => {
 		);
 	});
 
-	test('passes non-object store, building, and staff entries through normalization unchanged', () => {
+	test('rejects non-object store, building, and staff entries during validation', () => {
 		expect.assertions(2);
 		const game = createGame({
 			stores: [null as unknown as GameState['stores'][number]],
