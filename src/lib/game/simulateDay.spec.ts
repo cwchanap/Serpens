@@ -605,6 +605,7 @@ describe('daily simulation', () => {
 				{
 					categoryId: 'unknown-category',
 					stock: 10,
+					reorderThreshold: 5,
 					targetStock: 20,
 					sellingPrice: 5
 				}
