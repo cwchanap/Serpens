@@ -1,11 +1,18 @@
 import { describe, expect, test } from 'vitest';
 import {
 	aggregateProductReports,
+	allocateInputMovement,
+	bottleneckText,
 	buildWarehouseFlowGraph,
+	createInputWeightMap,
+	emptyActualMetrics,
 	getSupportedStoreChainCategories,
+	healthLabel,
+	materialHealth,
 	SUPPORTED_FINISHED_MATERIALS
 } from './productChainGraph';
 import { MATERIALS, PRODUCTION_RECIPES } from './industry';
+import { buildIndustrialBuilding } from './industryPlacement';
 import { addWarehouseMaterial } from './industryProduction';
 import { createNewGame } from './state';
 import type {
@@ -211,5 +218,152 @@ describe('warehouse flow graph', () => {
 		expect(snacksInEdge?.label).toBe('8/day in');
 		expect(snacksOutEdge?.actualPerDay).toBe(6);
 		expect(snacksOutEdge?.label).toBe('6/day out');
+	});
+
+	test('returns an empty graph before any warehouse stock or daily report exists', () => {
+		expect.assertions(3);
+		const game = createNewGame('convenience', 20260508);
+		const graph = buildWarehouseFlowGraph(game);
+
+		expect(graph.nodes).toEqual([]);
+		expect(graph.edges).toEqual([]);
+		expect(graph.emptyReason).toBe('No warehouse stock or daily report yet.');
+	});
+
+	test('counts placed warehouse buildings in the warehouse node capacity', () => {
+		expect.assertions(2);
+		let game = { ...createNewGame('convenience', 20260508), cash: 100_000 };
+		const warehouseTile = game.industryCities[0]!.tiles.find(
+			(tile) => tile.terrain === 'industrial' && !tile.locked
+		)!;
+		game = buildIndustrialBuilding(game, {
+			tileId: warehouseTile.id,
+			buildingTypeId: 'warehouse'
+		});
+		game = { ...game, warehouse: addWarehouseMaterial(game.warehouse, 'snacks', 5) };
+
+		const graph = buildWarehouseFlowGraph(game);
+		const warehouse = graph.nodes.find((node) => node.id === 'warehouse');
+
+		expect(game.industrialBuildings.some((building) => building.typeId === 'warehouse')).toBe(true);
+		expect(warehouse?.capacity.buildingCount).toBe(1);
+	});
+});
+
+describe('healthLabel', () => {
+	test('returns a human-readable label for each chain health state', () => {
+		expect.assertions(5);
+		expect(healthLabel('healthy')).toBe('Healthy');
+		expect(healthLabel('watch')).toBe('Watch');
+		expect(healthLabel('shortage')).toBe('Shortage');
+		expect(healthLabel('no-local-capacity')).toBe('No local capacity');
+		expect(healthLabel('no-report')).toBe('No report yet');
+	});
+});
+
+describe('bottleneckText', () => {
+	test('describes the bottleneck for each chain health state', () => {
+		expect.assertions(5);
+		expect(bottleneckText({ kind: 'material', health: 'healthy', label: 'Snacks' })).toBe(
+			'Snacks is flowing locally.'
+		);
+		expect(bottleneckText({ kind: 'material', health: 'watch', label: 'Flour' })).toBe(
+			'Flour stock is below latest downstream use.'
+		);
+		expect(bottleneckText({ kind: 'material', health: 'shortage', label: 'Drinks' })).toBe(
+			'Drinks relied on imports or had a local shortage today.'
+		);
+		expect(bottleneckText({ kind: 'material', health: 'no-local-capacity', label: 'Grain' })).toBe(
+			'Grain has no placed local producer.'
+		);
+		expect(bottleneckText({ kind: 'material', health: 'no-report', label: 'Salt' })).toBe(
+			'Salt has no latest daily flow yet.'
+		);
+	});
+});
+
+describe('materialHealth', () => {
+	test('flags a watch state when warehouse stock is below latest consumption', () => {
+		expect.assertions(1);
+		expect(
+			materialHealth({
+				hasReport: true,
+				actual: { ...emptyActualMetrics(), consumed: 10 },
+				warehouseStock: 3,
+				producerBuildingCount: 0,
+				hasProducerRecipe: false
+			})
+		).toBe('watch');
+	});
+
+	test('defaults to healthy when stock covers consumption and no imports occurred', () => {
+		expect.assertions(1);
+		expect(
+			materialHealth({
+				hasReport: true,
+				actual: { ...emptyActualMetrics(), consumed: 5 },
+				warehouseStock: 12,
+				producerBuildingCount: 0,
+				hasProducerRecipe: false
+			})
+		).toBe('healthy');
+	});
+
+	test('returns shortage when demand is missed or inputs are imported', () => {
+		expect.assertions(2);
+		expect(
+			materialHealth({
+				hasReport: true,
+				actual: { ...emptyActualMetrics(), demandMissed: 4 },
+				warehouseStock: 0,
+				producerBuildingCount: 1,
+				hasProducerRecipe: true
+			})
+		).toBe('shortage');
+		expect(
+			materialHealth({
+				hasReport: true,
+				actual: { ...emptyActualMetrics(), importedInput: 3 },
+				warehouseStock: 2,
+				producerBuildingCount: 1,
+				hasProducerRecipe: true
+			})
+		).toBe('shortage');
+	});
+
+	test('returns no-local-capacity when a producer recipe has no placed buildings', () => {
+		expect.assertions(1);
+		expect(
+			materialHealth({
+				hasReport: true,
+				actual: { ...emptyActualMetrics(), consumed: 0 },
+				warehouseStock: 0,
+				producerBuildingCount: 0,
+				hasProducerRecipe: true
+			})
+		).toBe('no-local-capacity');
+	});
+
+	test('returns no-report when no daily report is available', () => {
+		expect.assertions(1);
+		expect(
+			materialHealth({
+				hasReport: false,
+				actual: emptyActualMetrics(),
+				warehouseStock: 0,
+				producerBuildingCount: 0,
+				hasProducerRecipe: false
+			})
+		).toBe('no-report');
+	});
+});
+
+describe('allocateInputMovement', () => {
+	test('returns zero for non-recipe node ids and recipe ids with no matching weight', () => {
+		expect.assertions(2);
+		const weights = createInputWeightMap([], null);
+
+		expect(allocateInputMovement(weights, 'grain', 'warehouse', 10)).toBe(0);
+		expect(allocateInputMovement(weights, 'grain', 'recipe:snack-production', 10)).toBe(0);
 	});
 });

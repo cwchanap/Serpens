@@ -223,6 +223,72 @@ describe('retail placement preview', () => {
 			`Requires ${cheapestElectronicsSetupCost.toLocaleString('en-US')} cash`
 		);
 	});
+
+	test('reports occupied-location disabled reason when every buildable tile is taken but storeCap remains', () => {
+		expect.assertions(2);
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 20,
+			height: 20,
+			seed: 20260503
+		});
+		const buildableTiles = city.tiles.filter((tile) => !tile.locked && tile.feature === null);
+		const game = createFoundingGameAtTile({
+			archetypeId: 'convenience',
+			city,
+			tileId: buildableTiles[0]!.id,
+			seed: 20260503
+		});
+		const filledGame = {
+			...game,
+			cash: 10_000_000,
+			storeCap: buildableTiles.length + 1,
+			stores: buildableTiles.map((tile, index) => ({
+				...game.stores[0]!,
+				id: `store-${index + 1}`,
+				tileId: tile.id
+			}))
+		};
+
+		const options = getRetailBuildMenuOptions({ game: filledGame, city });
+
+		expect(options.map((option) => option.validTileCount)).toEqual([0, 0, 0, 0]);
+		expect(options.map((option) => option.disabledReason)).toEqual([
+			'Occupied location',
+			'Occupied location',
+			'Occupied location',
+			'Occupied location'
+		]);
+	});
+
+	test('falls back to no-valid-tiles reason when the city has no tiles', () => {
+		expect.assertions(2);
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 20,
+			height: 20,
+			seed: 20260503
+		});
+		const game = createFoundingGameAtTile({
+			archetypeId: 'convenience',
+			city,
+			tileId: city.tiles.find((tile) => !tile.locked && tile.feature === null)!.id,
+			seed: 20260503
+		});
+		const emptyCity = { ...city, tiles: [] };
+
+		const options = getRetailBuildMenuOptions({ game, city: emptyCity });
+
+		expect(options.map((option) => option.validTileCount)).toEqual([0, 0, 0, 0]);
+		expect(options.map((option) => option.disabledReason)).toEqual([
+			'No valid tiles',
+			'No valid tiles',
+			'No valid tiles',
+			'No valid tiles'
+		]);
+	});
 });
 
 describe('industry placement preview', () => {

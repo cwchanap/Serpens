@@ -8,6 +8,7 @@ import {
 	simulateIndustryProduction
 } from './industryProduction';
 import { createNewGame } from './state';
+import type { IndustrialBuildingTypeId } from './types';
 
 function buildOnResource(
 	game: ReturnType<typeof createNewGame>,
@@ -192,5 +193,27 @@ describe('industry production simulation', () => {
 			'produced',
 			'produced'
 		]);
+	});
+
+	test('marks buildings with unknown type ids as blocked and increments blocked days', () => {
+		expect.assertions(2);
+		const built = buildOnResource(
+			{ ...createNewGame('convenience', 20260512), cash: 100_000 },
+			'grain-field',
+			'grain-farm'
+		);
+		const game = {
+			...built,
+			industrialBuildings: built.industrialBuildings.map((building) => ({
+				...building,
+				typeId: 'missing-type' as IndustrialBuildingTypeId,
+				blockedDays: 0
+			}))
+		};
+
+		const result = simulateIndustryProduction(game);
+
+		expect(result.game.industrialBuildings[0]?.status).toBe('blocked');
+		expect(result.game.industrialBuildings[0]?.blockedDays).toBe(1);
 	});
 });

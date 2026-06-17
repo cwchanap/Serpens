@@ -12,7 +12,7 @@ import {
 	simulateProductSalesForCity,
 	updateStoreProduct
 } from './stock';
-import type { GameState, StoreProduct } from './types';
+import type { CompanyPolicy, GameState, StoreProduct } from './types';
 
 function withOneStoreProducts(products: StoreProduct[]): GameState {
 	const game = createNewGame('convenience', 20260508);
@@ -529,5 +529,149 @@ describe('tier 1 store products', () => {
 		expect(getFinishedMaterialIdForCategory('bottled-water')).toBe('bottled-water');
 		expect(getFinishedMaterialIdForCategory('produce')).toBe('produce');
 		expect(getFinishedMaterialIdForCategory('pantry')).toBe('pantry');
+	});
+});
+
+describe('sales loop guards', () => {
+	test('skips a category when the top-scoring seller archetype does not carry it', () => {
+		expect.assertions(4);
+		const game = createNewGame('convenience', 20260508);
+		const city = game.cities[0]!;
+		const lowScoreStore = {
+			...game.stores[0]!,
+			products: [
+				{
+					categoryId: 'snacks',
+					stock: 100,
+					reorderThreshold: 10,
+					targetStock: 100,
+					sellingPrice: 5
+				}
+			],
+			reputation: 10,
+			staffCapacity: 10,
+			competition: 50
+		};
+		const highScoreStore = {
+			...game.stores[0]!,
+			id: 'store-electronics',
+			name: 'Electronics Store',
+			tileId: `${game.stores[0]!.tileId}-alt`,
+			archetypeId: 'electronics' as const,
+			reputation: 100,
+			staffCapacity: 100,
+			competition: 0,
+			products: [
+				{
+					categoryId: 'snacks',
+					stock: 100,
+					reorderThreshold: 10,
+					targetStock: 100,
+					sellingPrice: 5
+				}
+			]
+		};
+		const result = simulateProductSalesForCity({
+			game: { ...game, stores: [lowScoreStore, highScoreStore] },
+			city,
+			rng: createRng(7),
+			storeCapacity: new Map([
+				[lowScoreStore.id, 100],
+				[highScoreStore.id, 100]
+			])
+		});
+
+		expect(Object.keys(result.initialDemand)).toEqual(['snacks']);
+		expect(result.initialDemand.snacks).toBeGreaterThan(0);
+		expect(result.productReports.size).toBe(0);
+		expect(result.remainingDemand.snacks).toBe(result.initialDemand.snacks);
+	});
+
+	test('weekly imports leave products at or above their reorder threshold untouched', () => {
+		expect.assertions(3);
+		const game = createNewGame('convenience', 20260508);
+		const store = {
+			...game.stores[0]!,
+			products: [
+				{
+					categoryId: 'snacks',
+					stock: 30,
+					reorderThreshold: 10,
+					targetStock: 100,
+					sellingPrice: 5
+				}
+			]
+		};
+		const result = applyWeeklyImports({
+			game: { ...game, stores: [store] },
+			storeReports: new Map()
+		});
+		const product = result.stores[0]!.products[0]!;
+
+		expect(product.stock).toBe(30);
+		expect(result.importSpend).toBe(0);
+		expect(result.productReports.size).toBe(0);
+	});
+
+	test('weekly imports skip below-threshold products whose target is already met', () => {
+		expect.assertions(3);
+		const game = createNewGame('convenience', 20260508);
+		const store = {
+			...game.stores[0]!,
+			products: [
+				{
+					categoryId: 'bottled-water',
+					stock: 5,
+					reorderThreshold: 10,
+					targetStock: 5,
+					sellingPrice: 3
+				}
+			]
+		};
+		const result = applyWeeklyImports({
+			game: { ...game, stores: [store] },
+			storeReports: new Map()
+		});
+		const product = result.stores[0]!.products[0]!;
+
+		expect(product.stock).toBe(5);
+		expect(result.importSpend).toBe(0);
+		expect(result.productReports.size).toBe(0);
+	});
+});
+
+describe('demand multipliers and stock ratios', () => {
+	test('treats a product with no target stock as fully stocked', () => {
+		expect.assertions(2);
+		expect(
+			calculateStockHealth([
+				{ categoryId: 'snacks', stock: 0, reorderThreshold: 0, targetStock: 0, sellingPrice: 5 }
+			])
+		).toBe(100);
+		expect(
+			calculateStockHealth([
+				{ categoryId: 'snacks', stock: 0, reorderThreshold: 0, targetStock: -5, sellingPrice: 5 }
+			])
+		).toBe(100);
+	});
+
+	test('applies each marketing and pricing multiplier to city demand pools', () => {
+		expect.assertions(5);
+		const game = createNewGame('convenience', 20260508);
+		const city = game.cities[0]!;
+		const pool = (marketing: CompanyPolicy['marketing'], pricing: CompanyPolicy['pricing']) =>
+			buildCityDemandPools(game, city, { marketing, pricing })['bottled-water'];
+		const standard = pool('awareness', 'standard');
+		const none = pool('none', 'standard');
+		const loyalty = pool('loyalty', 'standard');
+		const promotions = pool('promotions', 'standard');
+		const discount = pool('awareness', 'discount');
+		const premium = pool('awareness', 'premium');
+
+		expect(none).toBeGreaterThan(0);
+		expect(none).toBeLessThan(loyalty);
+		expect(loyalty).toBeLessThan(promotions);
+		expect(premium).toBeLessThan(standard);
+		expect(standard).toBeLessThan(discount);
 	});
 });

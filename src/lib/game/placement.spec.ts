@@ -268,4 +268,99 @@ describe('tile placement', () => {
 		]);
 		expect(result.decisions).toHaveLength(0);
 	});
+
+	test('forecastOpening flags a locked tile as a risk', () => {
+		expect.assertions(1);
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 20,
+			height: 20,
+			seed: 202
+		});
+		const lockedTile = city.tiles.find((tile) => tile.locked)!;
+
+		const forecast = forecastOpening(lockedTile, 'grocery');
+
+		expect(forecast.risks).toContain('Location is locked');
+	});
+
+	test('createFoundingGameAtTile throws on an unknown tile id', () => {
+		expect.assertions(1);
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 20,
+			height: 20,
+			seed: 202
+		});
+
+		expect(() =>
+			createFoundingGameAtTile({
+				archetypeId: 'boutique',
+				city,
+				tileId: 'no-such-tile',
+				seed: 202
+			})
+		).toThrow('Unknown tile: no-such-tile');
+	});
+
+	test('openStoreAtTile appends a location-unavailable decision when the tile id is unknown', () => {
+		expect.assertions(2);
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 20,
+			height: 20,
+			seed: 202
+		});
+		const foundingTile = city.tiles.find(isTileBuildable)!;
+		const game = createFoundingGameAtTile({
+			archetypeId: 'boutique',
+			city,
+			tileId: foundingTile.id,
+			seed: 202
+		});
+
+		const result = openStoreAtTile(game, {
+			tileId: 'does-not-exist',
+			name: 'Ghost Store',
+			archetypeId: 'boutique'
+		});
+
+		expect(result.stores).toHaveLength(1);
+		expect(result.decisions.at(-1)?.title).toBe('Location unavailable');
+	});
+
+	test('openStoreAtTile returns the cash-blocked decision without placing a store when cash is insufficient', () => {
+		expect.assertions(3);
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 20,
+			height: 20,
+			seed: 202
+		});
+		const foundingTile = city.tiles.find(isTileBuildable)!;
+		const expansionTile = city.tiles.find(
+			(candidate) => isTileBuildable(candidate) && candidate.id !== foundingTile.id
+		)!;
+		const base = createFoundingGameAtTile({
+			archetypeId: 'boutique',
+			city,
+			tileId: foundingTile.id,
+			seed: 202
+		});
+		const game = { ...base, cash: 0 };
+
+		const result = openStoreAtTile(game, {
+			tileId: expansionTile.id,
+			name: 'Broke Store',
+			archetypeId: 'boutique'
+		});
+
+		expect(result.stores).toHaveLength(1);
+		expect(result.decisions.at(-1)?.id).toBe('expansion-cash-blocked-1');
+		expect(result.decisions.at(-1)?.title).toBe('Expansion delayed');
+	});
 });

@@ -6,6 +6,7 @@ import {
 	STARTER_STORE_CAP,
 	WORLD_CITY_CATALOG,
 	createInitialWorldProgress,
+	getIndustryCityResourceProfile,
 	getWorldCityDefinition,
 	getWorldCityStatus,
 	openWorldCity,
@@ -535,5 +536,56 @@ describe('world progression and city opening', () => {
 		});
 
 		expect(withReport.world.claimedMilestoneIds).not.toContain('positive-income-store-cap');
+	});
+});
+
+describe('world city status and decision helpers', () => {
+	test('getWorldCityStatus counts industrial buildings located in the requested city', () => {
+		expect.assertions(3);
+		const game = gameStub({
+			industrialBuildings: [
+				{
+					id: 'b1',
+					cityId: 'industry-city',
+					typeId: 'grain-farm'
+				} as GameState['industrialBuildings'][number],
+				{
+					id: 'b2',
+					cityId: 'industry-city',
+					typeId: 'warehouse'
+				} as GameState['industrialBuildings'][number],
+				{
+					id: 'b3',
+					cityId: 'harbor-city',
+					typeId: 'warehouse'
+				} as GameState['industrialBuildings'][number]
+			]
+		});
+
+		const status = getWorldCityStatus(game, 'industry-city');
+
+		expect(status).not.toBeNull();
+		expect(status!.buildingCount).toBe(2);
+		expect(status!.storeCount).toBe(0);
+	});
+
+	test('openWorldCity does not duplicate an already-appended world decision', () => {
+		expect.assertions(3);
+		const game = createNewGame('convenience', 20260530);
+
+		const once = openWorldCity(game, 'missing-city');
+		const twice = openWorldCity(once, 'missing-city');
+
+		expect(once.decisions).toHaveLength(1);
+		expect(twice).toBe(once);
+		expect(twice.decisions).toHaveLength(1);
+	});
+
+	test('getIndustryCityResourceProfile returns the profile for industry cities and null otherwise', () => {
+		expect.assertions(3);
+
+		expect(getIndustryCityResourceProfile('industry-city')).not.toBeNull();
+		expect(getIndustryCityResourceProfile('harbor-city')).toBeNull();
+		expect(getIndustryCityResourceProfile('missing-city')).toBeNull();
 	});
 });
