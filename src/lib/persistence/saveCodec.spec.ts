@@ -1,4 +1,5 @@
 import { describe, expect, test, vi } from 'vitest';
+import { DEFAULT_RETAIL_CITY_HEIGHT, DEFAULT_RETAIL_CITY_WIDTH } from '$lib/game/city';
 import { initializeStoreProducts } from '$lib/game/stock';
 import { STARTER_STORE_CAP, createInitialWorldProgress } from '$lib/game/world';
 import type {
@@ -294,6 +295,44 @@ describe('saveCodec', () => {
 		expect(() => validateSaveRecord(record)).toThrow(
 			'Legacy save has 4 stores but inferred store cap is 3'
 		);
+	});
+
+	test('expands saved retail city maps to the current default size', () => {
+		expect.assertions(7);
+		const record = createManualSaveRecord({
+			game: {
+				cities: [
+					{
+						id: 'harbor-city',
+						name: 'Harbor City',
+						width: 28,
+						height: 24,
+						tiles: []
+					}
+				],
+				stores: [
+					{
+						...createGame().stores[0]!,
+						tileId: 'harbor-city-28-8',
+						mapX: 28,
+						mapY: 8
+					}
+				]
+			}
+		});
+
+		const validated = validateSaveRecord(record);
+		const city = validated.game.cities[0]!;
+		const store = validated.game.stores[0]!;
+		const storeTile = city.tiles.find((tile) => tile.id === store.tileId);
+
+		expect(city.width).toBe(DEFAULT_RETAIL_CITY_WIDTH);
+		expect(city.height).toBe(DEFAULT_RETAIL_CITY_HEIGHT);
+		expect(city.tiles).toHaveLength(DEFAULT_RETAIL_CITY_WIDTH * DEFAULT_RETAIL_CITY_HEIGHT);
+		expect(store.tileId).not.toBe('harbor-city-28-8');
+		expect(store.mapX).not.toBe(28);
+		expect(storeTile).toBeDefined();
+		expect(storeTile?.feature).toBeNull();
 	});
 
 	test('inferWorldProgress warns about unknown saved city ids', () => {

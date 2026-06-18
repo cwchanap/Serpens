@@ -6,6 +6,7 @@ import type {
 	IndustryResourceId,
 	IndustryTerrainId,
 	MaterialId,
+	NeighborhoodId,
 	ProductionRecipeId,
 	TerrainId
 } from '$lib/game/types';
@@ -315,9 +316,104 @@ export const RESIDENTIAL_TERRAIN_ART_VARIANTS: readonly TerrainArt[] = Object.fr
 	})
 ]);
 
+export const DOWNTOWN_TERRAIN_ART: TerrainArt = Object.freeze({
+	id: 'commercial',
+	path: '/assets/game/terrain/downtown-tile.png',
+	textureKey: 'terrain-downtown',
+	alt: 'Stylized downtown city terrain tile'
+});
+
+export const DOWNTOWN_TERRAIN_ART_VARIANTS: readonly TerrainArt[] = Object.freeze([
+	DOWNTOWN_TERRAIN_ART,
+	Object.freeze({
+		id: 'commercial',
+		path: '/assets/game/terrain/downtown-tile-2.png',
+		textureKey: 'terrain-downtown-2',
+		alt: 'Stylized downtown city terrain tile with rooftop storefronts'
+	}),
+	Object.freeze({
+		id: 'commercial',
+		path: '/assets/game/terrain/downtown-tile-3.png',
+		textureKey: 'terrain-downtown-3',
+		alt: 'Stylized downtown city terrain tile with compact retail towers'
+	})
+]);
+
+export const CAMPUS_TERRAIN_ART: TerrainArt = Object.freeze({
+	id: 'commercial',
+	path: '/assets/game/terrain/campus-tile.png',
+	textureKey: 'terrain-campus',
+	alt: 'Stylized campus city terrain tile'
+});
+
+export const CAMPUS_TERRAIN_ART_VARIANTS: readonly TerrainArt[] = Object.freeze([
+	CAMPUS_TERRAIN_ART,
+	Object.freeze({
+		id: 'commercial',
+		path: '/assets/game/terrain/campus-tile-2.png',
+		textureKey: 'terrain-campus-2',
+		alt: 'Stylized campus city terrain tile with lecture halls'
+	}),
+	Object.freeze({
+		id: 'commercial',
+		path: '/assets/game/terrain/campus-tile-3.png',
+		textureKey: 'terrain-campus-3',
+		alt: 'Stylized campus city terrain tile with student green space'
+	})
+]);
+
+export const MALL_TERRAIN_ART: TerrainArt = Object.freeze({
+	id: 'commercial',
+	path: '/assets/game/terrain/mall-tile.png',
+	textureKey: 'terrain-mall',
+	alt: 'Stylized mall city terrain tile'
+});
+
+export const MALL_TERRAIN_ART_VARIANTS: readonly TerrainArt[] = Object.freeze([
+	MALL_TERRAIN_ART,
+	Object.freeze({
+		id: 'commercial',
+		path: '/assets/game/terrain/mall-tile-2.png',
+		textureKey: 'terrain-mall-2',
+		alt: 'Stylized mall city terrain tile with plaza cafes'
+	}),
+	Object.freeze({
+		id: 'commercial',
+		path: '/assets/game/terrain/mall-tile-3.png',
+		textureKey: 'terrain-mall-3',
+		alt: 'Stylized mall city terrain tile with atrium shops'
+	})
+]);
+
+export const GREEN_TERRAIN_ART_VARIANTS: readonly TerrainArt[] = Object.freeze([
+	TERRAIN_ART.green,
+	Object.freeze({
+		id: 'green',
+		path: '/assets/game/terrain/green-tile-2.png',
+		textureKey: 'terrain-green-2',
+		alt: 'Stylized green city terrain tile with shrubs and stones'
+	}),
+	Object.freeze({
+		id: 'green',
+		path: '/assets/game/terrain/green-tile-3.png',
+		textureKey: 'terrain-green-3',
+		alt: 'Stylized green city terrain tile with flowers and meadow grass'
+	})
+]);
+
+export const NEIGHBORHOOD_TERRAIN_ART: Readonly<
+	Partial<Record<NeighborhoodId, readonly TerrainArt[]>>
+> = Object.freeze({
+	downtown: DOWNTOWN_TERRAIN_ART_VARIANTS,
+	campus: CAMPUS_TERRAIN_ART_VARIANTS,
+	mall: MALL_TERRAIN_ART_VARIANTS
+});
+
 export const TERRAIN_ART_LIST: readonly TerrainArt[] = Object.freeze([
 	...Object.values(TERRAIN_ART),
 	...RESIDENTIAL_TERRAIN_ART_VARIANTS.slice(1),
+	...GREEN_TERRAIN_ART_VARIANTS.slice(1),
+	...Object.values(NEIGHBORHOOD_TERRAIN_ART).flatMap((variants) => variants ?? []),
 	...Object.values(ROAD_TERRAIN_CONNECTOR_ART),
 	...Object.values(RIVER_TERRAIN_CONNECTOR_ART)
 ]);

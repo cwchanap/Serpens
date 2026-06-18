@@ -14,7 +14,12 @@
 	import StoreOverview from '$lib/components/game/StoreOverview.svelte';
 	import TileInspector from '$lib/components/game/TileInspector.svelte';
 	import WorldMap from '$lib/components/game/WorldMap.svelte';
-	import { generateCity, getTileById } from '$lib/game/city';
+	import {
+		DEFAULT_RETAIL_CITY_HEIGHT,
+		DEFAULT_RETAIL_CITY_WIDTH,
+		generateCity,
+		getTileById
+	} from '$lib/game/city';
 	import { generateIndustryCity, getIndustryTileById } from '$lib/game/industry';
 	import { createIndustryMapSnapshot } from '$lib/game/industryMapRender';
 	import { buildIndustrialBuilding, upgradeBuilding } from '$lib/game/industryPlacement';
@@ -74,8 +79,8 @@
 	const starterCity = generateCity({
 		id: 'harbor-city',
 		name: 'Harbor City',
-		width: 28,
-		height: 24,
+		width: DEFAULT_RETAIL_CITY_WIDTH,
+		height: DEFAULT_RETAIL_CITY_HEIGHT,
 		seed: 20260503
 	});
 	const starterIndustryCity = generateIndustryCity({

@@ -1025,6 +1025,41 @@ describe('CityMapScene', () => {
 			expect(ds.terrainAssetMode).toBe('image');
 		});
 
+		it('varies base terrain art by neighborhood and tile coordinate', () => {
+			expect.assertions(1);
+			scene.create();
+			s(scene).textures.exists = vi.fn(() => true);
+			scene.updateSnapshot(
+				makeSnapshot({
+					tiles: [
+						makeTile({ id: 'downtown-1', x: 0, y: 0, neighborhood: 'downtown' }),
+						makeTile({ id: 'downtown-2', x: 1, y: 0, neighborhood: 'downtown' }),
+						makeTile({ id: 'downtown-3', x: 2, y: 0, neighborhood: 'downtown' }),
+						makeTile({ id: 'campus', x: 0, y: 1, neighborhood: 'campus' }),
+						makeTile({ id: 'mall', x: 0, y: 2, neighborhood: 'mall' }),
+						makeTile({ id: 'green-1', x: 0, y: 0, neighborhood: 'parkEdge', terrain: 'green' }),
+						makeTile({ id: 'green-2', x: 1, y: 0, neighborhood: 'parkEdge', terrain: 'green' }),
+						makeTile({ id: 'green-3', x: 2, y: 0, neighborhood: 'parkEdge', terrain: 'green' })
+					]
+				})
+			);
+
+			const textureKeys = (s(scene).add.image as Mock).mock.calls
+				.map((call: any[]) => call[2])
+				.filter((textureKey: string) => textureKey !== 'terrain-tree');
+
+			expect(textureKeys).toEqual([
+				'terrain-downtown',
+				'terrain-downtown-2',
+				'terrain-downtown-3',
+				'terrain-campus-2',
+				'terrain-mall-3',
+				'terrain-green',
+				'terrain-green-2',
+				'terrain-green-3'
+			]);
+		});
+
 		it('selects residential terrain variants by tile coordinate', () => {
 			expect.assertions(1);
 			scene.create();

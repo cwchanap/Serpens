@@ -20,6 +20,14 @@ import {
 	PRODUCT_ART,
 	PRODUCT_ART_LIST,
 	RECIPE_BUILDING_ART,
+	DOWNTOWN_TERRAIN_ART,
+	DOWNTOWN_TERRAIN_ART_VARIANTS,
+	CAMPUS_TERRAIN_ART,
+	CAMPUS_TERRAIN_ART_VARIANTS,
+	GREEN_TERRAIN_ART_VARIANTS,
+	MALL_TERRAIN_ART,
+	MALL_TERRAIN_ART_VARIANTS,
+	NEIGHBORHOOD_TERRAIN_ART,
 	SHOP_STOREFRONT_ALT,
 	SHOP_STOREFRONT_PATH,
 	SHOP_STOREFRONT_TEXTURE_KEY,
@@ -326,6 +334,11 @@ describe('game art asset constants', () => {
 			terrainIds.length +
 				RESIDENTIAL_TERRAIN_ART_VARIANTS.length -
 				1 +
+				GREEN_TERRAIN_ART_VARIANTS.length -
+				1 +
+				DOWNTOWN_TERRAIN_ART_VARIANTS.length +
+				CAMPUS_TERRAIN_ART_VARIANTS.length +
+				MALL_TERRAIN_ART_VARIANTS.length +
 				Object.keys(ROAD_TERRAIN_CONNECTOR_ART).length +
 				Object.keys(RIVER_TERRAIN_CONNECTOR_ART).length
 		);
@@ -438,6 +451,88 @@ describe('game art asset constants', () => {
 				maxVerticalRoadPixels,
 				`${art.path} should not embed a vertical road band`
 			).toBeLessThan(44);
+		}
+	});
+
+	it('defines varied terrain art for high-repeat retail neighborhoods and green areas', () => {
+		const neighborhoodVariantGroups = {
+			downtown: {
+				base: DOWNTOWN_TERRAIN_ART,
+				variants: DOWNTOWN_TERRAIN_ART_VARIANTS,
+				paths: [
+					'/assets/game/terrain/downtown-tile.png',
+					'/assets/game/terrain/downtown-tile-2.png',
+					'/assets/game/terrain/downtown-tile-3.png'
+				],
+				texturePrefix: 'terrain-downtown'
+			},
+			campus: {
+				base: CAMPUS_TERRAIN_ART,
+				variants: CAMPUS_TERRAIN_ART_VARIANTS,
+				paths: [
+					'/assets/game/terrain/campus-tile.png',
+					'/assets/game/terrain/campus-tile-2.png',
+					'/assets/game/terrain/campus-tile-3.png'
+				],
+				texturePrefix: 'terrain-campus'
+			},
+			mall: {
+				base: MALL_TERRAIN_ART,
+				variants: MALL_TERRAIN_ART_VARIANTS,
+				paths: [
+					'/assets/game/terrain/mall-tile.png',
+					'/assets/game/terrain/mall-tile-2.png',
+					'/assets/game/terrain/mall-tile-3.png'
+				],
+				texturePrefix: 'terrain-mall'
+			}
+		} as const;
+		const greenPaths = [
+			'/assets/game/terrain/green-tile.png',
+			'/assets/game/terrain/green-tile-2.png',
+			'/assets/game/terrain/green-tile-3.png'
+		];
+
+		expect(NEIGHBORHOOD_TERRAIN_ART).toEqual({
+			downtown: DOWNTOWN_TERRAIN_ART_VARIANTS,
+			campus: CAMPUS_TERRAIN_ART_VARIANTS,
+			mall: MALL_TERRAIN_ART_VARIANTS
+		});
+		expect(GREEN_TERRAIN_ART_VARIANTS.map((art) => art.path)).toEqual(greenPaths);
+
+		for (const { base, variants, paths, texturePrefix } of Object.values(
+			neighborhoodVariantGroups
+		)) {
+			expect(base).toBe(variants[0]);
+			expect(variants.map((art) => art.path)).toEqual(paths);
+			expect(duplicateAssetPaths(paths)).toEqual([]);
+
+			for (const [index, art] of variants.entries()) {
+				expect(art.id).toBe('commercial');
+				expect(art.textureKey).toBe(`${texturePrefix}${index === 0 ? '' : `-${index + 1}`}`);
+				expect(existsSync(staticPath(art.path))).toBe(true);
+
+				const { width, height, opaquePixels } = imageStats(art.path);
+
+				expect(width).toBe(64);
+				expect(height).toBe(64);
+				expect(opaquePixels, `${art.path} should preserve visible terrain pixels`).toBeGreaterThan(
+					0
+				);
+			}
+		}
+
+		expect(duplicateAssetPaths(greenPaths)).toEqual([]);
+		for (const [index, art] of GREEN_TERRAIN_ART_VARIANTS.entries()) {
+			expect(art.id).toBe('green');
+			expect(art.textureKey).toBe(`terrain-green${index === 0 ? '' : `-${index + 1}`}`);
+			expect(existsSync(staticPath(art.path))).toBe(true);
+
+			const { width, height, opaquePixels } = imageStats(art.path);
+
+			expect(width).toBe(64);
+			expect(height).toBe(64);
+			expect(opaquePixels, `${art.path} should preserve visible terrain pixels`).toBeGreaterThan(0);
 		}
 	});
 

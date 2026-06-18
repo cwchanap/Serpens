@@ -7,6 +7,8 @@ import {
 	isMilestoneLevel
 } from './leveling';
 import {
+	DEFAULT_RETAIL_CITY_HEIGHT,
+	DEFAULT_RETAIL_CITY_WIDTH,
 	generateCity,
 	getTilePlacementBlockDecisionIdPart,
 	getTilePlacementBlockReason,
@@ -75,8 +77,8 @@ export function createNewGame(archetypeId: ArchetypeId, seed = Date.now()): Game
 	const city = generateCity({
 		id: 'harbor-city',
 		name: 'Harbor City',
-		width: 28,
-		height: 24,
+		width: DEFAULT_RETAIL_CITY_WIDTH,
+		height: DEFAULT_RETAIL_CITY_HEIGHT,
 		seed: normalizedSeed
 	});
 	const industryCity = generateIndustryCity({

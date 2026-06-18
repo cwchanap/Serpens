@@ -62,8 +62,8 @@ describe('game state', () => {
 		const game = createNewGame('convenience', 20260512);
 
 		expect(game.cities.map((city) => city.id)).toEqual(['harbor-city']);
-		expect(game.cities[0]?.width).toBe(28);
-		expect(game.cities[0]?.height).toBe(24);
+		expect(game.cities[0]?.width).toBe(56);
+		expect(game.cities[0]?.height).toBe(48);
 		expect(game.industryCities.map((city) => city.id)).toEqual(['industry-city']);
 		expect(game.world.openedCityIds).toEqual(['harbor-city', 'industry-city']);
 		expect(game.storeCap).toBeGreaterThan(game.stores.length);

@@ -123,8 +123,8 @@ async function expectTerrainAssets(page: Page) {
 	const featureCount = Number(await canvas.getAttribute('data-terrain-feature-sprite-count'));
 	const decorationCount = Number(await canvas.getAttribute('data-terrain-decoration-sprite-count'));
 
-	expect(baseCount).toBe(672);
-	expect(featureCount).toBe(148);
+	expect(baseCount).toBe(2688);
+	expect(featureCount).toBe(503);
 	expect(decorationCount).toBeGreaterThan(0);
 }
 
@@ -404,14 +404,14 @@ test('city map renders terrain assets and blocks road and river placement', asyn
 
 	await expectTerrainAssets(page);
 
-	await clickMapTile(page, 14, 8);
+	await clickMapTile(page, 28, 8);
 	const roadDialog = page.getByRole('dialog', { name: /tile details/i });
 	await expect(roadDialog).toBeVisible();
 	await expect(roadDialog.getByText(/^Road$/i)).toBeVisible();
 	await expect(roadDialog.getByRole('button', { name: /open .* here/i })).toHaveCount(0);
 	await page.getByRole('button', { name: /close tile inspector/i }).click();
 
-	await clickMapTile(page, 7, 7);
+	await clickMapTile(page, 14, 7);
 	const riverDialog = page.getByRole('dialog', { name: /tile details/i });
 	await expect(riverDialog).toBeVisible();
 	await expect(riverDialog.getByText(/^River$/i)).toBeVisible();
@@ -420,7 +420,7 @@ test('city map renders terrain assets and blocks road and river placement', asyn
 
 	const canvas = await expectRetailMapReady(page);
 	await chooseRetailBuildTool(page, /build boutique goods/i);
-	await clickCanvasTile(page, canvas, 14, 8);
+	await clickCanvasTile(page, canvas, 28, 8);
 	await expect(page.getByRole('status', { name: /placement status/i })).toContainText(
 		/road location/i
 	);
@@ -428,7 +428,7 @@ test('city map renders terrain assets and blocks road and river placement', asyn
 	await expect(canvas).toHaveAttribute('data-placement-invalid-tile-count', /^[1-9]\d*$/);
 	await expect(page.getByRole('dialog', { name: /confirm store opening/i })).toHaveCount(0);
 	const invalidRoadDialog = page.getByRole('dialog', { name: /tile details/i });
-	await expect(invalidRoadDialog.getByRole('heading', { name: /tile 14, 8/i })).toBeVisible();
+	await expect(invalidRoadDialog.getByRole('heading', { name: /tile 28, 8/i })).toBeVisible();
 	await expect(invalidRoadDialog.getByText(/^Road$/i)).toBeVisible();
 	await expect(invalidRoadDialog.getByRole('button', { name: /open .* here/i })).toHaveCount(0);
 });
