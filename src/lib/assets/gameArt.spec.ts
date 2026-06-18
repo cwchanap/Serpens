@@ -827,4 +827,11 @@ describe('chainNodeArt', () => {
 			fallbackGlyph: 'recipe'
 		});
 	});
+
+	it('throws an error for unknown product art category', () => {
+		expect.assertions(1);
+		expect(() => gameArt.getProductArt('nonexistent-category' as never)).toThrow(
+			'Unknown product art category: nonexistent-category'
+		);
+	});
 });

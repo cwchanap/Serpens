@@ -1220,37 +1220,136 @@ describe('CityMapScene', () => {
 			expect(featureSprites[1].value.setAngle).toHaveBeenCalledWith(90);
 		});
 
-		it('uses river sprite native vertical orientation and rotates horizontal rivers', () => {
-			expect.assertions(2);
+		it('handles corner-es river connector variant', () => {
+			expect.assertions(1);
 			scene.create();
 			s(scene).textures.exists = vi.fn(() => true);
 			scene.updateSnapshot(
 				makeSnapshot({
 					tiles: [
 						makeTile({
-							id: 'vr',
+							id: 'river-corner-es',
 							x: 0,
 							y: 0,
 							terrain: 'green',
 							feature: 'river',
-							riverVariant: 'vertical'
-						}),
-						makeTile({
-							id: 'hr',
-							x: 1,
-							y: 0,
-							terrain: 'green',
-							feature: 'river',
-							riverVariant: 'horizontal'
+							riverVariant: 'corner-es'
 						})
 					]
 				})
 			);
-			const featureSprites = (s(scene).add.image as Mock).mock.results.filter(
-				(result: any) => result.value && (result.value.setAngle as Mock).mock.calls.length > 0
+			const textureKeys = (s(scene).add.image as Mock).mock.calls.map((call: any[]) => call[2]);
+			expect(textureKeys).toContain('terrain-river-connector-corner-es');
+		});
+
+		it('handles corner-sw river connector variant', () => {
+			expect.assertions(1);
+			scene.create();
+			s(scene).textures.exists = vi.fn(() => true);
+			scene.updateSnapshot(
+				makeSnapshot({
+					tiles: [
+						makeTile({
+							id: 'river-corner-sw',
+							x: 0,
+							y: 0,
+							terrain: 'green',
+							feature: 'river',
+							riverVariant: 'corner-sw'
+						})
+					]
+				})
 			);
-			expect(featureSprites[0].value.setAngle).toHaveBeenCalledWith(0);
-			expect(featureSprites[1].value.setAngle).toHaveBeenCalledWith(90);
+			const textureKeys = (s(scene).add.image as Mock).mock.calls.map((call: any[]) => call[2]);
+			expect(textureKeys).toContain('terrain-river-connector-corner-sw');
+		});
+
+		it('handles corner-wn river connector variant', () => {
+			expect.assertions(1);
+			scene.create();
+			s(scene).textures.exists = vi.fn(() => true);
+			scene.updateSnapshot(
+				makeSnapshot({
+					tiles: [
+						makeTile({
+							id: 'river-corner-wn',
+							x: 0,
+							y: 0,
+							terrain: 'green',
+							feature: 'river',
+							riverVariant: 'corner-wn'
+						})
+					]
+				})
+			);
+			const textureKeys = (s(scene).add.image as Mock).mock.calls.map((call: any[]) => call[2]);
+			expect(textureKeys).toContain('terrain-river-connector-corner-wn');
+		});
+
+		it('handles tee-esw road connector variant', () => {
+			expect.assertions(1);
+			scene.create();
+			s(scene).textures.exists = vi.fn(() => true);
+			scene.updateSnapshot(
+				makeSnapshot({
+					tiles: [
+						makeTile({
+							id: 'road-tee-esw',
+							x: 0,
+							y: 0,
+							terrain: 'transit',
+							feature: 'road',
+							roadVariant: 'tee-esw'
+						})
+					]
+				})
+			);
+			const textureKeys = (s(scene).add.image as Mock).mock.calls.map((call: any[]) => call[2]);
+			expect(textureKeys).toContain('terrain-road-connector-tee-esw');
+		});
+
+		it('handles tee-nsw road connector variant', () => {
+			expect.assertions(1);
+			scene.create();
+			s(scene).textures.exists = vi.fn(() => true);
+			scene.updateSnapshot(
+				makeSnapshot({
+					tiles: [
+						makeTile({
+							id: 'road-tee-nsw',
+							x: 0,
+							y: 0,
+							terrain: 'transit',
+							feature: 'road',
+							roadVariant: 'tee-nsw'
+						})
+					]
+				})
+			);
+			const textureKeys = (s(scene).add.image as Mock).mock.calls.map((call: any[]) => call[2]);
+			expect(textureKeys).toContain('terrain-road-connector-tee-nsw');
+		});
+
+		it('handles tee-new road connector variant', () => {
+			expect.assertions(1);
+			scene.create();
+			s(scene).textures.exists = vi.fn(() => true);
+			scene.updateSnapshot(
+				makeSnapshot({
+					tiles: [
+						makeTile({
+							id: 'road-tee-new',
+							x: 0,
+							y: 0,
+							terrain: 'transit',
+							feature: 'road',
+							roadVariant: 'tee-new'
+						})
+					]
+				})
+			);
+			const textureKeys = (s(scene).add.image as Mock).mock.calls.map((call: any[]) => call[2]);
+			expect(textureKeys).toContain('terrain-road-connector-tee-new');
 		});
 	});
 
