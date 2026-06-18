@@ -1,4 +1,4 @@
-import { generateCity } from './city';
+import { DEFAULT_RETAIL_CITY_HEIGHT, DEFAULT_RETAIL_CITY_WIDTH, generateCity } from './city';
 import { generateIndustryCity } from './industry';
 import type {
 	DecisionItem,
@@ -410,8 +410,8 @@ function ensureWorldCityMap(game: GameState, city: WorldCityDefinition): GameSta
 				generateCity({
 					id: city.id,
 					name: city.name,
-					width: 28,
-					height: 24,
+					width: DEFAULT_RETAIL_CITY_WIDTH,
+					height: DEFAULT_RETAIL_CITY_HEIGHT,
 					seed: city.seed
 				})
 			]

@@ -3,6 +3,9 @@ import type { City, CityTile, CityTileFeature, NeighborhoodId, TerrainId } from 
 
 export type TilePlacementBlockReason = 'Locked location' | 'Road location' | 'River location';
 
+export const DEFAULT_RETAIL_CITY_WIDTH = 56;
+export const DEFAULT_RETAIL_CITY_HEIGHT = 48;
+
 const TILE_PLACEMENT_BLOCK_DECISION_ID_PART: Record<TilePlacementBlockReason, string> = {
 	'Locked location': 'locked',
 	'Road location': 'road',
@@ -238,19 +241,21 @@ function isRoadTile(width: number, height: number, x: number, y: number): boolea
 }
 
 function getRoadDividerColumns(width: number): number[] {
-	return uniqueInteriorPositions(width, [
-		Math.floor(width * 0.18),
-		Math.floor(width / 2),
-		Math.floor(width * 0.74)
-	]);
+	const dividerFractions = width >= 40 ? [0.14, 0.3, 0.5, 0.68, 0.84] : [0.18, 0.5, 0.74];
+
+	return uniqueInteriorPositions(
+		width,
+		dividerFractions.map((fraction) => Math.floor(width * fraction))
+	);
 }
 
 function getRoadDividerRows(height: number): number[] {
-	return uniqueInteriorPositions(height, [
-		Math.floor(height * 0.25),
-		Math.floor(height / 2),
-		Math.floor(height * 0.75)
-	]);
+	const dividerFractions = height >= 36 ? [0.18, 0.34, 0.5, 0.66, 0.82] : [0.25, 0.5, 0.75];
+
+	return uniqueInteriorPositions(
+		height,
+		dividerFractions.map((fraction) => Math.floor(height * fraction))
+	);
 }
 
 function uniqueInteriorPositions(size: number, positions: number[]): number[] {

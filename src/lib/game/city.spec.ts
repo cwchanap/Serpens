@@ -237,16 +237,16 @@ describe('city generation', () => {
 		const larger = generateCity({
 			id: 'larger-city',
 			name: 'Larger City',
-			width: 28,
-			height: 24,
+			width: 56,
+			height: 48,
 			seed: 77
 		});
 
-		expect(larger.tiles).toHaveLength(672);
+		expect(larger.tiles).toHaveLength(2688);
 		expect(larger.tiles.filter(isTileBuildable).length).toBeGreaterThan(
-			current.tiles.filter(isTileBuildable).length
+			current.tiles.filter(isTileBuildable).length * 4
 		);
-		expect(larger.tiles.filter(isTileBuildable).length).toBeGreaterThan(400);
+		expect(larger.tiles.filter(isTileBuildable).length).toBeGreaterThan(1800);
 	});
 
 	test('generates four-way contiguous road and river paths on larger maps', () => {
@@ -254,8 +254,8 @@ describe('city generation', () => {
 		const city = generateCity({
 			id: 'harbor-city',
 			name: 'Harbor City',
-			width: 28,
-			height: 24,
+			width: 56,
+			height: 48,
 			seed: 77
 		});
 		const roadTiles = city.tiles.filter((tile) => tile.feature === 'road');
@@ -265,8 +265,8 @@ describe('city generation', () => {
 		expect(riverTiles.length).toBeGreaterThan(0);
 		expect(isFourWayContiguous(roadTiles)).toBe(true);
 		expect(isFourWayContiguous(riverTiles)).toBe(true);
-		expect(countRoadColumns(roadTiles, Math.floor(city.height * 0.45))).toBeGreaterThanOrEqual(3);
-		expect(countRoadRows(roadTiles, Math.floor(city.width * 0.35))).toBeGreaterThanOrEqual(3);
+		expect(countRoadColumns(roadTiles, Math.floor(city.height * 0.45))).toBeGreaterThanOrEqual(5);
+		expect(countRoadRows(roadTiles, Math.floor(city.width * 0.35))).toBeGreaterThanOrEqual(5);
 	});
 
 	test('does not add road or river features to cities smaller than five by five', () => {

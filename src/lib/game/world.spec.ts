@@ -132,8 +132,8 @@ describe('world progression and city opening', () => {
 		expect(opened.cash).toBe(32_000);
 		expect(opened.world.openedCityIds).toContain('campus-junction');
 		expect(opened.cities.some((city) => city.id === 'campus-junction')).toBe(true);
-		expect(opened.cities.find((city) => city.id === 'campus-junction')?.width).toBe(28);
-		expect(opened.cities.find((city) => city.id === 'campus-junction')?.height).toBe(24);
+		expect(opened.cities.find((city) => city.id === 'campus-junction')?.width).toBe(56);
+		expect(opened.cities.find((city) => city.id === 'campus-junction')?.height).toBe(48);
 		expect(opened.activeCityId).toBe('campus-junction');
 		expect(opened.industryCities).toHaveLength(1);
 		expect(opened.storeCap).toBe(game.storeCap + 1);

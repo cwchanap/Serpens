@@ -1,4 +1,11 @@
 import { getArchetype } from '$lib/game/archetypes';
+import {
+	DEFAULT_RETAIL_CITY_HEIGHT,
+	DEFAULT_RETAIL_CITY_WIDTH,
+	generateCity,
+	getTileById,
+	isTileBuildable
+} from '$lib/game/city';
 import { INDUSTRIAL_BUILDING_TYPES, MATERIALS } from '$lib/game/industry';
 import {
 	getStoreStaffCapacityBonus,
@@ -8,7 +15,7 @@ import {
 } from '$lib/game/leveling';
 import { MAX_STAFF_LEVEL } from '$lib/game/staffLeveling';
 import { clampScore } from '$lib/game/reports';
-import type { GameState, WorldCityId } from '$lib/game/types';
+import type { City, CityTile, GameState, WorldCityId } from '$lib/game/types';
 import {
 	STARTER_STORE_CAP,
 	createInitialWorldProgress,
@@ -482,15 +489,172 @@ function normalizeSavedGame(game: Record<string, unknown>): GameState {
 	const normalizedStaff = Array.isArray(game.staff)
 		? game.staff.map((member) => normalizeSavedStaffLevel(member))
 		: game.staff;
+	const normalizedCities = normalizeSavedRetailCities(game);
+	const normalizedRetailStores = normalizeSavedRetailStorePlacements(
+		normalizedStores,
+		normalizedCities
+	);
 
 	return {
 		...game,
-		stores: normalizedStores,
+		cities: normalizedCities,
+		stores: normalizedRetailStores,
 		staff: normalizedStaff,
 		industrialBuildings: normalizedBuildings,
 		world: normalizedWorld,
 		storeCap: normalizedStoreCap
 	} as GameState;
+}
+
+function normalizeSavedRetailCities(game: Record<string, unknown>): unknown {
+	if (!Array.isArray(game.cities)) {
+		return game.cities;
+	}
+
+	return game.cities.map((city) => normalizeSavedRetailCity(game, city));
+}
+
+function normalizeSavedRetailCity(game: Record<string, unknown>, city: unknown): unknown {
+	if (typeof city !== 'object' || city === null) {
+		return city;
+	}
+
+	const record = city as Record<string, unknown>;
+	if (typeof record.id !== 'string') {
+		return city;
+	}
+
+	const definition = getWorldCityDefinition(record.id as WorldCityId);
+	if (!definition || definition.kind !== 'retail') {
+		return city;
+	}
+
+	if (record.width === DEFAULT_RETAIL_CITY_WIDTH && record.height === DEFAULT_RETAIL_CITY_HEIGHT) {
+		return city;
+	}
+
+	if (record.width !== 28 || record.height !== 24) {
+		return city;
+	}
+
+	const seed =
+		record.id === 'harbor-city' && typeof game.seed === 'number' ? game.seed : definition.seed;
+
+	return generateCity({
+		id: definition.id,
+		name: typeof record.name === 'string' ? record.name : definition.name,
+		width: DEFAULT_RETAIL_CITY_WIDTH,
+		height: DEFAULT_RETAIL_CITY_HEIGHT,
+		seed
+	});
+}
+
+function normalizeSavedRetailStorePlacements(stores: unknown, cities: unknown): unknown {
+	if (!Array.isArray(stores) || !Array.isArray(cities)) {
+		return stores;
+	}
+
+	const cityById = new Map(
+		cities
+			.filter((city): city is City => isSavedCityLike(city))
+			.map((city) => [city.id, city] as const)
+	);
+	const occupiedTileIdsByCity = new Map<string, Set<string>>();
+
+	return stores.map((store) => {
+		if (typeof store !== 'object' || store === null) {
+			return store;
+		}
+
+		const record = store as Record<string, unknown>;
+		if (typeof record.cityId !== 'string') {
+			return store;
+		}
+
+		const city = cityById.get(record.cityId);
+		if (!city) {
+			return store;
+		}
+
+		const occupiedTileIds = getOccupiedTileIds(occupiedTileIdsByCity, city.id);
+		const targetTile = findSavedStoreTile(city, record, occupiedTileIds);
+		if (!targetTile) {
+			return store;
+		}
+
+		occupiedTileIds.add(targetTile.id);
+
+		if (
+			record.tileId === targetTile.id &&
+			record.mapX === targetTile.x &&
+			record.mapY === targetTile.y
+		) {
+			return store;
+		}
+
+		return {
+			...record,
+			tileId: targetTile.id,
+			mapX: targetTile.x,
+			mapY: targetTile.y
+		};
+	});
+}
+
+function isSavedCityLike(value: unknown): value is City {
+	return (
+		typeof value === 'object' &&
+		value !== null &&
+		typeof (value as { id?: unknown }).id === 'string' &&
+		Array.isArray((value as { tiles?: unknown }).tiles)
+	);
+}
+
+function getOccupiedTileIds(
+	occupiedTileIdsByCity: Map<string, Set<string>>,
+	cityId: string
+): Set<string> {
+	let occupiedTileIds = occupiedTileIdsByCity.get(cityId);
+	if (!occupiedTileIds) {
+		occupiedTileIds = new Set();
+		occupiedTileIdsByCity.set(cityId, occupiedTileIds);
+	}
+
+	return occupiedTileIds;
+}
+
+function findSavedStoreTile(
+	city: City,
+	store: Record<string, unknown>,
+	occupiedTileIds: Set<string>
+): CityTile | null {
+	if (typeof store.tileId === 'string') {
+		const tile = getTileById(city, store.tileId);
+		if (tile && isTileBuildable(tile) && !occupiedTileIds.has(tile.id)) {
+			return tile;
+		}
+	}
+
+	const originX = typeof store.mapX === 'number' ? store.mapX : 1;
+	const originY = typeof store.mapY === 'number' ? store.mapY : 1;
+	const buildableTiles = city.tiles.filter(
+		(tile) => isTileBuildable(tile) && !occupiedTileIds.has(tile.id)
+	);
+
+	return buildableTiles.reduce<CityTile | null>((best, tile) => {
+		if (!best) {
+			return tile;
+		}
+
+		const bestDistance = getTileDistance(best, originX, originY);
+		const tileDistance = getTileDistance(tile, originX, originY);
+
+		return tileDistance < bestDistance ? tile : best;
+	}, null);
+}
+
+function getTileDistance(tile: CityTile, x: number, y: number): number {
+	return Math.abs(tile.x - x) + Math.abs(tile.y - y);
 }
 
 function inferStoreCap(world: GameState['world'], storeCount: number): number {

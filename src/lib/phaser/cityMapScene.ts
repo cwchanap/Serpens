@@ -1,6 +1,8 @@
 import { asset } from '$app/paths';
 import Phaser from 'phaser';
 import {
+	GREEN_TERRAIN_ART_VARIANTS,
+	NEIGHBORHOOD_TERRAIN_ART,
 	RESIDENTIAL_TERRAIN_ART_VARIANTS,
 	ROAD_TERRAIN_CONNECTOR_ART,
 	RIVER_TERRAIN_CONNECTOR_ART,
@@ -688,13 +690,28 @@ function getTerrainTextureKey(tile: CityMapTileRender): string {
 }
 
 function getBaseTerrainArt(tile: CityMapTileRender): TerrainArt {
-	if (tile.terrain !== 'residential') {
-		return TERRAIN_ART[tile.terrain];
+	if (tile.terrain === 'residential') {
+		return getTerrainArtVariant(RESIDENTIAL_TERRAIN_ART_VARIANTS, tile);
 	}
 
-	const index = Math.abs(tile.x + tile.y * 31) % RESIDENTIAL_TERRAIN_ART_VARIANTS.length;
+	if (tile.terrain === 'green') {
+		return getTerrainArtVariant(GREEN_TERRAIN_ART_VARIANTS, tile);
+	}
 
-	return RESIDENTIAL_TERRAIN_ART_VARIANTS[index]!;
+	const neighborhoodVariants = NEIGHBORHOOD_TERRAIN_ART[tile.neighborhood];
+
+	return neighborhoodVariants
+		? getTerrainArtVariant(neighborhoodVariants, tile)
+		: TERRAIN_ART[tile.terrain];
+}
+
+function getTerrainArtVariant(
+	variants: readonly TerrainArt[],
+	tile: CityMapTileRender
+): TerrainArt {
+	const index = Math.abs(tile.x + tile.y * 31) % variants.length;
+
+	return variants[index]!;
 }
 
 function getFeatureTerrainArt(tile: CityMapTileRender): TerrainArt | null {
