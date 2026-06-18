@@ -460,4 +460,40 @@ describe('saveCodec', () => {
 		expect(summary.autoSave).not.toBe(autoSave.metadata);
 		expect(summary.manualSlots[0]?.id).toBe('manual-test-run');
 	});
+
+	test('validateSaveRecord rejects invalid pricing posture', () => {
+		expect.assertions(2);
+		const game = createGame({
+			policy: { ...createGame().policy, pricing: 'invalid' as never }
+		});
+		const record = createManualSaveRecord({ game });
+
+		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+		expect(() => validateSaveRecord(record)).toThrow('must be one of:');
+	});
+
+	test('validateSaveRecord rejects unknown material id in warehouse', () => {
+		expect.assertions(2);
+		const game = createGame({
+			warehouse: {
+				...createGame().warehouse,
+				materials: { 'unknown-material': 10 }
+			}
+		});
+		const record = createManualSaveRecord({ game });
+
+		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+		expect(() => validateSaveRecord(record)).toThrow('must be a known material');
+	});
+
+	test('validateSaveRecord rejects non-finite number in scorecard', () => {
+		expect.assertions(2);
+		const game = createGame({
+			scorecard: { ...createGame().scorecard, profit: NaN }
+		});
+		const record = createManualSaveRecord({ game });
+
+		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+		expect(() => validateSaveRecord(record)).toThrow('must be a finite number');
+	});
 });

@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import { generateCity } from './city';
 import { createFoundingGameAtTile } from './placement';
 import { createCityMapSnapshot } from './mapRender';
+import type { CityTile } from './types';
 
 describe('city map render snapshot', () => {
 	test('creates a serializable snapshot for the active city', () => {
@@ -191,5 +192,266 @@ describe('city map render snapshot', () => {
 			snapshot.tiles.find((candidate) => candidate.id === 'harbor-city-8-6')?.riverVariant
 		).toBe('corner-sw');
 		expect(snapshot.tiles.find((candidate) => candidate.id === tile.id)?.riverVariant).toBeNull();
+	});
+
+	test('marks tee-esw variant for road tiles with east, south, and west neighbors', () => {
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 20,
+			height: 20,
+			seed: 9
+		});
+		const tile = city.tiles.find((candidate) => !candidate.locked && candidate.feature === null)!;
+		const game = createFoundingGameAtTile({
+			archetypeId: 'convenience',
+			city,
+			tileId: tile.id,
+			seed: 9
+		});
+
+		// Manually add road tiles to create tee-esw variant
+		const modifiedCity = {
+			...city,
+			tiles: [
+				...city.tiles,
+				{
+					id: 'road-tee-esw',
+					x: 12,
+					y: 12,
+					cityId: city.id,
+					neighborhood: 'downtown' as const,
+					terrain: 'transit' as const,
+					feature: 'road' as const,
+					demand: 50,
+					rent: 100,
+					footTraffic: 60,
+					customerFit: 70,
+					locked: false
+				},
+				{
+					id: 'road-tee-esw-e',
+					x: 13,
+					y: 12,
+					cityId: city.id,
+					neighborhood: 'downtown' as const,
+					terrain: 'transit' as const,
+					feature: 'road' as const,
+					demand: 50,
+					rent: 100,
+					footTraffic: 60,
+					customerFit: 70,
+					locked: false
+				},
+				{
+					id: 'road-tee-esw-s',
+					x: 12,
+					y: 13,
+					cityId: city.id,
+					neighborhood: 'downtown' as const,
+					terrain: 'transit' as const,
+					feature: 'road' as const,
+					demand: 50,
+					rent: 100,
+					footTraffic: 60,
+					customerFit: 70,
+					locked: false
+				},
+				{
+					id: 'road-tee-esw-w',
+					x: 11,
+					y: 12,
+					cityId: city.id,
+					neighborhood: 'downtown' as const,
+					terrain: 'transit' as const,
+					feature: 'road' as const,
+					demand: 50,
+					rent: 100,
+					footTraffic: 60,
+					customerFit: 70,
+					locked: false
+				}
+			] as CityTile[]
+		};
+
+		const modifiedGame = { ...game, cities: [modifiedCity] };
+		const snapshot = createCityMapSnapshot(modifiedGame, null);
+
+		const teeEswTile = snapshot.tiles.find((candidate) => candidate.roadVariant === 'tee-esw');
+		expect(teeEswTile).toBeDefined();
+	});
+
+	test('marks tee-nsw variant for road tiles with north, south, and west neighbors', () => {
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 20,
+			height: 20,
+			seed: 9
+		});
+		const tile = city.tiles.find((candidate) => !candidate.locked && candidate.feature === null)!;
+		const game = createFoundingGameAtTile({
+			archetypeId: 'convenience',
+			city,
+			tileId: tile.id,
+			seed: 9
+		});
+
+		// Manually add road tiles to create tee-nsw variant
+		const modifiedCity = {
+			...city,
+			tiles: [
+				...city.tiles,
+				{
+					id: 'road-tee-nsw',
+					x: 14,
+					y: 14,
+					cityId: city.id,
+					neighborhood: 'downtown' as const,
+					terrain: 'transit' as const,
+					feature: 'road' as const,
+					demand: 50,
+					rent: 100,
+					footTraffic: 60,
+					customerFit: 70,
+					locked: false
+				},
+				{
+					id: 'road-tee-nsw-n',
+					x: 14,
+					y: 13,
+					cityId: city.id,
+					neighborhood: 'downtown' as const,
+					terrain: 'transit' as const,
+					feature: 'road' as const,
+					demand: 50,
+					rent: 100,
+					footTraffic: 60,
+					customerFit: 70,
+					locked: false
+				},
+				{
+					id: 'road-tee-nsw-s',
+					x: 14,
+					y: 15,
+					cityId: city.id,
+					neighborhood: 'downtown' as const,
+					terrain: 'transit' as const,
+					feature: 'road' as const,
+					demand: 50,
+					rent: 100,
+					footTraffic: 60,
+					customerFit: 70,
+					locked: false
+				},
+				{
+					id: 'road-tee-nsw-w',
+					x: 13,
+					y: 14,
+					cityId: city.id,
+					neighborhood: 'downtown' as const,
+					terrain: 'transit' as const,
+					feature: 'road' as const,
+					demand: 50,
+					rent: 100,
+					footTraffic: 60,
+					customerFit: 70,
+					locked: false
+				}
+			] as CityTile[]
+		};
+
+		const modifiedGame = { ...game, cities: [modifiedCity] };
+		const snapshot = createCityMapSnapshot(modifiedGame, null);
+
+		const teeNswTile = snapshot.tiles.find((candidate) => candidate.roadVariant === 'tee-nsw');
+		expect(teeNswTile).toBeDefined();
+	});
+
+	test('marks tee-new variant for road tiles with north, east, and west neighbors', () => {
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 20,
+			height: 20,
+			seed: 9
+		});
+		const tile = city.tiles.find((candidate) => !candidate.locked && candidate.feature === null)!;
+		const game = createFoundingGameAtTile({
+			archetypeId: 'convenience',
+			city,
+			tileId: tile.id,
+			seed: 9
+		});
+
+		// Manually add road tiles to create tee-new variant
+		const modifiedCity = {
+			...city,
+			tiles: [
+				...city.tiles,
+				{
+					id: 'road-tee-new',
+					x: 16,
+					y: 16,
+					cityId: city.id,
+					neighborhood: 'downtown' as const,
+					terrain: 'transit' as const,
+					feature: 'road' as const,
+					demand: 50,
+					rent: 100,
+					footTraffic: 60,
+					customerFit: 70,
+					locked: false
+				},
+				{
+					id: 'road-tee-new-n',
+					x: 16,
+					y: 15,
+					cityId: city.id,
+					neighborhood: 'downtown' as const,
+					terrain: 'transit' as const,
+					feature: 'road' as const,
+					demand: 50,
+					rent: 100,
+					footTraffic: 60,
+					customerFit: 70,
+					locked: false
+				},
+				{
+					id: 'road-tee-new-e',
+					x: 17,
+					y: 16,
+					cityId: city.id,
+					neighborhood: 'downtown' as const,
+					terrain: 'transit' as const,
+					feature: 'road' as const,
+					demand: 50,
+					rent: 100,
+					footTraffic: 60,
+					customerFit: 70,
+					locked: false
+				},
+				{
+					id: 'road-tee-new-w',
+					x: 15,
+					y: 16,
+					cityId: city.id,
+					neighborhood: 'downtown' as const,
+					terrain: 'transit' as const,
+					feature: 'road' as const,
+					demand: 50,
+					rent: 100,
+					footTraffic: 60,
+					customerFit: 70,
+					locked: false
+				}
+			] as CityTile[]
+		};
+
+		const modifiedGame = { ...game, cities: [modifiedCity] };
+		const snapshot = createCityMapSnapshot(modifiedGame, null);
+
+		const teeNewTile = snapshot.tiles.find((candidate) => candidate.roadVariant === 'tee-new');
+		expect(teeNewTile).toBeDefined();
 	});
 });
