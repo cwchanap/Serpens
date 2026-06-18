@@ -1,7 +1,24 @@
 import type { ArchetypeId, CityTile, GameState, Store } from './types';
 import type { PlacementPreview } from './placementPreview';
 
-export type CityMapRoadVariant = 'horizontal' | 'vertical' | 'intersection';
+export type CityMapFeatureVariant =
+	| 'isolated'
+	| 'end-n'
+	| 'end-e'
+	| 'end-s'
+	| 'end-w'
+	| 'horizontal'
+	| 'vertical'
+	| 'corner-ne'
+	| 'corner-es'
+	| 'corner-sw'
+	| 'corner-wn'
+	| 'tee-nes'
+	| 'tee-esw'
+	| 'tee-nsw'
+	| 'tee-new'
+	| 'intersection';
+export type CityMapRoadVariant = CityMapFeatureVariant;
 
 export interface CityMapTileRender {
 	id: string;
@@ -11,6 +28,7 @@ export interface CityMapTileRender {
 	terrain: CityTile['terrain'];
 	feature: CityTile['feature'];
 	roadVariant: CityMapRoadVariant | null;
+	riverVariant: CityMapFeatureVariant | null;
 	locked: boolean;
 	owned: boolean;
 	selected: boolean;
@@ -65,6 +83,11 @@ export function createCityMapSnapshot(
 			.filter((candidate) => candidate.feature === 'road')
 			.map((candidate) => `${candidate.x},${candidate.y}`)
 	);
+	const riverCoordinates = new Set(
+		city.tiles
+			.filter((candidate) => candidate.feature === 'river')
+			.map((candidate) => `${candidate.x},${candidate.y}`)
+	);
 
 	return {
 		cityId: city.id,
@@ -73,7 +96,7 @@ export function createCityMapSnapshot(
 		selectedTileId,
 		placementPreview: clonePlacementPreview(placementPreview),
 		tiles: city.tiles.map((tile) =>
-			createTileRender(tile, roadCoordinates, ownedTileIds, selectedTileId)
+			createTileRender(tile, roadCoordinates, riverCoordinates, ownedTileIds, selectedTileId)
 		),
 		stores: activeCityStores.map(createStoreRender)
 	};
@@ -93,6 +116,7 @@ function clonePlacementPreview(preview: PlacementPreview | null): PlacementPrevi
 function createTileRender(
 	tile: CityTile,
 	roadCoordinates: ReadonlySet<string>,
+	riverCoordinates: ReadonlySet<string>,
 	ownedTileIds: ReadonlySet<string>,
 	selectedTileId: string | null
 ): CityMapTileRender {
@@ -103,7 +127,8 @@ function createTileRender(
 		neighborhood: tile.neighborhood,
 		terrain: tile.terrain,
 		feature: tile.feature ?? null,
-		roadVariant: getRoadRenderVariant(tile, roadCoordinates),
+		roadVariant: getFeatureRenderVariant(tile, 'road', roadCoordinates),
+		riverVariant: getFeatureRenderVariant(tile, 'river', riverCoordinates),
 		locked: tile.locked,
 		owned: ownedTileIds.has(tile.id),
 		selected: tile.id === selectedTileId,
@@ -114,26 +139,49 @@ function createTileRender(
 	};
 }
 
-function getRoadRenderVariant(
+function getFeatureRenderVariant(
 	tile: CityTile,
-	roadCoordinates: ReadonlySet<string>
-): CityMapRoadVariant | null {
-	if (tile.feature !== 'road') {
+	feature: NonNullable<CityTile['feature']>,
+	coordinates: ReadonlySet<string>
+): CityMapFeatureVariant | null {
+	if (tile.feature !== feature) {
 		return null;
 	}
 
-	const horizontalNeighborCount =
-		Number(roadCoordinates.has(`${tile.x - 1},${tile.y}`)) +
-		Number(roadCoordinates.has(`${tile.x + 1},${tile.y}`));
-	const verticalNeighborCount =
-		Number(roadCoordinates.has(`${tile.x},${tile.y - 1}`)) +
-		Number(roadCoordinates.has(`${tile.x},${tile.y + 1}`));
+	const north = coordinates.has(`${tile.x},${tile.y - 1}`);
+	const east = coordinates.has(`${tile.x + 1},${tile.y}`);
+	const south = coordinates.has(`${tile.x},${tile.y + 1}`);
+	const west = coordinates.has(`${tile.x - 1},${tile.y}`);
+	const neighborCount = Number(north) + Number(east) + Number(south) + Number(west);
 
-	if (horizontalNeighborCount > 0 && verticalNeighborCount > 0) {
-		return 'intersection';
+	if (neighborCount === 0) {
+		return 'isolated';
 	}
 
-	return horizontalNeighborCount > verticalNeighborCount ? 'horizontal' : 'vertical';
+	if (neighborCount === 1) {
+		if (north) return 'end-n';
+		if (east) return 'end-e';
+		if (south) return 'end-s';
+		return 'end-w';
+	}
+
+	if (neighborCount === 2) {
+		if (north && south) return 'vertical';
+		if (east && west) return 'horizontal';
+		if (north && east) return 'corner-ne';
+		if (east && south) return 'corner-es';
+		if (south && west) return 'corner-sw';
+		return 'corner-wn';
+	}
+
+	if (neighborCount === 3) {
+		if (north && east && south) return 'tee-nes';
+		if (east && south && west) return 'tee-esw';
+		if (north && south && west) return 'tee-nsw';
+		return 'tee-new';
+	}
+
+	return 'intersection';
 }
 
 function createStoreRender(store: Store): CityMapStoreRender {

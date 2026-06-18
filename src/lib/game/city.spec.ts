@@ -3,8 +3,66 @@ import {
 	generateCity,
 	getTileById,
 	getTilePlacementBlockReason,
-	getTilesByNeighborhood
+	getTilesByNeighborhood,
+	isTileBuildable
 } from './city';
+import type { CityTile } from './types';
+
+function isFourWayContiguous(tiles: CityTile[]): boolean {
+	if (tiles.length === 0) {
+		return false;
+	}
+
+	const coordinates = new Set(tiles.map((tile) => `${tile.x},${tile.y}`));
+	const pending = [tiles[0]!];
+	const visited = new Set<string>();
+
+	while (pending.length > 0) {
+		const tile = pending.pop()!;
+		const key = `${tile.x},${tile.y}`;
+
+		if (visited.has(key)) {
+			continue;
+		}
+
+		visited.add(key);
+
+		for (const [x, y] of [
+			[tile.x, tile.y - 1],
+			[tile.x + 1, tile.y],
+			[tile.x, tile.y + 1],
+			[tile.x - 1, tile.y]
+		]) {
+			const neighborKey = `${x},${y}`;
+
+			if (coordinates.has(neighborKey) && !visited.has(neighborKey)) {
+				pending.push({ ...tile, x, y });
+			}
+		}
+	}
+
+	return visited.size === tiles.length;
+}
+
+function countRoadColumns(tiles: CityTile[], minimumTiles: number): number {
+	const counts = new Map<number, number>();
+
+	for (const tile of tiles) {
+		counts.set(tile.x, (counts.get(tile.x) ?? 0) + 1);
+	}
+
+	return [...counts.values()].filter((count) => count >= minimumTiles).length;
+}
+
+function countRoadRows(tiles: CityTile[], minimumTiles: number): number {
+	const counts = new Map<number, number>();
+
+	for (const tile of tiles) {
+		counts.set(tile.y, (counts.get(tile.y) ?? 0) + 1);
+	}
+
+	return [...counts.values()].filter((count) => count >= minimumTiles).length;
+}
 
 describe('city generation', () => {
 	test('generates deterministic city tiles for the same seed', () => {
@@ -120,6 +178,19 @@ describe('city generation', () => {
 		expect(getTilesByNeighborhood(city, 'campus').length).toBeGreaterThan(0);
 	});
 
+	test('keeps industrial terrain out of generated retail cities', () => {
+		expect.assertions(1);
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 28,
+			height: 24,
+			seed: 77
+		});
+
+		expect(city.tiles.some((tile) => tile.terrain === 'industrial')).toBe(false);
+	});
+
 	test('adds deterministic road and river features to playable cities', () => {
 		expect.assertions(10);
 		const first = generateCity({
@@ -152,6 +223,50 @@ describe('city generation', () => {
 		expect(getTileById(first, 'harbor-city-10-1')?.feature).toBe('road');
 		expect(getTileById(first, 'harbor-city-5-1')?.feature).toBe('river');
 		expect(first.tiles.some((tile) => !tile.locked && tile.feature === null)).toBe(true);
+	});
+
+	test('supports a larger city with more buildable slots', () => {
+		expect.assertions(3);
+		const current = generateCity({
+			id: 'current-city',
+			name: 'Current City',
+			width: 20,
+			height: 20,
+			seed: 77
+		});
+		const larger = generateCity({
+			id: 'larger-city',
+			name: 'Larger City',
+			width: 28,
+			height: 24,
+			seed: 77
+		});
+
+		expect(larger.tiles).toHaveLength(672);
+		expect(larger.tiles.filter(isTileBuildable).length).toBeGreaterThan(
+			current.tiles.filter(isTileBuildable).length
+		);
+		expect(larger.tiles.filter(isTileBuildable).length).toBeGreaterThan(400);
+	});
+
+	test('generates four-way contiguous road and river paths on larger maps', () => {
+		expect.assertions(6);
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 28,
+			height: 24,
+			seed: 77
+		});
+		const roadTiles = city.tiles.filter((tile) => tile.feature === 'road');
+		const riverTiles = city.tiles.filter((tile) => tile.feature === 'river');
+
+		expect(roadTiles.length).toBeGreaterThan(0);
+		expect(riverTiles.length).toBeGreaterThan(0);
+		expect(isFourWayContiguous(roadTiles)).toBe(true);
+		expect(isFourWayContiguous(riverTiles)).toBe(true);
+		expect(countRoadColumns(roadTiles, Math.floor(city.height * 0.45))).toBeGreaterThanOrEqual(3);
+		expect(countRoadRows(roadTiles, Math.floor(city.width * 0.35))).toBeGreaterThanOrEqual(3);
 	});
 
 	test('does not add road or river features to cities smaller than five by five', () => {

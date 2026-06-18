@@ -74,8 +74,8 @@
 	const starterCity = generateCity({
 		id: 'harbor-city',
 		name: 'Harbor City',
-		width: 20,
-		height: 20,
+		width: 28,
+		height: 24,
 		seed: 20260503
 	});
 	const starterIndustryCity = generateIndustryCity({

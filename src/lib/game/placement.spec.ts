@@ -44,6 +44,49 @@ describe('tile placement', () => {
 		expect(first.risks.length).toBeGreaterThanOrEqual(0);
 	});
 
+	test('keeps residential and commercial tiles buildable with setup cost premiums', () => {
+		expect.assertions(5);
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 20,
+			height: 20,
+			seed: 303
+		});
+		const neutralTile = city.tiles.find(
+			(tile) => isTileBuildable(tile) && tile.terrain === 'green'
+		)!;
+		const residentialTile = {
+			...neutralTile,
+			id: 'harbor-city-residential-premium',
+			terrain: 'residential' as const,
+			neighborhood: 'residential' as const
+		};
+		const commercialTile = {
+			...neutralTile,
+			id: 'harbor-city-commercial-premium',
+			terrain: 'commercial' as const,
+			neighborhood: 'mall' as const
+		};
+
+		expect(isTileBuildable(residentialTile)).toBe(true);
+		expect(isTileBuildable(commercialTile)).toBe(true);
+		expect(forecastOpening(residentialTile, 'grocery').setupCost).toBeGreaterThan(
+			forecastOpening(neutralTile, 'grocery').setupCost
+		);
+		expect(forecastOpening(commercialTile, 'boutique').setupCost).toBeGreaterThan(
+			forecastOpening(neutralTile, 'boutique').setupCost
+		);
+		expect(() =>
+			createFoundingGameAtTile({
+				archetypeId: 'grocery',
+				city: { ...city, tiles: [residentialTile] },
+				tileId: residentialTile.id,
+				seed: 303
+			})
+		).not.toThrow();
+	});
+
 	test('creates the founding game at the selected tile', () => {
 		expect.assertions(8);
 		const city = generateCity({

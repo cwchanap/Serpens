@@ -185,7 +185,7 @@ function getNeighborhood(width: number, height: number, x: number, y: number): N
 	}
 
 	if (top && left) {
-		return 'industrial';
+		return 'residential';
 	}
 
 	if (bottom && right) {
@@ -230,25 +230,60 @@ function getTileFeature(
 }
 
 function isRoadTile(width: number, height: number, x: number, y: number): boolean {
-	const spineX = Math.floor(width / 2);
-	const crossY = Math.floor(height / 2);
+	if (isRiverTile(width, height, x, y)) {
+		return false;
+	}
 
-	return x === spineX || y === crossY;
+	return getRoadDividerColumns(width).includes(x) || getRoadDividerRows(height).includes(y);
+}
+
+function getRoadDividerColumns(width: number): number[] {
+	return uniqueInteriorPositions(width, [
+		Math.floor(width * 0.18),
+		Math.floor(width / 2),
+		Math.floor(width * 0.74)
+	]);
+}
+
+function getRoadDividerRows(height: number): number[] {
+	return uniqueInteriorPositions(height, [
+		Math.floor(height * 0.25),
+		Math.floor(height / 2),
+		Math.floor(height * 0.75)
+	]);
+}
+
+function uniqueInteriorPositions(size: number, positions: number[]): number[] {
+	return [...new Set(positions.map((position) => Math.max(1, Math.min(size - 2, position))))].sort(
+		(a, b) => a - b
+	);
 }
 
 function isRiverTile(width: number, height: number, x: number, y: number): boolean {
 	const upperX = Math.max(1, Math.floor(width / 4));
-	const bendY = Math.max(2, Math.floor(height * 0.55));
-	const lowerX = Math.max(1, Math.min(width - 2, upperX + Math.max(1, Math.floor(width / 5))));
+	const bendY = Math.max(2, Math.floor(height * 0.32));
+	const lowerX = getRiverLowerX(width);
+	const riverEndY = Math.max(bendY, Math.floor(height / 2) - 2);
 
-	if (y <= bendY) {
+	if (y < bendY) {
 		return x === upperX;
 	}
 
-	const bendProgress = y - bendY;
-	const expectedX = Math.min(lowerX, upperX + bendProgress);
+	if (y === bendY && x >= upperX && x <= lowerX) {
+		return true;
+	}
 
-	return x === expectedX;
+	if (y <= riverEndY) {
+		return x === lowerX;
+	}
+
+	return false;
+}
+
+function getRiverLowerX(width: number): number {
+	const upperX = Math.max(1, Math.floor(width / 4));
+
+	return Math.max(1, Math.min(width - 2, upperX + Math.max(1, Math.floor(width / 6))));
 }
 
 function clamp(value: number, min: number, max: number): number {

@@ -1,7 +1,16 @@
 import { asset } from '$app/paths';
 import Phaser from 'phaser';
-import { STORE_ART_LIST, TERRAIN_ART, TERRAIN_ART_LIST, getStoreArt } from '../assets/gameArt';
-import type { CityMapSnapshot, CityMapTileRender } from '../game/mapRender';
+import {
+	RESIDENTIAL_TERRAIN_ART_VARIANTS,
+	ROAD_TERRAIN_CONNECTOR_ART,
+	RIVER_TERRAIN_CONNECTOR_ART,
+	STORE_ART_LIST,
+	TERRAIN_ART,
+	TERRAIN_ART_LIST,
+	getStoreArt
+} from '../assets/gameArt';
+import type { TerrainArt, TerrainConnectorVariant } from '../assets/gameArt';
+import type { CityMapFeatureVariant, CityMapSnapshot, CityMapTileRender } from '../game/mapRender';
 
 export type CityMapEvent = { type: 'tileSelected'; tileId: string };
 export type CityMapEventHandler = (event: CityMapEvent) => void;
@@ -141,7 +150,7 @@ export class CityMapScene extends Phaser.Scene {
 		const y = tile.y * TILE_SIZE;
 		const fillAlpha = tile.locked ? 0.38 : 1;
 
-		if (!this.hasBaseTerrainTexture(tile.terrain)) {
+		if (!this.hasBaseTerrainTexture(tile)) {
 			graphics.fillStyle(TERRAIN_COLORS[tile.terrain], fillAlpha);
 			graphics.fillRect(x, y, TILE_SIZE, TILE_SIZE);
 		}
@@ -163,53 +172,39 @@ export class CityMapScene extends Phaser.Scene {
 	}
 
 	private drawTerrainFeatureFallback(tile: CityMapTileRender, x: number, y: number): void {
-		if (!this.mapGraphics || !tile.feature || this.hasTerrainTexture(tile)) {
+		if (!this.mapGraphics || !tile.feature || this.hasSupportedTerrainTexture(tile)) {
 			return;
 		}
 
 		if (tile.feature === 'road') {
-			this.mapGraphics.fillStyle(0x50545a, 0.92);
-			if (tile.roadVariant === 'intersection') {
-				this.mapGraphics.fillRect(x, y, TILE_SIZE, TILE_SIZE);
-				this.mapGraphics.lineStyle(1, 0xd7d2c3, 0.65);
-				this.mapGraphics.lineBetween(
-					x + 4,
-					y + TILE_SIZE / 2,
-					x + TILE_SIZE - 4,
-					y + TILE_SIZE / 2
-				);
-				this.mapGraphics.lineBetween(
-					x + TILE_SIZE / 2,
-					y + 4,
-					x + TILE_SIZE / 2,
-					y + TILE_SIZE - 4
-				);
-				return;
-			}
-
-			if (tile.roadVariant === 'horizontal') {
-				this.mapGraphics.fillRect(x, y + TILE_SIZE * 0.32, TILE_SIZE, TILE_SIZE * 0.36);
-				this.mapGraphics.lineStyle(1, 0xd7d2c3, 0.65);
-				this.mapGraphics.lineBetween(
-					x + 4,
-					y + TILE_SIZE / 2,
-					x + TILE_SIZE - 4,
-					y + TILE_SIZE / 2
-				);
-				return;
-			}
-
-			this.mapGraphics.fillRect(x + TILE_SIZE * 0.32, y, TILE_SIZE * 0.36, TILE_SIZE);
-			this.mapGraphics.lineStyle(1, 0xd7d2c3, 0.65);
-			this.mapGraphics.lineBetween(x + TILE_SIZE / 2, y + 4, x + TILE_SIZE / 2, y + TILE_SIZE - 4);
+			drawConnectedFeatureFallback({
+				graphics: this.mapGraphics,
+				variant: tile.roadVariant ?? 'isolated',
+				x,
+				y,
+				fillColor: 0x50545a,
+				lineColor: 0xd7d2c3,
+				fillAlpha: 0.92,
+				lineAlpha: 0.65,
+				armWidth: TILE_SIZE * 0.36,
+				lineWidth: 1
+			});
 			return;
 		}
 
 		if (tile.feature === 'river') {
-			this.mapGraphics.fillStyle(0x3ca7d8, 0.92);
-			this.mapGraphics.fillRect(x, y, TILE_SIZE, TILE_SIZE);
-			this.mapGraphics.lineStyle(2, 0xb9ecff, 0.55);
-			this.mapGraphics.lineBetween(x + 4, y + 8, x + TILE_SIZE - 4, y + TILE_SIZE - 8);
+			drawConnectedFeatureFallback({
+				graphics: this.mapGraphics,
+				variant: tile.riverVariant ?? 'isolated',
+				x,
+				y,
+				fillColor: 0x3ca7d8,
+				lineColor: 0xb9ecff,
+				fillAlpha: 0.92,
+				lineAlpha: 0.55,
+				armWidth: TILE_SIZE * 0.5,
+				lineWidth: 2
+			});
 		}
 	}
 
@@ -485,13 +480,15 @@ export class CityMapScene extends Phaser.Scene {
 		let decorationSpriteCount = 0;
 
 		for (const tile of this.snapshot.tiles) {
-			if (this.hasBaseTerrainTexture(tile.terrain)) {
+			const baseTerrainArt = getBaseTerrainArt(tile);
+
+			if (this.hasBaseTerrainTexture(tile)) {
 				this.terrainSprites.push(
 					this.add
 						.image(
 							tile.x * TILE_SIZE + TILE_SIZE / 2,
 							tile.y * TILE_SIZE + TILE_SIZE / 2,
-							TERRAIN_ART[tile.terrain].textureKey
+							baseTerrainArt.textureKey
 						)
 						.setOrigin(0.5)
 						.setDisplaySize(TILE_SIZE, TILE_SIZE)
@@ -503,7 +500,7 @@ export class CityMapScene extends Phaser.Scene {
 			if (tile.feature) {
 				expectedFeatureTileCount += 1;
 
-				if (this.hasTerrainTexture(tile)) {
+				if (this.hasSupportedTerrainTexture(tile)) {
 					const sprite = this.add
 						.image(
 							tile.x * TILE_SIZE + TILE_SIZE / 2,
@@ -514,9 +511,7 @@ export class CityMapScene extends Phaser.Scene {
 						.setDisplaySize(TERRAIN_FEATURE_SIZE, TERRAIN_FEATURE_SIZE)
 						.setDepth(TERRAIN_FEATURE_DEPTH);
 
-					if (tile.feature === 'road' && tile.roadVariant === 'horizontal') {
-						sprite.setAngle(90);
-					}
+					sprite.setAngle(getTerrainTextureAngle(tile));
 
 					this.terrainSprites.push(sprite);
 					featureSpriteCount += 1;
@@ -560,8 +555,12 @@ export class CityMapScene extends Phaser.Scene {
 		return tile.feature !== null && this.textures.exists(getTerrainTextureKey(tile));
 	}
 
-	private hasBaseTerrainTexture(terrain: CityMapTileRender['terrain']): boolean {
-		return this.textures.exists(TERRAIN_ART[terrain].textureKey);
+	private hasSupportedTerrainTexture(tile: CityMapTileRender): boolean {
+		return this.hasTerrainTexture(tile) && isTerrainTextureVariantSupported(tile);
+	}
+
+	private hasBaseTerrainTexture(tile: CityMapTileRender): boolean {
+		return this.textures.exists(getBaseTerrainArt(tile).textureKey);
 	}
 
 	private hasStorefrontTexture(textureKey: string): boolean {
@@ -685,18 +684,65 @@ export class CityMapScene extends Phaser.Scene {
 }
 
 function getTerrainTextureKey(tile: CityMapTileRender): string {
-	switch (tile.feature) {
-		case 'road':
-			if (tile.roadVariant === 'intersection') {
-				return TERRAIN_ART.roadIntersection.textureKey;
-			}
+	return getFeatureTerrainArt(tile)?.textureKey ?? '';
+}
 
-			return TERRAIN_ART.road.textureKey;
-		case 'river':
-			return TERRAIN_ART.river.textureKey;
-		case null:
-			return '';
+function getBaseTerrainArt(tile: CityMapTileRender): TerrainArt {
+	if (tile.terrain !== 'residential') {
+		return TERRAIN_ART[tile.terrain];
 	}
+
+	const index = Math.abs(tile.x + tile.y * 31) % RESIDENTIAL_TERRAIN_ART_VARIANTS.length;
+
+	return RESIDENTIAL_TERRAIN_ART_VARIANTS[index]!;
+}
+
+function getFeatureTerrainArt(tile: CityMapTileRender): TerrainArt | null {
+	if (tile.feature === 'road') {
+		const connectorVariant = getTerrainConnectorVariant(tile.roadVariant);
+
+		return connectorVariant ? ROAD_TERRAIN_CONNECTOR_ART[connectorVariant] : TERRAIN_ART.road;
+	}
+
+	if (tile.feature === 'river') {
+		const connectorVariant = getTerrainConnectorVariant(tile.riverVariant);
+
+		return connectorVariant ? RIVER_TERRAIN_CONNECTOR_ART[connectorVariant] : TERRAIN_ART.river;
+	}
+
+	return null;
+}
+
+function getTerrainConnectorVariant(
+	variant: CityMapFeatureVariant | null
+): TerrainConnectorVariant | null {
+	if (variant !== null && variant in ROAD_TERRAIN_CONNECTOR_ART) {
+		return variant as TerrainConnectorVariant;
+	}
+
+	return null;
+}
+
+function isTerrainTextureVariantSupported(tile: CityMapTileRender): boolean {
+	return getFeatureTerrainArt(tile) !== null;
+}
+
+function getTerrainTextureAngle(tile: CityMapTileRender): number {
+	const variant = tile.feature === 'river' ? tile.riverVariant : tile.roadVariant;
+
+	if (getTerrainConnectorVariant(variant)) {
+		return 0;
+	}
+
+	if (tile.feature === 'road') {
+		return variant === 'vertical' || variant === 'end-n' || variant === 'end-s' ? 90 : 0;
+	}
+
+	if (tile.feature === 'river') {
+		return variant === 'horizontal' || variant === 'end-e' || variant === 'end-w' ? 90 : 0;
+	}
+
+	return 0;
 }
 
 function getTerrainAssetMode(
@@ -712,4 +758,102 @@ function getTerrainAssetMode(
 	}
 
 	return 'mixed';
+}
+
+type FeatureDirection = 'n' | 'e' | 's' | 'w';
+
+interface ConnectedFeatureFallbackInput {
+	graphics: Phaser.GameObjects.Graphics;
+	variant: CityMapFeatureVariant;
+	x: number;
+	y: number;
+	fillColor: number;
+	lineColor: number;
+	fillAlpha: number;
+	lineAlpha: number;
+	armWidth: number;
+	lineWidth: number;
+}
+
+function drawConnectedFeatureFallback(input: ConnectedFeatureFallbackInput): void {
+	const centerX = input.x + TILE_SIZE / 2;
+	const centerY = input.y + TILE_SIZE / 2;
+	const halfArm = input.armWidth / 2;
+	const directions = getVariantDirections(input.variant);
+
+	input.graphics.fillStyle(input.fillColor, input.fillAlpha);
+	input.graphics.fillRect(centerX - halfArm, centerY - halfArm, input.armWidth, input.armWidth);
+
+	for (const direction of directions) {
+		switch (direction) {
+			case 'n':
+				input.graphics.fillRect(centerX - halfArm, input.y, input.armWidth, TILE_SIZE / 2);
+				break;
+			case 'e':
+				input.graphics.fillRect(centerX, centerY - halfArm, TILE_SIZE / 2, input.armWidth);
+				break;
+			case 's':
+				input.graphics.fillRect(centerX - halfArm, centerY, input.armWidth, TILE_SIZE / 2);
+				break;
+			case 'w':
+				input.graphics.fillRect(input.x, centerY - halfArm, TILE_SIZE / 2, input.armWidth);
+				break;
+		}
+	}
+
+	input.graphics.lineStyle(input.lineWidth, input.lineColor, input.lineAlpha);
+
+	for (const direction of directions) {
+		switch (direction) {
+			case 'n':
+				input.graphics.lineBetween(centerX, centerY, centerX, input.y + 4);
+				break;
+			case 'e':
+				input.graphics.lineBetween(centerX, centerY, input.x + TILE_SIZE - 4, centerY);
+				break;
+			case 's':
+				input.graphics.lineBetween(centerX, centerY, centerX, input.y + TILE_SIZE - 4);
+				break;
+			case 'w':
+				input.graphics.lineBetween(centerX, centerY, input.x + 4, centerY);
+				break;
+		}
+	}
+}
+
+function getVariantDirections(variant: CityMapFeatureVariant): FeatureDirection[] {
+	switch (variant) {
+		case 'end-n':
+			return ['n'];
+		case 'end-e':
+			return ['e'];
+		case 'end-s':
+			return ['s'];
+		case 'end-w':
+			return ['w'];
+		case 'horizontal':
+			return ['e', 'w'];
+		case 'vertical':
+			return ['n', 's'];
+		case 'corner-ne':
+			return ['n', 'e'];
+		case 'corner-es':
+			return ['e', 's'];
+		case 'corner-sw':
+			return ['s', 'w'];
+		case 'corner-wn':
+			return ['w', 'n'];
+		case 'tee-nes':
+			return ['n', 'e', 's'];
+		case 'tee-esw':
+			return ['e', 's', 'w'];
+		case 'tee-nsw':
+			return ['n', 's', 'w'];
+		case 'tee-new':
+			return ['n', 'e', 'w'];
+		case 'intersection':
+			return ['n', 'e', 's', 'w'];
+		case 'isolated':
+			return [];
+	}
 }
