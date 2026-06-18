@@ -26,6 +26,9 @@ import {
 	STORE_ART_LIST,
 	TERRAIN_ART,
 	TERRAIN_ART_LIST,
+	RESIDENTIAL_TERRAIN_ART_VARIANTS,
+	ROAD_TERRAIN_CONNECTOR_ART,
+	RIVER_TERRAIN_CONNECTOR_ART,
 	chainNodeArt,
 	getIndustrialBuildingArt,
 	getIndustryMaterialArt,
@@ -161,6 +164,59 @@ function imageStats(assetPath: string): {
 	};
 }
 
+function roadBandStats(assetPath: string): {
+	maxHorizontalRoadPixels: number;
+	maxVerticalRoadPixels: number;
+} {
+	const png = PNG.sync.read(readFileSync(staticPath(assetPath)));
+	let maxHorizontalRoadPixels = 0;
+	let maxVerticalRoadPixels = 0;
+
+	for (let y = 0; y < png.height; y += 1) {
+		let roadPixels = 0;
+
+		for (let x = 0; x < png.width; x += 1) {
+			const index = (png.width * y + x) << 2;
+
+			if (isRoadAsphaltPixel(png.data[index]!, png.data[index + 1]!, png.data[index + 2]!)) {
+				roadPixels += 1;
+			}
+		}
+
+		maxHorizontalRoadPixels = Math.max(maxHorizontalRoadPixels, roadPixels);
+	}
+
+	for (let x = 0; x < png.width; x += 1) {
+		let roadPixels = 0;
+
+		for (let y = 0; y < png.height; y += 1) {
+			const index = (png.width * y + x) << 2;
+
+			if (isRoadAsphaltPixel(png.data[index]!, png.data[index + 1]!, png.data[index + 2]!)) {
+				roadPixels += 1;
+			}
+		}
+
+		maxVerticalRoadPixels = Math.max(maxVerticalRoadPixels, roadPixels);
+	}
+
+	return { maxHorizontalRoadPixels, maxVerticalRoadPixels };
+}
+
+function isRoadAsphaltPixel(red: number, green: number, blue: number): boolean {
+	const channelSpread = Math.max(red, green, blue) - Math.min(red, green, blue);
+
+	return (
+		channelSpread <= 18 &&
+		red >= 38 &&
+		red <= 108 &&
+		green >= 38 &&
+		green <= 108 &&
+		blue >= 38 &&
+		blue <= 108
+	);
+}
+
 function assetHash(assetPath: string): string {
 	return createHash('sha256')
 		.update(readFileSync(staticPath(assetPath)))
@@ -248,7 +304,6 @@ describe('game art asset constants', () => {
 			green: '/assets/game/terrain/green-tile.png',
 			industrial: '/assets/game/terrain/industrial-tile.png',
 			road: '/assets/game/terrain/road-tile.png',
-			roadIntersection: '/assets/game/terrain/road-intersection-tile.png',
 			river: '/assets/game/terrain/river-tile.png',
 			residential: '/assets/game/terrain/residential-tile.png',
 			transit: '/assets/game/terrain/transit-tile.png',
@@ -259,7 +314,6 @@ describe('game art asset constants', () => {
 			green: 'terrain-green',
 			industrial: 'terrain-industrial',
 			road: 'terrain-road',
-			roadIntersection: 'terrain-road-intersection',
 			river: 'terrain-river',
 			residential: 'terrain-residential',
 			transit: 'terrain-transit',
@@ -268,7 +322,13 @@ describe('game art asset constants', () => {
 		const terrainIds = Object.keys(terrainPaths) as Array<keyof typeof terrainPaths>;
 
 		expect(Object.keys(TERRAIN_ART).sort()).toEqual([...terrainIds].sort());
-		expect(TERRAIN_ART_LIST).toHaveLength(terrainIds.length);
+		expect(TERRAIN_ART_LIST).toHaveLength(
+			terrainIds.length +
+				RESIDENTIAL_TERRAIN_ART_VARIANTS.length -
+				1 +
+				Object.keys(ROAD_TERRAIN_CONNECTOR_ART).length +
+				Object.keys(RIVER_TERRAIN_CONNECTOR_ART).length
+		);
 
 		for (const terrainId of terrainIds) {
 			const art = getTerrainArt(terrainId);
@@ -292,6 +352,95 @@ describe('game art asset constants', () => {
 		}
 	});
 
+	it('defines styled road and river connector art without using the legacy road intersection tile', () => {
+		expect.assertions(114);
+		const connectorVariants = [
+			'corner-ne',
+			'corner-es',
+			'corner-sw',
+			'corner-wn',
+			'tee-nes',
+			'tee-esw',
+			'tee-nsw',
+			'tee-new',
+			'intersection'
+		] as const;
+
+		expect(Object.keys(ROAD_TERRAIN_CONNECTOR_ART).sort()).toEqual([...connectorVariants].sort());
+		expect(Object.keys(RIVER_TERRAIN_CONNECTOR_ART).sort()).toEqual([...connectorVariants].sort());
+		expect(
+			TERRAIN_ART_LIST.some((art) => art.path === '/assets/game/terrain/road-intersection-tile.png')
+		).toBe(false);
+		expect(Object.keys(TERRAIN_ART)).not.toContain('roadIntersection');
+		expect(
+			duplicateAssetPaths(Object.values(ROAD_TERRAIN_CONNECTOR_ART).map((art) => art.path))
+		).toEqual([]);
+		expect(
+			duplicateAssetPaths(Object.values(RIVER_TERRAIN_CONNECTOR_ART).map((art) => art.path))
+		).toEqual([]);
+
+		for (const variant of connectorVariants) {
+			const roadArt = ROAD_TERRAIN_CONNECTOR_ART[variant];
+			const riverArt = RIVER_TERRAIN_CONNECTOR_ART[variant];
+
+			expect(roadArt.path).toBe(`/assets/game/terrain/road-connector-${variant}.png`);
+			expect(roadArt.textureKey).toBe(`terrain-road-connector-${variant}`);
+			expect(riverArt.path).toBe(`/assets/game/terrain/river-connector-${variant}.png`);
+			expect(riverArt.textureKey).toBe(`terrain-river-connector-${variant}`);
+
+			for (const art of [roadArt, riverArt]) {
+				const { width, height, opaquePixels } = imageStats(art.path);
+
+				expect(existsSync(staticPath(art.path))).toBe(true);
+				expect(width).toBe(64);
+				expect(height).toBe(64);
+				expect(
+					opaquePixels,
+					`${art.path} should preserve visible connector pixels`
+				).toBeGreaterThan(0);
+			}
+		}
+	});
+
+	it('defines multiple residential terrain variants with distinct assets', () => {
+		expect.assertions(51);
+		const residentialPaths = [
+			'/assets/game/terrain/residential-tile.png',
+			'/assets/game/terrain/residential-tile-2.png',
+			'/assets/game/terrain/residential-tile-3.png',
+			'/assets/game/terrain/residential-tile-4.png',
+			'/assets/game/terrain/residential-tile-5.png',
+			'/assets/game/terrain/residential-tile-6.png'
+		];
+
+		expect(RESIDENTIAL_TERRAIN_ART_VARIANTS).toHaveLength(6);
+		expect(RESIDENTIAL_TERRAIN_ART_VARIANTS.map((art) => art.path)).toEqual(residentialPaths);
+		expect(duplicateAssetPaths(residentialPaths)).toEqual([]);
+
+		for (const [index, art] of RESIDENTIAL_TERRAIN_ART_VARIANTS.entries()) {
+			expect(art.id).toBe('residential');
+			expect(art.textureKey).toBe(`terrain-residential${index === 0 ? '' : `-${index + 1}`}`);
+			expect(existsSync(staticPath(art.path))).toBe(true);
+
+			const { width, height, opaquePixels } = imageStats(art.path);
+
+			expect(width).toBe(64);
+			expect(height).toBe(64);
+			expect(opaquePixels, `${art.path} should preserve visible terrain pixels`).toBeGreaterThan(0);
+
+			const { maxHorizontalRoadPixels, maxVerticalRoadPixels } = roadBandStats(art.path);
+
+			expect(
+				maxHorizontalRoadPixels,
+				`${art.path} should not embed a horizontal road band`
+			).toBeLessThan(44);
+			expect(
+				maxVerticalRoadPixels,
+				`${art.path} should not embed a vertical road band`
+			).toBeLessThan(44);
+		}
+	});
+
 	it('defines separate industry terrain art without changing retail terrain keys', () => {
 		const terrainIds = Object.keys(industryTerrainPaths) as Array<
 			keyof typeof industryTerrainPaths
@@ -306,7 +455,6 @@ describe('game art asset constants', () => {
 			'residential',
 			'river',
 			'road',
-			'roadIntersection',
 			'transit',
 			'tree'
 		]);

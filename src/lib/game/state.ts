@@ -43,6 +43,11 @@ export const DEFAULT_POLICY: CompanyPolicy = {
 	service: 'balanced'
 };
 
+const TERRAIN_SETUP_COST_PREMIUM: Partial<Record<CityTile['terrain'], number>> = {
+	commercial: 3_500,
+	residential: 2_000
+};
+
 interface OpenStoreInput {
 	name: string;
 	archetypeId: ArchetypeId;
@@ -70,8 +75,8 @@ export function createNewGame(archetypeId: ArchetypeId, seed = Date.now()): Game
 	const city = generateCity({
 		id: 'harbor-city',
 		name: 'Harbor City',
-		width: 20,
-		height: 20,
+		width: 28,
+		height: 24,
 		seed: normalizedSeed
 	});
 	const industryCity = generateIndustryCity({
@@ -190,7 +195,13 @@ export function getExpansionSetupCost(tile: CityTile, archetypeId: ArchetypeId):
 	const archetype = getArchetype(archetypeId);
 	const demandScore = clampScore((tile.demand + tile.footTraffic + tile.customerFit) / 3);
 
-	return Math.round(9_000 + tile.rent * 2.5 + archetype.baseRent * 18 + demandScore * 24);
+	return Math.round(
+		9_000 +
+			tile.rent * 2.5 +
+			archetype.baseRent * 18 +
+			demandScore * 24 +
+			(TERRAIN_SETUP_COST_PREMIUM[tile.terrain] ?? 0)
+	);
 }
 
 export function resolveDecision(game: GameState, decisionId: string, optionId: string): GameState {

@@ -150,13 +150,46 @@ describe('city map render snapshot', () => {
 
 		expect(
 			snapshot.tiles.find((candidate) => candidate.id === 'harbor-city-10-1')?.roadVariant
-		).toBe('vertical');
+		).toBe('end-s');
 		expect(
-			snapshot.tiles.find((candidate) => candidate.id === 'harbor-city-1-10')?.roadVariant
+			snapshot.tiles.find((candidate) => candidate.id === 'harbor-city-11-10')?.roadVariant
 		).toBe('horizontal');
 		expect(
 			snapshot.tiles.find((candidate) => candidate.id === 'harbor-city-10-10')?.roadVariant
 		).toBe('intersection');
+		expect(
+			snapshot.tiles.find((candidate) => candidate.id === 'harbor-city-10-6')?.roadVariant
+		).toBe('vertical');
 		expect(snapshot.tiles.find((candidate) => candidate.id === tile.id)?.roadVariant).toBeNull();
+	});
+
+	test('marks generated river tiles with their render variant', () => {
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 20,
+			height: 20,
+			seed: 9
+		});
+		const tile = city.tiles.find((candidate) => !candidate.locked && candidate.feature === null)!;
+		const game = createFoundingGameAtTile({
+			archetypeId: 'convenience',
+			city,
+			tileId: tile.id,
+			seed: 9
+		});
+
+		const snapshot = createCityMapSnapshot(game, null);
+
+		expect(
+			snapshot.tiles.find((candidate) => candidate.id === 'harbor-city-5-1')?.riverVariant
+		).toBe('end-s');
+		expect(
+			snapshot.tiles.find((candidate) => candidate.id === 'harbor-city-5-6')?.riverVariant
+		).toBe('corner-ne');
+		expect(
+			snapshot.tiles.find((candidate) => candidate.id === 'harbor-city-8-6')?.riverVariant
+		).toBe('corner-sw');
+		expect(snapshot.tiles.find((candidate) => candidate.id === tile.id)?.riverVariant).toBeNull();
 	});
 });

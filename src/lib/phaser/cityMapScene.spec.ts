@@ -107,6 +107,7 @@ function makeTile(overrides?: Partial<CityMapTileRender>): CityMapTileRender {
 		terrain: 'commercial',
 		feature: null,
 		roadVariant: null,
+		riverVariant: null,
 		locked: false,
 		owned: false,
 		selected: false,
@@ -143,7 +144,8 @@ function makeSnapshot(overrides?: Partial<CityMapSnapshot>): CityMapSnapshot {
 				y: 1,
 				terrain: 'industrial',
 				feature: 'river',
-				roadVariant: null
+				roadVariant: null,
+				riverVariant: 'vertical'
 			}),
 			makeTile({
 				id: 't5',
@@ -475,6 +477,27 @@ describe('CityMapScene', () => {
 			expect(mapGraphics.lineBetween).toHaveBeenCalled();
 		});
 
+		it('draws road tee fallback with three connected arms', () => {
+			expect.assertions(1);
+			scene.create();
+			scene.updateSnapshot(
+				makeSnapshot({
+					tiles: [
+						makeTile({
+							id: 'road-tee',
+							x: 0,
+							y: 0,
+							terrain: 'transit',
+							feature: 'road',
+							roadVariant: 'tee-nes'
+						})
+					]
+				})
+			);
+			const mapGraphics = s(scene).mapGraphics;
+			expect(mapGraphics.lineBetween.mock.calls.length).toBeGreaterThanOrEqual(3);
+		});
+
 		it('draws river fallback', () => {
 			expect.assertions(1);
 			scene.create();
@@ -495,6 +518,28 @@ describe('CityMapScene', () => {
 			const mapGraphics = s(scene).mapGraphics;
 			const riverFill = mapGraphics.fillStyle.mock.calls.find((c: any[]) => c[0] === 0x3ca7d8);
 			expect(riverFill).toBeDefined();
+		});
+
+		it('draws river corner fallback with two connected arms', () => {
+			expect.assertions(1);
+			scene.create();
+			scene.updateSnapshot(
+				makeSnapshot({
+					tiles: [
+						makeTile({
+							id: 'river-corner',
+							x: 0,
+							y: 0,
+							terrain: 'green',
+							feature: 'river',
+							roadVariant: null,
+							riverVariant: 'corner-ne'
+						})
+					]
+				})
+			);
+			const mapGraphics = s(scene).mapGraphics;
+			expect(mapGraphics.lineBetween.mock.calls.length).toBeGreaterThanOrEqual(2);
 		});
 
 		it('skips fallback when terrain texture exists', () => {
@@ -518,6 +563,30 @@ describe('CityMapScene', () => {
 			const mapGraphics = s(scene).mapGraphics;
 			const roadFill = mapGraphics.fillStyle.mock.calls.find((c: any[]) => c[0] === 0x50545a);
 			expect(roadFill).toBeUndefined();
+		});
+
+		it('skips connected fallback for connector variants when terrain texture exists', () => {
+			expect.assertions(2);
+			scene.create();
+			s(scene).textures.exists = vi.fn(() => true);
+			scene.updateSnapshot(
+				makeSnapshot({
+					tiles: [
+						makeTile({
+							id: 'river-corner-texture',
+							x: 0,
+							y: 0,
+							terrain: 'green',
+							feature: 'river',
+							riverVariant: 'corner-ne'
+						})
+					]
+				})
+			);
+			const mapGraphics = s(scene).mapGraphics;
+			const riverFill = mapGraphics.fillStyle.mock.calls.find((c: any[]) => c[0] === 0x3ca7d8);
+			expect(riverFill).toBeUndefined();
+			expect(mapGraphics.lineBetween.mock.calls).toHaveLength(0);
 		});
 
 		it('skips fallback when tile has no feature', () => {
@@ -956,6 +1025,72 @@ describe('CityMapScene', () => {
 			expect(ds.terrainAssetMode).toBe('image');
 		});
 
+		it('selects residential terrain variants by tile coordinate', () => {
+			expect.assertions(1);
+			scene.create();
+			s(scene).textures.exists = vi.fn(() => true);
+			scene.updateSnapshot(
+				makeSnapshot({
+					tiles: [
+						makeTile({ id: 'r0', x: 0, y: 0, terrain: 'residential' }),
+						makeTile({ id: 'r1', x: 1, y: 0, terrain: 'residential' }),
+						makeTile({ id: 'r2', x: 2, y: 0, terrain: 'residential' }),
+						makeTile({ id: 'r3', x: 3, y: 0, terrain: 'residential' }),
+						makeTile({ id: 'r4', x: 4, y: 0, terrain: 'residential' }),
+						makeTile({ id: 'r5', x: 5, y: 0, terrain: 'residential' })
+					]
+				})
+			);
+			const textureKeys = (s(scene).add.image as Mock).mock.calls.map((call: any[]) => call[2]);
+			expect(textureKeys).toEqual([
+				'terrain-residential',
+				'terrain-residential-2',
+				'terrain-residential-3',
+				'terrain-residential-4',
+				'terrain-residential-5',
+				'terrain-residential-6'
+			]);
+		});
+
+		it('uses connector textures for complex road and river variants', () => {
+			expect.assertions(4);
+			scene.create();
+			s(scene).textures.exists = vi.fn(() => true);
+			scene.updateSnapshot(
+				makeSnapshot({
+					tiles: [
+						makeTile({
+							id: 'road-i',
+							x: 0,
+							y: 0,
+							terrain: 'transit',
+							feature: 'road',
+							roadVariant: 'intersection'
+						}),
+						makeTile({
+							id: 'river-corner',
+							x: 1,
+							y: 0,
+							terrain: 'green',
+							feature: 'river',
+							riverVariant: 'corner-ne'
+						})
+					]
+				})
+			);
+			const textureKeys = (s(scene).add.image as Mock).mock.calls.map((call: any[]) => call[2]);
+			const mapGraphics = s(scene).mapGraphics;
+
+			expect(textureKeys).toContain('terrain-road-connector-intersection');
+			expect(textureKeys).toContain('terrain-river-connector-corner-ne');
+			expect(
+				mapGraphics.fillStyle.mock.calls.find((c: any[]) => c[0] === 0x50545a)
+			).toBeUndefined();
+			expect(
+				mapGraphics.fillStyle.mock.calls.find((c: any[]) => c[0] === 0x3ca7d8)
+			).toBeUndefined();
+		});
+
 		it('uses mixed mode when some feature textures are missing', () => {
 			expect.assertions(1);
 			scene.create();
@@ -1017,8 +1152,8 @@ describe('CityMapScene', () => {
 			expect(ds.terrainDecorationSpriteCount).toBe('0');
 		});
 
-		it('sets angle 90 for horizontal road sprites', () => {
-			expect.assertions(1);
+		it('uses road sprite native horizontal orientation and rotates vertical roads', () => {
+			expect.assertions(2);
 			scene.create();
 			s(scene).textures.exists = vi.fn(() => true);
 			scene.updateSnapshot(
@@ -1031,15 +1166,56 @@ describe('CityMapScene', () => {
 							terrain: 'transit',
 							feature: 'road',
 							roadVariant: 'horizontal'
+						}),
+						makeTile({
+							id: 'vr',
+							x: 1,
+							y: 0,
+							terrain: 'transit',
+							feature: 'road',
+							roadVariant: 'vertical'
 						})
 					]
 				})
 			);
-			const imageCalls = (s(scene).add.image as Mock).mock.results;
-			const horizontalSprite = imageCalls.find(
-				(r: any) => r.value && (r.value.setAngle as Mock).mock.calls.length > 0
+			const featureSprites = (s(scene).add.image as Mock).mock.results.filter(
+				(result: any) => result.value && (result.value.setAngle as Mock).mock.calls.length > 0
 			);
-			expect(horizontalSprite).toBeDefined();
+			expect(featureSprites[0].value.setAngle).toHaveBeenCalledWith(0);
+			expect(featureSprites[1].value.setAngle).toHaveBeenCalledWith(90);
+		});
+
+		it('uses river sprite native vertical orientation and rotates horizontal rivers', () => {
+			expect.assertions(2);
+			scene.create();
+			s(scene).textures.exists = vi.fn(() => true);
+			scene.updateSnapshot(
+				makeSnapshot({
+					tiles: [
+						makeTile({
+							id: 'vr',
+							x: 0,
+							y: 0,
+							terrain: 'green',
+							feature: 'river',
+							riverVariant: 'vertical'
+						}),
+						makeTile({
+							id: 'hr',
+							x: 1,
+							y: 0,
+							terrain: 'green',
+							feature: 'river',
+							riverVariant: 'horizontal'
+						})
+					]
+				})
+			);
+			const featureSprites = (s(scene).add.image as Mock).mock.results.filter(
+				(result: any) => result.value && (result.value.setAngle as Mock).mock.calls.length > 0
+			);
+			expect(featureSprites[0].value.setAngle).toHaveBeenCalledWith(0);
+			expect(featureSprites[1].value.setAngle).toHaveBeenCalledWith(90);
 		});
 	});
 

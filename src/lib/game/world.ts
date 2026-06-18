@@ -410,8 +410,8 @@ function ensureWorldCityMap(game: GameState, city: WorldCityDefinition): GameSta
 				generateCity({
 					id: city.id,
 					name: city.name,
-					width: 20,
-					height: 20,
+					width: 28,
+					height: 24,
 					seed: city.seed
 				})
 			]

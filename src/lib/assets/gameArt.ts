@@ -17,7 +17,17 @@ export interface StoreArt {
 	alt: string;
 }
 
-export type TerrainArtId = TerrainId | 'road' | 'roadIntersection' | 'river' | 'tree';
+export type TerrainArtId = TerrainId | 'road' | 'river' | 'tree';
+export type TerrainConnectorVariant =
+	| 'corner-ne'
+	| 'corner-es'
+	| 'corner-sw'
+	| 'corner-wn'
+	| 'tee-nes'
+	| 'tee-esw'
+	| 'tee-nsw'
+	| 'tee-new'
+	| 'intersection';
 
 export interface TerrainArt {
 	id: TerrainArtId;
@@ -213,12 +223,6 @@ export const TERRAIN_ART: Readonly<Record<TerrainArtId, TerrainArt>> = Object.fr
 		textureKey: 'terrain-road',
 		alt: 'Stylized city road terrain tile'
 	}),
-	roadIntersection: Object.freeze({
-		id: 'roadIntersection',
-		path: '/assets/game/terrain/road-intersection-tile.png',
-		textureKey: 'terrain-road-intersection',
-		alt: 'Stylized city road intersection terrain tile'
-	}),
 	river: Object.freeze({
 		id: 'river',
 		path: '/assets/game/terrain/river-tile.png',
@@ -233,7 +237,90 @@ export const TERRAIN_ART: Readonly<Record<TerrainArtId, TerrainArt>> = Object.fr
 	})
 });
 
-export const TERRAIN_ART_LIST: readonly TerrainArt[] = Object.freeze(Object.values(TERRAIN_ART));
+const TERRAIN_CONNECTOR_VARIANTS: readonly TerrainConnectorVariant[] = Object.freeze([
+	'corner-ne',
+	'corner-es',
+	'corner-sw',
+	'corner-wn',
+	'tee-nes',
+	'tee-esw',
+	'tee-nsw',
+	'tee-new',
+	'intersection'
+]);
+
+function createTerrainConnectorArt(
+	feature: 'road' | 'river',
+	variant: TerrainConnectorVariant
+): TerrainArt {
+	return Object.freeze({
+		id: feature,
+		path: `/assets/game/terrain/${feature}-connector-${variant}.png`,
+		textureKey: `terrain-${feature}-connector-${variant}`,
+		alt: `Stylized city ${feature} ${variant} connector terrain tile`
+	});
+}
+
+export const ROAD_TERRAIN_CONNECTOR_ART: Readonly<Record<TerrainConnectorVariant, TerrainArt>> =
+	Object.freeze(
+		Object.fromEntries(
+			TERRAIN_CONNECTOR_VARIANTS.map((variant) => [
+				variant,
+				createTerrainConnectorArt('road', variant)
+			])
+		) as Record<TerrainConnectorVariant, TerrainArt>
+	);
+
+export const RIVER_TERRAIN_CONNECTOR_ART: Readonly<Record<TerrainConnectorVariant, TerrainArt>> =
+	Object.freeze(
+		Object.fromEntries(
+			TERRAIN_CONNECTOR_VARIANTS.map((variant) => [
+				variant,
+				createTerrainConnectorArt('river', variant)
+			])
+		) as Record<TerrainConnectorVariant, TerrainArt>
+	);
+
+export const RESIDENTIAL_TERRAIN_ART_VARIANTS: readonly TerrainArt[] = Object.freeze([
+	TERRAIN_ART.residential,
+	Object.freeze({
+		id: 'residential',
+		path: '/assets/game/terrain/residential-tile-2.png',
+		textureKey: 'terrain-residential-2',
+		alt: 'Stylized residential city terrain tile with a shared yard'
+	}),
+	Object.freeze({
+		id: 'residential',
+		path: '/assets/game/terrain/residential-tile-3.png',
+		textureKey: 'terrain-residential-3',
+		alt: 'Stylized residential city terrain tile with a slate-roofed home'
+	}),
+	Object.freeze({
+		id: 'residential',
+		path: '/assets/game/terrain/residential-tile-4.png',
+		textureKey: 'terrain-residential-4',
+		alt: 'Stylized residential city terrain tile with a neighborhood garden'
+	}),
+	Object.freeze({
+		id: 'residential',
+		path: '/assets/game/terrain/residential-tile-5.png',
+		textureKey: 'terrain-residential-5',
+		alt: 'Stylized residential city terrain tile with a blue-roofed home'
+	}),
+	Object.freeze({
+		id: 'residential',
+		path: '/assets/game/terrain/residential-tile-6.png',
+		textureKey: 'terrain-residential-6',
+		alt: 'Stylized residential city terrain tile with a pocket green'
+	})
+]);
+
+export const TERRAIN_ART_LIST: readonly TerrainArt[] = Object.freeze([
+	...Object.values(TERRAIN_ART),
+	...RESIDENTIAL_TERRAIN_ART_VARIANTS.slice(1),
+	...Object.values(ROAD_TERRAIN_CONNECTOR_ART),
+	...Object.values(RIVER_TERRAIN_CONNECTOR_ART)
+]);
 
 export const INDUSTRY_TERRAIN_ART: Readonly<Record<IndustryTerrainId, string>> = Object.freeze({
 	farmland: '/assets/game/industry/terrain/farmland-tile.png',
