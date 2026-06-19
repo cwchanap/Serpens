@@ -534,10 +534,13 @@ function normalizeSavedRetailCity(game: Record<string, unknown>, city: unknown):
 	}
 
 	// Migrate saves created when the retail city was the intermediate 28x24
-	// size. This is the only legacy non-default size that ever shipped, so any
-	// other dimensions are left untouched (forward-compatible default-size
-	// regeneration only). Do not broaden this without a new intermediate size
-	// actually appearing in the wild.
+	// size. The game has not been released, so in-development saves are not
+	// treated as legacy data that must be preserved. This 28x24 path is
+	// retained as a no-op safety net for any in-development autosaves from
+	// that window; no other non-default sizes (e.g. the earlier 20x20
+	// world-progression cities) are migrated. See AGENTS.md for the legacy
+	// save policy. Do not broaden this without a release actually shipping a
+	// new intermediate size.
 	if (record.width !== 28 || record.height !== 24) {
 		return city;
 	}

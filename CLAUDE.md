@@ -86,6 +86,8 @@ Each scene is **snapshot-driven**: it never reaches into game state, only render
 
 When introducing a new persisted field, update `saveCodec.ts` and the repository tests together.
 
+**Legacy save policy:** The game has not been released, so in-development autosaves are not treated as legacy data that must be migrated. `saveCodec.ts` retains a 28x24 retail-city regeneration path as a no-op safety net for in-development autosaves from that intermediate size, but no other non-default sizes (e.g. the earlier 20x20 world-progression cities) are migrated. Do not add new legacy-size migration paths until a release actually ships a size that needs preserving.
+
 ### Tauri shell
 
 `src-tauri/` is the Rust desktop wrapper. `tauri.conf.json` points `frontendDist` at `../build` (output of `bun run build`) and uses `bun run dev` as the dev command. Capabilities live in `src-tauri/capabilities/`.

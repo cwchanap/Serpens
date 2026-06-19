@@ -279,6 +279,7 @@ describe('city map render snapshot', () => {
 
 		const teeEswTile = snapshot.tiles.find((candidate) => candidate.roadVariant === 'tee-esw');
 		expect(teeEswTile).toBeDefined();
+		expect(teeEswTile?.id).toBe('road-tee-esw');
 	});
 
 	test('marks tee-nsw variant for road tiles with north, south, and west neighbors', () => {
@@ -304,8 +305,8 @@ describe('city map render snapshot', () => {
 				...city.tiles,
 				{
 					id: 'road-tee-nsw',
-					x: 14,
-					y: 14,
+					x: 5,
+					y: 8,
 					cityId: city.id,
 					neighborhood: 'downtown' as const,
 					terrain: 'transit' as const,
@@ -318,8 +319,8 @@ describe('city map render snapshot', () => {
 				},
 				{
 					id: 'road-tee-nsw-n',
-					x: 14,
-					y: 13,
+					x: 5,
+					y: 7,
 					cityId: city.id,
 					neighborhood: 'downtown' as const,
 					terrain: 'transit' as const,
@@ -332,8 +333,8 @@ describe('city map render snapshot', () => {
 				},
 				{
 					id: 'road-tee-nsw-s',
-					x: 14,
-					y: 15,
+					x: 5,
+					y: 9,
 					cityId: city.id,
 					neighborhood: 'downtown' as const,
 					terrain: 'transit' as const,
@@ -346,8 +347,8 @@ describe('city map render snapshot', () => {
 				},
 				{
 					id: 'road-tee-nsw-w',
-					x: 13,
-					y: 14,
+					x: 4,
+					y: 8,
 					cityId: city.id,
 					neighborhood: 'downtown' as const,
 					terrain: 'transit' as const,
@@ -366,6 +367,7 @@ describe('city map render snapshot', () => {
 
 		const teeNswTile = snapshot.tiles.find((candidate) => candidate.roadVariant === 'tee-nsw');
 		expect(teeNswTile).toBeDefined();
+		expect(teeNswTile?.id).toBe('road-tee-nsw');
 	});
 
 	test('marks tee-new variant for road tiles with north, east, and west neighbors', () => {
@@ -453,5 +455,6 @@ describe('city map render snapshot', () => {
 
 		const teeNewTile = snapshot.tiles.find((candidate) => candidate.roadVariant === 'tee-new');
 		expect(teeNewTile).toBeDefined();
+		expect(teeNewTile?.id).toBe('road-tee-new');
 	});
 });
