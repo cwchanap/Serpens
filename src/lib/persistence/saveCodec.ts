@@ -533,6 +533,11 @@ function normalizeSavedRetailCity(game: Record<string, unknown>, city: unknown):
 		return city;
 	}
 
+	// Migrate saves created when the retail city was the intermediate 28x24
+	// size. This is the only legacy non-default size that ever shipped, so any
+	// other dimensions are left untouched (forward-compatible default-size
+	// regeneration only). Do not broaden this without a new intermediate size
+	// actually appearing in the wild.
 	if (record.width !== 28 || record.height !== 24) {
 		return city;
 	}
