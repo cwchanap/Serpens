@@ -10,7 +10,7 @@
 
 ---
 
-### Task 1: Land Cost Premium
+## Task 1: Land Cost Premium
 
 **Files:**
 
@@ -68,7 +68,7 @@ Run: `bun run test:unit -- src/lib/game/placement.spec.ts --run`
 
 Expected: PASS.
 
-### Task 2: Larger Connected City
+## Task 2: Larger Connected City
 
 **Files:**
 
@@ -89,7 +89,7 @@ Expected: FAIL because defaults are still 20 by 20 and the river path includes d
 
 **Step 3: Implement minimal code**
 
-- Change retail city dimensions in `createNewGame` and `ensureWorldCityMap` to `28` by `24`.
+- Change retail city dimensions in `createNewGame` and `ensureWorldCityMap` to `56` by `48`.
 - Replace road generation with connected horizontal and vertical corridors that include turns and intersections.
 - Replace river generation with an orthogonal path that never steps diagonally.
 - Keep border locking and deterministic economic traits unchanged.
@@ -100,7 +100,7 @@ Run: `bun run test:unit -- src/lib/game/city.spec.ts src/lib/game/state.spec.ts 
 
 Expected: PASS.
 
-### Task 3: Road And River Render Variants
+## Task 3: Road And River Render Variants
 
 **Files:**
 
@@ -132,7 +132,7 @@ Run: `bun run test:unit -- src/lib/game/mapRender.spec.ts src/lib/phaser/cityMap
 
 Expected: PASS.
 
-### Task 4: E2e Count Updates And Full Verification
+## Task 4: E2e Count Updates And Full Verification
 
 **Files:**
 
@@ -140,7 +140,7 @@ Expected: PASS.
 
 **Step 1: Update e2e expectations**
 
-Update `expectTerrainAssets` for the new base tile count (`28 * 24`) and feature count from the final generated road/river paths.
+Update `expectTerrainAssets` for the new base tile count (`56 * 48` = 2688) and feature count from the final generated road/river paths.
 
 **Step 2: Run focused unit tests**
 

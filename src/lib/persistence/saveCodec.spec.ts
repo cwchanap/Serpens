@@ -1,5 +1,10 @@
 import { describe, expect, test, vi } from 'vitest';
-import { DEFAULT_RETAIL_CITY_HEIGHT, DEFAULT_RETAIL_CITY_WIDTH } from '$lib/game/city';
+import {
+	DEFAULT_RETAIL_CITY_HEIGHT,
+	DEFAULT_RETAIL_CITY_WIDTH,
+	generateCity,
+	isTileBuildable
+} from '$lib/game/city';
 import { initializeStoreProducts } from '$lib/game/stock';
 import { STARTER_STORE_CAP, createInitialWorldProgress } from '$lib/game/world';
 import type {
@@ -333,6 +338,58 @@ describe('saveCodec', () => {
 		expect(store.mapX).not.toBe(28);
 		expect(storeTile).toBeDefined();
 		expect(storeTile?.feature).toBeNull();
+	});
+
+	test('does not relocate a valid store when an earlier invalid store targets its tile', () => {
+		expect.assertions(3);
+		// Regenerate the same 56x48 harbor-city the codec produces (seed comes
+		// from game.seed for harbor-city) so we can pick a buildable tile that
+		// exists in the migrated city deterministically.
+		const referenceCity = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: DEFAULT_RETAIL_CITY_WIDTH,
+			height: DEFAULT_RETAIL_CITY_HEIGHT,
+			seed: 20260505
+		});
+		const validTile = referenceCity.tiles.find((tile) => isTileBuildable(tile));
+		expect(validTile).toBeDefined();
+
+		const baseStore = createGame().stores[0]!;
+		// Invalid store is intentionally FIRST in the array. Its stale tileId
+		// ('harbor-city-28-8' is non-buildable post-migration) forces the
+		// fallback closest-tile search, whose origin sits exactly on the valid
+		// store's tile. Under the old single-pass this would steal that tile.
+		const invalidStore = {
+			...baseStore,
+			id: 'store-invalid',
+			cityId: 'harbor-city',
+			tileId: 'harbor-city-28-8',
+			mapX: validTile!.x,
+			mapY: validTile!.y
+		};
+		const validStore = {
+			...baseStore,
+			id: 'store-valid',
+			cityId: 'harbor-city',
+			tileId: validTile!.id,
+			mapX: validTile!.x,
+			mapY: validTile!.y
+		};
+
+		const record = createManualSaveRecord({
+			game: {
+				cities: [{ id: 'harbor-city', name: 'Harbor City', width: 28, height: 24, tiles: [] }],
+				stores: [invalidStore, validStore]
+			}
+		});
+
+		const validated = validateSaveRecord(record);
+		const resultValid = validated.game.stores.find((store) => store.id === 'store-valid')!;
+		const resultInvalid = validated.game.stores.find((store) => store.id === 'store-invalid')!;
+
+		expect(resultValid.tileId).toBe(validTile!.id);
+		expect(resultInvalid.tileId).not.toBe(validTile!.id);
 	});
 
 	test('inferWorldProgress warns about unknown saved city ids', () => {
