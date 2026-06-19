@@ -11,7 +11,8 @@ import type {
 	DailyMaterialMovement,
 	DailyProductionReport,
 	DailyReport,
-	GameState
+	GameState,
+	MaterialId
 } from '$lib/game/types';
 import {
 	AUTO_SAVE_SLOT_ID,
@@ -534,7 +535,7 @@ describe('saveCodec', () => {
 		const game = createGame({
 			warehouse: {
 				...createGame().warehouse,
-				materials: { 'unknown-material': 10 }
+				materials: { 'unknown-material': 10 } as Partial<Record<MaterialId, number>>
 			}
 		});
 		const record = createManualSaveRecord({ game });
