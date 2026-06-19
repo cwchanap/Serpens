@@ -403,6 +403,61 @@ describe('saveCodec', () => {
 		expect(resultInvalid.tileId).not.toBe(validTile!.id);
 	});
 
+	test('leaves a store on its stale tile and warns when no buildable tile remains', () => {
+		expect.assertions(3);
+		const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		// A 2x2 city whose only tile is locked — no buildable tile exists, so
+		// findSavedStoreTile returns null and the store is left unchanged.
+		const lockedTile = {
+			id: 'harbor-city-0-0',
+			cityId: 'harbor-city',
+			x: 0,
+			y: 0,
+			neighborhood: 'downtown' as const,
+			terrain: 'commercial' as const,
+			feature: null,
+			demand: 50,
+			rent: 1000,
+			footTraffic: 50,
+			customerFit: 50,
+			locked: true
+		};
+		const baseStore = createGame().stores[0]!;
+		const staleStore = {
+			...baseStore,
+			id: 'store-stale',
+			cityId: 'harbor-city',
+			tileId: 'harbor-city-0-0',
+			mapX: 0,
+			mapY: 0
+		};
+
+		const record = createManualSaveRecord({
+			game: {
+				cities: [
+					{
+						id: 'harbor-city',
+						name: 'Harbor City',
+						width: 2,
+						height: 2,
+						tiles: [lockedTile]
+					}
+				],
+				stores: [staleStore]
+			}
+		});
+
+		const validated = validateSaveRecord(record);
+		const store = validated.game.stores[0]!;
+
+		expect(store.tileId).toBe('harbor-city-0-0');
+		expect(store.mapX).toBe(0);
+		expect(warnSpy).toHaveBeenCalledWith(
+			expect.stringContaining('store "store-stale" in city "harbor-city" has no buildable tile')
+		);
+		warnSpy.mockRestore();
+	});
+
 	test('inferWorldProgress warns about unknown saved city ids', () => {
 		expect.assertions(1);
 		const legacyGame = createGame({

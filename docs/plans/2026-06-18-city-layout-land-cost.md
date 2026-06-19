@@ -90,7 +90,7 @@ Expected: FAIL because defaults are still 20 by 20 and the river path includes d
 **Step 3: Implement minimal code**
 
 - Change retail city dimensions in `createNewGame` and `ensureWorldCityMap` to `56` by `48`.
-- Replace road generation with connected horizontal and vertical corridors that include turns and intersections.
+- Replace road generation with connected horizontal and vertical divider rows and columns with intersections.
 - Replace river generation with an orthogonal path that never steps diagonally.
 - Keep border locking and deterministic economic traits unchanged.
 
@@ -111,7 +111,7 @@ Expected: PASS.
 
 **Step 1: Write failing tests**
 
-Add snapshot tests asserting road and river tiles expose neighbor connection strings such as `vertical`, `horizontal`, `corner-ne`, `corner-sw`, `tee-nse`, and `intersection`.
+Add snapshot tests asserting road and river tiles expose neighbor connection strings such as `vertical`, `horizontal`, `corner-ne`, `corner-sw`, `tee-nes`, and `intersection`.
 
 **Step 2: Run tests to verify failure**
 

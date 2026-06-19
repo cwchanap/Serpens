@@ -19,16 +19,21 @@ export interface StoreArt {
 }
 
 export type TerrainArtId = TerrainId | 'road' | 'river' | 'tree';
-export type TerrainConnectorVariant =
-	| 'corner-ne'
-	| 'corner-es'
-	| 'corner-sw'
-	| 'corner-wn'
-	| 'tee-nes'
-	| 'tee-esw'
-	| 'tee-nsw'
-	| 'tee-new'
-	| 'intersection';
+
+// Single source of truth for connector variant ids. The type and the runtime
+// registries below are all derived from this array so they can never drift.
+export const TERRAIN_CONNECTOR_VARIANTS = Object.freeze([
+	'corner-ne',
+	'corner-es',
+	'corner-sw',
+	'corner-wn',
+	'tee-nes',
+	'tee-esw',
+	'tee-nsw',
+	'tee-new',
+	'intersection'
+] as const);
+export type TerrainConnectorVariant = (typeof TERRAIN_CONNECTOR_VARIANTS)[number];
 
 export interface TerrainArt {
 	id: TerrainArtId;
@@ -238,18 +243,6 @@ export const TERRAIN_ART: Readonly<Record<TerrainArtId, TerrainArt>> = Object.fr
 	})
 });
 
-export const TERRAIN_CONNECTOR_VARIANTS: readonly TerrainConnectorVariant[] = Object.freeze([
-	'corner-ne',
-	'corner-es',
-	'corner-sw',
-	'corner-wn',
-	'tee-nes',
-	'tee-esw',
-	'tee-nsw',
-	'tee-new',
-	'intersection'
-]);
-
 function createTerrainConnectorArt(
 	feature: 'road' | 'river',
 	variant: TerrainConnectorVariant
@@ -262,25 +255,22 @@ function createTerrainConnectorArt(
 	});
 }
 
-export const ROAD_TERRAIN_CONNECTOR_ART: Readonly<Record<TerrainConnectorVariant, TerrainArt>> =
-	Object.freeze(
-		Object.fromEntries(
-			TERRAIN_CONNECTOR_VARIANTS.map((variant) => [
-				variant,
-				createTerrainConnectorArt('road', variant)
-			])
-		) as Record<TerrainConnectorVariant, TerrainArt>
+function buildConnectorArtRegistry(
+	feature: 'road' | 'river'
+): Readonly<Record<TerrainConnectorVariant, TerrainArt>> {
+	return Object.freeze(
+		TERRAIN_CONNECTOR_VARIANTS.reduce(
+			(art, variant) => {
+				art[variant] = createTerrainConnectorArt(feature, variant);
+				return art;
+			},
+			{} as Record<TerrainConnectorVariant, TerrainArt>
+		)
 	);
+}
 
-export const RIVER_TERRAIN_CONNECTOR_ART: Readonly<Record<TerrainConnectorVariant, TerrainArt>> =
-	Object.freeze(
-		Object.fromEntries(
-			TERRAIN_CONNECTOR_VARIANTS.map((variant) => [
-				variant,
-				createTerrainConnectorArt('river', variant)
-			])
-		) as Record<TerrainConnectorVariant, TerrainArt>
-	);
+export const ROAD_TERRAIN_CONNECTOR_ART = buildConnectorArtRegistry('road');
+export const RIVER_TERRAIN_CONNECTOR_ART = buildConnectorArtRegistry('river');
 
 export const RESIDENTIAL_TERRAIN_ART_VARIANTS: readonly TerrainArt[] = Object.freeze([
 	TERRAIN_ART.residential,

@@ -165,7 +165,7 @@ describe('city generation', () => {
 	});
 
 	test('creates readable neighborhood clusters', () => {
-		expect.assertions(2);
+		expect.assertions(3);
 		const city = generateCity({
 			id: 'harbor-city',
 			name: 'Harbor City',
@@ -176,6 +176,7 @@ describe('city generation', () => {
 
 		expect(getTilesByNeighborhood(city, 'downtown').length).toBeGreaterThan(0);
 		expect(getTilesByNeighborhood(city, 'campus').length).toBeGreaterThan(0);
+		expect(getTilesByNeighborhood(city, 'residential').length).toBeGreaterThan(0);
 	});
 
 	test('keeps industrial terrain out of generated retail cities', () => {
@@ -272,13 +273,20 @@ describe('city generation', () => {
 		expect(isFourWayContiguous(riverTiles)).toBe(true);
 		expect(countRoadColumns(roadTiles, Math.floor(city.height * 0.45))).toBeGreaterThanOrEqual(5);
 		expect(countRoadRows(roadTiles, Math.floor(city.width * 0.35))).toBeGreaterThanOrEqual(5);
-		// River runs from the top edge (y = 0) down to one row above the
-		// bottommost road divider row (y = 39 for 56×48).  Stopping at
-		// y = 38 leaves the y = 39 road row intact as a horizontal bridge.
-		expect(Math.max(...riverTiles.map((tile) => tile.y))).toBe(38);
+		// River runs from the top edge down to one row above the bottommost
+		// full-width road divider row (the bridge), leaving that row intact.
+		// Find the bridge row dynamically (the highest-y row spanning the
+		// interior width) so the invariant survives divider-fraction tweaks.
+		const bridgeRow = Math.max(
+			...roadTiles
+				.filter((tile) => tile.y > 0)
+				.map((tile) => tile.y)
+				.filter((y) => roadTiles.filter((tile) => tile.y === y).length === city.width - 2)
+		);
+		expect(Math.max(...riverTiles.map((tile) => tile.y))).toBe(bridgeRow - 1);
 		expect(riverTiles.some((tile) => tile.y === 1)).toBe(true);
-		// Verify the y = 39 road row has no gaps (it bridges left and right).
-		expect(roadTiles.filter((tile) => tile.y === 39).length).toBe(city.width - 2);
+		// Verify the bridge row has no gaps (it spans left and right).
+		expect(roadTiles.filter((tile) => tile.y === bridgeRow).length).toBe(city.width - 2);
 	});
 
 	test('does not add road or river features to cities smaller than five by five', () => {

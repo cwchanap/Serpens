@@ -45,7 +45,7 @@ describe('tile placement', () => {
 	});
 
 	test('keeps residential and commercial tiles buildable with setup cost premiums', () => {
-		expect.assertions(5);
+		expect.assertions(6);
 		const city = generateCity({
 			id: 'harbor-city',
 			name: 'Harbor City',
@@ -76,6 +76,11 @@ describe('tile placement', () => {
 		);
 		expect(forecastOpening(commercialTile, 'boutique').setupCost).toBeGreaterThan(
 			forecastOpening(neutralTile, 'boutique').setupCost
+		);
+		// Pin the commercial > residential premium ordering so swapping the two
+		// constants in TERRAIN_SETUP_COST_PREMIUM would fail the test.
+		expect(forecastOpening(commercialTile, 'grocery').setupCost).toBeGreaterThan(
+			forecastOpening(residentialTile, 'grocery').setupCost
 		);
 		expect(() =>
 			createFoundingGameAtTile({

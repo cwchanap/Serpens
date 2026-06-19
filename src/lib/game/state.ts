@@ -46,6 +46,10 @@ export const DEFAULT_POLICY: CompanyPolicy = {
 	service: 'balanced'
 };
 
+// Only commercial and residential terrain carry a setup-cost premium; green
+// and transit deliberately cost nothing extra (transit tiles are infrastructure,
+// green is undeveloped land). Industrial terrain is never buildable in retail
+// cities, so it is intentionally absent here.
 const TERRAIN_SETUP_COST_PREMIUM: Partial<Record<CityTile['terrain'], number>> = {
 	commercial: 3_500,
 	residential: 2_000
