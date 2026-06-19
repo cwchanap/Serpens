@@ -6,6 +6,19 @@ export type TilePlacementBlockReason = 'Locked location' | 'Road location' | 'Ri
 export const DEFAULT_RETAIL_CITY_WIDTH = 56;
 export const DEFAULT_RETAIL_CITY_HEIGHT = 48;
 
+/** Tuning values that lay out road grid columns. Two layouts are used: a denser 5-divider grid for wide cities (>= ROAD_DIVIDER_WIDE_WIDTH) and a simpler 3-divider grid for narrower cities. */
+const ROAD_DIVIDER_WIDE_WIDTH = 40;
+const ROAD_DIVIDER_WIDE_FRACTIONS = [0.14, 0.3, 0.5, 0.68, 0.84];
+const ROAD_DIVIDER_NARROW_FRACTIONS = [0.18, 0.5, 0.74];
+
+/** Tuning values that lay out road grid rows. Two layouts are used: a denser 5-divider grid for tall cities (>= ROAD_DIVIDER_WIDE_HEIGHT) and a simpler 3-divider grid for shorter cities. */
+const ROAD_DIVIDER_WIDE_HEIGHT = 36;
+const ROAD_DIVIDER_WIDE_ROW_FRACTIONS = [0.18, 0.34, 0.5, 0.66, 0.82];
+const ROAD_DIVIDER_NARROW_ROW_FRACTIONS = [0.25, 0.5, 0.75];
+
+/** Fraction of city height where the river makes its horizontal bend from the upper to lower channel. */
+const RIVER_BEND_HEIGHT_FRACTION = 0.32;
+
 const TILE_PLACEMENT_BLOCK_DECISION_ID_PART: Record<TilePlacementBlockReason, string> = {
 	'Locked location': 'locked',
 	'Road location': 'road',
@@ -70,6 +83,12 @@ const NEIGHBORHOOD_PROFILES: Record<NeighborhoodId, NeighborhoodProfile> = {
 		footTraffic: 84,
 		customerFit: 58
 	},
+	// Retail city generation (getNeighborhood) intentionally never produces an
+	// 'industrial' neighborhood — industrial terrain belongs to IndustryCity
+	// (see CLAUDE.md). This entry exists only to satisfy the
+	// Record<NeighborhoodId, NeighborhoodProfile> type and the save-validation
+	// schema (NeighborhoodId enumerates 'industrial'); it is unreachable from
+	// generateCity but kept for type completeness.
 	industrial: {
 		id: 'industrial',
 		terrain: 'industrial',
@@ -241,7 +260,8 @@ function isRoadTile(width: number, height: number, x: number, y: number): boolea
 }
 
 function getRoadDividerColumns(width: number): number[] {
-	const dividerFractions = width >= 40 ? [0.14, 0.3, 0.5, 0.68, 0.84] : [0.18, 0.5, 0.74];
+	const dividerFractions =
+		width >= ROAD_DIVIDER_WIDE_WIDTH ? ROAD_DIVIDER_WIDE_FRACTIONS : ROAD_DIVIDER_NARROW_FRACTIONS;
 
 	return uniqueInteriorPositions(
 		width,
@@ -250,7 +270,10 @@ function getRoadDividerColumns(width: number): number[] {
 }
 
 function getRoadDividerRows(height: number): number[] {
-	const dividerFractions = height >= 36 ? [0.18, 0.34, 0.5, 0.66, 0.82] : [0.25, 0.5, 0.75];
+	const dividerFractions =
+		height >= ROAD_DIVIDER_WIDE_HEIGHT
+			? ROAD_DIVIDER_WIDE_ROW_FRACTIONS
+			: ROAD_DIVIDER_NARROW_ROW_FRACTIONS;
 
 	return uniqueInteriorPositions(
 		height,
@@ -266,7 +289,7 @@ function uniqueInteriorPositions(size: number, positions: number[]): number[] {
 
 function isRiverTile(width: number, height: number, x: number, y: number): boolean {
 	const upperX = Math.max(1, Math.floor(width / 4));
-	const bendY = Math.max(2, Math.floor(height * 0.32));
+	const bendY = Math.max(2, Math.floor(height * RIVER_BEND_HEIGHT_FRACTION));
 	const lowerX = getRiverLowerX(width);
 	const riverEndY = Math.max(bendY, Math.floor(height / 2) - 2);
 

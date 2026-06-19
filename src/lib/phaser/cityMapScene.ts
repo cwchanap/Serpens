@@ -33,6 +33,8 @@ const OUTLINE_DEPTH = 20;
 const PLACEMENT_PREVIEW_VALID_COLOR = 0x6b7e3a;
 const PLACEMENT_PREVIEW_INVALID_COLOR = 0x8e2a1f;
 const PLACEMENT_PREVIEW_ALPHA = 0.28;
+/** Classic prime multiplier (cf. Java's String.hashCode) used to derive a stable, well-distributed variant index per tile coordinate. */
+const TERRAIN_VARIANT_HASH_PRIME = 31;
 
 const TERRAIN_COLORS: Record<CityMapTileRender['terrain'], number> = {
 	commercial: 0xc9d7f0,
@@ -709,7 +711,7 @@ function getTerrainArtVariant(
 	variants: readonly TerrainArt[],
 	tile: CityMapTileRender
 ): TerrainArt {
-	const index = Math.abs(tile.x + tile.y * 31) % variants.length;
+	const index = Math.abs(tile.x + tile.y * TERRAIN_VARIANT_HASH_PRIME) % variants.length;
 
 	return variants[index]!;
 }

@@ -179,7 +179,7 @@ describe('city generation', () => {
 	});
 
 	test('keeps industrial terrain out of generated retail cities', () => {
-		expect.assertions(1);
+		expect.assertions(2);
 		const city = generateCity({
 			id: 'harbor-city',
 			name: 'Harbor City',
@@ -189,6 +189,11 @@ describe('city generation', () => {
 		});
 
 		expect(city.tiles.some((tile) => tile.terrain === 'industrial')).toBe(false);
+		// getNeighborhood intentionally never returns 'industrial' for retail
+		// cities (the NEIGHBORHOOD_PROFILES.industrial entry exists only for
+		// type completeness — see city.ts). Lock that decision in so a future
+		// change does not silently wire it into retail generation.
+		expect(city.tiles.some((tile) => tile.neighborhood === 'industrial')).toBe(false);
 	});
 
 	test('adds deterministic road and river features to playable cities', () => {
