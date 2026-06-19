@@ -238,7 +238,7 @@ export const TERRAIN_ART: Readonly<Record<TerrainArtId, TerrainArt>> = Object.fr
 	})
 });
 
-const TERRAIN_CONNECTOR_VARIANTS: readonly TerrainConnectorVariant[] = Object.freeze([
+export const TERRAIN_CONNECTOR_VARIANTS: readonly TerrainConnectorVariant[] = Object.freeze([
 	'corner-ne',
 	'corner-es',
 	'corner-sw',

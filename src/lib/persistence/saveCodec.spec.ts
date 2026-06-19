@@ -1,10 +1,12 @@
 import { describe, expect, test, vi } from 'vitest';
 import {
+	computeStoreLocalDemand,
 	DEFAULT_RETAIL_CITY_HEIGHT,
 	DEFAULT_RETAIL_CITY_WIDTH,
 	generateCity,
 	isTileBuildable
 } from '$lib/game/city';
+import { formatLocation } from '$lib/game/placement';
 import { initializeStoreProducts } from '$lib/game/stock';
 import { STARTER_STORE_CAP, createInitialWorldProgress } from '$lib/game/world';
 import type {
@@ -304,7 +306,7 @@ describe('saveCodec', () => {
 	});
 
 	test('expands saved retail city maps to the current default size', () => {
-		expect.assertions(7);
+		expect.assertions(11);
 		const record = createManualSaveRecord({
 			game: {
 				cities: [
@@ -321,7 +323,9 @@ describe('saveCodec', () => {
 						...createGame().stores[0]!,
 						tileId: 'harbor-city-28-8',
 						mapX: 28,
-						mapY: 8
+						mapY: 8,
+						location: 'Stale Location (28, 8)',
+						localDemand: 1
 					}
 				]
 			}
@@ -339,6 +343,12 @@ describe('saveCodec', () => {
 		expect(store.mapX).not.toBe(28);
 		expect(storeTile).toBeDefined();
 		expect(storeTile?.feature).toBeNull();
+		// Relocation must refresh tile-derived fields so the store does not
+		// carry stale coordinates/demand from the pre-migration tile.
+		expect(store.location).toBe(formatLocation(storeTile!));
+		expect(store.location).not.toBe('Stale Location (28, 8)');
+		expect(store.localDemand).toBe(computeStoreLocalDemand(storeTile!));
+		expect(store.localDemand).not.toBe(1);
 	});
 
 	test('does not relocate a valid store when an earlier invalid store targets its tile', () => {

@@ -1,5 +1,6 @@
 import { getArchetype } from '$lib/game/archetypes';
 import {
+	computeStoreLocalDemand,
 	DEFAULT_RETAIL_CITY_HEIGHT,
 	DEFAULT_RETAIL_CITY_WIDTH,
 	generateCity,
@@ -13,6 +14,7 @@ import {
 	MAX_STORE_LEVEL,
 	MAX_BUILDING_LEVEL
 } from '$lib/game/leveling';
+import { formatLocation } from '$lib/game/placement';
 import { MAX_STAFF_LEVEL } from '$lib/game/staffLeveling';
 import { clampScore } from '$lib/game/reports';
 import type { City, CityTile, GameState, WorldCityId } from '$lib/game/types';
@@ -638,7 +640,12 @@ function normalizeSavedRetailStorePlacements(stores: unknown, cities: unknown): 
 			...record,
 			tileId: targetTile.id,
 			mapX: targetTile.x,
-			mapY: targetTile.y
+			mapY: targetTile.y,
+			// Refresh tile-derived fields so a relocated store matches live
+			// placement instead of carrying stale coordinates/demand from the
+			// pre-migration tile.
+			location: formatLocation(targetTile),
+			localDemand: computeStoreLocalDemand(targetTile)
 		};
 	});
 }

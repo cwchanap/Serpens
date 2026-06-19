@@ -7,6 +7,7 @@ import {
 	isMilestoneLevel
 } from './leveling';
 import {
+	computeStoreLocalDemand,
 	DEFAULT_RETAIL_CITY_HEIGHT,
 	DEFAULT_RETAIL_CITY_WIDTH,
 	generateCity,
@@ -398,7 +399,7 @@ function placeStore(store: Store, tile: CityTile): Store {
 		mapX: tile.x,
 		mapY: tile.y,
 		location: `${store.location} (${tile.x}, ${tile.y})`,
-		localDemand: Math.max(1, Math.round((tile.demand + tile.footTraffic) / 2))
+		localDemand: computeStoreLocalDemand(tile)
 	};
 }
 

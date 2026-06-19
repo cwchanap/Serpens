@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest';
 import { generateCity } from './city';
 import { createFoundingGameAtTile } from './placement';
 import { createCityMapSnapshot } from './mapRender';
-import type { CityTile } from './types';
+import type { City, CityTile } from './types';
 
 describe('city map render snapshot', () => {
 	test('creates a serializable snapshot for the active city', () => {
@@ -457,4 +457,93 @@ describe('city map render snapshot', () => {
 		expect(teeNewTile).toBeDefined();
 		expect(teeNewTile?.id).toBe('road-tee-new');
 	});
+
+	test('determines road render variants for isolated and end pieces', () => {
+		expect.assertions(4);
+		expect(roadVariantOf([])).toBe('isolated');
+		expect(roadVariantOf(['n'])).toBe('end-n');
+		expect(roadVariantOf(['e'])).toBe('end-e');
+		expect(roadVariantOf(['w'])).toBe('end-w');
+	});
+
+	test('determines road render variants for corner pieces', () => {
+		expect.assertions(3);
+		expect(roadVariantOf(['n', 'e'])).toBe('corner-ne');
+		expect(roadVariantOf(['e', 's'])).toBe('corner-es');
+		expect(roadVariantOf(['w', 'n'])).toBe('corner-wn');
+	});
+
+	test('determines road render variant for tee-nes', () => {
+		expect.assertions(1);
+		expect(roadVariantOf(['n', 'e', 's'])).toBe('tee-nes');
+	});
 });
+
+type Direction = 'n' | 'e' | 's' | 'w';
+
+function roadVariantOf(directions: Direction[]): string | null {
+	return featureRenderVariantForDirections('road', directions);
+}
+
+function featureRenderVariantForDirections(
+	feature: CityTile['feature'] & string,
+	directions: Direction[]
+): string | null {
+	const centerX = 1;
+	const centerY = 1;
+	const cityId = 'variant-test-city';
+
+	const tiles: CityTile[] = [makeFeatureTile(centerX, centerY, 'center', cityId, feature)];
+
+	const offsets: Record<Direction, { dx: number; dy: number }> = {
+		n: { dx: 0, dy: -1 },
+		e: { dx: 1, dy: 0 },
+		s: { dx: 0, dy: 1 },
+		w: { dx: -1, dy: 0 }
+	};
+
+	for (const direction of directions) {
+		const { dx, dy } = offsets[direction];
+		tiles.push(
+			makeFeatureTile(centerX + dx, centerY + dy, `${direction}-neighbor`, cityId, feature)
+		);
+	}
+
+	const snapshot = createCityMapSnapshot(
+		{
+			cities: [{ id: cityId, name: 'Test', width: 3, height: 3, tiles }] as City[],
+			stores: [],
+			activeCityId: cityId
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		} as any,
+		null
+	);
+
+	const centerTile = snapshot.tiles.find((tile) => tile.id === 'center');
+	return feature === 'river'
+		? (centerTile?.riverVariant ?? null)
+		: (centerTile?.roadVariant ?? null);
+}
+
+function makeFeatureTile(
+	x: number,
+	y: number,
+	id: string,
+	cityId: string,
+	feature: CityTile['feature'] & string
+): CityTile {
+	return {
+		id,
+		x,
+		y,
+		cityId,
+		neighborhood: 'downtown' as const,
+		terrain: 'transit' as const,
+		feature: feature as CityTile['feature'],
+		demand: 50,
+		rent: 100,
+		footTraffic: 60,
+		customerFit: 70,
+		locked: false
+	};
+}
