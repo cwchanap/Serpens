@@ -9,6 +9,7 @@ import {
 	STORE_ART_LIST,
 	TERRAIN_ART,
 	TERRAIN_ART_LIST,
+	TERRAIN_CONNECTOR_VARIANTS,
 	getStoreArt
 } from '../assets/gameArt';
 import type { TerrainArt, TerrainConnectorVariant } from '../assets/gameArt';
@@ -735,7 +736,12 @@ function getFeatureTerrainArt(tile: CityMapTileRender): TerrainArt | null {
 function getTerrainConnectorVariant(
 	variant: CityMapFeatureVariant | null
 ): TerrainConnectorVariant | null {
-	if (variant !== null && variant in ROAD_TERRAIN_CONNECTOR_ART) {
+	// Check membership against the shared TERRAIN_CONNECTOR_VARIANTS
+	// catalog instead of a feature-specific registry (e.g.
+	// ROAD_TERRAIN_CONNECTOR_ART). Both road and river registries are
+	// built from the same array so they share identical keys, but
+	// coupling the check to one registry is a latent fragility.
+	if (variant !== null && TERRAIN_CONNECTOR_VARIANTS.includes(variant as TerrainConnectorVariant)) {
 		return variant as TerrainConnectorVariant;
 	}
 

@@ -1,5 +1,6 @@
 import { ARCHETYPES, getArchetype } from './archetypes';
 import {
+	computeStoreLocalDemand,
 	getTileById,
 	getTilePlacementBlockDecisionIdPart,
 	getTilePlacementBlockReason
@@ -220,13 +221,13 @@ function placeStoreOnTile(store: Store, tile: CityTile): Store {
 		mapX: tile.x,
 		mapY: tile.y,
 		location: formatLocation(tile),
-		localDemand: Math.max(1, Math.round((tile.demand + tile.footTraffic) / 2)),
+		localDemand: computeStoreLocalDemand(tile),
 		reputation: clampScore(store.reputation + Math.round((fitScore - 60) / 8)),
 		staffCapacity: clampScore(store.staffCapacity + Math.round((tile.footTraffic - 55) / 10))
 	};
 }
 
-function formatLocation(tile: CityTile): string {
+export function formatLocation(tile: CityTile): string {
 	return `${formatNeighborhood(tile.neighborhood)} (${tile.x}, ${tile.y})`;
 }
 

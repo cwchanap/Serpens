@@ -157,6 +157,16 @@ export function getTileById(city: City, tileId: string): CityTile | undefined {
 	return city.tiles.find((tile) => tile.id === tileId);
 }
 
+/**
+ * Tile-derived local demand snapshot used whenever a store is (re)placed onto a
+ * tile. Lives here (rather than next to placement code) so both placement.ts
+ * and state.ts can share it without an import cycle, and so saveCodec's
+ * relocation path stays consistent with live placement.
+ */
+export function computeStoreLocalDemand(tile: CityTile): number {
+	return Math.max(1, Math.round((tile.demand + tile.footTraffic) / 2));
+}
+
 export function getTilesByNeighborhood(city: City, neighborhood: NeighborhoodId): CityTile[] {
 	return city.tiles.filter((tile) => tile.neighborhood === neighborhood);
 }
@@ -291,7 +301,12 @@ function isRiverTile(width: number, height: number, x: number, y: number): boole
 	const upperX = Math.max(1, Math.floor(width / 4));
 	const bendY = Math.max(2, Math.floor(height * RIVER_BEND_HEIGHT_FRACTION));
 	const lowerX = getRiverLowerX(width);
-	const riverEndY = Math.max(bendY, Math.floor(height / 2) - 2);
+	// Run the river from the top edge down to one row above the bottommost
+	// road divider row.  Stopping short keeps the last road row intact as a
+	// horizontal bridge across the river, preserving road-grid contiguity.
+	const roadRows = getRoadDividerRows(height);
+	const lastRoadRow = roadRows.length > 0 ? roadRows[roadRows.length - 1]! : height - 2;
+	const riverEndY = Math.max(bendY, Math.min(lastRoadRow - 1, height - 2));
 
 	if (y < bendY) {
 		return x === upperX;

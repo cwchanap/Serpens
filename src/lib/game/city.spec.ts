@@ -255,7 +255,7 @@ describe('city generation', () => {
 	});
 
 	test('generates four-way contiguous road and river paths on larger maps', () => {
-		expect.assertions(6);
+		expect.assertions(9);
 		const city = generateCity({
 			id: 'harbor-city',
 			name: 'Harbor City',
@@ -272,6 +272,13 @@ describe('city generation', () => {
 		expect(isFourWayContiguous(riverTiles)).toBe(true);
 		expect(countRoadColumns(roadTiles, Math.floor(city.height * 0.45))).toBeGreaterThanOrEqual(5);
 		expect(countRoadRows(roadTiles, Math.floor(city.width * 0.35))).toBeGreaterThanOrEqual(5);
+		// River runs from the top edge (y = 0) down to one row above the
+		// bottommost road divider row (y = 39 for 56×48).  Stopping at
+		// y = 38 leaves the y = 39 road row intact as a horizontal bridge.
+		expect(Math.max(...riverTiles.map((tile) => tile.y))).toBe(38);
+		expect(riverTiles.some((tile) => tile.y === 1)).toBe(true);
+		// Verify the y = 39 road row has no gaps (it bridges left and right).
+		expect(roadTiles.filter((tile) => tile.y === 39).length).toBe(city.width - 2);
 	});
 
 	test('does not add road or river features to cities smaller than five by five', () => {
