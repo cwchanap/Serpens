@@ -124,7 +124,7 @@ async function expectTerrainAssets(page: Page) {
 	const decorationCount = Number(await canvas.getAttribute('data-terrain-decoration-sprite-count'));
 
 	expect(baseCount).toBe(2688);
-	expect(featureCount).toBe(503);
+	expect(featureCount).toBe(517);
 	expect(decorationCount).toBeGreaterThan(0);
 }
 
