@@ -561,7 +561,41 @@ function normalizeSavedRetailStorePlacements(stores: unknown, cities: unknown): 
 	);
 	const occupiedTileIdsByCity = new Map<string, Set<string>>();
 
-	return stores.map((store) => {
+	// Pass 1: reserve tiles for stores that are already correctly placed. This
+	// prevents a later invalid store's fallback closest-tile search from
+	// claiming a valid store's tile just because it appeared earlier in the
+	// array and would otherwise be relocated first.
+	const validPlacementIndexes = new Set<number>();
+	stores.forEach((store, index) => {
+		if (typeof store !== 'object' || store === null) {
+			return;
+		}
+		const record = store as Record<string, unknown>;
+		if (typeof record.cityId !== 'string' || typeof record.tileId !== 'string') {
+			return;
+		}
+		const city = cityById.get(record.cityId);
+		if (!city) {
+			return;
+		}
+		const tile = getTileById(city, record.tileId);
+		if (!tile || !isTileBuildable(tile) || record.mapX !== tile.x || record.mapY !== tile.y) {
+			return;
+		}
+		const reservedTileIds = getOccupiedTileIds(occupiedTileIdsByCity, city.id);
+		if (reservedTileIds.has(tile.id)) {
+			return;
+		}
+		reservedTileIds.add(tile.id);
+		validPlacementIndexes.add(index);
+	});
+
+	// Pass 2: relocate every store that is not already validly placed, never
+	// reusing a tile reserved by a valid placement in pass 1.
+	return stores.map((store, index) => {
+		if (validPlacementIndexes.has(index)) {
+			return store;
+		}
 		if (typeof store !== 'object' || store === null) {
 			return store;
 		}
