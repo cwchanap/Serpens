@@ -1,10 +1,17 @@
 import { describe, expect, test } from 'vitest';
 import { getArchetype } from './archetypes';
 import { calculateStockHealth, createStoreProduct } from './stock';
-import { createNewGame, openStore, resolveDecision, updatePolicy, upgradeStore } from './state';
+import {
+	createNewGame,
+	getExpansionSetupCost,
+	openStore,
+	resolveDecision,
+	updatePolicy,
+	upgradeStore
+} from './state';
 import { simulateDay } from './simulateDay';
 import { getStoreUpgradeCost, MAX_STORE_LEVEL } from './leveling';
-import type { GameState } from './types';
+import type { CityTile, GameState } from './types';
 
 type OptionalKeys<T> = {
 	[K in keyof T]-?: undefined extends T[K] ? K : never;
@@ -515,6 +522,42 @@ describe('game state', () => {
 
 		expect(result.stores).toHaveLength(1);
 		expect(result.decisions.at(-1)?.id).toBe('location-unavailable-1');
+	});
+
+	test('getExpansionSetupCost pins terrain premium ordering and exact values', () => {
+		expect.assertions(5);
+		// Convenience baseRent is 115; with rent/demand/footTraffic/customerFit
+		// all zero, the base cost is 9_000 + 115 * 18 = 11_070. The terrain
+		// premium adds commercial: 3_500, residential: 2_000, green/transit: 0.
+		const baseTile: CityTile = {
+			id: 'test-tile',
+			cityId: 'test-city',
+			x: 0,
+			y: 0,
+			neighborhood: 'parkEdge',
+			terrain: 'green',
+			feature: null,
+			demand: 0,
+			rent: 0,
+			footTraffic: 0,
+			customerFit: 0,
+			locked: false
+		};
+		const greenCost = getExpansionSetupCost(baseTile, 'convenience');
+		const residentialCost = getExpansionSetupCost(
+			{ ...baseTile, terrain: 'residential' },
+			'convenience'
+		);
+		const commercialCost = getExpansionSetupCost(
+			{ ...baseTile, terrain: 'commercial' },
+			'convenience'
+		);
+
+		expect(greenCost).toBe(11_070);
+		expect(residentialCost).toBe(13_070);
+		expect(commercialCost).toBe(14_570);
+		expect(commercialCost).toBeGreaterThan(residentialCost);
+		expect(residentialCost).toBeGreaterThan(greenCost);
 	});
 
 	describe('milestone category unlock with reordered lineups', () => {

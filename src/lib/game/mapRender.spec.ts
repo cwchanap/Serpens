@@ -165,6 +165,7 @@ describe('city map render snapshot', () => {
 	});
 
 	test('marks generated river tiles with their render variant', () => {
+		expect.assertions(4);
 		const city = generateCity({
 			id: 'harbor-city',
 			name: 'Harbor City',
@@ -195,6 +196,7 @@ describe('city map render snapshot', () => {
 	});
 
 	test('marks tee-esw variant for road tiles with east, south, and west neighbors', () => {
+		expect.assertions(2);
 		const city = generateCity({
 			id: 'harbor-city',
 			name: 'Harbor City',
@@ -283,6 +285,7 @@ describe('city map render snapshot', () => {
 	});
 
 	test('marks tee-nsw variant for road tiles with north, south, and west neighbors', () => {
+		expect.assertions(2);
 		const city = generateCity({
 			id: 'harbor-city',
 			name: 'Harbor City',
@@ -371,6 +374,7 @@ describe('city map render snapshot', () => {
 	});
 
 	test('marks tee-new variant for road tiles with north, east, and west neighbors', () => {
+		expect.assertions(2);
 		const city = generateCity({
 			id: 'harbor-city',
 			name: 'Harbor City',

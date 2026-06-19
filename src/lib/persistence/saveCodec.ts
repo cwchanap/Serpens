@@ -623,6 +623,10 @@ function normalizeSavedRetailStorePlacements(stores: unknown, cities: unknown): 
 		const occupiedTileIds = getOccupiedTileIds(occupiedTileIdsByCity, city.id);
 		const targetTile = findSavedStoreTile(city, record, occupiedTileIds);
 		if (!targetTile) {
+			const storeId = typeof record.id === 'string' ? record.id : '<unknown>';
+			console.warn(
+				`saveCodec: store "${storeId}" in city "${city.id}" has no buildable tile (saved tileId "${record.tileId ?? '?'}"); left on stale tile.`
+			);
 			return store;
 		}
 
@@ -635,6 +639,11 @@ function normalizeSavedRetailStorePlacements(stores: unknown, cities: unknown): 
 		) {
 			return store;
 		}
+
+		const storeId = typeof record.id === 'string' ? record.id : '<unknown>';
+		console.warn(
+			`saveCodec: relocated store "${storeId}" in city "${city.id}" from tile "${record.tileId ?? '?'}" (${record.mapX ?? '?'}, ${record.mapY ?? '?'}) to tile "${targetTile.id}" (${targetTile.x}, ${targetTile.y}).`
+		);
 
 		return {
 			...record,
