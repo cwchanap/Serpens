@@ -305,7 +305,10 @@ function isRiverTile(width: number, height: number, x: number, y: number): boole
 	// road divider row.  Stopping short keeps the last road row intact as a
 	// horizontal bridge across the river, preserving road-grid contiguity.
 	const roadRows = getRoadDividerRows(height);
-	const lastRoadRow = roadRows.length > 0 ? roadRows[roadRows.length - 1]! : height - 2;
+	// uniqueInteriorPositions always yields at least one row for any height
+	// (it clamps each fraction to [1, height - 2] and the fraction list is
+	// never empty), so the last divider row is always defined.
+	const lastRoadRow = roadRows[roadRows.length - 1]!;
 	const riverEndY = Math.max(bendY, Math.min(lastRoadRow - 1, height - 2));
 
 	if (y < bendY) {

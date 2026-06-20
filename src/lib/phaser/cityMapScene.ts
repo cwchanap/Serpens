@@ -763,11 +763,11 @@ function getTerrainTextureAngle(tile: CityMapTileRender): number {
 		return variant === 'vertical' || variant === 'end-n' || variant === 'end-s' ? 90 : 0;
 	}
 
-	if (tile.feature === 'river') {
-		return variant === 'horizontal' || variant === 'end-e' || variant === 'end-w' ? 90 : 0;
-	}
-
-	return 0;
+	// Only road and river tiles reach the textured-sprite path (callers gate on
+	// tile.feature), so the remaining case is a river. A null feature would also
+	// land here but never reaches this function — and the comparison still
+	// yields 0 in that case, preserving the prior fallback behavior.
+	return variant === 'horizontal' || variant === 'end-e' || variant === 'end-w' ? 90 : 0;
 }
 
 function getTerrainAssetMode(

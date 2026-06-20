@@ -674,14 +674,6 @@ function normalizeSavedRetailStorePlacements(
 
 		occupiedTileIds.add(targetTile.id);
 
-		if (
-			record.tileId === targetTile.id &&
-			record.mapX === targetTile.x &&
-			record.mapY === targetTile.y
-		) {
-			return store;
-		}
-
 		const storeId = typeof record.id === 'string' ? record.id : '<unknown>';
 		console.warn(
 			`saveCodec: relocated store "${storeId}" in city "${city.id}" from tile "${record.tileId ?? '?'}" (${record.mapX ?? '?'}, ${record.mapY ?? '?'}) to tile "${targetTile.id}" (${targetTile.x}, ${targetTile.y}).`
