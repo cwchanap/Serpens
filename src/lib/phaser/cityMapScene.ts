@@ -60,6 +60,11 @@ export class CityMapScene extends Phaser.Scene {
 	private outlineGraphics?: Phaser.GameObjects.Graphics;
 	private markerGraphics?: Phaser.GameObjects.Graphics;
 	private tileZones: Phaser.GameObjects.Zone[] = [];
+	private tileGrid = new Map<string, CityMapTileRender>();
+	private tileById = new Map<string, CityMapTileRender>();
+	private selectedTile: CityMapTileRender | null = null;
+	private terrainKey: string | null = null;
+	private lastCameraKey: string | null = null;
 	private storeSprites: StoreSpriteRender[] = [];
 	private terrainSprites: Phaser.GameObjects.Image[] = [];
 	private terrainFeatureSpriteCount = 0;
@@ -110,11 +115,6 @@ export class CityMapScene extends Phaser.Scene {
 
 	updateSnapshot(snapshot: CityMapSnapshot): void {
 		this.snapshot = snapshot;
-
-		if (!snapshot.tiles.some((tile) => tile.id === this.hoverTileId)) {
-			this.hoverTileId = null;
-		}
-
 		this.renderSnapshot();
 	}
 
@@ -125,23 +125,68 @@ export class CityMapScene extends Phaser.Scene {
 			return;
 		}
 
-		this.mapGraphics.clear();
-		this.placementPreviewGraphics?.clear();
-		this.destroyStoreSprites();
-		this.destroyTerrainSprites();
-		this.destroyTileZones();
-		this.setCameraBounds();
+		// Compute a key that captures all terrain-affecting fields. If this
+		// key hasn't changed since the last render, we skip the expensive
+		// O(tiles) terrain sprite recreation and mapGraphics redraw — only
+		// stores, selection, and placement preview need updating.
+		const newTerrainKey = this.computeTerrainKey();
+		const terrainChanged = newTerrainKey !== this.terrainKey;
 
-		for (const tile of this.snapshot.tiles) {
-			this.drawTile(tile);
-			this.createTileZone(tile);
+		if (terrainChanged) {
+			this.mapGraphics.clear();
+			this.destroyTerrainSprites();
+			this.destroyTileZones();
+			this.setCameraBounds();
+
+			this.tileGrid.clear();
+			this.tileById.clear();
+			this.selectedTile = null;
+
+			for (const tile of this.snapshot.tiles) {
+				this.drawTile(tile);
+				this.tileGrid.set(`${tile.x},${tile.y}`, tile);
+				this.tileById.set(tile.id, tile);
+
+				if (tile.selected) {
+					this.selectedTile = tile;
+				}
+			}
+
+			if (this.hoverTileId && !this.tileById.has(this.hoverTileId)) {
+				this.hoverTileId = null;
+			}
+
+			this.createMapInteractionZone();
+			this.createTerrainSprites();
+			this.terrainKey = newTerrainKey;
+		} else {
+			// Terrain unchanged — update selection from the new snapshot.
+			this.selectedTile = this.snapshot.selectedTileId
+				? (this.tileById.get(this.snapshot.selectedTileId) ?? null)
+				: null;
 		}
 
+		// Always update these — they change frequently between snapshots.
+		this.placementPreviewGraphics?.clear();
+		this.destroyStoreSprites();
 		this.drawPlacementPreview();
-		this.createTerrainSprites();
 		this.createStoreSprites();
 		this.drawInteractionOutlines();
 		this.drawStoreMarkers(0);
+	}
+
+	private computeTerrainKey(): string {
+		if (!this.snapshot) {
+			return '';
+		}
+
+		let key = `${this.snapshot.cityId}|${this.snapshot.width}x${this.snapshot.height}`;
+
+		for (const tile of this.snapshot.tiles) {
+			key += `|${tile.terrain},${tile.feature},${tile.roadVariant},${tile.riverVariant},${tile.neighborhood},${tile.locked},${tile.owned}`;
+		}
+
+		return key;
 	}
 
 	private drawTile(tile: CityMapTileRender): void {
@@ -213,22 +258,18 @@ export class CityMapScene extends Phaser.Scene {
 		}
 	}
 
-	private createTileZone(tile: CityMapTileRender): void {
+	private createMapInteractionZone(): void {
+		if (!this.snapshot) {
+			return;
+		}
+
+		const width = Math.max(TILE_SIZE, this.snapshot.width * TILE_SIZE);
+		const height = Math.max(TILE_SIZE, this.snapshot.height * TILE_SIZE);
 		const zone = this.add
-			.zone(tile.x * TILE_SIZE, tile.y * TILE_SIZE, TILE_SIZE, TILE_SIZE)
+			.zone(0, 0, width, height)
 			.setOrigin(0)
 			.setInteractive({ useHandCursor: true });
 
-		zone.on('pointerover', () => {
-			this.hoverTileId = tile.id;
-			this.drawInteractionOutlines();
-		});
-		zone.on('pointerout', () => {
-			if (this.hoverTileId === tile.id) {
-				this.hoverTileId = null;
-				this.drawInteractionOutlines();
-			}
-		});
 		zone.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
 			if (this.isCanvasPointer(pointer) && pointer.leftButtonDown()) {
 				this.isDragging = true;
@@ -237,6 +278,7 @@ export class CityMapScene extends Phaser.Scene {
 				this.lastDragPoint = { x: pointer.x, y: pointer.y };
 			}
 		});
+
 		zone.on('pointerup', (pointer: Phaser.Input.Pointer) => {
 			if (!this.didPointerStartOnCanvas(pointer)) {
 				return;
@@ -246,10 +288,30 @@ export class CityMapScene extends Phaser.Scene {
 				return;
 			}
 
-			this.eventHandler?.({ type: 'tileSelected', tileId: tile.id });
+			const tile = this.getTileAtPointer(pointer);
+
+			if (tile) {
+				this.eventHandler?.({ type: 'tileSelected', tileId: tile.id });
+			}
 		});
 
-		this.tileZones.push(zone);
+		zone.on('pointerout', () => {
+			if (this.hoverTileId !== null) {
+				this.hoverTileId = null;
+				this.drawInteractionOutlines();
+			}
+		});
+
+		this.tileZones = [zone];
+	}
+
+	private getTileAtPointer(pointer: Phaser.Input.Pointer): CityMapTileRender | null {
+		const worldX = pointer.worldX ?? pointer.x;
+		const worldY = pointer.worldY ?? pointer.y;
+		const tileX = Math.floor(worldX / TILE_SIZE);
+		const tileY = Math.floor(worldY / TILE_SIZE);
+
+		return this.tileGrid.get(`${tileX},${tileY}`) ?? null;
 	}
 
 	private isCanvasPointer(pointer: Phaser.Input.Pointer): boolean {
@@ -261,22 +323,34 @@ export class CityMapScene extends Phaser.Scene {
 	}
 
 	private handlePointerMove(pointer: Phaser.Input.Pointer): void {
-		if (!this.isDragging || !this.lastDragPoint || !pointer.isDown) {
+		if (this.isDragging && this.lastDragPoint && pointer.isDown) {
+			const camera = this.cameras.main;
+			const zoom = camera.zoom || 1;
+			this.hasUserAdjustedCamera = true;
+			camera.scrollX -= (pointer.x - this.lastDragPoint.x) / zoom;
+			camera.scrollY -= (pointer.y - this.lastDragPoint.y) / zoom;
+			this.updateCanvasCameraAttributes();
+
+			if (this.dragStartPoint && this.didMoveBeyondClickSlop(pointer, this.dragStartPoint)) {
+				this.hasDragged = true;
+			}
+
+			this.lastDragPoint = { x: pointer.x, y: pointer.y };
 			return;
 		}
 
-		const camera = this.cameras.main;
-		const zoom = camera.zoom || 1;
-		this.hasUserAdjustedCamera = true;
-		camera.scrollX -= (pointer.x - this.lastDragPoint.x) / zoom;
-		camera.scrollY -= (pointer.y - this.lastDragPoint.y) / zoom;
-		this.updateCanvasCameraAttributes();
+		// Hover detection — only when the pointer is over the canvas (not an
+		// overlay). This replaces 2688 per-tile interactive Zones with a single
+		// O(1) grid lookup, eliminating per-pointermove input hit-testing.
+		if (this.isCanvasPointer(pointer)) {
+			const tile = this.getTileAtPointer(pointer);
+			const newHoverId = tile?.id ?? null;
 
-		if (this.dragStartPoint && this.didMoveBeyondClickSlop(pointer, this.dragStartPoint)) {
-			this.hasDragged = true;
+			if (newHoverId !== this.hoverTileId) {
+				this.hoverTileId = newHoverId;
+				this.drawInteractionOutlines();
+			}
 		}
-
-		this.lastDragPoint = { x: pointer.x, y: pointer.y };
 	}
 
 	private handlePointerUp(): void {
@@ -386,19 +460,21 @@ export class CityMapScene extends Phaser.Scene {
 
 		this.outlineGraphics.clear();
 
-		for (const tile of this.snapshot.tiles) {
-			const x = tile.x * TILE_SIZE;
-			const y = tile.y * TILE_SIZE;
+		// O(1) lookup instead of iterating all tiles every hover change.
+		const hoveredTile = this.hoverTileId ? this.tileById.get(this.hoverTileId) : null;
 
-			if (tile.id === this.hoverTileId) {
-				this.outlineGraphics.lineStyle(3, 0xf5c542, 0.85);
-				this.outlineGraphics.strokeRect(x + 2, y + 2, TILE_SIZE - 4, TILE_SIZE - 4);
-			}
+		if (hoveredTile) {
+			const x = hoveredTile.x * TILE_SIZE;
+			const y = hoveredTile.y * TILE_SIZE;
+			this.outlineGraphics.lineStyle(3, 0xf5c542, 0.85);
+			this.outlineGraphics.strokeRect(x + 2, y + 2, TILE_SIZE - 4, TILE_SIZE - 4);
+		}
 
-			if (tile.selected) {
-				this.outlineGraphics.lineStyle(4, 0x2563eb, 1);
-				this.outlineGraphics.strokeRect(x + 1, y + 1, TILE_SIZE - 2, TILE_SIZE - 2);
-			}
+		if (this.selectedTile) {
+			const x = this.selectedTile.x * TILE_SIZE;
+			const y = this.selectedTile.y * TILE_SIZE;
+			this.outlineGraphics.lineStyle(4, 0x2563eb, 1);
+			this.outlineGraphics.strokeRect(x + 1, y + 1, TILE_SIZE - 2, TILE_SIZE - 2);
 		}
 	}
 
@@ -629,6 +705,15 @@ export class CityMapScene extends Phaser.Scene {
 		const viewX = Phaser.Math.Clamp(worldView.x || 0, 0, Math.max(0, worldWidth - viewWidth));
 		const viewY = Phaser.Math.Clamp(worldView.y || 0, 0, Math.max(0, worldHeight - viewHeight));
 
+		// Throttle: skip DOM writes when nothing changed since last frame.
+		const cameraKey = `${zoom.toFixed(4)}|${this.cameras.main.scrollX.toFixed(4)}|${this.cameras.main.scrollY.toFixed(4)}|${worldWidth.toFixed(4)}|${worldHeight.toFixed(4)}|${viewX.toFixed(4)}|${viewY.toFixed(4)}|${viewWidth.toFixed(4)}|${viewHeight.toFixed(4)}`;
+
+		if (cameraKey === this.lastCameraKey) {
+			return;
+		}
+
+		this.lastCameraKey = cameraKey;
+
 		canvas.dataset.mapZoom = zoom.toFixed(4);
 		canvas.dataset.mapTileSize = (TILE_SIZE * zoom).toFixed(4);
 		canvas.dataset.mapScrollX = this.cameras.main.scrollX.toFixed(4);
@@ -667,12 +752,17 @@ export class CityMapScene extends Phaser.Scene {
 		}
 
 		this.tileZones = [];
+		this.tileGrid.clear();
+		this.tileById.clear();
+		this.selectedTile = null;
 	}
 
 	private destroySceneObjects(): void {
 		this.destroyStoreSprites();
 		this.destroyTerrainSprites();
 		this.destroyTileZones();
+		this.terrainKey = null;
+		this.lastCameraKey = null;
 		this.input.off('pointermove', this.handlePointerMove, this);
 		this.input.off('pointerup', this.handlePointerUp, this);
 		this.input.off('wheel', this.handleWheel, this);

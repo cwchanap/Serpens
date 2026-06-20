@@ -176,6 +176,8 @@ function makePointer(canvas: any, overrides?: Record<string, any>) {
 	return {
 		x: 0,
 		y: 0,
+		worldX: 0,
+		worldY: 0,
 		isDown: true,
 		event: { target: canvas },
 		downElement: canvas,
@@ -334,11 +336,11 @@ describe('CityMapScene', () => {
 	});
 
 	describe('renderSnapshot (via updateSnapshot)', () => {
-		it('creates a zone for each tile', () => {
+		it('creates a single map interaction zone', () => {
 			expect.assertions(1);
 			scene.create();
 			scene.updateSnapshot(makeSnapshot());
-			expect(s(scene).add.zone).toHaveBeenCalledTimes(9);
+			expect(s(scene).add.zone).toHaveBeenCalledTimes(1);
 		});
 
 		it('sets camera bounds based on snapshot dimensions', () => {
@@ -749,7 +751,7 @@ describe('CityMapScene', () => {
 	});
 
 	describe('tile zones', () => {
-		it('pointerover sets hoverTileId', () => {
+		it('pointermove sets hoverTileId when pointer is over a tile', () => {
 			expect.assertions(1);
 			scene.create();
 			scene.updateSnapshot(
@@ -757,10 +759,10 @@ describe('CityMapScene', () => {
 					tiles: [makeTile({ id: 'zone-tile', x: 0, y: 0 })]
 				})
 			);
-			const zone = s(scene).tileZones[0];
-			const onCalls = (zone.on as Mock).mock.calls;
-			const handler = onCalls.find((c: any[]) => c[0] === 'pointerover')?.[1];
-			handler();
+			const canvas = s(scene).game.canvas;
+			const pointer = makePointer(canvas, { x: 10, y: 10, worldX: 10, worldY: 10 });
+			const handler = getHandler(s(scene).input.on as Mock, 'pointermove');
+			handler.call(scene, pointer);
 			expect(s(scene).hoverTileId).toBe('zone-tile');
 		});
 
@@ -772,11 +774,10 @@ describe('CityMapScene', () => {
 					tiles: [makeTile({ id: 'zone-tile', x: 0, y: 0 })]
 				})
 			);
+			s(scene).hoverTileId = 'zone-tile';
 			const zone = s(scene).tileZones[0];
 			const onCalls = (zone.on as Mock).mock.calls;
-			const overHandler = onCalls.find((c: any[]) => c[0] === 'pointerover')?.[1];
 			const outHandler = onCalls.find((c: any[]) => c[0] === 'pointerout')?.[1];
-			overHandler();
 			outHandler();
 			expect(s(scene).hoverTileId).toBeNull();
 		});
@@ -830,7 +831,7 @@ describe('CityMapScene', () => {
 			const downHandler = onCalls.find((c: any[]) => c[0] === 'pointerdown')?.[1];
 			const upHandler = onCalls.find((c: any[]) => c[0] === 'pointerup')?.[1];
 			const canvas = s(scene).game.canvas;
-			const pointer = makePointer(canvas, { x: 10, y: 10 });
+			const pointer = makePointer(canvas, { x: 10, y: 10, worldX: 10, worldY: 10 });
 			downHandler(pointer);
 			upHandler(pointer);
 			expect(handler).toHaveBeenCalledWith({ type: 'tileSelected', tileId: 'zone-tile' });
@@ -849,7 +850,7 @@ describe('CityMapScene', () => {
 			const zone = s(scene).tileZones[0];
 			const onCalls = (zone.on as Mock).mock.calls;
 			const upHandler = onCalls.find((c: any[]) => c[0] === 'pointerup')?.[1];
-			const pointer = makePointer({});
+			const pointer = makePointer({}, { worldX: 10, worldY: 10 });
 			upHandler(pointer);
 			expect(handler).not.toHaveBeenCalled();
 		});
@@ -869,9 +870,9 @@ describe('CityMapScene', () => {
 			const downHandler = onCalls.find((c: any[]) => c[0] === 'pointerdown')?.[1];
 			const upHandler = onCalls.find((c: any[]) => c[0] === 'pointerup')?.[1];
 			const canvas = s(scene).game.canvas;
-			const downPointer = makePointer(canvas, { x: 10, y: 10 });
+			const downPointer = makePointer(canvas, { x: 10, y: 10, worldX: 10, worldY: 10 });
 			downHandler(downPointer);
-			const upPointer = makePointer(canvas, { x: 30, y: 30 });
+			const upPointer = makePointer(canvas, { x: 30, y: 30, worldX: 30, worldY: 30 });
 			upHandler(upPointer);
 			expect(handler).not.toHaveBeenCalled();
 		});
@@ -1705,14 +1706,29 @@ describe('CityMapScene', () => {
 	});
 
 	describe('re-rendering', () => {
-		it('destroys previous tile zones on re-render', () => {
+		it('destroys previous tile zones when terrain changes on re-render', () => {
+			expect.assertions(1);
+			scene.create();
+			scene.updateSnapshot(makeSnapshot());
+			const firstZones = [...s(scene).tileZones];
+			scene.updateSnapshot(
+				makeSnapshot({
+					cityId: 'different-city',
+					tiles: [makeTile({ id: 't0', x: 0, y: 0, terrain: 'green' })]
+				})
+			);
+			const allDestroyed = firstZones.every((z: any) => (z.destroy as Mock).mock.calls.length > 0);
+			expect(allDestroyed).toBe(true);
+		});
+
+		it('caches tile zones when terrain is unchanged on re-render', () => {
 			expect.assertions(1);
 			scene.create();
 			scene.updateSnapshot(makeSnapshot());
 			const firstZones = [...s(scene).tileZones];
 			scene.updateSnapshot(makeSnapshot());
-			const allDestroyed = firstZones.every((z: any) => (z.destroy as Mock).mock.calls.length > 0);
-			expect(allDestroyed).toBe(true);
+			const allSurvived = firstZones.every((z: any) => (z.destroy as Mock).mock.calls.length === 0);
+			expect(allSurvived).toBe(true);
 		});
 
 		it('destroys previous store sprites on re-render', () => {
@@ -1741,17 +1757,35 @@ describe('CityMapScene', () => {
 			expect(allDestroyed).toBe(true);
 		});
 
-		it('destroys previous terrain sprites on re-render', () => {
+		it('destroys previous terrain sprites when terrain changes on re-render', () => {
+			expect.assertions(1);
+			scene.create();
+			s(scene).textures.exists = vi.fn(() => true);
+			scene.updateSnapshot(makeSnapshot());
+			const firstSprites = [...s(scene).terrainSprites];
+			scene.updateSnapshot(
+				makeSnapshot({
+					cityId: 'different-city',
+					tiles: [makeTile({ id: 't0', x: 0, y: 0, terrain: 'green' })]
+				})
+			);
+			const allDestroyed = firstSprites.every(
+				(sp: any) => (sp.destroy as Mock).mock.calls.length > 0
+			);
+			expect(allDestroyed).toBe(true);
+		});
+
+		it('caches terrain sprites when terrain is unchanged on re-render', () => {
 			expect.assertions(1);
 			scene.create();
 			s(scene).textures.exists = vi.fn(() => true);
 			scene.updateSnapshot(makeSnapshot());
 			const firstSprites = [...s(scene).terrainSprites];
 			scene.updateSnapshot(makeSnapshot());
-			const allDestroyed = firstSprites.every(
-				(sp: any) => (sp.destroy as Mock).mock.calls.length > 0
+			const allSurvived = firstSprites.every(
+				(sp: any) => (sp.destroy as Mock).mock.calls.length === 0
 			);
-			expect(allDestroyed).toBe(true);
+			expect(allSurvived).toBe(true);
 		});
 	});
 });
