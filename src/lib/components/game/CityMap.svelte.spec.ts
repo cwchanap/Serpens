@@ -6,6 +6,12 @@ import CityMap from './CityMap.svelte';
 
 const mockUpdateSnapshot = vi.fn();
 const mockSetEventHandler = vi.fn();
+const mockPause = vi.fn();
+const mockResume = vi.fn();
+const MockGame = vi.fn().mockImplementation(function () {
+	if (shouldFail) throw new Error('Phaser unavailable');
+	return { destroy: vi.fn(), pause: mockPause, resume: mockResume };
+});
 
 let shouldFail = false;
 
@@ -13,10 +19,7 @@ vi.mock('phaser', () => {
 	return {
 		default: {
 			AUTO: 0,
-			Game: vi.fn().mockImplementation(function () {
-				if (shouldFail) throw new Error('Phaser unavailable');
-				return { destroy: vi.fn() };
-			}),
+			Game: MockGame,
 			Scale: { RESIZE: 0, CENTER_BOTH: 0 }
 		}
 	};
@@ -79,5 +82,34 @@ describe('CityMap', () => {
 		});
 
 		await expect.element(page.getByText('Map renderer unavailable.')).toBeVisible();
+	});
+
+	it('pauses the game loop when paused prop is true', async () => {
+		expect.assertions(1);
+
+		render(CityMap, {
+			snapshot: stubSnapshot,
+			onTileSelected: vi.fn(),
+			paused: true
+		});
+
+		await waitForMock(MockGame);
+		await waitForMock(mockPause);
+		expect(mockPause).toHaveBeenCalled();
+	});
+
+	it('resumes the game loop when paused prop toggles back to false', async () => {
+		expect.assertions(1);
+
+		const { rerender } = render(CityMap, {
+			snapshot: stubSnapshot,
+			onTileSelected: vi.fn(),
+			paused: true
+		});
+
+		await waitForMock(mockPause);
+		rerender({ snapshot: stubSnapshot, onTileSelected: vi.fn(), paused: false });
+		await waitForMock(mockResume);
+		expect(mockResume).toHaveBeenCalled();
 	});
 });

@@ -214,6 +214,16 @@
 	let isPlacementModeActive = $derived(
 		retailPlacementArchetypeId !== null || industryPlacementBuildingTypeId !== null
 	);
+	// Pause the Phaser render loop while an overlay covers the map or the map
+	// menu is open. The large-city render loop iterates thousands of terrain
+	// sprites every frame; pausing it frees the main thread so menu/panel
+	// interactions stay responsive (and stops e2e actionability timeouts).
+	// Placement mode is excluded because the scene must keep rendering the
+	// placement preview over the map.
+	let isMapPaused = $derived(
+		!isPlacementModeActive &&
+			(isViewMenuOpen || activeManagementPanelId !== null || isSavePanelOpen)
+	);
 	let shouldShowRetailInspector = $derived(
 		selectedTile !== null && (!isPlacementModeActive || placementFeedback !== null)
 	);
@@ -768,9 +778,13 @@
 				onCloseInspector={closeWorldInspector}
 			/>
 		{:else if activeMapView === 'retail'}
-			<CityMap snapshot={mapSnapshot} onTileSelected={selectTile} />
+			<CityMap snapshot={mapSnapshot} onTileSelected={selectTile} paused={isMapPaused} />
 		{:else}
-			<IndustryMap snapshot={industryMapSnapshot} onTileSelected={selectIndustryTile} />
+			<IndustryMap
+				snapshot={industryMapSnapshot}
+				onTileSelected={selectIndustryTile}
+				paused={isMapPaused}
+			/>
 		{/if}
 		<div class="map-hud" aria-label="Map controls">
 			<div class="map-title plaque" aria-label="Map title">

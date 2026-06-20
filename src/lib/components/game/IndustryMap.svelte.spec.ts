@@ -1,14 +1,18 @@
 import { page } from 'vitest/browser';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import type { IndustryMapSnapshot } from '$lib/game/industryMapRender';
 
 const mockUpdateSnapshot = vi.fn();
 const mockSetEventHandler = vi.fn();
+const mockPause = vi.fn();
+const mockResume = vi.fn();
+let shouldFail = false;
 
 vi.mock('phaser', () => {
 	const FakeGame = vi.fn().mockImplementation(function () {
-		return { destroy: vi.fn() };
+		if (shouldFail) throw new Error('Phaser unavailable');
+		return { destroy: vi.fn(), pause: mockPause, resume: mockResume };
 	});
 	return {
 		default: {
@@ -41,7 +45,19 @@ const emptySnapshot: IndustryMapSnapshot = {
 	buildings: []
 };
 
+async function waitForMock(fn: ReturnType<typeof vi.fn>): Promise<void> {
+	const deadline = Date.now() + 5000;
+	while (!fn.mock.calls.length && Date.now() < deadline) {
+		await new Promise((r) => setTimeout(r, 50));
+	}
+}
+
 describe('IndustryMap', () => {
+	beforeEach(() => {
+		shouldFail = false;
+		vi.clearAllMocks();
+	});
+
 	it('renders the industry map section', async () => {
 		expect.assertions(1);
 
@@ -55,28 +71,26 @@ describe('IndustryMap', () => {
 
 	it('shows fallback message when phaser import fails', async () => {
 		expect.assertions(1);
+		shouldFail = true;
 
-		vi.resetModules();
-		try {
-			vi.doMock('phaser', () => ({ default: undefined }));
-			vi.doMock('$lib/phaser/industryMapScene', () => ({
-				IndustryMapScene: undefined
-			}));
+		render(IndustryMap, {
+			snapshot: emptySnapshot,
+			onTileSelected: vi.fn()
+		});
 
-			const { default: IndustryMapFresh } = await import('./IndustryMap.svelte');
+		await expect.element(page.getByText('Industry map renderer unavailable.')).toBeInTheDocument();
+	});
 
-			render(IndustryMapFresh, {
-				snapshot: emptySnapshot,
-				onTileSelected: vi.fn()
-			});
+	it('pauses the game loop when paused prop is true', async () => {
+		expect.assertions(1);
 
-			await expect
-				.element(page.getByText('Industry map renderer unavailable.'))
-				.toBeInTheDocument();
-		} finally {
-			vi.doUnmock('phaser');
-			vi.doUnmock('$lib/phaser/industryMapScene');
-			vi.resetModules();
-		}
+		render(IndustryMap, {
+			snapshot: emptySnapshot,
+			onTileSelected: vi.fn(),
+			paused: true
+		});
+
+		await waitForMock(mockPause);
+		expect(mockPause).toHaveBeenCalled();
 	});
 });

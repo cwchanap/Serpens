@@ -5,14 +5,20 @@
 	interface Props {
 		snapshot: IndustryMapSnapshot;
 		onTileSelected: (tileId: string) => void;
+		/**
+		 * When true, the Phaser game loop is paused so the heavy render loop
+		 * stops competing for the main thread while overlays such as the map
+		 * menu or management panels are open. Rendering resumes when false.
+		 */
+		paused?: boolean;
 	}
 
-	let { snapshot, onTileSelected }: Props = $props();
+	let { snapshot, onTileSelected, paused = false }: Props = $props();
 
 	let container: HTMLDivElement | undefined = $state();
 	let loadFailed = $state(false);
 	let scene: import('$lib/phaser/industryMapScene').IndustryMapScene | undefined = $state();
-	let game: import('phaser').Game | undefined;
+	let game: import('phaser').Game | undefined = $state();
 	let destroyed = false;
 
 	onMount(() => {
@@ -29,6 +35,23 @@
 
 	$effect(() => {
 		scene?.updateSnapshot(snapshot);
+	});
+
+	// Pause/resume the render loop with the overlay state. The game instance is
+	// created asynchronously, so this effect re-runs once it is available and
+	// applies the current paused state. `pause`/`resume` are optional-chained so
+	// tests with a stub Game do not have to implement them.
+	$effect(() => {
+		const currentGame = game;
+		if (!currentGame) {
+			return;
+		}
+
+		if (paused) {
+			currentGame.pause?.();
+		} else {
+			currentGame.resume?.();
+		}
 	});
 
 	async function startPhaser() {
