@@ -494,12 +494,13 @@ function normalizeSavedGame(game: Record<string, unknown>): GameState {
 	const normalizedCities = normalizeSavedRetailCities(game);
 	const normalizedRetailStores = normalizeSavedRetailStorePlacements(
 		normalizedStores,
-		normalizedCities
+		normalizedCities.cities,
+		normalizedCities.regeneratedCityIds
 	);
 
 	return {
 		...game,
-		cities: normalizedCities,
+		cities: normalizedCities.cities,
 		stores: normalizedRetailStores,
 		staff: normalizedStaff,
 		industrialBuildings: normalizedBuildings,
@@ -508,12 +509,28 @@ function normalizeSavedGame(game: Record<string, unknown>): GameState {
 	} as GameState;
 }
 
-function normalizeSavedRetailCities(game: Record<string, unknown>): unknown {
+function normalizeSavedRetailCities(game: Record<string, unknown>): {
+	cities: unknown;
+	regeneratedCityIds: Set<string>;
+} {
 	if (!Array.isArray(game.cities)) {
-		return game.cities;
+		return { cities: game.cities, regeneratedCityIds: new Set() };
 	}
 
-	return game.cities.map((city) => normalizeSavedRetailCity(game, city));
+	const regeneratedCityIds = new Set<string>();
+	const cities = game.cities.map((city) => {
+		const normalized = normalizeSavedRetailCity(game, city);
+		if (
+			typeof city === 'object' &&
+			city !== null &&
+			typeof (city as Record<string, unknown>).id === 'string' &&
+			normalized !== city
+		) {
+			regeneratedCityIds.add((city as Record<string, unknown>).id as string);
+		}
+		return normalized;
+	});
+	return { cities, regeneratedCityIds };
 }
 
 function normalizeSavedRetailCity(game: Record<string, unknown>, city: unknown): unknown {
@@ -559,7 +576,11 @@ function normalizeSavedRetailCity(game: Record<string, unknown>, city: unknown):
 	});
 }
 
-function normalizeSavedRetailStorePlacements(stores: unknown, cities: unknown): unknown {
+function normalizeSavedRetailStorePlacements(
+	stores: unknown,
+	cities: unknown,
+	regeneratedCityIds: Set<string>
+): unknown {
 	if (!Array.isArray(stores) || !Array.isArray(cities)) {
 		return stores;
 	}
@@ -574,8 +595,16 @@ function normalizeSavedRetailStorePlacements(stores: unknown, cities: unknown): 
 	// Pass 1: reserve tiles for stores that are already correctly placed. This
 	// prevents a later invalid store's fallback closest-tile search from
 	// claiming a valid store's tile just because it appeared earlier in the
-	// array and would otherwise be relocated first.
-	const validPlacementIndexes = new Set<number>();
+	// array and would otherwise be relocated first. The resolved tile is kept
+	// so pass 2 can refresh tile-derived fields (location/localDemand) for
+	// stores in regenerated cities even when the store is not relocated — a
+	// regenerated city can change a tile's neighborhood/demand at unchanged
+	// coordinates, and simulateDay reads localDemand, so leaving it stale
+	// skews revenue. Stores in non-regenerated cities keep their saved fields
+	// untouched (the opening store intentionally carries an archetype-based
+	// localDemand and a "Founding location" label rather than tile-derived
+	// values).
+	const validPlacementTiles = new Map<number, { tile: CityTile; regenerated: boolean }>();
 	stores.forEach((store, index) => {
 		if (typeof store !== 'object' || store === null) {
 			return;
@@ -597,14 +626,27 @@ function normalizeSavedRetailStorePlacements(stores: unknown, cities: unknown): 
 			return;
 		}
 		reservedTileIds.add(tile.id);
-		validPlacementIndexes.add(index);
+		validPlacementTiles.set(index, {
+			tile,
+			regenerated: regeneratedCityIds.has(city.id)
+		});
 	});
 
 	// Pass 2: relocate every store that is not already validly placed, never
-	// reusing a tile reserved by a valid placement in pass 1.
+	// reusing a tile reserved by a valid placement in pass 1. Validly placed
+	// stores in regenerated cities also get location/localDemand refreshed
+	// from the new tile so tile-derived fields stay in sync with live data.
 	return stores.map((store, index) => {
-		if (validPlacementIndexes.has(index)) {
-			return store;
+		const validPlacement = validPlacementTiles.get(index);
+		if (validPlacement) {
+			if (!validPlacement.regenerated || typeof store !== 'object' || store === null) {
+				return store;
+			}
+			return {
+				...(store as Record<string, unknown>),
+				location: formatLocation(validPlacement.tile),
+				localDemand: computeStoreLocalDemand(validPlacement.tile)
+			};
 		}
 		if (typeof store !== 'object' || store === null) {
 			return store;

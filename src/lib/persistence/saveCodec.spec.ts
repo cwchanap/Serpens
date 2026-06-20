@@ -351,6 +351,60 @@ describe('saveCodec', () => {
 		expect(store.localDemand).not.toBe(1);
 	});
 
+	test('refreshes tile-derived fields for stores that keep their coordinates across city regeneration', () => {
+		expect.assertions(7);
+		// harbor-city-13-1 is transit in the old 28x24 city but residential in
+		// the regenerated 56x48 city (getNeighborhood is size-dependent). The
+		// store stays at the same tile id/coordinates, so the codec's valid
+		// branch must still refresh location/localDemand from the new tile —
+		// simulateDay reads localDemand, so a stale value skews revenue.
+		const oldCity = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 28,
+			height: 24,
+			seed: 20260505
+		});
+		const newCity = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: DEFAULT_RETAIL_CITY_WIDTH,
+			height: DEFAULT_RETAIL_CITY_HEIGHT,
+			seed: 20260505
+		});
+		const oldTile = oldCity.tiles.find((tile) => tile.id === 'harbor-city-13-1')!;
+		const newTile = newCity.tiles.find((tile) => tile.id === 'harbor-city-13-1')!;
+		expect(oldTile.neighborhood).not.toBe(newTile.neighborhood);
+		expect(isTileBuildable(newTile)).toBe(true);
+
+		const record = createManualSaveRecord({
+			game: {
+				cities: [{ id: 'harbor-city', name: 'Harbor City', width: 28, height: 24, tiles: [] }],
+				stores: [
+					{
+						...createGame().stores[0]!,
+						cityId: 'harbor-city',
+						tileId: 'harbor-city-13-1',
+						mapX: 13,
+						mapY: 1,
+						location: formatLocation(oldTile),
+						localDemand: computeStoreLocalDemand(oldTile)
+					}
+				]
+			}
+		});
+
+		const validated = validateSaveRecord(record);
+		const store = validated.game.stores[0]!;
+		// The store is NOT relocated — same tile id/coordinates.
+		expect(store.tileId).toBe('harbor-city-13-1');
+		expect(store.mapX).toBe(13);
+		expect(store.mapY).toBe(1);
+		// But tile-derived fields must match the regenerated (residential) tile.
+		expect(store.location).toBe(formatLocation(newTile));
+		expect(store.localDemand).toBe(computeStoreLocalDemand(newTile));
+	});
+
 	test('does not relocate a valid store when an earlier invalid store targets its tile', () => {
 		expect.assertions(3);
 		// Regenerate the same 56x48 harbor-city the codec produces (seed comes
