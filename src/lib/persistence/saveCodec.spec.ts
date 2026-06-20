@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
 	computeStoreLocalDemand,
 	DEFAULT_RETAIL_CITY_HEIGHT,
@@ -202,6 +202,8 @@ function createDailyReport(overrides: Partial<DailyReport> = {}): DailyReport {
 }
 
 describe('saveCodec', () => {
+	afterEach(vi.restoreAllMocks);
+
 	test('parseSaveStoreSnapshot re-throws SaveDataError from validation unchanged', () => {
 		expect.assertions(2);
 		const invalid = JSON.stringify({ schemaVersion: 99, autoSave: null, manualSlots: [] });
@@ -513,7 +515,6 @@ describe('saveCodec', () => {
 		expect(warnSpy).toHaveBeenCalledWith(
 			expect.stringContaining('store "store-stale" in city "harbor-city" has no buildable tile')
 		);
-		warnSpy.mockRestore();
 	});
 
 	test('inferWorldProgress warns about unknown saved city ids', () => {
@@ -548,7 +549,6 @@ describe('saveCodec', () => {
 		validateSaveRecord(record);
 
 		expect(spy).toHaveBeenCalledWith(expect.stringContaining('inferWorldProgress'));
-		spy.mockRestore();
 	});
 
 	test('validates production reports with populated material movement arrays', () => {
@@ -799,7 +799,6 @@ describe('saveCodec', () => {
 		expect(store.mapX).toBe(tile.x);
 		expect(store.mapY).toBe(tile.y);
 		expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('relocated store "store-1"'));
-		warnSpy.mockRestore();
 	});
 
 	test('does not double-assign a tile reserved by an earlier valid store', () => {
@@ -943,7 +942,6 @@ describe('saveCodec', () => {
 			expect.stringContaining('store "<unknown>" in city "harbor-city" has no buildable tile')
 		);
 		expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('saved tileId "?"'));
-		warnSpy.mockRestore();
 	});
 
 	test('relocates a store with an unknown id and non-string tileId to the closest buildable tile', () => {
@@ -979,6 +977,5 @@ describe('saveCodec', () => {
 		expect(warnSpy).toHaveBeenCalledWith(
 			expect.stringContaining('relocated store "<unknown>" in city "harbor-city" from tile "?"')
 		);
-		warnSpy.mockRestore();
 	});
 });
