@@ -8,7 +8,11 @@ import {
 } from '$lib/game/city';
 import { formatLocation } from '$lib/game/placement';
 import { initializeStoreProducts } from '$lib/game/stock';
-import { STARTER_STORE_CAP, createInitialWorldProgress } from '$lib/game/world';
+import {
+	STARTER_STORE_CAP,
+	createInitialWorldProgress,
+	getWorldCityDefinition
+} from '$lib/game/world';
 import type {
 	DailyMaterialMovement,
 	DailyProductionReport,
@@ -672,5 +676,309 @@ describe('saveCodec', () => {
 
 		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
 		expect(() => validateSaveRecord(record)).toThrow('must be a finite number');
+	});
+
+	test('rejects saves whose cities field is not an array without regenerating', () => {
+		expect.assertions(2);
+		const record = createManualSaveRecord({
+			game: { cities: undefined } as unknown as Partial<GameState>
+		});
+
+		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+		expect(() => validateSaveRecord(record)).toThrow('Saved game cities must be an array');
+	});
+
+	test('leaves non-object and non-string-id city entries untouched during normalization', () => {
+		expect.assertions(2);
+		const record = createManualSaveRecord({
+			game: {
+				cities: [
+					null as unknown as GameState['cities'][number],
+					{ id: 123, name: 'Bad', width: 28, height: 24, tiles: [] }
+				]
+			} as unknown as Partial<GameState>
+		});
+
+		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+		expect(() => validateSaveRecord(record)).toThrow('must be an object');
+	});
+
+	test('regenerates a non-harbor 28x24 retail city using its definition seed', () => {
+		expect.assertions(4);
+		const definition = getWorldCityDefinition('campus-junction')!;
+		expect(definition.kind).toBe('retail');
+		// Use a seed that differs from the definition seed so we can assert the
+		// definition seed (not game.seed) was used for non-harbor retail cities.
+		const record = createManualSaveRecord({
+			game: {
+				seed: 999,
+				activeCityId: 'campus-junction',
+				cities: [
+					{
+						id: 'campus-junction',
+						name: 'Campus Junction',
+						width: 28,
+						height: 24,
+						tiles: []
+					}
+				],
+				stores: []
+			} as unknown as Partial<GameState>
+		});
+
+		const validated = validateSaveRecord(record);
+		const city = validated.game.cities[0]!;
+		const reference = generateCity({
+			id: definition.id,
+			name: 'Campus Junction',
+			width: DEFAULT_RETAIL_CITY_WIDTH,
+			height: DEFAULT_RETAIL_CITY_HEIGHT,
+			seed: definition.seed
+		});
+
+		expect(city.width).toBe(DEFAULT_RETAIL_CITY_WIDTH);
+		expect(city.height).toBe(DEFAULT_RETAIL_CITY_HEIGHT);
+		expect(city.tiles).toEqual(reference.tiles);
+	});
+
+	test('uses the definition name when a migrated 28x24 city has a non-string name', () => {
+		expect.assertions(1);
+		const record = createManualSaveRecord({
+			game: {
+				cities: [
+					{
+						id: 'harbor-city',
+						name: 123 as unknown as string,
+						width: 28,
+						height: 24,
+						tiles: []
+					}
+				],
+				stores: []
+			} as unknown as Partial<GameState>
+		});
+
+		const validated = validateSaveRecord(record);
+		expect(validated.game.cities[0]!.name).toBe('Harbor City');
+	});
+
+	test('relocates a store whose tileId is buildable but whose coordinates are stale', () => {
+		expect.assertions(4);
+		const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		// A default-size city is not regenerated, so the store is only relocated
+		// because its saved mapX/mapY disagree with the tile it names.
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: DEFAULT_RETAIL_CITY_WIDTH,
+			height: DEFAULT_RETAIL_CITY_HEIGHT,
+			seed: 20260505
+		});
+		const tile = city.tiles.find((t) => isTileBuildable(t))!;
+		const record = createManualSaveRecord({
+			game: {
+				cities: [city],
+				stores: [
+					{
+						...createGame().stores[0]!,
+						cityId: 'harbor-city',
+						tileId: tile.id,
+						mapX: tile.x + 5,
+						mapY: tile.y + 5,
+						location: 'Stale (5, 5)',
+						localDemand: 1
+					}
+				]
+			} as unknown as Partial<GameState>
+		});
+
+		const validated = validateSaveRecord(record);
+		const store = validated.game.stores[0]!;
+
+		expect(store.tileId).toBe(tile.id);
+		expect(store.mapX).toBe(tile.x);
+		expect(store.mapY).toBe(tile.y);
+		expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('relocated store "store-1"'));
+		warnSpy.mockRestore();
+	});
+
+	test('does not double-assign a tile reserved by an earlier valid store', () => {
+		expect.assertions(2);
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: DEFAULT_RETAIL_CITY_WIDTH,
+			height: DEFAULT_RETAIL_CITY_HEIGHT,
+			seed: 20260505
+		});
+		const tile = city.tiles.find((t) => isTileBuildable(t))!;
+		const baseStore = createGame().stores[0]!;
+		const record = createManualSaveRecord({
+			game: {
+				cities: [city],
+				stores: [
+					{
+						...baseStore,
+						id: 'store-a',
+						cityId: 'harbor-city',
+						tileId: tile.id,
+						mapX: tile.x,
+						mapY: tile.y
+					},
+					{
+						...baseStore,
+						id: 'store-b',
+						cityId: 'harbor-city',
+						tileId: tile.id,
+						mapX: tile.x,
+						mapY: tile.y
+					}
+				]
+			} as unknown as Partial<GameState>
+		});
+
+		const validated = validateSaveRecord(record);
+		const storeA = validated.game.stores.find((s) => s.id === 'store-a')!;
+		const storeB = validated.game.stores.find((s) => s.id === 'store-b')!;
+
+		expect(storeA.tileId).toBe(tile.id);
+		expect(storeB.tileId).not.toBe(tile.id);
+	});
+
+	test('leaves a store untouched when its saved cityId is not in the city list', () => {
+		expect.assertions(2);
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: DEFAULT_RETAIL_CITY_WIDTH,
+			height: DEFAULT_RETAIL_CITY_HEIGHT,
+			seed: 20260505
+		});
+		const tile = city.tiles.find((t) => isTileBuildable(t))!;
+		const record = createManualSaveRecord({
+			game: {
+				cities: [city],
+				stores: [
+					{
+						...createGame().stores[0]!,
+						cityId: 'ghost-city',
+						tileId: tile.id,
+						mapX: tile.x,
+						mapY: tile.y
+					}
+				]
+			} as unknown as Partial<GameState>
+		});
+
+		const validated = validateSaveRecord(record);
+		const store = validated.game.stores[0]!;
+
+		expect(store.cityId).toBe('ghost-city');
+		expect(store.tileId).toBe(tile.id);
+	});
+
+	test('leaves a store untouched when its cityId is not a string', () => {
+		expect.assertions(2);
+		const record = createManualSaveRecord({
+			game: {
+				stores: [
+					{
+						...createGame().stores[0]!,
+						cityId: 123 as unknown as string,
+						tileId: 'harbor-city-1-1'
+					}
+				]
+			} as unknown as Partial<GameState>
+		});
+
+		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+		expect(() => validateSaveRecord(record)).toThrow(
+			'Saved game stores[0] cityId must be a non-empty string'
+		);
+	});
+
+	test('warns with an unknown store id and non-string tileId when no buildable tile remains', () => {
+		expect.assertions(3);
+		const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		const lockedTile = {
+			id: 'harbor-city-0-0',
+			cityId: 'harbor-city',
+			x: 0,
+			y: 0,
+			neighborhood: 'downtown' as const,
+			terrain: 'commercial' as const,
+			feature: null,
+			demand: 50,
+			rent: 1000,
+			footTraffic: 50,
+			customerFit: 50,
+			locked: true
+		};
+		const record = createManualSaveRecord({
+			game: {
+				cities: [
+					{
+						id: 'harbor-city',
+						name: 'Harbor City',
+						width: 2,
+						height: 2,
+						tiles: [lockedTile]
+					}
+				],
+				stores: [
+					{
+						...createGame().stores[0]!,
+						id: undefined as unknown as string,
+						cityId: 'harbor-city',
+						tileId: undefined as unknown as string,
+						mapX: undefined as unknown as number,
+						mapY: undefined as unknown as number
+					}
+				]
+			} as unknown as Partial<GameState>
+		});
+
+		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+		expect(warnSpy).toHaveBeenCalledWith(
+			expect.stringContaining('store "<unknown>" in city "harbor-city" has no buildable tile')
+		);
+		expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('saved tileId "?"'));
+		warnSpy.mockRestore();
+	});
+
+	test('relocates a store with an unknown id and non-string tileId to the closest buildable tile', () => {
+		expect.assertions(2);
+		const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: DEFAULT_RETAIL_CITY_WIDTH,
+			height: DEFAULT_RETAIL_CITY_HEIGHT,
+			seed: 20260505
+		});
+		const record = createManualSaveRecord({
+			game: {
+				cities: [city],
+				stores: [
+					{
+						...createGame().stores[0]!,
+						id: undefined as unknown as string,
+						cityId: 'harbor-city',
+						tileId: undefined as unknown as string,
+						// Non-number coords force the closest-tile search to use its
+						// (1, 1) default origin and exercise the '?' fallbacks in the
+						// relocation warning for every stale coordinate field.
+						mapX: undefined as unknown as number,
+						mapY: undefined as unknown as number
+					}
+				]
+			} as unknown as Partial<GameState>
+		});
+
+		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+		expect(warnSpy).toHaveBeenCalledWith(
+			expect.stringContaining('relocated store "<unknown>" in city "harbor-city" from tile "?"')
+		);
+		warnSpy.mockRestore();
 	});
 });

@@ -601,6 +601,151 @@ describe('CityMapScene', () => {
 			const roadFill = mapGraphics.fillStyle.mock.calls.find((c: any[]) => c[0] === 0x50545a);
 			expect(roadFill).toBeUndefined();
 		});
+
+		it('draws road isolated fallback with a center tile and no arms', () => {
+			expect.assertions(2);
+			scene.create();
+			scene.updateSnapshot(
+				makeSnapshot({
+					tiles: [
+						makeTile({
+							id: 'road-isolated',
+							x: 0,
+							y: 0,
+							terrain: 'transit',
+							feature: 'road',
+							roadVariant: null
+						})
+					]
+				})
+			);
+			const mapGraphics = s(scene).mapGraphics;
+			expect(mapGraphics.fillStyle).toHaveBeenCalledWith(0x50545a, 0.92);
+			// An isolated tile has no connected arms, so no center lines are drawn.
+			expect(mapGraphics.lineBetween.mock.calls).toHaveLength(0);
+		});
+
+		it('draws road end-cap fallbacks with a single connected arm per direction', () => {
+			expect.assertions(1);
+			scene.create();
+			scene.updateSnapshot(
+				makeSnapshot({
+					tiles: [
+						makeTile({
+							id: 'end-n',
+							x: 0,
+							y: 0,
+							terrain: 'transit',
+							feature: 'road',
+							roadVariant: 'end-n'
+						}),
+						makeTile({
+							id: 'end-e',
+							x: 1,
+							y: 0,
+							terrain: 'transit',
+							feature: 'road',
+							roadVariant: 'end-e'
+						}),
+						makeTile({
+							id: 'end-s',
+							x: 2,
+							y: 0,
+							terrain: 'transit',
+							feature: 'road',
+							roadVariant: 'end-s'
+						}),
+						makeTile({
+							id: 'end-w',
+							x: 3,
+							y: 0,
+							terrain: 'transit',
+							feature: 'road',
+							roadVariant: 'end-w'
+						})
+					]
+				})
+			);
+			const mapGraphics = s(scene).mapGraphics;
+			// Each end cap contributes exactly one center line (one arm).
+			expect(mapGraphics.lineBetween.mock.calls).toHaveLength(4);
+		});
+
+		it('draws road corner fallbacks for es, sw, and wn directions', () => {
+			expect.assertions(1);
+			scene.create();
+			scene.updateSnapshot(
+				makeSnapshot({
+					tiles: [
+						makeTile({
+							id: 'corner-es',
+							x: 0,
+							y: 0,
+							terrain: 'transit',
+							feature: 'road',
+							roadVariant: 'corner-es'
+						}),
+						makeTile({
+							id: 'corner-sw',
+							x: 1,
+							y: 0,
+							terrain: 'transit',
+							feature: 'road',
+							roadVariant: 'corner-sw'
+						}),
+						makeTile({
+							id: 'corner-wn',
+							x: 2,
+							y: 0,
+							terrain: 'transit',
+							feature: 'road',
+							roadVariant: 'corner-wn'
+						})
+					]
+				})
+			);
+			const mapGraphics = s(scene).mapGraphics;
+			// Each corner contributes two center lines (two arms).
+			expect(mapGraphics.lineBetween.mock.calls).toHaveLength(6);
+		});
+
+		it('draws road tee fallbacks for esw, nsw, and new directions', () => {
+			expect.assertions(1);
+			scene.create();
+			scene.updateSnapshot(
+				makeSnapshot({
+					tiles: [
+						makeTile({
+							id: 'tee-esw',
+							x: 0,
+							y: 0,
+							terrain: 'transit',
+							feature: 'road',
+							roadVariant: 'tee-esw'
+						}),
+						makeTile({
+							id: 'tee-nsw',
+							x: 1,
+							y: 0,
+							terrain: 'transit',
+							feature: 'road',
+							roadVariant: 'tee-nsw'
+						}),
+						makeTile({
+							id: 'tee-new',
+							x: 2,
+							y: 0,
+							terrain: 'transit',
+							feature: 'road',
+							roadVariant: 'tee-new'
+						})
+					]
+				})
+			);
+			const mapGraphics = s(scene).mapGraphics;
+			// Each tee contributes three center lines (three arms).
+			expect(mapGraphics.lineBetween.mock.calls).toHaveLength(9);
+		});
 	});
 
 	describe('tile zones', () => {
@@ -1085,6 +1230,90 @@ describe('CityMapScene', () => {
 				'terrain-residential-5',
 				'terrain-residential-6'
 			]);
+		});
+
+		it('falls back to plain terrain art for neighborhoods without variant sets', () => {
+			expect.assertions(1);
+			scene.create();
+			s(scene).textures.exists = vi.fn(() => true);
+			scene.updateSnapshot(
+				makeSnapshot({
+					tiles: [
+						makeTile({
+							id: 'suburb-commercial',
+							x: 0,
+							y: 0,
+							neighborhood: 'suburb',
+							terrain: 'commercial'
+						}),
+						makeTile({
+							id: 'transit-commercial',
+							x: 1,
+							y: 0,
+							neighborhood: 'transit',
+							terrain: 'commercial'
+						}),
+						makeTile({
+							id: 'parkedge-commercial',
+							x: 2,
+							y: 0,
+							neighborhood: 'parkEdge',
+							terrain: 'commercial'
+						})
+					]
+				})
+			);
+			const textureKeys = (s(scene).add.image as Mock).mock.calls.map((call: any[]) => call[2]);
+			// downtown/campus/mall have variant sets; other neighborhoods fall
+			// back to the plain commercial terrain art for commercial tiles.
+			expect(textureKeys).toEqual([
+				'terrain-commercial',
+				'terrain-commercial',
+				'terrain-commercial'
+			]);
+		});
+
+		it('rotates horizontal and end-e/end-w river sprites to match the native vertical river art', () => {
+			expect.assertions(3);
+			scene.create();
+			s(scene).textures.exists = vi.fn(() => true);
+			scene.updateSnapshot(
+				makeSnapshot({
+					tiles: [
+						makeTile({
+							id: 'river-h',
+							x: 0,
+							y: 0,
+							terrain: 'green',
+							feature: 'river',
+							riverVariant: 'horizontal'
+						}),
+						makeTile({
+							id: 'river-end-e',
+							x: 1,
+							y: 0,
+							terrain: 'green',
+							feature: 'river',
+							riverVariant: 'end-e'
+						}),
+						makeTile({
+							id: 'river-end-w',
+							x: 2,
+							y: 0,
+							terrain: 'green',
+							feature: 'river',
+							riverVariant: 'end-w'
+						})
+					]
+				})
+			);
+			const featureSprites = (s(scene).add.image as Mock).mock.results.filter(
+				(result: any) => result.value && (result.value.setAngle as Mock).mock.calls.length > 0
+			);
+
+			expect(featureSprites[0].value.setAngle).toHaveBeenCalledWith(90);
+			expect(featureSprites[1].value.setAngle).toHaveBeenCalledWith(90);
+			expect(featureSprites[2].value.setAngle).toHaveBeenCalledWith(90);
 		});
 
 		it('uses connector textures for complex road and river variants', () => {
