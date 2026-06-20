@@ -248,6 +248,8 @@ function setupScene() {
 		return {
 			x: 0,
 			y: 0,
+			worldX: 0,
+			worldY: 0,
 			isDown: false,
 			event: { target: canvas },
 			downElement: canvas,
@@ -475,12 +477,12 @@ describe('IndustryMapScene', () => {
 
 		test('clears hoverTileId when tile no longer exists in new snapshot', () => {
 			expect.assertions(2);
-			const { scene, zoneInstances } = setupScene();
+			const { scene, inputListeners, makePointer } = setupScene();
 			scene.create();
 			const snapshot = makeSnapshot();
 			scene.updateSnapshot(snapshot);
-			const zone = zoneInstances[0];
-			zone.fire('pointerover');
+			const pointer = makePointer({ x: 5, y: 5, worldX: 5, worldY: 5 });
+			inputListeners['pointermove'][0].call(scene, pointer);
 			expect((scene as unknown as { hoverTileId: string | null }).hoverTileId).toBe(
 				snapshot.tiles[0].id
 			);
@@ -584,13 +586,13 @@ describe('IndustryMapScene', () => {
 	});
 
 	describe('tile zones', () => {
-		test('creates zone for each tile', () => {
+		test('creates a single map interaction zone', () => {
 			expect.assertions(1);
 			const { scene, zoneInstances } = setupScene();
 			scene.create();
 			const snapshot = makeSnapshot();
 			scene.updateSnapshot(snapshot);
-			expect(zoneInstances.length).toBe(snapshot.tiles.length);
+			expect(zoneInstances.length).toBe(1);
 		});
 
 		test('zone pointerup triggers tileSelected event on handler', () => {
@@ -602,30 +604,32 @@ describe('IndustryMapScene', () => {
 			const snapshot = makeSnapshot();
 			scene.updateSnapshot(snapshot);
 			const zone = zoneInstances[0];
-			const pointer = makePointer({ x: 5, y: 5, isDown: true });
+			const pointer = makePointer({ x: 5, y: 5, worldX: 5, worldY: 5, isDown: true });
 			zone.fire('pointerdown', pointer);
 			zone.fire('pointerup', pointer);
 			expect(handler).toHaveBeenCalledWith({ type: 'tileSelected', tileId: snapshot.tiles[0].id });
 		});
 
-		test('zone pointerover sets hoverTileId and draws outlines', () => {
+		test('pointermove sets hoverTileId and draws outlines', () => {
 			expect.assertions(1);
-			const { scene, zoneInstances, graphicsInstances } = setupScene();
+			const { scene, inputListeners, graphicsInstances, makePointer } = setupScene();
 			scene.create();
 			const snapshot = makeSnapshot();
 			scene.updateSnapshot(snapshot);
 			graphicsInstances[3].mock.clear.mockClear();
-			zoneInstances[0].fire('pointerover');
+			const pointer = makePointer({ x: 5, y: 5, worldX: 5, worldY: 5 });
+			inputListeners['pointermove'][0].call(scene, pointer);
 			expect(graphicsInstances[3].mock.strokeRect).toHaveBeenCalled();
 		});
 
 		test('zone pointerout clears hoverTileId', () => {
 			expect.assertions(1);
-			const { scene, zoneInstances, graphicsInstances } = setupScene();
+			const { scene, zoneInstances, inputListeners, graphicsInstances, makePointer } = setupScene();
 			scene.create();
 			const snapshot = makeSnapshot();
 			scene.updateSnapshot(snapshot);
-			zoneInstances[0].fire('pointerover');
+			const pointer = makePointer({ x: 5, y: 5, worldX: 5, worldY: 5 });
+			inputListeners['pointermove'][0].call(scene, pointer);
 			graphicsInstances[3].mock.clear.mockClear();
 			zoneInstances[0].fire('pointerout');
 			expect(graphicsInstances[3].mock.clear).toHaveBeenCalled();
@@ -692,11 +696,11 @@ describe('IndustryMapScene', () => {
 			scene.create();
 			const snapshot = makeSnapshot();
 			scene.updateSnapshot(snapshot);
-			const pointer = makePointer({ x: 100, y: 100, isDown: true });
+			const pointer = makePointer({ x: 100, y: 100, worldX: 100, worldY: 100, isDown: true });
 			zoneInstances[0].fire('pointerdown', pointer);
-			const movePointer = makePointer({ x: 200, y: 200, isDown: true });
+			const movePointer = makePointer({ x: 200, y: 200, worldX: 200, worldY: 200, isDown: true });
 			inputListeners['pointermove'][0].call(scene, movePointer);
-			const upPointer = makePointer({ x: 200, y: 200 });
+			const upPointer = makePointer({ x: 200, y: 200, worldX: 200, worldY: 200 });
 			zoneInstances[0].fire('pointerup', upPointer);
 			expect(handler).not.toHaveBeenCalled();
 		});
@@ -1169,11 +1173,12 @@ describe('IndustryMapScene', () => {
 	describe('interaction outlines', () => {
 		test('draws hover outline', () => {
 			expect.assertions(1);
-			const { scene, zoneInstances, graphicsInstances } = setupScene();
+			const { scene, inputListeners, graphicsInstances, makePointer } = setupScene();
 			scene.create();
 			scene.updateSnapshot(makeSnapshot());
 			graphicsInstances[3].mock.clear.mockClear();
-			zoneInstances[0].fire('pointerover');
+			const pointer = makePointer({ x: 5, y: 5, worldX: 5, worldY: 5 });
+			inputListeners['pointermove'][0].call(scene, pointer);
 			expect(graphicsInstances[3].mock.strokeRect).toHaveBeenCalled();
 		});
 
@@ -1252,11 +1257,11 @@ describe('IndustryMapScene', () => {
 			scene.create();
 			const snapshot = makeSnapshot();
 			scene.updateSnapshot(snapshot);
-			const pointer = makePointer({ x: 100, y: 100, isDown: true });
+			const pointer = makePointer({ x: 100, y: 100, worldX: 5, worldY: 5, isDown: true });
 			zoneInstances[0].fire('pointerdown', pointer);
-			const movePointer = makePointer({ x: 101, y: 101, isDown: true });
+			const movePointer = makePointer({ x: 101, y: 101, worldX: 5, worldY: 5, isDown: true });
 			inputListeners['pointermove'][0].call(scene, movePointer);
-			const upPointer = makePointer({ x: 101, y: 101 });
+			const upPointer = makePointer({ x: 101, y: 101, worldX: 5, worldY: 5 });
 			zoneInstances[0].fire('pointerup', upPointer);
 			expect(handler).toHaveBeenCalledWith({ type: 'tileSelected', tileId: snapshot.tiles[0].id });
 		});
