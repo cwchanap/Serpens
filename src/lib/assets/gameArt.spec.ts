@@ -710,7 +710,7 @@ describe('game art asset constants', () => {
 	it('handles undefined neighborhood terrain art entries in TERRAIN_ART_LIST', async () => {
 		vi.resetModules();
 		const originalValues = Object.values;
-		const spy = vi.spyOn(Object, 'values').mockImplementation((obj: object) => {
+		vi.spyOn(Object, 'values').mockImplementation((obj: object) => {
 			const result = originalValues.call(Object, obj) as unknown[];
 			if (
 				obj &&
@@ -731,7 +731,6 @@ describe('game art asset constants', () => {
 			true
 		);
 
-		spy.mockRestore();
 		vi.resetModules();
 	});
 });
