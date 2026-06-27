@@ -11,6 +11,7 @@ export default defineConfig({
 	},
 	test: {
 		expect: { requireAssertions: true },
+		restoreMocks: true,
 		coverage: {
 			provider: 'v8',
 			reporter: ['text', 'lcov', 'html'],

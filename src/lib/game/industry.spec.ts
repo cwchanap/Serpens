@@ -409,9 +409,11 @@ describe('tier 1 chains', () => {
 			localValue: 1
 		};
 
-		expect(getCategoryTier(testMaterialId)).toBeNull();
-
-		delete mutableMaterials[testMaterialId];
+		try {
+			expect(getCategoryTier(testMaterialId)).toBeNull();
+		} finally {
+			delete mutableMaterials[testMaterialId];
+		}
 	});
 
 	it('resolves every finished product material to a non-null tier', () => {
