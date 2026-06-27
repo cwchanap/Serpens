@@ -11,6 +11,9 @@ import type {
 	MaterialId
 } from './types';
 
+// Patch isSupportedFinishedMaterial to admit a synthetic 'fake-finished' category
+// so the defensive-branch test (buildProductChainTree with no producer recipe) can
+// exercise the "supported but no chain" path without adding a real recipe.
 vi.mock('./productChainGraph', async (importOriginal) => {
 	const actual = (await importOriginal()) as Record<string, unknown>;
 	return {
@@ -661,6 +664,7 @@ describe('buildStoreCategoryChainSummaries (tree)', () => {
 
 describe('buildProductChainTree defensive branches', () => {
 	it('returns an empty graph when a supported finished material has no producer recipe', () => {
+		expect.assertions(3);
 		const game = convenienceGame();
 		const tree = buildProductChainTree({ game, store: null, categoryId: 'fake-finished' });
 
