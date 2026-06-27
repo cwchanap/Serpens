@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ARCHETYPES } from '$lib/game/archetypes';
 import { INDUSTRIAL_BUILDING_TYPES } from '$lib/game/industry';
 import * as gameArt from './gameArt';
@@ -249,6 +249,11 @@ function duplicateAssetPaths(assetPaths: readonly string[]): string[] {
 }
 
 describe('game art asset constants', () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+		vi.resetModules();
+	});
+
 	it('defines storefront art for every store archetype', () => {
 		expect(Object.keys(ARCHETYPE_STORE_ART).sort()).toEqual([...archetypeIds].sort());
 		expect(STORE_ART_LIST).toHaveLength(archetypeIds.length);
