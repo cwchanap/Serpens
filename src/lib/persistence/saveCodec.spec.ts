@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import {
 	computeStoreLocalDemand,
 	DEFAULT_RETAIL_CITY_HEIGHT,
@@ -207,8 +207,6 @@ function createDailyReport(overrides: Partial<DailyReport> = {}): DailyReport {
 }
 
 describe('saveCodec', () => {
-	afterEach(vi.restoreAllMocks);
-
 	test('parseSaveStoreSnapshot re-throws SaveDataError from validation unchanged', () => {
 		expect.assertions(2);
 		const invalid = JSON.stringify({ schemaVersion: 99, autoSave: null, manualSlots: [] });
@@ -550,7 +548,7 @@ describe('saveCodec', () => {
 			updatedAt: new Date('2026-05-05T12:00:00.000Z')
 		});
 
-		const spy = vi.spyOn(console, 'warn');
+		const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 		validateSaveRecord(record);
 
 		expect(spy).toHaveBeenCalledWith(expect.stringContaining('inferWorldProgress'));

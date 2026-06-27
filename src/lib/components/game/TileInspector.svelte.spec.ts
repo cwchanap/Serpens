@@ -409,6 +409,7 @@ describe('TileInspector empty tile details', () => {
 
 describe('TileInspector null tile', () => {
 	it('shows the select-tile prompt when no tile is selected', async () => {
+		expect.assertions(2);
 		renderInspector({ tile: null });
 
 		await expect.element(page.getByRole('heading', { name: 'Select a city tile' })).toBeVisible();

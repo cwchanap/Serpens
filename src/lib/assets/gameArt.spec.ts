@@ -250,7 +250,6 @@ function duplicateAssetPaths(assetPaths: readonly string[]): string[] {
 
 describe('game art asset constants', () => {
 	afterEach(() => {
-		vi.restoreAllMocks();
 		vi.resetModules();
 	});
 
@@ -738,6 +737,11 @@ describe('game art asset constants', () => {
 });
 
 describe('RECIPE_BUILDING_ART', () => {
+	afterEach(() => {
+		vi.doUnmock('$lib/game/industry');
+		vi.resetModules();
+	});
+
 	it('maps every recipe with a registered building to that building art', () => {
 		expect.assertions(1);
 		const expected: Record<string, string> = {};
@@ -793,9 +797,6 @@ describe('RECIPE_BUILDING_ART', () => {
 		const gameArtModule = await import('./gameArt');
 
 		expect(gameArtModule.RECIPE_BUILDING_ART['fake-recipe' as ProductionRecipeId]).toBeUndefined();
-
-		vi.doUnmock('$lib/game/industry');
-		vi.resetModules();
 	});
 });
 
