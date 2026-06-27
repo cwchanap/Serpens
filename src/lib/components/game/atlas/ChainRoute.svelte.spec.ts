@@ -122,4 +122,15 @@ describe('ChainRoute', () => {
 		const updatedRect = updatedGroup.querySelector('rect');
 		expect(updatedRect?.hasAttribute('width')).toBe(true);
 	});
+
+	it('renders a no-local-capacity edge with dashed stroke and correct health', async () => {
+		expect.assertions(2);
+		const edge = makeEdge({ health: 'no-local-capacity', label: '0/day used' });
+		renderRoute(edge);
+
+		const group = getRouteGroup(edge.id);
+		expect(group.getAttribute('data-edge-health')).toBe('no-local-capacity');
+		const path = group.querySelector('path');
+		expect(path?.getAttribute('stroke-dasharray')).toBe('8 4');
+	});
 });

@@ -97,4 +97,25 @@ describe('DecisionQueue', () => {
 		expect(props.onResolve).toHaveBeenCalledOnce();
 		expect(props.onResolve).toHaveBeenCalledWith('d1', 'o2');
 	});
+
+	it('renders a decision card with no option buttons when options is empty', async () => {
+		expect.assertions(2);
+
+		renderQueue({
+			decisions: [
+				{
+					id: 'd-empty',
+					title: 'Mystery Offer',
+					context: 'An anonymous vendor makes a strange offer.',
+					expiresOnDay: 20,
+					options: []
+				}
+			]
+		});
+
+		await expect
+			.element(page.getByRole('heading', { level: 3, name: 'Mystery Offer' }))
+			.toBeVisible();
+		await expect.element(page.getByText('Expires day 20')).toBeVisible();
+	});
 });

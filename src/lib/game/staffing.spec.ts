@@ -308,6 +308,60 @@ describe('staffing rules', () => {
 
 		expect(promoted.cash).toBe(3_000); // 7_000 - 4_000 training fee for level 2
 	});
+
+	test('promoteStaff leaves sibling staff unchanged when promoting one of multiple members', () => {
+		expect.assertions(3);
+		const game = createGame({
+			cash: 10_000,
+			staff: [
+				createStaff({ id: 'staff-1', level: 1, xp: 100, skill: 60, monthlySalary: 2_800 }),
+				createStaff({ id: 'staff-2', level: 1, xp: 0, skill: 50, monthlySalary: 2_700 })
+			]
+		});
+
+		const promoted = promoteStaff(game, 'staff-1');
+
+		expect(promoted.staff.find((member) => member.id === 'staff-1')?.level).toBe(2);
+		expect(promoted.staff.find((member) => member.id === 'staff-2')?.level).toBe(1);
+		expect(promoted.staff.find((member) => member.id === 'staff-2')).toBe(game.staff[1]);
+	});
+
+	test('assignStaffToStore leaves sibling staff unchanged when assigning one of multiple members', () => {
+		expect.assertions(3);
+		const game = createGame({
+			stores: [createStore({ id: 'store-1', archetypeId: 'convenience' })],
+			staff: [
+				createStaff({ id: 'staff-1', assignedStoreId: null }),
+				createStaff({ id: 'staff-2', assignedStoreId: null })
+			]
+		});
+
+		const assigned = assignStaffToStore(game, 'staff-1', 'store-1');
+
+		expect(assigned.staff.find((member) => member.id === 'staff-1')?.assignedStoreId).toBe(
+			'store-1'
+		);
+		expect(assigned.staff.find((member) => member.id === 'staff-2')?.assignedStoreId).toBeNull();
+		expect(assigned.staff.find((member) => member.id === 'staff-2')).toBe(game.staff[1]);
+	});
+
+	test('unassignStaff leaves sibling staff unchanged when unassigning one of multiple members', () => {
+		expect.assertions(3);
+		const game = createGame({
+			staff: [
+				createStaff({ id: 'staff-1', assignedStoreId: 'store-1' }),
+				createStaff({ id: 'staff-2', assignedStoreId: 'store-1' })
+			]
+		});
+
+		const unassigned = unassignStaff(game, 'staff-1');
+
+		expect(unassigned.staff.find((member) => member.id === 'staff-1')?.assignedStoreId).toBeNull();
+		expect(unassigned.staff.find((member) => member.id === 'staff-2')?.assignedStoreId).toBe(
+			'store-1'
+		);
+		expect(unassigned.staff.find((member) => member.id === 'staff-2')).toBe(game.staff[1]);
+	});
 });
 
 function createGame(overrides: Partial<GameState> = {}): GameState {

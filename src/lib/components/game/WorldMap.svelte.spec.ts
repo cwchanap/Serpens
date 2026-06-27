@@ -107,4 +107,98 @@ describe('WorldMap', () => {
 
 		await expect.element(page.getByRole('button', { name: /open for/i })).toBeDisabled();
 	});
+
+	it('shows industrial city eyebrow and store/building counts for an opened industry city', async () => {
+		expect.assertions(3);
+		render(WorldMap, {
+			statuses: [status('industry-city', 'opened')],
+			selectedCityId: 'industry-city',
+			onSelectCity: vi.fn(),
+			onOpenCity: vi.fn(),
+			onCloseInspector: vi.fn()
+		});
+
+		await expect.element(page.getByText('Industrial city')).toBeVisible();
+		await expect.element(page.getByText(/2 industrial buildings/i)).toBeVisible();
+		await expect.element(page.getByRole('button', { name: /open for/i })).not.toBeInTheDocument();
+	});
+
+	it('shows a blocked reason for a revealed city that cannot be opened', async () => {
+		expect.assertions(3);
+		render(WorldMap, {
+			statuses: [
+				{
+					...status('campus-junction', 'revealed'),
+					canOpen: false,
+					blockedReason: 'Opening this city requires 18,000 cash.'
+				}
+			],
+			selectedCityId: 'campus-junction',
+			onSelectCity: vi.fn(),
+			onOpenCity: vi.fn(),
+			onCloseInspector: vi.fn()
+		});
+
+		const openButton = page.getByRole('button', { name: /open for/i });
+		await expect.element(openButton).toBeDisabled();
+		await expect
+			.element(openButton)
+			.toHaveAttribute('aria-describedby', 'world-city-campus-junction-reason');
+		await expect.element(page.getByText('Opening this city requires 18,000 cash.')).toBeVisible();
+	});
+
+	it('shows a blocked reason in the inspector for a locked city', async () => {
+		expect.assertions(2);
+		render(WorldMap, {
+			statuses: [status('garden-borough', 'locked')],
+			selectedCityId: 'garden-borough',
+			onSelectCity: vi.fn(),
+			onOpenCity: vi.fn(),
+			onCloseInspector: vi.fn()
+		});
+
+		const inspector = page.getByRole('dialog', { name: /city details/i });
+		await expect.element(inspector).toBeVisible();
+		await expect.element(inspector.getByText(/reach 4 stores/i)).toBeVisible();
+	});
+
+	it('renders no inspector when the selected city id does not match any status', async () => {
+		expect.assertions(1);
+		render(WorldMap, {
+			statuses: [status('harbor-city', 'opened')],
+			selectedCityId: 'nonexistent-city',
+			onSelectCity: vi.fn(),
+			onOpenCity: vi.fn(),
+			onCloseInspector: vi.fn()
+		});
+
+		await expect
+			.element(page.getByRole('dialog', { name: /city details/i }))
+			.not.toBeInTheDocument();
+	});
+
+	it('reconciles city nodes and inspector when rerendered with changed statuses', async () => {
+		expect.assertions(3);
+
+		const result = render(WorldMap, {
+			statuses: [status('harbor-city', 'opened')],
+			selectedCityId: 'harbor-city',
+			onSelectCity: vi.fn(),
+			onOpenCity: vi.fn(),
+			onCloseInspector: vi.fn()
+		});
+
+		await expect.element(page.getByText(/1 stores/i)).toBeVisible();
+
+		await result.rerender({
+			statuses: [status('harbor-city', 'opened'), status('campus-junction', 'revealed')],
+			selectedCityId: 'harbor-city',
+			onSelectCity: vi.fn(),
+			onOpenCity: vi.fn(),
+			onCloseInspector: vi.fn()
+		});
+
+		await expect.element(page.getByText(/1 stores/i)).toBeVisible();
+		await expect.element(page.getByRole('button', { name: /^Campus Junction$/i })).toBeVisible();
+	});
 });

@@ -119,4 +119,15 @@ describe('SavePanel', () => {
 		await expect.element(page.getByRole('status')).toHaveTextContent('Saved successfully.');
 		await expect.element(page.getByRole('alert')).toHaveTextContent('Save failed.');
 	});
+
+	it('renders the raw updatedAt string when the date is invalid', async () => {
+		expect.assertions(1);
+
+		renderPanel({
+			autoSave: { ...autoSave, updatedAt: 'not-a-valid-date' },
+			slots: []
+		});
+
+		await expect.element(page.getByText('Day 5 · 1 stores · not-a-valid-date')).toBeVisible();
+	});
 });

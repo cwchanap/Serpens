@@ -406,3 +406,12 @@ describe('TileInspector empty tile details', () => {
 		await expect.element(page.getByText('River location')).not.toBeInTheDocument();
 	});
 });
+
+describe('TileInspector null tile', () => {
+	it('shows the select-tile prompt when no tile is selected', async () => {
+		renderInspector({ tile: null });
+
+		await expect.element(page.getByRole('heading', { name: 'Select a city tile' })).toBeVisible();
+		await expect.element(page.getByRole('heading', { name: 'Tile 1, 1' })).not.toBeInTheDocument();
+	});
+});

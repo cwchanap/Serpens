@@ -30,6 +30,7 @@ import {
 import {
 	SaveDataError,
 	cloneSaveStoreSnapshot,
+	createManualSlotId,
 	createSaveRecord,
 	createSaveSummary,
 	parseSaveStoreSnapshot,
@@ -141,6 +142,10 @@ function createManualSaveRecord(overrides: SaveRecordOverrides = {}): SaveRecord
 			...overrides.game
 		}
 	};
+}
+
+function createV4Record(overrides: SaveRecordOverrides = {}): SaveRecord {
+	return { ...createManualSaveRecord(overrides), schemaVersion: 4 };
 }
 
 function createSnapshotWithGame(game: Partial<GameState>): SaveStoreSnapshot {
@@ -977,5 +982,237 @@ describe('saveCodec', () => {
 		expect(warnSpy).toHaveBeenCalledWith(
 			expect.stringContaining('relocated store "<unknown>" in city "harbor-city" from tile "?"')
 		);
+	});
+
+	test('createSaveRecord uses "No active city" when the active city is missing', () => {
+		expect.assertions(1);
+		const game = createGame({ activeCityId: 'nonexistent-city' });
+		const record = createSaveRecord(game, {
+			id: 'manual-test',
+			name: 'Test',
+			kind: 'manual',
+			updatedAt: new Date('2026-05-05T12:00:00.000Z')
+		});
+
+		expect(record.metadata.activeCityName).toBe('No active city');
+	});
+
+	test('createManualSlotId falls back to "slot" when the name produces an empty slug', () => {
+		expect.assertions(1);
+		const id = createManualSlotId('!!!', new Date('2026-05-05T12:00:00.000Z'));
+
+		expect(id).toContain('slot');
+	});
+
+	test('migrateSaveRecord returns non-object values untouched before validating', () => {
+		expect.assertions(1);
+
+		expect(() => validateSaveRecord('not-an-object')).toThrow(SaveDataError);
+	});
+
+	test('v4 migration leaves a non-object store untouched then fails validation', () => {
+		expect.assertions(1);
+		const record = createV4Record({
+			game: {
+				stores: ['not-a-store' as unknown as GameState['stores'][number]]
+			}
+		});
+
+		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+	});
+
+	test('v4 migration leaves a non-object boutique product untouched then fails validation', () => {
+		expect.assertions(1);
+		const baseStore = createGame().stores[0]!;
+		const record = createV4Record({
+			game: {
+				stores: [
+					{
+						...baseStore,
+						archetypeId: 'boutique',
+						products: [
+							'not-a-product' as unknown as GameState['stores'][number]['products'][number]
+						]
+					}
+				]
+			}
+		});
+
+		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+	});
+
+	test('v4 migration renames a legacy boutique accessories category to fashion-accessories', () => {
+		expect.assertions(2);
+		const baseStore = createGame().stores[0]!;
+		const record = createV4Record({
+			game: {
+				stores: [
+					{
+						...baseStore,
+						archetypeId: 'boutique',
+						products: [{ ...baseStore.products[0]!, categoryId: 'accessories' }]
+					}
+				]
+			}
+		});
+
+		const validated = validateSaveRecord(record);
+		expect(validated.game.stores[0]?.products[0]?.categoryId).toBe('fashion-accessories');
+		expect(validated.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
+	});
+
+	test('v4 migration is a no-op for a boutique store with no legacy category names', () => {
+		expect.assertions(1);
+		const record = createV4Record({
+			game: { stores: [{ ...createGame().stores[0]!, archetypeId: 'boutique' }] }
+		});
+
+		expect(() => validateSaveRecord(record)).not.toThrow();
+	});
+
+	test('v4 migration leaves a non-object game untouched then fails validation', () => {
+		expect.assertions(1);
+		const record: SaveRecord = {
+			...createManualSaveRecord(),
+			schemaVersion: 4,
+			game: null as unknown as GameState
+		};
+
+		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+	});
+
+	test('v4 migration leaves a non-array stores field untouched then fails validation', () => {
+		expect.assertions(1);
+		const record: SaveRecord = {
+			...createManualSaveRecord(),
+			schemaVersion: 4,
+			game: {
+				...createGame(),
+				stores: 'not-an-array' as unknown as GameState['stores']
+			}
+		};
+
+		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+	});
+
+	test('v4 snapshot migration leaves a non-object autoSave untouched then fails validation', () => {
+		expect.assertions(1);
+		const snapshot = {
+			schemaVersion: 4,
+			autoSave: 'not-an-object',
+			manualSlots: []
+		};
+
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
+	});
+
+	test('v4 snapshot migration skips mapping when manualSlots is not an array', () => {
+		expect.assertions(1);
+		const snapshot = {
+			schemaVersion: 4,
+			autoSave: null,
+			manualSlots: 'not-an-array'
+		};
+
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
+	});
+
+	test('normalizeSavedStoreLevel defaults to level 1 when products is not an array', () => {
+		expect.assertions(1);
+		const baseStore = createGame().stores[0]!;
+		const storeWithoutLevel = { ...baseStore } as Record<string, unknown>;
+		delete storeWithoutLevel.level;
+		const record = createManualSaveRecord({
+			game: {
+				stores: [
+					{
+						...(storeWithoutLevel as unknown as GameState['stores'][number]),
+						products: 'not-an-array' as unknown as GameState['stores'][number]['products']
+					}
+				]
+			}
+		});
+
+		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+	});
+
+	test('normalizeSavedStoreLevel falls back to level 1 for an unknown product count', () => {
+		expect.assertions(1);
+		const baseStore = createGame().stores[0]!;
+		const storeWithoutLevel = { ...baseStore } as Record<string, unknown>;
+		delete storeWithoutLevel.level;
+		const record = createManualSaveRecord({
+			game: {
+				stores: [
+					{
+						...(storeWithoutLevel as unknown as GameState['stores'][number]),
+						products: []
+					}
+				]
+			}
+		});
+
+		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+	});
+
+	test('normalizeSavedStoreLevel keeps a non-number staffCapacity untouched', () => {
+		expect.assertions(1);
+		const baseStore = createGame().stores[0]!;
+		const storeWithoutLevel = { ...baseStore } as Record<string, unknown>;
+		delete storeWithoutLevel.level;
+		const record = createManualSaveRecord({
+			game: {
+				stores: [
+					{
+						...(storeWithoutLevel as unknown as GameState['stores'][number]),
+						staffCapacity: 'not-a-number' as unknown as number
+					}
+				]
+			}
+		});
+
+		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+	});
+
+	test('normalizeSavedGame infers store cap with a non-array stores field in a legacy save', () => {
+		expect.assertions(1);
+		const legacyGame = createGame() as Partial<GameState>;
+		delete legacyGame.storeCap;
+		delete legacyGame.world;
+		legacyGame.stores = 'not-an-array' as unknown as GameState['stores'];
+		const record = createSaveRecord(legacyGame as GameState, {
+			id: 'manual-legacy-stores',
+			name: 'Legacy Stores',
+			kind: 'manual',
+			updatedAt: new Date('2026-05-05T12:00:00.000Z')
+		});
+
+		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+	});
+
+	test('normalizeSavedGame leaves a non-array industrialBuildings field untouched', () => {
+		expect.assertions(1);
+		const record = createManualSaveRecord({
+			game: {
+				industrialBuildings: 'not-an-array' as unknown as GameState['industrialBuildings']
+			}
+		});
+
+		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+	});
+
+	test('inferWorldProgress handles a non-array industryCities field in a legacy save', () => {
+		expect.assertions(1);
+		const legacyGame = createGame() as Partial<GameState>;
+		delete legacyGame.world;
+		legacyGame.industryCities = 'not-an-array' as unknown as GameState['industryCities'];
+		const record = createSaveRecord(legacyGame as GameState, {
+			id: 'manual-legacy-industry',
+			name: 'Legacy Industry',
+			kind: 'manual',
+			updatedAt: new Date('2026-05-05T12:00:00.000Z')
+		});
+
+		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
 	});
 });

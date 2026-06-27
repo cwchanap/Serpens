@@ -317,4 +317,315 @@ describe('IndustryTileInspector', () => {
 		await expect.element(warehouseSummary.getByText('60')).toBeVisible();
 		await expect.element(warehouseSummary.getByText(/snacks: 42/i)).toBeVisible();
 	});
+
+	it('shows Locked access for a locked industry tile', async () => {
+		expect.assertions(2);
+		const game = createNewGame('convenience', 20260512);
+		const lockedTile = game.industryCities[0]!.tiles.find((candidate) => candidate.locked)!;
+
+		render(IndustryTileInspector, {
+			game,
+			tile: lockedTile,
+			building: null,
+			onClose: vi.fn()
+		});
+
+		await expect
+			.element(
+				page.getByRole('heading', { name: `Industry Tile ${lockedTile.x}, ${lockedTile.y}` })
+			)
+			.toBeVisible();
+		const stats = page.getByLabelText('Industry tile stats');
+		await expect.element(stats.getByText('Locked', { exact: true })).toBeVisible();
+	});
+
+	it('renders an unknown building type fallback when the typeId is unrecognized', async () => {
+		expect.assertions(2);
+		const game = createNewGame('convenience', 20260512);
+		const tile = game.industryCities[0]!.tiles.find(
+			(candidate) => candidate.terrain === 'industrial' && !candidate.locked
+		)!;
+		const building: IndustrialBuilding = {
+			id: 'industry-building-unknown',
+			level: 1,
+			typeId: 'nonexistent-type' as IndustrialBuilding['typeId'],
+			cityId: tile.cityId,
+			tileId: tile.id,
+			mapX: tile.x,
+			mapY: tile.y,
+			status: 'idle',
+			lastProduction: [],
+			producedTotal: 0,
+			importedInputTotal: 0,
+			blockedDays: 0
+		};
+
+		render(IndustryTileInspector, {
+			game,
+			tile,
+			building,
+			onClose: vi.fn()
+		});
+
+		await expect.element(page.getByText('Unknown building type')).toBeVisible();
+		await expect.element(page.getByRole('button', { name: /Upgrade/i })).not.toBeInTheDocument();
+	});
+
+	it('shows No materials stored when the warehouse has no materials', async () => {
+		expect.assertions(1);
+		const game = {
+			...createNewGame('convenience', 20260512),
+			warehouse: {
+				capacity: 200,
+				materials: {},
+				overflowUnits: 0,
+				overflowCost: 0
+			}
+		};
+		const tile = game.industryCities[0]!.tiles.find(
+			(candidate) => candidate.terrain === 'industrial' && !candidate.locked
+		)!;
+		const building: IndustrialBuilding = {
+			id: 'industry-building-warehouse-empty',
+			level: 1,
+			typeId: 'warehouse',
+			cityId: tile.cityId,
+			tileId: tile.id,
+			mapX: tile.x,
+			mapY: tile.y,
+			status: 'idle',
+			lastProduction: [],
+			producedTotal: 0,
+			importedInputTotal: 0,
+			blockedDays: 0
+		};
+
+		render(IndustryTileInspector, {
+			game,
+			tile,
+			building,
+			onClose: vi.fn()
+		});
+
+		await expect.element(page.getByText('No materials stored')).toBeVisible();
+	});
+
+	it('falls back to a labelled name for an unrecognized warehouse material id', async () => {
+		expect.assertions(1);
+		const game = {
+			...createNewGame('convenience', 20260512),
+			warehouse: {
+				capacity: 200,
+				materials: { 'mystery-goods': 7 } as Record<string, number>,
+				overflowUnits: 0,
+				overflowCost: 0
+			}
+		};
+		const tile = game.industryCities[0]!.tiles.find(
+			(candidate) => candidate.terrain === 'industrial' && !candidate.locked
+		)!;
+		const building: IndustrialBuilding = {
+			id: 'industry-building-warehouse-mystery',
+			level: 1,
+			typeId: 'warehouse',
+			cityId: tile.cityId,
+			tileId: tile.id,
+			mapX: tile.x,
+			mapY: tile.y,
+			status: 'idle',
+			lastProduction: [],
+			producedTotal: 0,
+			importedInputTotal: 0,
+			blockedDays: 0
+		};
+
+		render(IndustryTileInspector, {
+			game,
+			tile,
+			building,
+			onClose: vi.fn()
+		});
+
+		await expect.element(page.getByText(/Mystery Goods: 7/i)).toBeVisible();
+	});
+
+	it('falls back to a labelled name for an unrecognized production material id', async () => {
+		expect.assertions(1);
+		const game = createNewGame('convenience', 20260512);
+		const tile = getIndustryTilesByResource(game.industryCities[0]!, 'grain-field')[0]!;
+		const building: IndustrialBuilding = {
+			id: 'industry-building-mystery-production',
+			level: 1,
+			typeId: 'grain-farm',
+			cityId: tile.cityId,
+			tileId: tile.id,
+			mapX: tile.x,
+			mapY: tile.y,
+			status: 'idle',
+			lastProduction: [
+				{
+					materialId: 'mystery-goods' as never,
+					quantity: 5,
+					value: 30,
+					source: 'local'
+				}
+			],
+			producedTotal: 5,
+			importedInputTotal: 0,
+			blockedDays: 0
+		};
+
+		render(IndustryTileInspector, {
+			game,
+			tile,
+			building,
+			onClose: vi.fn()
+		});
+
+		await expect.element(page.getByText(/Mystery Goods: 5/i)).toBeVisible();
+	});
+
+	it('shows No tile selected when no tile is provided', async () => {
+		expect.assertions(2);
+		const game = createNewGame('convenience', 20260512);
+
+		render(IndustryTileInspector, {
+			game,
+			tile: null,
+			building: null,
+			onClose: vi.fn()
+		});
+
+		await expect.element(page.getByRole('heading', { name: 'Industry tile' })).toBeVisible();
+		await expect.element(page.getByText('No tile selected')).toBeVisible();
+	});
+
+	it('reconciles building details when rerendered with the same building id but changed data', async () => {
+		expect.assertions(3);
+		const game = { ...createNewGame('convenience', 20260512), cash: 999_999 };
+		const tile = getIndustryTilesByResource(game.industryCities[0]!, 'grain-field')[0]!;
+		const building: IndustrialBuilding = {
+			id: 'industry-building-rerender',
+			level: 1,
+			typeId: 'grain-farm',
+			cityId: tile.cityId,
+			tileId: tile.id,
+			mapX: tile.x,
+			mapY: tile.y,
+			status: 'idle',
+			lastProduction: [],
+			producedTotal: 0,
+			importedInputTotal: 0,
+			blockedDays: 0
+		};
+
+		const result = render(IndustryTileInspector, {
+			game,
+			tile,
+			building,
+			onClose: vi.fn()
+		});
+
+		await expect.element(page.getByText(/Level 1 \/ 10/i)).toBeInTheDocument();
+
+		await result.rerender({
+			game,
+			tile,
+			building: { ...building, level: 3, producedTotal: 42, status: 'producing' },
+			onClose: vi.fn()
+		});
+
+		await expect.element(page.getByText(/Level 3 \/ 10/i)).toBeInTheDocument();
+		await expect.element(page.getByText('42')).toBeVisible();
+	});
+
+	it('reconciles warehouse materials when rerendered with changed material quantities', async () => {
+		expect.assertions(2);
+		const game = {
+			...createNewGame('convenience', 20260512),
+			warehouse: {
+				capacity: 200,
+				materials: { snacks: 10 },
+				overflowUnits: 0,
+				overflowCost: 0
+			}
+		};
+		const tile = game.industryCities[0]!.tiles.find(
+			(candidate) => candidate.terrain === 'industrial' && !candidate.locked
+		)!;
+		const building: IndustrialBuilding = {
+			id: 'industry-building-warehouse-rerender',
+			level: 1,
+			typeId: 'warehouse',
+			cityId: tile.cityId,
+			tileId: tile.id,
+			mapX: tile.x,
+			mapY: tile.y,
+			status: 'idle',
+			lastProduction: [],
+			producedTotal: 0,
+			importedInputTotal: 0,
+			blockedDays: 0
+		};
+
+		const result = render(IndustryTileInspector, {
+			game,
+			tile,
+			building,
+			onClose: vi.fn()
+		});
+
+		await expect.element(page.getByText(/snacks: 10/i)).toBeVisible();
+
+		await result.rerender({
+			game: {
+				...game,
+				warehouse: { ...game.warehouse, materials: { snacks: 99 } }
+			},
+			tile,
+			building,
+			onClose: vi.fn()
+		});
+
+		await expect.element(page.getByText(/snacks: 99/i)).toBeVisible();
+	});
+
+	it('treats an undefined warehouse material quantity as zero', async () => {
+		expect.assertions(1);
+		const game = {
+			...createNewGame('convenience', 20260512),
+			warehouse: {
+				capacity: 200,
+				materials: { snacks: undefined } as unknown as Record<string, number>,
+				overflowUnits: 0,
+				overflowCost: 0
+			}
+		};
+		const tile = game.industryCities[0]!.tiles.find(
+			(candidate) => candidate.terrain === 'industrial' && !candidate.locked
+		)!;
+		const building: IndustrialBuilding = {
+			id: 'industry-building-warehouse-undefined',
+			level: 1,
+			typeId: 'warehouse',
+			cityId: tile.cityId,
+			tileId: tile.id,
+			mapX: tile.x,
+			mapY: tile.y,
+			status: 'idle',
+			lastProduction: [],
+			producedTotal: 0,
+			importedInputTotal: 0,
+			blockedDays: 0
+		};
+
+		render(IndustryTileInspector, {
+			game,
+			tile,
+			building,
+			onClose: vi.fn()
+		});
+
+		await expect.element(page.getByText('No materials stored')).toBeVisible();
+	});
 });

@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'vitest';
 import { buildIndustrialBuilding } from './industryPlacement';
 import { addWarehouseMaterial } from './industryProduction';
+import { DEFAULT_RETAIL_CITY_HEIGHT, DEFAULT_RETAIL_CITY_WIDTH, generateCity } from './city';
+import { generateIndustryCity } from './industry';
 import { createNewGame } from './state';
 import {
 	STARTER_STORE_CAP,
@@ -589,5 +591,65 @@ describe('world city status and decision helpers', () => {
 		expect(getIndustryCityResourceProfile('industry-city')).not.toBeNull();
 		expect(getIndustryCityResourceProfile('harbor-city')).toBeNull();
 		expect(getIndustryCityResourceProfile('missing-city')).toBeNull();
+	});
+
+	test('getWorldCityStatus returns null for an unknown city id', () => {
+		expect.assertions(1);
+		const game = gameStub();
+
+		expect(getWorldCityStatus(game, 'missing-city')).toBeNull();
+	});
+
+	test('openWorldCity does not duplicate a retail city already present in game.cities', () => {
+		expect.assertions(2);
+		const game = createNewGame('convenience', 20260530);
+		const campusCity = generateCity({
+			id: 'campus-junction',
+			name: 'Campus Junction',
+			width: DEFAULT_RETAIL_CITY_WIDTH,
+			height: DEFAULT_RETAIL_CITY_HEIGHT,
+			seed: 20260531
+		});
+		const revealed: GameState = {
+			...game,
+			cash: 50_000,
+			cities: [...game.cities, campusCity],
+			world: {
+				...game.world,
+				revealedCityIds: [...game.world.revealedCityIds, 'campus-junction']
+			}
+		};
+
+		const opened = openWorldCity(revealed, 'campus-junction');
+
+		expect(opened.world.openedCityIds).toContain('campus-junction');
+		expect(opened.cities.filter((city) => city.id === 'campus-junction')).toHaveLength(1);
+	});
+
+	test('openWorldCity does not duplicate an industry city already present in game.industryCities', () => {
+		expect.assertions(2);
+		const game = createNewGame('convenience', 20260530);
+		const basinCity = generateIndustryCity({
+			id: 'breadbasket-basin',
+			name: 'Breadbasket Basin',
+			width: 18,
+			height: 18,
+			seed: 20260533,
+			resourceProfile: getIndustryCityResourceProfile('breadbasket-basin') ?? undefined
+		});
+		const revealed: GameState = {
+			...game,
+			cash: 50_000,
+			industryCities: [...game.industryCities, basinCity],
+			world: {
+				...game.world,
+				revealedCityIds: [...game.world.revealedCityIds, 'breadbasket-basin']
+			}
+		};
+
+		const opened = openWorldCity(revealed, 'breadbasket-basin');
+
+		expect(opened.world.openedCityIds).toContain('breadbasket-basin');
+		expect(opened.industryCities.filter((city) => city.id === 'breadbasket-basin')).toHaveLength(1);
 	});
 });

@@ -2247,6 +2247,73 @@ describe('browser save repository', () => {
 		expect(secondLoad?.metadata.name).toBe('Harbor Run');
 		expect(secondSummary.manualSlots[0]?.name).toBe('Harbor Run');
 	});
+
+	test('uses the current wall-clock time when SaveRepositoryFromDriver is built without a now clock', async () => {
+		expect.assertions(3);
+		const before = Date.now();
+		const repository = new SaveRepositoryFromDriver(new MemorySaveStoreDriver());
+
+		const metadata = await repository.saveAuto(createGame());
+		const after = Date.now();
+
+		expect(metadata.kind).toBe('auto');
+		expect(Number(new Date(metadata.updatedAt))).toBeGreaterThanOrEqual(before);
+		expect(Number(new Date(metadata.updatedAt))).toBeLessThanOrEqual(after);
+	});
+
+	test('preserves unrelated manual slots when overwriting one slot among many', async () => {
+		expect.assertions(4);
+		const repository = createBrowserSaveRepository(
+			new FakeStorage(),
+			() => new Date('2026-05-05T12:00:00.000Z')
+		);
+
+		const first = await repository.createManualSlot('Harbor Run', createGame({ day: 4 }));
+		// Use a different name so the second slot gets a distinct base id and
+		// is the non-matching entry in the overwrite map (false branch).
+		const second = await repository.createManualSlot('Campus Run', createGame({ day: 5 }));
+		const overwritten = await repository.overwriteManualSlot(
+			first.id,
+			'Harbor Run',
+			createGame({ day: 9 })
+		);
+		const summary = await repository.getSummary();
+
+		expect(overwritten.day).toBe(9);
+		expect(summary.manualSlots).toHaveLength(2);
+		expect(summary.manualSlots.find((slot) => slot.id === first.id)?.day).toBe(9);
+		expect(summary.manualSlots.find((slot) => slot.id === second.id)?.day).toBe(5);
+	});
+
+	test('appends a -3 suffix when two duplicate-name slots already exist in the same millisecond', async () => {
+		expect.assertions(4);
+		const repository = createBrowserSaveRepository(
+			new FakeStorage(),
+			() => new Date('2026-05-05T12:00:00.000Z')
+		);
+
+		const first = await repository.createManualSlot('Harbor Run', createGame({ day: 4 }));
+		const second = await repository.createManualSlot('Harbor Run', createGame({ day: 5 }));
+		const third = await repository.createManualSlot('Harbor Run', createGame({ day: 6 }));
+
+		expect(first.id).toBe('manual-harbor-run-1777982400000');
+		expect(second.id).toBe('manual-harbor-run-1777982400000-2');
+		expect(third.id).toBe('manual-harbor-run-1777982400000-3');
+		expect((await repository.getSummary()).manualSlots).toHaveLength(3);
+	});
+
+	test('uses the current wall-clock time when createBrowserSaveRepository is built without a now clock', async () => {
+		expect.assertions(3);
+		const before = Date.now();
+		const repository = createBrowserSaveRepository(new FakeStorage());
+
+		const metadata = await repository.saveAuto(createGame());
+		const after = Date.now();
+
+		expect(metadata.kind).toBe('auto');
+		expect(Number(new Date(metadata.updatedAt))).toBeGreaterThanOrEqual(before);
+		expect(Number(new Date(metadata.updatedAt))).toBeLessThanOrEqual(after);
+	});
 });
 
 describe('pre-tier-1 save compatibility', () => {

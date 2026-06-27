@@ -6,9 +6,11 @@ import {
 	buildWarehouseFlowGraph,
 	createInputWeightMap,
 	emptyActualMetrics,
+	formatQuantity,
 	getSupportedStoreChainCategories,
 	healthLabel,
 	materialHealth,
+	sortEdges,
 	SUPPORTED_FINISHED_MATERIALS
 } from './productChainGraph';
 import { MATERIALS, PRODUCTION_RECIPES } from './industry';
@@ -19,7 +21,8 @@ import type {
 	DailyProductReport,
 	DailyProductionReport,
 	DailyStoreReport,
-	GameState
+	GameState,
+	MaterialId
 } from './types';
 
 function emptyProductionReport(
@@ -365,5 +368,180 @@ describe('allocateInputMovement', () => {
 
 		expect(allocateInputMovement(weights, 'grain', 'warehouse', 10)).toBe(0);
 		expect(allocateInputMovement(weights, 'grain', 'recipe:snack-production', 10)).toBe(0);
+	});
+});
+
+describe('warehouse flow graph health branches', () => {
+	test('reports a healthy warehouse when capacity is available and no overflow', () => {
+		expect.assertions(4);
+		let game = createNewGame('convenience', 20260508);
+		game = {
+			...game,
+			warehouse: {
+				capacity: 200,
+				materials: { snacks: 5 },
+				overflowUnits: 0,
+				overflowCost: 0
+			}
+		};
+		game = withLatestReport(
+			game,
+			emptyProductionReport({
+				produced: [{ materialId: 'snacks', quantity: 8, value: 64, source: 'local' }],
+				warehouseCapacity: 200,
+				warehouseUsed: 5
+			})
+		);
+
+		const graph = buildWarehouseFlowGraph(game);
+		const warehouse = graph.nodes.find((node) => node.id === 'warehouse')!;
+
+		expect(warehouse.health).toBe('healthy');
+		expect(warehouse.healthLabel).toBe('Healthy');
+		expect(warehouse.bottleneck).toBe('Warehouse capacity is available.');
+		expect(warehouse.capacity.inputPerDay).toBe(200);
+	});
+
+	test('handles unknown material ids in warehouse without a producer recipe', () => {
+		expect.assertions(4);
+		let game = createNewGame('convenience', 20260508);
+		game = {
+			...game,
+			warehouse: {
+				capacity: 200,
+				materials: { 'unknown-material': 3 } as Record<MaterialId, number>,
+				overflowUnits: 0,
+				overflowCost: 0
+			}
+		};
+
+		const graph = buildWarehouseFlowGraph(game);
+		const materialNode = graph.nodes.find((node) => node.id === 'material:unknown-material')!;
+
+		expect(materialNode).toBeDefined();
+		expect(materialNode.label).toBe('unknown-material');
+		expect(materialNode.stage).toBeNull();
+		expect(materialNode.health).toBe('no-report');
+	});
+});
+
+describe('allocateInputMovement branch coverage', () => {
+	test('returns zero when the material has no recipe weights (finished material)', () => {
+		expect.assertions(1);
+		const weights = createInputWeightMap([], null);
+
+		expect(allocateInputMovement(weights, 'snacks', 'recipe:snack-production', 10)).toBe(0);
+	});
+
+	test('allocates proportionally when materialTotal is below inferredTotal', () => {
+		expect.assertions(1);
+		const report = emptyProductionReport({
+			produced: [
+				{ materialId: 'grain', quantity: 30, value: 30, source: 'local' },
+				{ materialId: 'flour', quantity: 8, value: 40, source: 'local' }
+			]
+		});
+		const weights = createInputWeightMap([], report);
+
+		expect(allocateInputMovement(weights, 'grain', 'recipe:flour-milling', 5)).toBe(5);
+	});
+
+	test('falls back to per-cycle weights when no buildings and no inferred cycles', () => {
+		expect.assertions(1);
+		const weights = createInputWeightMap([], null);
+
+		expect(allocateInputMovement(weights, 'grain', 'recipe:flour-milling', 10)).toBe(10);
+	});
+
+	test('returns null recipe id for unknown recipe prefix', () => {
+		expect.assertions(1);
+		const weights = createInputWeightMap([], null);
+
+		expect(allocateInputMovement(weights, 'grain', 'recipe:nonexistent-recipe', 10)).toBe(0);
+	});
+});
+
+describe('createInputWeightMap branch coverage', () => {
+	test('skips produced materials that have no producer recipe', () => {
+		expect.assertions(1);
+		const report = emptyProductionReport({
+			produced: [{ materialId: 'unknown-material', quantity: 5, value: 10, source: 'local' }]
+		});
+
+		const weights = createInputWeightMap([], report);
+		const grainWeights = weights.get('grain');
+
+		expect(grainWeights).toBeDefined();
+	});
+});
+
+describe('formatQuantity', () => {
+	test('formats non-integer quantities with trailing zeros stripped', () => {
+		expect.assertions(3);
+		expect(formatQuantity(11.2)).toBe('11.2');
+		expect(formatQuantity(12.34)).toBe('12.34');
+		expect(formatQuantity(0.5)).toBe('0.5');
+	});
+});
+
+describe('sortEdges', () => {
+	test('sorts by target when sources are equal', () => {
+		expect.assertions(2);
+		const edges = [
+			{
+				id: 'b',
+				source: 'warehouse',
+				target: 'material:zebra',
+				materialId: null,
+				label: '',
+				requiredPerCycle: 0,
+				actualPerDay: 0,
+				health: 'healthy' as const
+			},
+			{
+				id: 'a',
+				source: 'warehouse',
+				target: 'material:alpha',
+				materialId: null,
+				label: '',
+				requiredPerCycle: 0,
+				actualPerDay: 0,
+				health: 'healthy' as const
+			}
+		];
+		const sorted = sortEdges(edges);
+
+		expect(sorted[0]!.id).toBe('a');
+		expect(sorted[1]!.id).toBe('b');
+	});
+
+	test('sorts by id when both source and target are equal', () => {
+		expect.assertions(2);
+		const edges = [
+			{
+				id: 'z',
+				source: 'warehouse',
+				target: 'material:snacks',
+				materialId: null,
+				label: '',
+				requiredPerCycle: 0,
+				actualPerDay: 0,
+				health: 'healthy' as const
+			},
+			{
+				id: 'a',
+				source: 'warehouse',
+				target: 'material:snacks',
+				materialId: null,
+				label: '',
+				requiredPerCycle: 0,
+				actualPerDay: 0,
+				health: 'healthy' as const
+			}
+		];
+		const sorted = sortEdges(edges);
+
+		expect(sorted[0]!.id).toBe('a');
+		expect(sorted[1]!.id).toBe('z');
 	});
 });

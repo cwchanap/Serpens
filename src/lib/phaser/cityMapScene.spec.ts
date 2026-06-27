@@ -1788,4 +1788,230 @@ describe('CityMapScene', () => {
 			expect(allSurvived).toBe(true);
 		});
 	});
+
+	describe('branch coverage', () => {
+		it('updates selectedTile from selectedTileId on re-render with unchanged terrain', () => {
+			expect.assertions(1);
+			scene.create();
+			scene.updateSnapshot(makeSnapshot());
+			scene.updateSnapshot(makeSnapshot({ selectedTileId: 't0' }));
+			expect(s(scene).selectedTile?.id).toBe('t0');
+		});
+
+		it('sets selectedTile to null when selectedTileId references a missing tile on re-render', () => {
+			expect.assertions(1);
+			scene.create();
+			scene.updateSnapshot(makeSnapshot());
+			scene.updateSnapshot(makeSnapshot({ selectedTileId: 'missing' }));
+			expect(s(scene).selectedTile).toBeNull();
+		});
+
+		it('computeTerrainKey returns empty string when no snapshot', () => {
+			expect.assertions(1);
+			scene.create();
+			expect(s(scene).computeTerrainKey()).toBe('');
+		});
+
+		it('drawTile returns early when mapGraphics is missing', () => {
+			expect.assertions(1);
+			scene.create();
+			s(scene).mapGraphics = undefined;
+			expect(() => s(scene).drawTile(makeTile())).not.toThrow();
+		});
+
+		it('drawTerrainFeatureFallback skips drawing for unknown feature types', () => {
+			expect.assertions(1);
+			scene.create();
+			const tile = makeTile({ feature: 'unknown' as any });
+			s(scene).drawTerrainFeatureFallback(tile, 0, 0);
+			const mapGraphics = s(scene).mapGraphics;
+			const roadFill = mapGraphics.fillStyle.mock.calls.find((c: any[]) => c[0] === 0x50545a);
+			const riverFill = mapGraphics.fillStyle.mock.calls.find((c: any[]) => c[0] === 0x3ca7d8);
+			expect(roadFill ?? riverFill).toBeUndefined();
+		});
+
+		it('createMapInteractionZone returns early when no snapshot', () => {
+			expect.assertions(1);
+			scene.create();
+			const zoneCountBefore = s(scene).tileZones.length;
+			s(scene).createMapInteractionZone();
+			expect(s(scene).tileZones.length).toBe(zoneCountBefore);
+		});
+
+		it('pointerup does not fire tileSelected when pointer is outside the grid', () => {
+			expect.assertions(1);
+			const handler = vi.fn();
+			scene.setEventHandler(handler);
+			scene.create();
+			scene.updateSnapshot(
+				makeSnapshot({
+					tiles: [makeTile({ id: 'zone-tile', x: 0, y: 0 })]
+				})
+			);
+			const zone = s(scene).tileZones[0];
+			const onCalls = (zone.on as Mock).mock.calls;
+			const downHandler = onCalls.find((c: any[]) => c[0] === 'pointerdown')?.[1];
+			const upHandler = onCalls.find((c: any[]) => c[0] === 'pointerup')?.[1];
+			const canvas = s(scene).game.canvas;
+			const downPointer = makePointer(canvas, { x: 5, y: 5, worldX: 5, worldY: 5 });
+			downHandler(downPointer);
+			const upPointer = makePointer(canvas, { x: 5, y: 5, worldX: 9999, worldY: 9999 });
+			upHandler(upPointer);
+			expect(handler).not.toHaveBeenCalled();
+		});
+
+		it('pointerout does nothing when hoverTileId is already null', () => {
+			expect.assertions(1);
+			scene.create();
+			scene.updateSnapshot(
+				makeSnapshot({
+					tiles: [makeTile({ id: 'zone-tile', x: 0, y: 0 })]
+				})
+			);
+			s(scene).hoverTileId = null;
+			const zone = s(scene).tileZones[0];
+			const onCalls = (zone.on as Mock).mock.calls;
+			const outHandler = onCalls.find((c: any[]) => c[0] === 'pointerout')?.[1];
+			const outlineGraphics = s(scene).outlineGraphics;
+			(outlineGraphics.clear as Mock).mockClear();
+			outHandler();
+			expect(outlineGraphics.clear).not.toHaveBeenCalled();
+		});
+
+		it('getTileAtPointer falls back to pointer.x/y when worldX/worldY are undefined', () => {
+			expect.assertions(1);
+			scene.create();
+			scene.updateSnapshot(
+				makeSnapshot({
+					tiles: [makeTile({ id: 'zone-tile', x: 0, y: 0 })]
+				})
+			);
+			const pointer = { x: 10, y: 10, worldX: undefined, worldY: undefined };
+			expect(s(scene).getTileAtPointer(pointer)?.id).toBe('zone-tile');
+		});
+
+		it('uses zoom fallback of 1 when camera zoom is 0 during drag', () => {
+			expect.assertions(1);
+			scene.create();
+			s(scene).cameras.main.zoom = 0;
+			s(scene).isDragging = true;
+			s(scene).lastDragPoint = { x: 10, y: 10 };
+			s(scene).dragStartPoint = { x: 10, y: 10 };
+			const canvas = s(scene).game.canvas;
+			const pointer = makePointer(canvas, { x: 20, y: 20, isDown: true });
+			const handler = getHandler(s(scene).input.on as Mock, 'pointermove');
+			handler.call(scene, pointer);
+			expect(s(scene).cameras.main.scrollX).toBe(-10);
+		});
+
+		it('does not set hasDragged when dragStartPoint is null during drag move', () => {
+			expect.assertions(1);
+			scene.create();
+			s(scene).isDragging = true;
+			s(scene).lastDragPoint = { x: 10, y: 10 };
+			s(scene).dragStartPoint = null;
+			s(scene).hasDragged = false;
+			const canvas = s(scene).game.canvas;
+			const pointer = makePointer(canvas, { x: 200, y: 200, isDown: true });
+			const handler = getHandler(s(scene).input.on as Mock, 'pointermove');
+			handler.call(scene, pointer);
+			expect(s(scene).hasDragged).toBe(false);
+		});
+
+		it('does not update hover when pointer is not on canvas', () => {
+			expect.assertions(1);
+			scene.create();
+			scene.updateSnapshot(
+				makeSnapshot({
+					tiles: [makeTile({ id: 'zone-tile', x: 0, y: 0 })]
+				})
+			);
+			s(scene).hoverTileId = null;
+			const pointer = makePointer({}, { x: 10, y: 10, worldX: 10, worldY: 10 });
+			const handler = getHandler(s(scene).input.on as Mock, 'pointermove');
+			handler.call(scene, pointer);
+			expect(s(scene).hoverTileId).toBeNull();
+		});
+
+		it('didDrag returns false when dragStartPoint is null', () => {
+			expect.assertions(1);
+			scene.create();
+			s(scene).hasDragged = false;
+			s(scene).dragStartPoint = null;
+			const pointer = makePointer(s(scene).game.canvas, { x: 100, y: 100 });
+			expect(s(scene).didDrag(pointer)).toBe(false);
+		});
+
+		it('setCameraBounds uses minimum tile size when snapshot is null', () => {
+			expect.assertions(1);
+			scene.create();
+			s(scene).snapshot = null;
+			s(scene).setCameraBounds();
+			expect(s(scene).cameras.main.setBounds).toHaveBeenCalledWith(0, 0, 32, 32);
+		});
+
+		it('createStoreSprites sets circle mode when snapshot is null', () => {
+			expect.assertions(2);
+			scene.create();
+			s(scene).snapshot = null;
+			s(scene).createStoreSprites();
+			const ds = s(scene).game.canvas.dataset;
+			expect(ds.storeMarkerMode).toBe('circle');
+			expect(ds.storeSpriteCount).toBe('0');
+		});
+
+		it('createTerrainSprites sets fallback mode when snapshot is null', () => {
+			expect.assertions(1);
+			scene.create();
+			s(scene).snapshot = null;
+			s(scene).createTerrainSprites();
+			const ds = s(scene).game.canvas.dataset;
+			expect(ds.terrainAssetMode).toBe('fallback');
+		});
+
+		it('updateCanvasStoreMarkerAttributes does not throw when canvas is missing', () => {
+			expect.assertions(1);
+			scene.create();
+			s(scene).game = {};
+			expect(() => s(scene).updateCanvasStoreMarkerAttributes('circle', 0)).not.toThrow();
+		});
+
+		it('updateCanvasTerrainAttributes does not throw when canvas is missing', () => {
+			expect.assertions(1);
+			scene.create();
+			s(scene).game = {};
+			expect(() => s(scene).updateCanvasTerrainAttributes('fallback', 0, 0, 0)).not.toThrow();
+		});
+
+		it('updateCanvasPlacementPreviewAttributes does not throw when canvas is missing', () => {
+			expect.assertions(1);
+			scene.create();
+			s(scene).game = {};
+			expect(() => s(scene).updateCanvasPlacementPreviewAttributes(0, 0)).not.toThrow();
+		});
+
+		it('updateCanvasCameraAttributes uses zoom fallback of 1 when zoom is 0', () => {
+			expect.assertions(1);
+			scene.create();
+			scene.updateSnapshot(makeSnapshot());
+			s(scene).cameras.main.zoom = 0;
+			s(scene).lastCameraKey = null;
+			s(scene).updateCanvasCameraAttributes();
+			const ds = s(scene).game.canvas.dataset;
+			expect(Number(ds.mapZoom)).toBe(1);
+		});
+
+		it('updateCanvasCameraAttributes falls back to scale dimensions when worldView is zero', () => {
+			expect.assertions(2);
+			scene.create();
+			scene.updateSnapshot(makeSnapshot());
+			s(scene).cameras.main.zoom = 1;
+			s(scene).cameras.main.worldView = { x: 0, y: 0, width: 0, height: 0 };
+			s(scene).lastCameraKey = null;
+			s(scene).updateCanvasCameraAttributes();
+			const ds = s(scene).game.canvas.dataset;
+			expect(Number(ds.mapViewWidth)).toBe(800);
+			expect(Number(ds.mapViewHeight)).toBe(600);
+		});
+	});
 });

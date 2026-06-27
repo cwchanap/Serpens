@@ -22,7 +22,10 @@ export default defineConfig({
 				'src/**/*.e2e.{ts,js}',
 				'src/app.d.ts',
 				'src/lib/vitest-examples/**',
-				'src/routes/demo/**'
+				'src/routes/demo/**',
+				'src/routes/+page.svelte',
+				'src/routes/+layout.svelte',
+				'src/routes/+layout.ts'
 			]
 		},
 		projects: [

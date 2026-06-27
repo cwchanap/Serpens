@@ -112,4 +112,17 @@ describe('CityMap', () => {
 		await waitForMock(mockResume);
 		expect(mockResume).toHaveBeenCalled();
 	});
+
+	it('does not call onTileSelected for non-tileSelected scene events', async () => {
+		expect.assertions(1);
+		const onTileSelected = vi.fn();
+
+		render(CityMap, { snapshot: stubSnapshot, onTileSelected });
+
+		await waitForMock(mockSetEventHandler);
+		const handler = mockSetEventHandler.mock.calls.at(-1)![0] as (event: { type: string }) => void;
+		handler({ type: 'pan' });
+
+		expect(onTileSelected).not.toHaveBeenCalled();
+	});
 });

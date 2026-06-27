@@ -49,4 +49,27 @@ describe('NodeBroadside', () => {
 		await expect.element(page.getByText('Missed').first()).toBeVisible();
 		await expect.element(page.getByText('8')).toBeVisible();
 	});
+
+	it('renders a shared producer note and omits the verdict when there is no bottleneck', async () => {
+		expect.assertions(3);
+		const node: ProductChainNode = {
+			...shortageRecipeNode(),
+			id: 'recipe:shared-mill',
+			label: 'Shared Mill',
+			health: 'healthy',
+			healthLabel: 'Healthy',
+			bottleneck: '',
+			sharedBranchCount: 3
+		};
+
+		render(NodeBroadside, { node });
+
+		await expect.element(page.getByRole('heading', { name: 'Shared Mill' })).toBeVisible();
+		await expect
+			.element(page.getByText('Shared producer — drawn in 3 branches of this chain.'))
+			.toBeVisible();
+
+		const section = document.querySelector('section.broadside');
+		expect(section?.querySelector('.verdict')).toBeNull();
+	});
 });

@@ -84,4 +84,26 @@ describe('PolicyPanel', () => {
 
 		expect(onChange).toHaveBeenCalledWith({ marketing: 'loyalty' });
 	});
+
+	it('fires onChange with { inventory: "generous" } when the inventory select changes', async () => {
+		expect.assertions(1);
+		const onChange = vi.fn();
+
+		renderPolicyPanel({ onChange });
+
+		await page.getByLabelText('Inventory').selectOptions('generous');
+
+		expect(onChange).toHaveBeenCalledWith({ inventory: 'generous' });
+	});
+
+	it('fires onChange with { service: "highTouch" } when the service select changes', async () => {
+		expect.assertions(1);
+		const onChange = vi.fn();
+
+		renderPolicyPanel({ onChange });
+
+		await page.getByLabelText('Service').selectOptions('highTouch');
+
+		expect(onChange).toHaveBeenCalledWith({ service: 'highTouch' });
+	});
 });
