@@ -22,6 +22,10 @@ ignore:
   - 'src/**/*.svelte.spec.ts'
   - 'src/**/*.e2e.ts'
   - 'src/app.d.ts'
+  # +page.svelte is the 1300+ line Svelte 5 runes UI shell, covered end-to-end by
+  # retail-sim.e2e.ts (canvas data-* attributes, tile clicks, panel toggles) rather
+  # than unit specs. Excluded so the unit coverage metric reflects src/lib/game
+  # pure-logic coverage; the e2e suite is the coverage gate for the UI layer.
   - 'src/routes/+page.svelte'
   - 'src/routes/+layout.svelte'
   - 'src/routes/+layout.ts'
