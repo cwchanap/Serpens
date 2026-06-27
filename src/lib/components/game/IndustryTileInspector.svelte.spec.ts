@@ -531,7 +531,7 @@ describe('IndustryTileInspector', () => {
 		await result.rerender({
 			game,
 			tile,
-			building: { ...building, level: 3, producedTotal: 42, status: 'producing' },
+			building: { ...building, level: 3, producedTotal: 42, status: 'produced' },
 			onClose: vi.fn()
 		});
 

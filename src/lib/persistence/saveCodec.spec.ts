@@ -145,7 +145,10 @@ function createManualSaveRecord(overrides: SaveRecordOverrides = {}): SaveRecord
 }
 
 function createV4Record(overrides: SaveRecordOverrides = {}): SaveRecord {
-	return { ...createManualSaveRecord(overrides), schemaVersion: 4 };
+	return {
+		...createManualSaveRecord(overrides),
+		schemaVersion: 4 as unknown as typeof SAVE_SCHEMA_VERSION
+	};
 }
 
 function createSnapshotWithGame(game: Partial<GameState>): SaveStoreSnapshot {
@@ -1072,7 +1075,7 @@ describe('saveCodec', () => {
 		expect.assertions(1);
 		const record: SaveRecord = {
 			...createManualSaveRecord(),
-			schemaVersion: 4,
+			schemaVersion: 4 as unknown as typeof SAVE_SCHEMA_VERSION,
 			game: null as unknown as GameState
 		};
 
@@ -1083,7 +1086,7 @@ describe('saveCodec', () => {
 		expect.assertions(1);
 		const record: SaveRecord = {
 			...createManualSaveRecord(),
-			schemaVersion: 4,
+			schemaVersion: 4 as unknown as typeof SAVE_SCHEMA_VERSION,
 			game: {
 				...createGame(),
 				stores: 'not-an-array' as unknown as GameState['stores']
