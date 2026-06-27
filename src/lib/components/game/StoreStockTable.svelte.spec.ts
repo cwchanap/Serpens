@@ -128,4 +128,50 @@ describe('StoreStockTable', () => {
 
 		expect(onUpdate).not.toHaveBeenCalled();
 	});
+
+	it('falls back to the category id, zero import cost, and No report for unknown categories', async () => {
+		expect.assertions(3);
+
+		const storeWithUnknownProduct: Store = {
+			...store,
+			products: [
+				...store.products,
+				{
+					categoryId: 'apparel',
+					stock: 10,
+					reorderThreshold: 4,
+					targetStock: 16,
+					sellingPrice: 9
+				}
+			]
+		};
+
+		render(StoreStockTable, {
+			store: storeWithUnknownProduct,
+			latestReport,
+			onUpdate: vi.fn()
+		});
+
+		await expect.element(page.getByRole('cell', { name: 'apparel' })).toBeVisible();
+		await expect.element(page.getByRole('cell', { name: '$0' })).toBeVisible();
+		await expect.element(page.getByText('No report')).toBeVisible();
+	});
+
+	it('sends a target stock update for the edited product', async () => {
+		expect.assertions(2);
+		const onUpdate = vi.fn();
+
+		render(StoreStockTable, {
+			store,
+			latestReport,
+			onUpdate
+		});
+
+		const targetStock = page.getByRole('spinbutton', { name: 'Target stock for Bottled Water' });
+		await targetStock.fill('120');
+		await page.getByRole('cell', { name: 'Bottled Water' }).click();
+
+		expect(onUpdate).toHaveBeenCalledTimes(1);
+		expect(onUpdate).toHaveBeenCalledWith('store-1', 'bottled-water', { targetStock: 120 });
+	});
 });

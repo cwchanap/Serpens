@@ -113,4 +113,15 @@ describe('reports', () => {
 		expect(summary.sevenDay.importSpend).toBe(26);
 		expect(summary.thirtyDay.importSpend).toBe(26);
 	});
+
+	test('returns zero averages when there are no reports', () => {
+		expect.assertions(5);
+		const summary = summarizeReports([]);
+
+		expect(summary.latest).toBeUndefined();
+		expect(summary.sevenDay.days).toBe(0);
+		expect(summary.sevenDay.averageRevenue).toBe(0);
+		expect(summary.thirtyDay.days).toBe(0);
+		expect(summary.thirtyDay.averageNetIncome).toBe(0);
+	});
 });

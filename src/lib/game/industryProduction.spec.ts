@@ -4,6 +4,7 @@ import { buildIndustrialBuilding } from './industryPlacement';
 import {
 	addWarehouseMaterial,
 	getWarehouseCapacity,
+	getWarehouseUsed,
 	removeWarehouseMaterial,
 	simulateIndustryProduction
 } from './industryProduction';
@@ -215,5 +216,17 @@ describe('industry production simulation', () => {
 
 		expect(result.game.industrialBuildings[0]?.status).toBe('blocked');
 		expect(result.game.industrialBuildings[0]?.blockedDays).toBe(1);
+	});
+
+	test('getWarehouseUsed treats null material quantities as zero', () => {
+		expect.assertions(1);
+		const warehouse = {
+			capacity: 10,
+			materials: { snacks: null as unknown as number },
+			overflowUnits: 0,
+			overflowCost: 0
+		};
+
+		expect(getWarehouseUsed(warehouse)).toBe(0);
 	});
 });

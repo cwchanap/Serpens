@@ -497,6 +497,87 @@ describe('game state', () => {
 		expect(resolved.decisions).toBe(game.decisions);
 	});
 
+	test('resolveDecision leaves store products and stockHealth untouched when the option has no stockHealth effect', () => {
+		expect.assertions(3);
+		const game = createNewGame('grocery', 55);
+		const store = game.stores[0]!;
+		const decision = {
+			id: 'no-stock-effect-1',
+			title: 'Morale boost',
+			context: 'A manager boosts team morale.',
+			expiresOnDay: 3,
+			options: [
+				{
+					id: 'approve',
+					label: 'Approve',
+					description: 'Apply the plan.',
+					effects: { staffMorale: 10 }
+				}
+			]
+		};
+
+		const resolved = resolveDecision(
+			{ ...game, decisions: [decision] },
+			'no-stock-effect-1',
+			'approve'
+		);
+
+		expect(resolved.stores[0]?.products).toBe(store.products);
+		expect(resolved.stores[0]?.stockHealth).toBe(store.stockHealth);
+		expect(resolved.stores[0]?.staffMorale).toBe(store.staffMorale + 10);
+	});
+
+	test('resolveDecision with a null stockHealth effect adds zero stock and recalculates stockHealth', () => {
+		expect.assertions(2);
+		const game = createNewGame('grocery', 55);
+		const store = game.stores[0]!;
+		const decision = {
+			id: 'null-stock-effect-1',
+			title: 'No-op inventory',
+			context: 'An inventory plan with no effect.',
+			expiresOnDay: 3,
+			options: [
+				{
+					id: 'approve',
+					label: 'Approve',
+					description: 'Apply the plan.',
+					effects: { stockHealth: null as unknown as number }
+				}
+			]
+		};
+
+		const resolved = resolveDecision(
+			{ ...game, stores: [store], decisions: [decision] },
+			'null-stock-effect-1',
+			'approve'
+		);
+
+		expect(resolved.stores[0]?.products[0]?.stock).toBe(store.products[0]!.stock);
+		expect(resolved.stores[0]?.stockHealth).toBe(
+			calculateStockHealth(resolved.stores[0]!.products)
+		);
+	});
+
+	test('upgradeStore leaves sibling stores untouched when upgrading one of multiple stores', () => {
+		expect.assertions(3);
+		const base = createNewGame('convenience', 20260603);
+		const game = { ...base, cash: 1_000_000 };
+		const withSecond = openStore(game, {
+			name: 'Second Store',
+			archetypeId: 'convenience',
+			location: 'East Mall'
+		});
+		const firstStoreId = withSecond.stores[0]!.id;
+		const siblingBefore = withSecond.stores.find((store) => store.id !== firstStoreId)!;
+
+		const upgraded = upgradeStore(withSecond, firstStoreId);
+
+		const siblingAfter = upgraded.stores.find((store) => store.id === siblingBefore.id)!;
+		expect(upgraded.stores.find((store) => store.id === firstStoreId)?.level).toBe(2);
+		expect(siblingAfter.level).toBe(siblingBefore.level);
+		expect(siblingAfter).toBe(siblingBefore);
+	});
+
 	test('openStore reports no location when the active city is missing', () => {
 		expect.assertions(2);
 		const game = { ...createNewGame('electronics', 44), activeCityId: 'missing-city' };

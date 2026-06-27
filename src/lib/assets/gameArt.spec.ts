@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { ARCHETYPES } from '$lib/game/archetypes';
 import { INDUSTRIAL_BUILDING_TYPES } from '$lib/game/industry';
 import * as gameArt from './gameArt';
@@ -48,7 +48,13 @@ import {
 	type ChainNodeArt
 } from './gameArt';
 import type { ProductChainNode } from '$lib/game/productChainGraph';
-import type { ArchetypeId, MaterialId, ProductionRecipeId } from '$lib/game/types';
+import type {
+	ArchetypeId,
+	BuildingTier,
+	IndustrialBuildingTypeId,
+	MaterialId,
+	ProductionRecipeId
+} from '$lib/game/types';
 
 const archetypeIds: ArchetypeId[] = ['convenience', 'boutique', 'electronics', 'grocery'];
 const productCategoryIds = [
@@ -696,6 +702,34 @@ describe('game art asset constants', () => {
 			);
 		}
 	});
+
+	it('handles undefined neighborhood terrain art entries in TERRAIN_ART_LIST', async () => {
+		vi.resetModules();
+		const originalValues = Object.values;
+		const spy = vi.spyOn(Object, 'values').mockImplementation((obj: object) => {
+			const result = originalValues.call(Object, obj) as unknown[];
+			if (
+				obj &&
+				typeof obj === 'object' &&
+				'downtown' in obj &&
+				'campus' in obj &&
+				'mall' in obj &&
+				Object.keys(obj).length === 3
+			) {
+				return [...result, undefined] as never;
+			}
+			return result as never;
+		});
+
+		const gameArtModule = await import('./gameArt');
+
+		expect(gameArtModule.TERRAIN_ART_LIST.every((art) => art !== undefined && art !== null)).toBe(
+			true
+		);
+
+		spy.mockRestore();
+		vi.resetModules();
+	});
 });
 
 describe('RECIPE_BUILDING_ART', () => {
@@ -726,6 +760,37 @@ describe('RECIPE_BUILDING_ART', () => {
 	it('returns undefined for recipe IDs without a registered building', () => {
 		expect.assertions(1);
 		expect(RECIPE_BUILDING_ART['nonexistent-recipe' as ProductionRecipeId]).toBeUndefined();
+	});
+
+	it('skips buildings without registered art when building RECIPE_BUILDING_ART', async () => {
+		vi.resetModules();
+		vi.doMock('$lib/game/industry', async () => {
+			const actual =
+				await vi.importActual<typeof import('$lib/game/industry')>('$lib/game/industry');
+			return {
+				...actual,
+				INDUSTRIAL_BUILDING_TYPES: {
+					...actual.INDUSTRIAL_BUILDING_TYPES,
+					'fake-no-art-building': {
+						id: 'fake-no-art-building' as IndustrialBuildingTypeId,
+						name: 'Fake No Art Building',
+						buildCost: 100,
+						dailyOperatingCost: 1,
+						requiredResource: null,
+						requiresIndustrialTile: false,
+						recipeId: 'fake-recipe' as ProductionRecipeId,
+						warehouseCapacity: 0,
+						tier: 1 as BuildingTier
+					}
+				}
+			};
+		});
+		const gameArtModule = await import('./gameArt');
+
+		expect(gameArtModule.RECIPE_BUILDING_ART['fake-recipe' as ProductionRecipeId]).toBeUndefined();
+
+		vi.doUnmock('$lib/game/industry');
+		vi.resetModules();
 	});
 });
 

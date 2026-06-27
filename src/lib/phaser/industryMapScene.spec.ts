@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import type { IndustryMapSnapshot } from '../game/industryMapRender';
 
@@ -121,6 +122,8 @@ const RESIZE_EVENT = 'resize';
 const SHUTDOWN_EVENT = 'shutdown';
 
 import { IndustryMapScene } from './industryMapScene';
+
+const s = (scene: IndustryMapScene) => scene as unknown as Record<string, any>;
 
 function setupScene() {
 	const canvas = createCanvasElement();
@@ -1345,6 +1348,283 @@ describe('IndustryMapScene', () => {
 			const nonCanvasPointer = makePointer({ downElement: 'not-canvas' });
 			zoneInstances[0].fire('pointerup', nonCanvasPointer);
 			expect(handler).not.toHaveBeenCalled();
+		});
+	});
+
+	describe('branch coverage', () => {
+		test('re-renders without rebuilding terrain when terrain key is unchanged', () => {
+			expect.assertions(1);
+			const { scene, zoneInstances } = setupScene();
+			scene.create();
+			scene.updateSnapshot(makeSnapshot());
+			const firstZones = [...zoneInstances];
+			scene.updateSnapshot(makeSnapshot());
+			const allSurvived = firstZones.every((z) => z.mock.destroy.mock.calls.length === 0);
+			expect(allSurvived).toBe(true);
+		});
+
+		test('updates selectedTile from selectedTileId on re-render with unchanged terrain', () => {
+			expect.assertions(1);
+			const { scene } = setupScene();
+			scene.create();
+			scene.updateSnapshot(makeSnapshot());
+			scene.updateSnapshot(makeSnapshot({ selectedTileId: 't-0-0' }));
+			expect(s(scene).selectedTile?.id).toBe('t-0-0');
+		});
+
+		test('sets selectedTile to null when selectedTileId references a missing tile on re-render', () => {
+			expect.assertions(1);
+			const { scene } = setupScene();
+			scene.create();
+			scene.updateSnapshot(makeSnapshot());
+			scene.updateSnapshot(makeSnapshot({ selectedTileId: 'missing' }));
+			expect(s(scene).selectedTile).toBeNull();
+		});
+
+		test('computeTerrainKey returns empty string when no snapshot', () => {
+			expect.assertions(1);
+			const { scene } = setupScene();
+			scene.create();
+			expect(s(scene).computeTerrainKey()).toBe('');
+		});
+
+		test('drawTile returns early when mapGraphics is missing', () => {
+			expect.assertions(1);
+			const { scene } = setupScene();
+			scene.create();
+			s(scene).mapGraphics = undefined;
+			expect(() => s(scene).drawTile(makeSnapshot().tiles[0])).not.toThrow();
+		});
+
+		test('createMapInteractionZone returns early when no snapshot', () => {
+			expect.assertions(1);
+			const { scene } = setupScene();
+			scene.create();
+			const before = s(scene).tileZones.length;
+			s(scene).createMapInteractionZone();
+			expect(s(scene).tileZones.length).toBe(before);
+		});
+
+		test('pointerup does not fire tileSelected when pointer is outside the grid', () => {
+			expect.assertions(1);
+			const { scene, zoneInstances, makePointer } = setupScene();
+			const handler = vi.fn();
+			scene.setEventHandler(handler);
+			scene.create();
+			scene.updateSnapshot(makeSnapshot());
+			const zone = zoneInstances[0];
+			const pointer = makePointer({ x: 5, y: 5, worldX: 5, worldY: 5, isDown: true });
+			zone.fire('pointerdown', pointer);
+			const upPointer = makePointer({ x: 5, y: 5, worldX: 9999, worldY: 9999 });
+			zone.fire('pointerup', upPointer);
+			expect(handler).not.toHaveBeenCalled();
+		});
+
+		test('pointerout does nothing when hoverTileId is already null', () => {
+			expect.assertions(1);
+			const { scene, zoneInstances, graphicsInstances } = setupScene();
+			scene.create();
+			scene.updateSnapshot(makeSnapshot());
+			s(scene).hoverTileId = null;
+			graphicsInstances[3].mock.clear.mockClear();
+			zoneInstances[0].fire('pointerout');
+			expect(graphicsInstances[3].mock.clear).not.toHaveBeenCalled();
+		});
+
+		test('getTileAtPointer falls back to pointer.x/y when worldX/worldY are undefined', () => {
+			expect.assertions(1);
+			const { scene } = setupScene();
+			scene.create();
+			scene.updateSnapshot(makeSnapshot());
+			const tile = s(scene).getTileAtPointer({ x: 5, y: 5, worldX: undefined, worldY: undefined });
+			expect(tile?.id).toBe('t-0-0');
+		});
+
+		test('rebuildMarkerSprites updates attributes and returns when snapshot is null', () => {
+			expect.assertions(1);
+			const { scene } = setupScene();
+			scene.create();
+			s(scene).snapshot = null;
+			expect(() => s(scene).rebuildMarkerSprites()).not.toThrow();
+		});
+
+		test('drawMarkerGraphics returns early when markerGraphics is missing', () => {
+			expect.assertions(1);
+			const { scene } = setupScene();
+			scene.create();
+			s(scene).markerGraphics = undefined;
+			expect(() => s(scene).drawMarkerGraphics(0)).not.toThrow();
+		});
+
+		test('createResourceSprite returns early when tile has no resource', () => {
+			expect.assertions(1);
+			const { scene, imageInstances } = setupScene();
+			scene.create();
+			const before = imageInstances.length;
+			s(scene).createResourceSprite(makeSnapshot().tiles[0]);
+			expect(imageInstances.length).toBe(before);
+		});
+
+		test('drawResourceMarkerFallback returns early when tile has no resource', () => {
+			expect.assertions(1);
+			const { scene, graphicsInstances } = setupScene();
+			scene.create();
+			graphicsInstances[2].mock.fillStyle.mockClear();
+			s(scene).drawResourceMarkerFallback(makeSnapshot().tiles[0]);
+			expect(graphicsInstances[2].mock.fillStyle).not.toHaveBeenCalled();
+		});
+
+		test('drawResourceShape returns early when markerGraphics is missing', () => {
+			expect.assertions(1);
+			const { scene } = setupScene();
+			scene.create();
+			s(scene).markerGraphics = undefined;
+			expect(() =>
+				s(scene).drawResourceShape('grain-field', 0, 0, 5, 0xfacc15, 0xffffff, 0.9)
+			).not.toThrow();
+		});
+
+		test('drawBuildingStatusRing returns early when markerGraphics is missing', () => {
+			expect.assertions(1);
+			const { scene } = setupScene();
+			scene.create();
+			s(scene).markerGraphics = undefined;
+			const building = {
+				id: 'b',
+				name: 'B',
+				typeId: 'grain-farm',
+				tileId: 't',
+				x: 0,
+				y: 0,
+				status: 'idle'
+			};
+			expect(() => s(scene).drawBuildingStatusRing(building, 0, 0)).not.toThrow();
+		});
+
+		test('drawBuildingMarkerFallback returns early when markerGraphics is missing', () => {
+			expect.assertions(1);
+			const { scene } = setupScene();
+			scene.create();
+			s(scene).markerGraphics = undefined;
+			const building = {
+				id: 'b',
+				name: 'B',
+				typeId: 'grain-farm',
+				tileId: 't',
+				x: 0,
+				y: 0,
+				status: 'idle'
+			};
+			expect(() => s(scene).drawBuildingMarkerFallback(building, 0, 0)).not.toThrow();
+		});
+
+		test('drawBuildingShape returns early when markerGraphics is missing', () => {
+			expect.assertions(1);
+			const { scene } = setupScene();
+			scene.create();
+			s(scene).markerGraphics = undefined;
+			expect(() => s(scene).drawBuildingShape('raw', 0, 0, 9)).not.toThrow();
+		});
+
+		test('drawDiamond returns early when markerGraphics is missing', () => {
+			expect.assertions(1);
+			const { scene } = setupScene();
+			scene.create();
+			s(scene).markerGraphics = undefined;
+			expect(() => s(scene).drawDiamond(0, 0, 5, true)).not.toThrow();
+		});
+
+		test('drawDiamond skips strokePath when closePath is false', () => {
+			expect.assertions(1);
+			const { scene, graphicsInstances } = setupScene();
+			scene.create();
+			graphicsInstances[2].mock.strokePath.mockClear();
+			s(scene).drawDiamond(0, 0, 5, false);
+			expect(graphicsInstances[2].mock.strokePath).not.toHaveBeenCalled();
+		});
+
+		test('drawInteractionOutlines returns early when snapshot is null', () => {
+			expect.assertions(1);
+			const { scene, graphicsInstances } = setupScene();
+			scene.create();
+			s(scene).snapshot = null;
+			graphicsInstances[3].mock.clear.mockClear();
+			s(scene).drawInteractionOutlines();
+			expect(graphicsInstances[3].mock.clear).not.toHaveBeenCalled();
+		});
+
+		test('handlePointerMove uses zoom fallback of 1 when camera zoom is 0 during drag', () => {
+			expect.assertions(1);
+			const { scene, inputListeners, cameraMock, makePointer } = setupScene();
+			scene.create();
+			scene.updateSnapshot(makeSnapshot());
+			cameraMock.zoom = 0;
+			s(scene).isDragging = true;
+			s(scene).lastDragPoint = { x: 10, y: 10 };
+			s(scene).dragStartPoint = { x: 10, y: 10 };
+			const pointer = makePointer({ x: 20, y: 20, isDown: true });
+			inputListeners['pointermove'][0].call(scene, pointer);
+			expect(cameraMock.scrollX).toBe(-10);
+		});
+
+		test('handlePointerMove does not update hover when pointer is not on canvas', () => {
+			expect.assertions(1);
+			const { scene, inputListeners, makePointer } = setupScene();
+			scene.create();
+			scene.updateSnapshot(makeSnapshot());
+			s(scene).hoverTileId = null;
+			const pointer = makePointer({
+				event: { target: 'not-canvas' },
+				x: 5,
+				y: 5,
+				worldX: 5,
+				worldY: 5
+			});
+			inputListeners['pointermove'][0].call(scene, pointer);
+			expect(s(scene).hoverTileId).toBeNull();
+		});
+
+		test('didDrag returns false when dragStartPoint is null', () => {
+			expect.assertions(1);
+			const { scene, makePointer } = setupScene();
+			scene.create();
+			s(scene).hasDragged = false;
+			s(scene).dragStartPoint = null;
+			const pointer = makePointer({ x: 100, y: 100 });
+			expect(s(scene).didDrag(pointer)).toBe(false);
+		});
+
+		test('setCameraBounds uses minimum tile size when snapshot is null', () => {
+			expect.assertions(1);
+			const { scene, cameraMock } = setupScene();
+			scene.create();
+			s(scene).snapshot = null;
+			s(scene).setCameraBounds();
+			expect(cameraMock.setBounds).toHaveBeenCalledWith(0, 0, 32, 32);
+		});
+
+		test('updateCanvasCameraAttributes uses zoom fallback of 1 when zoom is 0', () => {
+			expect.assertions(1);
+			const { scene, canvas, cameraMock } = setupScene();
+			scene.create();
+			scene.updateSnapshot(makeSnapshot());
+			cameraMock.zoom = 0;
+			s(scene).lastCameraKey = null;
+			s(scene).updateCanvasCameraAttributes();
+			expect(Number(canvas.dataset.mapZoom)).toBe(1);
+		});
+
+		test('updateCanvasCameraAttributes falls back to scale dimensions when worldView is zero', () => {
+			expect.assertions(2);
+			const { scene, canvas, cameraMock } = setupScene();
+			scene.create();
+			scene.updateSnapshot(makeSnapshot());
+			cameraMock.zoom = 1;
+			cameraMock.worldView = { x: 0, y: 0, width: 0, height: 0 };
+			s(scene).lastCameraKey = null;
+			s(scene).updateCanvasCameraAttributes();
+			expect(Number(canvas.dataset.mapViewWidth)).toBe(800);
+			expect(Number(canvas.dataset.mapViewHeight)).toBe(600);
 		});
 	});
 });

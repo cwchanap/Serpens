@@ -659,4 +659,98 @@ describe('daily simulation', () => {
 			marketPosition: expect.any(Number)
 		});
 	});
+
+	test('assigns zero utilization when a store has zero staff capacity', () => {
+		expect.assertions(1);
+		const base = createNewGame('grocery', 20260615);
+		const store = {
+			...base.stores[0]!,
+			staffCapacity: 0,
+			products: base.stores[0]!.products.map((p) => ({
+				...p,
+				stock: 500,
+				targetStock: 500
+			}))
+		};
+		const result = simulateDay({ ...base, stores: [store] });
+		const report = result.reports[0]!.storeReports[0]!;
+
+		expect(report.customersServed).toBe(0);
+	});
+
+	test('does not accrue xp for staff already at the level cap', () => {
+		expect.assertions(2);
+		const base = createNewGame('grocery', 20260615);
+		const assigned = base.staff.filter((member) => member.assignedStoreId !== null)[0]!;
+		const cap = getStaffXpForLevel(assigned.level);
+		const maxedOut = { ...assigned, xp: cap };
+		const game = {
+			...base,
+			staff: base.staff.map((member) => (member.id === maxedOut.id ? maxedOut : member))
+		};
+		const result = simulateDay(game);
+		const updated = result.staff.find((member) => member.id === maxedOut.id)!;
+
+		expect(updated.xp).toBe(cap);
+		expect(updated).toEqual(maxedOut);
+	});
+
+	test('uses zero demand-missed rate when stores have no customers or missed demand', () => {
+		expect.assertions(2);
+		const game = createNewGame('convenience', 20260508);
+		const storeWithNoProducts = {
+			...game.stores[0]!,
+			products: []
+		};
+		const result = simulateDay({ ...game, stores: [storeWithNoProducts] });
+		const report = result.reports[0]!.storeReports[0]!;
+
+		expect(report.customersServed).toBe(0);
+		expect(report.demandMissed).toBe(0);
+	});
+
+	test('creates default product reports for stores with no sales or import reports', () => {
+		expect.assertions(3);
+		const game = createNewGame('convenience', 20260508);
+		const store = {
+			...game.stores[0]!,
+			products: [
+				{
+					categoryId: 'unknown-category',
+					stock: 100,
+					reorderThreshold: 5,
+					targetStock: 100,
+					sellingPrice: 5
+				}
+			]
+		};
+		const result = simulateDay({ ...game, stores: [store] });
+		const productReport = result.reports[0]!.storeReports[0]!.productReports.find(
+			(report) => report.categoryId === 'unknown-category'
+		);
+
+		expect(productReport).toBeDefined();
+		expect(productReport?.unitsSold).toBe(0);
+		expect(productReport?.name).toBe('unknown-category');
+	});
+
+	test('omits shop imports for non-finished-material categories from the production report', () => {
+		expect.assertions(2);
+		const game = {
+			...createNewGame('boutique', 20260508),
+			day: 7,
+			cash: 100_000
+		};
+		const store = {
+			...game.stores[0]!,
+			products: [
+				{ categoryId: 'apparel', stock: 0, reorderThreshold: 5, targetStock: 20, sellingPrice: 38 }
+			]
+		};
+		const result = simulateDay({ ...game, stores: [store] });
+		const productionReport = result.reports[0]!.productionReport;
+
+		expect(productionReport.shopImports).toEqual([]);
+		expect(result.reports[0]!.storeReports[0]!.productReports[0]!.importedUnits).toBeGreaterThan(0);
+	});
 });

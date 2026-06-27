@@ -1,9 +1,15 @@
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
+
+const { tauriLoadMock } = vi.hoisted(() => ({ tauriLoadMock: vi.fn() }));
+
+vi.mock('@tauri-apps/plugin-store', () => ({ load: tauriLoadMock }));
+
 import { simulateDay } from '$lib/game/simulateDay';
 import { createNewGame } from '$lib/game/state';
 import type { GameState } from '$lib/game/types';
 import { STARTER_STORE_CAP, createInitialWorldProgress } from '$lib/game/world';
 import {
+	createTauriSaveRepository,
 	createTauriSaveRepositoryFromStore,
 	SAVE_STORE_KEY,
 	type StoreLike
@@ -128,5 +134,34 @@ describe('Tauri save repository', () => {
 
 		expect(summary.autoSave).toBeNull();
 		expect(summary.manualSlots).toEqual([]);
+	});
+
+	test('uses the current wall-clock time when createTauriSaveRepositoryFromStore is built without a now clock', async () => {
+		expect.assertions(3);
+		const before = Date.now();
+		const store = new FakeStore();
+		const repository = createTauriSaveRepositoryFromStore(Promise.resolve(store));
+
+		const metadata = await repository.saveAuto(createGame({ day: 6 }));
+		const after = Date.now();
+
+		expect(metadata.kind).toBe('auto');
+		expect(Number(new Date(metadata.updatedAt))).toBeGreaterThanOrEqual(before);
+		expect(Number(new Date(metadata.updatedAt))).toBeLessThanOrEqual(after);
+	});
+
+	test('uses the current wall-clock time when createTauriSaveRepository is built without a now clock', async () => {
+		expect.assertions(3);
+		const store = new FakeStore();
+		tauriLoadMock.mockResolvedValue(store);
+
+		const before = Date.now();
+		const repository = createTauriSaveRepository();
+		const metadata = await repository.saveAuto(createGame({ day: 6 }));
+		const after = Date.now();
+
+		expect(metadata.kind).toBe('auto');
+		expect(Number(new Date(metadata.updatedAt))).toBeGreaterThanOrEqual(before);
+		expect(Number(new Date(metadata.updatedAt))).toBeLessThanOrEqual(after);
 	});
 });

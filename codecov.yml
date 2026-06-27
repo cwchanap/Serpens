@@ -22,3 +22,6 @@ ignore:
   - 'src/**/*.svelte.spec.ts'
   - 'src/**/*.e2e.ts'
   - 'src/app.d.ts'
+  - 'src/routes/+page.svelte'
+  - 'src/routes/+layout.svelte'
+  - 'src/routes/+layout.ts'

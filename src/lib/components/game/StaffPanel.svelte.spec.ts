@@ -97,9 +97,9 @@ function renderStaffPanel(
 		...overrides
 	};
 
-	render(StaffPanel, props);
+	const result = render(StaffPanel, props);
 
-	return props;
+	return { ...props, result };
 }
 
 describe('StaffPanel', () => {
@@ -383,5 +383,167 @@ describe('StaffPanel', () => {
 		await page.getByRole('button', { name: /Promote Taylor Morgan/ }).click();
 
 		expect(onPromote).toHaveBeenCalledWith('staff-assigned');
+	});
+
+	it('renders empty states when there are no candidates and no unassigned staff', async () => {
+		expect.assertions(3);
+
+		renderStaffPanel({
+			hiringCandidates: [],
+			staff: [
+				{
+					...staff[0]!,
+					assignedStoreId: 'store-1'
+				}
+			]
+		});
+
+		await expect.element(page.getByText('No candidates available')).toBeVisible();
+		await expect.element(page.getByText('No unassigned staff')).toBeVisible();
+		await expect.element(page.getByRole('heading', { name: 'Candidates' })).toBeVisible();
+	});
+
+	it('renders a store with no assigned staff as empty', async () => {
+		expect.assertions(2);
+
+		renderStaffPanel({
+			stores: [store, secondStore],
+			staff: [
+				{
+					...staff[0]!,
+					assignedStoreId: 'store-1'
+				}
+			]
+		});
+
+		await expect.element(page.getByText('No assigned staff')).toBeVisible();
+		await expect.element(page.getByText('Mall Store: 0/1 managers, 0/2 general')).toBeVisible();
+	});
+
+	it('renders no store cards and only the Unassigned option when there are no stores', async () => {
+		expect.assertions(3);
+
+		renderStaffPanel({
+			stores: [],
+			staff: [
+				{
+					...staff[1]!,
+					assignedStoreId: null
+				}
+			]
+		});
+
+		await expect.element(page.getByText('No unassigned staff')).not.toBeInTheDocument();
+		const select = page.getByLabelText(
+			'Assign Blair Kim, General staff staff-blair, currently unassigned'
+		);
+		await expect.element(select).toBeVisible();
+		const options = select.element().querySelectorAll('option');
+		expect(options).toHaveLength(1);
+	});
+
+	it('does not render a promote button for an assigned staff member without enough xp', async () => {
+		expect.assertions(1);
+
+		renderStaffPanel({
+			staff: [
+				{
+					id: 'staff-assigned-noxp',
+					name: 'Riley Hayes',
+					role: 'general',
+					monthlySalary: 2_800,
+					skill: 60,
+					morale: 70,
+					assignedStoreId: 'store-1',
+					hiredOnDay: 0,
+					level: 1,
+					xp: 0
+				}
+			]
+		});
+
+		await expect
+			.element(page.getByRole('button', { name: /Promote Riley Hayes/ }))
+			.not.toBeInTheDocument();
+	});
+
+	it('reconciles each-block items when props rerender with the same keys but changed data', async () => {
+		expect.assertions(4);
+
+		const { result } = renderStaffPanel();
+
+		await expect.element(page.getByText('2 hired staff')).toBeVisible();
+		await expect.element(page.getByRole('heading', { name: 'Alex Chen' })).toBeVisible();
+
+		// Rerender with the SAME keys (ids) but mutated properties so Svelte's
+		// keyed-each reconciliation takes the "reuse existing item" path.
+		await result.rerender({
+			stores: [{ ...store, name: 'Renamed Store' }],
+			staff: [
+				{ ...staff[0]!, name: 'Alex Renamed', level: 2, xp: 50 },
+				{ ...staff[1]!, name: 'Blair Renamed', skill: 80 }
+			],
+			hiringCandidates: [{ ...hiringCandidates[0]!, name: 'Casey Renamed', skill: 90 }],
+			cash: 100_000,
+			onHire: vi.fn(),
+			onAssign: vi.fn(),
+			onUnassign: vi.fn(),
+			onPromote: vi.fn()
+		});
+
+		await expect.element(page.getByRole('heading', { name: 'Alex Renamed' })).toBeVisible();
+		await expect.element(page.getByRole('heading', { name: 'Casey Renamed' })).toBeVisible();
+	});
+
+	it('reconciles each-block items across multiple rerenders with swaps and removals', async () => {
+		expect.assertions(3);
+
+		const { result } = renderStaffPanel();
+
+		// Step 1: swap assignments (alex unassigned, blair assigned) to trigger
+		// assigned-staff and unassigned-staff each-block reconciliation.
+		await result.rerender({
+			stores: [store, secondStore],
+			staff: [
+				{ ...staff[0]!, assignedStoreId: null, xp: 100 },
+				{ ...staff[1]!, assignedStoreId: 'store-2', xp: 100 }
+			],
+			hiringCandidates: [
+				...hiringCandidates,
+				{
+					id: 'candidate-dana',
+					name: 'Dana Lee',
+					role: 'manager',
+					monthlySalary: 4_400,
+					skill: 70,
+					morale: 65
+				}
+			],
+			cash: 100_000,
+			onHire: vi.fn(),
+			onAssign: vi.fn(),
+			onUnassign: vi.fn(),
+			onPromote: vi.fn()
+		});
+
+		await expect.element(page.getByText('2 hired staff')).toBeVisible();
+
+		// Step 2: remove a candidate and a store, keep staff ids but change data.
+		await result.rerender({
+			stores: [store],
+			staff: [
+				{ ...staff[0]!, assignedStoreId: 'store-1', name: 'Alex II', level: 2 },
+				{ ...staff[1]!, assignedStoreId: null, name: 'Blair II' }
+			],
+			hiringCandidates: [],
+			cash: 100_000,
+			onHire: vi.fn(),
+			onAssign: vi.fn(),
+			onUnassign: vi.fn(),
+			onPromote: vi.fn()
+		});
+
+		await expect.element(page.getByRole('heading', { name: 'Alex II' })).toBeVisible();
+		await expect.element(page.getByText('No candidates available')).toBeVisible();
 	});
 });

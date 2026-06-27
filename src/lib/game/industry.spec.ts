@@ -16,7 +16,9 @@ import type {
 	IndustryCity,
 	IndustryResourceId,
 	IndustryTerrainId,
-	IndustryTile
+	IndustryTile,
+	MaterialDefinition,
+	MaterialId
 } from './types';
 
 function acceptIndustrialBuildingType(building: IndustrialBuildingType): void {
@@ -393,6 +395,23 @@ describe('tier 1 chains', () => {
 		expect(getCategoryTier('snacks')).toBe(3);
 		expect(getCategoryTier('gifts')).toBe(3);
 		expect(getCategoryTier('apparel')).toBeNull();
+	});
+
+	it('returns null for a finished material with no producer building', () => {
+		expect.assertions(1);
+		const testMaterialId = 'test-finished-no-producer' as MaterialId;
+		const mutableMaterials = MATERIALS as Record<string, MaterialDefinition>;
+		mutableMaterials[testMaterialId] = {
+			id: testMaterialId,
+			name: 'Test Finished',
+			kind: 'finished',
+			importCost: 1,
+			localValue: 1
+		};
+
+		expect(getCategoryTier(testMaterialId)).toBeNull();
+
+		delete mutableMaterials[testMaterialId];
 	});
 
 	it('resolves every finished product material to a non-null tier', () => {

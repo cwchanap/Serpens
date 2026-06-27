@@ -675,3 +675,104 @@ describe('demand multipliers and stock ratios', () => {
 		expect(standard).toBeLessThan(discount);
 	});
 });
+
+describe('branch coverage edge cases', () => {
+	test('updateStoreProduct leaves sibling products untouched when updating one of many', () => {
+		expect.assertions(3);
+		const game = withOneStoreProducts([
+			{ categoryId: 'snacks', stock: 8, reorderThreshold: 12, targetStock: 30, sellingPrice: 5 },
+			{ categoryId: 'drinks', stock: 10, reorderThreshold: 5, targetStock: 40, sellingPrice: 4 }
+		]);
+
+		const updated = updateStoreProduct(game, 'store-1', 'snacks', { sellingPrice: 7 });
+		const snacks = updated.stores[0]!.products.find((p) => p.categoryId === 'snacks')!;
+		const drinks = updated.stores[0]!.products.find((p) => p.categoryId === 'drinks')!;
+
+		expect(snacks.sellingPrice).toBe(7);
+		expect(drinks.sellingPrice).toBe(4);
+		expect(drinks).toBe(game.stores[0]!.products.find((p) => p.categoryId === 'drinks'));
+	});
+
+	test('updateStoreProduct leaves sibling stores untouched when updating one of many', () => {
+		expect.assertions(3);
+		const baseGame = createNewGame('convenience', 20260508);
+		const expansionTile = baseGame.cities[0]!.tiles.find(
+			(tile) => !tile.locked && tile.feature === null && tile.id !== baseGame.stores[0]!.tileId
+		)!;
+		const game = { ...baseGame, cash: 100_000 };
+		const gameWithTwoStores = {
+			...game,
+			stores: [
+				{
+					...game.stores[0]!,
+					products: [
+						{
+							categoryId: 'snacks',
+							stock: 8,
+							reorderThreshold: 12,
+							targetStock: 30,
+							sellingPrice: 5
+						}
+					]
+				},
+				{
+					...game.stores[0]!,
+					id: 'store-2',
+					name: 'Store #2',
+					tileId: expansionTile.id,
+					products: [
+						{
+							categoryId: 'snacks',
+							stock: 8,
+							reorderThreshold: 12,
+							targetStock: 30,
+							sellingPrice: 5
+						}
+					]
+				}
+			]
+		};
+
+		const updated = updateStoreProduct(gameWithTwoStores, 'store-1', 'snacks', {
+			sellingPrice: 9
+		});
+
+		expect(updated.stores[0]!.products[0]!.sellingPrice).toBe(9);
+		expect(updated.stores[1]!.products[0]!.sellingPrice).toBe(5);
+		expect(updated.stores[1]).toBe(gameWithTwoStores.stores[1]);
+	});
+
+	test('getFinishedMaterialIdForCategory returns null for non-finished materials', () => {
+		expect.assertions(3);
+		expect(getFinishedMaterialIdForCategory('water')).toBeNull();
+		expect(getFinishedMaterialIdForCategory('flour')).toBeNull();
+		expect(getFinishedMaterialIdForCategory('packaging')).toBeNull();
+	});
+
+	test('simulateProductSalesForCity treats a missing store capacity as zero', () => {
+		expect.assertions(2);
+		const game = createNewGame('convenience', 20260508);
+		const store = {
+			...game.stores[0]!,
+			products: [
+				{
+					categoryId: 'snacks',
+					stock: 100,
+					reorderThreshold: 10,
+					targetStock: 100,
+					sellingPrice: 5
+				}
+			]
+		};
+		const result = simulateProductSalesForCity({
+			game: { ...game, stores: [store] },
+			city: game.cities[0]!,
+			rng: createRng(3),
+			storeCapacity: new Map()
+		});
+		const report = result.productReports.get(store.id)?.[0];
+
+		expect(report).toBeDefined();
+		expect(report?.unitsSold).toBe(0);
+	});
+});

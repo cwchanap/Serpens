@@ -117,4 +117,65 @@ describe('StoreOverview', () => {
 		await expect.element(warningsList.getByText('Low stock alert')).toBeVisible();
 		await expect.element(storeRegion.getByText('No current warnings.')).not.toBeInTheDocument();
 	});
+
+	it('falls back to store defaults when no matching report exists', async () => {
+		expect.assertions(5);
+
+		render(StoreOverview, {
+			stores: [store],
+			staff: [],
+			latestReports: []
+		});
+
+		const storeRegion = page.getByRole('region', { name: 'Stores' });
+
+		await expect.element(storeRegion.getByText('80', { exact: true })).toBeVisible();
+		await expect.element(storeRegion.getByText('$0').first()).toBeVisible();
+		await expect
+			.element(storeRegion.getByRole('list', { name: 'Founding Store product source split' }))
+			.not.toBeInTheDocument();
+		await expect.element(storeRegion.getByText('No current warnings.')).toBeVisible();
+		await expect
+			.element(storeRegion.getByRole('list', { name: 'Founding Store warnings' }))
+			.not.toBeInTheDocument();
+	});
+
+	it('shows product source split for products sourced only via imports', async () => {
+		expect.assertions(3);
+
+		const importOnlyReport: DailyStoreReport = {
+			...staleReport,
+			productReports: [
+				{
+					categoryId: 'snacks',
+					name: 'Snacks',
+					unitsSold: 6,
+					demandMissed: 1,
+					revenue: 36,
+					costOfGoods: 18,
+					grossMargin: 18,
+					endingStock: 14,
+					warehouseUnits: 0,
+					warehouseValue: 0,
+					importedUnits: 5,
+					importCost: 3,
+					importSpend: 15
+				}
+			]
+		};
+
+		render(StoreOverview, {
+			stores: [store],
+			staff: [],
+			latestReports: [importOnlyReport]
+		});
+
+		const productSources = page.getByRole('list', {
+			name: 'Founding Store product source split'
+		});
+
+		await expect.element(productSources.getByText('Snacks')).toBeVisible();
+		await expect.element(productSources.getByText('0 warehouse')).toBeVisible();
+		await expect.element(productSources.getByText('5 imported')).toBeVisible();
+	});
 });

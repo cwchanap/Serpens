@@ -40,4 +40,47 @@ describe('ProductChainsPanel', () => {
 		await expect.element(page.getByRole('button', { name: 'Store category chains' })).toBeVisible();
 		await expect.element(page.getByRole('heading', { name: 'Warehouse flow' })).toBeVisible();
 	});
+
+	it('shows empty-state messages and the fallback heading when no stores have chain categories', async () => {
+		expect.assertions(4);
+		const baseGame = createNewGame('convenience', 20260518);
+		const game: GameState = { ...baseGame, stores: [] };
+
+		renderProductChainsPanel(game);
+
+		await expect
+			.element(page.getByText('No store categories have local production chains yet.'))
+			.toBeVisible();
+		await expect.element(page.getByText('No chain graph is available.')).toBeVisible();
+		await expect.element(page.getByRole('heading', { name: 'Product Chains' })).toBeVisible();
+		await expect.element(page.getByTestId('category-stamp-bottled-water')).not.toBeInTheDocument();
+	});
+
+	it('shows the fallback heading in warehouse-flow mode when no warehouse stock or report exists', async () => {
+		expect.assertions(2);
+		const game = createNewGame('convenience', 20260518);
+
+		renderProductChainsPanel(game);
+
+		await page.getByRole('button', { name: 'Warehouse flow' }).click();
+
+		await expect.element(page.getByText('No warehouse stock or daily report yet.')).toBeVisible();
+		await expect.element(page.getByRole('heading', { name: 'Warehouse flow' })).toBeVisible();
+	});
+
+	it('selects a chain node and shows the inspected node broadside', async () => {
+		expect.assertions(2);
+		const game = createNewGame('convenience', 20260518);
+
+		renderProductChainsPanel(game);
+
+		const graph = page.getByTestId('product-chain-graph-chain:bottled-water');
+		const firstNodeButton = graph.getByRole('button').first();
+		await firstNodeButton.click();
+
+		await expect.element(page.getByText('Inspected node')).toBeVisible();
+		await expect
+			.element(page.getByText('Select a graph node to inspect its latest flow metrics.'))
+			.not.toBeInTheDocument();
+	});
 });

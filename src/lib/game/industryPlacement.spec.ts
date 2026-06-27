@@ -265,4 +265,62 @@ describe('industrial placement', () => {
 
 		expect(upgradeBuilding(clone, game.industrialBuildings[0]!.id)).toBe(clone);
 	});
+
+	test('getIndustrialPlacementBlockReason reports unknown tile when the active industry city is missing', () => {
+		expect.assertions(1);
+		const game = {
+			...createNewGame('convenience', 20260512),
+			activeIndustryCityId: 'missing-city'
+		};
+
+		expect(getIndustrialPlacementBlockReason(game, 'any-tile', 'warehouse')).toBe(
+			'Unknown industrial tile'
+		);
+	});
+
+	test('buildIndustrialBuilding reports unknown tile when the active industry city is missing', () => {
+		expect.assertions(2);
+		const game = {
+			...createNewGame('convenience', 20260512),
+			cash: 100_000,
+			activeIndustryCityId: 'missing-city'
+		};
+
+		const result = buildIndustrialBuilding(game, {
+			tileId: 'any-tile',
+			buildingTypeId: 'warehouse'
+		});
+
+		expect(result.industrialBuildings).toHaveLength(0);
+		expect(result.decisions.at(-1)?.context).toBe('Unknown industrial tile');
+	});
+
+	test('upgradeBuilding leaves sibling buildings unchanged when upgrading one of multiple buildings', () => {
+		expect.assertions(3);
+		const base = { ...createNewGame('convenience', 20260512), cash: 1_000_000 };
+		const city = base.industryCities[0]!;
+		const grainTile = getIndustryTilesByResource(city, 'grain-field')[0]!;
+		const waterTile = getIndustryTilesByResource(city, 'water-source')[0]!;
+		let game = buildIndustrialBuilding(base, {
+			tileId: grainTile.id,
+			buildingTypeId: 'grain-farm'
+		});
+		game = buildIndustrialBuilding(game, {
+			tileId: waterTile.id,
+			buildingTypeId: 'water-pump'
+		});
+		const firstBuildingId = game.industrialBuildings[0]!.id;
+		const siblingBefore = game.industrialBuildings[1]!;
+
+		const upgraded = upgradeBuilding(game, firstBuildingId);
+
+		const siblingAfter = upgraded.industrialBuildings.find(
+			(building) => building.id === siblingBefore.id
+		)!;
+		expect(
+			upgraded.industrialBuildings.find((building) => building.id === firstBuildingId)?.level
+		).toBe(2);
+		expect(siblingAfter.level).toBe(1);
+		expect(siblingAfter).toBe(siblingBefore);
+	});
 });

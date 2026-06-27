@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { addWarehouseMaterial } from './industryProduction';
 import { openStoreAtTile } from './placement';
 import { buildProductChainTree, buildStoreCategoryChainSummaries } from './productChainTree';
@@ -7,8 +7,20 @@ import type {
 	DailyProductReport,
 	DailyProductionReport,
 	DailyStoreReport,
-	GameState
+	GameState,
+	MaterialId
 } from './types';
+
+vi.mock('./productChainGraph', async (importOriginal) => {
+	const actual = (await importOriginal()) as Record<string, unknown>;
+	return {
+		...actual,
+		isSupportedFinishedMaterial: (categoryId: string): categoryId is MaterialId => {
+			if (categoryId === 'fake-finished') return true;
+			return (actual.isSupportedFinishedMaterial as (id: string) => boolean)(categoryId);
+		}
+	};
+});
 
 function convenienceGame(): GameState {
 	return { ...createNewGame('convenience', 20260611), cash: 1_000_000 };
@@ -644,5 +656,16 @@ describe('buildStoreCategoryChainSummaries (tree)', () => {
 		expect(snacks?.produced).toBe(8);
 		expect(snacks?.consumed).toBe(13);
 		expect(snacks?.imported).toBe(0);
+	});
+});
+
+describe('buildProductChainTree defensive branches', () => {
+	it('returns an empty graph when a supported finished material has no producer recipe', () => {
+		const game = convenienceGame();
+		const tree = buildProductChainTree({ game, store: null, categoryId: 'fake-finished' });
+
+		expect(tree.nodes).toEqual([]);
+		expect(tree.emptyReason).toBe('No local production chain available for this category yet.');
+		expect(tree.title).toBe('fake-finished');
 	});
 });

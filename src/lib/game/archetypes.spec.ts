@@ -73,6 +73,11 @@ describe('retail archetypes', () => {
 		);
 		expect(getArchetype('electronics').name).toBe('Electronics & Games');
 	});
+
+	test('throws when looking up an unknown archetype id', () => {
+		expect.assertions(1);
+		expect(() => getArchetype('nonexistent' as never)).toThrow('Unknown archetype: nonexistent');
+	});
 });
 
 describe('convenience tier 1 lineup', () => {

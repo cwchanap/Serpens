@@ -114,4 +114,20 @@ describe('CategoryStampIndex', () => {
 		const stamp = document.querySelector('[data-testid="category-stamp-snacks"]');
 		expect(stamp?.textContent).not.toContain('Tier');
 	});
+
+	it('omits the icon image for categories without industry material art', async () => {
+		expect.assertions(2);
+		const onSelectCategory = vi.fn();
+
+		render(CategoryStampIndex, {
+			summaries: [summary({ categoryId: 'apparel', name: 'Apparel' })],
+			activeCategoryId: null,
+			mode: 'store-categories',
+			onSelectCategory
+		});
+
+		const stamp = document.querySelector('[data-testid="category-stamp-apparel"]');
+		expect(stamp?.querySelector('img')).toBeNull();
+		await expect.element(page.getByRole('button', { name: /Apparel/i })).toBeVisible();
+	});
 });
