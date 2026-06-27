@@ -535,8 +535,11 @@ describe('IndustryTileInspector', () => {
 			onClose: vi.fn()
 		});
 
+		const buildingDetails = page.getByLabelText('Industrial building details');
 		await expect.element(page.getByText(/Level 3 \/ 10/i)).toBeInTheDocument();
-		await expect.element(page.getByText('42')).toBeVisible();
+		// Scope to the building details section so the produced-total reconciliation
+		// is verified against the updated row rather than an unrelated "42" text.
+		await expect.element(buildingDetails.getByText('42')).toBeVisible();
 	});
 
 	it('reconciles warehouse materials when rerendered with changed material quantities', async () => {

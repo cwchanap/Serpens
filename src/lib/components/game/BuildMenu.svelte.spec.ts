@@ -249,6 +249,11 @@ describe('BuildMenu', () => {
 		const button = page.getByRole('button', { name: /build boutique goods/i });
 		await expect.element(button).toBeDisabled();
 		await expect.element(page.getByText('No valid tiles for this store type.')).toBeVisible();
+		// A native click on the raw disabled element exercises the disabled branch:
+		// a disabled button suppresses activation, so onChooseRetail stays uncalled.
+		// If the button ever became clickable, this click would dispatch onclick and
+		// fail the assertion.
+		document.querySelector<HTMLButtonElement>('button.build-option')!.click();
 		expect(onChooseRetail).not.toHaveBeenCalled();
 	});
 

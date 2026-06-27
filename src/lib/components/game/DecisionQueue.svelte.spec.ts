@@ -99,7 +99,7 @@ describe('DecisionQueue', () => {
 	});
 
 	it('renders a decision card with no option buttons when options is empty', async () => {
-		expect.assertions(2);
+		expect.assertions(3);
 
 		renderQueue({
 			decisions: [
@@ -117,5 +117,8 @@ describe('DecisionQueue', () => {
 			.element(page.getByRole('heading', { level: 3, name: 'Mystery Offer' }))
 			.toBeVisible();
 		await expect.element(page.getByText('Expires day 20')).toBeVisible();
+		// Explicitly cover the empty-options branch: the rendered card must contain
+		// no option buttons, not just display its copy.
+		expect(document.querySelector('article')?.querySelector('button')).toBeNull();
 	});
 });

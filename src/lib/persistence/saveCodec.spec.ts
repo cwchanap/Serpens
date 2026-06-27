@@ -1006,13 +1006,16 @@ describe('saveCodec', () => {
 	});
 
 	test('migrateSaveRecord returns non-object values untouched before validating', () => {
-		expect.assertions(1);
+		expect.assertions(2);
 
 		expect(() => validateSaveRecord('not-an-object')).toThrow(SaveDataError);
+		// The specific message proves migration left the non-object untouched: a
+		// mutated value would surface a different validation error.
+		expect(() => validateSaveRecord('not-an-object')).toThrow('Save record must be an object');
 	});
 
 	test('v4 migration leaves a non-object store untouched then fails validation', () => {
-		expect.assertions(1);
+		expect.assertions(2);
 		const record = createV4Record({
 			game: {
 				stores: ['not-a-store' as unknown as GameState['stores'][number]]
@@ -1020,10 +1023,13 @@ describe('saveCodec', () => {
 		});
 
 		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+		// Asserting the store-level (not product-level) "must be an object" message
+		// proves migration did not wrap or coerce the non-object store entry.
+		expect(() => validateSaveRecord(record)).toThrow('Saved game stores[0] must be an object');
 	});
 
 	test('v4 migration leaves a non-object boutique product untouched then fails validation', () => {
-		expect.assertions(1);
+		expect.assertions(2);
 		const baseStore = createGame().stores[0]!;
 		const record = createV4Record({
 			game: {
@@ -1040,6 +1046,11 @@ describe('saveCodec', () => {
 		});
 
 		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+		// The product-level "must be an object" message proves migration left the
+		// non-object product entry intact rather than dropping or wrapping it.
+		expect(() => validateSaveRecord(record)).toThrow(
+			'Saved game stores[0] products[0] must be an object'
+		);
 	});
 
 	test('v4 migration renames a legacy boutique accessories category to fashion-accessories', () => {
@@ -1072,7 +1083,7 @@ describe('saveCodec', () => {
 	});
 
 	test('v4 migration leaves a non-object game untouched then fails validation', () => {
-		expect.assertions(1);
+		expect.assertions(2);
 		const record: SaveRecord = {
 			...createManualSaveRecord(),
 			schemaVersion: 4 as unknown as typeof SAVE_SCHEMA_VERSION,
@@ -1080,10 +1091,13 @@ describe('saveCodec', () => {
 		};
 
 		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+		// The "Saved game must be an object" message proves migration returned the
+		// null game verbatim instead of substituting a default object.
+		expect(() => validateSaveRecord(record)).toThrow('Saved game must be an object');
 	});
 
 	test('v4 migration leaves a non-array stores field untouched then fails validation', () => {
-		expect.assertions(1);
+		expect.assertions(2);
 		const record: SaveRecord = {
 			...createManualSaveRecord(),
 			schemaVersion: 4 as unknown as typeof SAVE_SCHEMA_VERSION,
@@ -1094,10 +1108,13 @@ describe('saveCodec', () => {
 		};
 
 		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+		// The stores-level array message proves migration short-circuited on the
+		// non-array field and forwarded it to validation unchanged.
+		expect(() => validateSaveRecord(record)).toThrow('Saved game stores must be an array');
 	});
 
 	test('v4 snapshot migration leaves a non-object autoSave untouched then fails validation', () => {
-		expect.assertions(1);
+		expect.assertions(2);
 		const snapshot = {
 			schemaVersion: 4,
 			autoSave: 'not-an-object',
@@ -1105,10 +1122,13 @@ describe('saveCodec', () => {
 		};
 
 		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
+		// The record-level "must be an object" message proves the snapshot migration
+		// forwarded the non-object autoSave to validateSaveRecord unmodified.
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow('Save record must be an object');
 	});
 
 	test('v4 snapshot migration skips mapping when manualSlots is not an array', () => {
-		expect.assertions(1);
+		expect.assertions(2);
 		const snapshot = {
 			schemaVersion: 4,
 			autoSave: null,
@@ -1116,6 +1136,9 @@ describe('saveCodec', () => {
 		};
 
 		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
+		// The manualSlots array message proves the migration skipped .map() and let
+		// validation reject the non-array field directly.
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow('manualSlots must be an array');
 	});
 
 	test('normalizeSavedStoreLevel defaults to level 1 when products is not an array', () => {
@@ -1173,6 +1196,26 @@ describe('saveCodec', () => {
 		});
 
 		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+	});
+
+	test('normalizeSavedStoreLevel infers level 1 for an otherwise-valid store missing the level field', () => {
+		// The three cases above only prove validation rejects the intentionally
+		// invalid sibling field; they never observe the inferred level. This case
+		// round-trips a valid boutique store (1 starting product) with `level`
+		// removed through validateSaveRecord so the normalization result — level
+		// 1 derived from the single-product count — is observable on the output.
+		expect.assertions(1);
+		const baseStore = createGame().stores[0]!;
+		const storeWithoutLevel = { ...baseStore } as Record<string, unknown>;
+		delete storeWithoutLevel.level;
+		const record = createManualSaveRecord({
+			game: {
+				stores: [storeWithoutLevel as unknown as GameState['stores'][number]]
+			}
+		});
+
+		const validated = validateSaveRecord(record);
+		expect(validated.game.stores[0]?.level).toBe(1);
 	});
 
 	test('normalizeSavedGame infers store cap with a non-array stores field in a legacy save', () => {
