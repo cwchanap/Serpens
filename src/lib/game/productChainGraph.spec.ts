@@ -409,7 +409,7 @@ describe('warehouse flow graph health branches', () => {
 			...game,
 			warehouse: {
 				capacity: 200,
-				materials: { 'unknown-material': 3 } as Record<MaterialId, number>,
+				materials: { 'unknown-material': 3 } as unknown as Partial<Record<MaterialId, number>>,
 				overflowUnits: 0,
 				overflowCost: 0
 			}
@@ -465,7 +465,14 @@ describe('createInputWeightMap branch coverage', () => {
 	test('skips produced materials that have no producer recipe', () => {
 		expect.assertions(1);
 		const report = emptyProductionReport({
-			produced: [{ materialId: 'unknown-material', quantity: 5, value: 10, source: 'local' }]
+			produced: [
+				{
+					materialId: 'unknown-material' as unknown as MaterialId,
+					quantity: 5,
+					value: 10,
+					source: 'local'
+				}
+			]
 		});
 
 		const weights = createInputWeightMap([], report);
