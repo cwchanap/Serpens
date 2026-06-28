@@ -10,9 +10,10 @@ const mockResume = vi.fn();
 let shouldFail = false;
 
 vi.mock('phaser', () => {
+	const mockCanvas = { dataset: {} as Record<string, string> };
 	const FakeGame = vi.fn().mockImplementation(function () {
 		if (shouldFail) throw new Error('Phaser unavailable');
-		return { destroy: vi.fn(), pause: mockPause, resume: mockResume };
+		return { destroy: vi.fn(), pause: mockPause, resume: mockResume, canvas: mockCanvas };
 	});
 	return {
 		default: {
@@ -92,5 +93,33 @@ describe('IndustryMap', () => {
 
 		await waitForMock(mockPause);
 		expect(mockPause).toHaveBeenCalled();
+	});
+
+	it('resumes the game loop when not paused', async () => {
+		expect.assertions(1);
+
+		render(IndustryMap, {
+			snapshot: emptySnapshot,
+			onTileSelected: vi.fn()
+		});
+
+		await waitForMock(mockResume);
+		expect(mockResume).toHaveBeenCalled();
+	});
+
+	it('forwards tileSelected events to onTileSelected with the tile id', async () => {
+		expect.assertions(1);
+		const onTileSelected = vi.fn();
+
+		render(IndustryMap, { snapshot: emptySnapshot, onTileSelected });
+
+		await waitForMock(mockSetEventHandler);
+		const handler = mockSetEventHandler.mock.calls.at(-1)![0] as (event: {
+			type: string;
+			tileId?: string;
+		}) => void;
+		handler({ type: 'tileSelected', tileId: 'ind-tile-7' });
+
+		expect(onTileSelected).toHaveBeenCalledWith('ind-tile-7');
 	});
 });

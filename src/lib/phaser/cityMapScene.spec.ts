@@ -1801,5 +1801,76 @@ describe('CityMapScene', () => {
 			expect(Number(ds.mapViewWidth)).toBe(800);
 			expect(Number(ds.mapViewHeight)).toBe(600);
 		});
+
+		it('draws a 2x2 placement footprint outline for a selected tile during placement preview', () => {
+			expect.assertions(1);
+			scene.create();
+			scene.updateSnapshot(
+				makeSnapshot({
+					selectedTileId: 't0',
+					placementPreview: { validTileIds: ['t0'], invalidTileIds: [] },
+					tiles: [makeTile({ id: 't0', x: 0, y: 0, selected: true })]
+				})
+			);
+			s(scene).drawInteractionOutlines();
+			const outlineGraphics = s(scene).outlineGraphics;
+			expect(outlineGraphics.strokeRect).toHaveBeenCalledWith(1, 1, 62, 62);
+		});
+
+		it('draws a 2x2 placement footprint outline for a hovered tile during placement preview', () => {
+			expect.assertions(1);
+			scene.create();
+			scene.updateSnapshot(
+				makeSnapshot({
+					placementPreview: { validTileIds: ['t0'], invalidTileIds: [] },
+					tiles: [makeTile({ id: 't0', x: 0, y: 0 })]
+				})
+			);
+			s(scene).hoverTileId = 't0';
+			s(scene).drawInteractionOutlines();
+			const outlineGraphics = s(scene).outlineGraphics;
+			expect(outlineGraphics.strokeRect).toHaveBeenCalledWith(2, 2, 60, 60);
+		});
+
+		it('breaks placement preview spans across non-contiguous tiles', () => {
+			expect.assertions(1);
+			scene.create();
+			scene.updateSnapshot(
+				makeSnapshot({
+					placementPreview: {
+						validTileIds: ['t0', 't3'],
+						invalidTileIds: []
+					}
+				})
+			);
+			const placementPreviewGraphics = s(scene).placementPreviewGraphics;
+			(placementPreviewGraphics.fillRect as Mock).mockClear();
+			s(scene).drawPlacementPreview();
+			expect(placementPreviewGraphics.fillRect).toHaveBeenCalledTimes(2);
+		});
+
+		it('drawPlacementPreviewSpans returns early when every tile id is unknown', () => {
+			expect.assertions(1);
+			scene.create();
+			scene.updateSnapshot(makeSnapshot());
+			const placementPreviewGraphics = s(scene).placementPreviewGraphics;
+			(placementPreviewGraphics.fillRect as Mock).mockClear();
+			s(scene).drawPlacementPreviewSpans(new Set(['unknown-tile']), 0x1f8a70);
+			expect(placementPreviewGraphics.fillRect).not.toHaveBeenCalled();
+		});
+
+		it('drawPlacementPreviewSpan returns early when placementPreviewGraphics is missing', () => {
+			expect.assertions(1);
+			scene.create();
+			s(scene).placementPreviewGraphics = undefined;
+			expect(() => s(scene).drawPlacementPreviewSpan(makeTile(), makeTile())).not.toThrow();
+		});
+
+		it('drawOwnershipOutlines returns early when ownershipGraphics is missing', () => {
+			expect.assertions(1);
+			scene.create();
+			s(scene).ownershipGraphics = undefined;
+			expect(() => s(scene).drawOwnershipOutlines()).not.toThrow();
+		});
 	});
 });

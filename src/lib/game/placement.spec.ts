@@ -382,6 +382,44 @@ describe('tile placement', () => {
 		).toThrow('Unknown tile: no-such-tile');
 	});
 
+	test('createFoundingGameAtTile throws when the 2x2 footprint extends beyond the map edge', () => {
+		expect.assertions(1);
+		const city = createFlatCity(3, 3);
+		const cornerTile = city.tiles.find((tile) => tile.x === 2 && tile.y === 2)!;
+
+		expect(() =>
+			createFoundingGameAtTile({
+				archetypeId: 'boutique',
+				city,
+				tileId: cornerTile.id,
+				seed: 202
+			})
+		).toThrow(`Locked location: ${cornerTile.id}`);
+	});
+
+	test('openStoreAtTile maps an occupied footprint to a null tile-placement reason', () => {
+		expect.assertions(2);
+		const city = createFlatCity(4, 4);
+		const game = createFoundingGameAtTile({
+			archetypeId: 'boutique',
+			city,
+			tileId: 'retail-city-0-0',
+			seed: 101
+		});
+		const overlappingAnchor = city.tiles.find((tile) => tile.x === 1 && tile.y === 0)!;
+
+		const result = openStoreAtTile(game, {
+			tileId: overlappingAnchor.id,
+			name: 'Overlap Store',
+			archetypeId: 'grocery'
+		});
+
+		expect(result.stores).toHaveLength(1);
+		expect(result.decisions.at(-1)?.context).toBe(
+			'Choose an unlocked, unoccupied city tile before opening this store.'
+		);
+	});
+
 	test('openStoreAtTile appends a location-unavailable decision when the tile id is unknown', () => {
 		expect.assertions(2);
 		const city = generateCity({
