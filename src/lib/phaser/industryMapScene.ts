@@ -13,6 +13,10 @@ import type {
 	IndustryMapSnapshot,
 	IndustryMapTileRender
 } from '../game/industryMapRender';
+import {
+	INDUSTRIAL_BUILDING_FOOTPRINT_HEIGHT,
+	INDUSTRIAL_BUILDING_FOOTPRINT_WIDTH
+} from '../game/industryFootprint';
 import type { IndustryResourceId } from '../game/types';
 
 export type IndustryMapEvent = { type: 'tileSelected'; tileId: string };
@@ -49,6 +53,13 @@ const STAGE_OUTLINE_COLORS: Record<BuildingStage, number> = {
 interface BuildingSpriteEntry {
 	id: string;
 	sprite: Phaser.GameObjects.Image;
+}
+
+interface TileFootprint {
+	x: number;
+	y: number;
+	width: number;
+	height: number;
 }
 
 function industryTextureKey(path: string): string {
@@ -247,14 +258,8 @@ export class IndustryMapScene extends Phaser.Scene {
 		this.occupancyGraphics.clear();
 		this.occupancyGraphics.lineStyle(3, 0x0f766e, 0.95);
 
-		for (const tile of this.snapshot.tiles) {
-			if (!tile.occupied) {
-				continue;
-			}
-
-			const x = tile.x * TILE_SIZE;
-			const y = tile.y * TILE_SIZE;
-			this.occupancyGraphics.strokeRect(x + 3, y + 3, TILE_SIZE - 6, TILE_SIZE - 6);
+		for (const building of this.snapshot.buildings) {
+			this.strokeFootprintRect(this.occupancyGraphics, this.getBuildingFootprint(building), 3);
 		}
 	}
 
@@ -344,27 +349,30 @@ export class IndustryMapScene extends Phaser.Scene {
 			return;
 		}
 
-		this.placementPreviewGraphics.clear();
+		const graphics = this.placementPreviewGraphics;
+		graphics.clear();
 		const validTileIds = new Set(this.snapshot.placementPreview.validTileIds);
 		const invalidTileIds = new Set(this.snapshot.placementPreview.invalidTileIds);
 
-		for (const tile of this.snapshot.tiles) {
-			const isValid = validTileIds.has(tile.id);
-			const isInvalid = invalidTileIds.has(tile.id);
+		const drawPreviewFootprints = (tileIds: ReadonlySet<string>, color: number) => {
+			graphics.fillStyle(color, PLACEMENT_PREVIEW_ALPHA);
+			graphics.lineStyle(2, color, 0.55);
 
-			if (!isValid && !isInvalid) {
-				continue;
+			for (const tileId of tileIds) {
+				const tile = this.tileById.get(tileId);
+
+				if (!tile) {
+					continue;
+				}
+
+				const footprint = this.getPlacementFootprint(tile);
+				this.fillFootprintRect(graphics, footprint, 2);
+				this.strokeFootprintRect(graphics, footprint, 2);
 			}
+		};
 
-			const x = tile.x * TILE_SIZE;
-			const y = tile.y * TILE_SIZE;
-			const color = isValid ? PLACEMENT_PREVIEW_VALID_COLOR : PLACEMENT_PREVIEW_INVALID_COLOR;
-
-			this.placementPreviewGraphics.fillStyle(color, PLACEMENT_PREVIEW_ALPHA);
-			this.placementPreviewGraphics.fillRect(x + 2, y + 2, TILE_SIZE - 4, TILE_SIZE - 4);
-			this.placementPreviewGraphics.lineStyle(2, color, 0.55);
-			this.placementPreviewGraphics.strokeRect(x + 2, y + 2, TILE_SIZE - 4, TILE_SIZE - 4);
-		}
+		drawPreviewFootprints(validTileIds, PLACEMENT_PREVIEW_VALID_COLOR);
+		drawPreviewFootprints(invalidTileIds, PLACEMENT_PREVIEW_INVALID_COLOR);
 
 		this.updateCanvasPlacementPreviewAttributes(validTileIds.size, invalidTileIds.size);
 	}
@@ -516,18 +524,89 @@ export class IndustryMapScene extends Phaser.Scene {
 		const hoveredTile = this.hoverTileId ? this.tileById.get(this.hoverTileId) : null;
 
 		if (hoveredTile) {
-			const x = hoveredTile.x * TILE_SIZE;
-			const y = hoveredTile.y * TILE_SIZE;
 			this.outlineGraphics.lineStyle(3, 0xfacc15, 0.85);
-			this.outlineGraphics.strokeRect(x + 2, y + 2, TILE_SIZE - 4, TILE_SIZE - 4);
+			this.strokeFootprintRect(this.outlineGraphics, this.getInteractionFootprint(hoveredTile), 2);
 		}
 
 		if (this.selectedTile) {
-			const x = this.selectedTile.x * TILE_SIZE;
-			const y = this.selectedTile.y * TILE_SIZE;
 			this.outlineGraphics.lineStyle(4, 0x2563eb, 1);
-			this.outlineGraphics.strokeRect(x + 1, y + 1, TILE_SIZE - 2, TILE_SIZE - 2);
+			this.strokeFootprintRect(
+				this.outlineGraphics,
+				this.getInteractionFootprint(this.selectedTile),
+				1
+			);
 		}
+	}
+
+	private getInteractionFootprint(tile: IndustryMapTileRender): TileFootprint {
+		const building = this.getBuildingForTile(tile);
+
+		if (building) {
+			return this.getBuildingFootprint(building);
+		}
+
+		if (this.snapshot?.placementPreview) {
+			return this.getPlacementFootprint(tile);
+		}
+
+		return {
+			x: tile.x,
+			y: tile.y,
+			width: 1,
+			height: 1
+		};
+	}
+
+	private getBuildingForTile(tile: IndustryMapTileRender): IndustryMapBuildingRender | null {
+		return (
+			this.snapshot?.buildings.find((building) => {
+				const width = getBuildingFootprintWidth(building);
+				const height = getBuildingFootprintHeight(building);
+
+				return (
+					tile.x >= building.x &&
+					tile.x < building.x + width &&
+					tile.y >= building.y &&
+					tile.y < building.y + height
+				);
+			}) ?? null
+		);
+	}
+
+	private getBuildingFootprint(building: IndustryMapBuildingRender): TileFootprint {
+		return {
+			x: building.x,
+			y: building.y,
+			width: getBuildingFootprintWidth(building),
+			height: getBuildingFootprintHeight(building)
+		};
+	}
+
+	private getPlacementFootprint(tile: IndustryMapTileRender): TileFootprint {
+		return {
+			x: tile.x,
+			y: tile.y,
+			width: INDUSTRIAL_BUILDING_FOOTPRINT_WIDTH,
+			height: INDUSTRIAL_BUILDING_FOOTPRINT_HEIGHT
+		};
+	}
+
+	private fillFootprintRect(
+		graphics: Phaser.GameObjects.Graphics,
+		footprint: TileFootprint,
+		inset: number
+	): void {
+		const rect = getFootprintPixelRect(footprint, inset);
+		graphics.fillRect(rect.x, rect.y, rect.width, rect.height);
+	}
+
+	private strokeFootprintRect(
+		graphics: Phaser.GameObjects.Graphics,
+		footprint: TileFootprint,
+		inset: number
+	): void {
+		const rect = getFootprintPixelRect(footprint, inset);
+		graphics.strokeRect(rect.x, rect.y, rect.width, rect.height);
 	}
 
 	private isCanvasPointer(pointer: Phaser.Input.Pointer): boolean {
@@ -793,4 +872,16 @@ function getBuildingFootprintWidth(building: IndustryMapBuildingRender): number 
 
 function getBuildingFootprintHeight(building: IndustryMapBuildingRender): number {
 	return Math.max(1, building.height ?? 1);
+}
+
+function getFootprintPixelRect(
+	footprint: TileFootprint,
+	inset: number
+): { x: number; y: number; width: number; height: number } {
+	return {
+		x: footprint.x * TILE_SIZE + inset,
+		y: footprint.y * TILE_SIZE + inset,
+		width: Math.max(1, footprint.width * TILE_SIZE - inset * 2),
+		height: Math.max(1, footprint.height * TILE_SIZE - inset * 2)
+	};
 }

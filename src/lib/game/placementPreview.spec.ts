@@ -10,7 +10,12 @@ import {
 } from './placementPreview';
 import { createFoundingGameAtTile, forecastOpening } from './placement';
 import { createNewGame } from './state';
-import type { CityTile } from './types';
+import {
+	createCityTileLookup,
+	getOccupiedStoreTileIds,
+	getStoreFootprintPlacementBlockReason
+} from './storeFootprint';
+import type { City, CityTile, Store } from './types';
 
 describe('retail placement preview', () => {
 	test('marks every retail tile as valid or invalid before founding', () => {
@@ -61,21 +66,25 @@ describe('retail placement preview', () => {
 			height: 20,
 			seed: 20260503
 		});
-		const buildableTiles = city.tiles.filter((tile) => !tile.locked && tile.feature === null);
+		const buildableTiles = city.tiles.filter((tile) => isRetailFootprintAvailable(city, tile));
 		const game = createFoundingGameAtTile({
 			archetypeId: 'convenience',
 			city,
 			tileId: buildableTiles[0]!.id,
 			seed: 20260503
 		});
-		const expansionTile = buildableTiles[1]!;
+		const expansionTile = buildableTiles.find((tile) =>
+			isRetailFootprintAvailable(city, tile, game.stores)
+		)!;
 		const expansionSetupCost = forecastOpening(expansionTile, 'electronics').setupCost;
 		const cappedGame = {
 			...game,
 			stores: Array.from({ length: game.storeCap }, (_, index) => ({
 				...game.stores[0]!,
 				id: `store-${index + 1}`,
-				tileId: buildableTiles[index]!.id
+				tileId: `cap-store-${index + 1}`,
+				mapX: -100 - index,
+				mapY: -100
 			}))
 		};
 
@@ -115,6 +124,57 @@ describe('retail placement preview', () => {
 				archetypeId: 'grocery'
 			})
 		).toBe('Unknown city tile');
+	});
+
+	test('blocks retail placement when any tile in the 2x2 footprint is occupied', () => {
+		expect.assertions(3);
+		const city = createFlatCity(4, 4);
+		const game = createFoundingGameAtTile({
+			archetypeId: 'convenience',
+			city,
+			tileId: 'retail-city-0-0',
+			seed: 20260503
+		});
+
+		const overlappingAnchor = city.tiles.find((tile) => tile.id === 'retail-city-1-1')!;
+		const openAnchor = city.tiles.find((tile) => tile.id === 'retail-city-2-2')!;
+		const preview = createRetailPlacementPreview({
+			game,
+			city,
+			archetypeId: 'boutique'
+		});
+
+		expect(
+			getRetailPlacementBlockReason({
+				game,
+				city,
+				tileId: overlappingAnchor.id,
+				archetypeId: 'boutique'
+			})
+		).toBe('Occupied location');
+		expect(preview.invalidTileIds).toContain(overlappingAnchor.id);
+		expect(preview.validTileIds).toContain(openAnchor.id);
+	});
+
+	test('blocks retail placement when the 2x2 footprint leaves the city', () => {
+		expect.assertions(2);
+		const city = createFlatCity(3, 3);
+		const edgeAnchor = city.tiles.find((tile) => tile.id === 'retail-city-2-2')!;
+		const preview = createRetailPlacementPreview({
+			game: null,
+			city,
+			archetypeId: 'grocery'
+		});
+
+		expect(
+			getRetailPlacementBlockReason({
+				game: null,
+				city,
+				tileId: edgeAnchor.id,
+				archetypeId: 'grocery'
+			})
+		).toBe('Locked location');
+		expect(preview.invalidTileIds).toContain(edgeAnchor.id);
 	});
 
 	test('summarizes retail build menu options as tile-derived ranges', () => {
@@ -239,7 +299,7 @@ describe('retail placement preview', () => {
 			height: 20,
 			seed: 20260503
 		});
-		const foundingTile = city.tiles.find((tile) => !tile.locked && tile.feature === null)!;
+		const foundingTile = city.tiles.find((tile) => isRetailFootprintAvailable(city, tile))!;
 		const game = createFoundingGameAtTile({
 			archetypeId: 'convenience',
 			city,
@@ -247,7 +307,7 @@ describe('retail placement preview', () => {
 			seed: 20260503
 		});
 		const availableTiles = city.tiles.filter(
-			(tile) => !tile.locked && tile.feature === null && tile.id !== foundingTile.id
+			(tile) => tile.id !== foundingTile.id && isRetailFootprintAvailable(city, tile, game.stores)
 		);
 		const cheapestElectronicsSetupCost = Math.min(
 			...availableTiles.map((tile) => forecastOpening(tile, 'electronics').setupCost)
@@ -330,6 +390,48 @@ describe('retail placement preview', () => {
 		]);
 	});
 });
+
+function createFlatCity(width: number, height: number): City {
+	const tiles: CityTile[] = [];
+
+	for (let y = 0; y < height; y += 1) {
+		for (let x = 0; x < width; x += 1) {
+			tiles.push({
+				id: `retail-city-${x}-${y}`,
+				cityId: 'retail-city',
+				x,
+				y,
+				neighborhood: 'downtown',
+				terrain: 'commercial',
+				feature: null,
+				demand: 60,
+				rent: 100,
+				footTraffic: 60,
+				customerFit: 60,
+				locked: false
+			});
+		}
+	}
+
+	return {
+		id: 'retail-city',
+		name: 'Retail City',
+		width,
+		height,
+		tiles
+	};
+}
+
+function isRetailFootprintAvailable(
+	city: City,
+	tile: CityTile,
+	stores: readonly Store[] = []
+): boolean {
+	const lookup = createCityTileLookup(city);
+	const occupiedTileIds = getOccupiedStoreTileIds(city, stores, lookup);
+
+	return getStoreFootprintPlacementBlockReason(lookup, tile, occupiedTileIds) === null;
+}
 
 describe('industry placement preview', () => {
 	test('marks matching resource tiles valid for raw producers', () => {

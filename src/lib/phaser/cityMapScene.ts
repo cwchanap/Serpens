@@ -13,7 +13,16 @@ import {
 	getStoreArt
 } from '../assets/gameArt';
 import type { TerrainArt, TerrainConnectorVariant } from '../assets/gameArt';
-import type { CityMapFeatureVariant, CityMapSnapshot, CityMapTileRender } from '../game/mapRender';
+import type {
+	CityMapFeatureVariant,
+	CityMapSnapshot,
+	CityMapStoreRender,
+	CityMapTileRender
+} from '../game/mapRender';
+import {
+	RETAIL_STORE_FOOTPRINT_HEIGHT,
+	RETAIL_STORE_FOOTPRINT_WIDTH
+} from '../game/storeFootprint';
 
 export type CityMapEvent = { type: 'tileSelected'; tileId: string };
 export type CityMapEventHandler = (event: CityMapEvent) => void;
@@ -21,7 +30,6 @@ export type CityMapEventHandler = (event: CityMapEvent) => void;
 const TILE_SIZE = 32;
 const MIN_ZOOM = 0.6;
 const MAX_ZOOM = 2.2;
-const STORE_SPRITE_SIZE = TILE_SIZE * 0.82;
 const TERRAIN_BASE_DEPTH = 0;
 const TERRAIN_OVERLAY_DEPTH = 1;
 const TERRAIN_FEATURE_DEPTH = 2;
@@ -43,6 +51,13 @@ interface StoreSpriteRender {
 	baseX: number;
 	baseY: number;
 	index: number;
+}
+
+interface TileFootprint {
+	x: number;
+	y: number;
+	width: number;
+	height: number;
 }
 
 export class CityMapScene extends Phaser.Scene {
@@ -213,14 +228,8 @@ export class CityMapScene extends Phaser.Scene {
 		this.ownershipGraphics.clear();
 		this.ownershipGraphics.lineStyle(3, 0x1f8a70, 0.95);
 
-		for (const tile of this.snapshot.tiles) {
-			if (!tile.owned) {
-				continue;
-			}
-
-			const x = tile.x * TILE_SIZE;
-			const y = tile.y * TILE_SIZE;
-			this.ownershipGraphics.strokeRect(x + 3, y + 3, TILE_SIZE - 6, TILE_SIZE - 6);
+		for (const store of this.snapshot.stores) {
+			this.strokeFootprintRect(this.ownershipGraphics, this.getStoreFootprint(store), 3);
 		}
 	}
 
@@ -418,17 +427,17 @@ export class CityMapScene extends Phaser.Scene {
 		const hoveredTile = this.hoverTileId ? this.tileById.get(this.hoverTileId) : null;
 
 		if (hoveredTile) {
-			const x = hoveredTile.x * TILE_SIZE;
-			const y = hoveredTile.y * TILE_SIZE;
 			this.outlineGraphics.lineStyle(3, 0xf5c542, 0.85);
-			this.outlineGraphics.strokeRect(x + 2, y + 2, TILE_SIZE - 4, TILE_SIZE - 4);
+			this.strokeFootprintRect(this.outlineGraphics, this.getInteractionFootprint(hoveredTile), 2);
 		}
 
 		if (this.selectedTile) {
-			const x = this.selectedTile.x * TILE_SIZE;
-			const y = this.selectedTile.y * TILE_SIZE;
 			this.outlineGraphics.lineStyle(4, 0x2563eb, 1);
-			this.outlineGraphics.strokeRect(x + 1, y + 1, TILE_SIZE - 2, TILE_SIZE - 2);
+			this.strokeFootprintRect(
+				this.outlineGraphics,
+				this.getInteractionFootprint(this.selectedTile),
+				1
+			);
 		}
 	}
 
@@ -490,10 +499,11 @@ export class CityMapScene extends Phaser.Scene {
 
 		const x = startTile.x * TILE_SIZE;
 		const y = startTile.y * TILE_SIZE;
-		const width = (endTile.x - startTile.x + 1) * TILE_SIZE;
+		const width = (endTile.x - startTile.x + RETAIL_STORE_FOOTPRINT_WIDTH) * TILE_SIZE;
+		const height = RETAIL_STORE_FOOTPRINT_HEIGHT * TILE_SIZE;
 
-		this.placementPreviewGraphics.fillRect(x + 2, y + 2, width - 4, TILE_SIZE - 4);
-		this.placementPreviewGraphics.strokeRect(x + 2, y + 2, width - 4, TILE_SIZE - 4);
+		this.placementPreviewGraphics.fillRect(x + 2, y + 2, width - 4, height - 4);
+		this.placementPreviewGraphics.strokeRect(x + 2, y + 2, width - 4, height - 4);
 	}
 
 	private createStoreSprites(): void {
@@ -517,13 +527,15 @@ export class CityMapScene extends Phaser.Scene {
 		}
 
 		this.storeSprites = this.snapshot.stores.map((store, index) => {
-			const baseX = store.x * TILE_SIZE + TILE_SIZE / 2;
-			const baseY = store.y * TILE_SIZE + TILE_SIZE / 2;
+			const footprintWidth = getStoreFootprintWidth(store);
+			const footprintHeight = getStoreFootprintHeight(store);
+			const baseX = store.x * TILE_SIZE + (footprintWidth * TILE_SIZE) / 2;
+			const baseY = store.y * TILE_SIZE + (footprintHeight * TILE_SIZE) / 2;
 			const art = getStoreArt(store.archetypeId);
 			const sprite = this.add
 				.image(baseX, baseY, art.textureKey)
 				.setOrigin(0.5)
-				.setDisplaySize(STORE_SPRITE_SIZE, STORE_SPRITE_SIZE)
+				.setDisplaySize(footprintWidth * TILE_SIZE, footprintHeight * TILE_SIZE)
 				.setDepth(STORE_MARKER_DEPTH);
 
 			return {
@@ -639,6 +651,68 @@ export class CityMapScene extends Phaser.Scene {
 
 	private hasStorefrontTexture(textureKey: string): boolean {
 		return this.textures.exists(textureKey);
+	}
+
+	private getInteractionFootprint(tile: CityMapTileRender): TileFootprint {
+		const store = this.getStoreForTile(tile);
+
+		if (store) {
+			return this.getStoreFootprint(store);
+		}
+
+		if (this.snapshot?.placementPreview) {
+			return this.getPlacementFootprint(tile);
+		}
+
+		return {
+			x: tile.x,
+			y: tile.y,
+			width: 1,
+			height: 1
+		};
+	}
+
+	private getStoreForTile(tile: CityMapTileRender): CityMapStoreRender | null {
+		return (
+			this.snapshot?.stores.find((store) => {
+				const width = getStoreFootprintWidth(store);
+				const height = getStoreFootprintHeight(store);
+
+				return (
+					tile.x >= store.x &&
+					tile.x < store.x + width &&
+					tile.y >= store.y &&
+					tile.y < store.y + height
+				);
+			}) ?? null
+		);
+	}
+
+	private getStoreFootprint(store: CityMapStoreRender): TileFootprint {
+		return {
+			x: store.x,
+			y: store.y,
+			width: getStoreFootprintWidth(store),
+			height: getStoreFootprintHeight(store)
+		};
+	}
+
+	private getPlacementFootprint(tile: CityMapTileRender): TileFootprint {
+		return {
+			x: tile.x,
+			y: tile.y,
+			width: RETAIL_STORE_FOOTPRINT_WIDTH,
+			height: RETAIL_STORE_FOOTPRINT_HEIGHT
+		};
+	}
+
+	private strokeFootprintRect(
+		graphics: Phaser.GameObjects.Graphics,
+		footprint: TileFootprint,
+		inset: number
+	): void {
+		const rect = getFootprintPixelRect(footprint, inset);
+		graphics.strokeRect(rect.x, rect.y, rect.width, rect.height);
 	}
 
 	private updateCanvasStoreMarkerAttributes(
@@ -870,4 +944,24 @@ function getTerrainAssetMode(
 	}
 
 	return 'missing';
+}
+
+function getStoreFootprintWidth(store: CityMapStoreRender): number {
+	return Math.max(1, store.width ?? RETAIL_STORE_FOOTPRINT_WIDTH);
+}
+
+function getStoreFootprintHeight(store: CityMapStoreRender): number {
+	return Math.max(1, store.height ?? RETAIL_STORE_FOOTPRINT_HEIGHT);
+}
+
+function getFootprintPixelRect(
+	footprint: TileFootprint,
+	inset: number
+): { x: number; y: number; width: number; height: number } {
+	return {
+		x: footprint.x * TILE_SIZE + inset,
+		y: footprint.y * TILE_SIZE + inset,
+		width: Math.max(1, footprint.width * TILE_SIZE - inset * 2),
+		height: Math.max(1, footprint.height * TILE_SIZE - inset * 2)
+	};
 }

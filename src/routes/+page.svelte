@@ -51,6 +51,7 @@
 		unassignStaff
 	} from '$lib/game/staffing';
 	import { DEFAULT_POLICY, resolveDecision, updatePolicy, upgradeStore } from '$lib/game/state';
+	import { isTileInStoreFootprint } from '$lib/game/storeFootprint';
 	import { updateStoreProduct } from '$lib/game/stock';
 	import { simulateDay } from '$lib/game/simulateDay';
 	import {
@@ -205,8 +206,12 @@
 	);
 	let selectedStore = $derived.by(() => {
 		const currentGame: GameState | null = game;
-		return selectedTileId
-			? (currentGame?.stores.find((store) => store.tileId === selectedTileId) ?? null)
+		const tile = selectedTile;
+
+		return currentGame && tile
+			? (currentGame.stores.find(
+					(store) => store.cityId === activeCity.id && isTileInStoreFootprint(tile, store)
+				) ?? null)
 			: null;
 	});
 	let selectedIndustryBuilding = $derived.by(() => {

@@ -3,12 +3,19 @@ import { addWarehouseMaterial } from './industryProduction';
 import { openStoreAtTile } from './placement';
 import { buildProductChainTree, buildStoreCategoryChainSummaries } from './productChainTree';
 import { createNewGame } from './state';
+import {
+	createCityTileLookup,
+	getOccupiedStoreTileIds,
+	getStoreFootprintPlacementBlockReason
+} from './storeFootprint';
 import type {
+	CityTile,
 	DailyProductReport,
 	DailyProductionReport,
 	DailyStoreReport,
 	GameState,
-	MaterialId
+	MaterialId,
+	Store
 } from './types';
 
 // Patch isSupportedFinishedMaterial to admit a synthetic 'fake-finished' category
@@ -27,6 +34,16 @@ vi.mock('./productChainGraph', async (importOriginal) => {
 
 function convenienceGame(): GameState {
 	return { ...createNewGame('convenience', 20260611), cash: 1_000_000 };
+}
+
+function findAvailableRetailFootprintTile(game: GameState): CityTile {
+	const city = game.cities.find((candidate) => candidate.id === game.activeCityId)!;
+	const lookup = createCityTileLookup(city);
+	const occupiedTileIds = getOccupiedStoreTileIds(city, game.stores as readonly Store[], lookup);
+
+	return city.tiles.find(
+		(tile) => getStoreFootprintPlacementBlockReason(lookup, tile, occupiedTileIds) === null
+	)!;
 }
 
 function emptyProductionReport(
@@ -544,9 +561,7 @@ describe('buildStoreCategoryChainSummaries (tree)', () => {
 	it('aggregates root-node movement metrics across stores when no store is selected', () => {
 		expect.assertions(4);
 		let game = { ...createNewGame('convenience', 20260518), cash: 100_000 };
-		const expansionTile = game.cities[0]!.tiles.find(
-			(tile) => !tile.locked && tile.feature === null && tile.id !== game.stores[0]!.tileId
-		)!;
+		const expansionTile = findAvailableRetailFootprintTile(game);
 		game = openStoreAtTile(game, {
 			tileId: expansionTile.id,
 			name: 'Store #2',
@@ -610,9 +625,7 @@ describe('buildStoreCategoryChainSummaries (tree)', () => {
 	it('aggregates consume rate across every store carrying the same category', () => {
 		expect.assertions(3);
 		let game = { ...createNewGame('convenience', 20260518), cash: 100_000 };
-		const expansionTile = game.cities[0]!.tiles.find(
-			(tile) => !tile.locked && tile.feature === null && tile.id !== game.stores[0]!.tileId
-		)!;
+		const expansionTile = findAvailableRetailFootprintTile(game);
 		game = openStoreAtTile(game, {
 			tileId: expansionTile.id,
 			name: 'Store #2',
