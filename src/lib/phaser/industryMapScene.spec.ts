@@ -1594,5 +1594,30 @@ describe('IndustryMapScene', () => {
 			expect(Number(canvas.dataset.mapViewWidth)).toBe(800);
 			expect(Number(canvas.dataset.mapViewHeight)).toBe(600);
 		});
+
+		test('drawOccupancyOutlines returns early when occupancyGraphics is missing', () => {
+			expect.assertions(1);
+			const { scene, graphicsInstances } = setupScene();
+			scene.create();
+			s(scene).occupancyGraphics = undefined;
+			graphicsInstances[1].mock.clear.mockClear();
+			expect(() => s(scene).drawOccupancyOutlines()).not.toThrow();
+		});
+
+		test('drawPlacementPreview skips tile ids that are not in the tile map', () => {
+			expect.assertions(1);
+			const { scene, graphicsInstances, texturesExistsSpy } = setupScene();
+			texturesExistsSpy.mockReturnValue(false);
+			scene.create();
+			scene.updateSnapshot(
+				makeSnapshot({
+					placementPreview: {
+						validTileIds: ['unknown-tile'],
+						invalidTileIds: ['also-unknown']
+					}
+				})
+			);
+			expect(graphicsInstances[2].mock.fillRect).not.toHaveBeenCalled();
+		});
 	});
 });

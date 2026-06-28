@@ -1,14 +1,17 @@
 import { describe, expect, test } from 'vitest';
 import { getIndustryTileById, getIndustryTilesByResource } from './industry';
+import { createIndustryTileLookup } from './industryFootprint';
 import {
 	buildIndustrialBuilding,
+	createIndustrialPlacementContext,
 	getAllowedIndustrialBuildingTypes,
 	getIndustrialPlacementBlockReason,
+	getIndustrialPlacementBlockReasonWithContext,
 	upgradeBuilding
 } from './industryPlacement';
 import { getBuildingUpgradeCost, MAX_BUILDING_LEVEL } from './leveling';
 import { createNewGame } from './state';
-import type { IndustrialBuildingTypeId } from './types';
+import type { IndustrialBuildingTypeId, IndustryCity, IndustryTile } from './types';
 
 describe('industrial placement', () => {
 	test('allows raw buildings only on matching resource tiles', () => {
@@ -370,4 +373,70 @@ describe('industrial placement', () => {
 		expect(siblingAfter.level).toBe(1);
 		expect(siblingAfter).toBe(siblingBefore);
 	});
+
+	test('blocks industrial buildings whose 2x2 footprint includes a non-industrial tile', () => {
+		expect.assertions(2);
+		const game = { ...createNewGame('convenience', 20260512), cash: 100_000 };
+		const city = game.industryCities[0]!;
+		const farmlandTile = city.tiles.find((tile) => !tile.locked && tile.terrain === 'farmland')!;
+
+		expect(getIndustrialPlacementBlockReason(game, farmlandTile.id, 'flour-mill')).toBe(
+			'Requires industrial tile'
+		);
+		expect(
+			buildIndustrialBuilding(game, {
+				tileId: farmlandTile.id,
+				buildingTypeId: 'flour-mill'
+			}).industrialBuildings
+		).toHaveLength(0);
+	});
+
+	test('blocks placement when the 2x2 footprint extends beyond the map edge', () => {
+		expect.assertions(1);
+		const city = createUnlockedEdgeIndustryCity(3, 3);
+		const context = {
+			city,
+			tileLookup: createIndustryTileLookup(city),
+			occupiedTileIds: new Set<string>()
+		};
+		const cornerTile = city.tiles.find((tile) => tile.x === 2 && tile.y === 2)!;
+
+		expect(getIndustrialPlacementBlockReasonWithContext(context, cornerTile.id, 'warehouse')).toBe(
+			'Locked industrial tile'
+		);
+	});
+
+	test('createIndustrialPlacementContext resolves occupied tile ids from existing buildings', () => {
+		expect.assertions(2);
+		const base = { ...createNewGame('convenience', 20260512), cash: 100_000 };
+		const city = base.industryCities[0]!;
+		const grainTile = getIndustryTilesByResource(city, 'grain-field')[0]!;
+		const game = buildIndustrialBuilding(base, {
+			tileId: grainTile.id,
+			buildingTypeId: 'grain-farm'
+		});
+
+		const context = createIndustrialPlacementContext(game);
+
+		expect(context).not.toBeNull();
+		expect(context!.occupiedTileIds.size).toBeGreaterThanOrEqual(4);
+	});
 });
+
+function createUnlockedEdgeIndustryCity(width: number, height: number): IndustryCity {
+	const tiles: IndustryTile[] = [];
+	for (let y = 0; y < height; y += 1) {
+		for (let x = 0; x < width; x += 1) {
+			tiles.push({
+				id: `edge-city-${x}-${y}`,
+				cityId: 'edge-city',
+				x,
+				y,
+				terrain: 'industrial',
+				resource: null,
+				locked: false
+			});
+		}
+	}
+	return { id: 'edge-city', name: 'Edge City', width, height, tiles };
+}

@@ -8,9 +8,10 @@ const mockUpdateSnapshot = vi.fn();
 const mockSetEventHandler = vi.fn();
 const mockPause = vi.fn();
 const mockResume = vi.fn();
+const mockCanvas = { dataset: {} as Record<string, string> };
 const MockGame = vi.fn().mockImplementation(function () {
 	if (shouldFail) throw new Error('Phaser unavailable');
-	return { destroy: vi.fn(), pause: mockPause, resume: mockResume };
+	return { destroy: vi.fn(), pause: mockPause, resume: mockResume, canvas: mockCanvas };
 });
 
 let shouldFail = false;
@@ -57,6 +58,7 @@ describe('CityMap', () => {
 	beforeEach(() => {
 		shouldFail = false;
 		vi.clearAllMocks();
+		mockCanvas.dataset = {};
 	});
 
 	it('renders the city map section and initializes the scene', async () => {
@@ -124,5 +126,35 @@ describe('CityMap', () => {
 		handler({ type: 'pan' });
 
 		expect(onTileSelected).not.toHaveBeenCalled();
+	});
+
+	it('forwards tileSelected events to onTileSelected with the tile id', async () => {
+		expect.assertions(1);
+		const onTileSelected = vi.fn();
+
+		render(CityMap, { snapshot: stubSnapshot, onTileSelected });
+
+		await waitForMock(mockSetEventHandler);
+		const handler = mockSetEventHandler.mock.calls.at(-1)![0] as (event: {
+			type: string;
+			tileId?: string;
+		}) => void;
+		handler({ type: 'tileSelected', tileId: 'tile-42' });
+
+		expect(onTileSelected).toHaveBeenCalledWith('tile-42');
+	});
+
+	it('pauses the game loop when active prop is false', async () => {
+		expect.assertions(1);
+
+		render(CityMap, {
+			snapshot: stubSnapshot,
+			onTileSelected: vi.fn(),
+			active: false
+		});
+
+		await waitForMock(MockGame);
+		await waitForMock(mockPause);
+		expect(mockPause).toHaveBeenCalled();
 	});
 });
