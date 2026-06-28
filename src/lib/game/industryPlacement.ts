@@ -1,4 +1,9 @@
 import { INDUSTRIAL_BUILDING_TYPES, getIndustryTileById } from './industry';
+import {
+	createIndustryTileLookup,
+	getIndustryBuildingFootprint,
+	getOccupiedIndustryTileIds
+} from './industryFootprint';
 import { canUpgradeBuilding, getBuildingUpgradeCost } from './leveling';
 import { refreshWorldProgress } from './world';
 import type {
@@ -12,6 +17,12 @@ import type {
 	IndustryResourceId,
 	IndustryTile
 } from './types';
+
+export interface IndustrialPlacementContext {
+	city: IndustryCity;
+	tileLookup: ReturnType<typeof createIndustryTileLookup>;
+	occupiedTileIds: ReadonlySet<string>;
+}
 
 export interface BuildIndustrialBuildingInput {
 	tileId: string;
@@ -29,8 +40,37 @@ export function getIndustrialPlacementBlockReason(
 	tileId: string,
 	buildingTypeId: IndustrialBuildingTypeId
 ): string | null {
+	const context = createIndustrialPlacementContext(game);
+
+	if (!context) {
+		return 'Unknown industrial tile';
+	}
+
+	return getIndustrialPlacementBlockReasonWithContext(context, tileId, buildingTypeId);
+}
+
+export function createIndustrialPlacementContext(
+	game: GameState
+): IndustrialPlacementContext | null {
 	const city = getActiveIndustryCity(game);
-	const tile = city ? getIndustryTileById(city, tileId) : undefined;
+	if (!city) {
+		return null;
+	}
+
+	const tileLookup = createIndustryTileLookup(city);
+	return {
+		city,
+		tileLookup,
+		occupiedTileIds: getOccupiedIndustryTileIds(city, game.industrialBuildings, tileLookup)
+	};
+}
+
+export function getIndustrialPlacementBlockReasonWithContext(
+	context: IndustrialPlacementContext,
+	tileId: string,
+	buildingTypeId: IndustrialBuildingTypeId
+): string | null {
+	const tile = context.tileLookup.byId.get(tileId);
 	const buildingType = INDUSTRIAL_BUILDING_TYPES[buildingTypeId];
 
 	if (!tile) {
@@ -45,7 +85,17 @@ export function getIndustrialPlacementBlockReason(
 		return 'Locked industrial tile';
 	}
 
-	if (game.industrialBuildings.some((building) => building.tileId === tile.id)) {
+	const footprint = getIndustryBuildingFootprint(context.tileLookup, tile);
+
+	if (footprint.missingCoordinates.length > 0) {
+		return 'Locked industrial tile';
+	}
+
+	if (footprint.tiles.some((footprintTile) => footprintTile.locked)) {
+		return 'Locked industrial tile';
+	}
+
+	if (footprint.tiles.some((footprintTile) => context.occupiedTileIds.has(footprintTile.id))) {
 		return 'Occupied industrial tile';
 	}
 
@@ -53,7 +103,10 @@ export function getIndustrialPlacementBlockReason(
 		return `Requires ${formatIndustryResourceLabel(buildingType.requiredResource)}`;
 	}
 
-	if (buildingType.requiresIndustrialTile && tile.terrain !== 'industrial') {
+	if (
+		buildingType.requiresIndustrialTile &&
+		footprint.tiles.some((footprintTile) => footprintTile.terrain !== 'industrial')
+	) {
 		return 'Requires industrial tile';
 	}
 

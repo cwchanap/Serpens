@@ -420,11 +420,12 @@ export class IndustryMapScene extends Phaser.Scene {
 			return;
 		}
 
-		const x = building.x * TILE_SIZE + TILE_SIZE / 2;
-		const y = building.y * TILE_SIZE + TILE_SIZE / 2;
+		const position = this.getBuildingMarkerPosition(building, 0, 0);
+		const footprintWidth = getBuildingFootprintWidth(building);
+		const footprintHeight = getBuildingFootprintHeight(building);
 		const buildingSprite = this.add
-			.image(x, y, buildingTextureKey)
-			.setDisplaySize(28, 28)
+			.image(position.x, position.y, buildingTextureKey)
+			.setDisplaySize(footprintWidth * TILE_SIZE, footprintHeight * TILE_SIZE)
 			.setDepth(MARKER_DEPTH);
 
 		this.applyBuildingSpriteStatus(buildingSprite, building);
@@ -493,8 +494,11 @@ export class IndustryMapScene extends Phaser.Scene {
 		time: number
 	): { x: number; y: number } {
 		return {
-			x: building.x * TILE_SIZE + TILE_SIZE / 2,
-			y: building.y * TILE_SIZE + TILE_SIZE / 2 + Math.sin(time / 360 + index) * 1.8
+			x: building.x * TILE_SIZE + (getBuildingFootprintWidth(building) * TILE_SIZE) / 2,
+			y:
+				building.y * TILE_SIZE +
+				(getBuildingFootprintHeight(building) * TILE_SIZE) / 2 +
+				Math.sin(time / 360 + index) * 1.8
 		};
 	}
 
@@ -781,4 +785,12 @@ function getBuildingStage(typeId: IndustryMapBuildingRender['typeId']): Building
 		default:
 			return 'process';
 	}
+}
+
+function getBuildingFootprintWidth(building: IndustryMapBuildingRender): number {
+	return Math.max(1, building.width ?? 1);
+}
+
+function getBuildingFootprintHeight(building: IndustryMapBuildingRender): number {
+	return Math.max(1, building.height ?? 1);
 }

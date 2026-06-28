@@ -15,7 +15,11 @@ import {
 	getTilePlacementBlockReason,
 	isTileBuildable
 } from './city';
-import { generateIndustryCity } from './industry';
+import {
+	DEFAULT_INDUSTRY_CITY_HEIGHT,
+	DEFAULT_INDUSTRY_CITY_WIDTH,
+	generateIndustryCity
+} from './industry';
 import { clampScore } from './reports';
 import { createRng, normalizeSeed, randomInt } from './rng';
 import {
@@ -89,8 +93,8 @@ export function createNewGame(archetypeId: ArchetypeId, seed = Date.now()): Game
 	const industryCity = generateIndustryCity({
 		id: 'industry-city',
 		name: 'Industry City',
-		width: 18,
-		height: 18,
+		width: DEFAULT_INDUSTRY_CITY_WIDTH,
+		height: DEFAULT_INDUSTRY_CITY_HEIGHT,
 		seed: normalizedSeed + 101
 	});
 	const fallbackTile = city.tiles.find(isTileBuildable) ?? city.tiles[0]!;

@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest';
+import { DEFAULT_RETAIL_CITY_HEIGHT, DEFAULT_RETAIL_CITY_WIDTH } from './city';
 import { getIndustryTilesByResource } from './industry';
 import { buildIndustrialBuilding } from './industryPlacement';
 import { createIndustryMapSnapshot } from './industryMapRender';
@@ -14,9 +15,9 @@ describe('industry map render snapshot', () => {
 		const snapshot = createIndustryMapSnapshot(game, tile.id);
 
 		expect(snapshot.cityId).toBe(city.id);
-		expect(snapshot.width).toBe(18);
-		expect(snapshot.height).toBe(18);
-		expect(snapshot.tiles).toHaveLength(324);
+		expect(snapshot.width).toBe(DEFAULT_RETAIL_CITY_WIDTH);
+		expect(snapshot.height).toBe(DEFAULT_RETAIL_CITY_HEIGHT);
+		expect(snapshot.tiles).toHaveLength(DEFAULT_RETAIL_CITY_WIDTH * DEFAULT_RETAIL_CITY_HEIGHT);
 		expect(snapshot.selectedTileId).toBe(tile.id);
 		expect(snapshot.placementPreview).toBeNull();
 		expect(snapshot.tiles.find((candidate) => candidate.id === tile.id)?.selected).toBe(true);
@@ -85,8 +86,8 @@ describe('industry map render snapshot', () => {
 		expect(missingCitySnapshot.placementPreview?.invalidTileIds).toEqual(['industry-city-1-4']);
 	});
 
-	test('marks occupied tiles and renders active city buildings', () => {
-		expect.assertions(8);
+	test('marks 2x2 occupied footprint tiles and renders active city buildings', () => {
+		expect.assertions(9);
 		const baseGame = { ...createNewGame('convenience', 20260512), cash: 100_000 };
 		const city = baseGame.industryCities[0]!;
 		const grainTile = getIndustryTilesByResource(city, 'grain-field')[0]!;
@@ -97,14 +98,26 @@ describe('industry map render snapshot', () => {
 
 		const snapshot = createIndustryMapSnapshot(game, grainTile.id);
 		const building = snapshot.buildings[0]!;
+		const occupiedTileIds = snapshot.tiles
+			.filter((candidate) => candidate.occupied)
+			.map((candidate) => candidate.id)
+			.sort();
 
-		expect(snapshot.tiles.find((candidate) => candidate.id === grainTile.id)?.occupied).toBe(true);
+		expect(occupiedTileIds).toEqual(
+			[
+				`${city.id}-${grainTile.x}-${grainTile.y}`,
+				`${city.id}-${grainTile.x + 1}-${grainTile.y}`,
+				`${city.id}-${grainTile.x}-${grainTile.y + 1}`,
+				`${city.id}-${grainTile.x + 1}-${grainTile.y + 1}`
+			].sort()
+		);
 		expect(building.id).toBe('industry-building-1');
 		expect(building.name).toBe('Grain Farm');
 		expect(building.typeId).toBe('grain-farm');
 		expect(building.tileId).toBe(grainTile.id);
 		expect(building.x).toBe(grainTile.x);
 		expect(building.y).toBe(grainTile.y);
+		expect(building).toMatchObject({ width: 2, height: 2 });
 		expect(building.status).toBe('idle');
 	});
 });

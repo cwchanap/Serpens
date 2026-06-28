@@ -1,5 +1,9 @@
 import { DEFAULT_RETAIL_CITY_HEIGHT, DEFAULT_RETAIL_CITY_WIDTH, generateCity } from './city';
-import { generateIndustryCity } from './industry';
+import {
+	DEFAULT_INDUSTRY_CITY_HEIGHT,
+	DEFAULT_INDUSTRY_CITY_WIDTH,
+	generateIndustryCity
+} from './industry';
 import type {
 	DecisionItem,
 	DecisionOption,
@@ -427,8 +431,8 @@ function ensureWorldCityMap(game: GameState, city: WorldCityDefinition): GameSta
 			generateIndustryCity({
 				id: city.id,
 				name: city.name,
-				width: 18,
-				height: 18,
+				width: DEFAULT_INDUSTRY_CITY_WIDTH,
+				height: DEFAULT_INDUSTRY_CITY_HEIGHT,
 				seed: city.seed,
 				resourceProfile: city.industryResourceProfile ?? undefined
 			})

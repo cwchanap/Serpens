@@ -20,7 +20,12 @@
 		generateCity,
 		getTileById
 	} from '$lib/game/city';
-	import { generateIndustryCity, getIndustryTileById } from '$lib/game/industry';
+	import {
+		DEFAULT_INDUSTRY_CITY_HEIGHT,
+		DEFAULT_INDUSTRY_CITY_WIDTH,
+		generateIndustryCity,
+		getIndustryTileById
+	} from '$lib/game/industry';
 	import { createIndustryMapSnapshot } from '$lib/game/industryMapRender';
 	import { buildIndustrialBuilding, upgradeBuilding } from '$lib/game/industryPlacement';
 	import { createCityMapSnapshot } from '$lib/game/mapRender';
@@ -92,8 +97,8 @@
 	const starterIndustryCity = generateIndustryCity({
 		id: 'industry-city',
 		name: 'Industry City',
-		width: 18,
-		height: 18,
+		width: DEFAULT_INDUSTRY_CITY_WIDTH,
+		height: DEFAULT_INDUSTRY_CITY_HEIGHT,
 		seed: 20260512
 	});
 
