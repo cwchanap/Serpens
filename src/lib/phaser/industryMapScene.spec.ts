@@ -413,14 +413,14 @@ describe('IndustryMapScene', () => {
 	});
 
 	describe('create', () => {
-		test('creates four graphics objects at correct depths', () => {
+		test('creates five graphics objects at correct depths', () => {
 			expect.assertions(4);
 			const { scene, graphicsInstances } = setupScene();
 			scene.create();
-			expect(graphicsInstances.length).toBe(4);
+			expect(graphicsInstances.length).toBe(5);
 			expect(graphicsInstances[0].mock.setDepth).toHaveBeenCalled();
 			expect(graphicsInstances[1].mock.setDepth).toHaveBeenCalled();
-			expect(graphicsInstances[3].mock.setDepth).toHaveBeenCalled();
+			expect(graphicsInstances[4].mock.setDepth).toHaveBeenCalled();
 		});
 
 		test('registers input event handlers', () => {
@@ -517,7 +517,7 @@ describe('IndustryMapScene', () => {
 			scene.updateSnapshot(snapshot);
 			graphicsInstances.forEach((g) => g.mock.clear.mockClear());
 			scene.update(1000);
-			expect(graphicsInstances[2].mock.clear).toHaveBeenCalled();
+			expect(graphicsInstances[3].mock.clear).toHaveBeenCalled();
 		});
 
 		test('updates canvas camera attributes', () => {
@@ -619,10 +619,10 @@ describe('IndustryMapScene', () => {
 			scene.create();
 			const snapshot = makeSnapshot();
 			scene.updateSnapshot(snapshot);
-			graphicsInstances[3].mock.clear.mockClear();
+			graphicsInstances[4].mock.clear.mockClear();
 			const pointer = makePointer({ x: 5, y: 5, worldX: 5, worldY: 5 });
 			inputListeners['pointermove'][0].call(scene, pointer);
-			expect(graphicsInstances[3].mock.strokeRect).toHaveBeenCalled();
+			expect(graphicsInstances[4].mock.strokeRect).toHaveBeenCalled();
 		});
 
 		test('zone pointerout clears hoverTileId', () => {
@@ -633,9 +633,9 @@ describe('IndustryMapScene', () => {
 			scene.updateSnapshot(snapshot);
 			const pointer = makePointer({ x: 5, y: 5, worldX: 5, worldY: 5 });
 			inputListeners['pointermove'][0].call(scene, pointer);
-			graphicsInstances[3].mock.clear.mockClear();
+			graphicsInstances[4].mock.clear.mockClear();
 			zoneInstances[0].fire('pointerout');
-			expect(graphicsInstances[3].mock.clear).toHaveBeenCalled();
+			expect(graphicsInstances[4].mock.clear).toHaveBeenCalled();
 		});
 	});
 
@@ -735,9 +735,9 @@ describe('IndustryMapScene', () => {
 				}
 			});
 			scene.updateSnapshot(snapshot);
-			expect(graphicsInstances[1].mock.fillRect).toHaveBeenCalled();
-			expect(graphicsInstances[1].mock.fillStyle).toHaveBeenCalled();
-			expect(graphicsInstances[1].mock.strokeRect).toHaveBeenCalled();
+			expect(graphicsInstances[2].mock.fillRect).toHaveBeenCalled();
+			expect(graphicsInstances[2].mock.fillStyle).toHaveBeenCalled();
+			expect(graphicsInstances[2].mock.strokeRect).toHaveBeenCalled();
 		});
 
 		test('clears preview when no placement preview', () => {
@@ -774,7 +774,7 @@ describe('IndustryMapScene', () => {
 	});
 
 	describe('resource markers', () => {
-		test('draws resource marker fallback when no texture', () => {
+		test('does not draw resource marker fallbacks when no texture exists', () => {
 			expect.assertions(1);
 			const { scene, graphicsInstances, texturesExistsSpy } = setupScene();
 			texturesExistsSpy.mockReturnValue(false);
@@ -782,7 +782,7 @@ describe('IndustryMapScene', () => {
 			const snapshot = makeSnapshot();
 			scene.updateSnapshot(snapshot);
 			scene.update(500);
-			expect(graphicsInstances[2].mock.fillStyle).toHaveBeenCalled();
+			expect(graphicsInstances[2].mock.fillStyle).not.toHaveBeenCalled();
 		});
 
 		test('creates resource sprite when texture exists', () => {
@@ -798,7 +798,7 @@ describe('IndustryMapScene', () => {
 	});
 
 	describe('building markers', () => {
-		test('draws building marker fallback when no texture', () => {
+		test('does not draw building marker fallbacks when no texture exists', () => {
 			expect.assertions(1);
 			const { scene, graphicsInstances, texturesExistsSpy } = setupScene();
 			texturesExistsSpy.mockReturnValue(false);
@@ -817,7 +817,7 @@ describe('IndustryMapScene', () => {
 				]
 			});
 			scene.updateSnapshot(snapshot);
-			expect(graphicsInstances[2].mock.fillStyle).toHaveBeenCalled();
+			expect(graphicsInstances[2].mock.fillStyle).not.toHaveBeenCalled();
 		});
 
 		test('creates building sprite when texture exists', () => {
@@ -862,10 +862,10 @@ describe('IndustryMapScene', () => {
 			});
 			scene.updateSnapshot(snapshot);
 			scene.update(100);
-			expect(graphicsInstances[2].mock.strokeCircle).toHaveBeenCalled();
+			expect(graphicsInstances[3].mock.strokeCircle).toHaveBeenCalled();
 		});
 
-		test('draws building marker fallback for process stage without texture', () => {
+		test('does not draw process-stage marker fallbacks without texture', () => {
 			expect.assertions(1);
 			const { scene, graphicsInstances, texturesExistsSpy } = setupScene();
 			texturesExistsSpy.mockReturnValue(false);
@@ -884,10 +884,10 @@ describe('IndustryMapScene', () => {
 				]
 			});
 			scene.updateSnapshot(snapshot);
-			expect(graphicsInstances[2].mock.strokeCircle).toHaveBeenCalled();
+			expect(graphicsInstances[2].mock.strokeCircle).not.toHaveBeenCalled();
 		});
 
-		test('draws warehouse shape', () => {
+		test('does not draw warehouse marker fallback shapes without texture', () => {
 			expect.assertions(1);
 			const { scene, graphicsInstances, texturesExistsSpy } = setupScene();
 			texturesExistsSpy.mockReturnValue(false);
@@ -906,10 +906,10 @@ describe('IndustryMapScene', () => {
 				]
 			});
 			scene.updateSnapshot(snapshot);
-			expect(graphicsInstances[2].mock.lineBetween).toHaveBeenCalled();
+			expect(graphicsInstances[2].mock.lineBetween).not.toHaveBeenCalled();
 		});
 
-		test('draws final stage building shape', () => {
+		test('does not draw final-stage marker fallback shapes without texture', () => {
 			expect.assertions(1);
 			const { scene, graphicsInstances, texturesExistsSpy } = setupScene();
 			texturesExistsSpy.mockReturnValue(false);
@@ -928,7 +928,7 @@ describe('IndustryMapScene', () => {
 				]
 			});
 			scene.updateSnapshot(snapshot);
-			expect(graphicsInstances[2].mock.fillRect).toHaveBeenCalled();
+			expect(graphicsInstances[2].mock.fillRect).not.toHaveBeenCalled();
 		});
 
 		test('applies idle status tint to building sprite', () => {
@@ -980,130 +980,13 @@ describe('IndustryMapScene', () => {
 		});
 	});
 
-	describe('resource shapes', () => {
-		test('draws water-source circle shape', () => {
-			expect.assertions(1);
-			const { scene, graphicsInstances, texturesExistsSpy } = setupScene();
-			texturesExistsSpy.mockReturnValue(false);
-			scene.create();
-			const snapshot = makeSnapshot({
-				tiles: [
-					{
-						id: 't-0-0',
-						x: 0,
-						y: 0,
-						terrain: 'water',
-						resource: 'water-source',
-						locked: false,
-						selected: false,
-						occupied: false
-					}
-				]
-			});
-			scene.updateSnapshot(snapshot);
-			expect(graphicsInstances[2].mock.fillCircle).toHaveBeenCalled();
-		});
-
-		test('draws salt-deposit diamond shape', () => {
-			expect.assertions(1);
-			const { scene, graphicsInstances, texturesExistsSpy } = setupScene();
-			texturesExistsSpy.mockReturnValue(false);
-			scene.create();
-			const snapshot = makeSnapshot({
-				tiles: [
-					{
-						id: 't-0-0',
-						x: 0,
-						y: 0,
-						terrain: 'deposit',
-						resource: 'salt-deposit',
-						locked: false,
-						selected: false,
-						occupied: false
-					}
-				]
-			});
-			scene.updateSnapshot(snapshot);
-			expect(graphicsInstances[2].mock.fillPath).toHaveBeenCalled();
-		});
-
-		test('draws chemical-feedstock diamond shape', () => {
-			expect.assertions(1);
-			const { scene, graphicsInstances, texturesExistsSpy } = setupScene();
-			texturesExistsSpy.mockReturnValue(false);
-			scene.create();
-			const snapshot = makeSnapshot({
-				tiles: [
-					{
-						id: 't-0-0',
-						x: 0,
-						y: 0,
-						terrain: 'deposit',
-						resource: 'chemical-feedstock',
-						locked: false,
-						selected: false,
-						occupied: false
-					}
-				]
-			});
-			scene.updateSnapshot(snapshot);
-			expect(graphicsInstances[2].mock.fillPath).toHaveBeenCalled();
-		});
-
-		test('draws pulpwood-forest square shape', () => {
-			expect.assertions(1);
-			const { scene, graphicsInstances, texturesExistsSpy } = setupScene();
-			texturesExistsSpy.mockReturnValue(false);
-			scene.create();
-			const snapshot = makeSnapshot({
-				tiles: [
-					{
-						id: 't-0-0',
-						x: 0,
-						y: 0,
-						terrain: 'forest',
-						resource: 'pulpwood-forest',
-						locked: false,
-						selected: false,
-						occupied: false
-					}
-				]
-			});
-			scene.updateSnapshot(snapshot);
-			expect(graphicsInstances[2].mock.fillRect).toHaveBeenCalled();
-		});
-
-		test('draws default triangle for grain-field', () => {
-			expect.assertions(1);
-			const { scene, graphicsInstances, texturesExistsSpy } = setupScene();
-			texturesExistsSpy.mockReturnValue(false);
-			scene.create();
-			const snapshot = makeSnapshot({
-				tiles: [
-					{
-						id: 't-0-0',
-						x: 0,
-						y: 0,
-						terrain: 'farmland',
-						resource: 'grain-field',
-						locked: false,
-						selected: false,
-						occupied: false
-					}
-				]
-			});
-			scene.updateSnapshot(snapshot);
-			expect(graphicsInstances[2].mock.fillTriangle).toHaveBeenCalled();
-		});
-	});
-
 	describe('canvas attributes', () => {
 		test('updates industry attributes on render', () => {
 			expect.assertions(4);
 			const { scene, canvas } = setupScene();
 			scene.create();
 			scene.updateSnapshot(makeSnapshot());
-			expect(canvas.dataset.industryTerrainAssetMode).toBe('fallback');
+			expect(canvas.dataset.industryTerrainAssetMode).toBe('missing');
 			expect(canvas.dataset.industryTerrainSpriteCount).toBe('0');
 			expect(canvas.dataset.industryResourceSpriteCount).toBe('0');
 			expect(canvas.dataset.industryBuildingSpriteCount).toBe('0');
@@ -1179,10 +1062,10 @@ describe('IndustryMapScene', () => {
 			const { scene, inputListeners, graphicsInstances, makePointer } = setupScene();
 			scene.create();
 			scene.updateSnapshot(makeSnapshot());
-			graphicsInstances[3].mock.clear.mockClear();
+			graphicsInstances[4].mock.clear.mockClear();
 			const pointer = makePointer({ x: 5, y: 5, worldX: 5, worldY: 5 });
 			inputListeners['pointermove'][0].call(scene, pointer);
-			expect(graphicsInstances[3].mock.strokeRect).toHaveBeenCalled();
+			expect(graphicsInstances[4].mock.strokeRect).toHaveBeenCalled();
 		});
 
 		test('draws selected tile outline', () => {
@@ -1190,7 +1073,7 @@ describe('IndustryMapScene', () => {
 			const { scene, graphicsInstances } = setupScene();
 			scene.create();
 			scene.updateSnapshot(makeSnapshot());
-			const selectedCalls = graphicsInstances[3].mock.lineStyle.mock.calls.filter(
+			const selectedCalls = graphicsInstances[4].mock.lineStyle.mock.calls.filter(
 				(c: unknown[]) => (c as [number, number, number])[1] === 0x2563eb
 			);
 			expect(selectedCalls.length).toBeGreaterThan(0);
@@ -1363,6 +1246,60 @@ describe('IndustryMapScene', () => {
 			expect(allSurvived).toBe(true);
 		});
 
+		test('re-renders without rebuilding terrain when only tile occupancy changes after building placement', () => {
+			expect.assertions(2);
+			const { scene, imageInstances, zoneInstances, texturesExistsSpy } = setupScene();
+			texturesExistsSpy.mockReturnValue(true);
+			scene.create();
+			scene.updateSnapshot(
+				makeSnapshot({
+					tiles: [
+						{
+							id: 't-0-0',
+							x: 0,
+							y: 0,
+							terrain: 'industrial',
+							resource: null,
+							locked: false,
+							selected: false,
+							occupied: false
+						}
+					]
+				})
+			);
+			const firstImages = [...imageInstances];
+			const firstZones = [...zoneInstances];
+			scene.updateSnapshot(
+				makeSnapshot({
+					tiles: [
+						{
+							id: 't-0-0',
+							x: 0,
+							y: 0,
+							terrain: 'industrial',
+							resource: null,
+							locked: false,
+							selected: false,
+							occupied: true
+						}
+					],
+					buildings: [
+						{
+							id: 'b1',
+							name: 'Warehouse',
+							typeId: 'warehouse',
+							tileId: 't-0-0',
+							x: 0,
+							y: 0,
+							status: 'idle'
+						}
+					]
+				})
+			);
+			expect(firstImages.every((image) => image.mock.destroy.mock.calls.length === 0)).toBe(true);
+			expect(firstZones.every((zone) => zone.mock.destroy.mock.calls.length === 0)).toBe(true);
+		});
+
 		test('updates selectedTile from selectedTileId on re-render with unchanged terrain', () => {
 			expect.assertions(1);
 			const { scene } = setupScene();
@@ -1465,25 +1402,6 @@ describe('IndustryMapScene', () => {
 			expect(imageInstances.length).toBe(before);
 		});
 
-		test('drawResourceMarkerFallback returns early when tile has no resource', () => {
-			expect.assertions(1);
-			const { scene, graphicsInstances } = setupScene();
-			scene.create();
-			graphicsInstances[2].mock.fillStyle.mockClear();
-			s(scene).drawResourceMarkerFallback(makeSnapshot().tiles[0]);
-			expect(graphicsInstances[2].mock.fillStyle).not.toHaveBeenCalled();
-		});
-
-		test('drawResourceShape returns early when markerGraphics is missing', () => {
-			expect.assertions(1);
-			const { scene } = setupScene();
-			scene.create();
-			s(scene).markerGraphics = undefined;
-			expect(() =>
-				s(scene).drawResourceShape('grain-field', 0, 0, 5, 0xfacc15, 0xffffff, 0.9)
-			).not.toThrow();
-		});
-
 		test('drawBuildingStatusRing returns early when markerGraphics is missing', () => {
 			expect.assertions(1);
 			const { scene } = setupScene();
@@ -1499,48 +1417,6 @@ describe('IndustryMapScene', () => {
 				status: 'idle'
 			};
 			expect(() => s(scene).drawBuildingStatusRing(building, 0, 0)).not.toThrow();
-		});
-
-		test('drawBuildingMarkerFallback returns early when markerGraphics is missing', () => {
-			expect.assertions(1);
-			const { scene } = setupScene();
-			scene.create();
-			s(scene).markerGraphics = undefined;
-			const building = {
-				id: 'b',
-				name: 'B',
-				typeId: 'grain-farm',
-				tileId: 't',
-				x: 0,
-				y: 0,
-				status: 'idle'
-			};
-			expect(() => s(scene).drawBuildingMarkerFallback(building, 0, 0)).not.toThrow();
-		});
-
-		test('drawBuildingShape returns early when markerGraphics is missing', () => {
-			expect.assertions(1);
-			const { scene } = setupScene();
-			scene.create();
-			s(scene).markerGraphics = undefined;
-			expect(() => s(scene).drawBuildingShape('raw', 0, 0, 9)).not.toThrow();
-		});
-
-		test('drawDiamond returns early when markerGraphics is missing', () => {
-			expect.assertions(1);
-			const { scene } = setupScene();
-			scene.create();
-			s(scene).markerGraphics = undefined;
-			expect(() => s(scene).drawDiamond(0, 0, 5, true)).not.toThrow();
-		});
-
-		test('drawDiamond skips strokePath when closePath is false', () => {
-			expect.assertions(1);
-			const { scene, graphicsInstances } = setupScene();
-			scene.create();
-			graphicsInstances[2].mock.strokePath.mockClear();
-			s(scene).drawDiamond(0, 0, 5, false);
-			expect(graphicsInstances[2].mock.strokePath).not.toHaveBeenCalled();
 		});
 
 		test('drawInteractionOutlines returns early when snapshot is null', () => {

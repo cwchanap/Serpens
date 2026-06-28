@@ -63,18 +63,22 @@ async function clickMapTile(page: Page, x: number, y: number) {
 	await clickCanvasTile(page, canvas, x, y);
 }
 
+function activeMapCanvas(page: Page): Locator {
+	return page.locator('.active-map-surface .map-canvas canvas');
+}
+
 async function expectRetailMapReady(page: Page): Promise<Locator> {
-	const canvas = page.locator('.map-canvas canvas');
+	const canvas = activeMapCanvas(page);
 	await expect(canvas).toBeVisible();
 	await expect(canvas).toHaveAttribute('data-store-sprite-count', /\d+/);
-	await expect(canvas).toHaveAttribute('data-terrain-asset-mode', /^(fallback|image|mixed)$/);
+	await expect(canvas).toHaveAttribute('data-terrain-asset-mode', 'image');
 	await expectMapCameraReady(canvas);
 
 	return canvas;
 }
 
 async function expectIndustryMapReady(page: Page): Promise<Locator> {
-	const canvas = page.locator('.map-canvas canvas');
+	const canvas = activeMapCanvas(page);
 	await expect(canvas).toBeVisible();
 	await expect(canvas).toHaveAttribute('data-industry-resource-count', /\d+/);
 	await expect(canvas).toHaveAttribute('data-industry-building-count', /\d+/);
@@ -116,7 +120,7 @@ async function clickCanvasTile(page: Page, canvas: Locator, x: number, y: number
 }
 
 async function expectTerrainAssets(page: Page) {
-	const canvas = page.locator('.map-canvas canvas');
+	const canvas = activeMapCanvas(page);
 	await expect(canvas).toHaveAttribute('data-terrain-asset-mode', 'image');
 
 	const baseCount = Number(await canvas.getAttribute('data-terrain-base-sprite-count'));
@@ -171,9 +175,11 @@ async function chooseRetailBuildTool(page: Page, storeTypeName: RegExp) {
 	await page.getByRole('button', { name: /^build$/i }).click();
 	const buildMenu = page.getByRole('dialog', { name: /build menu/i });
 	await expect(buildMenu).toBeVisible();
+	await expect(activeMapCanvas(page)).toHaveAttribute('data-map-paused', 'true');
 	await buildMenu.getByRole('button', { name: storeTypeName }).click();
 	await expect(buildMenu).toHaveCount(0);
-	const canvas = page.locator('.map-canvas canvas');
+	const canvas = activeMapCanvas(page);
+	await expect(canvas).toHaveAttribute('data-map-paused', 'false');
 	await expect(canvas).toHaveAttribute('data-placement-preview-mode', 'active');
 	await expect(canvas).toHaveAttribute('data-placement-valid-tile-count', /^[1-9]\d*$/);
 }
@@ -250,8 +256,10 @@ async function chooseIndustryBuildTool(page: Page, canvas: Locator, buildingName
 	await page.getByRole('button', { name: /^build$/i }).click();
 	const buildMenu = page.getByRole('dialog', { name: /build menu/i });
 	await expect(buildMenu).toBeVisible();
+	await expect(canvas).toHaveAttribute('data-map-paused', 'true');
 	await buildMenu.getByRole('button', { name: buildingName }).click();
 	await expect(buildMenu).toHaveCount(0);
+	await expect(canvas).toHaveAttribute('data-map-paused', 'false');
 	await expect(canvas).toHaveAttribute('data-placement-preview-mode', 'active');
 	await expect(canvas).toHaveAttribute('data-placement-valid-tile-count', /^[1-9]\d*$/);
 }
@@ -460,7 +468,7 @@ test('player can found a store from a narrow viewport', async ({ page }) => {
 });
 
 async function expectOverlayToCoverMap(page: Page) {
-	const canvas = page.locator('.map-canvas canvas');
+	const canvas = activeMapCanvas(page);
 	const overlay = page.getByRole('dialog', { name: /tile details/i });
 	const [canvasBox, overlayBox] = await Promise.all([canvas.boundingBox(), overlay.boundingBox()]);
 
@@ -527,6 +535,7 @@ test('management panels open from the map menu and close as overlays', async ({ 
 
 test('player can switch to the industry city map and back to retail', async ({ page }) => {
 	await page.goto('/');
+	await expect(page.locator('.map-canvas canvas')).toHaveCount(1);
 
 	await buildRetailStoreAt(page, {
 		x: 1,
@@ -539,6 +548,7 @@ test('player can switch to the industry city map and back to retail', async ({ p
 	await page.getByRole('menuitem', { name: /industry city map/i }).click();
 	await expect(page.getByRole('heading', { name: /industry city/i })).toBeVisible();
 	const industryCanvas = await expectIndustryMapReady(page);
+	await expect(page.locator('.map-canvas canvas')).toHaveCount(2);
 	const resourceCount = Number(await industryCanvas.getAttribute('data-industry-resource-count'));
 	expect(resourceCount).toBeGreaterThan(0);
 
@@ -613,7 +623,8 @@ test('player can switch to the industry city map and back to retail', async ({ p
 	await page.getByRole('menuitem', { name: /retail city map/i }).click();
 	await expect(page.getByRole('heading', { name: /harbor city/i })).toBeVisible();
 	await expectRetailMapReady(page);
-	await expect(page.locator('.map-canvas canvas')).toHaveAttribute('data-store-sprite-count', '1');
+	await expect(page.locator('.map-canvas canvas')).toHaveCount(2);
+	await expect(activeMapCanvas(page)).toHaveAttribute('data-store-sprite-count', '1');
 	await expect(page.getByRole('dialog', { name: /industry tile details/i })).toHaveCount(0);
 });
 
@@ -927,7 +938,7 @@ test('manage selected store stock and see weekly imports', async ({ page }) => {
 		expectedStoreCount: 1
 	});
 
-	const mapCanvas = page.locator('.map-canvas canvas');
+	const mapCanvas = activeMapCanvas(page);
 	await expect(mapCanvas).toHaveAttribute('data-store-sprite-count', '1');
 
 	await clickMapTile(page, 1, 6);
@@ -1064,7 +1075,7 @@ test('player can save to a manual slot and load it after reload', async ({ page 
 	await openSaves(page);
 	await expect(page.getByRole('heading', { name: /Harbor test/i })).toBeVisible();
 	await page.getByRole('button', { name: /^Load$/i }).click();
-	await expect(page.locator('.map-canvas canvas')).toHaveAttribute('data-store-sprite-count', '1');
+	await expect(activeMapCanvas(page)).toHaveAttribute('data-store-sprite-count', '1');
 	await expect(page.getByText(/Loaded Harbor test/i)).toBeVisible();
 });
 

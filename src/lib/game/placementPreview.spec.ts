@@ -10,6 +10,7 @@ import {
 } from './placementPreview';
 import { createFoundingGameAtTile, forecastOpening } from './placement';
 import { createNewGame } from './state';
+import type { CityTile } from './types';
 
 describe('retail placement preview', () => {
 	test('marks every retail tile as valid or invalid before founding', () => {
@@ -152,6 +153,45 @@ describe('retail placement preview', () => {
 			max: Math.max(...projectedDailyRevenue)
 		});
 		expect(boutique.disabledReason).toBeNull();
+	});
+
+	test('does not rescan the retail city tiles while building preview summaries', () => {
+		expect.assertions(1);
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 56,
+			height: 48,
+			seed: 20260503
+		});
+		const tiles = [...city.tiles];
+		let findCalls = 0;
+		const originalFind = tiles.find.bind(tiles);
+		const instrumentedFind = ((
+			predicate: (value: CityTile, index: number, obj: CityTile[]) => unknown,
+			thisArg?: unknown
+		) => {
+			findCalls += 1;
+			return originalFind(predicate, thisArg);
+		}) as typeof tiles.find;
+		tiles.find = instrumentedFind;
+		const instrumentedCity = { ...city, tiles };
+		const game = createFoundingGameAtTile({
+			archetypeId: 'convenience',
+			city: instrumentedCity,
+			tileId: tiles.find((tile) => !tile.locked && tile.feature === null)!.id,
+			seed: 20260503
+		});
+		findCalls = 0;
+
+		getRetailBuildMenuOptions({ game, city: instrumentedCity });
+		createRetailPlacementPreview({
+			game,
+			city: instrumentedCity,
+			archetypeId: 'boutique'
+		});
+
+		expect(findCalls).toBe(0);
 	});
 
 	test('disables retail build menu options when no tile can accept another store', () => {

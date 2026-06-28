@@ -24,6 +24,12 @@
 	import { createIndustryMapSnapshot } from '$lib/game/industryMapRender';
 	import { buildIndustrialBuilding, upgradeBuilding } from '$lib/game/industryPlacement';
 	import { createCityMapSnapshot } from '$lib/game/mapRender';
+	import {
+		createInitialVisitedMapViews,
+		markMapViewVisited,
+		shouldRenderMapView,
+		type MapViewId
+	} from '$lib/game/mapViewKeepAlive';
 	import { createFoundingGameAtTile, openStoreAtTile } from '$lib/game/placement';
 	import {
 		createIndustryPlacementPreview,
@@ -134,7 +140,8 @@
 	];
 
 	let game: GameState | null = $state(null);
-	let activeMapView = $state<'world' | 'retail' | 'industry'>('retail');
+	let activeMapView = $state<MapViewId>('retail');
+	let visitedMapViews = $state(createInitialVisitedMapViews('retail'));
 	let selectedWorldCityId = $state<string | null>(null);
 	let selectedTileId = $state<string | null>(null);
 	let selectedIndustryTileId = $state<string | null>(null);
@@ -222,7 +229,7 @@
 	// placement preview over the map.
 	let isMapPaused = $derived(
 		!isPlacementModeActive &&
-			(isViewMenuOpen || activeManagementPanelId !== null || isSavePanelOpen)
+			(isViewMenuOpen || isBuildMenuOpen || activeManagementPanelId !== null || isSavePanelOpen)
 	);
 	let shouldShowRetailInspector = $derived(
 		selectedTile !== null && (!isPlacementModeActive || placementFeedback !== null)
@@ -349,7 +356,7 @@
 	}
 
 	function showRetailMap() {
-		activeMapView = 'retail';
+		setActiveMapView('retail');
 		selectedIndustryTileId = null;
 		selectedWorldCityId = null;
 		isViewMenuOpen = false;
@@ -357,7 +364,7 @@
 	}
 
 	function showIndustryMap() {
-		activeMapView = 'industry';
+		setActiveMapView('industry');
 		selectedTileId = null;
 		selectedWorldCityId = null;
 		isViewMenuOpen = false;
@@ -365,12 +372,17 @@
 	}
 
 	function showWorldMap(): void {
-		activeMapView = 'world';
+		setActiveMapView('world');
 		selectedTileId = null;
 		selectedIndustryTileId = null;
 		isViewMenuOpen = false;
 		isBuildMenuOpen = false;
 		cancelPlacement();
+	}
+
+	function setActiveMapView(mapView: MapViewId): void {
+		activeMapView = mapView;
+		visitedMapViews = markMapViewVisited(visitedMapViews, mapView);
 	}
 
 	function selectWorldCityNode(cityId: string): void {
@@ -393,7 +405,7 @@
 
 		const nextGame = selectWorldCity(game, status.city.id);
 		game = nextGame;
-		activeMapView = status.city.kind === 'retail' ? 'retail' : 'industry';
+		setActiveMapView(status.city.kind === 'retail' ? 'retail' : 'industry');
 		selectedWorldCityId = null;
 		selectedTileId = null;
 		selectedIndustryTileId = null;
@@ -769,23 +781,48 @@
 
 <main class="app">
 	<section class="map-layout" aria-label="City planning">
-		{#if activeMapView === 'world'}
-			<WorldMap
-				statuses={worldCityStatuses}
-				selectedCityId={selectedWorldCityId}
-				onSelectCity={selectWorldCityNode}
-				onOpenCity={openSelectedWorldCity}
-				onCloseInspector={closeWorldInspector}
-			/>
-		{:else if activeMapView === 'retail'}
-			<CityMap snapshot={mapSnapshot} onTileSelected={selectTile} paused={isMapPaused} />
-		{:else}
-			<IndustryMap
-				snapshot={industryMapSnapshot}
-				onTileSelected={selectIndustryTile}
-				paused={isMapPaused}
-			/>
-		{/if}
+		<div class="map-surfaces">
+			{#if shouldRenderMapView(visitedMapViews, 'world')}
+				<div
+					class={{ 'map-surface': true, 'active-map-surface': activeMapView === 'world' }}
+					aria-hidden={activeMapView !== 'world'}
+				>
+					<WorldMap
+						statuses={worldCityStatuses}
+						selectedCityId={selectedWorldCityId}
+						onSelectCity={selectWorldCityNode}
+						onOpenCity={openSelectedWorldCity}
+						onCloseInspector={closeWorldInspector}
+					/>
+				</div>
+			{/if}
+			{#if shouldRenderMapView(visitedMapViews, 'retail')}
+				<div
+					class={{ 'map-surface': true, 'active-map-surface': activeMapView === 'retail' }}
+					aria-hidden={activeMapView !== 'retail'}
+				>
+					<CityMap
+						snapshot={mapSnapshot}
+						onTileSelected={selectTile}
+						active={activeMapView === 'retail'}
+						paused={isMapPaused}
+					/>
+				</div>
+			{/if}
+			{#if shouldRenderMapView(visitedMapViews, 'industry')}
+				<div
+					class={{ 'map-surface': true, 'active-map-surface': activeMapView === 'industry' }}
+					aria-hidden={activeMapView !== 'industry'}
+				>
+					<IndustryMap
+						snapshot={industryMapSnapshot}
+						onTileSelected={selectIndustryTile}
+						active={activeMapView === 'industry'}
+						paused={isMapPaused}
+					/>
+				</div>
+			{/if}
+		</div>
 		<div class="map-hud" aria-label="Map controls">
 			<div class="map-title plaque" aria-label="Map title">
 				<span class="bookmark map-title-bookmark" aria-hidden="true"></span>
@@ -1102,6 +1139,24 @@
 		height: 100%;
 		min-height: 100vh;
 		overflow: hidden;
+	}
+
+	.map-surfaces,
+	.map-surface {
+		position: absolute;
+		inset: 0;
+		min-width: 0;
+		min-height: 0;
+	}
+
+	.map-surface {
+		pointer-events: none;
+		visibility: hidden;
+	}
+
+	.active-map-surface {
+		pointer-events: auto;
+		visibility: visible;
 	}
 
 	.map-hud {

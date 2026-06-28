@@ -243,10 +243,10 @@ describe('CityMapScene', () => {
 	});
 
 	describe('create', () => {
-		it('creates four graphics objects', () => {
+		it('creates five graphics objects', () => {
 			expect.assertions(1);
 			scene.create();
-			expect(s(scene).add.graphics).toHaveBeenCalledTimes(4);
+			expect(s(scene).add.graphics).toHaveBeenCalledTimes(5);
 		});
 
 		it('sets camera zoom to 1', () => {
@@ -373,6 +373,21 @@ describe('CityMapScene', () => {
 			expect(ds.placementValidTileCount).toBe('2');
 			expect(ds.placementInvalidTileCount).toBe('1');
 		});
+
+		it('coalesces adjacent placement preview tiles into row spans', () => {
+			expect.assertions(1);
+			scene.create();
+			scene.updateSnapshot(
+				makeSnapshot({
+					placementPreview: {
+						validTileIds: ['t0', 't1', 't2'],
+						invalidTileIds: ['t3', 't4']
+					}
+				})
+			);
+			const placementPreviewGraphics = s(scene).placementPreviewGraphics;
+			expect(placementPreviewGraphics.fillRect).toHaveBeenCalledTimes(2);
+		});
 	});
 
 	describe('drawTile', () => {
@@ -404,349 +419,12 @@ describe('CityMapScene', () => {
 				tiles: [makeTile({ id: 'owned', x: 0, y: 0, owned: true })]
 			});
 			scene.updateSnapshot(snap);
-			const mapGraphics = s(scene).mapGraphics;
-			const lineCalls = mapGraphics.lineStyle.mock.calls;
+			const ownershipGraphics = s(scene).ownershipGraphics;
+			const lineCalls = ownershipGraphics.lineStyle.mock.calls;
 			const ownedLine = lineCalls.find(
 				(c: any[]) => c[0] === 3 && c[1] === 0x1f8a70 && c[2] === 0.95
 			);
 			expect(ownedLine).toBeDefined();
-		});
-	});
-
-	describe('drawTerrainFeatureFallback', () => {
-		it('draws road horizontal fallback', () => {
-			expect.assertions(1);
-			scene.create();
-			scene.updateSnapshot(
-				makeSnapshot({
-					tiles: [
-						makeTile({
-							id: 'road-h',
-							x: 0,
-							y: 0,
-							terrain: 'transit',
-							feature: 'road',
-							roadVariant: 'horizontal'
-						})
-					]
-				})
-			);
-			const mapGraphics = s(scene).mapGraphics;
-			const roadFill = mapGraphics.fillStyle.mock.calls.find((c: any[]) => c[0] === 0x50545a);
-			expect(roadFill).toBeDefined();
-		});
-
-		it('draws road vertical fallback', () => {
-			expect.assertions(1);
-			scene.create();
-			scene.updateSnapshot(
-				makeSnapshot({
-					tiles: [
-						makeTile({
-							id: 'road-v',
-							x: 0,
-							y: 0,
-							terrain: 'transit',
-							feature: 'road',
-							roadVariant: 'vertical'
-						})
-					]
-				})
-			);
-			const mapGraphics = s(scene).mapGraphics;
-			expect(mapGraphics.fillRect).toHaveBeenCalled();
-		});
-
-		it('draws road intersection fallback', () => {
-			expect.assertions(2);
-			scene.create();
-			scene.updateSnapshot(
-				makeSnapshot({
-					tiles: [
-						makeTile({
-							id: 'road-i',
-							x: 0,
-							y: 0,
-							terrain: 'transit',
-							feature: 'road',
-							roadVariant: 'intersection'
-						})
-					]
-				})
-			);
-			const mapGraphics = s(scene).mapGraphics;
-			expect(mapGraphics.fillStyle).toHaveBeenCalledWith(0x50545a, 0.92);
-			expect(mapGraphics.lineBetween).toHaveBeenCalled();
-		});
-
-		it('draws road tee fallback with three connected arms', () => {
-			expect.assertions(1);
-			scene.create();
-			scene.updateSnapshot(
-				makeSnapshot({
-					tiles: [
-						makeTile({
-							id: 'road-tee',
-							x: 0,
-							y: 0,
-							terrain: 'transit',
-							feature: 'road',
-							roadVariant: 'tee-nes'
-						})
-					]
-				})
-			);
-			const mapGraphics = s(scene).mapGraphics;
-			expect(mapGraphics.lineBetween.mock.calls.length).toBeGreaterThanOrEqual(3);
-		});
-
-		it('draws river fallback', () => {
-			expect.assertions(1);
-			scene.create();
-			scene.updateSnapshot(
-				makeSnapshot({
-					tiles: [
-						makeTile({
-							id: 'river',
-							x: 0,
-							y: 0,
-							terrain: 'green',
-							feature: 'river',
-							roadVariant: null
-						})
-					]
-				})
-			);
-			const mapGraphics = s(scene).mapGraphics;
-			const riverFill = mapGraphics.fillStyle.mock.calls.find((c: any[]) => c[0] === 0x3ca7d8);
-			expect(riverFill).toBeDefined();
-		});
-
-		it('draws river corner fallback with two connected arms', () => {
-			expect.assertions(1);
-			scene.create();
-			scene.updateSnapshot(
-				makeSnapshot({
-					tiles: [
-						makeTile({
-							id: 'river-corner',
-							x: 0,
-							y: 0,
-							terrain: 'green',
-							feature: 'river',
-							roadVariant: null,
-							riverVariant: 'corner-ne'
-						})
-					]
-				})
-			);
-			const mapGraphics = s(scene).mapGraphics;
-			expect(mapGraphics.lineBetween.mock.calls.length).toBeGreaterThanOrEqual(2);
-		});
-
-		it('skips fallback when terrain texture exists', () => {
-			expect.assertions(1);
-			scene.create();
-			s(scene).textures.exists = vi.fn(() => true);
-			scene.updateSnapshot(
-				makeSnapshot({
-					tiles: [
-						makeTile({
-							id: 'road-tex',
-							x: 0,
-							y: 0,
-							terrain: 'transit',
-							feature: 'road',
-							roadVariant: 'horizontal'
-						})
-					]
-				})
-			);
-			const mapGraphics = s(scene).mapGraphics;
-			const roadFill = mapGraphics.fillStyle.mock.calls.find((c: any[]) => c[0] === 0x50545a);
-			expect(roadFill).toBeUndefined();
-		});
-
-		it('skips connected fallback for connector variants when terrain texture exists', () => {
-			expect.assertions(2);
-			scene.create();
-			s(scene).textures.exists = vi.fn(() => true);
-			scene.updateSnapshot(
-				makeSnapshot({
-					tiles: [
-						makeTile({
-							id: 'river-corner-texture',
-							x: 0,
-							y: 0,
-							terrain: 'green',
-							feature: 'river',
-							riverVariant: 'corner-ne'
-						})
-					]
-				})
-			);
-			const mapGraphics = s(scene).mapGraphics;
-			const riverFill = mapGraphics.fillStyle.mock.calls.find((c: any[]) => c[0] === 0x3ca7d8);
-			expect(riverFill).toBeUndefined();
-			expect(mapGraphics.lineBetween.mock.calls).toHaveLength(0);
-		});
-
-		it('skips fallback when tile has no feature', () => {
-			expect.assertions(1);
-			scene.create();
-			scene.updateSnapshot(
-				makeSnapshot({
-					tiles: [makeTile({ id: 'plain', x: 0, y: 0, terrain: 'commercial' })]
-				})
-			);
-			const mapGraphics = s(scene).mapGraphics;
-			const roadFill = mapGraphics.fillStyle.mock.calls.find((c: any[]) => c[0] === 0x50545a);
-			expect(roadFill).toBeUndefined();
-		});
-
-		it('draws road isolated fallback with a center tile and no arms', () => {
-			expect.assertions(2);
-			scene.create();
-			scene.updateSnapshot(
-				makeSnapshot({
-					tiles: [
-						makeTile({
-							id: 'road-isolated',
-							x: 0,
-							y: 0,
-							terrain: 'transit',
-							feature: 'road',
-							roadVariant: null
-						})
-					]
-				})
-			);
-			const mapGraphics = s(scene).mapGraphics;
-			expect(mapGraphics.fillStyle).toHaveBeenCalledWith(0x50545a, 0.92);
-			// An isolated tile has no connected arms, so no center lines are drawn.
-			expect(mapGraphics.lineBetween.mock.calls).toHaveLength(0);
-		});
-
-		it('draws road end-cap fallbacks with a single connected arm per direction', () => {
-			expect.assertions(1);
-			scene.create();
-			scene.updateSnapshot(
-				makeSnapshot({
-					tiles: [
-						makeTile({
-							id: 'end-n',
-							x: 0,
-							y: 0,
-							terrain: 'transit',
-							feature: 'road',
-							roadVariant: 'end-n'
-						}),
-						makeTile({
-							id: 'end-e',
-							x: 1,
-							y: 0,
-							terrain: 'transit',
-							feature: 'road',
-							roadVariant: 'end-e'
-						}),
-						makeTile({
-							id: 'end-s',
-							x: 2,
-							y: 0,
-							terrain: 'transit',
-							feature: 'road',
-							roadVariant: 'end-s'
-						}),
-						makeTile({
-							id: 'end-w',
-							x: 3,
-							y: 0,
-							terrain: 'transit',
-							feature: 'road',
-							roadVariant: 'end-w'
-						})
-					]
-				})
-			);
-			const mapGraphics = s(scene).mapGraphics;
-			// Each end cap contributes exactly one center line (one arm).
-			expect(mapGraphics.lineBetween.mock.calls).toHaveLength(4);
-		});
-
-		it('draws road corner fallbacks for es, sw, and wn directions', () => {
-			expect.assertions(1);
-			scene.create();
-			scene.updateSnapshot(
-				makeSnapshot({
-					tiles: [
-						makeTile({
-							id: 'corner-es',
-							x: 0,
-							y: 0,
-							terrain: 'transit',
-							feature: 'road',
-							roadVariant: 'corner-es'
-						}),
-						makeTile({
-							id: 'corner-sw',
-							x: 1,
-							y: 0,
-							terrain: 'transit',
-							feature: 'road',
-							roadVariant: 'corner-sw'
-						}),
-						makeTile({
-							id: 'corner-wn',
-							x: 2,
-							y: 0,
-							terrain: 'transit',
-							feature: 'road',
-							roadVariant: 'corner-wn'
-						})
-					]
-				})
-			);
-			const mapGraphics = s(scene).mapGraphics;
-			// Each corner contributes two center lines (two arms).
-			expect(mapGraphics.lineBetween.mock.calls).toHaveLength(6);
-		});
-
-		it('draws road tee fallbacks for esw, nsw, and new directions', () => {
-			expect.assertions(1);
-			scene.create();
-			scene.updateSnapshot(
-				makeSnapshot({
-					tiles: [
-						makeTile({
-							id: 'tee-esw',
-							x: 0,
-							y: 0,
-							terrain: 'transit',
-							feature: 'road',
-							roadVariant: 'tee-esw'
-						}),
-						makeTile({
-							id: 'tee-nsw',
-							x: 1,
-							y: 0,
-							terrain: 'transit',
-							feature: 'road',
-							roadVariant: 'tee-nsw'
-						}),
-						makeTile({
-							id: 'tee-new',
-							x: 2,
-							y: 0,
-							terrain: 'transit',
-							feature: 'road',
-							roadVariant: 'tee-new'
-						})
-					]
-				})
-			);
-			const mapGraphics = s(scene).mapGraphics;
-			// Each tee contributes three center lines (three arms).
-			expect(mapGraphics.lineBetween.mock.calls).toHaveLength(9);
 		});
 	});
 
@@ -1017,7 +695,7 @@ describe('CityMapScene', () => {
 			expect(storeSprites.length).toBe(1);
 		});
 
-		it('draws circle markers when no store sprites', () => {
+		it('does not draw marker fallbacks when store textures are missing', () => {
 			expect.assertions(3);
 			scene.create();
 			scene.updateSnapshot(
@@ -1036,9 +714,10 @@ describe('CityMapScene', () => {
 			);
 			scene.update(1000);
 			const markerGraphics = s(scene).markerGraphics;
-			expect(markerGraphics.fillCircle).toHaveBeenCalled();
-			expect(markerGraphics.strokeCircle).toHaveBeenCalled();
-			expect(markerGraphics.fillStyle).toHaveBeenCalledWith(0xf97316, 1);
+			const ds = s(scene).game.canvas.dataset;
+			expect(markerGraphics.fillCircle).not.toHaveBeenCalled();
+			expect(markerGraphics.strokeCircle).not.toHaveBeenCalled();
+			expect(ds.storeMarkerMode).toBe('missing');
 		});
 
 		it('returns early when no snapshot', () => {
@@ -1114,7 +793,7 @@ describe('CityMapScene', () => {
 			expect(ds.storeSpriteCount).toBe('1');
 		});
 
-		it('uses circle mode when storefront textures are missing', () => {
+		it('uses missing mode when storefront textures are missing', () => {
 			expect.assertions(2);
 			scene.create();
 			s(scene).textures.exists = vi.fn(() => false);
@@ -1133,29 +812,29 @@ describe('CityMapScene', () => {
 				})
 			);
 			const ds = s(scene).game.canvas.dataset;
-			expect(ds.storeMarkerMode).toBe('circle');
+			expect(ds.storeMarkerMode).toBe('missing');
 			expect(ds.storeSpriteCount).toBe('0');
 		});
 
-		it('sets circle mode with empty stores and no textures', () => {
+		it('sets empty mode with empty stores and no textures', () => {
 			expect.assertions(2);
 			scene.create();
 			s(scene).textures.exists = vi.fn(() => false);
 			scene.updateSnapshot(makeSnapshot());
 			const ds = s(scene).game.canvas.dataset;
-			expect(ds.storeMarkerMode).toBe('circle');
+			expect(ds.storeMarkerMode).toBe('empty');
 			expect(ds.storeSpriteCount).toBe('0');
 		});
 	});
 
 	describe('createTerrainSprites', () => {
-		it('uses fallback mode when no textures exist', () => {
+		it('uses missing mode when no textures exist', () => {
 			expect.assertions(4);
 			scene.create();
 			s(scene).textures.exists = vi.fn(() => false);
 			scene.updateSnapshot(makeSnapshot());
 			const ds = s(scene).game.canvas.dataset;
-			expect(ds.terrainAssetMode).toBe('fallback');
+			expect(ds.terrainAssetMode).toBe('missing');
 			expect(ds.terrainBaseSpriteCount).toBe('0');
 			expect(ds.terrainFeatureSpriteCount).toBe('0');
 			expect(ds.terrainDecorationSpriteCount).toBe('0');
@@ -1356,7 +1035,7 @@ describe('CityMapScene', () => {
 			).toBeUndefined();
 		});
 
-		it('uses mixed mode when some feature textures are missing', () => {
+		it('uses missing mode when some feature textures are missing', () => {
 			expect.assertions(1);
 			scene.create();
 			s(scene).textures.exists = vi.fn((key: string) => {
@@ -1364,7 +1043,7 @@ describe('CityMapScene', () => {
 			});
 			scene.updateSnapshot(makeSnapshot());
 			const ds = s(scene).game.canvas.dataset;
-			expect(ds.terrainAssetMode).toBe('mixed');
+			expect(ds.terrainAssetMode).toBe('missing');
 		});
 
 		it('creates tree decorations on green tiles at valid positions', () => {
@@ -1393,7 +1072,7 @@ describe('CityMapScene', () => {
 			expect(Number(ds.terrainDecorationSpriteCount)).toBe(0);
 		});
 
-		it('sets fallback when all textures missing and features exist', () => {
+		it('sets missing mode when all textures are missing and features exist', () => {
 			expect.assertions(4);
 			scene.create();
 			s(scene).textures.exists = vi.fn(() => false);
@@ -1411,7 +1090,7 @@ describe('CityMapScene', () => {
 				})
 			);
 			const ds = s(scene).game.canvas.dataset;
-			expect(ds.terrainAssetMode).toBe('fallback');
+			expect(ds.terrainAssetMode).toBe('missing');
 			expect(ds.terrainBaseSpriteCount).toBe('0');
 			expect(ds.terrainFeatureSpriteCount).toBe('0');
 			expect(ds.terrainDecorationSpriteCount).toBe('0');
@@ -1598,16 +1277,18 @@ describe('CityMapScene', () => {
 
 	describe('destroySceneObjects', () => {
 		it('destroys all graphics and removes event listeners', () => {
-			expect.assertions(10);
+			expect.assertions(12);
 			scene.create();
 			scene.updateSnapshot(makeSnapshot());
 			const mapGraphics = s(scene).mapGraphics;
+			const ownershipGraphics = s(scene).ownershipGraphics;
 			const placementPreviewGraphics = s(scene).placementPreviewGraphics;
 			const outlineGraphics = s(scene).outlineGraphics;
 			const markerGraphics = s(scene).markerGraphics;
 			const shutdownHandler = getHandler(s(scene).events.once as Mock, 'shutdown');
 			shutdownHandler.call(scene);
 			expect(mapGraphics.destroy).toHaveBeenCalled();
+			expect(ownershipGraphics.destroy).toHaveBeenCalled();
 			expect(placementPreviewGraphics.destroy).toHaveBeenCalled();
 			expect(outlineGraphics.destroy).toHaveBeenCalled();
 			expect(markerGraphics.destroy).toHaveBeenCalled();
@@ -1616,6 +1297,7 @@ describe('CityMapScene', () => {
 			expect(s(scene).input.off).toHaveBeenCalledWith('wheel', expect.any(Function), scene);
 			expect(s(scene).scale.off).toHaveBeenCalledWith('resize', expect.any(Function), scene);
 			expect(s(scene).mapGraphics).toBeUndefined();
+			expect(s(scene).ownershipGraphics).toBeUndefined();
 			expect(s(scene).tileZones.length).toBe(0);
 		});
 
@@ -1689,7 +1371,7 @@ describe('CityMapScene', () => {
 			scene.create();
 			scene.updateSnapshot(makeSnapshot());
 			const ds = s(scene).game.canvas.dataset;
-			expect(ds.storeMarkerMode).toBe('circle');
+			expect(ds.storeMarkerMode).toBe('empty');
 			expect(ds.storeSpriteCount).toBe('0');
 		});
 
@@ -1787,6 +1469,34 @@ describe('CityMapScene', () => {
 			);
 			expect(allSurvived).toBe(true);
 		});
+
+		it('caches terrain sprites when only tile ownership changes after store placement', () => {
+			expect.assertions(2);
+			scene.create();
+			s(scene).textures.exists = vi.fn(() => true);
+			scene.updateSnapshot(makeSnapshot({ tiles: [makeTile({ id: 't0', x: 0, y: 0 })] }));
+			const firstSprites = [...s(scene).terrainSprites];
+			const firstZones = [...s(scene).tileZones];
+			scene.updateSnapshot(
+				makeSnapshot({
+					tiles: [makeTile({ id: 't0', x: 0, y: 0, owned: true })],
+					stores: [
+						{
+							id: 's1',
+							name: 'Store',
+							archetypeId: 'convenience',
+							tileId: 't0',
+							x: 0,
+							y: 0
+						}
+					]
+				})
+			);
+			expect(firstSprites.every((sp: any) => (sp.destroy as Mock).mock.calls.length === 0)).toBe(
+				true
+			);
+			expect(firstZones.every((z: any) => (z.destroy as Mock).mock.calls.length === 0)).toBe(true);
+		});
 	});
 
 	describe('branch coverage', () => {
@@ -1817,17 +1527,6 @@ describe('CityMapScene', () => {
 			scene.create();
 			s(scene).mapGraphics = undefined;
 			expect(() => s(scene).drawTile(makeTile())).not.toThrow();
-		});
-
-		it('drawTerrainFeatureFallback skips drawing for unknown feature types', () => {
-			expect.assertions(1);
-			scene.create();
-			const tile = makeTile({ feature: 'unknown' as any });
-			s(scene).drawTerrainFeatureFallback(tile, 0, 0);
-			const mapGraphics = s(scene).mapGraphics;
-			const roadFill = mapGraphics.fillStyle.mock.calls.find((c: any[]) => c[0] === 0x50545a);
-			const riverFill = mapGraphics.fillStyle.mock.calls.find((c: any[]) => c[0] === 0x3ca7d8);
-			expect(roadFill ?? riverFill).toBeUndefined();
 		});
 
 		it('createMapInteractionZone returns early when no snapshot', () => {
@@ -1950,37 +1649,37 @@ describe('CityMapScene', () => {
 			expect(s(scene).cameras.main.setBounds).toHaveBeenCalledWith(0, 0, 32, 32);
 		});
 
-		it('createStoreSprites sets circle mode when snapshot is null', () => {
+		it('createStoreSprites sets missing mode when snapshot is null', () => {
 			expect.assertions(2);
 			scene.create();
 			s(scene).snapshot = null;
 			s(scene).createStoreSprites();
 			const ds = s(scene).game.canvas.dataset;
-			expect(ds.storeMarkerMode).toBe('circle');
+			expect(ds.storeMarkerMode).toBe('missing');
 			expect(ds.storeSpriteCount).toBe('0');
 		});
 
-		it('createTerrainSprites sets fallback mode when snapshot is null', () => {
+		it('createTerrainSprites sets missing mode when snapshot is null', () => {
 			expect.assertions(1);
 			scene.create();
 			s(scene).snapshot = null;
 			s(scene).createTerrainSprites();
 			const ds = s(scene).game.canvas.dataset;
-			expect(ds.terrainAssetMode).toBe('fallback');
+			expect(ds.terrainAssetMode).toBe('missing');
 		});
 
 		it('updateCanvasStoreMarkerAttributes does not throw when canvas is missing', () => {
 			expect.assertions(1);
 			scene.create();
 			s(scene).game = {};
-			expect(() => s(scene).updateCanvasStoreMarkerAttributes('circle', 0)).not.toThrow();
+			expect(() => s(scene).updateCanvasStoreMarkerAttributes('empty', 0)).not.toThrow();
 		});
 
 		it('updateCanvasTerrainAttributes does not throw when canvas is missing', () => {
 			expect.assertions(1);
 			scene.create();
 			s(scene).game = {};
-			expect(() => s(scene).updateCanvasTerrainAttributes('fallback', 0, 0, 0)).not.toThrow();
+			expect(() => s(scene).updateCanvasTerrainAttributes('missing', 0, 0, 0)).not.toThrow();
 		});
 
 		it('updateCanvasPlacementPreviewAttributes does not throw when canvas is missing', () => {
