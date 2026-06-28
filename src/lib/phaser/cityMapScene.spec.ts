@@ -388,6 +388,22 @@ describe('CityMapScene', () => {
 			const placementPreviewGraphics = s(scene).placementPreviewGraphics;
 			expect(placementPreviewGraphics.fillRect).toHaveBeenCalledTimes(2);
 		});
+
+		it('draws placement preview tiles as 2x2 store footprints', () => {
+			expect.assertions(2);
+			scene.create();
+			scene.updateSnapshot(
+				makeSnapshot({
+					placementPreview: {
+						validTileIds: ['t0'],
+						invalidTileIds: []
+					}
+				})
+			);
+			const placementPreviewGraphics = s(scene).placementPreviewGraphics;
+			expect(placementPreviewGraphics.fillRect).toHaveBeenCalledWith(2, 2, 60, 60);
+			expect(placementPreviewGraphics.fillRect).not.toHaveBeenCalledWith(2, 2, 28, 28);
+		});
 	});
 
 	describe('drawTile', () => {
@@ -425,6 +441,27 @@ describe('CityMapScene', () => {
 				(c: any[]) => c[0] === 3 && c[1] === 0x1f8a70 && c[2] === 0.95
 			);
 			expect(ownedLine).toBeDefined();
+		});
+
+		it('renders store ownership as a 2x2 footprint border', () => {
+			expect.assertions(1);
+			scene.create();
+			scene.updateSnapshot(
+				makeSnapshot({
+					stores: [
+						{
+							id: 's1',
+							name: 'Store',
+							archetypeId: 'convenience',
+							tileId: 't0',
+							x: 0,
+							y: 0
+						}
+					]
+				})
+			);
+			const ownershipGraphics = s(scene).ownershipGraphics;
+			expect(ownershipGraphics.strokeRect).toHaveBeenCalledWith(3, 3, 58, 58);
 		});
 	});
 
@@ -695,6 +732,29 @@ describe('CityMapScene', () => {
 			expect(storeSprites.length).toBe(1);
 		});
 
+		it('sizes store sprites to the 2x2 footprint', () => {
+			expect.assertions(2);
+			scene.create();
+			s(scene).textures.exists = vi.fn((key: string) => key === 'shop-storefront-convenience');
+			scene.updateSnapshot(
+				makeSnapshot({
+					stores: [
+						{
+							id: 's1',
+							name: 'Store',
+							archetypeId: 'convenience',
+							tileId: 't0',
+							x: 0,
+							y: 0
+						}
+					]
+				})
+			);
+			const storeSprite = s(scene).storeSprites[0];
+			expect(storeSprite.sprite.setDisplaySize).toHaveBeenCalledWith(64, 64);
+			expect(storeSprite).toMatchObject({ baseX: 32, baseY: 32 });
+		});
+
 		it('does not draw marker fallbacks when store textures are missing', () => {
 			expect.assertions(3);
 			scene.create();
@@ -757,6 +817,35 @@ describe('CityMapScene', () => {
 				(c: any[]) => c[1] === 0x2563eb
 			);
 			expect(selectedLine).toBeDefined();
+		});
+
+		it('draws selected occupied store as a 2x2 outline', () => {
+			expect.assertions(1);
+			scene.create();
+			scene.updateSnapshot(
+				makeSnapshot({
+					selectedTileId: 't1',
+					tiles: [
+						makeTile({ id: 't0', x: 0, y: 0 }),
+						makeTile({ id: 't1', x: 1, y: 0, selected: true }),
+						makeTile({ id: 't3', x: 0, y: 1 }),
+						makeTile({ id: 't4', x: 1, y: 1 })
+					],
+					stores: [
+						{
+							id: 's1',
+							name: 'Store',
+							archetypeId: 'convenience',
+							tileId: 't0',
+							x: 0,
+							y: 0
+						}
+					]
+				})
+			);
+			s(scene).drawInteractionOutlines();
+			const outlineGraphics = s(scene).outlineGraphics;
+			expect(outlineGraphics.strokeRect).toHaveBeenCalledWith(1, 1, 62, 62);
 		});
 
 		it('returns early when no snapshot', () => {

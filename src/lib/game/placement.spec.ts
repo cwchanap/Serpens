@@ -6,6 +6,12 @@ import {
 	getRecommendedArchetypes,
 	openStoreAtTile
 } from './placement';
+import {
+	createCityTileLookup,
+	getOccupiedStoreTileIds,
+	getStoreFootprintPlacementBlockReason
+} from './storeFootprint';
+import type { City, CityTile, Store } from './types';
 
 describe('tile placement', () => {
 	test('recommends archetypes from selected tile traits', () => {
@@ -85,7 +91,7 @@ describe('tile placement', () => {
 		expect(() =>
 			createFoundingGameAtTile({
 				archetypeId: 'grocery',
-				city: { ...city, tiles: [residentialTile] },
+				city: createFootprintCity(city, residentialTile),
 				tileId: residentialTile.id,
 				seed: 303
 			})
@@ -280,6 +286,26 @@ describe('tile placement', () => {
 		expect(result.decisions.at(-1)?.title).toBe('Location unavailable');
 	});
 
+	test('blocks expansion when the requested 2x2 footprint overlaps an existing store', () => {
+		expect.assertions(2);
+		const city = createFlatCity(4, 4);
+		const game = createFoundingGameAtTile({
+			archetypeId: 'boutique',
+			city,
+			tileId: 'retail-city-0-0',
+			seed: 101
+		});
+
+		const result = openStoreAtTile(game, {
+			tileId: 'retail-city-1-1',
+			name: 'Overlap Store',
+			archetypeId: 'grocery'
+		});
+
+		expect(result.stores).toHaveLength(1);
+		expect(result.decisions.at(-1)?.title).toBe('Location unavailable');
+	});
+
 	test('deducts the chosen archetype setup cost when opening at a tile', () => {
 		expect.assertions(6);
 		const city = generateCity({
@@ -290,15 +316,18 @@ describe('tile placement', () => {
 			seed: 202
 		});
 		const foundingTile = city.tiles.find(isTileBuildable)!;
-		const expansionTile = city.tiles.find(
-			(candidate) => isTileBuildable(candidate) && candidate.id !== foundingTile.id
-		)!;
 		const game = createFoundingGameAtTile({
 			archetypeId: 'boutique',
 			city,
 			tileId: foundingTile.id,
 			seed: 202
 		});
+		const expansionTile = city.tiles.find(
+			(candidate) =>
+				isTileBuildable(candidate) &&
+				candidate.id !== foundingTile.id &&
+				isRetailFootprintAvailable(city, candidate, game.stores)
+		)!;
 		const forecast = forecastOpening(expansionTile, 'grocery');
 
 		const result = openStoreAtTile(game, {
@@ -390,15 +419,18 @@ describe('tile placement', () => {
 			seed: 202
 		});
 		const foundingTile = city.tiles.find(isTileBuildable)!;
-		const expansionTile = city.tiles.find(
-			(candidate) => isTileBuildable(candidate) && candidate.id !== foundingTile.id
-		)!;
 		const base = createFoundingGameAtTile({
 			archetypeId: 'boutique',
 			city,
 			tileId: foundingTile.id,
 			seed: 202
 		});
+		const expansionTile = city.tiles.find(
+			(candidate) =>
+				isTileBuildable(candidate) &&
+				candidate.id !== foundingTile.id &&
+				isRetailFootprintAvailable(city, candidate, base.stores)
+		)!;
 		const game = { ...base, cash: 0 };
 
 		const result = openStoreAtTile(game, {
@@ -412,3 +444,66 @@ describe('tile placement', () => {
 		expect(result.decisions.at(-1)?.title).toBe('Expansion delayed');
 	});
 });
+
+function createFlatCity(width: number, height: number): City {
+	const tiles: CityTile[] = [];
+
+	for (let y = 0; y < height; y += 1) {
+		for (let x = 0; x < width; x += 1) {
+			tiles.push({
+				id: `retail-city-${x}-${y}`,
+				cityId: 'retail-city',
+				x,
+				y,
+				neighborhood: 'downtown',
+				terrain: 'commercial',
+				feature: null,
+				demand: 60,
+				rent: 100,
+				footTraffic: 60,
+				customerFit: 60,
+				locked: false
+			});
+		}
+	}
+
+	return {
+		id: 'retail-city',
+		name: 'Retail City',
+		width,
+		height,
+		tiles
+	};
+}
+
+function createFootprintCity(city: City, anchorTile: CityTile): City {
+	return {
+		...city,
+		tiles: [
+			anchorTile,
+			createAdjacentTile(anchorTile, 1, 0),
+			createAdjacentTile(anchorTile, 0, 1),
+			createAdjacentTile(anchorTile, 1, 1)
+		]
+	};
+}
+
+function createAdjacentTile(anchorTile: CityTile, dx: number, dy: number): CityTile {
+	return {
+		...anchorTile,
+		id: `${anchorTile.id}-footprint-${dx}-${dy}`,
+		x: anchorTile.x + dx,
+		y: anchorTile.y + dy
+	};
+}
+
+function isRetailFootprintAvailable(
+	city: City,
+	tile: CityTile,
+	stores: readonly Store[] = []
+): boolean {
+	const lookup = createCityTileLookup(city);
+	const occupiedTileIds = getOccupiedStoreTileIds(city, stores, lookup);
+
+	return getStoreFootprintPlacementBlockReason(lookup, tile, occupiedTileIds) === null;
+}

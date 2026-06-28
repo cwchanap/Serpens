@@ -1,5 +1,11 @@
 import type { ArchetypeId, CityTile, GameState, Store } from './types';
 import type { PlacementPreview } from './placementPreview';
+import {
+	RETAIL_STORE_FOOTPRINT_HEIGHT,
+	RETAIL_STORE_FOOTPRINT_WIDTH,
+	createCityTileLookup,
+	getOccupiedStoreTileIds
+} from './storeFootprint';
 
 export type CityMapFeatureVariant =
 	| 'isolated'
@@ -45,6 +51,8 @@ export interface CityMapStoreRender {
 	tileId: string;
 	x: number;
 	y: number;
+	width?: number;
+	height?: number;
 }
 
 export interface CityMapSnapshot {
@@ -77,7 +85,8 @@ export function createCityMapSnapshot(
 	}
 
 	const activeCityStores = game.stores.filter((store) => store.cityId === city.id);
-	const ownedTileIds = new Set(activeCityStores.map((store) => store.tileId));
+	const tileLookup = createCityTileLookup(city);
+	const ownedTileIds = getOccupiedStoreTileIds(city, activeCityStores, tileLookup);
 	const roadCoordinates = new Set(
 		city.tiles
 			.filter((candidate) => candidate.feature === 'road')
@@ -191,6 +200,8 @@ function createStoreRender(store: Store): CityMapStoreRender {
 		archetypeId: store.archetypeId,
 		tileId: store.tileId,
 		x: store.mapX,
-		y: store.mapY
+		y: store.mapY,
+		width: RETAIL_STORE_FOOTPRINT_WIDTH,
+		height: RETAIL_STORE_FOOTPRINT_HEIGHT
 	};
 }

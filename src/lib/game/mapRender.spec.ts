@@ -6,7 +6,7 @@ import type { City, CityTile } from './types';
 
 describe('city map render snapshot', () => {
 	test('creates a serializable snapshot for the active city', () => {
-		expect.assertions(9);
+		expect.assertions(11);
 		const city = generateCity({
 			id: 'harbor-city',
 			name: 'Harbor City',
@@ -33,6 +33,28 @@ describe('city map render snapshot', () => {
 		expect(snapshot.placementPreview).toBeNull();
 		expect(snapshot.tiles.find((candidate) => candidate.id === tile.id)?.owned).toBe(true);
 		expect(snapshot.tiles.find((candidate) => candidate.feature === 'road')?.feature).toBe('road');
+		expect(snapshot.stores[0]?.width).toBe(2);
+		expect(snapshot.stores[0]?.height).toBe(2);
+	});
+
+	test('marks every tile in a retail store footprint as owned', () => {
+		expect.assertions(1);
+		const city = createFlatCity(4, 4);
+		const game = createFoundingGameAtTile({
+			archetypeId: 'convenience',
+			city,
+			tileId: 'retail-city-0-0',
+			seed: 9
+		});
+
+		const snapshot = createCityMapSnapshot(game, null);
+
+		expect(
+			snapshot.tiles
+				.filter((tile) => tile.owned)
+				.map((tile) => tile.id)
+				.sort()
+		).toEqual(['retail-city-0-0', 'retail-city-0-1', 'retail-city-1-0', 'retail-city-1-1']);
 	});
 
 	test('returns an empty safe snapshot when the active city is missing', () => {
@@ -482,6 +504,37 @@ describe('city map render snapshot', () => {
 		expect(roadVariantOf(['n', 'e', 's'])).toBe('tee-nes');
 	});
 });
+
+function createFlatCity(width: number, height: number): City {
+	const tiles: CityTile[] = [];
+
+	for (let y = 0; y < height; y += 1) {
+		for (let x = 0; x < width; x += 1) {
+			tiles.push({
+				id: `retail-city-${x}-${y}`,
+				cityId: 'retail-city',
+				x,
+				y,
+				neighborhood: 'downtown',
+				terrain: 'commercial',
+				feature: null,
+				demand: 60,
+				rent: 100,
+				footTraffic: 60,
+				customerFit: 60,
+				locked: false
+			});
+		}
+	}
+
+	return {
+		id: 'retail-city',
+		name: 'Retail City',
+		width,
+		height,
+		tiles
+	};
+}
 
 type Direction = 'n' | 'e' | 's' | 'w';
 

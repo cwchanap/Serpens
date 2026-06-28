@@ -577,14 +577,34 @@ describe('IndustryMapScene', () => {
 			expect(hasLockedCall).toBe(true);
 		});
 
-		test('draws occupied outline on occupied tiles', () => {
-			expect.assertions(1);
+		test('draws occupied building footprint as a 2x2 outline', () => {
+			expect.assertions(2);
 			const { scene, graphicsInstances, texturesExistsSpy } = setupScene();
 			texturesExistsSpy.mockReturnValue(false);
 			scene.create();
-			const snapshot = makeSnapshot();
+			const footprintTileIds = new Set(['t-0-0', 't-1-0', 't-0-1', 't-1-1']);
+			const snapshot = makeSnapshot({
+				tiles: makeSnapshot().tiles.map((tile) => ({
+					...tile,
+					occupied: footprintTileIds.has(tile.id)
+				})),
+				buildings: [
+					{
+						id: 'b-1',
+						name: 'Warehouse',
+						typeId: 'warehouse',
+						tileId: 't-0-0',
+						x: 0,
+						y: 0,
+						width: 2,
+						height: 2,
+						status: 'idle'
+					}
+				]
+			});
 			scene.updateSnapshot(snapshot);
-			expect(graphicsInstances[0].mock.strokeRect).toHaveBeenCalled();
+			expect(graphicsInstances[1].mock.strokeRect).toHaveBeenCalledWith(3, 3, 58, 58);
+			expect(graphicsInstances[1].mock.strokeRect).not.toHaveBeenCalledWith(3, 3, 26, 26);
 		});
 	});
 
@@ -738,6 +758,23 @@ describe('IndustryMapScene', () => {
 			expect(graphicsInstances[2].mock.fillRect).toHaveBeenCalled();
 			expect(graphicsInstances[2].mock.fillStyle).toHaveBeenCalled();
 			expect(graphicsInstances[2].mock.strokeRect).toHaveBeenCalled();
+		});
+
+		test('draws placement preview as 2x2 footprints', () => {
+			expect.assertions(2);
+			const { scene, graphicsInstances, texturesExistsSpy } = setupScene();
+			texturesExistsSpy.mockReturnValue(false);
+			scene.create();
+			scene.updateSnapshot(
+				makeSnapshot({
+					placementPreview: {
+						validTileIds: ['t-0-0'],
+						invalidTileIds: []
+					}
+				})
+			);
+			expect(graphicsInstances[2].mock.fillRect).toHaveBeenCalledWith(2, 2, 60, 60);
+			expect(graphicsInstances[2].mock.fillRect).not.toHaveBeenCalledWith(2, 2, 28, 28);
 		});
 
 		test('clears preview when no placement preview', () => {
@@ -1101,6 +1138,35 @@ describe('IndustryMapScene', () => {
 				(c: unknown[]) => (c as [number, number, number])[1] === 0x2563eb
 			);
 			expect(selectedCalls.length).toBeGreaterThan(0);
+		});
+
+		test('draws selected occupied building as a 2x2 outline', () => {
+			expect.assertions(1);
+			const { scene, graphicsInstances } = setupScene();
+			scene.create();
+			scene.updateSnapshot(
+				makeSnapshot({
+					selectedTileId: 't-1-1',
+					tiles: makeSnapshot().tiles.map((tile) => ({
+						...tile,
+						selected: tile.id === 't-1-1'
+					})),
+					buildings: [
+						{
+							id: 'b-1',
+							name: 'Warehouse',
+							typeId: 'warehouse',
+							tileId: 't-0-0',
+							x: 0,
+							y: 0,
+							width: 2,
+							height: 2,
+							status: 'idle'
+						}
+					]
+				})
+			);
+			expect(graphicsInstances[4].mock.strokeRect).toHaveBeenCalledWith(1, 1, 62, 62);
 		});
 	});
 

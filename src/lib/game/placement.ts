@@ -7,6 +7,12 @@ import {
 } from './city';
 import { clampScore } from './reports';
 import { createNewGame, getExpansionSetupCost, openStore } from './state';
+import {
+	createCityTileLookup,
+	getOccupiedStoreTileIds,
+	getStoreFootprintPlacementBlockReason,
+	type StoreFootprintPlacementBlockReason
+} from './storeFootprint';
 import type {
 	ArchetypeId,
 	City,
@@ -135,10 +141,12 @@ export function openStoreAtTile(
 		return appendLocationUnavailableDecision(game);
 	}
 
-	const blockReason = getTilePlacementBlockReason(tile);
+	const tileLookup = createCityTileLookup(city);
+	const occupiedTileIds = getOccupiedStoreTileIds(city, game.stores, tileLookup);
+	const blockReason = getStoreFootprintPlacementBlockReason(tileLookup, tile, occupiedTileIds);
 
-	if (blockReason || game.stores.some((store) => store.tileId === input.tileId)) {
-		return appendLocationUnavailableDecision(game, blockReason);
+	if (blockReason) {
+		return appendLocationUnavailableDecision(game, toTilePlacementDecisionReason(blockReason));
 	}
 
 	const expanded = openStore(game, {
@@ -208,7 +216,22 @@ function getAvailableTileOrThrow(city: City, tileId: string): CityTile {
 		throw new Error(`${blockReason}: ${tileId}`);
 	}
 
+	const footprintBlockReason = getStoreFootprintPlacementBlockReason(
+		createCityTileLookup(city),
+		tile
+	);
+
+	if (footprintBlockReason) {
+		throw new Error(`${footprintBlockReason}: ${tileId}`);
+	}
+
 	return tile;
+}
+
+function toTilePlacementDecisionReason(
+	reason: StoreFootprintPlacementBlockReason
+): TilePlacementBlockReason | null {
+	return reason === 'Occupied location' ? null : reason;
 }
 
 function placeStoreOnTile(store: Store, tile: CityTile): Store {

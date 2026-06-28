@@ -1,5 +1,5 @@
 import { ARCHETYPES } from './archetypes';
-import { getTileById, getTilePlacementBlockReason } from './city';
+import { getTileById } from './city';
 import { INDUSTRIAL_BUILDING_TYPES } from './industry';
 import {
 	createIndustrialPlacementContext,
@@ -8,6 +8,12 @@ import {
 	type IndustrialPlacementContext
 } from './industryPlacement';
 import { forecastOpening } from './placement';
+import {
+	createCityTileLookup,
+	getOccupiedStoreTileIds,
+	getStoreFootprintPlacementBlockReason,
+	type CityTileLookup
+} from './storeFootprint';
 import type {
 	ArchetypeId,
 	City,
@@ -54,6 +60,7 @@ interface RetailBuildMenuInput {
 }
 
 interface RetailPlacementContext {
+	tileLookup: CityTileLookup;
 	occupiedTileIds: ReadonlySet<string>;
 	storeCount: number | null;
 	storeCap: number | null;
@@ -79,7 +86,7 @@ interface IndustryPreviewInput {
 }
 
 export function createRetailPlacementPreview(input: RetailPreviewInput): PlacementPreview {
-	const context = createRetailPlacementContext(input.game);
+	const context = createRetailPlacementContext(input.game, input.city);
 	const validTileIds: string[] = [];
 	const invalidTileIds: string[] = [];
 
@@ -110,19 +117,19 @@ export function getRetailPlacementBlockReason(input: RetailPlacementInput): stri
 	return getRetailTilePlacementBlockReason({
 		tile,
 		archetypeId: input.archetypeId,
-		context: createRetailPlacementContext(input.game)
+		context: createRetailPlacementContext(input.game, input.city)
 	});
 }
 
 function getRetailTilePlacementBlockReason(input: RetailTilePlacementInput): string | null {
-	const tileBlockReason = getTilePlacementBlockReason(input.tile);
+	const tileBlockReason = getStoreFootprintPlacementBlockReason(
+		input.context.tileLookup,
+		input.tile,
+		input.context.occupiedTileIds
+	);
 
 	if (tileBlockReason) {
 		return tileBlockReason;
-	}
-
-	if (input.context.occupiedTileIds.has(input.tile.id)) {
-		return 'Occupied location';
 	}
 
 	if (
@@ -147,7 +154,7 @@ function getRetailTilePlacementBlockReason(input: RetailTilePlacementInput): str
 }
 
 export function getRetailBuildMenuOptions(input: RetailBuildMenuInput): RetailBuildMenuOption[] {
-	const context = createRetailPlacementContext(input.game);
+	const context = createRetailPlacementContext(input.game, input.city);
 
 	return ARCHETYPES.map((archetype) => {
 		const forecasts = input.city.tiles
@@ -200,15 +207,14 @@ function getRetailBuildMenuDisabledReason(
 	const tileReasons = new Set<string>();
 
 	for (const tile of input.city.tiles) {
-		const tileBlockReason = getTilePlacementBlockReason(tile);
+		const tileBlockReason = getStoreFootprintPlacementBlockReason(
+			context.tileLookup,
+			tile,
+			context.occupiedTileIds
+		);
 
 		if (tileBlockReason) {
 			tileReasons.add(tileBlockReason);
-			continue;
-		}
-
-		if (context.occupiedTileIds.has(tile.id)) {
-			tileReasons.add('Occupied location');
 			continue;
 		}
 
@@ -244,9 +250,12 @@ function getRetailBuildMenuDisabledReason(
 	return 'No valid tiles';
 }
 
-function createRetailPlacementContext(game: GameState | null): RetailPlacementContext {
+function createRetailPlacementContext(game: GameState | null, city: City): RetailPlacementContext {
+	const tileLookup = createCityTileLookup(city);
+
 	return {
-		occupiedTileIds: new Set(game?.stores.map((store) => store.tileId) ?? []),
+		tileLookup,
+		occupiedTileIds: game ? getOccupiedStoreTileIds(city, game.stores, tileLookup) : new Set(),
 		storeCount: game?.stores.length ?? null,
 		storeCap: game?.storeCap ?? null,
 		cash: game?.cash ?? null
