@@ -5,6 +5,7 @@
 	interface Props {
 		snapshot: IndustryMapSnapshot;
 		onTileSelected: (tileId: string) => void;
+		active?: boolean;
 		/**
 		 * When true, the Phaser game loop is paused so the heavy render loop
 		 * stops competing for the main thread while overlays such as the map
@@ -13,7 +14,7 @@
 		paused?: boolean;
 	}
 
-	let { snapshot, onTileSelected, paused = false }: Props = $props();
+	let { snapshot, onTileSelected, active = true, paused = false }: Props = $props();
 
 	let container: HTMLDivElement | undefined = $state();
 	let loadFailed = $state(false);
@@ -47,11 +48,29 @@
 			return;
 		}
 
-		if (paused) {
+		const shouldPause = !active || paused;
+		if (currentGame.canvas) {
+			currentGame.canvas.dataset.mapPaused = shouldPause ? 'true' : 'false';
+		}
+
+		if (shouldPause) {
 			currentGame.pause?.();
 		} else {
 			currentGame.resume?.();
 		}
+	});
+
+	$effect(() => {
+		const currentGame = game;
+		const currentContainer = container;
+		if (!currentGame || !currentContainer || !active) {
+			return;
+		}
+
+		currentGame.scale?.resize?.(
+			Math.max(currentContainer.clientWidth, 640),
+			Math.max(currentContainer.clientHeight, 520)
+		);
 	});
 
 	async function startPhaser() {

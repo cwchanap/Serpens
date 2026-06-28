@@ -26,6 +26,7 @@ const TERRAIN_BASE_DEPTH = 0;
 const TERRAIN_OVERLAY_DEPTH = 1;
 const TERRAIN_FEATURE_DEPTH = 2;
 const TERRAIN_DECORATION_DEPTH = 3;
+const OWNERSHIP_OUTLINE_DEPTH = TERRAIN_DECORATION_DEPTH + 1;
 const TERRAIN_FEATURE_SIZE = TILE_SIZE;
 const TREE_DECORATION_SIZE = TILE_SIZE * 0.72;
 const STORE_MARKER_DEPTH = 10;
@@ -36,14 +37,6 @@ const PLACEMENT_PREVIEW_INVALID_COLOR = 0x8e2a1f;
 const PLACEMENT_PREVIEW_ALPHA = 0.28;
 /** Classic prime multiplier (cf. Java's String.hashCode) used to derive a stable, well-distributed variant index per tile coordinate. */
 const TERRAIN_VARIANT_HASH_PRIME = 31;
-
-const TERRAIN_COLORS: Record<CityMapTileRender['terrain'], number> = {
-	commercial: 0xc9d7f0,
-	residential: 0xd8e8c5,
-	green: 0x9fcf9a,
-	transit: 0xd9d4c6,
-	industrial: 0xc8c2ba
-};
 
 interface StoreSpriteRender {
 	sprite: Phaser.GameObjects.Image;
@@ -57,6 +50,7 @@ export class CityMapScene extends Phaser.Scene {
 	private eventHandler: CityMapEventHandler | null = null;
 	private mapGraphics?: Phaser.GameObjects.Graphics;
 	private placementPreviewGraphics?: Phaser.GameObjects.Graphics;
+	private ownershipGraphics?: Phaser.GameObjects.Graphics;
 	private outlineGraphics?: Phaser.GameObjects.Graphics;
 	private markerGraphics?: Phaser.GameObjects.Graphics;
 	private tileZones: Phaser.GameObjects.Zone[] = [];
@@ -92,6 +86,7 @@ export class CityMapScene extends Phaser.Scene {
 
 	create(): void {
 		this.mapGraphics = this.add.graphics().setDepth(TERRAIN_OVERLAY_DEPTH);
+		this.ownershipGraphics = this.add.graphics().setDepth(OWNERSHIP_OUTLINE_DEPTH);
 		this.placementPreviewGraphics = this.add.graphics().setDepth(PLACEMENT_PREVIEW_DEPTH);
 		this.outlineGraphics = this.add.graphics().setDepth(OUTLINE_DEPTH);
 		this.markerGraphics = this.add.graphics().setDepth(STORE_MARKER_DEPTH);
@@ -120,6 +115,7 @@ export class CityMapScene extends Phaser.Scene {
 
 	private renderSnapshot(): void {
 		if (!this.mapGraphics || !this.snapshot) {
+			this.ownershipGraphics?.clear();
 			this.placementPreviewGraphics?.clear();
 			this.updateCanvasPlacementPreviewAttributes(0, 0);
 			return;
@@ -162,11 +158,12 @@ export class CityMapScene extends Phaser.Scene {
 		} else {
 			// Terrain unchanged — update selection from the new snapshot.
 			this.selectedTile = this.snapshot.selectedTileId
-				? (this.tileById.get(this.snapshot.selectedTileId) ?? null)
+				? (this.snapshot.tiles.find((tile) => tile.id === this.snapshot?.selectedTileId) ?? null)
 				: null;
 		}
 
 		// Always update these — they change frequently between snapshots.
+		this.drawOwnershipOutlines();
 		this.placementPreviewGraphics?.clear();
 		this.destroyStoreSprites();
 		this.drawPlacementPreview();
@@ -183,7 +180,7 @@ export class CityMapScene extends Phaser.Scene {
 		let key = `${this.snapshot.cityId}|${this.snapshot.width}x${this.snapshot.height}`;
 
 		for (const tile of this.snapshot.tiles) {
-			key += `|${tile.terrain},${tile.feature},${tile.roadVariant},${tile.riverVariant},${tile.neighborhood},${tile.locked},${tile.owned}`;
+			key += `|${tile.terrain},${tile.feature},${tile.roadVariant},${tile.riverVariant},${tile.neighborhood},${tile.locked}`;
 		}
 
 		return key;
@@ -198,12 +195,6 @@ export class CityMapScene extends Phaser.Scene {
 
 		const x = tile.x * TILE_SIZE;
 		const y = tile.y * TILE_SIZE;
-		const fillAlpha = tile.locked ? 0.38 : 1;
-
-		if (!this.hasBaseTerrainTexture(tile)) {
-			graphics.fillStyle(TERRAIN_COLORS[tile.terrain], fillAlpha);
-			graphics.fillRect(x, y, TILE_SIZE, TILE_SIZE);
-		}
 
 		graphics.lineStyle(1, 0xffffff, 0.35);
 		graphics.strokeRect(x, y, TILE_SIZE, TILE_SIZE);
@@ -212,49 +203,24 @@ export class CityMapScene extends Phaser.Scene {
 			graphics.fillStyle(0x1f2933, 0.24);
 			graphics.fillRect(x, y, TILE_SIZE, TILE_SIZE);
 		}
-
-		this.drawTerrainFeatureFallback(tile, x, y);
-
-		if (tile.owned) {
-			graphics.lineStyle(3, 0x1f8a70, 0.95);
-			graphics.strokeRect(x + 3, y + 3, TILE_SIZE - 6, TILE_SIZE - 6);
-		}
 	}
 
-	private drawTerrainFeatureFallback(tile: CityMapTileRender, x: number, y: number): void {
-		if (!this.mapGraphics || !tile.feature || this.hasSupportedTerrainTexture(tile)) {
+	private drawOwnershipOutlines(): void {
+		if (!this.ownershipGraphics || !this.snapshot) {
 			return;
 		}
 
-		if (tile.feature === 'road') {
-			drawConnectedFeatureFallback({
-				graphics: this.mapGraphics,
-				variant: tile.roadVariant ?? 'isolated',
-				x,
-				y,
-				fillColor: 0x50545a,
-				lineColor: 0xd7d2c3,
-				fillAlpha: 0.92,
-				lineAlpha: 0.65,
-				armWidth: TILE_SIZE * 0.36,
-				lineWidth: 1
-			});
-			return;
-		}
+		this.ownershipGraphics.clear();
+		this.ownershipGraphics.lineStyle(3, 0x1f8a70, 0.95);
 
-		if (tile.feature === 'river') {
-			drawConnectedFeatureFallback({
-				graphics: this.mapGraphics,
-				variant: tile.riverVariant ?? 'isolated',
-				x,
-				y,
-				fillColor: 0x3ca7d8,
-				lineColor: 0xb9ecff,
-				fillAlpha: 0.92,
-				lineAlpha: 0.55,
-				armWidth: TILE_SIZE * 0.5,
-				lineWidth: 2
-			});
+		for (const tile of this.snapshot.tiles) {
+			if (!tile.owned) {
+				continue;
+			}
+
+			const x = tile.x * TILE_SIZE;
+			const y = tile.y * TILE_SIZE;
+			this.ownershipGraphics.strokeRect(x + 3, y + 3, TILE_SIZE - 6, TILE_SIZE - 6);
 		}
 	}
 
@@ -439,18 +405,6 @@ export class CityMapScene extends Phaser.Scene {
 
 			return;
 		}
-
-		this.snapshot.stores.forEach((store, index) => {
-			const x = store.x * TILE_SIZE + TILE_SIZE / 2;
-			const y = store.y * TILE_SIZE + TILE_SIZE / 2 + Math.sin(time / 350 + index) * 2;
-
-			this.markerGraphics?.fillStyle(0x0f172a, 0.24);
-			this.markerGraphics?.fillCircle(x + 2, y + 3, 8);
-			this.markerGraphics?.fillStyle(0xf97316, 1);
-			this.markerGraphics?.fillCircle(x, y, 7);
-			this.markerGraphics?.lineStyle(2, 0xffffff, 0.95);
-			this.markerGraphics?.strokeCircle(x, y, 7);
-		});
 	}
 
 	private drawInteractionOutlines(): void {
@@ -489,30 +443,67 @@ export class CityMapScene extends Phaser.Scene {
 		const validTileIds = new Set(this.snapshot.placementPreview.validTileIds);
 		const invalidTileIds = new Set(this.snapshot.placementPreview.invalidTileIds);
 
-		for (const tile of this.snapshot.tiles) {
-			const isValid = validTileIds.has(tile.id);
-			const isInvalid = invalidTileIds.has(tile.id);
-
-			if (!isValid && !isInvalid) {
-				continue;
-			}
-
-			const x = tile.x * TILE_SIZE;
-			const y = tile.y * TILE_SIZE;
-			const color = isValid ? PLACEMENT_PREVIEW_VALID_COLOR : PLACEMENT_PREVIEW_INVALID_COLOR;
-
-			this.placementPreviewGraphics.fillStyle(color, PLACEMENT_PREVIEW_ALPHA);
-			this.placementPreviewGraphics.fillRect(x + 2, y + 2, TILE_SIZE - 4, TILE_SIZE - 4);
-			this.placementPreviewGraphics.lineStyle(2, color, 0.55);
-			this.placementPreviewGraphics.strokeRect(x + 2, y + 2, TILE_SIZE - 4, TILE_SIZE - 4);
-		}
+		this.drawPlacementPreviewSpans(validTileIds, PLACEMENT_PREVIEW_VALID_COLOR);
+		this.drawPlacementPreviewSpans(invalidTileIds, PLACEMENT_PREVIEW_INVALID_COLOR);
 
 		this.updateCanvasPlacementPreviewAttributes(validTileIds.size, invalidTileIds.size);
 	}
 
+	private drawPlacementPreviewSpans(tileIds: ReadonlySet<string>, color: number): void {
+		if (!this.placementPreviewGraphics || tileIds.size === 0) {
+			return;
+		}
+
+		const tiles = [...tileIds]
+			.map((tileId) => this.tileById.get(tileId))
+			.filter((tile): tile is CityMapTileRender => tile !== undefined)
+			.sort((first, second) => first.y - second.y || first.x - second.x);
+
+		if (tiles.length === 0) {
+			return;
+		}
+
+		this.placementPreviewGraphics.fillStyle(color, PLACEMENT_PREVIEW_ALPHA);
+		this.placementPreviewGraphics.lineStyle(2, color, 0.55);
+
+		let runStart = tiles[0]!;
+		let previous = runStart;
+
+		for (const tile of tiles.slice(1)) {
+			if (tile.y === previous.y && tile.x === previous.x + 1) {
+				previous = tile;
+				continue;
+			}
+
+			this.drawPlacementPreviewSpan(runStart, previous);
+			runStart = tile;
+			previous = tile;
+		}
+
+		this.drawPlacementPreviewSpan(runStart, previous);
+	}
+
+	private drawPlacementPreviewSpan(startTile: CityMapTileRender, endTile: CityMapTileRender): void {
+		if (!this.placementPreviewGraphics) {
+			return;
+		}
+
+		const x = startTile.x * TILE_SIZE;
+		const y = startTile.y * TILE_SIZE;
+		const width = (endTile.x - startTile.x + 1) * TILE_SIZE;
+
+		this.placementPreviewGraphics.fillRect(x + 2, y + 2, width - 4, TILE_SIZE - 4);
+		this.placementPreviewGraphics.strokeRect(x + 2, y + 2, width - 4, TILE_SIZE - 4);
+	}
+
 	private createStoreSprites(): void {
 		if (!this.snapshot) {
-			this.updateCanvasStoreMarkerAttributes('circle', 0);
+			this.updateCanvasStoreMarkerAttributes('missing', 0);
+			return;
+		}
+
+		if (this.snapshot.stores.length === 0) {
+			this.updateCanvasStoreMarkerAttributes('empty', 0);
 			return;
 		}
 
@@ -521,7 +512,7 @@ export class CityMapScene extends Phaser.Scene {
 		);
 
 		if (!canRenderStorefronts) {
-			this.updateCanvasStoreMarkerAttributes('circle', 0);
+			this.updateCanvasStoreMarkerAttributes('missing', 0);
 			return;
 		}
 
@@ -543,15 +534,12 @@ export class CityMapScene extends Phaser.Scene {
 			};
 		});
 
-		this.updateCanvasStoreMarkerAttributes(
-			this.storeSprites.length > 0 ? 'image' : 'circle',
-			this.storeSprites.length
-		);
+		this.updateCanvasStoreMarkerAttributes('image', this.storeSprites.length);
 	}
 
 	private createTerrainSprites(): void {
 		if (!this.snapshot) {
-			this.updateCanvasTerrainAttributes('fallback', 0, 0, 0);
+			this.updateCanvasTerrainAttributes('missing', 0, 0, 0);
 			return;
 		}
 
@@ -621,7 +609,12 @@ export class CityMapScene extends Phaser.Scene {
 		this.terrainFeatureSpriteCount = featureSpriteCount;
 		this.terrainDecorationSpriteCount = decorationSpriteCount;
 		this.updateCanvasTerrainAttributes(
-			getTerrainAssetMode(expectedFeatureTileCount, featureSpriteCount),
+			getTerrainAssetMode(
+				this.snapshot.tiles.length,
+				baseSpriteCount,
+				expectedFeatureTileCount,
+				featureSpriteCount
+			),
 			baseSpriteCount,
 			featureSpriteCount,
 			decorationSpriteCount
@@ -648,7 +641,10 @@ export class CityMapScene extends Phaser.Scene {
 		return this.textures.exists(textureKey);
 	}
 
-	private updateCanvasStoreMarkerAttributes(mode: 'circle' | 'image', spriteCount: number): void {
+	private updateCanvasStoreMarkerAttributes(
+		mode: 'empty' | 'image' | 'missing',
+		spriteCount: number
+	): void {
 		const canvas = this.game?.canvas;
 
 		if (!canvas) {
@@ -660,7 +656,7 @@ export class CityMapScene extends Phaser.Scene {
 	}
 
 	private updateCanvasTerrainAttributes(
-		mode: 'fallback' | 'image' | 'mixed',
+		mode: 'image' | 'missing',
 		baseSpriteCount: number,
 		featureSpriteCount: number,
 		decorationSpriteCount: number
@@ -732,7 +728,7 @@ export class CityMapScene extends Phaser.Scene {
 		}
 
 		this.storeSprites = [];
-		this.updateCanvasStoreMarkerAttributes('circle', 0);
+		this.updateCanvasStoreMarkerAttributes('empty', 0);
 	}
 
 	private destroyTerrainSprites(): void {
@@ -743,7 +739,7 @@ export class CityMapScene extends Phaser.Scene {
 		this.terrainSprites = [];
 		this.terrainFeatureSpriteCount = 0;
 		this.terrainDecorationSpriteCount = 0;
-		this.updateCanvasTerrainAttributes('fallback', 0, 0, 0);
+		this.updateCanvasTerrainAttributes('missing', 0, 0, 0);
 	}
 
 	private destroyTileZones(): void {
@@ -768,10 +764,12 @@ export class CityMapScene extends Phaser.Scene {
 		this.input.off('wheel', this.handleWheel, this);
 		this.scale.off(Phaser.Scale.Events.RESIZE, this.handleResize, this);
 		this.mapGraphics?.destroy();
+		this.ownershipGraphics?.destroy();
 		this.placementPreviewGraphics?.destroy();
 		this.outlineGraphics?.destroy();
 		this.markerGraphics?.destroy();
 		this.mapGraphics = undefined;
+		this.ownershipGraphics = undefined;
 		this.placementPreviewGraphics = undefined;
 		this.outlineGraphics = undefined;
 		this.markerGraphics = undefined;
@@ -854,121 +852,22 @@ function getTerrainTextureAngle(tile: CityMapTileRender): number {
 	}
 
 	// Only road and river tiles reach the textured-sprite path (callers gate on
-	// tile.feature), so the remaining case is a river. A null feature would also
-	// land here but never reaches this function — and the comparison still
-	// yields 0 in that case, preserving the prior fallback behavior.
+	// tile.feature), so the remaining case is a river.
 	return variant === 'horizontal' || variant === 'end-e' || variant === 'end-w' ? 90 : 0;
 }
 
 function getTerrainAssetMode(
+	expectedBaseTileCount: number,
+	baseSpriteCount: number,
 	expectedFeatureTileCount: number,
 	featureSpriteCount: number
-): 'fallback' | 'image' | 'mixed' {
-	if (expectedFeatureTileCount === 0 || featureSpriteCount === 0) {
-		return 'fallback';
-	}
-
-	if (featureSpriteCount === expectedFeatureTileCount) {
+): 'image' | 'missing' {
+	if (
+		baseSpriteCount === expectedBaseTileCount &&
+		featureSpriteCount === expectedFeatureTileCount
+	) {
 		return 'image';
 	}
 
-	return 'mixed';
-}
-
-type FeatureDirection = 'n' | 'e' | 's' | 'w';
-
-interface ConnectedFeatureFallbackInput {
-	graphics: Phaser.GameObjects.Graphics;
-	variant: CityMapFeatureVariant;
-	x: number;
-	y: number;
-	fillColor: number;
-	lineColor: number;
-	fillAlpha: number;
-	lineAlpha: number;
-	armWidth: number;
-	lineWidth: number;
-}
-
-function drawConnectedFeatureFallback(input: ConnectedFeatureFallbackInput): void {
-	const centerX = input.x + TILE_SIZE / 2;
-	const centerY = input.y + TILE_SIZE / 2;
-	const halfArm = input.armWidth / 2;
-	const directions = getVariantDirections(input.variant);
-
-	input.graphics.fillStyle(input.fillColor, input.fillAlpha);
-	input.graphics.fillRect(centerX - halfArm, centerY - halfArm, input.armWidth, input.armWidth);
-
-	for (const direction of directions) {
-		switch (direction) {
-			case 'n':
-				input.graphics.fillRect(centerX - halfArm, input.y, input.armWidth, TILE_SIZE / 2);
-				break;
-			case 'e':
-				input.graphics.fillRect(centerX, centerY - halfArm, TILE_SIZE / 2, input.armWidth);
-				break;
-			case 's':
-				input.graphics.fillRect(centerX - halfArm, centerY, input.armWidth, TILE_SIZE / 2);
-				break;
-			case 'w':
-				input.graphics.fillRect(input.x, centerY - halfArm, TILE_SIZE / 2, input.armWidth);
-				break;
-		}
-	}
-
-	input.graphics.lineStyle(input.lineWidth, input.lineColor, input.lineAlpha);
-
-	for (const direction of directions) {
-		switch (direction) {
-			case 'n':
-				input.graphics.lineBetween(centerX, centerY, centerX, input.y + 4);
-				break;
-			case 'e':
-				input.graphics.lineBetween(centerX, centerY, input.x + TILE_SIZE - 4, centerY);
-				break;
-			case 's':
-				input.graphics.lineBetween(centerX, centerY, centerX, input.y + TILE_SIZE - 4);
-				break;
-			case 'w':
-				input.graphics.lineBetween(centerX, centerY, input.x + 4, centerY);
-				break;
-		}
-	}
-}
-
-function getVariantDirections(variant: CityMapFeatureVariant): FeatureDirection[] {
-	switch (variant) {
-		case 'end-n':
-			return ['n'];
-		case 'end-e':
-			return ['e'];
-		case 'end-s':
-			return ['s'];
-		case 'end-w':
-			return ['w'];
-		case 'horizontal':
-			return ['e', 'w'];
-		case 'vertical':
-			return ['n', 's'];
-		case 'corner-ne':
-			return ['n', 'e'];
-		case 'corner-es':
-			return ['e', 's'];
-		case 'corner-sw':
-			return ['s', 'w'];
-		case 'corner-wn':
-			return ['w', 'n'];
-		case 'tee-nes':
-			return ['n', 'e', 's'];
-		case 'tee-esw':
-			return ['e', 's', 'w'];
-		case 'tee-nsw':
-			return ['n', 's', 'w'];
-		case 'tee-new':
-			return ['n', 'e', 'w'];
-		case 'intersection':
-			return ['n', 'e', 's', 'w'];
-		case 'isolated':
-			return [];
-	}
+	return 'missing';
 }
