@@ -26,21 +26,43 @@ interface GenerateIndustryCityInput {
 	resourceProfile?: IndustryResourceProfile | null;
 }
 
-const RESOURCE_ANCHORS: Array<{
+const RESOURCE_ANCHOR_SPECS: ReadonlyArray<{
+	xFrac: number;
+	yFrac: number;
+	resource: IndustryResourceId;
+	terrain: IndustryTerrainId;
+}> = [
+	{ xFrac: 0.056, yFrac: 0.056, resource: 'grain-field', terrain: 'farmland' },
+	{ xFrac: 0.167, yFrac: 0.056, resource: 'oilseed-field', terrain: 'farmland' },
+	{ xFrac: 0.278, yFrac: 0.056, resource: 'fruit-orchard', terrain: 'farmland' },
+	{ xFrac: 0.389, yFrac: 0.056, resource: 'sugar-field', terrain: 'farmland' },
+	{ xFrac: 0.056, yFrac: 0.222, resource: 'salt-deposit', terrain: 'deposit' },
+	{ xFrac: 0.167, yFrac: 0.222, resource: 'chemical-feedstock', terrain: 'deposit' },
+	{ xFrac: 0.056, yFrac: 0.389, resource: 'water-source', terrain: 'water' },
+	{ xFrac: 0.222, yFrac: 0.389, resource: 'pulpwood-forest', terrain: 'forest' }
+];
+
+interface ComputedResourceAnchor {
 	x: number;
 	y: number;
 	resource: IndustryResourceId;
 	terrain: IndustryTerrainId;
-}> = [
-	{ x: 1, y: 1, resource: 'grain-field', terrain: 'farmland' },
-	{ x: 3, y: 1, resource: 'oilseed-field', terrain: 'farmland' },
-	{ x: 5, y: 1, resource: 'fruit-orchard', terrain: 'farmland' },
-	{ x: 7, y: 1, resource: 'sugar-field', terrain: 'farmland' },
-	{ x: 1, y: 4, resource: 'salt-deposit', terrain: 'deposit' },
-	{ x: 3, y: 4, resource: 'chemical-feedstock', terrain: 'deposit' },
-	{ x: 1, y: 7, resource: 'water-source', terrain: 'water' },
-	{ x: 4, y: 7, resource: 'pulpwood-forest', terrain: 'forest' }
-];
+}
+
+function computeResourceAnchors(
+	width: number,
+	height: number,
+	enabledResourceIds: Set<IndustryResourceId>
+): ComputedResourceAnchor[] {
+	return RESOURCE_ANCHOR_SPECS.filter((spec) => enabledResourceIds.has(spec.resource)).map(
+		(spec) => ({
+			x: Math.max(1, Math.round(width * spec.xFrac)),
+			y: Math.max(1, Math.round(height * spec.yFrac)),
+			resource: spec.resource,
+			terrain: spec.terrain
+		})
+	);
+}
 
 export const MATERIALS: Readonly<Record<MaterialId, MaterialDefinition>> = {
 	grain: {
@@ -776,11 +798,9 @@ export function generateIndustryCity(input: GenerateIndustryCityInput): Industry
 	const width = normalizeDimension(input.width);
 	const height = normalizeDimension(input.height);
 	const enabledResourceIds = new Set(
-		input.resourceProfile?.resourceIds ?? RESOURCE_ANCHORS.map((anchor) => anchor.resource)
+		input.resourceProfile?.resourceIds ?? RESOURCE_ANCHOR_SPECS.map((spec) => spec.resource)
 	);
-	const resourceAnchors = RESOURCE_ANCHORS.filter((anchor) =>
-		enabledResourceIds.has(anchor.resource)
-	);
+	const resourceAnchors = computeResourceAnchors(width, height, enabledResourceIds);
 	const industrialBias = Math.max(0.1, input.resourceProfile?.industrialBias ?? 1);
 	const tiles: IndustryTile[] = [];
 
@@ -837,10 +857,10 @@ export function getIndustryTilesByResource(
 }
 
 function getResourceAnchor(
-	resourceAnchors: typeof RESOURCE_ANCHORS,
+	resourceAnchors: ComputedResourceAnchor[],
 	x: number,
 	y: number
-): (typeof RESOURCE_ANCHORS)[number] | undefined {
+): ComputedResourceAnchor | undefined {
 	return resourceAnchors.find((anchor) => anchor.x === x && anchor.y === y);
 }
 
@@ -855,27 +875,27 @@ function getFillerTerrain(
 		return 'blocked';
 	}
 
-	if (isCropDistrict(x, y)) {
+	if (isCropDistrict(width, height, x, y)) {
 		return 'farmland';
 	}
 
-	if (isExtractionDistrict(x, y)) {
+	if (isExtractionDistrict(width, height, x, y)) {
 		return 'deposit';
 	}
 
-	if (isUtilityDistrict(x, y)) {
-		return x <= 3 ? 'water' : 'forest';
+	if (isUtilityDistrict(width, height, x, y)) {
+		return x <= Math.max(3, Math.floor(width * 0.12)) ? 'water' : 'forest';
 	}
 
 	if (isIndustrialDistrict(width, height, x, y, industrialBias)) {
 		return 'industrial';
 	}
 
-	if (y <= 5) {
+	if (y <= Math.max(3, Math.floor(height * 0.12))) {
 		return 'farmland';
 	}
 
-	if (x <= 5) {
+	if (x <= Math.max(3, Math.floor(width * 0.1))) {
 		return 'deposit';
 	}
 
@@ -895,16 +915,24 @@ function isInternalServiceSeparator(width: number, height: number, x: number, y:
 	return isVerticalSeparator || isLowerAccessBlock;
 }
 
-function isCropDistrict(x: number, y: number): boolean {
-	return x >= 1 && x <= 8 && y >= 1 && y <= 3;
+function isCropDistrict(width: number, height: number, x: number, y: number): boolean {
+	const xMax = Math.max(1, Math.floor(width * 0.45));
+	const yMax = Math.max(1, Math.floor(height * 0.17));
+	return x >= 1 && x <= xMax && y >= 1 && y <= yMax;
 }
 
-function isExtractionDistrict(x: number, y: number): boolean {
-	return x >= 1 && x <= 5 && y >= 4 && y <= 6;
+function isExtractionDistrict(width: number, height: number, x: number, y: number): boolean {
+	const xMax = Math.max(1, Math.floor(width * 0.28));
+	const yMin = Math.max(2, Math.floor(height * 0.17) + 1);
+	const yMax = Math.max(yMin, Math.floor(height * 0.34));
+	return x >= 1 && x <= xMax && y >= yMin && y <= yMax;
 }
 
-function isUtilityDistrict(x: number, y: number): boolean {
-	return x >= 1 && x <= 7 && y >= 7 && y <= 10;
+function isUtilityDistrict(width: number, height: number, x: number, y: number): boolean {
+	const xMax = Math.max(1, Math.floor(width * 0.39));
+	const yMin = Math.max(2, Math.floor(height * 0.34) + 1);
+	const yMax = Math.max(yMin, Math.floor(height * 0.56));
+	return x >= 1 && x <= xMax && y >= yMin && y <= yMax;
 }
 
 function isIndustrialDistrict(
