@@ -812,6 +812,8 @@ describe('IndustryMapScene', () => {
 						tileId: 't-0-0',
 						x: 0,
 						y: 0,
+						width: 2,
+						height: 2,
 						status: 'idle'
 					}
 				]
@@ -821,7 +823,7 @@ describe('IndustryMapScene', () => {
 		});
 
 		test('creates building sprite when texture exists', () => {
-			expect.assertions(1);
+			expect.assertions(3);
 			const { scene, texturesExistsSpy, imageInstances } = setupScene();
 			texturesExistsSpy.mockReturnValue(true);
 			scene.create();
@@ -834,12 +836,20 @@ describe('IndustryMapScene', () => {
 						tileId: 't-0-0',
 						x: 0,
 						y: 0,
+						width: 2,
+						height: 2,
 						status: 'produced'
 					}
 				]
 			});
 			scene.updateSnapshot(snapshot);
 			expect(imageInstances.length).toBeGreaterThan(0);
+			const buildingImg = imageInstances[imageInstances.length - 1]!;
+			expect(buildingImg.mock.setDisplaySize).toHaveBeenCalledWith(64, 64);
+			expect(s(scene).getBuildingMarkerPosition(snapshot.buildings[0], 0, 0)).toMatchObject({
+				x: 32,
+				y: 32
+			});
 		});
 
 		test('draws status ring for building sprite that exists', () => {
@@ -856,6 +866,8 @@ describe('IndustryMapScene', () => {
 						tileId: 't-0-0',
 						x: 0,
 						y: 0,
+						width: 2,
+						height: 2,
 						status: 'produced'
 					}
 				]
@@ -879,6 +891,8 @@ describe('IndustryMapScene', () => {
 						tileId: 't-0-0',
 						x: 0,
 						y: 0,
+						width: 2,
+						height: 2,
 						status: 'imported-inputs'
 					}
 				]
@@ -901,6 +915,8 @@ describe('IndustryMapScene', () => {
 						tileId: 't-0-0',
 						x: 0,
 						y: 0,
+						width: 2,
+						height: 2,
 						status: 'blocked'
 					}
 				]
@@ -923,6 +939,8 @@ describe('IndustryMapScene', () => {
 						tileId: 't-0-0',
 						x: 0,
 						y: 0,
+						width: 2,
+						height: 2,
 						status: 'idle'
 					}
 				]
@@ -945,6 +963,8 @@ describe('IndustryMapScene', () => {
 						tileId: 't-0-0',
 						x: 0,
 						y: 0,
+						width: 2,
+						height: 2,
 						status: 'idle'
 					}
 				]
@@ -968,6 +988,8 @@ describe('IndustryMapScene', () => {
 						tileId: 't-0-0',
 						x: 0,
 						y: 0,
+						width: 2,
+						height: 2,
 						status: 'produced'
 					}
 				]
@@ -1037,6 +1059,8 @@ describe('IndustryMapScene', () => {
 							tileId: 't-0-0',
 							x: 0,
 							y: 0,
+							width: 2,
+							height: 2,
 							status: 'idle'
 						}
 					]
@@ -1291,6 +1315,8 @@ describe('IndustryMapScene', () => {
 							tileId: 't-0-0',
 							x: 0,
 							y: 0,
+							width: 2,
+							height: 2,
 							status: 'idle'
 						}
 					]

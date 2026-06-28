@@ -1,3 +1,4 @@
+import { DEFAULT_RETAIL_CITY_HEIGHT, DEFAULT_RETAIL_CITY_WIDTH } from './city';
 import type {
 	BuildingTier,
 	IndustrialBuildingType,
@@ -12,6 +13,9 @@ import type {
 	ProductionRecipe,
 	ProductionRecipeId
 } from './types';
+
+export const DEFAULT_INDUSTRY_CITY_WIDTH = DEFAULT_RETAIL_CITY_WIDTH;
+export const DEFAULT_INDUSTRY_CITY_HEIGHT = DEFAULT_RETAIL_CITY_HEIGHT;
 
 interface GenerateIndustryCityInput {
 	id: string;

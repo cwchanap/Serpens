@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { getIndustryTilesByResource } from './industry';
+import { getIndustryTileById, getIndustryTilesByResource } from './industry';
 import {
 	buildIndustrialBuilding,
 	getAllowedIndustrialBuildingTypes,
@@ -122,6 +122,53 @@ describe('industrial placement', () => {
 		expect(blocked.industrialBuildings).toHaveLength(1);
 		expect(blocked.decisions.at(-1)?.title).toBe('Industrial construction delayed');
 		expect(blocked.decisions.at(-1)?.context).toContain('Occupied industrial tile');
+	});
+
+	test('blocks placement when a 2x2 footprint overlaps an existing industrial building', () => {
+		expect.assertions(3);
+		const game = { ...createNewGame('convenience', 20260512), cash: 100_000 };
+		const city = game.industryCities[0]!;
+		const grainTile = getIndustryTilesByResource(city, 'grain-field')[0]!;
+		const overlappingAnchor = getIndustryTileById(
+			city,
+			`${city.id}-${grainTile.x + 1}-${grainTile.y}`
+		)!;
+		const built = buildIndustrialBuilding(game, {
+			tileId: grainTile.id,
+			buildingTypeId: 'grain-farm'
+		});
+
+		expect(overlappingAnchor.id).not.toBe(grainTile.id);
+		expect(getIndustrialPlacementBlockReason(built, overlappingAnchor.id, 'warehouse')).toBe(
+			'Occupied industrial tile'
+		);
+		expect(
+			buildIndustrialBuilding(built, {
+				tileId: overlappingAnchor.id,
+				buildingTypeId: 'warehouse'
+			}).industrialBuildings
+		).toHaveLength(1);
+	});
+
+	test('blocks placement when a 2x2 footprint reaches locked border tiles', () => {
+		expect.assertions(3);
+		const game = { ...createNewGame('convenience', 20260512), cash: 100_000 };
+		const city = game.industryCities[0]!;
+		const edgeAnchor = getIndustryTileById(
+			city,
+			`${city.id}-${city.width - 2}-${city.height - 2}`
+		)!;
+
+		expect(edgeAnchor.locked).toBe(false);
+		expect(getIndustrialPlacementBlockReason(game, edgeAnchor.id, 'warehouse')).toBe(
+			'Locked industrial tile'
+		);
+		expect(
+			buildIndustrialBuilding(game, {
+				tileId: edgeAnchor.id,
+				buildingTypeId: 'warehouse'
+			}).industrialBuildings
+		).toHaveLength(0);
 	});
 
 	test('upgradeBuilding deducts cost and increments level', () => {

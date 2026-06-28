@@ -1,7 +1,12 @@
 import { ARCHETYPES } from './archetypes';
 import { getTileById, getTilePlacementBlockReason } from './city';
 import { INDUSTRIAL_BUILDING_TYPES } from './industry';
-import { getIndustrialPlacementBlockReason } from './industryPlacement';
+import {
+	createIndustrialPlacementContext,
+	getIndustrialPlacementBlockReason,
+	getIndustrialPlacementBlockReasonWithContext,
+	type IndustrialPlacementContext
+} from './industryPlacement';
 import { forecastOpening } from './placement';
 import type {
 	ArchetypeId,
@@ -65,6 +70,7 @@ interface IndustryPlacementInput {
 	game: GameState | null;
 	tileId: string;
 	buildingTypeId: IndustrialBuildingTypeId;
+	placementContext?: IndustrialPlacementContext | null;
 }
 
 interface IndustryPreviewInput {
@@ -249,6 +255,7 @@ function createRetailPlacementContext(game: GameState | null): RetailPlacementCo
 
 export function createIndustryPlacementPreview(input: IndustryPreviewInput): PlacementPreview {
 	const city = getActiveIndustryCity(input.game);
+	const placementContext = input.game ? createIndustrialPlacementContext(input.game) : null;
 
 	if (!city) {
 		return { validTileIds: [], invalidTileIds: [] };
@@ -260,7 +267,8 @@ export function createIndustryPlacementPreview(input: IndustryPreviewInput): Pla
 	for (const tile of city.tiles) {
 		const blockReason = getIndustryBuildPlacementBlockReason({
 			...input,
-			tileId: tile.id
+			tileId: tile.id,
+			placementContext
 		});
 
 		if (blockReason) {
@@ -278,11 +286,13 @@ export function getIndustryBuildPlacementBlockReason(input: IndustryPlacementInp
 		return 'Found a retail store to unlock construction.';
 	}
 
-	const placementReason = getIndustrialPlacementBlockReason(
-		input.game,
-		input.tileId,
-		input.buildingTypeId
-	);
+	const placementReason = input.placementContext
+		? getIndustrialPlacementBlockReasonWithContext(
+				input.placementContext,
+				input.tileId,
+				input.buildingTypeId
+			)
+		: getIndustrialPlacementBlockReason(input.game, input.tileId, input.buildingTypeId);
 
 	if (placementReason) {
 		return placementReason;

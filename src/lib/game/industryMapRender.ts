@@ -1,4 +1,10 @@
 import { INDUSTRIAL_BUILDING_TYPES } from './industry';
+import {
+	INDUSTRIAL_BUILDING_FOOTPRINT_HEIGHT,
+	INDUSTRIAL_BUILDING_FOOTPRINT_WIDTH,
+	createIndustryTileLookup,
+	getOccupiedIndustryTileIds
+} from './industryFootprint';
 import type { PlacementPreview } from './placementPreview';
 import type {
 	GameState,
@@ -28,6 +34,8 @@ export interface IndustryMapBuildingRender {
 	tileId: string;
 	x: number;
 	y: number;
+	width: number;
+	height: number;
 	status: IndustrialBuildingStatus;
 }
 
@@ -63,7 +71,8 @@ export function createIndustryMapSnapshot(
 	const activeCityBuildings = game.industrialBuildings.filter(
 		(building) => building.cityId === city.id
 	);
-	const occupiedTileIds = new Set(activeCityBuildings.map((building) => building.tileId));
+	const tileLookup = createIndustryTileLookup(city);
+	const occupiedTileIds = getOccupiedIndustryTileIds(city, activeCityBuildings, tileLookup);
 
 	return {
 		cityId: city.id,
@@ -112,6 +121,8 @@ function createBuildingRender(building: IndustrialBuilding): IndustryMapBuilding
 		tileId: building.tileId,
 		x: building.mapX,
 		y: building.mapY,
+		width: INDUSTRIAL_BUILDING_FOOTPRINT_WIDTH,
+		height: INDUSTRIAL_BUILDING_FOOTPRINT_HEIGHT,
 		status: building.status
 	};
 }

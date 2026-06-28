@@ -142,7 +142,7 @@ describe('world progression and city opening', () => {
 	});
 
 	test('opens a revealed industrial city and sets it active without changing store cap', () => {
-		expect.assertions(5);
+		expect.assertions(7);
 		const game = createNewGame('convenience', 20260530);
 		const revealed: GameState = {
 			...game,
@@ -158,6 +158,8 @@ describe('world progression and city opening', () => {
 		expect(opened.cash).toBe(35_000);
 		expect(opened.world.openedCityIds).toContain('breadbasket-basin');
 		expect(opened.industryCities.some((city) => city.id === 'breadbasket-basin')).toBe(true);
+		expect(opened.industryCities.find((city) => city.id === 'breadbasket-basin')?.width).toBe(56);
+		expect(opened.industryCities.find((city) => city.id === 'breadbasket-basin')?.height).toBe(48);
 		expect(opened.activeIndustryCityId).toBe('breadbasket-basin');
 		expect(opened.storeCap).toBe(game.storeCap);
 	});
