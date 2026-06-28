@@ -41,7 +41,9 @@
 		createRetailPlacementPreview,
 		getIndustryBuildPlacementBlockReason,
 		getRetailBuildMenuOptions,
-		getRetailPlacementBlockReason
+		getRetailPlacementBlockReason,
+		resolveIndustryPlacementAnchorTileId,
+		resolveRetailPlacementAnchorTileId
 	} from '$lib/game/placementPreview';
 	import { summarizeReports } from '$lib/game/reports';
 	import {
@@ -287,7 +289,14 @@
 
 	function selectTile(tileId: string) {
 		if (retailPlacementArchetypeId) {
-			placeRetailAtTile(retailPlacementArchetypeId, tileId);
+			// Placement previews only mark valid 2x2 anchors. If the user clicks a
+			// non-anchor cell that sits inside a valid footprint, resolve to that
+			// footprint's anchor so the click places the store instead of being
+			// rejected as an invalid anchor.
+			const anchorTileId = retailPlacementPreview
+				? resolveRetailPlacementAnchorTileId(retailPlacementPreview, activeCity, tileId)
+				: tileId;
+			placeRetailAtTile(retailPlacementArchetypeId, anchorTileId);
 			return;
 		}
 
@@ -298,7 +307,10 @@
 
 	function selectIndustryTile(tileId: string) {
 		if (industryPlacementBuildingTypeId) {
-			placeIndustryAtTile(industryPlacementBuildingTypeId, tileId);
+			const anchorTileId = industryPlacementPreview
+				? resolveIndustryPlacementAnchorTileId(industryPlacementPreview, industryCity, tileId)
+				: tileId;
+			placeIndustryAtTile(industryPlacementBuildingTypeId, anchorTileId);
 			return;
 		}
 

@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { getArchetype } from './archetypes';
+import { createFoundingGameAtTile } from './placement';
 import { isTileInStoreFootprint } from './storeFootprint';
 import { calculateStockHealth, createStoreProduct } from './stock';
 import {
@@ -12,7 +13,7 @@ import {
 } from './state';
 import { simulateDay } from './simulateDay';
 import { getStoreUpgradeCost, MAX_STORE_LEVEL } from './leveling';
-import type { CityTile, GameState } from './types';
+import type { City, CityTile, GameState } from './types';
 
 type OptionalKeys<T> = {
 	[K in keyof T]-?: undefined extends T[K] ? K : never;
@@ -645,6 +646,64 @@ describe('game state', () => {
 		);
 	});
 
+	test('openStore rejects an anchor whose 2x2 footprint includes a river non-anchor tile', () => {
+		// Regression guard for the defensive getExpansionTile path: when a
+		// caller bypasses the placement-preview pre-check, openStore must still
+		// refuse to place a store whose anchor is buildable but whose footprint
+		// extends onto a river tile. Without the footprint-aware guard the store
+		// would be placed on top of the river.
+		expect.assertions(3);
+		const city = makeFlatRetailCity(6, 6);
+		const riverNeighbor = city.tiles.find((tile) => tile.x === 3 && tile.y === 1)!;
+		riverNeighbor.feature = 'river';
+		const game = createFoundingGameAtTile({
+			archetypeId: 'boutique',
+			city,
+			tileId: 'retail-city-0-0',
+			seed: 7
+		});
+		// Anchor (2,1) is buildable commercial, but its 2x2 footprint includes
+		// the river tile at (3,1).
+		const riverFootprintAnchor = city.tiles.find((tile) => tile.x === 2 && tile.y === 1)!;
+
+		const result = openStore(game, {
+			name: 'River Edge Store',
+			archetypeId: 'grocery',
+			location: 'River Edge',
+			tileId: riverFootprintAnchor.id
+		});
+
+		expect(result.stores).toHaveLength(1);
+		expect(result.decisions.at(-1)?.title).toBe('Location unavailable');
+		expect(result.decisions.at(-1)?.context).toBe(
+			'River location blocks store placement. Choose another city tile.'
+		);
+	});
+
+	test('openStore rejects an anchor whose 2x2 footprint extends past the map edge', () => {
+		// Edge-of-map guard: an anchor on the bottom/right border is buildable
+		// as a single tile, but its 2x2 footprint has missing coordinates.
+		expect.assertions(2);
+		const city = makeFlatRetailCity(4, 4);
+		const game = createFoundingGameAtTile({
+			archetypeId: 'boutique',
+			city,
+			tileId: 'retail-city-0-0',
+			seed: 7
+		});
+		const edgeAnchor = city.tiles.find((tile) => tile.x === 3 && tile.y === 0)!;
+
+		const result = openStore(game, {
+			name: 'Edge Store',
+			archetypeId: 'grocery',
+			location: 'Edge',
+			tileId: edgeAnchor.id
+		});
+
+		expect(result.stores).toHaveLength(1);
+		expect(result.decisions.at(-1)?.title).toBe('Location unavailable');
+	});
+
 	test('getExpansionSetupCost pins terrain premium ordering and exact values', () => {
 		expect.assertions(5);
 		// Convenience baseRent is 115; with rent/demand/footTraffic/customerFit
@@ -717,3 +776,26 @@ describe('game state', () => {
 		});
 	});
 });
+
+function makeFlatRetailCity(width: number, height: number): City {
+	const tiles: CityTile[] = [];
+	for (let y = 0; y < height; y += 1) {
+		for (let x = 0; x < width; x += 1) {
+			tiles.push({
+				id: `retail-city-${x}-${y}`,
+				cityId: 'retail-city',
+				x,
+				y,
+				neighborhood: 'downtown',
+				terrain: 'commercial',
+				feature: null,
+				demand: 60,
+				rent: 100,
+				footTraffic: 60,
+				customerFit: 60,
+				locked: false
+			});
+		}
+	}
+	return { id: 'retail-city', name: 'Retail City', width, height, tiles };
+}

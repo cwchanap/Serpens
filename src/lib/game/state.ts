@@ -12,7 +12,6 @@ import {
 	DEFAULT_RETAIL_CITY_WIDTH,
 	generateCity,
 	getTilePlacementBlockDecisionIdPart,
-	getTilePlacementBlockReason,
 	isTileBuildable
 } from './city';
 import {
@@ -22,7 +21,13 @@ import {
 } from './industry';
 import { clampScore } from './reports';
 import { createRng, normalizeSeed, randomInt } from './rng';
-import { isTileInStoreFootprint } from './storeFootprint';
+import {
+	createCityTileLookup,
+	getOccupiedStoreTileIds,
+	getStoreFootprintPlacementBlockReason,
+	isTileInStoreFootprint,
+	type StoreFootprintPlacementBlockReason
+} from './storeFootprint';
 import {
 	generateHiringCandidates,
 	generateStarterStaffForStore,
@@ -372,16 +377,31 @@ function getExpansionTile(
 	}
 
 	if (requestedTileId) {
-		const requestedTile = city.tiles.find((tile) => tile.id === requestedTileId);
+		const lookup = createCityTileLookup(city);
+		const requestedTile = lookup.byId.get(requestedTileId);
 
 		if (!requestedTile) {
 			return {};
 		}
 
-		const blockReason = getTilePlacementBlockReason(requestedTile);
+		// Footprint-aware: a 2x2 store occupies all four footprint tiles, not
+		// just the anchor. The production UI flow pre-checks via
+		// getStoreFootprintPlacementBlockReason (see openStoreAtTile), so this
+		// is a defensive correctness guard for callers that bypass the preview.
+		// It must reject anchors whose non-anchor footprint tiles are river,
+		// road, locked, off-map, or already occupied — not just the anchor.
+		const occupiedTileIds = getOccupiedStoreTileIds(city, game.stores, lookup);
+		const footprintBlockReason = getStoreFootprintPlacementBlockReason(
+			lookup,
+			requestedTile,
+			occupiedTileIds
+		);
 
-		if (blockReason || isTileOccupied(game, requestedTile.id)) {
-			return { blockReason };
+		if (footprintBlockReason) {
+			// 'Occupied location' is a footprint-only concept (not a
+			// TilePlacementBlockReason) and maps to null so the decision id and
+			// generic "unoccupied" message match the prior occupancy behavior.
+			return { blockReason: toExpansionTileBlockReason(footprintBlockReason) };
 		}
 
 		return { tile: requestedTile };
@@ -392,16 +412,22 @@ function getExpansionTile(
 	};
 }
 
+function toExpansionTileBlockReason(
+	reason: StoreFootprintPlacementBlockReason
+): TilePlacementBlockReason | null {
+	return reason === 'Occupied location' ? null : reason;
+}
+
 function getActiveCity(game: GameState): City | undefined {
 	return game.cities.find((city) => city.id === game.activeCityId);
 }
 
 function isTileOccupied(game: GameState, tileId: string): boolean {
 	// Footprint-aware: a 2x2 store occupies all four tiles of its footprint, not
-	// just the anchor. Callers (expansion tile picking) rely on this to avoid
-	// placing overlapping stores when a future caller bypasses the placement
-	// preview pre-check (`getStoreFootprintPlacementBlockReason`). The production
-	// UI flow already pre-checks, so this is a defensive correctness guard.
+	// just the anchor. Used by the auto-pick branch of getExpansionTile (when
+	// no specific tile is requested) to skip tiles already covered by a store.
+	// The requested-tile branch uses getStoreFootprintPlacementBlockReason
+	// directly, which performs the same footprint-occupancy check.
 	const city = getActiveCity(game);
 
 	if (!city) {

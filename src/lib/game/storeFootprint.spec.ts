@@ -164,6 +164,32 @@ describe('getStoreFootprintPlacementBlockReason', () => {
 		);
 	});
 
+	test('returns River location when a non-anchor footprint tile is a river', () => {
+		expect.assertions(1);
+		const city = makeCity('retail', 4, 4);
+		// (1,1) is a non-anchor tile of the anchor (0,0) 2x2 footprint.
+		const riverTile = city.tiles.find((tile) => tile.x === 1 && tile.y === 1)!;
+		riverTile.feature = 'river';
+		const anchor = city.tiles.find((tile) => tile.x === 0 && tile.y === 0)!;
+
+		expect(getStoreFootprintPlacementBlockReason(createCityTileLookup(city), anchor)).toBe(
+			'River location'
+		);
+	});
+
+	test('returns Locked location when a non-anchor footprint tile is locked', () => {
+		expect.assertions(1);
+		const city = makeCity('retail', 4, 4);
+		// (0,1) is a non-anchor tile of the anchor (0,0) 2x2 footprint.
+		const lockedTile = city.tiles.find((tile) => tile.x === 0 && tile.y === 1)!;
+		lockedTile.locked = true;
+		const anchor = city.tiles.find((tile) => tile.x === 0 && tile.y === 0)!;
+
+		expect(getStoreFootprintPlacementBlockReason(createCityTileLookup(city), anchor)).toBe(
+			'Locked location'
+		);
+	});
+
 	test('returns Occupied location when a footprint tile is already taken', () => {
 		expect.assertions(1);
 		const city = makeCity('retail', 4, 4);

@@ -99,6 +99,13 @@ export function getIndustrialPlacementBlockReasonWithContext(
 		return 'Occupied industrial tile';
 	}
 
+	// Resource-anchored buildings (well, pumpjack, etc.) are placed on the
+	// anchor tile that carries the raw resource; the surrounding footprint tiles
+	// are terrain-only. requiredResource is therefore checked against the anchor
+	// tile only, deliberately asymmetric with requiresIndustrialTile (which
+	// validates every footprint tile). Mirroring requiredResource across the
+	// footprint would wrongly reject valid placements whose non-anchor tiles sit
+	// on plain industrial terrain.
 	if (buildingType.requiredResource && tile.resource !== buildingType.requiredResource) {
 		return `Requires ${formatIndustryResourceLabel(buildingType.requiredResource)}`;
 	}
