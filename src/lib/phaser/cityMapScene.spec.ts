@@ -554,6 +554,45 @@ describe('CityMapScene', () => {
 			expect(handler).toHaveBeenCalledWith({ type: 'tileSelected', tileId: 'zone-tile' });
 		});
 
+		it('pointerup fires tileSelected for the clicked cell inside a 2x2 store footprint', () => {
+			expect.assertions(1);
+			// The scene emits the raw clicked tile id; the Svelte component
+			// resolves it to the store anchor via resolveSelectionAnchorTileId.
+			// This test verifies the scene correctly identifies the clicked
+			// cell (1,1) even when a store sprite covers the 2x2 footprint at
+			// (0,0). The anchor resolution is covered by placementPreview.spec.
+			const handler = vi.fn();
+			scene.setEventHandler(handler);
+			scene.create();
+			scene.updateSnapshot(
+				makeSnapshot({
+					stores: [
+						{
+							id: 's1',
+							name: 'Store',
+							archetypeId: 'convenience',
+							tileId: 't0',
+							x: 0,
+							y: 0,
+							width: 2,
+							height: 2
+						}
+					]
+				})
+			);
+			const zone = s(scene).tileZones[0];
+			const onCalls = (zone.on as Mock).mock.calls;
+			const downHandler = onCalls.find((c: any[]) => c[0] === 'pointerdown')?.[1];
+			const upHandler = onCalls.find((c: any[]) => c[0] === 'pointerup')?.[1];
+			const canvas = s(scene).game.canvas;
+			// Tile (1,1) is t4 in the default 3x3 snapshot; worldX/worldY of 48
+			// maps to Math.floor(48 / 32) = 1.
+			const pointer = makePointer(canvas, { x: 48, y: 48, worldX: 48, worldY: 48 });
+			downHandler(pointer);
+			upHandler(pointer);
+			expect(handler).toHaveBeenCalledWith({ type: 'tileSelected', tileId: 't4' });
+		});
+
 		it('pointerup does not fire when pointer did not start on canvas', () => {
 			expect.assertions(1);
 			const handler = vi.fn();

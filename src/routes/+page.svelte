@@ -43,7 +43,9 @@
 		getRetailBuildMenuOptions,
 		getRetailPlacementBlockReason,
 		resolveIndustryPlacementAnchorTileId,
-		resolveRetailPlacementAnchorTileId
+		resolveIndustrySelectionAnchorTileId,
+		resolveRetailPlacementAnchorTileId,
+		resolveSelectionAnchorTileId
 	} from '$lib/game/placementPreview';
 	import { summarizeReports } from '$lib/game/reports';
 	import {
@@ -300,7 +302,10 @@
 			return;
 		}
 
-		selectedTileId = tileId;
+		// Resolve a click inside a placed 2x2 store footprint to that store's
+		// anchor so the inspector shows the anchor's tile-derived stats
+		// (neighborhood/demand/rent) instead of the clicked cell's.
+		selectedTileId = game ? resolveSelectionAnchorTileId(activeCity, game.stores, tileId) : tileId;
 		selectedIndustryTileId = null;
 		selectedWorldCityId = null;
 	}
@@ -314,7 +319,11 @@
 			return;
 		}
 
-		selectedIndustryTileId = tileId;
+		// Resolve a click inside a placed 2x2 industrial building footprint to
+		// that building's anchor for the same reason as selectTile above.
+		selectedIndustryTileId = game
+			? resolveIndustrySelectionAnchorTileId(industryCity, game.industrialBuildings, tileId)
+			: tileId;
 		selectedTileId = null;
 		selectedWorldCityId = null;
 	}

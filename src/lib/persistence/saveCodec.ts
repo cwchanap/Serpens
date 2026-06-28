@@ -15,6 +15,11 @@ import {
 	MAX_BUILDING_LEVEL
 } from '$lib/game/leveling';
 import { formatLocation } from '$lib/game/placement';
+import {
+	createCityTileLookup,
+	getRetailStoreFootprint,
+	type CityTileLookup
+} from '$lib/game/storeFootprint';
 import { MAX_STAFF_LEVEL } from '$lib/game/staffLeveling';
 import { clampScore } from '$lib/game/reports';
 import type { City, CityTile, GameState, WorldCityId } from '$lib/game/types';
@@ -590,6 +595,9 @@ function normalizeSavedRetailStorePlacements(
 			.filter((city): city is City => isSavedCityLike(city))
 			.map((city) => [city.id, city] as const)
 	);
+	const cityLookupById = new Map<string, CityTileLookup>(
+		[...cityById.values()].map((city) => [city.id, createCityTileLookup(city)] as const)
+	);
 	const occupiedTileIdsByCity = new Map<string, Set<string>>();
 
 	// Pass 1: reserve tiles for stores that are already correctly placed. This
@@ -604,6 +612,11 @@ function normalizeSavedRetailStorePlacements(
 	// untouched (the opening store intentionally carries an archetype-based
 	// localDemand and a "Founding location" label rather than tile-derived
 	// values).
+	//
+	// The reservation covers the store's full 2x2 footprint, not just the
+	// anchor tile, so a relocated store can never land at an anchor whose
+	// footprint overlaps this store's footprint — the same invariant the live
+	// placement logic enforces.
 	const validPlacementTiles = new Map<number, { tile: CityTile; regenerated: boolean }>();
 	stores.forEach((store, index) => {
 		if (typeof store !== 'object' || store === null) {
@@ -625,7 +638,14 @@ function normalizeSavedRetailStorePlacements(
 		if (reservedTileIds.has(tile.id)) {
 			return;
 		}
-		reservedTileIds.add(tile.id);
+		const lookup = cityLookupById.get(city.id);
+		if (lookup) {
+			for (const footprintTile of getRetailStoreFootprint(lookup, tile).tiles) {
+				reservedTileIds.add(footprintTile.id);
+			}
+		} else {
+			reservedTileIds.add(tile.id);
+		}
 		validPlacementTiles.set(index, {
 			tile,
 			regenerated: regeneratedCityIds.has(city.id)
@@ -663,7 +683,8 @@ function normalizeSavedRetailStorePlacements(
 		}
 
 		const occupiedTileIds = getOccupiedTileIds(occupiedTileIdsByCity, city.id);
-		const targetTile = findSavedStoreTile(city, record, occupiedTileIds);
+		const lookup = cityLookupById.get(city.id);
+		const targetTile = findSavedStoreTile(city, record, occupiedTileIds, lookup);
 		if (!targetTile) {
 			const storeId = typeof record.id === 'string' ? record.id : '<unknown>';
 			console.warn(
@@ -672,7 +693,15 @@ function normalizeSavedRetailStorePlacements(
 			return store;
 		}
 
-		occupiedTileIds.add(targetTile.id);
+		// Reserve the relocated store's full footprint so a later relocated
+		// store cannot land at an overlapping anchor.
+		if (lookup) {
+			for (const footprintTile of getRetailStoreFootprint(lookup, targetTile).tiles) {
+				occupiedTileIds.add(footprintTile.id);
+			}
+		} else {
+			occupiedTileIds.add(targetTile.id);
+		}
 
 		const storeId = typeof record.id === 'string' ? record.id : '<unknown>';
 		console.warn(
@@ -718,20 +747,42 @@ function getOccupiedTileIds(
 function findSavedStoreTile(
 	city: City,
 	store: Record<string, unknown>,
-	occupiedTileIds: Set<string>
+	occupiedTileIds: Set<string>,
+	lookup?: CityTileLookup
 ): CityTile | null {
+	// A candidate anchor is only acceptable when its full 2x2 footprint is
+	// buildable and none of its footprint tiles are already reserved. This
+	// mirrors the live placement invariant, so a relocated store can never
+	// land at an anchor whose footprint overlaps an already-placed store.
+	const isAnchorAvailable = (anchor: CityTile): boolean => {
+		if (!isTileBuildable(anchor) || occupiedTileIds.has(anchor.id)) {
+			return false;
+		}
+		if (!lookup) {
+			return true;
+		}
+		const footprint = getRetailStoreFootprint(lookup, anchor);
+		if (footprint.missingCoordinates.length > 0 || footprint.tiles.length === 0) {
+			return false;
+		}
+		for (const footprintTile of footprint.tiles) {
+			if (!isTileBuildable(footprintTile) || occupiedTileIds.has(footprintTile.id)) {
+				return false;
+			}
+		}
+		return true;
+	};
+
 	if (typeof store.tileId === 'string') {
 		const tile = getTileById(city, store.tileId);
-		if (tile && isTileBuildable(tile) && !occupiedTileIds.has(tile.id)) {
+		if (tile && isAnchorAvailable(tile)) {
 			return tile;
 		}
 	}
 
 	const originX = typeof store.mapX === 'number' ? store.mapX : 1;
 	const originY = typeof store.mapY === 'number' ? store.mapY : 1;
-	const buildableTiles = city.tiles.filter(
-		(tile) => isTileBuildable(tile) && !occupiedTileIds.has(tile.id)
-	);
+	const buildableTiles = city.tiles.filter((tile) => isAnchorAvailable(tile));
 
 	return buildableTiles.reduce<CityTile | null>((best, tile) => {
 		if (!best) {

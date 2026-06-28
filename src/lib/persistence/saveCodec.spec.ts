@@ -469,6 +469,87 @@ describe('saveCodec', () => {
 		expect(resultInvalid.tileId).not.toBe(validTile!.id);
 	});
 
+	test('relocated stores never overlap a valid store footprint after city regeneration', () => {
+		expect.assertions(3);
+		// Regenerate the same 56x48 harbor-city the codec produces (seed comes
+		// from game.seed for harbor-city). Anchor A=(1,1) and adjacent anchor
+		// B=(2,1) are both buildable, and their 2x2 footprints share tiles
+		// (2,1) and (2,2). A valid store sits at A; an invalid store whose
+		// saved origin is B (with a non-buildable stale tileId) must NOT be
+		// relocated onto B, because B's footprint overlaps A's. The codec must
+		// reserve A's full footprint in pass 1 and reject B's anchor in pass 2.
+		const referenceCity = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: DEFAULT_RETAIL_CITY_WIDTH,
+			height: DEFAULT_RETAIL_CITY_HEIGHT,
+			seed: 20260505
+		});
+		const anchorA = referenceCity.tiles.find((tile) => tile.id === 'harbor-city-1-1')!;
+		const anchorB = referenceCity.tiles.find((tile) => tile.id === 'harbor-city-2-1')!;
+		expect(isTileBuildable(anchorA)).toBe(true);
+		expect(isTileBuildable(anchorB)).toBe(true);
+
+		const baseStore = createGame().stores[0]!;
+		const validStore = {
+			...baseStore,
+			id: 'store-valid',
+			cityId: 'harbor-city',
+			tileId: anchorA.id,
+			mapX: anchorA.x,
+			mapY: anchorA.y
+		};
+		// Invalid store: stale non-buildable tileId forces the closest-tile
+		// fallback; origin sits exactly on B so B is the distance-0 candidate.
+		const invalidStore = {
+			...baseStore,
+			id: 'store-invalid',
+			cityId: 'harbor-city',
+			tileId: 'harbor-city-28-8',
+			mapX: anchorB.x,
+			mapY: anchorB.y
+		};
+
+		const record = createManualSaveRecord({
+			game: {
+				seed: 20260505,
+				cities: [{ id: 'harbor-city', name: 'Harbor City', width: 28, height: 24, tiles: [] }],
+				stores: [validStore, invalidStore]
+			}
+		});
+
+		const validated = validateSaveRecord(record);
+		const city = validated.game.cities[0]!;
+		const tileById = new Map(city.tiles.map((tile) => [tile.id, tile] as const));
+		// Collect each store's full 2x2 footprint tile ids and assert no two
+		// stores in this city share a footprint tile.
+		const footprintIdsByStore = validated.game.stores
+			.filter((store) => store.cityId === city.id)
+			.map((store) => {
+				const ax = tileById.get(store.tileId)?.x ?? store.mapX;
+				const ay = tileById.get(store.tileId)?.y ?? store.mapY;
+				const ids = new Set<string>();
+				for (let dy = 0; dy < 2; dy += 1) {
+					for (let dx = 0; dx < 2; dx += 1) {
+						const t = city.tiles.find((tile) => tile.x === ax + dx && tile.y === ay + dy);
+						if (t) {
+							ids.add(t.id);
+						}
+					}
+				}
+				return { id: store.id, ids };
+			});
+
+		for (let i = 0; i < footprintIdsByStore.length; i += 1) {
+			for (let j = i + 1; j < footprintIdsByStore.length; j += 1) {
+				const a = footprintIdsByStore[i]!;
+				const b = footprintIdsByStore[j]!;
+				const shared = [...a.ids].filter((id) => b.ids.has(id));
+				expect(shared).toEqual([]);
+			}
+		}
+	});
+
 	test('leaves a store on its stale tile and warns when no buildable tile remains', () => {
 		expect.assertions(3);
 		const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});

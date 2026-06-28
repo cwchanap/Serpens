@@ -7,8 +7,10 @@ import {
 	getIndustryBuildPlacementBlockReason,
 	getRetailBuildMenuOptions,
 	getRetailPlacementBlockReason,
+	resolveIndustrySelectionAnchorTileId,
 	resolveIndustryPlacementAnchorTileId,
-	resolveRetailPlacementAnchorTileId
+	resolveRetailPlacementAnchorTileId,
+	resolveSelectionAnchorTileId
 } from './placementPreview';
 import { createFoundingGameAtTile, forecastOpening } from './placement';
 import { createNewGame } from './state';
@@ -17,7 +19,7 @@ import {
 	getOccupiedStoreTileIds,
 	getStoreFootprintPlacementBlockReason
 } from './storeFootprint';
-import type { City, CityTile, Store } from './types';
+import type { City, CityTile, IndustrialBuilding, Store } from './types';
 
 describe('retail placement preview', () => {
 	test('marks every retail tile as valid or invalid before founding', () => {
@@ -638,5 +640,155 @@ describe('resolveIndustryPlacementAnchorTileId', () => {
 		expect(resolveIndustryPlacementAnchorTileId(preview, city, 'does-not-exist')).toBe(
 			'does-not-exist'
 		);
+	});
+});
+
+describe('resolveSelectionAnchorTileId', () => {
+	test('resolves a non-anchor cell inside a 2x2 store footprint to the store anchor', () => {
+		expect.assertions(1);
+		const city = createFlatCity(4, 4);
+		const anchor = city.tiles.find((tile) => tile.x === 1 && tile.y === 1)!;
+		const store: Store = {
+			id: 'store-1',
+			level: 1,
+			name: 'Test Store',
+			archetypeId: 'boutique',
+			location: 'Founding location (1, 1)',
+			cityId: city.id,
+			tileId: anchor.id,
+			mapX: anchor.x,
+			mapY: anchor.y,
+			daysOpen: 0,
+			reputation: 50,
+			stockHealth: 100,
+			products: [],
+			staffMorale: 70,
+			staffCapacity: 2,
+			localDemand: 60,
+			competition: 0,
+			managerQuality: 50
+		};
+		// (2,2) is the bottom-right cell of the anchor's 2x2 footprint.
+		const bottomRight = city.tiles.find((tile) => tile.x === 2 && tile.y === 2)!;
+
+		expect(resolveSelectionAnchorTileId(city, [store], bottomRight.id)).toBe(anchor.id);
+	});
+
+	test('returns the clicked tile id when the cell is not inside any store footprint', () => {
+		expect.assertions(1);
+		const city = createFlatCity(4, 4);
+		const anchor = city.tiles.find((tile) => tile.x === 1 && tile.y === 1)!;
+		const store: Store = {
+			id: 'store-1',
+			level: 1,
+			name: 'Test Store',
+			archetypeId: 'boutique',
+			location: 'Founding location (1, 1)',
+			cityId: city.id,
+			tileId: anchor.id,
+			mapX: anchor.x,
+			mapY: anchor.y,
+			daysOpen: 0,
+			reputation: 50,
+			stockHealth: 100,
+			products: [],
+			staffMorale: 70,
+			staffCapacity: 2,
+			localDemand: 60,
+			competition: 0,
+			managerQuality: 50
+		};
+		// (3,3) is outside the (1,1) anchor's 2x2 footprint.
+		const outside = city.tiles.find((tile) => tile.x === 3 && tile.y === 3)!;
+
+		expect(resolveSelectionAnchorTileId(city, [store], outside.id)).toBe(outside.id);
+	});
+
+	test('ignores stores in other cities', () => {
+		expect.assertions(1);
+		const city = createFlatCity(4, 4);
+		const anchor = city.tiles.find((tile) => tile.x === 1 && tile.y === 1)!;
+		const store: Store = {
+			id: 'store-1',
+			level: 1,
+			name: 'Test Store',
+			archetypeId: 'boutique',
+			location: 'Founding location (1, 1)',
+			cityId: 'other-city',
+			tileId: anchor.id,
+			mapX: anchor.x,
+			mapY: anchor.y,
+			daysOpen: 0,
+			reputation: 50,
+			stockHealth: 100,
+			products: [],
+			staffMorale: 70,
+			staffCapacity: 2,
+			localDemand: 60,
+			competition: 0,
+			managerQuality: 50
+		};
+		const bottomRight = city.tiles.find((tile) => tile.x === 2 && tile.y === 2)!;
+
+		expect(resolveSelectionAnchorTileId(city, [store], bottomRight.id)).toBe(bottomRight.id);
+	});
+
+	test('returns the clicked tile id unchanged when the tile is unknown', () => {
+		expect.assertions(1);
+		const city = createFlatCity(4, 4);
+
+		expect(resolveSelectionAnchorTileId(city, [], 'does-not-exist')).toBe('does-not-exist');
+	});
+});
+
+describe('resolveIndustrySelectionAnchorTileId', () => {
+	test('resolves a non-anchor cell inside a 2x2 building footprint to the building anchor', () => {
+		expect.assertions(1);
+		const game = createNewGame('convenience', 20260512);
+		const city = game.industryCities[0]!;
+		const anchor = city.tiles.find((tile) => tile.x === 1 && tile.y === 1)!;
+		const building: IndustrialBuilding = {
+			id: 'building-1',
+			level: 1,
+			typeId: 'warehouse',
+			cityId: city.id,
+			tileId: anchor.id,
+			mapX: anchor.x,
+			mapY: anchor.y,
+			status: 'idle',
+			lastProduction: [],
+			producedTotal: 0,
+			importedInputTotal: 0,
+			blockedDays: 0
+		};
+		// (2,2) is the bottom-right cell of the anchor's 2x2 footprint.
+		const bottomRight = city.tiles.find((tile) => tile.x === 2 && tile.y === 2)!;
+
+		expect(resolveIndustrySelectionAnchorTileId(city, [building], bottomRight.id)).toBe(anchor.id);
+	});
+
+	test('returns the clicked tile id when the cell is not inside any building footprint', () => {
+		expect.assertions(1);
+		const game = createNewGame('convenience', 20260512);
+		const city = game.industryCities[0]!;
+		const anchor = city.tiles.find((tile) => tile.x === 1 && tile.y === 1)!;
+		const building: IndustrialBuilding = {
+			id: 'building-1',
+			level: 1,
+			typeId: 'warehouse',
+			cityId: city.id,
+			tileId: anchor.id,
+			mapX: anchor.x,
+			mapY: anchor.y,
+			status: 'idle',
+			lastProduction: [],
+			producedTotal: 0,
+			importedInputTotal: 0,
+			blockedDays: 0
+		};
+		// Find a tile outside the (1,1) 2x2 footprint.
+		const outside = city.tiles.find((tile) => tile.x === 0 && tile.y === 0)!;
+
+		expect(resolveIndustrySelectionAnchorTileId(city, [building], outside.id)).toBe(outside.id);
 	});
 });
