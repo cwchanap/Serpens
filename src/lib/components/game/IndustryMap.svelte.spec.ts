@@ -95,6 +95,19 @@ describe('IndustryMap', () => {
 		expect(mockPause).toHaveBeenCalled();
 	});
 
+	it('pauses the game loop when active prop is false', async () => {
+		expect.assertions(1);
+
+		render(IndustryMap, {
+			snapshot: emptySnapshot,
+			onTileSelected: vi.fn(),
+			active: false
+		});
+
+		await waitForMock(mockPause);
+		expect(mockPause).toHaveBeenCalled();
+	});
+
 	it('resumes the game loop when not paused', async () => {
 		expect.assertions(1);
 

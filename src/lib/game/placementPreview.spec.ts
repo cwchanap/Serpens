@@ -6,7 +6,9 @@ import {
 	createRetailPlacementPreview,
 	getIndustryBuildPlacementBlockReason,
 	getRetailBuildMenuOptions,
-	getRetailPlacementBlockReason
+	getRetailPlacementBlockReason,
+	resolveIndustryPlacementAnchorTileId,
+	resolveRetailPlacementAnchorTileId
 } from './placementPreview';
 import { createFoundingGameAtTile, forecastOpening } from './placement';
 import { createNewGame } from './state';
@@ -533,5 +535,108 @@ describe('industry placement preview', () => {
 				buildingTypeId: 'warehouse'
 			})
 		).toBeNull();
+	});
+});
+
+describe('resolveRetailPlacementAnchorTileId', () => {
+	test('returns the clicked tile id when it is itself a valid anchor', () => {
+		expect.assertions(1);
+		const city = createFlatCity(4, 4);
+		const preview = createRetailPlacementPreview({
+			game: null,
+			city,
+			archetypeId: 'boutique'
+		});
+		// (1,1) is an interior anchor whose 2x2 footprint fits in a 4x4 city.
+		const interiorAnchor = city.tiles.find((tile) => tile.x === 1 && tile.y === 1)!;
+
+		expect(resolveRetailPlacementAnchorTileId(preview, city, interiorAnchor.id)).toBe(
+			interiorAnchor.id
+		);
+	});
+
+	test('resolves a non-anchor edge cell to a valid anchor whose footprint contains it', () => {
+		expect.assertions(3);
+		const city = createFlatCity(4, 4);
+		const preview = createRetailPlacementPreview({
+			game: null,
+			city,
+			archetypeId: 'boutique'
+		});
+		// (3,1) cannot be an anchor (its footprint extends to x=4, off-map), but
+		// it sits inside the footprints of valid anchors (2,0) and (2,1). The
+		// helper must return one of those valid anchors, not the clicked cell.
+		const clickedEdgeCell = city.tiles.find((tile) => tile.x === 3 && tile.y === 1)!;
+
+		expect(preview.validTileIds).not.toContain(clickedEdgeCell.id);
+		const resolved = resolveRetailPlacementAnchorTileId(preview, city, clickedEdgeCell.id);
+		expect(preview.validTileIds).toContain(resolved);
+		const resolvedTile = city.tiles.find((tile) => tile.id === resolved)!;
+		expect(
+			clickedEdgeCell.x >= resolvedTile.x &&
+				clickedEdgeCell.x < resolvedTile.x + 2 &&
+				clickedEdgeCell.y >= resolvedTile.y &&
+				clickedEdgeCell.y < resolvedTile.y + 2
+		).toBe(true);
+	});
+
+	test('returns the clicked tile id when the cell is not inside any valid footprint', () => {
+		expect.assertions(1);
+		const city = createFlatCity(4, 4);
+		// Make (2,0) a road so anchors (2,0) and (1,0) become invalid (their
+		// footprints contain the road). Now (3,0) is not covered by any valid
+		// anchor: the only anchors that could cover it are (2,0) [invalid] and
+		// (3,0) [off-map], so the clicked cell is returned unchanged.
+		const roadTile = city.tiles.find((tile) => tile.x === 2 && tile.y === 0)!;
+		roadTile.feature = 'road';
+		const preview = createRetailPlacementPreview({
+			game: null,
+			city,
+			archetypeId: 'boutique'
+		});
+		const uncoveredCell = city.tiles.find((tile) => tile.x === 3 && tile.y === 0)!;
+
+		expect(resolveRetailPlacementAnchorTileId(preview, city, uncoveredCell.id)).toBe(
+			uncoveredCell.id
+		);
+	});
+
+	test('returns the clicked tile id unchanged when the tile is unknown', () => {
+		expect.assertions(1);
+		const city = createFlatCity(4, 4);
+		const preview = createRetailPlacementPreview({
+			game: null,
+			city,
+			archetypeId: 'boutique'
+		});
+
+		expect(resolveRetailPlacementAnchorTileId(preview, city, 'does-not-exist')).toBe(
+			'does-not-exist'
+		);
+	});
+});
+
+describe('resolveIndustryPlacementAnchorTileId', () => {
+	test('returns the clicked tile id when it is itself a valid anchor', () => {
+		expect.assertions(1);
+		const game = { ...createNewGame('convenience', 20260512), cash: 100_000 };
+		const city = game.industryCities[0]!;
+		const preview = createIndustryPlacementPreview({ game, buildingTypeId: 'warehouse' });
+		const validAnchor = city.tiles.find((tile) => preview.validTileIds.includes(tile.id))!;
+
+		expect(resolveIndustryPlacementAnchorTileId(preview, city, validAnchor.id)).toBe(
+			validAnchor.id
+		);
+	});
+
+	test('returns the clicked tile id unchanged when the tile is unknown', () => {
+		expect.assertions(1);
+		const game = { ...createNewGame('convenience', 20260512), cash: 100_000 };
+		const city = game.industryCities[0]!;
+		const preview = createIndustryPlacementPreview({ game, buildingTypeId: 'warehouse' });
+
+		expect(resolveIndustryPlacementAnchorTileId(preview, city, 'does-not-exist')).toBe(
+			'does-not-exist'
+		);
 	});
 });

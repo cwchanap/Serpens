@@ -1,6 +1,7 @@
 import { ARCHETYPES } from './archetypes';
 import { getTileById } from './city';
-import { INDUSTRIAL_BUILDING_TYPES } from './industry';
+import { INDUSTRIAL_BUILDING_TYPES, getIndustryTileById } from './industry';
+import { isTileInIndustryBuildingFootprint } from './industryFootprint';
 import {
 	createIndustrialPlacementContext,
 	getIndustrialPlacementBlockReason,
@@ -12,6 +13,7 @@ import {
 	createCityTileLookup,
 	getOccupiedStoreTileIds,
 	getStoreFootprintPlacementBlockReason,
+	isTileInStoreFootprint,
 	type CityTileLookup
 } from './storeFootprint';
 import type {
@@ -156,44 +158,82 @@ function getRetailTilePlacementBlockReason(input: RetailTilePlacementInput): str
 export function getRetailBuildMenuOptions(input: RetailBuildMenuInput): RetailBuildMenuOption[] {
 	const context = createRetailPlacementContext(input.game, input.city);
 
-	return ARCHETYPES.map((archetype) => {
-		const forecasts = input.city.tiles
-			.filter(
-				(tile) =>
-					getRetailTilePlacementBlockReason({
-						tile,
-						archetypeId: archetype.id,
-						context
-					}) === null
-			)
-			.map((tile) => forecastOpening(tile, archetype.id));
+	// Footprint block reasons are archetype-independent (they depend only on
+	// terrain, locked state, edge-of-map, and existing occupancy), so compute
+	// them once per tile and reuse across every archetype. This avoids the
+	// previous double-iteration where the disabled-reason path rescanned all
+	// tiles after the valid-tile filter had already walked them.
+	const tileFootprintReasons = input.city.tiles.map((tile) => ({
+		tile,
+		footprintReason: getStoreFootprintPlacementBlockReason(
+			context.tileLookup,
+			tile,
+			context.occupiedTileIds
+		)
+	}));
 
-		if (forecasts.length === 0) {
+	return ARCHETYPES.map((archetype) => {
+		const validForecasts: ReturnType<typeof forecastOpening>[] = [];
+		const footprintReasons = new Set<string>();
+		let cheapestBlockedSetupCost: number | null = null;
+
+		for (const { tile, footprintReason } of tileFootprintReasons) {
+			if (footprintReason) {
+				footprintReasons.add(footprintReason);
+				continue;
+			}
+
+			if (
+				context.storeCount !== null &&
+				context.storeCap !== null &&
+				context.storeCount >= context.storeCap
+			) {
+				continue;
+			}
+
+			const forecast = forecastOpening(tile, archetype.id);
+
+			if (context.cash !== null && context.cash < forecast.setupCost) {
+				cheapestBlockedSetupCost =
+					cheapestBlockedSetupCost === null
+						? forecast.setupCost
+						: Math.min(cheapestBlockedSetupCost, forecast.setupCost);
+				continue;
+			}
+
+			validForecasts.push(forecast);
+		}
+
+		if (validForecasts.length === 0) {
 			return {
 				archetypeId: archetype.id,
 				setupCostRange: { min: 0, max: 0 },
 				projectedDailyRevenueRange: { min: 0, max: 0 },
 				validTileCount: 0,
-				disabledReason: getRetailBuildMenuDisabledReason(input, archetype.id, context)
+				disabledReason: resolveRetailDisabledReason(
+					context,
+					footprintReasons,
+					cheapestBlockedSetupCost
+				)
 			};
 		}
 
 		return {
 			archetypeId: archetype.id,
-			setupCostRange: rangeFrom(forecasts.map((forecast) => forecast.setupCost)),
+			setupCostRange: rangeFrom(validForecasts.map((forecast) => forecast.setupCost)),
 			projectedDailyRevenueRange: rangeFrom(
-				forecasts.map((forecast) => forecast.projectedDailyRevenue)
+				validForecasts.map((forecast) => forecast.projectedDailyRevenue)
 			),
-			validTileCount: forecasts.length,
+			validTileCount: validForecasts.length,
 			disabledReason: null
 		};
 	});
 }
 
-function getRetailBuildMenuDisabledReason(
-	input: RetailBuildMenuInput,
-	archetypeId: ArchetypeId,
-	context: RetailPlacementContext
+function resolveRetailDisabledReason(
+	context: RetailPlacementContext,
+	footprintReasons: Set<string>,
+	cheapestBlockedSetupCost: number | null
 ): string {
 	if (
 		context.storeCount !== null &&
@@ -201,35 +241,6 @@ function getRetailBuildMenuDisabledReason(
 		context.storeCount >= context.storeCap
 	) {
 		return 'Store limit reached';
-	}
-
-	let cheapestBlockedSetupCost: number | null = null;
-	const tileReasons = new Set<string>();
-
-	for (const tile of input.city.tiles) {
-		const tileBlockReason = getStoreFootprintPlacementBlockReason(
-			context.tileLookup,
-			tile,
-			context.occupiedTileIds
-		);
-
-		if (tileBlockReason) {
-			tileReasons.add(tileBlockReason);
-			continue;
-		}
-
-		if (context.cash === null) {
-			continue;
-		}
-
-		const setupCost = forecastOpening(tile, archetypeId).setupCost;
-
-		if (context.cash < setupCost) {
-			cheapestBlockedSetupCost =
-				cheapestBlockedSetupCost === null
-					? setupCost
-					: Math.min(cheapestBlockedSetupCost, setupCost);
-		}
 	}
 
 	if (cheapestBlockedSetupCost !== null) {
@@ -242,7 +253,7 @@ function getRetailBuildMenuDisabledReason(
 		'Road location',
 		'River location'
 	]) {
-		if (tileReasons.has(reason)) {
+		if (footprintReasons.has(reason)) {
 			return reason;
 		}
 	}
@@ -322,6 +333,68 @@ export function getIndustryBuildPlacementBlockReason(input: IndustryPlacementInp
 
 function getActiveIndustryCity(game: GameState | null): IndustryCity | undefined {
 	return game?.industryCities.find((city) => city.id === game.activeIndustryCityId);
+}
+
+/**
+ * Resolves a clicked tile to the anchor tile id that should actually receive a
+ * placement. Placement previews only mark valid 2x2 anchors, so clicking a
+ * non-anchor cell that belongs to a valid footprint would otherwise try to
+ * anchor at the clicked cell (usually invalid). When the clicked tile sits
+ * inside a valid anchor's footprint, that anchor is returned instead. If the
+ * clicked tile is itself a valid anchor, or is not inside any valid footprint,
+ * the clicked tile id is returned unchanged and the normal block check decides.
+ */
+export function resolveRetailPlacementAnchorTileId(
+	preview: PlacementPreview,
+	city: City,
+	clickedTileId: string
+): string {
+	const clicked = getTileById(city, clickedTileId);
+	if (!clicked) {
+		return clickedTileId;
+	}
+
+	if (preview.validTileIds.includes(clickedTileId)) {
+		return clickedTileId;
+	}
+
+	for (const anchorId of preview.validTileIds) {
+		const anchor = getTileById(city, anchorId);
+		if (anchor && isTileInStoreFootprint(clicked, { mapX: anchor.x, mapY: anchor.y })) {
+			return anchorId;
+		}
+	}
+
+	return clickedTileId;
+}
+
+/**
+ * Industry-side mirror of resolveRetailPlacementAnchorTileId: resolves a
+ * clicked industrial tile to the anchor of a valid 2x2 footprint that contains
+ * it, so clicking a non-anchor cell places on the footprint anchor.
+ */
+export function resolveIndustryPlacementAnchorTileId(
+	preview: PlacementPreview,
+	city: IndustryCity,
+	clickedTileId: string
+): string {
+	const clicked = getIndustryTileById(city, clickedTileId);
+	if (!clicked) {
+		return clickedTileId;
+	}
+
+	if (preview.validTileIds.includes(clickedTileId)) {
+		return clickedTileId;
+	}
+
+	for (const anchorId of preview.validTileIds) {
+		const anchor = getIndustryTileById(city, anchorId);
+		if (anchor && isTileInIndustryBuildingFootprint(clicked, { mapX: anchor.x, mapY: anchor.y })) {
+			return anchorId;
+		}
+	}
+
+	return clickedTileId;
 }
 
 function rangeFrom(values: number[]): NumberRange {

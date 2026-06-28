@@ -17,7 +17,6 @@ import {
 	INDUSTRIAL_BUILDING_FOOTPRINT_HEIGHT,
 	INDUSTRIAL_BUILDING_FOOTPRINT_WIDTH
 } from '../game/industryFootprint';
-import type { IndustryResourceId } from '../game/types';
 
 export type IndustryMapEvent = { type: 'tileSelected'; tileId: string };
 export type IndustryMapEventHandler = (event: IndustryMapEvent) => void;
@@ -549,10 +548,6 @@ export class IndustryMapScene extends Phaser.Scene {
 		};
 	}
 
-	private hasResourceTexture(resource: IndustryResourceId): boolean {
-		return this.textures.exists(industryTextureKey(INDUSTRY_RESOURCE_ART[resource]));
-	}
-
 	private drawInteractionOutlines(): void {
 		if (!this.outlineGraphics || !this.snapshot) {
 			return;
@@ -628,15 +623,6 @@ export class IndustryMapScene extends Phaser.Scene {
 			width: INDUSTRIAL_BUILDING_FOOTPRINT_WIDTH,
 			height: INDUSTRIAL_BUILDING_FOOTPRINT_HEIGHT
 		};
-	}
-
-	private fillFootprintRect(
-		graphics: Phaser.GameObjects.Graphics,
-		footprint: TileFootprint,
-		inset: number
-	): void {
-		const rect = getFootprintPixelRect(footprint, inset);
-		graphics.fillRect(rect.x, rect.y, rect.width, rect.height);
 	}
 
 	private strokeFootprintRect(
