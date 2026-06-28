@@ -4,7 +4,8 @@ import {
 	INDUSTRIAL_BUILDING_FOOTPRINT_WIDTH,
 	createIndustryTileLookup,
 	getIndustryBuildingFootprint,
-	getOccupiedIndustryTileIds
+	getOccupiedIndustryTileIds,
+	isTileInIndustryBuildingFootprint
 } from './industryFootprint';
 import type { IndustrialBuilding, IndustryCity, IndustryTile } from './types';
 
@@ -157,5 +158,32 @@ describe('getOccupiedIndustryTileIds', () => {
 		const occupied = getOccupiedIndustryTileIds(city, [coordinateOnlyBuilding]);
 
 		expect(occupied.size).toBe(4);
+	});
+});
+
+describe('isTileInIndustryBuildingFootprint', () => {
+	const building = { mapX: 2, mapY: 2 } as Pick<IndustrialBuilding, 'mapX' | 'mapY'>;
+
+	test('returns true for tiles inside the 2x2 footprint', () => {
+		expect.assertions(4);
+		expect(isTileInIndustryBuildingFootprint({ x: 2, y: 2 }, building)).toBe(true);
+		expect(isTileInIndustryBuildingFootprint({ x: 3, y: 2 }, building)).toBe(true);
+		expect(isTileInIndustryBuildingFootprint({ x: 2, y: 3 }, building)).toBe(true);
+		expect(isTileInIndustryBuildingFootprint({ x: 3, y: 3 }, building)).toBe(true);
+	});
+
+	test('returns false for tiles outside the footprint bounds', () => {
+		expect.assertions(4);
+		expect(isTileInIndustryBuildingFootprint({ x: 1, y: 2 }, building)).toBe(false);
+		expect(isTileInIndustryBuildingFootprint({ x: 4, y: 2 }, building)).toBe(false);
+		expect(isTileInIndustryBuildingFootprint({ x: 2, y: 1 }, building)).toBe(false);
+		expect(isTileInIndustryBuildingFootprint({ x: 2, y: 4 }, building)).toBe(false);
+	});
+
+	test('treats the anchor tile as inside the footprint (parity with retail inspector)', () => {
+		expect.assertions(1);
+		expect(
+			isTileInIndustryBuildingFootprint({ x: building.mapX, y: building.mapY }, building)
+		).toBe(true);
 	});
 });

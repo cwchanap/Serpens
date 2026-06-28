@@ -51,8 +51,8 @@ export interface CityMapStoreRender {
 	tileId: string;
 	x: number;
 	y: number;
-	width?: number;
-	height?: number;
+	width: number;
+	height: number;
 }
 
 export interface CityMapSnapshot {

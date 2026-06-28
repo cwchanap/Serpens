@@ -163,6 +163,11 @@ export class IndustryMapScene extends Phaser.Scene {
 			this.mapGraphics.clear();
 			this.destroyTileZones();
 			this.destroyTerrainSprites();
+			// The terrain key is prefixed with cityId|widthxheight, so a change
+			// here means we switched cities (city swap, world-city open, or save
+			// load). Re-frame the camera to the new city instead of honoring the
+			// user's pan/zoom from the previous city.
+			this.hasUserAdjustedCamera = false;
 			this.setCameraBounds();
 
 			this.tileGrid.clear();
@@ -354,27 +359,61 @@ export class IndustryMapScene extends Phaser.Scene {
 		const validTileIds = new Set(this.snapshot.placementPreview.validTileIds);
 		const invalidTileIds = new Set(this.snapshot.placementPreview.invalidTileIds);
 
-		const drawPreviewFootprints = (tileIds: ReadonlySet<string>, color: number) => {
-			graphics.fillStyle(color, PLACEMENT_PREVIEW_ALPHA);
-			graphics.lineStyle(2, color, 0.55);
-
-			for (const tileId of tileIds) {
-				const tile = this.tileById.get(tileId);
-
-				if (!tile) {
-					continue;
-				}
-
-				const footprint = this.getPlacementFootprint(tile);
-				this.fillFootprintRect(graphics, footprint, 2);
-				this.strokeFootprintRect(graphics, footprint, 2);
-			}
-		};
-
-		drawPreviewFootprints(validTileIds, PLACEMENT_PREVIEW_VALID_COLOR);
-		drawPreviewFootprints(invalidTileIds, PLACEMENT_PREVIEW_INVALID_COLOR);
+		this.drawPlacementPreviewSpans(validTileIds, PLACEMENT_PREVIEW_VALID_COLOR);
+		this.drawPlacementPreviewSpans(invalidTileIds, PLACEMENT_PREVIEW_INVALID_COLOR);
 
 		this.updateCanvasPlacementPreviewAttributes(validTileIds.size, invalidTileIds.size);
+	}
+
+	private drawPlacementPreviewSpans(tileIds: ReadonlySet<string>, color: number): void {
+		if (!this.placementPreviewGraphics || tileIds.size === 0) {
+			return;
+		}
+
+		const tiles = [...tileIds]
+			.map((tileId) => this.tileById.get(tileId))
+			.filter((tile): tile is IndustryMapTileRender => tile !== undefined)
+			.sort((first, second) => first.y - second.y || first.x - second.x);
+
+		if (tiles.length === 0) {
+			return;
+		}
+
+		this.placementPreviewGraphics.fillStyle(color, PLACEMENT_PREVIEW_ALPHA);
+		this.placementPreviewGraphics.lineStyle(2, color, 0.55);
+
+		let runStart = tiles[0]!;
+		let previous = runStart;
+
+		for (const tile of tiles.slice(1)) {
+			if (tile.y === previous.y && tile.x === previous.x + 1) {
+				previous = tile;
+				continue;
+			}
+
+			this.drawPlacementPreviewSpan(runStart, previous);
+			runStart = tile;
+			previous = tile;
+		}
+
+		this.drawPlacementPreviewSpan(runStart, previous);
+	}
+
+	private drawPlacementPreviewSpan(
+		startTile: IndustryMapTileRender,
+		endTile: IndustryMapTileRender
+	): void {
+		if (!this.placementPreviewGraphics) {
+			return;
+		}
+
+		const x = startTile.x * TILE_SIZE;
+		const y = startTile.y * TILE_SIZE;
+		const width = (endTile.x - startTile.x + INDUSTRIAL_BUILDING_FOOTPRINT_WIDTH) * TILE_SIZE;
+		const height = INDUSTRIAL_BUILDING_FOOTPRINT_HEIGHT * TILE_SIZE;
+
+		this.placementPreviewGraphics.fillRect(x + 2, y + 2, width - 4, height - 4);
+		this.placementPreviewGraphics.strokeRect(x + 2, y + 2, width - 4, height - 4);
 	}
 
 	private drawMarkerGraphics(time: number): void {
@@ -867,11 +906,11 @@ function getBuildingStage(typeId: IndustryMapBuildingRender['typeId']): Building
 }
 
 function getBuildingFootprintWidth(building: IndustryMapBuildingRender): number {
-	return Math.max(1, building.width ?? 1);
+	return Math.max(1, building.width ?? INDUSTRIAL_BUILDING_FOOTPRINT_WIDTH);
 }
 
 function getBuildingFootprintHeight(building: IndustryMapBuildingRender): number {
-	return Math.max(1, building.height ?? 1);
+	return Math.max(1, building.height ?? INDUSTRIAL_BUILDING_FOOTPRINT_HEIGHT);
 }
 
 function getFootprintPixelRect(

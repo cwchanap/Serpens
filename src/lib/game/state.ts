@@ -22,6 +22,7 @@ import {
 } from './industry';
 import { clampScore } from './reports';
 import { createRng, normalizeSeed, randomInt } from './rng';
+import { isTileInStoreFootprint } from './storeFootprint';
 import {
 	generateHiringCandidates,
 	generateStarterStaffForStore,
@@ -396,7 +397,26 @@ function getActiveCity(game: GameState): City | undefined {
 }
 
 function isTileOccupied(game: GameState, tileId: string): boolean {
-	return game.stores.some((store) => store.tileId === tileId);
+	// Footprint-aware: a 2x2 store occupies all four tiles of its footprint, not
+	// just the anchor. Callers (expansion tile picking) rely on this to avoid
+	// placing overlapping stores when a future caller bypasses the placement
+	// preview pre-check (`getStoreFootprintPlacementBlockReason`). The production
+	// UI flow already pre-checks, so this is a defensive correctness guard.
+	const city = getActiveCity(game);
+
+	if (!city) {
+		return game.stores.some((store) => store.tileId === tileId);
+	}
+
+	const tile = city.tiles.find((candidate) => candidate.id === tileId);
+
+	if (!tile) {
+		return game.stores.some((store) => store.tileId === tileId);
+	}
+
+	return game.stores.some(
+		(store) => store.cityId === city.id && isTileInStoreFootprint(tile, store)
+	);
 }
 
 function placeStore(store: Store, tile: CityTile): Store {

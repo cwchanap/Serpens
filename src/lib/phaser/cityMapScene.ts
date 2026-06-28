@@ -147,6 +147,11 @@ export class CityMapScene extends Phaser.Scene {
 			this.mapGraphics.clear();
 			this.destroyTerrainSprites();
 			this.destroyTileZones();
+			// The terrain key is prefixed with cityId|widthxheight, so a change
+			// here means we switched cities (city swap, world-city open, or save
+			// load). Re-frame the camera to the new city instead of honoring the
+			// user's pan/zoom from the previous city.
+			this.hasUserAdjustedCamera = false;
 			this.setCameraBounds();
 
 			this.tileGrid.clear();
