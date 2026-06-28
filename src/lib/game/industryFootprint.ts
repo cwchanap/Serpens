@@ -1,3 +1,4 @@
+import { toCoordinateKey } from './footprintHelpers';
 import type { IndustrialBuilding, IndustryCity, IndustryTile } from './types';
 
 export const INDUSTRIAL_BUILDING_FOOTPRINT_WIDTH = 2;
@@ -85,8 +86,4 @@ export function getOccupiedIndustryTileIds(
 	}
 
 	return occupiedTileIds;
-}
-
-function toCoordinateKey(x: number, y: number): string {
-	return `${x},${y}`;
 }

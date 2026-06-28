@@ -21,8 +21,10 @@ import type {
 	City,
 	CityTile,
 	GameState,
+	IndustrialBuilding,
 	IndustrialBuildingTypeId,
-	IndustryCity
+	IndustryCity,
+	Store
 } from './types';
 
 export interface PlacementPreview {
@@ -395,6 +397,50 @@ export function resolveIndustryPlacementAnchorTileId(
 	}
 
 	return clickedTileId;
+}
+
+/**
+ * Selection-side mirror of resolveRetailPlacementAnchorTileId: when a click
+ * lands on a non-anchor cell that sits inside a placed store's 2x2 footprint,
+ * resolve to that store's anchor tile id so the inspector shows the anchor's
+ * tile-derived stats (neighborhood/demand/rent) instead of the clicked cell's.
+ * Returns the clicked tile id unchanged when the cell is not inside any store
+ * footprint in this city.
+ */
+export function resolveSelectionAnchorTileId(
+	city: City,
+	stores: readonly Store[],
+	clickedTileId: string
+): string {
+	const clicked = getTileById(city, clickedTileId);
+	if (!clicked) {
+		return clickedTileId;
+	}
+
+	const store = stores.find((s) => s.cityId === city.id && isTileInStoreFootprint(clicked, s));
+
+	return store ? store.tileId : clickedTileId;
+}
+
+/**
+ * Industry-side mirror of resolveSelectionAnchorTileId for industrial building
+ * selection clicks.
+ */
+export function resolveIndustrySelectionAnchorTileId(
+	city: IndustryCity,
+	buildings: readonly IndustrialBuilding[],
+	clickedTileId: string
+): string {
+	const clicked = getIndustryTileById(city, clickedTileId);
+	if (!clicked) {
+		return clickedTileId;
+	}
+
+	const building = buildings.find(
+		(b) => b.cityId === city.id && isTileInIndustryBuildingFootprint(clicked, b)
+	);
+
+	return building ? building.tileId : clickedTileId;
 }
 
 function rangeFrom(values: number[]): NumberRange {

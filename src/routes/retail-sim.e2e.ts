@@ -1174,3 +1174,60 @@ test('player upgrades an industrial building from the tile inspector', async ({ 
 
 	await expect(industryInspector.getByText(/Level 2 \/ 10/i)).toBeVisible();
 });
+
+test('camera zoom and scroll persist across map view switches', async ({ page }) => {
+	await page.goto('/');
+
+	const canvas = await expectRetailMapReady(page);
+	const box = await canvas.boundingBox();
+	expect(box).toBeDefined();
+
+	// Read the initial camera state (auto-fit values).
+	const initialZoom = await canvas.getAttribute('data-map-zoom');
+	const initialScrollX = await canvas.getAttribute('data-map-scroll-x');
+	const initialScrollY = await canvas.getAttribute('data-map-scroll-y');
+	expect(initialZoom).toBeTruthy();
+
+	// Zoom in by scrolling the wheel with negative deltaY over the canvas
+	// center. The scene's handleWheel clamps to [MIN_ZOOM, MAX_ZOOM] and
+	// sets hasUserAdjustedCamera so the auto-fit no longer overrides it.
+	const centerX = box!.x + box!.width / 2;
+	const centerY = box!.y + box!.height / 2;
+	await page.mouse.move(centerX, centerY);
+	await page.mouse.wheel(0, -1000);
+
+	// Wait for the scene to write the new camera attributes.
+	await expect(canvas).not.toHaveAttribute('data-map-zoom', initialZoom!);
+	const zoomedZoom = await canvas.getAttribute('data-map-zoom');
+
+	// Drag the map to scroll the camera. pointerdown → pointermove → pointerup
+	// with movement beyond the click slop triggers handlePointerMove's drag
+	// branch, which adjusts cameras.main.scrollX/Y.
+	await page.mouse.move(centerX, centerY);
+	await page.mouse.down();
+	await page.mouse.move(centerX - 80, centerY - 60, { steps: 5 });
+	await page.mouse.up();
+
+	// Wait for the scene to write the new scroll attributes.
+	const scrolledScrollX = await canvas.getAttribute('data-map-scroll-x');
+	const scrolledScrollY = await canvas.getAttribute('data-map-scroll-y');
+	expect(scrolledScrollX).not.toBe(initialScrollX);
+	expect(scrolledScrollY).not.toBe(initialScrollY);
+
+	// Switch to the industry city map. The retail scene stays alive (keep-alive)
+	// so its camera state should be preserved on the hidden canvas.
+	await openMapMenuItem(page, /industry city map/i);
+	await expect(page.getByRole('heading', { name: /industry city/i })).toBeVisible();
+	await expectIndustryMapReady(page);
+
+	// Switch back to the retail city map.
+	await openMapMenuItem(page, /retail city map/i);
+	await expect(page.getByRole('heading', { name: /harbor city/i })).toBeVisible();
+	const restoredCanvas = await expectRetailMapReady(page);
+
+	// The camera zoom and scroll must match the values we set before the
+	// view switch, proving the scene instance (and its camera) survived.
+	await expect(restoredCanvas).toHaveAttribute('data-map-zoom', zoomedZoom!);
+	await expect(restoredCanvas).toHaveAttribute('data-map-scroll-x', scrolledScrollX!);
+	await expect(restoredCanvas).toHaveAttribute('data-map-scroll-y', scrolledScrollY!);
+});

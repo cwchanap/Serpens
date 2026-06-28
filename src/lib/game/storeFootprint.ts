@@ -1,4 +1,5 @@
 import { getTilePlacementBlockReason, type TilePlacementBlockReason } from './city';
+import { toCoordinateKey } from './footprintHelpers';
 import type { City, CityTile, Store } from './types';
 
 export const RETAIL_STORE_FOOTPRINT_WIDTH = 2;
@@ -116,8 +117,4 @@ export function isTileInStoreFootprint(
 		tile.y >= store.mapY &&
 		tile.y < store.mapY + RETAIL_STORE_FOOTPRINT_HEIGHT
 	);
-}
-
-function toCoordinateKey(x: number, y: number): string {
-	return `${x},${y}`;
 }
