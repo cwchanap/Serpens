@@ -777,6 +777,42 @@ describe('IndustryMapScene', () => {
 			expect(graphicsInstances[2].mock.fillRect).not.toHaveBeenCalledWith(2, 2, 28, 28);
 		});
 
+		test('merges contiguous same-row placement tiles into a single run', () => {
+			// Mirrors the retail scene's run-span optimization: 3 contiguous
+			// valid tiles in row 0 + 2 contiguous invalid tiles in row 1 should
+			// produce exactly 2 fillRect calls (one per run), not 5.
+			expect.assertions(1);
+			const { scene, graphicsInstances, texturesExistsSpy } = setupScene();
+			texturesExistsSpy.mockReturnValue(false);
+			scene.create();
+			scene.updateSnapshot(
+				makeSnapshot({
+					placementPreview: {
+						validTileIds: ['t-0-0', 't-1-0', 't-2-0'],
+						invalidTileIds: ['t-0-1', 't-1-1']
+					}
+				})
+			);
+			expect(graphicsInstances[2].mock.fillRect).toHaveBeenCalledTimes(2);
+		});
+
+		test('breaks placement preview spans across non-contiguous tiles', () => {
+			// t-0-0 (0,0) and t-0-1 (0,1) are on different rows -> two runs.
+			expect.assertions(1);
+			const { scene, graphicsInstances, texturesExistsSpy } = setupScene();
+			texturesExistsSpy.mockReturnValue(false);
+			scene.create();
+			scene.updateSnapshot(
+				makeSnapshot({
+					placementPreview: {
+						validTileIds: ['t-0-0', 't-0-1'],
+						invalidTileIds: []
+					}
+				})
+			);
+			expect(graphicsInstances[2].mock.fillRect).toHaveBeenCalledTimes(2);
+		});
+
 		test('clears preview when no placement preview', () => {
 			expect.assertions(1);
 			const { scene, graphicsInstances } = setupScene();
@@ -1221,6 +1257,25 @@ describe('IndustryMapScene', () => {
 			cameraMock.setZoom.mockClear();
 			scaleListeners[RESIZE_EVENT][0].call(scene);
 			expect(cameraMock.setZoom).not.toHaveBeenCalled();
+		});
+
+		test('reframes the camera when the active city changes after a user adjustment', () => {
+			// A city swap (different cityId in the terrain key) must reset the
+			// user's pan/zoom so the new city auto-frames, while a same-city
+			// re-render still honors the adjustment.
+			expect.assertions(3);
+			const { scene, cameraMock, inputListeners, zoneInstances, makePointer } = setupScene();
+			scene.create();
+			scene.updateSnapshot(makeSnapshot()); // city-1
+			const pointer = makePointer({ x: 100, y: 100, isDown: true });
+			zoneInstances[0].fire('pointerdown', pointer);
+			inputListeners['pointermove'][0].call(scene, makePointer({ x: 140, y: 150, isDown: true }));
+			expect(s(scene).hasUserAdjustedCamera).toBe(true);
+			cameraMock.setZoom.mockClear();
+			scene.updateSnapshot(makeSnapshot()); // same city, no terrain change
+			expect(cameraMock.setZoom).not.toHaveBeenCalled();
+			scene.updateSnapshot(makeSnapshot({ cityId: 'city-2' })); // city swap
+			expect(cameraMock.setZoom).toHaveBeenCalled();
 		});
 	});
 

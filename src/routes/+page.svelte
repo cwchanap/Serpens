@@ -52,6 +52,7 @@
 	} from '$lib/game/staffing';
 	import { DEFAULT_POLICY, resolveDecision, updatePolicy, upgradeStore } from '$lib/game/state';
 	import { isTileInStoreFootprint } from '$lib/game/storeFootprint';
+	import { isTileInIndustryBuildingFootprint } from '$lib/game/industryFootprint';
 	import { updateStoreProduct } from '$lib/game/stock';
 	import { simulateDay } from '$lib/game/simulateDay';
 	import {
@@ -216,9 +217,12 @@
 	});
 	let selectedIndustryBuilding = $derived.by(() => {
 		const currentGame: GameState | null = game;
-		return selectedIndustryTileId
-			? (currentGame?.industrialBuildings.find(
-					(building) => building.tileId === selectedIndustryTileId
+		const tile = selectedIndustryTile;
+
+		return currentGame && tile
+			? (currentGame.industrialBuildings.find(
+					(building) =>
+						building.cityId === industryCity.id && isTileInIndustryBuildingFootprint(tile, building)
 				) ?? null)
 			: null;
 	});

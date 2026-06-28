@@ -455,7 +455,9 @@ describe('CityMapScene', () => {
 							archetypeId: 'convenience',
 							tileId: 't0',
 							x: 0,
-							y: 0
+							y: 0,
+							width: 2,
+							height: 2
 						}
 					]
 				})
@@ -723,7 +725,9 @@ describe('CityMapScene', () => {
 							archetypeId: 'convenience',
 							tileId: 't0',
 							x: 0,
-							y: 0
+							y: 0,
+							width: 2,
+							height: 2
 						}
 					]
 				})
@@ -745,7 +749,9 @@ describe('CityMapScene', () => {
 							archetypeId: 'convenience',
 							tileId: 't0',
 							x: 0,
-							y: 0
+							y: 0,
+							width: 2,
+							height: 2
 						}
 					]
 				})
@@ -767,7 +773,9 @@ describe('CityMapScene', () => {
 							archetypeId: 'convenience',
 							tileId: 't0',
 							x: 0,
-							y: 0
+							y: 0,
+							width: 2,
+							height: 2
 						}
 					]
 				})
@@ -838,7 +846,9 @@ describe('CityMapScene', () => {
 							archetypeId: 'convenience',
 							tileId: 't0',
 							x: 0,
-							y: 0
+							y: 0,
+							width: 2,
+							height: 2
 						}
 					]
 				})
@@ -872,7 +882,9 @@ describe('CityMapScene', () => {
 							archetypeId: 'convenience',
 							tileId: 't0',
 							x: 0,
-							y: 0
+							y: 0,
+							width: 2,
+							height: 2
 						}
 					]
 				})
@@ -895,7 +907,9 @@ describe('CityMapScene', () => {
 							archetypeId: 'convenience',
 							tileId: 't0',
 							x: 0,
-							y: 0
+							y: 0,
+							width: 2,
+							height: 2
 						}
 					]
 				})
@@ -1362,6 +1376,27 @@ describe('CityMapScene', () => {
 			const zoom = s(scene).cameras.main.zoom;
 			expect(zoom).toBeGreaterThan(0);
 		});
+
+		it('reframes the camera when the active city changes after a user adjustment', () => {
+			// A city swap (different cityId in the terrain key) must reset the
+			// user's pan/zoom so the new city auto-frames, while a same-city
+			// re-render still honors the adjustment.
+			expect.assertions(3);
+			scene.create();
+			scene.updateSnapshot(makeSnapshot()); // test-city
+			s(scene).isDragging = true;
+			s(scene).lastDragPoint = { x: 10, y: 10 };
+			s(scene).dragStartPoint = { x: 10, y: 10 };
+			const moveHandler = getHandler(s(scene).input.on as Mock, 'pointermove');
+			moveHandler.call(scene, makePointer(s(scene).game.canvas, { x: 40, y: 40, isDown: true }));
+			expect(s(scene).hasUserAdjustedCamera).toBe(true);
+			const setZoom = s(scene).cameras.main.setZoom as Mock;
+			setZoom.mockClear();
+			scene.updateSnapshot(makeSnapshot()); // same city, no terrain change
+			expect(setZoom).not.toHaveBeenCalled();
+			scene.updateSnapshot(makeSnapshot({ cityId: 'other-city' })); // city swap
+			expect(setZoom).toHaveBeenCalled();
+		});
 	});
 
 	describe('destroySceneObjects', () => {
@@ -1403,7 +1438,9 @@ describe('CityMapScene', () => {
 							archetypeId: 'convenience',
 							tileId: 't0',
 							x: 0,
-							y: 0
+							y: 0,
+							width: 2,
+							height: 2
 						}
 					]
 				})
@@ -1515,7 +1552,9 @@ describe('CityMapScene', () => {
 							archetypeId: 'convenience',
 							tileId: 't0',
 							x: 0,
-							y: 0
+							y: 0,
+							width: 2,
+							height: 2
 						}
 					]
 				})
@@ -1576,7 +1615,9 @@ describe('CityMapScene', () => {
 							archetypeId: 'convenience',
 							tileId: 't0',
 							x: 0,
-							y: 0
+							y: 0,
+							width: 2,
+							height: 2
 						}
 					]
 				})

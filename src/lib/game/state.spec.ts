@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { getArchetype } from './archetypes';
+import { isTileInStoreFootprint } from './storeFootprint';
 import { calculateStockHealth, createStoreProduct } from './stock';
 import {
 	createNewGame,
@@ -162,11 +163,19 @@ describe('game state', () => {
 		expect.assertions(4);
 		const game = createNewGame('electronics', 44);
 		const city = game.cities[0]!;
-		const foundingTileId = game.stores[0]?.tileId;
+		const foundingStore = game.stores[0]!;
+		const foundingTileId = foundingStore.tileId;
 		const riverTile = city.tiles.find((tile) => tile.feature === 'river')!;
 		const roadTile = city.tiles.find((tile) => tile.feature === 'road')!;
+		// Footprint-aware: a candidate is only genuinely free when it is not part
+		// of the founding store's 2x2 footprint (mirrors the picker's occupancy
+		// check, which is footprint-aware).
 		const buildableTile = city.tiles.find(
-			(tile) => tile.feature === null && !tile.locked && tile.id !== foundingTileId
+			(tile) =>
+				tile.feature === null &&
+				!tile.locked &&
+				tile.id !== foundingTileId &&
+				!isTileInStoreFootprint(tile, foundingStore)
 		)!;
 		const reorderedTileIds = new Set([
 			city.tiles[0]!.id,
@@ -605,6 +614,35 @@ describe('game state', () => {
 
 		expect(result.stores).toHaveLength(1);
 		expect(result.decisions.at(-1)?.id).toBe('location-unavailable-1');
+	});
+
+	test('openStore rejects a non-anchor tile inside an existing store footprint as occupied', () => {
+		// Regression guard: isTileOccupied must be footprint-aware so a future
+		// caller that bypasses the placement-preview pre-check cannot place an
+		// overlapping store on one of the three non-anchor footprint tiles.
+		expect.assertions(3);
+		const game = createNewGame('electronics', 44);
+		const foundingStore = game.stores[0]!;
+		const city = game.cities[0]!;
+		// (mapX + 1, mapY) is a non-anchor tile validated as buildable when the
+		// founding store was placed, so the only thing that can block it is the
+		// footprint-occupancy check.
+		const overlappingTile = city.tiles.find(
+			(tile) => tile.x === foundingStore.mapX + 1 && tile.y === foundingStore.mapY
+		)!;
+
+		const result = openStore(game, {
+			name: 'Overlap Kiosk',
+			archetypeId: 'electronics',
+			location: 'Overlap',
+			tileId: overlappingTile.id
+		});
+
+		expect(result.stores).toHaveLength(1);
+		expect(result.decisions.at(-1)?.id).toBe('location-unavailable-1');
+		expect(result.decisions.at(-1)?.context).toBe(
+			'Choose an unlocked, unoccupied city tile before opening this store.'
+		);
 	});
 
 	test('getExpansionSetupCost pins terrain premium ordering and exact values', () => {

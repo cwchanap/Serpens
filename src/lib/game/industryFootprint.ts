@@ -47,6 +47,18 @@ export function getIndustryBuildingFootprint(
 	return { tiles, missingCoordinates };
 }
 
+export function isTileInIndustryBuildingFootprint(
+	tile: Pick<IndustryTile, 'x' | 'y'>,
+	building: Pick<IndustrialBuilding, 'mapX' | 'mapY'>
+): boolean {
+	return (
+		tile.x >= building.mapX &&
+		tile.x < building.mapX + INDUSTRIAL_BUILDING_FOOTPRINT_WIDTH &&
+		tile.y >= building.mapY &&
+		tile.y < building.mapY + INDUSTRIAL_BUILDING_FOOTPRINT_HEIGHT
+	);
+}
+
 export function getOccupiedIndustryTileIds(
 	city: IndustryCity,
 	buildings: readonly IndustrialBuilding[],
