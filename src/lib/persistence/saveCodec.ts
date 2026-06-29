@@ -640,7 +640,25 @@ function normalizeSavedRetailStorePlacements(
 		}
 		const lookup = cityLookupById.get(city.id);
 		if (lookup) {
-			for (const footprintTile of getRetailStoreFootprint(lookup, tile).tiles) {
+			// Validate the full 2x2 footprint, not just the anchor — the same
+			// invariant findSavedStoreTile's isAnchorAvailable enforces in pass
+			// 2. Without this, a store whose footprint now spills onto a
+			// river/road/locked tile, off the map, or onto another store's
+			// already-reserved footprint (via a non-anchor tile whose anchor is
+			// itself unreserved) would survive pass 1 verbatim and never reach
+			// the pass-2 relocation that logs and fixes it.
+			const footprint = getRetailStoreFootprint(lookup, tile);
+			if (
+				footprint.missingCoordinates.length > 0 ||
+				footprint.tiles.length === 0 ||
+				footprint.tiles.some(
+					(footprintTile) =>
+						!isTileBuildable(footprintTile) || reservedTileIds.has(footprintTile.id)
+				)
+			) {
+				return;
+			}
+			for (const footprintTile of footprint.tiles) {
 				reservedTileIds.add(footprintTile.id);
 			}
 		} else {

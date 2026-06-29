@@ -147,10 +147,16 @@ export class CityMapScene extends Phaser.Scene {
 			this.mapGraphics.clear();
 			this.destroyTerrainSprites();
 			this.destroyTileZones();
-			// The terrain key is prefixed with cityId|widthxheight, so a change
-			// here means we switched cities (city swap, world-city open, or save
-			// load). Re-frame the camera to the new city instead of honoring the
-			// user's pan/zoom from the previous city.
+			// The terrain key combines cityId|widthxheight with every tile's
+			// terrain/feature/road-river variant/neighborhood/locked fields. All
+			// of those are generated once at city creation and are immutable for
+			// a city's lifetime, so a key change unambiguously means we switched
+			// cities (city swap, world-city open, or save load) — re-frame the
+			// camera to the new city instead of honoring the user's pan/zoom
+			// from the previous city. CAUTION: if a field that can mutate
+			// mid-session is ever folded into this key (e.g. a runtime terrain
+			// edit), this reframe would fire spuriously and reset the user's
+			// pan/zoom, so keep the key immutable-per-city.
 			this.hasUserAdjustedCamera = false;
 			this.setCameraBounds();
 

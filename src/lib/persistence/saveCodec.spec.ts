@@ -364,12 +364,16 @@ describe('saveCodec', () => {
 	});
 
 	test('refreshes tile-derived fields for stores that keep their coordinates across city regeneration', () => {
-		expect.assertions(7);
-		// harbor-city-13-1 is transit in the old 28x24 city but residential in
+		expect.assertions(8);
+		// harbor-city-19-1 is campus in the old 28x24 city but residential in
 		// the regenerated 56x48 city (getNeighborhood is size-dependent). The
 		// store stays at the same tile id/coordinates, so the codec's valid
 		// branch must still refresh location/localDemand from the new tile —
-		// simulateDay reads localDemand, so a stale value skews revenue.
+		// simulateDay reads localDemand, so a stale value skews revenue. The
+		// anchor is chosen so its full 2x2 footprint stays buildable after
+		// regeneration (pass 1 validates the whole footprint, not just the
+		// anchor — an anchor like 13-1 whose footprint now straddles a river
+		// would be relocated, not kept).
 		const oldCity = generateCity({
 			id: 'harbor-city',
 			name: 'Harbor City',
@@ -384,10 +388,18 @@ describe('saveCodec', () => {
 			height: DEFAULT_RETAIL_CITY_HEIGHT,
 			seed: 20260505
 		});
-		const oldTile = oldCity.tiles.find((tile) => tile.id === 'harbor-city-13-1')!;
-		const newTile = newCity.tiles.find((tile) => tile.id === 'harbor-city-13-1')!;
+		const oldTile = oldCity.tiles.find((tile) => tile.id === 'harbor-city-19-1')!;
+		const newTile = newCity.tiles.find((tile) => tile.id === 'harbor-city-19-1')!;
 		expect(oldTile.neighborhood).not.toBe(newTile.neighborhood);
 		expect(isTileBuildable(newTile)).toBe(true);
+		// Guard against regressing to an anchor-only check: every footprint
+		// tile must be buildable in the regenerated city.
+		const newFootprintAllBuildable = newCity.tiles
+			.filter(
+				(t) => t.x >= newTile.x && t.x < newTile.x + 2 && t.y >= newTile.y && t.y < newTile.y + 2
+			)
+			.every((t) => isTileBuildable(t));
+		expect(newFootprintAllBuildable).toBe(true);
 
 		const record = createManualSaveRecord({
 			game: {
@@ -396,8 +408,8 @@ describe('saveCodec', () => {
 					{
 						...createGame().stores[0]!,
 						cityId: 'harbor-city',
-						tileId: 'harbor-city-13-1',
-						mapX: 13,
+						tileId: 'harbor-city-19-1',
+						mapX: 19,
 						mapY: 1,
 						location: formatLocation(oldTile),
 						localDemand: computeStoreLocalDemand(oldTile)
@@ -409,8 +421,8 @@ describe('saveCodec', () => {
 		const validated = validateSaveRecord(record);
 		const store = validated.game.stores[0]!;
 		// The store is NOT relocated — same tile id/coordinates.
-		expect(store.tileId).toBe('harbor-city-13-1');
-		expect(store.mapX).toBe(13);
+		expect(store.tileId).toBe('harbor-city-19-1');
+		expect(store.mapX).toBe(19);
 		expect(store.mapY).toBe(1);
 		// But tile-derived fields must match the regenerated (residential) tile.
 		expect(store.location).toBe(formatLocation(newTile));
@@ -548,6 +560,62 @@ describe('saveCodec', () => {
 				expect(shared).toEqual([]);
 			}
 		}
+	});
+
+	test('pass 1 relocates a valid-anchor store whose footprint now includes a non-buildable tile', () => {
+		// Regression guard for pass 1's footprint validation: the anchor is
+		// buildable and unreserved, so without the full-footprint check the
+		// store would be kept verbatim — sitting on a river tile inside its own
+		// footprint. Pass 1 must validate every footprint tile (mirroring
+		// findSavedStoreTile's isAnchorAvailable in pass 2) and bail to
+		// relocation, which logs and fixes the placement.
+		expect.assertions(3);
+		const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: DEFAULT_RETAIL_CITY_WIDTH,
+			height: DEFAULT_RETAIL_CITY_HEIGHT,
+			seed: 20260505
+		});
+		// Pick an interior buildable anchor whose right footprint neighbor is
+		// also buildable, then poison that neighbor with a river feature. The
+		// anchor stays buildable but its 2x2 footprint now contains a
+		// non-buildable tile.
+		const anchor = city.tiles.find(
+			(t) =>
+				isTileBuildable(t) &&
+				t.x < city.width - 1 &&
+				city.tiles.some((n) => n.x === t.x + 1 && n.y === t.y && isTileBuildable(n))
+		)!;
+		expect(anchor).toBeDefined();
+		const poisonedNeighbor = city.tiles.find((t) => t.x === anchor.x + 1 && t.y === anchor.y)!;
+		poisonedNeighbor.feature = 'river';
+		const baseStore = createGame().stores[0]!;
+		const record = createManualSaveRecord({
+			game: {
+				cities: [city],
+				stores: [
+					{
+						...baseStore,
+						id: 'store-footprint',
+						cityId: 'harbor-city',
+						tileId: anchor.id,
+						mapX: anchor.x,
+						mapY: anchor.y
+					}
+				]
+			} as unknown as Partial<GameState>
+		});
+
+		const validated = validateSaveRecord(record);
+		const store = validated.game.stores.find((s) => s.id === 'store-footprint')!;
+		// Not kept on the poisoned anchor; relocated to a fully-buildable
+		// footprint with a relocation warning logged.
+		expect(store.tileId).not.toBe(anchor.id);
+		expect(warnSpy).toHaveBeenCalledWith(
+			expect.stringContaining('relocated store "store-footprint"')
+		);
 	});
 
 	test('leaves a store on its stale tile and warns when no buildable tile remains', () => {
