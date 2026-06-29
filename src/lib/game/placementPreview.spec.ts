@@ -19,7 +19,7 @@ import {
 	getOccupiedStoreTileIds,
 	getStoreFootprintPlacementBlockReason
 } from './storeFootprint';
-import type { City, CityTile, IndustrialBuilding, Store } from './types';
+import type { City, CityTile, IndustrialBuilding, IndustryTile, Store } from './types';
 
 describe('retail placement preview', () => {
 	test('marks every retail tile as valid or invalid before founding', () => {
@@ -641,6 +641,46 @@ describe('resolveIndustryPlacementAnchorTileId', () => {
 			'does-not-exist'
 		);
 	});
+
+	test('resolves a non-anchor cell inside a valid footprint to that footprint anchor', () => {
+		// Mirrors the retail twin: a clicked cell that is not itself a valid
+		// anchor but sits inside a valid anchor's 2x2 footprint must resolve to
+		// that anchor via the resolution loop (the whole point of the helper).
+		// Such cells sit at the industrial district boundary, where the
+		// neighbor's own 2x2 footprint would cross into non-industrial terrain.
+		expect.assertions(3);
+		const game = { ...createNewGame('convenience', 20260512), cash: 100_000 };
+		const city = game.industryCities[0]!;
+		const preview = createIndustryPlacementPreview({ game, buildingTypeId: 'warehouse' });
+		const tileByCoord = (x: number, y: number): IndustryTile | undefined =>
+			city.tiles.find((t) => t.x === x && t.y === y);
+		const nonAnchorOffsets = [
+			{ dx: 1, dy: 0 },
+			{ dx: 0, dy: 1 },
+			{ dx: 1, dy: 1 }
+		];
+		// Find a non-anchor footprint cell of some valid anchor that is not
+		// itself a valid anchor — exercising the loop, not the early-return.
+		const clicked = preview.validTileIds
+			.map((id) => city.tiles.find((t) => t.id === id)!)
+			.flatMap((anchor) =>
+				nonAnchorOffsets
+					.map(({ dx, dy }) => tileByCoord(anchor.x + dx, anchor.y + dy))
+					.filter((t): t is IndustryTile => Boolean(t))
+			)
+			.find((t) => !preview.validTileIds.includes(t.id))!;
+		expect(clicked).toBeDefined();
+
+		const resolved = resolveIndustryPlacementAnchorTileId(preview, city, clicked.id);
+		expect(preview.validTileIds).toContain(resolved);
+		const resolvedTile = city.tiles.find((t) => t.id === resolved)!;
+		expect(
+			clicked.x >= resolvedTile.x &&
+				clicked.x < resolvedTile.x + 2 &&
+				clicked.y >= resolvedTile.y &&
+				clicked.y < resolvedTile.y + 2
+		).toBe(true);
+	});
 });
 
 describe('resolveSelectionAnchorTileId', () => {
@@ -790,5 +830,47 @@ describe('resolveIndustrySelectionAnchorTileId', () => {
 		const outside = city.tiles.find((tile) => tile.x === 0 && tile.y === 0)!;
 
 		expect(resolveIndustrySelectionAnchorTileId(city, [building], outside.id)).toBe(outside.id);
+	});
+
+	test('returns the clicked tile id unchanged when the tile is unknown', () => {
+		// Mirrors the retail twin's unknown-tile branch — a broken tile id must
+		// pass through unchanged rather than throw.
+		expect.assertions(1);
+		const game = createNewGame('convenience', 20260512);
+		const city = game.industryCities[0]!;
+
+		expect(resolveIndustrySelectionAnchorTileId(city, [], 'does-not-exist')).toBe('does-not-exist');
+	});
+
+	test('ignores a building whose cityId differs from the inspected city', () => {
+		// Cross-city guard: a building geometry-overlaps the clicked cell but
+		// belongs to a different industry city. The cityId filter must exclude
+		// it, so the clicked cell is returned unchanged — otherwise the
+		// inspector would open a foreign city's building.
+		expect.assertions(1);
+		const game = createNewGame('convenience', 20260512);
+		const city = game.industryCities[0]!;
+		const anchor = city.tiles.find((tile) => tile.x === 1 && tile.y === 1)!;
+		const foreignBuilding: IndustrialBuilding = {
+			id: 'building-foreign',
+			level: 1,
+			typeId: 'warehouse',
+			cityId: 'other-industry-city',
+			tileId: anchor.id,
+			mapX: anchor.x,
+			mapY: anchor.y,
+			status: 'idle',
+			lastProduction: [],
+			producedTotal: 0,
+			importedInputTotal: 0,
+			blockedDays: 0
+		};
+		// (2,2) is the bottom-right cell of the foreign building's footprint
+		// geometry, but its cityId differs so it must be ignored.
+		const bottomRight = city.tiles.find((tile) => tile.x === 2 && tile.y === 2)!;
+
+		expect(resolveIndustrySelectionAnchorTileId(city, [foreignBuilding], bottomRight.id)).toBe(
+			bottomRight.id
+		);
 	});
 });

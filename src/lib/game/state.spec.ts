@@ -618,9 +618,10 @@ describe('game state', () => {
 	});
 
 	test('openStore rejects a non-anchor tile inside an existing store footprint as occupied', () => {
-		// Regression guard: isTileOccupied must be footprint-aware so a future
-		// caller that bypasses the placement-preview pre-check cannot place an
-		// overlapping store on one of the three non-anchor footprint tiles.
+		// Regression guard: the footprint-occupancy check must reject a future
+		// caller that bypasses the placement-preview pre-check and tries to
+		// place an overlapping store on one of the three non-anchor footprint
+		// tiles of an existing store.
 		expect.assertions(3);
 		const game = createNewGame('electronics', 44);
 		const foundingStore = game.stores[0]!;
@@ -702,6 +703,51 @@ describe('game state', () => {
 
 		expect(result.stores).toHaveLength(1);
 		expect(result.decisions.at(-1)?.title).toBe('Location unavailable');
+	});
+
+	test('openStore auto-pick skips an anchor whose footprint includes a river tile', () => {
+		// Regression guard for the getExpansionTile auto-pick branch (openStore
+		// with no tileId): it must validate the full 2x2 footprint, not just the
+		// anchor. Anchor (2,0) is buildable commercial and unoccupied, but its
+		// footprint includes the river tile at (3,0). Checking only the anchor
+		// would place a store straddling the river; the footprint-aware guard
+		// must skip it and land on a footprint whose four tiles are all
+		// buildable.
+		expect.assertions(2);
+		const city = makeFlatRetailCity(4, 4);
+		const riverTile = city.tiles.find((tile) => tile.x === 3 && tile.y === 0)!;
+		riverTile.feature = 'river';
+		const game = {
+			...createFoundingGameAtTile({
+				archetypeId: 'boutique',
+				city,
+				tileId: 'retail-city-0-0',
+				seed: 7
+			}),
+			cash: 100_000
+		};
+		// Founding store occupies the (0,0) footprint, so the first free
+		// row-major anchor is (2,0) — the river-straddling one we poisoned.
+		const badAnchor = city.tiles.find((tile) => tile.x === 2 && tile.y === 0)!;
+
+		const result = openStore(game, {
+			name: 'Auto-Pick Store',
+			archetypeId: 'grocery',
+			location: 'Auto'
+		});
+
+		const placedStore = result.stores[result.stores.length - 1]!;
+		expect(placedStore.tileId).not.toBe(badAnchor.id);
+		// And the placed store's footprint must not include the river tile.
+		const placedFootprintIncludesRiver = city.tiles.some(
+			(tile) =>
+				tile.id === riverTile.id &&
+				tile.x >= placedStore.mapX &&
+				tile.x < placedStore.mapX + 2 &&
+				tile.y >= placedStore.mapY &&
+				tile.y < placedStore.mapY + 2
+		);
+		expect(placedFootprintIncludesRiver).toBe(false);
 	});
 
 	test('getExpansionSetupCost pins terrain premium ordering and exact values', () => {

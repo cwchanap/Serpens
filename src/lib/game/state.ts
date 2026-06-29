@@ -25,7 +25,6 @@ import {
 	createCityTileLookup,
 	getOccupiedStoreTileIds,
 	getStoreFootprintPlacementBlockReason,
-	isTileInStoreFootprint,
 	type StoreFootprintPlacementBlockReason
 } from './storeFootprint';
 import {
@@ -407,8 +406,18 @@ function getExpansionTile(
 		return { tile: requestedTile };
 	}
 
+	// Auto-pick: choose the first anchor whose full 2x2 footprint is buildable
+	// and unoccupied. This mirrors the requested-tile branch and the live
+	// placement preview (getStoreFootprintPlacementBlockReason). Checking only
+	// the anchor would silently place a store whose non-anchor footprint tiles
+	// are river/road/locked/off-map or already covered by another store.
+	const lookup = createCityTileLookup(city);
+	const occupiedTileIds = getOccupiedStoreTileIds(city, game.stores, lookup);
+
 	return {
-		tile: city.tiles.find((tile) => isTileBuildable(tile) && !isTileOccupied(game, tile.id))
+		tile: city.tiles.find(
+			(anchor) => getStoreFootprintPlacementBlockReason(lookup, anchor, occupiedTileIds) === null
+		)
 	};
 }
 
@@ -420,29 +429,6 @@ function toExpansionTileBlockReason(
 
 function getActiveCity(game: GameState): City | undefined {
 	return game.cities.find((city) => city.id === game.activeCityId);
-}
-
-function isTileOccupied(game: GameState, tileId: string): boolean {
-	// Footprint-aware: a 2x2 store occupies all four tiles of its footprint, not
-	// just the anchor. Used by the auto-pick branch of getExpansionTile (when
-	// no specific tile is requested) to skip tiles already covered by a store.
-	// The requested-tile branch uses getStoreFootprintPlacementBlockReason
-	// directly, which performs the same footprint-occupancy check.
-	const city = getActiveCity(game);
-
-	if (!city) {
-		return game.stores.some((store) => store.tileId === tileId);
-	}
-
-	const tile = city.tiles.find((candidate) => candidate.id === tileId);
-
-	if (!tile) {
-		return game.stores.some((store) => store.tileId === tileId);
-	}
-
-	return game.stores.some(
-		(store) => store.cityId === city.id && isTileInStoreFootprint(tile, store)
-	);
 }
 
 function placeStore(store: Store, tile: CityTile): Store {
