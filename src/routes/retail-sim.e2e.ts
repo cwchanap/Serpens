@@ -1,4 +1,10 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import {
+	DEFAULT_INDUSTRY_CITY_HEIGHT,
+	DEFAULT_INDUSTRY_CITY_WIDTH,
+	generateIndustryCity,
+	getIndustryTilesByResource
+} from '../lib/game/industry';
 
 interface SavedMaterialMovement {
 	materialId: string;
@@ -56,6 +62,79 @@ interface SavedSnapshot {
 	autoSave: {
 		game: SavedGame;
 	} | null;
+}
+
+// The industry city the app generates for the starter "industry-city" world
+// entry. Resource anchors and district bounds scale with city size (see
+// RESOURCE_ANCHOR_SPECS in industry.ts), so e2e clicks must derive tile
+// coordinates from the generated city rather than hardcoding the old
+// fixed-anchor positions (e.g. water-source used to sit at (1,7), grain-field
+// at (1,1), and the industrial district used to cover (9,6)/(11,6)).
+const STARTER_INDUSTRY_CITY = generateIndustryCity({
+	id: 'industry-city',
+	name: 'Industry City',
+	width: DEFAULT_INDUSTRY_CITY_WIDTH,
+	height: DEFAULT_INDUSTRY_CITY_HEIGHT,
+	seed: 20260512,
+	resourceProfile: {
+		resourceIds: [
+			'grain-field',
+			'salt-deposit',
+			'oilseed-field',
+			'water-source',
+			'fruit-orchard',
+			'sugar-field',
+			'pulpwood-forest',
+			'chemical-feedstock'
+		],
+		industrialBias: 1
+	}
+});
+
+type IndustryResourceTile = Parameters<typeof getIndustryTilesByResource>[1];
+
+function industryResourceTileCoords(resource: IndustryResourceTile): { x: number; y: number } {
+	const tile = getIndustryTilesByResource(STARTER_INDUSTRY_CITY, resource)[0]!;
+	return { x: tile.x, y: tile.y };
+}
+
+// Find `count` industrial-terrain anchors with mutually non-overlapping 2x2
+// footprints (all four tiles industrial and unlocked). Used for buildings
+// that require industrial terrain rather than a resource anchor (warehouse,
+// water bottler).
+function industrialBuildTileCoords(count: number): Array<{ x: number; y: number }> {
+	const taken = new Set<string>();
+	const result: Array<{ x: number; y: number }> = [];
+	for (const tile of STARTER_INDUSTRY_CITY.tiles) {
+		if (tile.terrain !== 'industrial' || tile.locked) continue;
+		const footprint = [
+			[0, 0],
+			[1, 0],
+			[0, 1],
+			[1, 1]
+		]
+			.map(([dx, dy]) =>
+				STARTER_INDUSTRY_CITY.tiles.find((t) => t.x === tile.x + dx && t.y === tile.y + dy)
+			)
+			.filter((t): t is NonNullable<typeof t> => Boolean(t));
+		if (footprint.length !== 4) continue;
+		if (footprint.some((t) => t.locked || t.terrain !== 'industrial')) continue;
+		const ids = footprint.map((t) => t.id);
+		if (ids.some((id) => taken.has(id))) continue;
+		ids.forEach((id) => taken.add(id));
+		result.push({ x: tile.x, y: tile.y });
+		if (result.length >= count) break;
+	}
+	return result;
+}
+
+const INDUSTRIAL_BUILD_TILES = industrialBuildTileCoords(3);
+const INDUSTRY_INSPECT_TILE = INDUSTRIAL_BUILD_TILES[0]!;
+const WATER_SOURCE_TILE = industryResourceTileCoords('water-source');
+const GRAIN_FIELD_TILE = industryResourceTileCoords('grain-field');
+
+function industryTileHeadingRegex(x: number, y: number): RegExp {
+	return new RegExp(`^industry tile ${x}, ${y}$`, 'i');
 }
 
 async function clickMapTile(page: Page, x: number, y: number) {
@@ -554,9 +633,11 @@ test('player can switch to the industry city map and back to retail', async ({ p
 
 	const industryInspector = page.getByRole('dialog', { name: /industry tile details/i });
 
-	await clickCanvasTile(page, industryCanvas, 9, 6);
+	await clickCanvasTile(page, industryCanvas, INDUSTRY_INSPECT_TILE.x, INDUSTRY_INSPECT_TILE.y);
 	await expect(
-		industryInspector.getByRole('heading', { name: /industry tile 9, 6/i })
+		industryInspector.getByRole('heading', {
+			name: industryTileHeadingRegex(INDUSTRY_INSPECT_TILE.x, INDUSTRY_INSPECT_TILE.y)
+		})
 	).toBeVisible();
 	await expect(industryInspector.getByText(/^Industrial$/i).first()).toBeVisible();
 	await expect(
@@ -569,7 +650,7 @@ test('player can switch to the industry city map and back to retail', async ({ p
 
 	await chooseIndustryBuildTool(page, industryCanvas, /build water pump/i);
 	await expect(industryCanvas).toHaveAttribute('data-industry-building-count', '0');
-	await clickCanvasTile(page, industryCanvas, 9, 6);
+	await clickCanvasTile(page, industryCanvas, INDUSTRY_INSPECT_TILE.x, INDUSTRY_INSPECT_TILE.y);
 	await expect(page.getByRole('status', { name: /placement status/i })).toContainText(
 		/requires water source/i
 	);
@@ -578,7 +659,9 @@ test('player can switch to the industry city map and back to retail', async ({ p
 	await expect(page.getByRole('dialog', { name: /confirm industrial build/i })).toHaveCount(0);
 	await expect(industryCanvas).toHaveAttribute('data-industry-building-count', '0');
 	await expect(
-		industryInspector.getByRole('heading', { name: /industry tile 9, 6/i })
+		industryInspector.getByRole('heading', {
+			name: industryTileHeadingRegex(INDUSTRY_INSPECT_TILE.x, INDUSTRY_INSPECT_TILE.y)
+		})
 	).toBeVisible();
 	await expect(industryInspector.getByText(/^Industrial$/i).first()).toBeVisible();
 	await page
@@ -590,14 +673,14 @@ test('player can switch to the industry city map and back to retail', async ({ p
 
 	const cashBeforeBuild = await readCompanyCash(page);
 	await buildIndustryBuildingAt(page, industryCanvas, {
-		x: 1,
-		y: 7,
+		x: WATER_SOURCE_TILE.x,
+		y: WATER_SOURCE_TILE.y,
 		buildingName: /build water pump/i,
 		expectedBuildingCount: 1
 	});
 	expect(await readCompanyCash(page)).toBeLessThan(cashBeforeBuild);
 
-	await clickCanvasTile(page, industryCanvas, 1, 7);
+	await clickCanvasTile(page, industryCanvas, WATER_SOURCE_TILE.x, WATER_SOURCE_TILE.y);
 	await expect(industryInspector).toBeVisible();
 	const buildingDetails = industryInspector.getByRole('region', {
 		name: /industrial building details/i
@@ -676,20 +759,20 @@ test('player builds convenience production and refills from warehouse', async ({
 	}
 
 	await buildIndustryBuildingAt(page, industryCanvas, {
-		x: 9,
-		y: 6,
+		x: INDUSTRIAL_BUILD_TILES[0]!.x,
+		y: INDUSTRIAL_BUILD_TILES[0]!.y,
 		buildingName: /build warehouse/i,
 		expectedBuildingCount: 1
 	});
 	await buildIndustryBuildingAt(page, industryCanvas, {
-		x: 1,
-		y: 7,
+		x: WATER_SOURCE_TILE.x,
+		y: WATER_SOURCE_TILE.y,
 		buildingName: /build water pump/i,
 		expectedBuildingCount: 2
 	});
 	await buildIndustryBuildingAt(page, industryCanvas, {
-		x: 11,
-		y: 6,
+		x: INDUSTRIAL_BUILD_TILES[1]!.x,
+		y: INDUSTRIAL_BUILD_TILES[1]!.y,
 		buildingName: /build water bottler/i,
 		expectedBuildingCount: 3
 	});
@@ -698,7 +781,12 @@ test('player builds convenience production and refills from warehouse', async ({
 	await page.getByRole('button', { name: /^advance day$/i }).click();
 	await waitForAutoSaveDay(page, 7);
 	await expect(industryCanvas).toHaveAttribute('data-industry-building-count', '3');
-	await clickCanvasTile(page, industryCanvas, 9, 6);
+	await clickCanvasTile(
+		page,
+		industryCanvas,
+		INDUSTRIAL_BUILD_TILES[0]!.x,
+		INDUSTRIAL_BUILD_TILES[0]!.y
+	);
 	const visibleWarehouseBottledWater = await readWarehouseMaterialQuantity(page, 'Bottled Water');
 	expect(visibleWarehouseBottledWater).toBeGreaterThan(0);
 
@@ -865,7 +953,10 @@ test('player expands from a selected city tile', async ({ page }) => {
 
 	const mapCanvas = await expectRetailMapReady(page);
 	await chooseRetailBuildTool(page, /build electronics & games/i);
-	await clickCanvasTile(page, mapCanvas, 2, 6);
+	// Store #1 occupies the 2x2 footprint anchored at (1,6) — tiles (1,6),
+	// (2,6), (1,7), (2,7) — so the second store's anchor must avoid that
+	// footprint. (3,6) is the nearest valid 2x2 electronics anchor.
+	await clickCanvasTile(page, mapCanvas, 3, 6);
 	await expect(page.getByRole('dialog', { name: /confirm store opening/i })).toHaveCount(0);
 	await expect(page.getByRole('dialog', { name: /tile details/i })).toHaveCount(0);
 	await expect(mapCanvas).toHaveAttribute('data-store-sprite-count', '2');
@@ -1153,8 +1244,8 @@ test('player upgrades an industrial building from the tile inspector', async ({ 
 	const industryCanvas = await expectIndustryMapReady(page);
 
 	await buildIndustryBuildingAt(page, industryCanvas, {
-		x: 1,
-		y: 1,
+		x: GRAIN_FIELD_TILE.x,
+		y: GRAIN_FIELD_TILE.y,
 		buildingName: /build grain farm/i,
 		expectedBuildingCount: 1
 	});
@@ -1164,7 +1255,7 @@ test('player upgrades an industrial building from the tile inspector', async ({ 
 	await openMapMenuItem(page, /industry city map/i);
 	const reloadedCanvas = await expectIndustryMapReady(page);
 
-	await clickCanvasTile(page, reloadedCanvas, 1, 1);
+	await clickCanvasTile(page, reloadedCanvas, GRAIN_FIELD_TILE.x, GRAIN_FIELD_TILE.y);
 	const industryInspector = page.getByRole('dialog', { name: /industry tile details/i });
 	await expect(industryInspector).toBeVisible();
 	await expect(industryInspector.getByText(/Level 1 \/ 10/i)).toBeVisible();
@@ -1208,11 +1299,14 @@ test('camera zoom and scroll persist across map view switches', async ({ page })
 	await page.mouse.move(centerX - 80, centerY - 60, { steps: 5 });
 	await page.mouse.up();
 
-	// Wait for the scene to write the new scroll attributes.
+	// Wait for the scene to write the new scroll attributes. Poll instead
+	// of reading once: Phaser writes camera attributes on its next render
+	// frame, so an immediate read after mouse.up() can race and observe the
+	// pre-drag value.
+	await expect(canvas).not.toHaveAttribute('data-map-scroll-x', initialScrollX!);
+	await expect(canvas).not.toHaveAttribute('data-map-scroll-y', initialScrollY!);
 	const scrolledScrollX = await canvas.getAttribute('data-map-scroll-x');
 	const scrolledScrollY = await canvas.getAttribute('data-map-scroll-y');
-	expect(scrolledScrollX).not.toBe(initialScrollX);
-	expect(scrolledScrollY).not.toBe(initialScrollY);
 
 	// Switch to the industry city map. The retail scene stays alive (keep-alive)
 	// so its camera state should be preserved on the hidden canvas.

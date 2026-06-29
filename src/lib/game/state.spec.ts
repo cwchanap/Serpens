@@ -713,7 +713,7 @@ describe('game state', () => {
 		// would place a store straddling the river; the footprint-aware guard
 		// must skip it and land on a footprint whose four tiles are all
 		// buildable.
-		expect.assertions(2);
+		expect.assertions(3);
 		const city = makeFlatRetailCity(4, 4);
 		const riverTile = city.tiles.find((tile) => tile.x === 3 && tile.y === 0)!;
 		riverTile.feature = 'river';
@@ -736,6 +736,10 @@ describe('game state', () => {
 			location: 'Auto'
 		});
 
+		// First prove auto-pick actually created a store. Without this guard,
+		// placedStore could resolve to the founding store (if openStore no-opped)
+		// and the assertions below would still pass.
+		expect(result.stores).toHaveLength(game.stores.length + 1);
 		const placedStore = result.stores[result.stores.length - 1]!;
 		expect(placedStore.tileId).not.toBe(badAnchor.id);
 		// And the placed store's footprint must not include the river tile.
