@@ -463,8 +463,12 @@ export class CityMapScene extends Phaser.Scene {
 		const validTileIds = new Set(this.snapshot.placementPreview.validTileIds);
 		const invalidTileIds = new Set(this.snapshot.placementPreview.invalidTileIds);
 
-		this.drawPlacementPreviewSpans(validTileIds, PLACEMENT_PREVIEW_VALID_COLOR);
+		// Draw invalid spans first so a valid 2x2 footprint that abuts an
+		// invalid anchor paints over the shared cells. The click resolver maps
+		// any cell inside a valid footprint back to that valid anchor, so the
+		// topmost color must match the click outcome (valid = green).
 		this.drawPlacementPreviewSpans(invalidTileIds, PLACEMENT_PREVIEW_INVALID_COLOR);
+		this.drawPlacementPreviewSpans(validTileIds, PLACEMENT_PREVIEW_VALID_COLOR);
 
 		this.updateCanvasPlacementPreviewAttributes(validTileIds.size, invalidTileIds.size);
 	}

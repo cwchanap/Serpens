@@ -389,6 +389,24 @@ describe('CityMapScene', () => {
 			expect(placementPreviewGraphics.fillRect).toHaveBeenCalledTimes(2);
 		});
 
+		it('draws invalid placement spans before valid spans so shared footprint cells stay valid', () => {
+			expect.assertions(2);
+			scene.create();
+			scene.updateSnapshot(
+				makeSnapshot({
+					placementPreview: {
+						validTileIds: ['t0'],
+						invalidTileIds: ['t1']
+					}
+				})
+			);
+			const spy = vi.spyOn(s(scene), 'drawPlacementPreviewSpans');
+			s(scene).drawPlacementPreview();
+			expect(spy.mock.calls[0]![1]).toBe(0x8e2a1f);
+			expect(spy.mock.calls[1]![1]).toBe(0x6b7e3a);
+			spy.mockRestore();
+		});
+
 		it('draws placement preview tiles as 2x2 store footprints', () => {
 			expect.assertions(2);
 			scene.create();

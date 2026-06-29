@@ -1674,5 +1674,24 @@ describe('IndustryMapScene', () => {
 			);
 			expect(graphicsInstances[2].mock.fillRect).not.toHaveBeenCalled();
 		});
+
+		test('drawPlacementPreview draws invalid spans before valid spans so shared footprint cells stay valid', () => {
+			expect.assertions(2);
+			const { scene } = setupScene();
+			scene.create();
+			scene.updateSnapshot(
+				makeSnapshot({
+					placementPreview: {
+						validTileIds: ['t-0-0'],
+						invalidTileIds: ['t-1-0']
+					}
+				})
+			);
+			const spy = vi.spyOn(s(scene), 'drawPlacementPreviewSpans');
+			s(scene).drawPlacementPreview();
+			expect(spy.mock.calls[0]![1]).toBe(0x8e2a1f);
+			expect(spy.mock.calls[1]![1]).toBe(0x6b7e3a);
+			spy.mockRestore();
+		});
 	});
 });
