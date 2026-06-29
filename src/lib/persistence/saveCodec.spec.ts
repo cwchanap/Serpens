@@ -482,7 +482,7 @@ describe('saveCodec', () => {
 	});
 
 	test('relocated stores never overlap a valid store footprint after city regeneration', () => {
-		expect.assertions(3);
+		expect.assertions(11);
 		// Regenerate the same 56x48 harbor-city the codec produces (seed comes
 		// from game.seed for harbor-city). Anchor A=(1,1) and adjacent anchor
 		// B=(2,1) are both buildable, and their 2x2 footprints share tiles
@@ -534,7 +534,9 @@ describe('saveCodec', () => {
 		const city = validated.game.cities[0]!;
 		const tileById = new Map(city.tiles.map((tile) => [tile.id, tile] as const));
 		// Collect each store's full 2x2 footprint tile ids and assert no two
-		// stores in this city share a footprint tile.
+		// stores in this city share a footprint tile. Each store must own all
+		// four footprint tiles — a relocated store missing any tile would
+		// silently pass the overlap check if missing tiles were skipped.
 		const footprintIdsByStore = validated.game.stores
 			.filter((store) => store.cityId === city.id)
 			.map((store) => {
@@ -544,9 +546,8 @@ describe('saveCodec', () => {
 				for (let dy = 0; dy < 2; dy += 1) {
 					for (let dx = 0; dx < 2; dx += 1) {
 						const t = city.tiles.find((tile) => tile.x === ax + dx && tile.y === ay + dy);
-						if (t) {
-							ids.add(t.id);
-						}
+						expect(t).toBeDefined();
+						ids.add(t!.id);
 					}
 				}
 				return { id: store.id, ids };

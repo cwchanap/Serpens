@@ -375,17 +375,54 @@ describe('industrial placement', () => {
 	});
 
 	test('blocks industrial buildings whose 2x2 footprint includes a non-industrial tile', () => {
+		// Exercises the footprint (not anchor) branch of the industrial-terrain
+		// guard: the anchor itself is industrial, but one of its 2x2 footprint
+		// tiles is non-industrial. The starter city has no industrial anchor
+		// whose footprint naturally crosses into unlocked non-industrial
+		// terrain (edge tiles are locked `blocked`), so poison one footprint
+		// neighbor of an all-industrial anchor with farmland terrain.
 		expect.assertions(2);
-		const game = { ...createNewGame('convenience', 20260512), cash: 100_000 };
-		const city = game.industryCities[0]!;
-		const farmlandTile = city.tiles.find((tile) => !tile.locked && tile.terrain === 'farmland')!;
+		const base = { ...createNewGame('convenience', 20260512), cash: 100_000 };
+		const city = base.industryCities[0]!;
+		const anchor = city.tiles.find(
+			(tile) =>
+				tile.terrain === 'industrial' &&
+				!tile.locked &&
+				[
+					[1, 0],
+					[0, 1],
+					[1, 1]
+				].every(([dx, dy]) => {
+					const footprintTile = city.tiles.find(
+						(other) => other.x === tile.x + dx && other.y === tile.y + dy
+					);
+					return (
+						footprintTile !== undefined &&
+						footprintTile.terrain === 'industrial' &&
+						!footprintTile.locked
+					);
+				})
+		)!;
+		const poisonedTileId = city.tiles.find(
+			(tile) => tile.x === anchor.x + 1 && tile.y === anchor.y
+		)!.id;
+		const mutatedCity: IndustryCity = {
+			...city,
+			tiles: city.tiles.map((tile) =>
+				tile.id === poisonedTileId ? { ...tile, terrain: 'farmland' } : tile
+			)
+		};
+		const game = {
+			...base,
+			industryCities: [mutatedCity, ...base.industryCities.slice(1)]
+		};
 
-		expect(getIndustrialPlacementBlockReason(game, farmlandTile.id, 'flour-mill')).toBe(
+		expect(getIndustrialPlacementBlockReason(game, anchor.id, 'flour-mill')).toBe(
 			'Requires industrial tile'
 		);
 		expect(
 			buildIndustrialBuilding(game, {
-				tileId: farmlandTile.id,
+				tileId: anchor.id,
 				buildingTypeId: 'flour-mill'
 			}).industrialBuildings
 		).toHaveLength(0);
