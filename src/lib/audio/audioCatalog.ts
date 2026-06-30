@@ -38,7 +38,17 @@ export interface AudioCue {
 	description: string;
 }
 
-export const BGM_CUES = Object.freeze({
+function freezeCueRecord<const Cues extends Record<string, AudioCue>>(
+	cues: Cues
+): Readonly<{ [CueId in keyof Cues]: Readonly<Cues[CueId]> }> {
+	for (const cue of Object.values(cues)) {
+		Object.freeze(cue);
+	}
+
+	return Object.freeze(cues) as Readonly<{ [CueId in keyof Cues]: Readonly<Cues[CueId]> }>;
+}
+
+export const BGM_CUES = freezeCueRecord({
 	'bgm.retail-map': {
 		id: 'bgm.retail-map',
 		channel: 'bgm',
@@ -62,7 +72,7 @@ export const BGM_CUES = Object.freeze({
 	}
 } satisfies Record<BgmCueId, AudioCue>);
 
-export const SFX_CUES = Object.freeze({
+export const SFX_CUES = freezeCueRecord({
 	'sfx.ui.click': {
 		id: 'sfx.ui.click',
 		channel: 'sfx',
@@ -229,11 +239,13 @@ export const SFX_CUES = Object.freeze({
 export const AUDIO_CUES = Object.freeze([
 	...Object.values(BGM_CUES),
 	...Object.values(SFX_CUES)
-] satisfies AudioCue[]);
+] satisfies Readonly<AudioCue>[]);
 
-const AUDIO_CUES_BY_ID = new Map<AudioCueId, AudioCue>(AUDIO_CUES.map((cue) => [cue.id, cue]));
+const AUDIO_CUES_BY_ID = new Map<AudioCueId, Readonly<AudioCue>>(
+	AUDIO_CUES.map((cue) => [cue.id, cue])
+);
 
-export function getAudioCue(cueId: AudioCueId): AudioCue {
+export function getAudioCue(cueId: AudioCueId): Readonly<AudioCue> {
 	const cue = AUDIO_CUES_BY_ID.get(cueId);
 
 	if (!cue) {

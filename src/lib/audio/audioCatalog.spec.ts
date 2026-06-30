@@ -25,6 +25,18 @@ describe('audio catalog', () => {
 		}
 	});
 
+	it('freezes public cue objects', () => {
+		expect.assertions(AUDIO_CUES.length + 3);
+
+		for (const cue of AUDIO_CUES) {
+			expect(Object.isFrozen(cue), cue.id).toBe(true);
+		}
+
+		expect(Object.isFrozen(BGM_CUES['bgm.retail-map'])).toBe(true);
+		expect(Object.isFrozen(SFX_CUES['sfx.build.invalid'])).toBe(true);
+		expect(Object.isFrozen(getAudioCue('sfx.build.invalid'))).toBe(true);
+	});
+
 	it('looks up cues by stable id', () => {
 		expect.assertions(3);
 
@@ -38,6 +50,6 @@ describe('audio catalog', () => {
 			channel: 'sfx',
 			loop: false
 		});
-		expect(() => getAudioCue('sfx.missing' as never)).toThrow('Unknown audio cue');
+		expect(() => getAudioCue('sfx.missing' as never)).toThrow('Unknown audio cue: sfx.missing');
 	});
 });
