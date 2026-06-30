@@ -578,7 +578,7 @@ test('management panels open from the map menu and close as overlays', async ({ 
 	await page.goto('/');
 
 	await page.getByRole('button', { name: /open menu/i }).click();
-	const mapMenu = page.getByRole('menu', { name: /map menu/i });
+	const mapMenu = page.getByRole('menu', { name: /map navigation/i });
 	for (const itemName of [
 		/world map/i,
 		/retail city map/i,
@@ -610,6 +610,28 @@ test('management panels open from the map menu and close as overlays', async ({ 
 	await openManagementPanel(page, /reports/i);
 	await page.keyboard.press('Escape');
 	await expect(page.getByRole('dialog', { name: /reports/i })).toHaveCount(0);
+});
+
+test('audio controls persist as local app preferences', async ({ page }) => {
+	await page.goto('/');
+
+	await page.getByRole('button', { name: /open menu/i }).click();
+	await expect(page.getByRole('group', { name: /audio settings/i })).toBeVisible();
+
+	const bgmToggle = page.getByRole('checkbox', { name: 'BGM' });
+	const sfxToggle = page.getByRole('checkbox', { name: 'SFX' });
+	await bgmToggle.uncheck();
+	await sfxToggle.uncheck();
+
+	await page.reload();
+	await page.getByRole('button', { name: /open menu/i }).click();
+
+	await expect(page.getByRole('checkbox', { name: 'BGM' })).not.toBeChecked();
+	await expect(page.getByRole('checkbox', { name: 'SFX' })).not.toBeChecked();
+
+	const stored = await page.evaluate(() => localStorage.getItem('serpens.audioPreferences.v1'));
+	expect(stored).toContain('"bgmEnabled":false');
+	expect(stored).toContain('"sfxEnabled":false');
 });
 
 test('player can switch to the industry city map and back to retail', async ({ page }) => {
