@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import BuildMenu from '$lib/components/game/BuildMenu.svelte';
 	import DecisionQueue from '$lib/components/game/DecisionQueue.svelte';
+	import AudioSettings from '$lib/components/game/AudioSettings.svelte';
 	import CityMap from '$lib/components/game/CityMap.svelte';
 	import IndustryMap from '$lib/components/game/IndustryMap.svelte';
 	import IndustryTileInspector from '$lib/components/game/IndustryTileInspector.svelte';
@@ -14,6 +15,9 @@
 	import StoreOverview from '$lib/components/game/StoreOverview.svelte';
 	import TileInspector from '$lib/components/game/TileInspector.svelte';
 	import WorldMap from '$lib/components/game/WorldMap.svelte';
+	import { createGameAudioController, type GameAudioController } from '$lib/audio/audioController';
+	import { DEFAULT_AUDIO_PREFERENCES, type AudioPreferences } from '$lib/audio/audioPreferences';
+	import type { BgmCueId, SfxCueId } from '$lib/audio/audioCatalog';
 	import {
 		DEFAULT_RETAIL_CITY_HEIGHT,
 		DEFAULT_RETAIL_CITY_WIDTH,
@@ -149,6 +153,11 @@
 		{ id: 'reports', label: 'Reports' },
 		{ id: 'productChains', label: 'Product Chains' }
 	];
+	const bgmCueByMapView: Record<MapViewId, BgmCueId> = {
+		retail: 'bgm.retail-map',
+		industry: 'bgm.industry-map',
+		world: 'bgm.world-map'
+	};
 
 	let game: GameState | null = $state(null);
 	let activeMapView = $state<MapViewId>('retail');
@@ -168,6 +177,8 @@
 	let isSavePanelOpen = $state(false);
 	let saveStatus = $state('');
 	let saveError = $state<string | null>(null);
+	let audioController: GameAudioController | null = $state(null);
+	let audioPreferences = $state<AudioPreferences>({ ...DEFAULT_AUDIO_PREFERENCES });
 	let activeManagementPanel = $derived.by(
 		() => managementPanelMenuItems.find((item) => item.id === activeManagementPanelId) ?? null
 	);
@@ -287,6 +298,25 @@
 
 	onMount(() => {
 		void initializeSaves();
+
+		const controller = createGameAudioController({
+			onPreferencesChanged: (nextPreferences) => {
+				audioPreferences = nextPreferences;
+			}
+		});
+
+		audioController = controller;
+		audioPreferences = controller.getPreferences();
+		controller.setActiveBgm(bgmCueByMapView[activeMapView]);
+
+		return () => {
+			controller.destroy();
+			audioController = null;
+		};
+	});
+
+	$effect(() => {
+		audioController?.setActiveBgm(bgmCueByMapView[activeMapView]);
 	});
 
 	function selectTile(tileId: string) {
@@ -372,7 +402,9 @@
 	}
 
 	function toggleViewMenu() {
-		isViewMenuOpen = !isViewMenuOpen;
+		const nextIsOpen = !isViewMenuOpen;
+		isViewMenuOpen = nextIsOpen;
+		playSfx(nextIsOpen ? 'sfx.ui.menu-open' : 'sfx.ui.menu-close');
 	}
 
 	function openBuildMenu(): void {
@@ -384,10 +416,12 @@
 		isSavePanelOpen = false;
 		activeManagementPanelId = null;
 		isBuildMenuOpen = true;
+		playSfx('sfx.ui.panel-open');
 	}
 
 	function closeBuildMenu(): void {
 		isBuildMenuOpen = false;
+		playSfx('sfx.ui.panel-close');
 	}
 
 	function showRetailMap() {
@@ -453,8 +487,7 @@
 			return;
 		}
 
-		const nextGame = openWorldCity(game, cityId);
-		setGameAndAutosave(nextGame);
+		setGameAndAutosaveWithSfx(game, openWorldCity(game, cityId), 'sfx.world.city-unlock');
 		selectedWorldCityId = cityId;
 	}
 
@@ -482,6 +515,30 @@
 	function setGameAndAutosave(nextGame: GameState): void {
 		game = nextGame;
 		void writeAutoSave(nextGame);
+	}
+
+	function unlockAudio(): void {
+		void audioController?.unlock();
+	}
+
+	function playSfx(cueId: SfxCueId): void {
+		void audioController?.playSfx(cueId);
+	}
+
+	function updateAudioPreferences(patch: Partial<AudioPreferences>): void {
+		audioController?.updatePreferences(patch);
+	}
+
+	function setGameAndAutosaveWithSfx(
+		currentGame: GameState,
+		nextGame: GameState,
+		cueId: SfxCueId
+	): void {
+		setGameAndAutosave(nextGame);
+
+		if (nextGame !== currentGame) {
+			playSfx(cueId);
+		}
 	}
 
 	async function writeAutoSave(nextGame: GameState): Promise<void> {
@@ -520,6 +577,7 @@
 			saveStatus = 'Loaded auto-save';
 			saveError = null;
 			await refreshSaveSummary();
+			playSfx('sfx.save.loaded');
 		} catch (error) {
 			saveError = describeSaveError(error);
 		}
@@ -537,6 +595,7 @@
 			saveStatus = `Saved ${metadata.name}`;
 			saveError = null;
 			await refreshSaveSummary();
+			playSfx('sfx.save.saved');
 		} catch (error) {
 			saveError = describeSaveError(error);
 		}
@@ -563,6 +622,7 @@
 			saveStatus = `Loaded ${record.metadata.name}`;
 			saveError = null;
 			await refreshSaveSummary();
+			playSfx('sfx.save.loaded');
 		} catch (error) {
 			saveError = describeSaveError(error);
 		}
@@ -591,6 +651,7 @@
 		selectedWorldCityId = null;
 		placementFeedback = null;
 		isBuildMenuOpen = false;
+		playSfx('sfx.build.arm');
 	}
 
 	function armIndustryPlacement(buildingTypeId: IndustrialBuildingTypeId): void {
@@ -601,6 +662,7 @@
 		selectedWorldCityId = null;
 		placementFeedback = null;
 		isBuildMenuOpen = false;
+		playSfx('sfx.build.arm');
 	}
 
 	function cancelPlacement(): void {
@@ -611,61 +673,73 @@
 
 	function advanceDay() {
 		if (game) {
-			setGameAndAutosave(simulateDay(game));
+			setGameAndAutosaveWithSfx(game, simulateDay(game), 'sfx.time.advance-day');
 		}
 	}
 
 	function changePolicy(patch: Partial<CompanyPolicy>) {
 		if (game) {
-			setGameAndAutosave(updatePolicy(game, patch));
+			setGameAndAutosaveWithSfx(game, updatePolicy(game, patch), 'sfx.policy.change');
 		}
 	}
 
 	function chooseDecision(decisionId: string, optionId: string) {
 		if (game) {
-			setGameAndAutosave(resolveDecision(game, decisionId, optionId));
+			setGameAndAutosaveWithSfx(
+				game,
+				resolveDecision(game, decisionId, optionId),
+				'sfx.decision.resolve'
+			);
 		}
 	}
 
 	function hireStaff(candidateId: string) {
 		if (game) {
-			setGameAndAutosave(hireCandidate(game, candidateId));
+			setGameAndAutosaveWithSfx(game, hireCandidate(game, candidateId), 'sfx.staff.hire');
 		}
 	}
 
 	function assignStaff(staffId: string, storeId: string) {
 		if (game) {
-			setGameAndAutosave(assignStaffToStore(game, staffId, storeId));
+			setGameAndAutosaveWithSfx(
+				game,
+				assignStaffToStore(game, staffId, storeId),
+				'sfx.staff.assign'
+			);
 		}
 	}
 
 	function unassignStoreStaff(staffId: string) {
 		if (game) {
-			setGameAndAutosave(unassignStaff(game, staffId));
+			setGameAndAutosaveWithSfx(game, unassignStaff(game, staffId), 'sfx.staff.unassign');
 		}
 	}
 
 	function promoteStaffMember(staffId: string) {
 		if (game) {
-			setGameAndAutosave(promoteStaff(game, staffId));
+			setGameAndAutosaveWithSfx(game, promoteStaff(game, staffId), 'sfx.staff.promote');
 		}
 	}
 
 	function changeStoreProduct(storeId: string, categoryId: string, patch: StoreProductPatch): void {
 		if (game) {
-			setGameAndAutosave(updateStoreProduct(game, storeId, categoryId, patch));
+			setGameAndAutosaveWithSfx(
+				game,
+				updateStoreProduct(game, storeId, categoryId, patch),
+				'sfx.stock.edit'
+			);
 		}
 	}
 
 	function upgradeStoreHandler(storeId: string): void {
 		if (game) {
-			setGameAndAutosave(upgradeStore(game, storeId));
+			setGameAndAutosaveWithSfx(game, upgradeStore(game, storeId), 'sfx.store.upgrade');
 		}
 	}
 
 	function upgradeBuildingHandler(buildingId: string): void {
 		if (game) {
-			setGameAndAutosave(upgradeBuilding(game, buildingId));
+			setGameAndAutosaveWithSfx(game, upgradeBuilding(game, buildingId), 'sfx.industry.upgrade');
 		}
 	}
 
@@ -682,6 +756,7 @@
 			selectedIndustryTileId = null;
 			selectedWorldCityId = null;
 			placementFeedback = blockReason;
+			playSfx('sfx.build.invalid');
 			return;
 		}
 
@@ -690,6 +765,7 @@
 
 			if (!tile) {
 				placementFeedback = 'Unknown city tile';
+				playSfx('sfx.build.invalid');
 				return;
 			}
 
@@ -701,14 +777,17 @@
 					seed: starterMapState.seed
 				})
 			);
+			playSfx('sfx.build.retail-place');
 		} else {
 			const next = game.stores.length + 1;
-			setGameAndAutosave(
+			setGameAndAutosaveWithSfx(
+				game,
 				openStoreAtTile(game, {
 					tileId,
 					name: `Store #${next}`,
 					archetypeId
-				})
+				}),
+				'sfx.build.retail-place'
 			);
 		}
 
@@ -730,15 +809,21 @@
 			selectedTileId = null;
 			selectedWorldCityId = null;
 			placementFeedback = blockReason;
+			playSfx('sfx.build.invalid');
 			return;
 		}
 
 		if (!game) {
 			placementFeedback = 'Found a retail store to unlock construction.';
+			playSfx('sfx.build.invalid');
 			return;
 		}
 
-		setGameAndAutosave(buildIndustrialBuilding(game, { tileId, buildingTypeId }));
+		setGameAndAutosaveWithSfx(
+			game,
+			buildIndustrialBuilding(game, { tileId, buildingTypeId }),
+			'sfx.build.industry-place'
+		);
 		selectedIndustryTileId = null;
 		selectedTileId = null;
 		selectedWorldCityId = null;
@@ -754,6 +839,8 @@
 	}
 
 	function handleKeydown(event: KeyboardEvent) {
+		unlockAudio();
+
 		if (event.key !== 'Escape') {
 			return;
 		}
@@ -814,7 +901,7 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-<main class="app">
+<main class="app" onpointerdown={unlockAudio}>
 	<section class="map-layout" aria-label="City planning">
 		<div class="map-surfaces">
 			{#if shouldRenderMapView(visitedMapViews, 'world')}
@@ -954,37 +1041,44 @@
 					</button>
 
 					{#if isViewMenuOpen}
-						<div class="hud-dropdown paper" role="menu" aria-label="Map menu">
-							<button
-								type="button"
-								role="menuitem"
-								class:active-view={activeMapView === 'world'}
-								onclick={showWorldMap}
-							>
-								World Map
-							</button>
-							<button
-								type="button"
-								role="menuitem"
-								class:active-view={activeMapView === 'retail'}
-								onclick={showRetailMap}
-							>
-								Retail City Map
-							</button>
-							<button
-								type="button"
-								role="menuitem"
-								class:active-view={activeMapView === 'industry'}
-								onclick={showIndustryMap}
-							>
-								Industry City Map
-							</button>
-							<button type="button" role="menuitem" onclick={openSavePanel}>Saves</button>
-							{#each managementPanelMenuItems as item (item.id)}
-								<button type="button" role="menuitem" onclick={() => openManagementPanel(item.id)}>
-									{item.label}
+						<div class="hud-dropdown paper" aria-label="Map menu">
+							<div role="menu" aria-label="Map navigation">
+								<button
+									type="button"
+									role="menuitem"
+									class:active-view={activeMapView === 'world'}
+									onclick={showWorldMap}
+								>
+									World Map
 								</button>
-							{/each}
+								<button
+									type="button"
+									role="menuitem"
+									class:active-view={activeMapView === 'retail'}
+									onclick={showRetailMap}
+								>
+									Retail City Map
+								</button>
+								<button
+									type="button"
+									role="menuitem"
+									class:active-view={activeMapView === 'industry'}
+									onclick={showIndustryMap}
+								>
+									Industry City Map
+								</button>
+								<button type="button" role="menuitem" onclick={openSavePanel}>Saves</button>
+								{#each managementPanelMenuItems as item (item.id)}
+									<button
+										type="button"
+										role="menuitem"
+										onclick={() => openManagementPanel(item.id)}
+									>
+										{item.label}
+									</button>
+								{/each}
+							</div>
+							<AudioSettings preferences={audioPreferences} onChange={updateAudioPreferences} />
 						</div>
 					{/if}
 				</div>
@@ -1292,7 +1386,7 @@
 		animation: none;
 	}
 
-	.hud-dropdown button {
+	.hud-dropdown [role='menu'] button {
 		width: 100%;
 		padding: 0.6rem 0.7rem;
 		border: 0;
@@ -1304,17 +1398,17 @@
 		border-radius: 2px;
 	}
 
-	.hud-dropdown button:hover,
-	.hud-dropdown button:focus-visible {
+	.hud-dropdown [role='menu'] button:hover,
+	.hud-dropdown [role='menu'] button:focus-visible {
 		background: var(--paper-200);
 	}
 
-	.hud-dropdown button:disabled {
+	.hud-dropdown [role='menu'] button:disabled {
 		cursor: not-allowed;
 		opacity: 0.5;
 	}
 
-	.hud-dropdown button.active-view {
+	.hud-dropdown [role='menu'] button.active-view {
 		background: var(--paper-300);
 		color: var(--ink-900);
 		font-weight: 700;
