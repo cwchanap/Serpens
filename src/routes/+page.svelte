@@ -1029,7 +1029,7 @@
 						type="button"
 						class="map-icon-button btn-icon"
 						aria-label="Open menu"
-						aria-haspopup="menu"
+						aria-controls="map-controls-panel"
 						aria-expanded={isViewMenuOpen}
 						onclick={toggleViewMenu}
 					>
@@ -1041,7 +1041,12 @@
 					</button>
 
 					{#if isViewMenuOpen}
-						<div class="hud-dropdown paper" aria-label="Map menu">
+						<div
+							id="map-controls-panel"
+							class="hud-dropdown paper"
+							role="group"
+							aria-label="Map controls"
+						>
 							<div role="menu" aria-label="Map navigation">
 								<button
 									type="button"
