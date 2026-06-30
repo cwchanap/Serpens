@@ -46,6 +46,25 @@ describe('AudioSettings', () => {
 		await expect.element(page.getByLabelText('Effects volume')).toHaveValue('0.4');
 	});
 
+	it('leaves menu framing to the parent and disables volume controls for muted channels', async () => {
+		expect.assertions(4);
+
+		renderAudioSettings({
+			preferences: {
+				...DEFAULT_AUDIO_PREFERENCES,
+				bgmEnabled: false,
+				sfxEnabled: false
+			}
+		});
+
+		const audioSettings = page.getByRole('group', { name: /audio settings/i });
+
+		await expect.element(audioSettings).not.toHaveClass('panel');
+		await expect.element(audioSettings).not.toHaveClass('paper');
+		await expect.element(page.getByLabelText('Music volume')).toBeDisabled();
+		await expect.element(page.getByLabelText('Effects volume')).toBeDisabled();
+	});
+
 	it('emits preference patches', async () => {
 		expect.assertions(5);
 		const onChange = vi.fn();

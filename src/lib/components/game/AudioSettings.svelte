@@ -18,7 +18,7 @@
 	}
 </script>
 
-<section class="audio-settings panel paper" role="group" aria-label="Audio settings">
+<section class="audio-settings" role="group" aria-label="Audio settings">
 	<h2>Audio</h2>
 
 	<div class="audio-grid">
