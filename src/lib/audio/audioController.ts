@@ -206,25 +206,28 @@ class BrowserGameAudioController implements GameAudioController {
 	}
 
 	async playSfx(cueId: SfxCueId): Promise<void> {
-		if (
-			this.destroyed ||
-			!this.unlocked ||
-			!this.preferences.sfxEnabled ||
-			this.preferences.sfxVolume <= 0 ||
-			this.failedCueIds.has(cueId)
-		) {
+		if (!this.canPlaySfx(cueId)) {
 			return;
 		}
 
-		const context = this.getAudioContext();
+		const context = await this.ensureAudioContext();
 
 		if (context === null) {
 			this.markCueFailed(cueId, new Error('Web Audio is unavailable'));
 			return;
 		}
 
+		if (!this.canPlaySfx(cueId)) {
+			return;
+		}
+
 		try {
 			const buffer = await this.getSfxBuffer(cueId, context);
+
+			if (!this.canPlaySfx(cueId)) {
+				return;
+			}
+
 			const source = context.createBufferSource();
 			const gain = context.createGain();
 
@@ -234,6 +237,10 @@ class BrowserGameAudioController implements GameAudioController {
 			gain.connect(context.destination);
 			source.start(0);
 		} catch (error) {
+			if (this.destroyed) {
+				return;
+			}
+
 			this.markCueFailed(cueId, error);
 		}
 	}
@@ -322,7 +329,7 @@ class BrowserGameAudioController implements GameAudioController {
 
 			Promise.resolve(audio.play()).catch((error: unknown) => {
 				if (this.currentBgm === audio) {
-					this.markCueFailed(cueId, error);
+					this.environment.warn('Audio cue failed', cueId, error);
 					this.stopCurrentBgm();
 				}
 			});
@@ -361,6 +368,34 @@ class BrowserGameAudioController implements GameAudioController {
 			this.environment.warn('Unable to create audio context', error);
 			return null;
 		}
+	}
+
+	private async ensureAudioContext(): Promise<AudioContextLike | null> {
+		const context = this.getAudioContext();
+
+		if (context === null) {
+			return null;
+		}
+
+		if (this.unlocked && context.state === 'suspended') {
+			try {
+				await context.resume();
+			} catch (error) {
+				this.environment.warn('Unable to resume audio context', error);
+			}
+		}
+
+		return context;
+	}
+
+	private canPlaySfx(cueId: SfxCueId): boolean {
+		return (
+			!this.destroyed &&
+			this.unlocked &&
+			this.preferences.sfxEnabled &&
+			this.preferences.sfxVolume > 0 &&
+			!this.failedCueIds.has(cueId)
+		);
 	}
 
 	private async getSfxBuffer(cueId: SfxCueId, context: AudioContextLike): Promise<AudioBuffer> {
