@@ -158,6 +158,7 @@ class BrowserGameAudioController implements GameAudioController {
 	private audioContext: AudioContextLike | null = null;
 	private currentBgm: ManagedAudioElement | null = null;
 	private currentBgmCueId: BgmCueId | null = null;
+	private bgmPlaySettled = false;
 	private readonly environment: AudioControllerEnvironment;
 	private readonly failedCueIds = new Set<AudioCueId>();
 	private preferences: AudioPreferences;
@@ -186,6 +187,15 @@ class BrowserGameAudioController implements GameAudioController {
 			} catch (error) {
 				this.environment.warn('Unable to resume audio context', error);
 			}
+		}
+
+		// If BGM was attempted before unlock, its play() promise may still be
+		// pending (browsers block autoplay until a user gesture). The early-return
+		// in startActiveBgm would treat that pending element as active and skip
+		// the retry, so a later autoplay rejection would leave BGM silent. Force a
+		// restart here so the new play() call runs inside the user activation.
+		if (this.currentBgm !== null && !this.bgmPlaySettled) {
+			this.stopCurrentBgm();
 		}
 
 		this.startActiveBgm();
@@ -326,13 +336,21 @@ class BrowserGameAudioController implements GameAudioController {
 
 			this.currentBgm = audio;
 			this.currentBgmCueId = cueId;
+			this.bgmPlaySettled = false;
 
-			Promise.resolve(audio.play()).catch((error: unknown) => {
-				if (this.currentBgm === audio) {
-					this.environment.warn('Audio cue failed', cueId, error);
-					this.stopCurrentBgm();
+			Promise.resolve(audio.play()).then(
+				() => {
+					if (this.currentBgm === audio) {
+						this.bgmPlaySettled = true;
+					}
+				},
+				(error: unknown) => {
+					if (this.currentBgm === audio) {
+						this.environment.warn('Audio cue failed', cueId, error);
+						this.stopCurrentBgm();
+					}
 				}
-			});
+			);
 		} catch (error) {
 			this.markCueFailed(cueId, error);
 			this.stopCurrentBgm();
@@ -343,6 +361,7 @@ class BrowserGameAudioController implements GameAudioController {
 		const audio = this.currentBgm;
 		this.currentBgm = null;
 		this.currentBgmCueId = null;
+		this.bgmPlaySettled = false;
 
 		if (audio === null) {
 			return;
