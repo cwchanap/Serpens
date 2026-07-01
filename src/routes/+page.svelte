@@ -1124,6 +1124,7 @@
 					onHireStaff={hireStaff}
 					onAssignStaff={assignStaff}
 					onUnassignStaff={unassignStoreStaff}
+					onClickFeedback={() => playSfx('sfx.ui.click')}
 					onClose={closeInspector}
 				/>
 			</div>

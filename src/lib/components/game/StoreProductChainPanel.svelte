@@ -8,6 +8,7 @@
 	interface Props {
 		game: GameState;
 		store: Store;
+		onInteractionFeedback?: () => void;
 	}
 
 	interface StoreChainSelection {
@@ -16,7 +17,7 @@
 		nodeId: string | null;
 	}
 
-	let { game, store }: Props = $props();
+	let { game, store, onInteractionFeedback = () => {} }: Props = $props();
 
 	let selection = $state<StoreChainSelection>({ storeId: null, categoryId: null, nodeId: null });
 	let previousStoreId = $state<string | null>(null);
@@ -51,6 +52,7 @@
 	});
 
 	function selectCategory(event: Event): void {
+		onInteractionFeedback();
 		selection = {
 			storeId: store.id,
 			categoryId: (event.currentTarget as HTMLSelectElement).value,
@@ -85,6 +87,7 @@
 				selectedNodeId={activeSelection.nodeId}
 				compact
 				onSelectNode={selectNode}
+				{onInteractionFeedback}
 			/>
 			<NodeBroadside node={selectedNode} />
 		</div>

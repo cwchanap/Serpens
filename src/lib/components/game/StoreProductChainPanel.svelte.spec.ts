@@ -1,12 +1,18 @@
 import { page } from 'vitest/browser';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { createNewGame } from '$lib/game/state';
 import type { GameState, Store } from '$lib/game/types';
 import StoreProductChainPanel from './StoreProductChainPanel.svelte';
 
-function renderProductChainPanel(game: GameState, store: Store) {
-	return render(StoreProductChainPanel, { game, store });
+function renderProductChainPanel(
+	game: GameState,
+	store: Store,
+	overrides: Partial<{
+		onInteractionFeedback: () => void;
+	}> = {}
+) {
+	return render(StoreProductChainPanel, { game, store, ...overrides });
 }
 
 describe('StoreProductChainPanel', () => {
@@ -32,6 +38,23 @@ describe('StoreProductChainPanel', () => {
 
 		await expect.element(page.getByTestId('product-chain-graph-chain:drinks')).toBeVisible();
 		await expect.element(page.getByText('Drinks chain')).toBeVisible();
+	});
+
+	it('fires interaction feedback for category and node selection clicks', async () => {
+		expect.assertions(2);
+		const onInteractionFeedback = vi.fn();
+		const game = createNewGame('convenience', 20260518);
+
+		renderProductChainPanel(game, game.stores[0]!, { onInteractionFeedback });
+
+		await page.getByLabelText('Product category').selectOptions('drinks');
+
+		expect(onInteractionFeedback).toHaveBeenCalledOnce();
+
+		const graph = page.getByTestId('product-chain-graph-chain:drinks');
+		await graph.getByRole('button').first().click();
+
+		expect(onInteractionFeedback).toHaveBeenCalledTimes(2);
 	});
 
 	it('shows an empty state for stores without supported production categories', async () => {

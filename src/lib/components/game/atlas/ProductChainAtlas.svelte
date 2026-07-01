@@ -10,10 +10,18 @@
 		selectedNodeId: string | null;
 		compact?: boolean;
 		onSelectNode: (nodeId: string | null) => void;
+		onInteractionFeedback?: () => void;
 		broadside?: import('svelte').Snippet;
 	}
 
-	let { graph, selectedNodeId, compact = false, onSelectNode, broadside }: Props = $props();
+	let {
+		graph,
+		selectedNodeId,
+		compact = false,
+		onSelectNode,
+		onInteractionFeedback = () => {},
+		broadside
+	}: Props = $props();
 
 	const markerPrefix = $props.id();
 	let previousGraphId = $state<string | null>(null);
@@ -73,8 +81,14 @@
 
 	function handleCanvasClick(event: MouseEvent): void {
 		if (event.target === event.currentTarget) {
+			onInteractionFeedback();
 			onSelectNode(null);
 		}
+	}
+
+	function handleNodeSelect(nodeId: string): void {
+		onInteractionFeedback();
+		onSelectNode(nodeId);
 	}
 </script>
 
@@ -135,7 +149,7 @@
 						selected={item.node.id === selectedNodeId}
 						{compact}
 						position={item.position}
-						onSelect={(id) => onSelectNode(id)}
+						onSelect={handleNodeSelect}
 					/>
 				{/each}
 			</div>
