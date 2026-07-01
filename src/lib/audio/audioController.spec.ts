@@ -177,6 +177,48 @@ describe('createGameAudioController', () => {
 		expect(audioElements[1]?.play).toHaveBeenCalledTimes(1);
 	});
 
+	it('retries BGM on unlock when a pre-unlock play attempt is still pending', async () => {
+		const { audioElements, environment } = createFakeEnvironment();
+		const firstPlayDeferred = createDeferred<void>();
+		let playAttempts = 0;
+		environment.createAudioElement = (src) => {
+			playAttempts += 1;
+			const element: MockManagedAudioElement = {
+				src,
+				loop: false,
+				volume: 0,
+				currentTime: 0,
+				play: vi.fn<() => Promise<void>>(() =>
+					playAttempts === 1 ? firstPlayDeferred.promise : Promise.resolve()
+				),
+				pause: vi.fn(),
+				load: vi.fn()
+			};
+
+			audioElements.push(element);
+			return element;
+		};
+		const controller = createGameAudioController({ environment });
+
+		controller.setActiveBgm('bgm.retail-map');
+		expect(audioElements).toHaveLength(1);
+
+		await controller.unlock();
+
+		// Unlock should have stopped the pending element and created a new one
+		// whose play() runs inside the user activation.
+		expect(audioElements).toHaveLength(2);
+		expect(audioElements[0]?.pause).toHaveBeenCalledTimes(1);
+		expect(audioElements[1]?.play).toHaveBeenCalledTimes(1);
+
+		// A late rejection from the original pending attempt must not stop the
+		// retried BGM.
+		firstPlayDeferred.reject(new Error('Autoplay blocked'));
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(audioElements[1]?.pause).not.toHaveBeenCalled();
+	});
+
 	it('switches BGM when active cue changes', async () => {
 		const { audioElements, environment } = createFakeEnvironment();
 		const controller = createGameAudioController({ environment });
