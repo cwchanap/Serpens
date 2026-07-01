@@ -200,9 +200,7 @@ class BrowserGameAudioController implements GameAudioController {
 			return;
 		}
 
-		if (this.unlocked) {
-			this.startActiveBgm();
-		}
+		this.startActiveBgm();
 	}
 
 	async playSfx(cueId: SfxCueId): Promise<void> {
@@ -299,7 +297,6 @@ class BrowserGameAudioController implements GameAudioController {
 
 		if (
 			this.destroyed ||
-			!this.unlocked ||
 			cueId === null ||
 			!this.preferences.bgmEnabled ||
 			this.preferences.bgmVolume <= 0 ||

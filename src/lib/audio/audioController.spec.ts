@@ -129,19 +129,49 @@ function createFakeEnvironment(): {
 }
 
 describe('createGameAudioController', () => {
-	it('waits for unlock before starting BGM', async () => {
+	it('attempts BGM when the active cue is set before unlock', () => {
 		const { audioElements, environment } = createFakeEnvironment();
 		const controller = createGameAudioController({ environment });
 
 		controller.setActiveBgm('bgm.retail-map');
 
-		expect(audioElements).toHaveLength(0);
-
-		await controller.unlock();
-
 		expect(audioElements).toHaveLength(1);
 		expect(audioElements[0]?.src).toBe('/base/assets/game/audio/bgm/retail-map.mp3');
 		expect(audioElements[0]?.play).toHaveBeenCalledTimes(1);
+	});
+
+	it('retries BGM on unlock after an autoplay rejection', async () => {
+		const { audioElements, environment, warn } = createFakeEnvironment();
+		let playAttempts = 0;
+		environment.createAudioElement = (src) => {
+			const element: MockManagedAudioElement = {
+				src,
+				loop: false,
+				volume: 0,
+				currentTime: 0,
+				play: vi.fn(async () => {
+					playAttempts += 1;
+
+					if (playAttempts === 1) {
+						throw new Error('Autoplay blocked');
+					}
+				}),
+				pause: vi.fn()
+			};
+
+			audioElements.push(element);
+			return element;
+		};
+		const controller = createGameAudioController({ environment });
+
+		controller.setActiveBgm('bgm.retail-map');
+		await vi.waitFor(() => expect(warn).toHaveBeenCalledTimes(1));
+
+		await controller.unlock();
+
+		expect(audioElements).toHaveLength(2);
+		expect(audioElements[1]?.src).toBe('/base/assets/game/audio/bgm/retail-map.mp3');
+		expect(audioElements[1]?.play).toHaveBeenCalledTimes(1);
 	});
 
 	it('switches BGM when active cue changes', async () => {
