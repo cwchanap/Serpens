@@ -310,7 +310,7 @@
 		controller.setActiveBgm(bgmCueByMapView[activeMapView]);
 
 		return () => {
-			controller.destroy();
+			void controller.destroy();
 			audioController = null;
 		};
 	});

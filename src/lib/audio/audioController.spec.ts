@@ -37,6 +37,7 @@ interface MockManagedAudioElement {
 	currentTime: number;
 	play: ReturnType<typeof vi.fn<() => Promise<void>>>;
 	pause: ReturnType<typeof vi.fn<() => void>>;
+	load: ReturnType<typeof vi.fn<() => void>>;
 }
 
 interface MockAudioSource {
@@ -90,7 +91,8 @@ function createFakeEnvironment(): {
 					volume: 0,
 					currentTime: 0,
 					play: vi.fn(async () => undefined),
-					pause: vi.fn()
+					pause: vi.fn(),
+					load: vi.fn()
 				};
 
 				audioElements.push(element);
@@ -156,7 +158,8 @@ describe('createGameAudioController', () => {
 						throw new Error('Autoplay blocked');
 					}
 				}),
-				pause: vi.fn()
+				pause: vi.fn(),
+				load: vi.fn()
 			};
 
 			audioElements.push(element);
@@ -324,7 +327,8 @@ describe('createGameAudioController', () => {
 						throw new Error('Autoplay blocked');
 					}
 				}),
-				pause: vi.fn()
+				pause: vi.fn(),
+				load: vi.fn()
 			};
 
 			audioElements.push(element);
@@ -417,6 +421,19 @@ describe('createGameAudioController', () => {
 		expect(warn).toHaveBeenCalledWith('Audio cue failed', 'sfx.ui.click', expect.any(Error));
 	});
 
+	it('marks an SFX cue as failed when decoding the buffer rejects', async () => {
+		expect.assertions(2);
+		const { decodeAudioData, environment, warn } = createFakeEnvironment();
+		decodeAudioData.mockRejectedValueOnce(new Error('corrupt audio'));
+		const controller = createGameAudioController({ environment });
+
+		await controller.unlock();
+		await controller.playSfx('sfx.ui.click');
+
+		expect(decodeAudioData).toHaveBeenCalledTimes(1);
+		expect(warn).toHaveBeenCalledWith('Audio cue failed', 'sfx.ui.click', expect.any(Error));
+	});
+
 	it('does not warn when an in-flight SFX is destroyed before fetch resolves', async () => {
 		const { environment, fetchArrayBuffer, warn } = createFakeEnvironment();
 		const fetchDeferred = createDeferred<ArrayBuffer>();
@@ -497,6 +514,23 @@ describe('createGameAudioController', () => {
 		await controller.unlock();
 		await controller.playSfx('sfx.ui.click');
 		await controller.playSfx('sfx.ui.click');
+
+		expect(fetchArrayBuffer).toHaveBeenCalledTimes(1);
+		expect(decodeAudioData).toHaveBeenCalledTimes(1);
+	});
+
+	it('dedupes concurrent in-flight SFX loads for the same cue', async () => {
+		const { decodeAudioData, environment, fetchArrayBuffer } = createFakeEnvironment();
+		const fetchDeferred = createDeferred<ArrayBuffer>();
+		fetchArrayBuffer.mockReturnValueOnce(fetchDeferred.promise);
+		const controller = createGameAudioController({ environment });
+
+		await controller.unlock();
+		const firstPlay = controller.playSfx('sfx.ui.click');
+		const secondPlay = controller.playSfx('sfx.ui.click');
+		await vi.waitFor(() => expect(fetchArrayBuffer).toHaveBeenCalledTimes(1));
+		fetchDeferred.resolve(new ArrayBuffer(8));
+		await Promise.all([firstPlay, secondPlay]);
 
 		expect(fetchArrayBuffer).toHaveBeenCalledTimes(1);
 		expect(decodeAudioData).toHaveBeenCalledTimes(1);
@@ -642,7 +676,8 @@ describe('createGameAudioController', () => {
 				play: vi.fn(async () => undefined),
 				pause: vi.fn(() => {
 					throw new Error('pause failed');
-				})
+				}),
+				load: vi.fn()
 			};
 			audioElements.push(element);
 			return element;

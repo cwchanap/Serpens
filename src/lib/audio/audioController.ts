@@ -14,6 +14,7 @@ export interface ManagedAudioElement {
 	currentTime: number;
 	play(): Promise<void> | void;
 	pause(): void;
+	load(): void;
 }
 
 export interface AudioBufferSourceLike {
@@ -75,7 +76,8 @@ function createNoopAudioElement(src: string): ManagedAudioElement {
 		volume: 0,
 		currentTime: 0,
 		play: () => undefined,
-		pause: () => undefined
+		pause: () => undefined,
+		load: () => undefined
 	};
 }
 
@@ -160,6 +162,7 @@ class BrowserGameAudioController implements GameAudioController {
 	private readonly failedCueIds = new Set<AudioCueId>();
 	private preferences: AudioPreferences;
 	private readonly sfxBuffers = new Map<SfxCueId, AudioBuffer>();
+	private readonly sfxBufferLoads = new Map<SfxCueId, Promise<AudioBuffer>>();
 	private unlocked = false;
 	private destroyed = false;
 	private readonly onPreferencesChanged: ((preferences: AudioPreferences) => void) | undefined;
@@ -348,6 +351,11 @@ class BrowserGameAudioController implements GameAudioController {
 		try {
 			audio.pause();
 			audio.currentTime = 0;
+			// Release the underlying media resource so the element does not hold
+			// the decoded stream open until GC; mirrors the HTML spec's unload
+			// guidance (clear src, then load()).
+			audio.src = '';
+			audio.load();
 		} catch (error) {
 			this.environment.warn('Unable to stop BGM', error);
 		}
@@ -395,13 +403,36 @@ class BrowserGameAudioController implements GameAudioController {
 		);
 	}
 
-	private async getSfxBuffer(cueId: SfxCueId, context: AudioContextLike): Promise<AudioBuffer> {
+	private getSfxBuffer(cueId: SfxCueId, context: AudioContextLike): Promise<AudioBuffer> {
 		const cachedBuffer = this.sfxBuffers.get(cueId);
 
 		if (cachedBuffer) {
-			return cachedBuffer;
+			return Promise.resolve(cachedBuffer);
 		}
 
+		const inFlight = this.sfxBufferLoads.get(cueId);
+
+		if (inFlight) {
+			return inFlight;
+		}
+
+		const loadPromise = this.loadSfxBuffer(cueId, context);
+		this.sfxBufferLoads.set(cueId, loadPromise);
+		// Self-clean on settle so a later retry (e.g. after a transient failure) can fetch again.
+		// Using then(onFulfilled, onRejected) rather than finally() so the cleanup derived
+		// promise does not re-reject and surface as an unhandled rejection; the playSfx caller
+		// still observes the original loadPromise rejection via its own try/catch.
+		const clearInFlight = () => {
+			if (this.sfxBufferLoads.get(cueId) === loadPromise) {
+				this.sfxBufferLoads.delete(cueId);
+			}
+		};
+		void loadPromise.then(clearInFlight, clearInFlight);
+
+		return loadPromise;
+	}
+
+	private async loadSfxBuffer(cueId: SfxCueId, context: AudioContextLike): Promise<AudioBuffer> {
 		const cue = getAudioCue(cueId);
 		const buffer = await this.environment.fetchArrayBuffer(
 			this.environment.resolveAssetPath(cue.path)
