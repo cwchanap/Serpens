@@ -433,6 +433,23 @@ describe('createGameAudioController', () => {
 		expect(warn).not.toHaveBeenCalled();
 	});
 
+	it('does not decode or cache SFX when destroyed after fetch resolves', async () => {
+		const { decodeAudioData, environment, fetchArrayBuffer, warn } = createFakeEnvironment();
+		const fetchDeferred = createDeferred<ArrayBuffer>();
+		fetchArrayBuffer.mockReturnValueOnce(fetchDeferred.promise);
+		const controller = createGameAudioController({ environment });
+
+		await controller.unlock();
+		const playPromise = controller.playSfx('sfx.ui.click');
+		await vi.waitFor(() => expect(fetchArrayBuffer).toHaveBeenCalledTimes(1));
+		await controller.destroy();
+		fetchDeferred.resolve(new ArrayBuffer(8));
+		await playPromise;
+
+		expect(decodeAudioData).not.toHaveBeenCalled();
+		expect(warn).not.toHaveBeenCalled();
+	});
+
 	it('aborts SFX playback when destroyed while resuming the audio context', async () => {
 		const { bufferSources, environment } = createFakeEnvironment();
 		const resumeDeferred = createDeferred<void>();

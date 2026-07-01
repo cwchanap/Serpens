@@ -406,7 +406,15 @@ class BrowserGameAudioController implements GameAudioController {
 		const buffer = await this.environment.fetchArrayBuffer(
 			this.environment.resolveAssetPath(cue.path)
 		);
+		if (this.destroyed) {
+			throw new Error('AudioController destroyed during SFX load');
+		}
+
 		const decodedBuffer = await context.decodeAudioData(buffer);
+		if (this.destroyed) {
+			return decodedBuffer;
+		}
+
 		this.sfxBuffers.set(cueId, decodedBuffer);
 
 		return decodedBuffer;
