@@ -30,7 +30,7 @@ game logic or introducing runtime API-cost risk.
 | Generation budget | One generation per cue; redo only clearly unusable cues |
 | Runtime API calls | None |
 | Sonic direction | Cozy mercantile sim |
-| Output format | MP3 44.1kHz 128kbps |
+| Output format | SFX: MP3 44.1kHz 128kbps. BGM: MP3 48kHz 192kbps stereo (higher fidelity for ambient loops; SFX stay compact) |
 | Runtime architecture | Typed local audio catalog plus Svelte-side audio controller |
 | Audio controls | Separate BGM/SFX enabled state and volume |
 | Settings persistence | Local app preferences, separate from game saves |
