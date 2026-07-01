@@ -616,18 +616,20 @@ test('audio controls persist as local app preferences', async ({ page }) => {
 	await page.goto('/');
 
 	await page.getByRole('button', { name: /open menu/i }).click();
-	await expect(page.getByRole('group', { name: /audio settings/i })).toBeVisible();
+	const audioSettings = page.getByRole('group', { name: /audio settings/i });
+	await expect(audioSettings).toBeVisible();
 
-	const bgmToggle = page.getByRole('checkbox', { name: 'BGM' });
-	const sfxToggle = page.getByRole('checkbox', { name: 'SFX' });
+	const bgmToggle = audioSettings.getByRole('checkbox', { name: 'BGM' });
+	const sfxToggle = audioSettings.getByRole('checkbox', { name: 'SFX' });
 	await bgmToggle.uncheck();
 	await sfxToggle.uncheck();
 
 	await page.reload();
 	await page.getByRole('button', { name: /open menu/i }).click();
+	const audioSettingsAfterReload = page.getByRole('group', { name: /audio settings/i });
 
-	await expect(page.getByRole('checkbox', { name: 'BGM' })).not.toBeChecked();
-	await expect(page.getByRole('checkbox', { name: 'SFX' })).not.toBeChecked();
+	await expect(audioSettingsAfterReload.getByRole('checkbox', { name: 'BGM' })).not.toBeChecked();
+	await expect(audioSettingsAfterReload.getByRole('checkbox', { name: 'SFX' })).not.toBeChecked();
 
 	const stored = await page.evaluate(() => localStorage.getItem('serpens.audioPreferences.v1'));
 	expect(stored).toContain('"bgmEnabled":false');
