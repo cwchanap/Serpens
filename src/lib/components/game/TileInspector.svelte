@@ -36,6 +36,7 @@
 		onAssignStaff: (staffId: string, storeId: string) => void;
 		onUnassignStaff: (staffId: string) => void;
 		onClose: () => void;
+		onClickFeedback?: () => void;
 		onUpgradeStore?: (storeId: string) => void;
 	}
 
@@ -51,6 +52,7 @@
 		onAssignStaff,
 		onUnassignStaff,
 		onClose,
+		onClickFeedback = () => {},
 		onUpgradeStore = () => {}
 	}: Props = $props();
 
@@ -82,10 +84,12 @@
 	}
 
 	function closeInspector(): void {
+		onClickFeedback();
 		onClose();
 	}
 
 	function selectStoreTab(tab: StoreInspectorTab): void {
+		onClickFeedback();
 		activeStoreTab = tab;
 	}
 
@@ -270,7 +274,7 @@
 					aria-hidden={activeStoreTab !== 'chain'}
 					inert={activeStoreTab !== 'chain'}
 				>
-					<StoreProductChainPanel {game} {store} />
+					<StoreProductChainPanel {game} {store} onInteractionFeedback={onClickFeedback} />
 				</div>
 				<div
 					class="store-panel store-staff-panel"

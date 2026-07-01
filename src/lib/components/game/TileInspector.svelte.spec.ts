@@ -106,6 +106,7 @@ function renderInspector(
 		onUnassignStaff: (staffId: string) => void;
 		onClose: () => void;
 		onUpgradeStore: (storeId: string) => void;
+		onClickFeedback: () => void;
 	}> = {}
 ) {
 	const props = {
@@ -157,6 +158,28 @@ describe('TileInspector storefront art', () => {
 });
 
 describe('TileInspector stock management', () => {
+	it('fires neutral click feedback for store detail tabs and close button', async () => {
+		expect.assertions(4);
+		const onClickFeedback = vi.fn();
+		const onClose = vi.fn();
+
+		renderInspector({ store, onClickFeedback, onClose });
+
+		const stockTab = page.getByRole('tab', { name: 'Stock' });
+		await stockTab.click();
+
+		expect(onClickFeedback).toHaveBeenCalledOnce();
+
+		await stockTab.click();
+
+		expect(onClickFeedback).toHaveBeenCalledTimes(2);
+
+		await page.getByRole('button', { name: 'Close tile inspector' }).click();
+
+		expect(onClose).toHaveBeenCalledOnce();
+		expect(onClickFeedback).toHaveBeenCalledTimes(3);
+	});
+
 	it('shows stock row count in details and renders stock and product chain on separate tabs', async () => {
 		expect.assertions(12);
 
@@ -276,7 +299,8 @@ describe('TileInspector staff management', () => {
 
 describe('TileInspector store upgrade', () => {
 	it('shows store level and fires upgrade callback', async () => {
-		expect.assertions(2);
+		expect.assertions(3);
+		const onClickFeedback = vi.fn();
 		const onUpgradeStore = vi.fn();
 		const level2Store: Store = { ...store, id: 'store-upgrade-1', level: 2 };
 		const richGame: GameState = {
@@ -288,6 +312,7 @@ describe('TileInspector store upgrade', () => {
 		renderInspector({
 			game: richGame,
 			store: level2Store,
+			onClickFeedback,
 			onUpgradeStore
 		});
 
@@ -298,6 +323,7 @@ describe('TileInspector store upgrade', () => {
 		const button = page.getByRole('button', { name: /Upgrade/i });
 		await button.click();
 		expect(onUpgradeStore).toHaveBeenCalledWith('store-upgrade-1');
+		expect(onClickFeedback).not.toHaveBeenCalled();
 	});
 
 	it('shows Max level button text and hides the cash hint at MAX_STORE_LEVEL', async () => {
