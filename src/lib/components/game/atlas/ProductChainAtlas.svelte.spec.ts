@@ -28,6 +28,28 @@ describe('ProductChainAtlas', () => {
 			.toBeVisible();
 	});
 
+	it('renders a fallback empty message when the graph has no nodes and no emptyReason', async () => {
+		expect.assertions(1);
+		const onSelectNode = vi.fn();
+		render(ProductChainAtlas, {
+			graph: {
+				id: 'chain:empty',
+				title: 'Empty chain',
+				nodes: [],
+				edges: [],
+				details: {},
+				warnings: [],
+				emptyReason: null
+			},
+			selectedNodeId: null,
+			onSelectNode
+		});
+
+		await expect
+			.element(page.getByText('No graph nodes are available for this chain.'))
+			.toBeVisible();
+	});
+
 	it('renders one button per graph node with correct aria-pressed for the selected one', async () => {
 		expect.assertions(2);
 		const game = createNewGame('convenience', 20260518);
@@ -81,7 +103,7 @@ describe('ProductChainAtlas', () => {
 	});
 
 	it('emits the node id when a node button is clicked', async () => {
-		expect.assertions(1);
+		expect.assertions(2);
 		const game = createNewGame('convenience', 20260518);
 		const graph = buildProductChainTree({
 			game,
@@ -90,16 +112,45 @@ describe('ProductChainAtlas', () => {
 		});
 		const firstNode = graph.nodes[0]!;
 		const onSelectNode = vi.fn();
+		const onInteractionFeedback = vi.fn();
 		render(ProductChainAtlas, {
 			graph,
 			selectedNodeId: null,
-			onSelectNode
+			onSelectNode,
+			onInteractionFeedback
 		});
 
 		await page
 			.getByRole('button', { name: `${firstNode.label}, ${firstNode.healthLabel}` })
 			.click();
 		expect(onSelectNode).toHaveBeenCalledWith(firstNode.id);
+		expect(onInteractionFeedback).toHaveBeenCalledTimes(1);
+	});
+
+	it('clears selection and fires feedback when the canvas background is clicked', async () => {
+		expect.assertions(2);
+		const game = createNewGame('convenience', 20260518);
+		const graph = buildProductChainTree({
+			game,
+			store: game.stores[0]!,
+			categoryId: 'snacks'
+		});
+		const onSelectNode = vi.fn();
+		const onInteractionFeedback = vi.fn();
+		render(ProductChainAtlas, {
+			graph,
+			selectedNodeId: graph.nodes[0]!.id,
+			onSelectNode,
+			onInteractionFeedback
+		});
+
+		const canvas = page.getByTestId(`product-chain-graph-${graph.id}`);
+		// Click an empty corner of the canvas-inner so the event target is the
+		// canvas itself (not a child node button or SVG route).
+		await canvas.click({ position: { x: 2, y: 2 } });
+
+		expect(onSelectNode).toHaveBeenCalledWith(null);
+		expect(onInteractionFeedback).toHaveBeenCalledTimes(1);
 	});
 
 	it('renders SVG route groups for every graph edge', async () => {
