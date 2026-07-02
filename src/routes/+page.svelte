@@ -4,6 +4,7 @@
 	import DecisionQueue from '$lib/components/game/DecisionQueue.svelte';
 	import AudioSettings from '$lib/components/game/AudioSettings.svelte';
 	import CityMap from '$lib/components/game/CityMap.svelte';
+	import ControlDesk from '$lib/components/game/ControlDesk.svelte';
 	import IndustryMap from '$lib/components/game/IndustryMap.svelte';
 	import IndustryTileInspector from '$lib/components/game/IndustryTileInspector.svelte';
 	import PolicyPanel from '$lib/components/game/PolicyPanel.svelte';
@@ -11,13 +12,17 @@
 	import ReportsPanel from '$lib/components/game/ReportsPanel.svelte';
 	import SavePanel from '$lib/components/game/SavePanel.svelte';
 	import Scorecard from '$lib/components/game/Scorecard.svelte';
+	import ShortcutCheatSheet from '$lib/components/game/ShortcutCheatSheet.svelte';
 	import StaffPanel from '$lib/components/game/StaffPanel.svelte';
 	import StoreOverview from '$lib/components/game/StoreOverview.svelte';
 	import TileInspector from '$lib/components/game/TileInspector.svelte';
+	import TopBar from '$lib/components/game/TopBar.svelte';
 	import WorldMap from '$lib/components/game/WorldMap.svelte';
 	import { createGameAudioController, type GameAudioController } from '$lib/audio/audioController';
 	import { DEFAULT_AUDIO_PREFERENCES, type AudioPreferences } from '$lib/audio/audioPreferences';
 	import type { BgmCueId, SfxCueId } from '$lib/audio/audioCatalog';
+	import { collectGameAlerts, type GameAlert } from '$lib/game/alerts';
+	import { resolveShortcutAction } from '$lib/game/keyboardShortcuts';
 	import {
 		DEFAULT_RETAIL_CITY_HEIGHT,
 		DEFAULT_RETAIL_CITY_WIDTH,
@@ -165,7 +170,7 @@
 	let selectedWorldCityId = $state<string | null>(null);
 	let selectedTileId = $state<string | null>(null);
 	let selectedIndustryTileId = $state<string | null>(null);
-	let isViewMenuOpen = $state(false);
+	let isCheatSheetOpen = $state(false);
 	let isBuildMenuOpen = $state(false);
 	let activeManagementPanelId = $state<ManagementPanelId | null>(null);
 	let retailPlacementArchetypeId = $state<ArchetypeId | null>(null);
@@ -197,6 +202,21 @@
 			starterIndustryCity
 		);
 	});
+	let alerts = $derived<GameAlert[]>(game ? collectGameAlerts(game) : []);
+	let mapEyebrow = $derived(
+		activeMapView === 'world'
+			? 'World Map'
+			: activeMapView === 'industry'
+				? 'Industry City Map'
+				: 'Retail City Map'
+	);
+	let mapTitle = $derived(
+		activeMapView === 'world'
+			? 'Regional Network'
+			: activeMapView === 'industry'
+				? industryCity.name
+				: activeCity.name
+	);
 	let worldCityStatuses = $derived.by((): WorldCityStatus[] => {
 		const currentGame: GameState | null = game;
 		return WORLD_CITY_CATALOG.map((city) =>
@@ -258,7 +278,7 @@
 	// placement preview over the map.
 	let isMapPaused = $derived(
 		!isPlacementModeActive &&
-			(isViewMenuOpen || isBuildMenuOpen || activeManagementPanelId !== null || isSavePanelOpen)
+			(isCheatSheetOpen || isBuildMenuOpen || activeManagementPanelId !== null || isSavePanelOpen)
 	);
 	let shouldShowRetailInspector = $derived(
 		selectedTile !== null && (!isPlacementModeActive || placementFeedback !== null)
@@ -383,7 +403,6 @@
 	}
 
 	function openSavePanel(): void {
-		isViewMenuOpen = false;
 		activeManagementPanelId = null;
 		isSavePanelOpen = true;
 		saveStatus = '';
@@ -401,18 +420,11 @@
 		return error instanceof Error ? error.message : 'Save operation failed';
 	}
 
-	function toggleViewMenu() {
-		const nextIsOpen = !isViewMenuOpen;
-		isViewMenuOpen = nextIsOpen;
-		playSfx(nextIsOpen ? 'sfx.ui.menu-open' : 'sfx.ui.menu-close');
-	}
-
 	function openBuildMenu(): void {
 		if (activeMapView === 'world') {
 			return;
 		}
 
-		isViewMenuOpen = false;
 		isSavePanelOpen = false;
 		activeManagementPanelId = null;
 		isBuildMenuOpen = true;
@@ -428,7 +440,6 @@
 		setActiveMapView('retail');
 		selectedIndustryTileId = null;
 		selectedWorldCityId = null;
-		isViewMenuOpen = false;
 		cancelPlacement();
 	}
 
@@ -436,7 +447,6 @@
 		setActiveMapView('industry');
 		selectedTileId = null;
 		selectedWorldCityId = null;
-		isViewMenuOpen = false;
 		cancelPlacement();
 	}
 
@@ -444,7 +454,6 @@
 		setActiveMapView('world');
 		selectedTileId = null;
 		selectedIndustryTileId = null;
-		isViewMenuOpen = false;
 		isBuildMenuOpen = false;
 		cancelPlacement();
 	}
@@ -496,7 +505,6 @@
 	}
 
 	function openManagementPanel(panelId: ManagementPanelId): void {
-		isViewMenuOpen = false;
 		isSavePanelOpen = false;
 		isBuildMenuOpen = false;
 
@@ -838,53 +846,107 @@
 		selectedIndustryTileId = null;
 	}
 
+	function isTypingElement(target: EventTarget | null): boolean {
+		if (!(target instanceof HTMLElement)) {
+			return false;
+		}
+		const tag = target.tagName;
+		return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
+	}
+
+	function handleSelectAlert(alert: GameAlert): void {
+		if (alert.kind === 'decision') {
+			openManagementPanel('decisions');
+			return;
+		}
+		if (alert.kind === 'store-stock' && alert.tileId) {
+			showRetailMap();
+			selectedTileId = alert.tileId;
+			return;
+		}
+		if (alert.kind === 'factory-blocked' && alert.tileId) {
+			showIndustryMap();
+			selectedIndustryTileId = alert.tileId;
+		}
+	}
+
 	function handleKeydown(event: KeyboardEvent) {
 		unlockAudio();
 
-		if (event.key !== 'Escape') {
+		if (event.key === '?') {
+			if (!isTypingElement(event.target)) {
+				event.preventDefault();
+				isCheatSheetOpen = !isCheatSheetOpen;
+			}
 			return;
 		}
 
-		if (isBuildMenuOpen) {
-			isBuildMenuOpen = false;
-			isViewMenuOpen = false;
+		if (event.key === 'Escape') {
+			if (isCheatSheetOpen) {
+				isCheatSheetOpen = false;
+				return;
+			}
+			if (isBuildMenuOpen) {
+				isBuildMenuOpen = false;
+				return;
+			}
+			if (isPlacementModeActive) {
+				cancelPlacement();
+				return;
+			}
+			if (isSavePanelOpen) {
+				isSavePanelOpen = false;
+				return;
+			}
+			if (activeManagementPanelId !== null) {
+				activeManagementPanelId = null;
+				return;
+			}
+			if (selectedWorldCityId !== null) {
+				selectedWorldCityId = null;
+				return;
+			}
+			if (selectedTileId !== null) {
+				selectedTileId = null;
+				return;
+			}
+			if (selectedIndustryTileId !== null) {
+				selectedIndustryTileId = null;
+			}
 			return;
 		}
 
-		if (isPlacementModeActive) {
-			cancelPlacement();
+		const action = resolveShortcutAction({
+			key: event.key,
+			isTypingTarget: isTypingElement(event.target),
+			hasBlockingOverlay:
+				isCheatSheetOpen ||
+				isBuildMenuOpen ||
+				isSavePanelOpen ||
+				isPlacementModeActive ||
+				activeManagementPanelId !== null,
+			activeMapView,
+			hasGame: game !== null
+		});
+
+		if (!action) {
 			return;
 		}
 
-		if (isSavePanelOpen) {
-			isSavePanelOpen = false;
-			isViewMenuOpen = false;
-			return;
-		}
+		event.preventDefault();
 
-		if (activeManagementPanelId !== null) {
-			activeManagementPanelId = null;
-			isViewMenuOpen = false;
-			return;
-		}
-
-		if (isViewMenuOpen) {
-			isViewMenuOpen = false;
-			return;
-		}
-
-		if (selectedWorldCityId !== null) {
-			selectedWorldCityId = null;
-			return;
-		}
-
-		if (selectedTileId !== null) {
-			selectedTileId = null;
-			return;
-		}
-
-		if (selectedIndustryTileId !== null) {
-			selectedIndustryTileId = null;
+		if (action.type === 'build') {
+			openBuildMenu();
+		} else if (action.type === 'advance-day') {
+			advanceDay();
+		} else if (action.type === 'view') {
+			if (action.view === 'retail') {
+				showRetailMap();
+			} else if (action.view === 'industry') {
+				showIndustryMap();
+			} else {
+				showWorldMap();
+			}
 		}
 	}
 </script>
@@ -945,150 +1007,34 @@
 				</div>
 			{/if}
 		</div>
-		<div class="map-hud" aria-label="Map controls">
-			<div class="map-title plaque" aria-label="Map title">
-				<span class="bookmark map-title-bookmark" aria-hidden="true"></span>
-				<p class="eyebrow">
-					{activeMapView === 'world'
-						? 'World Map'
-						: activeMapView === 'industry'
-							? 'Industry City Map'
-							: 'Retail City Map'}
-				</p>
-				<h1>
-					{activeMapView === 'world'
-						? 'Regional Network'
-						: activeMapView === 'industry'
-							? industryCity.name
-							: activeCity.name}
-				</h1>
-				{#if activeMapView === 'world'}
-					{#if game}
-						<p class="status">
-							Day <span class="ticker">{game.day}</span> ·
-							<span class="ticker">{game.world.openedCityIds.length}</span> cities open
-						</p>
-					{:else}
-						<p class="status">Found a store to unlock the regional network.</p>
-					{/if}
-				{:else if activeMapView === 'industry'}
-					{#if game}
-						<p class="status">
-							Day <span class="ticker">{game.day}</span> ·
-							<span class="ticker">{game.industrialBuildings.length}</span> industrial buildings
-						</p>
-					{:else}
-						<p class="status">Found a store to unlock construction.</p>
-					{/if}
-				{:else if game}
-					<p class="status">
-						Day <span class="ticker">{game.day}</span> ·
-						<span class="ticker">${game.cash.toLocaleString('en-US')}</span> cash
-					</p>
-				{:else}
-					<p class="status">Select an unlocked tile to found your first store.</p>
-				{/if}
-			</div>
+		<TopBar
+			eyebrow={mapEyebrow}
+			title={mapTitle}
+			day={game?.day ?? null}
+			cash={game?.cash ?? null}
+			{alerts}
+			onSelectAlert={handleSelectAlert}
+		/>
 
-			<div class="map-actions">
-				<button
-					type="button"
-					class="map-icon-button btn-icon"
-					aria-label="Build"
-					aria-pressed={isPlacementModeActive}
-					disabled={activeMapView === 'world'}
-					onclick={openBuildMenu}
-				>
-					<svg aria-hidden="true" viewBox="0 0 24 24">
-						<path d="M4 20h16" />
-						<path d="M6 20V8l6-4 6 4v12" />
-						<path d="M9 20v-6h6v6" />
-					</svg>
-				</button>
-
-				{#if game}
-					<div class="hud-status plaque" role="status" aria-label="Company status">
-						<strong class="ticker">${game.cash.toLocaleString('en-US')}</strong>
-						<span>cash</span>
-					</div>
-					<button
-						type="button"
-						class="map-icon-button btn-icon primary"
-						aria-label="Advance day"
-						onclick={advanceDay}
-					>
-						<svg aria-hidden="true" viewBox="0 0 24 24">
-							<path d="M5 4.75v14.5l6.75-7.25L5 4.75Z" />
-							<path d="M13 4.75v14.5L19.75 12 13 4.75Z" />
-						</svg>
-					</button>
-				{/if}
-
-				<div class="hud-menu">
-					<button
-						type="button"
-						class="map-icon-button btn-icon"
-						aria-label="Open menu"
-						aria-controls="map-controls-panel"
-						aria-expanded={isViewMenuOpen}
-						onclick={toggleViewMenu}
-					>
-						<svg aria-hidden="true" viewBox="0 0 24 24">
-							<path d="M4 6.5h16" />
-							<path d="M4 12h16" />
-							<path d="M4 17.5h16" />
-						</svg>
-					</button>
-
-					{#if isViewMenuOpen}
-						<div
-							id="map-controls-panel"
-							class="hud-dropdown paper"
-							role="group"
-							aria-label="Map controls"
-						>
-							<div role="menu" aria-label="Map navigation">
-								<button
-									type="button"
-									role="menuitem"
-									class:active-view={activeMapView === 'world'}
-									onclick={showWorldMap}
-								>
-									World Map
-								</button>
-								<button
-									type="button"
-									role="menuitem"
-									class:active-view={activeMapView === 'retail'}
-									onclick={showRetailMap}
-								>
-									Retail City Map
-								</button>
-								<button
-									type="button"
-									role="menuitem"
-									class:active-view={activeMapView === 'industry'}
-									onclick={showIndustryMap}
-								>
-									Industry City Map
-								</button>
-								<button type="button" role="menuitem" onclick={openSavePanel}>Saves</button>
-								{#each managementPanelMenuItems as item (item.id)}
-									<button
-										type="button"
-										role="menuitem"
-										onclick={() => openManagementPanel(item.id)}
-									>
-										{item.label}
-									</button>
-								{/each}
-							</div>
-							<AudioSettings preferences={audioPreferences} onChange={updateAudioPreferences} />
-						</div>
-					{/if}
-				</div>
-			</div>
-		</div>
+		<ControlDesk
+			{activeMapView}
+			managementItems={managementPanelMenuItems}
+			buildDisabled={activeMapView === 'world'}
+			advanceDisabled={game === null}
+			onBuild={openBuildMenu}
+			onSelectView={(view) => {
+				if (view === 'retail') showRetailMap();
+				else if (view === 'industry') showIndustryMap();
+				else showWorldMap();
+			}}
+			onOpenManagement={(id) => openManagementPanel(id as ManagementPanelId)}
+			onAdvanceDay={advanceDay}
+		>
+			{#snippet menuContent()}
+				<button type="button" onclick={openSavePanel}>Saves</button>
+				<AudioSettings preferences={audioPreferences} onChange={updateAudioPreferences} />
+			{/snippet}
+		</ControlDesk>
 		{#if isPlacementModeActive}
 			<div class="placement-status plaque" role="status" aria-label="Placement status">
 				<span>{placementFeedback ?? 'Choose a highlighted tile to build.'}</span>
@@ -1230,6 +1176,10 @@
 			onClose={closeSavePanel}
 		/>
 	{/if}
+
+	{#if isCheatSheetOpen}
+		<ShortcutCheatSheet onClose={() => (isCheatSheetOpen = false)} />
+	{/if}
 </main>
 
 <style>
@@ -1239,24 +1189,6 @@
 		min-height: 100vh;
 		overflow: hidden;
 		display: block;
-	}
-
-	h1 {
-		margin: 0;
-		font-family: var(--font-display);
-		font-size: 2rem;
-		font-weight: 400;
-		line-height: 1.05;
-		color: var(--ink-700);
-	}
-
-	h1::before {
-		content: '';
-		display: block;
-		width: 2.5rem;
-		height: 1px;
-		margin-bottom: 0.5rem;
-		background: var(--brass-500);
 	}
 
 	h2 {
@@ -1294,41 +1226,6 @@
 		visibility: visible;
 	}
 
-	.map-hud {
-		position: absolute;
-		inset: 1rem 1rem auto;
-		z-index: 20;
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 1rem;
-		pointer-events: none;
-	}
-
-	.map-actions {
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-		pointer-events: auto;
-	}
-
-	.map-title {
-		position: relative;
-		max-width: min(24rem, calc(100vw - 8rem));
-		padding: 0.75rem 0.95rem;
-	}
-
-	.map-title-bookmark {
-		left: 1rem;
-	}
-
-	.status {
-		margin: 0;
-		color: var(--ink-500);
-		font-family: var(--font-body);
-		font-size: 0.9rem;
-	}
-
 	.ticker {
 		font-family: var(--font-mono);
 		font-variant-numeric: tabular-nums lining-nums;
@@ -1338,7 +1235,7 @@
 	.placement-status {
 		position: absolute;
 		left: 1rem;
-		bottom: 1rem;
+		bottom: 4.5rem;
 		z-index: 22;
 		display: flex;
 		align-items: center;
@@ -1353,83 +1250,6 @@
 		font-family: var(--font-body);
 		font-size: 0.9rem;
 		font-style: italic;
-	}
-
-	.hud-menu {
-		position: relative;
-	}
-
-	.hud-status {
-		display: grid;
-		gap: 0.05rem;
-		min-width: 7.5rem;
-		padding: 0.55rem 0.75rem;
-	}
-
-	.hud-status strong {
-		font-family: var(--font-mono);
-		font-size: 1rem;
-		color: var(--ink-700);
-		white-space: nowrap;
-	}
-
-	.hud-status span {
-		color: var(--brass-700);
-		font-family: var(--font-ui);
-		font-size: 0.7rem;
-		letter-spacing: 0.18em;
-		text-transform: uppercase;
-		white-space: nowrap;
-	}
-
-	.hud-dropdown {
-		position: absolute;
-		top: calc(100% + 0.45rem);
-		right: 0;
-		z-index: 30;
-		min-width: 200px;
-		padding: 0.45rem;
-		animation: none;
-	}
-
-	.hud-dropdown [role='menu'] button {
-		width: 100%;
-		padding: 0.6rem 0.7rem;
-		border: 0;
-		background: transparent;
-		color: var(--ink-700);
-		font-family: var(--font-ui);
-		font-size: 0.88rem;
-		text-align: left;
-		border-radius: 2px;
-	}
-
-	.hud-dropdown [role='menu'] button:hover,
-	.hud-dropdown [role='menu'] button:focus-visible {
-		background: var(--paper-200);
-	}
-
-	.hud-dropdown [role='menu'] button:disabled {
-		cursor: not-allowed;
-		opacity: 0.5;
-	}
-
-	.hud-dropdown [role='menu'] button.active-view {
-		background: var(--paper-300);
-		color: var(--ink-900);
-		font-weight: 700;
-	}
-
-	.primary {
-		background-color: var(--moss) !important;
-		border-color: var(--ink-900) !important;
-		color: var(--paper-50) !important;
-		transform: rotate(-0.6deg);
-	}
-
-	.primary:hover,
-	.primary:focus-visible {
-		background-color: var(--moss-2) !important;
 	}
 
 	.inspector-overlay {
@@ -1506,29 +1326,11 @@
 	}
 
 	@media (max-width: 980px) {
-		.map-hud {
-			align-items: flex-start;
-			inset: 0.75rem 0.75rem auto;
-		}
-
 		.inspector-overlay {
 			position: fixed;
 			inset: auto 0 0;
 			width: auto;
 			max-height: 60dvh;
-		}
-
-		.map-title {
-			max-width: min(18rem, calc(100vw - 7rem));
-			padding: 0.65rem 0.7rem;
-		}
-
-		.map-actions {
-			gap: 0.5rem;
-		}
-
-		.hud-status {
-			display: none;
 		}
 
 		.control-tower-overlay {
@@ -1544,10 +1346,6 @@
 		.tower-actions {
 			align-items: stretch;
 			flex-direction: column;
-		}
-
-		h1 {
-			font-size: 1.5rem;
 		}
 	}
 </style>
