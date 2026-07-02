@@ -228,24 +228,20 @@ async function expectMapToFillViewport(page: Page) {
 }
 
 async function openManagementPanel(page: Page, panelName: string | RegExp): Promise<Locator> {
-	await page.getByRole('button', { name: /open menu/i }).click();
-	await page.getByRole('menuitem', { name: panelName }).click();
+	await page.getByRole('button', { name: panelName }).click();
 	const panel = page.getByRole('dialog', { name: panelName });
 	await expect(panel).toBeVisible();
 	return panel;
 }
 
 async function openSaves(page: Page) {
-	await page.getByRole('button', { name: /open menu/i }).click();
-	await page.getByRole('menuitem', { name: /saves/i }).click();
+	await page.getByRole('button', { name: /^menu$/i }).click();
+	await page.getByRole('button', { name: /saves/i }).click();
 	await expect(page.getByRole('dialog', { name: /saves/i })).toBeVisible();
 }
 
 async function readCompanyCash(page: Page): Promise<number> {
-	const cashText = await page
-		.getByRole('status', { name: /company status/i })
-		.locator('strong')
-		.innerText();
+	const cashText = await page.locator('[aria-label="Cash"]').innerText();
 
 	return Number(cashText.replace(/[^0-9.-]/g, ''));
 }
@@ -309,8 +305,7 @@ async function getStorePanelLayout(page: Page) {
 }
 
 async function openMapMenuItem(page: Page, itemName: RegExp) {
-	await page.getByRole('button', { name: /open menu/i }).click();
-	await page.getByRole('menuitem', { name: itemName }).click();
+	await page.getByRole('button', { name: itemName }).click();
 }
 
 async function buildIndustryBuildingAt(
@@ -543,7 +538,7 @@ test('player can found a store from a narrow viewport', async ({ page }) => {
 
 	await expect(mapCanvas).toHaveAttribute('data-store-marker-mode', 'image');
 	await expect(mapCanvas).toHaveAttribute('data-store-sprite-count', '1');
-	await expect(page.locator('.map-title .status')).toContainText(/\$[0-9,]+ cash/i);
+	await expect(page.locator('[aria-label="Cash"]')).toContainText(/\$[0-9,]+/);
 });
 
 async function expectOverlayToCoverMap(page: Page) {
@@ -577,24 +572,9 @@ test('tile popup can be closed from the map', async ({ page }) => {
 test('management panels open from the map menu and close as overlays', async ({ page }) => {
 	await page.goto('/');
 
-	await page.getByRole('button', { name: /open menu/i }).click();
-	const mapMenu = page.getByRole('menu', { name: /map navigation/i });
-	for (const itemName of [
-		/world map/i,
-		/retail city map/i,
-		/industry city map/i,
-		/saves/i,
-		/dashboard/i,
-		/policies/i,
-		/staff/i,
-		/stores/i,
-		/decisions/i,
-		/reports/i,
-		/product chains/i
-	]) {
-		await expect(mapMenu.getByRole('menuitem', { name: itemName })).toBeEnabled();
-	}
-	await page.keyboard.press('Escape');
+	await expect(page.getByRole('button', { name: /world map/i })).toBeEnabled();
+	await expect(page.getByRole('button', { name: /retail city map/i })).toBeEnabled();
+	await expect(page.getByRole('button', { name: /industry city map/i })).toBeEnabled();
 
 	await buildRetailStoreAt(page, {
 		x: 1,
@@ -612,10 +592,29 @@ test('management panels open from the map menu and close as overlays', async ({ 
 	await expect(page.getByRole('dialog', { name: /reports/i })).toHaveCount(0);
 });
 
+test('keyboard shortcuts open build and switch views', async ({ page }) => {
+	await page.goto('/');
+	// Wait for the scene to boot so the window keydown handler is mounted before
+	// dispatching shortcuts, otherwise the first keypress races hydration.
+	await expectRetailMapReady(page);
+
+	await page.keyboard.press('b');
+	await expect(page.getByRole('dialog', { name: /build menu/i })).toBeVisible();
+
+	await page.keyboard.press('Escape');
+	await expect(page.getByRole('dialog', { name: /build menu/i })).toHaveCount(0);
+
+	await page.keyboard.press('2');
+	await expect(page.getByRole('button', { name: /industry city map/i })).toHaveAttribute(
+		'aria-pressed',
+		'true'
+	);
+});
+
 test('audio controls persist as local app preferences', async ({ page }) => {
 	await page.goto('/');
 
-	await page.getByRole('button', { name: /open menu/i }).click();
+	await page.getByRole('button', { name: /^menu$/i }).click();
 	const audioSettings = page.getByRole('group', { name: /audio settings/i });
 	await expect(audioSettings).toBeVisible();
 
@@ -625,7 +624,7 @@ test('audio controls persist as local app preferences', async ({ page }) => {
 	await sfxToggle.uncheck();
 
 	await page.reload();
-	await page.getByRole('button', { name: /open menu/i }).click();
+	await page.getByRole('button', { name: /^menu$/i }).click();
 	const audioSettingsAfterReload = page.getByRole('group', { name: /audio settings/i });
 
 	await expect(audioSettingsAfterReload.getByRole('checkbox', { name: 'BGM' })).not.toBeChecked();
@@ -647,8 +646,7 @@ test('player can switch to the industry city map and back to retail', async ({ p
 		expectedStoreCount: 1
 	});
 
-	await page.getByRole('button', { name: /open menu/i }).click();
-	await page.getByRole('menuitem', { name: /industry city map/i }).click();
+	await openMapMenuItem(page, /industry city map/i);
 	await expect(page.getByRole('heading', { name: /industry city/i })).toBeVisible();
 	const industryCanvas = await expectIndustryMapReady(page);
 	await expect(page.locator('.map-canvas canvas')).toHaveCount(2);
@@ -726,8 +724,7 @@ test('player can switch to the industry city map and back to retail', async ({ p
 	await expectIndustryMapReady(page);
 	await expect(industryCanvas).toHaveAttribute('data-industry-building-count', '1');
 
-	await page.getByRole('button', { name: /open menu/i }).click();
-	await page.getByRole('menuitem', { name: /retail city map/i }).click();
+	await openMapMenuItem(page, /retail city map/i);
 	await expect(page.getByRole('heading', { name: /harbor city/i })).toBeVisible();
 	await expectRetailMapReady(page);
 	await expect(page.locator('.map-canvas canvas')).toHaveCount(2);
@@ -762,7 +759,10 @@ test('industry build menu shows construction status before founding a store', as
 });
 
 test('player builds convenience production and refills from warehouse', async ({ page }) => {
-	await page.setViewportSize({ width: 900, height: 900 });
+	// Width must exceed the control desk's 980px breakpoint so the management
+	// launchers (Reports, Stores, Product Chains) stay on the desk. Height keeps
+	// the industry map tall enough for the build tiles used below.
+	await page.setViewportSize({ width: 1200, height: 1000 });
 	await page.goto('/');
 
 	await buildRetailStoreAt(page, {
@@ -1253,7 +1253,10 @@ test('player upgrades a store from the tile inspector', async ({ page }) => {
 });
 
 test('player upgrades an industrial building from the tile inspector', async ({ page }) => {
-	await page.setViewportSize({ width: 900, height: 900 });
+	// A larger viewport zooms the industry map in so the top-left grain-field
+	// tile renders clear of the fixed top bar's location plaque (which otherwise
+	// intercepts the placement click).
+	await page.setViewportSize({ width: 1200, height: 1000 });
 	await page.goto('/');
 
 	await buildRetailStoreAt(page, {
