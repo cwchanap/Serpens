@@ -257,3 +257,22 @@
 		transform: none;
 	}
 }
+
+/* --- Keycaps ------------------------------------------------------------ */
+
+.keycap {
+	display: inline-grid;
+	place-items: center;
+	min-width: 1.25rem;
+	height: 1.25rem;
+	margin-left: 0.4rem;
+	padding: 0 0.3rem;
+	border: 1px solid var(--brass-500);
+	border-bottom-width: 2px;
+	border-radius: 3px;
+	background: var(--paper-50);
+	color: var(--ink-700);
+	font-family: var(--font-mono);
+	font-size: 0.68rem;
+	line-height: 1;
+}
