@@ -94,8 +94,11 @@
 
 	.location,
 	.readouts {
-		pointer-events: auto;
 		padding: 0.5rem 0.85rem;
+	}
+
+	.location {
+		pointer-events: none;
 	}
 
 	.location h1 {
@@ -112,6 +115,7 @@
 	}
 
 	.readouts {
+		pointer-events: auto;
 		display: flex;
 		align-items: center;
 		gap: 0.85rem;

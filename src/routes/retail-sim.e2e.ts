@@ -1253,9 +1253,11 @@ test('player upgrades a store from the tile inspector', async ({ page }) => {
 });
 
 test('player upgrades an industrial building from the tile inspector', async ({ page }) => {
-	// A larger viewport zooms the industry map in so the top-left grain-field
-	// tile renders clear of the fixed top bar's location plaque (which otherwise
-	// intercepts the placement click).
+	// Height must be tall enough that the fixed control-desk footer does not
+	// overlap the tile inspector's Upgrade button; at a short viewport the
+	// desk's volume sliders intercept the click. (The top-bar location plaque
+	// no longer blocks the top-left grain-field placement — it is now
+	// pointer-events: none.)
 	await page.setViewportSize({ width: 1200, height: 1000 });
 	await page.goto('/');
 
