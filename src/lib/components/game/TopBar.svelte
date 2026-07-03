@@ -48,7 +48,7 @@
 			<button
 				type="button"
 				class="btn-icon alerts-bell"
-				aria-label="Alerts"
+				aria-label={alerts.length > 0 ? `Alerts, ${alerts.length}` : 'Alerts'}
 				aria-expanded={alertsOpen}
 				onclick={toggleAlerts}
 			>

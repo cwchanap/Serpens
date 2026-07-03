@@ -920,6 +920,10 @@
 		}
 
 		if (event.key === 'Escape') {
+			if (isSavePanelOpen) {
+				isSavePanelOpen = false;
+				return;
+			}
 			if (isCheatSheetOpen) {
 				isCheatSheetOpen = false;
 				return;
@@ -938,10 +942,6 @@
 			}
 			if (isPlacementModeActive) {
 				cancelPlacement();
-				return;
-			}
-			if (isSavePanelOpen) {
-				isSavePanelOpen = false;
 				return;
 			}
 			if (activeManagementPanelId !== null) {
