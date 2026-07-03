@@ -14,7 +14,12 @@
 	} from '$lib/game/industry';
 	import { getBuildingTypeProducing } from '$lib/game/supplyAdvisor';
 	import type { RetailBuildMenuOption } from '$lib/game/placementPreview';
-	import type { ArchetypeId, IndustrialBuildingTypeId, MaterialId } from '$lib/game/types';
+	import type {
+		ArchetypeId,
+		IndustrialBuildingTypeId,
+		IndustryResourceId,
+		MaterialId
+	} from '$lib/game/types';
 	import type { Attachment } from 'svelte/attachments';
 
 	interface ProductChainFilter {
@@ -141,6 +146,13 @@
 
 	function neededProducerName(materialId: MaterialId): string {
 		return getBuildingTypeProducing(materialId)?.name ?? materialName(materialId);
+	}
+
+	function resourceLabel(resource: IndustryResourceId): string {
+		return resource
+			.split('-')
+			.map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+			.join(' ');
 	}
 
 	function getProductChainFilters(): ProductChainFilter[] {
@@ -432,10 +444,11 @@
 								{#each recipe.inputs.filter((input) => !isAvailable(input.materialId)) as missing (missing.materialId)}
 									<small class="need">Needs {neededProducerName(missing.materialId)}</small>
 								{/each}
-							{:else if type.requiredResource}
-								<small class="need"
-									>Needs a {materialName(type.requiredResource as MaterialId)} resource tile</small
-								>
+							{/if}
+							{#if type.requiredResource}
+								<small class="need">
+									Needs a {resourceLabel(type.requiredResource)} resource tile
+								</small>
 							{/if}
 						</span>
 					</button>

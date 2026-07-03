@@ -490,4 +490,44 @@ describe('BuildMenu industry recipe cards', () => {
 		await page.getByRole('button', { name: /supply advisor|what should i build/i }).click();
 		expect(onOpenAdvisor).toHaveBeenCalledTimes(1);
 	});
+
+	it('shows the producer hint for a missing recipe ingredient', async () => {
+		expect.assertions(1);
+
+		render(BuildMenu, {
+			activeMapView: 'industry',
+			retailOptions: [],
+			industryLockedReason: null,
+			availableMaterialIds: [],
+			onChooseRetail: vi.fn(),
+			onChooseIndustry: vi.fn(),
+			onClose: vi.fn()
+		});
+
+		// Water Bottler's recipe consumes water, which no producer supplies when
+		// availableMaterialIds is empty, so its missing-input chip should surface
+		// the building that produces water (the Water Pump).
+		await expect.element(page.getByText(/needs water pump/i).first()).toBeVisible();
+	});
+
+	it('surfaces the resource-tile requirement for a Starter extraction building', async () => {
+		expect.assertions(1);
+
+		render(BuildMenu, {
+			activeMapView: 'industry',
+			retailOptions: [],
+			industryLockedReason: null,
+			availableMaterialIds: [],
+			onChooseRetail: vi.fn(),
+			onChooseIndustry: vi.fn(),
+			onClose: vi.fn()
+		});
+
+		// The Water Pump has requiredResource: 'water-source' and a recipe with no
+		// inputs, so the resource-tile hint must render independently of the
+		// (never-missing) recipe branch.
+		await expect
+			.element(page.getByText(/needs a water source resource tile/i).first())
+			.toBeVisible();
+	});
 });
