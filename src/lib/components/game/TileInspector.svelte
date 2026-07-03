@@ -1,9 +1,6 @@
 <script lang="ts">
 	import { asset } from '$app/paths';
 	import { getStoreArt } from '$lib/assets/gameArt';
-	import StoreProductChainPanel from '$lib/components/game/StoreProductChainPanel.svelte';
-	import StoreStaffPanel from '$lib/components/game/StoreStaffPanel.svelte';
-	import StoreStockTable from '$lib/components/game/StoreStockTable.svelte';
 	import {
 		MAX_STORE_LEVEL,
 		STORE_MILESTONE_CAPACITY_BONUS,
@@ -12,15 +9,8 @@
 		getUnlockedCategoryCount,
 		isMilestoneLevel
 	} from '$lib/game/leveling';
-	import type {
-		CityTile,
-		DailyStoreReport,
-		GameState,
-		HiringCandidate,
-		StaffMember,
-		Store,
-		StoreProductPatch
-	} from '$lib/game/types';
+	import { getStoreProductStatus } from '$lib/game/stock';
+	import type { CityTile, DailyStoreReport, GameState, Store } from '$lib/game/types';
 	import type { Attachment } from 'svelte/attachments';
 	import { on } from 'svelte/events';
 
@@ -28,35 +18,23 @@
 		game: GameState;
 		tile: CityTile | null;
 		store: Store | null;
-		staff: StaffMember[];
-		hiringCandidates: HiringCandidate[];
 		latestStoreReport: DailyStoreReport | null;
-		onUpdateStoreProduct: (storeId: string, categoryId: string, patch: StoreProductPatch) => void;
-		onHireStaff: (candidateId: string) => void;
-		onAssignStaff: (staffId: string, storeId: string) => void;
-		onUnassignStaff: (staffId: string) => void;
+		onUpgradeStore?: (storeId: string) => void;
+		onOpenDetails: () => void;
 		onClose: () => void;
 		onClickFeedback?: () => void;
-		onUpgradeStore?: (storeId: string) => void;
 	}
 
 	let {
 		game,
 		tile,
 		store,
-		staff,
-		hiringCandidates,
 		latestStoreReport,
-		onUpdateStoreProduct,
-		onHireStaff,
-		onAssignStaff,
-		onUnassignStaff,
+		onUpgradeStore = () => {},
+		onOpenDetails,
 		onClose,
-		onClickFeedback = () => {},
-		onUpgradeStore = () => {}
+		onClickFeedback = () => {}
 	}: Props = $props();
-
-	type StoreInspectorTab = 'details' | 'stock' | 'chain' | 'staff';
 
 	const currency = new Intl.NumberFormat('en-US', {
 		style: 'currency',
@@ -67,7 +45,6 @@
 	const storeArt = $derived(store ? getStoreArt(store.archetypeId) : null);
 	const storeArtSrc = $derived(storeArt ? asset(storeArt.path) : '');
 	const tileLabel = $derived(tile?.feature ? label(tile.feature) : tile ? label(tile.terrain) : '');
-	let activeStoreTab = $state<StoreInspectorTab>('details');
 
 	const upgradeCost = $derived(store ? getStoreUpgradeCost(store.level) : 0);
 	const canAffordUpgrade = $derived(store ? game.cash >= upgradeCost : false);
@@ -79,6 +56,19 @@
 			: '+10% revenue';
 	});
 
+	const troubledProducts = $derived(
+		store ? store.products.filter((product) => getStoreProductStatus(product) !== 'Healthy') : []
+	);
+	const attentionMessage = $derived.by(() => {
+		if (troubledProducts.length === 0) return null;
+		const outOfStock = troubledProducts.some(
+			(product) => getStoreProductStatus(product) === 'Out of stock'
+		);
+		const noun = troubledProducts.length === 1 ? 'product' : 'products';
+		return `${troubledProducts.length} ${noun} ${outOfStock ? 'out of stock' : 'need import'}`;
+	});
+	const dailyRevenue = $derived(latestStoreReport?.revenue ?? null);
+
 	function label(value: string): string {
 		return value.replace(/([A-Z])/g, ' $1').replace(/^./, (character) => character.toUpperCase());
 	}
@@ -86,11 +76,6 @@
 	function closeInspector(): void {
 		onClickFeedback();
 		onClose();
-	}
-
-	function selectStoreTab(tab: StoreInspectorTab): void {
-		onClickFeedback();
-		activeStoreTab = tab;
 	}
 
 	function stopMapInteraction(event: Event): void {
@@ -112,12 +97,7 @@
 	};
 </script>
 
-<aside
-	class="inspector"
-	class:store-inspector={store !== null}
-	aria-label="Tile inspector"
-	{@attach blockMapInteraction}
->
+<aside class="inspector" aria-label="Tile inspector" {@attach blockMapInteraction}>
 	<button type="button" class="close" aria-label="Close tile inspector" onclick={closeInspector}
 		>×</button
 	>
@@ -133,167 +113,58 @@
 		</div>
 
 		{#if store}
-			<div class="store-tabs" role="tablist" aria-label={`${store.name} sections`}>
-				<button
-					type="button"
-					class="store-tab"
-					class:active={activeStoreTab === 'details'}
-					role="tab"
-					id={`${store.id}-details-tab`}
-					aria-selected={activeStoreTab === 'details'}
-					aria-controls={`${store.id}-details-panel`}
-					tabindex={activeStoreTab === 'details' ? 0 : -1}
-					onclick={() => selectStoreTab('details')}
-				>
-					{#if activeStoreTab === 'details'}<span class="bookmark tab-bookmark" aria-hidden="true"
-						></span>{/if}
-					Details
-				</button>
-				<button
-					type="button"
-					class="store-tab"
-					class:active={activeStoreTab === 'stock'}
-					role="tab"
-					id={`${store.id}-stock-tab`}
-					aria-selected={activeStoreTab === 'stock'}
-					aria-controls={`${store.id}-stock-panel`}
-					tabindex={activeStoreTab === 'stock' ? 0 : -1}
-					onclick={() => selectStoreTab('stock')}
-				>
-					{#if activeStoreTab === 'stock'}<span class="bookmark tab-bookmark" aria-hidden="true"
-						></span>{/if}
-					Stock
-				</button>
-				<button
-					type="button"
-					class="store-tab"
-					class:active={activeStoreTab === 'chain'}
-					role="tab"
-					id={`${store.id}-chain-tab`}
-					aria-selected={activeStoreTab === 'chain'}
-					aria-controls={`${store.id}-chain-panel`}
-					tabindex={activeStoreTab === 'chain' ? 0 : -1}
-					onclick={() => selectStoreTab('chain')}
-				>
-					{#if activeStoreTab === 'chain'}<span class="bookmark tab-bookmark" aria-hidden="true"
-						></span>{/if}
-					Product Chain
-				</button>
-				<button
-					type="button"
-					class="store-tab"
-					class:active={activeStoreTab === 'staff'}
-					role="tab"
-					id={`${store.id}-staff-tab`}
-					aria-selected={activeStoreTab === 'staff'}
-					aria-controls={`${store.id}-staff-panel`}
-					tabindex={activeStoreTab === 'staff' ? 0 : -1}
-					onclick={() => selectStoreTab('staff')}
-				>
-					{#if activeStoreTab === 'staff'}<span class="bookmark tab-bookmark" aria-hidden="true"
-						></span>{/if}
-					Staff
-				</button>
-			</div>
-
-			<div class="store-tab-panels">
-				<div
-					class="store-panel store-details"
-					class:active={activeStoreTab === 'details'}
-					id={`${store.id}-details-panel`}
-					role="tabpanel"
-					aria-labelledby={`${store.id}-details-tab`}
-					aria-hidden={activeStoreTab !== 'details'}
-					inert={activeStoreTab !== 'details'}
-				>
-					{#if storeArt}
-						<div class="store-art">
-							<img
-								src={storeArtSrc}
-								alt={storeArt.alt}
-								width="1024"
-								height="1024"
-								loading="lazy"
-								decoding="async"
-							/>
-						</div>
-					{/if}
-					<h3>{store.name}</h3>
-					<p class="location">{store.location}</p>
-					<dl>
-						<div>
-							<dt>Stock health</dt>
-							<dd>{store.stockHealth}</dd>
-						</div>
-						<div>
-							<dt>Staff morale</dt>
-							<dd>{store.staffMorale}</dd>
-						</div>
-						<div>
-							<dt>Stock rows</dt>
-							<dd>{store.products.length}</dd>
-						</div>
-					</dl>
-					<div class="store-level">
-						<p class="level-label">Level {store.level} / {MAX_STORE_LEVEL}</p>
-						<p class="level-next">Next: {nextBenefit}</p>
-						<button
-							type="button"
-							class="upgrade"
-							disabled={!storeCanUpgrade || !canAffordUpgrade}
-							onclick={() => onUpgradeStore(store.id)}
-						>
-							{storeCanUpgrade ? `Upgrade — ${currency.format(upgradeCost)}` : 'Max level'}
-						</button>
-						{#if storeCanUpgrade && !canAffordUpgrade}
-							<p class="level-hint">Not enough cash.</p>
-						{/if}
+			<div class="basic-card">
+				{#if storeArt}
+					<div class="store-art">
+						<img
+							src={storeArtSrc}
+							alt={storeArt.alt}
+							width="1024"
+							height="1024"
+							loading="lazy"
+							decoding="async"
+						/>
 					</div>
+				{/if}
+				<h3>{store.name}</h3>
+				<p class="location">{store.location}</p>
+
+				<dl class="gauges" aria-label="Store vitals">
+					<div class="gauge">
+						<dt>Revenue/day</dt>
+						<dd>{dailyRevenue === null ? '—' : currency.format(dailyRevenue)}</dd>
+					</div>
+					<div class="gauge">
+						<dt>Stock health</dt>
+						<dd>{store.stockHealth}</dd>
+					</div>
+					<div class="gauge">
+						<dt>Staff morale</dt>
+						<dd>{store.staffMorale}</dd>
+					</div>
+				</dl>
+
+				{#if attentionMessage}
+					<p class="attention"><span class="seal" data-urgent="true">!</span> {attentionMessage}</p>
+				{/if}
+
+				<div class="store-level">
+					<p class="level-label">Level {store.level} / {MAX_STORE_LEVEL}</p>
+					<p class="level-next">Next: {nextBenefit}</p>
+					<button
+						type="button"
+						class="upgrade"
+						disabled={!storeCanUpgrade || !canAffordUpgrade}
+						onclick={() => onUpgradeStore(store.id)}
+					>
+						{storeCanUpgrade ? `Upgrade — ${currency.format(upgradeCost)}` : 'Max level'}
+					</button>
+					{#if storeCanUpgrade && !canAffordUpgrade}
+						<p class="level-hint">Not enough cash.</p>
+					{/if}
 				</div>
-				<div
-					class="store-panel store-stock-panel"
-					class:active={activeStoreTab === 'stock'}
-					id={`${store.id}-stock-panel`}
-					role="tabpanel"
-					aria-labelledby={`${store.id}-stock-tab`}
-					aria-hidden={activeStoreTab !== 'stock'}
-					inert={activeStoreTab !== 'stock'}
-				>
-					<StoreStockTable
-						{store}
-						latestReport={latestStoreReport}
-						onUpdate={onUpdateStoreProduct}
-					/>
-				</div>
-				<div
-					class="store-panel store-chain-panel"
-					class:active={activeStoreTab === 'chain'}
-					id={`${store.id}-chain-panel`}
-					role="tabpanel"
-					aria-labelledby={`${store.id}-chain-tab`}
-					aria-hidden={activeStoreTab !== 'chain'}
-					inert={activeStoreTab !== 'chain'}
-				>
-					<StoreProductChainPanel {game} {store} onInteractionFeedback={onClickFeedback} />
-				</div>
-				<div
-					class="store-panel store-staff-panel"
-					class:active={activeStoreTab === 'staff'}
-					id={`${store.id}-staff-panel`}
-					role="tabpanel"
-					aria-labelledby={`${store.id}-staff-tab`}
-					aria-hidden={activeStoreTab !== 'staff'}
-					inert={activeStoreTab !== 'staff'}
-				>
-					<StoreStaffPanel
-						{store}
-						{staff}
-						{hiringCandidates}
-						onHire={onHireStaff}
-						onAssign={onAssignStaff}
-						onUnassign={onUnassignStaff}
-					/>
-				</div>
+
+				<button type="button" class="open-details" onclick={onOpenDetails}>Open Details ▸</button>
 			</div>
 		{:else}
 			<section aria-label="Tile stats">
@@ -339,12 +210,6 @@
 			inset 0 0 0 2px var(--paper-100),
 			inset 0 0 0 3px var(--brass-500),
 			var(--shadow-paper);
-	}
-
-	.inspector.store-inspector {
-		grid-template-rows: auto auto minmax(0, 1fr);
-		height: min(37rem, calc(100dvh - 6.9rem));
-		overflow: hidden;
 	}
 
 	.close {
@@ -448,54 +313,49 @@
 		overflow-wrap: anywhere;
 	}
 
-	.store-tabs {
-		display: flex;
-		gap: 0.4rem;
-		border-bottom: 1px solid var(--brass-500);
-	}
-
-	.store-tab {
-		position: relative;
-		flex: 1 1 auto;
-		padding: 0.55rem 0.75rem 0.7rem;
-		border: 1px solid var(--paper-edge);
-		border-bottom: 0;
-		border-radius: 2px 2px 0 0;
-		background: var(--paper-50);
-		color: var(--ink-500);
-		font-family: var(--font-ui);
-		font-size: 0.85rem;
-		font-weight: 600;
-	}
-
-	.store-tab.active {
-		color: var(--ink-900);
-		background: var(--paper-200);
-		border-color: var(--brass-500);
-	}
-
-	.tab-bookmark {
-		left: 50%;
-		top: -2px;
-		transform: translateX(-50%);
-		width: 0.6rem;
-		height: 1.2rem;
-	}
-
-	.store-tab-panels {
-		position: relative;
-		flex: 1 1 auto;
-		min-height: 0;
-		overflow: auto;
-	}
-
-	.store-panel {
-		display: none;
-	}
-
-	.store-panel.active {
+	.basic-card {
 		display: grid;
 		gap: 0.85rem;
+	}
+
+	.gauges {
+		grid-template-columns: repeat(3, 1fr);
+		gap: 0.5rem;
+	}
+
+	.gauge {
+		border: 1px solid var(--paper-edge);
+		border-radius: 2px;
+		background: var(--paper-50);
+		padding: 0.45rem 0.5rem;
+		text-align: center;
+	}
+
+	.gauge dt {
+		color: var(--brass-700);
+		font-family: var(--font-ui);
+		font-size: 0.62rem;
+		font-weight: 700;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+	}
+
+	.gauge dd {
+		margin: 0.25rem 0 0;
+		font-family: var(--font-mono);
+		font-variant-numeric: tabular-nums lining-nums;
+		font-weight: 700;
+		color: var(--ink-700);
+	}
+
+	.attention {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		margin: 0;
+		color: var(--wax-red);
+		font-family: var(--font-body);
+		font-size: 0.85rem;
 	}
 
 	.store-art {
@@ -560,5 +420,21 @@
 	.upgrade:disabled {
 		opacity: 0.45;
 		cursor: not-allowed;
+	}
+
+	.open-details {
+		width: 100%;
+		border: 1px solid var(--brass-500);
+		border-radius: 2px;
+		background: var(--paper-100);
+		color: var(--ink-700);
+		font-family: var(--font-ui);
+		font-weight: 700;
+		padding: 0.55rem 0.75rem;
+	}
+
+	.open-details:hover,
+	.open-details:focus-visible {
+		background: var(--paper-200);
 	}
 </style>

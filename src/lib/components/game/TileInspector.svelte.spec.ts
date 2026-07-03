@@ -5,15 +5,7 @@ import TileInspector from './TileInspector.svelte';
 import { getStoreArt } from '$lib/assets/gameArt';
 import { createNewGame } from '$lib/game/state';
 import { initializeStoreProducts } from '$lib/game/stock';
-import type {
-	CityTile,
-	DailyStoreReport,
-	GameState,
-	HiringCandidate,
-	StaffMember,
-	Store,
-	StoreProductPatch
-} from '$lib/game/types';
+import type { CityTile, DailyStoreReport, GameState, Store } from '$lib/game/types';
 
 const tile: CityTile = {
 	id: 'harbor-city-1-1',
@@ -97,15 +89,10 @@ function renderInspector(
 		game: GameState;
 		tile: CityTile | null;
 		store: Store | null;
-		staff: StaffMember[];
-		hiringCandidates: HiringCandidate[];
 		latestStoreReport: DailyStoreReport | null;
-		onUpdateStoreProduct: (storeId: string, categoryId: string, patch: StoreProductPatch) => void;
-		onHireStaff: (candidateId: string) => void;
-		onAssignStaff: (staffId: string, storeId: string) => void;
-		onUnassignStaff: (staffId: string) => void;
 		onClose: () => void;
 		onUpgradeStore: (storeId: string) => void;
+		onOpenDetails: () => void;
 		onClickFeedback: () => void;
 	}> = {}
 ) {
@@ -113,14 +100,9 @@ function renderInspector(
 		game: defaultGame,
 		tile,
 		store: null,
-		staff: [],
-		hiringCandidates: [],
 		latestStoreReport: null,
-		onUpdateStoreProduct: vi.fn(),
-		onHireStaff: vi.fn(),
-		onAssignStaff: vi.fn(),
-		onUnassignStaff: vi.fn(),
 		onClose: vi.fn(),
+		onOpenDetails: vi.fn(),
 		...overrides
 	};
 
@@ -157,143 +139,42 @@ describe('TileInspector storefront art', () => {
 	});
 });
 
-describe('TileInspector stock management', () => {
-	it('fires neutral click feedback for store detail tabs and close button', async () => {
-		expect.assertions(4);
-		const onClickFeedback = vi.fn();
-		const onClose = vi.fn();
+describe('TileInspector basic card', () => {
+	it('shows store identity, an out-of-stock attention flag, and opens details', async () => {
+		expect.assertions(3);
+		const onOpenDetails = vi.fn();
+		const outOfStockStore: Store = {
+			...store,
+			id: 'store-basic',
+			products: [
+				{ categoryId: 'snacks', stock: 0, reorderThreshold: 10, targetStock: 50, sellingPrice: 5 }
+			]
+		};
 
-		renderInspector({ store, onClickFeedback, onClose });
+		renderInspector({ store: outOfStockStore, latestStoreReport, onOpenDetails });
 
-		const stockTab = page.getByRole('tab', { name: 'Stock' });
-		await stockTab.click();
-
-		expect(onClickFeedback).toHaveBeenCalledOnce();
-
-		await stockTab.click();
-
-		expect(onClickFeedback).toHaveBeenCalledTimes(2);
-
-		await page.getByRole('button', { name: 'Close tile inspector' }).click();
-
-		expect(onClose).toHaveBeenCalledOnce();
-		expect(onClickFeedback).toHaveBeenCalledTimes(3);
+		await expect.element(page.getByRole('heading', { name: 'Founding Store' })).toBeVisible();
+		await expect.element(page.getByText(/out of stock/i)).toBeVisible();
+		await page.getByRole('button', { name: /open details/i }).click();
+		expect(onOpenDetails).toHaveBeenCalledTimes(1);
 	});
 
-	it('shows stock row count in details and renders stock and product chain on separate tabs', async () => {
-		expect.assertions(12);
+	it('shows the vital gauges (revenue, stock health, staff morale)', async () => {
+		expect.assertions(3);
 
 		renderInspector({ store, latestStoreReport });
 
-		await expect.element(page.getByText('Stock rows')).toBeVisible();
-		await expect.element(page.getByText('Local demand')).not.toBeInTheDocument();
-
-		const detailsTab = page.getByRole('tab', { name: 'Details' });
-		const stockTab = page.getByRole('tab', { name: 'Stock' });
-		const chainTab = page.getByRole('tab', { name: 'Product Chain' });
-		const staffTab = page.getByRole('tab', { name: 'Staff' });
-		await expect.element(detailsTab).toHaveAttribute('aria-selected', 'true');
-		await expect.element(stockTab).toHaveAttribute('aria-selected', 'false');
-		await expect.element(chainTab).toHaveAttribute('aria-selected', 'false');
-		await expect.element(staffTab).toHaveAttribute('aria-selected', 'false');
-		await expect
-			.element(page.getByRole('heading', { name: 'Founding Store stock' }))
-			.not.toBeInTheDocument();
-
-		await stockTab.click();
-
-		await expect.element(stockTab).toHaveAttribute('aria-selected', 'true');
-		await expect.element(page.getByRole('cell', { name: 'Bottled Water' })).toBeVisible();
-		await expect.element(page.getByRole('heading', { name: 'Founding Store stock' })).toBeVisible();
-
-		await chainTab.click();
-
-		await expect.element(chainTab).toHaveAttribute('aria-selected', 'true');
-		await expect.element(page.getByLabelText('Product category')).toBeVisible();
+		await expect.element(page.getByText('Revenue/day')).toBeVisible();
+		await expect.element(page.getByText('Stock health')).toBeVisible();
+		await expect.element(page.getByText('Staff morale')).toBeVisible();
 	});
-});
 
-describe('TileInspector staff management', () => {
-	it('renders store staff on a dedicated tab and dispatches staffing actions', async () => {
-		expect.assertions(8);
-		const onHireStaff = vi.fn();
-		const onAssignStaff = vi.fn();
-		const onUnassignStaff = vi.fn();
-		const staff: StaffMember[] = [
-			{
-				id: 'staff-alex',
-				name: 'Alex Chen',
-				role: 'manager',
-				monthlySalary: 4_800,
-				skill: 72,
-				morale: 68,
-				assignedStoreId: store.id,
-				hiredOnDay: 0,
-				level: 1,
-				xp: 0
-			},
-			{
-				id: 'staff-blair',
-				name: 'Blair Kim',
-				role: 'general',
-				monthlySalary: 3_000,
-				skill: 61,
-				morale: 74,
-				assignedStoreId: null,
-				hiredOnDay: 2,
-				level: 1,
-				xp: 0
-			}
-		];
-		const hiringCandidates: HiringCandidate[] = [
-			{
-				id: 'candidate-casey',
-				name: 'Casey Rivera',
-				role: 'general',
-				monthlySalary: 2_900,
-				skill: 64,
-				morale: 70
-			}
-		];
+	it('does not render the stock/chain/staff tabs on the basic card', async () => {
+		expect.assertions(1);
 
-		renderInspector({
-			store,
-			staff,
-			hiringCandidates,
-			onHireStaff,
-			onAssignStaff,
-			onUnassignStaff
-		});
+		renderInspector({ store, latestStoreReport });
 
-		const staffTab = page.getByRole('tab', { name: 'Staff' });
-		await expect.element(staffTab).toHaveAttribute('aria-selected', 'false');
-
-		await staffTab.click();
-
-		await expect.element(staffTab).toHaveAttribute('aria-selected', 'true');
-		await expect.element(page.getByRole('heading', { name: 'Founding Store staff' })).toBeVisible();
-		await expect.element(page.getByText('1/1 managers, 0/1 general')).toBeVisible();
-
-		await page
-			.getByRole('button', {
-				name: 'Assign Blair Kim, General staff staff-blair to Founding Store'
-			})
-			.click();
-		await page
-			.getByRole('button', {
-				name: 'Hire Casey Rivera, General candidate candidate-casey'
-			})
-			.click();
-		await page
-			.getByRole('button', {
-				name: 'Unassign Alex Chen, Manager staff staff-alex from Founding Store'
-			})
-			.click();
-
-		expect(onAssignStaff).toHaveBeenCalledWith('staff-blair', store.id);
-		expect(onHireStaff).toHaveBeenCalledWith('candidate-casey');
-		expect(onUnassignStaff).toHaveBeenCalledWith('staff-alex');
-		expect(onAssignStaff).toHaveBeenCalledOnce();
+		await expect.element(page.getByRole('tab', { name: 'Stock' })).not.toBeInTheDocument();
 	});
 });
 
@@ -316,7 +197,6 @@ describe('TileInspector store upgrade', () => {
 			onUpgradeStore
 		});
 
-		// Details tab is active by default — level text should be visible
 		const heading = page.getByText(/Level 2 \/ 10/i);
 		await expect.element(heading).toBeInTheDocument();
 
