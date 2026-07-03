@@ -1326,3 +1326,26 @@ test('camera zoom and scroll persist across map view switches', async ({ page })
 	await expect(restoredCanvas).toHaveAttribute('data-map-scroll-x', scrolledScrollX!);
 	await expect(restoredCanvas).toHaveAttribute('data-map-scroll-y', scrolledScrollY!);
 });
+
+test('supply advisor recommends and arms a starter build', async ({ page }) => {
+	await page.goto('/');
+
+	await openMapMenuItem(page, /industry city map/i);
+	await expect(page.getByRole('heading', { name: /industry city/i })).toBeVisible();
+	await expectIndustryMapReady(page);
+
+	await page.getByRole('button', { name: /^build$/i }).click();
+	const buildMenu = page.getByRole('dialog', { name: /build menu/i });
+	await expect(buildMenu).toBeVisible();
+
+	await buildMenu.getByRole('button', { name: /supply advisor|what should i build/i }).click();
+	const advisor = page.getByRole('dialog', { name: /supply advisor/i });
+	await expect(advisor).toBeVisible();
+
+	await advisor
+		.getByRole('button', { name: /^build /i })
+		.first()
+		.click();
+	await expect(advisor).toHaveCount(0);
+	await expect(page.getByText(/choose a highlighted tile to build/i)).toBeVisible();
+});
