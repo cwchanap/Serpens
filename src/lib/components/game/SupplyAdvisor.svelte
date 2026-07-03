@@ -32,7 +32,7 @@
 		</header>
 
 		{#if chains.length === 0}
-			<p class="muted">Nothing to plan — found a retail store to create demand.</p>
+			<p class="muted">Nothing to plan — build a retail store to create demand.</p>
 		{:else}
 			<div class="chains">
 				{#each chains as chain (chain.finishedMaterialId)}
