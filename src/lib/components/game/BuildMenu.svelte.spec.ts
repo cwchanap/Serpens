@@ -471,3 +471,23 @@ describe('BuildMenu', () => {
 		await expect.element(page.getByRole('button', { name: /build warehouse/i })).toBeDisabled();
 	});
 });
+
+describe('BuildMenu industry recipe cards', () => {
+	it('shows a Starter badge and opens the advisor', async () => {
+		expect.assertions(2);
+		const onOpenAdvisor = vi.fn();
+		render(BuildMenu, {
+			activeMapView: 'industry',
+			retailOptions: [],
+			industryLockedReason: null,
+			availableMaterialIds: [],
+			onChooseRetail: vi.fn(),
+			onChooseIndustry: vi.fn(),
+			onOpenAdvisor,
+			onClose: vi.fn()
+		});
+		await expect.element(page.getByText(/starter/i).first()).toBeVisible();
+		await page.getByRole('button', { name: /supply advisor|what should i build/i }).click();
+		expect(onOpenAdvisor).toHaveBeenCalledTimes(1);
+	});
+});

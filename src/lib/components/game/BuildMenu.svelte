@@ -1,13 +1,20 @@
 <script lang="ts">
 	import { asset } from '$app/paths';
-	import { getIndustrialBuildingArt, getStoreArt } from '$lib/assets/gameArt';
+	import {
+		getIndustrialBuildingArt,
+		getIndustryMaterialArt,
+		getStoreArt
+	} from '$lib/assets/gameArt';
 	import { ARCHETYPES, getArchetype } from '$lib/game/archetypes';
 	import {
 		INDUSTRIAL_BUILDING_TYPES,
+		MATERIALS,
+		PRODUCTION_RECIPES,
 		getIndustrialBuildingTypesForProductChain
 	} from '$lib/game/industry';
+	import { getBuildingTypeProducing } from '$lib/game/supplyAdvisor';
 	import type { RetailBuildMenuOption } from '$lib/game/placementPreview';
-	import type { ArchetypeId, IndustrialBuildingTypeId } from '$lib/game/types';
+	import type { ArchetypeId, IndustrialBuildingTypeId, MaterialId } from '$lib/game/types';
 	import type { Attachment } from 'svelte/attachments';
 
 	interface ProductChainFilter {
@@ -20,8 +27,10 @@
 		activeMapView: 'retail' | 'industry';
 		retailOptions: RetailBuildMenuOption[];
 		industryLockedReason: string | null;
+		availableMaterialIds?: string[];
 		onChooseRetail: (archetypeId: ArchetypeId) => void;
 		onChooseIndustry: (buildingTypeId: IndustrialBuildingTypeId) => void;
+		onOpenAdvisor?: () => void;
 		onClose: () => void;
 	}
 
@@ -29,8 +38,10 @@
 		activeMapView,
 		retailOptions,
 		industryLockedReason,
+		availableMaterialIds = [],
 		onChooseRetail,
 		onChooseIndustry,
+		onOpenAdvisor = () => {},
 		onClose
 	}: Props = $props();
 
@@ -84,6 +95,7 @@
 				first.name.localeCompare(second.name)
 		);
 	});
+	const availableSet = $derived(new Set(availableMaterialIds));
 
 	const focusDialogOnMount: Attachment<HTMLElement> = (node) => {
 		dialogElement = node;
@@ -108,6 +120,27 @@
 
 	function validTileLabel(validTileCount: number): string {
 		return `${validTileCount} valid tile${validTileCount === 1 ? '' : 's'}`;
+	}
+
+	function recipeForType(typeId: IndustrialBuildingTypeId) {
+		const type = INDUSTRIAL_BUILDING_TYPES[typeId];
+		return type.recipeId ? PRODUCTION_RECIPES[type.recipeId] : null;
+	}
+
+	function materialName(materialId: MaterialId): string {
+		return MATERIALS[materialId]?.name ?? materialId;
+	}
+
+	function materialArt(materialId: MaterialId): string {
+		return asset(getIndustryMaterialArt(materialId));
+	}
+
+	function isAvailable(materialId: MaterialId): boolean {
+		return availableSet.has(materialId);
+	}
+
+	function neededProducerName(materialId: MaterialId): string {
+		return getBuildingTypeProducing(materialId)?.name ?? materialName(materialId);
 	}
 
 	function getProductChainFilters(): ProductChainFilter[] {
@@ -346,8 +379,13 @@
 				</div>
 			{/if}
 
+			<button type="button" class="advisor-open" onclick={onOpenAdvisor}>
+				Supply Advisor — what should I build?
+			</button>
+
 			<div class="option-list">
 				{#each visibleIndustryBuildingTypes as type (type.id)}
+					{@const recipe = recipeForType(type.id)}
 					<button
 						type="button"
 						class="build-option"
@@ -356,12 +394,49 @@
 					>
 						<img src={asset(getIndustrialBuildingArt(type.id))} alt="" width="44" height="44" />
 						<span>
-							<strong>Build {type.name}</strong>
+							<strong>
+								Build {type.name}
+								{#if type.tier === 1}<em class="starter">Starter</em>{/if}
+							</strong>
 							<small>
 								Cost {currency.format(type.buildCost)} | Operating {currency.format(
 									type.dailyOperatingCost
 								)}/day
 							</small>
+							{#if recipe}
+								<span class="recipe" aria-label="Recipe">
+									{#each recipe.inputs as input (input.materialId)}
+										<span class="chip" class:missing={!isAvailable(input.materialId)}>
+											<img
+												src={materialArt(input.materialId)}
+												alt={materialName(input.materialId)}
+												width="18"
+												height="18"
+											/>
+											{input.quantity}
+										</span>
+									{/each}
+									<span class="arrow" aria-hidden="true">→</span>
+									{#each recipe.outputs as output (output.materialId)}
+										<span class="chip out">
+											<img
+												src={materialArt(output.materialId)}
+												alt={materialName(output.materialId)}
+												width="18"
+												height="18"
+											/>
+											{output.quantity}
+										</span>
+									{/each}
+								</span>
+								{#each recipe.inputs.filter((input) => !isAvailable(input.materialId)) as missing (missing.materialId)}
+									<small class="need">Needs {neededProducerName(missing.materialId)}</small>
+								{/each}
+							{:else if type.requiredResource}
+								<small class="need"
+									>Needs a {materialName(type.requiredResource as MaterialId)} resource tile</small
+								>
+							{/if}
 						</span>
 					</button>
 				{:else}
@@ -638,5 +713,78 @@
 	.filter-list button:disabled {
 		cursor: not-allowed;
 		opacity: 0.55;
+	}
+
+	.advisor-open {
+		width: 100%;
+		border: 1px solid var(--brass-500);
+		border-radius: 2px;
+		background: var(--paper-100);
+		color: var(--ink-700);
+		font-family: var(--font-ui);
+		font-weight: 700;
+		padding: 0.6rem 0.75rem;
+		text-align: left;
+	}
+
+	.advisor-open:hover,
+	.advisor-open:focus-visible {
+		background: var(--paper-200);
+	}
+
+	.starter {
+		margin-left: 0.4rem;
+		border: 1px solid var(--brass-500);
+		border-radius: 999px;
+		background: var(--brass-100);
+		color: var(--brass-700);
+		font-family: var(--font-ui);
+		font-size: 0.6rem;
+		font-weight: 700;
+		font-style: normal;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		padding: 0.05rem 0.4rem;
+	}
+
+	.recipe {
+		display: inline-flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 0.3rem;
+		margin-top: 0.15rem;
+	}
+
+	.chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.2rem;
+		border: 1px solid var(--paper-edge);
+		border-radius: 2px;
+		background: var(--paper-100);
+		padding: 0.1rem 0.3rem;
+		font-family: var(--font-mono);
+		font-size: 0.72rem;
+		color: var(--ink-700);
+	}
+
+	.chip.missing {
+		border-color: var(--wax-red);
+		color: var(--wax-red);
+	}
+
+	.chip.out {
+		border-color: var(--moss);
+	}
+
+	.arrow {
+		color: var(--brass-700);
+		font-family: var(--font-mono);
+	}
+
+	.need {
+		color: var(--wax-red);
+		font-family: var(--font-body);
+		font-size: 0.76rem;
 	}
 </style>
