@@ -69,9 +69,12 @@ function collectChain(
 	ordered: IndustrialBuildingTypeId[]
 ): void {
 	const producer = getBuildingTypeProducing(materialId);
-	if (!producer) {
+	if (!producer || seen.has(producer.id)) {
 		return;
 	}
+
+	// Mark before recursing so a cyclic recipe cannot recurse forever.
+	seen.add(producer.id);
 
 	const recipe = producer.recipeId ? PRODUCTION_RECIPES[producer.recipeId] : null;
 	if (recipe) {
@@ -80,10 +83,7 @@ function collectChain(
 		}
 	}
 
-	if (!seen.has(producer.id)) {
-		seen.add(producer.id);
-		ordered.push(producer.id);
-	}
+	ordered.push(producer.id);
 }
 
 function getWantedFinishedMaterials(game: GameState): MaterialId[] {

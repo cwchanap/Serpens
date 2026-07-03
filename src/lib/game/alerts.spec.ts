@@ -104,7 +104,26 @@ describe('collectGameAlerts', () => {
 			baseGame({ stores: [store({ products: [product({ stock: 5, reorderThreshold: 10 })] })] })
 		);
 		expect(alerts).toHaveLength(1);
-		expect(alerts[0].message).toMatch(/need import/i);
+		expect(alerts[0].message).toMatch(/1 product needs import/i);
+	});
+
+	it('counts out-of-stock and needs-import products separately in a mixed store', () => {
+		expect.assertions(2);
+		const alerts = collectGameAlerts(
+			baseGame({
+				stores: [
+					store({
+						products: [
+							product({ stock: 0, reorderThreshold: 10 }),
+							product({ stock: 5, reorderThreshold: 10 }),
+							product({ stock: 3, reorderThreshold: 10 })
+						]
+					})
+				]
+			})
+		);
+		expect(alerts[0].message).toBe('Corner Market: 1 product out of stock, 2 products need import');
+		expect(alerts[0].message).not.toMatch(/3 products out of stock/i);
 	});
 
 	it('flags pending decisions', () => {

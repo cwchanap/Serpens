@@ -1,5 +1,5 @@
 import { INDUSTRIAL_BUILDING_TYPES } from './industry';
-import { getStoreProductStatus } from './stock';
+import { summarizeStockTrouble } from './stock';
 import type { GameState } from './types';
 
 export type GameAlertKind = 'store-stock' | 'decision' | 'factory-blocked';
@@ -19,24 +19,16 @@ export function collectGameAlerts(game: GameState): GameAlert[] {
 	const alerts: GameAlert[] = [];
 
 	for (const store of game.stores) {
-		const troubled = store.products.filter(
-			(product) => getStoreProductStatus(product) !== 'Healthy'
-		);
+		const summary = summarizeStockTrouble(store.products);
 
-		if (troubled.length === 0) {
+		if (!summary) {
 			continue;
 		}
-
-		const outOfStock = troubled.some(
-			(product) => getStoreProductStatus(product) === 'Out of stock'
-		);
-		const noun = troubled.length === 1 ? 'product' : 'products';
-		const verb = outOfStock ? 'out of stock' : 'need import';
 
 		alerts.push({
 			id: `store-stock:${store.id}`,
 			kind: 'store-stock',
-			message: `${store.name}: ${troubled.length} ${noun} ${verb}`,
+			message: `${store.name}: ${summary}`,
 			cityId: store.cityId,
 			storeId: store.id,
 			tileId: store.tileId
