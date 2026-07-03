@@ -16,6 +16,7 @@
 	import StaffPanel from '$lib/components/game/StaffPanel.svelte';
 	import StoreDetailModal from '$lib/components/game/StoreDetailModal.svelte';
 	import StoreOverview from '$lib/components/game/StoreOverview.svelte';
+	import SupplyAdvisor from '$lib/components/game/SupplyAdvisor.svelte';
 	import TileInspector from '$lib/components/game/TileInspector.svelte';
 	import TopBar from '$lib/components/game/TopBar.svelte';
 	import WorldMap from '$lib/components/game/WorldMap.svelte';
@@ -65,6 +66,7 @@
 		unassignStaff
 	} from '$lib/game/staffing';
 	import { DEFAULT_POLICY, resolveDecision, updatePolicy, upgradeStore } from '$lib/game/state';
+	import { buildSupplyAdvisor, getAvailableMaterialIds } from '$lib/game/supplyAdvisor';
 	import { isTileInStoreFootprint } from '$lib/game/storeFootprint';
 	import { isTileInIndustryBuildingFootprint } from '$lib/game/industryFootprint';
 	import { updateStoreProduct } from '$lib/game/stock';
@@ -174,6 +176,7 @@
 	let isCheatSheetOpen = $state(false);
 	let isStoreDetailOpen = $state(false);
 	let isBuildMenuOpen = $state(false);
+	let isSupplyAdvisorOpen = $state(false);
 	let activeManagementPanelId = $state<ManagementPanelId | null>(null);
 	let retailPlacementArchetypeId = $state<ArchetypeId | null>(null);
 	let industryPlacementBuildingTypeId = $state<IndustrialBuildingTypeId | null>(null);
@@ -280,7 +283,8 @@
 	// placement preview over the map.
 	let isMapPaused = $derived(
 		!isPlacementModeActive &&
-			(isStoreDetailOpen ||
+			(isSupplyAdvisorOpen ||
+				isStoreDetailOpen ||
 				isCheatSheetOpen ||
 				isBuildMenuOpen ||
 				activeManagementPanelId !== null ||
@@ -311,6 +315,8 @@
 			: null
 	);
 	let industryLockedReason = $derived(game ? null : 'Found a retail store to unlock construction.');
+	let supplyAdvisorChains = $derived(buildSupplyAdvisor(game ?? starterMapState));
+	let availableMaterialIds = $derived(getAvailableMaterialIds(game ?? starterMapState));
 	let mapSnapshot = $derived(
 		createCityMapSnapshot(game ?? starterMapState, selectedTileId, retailPlacementPreview)
 	);
@@ -685,6 +691,21 @@
 		placementFeedback = null;
 	}
 
+	function openSupplyAdvisor(): void {
+		isBuildMenuOpen = false;
+		isSupplyAdvisorOpen = true;
+	}
+
+	function closeSupplyAdvisor(): void {
+		isSupplyAdvisorOpen = false;
+	}
+
+	function buildFromAdvisor(buildingTypeId: IndustrialBuildingTypeId): void {
+		isSupplyAdvisorOpen = false;
+		isBuildMenuOpen = false;
+		armIndustryPlacement(buildingTypeId);
+	}
+
 	function advanceDay() {
 		if (game) {
 			setGameAndAutosaveWithSfx(game, simulateDay(game), 'sfx.time.advance-day');
@@ -899,6 +920,10 @@
 		}
 
 		if (event.key === 'Escape') {
+			if (isSupplyAdvisorOpen) {
+				isSupplyAdvisorOpen = false;
+				return;
+			}
 			if (isCheatSheetOpen) {
 				isCheatSheetOpen = false;
 				return;
@@ -1068,9 +1093,18 @@
 				activeMapView={activeMapView === 'industry' ? 'industry' : 'retail'}
 				retailOptions={retailBuildOptions}
 				{industryLockedReason}
+				{availableMaterialIds}
 				onChooseRetail={armRetailPlacement}
 				onChooseIndustry={armIndustryPlacement}
+				onOpenAdvisor={openSupplyAdvisor}
 				onClose={closeBuildMenu}
+			/>
+		{/if}
+		{#if isSupplyAdvisorOpen}
+			<SupplyAdvisor
+				chains={supplyAdvisorChains}
+				onBuild={buildFromAdvisor}
+				onClose={closeSupplyAdvisor}
 			/>
 		{/if}
 		{#if selectedTile && shouldShowRetailInspector}
