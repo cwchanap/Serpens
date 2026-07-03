@@ -920,12 +920,12 @@
 		}
 
 		if (event.key === 'Escape') {
-			if (isSupplyAdvisorOpen) {
-				isSupplyAdvisorOpen = false;
-				return;
-			}
 			if (isCheatSheetOpen) {
 				isCheatSheetOpen = false;
+				return;
+			}
+			if (isSupplyAdvisorOpen) {
+				isSupplyAdvisorOpen = false;
 				return;
 			}
 			if (isStoreDetailOpen) {
