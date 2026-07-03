@@ -966,6 +966,7 @@
 			key: event.key,
 			isTypingTarget: isTypingElement(event.target),
 			hasBlockingOverlay:
+				isSupplyAdvisorOpen ||
 				isStoreDetailOpen ||
 				isCheatSheetOpen ||
 				isBuildMenuOpen ||
