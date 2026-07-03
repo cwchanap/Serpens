@@ -276,30 +276,32 @@ function escapeRegExp(value: string): string {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-async function getStorePanelLayout(page: Page) {
-	return page.locator('.store-tab-panels').evaluate((container) => {
+async function openStoreDetail(page: Page): Promise<Locator> {
+	await page.getByRole('button', { name: /open details/i }).click();
+	const modal = page.locator('[role="dialog"][aria-modal="true"]');
+	await expect(modal).toBeVisible();
+	return modal;
+}
+
+async function getStoreDetailPanelLayout(page: Page) {
+	return page.locator('.detail-panels').evaluate((container) => {
 		const readPanel = (selector: string) => {
 			const panel = container.querySelector(selector);
 
 			if (!panel) {
-				throw new Error(`Missing store panel ${selector}`);
+				throw new Error(`Missing store detail panel ${selector}`);
 			}
 
-			const rect = panel.getBoundingClientRect();
 			const style = window.getComputedStyle(panel);
 			return {
-				display: style.display,
-				height: rect.height
+				display: style.display
 			};
 		};
-		const rect = container.getBoundingClientRect();
 
 		return {
-			height: rect.height,
-			details: readPanel('.store-details'),
-			stock: readPanel('.store-stock-panel'),
-			chain: readPanel('.store-panel.store-chain-panel'),
-			staff: readPanel('.store-staff-panel')
+			stock: readPanel('[id$="-stock-panel"]'),
+			chain: readPanel('[id$="-chain-panel"]'),
+			staff: readPanel('[id$="-staff-panel"]')
 		};
 	});
 }
@@ -820,10 +822,12 @@ test('player builds convenience production and refills from warehouse', async ({
 	await clickMapTile(page, 1, 6);
 	const inspector = page.getByRole('dialog', { name: /tile details/i });
 	await expect(inspector).toBeVisible();
-	await inspector.getByRole('tab', { name: /stock/i }).click();
-	await expect(inspector.getByRole('table', { name: /convenience store stock/i })).toBeVisible();
-	await setStoreProductNumber(inspector, /reorder threshold for bottled water/i, 10);
-	await setStoreProductNumber(inspector, /target stock for bottled water/i, 25);
+	const storeModal = await openStoreDetail(page);
+	await expect(storeModal.getByRole('table', { name: /convenience store stock/i })).toBeVisible();
+	await setStoreProductNumber(storeModal, /reorder threshold for bottled water/i, 10);
+	await setStoreProductNumber(storeModal, /target stock for bottled water/i, 25);
+	await storeModal.getByRole('button', { name: /close store details/i }).click();
+	await expect(storeModal).toHaveCount(0);
 
 	const preWeeklyGame = await waitForSavedProductSettings(page, 'bottled-water', {
 		day: 7,
@@ -1059,103 +1063,71 @@ test('manage selected store stock and see weekly imports', async ({ page }) => {
 	await clickMapTile(page, 1, 6);
 	const inspector = page.getByRole('dialog', { name: /tile details/i });
 	await expect(inspector).toBeVisible();
-	await expect(inspector.getByRole('tab', { name: /details/i })).toHaveAttribute(
+	// The basic card carries no in-line tabs or stock table — those moved to the detail modal.
+	await expect(inspector.getByRole('tab', { name: /stock/i })).toHaveCount(0);
+	await expect(inspector.getByRole('table', { name: /convenience store stock/i })).toHaveCount(0);
+
+	const storeModal = await openStoreDetail(page);
+	// The modal opens on the Stock tab by default.
+	await expect(storeModal.getByRole('tab', { name: /stock/i })).toHaveAttribute(
 		'aria-selected',
 		'true'
 	);
-	await expect(inspector.getByRole('tab', { name: /staff/i })).toHaveAttribute(
+	await expect(storeModal.getByRole('tab', { name: /staff/i })).toHaveAttribute(
 		'aria-selected',
 		'false'
 	);
-	await expect(inspector.getByRole('table', { name: /convenience store stock/i })).toHaveCount(0);
-	const detailsInspectorBox = await inspector.boundingBox();
 
-	if (!detailsInspectorBox) {
-		throw new Error('Tile details inspector has no bounding box on the details tab');
-	}
-
-	const detailsPanelLayout = await getStorePanelLayout(page);
-	expect(detailsPanelLayout.details.display).toBe('grid');
-	expect(detailsPanelLayout.stock.display).toBe('none');
-	expect(detailsPanelLayout.chain.display).toBe('none');
-	expect(detailsPanelLayout.staff.display).toBe('none');
-	expect(detailsPanelLayout.height).toBeLessThan(520);
-
-	await inspector.getByRole('tab', { name: /stock/i }).click();
-	const stockInspectorBox = await inspector.boundingBox();
-
-	if (!stockInspectorBox) {
-		throw new Error('Tile details inspector has no bounding box on the stock tab');
-	}
-
-	const stockPanelLayout = await getStorePanelLayout(page);
-	expect(stockPanelLayout.details.display).toBe('none');
-	expect(stockPanelLayout.stock.display).toBe('grid');
+	const stockPanelLayout = await getStoreDetailPanelLayout(page);
+	expect(stockPanelLayout.stock.display).toBe('block');
 	expect(stockPanelLayout.chain.display).toBe('none');
 	expect(stockPanelLayout.staff.display).toBe('none');
-	expect(Math.abs(stockInspectorBox.height - detailsInspectorBox.height)).toBeLessThanOrEqual(1);
-	expect(Math.abs(stockPanelLayout.height - detailsPanelLayout.height)).toBeLessThanOrEqual(1);
 
-	await expect(inspector.getByRole('table', { name: /convenience store stock/i })).toBeVisible();
-	await expect(inspector.getByRole('cell', { name: 'Bottled Water' })).toBeVisible();
+	await expect(storeModal.getByRole('table', { name: /convenience store stock/i })).toBeVisible();
+	await expect(storeModal.getByRole('cell', { name: 'Bottled Water' })).toBeVisible();
 
-	await inspector.getByRole('tab', { name: /product chain/i }).click();
-	const chainInspectorBox = await inspector.boundingBox();
-
-	if (!chainInspectorBox) {
-		throw new Error('Tile details inspector has no bounding box on the product chain tab');
-	}
-
-	const chainPanelLayout = await getStorePanelLayout(page);
-	expect(chainPanelLayout.details.display).toBe('none');
+	await storeModal.getByRole('tab', { name: /product chain/i }).click();
+	const chainPanelLayout = await getStoreDetailPanelLayout(page);
 	expect(chainPanelLayout.stock.display).toBe('none');
-	expect(chainPanelLayout.chain.display).toBe('grid');
+	expect(chainPanelLayout.chain.display).toBe('block');
 	expect(chainPanelLayout.staff.display).toBe('none');
-	expect(Math.abs(chainInspectorBox.height - detailsInspectorBox.height)).toBeLessThanOrEqual(1);
-	expect(Math.abs(chainPanelLayout.height - detailsPanelLayout.height)).toBeLessThanOrEqual(1);
-	const productCategorySelect = inspector.getByLabel('Product category');
+	const productCategorySelect = storeModal.getByLabel('Product category');
 	await expect(productCategorySelect).toBeVisible();
-	await expect(inspector.getByTestId('product-chain-graph-chain:bottled-water')).toBeVisible();
+	await expect(storeModal.getByTestId('product-chain-graph-chain:bottled-water')).toBeVisible();
 	await productCategorySelect.selectOption('snacks');
-	await expect(inspector.getByTestId('product-chain-graph-chain:snacks')).toBeVisible();
+	await expect(storeModal.getByTestId('product-chain-graph-chain:snacks')).toBeVisible();
 
-	await inspector.getByRole('tab', { name: /staff/i }).click();
-	const staffInspectorBox = await inspector.boundingBox();
-
-	if (!staffInspectorBox) {
-		throw new Error('Tile details inspector has no bounding box on the staff tab');
-	}
-
-	const staffPanelLayout = await getStorePanelLayout(page);
-	expect(staffPanelLayout.details.display).toBe('none');
+	await storeModal.getByRole('tab', { name: /staff/i }).click();
+	const staffPanelLayout = await getStoreDetailPanelLayout(page);
 	expect(staffPanelLayout.stock.display).toBe('none');
 	expect(staffPanelLayout.chain.display).toBe('none');
-	expect(staffPanelLayout.staff.display).toBe('grid');
-	expect(Math.abs(staffInspectorBox.height - detailsInspectorBox.height)).toBeLessThanOrEqual(1);
-	expect(Math.abs(staffPanelLayout.height - detailsPanelLayout.height)).toBeLessThanOrEqual(1);
+	expect(staffPanelLayout.staff.display).toBe('block');
 
-	await inspector.getByRole('tab', { name: /stock/i }).click();
+	await storeModal.getByRole('tab', { name: /stock/i }).click();
 
-	const bottledWaterPrice = inspector.getByRole('spinbutton', {
+	const bottledWaterPrice = storeModal.getByRole('spinbutton', {
 		name: /selling price for bottled water/i
 	});
 	await bottledWaterPrice.fill('7');
 	await bottledWaterPrice.blur();
 	await expect(bottledWaterPrice).toHaveValue('7');
 
-	const bottledWaterTarget = inspector.getByRole('spinbutton', {
+	const bottledWaterTarget = storeModal.getByRole('spinbutton', {
 		name: /target stock for bottled water/i
 	});
 	await bottledWaterTarget.fill('140');
 	await bottledWaterTarget.blur();
 	await expect(bottledWaterTarget).toHaveValue('140');
 
-	const bottledWaterReorder = inspector.getByRole('spinbutton', {
+	const bottledWaterReorder = storeModal.getByRole('spinbutton', {
 		name: /reorder threshold for bottled water/i
 	});
 	await bottledWaterReorder.fill('100');
 	await bottledWaterReorder.blur();
 	await expect(bottledWaterReorder).toHaveValue('100');
+
+	await storeModal.getByRole('button', { name: /close store details/i }).click();
+	await expect(storeModal).toHaveCount(0);
 
 	for (let day = 0; day < 7; day += 1) {
 		await page.getByRole('button', { name: /^advance day$/i }).click();

@@ -14,6 +14,7 @@
 	import Scorecard from '$lib/components/game/Scorecard.svelte';
 	import ShortcutCheatSheet from '$lib/components/game/ShortcutCheatSheet.svelte';
 	import StaffPanel from '$lib/components/game/StaffPanel.svelte';
+	import StoreDetailModal from '$lib/components/game/StoreDetailModal.svelte';
 	import StoreOverview from '$lib/components/game/StoreOverview.svelte';
 	import TileInspector from '$lib/components/game/TileInspector.svelte';
 	import TopBar from '$lib/components/game/TopBar.svelte';
@@ -171,6 +172,7 @@
 	let selectedTileId = $state<string | null>(null);
 	let selectedIndustryTileId = $state<string | null>(null);
 	let isCheatSheetOpen = $state(false);
+	let isStoreDetailOpen = $state(false);
 	let isBuildMenuOpen = $state(false);
 	let activeManagementPanelId = $state<ManagementPanelId | null>(null);
 	let retailPlacementArchetypeId = $state<ArchetypeId | null>(null);
@@ -278,7 +280,11 @@
 	// placement preview over the map.
 	let isMapPaused = $derived(
 		!isPlacementModeActive &&
-			(isCheatSheetOpen || isBuildMenuOpen || activeManagementPanelId !== null || isSavePanelOpen)
+			(isStoreDetailOpen ||
+				isCheatSheetOpen ||
+				isBuildMenuOpen ||
+				activeManagementPanelId !== null ||
+				isSavePanelOpen)
 	);
 	let shouldShowRetailInspector = $derived(
 		selectedTile !== null && (!isPlacementModeActive || placementFeedback !== null)
@@ -840,6 +846,17 @@
 
 	function closeInspector() {
 		selectedTileId = null;
+		isStoreDetailOpen = false;
+	}
+
+	function openStoreDetail(): void {
+		if (selectedStore) {
+			isStoreDetailOpen = true;
+		}
+	}
+
+	function closeStoreDetail(): void {
+		isStoreDetailOpen = false;
 	}
 
 	function closeIndustryInspector() {
@@ -886,6 +903,10 @@
 				isCheatSheetOpen = false;
 				return;
 			}
+			if (isStoreDetailOpen) {
+				isStoreDetailOpen = false;
+				return;
+			}
 			if (isBuildMenuOpen) {
 				isBuildMenuOpen = false;
 				return;
@@ -920,6 +941,7 @@
 			key: event.key,
 			isTypingTarget: isTypingElement(event.target),
 			hasBlockingOverlay:
+				isStoreDetailOpen ||
 				isCheatSheetOpen ||
 				isBuildMenuOpen ||
 				isSavePanelOpen ||
@@ -1062,14 +1084,9 @@
 					game={game ?? starterMapState}
 					tile={selectedTile}
 					store={selectedStore}
-					staff={game?.staff ?? []}
-					hiringCandidates={game?.hiringCandidates ?? []}
 					latestStoreReport={latestSelectedStoreReport}
-					onUpdateStoreProduct={changeStoreProduct}
 					onUpgradeStore={upgradeStoreHandler}
-					onHireStaff={hireStaff}
-					onAssignStaff={assignStaff}
-					onUnassignStaff={unassignStoreStaff}
+					onOpenDetails={openStoreDetail}
 					onClickFeedback={() => playSfx('sfx.ui.click')}
 					onClose={closeInspector}
 				/>
@@ -1092,6 +1109,22 @@
 			</div>
 		{/if}
 	</section>
+
+	{#if isStoreDetailOpen && selectedStore}
+		<StoreDetailModal
+			game={game ?? starterMapState}
+			store={selectedStore}
+			staff={game?.staff ?? []}
+			hiringCandidates={game?.hiringCandidates ?? []}
+			latestStoreReport={latestSelectedStoreReport}
+			onUpdateStoreProduct={changeStoreProduct}
+			onHireStaff={hireStaff}
+			onAssignStaff={assignStaff}
+			onUnassignStaff={unassignStoreStaff}
+			onClickFeedback={() => playSfx('sfx.ui.click')}
+			onClose={closeStoreDetail}
+		/>
+	{/if}
 
 	{#if game && activeManagementPanel}
 		<div class="tower-backdrop">
