@@ -84,7 +84,8 @@
 		CompanyPolicy,
 		GameState,
 		IndustrialBuildingTypeId,
-		StoreProductPatch
+		StoreProductPatch,
+		WorldCityId
 	} from '$lib/game/types';
 	import type { WorldCityStatus } from '$lib/game/world';
 	import type { SaveRepository } from '$lib/persistence/saveRepository';
@@ -898,11 +899,17 @@
 			return;
 		}
 		if (alert.kind === 'store-stock' && alert.tileId) {
+			if (game && alert.cityId && alert.cityId !== game.activeCityId) {
+				setGameAndAutosave(selectWorldCity(game, alert.cityId as WorldCityId));
+			}
 			showRetailMap();
 			selectedTileId = alert.tileId;
 			return;
 		}
 		if (alert.kind === 'factory-blocked' && alert.tileId) {
+			if (game && alert.cityId && alert.cityId !== game.activeIndustryCityId) {
+				setGameAndAutosave(selectWorldCity(game, alert.cityId as WorldCityId));
+			}
 			showIndustryMap();
 			selectedIndustryTileId = alert.tileId;
 		}
@@ -1396,7 +1403,9 @@
 	@media (max-width: 980px) {
 		.inspector-overlay {
 			position: fixed;
-			inset: auto 0 0;
+			/* Sit above the fixed control desk (compact here — .manage is hidden)
+			   so the store card's Open Details button is never covered. */
+			inset: auto 0 5rem 0;
 			width: auto;
 			max-height: 60dvh;
 		}

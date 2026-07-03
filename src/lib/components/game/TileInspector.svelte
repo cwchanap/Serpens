@@ -9,7 +9,7 @@
 		getUnlockedCategoryCount,
 		isMilestoneLevel
 	} from '$lib/game/leveling';
-	import { getStoreProductStatus } from '$lib/game/stock';
+	import { summarizeStockTrouble } from '$lib/game/stock';
 	import type { CityTile, DailyStoreReport, GameState, Store } from '$lib/game/types';
 	import type { Attachment } from 'svelte/attachments';
 	import { on } from 'svelte/events';
@@ -56,17 +56,7 @@
 			: '+10% revenue';
 	});
 
-	const troubledProducts = $derived(
-		store ? store.products.filter((product) => getStoreProductStatus(product) !== 'Healthy') : []
-	);
-	const attentionMessage = $derived.by(() => {
-		if (troubledProducts.length === 0) return null;
-		const outOfStock = troubledProducts.some(
-			(product) => getStoreProductStatus(product) === 'Out of stock'
-		);
-		const noun = troubledProducts.length === 1 ? 'product' : 'products';
-		return `${troubledProducts.length} ${noun} ${outOfStock ? 'out of stock' : 'need import'}`;
-	});
+	const attentionMessage = $derived(store ? summarizeStockTrouble(store.products) : null);
 	const dailyRevenue = $derived(latestStoreReport?.revenue ?? null);
 
 	function label(value: string): string {

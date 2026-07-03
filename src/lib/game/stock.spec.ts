@@ -10,6 +10,7 @@ import {
 	initializeStoreProducts,
 	isImportDay,
 	simulateProductSalesForCity,
+	summarizeStockTrouble,
 	updateStoreProduct
 } from './stock';
 import type { CompanyPolicy, GameState, StoreProduct } from './types';
@@ -774,5 +775,36 @@ describe('branch coverage edge cases', () => {
 
 		expect(report).toBeDefined();
 		expect(report?.unitsSold).toBe(0);
+	});
+});
+
+describe('summarizeStockTrouble', () => {
+	test('returns null when every product is healthy', () => {
+		expect.assertions(1);
+		expect(summarizeStockTrouble([{ stock: 50, reorderThreshold: 10 }])).toBeNull();
+	});
+
+	test('reports a single out-of-stock product', () => {
+		expect.assertions(1);
+		expect(summarizeStockTrouble([{ stock: 0, reorderThreshold: 10 }])).toBe(
+			'1 product out of stock'
+		);
+	});
+
+	test('uses singular subject-verb agreement for one needs-import product', () => {
+		expect.assertions(1);
+		expect(summarizeStockTrouble([{ stock: 5, reorderThreshold: 10 }])).toBe(
+			'1 product needs import'
+		);
+	});
+
+	test('counts out-of-stock and needs-import separately in mixed cases', () => {
+		expect.assertions(1);
+		const summary = summarizeStockTrouble([
+			{ stock: 0, reorderThreshold: 10 },
+			{ stock: 5, reorderThreshold: 10 },
+			{ stock: 3, reorderThreshold: 10 }
+		]);
+		expect(summary).toBe('1 product out of stock, 2 products need import');
 	});
 });

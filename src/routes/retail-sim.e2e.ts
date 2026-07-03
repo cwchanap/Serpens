@@ -1224,6 +1224,30 @@ test('player upgrades a store from the tile inspector', async ({ page }) => {
 	await expect(inspector.getByText(/Level 2 \/ 10/i)).toBeVisible();
 });
 
+test('store card Open Details stays reachable above the control desk on a narrow viewport', async ({
+	page
+}) => {
+	// At <=980px the inspector is a bottom sheet; the fixed control desk must not
+	// cover its Open Details button (regression: the button was obscured and the
+	// click was intercepted).
+	await page.setViewportSize({ width: 960, height: 800 });
+	await page.goto('/');
+
+	await buildRetailStoreAt(page, {
+		x: 1,
+		y: 6,
+		storeTypeName: /build convenience store/i,
+		expectedStoreCount: 1
+	});
+
+	await clickMapTile(page, 1, 6);
+	const inspector = page.getByRole('dialog', { name: /tile details/i });
+	await expect(inspector).toBeVisible();
+
+	const modal = await openStoreDetail(page);
+	await expect(modal.getByRole('tab', { name: /stock/i })).toBeVisible();
+});
+
 test('player upgrades an industrial building from the tile inspector', async ({ page }) => {
 	// Height must be tall enough that the fixed control-desk footer does not
 	// overlap the tile inspector's Upgrade button; at a short viewport the

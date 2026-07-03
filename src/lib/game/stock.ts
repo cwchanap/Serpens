@@ -123,6 +123,38 @@ export function getStoreProductStatus(
 	return 'Healthy';
 }
 
+/**
+ * Human-readable summary of a store's stock trouble, e.g.
+ * "1 product out of stock, 2 products need import", or null when everything is
+ * healthy. Out-of-stock and needs-import products are counted separately so the
+ * message never overstates how many are actually at zero stock.
+ */
+export function summarizeStockTrouble(
+	products: Pick<StoreProduct, 'stock' | 'reorderThreshold'>[]
+): string | null {
+	let outOfStock = 0;
+	let needImport = 0;
+
+	for (const product of products) {
+		const status = getStoreProductStatus(product);
+		if (status === 'Out of stock') {
+			outOfStock += 1;
+		} else if (status === 'Needs import') {
+			needImport += 1;
+		}
+	}
+
+	const parts: string[] = [];
+	if (outOfStock > 0) {
+		parts.push(`${outOfStock} ${outOfStock === 1 ? 'product' : 'products'} out of stock`);
+	}
+	if (needImport > 0) {
+		parts.push(`${needImport} ${needImport === 1 ? 'product needs' : 'products need'} import`);
+	}
+
+	return parts.length > 0 ? parts.join(', ') : null;
+}
+
 export function calculateStockHealth(products: StoreProduct[]): number {
 	if (products.length === 0) {
 		return 100;
