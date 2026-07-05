@@ -30,7 +30,12 @@
 </script>
 
 <div class="cheat-backdrop">
-	<button type="button" class="backdrop-button" aria-hidden="true" tabindex="-1" onclick={onClose}
+	<button
+		type="button"
+		class="backdrop-button"
+		tabindex="-1"
+		aria-label="Dismiss keyboard shortcuts"
+		onclick={onClose}
 	></button>
 	<div
 		class="cheat-sheet paper"

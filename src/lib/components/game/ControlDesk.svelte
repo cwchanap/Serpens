@@ -1,7 +1,9 @@
 <!-- src/lib/components/game/ControlDesk.svelte -->
 <script lang="ts">
+	import type { ManagementPanelId } from '$lib/game/keyboardShortcuts';
+
 	interface ManagementItem {
-		id: string;
+		id: ManagementPanelId;
 		label: string;
 		shortcut?: string;
 	}
@@ -11,7 +13,7 @@
 		buildDisabled: boolean;
 		advanceDisabled: boolean;
 		onBuild: () => void;
-		onOpenManagement: (id: string) => void;
+		onOpenManagement: (id: ManagementPanelId) => void;
 		onAdvanceDay: () => void;
 		onOpenShortcuts: () => void;
 	}
