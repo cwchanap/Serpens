@@ -307,6 +307,9 @@ async function getStoreDetailPanelLayout(page: Page) {
 }
 
 async function openMapMenuItem(page: Page, itemName: RegExp) {
+	// Map-view tabs live inside the control-desk hamburger popover; open it first.
+	// Selecting a view auto-closes the popover.
+	await page.getByRole('button', { name: /^menu$/i }).click();
 	await page.getByRole('button', { name: itemName }).click();
 }
 
@@ -574,9 +577,12 @@ test('tile popup can be closed from the map', async ({ page }) => {
 test('management panels open from the map menu and close as overlays', async ({ page }) => {
 	await page.goto('/');
 
+	// The map-view tabs are tucked inside the control-desk hamburger popover.
+	await page.getByRole('button', { name: /^menu$/i }).click();
 	await expect(page.getByRole('button', { name: /world map/i })).toBeEnabled();
 	await expect(page.getByRole('button', { name: /retail city map/i })).toBeEnabled();
 	await expect(page.getByRole('button', { name: /industry city map/i })).toBeEnabled();
+	await page.getByRole('button', { name: /^menu$/i }).click();
 
 	await buildRetailStoreAt(page, {
 		x: 1,
@@ -594,23 +600,108 @@ test('management panels open from the map menu and close as overlays', async ({ 
 	await expect(page.getByRole('dialog', { name: /reports/i })).toHaveCount(0);
 });
 
-test('keyboard shortcuts open build and switch views', async ({ page }) => {
+test('keyboard shortcuts toggle build, switch views, and Esc closes the hamburger', async ({
+	page
+}) => {
 	await page.goto('/');
 	// Wait for the scene to boot so the window keydown handler is mounted before
 	// dispatching shortcuts, otherwise the first keypress races hydration.
 	await expectRetailMapReady(page);
 
+	// "B" toggles the build menu open, then closed.
 	await page.keyboard.press('b');
 	await expect(page.getByRole('dialog', { name: /build menu/i })).toBeVisible();
-
-	await page.keyboard.press('Escape');
+	await page.keyboard.press('b');
 	await expect(page.getByRole('dialog', { name: /build menu/i })).toHaveCount(0);
 
+	// Number keys still switch views.
 	await page.keyboard.press('2');
+	// The view tabs now live in the hamburger popover; open it to read the pressed state.
+	await page.getByRole('button', { name: /^menu$/i }).click();
 	await expect(page.getByRole('button', { name: /industry city map/i })).toHaveAttribute(
 		'aria-pressed',
 		'true'
 	);
+
+	// Escape closes the hamburger menu.
+	await page.keyboard.press('Escape');
+	await expect(page.getByRole('button', { name: /industry city map/i })).toHaveCount(0);
+});
+
+test('Escape toggles the hamburger menu when nothing else is open', async ({ page }) => {
+	await page.goto('/');
+	await expectRetailMapReady(page);
+
+	// With no overlay or selection active, Escape opens the hamburger menu.
+	await expect(page.getByRole('button', { name: /^menu$/i })).toHaveAttribute(
+		'aria-expanded',
+		'false'
+	);
+	await page.keyboard.press('Escape');
+	await expect(page.getByRole('button', { name: /retail city map/i })).toBeVisible();
+
+	// A second Escape closes it again — the key toggles the menu.
+	await page.keyboard.press('Escape');
+	await expect(page.getByRole('button', { name: /retail city map/i })).toHaveCount(0);
+});
+
+test('Escape closes the alerts popover', async ({ page }) => {
+	await page.goto('/');
+	await expectRetailMapReady(page);
+
+	// Open the top-bar alerts popover, then dismiss it with Escape.
+	await page.getByRole('button', { name: /^alerts/i }).click();
+	await expect(page.getByRole('group', { name: /alerts list/i })).toBeVisible();
+	await page.keyboard.press('Escape');
+	await expect(page.getByRole('group', { name: /alerts list/i })).toHaveCount(0);
+});
+
+test('management panels open before founding a store', async ({ page }) => {
+	await page.goto('/');
+	await expectRetailMapReady(page);
+
+	// No store founded yet — the Dashboard still opens on its empty starter state.
+	await page.keyboard.press('d');
+	await expect(page.getByRole('dialog', { name: /dashboard/i })).toBeVisible();
+	await page.keyboard.press('Escape');
+	await expect(page.getByRole('dialog', { name: /dashboard/i })).toHaveCount(0);
+});
+
+test('modifier + shortcut key is left to the browser', async ({ page }) => {
+	await page.goto('/');
+	await expectRetailMapReady(page);
+
+	// Ctrl/Cmd + D must NOT open the Dashboard — the browser keeps its own shortcut.
+	await page.keyboard.press('Control+d');
+	await expect(page.getByRole('dialog', { name: /dashboard/i })).toHaveCount(0);
+	await page.keyboard.press('Meta+d');
+	await expect(page.getByRole('dialog', { name: /dashboard/i })).toHaveCount(0);
+
+	// A plain "d" still opens it — proving the modifier is the only thing guarding it.
+	await page.keyboard.press('d');
+	await expect(page.getByRole('dialog', { name: /dashboard/i })).toBeVisible();
+});
+
+test('management panel shortcuts toggle their panels', async ({ page }) => {
+	await page.goto('/');
+	await buildRetailStoreAt(page, {
+		x: 1,
+		y: 6,
+		storeTypeName: /build convenience store/i,
+		expectedStoreCount: 1
+	});
+
+	// "D" toggles the Dashboard panel open, then closed.
+	await page.keyboard.press('d');
+	await expect(page.getByRole('dialog', { name: /dashboard/i })).toBeVisible();
+	await page.keyboard.press('d');
+	await expect(page.getByRole('dialog', { name: /dashboard/i })).toHaveCount(0);
+
+	// A different mnemonic switches straight to another panel; Esc closes it.
+	await page.keyboard.press('r');
+	await expect(page.getByRole('dialog', { name: /reports/i })).toBeVisible();
+	await page.keyboard.press('Escape');
+	await expect(page.getByRole('dialog', { name: /reports/i })).toHaveCount(0);
 });
 
 test('audio controls persist as local app preferences', async ({ page }) => {

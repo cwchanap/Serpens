@@ -12,10 +12,17 @@
 	let { onClose }: Props = $props();
 
 	const shortcuts: Shortcut[] = [
-		{ keys: 'B', action: 'Open build menu' },
-		{ keys: 'Space', action: 'Advance day' },
+		{ keys: 'B', action: 'Toggle build menu' },
 		{ keys: '1 / 2 / 3', action: 'Retail / Industry / World view' },
-		{ keys: 'Esc', action: 'Cancel or close' },
+		{ keys: 'D', action: 'Toggle Dashboard' },
+		{ keys: 'P', action: 'Toggle Policies' },
+		{ keys: 'S', action: 'Toggle Staff' },
+		{ keys: 'T', action: 'Toggle Stores' },
+		{ keys: 'C', action: 'Toggle Decisions' },
+		{ keys: 'R', action: 'Toggle Reports' },
+		{ keys: 'G', action: 'Toggle Product Chains' },
+		{ keys: 'Space', action: 'Advance day' },
+		{ keys: 'Esc', action: 'Open menu, or close / cancel' },
 		{ keys: '?', action: 'Toggle this cheat sheet' }
 	];
 </script>

@@ -22,7 +22,9 @@ describe('TopBar', () => {
 			day: 42,
 			cash: 128400,
 			alerts: [],
-			onSelectAlert: vi.fn()
+			onSelectAlert: vi.fn(),
+			activeMapView: 'retail',
+			onSelectView: vi.fn()
 		});
 		await expect.element(page.getByRole('heading', { name: /harbor city/i })).toBeVisible();
 		await expect.element(page.getByText(/day 42/i)).toBeVisible();
@@ -38,11 +40,52 @@ describe('TopBar', () => {
 			day: 1,
 			cash: 0,
 			alerts,
-			onSelectAlert
+			onSelectAlert,
+			activeMapView: 'retail',
+			onSelectView: vi.fn()
 		});
 		await expect.element(page.getByText('1', { exact: true })).toBeVisible();
-		await page.getByRole('button', { name: /alerts/i }).click();
+		await page.getByRole('button', { name: /^alerts/i }).click();
 		await page.getByRole('button', { name: /corner market/i }).click();
 		expect(onSelectAlert).toHaveBeenCalledWith(alerts[0]);
+	});
+
+	it('dismisses the alerts popover on an outside pointer press', async () => {
+		expect.assertions(2);
+		render(TopBar, {
+			eyebrow: 'Retail City Map',
+			title: 'Harbor City',
+			day: 1,
+			cash: 0,
+			alerts,
+			onSelectAlert: vi.fn(),
+			activeMapView: 'retail',
+			onSelectView: vi.fn()
+		});
+		await page.getByRole('button', { name: /^alerts/i }).click();
+		await expect.element(page.getByRole('group', { name: /alerts list/i })).toBeVisible();
+		document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+		await expect.element(page.getByRole('group', { name: /alerts list/i })).not.toBeInTheDocument();
+	});
+
+	it('hosts the map-view menu and switches views', async () => {
+		expect.assertions(2);
+		const onSelectView = vi.fn();
+		render(TopBar, {
+			eyebrow: 'Retail City Map',
+			title: 'Harbor City',
+			day: 1,
+			cash: 0,
+			alerts: [],
+			onSelectAlert: vi.fn(),
+			activeMapView: 'retail',
+			onSelectView
+		});
+		await expect
+			.element(page.getByRole('button', { name: /industry city map/i }))
+			.not.toBeInTheDocument();
+		await page.getByRole('button', { name: /^menu$/i }).click();
+		await page.getByRole('button', { name: /industry city map/i }).click();
+		expect(onSelectView).toHaveBeenCalledWith('industry');
 	});
 });

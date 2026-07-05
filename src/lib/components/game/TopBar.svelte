@@ -1,5 +1,10 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
+	import type { Attachment } from 'svelte/attachments';
+	import { on } from 'svelte/events';
 	import type { GameAlert } from '$lib/game/alerts';
+	import type { MapViewId } from '$lib/game/mapViewKeepAlive';
+	import GameMenu from './GameMenu.svelte';
 
 	interface Props {
 		eyebrow: string;
@@ -8,17 +13,32 @@
 		cash: number | null;
 		alerts: GameAlert[];
 		onSelectAlert: (alert: GameAlert) => void;
+		activeMapView: MapViewId;
+		onSelectView: (view: MapViewId) => void;
+		menuContent?: Snippet;
+		menuOpen?: boolean;
+		alertsOpen?: boolean;
 	}
 
-	let { eyebrow, title, day, cash, alerts, onSelectAlert }: Props = $props();
+	let {
+		eyebrow,
+		title,
+		day,
+		cash,
+		alerts,
+		onSelectAlert,
+		activeMapView,
+		onSelectView,
+		menuContent,
+		menuOpen = $bindable(false),
+		alertsOpen = $bindable(false)
+	}: Props = $props();
 
 	const currency = new Intl.NumberFormat('en-US', {
 		style: 'currency',
 		currency: 'USD',
 		maximumFractionDigits: 0
 	});
-
-	let alertsOpen = $state(false);
 
 	function toggleAlerts(): void {
 		alertsOpen = !alertsOpen;
@@ -28,6 +48,15 @@
 		alertsOpen = false;
 		onSelectAlert(alert);
 	}
+
+	// Standard dropdown behaviour: dismiss the popover on any pointer press outside it.
+	// (Escape is handled centrally in the page keydown chain via the bound `alertsOpen`.)
+	const dismissAlertsOnOutsidePointer: Attachment<HTMLElement> = (node) =>
+		on(window, 'pointerdown', (event) => {
+			if (alertsOpen && !node.contains(event.target as Node)) {
+				alertsOpen = false;
+			}
+		});
 </script>
 
 <header class="top-bar" aria-label="Status bar">
@@ -44,7 +73,7 @@
 			<span class="ticker" aria-label="Cash">{currency.format(cash)}</span>
 		{/if}
 
-		<div class="alerts">
+		<div class="alerts" {@attach dismissAlertsOnOutsidePointer}>
 			<button
 				type="button"
 				class="btn-icon alerts-bell"
@@ -75,6 +104,8 @@
 				</div>
 			{/if}
 		</div>
+
+		<GameMenu {activeMapView} {onSelectView} {menuContent} bind:open={menuOpen} />
 	</div>
 </header>
 

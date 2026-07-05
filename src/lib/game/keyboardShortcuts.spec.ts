@@ -5,7 +5,9 @@ function context(overrides: Partial<ShortcutContext> = {}): ShortcutContext {
 	return {
 		key: 'b',
 		isTypingTarget: false,
+		hasModifier: false,
 		hasBlockingOverlay: false,
+		isMenuOpen: false,
 		activeMapView: 'retail',
 		hasGame: true,
 		...overrides
@@ -13,15 +15,74 @@ function context(overrides: Partial<ShortcutContext> = {}): ShortcutContext {
 }
 
 describe('resolveShortcutAction', () => {
-	it('opens build on "b" and "B"', () => {
+	it('toggles the build menu on "b" and "B"', () => {
 		expect.assertions(2);
-		expect(resolveShortcutAction(context({ key: 'b' }))).toEqual({ type: 'build' });
-		expect(resolveShortcutAction(context({ key: 'B' }))).toEqual({ type: 'build' });
+		expect(resolveShortcutAction(context({ key: 'b' }))).toEqual({ type: 'toggle-build' });
+		expect(resolveShortcutAction(context({ key: 'B' }))).toEqual({ type: 'toggle-build' });
 	});
 
-	it('does not open build on the world view', () => {
+	it('still toggles build while another menu is open', () => {
+		expect.assertions(1);
+		expect(resolveShortcutAction(context({ key: 'b', isMenuOpen: true }))).toEqual({
+			type: 'toggle-build'
+		});
+	});
+
+	it('does not toggle build on the world view', () => {
 		expect.assertions(1);
 		expect(resolveShortcutAction(context({ key: 'b', activeMapView: 'world' }))).toBeNull();
+	});
+
+	it('toggles each management panel by its mnemonic key', () => {
+		expect.assertions(7);
+		expect(resolveShortcutAction(context({ key: 'd' }))).toEqual({
+			type: 'toggle-panel',
+			panel: 'dashboard'
+		});
+		expect(resolveShortcutAction(context({ key: 'p' }))).toEqual({
+			type: 'toggle-panel',
+			panel: 'policies'
+		});
+		expect(resolveShortcutAction(context({ key: 's' }))).toEqual({
+			type: 'toggle-panel',
+			panel: 'staff'
+		});
+		expect(resolveShortcutAction(context({ key: 't' }))).toEqual({
+			type: 'toggle-panel',
+			panel: 'stores'
+		});
+		expect(resolveShortcutAction(context({ key: 'c' }))).toEqual({
+			type: 'toggle-panel',
+			panel: 'decisions'
+		});
+		expect(resolveShortcutAction(context({ key: 'r' }))).toEqual({
+			type: 'toggle-panel',
+			panel: 'reports'
+		});
+		expect(resolveShortcutAction(context({ key: 'g' }))).toEqual({
+			type: 'toggle-panel',
+			panel: 'productChains'
+		});
+	});
+
+	it('matches panel keys case-insensitively and while another menu is open', () => {
+		expect.assertions(2);
+		expect(resolveShortcutAction(context({ key: 'D' }))).toEqual({
+			type: 'toggle-panel',
+			panel: 'dashboard'
+		});
+		expect(resolveShortcutAction(context({ key: 'r', isMenuOpen: true }))).toEqual({
+			type: 'toggle-panel',
+			panel: 'reports'
+		});
+	});
+
+	it('opens a management panel even before a game exists', () => {
+		expect.assertions(1);
+		expect(resolveShortcutAction(context({ key: 'd', hasGame: false }))).toEqual({
+			type: 'toggle-panel',
+			panel: 'dashboard'
+		});
 	});
 
 	it('advances the day on Space only when a game exists', () => {
@@ -40,10 +101,24 @@ describe('resolveShortcutAction', () => {
 		expect(resolveShortcutAction(context({ key: '3' }))).toEqual({ type: 'view', view: 'world' });
 	});
 
-	it('ignores shortcuts while typing or when an overlay is open', () => {
+	it('suppresses navigation keys while a soft menu is open', () => {
 		expect.assertions(2);
+		expect(resolveShortcutAction(context({ key: '2', isMenuOpen: true }))).toBeNull();
+		expect(resolveShortcutAction(context({ key: ' ', isMenuOpen: true }))).toBeNull();
+	});
+
+	it('ignores every shortcut while typing or when a modal overlay is open', () => {
+		expect.assertions(3);
 		expect(resolveShortcutAction(context({ key: 'b', isTypingTarget: true }))).toBeNull();
 		expect(resolveShortcutAction(context({ key: 'b', hasBlockingOverlay: true }))).toBeNull();
+		expect(resolveShortcutAction(context({ key: 'd', hasBlockingOverlay: true }))).toBeNull();
+	});
+
+	it('leaves Cmd/Ctrl/Alt combinations to the browser', () => {
+		expect.assertions(3);
+		expect(resolveShortcutAction(context({ key: 'd', hasModifier: true }))).toBeNull();
+		expect(resolveShortcutAction(context({ key: 'b', hasModifier: true }))).toBeNull();
+		expect(resolveShortcutAction(context({ key: '2', hasModifier: true }))).toBeNull();
 	});
 
 	it('returns null for unmapped keys', () => {

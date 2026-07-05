@@ -4,18 +4,16 @@ import { render } from 'vitest-browser-svelte';
 import ControlDesk from './ControlDesk.svelte';
 
 const managementItems = [
-	{ id: 'dashboard', label: 'Dashboard' },
-	{ id: 'policies', label: 'Policies' }
+	{ id: 'dashboard', label: 'Dashboard', shortcut: 'D' },
+	{ id: 'policies', label: 'Policies', shortcut: 'P' }
 ];
 
 function baseProps() {
 	return {
-		activeMapView: 'retail' as const,
 		managementItems,
 		buildDisabled: false,
 		advanceDisabled: false,
 		onBuild: vi.fn(),
-		onSelectView: vi.fn(),
 		onOpenManagement: vi.fn(),
 		onAdvanceDay: vi.fn()
 	};
@@ -29,33 +27,42 @@ describe('ControlDesk', () => {
 		await page.viewport(1280, 800);
 	});
 
-	it('renders build, view tabs, management launchers, and advance day', async () => {
-		expect.assertions(4);
+	it('renders build, management launchers, and advance day', async () => {
+		expect.assertions(3);
 		render(ControlDesk, baseProps());
 		await expect.element(page.getByRole('button', { name: /^build$/i })).toBeVisible();
-		await expect.element(page.getByRole('button', { name: /industry city map/i })).toBeVisible();
 		await expect.element(page.getByRole('button', { name: /dashboard/i })).toBeVisible();
 		await expect.element(page.getByRole('button', { name: /^advance day$/i })).toBeVisible();
 	});
 
-	it('invokes callbacks on interaction', async () => {
+	it('shows each management panel with its hotkey', async () => {
+		expect.assertions(2);
+		render(ControlDesk, baseProps());
+		await expect.element(page.getByRole('button', { name: /dashboard\s*d/i })).toBeVisible();
+		await expect.element(page.getByRole('button', { name: /policies\s*p/i })).toBeVisible();
+	});
+
+	it('no longer hosts the map-view menu (moved to the top bar)', async () => {
+		expect.assertions(1);
+		render(ControlDesk, baseProps());
+		await expect.element(page.getByRole('button', { name: /^menu$/i })).not.toBeInTheDocument();
+	});
+
+	it('invokes build, management and advance callbacks on interaction', async () => {
 		expect.assertions(3);
 		const props = baseProps();
 		render(ControlDesk, props);
 		await page.getByRole('button', { name: /^build$/i }).click();
-		await page.getByRole('button', { name: /industry city map/i }).click();
+		await page.getByRole('button', { name: /dashboard/i }).click();
 		await page.getByRole('button', { name: /^advance day$/i }).click();
 		expect(props.onBuild).toHaveBeenCalledTimes(1);
-		expect(props.onSelectView).toHaveBeenCalledWith('industry');
+		expect(props.onOpenManagement).toHaveBeenCalledWith('dashboard');
 		expect(props.onAdvanceDay).toHaveBeenCalledTimes(1);
 	});
 
-	it('disables build on the world view and marks the active view', async () => {
-		expect.assertions(2);
-		render(ControlDesk, { ...baseProps(), activeMapView: 'world', buildDisabled: true });
+	it('disables build when buildDisabled is set', async () => {
+		expect.assertions(1);
+		render(ControlDesk, { ...baseProps(), buildDisabled: true });
 		await expect.element(page.getByRole('button', { name: /^build$/i })).toBeDisabled();
-		await expect
-			.element(page.getByRole('button', { name: /world map/i }))
-			.toHaveAttribute('aria-pressed', 'true');
 	});
 });

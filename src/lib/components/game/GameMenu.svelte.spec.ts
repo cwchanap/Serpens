@@ -1,0 +1,65 @@
+import { page } from 'vitest/browser';
+import { describe, expect, it, vi } from 'vitest';
+import { render } from 'vitest-browser-svelte';
+import GameMenu from './GameMenu.svelte';
+
+function baseProps() {
+	return {
+		activeMapView: 'retail' as const,
+		onSelectView: vi.fn()
+	};
+}
+
+describe('GameMenu', () => {
+	it('keeps the map-view tabs hidden until the menu is opened', async () => {
+		expect.assertions(2);
+		render(GameMenu, baseProps());
+		await expect
+			.element(page.getByRole('button', { name: /industry city map/i }))
+			.not.toBeInTheDocument();
+		await page.getByRole('button', { name: /^menu$/i }).click();
+		await expect.element(page.getByRole('button', { name: /industry city map/i })).toBeVisible();
+	});
+
+	it('renders open when the open prop is set (controlled)', async () => {
+		expect.assertions(1);
+		render(GameMenu, { ...baseProps(), open: true });
+		await expect.element(page.getByRole('button', { name: /industry city map/i })).toBeVisible();
+	});
+
+	it('marks the active view and switches on selection', async () => {
+		expect.assertions(2);
+		const props = baseProps();
+		render(GameMenu, props);
+		await page.getByRole('button', { name: /^menu$/i }).click();
+		await expect
+			.element(page.getByRole('button', { name: /retail city map/i }))
+			.toHaveAttribute('aria-pressed', 'true');
+		await page.getByRole('button', { name: /world map/i }).click();
+		expect(props.onSelectView).toHaveBeenCalledWith('world');
+	});
+
+	it('closes the popover after a view is selected', async () => {
+		expect.assertions(2);
+		render(GameMenu, baseProps());
+		await page.getByRole('button', { name: /^menu$/i }).click();
+		const industryTab = page.getByRole('button', { name: /industry city map/i });
+		await expect.element(industryTab).toBeVisible();
+		await industryTab.click();
+		await expect
+			.element(page.getByRole('button', { name: /industry city map/i }))
+			.not.toBeInTheDocument();
+	});
+
+	it('dismisses the popover on an outside pointer press', async () => {
+		expect.assertions(2);
+		render(GameMenu, baseProps());
+		await page.getByRole('button', { name: /^menu$/i }).click();
+		await expect.element(page.getByRole('button', { name: /industry city map/i })).toBeVisible();
+		// A pointer press anywhere outside the menu closes it (standard dropdown behaviour).
+		document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+		await expect
+			.element(page.getByRole('button', { name: /industry city map/i }))
+			.not.toBeInTheDocument();
+	});
+});
