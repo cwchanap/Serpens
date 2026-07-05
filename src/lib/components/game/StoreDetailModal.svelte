@@ -80,7 +80,12 @@
 </script>
 
 <div class="detail-backdrop">
-	<button type="button" class="backdrop-button" aria-hidden="true" tabindex="-1" onclick={onClose}
+	<button
+		type="button"
+		class="backdrop-button"
+		tabindex="-1"
+		aria-label="Dismiss store details"
+		onclick={onClose}
 	></button>
 	<div
 		class="detail-modal paper"

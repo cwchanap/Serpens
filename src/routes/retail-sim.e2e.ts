@@ -656,6 +656,19 @@ test('Escape closes the alerts popover', async ({ page }) => {
 	await expect(page.getByRole('group', { name: /alerts list/i })).toHaveCount(0);
 });
 
+test('? toggles the shortcut cheat sheet open and closed', async ({ page }) => {
+	await page.goto('/');
+	await expectRetailMapReady(page);
+
+	// "?" opens the cheat sheet.
+	await page.keyboard.press('?');
+	await expect(page.getByRole('dialog', { name: /keyboard shortcuts/i })).toBeVisible();
+
+	// "?" again closes it — the key is a true toggle, not open-only.
+	await page.keyboard.press('?');
+	await expect(page.getByRole('dialog', { name: /keyboard shortcuts/i })).toHaveCount(0);
+});
+
 test('management panels open before founding a store', async ({ page }) => {
 	await page.goto('/');
 	await expectRetailMapReady(page);

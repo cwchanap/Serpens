@@ -14,7 +14,17 @@ const FOCUSABLE_SELECTOR = [
 
 function isVisible(element: Element): boolean {
 	if (!(element instanceof HTMLElement)) return false;
-	return element.offsetWidth > 0 || element.offsetHeight > 0 || element.getClientRects().length > 0;
+	// `offsetWidth`/`offsetHeight`/`getClientRects()` catch `display: none`, but
+	// an element with `visibility: hidden` still occupies layout space and would
+	// pass those checks while being invisible to users. Check computed style too.
+	if (
+		element.offsetWidth <= 0 &&
+		element.offsetHeight <= 0 &&
+		element.getClientRects().length === 0
+	) {
+		return false;
+	}
+	return getComputedStyle(element).visibility !== 'hidden';
 }
 
 function getFocusableCandidates(root: HTMLElement): HTMLElement[] {
@@ -75,6 +85,12 @@ export const focusTrap: Attachment<HTMLElement> = (node) => {
 
 	return () => {
 		node.removeEventListener('keydown', handleKeydown);
-		previouslyFocused?.focus?.();
+		// Only restore focus if the previously-focused element is still in the
+		// DOM. If it was removed while the dialog was open (e.g. a list item that
+		// re-rendered), focus would silently fall to `document.body` anyway, but
+		// calling `.focus()` on a detached node is a no-op we can skip explicitly.
+		if (previouslyFocused?.isConnected) {
+			previouslyFocused.focus?.();
+		}
 	};
 };

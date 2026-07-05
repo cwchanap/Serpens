@@ -1,9 +1,10 @@
 import { page } from 'vitest/browser';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
+import type { ManagementPanelId } from '$lib/game/keyboardShortcuts';
 import ControlDesk from './ControlDesk.svelte';
 
-const managementItems = [
+const managementItems: { id: ManagementPanelId; label: string; shortcut: string }[] = [
 	{ id: 'dashboard', label: 'Dashboard', shortcut: 'D' },
 	{ id: 'policies', label: 'Policies', shortcut: 'P' }
 ];

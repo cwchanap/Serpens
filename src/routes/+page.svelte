@@ -330,6 +330,7 @@
 			isCheatSheetOpen ||
 			isSavePanelOpen ||
 			isAlertsMenuOpen ||
+			isGameMenuOpen ||
 			isPlacementModeActive
 	);
 	// Advisor/availability work is gated on the overlay that consumes it, so the
@@ -338,7 +339,9 @@
 		isSupplyAdvisorOpen ? buildSupplyAdvisor(game ?? starterMapState) : []
 	);
 	let availableMaterialIds = $derived<MaterialId[]>(
-		isBuildMenuOpen ? getAvailableMaterialIds(game ?? starterMapState) : []
+		isBuildMenuOpen && activeMapView === 'industry'
+			? getAvailableMaterialIds(game ?? starterMapState)
+			: []
 	);
 	let mapSnapshot = $derived(
 		createCityMapSnapshot(game ?? starterMapState, selectedTileId, retailPlacementPreview)
@@ -959,7 +962,11 @@
 		const hasModifier = event.metaKey || event.ctrlKey || event.altKey;
 
 		if (event.key === '?' && !hasModifier) {
-			if (!isTypingElement(event.target) && !hasBlockingOverlay) {
+			// `?` is a true toggle: it opens the cheat sheet when no overlay is
+			// active, and closes it when the cheat sheet itself is the open
+			// overlay. It stays suppressed when a *different* modal is open so
+			// it can't stack on top of it.
+			if (!isTypingElement(event.target) && (!hasBlockingOverlay || isCheatSheetOpen)) {
 				event.preventDefault();
 				isCheatSheetOpen = !isCheatSheetOpen;
 			}
@@ -1147,7 +1154,7 @@
 			buildDisabled={activeMapView === 'world'}
 			advanceDisabled={game === null}
 			onBuild={openBuildMenu}
-			onOpenManagement={(id) => openManagementPanel(id as ManagementPanelId)}
+			onOpenManagement={(id) => openManagementPanel(id)}
 			onAdvanceDay={advanceDay}
 			onOpenShortcuts={() => (isCheatSheetOpen = true)}
 		/>
