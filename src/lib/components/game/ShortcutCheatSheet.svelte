@@ -1,5 +1,7 @@
 <!-- src/lib/components/game/ShortcutCheatSheet.svelte -->
 <script lang="ts">
+	import { focusTrap } from '$lib/a11y/focusTrap';
+
 	interface Shortcut {
 		keys: string;
 		action: string;
@@ -30,7 +32,13 @@
 <div class="cheat-backdrop">
 	<button type="button" class="backdrop-button" aria-label="Dismiss shortcuts" onclick={onClose}
 	></button>
-	<div class="cheat-sheet paper" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
+	<div
+		class="cheat-sheet paper"
+		role="dialog"
+		aria-modal="true"
+		aria-label="Keyboard shortcuts"
+		{@attach focusTrap}
+	>
 		<header>
 			<h2>Keyboard Shortcuts</h2>
 			<button type="button" class="btn-danger" aria-label="Close shortcuts" onclick={onClose}

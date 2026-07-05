@@ -29,12 +29,16 @@
 	}
 
 	// Standard dropdown behaviour: dismiss the popover on any pointer press outside it.
-	const dismissMenuOnOutsidePointer: Attachment<HTMLElement> = (node) =>
-		on(window, 'pointerdown', (event) => {
-			if (open && !node.contains(event.target as Node)) {
+	// The attachment re-runs when `open` changes, so the global listener is only
+	// registered while the popover is actually open (no always-on window listener).
+	const dismissMenuOnOutsidePointer: Attachment<HTMLElement> = (node) => {
+		if (!open) return;
+		return on(window, 'pointerdown', (event) => {
+			if (!node.contains(event.target as Node)) {
 				open = false;
 			}
 		});
+	};
 </script>
 
 <div class="game-menu" {@attach dismissMenuOnOutsidePointer}>

@@ -51,12 +51,16 @@
 
 	// Standard dropdown behaviour: dismiss the popover on any pointer press outside it.
 	// (Escape is handled centrally in the page keydown chain via the bound `alertsOpen`.)
-	const dismissAlertsOnOutsidePointer: Attachment<HTMLElement> = (node) =>
-		on(window, 'pointerdown', (event) => {
-			if (alertsOpen && !node.contains(event.target as Node)) {
+	// The attachment re-runs when `alertsOpen` changes, so the global listener is only
+	// registered while the popover is actually open (no always-on window listener).
+	const dismissAlertsOnOutsidePointer: Attachment<HTMLElement> = (node) => {
+		if (!alertsOpen) return;
+		return on(window, 'pointerdown', (event) => {
+			if (!node.contains(event.target as Node)) {
 				alertsOpen = false;
 			}
 		});
+	};
 </script>
 
 <header class="top-bar" aria-label="Status bar">

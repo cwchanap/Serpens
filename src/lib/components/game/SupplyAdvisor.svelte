@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { focusTrap } from '$lib/a11y/focusTrap';
 	import type { AdvisorChain } from '$lib/game/supplyAdvisor';
 	import type { IndustrialBuildingTypeId } from '$lib/game/types';
 
@@ -20,7 +21,13 @@
 <div class="advisor-backdrop">
 	<button type="button" class="backdrop-button" aria-hidden="true" tabindex="-1" onclick={onClose}
 	></button>
-	<div class="advisor paper" role="dialog" aria-modal="true" aria-label="Supply advisor">
+	<div
+		class="advisor paper"
+		role="dialog"
+		aria-modal="true"
+		aria-label="Supply advisor"
+		{@attach focusTrap}
+	>
 		<header>
 			<div>
 				<p class="eyebrow">Industry</p>

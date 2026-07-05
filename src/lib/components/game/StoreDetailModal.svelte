@@ -2,6 +2,7 @@
 	import StoreProductChainPanel from '$lib/components/game/StoreProductChainPanel.svelte';
 	import StoreStaffPanel from '$lib/components/game/StoreStaffPanel.svelte';
 	import StoreStockTable from '$lib/components/game/StoreStockTable.svelte';
+	import { focusTrap } from '$lib/a11y/focusTrap';
 	import type {
 		DailyStoreReport,
 		GameState,
@@ -58,7 +59,13 @@
 <div class="detail-backdrop">
 	<button type="button" class="backdrop-button" aria-hidden="true" tabindex="-1" onclick={onClose}
 	></button>
-	<div class="detail-modal paper" role="dialog" aria-modal="true" aria-label={store.name}>
+	<div
+		class="detail-modal paper"
+		role="dialog"
+		aria-modal="true"
+		aria-label={store.name}
+		{@attach focusTrap}
+	>
 		<header>
 			<div>
 				<p class="eyebrow">Store details</p>
