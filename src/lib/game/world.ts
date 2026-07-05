@@ -187,6 +187,13 @@ export function getWorldCityDefinition(cityId: string): WorldCityDefinition | un
 	return WORLD_CITY_CATALOG.find((city) => city.id === cityId);
 }
 
+// Type guard for callers that hold a `string` (e.g. `GameAlert.cityId`) but need to
+// pass it to APIs typed as `WorldCityId`. Mirrors `getWorldCityDefinition` so there is
+// a single source of truth for valid ids.
+export function isWorldCityId(cityId: string): cityId is WorldCityId {
+	return getWorldCityDefinition(cityId) !== undefined;
+}
+
 export function getWorldCityStatus(game: GameState, cityId: string): WorldCityStatus | null {
 	const city = getWorldCityDefinition(cityId);
 	if (!city) return null;
@@ -345,7 +352,7 @@ export function openWorldCity(game: GameState, cityId: string): GameState {
 	return refreshWorldProgress(selectWorldCity(ensureWorldCityMap(openedGame, city), city.id));
 }
 
-export function selectWorldCity(game: GameState, cityId: string): GameState {
+export function selectWorldCity(game: GameState, cityId: WorldCityId): GameState {
 	const city = getWorldCityDefinition(cityId);
 
 	if (!city || !game.world.openedCityIds.includes(city.id)) return game;

@@ -93,6 +93,11 @@
 					<span class="seal alert-count" data-urgent="true">{alerts.length}</span>
 				{/if}
 			</button>
+			<p class="alerts-announce" aria-live="polite" role="status">
+				{alerts.length > 0
+					? `${alerts.length} alert${alerts.length === 1 ? '' : 's'}`
+					: 'No alerts'}
+			</p>
 
 			{#if alertsOpen}
 				<div class="alerts-popover paper" role="group" aria-label="Alerts list">
@@ -166,6 +171,19 @@
 
 	.alerts {
 		position: relative;
+	}
+
+	.alerts-announce {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		margin: -1px;
+		padding: 0;
+		border: 0;
+		overflow: hidden;
+		clip: rect(0 0 0 0);
+		clip-path: inset(50%);
+		white-space: nowrap;
 	}
 
 	.alerts-bell {
