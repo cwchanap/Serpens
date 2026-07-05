@@ -24,7 +24,11 @@
 	import { DEFAULT_AUDIO_PREFERENCES, type AudioPreferences } from '$lib/audio/audioPreferences';
 	import type { BgmCueId, SfxCueId } from '$lib/audio/audioCatalog';
 	import { collectGameAlerts, type GameAlert } from '$lib/game/alerts';
-	import { resolveShortcutAction } from '$lib/game/keyboardShortcuts';
+	import {
+		MANAGEMENT_PANEL_SHORTCUT_KEY,
+		resolveShortcutAction,
+		type ManagementPanelId
+	} from '$lib/game/keyboardShortcuts';
 	import {
 		DEFAULT_RETAIL_CITY_HEIGHT,
 		DEFAULT_RETAIL_CITY_WIDTH,
@@ -92,18 +96,10 @@
 	import { createSaveRepository } from '$lib/persistence/saveRepositoryFactory';
 	import type { SaveSlotMetadata } from '$lib/persistence/saveTypes';
 
-	type ManagementPanelId =
-		| 'dashboard'
-		| 'policies'
-		| 'staff'
-		| 'stores'
-		| 'decisions'
-		| 'reports'
-		| 'productChains';
-
 	interface ManagementPanelMenuItem {
 		id: ManagementPanelId;
 		label: string;
+		shortcut: string;
 	}
 
 	const starterCity = generateCity({
@@ -154,13 +150,17 @@
 		reports: []
 	};
 	const managementPanelMenuItems: ManagementPanelMenuItem[] = [
-		{ id: 'dashboard', label: 'Dashboard' },
-		{ id: 'policies', label: 'Policies' },
-		{ id: 'staff', label: 'Staff' },
-		{ id: 'stores', label: 'Stores' },
-		{ id: 'decisions', label: 'Decisions' },
-		{ id: 'reports', label: 'Reports' },
-		{ id: 'productChains', label: 'Product Chains' }
+		{ id: 'dashboard', label: 'Dashboard', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.dashboard },
+		{ id: 'policies', label: 'Policies', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.policies },
+		{ id: 'staff', label: 'Staff', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.staff },
+		{ id: 'stores', label: 'Stores', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.stores },
+		{ id: 'decisions', label: 'Decisions', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.decisions },
+		{ id: 'reports', label: 'Reports', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.reports },
+		{
+			id: 'productChains',
+			label: 'Product Chains',
+			shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.productChains
+		}
 	];
 	const bgmCueByMapView: Record<MapViewId, BgmCueId> = {
 		retail: 'bgm.retail-map',
@@ -176,6 +176,8 @@
 	let selectedIndustryTileId = $state<string | null>(null);
 	let isCheatSheetOpen = $state(false);
 	let isStoreDetailOpen = $state(false);
+	let isGameMenuOpen = $state(false);
+	let isAlertsMenuOpen = $state(false);
 	let isBuildMenuOpen = $state(false);
 	let isSupplyAdvisorOpen = $state(false);
 	let activeManagementPanelId = $state<ManagementPanelId | null>(null);
@@ -416,6 +418,7 @@
 	}
 
 	function openSavePanel(): void {
+		isGameMenuOpen = false;
 		activeManagementPanelId = null;
 		isSavePanelOpen = true;
 		saveStatus = '';
@@ -438,6 +441,7 @@
 			return;
 		}
 
+		isGameMenuOpen = false;
 		isSavePanelOpen = false;
 		activeManagementPanelId = null;
 		isBuildMenuOpen = true;
@@ -518,14 +522,11 @@
 	}
 
 	function openManagementPanel(panelId: ManagementPanelId): void {
+		isGameMenuOpen = false;
 		isSavePanelOpen = false;
 		isBuildMenuOpen = false;
-
-		if (!game) {
-			activeManagementPanelId = null;
-			return;
-		}
-
+		// Panels open even before a store is founded; they fall back to an empty
+		// starter state and their action handlers no-op until a game exists.
 		activeManagementPanelId = panelId;
 	}
 
@@ -918,7 +919,11 @@
 	function handleKeydown(event: KeyboardEvent) {
 		unlockAudio();
 
-		if (event.key === '?') {
+		// Leave Cmd/Ctrl/Alt combinations to the browser/OS (e.g. Cmd+D, Cmd+S) —
+		// only bare keypresses (Shift allowed) drive game shortcuts.
+		const hasModifier = event.metaKey || event.ctrlKey || event.altKey;
+
+		if (event.key === '?' && !hasModifier) {
 			if (!isTypingElement(event.target)) {
 				event.preventDefault();
 				isCheatSheetOpen = !isCheatSheetOpen;
@@ -947,6 +952,14 @@
 				isBuildMenuOpen = false;
 				return;
 			}
+			if (isGameMenuOpen) {
+				isGameMenuOpen = false;
+				return;
+			}
+			if (isAlertsMenuOpen) {
+				isAlertsMenuOpen = false;
+				return;
+			}
 			if (isPlacementModeActive) {
 				cancelPlacement();
 				return;
@@ -965,6 +978,11 @@
 			}
 			if (selectedIndustryTileId !== null) {
 				selectedIndustryTileId = null;
+				return;
+			}
+			// Nothing else was open or selected — Escape toggles the hamburger menu open.
+			if (!hasModifier && !isTypingElement(event.target)) {
+				isGameMenuOpen = true;
 			}
 			return;
 		}
@@ -972,14 +990,14 @@
 		const action = resolveShortcutAction({
 			key: event.key,
 			isTypingTarget: isTypingElement(event.target),
+			hasModifier,
 			hasBlockingOverlay:
 				isSupplyAdvisorOpen ||
 				isStoreDetailOpen ||
 				isCheatSheetOpen ||
-				isBuildMenuOpen ||
 				isSavePanelOpen ||
-				isPlacementModeActive ||
-				activeManagementPanelId !== null,
+				isPlacementModeActive,
+			isMenuOpen: isBuildMenuOpen || activeManagementPanelId !== null,
 			activeMapView,
 			hasGame: game !== null
 		});
@@ -990,8 +1008,18 @@
 
 		event.preventDefault();
 
-		if (action.type === 'build') {
-			openBuildMenu();
+		if (action.type === 'toggle-build') {
+			if (isBuildMenuOpen) {
+				closeBuildMenu();
+			} else {
+				openBuildMenu();
+			}
+		} else if (action.type === 'toggle-panel') {
+			if (activeManagementPanelId === action.panel) {
+				closeManagementPanel();
+			} else {
+				openManagementPanel(action.panel);
+			}
 		} else if (action.type === 'advance-day') {
 			advanceDay();
 		} else if (action.type === 'view') {
@@ -1069,27 +1097,29 @@
 			cash={game?.cash ?? null}
 			{alerts}
 			onSelectAlert={handleSelectAlert}
-		/>
-
-		<ControlDesk
 			{activeMapView}
-			managementItems={managementPanelMenuItems}
-			buildDisabled={activeMapView === 'world'}
-			advanceDisabled={game === null}
-			onBuild={openBuildMenu}
 			onSelectView={(view) => {
 				if (view === 'retail') showRetailMap();
 				else if (view === 'industry') showIndustryMap();
 				else showWorldMap();
 			}}
-			onOpenManagement={(id) => openManagementPanel(id as ManagementPanelId)}
-			onAdvanceDay={advanceDay}
+			bind:menuOpen={isGameMenuOpen}
+			bind:alertsOpen={isAlertsMenuOpen}
 		>
 			{#snippet menuContent()}
 				<button type="button" onclick={openSavePanel}>Saves</button>
 				<AudioSettings preferences={audioPreferences} onChange={updateAudioPreferences} />
 			{/snippet}
-		</ControlDesk>
+		</TopBar>
+
+		<ControlDesk
+			managementItems={managementPanelMenuItems}
+			buildDisabled={activeMapView === 'world'}
+			advanceDisabled={game === null}
+			onBuild={openBuildMenu}
+			onOpenManagement={(id) => openManagementPanel(id as ManagementPanelId)}
+			onAdvanceDay={advanceDay}
+		/>
 		{#if isPlacementModeActive}
 			<div class="placement-status plaque" role="status" aria-label="Placement status">
 				<span>{placementFeedback ?? 'Choose a highlighted tile to build.'}</span>
@@ -1168,7 +1198,8 @@
 		/>
 	{/if}
 
-	{#if game && activeManagementPanel}
+	{#if activeManagementPanel}
+		{@const panelGame = game ?? starterMapState}
 		<div class="tower-backdrop">
 			<button
 				type="button"
@@ -1192,8 +1223,8 @@
 						role="group"
 						aria-label={`${activeManagementPanel.label} status`}
 					>
-						<span class="ticker">Day {game.day}</span>
-						<strong class="ticker">${game.cash.toLocaleString('en-US')} cash</strong>
+						<span class="ticker">Day {panelGame.day}</span>
+						<strong class="ticker">${panelGame.cash.toLocaleString('en-US')} cash</strong>
 						<button
 							type="button"
 							class="close-tower btn-danger"
@@ -1206,15 +1237,15 @@
 				</div>
 
 				{#if activeManagementPanel.id === 'dashboard'}
-					<Scorecard scorecard={game.scorecard} />
+					<Scorecard scorecard={panelGame.scorecard} />
 				{:else if activeManagementPanel.id === 'policies'}
-					<PolicyPanel policy={game.policy} onChange={changePolicy} />
+					<PolicyPanel policy={panelGame.policy} onChange={changePolicy} />
 				{:else if activeManagementPanel.id === 'staff'}
 					<StaffPanel
-						stores={game.stores}
-						staff={game.staff}
-						hiringCandidates={game.hiringCandidates}
-						cash={game.cash}
+						stores={panelGame.stores}
+						staff={panelGame.staff}
+						hiringCandidates={panelGame.hiringCandidates}
+						cash={panelGame.cash}
 						onHire={hireStaff}
 						onAssign={assignStaff}
 						onUnassign={unassignStoreStaff}
@@ -1222,16 +1253,16 @@
 					/>
 				{:else if activeManagementPanel.id === 'stores'}
 					<StoreOverview
-						stores={game.stores}
-						staff={game.staff}
+						stores={panelGame.stores}
+						staff={panelGame.staff}
 						latestReports={summary.latest?.storeReports ?? []}
 					/>
 				{:else if activeManagementPanel.id === 'decisions'}
-					<DecisionQueue decisions={game.decisions} onResolve={chooseDecision} />
+					<DecisionQueue decisions={panelGame.decisions} onResolve={chooseDecision} />
 				{:else if activeManagementPanel.id === 'reports'}
 					<ReportsPanel {summary} />
 				{:else if activeManagementPanel.id === 'productChains'}
-					<ProductChainsPanel {game} />
+					<ProductChainsPanel game={panelGame} />
 				{/if}
 			</div>
 		</div>
