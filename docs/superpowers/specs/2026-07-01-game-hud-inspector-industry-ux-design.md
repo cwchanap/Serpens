@@ -39,7 +39,7 @@ The bottom command strip is framed as the shopkeeper's **control desk** — a pa
 
 ### Layout
 
-```
+```text
 ┌───────────────────────────────────────────────────────────────────────┐
 │  [◈ Harbor City]                                  Day 42 · $128,400  🔔3 │  top bar (slim)
 │                                                                         │

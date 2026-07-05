@@ -170,11 +170,13 @@ describe('TileInspector basic card', () => {
 	});
 
 	it('does not render the stock/chain/staff tabs on the basic card', async () => {
-		expect.assertions(1);
+		expect.assertions(3);
 
 		renderInspector({ store, latestStoreReport });
 
 		await expect.element(page.getByRole('tab', { name: 'Stock' })).not.toBeInTheDocument();
+		await expect.element(page.getByRole('tab', { name: 'Product Chain' })).not.toBeInTheDocument();
+		await expect.element(page.getByRole('tab', { name: 'Staff' })).not.toBeInTheDocument();
 	});
 });
 

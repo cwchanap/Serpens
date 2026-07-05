@@ -741,7 +741,7 @@ async function openStoreDetail(page: Page) {
 }
 ```
 
-> Adjust the modal name regex to match the store name your setup helper creates (the suite founds stores named "Store #N" / the default). Inspect the store-founding helper at the top of the file and match its naming.
+> Adjust the modal name regex to match the store name the suite's store-founding helper creates (named "Store #N" / the default). Inspect the store-founding helper at the top of the file and match its naming.
 
 Migrate the store-tab interactions now behind the modal:
 - The stock-inspection helper reading `.store-tab-panels` (around line 284) → read `.detail-panels` inside the modal instead, after `openStoreDetail(page)`.

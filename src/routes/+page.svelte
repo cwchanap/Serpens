@@ -713,6 +713,11 @@
 	function buildFromAdvisor(buildingTypeId: IndustrialBuildingTypeId): void {
 		isSupplyAdvisorOpen = false;
 		isBuildMenuOpen = false;
+		// The advisor is reachable from the industry Build Menu, but the user can
+		// switch map views while the advisor stays open. Ensure the industry map
+		// is active before arming industry placement so the preview renders on
+		// the correct map.
+		setActiveMapView('industry');
 		armIndustryPlacement(buildingTypeId);
 	}
 
@@ -1004,6 +1009,7 @@
 				isStoreDetailOpen ||
 				isCheatSheetOpen ||
 				isSavePanelOpen ||
+				isAlertsMenuOpen ||
 				isPlacementModeActive,
 			isMenuOpen: isBuildMenuOpen || activeManagementPanelId !== null,
 			activeMapView,

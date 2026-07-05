@@ -54,6 +54,29 @@
 		onClickFeedback();
 		activeTab = tab;
 	}
+
+	function handleTabKeydown(event: KeyboardEvent): void {
+		if (
+			event.key !== 'ArrowLeft' &&
+			event.key !== 'ArrowRight' &&
+			event.key !== 'ArrowUp' &&
+			event.key !== 'ArrowDown'
+		) {
+			return;
+		}
+
+		event.preventDefault();
+		const currentIndex = tabs.findIndex((tab) => tab.id === activeTab);
+		if (currentIndex === -1) return;
+
+		const direction = event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 1;
+		const nextIndex = (currentIndex + direction + tabs.length) % tabs.length;
+		const nextTab = tabs[nextIndex];
+		if (!nextTab) return;
+
+		selectTab(nextTab.id);
+		document.getElementById(`${store.id}-${nextTab.id}-tab`)?.focus();
+	}
 </script>
 
 <div class="detail-backdrop">
@@ -76,7 +99,13 @@
 			>
 		</header>
 
-		<div class="detail-tabs" role="tablist" aria-label={`${store.name} sections`}>
+		<div
+			class="detail-tabs"
+			role="tablist"
+			aria-label={`${store.name} sections`}
+			tabindex="-1"
+			onkeydown={handleTabKeydown}
+		>
 			{#each tabs as tab (tab.id)}
 				<button
 					type="button"
