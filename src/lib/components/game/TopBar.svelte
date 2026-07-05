@@ -94,9 +94,9 @@
 				{/if}
 			</button>
 			<p class="alerts-announce" aria-live="polite" role="status">
-				{alerts.length > 0
-					? `${alerts.length} alert${alerts.length === 1 ? '' : 's'}`
-					: 'No alerts'}
+				{#if alerts.length > 0}
+					{alerts.length} alert{alerts.length === 1 ? '' : 's'}
+				{/if}
 			</p>
 
 			{#if alertsOpen}

@@ -138,7 +138,6 @@
 				role="tabpanel"
 				aria-labelledby={`${store.id}-stock-tab`}
 				aria-hidden={activeTab !== 'stock'}
-				inert={activeTab !== 'stock'}
 			>
 				<StoreStockTable {store} latestReport={latestStoreReport} onUpdate={onUpdateStoreProduct} />
 			</div>
@@ -149,7 +148,6 @@
 				role="tabpanel"
 				aria-labelledby={`${store.id}-chain-tab`}
 				aria-hidden={activeTab !== 'chain'}
-				inert={activeTab !== 'chain'}
 			>
 				<StoreProductChainPanel {game} {store} onInteractionFeedback={onClickFeedback} />
 			</div>
@@ -160,7 +158,6 @@
 				role="tabpanel"
 				aria-labelledby={`${store.id}-staff-tab`}
 				aria-hidden={activeTab !== 'staff'}
-				inert={activeTab !== 'staff'}
 			>
 				<StoreStaffPanel
 					{store}

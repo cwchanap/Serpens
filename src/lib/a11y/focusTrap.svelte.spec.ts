@@ -3,6 +3,11 @@ import { focusTrap } from './focusTrap';
 
 // focusTrap is an Attachment<HTMLElement> — a plain function (node) => cleanup.
 // These tests drive it directly against real DOM in the browser (client) project.
+// The `.svelte.spec.ts` suffix is what routes this file into the client Vitest
+// project (see vite.config.ts `test.projects`); it is deliberate because
+// focusTrap needs a real DOM (focus, tab order, getComputedStyle), which the
+// node-based server project does not provide. The module under test itself
+// (`focusTrap.ts`) is framework-agnostic and has no Svelte dependency.
 
 function mountDialog(html: string): HTMLDivElement {
 	const container = document.createElement('div');
