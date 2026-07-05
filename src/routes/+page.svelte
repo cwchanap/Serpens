@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { focusTrap } from '$lib/a11y/focusTrap';
 	import BuildMenu from '$lib/components/game/BuildMenu.svelte';
 	import DecisionQueue from '$lib/components/game/DecisionQueue.svelte';
 	import AudioSettings from '$lib/components/game/AudioSettings.svelte';
@@ -90,8 +91,7 @@
 		GameState,
 		IndustrialBuildingTypeId,
 		MaterialId,
-		StoreProductPatch,
-		WorldCityId
+		StoreProductPatch
 	} from '$lib/game/types';
 	import type { WorldCityStatus } from '$lib/game/world';
 	import type { SaveRepository } from '$lib/persistence/saveRepository';
@@ -325,9 +325,10 @@
 	// inform `resolveShortcutAction` that letter/Space/B keys must not fire behind it.
 	let hasBlockingOverlay = $derived(
 		isSupplyAdvisorOpen ||
-			isStoreDetailOpen ||
+			(isStoreDetailOpen && selectedStore !== null) ||
 			isCheatSheetOpen ||
 			isSavePanelOpen ||
+			isGameMenuOpen ||
 			isAlertsMenuOpen ||
 			isPlacementModeActive
 	);
@@ -925,7 +926,7 @@
 		}
 		if (alert.kind === 'store-stock' && alert.tileId) {
 			if (game && alert.cityId && alert.cityId !== game.activeCityId) {
-				setGameAndAutosave(selectWorldCity(game, alert.cityId as WorldCityId));
+				setGameAndAutosave(selectWorldCity(game, alert.cityId));
 			}
 			showRetailMap();
 			selectedTileId = alert.tileId;
@@ -933,7 +934,7 @@
 		}
 		if (alert.kind === 'factory-blocked' && alert.tileId) {
 			if (game && alert.cityId && alert.cityId !== game.activeIndustryCityId) {
-				setGameAndAutosave(selectWorldCity(game, alert.cityId as WorldCityId));
+				setGameAndAutosave(selectWorldCity(game, alert.cityId));
 			}
 			showIndustryMap();
 			selectedIndustryTileId = alert.tileId;
@@ -1138,6 +1139,7 @@
 			onBuild={openBuildMenu}
 			onOpenManagement={(id) => openManagementPanel(id as ManagementPanelId)}
 			onAdvanceDay={advanceDay}
+			onOpenShortcuts={() => (isCheatSheetOpen = true)}
 		/>
 		{#if isPlacementModeActive}
 			<div class="placement-status plaque" role="status" aria-label="Placement status">
@@ -1231,6 +1233,7 @@
 				role="dialog"
 				aria-modal="true"
 				aria-label={activeManagementPanel.label}
+				{@attach focusTrap}
 			>
 				<div class="tower-header">
 					<div>

@@ -320,7 +320,7 @@ describe('world progression and city opening', () => {
 		expect.assertions(4);
 		const game = createNewGame('convenience', 20260530);
 
-		const unknown = selectWorldCity(game, 'missing-city' as Parameters<typeof selectWorldCity>[1]);
+		const unknown = selectWorldCity(game, 'missing-city');
 		const unopened = selectWorldCity(game, 'campus-junction');
 
 		expect(unknown).toBe(game);

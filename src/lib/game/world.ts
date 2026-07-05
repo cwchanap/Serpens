@@ -345,7 +345,7 @@ export function openWorldCity(game: GameState, cityId: string): GameState {
 	return refreshWorldProgress(selectWorldCity(ensureWorldCityMap(openedGame, city), city.id));
 }
 
-export function selectWorldCity(game: GameState, cityId: WorldCityId): GameState {
+export function selectWorldCity(game: GameState, cityId: string): GameState {
 	const city = getWorldCityDefinition(cityId);
 
 	if (!city || !game.world.openedCityIds.includes(city.id)) return game;

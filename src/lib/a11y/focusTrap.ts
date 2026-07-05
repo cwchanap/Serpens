@@ -38,7 +38,11 @@ export const focusTrap: Attachment<HTMLElement> = (node) => {
 	const previouslyFocused = document.activeElement as HTMLElement | null;
 
 	const focusable = getFocusableCandidates(node);
-	const initialTarget = focusable[0] ?? (node.tabIndex >= 0 ? node : null);
+	// Fall back to the container itself when there are no focusable children.
+	// `tabIndex >= -1` covers both `tabindex="0"` and `tabindex="-1"` (the latter is
+	// programmatically focusable but excluded from tab order); `.focus()` is a no-op
+	// on elements that are not actually focusable, so this is safe to attempt.
+	const initialTarget = focusable[0] ?? (node.tabIndex >= -1 ? node : null);
 	initialTarget?.focus({ preventScroll: true });
 
 	function handleKeydown(event: KeyboardEvent): void {

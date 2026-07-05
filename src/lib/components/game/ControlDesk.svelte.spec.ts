@@ -15,7 +15,8 @@ function baseProps() {
 		advanceDisabled: false,
 		onBuild: vi.fn(),
 		onOpenManagement: vi.fn(),
-		onAdvanceDay: vi.fn()
+		onAdvanceDay: vi.fn(),
+		onOpenShortcuts: vi.fn()
 	};
 }
 
@@ -64,5 +65,16 @@ describe('ControlDesk', () => {
 		expect.assertions(1);
 		render(ControlDesk, { ...baseProps(), buildDisabled: true });
 		await expect.element(page.getByRole('button', { name: /^build$/i })).toBeDisabled();
+	});
+
+	it('renders a shortcuts launcher with the ? keycap that opens the cheat sheet', async () => {
+		expect.assertions(3);
+		const props = baseProps();
+		render(ControlDesk, props);
+		const shortcuts = page.getByRole('button', { name: /keyboard shortcuts/i });
+		await expect.element(shortcuts).toBeVisible();
+		await expect.element(page.getByText('?', { exact: true })).toBeVisible();
+		await shortcuts.click();
+		expect(props.onOpenShortcuts).toHaveBeenCalledTimes(1);
 	});
 });
