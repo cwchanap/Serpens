@@ -91,4 +91,13 @@ describe('StoreDetailModal', () => {
 		await page.getByRole('button', { name: /close store details/i }).click();
 		expect(p.onClose).toHaveBeenCalledTimes(1);
 	});
+
+	it('closes via the backdrop', async () => {
+		expect.assertions(1);
+		const p = props();
+		render(StoreDetailModal, p);
+		const backdrop = document.querySelector<HTMLButtonElement>('.backdrop-button')!;
+		backdrop.click();
+		expect(p.onClose).toHaveBeenCalledTimes(1);
+	});
 });

@@ -46,4 +46,21 @@ describe('SupplyAdvisor', () => {
 		render(SupplyAdvisor, { chains: [], onBuild: vi.fn(), onClose: vi.fn() });
 		await expect.element(page.getByText(/nothing to plan/i)).toBeVisible();
 	});
+
+	it('closes via the header Close button', async () => {
+		expect.assertions(1);
+		const onClose = vi.fn();
+		render(SupplyAdvisor, { chains, onBuild: vi.fn(), onClose });
+		await page.getByRole('button', { name: /close supply advisor/i }).click();
+		expect(onClose).toHaveBeenCalledTimes(1);
+	});
+
+	it('closes via the backdrop', async () => {
+		expect.assertions(1);
+		const onClose = vi.fn();
+		render(SupplyAdvisor, { chains, onBuild: vi.fn(), onClose });
+		const backdrop = document.querySelector<HTMLButtonElement>('.backdrop-button')!;
+		backdrop.click();
+		expect(onClose).toHaveBeenCalledTimes(1);
+	});
 });
