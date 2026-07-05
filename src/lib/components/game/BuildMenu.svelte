@@ -13,6 +13,7 @@
 		getIndustrialBuildingTypesForProductChain
 	} from '$lib/game/industry';
 	import { getBuildingTypeProducing } from '$lib/game/supplyAdvisor';
+	import { focusTrap } from '$lib/a11y/focusTrap';
 	import type { RetailBuildMenuOption } from '$lib/game/placementPreview';
 	import type {
 		ArchetypeId,
@@ -20,7 +21,6 @@
 		IndustryResourceId,
 		MaterialId
 	} from '$lib/game/types';
-	import type { Attachment } from 'svelte/attachments';
 
 	interface ProductChainFilter {
 		id: string;
@@ -55,16 +55,7 @@
 		currency: 'USD',
 		maximumFractionDigits: 0
 	});
-	const focusableSelector = [
-		'button:not([disabled]):not([tabindex="-1"])',
-		'input:not([disabled]):not([tabindex="-1"])',
-		'select:not([disabled]):not([tabindex="-1"])',
-		'textarea:not([disabled]):not([tabindex="-1"])',
-		'a[href]:not([tabindex="-1"])',
-		'[tabindex]:not([tabindex="-1"])'
-	].join(',');
 
-	let dialogElement: HTMLElement | null = null;
 	let selectedProductFilterId = $state<string | null>(null);
 	let productFilterOpen = $state(false);
 	let productFilterSearch = $state('');
@@ -101,19 +92,6 @@
 		);
 	});
 	const availableSet = $derived(new Set(availableMaterialIds));
-
-	const focusDialogOnMount: Attachment<HTMLElement> = (node) => {
-		dialogElement = node;
-		queueMicrotask(() => {
-			getDialogFocusableElements(node)[0]?.focus();
-		});
-
-		return () => {
-			if (dialogElement === node) {
-				dialogElement = null;
-			}
-		};
-	};
 
 	function formatRange(range: { min: number; max: number }): string {
 		if (range.min === range.max) {
@@ -214,50 +192,7 @@
 			onClose();
 			return;
 		}
-
-		if (event.key === 'Tab') {
-			trapDialogFocus(event);
-		}
-	}
-
-	function trapDialogFocus(event: KeyboardEvent): void {
-		const focusableElements = getDialogFocusableElements();
-		const firstElement = focusableElements[0];
-		const lastElement = focusableElements.at(-1);
-
-		if (!dialogElement || !firstElement || !lastElement) {
-			event.preventDefault();
-			dialogElement?.focus();
-			return;
-		}
-
-		const activeElement = document.activeElement;
-
-		if (
-			event.shiftKey &&
-			(activeElement === firstElement || !dialogElement.contains(activeElement))
-		) {
-			event.preventDefault();
-			lastElement.focus();
-			return;
-		}
-
-		if (!event.shiftKey && activeElement === lastElement) {
-			event.preventDefault();
-			firstElement.focus();
-		}
-	}
-
-	function getDialogFocusableElements(root: HTMLElement | null = dialogElement): HTMLElement[] {
-		if (!root) {
-			return [];
-		}
-
-		return Array.from(root.querySelectorAll<HTMLElement>(focusableSelector)).filter(
-			(element) =>
-				!element.hasAttribute('disabled') &&
-				(element.offsetWidth > 0 || element.offsetHeight > 0 || element.getClientRects().length > 0)
-		);
+		// Tab/Shift+Tab wrapping is handled by the shared `focusTrap` attachment.
 	}
 </script>
 
@@ -271,7 +206,7 @@
 	></button>
 
 	<div
-		{@attach focusDialogOnMount}
+		{@attach focusTrap}
 		class="build-menu paper"
 		role="dialog"
 		aria-modal="true"
@@ -335,7 +270,7 @@
 						aria-label="Clear product filter"
 						onclick={() => selectProductFilter(null)}
 					>
-						x
+						×
 					</button>
 				{/if}
 			</div>
@@ -354,7 +289,7 @@
 							aria-label="Close product chain filter"
 							onclick={closeProductFilter}
 						>
-							x
+							×
 						</button>
 					</div>
 					<label>

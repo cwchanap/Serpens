@@ -50,6 +50,12 @@ export function getAvailableMaterialIds(game: GameState): MaterialId[] {
 		}
 	}
 
+	// v1 semantic: a placed building's outputs count as "available" for build-menu
+	// recipe hints regardless of whether the building is currently blocked (e.g.
+	// missing upstream inputs). This is intentionally optimistic — the Supply
+	// Advisor (`buildSupplyAdvisor`) is the authoritative view that distinguishes
+	// built / buildable / blocked via `inputsSatisfied`. See lines below in that
+	// function. If tighter accuracy is needed here later, gate on inputsSatisfied.
 	for (const placed of game.industrialBuildings) {
 		const type = INDUSTRIAL_BUILDING_TYPES[placed.typeId];
 		if (!type?.recipeId) {

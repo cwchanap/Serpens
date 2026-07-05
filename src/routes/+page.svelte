@@ -320,6 +320,17 @@
 			: null
 	);
 	let industryLockedReason = $derived(game ? null : 'Found a retail store to unlock construction.');
+	// True when a modal/overlay that should swallow game shortcuts is open. Used both
+	// to gate the `?` cheat-sheet toggle (so it doesn't stack on an open modal) and to
+	// inform `resolveShortcutAction` that letter/Space/B keys must not fire behind it.
+	let hasBlockingOverlay = $derived(
+		isSupplyAdvisorOpen ||
+			isStoreDetailOpen ||
+			isCheatSheetOpen ||
+			isSavePanelOpen ||
+			isAlertsMenuOpen ||
+			isPlacementModeActive
+	);
 	// Advisor/availability work is gated on the overlay that consumes it, so the
 	// chain walk only runs while the Supply Advisor or Build Menu is actually open.
 	let supplyAdvisorChains = $derived<AdvisorChain[]>(
@@ -937,7 +948,7 @@
 		const hasModifier = event.metaKey || event.ctrlKey || event.altKey;
 
 		if (event.key === '?' && !hasModifier) {
-			if (!isTypingElement(event.target)) {
+			if (!isTypingElement(event.target) && !hasBlockingOverlay) {
 				event.preventDefault();
 				isCheatSheetOpen = !isCheatSheetOpen;
 			}
@@ -1004,13 +1015,7 @@
 			key: event.key,
 			isTypingTarget: isTypingElement(event.target),
 			hasModifier,
-			hasBlockingOverlay:
-				isSupplyAdvisorOpen ||
-				isStoreDetailOpen ||
-				isCheatSheetOpen ||
-				isSavePanelOpen ||
-				isAlertsMenuOpen ||
-				isPlacementModeActive,
+			hasBlockingOverlay,
 			isMenuOpen: isBuildMenuOpen || activeManagementPanelId !== null,
 			activeMapView,
 			hasGame: game !== null
