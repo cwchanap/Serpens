@@ -13,6 +13,7 @@
 		onBuild: () => void;
 		onOpenManagement: (id: string) => void;
 		onAdvanceDay: () => void;
+		onOpenShortcuts: () => void;
 	}
 
 	let {
@@ -21,7 +22,8 @@
 		advanceDisabled,
 		onBuild,
 		onOpenManagement,
-		onAdvanceDay
+		onAdvanceDay,
+		onOpenShortcuts
 	}: Props = $props();
 </script>
 
@@ -48,6 +50,14 @@
 	</div>
 
 	<div class="cluster time">
+		<button
+			type="button"
+			class="desk-shortcuts"
+			aria-label="Keyboard shortcuts"
+			onclick={onOpenShortcuts}
+		>
+			Shortcuts <kbd class="keycap">?</kbd>
+		</button>
 		<button
 			type="button"
 			class="btn-primary advance"
@@ -131,6 +141,24 @@
 	.advance {
 		display: inline-flex;
 		align-items: center;
+	}
+
+	.desk-shortcuts {
+		display: inline-flex;
+		align-items: center;
+		border: 1px solid var(--paper-edge);
+		border-radius: 2px;
+		background: var(--paper-50);
+		color: var(--ink-700);
+		font-family: var(--font-ui);
+		font-size: 0.82rem;
+		padding: 0.45rem 0.7rem;
+	}
+
+	.desk-shortcuts:hover,
+	.desk-shortcuts:focus-visible {
+		background: var(--paper-200);
+		border-color: var(--brass-500);
 	}
 
 	@media (max-width: 980px) {
