@@ -82,6 +82,7 @@
 		WORLD_CITY_CATALOG,
 		createInitialWorldProgress,
 		getWorldCityStatus,
+		isWorldCityId,
 		openWorldCity,
 		selectWorldCity
 	} from '$lib/game/world';
@@ -325,10 +326,9 @@
 	// inform `resolveShortcutAction` that letter/Space/B keys must not fire behind it.
 	let hasBlockingOverlay = $derived(
 		isSupplyAdvisorOpen ||
-			(isStoreDetailOpen && selectedStore !== null) ||
+			isStoreDetailOpen ||
 			isCheatSheetOpen ||
 			isSavePanelOpen ||
-			isGameMenuOpen ||
 			isAlertsMenuOpen ||
 			isPlacementModeActive
 	);
@@ -925,7 +925,12 @@
 			return;
 		}
 		if (alert.kind === 'store-stock' && alert.tileId) {
-			if (game && alert.cityId && alert.cityId !== game.activeCityId) {
+			if (
+				game &&
+				alert.cityId &&
+				alert.cityId !== game.activeCityId &&
+				isWorldCityId(alert.cityId)
+			) {
 				setGameAndAutosave(selectWorldCity(game, alert.cityId));
 			}
 			showRetailMap();
@@ -933,7 +938,12 @@
 			return;
 		}
 		if (alert.kind === 'factory-blocked' && alert.tileId) {
-			if (game && alert.cityId && alert.cityId !== game.activeIndustryCityId) {
+			if (
+				game &&
+				alert.cityId &&
+				alert.cityId !== game.activeIndustryCityId &&
+				isWorldCityId(alert.cityId)
+			) {
 				setGameAndAutosave(selectWorldCity(game, alert.cityId));
 			}
 			showIndustryMap();
