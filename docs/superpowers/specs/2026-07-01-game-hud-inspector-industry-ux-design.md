@@ -1,6 +1,6 @@
 # Game UX — Control-Desk HUD, Shop Basic/Detail Split, Shortcuts & Industry Supply Advisor
 
-**Status:** Draft — awaiting review (direction not yet approved; defaults chosen on the author's recommendation while the user was away)
+**Status:** Implemented — shipped design deviates from the original draft in three places (noted inline below); see the "Shipped deviations" notes in Parts 1 and 3.
 **Date:** 2026-07-01
 **Scope:** A UX overhaul of the in-game HUD and information architecture, in four connected parts:
 
@@ -60,6 +60,8 @@ The bottom command strip is framed as the shopkeeper's **control desk** — a pa
 - **Management launchers**: labeled icon buttons for the seven `managementPanelMenuItems` (Dashboard, Policies, Staff, Stores, Decisions, Reports, Product Chains). On narrow widths these collapse into a single "Manage ▾" popover that lists them (reuses today's dropdown styling).
 - **Advance Day** as the moss primary at the far right (thumb-reachable "end turn"), carrying its `Space` keycap.
 - **⚙ Menu** button on the desk (or top-bar far right) opens Saves + Audio settings (today's `openSavePanel` + `AudioSettings`).
+
+> **Shipped deviation (Part 1):** The view switcher and ⚙ Menu did **not** land on the Control Desk. They moved to the top bar's `GameMenu.svelte` hamburger (top-right), which holds the Retail/Industry/World tabs and the Saves/Audio menu content. The desk retains Build, the seven management launchers, and Advance Day. This was a deliberate UX call (one consolidated menu in the top bar rather than splitting view switching between two surfaces) and is accepted; acceptance criterion #1 below is read as "Build, all seven management panels, and Advance Day" — view switching lives in the top bar.
 
 ### Alerts (new)
 
@@ -125,6 +127,10 @@ Discoverable, not hidden: each shortcut-bearing button renders a small brass **k
 - Extend `handleKeydown` in `+page.svelte`. Ignore shortcuts when focus is in an `input` / `textarea` / `select` or when a modal owns focus (Build menu already traps focus; respect that).
 - Management letter keys (`P` Policies, `R` Reports, `C` Chains) are **optional in the first pass** — add once the desk layout settles and collisions are confirmed clear.
 - Cheat-sheet is a small `.paper` overlay listing the table above; also reachable from the ⚙ Menu.
+
+> **Shipped deviation (Part 3 — letter keys):** All seven management letter shortcuts shipped in the first pass, not just the deferred `P`/`R`/`C` set. The final mapping (in `keyboardShortcuts.ts`) is `D` Dashboard, `P` Policies, `S` Staff, `T` Stores, `C` Decisions, `R` Reports, `G` Product Chains. Note the non-obvious mnemonics forced by collisions: `C`→Decisions (not Chains, since "Chains" lost to "Decisions"), `G`→Product Chains, `T`→Stores (because `S` went to Staff). The cheat-sheet (`?`) lists the full set so the mapping is discoverable.
+
+> **Shipped deviation (Part 3 — Escape):** Escape does more than cancel/close. When nothing else is open or selected, Escape **opens** the top-bar `GameMenu` hamburger (so the menu is reachable from the keyboard without a pointer). The close chain still runs first: open overlays/tile selections close in priority order before Escape falls through to opening the menu.
 
 ---
 
@@ -202,16 +208,16 @@ The Advisor says **what** to build next, the recipe cards say **why** (inputs/ou
 
 ## Acceptance criteria
 
-1. A persistent bottom control desk exposes Build, view switching, all seven management panels, and Advance Day; a slim top bar shows location, Day, Cash, and an alerts bell with a live count.
+1. A persistent bottom control desk exposes Build, all seven management panels, and Advance Day; a slim top bar shows location, Day, Cash, an alerts bell with a live count, **and** the view switcher + ⚙ Menu via the `GameMenu` hamburger. (View switching moved off the desk to the top bar — see the Part 1 shipped-deviation note.)
 2. Clicking a store shows a compact Basic card (vitals + Upgrade + Open Details); "Open Details" opens a large four-tab popup where Stock and Product Chain are comfortably readable.
-3. `B`, `Space`, `1/2/3`, `Esc`, and `?` work as specified, are ignored while typing in inputs, and each shortcut-bearing button shows its keycap; `?` opens a cheat-sheet.
+3. `B`, `Space`, `1/2/3`, `Esc`, and `?` work as specified, are ignored while typing in inputs, and each shortcut-bearing button shows its keycap; `?` opens a cheat-sheet. Additionally all seven management letter keys (`D`/`P`/`S`/`T`/`C`/`R`/`G`) toggle their panels (shipped beyond the first-pass set — see the Part 3 shipped-deviation note), and Escape opens the `GameMenu` when nothing else is open.
 4. The industry build menu shows each building's inputs→output with availability and tier/Starter grouping; a Supply Advisor lists, per wanted retail good, the chain checklist with a one-click "build this next."
 5. No regression to map rendering, the `isMapPaused` optimization, save/load, or the core simulation. Existing suites pass (with selector-only e2e updates).
 
 ## Open questions (for review)
 
 - **Visual companion:** offered but not yet accepted — do you want browser mockups of the desk + shop panels before we lock layout?
-- **Management letter keys** (`P`/`R`/`C`) in the first pass, or defer?
+- ~~**Management letter keys** (`P`/`R`/`C`) in the first pass, or defer?~~ **Resolved — shipped all seven** (`D`/`P`/`S`/`T`/`C`/`R`/`G`); see Part 3 deviation note.
 - **Advisor placement:** a dedicated desk button on the Industry view, the industry inspector's empty state, or both?
 - **Alerts depth:** first pass = out-of-stock stores + pending decisions + blocked factories. Enough, or include more (low cash, unfilled staff slots)?
 

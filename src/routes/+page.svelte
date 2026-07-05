@@ -71,6 +71,7 @@
 	} from '$lib/game/staffing';
 	import { DEFAULT_POLICY, resolveDecision, updatePolicy, upgradeStore } from '$lib/game/state';
 	import { buildSupplyAdvisor, getAvailableMaterialIds } from '$lib/game/supplyAdvisor';
+	import type { AdvisorChain } from '$lib/game/supplyAdvisor';
 	import { isTileInStoreFootprint } from '$lib/game/storeFootprint';
 	import { isTileInIndustryBuildingFootprint } from '$lib/game/industryFootprint';
 	import { updateStoreProduct } from '$lib/game/stock';
@@ -88,6 +89,7 @@
 		CompanyPolicy,
 		GameState,
 		IndustrialBuildingTypeId,
+		MaterialId,
 		StoreProductPatch,
 		WorldCityId
 	} from '$lib/game/types';
@@ -318,8 +320,14 @@
 			: null
 	);
 	let industryLockedReason = $derived(game ? null : 'Found a retail store to unlock construction.');
-	let supplyAdvisorChains = $derived(buildSupplyAdvisor(game ?? starterMapState));
-	let availableMaterialIds = $derived(getAvailableMaterialIds(game ?? starterMapState));
+	// Advisor/availability work is gated on the overlay that consumes it, so the
+	// chain walk only runs while the Supply Advisor or Build Menu is actually open.
+	let supplyAdvisorChains = $derived<AdvisorChain[]>(
+		isSupplyAdvisorOpen ? buildSupplyAdvisor(game ?? starterMapState) : []
+	);
+	let availableMaterialIds = $derived<MaterialId[]>(
+		isBuildMenuOpen ? getAvailableMaterialIds(game ?? starterMapState) : []
+	);
 	let mapSnapshot = $derived(
 		createCityMapSnapshot(game ?? starterMapState, selectedTileId, retailPlacementPreview)
 	);
