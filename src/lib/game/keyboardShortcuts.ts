@@ -20,7 +20,7 @@ export interface ShortcutContext {
 	isTypingTarget: boolean;
 	/** A Cmd/Ctrl/Alt modifier is held — leave the keypress to the browser/OS (e.g. Cmd+D bookmark). Shift is allowed. */
 	hasModifier: boolean;
-	/** Hard modal overlays (save panel, cheat sheet, store detail, supply advisor, placement) suppress every shortcut. */
+	/** Hard modal overlays (save panel, cheat sheet, store detail, supply advisor, alerts popover, game-menu hamburger, placement) suppress every shortcut. */
 	hasBlockingOverlay: boolean;
 	/** A soft menu (build menu or a management panel) is open — suppresses navigation keys, but menu-toggle keys still switch/close it. */
 	isMenuOpen: boolean;

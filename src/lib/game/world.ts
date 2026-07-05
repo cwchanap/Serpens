@@ -356,9 +356,10 @@ export function selectWorldCity(game: GameState, cityId: WorldCityId): GameState
 	const city = getWorldCityDefinition(cityId);
 
 	if (!city || !game.world.openedCityIds.includes(city.id)) return game;
-	return city.kind === 'retail'
-		? { ...game, activeCityId: city.id }
-		: { ...game, activeIndustryCityId: city.id };
+	if (city.kind === 'retail') {
+		return game.activeCityId === city.id ? game : { ...game, activeCityId: city.id };
+	}
+	return game.activeIndustryCityId === city.id ? game : { ...game, activeIndustryCityId: city.id };
 }
 
 export function getRetailCityDemandMultiplier(

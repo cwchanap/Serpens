@@ -1151,6 +1151,93 @@ test('player opens a revealed retail city from the world map and builds there', 
 	await expect.poll(async () => (await readAutoSaveGame(page)).stores.length).toBe(2);
 });
 
+test('cross-city stock alert deep-links to the origin city and tile', async ({ page }) => {
+	await page.goto('/');
+
+	// Start in harbor-city with one store so campus-junction's reveal condition
+	// (stores.length >= 2) is within reach after we force-reveal it.
+	await buildRetailStoreAt(page, {
+		x: 1,
+		y: 6,
+		storeTypeName: /build convenience store/i,
+		expectedStoreCount: 1
+	});
+
+	// Force-reveal campus-junction and grant enough cash/storeCap to open it.
+	await page.evaluate(() => {
+		const serialized = window.localStorage.getItem('serpens.saves.v2');
+		if (!serialized) {
+			throw new Error('Missing save data');
+		}
+		const saveStore = JSON.parse(serialized);
+		const game = saveStore.autoSave.game;
+		game.cash = 100_000;
+		game.storeCap = 4;
+		game.world.revealedCityIds = [...new Set([...game.world.revealedCityIds, 'campus-junction'])];
+		window.localStorage.setItem('serpens.saves.v2', JSON.stringify(saveStore));
+	});
+	await page.reload();
+	await openSaves(page);
+	await page.getByRole('button', { name: /^resume$/i }).click();
+	await page.getByRole('button', { name: /close saves/i }).click();
+
+	// Open campus-junction and build a store there.
+	await openMapMenuItem(page, /world map/i);
+	await page.getByRole('button', { name: /campus junction/i }).click();
+	await page.getByRole('button', { name: /open for/i }).click();
+	await page.getByRole('button', { name: /campus junction/i }).click();
+	await openMapMenuItem(page, /retail city map/i);
+	await expect(page.getByRole('heading', { name: /campus junction/i })).toBeVisible();
+
+	await buildRetailStoreAt(page, {
+		x: 1,
+		y: 6,
+		storeTypeName: /build electronics & games/i,
+		expectedStoreCount: 1
+	});
+
+	// Switch the active city back to harbor-city and starve the campus-junction
+	// store's stock so a store-stock alert fires from the non-active city.
+	await page.evaluate(() => {
+		const serialized = window.localStorage.getItem('serpens.saves.v2');
+		if (!serialized) {
+			throw new Error('Missing save data');
+		}
+		const saveStore = JSON.parse(serialized);
+		const game = saveStore.autoSave.game;
+		game.activeCityId = 'harbor-city';
+		const campusStore = game.stores.find(
+			(store: { cityId: string }) => store.cityId === 'campus-junction'
+		);
+		if (!campusStore) {
+			throw new Error('Missing campus-junction store');
+		}
+		for (const product of campusStore.products) {
+			product.stock = 0;
+		}
+		window.localStorage.setItem('serpens.saves.v2', JSON.stringify(saveStore));
+	});
+	await page.reload();
+	await openSaves(page);
+	await page.getByRole('button', { name: /^resume$/i }).click();
+	await page.getByRole('button', { name: /close saves/i }).click();
+
+	// Active city is harbor-city; the alerts popover should list the
+	// campus-junction stock alert. Clicking it deep-links back to campus-junction.
+	await expect(page.getByRole('heading', { name: /harbor city/i })).toBeVisible();
+	await page.getByRole('button', { name: /^alerts/i }).click();
+	const alertsList = page.getByRole('group', { name: /alerts list/i });
+	await expect(alertsList).toBeVisible();
+	await alertsList
+		.getByRole('button', { name: /out of stock/i })
+		.first()
+		.click();
+
+	// The map should switch to campus-junction and select the store's tile.
+	await expect(page.getByRole('heading', { name: /campus junction/i })).toBeVisible();
+	await expect(page.getByRole('dialog', { name: /tile details/i })).toBeVisible();
+});
+
 test('manage selected store stock and see weekly imports', async ({ page }) => {
 	await page.goto('/');
 

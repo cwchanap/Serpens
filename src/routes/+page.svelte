@@ -934,7 +934,10 @@
 				alert.cityId !== game.activeCityId &&
 				isWorldCityId(alert.cityId)
 			) {
-				setGameAndAutosave(selectWorldCity(game, alert.cityId));
+				const switched = selectWorldCity(game, alert.cityId);
+				if (switched !== game) {
+					setGameAndAutosave(switched);
+				}
 			}
 			showRetailMap();
 			selectedTileId = alert.tileId;
@@ -947,7 +950,10 @@
 				alert.cityId !== game.activeIndustryCityId &&
 				isWorldCityId(alert.cityId)
 			) {
-				setGameAndAutosave(selectWorldCity(game, alert.cityId));
+				const switched = selectWorldCity(game, alert.cityId);
+				if (switched !== game) {
+					setGameAndAutosave(switched);
+				}
 			}
 			showIndustryMap();
 			selectedIndustryTileId = alert.tileId;
@@ -1237,74 +1243,76 @@
 	{/if}
 
 	{#if activeManagementPanel}
-		{@const panelGame = game ?? starterMapState}
-		<div class="tower-backdrop">
-			<button
-				type="button"
-				class="tower-backdrop-button"
-				aria-label={`Dismiss ${activeManagementPanel.label}`}
-				onclick={closeManagementPanel}
-			></button>
-			<div
-				class="control-tower-overlay paper"
-				role="dialog"
-				aria-modal="true"
-				aria-label={activeManagementPanel.label}
-				{@attach focusTrap}
-			>
-				<div class="tower-header">
-					<div>
-						<p class="eyebrow">Management</p>
-						<h2>{activeManagementPanel.label}</h2>
-					</div>
-					<div
-						class="tower-actions"
-						role="group"
-						aria-label={`${activeManagementPanel.label} status`}
-					>
-						<span class="ticker">Day {panelGame.day}</span>
-						<strong class="ticker">${panelGame.cash.toLocaleString('en-US')} cash</strong>
-						<button
-							type="button"
-							class="close-tower btn-danger"
-							aria-label={`Close ${activeManagementPanel.label}`}
-							onclick={closeManagementPanel}
+		{#key activeManagementPanel.id}
+			{@const panelGame = game ?? starterMapState}
+			<div class="tower-backdrop">
+				<button
+					type="button"
+					class="tower-backdrop-button"
+					aria-label={`Dismiss ${activeManagementPanel.label}`}
+					onclick={closeManagementPanel}
+				></button>
+				<div
+					class="control-tower-overlay paper"
+					role="dialog"
+					aria-modal="true"
+					aria-label={activeManagementPanel.label}
+					{@attach focusTrap}
+				>
+					<div class="tower-header">
+						<div>
+							<p class="eyebrow">Management</p>
+							<h2>{activeManagementPanel.label}</h2>
+						</div>
+						<div
+							class="tower-actions"
+							role="group"
+							aria-label={`${activeManagementPanel.label} status`}
 						>
-							Close
-						</button>
+							<span class="ticker">Day {panelGame.day}</span>
+							<strong class="ticker">${panelGame.cash.toLocaleString('en-US')} cash</strong>
+							<button
+								type="button"
+								class="close-tower btn-danger"
+								aria-label={`Close ${activeManagementPanel.label}`}
+								onclick={closeManagementPanel}
+							>
+								Close
+							</button>
+						</div>
 					</div>
-				</div>
 
-				{#if activeManagementPanel.id === 'dashboard'}
-					<Scorecard scorecard={panelGame.scorecard} />
-				{:else if activeManagementPanel.id === 'policies'}
-					<PolicyPanel policy={panelGame.policy} onChange={changePolicy} />
-				{:else if activeManagementPanel.id === 'staff'}
-					<StaffPanel
-						stores={panelGame.stores}
-						staff={panelGame.staff}
-						hiringCandidates={panelGame.hiringCandidates}
-						cash={panelGame.cash}
-						onHire={hireStaff}
-						onAssign={assignStaff}
-						onUnassign={unassignStoreStaff}
-						onPromote={promoteStaffMember}
-					/>
-				{:else if activeManagementPanel.id === 'stores'}
-					<StoreOverview
-						stores={panelGame.stores}
-						staff={panelGame.staff}
-						latestReports={summary.latest?.storeReports ?? []}
-					/>
-				{:else if activeManagementPanel.id === 'decisions'}
-					<DecisionQueue decisions={panelGame.decisions} onResolve={chooseDecision} />
-				{:else if activeManagementPanel.id === 'reports'}
-					<ReportsPanel {summary} />
-				{:else if activeManagementPanel.id === 'productChains'}
-					<ProductChainsPanel game={panelGame} />
-				{/if}
+					{#if activeManagementPanel.id === 'dashboard'}
+						<Scorecard scorecard={panelGame.scorecard} />
+					{:else if activeManagementPanel.id === 'policies'}
+						<PolicyPanel policy={panelGame.policy} onChange={changePolicy} />
+					{:else if activeManagementPanel.id === 'staff'}
+						<StaffPanel
+							stores={panelGame.stores}
+							staff={panelGame.staff}
+							hiringCandidates={panelGame.hiringCandidates}
+							cash={panelGame.cash}
+							onHire={hireStaff}
+							onAssign={assignStaff}
+							onUnassign={unassignStoreStaff}
+							onPromote={promoteStaffMember}
+						/>
+					{:else if activeManagementPanel.id === 'stores'}
+						<StoreOverview
+							stores={panelGame.stores}
+							staff={panelGame.staff}
+							latestReports={summary.latest?.storeReports ?? []}
+						/>
+					{:else if activeManagementPanel.id === 'decisions'}
+						<DecisionQueue decisions={panelGame.decisions} onResolve={chooseDecision} />
+					{:else if activeManagementPanel.id === 'reports'}
+						<ReportsPanel {summary} />
+					{:else if activeManagementPanel.id === 'productChains'}
+						<ProductChainsPanel game={panelGame} />
+					{/if}
+				</div>
 			</div>
-		</div>
+		{/key}
 	{/if}
 
 	{#if isSavePanelOpen}
