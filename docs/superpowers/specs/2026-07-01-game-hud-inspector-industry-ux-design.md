@@ -98,12 +98,13 @@ Empty tiles keep today's compact stat card (Demand / Rent / Foot traffic / Custo
 ### Detail popup (large centered modal)
 
 - The current four tabs (Details / Stock / Product Chain / Staff) move here, using the **same bookmark-tab styling** but in the wide surface, so `StoreStockTable` and `StoreProductChainPanel` finally get horizontal room.
+- **Shipped deviation (Part 2 — three tabs):** The Details tab stays in the Basic card (identity, level badge, vital gauges, Upgrade, attention flag) rather than duplicating inside the modal. `StoreDetailModal.svelte` therefore hosts **three** tabs (Stock / Product Chain / Staff). The Basic card's "Open Details" opens the modal for the heavy tabs only. See the plan doc (`docs/superpowers/plans/2026-07-01-shop-basic-detail-split.md`) for the explicit decision.
 - Opened from the Basic card's "Open Details"; closed via `Esc` / backdrop / close button. Feeds `isMapPaused` like the control-tower does today.
 
 ### Component split
 
 - `TileInspector.svelte` slims to the **Basic** card + tile stats (keeps its map-interaction blocking attachment and close affordance).
-- A new `StoreDetailModal.svelte` hosts the four tabs (Details/Stock/Chain/Staff) in the large surface. It receives the same props `TileInspector` passes to its tab panels today (`game`, `store`, `staff`, `hiringCandidates`, `latestStoreReport`, the `onUpdate*` / `onHire*` / `onAssign*` / `onUpgradeStore` callbacks). Tab markup moves out of `TileInspector` into this modal largely as-is.
+- A new `StoreDetailModal.svelte` hosts the three heavy tabs (Stock/Chain/Staff) in the large surface; the Details content remains in the Basic card (see the shipped-deviation note above). It receives the same props `TileInspector` passes to its tab panels today (`game`, `store`, `staff`, `hiringCandidates`, `latestStoreReport`, the `onUpdate*` / `onHire*` / `onAssign*` / `onUpgradeStore` callbacks). Tab markup moves out of `TileInspector` into this modal largely as-is.
 - `+page.svelte` gains a `isStoreDetailOpen` `$state` toggle and renders `StoreDetailModal` next to the control-tower overlay.
 
 ### Alternative considered
@@ -183,13 +184,13 @@ The Advisor says **what** to build next, the recipe cards say **why** (inputs/ou
 - `src/lib/components/game/ControlDesk.svelte` — bottom command strip.
 - `src/lib/components/game/ControlDesk.svelte.spec.ts` — component tests (client project).
 - `src/lib/components/game/TopBar.svelte` — slim top resource/alerts bar (incl. alerts bell + popover).
-- `src/lib/components/game/StoreDetailModal.svelte` — large four-tab store detail popup.
+- `src/lib/components/game/StoreDetailModal.svelte` — large three-tab store detail popup (Stock/Chain/Staff); Details stay in the Basic card.
 - `src/lib/components/game/SupplyAdvisor.svelte` — industry advisor checklist.
 - `src/lib/components/game/ShortcutCheatSheet.svelte` — `?` overlay.
 
 ### Modified
 - `src/routes/+page.svelte` — replace `.map-hud` with `TopBar` + `ControlDesk`; add `isStoreDetailOpen` and Advisor toggles; extend `handleKeydown` with `B` / `Space` / `1-3` / `?`; fold new overlays into `isMapPaused`; add `alerts` `$derived`.
-- `src/lib/components/game/TileInspector.svelte` — slim to Basic card + tile stats; move the four tab panels into `StoreDetailModal`; add "Open Details" + vital gauges + attention flag.
+- `src/lib/components/game/TileInspector.svelte` — slim to Basic card + tile stats; move the three heavy tab panels into `StoreDetailModal`; add "Open Details" + vital gauges + attention flag.
 - `src/lib/components/game/BuildMenu.svelte` — industry side becomes recipe cards (inputs→output, availability, tier/Starter grouping).
 - Possibly `src/lib/components/game/IndustryTileInspector.svelte` — empty/no-building state links to the Supply Advisor.
 
@@ -209,7 +210,7 @@ The Advisor says **what** to build next, the recipe cards say **why** (inputs/ou
 ## Acceptance criteria
 
 1. A persistent bottom control desk exposes Build, all seven management panels, and Advance Day; a slim top bar shows location, Day, Cash, an alerts bell with a live count, **and** the view switcher + ⚙ Menu via the `GameMenu` hamburger. (View switching moved off the desk to the top bar — see the Part 1 shipped-deviation note.)
-2. Clicking a store shows a compact Basic card (vitals + Upgrade + Open Details); "Open Details" opens a large four-tab popup where Stock and Product Chain are comfortably readable.
+2. Clicking a store shows a compact Basic card (vitals + Upgrade + Open Details); "Open Details" opens a large three-tab popup (Stock / Product Chain / Staff) where Stock and Product Chain are comfortably readable. The Details content lives in the Basic card itself (shipped deviation — see Part 2 note).
 3. `B`, `Space`, `1/2/3`, `Esc`, and `?` work as specified, are ignored while typing in inputs, and each shortcut-bearing button shows its keycap; `?` opens a cheat-sheet. Additionally all seven management letter keys (`D`/`P`/`S`/`T`/`C`/`R`/`G`) toggle their panels (shipped beyond the first-pass set — see the Part 3 shipped-deviation note), and Escape opens the `GameMenu` when nothing else is open.
 4. The industry build menu shows each building's inputs→output with availability and tier/Starter grouping; a Supply Advisor lists, per wanted retail good, the chain checklist with a one-click "build this next."
 5. No regression to map rendering, the `isMapPaused` optimization, save/load, or the core simulation. Existing suites pass (with selector-only e2e updates).
