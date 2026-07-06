@@ -513,6 +513,24 @@ describe('BuildMenu industry recipe cards', () => {
 		expect(onOpenAdvisor).toHaveBeenCalledTimes(1);
 	});
 
+	it('disables the Supply Advisor button while industry is locked', async () => {
+		expect.assertions(1);
+		const onOpenAdvisor = vi.fn();
+		render(BuildMenu, {
+			activeMapView: 'industry',
+			retailOptions: [],
+			industryLockedReason: 'Found a retail store to unlock construction.',
+			availableMaterialIds: [],
+			onChooseRetail: vi.fn(),
+			onChooseIndustry: vi.fn(),
+			onOpenAdvisor,
+			onClose: vi.fn()
+		});
+		await expect
+			.element(page.getByRole('button', { name: /supply advisor|what should i build/i }))
+			.toBeDisabled();
+	});
+
 	it('shows the producer hint for a missing recipe ingredient', async () => {
 		expect.assertions(1);
 
