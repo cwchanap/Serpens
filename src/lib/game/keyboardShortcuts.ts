@@ -18,6 +18,13 @@ export type ShortcutAction =
 export interface ShortcutContext {
 	key: string;
 	isTypingTarget: boolean;
+	/**
+	 * The keypress originates from a focused interactive control (button, link,
+	 * summary, or an ARIA interactive role such as `button`/`menuitem`/`tab`).
+	 * Such controls own the keypress — e.g. Space activates a button — so global
+	 * shortcuts are suppressed just like they are for typing targets.
+	 */
+	isInteractiveTarget: boolean;
 	/** A Cmd/Ctrl/Alt modifier is held — leave the keypress to the browser/OS (e.g. Cmd+D bookmark). Shift is allowed. */
 	hasModifier: boolean;
 	/** Hard modal overlays (save panel, cheat sheet, store detail, supply advisor, alerts popover, game-menu hamburger, placement) suppress every shortcut. */
@@ -48,7 +55,12 @@ export const MANAGEMENT_PANEL_SHORTCUT_KEY = Object.fromEntries(
 ) as Record<ManagementPanelId, string>;
 
 export function resolveShortcutAction(context: ShortcutContext): ShortcutAction | null {
-	if (context.isTypingTarget || context.hasModifier || context.hasBlockingOverlay) {
+	if (
+		context.isTypingTarget ||
+		context.isInteractiveTarget ||
+		context.hasModifier ||
+		context.hasBlockingOverlay
+	) {
 		return null;
 	}
 

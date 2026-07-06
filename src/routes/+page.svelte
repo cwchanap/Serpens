@@ -922,6 +922,22 @@
 		return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
 	}
 
+	// Interactive controls (buttons, links, disclosure summaries, and ARIA
+	// interactive roles) own certain keypresses — Space activates a button, so
+	// the global shortcut handler must not hijack it and call preventDefault().
+	// Mnemonic letters are suppressed here too: per the review note, shortcut
+	// handling should not fire from focused interactive controls. Dedicated
+	// global keys (`?`, Escape) are handled separately and stay unaffected.
+	const INTERACTIVE_CONTROL_SELECTOR =
+		'button, a[href], summary, [role="button"], [role="link"], [role="menuitem"], [role="tab"], [role="option"], [role="checkbox"], [role="radio"], [role="switch"]';
+
+	function isInteractiveControl(target: EventTarget | null): boolean {
+		if (!(target instanceof HTMLElement)) {
+			return false;
+		}
+		return target.closest(INTERACTIVE_CONTROL_SELECTOR) !== null;
+	}
+
 	function handleSelectAlert(alert: GameAlert): void {
 		if (alert.kind === 'decision') {
 			openManagementPanel('decisions');
@@ -1038,6 +1054,7 @@
 		const action = resolveShortcutAction({
 			key: event.key,
 			isTypingTarget: isTypingElement(event.target),
+			isInteractiveTarget: isInteractiveControl(event.target),
 			hasModifier,
 			hasBlockingOverlay,
 			isMenuOpen: isBuildMenuOpen || activeManagementPanelId !== null,

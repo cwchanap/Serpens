@@ -5,6 +5,7 @@ function context(overrides: Partial<ShortcutContext> = {}): ShortcutContext {
 	return {
 		key: 'b',
 		isTypingTarget: false,
+		isInteractiveTarget: false,
 		hasModifier: false,
 		hasBlockingOverlay: false,
 		isMenuOpen: false,
@@ -112,6 +113,15 @@ describe('resolveShortcutAction', () => {
 		expect(resolveShortcutAction(context({ key: 'b', isTypingTarget: true }))).toBeNull();
 		expect(resolveShortcutAction(context({ key: 'b', hasBlockingOverlay: true }))).toBeNull();
 		expect(resolveShortcutAction(context({ key: 'd', hasBlockingOverlay: true }))).toBeNull();
+	});
+
+	it('suppresses shortcuts when a focused interactive control owns the keypress', () => {
+		expect.assertions(3);
+		// Space on a focused button must activate the button, not advance the day.
+		expect(resolveShortcutAction(context({ key: ' ', isInteractiveTarget: true }))).toBeNull();
+		// Mnemonic panel keys must not fire from a focused control either.
+		expect(resolveShortcutAction(context({ key: 'd', isInteractiveTarget: true }))).toBeNull();
+		expect(resolveShortcutAction(context({ key: 'b', isInteractiveTarget: true }))).toBeNull();
 	});
 
 	it('leaves Cmd/Ctrl/Alt combinations to the browser', () => {
