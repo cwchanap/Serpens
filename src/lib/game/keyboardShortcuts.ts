@@ -21,8 +21,9 @@ export interface ShortcutContext {
 	/**
 	 * The keypress originates from a focused interactive control (button, link,
 	 * summary, or an ARIA interactive role such as `button`/`menuitem`/`tab`).
-	 * Such controls own the keypress — e.g. Space activates a button — so global
-	 * shortcuts are suppressed just like they are for typing targets.
+	 * Only the control's native activation keys (Space/Enter) are suppressed so
+	 * the browser can activate it; other keys (mnemonic letters, view digits)
+	 * remain global hotkeys so focus-trapped menus stay toggleable.
 	 */
 	isInteractiveTarget: boolean;
 	/** A Cmd/Ctrl/Alt modifier is held — leave the keypress to the browser/OS (e.g. Cmd+D bookmark). Shift is allowed. */
@@ -55,16 +56,19 @@ export const MANAGEMENT_PANEL_SHORTCUT_KEY = Object.fromEntries(
 ) as Record<ManagementPanelId, string>;
 
 export function resolveShortcutAction(context: ShortcutContext): ShortcutAction | null {
-	if (
-		context.isTypingTarget ||
-		context.isInteractiveTarget ||
-		context.hasModifier ||
-		context.hasBlockingOverlay
-	) {
+	if (context.isTypingTarget || context.hasModifier || context.hasBlockingOverlay) {
 		return null;
 	}
 
 	const key = context.key.toLowerCase();
+
+	// A focused interactive control owns only its native activation keys
+	// (Space/Enter) — e.g. Space activates a button. Other keys are not native
+	// activations, so mnemonic letters and view digits remain global hotkeys
+	// even while focus is trapped on a menu button.
+	if (context.isInteractiveTarget && (key === ' ' || key === 'enter')) {
+		return null;
+	}
 
 	// Menu-toggle keys stay active even while another soft menu is open, so the
 	// key can switch to (or close) its own menu. Panels open regardless of whether

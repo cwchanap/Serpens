@@ -294,7 +294,8 @@
 				isCheatSheetOpen ||
 				isBuildMenuOpen ||
 				activeManagementPanelId !== null ||
-				isSavePanelOpen)
+				isSavePanelOpen ||
+				isGameMenuOpen)
 	);
 	let shouldShowRetailInspector = $derived(
 		selectedTile !== null && (!isPlacementModeActive || placementFeedback !== null)

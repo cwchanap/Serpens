@@ -115,13 +115,22 @@ describe('resolveShortcutAction', () => {
 		expect(resolveShortcutAction(context({ key: 'd', hasBlockingOverlay: true }))).toBeNull();
 	});
 
-	it('suppresses shortcuts when a focused interactive control owns the keypress', () => {
-		expect.assertions(3);
+	it('suppresses only activation keys when a focused interactive control owns the keypress', () => {
+		expect.assertions(4);
 		// Space on a focused button must activate the button, not advance the day.
 		expect(resolveShortcutAction(context({ key: ' ', isInteractiveTarget: true }))).toBeNull();
-		// Mnemonic panel keys must not fire from a focused control either.
-		expect(resolveShortcutAction(context({ key: 'd', isInteractiveTarget: true }))).toBeNull();
-		expect(resolveShortcutAction(context({ key: 'b', isInteractiveTarget: true }))).toBeNull();
+		// Enter is also a native activation key for buttons/links/summaries.
+		expect(resolveShortcutAction(context({ key: 'Enter', isInteractiveTarget: true }))).toBeNull();
+		// Mnemonic panel keys are not native activations, so they still fire as
+		// global hotkeys from a focused control — this is what lets `b` close a
+		// focus-trapped build menu and `d` open the dashboard from a focused button.
+		expect(resolveShortcutAction(context({ key: 'd', isInteractiveTarget: true }))).toEqual({
+			type: 'toggle-panel',
+			panel: 'dashboard'
+		});
+		expect(resolveShortcutAction(context({ key: 'b', isInteractiveTarget: true }))).toEqual({
+			type: 'toggle-build'
+		});
 	});
 
 	it('leaves Cmd/Ctrl/Alt combinations to the browser', () => {
