@@ -326,7 +326,12 @@
 				</div>
 			{/if}
 
-			<button type="button" class="advisor-open" onclick={onOpenAdvisor}>
+			<button
+				type="button"
+				class="advisor-open"
+				disabled={industryLockedReason !== null}
+				onclick={onOpenAdvisor}
+			>
 				Supply Advisor — what should I build?
 			</button>
 
@@ -678,6 +683,11 @@
 	.advisor-open:hover,
 	.advisor-open:focus-visible {
 		background: var(--paper-200);
+	}
+
+	.advisor-open:disabled {
+		cursor: not-allowed;
+		opacity: 0.55;
 	}
 
 	.starter {
