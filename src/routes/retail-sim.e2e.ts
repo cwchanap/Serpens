@@ -401,6 +401,39 @@ async function readAutoSaveGame(page: Page): Promise<SavedGame> {
 	});
 }
 
+/**
+ * Force-reveal a world city in the auto-save and grant enough cash/storeCap to
+ * open it. Mutates localStorage in place and reloads the page so the resume
+ * flow picks up the new state. Used by cross-city tests that need a second
+ * city unlocked without playing through the unlock milestone.
+ */
+async function revealCityAndGrantFunds(
+	page: Page,
+	cityId: string,
+	cash = 100_000,
+	storeCap = 4
+): Promise<void> {
+	await page.evaluate(
+		({ cityId, cash, storeCap }) => {
+			const serialized = window.localStorage.getItem('serpens.saves.v2');
+			if (!serialized) {
+				throw new Error('Missing save data');
+			}
+			const saveStore = JSON.parse(serialized);
+			const game = saveStore.autoSave.game;
+			game.cash = cash;
+			game.storeCap = storeCap;
+			game.world.revealedCityIds = [...new Set([...game.world.revealedCityIds, cityId])];
+			window.localStorage.setItem('serpens.saves.v2', JSON.stringify(saveStore));
+		},
+		{ cityId, cash, storeCap }
+	);
+	await page.reload();
+	await openSaves(page);
+	await page.getByRole('button', { name: /^resume$/i }).click();
+	await page.getByRole('button', { name: /close saves/i }).click();
+}
+
 async function waitForAutoSaveDay(page: Page, day: number): Promise<SavedGame> {
 	await expect.poll(async () => (await readAutoSaveGame(page)).day).toBe(day);
 
@@ -1116,24 +1149,7 @@ test('player opens a revealed retail city from the world map and builds there', 
 	await expect(page.getByRole('region', { name: /world map/i })).toBeVisible();
 	await expect(page.getByRole('button', { name: /harbor city/i })).toBeVisible();
 
-	await page.evaluate(() => {
-		const serialized = window.localStorage.getItem('serpens.saves.v2');
-
-		if (!serialized) {
-			throw new Error('Missing save data');
-		}
-
-		const saveStore = JSON.parse(serialized);
-		const game = saveStore.autoSave.game;
-		game.cash = 100_000;
-		game.storeCap = 4;
-		game.world.revealedCityIds = [...new Set([...game.world.revealedCityIds, 'campus-junction'])];
-		window.localStorage.setItem('serpens.saves.v2', JSON.stringify(saveStore));
-	});
-	await page.reload();
-	await openSaves(page);
-	await page.getByRole('button', { name: /^resume$/i }).click();
-	await page.getByRole('button', { name: /close saves/i }).click();
+	await revealCityAndGrantFunds(page, 'campus-junction');
 
 	await openMapMenuItem(page, /world map/i);
 	await page.getByRole('button', { name: /campus junction/i }).click();
@@ -1164,22 +1180,7 @@ test('cross-city stock alert deep-links to the origin city and tile', async ({ p
 	});
 
 	// Force-reveal campus-junction and grant enough cash/storeCap to open it.
-	await page.evaluate(() => {
-		const serialized = window.localStorage.getItem('serpens.saves.v2');
-		if (!serialized) {
-			throw new Error('Missing save data');
-		}
-		const saveStore = JSON.parse(serialized);
-		const game = saveStore.autoSave.game;
-		game.cash = 100_000;
-		game.storeCap = 4;
-		game.world.revealedCityIds = [...new Set([...game.world.revealedCityIds, 'campus-junction'])];
-		window.localStorage.setItem('serpens.saves.v2', JSON.stringify(saveStore));
-	});
-	await page.reload();
-	await openSaves(page);
-	await page.getByRole('button', { name: /^resume$/i }).click();
-	await page.getByRole('button', { name: /close saves/i }).click();
+	await revealCityAndGrantFunds(page, 'campus-junction');
 
 	// Open campus-junction and build a store there.
 	await openMapMenuItem(page, /world map/i);
