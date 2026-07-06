@@ -29,10 +29,10 @@
 	}
 
 	// Standard dropdown behaviour: dismiss the popover on any pointer press outside it.
-	// The attachment re-runs when `open` changes, so the global listener is only
-	// registered while the popover is actually open (no always-on window listener).
+	// The attachment is only applied while `open` is true (conditional-attachment
+	// pattern), so the global listener is registered on open and torn down on close — no
+	// always-on window listener and no implicit re-run contract inside the body.
 	const dismissMenuOnOutsidePointer: Attachment<HTMLElement> = (node) => {
-		if (!open) return;
 		return on(window, 'pointerdown', (event) => {
 			if (!node.contains(event.target as Node)) {
 				open = false;
@@ -41,7 +41,7 @@
 	};
 </script>
 
-<div class="game-menu" {@attach dismissMenuOnOutsidePointer}>
+<div class="game-menu" {@attach open && dismissMenuOnOutsidePointer}>
 	<button
 		type="button"
 		class="btn-icon"
