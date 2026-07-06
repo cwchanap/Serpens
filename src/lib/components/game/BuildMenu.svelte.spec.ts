@@ -327,6 +327,28 @@ describe('BuildMenu', () => {
 		await expect.element(page.getByRole('button', { name: /filter: all products/i })).toBeVisible();
 	});
 
+	it('resets to all products by clicking the "All products" filter entry', async () => {
+		expect.assertions(2);
+
+		render(BuildMenu, {
+			activeMapView: 'industry',
+			retailOptions,
+			industryLockedReason: null,
+			onChooseRetail: vi.fn(),
+			onChooseIndustry: vi.fn(),
+			onClose: vi.fn()
+		});
+
+		await page.getByRole('button', { name: /filter: all products/i }).click();
+		await page.getByRole('button', { name: /gifts/i }).click();
+		await expect.element(page.getByRole('button', { name: /filter: gifts/i })).toBeVisible();
+
+		// Reopen the filter popover and pick "All products" to clear the active filter.
+		await page.getByRole('button', { name: /filter: gifts/i }).click();
+		await page.getByRole('button', { name: /all products/i }).click();
+		await expect.element(page.getByRole('button', { name: /filter: all products/i })).toBeVisible();
+	});
+
 	it('traps focus to the last element when shift-tabbing from outside the dialog', async () => {
 		expect.assertions(1);
 

@@ -100,4 +100,69 @@ describe('StoreDetailModal', () => {
 		backdrop.click();
 		expect(p.onClose).toHaveBeenCalledTimes(1);
 	});
+
+	it('moves to the next tab on ArrowRight and fires click feedback', async () => {
+		expect.assertions(3);
+		const p = props();
+		render(StoreDetailModal, p);
+		const stockTab = page.getByRole('tab', { name: /stock/i });
+		await stockTab.click();
+		p.onClickFeedback.mockClear();
+
+		(document.activeElement ?? document.body).dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true })
+		);
+
+		await expect
+			.element(page.getByRole('tab', { name: /product chain/i }))
+			.toHaveAttribute('aria-selected', 'true');
+		expect(p.onClickFeedback).toHaveBeenCalledTimes(1);
+		expect(document.activeElement).toHaveAttribute('id', 'store-1-chain-tab');
+	});
+
+	it('wraps to the last tab on ArrowLeft from the first tab', async () => {
+		expect.assertions(1);
+		const p = props();
+		render(StoreDetailModal, p);
+		const stockTab = page.getByRole('tab', { name: /stock/i });
+		await stockTab.click();
+
+		(document.activeElement ?? document.body).dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true })
+		);
+
+		await expect
+			.element(page.getByRole('tab', { name: /staff/i }))
+			.toHaveAttribute('aria-selected', 'true');
+	});
+
+	it('wraps to the first tab on ArrowDown from the last tab', async () => {
+		expect.assertions(1);
+		const p = props();
+		render(StoreDetailModal, p);
+		await page.getByRole('tab', { name: /staff/i }).click();
+
+		(document.activeElement ?? document.body).dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true })
+		);
+
+		await expect
+			.element(page.getByRole('tab', { name: /stock/i }))
+			.toHaveAttribute('aria-selected', 'true');
+	});
+
+	it('ignores non-arrow keys on the tablist', async () => {
+		expect.assertions(1);
+		const p = props();
+		render(StoreDetailModal, p);
+		await page.getByRole('tab', { name: /stock/i }).click();
+
+		(document.activeElement ?? document.body).dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+		);
+
+		await expect
+			.element(page.getByRole('tab', { name: /stock/i }))
+			.toHaveAttribute('aria-selected', 'true');
+	});
 });

@@ -9,8 +9,10 @@ import {
 	WORLD_CITY_CATALOG,
 	createInitialWorldProgress,
 	getIndustryCityResourceProfile,
+	getRetailCityDemandMultiplier,
 	getWorldCityDefinition,
 	getWorldCityStatus,
+	isWorldCityId,
 	openWorldCity,
 	refreshWorldProgress,
 	selectWorldCity
@@ -653,5 +655,23 @@ describe('world city status and decision helpers', () => {
 
 		expect(opened.world.openedCityIds).toContain('breadbasket-basin');
 		expect(opened.industryCities.filter((city) => city.id === 'breadbasket-basin')).toHaveLength(1);
+	});
+
+	test('isWorldCityId narrows known city ids and rejects unknown strings', () => {
+		expect.assertions(3);
+		expect(isWorldCityId('harbor-city')).toBe(true);
+		expect(isWorldCityId('campus-junction')).toBe(true);
+		expect(isWorldCityId('not-a-city')).toBe(false);
+	});
+
+	test('getRetailCityDemandMultiplier returns the profile multiplier, defaulting to 1', () => {
+		expect.assertions(3);
+		const game = gameStub();
+		// campus-junction boosts `games` demand to 1.35
+		expect(getRetailCityDemandMultiplier(game, 'campus-junction', 'games')).toBeCloseTo(1.35);
+		// harbor-city has an empty demand profile -> default multiplier
+		expect(getRetailCityDemandMultiplier(game, 'harbor-city', 'games')).toBe(1);
+		// unknown city -> default multiplier
+		expect(getRetailCityDemandMultiplier(game, 'not-a-city', 'games')).toBe(1);
 	});
 });

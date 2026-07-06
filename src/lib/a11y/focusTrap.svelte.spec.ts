@@ -158,4 +158,85 @@ describe('focusTrap', () => {
 
 		detach();
 	});
+
+	it('skips visibility:hidden focusable elements when choosing the initial target', () => {
+		expect.assertions(1);
+		const dialog = mountDialog(
+			'<div role="dialog" tabindex="-1">' +
+				'<button id="hidden" style="visibility:hidden">Hidden</button>' +
+				'<button id="visible">Visible</button>' +
+				'</div>'
+		);
+		const node = dialog.querySelector<HTMLDivElement>('[role="dialog"]')!;
+		const detach = focusTrap(node) as () => void;
+
+		expect(document.activeElement).toBe(node.querySelector('#visible'));
+
+		detach();
+	});
+
+	it('traps Tab and focuses the container when there are no focusable children', () => {
+		expect.assertions(2);
+		const dialog = mountDialog('<div role="dialog" tabindex="-1"></div>');
+		const node = dialog.querySelector<HTMLDivElement>('[role="dialog"]')!;
+		const detach = focusTrap(node) as () => void;
+
+		const event = tabKey(false);
+		node.dispatchEvent(event);
+
+		expect(event.defaultPrevented).toBe(true);
+		expect(document.activeElement).toBe(node);
+
+		detach();
+	});
+
+	it('wraps Tab to the first focusable when focus is outside the dialog', () => {
+		expect.assertions(2);
+		const outside = document.createElement('button');
+		outside.id = 'outside';
+		document.body.appendChild(outside);
+		outside.focus();
+
+		const dialog = mountDialog(
+			'<div role="dialog" tabindex="-1">' +
+				'<button id="first">First</button>' +
+				'<button id="last">Last</button>' +
+				'</div>'
+		);
+		const node = dialog.querySelector<HTMLDivElement>('[role="dialog"]')!;
+		const detach = focusTrap(node) as () => void;
+
+		// Focus is still on the outside button when Tab fires inside the dialog.
+		node.dispatchEvent(tabKey(false));
+		expect(document.activeElement).toBe(node.querySelector('#first'));
+
+		// Shift+Tab from outside the dialog wraps to the last focusable.
+		outside.focus();
+		node.dispatchEvent(tabKey(true));
+		expect(document.activeElement).toBe(node.querySelector('#last'));
+
+		detach();
+	});
+
+	it('does not restore focus on detach when the previously-focused element was removed from the DOM', () => {
+		expect.assertions(2);
+		const trigger = document.createElement('button');
+		trigger.id = 'trigger';
+		document.body.appendChild(trigger);
+		trigger.focus();
+
+		const dialog = mountDialog(
+			'<div role="dialog" tabindex="-1">' + '<button id="first">First</button>' + '</div>'
+		);
+		const node = dialog.querySelector<HTMLDivElement>('[role="dialog"]')!;
+		const detach = focusTrap(node) as () => void;
+
+		expect(document.activeElement).toBe(node.querySelector('#first'));
+
+		// Remove the trigger while the dialog is open; detach must not throw or
+		// restore focus to a detached node.
+		trigger.remove();
+		detach();
+		expect(document.activeElement).not.toBe(trigger);
+	});
 });

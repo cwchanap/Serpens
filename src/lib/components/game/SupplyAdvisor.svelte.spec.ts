@@ -63,4 +63,30 @@ describe('SupplyAdvisor', () => {
 		backdrop.click();
 		expect(onClose).toHaveBeenCalledTimes(1);
 	});
+
+	it('marks a completed, non-starter chain with the built checkmark and supplied badge', async () => {
+		expect.assertions(3);
+		const complete: AdvisorChain[] = [
+			{
+				finishedMaterialId: 'snacks',
+				categoryName: 'Snacks',
+				tier: 2,
+				complete: true,
+				nextBuildTypeId: null,
+				steps: [
+					{
+						buildingTypeId: 'grain-farm',
+						name: 'Grain Farm',
+						tier: 1,
+						state: 'built',
+						isNextBuild: false
+					}
+				]
+			}
+		];
+		render(SupplyAdvisor, { chains: complete, onBuild: vi.fn(), onClose: vi.fn() });
+		await expect.element(page.getByText(/supplied/i)).toBeVisible();
+		await expect.element(page.getByText('✓', { exact: true })).toBeVisible();
+		await expect.element(page.getByText(/starter/i)).not.toBeInTheDocument();
+	});
 });
