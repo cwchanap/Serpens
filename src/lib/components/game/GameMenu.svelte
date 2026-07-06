@@ -2,6 +2,7 @@
 	import type { Snippet } from 'svelte';
 	import type { Attachment } from 'svelte/attachments';
 	import { on } from 'svelte/events';
+	import { focusTrap } from '$lib/a11y/focusTrap';
 	import type { MapViewId } from '$lib/game/mapViewKeepAlive';
 
 	interface Props {
@@ -26,6 +27,14 @@
 	function selectView(view: MapViewId): void {
 		onSelectView(view);
 		open = false;
+	}
+
+	function handleMenuKeydown(event: KeyboardEvent): void {
+		if (event.key === 'Escape') {
+			event.preventDefault();
+			event.stopPropagation();
+			open = false;
+		}
 	}
 
 	// Standard dropdown behaviour: dismiss the popover on any pointer press outside it.
@@ -56,7 +65,15 @@
 		</svg>
 	</button>
 	{#if open}
-		<div class="menu-popover paper" role="group" aria-label="Menu">
+		<div
+			class="menu-popover paper"
+			role="dialog"
+			aria-modal="true"
+			aria-label="Menu"
+			tabindex="-1"
+			onkeydown={handleMenuKeydown}
+			{@attach focusTrap}
+		>
 			<div class="menu-section">
 				<p class="menu-label">Map view</p>
 				<div class="views" role="group" aria-label="Map view">

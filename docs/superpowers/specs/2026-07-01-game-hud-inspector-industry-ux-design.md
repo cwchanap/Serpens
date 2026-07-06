@@ -130,7 +130,7 @@ Discoverable, not hidden: each shortcut-bearing button renders a small brass **k
 - Cheat-sheet is a small `.paper` overlay listing the table above; also reachable from the ⚙ Menu.
 
 > **Shipped deviation (Part 3 — letter keys):** All seven management letter shortcuts shipped in the first pass, not just the deferred `P`/`R`/`C` set. The final mapping (in `keyboardShortcuts.ts`) is `D` Dashboard, `P` Policies, `S` Staff, `T` Stores, `C` Decisions, `R` Reports, `G` Product Chains. Note the non-obvious mnemonics forced by collisions: `C`→Decisions (not Chains, since "Chains" lost to "Decisions"), `G`→Product Chains, `T`→Stores (because `S` went to Staff). The cheat-sheet (`?`) lists the full set so the mapping is discoverable.
-
+>
 > **Shipped deviation (Part 3 — Escape):** Escape does more than cancel/close. When nothing else is open or selected, Escape **opens** the top-bar `GameMenu` hamburger (so the menu is reachable from the keyboard without a pointer). The close chain still runs first: open overlays/tile selections close in priority order before Escape falls through to opening the menu.
 
 ---
