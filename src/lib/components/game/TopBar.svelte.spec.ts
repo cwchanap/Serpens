@@ -88,4 +88,54 @@ describe('TopBar', () => {
 		await page.getByRole('button', { name: /industry city map/i }).click();
 		expect(onSelectView).toHaveBeenCalledWith('industry');
 	});
+
+	it('omits the day and cash readouts when they are null', async () => {
+		expect.assertions(2);
+		render(TopBar, {
+			eyebrow: 'Retail City Map',
+			title: 'Harbor City',
+			day: null,
+			cash: null,
+			alerts: [],
+			onSelectAlert: vi.fn(),
+			activeMapView: 'retail',
+			onSelectView: vi.fn()
+		});
+		await expect.element(page.getByText(/day \d/i)).not.toBeInTheDocument();
+		await expect.element(page.getByText(/\$/)).not.toBeInTheDocument();
+	});
+
+	it('shows a "No alerts" message when the popover is opened with zero alerts', async () => {
+		expect.assertions(1);
+		render(TopBar, {
+			eyebrow: 'Retail City Map',
+			title: 'Harbor City',
+			day: 1,
+			cash: 0,
+			alerts: [],
+			onSelectAlert: vi.fn(),
+			activeMapView: 'retail',
+			onSelectView: vi.fn()
+		});
+		await page.getByRole('button', { name: /^alerts$/i }).click();
+		await expect.element(page.getByText(/no alerts/i)).toBeVisible();
+	});
+
+	it('announces a plural alert count when there is more than one alert', async () => {
+		expect.assertions(1);
+		render(TopBar, {
+			eyebrow: 'Retail City Map',
+			title: 'Harbor City',
+			day: 1,
+			cash: 0,
+			alerts: [
+				{ id: 'a1', kind: 'store-stock', message: 'First alert' },
+				{ id: 'a2', kind: 'decision', message: 'Second alert' }
+			],
+			onSelectAlert: vi.fn(),
+			activeMapView: 'retail',
+			onSelectView: vi.fn()
+		});
+		await expect.element(page.getByText(/2 alerts/i)).toBeVisible();
+	});
 });

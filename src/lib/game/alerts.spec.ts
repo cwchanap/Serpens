@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { collectGameAlerts } from './alerts';
-import type { GameState, Store, IndustrialBuilding, DecisionItem, StoreProduct } from './types';
+import type {
+	GameState,
+	Store,
+	IndustrialBuilding,
+	IndustrialBuildingTypeId,
+	DecisionItem,
+	StoreProduct
+} from './types';
 
 function product(overrides: Partial<StoreProduct> = {}): StoreProduct {
 	return {
@@ -150,5 +157,40 @@ describe('collectGameAlerts', () => {
 		expect(alerts).toHaveLength(1);
 		expect(alerts[0].kind).toBe('factory-blocked');
 		expect(alerts[0].tileId).toBe('itile-1');
+	});
+
+	it('skips a healthy (non-blocked, zero blockedDays) factory', () => {
+		expect.assertions(1);
+		const alerts = collectGameAlerts(
+			baseGame({ industrialBuildings: [building({ status: 'produced', blockedDays: 0 })] })
+		);
+		expect(alerts).toEqual([]);
+	});
+
+	it('flags a factory that is not yet "blocked" but has accumulated blockedDays', () => {
+		expect.assertions(2);
+		const alerts = collectGameAlerts(
+			baseGame({ industrialBuildings: [building({ status: 'produced', blockedDays: 3 })] })
+		);
+		expect(alerts).toHaveLength(1);
+		expect(alerts[0].kind).toBe('factory-blocked');
+	});
+
+	it('falls back to the typeId in the alert message when the building type is unknown', () => {
+		expect.assertions(2);
+		const alerts = collectGameAlerts(
+			baseGame({
+				industrialBuildings: [
+					building({
+						id: 'bld-unknown',
+						typeId: 'unknown-type' as IndustrialBuildingTypeId,
+						status: 'blocked',
+						blockedDays: 1
+					})
+				]
+			})
+		);
+		expect(alerts).toHaveLength(1);
+		expect(alerts[0].message).toBe('unknown-type starved of inputs');
 	});
 });

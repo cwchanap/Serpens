@@ -4,7 +4,7 @@ import {
 	getAvailableMaterialIds,
 	getBuildingTypeProducing
 } from './supplyAdvisor';
-import type { GameState, IndustrialBuilding, Store } from './types';
+import type { GameState, IndustrialBuilding, MaterialId, Store } from './types';
 
 function baseGame(overrides: Partial<GameState> = {}): GameState {
 	return {
@@ -59,6 +59,11 @@ describe('getBuildingTypeProducing', () => {
 		expect(getBuildingTypeProducing('bottled-water')?.id).toBe('water-bottler');
 		expect(getBuildingTypeProducing('water')?.id).toBe('water-pump');
 	});
+
+	it('returns null for a material no building produces, skipping recipe-less types like warehouses', () => {
+		expect.assertions(1);
+		expect(getBuildingTypeProducing('nonexistent-material' as MaterialId)).toBeNull();
+	});
 });
 
 describe('buildSupplyAdvisor', () => {
@@ -108,6 +113,24 @@ describe('buildSupplyAdvisor', () => {
 		const chains = buildSupplyAdvisor(baseGame({ stores: [store] }));
 		expect(chains.some((chain) => chain.finishedMaterialId === 'bottled-water')).toBe(true);
 	});
+
+	it('falls back to Tier-1 starter chains when store products map to no finished material', () => {
+		expect.assertions(1);
+		const store = {
+			id: 's1',
+			products: [
+				{
+					categoryId: 'games',
+					stock: 0,
+					reorderThreshold: 1,
+					targetStock: 1,
+					sellingPrice: 1
+				}
+			]
+		} as unknown as Store;
+		const chains = buildSupplyAdvisor(baseGame({ stores: [store] }));
+		expect(chains.some((chain) => chain.finishedMaterialId === 'bottled-water')).toBe(true);
+	});
 });
 
 describe('getAvailableMaterialIds', () => {
@@ -121,5 +144,22 @@ describe('getAvailableMaterialIds', () => {
 		);
 		expect(available).toContain('grain');
 		expect(available).toContain('water');
+	});
+
+	it('skips recipe-less placed buildings (e.g. warehouses) and null/zero warehouse entries', () => {
+		expect.assertions(2);
+		const available = getAvailableMaterialIds(
+			baseGame({
+				warehouse: {
+					capacity: 10,
+					materials: { grain: null as unknown as number, water: 0 },
+					overflowUnits: 0,
+					overflowCost: 0
+				},
+				industrialBuildings: [building('warehouse')]
+			})
+		);
+		expect(available).not.toContain('grain');
+		expect(available).not.toContain('water');
 	});
 });

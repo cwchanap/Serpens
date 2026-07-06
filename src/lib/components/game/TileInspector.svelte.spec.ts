@@ -324,3 +324,16 @@ describe('TileInspector null tile', () => {
 		await expect.element(page.getByRole('heading', { name: 'Tile 1, 1' })).not.toBeInTheDocument();
 	});
 });
+
+describe('TileInspector close button', () => {
+	it('fires click feedback and close when the × button is pressed', async () => {
+		expect.assertions(2);
+		const onClickFeedback = vi.fn();
+		const onClose = vi.fn();
+		renderInspector({ onClickFeedback, onClose });
+
+		await page.getByRole('button', { name: /close tile inspector/i }).click();
+		expect(onClickFeedback).toHaveBeenCalledTimes(1);
+		expect(onClose).toHaveBeenCalledTimes(1);
+	});
+});

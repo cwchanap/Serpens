@@ -78,4 +78,20 @@ describe('ControlDesk', () => {
 		await shortcuts.click();
 		expect(props.onOpenShortcuts).toHaveBeenCalledTimes(1);
 	});
+
+	it('disables advance day when advanceDisabled is set', async () => {
+		expect.assertions(1);
+		render(ControlDesk, { ...baseProps(), advanceDisabled: true });
+		await expect.element(page.getByRole('button', { name: /^advance day$/i })).toBeDisabled();
+	});
+
+	it('omits the keycap for management items that have no shortcut', async () => {
+		expect.assertions(2);
+		render(ControlDesk, {
+			...baseProps(),
+			managementItems: [{ id: 'dashboard', label: 'Dashboard' }]
+		});
+		await expect.element(page.getByRole('button', { name: /^dashboard$/i })).toBeVisible();
+		await expect.element(page.getByText('D', { exact: true })).not.toBeInTheDocument();
+	});
 });
