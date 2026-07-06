@@ -1168,6 +1168,16 @@
 			bind:alertsOpen={isAlertsMenuOpen}
 		>
 			{#snippet menuContent()}
+				<div class="menu-section">
+					<p class="menu-label">Management</p>
+					<div class="menu-management" role="group" aria-label="Management panels">
+						{#each managementPanelMenuItems as item (item.id)}
+							<button type="button" onclick={() => openManagementPanel(item.id)}>
+								{item.label}
+							</button>
+						{/each}
+					</div>
+				</div>
 				<button type="button" onclick={openSavePanel}>Saves</button>
 				<AudioSettings preferences={audioPreferences} onChange={updateAudioPreferences} />
 			{/snippet}
@@ -1429,7 +1439,9 @@
 		right: 1rem;
 		z-index: 10;
 		width: min(360px, calc(100% - 2rem));
-		max-height: calc(100dvh - 6.9rem);
+		/* Reserve bottom space for the fixed control desk (~3.4rem) plus a gap so
+		   upgrade/detail buttons stay clickable on short wide layouts. */
+		max-height: calc(100dvh - 10.5rem);
 		overflow: auto;
 		padding: 0;
 	}
@@ -1494,6 +1506,47 @@
 
 	.close-tower {
 		white-space: nowrap;
+	}
+
+	/* Management launchers surfaced inside the hamburger menu so they remain
+	   reachable on narrow viewports where the control desk hides the .manage
+	   cluster. Mirrors GameMenu's .menu-label and .view-tab look. */
+	.menu-section {
+		display: grid;
+		gap: 0.4rem;
+	}
+
+	.menu-label {
+		margin: 0;
+		font-family: var(--font-ui);
+		font-size: 0.68rem;
+		font-weight: 700;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+		color: var(--brass-700);
+	}
+
+	.menu-management {
+		display: grid;
+		gap: 0.3rem;
+	}
+
+	.menu-management button {
+		width: 100%;
+		text-align: left;
+		border: 1px solid var(--paper-edge);
+		border-radius: 2px;
+		background: var(--paper-50);
+		color: var(--ink-700);
+		font-family: var(--font-ui);
+		font-size: 0.85rem;
+		padding: 0.45rem 0.6rem;
+	}
+
+	.menu-management button:hover,
+	.menu-management button:focus-visible {
+		background: var(--paper-200);
+		border-color: var(--brass-500);
 	}
 
 	@media (max-width: 980px) {

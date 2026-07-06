@@ -1440,6 +1440,28 @@ test('store card Open Details stays reachable above the control desk on a narrow
 	await expect(modal.getByRole('tab', { name: /stock/i })).toBeVisible();
 });
 
+test('management panels stay reachable from the hamburger menu on a narrow viewport', async ({
+	page
+}) => {
+	// At <=980px the control desk hides the .manage cluster, so the only clickable
+	// path to management panels is the hamburger menu. Regression: the menu used to
+	// only surface Saves + Audio, leaving Dashboard/Reports/etc. unreachable without
+	// keyboard shortcuts on touch/narrow layouts.
+	await page.setViewportSize({ width: 960, height: 800 });
+	await page.goto('/');
+	await expectRetailMapReady(page);
+
+	// The desk management launchers are hidden at this width.
+	await expect(page.getByRole('group', { name: /management/i })).not.toBeVisible();
+
+	// The hamburger menu surfaces a Management section that opens the Dashboard.
+	await page.getByRole('button', { name: /^menu$/i }).click();
+	const menuManagement = page.getByRole('group', { name: /management panels/i });
+	await expect(menuManagement).toBeVisible();
+	await menuManagement.getByRole('button', { name: /dashboard/i }).click();
+	await expect(page.getByRole('dialog', { name: /dashboard/i })).toBeVisible();
+});
+
 test('player upgrades an industrial building from the tile inspector', async ({ page }) => {
 	// Height must be tall enough that the fixed control-desk footer does not
 	// overlap the tile inspector's Upgrade button; at a short viewport the
