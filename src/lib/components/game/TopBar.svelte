@@ -51,10 +51,10 @@
 
 	// Standard dropdown behaviour: dismiss the popover on any pointer press outside it.
 	// (Escape is handled centrally in the page keydown chain via the bound `alertsOpen`.)
-	// The attachment re-runs when `alertsOpen` changes, so the global listener is only
-	// registered while the popover is actually open (no always-on window listener).
+	// The attachment is only applied while `alertsOpen` is true (conditional-attachment
+	// pattern), so the global listener is registered on open and torn down on close — no
+	// always-on window listener and no implicit re-run contract inside the body.
 	const dismissAlertsOnOutsidePointer: Attachment<HTMLElement> = (node) => {
-		if (!alertsOpen) return;
 		return on(window, 'pointerdown', (event) => {
 			if (!node.contains(event.target as Node)) {
 				alertsOpen = false;
@@ -77,7 +77,7 @@
 			<span class="ticker" aria-label="Cash">{currency.format(cash)}</span>
 		{/if}
 
-		<div class="alerts" {@attach dismissAlertsOnOutsidePointer}>
+		<div class="alerts" {@attach alertsOpen && dismissAlertsOnOutsidePointer}>
 			<button
 				type="button"
 				class="btn-icon alerts-bell"

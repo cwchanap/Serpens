@@ -137,7 +137,6 @@
 				id={`${store.id}-stock-panel`}
 				role="tabpanel"
 				aria-labelledby={`${store.id}-stock-tab`}
-				aria-hidden={activeTab !== 'stock'}
 			>
 				<StoreStockTable {store} latestReport={latestStoreReport} onUpdate={onUpdateStoreProduct} />
 			</div>
@@ -147,7 +146,6 @@
 				id={`${store.id}-chain-panel`}
 				role="tabpanel"
 				aria-labelledby={`${store.id}-chain-tab`}
-				aria-hidden={activeTab !== 'chain'}
 			>
 				<StoreProductChainPanel {game} {store} onInteractionFeedback={onClickFeedback} />
 			</div>
@@ -157,7 +155,6 @@
 				id={`${store.id}-staff-panel`}
 				role="tabpanel"
 				aria-labelledby={`${store.id}-staff-tab`}
-				aria-hidden={activeTab !== 'staff'}
 			>
 				<StoreStaffPanel
 					{store}
