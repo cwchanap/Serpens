@@ -1546,6 +1546,16 @@ test('camera zoom and scroll persist across map view switches', async ({ page })
 test('supply advisor recommends and arms a starter build', async ({ page }) => {
 	await page.goto('/');
 
+	// Industry construction (and the Supply Advisor button) stays locked until
+	// the player founds at least one retail store, so unlock it first.
+	await buildRetailStoreAt(page, {
+		x: 1,
+		y: 6,
+		storeTypeName: /build convenience store/i,
+		expectedStoreCount: 1
+	});
+	await waitForAutoSaveDay(page, 1);
+
 	await openMapMenuItem(page, /industry city map/i);
 	await expect(page.getByRole('heading', { name: /industry city/i })).toBeVisible();
 	await expectIndustryMapReady(page);
