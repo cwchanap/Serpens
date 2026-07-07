@@ -807,4 +807,13 @@ describe('summarizeStockTrouble', () => {
 		]);
 		expect(summary).toBe('1 product out of stock, 2 products need import');
 	});
+
+	test('uses plural "products out of stock" when more than one is at zero stock', () => {
+		expect.assertions(1);
+		const summary = summarizeStockTrouble([
+			{ stock: 0, reorderThreshold: 10 },
+			{ stock: 0, reorderThreshold: 10 }
+		]);
+		expect(summary).toBe('2 products out of stock');
+	});
 });

@@ -62,4 +62,28 @@ describe('GameMenu', () => {
 			.element(page.getByRole('button', { name: /industry city map/i }))
 			.not.toBeInTheDocument();
 	});
+
+	it('closes the popover on Escape and ignores other keys', async () => {
+		expect.assertions(3);
+		render(GameMenu, baseProps());
+		await page.getByRole('button', { name: /^menu$/i }).click();
+		const popover = page.getByRole('dialog', { name: /^menu$/i });
+		await expect.element(popover).toBeVisible();
+
+		// A non-Escape key must not close the popover (exercises the false branch).
+		popover
+			.element()
+			.dispatchEvent(
+				new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true })
+			);
+		await expect.element(popover).toBeVisible();
+
+		// Escape closes the popover via the dialog keydown handler.
+		popover
+			.element()
+			.dispatchEvent(
+				new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+			);
+		await expect.element(popover).not.toBeInTheDocument();
+	});
 });
