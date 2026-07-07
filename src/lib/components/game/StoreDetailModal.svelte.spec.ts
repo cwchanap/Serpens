@@ -113,11 +113,10 @@ describe('StoreDetailModal', () => {
 			new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true })
 		);
 
-		await expect
-			.element(page.getByRole('tab', { name: /product chain/i }))
-			.toHaveAttribute('aria-selected', 'true');
+		const productChainTab = page.getByRole('tab', { name: /product chain/i });
+		await expect.element(productChainTab).toHaveAttribute('aria-selected', 'true');
 		expect(p.onClickFeedback).toHaveBeenCalledTimes(1);
-		expect(document.activeElement).toHaveAttribute('id', 'store-1-chain-tab');
+		expect(document.activeElement).toBe(productChainTab.element());
 	});
 
 	it('wraps to the last tab on ArrowLeft from the first tab', async () => {
@@ -152,10 +151,11 @@ describe('StoreDetailModal', () => {
 	});
 
 	it('ignores non-arrow keys on the tablist', async () => {
-		expect.assertions(1);
+		expect.assertions(2);
 		const p = props();
 		render(StoreDetailModal, p);
 		await page.getByRole('tab', { name: /stock/i }).click();
+		p.onClickFeedback.mockClear();
 
 		(document.activeElement ?? document.body).dispatchEvent(
 			new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
@@ -164,5 +164,6 @@ describe('StoreDetailModal', () => {
 		await expect
 			.element(page.getByRole('tab', { name: /stock/i }))
 			.toHaveAttribute('aria-selected', 'true');
+		expect(p.onClickFeedback).not.toHaveBeenCalled();
 	});
 });

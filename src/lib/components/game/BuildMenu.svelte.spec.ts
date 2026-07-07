@@ -527,7 +527,7 @@ describe('BuildMenu industry recipe cards', () => {
 			onClose: vi.fn()
 		});
 		await expect
-			.element(page.getByRole('button', { name: /supply advisor|what should i build/i }))
+			.element(page.getByRole('button', { name: 'Supply Advisor — what should I build?' }))
 			.toBeDisabled();
 	});
 
