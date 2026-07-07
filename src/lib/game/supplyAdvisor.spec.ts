@@ -162,4 +162,24 @@ describe('getAvailableMaterialIds', () => {
 		expect(available).not.toContain('grain');
 		expect(available).not.toContain('water');
 	});
+
+	it('treats undefined warehouse quantities as zero and skips unknown placed type ids', () => {
+		expect.assertions(2);
+		const available = getAvailableMaterialIds(
+			baseGame({
+				warehouse: {
+					capacity: 10,
+					materials: { grain: undefined as unknown as number, salt: 3 },
+					overflowUnits: 0,
+					overflowCost: 0
+				},
+				industrialBuildings: [
+					// An unrecognized typeId must not throw or contribute outputs.
+					building('nonexistent-building' as IndustrialBuilding['typeId'])
+				]
+			})
+		);
+		expect(available).not.toContain('grain');
+		expect(available).toContain('salt');
+	});
 });

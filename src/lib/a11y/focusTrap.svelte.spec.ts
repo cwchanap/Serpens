@@ -239,4 +239,58 @@ describe('focusTrap', () => {
 		detach();
 		expect(document.activeElement).not.toBe(trigger);
 	});
+
+	it('skips non-HTMLElement focus candidates (e.g. an SVG <a>) when choosing the initial target', () => {
+		expect.assertions(1);
+		// `a[href]` matches both HTML and SVG <a> elements; the SVG anchor is an
+		// SVGElement, not an HTMLElement, so `isVisible` must short-circuit on the
+		// `instanceof HTMLElement` guard rather than reading layout properties.
+		const dialog = mountDialog(
+			'<div role="dialog" tabindex="-1">' +
+				'<svg><a href="#x"><text>svg-link</text></a></svg>' +
+				'<button id="first">First</button>' +
+				'</div>'
+		);
+		const node = dialog.querySelector<HTMLDivElement>('[role="dialog"]')!;
+		const detach = focusTrap(node) as () => void;
+
+		expect(document.activeElement).toBe(node.querySelector('#first'));
+
+		detach();
+	});
+
+	it('does not move focus when there are no focusable children and the container is not focusable', () => {
+		expect.assertions(1);
+		// tabIndex < -1 means the container is not programmatically focusable, so
+		// the fallback target resolves to null and `.focus()` is never called.
+		const dialog = mountDialog('<div role="dialog" tabindex="-2"></div>');
+		const node = dialog.querySelector<HTMLDivElement>('[role="dialog"]')!;
+		const detach = focusTrap(node) as () => void;
+
+		expect(document.activeElement).not.toBe(node);
+
+		detach();
+	});
+
+	it('does not wrap focus when shift-tabbing from a middle focusable element', () => {
+		expect.assertions(1);
+		const dialog = mountDialog(
+			'<div role="dialog" tabindex="-1">' +
+				'<button id="first">First</button>' +
+				'<button id="middle">Middle</button>' +
+				'<button id="last">Last</button>' +
+				'</div>'
+		);
+		const node = dialog.querySelector<HTMLDivElement>('[role="dialog"]')!;
+		const detach = focusTrap(node) as () => void;
+
+		const middle = node.querySelector<HTMLButtonElement>('#middle')!;
+		middle.focus();
+		// Shift+Tab from a middle element is neither the first nor outside the
+		// dialog, so the trap must not intercept/wrap — focus stays put.
+		node.dispatchEvent(tabKey(true));
+		expect(document.activeElement).toBe(middle);
+
+		detach();
+	});
 });

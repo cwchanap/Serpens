@@ -10,3 +10,4 @@ bun.lockb
 src-tauri/target/
 src-tauri/gen/
 docs/
+.tmp/

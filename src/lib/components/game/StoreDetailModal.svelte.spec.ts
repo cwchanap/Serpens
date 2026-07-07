@@ -150,6 +150,21 @@ describe('StoreDetailModal', () => {
 			.toHaveAttribute('aria-selected', 'true');
 	});
 
+	it('wraps to the last tab on ArrowUp from the first tab', async () => {
+		expect.assertions(1);
+		const p = props();
+		render(StoreDetailModal, p);
+		await page.getByRole('tab', { name: /stock/i }).click();
+
+		(document.activeElement ?? document.body).dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true, cancelable: true })
+		);
+
+		await expect
+			.element(page.getByRole('tab', { name: /staff/i }))
+			.toHaveAttribute('aria-selected', 'true');
+	});
+
 	it('ignores non-arrow keys on the tablist', async () => {
 		expect.assertions(2);
 		const p = props();

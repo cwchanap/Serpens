@@ -94,4 +94,16 @@ describe('ControlDesk', () => {
 		await expect.element(page.getByRole('button', { name: /^dashboard$/i })).toBeVisible();
 		await expect.element(page.getByText('D', { exact: true })).not.toBeInTheDocument();
 	});
+
+	it('renders an empty management cluster without launchers', async () => {
+		expect.assertions(3);
+		render(ControlDesk, { ...baseProps(), managementItems: [] });
+		await expect.element(page.getByRole('button', { name: /^build$/i })).toBeVisible();
+		// With no management items, the `{#each}` renders nothing — no launcher
+		// buttons should be present (exercises the empty-iteration branch).
+		await expect
+			.element(page.getByRole('button', { name: /dashboard|policies/i }))
+			.not.toBeInTheDocument();
+		await expect.element(page.getByRole('group', { name: /management/i })).toBeInTheDocument();
+	});
 });
