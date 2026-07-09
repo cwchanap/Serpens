@@ -1141,6 +1141,7 @@
 				>
 					<WorldMap
 						statuses={worldCityStatuses}
+						{i18n}
 						selectedCityId={selectedWorldCityId}
 						onSelectCity={selectWorldCityNode}
 						onOpenCity={openSelectedWorldCity}
@@ -1233,7 +1234,7 @@
 			>
 				<span
 					>{formatPlacementFeedback(placementFeedback) ??
-						i18n.t('placement.prompt.selectHighlightedTile')}</span
+						i18n.t('placement.chooseHighlightedTile')}</span
 				>
 				<button type="button" class="btn-danger" onclick={cancelPlacement}>
 					{i18n.t('route.placement.cancel')}
@@ -1265,13 +1266,14 @@
 				class="inspector-overlay paper"
 				role="dialog"
 				aria-modal="false"
-				aria-label="Tile details"
+				aria-label={i18n.t('route.inspectors.retailDetails')}
 			>
 				<TileInspector
 					game={game ?? starterMapState}
 					tile={selectedTile}
 					store={selectedStore}
 					latestStoreReport={latestSelectedStoreReport}
+					{i18n}
 					onUpgradeStore={upgradeStoreHandler}
 					onOpenDetails={openStoreDetail}
 					onClickFeedback={() => playSfx('sfx.ui.click')}
@@ -1284,12 +1286,13 @@
 				class="inspector-overlay paper"
 				role="dialog"
 				aria-modal="false"
-				aria-label="Industry tile details"
+				aria-label={i18n.t('route.inspectors.industryDetails')}
 			>
 				<IndustryTileInspector
 					game={game ?? starterMapState}
 					tile={selectedIndustryTile}
 					building={selectedIndustryBuilding}
+					{i18n}
 					onUpgradeBuilding={upgradeBuildingHandler}
 					onClose={closeIndustryInspector}
 				/>
@@ -1381,7 +1384,7 @@
 							latestReports={summary.latest?.storeReports ?? []}
 						/>
 					{:else if activeManagementPanel.id === 'decisions'}
-						<DecisionQueue decisions={panelGame.decisions} onResolve={chooseDecision} />
+						<DecisionQueue {i18n} decisions={panelGame.decisions} onResolve={chooseDecision} />
 					{:else if activeManagementPanel.id === 'reports'}
 						<ReportsPanel {summary} />
 					{:else if activeManagementPanel.id === 'productChains'}
@@ -1399,6 +1402,7 @@
 			slots={manualSaveSlots}
 			status={saveStatus}
 			error={saveError}
+			{i18n}
 			onResumeAutoSave={resumeAutoSave}
 			onSaveSlot={saveManualSlot}
 			onLoadSlot={loadManualSlot}

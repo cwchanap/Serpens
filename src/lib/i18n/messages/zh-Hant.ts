@@ -45,6 +45,168 @@ export const zhHant = {
 		effects: '音效',
 		effectsVolume: '音效音量'
 	},
+	buildMenu: {
+		dialog: '建設選單',
+		close: '關閉建設選單',
+		unavailable: '不可用',
+		cityEyebrow: {
+			retail: '零售城市',
+			industry: '工業城市'
+		},
+		title: {
+			retail: '建設零售',
+			industry: '建設工業'
+		},
+		retail: {
+			buildArchetype: '建設{name}',
+			setupRevenue: '設置成本 {setup} | 預估營收 {revenue}/天',
+			validTiles: {
+				one: '{count} 個可用地塊',
+				other: '{count} 個可用地塊'
+			},
+			noOptions: '沒有可建設的零售建築'
+		},
+		industry: {
+			filter: {
+				allProducts: '篩選：全部商品',
+				selected: '篩選：{name}',
+				clear: '清除商品篩選',
+				dialog: '商品鏈篩選',
+				title: '商品篩選',
+				close: '關閉商品鏈篩選',
+				search: '搜尋商品',
+				allProductsLabel: '全部商品',
+				allBuildings: '全部工業建築',
+				chainBuildings: {
+					one: '{count} 個鏈條建築',
+					other: '{count} 個鏈條建築'
+				},
+				noChain: '尚無對應的工業鏈',
+				noMatches: '找不到符合的商品'
+			},
+			supplyAdvisor: '供應顧問 - 我該蓋什麼？',
+			buildType: '建設{name}',
+			starter: '起步',
+			costOperating: '成本 {cost} | 營運費 {operating}/天',
+			recipe: '配方',
+			needsProducer: '需要 {producer}',
+			needsResource: '需要 {resource} 資源地塊',
+			noOptions: '沒有可建設的工業建築'
+		}
+	},
+	tileInspector: {
+		ariaLabel: '地塊檢視器',
+		close: '關閉地塊檢視器',
+		selectTile: '選擇一個城市地塊',
+		tileHeading: '地塊 {x}, {y}',
+		storeVitals: '店鋪指標',
+		revenuePerDay: '每日營收',
+		stockHealth: '庫存健康度',
+		staffMorale: '員工士氣',
+		level: '等級 {level} / {max}',
+		nextLabel: '下一步：{benefit}',
+		nextBenefit: {
+			unlockProductStaff: '解鎖商品 #{productNumber}，員工上限 +{staffCapacity}',
+			revenue: '營收 +10%'
+		},
+		upgrade: '升級 - {cost}',
+		maxLevel: '最高等級',
+		notEnoughCash: '現金不足。',
+		openDetails: '開啟詳細 ▸',
+		tileStats: '地塊資訊',
+		demand: '需求',
+		rent: '租金',
+		footTraffic: '人流',
+		customerFit: '客群匹配'
+	},
+	industryTileInspector: {
+		ariaLabel: '工業地塊檢視器',
+		close: '關閉工業地塊檢視器',
+		emptyTitle: '工業地塊',
+		noTileSelected: '未選擇地塊',
+		eyebrow: '工業地塊',
+		heading: '工業地塊 {x}, {y}',
+		statsAria: '工業地塊資訊',
+		unknown: '未知',
+		none: '無',
+		terrain: '地形',
+		resource: '資源',
+		coordinates: '座標',
+		access: '可用狀態',
+		locked: '未解鎖',
+		open: '可使用',
+		detailsAria: '工業建築詳情',
+		statusLabel: '狀態',
+		producedTotal: '累計產量',
+		importedInputs: '進口投入量',
+		blockedDays: '停擺天數',
+		level: '等級 {level} / {max}',
+		output: '{multiplier}× 產出',
+		upgrade: '升級 - {cost}',
+		maxLevel: '最高等級',
+		notEnoughCash: '現金不足。',
+		lastProduction: '最近一次生產',
+		noOutputYet: '尚未有產出',
+		warehouseSummary: '倉庫摘要',
+		warehouse: '倉庫',
+		warehouseMaterials: '倉庫物料',
+		capacity: '容量',
+		used: '已使用',
+		overflowUnits: '溢出單位',
+		overflowCost: '溢出成本',
+		noMaterialsStored: '沒有已儲存的物料',
+		unknownBuildingType: '未知的工業建築類型',
+		status: {
+			idle: '閒置',
+			produced: '已生產',
+			'imported-inputs': '已進口投入',
+			blocked: '受阻'
+		}
+	},
+	worldMap: {
+		ariaLabel: '世界地圖',
+		cities: '城市列表',
+		cityDetails: '城市詳情',
+		closeCityDetails: '關閉城市詳情',
+		cityEyebrow: {
+			retail: '零售城市',
+			industry: '工業城市'
+		},
+		openForCash: '花費 {cash} 開啟'
+	},
+	savePanel: {
+		dismiss: '關閉存檔',
+		dialog: '存檔',
+		eyebrow: '存檔',
+		title: '桌面存檔',
+		close: '關閉',
+		autoSection: '自動存檔',
+		autoSave: '自動存檔',
+		autoChip: 'AUTO',
+		noAutoSave: '尚未有自動存檔。',
+		resume: '繼續',
+		createSection: '建立存檔槽',
+		newSlot: '新存檔槽',
+		slotName: '存檔槽名稱',
+		saveSlot: '儲存',
+		manualSection: '手動存檔槽',
+		manualSlots: '手動存檔',
+		load: '載入',
+		overwrite: '覆寫',
+		delete: '刪除',
+		noManualSlots: '尚未有手動存檔槽。',
+		storeCount: {
+			one: '{count} 間店',
+			other: '{count} 間店'
+		},
+		autoSlotDetails: '第 {day} 天 · {storeCount} · {updatedAt}',
+		manualSlotDetails: '第 {day} 天 · {city} · {storeCount} · {updatedAt}'
+	},
+	decisionQueue: {
+		title: '決策佇列',
+		empty: '今天沒有緊急決策。',
+		expiresDay: '第 {day} 天到期'
+	},
 	route: {
 		cityPlanning: '城市規劃',
 		mapEyebrow: {
@@ -58,6 +220,10 @@ export const zhHant = {
 		menu: {
 			management: '管理',
 			managementPanels: '管理面板'
+		},
+		inspectors: {
+			retailDetails: '地塊詳情',
+			industryDetails: '工業地塊詳情'
 		},
 		placement: {
 			status: '建造狀態',
@@ -498,9 +664,7 @@ export const zhHant = {
 		}
 	},
 	placement: {
-		prompt: {
-			selectHighlightedTile: '請選擇已高亮的地塊來建設。'
-		},
+		chooseHighlightedTile: '請選擇已高亮的地塊來建設。',
 		retail: {
 			unknownCityTile: '未知的城市地塊',
 			storeLimitReached: '已達商店上限',

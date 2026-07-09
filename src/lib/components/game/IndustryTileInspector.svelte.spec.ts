@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import IndustryTileInspector from './IndustryTileInspector.svelte';
 import { getIndustryTilesByResource } from '$lib/game/industry';
+import { createI18n } from '$lib/i18n';
 import { createNewGame } from '$lib/game/state';
 import type { IndustrialBuilding } from '$lib/game/types';
 
@@ -16,6 +17,7 @@ describe('IndustryTileInspector', () => {
 			game,
 			tile,
 			building: null,
+			i18n: createI18n('en'),
 			onClose: vi.fn()
 		});
 
@@ -78,6 +80,7 @@ describe('IndustryTileInspector', () => {
 			game,
 			tile: warehouseTile,
 			building: warehouseBuilding,
+			i18n: createI18n('en'),
 			onClose: vi.fn()
 		});
 
@@ -130,6 +133,7 @@ describe('IndustryTileInspector', () => {
 			game,
 			tile,
 			building,
+			i18n: createI18n('en'),
 			onClose: vi.fn(),
 			onUpgradeBuilding
 		});
@@ -164,6 +168,7 @@ describe('IndustryTileInspector', () => {
 			game,
 			tile,
 			building,
+			i18n: createI18n('en'),
 			onClose: vi.fn()
 		});
 
@@ -196,6 +201,7 @@ describe('IndustryTileInspector', () => {
 			game,
 			tile,
 			building,
+			i18n: createI18n('en'),
 			onClose: vi.fn()
 		});
 
@@ -228,6 +234,7 @@ describe('IndustryTileInspector', () => {
 			game,
 			tile,
 			building,
+			i18n: createI18n('en'),
 			onClose: vi.fn()
 		});
 
@@ -261,6 +268,7 @@ describe('IndustryTileInspector', () => {
 			game,
 			tile: warehouseTile,
 			building,
+			i18n: createI18n('en'),
 			onClose: vi.fn()
 		});
 
@@ -305,6 +313,7 @@ describe('IndustryTileInspector', () => {
 			game,
 			tile,
 			building,
+			i18n: createI18n('en'),
 			onClose: vi.fn()
 		});
 
@@ -327,6 +336,7 @@ describe('IndustryTileInspector', () => {
 			game,
 			tile: lockedTile,
 			building: null,
+			i18n: createI18n('en'),
 			onClose: vi.fn()
 		});
 
@@ -364,6 +374,7 @@ describe('IndustryTileInspector', () => {
 			game,
 			tile,
 			building,
+			i18n: createI18n('en'),
 			onClose: vi.fn()
 		});
 
@@ -404,6 +415,7 @@ describe('IndustryTileInspector', () => {
 			game,
 			tile,
 			building,
+			i18n: createI18n('en'),
 			onClose: vi.fn()
 		});
 
@@ -443,6 +455,7 @@ describe('IndustryTileInspector', () => {
 			game,
 			tile,
 			building,
+			i18n: createI18n('en'),
 			onClose: vi.fn()
 		});
 
@@ -479,6 +492,7 @@ describe('IndustryTileInspector', () => {
 			game,
 			tile,
 			building,
+			i18n: createI18n('en'),
 			onClose: vi.fn()
 		});
 
@@ -493,6 +507,7 @@ describe('IndustryTileInspector', () => {
 			game,
 			tile: null,
 			building: null,
+			i18n: createI18n('en'),
 			onClose: vi.fn()
 		});
 
@@ -523,6 +538,7 @@ describe('IndustryTileInspector', () => {
 			game,
 			tile,
 			building,
+			i18n: createI18n('en'),
 			onClose: vi.fn()
 		});
 
@@ -532,6 +548,7 @@ describe('IndustryTileInspector', () => {
 			game,
 			tile,
 			building: { ...building, level: 3, producedTotal: 42, status: 'produced' },
+			i18n: createI18n('en'),
 			onClose: vi.fn()
 		});
 
@@ -575,6 +592,7 @@ describe('IndustryTileInspector', () => {
 			game,
 			tile,
 			building,
+			i18n: createI18n('en'),
 			onClose: vi.fn()
 		});
 
@@ -587,6 +605,7 @@ describe('IndustryTileInspector', () => {
 			},
 			tile,
 			building,
+			i18n: createI18n('en'),
 			onClose: vi.fn()
 		});
 
@@ -626,9 +645,26 @@ describe('IndustryTileInspector', () => {
 			game,
 			tile,
 			building,
+			i18n: createI18n('en'),
 			onClose: vi.fn()
 		});
 
 		await expect.element(page.getByText('No materials stored')).toBeVisible();
+	});
+
+	it('renders a localized fixed label outside English', async () => {
+		expect.assertions(2);
+		const game = createNewGame('convenience', 20260512);
+
+		render(IndustryTileInspector, {
+			game,
+			tile: null,
+			building: null,
+			i18n: createI18n('ja'),
+			onClose: vi.fn()
+		});
+
+		await expect.element(page.getByText('タイル未選択')).toBeVisible();
+		await expect.element(page.getByText('No tile selected')).not.toBeInTheDocument();
 	});
 });

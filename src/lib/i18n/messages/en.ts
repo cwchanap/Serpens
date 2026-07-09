@@ -42,6 +42,168 @@ export const en = {
 		effects: 'Effects',
 		effectsVolume: 'Effects volume'
 	},
+	buildMenu: {
+		dialog: 'Build menu',
+		close: 'Close build menu',
+		unavailable: 'Unavailable',
+		cityEyebrow: {
+			retail: 'Retail city',
+			industry: 'Industry city'
+		},
+		title: {
+			retail: 'Build Retail',
+			industry: 'Build Industry'
+		},
+		retail: {
+			buildArchetype: 'Build {name}',
+			setupRevenue: 'Setup {setup} | Revenue {revenue}/day',
+			validTiles: {
+				one: '{count} valid tile',
+				other: '{count} valid tiles'
+			},
+			noOptions: 'No retail buildings available'
+		},
+		industry: {
+			filter: {
+				allProducts: 'Filter: All products',
+				selected: 'Filter: {name}',
+				clear: 'Clear product filter',
+				dialog: 'Product chain filter',
+				title: 'Product filter',
+				close: 'Close product chain filter',
+				search: 'Search products',
+				allProductsLabel: 'All products',
+				allBuildings: 'All industrial buildings',
+				chainBuildings: {
+					one: '{count} chain building',
+					other: '{count} chain buildings'
+				},
+				noChain: 'No industry chain yet',
+				noMatches: 'No matching products'
+			},
+			supplyAdvisor: 'Supply Advisor — what should I build?',
+			buildType: 'Build {name}',
+			starter: 'Starter',
+			costOperating: 'Cost {cost} | Operating {operating}/day',
+			recipe: 'Recipe',
+			needsProducer: 'Needs {producer}',
+			needsResource: 'Needs a {resource} resource tile',
+			noOptions: 'No industrial buildings available'
+		}
+	},
+	tileInspector: {
+		ariaLabel: 'Tile inspector',
+		close: 'Close tile inspector',
+		selectTile: 'Select a city tile',
+		tileHeading: 'Tile {x}, {y}',
+		storeVitals: 'Store vitals',
+		revenuePerDay: 'Revenue/day',
+		stockHealth: 'Stock health',
+		staffMorale: 'Staff morale',
+		level: 'Level {level} / {max}',
+		nextLabel: 'Next: {benefit}',
+		nextBenefit: {
+			unlockProductStaff: 'Unlocks product #{productNumber} + {staffCapacity} staff capacity',
+			revenue: '+10% revenue'
+		},
+		upgrade: 'Upgrade — {cost}',
+		maxLevel: 'Max level',
+		notEnoughCash: 'Not enough cash.',
+		openDetails: 'Open Details ▸',
+		tileStats: 'Tile stats',
+		demand: 'Demand',
+		rent: 'Rent',
+		footTraffic: 'Foot traffic',
+		customerFit: 'Customer fit'
+	},
+	industryTileInspector: {
+		ariaLabel: 'Industry tile inspector',
+		close: 'Close industry tile inspector',
+		emptyTitle: 'Industry tile',
+		noTileSelected: 'No tile selected',
+		eyebrow: 'Industry tile',
+		heading: 'Industry Tile {x}, {y}',
+		statsAria: 'Industry tile stats',
+		unknown: 'Unknown',
+		none: 'None',
+		terrain: 'Terrain',
+		resource: 'Resource',
+		coordinates: 'Coordinates',
+		access: 'Access',
+		locked: 'Locked',
+		open: 'Open',
+		detailsAria: 'Industrial building details',
+		statusLabel: 'Status',
+		producedTotal: 'Produced total',
+		importedInputs: 'Imported inputs',
+		blockedDays: 'Blocked days',
+		level: 'Level {level} / {max}',
+		output: '{multiplier}× output',
+		upgrade: 'Upgrade — {cost}',
+		maxLevel: 'Max level',
+		notEnoughCash: 'Not enough cash.',
+		lastProduction: 'Last production',
+		noOutputYet: 'No output yet',
+		warehouseSummary: 'Warehouse summary',
+		warehouse: 'Warehouse',
+		warehouseMaterials: 'Warehouse materials',
+		capacity: 'Capacity',
+		used: 'Used',
+		overflowUnits: 'Overflow units',
+		overflowCost: 'Overflow cost',
+		noMaterialsStored: 'No materials stored',
+		unknownBuildingType: 'Unknown building type',
+		status: {
+			idle: 'Idle',
+			produced: 'Produced',
+			'imported-inputs': 'Imported inputs',
+			blocked: 'Blocked'
+		}
+	},
+	worldMap: {
+		ariaLabel: 'World map',
+		cities: 'Cities',
+		cityDetails: 'City details',
+		closeCityDetails: 'Close city details',
+		cityEyebrow: {
+			retail: 'Retail city',
+			industry: 'Industrial city'
+		},
+		openForCash: 'Open for {cash} cash'
+	},
+	savePanel: {
+		dismiss: 'Dismiss saves',
+		dialog: 'Saves',
+		eyebrow: 'Saves',
+		title: 'Desktop Saves',
+		close: 'Close',
+		autoSection: 'Auto-save',
+		autoSave: 'Auto-save',
+		autoChip: 'AUTO',
+		noAutoSave: 'No auto-save yet.',
+		resume: 'Resume',
+		createSection: 'Create save slot',
+		newSlot: 'New slot',
+		slotName: 'Slot name',
+		saveSlot: 'Save slot',
+		manualSection: 'Manual save slots',
+		manualSlots: 'Manual slots',
+		load: 'Load',
+		overwrite: 'Overwrite',
+		delete: 'Delete',
+		noManualSlots: 'No manual slots yet.',
+		storeCount: {
+			one: '{count} store',
+			other: '{count} stores'
+		},
+		autoSlotDetails: 'Day {day} · {storeCount} · {updatedAt}',
+		manualSlotDetails: 'Day {day} · {city} · {storeCount} · {updatedAt}'
+	},
+	decisionQueue: {
+		title: 'Decision Queue',
+		empty: 'No urgent decisions today.',
+		expiresDay: 'Expires day {day}'
+	},
 	route: {
 		cityPlanning: 'City planning',
 		mapEyebrow: {
@@ -55,6 +217,10 @@ export const en = {
 		menu: {
 			management: 'Management',
 			managementPanels: 'Management panels'
+		},
+		inspectors: {
+			retailDetails: 'Tile details',
+			industryDetails: 'Industry tile details'
 		},
 		placement: {
 			status: 'Placement status',
@@ -500,9 +666,7 @@ export const en = {
 		}
 	},
 	placement: {
-		prompt: {
-			selectHighlightedTile: 'Choose a highlighted tile to build.'
-		},
+		chooseHighlightedTile: 'Choose a highlighted tile to build.',
 		retail: {
 			unknownCityTile: 'Unknown city tile',
 			storeLimitReached: 'Store limit reached',

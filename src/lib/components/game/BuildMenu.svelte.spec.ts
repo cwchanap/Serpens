@@ -255,6 +255,27 @@ describe('BuildMenu', () => {
 		await expect.element(page.getByText('No valid tiles')).not.toBeInTheDocument();
 	});
 
+	it('renders structured placement reasons in English through the supplied locale bundle', async () => {
+		expect.assertions(1);
+
+		render(
+			BuildMenu,
+			buildMenuProps({
+				retailOptions: [
+					{
+						archetypeId: 'boutique',
+						setupCostRange: { min: 1200, max: 1900 },
+						projectedDailyRevenueRange: { min: 420, max: 880 },
+						validTileCount: 0,
+						disabledReason: { code: 'retail.storeLimitReached' }
+					}
+				]
+			})
+		);
+
+		await expect.element(page.getByText('Store limit reached')).toBeVisible();
+	});
+
 	it('renders an empty retail options message', async () => {
 		expect.assertions(1);
 
