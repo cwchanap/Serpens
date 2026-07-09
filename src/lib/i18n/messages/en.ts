@@ -445,5 +445,22 @@ export const en = {
 				warehouseAvailable: 'Warehouse capacity is available.'
 			}
 		}
+	},
+	placement: {
+		retail: {
+			unknownCityTile: 'Unknown city tile',
+			storeLimitReached: 'Store limit reached',
+			requiresCash: 'Requires {amount} cash',
+			occupiedLocation: 'Occupied location',
+			lockedLocation: 'Locked location',
+			roadLocation: 'Road location',
+			riverLocation: 'River location',
+			noValidTiles: 'No valid tiles'
+		},
+		industry: {
+			lockedUntilRetail: 'Found a retail store to unlock construction.',
+			unknownBuildingType: 'Unknown industrial building type',
+			requiresCash: '{buildingName} requires {amount} cash.'
+		}
 	}
 } as const;
