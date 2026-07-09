@@ -2,6 +2,7 @@ import { page } from 'vitest/browser';
 import { describe, expect, it } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import Scorecard from './Scorecard.svelte';
+import { createI18n } from '$lib/i18n';
 import type { Scorecard as ScorecardData } from '$lib/game/types';
 
 const sampleScorecard: ScorecardData = {
@@ -15,7 +16,7 @@ describe('Scorecard', () => {
 	it('renders the heading', async () => {
 		expect.assertions(1);
 
-		render(Scorecard, { scorecard: sampleScorecard });
+		render(Scorecard, { i18n: createI18n('en'), scorecard: sampleScorecard });
 
 		await expect.element(page.getByRole('heading', { name: 'Scorecard' })).toBeVisible();
 	});
@@ -23,7 +24,7 @@ describe('Scorecard', () => {
 	it('renders four meter elements with correct values', async () => {
 		expect.assertions(4);
 
-		render(Scorecard, { scorecard: sampleScorecard });
+		render(Scorecard, { i18n: createI18n('en'), scorecard: sampleScorecard });
 
 		const meters = page.getByRole('meter');
 
@@ -36,23 +37,23 @@ describe('Scorecard', () => {
 	it('renders the four labels', async () => {
 		expect.assertions(4);
 
-		render(Scorecard, { scorecard: sampleScorecard });
+		render(Scorecard, { i18n: createI18n('en'), scorecard: sampleScorecard });
 
 		await expect.element(page.getByText('Profit')).toBeVisible();
-		await expect.element(page.getByText('Customers')).toBeVisible();
-		await expect.element(page.getByText('Staff')).toBeVisible();
-		await expect.element(page.getByText('Market')).toBeVisible();
+		await expect.element(page.getByText('Customer Satisfaction')).toBeVisible();
+		await expect.element(page.getByText('Staff Morale')).toBeVisible();
+		await expect.element(page.getByText('Market Position')).toBeVisible();
 	});
 
 	it('displays meter elements with correct aria-labels', async () => {
 		expect.assertions(4);
 
-		render(Scorecard, { scorecard: sampleScorecard });
+		render(Scorecard, { i18n: createI18n('en'), scorecard: sampleScorecard });
 
 		await expect.element(page.getByRole('meter', { name: 'Profit' })).toBeVisible();
-		await expect.element(page.getByRole('meter', { name: 'Customers' })).toBeVisible();
-		await expect.element(page.getByRole('meter', { name: 'Staff' })).toBeVisible();
-		await expect.element(page.getByRole('meter', { name: 'Market' })).toBeVisible();
+		await expect.element(page.getByRole('meter', { name: 'Customer Satisfaction' })).toBeVisible();
+		await expect.element(page.getByRole('meter', { name: 'Staff Morale' })).toBeVisible();
+		await expect.element(page.getByRole('meter', { name: 'Market Position' })).toBeVisible();
 	});
 
 	it('updates rendered values when scorecard prop changes', async () => {
@@ -71,15 +72,15 @@ describe('Scorecard', () => {
 			marketPosition: 85
 		};
 
-		const view = render(Scorecard, { scorecard: lowScorecard });
+		const view = render(Scorecard, { i18n: createI18n('en'), scorecard: lowScorecard });
 
 		const profitMeter = page.getByRole('meter', { name: 'Profit' });
-		const marketMeter = page.getByRole('meter', { name: 'Market' });
+		const marketMeter = page.getByRole('meter', { name: 'Market Position' });
 
 		await expect.element(profitMeter).toHaveAttribute('value', '10');
 		await expect.element(marketMeter).toHaveAttribute('value', '40');
 
-		view.rerender({ scorecard: highScorecard });
+		view.rerender({ i18n: createI18n('en'), scorecard: highScorecard });
 
 		await expect.element(profitMeter).toHaveAttribute('value', '95');
 		await expect.element(marketMeter).toHaveAttribute('value', '85');

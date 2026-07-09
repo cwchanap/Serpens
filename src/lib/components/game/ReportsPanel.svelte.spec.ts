@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import type { ReportSummary } from '$lib/game/reports';
 import type { DailyProductionReport } from '$lib/game/types';
+import { createI18n } from '$lib/i18n';
 import ReportsPanel from './ReportsPanel.svelte';
 
 function emptyProductionReport(): DailyProductionReport {
@@ -65,6 +66,7 @@ describe('ReportsPanel', () => {
 		expect.assertions(6);
 
 		render(ReportsPanel, {
+			i18n: createI18n('en'),
 			summary: {
 				...summary,
 				latest: {
@@ -92,7 +94,7 @@ describe('ReportsPanel', () => {
 	it('shows latest import spend with the daily metrics', async () => {
 		expect.assertions(2);
 
-		render(ReportsPanel, { summary });
+		render(ReportsPanel, { i18n: createI18n('en'), summary });
 
 		const reportsRegion = page.getByRole('region', { name: 'Reports' });
 
@@ -104,6 +106,7 @@ describe('ReportsPanel', () => {
 		expect.assertions(1);
 
 		render(ReportsPanel, {
+			i18n: createI18n('en'),
 			summary: {
 				...summary,
 				latest: { ...summary.latest!, warnings: ['Supply chain shortage', 'Staffing gap'] }
@@ -118,7 +121,7 @@ describe('ReportsPanel', () => {
 	it('shows the empty state when there is no latest report', async () => {
 		expect.assertions(1);
 
-		render(ReportsPanel, { summary: { ...summary, latest: undefined } });
+		render(ReportsPanel, { i18n: createI18n('en'), summary: { ...summary, latest: undefined } });
 
 		await expect
 			.element(page.getByText('No reports yet. Advance the first day to generate results.'))

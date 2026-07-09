@@ -1,9 +1,11 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import type { I18nBundle } from '$lib/i18n';
 	import CompassRose from './CompassRose.svelte';
 	import LegendCartouche from './LegendCartouche.svelte';
 
 	interface Props {
+		i18n: I18nBundle;
 		width: number;
 		height: number;
 		compact: boolean;
@@ -11,7 +13,7 @@
 		broadside?: Snippet;
 	}
 
-	let { width, height, compact, children, broadside }: Props = $props();
+	let { i18n, width, height, compact, children, broadside }: Props = $props();
 </script>
 
 <div
@@ -27,7 +29,7 @@
 			<CompassRose />
 		</div>
 		<div class="legend-slot">
-			<LegendCartouche />
+			<LegendCartouche {i18n} />
 		</div>
 		{#if broadside}
 			<div class="broadside-slot">

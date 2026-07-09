@@ -2,6 +2,7 @@ import { page } from 'vitest/browser';
 import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import type { GameState, Store } from '$lib/game/types';
+import { createI18n } from '$lib/i18n';
 import StoreDetailModal from './StoreDetailModal.svelte';
 
 function store(): Store {
@@ -57,6 +58,7 @@ function game(): GameState {
 function props() {
 	return {
 		game: game(),
+		i18n: createI18n('en'),
 		store: store(),
 		staff: [],
 		hiringCandidates: [],

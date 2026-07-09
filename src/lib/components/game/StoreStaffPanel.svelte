@@ -1,8 +1,10 @@
 <script lang="ts">
 	import { summarizeStoreStaffing } from '$lib/game/staffing';
+	import type { I18nBundle } from '$lib/i18n';
 	import type { HiringCandidate, StaffMember, StaffRole, Store } from '$lib/game/types';
 
 	interface Props {
+		i18n: I18nBundle;
 		store: Store;
 		staff: StaffMember[];
 		hiringCandidates: HiringCandidate[];
@@ -11,126 +13,169 @@
 		onUnassign: (staffId: string) => void;
 	}
 
-	let { store, staff, hiringCandidates, onHire, onAssign, onUnassign }: Props = $props();
-
-	const currency = new Intl.NumberFormat('en-US', {
-		style: 'currency',
-		currency: 'USD',
-		maximumFractionDigits: 0
-	});
+	let { i18n, store, staff, hiringCandidates, onHire, onAssign, onUnassign }: Props = $props();
 
 	const assignedStaff = $derived(staff.filter((member) => member.assignedStoreId === store.id));
 	const unassignedStaff = $derived(staff.filter((member) => member.assignedStoreId === null));
 	const staffing = $derived(summarizeStoreStaffing({ staff }, store));
 
 	function roleLabel(role: StaffRole): string {
-		return role === 'manager' ? 'Manager' : 'General';
+		return i18n.t(`staffPanel.role.${role}`);
 	}
 
 	function hireActionLabel(candidate: HiringCandidate): string {
-		return `Hire ${candidate.name}, ${roleLabel(candidate.role)} candidate ${candidate.id}`;
+		return i18n.t('staffPanel.actionLabels.hire', {
+			name: candidate.name,
+			role: roleLabel(candidate.role),
+			id: candidate.id
+		});
 	}
 
 	function assignActionLabel(member: StaffMember): string {
-		return `Assign ${member.name}, ${roleLabel(member.role)} staff ${member.id} to ${store.name}`;
+		return i18n.t('staffPanel.actionLabels.assignToStore', {
+			name: member.name,
+			role: roleLabel(member.role),
+			id: member.id,
+			storeName: store.name
+		});
 	}
 
 	function unassignActionLabel(member: StaffMember): string {
-		return `Unassign ${member.name}, ${roleLabel(member.role)} staff ${member.id} from ${store.name}`;
+		return i18n.t('staffPanel.actionLabels.unassign', {
+			name: member.name,
+			role: roleLabel(member.role),
+			id: member.id,
+			storeName: store.name
+		});
+	}
+
+	function storeCoverageSummary(): string {
+		return i18n.t('staffPanel.coverage', {
+			storeName: store.name,
+			managerAssigned: i18n.format.integer(staffing.assigned.manager),
+			managerRequired: i18n.format.integer(staffing.requirement.manager),
+			generalAssigned: i18n.format.integer(staffing.assigned.general),
+			generalRequired: i18n.format.integer(staffing.requirement.general)
+		});
+	}
+
+	function staffMetrics(member: StaffMember): string {
+		return i18n.t('staffPanel.levelProgress.storeInline', {
+			role: roleLabel(member.role),
+			skill: i18n.format.integer(member.skill),
+			morale: i18n.format.integer(member.morale)
+		});
 	}
 </script>
 
 <section class="store-staff" aria-labelledby={`${store.id}-staff-heading`}>
 	<div class="staff-heading">
 		<div>
-			<h3 id={`${store.id}-staff-heading`}>{store.name} staff</h3>
-			<p>
-				{staffing.assigned.manager}/{staffing.requirement.manager} managers,
-				{staffing.assigned.general}/{staffing.requirement.general} general
-			</p>
+			<h3 id={`${store.id}-staff-heading`}>
+				{i18n.t('storeDetail.staffTitle', { storeName: store.name })}
+			</h3>
+			<p>{storeCoverageSummary()}</p>
 		</div>
-		<strong>{Math.round(staffing.coverage)}%</strong>
+		<strong>{i18n.format.percent(staffing.coverage / 100)}</strong>
 	</div>
 
 	<dl class="metrics">
 		<div>
-			<dt>Skill</dt>
-			<dd>{Math.round(staffing.averageSkill)}</dd>
+			<dt>{i18n.t('staffPanel.metrics.skill')}</dt>
+			<dd>{i18n.format.integer(Math.round(staffing.averageSkill))}</dd>
 		</div>
 		<div>
-			<dt>Morale</dt>
-			<dd>{Math.round(staffing.averageMorale)}</dd>
+			<dt>{i18n.t('staffPanel.metrics.morale')}</dt>
+			<dd>{i18n.format.integer(Math.round(staffing.averageMorale))}</dd>
 		</div>
 	</dl>
 
-	<section class="staff-section" aria-label="Assigned staff">
-		<h4>Assigned</h4>
+	<section class="staff-section" aria-label={i18n.t('staffPanel.assigned')}>
+		<h4>{i18n.t('staffPanel.assigned')}</h4>
 		<div class="people-list">
 			{#each assignedStaff as member (member.id)}
 				<article class="person-row">
 					<div>
 						<h5>{member.name}</h5>
-						<p>{roleLabel(member.role)} · Skill {member.skill} · Morale {member.morale}</p>
-						<small>{currency.format(member.monthlySalary)}/mo</small>
+						<p>{staffMetrics(member)}</p>
+						<small>
+							{i18n.t('staffPanel.salaryPerMonth', {
+								salary: i18n.format.currency(member.monthlySalary)
+							})}
+						</small>
 					</div>
 					<button
 						type="button"
 						aria-label={unassignActionLabel(member)}
 						onclick={() => onUnassign(member.id)}
 					>
-						Unassign
+						{i18n.t('staffPanel.unassignButton')}
 					</button>
 				</article>
 			{:else}
-				<p class="empty">No assigned staff</p>
+				<p class="empty">{i18n.t('staffPanel.emptyAssigned')}</p>
 			{/each}
 		</div>
 	</section>
 
-	<section class="staff-section" aria-label="Unassigned staff">
-		<h4>Unassigned</h4>
+	<section class="staff-section" aria-label={i18n.t('staffPanel.unassigned')}>
+		<h4>{i18n.t('staffPanel.unassigned')}</h4>
 		<div class="people-list">
 			{#each unassignedStaff as member (member.id)}
 				<article class="person-row">
 					<div>
 						<h5>{member.name}</h5>
-						<p>{roleLabel(member.role)} · Skill {member.skill} · Morale {member.morale}</p>
-						<small>{currency.format(member.monthlySalary)}/mo</small>
+						<p>{staffMetrics(member)}</p>
+						<small>
+							{i18n.t('staffPanel.salaryPerMonth', {
+								salary: i18n.format.currency(member.monthlySalary)
+							})}
+						</small>
 					</div>
 					<button
 						type="button"
 						aria-label={assignActionLabel(member)}
 						onclick={() => onAssign(member.id, store.id)}
 					>
-						Assign
+						{i18n.t('staffPanel.assignButton')}
 					</button>
 				</article>
 			{:else}
-				<p class="empty">No unassigned staff</p>
+				<p class="empty">{i18n.t('staffPanel.emptyUnassigned')}</p>
 			{/each}
 		</div>
 	</section>
 
-	<section class="staff-section" aria-label="Hiring candidates">
-		<h4>Candidates</h4>
+	<section class="staff-section" aria-label={i18n.t('staffPanel.candidates')}>
+		<h4>{i18n.t('staffPanel.candidates')}</h4>
 		<div class="people-list">
 			{#each hiringCandidates as candidate (candidate.id)}
 				<article class="person-row">
 					<div>
 						<h5>{candidate.name}</h5>
-						<p>{roleLabel(candidate.role)} · Skill {candidate.skill} · Morale {candidate.morale}</p>
-						<small>{currency.format(candidate.monthlySalary)}/mo</small>
+						<p>
+							{i18n.t('staffPanel.levelProgress.storeInline', {
+								role: roleLabel(candidate.role),
+								skill: i18n.format.integer(candidate.skill),
+								morale: i18n.format.integer(candidate.morale)
+							})}
+						</p>
+						<small>
+							{i18n.t('staffPanel.salaryPerMonth', {
+								salary: i18n.format.currency(candidate.monthlySalary)
+							})}
+						</small>
 					</div>
 					<button
 						type="button"
 						aria-label={hireActionLabel(candidate)}
 						onclick={() => onHire(candidate.id)}
 					>
-						Hire
+						{i18n.t('staffPanel.hireButton', { name: candidate.name })}
 					</button>
 				</article>
 			{:else}
-				<p class="empty">No candidates available</p>
+				<p class="empty">{i18n.t('staffPanel.emptyCandidates')}</p>
 			{/each}
 		</div>
 	</section>

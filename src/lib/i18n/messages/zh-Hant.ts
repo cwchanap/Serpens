@@ -207,6 +207,205 @@ export const zhHant = {
 		empty: '今天沒有緊急決策。',
 		expiresDay: '第 {day} 天到期'
 	},
+	policyPanel: {
+		title: '政策'
+	},
+	reportsPanel: {
+		title: '報表',
+		metrics: {
+			latestDailyResult: '最新每日結果',
+			revenue: '營收',
+			cashAfter: '結束現金',
+			payroll: '薪資',
+			imports: '進口',
+			productionImports: '生產進口',
+			warehouseOverflow: '倉庫溢出',
+			sevenDayNet: '7 日淨利',
+			thirtyDayNet: '30 日淨利'
+		},
+		dailyWarnings: '每日警告',
+		empty: '尚未有報表。推進第一天後會產生結果。'
+	},
+	scorecard: {
+		title: '評分卡'
+	},
+	staffPanel: {
+		title: '員工',
+		hiredCount: '已雇用 {count} 名員工',
+		candidates: '候選人',
+		unassigned: '未分派',
+		storeStaffing: '店鋪人力配置',
+		assigned: '已分派',
+		coverage:
+			'{storeName}：經理 {managerAssigned}/{managerRequired}，一般 {generalAssigned}/{generalRequired}',
+		coverageShort:
+			'經理 {managerAssigned}/{managerRequired}，一般 {generalAssigned}/{generalRequired}',
+		role: {
+			manager: '經理',
+			general: '一般'
+		},
+		metrics: {
+			level: '等級',
+			skill: '技能',
+			morale: '士氣'
+		},
+		salaryPerMonth: '{salary}/月',
+		hireButton: '雇用 {name}',
+		assignButton: '分派',
+		unassignButton: '解除分派',
+		promoteButton: '升級 {name}（{cost}）',
+		emptyCandidates: '沒有可用候選人',
+		emptyUnassigned: '沒有未分派員工',
+		emptyAssigned: '沒有已分派員工',
+		assignment: {
+			unassigned: '未分派',
+			currentlyUnassigned: '目前未分派',
+			currentlyAssigned: '目前分派至 {storeName}'
+		},
+		actionLabels: {
+			hire: '雇用 {name}，{role}候選人 {id}',
+			assign: '分派 {name}，{role}員工 {id}，{context}',
+			assignToStore: '分派 {name}，{role}員工 {id} 至 {storeName}',
+			unassign: '將 {name}，{role}員工 {id} 從 {storeName} 解除分派',
+			promote: '花費 {cost} 將 {name}，{role}員工 {id} 升至等級 {level}'
+		},
+		levelProgress: {
+			max: '最高等級',
+			xp: 'XP {current}/{required}',
+			inline: '{role} · 等級 {level} · 技能 {skill} · 士氣 {morale}',
+			storeInline: '{role} · 技能 {skill} · 士氣 {morale}'
+		}
+	},
+	storeOverview: {
+		title: '店鋪',
+		dayOpen: '第 {day} 天',
+		metrics: {
+			revenue: '營收',
+			grossMargin: '毛利',
+			stock: '庫存',
+			imports: '進口',
+			staff: '員工',
+			coverage: '覆蓋'
+		},
+		productSources: '{storeName}商品來源分布',
+		warnings: '{storeName}警告',
+		warehouseUnits: '倉庫 {count}',
+		importedUnits: '進口 {count}',
+		noWarnings: '目前沒有警告。'
+	},
+	storeStockTable: {
+		title: '{storeName}庫存',
+		headings: {
+			product: '商品',
+			stock: '庫存',
+			importCost: '進口成本',
+			sellingPrice: '售價',
+			reorder: '補貨點',
+			target: '目標',
+			status: '狀態',
+			latest: '最新'
+		},
+		inputLabels: {
+			sellingPrice: '{categoryName}售價',
+			reorderThreshold: '{categoryName}補貨門檻',
+			targetStock: '{categoryName}目標庫存'
+		},
+		latestReport: '售出 {sold} / 錯失 {missed}',
+		noReport: '沒有報表'
+	},
+	storeDetail: {
+		dismiss: '關閉店鋪詳情',
+		eyebrow: '店鋪詳情',
+		staffTitle: '{storeName}員工',
+		close: '關閉',
+		closeLabel: '關閉店鋪詳情',
+		sections: '{storeName}區段',
+		tabs: {
+			stock: '庫存',
+			chain: '商品鏈',
+			staff: '員工'
+		}
+	},
+	storeProductChainPanel: {
+		ariaLabel: '{storeName}商品鏈',
+		categoryLabel: '商品類別',
+		empty: '此店鋪類別尚無可用的本地生產鏈。'
+	},
+	productChainsPanel: {
+		ariaLabel: '商品鏈',
+		eyebrow: 'Folio II · 生產鏈',
+		modeGroup: '商品鏈檢視',
+		storeCategoryChains: '店鋪類別鏈',
+		warehouseFlow: '倉庫流向',
+		emptyCategories: '尚無具備本地生產鏈的店鋪類別。',
+		emptyGraph: '沒有可用的鏈條圖。'
+	},
+	supplyAdvisor: {
+		dismiss: '關閉供應顧問',
+		dialog: '供應顧問',
+		eyebrow: '工業',
+		title: '供應顧問',
+		close: '關閉',
+		closeLabel: '關閉供應顧問',
+		empty: '沒有可規劃項目。建設零售店以創造需求。',
+		chainLabel: '{categoryName}供應鏈',
+		starter: '起步',
+		supplied: '已供應 ✓',
+		build: '建設{buildingName}'
+	},
+	shortcutCheatSheet: {
+		dismiss: '關閉鍵盤快捷鍵',
+		dialog: '鍵盤快捷鍵',
+		title: '鍵盤快捷鍵',
+		close: '關閉快捷鍵',
+		actions: {
+			build: '切換建設選單',
+			mapViews: '零售 / 工業 / 世界檢視',
+			dashboard: '切換儀表板',
+			policies: '切換政策',
+			staff: '切換員工',
+			stores: '切換店鋪',
+			decisions: '切換決策',
+			reports: '切換報表',
+			productChains: '切換商品鏈',
+			advanceDay: '推進一天',
+			escape: '開啟選單，或關閉 / 取消',
+			cheatSheet: '切換此快捷鍵表'
+		}
+	},
+	productChainAtlas: {
+		emptyNodes: '此鏈條沒有可用的圖節點。',
+		warnings: '{title}警告'
+	},
+	atlas: {
+		categoryIndex: {
+			ariaLabel: '商品類別索引',
+			tier: 'Tier {tier}',
+			metrics: '庫存 {stock} · 生產 {produced}/日 · 售出 {consumed}/日'
+		},
+		nodeBroadside: {
+			inspected: '檢視節點',
+			emptyTitle: '鏈條節點',
+			empty: '選擇圖節點以檢視最新流量指標。',
+			sharedProducer: '共享生產者 - 繪製在此鏈條的 {count} 個分支中。',
+			metrics: {
+				buildings: '建築',
+				capacity: '產能',
+				capacityValue: '輸出 {output} / 輸入 {input}',
+				produced: '生產',
+				consumed: '消耗',
+				imported: '進口',
+				sold: '售出',
+				missed: '錯失',
+				stock: '庫存'
+			}
+		},
+		legend: {
+			title: '· 路線 ·',
+			healthy: '健康流向',
+			shortage: '短缺'
+		}
+	},
 	route: {
 		cityPlanning: '城市規劃',
 		mapEyebrow: {

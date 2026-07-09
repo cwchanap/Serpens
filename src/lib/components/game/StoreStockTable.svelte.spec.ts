@@ -4,6 +4,7 @@ import { render } from 'vitest-browser-svelte';
 import StoreStockTable from './StoreStockTable.svelte';
 import { getProductArt } from '$lib/assets/gameArt';
 import { initializeStoreProducts } from '$lib/game/stock';
+import { createI18n } from '$lib/i18n';
 import type { DailyStoreReport, Store } from '$lib/game/types';
 
 const store: Store = {
@@ -68,6 +69,7 @@ describe('StoreStockTable', () => {
 		expect.assertions(9);
 
 		render(StoreStockTable, {
+			i18n: createI18n('en'),
 			store,
 			latestReport,
 			onUpdate: vi.fn()
@@ -99,6 +101,7 @@ describe('StoreStockTable', () => {
 		const onUpdate = vi.fn();
 
 		render(StoreStockTable, {
+			i18n: createI18n('en'),
 			store,
 			latestReport,
 			onUpdate
@@ -117,6 +120,7 @@ describe('StoreStockTable', () => {
 		const onUpdate = vi.fn();
 
 		render(StoreStockTable, {
+			i18n: createI18n('en'),
 			store,
 			latestReport,
 			onUpdate
@@ -147,6 +151,7 @@ describe('StoreStockTable', () => {
 		};
 
 		render(StoreStockTable, {
+			i18n: createI18n('en'),
 			store: storeWithUnknownProduct,
 			latestReport,
 			onUpdate: vi.fn()
@@ -157,11 +162,25 @@ describe('StoreStockTable', () => {
 		await expect.element(page.getByText('No report')).toBeVisible();
 	});
 
+	it('renders Traditional Chinese stock table headings', async () => {
+		expect.assertions(1);
+
+		render(StoreStockTable, {
+			i18n: createI18n('zh-Hant'),
+			store,
+			latestReport,
+			onUpdate: vi.fn()
+		});
+
+		await expect.element(page.getByRole('columnheader', { name: '商品' })).toBeVisible();
+	});
+
 	it('sends a target stock update for the edited product', async () => {
 		expect.assertions(2);
 		const onUpdate = vi.fn();
 
 		render(StoreStockTable, {
+			i18n: createI18n('en'),
 			store,
 			latestReport,
 			onUpdate

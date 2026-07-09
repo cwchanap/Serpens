@@ -10,10 +10,13 @@
 		buildProductChainTree,
 		buildStoreCategoryChainSummaries
 	} from '$lib/game/productChainTree';
+	import { localizeProductChainGraph } from '$lib/i18n/gameCopy';
+	import type { I18nBundle } from '$lib/i18n';
 	import type { GameState } from '$lib/game/types';
 
 	interface Props {
 		game: GameState;
+		i18n: I18nBundle;
 	}
 
 	type ChainMode = 'store-categories' | 'warehouse-flow';
@@ -23,7 +26,7 @@
 		nodeId: string | null;
 	}
 
-	let { game }: Props = $props();
+	let { game, i18n }: Props = $props();
 
 	let mode = $state<ChainMode>('store-categories');
 	let selectedCategoryId = $state<string | null>(null);
@@ -40,23 +43,30 @@
 			summaries[0] ??
 			null
 	);
-	const categoryGraph = $derived(
+	const categoryGraph = $derived.by(() =>
 		activeCategory
-			? buildProductChainTree({
-					game,
-					store: null,
-					categoryId: activeCategory.categoryId
-				})
+			? localizeProductChainGraph(
+					buildProductChainTree({
+						game,
+						store: null,
+						categoryId: activeCategory.categoryId
+					}),
+					i18n
+				)
 			: null
 	);
-	const warehouseGraph = $derived(buildWarehouseFlowGraph(game));
+	const warehouseGraph = $derived(localizeProductChainGraph(buildWarehouseFlowGraph(game), i18n));
 	const graph = $derived(mode === 'warehouse-flow' ? warehouseGraph : categoryGraph);
 	const activeNodeId = $derived(
 		graph && nodeSelection.graphId === graph.id ? nodeSelection.nodeId : null
 	);
 	const selectedNode = $derived(graph && activeNodeId ? graph.details[activeNodeId] : null);
 	const headingText = $derived(
-		mode === 'warehouse-flow' ? 'Warehouse flow' : (activeCategory?.name ?? 'Product Chains')
+		mode === 'warehouse-flow'
+			? i18n.t('productChainsPanel.warehouseFlow')
+			: activeCategory
+				? i18n.labels.productCategory(activeCategory.categoryId)
+				: i18n.t('productChainsPanel.ariaLabel')
 	);
 
 	function selectCategory(categoryId: string): void {
@@ -75,23 +85,26 @@
 	}
 </script>
 
-<section class="panel paper product-chains-panel atlas-sheet" aria-label="Product Chains">
+<section
+	class="panel paper product-chains-panel atlas-sheet"
+	aria-label={i18n.t('productChainsPanel.ariaLabel')}
+>
 	<div class="sheet-head">
 		<div>
-			<p class="eyebrow">Folio II · Production Chain</p>
+			<p class="eyebrow">{i18n.t('productChainsPanel.eyebrow')}</p>
 			<h2>{headingText}</h2>
 			{#if graph}
 				<p class="chain-title">{graph.title}</p>
 			{/if}
 		</div>
-		<div class="mode-toggle" role="group" aria-label="Product chain view">
+		<div class="mode-toggle" role="group" aria-label={i18n.t('productChainsPanel.modeGroup')}>
 			<button
 				type="button"
 				class:active={mode === 'store-categories'}
 				aria-pressed={mode === 'store-categories'}
 				onclick={() => selectMode('store-categories')}
 			>
-				Store category chains
+				{i18n.t('productChainsPanel.storeCategoryChains')}
 			</button>
 			<button
 				type="button"
@@ -99,7 +112,7 @@
 				aria-pressed={mode === 'warehouse-flow'}
 				onclick={() => selectMode('warehouse-flow')}
 			>
-				Warehouse flow
+				{i18n.t('productChainsPanel.warehouseFlow')}
 			</button>
 		</div>
 	</div>
@@ -109,22 +122,23 @@
 	{#if summaries.length > 0}
 		<CategoryStampIndex
 			{summaries}
+			{i18n}
 			activeCategoryId={activeCategory?.categoryId ?? null}
 			{mode}
 			onSelectCategory={selectCategory}
 		/>
 	{:else}
-		<p class="empty">No store categories have local production chains yet.</p>
+		<p class="empty">{i18n.t('productChainsPanel.emptyCategories')}</p>
 	{/if}
 
 	{#if graph}
-		<ProductChainAtlas {graph} selectedNodeId={activeNodeId} onSelectNode={selectNode}>
+		<ProductChainAtlas {graph} {i18n} selectedNodeId={activeNodeId} onSelectNode={selectNode}>
 			{#snippet broadside()}
-				<NodeBroadside node={selectedNode} />
+				<NodeBroadside {i18n} node={selectedNode} />
 			{/snippet}
 		</ProductChainAtlas>
 	{:else}
-		<p class="empty">No chain graph is available.</p>
+		<p class="empty">{i18n.t('productChainsPanel.emptyGraph')}</p>
 	{/if}
 </section>
 

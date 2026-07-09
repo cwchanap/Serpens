@@ -151,7 +151,7 @@ describe('WorldMap', () => {
 		await expect
 			.element(openButton)
 			.toHaveAttribute('aria-describedby', 'world-city-campus-junction-reason');
-		await expect.element(page.getByText('Opening this city requires 18,000 cash.')).toBeVisible();
+		await expect.element(page.getByText('Opening this city requires $18,000 cash.')).toBeVisible();
 	});
 
 	it('shows a blocked reason in the inspector for a locked city', async () => {

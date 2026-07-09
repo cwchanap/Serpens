@@ -1,12 +1,14 @@
 <script lang="ts">
 	import { SvelteMap } from 'svelte/reactivity';
 	import type { ProductChainGraph } from '$lib/game/productChainGraph';
+	import type { I18nBundle } from '$lib/i18n';
 	import ChainMap from './ChainMap.svelte';
 	import ChainNode from './ChainNode.svelte';
 	import ChainRoute from './ChainRoute.svelte';
 
 	interface Props {
 		graph: ProductChainGraph;
+		i18n: I18nBundle;
 		selectedNodeId: string | null;
 		compact?: boolean;
 		onSelectNode: (nodeId: string | null) => void;
@@ -16,6 +18,7 @@
 
 	let {
 		graph,
+		i18n,
 		selectedNodeId,
 		compact = false,
 		onSelectNode,
@@ -96,9 +99,9 @@
 	{#if graph.emptyReason}
 		<p class="empty">{graph.emptyReason}</p>
 	{:else if graph.nodes.length === 0}
-		<p class="empty">No graph nodes are available for this chain.</p>
+		<p class="empty">{i18n.t('productChainAtlas.emptyNodes')}</p>
 	{:else}
-		<ChainMap width={layout.width} height={layout.height} {compact} {broadside}>
+		<ChainMap {i18n} width={layout.width} height={layout.height} {compact} {broadside}>
 			<div
 				class="canvas-inner"
 				role="presentation"
@@ -155,7 +158,10 @@
 			</div>
 		</ChainMap>
 		{#if graph.warnings.length > 0}
-			<ul class="warnings" aria-label={`${graph.title} warnings`}>
+			<ul
+				class="warnings"
+				aria-label={i18n.t('productChainAtlas.warnings', { title: graph.title })}
+			>
 				{#each graph.warnings as warning (warning)}
 					<li>{warning}</li>
 				{/each}

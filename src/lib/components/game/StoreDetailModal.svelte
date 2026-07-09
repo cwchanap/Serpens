@@ -3,6 +3,7 @@
 	import StoreStaffPanel from '$lib/components/game/StoreStaffPanel.svelte';
 	import StoreStockTable from '$lib/components/game/StoreStockTable.svelte';
 	import { focusTrap } from '$lib/a11y/focusTrap';
+	import type { I18nBundle } from '$lib/i18n';
 	import type {
 		DailyStoreReport,
 		GameState,
@@ -14,6 +15,7 @@
 
 	interface Props {
 		game: GameState;
+		i18n: I18nBundle;
 		store: Store;
 		staff: StaffMember[];
 		hiringCandidates: HiringCandidate[];
@@ -28,6 +30,7 @@
 
 	let {
 		game,
+		i18n,
 		store,
 		staff,
 		hiringCandidates,
@@ -42,11 +45,7 @@
 
 	type DetailTab = 'stock' | 'chain' | 'staff';
 
-	const tabs: Array<{ id: DetailTab; label: string }> = [
-		{ id: 'stock', label: 'Stock' },
-		{ id: 'chain', label: 'Product Chain' },
-		{ id: 'staff', label: 'Staff' }
-	];
+	const tabs: Array<{ id: DetailTab }> = [{ id: 'stock' }, { id: 'chain' }, { id: 'staff' }];
 
 	let activeTab = $state<DetailTab>('stock');
 
@@ -84,7 +83,7 @@
 		type="button"
 		class="backdrop-button"
 		tabindex="-1"
-		aria-label="Dismiss store details"
+		aria-label={i18n.t('storeDetail.dismiss')}
 		onclick={onClose}
 	></button>
 	<div
@@ -96,18 +95,21 @@
 	>
 		<header>
 			<div>
-				<p class="eyebrow">Store details</p>
+				<p class="eyebrow">{i18n.t('storeDetail.eyebrow')}</p>
 				<h2>{store.name}</h2>
 			</div>
-			<button type="button" class="btn-danger" aria-label="Close store details" onclick={onClose}
-				>Close</button
+			<button
+				type="button"
+				class="btn-danger"
+				aria-label={i18n.t('storeDetail.closeLabel')}
+				onclick={onClose}>{i18n.t('storeDetail.close')}</button
 			>
 		</header>
 
 		<div
 			class="detail-tabs"
 			role="tablist"
-			aria-label={`${store.name} sections`}
+			aria-label={i18n.t('storeDetail.sections', { storeName: store.name })}
 			tabindex="-1"
 			onkeydown={handleTabKeydown}
 		>
@@ -125,7 +127,7 @@
 				>
 					{#if activeTab === tab.id}<span class="bookmark tab-bookmark" aria-hidden="true"
 						></span>{/if}
-					{tab.label}
+					{i18n.t(`storeDetail.tabs.${tab.id}`)}
 				</button>
 			{/each}
 		</div>
@@ -138,7 +140,12 @@
 				role="tabpanel"
 				aria-labelledby={`${store.id}-stock-tab`}
 			>
-				<StoreStockTable {store} latestReport={latestStoreReport} onUpdate={onUpdateStoreProduct} />
+				<StoreStockTable
+					{i18n}
+					{store}
+					latestReport={latestStoreReport}
+					onUpdate={onUpdateStoreProduct}
+				/>
 			</div>
 			<div
 				class="detail-panel"
@@ -147,7 +154,7 @@
 				role="tabpanel"
 				aria-labelledby={`${store.id}-chain-tab`}
 			>
-				<StoreProductChainPanel {game} {store} onInteractionFeedback={onClickFeedback} />
+				<StoreProductChainPanel {game} {i18n} {store} onInteractionFeedback={onClickFeedback} />
 			</div>
 			<div
 				class="detail-panel"
@@ -158,6 +165,7 @@
 			>
 				<StoreStaffPanel
 					{store}
+					{i18n}
 					{staff}
 					{hiringCandidates}
 					onHire={onHireStaff}

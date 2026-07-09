@@ -2,6 +2,7 @@ import { page } from 'vitest/browser';
 import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import PolicyPanel from './PolicyPanel.svelte';
+import { createI18n, type I18nBundle } from '$lib/i18n';
 import type { CompanyPolicy } from '$lib/game/types';
 
 const defaultPolicy: CompanyPolicy = {
@@ -15,11 +16,13 @@ const defaultPolicy: CompanyPolicy = {
 function renderPolicyPanel(
 	overrides: Partial<{
 		policy: CompanyPolicy;
+		i18n: I18nBundle;
 		onChange: (patch: Partial<CompanyPolicy>) => void;
 	}> = {}
 ) {
 	const props = {
 		policy: defaultPolicy,
+		i18n: createI18n('en'),
 		onChange: vi.fn(),
 		...overrides
 	};
@@ -36,6 +39,14 @@ describe('PolicyPanel', () => {
 		renderPolicyPanel();
 
 		await expect.element(page.getByRole('heading', { name: 'Policies' })).toBeVisible();
+	});
+
+	it('renders Japanese policy field labels', async () => {
+		expect.assertions(1);
+
+		renderPolicyPanel({ i18n: createI18n('ja') });
+
+		await expect.element(page.getByLabelText('価格戦略')).toBeVisible();
 	});
 
 	it('renders five selects with correct current values', async () => {

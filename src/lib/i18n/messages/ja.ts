@@ -207,6 +207,205 @@ export const ja = {
 		empty: '本日の緊急判断はありません。',
 		expiresDay: '{day}日目で期限切れ'
 	},
+	policyPanel: {
+		title: 'ポリシー'
+	},
+	reportsPanel: {
+		title: 'レポート',
+		metrics: {
+			latestDailyResult: '直近日次結果',
+			revenue: '売上',
+			cashAfter: '終了時現金',
+			payroll: '給与',
+			imports: '輸入',
+			productionImports: '生産輸入',
+			warehouseOverflow: '倉庫あふれ',
+			sevenDayNet: '7日純益',
+			thirtyDayNet: '30日純益'
+		},
+		dailyWarnings: '日次警告',
+		empty: 'まだレポートがありません。最初の日を進めると結果が生成されます。'
+	},
+	scorecard: {
+		title: 'スコアカード'
+	},
+	staffPanel: {
+		title: 'スタッフ',
+		hiredCount: '雇用済みスタッフ {count} 名',
+		candidates: '候補者',
+		unassigned: '未割当',
+		storeStaffing: '店舗の人員配置',
+		assigned: '割当済み',
+		coverage:
+			'{storeName}: マネージャー {managerAssigned}/{managerRequired}、一般 {generalAssigned}/{generalRequired}',
+		coverageShort:
+			'マネージャー {managerAssigned}/{managerRequired}、一般 {generalAssigned}/{generalRequired}',
+		role: {
+			manager: 'マネージャー',
+			general: '一般'
+		},
+		metrics: {
+			level: 'レベル',
+			skill: 'スキル',
+			morale: '士気'
+		},
+		salaryPerMonth: '{salary}/月',
+		hireButton: '{name}を雇用',
+		assignButton: '割当',
+		unassignButton: '割当解除',
+		promoteButton: '{name}を昇進 ({cost})',
+		emptyCandidates: '利用可能な候補者はいません',
+		emptyUnassigned: '未割当スタッフはいません',
+		emptyAssigned: '割当済みスタッフはいません',
+		assignment: {
+			unassigned: '未割当',
+			currentlyUnassigned: '現在未割当',
+			currentlyAssigned: '現在 {storeName} に割当済み'
+		},
+		actionLabels: {
+			hire: '{name}、{role}候補者 {id} を雇用',
+			assign: '{name}、{role}スタッフ {id} を割当、{context}',
+			assignToStore: '{name}、{role}スタッフ {id} を {storeName} に割当',
+			unassign: '{name}、{role}スタッフ {id} を {storeName} から解除',
+			promote: '{name}、{role}スタッフ {id} をレベル {level} へ {cost} で昇進'
+		},
+		levelProgress: {
+			max: '最大レベル',
+			xp: 'XP {current}/{required}',
+			inline: '{role} · レベル {level} · スキル {skill} · 士気 {morale}',
+			storeInline: '{role} · スキル {skill} · 士気 {morale}'
+		}
+	},
+	storeOverview: {
+		title: '店舗',
+		dayOpen: '{day}日目',
+		metrics: {
+			revenue: '売上',
+			grossMargin: '粗利',
+			stock: '在庫',
+			imports: '輸入',
+			staff: 'スタッフ',
+			coverage: '充足'
+		},
+		productSources: '{storeName}の商品供給内訳',
+		warnings: '{storeName}の警告',
+		warehouseUnits: '倉庫 {count}',
+		importedUnits: '輸入 {count}',
+		noWarnings: '現在の警告はありません。'
+	},
+	storeStockTable: {
+		title: '{storeName}の在庫',
+		headings: {
+			product: '商品',
+			stock: '在庫',
+			importCost: '輸入単価',
+			sellingPrice: '販売価格',
+			reorder: '再発注',
+			target: '目標',
+			status: '状態',
+			latest: '直近'
+		},
+		inputLabels: {
+			sellingPrice: '{categoryName}の販売価格',
+			reorderThreshold: '{categoryName}の再発注しきい値',
+			targetStock: '{categoryName}の目標在庫'
+		},
+		latestReport: '販売 {sold} / 機会損失 {missed}',
+		noReport: 'レポートなし'
+	},
+	storeDetail: {
+		dismiss: '店舗詳細を閉じる',
+		eyebrow: '店舗詳細',
+		staffTitle: '{storeName}のスタッフ',
+		close: '閉じる',
+		closeLabel: '店舗詳細を閉じる',
+		sections: '{storeName}のセクション',
+		tabs: {
+			stock: '在庫',
+			chain: '商品チェーン',
+			staff: 'スタッフ'
+		}
+	},
+	storeProductChainPanel: {
+		ariaLabel: '{storeName}の商品チェーン',
+		categoryLabel: '商品カテゴリ',
+		empty: 'この店舗カテゴリで利用できるローカル生産チェーンはまだありません。'
+	},
+	productChainsPanel: {
+		ariaLabel: '商品チェーン',
+		eyebrow: 'Folio II · 生産チェーン',
+		modeGroup: '商品チェーン表示',
+		storeCategoryChains: '店舗カテゴリチェーン',
+		warehouseFlow: '倉庫フロー',
+		emptyCategories: 'ローカル生産チェーンを持つ店舗カテゴリはまだありません。',
+		emptyGraph: '利用できるチェーングラフがありません。'
+	},
+	supplyAdvisor: {
+		dismiss: '供給アドバイザーを閉じる',
+		dialog: '供給アドバイザー',
+		eyebrow: '工業',
+		title: '供給アドバイザー',
+		close: '閉じる',
+		closeLabel: '供給アドバイザーを閉じる',
+		empty: '計画できるものはありません。需要を作るには小売店を建設してください。',
+		chainLabel: '{categoryName}の供給チェーン',
+		starter: '初期向け',
+		supplied: '供給済み ✓',
+		build: '{buildingName}を建設'
+	},
+	shortcutCheatSheet: {
+		dismiss: 'キーボードショートカットを閉じる',
+		dialog: 'キーボードショートカット',
+		title: 'キーボードショートカット',
+		close: 'ショートカットを閉じる',
+		actions: {
+			build: '建設メニューを切り替え',
+			mapViews: '小売 / 工業 / 世界ビュー',
+			dashboard: 'ダッシュボードを切り替え',
+			policies: 'ポリシーを切り替え',
+			staff: 'スタッフを切り替え',
+			stores: '店舗を切り替え',
+			decisions: '意思決定を切り替え',
+			reports: 'レポートを切り替え',
+			productChains: '商品チェーンを切り替え',
+			advanceDay: '日を進める',
+			escape: 'メニューを開く、または閉じる / キャンセル',
+			cheatSheet: 'このチートシートを切り替え'
+		}
+	},
+	productChainAtlas: {
+		emptyNodes: 'このチェーンで利用できるグラフノードはありません。',
+		warnings: '{title}の警告'
+	},
+	atlas: {
+		categoryIndex: {
+			ariaLabel: '商品カテゴリ索引',
+			tier: 'Tier {tier}',
+			metrics: '在庫 {stock} · 生産 {produced}/日 · 販売 {consumed}/日'
+		},
+		nodeBroadside: {
+			inspected: '検査中のノード',
+			emptyTitle: 'チェーンノード',
+			empty: 'グラフノードを選択して最新のフロー指標を確認します。',
+			sharedProducer: '共有生産者 - このチェーンの {count} 分岐に描画されています。',
+			metrics: {
+				buildings: '建物',
+				capacity: '容量',
+				capacityValue: '出力 {output} / 入力 {input}',
+				produced: '生産',
+				consumed: '消費',
+				imported: '輸入',
+				sold: '販売',
+				missed: '機会損失',
+				stock: '在庫'
+			}
+		},
+		legend: {
+			title: '· ルート ·',
+			healthy: '健全な流れ',
+			shortage: '不足'
+		}
+	},
 	route: {
 		cityPlanning: '都市計画',
 		mapEyebrow: {

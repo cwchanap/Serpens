@@ -3,11 +3,12 @@ import { describe, expect, it } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { addWarehouseMaterial } from '$lib/game/industryProduction';
 import { createNewGame } from '$lib/game/state';
+import { createI18n, type I18nBundle } from '$lib/i18n';
 import type { GameState } from '$lib/game/types';
 import ProductChainsPanel from './ProductChainsPanel.svelte';
 
-function renderProductChainsPanel(game: GameState) {
-	return render(ProductChainsPanel, { game });
+function renderProductChainsPanel(game: GameState, i18n: I18nBundle = createI18n('en')) {
+	return render(ProductChainsPanel, { game, i18n });
 }
 
 describe('ProductChainsPanel', () => {
@@ -21,7 +22,7 @@ describe('ProductChainsPanel', () => {
 		await expect.element(page.getByTestId('category-stamp-bottled-water')).toBeVisible();
 		await expect.element(page.getByRole('button', { name: 'Warehouse flow' })).toBeVisible();
 		await expect.element(page.getByTestId('product-chain-graph-chain:bottled-water')).toBeVisible();
-		await expect.element(page.getByText('Bottled Water chain')).toBeVisible();
+		expect(document.querySelector('.chain-title')?.textContent).toBe('Bottled Water');
 	});
 
 	it('toggles from store category chains to warehouse flow', async () => {
@@ -39,6 +40,15 @@ describe('ProductChainsPanel', () => {
 		await expect.element(page.getByTestId('product-chain-graph-warehouse-flow')).toBeVisible();
 		await expect.element(page.getByRole('button', { name: 'Store category chains' })).toBeVisible();
 		await expect.element(page.getByRole('heading', { name: 'Warehouse flow' })).toBeVisible();
+	});
+
+	it('renders Japanese mode buttons', async () => {
+		expect.assertions(1);
+		const game = createNewGame('convenience', 20260518);
+
+		renderProductChainsPanel(game, createI18n('ja'));
+
+		await expect.element(page.getByRole('button', { name: '倉庫フロー' })).toBeVisible();
 	});
 
 	it('shows empty-state messages and the fallback heading when no stores have chain categories', async () => {

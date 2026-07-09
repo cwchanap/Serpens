@@ -1,15 +1,17 @@
 <script lang="ts">
 	import { focusTrap } from '$lib/a11y/focusTrap';
+	import type { I18nBundle } from '$lib/i18n';
 	import type { AdvisorChain } from '$lib/game/supplyAdvisor';
 	import type { IndustrialBuildingTypeId } from '$lib/game/types';
 
 	interface Props {
 		chains: AdvisorChain[];
+		i18n: I18nBundle;
 		onBuild: (buildingTypeId: IndustrialBuildingTypeId) => void;
 		onClose: () => void;
 	}
 
-	let { chains, onBuild, onClose }: Props = $props();
+	let { chains, i18n, onBuild, onClose }: Props = $props();
 
 	function stateMark(state: AdvisorChain['steps'][number]['state']): string {
 		if (state === 'built') return '✓';
@@ -23,49 +25,55 @@
 		type="button"
 		class="backdrop-button"
 		tabindex="-1"
-		aria-label="Dismiss supply advisor"
+		aria-label={i18n.t('supplyAdvisor.dismiss')}
 		onclick={onClose}
 	></button>
 	<div
 		class="advisor paper"
 		role="dialog"
 		aria-modal="true"
-		aria-label="Supply advisor"
+		aria-label={i18n.t('supplyAdvisor.dialog')}
 		{@attach focusTrap}
 	>
 		<header>
 			<div>
-				<p class="eyebrow">Industry</p>
-				<h2>Supply Advisor</h2>
+				<p class="eyebrow">{i18n.t('supplyAdvisor.eyebrow')}</p>
+				<h2>{i18n.t('supplyAdvisor.title')}</h2>
 			</div>
-			<button type="button" class="btn-danger" aria-label="Close supply advisor" onclick={onClose}
-				>Close</button
+			<button
+				type="button"
+				class="btn-danger"
+				aria-label={i18n.t('supplyAdvisor.closeLabel')}
+				onclick={onClose}>{i18n.t('supplyAdvisor.close')}</button
 			>
 		</header>
 
 		{#if chains.length === 0}
-			<p class="muted">Nothing to plan — build a retail store to create demand.</p>
+			<p class="muted">{i18n.t('supplyAdvisor.empty')}</p>
 		{:else}
 			<div class="chains">
 				{#each chains as chain (chain.finishedMaterialId)}
-					<section class="chain" aria-label={`${chain.categoryName} supply chain`}>
+					{@const categoryName = i18n.labels.material(chain.finishedMaterialId)}
+					<section class="chain" aria-label={i18n.t('supplyAdvisor.chainLabel', { categoryName })}>
 						<div class="chain-heading">
-							<h3>{chain.categoryName}</h3>
-							{#if chain.tier === 1}<span class="starter">Starter</span>{/if}
-							{#if chain.complete}<span class="done">Supplied ✓</span>{/if}
+							<h3>{categoryName}</h3>
+							{#if chain.tier === 1}<span class="starter">{i18n.t('supplyAdvisor.starter')}</span
+								>{/if}
+							{#if chain.complete}<span class="done">{i18n.t('supplyAdvisor.supplied')}</span>{/if}
 						</div>
 						<ol class="steps">
 							{#each chain.steps as step (step.buildingTypeId)}
+								{@const buildingName = i18n.labels.industrialBuilding(step.buildingTypeId)}
 								<li class={`step ${step.state}`}>
 									<span class="mark" aria-hidden="true">{stateMark(step.state)}</span>
-									<span class="step-name">{step.name}</span>
+									<span class="step-name">{buildingName}</span>
 									{#if step.isNextBuild}
 										<button
 											type="button"
 											class="build-next"
 											onclick={() => onBuild(step.buildingTypeId)}
 										>
-											Build {step.name}
+											{i18n.t('supplyAdvisor.build', { buildingName })}
 										</button>
 									{/if}
 								</li>

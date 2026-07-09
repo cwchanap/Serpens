@@ -1,10 +1,13 @@
 <script lang="ts">
+	import type { I18nBundle } from '$lib/i18n';
 	import type { CompanyPolicy } from '$lib/game/types';
 
 	let {
+		i18n,
 		policy,
 		onChange
 	}: {
+		i18n: I18nBundle;
 		policy: CompanyPolicy;
 		onChange: (patch: Partial<CompanyPolicy>) => void;
 	} = $props();
@@ -12,32 +15,26 @@
 	const fields = [
 		{
 			key: 'pricing',
-			label: 'Pricing',
 			options: ['discount', 'competitive', 'standard', 'premium']
 		},
 		{
 			key: 'inventory',
-			label: 'Inventory',
 			options: ['lean', 'balanced', 'generous']
 		},
 		{
 			key: 'staffing',
-			label: 'Staffing',
 			options: ['minimal', 'efficient', 'service']
 		},
 		{
 			key: 'marketing',
-			label: 'Marketing',
 			options: ['none', 'awareness', 'promotions', 'loyalty']
 		},
 		{
 			key: 'service',
-			label: 'Service',
 			options: ['speed', 'balanced', 'highTouch']
 		}
 	] as const satisfies readonly {
 		key: keyof CompanyPolicy;
-		label: string;
 		options: readonly string[];
 	}[];
 
@@ -47,19 +44,20 @@
 </script>
 
 <section class="panel paper" aria-labelledby="policy-heading">
-	<h2 id="policy-heading">Policies</h2>
+	<h2 id="policy-heading">{i18n.t('policyPanel.title')}</h2>
 
 	<div class="policy-grid">
 		{#each fields as field (field.key)}
+			{@const fieldLabel = i18n.labels.policyField(field.key)}
 			<label>
-				<span>{field.label}</span>
+				<span>{fieldLabel}</span>
 				<select
-					aria-label={field.label}
+					aria-label={fieldLabel}
 					value={policy[field.key]}
 					onchange={(event) => update(field.key, event.currentTarget.value)}
 				>
 					{#each field.options as option (option)}
-						<option value={option}>{option}</option>
+						<option value={option}>{i18n.labels.policyValue(field.key, option)}</option>
 					{/each}
 				</select>
 			</label>
