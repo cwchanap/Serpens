@@ -24,6 +24,7 @@ const INDUSTRIAL_BUILDING_ID_BY_NAME = new Map(
 		(buildingType) => [buildingType.name, buildingType.id] as const
 	)
 );
+const WORLD_CITY_OPENING_COST_CONTEXT = /^Opening this city requires ([\d,]+) cash\.$/;
 
 export type LocalizedDecisionOption = DecisionOption;
 
@@ -93,6 +94,21 @@ function formatCountMessage(i18n: I18nBundle, baseKey: string, count: number): s
 
 function formatQuantity(quantity: string): string {
 	return quantity;
+}
+
+function formatWorldCityOpeningCost(
+	message: string,
+	i18n: I18nBundle,
+	fallbackAmount?: number
+): string | null {
+	const match = message.match(WORLD_CITY_OPENING_COST_CONTEXT);
+	if (!match) {
+		return null;
+	}
+
+	const parsedAmount = Number((match[1] ?? '').replaceAll(',', ''));
+	const amount = Number.isFinite(parsedAmount) ? parsedAmount : fallbackAmount;
+	return amount === undefined ? null : i18n.format.currency(amount);
 }
 
 function localizeHealth(health: ProductChainNode['health'], i18n: I18nBundle): string {
@@ -244,10 +260,10 @@ function localizeWorldDecisionContext(decision: DecisionItem, i18n: I18nBundle):
 	}
 
 	if (decision.title === 'City opening delayed') {
-		const match = decision.context.match(/^Opening this city requires ([\d,]+) cash\.$/);
-		if (match) {
+		const cash = formatWorldCityOpeningCost(decision.context, i18n);
+		if (cash) {
 			return i18n.t('copy.decisions.worldCity.openingDelayed.context' as never, {
-				cash: match[1] ?? '0'
+				cash
 			});
 		}
 	}
@@ -500,10 +516,10 @@ export function localizeWorldCityStatus(
 			translateMessage(i18n, `game.worldCities.${status.city.id}.unlockRequirement`) ??
 			status.blockedReason;
 	} else if (status.blockedReason) {
-		const match = status.blockedReason.match(/^Opening this city requires ([\d,]+) cash\.$/);
-		if (match) {
+		const cash = formatWorldCityOpeningCost(status.blockedReason, i18n, status.city.openingCost);
+		if (cash) {
 			blockedReason = i18n.t('copy.worldCity.blockedOpeningCost' as never, {
-				cash: match[1] ?? '0'
+				cash
 			});
 		}
 	}

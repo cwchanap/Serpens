@@ -168,6 +168,43 @@ describe('game copy builders', () => {
 		expect(localizedGraph.emptyReason).not.toBe(graph.emptyReason);
 	});
 
+	it('formats world-city cash requirements with the active locale currency formatter', () => {
+		expect.assertions(5);
+		const japanese = createI18n('ja');
+		const expectedCash = japanese.format.currency(18_000);
+		const worldDecision: DecisionItem = {
+			id: 'world-city-city-opening-delayed-opening-this-city-requires-18-000-cash-1',
+			title: 'City opening delayed',
+			context: 'Opening this city requires 18,000 cash.',
+			expiresOnDay: 2,
+			options: [
+				{
+					id: 'acknowledge',
+					label: 'Acknowledge',
+					description: 'Return to operations planning.',
+					effects: {}
+				}
+			]
+		};
+		const game = {
+			...createNewGame('convenience', 20260708),
+			cash: 1_000,
+			world: {
+				revealedCityIds: ['harbor-city', 'industry-city', 'campus-junction'] as WorldCityId[],
+				openedCityIds: ['harbor-city', 'industry-city'] as WorldCityId[],
+				claimedMilestoneIds: []
+			}
+		};
+		const worldStatus = getWorldCityStatus(game, 'campus-junction');
+		const localizedDecision = localizeDecision(worldDecision, japanese);
+
+		expect(worldStatus?.blockedReason).toBe('Opening this city requires 18,000 cash.');
+		expect(localizedDecision.context).toContain(expectedCash);
+		expect(localizedDecision.context).not.toContain(' 18,000 ');
+		expect(worldStatus).not.toBeNull();
+		expect(localizeWorldCityStatus(worldStatus!, japanese).blockedReason).toContain(expectedCash);
+	});
+
 	it('localizes event, state, and world decision families while preserving unknown fallback', () => {
 		expect.assertions(18);
 		const japanese = createI18n('ja');
