@@ -134,7 +134,7 @@ describe('game copy builders', () => {
 	});
 
 	it('localizes event, state, and world decision families while preserving unknown fallback', () => {
-		expect.assertions(11);
+		expect.assertions(15);
 		const japanese = createI18n('ja');
 		const english = createI18n('en');
 
@@ -220,6 +220,20 @@ describe('game copy builders', () => {
 				}
 			]
 		};
+		const industrialDecision: DecisionItem = {
+			id: 'industrial-construction-delayed-grain-farm-industry-city-1-1-locked-industrial-tile-2',
+			title: 'Industrial construction delayed',
+			context: 'Locked industrial tile',
+			expiresOnDay: 2,
+			options: [
+				{
+					id: 'acknowledge',
+					label: 'Acknowledge',
+					description: 'Return to industry planning.',
+					effects: {}
+				}
+			]
+		};
 
 		expect(localizeDecision(expansionOpportunity, japanese).title).not.toBe(
 			expansionOpportunity.title
@@ -241,6 +255,16 @@ describe('game copy builders', () => {
 		expect(localizeDecision(unavailableDecision, japanese).options[0]?.description).not.toBe(
 			unavailableDecision.options[0]?.description
 		);
+		expect(localizeDecision(stateDecision, english).options[0]?.description).toBe(
+			'Return to location planning.'
+		);
+		expect(localizeDecision(industrialDecision, japanese).title).not.toBe(industrialDecision.title);
+		expect(localizeDecision(industrialDecision, japanese).context).not.toBe(
+			industrialDecision.context
+		);
+		expect(localizeDecision(industrialDecision, english).options[0]?.description).toBe(
+			'Return to industry planning.'
+		);
 		expect(localizeDecision({ ...worldDecision, id: 'unknown-decision' }, english).title).toBe(
 			worldDecision.title
 		);
@@ -255,6 +279,7 @@ describe('game copy builders', () => {
 			'expansionUnavailable',
 			'expansionCashBlocked',
 			'locationUnavailable',
+			'industrialConstructionDelayed',
 			'worldCity',
 			'acknowledge'
 		] as const;
