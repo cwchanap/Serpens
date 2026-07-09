@@ -445,6 +445,9 @@ export const zhHant = {
 		}
 	},
 	placement: {
+		prompt: {
+			selectHighlightedTile: '請選擇已高亮的地塊來建設。'
+		},
 		retail: {
 			unknownCityTile: '未知的城市地塊',
 			storeLimitReached: '已達商店上限',

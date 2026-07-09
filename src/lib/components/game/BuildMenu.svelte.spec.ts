@@ -2,6 +2,7 @@ import { page } from 'vitest/browser';
 import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import type { RetailBuildMenuOption } from '$lib/game/placementPreview';
+import { createI18n } from '$lib/i18n';
 import BuildMenu from './BuildMenu.svelte';
 
 const retailOptions: RetailBuildMenuOption[] = [
@@ -20,6 +21,19 @@ const retailOptions: RetailBuildMenuOption[] = [
 		disabledReason: null
 	}
 ];
+
+function buildMenuProps(overrides: Record<string, unknown> = {}) {
+	return {
+		activeMapView: 'retail' as const,
+		i18n: createI18n('en'),
+		retailOptions,
+		industryLockedReason: null,
+		onChooseRetail: vi.fn(),
+		onChooseIndustry: vi.fn(),
+		onClose: vi.fn(),
+		...overrides
+	};
+}
 
 async function waitForFocusEffect(): Promise<void> {
 	await new Promise((resolve) => window.requestAnimationFrame(resolve));
@@ -47,14 +61,7 @@ describe('BuildMenu', () => {
 		expect.assertions(5);
 		const onChooseRetail = vi.fn();
 
-		render(BuildMenu, {
-			activeMapView: 'retail',
-			retailOptions,
-			industryLockedReason: null,
-			onChooseRetail,
-			onChooseIndustry: vi.fn(),
-			onClose: vi.fn()
-		});
+		render(BuildMenu, buildMenuProps({ onChooseRetail }));
 
 		await expect.element(page.getByRole('dialog', { name: /build menu/i })).toBeVisible();
 		await expect.element(page.getByRole('heading', { name: /build retail/i })).toBeVisible();
@@ -70,14 +77,7 @@ describe('BuildMenu', () => {
 		expect.assertions(4);
 		const onClose = vi.fn();
 
-		render(BuildMenu, {
-			activeMapView: 'retail',
-			retailOptions,
-			industryLockedReason: null,
-			onChooseRetail: vi.fn(),
-			onChooseIndustry: vi.fn(),
-			onClose
-		});
+		render(BuildMenu, buildMenuProps({ onClose }));
 
 		await waitForFocusEffect();
 
@@ -106,14 +106,7 @@ describe('BuildMenu', () => {
 		expect.assertions(7);
 		const onChooseIndustry = vi.fn();
 
-		render(BuildMenu, {
-			activeMapView: 'industry',
-			retailOptions,
-			industryLockedReason: null,
-			onChooseRetail: vi.fn(),
-			onChooseIndustry,
-			onClose: vi.fn()
-		});
+		render(BuildMenu, buildMenuProps({ activeMapView: 'industry', onChooseIndustry }));
 
 		await expect.element(page.getByRole('heading', { name: /build industry/i })).toBeVisible();
 		await page.getByRole('button', { name: /filter: all products/i }).click();
@@ -133,14 +126,7 @@ describe('BuildMenu', () => {
 		expect.assertions(5);
 		const onClose = vi.fn();
 
-		render(BuildMenu, {
-			activeMapView: 'industry',
-			retailOptions,
-			industryLockedReason: null,
-			onChooseRetail: vi.fn(),
-			onChooseIndustry: vi.fn(),
-			onClose
-		});
+		render(BuildMenu, buildMenuProps({ activeMapView: 'industry', onClose }));
 
 		await page.getByRole('button', { name: /filter: all products/i }).click();
 		const filterPopover = page.getByRole('dialog', { name: /product chain filter/i });
@@ -160,14 +146,7 @@ describe('BuildMenu', () => {
 	it('sorts industry building options by tier, then cost, then name', async () => {
 		expect.assertions(3);
 
-		render(BuildMenu, {
-			activeMapView: 'industry',
-			retailOptions,
-			industryLockedReason: null,
-			onChooseRetail: vi.fn(),
-			onChooseIndustry: vi.fn(),
-			onClose: vi.fn()
-		});
+		render(BuildMenu, buildMenuProps({ activeMapView: 'industry' }));
 
 		const dialog = getBuildMenuDialog();
 		const labels = Array.from(
@@ -185,14 +164,13 @@ describe('BuildMenu', () => {
 	it('explains locked industry construction before a store exists', async () => {
 		expect.assertions(2);
 
-		render(BuildMenu, {
-			activeMapView: 'industry',
-			retailOptions,
-			industryLockedReason: { code: 'industry.lockedUntilRetail' },
-			onChooseRetail: vi.fn(),
-			onChooseIndustry: vi.fn(),
-			onClose: vi.fn()
-		});
+		render(
+			BuildMenu,
+			buildMenuProps({
+				activeMapView: 'industry',
+				industryLockedReason: { code: 'industry.lockedUntilRetail' }
+			})
+		);
 
 		await expect
 			.element(page.getByText('Found a retail store to unlock construction.'))
@@ -203,22 +181,20 @@ describe('BuildMenu', () => {
 	it('formats a fixed setup cost range and singular valid tile count', async () => {
 		expect.assertions(3);
 
-		render(BuildMenu, {
-			activeMapView: 'retail',
-			retailOptions: [
-				{
-					archetypeId: 'convenience',
-					setupCostRange: { min: 1500, max: 1500 },
-					projectedDailyRevenueRange: { min: 700, max: 980 },
-					validTileCount: 1,
-					disabledReason: null
-				}
-			],
-			industryLockedReason: null,
-			onChooseRetail: vi.fn(),
-			onChooseIndustry: vi.fn(),
-			onClose: vi.fn()
-		});
+		render(
+			BuildMenu,
+			buildMenuProps({
+				retailOptions: [
+					{
+						archetypeId: 'convenience',
+						setupCostRange: { min: 1500, max: 1500 },
+						projectedDailyRevenueRange: { min: 700, max: 980 },
+						validTileCount: 1,
+						disabledReason: null
+					}
+				]
+			})
+		);
 
 		await expect.element(page.getByText(/Setup \$1,500 \|/)).toBeVisible();
 		await expect.element(page.getByText('1 valid tile')).toBeVisible();
@@ -229,22 +205,21 @@ describe('BuildMenu', () => {
 		expect.assertions(3);
 		const onChooseRetail = vi.fn();
 
-		render(BuildMenu, {
-			activeMapView: 'retail',
-			retailOptions: [
-				{
-					archetypeId: 'boutique',
-					setupCostRange: { min: 1200, max: 1900 },
-					projectedDailyRevenueRange: { min: 420, max: 880 },
-					validTileCount: 0,
-					disabledReason: { code: 'retail.noValidTiles' }
-				}
-			],
-			industryLockedReason: null,
-			onChooseRetail,
-			onChooseIndustry: vi.fn(),
-			onClose: vi.fn()
-		});
+		render(
+			BuildMenu,
+			buildMenuProps({
+				retailOptions: [
+					{
+						archetypeId: 'boutique',
+						setupCostRange: { min: 1200, max: 1900 },
+						projectedDailyRevenueRange: { min: 420, max: 880 },
+						validTileCount: 0,
+						disabledReason: { code: 'retail.noValidTiles' }
+					}
+				],
+				onChooseRetail
+			})
+		);
 
 		const button = page.getByRole('button', { name: /build boutique goods/i });
 		await expect.element(button).toBeDisabled();
@@ -257,17 +232,33 @@ describe('BuildMenu', () => {
 		expect(onChooseRetail).not.toHaveBeenCalled();
 	});
 
+	it('renders structured placement reasons through the supplied locale bundle', async () => {
+		expect.assertions(2);
+
+		render(
+			BuildMenu,
+			buildMenuProps({
+				i18n: createI18n('ja'),
+				retailOptions: [
+					{
+						archetypeId: 'boutique',
+						setupCostRange: { min: 1200, max: 1900 },
+						projectedDailyRevenueRange: { min: 420, max: 880 },
+						validTileCount: 0,
+						disabledReason: { code: 'retail.noValidTiles' }
+					}
+				]
+			})
+		);
+
+		await expect.element(page.getByText('有効な立地がありません')).toBeVisible();
+		await expect.element(page.getByText('No valid tiles')).not.toBeInTheDocument();
+	});
+
 	it('renders an empty retail options message', async () => {
 		expect.assertions(1);
 
-		render(BuildMenu, {
-			activeMapView: 'retail',
-			retailOptions: [],
-			industryLockedReason: null,
-			onChooseRetail: vi.fn(),
-			onChooseIndustry: vi.fn(),
-			onClose: vi.fn()
-		});
+		render(BuildMenu, buildMenuProps({ retailOptions: [] }));
 
 		await expect.element(page.getByText('No retail buildings available')).toBeVisible();
 	});
@@ -275,14 +266,7 @@ describe('BuildMenu', () => {
 	it('shows no matching products when the filter search matches nothing', async () => {
 		expect.assertions(1);
 
-		render(BuildMenu, {
-			activeMapView: 'industry',
-			retailOptions,
-			industryLockedReason: null,
-			onChooseRetail: vi.fn(),
-			onChooseIndustry: vi.fn(),
-			onClose: vi.fn()
-		});
+		render(BuildMenu, buildMenuProps({ activeMapView: 'industry' }));
 
 		await page.getByRole('button', { name: /filter: all products/i }).click();
 		await page.getByLabelText(/search products/i).fill('zzzznotachain');
@@ -293,14 +277,7 @@ describe('BuildMenu', () => {
 	it('disables a product filter with no industry chain and shows no buildings when selected', async () => {
 		expect.assertions(2);
 
-		render(BuildMenu, {
-			activeMapView: 'industry',
-			retailOptions,
-			industryLockedReason: null,
-			onChooseRetail: vi.fn(),
-			onChooseIndustry: vi.fn(),
-			onClose: vi.fn()
-		});
+		render(BuildMenu, buildMenuProps({ activeMapView: 'industry' }));
 
 		await page.getByRole('button', { name: /filter: all products/i }).click();
 		const apparelButton = page.getByRole('button', { name: /apparel no industry chain yet/i });
@@ -311,14 +288,7 @@ describe('BuildMenu', () => {
 	it('clears the product filter with the clear button', async () => {
 		expect.assertions(2);
 
-		render(BuildMenu, {
-			activeMapView: 'industry',
-			retailOptions,
-			industryLockedReason: null,
-			onChooseRetail: vi.fn(),
-			onChooseIndustry: vi.fn(),
-			onClose: vi.fn()
-		});
+		render(BuildMenu, buildMenuProps({ activeMapView: 'industry' }));
 
 		await page.getByRole('button', { name: /filter: all products/i }).click();
 		await page.getByRole('button', { name: /gifts/i }).click();
@@ -330,14 +300,7 @@ describe('BuildMenu', () => {
 	it('resets to all products by clicking the "All products" filter entry', async () => {
 		expect.assertions(2);
 
-		render(BuildMenu, {
-			activeMapView: 'industry',
-			retailOptions,
-			industryLockedReason: null,
-			onChooseRetail: vi.fn(),
-			onChooseIndustry: vi.fn(),
-			onClose: vi.fn()
-		});
+		render(BuildMenu, buildMenuProps({ activeMapView: 'industry' }));
 
 		await page.getByRole('button', { name: /filter: all products/i }).click();
 		await page.getByRole('button', { name: /gifts/i }).click();
@@ -352,14 +315,7 @@ describe('BuildMenu', () => {
 	it('traps focus to the last element when shift-tabbing from outside the dialog', async () => {
 		expect.assertions(1);
 
-		render(BuildMenu, {
-			activeMapView: 'retail',
-			retailOptions,
-			industryLockedReason: null,
-			onChooseRetail: vi.fn(),
-			onChooseIndustry: vi.fn(),
-			onClose: vi.fn()
-		});
+		render(BuildMenu, buildMenuProps());
 
 		await waitForFocusEffect();
 
@@ -380,14 +336,7 @@ describe('BuildMenu', () => {
 		expect.assertions(1);
 		const onClose = vi.fn();
 
-		render(BuildMenu, {
-			activeMapView: 'retail',
-			retailOptions,
-			industryLockedReason: null,
-			onChooseRetail: vi.fn(),
-			onChooseIndustry: vi.fn(),
-			onClose
-		});
+		render(BuildMenu, buildMenuProps({ onClose }));
 
 		await waitForFocusEffect();
 		pressKey('a');
@@ -398,14 +347,7 @@ describe('BuildMenu', () => {
 	it('does not wrap focus when tabbing forward from a non-last focusable element', async () => {
 		expect.assertions(1);
 
-		render(BuildMenu, {
-			activeMapView: 'retail',
-			retailOptions,
-			industryLockedReason: null,
-			onChooseRetail: vi.fn(),
-			onChooseIndustry: vi.fn(),
-			onClose: vi.fn()
-		});
+		render(BuildMenu, buildMenuProps());
 
 		await waitForFocusEffect();
 
@@ -426,42 +368,32 @@ describe('BuildMenu', () => {
 	it('reconciles retail option list when rerendered with changed data for the same archetype ids', async () => {
 		expect.assertions(2);
 
-		const { rerender } = render(BuildMenu, {
-			activeMapView: 'retail',
-			retailOptions,
-			industryLockedReason: null,
-			onChooseRetail: vi.fn(),
-			onChooseIndustry: vi.fn(),
-			onClose: vi.fn()
-		});
+		const { rerender } = render(BuildMenu, buildMenuProps());
 
 		await expect
 			.element(page.getByRole('button', { name: /build convenience store/i }))
 			.toBeVisible();
 
-		rerender({
-			activeMapView: 'retail',
-			retailOptions: [
-				{
-					archetypeId: 'convenience',
-					setupCostRange: { min: 2000, max: 3000 },
-					projectedDailyRevenueRange: { min: 800, max: 1200 },
-					validTileCount: 30,
-					disabledReason: null
-				},
-				{
-					archetypeId: 'boutique',
-					setupCostRange: { min: 1200, max: 1900 },
-					projectedDailyRevenueRange: { min: 420, max: 880 },
-					validTileCount: 18,
-					disabledReason: null
-				}
-			],
-			industryLockedReason: null,
-			onChooseRetail: vi.fn(),
-			onChooseIndustry: vi.fn(),
-			onClose: vi.fn()
-		});
+		rerender(
+			buildMenuProps({
+				retailOptions: [
+					{
+						archetypeId: 'convenience',
+						setupCostRange: { min: 2000, max: 3000 },
+						projectedDailyRevenueRange: { min: 800, max: 1200 },
+						validTileCount: 30,
+						disabledReason: null
+					},
+					{
+						archetypeId: 'boutique',
+						setupCostRange: { min: 1200, max: 1900 },
+						projectedDailyRevenueRange: { min: 420, max: 880 },
+						validTileCount: 18,
+						disabledReason: null
+					}
+				]
+			})
+		);
 
 		await expect.element(page.getByText(/30 valid tiles/i)).toBeVisible();
 	});
@@ -469,26 +401,17 @@ describe('BuildMenu', () => {
 	it('reconciles industry building list when the product filter changes', async () => {
 		expect.assertions(2);
 
-		const { rerender } = render(BuildMenu, {
-			activeMapView: 'industry',
-			retailOptions,
-			industryLockedReason: null,
-			onChooseRetail: vi.fn(),
-			onChooseIndustry: vi.fn(),
-			onClose: vi.fn()
-		});
+		const { rerender } = render(BuildMenu, buildMenuProps({ activeMapView: 'industry' }));
 
 		await expect.element(page.getByRole('button', { name: /build warehouse/i })).toBeVisible();
 
 		// Rerender with a locked reason to change the industry building rendering path.
-		rerender({
-			activeMapView: 'industry',
-			retailOptions,
-			industryLockedReason: 'Found a retail store to unlock construction.',
-			onChooseRetail: vi.fn(),
-			onChooseIndustry: vi.fn(),
-			onClose: vi.fn()
-		});
+		rerender(
+			buildMenuProps({
+				activeMapView: 'industry',
+				industryLockedReason: { code: 'industry.lockedUntilRetail' }
+			})
+		);
 
 		await expect.element(page.getByRole('button', { name: /build warehouse/i })).toBeDisabled();
 	});
@@ -498,16 +421,15 @@ describe('BuildMenu industry recipe cards', () => {
 	it('shows a Starter badge and opens the advisor', async () => {
 		expect.assertions(2);
 		const onOpenAdvisor = vi.fn();
-		render(BuildMenu, {
-			activeMapView: 'industry',
-			retailOptions: [],
-			industryLockedReason: null,
-			availableMaterialIds: [],
-			onChooseRetail: vi.fn(),
-			onChooseIndustry: vi.fn(),
-			onOpenAdvisor,
-			onClose: vi.fn()
-		});
+		render(
+			BuildMenu,
+			buildMenuProps({
+				activeMapView: 'industry',
+				retailOptions: [],
+				availableMaterialIds: [],
+				onOpenAdvisor
+			})
+		);
 		await expect.element(page.getByText(/starter/i).first()).toBeVisible();
 		await page.getByRole('button', { name: /supply advisor|what should i build/i }).click();
 		expect(onOpenAdvisor).toHaveBeenCalledTimes(1);
@@ -516,16 +438,16 @@ describe('BuildMenu industry recipe cards', () => {
 	it('disables the Supply Advisor button while industry is locked', async () => {
 		expect.assertions(1);
 		const onOpenAdvisor = vi.fn();
-		render(BuildMenu, {
-			activeMapView: 'industry',
-			retailOptions: [],
-			industryLockedReason: 'Found a retail store to unlock construction.',
-			availableMaterialIds: [],
-			onChooseRetail: vi.fn(),
-			onChooseIndustry: vi.fn(),
-			onOpenAdvisor,
-			onClose: vi.fn()
-		});
+		render(
+			BuildMenu,
+			buildMenuProps({
+				activeMapView: 'industry',
+				retailOptions: [],
+				industryLockedReason: { code: 'industry.lockedUntilRetail' },
+				availableMaterialIds: [],
+				onOpenAdvisor
+			})
+		);
 		await expect
 			.element(page.getByRole('button', { name: 'Supply Advisor — what should I build?' }))
 			.toBeDisabled();
@@ -534,15 +456,14 @@ describe('BuildMenu industry recipe cards', () => {
 	it('shows the producer hint for a missing recipe ingredient', async () => {
 		expect.assertions(1);
 
-		render(BuildMenu, {
-			activeMapView: 'industry',
-			retailOptions: [],
-			industryLockedReason: null,
-			availableMaterialIds: [],
-			onChooseRetail: vi.fn(),
-			onChooseIndustry: vi.fn(),
-			onClose: vi.fn()
-		});
+		render(
+			BuildMenu,
+			buildMenuProps({
+				activeMapView: 'industry',
+				retailOptions: [],
+				availableMaterialIds: []
+			})
+		);
 
 		// Water Bottler's recipe consumes water, which no producer supplies when
 		// availableMaterialIds is empty, so its missing-input chip should surface
@@ -553,15 +474,14 @@ describe('BuildMenu industry recipe cards', () => {
 	it('surfaces the resource-tile requirement for a Starter extraction building', async () => {
 		expect.assertions(1);
 
-		render(BuildMenu, {
-			activeMapView: 'industry',
-			retailOptions: [],
-			industryLockedReason: null,
-			availableMaterialIds: [],
-			onChooseRetail: vi.fn(),
-			onChooseIndustry: vi.fn(),
-			onClose: vi.fn()
-		});
+		render(
+			BuildMenu,
+			buildMenuProps({
+				activeMapView: 'industry',
+				retailOptions: [],
+				availableMaterialIds: []
+			})
+		);
 
 		// The Water Pump has requiredResource: 'water-source' and a recipe with no
 		// inputs, so the resource-tile hint must render independently of the
