@@ -1,7 +1,7 @@
 import { page } from 'vitest/browser';
 import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
-import { createI18n } from '$lib/i18n';
+import { createI18n, SUPPORTED_LOCALE_METADATA } from '$lib/i18n';
 import GameMenu from './GameMenu.svelte';
 
 function baseProps() {
@@ -92,7 +92,7 @@ describe('GameMenu', () => {
 	});
 
 	it('shows language choices and emits the selected locale', async () => {
-		expect.assertions(2);
+		expect.assertions(3);
 		const props = {
 			...baseProps(),
 			i18n: createI18n('en'),
@@ -102,6 +102,9 @@ describe('GameMenu', () => {
 		render(GameMenu, props);
 		await page.getByRole('button', { name: /^menu$/i }).click();
 		await expect.element(page.getByLabelText('Language')).toBeVisible();
+		await expect
+			.element(page.getByTestId('language-selector'))
+			.toHaveTextContent(SUPPORTED_LOCALE_METADATA.map((locale) => locale.label).join(''));
 		await page.getByLabelText('Language').selectOptions('ja');
 		expect(props.onSelectLocale).toHaveBeenCalledWith('ja');
 	});

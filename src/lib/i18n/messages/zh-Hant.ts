@@ -6,6 +6,7 @@ export const zhHant = {
 		title: 'Serpens'
 	},
 	topBar: {
+		statusBar: '狀態列',
 		day: '第 {day} 天',
 		cash: '現金',
 		alerts: '警示',
@@ -68,6 +69,16 @@ export const zhHant = {
 			dismiss: '關閉{panel}',
 			closePanel: '關閉{panel}',
 			panelStatus: '{panel}狀態'
+		},
+		save: {
+			errorGeneric: '存檔操作失敗',
+			autoSavedDay: '已自動儲存第 {day} 天',
+			noAutoSaveFound: '找不到自動存檔',
+			loadedAutoSave: '已載入自動存檔',
+			savedManualSlot: '已儲存 {name}',
+			manualSlotNotFound: '找不到手動存檔槽',
+			loadedManualSlot: '已載入 {name}',
+			deletedManualSlot: '已刪除存檔槽'
 		}
 	},
 	game: {

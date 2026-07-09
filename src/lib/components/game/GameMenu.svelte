@@ -4,7 +4,7 @@
 	import { on } from 'svelte/events';
 	import { focusTrap } from '$lib/a11y/focusTrap';
 	import type { MapViewId } from '$lib/game/mapViewKeepAlive';
-	import type { I18nBundle, SupportedLocale } from '$lib/i18n';
+	import { SUPPORTED_LOCALE_METADATA, type I18nBundle, type SupportedLocale } from '$lib/i18n';
 
 	interface Props {
 		activeMapView: MapViewId;
@@ -34,12 +34,6 @@
 		{ id: 'industry', eyebrowKey: 'route.mapEyebrow.industry' },
 		{ id: 'world', eyebrowKey: 'route.mapEyebrow.world' }
 	];
-	const localeOptions: Array<{ value: SupportedLocale; label: string }> = [
-		{ value: 'en', label: 'English' },
-		{ value: 'zh-Hant', label: '繁體中文' },
-		{ value: 'ja', label: '日本語' }
-	];
-
 	function toggleMenu(): void {
 		open = !open;
 	}
@@ -126,8 +120,8 @@
 					value={activeLocale}
 					onchange={handleLocaleChange}
 				>
-					{#each localeOptions as locale (locale.value)}
-						<option value={locale.value}>{locale.label}</option>
+					{#each SUPPORTED_LOCALE_METADATA as locale (locale.id)}
+						<option value={locale.id}>{locale.label}</option>
 					{/each}
 				</select>
 			</div>

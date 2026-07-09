@@ -48,7 +48,7 @@ const alertGame: GameState = {
 
 describe('TopBar', () => {
 	it('renders the location, day and cash', async () => {
-		expect.assertions(3);
+		expect.assertions(4);
 		render(TopBar, {
 			eyebrow: 'Retail City Map',
 			title: 'Harbor City',
@@ -63,6 +63,7 @@ describe('TopBar', () => {
 			onSelectView: vi.fn(),
 			onSelectLocale: vi.fn()
 		});
+		await expect.element(page.getByRole('banner', { name: /status bar/i })).toBeVisible();
 		await expect.element(page.getByRole('heading', { name: /harbor city/i })).toBeVisible();
 		await expect.element(page.getByText(/day 42/i)).toBeVisible();
 		await expect.element(page.getByText(/\$128,400/)).toBeVisible();

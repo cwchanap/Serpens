@@ -1,5 +1,16 @@
 export type SupportedLocale = 'en' | 'zh-Hant' | 'ja';
 
+export interface SupportedLocaleMetadata {
+	id: SupportedLocale;
+	label: string;
+}
+
+export const SUPPORTED_LOCALE_METADATA = [
+	{ id: 'en', label: 'English' },
+	{ id: 'zh-Hant', label: '繁體中文' },
+	{ id: 'ja', label: '日本語' }
+] as const satisfies readonly SupportedLocaleMetadata[];
+
 export const LANGUAGE_PREFERENCE_STORAGE_KEY = 'serpens.languagePreference.v1';
 
 export interface StorageLike {

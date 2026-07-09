@@ -182,3 +182,47 @@ The autofixer also caught that TypeScript `as never` casts inside markup snippet
 
 - Browser-based unit verification on this machine requires an unsandboxed Chromium launch. The sandboxed run still fails with the known macOS Mach port permission error before assertions start.
 - `src/app.html` already had `lang=\"en\"`, so no content change was needed there.
+
+## Review-fix follow-up
+
+### Findings addressed
+
+- Localized all route-owned save status and generic error fallback strings in `src/routes/+page.svelte` with `i18n.t(...)`, while still preserving raw `Error.message` values when the thrown value is an actual `Error`.
+- Added the matching `route.save.*` message keys in all three catalogs and formatted the auto-save day with the route-owned locale formatter.
+- Moved language selector option metadata into shared i18n locale metadata in `src/lib/i18n/locales.ts`, re-exported it from `src/lib/i18n/index.ts`, and updated `GameMenu.svelte` to render from that shared source instead of a component-local duplicate list.
+- Localized `TopBar.svelte`'s banner `aria-label` through the new `topBar.statusBar` key in all three catalogs.
+
+### Verification
+
+- `rtk bun run test:unit -- src/lib/components/game/GameMenu.svelte.spec.ts src/lib/components/game/TopBar.svelte.spec.ts src/lib/components/game/ControlDesk.svelte.spec.ts src/lib/components/game/AudioSettings.svelte.spec.ts --run --project client`
+  - initial sandboxed run failed with the known Chromium Mach port permission error
+  - unsandboxed rerun passed: `Test Files  4 passed (4)` / `Tests  26 passed (26)`
+- `rtk bun run check`
+  - passed: `svelte-check found 0 errors and 0 warnings`
+- `rtk bun run lint`
+  - passed: `All matched files use Prettier code style!`
+
+### Test updates
+
+- `GameMenu.svelte.spec.ts` now asserts the selector renders labels from `SUPPORTED_LOCALE_METADATA`, so the component test covers the metadata-backed options without re-declaring the list locally.
+- `TopBar.svelte.spec.ts` now asserts the localized banner landmark is present.
+
+### Svelte MCP / autofixer follow-up evidence
+
+- Reused the earlier Svelte MCP doc set for this same task area.
+- Ran `svelte-autofixer` on the updated `GameMenu.svelte` file: no issues.
+- Ran `svelte-autofixer` on the updated `TopBar.svelte` file: no issues.
+- Ran `svelte-autofixer` on a valid `+page.svelte` save/status script snippet covering:
+  - `describeSaveError(...)`
+  - `formatSaveDay(...)`
+  - `writeAutoSave(...)`
+  - `resumeAutoSave(...)`
+  - `saveManualSlot(...)`
+  - `loadManualSlot(...)`
+  - `deleteManualSlot(...)`
+  Result: no issues.
+
+### Self-review
+
+- Diff stayed narrowly scoped to the blocking review items plus the shared locale metadata extraction needed to remove duplication.
+- No new task-scope regressions were found in the touched route/component surface after the focused client tests and repo-wide `check`/`lint` passes.
