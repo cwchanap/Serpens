@@ -14,7 +14,8 @@ import {
 	getOccupiedStoreTileIds,
 	getStoreFootprintPlacementBlockReason,
 	isTileInStoreFootprint,
-	type CityTileLookup
+	type CityTileLookup,
+	type StoreFootprintPlacementBlockReason
 } from './storeFootprint';
 import type {
 	ArchetypeId,
@@ -42,8 +43,22 @@ export interface RetailBuildMenuOption {
 	setupCostRange: NumberRange;
 	projectedDailyRevenueRange: NumberRange;
 	validTileCount: number;
-	disabledReason: string | null;
+	disabledReason: PlacementBlockReason | null;
 }
+
+export type PlacementBlockReason =
+	| { code: 'retail.unknownCityTile' }
+	| { code: 'retail.storeLimitReached' }
+	| { code: 'retail.requiresCash'; amount: number }
+	| { code: 'retail.occupiedLocation' }
+	| { code: 'retail.lockedLocation' }
+	| { code: 'retail.roadLocation' }
+	| { code: 'retail.riverLocation' }
+	| { code: 'retail.noValidTiles' }
+	| { code: 'industry.lockedUntilRetail' }
+	| { code: 'industry.unknownBuildingType' }
+	| { code: 'industry.requiresCash'; buildingTypeId: IndustrialBuildingTypeId; amount: number }
+	| { code: 'industry.rawPlacementBlocked'; message: string };
 
 interface RetailPlacementInput {
 	game: GameState | null;
@@ -111,11 +126,13 @@ export function createRetailPlacementPreview(input: RetailPreviewInput): Placeme
 	return { validTileIds, invalidTileIds };
 }
 
-export function getRetailPlacementBlockReason(input: RetailPlacementInput): string | null {
+export function getRetailPlacementBlockReason(
+	input: RetailPlacementInput
+): PlacementBlockReason | null {
 	const tile = getTileById(input.city, input.tileId);
 
 	if (!tile) {
-		return 'Unknown city tile';
+		return { code: 'retail.unknownCityTile' };
 	}
 
 	return getRetailTilePlacementBlockReason({
@@ -125,7 +142,9 @@ export function getRetailPlacementBlockReason(input: RetailPlacementInput): stri
 	});
 }
 
-function getRetailTilePlacementBlockReason(input: RetailTilePlacementInput): string | null {
+function getRetailTilePlacementBlockReason(
+	input: RetailTilePlacementInput
+): PlacementBlockReason | null {
 	const tileBlockReason = getStoreFootprintPlacementBlockReason(
 		input.context.tileLookup,
 		input.tile,
@@ -133,7 +152,7 @@ function getRetailTilePlacementBlockReason(input: RetailTilePlacementInput): str
 	);
 
 	if (tileBlockReason) {
-		return tileBlockReason;
+		return mapRetailFootprintBlockReason(tileBlockReason);
 	}
 
 	if (
@@ -141,7 +160,7 @@ function getRetailTilePlacementBlockReason(input: RetailTilePlacementInput): str
 		input.context.storeCap !== null &&
 		input.context.storeCount >= input.context.storeCap
 	) {
-		return 'Store limit reached';
+		return { code: 'retail.storeLimitReached' };
 	}
 
 	if (input.context.cash === null) {
@@ -151,7 +170,7 @@ function getRetailTilePlacementBlockReason(input: RetailTilePlacementInput): str
 	const setupCost = forecastOpening(input.tile, input.archetypeId).setupCost;
 
 	if (input.context.cash < setupCost) {
-		return `Requires ${setupCost.toLocaleString('en-US')} cash`;
+		return { code: 'retail.requiresCash', amount: setupCost };
 	}
 
 	return null;
@@ -176,7 +195,7 @@ export function getRetailBuildMenuOptions(input: RetailBuildMenuInput): RetailBu
 
 	return ARCHETYPES.map((archetype) => {
 		const validForecasts: ReturnType<typeof forecastOpening>[] = [];
-		const footprintReasons = new Set<string>();
+		const footprintReasons = new Set<StoreFootprintPlacementBlockReason>();
 		let cheapestBlockedSetupCost: number | null = null;
 
 		for (const { tile, footprintReason } of tileFootprintReasons) {
@@ -234,19 +253,19 @@ export function getRetailBuildMenuOptions(input: RetailBuildMenuInput): RetailBu
 
 function resolveRetailDisabledReason(
 	context: RetailPlacementContext,
-	footprintReasons: Set<string>,
+	footprintReasons: Set<StoreFootprintPlacementBlockReason>,
 	cheapestBlockedSetupCost: number | null
-): string {
+): PlacementBlockReason {
 	if (
 		context.storeCount !== null &&
 		context.storeCap !== null &&
 		context.storeCount >= context.storeCap
 	) {
-		return 'Store limit reached';
+		return { code: 'retail.storeLimitReached' };
 	}
 
 	if (cheapestBlockedSetupCost !== null) {
-		return `Requires ${cheapestBlockedSetupCost.toLocaleString('en-US')} cash`;
+		return { code: 'retail.requiresCash', amount: cheapestBlockedSetupCost };
 	}
 
 	for (const reason of [
@@ -254,13 +273,28 @@ function resolveRetailDisabledReason(
 		'Locked location',
 		'Road location',
 		'River location'
-	]) {
+	] as const) {
 		if (footprintReasons.has(reason)) {
-			return reason;
+			return mapRetailFootprintBlockReason(reason);
 		}
 	}
 
-	return 'No valid tiles';
+	return { code: 'retail.noValidTiles' };
+}
+
+function mapRetailFootprintBlockReason(
+	reason: StoreFootprintPlacementBlockReason
+): PlacementBlockReason {
+	switch (reason) {
+		case 'Occupied location':
+			return { code: 'retail.occupiedLocation' };
+		case 'Locked location':
+			return { code: 'retail.lockedLocation' };
+		case 'Road location':
+			return { code: 'retail.roadLocation' };
+		case 'River location':
+			return { code: 'retail.riverLocation' };
+	}
 }
 
 function createRetailPlacementContext(game: GameState | null, city: City): RetailPlacementContext {
@@ -303,9 +337,11 @@ export function createIndustryPlacementPreview(input: IndustryPreviewInput): Pla
 	return { validTileIds, invalidTileIds };
 }
 
-export function getIndustryBuildPlacementBlockReason(input: IndustryPlacementInput): string | null {
+export function getIndustryBuildPlacementBlockReason(
+	input: IndustryPlacementInput
+): PlacementBlockReason | null {
 	if (!input.game) {
-		return 'Found a retail store to unlock construction.';
+		return { code: 'industry.lockedUntilRetail' };
 	}
 
 	const placementReason = input.placementContext
@@ -317,17 +353,21 @@ export function getIndustryBuildPlacementBlockReason(input: IndustryPlacementInp
 		: getIndustrialPlacementBlockReason(input.game, input.tileId, input.buildingTypeId);
 
 	if (placementReason) {
-		return placementReason;
+		return { code: 'industry.rawPlacementBlocked', message: placementReason };
 	}
 
 	const buildingType = INDUSTRIAL_BUILDING_TYPES[input.buildingTypeId];
 
 	if (!buildingType) {
-		return 'Unknown industrial building type';
+		return { code: 'industry.unknownBuildingType' };
 	}
 
 	if (input.game.cash < buildingType.buildCost) {
-		return `${buildingType.name} requires ${buildingType.buildCost.toLocaleString('en-US')} cash.`;
+		return {
+			code: 'industry.requiresCash',
+			buildingTypeId: input.buildingTypeId,
+			amount: buildingType.buildCost
+		};
 	}
 
 	return null;

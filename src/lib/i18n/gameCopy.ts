@@ -1,4 +1,5 @@
 import { INDUSTRIAL_BUILDING_TYPES } from '$lib/game/industry';
+import type { PlacementBlockReason } from '$lib/game/placementPreview';
 import type {
 	ProductChainEdge,
 	ProductChainGraph,
@@ -34,6 +35,47 @@ export interface LocalizedWorldCityStatus extends WorldCityStatus {
 	city: WorldCityStatus['city'];
 	kindLabel: string;
 	stateLabel: string;
+}
+
+export function formatPlacementBlockReason(
+	reason: PlacementBlockReason | null,
+	i18n: I18nBundle
+): string | null {
+	if (reason === null) {
+		return null;
+	}
+
+	switch (reason.code) {
+		case 'retail.unknownCityTile':
+			return i18n.t('placement.retail.unknownCityTile' as never);
+		case 'retail.storeLimitReached':
+			return i18n.t('placement.retail.storeLimitReached' as never);
+		case 'retail.requiresCash':
+			return i18n.t('placement.retail.requiresCash' as never, {
+				amount: i18n.format.currency(reason.amount)
+			});
+		case 'retail.occupiedLocation':
+			return i18n.t('placement.retail.occupiedLocation' as never);
+		case 'retail.lockedLocation':
+			return i18n.t('placement.retail.lockedLocation' as never);
+		case 'retail.roadLocation':
+			return i18n.t('placement.retail.roadLocation' as never);
+		case 'retail.riverLocation':
+			return i18n.t('placement.retail.riverLocation' as never);
+		case 'retail.noValidTiles':
+			return i18n.t('placement.retail.noValidTiles' as never);
+		case 'industry.lockedUntilRetail':
+			return i18n.t('placement.industry.lockedUntilRetail' as never);
+		case 'industry.unknownBuildingType':
+			return i18n.t('placement.industry.unknownBuildingType' as never);
+		case 'industry.requiresCash':
+			return i18n.t('placement.industry.requiresCash' as never, {
+				buildingName: i18n.labels.industrialBuilding(reason.buildingTypeId),
+				amount: i18n.format.currency(reason.amount)
+			});
+		case 'industry.rawPlacementBlocked':
+			return reason.message;
+	}
 }
 
 function translateMessage(

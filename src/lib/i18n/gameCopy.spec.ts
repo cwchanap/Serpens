@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { createI18n } from './index';
 import { messagesByLocale } from './messages';
 import {
+	formatPlacementBlockReason,
 	localizeAlert,
 	localizeDecision,
 	localizeProductChainGraph,
@@ -50,6 +51,29 @@ describe('game copy builders', () => {
 			)
 		).toBe('1 product out of stock, 1 product needs import');
 		expect(localizeStockStatus('Healthy', createI18n('ja'))).not.toBe('Healthy');
+	});
+
+	it('formats placement block reasons', () => {
+		expect.assertions(4);
+		const i18n = createI18n('en');
+		expect(formatPlacementBlockReason({ code: 'retail.storeLimitReached' }, i18n)).toBe(
+			'Store limit reached'
+		);
+		expect(formatPlacementBlockReason({ code: 'retail.requiresCash', amount: 12000 }, i18n)).toBe(
+			'Requires $12,000 cash'
+		);
+		expect(
+			formatPlacementBlockReason(
+				{ code: 'industry.requiresCash', buildingTypeId: 'warehouse', amount: 8000 },
+				i18n
+			)
+		).toBe('Warehouse requires $8,000 cash.');
+		expect(
+			formatPlacementBlockReason(
+				{ code: 'industry.rawPlacementBlocked', message: 'Locked industrial tile' },
+				i18n
+			)
+		).toBe('Locked industrial tile');
 	});
 
 	it('rebuilds known alerts and falls back for unknown ones', () => {

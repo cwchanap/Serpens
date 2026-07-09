@@ -443,5 +443,22 @@ export const zhHant = {
 				warehouseAvailable: '倉庫容量仍有空間。'
 			}
 		}
+	},
+	placement: {
+		retail: {
+			unknownCityTile: '未知的城市地塊',
+			storeLimitReached: '已達商店上限',
+			requiresCash: '需要 {amount} 現金',
+			occupiedLocation: '位置已被占用',
+			lockedLocation: '位置尚未解鎖',
+			roadLocation: '道路位置',
+			riverLocation: '河川位置',
+			noValidTiles: '沒有可用地塊'
+		},
+		industry: {
+			lockedUntilRetail: '先開設零售店才能解鎖建設。',
+			unknownBuildingType: '未知的工業建築類型',
+			requiresCash: '{buildingName} 需要 {amount} 現金。'
+		}
 	}
 } as const;

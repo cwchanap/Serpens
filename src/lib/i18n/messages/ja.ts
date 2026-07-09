@@ -445,5 +445,22 @@ export const ja = {
 				warehouseAvailable: '倉庫容量に余裕があります。'
 			}
 		}
+	},
+	placement: {
+		retail: {
+			unknownCityTile: '不明な都市タイル',
+			storeLimitReached: '出店上限に達しています',
+			requiresCash: '{amount} の現金が必要です',
+			occupiedLocation: '使用中の立地',
+			lockedLocation: '未開放の立地',
+			roadLocation: '道路の立地',
+			riverLocation: '川の立地',
+			noValidTiles: '有効な立地がありません'
+		},
+		industry: {
+			lockedUntilRetail: '建設を解放するには小売店舗を開業してください。',
+			unknownBuildingType: '不明な工業施設タイプ',
+			requiresCash: '{buildingName} の建設には {amount} の現金が必要です。'
+		}
 	}
 } as const;

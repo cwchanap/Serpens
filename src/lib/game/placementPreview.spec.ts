@@ -58,7 +58,7 @@ describe('retail placement preview', () => {
 				tileId: roadTile.id,
 				archetypeId: 'boutique'
 			})
-		).toBe('Road location');
+		).toEqual({ code: 'retail.roadLocation' });
 	});
 
 	test('blocks occupied retail tiles, max store count, unaffordable expansion tiles, and unknown tiles', () => {
@@ -100,7 +100,7 @@ describe('retail placement preview', () => {
 				tileId: buildableTiles[0]!.id,
 				archetypeId: 'electronics'
 			})
-		).toBe('Occupied location');
+		).toEqual({ code: 'retail.occupiedLocation' });
 		expect(
 			getRetailPlacementBlockReason({
 				game: { ...game, cash: 0 },
@@ -108,7 +108,7 @@ describe('retail placement preview', () => {
 				tileId: expansionTile.id,
 				archetypeId: 'electronics'
 			})
-		).toBe(`Requires ${expansionSetupCost.toLocaleString('en-US')} cash`);
+		).toEqual({ code: 'retail.requiresCash', amount: expansionSetupCost });
 		expect(
 			getRetailPlacementBlockReason({
 				game: cappedGame,
@@ -116,7 +116,7 @@ describe('retail placement preview', () => {
 				tileId: buildableTiles[game.storeCap]!.id,
 				archetypeId: 'grocery'
 			})
-		).toBe('Store limit reached');
+		).toEqual({ code: 'retail.storeLimitReached' });
 		expect(
 			createRetailPlacementPreview({ game: cappedGame, city, archetypeId: 'grocery' }).validTileIds
 		).toHaveLength(0);
@@ -127,7 +127,7 @@ describe('retail placement preview', () => {
 				tileId: 'missing-tile',
 				archetypeId: 'grocery'
 			})
-		).toBe('Unknown city tile');
+		).toEqual({ code: 'retail.unknownCityTile' });
 	});
 
 	test('blocks retail placement when any tile in the 2x2 footprint is occupied', () => {
@@ -155,7 +155,7 @@ describe('retail placement preview', () => {
 				tileId: overlappingAnchor.id,
 				archetypeId: 'boutique'
 			})
-		).toBe('Occupied location');
+		).toEqual({ code: 'retail.occupiedLocation' });
 		expect(preview.invalidTileIds).toContain(overlappingAnchor.id);
 		expect(preview.validTileIds).toContain(openAnchor.id);
 	});
@@ -177,7 +177,7 @@ describe('retail placement preview', () => {
 				tileId: edgeAnchor.id,
 				archetypeId: 'grocery'
 			})
-		).toBe('Locked location');
+		).toEqual({ code: 'retail.lockedLocation' });
 		expect(preview.invalidTileIds).toContain(edgeAnchor.id);
 	});
 
@@ -287,10 +287,10 @@ describe('retail placement preview', () => {
 
 		expect(options.map((option) => option.validTileCount)).toEqual([0, 0, 0, 0]);
 		expect(options.map((option) => option.disabledReason)).toEqual([
-			'Store limit reached',
-			'Store limit reached',
-			'Store limit reached',
-			'Store limit reached'
+			{ code: 'retail.storeLimitReached' },
+			{ code: 'retail.storeLimitReached' },
+			{ code: 'retail.storeLimitReached' },
+			{ code: 'retail.storeLimitReached' }
 		]);
 	});
 
@@ -323,9 +323,10 @@ describe('retail placement preview', () => {
 		}).find((option) => option.archetypeId === 'electronics')!;
 
 		expect(electronicsOption.validTileCount).toBe(0);
-		expect(electronicsOption.disabledReason).toBe(
-			`Requires ${cheapestElectronicsSetupCost.toLocaleString('en-US')} cash`
-		);
+		expect(electronicsOption.disabledReason).toEqual({
+			code: 'retail.requiresCash',
+			amount: cheapestElectronicsSetupCost
+		});
 	});
 
 	test('reports occupied-location disabled reason when every buildable tile is taken but storeCap remains', () => {
@@ -359,10 +360,10 @@ describe('retail placement preview', () => {
 
 		expect(options.map((option) => option.validTileCount)).toEqual([0, 0, 0, 0]);
 		expect(options.map((option) => option.disabledReason)).toEqual([
-			'Occupied location',
-			'Occupied location',
-			'Occupied location',
-			'Occupied location'
+			{ code: 'retail.occupiedLocation' },
+			{ code: 'retail.occupiedLocation' },
+			{ code: 'retail.occupiedLocation' },
+			{ code: 'retail.occupiedLocation' }
 		]);
 	});
 
@@ -387,10 +388,10 @@ describe('retail placement preview', () => {
 
 		expect(options.map((option) => option.validTileCount)).toEqual([0, 0, 0, 0]);
 		expect(options.map((option) => option.disabledReason)).toEqual([
-			'No valid tiles',
-			'No valid tiles',
-			'No valid tiles',
-			'No valid tiles'
+			{ code: 'retail.noValidTiles' },
+			{ code: 'retail.noValidTiles' },
+			{ code: 'retail.noValidTiles' },
+			{ code: 'retail.noValidTiles' }
 		]);
 	});
 });
@@ -466,7 +467,7 @@ describe('industry placement preview', () => {
 				tileId: saltTile.id,
 				buildingTypeId: 'grain-farm'
 			})
-		).toBe('Requires grain field');
+		).toEqual({ code: 'industry.rawPlacementBlocked', message: 'Requires grain field' });
 	});
 
 	test('blocks industry construction before retail founding, on locked tiles, and when cash is short', () => {
@@ -488,21 +489,25 @@ describe('industry placement preview', () => {
 				tileId: industrialTile.id,
 				buildingTypeId: 'warehouse'
 			})
-		).toBe('Found a retail store to unlock construction.');
+		).toEqual({ code: 'industry.lockedUntilRetail' });
 		expect(
 			getIndustryBuildPlacementBlockReason({
 				game,
 				tileId: lockedTile.id,
 				buildingTypeId: 'warehouse'
 			})
-		).toBe('Locked industrial tile');
+		).toEqual({ code: 'industry.rawPlacementBlocked', message: 'Locked industrial tile' });
 		expect(
 			getIndustryBuildPlacementBlockReason({
 				game: { ...game, cash: 0 },
 				tileId: industrialTile.id,
 				buildingTypeId: 'warehouse'
 			})
-		).toBe('Warehouse requires 1,000 cash.');
+		).toEqual({
+			code: 'industry.requiresCash',
+			buildingTypeId: 'warehouse',
+			amount: 1000
+		});
 	});
 
 	test('marks non-industrial tiles invalid for buildings that require industrial terrain', () => {
@@ -529,7 +534,7 @@ describe('industry placement preview', () => {
 				tileId: nonIndustrialTile.id,
 				buildingTypeId: 'warehouse'
 			})
-		).toBe('Requires industrial tile');
+		).toEqual({ code: 'industry.rawPlacementBlocked', message: 'Requires industrial tile' });
 		expect(
 			getIndustryBuildPlacementBlockReason({
 				game,
