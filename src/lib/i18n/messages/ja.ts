@@ -29,11 +29,8 @@ export const ja = {
 		advanceDay: '次の日へ'
 	},
 	game: {
-		...en.game,
 		archetypes: {
-			...en.game.archetypes,
 			convenience: {
-				...en.game.archetypes.convenience,
 				name: 'コンビニエンスストア',
 				description: '回転が速く、客足は安定しているが、利幅が薄く欠品に弱い業態です。',
 				risks: {
@@ -41,37 +38,213 @@ export const ja = {
 					1: '低利益率',
 					2: '高い来店圧力'
 				}
+			},
+			boutique: {
+				name: 'ブティック雑貨店',
+				description: '選び抜いた商品を扱い、顧客の好みや評判変動に敏感だが高単価を狙える業態です。',
+				risks: {
+					0: '流行とのずれ',
+					1: '評判の揺れ',
+					2: '上質な接客への期待'
+				}
+			},
+			electronics: {
+				name: '家電・ゲーム店',
+				description: '単価が高く、発売需要や流行の波が大きい一方で在庫リスクも高い業態です。',
+				risks: {
+					0: '新作需要の変動',
+					1: '盗難ロス',
+					2: '高額在庫'
+				}
+			},
+			grocery: {
+				name: '食料品市場',
+				description: '日常需要が安定する一方で、鮮度管理や幅広い品揃えが求められる業態です。',
+				risks: {
+					0: '鮮度低下',
+					1: '廃棄ロス',
+					2: '人員負荷'
+				}
 			}
 		},
 		products: {
-			...en.game.products,
-			'bottled-water': 'ボトルウォーター'
+			'bottled-water': 'ボトルウォーター',
+			snacks: 'スナック',
+			drinks: '飲料',
+			essentials: '生活必需品',
+			household: '日用品',
+			apparel: '衣料品',
+			'home-goods': '生活雑貨',
+			gifts: 'ギフト',
+			'fashion-accessories': 'ファッション小物',
+			games: 'ゲーム',
+			accessories: 'アクセサリー',
+			devices: 'デバイス',
+			peripherals: '周辺機器',
+			produce: '青果',
+			pantry: '常備食材',
+			prepared: '調理済み食品',
+			bakery: 'ベーカリー'
 		},
 		materials: {
-			...en.game.materials,
-			'bottled-water': 'ボトルウォーター'
+			grain: '穀物',
+			salt: '塩',
+			oilseeds: '油糧種子',
+			water: '水',
+			fruit: '果物',
+			sugar: '砂糖',
+			pulpwood: '製紙用木材',
+			'chemical-feedstock': '化学原料',
+			flour: '小麦粉',
+			'cooking-oil': '食用油',
+			'filtered-water': 'ろ過水',
+			syrup: 'シロップ',
+			'paper-pulp': '紙パルプ',
+			plastic: 'プラスチック',
+			packaging: '包装資材',
+			'cleaning-base': '洗浄基材',
+			snacks: 'スナック',
+			drinks: '飲料',
+			essentials: '生活必需品',
+			gifts: 'ギフト',
+			'bottled-water': 'ボトルウォーター',
+			produce: '青果',
+			pantry: '常備食材'
+		},
+		industrialBuildings: {
+			'grain-farm': '穀物農場',
+			'salt-mine': '塩鉱山',
+			'oilseed-farm': '油糧作物農場',
+			'water-pump': '揚水施設',
+			'fruit-farm': '果樹農園',
+			'sugar-farm': '砂糖作物農場',
+			'pulpwood-grove': '製紙林',
+			'chemical-feedstock-well': '化学原料井',
+			'flour-mill': '製粉所',
+			'oil-press': '搾油所',
+			'water-filtration-plant': '浄水施設',
+			'syrup-plant': 'シロップ工場',
+			'pulp-mill': 'パルプ工場',
+			'plastic-plant': 'プラスチック工場',
+			'packaging-plant': '包装工場',
+			'chemical-plant': '化学工場',
+			'snack-factory': 'スナック工場',
+			'drink-bottling-plant': '飲料ボトリング工場',
+			'household-goods-factory': '日用品工場',
+			'gift-workshop': 'ギフト工房',
+			'water-bottler': 'ボトルウォーター工場',
+			'produce-packhouse': '青果包装所',
+			'pantry-works': '常備食材工場',
+			warehouse: '倉庫'
+		},
+		industryResources: {
+			'grain-field': '穀物畑',
+			'salt-deposit': '塩鉱床',
+			'oilseed-field': '油糧作物畑',
+			'water-source': '水源',
+			'fruit-orchard': '果樹園',
+			'sugar-field': '砂糖作物畑',
+			'pulpwood-forest': '製紙林地',
+			'chemical-feedstock': '化学原料地'
+		},
+		neighborhoods: {
+			downtown: '中心街',
+			campus: '大学街',
+			residential: '住宅街',
+			mall: 'モール地区',
+			transit: '交通拠点',
+			industrial: '工業地区',
+			suburb: '郊外',
+			parkEdge: '公園周辺'
+		},
+		terrain: {
+			commercial: '商業地',
+			residential: '住宅地',
+			green: '緑地',
+			transit: '交通地',
+			industrial: '工業地'
+		},
+		industryTerrain: {
+			farmland: '農地',
+			forest: '森林',
+			water: '水辺',
+			deposit: '鉱床',
+			industrial: '工業用地',
+			blocked: '建設不可'
+		},
+		policyFields: {
+			pricing: '価格戦略',
+			inventory: '在庫方針',
+			staffing: '人員配置',
+			marketing: 'マーケティング',
+			service: '接客方針'
 		},
 		policyValues: {
-			...en.game.policyValues,
+			pricing: {
+				discount: '割引重視',
+				competitive: '競争価格',
+				standard: '標準価格',
+				premium: '高付加価値価格'
+			},
+			inventory: {
+				lean: '在庫絞り込み',
+				balanced: '均衡在庫',
+				generous: '厚め在庫'
+			},
+			staffing: {
+				minimal: '最少人数',
+				efficient: '効率重視',
+				service: '接客重視'
+			},
+			marketing: {
+				none: '施策なし',
+				awareness: '認知拡大',
+				promotions: '販促重視',
+				loyalty: '常連育成'
+			},
 			service: {
-				...en.game.policyValues.service,
+				speed: '迅速対応',
+				balanced: '標準接客',
 				highTouch: '手厚い接客'
 			}
 		},
+		scoreKeys: {
+			profit: '利益',
+			customerSatisfaction: '顧客満足',
+			staffMorale: '従業員士気',
+			marketPosition: '市場ポジション'
+		},
 		worldCities: {
-			...en.game.worldCities,
 			'harbor-city': {
-				...en.game.worldCities['harbor-city'],
 				name: 'ハーバーシティ',
 				unlockRequirement: '開始時から使える小売都市',
 				specialtySummary: '日用品需要が安定した、バランス型の開始都市です。'
 			},
 			'campus-junction': {
-				...en.game.worldCities['campus-junction'],
 				name: 'キャンパスジャンクション',
 				unlockRequirement: '店舗を2店開くか、7日目に到達する。',
 				specialtySummary:
 					'学生街の需要が強く、電子機器、ゲーム、アクセサリー、ギフトに向いています。'
+			},
+			'garden-borough': {
+				name: 'ガーデンボロー',
+				unlockRequirement: '4店舗に到達するか、日次報告後に資金を黒字で維持する。',
+				specialtySummary: '住宅街の需要が強く、食料品や生活必需品、便利商材に向いています。'
+			},
+			'industry-city': {
+				name: 'インダストリーシティ',
+				unlockRequirement: '開始時から使える工業都市',
+				specialtySummary: '資源の偏りが少なく、幅広い加工を始めやすい工業都市です。'
+			},
+			'breadbasket-basin': {
+				name: 'ブレッドバスケット盆地',
+				unlockRequirement: '倉庫と一次生産施設を1つ建設する。',
+				specialtySummary: '穀物、油糧作物、果物、砂糖を軸にした食料チェーン向けの資源地帯です。'
+			},
+			'quarry-works': {
+				name: 'クオリーワークス',
+				unlockRequirement: '完成品素材を現地生産する。',
+				specialtySummary: '塩、化学品、木材パルプ、包装材チェーンに強い採掘・工業地区です。'
 			}
 		},
 		mapViews: {

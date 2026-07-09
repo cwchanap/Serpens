@@ -29,11 +29,8 @@ export const zhHant = {
 		advanceDay: '推進一天'
 	},
 	game: {
-		...en.game,
 		archetypes: {
-			...en.game.archetypes,
 			convenience: {
-				...en.game.archetypes.convenience,
 				name: '便利商店',
 				description: '週轉快、人流穩定，但利潤較薄且容易受到缺貨影響。',
 				risks: {
@@ -41,36 +38,212 @@ export const zhHant = {
 					1: '低利潤',
 					2: '高人流壓力'
 				}
+			},
+			boutique: {
+				name: '精品雜貨店',
+				description: '以精選商品為主，對顧客品味與口碑波動敏感，但有較高溢價空間。',
+				risks: {
+					0: '流行錯配',
+					1: '口碑波動',
+					2: '高品質服務期待'
+				}
+			},
+			electronics: {
+				name: '電子與遊戲店',
+				description: '客單價高，容易受到新品上市與流行帶動，同時也承受較高庫存風險。',
+				risks: {
+					0: '新品波動',
+					1: '損耗失竊',
+					2: '高價庫存'
+				}
+			},
+			grocery: {
+				name: '雜貨市場',
+				description: '日常需求穩定，但需要處理新鮮度、品項廣度與供應複雜度。',
+				risks: {
+					0: '新鮮度壓力',
+					1: '耗損浪費',
+					2: '人力壓力'
+				}
 			}
 		},
 		products: {
-			...en.game.products,
-			'bottled-water': '瓶裝水'
+			'bottled-water': '瓶裝水',
+			snacks: '零食',
+			drinks: '飲料',
+			essentials: '生活必需品',
+			household: '家用用品',
+			apparel: '服飾',
+			'home-goods': '居家用品',
+			gifts: '禮品',
+			'fashion-accessories': '時尚配件',
+			games: '遊戲',
+			accessories: '配件',
+			devices: '裝置',
+			peripherals: '周邊設備',
+			produce: '生鮮蔬果',
+			pantry: '乾貨雜糧',
+			prepared: '熟食',
+			bakery: '烘焙'
 		},
 		materials: {
-			...en.game.materials,
-			'bottled-water': '瓶裝水'
+			grain: '穀物',
+			salt: '鹽',
+			oilseeds: '油料作物',
+			water: '水',
+			fruit: '水果',
+			sugar: '糖',
+			pulpwood: '紙漿木材',
+			'chemical-feedstock': '化工原料',
+			flour: '麵粉',
+			'cooking-oil': '食用油',
+			'filtered-water': '過濾水',
+			syrup: '糖漿',
+			'paper-pulp': '紙漿',
+			plastic: '塑膠',
+			packaging: '包裝材料',
+			'cleaning-base': '清潔基底',
+			snacks: '零食',
+			drinks: '飲料',
+			essentials: '生活必需品',
+			gifts: '禮品',
+			'bottled-water': '瓶裝水',
+			produce: '生鮮蔬果',
+			pantry: '乾貨雜糧'
+		},
+		industrialBuildings: {
+			'grain-farm': '穀物農場',
+			'salt-mine': '鹽礦',
+			'oilseed-farm': '油料作物農場',
+			'water-pump': '抽水站',
+			'fruit-farm': '果園農場',
+			'sugar-farm': '糖料作物農場',
+			'pulpwood-grove': '紙漿林場',
+			'chemical-feedstock-well': '化工原料井',
+			'flour-mill': '麵粉廠',
+			'oil-press': '榨油廠',
+			'water-filtration-plant': '淨水廠',
+			'syrup-plant': '糖漿廠',
+			'pulp-mill': '紙漿廠',
+			'plastic-plant': '塑膠廠',
+			'packaging-plant': '包裝廠',
+			'chemical-plant': '化工廠',
+			'snack-factory': '零食工廠',
+			'drink-bottling-plant': '飲料裝瓶廠',
+			'household-goods-factory': '家用品工廠',
+			'gift-workshop': '禮品工坊',
+			'water-bottler': '瓶裝水工廠',
+			'produce-packhouse': '蔬果包裝場',
+			'pantry-works': '乾貨加工廠',
+			warehouse: '倉庫'
+		},
+		industryResources: {
+			'grain-field': '穀物田',
+			'salt-deposit': '鹽礦層',
+			'oilseed-field': '油料作物田',
+			'water-source': '水源地',
+			'fruit-orchard': '果園',
+			'sugar-field': '糖料作物田',
+			'pulpwood-forest': '紙漿林',
+			'chemical-feedstock': '化工原料地'
+		},
+		neighborhoods: {
+			downtown: '市中心',
+			campus: '校園區',
+			residential: '住宅區',
+			mall: '商場區',
+			transit: '交通樞紐',
+			industrial: '工業區',
+			suburb: '郊區',
+			parkEdge: '公園邊緣'
+		},
+		terrain: {
+			commercial: '商業地',
+			residential: '住宅地',
+			green: '綠地',
+			transit: '交通地',
+			industrial: '工業地'
+		},
+		industryTerrain: {
+			farmland: '農地',
+			forest: '森林',
+			water: '水域',
+			deposit: '礦藏地',
+			industrial: '工業用地',
+			blocked: '不可建設'
+		},
+		policyFields: {
+			pricing: '定價策略',
+			inventory: '庫存方針',
+			staffing: '人力配置',
+			marketing: '行銷方向',
+			service: '服務方針'
 		},
 		policyValues: {
-			...en.game.policyValues,
+			pricing: {
+				discount: '折扣導向',
+				competitive: '競爭定價',
+				standard: '標準定價',
+				premium: '高端定價'
+			},
+			inventory: {
+				lean: '精簡庫存',
+				balanced: '均衡庫存',
+				generous: '寬鬆庫存'
+			},
+			staffing: {
+				minimal: '最低人力',
+				efficient: '效率優先',
+				service: '服務優先'
+			},
+			marketing: {
+				none: '不投放',
+				awareness: '提升認知',
+				promotions: '促銷導向',
+				loyalty: '培養忠誠'
+			},
 			service: {
-				...en.game.policyValues.service,
+				speed: '快速服務',
+				balanced: '均衡服務',
 				highTouch: '高接觸服務'
 			}
 		},
+		scoreKeys: {
+			profit: '利潤',
+			customerSatisfaction: '顧客滿意度',
+			staffMorale: '員工士氣',
+			marketPosition: '市場地位'
+		},
 		worldCities: {
-			...en.game.worldCities,
 			'harbor-city': {
-				...en.game.worldCities['harbor-city'],
 				name: '港灣城',
 				unlockRequirement: '起始零售城市',
 				specialtySummary: '均衡的起始市場，日常需求穩定。'
 			},
 			'campus-junction': {
-				...en.game.worldCities['campus-junction'],
 				name: '校園匯點',
 				unlockRequirement: '擁有 2 間店或到達第 7 天。',
 				specialtySummary: '學生族群密集，偏好電子產品、遊戲、配件與禮品。'
+			},
+			'garden-borough': {
+				name: '花園自治區',
+				unlockRequirement: '達到 4 間店，或在每日報表後維持正現金。',
+				specialtySummary: '住宅需求強，特別適合雜貨、生活用品與便利型商品。'
+			},
+			'industry-city': {
+				name: '工業城',
+				unlockRequirement: '起始工業城市',
+				specialtySummary: '起始資源分布均衡，適合展開多種加工鏈。'
+			},
+			'breadbasket-basin': {
+				name: '糧籃盆地',
+				unlockRequirement: '建造一座倉庫與一座原料生產設施。',
+				specialtySummary: '以穀物、油料、水果與糖類為核心的食品供應資源盆地。'
+			},
+			'quarry-works': {
+				name: '採石工坊區',
+				unlockRequirement: '在本地生產一種成品材料。',
+				specialtySummary: '擅長鹽、化工、紙漿與包裝鏈的採掘加工工業區。'
 			}
 		},
 		mapViews: {
