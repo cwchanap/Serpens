@@ -188,7 +188,7 @@ describe('BuildMenu', () => {
 		render(BuildMenu, {
 			activeMapView: 'industry',
 			retailOptions,
-			industryLockedReason: 'Found a retail store to unlock construction.',
+			industryLockedReason: { code: 'industry.lockedUntilRetail' },
 			onChooseRetail: vi.fn(),
 			onChooseIndustry: vi.fn(),
 			onClose: vi.fn()
@@ -237,7 +237,7 @@ describe('BuildMenu', () => {
 					setupCostRange: { min: 1200, max: 1900 },
 					projectedDailyRevenueRange: { min: 420, max: 880 },
 					validTileCount: 0,
-					disabledReason: 'No valid tiles for this store type.'
+					disabledReason: { code: 'retail.noValidTiles' }
 				}
 			],
 			industryLockedReason: null,
@@ -248,7 +248,7 @@ describe('BuildMenu', () => {
 
 		const button = page.getByRole('button', { name: /build boutique goods/i });
 		await expect.element(button).toBeDisabled();
-		await expect.element(page.getByText('No valid tiles for this store type.')).toBeVisible();
+		await expect.element(page.getByText('No valid tiles')).toBeVisible();
 		// A native click on the raw disabled element exercises the disabled branch:
 		// a disabled button suppresses activation, so onChooseRetail stays uncalled.
 		// If the button ever became clickable, this click would dispatch onclick and

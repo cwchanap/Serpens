@@ -61,8 +61,11 @@
 		resolveIndustryPlacementAnchorTileId,
 		resolveIndustrySelectionAnchorTileId,
 		resolveRetailPlacementAnchorTileId,
-		resolveSelectionAnchorTileId
+		resolveSelectionAnchorTileId,
+		type PlacementBlockReason
 	} from '$lib/game/placementPreview';
+	import { formatPlacementBlockReason } from '$lib/i18n/gameCopy';
+	import { createI18n } from '$lib/i18n/index';
 	import { summarizeReports } from '$lib/game/reports';
 	import {
 		assignStaffToStore,
@@ -186,7 +189,8 @@
 	let activeManagementPanelId = $state<ManagementPanelId | null>(null);
 	let retailPlacementArchetypeId = $state<ArchetypeId | null>(null);
 	let industryPlacementBuildingTypeId = $state<IndustrialBuildingTypeId | null>(null);
-	let placementFeedback = $state<string | null>(null);
+	const englishI18n = createI18n('en');
+	let placementFeedback = $state<PlacementBlockReason | string | null>(null);
 	let saveRepository: SaveRepository | null = $state(null);
 	let autoSave = $state<SaveSlotMetadata | null>(null);
 	let manualSaveSlots = $state<SaveSlotMetadata[]>([]);
@@ -321,7 +325,9 @@
 				})
 			: null
 	);
-	let industryLockedReason = $derived(game ? null : 'Found a retail store to unlock construction.');
+	let industryLockedReason = $derived<PlacementBlockReason | null>(
+		game ? null : { code: 'industry.lockedUntilRetail' }
+	);
 	// True when a modal/overlay that should swallow game shortcuts is open. Used both
 	// to gate the `?` cheat-sheet toggle (so it doesn't stack on an open modal) and to
 	// inform `resolveShortcutAction` that letter/Space/B keys must not fire behind it.
@@ -354,6 +360,10 @@
 			industryPlacementPreview
 		)
 	);
+
+	function formatPlacementFeedback(reason: PlacementBlockReason | string | null): string | null {
+		return typeof reason === 'string' ? reason : formatPlacementBlockReason(reason, englishI18n);
+	}
 
 	onMount(() => {
 		void initializeSaves();
@@ -880,7 +890,7 @@
 		}
 
 		if (!game) {
-			placementFeedback = 'Found a retail store to unlock construction.';
+			placementFeedback = { code: 'industry.lockedUntilRetail' };
 			playSfx('sfx.build.invalid');
 			return;
 		}
@@ -1194,7 +1204,10 @@
 		/>
 		{#if isPlacementModeActive}
 			<div class="placement-status plaque" role="status" aria-label="Placement status">
-				<span>{placementFeedback ?? 'Choose a highlighted tile to build.'}</span>
+				<span
+					>{formatPlacementFeedback(placementFeedback) ??
+						'Choose a highlighted tile to build.'}</span
+				>
 				<button type="button" class="btn-danger" onclick={cancelPlacement}>Cancel</button>
 			</div>
 		{/if}
