@@ -6,6 +6,7 @@ export const ja = {
 		title: 'Serpens'
 	},
 	topBar: {
+		statusBar: 'ステータスバー',
 		day: '{day}日目',
 		cash: '現金',
 		alerts: '通知',
@@ -68,6 +69,16 @@ export const ja = {
 			dismiss: '{panel}を閉じる',
 			closePanel: '{panel}を閉じる',
 			panelStatus: '{panel}の状態'
+		},
+		save: {
+			errorGeneric: 'セーブに失敗しました',
+			autoSavedDay: '{day}日目を自動保存しました',
+			noAutoSaveFound: '自動セーブが見つかりません',
+			loadedAutoSave: '自動セーブを読み込みました',
+			savedManualSlot: '{name} を保存しました',
+			manualSlotNotFound: '手動セーブスロットが見つかりません',
+			loadedManualSlot: '{name} を読み込みました',
+			deletedManualSlot: 'セーブスロットを削除しました'
 		}
 	},
 	game: {

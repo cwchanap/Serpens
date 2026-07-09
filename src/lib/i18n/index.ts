@@ -1,8 +1,10 @@
 export {
 	LANGUAGE_PREFERENCE_STORAGE_KEY,
+	SUPPORTED_LOCALE_METADATA,
 	readLocalePreference,
 	resolveSupportedLocale,
 	saveLocalePreference,
+	type SupportedLocaleMetadata,
 	type StorageLike,
 	type SupportedLocale
 } from './locales';

@@ -74,7 +74,7 @@
 	}
 </script>
 
-<header class="top-bar" aria-label="Status bar">
+<header class="top-bar" aria-label={i18n.t('topBar.statusBar')}>
 	<div class="location plaque">
 		<p class="eyebrow">{eyebrow}</p>
 		<h1>{title}</h1>

@@ -481,7 +481,11 @@
 	}
 
 	function describeSaveError(error: unknown): string {
-		return error instanceof Error ? error.message : 'Save operation failed';
+		return error instanceof Error ? error.message : i18n.t('route.save.errorGeneric');
+	}
+
+	function formatSaveDay(day: number): string {
+		return i18n.format.integer(day);
 	}
 
 	function openBuildMenu(): void {
@@ -619,7 +623,9 @@
 		try {
 			const metadata = await saveRepository.saveAuto(nextGame);
 			autoSave = metadata;
-			saveStatus = `Auto-saved day ${metadata.day}`;
+			saveStatus = i18n.t('route.save.autoSavedDay', {
+				day: formatSaveDay(metadata.day)
+			});
 			saveError = null;
 		} catch (error) {
 			saveError = describeSaveError(error);
@@ -635,7 +641,7 @@
 			const record = await saveRepository.getAutoSave();
 
 			if (!record) {
-				saveStatus = 'No auto-save found';
+				saveStatus = i18n.t('route.save.noAutoSaveFound');
 				return;
 			}
 
@@ -644,7 +650,7 @@
 			selectedIndustryTileId = null;
 			selectedWorldCityId = null;
 			cancelPlacement();
-			saveStatus = 'Loaded auto-save';
+			saveStatus = i18n.t('route.save.loadedAutoSave');
 			saveError = null;
 			await refreshSaveSummary();
 			playSfx('sfx.save.loaded');
@@ -662,7 +668,7 @@
 			const metadata = slotId
 				? await saveRepository.overwriteManualSlot(slotId, name, game)
 				: await saveRepository.createManualSlot(name, game);
-			saveStatus = `Saved ${metadata.name}`;
+			saveStatus = i18n.t('route.save.savedManualSlot', { name: metadata.name });
 			saveError = null;
 			await refreshSaveSummary();
 			playSfx('sfx.save.saved');
@@ -680,7 +686,7 @@
 			const record = await saveRepository.loadManualSlot(slotId);
 
 			if (!record) {
-				saveStatus = 'Manual save slot not found';
+				saveStatus = i18n.t('route.save.manualSlotNotFound');
 				return;
 			}
 
@@ -689,7 +695,7 @@
 			selectedIndustryTileId = null;
 			selectedWorldCityId = null;
 			cancelPlacement();
-			saveStatus = `Loaded ${record.metadata.name}`;
+			saveStatus = i18n.t('route.save.loadedManualSlot', { name: record.metadata.name });
 			saveError = null;
 			await refreshSaveSummary();
 			playSfx('sfx.save.loaded');
@@ -705,7 +711,7 @@
 
 		try {
 			await saveRepository.deleteManualSlot(slotId);
-			saveStatus = 'Deleted save slot';
+			saveStatus = i18n.t('route.save.deletedManualSlot');
 			saveError = null;
 			await refreshSaveSummary();
 		} catch (error) {

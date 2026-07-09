@@ -3,6 +3,7 @@ export const en = {
 		title: 'Serpens'
 	},
 	topBar: {
+		statusBar: 'Status bar',
 		day: 'Day {day}',
 		cash: 'Cash',
 		alerts: 'Alerts',
@@ -65,6 +66,16 @@ export const en = {
 			dismiss: 'Dismiss {panel}',
 			closePanel: 'Close {panel}',
 			panelStatus: '{panel} status'
+		},
+		save: {
+			errorGeneric: 'Save operation failed',
+			autoSavedDay: 'Auto-saved day {day}',
+			noAutoSaveFound: 'No auto-save found',
+			loadedAutoSave: 'Loaded auto-save',
+			savedManualSlot: 'Saved {name}',
+			manualSlotNotFound: 'Manual save slot not found',
+			loadedManualSlot: 'Loaded {name}',
+			deletedManualSlot: 'Deleted save slot'
 		}
 	},
 	game: {
