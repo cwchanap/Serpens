@@ -431,7 +431,10 @@ async function revealCityAndGrantFunds(
 	await page.reload();
 	await openSaves(page);
 	await page.getByRole('button', { name: /^resume$/i }).click();
-	await page.getByRole('button', { name: /close saves/i }).click();
+	await page
+		.getByRole('dialog', { name: /saves/i })
+		.getByRole('button', { name: /^close$/i })
+		.click();
 }
 
 async function waitForAutoSaveDay(page: Page, day: number): Promise<SavedGame> {
@@ -774,6 +777,30 @@ test('audio controls persist as local app preferences', async ({ page }) => {
 	expect(stored).toContain('"sfxEnabled":false');
 });
 
+test('switches language without resetting game state', async ({ page }) => {
+	await page.goto('/');
+	await expectRetailMapReady(page);
+	await buildRetailStoreAt(page, {
+		x: 1,
+		y: 6,
+		storeTypeName: /build convenience store/i,
+		expectedStoreCount: 1
+	});
+
+	await page.getByTestId('game-menu-trigger').click();
+	await page.getByTestId('language-selector').selectOption('ja');
+
+	await expect(page.locator('html')).toHaveAttribute('lang', 'ja');
+	await expect(page.getByTestId('game-menu-trigger')).toBeVisible();
+	await expect(page.getByTestId('language-selector')).not.toBeVisible();
+	await expect(activeMapCanvas(page)).toHaveAttribute('data-store-sprite-count', '1');
+
+	await page.getByTestId('game-menu-trigger').click();
+	await expect(page.getByTestId('language-selector')).toHaveValue('ja');
+	await expect(page.getByTestId('cash-readout')).toBeVisible();
+	await expect(activeMapCanvas(page)).toHaveAttribute('data-terrain-asset-mode', 'image');
+});
+
 test('player can switch to the industry city map and back to retail', async ({ page }) => {
 	await page.goto('/');
 	await expect(page.locator('.map-canvas canvas')).toHaveCount(1);
@@ -855,11 +882,11 @@ test('player can switch to the industry city map and back to retail', async ({ p
 	await openSaves(page);
 	const savePanel = page.getByRole('dialog', { name: /saves/i });
 	const autoSave = savePanel.getByLabel('Auto-save');
-	await expect(autoSave.getByText(/Day 1 · 1 stores/i)).toBeVisible();
+	await expect(autoSave.getByText(/Day 1 · 1 store/i)).toBeVisible();
 	await expect(savePanel.getByRole('button', { name: /^Resume$/i })).toBeEnabled();
 	await savePanel.getByRole('button', { name: /^Resume$/i }).click();
 	await expect(savePanel.getByRole('status')).toContainText(/Loaded auto-save/i);
-	await savePanel.getByRole('button', { name: /close saves/i }).click();
+	await savePanel.getByRole('button', { name: /^close$/i }).click();
 	await expectIndustryMapReady(page);
 	await expect(industryCanvas).toHaveAttribute('data-industry-building-count', '1');
 
@@ -1221,12 +1248,15 @@ test('cross-city stock alert deep-links to the origin city and tile', async ({ p
 	await page.reload();
 	await openSaves(page);
 	await page.getByRole('button', { name: /^resume$/i }).click();
-	await page.getByRole('button', { name: /close saves/i }).click();
+	await page
+		.getByRole('dialog', { name: /saves/i })
+		.getByRole('button', { name: /^close$/i })
+		.click();
 
 	// Active city is harbor-city; the alerts popover should list the
 	// campus-junction stock alert. Clicking it deep-links back to campus-junction.
 	await expect(page.getByRole('heading', { name: /harbor city/i })).toBeVisible();
-	await page.getByRole('button', { name: /^alerts/i }).click();
+	await page.getByRole('button', { name: /alert$/i }).click();
 	const alertsList = page.getByRole('group', { name: /alerts list/i });
 	await expect(alertsList).toBeVisible();
 	await alertsList
@@ -1343,12 +1373,15 @@ test('player can save to a manual slot and load it after reload', async ({ page 
 		expectedStoreCount: 1
 	});
 	await openSaves(page);
-	await expect(page.getByText(/Day 1 · 1 stores/i)).toBeVisible();
+	await expect(page.getByText(/Day 1 · 1 store/i)).toBeVisible();
 
 	await page.getByRole('textbox', { name: /slot name/i }).fill('Harbor test');
 	await page.getByRole('button', { name: /save slot/i }).click();
 	await expect(page.getByText(/Saved Harbor test/i)).toBeVisible();
-	await page.getByRole('button', { name: /close saves/i }).click();
+	await page
+		.getByRole('dialog', { name: /saves/i })
+		.getByRole('button', { name: /^close$/i })
+		.click();
 
 	await page.reload();
 	await openSaves(page);
@@ -1390,7 +1423,10 @@ async function injectCashAndReload(page: Page, cash: number): Promise<void> {
 	await page.reload();
 	await openSaves(page);
 	await page.getByRole('button', { name: /^resume$/i }).click();
-	await page.getByRole('button', { name: /close saves/i }).click();
+	await page
+		.getByRole('dialog', { name: /saves/i })
+		.getByRole('button', { name: /^close$/i })
+		.click();
 }
 
 test('player upgrades a store from the tile inspector', async ({ page }) => {
