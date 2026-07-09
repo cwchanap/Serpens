@@ -118,6 +118,41 @@ describe('ReportsPanel', () => {
 		await expect.element(warningsList.getByText('Supply chain shortage')).toBeVisible();
 	});
 
+	it('localizes known latest daily warnings while preserving store names and unknown fallback', async () => {
+		expect.assertions(4);
+		const i18n = createI18n('ja');
+
+		render(ReportsPanel, {
+			i18n,
+			summary: {
+				...summary,
+				latest: {
+					...summary.latest!,
+					warnings: [
+						'Founding Store is short 1234 general staff',
+						'cash reserves are low',
+						'Historical warning'
+					]
+				}
+			}
+		});
+
+		const warningsList = page.getByRole('list', { name: '日次警告' });
+
+		await expect
+			.element(
+				warningsList.getByText(
+					`Founding Store の一般スタッフが ${i18n.format.integer(1234)} 名不足`
+				)
+			)
+			.toBeVisible();
+		await expect.element(warningsList.getByText('現金準備が少なくなっています')).toBeVisible();
+		await expect.element(warningsList.getByText('Historical warning')).toBeVisible();
+		await expect
+			.element(warningsList.getByText('Founding Store is short 1234 general staff'))
+			.not.toBeInTheDocument();
+	});
+
 	it('shows the empty state when there is no latest report', async () => {
 		expect.assertions(1);
 

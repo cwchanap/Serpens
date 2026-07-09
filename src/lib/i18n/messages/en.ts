@@ -702,6 +702,15 @@ export const en = {
 			decision: 'Decision: {title}',
 			factoryBlocked: '{buildingName} starved of inputs'
 		},
+		reportWarnings: {
+			stockPressure: '{storeName} has stock pressure',
+			nearStaffCapacity: '{storeName} is near staff capacity',
+			shortManager: '{storeName} is short {count} manager',
+			shortGeneral: '{storeName} is short {count} general staff',
+			missedProductDemand: '{storeName} missed product demand',
+			reputationSlipping: '{storeName} reputation is slipping',
+			cashReservesLow: 'cash reserves are low'
+		},
 		worldCity: {
 			kind: {
 				retail: 'Retail',
@@ -842,7 +851,8 @@ export const en = {
 				noLocalChain: 'No local production chain available for this category yet.'
 			},
 			warnings: {
-				noDailyReport: 'No daily report yet; latest-day flow is unavailable.'
+				noDailyReport: 'No daily report yet; latest-day flow is unavailable.',
+				noProductionRecipe: 'No production recipe found for {materialName}.'
 			},
 			edges: {
 				in: '{quantity}/day in',

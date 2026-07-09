@@ -122,6 +122,35 @@ describe('StoreOverview', () => {
 		await expect.element(storeRegion.getByText('No current warnings.')).not.toBeInTheDocument();
 	});
 
+	it('localizes known store warnings in non-English locales and preserves unknown fallback', async () => {
+		expect.assertions(4);
+
+		const reportWithWarnings: DailyStoreReport = {
+			...staleReport,
+			warnings: [
+				'Founding Store has stock pressure',
+				'Founding Store reputation is slipping',
+				'Historical warning'
+			]
+		};
+
+		render(StoreOverview, {
+			i18n: createI18n('zh-Hant'),
+			stores: [store],
+			staff: [],
+			latestReports: [reportWithWarnings]
+		});
+
+		const warningsList = page.getByRole('list', { name: 'Founding Store警告' });
+
+		await expect.element(warningsList.getByText('Founding Store 有庫存壓力')).toBeVisible();
+		await expect.element(warningsList.getByText('Founding Store 聲譽正在下滑')).toBeVisible();
+		await expect.element(warningsList.getByText('Historical warning')).toBeVisible();
+		await expect
+			.element(warningsList.getByText('Founding Store has stock pressure'))
+			.not.toBeInTheDocument();
+	});
+
 	it('falls back to store defaults when no matching report exists', async () => {
 		expect.assertions(5);
 

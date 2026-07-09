@@ -9,9 +9,10 @@ describe('createLocaleFormatters', () => {
 	});
 
 	it('formats integers, percents, dates, and lists', () => {
-		expect.assertions(4);
+		expect.assertions(5);
 		const format = createLocaleFormatters('en');
 		expect(format.integer(12345)).toBe('12,345');
+		expect(format.decimal(1234.5)).toBe('1,234.5');
 		expect(format.percent(0.42)).toBe('42%');
 		expect(format.dateTime('2026-07-08T12:30:00.000Z')).toContain('2026');
 		expect(format.list(['Retail', 'World'])).toContain('Retail');

@@ -2,6 +2,7 @@ import { buildWarehouseFlowGraph } from '$lib/game/productChainGraph';
 import { createNewGame } from '$lib/game/state';
 import type { GameAlert } from '$lib/game/alerts';
 import type { DecisionItem } from '$lib/game/types';
+import type { ProductChainGraph } from '$lib/game/productChainGraph';
 import type { WorldCityId } from '$lib/game/types';
 import { getWorldCityStatus } from '$lib/game/world';
 import { describe, expect, it } from 'vitest';
@@ -12,6 +13,7 @@ import {
 	localizeAlert,
 	localizeDecision,
 	localizeProductChainGraph,
+	localizeReportWarning,
 	localizeStockStatus,
 	localizeStockTrouble,
 	localizeWorldCityStatus
@@ -203,6 +205,43 @@ describe('game copy builders', () => {
 		expect(localizedDecision.context).not.toContain(' 18,000 ');
 		expect(worldStatus).not.toBeNull();
 		expect(localizeWorldCityStatus(worldStatus!, japanese).blockedReason).toContain(expectedCash);
+	});
+
+	it('localizes missing recipe product-chain warnings with material labels', () => {
+		expect.assertions(3);
+		const japanese = createI18n('ja');
+		const graph: ProductChainGraph = {
+			id: 'chain:drinks',
+			title: 'Drinks',
+			nodes: [],
+			edges: [],
+			details: {},
+			warnings: ['No production recipe found for Water.', 'Keep raw warning'],
+			emptyReason: null
+		};
+
+		const localized = localizeProductChainGraph(graph, japanese);
+
+		expect(localized.warnings[0]).toContain(japanese.labels.material('water'));
+		expect(localized.warnings[0]).not.toBe(graph.warnings[0]);
+		expect(localized.warnings[1]).toBe('Keep raw warning');
+	});
+
+	it('localizes known generated report warnings while preserving fallback text', () => {
+		expect.assertions(4);
+		const japanese = createI18n('ja');
+		const chinese = createI18n('zh-Hant');
+
+		expect(localizeReportWarning('Founding Store is short 1234 general staff', japanese)).toBe(
+			`Founding Store の一般スタッフが ${japanese.format.integer(1234)} 名不足`
+		);
+		expect(localizeReportWarning('cash reserves are low', japanese)).toBe(
+			'現金準備が少なくなっています'
+		);
+		expect(localizeReportWarning('Founding Store has stock pressure', chinese)).toBe(
+			'Founding Store 有庫存壓力'
+		);
+		expect(localizeReportWarning('Historical warning', japanese)).toBe('Historical warning');
 	});
 
 	it('localizes event, state, and world decision families while preserving unknown fallback', () => {

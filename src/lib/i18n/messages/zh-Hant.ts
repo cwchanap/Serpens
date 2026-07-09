@@ -701,6 +701,15 @@ export const zhHant = {
 			decision: '決策: {title}',
 			factoryBlocked: '{buildingName} 缺少投入原料'
 		},
+		reportWarnings: {
+			stockPressure: '{storeName} 有庫存壓力',
+			nearStaffCapacity: '{storeName} 接近員工容量上限',
+			shortManager: '{storeName} 缺少 {count} 名經理',
+			shortGeneral: '{storeName} 缺少 {count} 名一般員工',
+			missedProductDemand: '{storeName} 錯失商品需求',
+			reputationSlipping: '{storeName} 聲譽正在下滑',
+			cashReservesLow: '現金儲備偏低'
+		},
 		worldCity: {
 			kind: {
 				retail: '零售',
@@ -840,7 +849,8 @@ export const zhHant = {
 				noLocalChain: '此商品類別目前還沒有本地生產鏈。'
 			},
 			warnings: {
-				noDailyReport: '目前還沒有每日報表，因此無法顯示最新流向。'
+				noDailyReport: '目前還沒有每日報表，因此無法顯示最新流向。',
+				noProductionRecipe: '找不到 {materialName} 的生產配方。'
 			},
 			edges: {
 				in: '每日流入 {quantity}',
