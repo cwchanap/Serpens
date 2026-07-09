@@ -45,6 +45,168 @@ export const ja = {
 		effects: '効果音',
 		effectsVolume: '効果音の音量'
 	},
+	buildMenu: {
+		dialog: '建設メニュー',
+		close: '建設メニューを閉じる',
+		unavailable: '利用不可',
+		cityEyebrow: {
+			retail: '小売都市',
+			industry: '工業都市'
+		},
+		title: {
+			retail: '小売を建設',
+			industry: '工業を建設'
+		},
+		retail: {
+			buildArchetype: '{name}を建設',
+			setupRevenue: '初期費用 {setup} | 売上見込み {revenue}/日',
+			validTiles: {
+				one: '有効な立地 {count} 件',
+				other: '有効な立地 {count} 件'
+			},
+			noOptions: '建設可能な小売店舗がありません'
+		},
+		industry: {
+			filter: {
+				allProducts: 'フィルター: すべての商品',
+				selected: 'フィルター: {name}',
+				clear: '商品フィルターを解除',
+				dialog: '商品チェーンフィルター',
+				title: '商品フィルター',
+				close: '商品チェーンフィルターを閉じる',
+				search: '商品を検索',
+				allProductsLabel: 'すべての商品',
+				allBuildings: 'すべての工業施設',
+				chainBuildings: {
+					one: 'チェーン施設 {count} 件',
+					other: 'チェーン施設 {count} 件'
+				},
+				noChain: '対応する工業チェーンはまだありません',
+				noMatches: '一致する商品がありません'
+			},
+			supplyAdvisor: '供給アドバイザー - 何を建てるべき？',
+			buildType: '{name}を建設',
+			starter: '初期向け',
+			costOperating: '建設費 {cost} | 維持費 {operating}/日',
+			recipe: 'レシピ',
+			needsProducer: '{producer} が必要です',
+			needsResource: '{resource} の資源タイルが必要です',
+			noOptions: '建設可能な工業施設がありません'
+		}
+	},
+	tileInspector: {
+		ariaLabel: 'タイルインスペクター',
+		close: 'タイルインスペクターを閉じる',
+		selectTile: '都市タイルを選択',
+		tileHeading: 'タイル {x}, {y}',
+		storeVitals: '店舗指標',
+		revenuePerDay: '日次売上',
+		stockHealth: '在庫健全度',
+		staffMorale: '従業員士気',
+		level: 'レベル {level} / {max}',
+		nextLabel: '次: {benefit}',
+		nextBenefit: {
+			unlockProductStaff: '商品 #{productNumber} を解放し、スタッフ上限が {staffCapacity} 増加',
+			revenue: '売上 +10%'
+		},
+		upgrade: 'アップグレード - {cost}',
+		maxLevel: '最大レベル',
+		notEnoughCash: '現金が足りません。',
+		openDetails: '詳細を開く ▸',
+		tileStats: 'タイル情報',
+		demand: '需要',
+		rent: '地代',
+		footTraffic: '人通り',
+		customerFit: '顧客適合度'
+	},
+	industryTileInspector: {
+		ariaLabel: '工業タイルインスペクター',
+		close: '工業タイルインスペクターを閉じる',
+		emptyTitle: '工業タイル',
+		noTileSelected: 'タイル未選択',
+		eyebrow: '工業タイル',
+		heading: '工業タイル {x}, {y}',
+		statsAria: '工業タイル情報',
+		unknown: '不明',
+		none: 'なし',
+		terrain: '地形',
+		resource: '資源',
+		coordinates: '座標',
+		access: '利用状況',
+		locked: '未解放',
+		open: '利用可能',
+		detailsAria: '工業施設の詳細',
+		statusLabel: '状態',
+		producedTotal: '累計生産量',
+		importedInputs: '輸入投入量',
+		blockedDays: '停止日数',
+		level: 'レベル {level} / {max}',
+		output: '生産倍率 {multiplier}×',
+		upgrade: 'アップグレード - {cost}',
+		maxLevel: '最大レベル',
+		notEnoughCash: '現金が足りません。',
+		lastProduction: '直近の生産',
+		noOutputYet: 'まだ生産実績がありません',
+		warehouseSummary: '倉庫概要',
+		warehouse: '倉庫',
+		warehouseMaterials: '倉庫内資材',
+		capacity: '容量',
+		used: '使用量',
+		overflowUnits: 'あふれた数量',
+		overflowCost: 'あふれコスト',
+		noMaterialsStored: '保管中の資材はありません',
+		unknownBuildingType: '不明な工業施設タイプ',
+		status: {
+			idle: '待機中',
+			produced: '生産済み',
+			'imported-inputs': '投入を輸入',
+			blocked: '停止中'
+		}
+	},
+	worldMap: {
+		ariaLabel: 'ワールドマップ',
+		cities: '都市一覧',
+		cityDetails: '都市詳細',
+		closeCityDetails: '都市詳細を閉じる',
+		cityEyebrow: {
+			retail: '小売都市',
+			industry: '工業都市'
+		},
+		openForCash: '{cash} の資金で開放'
+	},
+	savePanel: {
+		dismiss: 'セーブを閉じる',
+		dialog: 'セーブ',
+		eyebrow: 'セーブ',
+		title: 'デスクトップセーブ',
+		close: '閉じる',
+		autoSection: '自動セーブ',
+		autoSave: '自動セーブ',
+		autoChip: 'AUTO',
+		noAutoSave: 'まだ自動セーブがありません。',
+		resume: '再開',
+		createSection: 'セーブスロットを作成',
+		newSlot: '新しいスロット',
+		slotName: 'スロット名',
+		saveSlot: '保存',
+		manualSection: '手動セーブスロット',
+		manualSlots: '手動スロット',
+		load: '読込',
+		overwrite: '上書き',
+		delete: '削除',
+		noManualSlots: '手動スロットはまだありません。',
+		storeCount: {
+			one: '{count} 店',
+			other: '{count} 店'
+		},
+		autoSlotDetails: '{day}日目 · {storeCount} · {updatedAt}',
+		manualSlotDetails: '{day}日目 · {city} · {storeCount} · {updatedAt}'
+	},
+	decisionQueue: {
+		title: '意思決定キュー',
+		empty: '本日の緊急判断はありません。',
+		expiresDay: '{day}日目で期限切れ'
+	},
 	route: {
 		cityPlanning: '都市計画',
 		mapEyebrow: {
@@ -58,6 +220,10 @@ export const ja = {
 		menu: {
 			management: '管理',
 			managementPanels: '管理パネル'
+		},
+		inspectors: {
+			retailDetails: 'タイル詳細',
+			industryDetails: '工業タイル詳細'
 		},
 		placement: {
 			status: '配置状況',
@@ -500,9 +666,7 @@ export const ja = {
 		}
 	},
 	placement: {
-		prompt: {
-			selectHighlightedTile: 'ハイライトされたタイルを選んで建設してください。'
-		},
+		chooseHighlightedTile: 'ハイライトされたタイルを選んで建設してください。',
 		retail: {
 			unknownCityTile: '不明な都市タイル',
 			storeLimitReached: '出店上限に達しています',

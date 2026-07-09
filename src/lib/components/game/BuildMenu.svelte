@@ -5,10 +5,9 @@
 		getIndustryMaterialArt,
 		getStoreArt
 	} from '$lib/assets/gameArt';
-	import { ARCHETYPES, getArchetype } from '$lib/game/archetypes';
+	import { ARCHETYPES } from '$lib/game/archetypes';
 	import {
 		INDUSTRIAL_BUILDING_TYPES,
-		MATERIALS,
 		PRODUCTION_RECIPES,
 		getIndustrialBuildingTypesForProductChain
 	} from '$lib/game/industry';
@@ -17,12 +16,7 @@
 	import { formatPlacementBlockReason } from '$lib/i18n/gameCopy';
 	import type { I18nBundle } from '$lib/i18n/index';
 	import type { PlacementBlockReason, RetailBuildMenuOption } from '$lib/game/placementPreview';
-	import type {
-		ArchetypeId,
-		IndustrialBuildingTypeId,
-		IndustryResourceId,
-		MaterialId
-	} from '$lib/game/types';
+	import type { ArchetypeId, IndustrialBuildingTypeId, MaterialId } from '$lib/game/types';
 
 	interface ProductChainFilter {
 		id: string;
@@ -54,12 +48,6 @@
 		onClose
 	}: Props = $props();
 
-	const currency = new Intl.NumberFormat('en-US', {
-		style: 'currency',
-		currency: 'USD',
-		maximumFractionDigits: 0
-	});
-
 	let selectedProductFilterId = $state<string | null>(null);
 	let productFilterOpen = $state(false);
 	let productFilterSearch = $state('');
@@ -70,7 +58,11 @@
 			: null
 	);
 	const filterButtonLabel = $derived(
-		selectedProductFilter ? `Filter: ${selectedProductFilter.name}` : 'Filter: All products'
+		selectedProductFilter
+			? i18n.t('buildMenu.industry.filter.selected' as never, {
+					name: selectedProductFilter.name
+				})
+			: i18n.t('buildMenu.industry.filter.allProducts' as never)
 	);
 	const filteredProductFilters = $derived.by(() => {
 		const query = productFilterSearch.trim().toLowerCase();
@@ -99,14 +91,21 @@
 
 	function formatRange(range: { min: number; max: number }): string {
 		if (range.min === range.max) {
-			return currency.format(range.min);
+			return i18n.format.currency(range.min);
 		}
 
-		return `${currency.format(range.min)}-${currency.format(range.max)}`;
+		return `${i18n.format.currency(range.min)}-${i18n.format.currency(range.max)}`;
 	}
 
 	function validTileLabel(validTileCount: number): string {
-		return `${validTileCount} valid tile${validTileCount === 1 ? '' : 's'}`;
+		return i18n.t(
+			(validTileCount === 1
+				? 'buildMenu.retail.validTiles.one'
+				: 'buildMenu.retail.validTiles.other') as never,
+			{
+				count: i18n.format.integer(validTileCount)
+			}
+		);
 	}
 
 	function formatPlacementReason(reason: PlacementBlockReason | null): string | null {
@@ -119,7 +118,7 @@
 	}
 
 	function materialName(materialId: MaterialId): string {
-		return MATERIALS[materialId]?.name ?? materialId;
+		return i18n.labels.material(materialId);
 	}
 
 	function materialArt(materialId: MaterialId): string {
@@ -131,14 +130,8 @@
 	}
 
 	function neededProducerName(materialId: MaterialId): string {
-		return getBuildingTypeProducing(materialId)?.name ?? materialName(materialId);
-	}
-
-	function resourceLabel(resource: IndustryResourceId): string {
-		return resource
-			.split('-')
-			.map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-			.join(' ');
+		const producer = getBuildingTypeProducing(materialId);
+		return producer ? i18n.labels.industrialBuilding(producer.id) : materialName(materialId);
 	}
 
 	function getProductChainFilters(): ProductChainFilter[] {
@@ -155,7 +148,7 @@
 		return categories
 			.map((category) => ({
 				id: category.id,
-				name: category.name,
+				name: i18n.labels.productCategory(category.id),
 				buildingCount: getIndustrialBuildingTypesForProductChain(category.id).length
 			}))
 			.sort((first, second) => first.name.localeCompare(second.name));
@@ -209,7 +202,7 @@
 		type="button"
 		class="backdrop-button"
 		tabindex="-1"
-		aria-label="Close build menu"
+		aria-label={i18n.t('buildMenu.close')}
 		onclick={onClose}
 	></button>
 
@@ -218,24 +211,34 @@
 		class="build-menu paper"
 		role="dialog"
 		aria-modal="true"
-		aria-label="Build menu"
+		aria-label={i18n.t('buildMenu.dialog')}
 		tabindex="-1"
 		onkeydown={handleDialogKeydown}
 	>
 		<header>
 			<div>
-				<p>{activeMapView === 'retail' ? 'Retail city' : 'Industry city'}</p>
-				<h2>{activeMapView === 'retail' ? 'Build Retail' : 'Build Industry'}</h2>
+				<p>
+					{i18n.t(
+						`buildMenu.cityEyebrow.${activeMapView === 'retail' ? 'retail' : 'industry'}` as never
+					)}
+				</p>
+				<h2>
+					{i18n.t(`buildMenu.title.${activeMapView === 'retail' ? 'retail' : 'industry'}` as never)}
+				</h2>
 			</div>
-			<button type="button" class="close btn-danger" aria-label="Close build menu" onclick={onClose}
-				>×</button
+			<button
+				type="button"
+				class="close btn-danger"
+				aria-label={i18n.t('buildMenu.close')}
+				onclick={onClose}
 			>
+				×
+			</button>
 		</header>
 
 		{#if activeMapView === 'retail'}
 			<div class="option-list">
 				{#each retailOptions as option (option.archetypeId)}
-					{@const archetype = getArchetype(option.archetypeId)}
 					{@const art = getStoreArt(option.archetypeId)}
 					<button
 						type="button"
@@ -244,12 +247,20 @@
 						onclick={() => chooseRetail(option.archetypeId)}
 					>
 						<img src={asset(art.path)} alt="" width="64" height="48" />
+						{#if option.disabledReason}
+							<span class="disabled-badge">{i18n.t('buildMenu.unavailable')}</span>
+						{/if}
 						<span>
-							<strong>Build {archetype.name}</strong>
+							<strong>
+								{i18n.t('buildMenu.retail.buildArchetype' as never, {
+									name: i18n.labels.archetype(option.archetypeId).name
+								})}
+							</strong>
 							<small>
-								Setup {formatRange(option.setupCostRange)} | Revenue {formatRange(
-									option.projectedDailyRevenueRange
-								)}/day
+								{i18n.t('buildMenu.retail.setupRevenue' as never, {
+									setup: formatRange(option.setupCostRange),
+									revenue: formatRange(option.projectedDailyRevenueRange)
+								})}
 							</small>
 							<small>{validTileLabel(option.validTileCount)}</small>
 							{#if option.disabledReason}
@@ -260,7 +271,7 @@
 						</span>
 					</button>
 				{:else}
-					<p class="muted">No retail buildings available</p>
+					<p class="muted">{i18n.t('buildMenu.retail.noOptions')}</p>
 				{/each}
 			</div>
 		{:else}
@@ -277,7 +288,7 @@
 					<button
 						type="button"
 						class="filter-clear"
-						aria-label="Clear product filter"
+						aria-label={i18n.t('buildMenu.industry.filter.clear')}
 						onclick={() => selectProductFilter(null)}
 					>
 						×
@@ -290,20 +301,24 @@
 			{/if}
 
 			{#if productFilterOpen}
-				<div class="filter-popup" role="dialog" aria-label="Product chain filter">
+				<div
+					class="filter-popup"
+					role="dialog"
+					aria-label={i18n.t('buildMenu.industry.filter.dialog')}
+				>
 					<div class="filter-popup-heading">
-						<h3>Product filter</h3>
+						<h3>{i18n.t('buildMenu.industry.filter.title')}</h3>
 						<button
 							type="button"
 							class="filter-close"
-							aria-label="Close product chain filter"
+							aria-label={i18n.t('buildMenu.industry.filter.close')}
 							onclick={closeProductFilter}
 						>
 							×
 						</button>
 					</div>
 					<label>
-						<span>Search products</span>
+						<span>{i18n.t('buildMenu.industry.filter.search')}</span>
 						<input type="search" bind:value={productFilterSearch} />
 					</label>
 					<div class="filter-list">
@@ -312,8 +327,8 @@
 							aria-pressed={selectedProductFilterId === null}
 							onclick={() => selectProductFilter(null)}
 						>
-							<span>All products</span>
-							<small>All industrial buildings</small>
+							<span>{i18n.t('buildMenu.industry.filter.allProductsLabel')}</span>
+							<small>{i18n.t('buildMenu.industry.filter.allBuildings')}</small>
 						</button>
 						{#each filteredProductFilters as filter (filter.id)}
 							<button
@@ -325,12 +340,19 @@
 								<span>{filter.name}</span>
 								<small>
 									{filter.buildingCount > 0
-										? `${filter.buildingCount} chain buildings`
-										: 'No industry chain yet'}
+										? i18n.t(
+												(filter.buildingCount === 1
+													? 'buildMenu.industry.filter.chainBuildings.one'
+													: 'buildMenu.industry.filter.chainBuildings.other') as never,
+												{
+													count: i18n.format.integer(filter.buildingCount)
+												}
+											)
+										: i18n.t('buildMenu.industry.filter.noChain')}
 								</small>
 							</button>
 						{:else}
-							<p class="muted">No matching products</p>
+							<p class="muted">{i18n.t('buildMenu.industry.filter.noMatches')}</p>
 						{/each}
 					</div>
 				</div>
@@ -342,7 +364,7 @@
 				disabled={industryLockedReason !== null}
 				onclick={onOpenAdvisor}
 			>
-				Supply Advisor — what should I build?
+				{i18n.t('buildMenu.industry.supplyAdvisor')}
 			</button>
 
 			<div class="option-list">
@@ -355,18 +377,26 @@
 						onclick={() => chooseIndustry(type.id)}
 					>
 						<img src={asset(getIndustrialBuildingArt(type.id))} alt="" width="44" height="44" />
+						{#if industryLockedReason}
+							<span class="disabled-badge">{i18n.t('buildMenu.unavailable')}</span>
+						{/if}
 						<span>
 							<strong>
-								Build {type.name}
-								{#if type.tier === 1}<em class="starter">Starter</em>{/if}
+								{i18n.t('buildMenu.industry.buildType' as never, {
+									name: i18n.labels.industrialBuilding(type.id)
+								})}
+								{#if type.tier === 1}
+									<em class="starter">{i18n.t('buildMenu.industry.starter')}</em>
+								{/if}
 							</strong>
 							<small>
-								Cost {currency.format(type.buildCost)} | Operating {currency.format(
-									type.dailyOperatingCost
-								)}/day
+								{i18n.t('buildMenu.industry.costOperating' as never, {
+									cost: i18n.format.currency(type.buildCost),
+									operating: i18n.format.currency(type.dailyOperatingCost)
+								})}
 							</small>
 							{#if recipe}
-								<span class="recipe" aria-label="Recipe">
+								<span class="recipe" aria-label={i18n.t('buildMenu.industry.recipe')}>
 									{#each recipe.inputs as input (input.materialId)}
 										<span class="chip" class:missing={!isAvailable(input.materialId)}>
 											<img
@@ -392,18 +422,24 @@
 									{/each}
 								</span>
 								{#each recipe.inputs.filter((input) => !isAvailable(input.materialId)) as missing (missing.materialId)}
-									<small class="need">Needs {neededProducerName(missing.materialId)}</small>
+									<small class="need">
+										{i18n.t('buildMenu.industry.needsProducer' as never, {
+											producer: neededProducerName(missing.materialId)
+										})}
+									</small>
 								{/each}
 							{/if}
 							{#if type.requiredResource}
 								<small class="need">
-									Needs a {resourceLabel(type.requiredResource)} resource tile
+									{i18n.t('buildMenu.industry.needsResource' as never, {
+										resource: i18n.labels.industryResource(type.requiredResource)
+									})}
 								</small>
 							{/if}
 						</span>
 					</button>
 				{:else}
-					<p class="muted">No industrial buildings available</p>
+					<p class="muted">{i18n.t('buildMenu.industry.noOptions')}</p>
 				{/each}
 			</div>
 		{/if}
@@ -535,8 +571,7 @@
 		opacity: 0.55;
 	}
 
-	.build-option:disabled::after {
-		content: 'UNAVAILABLE';
+	.disabled-badge {
 		position: absolute;
 		top: 0.3rem;
 		right: 0.5rem;
@@ -546,6 +581,7 @@
 		letter-spacing: 0.18em;
 		color: var(--wax-red);
 		border: 1px solid var(--wax-red);
+		background: var(--paper-50);
 		padding: 0.1rem 0.3rem;
 		transform: rotate(-3deg);
 	}

@@ -1,6 +1,7 @@
 import { page } from 'vitest/browser';
 import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
+import { createI18n } from '$lib/i18n';
 import { WORLD_CITY_CATALOG, type WorldCityStatus } from '$lib/game/world';
 import WorldMap from './WorldMap.svelte';
 
@@ -25,6 +26,7 @@ describe('WorldMap', () => {
 				status('campus-junction', 'revealed'),
 				status('garden-borough', 'locked')
 			],
+			i18n: createI18n('en'),
 			selectedCityId: null,
 			onSelectCity: vi.fn(),
 			onOpenCity: vi.fn(),
@@ -45,6 +47,7 @@ describe('WorldMap', () => {
 				status('industry-city', 'opened'),
 				status('garden-borough', 'locked')
 			],
+			i18n: createI18n('en'),
 			selectedCityId: null,
 			onSelectCity: vi.fn(),
 			onOpenCity: vi.fn(),
@@ -80,6 +83,7 @@ describe('WorldMap', () => {
 		const onCloseInspector = vi.fn();
 		render(WorldMap, {
 			statuses: [status('campus-junction', 'revealed')],
+			i18n: createI18n('en'),
 			selectedCityId: 'campus-junction',
 			onSelectCity,
 			onOpenCity,
@@ -99,6 +103,7 @@ describe('WorldMap', () => {
 		expect.assertions(1);
 		render(WorldMap, {
 			statuses: [{ ...status('campus-junction', 'revealed'), canOpen: false }],
+			i18n: createI18n('en'),
 			selectedCityId: 'campus-junction',
 			onSelectCity: vi.fn(),
 			onOpenCity: vi.fn(),
@@ -112,6 +117,7 @@ describe('WorldMap', () => {
 		expect.assertions(3);
 		render(WorldMap, {
 			statuses: [status('industry-city', 'opened')],
+			i18n: createI18n('en'),
 			selectedCityId: 'industry-city',
 			onSelectCity: vi.fn(),
 			onOpenCity: vi.fn(),
@@ -133,6 +139,7 @@ describe('WorldMap', () => {
 					blockedReason: 'Opening this city requires 18,000 cash.'
 				}
 			],
+			i18n: createI18n('en'),
 			selectedCityId: 'campus-junction',
 			onSelectCity: vi.fn(),
 			onOpenCity: vi.fn(),
@@ -151,6 +158,7 @@ describe('WorldMap', () => {
 		expect.assertions(2);
 		render(WorldMap, {
 			statuses: [status('garden-borough', 'locked')],
+			i18n: createI18n('en'),
 			selectedCityId: 'garden-borough',
 			onSelectCity: vi.fn(),
 			onOpenCity: vi.fn(),
@@ -166,6 +174,7 @@ describe('WorldMap', () => {
 		expect.assertions(1);
 		render(WorldMap, {
 			statuses: [status('harbor-city', 'opened')],
+			i18n: createI18n('en'),
 			selectedCityId: 'nonexistent-city',
 			onSelectCity: vi.fn(),
 			onOpenCity: vi.fn(),
@@ -182,6 +191,7 @@ describe('WorldMap', () => {
 
 		const result = render(WorldMap, {
 			statuses: [status('harbor-city', 'opened')],
+			i18n: createI18n('en'),
 			selectedCityId: 'harbor-city',
 			onSelectCity: vi.fn(),
 			onOpenCity: vi.fn(),
@@ -192,6 +202,7 @@ describe('WorldMap', () => {
 
 		await result.rerender({
 			statuses: [status('harbor-city', 'opened'), status('campus-junction', 'revealed')],
+			i18n: createI18n('en'),
 			selectedCityId: 'harbor-city',
 			onSelectCity: vi.fn(),
 			onOpenCity: vi.fn(),
@@ -200,5 +211,21 @@ describe('WorldMap', () => {
 
 		await expect.element(page.getByText(/1 stores/i)).toBeVisible();
 		await expect.element(page.getByRole('button', { name: /^Campus Junction$/i })).toBeVisible();
+	});
+
+	it('renders a localized fixed label outside English', async () => {
+		expect.assertions(2);
+
+		render(WorldMap, {
+			statuses: [status('harbor-city', 'opened')],
+			i18n: createI18n('ja'),
+			selectedCityId: null,
+			onSelectCity: vi.fn(),
+			onOpenCity: vi.fn(),
+			onCloseInspector: vi.fn()
+		});
+
+		await expect.element(page.getByRole('region', { name: 'ワールドマップ' })).toBeVisible();
+		await expect.element(page.getByRole('region', { name: /world map/i })).not.toBeInTheDocument();
 	});
 });

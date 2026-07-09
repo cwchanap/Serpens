@@ -1,6 +1,7 @@
 import { page } from 'vitest/browser';
 import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
+import { createI18n, type I18nBundle } from '$lib/i18n';
 import SavePanel from './SavePanel.svelte';
 import type { GameState } from '$lib/game/types';
 import type { SaveSlotMetadata } from '$lib/persistence/saveTypes';
@@ -36,6 +37,7 @@ function renderPanel(
 		slots: SaveSlotMetadata[];
 		status: string;
 		error: string | null;
+		i18n: I18nBundle;
 		onResumeAutoSave: () => void;
 		onSaveSlot: (name: string, slotId?: string) => void;
 		onLoadSlot: (slotId: string) => void;
@@ -49,6 +51,7 @@ function renderPanel(
 		slots: [manualSlot],
 		status: '',
 		error: null,
+		i18n: createI18n('en'),
 		onResumeAutoSave: vi.fn(),
 		onSaveSlot: vi.fn(),
 		onLoadSlot: vi.fn(),
@@ -69,7 +72,7 @@ describe('SavePanel', () => {
 		renderPanel();
 
 		await expect.element(page.getByRole('dialog', { name: 'Saves' })).toBeVisible();
-		await expect.element(page.getByText('Day 5 · 1 stores')).toBeVisible();
+		await expect.element(page.getByText('Day 5 · 1 store')).toBeVisible();
 		await expect.element(page.getByRole('heading', { name: 'Harbor Run' })).toBeVisible();
 		await expect.element(page.getByRole('button', { name: 'Resume' })).toBeEnabled();
 	});
@@ -94,7 +97,7 @@ describe('SavePanel', () => {
 		await page.getByRole('button', { name: 'Resume' }).click();
 		await page.getByRole('button', { name: 'Load' }).click();
 		await page.getByRole('button', { name: 'Delete' }).click();
-		await page.getByRole('button', { name: 'Close saves' }).click();
+		await page.getByRole('button', { name: 'Close' }).click();
 
 		expect(props.onResumeAutoSave).toHaveBeenCalledOnce();
 		expect(props.onLoadSlot).toHaveBeenCalledWith(manualSlot.id);
@@ -128,6 +131,15 @@ describe('SavePanel', () => {
 			slots: []
 		});
 
-		await expect.element(page.getByText('Day 5 · 1 stores · not-a-valid-date')).toBeVisible();
+		await expect.element(page.getByText('Day 5 · 1 store · not-a-valid-date')).toBeVisible();
+	});
+
+	it('renders a localized fixed label outside English', async () => {
+		expect.assertions(2);
+
+		renderPanel({ i18n: createI18n('ja') });
+
+		await expect.element(page.getByRole('dialog', { name: 'セーブ' })).toBeVisible();
+		await expect.element(page.getByRole('dialog', { name: 'Saves' })).not.toBeInTheDocument();
 	});
 });

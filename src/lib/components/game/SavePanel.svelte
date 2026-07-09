@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { GameState } from '$lib/game/types';
+	import type { I18nBundle } from '$lib/i18n';
 	import type { SaveSlotMetadata } from '$lib/persistence/saveTypes';
 
 	interface Props {
@@ -8,6 +9,7 @@
 		slots: SaveSlotMetadata[];
 		status: string;
 		error: string | null;
+		i18n: I18nBundle;
 		onResumeAutoSave: () => void | Promise<void>;
 		onSaveSlot: (name: string, slotId?: string) => void | Promise<void>;
 		onLoadSlot: (slotId: string) => void | Promise<void>;
@@ -21,6 +23,7 @@
 		slots,
 		status,
 		error,
+		i18n,
 		onResumeAutoSave,
 		onSaveSlot,
 		onLoadSlot,
@@ -31,11 +34,6 @@
 	let slotName = $state('');
 
 	const canSaveNewSlot = $derived(Boolean(activeGame && slotName.trim().length > 0));
-	const dateFormatter = new Intl.DateTimeFormat('en-US', {
-		dateStyle: 'medium',
-		timeStyle: 'short'
-	});
-
 	function formatUpdatedAt(value: string): string {
 		const date = new Date(value);
 
@@ -43,15 +41,33 @@
 			return value;
 		}
 
-		return dateFormatter.format(date);
+		return i18n.format.dateTime(date);
+	}
+
+	function formatStoreCount(storeCount: number): string {
+		return i18n.t(
+			(storeCount === 1 ? 'savePanel.storeCount.one' : 'savePanel.storeCount.other') as never,
+			{
+				count: i18n.format.integer(storeCount)
+			}
+		);
 	}
 
 	function formatSlotDetails(slot: SaveSlotMetadata): string {
-		return `Day ${slot.day} · ${slot.storeCount} stores · ${formatUpdatedAt(slot.updatedAt)}`;
+		return i18n.t('savePanel.autoSlotDetails' as never, {
+			day: i18n.format.integer(slot.day),
+			storeCount: formatStoreCount(slot.storeCount),
+			updatedAt: formatUpdatedAt(slot.updatedAt)
+		});
 	}
 
 	function formatManualSlotDetails(slot: SaveSlotMetadata): string {
-		return `Day ${slot.day} · ${slot.activeCityName} · ${slot.storeCount} stores · ${formatUpdatedAt(slot.updatedAt)}`;
+		return i18n.t('savePanel.manualSlotDetails' as never, {
+			day: i18n.format.integer(slot.day),
+			city: slot.activeCityName,
+			storeCount: formatStoreCount(slot.storeCount),
+			updatedAt: formatUpdatedAt(slot.updatedAt)
+		});
 	}
 
 	function saveNewSlot(): void {
@@ -67,45 +83,61 @@
 </script>
 
 <div class="save-backdrop">
-	<button type="button" class="save-backdrop-button" aria-label="Dismiss saves" onclick={onClose}
+	<button
+		type="button"
+		class="save-backdrop-button"
+		aria-label={i18n.t('savePanel.dismiss')}
+		onclick={onClose}
 	></button>
 
-	<div class="save-panel paper" role="dialog" aria-modal="true" aria-label="Saves">
+	<div
+		class="save-panel paper"
+		role="dialog"
+		aria-modal="true"
+		aria-label={i18n.t('savePanel.dialog')}
+	>
 		<header>
 			<div>
-				<p class="eyebrow">Saves</p>
-				<h2>Desktop Saves</h2>
+				<p class="eyebrow">{i18n.t('savePanel.eyebrow')}</p>
+				<h2>{i18n.t('savePanel.title')}</h2>
 			</div>
-			<button type="button" class="close" aria-label="Close saves" onclick={onClose}>Close</button>
+			<button type="button" class="close" aria-label={i18n.t('savePanel.close')} onclick={onClose}>
+				{i18n.t('savePanel.close')}
+			</button>
 		</header>
 
-		<section class="auto-save" aria-label="Auto-save">
+		<section class="auto-save" aria-label={i18n.t('savePanel.autoSection')}>
 			<div>
-				<h3>Auto-save <span class="auto-chip">AUTO</span></h3>
+				<h3>
+					{i18n.t('savePanel.autoSave')}
+					<span class="auto-chip">{i18n.t('savePanel.autoChip')}</span>
+				</h3>
 				{#if autoSave}
 					<p>{formatSlotDetails(autoSave)}</p>
 				{:else}
-					<p>No auto-save yet.</p>
+					<p>{i18n.t('savePanel.noAutoSave')}</p>
 				{/if}
 			</div>
 			<button type="button" disabled={!autoSave} onclick={() => void onResumeAutoSave()}
-				>Resume</button
+				>{i18n.t('savePanel.resume')}</button
 			>
 		</section>
 
-		<section aria-label="Create save slot">
-			<h3>New slot</h3>
+		<section aria-label={i18n.t('savePanel.createSection')}>
+			<h3>{i18n.t('savePanel.newSlot')}</h3>
 			<div class="new-slot">
 				<label>
-					<span>Slot name</span>
+					<span>{i18n.t('savePanel.slotName')}</span>
 					<input bind:value={slotName} />
 				</label>
-				<button type="button" disabled={!canSaveNewSlot} onclick={saveNewSlot}>Save slot</button>
+				<button type="button" disabled={!canSaveNewSlot} onclick={saveNewSlot}
+					>{i18n.t('savePanel.saveSlot')}</button
+				>
 			</div>
 		</section>
 
-		<section aria-label="Manual save slots">
-			<h3>Manual slots</h3>
+		<section aria-label={i18n.t('savePanel.manualSection')}>
+			<h3>{i18n.t('savePanel.manualSlots')}</h3>
 			{#if slots.length > 0}
 				<div class="slots">
 					{#each slots as slot (slot.id)}
@@ -116,21 +148,25 @@
 								<p>{formatManualSlotDetails(slot)}</p>
 							</div>
 							<div class="slot-actions">
-								<button type="button" onclick={() => void onLoadSlot(slot.id)}>Load</button>
+								<button type="button" onclick={() => void onLoadSlot(slot.id)}
+									>{i18n.t('savePanel.load')}</button
+								>
 								<button
 									type="button"
 									disabled={!activeGame}
 									onclick={() => void onSaveSlot(slot.name, slot.id)}
 								>
-									Overwrite
+									{i18n.t('savePanel.overwrite')}
 								</button>
-								<button type="button" onclick={() => void onDeleteSlot(slot.id)}>Delete</button>
+								<button type="button" onclick={() => void onDeleteSlot(slot.id)}
+									>{i18n.t('savePanel.delete')}</button
+								>
 							</div>
 						</article>
 					{/each}
 				</div>
 			{:else}
-				<p class="empty">No manual slots yet.</p>
+				<p class="empty">{i18n.t('savePanel.noManualSlots')}</p>
 			{/if}
 		</section>
 

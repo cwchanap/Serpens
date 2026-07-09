@@ -1,35 +1,43 @@
 <script lang="ts">
 	import type { DecisionItem } from '$lib/game/types';
+	import { localizeDecision } from '$lib/i18n/gameCopy';
+	import type { I18nBundle } from '$lib/i18n';
 
 	let {
 		decisions,
+		i18n,
 		onResolve
 	}: {
 		decisions: DecisionItem[];
+		i18n: I18nBundle;
 		onResolve: (decisionId: string, optionId: string) => void;
 	} = $props();
 </script>
 
 <section class="panel paper" aria-labelledby="decision-heading">
-	<h2 id="decision-heading">Decision Queue</h2>
+	<h2 id="decision-heading">{i18n.t('decisionQueue.title')}</h2>
 
 	{#if decisions.length === 0}
-		<p class="empty">No urgent decisions today.</p>
+		<p class="empty">{i18n.t('decisionQueue.empty')}</p>
 	{:else}
 		<div class="queue">
 			{#each decisions as decision (decision.id)}
+				{@const localizedDecision = localizeDecision(decision, i18n)}
 				<article>
 					<div class="decision-copy">
-						<h3>{decision.title}</h3>
-						<p>{decision.context}</p>
+						<h3>{localizedDecision.title}</h3>
+						<p>{localizedDecision.context}</p>
 						<span class="expires"
-							><span class="seal" data-urgent="true">Expires day {decision.expiresOnDay}</span
+							><span class="seal" data-urgent="true"
+								>{i18n.t('decisionQueue.expiresDay', {
+									day: i18n.format.integer(decision.expiresOnDay)
+								})}</span
 							></span
 						>
 					</div>
 
 					<div class="options">
-						{#each decision.options as option (option.id)}
+						{#each localizedDecision.options as option (option.id)}
 							<button type="button" onclick={() => onResolve(decision.id, option.id)}>
 								<strong>{option.label}</strong>
 								<span>{option.description}</span>

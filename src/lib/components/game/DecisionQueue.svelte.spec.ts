@@ -1,6 +1,7 @@
 import { page } from 'vitest/browser';
 import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
+import { createI18n, type I18nBundle } from '$lib/i18n';
 import DecisionQueue from './DecisionQueue.svelte';
 import type { DecisionItem } from '$lib/game/types';
 
@@ -44,11 +45,13 @@ const decisions: DecisionItem[] = [
 function renderQueue(
 	overrides: Partial<{
 		decisions: DecisionItem[];
+		i18n: I18nBundle;
 		onResolve: (decisionId: string, optionId: string) => void;
 	}> = {}
 ) {
 	const props = {
 		decisions: decisions as DecisionItem[],
+		i18n: createI18n('en'),
 		onResolve: vi.fn(),
 		...overrides
 	};
@@ -120,5 +123,16 @@ describe('DecisionQueue', () => {
 		// Explicitly cover the empty-options branch: the rendered card must contain
 		// no option buttons, not just display its copy.
 		expect(document.querySelector('article')?.querySelector('button')).toBeNull();
+	});
+
+	it('renders a localized fixed label outside English', async () => {
+		expect.assertions(2);
+
+		renderQueue({ decisions: [], i18n: createI18n('ja') });
+
+		await expect.element(page.getByRole('heading', { name: '意思決定キュー' })).toBeVisible();
+		await expect
+			.element(page.getByRole('heading', { name: 'Decision Queue' }))
+			.not.toBeInTheDocument();
 	});
 });

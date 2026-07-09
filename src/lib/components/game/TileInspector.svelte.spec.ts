@@ -5,6 +5,7 @@ import TileInspector from './TileInspector.svelte';
 import { getStoreArt } from '$lib/assets/gameArt';
 import { createNewGame } from '$lib/game/state';
 import { initializeStoreProducts } from '$lib/game/stock';
+import { createI18n, type I18nBundle } from '$lib/i18n';
 import type { CityTile, DailyStoreReport, GameState, Store } from '$lib/game/types';
 
 const tile: CityTile = {
@@ -94,6 +95,7 @@ function renderInspector(
 		onUpgradeStore: (storeId: string) => void;
 		onOpenDetails: () => void;
 		onClickFeedback: () => void;
+		i18n: I18nBundle;
 	}> = {}
 ) {
 	const props = {
@@ -103,6 +105,7 @@ function renderInspector(
 		latestStoreReport: null,
 		onClose: vi.fn(),
 		onOpenDetails: vi.fn(),
+		i18n: createI18n('en'),
 		...overrides
 	};
 
@@ -335,5 +338,18 @@ describe('TileInspector close button', () => {
 		await page.getByRole('button', { name: /close tile inspector/i }).click();
 		expect(onClickFeedback).toHaveBeenCalledTimes(1);
 		expect(onClose).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe('TileInspector localization', () => {
+	it('renders a localized fixed label outside English', async () => {
+		expect.assertions(2);
+
+		renderInspector({ tile: null, i18n: createI18n('ja') });
+
+		await expect.element(page.getByRole('heading', { name: '都市タイルを選択' })).toBeVisible();
+		await expect
+			.element(page.getByRole('heading', { name: 'Select a city tile' }))
+			.not.toBeInTheDocument();
 	});
 });

@@ -9,7 +9,8 @@
 		getUnlockedCategoryCount,
 		isMilestoneLevel
 	} from '$lib/game/leveling';
-	import { summarizeStockTrouble } from '$lib/game/stock';
+	import { localizeStockTrouble } from '$lib/i18n/gameCopy';
+	import type { I18nBundle } from '$lib/i18n';
 	import type { CityTile, DailyStoreReport, GameState, Store } from '$lib/game/types';
 	import type { Attachment } from 'svelte/attachments';
 	import { on } from 'svelte/events';
@@ -19,6 +20,7 @@
 		tile: CityTile | null;
 		store: Store | null;
 		latestStoreReport: DailyStoreReport | null;
+		i18n: I18nBundle;
 		onUpgradeStore?: (storeId: string) => void;
 		onOpenDetails: () => void;
 		onClose: () => void;
@@ -30,38 +32,38 @@
 		tile,
 		store,
 		latestStoreReport,
+		i18n,
 		onUpgradeStore = () => {},
 		onOpenDetails,
 		onClose,
 		onClickFeedback = () => {}
 	}: Props = $props();
 
-	const currency = new Intl.NumberFormat('en-US', {
-		style: 'currency',
-		currency: 'USD',
-		maximumFractionDigits: 0
-	});
-
 	const storeArt = $derived(store ? getStoreArt(store.archetypeId) : null);
 	const storeArtSrc = $derived(storeArt ? asset(storeArt.path) : '');
-	const tileLabel = $derived(tile?.feature ? label(tile.feature) : tile ? label(tile.terrain) : '');
+	const tileLabel = $derived(
+		tile?.feature
+			? i18n.labels.terrain(tile.feature)
+			: tile
+				? i18n.labels.terrain(tile.terrain)
+				: ''
+	);
 
 	const upgradeCost = $derived(store ? getStoreUpgradeCost(store.level) : 0);
 	const canAffordUpgrade = $derived(store ? game.cash >= upgradeCost : false);
 	const storeCanUpgrade = $derived(store ? canUpgradeStore(store.level) : false);
 	const nextBenefit = $derived.by(() => {
-		if (!store || !storeCanUpgrade) return 'Max level';
+		if (!store || !storeCanUpgrade) return i18n.t('tileInspector.maxLevel' as never);
 		return isMilestoneLevel(store.level + 1)
-			? `Unlocks product #${getUnlockedCategoryCount(store.level + 1)} + ${STORE_MILESTONE_CAPACITY_BONUS} staff capacity`
-			: '+10% revenue';
+			? i18n.t('tileInspector.nextBenefit.unlockProductStaff' as never, {
+					productNumber: i18n.format.integer(getUnlockedCategoryCount(store.level + 1)),
+					staffCapacity: i18n.format.integer(STORE_MILESTONE_CAPACITY_BONUS)
+				})
+			: i18n.t('tileInspector.nextBenefit.revenue' as never);
 	});
 
-	const attentionMessage = $derived(store ? summarizeStockTrouble(store.products) : null);
+	const attentionMessage = $derived(store ? localizeStockTrouble(store.products, i18n) : null);
 	const dailyRevenue = $derived(latestStoreReport?.revenue ?? null);
-
-	function label(value: string): string {
-		return value.replace(/([A-Z])/g, ' $1').replace(/^./, (character) => character.toUpperCase());
-	}
 
 	function closeInspector(): void {
 		onClickFeedback();
@@ -87,17 +89,24 @@
 	};
 </script>
 
-<aside class="inspector" aria-label="Tile inspector" {@attach blockMapInteraction}>
-	<button type="button" class="close" aria-label="Close tile inspector" onclick={closeInspector}
-		>×</button
+<aside
+	class="inspector"
+	aria-label={i18n.t('tileInspector.ariaLabel')}
+	{@attach blockMapInteraction}
+>
+	<button
+		type="button"
+		class="close"
+		aria-label={i18n.t('tileInspector.close')}
+		onclick={closeInspector}>×</button
 	>
 	{#if !tile}
-		<h2>Select a city tile</h2>
+		<h2>{i18n.t('tileInspector.selectTile')}</h2>
 	{:else}
 		<div class="heading">
 			<div>
-				<p>{label(tile.neighborhood)}</p>
-				<h2>Tile {tile.x}, {tile.y}</h2>
+				<p>{i18n.labels.neighborhood(tile.neighborhood)}</p>
+				<h2>{i18n.t('tileInspector.tileHeading', { x: tile.x, y: tile.y })}</h2>
 			</div>
 			<span>{tileLabel}</span>
 		</div>
@@ -119,17 +128,17 @@
 				<h3>{store.name}</h3>
 				<p class="location">{store.location}</p>
 
-				<dl class="gauges" aria-label="Store vitals">
+				<dl class="gauges" aria-label={i18n.t('tileInspector.storeVitals')}>
 					<div class="gauge">
-						<dt>Revenue/day</dt>
-						<dd>{dailyRevenue === null ? '—' : currency.format(dailyRevenue)}</dd>
+						<dt>{i18n.t('tileInspector.revenuePerDay')}</dt>
+						<dd>{dailyRevenue === null ? '—' : i18n.format.currency(dailyRevenue)}</dd>
 					</div>
 					<div class="gauge">
-						<dt>Stock health</dt>
+						<dt>{i18n.t('tileInspector.stockHealth')}</dt>
 						<dd>{store.stockHealth}</dd>
 					</div>
 					<div class="gauge">
-						<dt>Staff morale</dt>
+						<dt>{i18n.t('tileInspector.staffMorale')}</dt>
 						<dd>{store.staffMorale}</dd>
 					</div>
 				</dl>
@@ -139,40 +148,51 @@
 				{/if}
 
 				<div class="store-level">
-					<p class="level-label">Level {store.level} / {MAX_STORE_LEVEL}</p>
-					<p class="level-next">Next: {nextBenefit}</p>
+					<p class="level-label">
+						{i18n.t('tileInspector.level', {
+							level: i18n.format.integer(store.level),
+							max: i18n.format.integer(MAX_STORE_LEVEL)
+						})}
+					</p>
+					<p class="level-next">{i18n.t('tileInspector.nextLabel', { benefit: nextBenefit })}</p>
 					<button
 						type="button"
 						class="upgrade"
 						disabled={!storeCanUpgrade || !canAffordUpgrade}
 						onclick={() => onUpgradeStore(store.id)}
 					>
-						{storeCanUpgrade ? `Upgrade — ${currency.format(upgradeCost)}` : 'Max level'}
+						{storeCanUpgrade
+							? i18n.t('tileInspector.upgrade', {
+									cost: i18n.format.currency(upgradeCost)
+								})
+							: i18n.t('tileInspector.maxLevel')}
 					</button>
 					{#if storeCanUpgrade && !canAffordUpgrade}
-						<p class="level-hint">Not enough cash.</p>
+						<p class="level-hint">{i18n.t('tileInspector.notEnoughCash')}</p>
 					{/if}
 				</div>
 
-				<button type="button" class="open-details" onclick={onOpenDetails}>Open Details ▸</button>
+				<button type="button" class="open-details" onclick={onOpenDetails}
+					>{i18n.t('tileInspector.openDetails')}</button
+				>
 			</div>
 		{:else}
-			<section aria-label="Tile stats">
+			<section aria-label={i18n.t('tileInspector.tileStats')}>
 				<dl>
 					<div>
-						<dt>Demand</dt>
+						<dt>{i18n.t('tileInspector.demand')}</dt>
 						<dd>{tile.demand}</dd>
 					</div>
 					<div>
-						<dt>Rent</dt>
-						<dd>{currency.format(tile.rent)}</dd>
+						<dt>{i18n.t('tileInspector.rent')}</dt>
+						<dd>{i18n.format.currency(tile.rent)}</dd>
 					</div>
 					<div>
-						<dt>Foot traffic</dt>
+						<dt>{i18n.t('tileInspector.footTraffic')}</dt>
 						<dd>{tile.footTraffic}</dd>
 					</div>
 					<div>
-						<dt>Customer fit</dt>
+						<dt>{i18n.t('tileInspector.customerFit')}</dt>
 						<dd>{tile.customerFit}</dd>
 					</div>
 				</dl>

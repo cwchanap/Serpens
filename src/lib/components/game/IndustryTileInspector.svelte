@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { asset } from '$app/paths';
 	import { getIndustrialBuildingArt, getIndustryMaterialArt } from '$lib/assets/gameArt';
-	import { INDUSTRIAL_BUILDING_TYPES, MATERIALS } from '$lib/game/industry';
+	import { INDUSTRIAL_BUILDING_TYPES } from '$lib/game/industry';
 	import { getWarehouseUsed } from '$lib/game/industryProduction';
 	import {
 		MAX_BUILDING_LEVEL,
@@ -9,6 +9,7 @@
 		getBuildingThroughputMultiplier,
 		getBuildingUpgradeCost
 	} from '$lib/game/leveling';
+	import type { I18nBundle } from '$lib/i18n';
 	import type {
 		DailyMaterialMovement,
 		GameState,
@@ -23,6 +24,7 @@
 		game: GameState;
 		tile: IndustryTile | null;
 		building: IndustrialBuilding | null;
+		i18n: I18nBundle;
 		onClose: () => void;
 		onUpgradeBuilding?: (buildingId: string) => void;
 	}
@@ -33,17 +35,17 @@
 		quantity: number;
 	}
 
-	let { game, tile, building, onClose, onUpgradeBuilding = () => {} }: Props = $props();
-
-	const currency = new Intl.NumberFormat('en-US', {
-		style: 'currency',
-		currency: 'USD',
-		maximumFractionDigits: 0
-	});
+	let { game, tile, building, i18n, onClose, onUpgradeBuilding = () => {} }: Props = $props();
 
 	const buildingType = $derived(building ? INDUSTRIAL_BUILDING_TYPES[building.typeId] : null);
-	const tileTerrain = $derived(tile ? label(tile.terrain) : 'Unknown');
-	const tileResource = $derived(tile?.resource ? label(tile.resource) : 'None');
+	const tileTerrain = $derived(
+		tile ? i18n.labels.industryTerrain(tile.terrain) : i18n.t('industryTileInspector.unknown')
+	);
+	const tileResource = $derived(
+		tile?.resource
+			? i18n.labels.industryResource(tile.resource)
+			: i18n.t('industryTileInspector.none')
+	);
 	const warehouseUsed = $derived(getWarehouseUsed(game.warehouse));
 	const warehouseMaterials = $derived.by(() => getWarehouseMaterialRows());
 	const buildingUpgradeCost = $derived(building ? getBuildingUpgradeCost(building.level) : 0);
@@ -53,15 +55,11 @@
 	const canAffordBuildingUpgrade = $derived(building ? game.cash >= buildingUpgradeCost : false);
 	const throughput = $derived(building ? getBuildingThroughputMultiplier(building.level) : 1);
 
-	function label(value: string): string {
-		return value.replaceAll('-', ' ').replace(/\b\w/g, (character) => character.toUpperCase());
-	}
-
 	function getWarehouseMaterialRows(): WarehouseMaterialRow[] {
 		return Object.entries(game.warehouse.materials)
 			.map(([materialId, quantity]) => ({
 				id: materialId as MaterialId,
-				name: MATERIALS[materialId as MaterialId]?.name ?? label(materialId),
+				name: i18n.labels.material(materialId),
 				quantity: quantity ?? 0
 			}))
 			.filter((material) => material.quantity > 0)
@@ -73,7 +71,7 @@
 	}
 
 	function materialName(materialId: MaterialId): string {
-		return MATERIALS[materialId]?.name ?? label(materialId);
+		return i18n.labels.material(materialId);
 	}
 
 	function materialArtSrc(materialId: MaterialId): string {
@@ -82,6 +80,10 @@
 
 	function buildingArtSrc(typeId: IndustrialBuilding['typeId']): string {
 		return asset(getIndustrialBuildingArt(typeId));
+	}
+
+	function buildingStatusLabel(status: IndustrialBuilding['status']): string {
+		return i18n.t(`industryTileInspector.status.${status}` as never);
 	}
 
 	function stopMapInteraction(event: Event): void {
@@ -103,49 +105,60 @@
 	};
 </script>
 
-<aside class="inspector" aria-label="Industry tile inspector" {@attach blockMapInteraction}>
-	<button type="button" class="close" aria-label="Close industry tile inspector" onclick={onClose}
-		>×</button
+<aside
+	class="inspector"
+	aria-label={i18n.t('industryTileInspector.ariaLabel')}
+	{@attach blockMapInteraction}
+>
+	<button
+		type="button"
+		class="close"
+		aria-label={i18n.t('industryTileInspector.close')}
+		onclick={onClose}>×</button
 	>
 
 	{#if !tile}
-		<h2>Industry tile</h2>
-		<p class="muted">No tile selected</p>
+		<h2>{i18n.t('industryTileInspector.emptyTitle')}</h2>
+		<p class="muted">{i18n.t('industryTileInspector.noTileSelected')}</p>
 	{:else}
 		<div class="heading">
 			<div>
-				<p>Industry tile</p>
-				<h2>Industry Tile {tile.x}, {tile.y}</h2>
+				<p>{i18n.t('industryTileInspector.eyebrow')}</p>
+				<h2>{i18n.t('industryTileInspector.heading', { x: tile.x, y: tile.y })}</h2>
 			</div>
 			<span>{tileTerrain}</span>
 		</div>
 
-		<section aria-label="Industry tile stats">
+		<section aria-label={i18n.t('industryTileInspector.statsAria')}>
 			<dl>
 				<div>
-					<dt>Terrain</dt>
+					<dt>{i18n.t('industryTileInspector.terrain')}</dt>
 					<dd>{tileTerrain}</dd>
 				</div>
 				<div>
-					<dt>Resource</dt>
+					<dt>{i18n.t('industryTileInspector.resource')}</dt>
 					<dd>{tileResource}</dd>
 				</div>
 				<div>
-					<dt>Coordinates</dt>
+					<dt>{i18n.t('industryTileInspector.coordinates')}</dt>
 					<dd>{tile.x}, {tile.y}</dd>
 				</div>
 				<div>
-					<dt>Access</dt>
-					<dd>{tile.locked ? 'Locked' : 'Open'}</dd>
+					<dt>{i18n.t('industryTileInspector.access')}</dt>
+					<dd>
+						{tile.locked
+							? i18n.t('industryTileInspector.locked')
+							: i18n.t('industryTileInspector.open')}
+					</dd>
 				</div>
 			</dl>
 		</section>
 
 		{#if building && buildingType}
-			<section aria-label="Industrial building details">
+			<section aria-label={i18n.t('industryTileInspector.detailsAria')}>
 				<div class="building-heading">
-					<h3>{buildingType.name}</h3>
-					<span>{label(building.status)}</span>
+					<h3>{i18n.labels.industrialBuilding(building.typeId)}</h3>
+					<span>{buildingStatusLabel(building.status)}</span>
 				</div>
 				<img
 					class="building-thumbnail"
@@ -159,27 +172,34 @@
 				/>
 				<dl>
 					<div>
-						<dt>Status</dt>
-						<dd>{label(building.status)}</dd>
+						<dt>{i18n.t('industryTileInspector.statusLabel')}</dt>
+						<dd>{buildingStatusLabel(building.status)}</dd>
 					</div>
 					<div>
-						<dt>Produced total</dt>
+						<dt>{i18n.t('industryTileInspector.producedTotal')}</dt>
 						<dd>{building.producedTotal}</dd>
 					</div>
 					<div>
-						<dt>Imported inputs</dt>
+						<dt>{i18n.t('industryTileInspector.importedInputs')}</dt>
 						<dd>{building.importedInputTotal}</dd>
 					</div>
 					<div>
-						<dt>Blocked days</dt>
+						<dt>{i18n.t('industryTileInspector.blockedDays')}</dt>
 						<dd>{building.blockedDays}</dd>
 					</div>
 				</dl>
 
 				<div class="building-level">
-					<p class="level-label">Level {building.level} / {MAX_BUILDING_LEVEL}</p>
+					<p class="level-label">
+						{i18n.t('industryTileInspector.level', {
+							level: i18n.format.integer(building.level),
+							max: i18n.format.integer(MAX_BUILDING_LEVEL)
+						})}
+					</p>
 					{#if buildingType.recipeId}
-						<p class="level-next">{throughput.toFixed(1)}× output</p>
+						<p class="level-next">
+							{i18n.t('industryTileInspector.output', { multiplier: throughput.toFixed(1) })}
+						</p>
 						<button
 							type="button"
 							class="upgrade"
@@ -187,17 +207,19 @@
 							onclick={() => onUpgradeBuilding(building.id)}
 						>
 							{buildingCanUpgrade
-								? `Upgrade — ${currency.format(buildingUpgradeCost)}`
-								: 'Max level'}
+								? i18n.t('industryTileInspector.upgrade', {
+										cost: i18n.format.currency(buildingUpgradeCost)
+									})
+								: i18n.t('industryTileInspector.maxLevel')}
 						</button>
 						{#if buildingCanUpgrade && !canAffordBuildingUpgrade}
-							<p class="level-hint">Not enough cash.</p>
+							<p class="level-hint">{i18n.t('industryTileInspector.notEnoughCash')}</p>
 						{/if}
 					{/if}
 				</div>
 
 				<div class="production-log">
-					<h4>Last production</h4>
+					<h4>{i18n.t('industryTileInspector.lastProduction')}</h4>
 					{#if building.lastProduction.length > 0}
 						<ul>
 							{#each building.lastProduction as movement (`${movement.materialId}-${movement.source}`)}
@@ -214,39 +236,42 @@
 										/>
 										<span>{movementLabel(movement)}</span>
 									</span>
-									<small>{currency.format(movement.value)}</small>
+									<small>{i18n.format.currency(movement.value)}</small>
 								</li>
 							{/each}
 						</ul>
 					{:else}
-						<p class="muted">No output yet</p>
+						<p class="muted">{i18n.t('industryTileInspector.noOutputYet')}</p>
 					{/if}
 				</div>
 			</section>
 
 			{#if building.typeId === 'warehouse'}
-				<section aria-label="Warehouse summary">
-					<h3>Warehouse</h3>
+				<section aria-label={i18n.t('industryTileInspector.warehouseSummary')}>
+					<h3>{i18n.t('industryTileInspector.warehouse')}</h3>
 					<dl>
 						<div>
-							<dt>Capacity</dt>
+							<dt>{i18n.t('industryTileInspector.capacity')}</dt>
 							<dd>{game.warehouse.capacity}</dd>
 						</div>
 						<div>
-							<dt>Used</dt>
+							<dt>{i18n.t('industryTileInspector.used')}</dt>
 							<dd>{warehouseUsed}</dd>
 						</div>
 						<div>
-							<dt>Overflow units</dt>
+							<dt>{i18n.t('industryTileInspector.overflowUnits')}</dt>
 							<dd>{game.warehouse.overflowUnits}</dd>
 						</div>
 						<div>
-							<dt>Overflow cost</dt>
-							<dd>{currency.format(game.warehouse.overflowCost)}</dd>
+							<dt>{i18n.t('industryTileInspector.overflowCost')}</dt>
+							<dd>{i18n.format.currency(game.warehouse.overflowCost)}</dd>
 						</div>
 					</dl>
 					{#if warehouseMaterials.length > 0}
-						<ul class="warehouse-materials" aria-label="Warehouse materials">
+						<ul
+							class="warehouse-materials"
+							aria-label={i18n.t('industryTileInspector.warehouseMaterials')}
+						>
 							{#each warehouseMaterials as material (material.id)}
 								<li>
 									<span class="material-line">
@@ -265,14 +290,14 @@
 							{/each}
 						</ul>
 					{:else}
-						<p class="muted">No materials stored</p>
+						<p class="muted">{i18n.t('industryTileInspector.noMaterialsStored')}</p>
 					{/if}
 				</section>
 			{/if}
 		{:else if building}
-			<section aria-label="Industrial building details">
-				<h3>{label(building.typeId)}</h3>
-				<p class="muted">Unknown building type</p>
+			<section aria-label={i18n.t('industryTileInspector.detailsAria')}>
+				<h3>{i18n.labels.industrialBuilding(building.typeId)}</h3>
+				<p class="muted">{i18n.t('industryTileInspector.unknownBuildingType')}</p>
 			</section>
 		{/if}
 	{/if}

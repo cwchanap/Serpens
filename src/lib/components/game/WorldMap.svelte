@@ -1,31 +1,31 @@
 <script lang="ts">
 	import { asset } from '$app/paths';
 	import { WORLD_MAP_ART } from '$lib/assets/gameArt';
+	import { localizeWorldCityStatus } from '$lib/i18n/gameCopy';
+	import type { I18nBundle } from '$lib/i18n';
 	import type { WorldCityStatus } from '$lib/game/world';
 
 	interface Props {
 		statuses: WorldCityStatus[];
+		i18n: I18nBundle;
 		selectedCityId: string | null;
 		onSelectCity: (cityId: string) => void;
 		onOpenCity: (cityId: string) => void;
 		onCloseInspector: () => void;
 	}
 
-	let { statuses, selectedCityId, onSelectCity, onOpenCity, onCloseInspector }: Props = $props();
+	let { statuses, i18n, selectedCityId, onSelectCity, onOpenCity, onCloseInspector }: Props =
+		$props();
 
-	const selectedStatus = $derived(
-		selectedCityId ? (statuses.find((status) => status.city.id === selectedCityId) ?? null) : null
+	const localizedStatuses = $derived(
+		statuses.map((status) => localizeWorldCityStatus(status, i18n))
 	);
 
-	function statusLabel(status: WorldCityStatus): string {
-		if (status.state === 'opened') return 'Opened';
-		if (status.state === 'revealed') return 'Ready to open';
-		return 'Locked';
-	}
-
-	function kindLabel(status: WorldCityStatus): string {
-		return status.city.kind === 'retail' ? 'Retail' : 'Industry';
-	}
+	const selectedStatus = $derived(
+		selectedCityId
+			? (localizedStatuses.find((status) => status.city.id === selectedCityId) ?? null)
+			: null
+	);
 
 	function markerPath(status: WorldCityStatus): string {
 		if (status.state === 'locked') {
@@ -64,7 +64,7 @@
 	}
 </script>
 
-<section class="world-map" aria-label="World map">
+<section class="world-map" aria-label={i18n.t('worldMap.ariaLabel')}>
 	<div class="world-map-viewport">
 		<img
 			data-testid="world-map-background"
@@ -78,7 +78,7 @@
 			fetchpriority="high"
 		/>
 		<div class="world-marker-layer" aria-hidden="true">
-			{#each statuses as status (status.city.id)}
+			{#each localizedStatuses as status (status.city.id)}
 				<img
 					data-testid={`world-city-marker-${status.city.id}`}
 					class={{
@@ -100,8 +100,8 @@
 		</div>
 	</div>
 
-	<div class="world-node-list" aria-label="Cities">
-		{#each statuses as status (status.city.id)}
+	<div class="world-node-list" aria-label={i18n.t('worldMap.cities')}>
+		{#each localizedStatuses as status (status.city.id)}
 			<button
 				type="button"
 				class={{
@@ -121,7 +121,7 @@
 			>
 				<strong id={cityTitleId(status)}>{status.city.name}</strong>
 				<span id={cityDescriptionId(status)}>
-					{kindLabel(status)} - {statusLabel(status)}. {status.city.specialtySummary}
+					{status.kindLabel} - {status.stateLabel}. {status.city.specialtySummary}
 				</span>
 				{#if status.state === 'locked' && status.blockedReason}
 					<small id={cityRequirementId(status)}>{status.blockedReason}</small>
@@ -135,20 +135,18 @@
 			id={inspectorId(selectedStatus)}
 			class="world-inspector paper"
 			role="dialog"
-			aria-label="City details"
+			aria-label={i18n.t('worldMap.cityDetails')}
 			aria-modal="false"
 		>
 			<button
 				type="button"
 				class="close"
-				aria-label="Close city details"
+				aria-label={i18n.t('worldMap.closeCityDetails')}
 				onclick={onCloseInspector}
 			>
 				X
 			</button>
-			<p class="eyebrow">
-				{selectedStatus.city.kind === 'retail' ? 'Retail city' : 'Industrial city'}
-			</p>
+			<p class="eyebrow">{i18n.t(`worldMap.cityEyebrow.${selectedStatus.city.kind}` as never)}</p>
 			<h2>{selectedStatus.city.name}</h2>
 			<p>{selectedStatus.city.specialtySummary}</p>
 			{#if selectedStatus.state === 'revealed'}
@@ -161,7 +159,9 @@
 						: undefined}
 					onclick={() => onOpenCity(selectedStatus.city.id)}
 				>
-					Open for {selectedStatus.city.openingCost.toLocaleString('en-US')} cash
+					{i18n.t('worldMap.openForCash' as never, {
+						cash: i18n.format.currency(selectedStatus.city.openingCost)
+					})}
 				</button>
 				{#if selectedStatus.blockedReason}
 					<p id={inspectorReasonId(selectedStatus)} class="blocked-reason">
@@ -174,7 +174,10 @@
 				</p>
 			{:else}
 				<p>
-					{selectedStatus.storeCount} stores - {selectedStatus.buildingCount} industrial buildings
+					{i18n.t('copy.worldCity.openedSummary' as never, {
+						storeCount: i18n.format.integer(selectedStatus.storeCount),
+						buildingCount: i18n.format.integer(selectedStatus.buildingCount)
+					})}
 				</p>
 			{/if}
 		</div>
