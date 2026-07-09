@@ -6,6 +6,7 @@ import type { WorldCityId } from '$lib/game/types';
 import { getWorldCityStatus } from '$lib/game/world';
 import { describe, expect, it } from 'vitest';
 import { createI18n } from './index';
+import { messagesByLocale } from './messages';
 import {
 	localizeAlert,
 	localizeDecision,
@@ -14,6 +15,25 @@ import {
 	localizeStockTrouble,
 	localizeWorldCityStatus
 } from './gameCopy';
+
+function flattenStrings(
+	value: unknown,
+	path: string[] = [],
+	output: Array<{ key: string; value: string }> = []
+): Array<{ key: string; value: string }> {
+	if (typeof value === 'string') {
+		output.push({ key: path.join('.'), value });
+		return output;
+	}
+
+	if (value && typeof value === 'object') {
+		for (const [key, nested] of Object.entries(value)) {
+			flattenStrings(nested, [...path, key], output);
+		}
+	}
+
+	return output;
+}
 
 describe('game copy builders', () => {
 	it('localizes stock status and stock-trouble summaries', () => {
@@ -111,5 +131,150 @@ describe('game copy builders', () => {
 		expect(localizedGraph.id).toBe(graph.id);
 		expect(localizedGraph.title).not.toBe(graph.title);
 		expect(localizedGraph.emptyReason).not.toBe(graph.emptyReason);
+	});
+
+	it('localizes event, state, and world decision families while preserving unknown fallback', () => {
+		expect.assertions(11);
+		const japanese = createI18n('ja');
+		const english = createI18n('en');
+
+		const expansionOpportunity: DecisionItem = {
+			id: 'expansion-opportunity',
+			title: 'Expansion opportunity',
+			context: 'Strong profit and cash reserves make a second storefront plausible.',
+			expiresOnDay: 5,
+			options: [
+				{
+					id: 'prepare',
+					label: 'Prepare',
+					description: 'Start scouting locations and lining up the opening plan.',
+					effects: {}
+				},
+				{
+					id: 'pass',
+					label: 'Pass',
+					description: 'Keep capital focused on the current store.',
+					effects: {}
+				}
+			]
+		};
+		const supplierTerms: DecisionItem = {
+			id: 'supplier-terms',
+			title: 'Supplier terms',
+			context: 'A supplier is open to revising ordering terms before the next replenishment cycle.',
+			expiresOnDay: 5,
+			options: [
+				{
+					id: 'negotiate-credit',
+					label: 'Negotiate credit',
+					description: 'Stretch payment timing for a small margin penalty.',
+					effects: {}
+				},
+				{
+					id: 'bulk-discount',
+					label: 'Bulk discount',
+					description: 'Commit to larger orders for better unit economics.',
+					effects: {}
+				}
+			]
+		};
+		const stateDecision: DecisionItem = {
+			id: 'location-unavailable-road-1',
+			title: 'Location unavailable',
+			context: 'Road location blocks store placement. Choose another city tile.',
+			expiresOnDay: 2,
+			options: [
+				{
+					id: 'acknowledge',
+					label: 'Acknowledge',
+					description: 'Return to operations planning.',
+					effects: {}
+				}
+			]
+		};
+		const worldDecision: DecisionItem = {
+			id: 'world-city-city-opening-delayed-opening-this-city-requires-18-000-cash-1',
+			title: 'City opening delayed',
+			context: 'Opening this city requires 18,000 cash.',
+			expiresOnDay: 2,
+			options: [
+				{
+					id: 'acknowledge',
+					label: 'Acknowledge',
+					description: 'Return to operations planning.',
+					effects: {}
+				}
+			]
+		};
+		const unavailableDecision: DecisionItem = {
+			id: 'expansion-unavailable-1',
+			title: 'Expansion unavailable',
+			context: 'This chain can operate up to 3 stores for now.',
+			expiresOnDay: 2,
+			options: [
+				{
+					id: 'acknowledge',
+					label: 'Acknowledge',
+					description: 'Return to operations planning.',
+					effects: {}
+				}
+			]
+		};
+
+		expect(localizeDecision(expansionOpportunity, japanese).title).not.toBe(
+			expansionOpportunity.title
+		);
+		expect(localizeDecision(expansionOpportunity, japanese).options[0]?.label).not.toBe(
+			expansionOpportunity.options[0]?.label
+		);
+		expect(localizeDecision(supplierTerms, japanese).title).not.toBe(supplierTerms.title);
+		expect(localizeDecision(supplierTerms, japanese).options[0]?.label).not.toBe(
+			supplierTerms.options[0]?.label
+		);
+		expect(localizeDecision(stateDecision, japanese).title).not.toBe(stateDecision.title);
+		expect(localizeDecision(stateDecision, japanese).context).not.toBe(stateDecision.context);
+		expect(localizeDecision(worldDecision, japanese).title).not.toBe(worldDecision.title);
+		expect(localizeDecision(worldDecision, japanese).context).not.toBe(worldDecision.context);
+		expect(localizeDecision(unavailableDecision, japanese).context).not.toBe(
+			unavailableDecision.context
+		);
+		expect(localizeDecision(unavailableDecision, japanese).options[0]?.description).not.toBe(
+			unavailableDecision.options[0]?.description
+		);
+		expect(localizeDecision({ ...worldDecision, id: 'unknown-decision' }, english).title).toBe(
+			worldDecision.title
+		);
+	});
+
+	it('does not leave known decision-copy branches equal to English in localized catalogs', () => {
+		expect.assertions(2);
+		const knownDecisionFamilies = [
+			'cashPressure',
+			'expansionOpportunity',
+			'supplierTerms',
+			'expansionUnavailable',
+			'expansionCashBlocked',
+			'locationUnavailable',
+			'worldCity',
+			'acknowledge'
+		] as const;
+		const english = messagesByLocale.en.copy.decisions;
+
+		for (const locale of ['ja', 'zh-Hant'] as const) {
+			const identicalKeys = knownDecisionFamilies.flatMap((family) => {
+				const localized = messagesByLocale[locale].copy.decisions[family];
+				const englishFamily = english[family];
+				return flattenStrings(localized, [family])
+					.filter(({ key, value }) => {
+						const englishValue = flattenStrings(englishFamily).find(
+							(entry) => `${family}.${entry.key}` === key
+						)?.value;
+						return englishValue === value;
+					})
+					.map(({ key }) => key);
+			});
+
+			expect(identicalKeys).toEqual([]);
+		}
 	});
 });

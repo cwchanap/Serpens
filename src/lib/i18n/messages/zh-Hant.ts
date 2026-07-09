@@ -263,7 +263,6 @@ export const zhHant = {
 		}
 	},
 	copy: {
-		...en.copy,
 		stockStatus: {
 			healthy: '健康',
 			needsImport: '需要進口',
@@ -298,7 +297,6 @@ export const zhHant = {
 			openedSummary: '{storeCount} 間商店 - {buildingCount} 座工業建築'
 		},
 		decisions: {
-			...en.copy.decisions,
 			cashPressure: {
 				title: '現金壓力',
 				context: '現金低於零。請選擇如何維持營運，同時保護品牌。',
@@ -316,6 +314,70 @@ export const zhHant = {
 						description: '避免過度反應，等待明天的銷售回升。'
 					}
 				}
+			},
+			expansionOpportunity: {
+				title: '擴店機會',
+				context: '目前利潤與現金水位穩健，開設第二間店已經具備可能性。',
+				options: {
+					prepare: {
+						label: '開始準備',
+						description: '著手勘查地點並安排展店計畫。'
+					},
+					pass: {
+						label: '先跳過',
+						description: '把資金集中在目前店面的營運上。'
+					}
+				}
+			},
+			supplierTerms: {
+				title: '供應條件',
+				context: '供應商願意在下一次補貨前重新協商訂購條件。',
+				options: {
+					'negotiate-credit': {
+						label: '談授信',
+						description: '延後付款時點，但要接受些微毛利壓力。'
+					},
+					'bulk-discount': {
+						label: '大量折扣',
+						description: '承諾更大的訂單量，以換取更好的單位成本。'
+					}
+				}
+			},
+			expansionUnavailable: {
+				title: '無法擴店',
+				context: '這個連鎖目前最多只能營運 {storeCap} 間店。',
+				options: {}
+			},
+			expansionCashBlocked: {
+				title: '擴店延後',
+				context: '要再開一間店需要 {cash} 現金。',
+				options: {}
+			},
+			locationUnavailable: {
+				title: '地點不可用',
+				blockedContext: '{reason} 無法用來展店。請改選其他城市格位。',
+				genericContext: '開設新店前，請選擇一個已解鎖且未被占用的城市格位。',
+				reasons: {
+					locked: '未解鎖地點',
+					road: '道路地點',
+					river: '河川地點'
+				},
+				options: {}
+			},
+			worldCity: {
+				cityUnavailable: {
+					title: '城市不可用',
+					context: '未知的城市。'
+				},
+				notAvailableYet: {
+					title: '這座城市尚未開放',
+					context: '開放條件：{requirement}'
+				},
+				openingDelayed: {
+					title: '城市開放延後',
+					context: '開啟這座城市需要 {cash} 現金。'
+				},
+				options: {}
 			},
 			acknowledge: {
 				label: '知道了',
