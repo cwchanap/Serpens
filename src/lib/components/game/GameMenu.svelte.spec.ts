@@ -108,4 +108,14 @@ describe('GameMenu', () => {
 		await page.getByLabelText('Language').selectOptions('ja');
 		expect(props.onSelectLocale).toHaveBeenCalledWith('ja');
 	});
+
+	it('closes the popover after a locale is selected', async () => {
+		expect.assertions(2);
+		render(GameMenu, baseProps());
+		await page.getByRole('button', { name: /^menu$/i }).click();
+		const localeSelect = page.getByTestId('language-selector');
+		await expect.element(localeSelect).toBeVisible();
+		await localeSelect.selectOptions('ja');
+		await expect.element(page.getByTestId('language-selector')).not.toBeInTheDocument();
+	});
 });

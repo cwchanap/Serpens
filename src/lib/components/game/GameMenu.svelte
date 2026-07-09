@@ -45,6 +45,7 @@
 
 	function handleLocaleChange(event: Event): void {
 		onSelectLocale((event.currentTarget as HTMLSelectElement).value as SupportedLocale);
+		open = false;
 	}
 
 	function handleMenuKeydown(event: KeyboardEvent): void {
