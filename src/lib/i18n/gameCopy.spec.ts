@@ -76,6 +76,17 @@ describe('game copy builders', () => {
 		).toBe('Locked industrial tile');
 	});
 
+	it('formats placement block reasons in non-English locales', () => {
+		expect.assertions(2);
+		const japanese = createI18n('ja');
+		expect(formatPlacementBlockReason({ code: 'retail.noValidTiles' }, japanese)).toBe(
+			'有効な立地がありません'
+		);
+		expect(
+			formatPlacementBlockReason({ code: 'industry.lockedUntilRetail' }, createI18n('zh-Hant'))
+		).not.toBe('Found a retail store to unlock construction.');
+	});
+
 	it('rebuilds known alerts and falls back for unknown ones', () => {
 		expect.assertions(2);
 		const game = createNewGame('convenience', 20260708);

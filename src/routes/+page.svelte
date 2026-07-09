@@ -66,6 +66,7 @@
 	} from '$lib/game/placementPreview';
 	import { formatPlacementBlockReason } from '$lib/i18n/gameCopy';
 	import { createI18n } from '$lib/i18n/index';
+	import type { SupportedLocale } from '$lib/i18n/locales';
 	import { summarizeReports } from '$lib/game/reports';
 	import {
 		assignStaffToStore,
@@ -189,8 +190,9 @@
 	let activeManagementPanelId = $state<ManagementPanelId | null>(null);
 	let retailPlacementArchetypeId = $state<ArchetypeId | null>(null);
 	let industryPlacementBuildingTypeId = $state<IndustrialBuildingTypeId | null>(null);
-	const englishI18n = createI18n('en');
-	let placementFeedback = $state<PlacementBlockReason | string | null>(null);
+	let activeLocale = $state<SupportedLocale>('en');
+	let i18n = $derived(createI18n(activeLocale));
+	let placementFeedback = $state<PlacementBlockReason | null>(null);
 	let saveRepository: SaveRepository | null = $state(null);
 	let autoSave = $state<SaveSlotMetadata | null>(null);
 	let manualSaveSlots = $state<SaveSlotMetadata[]>([]);
@@ -361,8 +363,8 @@
 		)
 	);
 
-	function formatPlacementFeedback(reason: PlacementBlockReason | string | null): string | null {
-		return typeof reason === 'string' ? reason : formatPlacementBlockReason(reason, englishI18n);
+	function formatPlacementFeedback(reason: PlacementBlockReason | null): string | null {
+		return formatPlacementBlockReason(reason, i18n);
 	}
 
 	onMount(() => {
@@ -840,7 +842,7 @@
 			const tile = getTileById(activeCity, tileId);
 
 			if (!tile) {
-				placementFeedback = 'Unknown city tile';
+				placementFeedback = { code: 'retail.unknownCityTile' };
 				playSfx('sfx.build.invalid');
 				return;
 			}
@@ -1206,7 +1208,7 @@
 			<div class="placement-status plaque" role="status" aria-label="Placement status">
 				<span
 					>{formatPlacementFeedback(placementFeedback) ??
-						'Choose a highlighted tile to build.'}</span
+						i18n.t('placement.prompt.selectHighlightedTile' as never)}</span
 				>
 				<button type="button" class="btn-danger" onclick={cancelPlacement}>Cancel</button>
 			</div>
@@ -1214,6 +1216,7 @@
 		{#if isBuildMenuOpen && activeMapView !== 'world'}
 			<BuildMenu
 				activeMapView={activeMapView === 'industry' ? 'industry' : 'retail'}
+				{i18n}
 				retailOptions={retailBuildOptions}
 				{industryLockedReason}
 				{availableMaterialIds}

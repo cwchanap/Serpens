@@ -15,7 +15,7 @@
 	import { getBuildingTypeProducing } from '$lib/game/supplyAdvisor';
 	import { focusTrap } from '$lib/a11y/focusTrap';
 	import { formatPlacementBlockReason } from '$lib/i18n/gameCopy';
-	import { createI18n } from '$lib/i18n/index';
+	import type { I18nBundle } from '$lib/i18n/index';
 	import type { PlacementBlockReason, RetailBuildMenuOption } from '$lib/game/placementPreview';
 	import type {
 		ArchetypeId,
@@ -32,8 +32,9 @@
 
 	interface Props {
 		activeMapView: 'retail' | 'industry';
+		i18n: I18nBundle;
 		retailOptions: RetailBuildMenuOption[];
-		industryLockedReason: PlacementBlockReason | string | null;
+		industryLockedReason: PlacementBlockReason | null;
 		availableMaterialIds?: string[];
 		onChooseRetail: (archetypeId: ArchetypeId) => void;
 		onChooseIndustry: (buildingTypeId: IndustrialBuildingTypeId) => void;
@@ -43,6 +44,7 @@
 
 	let {
 		activeMapView,
+		i18n,
 		retailOptions,
 		industryLockedReason,
 		availableMaterialIds = [],
@@ -57,7 +59,6 @@
 		currency: 'USD',
 		maximumFractionDigits: 0
 	});
-	const englishI18n = createI18n('en');
 
 	let selectedProductFilterId = $state<string | null>(null);
 	let productFilterOpen = $state(false);
@@ -108,8 +109,8 @@
 		return `${validTileCount} valid tile${validTileCount === 1 ? '' : 's'}`;
 	}
 
-	function formatPlacementReason(reason: PlacementBlockReason | string | null): string | null {
-		return typeof reason === 'string' ? reason : formatPlacementBlockReason(reason, englishI18n);
+	function formatPlacementReason(reason: PlacementBlockReason | null): string | null {
+		return formatPlacementBlockReason(reason, i18n);
 	}
 
 	function recipeForType(typeId: IndustrialBuildingTypeId) {

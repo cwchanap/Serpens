@@ -447,6 +447,9 @@ export const en = {
 		}
 	},
 	placement: {
+		prompt: {
+			selectHighlightedTile: 'Choose a highlighted tile to build.'
+		},
 		retail: {
 			unknownCityTile: 'Unknown city tile',
 			storeLimitReached: 'Store limit reached',

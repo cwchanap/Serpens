@@ -447,6 +447,9 @@ export const ja = {
 		}
 	},
 	placement: {
+		prompt: {
+			selectHighlightedTile: 'ハイライトされたタイルを選んで建設してください。'
+		},
 		retail: {
 			unknownCityTile: '不明な都市タイル',
 			storeLimitReached: '出店上限に達しています',
