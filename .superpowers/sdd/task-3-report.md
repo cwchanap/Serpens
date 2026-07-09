@@ -155,3 +155,67 @@ Error: Type 'PlacementBlockReason' is not assignable to type 'string | null'.
   - `src/lib/components/game/BuildMenu.svelte.spec.ts`
   - `src/routes/+page.svelte`
 - Those callers need a follow-up migration to `PlacementBlockReason` and `formatPlacementBlockReason(...)`.
+
+## Task 3 Integration Fix
+
+### What I fixed
+
+- Updated `src/lib/components/game/BuildMenu.svelte` to format structured `RetailBuildMenuOption.disabledReason` values through `formatPlacementBlockReason(..., createI18n('en'))` at the transitional English-only UI boundary.
+- Updated `src/lib/components/game/BuildMenu.svelte` to accept `industryLockedReason` as `PlacementBlockReason | string | null` and render it through the same helper.
+- Updated `src/routes/+page.svelte` so `placementFeedback` can hold either a legacy string or a `PlacementBlockReason`, and added a small formatter helper that renders it via `formatPlacementBlockReason(..., createI18n('en'))`.
+- Converted the no-game industry lock path in `+page.svelte` to use `{ code: 'industry.lockedUntilRetail' }`.
+- Updated `src/lib/components/game/BuildMenu.svelte.spec.ts` fixtures to pass structured reasons and assert formatted English copy.
+
+### Svelte MCP / autofixer
+
+- Svelte MCP docs used:
+  - `svelte/$props`
+  - `svelte/typescript`
+  - `svelte/testing`
+  - `svelte/if`
+- Ran `svelte_autofixer` on `BuildMenu.svelte` until it returned clean.
+- I could not run the autofixer cleanly against the full `+page.svelte` payload through the tool because the file size exceeded what I could reliably pass as one complete component string in this session. The code was still verified with `svelte-check` and `lint`.
+
+### Verification for the integration fix
+
+Command:
+
+```bash
+rtk bun run test:unit -- src/lib/game/placementPreview.spec.ts src/lib/i18n/gameCopy.spec.ts src/lib/components/game/BuildMenu.svelte.spec.ts --run
+```
+
+Result:
+
+```text
+Test Files  3 passed (3)
+Tests      56 passed (56)
+```
+
+Command:
+
+```bash
+rtk bun run check
+```
+
+Result:
+
+```text
+svelte-check found 0 errors and 0 warnings
+```
+
+Command:
+
+```bash
+rtk bun run lint
+```
+
+Result:
+
+```text
+PASS
+All matched files use Prettier code style!
+```
+
+### Notes
+
+- The required combined unit command had to be re-run outside the sandbox because Playwright Chromium hit a macOS Mach port permission failure inside the sandbox. The escalated run passed.

@@ -14,7 +14,9 @@
 	} from '$lib/game/industry';
 	import { getBuildingTypeProducing } from '$lib/game/supplyAdvisor';
 	import { focusTrap } from '$lib/a11y/focusTrap';
-	import type { RetailBuildMenuOption } from '$lib/game/placementPreview';
+	import { formatPlacementBlockReason } from '$lib/i18n/gameCopy';
+	import { createI18n } from '$lib/i18n/index';
+	import type { PlacementBlockReason, RetailBuildMenuOption } from '$lib/game/placementPreview';
 	import type {
 		ArchetypeId,
 		IndustrialBuildingTypeId,
@@ -31,7 +33,7 @@
 	interface Props {
 		activeMapView: 'retail' | 'industry';
 		retailOptions: RetailBuildMenuOption[];
-		industryLockedReason: string | null;
+		industryLockedReason: PlacementBlockReason | string | null;
 		availableMaterialIds?: string[];
 		onChooseRetail: (archetypeId: ArchetypeId) => void;
 		onChooseIndustry: (buildingTypeId: IndustrialBuildingTypeId) => void;
@@ -55,6 +57,7 @@
 		currency: 'USD',
 		maximumFractionDigits: 0
 	});
+	const englishI18n = createI18n('en');
 
 	let selectedProductFilterId = $state<string | null>(null);
 	let productFilterOpen = $state(false);
@@ -103,6 +106,10 @@
 
 	function validTileLabel(validTileCount: number): string {
 		return `${validTileCount} valid tile${validTileCount === 1 ? '' : 's'}`;
+	}
+
+	function formatPlacementReason(reason: PlacementBlockReason | string | null): string | null {
+		return typeof reason === 'string' ? reason : formatPlacementBlockReason(reason, englishI18n);
 	}
 
 	function recipeForType(typeId: IndustrialBuildingTypeId) {
@@ -245,7 +252,9 @@
 							</small>
 							<small>{validTileLabel(option.validTileCount)}</small>
 							{#if option.disabledReason}
-								<small class="disabled-copy">{option.disabledReason}</small>
+								<small class="disabled-copy">
+									{formatPlacementReason(option.disabledReason)}
+								</small>
 							{/if}
 						</span>
 					</button>
@@ -276,7 +285,7 @@
 			</div>
 
 			{#if industryLockedReason}
-				<p class="disabled-copy">{industryLockedReason}</p>
+				<p class="disabled-copy">{formatPlacementReason(industryLockedReason)}</p>
 			{/if}
 
 			{#if productFilterOpen}
