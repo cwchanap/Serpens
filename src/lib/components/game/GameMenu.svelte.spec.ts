@@ -1,12 +1,16 @@
 import { page } from 'vitest/browser';
 import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
+import { createI18n } from '$lib/i18n';
 import GameMenu from './GameMenu.svelte';
 
 function baseProps() {
 	return {
 		activeMapView: 'retail' as const,
-		onSelectView: vi.fn()
+		onSelectView: vi.fn(),
+		i18n: createI18n('en'),
+		activeLocale: 'en' as const,
+		onSelectLocale: vi.fn()
 	};
 }
 
@@ -85,5 +89,20 @@ describe('GameMenu', () => {
 				new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
 			);
 		await expect.element(popover).not.toBeInTheDocument();
+	});
+
+	it('shows language choices and emits the selected locale', async () => {
+		expect.assertions(2);
+		const props = {
+			...baseProps(),
+			i18n: createI18n('en'),
+			activeLocale: 'en' as const,
+			onSelectLocale: vi.fn()
+		};
+		render(GameMenu, props);
+		await page.getByRole('button', { name: /^menu$/i }).click();
+		await expect.element(page.getByLabelText('Language')).toBeVisible();
+		await page.getByLabelText('Language').selectOptions('ja');
+		expect(props.onSelectLocale).toHaveBeenCalledWith('ja');
 	});
 });

@@ -4,20 +4,40 @@
 	import { on } from 'svelte/events';
 	import { focusTrap } from '$lib/a11y/focusTrap';
 	import type { MapViewId } from '$lib/game/mapViewKeepAlive';
+	import type { I18nBundle, SupportedLocale } from '$lib/i18n';
 
 	interface Props {
 		activeMapView: MapViewId;
+		i18n: I18nBundle;
+		activeLocale: SupportedLocale;
 		onSelectView: (view: MapViewId) => void;
+		onSelectLocale: (locale: SupportedLocale) => void;
 		menuContent?: Snippet;
 		open?: boolean;
 	}
 
-	let { activeMapView, onSelectView, menuContent, open = $bindable(false) }: Props = $props();
+	let {
+		activeMapView,
+		i18n,
+		activeLocale,
+		onSelectView,
+		onSelectLocale,
+		menuContent,
+		open = $bindable(false)
+	}: Props = $props();
 
-	const views: Array<{ id: MapViewId; label: string; ariaLabel: string }> = [
-		{ id: 'retail', label: 'Retail', ariaLabel: 'Retail city map' },
-		{ id: 'industry', label: 'Industry', ariaLabel: 'Industry city map' },
-		{ id: 'world', label: 'World', ariaLabel: 'World map' }
+	const views: Array<{
+		id: MapViewId;
+		eyebrowKey: 'route.mapEyebrow.retail' | 'route.mapEyebrow.industry' | 'route.mapEyebrow.world';
+	}> = [
+		{ id: 'retail', eyebrowKey: 'route.mapEyebrow.retail' },
+		{ id: 'industry', eyebrowKey: 'route.mapEyebrow.industry' },
+		{ id: 'world', eyebrowKey: 'route.mapEyebrow.world' }
+	];
+	const localeOptions: Array<{ value: SupportedLocale; label: string }> = [
+		{ value: 'en', label: 'English' },
+		{ value: 'zh-Hant', label: '繁體中文' },
+		{ value: 'ja', label: '日本語' }
 	];
 
 	function toggleMenu(): void {
@@ -27,6 +47,10 @@
 	function selectView(view: MapViewId): void {
 		onSelectView(view);
 		open = false;
+	}
+
+	function handleLocaleChange(event: Event): void {
+		onSelectLocale((event.currentTarget as HTMLSelectElement).value as SupportedLocale);
 	}
 
 	function handleMenuKeydown(event: KeyboardEvent): void {
@@ -54,8 +78,9 @@
 	<button
 		type="button"
 		class="btn-icon"
-		aria-label="Menu"
+		aria-label={i18n.t('gameMenu.menu')}
 		aria-expanded={open}
+		data-testid="game-menu-trigger"
 		onclick={toggleMenu}
 	>
 		<svg aria-hidden="true" viewBox="0 0 24 24">
@@ -69,27 +94,42 @@
 			class="menu-popover paper"
 			role="dialog"
 			aria-modal="true"
-			aria-label="Menu"
+			aria-label={i18n.t('gameMenu.menu')}
 			tabindex="-1"
 			onkeydown={handleMenuKeydown}
 			{@attach focusTrap}
 		>
 			<div class="menu-section">
-				<p class="menu-label">Map view</p>
-				<div class="views" role="group" aria-label="Map view">
+				<p class="menu-label">{i18n.t('gameMenu.mapView')}</p>
+				<div class="views" role="group" aria-label={i18n.t('gameMenu.mapView')}>
 					{#each views as view (view.id)}
 						<button
 							type="button"
 							class="view-tab"
 							class:active-view={activeMapView === view.id}
-							aria-label={view.ariaLabel}
+							aria-label={i18n.t(view.eyebrowKey)}
 							aria-pressed={activeMapView === view.id}
 							onclick={() => selectView(view.id)}
 						>
-							{view.label}
+							{i18n.labels.mapView(view.id)}
 						</button>
 					{/each}
 				</div>
+			</div>
+			<div class="menu-section">
+				<label class="menu-label" for="language-selector">{i18n.t('gameMenu.language')}</label>
+				<select
+					id="language-selector"
+					class="language-selector"
+					aria-label={i18n.t('gameMenu.language')}
+					data-testid="language-selector"
+					value={activeLocale}
+					onchange={handleLocaleChange}
+				>
+					{#each localeOptions as locale (locale.value)}
+						<option value={locale.value}>{locale.label}</option>
+					{/each}
+				</select>
 			</div>
 			{#if menuContent}
 				{@render menuContent()}
@@ -151,5 +191,16 @@
 		background: var(--paper-300);
 		color: var(--ink-900);
 		font-weight: 700;
+	}
+
+	.language-selector {
+		width: 100%;
+		border: 1px solid var(--paper-edge);
+		border-radius: 2px;
+		background: var(--paper-50);
+		color: var(--ink-700);
+		font-family: var(--font-ui);
+		font-size: 0.85rem;
+		padding: 0.55rem 0.65rem;
 	}
 </style>

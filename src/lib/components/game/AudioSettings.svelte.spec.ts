@@ -2,6 +2,7 @@ import { page } from 'vitest/browser';
 import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { DEFAULT_AUDIO_PREFERENCES, type AudioPreferences } from '$lib/audio/audioPreferences';
+import { createI18n } from '$lib/i18n';
 import AudioSettings from './AudioSettings.svelte';
 
 function renderAudioSettings(
@@ -12,6 +13,7 @@ function renderAudioSettings(
 ) {
 	const props = {
 		preferences: DEFAULT_AUDIO_PREFERENCES,
+		i18n: createI18n('en'),
 		onChange: vi.fn(),
 		...overrides
 	};

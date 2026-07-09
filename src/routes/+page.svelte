@@ -65,7 +65,7 @@
 		type PlacementBlockReason
 	} from '$lib/game/placementPreview';
 	import { formatPlacementBlockReason } from '$lib/i18n/gameCopy';
-	import { createI18n } from '$lib/i18n/index';
+	import { createI18n, readLocalePreference, saveLocalePreference } from '$lib/i18n/index';
 	import type { SupportedLocale } from '$lib/i18n/locales';
 	import { summarizeReports } from '$lib/game/reports';
 	import {
@@ -108,6 +108,16 @@
 		label: string;
 		shortcut: string;
 	}
+
+	const managementPanelMenuConfig: Array<{ id: ManagementPanelId; shortcut: string }> = [
+		{ id: 'dashboard', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.dashboard },
+		{ id: 'policies', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.policies },
+		{ id: 'staff', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.staff },
+		{ id: 'stores', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.stores },
+		{ id: 'decisions', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.decisions },
+		{ id: 'reports', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.reports },
+		{ id: 'productChains', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.productChains }
+	];
 
 	const starterCity = generateCity({
 		id: 'harbor-city',
@@ -156,19 +166,6 @@
 		decisions: [],
 		reports: []
 	};
-	const managementPanelMenuItems: ManagementPanelMenuItem[] = [
-		{ id: 'dashboard', label: 'Dashboard', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.dashboard },
-		{ id: 'policies', label: 'Policies', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.policies },
-		{ id: 'staff', label: 'Staff', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.staff },
-		{ id: 'stores', label: 'Stores', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.stores },
-		{ id: 'decisions', label: 'Decisions', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.decisions },
-		{ id: 'reports', label: 'Reports', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.reports },
-		{
-			id: 'productChains',
-			label: 'Product Chains',
-			shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.productChains
-		}
-	];
 	const bgmCueByMapView: Record<MapViewId, BgmCueId> = {
 		retail: 'bgm.retail-map',
 		industry: 'bgm.industry-map',
@@ -201,6 +198,12 @@
 	let saveError = $state<string | null>(null);
 	let audioController: GameAudioController | null = $state(null);
 	let audioPreferences = $state<AudioPreferences>({ ...DEFAULT_AUDIO_PREFERENCES });
+	let managementPanelMenuItems = $derived.by<ManagementPanelMenuItem[]>(() =>
+		managementPanelMenuConfig.map((item) => ({
+			...item,
+			label: i18n.labels.managementPanel(item.id)
+		}))
+	);
 	let activeManagementPanel = $derived.by(
 		() => managementPanelMenuItems.find((item) => item.id === activeManagementPanelId) ?? null
 	);
@@ -222,14 +225,14 @@
 	let alerts = $derived<GameAlert[]>(game ? collectGameAlerts(game) : []);
 	let mapEyebrow = $derived(
 		activeMapView === 'world'
-			? 'World Map'
+			? i18n.t('route.mapEyebrow.world')
 			: activeMapView === 'industry'
-				? 'Industry City Map'
-				: 'Retail City Map'
+				? i18n.t('route.mapEyebrow.industry')
+				: i18n.t('route.mapEyebrow.retail')
 	);
 	let mapTitle = $derived(
 		activeMapView === 'world'
-			? 'Regional Network'
+			? i18n.t('route.mapTitle.world')
 			: activeMapView === 'industry'
 				? industryCity.name
 				: activeCity.name
@@ -368,6 +371,7 @@
 	}
 
 	onMount(() => {
+		activeLocale = readLocalePreference(globalThis.localStorage, globalThis.navigator.languages);
 		void initializeSaves();
 
 		const controller = createGameAudioController({
@@ -387,8 +391,16 @@
 	});
 
 	$effect(() => {
+		document.documentElement.lang = activeLocale;
+	});
+
+	$effect(() => {
 		audioController?.setActiveBgm(bgmCueByMapView[activeMapView]);
 	});
+
+	function changeLocale(locale: SupportedLocale): void {
+		activeLocale = saveLocalePreference(locale, globalThis.localStorage);
+	}
 
 	function selectTile(tileId: string) {
 		if (retailPlacementArchetypeId) {
@@ -1108,19 +1120,13 @@
 </script>
 
 <svelte:head>
-	<title>
-		{activeMapView === 'world'
-			? 'World Map'
-			: activeMapView === 'industry'
-				? 'Industry City Map'
-				: 'Retail City Map'}
-	</title>
+	<title>{i18n.t('app.title')} · {mapEyebrow}</title>
 </svelte:head>
 
 <svelte:window onkeydown={handleKeydown} />
 
 <main class="app" onpointerdown={unlockAudio}>
-	<section class="map-layout" aria-label="City planning">
+	<section class="map-layout" aria-label={i18n.t('route.cityPlanning')}>
 		<div class="map-surfaces">
 			{#if shouldRenderMapView(visitedMapViews, 'world')}
 				<div
@@ -1169,6 +1175,9 @@
 			day={game?.day ?? null}
 			cash={game?.cash ?? null}
 			{alerts}
+			alertGame={game ?? starterMapState}
+			{i18n}
+			{activeLocale}
 			onSelectAlert={handleSelectAlert}
 			{activeMapView}
 			onSelectView={(view) => {
@@ -1176,13 +1185,18 @@
 				else if (view === 'industry') showIndustryMap();
 				else showWorldMap();
 			}}
+			onSelectLocale={changeLocale}
 			bind:menuOpen={isGameMenuOpen}
 			bind:alertsOpen={isAlertsMenuOpen}
 		>
 			{#snippet menuContent()}
 				<div class="menu-section">
-					<p class="menu-label">Management</p>
-					<div class="menu-management" role="group" aria-label="Management panels">
+					<p class="menu-label">{i18n.t('route.menu.management')}</p>
+					<div
+						class="menu-management"
+						role="group"
+						aria-label={i18n.t('route.menu.managementPanels')}
+					>
 						{#each managementPanelMenuItems as item (item.id)}
 							<button type="button" onclick={() => openManagementPanel(item.id)}>
 								{item.label}
@@ -1190,8 +1204,8 @@
 						{/each}
 					</div>
 				</div>
-				<button type="button" onclick={openSavePanel}>Saves</button>
-				<AudioSettings preferences={audioPreferences} onChange={updateAudioPreferences} />
+				<button type="button" onclick={openSavePanel}>{i18n.t('gameMenu.saves')}</button>
+				<AudioSettings {i18n} preferences={audioPreferences} onChange={updateAudioPreferences} />
 			{/snippet}
 		</TopBar>
 
@@ -1199,18 +1213,25 @@
 			managementItems={managementPanelMenuItems}
 			buildDisabled={activeMapView === 'world'}
 			advanceDisabled={game === null}
+			{i18n}
 			onBuild={openBuildMenu}
 			onOpenManagement={(id) => openManagementPanel(id)}
 			onAdvanceDay={advanceDay}
 			onOpenShortcuts={() => (isCheatSheetOpen = true)}
 		/>
 		{#if isPlacementModeActive}
-			<div class="placement-status plaque" role="status" aria-label="Placement status">
+			<div
+				class="placement-status plaque"
+				role="status"
+				aria-label={i18n.t('route.placement.status')}
+			>
 				<span
 					>{formatPlacementFeedback(placementFeedback) ??
-						i18n.t('placement.prompt.selectHighlightedTile' as never)}</span
+						i18n.t('placement.prompt.selectHighlightedTile')}</span
 				>
-				<button type="button" class="btn-danger" onclick={cancelPlacement}>Cancel</button>
+				<button type="button" class="btn-danger" onclick={cancelPlacement}>
+					{i18n.t('route.placement.cancel')}
+				</button>
 			</div>
 		{/if}
 		{#if isBuildMenuOpen && activeMapView !== 'world'}
@@ -1293,7 +1314,9 @@
 				<button
 					type="button"
 					class="tower-backdrop-button"
-					aria-label={`Dismiss ${activeManagementPanel.label}`}
+					aria-label={i18n.t('route.controlTower.dismiss', {
+						panel: activeManagementPanel.label
+					})}
 					onclick={closeManagementPanel}
 				></button>
 				<div
@@ -1305,23 +1328,27 @@
 				>
 					<div class="tower-header">
 						<div>
-							<p class="eyebrow">Management</p>
+							<p class="eyebrow">{i18n.t('route.controlTower.eyebrow')}</p>
 							<h2>{activeManagementPanel.label}</h2>
 						</div>
 						<div
 							class="tower-actions"
 							role="group"
-							aria-label={`${activeManagementPanel.label} status`}
+							aria-label={i18n.t('route.controlTower.panelStatus', {
+								panel: activeManagementPanel.label
+							})}
 						>
-							<span class="ticker">Day {panelGame.day}</span>
-							<strong class="ticker">${panelGame.cash.toLocaleString('en-US')} cash</strong>
+							<span class="ticker">{i18n.t('topBar.day', { day: panelGame.day })}</span>
+							<strong class="ticker">{i18n.format.currency(panelGame.cash)}</strong>
 							<button
 								type="button"
 								class="close-tower btn-danger"
-								aria-label={`Close ${activeManagementPanel.label}`}
+								aria-label={i18n.t('route.controlTower.closePanel', {
+									panel: activeManagementPanel.label
+								})}
 								onclick={closeManagementPanel}
 							>
-								Close
+								{i18n.t('route.controlTower.close')}
 							</button>
 						</div>
 					</div>

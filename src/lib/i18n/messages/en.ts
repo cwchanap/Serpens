@@ -6,7 +6,12 @@ export const en = {
 		day: 'Day {day}',
 		cash: 'Cash',
 		alerts: 'Alerts',
-		noAlerts: 'No alerts'
+		noAlerts: 'No alerts',
+		alertCount: {
+			one: '{count} alert',
+			other: '{count} alerts'
+		},
+		alertsList: 'Alerts list'
 	},
 	gameMenu: {
 		menu: 'Menu',
@@ -20,10 +25,47 @@ export const en = {
 		}
 	},
 	controlDesk: {
+		group: 'Control desk',
 		build: 'Build',
 		management: 'Management',
 		shortcuts: 'Shortcuts',
 		advanceDay: 'Advance day'
+	},
+	audioSettings: {
+		group: 'Audio settings',
+		title: 'Audio',
+		bgm: 'BGM',
+		music: 'Music',
+		musicVolume: 'Music volume',
+		sfx: 'SFX',
+		effects: 'Effects',
+		effectsVolume: 'Effects volume'
+	},
+	route: {
+		cityPlanning: 'City planning',
+		mapEyebrow: {
+			retail: 'Retail City Map',
+			industry: 'Industry City Map',
+			world: 'World Map'
+		},
+		mapTitle: {
+			world: 'Regional Network'
+		},
+		menu: {
+			management: 'Management',
+			managementPanels: 'Management panels'
+		},
+		placement: {
+			status: 'Placement status',
+			cancel: 'Cancel'
+		},
+		controlTower: {
+			eyebrow: 'Management',
+			close: 'Close',
+			dismiss: 'Dismiss {panel}',
+			closePanel: 'Close {panel}',
+			panelStatus: '{panel} status'
+		}
 	},
 	game: {
 		archetypes: {

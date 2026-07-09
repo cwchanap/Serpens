@@ -3,6 +3,9 @@
 	import type { Attachment } from 'svelte/attachments';
 	import { on } from 'svelte/events';
 	import type { GameAlert } from '$lib/game/alerts';
+	import { localizeAlert } from '$lib/i18n/gameCopy';
+	import type { GameState } from '$lib/game/types';
+	import type { I18nBundle, SupportedLocale } from '$lib/i18n';
 	import type { MapViewId } from '$lib/game/mapViewKeepAlive';
 	import GameMenu from './GameMenu.svelte';
 
@@ -12,9 +15,13 @@
 		day: number | null;
 		cash: number | null;
 		alerts: GameAlert[];
+		alertGame: GameState;
+		i18n: I18nBundle;
+		activeLocale: SupportedLocale;
 		onSelectAlert: (alert: GameAlert) => void;
 		activeMapView: MapViewId;
 		onSelectView: (view: MapViewId) => void;
+		onSelectLocale: (locale: SupportedLocale) => void;
 		menuContent?: Snippet;
 		menuOpen?: boolean;
 		alertsOpen?: boolean;
@@ -26,19 +33,17 @@
 		day,
 		cash,
 		alerts,
+		alertGame,
+		i18n,
+		activeLocale,
 		onSelectAlert,
 		activeMapView,
 		onSelectView,
+		onSelectLocale,
 		menuContent,
 		menuOpen = $bindable(false),
 		alertsOpen = $bindable(false)
 	}: Props = $props();
-
-	const currency = new Intl.NumberFormat('en-US', {
-		style: 'currency',
-		currency: 'USD',
-		maximumFractionDigits: 0
-	});
 
 	function toggleAlerts(): void {
 		alertsOpen = !alertsOpen;
@@ -61,6 +66,12 @@
 			}
 		});
 	};
+
+	function formatAlertCount(count: number): string {
+		return i18n.t((count === 1 ? 'topBar.alertCount.one' : 'topBar.alertCount.other') as never, {
+			count
+		});
+	}
 </script>
 
 <header class="top-bar" aria-label="Status bar">
@@ -71,17 +82,21 @@
 
 	<div class="readouts plaque">
 		{#if day !== null}
-			<span class="ticker" aria-label="Day">Day {day}</span>
+			<span class="ticker" aria-label={i18n.t('topBar.day', { day })}>
+				{i18n.t('topBar.day', { day })}
+			</span>
 		{/if}
 		{#if cash !== null}
-			<span class="ticker" aria-label="Cash">{currency.format(cash)}</span>
+			<span class="ticker" aria-label={i18n.t('topBar.cash')} data-testid="cash-readout">
+				{i18n.format.currency(cash)}
+			</span>
 		{/if}
 
 		<div class="alerts" {@attach alertsOpen && dismissAlertsOnOutsidePointer}>
 			<button
 				type="button"
 				class="btn-icon alerts-bell"
-				aria-label={alerts.length > 0 ? `Alerts, ${alerts.length}` : 'Alerts'}
+				aria-label={alerts.length > 0 ? formatAlertCount(alerts.length) : i18n.t('topBar.alerts')}
 				aria-expanded={alertsOpen}
 				onclick={toggleAlerts}
 			>
@@ -95,18 +110,18 @@
 			</button>
 			<p class="alerts-announce" aria-live="polite" role="status">
 				{#if alerts.length > 0}
-					{alerts.length} alert{alerts.length === 1 ? '' : 's'}
+					{formatAlertCount(alerts.length)}
 				{/if}
 			</p>
 
 			{#if alertsOpen}
-				<div class="alerts-popover paper" role="group" aria-label="Alerts list">
+				<div class="alerts-popover paper" role="group" aria-label={i18n.t('topBar.alertsList')}>
 					{#if alerts.length === 0}
-						<p class="muted">No alerts</p>
+						<p class="muted">{i18n.t('topBar.noAlerts')}</p>
 					{:else}
 						{#each alerts as alert (alert.id)}
 							<button type="button" class="alert-row" onclick={() => selectAlert(alert)}>
-								{alert.message}
+								{localizeAlert(alert, alertGame, i18n)}
 							</button>
 						{/each}
 					{/if}
@@ -114,7 +129,15 @@
 			{/if}
 		</div>
 
-		<GameMenu {activeMapView} {onSelectView} {menuContent} bind:open={menuOpen} />
+		<GameMenu
+			{activeMapView}
+			{i18n}
+			{activeLocale}
+			{onSelectView}
+			{onSelectLocale}
+			{menuContent}
+			bind:open={menuOpen}
+		/>
 	</div>
 </header>
 
