@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import StoreStaffPanel from './StoreStaffPanel.svelte';
 import { initializeStoreProducts } from '$lib/game/stock';
+import { createI18n } from '$lib/i18n';
 import type { HiringCandidate, StaffMember, Store } from '$lib/game/types';
 
 const store: Store = {
@@ -93,6 +94,7 @@ function renderStaffPanel(
 	}> = {}
 ) {
 	const props = {
+		i18n: createI18n('en'),
 		store,
 		staff: [managerAssigned, generalAssigned, managerUnassigned],
 		hiringCandidates: [generalCandidate, managerCandidate],

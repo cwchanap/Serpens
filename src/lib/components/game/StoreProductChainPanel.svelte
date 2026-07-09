@@ -3,10 +3,13 @@
 	import ProductChainAtlas from '$lib/components/game/atlas/ProductChainAtlas.svelte';
 	import { getSupportedStoreChainCategories } from '$lib/game/productChainGraph';
 	import { buildProductChainTree } from '$lib/game/productChainTree';
+	import { localizeProductChainGraph } from '$lib/i18n/gameCopy';
+	import type { I18nBundle } from '$lib/i18n';
 	import type { GameState, Store } from '$lib/game/types';
 
 	interface Props {
 		game: GameState;
+		i18n: I18nBundle;
 		store: Store;
 		onInteractionFeedback?: () => void;
 	}
@@ -17,7 +20,7 @@
 		nodeId: string | null;
 	}
 
-	let { game, store, onInteractionFeedback = () => {} }: Props = $props();
+	let { game, i18n, store, onInteractionFeedback = () => {} }: Props = $props();
 
 	let selection = $state<StoreChainSelection>({ storeId: null, categoryId: null, nodeId: null });
 	let previousStoreId = $state<string | null>(null);
@@ -36,11 +39,13 @@
 			supportedCategories[0] ??
 			null
 	);
-	const graph = $derived(
-		selectedCategory
-			? buildProductChainTree({ game, store, categoryId: selectedCategory.id })
-			: null
-	);
+	const graph = $derived.by(() => {
+		if (!selectedCategory) return null;
+		return localizeProductChainGraph(
+			buildProductChainTree({ game, store, categoryId: selectedCategory.id }),
+			i18n
+		);
+	});
 	const selectedNode = $derived(
 		graph && activeSelection.nodeId ? graph.details[activeSelection.nodeId] : null
 	);
@@ -69,13 +74,16 @@
 	}
 </script>
 
-<section class="store-chain-panel" aria-label={`${store.name} product chain`}>
+<section
+	class="store-chain-panel"
+	aria-label={i18n.t('storeProductChainPanel.ariaLabel', { storeName: store.name })}
+>
 	{#if supportedCategories.length > 0 && selectedCategory && graph}
 		<div class="chain-controls">
-			<label for={selectId}>Product category</label>
+			<label for={selectId}>{i18n.t('storeProductChainPanel.categoryLabel')}</label>
 			<select id={selectId} value={selectedCategory.id} onchange={selectCategory}>
 				{#each supportedCategories as category (category.id)}
-					<option value={category.id}>{category.name}</option>
+					<option value={category.id}>{i18n.labels.productCategory(category.id)}</option>
 				{/each}
 			</select>
 			<p class="chain-title">{graph.title}</p>
@@ -84,15 +92,16 @@
 		<div class="chain-content">
 			<ProductChainAtlas
 				{graph}
+				{i18n}
 				selectedNodeId={activeSelection.nodeId}
 				compact
 				onSelectNode={selectNode}
 				{onInteractionFeedback}
 			/>
-			<NodeBroadside node={selectedNode} />
+			<NodeBroadside {i18n} node={selectedNode} />
 		</div>
 	{:else}
-		<p class="empty">No local production chain available for this store's categories yet.</p>
+		<p class="empty">{i18n.t('storeProductChainPanel.empty')}</p>
 	{/if}
 </section>
 

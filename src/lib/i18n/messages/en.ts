@@ -204,6 +204,205 @@ export const en = {
 		empty: 'No urgent decisions today.',
 		expiresDay: 'Expires day {day}'
 	},
+	policyPanel: {
+		title: 'Policies'
+	},
+	reportsPanel: {
+		title: 'Reports',
+		metrics: {
+			latestDailyResult: 'Latest daily result',
+			revenue: 'Revenue',
+			cashAfter: 'Cash after',
+			payroll: 'Payroll',
+			imports: 'Imports',
+			productionImports: 'Production imports',
+			warehouseOverflow: 'Warehouse overflow',
+			sevenDayNet: '7-day net',
+			thirtyDayNet: '30-day net'
+		},
+		dailyWarnings: 'Daily warnings',
+		empty: 'No reports yet. Advance the first day to generate results.'
+	},
+	scorecard: {
+		title: 'Scorecard'
+	},
+	staffPanel: {
+		title: 'Staff',
+		hiredCount: '{count} hired staff',
+		candidates: 'Candidates',
+		unassigned: 'Unassigned',
+		storeStaffing: 'Store staffing',
+		assigned: 'Assigned',
+		coverage:
+			'{storeName}: {managerAssigned}/{managerRequired} managers, {generalAssigned}/{generalRequired} general',
+		coverageShort:
+			'{managerAssigned}/{managerRequired} mgr, {generalAssigned}/{generalRequired} gen',
+		role: {
+			manager: 'Manager',
+			general: 'General'
+		},
+		metrics: {
+			level: 'Level',
+			skill: 'Skill',
+			morale: 'Morale'
+		},
+		salaryPerMonth: '{salary}/mo',
+		hireButton: 'Hire {name}',
+		assignButton: 'Assign',
+		unassignButton: 'Unassign',
+		promoteButton: 'Promote {name} ({cost})',
+		emptyCandidates: 'No candidates available',
+		emptyUnassigned: 'No unassigned staff',
+		emptyAssigned: 'No assigned staff',
+		assignment: {
+			unassigned: 'Unassigned',
+			currentlyUnassigned: 'currently unassigned',
+			currentlyAssigned: 'currently assigned to {storeName}'
+		},
+		actionLabels: {
+			hire: 'Hire {name}, {role} candidate {id}',
+			assign: 'Assign {name}, {role} staff {id}, {context}',
+			assignToStore: 'Assign {name}, {role} staff {id} to {storeName}',
+			unassign: 'Unassign {name}, {role} staff {id} from {storeName}',
+			promote: 'Promote {name}, {role} staff {id} to level {level} for {cost}'
+		},
+		levelProgress: {
+			max: 'Max level',
+			xp: 'XP {current}/{required}',
+			inline: '{role} · Lvl {level} · Skill {skill} · Morale {morale}',
+			storeInline: '{role} · Skill {skill} · Morale {morale}'
+		}
+	},
+	storeOverview: {
+		title: 'Stores',
+		dayOpen: 'Day {day}',
+		metrics: {
+			revenue: 'Revenue',
+			grossMargin: 'Gross margin',
+			stock: 'Stock',
+			imports: 'Imports',
+			staff: 'Staff',
+			coverage: 'Coverage'
+		},
+		productSources: '{storeName} product source split',
+		warnings: '{storeName} warnings',
+		warehouseUnits: '{count} warehouse',
+		importedUnits: '{count} imported',
+		noWarnings: 'No current warnings.'
+	},
+	storeStockTable: {
+		title: '{storeName} stock',
+		headings: {
+			product: 'Product',
+			stock: 'Stock',
+			importCost: 'Import cost',
+			sellingPrice: 'Selling price',
+			reorder: 'Reorder',
+			target: 'Target',
+			status: 'Status',
+			latest: 'Latest'
+		},
+		inputLabels: {
+			sellingPrice: 'Selling price for {categoryName}',
+			reorderThreshold: 'Reorder threshold for {categoryName}',
+			targetStock: 'Target stock for {categoryName}'
+		},
+		latestReport: '{sold} sold / {missed} missed',
+		noReport: 'No report'
+	},
+	storeDetail: {
+		dismiss: 'Dismiss store details',
+		eyebrow: 'Store details',
+		staffTitle: '{storeName} staff',
+		close: 'Close',
+		closeLabel: 'Close store details',
+		sections: '{storeName} sections',
+		tabs: {
+			stock: 'Stock',
+			chain: 'Product Chain',
+			staff: 'Staff'
+		}
+	},
+	storeProductChainPanel: {
+		ariaLabel: '{storeName} product chain',
+		categoryLabel: 'Product category',
+		empty: "No local production chain available for this store's categories yet."
+	},
+	productChainsPanel: {
+		ariaLabel: 'Product Chains',
+		eyebrow: 'Folio II · Production Chain',
+		modeGroup: 'Product chain view',
+		storeCategoryChains: 'Store category chains',
+		warehouseFlow: 'Warehouse flow',
+		emptyCategories: 'No store categories have local production chains yet.',
+		emptyGraph: 'No chain graph is available.'
+	},
+	supplyAdvisor: {
+		dismiss: 'Dismiss supply advisor',
+		dialog: 'Supply advisor',
+		eyebrow: 'Industry',
+		title: 'Supply Advisor',
+		close: 'Close',
+		closeLabel: 'Close supply advisor',
+		empty: 'Nothing to plan — build a retail store to create demand.',
+		chainLabel: '{categoryName} supply chain',
+		starter: 'Starter',
+		supplied: 'Supplied ✓',
+		build: 'Build {buildingName}'
+	},
+	shortcutCheatSheet: {
+		dismiss: 'Dismiss keyboard shortcuts',
+		dialog: 'Keyboard shortcuts',
+		title: 'Keyboard Shortcuts',
+		close: 'Close shortcuts',
+		actions: {
+			build: 'Toggle build menu',
+			mapViews: 'Retail / Industry / World view',
+			dashboard: 'Toggle Dashboard',
+			policies: 'Toggle Policies',
+			staff: 'Toggle Staff',
+			stores: 'Toggle Stores',
+			decisions: 'Toggle Decisions',
+			reports: 'Toggle Reports',
+			productChains: 'Toggle Product Chains',
+			advanceDay: 'Advance day',
+			escape: 'Open menu, or close / cancel',
+			cheatSheet: 'Toggle this cheat sheet'
+		}
+	},
+	productChainAtlas: {
+		emptyNodes: 'No graph nodes are available for this chain.',
+		warnings: '{title} warnings'
+	},
+	atlas: {
+		categoryIndex: {
+			ariaLabel: 'Product category index',
+			tier: 'Tier {tier}',
+			metrics: 'stock {stock} · made {produced}/d · sold {consumed}/d'
+		},
+		nodeBroadside: {
+			inspected: 'Inspected node',
+			emptyTitle: 'Chain node',
+			empty: 'Select a graph node to inspect its latest flow metrics.',
+			sharedProducer: 'Shared producer — drawn in {count} branches of this chain.',
+			metrics: {
+				buildings: 'Buildings',
+				capacity: 'Capacity',
+				capacityValue: '{output} out / {input} in',
+				produced: 'Produced',
+				consumed: 'Consumed',
+				imported: 'Imported',
+				sold: 'Sold',
+				missed: 'Missed',
+				stock: 'Stock'
+			}
+		},
+		legend: {
+			title: '· Routes ·',
+			healthy: 'Healthy flow',
+			shortage: 'Shortage'
+		}
+	},
 	route: {
 		cityPlanning: 'City planning',
 		mapEyebrow: {

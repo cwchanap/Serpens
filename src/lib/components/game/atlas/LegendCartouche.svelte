@@ -1,7 +1,13 @@
+<script lang="ts">
+	import type { I18nBundle } from '$lib/i18n';
+
+	let { i18n }: { i18n: I18nBundle } = $props();
+</script>
+
 <aside class="legend" aria-hidden="true">
-	<h4>· Routes ·</h4>
-	<div class="row"><span class="line healthy"></span> Healthy flow</div>
-	<div class="row"><span class="line shortage"></span> Shortage</div>
+	<h4>{i18n.t('atlas.legend.title')}</h4>
+	<div class="row"><span class="line healthy"></span> {i18n.t('atlas.legend.healthy')}</div>
+	<div class="row"><span class="line shortage"></span> {i18n.t('atlas.legend.shortage')}</div>
 </aside>
 
 <style>

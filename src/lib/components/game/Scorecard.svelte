@@ -1,27 +1,29 @@
 <script lang="ts">
+	import type { I18nBundle } from '$lib/i18n';
 	import type { ScoreKey, Scorecard } from '$lib/game/types';
 
-	let { scorecard }: { scorecard: Scorecard } = $props();
+	let { i18n, scorecard }: { i18n: I18nBundle; scorecard: Scorecard } = $props();
 
-	const items: { key: ScoreKey; label: string }[] = [
-		{ key: 'profit', label: 'Profit' },
-		{ key: 'customerSatisfaction', label: 'Customers' },
-		{ key: 'staffMorale', label: 'Staff' },
-		{ key: 'marketPosition', label: 'Market' }
+	const items: { key: ScoreKey }[] = [
+		{ key: 'profit' },
+		{ key: 'customerSatisfaction' },
+		{ key: 'staffMorale' },
+		{ key: 'marketPosition' }
 	];
 </script>
 
 <section class="panel paper" aria-labelledby="scorecard-heading">
-	<h2 id="scorecard-heading">Scorecard</h2>
+	<h2 id="scorecard-heading">{i18n.t('scorecard.title')}</h2>
 
 	<div class="score-grid">
 		{#each items as item (item.key)}
+			{@const label = i18n.labels.scoreKey(item.key)}
 			<div class="score-item">
 				<div class="score-label">
-					<span>{item.label}</span>
-					<strong>{scorecard[item.key]}</strong>
+					<span>{label}</span>
+					<strong>{i18n.format.integer(scorecard[item.key])}</strong>
 				</div>
-				<meter aria-label={item.label} min="0" max="100" value={scorecard[item.key]}>
+				<meter aria-label={label} min="0" max="100" value={scorecard[item.key]}>
 					{scorecard[item.key]}
 				</meter>
 			</div>

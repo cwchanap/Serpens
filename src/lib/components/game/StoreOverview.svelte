@@ -1,22 +1,19 @@
 <script lang="ts">
 	import { summarizeStoreStaffing } from '$lib/game/staffing';
+	import type { I18nBundle } from '$lib/i18n';
 	import type { DailyProductReport, DailyStoreReport, StaffMember, Store } from '$lib/game/types';
 
 	let {
+		i18n,
 		stores,
 		staff,
 		latestReports
 	}: {
+		i18n: I18nBundle;
 		stores: Store[];
 		staff: StaffMember[];
 		latestReports: DailyStoreReport[];
 	} = $props();
-
-	const currency = new Intl.NumberFormat('en-US', {
-		style: 'currency',
-		currency: 'USD',
-		maximumFractionDigits: 0
-	});
 
 	function getProductSourceReports(report: DailyStoreReport | undefined): DailyProductReport[] {
 		return (
@@ -28,7 +25,7 @@
 </script>
 
 <section class="panel paper" aria-labelledby="stores-heading">
-	<h2 id="stores-heading">Stores</h2>
+	<h2 id="stores-heading">{i18n.t('storeOverview.title')}</h2>
 
 	<div class="stores">
 		{#each stores as store (store.id)}
@@ -41,59 +38,76 @@
 						<h3>{store.name}</h3>
 						<p>{store.location}</p>
 					</div>
-					<span>Day {store.daysOpen}</span>
+					<span
+						>{i18n.t('storeOverview.dayOpen', { day: i18n.format.integer(store.daysOpen) })}</span
+					>
 				</header>
 
 				<dl>
 					<div>
-						<dt>Revenue</dt>
-						<dd>{currency.format(report?.revenue ?? 0)}</dd>
+						<dt>{i18n.t('storeOverview.metrics.revenue')}</dt>
+						<dd>{i18n.format.currency(report?.revenue ?? 0)}</dd>
 					</div>
 					<div>
-						<dt>Gross margin</dt>
-						<dd>{currency.format(report?.grossMargin ?? 0)}</dd>
+						<dt>{i18n.t('storeOverview.metrics.grossMargin')}</dt>
+						<dd>{i18n.format.currency(report?.grossMargin ?? 0)}</dd>
 					</div>
 					<div>
-						<dt>Stock</dt>
-						<dd>{report?.stockHealth ?? store.stockHealth}</dd>
+						<dt>{i18n.t('storeOverview.metrics.stock')}</dt>
+						<dd>{i18n.format.integer(report?.stockHealth ?? store.stockHealth)}</dd>
 					</div>
 					<div>
-						<dt>Imports</dt>
-						<dd>{currency.format(report?.importSpend ?? 0)}</dd>
+						<dt>{i18n.t('storeOverview.metrics.imports')}</dt>
+						<dd>{i18n.format.currency(report?.importSpend ?? 0)}</dd>
 					</div>
 					<div>
-						<dt>Staff</dt>
-						<dd>{Math.round(staffing.coverage)}%</dd>
+						<dt>{i18n.t('storeOverview.metrics.staff')}</dt>
+						<dd>{i18n.format.percent(staffing.coverage / 100)}</dd>
 					</div>
 					<div>
-						<dt>Coverage</dt>
+						<dt>{i18n.t('storeOverview.metrics.coverage')}</dt>
 						<dd>
-							{staffing.assigned.manager}/{staffing.requirement.manager} mgr,
-							{staffing.assigned.general}/{staffing.requirement.general} gen
+							{i18n.t('staffPanel.coverageShort', {
+								managerAssigned: i18n.format.integer(staffing.assigned.manager),
+								managerRequired: i18n.format.integer(staffing.requirement.manager),
+								generalAssigned: i18n.format.integer(staffing.assigned.general),
+								generalRequired: i18n.format.integer(staffing.requirement.general)
+							})}
 						</dd>
 					</div>
 				</dl>
 
 				{#if productSourceReports.length > 0}
-					<ul class="product-sources" aria-label={`${store.name} product source split`}>
+					<ul
+						class="product-sources"
+						aria-label={i18n.t('storeOverview.productSources', { storeName: store.name })}
+					>
 						{#each productSourceReports as product (product.categoryId)}
 							<li>
-								<span>{product.name}</span>
-								<small>{product.warehouseUnits} warehouse</small>
-								<small>{product.importedUnits} imported</small>
+								<span>{i18n.labels.productCategory(product.categoryId)}</span>
+								<small>
+									{i18n.t('storeOverview.warehouseUnits', {
+										count: i18n.format.integer(product.warehouseUnits)
+									})}
+								</small>
+								<small>
+									{i18n.t('storeOverview.importedUnits', {
+										count: i18n.format.integer(product.importedUnits)
+									})}
+								</small>
 							</li>
 						{/each}
 					</ul>
 				{/if}
 
 				{#if report?.warnings.length}
-					<ul aria-label={`${store.name} warnings`}>
+					<ul aria-label={i18n.t('storeOverview.warnings', { storeName: store.name })}>
 						{#each report.warnings as warning (warning)}
 							<li>{warning}</li>
 						{/each}
 					</ul>
 				{:else}
-					<p class="quiet">No current warnings.</p>
+					<p class="quiet">{i18n.t('storeOverview.noWarnings')}</p>
 				{/if}
 			</article>
 		{/each}

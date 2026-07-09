@@ -6,6 +6,7 @@
 		getStaffXpForLevel,
 		MAX_STAFF_LEVEL
 	} from '$lib/game/staffLeveling';
+	import type { I18nBundle } from '$lib/i18n';
 	import type { HiringCandidate, StaffMember, StaffRole, Store } from '$lib/game/types';
 
 	interface Props {
@@ -13,20 +14,24 @@
 		staff: StaffMember[];
 		hiringCandidates: HiringCandidate[];
 		cash: number;
+		i18n: I18nBundle;
 		onHire: (candidateId: string) => void;
 		onAssign: (staffId: string, storeId: string) => void;
 		onUnassign: (staffId: string) => void;
 		onPromote: (staffId: string) => void;
 	}
 
-	let { stores, staff, hiringCandidates, cash, onHire, onAssign, onUnassign, onPromote }: Props =
-		$props();
-
-	const currency = new Intl.NumberFormat('en-US', {
-		style: 'currency',
-		currency: 'USD',
-		maximumFractionDigits: 0
-	});
+	let {
+		stores,
+		staff,
+		hiringCandidates,
+		cash,
+		i18n,
+		onHire,
+		onAssign,
+		onUnassign,
+		onPromote
+	}: Props = $props();
 
 	const unassignedStaff = $derived(staff.filter((member) => member.assignedStoreId === null));
 	const staffedStores = $derived.by(() =>
@@ -38,29 +43,43 @@
 	);
 
 	function roleLabel(role: StaffRole): string {
-		return role === 'manager' ? 'Manager' : 'General';
+		return i18n.t(`staffPanel.role.${role}`);
 	}
 
 	function hireActionLabel(candidate: HiringCandidate): string {
-		return `Hire ${candidate.name}, ${roleLabel(candidate.role)} candidate ${candidate.id}`;
+		return i18n.t('staffPanel.actionLabels.hire', {
+			name: candidate.name,
+			role: roleLabel(candidate.role),
+			id: candidate.id
+		});
 	}
 
 	function assignmentContext(member: StaffMember): string {
 		const store = stores.find((item) => item.id === member.assignedStoreId);
 
 		if (store) {
-			return `currently assigned to ${store.name}`;
+			return i18n.t('staffPanel.assignment.currentlyAssigned', { storeName: store.name });
 		}
 
-		return 'currently unassigned';
+		return i18n.t('staffPanel.assignment.currentlyUnassigned');
 	}
 
 	function assignActionLabel(member: StaffMember): string {
-		return `Assign ${member.name}, ${roleLabel(member.role)} staff ${member.id}, ${assignmentContext(member)}`;
+		return i18n.t('staffPanel.actionLabels.assign', {
+			name: member.name,
+			role: roleLabel(member.role),
+			id: member.id,
+			context: assignmentContext(member)
+		});
 	}
 
 	function unassignActionLabel(member: StaffMember, store: Store): string {
-		return `Unassign ${member.name}, ${roleLabel(member.role)} staff ${member.id} from ${store.name}`;
+		return i18n.t('staffPanel.actionLabels.unassign', {
+			name: member.name,
+			role: roleLabel(member.role),
+			id: member.id,
+			storeName: store.name
+		});
 	}
 
 	function handleAssignment(member: StaffMember, storeId: string): void {
@@ -77,26 +96,48 @@
 	}
 
 	function promoteActionLabel(member: StaffMember): string {
-		return `Promote ${member.name}, ${roleLabel(member.role)} staff ${member.id} to level ${member.level + 1} for ${currency.format(getStaffTrainingFee(member.level))}`;
+		return i18n.t('staffPanel.actionLabels.promote', {
+			name: member.name,
+			role: roleLabel(member.role),
+			id: member.id,
+			level: i18n.format.integer(member.level + 1),
+			cost: i18n.format.currency(getStaffTrainingFee(member.level))
+		});
 	}
 
 	function levelProgress(member: StaffMember): string {
 		return member.level >= MAX_STAFF_LEVEL
-			? 'Max level'
-			: `XP ${member.xp}/${getStaffXpForLevel(member.level)}`;
+			? i18n.t('staffPanel.levelProgress.max')
+			: i18n.t('staffPanel.levelProgress.xp', {
+					current: i18n.format.integer(member.xp),
+					required: i18n.format.integer(getStaffXpForLevel(member.level))
+				});
+	}
+
+	function storeCoverageSummary(
+		store: Store,
+		item: ReturnType<typeof summarizeStoreStaffing>
+	): string {
+		return i18n.t('staffPanel.coverage', {
+			storeName: store.name,
+			managerAssigned: i18n.format.integer(item.assigned.manager),
+			managerRequired: i18n.format.integer(item.requirement.manager),
+			generalAssigned: i18n.format.integer(item.assigned.general),
+			generalRequired: i18n.format.integer(item.requirement.general)
+		});
 	}
 </script>
 
 <section class="panel paper" aria-labelledby="staff-heading">
 	<div class="panel-heading">
 		<div>
-			<h2 id="staff-heading">Staff</h2>
-			<p>{staff.length} hired staff</p>
+			<h2 id="staff-heading">{i18n.t('staffPanel.title')}</h2>
+			<p>{i18n.t('staffPanel.hiredCount', { count: i18n.format.integer(staff.length) })}</p>
 		</div>
 	</div>
 
 	<section class="section-group" aria-labelledby="candidates-heading">
-		<h3 id="candidates-heading">Candidates</h3>
+		<h3 id="candidates-heading">{i18n.t('staffPanel.candidates')}</h3>
 		<div class="people-grid">
 			{#each hiringCandidates as candidate (candidate.id)}
 				<article class="person-card">
@@ -105,32 +146,37 @@
 							<h4>{candidate.name}</h4>
 							<p>{roleLabel(candidate.role)}</p>
 						</div>
-						<strong>{currency.format(candidate.monthlySalary)}/mo</strong>
+						<strong>
+							{i18n.t('staffPanel.salaryPerMonth', {
+								salary: i18n.format.currency(candidate.monthlySalary)
+							})}
+						</strong>
 					</div>
 					<dl class="metrics">
 						<div>
-							<dt>Skill</dt>
-							<dd>{candidate.skill}</dd>
+							<dt>{i18n.t('staffPanel.metrics.skill')}</dt>
+							<dd>{i18n.format.integer(candidate.skill)}</dd>
 						</div>
 						<div>
-							<dt>Morale</dt>
-							<dd>{candidate.morale}</dd>
+							<dt>{i18n.t('staffPanel.metrics.morale')}</dt>
+							<dd>{i18n.format.integer(candidate.morale)}</dd>
 						</div>
 					</dl>
 					<button
 						type="button"
 						aria-label={hireActionLabel(candidate)}
-						onclick={() => onHire(candidate.id)}>Hire {candidate.name}</button
+						onclick={() => onHire(candidate.id)}
+						>{i18n.t('staffPanel.hireButton', { name: candidate.name })}</button
 					>
 				</article>
 			{:else}
-				<p class="empty">No candidates available</p>
+				<p class="empty">{i18n.t('staffPanel.emptyCandidates')}</p>
 			{/each}
 		</div>
 	</section>
 
 	<section class="section-group" aria-labelledby="unassigned-heading">
-		<h3 id="unassigned-heading">Unassigned</h3>
+		<h3 id="unassigned-heading">{i18n.t('staffPanel.unassigned')}</h3>
 		<div class="people-grid">
 			{#each unassignedStaff as member (member.id)}
 				<article class="person-card">
@@ -139,20 +185,24 @@
 							<h4>{member.name}</h4>
 							<p>{roleLabel(member.role)}</p>
 						</div>
-						<strong>{currency.format(member.monthlySalary)}/mo</strong>
+						<strong>
+							{i18n.t('staffPanel.salaryPerMonth', {
+								salary: i18n.format.currency(member.monthlySalary)
+							})}
+						</strong>
 					</div>
 					<dl class="metrics">
 						<div>
-							<dt>Level</dt>
-							<dd>{member.level}</dd>
+							<dt>{i18n.t('staffPanel.metrics.level')}</dt>
+							<dd>{i18n.format.integer(member.level)}</dd>
 						</div>
 						<div>
-							<dt>Skill</dt>
-							<dd>{member.skill}</dd>
+							<dt>{i18n.t('staffPanel.metrics.skill')}</dt>
+							<dd>{i18n.format.integer(member.skill)}</dd>
 						</div>
 						<div>
-							<dt>Morale</dt>
-							<dd>{member.morale}</dd>
+							<dt>{i18n.t('staffPanel.metrics.morale')}</dt>
+							<dd>{i18n.format.integer(member.morale)}</dd>
 						</div>
 					</dl>
 					<p class="progress">{levelProgress(member)}</p>
@@ -161,7 +211,7 @@
 						value=""
 						onchange={(event) => handleAssignment(member, event.currentTarget.value)}
 					>
-						<option value="">Unassigned</option>
+						<option value="">{i18n.t('staffPanel.assignment.unassigned')}</option>
 						{#each stores as store (store.id)}
 							<option value={store.id}>{store.name}</option>
 						{/each}
@@ -173,28 +223,30 @@
 							aria-label={promoteActionLabel(member)}
 							onclick={() => onPromote(member.id)}
 						>
-							Promote {member.name} ({currency.format(getStaffTrainingFee(member.level))})
+							{i18n.t('staffPanel.promoteButton', {
+								name: member.name,
+								cost: i18n.format.currency(getStaffTrainingFee(member.level))
+							})}
 						</button>
 					{/if}
 				</article>
 			{:else}
-				<p class="empty">No unassigned staff</p>
+				<p class="empty">{i18n.t('staffPanel.emptyUnassigned')}</p>
 			{/each}
 		</div>
 	</section>
 
-	<section class="section-group" aria-label="Store staffing">
+	<section class="section-group" aria-label={i18n.t('staffPanel.storeStaffing')}>
 		{#each staffedStores as item (item.store.id)}
 			<article class="store-card">
 				<div class="store-heading">
 					<div>
 						<h3>{item.store.name}</h3>
 						<p>
-							{item.store.name}: {item.summary.assigned.manager}/{item.summary.requirement.manager}
-							managers, {item.summary.assigned.general}/{item.summary.requirement.general} general
+							{storeCoverageSummary(item.store, item.summary)}
 						</p>
 					</div>
-					<strong>{Math.round(item.summary.coverage)}%</strong>
+					<strong>{i18n.format.percent(item.summary.coverage / 100)}</strong>
 				</div>
 
 				<div class="people-list">
@@ -203,7 +255,12 @@
 							<div>
 								<h4>{member.name}</h4>
 								<p>
-									{roleLabel(member.role)} · Lvl {member.level} · Skill {member.skill} · Morale {member.morale}
+									{i18n.t('staffPanel.levelProgress.inline', {
+										role: roleLabel(member.role),
+										level: i18n.format.integer(member.level),
+										skill: i18n.format.integer(member.skill),
+										morale: i18n.format.integer(member.morale)
+									})}
 								</p>
 								<p class="progress">{levelProgress(member)}</p>
 							</div>
@@ -213,7 +270,7 @@
 									value={member.assignedStoreId ?? ''}
 									onchange={(event) => handleAssignment(member, event.currentTarget.value)}
 								>
-									<option value="">Unassigned</option>
+									<option value="">{i18n.t('staffPanel.assignment.unassigned')}</option>
 									{#each stores as store (store.id)}
 										<option value={store.id}>{store.name}</option>
 									{/each}
@@ -225,19 +282,23 @@
 										aria-label={promoteActionLabel(member)}
 										onclick={() => onPromote(member.id)}
 									>
-										Promote {member.name} ({currency.format(getStaffTrainingFee(member.level))})
+										{i18n.t('staffPanel.promoteButton', {
+											name: member.name,
+											cost: i18n.format.currency(getStaffTrainingFee(member.level))
+										})}
 									</button>
 								{/if}
 								<button
 									type="button"
 									class="secondary"
 									aria-label={unassignActionLabel(member, item.store)}
-									onclick={() => onUnassign(member.id)}>Unassign {member.name}</button
+									onclick={() => onUnassign(member.id)}
+									>{i18n.t('staffPanel.unassignButton')} {member.name}</button
 								>
 							</div>
 						</div>
 					{:else}
-						<p class="empty">No assigned staff</p>
+						<p class="empty">{i18n.t('staffPanel.emptyAssigned')}</p>
 					{/each}
 				</div>
 			</article>

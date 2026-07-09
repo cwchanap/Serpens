@@ -1,41 +1,61 @@
 <script lang="ts">
 	import type { ProductChainNode } from '$lib/game/productChainGraph';
+	import type { I18nBundle } from '$lib/i18n';
 
 	interface Props {
+		i18n: I18nBundle;
 		node: ProductChainNode | null;
 	}
 
-	let { node }: Props = $props();
+	let { i18n, node }: Props = $props();
 
 	const headingId = $props.id();
-	const numberFormat = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
 
 	const metrics = $derived.by(() => {
 		if (!node) return [];
 		return [
-			{ label: 'Buildings', value: numberFormat.format(node.capacity.buildingCount) },
 			{
-				label: 'Capacity',
-				value: `${numberFormat.format(node.capacity.outputPerDay)} out / ${numberFormat.format(
-					node.capacity.inputPerDay
-				)} in`
+				label: i18n.t('atlas.nodeBroadside.metrics.buildings'),
+				value: i18n.format.integer(node.capacity.buildingCount)
 			},
-			{ label: 'Produced', value: numberFormat.format(node.actual.produced) },
-			{ label: 'Consumed', value: numberFormat.format(node.actual.consumed) },
 			{
-				label: 'Imported',
-				value: numberFormat.format(node.actual.importedInput + node.actual.shopImported)
+				label: i18n.t('atlas.nodeBroadside.metrics.capacity'),
+				value: i18n.t('atlas.nodeBroadside.metrics.capacityValue', {
+					output: i18n.format.integer(node.capacity.outputPerDay),
+					input: i18n.format.integer(node.capacity.inputPerDay)
+				})
 			},
-			{ label: 'Sold', value: numberFormat.format(node.actual.unitsSold) },
-			{ label: 'Missed', value: numberFormat.format(node.actual.demandMissed) },
-			{ label: 'Stock', value: numberFormat.format(node.warehouseStock) }
+			{
+				label: i18n.t('atlas.nodeBroadside.metrics.produced'),
+				value: i18n.format.integer(node.actual.produced)
+			},
+			{
+				label: i18n.t('atlas.nodeBroadside.metrics.consumed'),
+				value: i18n.format.integer(node.actual.consumed)
+			},
+			{
+				label: i18n.t('atlas.nodeBroadside.metrics.imported'),
+				value: i18n.format.integer(node.actual.importedInput + node.actual.shopImported)
+			},
+			{
+				label: i18n.t('atlas.nodeBroadside.metrics.sold'),
+				value: i18n.format.integer(node.actual.unitsSold)
+			},
+			{
+				label: i18n.t('atlas.nodeBroadside.metrics.missed'),
+				value: i18n.format.integer(node.actual.demandMissed)
+			},
+			{
+				label: i18n.t('atlas.nodeBroadside.metrics.stock'),
+				value: i18n.format.integer(node.warehouseStock)
+			}
 		];
 	});
 </script>
 
 <section class="broadside" aria-labelledby={headingId}>
 	{#if node}
-		<span class="sub">Inspected node</span>
+		<span class="sub">{i18n.t('atlas.nodeBroadside.inspected')}</span>
 		<h3 id={headingId}>{node.label}</h3>
 		<span class={['status', `status-${node.health}`]}>{node.healthLabel}</span>
 		{#if node.bottleneck}
@@ -43,7 +63,9 @@
 		{/if}
 		{#if node.sharedBranchCount}
 			<p class="shared-note">
-				Shared producer — drawn in {node.sharedBranchCount} branches of this chain.
+				{i18n.t('atlas.nodeBroadside.sharedProducer', {
+					count: i18n.format.integer(node.sharedBranchCount)
+				})}
 			</p>
 		{/if}
 		<dl>
@@ -55,8 +77,8 @@
 			{/each}
 		</dl>
 	{:else}
-		<h3 id={headingId}>Chain node</h3>
-		<p>Select a graph node to inspect its latest flow metrics.</p>
+		<h3 id={headingId}>{i18n.t('atlas.nodeBroadside.emptyTitle')}</h3>
+		<p>{i18n.t('atlas.nodeBroadside.empty')}</p>
 	{/if}
 </section>
 

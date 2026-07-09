@@ -3,7 +3,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { buildProductChainTree } from '$lib/game/productChainTree';
 import { createNewGame } from '$lib/game/state';
+import { createI18n } from '$lib/i18n';
 import ProductChainAtlas from './ProductChainAtlas.svelte';
+
+const i18n = createI18n('en');
 
 describe('ProductChainAtlas', () => {
 	it('renders the empty message when graph.emptyReason is set', async () => {
@@ -19,6 +22,7 @@ describe('ProductChainAtlas', () => {
 				warnings: [],
 				emptyReason: 'No local production chain available for this category yet.'
 			},
+			i18n,
 			selectedNodeId: null,
 			onSelectNode
 		});
@@ -41,6 +45,7 @@ describe('ProductChainAtlas', () => {
 				warnings: [],
 				emptyReason: null
 			},
+			i18n,
 			selectedNodeId: null,
 			onSelectNode
 		});
@@ -62,6 +67,7 @@ describe('ProductChainAtlas', () => {
 		const onSelectNode = vi.fn();
 		render(ProductChainAtlas, {
 			graph,
+			i18n,
 			selectedNodeId: firstNode.id,
 			onSelectNode
 		});
@@ -89,12 +95,14 @@ describe('ProductChainAtlas', () => {
 		const onSelectNode = vi.fn();
 		const view = render(ProductChainAtlas, {
 			graph: snacks,
+			i18n,
 			selectedNodeId: snacks.nodes[0]!.id,
 			onSelectNode
 		});
 
 		view.rerender({
 			graph: drinks,
+			i18n,
 			selectedNodeId: snacks.nodes[0]!.id,
 			onSelectNode
 		});
@@ -115,6 +123,7 @@ describe('ProductChainAtlas', () => {
 		const onInteractionFeedback = vi.fn();
 		render(ProductChainAtlas, {
 			graph,
+			i18n,
 			selectedNodeId: null,
 			onSelectNode,
 			onInteractionFeedback
@@ -139,6 +148,7 @@ describe('ProductChainAtlas', () => {
 		const onInteractionFeedback = vi.fn();
 		render(ProductChainAtlas, {
 			graph,
+			i18n,
 			selectedNodeId: graph.nodes[0]!.id,
 			onSelectNode,
 			onInteractionFeedback
@@ -164,6 +174,7 @@ describe('ProductChainAtlas', () => {
 		const onSelectNode = vi.fn();
 		render(ProductChainAtlas, {
 			graph,
+			i18n,
 			selectedNodeId: null,
 			onSelectNode
 		});
@@ -183,6 +194,7 @@ describe('ProductChainAtlas', () => {
 		const onSelectNode = vi.fn();
 		render(ProductChainAtlas, {
 			graph,
+			i18n,
 			selectedNodeId: null,
 			onSelectNode
 		});
@@ -223,6 +235,7 @@ describe('ProductChainAtlas', () => {
 		const onSelectNode = vi.fn();
 		render(ProductChainAtlas, {
 			graph,
+			i18n,
 			selectedNodeId: null,
 			onSelectNode
 		});

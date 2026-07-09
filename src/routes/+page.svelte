@@ -1257,6 +1257,7 @@
 		{#if isSupplyAdvisorOpen}
 			<SupplyAdvisor
 				chains={supplyAdvisorChains}
+				{i18n}
 				onBuild={buildFromAdvisor}
 				onClose={closeSupplyAdvisor}
 			/>
@@ -1303,6 +1304,7 @@
 	{#if isStoreDetailOpen && selectedStore}
 		<StoreDetailModal
 			game={game ?? starterMapState}
+			{i18n}
 			store={selectedStore}
 			staff={game?.staff ?? []}
 			hiringCandidates={game?.hiringCandidates ?? []}
@@ -1363,11 +1365,12 @@
 					</div>
 
 					{#if activeManagementPanel.id === 'dashboard'}
-						<Scorecard scorecard={panelGame.scorecard} />
+						<Scorecard {i18n} scorecard={panelGame.scorecard} />
 					{:else if activeManagementPanel.id === 'policies'}
-						<PolicyPanel policy={panelGame.policy} onChange={changePolicy} />
+						<PolicyPanel {i18n} policy={panelGame.policy} onChange={changePolicy} />
 					{:else if activeManagementPanel.id === 'staff'}
 						<StaffPanel
+							{i18n}
 							stores={panelGame.stores}
 							staff={panelGame.staff}
 							hiringCandidates={panelGame.hiringCandidates}
@@ -1379,6 +1382,7 @@
 						/>
 					{:else if activeManagementPanel.id === 'stores'}
 						<StoreOverview
+							{i18n}
 							stores={panelGame.stores}
 							staff={panelGame.staff}
 							latestReports={summary.latest?.storeReports ?? []}
@@ -1386,9 +1390,9 @@
 					{:else if activeManagementPanel.id === 'decisions'}
 						<DecisionQueue {i18n} decisions={panelGame.decisions} onResolve={chooseDecision} />
 					{:else if activeManagementPanel.id === 'reports'}
-						<ReportsPanel {summary} />
+						<ReportsPanel {i18n} {summary} />
 					{:else if activeManagementPanel.id === 'productChains'}
-						<ProductChainsPanel game={panelGame} />
+						<ProductChainsPanel {i18n} game={panelGame} />
 					{/if}
 				</div>
 			</div>
@@ -1412,7 +1416,7 @@
 	{/if}
 
 	{#if isCheatSheetOpen}
-		<ShortcutCheatSheet onClose={() => (isCheatSheetOpen = false)} />
+		<ShortcutCheatSheet {i18n} onClose={() => (isCheatSheetOpen = false)} />
 	{/if}
 </main>
 

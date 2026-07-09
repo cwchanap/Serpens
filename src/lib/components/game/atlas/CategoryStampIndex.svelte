@@ -1,26 +1,29 @@
 <script lang="ts">
 	import { INDUSTRY_MATERIAL_ART } from '$lib/assets/gameArt';
 	import { formatQuantity, type ProductChainCategorySummary } from '$lib/game/productChainGraph';
+	import type { I18nBundle } from '$lib/i18n';
 	import type { MaterialId } from '$lib/game/types';
 
 	interface Props {
+		i18n: I18nBundle;
 		summaries: ProductChainCategorySummary[];
 		activeCategoryId: string | null;
 		mode: 'store-categories' | 'warehouse-flow';
 		onSelectCategory: (categoryId: string) => void;
 	}
 
-	let { summaries, activeCategoryId, mode, onSelectCategory }: Props = $props();
+	let { i18n, summaries, activeCategoryId, mode, onSelectCategory }: Props = $props();
 
 	function iconFor(categoryId: string): string | null {
 		return INDUSTRY_MATERIAL_ART[categoryId as MaterialId] ?? null;
 	}
 </script>
 
-<div class="stamp-index" role="group" aria-label="Product category index">
+<div class="stamp-index" role="group" aria-label={i18n.t('atlas.categoryIndex.ariaLabel')}>
 	{#each summaries as summary (summary.categoryId)}
 		{@const active = mode === 'store-categories' && activeCategoryId === summary.categoryId}
 		{@const icon = iconFor(summary.categoryId)}
+		{@const categoryName = i18n.labels.productCategory(summary.categoryId)}
 		<button
 			type="button"
 			class={['stamp', `stamp-${summary.health}`, active && 'is-active']}
@@ -29,17 +32,22 @@
 			aria-pressed={active}
 			onclick={() => onSelectCategory(summary.categoryId)}
 		>
-			<span class={['seal', `seal-${summary.health}`]}>{summary.healthLabel}</span>
-			<span class="name">{summary.name}</span>
+			<span class={['seal', `seal-${summary.health}`]}>
+				{i18n.t(`copy.productChainGraph.health.${summary.health}`)}
+			</span>
+			<span class="name">{categoryName}</span>
 			{#if summary.tier !== null}
-				<span class="tier">Tier {summary.tier}</span>
+				<span class="tier">{i18n.t('atlas.categoryIndex.tier', { tier: summary.tier })}</span>
 			{/if}
 			{#if icon}
-				<span class="icons"><img src={icon} alt={summary.name} /></span>
+				<span class="icons"><img src={icon} alt={categoryName} /></span>
 			{/if}
 			<span class="nums">
-				stock {formatQuantity(summary.warehouseStock)} · made {formatQuantity(summary.produced)}/d ·
-				sold {formatQuantity(summary.consumed)}/d
+				{i18n.t('atlas.categoryIndex.metrics', {
+					stock: formatQuantity(summary.warehouseStock),
+					produced: formatQuantity(summary.produced),
+					consumed: formatQuantity(summary.consumed)
+				})}
 			</span>
 		</button>
 	{/each}

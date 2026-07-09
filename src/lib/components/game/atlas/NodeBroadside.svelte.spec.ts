@@ -2,6 +2,7 @@ import { page } from 'vitest/browser';
 import { describe, expect, it } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import type { ProductChainNode } from '$lib/game/productChainGraph';
+import { createI18n } from '$lib/i18n';
 import NodeBroadside from './NodeBroadside.svelte';
 
 function shortageRecipeNode(): ProductChainNode {
@@ -34,15 +35,25 @@ function shortageRecipeNode(): ProductChainNode {
 describe('NodeBroadside', () => {
 	it('renders the empty prompt when no node is selected', async () => {
 		expect.assertions(1);
-		render(NodeBroadside, { node: null });
+		render(NodeBroadside, { i18n: createI18n('en'), node: null });
 		await expect
 			.element(page.getByText('Select a graph node to inspect its latest flow metrics.'))
 			.toBeVisible();
 	});
 
+	it('renders Japanese empty-state text', async () => {
+		expect.assertions(1);
+
+		render(NodeBroadside, { i18n: createI18n('ja'), node: null });
+
+		await expect
+			.element(page.getByText('グラフノードを選択して最新のフロー指標を確認します。'))
+			.toBeVisible();
+	});
+
 	it('renders the node label, status, bottleneck, and metrics', async () => {
 		expect.assertions(5);
-		render(NodeBroadside, { node: shortageRecipeNode() });
+		render(NodeBroadside, { i18n: createI18n('en'), node: shortageRecipeNode() });
 		await expect.element(page.getByRole('heading', { name: 'Flour mill' })).toBeVisible();
 		await expect.element(page.getByText('Shortage')).toBeVisible();
 		await expect.element(page.getByText('Insufficient flour input for the bakery.')).toBeVisible();
@@ -62,7 +73,7 @@ describe('NodeBroadside', () => {
 			sharedBranchCount: 3
 		};
 
-		render(NodeBroadside, { node });
+		render(NodeBroadside, { i18n: createI18n('en'), node });
 
 		await expect.element(page.getByRole('heading', { name: 'Shared Mill' })).toBeVisible();
 		await expect

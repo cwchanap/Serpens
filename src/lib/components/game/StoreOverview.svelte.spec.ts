@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import StoreOverview from './StoreOverview.svelte';
 import { initializeStoreProducts } from '$lib/game/stock';
+import { createI18n } from '$lib/i18n';
 import type { DailyStoreReport, Store } from '$lib/game/types';
 
 const store: Store = {
@@ -67,6 +68,7 @@ describe('StoreOverview', () => {
 		expect.assertions(5);
 
 		render(StoreOverview, {
+			i18n: createI18n('en'),
 			stores: [store],
 			staff: [],
 			latestReports: [staleReport]
@@ -85,6 +87,7 @@ describe('StoreOverview', () => {
 		expect.assertions(3);
 
 		render(StoreOverview, {
+			i18n: createI18n('en'),
 			stores: [store],
 			staff: [],
 			latestReports: [staleReport]
@@ -106,6 +109,7 @@ describe('StoreOverview', () => {
 		const reportWithWarnings: DailyStoreReport = { ...staleReport, warnings: ['Low stock alert'] };
 
 		render(StoreOverview, {
+			i18n: createI18n('en'),
 			stores: [store],
 			staff: [],
 			latestReports: [reportWithWarnings]
@@ -122,6 +126,7 @@ describe('StoreOverview', () => {
 		expect.assertions(5);
 
 		render(StoreOverview, {
+			i18n: createI18n('en'),
 			stores: [store],
 			staff: [],
 			latestReports: []
@@ -165,6 +170,7 @@ describe('StoreOverview', () => {
 		};
 
 		render(StoreOverview, {
+			i18n: createI18n('en'),
 			stores: [store],
 			staff: [],
 			latestReports: [importOnlyReport]

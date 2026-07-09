@@ -2,6 +2,7 @@ import { page } from 'vitest/browser';
 import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import type { ProductChainCategorySummary } from '$lib/game/productChainGraph';
+import { createI18n } from '$lib/i18n';
 import CategoryStampIndex from './CategoryStampIndex.svelte';
 
 function summary(overrides: Partial<ProductChainCategorySummary>): ProductChainCategorySummary {
@@ -25,6 +26,7 @@ describe('CategoryStampIndex', () => {
 		expect.assertions(2);
 		const onSelectCategory = vi.fn();
 		render(CategoryStampIndex, {
+			i18n: createI18n('en'),
 			summaries: [
 				summary({
 					categoryId: 'snacks',
@@ -47,6 +49,7 @@ describe('CategoryStampIndex', () => {
 		expect.assertions(1);
 		const onSelectCategory = vi.fn();
 		render(CategoryStampIndex, {
+			i18n: createI18n('en'),
 			summaries: [summary({ categoryId: 'snacks', name: 'Snacks' })],
 			activeCategoryId: 'snacks',
 			mode: 'store-categories',
@@ -62,6 +65,7 @@ describe('CategoryStampIndex', () => {
 		expect.assertions(1);
 		const onSelectCategory = vi.fn();
 		render(CategoryStampIndex, {
+			i18n: createI18n('en'),
 			summaries: [summary({ categoryId: 'snacks', name: 'Snacks' })],
 			activeCategoryId: 'snacks',
 			mode: 'warehouse-flow',
@@ -77,6 +81,7 @@ describe('CategoryStampIndex', () => {
 		expect.assertions(1);
 		const onSelectCategory = vi.fn();
 		render(CategoryStampIndex, {
+			i18n: createI18n('en'),
 			summaries: [summary({ categoryId: 'snacks', name: 'Snacks' })],
 			activeCategoryId: null,
 			mode: 'store-categories',
@@ -91,6 +96,7 @@ describe('CategoryStampIndex', () => {
 		expect.assertions(1);
 		const onSelectCategory = vi.fn();
 		render(CategoryStampIndex, {
+			i18n: createI18n('en'),
 			summaries: [summary({ categoryId: 'bottled-water', name: 'Bottled Water', tier: 1 })],
 			activeCategoryId: null,
 			mode: 'store-categories',
@@ -105,6 +111,7 @@ describe('CategoryStampIndex', () => {
 		expect.assertions(1);
 		const onSelectCategory = vi.fn();
 		render(CategoryStampIndex, {
+			i18n: createI18n('en'),
 			summaries: [summary({ categoryId: 'snacks', name: 'Snacks', tier: null })],
 			activeCategoryId: null,
 			mode: 'store-categories',
@@ -120,6 +127,7 @@ describe('CategoryStampIndex', () => {
 		const onSelectCategory = vi.fn();
 
 		render(CategoryStampIndex, {
+			i18n: createI18n('en'),
 			summaries: [summary({ categoryId: 'apparel', name: 'Apparel' })],
 			activeCategoryId: null,
 			mode: 'store-categories',

@@ -1,67 +1,62 @@
 <script lang="ts">
+	import type { I18nBundle } from '$lib/i18n';
 	import type { ReportSummary } from '$lib/game/reports';
 
-	let { summary }: { summary: ReportSummary } = $props();
-
-	const currency = new Intl.NumberFormat('en-US', {
-		style: 'currency',
-		currency: 'USD',
-		maximumFractionDigits: 0
-	});
+	let { i18n, summary }: { i18n: I18nBundle; summary: ReportSummary } = $props();
 </script>
 
 <section class="panel paper" aria-labelledby="reports-heading">
-	<h2 id="reports-heading">Reports</h2>
+	<h2 id="reports-heading">{i18n.t('reportsPanel.title')}</h2>
 
 	{#if summary.latest}
 		<div class="metrics">
 			<div>
-				<span>Latest daily result</span>
-				<strong>{currency.format(summary.latest.netIncome)}</strong>
+				<span>{i18n.t('reportsPanel.metrics.latestDailyResult')}</span>
+				<strong>{i18n.format.currency(summary.latest.netIncome)}</strong>
 			</div>
 			<div>
-				<span>Revenue</span>
-				<strong>{currency.format(summary.latest.revenue)}</strong>
+				<span>{i18n.t('reportsPanel.metrics.revenue')}</span>
+				<strong>{i18n.format.currency(summary.latest.revenue)}</strong>
 			</div>
 			<div>
-				<span>Cash after</span>
-				<strong>{currency.format(summary.latest.cashAfter)}</strong>
+				<span>{i18n.t('reportsPanel.metrics.cashAfter')}</span>
+				<strong>{i18n.format.currency(summary.latest.cashAfter)}</strong>
 			</div>
 			<div>
-				<span>Payroll</span>
-				<strong>{currency.format(summary.latest.payrollCost)}</strong>
+				<span>{i18n.t('reportsPanel.metrics.payroll')}</span>
+				<strong>{i18n.format.currency(summary.latest.payrollCost)}</strong>
 			</div>
 			<div>
-				<span>Imports</span>
-				<strong>{currency.format(summary.latest.importSpend)}</strong>
+				<span>{i18n.t('reportsPanel.metrics.imports')}</span>
+				<strong>{i18n.format.currency(summary.latest.importSpend)}</strong>
 			</div>
 			<div>
-				<span>Production imports</span>
-				<strong>{currency.format(summary.latest.productionReport.importSpend)}</strong>
+				<span>{i18n.t('reportsPanel.metrics.productionImports')}</span>
+				<strong>{i18n.format.currency(summary.latest.productionReport.importSpend)}</strong>
 			</div>
 			<div>
-				<span>Warehouse overflow</span>
-				<strong>{currency.format(summary.latest.productionReport.overflowCost)}</strong>
+				<span>{i18n.t('reportsPanel.metrics.warehouseOverflow')}</span>
+				<strong>{i18n.format.currency(summary.latest.productionReport.overflowCost)}</strong>
 			</div>
 			<div>
-				<span>7-day net</span>
-				<strong>{currency.format(summary.sevenDay.netIncome)}</strong>
+				<span>{i18n.t('reportsPanel.metrics.sevenDayNet')}</span>
+				<strong>{i18n.format.currency(summary.sevenDay.netIncome)}</strong>
 			</div>
 			<div>
-				<span>30-day net</span>
-				<strong>{currency.format(summary.thirtyDay.netIncome)}</strong>
+				<span>{i18n.t('reportsPanel.metrics.thirtyDayNet')}</span>
+				<strong>{i18n.format.currency(summary.thirtyDay.netIncome)}</strong>
 			</div>
 		</div>
 
 		{#if summary.latest.warnings.length}
-			<ul class="warnings" aria-label="Daily warnings">
+			<ul class="warnings" aria-label={i18n.t('reportsPanel.dailyWarnings')}>
 				{#each summary.latest.warnings as warning (warning)}
 					<li>{warning}</li>
 				{/each}
 			</ul>
 		{/if}
 	{:else}
-		<p>No reports yet. Advance the first day to generate results.</p>
+		<p>{i18n.t('reportsPanel.empty')}</p>
 	{/if}
 </section>
 

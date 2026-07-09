@@ -3,6 +3,8 @@
 	import { getProductArt } from '$lib/assets/gameArt';
 	import { getArchetype } from '$lib/game/archetypes';
 	import { getStoreProductStatus } from '$lib/game/stock';
+	import { localizeStockStatus } from '$lib/i18n/gameCopy';
+	import type { I18nBundle } from '$lib/i18n';
 	import type {
 		DailyProductReport,
 		DailyStoreReport,
@@ -11,23 +13,18 @@
 	} from '$lib/game/types';
 
 	interface Props {
+		i18n: I18nBundle;
 		store: Store;
 		latestReport: DailyStoreReport | null;
 		onUpdate: (storeId: string, categoryId: string, patch: StoreProductPatch) => void;
 	}
 
-	let { store, latestReport, onUpdate }: Props = $props();
-
-	const currency = new Intl.NumberFormat('en-US', {
-		style: 'currency',
-		currency: 'USD',
-		maximumFractionDigits: 0
-	});
+	let { i18n, store, latestReport, onUpdate }: Props = $props();
 
 	const categories = $derived(getArchetype(store.archetypeId).startingCategories);
 
 	function getCategoryName(categoryId: string): string {
-		return categories.find((category) => category.id === categoryId)?.name ?? categoryId;
+		return i18n.labels.productCategory(categoryId);
 	}
 
 	function getImportCost(categoryId: string): number {
@@ -51,20 +48,22 @@
 </script>
 
 <section class="stock-table" aria-labelledby={`${store.id}-stock-heading`}>
-	<h3 id={`${store.id}-stock-heading`}>{store.name} stock</h3>
+	<h3 id={`${store.id}-stock-heading`}>
+		{i18n.t('storeStockTable.title', { storeName: store.name })}
+	</h3>
 
 	<div class="table-scroll">
-		<table aria-label={`${store.name} stock`}>
+		<table aria-label={i18n.t('storeStockTable.title', { storeName: store.name })}>
 			<thead>
 				<tr>
-					<th scope="col">Product</th>
-					<th scope="col">Stock</th>
-					<th scope="col">Import cost</th>
-					<th scope="col">Selling price</th>
-					<th scope="col">Reorder</th>
-					<th scope="col">Target</th>
-					<th scope="col">Status</th>
-					<th scope="col">Latest</th>
+					<th scope="col">{i18n.t('storeStockTable.headings.product')}</th>
+					<th scope="col">{i18n.t('storeStockTable.headings.stock')}</th>
+					<th scope="col">{i18n.t('storeStockTable.headings.importCost')}</th>
+					<th scope="col">{i18n.t('storeStockTable.headings.sellingPrice')}</th>
+					<th scope="col">{i18n.t('storeStockTable.headings.reorder')}</th>
+					<th scope="col">{i18n.t('storeStockTable.headings.target')}</th>
+					<th scope="col">{i18n.t('storeStockTable.headings.status')}</th>
+					<th scope="col">{i18n.t('storeStockTable.headings.latest')}</th>
 				</tr>
 			</thead>
 			<tbody>
@@ -88,15 +87,17 @@
 								<span>{categoryName}</span>
 							</div>
 						</td>
-						<td>{product.stock}</td>
-						<td>{currency.format(getImportCost(product.categoryId))}</td>
+						<td>{i18n.format.integer(product.stock)}</td>
+						<td>{i18n.format.currency(getImportCost(product.categoryId))}</td>
 						<td>
 							<input
 								type="number"
 								min="1"
 								step="1"
 								value={product.sellingPrice}
-								aria-label={`Selling price for ${categoryName}`}
+								aria-label={i18n.t('storeStockTable.inputLabels.sellingPrice', {
+									categoryName
+								})}
 								onchange={(event) => updateNumber(product.categoryId, 'sellingPrice', event)}
 							/>
 						</td>
@@ -106,7 +107,9 @@
 								min="0"
 								step="1"
 								value={product.reorderThreshold}
-								aria-label={`Reorder threshold for ${categoryName}`}
+								aria-label={i18n.t('storeStockTable.inputLabels.reorderThreshold', {
+									categoryName
+								})}
 								onchange={(event) => updateNumber(product.categoryId, 'reorderThreshold', event)}
 							/>
 						</td>
@@ -116,16 +119,21 @@
 								min="0"
 								step="1"
 								value={product.targetStock}
-								aria-label={`Target stock for ${categoryName}`}
+								aria-label={i18n.t('storeStockTable.inputLabels.targetStock', {
+									categoryName
+								})}
 								onchange={(event) => updateNumber(product.categoryId, 'targetStock', event)}
 							/>
 						</td>
-						<td>{getStoreProductStatus(product)}</td>
+						<td>{localizeStockStatus(getStoreProductStatus(product), i18n)}</td>
 						<td>
 							{#if report}
-								{report.unitsSold} sold / {report.demandMissed} missed
+								{i18n.t('storeStockTable.latestReport', {
+									sold: i18n.format.integer(report.unitsSold),
+									missed: i18n.format.integer(report.demandMissed)
+								})}
 							{:else}
-								No report
+								{i18n.t('storeStockTable.noReport')}
 							{/if}
 						</td>
 					</tr>

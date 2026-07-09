@@ -1,31 +1,42 @@
 <!-- src/lib/components/game/ShortcutCheatSheet.svelte -->
 <script lang="ts">
 	import { focusTrap } from '$lib/a11y/focusTrap';
+	import type { I18nBundle } from '$lib/i18n';
 
-	interface Shortcut {
-		keys: string;
-		action: string;
-	}
+	type ShortcutActionKey =
+		| 'build'
+		| 'mapViews'
+		| 'dashboard'
+		| 'policies'
+		| 'staff'
+		| 'stores'
+		| 'decisions'
+		| 'reports'
+		| 'productChains'
+		| 'advanceDay'
+		| 'escape'
+		| 'cheatSheet';
 
 	interface Props {
+		i18n: I18nBundle;
 		onClose: () => void;
 	}
 
-	let { onClose }: Props = $props();
+	let { i18n, onClose }: Props = $props();
 
-	const shortcuts: Shortcut[] = [
-		{ keys: 'B', action: 'Toggle build menu' },
-		{ keys: '1 / 2 / 3', action: 'Retail / Industry / World view' },
-		{ keys: 'D', action: 'Toggle Dashboard' },
-		{ keys: 'P', action: 'Toggle Policies' },
-		{ keys: 'S', action: 'Toggle Staff' },
-		{ keys: 'T', action: 'Toggle Stores' },
-		{ keys: 'C', action: 'Toggle Decisions' },
-		{ keys: 'R', action: 'Toggle Reports' },
-		{ keys: 'G', action: 'Toggle Product Chains' },
-		{ keys: 'Space', action: 'Advance day' },
-		{ keys: 'Esc', action: 'Open menu, or close / cancel' },
-		{ keys: '?', action: 'Toggle this cheat sheet' }
+	const shortcuts: Array<{ keys: string; actionKey: ShortcutActionKey }> = [
+		{ keys: 'B', actionKey: 'build' },
+		{ keys: '1 / 2 / 3', actionKey: 'mapViews' },
+		{ keys: 'D', actionKey: 'dashboard' },
+		{ keys: 'P', actionKey: 'policies' },
+		{ keys: 'S', actionKey: 'staff' },
+		{ keys: 'T', actionKey: 'stores' },
+		{ keys: 'C', actionKey: 'decisions' },
+		{ keys: 'R', actionKey: 'reports' },
+		{ keys: 'G', actionKey: 'productChains' },
+		{ keys: 'Space', actionKey: 'advanceDay' },
+		{ keys: 'Esc', actionKey: 'escape' },
+		{ keys: '?', actionKey: 'cheatSheet' }
 	];
 </script>
 
@@ -34,27 +45,30 @@
 		type="button"
 		class="backdrop-button"
 		tabindex="-1"
-		aria-label="Dismiss keyboard shortcuts"
+		aria-label={i18n.t('shortcutCheatSheet.dismiss')}
 		onclick={onClose}
 	></button>
 	<div
 		class="cheat-sheet paper"
 		role="dialog"
 		aria-modal="true"
-		aria-label="Keyboard shortcuts"
+		aria-label={i18n.t('shortcutCheatSheet.dialog')}
 		{@attach focusTrap}
 	>
 		<header>
-			<h2>Keyboard Shortcuts</h2>
-			<button type="button" class="btn-danger" aria-label="Close shortcuts" onclick={onClose}
-				>×</button
+			<h2>{i18n.t('shortcutCheatSheet.title')}</h2>
+			<button
+				type="button"
+				class="btn-danger"
+				aria-label={i18n.t('shortcutCheatSheet.close')}
+				onclick={onClose}>×</button
 			>
 		</header>
 		<dl>
 			{#each shortcuts as shortcut (shortcut.keys)}
 				<div class="row">
 					<dt><kbd class="keycap">{shortcut.keys}</kbd></dt>
-					<dd>{shortcut.action}</dd>
+					<dd>{i18n.t(`shortcutCheatSheet.actions.${shortcut.actionKey}`)}</dd>
 				</div>
 			{/each}
 		</dl>

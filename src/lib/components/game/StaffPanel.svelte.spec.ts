@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import StaffPanel from './StaffPanel.svelte';
 import { initializeStoreProducts } from '$lib/game/stock';
+import { createI18n } from '$lib/i18n';
 import type { HiringCandidate, StaffMember, Store } from '$lib/game/types';
 
 const store: Store = {
@@ -90,6 +91,7 @@ function renderStaffPanel(
 		staff,
 		hiringCandidates,
 		cash: 100_000,
+		i18n: createI18n('en'),
 		onHire: vi.fn(),
 		onAssign: vi.fn(),
 		onUnassign: vi.fn(),
@@ -485,6 +487,7 @@ describe('StaffPanel', () => {
 			],
 			hiringCandidates: [{ ...hiringCandidates[0]!, name: 'Casey Renamed', skill: 90 }],
 			cash: 100_000,
+			i18n: createI18n('en'),
 			onHire: vi.fn(),
 			onAssign: vi.fn(),
 			onUnassign: vi.fn(),
@@ -520,6 +523,7 @@ describe('StaffPanel', () => {
 				}
 			],
 			cash: 100_000,
+			i18n: createI18n('en'),
 			onHire: vi.fn(),
 			onAssign: vi.fn(),
 			onUnassign: vi.fn(),
@@ -537,6 +541,7 @@ describe('StaffPanel', () => {
 			],
 			hiringCandidates: [],
 			cash: 100_000,
+			i18n: createI18n('en'),
 			onHire: vi.fn(),
 			onAssign: vi.fn(),
 			onUnassign: vi.fn(),
