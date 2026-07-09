@@ -11,6 +11,19 @@ import type { WorldCityStatus } from '$lib/game/world';
 import type { StoreProductStatus } from '$lib/game/stock';
 import type { I18nBundle } from './index';
 
+const INDUSTRY_RESOURCE_ID_BY_RAW_LABEL = new Map(
+	Object.values(INDUSTRIAL_BUILDING_TYPES)
+		.map((buildingType) => buildingType.requiredResource)
+		.filter((resourceId): resourceId is NonNullable<typeof resourceId> => resourceId !== null)
+		.map((resourceId) => [resourceId.replaceAll('-', ' '), resourceId] as const)
+);
+
+const INDUSTRIAL_BUILDING_ID_BY_NAME = new Map(
+	Object.values(INDUSTRIAL_BUILDING_TYPES).map(
+		(buildingType) => [buildingType.name, buildingType.id] as const
+	)
+);
+
 export type LocalizedDecisionOption = DecisionOption;
 
 export interface LocalizedDecision extends DecisionItem {
@@ -218,18 +231,24 @@ function localizeIndustrialConstructionContext(context: string, i18n: I18nBundle
 
 	const resourceMatch = context.match(/^Requires (.+)$/);
 	if (resourceMatch) {
+		const rawResource = resourceMatch[1] ?? context;
+		const resourceId = INDUSTRY_RESOURCE_ID_BY_RAW_LABEL.get(rawResource);
 		return i18n.t(
 			'copy.decisions.industrialConstructionDelayed.contexts.requiresResource' as never,
 			{
-				resource: resourceMatch[1] ?? context
+				resource: resourceId ? i18n.labels.industryResource(resourceId) : rawResource
 			}
 		);
 	}
 
 	const cashMatch = context.match(/^(.+) requires ([\d,]+) cash\.$/);
 	if (cashMatch) {
+		const rawBuildingName = cashMatch[1] ?? '';
+		const buildingTypeId = INDUSTRIAL_BUILDING_ID_BY_NAME.get(rawBuildingName);
 		return i18n.t('copy.decisions.industrialConstructionDelayed.contexts.requiresCash' as never, {
-			buildingName: cashMatch[1] ?? '',
+			buildingName: buildingTypeId
+				? i18n.labels.industrialBuilding(buildingTypeId)
+				: rawBuildingName,
 			cash: cashMatch[2] ?? '0'
 		});
 	}

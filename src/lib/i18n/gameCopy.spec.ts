@@ -134,7 +134,7 @@ describe('game copy builders', () => {
 	});
 
 	it('localizes event, state, and world decision families while preserving unknown fallback', () => {
-		expect.assertions(15);
+		expect.assertions(18);
 		const japanese = createI18n('ja');
 		const english = createI18n('en');
 
@@ -234,6 +234,34 @@ describe('game copy builders', () => {
 				}
 			]
 		};
+		const industrialResourceDecision: DecisionItem = {
+			id: 'industrial-construction-delayed-grain-farm-industry-city-1-1-requires-grain-field-2',
+			title: 'Industrial construction delayed',
+			context: 'Requires grain field',
+			expiresOnDay: 2,
+			options: [
+				{
+					id: 'acknowledge',
+					label: 'Acknowledge',
+					description: 'Return to industry planning.',
+					effects: {}
+				}
+			]
+		};
+		const industrialCashDecision: DecisionItem = {
+			id: 'industrial-construction-delayed-grain-farm-industry-city-1-1-grain-farm-requires-1-000-cash-2',
+			title: 'Industrial construction delayed',
+			context: 'Grain Farm requires 1,000 cash.',
+			expiresOnDay: 2,
+			options: [
+				{
+					id: 'acknowledge',
+					label: 'Acknowledge',
+					description: 'Return to industry planning.',
+					effects: {}
+				}
+			]
+		};
 
 		expect(localizeDecision(expansionOpportunity, japanese).title).not.toBe(
 			expansionOpportunity.title
@@ -264,6 +292,13 @@ describe('game copy builders', () => {
 		);
 		expect(localizeDecision(industrialDecision, english).options[0]?.description).toBe(
 			'Return to industry planning.'
+		);
+		expect(localizeDecision(industrialResourceDecision, japanese).context).not.toContain(
+			'grain field'
+		);
+		expect(localizeDecision(industrialCashDecision, japanese).context).not.toContain('Grain Farm');
+		expect(localizeDecision(industrialResourceDecision, english).context).toBe(
+			'Requires Grain Field'
 		);
 		expect(localizeDecision({ ...worldDecision, id: 'unknown-decision' }, english).title).toBe(
 			worldDecision.title
