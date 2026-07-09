@@ -6,6 +6,7 @@ import type {
 } from '$lib/game/productChainGraph';
 import type { GameAlert } from '$lib/game/alerts';
 import type { GameState, DecisionItem, DecisionOption } from '$lib/game/types';
+import { WORLD_CITY_CATALOG } from '$lib/game/world';
 import type { WorldCityStatus } from '$lib/game/world';
 import type { StoreProductStatus } from '$lib/game/stock';
 import type { I18nBundle } from './index';
@@ -140,28 +141,140 @@ function localizeGraphReason(reason: string | null, i18n: I18nBundle): string | 
 	return reason;
 }
 
+function classifyDecision(decision: DecisionItem): string | null {
+	if (decision.id === 'cash-pressure') return 'cashPressure';
+	if (decision.id === 'expansion-opportunity') return 'expansionOpportunity';
+	if (decision.id === 'supplier-terms') return 'supplierTerms';
+	if (decision.id.startsWith('expansion-unavailable-')) return 'expansionUnavailable';
+	if (decision.id.startsWith('expansion-cash-blocked-')) return 'expansionCashBlocked';
+	if (decision.id.startsWith('location-unavailable')) return 'locationUnavailable';
+	if (decision.id.startsWith('world-city-')) return 'worldCity';
+	return null;
+}
+
+function localizeLocationUnavailableContext(context: string, i18n: I18nBundle): string {
+	const blockedMatch = context.match(
+		/^(Locked location|Road location|River location) blocks store placement\. Choose another city tile\.$/
+	);
+	if (blockedMatch) {
+		const reason = blockedMatch[1]!;
+		const reasonKey =
+			reason === 'Locked location' ? 'locked' : reason === 'Road location' ? 'road' : 'river';
+		return i18n.t('copy.decisions.locationUnavailable.blockedContext' as never, {
+			reason: i18n.t(`copy.decisions.locationUnavailable.reasons.${reasonKey}` as never)
+		});
+	}
+
+	if (context === 'Choose an unlocked, unoccupied city tile before opening this store.') {
+		return i18n.t('copy.decisions.locationUnavailable.genericContext' as never);
+	}
+
+	return context;
+}
+
+function localizeWorldDecisionContext(decision: DecisionItem, i18n: I18nBundle): string {
+	if (decision.title === 'City unavailable' && decision.context === 'Unknown city.') {
+		return i18n.t('copy.decisions.worldCity.cityUnavailable.context' as never);
+	}
+
+	if (decision.title === 'City is not available yet') {
+		const city = WORLD_CITY_CATALOG.find((entry) => entry.unlockRequirement === decision.context);
+		if (city) {
+			return i18n.t('copy.decisions.worldCity.notAvailableYet.context' as never, {
+				requirement: i18n.t(`game.worldCities.${city.id}.unlockRequirement` as never)
+			});
+		}
+	}
+
+	if (decision.title === 'City opening delayed') {
+		const match = decision.context.match(/^Opening this city requires ([\d,]+) cash\.$/);
+		if (match) {
+			return i18n.t('copy.decisions.worldCity.openingDelayed.context' as never, {
+				cash: match[1] ?? '0'
+			});
+		}
+	}
+
+	return decision.context;
+}
+
+function localizeDecisionTitle(decision: DecisionItem, i18n: I18nBundle): string {
+	const family = classifyDecision(decision);
+
+	switch (family) {
+		case 'cashPressure':
+		case 'expansionOpportunity':
+		case 'supplierTerms':
+		case 'expansionUnavailable':
+		case 'expansionCashBlocked':
+		case 'locationUnavailable':
+			return translateMessage(i18n, `copy.decisions.${family}.title`) ?? decision.title;
+		case 'worldCity':
+			if (decision.title === 'City unavailable') {
+				return i18n.t('copy.decisions.worldCity.cityUnavailable.title' as never);
+			}
+			if (decision.title === 'City is not available yet') {
+				return i18n.t('copy.decisions.worldCity.notAvailableYet.title' as never);
+			}
+			if (decision.title === 'City opening delayed') {
+				return i18n.t('copy.decisions.worldCity.openingDelayed.title' as never);
+			}
+			return decision.title;
+		default:
+			return decision.title;
+	}
+}
+
+function localizeDecisionContext(decision: DecisionItem, i18n: I18nBundle): string {
+	const family = classifyDecision(decision);
+
+	switch (family) {
+		case 'cashPressure':
+		case 'expansionOpportunity':
+		case 'supplierTerms':
+			return translateMessage(i18n, `copy.decisions.${family}.context`) ?? decision.context;
+		case 'expansionUnavailable': {
+			const match = decision.context.match(/^This chain can operate up to (\d+) stores for now\.$/);
+			return match
+				? i18n.t('copy.decisions.expansionUnavailable.context' as never, {
+						storeCap: match[1] ?? '0'
+					})
+				: decision.context;
+		}
+		case 'expansionCashBlocked': {
+			const match = decision.context.match(/^Opening another store requires ([\d,]+) cash\.$/);
+			return match
+				? i18n.t('copy.decisions.expansionCashBlocked.context' as never, {
+						cash: match[1] ?? '0'
+					})
+				: decision.context;
+		}
+		case 'locationUnavailable':
+			return localizeLocationUnavailableContext(decision.context, i18n);
+		case 'worldCity':
+			return localizeWorldDecisionContext(decision, i18n);
+		default:
+			return decision.context;
+	}
+}
+
 function localizeDecisionOption(
-	decisionId: string,
+	decision: DecisionItem,
 	option: DecisionOption,
 	i18n: I18nBundle
 ): LocalizedDecisionOption {
-	const families: Record<string, string> = {
-		'cash-pressure': 'cashPressure',
-		'expansion-opportunity': 'expansionOpportunity',
-		'supplier-terms': 'supplierTerms'
-	};
-	const family = families[decisionId];
+	const family = classifyDecision(decision);
 
-	if (!family) {
-		if (option.id === 'acknowledge') {
-			return {
-				...option,
-				label: i18n.t('copy.decisions.acknowledge.label' as never),
-				description: i18n.t('copy.decisions.acknowledge.description' as never)
-			};
-		}
-
+	if (family === null) {
 		return { ...option };
+	}
+
+	if (option.id === 'acknowledge') {
+		return {
+			...option,
+			label: i18n.t('copy.decisions.acknowledge.label' as never),
+			description: i18n.t('copy.decisions.acknowledge.description' as never)
+		};
 	}
 
 	return {
@@ -257,22 +370,11 @@ export function localizeAlert(alert: GameAlert, game: GameState, i18n: I18nBundl
 }
 
 export function localizeDecision(decision: DecisionItem, i18n: I18nBundle): LocalizedDecision {
-	const families: Record<string, string> = {
-		'cash-pressure': 'cashPressure',
-		'expansion-opportunity': 'expansionOpportunity',
-		'supplier-terms': 'supplierTerms'
-	};
-	const family = families[decision.id];
-
 	return {
 		...decision,
-		title: family
-			? (translateMessage(i18n, `copy.decisions.${family}.title`) ?? decision.title)
-			: decision.title,
-		context: family
-			? (translateMessage(i18n, `copy.decisions.${family}.context`) ?? decision.context)
-			: decision.context,
-		options: decision.options.map((option) => localizeDecisionOption(decision.id, option, i18n))
+		title: localizeDecisionTitle(decision, i18n),
+		context: localizeDecisionContext(decision, i18n),
+		options: decision.options.map((option) => localizeDecisionOption(decision, option, i18n))
 	};
 }
 

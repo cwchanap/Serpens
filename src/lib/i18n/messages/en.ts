@@ -346,6 +346,42 @@ export const en = {
 					}
 				}
 			},
+			expansionUnavailable: {
+				title: 'Expansion unavailable',
+				context: 'This chain can operate up to {storeCap} stores for now.',
+				options: {}
+			},
+			expansionCashBlocked: {
+				title: 'Expansion delayed',
+				context: 'Opening another store requires {cash} cash.',
+				options: {}
+			},
+			locationUnavailable: {
+				title: 'Location unavailable',
+				blockedContext: '{reason} blocks store placement. Choose another city tile.',
+				genericContext: 'Choose an unlocked, unoccupied city tile before opening this store.',
+				reasons: {
+					locked: 'Locked location',
+					road: 'Road location',
+					river: 'River location'
+				},
+				options: {}
+			},
+			worldCity: {
+				cityUnavailable: {
+					title: 'City unavailable',
+					context: 'Unknown city.'
+				},
+				notAvailableYet: {
+					title: 'City is not available yet',
+					context: '{requirement}'
+				},
+				openingDelayed: {
+					title: 'City opening delayed',
+					context: 'Opening this city requires {cash} cash.'
+				},
+				options: {}
+			},
 			acknowledge: {
 				label: 'Acknowledge',
 				description: 'Return to operations planning.'

@@ -264,7 +264,6 @@ export const ja = {
 		}
 	},
 	copy: {
-		...en.copy,
 		stockStatus: {
 			healthy: '健全',
 			needsImport: '輸入が必要',
@@ -299,7 +298,6 @@ export const ja = {
 			openedSummary: '{storeCount} 店舗・{buildingCount} 工業施設'
 		},
 		decisions: {
-			...en.copy.decisions,
 			cashPressure: {
 				title: '資金繰り圧力',
 				context: '現金がマイナスです。ブランドを守りながら営業を続ける方法を選びます。',
@@ -317,6 +315,71 @@ export const ja = {
 						description: '反応的な変更を避け、翌日の売上回復に賭けます。'
 					}
 				}
+			},
+			expansionOpportunity: {
+				title: '出店機会',
+				context: '利益と現金余力が十分にあり、2号店の可能性が見えてきました。',
+				options: {
+					prepare: {
+						label: '準備する',
+						description: '候補地の調査と開店計画の段取りを始めます。'
+					},
+					pass: {
+						label: '見送る',
+						description: '資金を既存店の運営に集中させます。'
+					}
+				}
+			},
+			supplierTerms: {
+				title: '仕入条件',
+				context: '次の補充サイクル前に、仕入先が取引条件の見直しに応じる構えです。',
+				options: {
+					'negotiate-credit': {
+						label: '与信交渉',
+						description: '支払時期を延ばす代わりに、利益率の小さな悪化を受け入れます。'
+					},
+					'bulk-discount': {
+						label: 'まとめ発注',
+						description: '発注量を増やして、より良い仕入単価を狙います。'
+					}
+				}
+			},
+			expansionUnavailable: {
+				title: '出店不可',
+				context: 'このチェーンは当面、最大 {storeCap} 店まで運営できます。',
+				options: {}
+			},
+			expansionCashBlocked: {
+				title: '出店延期',
+				context: '新しい店舗を開くには {cash} の資金が必要です。',
+				options: {}
+			},
+			locationUnavailable: {
+				title: '出店場所不可',
+				blockedContext:
+					'{reason} のため、その場所には出店できません。別の都市タイルを選んでください。',
+				genericContext: '新店舗を開く前に、解放済みで未占有の都市タイルを選んでください。',
+				reasons: {
+					locked: '未解放区画',
+					road: '道路区画',
+					river: '河川区画'
+				},
+				options: {}
+			},
+			worldCity: {
+				cityUnavailable: {
+					title: '都市を利用できません',
+					context: '不明な都市です。'
+				},
+				notAvailableYet: {
+					title: 'この都市はまだ利用できません',
+					context: '開放条件: {requirement}'
+				},
+				openingDelayed: {
+					title: '都市開放を延期',
+					context: 'この都市を開くには {cash} の資金が必要です。'
+				},
+				options: {}
 			},
 			acknowledge: {
 				label: '確認',
