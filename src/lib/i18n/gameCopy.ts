@@ -148,6 +148,8 @@ function classifyDecision(decision: DecisionItem): string | null {
 	if (decision.id.startsWith('expansion-unavailable-')) return 'expansionUnavailable';
 	if (decision.id.startsWith('expansion-cash-blocked-')) return 'expansionCashBlocked';
 	if (decision.id.startsWith('location-unavailable')) return 'locationUnavailable';
+	if (decision.id.startsWith('industrial-construction-delayed'))
+		return 'industrialConstructionDelayed';
 	if (decision.id.startsWith('world-city-')) return 'worldCity';
 	return null;
 }
@@ -198,6 +200,43 @@ function localizeWorldDecisionContext(decision: DecisionItem, i18n: I18nBundle):
 	return decision.context;
 }
 
+function localizeIndustrialConstructionContext(context: string, i18n: I18nBundle): string {
+	const directContexts: Record<string, string> = {
+		'Unknown industrial tile': 'copy.decisions.industrialConstructionDelayed.contexts.unknownTile',
+		'Unknown industrial building type':
+			'copy.decisions.industrialConstructionDelayed.contexts.unknownBuildingType',
+		'Locked industrial tile': 'copy.decisions.industrialConstructionDelayed.contexts.lockedTile',
+		'Occupied industrial tile':
+			'copy.decisions.industrialConstructionDelayed.contexts.occupiedTile',
+		'Requires industrial tile':
+			'copy.decisions.industrialConstructionDelayed.contexts.requiresIndustrialTile'
+	};
+	const directKey = directContexts[context];
+	if (directKey) {
+		return i18n.t(directKey as never);
+	}
+
+	const resourceMatch = context.match(/^Requires (.+)$/);
+	if (resourceMatch) {
+		return i18n.t(
+			'copy.decisions.industrialConstructionDelayed.contexts.requiresResource' as never,
+			{
+				resource: resourceMatch[1] ?? context
+			}
+		);
+	}
+
+	const cashMatch = context.match(/^(.+) requires ([\d,]+) cash\.$/);
+	if (cashMatch) {
+		return i18n.t('copy.decisions.industrialConstructionDelayed.contexts.requiresCash' as never, {
+			buildingName: cashMatch[1] ?? '',
+			cash: cashMatch[2] ?? '0'
+		});
+	}
+
+	return context;
+}
+
 function localizeDecisionTitle(decision: DecisionItem, i18n: I18nBundle): string {
 	const family = classifyDecision(decision);
 
@@ -208,6 +247,7 @@ function localizeDecisionTitle(decision: DecisionItem, i18n: I18nBundle): string
 		case 'expansionUnavailable':
 		case 'expansionCashBlocked':
 		case 'locationUnavailable':
+		case 'industrialConstructionDelayed':
 			return translateMessage(i18n, `copy.decisions.${family}.title`) ?? decision.title;
 		case 'worldCity':
 			if (decision.title === 'City unavailable') {
@@ -251,6 +291,8 @@ function localizeDecisionContext(decision: DecisionItem, i18n: I18nBundle): stri
 		}
 		case 'locationUnavailable':
 			return localizeLocationUnavailableContext(decision.context, i18n);
+		case 'industrialConstructionDelayed':
+			return localizeIndustrialConstructionContext(decision.context, i18n);
 		case 'worldCity':
 			return localizeWorldDecisionContext(decision, i18n);
 		default:
@@ -270,10 +312,17 @@ function localizeDecisionOption(
 	}
 
 	if (option.id === 'acknowledge') {
+		const descriptionKey =
+			family === 'industrialConstructionDelayed'
+				? 'copy.decisions.industrialConstructionDelayed.acknowledge.description'
+				: family === 'locationUnavailable'
+					? 'copy.decisions.locationUnavailable.acknowledge.description'
+					: 'copy.decisions.acknowledge.description';
+
 		return {
 			...option,
 			label: i18n.t('copy.decisions.acknowledge.label' as never),
-			description: i18n.t('copy.decisions.acknowledge.description' as never)
+			description: i18n.t(descriptionKey as never)
 		};
 	}
 

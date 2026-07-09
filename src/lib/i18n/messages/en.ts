@@ -365,6 +365,25 @@ export const en = {
 					road: 'Road location',
 					river: 'River location'
 				},
+				acknowledge: {
+					description: 'Return to location planning.'
+				},
+				options: {}
+			},
+			industrialConstructionDelayed: {
+				title: 'Industrial construction delayed',
+				contexts: {
+					unknownTile: 'Unknown industrial tile',
+					unknownBuildingType: 'Unknown industrial building type',
+					lockedTile: 'Locked industrial tile',
+					occupiedTile: 'Occupied industrial tile',
+					requiresIndustrialTile: 'Requires industrial tile',
+					requiresResource: 'Requires {resource}',
+					requiresCash: '{buildingName} requires {cash} cash.'
+				},
+				acknowledge: {
+					description: 'Return to industry planning.'
+				},
 				options: {}
 			},
 			worldCity: {

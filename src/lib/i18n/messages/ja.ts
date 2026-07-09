@@ -364,6 +364,25 @@ export const ja = {
 					road: '道路区画',
 					river: '河川区画'
 				},
+				acknowledge: {
+					description: '立地計画に戻る。'
+				},
+				options: {}
+			},
+			industrialConstructionDelayed: {
+				title: '工業建設を延期',
+				contexts: {
+					unknownTile: '不明な工業タイルです。',
+					unknownBuildingType: '不明な工業建物タイプです。',
+					lockedTile: 'その工業タイルは未解放です。',
+					occupiedTile: 'その工業タイルはすでに使用中です。',
+					requiresIndustrialTile: '工業用タイルが必要です。',
+					requiresResource: '{resource} が必要です。',
+					requiresCash: '{buildingName} の建設には {cash} の資金が必要です。'
+				},
+				acknowledge: {
+					description: '工業計画に戻る。'
+				},
 				options: {}
 			},
 			worldCity: {

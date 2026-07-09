@@ -362,6 +362,25 @@ export const zhHant = {
 					road: '道路地點',
 					river: '河川地點'
 				},
+				acknowledge: {
+					description: '返回選址規劃。'
+				},
+				options: {}
+			},
+			industrialConstructionDelayed: {
+				title: '工業建設延後',
+				contexts: {
+					unknownTile: '未知的工業格位。',
+					unknownBuildingType: '未知的工業建築類型。',
+					lockedTile: '該工業格位尚未解鎖。',
+					occupiedTile: '該工業格位已被占用。',
+					requiresIndustrialTile: '需要工業用格位。',
+					requiresResource: '需要 {resource}。',
+					requiresCash: '{buildingName} 需要 {cash} 現金。'
+				},
+				acknowledge: {
+					description: '返回工業規劃。'
+				},
 				options: {}
 			},
 			worldCity: {
