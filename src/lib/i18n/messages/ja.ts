@@ -9,7 +9,12 @@ export const ja = {
 		day: '{day}日目',
 		cash: '現金',
 		alerts: '通知',
-		noAlerts: '通知なし'
+		noAlerts: '通知なし',
+		alertCount: {
+			one: '通知 {count} 件',
+			other: '通知 {count} 件'
+		},
+		alertsList: '通知一覧'
 	},
 	gameMenu: {
 		menu: 'メニュー',
@@ -23,10 +28,47 @@ export const ja = {
 		}
 	},
 	controlDesk: {
+		group: '操作デスク',
 		build: '建設',
 		management: '管理',
 		shortcuts: 'ショートカット',
 		advanceDay: '次の日へ'
+	},
+	audioSettings: {
+		group: '音声設定',
+		title: '音声',
+		bgm: 'BGM',
+		music: '音楽',
+		musicVolume: '音楽の音量',
+		sfx: 'SFX',
+		effects: '効果音',
+		effectsVolume: '効果音の音量'
+	},
+	route: {
+		cityPlanning: '都市計画',
+		mapEyebrow: {
+			retail: '小売都市マップ',
+			industry: '工業都市マップ',
+			world: '世界地図'
+		},
+		mapTitle: {
+			world: '地域ネットワーク'
+		},
+		menu: {
+			management: '管理',
+			managementPanels: '管理パネル'
+		},
+		placement: {
+			status: '配置状況',
+			cancel: 'キャンセル'
+		},
+		controlTower: {
+			eyebrow: '管理',
+			close: '閉じる',
+			dismiss: '{panel}を閉じる',
+			closePanel: '{panel}を閉じる',
+			panelStatus: '{panel}の状態'
+		}
 	},
 	game: {
 		archetypes: {

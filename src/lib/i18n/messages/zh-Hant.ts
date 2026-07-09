@@ -9,7 +9,12 @@ export const zhHant = {
 		day: '第 {day} 天',
 		cash: '現金',
 		alerts: '警示',
-		noAlerts: '沒有警示'
+		noAlerts: '沒有警示',
+		alertCount: {
+			one: '{count} 則警示',
+			other: '{count} 則警示'
+		},
+		alertsList: '警示列表'
 	},
 	gameMenu: {
 		menu: '選單',
@@ -23,10 +28,47 @@ export const zhHant = {
 		}
 	},
 	controlDesk: {
+		group: '控制台',
 		build: '建設',
 		management: '管理',
 		shortcuts: '快捷鍵',
 		advanceDay: '推進一天'
+	},
+	audioSettings: {
+		group: '音效設定',
+		title: '音效',
+		bgm: 'BGM',
+		music: '音樂',
+		musicVolume: '音樂音量',
+		sfx: 'SFX',
+		effects: '音效',
+		effectsVolume: '音效音量'
+	},
+	route: {
+		cityPlanning: '城市規劃',
+		mapEyebrow: {
+			retail: '零售城市地圖',
+			industry: '工業城市地圖',
+			world: '世界地圖'
+		},
+		mapTitle: {
+			world: '區域網絡'
+		},
+		menu: {
+			management: '管理',
+			managementPanels: '管理面板'
+		},
+		placement: {
+			status: '建造狀態',
+			cancel: '取消'
+		},
+		controlTower: {
+			eyebrow: '管理',
+			close: '關閉',
+			dismiss: '關閉{panel}',
+			closePanel: '關閉{panel}',
+			panelStatus: '{panel}狀態'
+		}
 	},
 	game: {
 		archetypes: {

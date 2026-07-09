@@ -1,11 +1,14 @@
 <script lang="ts">
 	import type { AudioPreferences } from '$lib/audio/audioPreferences';
+	import type { I18nBundle } from '$lib/i18n';
 
 	let {
 		preferences,
+		i18n,
 		onChange
 	}: {
 		preferences: AudioPreferences;
+		i18n: I18nBundle;
 		onChange: (patch: Partial<AudioPreferences>) => void;
 	} = $props();
 
@@ -18,8 +21,8 @@
 	}
 </script>
 
-<section class="audio-settings" role="group" aria-label="Audio settings">
-	<h2>Audio</h2>
+<section class="audio-settings" role="group" aria-label={i18n.t('audioSettings.group')}>
+	<h2>{i18n.t('audioSettings.title')}</h2>
 
 	<div class="audio-grid">
 		<div class="audio-channel">
@@ -29,18 +32,18 @@
 					checked={preferences.bgmEnabled}
 					onchange={(event) => updateEnabled('bgmEnabled', event.currentTarget.checked)}
 				/>
-				<span>BGM</span>
+				<span>{i18n.t('audioSettings.bgm')}</span>
 			</label>
 
 			<label class="volume-control">
-				<span>Music</span>
+				<span>{i18n.t('audioSettings.music')}</span>
 				<input
 					type="range"
 					min="0"
 					max="1"
 					step="0.05"
 					value={preferences.bgmVolume}
-					aria-label="Music volume"
+					aria-label={i18n.t('audioSettings.musicVolume')}
 					disabled={!preferences.bgmEnabled}
 					oninput={(event) => updateVolume('bgmVolume', event.currentTarget.valueAsNumber)}
 				/>
@@ -54,18 +57,18 @@
 					checked={preferences.sfxEnabled}
 					onchange={(event) => updateEnabled('sfxEnabled', event.currentTarget.checked)}
 				/>
-				<span>SFX</span>
+				<span>{i18n.t('audioSettings.sfx')}</span>
 			</label>
 
 			<label class="volume-control">
-				<span>Effects</span>
+				<span>{i18n.t('audioSettings.effects')}</span>
 				<input
 					type="range"
 					min="0"
 					max="1"
 					step="0.05"
 					value={preferences.sfxVolume}
-					aria-label="Effects volume"
+					aria-label={i18n.t('audioSettings.effectsVolume')}
 					disabled={!preferences.sfxEnabled}
 					oninput={(event) => updateVolume('sfxVolume', event.currentTarget.valueAsNumber)}
 				/>

@@ -1,6 +1,7 @@
 <!-- src/lib/components/game/ControlDesk.svelte -->
 <script lang="ts">
 	import type { ManagementPanelId } from '$lib/game/keyboardShortcuts';
+	import type { I18nBundle } from '$lib/i18n';
 
 	interface ManagementItem {
 		id: ManagementPanelId;
@@ -12,6 +13,7 @@
 		managementItems: ManagementItem[];
 		buildDisabled: boolean;
 		advanceDisabled: boolean;
+		i18n: I18nBundle;
 		onBuild: () => void;
 		onOpenManagement: (id: ManagementPanelId) => void;
 		onAdvanceDay: () => void;
@@ -22,6 +24,7 @@
 		managementItems,
 		buildDisabled,
 		advanceDisabled,
+		i18n,
 		onBuild,
 		onOpenManagement,
 		onAdvanceDay,
@@ -29,20 +32,20 @@
 	}: Props = $props();
 </script>
 
-<footer class="control-desk plaque" aria-label="Control desk">
+<footer class="control-desk plaque" aria-label={i18n.t('controlDesk.group')}>
 	<div class="cluster">
 		<button
 			type="button"
 			class="desk-build"
-			aria-label="Build"
+			aria-label={i18n.t('controlDesk.build')}
 			disabled={buildDisabled}
 			onclick={onBuild}
 		>
-			Build <kbd class="keycap">B</kbd>
+			{i18n.t('controlDesk.build')} <kbd class="keycap">B</kbd>
 		</button>
 	</div>
 
-	<div class="cluster manage" role="group" aria-label="Management">
+	<div class="cluster manage" role="group" aria-label={i18n.t('controlDesk.management')}>
 		{#each managementItems as item (item.id)}
 			<button type="button" class="manage-btn" onclick={() => onOpenManagement(item.id)}>
 				{item.label}
@@ -55,19 +58,19 @@
 		<button
 			type="button"
 			class="desk-shortcuts"
-			aria-label="Keyboard shortcuts"
+			aria-label={i18n.t('controlDesk.shortcuts')}
 			onclick={onOpenShortcuts}
 		>
-			Shortcuts <kbd class="keycap">?</kbd>
+			{i18n.t('controlDesk.shortcuts')} <kbd class="keycap">?</kbd>
 		</button>
 		<button
 			type="button"
 			class="btn-primary advance"
-			aria-label="Advance day"
+			aria-label={i18n.t('controlDesk.advanceDay')}
 			disabled={advanceDisabled}
 			onclick={onAdvanceDay}
 		>
-			Advance Day <kbd class="keycap">Space</kbd>
+			{i18n.t('controlDesk.advanceDay')} <kbd class="keycap">Space</kbd>
 		</button>
 	</div>
 </footer>

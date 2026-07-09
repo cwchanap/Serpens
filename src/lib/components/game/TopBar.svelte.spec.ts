@@ -2,6 +2,11 @@ import { page } from 'vitest/browser';
 import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import type { GameAlert } from '$lib/game/alerts';
+import { createI18n } from '$lib/i18n';
+import { generateCity } from '$lib/game/city';
+import { createInitialWorldProgress } from '$lib/game/world';
+import type { GameState } from '$lib/game/types';
+import { DEFAULT_POLICY } from '$lib/game/state';
 import TopBar from './TopBar.svelte';
 
 const alerts: GameAlert[] = [
@@ -13,6 +18,34 @@ const alerts: GameAlert[] = [
 	}
 ];
 
+const alertGame: GameState = {
+	seed: 1,
+	rngState: 0,
+	day: 1,
+	cash: 0,
+	debt: 0,
+	policy: { ...DEFAULT_POLICY },
+	scorecard: {
+		profit: 0,
+		customerSatisfaction: 0,
+		staffMorale: 0,
+		marketPosition: 0
+	},
+	world: createInitialWorldProgress(),
+	storeCap: 1,
+	cities: [generateCity({ id: 'harbor-city', name: 'Harbor City', width: 4, height: 4, seed: 1 })],
+	activeCityId: 'harbor-city',
+	industryCities: [],
+	activeIndustryCityId: 'industry-city',
+	industrialBuildings: [],
+	warehouse: { capacity: 0, materials: {}, overflowUnits: 0, overflowCost: 0 },
+	stores: [],
+	staff: [],
+	hiringCandidates: [],
+	decisions: [],
+	reports: []
+};
+
 describe('TopBar', () => {
 	it('renders the location, day and cash', async () => {
 		expect.assertions(3);
@@ -22,9 +55,13 @@ describe('TopBar', () => {
 			day: 42,
 			cash: 128400,
 			alerts: [],
+			alertGame,
+			i18n: createI18n('en'),
+			activeLocale: 'en' as const,
 			onSelectAlert: vi.fn(),
 			activeMapView: 'retail',
-			onSelectView: vi.fn()
+			onSelectView: vi.fn(),
+			onSelectLocale: vi.fn()
 		});
 		await expect.element(page.getByRole('heading', { name: /harbor city/i })).toBeVisible();
 		await expect.element(page.getByText(/day 42/i)).toBeVisible();
@@ -40,12 +77,16 @@ describe('TopBar', () => {
 			day: 1,
 			cash: 0,
 			alerts,
+			alertGame,
+			i18n: createI18n('en'),
+			activeLocale: 'en' as const,
 			onSelectAlert,
 			activeMapView: 'retail',
-			onSelectView: vi.fn()
+			onSelectView: vi.fn(),
+			onSelectLocale: vi.fn()
 		});
 		await expect.element(page.getByText('1', { exact: true })).toBeVisible();
-		await page.getByRole('button', { name: /^alerts/i }).click();
+		await page.getByRole('button', { name: /alert/i }).click();
 		await page.getByRole('button', { name: /corner market/i }).click();
 		expect(onSelectAlert).toHaveBeenCalledWith(alerts[0]);
 	});
@@ -58,11 +99,15 @@ describe('TopBar', () => {
 			day: 1,
 			cash: 0,
 			alerts,
+			alertGame,
+			i18n: createI18n('en'),
+			activeLocale: 'en' as const,
 			onSelectAlert: vi.fn(),
 			activeMapView: 'retail',
-			onSelectView: vi.fn()
+			onSelectView: vi.fn(),
+			onSelectLocale: vi.fn()
 		});
-		await page.getByRole('button', { name: /^alerts/i }).click();
+		await page.getByRole('button', { name: /alert/i }).click();
 		await expect.element(page.getByRole('group', { name: /alerts list/i })).toBeVisible();
 		document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
 		await expect.element(page.getByRole('group', { name: /alerts list/i })).not.toBeInTheDocument();
@@ -77,9 +122,13 @@ describe('TopBar', () => {
 			day: 1,
 			cash: 0,
 			alerts: [],
+			alertGame,
+			i18n: createI18n('en'),
+			activeLocale: 'en' as const,
 			onSelectAlert: vi.fn(),
 			activeMapView: 'retail',
-			onSelectView
+			onSelectView,
+			onSelectLocale: vi.fn()
 		});
 		await expect
 			.element(page.getByRole('button', { name: /industry city map/i }))
@@ -97,9 +146,13 @@ describe('TopBar', () => {
 			day: null,
 			cash: null,
 			alerts: [],
+			alertGame,
+			i18n: createI18n('en'),
+			activeLocale: 'en' as const,
 			onSelectAlert: vi.fn(),
 			activeMapView: 'retail',
-			onSelectView: vi.fn()
+			onSelectView: vi.fn(),
+			onSelectLocale: vi.fn()
 		});
 		await expect.element(page.getByText(/day \d/i)).not.toBeInTheDocument();
 		await expect.element(page.getByText(/\$/)).not.toBeInTheDocument();
@@ -113,9 +166,13 @@ describe('TopBar', () => {
 			day: 1,
 			cash: 0,
 			alerts: [],
+			alertGame,
+			i18n: createI18n('en'),
+			activeLocale: 'en' as const,
 			onSelectAlert: vi.fn(),
 			activeMapView: 'retail',
-			onSelectView: vi.fn()
+			onSelectView: vi.fn(),
+			onSelectLocale: vi.fn()
 		});
 		await page.getByRole('button', { name: /^alerts$/i }).click();
 		await expect.element(page.getByText(/no alerts/i)).toBeVisible();
@@ -132,9 +189,13 @@ describe('TopBar', () => {
 				{ id: 'a1', kind: 'store-stock', message: 'First alert' },
 				{ id: 'a2', kind: 'decision', message: 'Second alert' }
 			],
+			alertGame,
+			i18n: createI18n('en'),
+			activeLocale: 'en' as const,
 			onSelectAlert: vi.fn(),
 			activeMapView: 'retail',
-			onSelectView: vi.fn()
+			onSelectView: vi.fn(),
+			onSelectLocale: vi.fn()
 		});
 		await expect.element(page.getByText(/2 alerts/i)).toBeVisible();
 	});

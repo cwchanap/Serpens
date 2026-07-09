@@ -1,6 +1,7 @@
 import { page } from 'vitest/browser';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
+import { createI18n } from '$lib/i18n';
 import type { ManagementPanelId } from '$lib/game/keyboardShortcuts';
 import ControlDesk from './ControlDesk.svelte';
 
@@ -14,6 +15,7 @@ function baseProps() {
 		managementItems,
 		buildDisabled: false,
 		advanceDisabled: false,
+		i18n: createI18n('en'),
 		onBuild: vi.fn(),
 		onOpenManagement: vi.fn(),
 		onAdvanceDay: vi.fn(),
@@ -72,7 +74,7 @@ describe('ControlDesk', () => {
 		expect.assertions(3);
 		const props = baseProps();
 		render(ControlDesk, props);
-		const shortcuts = page.getByRole('button', { name: /keyboard shortcuts/i });
+		const shortcuts = page.getByRole('button', { name: /^shortcuts$/i });
 		await expect.element(shortcuts).toBeVisible();
 		await expect.element(page.getByText('?', { exact: true })).toBeVisible();
 		await shortcuts.click();
