@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { I18nBundle } from '$lib/i18n';
 	import type { ReportSummary } from '$lib/game/reports';
+	import { localizeReportWarning } from '$lib/i18n/gameCopy';
 
 	let { i18n, summary }: { i18n: I18nBundle; summary: ReportSummary } = $props();
 </script>
@@ -51,7 +52,7 @@
 		{#if summary.latest.warnings.length}
 			<ul class="warnings" aria-label={i18n.t('reportsPanel.dailyWarnings')}>
 				{#each summary.latest.warnings as warning (warning)}
-					<li>{warning}</li>
+					<li>{localizeReportWarning(warning, i18n)}</li>
 				{/each}
 			</ul>
 		{/if}

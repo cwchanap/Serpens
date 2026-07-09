@@ -107,6 +107,31 @@ describe('CategoryStampIndex', () => {
 		expect(stamp?.textContent).toContain('Tier 1');
 	});
 
+	it('formats metric quantities with the active locale formatter', async () => {
+		expect.assertions(2);
+		const onSelectCategory = vi.fn();
+
+		render(CategoryStampIndex, {
+			i18n: createI18n('zh-Hant'),
+			summaries: [
+				summary({
+					categoryId: 'snacks',
+					name: 'Snacks',
+					warehouseStock: 1234.5,
+					produced: 9876,
+					consumed: 12.25
+				})
+			],
+			activeCategoryId: null,
+			mode: 'store-categories',
+			onSelectCategory
+		});
+
+		const stamp = document.querySelector('[data-testid="category-stamp-snacks"]');
+		expect(stamp?.textContent).toContain('庫存 1,234.5 · 生產 9,876/日 · 售出 12.25/日');
+		expect(stamp?.textContent).not.toContain('庫存 1234.5');
+	});
+
 	it('does not show a tier badge for categories without a tier', async () => {
 		expect.assertions(1);
 		const onSelectCategory = vi.fn();

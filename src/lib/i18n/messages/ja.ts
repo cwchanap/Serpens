@@ -702,6 +702,15 @@ export const ja = {
 			decision: '決定事項: {title}',
 			factoryBlocked: '{buildingName} は原料不足です'
 		},
+		reportWarnings: {
+			stockPressure: '{storeName} に在庫圧力があります',
+			nearStaffCapacity: '{storeName} はスタッフ定員に近づいています',
+			shortManager: '{storeName} のマネージャーが {count} 名不足',
+			shortGeneral: '{storeName} の一般スタッフが {count} 名不足',
+			missedProductDemand: '{storeName} は商品需要を取り逃しました',
+			reputationSlipping: '{storeName} の評判が下がっています',
+			cashReservesLow: '現金準備が少なくなっています'
+		},
 		worldCity: {
 			kind: {
 				retail: '小売',
@@ -842,7 +851,8 @@ export const ja = {
 				noLocalChain: 'このカテゴリにはまだ現地生産チェーンがありません。'
 			},
 			warnings: {
-				noDailyReport: '日次レポートがまだないため、最新日のフローは表示できません。'
+				noDailyReport: '日次レポートがまだないため、最新日のフローは表示できません。',
+				noProductionRecipe: '{materialName} の生産レシピが見つかりません。'
 			},
 			edges: {
 				in: '1日 {quantity} 入庫',

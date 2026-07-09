@@ -1,4 +1,4 @@
-import { INDUSTRIAL_BUILDING_TYPES } from '$lib/game/industry';
+import { INDUSTRIAL_BUILDING_TYPES, MATERIALS } from '$lib/game/industry';
 import type { PlacementBlockReason } from '$lib/game/placementPreview';
 import type {
 	ProductChainEdge,
@@ -24,7 +24,11 @@ const INDUSTRIAL_BUILDING_ID_BY_NAME = new Map(
 		(buildingType) => [buildingType.name, buildingType.id] as const
 	)
 );
+const MATERIAL_ID_BY_NAME = new Map(
+	Object.values(MATERIALS).map((material) => [material.name, material.id] as const)
+);
 const WORLD_CITY_OPENING_COST_CONTEXT = /^Opening this city requires ([\d,]+) cash\.$/;
+const NO_PRODUCTION_RECIPE_WARNING = /^No production recipe found for (.+)\.$/;
 
 export type LocalizedDecisionOption = DecisionOption;
 
@@ -90,6 +94,11 @@ function translateMessage(
 
 function formatCountMessage(i18n: I18nBundle, baseKey: string, count: number): string {
 	return i18n.t(`${baseKey}.${count === 1 ? 'one' : 'other'}` as never, { count });
+}
+
+function parseWarningCount(value: string): number {
+	const parsed = Number(value);
+	return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function formatQuantity(quantity: string): string {
@@ -210,6 +219,75 @@ function localizeGraphReason(reason: string | null, i18n: I18nBundle): string | 
 	}
 
 	return reason;
+}
+
+export function localizeReportWarning(warning: string, i18n: I18nBundle): string {
+	const stockPressure = warning.match(/^(.+) has stock pressure$/);
+	if (stockPressure) {
+		return i18n.t('copy.reportWarnings.stockPressure' as never, {
+			storeName: stockPressure[1] ?? ''
+		});
+	}
+
+	const staffCapacity = warning.match(/^(.+) is near staff capacity$/);
+	if (staffCapacity) {
+		return i18n.t('copy.reportWarnings.nearStaffCapacity' as never, {
+			storeName: staffCapacity[1] ?? ''
+		});
+	}
+
+	const shortManager = warning.match(/^(.+) is short (\d+) manager$/);
+	if (shortManager) {
+		return i18n.t('copy.reportWarnings.shortManager' as never, {
+			storeName: shortManager[1] ?? '',
+			count: i18n.format.integer(parseWarningCount(shortManager[2] ?? '0'))
+		});
+	}
+
+	const shortGeneral = warning.match(/^(.+) is short (\d+) general staff$/);
+	if (shortGeneral) {
+		return i18n.t('copy.reportWarnings.shortGeneral' as never, {
+			storeName: shortGeneral[1] ?? '',
+			count: i18n.format.integer(parseWarningCount(shortGeneral[2] ?? '0'))
+		});
+	}
+
+	const missedProductDemand = warning.match(/^(.+) missed product demand$/);
+	if (missedProductDemand) {
+		return i18n.t('copy.reportWarnings.missedProductDemand' as never, {
+			storeName: missedProductDemand[1] ?? ''
+		});
+	}
+
+	const reputationSlipping = warning.match(/^(.+) reputation is slipping$/);
+	if (reputationSlipping) {
+		return i18n.t('copy.reportWarnings.reputationSlipping' as never, {
+			storeName: reputationSlipping[1] ?? ''
+		});
+	}
+
+	if (warning === 'cash reserves are low') {
+		return i18n.t('copy.reportWarnings.cashReservesLow' as never);
+	}
+
+	return warning;
+}
+
+function localizeGraphWarning(warning: string, i18n: I18nBundle): string {
+	if (warning === 'No daily report yet; latest-day flow is unavailable.') {
+		return i18n.t('copy.productChainGraph.warnings.noDailyReport' as never);
+	}
+
+	const recipeMatch = warning.match(NO_PRODUCTION_RECIPE_WARNING);
+	if (recipeMatch) {
+		const materialName = recipeMatch[1] ?? '';
+		const materialId = MATERIAL_ID_BY_NAME.get(materialName);
+		return i18n.t('copy.productChainGraph.warnings.noProductionRecipe' as never, {
+			materialName: materialId ? i18n.labels.material(materialId) : materialName
+		});
+	}
+
+	return warning;
 }
 
 function classifyDecision(decision: DecisionItem): string | null {
@@ -586,11 +664,7 @@ export function localizeProductChainGraph(
 		nodes: localizedNodes,
 		edges: localizedEdges,
 		details: localizedNodeMap,
-		warnings: graph.warnings.map((warning) =>
-			warning === 'No daily report yet; latest-day flow is unavailable.'
-				? i18n.t('copy.productChainGraph.warnings.noDailyReport' as never)
-				: warning
-		),
+		warnings: graph.warnings.map((warning) => localizeGraphWarning(warning, i18n)),
 		emptyReason: localizeGraphReason(graph.emptyReason, i18n)
 	};
 }

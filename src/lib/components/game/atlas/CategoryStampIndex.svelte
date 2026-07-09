@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { INDUSTRY_MATERIAL_ART } from '$lib/assets/gameArt';
-	import { formatQuantity, type ProductChainCategorySummary } from '$lib/game/productChainGraph';
+	import type { ProductChainCategorySummary } from '$lib/game/productChainGraph';
 	import type { I18nBundle } from '$lib/i18n';
 	import type { MaterialId } from '$lib/game/types';
 
@@ -44,9 +44,9 @@
 			{/if}
 			<span class="nums">
 				{i18n.t('atlas.categoryIndex.metrics', {
-					stock: formatQuantity(summary.warehouseStock),
-					produced: formatQuantity(summary.produced),
-					consumed: formatQuantity(summary.consumed)
+					stock: i18n.format.decimal(summary.warehouseStock),
+					produced: i18n.format.decimal(summary.produced),
+					consumed: i18n.format.decimal(summary.consumed)
 				})}
 			</span>
 		</button>

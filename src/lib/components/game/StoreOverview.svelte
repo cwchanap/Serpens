@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { summarizeStoreStaffing } from '$lib/game/staffing';
 	import type { I18nBundle } from '$lib/i18n';
+	import { localizeReportWarning } from '$lib/i18n/gameCopy';
 	import type { DailyProductReport, DailyStoreReport, StaffMember, Store } from '$lib/game/types';
 
 	let {
@@ -103,7 +104,7 @@
 				{#if report?.warnings.length}
 					<ul aria-label={i18n.t('storeOverview.warnings', { storeName: store.name })}>
 						{#each report.warnings as warning (warning)}
-							<li>{warning}</li>
+							<li>{localizeReportWarning(warning, i18n)}</li>
 						{/each}
 					</ul>
 				{:else}
