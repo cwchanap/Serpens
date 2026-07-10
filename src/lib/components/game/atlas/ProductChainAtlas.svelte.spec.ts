@@ -3,10 +3,20 @@ import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { buildProductChainTree } from '$lib/game/productChainTree';
 import { createNewGame } from '$lib/game/state';
+import type { LocalizedProductChainGraph } from '$lib/i18n/localizedTypes';
 import { createI18n } from '$lib/i18n';
 import ProductChainAtlas from './ProductChainAtlas.svelte';
 
 const i18n = createI18n('en');
+
+// The atlas accepts LocalizedProductChainGraph (string fields). The raw builder
+// emits structured objects; localizeProductChainGraph (Task 8) is the bridge.
+// These tests check structure/interaction, not label text, so a cast suffices.
+function localizedGraph(
+	graph: ReturnType<typeof buildProductChainTree>
+): LocalizedProductChainGraph {
+	return graph as unknown as LocalizedProductChainGraph;
+}
 
 describe('ProductChainAtlas', () => {
 	it('renders the empty message when graph.emptyReason is set', async () => {
@@ -21,7 +31,7 @@ describe('ProductChainAtlas', () => {
 				details: {},
 				warnings: [],
 				emptyReason: 'No local production chain available for this category yet.'
-			},
+			} as LocalizedProductChainGraph,
 			i18n,
 			selectedNodeId: null,
 			onSelectNode
@@ -44,7 +54,7 @@ describe('ProductChainAtlas', () => {
 				details: {},
 				warnings: [],
 				emptyReason: null
-			},
+			} as LocalizedProductChainGraph,
 			i18n,
 			selectedNodeId: null,
 			onSelectNode
@@ -66,7 +76,7 @@ describe('ProductChainAtlas', () => {
 		const firstNode = graph.nodes[0]!;
 		const onSelectNode = vi.fn();
 		render(ProductChainAtlas, {
-			graph,
+			graph: localizedGraph(graph),
 			i18n,
 			selectedNodeId: firstNode.id,
 			onSelectNode
@@ -94,14 +104,14 @@ describe('ProductChainAtlas', () => {
 		});
 		const onSelectNode = vi.fn();
 		const view = render(ProductChainAtlas, {
-			graph: snacks,
+			graph: localizedGraph(snacks),
 			i18n,
 			selectedNodeId: snacks.nodes[0]!.id,
 			onSelectNode
 		});
 
 		view.rerender({
-			graph: drinks,
+			graph: localizedGraph(drinks),
 			i18n,
 			selectedNodeId: snacks.nodes[0]!.id,
 			onSelectNode
@@ -122,7 +132,7 @@ describe('ProductChainAtlas', () => {
 		const onSelectNode = vi.fn();
 		const onInteractionFeedback = vi.fn();
 		render(ProductChainAtlas, {
-			graph,
+			graph: localizedGraph(graph),
 			i18n,
 			selectedNodeId: null,
 			onSelectNode,
@@ -147,7 +157,7 @@ describe('ProductChainAtlas', () => {
 		const onSelectNode = vi.fn();
 		const onInteractionFeedback = vi.fn();
 		render(ProductChainAtlas, {
-			graph,
+			graph: localizedGraph(graph),
 			i18n,
 			selectedNodeId: graph.nodes[0]!.id,
 			onSelectNode,
@@ -173,7 +183,7 @@ describe('ProductChainAtlas', () => {
 		});
 		const onSelectNode = vi.fn();
 		render(ProductChainAtlas, {
-			graph,
+			graph: localizedGraph(graph),
 			i18n,
 			selectedNodeId: null,
 			onSelectNode
@@ -193,7 +203,7 @@ describe('ProductChainAtlas', () => {
 		});
 		const onSelectNode = vi.fn();
 		render(ProductChainAtlas, {
-			graph,
+			graph: localizedGraph(graph),
 			i18n,
 			selectedNodeId: null,
 			onSelectNode
@@ -234,7 +244,7 @@ describe('ProductChainAtlas', () => {
 		});
 		const onSelectNode = vi.fn();
 		render(ProductChainAtlas, {
-			graph,
+			graph: localizedGraph(graph),
 			i18n,
 			selectedNodeId: null,
 			onSelectNode

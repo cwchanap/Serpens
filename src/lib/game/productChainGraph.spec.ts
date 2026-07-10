@@ -218,9 +218,9 @@ describe('warehouse flow graph', () => {
 		expect(snacks?.actual.shopImported).toBe(4);
 		expect(graph.edges.some((edge) => edge.id === 'material:snacks->warehouse')).toBe(true);
 		expect(snacksInEdge?.actualPerDay).toBe(8);
-		expect(snacksInEdge?.label).toBe('8/day in');
+		expect(snacksInEdge?.label).toEqual({ code: 'in', quantity: 8 });
 		expect(snacksOutEdge?.actualPerDay).toBe(6);
-		expect(snacksOutEdge?.label).toBe('6/day out');
+		expect(snacksOutEdge?.label).toEqual({ code: 'out', quantity: 6 });
 	});
 
 	test('returns an empty graph before any warehouse stock or daily report exists', () => {
@@ -267,21 +267,33 @@ describe('healthLabel', () => {
 describe('bottleneckText', () => {
 	test('describes the bottleneck for each chain health state', () => {
 		expect.assertions(5);
-		expect(bottleneckText({ kind: 'material', health: 'healthy', label: 'Snacks' })).toBe(
-			'Snacks is flowing locally.'
-		);
-		expect(bottleneckText({ kind: 'material', health: 'watch', label: 'Flour' })).toBe(
-			'Flour stock is below latest downstream use.'
-		);
-		expect(bottleneckText({ kind: 'material', health: 'shortage', label: 'Drinks' })).toBe(
-			'Drinks relied on imports or had a local shortage today.'
-		);
-		expect(bottleneckText({ kind: 'material', health: 'no-local-capacity', label: 'Grain' })).toBe(
-			'Grain has no placed local producer.'
-		);
-		expect(bottleneckText({ kind: 'material', health: 'no-report', label: 'Salt' })).toBe(
-			'Salt has no latest daily flow yet.'
-		);
+		expect(bottleneckText({ kind: 'material', health: 'healthy', label: 'Snacks' })).toEqual({
+			code: 'healthStatus',
+			health: 'healthy',
+			label: 'Snacks'
+		});
+		expect(bottleneckText({ kind: 'material', health: 'watch', label: 'Flour' })).toEqual({
+			code: 'healthStatus',
+			health: 'watch',
+			label: 'Flour'
+		});
+		expect(bottleneckText({ kind: 'material', health: 'shortage', label: 'Drinks' })).toEqual({
+			code: 'healthStatus',
+			health: 'shortage',
+			label: 'Drinks'
+		});
+		expect(
+			bottleneckText({ kind: 'material', health: 'no-local-capacity', label: 'Grain' })
+		).toEqual({
+			code: 'healthStatus',
+			health: 'no-local-capacity',
+			label: 'Grain'
+		});
+		expect(bottleneckText({ kind: 'material', health: 'no-report', label: 'Salt' })).toEqual({
+			code: 'healthStatus',
+			health: 'no-report',
+			label: 'Salt'
+		});
 	});
 });
 
@@ -398,7 +410,7 @@ describe('warehouse flow graph health branches', () => {
 
 		expect(warehouse.health).toBe('healthy');
 		expect(warehouse.healthLabel).toBe('Healthy');
-		expect(warehouse.bottleneck).toBe('Warehouse capacity is available.');
+		expect(warehouse.bottleneck).toEqual({ code: 'warehouseAvailable' });
 		expect(warehouse.capacity.inputPerDay).toBe(200);
 	});
 
@@ -500,7 +512,7 @@ describe('sortEdges', () => {
 				source: 'warehouse',
 				target: 'material:zebra',
 				materialId: null,
-				label: '',
+				label: { code: 'in', quantity: 0 } as const,
 				requiredPerCycle: 0,
 				actualPerDay: 0,
 				health: 'healthy' as const
@@ -510,7 +522,7 @@ describe('sortEdges', () => {
 				source: 'warehouse',
 				target: 'material:alpha',
 				materialId: null,
-				label: '',
+				label: { code: 'in', quantity: 0 } as const,
 				requiredPerCycle: 0,
 				actualPerDay: 0,
 				health: 'healthy' as const
@@ -530,7 +542,7 @@ describe('sortEdges', () => {
 				source: 'warehouse',
 				target: 'material:snacks',
 				materialId: null,
-				label: '',
+				label: { code: 'in', quantity: 0 } as const,
 				requiredPerCycle: 0,
 				actualPerDay: 0,
 				health: 'healthy' as const
@@ -540,7 +552,7 @@ describe('sortEdges', () => {
 				source: 'warehouse',
 				target: 'material:snacks',
 				materialId: null,
-				label: '',
+				label: { code: 'in', quantity: 0 } as const,
 				requiredPerCycle: 0,
 				actualPerDay: 0,
 				health: 'healthy' as const

@@ -188,7 +188,13 @@ describe('buildProductChainTree', () => {
 		);
 
 		expect(snackFactory.warehouseStock).toBe(12);
-		expect(packagingEdge?.label).toContain('· import');
+		expect(packagingEdge?.label).toEqual({
+			code: 'cycle',
+			direction: 'used',
+			actual: 2,
+			required: 2,
+			imported: true
+		});
 		// Zero placed packaging buildings overrides the material-level shortage
 		// signal — the player must build before reports matter.
 		expect(packagingNode.health).toBe('no-local-capacity');
@@ -278,7 +284,7 @@ describe('buildProductChainTree', () => {
 			categoryId: 'bottled-water'
 		});
 
-		expect(tree.warnings).toContain('No daily report yet; latest-day flow is unavailable.');
+		expect(tree.warnings).toContainEqual({ code: 'noDailyReport' });
 		const bottler = tree.details['recipe:water-bottling']!;
 		expect(bottler.health).toBe('no-local-capacity');
 		expect(bottler.capacity.buildingCount).toBe(0);
@@ -341,7 +347,11 @@ describe('buildProductChainTree', () => {
 
 		expect(root.actual.demandMissed).toBe(12);
 		expect(root.health).toBe('shortage');
-		expect(root.bottleneck).toBe('Snacks relied on imports or had a local shortage today.');
+		expect(root.bottleneck).toEqual({
+			code: 'healthStatus',
+			health: 'shortage',
+			label: 'Snacks'
+		});
 	});
 
 	it('scales capacity by throughput multiplier when a producer is upgraded', () => {
@@ -516,9 +526,21 @@ describe('buildProductChainTree', () => {
 		);
 
 		expect(snacksPackaging?.actualPerDay).toBe(2);
-		expect(snacksPackaging?.label).toBe('2/day used · 2/cycle');
+		expect(snacksPackaging?.label).toEqual({
+			code: 'cycle',
+			direction: 'used',
+			actual: 2,
+			required: 2,
+			imported: false
+		});
 		expect(drinksPackaging?.actualPerDay).toBe(2);
-		expect(drinksPackaging?.label).toBe('2/day used · 2/cycle');
+		expect(drinksPackaging?.label).toEqual({
+			code: 'cycle',
+			direction: 'used',
+			actual: 2,
+			required: 2,
+			imported: false
+		});
 	});
 });
 

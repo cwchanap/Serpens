@@ -27,6 +27,27 @@ export type ProductChainHealth =
 
 export type ProductChainNodeKind = 'material' | 'recipe' | 'warehouse';
 
+export type BottleneckInfo =
+	| { code: 'warehouseNoCapacity' }
+	| { code: 'warehouseOverflow'; quantity: number }
+	| { code: 'warehouseAvailable' }
+	| { code: 'healthStatus'; health: ProductChainHealth; label: string };
+
+export type EdgeLabelInfo =
+	| { code: 'in'; quantity: number }
+	| { code: 'out'; quantity: number }
+	| {
+			code: 'cycle';
+			direction: 'produced' | 'used';
+			actual: number;
+			required: number;
+			imported: boolean;
+	  };
+
+export type GraphWarning =
+	| { code: 'noDailyReport' }
+	| { code: 'noProductionRecipe'; materialId: MaterialId };
+
 export interface ProductChainActualMetrics {
 	produced: number;
 	consumed: number;
@@ -61,7 +82,7 @@ export interface ProductChainNode {
 	warehouseStock: number;
 	capacity: ProductChainCapacityMetrics;
 	actual: ProductChainActualMetrics;
-	bottleneck: string;
+	bottleneck: BottleneckInfo;
 }
 
 export interface ProductChainEdge {
@@ -69,7 +90,7 @@ export interface ProductChainEdge {
 	source: string;
 	target: string;
 	materialId: MaterialId | null;
-	label: string;
+	label: EdgeLabelInfo;
 	requiredPerCycle: number;
 	actualPerDay: number;
 	health: ProductChainHealth;
@@ -81,7 +102,7 @@ export interface ProductChainGraph {
 	nodes: ProductChainNode[];
 	edges: ProductChainEdge[];
 	details: Record<string, ProductChainNode>;
-	warnings: string[];
+	warnings: GraphWarning[];
 	emptyReason: string | null;
 }
 
@@ -91,7 +112,7 @@ export interface ProductChainCategorySummary {
 	tier: BuildingTier | null;
 	health: ProductChainHealth;
 	healthLabel: string;
-	bottleneck: string;
+	bottleneck: BottleneckInfo;
 	warehouseStock: number;
 	produced: number;
 	consumed: number;
@@ -165,10 +186,10 @@ export function buildWarehouseFlowGraph(game: GameState): ProductChainGraph {
 		actual: emptyActualMetrics(),
 		bottleneck:
 			game.warehouse.capacity <= 0
-				? 'No warehouse capacity is available.'
+				? { code: 'warehouseNoCapacity' }
 				: game.warehouse.overflowUnits > 0
-					? `${game.warehouse.overflowUnits} units are in overflow storage.`
-					: 'Warehouse capacity is available.'
+					? { code: 'warehouseOverflow', quantity: game.warehouse.overflowUnits }
+					: { code: 'warehouseAvailable' }
 	};
 	const nodes: ProductChainNode[] = [warehouseNode];
 	const edges: ProductChainEdge[] = [];
@@ -214,7 +235,7 @@ export function buildWarehouseFlowGraph(game: GameState): ProductChainGraph {
 				source: `material:${materialId}`,
 				target: 'warehouse',
 				materialId,
-				label: `${actual.produced}/day in`,
+				label: { code: 'in', quantity: actual.produced },
 				requiredPerCycle: 0,
 				actualPerDay: actual.produced,
 				health
@@ -227,7 +248,7 @@ export function buildWarehouseFlowGraph(game: GameState): ProductChainGraph {
 				source: 'warehouse',
 				target: `material:${materialId}`,
 				materialId,
-				label: `${actual.warehousePulled}/day out`,
+				label: { code: 'out', quantity: actual.warehousePulled },
 				requiredPerCycle: 0,
 				actualPerDay: actual.warehousePulled,
 				health
@@ -246,7 +267,7 @@ export function buildWarehouseFlowGraph(game: GameState): ProductChainGraph {
 		nodes: sortedNodes,
 		edges: sortEdges(edges),
 		details,
-		warnings: report ? [] : ['No daily report yet; latest-day flow is unavailable.'],
+		warnings: report ? [] : [{ code: 'noDailyReport' }],
 		emptyReason: null
 	};
 }
@@ -584,13 +605,14 @@ export function formatRecipeEdgeLabel(input: {
 	requiredPerCycle: number;
 	direction: 'input' | 'output';
 	imported: number;
-}): string {
-	const verb = input.direction === 'output' ? 'produced' : 'used';
-	const importLabel = input.imported > 0 ? ' · import' : '';
-
-	return `${formatQuantity(input.actualPerDay)}/day ${verb} · ${formatQuantity(
-		input.requiredPerCycle
-	)}/cycle${importLabel}`;
+}): EdgeLabelInfo {
+	return {
+		code: 'cycle',
+		direction: input.direction === 'output' ? 'produced' : 'used',
+		actual: input.actualPerDay,
+		required: input.requiredPerCycle,
+		imported: input.imported > 0
+	};
 }
 
 export function formatQuantity(quantity: number): string {
@@ -629,24 +651,10 @@ export function materialHealth(input: {
 	return 'healthy';
 }
 
-export function bottleneckText(node: Pick<ProductChainNode, 'kind' | 'health' | 'label'>): string {
-	if (node.health === 'healthy') {
-		return `${node.label} is flowing locally.`;
-	}
-
-	if (node.health === 'watch') {
-		return `${node.label} stock is below latest downstream use.`;
-	}
-
-	if (node.health === 'shortage') {
-		return `${node.label} relied on imports or had a local shortage today.`;
-	}
-
-	if (node.health === 'no-local-capacity') {
-		return `${node.label} has no placed local producer.`;
-	}
-
-	return `${node.label} has no latest daily flow yet.`;
+export function bottleneckText(
+	node: Pick<ProductChainNode, 'kind' | 'health' | 'label'>
+): BottleneckInfo {
+	return { code: 'healthStatus', health: node.health, label: node.label };
 }
 
 export function sortEdges(edges: ProductChainEdge[]): ProductChainEdge[] {
