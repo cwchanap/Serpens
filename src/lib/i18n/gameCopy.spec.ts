@@ -2,8 +2,23 @@ import { buildWarehouseFlowGraph } from '$lib/game/productChainGraph';
 import { createNewGame } from '$lib/game/state';
 import type { GameAlert } from '$lib/game/alerts';
 import type { DecisionItem, Store } from '$lib/game/types';
+import type { DecisionContext } from '$lib/game/decisionContext';
 import type { ProductChainGraph, ProductChainNode } from '$lib/game/productChainGraph';
 import type { WorldCityId } from '$lib/game/types';
+import {
+	decisionContextExpansionCashBlocked,
+	decisionContextExpansionUnavailable,
+	decisionContextIndustrialLockedTile,
+	decisionContextIndustrialRequiresCash,
+	decisionContextIndustrialRequiresResource,
+	decisionContextIndustrialUnknownBuilding,
+	decisionContextIndustrialUnknownTile,
+	decisionContextLocationBlocked,
+	decisionContextLocationGeneric,
+	decisionContextWorldCityNotAvailableYet,
+	decisionContextWorldCityOpeningCost,
+	decisionContextWorldCityUnknown
+} from '$lib/game/decisionContext';
 import { getWorldCityStatus } from '$lib/game/world';
 import { describe, expect, it } from 'vitest';
 import { createI18n } from './index';
@@ -55,7 +70,10 @@ describe('game copy builders', () => {
 		).toBe('Warehouse requires $8,000 cash.');
 		expect(
 			formatPlacementBlockReason(
-				{ code: 'industry.rawPlacementBlocked', message: 'Locked industrial tile' },
+				{
+					code: 'industry.rawPlacementBlocked',
+					message: decisionContextIndustrialLockedTile()
+				},
 				i18n
 			)
 		).toBe('Locked industrial tile');
@@ -117,7 +135,7 @@ describe('game copy builders', () => {
 			id: 'cash-pressure',
 			title: 'Cash pressure',
 			context:
-				'Cash is below zero. Choose how to keep operations moving while protecting the brand.',
+				'Cash is below zero. Choose how to keep operations moving while protecting the brand.' as unknown as DecisionContext,
 			expiresOnDay: 3,
 			options: [
 				{
@@ -160,7 +178,7 @@ describe('game copy builders', () => {
 		const worldDecision: DecisionItem = {
 			id: 'world-city-city-opening-delayed-opening-this-city-requires-18-000-cash-1',
 			title: 'City opening delayed',
-			context: 'Opening this city requires 18,000 cash.',
+			context: decisionContextWorldCityOpeningCost(18_000),
 			expiresOnDay: 2,
 			options: [
 				{
@@ -183,7 +201,7 @@ describe('game copy builders', () => {
 		const worldStatus = getWorldCityStatus(game, 'campus-junction');
 		const localizedDecision = localizeDecision(worldDecision, japanese);
 
-		expect(worldStatus?.blockedReason).toBe('Opening this city requires 18,000 cash.');
+		expect(worldStatus?.blockedReason).toEqual(decisionContextWorldCityOpeningCost(18_000));
 		expect(localizedDecision.context).toContain(expectedCash);
 		expect(localizedDecision.context).not.toContain(' 18,000 ');
 		expect(worldStatus).not.toBeNull();
@@ -241,7 +259,8 @@ describe('game copy builders', () => {
 		const expansionOpportunity: DecisionItem = {
 			id: 'expansion-opportunity',
 			title: 'Expansion opportunity',
-			context: 'Strong profit and cash reserves make a second storefront plausible.',
+			context:
+				'Strong profit and cash reserves make a second storefront plausible.' as unknown as DecisionContext,
 			expiresOnDay: 5,
 			options: [
 				{
@@ -261,7 +280,8 @@ describe('game copy builders', () => {
 		const supplierTerms: DecisionItem = {
 			id: 'supplier-terms',
 			title: 'Supplier terms',
-			context: 'A supplier is open to revising ordering terms before the next replenishment cycle.',
+			context:
+				'A supplier is open to revising ordering terms before the next replenishment cycle.' as unknown as DecisionContext,
 			expiresOnDay: 5,
 			options: [
 				{
@@ -281,7 +301,7 @@ describe('game copy builders', () => {
 		const stateDecision: DecisionItem = {
 			id: 'location-unavailable-road-1',
 			title: 'Location unavailable',
-			context: 'Road location blocks store placement. Choose another city tile.',
+			context: decisionContextLocationBlocked('road'),
 			expiresOnDay: 2,
 			options: [
 				{
@@ -295,7 +315,7 @@ describe('game copy builders', () => {
 		const worldDecision: DecisionItem = {
 			id: 'world-city-city-opening-delayed-opening-this-city-requires-18-000-cash-1',
 			title: 'City opening delayed',
-			context: 'Opening this city requires 18,000 cash.',
+			context: decisionContextWorldCityOpeningCost(18_000),
 			expiresOnDay: 2,
 			options: [
 				{
@@ -309,7 +329,7 @@ describe('game copy builders', () => {
 		const unavailableDecision: DecisionItem = {
 			id: 'expansion-unavailable-1',
 			title: 'Expansion unavailable',
-			context: 'This chain can operate up to 3 stores for now.',
+			context: decisionContextExpansionUnavailable(3),
 			expiresOnDay: 2,
 			options: [
 				{
@@ -323,7 +343,7 @@ describe('game copy builders', () => {
 		const industrialDecision: DecisionItem = {
 			id: 'industrial-construction-delayed-grain-farm-industry-city-1-1-locked-industrial-tile-2',
 			title: 'Industrial construction delayed',
-			context: 'Locked industrial tile',
+			context: decisionContextIndustrialLockedTile(),
 			expiresOnDay: 2,
 			options: [
 				{
@@ -337,7 +357,7 @@ describe('game copy builders', () => {
 		const industrialResourceDecision: DecisionItem = {
 			id: 'industrial-construction-delayed-grain-farm-industry-city-1-1-requires-grain-field-2',
 			title: 'Industrial construction delayed',
-			context: 'Requires grain field',
+			context: decisionContextIndustrialRequiresResource('grain-field'),
 			expiresOnDay: 2,
 			options: [
 				{
@@ -351,7 +371,7 @@ describe('game copy builders', () => {
 		const industrialCashDecision: DecisionItem = {
 			id: 'industrial-construction-delayed-grain-farm-industry-city-1-1-grain-farm-requires-1-000-cash-2',
 			title: 'Industrial construction delayed',
-			context: 'Grain Farm requires 1,000 cash.',
+			context: decisionContextIndustrialRequiresCash('grain-farm', 1_000),
 			expiresOnDay: 2,
 			options: [
 				{
@@ -441,14 +461,14 @@ describe('game copy builders', () => {
 		}
 	});
 
-	it('golden-phrase guard: regex-matched decision contexts still match game module output', () => {
+	it('structured-context guard: structured decision contexts localize correctly', () => {
 		expect.assertions(11);
 		const japanese = createI18n('ja');
 
 		const expansionCashBlocked: DecisionItem = {
 			id: 'expansion-cash-blocked-1',
 			title: 'Expansion delayed',
-			context: 'Opening another store requires 15,000 cash.',
+			context: decisionContextExpansionCashBlocked(15_000),
 			expiresOnDay: 2,
 			options: [
 				{
@@ -466,7 +486,7 @@ describe('game copy builders', () => {
 		const lockedLocation: DecisionItem = {
 			id: 'location-unavailable-locked-1',
 			title: 'Location unavailable',
-			context: 'Locked location blocks store placement. Choose another city tile.',
+			context: decisionContextLocationBlocked('locked'),
 			expiresOnDay: 2,
 			options: [
 				{
@@ -482,7 +502,7 @@ describe('game copy builders', () => {
 		const riverLocation: DecisionItem = {
 			id: 'location-unavailable-river-1',
 			title: 'Location unavailable',
-			context: 'River location blocks store placement. Choose another city tile.',
+			context: decisionContextLocationBlocked('river'),
 			expiresOnDay: 2,
 			options: [
 				{
@@ -498,7 +518,7 @@ describe('game copy builders', () => {
 		const genericLocation: DecisionItem = {
 			id: 'location-unavailable-generic-1',
 			title: 'Location unavailable',
-			context: 'Choose an unlocked, unoccupied city tile before opening this store.',
+			context: decisionContextLocationGeneric(),
 			expiresOnDay: 2,
 			options: [
 				{
@@ -514,7 +534,7 @@ describe('game copy builders', () => {
 		const cityUnavailable: DecisionItem = {
 			id: 'world-city-city-unavailable-1',
 			title: 'City unavailable',
-			context: 'Unknown city.',
+			context: decisionContextWorldCityUnknown(),
 			expiresOnDay: 2,
 			options: [
 				{
@@ -531,7 +551,7 @@ describe('game copy builders', () => {
 		const cityNotAvailableYet: DecisionItem = {
 			id: 'world-city-city-is-not-available-yet-1',
 			title: 'City is not available yet',
-			context: 'Reach 2 stores or day 7.',
+			context: decisionContextWorldCityNotAvailableYet('campus-junction'),
 			expiresOnDay: 2,
 			options: [
 				{
@@ -552,7 +572,7 @@ describe('game copy builders', () => {
 		const industrialUnknownTile: DecisionItem = {
 			id: 'industrial-construction-delayed-1',
 			title: 'Industrial construction delayed',
-			context: 'Unknown industrial tile',
+			context: decisionContextIndustrialUnknownTile(),
 			expiresOnDay: 2,
 			options: [
 				{
@@ -570,7 +590,7 @@ describe('game copy builders', () => {
 		const industrialUnknownBuilding: DecisionItem = {
 			id: 'industrial-construction-delayed-2',
 			title: 'Industrial construction delayed',
-			context: 'Unknown industrial building type',
+			context: decisionContextIndustrialUnknownBuilding(),
 			expiresOnDay: 2,
 			options: [
 				{
