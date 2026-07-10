@@ -9,7 +9,6 @@ import type { DailyStoreReport, Store } from '$lib/game/types';
 
 const store: Store = {
 	id: 'store-1',
-	ordinal: 1,
 	level: 1,
 	name: 'Founding Store',
 	archetypeId: 'convenience',
@@ -72,6 +71,7 @@ describe('StoreStockTable', () => {
 		render(StoreStockTable, {
 			i18n: createI18n('en'),
 			store,
+			ordinal: 1,
 			latestReport,
 			onUpdate: vi.fn()
 		});
@@ -104,6 +104,7 @@ describe('StoreStockTable', () => {
 		render(StoreStockTable, {
 			i18n: createI18n('en'),
 			store,
+			ordinal: 1,
 			latestReport,
 			onUpdate
 		});
@@ -123,6 +124,7 @@ describe('StoreStockTable', () => {
 		render(StoreStockTable, {
 			i18n: createI18n('en'),
 			store,
+			ordinal: 1,
 			latestReport,
 			onUpdate
 		});
@@ -154,6 +156,7 @@ describe('StoreStockTable', () => {
 		render(StoreStockTable, {
 			i18n: createI18n('en'),
 			store: storeWithUnknownProduct,
+			ordinal: 1,
 			latestReport,
 			onUpdate: vi.fn()
 		});
@@ -169,6 +172,7 @@ describe('StoreStockTable', () => {
 		render(StoreStockTable, {
 			i18n: createI18n('zh-Hant'),
 			store,
+			ordinal: 1,
 			latestReport,
 			onUpdate: vi.fn()
 		});
@@ -183,6 +187,7 @@ describe('StoreStockTable', () => {
 		render(StoreStockTable, {
 			i18n: createI18n('en'),
 			store,
+			ordinal: 1,
 			latestReport,
 			onUpdate
 		});

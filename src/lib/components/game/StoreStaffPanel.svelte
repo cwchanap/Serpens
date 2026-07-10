@@ -7,6 +7,7 @@
 	interface Props {
 		i18n: I18nBundle;
 		store: Store;
+		ordinal: number;
 		staff: StaffMember[];
 		hiringCandidates: HiringCandidate[];
 		onHire: (candidateId: string) => void;
@@ -14,7 +15,8 @@
 		onUnassign: (staffId: string) => void;
 	}
 
-	let { i18n, store, staff, hiringCandidates, onHire, onAssign, onUnassign }: Props = $props();
+	let { i18n, store, ordinal, staff, hiringCandidates, onHire, onAssign, onUnassign }: Props =
+		$props();
 
 	const assignedStaff = $derived(staff.filter((member) => member.assignedStoreId === store.id));
 	const unassignedStaff = $derived(staff.filter((member) => member.assignedStoreId === null));
@@ -37,7 +39,7 @@
 			name: member.name,
 			role: roleLabel(member.role),
 			id: member.id,
-			storeName: storeDisplayName(store, i18n)
+			storeName: storeDisplayName(store, ordinal, i18n)
 		});
 	}
 
@@ -46,13 +48,13 @@
 			name: member.name,
 			role: roleLabel(member.role),
 			id: member.id,
-			storeName: storeDisplayName(store, i18n)
+			storeName: storeDisplayName(store, ordinal, i18n)
 		});
 	}
 
 	function storeCoverageSummary(): string {
 		return i18n.t('staffPanel.coverage', {
-			storeName: storeDisplayName(store, i18n),
+			storeName: storeDisplayName(store, ordinal, i18n),
 			managerAssigned: i18n.format.integer(staffing.assigned.manager),
 			managerRequired: i18n.format.integer(staffing.requirement.manager),
 			generalAssigned: i18n.format.integer(staffing.assigned.general),
@@ -73,7 +75,7 @@
 	<div class="staff-heading">
 		<div>
 			<h3 id={`${store.id}-staff-heading`}>
-				{i18n.t('storeDetail.staffTitle', { storeName: storeDisplayName(store, i18n) })}
+				{i18n.t('storeDetail.staffTitle', { storeName: storeDisplayName(store, ordinal, i18n) })}
 			</h3>
 			<p>{storeCoverageSummary()}</p>
 		</div>

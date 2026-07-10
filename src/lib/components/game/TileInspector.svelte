@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { asset } from '$app/paths';
 	import { getStoreArt } from '$lib/assets/gameArt';
+	import { getStoreOrdinal } from '$lib/game/state';
 	import {
 		MAX_STORE_LEVEL,
 		STORE_MILESTONE_CAPACITY_BONUS,
@@ -125,7 +126,7 @@
 						/>
 					</div>
 				{/if}
-				<h3>{storeDisplayName(store, i18n)}</h3>
+				<h3>{storeDisplayName(store, getStoreOrdinal(game.stores, store.id), i18n)}</h3>
 				<p class="location">{store.location}</p>
 
 				<dl class="gauges" aria-label={i18n.t('tileInspector.storeVitals')}>

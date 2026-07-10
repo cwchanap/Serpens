@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { getStoreOrdinal } from '$lib/game/state';
 	import { summarizeStoreStaffing } from '$lib/game/staffing';
 	import {
 		canPromoteStaff,
@@ -60,7 +61,7 @@
 
 		if (store) {
 			return i18n.t('staffPanel.assignment.currentlyAssigned', {
-				storeName: storeDisplayName(store, i18n)
+				storeName: storeDisplayName(store, getStoreOrdinal(stores, store.id), i18n)
 			});
 		}
 
@@ -81,7 +82,7 @@
 			name: member.name,
 			role: roleLabel(member.role),
 			id: member.id,
-			storeName: storeDisplayName(store, i18n)
+			storeName: storeDisplayName(store, getStoreOrdinal(stores, store.id), i18n)
 		});
 	}
 
@@ -122,7 +123,7 @@
 		item: ReturnType<typeof summarizeStoreStaffing>
 	): string {
 		return i18n.t('staffPanel.coverage', {
-			storeName: storeDisplayName(store, i18n),
+			storeName: storeDisplayName(store, getStoreOrdinal(stores, store.id), i18n),
 			managerAssigned: i18n.format.integer(item.assigned.manager),
 			managerRequired: i18n.format.integer(item.requirement.manager),
 			generalAssigned: i18n.format.integer(item.assigned.general),
@@ -215,8 +216,8 @@
 						onchange={(event) => handleAssignment(member, event.currentTarget.value)}
 					>
 						<option value="">{i18n.t('staffPanel.assignment.unassigned')}</option>
-						{#each stores as store (store.id)}
-							<option value={store.id}>{storeDisplayName(store, i18n)}</option>
+						{#each stores as store, storeIndex (store.id)}
+							<option value={store.id}>{storeDisplayName(store, storeIndex + 1, i18n)}</option>
 						{/each}
 					</select>
 					{#if canPromoteStaff(member)}
@@ -240,11 +241,11 @@
 	</section>
 
 	<section class="section-group" aria-label={i18n.t('staffPanel.storeStaffing')}>
-		{#each staffedStores as item (item.store.id)}
+		{#each staffedStores as item, itemIndex (item.store.id)}
 			<article class="store-card">
 				<div class="store-heading">
 					<div>
-						<h3>{storeDisplayName(item.store, i18n)}</h3>
+						<h3>{storeDisplayName(item.store, itemIndex + 1, i18n)}</h3>
 						<p>
 							{storeCoverageSummary(item.store, item.summary)}
 						</p>
@@ -274,8 +275,9 @@
 									onchange={(event) => handleAssignment(member, event.currentTarget.value)}
 								>
 									<option value="">{i18n.t('staffPanel.assignment.unassigned')}</option>
-									{#each stores as store (store.id)}
-										<option value={store.id}>{storeDisplayName(store, i18n)}</option>
+									{#each stores as store, storeIndex (store.id)}
+										<option value={store.id}>{storeDisplayName(store, storeIndex + 1, i18n)}</option
+										>
 									{/each}
 								</select>
 								{#if canPromoteStaff(member)}

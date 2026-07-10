@@ -29,14 +29,14 @@
 	<h2 id="stores-heading">{i18n.t('storeOverview.title')}</h2>
 
 	<div class="stores">
-		{#each stores as store (store.id)}
+		{#each stores as store, storeIndex (store.id)}
 			{@const report = latestReports.find((item) => item.storeId === store.id)}
 			{@const staffing = summarizeStoreStaffing({ staff }, store)}
 			{@const productSourceReports = getProductSourceReports(report)}
 			<article class="store">
 				<header>
 					<div>
-						<h3>{storeDisplayName(store, i18n)}</h3>
+						<h3>{storeDisplayName(store, storeIndex + 1, i18n)}</h3>
 						<p>{store.location}</p>
 					</div>
 					<span
@@ -82,7 +82,7 @@
 					<ul
 						class="product-sources"
 						aria-label={i18n.t('storeOverview.productSources', {
-							storeName: storeDisplayName(store, i18n)
+							storeName: storeDisplayName(store, storeIndex + 1, i18n)
 						})}
 					>
 						{#each productSourceReports as product (product.categoryId)}
@@ -106,7 +106,7 @@
 				{#if report?.warnings.length}
 					<ul
 						aria-label={i18n.t('storeOverview.warnings', {
-							storeName: storeDisplayName(store, i18n)
+							storeName: storeDisplayName(store, storeIndex + 1, i18n)
 						})}
 					>
 						{#each report.warnings as warning (warning.code)}

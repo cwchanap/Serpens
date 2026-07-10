@@ -8,7 +8,6 @@ import type { HiringCandidate, StaffMember, Store } from '$lib/game/types';
 
 const store: Store = {
 	id: 'store-1',
-	ordinal: 1,
 	level: 1,
 	name: 'Founding Store',
 	archetypeId: 'boutique',
@@ -97,6 +96,7 @@ function renderStaffPanel(
 	const props = {
 		i18n: createI18n('en'),
 		store,
+		ordinal: 1,
 		staff: [managerAssigned, generalAssigned, managerUnassigned],
 		hiringCandidates: [generalCandidate, managerCandidate],
 		onHire: vi.fn(),

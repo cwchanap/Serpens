@@ -6,6 +6,7 @@
 	import { localizeProductChainGraph } from '$lib/i18n/gameCopy';
 	import type { I18nBundle } from '$lib/i18n';
 	import { storeDisplayName } from '$lib/i18n/gameCopy';
+	import { getStoreOrdinal } from '$lib/game/state';
 	import type { GameState, Store } from '$lib/game/types';
 
 	interface Props {
@@ -78,7 +79,7 @@
 <section
 	class="store-chain-panel"
 	aria-label={i18n.t('storeProductChainPanel.ariaLabel', {
-		storeName: storeDisplayName(store, i18n)
+		storeName: storeDisplayName(store, getStoreOrdinal(game.stores, store.id), i18n)
 	})}
 >
 	{#if supportedCategories.length > 0 && selectedCategory && graph}

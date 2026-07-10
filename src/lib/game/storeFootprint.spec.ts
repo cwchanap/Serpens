@@ -48,7 +48,6 @@ function makeStore(cityId: string, tileId: string, mapX: number, mapY: number): 
 		id: `store-${tileId}`,
 		level: 1,
 		name: 'Store',
-		ordinal: 1,
 		archetypeId: 'convenience',
 		location: 'Downtown',
 		cityId,

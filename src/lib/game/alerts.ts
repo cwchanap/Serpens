@@ -19,7 +19,7 @@ export interface GameAlert {
 export function collectGameAlerts(game: GameState): GameAlert[] {
 	const alerts: GameAlert[] = [];
 
-	for (const store of game.stores) {
+	for (const [index, store] of game.stores.entries()) {
 		const summary = summarizeStockTrouble(store.products);
 
 		if (!summary) {
@@ -29,7 +29,7 @@ export function collectGameAlerts(game: GameState): GameAlert[] {
 		alerts.push({
 			id: `store-stock:${store.id}`,
 			kind: 'store-stock',
-			message: `${storeNameOrOrdinal(store)}: ${summary}`,
+			message: `${storeNameOrOrdinal(store, index + 1)}: ${summary}`,
 			cityId: store.cityId,
 			storeId: store.id,
 			tileId: store.tileId

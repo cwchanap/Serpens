@@ -423,7 +423,6 @@ function createStore(input: {
 		id: input.id,
 		level: 1,
 		name: input.id,
-		ordinal: 1,
 		archetypeId: input.archetypeId,
 		location: 'Test location',
 		cityId: 'city-1',

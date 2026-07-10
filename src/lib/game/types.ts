@@ -314,7 +314,6 @@ export interface Store {
 	id: string;
 	level: number;
 	name: string;
-	ordinal: number;
 	archetypeId: ArchetypeId;
 	location: string;
 	cityId: string;

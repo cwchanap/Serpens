@@ -5,6 +5,7 @@
 	import { focusTrap } from '$lib/a11y/focusTrap';
 	import type { I18nBundle } from '$lib/i18n';
 	import { storeDisplayName } from '$lib/i18n/gameCopy';
+	import { getStoreOrdinal } from '$lib/game/state';
 	import type {
 		DailyStoreReport,
 		GameState,
@@ -44,7 +45,8 @@
 		onClickFeedback = () => {}
 	}: Props = $props();
 
-	let displayName = $derived(storeDisplayName(store, i18n));
+	let storeOrdinal = $derived(getStoreOrdinal(game.stores, store.id));
+	let displayName = $derived(storeDisplayName(store, storeOrdinal, i18n));
 
 	type DetailTab = 'stock' | 'chain' | 'staff';
 
@@ -146,6 +148,7 @@
 				<StoreStockTable
 					{i18n}
 					{store}
+					ordinal={storeOrdinal}
 					latestReport={latestStoreReport}
 					onUpdate={onUpdateStoreProduct}
 				/>
@@ -168,6 +171,7 @@
 			>
 				<StoreStaffPanel
 					{store}
+					ordinal={storeOrdinal}
 					{i18n}
 					{staff}
 					{hiringCandidates}
