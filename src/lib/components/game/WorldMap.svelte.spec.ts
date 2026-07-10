@@ -3,6 +3,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { createI18n } from '$lib/i18n';
 import { WORLD_CITY_CATALOG, type WorldCityStatus } from '$lib/game/world';
+import {
+	decisionContextWorldCityNotAvailableYet,
+	decisionContextWorldCityOpeningCost
+} from '$lib/game/decisionContext';
 import WorldMap from './WorldMap.svelte';
 
 function status(cityId: string, state: WorldCityStatus['state']): WorldCityStatus {
@@ -11,7 +15,7 @@ function status(cityId: string, state: WorldCityStatus['state']): WorldCityStatu
 		city,
 		state,
 		canOpen: state === 'revealed',
-		blockedReason: state === 'locked' ? city.unlockRequirement : null,
+		blockedReason: state === 'locked' ? decisionContextWorldCityNotAvailableYet(city.id) : null,
 		storeCount: city.kind === 'retail' && state === 'opened' ? 1 : 0,
 		buildingCount: city.kind === 'industry' && state === 'opened' ? 2 : 0
 	};
@@ -136,7 +140,7 @@ describe('WorldMap', () => {
 				{
 					...status('campus-junction', 'revealed'),
 					canOpen: false,
-					blockedReason: 'Opening this city requires 18,000 cash.'
+					blockedReason: decisionContextWorldCityOpeningCost(18_000)
 				}
 			],
 			i18n: createI18n('en'),

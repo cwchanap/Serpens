@@ -4,6 +4,12 @@ import {
 	DEFAULT_INDUSTRY_CITY_WIDTH,
 	generateIndustryCity
 } from './industry';
+import {
+	decisionContextWorldCityNotAvailableYet,
+	decisionContextWorldCityOpeningCost,
+	decisionContextWorldCityUnknown
+} from './decisionContext';
+import type { DecisionContext } from './decisionContext';
 import type {
 	DecisionItem,
 	DecisionOption,
@@ -39,7 +45,7 @@ export interface WorldCityStatus {
 	city: WorldCityDefinition;
 	state: WorldCityState;
 	canOpen: boolean;
-	blockedReason: string | null;
+	blockedReason: DecisionContext | null;
 	storeCount: number;
 	buildingCount: number;
 }
@@ -205,11 +211,11 @@ export function getWorldCityStatus(game: GameState, cityId: string): WorldCitySt
 	const buildingCount = game.industrialBuildings.filter(
 		(building) => building.cityId === city.id
 	).length;
-	const blockedReason =
+	const blockedReason: DecisionContext | null =
 		state === 'locked'
-			? city.unlockRequirement
+			? decisionContextWorldCityNotAvailableYet(city.id)
 			: state === 'revealed' && game.cash < city.openingCost
-				? `Opening this city requires ${city.openingCost.toLocaleString('en-US')} cash.`
+				? decisionContextWorldCityOpeningCost(city.openingCost)
 				: null;
 
 	return {
@@ -237,9 +243,9 @@ function appendDecision(game: GameState, decision: DecisionItem): GameState {
 	};
 }
 
-function worldDecision(game: GameState, title: string, context: string): DecisionItem {
+function worldDecision(game: GameState, title: string, context: DecisionContext): DecisionItem {
 	return {
-		id: ['world-city', toDecisionIdPart(title), toDecisionIdPart(context), game.day].join('-'),
+		id: ['world-city', toDecisionIdPart(title), toDecisionIdPart(context.code), game.day].join('-'),
 		title,
 		context,
 		expiresOnDay: game.day + 1,
@@ -313,7 +319,10 @@ export function openWorldCity(game: GameState, cityId: string): GameState {
 	const city = getWorldCityDefinition(cityId);
 
 	if (!city) {
-		return appendDecision(game, worldDecision(game, 'City unavailable', 'Unknown city.'));
+		return appendDecision(
+			game,
+			worldDecision(game, 'City unavailable', decisionContextWorldCityUnknown())
+		);
 	}
 
 	if (game.world.openedCityIds.includes(city.id)) {
@@ -323,7 +332,11 @@ export function openWorldCity(game: GameState, cityId: string): GameState {
 	if (!game.world.revealedCityIds.includes(city.id)) {
 		return appendDecision(
 			game,
-			worldDecision(game, 'City is not available yet', city.unlockRequirement)
+			worldDecision(
+				game,
+				'City is not available yet',
+				decisionContextWorldCityNotAvailableYet(city.id)
+			)
 		);
 	}
 
@@ -333,7 +346,7 @@ export function openWorldCity(game: GameState, cityId: string): GameState {
 			worldDecision(
 				game,
 				'City opening delayed',
-				`Opening this city requires ${city.openingCost.toLocaleString('en-US')} cash.`
+				decisionContextWorldCityOpeningCost(city.openingCost)
 			)
 		);
 	}

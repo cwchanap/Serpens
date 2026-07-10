@@ -1,228 +1,56 @@
-# Task 4 Report: Route, Document Language, and Game Menu Selector
+# Task 4 Report: Update decision generators in world.ts
 
-## What I implemented
+## What I Implemented
 
-- Wired route-level locale ownership in `src/routes/+page.svelte`:
-  - reads the saved/browser locale on mount with `readLocalePreference(...)`
-  - persists user changes with `saveLocalePreference(...)`
-  - drives `createI18n(activeLocale)` from route state
-  - updates `document.documentElement.lang` reactively
-- Localized route-owned copy required by the brief:
-  - page `<title>`
-  - map eyebrow text
-  - game-menu management section label
-  - saves button label
-  - placement status/cancel copy
-  - control-tower management header/status/close labels
-  - day/cash readouts in the tower header
-- Added `i18n` plumbing to task-owned components:
-  - `TopBar.svelte`
-  - `GameMenu.svelte`
-  - `ControlDesk.svelte`
-  - `AudioSettings.svelte`
-- Added the game-menu language selector:
-  - native `<select>`
-  - `aria-label={i18n.t('gameMenu.language')}`
-  - `data-testid="game-menu-trigger"`
-  - `data-testid="language-selector"`
-- Localized `TopBar.svelte`:
-  - removed hard-coded `Intl.NumberFormat('en-US')`
-  - uses `i18n.format.currency`
-  - localizes day/cash/alerts/no-alerts strings
-  - localizes alert row text via `localizeAlert(alert, alertGame, i18n)`
-  - added `data-testid="cash-readout"`
-- Extended and updated the touched component specs for the new prop surface and language-selector behavior.
-- Added the needed message-catalog keys in:
-  - `src/lib/i18n/messages/en.ts`
-  - `src/lib/i18n/messages/ja.ts`
-  - `src/lib/i18n/messages/zh-Hant.ts`
+1. **`src/lib/game/world.ts`** — Updated decision generators to emit `DecisionContext`:
+   - Imported `decisionContextWorldCityNotAvailableYet`, `decisionContextWorldCityOpeningCost`, `decisionContextWorldCityUnknown` and the `DecisionContext` type from `./decisionContext`.
+   - Widened `WorldCityStatus.blockedReason` from `string | null` to `DecisionContext | null`.
+   - Updated `getWorldCityStatus` to emit `DecisionContext` for `blockedReason`: `decisionContextWorldCityNotAvailableYet(city.id)` for locked cities, `decisionContextWorldCityOpeningCost(city.openingCost)` for revealed-but-unaffordable cities.
+   - Updated `worldDecision` signature from `(game, title, context: string)` to `(game, title, context: DecisionContext)`. Decision id is now derived from `context.code` (observable id format change — acceptable for unreleased game).
+   - Updated `openWorldCity` calls: `worldCityUnknown`, `worldCityNotAvailableYet(city.id)`, `worldCityOpeningCost(city.openingCost)`. The "not available yet" branch now carries the stable `cityId` enum, NOT the English `unlockRequirement` string.
 
-## What I tested and exact results
+2. **`src/routes/+page.svelte`** (~line 251) — Replaced hand-built `blockedReason: city.unlockRequirement` (raw English string) with `decisionContextWorldCityNotAvailableYet(city.id)` for the locked-city fallback case (when `game` is null). Added the import for `decisionContextWorldCityNotAvailableYet`.
 
-### Focused browser unit tests
+3. **`src/lib/components/game/WorldMap.svelte.spec.ts`** — Updated `blockedReason` fixtures from strings to `DecisionContext` objects: `decisionContextWorldCityNotAvailableYet(city.id)` for locked cities, `decisionContextWorldCityOpeningCost(18_000)` for the unaffordable revealed-city test.
 
-Command:
+4. **`src/lib/game/world.spec.ts`** — Updated the existing "blocked city openings" test assertions from string contexts to `DecisionContext` objects. Added two new TDD tests per the plan.
 
-```bash
-rtk bun run test:unit -- src/lib/components/game/GameMenu.svelte.spec.ts src/lib/components/game/TopBar.svelte.spec.ts src/lib/components/game/ControlDesk.svelte.spec.ts src/lib/components/game/AudioSettings.svelte.spec.ts --run --project client
+## What I Tested and Test Results
+
+- `bun run test:unit -- src/lib/game/world.spec.ts --run` → **27/27 PASS** (GREEN)
+- `bun run test:unit -- src/lib/components/game/WorldMap.svelte.spec.ts --run --project client` → 6 PASS, 4 FAIL (expected — `localizeWorldCityStatus` in `gameCopy.ts` still expects `string | null`; fixed in Task 6)
+- `bun run check` → 50 errors in 9 files, **ZERO in `world.ts`, `+page.svelte`, or `WorldMap.svelte`**. All errors are in `gameCopy.ts`, `gameCopy.spec.ts`, `events.ts`, `events.spec.ts`, `industryPlacement.ts`, `alerts.spec.ts`, `simulateDay.spec.ts`, `DecisionQueue.svelte.spec.ts`, `saveRepository.spec.ts` — all expected (Tasks 5-6).
+
+## TDD Evidence (RED/GREEN)
+
+**RED:** Before implementing, ran the new test:
+```
+bun run test:unit -- src/lib/game/world.spec.ts --run -t "structured openingCost"
+→ 1 failed | expected { code: 'worldCityOpeningCost', cash: 18000 } but received "Opening this city requires 18,000 cash."
 ```
 
-Final result:
-
-```text
-Test Files  4 passed (4)
-Tests       26 passed (26)
+**GREEN:** After implementing, ran the full suite:
+```
+bun run test:unit -- src/lib/game/world.spec.ts --run
+→ 27 passed (27)
 ```
 
-Note: this required an unsandboxed Chromium launch. The initial sandboxed attempt failed before tests ran with:
+## Files Changed
 
-```text
-FATAL: ... MachPortRendezvousServer ... Permission denied (1100)
-```
+- `src/lib/game/world.ts` — DecisionContext imports, widened `WorldCityStatus.blockedReason`, updated `getWorldCityStatus`, `worldDecision`, `openWorldCity`.
+- `src/lib/game/world.spec.ts` — Updated context assertions + 2 new TDD tests.
+- `src/routes/+page.svelte` — Replaced `city.unlockRequirement` string with `decisionContextWorldCityNotAvailableYet(city.id)`.
+- `src/lib/components/game/WorldMap.svelte.spec.ts` — Updated `blockedReason` fixtures to `DecisionContext` objects.
 
-### Svelte check
+## Self-Review Findings
 
-Command:
+- **Completeness:** All plan steps completed. `world.ts` has zero type errors from the widening. The `cityId` (not English string) is carried in the "not available yet" branch per the critical constraint.
+- **Quality:** Preserved existing comments and code style. Decision id format change flagged (now derived from `context.code`).
+- **Discipline (YAGNI):** No extra changes. Did not touch `gameCopy.ts` or `WorldMap.svelte` render logic (Task 6).
+- **Testing:** TDD followed (RED → GREEN). Expected failures in `WorldMap.svelte.spec.ts` and `gameCopy.spec.ts` are deferred to Task 6.
 
-```bash
-rtk bun run check
-```
+## Issues or Concerns
 
-Result:
-
-```text
-svelte-check found 0 errors and 0 warnings
-```
-
-### Lint
-
-Command:
-
-```bash
-rtk bun run lint
-```
-
-Result:
-
-```text
-Checking formatting...
-All matched files use Prettier code style!
-```
-
-## TDD evidence
-
-### RED
-
-1. Updated touched specs first, including the new `GameMenu` language-selector test.
-
-2. Ran the focused client suite.
-
-Initial sandboxed run:
-
-```text
-Error: browserType.launch: Target page, context or browser has been closed
-FATAL: ... MachPortRendezvousServer ... Permission denied (1100)
-```
-
-Unsandboxed rerun for the real product signal:
-
-```text
-FAIL  src/lib/components/game/GameMenu.svelte.spec.ts > GameMenu > shows language choices and emits the selected locale
-VitestBrowserElementError: Cannot find element with locator: getByLabel('Language')
-```
-
-That was the intended RED state for the missing language selector.
-
-### GREEN
-
-Final rerun:
-
-```text
-Test Files  4 passed (4)
-Tests       26 passed (26)
-Duration    2.11s
-```
-
-Follow-up full verification:
-
-```text
-rtk bun run check -> svelte-check found 0 errors and 0 warnings
-rtk bun run lint  -> All matched files use Prettier code style!
-```
-
-## Files changed
-
-- `src/routes/+page.svelte`
-- `src/lib/components/game/TopBar.svelte`
-- `src/lib/components/game/GameMenu.svelte`
-- `src/lib/components/game/ControlDesk.svelte`
-- `src/lib/components/game/AudioSettings.svelte`
-- `src/lib/components/game/GameMenu.svelte.spec.ts`
-- `src/lib/components/game/TopBar.svelte.spec.ts`
-- `src/lib/components/game/ControlDesk.svelte.spec.ts`
-- `src/lib/components/game/AudioSettings.svelte.spec.ts`
-- `src/lib/i18n/messages/en.ts`
-- `src/lib/i18n/messages/ja.ts`
-- `src/lib/i18n/messages/zh-Hant.ts`
-
-## Svelte MCP / autofixer evidence
-
-Ran `list-sections` first, then fetched these relevant docs:
-
-- `svelte/$state`
-- `svelte/$derived`
-- `svelte/$effect`
-- `svelte/$props`
-- `svelte/bind`
-- `svelte/lifecycle-hooks`
-- `svelte/testing`
-- `kit/$app-environment`
-- `kit/accessibility`
-
-Ran `svelte-autofixer` on:
-
-- full `GameMenu.svelte` -> no issues
-- full `TopBar.svelte` -> no issues
-- full `ControlDesk.svelte` -> no issues
-- full `AudioSettings.svelte` -> no issues
-- `+page.svelte` route snippets, because the full route file is large
-  - script/state snippet -> no issues after review, one advisory suggestion about an intentional `$effect` side effect
-  - markup/binding snippet with state declarations -> no issues
-
-The autofixer also caught that TypeScript `as never` casts inside markup snippets were not safe to leave in template expressions, so I removed those from the affected template calls.
-
-## Self-review findings
-
-- Scope stayed inside the task-owned files plus the allowed i18n catalogs.
-- The route remains the single source of truth for locale state; components do not recreate `createI18n('en')`.
-- The browser-test escalation was environmental, not a product failure.
-- No remaining correctness issues found in the touched surface after final verification.
-
-## Concerns
-
-- Browser-based unit verification on this machine requires an unsandboxed Chromium launch. The sandboxed run still fails with the known macOS Mach port permission error before assertions start.
-- `src/app.html` already had `lang=\"en\"`, so no content change was needed there.
-
-## Review-fix follow-up
-
-### Findings addressed
-
-- Localized all route-owned save status and generic error fallback strings in `src/routes/+page.svelte` with `i18n.t(...)`, while still preserving raw `Error.message` values when the thrown value is an actual `Error`.
-- Added the matching `route.save.*` message keys in all three catalogs and formatted the auto-save day with the route-owned locale formatter.
-- Moved language selector option metadata into shared i18n locale metadata in `src/lib/i18n/locales.ts`, re-exported it from `src/lib/i18n/index.ts`, and updated `GameMenu.svelte` to render from that shared source instead of a component-local duplicate list.
-- Localized `TopBar.svelte`'s banner `aria-label` through the new `topBar.statusBar` key in all three catalogs.
-
-### Verification
-
-- `rtk bun run test:unit -- src/lib/components/game/GameMenu.svelte.spec.ts src/lib/components/game/TopBar.svelte.spec.ts src/lib/components/game/ControlDesk.svelte.spec.ts src/lib/components/game/AudioSettings.svelte.spec.ts --run --project client`
-  - initial sandboxed run failed with the known Chromium Mach port permission error
-  - unsandboxed rerun passed: `Test Files  4 passed (4)` / `Tests  26 passed (26)`
-- `rtk bun run check`
-  - passed: `svelte-check found 0 errors and 0 warnings`
-- `rtk bun run lint`
-  - passed: `All matched files use Prettier code style!`
-
-### Test updates
-
-- `GameMenu.svelte.spec.ts` now asserts the selector renders labels from `SUPPORTED_LOCALE_METADATA`, so the component test covers the metadata-backed options without re-declaring the list locally.
-- `TopBar.svelte.spec.ts` now asserts the localized banner landmark is present.
-
-### Svelte MCP / autofixer follow-up evidence
-
-- Reused the earlier Svelte MCP doc set for this same task area.
-- Ran `svelte-autofixer` on the updated `GameMenu.svelte` file: no issues.
-- Ran `svelte-autofixer` on the updated `TopBar.svelte` file: no issues.
-- Ran `svelte-autofixer` on a valid `+page.svelte` save/status script snippet covering:
-  - `describeSaveError(...)`
-  - `formatSaveDay(...)`
-  - `writeAutoSave(...)`
-  - `resumeAutoSave(...)`
-  - `saveManualSlot(...)`
-  - `loadManualSlot(...)`
-  - `deleteManualSlot(...)`
-  Result: no issues.
-
-### Self-review
-
-- Diff stayed narrowly scoped to the blocking review items plus the shared locale metadata extraction needed to remove duplication.
-- No new task-scope regressions were found in the touched route/component surface after the focused client tests and repo-wide `check`/`lint` passes.
+- The `+page.svelte` fallback (when `game` is null) now emits `decisionContextWorldCityNotAvailableYet(city.id)` for non-starter cities. For starter cities (`initiallyOpened: true`), `blockedReason` is `null` and state is `'opened'`, which is correct.
+- `WorldMap.svelte.spec.ts` has 4 runtime failures due to `localizeWorldCityStatus` expecting strings — expected and fixed in Task 6.
+- 50 type errors remain in `gameCopy.ts`, `events.ts`, `industryPlacement.ts`, and various spec files with string `DecisionItem.context` fixtures — all expected (Tasks 5-6).
