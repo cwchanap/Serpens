@@ -5,6 +5,7 @@
 	import { buildProductChainTree } from '$lib/game/productChainTree';
 	import { localizeProductChainGraph } from '$lib/i18n/gameCopy';
 	import type { I18nBundle } from '$lib/i18n';
+	import { storeDisplayName } from '$lib/i18n/gameCopy';
 	import type { GameState, Store } from '$lib/game/types';
 
 	interface Props {
@@ -76,7 +77,9 @@
 
 <section
 	class="store-chain-panel"
-	aria-label={i18n.t('storeProductChainPanel.ariaLabel', { storeName: store.name })}
+	aria-label={i18n.t('storeProductChainPanel.ariaLabel', {
+		storeName: storeDisplayName(store, i18n)
+	})}
 >
 	{#if supportedCategories.length > 0 && selectedCategory && graph}
 		<div class="chain-controls">

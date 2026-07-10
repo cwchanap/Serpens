@@ -273,6 +273,9 @@ export const zhHant = {
 			storeInline: '{role} · 技能 {skill} · 士氣 {morale}'
 		}
 	},
+	store: {
+		defaultName: '店鋪 #{ordinal}'
+	},
 	storeOverview: {
 		title: '店鋪',
 		dayOpen: '第 {day} 天',

@@ -25,11 +25,13 @@ import type {
 	DailyProductReport,
 	DailyProductionReport,
 	DailyReport,
+	DailyReportWarning,
 	DailyStoreReport,
 	GameState,
 	Scorecard,
 	StaffingRequirement,
-	Store
+	Store,
+	StoreReportWarning
 } from './types';
 
 const PRICING = {
@@ -371,8 +373,8 @@ function buildStoreWarnings(
 	staffLimit: number,
 	staffingShortage: StaffingRequirement,
 	reputation: number
-): string[] {
-	const warnings: string[] = [];
+): StoreReportWarning[] {
+	const warnings: StoreReportWarning[] = [];
 	const customersServed = productReports.reduce((total, report) => total + report.unitsSold, 0);
 	const demandMissed = productReports.reduce((total, report) => total + report.demandMissed, 0);
 
@@ -381,27 +383,27 @@ function buildStoreWarnings(
 		startingStockHealth < stockPressureThreshold ||
 		productReports.some((report) => report.endingStock === 0)
 	) {
-		warnings.push(`${store.name} has stock pressure`);
+		warnings.push({ code: 'stockPressure', storeId: store.id });
 	}
 
 	if (store.staffMorale < 30 || staffLimit <= customersServed + 1) {
-		warnings.push(`${store.name} is near staff capacity`);
+		warnings.push({ code: 'nearStaffCapacity', storeId: store.id });
 	}
 
 	if (staffingShortage.manager > 0) {
-		warnings.push(`${store.name} is short ${staffingShortage.manager} manager`);
+		warnings.push({ code: 'shortManager', storeId: store.id, count: staffingShortage.manager });
 	}
 
 	if (staffingShortage.general > 0) {
-		warnings.push(`${store.name} is short ${staffingShortage.general} general staff`);
+		warnings.push({ code: 'shortGeneral', storeId: store.id, count: staffingShortage.general });
 	}
 
 	if (demandMissed > customersServed * 0.2) {
-		warnings.push(`${store.name} missed product demand`);
+		warnings.push({ code: 'missedProductDemand', storeId: store.id });
 	}
 
 	if (reputation < 35) {
-		warnings.push(`${store.name} reputation is slipping`);
+		warnings.push({ code: 'reputationSlipping', storeId: store.id });
 	}
 
 	return warnings;
@@ -452,11 +454,14 @@ function averageStoreHealth(storeReports: DailyStoreReport[]): {
 	};
 }
 
-function collectWarnings(storeReports: DailyStoreReport[], cashAfter: number): string[] {
-	const warnings = storeReports.flatMap((report) => report.warnings);
+function collectWarnings(
+	storeReports: DailyStoreReport[],
+	cashAfter: number
+): DailyReportWarning[] {
+	const warnings: DailyReportWarning[] = storeReports.flatMap((report) => report.warnings);
 
 	if (cashAfter < 5_000) {
-		warnings.push('cash reserves are low');
+		warnings.push({ code: 'cashReservesLow' });
 	}
 
 	return warnings;

@@ -8,6 +8,7 @@ import StoreDetailModal from './StoreDetailModal.svelte';
 function store(): Store {
 	return {
 		id: 'store-1',
+		ordinal: 1,
 		level: 3,
 		name: 'Corner Market',
 		archetypeId: 'convenience',

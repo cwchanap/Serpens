@@ -273,6 +273,9 @@ export const ja = {
 			storeInline: '{role} · スキル {skill} · 士気 {morale}'
 		}
 	},
+	store: {
+		defaultName: '店舗 #{ordinal}'
+	},
 	storeOverview: {
 		title: '店舗',
 		dayOpen: '{day}日目',

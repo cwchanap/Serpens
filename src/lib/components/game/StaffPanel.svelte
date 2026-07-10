@@ -7,6 +7,7 @@
 		MAX_STAFF_LEVEL
 	} from '$lib/game/staffLeveling';
 	import type { I18nBundle } from '$lib/i18n';
+	import { storeDisplayName } from '$lib/i18n/gameCopy';
 	import type { HiringCandidate, StaffMember, StaffRole, Store } from '$lib/game/types';
 
 	interface Props {
@@ -58,7 +59,9 @@
 		const store = stores.find((item) => item.id === member.assignedStoreId);
 
 		if (store) {
-			return i18n.t('staffPanel.assignment.currentlyAssigned', { storeName: store.name });
+			return i18n.t('staffPanel.assignment.currentlyAssigned', {
+				storeName: storeDisplayName(store, i18n)
+			});
 		}
 
 		return i18n.t('staffPanel.assignment.currentlyUnassigned');
@@ -78,7 +81,7 @@
 			name: member.name,
 			role: roleLabel(member.role),
 			id: member.id,
-			storeName: store.name
+			storeName: storeDisplayName(store, i18n)
 		});
 	}
 
@@ -119,7 +122,7 @@
 		item: ReturnType<typeof summarizeStoreStaffing>
 	): string {
 		return i18n.t('staffPanel.coverage', {
-			storeName: store.name,
+			storeName: storeDisplayName(store, i18n),
 			managerAssigned: i18n.format.integer(item.assigned.manager),
 			managerRequired: i18n.format.integer(item.requirement.manager),
 			generalAssigned: i18n.format.integer(item.assigned.general),
@@ -213,7 +216,7 @@
 					>
 						<option value="">{i18n.t('staffPanel.assignment.unassigned')}</option>
 						{#each stores as store (store.id)}
-							<option value={store.id}>{store.name}</option>
+							<option value={store.id}>{storeDisplayName(store, i18n)}</option>
 						{/each}
 					</select>
 					{#if canPromoteStaff(member)}
@@ -241,7 +244,7 @@
 			<article class="store-card">
 				<div class="store-heading">
 					<div>
-						<h3>{item.store.name}</h3>
+						<h3>{storeDisplayName(item.store, i18n)}</h3>
 						<p>
 							{storeCoverageSummary(item.store, item.summary)}
 						</p>
@@ -272,7 +275,7 @@
 								>
 									<option value="">{i18n.t('staffPanel.assignment.unassigned')}</option>
 									{#each stores as store (store.id)}
-										<option value={store.id}>{store.name}</option>
+										<option value={store.id}>{storeDisplayName(store, i18n)}</option>
 									{/each}
 								</select>
 								{#if canPromoteStaff(member)}

@@ -50,7 +50,7 @@ export class SaveDataError extends Error {
  * {@link SAVE_SCHEMA_VERSION}. Keep this in sync with the migration table in
  * {@link migrateSaveStoreSnapshot} and {@link migrateSaveRecord}.
  */
-const MIGRATABLE_SCHEMA_VERSIONS = new Set<number>([4]);
+const MIGRATABLE_SCHEMA_VERSIONS = new Set<number>([4, 5, 6]);
 
 function isMigratableSchemaVersion(version: unknown): version is number {
 	return typeof version === 'number' && MIGRATABLE_SCHEMA_VERSIONS.has(version);
@@ -112,6 +112,93 @@ function migrateV4SaveRecord(record: unknown): unknown {
 }
 
 /**
+ * v5 → v6: stores gained an `ordinal` field for locale-neutral display
+ * naming. The `name` field is retained but auto-named stores now store an
+ * empty string; the ordinal is derived from the store's position in the
+ * stores array (1-based).
+ */
+function migrateV5Store(store: unknown, index: number): unknown {
+	if (typeof store !== 'object' || store === null) return store;
+	const storeRecord = store as Record<string, unknown>;
+	if (typeof storeRecord.ordinal === 'number') return store;
+	return { ...storeRecord, ordinal: index + 1 };
+}
+
+function migrateV5Game(game: unknown): unknown {
+	if (typeof game !== 'object' || game === null) return game;
+	const gameRecord = game as Record<string, unknown>;
+	if (!Array.isArray(gameRecord.stores)) return game;
+
+	const migratedStores = gameRecord.stores.map((store, index) => migrateV5Store(store, index));
+
+	return { ...gameRecord, stores: migratedStores };
+}
+
+function migrateV5SaveRecord(record: unknown): unknown {
+	if (typeof record !== 'object' || record === null) return record;
+	const recordObject = record as Record<string, unknown>;
+	const migratedGame = migrateV5Game(recordObject.game);
+	return {
+		...recordObject,
+		schemaVersion: SAVE_SCHEMA_VERSION,
+		game: migratedGame
+	};
+}
+
+/**
+ * v6 → v7: report warnings changed from free-form English strings to
+ * structured `{ code, ... }` objects. Per the legacy save policy (game is
+ * unreleased), old string warnings are dropped rather than reverse-parsed.
+ */
+function migrateV6StoreReport(report: unknown): unknown {
+	if (typeof report !== 'object' || report === null) return report;
+	const reportRecord = report as Record<string, unknown>;
+	if (!Array.isArray(reportRecord.warnings)) return report;
+	return { ...reportRecord, warnings: [] };
+}
+
+function migrateV6Game(game: unknown): unknown {
+	if (typeof game !== 'object' || game === null) return game;
+	const gameRecord = game as Record<string, unknown>;
+
+	let changed = false;
+
+	let migratedReports = gameRecord.reports;
+	if (Array.isArray(migratedReports)) {
+		migratedReports = migratedReports.map((report) => {
+			if (typeof report !== 'object' || report === null) return report;
+			const reportRecord = report as Record<string, unknown>;
+			let migrated = reportRecord;
+			if (Array.isArray(reportRecord.warnings)) {
+				migrated = { ...reportRecord, warnings: [] };
+				changed = true;
+			}
+			if (Array.isArray(reportRecord.storeReports)) {
+				const migratedStoreReports = reportRecord.storeReports.map(migrateV6StoreReport);
+				if (migratedStoreReports !== reportRecord.storeReports) {
+					migrated = { ...migrated, storeReports: migratedStoreReports };
+					changed = true;
+				}
+			}
+			return migrated;
+		});
+	}
+
+	return changed ? { ...gameRecord, reports: migratedReports } : game;
+}
+
+function migrateV6SaveRecord(record: unknown): unknown {
+	if (typeof record !== 'object' || record === null) return record;
+	const recordObject = record as Record<string, unknown>;
+	const migratedGame = migrateV6Game(recordObject.game);
+	return {
+		...recordObject,
+		schemaVersion: SAVE_SCHEMA_VERSION,
+		game: migratedGame
+	};
+}
+
+/**
  * Bring a serialized save store snapshot forward to the current
  * {@link SAVE_SCHEMA_VERSION}. Returns the value untouched when it is already
  * current or when we cannot recognise the schema version (so the caller's
@@ -126,12 +213,12 @@ function migrateSaveStoreSnapshot(value: unknown): unknown {
 
 	let migratedAutoSave = snapshot.autoSave;
 	if (migratedAutoSave !== null && migratedAutoSave !== undefined) {
-		migratedAutoSave = migrateV4SaveRecord(migratedAutoSave);
+		migratedAutoSave = migrateSaveRecord(migratedAutoSave);
 	}
 
 	let migratedManualSlots = snapshot.manualSlots;
 	if (Array.isArray(migratedManualSlots)) {
-		migratedManualSlots = migratedManualSlots.map(migrateV4SaveRecord);
+		migratedManualSlots = migratedManualSlots.map(migrateSaveRecord);
 	}
 
 	return {
@@ -145,14 +232,26 @@ function migrateSaveStoreSnapshot(value: unknown): unknown {
 /**
  * Record-level mirror of {@link migrateSaveStoreSnapshot} for callers that
  * validate a single {@link SaveRecord} without going through the snapshot
- * validator first.
+ * validator first. Applies version-specific migrations in order.
  */
 function migrateSaveRecord(value: unknown): unknown {
 	if (typeof value !== 'object' || value === null) return value;
 	const record = value as Record<string, unknown>;
 	if (!isMigratableSchemaVersion(record.schemaVersion)) return value;
 	if (record.schemaVersion === SAVE_SCHEMA_VERSION) return value;
-	return migrateV4SaveRecord(record);
+
+	let migrated = record;
+	if (migrated.schemaVersion === 4) {
+		migrated = migrateV4SaveRecord(migrated) as Record<string, unknown>;
+	}
+	if (migrated.schemaVersion === 5) {
+		migrated = migrateV5SaveRecord(migrated) as Record<string, unknown>;
+	}
+	if (migrated.schemaVersion === 6) {
+		migrated = migrateV6SaveRecord(migrated) as Record<string, unknown>;
+	}
+
+	return migrated;
 }
 
 const PRICING_POSTURES = ['discount', 'competitive', 'standard', 'premium'] as const;
@@ -1052,7 +1151,11 @@ function validateSavedStore(value: unknown, label: string): void {
 	if (!Number.isInteger(storeLevel) || storeLevel < 1 || storeLevel > MAX_STORE_LEVEL) {
 		throw new SaveDataError(`${label} level must be an integer between 1 and ${MAX_STORE_LEVEL}`);
 	}
-	requireString(store.name, `${label} name`);
+	requireStringAllowEmpty(store.name, `${label} name`);
+	const storeOrdinal = requireNumber(store.ordinal, `${label} ordinal`);
+	if (!Number.isInteger(storeOrdinal) || storeOrdinal < 1) {
+		throw new SaveDataError(`${label} ordinal must be a positive integer`);
+	}
 	requireOneOf(store.archetypeId, `${label} archetypeId`, ARCHETYPE_IDS);
 	requireString(store.location, `${label} location`);
 	requireString(store.cityId, `${label} cityId`);
@@ -1143,7 +1246,7 @@ function validateSavedReport(value: unknown, label: string): void {
 	requireArray(report.storeReports, `${label} storeReports`).forEach((storeReport, index) =>
 		validateSavedStoreReport(storeReport, `${label} storeReports[${index}]`)
 	);
-	validateStringArray(report.warnings, `${label} warnings`);
+	validateSavedWarningArray(report.warnings, `${label} warnings`, false);
 }
 
 function validateSavedProductionReport(value: unknown, label: string): void {
@@ -1193,7 +1296,7 @@ function validateSavedStoreReport(value: unknown, label: string): void {
 	requireArray(report.productReports, `${label} productReports`).forEach((productReport, index) =>
 		validateSavedProductReport(productReport, `${label} productReports[${index}]`)
 	);
-	validateStringArray(report.warnings, `${label} warnings`);
+	validateSavedWarningArray(report.warnings, `${label} warnings`, true);
 }
 
 function validateSavedStoreProducts(store: Record<string, unknown>, label: string): void {
@@ -1300,8 +1403,41 @@ function validateSavedScorecard(value: unknown, label: string): void {
 	requireNumber(scorecard.marketPosition, `${label} marketPosition`);
 }
 
-function validateStringArray(value: unknown, label: string): void {
-	requireArray(value, label).forEach((item, index) => requireString(item, `${label}[${index}]`));
+const STORE_WARNING_CODES = new Set([
+	'stockPressure',
+	'nearStaffCapacity',
+	'shortManager',
+	'shortGeneral',
+	'missedProductDemand',
+	'reputationSlipping'
+]);
+
+/**
+ * Validates structured report warnings. When `storeOnly` is true, rejects
+ * `cashReservesLow` (a daily-level warning); otherwise accepts it.
+ */
+function validateSavedWarningArray(value: unknown, label: string, storeOnly: boolean): void {
+	const warnings = requireArray(value, label);
+	warnings.forEach((item, index) => {
+		const warning = requireRecord(item, `${label}[${index}]`);
+		const code = requireString(warning.code, `${label}[${index}] code`);
+		if (storeOnly) {
+			if (!STORE_WARNING_CODES.has(code)) {
+				throw new SaveDataError(`${label}[${index}] code must be a store warning code`);
+			}
+		} else if (!STORE_WARNING_CODES.has(code) && code !== 'cashReservesLow') {
+			throw new SaveDataError(`${label}[${index}] code must be a valid warning code`);
+		}
+		if (code !== 'cashReservesLow') {
+			requireString(warning.storeId, `${label}[${index}] storeId`);
+		}
+		if (code === 'shortManager' || code === 'shortGeneral') {
+			const count = requireNumber(warning.count, `${label}[${index}] count`);
+			if (!Number.isInteger(count) || count < 1) {
+				throw new SaveDataError(`${label}[${index}] count must be a positive integer`);
+			}
+		}
+	});
 }
 
 function cloneJson<T>(value: T): T {
@@ -1327,6 +1463,14 @@ function requireArray(value: unknown, label: string): unknown[] {
 function requireString(value: unknown, label: string): string {
 	if (typeof value !== 'string' || value.length === 0) {
 		throw new SaveDataError(`${label} must be a non-empty string`);
+	}
+
+	return value;
+}
+
+function requireStringAllowEmpty(value: unknown, label: string): string {
+	if (typeof value !== 'string') {
+		throw new SaveDataError(`${label} must be a string`);
 	}
 
 	return value;

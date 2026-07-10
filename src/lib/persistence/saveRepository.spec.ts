@@ -7,6 +7,7 @@ import type {
 	DailyProductReport,
 	DailyProductionReport,
 	DailyReport,
+	DailyReportWarning,
 	DailyStoreReport,
 	GameState,
 	IndustrialBuildingTypeId,
@@ -146,6 +147,7 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 				id: 'store-1',
 				level: 1,
 				name: 'Founding Store',
+				ordinal: 1,
 				archetypeId: 'boutique',
 				location: 'Downtown (1, 1)',
 				cityId: 'harbor-city',
@@ -254,7 +256,7 @@ function createDailyStoreReport(overrides: Partial<DailyStoreReport> = {}): Dail
 		reputation: 60,
 		marketPosition: 50,
 		productReports: [],
-		warnings: ['Low inventory'],
+		warnings: [],
 		...overrides
 	};
 }
@@ -316,7 +318,7 @@ function createDailyReport(overrides: Partial<DailyReport> = {}): DailyReport {
 		},
 		productionReport: createDailyProductionReport(),
 		storeReports: [createDailyStoreReport()],
-		warnings: ['Healthy day'],
+		warnings: [],
 		...overrides
 	};
 }
@@ -1484,12 +1486,19 @@ describe('save records', () => {
 		expect.assertions(2);
 		const snapshot = createSnapshotWithGame({
 			...createGame(),
-			reports: [createDailyReport({ warnings: ['Healthy day', 5 as unknown as string] })]
+			reports: [
+				createDailyReport({
+					warnings: [
+						{ code: 'cashReservesLow' },
+						{ code: 'unknown-warning' as unknown as DailyReportWarning['code'] }
+					] as unknown as DailyReportWarning[]
+				})
+			]
 		});
 
 		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
 		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
-			'Saved game reports[0] warnings[1] must be a non-empty string'
+			'Saved game reports[0] warnings[1] code must be a valid warning code'
 		);
 	});
 

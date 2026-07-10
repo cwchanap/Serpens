@@ -5,6 +5,7 @@
 	import { getStoreProductStatus } from '$lib/game/stock';
 	import { localizeStockStatus } from '$lib/i18n/gameCopy';
 	import type { I18nBundle } from '$lib/i18n';
+	import { storeDisplayName } from '$lib/i18n/gameCopy';
 	import type {
 		DailyProductReport,
 		DailyStoreReport,
@@ -49,11 +50,13 @@
 
 <section class="stock-table" aria-labelledby={`${store.id}-stock-heading`}>
 	<h3 id={`${store.id}-stock-heading`}>
-		{i18n.t('storeStockTable.title', { storeName: store.name })}
+		{i18n.t('storeStockTable.title', { storeName: storeDisplayName(store, i18n) })}
 	</h3>
 
 	<div class="table-scroll">
-		<table aria-label={i18n.t('storeStockTable.title', { storeName: store.name })}>
+		<table
+			aria-label={i18n.t('storeStockTable.title', { storeName: storeDisplayName(store, i18n) })}
+		>
 			<thead>
 				<tr>
 					<th scope="col">{i18n.t('storeStockTable.headings.product')}</th>

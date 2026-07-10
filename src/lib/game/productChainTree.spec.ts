@@ -564,7 +564,6 @@ describe('buildStoreCategoryChainSummaries (tree)', () => {
 		const expansionTile = findAvailableRetailFootprintTile(game);
 		game = openStoreAtTile(game, {
 			tileId: expansionTile.id,
-			name: 'Store #2',
 			archetypeId: 'convenience'
 		});
 		const firstStore = game.stores[0]!;
@@ -628,7 +627,6 @@ describe('buildStoreCategoryChainSummaries (tree)', () => {
 		const expansionTile = findAvailableRetailFootprintTile(game);
 		game = openStoreAtTile(game, {
 			tileId: expansionTile.id,
-			name: 'Store #2',
 			archetypeId: 'convenience'
 		});
 		const firstStore = game.stores[0]!;

@@ -1,4 +1,5 @@
 import { INDUSTRIAL_BUILDING_TYPES } from './industry';
+import { storeNameOrOrdinal } from './state';
 import { summarizeStockTrouble } from './stock';
 import type { GameState } from './types';
 
@@ -28,7 +29,7 @@ export function collectGameAlerts(game: GameState): GameAlert[] {
 		alerts.push({
 			id: `store-stock:${store.id}`,
 			kind: 'store-stock',
-			message: `${store.name}: ${summary}`,
+			message: `${storeNameOrOrdinal(store)}: ${summary}`,
 			cityId: store.cityId,
 			storeId: store.id,
 			tileId: store.tileId

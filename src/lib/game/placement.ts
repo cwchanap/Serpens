@@ -132,7 +132,7 @@ export function createFoundingGameAtTile(input: {
 
 export function openStoreAtTile(
 	game: GameState,
-	input: { tileId: string; name: string; archetypeId: ArchetypeId }
+	input: { tileId: string; archetypeId: ArchetypeId }
 ): GameState {
 	const city = game.cities.find((candidate) => candidate.id === game.activeCityId);
 	const tile = city ? getTileById(city, input.tileId) : undefined;
@@ -150,7 +150,6 @@ export function openStoreAtTile(
 	}
 
 	const expanded = openStore(game, {
-		name: input.name,
 		archetypeId: input.archetypeId,
 		location: formatLocation(tile),
 		tileId: tile.id

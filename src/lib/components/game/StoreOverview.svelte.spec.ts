@@ -8,6 +8,7 @@ import type { DailyStoreReport, Store } from '$lib/game/types';
 
 const store: Store = {
 	id: 'store-1',
+	ordinal: 1,
 	level: 1,
 	name: 'Founding Store',
 	archetypeId: 'boutique',
@@ -106,7 +107,10 @@ describe('StoreOverview', () => {
 	it('lists store warnings when the latest report includes them', async () => {
 		expect.assertions(2);
 
-		const reportWithWarnings: DailyStoreReport = { ...staleReport, warnings: ['Low stock alert'] };
+		const reportWithWarnings: DailyStoreReport = {
+			...staleReport,
+			warnings: [{ code: 'stockPressure', storeId: 'store-1' }]
+		};
 
 		render(StoreOverview, {
 			i18n: createI18n('en'),
@@ -118,19 +122,18 @@ describe('StoreOverview', () => {
 		const storeRegion = page.getByRole('region', { name: 'Stores' });
 		const warningsList = storeRegion.getByRole('list', { name: 'Founding Store warnings' });
 
-		await expect.element(warningsList.getByText('Low stock alert')).toBeVisible();
+		await expect.element(warningsList.getByText('Founding Store has stock pressure')).toBeVisible();
 		await expect.element(storeRegion.getByText('No current warnings.')).not.toBeInTheDocument();
 	});
 
-	it('localizes known store warnings in non-English locales and preserves unknown fallback', async () => {
-		expect.assertions(4);
+	it('localizes known store warnings in non-English locales', async () => {
+		expect.assertions(3);
 
 		const reportWithWarnings: DailyStoreReport = {
 			...staleReport,
 			warnings: [
-				'Founding Store has stock pressure',
-				'Founding Store reputation is slipping',
-				'Historical warning'
+				{ code: 'stockPressure', storeId: 'store-1' },
+				{ code: 'reputationSlipping', storeId: 'store-1' }
 			]
 		};
 
@@ -145,7 +148,6 @@ describe('StoreOverview', () => {
 
 		await expect.element(warningsList.getByText('Founding Store 有庫存壓力')).toBeVisible();
 		await expect.element(warningsList.getByText('Founding Store 聲譽正在下滑')).toBeVisible();
-		await expect.element(warningsList.getByText('Historical warning')).toBeVisible();
 		await expect
 			.element(warningsList.getByText('Founding Store has stock pressure'))
 			.not.toBeInTheDocument();

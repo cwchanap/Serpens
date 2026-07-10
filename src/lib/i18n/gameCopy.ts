@@ -6,11 +6,21 @@ import type {
 	ProductChainNode
 } from '$lib/game/productChainGraph';
 import type { GameAlert } from '$lib/game/alerts';
-import type { GameState, DecisionItem, DecisionOption } from '$lib/game/types';
+import type {
+	DailyReportWarning,
+	GameState,
+	DecisionItem,
+	DecisionOption,
+	Store
+} from '$lib/game/types';
 import { WORLD_CITY_CATALOG } from '$lib/game/world';
 import type { WorldCityStatus } from '$lib/game/world';
 import type { StoreProductStatus } from '$lib/game/stock';
 import type { I18nBundle } from './index';
+
+export function storeDisplayName(store: Pick<Store, 'name' | 'ordinal'>, i18n: I18nBundle): string {
+	return store.name || i18n.t('store.defaultName', { ordinal: store.ordinal });
+}
 
 const INDUSTRY_RESOURCE_ID_BY_RAW_LABEL = new Map(
 	Object.values(INDUSTRIAL_BUILDING_TYPES)
@@ -52,29 +62,29 @@ export function formatPlacementBlockReason(
 
 	switch (reason.code) {
 		case 'retail.unknownCityTile':
-			return i18n.t('placement.retail.unknownCityTile' as never);
+			return i18n.t('placement.retail.unknownCityTile');
 		case 'retail.storeLimitReached':
-			return i18n.t('placement.retail.storeLimitReached' as never);
+			return i18n.t('placement.retail.storeLimitReached');
 		case 'retail.requiresCash':
-			return i18n.t('placement.retail.requiresCash' as never, {
+			return i18n.t('placement.retail.requiresCash', {
 				amount: i18n.format.currency(reason.amount)
 			});
 		case 'retail.occupiedLocation':
-			return i18n.t('placement.retail.occupiedLocation' as never);
+			return i18n.t('placement.retail.occupiedLocation');
 		case 'retail.lockedLocation':
-			return i18n.t('placement.retail.lockedLocation' as never);
+			return i18n.t('placement.retail.lockedLocation');
 		case 'retail.roadLocation':
-			return i18n.t('placement.retail.roadLocation' as never);
+			return i18n.t('placement.retail.roadLocation');
 		case 'retail.riverLocation':
-			return i18n.t('placement.retail.riverLocation' as never);
+			return i18n.t('placement.retail.riverLocation');
 		case 'retail.noValidTiles':
-			return i18n.t('placement.retail.noValidTiles' as never);
+			return i18n.t('placement.retail.noValidTiles');
 		case 'industry.lockedUntilRetail':
-			return i18n.t('placement.industry.lockedUntilRetail' as never);
+			return i18n.t('placement.industry.lockedUntilRetail');
 		case 'industry.unknownBuildingType':
-			return i18n.t('placement.industry.unknownBuildingType' as never);
+			return i18n.t('placement.industry.unknownBuildingType');
 		case 'industry.requiresCash':
-			return i18n.t('placement.industry.requiresCash' as never, {
+			return i18n.t('placement.industry.requiresCash', {
 				buildingName: i18n.labels.industrialBuilding(reason.buildingTypeId),
 				amount: i18n.format.currency(reason.amount)
 			});
@@ -94,11 +104,6 @@ function translateMessage(
 
 function formatCountMessage(i18n: I18nBundle, baseKey: string, count: number): string {
 	return i18n.t(`${baseKey}.${count === 1 ? 'one' : 'other'}` as never, { count });
-}
-
-function parseWarningCount(value: string): number {
-	const parsed = Number(value);
-	return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function formatQuantity(quantity: string): string {
@@ -127,46 +132,46 @@ function localizeHealth(health: ProductChainNode['health'], i18n: I18nBundle): s
 function localizeBottleneck(node: ProductChainNode, label: string, i18n: I18nBundle): string {
 	if (node.id === 'warehouse') {
 		if (node.bottleneck === 'No warehouse capacity is available.') {
-			return i18n.t('copy.productChainGraph.bottlenecks.warehouseNoCapacity' as never);
+			return i18n.t('copy.productChainGraph.bottlenecks.warehouseNoCapacity');
 		}
 
 		const overflowMatch = node.bottleneck.match(/^(\d+) units are in overflow storage\.$/);
 		if (overflowMatch) {
-			return i18n.t('copy.productChainGraph.bottlenecks.warehouseOverflow' as never, {
+			return i18n.t('copy.productChainGraph.bottlenecks.warehouseOverflow', {
 				quantity: overflowMatch[1] ?? '0'
 			});
 		}
 
 		if (node.bottleneck === 'Warehouse capacity is available.') {
-			return i18n.t('copy.productChainGraph.bottlenecks.warehouseAvailable' as never);
+			return i18n.t('copy.productChainGraph.bottlenecks.warehouseAvailable');
 		}
 	}
 
 	switch (node.health) {
 		case 'healthy':
-			return i18n.t('copy.productChainGraph.bottlenecks.healthy' as never, { label });
+			return i18n.t('copy.productChainGraph.bottlenecks.healthy', { label });
 		case 'watch':
-			return i18n.t('copy.productChainGraph.bottlenecks.watch' as never, { label });
+			return i18n.t('copy.productChainGraph.bottlenecks.watch', { label });
 		case 'shortage':
-			return i18n.t('copy.productChainGraph.bottlenecks.shortage' as never, { label });
+			return i18n.t('copy.productChainGraph.bottlenecks.shortage', { label });
 		case 'no-local-capacity':
-			return i18n.t('copy.productChainGraph.bottlenecks.noLocalCapacity' as never, { label });
+			return i18n.t('copy.productChainGraph.bottlenecks.noLocalCapacity', { label });
 		default:
-			return i18n.t('copy.productChainGraph.bottlenecks.noReport' as never, { label });
+			return i18n.t('copy.productChainGraph.bottlenecks.noReport', { label });
 	}
 }
 
 function localizeEdgeLabel(label: string, i18n: I18nBundle): string {
 	const inMatch = label.match(/^(.+)\/day in$/);
 	if (inMatch) {
-		return i18n.t('copy.productChainGraph.edges.in' as never, {
+		return i18n.t('copy.productChainGraph.edges.in', {
 			quantity: formatQuantity(inMatch[1]!)
 		});
 	}
 
 	const outMatch = label.match(/^(.+)\/day out$/);
 	if (outMatch) {
-		return i18n.t('copy.productChainGraph.edges.out' as never, {
+		return i18n.t('copy.productChainGraph.edges.out', {
 			quantity: formatQuantity(outMatch[1]!)
 		});
 	}
@@ -194,7 +199,7 @@ function localizeEdgeLabel(label: string, i18n: I18nBundle): string {
 
 function localizeGraphTitle(graph: ProductChainGraph, i18n: I18nBundle): string {
 	if (graph.id === 'warehouse-flow') {
-		return i18n.t('copy.productChainGraph.title.warehouseFlow' as never);
+		return i18n.t('copy.productChainGraph.title.warehouseFlow');
 	}
 
 	if (graph.id.startsWith('chain:')) {
@@ -211,78 +216,68 @@ function localizeGraphReason(reason: string | null, i18n: I18nBundle): string | 
 	}
 
 	if (reason === 'No warehouse stock or daily report yet.') {
-		return i18n.t('copy.productChainGraph.emptyReason.noWarehouseData' as never);
+		return i18n.t('copy.productChainGraph.emptyReason.noWarehouseData');
 	}
 
 	if (reason === 'No local production chain available for this category yet.') {
-		return i18n.t('copy.productChainGraph.emptyReason.noLocalChain' as never);
+		return i18n.t('copy.productChainGraph.emptyReason.noLocalChain');
 	}
 
 	return reason;
 }
 
-export function localizeReportWarning(warning: string, i18n: I18nBundle): string {
-	const stockPressure = warning.match(/^(.+) has stock pressure$/);
-	if (stockPressure) {
-		return i18n.t('copy.reportWarnings.stockPressure' as never, {
-			storeName: stockPressure[1] ?? ''
-		});
-	}
+export function localizeReportWarning(
+	warning: DailyReportWarning,
+	stores: Store[],
+	i18n: I18nBundle
+): string {
+	const resolveStoreName = (storeId: string): string => {
+		const store = stores.find((candidate) => candidate.id === storeId);
+		return store ? storeDisplayName(store, i18n) : storeId;
+	};
 
-	const staffCapacity = warning.match(/^(.+) is near staff capacity$/);
-	if (staffCapacity) {
-		return i18n.t('copy.reportWarnings.nearStaffCapacity' as never, {
-			storeName: staffCapacity[1] ?? ''
-		});
+	switch (warning.code) {
+		case 'stockPressure':
+			return i18n.t('copy.reportWarnings.stockPressure', {
+				storeName: resolveStoreName(warning.storeId)
+			});
+		case 'nearStaffCapacity':
+			return i18n.t('copy.reportWarnings.nearStaffCapacity', {
+				storeName: resolveStoreName(warning.storeId)
+			});
+		case 'shortManager':
+			return i18n.t('copy.reportWarnings.shortManager', {
+				storeName: resolveStoreName(warning.storeId),
+				count: i18n.format.integer(warning.count)
+			});
+		case 'shortGeneral':
+			return i18n.t('copy.reportWarnings.shortGeneral', {
+				storeName: resolveStoreName(warning.storeId),
+				count: i18n.format.integer(warning.count)
+			});
+		case 'missedProductDemand':
+			return i18n.t('copy.reportWarnings.missedProductDemand', {
+				storeName: resolveStoreName(warning.storeId)
+			});
+		case 'reputationSlipping':
+			return i18n.t('copy.reportWarnings.reputationSlipping', {
+				storeName: resolveStoreName(warning.storeId)
+			});
+		case 'cashReservesLow':
+			return i18n.t('copy.reportWarnings.cashReservesLow');
 	}
-
-	const shortManager = warning.match(/^(.+) is short (\d+) manager$/);
-	if (shortManager) {
-		return i18n.t('copy.reportWarnings.shortManager' as never, {
-			storeName: shortManager[1] ?? '',
-			count: i18n.format.integer(parseWarningCount(shortManager[2] ?? '0'))
-		});
-	}
-
-	const shortGeneral = warning.match(/^(.+) is short (\d+) general staff$/);
-	if (shortGeneral) {
-		return i18n.t('copy.reportWarnings.shortGeneral' as never, {
-			storeName: shortGeneral[1] ?? '',
-			count: i18n.format.integer(parseWarningCount(shortGeneral[2] ?? '0'))
-		});
-	}
-
-	const missedProductDemand = warning.match(/^(.+) missed product demand$/);
-	if (missedProductDemand) {
-		return i18n.t('copy.reportWarnings.missedProductDemand' as never, {
-			storeName: missedProductDemand[1] ?? ''
-		});
-	}
-
-	const reputationSlipping = warning.match(/^(.+) reputation is slipping$/);
-	if (reputationSlipping) {
-		return i18n.t('copy.reportWarnings.reputationSlipping' as never, {
-			storeName: reputationSlipping[1] ?? ''
-		});
-	}
-
-	if (warning === 'cash reserves are low') {
-		return i18n.t('copy.reportWarnings.cashReservesLow' as never);
-	}
-
-	return warning;
 }
 
 function localizeGraphWarning(warning: string, i18n: I18nBundle): string {
 	if (warning === 'No daily report yet; latest-day flow is unavailable.') {
-		return i18n.t('copy.productChainGraph.warnings.noDailyReport' as never);
+		return i18n.t('copy.productChainGraph.warnings.noDailyReport');
 	}
 
 	const recipeMatch = warning.match(NO_PRODUCTION_RECIPE_WARNING);
 	if (recipeMatch) {
 		const materialName = recipeMatch[1] ?? '';
 		const materialId = MATERIAL_ID_BY_NAME.get(materialName);
-		return i18n.t('copy.productChainGraph.warnings.noProductionRecipe' as never, {
+		return i18n.t('copy.productChainGraph.warnings.noProductionRecipe', {
 			materialName: materialId ? i18n.labels.material(materialId) : materialName
 		});
 	}
@@ -311,13 +306,13 @@ function localizeLocationUnavailableContext(context: string, i18n: I18nBundle): 
 		const reason = blockedMatch[1]!;
 		const reasonKey =
 			reason === 'Locked location' ? 'locked' : reason === 'Road location' ? 'road' : 'river';
-		return i18n.t('copy.decisions.locationUnavailable.blockedContext' as never, {
+		return i18n.t('copy.decisions.locationUnavailable.blockedContext', {
 			reason: i18n.t(`copy.decisions.locationUnavailable.reasons.${reasonKey}` as never)
 		});
 	}
 
 	if (context === 'Choose an unlocked, unoccupied city tile before opening this store.') {
-		return i18n.t('copy.decisions.locationUnavailable.genericContext' as never);
+		return i18n.t('copy.decisions.locationUnavailable.genericContext');
 	}
 
 	return context;
@@ -325,13 +320,13 @@ function localizeLocationUnavailableContext(context: string, i18n: I18nBundle): 
 
 function localizeWorldDecisionContext(decision: DecisionItem, i18n: I18nBundle): string {
 	if (decision.title === 'City unavailable' && decision.context === 'Unknown city.') {
-		return i18n.t('copy.decisions.worldCity.cityUnavailable.context' as never);
+		return i18n.t('copy.decisions.worldCity.cityUnavailable.context');
 	}
 
 	if (decision.title === 'City is not available yet') {
 		const city = WORLD_CITY_CATALOG.find((entry) => entry.unlockRequirement === decision.context);
 		if (city) {
-			return i18n.t('copy.decisions.worldCity.notAvailableYet.context' as never, {
+			return i18n.t('copy.decisions.worldCity.notAvailableYet.context', {
 				requirement: i18n.t(`game.worldCities.${city.id}.unlockRequirement` as never)
 			});
 		}
@@ -340,7 +335,7 @@ function localizeWorldDecisionContext(decision: DecisionItem, i18n: I18nBundle):
 	if (decision.title === 'City opening delayed') {
 		const cash = formatWorldCityOpeningCost(decision.context, i18n);
 		if (cash) {
-			return i18n.t('copy.decisions.worldCity.openingDelayed.context' as never, {
+			return i18n.t('copy.decisions.worldCity.openingDelayed.context', {
 				cash
 			});
 		}
@@ -369,23 +364,21 @@ function localizeIndustrialConstructionContext(context: string, i18n: I18nBundle
 	if (resourceMatch) {
 		const rawResource = resourceMatch[1] ?? context;
 		const resourceId = INDUSTRY_RESOURCE_ID_BY_RAW_LABEL.get(rawResource);
-		return i18n.t(
-			'copy.decisions.industrialConstructionDelayed.contexts.requiresResource' as never,
-			{
-				resource: resourceId ? i18n.labels.industryResource(resourceId) : rawResource
-			}
-		);
+		return i18n.t('copy.decisions.industrialConstructionDelayed.contexts.requiresResource', {
+			resource: resourceId ? i18n.labels.industryResource(resourceId) : rawResource
+		});
 	}
 
 	const cashMatch = context.match(/^(.+) requires ([\d,]+) cash\.$/);
 	if (cashMatch) {
 		const rawBuildingName = cashMatch[1] ?? '';
 		const buildingTypeId = INDUSTRIAL_BUILDING_ID_BY_NAME.get(rawBuildingName);
-		return i18n.t('copy.decisions.industrialConstructionDelayed.contexts.requiresCash' as never, {
+		const cashAmount = Number((cashMatch[2] ?? '0').replaceAll(',', ''));
+		return i18n.t('copy.decisions.industrialConstructionDelayed.contexts.requiresCash', {
 			buildingName: buildingTypeId
 				? i18n.labels.industrialBuilding(buildingTypeId)
 				: rawBuildingName,
-			cash: cashMatch[2] ?? '0'
+			cash: i18n.format.currency(Number.isFinite(cashAmount) ? cashAmount : 0)
 		});
 	}
 
@@ -406,13 +399,13 @@ function localizeDecisionTitle(decision: DecisionItem, i18n: I18nBundle): string
 			return translateMessage(i18n, `copy.decisions.${family}.title`) ?? decision.title;
 		case 'worldCity':
 			if (decision.title === 'City unavailable') {
-				return i18n.t('copy.decisions.worldCity.cityUnavailable.title' as never);
+				return i18n.t('copy.decisions.worldCity.cityUnavailable.title');
 			}
 			if (decision.title === 'City is not available yet') {
-				return i18n.t('copy.decisions.worldCity.notAvailableYet.title' as never);
+				return i18n.t('copy.decisions.worldCity.notAvailableYet.title');
 			}
 			if (decision.title === 'City opening delayed') {
-				return i18n.t('copy.decisions.worldCity.openingDelayed.title' as never);
+				return i18n.t('copy.decisions.worldCity.openingDelayed.title');
 			}
 			return decision.title;
 		default:
@@ -431,18 +424,20 @@ function localizeDecisionContext(decision: DecisionItem, i18n: I18nBundle): stri
 		case 'expansionUnavailable': {
 			const match = decision.context.match(/^This chain can operate up to (\d+) stores for now\.$/);
 			return match
-				? i18n.t('copy.decisions.expansionUnavailable.context' as never, {
+				? i18n.t('copy.decisions.expansionUnavailable.context', {
 						storeCap: match[1] ?? '0'
 					})
 				: decision.context;
 		}
 		case 'expansionCashBlocked': {
 			const match = decision.context.match(/^Opening another store requires ([\d,]+) cash\.$/);
-			return match
-				? i18n.t('copy.decisions.expansionCashBlocked.context' as never, {
-						cash: match[1] ?? '0'
-					})
-				: decision.context;
+			if (!match) {
+				return decision.context;
+			}
+			const cashAmount = Number((match[1] ?? '0').replaceAll(',', ''));
+			return i18n.t('copy.decisions.expansionCashBlocked.context', {
+				cash: i18n.format.currency(Number.isFinite(cashAmount) ? cashAmount : 0)
+			});
 		}
 		case 'locationUnavailable':
 			return localizeLocationUnavailableContext(decision.context, i18n);
@@ -476,7 +471,7 @@ function localizeDecisionOption(
 
 		return {
 			...option,
-			label: i18n.t('copy.decisions.acknowledge.label' as never),
+			label: i18n.t('copy.decisions.acknowledge.label'),
 			description: i18n.t(descriptionKey as never)
 		};
 	}
@@ -494,11 +489,11 @@ function localizeDecisionOption(
 export function localizeStockStatus(status: StoreProductStatus, i18n: I18nBundle): string {
 	switch (status) {
 		case 'Out of stock':
-			return i18n.t('copy.stockStatus.outOfStock' as never);
+			return i18n.t('copy.stockStatus.outOfStock');
 		case 'Needs import':
-			return i18n.t('copy.stockStatus.needsImport' as never);
+			return i18n.t('copy.stockStatus.needsImport');
 		default:
-			return i18n.t('copy.stockStatus.healthy' as never);
+			return i18n.t('copy.stockStatus.healthy');
 	}
 }
 
@@ -542,8 +537,8 @@ export function localizeAlert(alert: GameAlert, game: GameState, i18n: I18nBundl
 		if (store) {
 			const summary = localizeStockTrouble(store.products, i18n);
 			if (summary) {
-				return i18n.t('copy.alerts.storeStock' as never, {
-					storeName: store.name,
+				return i18n.t('copy.alerts.storeStock', {
+					storeName: storeDisplayName(store, i18n),
 					summary
 				});
 			}
@@ -553,7 +548,7 @@ export function localizeAlert(alert: GameAlert, game: GameState, i18n: I18nBundl
 	if (alert.kind === 'decision' && alert.decisionId) {
 		const decision = game.decisions.find((candidate) => candidate.id === alert.decisionId);
 		if (decision) {
-			return i18n.t('copy.alerts.decision' as never, {
+			return i18n.t('copy.alerts.decision', {
 				title: localizeDecision(decision, i18n).title
 			});
 		}
@@ -564,7 +559,7 @@ export function localizeAlert(alert: GameAlert, game: GameState, i18n: I18nBundl
 			(candidate) => candidate.id === alert.buildingId
 		);
 		if (building) {
-			return i18n.t('copy.alerts.factoryBlocked' as never, {
+			return i18n.t('copy.alerts.factoryBlocked', {
 				buildingName: i18n.labels.industrialBuilding(building.typeId)
 			});
 		}
@@ -596,7 +591,7 @@ export function localizeWorldCityStatus(
 	} else if (status.blockedReason) {
 		const cash = formatWorldCityOpeningCost(status.blockedReason, i18n, status.city.openingCost);
 		if (cash) {
-			blockedReason = i18n.t('copy.worldCity.blockedOpeningCost' as never, {
+			blockedReason = i18n.t('copy.worldCity.blockedOpeningCost', {
 				cash
 			});
 		}
@@ -627,7 +622,7 @@ export function localizeProductChainGraph(
 	const localizedNodes = graph.nodes.map((node) => {
 		const label =
 			node.id === 'warehouse'
-				? i18n.t('copy.productChainGraph.warehouseNode' as never)
+				? i18n.t('copy.productChainGraph.warehouseNode')
 				: node.materialId
 					? i18n.labels.material(node.materialId)
 					: node.recipeId
