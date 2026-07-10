@@ -29,21 +29,19 @@ export interface I18nBundle {
 	locale: SupportedLocale;
 	messages: LocaleMessages;
 	t: ReturnType<typeof createTranslator>;
-	formatters: ReturnType<typeof createLocaleFormatters>;
 	format: ReturnType<typeof createLocaleFormatters>;
 	labels: ReturnType<typeof createGameLabelLookup>;
 }
 
 export function createI18n(locale: SupportedLocale): I18nBundle {
 	const t = createTranslator(locale);
-	const formatters = createLocaleFormatters(locale);
+	const format = createLocaleFormatters(locale);
 
 	return {
 		locale,
 		messages: messagesByLocale[locale],
 		t,
-		formatters,
-		format: formatters,
+		format,
 		labels: createGameLabelLookup(t)
 	};
 }

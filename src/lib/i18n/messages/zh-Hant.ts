@@ -1,7 +1,4 @@
-import { en } from './en';
-
 export const zhHant = {
-	...en,
 	app: {
 		title: 'Serpens'
 	},
@@ -670,7 +667,6 @@ export const zhHant = {
 			industry: '工業'
 		},
 		managementPanels: {
-			...en.game.managementPanels,
 			dashboard: '儀表板',
 			policies: '政策',
 			staff: '員工',
@@ -831,7 +827,6 @@ export const zhHant = {
 			}
 		},
 		productChainGraph: {
-			...en.copy.productChainGraph,
 			title: {
 				warehouseFlow: '倉庫流向',
 				productChain: '產品鏈'
