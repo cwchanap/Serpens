@@ -1,5 +1,10 @@
 import { describe, expect, test } from 'vitest';
 import { generateCity } from './city';
+import {
+	decisionContextIndustrialLockedTile,
+	decisionContextIndustrialRequiresIndustrialTile,
+	decisionContextIndustrialRequiresResource
+} from './decisionContext';
 import { getIndustryTilesByResource } from './industry';
 import {
 	createIndustryPlacementPreview,
@@ -467,7 +472,10 @@ describe('industry placement preview', () => {
 				tileId: saltTile.id,
 				buildingTypeId: 'grain-farm'
 			})
-		).toEqual({ code: 'industry.rawPlacementBlocked', message: 'Requires grain field' });
+		).toEqual({
+			code: 'industry.rawPlacementBlocked',
+			message: decisionContextIndustrialRequiresResource('grain-field')
+		});
 	});
 
 	test('blocks industry construction before retail founding, on locked tiles, and when cash is short', () => {
@@ -496,7 +504,10 @@ describe('industry placement preview', () => {
 				tileId: lockedTile.id,
 				buildingTypeId: 'warehouse'
 			})
-		).toEqual({ code: 'industry.rawPlacementBlocked', message: 'Locked industrial tile' });
+		).toEqual({
+			code: 'industry.rawPlacementBlocked',
+			message: decisionContextIndustrialLockedTile()
+		});
 		expect(
 			getIndustryBuildPlacementBlockReason({
 				game: { ...game, cash: 0 },
@@ -534,7 +545,10 @@ describe('industry placement preview', () => {
 				tileId: nonIndustrialTile.id,
 				buildingTypeId: 'warehouse'
 			})
-		).toEqual({ code: 'industry.rawPlacementBlocked', message: 'Requires industrial tile' });
+		).toEqual({
+			code: 'industry.rawPlacementBlocked',
+			message: decisionContextIndustrialRequiresIndustrialTile()
+		});
 		expect(
 			getIndustryBuildPlacementBlockReason({
 				game,
