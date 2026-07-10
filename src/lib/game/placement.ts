@@ -7,6 +7,7 @@ import {
 } from './city';
 import { clampScore } from './reports';
 import { createNewGame, getExpansionSetupCost, openStore } from './state';
+import { decisionContextLocationBlocked, decisionContextLocationGeneric } from './decisionContext';
 import {
 	createCityTileLookup,
 	getOccupiedStoreTileIds,
@@ -284,9 +285,9 @@ function locationUnavailableDecision(
 	return {
 		id: `location-unavailable${idPart ? `-${idPart}` : ''}-${game.day}`,
 		title: 'Location unavailable',
-		context: reason
-			? `${reason} blocks store placement. Choose another city tile.`
-			: 'Choose an unlocked, unoccupied city tile before opening this store.',
+		// After Task 1b, TilePlacementBlockReason is already 'locked' | 'road' | 'river'
+		// — no English-literal matching needed. The reason IS the stable code.
+		context: reason ? decisionContextLocationBlocked(reason) : decisionContextLocationGeneric(),
 		expiresOnDay: game.day + 1,
 		options: [
 			{

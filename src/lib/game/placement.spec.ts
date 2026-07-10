@@ -197,13 +197,15 @@ describe('tile placement', () => {
 		});
 
 		expect(roadResult.stores).toHaveLength(1);
-		expect(roadResult.decisions.at(-1)?.context).toBe(
-			'road blocks store placement. Choose another city tile.'
-		);
+		expect(roadResult.decisions.at(-1)?.context).toEqual({
+			code: 'locationBlocked',
+			reason: 'road'
+		});
 		expect(riverResult.stores).toHaveLength(1);
-		expect(riverResult.decisions.at(-1)?.context).toBe(
-			'river blocks store placement. Choose another city tile.'
-		);
+		expect(riverResult.decisions.at(-1)?.context).toEqual({
+			code: 'locationBlocked',
+			reason: 'river'
+		});
 	});
 
 	test('keeps same-day road and river blocked placement feedback separately', () => {
@@ -246,12 +248,14 @@ describe('tile placement', () => {
 			'location-unavailable-road-1',
 			'location-unavailable-river-1'
 		]);
-		expect(riverResult.decisions.map((decision) => decision.context)).toContain(
-			'road blocks store placement. Choose another city tile.'
-		);
-		expect(riverResult.decisions.map((decision) => decision.context)).toContain(
-			'river blocks store placement. Choose another city tile.'
-		);
+		expect(riverResult.decisions.map((decision) => decision.context)).toContainEqual({
+			code: 'locationBlocked',
+			reason: 'road'
+		});
+		expect(riverResult.decisions.map((decision) => decision.context)).toContainEqual({
+			code: 'locationBlocked',
+			reason: 'river'
+		});
 	});
 
 	test('blocks opening on an occupied tile', () => {
@@ -406,9 +410,7 @@ describe('tile placement', () => {
 		});
 
 		expect(result.stores).toHaveLength(1);
-		expect(result.decisions.at(-1)?.context).toBe(
-			'Choose an unlocked, unoccupied city tile before opening this store.'
-		);
+		expect(result.decisions.at(-1)?.context).toEqual({ code: 'locationGeneric' });
 	});
 
 	test('openStoreAtTile appends a location-unavailable decision when the tile id is unknown', () => {
