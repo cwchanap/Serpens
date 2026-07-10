@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { getArchetype } from './archetypes';
+import { decisionContextLocationGeneric } from './decisionContext';
 import { createFoundingGameAtTile } from './placement';
 import { isTileInStoreFootprint } from './storeFootprint';
 import { calculateStockHealth, createStoreProduct } from './stock';
@@ -135,7 +136,7 @@ describe('game state', () => {
 		expect(second.cash).toBeLessThan(game.cash);
 		expect(third.stores).toHaveLength(2);
 		expect(third.decisions.at(-1)?.title).toBe('Expansion unavailable');
-		expect(third.decisions.at(-1)?.context).toBe('This chain can operate up to 2 stores for now.');
+		expect(third.decisions.at(-1)?.context).toEqual({ code: 'expansionUnavailable', storeCap: 2 });
 		expect(expandedCap.stores).toHaveLength(3);
 	});
 
@@ -220,9 +221,19 @@ describe('game state', () => {
 
 		expect(result.stores).toHaveLength(1);
 		expect(result.decisions.at(-1)?.id).toBe('location-unavailable-road-1');
-		expect(result.decisions.at(-1)?.context).toBe(
-			'road blocks store placement. Choose another city tile.'
-		);
+		expect(result.decisions.at(-1)?.context).toEqual({ code: 'locationBlocked', reason: 'road' });
+	});
+
+	test('expansion unavailable decision carries structured context', () => {
+		expect.assertions(2);
+		const game = { ...createNewGame('electronics', 44), storeCap: 1 };
+		const result = openStore(game, {
+			archetypeId: 'electronics',
+			location: 'West Mall'
+		});
+		const decision = result.decisions.find((d) => d.id.startsWith('expansion-unavailable'));
+		expect(decision).toBeDefined();
+		expect(decision?.context).toEqual({ code: 'expansionUnavailable', storeCap: 1 });
 	});
 
 	test('direct store opening uses the selected expansion archetype', () => {
@@ -269,7 +280,7 @@ describe('game state', () => {
 		const decision = {
 			id: 'supplier-1',
 			title: 'Supplier discount',
-			context: 'A supplier offers a short-term discount.',
+			context: decisionContextLocationGeneric(),
 			expiresOnDay: 3,
 			options: [
 				{
@@ -294,7 +305,7 @@ describe('game state', () => {
 		const decision = {
 			id: 'store-effects-1',
 			title: 'Store recovery plan',
-			context: 'A manager proposes store-level changes.',
+			context: decisionContextLocationGeneric(),
 			expiresOnDay: 3,
 			options: [
 				{
@@ -325,7 +336,7 @@ describe('game state', () => {
 		const decision = {
 			id: 'inventory-plan-1',
 			title: 'Inventory plan',
-			context: 'A manager changes inventory depth.',
+			context: decisionContextLocationGeneric(),
 			expiresOnDay: 3,
 			options: [
 				{
@@ -504,7 +515,7 @@ describe('game state', () => {
 		const decision = {
 			id: 'no-stock-effect-1',
 			title: 'Morale boost',
-			context: 'A manager boosts team morale.',
+			context: decisionContextLocationGeneric(),
 			expiresOnDay: 3,
 			options: [
 				{
@@ -534,7 +545,7 @@ describe('game state', () => {
 		const decision = {
 			id: 'null-stock-effect-1',
 			title: 'No-op inventory',
-			context: 'An inventory plan with no effect.',
+			context: decisionContextLocationGeneric(),
 			expiresOnDay: 3,
 			options: [
 				{
@@ -626,9 +637,7 @@ describe('game state', () => {
 
 		expect(result.stores).toHaveLength(1);
 		expect(result.decisions.at(-1)?.id).toBe('location-unavailable-1');
-		expect(result.decisions.at(-1)?.context).toBe(
-			'Choose an unlocked, unoccupied city tile before opening this store.'
-		);
+		expect(result.decisions.at(-1)?.context).toEqual({ code: 'locationGeneric' });
 	});
 
 	test('openStore rejects an anchor whose 2x2 footprint includes a river non-anchor tile', () => {
@@ -659,9 +668,29 @@ describe('game state', () => {
 
 		expect(result.stores).toHaveLength(1);
 		expect(result.decisions.at(-1)?.title).toBe('Location unavailable');
-		expect(result.decisions.at(-1)?.context).toBe(
-			'river blocks store placement. Choose another city tile.'
-		);
+		expect(result.decisions.at(-1)?.context).toEqual({ code: 'locationBlocked', reason: 'river' });
+	});
+
+	test('location unavailable decision carries structured context for locked tile', () => {
+		expect.assertions(2);
+		const city = makeFlatRetailCity(6, 6);
+		const lockedTile = city.tiles.find((tile) => tile.x === 3 && tile.y === 1)!;
+		lockedTile.locked = true;
+		const game = createFoundingGameAtTile({
+			archetypeId: 'boutique',
+			city,
+			tileId: 'retail-city-0-0',
+			seed: 7
+		});
+
+		const result = openStore(game, {
+			archetypeId: 'grocery',
+			location: 'Locked Edge',
+			tileId: lockedTile.id
+		});
+		const decision = result.decisions.find((d) => d.id.startsWith('location-unavailable'));
+		expect(decision).toBeDefined();
+		expect(decision?.context).toEqual({ code: 'locationBlocked', reason: 'locked' });
 	});
 
 	test('openStore rejects an anchor whose 2x2 footprint extends past the map edge', () => {
