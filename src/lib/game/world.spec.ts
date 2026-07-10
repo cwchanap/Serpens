@@ -182,13 +182,46 @@ describe('world progression and city opening', () => {
 		const unknown = openWorldCity(game, 'missing-city');
 
 		expect(locked.decisions.at(-1)?.title).toBe('City is not available yet');
-		expect(locked.decisions.at(-1)?.context).toBe(
-			'Reach 4 stores or hold positive cash after daily reports.'
-		);
+		expect(locked.decisions.at(-1)?.context).toEqual({
+			code: 'worldCityNotAvailableYet',
+			cityId: 'garden-borough'
+		});
 		expect(unaffordable.decisions.at(-1)?.title).toBe('City opening delayed');
-		expect(unaffordable.decisions.at(-1)?.context).toBe('Opening this city requires 18,000 cash.');
+		expect(unaffordable.decisions.at(-1)?.context).toEqual({
+			code: 'worldCityOpeningCost',
+			cash: 18_000
+		});
 		expect(unknown.decisions.at(-1)?.title).toBe('City unavailable');
-		expect(unknown.decisions.at(-1)?.context).toBe('Unknown city.');
+		expect(unknown.decisions.at(-1)?.context).toEqual({ code: 'worldCityUnknown' });
+	});
+
+	test('openWorldCity with insufficient cash emits structured openingCost context', () => {
+		expect.assertions(2);
+		const base = createNewGame('convenience', 20260530);
+		const game: GameState = {
+			...base,
+			cash: 1_000,
+			world: {
+				...base.world,
+				revealedCityIds: [...base.world.revealedCityIds, 'campus-junction']
+			}
+		};
+		const result = openWorldCity(game, 'campus-junction');
+		const decision = result.decisions.find((d) => d.id.startsWith('world-city'));
+		expect(decision).toBeDefined();
+		expect(decision?.context).toEqual({ code: 'worldCityOpeningCost', cash: 18_000 });
+	});
+
+	test('openWorldCity on an unrevealed city emits cityId in the context', () => {
+		expect.assertions(2);
+		const game = createNewGame('convenience', 20260530);
+		const result = openWorldCity(game, 'campus-junction');
+		const decision = result.decisions.find((d) => d.id.startsWith('world-city'));
+		expect(decision).toBeDefined();
+		expect(decision?.context).toEqual({
+			code: 'worldCityNotAvailableYet',
+			cityId: 'campus-junction'
+		});
 	});
 
 	test('re-opening an already-opened city selects it without deducting cash or changing store cap', () => {

@@ -90,6 +90,7 @@
 		openWorldCity,
 		selectWorldCity
 	} from '$lib/game/world';
+	import { decisionContextWorldCityNotAvailableYet } from '$lib/game/decisionContext';
 	import type {
 		ArchetypeId,
 		CompanyPolicy,
@@ -248,7 +249,9 @@
 						city,
 						state: city.initiallyOpened ? 'opened' : 'locked',
 						canOpen: false,
-						blockedReason: city.unlockRequirement,
+						blockedReason: city.initiallyOpened
+							? null
+							: decisionContextWorldCityNotAvailableYet(city.id),
 						storeCount: 0,
 						buildingCount: 0
 					}
