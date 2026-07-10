@@ -417,7 +417,7 @@ function getExpansionTile(
 		);
 
 		if (footprintBlockReason) {
-			// 'Occupied location' is a footprint-only concept (not a
+			// 'occupied' is a footprint-only concept (not a
 			// TilePlacementBlockReason) and maps to null so the decision id and
 			// generic "unoccupied" message match the prior occupancy behavior.
 			return { blockReason: toExpansionTileBlockReason(footprintBlockReason) };
@@ -444,7 +444,7 @@ function getExpansionTile(
 function toExpansionTileBlockReason(
 	reason: StoreFootprintPlacementBlockReason
 ): TilePlacementBlockReason | null {
-	return reason === 'Occupied location' ? null : reason;
+	return reason === 'occupied' ? null : reason;
 }
 
 function getActiveCity(game: GameState): City | undefined {

@@ -268,12 +268,7 @@ function resolveRetailDisabledReason(
 		return { code: 'retail.requiresCash', amount: cheapestBlockedSetupCost };
 	}
 
-	for (const reason of [
-		'Occupied location',
-		'Locked location',
-		'Road location',
-		'River location'
-	] as const) {
+	for (const reason of ['occupied', 'locked', 'road', 'river'] as const) {
 		if (footprintReasons.has(reason)) {
 			return mapRetailFootprintBlockReason(reason);
 		}
@@ -286,13 +281,13 @@ function mapRetailFootprintBlockReason(
 	reason: StoreFootprintPlacementBlockReason
 ): PlacementBlockReason {
 	switch (reason) {
-		case 'Occupied location':
+		case 'occupied':
 			return { code: 'retail.occupiedLocation' };
-		case 'Locked location':
+		case 'locked':
 			return { code: 'retail.lockedLocation' };
-		case 'Road location':
+		case 'road':
 			return { code: 'retail.roadLocation' };
-		case 'River location':
+		case 'river':
 			return { code: 'retail.riverLocation' };
 	}
 }

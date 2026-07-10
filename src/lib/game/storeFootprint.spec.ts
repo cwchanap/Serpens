@@ -143,13 +143,13 @@ describe('getOccupiedStoreTileIds', () => {
 });
 
 describe('getStoreFootprintPlacementBlockReason', () => {
-	test('returns Locked location when the footprint extends beyond the map', () => {
+	test('returns locked when the footprint extends beyond the map', () => {
 		expect.assertions(1);
 		const city = makeCity('retail', 3, 3);
 		const lookup = createCityTileLookup(city);
 		const corner = city.tiles.find((tile) => tile.x === 2 && tile.y === 2)!;
 
-		expect(getStoreFootprintPlacementBlockReason(lookup, corner)).toBe('Locked location');
+		expect(getStoreFootprintPlacementBlockReason(lookup, corner)).toBe('locked');
 	});
 
 	test('returns the per-tile block reason when a footprint tile is a road', () => {
@@ -159,12 +159,10 @@ describe('getStoreFootprintPlacementBlockReason', () => {
 		roadTile.feature = 'road';
 		const anchor = city.tiles.find((tile) => tile.x === 0 && tile.y === 0)!;
 
-		expect(getStoreFootprintPlacementBlockReason(createCityTileLookup(city), anchor)).toBe(
-			'Road location'
-		);
+		expect(getStoreFootprintPlacementBlockReason(createCityTileLookup(city), anchor)).toBe('road');
 	});
 
-	test('returns River location when a non-anchor footprint tile is a river', () => {
+	test('returns river when a non-anchor footprint tile is a river', () => {
 		expect.assertions(1);
 		const city = makeCity('retail', 4, 4);
 		// (1,1) is a non-anchor tile of the anchor (0,0) 2x2 footprint.
@@ -172,12 +170,10 @@ describe('getStoreFootprintPlacementBlockReason', () => {
 		riverTile.feature = 'river';
 		const anchor = city.tiles.find((tile) => tile.x === 0 && tile.y === 0)!;
 
-		expect(getStoreFootprintPlacementBlockReason(createCityTileLookup(city), anchor)).toBe(
-			'River location'
-		);
+		expect(getStoreFootprintPlacementBlockReason(createCityTileLookup(city), anchor)).toBe('river');
 	});
 
-	test('returns Locked location when a non-anchor footprint tile is locked', () => {
+	test('returns locked when a non-anchor footprint tile is locked', () => {
 		expect.assertions(1);
 		const city = makeCity('retail', 4, 4);
 		// (0,1) is a non-anchor tile of the anchor (0,0) 2x2 footprint.
@@ -186,11 +182,11 @@ describe('getStoreFootprintPlacementBlockReason', () => {
 		const anchor = city.tiles.find((tile) => tile.x === 0 && tile.y === 0)!;
 
 		expect(getStoreFootprintPlacementBlockReason(createCityTileLookup(city), anchor)).toBe(
-			'Locked location'
+			'locked'
 		);
 	});
 
-	test('returns Occupied location when a footprint tile is already taken', () => {
+	test('returns occupied when a footprint tile is already taken', () => {
 		expect.assertions(1);
 		const city = makeCity('retail', 4, 4);
 		const lookup = createCityTileLookup(city);
@@ -202,9 +198,7 @@ describe('getStoreFootprintPlacementBlockReason', () => {
 		);
 		const neighbor = city.tiles.find((tile) => tile.x === 1 && tile.y === 0)!;
 
-		expect(getStoreFootprintPlacementBlockReason(lookup, neighbor, occupied)).toBe(
-			'Occupied location'
-		);
+		expect(getStoreFootprintPlacementBlockReason(lookup, neighbor, occupied)).toBe('occupied');
 	});
 
 	test('returns null for a fully buildable, unoccupied footprint', () => {

@@ -5,7 +5,7 @@ import type { City, CityTile, Store } from './types';
 export const RETAIL_STORE_FOOTPRINT_WIDTH = 2;
 export const RETAIL_STORE_FOOTPRINT_HEIGHT = 2;
 
-export type StoreFootprintPlacementBlockReason = TilePlacementBlockReason | 'Occupied location';
+export type StoreFootprintPlacementBlockReason = TilePlacementBlockReason | 'occupied';
 
 export interface CityTileLookup {
 	byId: ReadonlyMap<string, CityTile>;
@@ -87,7 +87,7 @@ export function getStoreFootprintPlacementBlockReason(
 	const footprint = getRetailStoreFootprint(lookup, anchorTile);
 
 	if (footprint.missingCoordinates.length > 0) {
-		return 'Locked location';
+		return 'locked';
 	}
 
 	for (const tile of footprint.tiles) {
@@ -100,7 +100,7 @@ export function getStoreFootprintPlacementBlockReason(
 
 	for (const tile of footprint.tiles) {
 		if (occupiedTileIds.has(tile.id)) {
-			return 'Occupied location';
+			return 'occupied';
 		}
 	}
 

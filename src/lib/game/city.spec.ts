@@ -313,15 +313,9 @@ describe('city generation', () => {
 			seed: 77
 		});
 
-		expect(getTilePlacementBlockReason(getTileById(city, 'harbor-city-0-0')!)).toBe(
-			'Locked location'
-		);
-		expect(getTilePlacementBlockReason(getTileById(city, 'harbor-city-10-1')!)).toBe(
-			'Road location'
-		);
-		expect(getTilePlacementBlockReason(getTileById(city, 'harbor-city-5-1')!)).toBe(
-			'River location'
-		);
+		expect(getTilePlacementBlockReason(getTileById(city, 'harbor-city-0-0')!)).toBe('locked');
+		expect(getTilePlacementBlockReason(getTileById(city, 'harbor-city-10-1')!)).toBe('road');
+		expect(getTilePlacementBlockReason(getTileById(city, 'harbor-city-5-1')!)).toBe('river');
 		expect(
 			getTilePlacementBlockReason(city.tiles.find((tile) => !tile.locked && tile.feature === null)!)
 		).toBeNull();

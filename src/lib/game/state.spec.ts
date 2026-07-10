@@ -221,7 +221,7 @@ describe('game state', () => {
 		expect(result.stores).toHaveLength(1);
 		expect(result.decisions.at(-1)?.id).toBe('location-unavailable-road-1');
 		expect(result.decisions.at(-1)?.context).toBe(
-			'Road location blocks store placement. Choose another city tile.'
+			'road blocks store placement. Choose another city tile.'
 		);
 	});
 
@@ -660,7 +660,7 @@ describe('game state', () => {
 		expect(result.stores).toHaveLength(1);
 		expect(result.decisions.at(-1)?.title).toBe('Location unavailable');
 		expect(result.decisions.at(-1)?.context).toBe(
-			'River location blocks store placement. Choose another city tile.'
+			'river blocks store placement. Choose another city tile.'
 		);
 	});
 
