@@ -1,5 +1,6 @@
 import { ARCHETYPES } from './archetypes';
 import { getTileById } from './city';
+import type { DecisionContext } from './decisionContext';
 import { INDUSTRIAL_BUILDING_TYPES, getIndustryTileById } from './industry';
 import { isTileInIndustryBuildingFootprint } from './industryFootprint';
 import {
@@ -58,7 +59,7 @@ export type PlacementBlockReason =
 	| { code: 'industry.lockedUntilRetail' }
 	| { code: 'industry.unknownBuildingType' }
 	| { code: 'industry.requiresCash'; buildingTypeId: IndustrialBuildingTypeId; amount: number }
-	| { code: 'industry.rawPlacementBlocked'; message: string };
+	| { code: 'industry.rawPlacementBlocked'; message: DecisionContext };
 
 interface RetailPlacementInput {
 	game: GameState | null;
