@@ -159,6 +159,13 @@ function createV5Record(overrides: SaveRecordOverrides = {}): SaveRecord {
 	};
 }
 
+function createV6Record(overrides: SaveRecordOverrides = {}): SaveRecord {
+	return {
+		...createManualSaveRecord(overrides),
+		schemaVersion: 6 as unknown as typeof SAVE_SCHEMA_VERSION
+	};
+}
+
 function createSnapshotWithGame(game: Partial<GameState>): SaveStoreSnapshot {
 	const record = createSaveRecord(createGame(), {
 		id: 'manual-test-run',
@@ -1370,6 +1377,88 @@ describe('saveCodec', () => {
 		expect(validated.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
 		expect(validated.game.reports[0]?.warnings).toEqual([]);
 		expect(validated.game.reports[0]?.storeReports[0]?.warnings).toEqual([]);
+	});
+
+	test('v6 migration drops old string decision contexts', () => {
+		// Decision contexts changed from free-form English strings to structured
+		// `{ code, ... }` objects in v7. Per the legacy save policy (game is
+		// unreleased), old string contexts are DROPPED — not reverse-parsed and
+		// not stubbed with a sentinel code that the DecisionContext union does
+		// not define.
+		expect.assertions(3);
+		const record = createV6Record({
+			game: {
+				decisions: [
+					{
+						id: 'expansion-cash-blocked-1',
+						title: 'Expansion delayed',
+						context: 'Opening another store requires 15,000 cash.',
+						expiresOnDay: 2,
+						options: [{ id: 'acknowledge', label: 'Acknowledge', description: '...', effects: {} }]
+					} as unknown as GameState['decisions'][number]
+				]
+			}
+		});
+
+		const validated = validateSaveRecord(record);
+		expect(validated.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
+		// The string-context decision is DROPPED, not stubbed — it does not
+		// survive as a zombie { code: 'legacyStringDropped' } that the switch
+		// cannot handle.
+		expect(validated.game.decisions).toHaveLength(0);
+		expect(() => validateSaveRecord(record)).not.toThrow();
+	});
+
+	test('v6 migration keeps structured decision contexts unchanged', () => {
+		// The v6→v7 filter is context-type-specific: it drops only string
+		// contexts, leaving structured `{ code, ... }` objects intact so they
+		// flow through validation unchanged.
+		expect.assertions(3);
+		const structuredDecision = {
+			id: 'expansion-cash-blocked-1',
+			title: 'Expansion delayed',
+			context: { code: 'expansionCashBlocked', cash: 15000 },
+			expiresOnDay: 2,
+			options: [{ id: 'acknowledge', label: 'Acknowledge', description: '...', effects: {} }]
+		} as unknown as GameState['decisions'][number];
+		const record = createV6Record({
+			game: { decisions: [structuredDecision] }
+		});
+
+		const validated = validateSaveRecord(record);
+		expect(validated.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
+		expect(validated.game.decisions).toHaveLength(1);
+		expect(validated.game.decisions[0]?.context).toEqual({
+			code: 'expansionCashBlocked',
+			cash: 15000
+		});
+	});
+
+	test('v5 migration chains into v6 step and drops legacy string decision contexts', () => {
+		// Regression: migrateV5SaveRecord must emit schema 6 (not
+		// SAVE_SCHEMA_VERSION) so the v6→v7 step runs and drops string
+		// decision contexts. A v5 record carrying a string-context decision
+		// must flow through both the v5 step (drops string warnings) AND the
+		// v6 step (drops string decision contexts) before validation.
+		expect.assertions(3);
+		const record = createV5Record({
+			game: {
+				decisions: [
+					{
+						id: 'expansion-cash-blocked-1',
+						title: 'Expansion delayed',
+						context: 'Opening another store requires 15,000 cash.',
+						expiresOnDay: 2,
+						options: [{ id: 'acknowledge', label: 'Acknowledge', description: '...', effects: {} }]
+					} as unknown as GameState['decisions'][number]
+				]
+			}
+		});
+
+		const validated = validateSaveRecord(record);
+		expect(validated.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
+		expect(validated.game.decisions).toHaveLength(0);
+		expect(() => validateSaveRecord(record)).not.toThrow();
 	});
 
 	test('normalizeSavedStoreLevel defaults to level 1 when products is not an array', () => {
