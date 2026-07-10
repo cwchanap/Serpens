@@ -20,6 +20,12 @@ import {
 	generateIndustryCity
 } from './industry';
 import { clampScore } from './reports';
+import {
+	decisionContextExpansionCashBlocked,
+	decisionContextExpansionUnavailable,
+	decisionContextLocationBlocked,
+	decisionContextLocationGeneric
+} from './decisionContext';
 import { createRng, normalizeSeed, randomInt } from './rng';
 import {
 	createCityTileLookup,
@@ -478,7 +484,7 @@ function expansionUnavailableDecision(game: GameState): DecisionItem {
 	return {
 		id: `expansion-unavailable-${game.day}`,
 		title: 'Expansion unavailable',
-		context: `This chain can operate up to ${game.storeCap} stores for now.`,
+		context: decisionContextExpansionUnavailable(game.storeCap),
 		expiresOnDay: game.day + 1,
 		options: [acknowledgeOption()]
 	};
@@ -488,7 +494,7 @@ function expansionCashBlockedDecision(game: GameState, setupCost: number): Decis
 	return {
 		id: `expansion-cash-blocked-${game.day}`,
 		title: 'Expansion delayed',
-		context: `Opening another store requires ${setupCost.toLocaleString('en-US')} cash.`,
+		context: decisionContextExpansionCashBlocked(setupCost),
 		expiresOnDay: game.day + 1,
 		options: [acknowledgeOption()]
 	};
@@ -503,9 +509,9 @@ function locationUnavailableDecision(
 	return {
 		id: `location-unavailable${idPart ? `-${idPart}` : ''}-${game.day}`,
 		title: 'Location unavailable',
-		context: reason
-			? `${reason} blocks store placement. Choose another city tile.`
-			: 'Choose an unlocked, unoccupied city tile before opening this store.',
+		// After Task 1b, TilePlacementBlockReason is already 'locked' | 'road' | 'river'
+		// — no English-literal matching needed. The reason IS the stable code.
+		context: reason ? decisionContextLocationBlocked(reason) : decisionContextLocationGeneric(),
 		expiresOnDay: game.day + 1,
 		options: [acknowledgeOption()]
 	};
