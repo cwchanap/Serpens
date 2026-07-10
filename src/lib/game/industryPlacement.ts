@@ -5,6 +5,16 @@ import {
 	getOccupiedIndustryTileIds
 } from './industryFootprint';
 import { canUpgradeBuilding, getBuildingUpgradeCost } from './leveling';
+import {
+	decisionContextIndustrialLockedTile,
+	decisionContextIndustrialOccupiedTile,
+	decisionContextIndustrialRequiresCash,
+	decisionContextIndustrialRequiresIndustrialTile,
+	decisionContextIndustrialRequiresResource,
+	decisionContextIndustrialUnknownBuilding,
+	decisionContextIndustrialUnknownTile
+} from './decisionContext';
+import type { DecisionContext } from './decisionContext';
 import { refreshWorldProgress } from './world';
 import type {
 	DecisionItem,
@@ -14,7 +24,6 @@ import type {
 	IndustrialBuildingType,
 	IndustrialBuildingTypeId,
 	IndustryCity,
-	IndustryResourceId,
 	IndustryTile
 } from './types';
 
@@ -32,18 +41,18 @@ export interface BuildIndustrialBuildingInput {
 interface IndustrialConstructionDelay {
 	tileId: string;
 	buildingTypeId: IndustrialBuildingTypeId;
-	context: string;
+	context: DecisionContext;
 }
 
 export function getIndustrialPlacementBlockReason(
 	game: GameState,
 	tileId: string,
 	buildingTypeId: IndustrialBuildingTypeId
-): string | null {
+): DecisionContext | null {
 	const context = createIndustrialPlacementContext(game);
 
 	if (!context) {
-		return 'Unknown industrial tile';
+		return decisionContextIndustrialUnknownTile();
 	}
 
 	return getIndustrialPlacementBlockReasonWithContext(context, tileId, buildingTypeId);
@@ -69,34 +78,34 @@ export function getIndustrialPlacementBlockReasonWithContext(
 	context: IndustrialPlacementContext,
 	tileId: string,
 	buildingTypeId: IndustrialBuildingTypeId
-): string | null {
+): DecisionContext | null {
 	const tile = context.tileLookup.byId.get(tileId);
 	const buildingType = INDUSTRIAL_BUILDING_TYPES[buildingTypeId];
 
 	if (!tile) {
-		return 'Unknown industrial tile';
+		return decisionContextIndustrialUnknownTile();
 	}
 
 	if (!buildingType) {
-		return 'Unknown industrial building type';
+		return decisionContextIndustrialUnknownBuilding();
 	}
 
 	if (tile.locked) {
-		return 'Locked industrial tile';
+		return decisionContextIndustrialLockedTile();
 	}
 
 	const footprint = getIndustryBuildingFootprint(context.tileLookup, tile);
 
 	if (footprint.missingCoordinates.length > 0) {
-		return 'Locked industrial tile';
+		return decisionContextIndustrialLockedTile();
 	}
 
 	if (footprint.tiles.some((footprintTile) => footprintTile.locked)) {
-		return 'Locked industrial tile';
+		return decisionContextIndustrialLockedTile();
 	}
 
 	if (footprint.tiles.some((footprintTile) => context.occupiedTileIds.has(footprintTile.id))) {
-		return 'Occupied industrial tile';
+		return decisionContextIndustrialOccupiedTile();
 	}
 
 	// Resource-anchored buildings (well, pumpjack, etc.) are placed on the
@@ -107,14 +116,14 @@ export function getIndustrialPlacementBlockReasonWithContext(
 	// footprint would wrongly reject valid placements whose non-anchor tiles sit
 	// on plain industrial terrain.
 	if (buildingType.requiredResource && tile.resource !== buildingType.requiredResource) {
-		return `Requires ${formatIndustryResourceLabel(buildingType.requiredResource)}`;
+		return decisionContextIndustrialRequiresResource(buildingType.requiredResource);
 	}
 
 	if (
 		buildingType.requiresIndustrialTile &&
 		footprint.tiles.some((footprintTile) => footprintTile.terrain !== 'industrial')
 	) {
-		return 'Requires industrial tile';
+		return decisionContextIndustrialRequiresIndustrialTile();
 	}
 
 	return null;
@@ -155,7 +164,7 @@ export function buildIndustrialBuilding(
 			industrialConstructionDelayedDecision(game, {
 				tileId: input.tileId,
 				buildingTypeId: input.buildingTypeId,
-				context: 'Unknown industrial tile'
+				context: decisionContextIndustrialUnknownTile()
 			})
 		);
 	}
@@ -166,7 +175,7 @@ export function buildIndustrialBuilding(
 			industrialConstructionDelayedDecision(game, {
 				tileId: input.tileId,
 				buildingTypeId: input.buildingTypeId,
-				context: `${buildingType.name} requires ${buildingType.buildCost.toLocaleString('en-US')} cash.`
+				context: decisionContextIndustrialRequiresCash(input.buildingTypeId, buildingType.buildCost)
 			})
 		);
 	}
@@ -263,7 +272,7 @@ function industrialConstructionDelayedDecision(
 			'industrial-construction-delayed',
 			toDecisionIdPart(delay.buildingTypeId),
 			toDecisionIdPart(delay.tileId),
-			toDecisionIdPart(delay.context),
+			toDecisionIdPart(delay.context.code),
 			game.day
 		].join('-'),
 		title: 'Industrial construction delayed',
@@ -280,10 +289,6 @@ function acknowledgeOption(): DecisionOption {
 		description: 'Return to industry planning.',
 		effects: {}
 	};
-}
-
-function formatIndustryResourceLabel(resource: IndustryResourceId): string {
-	return resource.replaceAll('-', ' ');
 }
 
 function toDecisionIdPart(value: string): string {

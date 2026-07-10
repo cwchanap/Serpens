@@ -1,5 +1,14 @@
 import { describe, expect, test } from 'vitest';
 import { getIndustryTileById, getIndustryTilesByResource } from './industry';
+import {
+	decisionContextIndustrialLockedTile,
+	decisionContextIndustrialOccupiedTile,
+	decisionContextIndustrialRequiresCash,
+	decisionContextIndustrialRequiresIndustrialTile,
+	decisionContextIndustrialRequiresResource,
+	decisionContextIndustrialUnknownBuilding,
+	decisionContextIndustrialUnknownTile
+} from './decisionContext';
 import { createIndustryTileLookup } from './industryFootprint';
 import {
 	buildIndustrialBuilding,
@@ -22,8 +31,8 @@ describe('industrial placement', () => {
 		const saltTile = getIndustryTilesByResource(city, 'salt-deposit')[0]!;
 
 		expect(getIndustrialPlacementBlockReason(game, grainTile.id, 'grain-farm')).toBeNull();
-		expect(getIndustrialPlacementBlockReason(game, saltTile.id, 'grain-farm')).toBe(
-			'Requires grain field'
+		expect(getIndustrialPlacementBlockReason(game, saltTile.id, 'grain-farm')).toEqual(
+			decisionContextIndustrialRequiresResource('grain-field')
 		);
 		expect(getAllowedIndustrialBuildingTypes(game, grainTile.id).map((type) => type.id)).toContain(
 			'grain-farm'
@@ -61,7 +70,9 @@ describe('industrial placement', () => {
 
 		expect(blocked.industrialBuildings).toHaveLength(0);
 		expect(blocked.decisions.at(-1)?.title).toBe('Industrial construction delayed');
-		expect(blocked.decisions.at(-1)?.context).toContain('requires');
+		expect(blocked.decisions.at(-1)?.context).toEqual(
+			decisionContextIndustrialRequiresCash('grain-farm', 600)
+		);
 	});
 
 	test('blocks locked industrial tiles before resource checks', () => {
@@ -74,11 +85,11 @@ describe('industrial placement', () => {
 			buildingTypeId: 'grain-farm'
 		});
 
-		expect(getIndustrialPlacementBlockReason(game, lockedTile.id, 'grain-farm')).toBe(
-			'Locked industrial tile'
+		expect(getIndustrialPlacementBlockReason(game, lockedTile.id, 'grain-farm')).toEqual(
+			decisionContextIndustrialLockedTile()
 		);
 		expect(blocked.industrialBuildings).toHaveLength(0);
-		expect(blocked.decisions.at(-1)?.context).toContain('Locked industrial tile');
+		expect(blocked.decisions.at(-1)?.context).toEqual(decisionContextIndustrialLockedTile());
 	});
 
 	test('keeps different same-day construction failures as separate decisions', () => {
@@ -100,8 +111,8 @@ describe('industrial placement', () => {
 		expect(resourceBlocked.decisions).toHaveLength(2);
 		expect(new Set(resourceBlocked.decisions.map((decision) => decision.id)).size).toBe(2);
 		expect(resourceBlocked.decisions.map((decision) => decision.context)).toEqual([
-			'Grain Farm requires 600 cash.',
-			'Requires grain field'
+			decisionContextIndustrialRequiresCash('grain-farm', 600),
+			decisionContextIndustrialRequiresResource('grain-field')
 		]);
 	});
 
@@ -119,12 +130,12 @@ describe('industrial placement', () => {
 			buildingTypeId: 'grain-farm'
 		});
 
-		expect(getIndustrialPlacementBlockReason(built, grainTile.id, 'grain-farm')).toBe(
-			'Occupied industrial tile'
+		expect(getIndustrialPlacementBlockReason(built, grainTile.id, 'grain-farm')).toEqual(
+			decisionContextIndustrialOccupiedTile()
 		);
 		expect(blocked.industrialBuildings).toHaveLength(1);
 		expect(blocked.decisions.at(-1)?.title).toBe('Industrial construction delayed');
-		expect(blocked.decisions.at(-1)?.context).toContain('Occupied industrial tile');
+		expect(blocked.decisions.at(-1)?.context).toEqual(decisionContextIndustrialOccupiedTile());
 	});
 
 	test('blocks placement when a 2x2 footprint overlaps an existing industrial building', () => {
@@ -142,8 +153,8 @@ describe('industrial placement', () => {
 		});
 
 		expect(overlappingAnchor.id).not.toBe(grainTile.id);
-		expect(getIndustrialPlacementBlockReason(built, overlappingAnchor.id, 'warehouse')).toBe(
-			'Occupied industrial tile'
+		expect(getIndustrialPlacementBlockReason(built, overlappingAnchor.id, 'warehouse')).toEqual(
+			decisionContextIndustrialOccupiedTile()
 		);
 		expect(
 			buildIndustrialBuilding(built, {
@@ -163,8 +174,8 @@ describe('industrial placement', () => {
 		)!;
 
 		expect(edgeAnchor.locked).toBe(false);
-		expect(getIndustrialPlacementBlockReason(game, edgeAnchor.id, 'warehouse')).toBe(
-			'Locked industrial tile'
+		expect(getIndustrialPlacementBlockReason(game, edgeAnchor.id, 'warehouse')).toEqual(
+			decisionContextIndustrialLockedTile()
 		);
 		expect(
 			buildIndustrialBuilding(game, {
@@ -265,8 +276,8 @@ describe('industrial placement', () => {
 		const city = game.industryCities[0]!;
 		const grainTile = getIndustryTilesByResource(city, 'grain-field')[0]!;
 
-		expect(getIndustrialPlacementBlockReason(game, 'missing-tile', 'warehouse')).toBe(
-			'Unknown industrial tile'
+		expect(getIndustrialPlacementBlockReason(game, 'missing-tile', 'warehouse')).toEqual(
+			decisionContextIndustrialUnknownTile()
 		);
 		expect(
 			getIndustrialPlacementBlockReason(
@@ -274,7 +285,7 @@ describe('industrial placement', () => {
 				grainTile.id,
 				'missing-type' as IndustrialBuildingTypeId
 			)
-		).toBe('Unknown industrial building type');
+		).toEqual(decisionContextIndustrialUnknownBuilding());
 	});
 
 	test('deduplicates identical same-day construction failures into a single decision', () => {
@@ -323,8 +334,8 @@ describe('industrial placement', () => {
 			activeIndustryCityId: 'missing-city'
 		};
 
-		expect(getIndustrialPlacementBlockReason(game, 'any-tile', 'warehouse')).toBe(
-			'Unknown industrial tile'
+		expect(getIndustrialPlacementBlockReason(game, 'any-tile', 'warehouse')).toEqual(
+			decisionContextIndustrialUnknownTile()
 		);
 	});
 
@@ -342,7 +353,7 @@ describe('industrial placement', () => {
 		});
 
 		expect(result.industrialBuildings).toHaveLength(0);
-		expect(result.decisions.at(-1)?.context).toBe('Unknown industrial tile');
+		expect(result.decisions.at(-1)?.context).toEqual(decisionContextIndustrialUnknownTile());
 	});
 
 	test('upgradeBuilding leaves sibling buildings unchanged when upgrading one of multiple buildings', () => {
@@ -417,8 +428,8 @@ describe('industrial placement', () => {
 			industryCities: [mutatedCity, ...base.industryCities.slice(1)]
 		};
 
-		expect(getIndustrialPlacementBlockReason(game, anchor.id, 'flour-mill')).toBe(
-			'Requires industrial tile'
+		expect(getIndustrialPlacementBlockReason(game, anchor.id, 'flour-mill')).toEqual(
+			decisionContextIndustrialRequiresIndustrialTile()
 		);
 		expect(
 			buildIndustrialBuilding(game, {
@@ -438,9 +449,9 @@ describe('industrial placement', () => {
 		};
 		const cornerTile = city.tiles.find((tile) => tile.x === 2 && tile.y === 2)!;
 
-		expect(getIndustrialPlacementBlockReasonWithContext(context, cornerTile.id, 'warehouse')).toBe(
-			'Locked industrial tile'
-		);
+		expect(
+			getIndustrialPlacementBlockReasonWithContext(context, cornerTile.id, 'warehouse')
+		).toEqual(decisionContextIndustrialLockedTile());
 	});
 
 	test('createIndustrialPlacementContext resolves occupied tile ids from existing buildings', () => {
