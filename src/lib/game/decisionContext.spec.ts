@@ -13,7 +13,10 @@ import {
 	decisionContextIndustrialOccupiedTile,
 	decisionContextIndustrialRequiresResource,
 	decisionContextIndustrialRequiresIndustrialTile,
-	decisionContextIndustrialRequiresCash
+	decisionContextIndustrialRequiresCash,
+	decisionContextCashPressure,
+	decisionContextExpansionOpportunity,
+	decisionContextSupplierTerms
 } from './decisionContext';
 
 describe('decisionContext constructors', () => {
@@ -77,5 +80,12 @@ describe('decisionContext constructors', () => {
 		expect(decisionContextIndustrialRequiresIndustrialTile()).toEqual({
 			code: 'industrialRequiresIndustrialTile'
 		});
+	});
+
+	test('cashPressure, expansionOpportunity, and supplierTerms carry no params', () => {
+		expect.assertions(3);
+		expect(decisionContextCashPressure()).toEqual({ code: 'cashPressure' });
+		expect(decisionContextExpansionOpportunity()).toEqual({ code: 'expansionOpportunity' });
+		expect(decisionContextSupplierTerms()).toEqual({ code: 'supplierTerms' });
 	});
 });

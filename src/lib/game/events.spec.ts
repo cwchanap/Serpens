@@ -1,5 +1,10 @@
 import { describe, expect, test } from 'vitest';
 import { generateDecisions } from './events';
+import {
+	decisionContextCashPressure,
+	decisionContextExpansionOpportunity,
+	decisionContextSupplierTerms
+} from './decisionContext';
 import { createNewGame } from './state';
 
 describe('decision generation', () => {
@@ -29,7 +34,7 @@ describe('decision generation', () => {
 				{
 					id: 'cash-pressure',
 					title: 'Cash pressure',
-					context: 'Existing pressure decision.',
+					context: decisionContextCashPressure(),
 					expiresOnDay: 3,
 					options: []
 				}
@@ -75,7 +80,7 @@ describe('decision generation', () => {
 				{
 					id: 'expansion-opportunity',
 					title: 'Expansion opportunity',
-					context: 'Existing expansion decision.',
+					context: decisionContextExpansionOpportunity(),
 					expiresOnDay: 19,
 					options: []
 				}
@@ -97,7 +102,7 @@ describe('decision generation', () => {
 					{
 						id: 'supplier-terms',
 						title: 'Supplier terms',
-						context: 'Existing supplier decision.',
+						context: decisionContextSupplierTerms(),
 						expiresOnDay: 3,
 						options: []
 					}

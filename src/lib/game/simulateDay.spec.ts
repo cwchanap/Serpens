@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import { generateDecisions } from './events';
 import { generateCity } from './city';
 import { buildIndustrialBuilding } from './industryPlacement';
+import { decisionContextLocationGeneric } from './decisionContext';
 import { createNewGame, updatePolicy } from './state';
 import { getStaffXpForLevel } from './staffLeveling';
 import { simulateDay } from './simulateDay';
@@ -191,7 +192,7 @@ describe('daily simulation', () => {
 		const expiredDecision: DecisionItem = {
 			id: 'expired',
 			title: 'Expired',
-			context: 'No longer relevant.',
+			context: decisionContextLocationGeneric(),
 			expiresOnDay: game.day,
 			options: []
 		};
@@ -207,7 +208,7 @@ describe('daily simulation', () => {
 		const activeDecision: DecisionItem = {
 			id: 'active',
 			title: 'Active',
-			context: 'Still relevant.',
+			context: decisionContextLocationGeneric(),
 			expiresOnDay: game.day + 2,
 			options: []
 		};
@@ -223,7 +224,7 @@ describe('daily simulation', () => {
 		const activeDecision: DecisionItem = {
 			id: 'active',
 			title: 'Active',
-			context: 'Still relevant.',
+			context: decisionContextLocationGeneric(),
 			expiresOnDay: game.day + 2,
 			options: []
 		};
