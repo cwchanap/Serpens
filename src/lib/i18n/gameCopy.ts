@@ -1,8 +1,12 @@
-import { INDUSTRIAL_BUILDING_TYPES, MATERIALS } from '$lib/game/industry';
+import { INDUSTRIAL_BUILDING_TYPES } from '$lib/game/industry';
 import type { PlacementBlockReason } from '$lib/game/placementPreview';
 import type {
-	ProductChainEdge,
+	BottleneckInfo,
+	EdgeLabelInfo,
+	GraphWarning,
+	ProductChainCategorySummary,
 	ProductChainGraph,
+	ProductChainHealth,
 	ProductChainNode
 } from '$lib/game/productChainGraph';
 import type { GameAlert } from '$lib/game/alerts';
@@ -20,6 +24,8 @@ import type { I18nBundle } from './index';
 import type {
 	LocalizedDecision,
 	LocalizedDecisionOption,
+	LocalizedProductChainCategorySummary,
+	LocalizedProductChainEdge,
 	LocalizedProductChainGraph,
 	LocalizedWorldCityStatus
 } from './localizedTypes';
@@ -27,6 +33,7 @@ import type {
 export type {
 	LocalizedDecision,
 	LocalizedDecisionOption,
+	LocalizedProductChainCategorySummary,
 	LocalizedProductChainGraph,
 	LocalizedWorldCityStatus
 } from './localizedTypes';
@@ -38,11 +45,6 @@ export function storeDisplayName(
 ): string {
 	return store.name || i18n.t('store.defaultName', { ordinal });
 }
-
-const MATERIAL_ID_BY_NAME = new Map(
-	Object.values(MATERIALS).map((material) => [material.name, material.id] as const)
-);
-const NO_PRODUCTION_RECIPE_WARNING = /^No production recipe found for (.+)\.$/;
 
 export function formatPlacementBlockReason(
 	reason: PlacementBlockReason | null,
@@ -98,33 +100,16 @@ function formatCountMessage(i18n: I18nBundle, baseKey: string, count: number): s
 	return i18n.t(`${baseKey}.${count === 1 ? 'one' : 'other'}` as never, { count });
 }
 
-function formatQuantity(quantity: string): string {
-	return quantity;
-}
-
-function localizeHealth(health: ProductChainNode['health'], i18n: I18nBundle): string {
+function localizeHealth(health: ProductChainHealth, i18n: I18nBundle): string {
 	return i18n.t(`copy.productChainGraph.health.${health}` as never);
 }
 
-function localizeBottleneck(node: ProductChainNode, label: string, i18n: I18nBundle): string {
-	if (node.id === 'warehouse') {
-		if (node.bottleneck === 'No warehouse capacity is available.') {
-			return i18n.t('copy.productChainGraph.bottlenecks.warehouseNoCapacity');
-		}
-
-		const overflowMatch = node.bottleneck.match(/^(\d+) units are in overflow storage\.$/);
-		if (overflowMatch) {
-			return i18n.t('copy.productChainGraph.bottlenecks.warehouseOverflow', {
-				quantity: overflowMatch[1] ?? '0'
-			});
-		}
-
-		if (node.bottleneck === 'Warehouse capacity is available.') {
-			return i18n.t('copy.productChainGraph.bottlenecks.warehouseAvailable');
-		}
-	}
-
-	switch (node.health) {
+function localizeHealthBottleneck(
+	health: ProductChainHealth,
+	label: string,
+	i18n: I18nBundle
+): string {
+	switch (health) {
 		case 'healthy':
 			return i18n.t('copy.productChainGraph.bottlenecks.healthy', { label });
 		case 'watch':
@@ -133,45 +118,51 @@ function localizeBottleneck(node: ProductChainNode, label: string, i18n: I18nBun
 			return i18n.t('copy.productChainGraph.bottlenecks.shortage', { label });
 		case 'no-local-capacity':
 			return i18n.t('copy.productChainGraph.bottlenecks.noLocalCapacity', { label });
-		default:
+		case 'no-report':
 			return i18n.t('copy.productChainGraph.bottlenecks.noReport', { label });
 	}
 }
 
-function localizeEdgeLabel(label: string, i18n: I18nBundle): string {
-	const inMatch = label.match(/^(.+)\/day in$/);
-	if (inMatch) {
-		return i18n.t('copy.productChainGraph.edges.in', {
-			quantity: formatQuantity(inMatch[1]!)
-		});
+function localizeBottleneckInfo(info: BottleneckInfo, label: string, i18n: I18nBundle): string {
+	switch (info.code) {
+		case 'warehouseNoCapacity':
+			return i18n.t('copy.productChainGraph.bottlenecks.warehouseNoCapacity');
+		case 'warehouseOverflow':
+			return i18n.t('copy.productChainGraph.bottlenecks.warehouseOverflow', {
+				quantity: info.quantity
+			});
+		case 'warehouseAvailable':
+			return i18n.t('copy.productChainGraph.bottlenecks.warehouseAvailable');
+		case 'healthStatus':
+			return localizeHealthBottleneck(info.health, label, i18n);
 	}
+}
 
-	const outMatch = label.match(/^(.+)\/day out$/);
-	if (outMatch) {
-		return i18n.t('copy.productChainGraph.edges.out', {
-			quantity: formatQuantity(outMatch[1]!)
-		});
+function localizeBottleneck(node: ProductChainNode, label: string, i18n: I18nBundle): string {
+	return localizeBottleneckInfo(node.bottleneck, label, i18n);
+}
+
+function localizeEdgeLabel(labelInfo: EdgeLabelInfo, i18n: I18nBundle): string {
+	switch (labelInfo.code) {
+		case 'in':
+			return i18n.t('copy.productChainGraph.edges.in', { quantity: labelInfo.quantity });
+		case 'out':
+			return i18n.t('copy.productChainGraph.edges.out', { quantity: labelInfo.quantity });
+		case 'cycle': {
+			const key =
+				labelInfo.direction === 'produced'
+					? labelInfo.imported
+						? 'copy.productChainGraph.edges.producedImported'
+						: 'copy.productChainGraph.edges.produced'
+					: labelInfo.imported
+						? 'copy.productChainGraph.edges.usedImported'
+						: 'copy.productChainGraph.edges.used';
+			return i18n.t(key as never, {
+				actual: labelInfo.actual,
+				required: labelInfo.required
+			});
+		}
 	}
-
-	const cycleMatch = label.match(/^(.+)\/day (produced|used) · (.+)\/cycle( · import)?$/);
-	if (cycleMatch) {
-		const actual = cycleMatch[1]!;
-		const verb = cycleMatch[2]!;
-		const required = cycleMatch[3]!;
-		const imported = Boolean(cycleMatch[4]);
-		const key =
-			verb === 'produced'
-				? imported
-					? 'copy.productChainGraph.edges.producedImported'
-					: 'copy.productChainGraph.edges.produced'
-				: imported
-					? 'copy.productChainGraph.edges.usedImported'
-					: 'copy.productChainGraph.edges.used';
-
-		return i18n.t(key as never, { actual, required });
-	}
-
-	return label;
 }
 
 function localizeGraphTitle(graph: ProductChainGraph, i18n: I18nBundle): string {
@@ -247,21 +238,15 @@ export function localizeReportWarning(
 	}
 }
 
-function localizeGraphWarning(warning: string, i18n: I18nBundle): string {
-	if (warning === 'No daily report yet; latest-day flow is unavailable.') {
-		return i18n.t('copy.productChainGraph.warnings.noDailyReport');
+function localizeGraphWarning(warning: GraphWarning, i18n: I18nBundle): string {
+	switch (warning.code) {
+		case 'noDailyReport':
+			return i18n.t('copy.productChainGraph.warnings.noDailyReport');
+		case 'noProductionRecipe':
+			return i18n.t('copy.productChainGraph.warnings.noProductionRecipe', {
+				materialName: i18n.labels.material(warning.materialId)
+			});
 	}
-
-	const recipeMatch = warning.match(NO_PRODUCTION_RECIPE_WARNING);
-	if (recipeMatch) {
-		const materialName = recipeMatch[1] ?? '';
-		const materialId = MATERIAL_ID_BY_NAME.get(materialName);
-		return i18n.t('copy.productChainGraph.warnings.noProductionRecipe', {
-			materialName: materialId ? i18n.labels.material(materialId) : materialName
-		});
-	}
-
-	return warning;
 }
 
 function classifyDecision(decision: DecisionItem): string | null {
@@ -565,7 +550,7 @@ export function localizeProductChainGraph(
 							)
 						: node.label;
 
-		const localizedNode: ProductChainNode = {
+		return {
 			...node,
 			label,
 			subLabel:
@@ -573,25 +558,32 @@ export function localizeProductChainGraph(
 			healthLabel: localizeHealth(node.health, i18n),
 			bottleneck: localizeBottleneck(node, label, i18n)
 		};
-
-		return localizedNode;
 	});
 
 	const localizedNodeMap = Object.fromEntries(localizedNodes.map((node) => [node.id, node]));
-	const localizedEdges = graph.edges.map(
-		(edge): ProductChainEdge => ({
-			...edge,
-			label: localizeEdgeLabel(edge.label, i18n)
-		})
-	);
 
 	return {
 		...graph,
 		title: localizeGraphTitle(graph, i18n),
 		nodes: localizedNodes,
-		edges: localizedEdges,
+		edges: graph.edges.map(
+			(edge): LocalizedProductChainEdge => ({
+				...edge,
+				label: localizeEdgeLabel(edge.label, i18n)
+			})
+		),
 		details: localizedNodeMap,
 		warnings: graph.warnings.map((warning) => localizeGraphWarning(warning, i18n)),
 		emptyReason: localizeGraphReason(graph.emptyReason, i18n)
+	};
+}
+
+export function localizeProductChainCategorySummary(
+	summary: ProductChainCategorySummary,
+	i18n: I18nBundle
+): LocalizedProductChainCategorySummary {
+	return {
+		...summary,
+		bottleneck: localizeBottleneckInfo(summary.bottleneck, summary.name, i18n)
 	};
 }

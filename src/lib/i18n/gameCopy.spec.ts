@@ -1,7 +1,7 @@
 import { buildWarehouseFlowGraph } from '$lib/game/productChainGraph';
 import { createNewGame } from '$lib/game/state';
 import type { GameAlert } from '$lib/game/alerts';
-import type { DecisionItem, Store } from '$lib/game/types';
+import type { DecisionItem, Store, MaterialId } from '$lib/game/types';
 import type { DecisionContext } from '$lib/game/decisionContext';
 import type { ProductChainGraph, ProductChainNode } from '$lib/game/productChainGraph';
 import type { WorldCityId } from '$lib/game/types';
@@ -217,7 +217,10 @@ describe('game copy builders', () => {
 			nodes: [],
 			edges: [],
 			details: {},
-			warnings: ['No production recipe found for Water.', 'Keep raw warning'],
+			warnings: [
+				{ code: 'noProductionRecipe', materialId: 'water' },
+				{ code: 'noProductionRecipe', materialId: 'unknown-material' as MaterialId }
+			],
 			emptyReason: null
 		};
 
@@ -225,7 +228,11 @@ describe('game copy builders', () => {
 
 		expect(localized.warnings[0]).toContain(japanese.labels.material('water'));
 		expect(localized.warnings[0]).not.toBe(graph.warnings[0]);
-		expect(localized.warnings[1]).toBe('Keep raw warning');
+		expect(localized.warnings[1]).toBe(
+			japanese.t('copy.productChainGraph.warnings.noProductionRecipe', {
+				materialName: japanese.labels.material('unknown-material')
+			})
+		);
 	});
 
 	it('localizes known generated report warnings while preserving fallback text', () => {
@@ -631,7 +638,7 @@ describe('game copy builders', () => {
 		).not.toBe('Founding Store reputation is slipping');
 	});
 
-	it('golden-phrase guard: regex-matched product-chain graph phrases still match game module output', () => {
+	it('structured-dispatch guard: product-chain graph phrases still match game module output', () => {
 		expect.assertions(9);
 		const japanese = createI18n('ja');
 
@@ -659,7 +666,7 @@ describe('game copy builders', () => {
 			warehouseStock: 0,
 			capacity: baseCapacity,
 			actual: baseActual,
-			bottleneck: 'No warehouse capacity is available.'
+			bottleneck: { code: 'warehouseNoCapacity' }
 		};
 		const graphWithBottleneck: ProductChainGraph = {
 			id: 'warehouse-flow',
@@ -677,7 +684,7 @@ describe('game copy builders', () => {
 
 		const overflowNode: ProductChainNode = {
 			...warehouseNoCapacityNode,
-			bottleneck: '42 units are in overflow storage.'
+			bottleneck: { code: 'warehouseOverflow', quantity: 42 }
 		};
 		const graphWithOverflow: ProductChainGraph = {
 			...graphWithBottleneck,
@@ -689,7 +696,7 @@ describe('game copy builders', () => {
 		const availableNode: ProductChainNode = {
 			...warehouseNoCapacityNode,
 			health: 'healthy',
-			bottleneck: 'Warehouse capacity is available.'
+			bottleneck: { code: 'warehouseAvailable' }
 		};
 		const graphWithAvailable: ProductChainGraph = {
 			...graphWithBottleneck,
@@ -704,7 +711,7 @@ describe('game copy builders', () => {
 			nodes: [],
 			edges: [],
 			details: {},
-			warnings: ['No daily report yet; latest-day flow is unavailable.'],
+			warnings: [{ code: 'noDailyReport' }],
 			emptyReason: null
 		};
 		const localizedWarning = localizeProductChainGraph(graphWithNoDailyReport, japanese);
@@ -739,7 +746,7 @@ describe('game copy builders', () => {
 			id: 'warehouse-flow',
 			title: 'Warehouse flow',
 			nodes: [],
-			edges: [{ ...baseEdge, label: '10/day in' }],
+			edges: [{ ...baseEdge, label: { code: 'in', quantity: 10 } }],
 			details: {},
 			warnings: [],
 			emptyReason: null
@@ -750,7 +757,7 @@ describe('game copy builders', () => {
 
 		const graphWithEdgeOut: ProductChainGraph = {
 			...graphWithEdgeIn,
-			edges: [{ ...baseEdge, label: '5/day out' }]
+			edges: [{ ...baseEdge, label: { code: 'out', quantity: 5 } }]
 		};
 		expect(localizeProductChainGraph(graphWithEdgeOut, japanese).edges[0]?.label).not.toBe(
 			'5/day out'
@@ -758,7 +765,18 @@ describe('game copy builders', () => {
 
 		const graphWithEdgeProduced: ProductChainGraph = {
 			...graphWithEdgeIn,
-			edges: [{ ...baseEdge, label: '8/day produced · 10/cycle' }]
+			edges: [
+				{
+					...baseEdge,
+					label: {
+						code: 'cycle',
+						direction: 'produced',
+						actual: 8,
+						required: 10,
+						imported: false
+					}
+				}
+			]
 		};
 		expect(localizeProductChainGraph(graphWithEdgeProduced, japanese).edges[0]?.label).not.toBe(
 			'8/day produced · 10/cycle'
@@ -766,7 +784,18 @@ describe('game copy builders', () => {
 
 		const graphWithEdgeUsedImported: ProductChainGraph = {
 			...graphWithEdgeIn,
-			edges: [{ ...baseEdge, label: '3/day used · 5/cycle · import' }]
+			edges: [
+				{
+					...baseEdge,
+					label: {
+						code: 'cycle',
+						direction: 'used',
+						actual: 3,
+						required: 5,
+						imported: true
+					}
+				}
+			]
 		};
 		expect(localizeProductChainGraph(graphWithEdgeUsedImported, japanese).edges[0]?.label).not.toBe(
 			'3/day used · 5/cycle · import'
