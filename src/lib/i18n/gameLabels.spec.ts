@@ -1,25 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createI18n } from './index';
 import { messagesByLocale } from './messages';
-
-function flattenStrings(
-	value: unknown,
-	path: string[] = [],
-	output: Array<{ key: string; value: string }> = []
-): Array<{ key: string; value: string }> {
-	if (typeof value === 'string') {
-		output.push({ key: path.join('.'), value });
-		return output;
-	}
-
-	if (value && typeof value === 'object') {
-		for (const [key, nested] of Object.entries(value)) {
-			flattenStrings(nested, [...path, key], output);
-		}
-	}
-
-	return output;
-}
+import { flattenStrings } from './testUtils';
 
 describe('game labels', () => {
 	it('localizes stable game-domain IDs', () => {

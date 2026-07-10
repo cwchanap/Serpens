@@ -116,19 +116,16 @@ describe('game state', () => {
 		expect.assertions(6);
 		const game = { ...createNewGame('electronics', 44), storeCap: 2 };
 		const second = openStore(game, {
-			name: 'Mall Kiosk',
 			archetypeId: 'electronics',
 			location: 'West Mall'
 		});
 		const third = openStore(second, {
-			name: 'Campus Shop',
 			archetypeId: 'electronics',
 			location: 'North Campus'
 		});
 		const expandedCap = openStore(
 			{ ...second, storeCap: 3 },
 			{
-				name: 'Campus Shop',
 				archetypeId: 'electronics',
 				location: 'North Campus'
 			}
@@ -147,7 +144,6 @@ describe('game state', () => {
 		const game = createNewGame('electronics', 44);
 
 		const result = openStore(game, {
-			name: 'Mall Kiosk',
 			archetypeId: 'electronics',
 			location: 'West Mall'
 		});
@@ -198,7 +194,6 @@ describe('game state', () => {
 		const result = openStore(
 			{ ...game, cities: [reorderedCity] },
 			{
-				name: 'Mall Kiosk',
 				archetypeId: 'electronics',
 				location: 'West Mall'
 			}
@@ -218,7 +213,6 @@ describe('game state', () => {
 		const roadTile = city.tiles.find((tile) => tile.feature === 'road')!;
 
 		const result = openStore(game, {
-			name: 'Road Kiosk',
 			archetypeId: 'electronics',
 			location: 'Roadside',
 			tileId: roadTile.id
@@ -236,7 +230,6 @@ describe('game state', () => {
 		const game = createNewGame('boutique', 44);
 
 		const result = openStore(game, {
-			name: 'Tech Kiosk',
 			archetypeId: 'electronics',
 			location: 'West Mall'
 		});
@@ -250,22 +243,18 @@ describe('game state', () => {
 		expect.assertions(2);
 		const game = createNewGame('electronics', 44);
 		const second = openStore(game, {
-			name: 'Mall Kiosk',
 			archetypeId: 'electronics',
 			location: 'West Mall'
 		});
 		const third = openStore(second, {
-			name: 'Campus Shop',
 			archetypeId: 'electronics',
 			location: 'North Campus'
 		});
 		const fourth = openStore(third, {
-			name: 'Airport Shop',
 			archetypeId: 'electronics',
 			location: 'Airport'
 		});
 		const fifth = openStore(fourth, {
-			name: 'Station Shop',
 			archetypeId: 'electronics',
 			location: 'Station'
 		});
@@ -489,7 +478,6 @@ describe('game state', () => {
 		expect.assertions(3);
 		const game = { ...createNewGame('electronics', 44), cash: 0 };
 		const result = openStore(game, {
-			name: 'Mall Kiosk',
 			archetypeId: 'electronics',
 			location: 'West Mall'
 		});
@@ -575,7 +563,6 @@ describe('game state', () => {
 		const base = createNewGame('convenience', 20260603);
 		const game = { ...base, cash: 1_000_000 };
 		const withSecond = openStore(game, {
-			name: 'Second Store',
 			archetypeId: 'convenience',
 			location: 'East Mall'
 		});
@@ -594,7 +581,6 @@ describe('game state', () => {
 		expect.assertions(2);
 		const game = { ...createNewGame('electronics', 44), activeCityId: 'missing-city' };
 		const result = openStore(game, {
-			name: 'Mall Kiosk',
 			archetypeId: 'electronics',
 			location: 'West Mall'
 		});
@@ -607,7 +593,6 @@ describe('game state', () => {
 		expect.assertions(2);
 		const game = createNewGame('electronics', 44);
 		const result = openStore(game, {
-			name: 'Mall Kiosk',
 			archetypeId: 'electronics',
 			location: 'West Mall',
 			tileId: 'does-not-exist'
@@ -634,7 +619,6 @@ describe('game state', () => {
 		)!;
 
 		const result = openStore(game, {
-			name: 'Overlap Kiosk',
 			archetypeId: 'electronics',
 			location: 'Overlap',
 			tileId: overlappingTile.id
@@ -668,7 +652,6 @@ describe('game state', () => {
 		const riverFootprintAnchor = city.tiles.find((tile) => tile.x === 2 && tile.y === 1)!;
 
 		const result = openStore(game, {
-			name: 'River Edge Store',
 			archetypeId: 'grocery',
 			location: 'River Edge',
 			tileId: riverFootprintAnchor.id
@@ -695,7 +678,6 @@ describe('game state', () => {
 		const edgeAnchor = city.tiles.find((tile) => tile.x === 3 && tile.y === 0)!;
 
 		const result = openStore(game, {
-			name: 'Edge Store',
 			archetypeId: 'grocery',
 			location: 'Edge',
 			tileId: edgeAnchor.id
@@ -731,7 +713,6 @@ describe('game state', () => {
 		const badAnchor = city.tiles.find((tile) => tile.x === 2 && tile.y === 0)!;
 
 		const result = openStore(game, {
-			name: 'Auto-Pick Store',
 			archetypeId: 'grocery',
 			location: 'Auto'
 		});

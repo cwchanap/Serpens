@@ -1,7 +1,7 @@
 import { buildWarehouseFlowGraph } from '$lib/game/productChainGraph';
 import { createNewGame } from '$lib/game/state';
 import type { GameAlert } from '$lib/game/alerts';
-import type { DecisionItem } from '$lib/game/types';
+import type { DecisionItem, Store } from '$lib/game/types';
 import type { ProductChainGraph, ProductChainNode } from '$lib/game/productChainGraph';
 import type { WorldCityId } from '$lib/game/types';
 import { getWorldCityStatus } from '$lib/game/world';
@@ -16,27 +16,10 @@ import {
 	localizeReportWarning,
 	localizeStockStatus,
 	localizeStockTrouble,
-	localizeWorldCityStatus
+	localizeWorldCityStatus,
+	storeDisplayName
 } from './gameCopy';
-
-function flattenStrings(
-	value: unknown,
-	path: string[] = [],
-	output: Array<{ key: string; value: string }> = []
-): Array<{ key: string; value: string }> {
-	if (typeof value === 'string') {
-		output.push({ key: path.join('.'), value });
-		return output;
-	}
-
-	if (value && typeof value === 'object') {
-		for (const [key, nested] of Object.entries(value)) {
-			flattenStrings(nested, [...path, key], output);
-		}
-	}
-
-	return output;
-}
+import { flattenStrings } from './testUtils';
 
 describe('game copy builders', () => {
 	it('localizes stock status and stock-trouble summaries', () => {
@@ -115,7 +98,7 @@ describe('game copy builders', () => {
 		};
 
 		expect(localizeAlert(alert, troubledGame, createI18n('en'))).toBe(
-			'Convenience Store: 1 product out of stock'
+			'Store #1: 1 product out of stock'
 		);
 		expect(
 			localizeAlert(
@@ -228,24 +211,30 @@ describe('game copy builders', () => {
 	});
 
 	it('localizes known generated report warnings while preserving fallback text', () => {
-		expect.assertions(4);
+		expect.assertions(3);
 		const japanese = createI18n('ja');
 		const chinese = createI18n('zh-Hant');
+		const stores: Store[] = [
+			{ ...createNewGame('convenience', 1).stores[0]!, name: 'Founding Store' }
+		];
 
-		expect(localizeReportWarning('Founding Store is short 1234 general staff', japanese)).toBe(
-			`Founding Store の一般スタッフが ${japanese.format.integer(1234)} 名不足`
-		);
-		expect(localizeReportWarning('cash reserves are low', japanese)).toBe(
+		expect(
+			localizeReportWarning(
+				{ code: 'shortGeneral', storeId: 'store-1', count: 1234 },
+				stores,
+				japanese
+			)
+		).toBe(`Founding Store の一般スタッフが ${japanese.format.integer(1234)} 名不足`);
+		expect(localizeReportWarning({ code: 'cashReservesLow' }, stores, japanese)).toBe(
 			'現金準備が少なくなっています'
 		);
-		expect(localizeReportWarning('Founding Store has stock pressure', chinese)).toBe(
-			'Founding Store 有庫存壓力'
-		);
-		expect(localizeReportWarning('Historical warning', japanese)).toBe('Historical warning');
+		expect(
+			localizeReportWarning({ code: 'stockPressure', storeId: 'store-1' }, stores, chinese)
+		).toBe('Founding Store 有庫存壓力');
 	});
 
 	it('localizes event, state, and world decision families while preserving unknown fallback', () => {
-		expect.assertions(18);
+		expect.assertions(19);
 		const japanese = createI18n('ja');
 		const english = createI18n('en');
 
@@ -408,6 +397,9 @@ describe('game copy builders', () => {
 			'grain field'
 		);
 		expect(localizeDecision(industrialCashDecision, japanese).context).not.toContain('Grain Farm');
+		expect(localizeDecision(industrialCashDecision, japanese).context).toContain(
+			japanese.format.currency(1_000)
+		);
 		expect(localizeDecision(industrialResourceDecision, english).context).toBe(
 			'Requires Grain Field'
 		);
@@ -450,7 +442,7 @@ describe('game copy builders', () => {
 	});
 
 	it('golden-phrase guard: regex-matched decision contexts still match game module output', () => {
-		expect.assertions(10);
+		expect.assertions(11);
 		const japanese = createI18n('ja');
 
 		const expansionCashBlocked: DecisionItem = {
@@ -467,9 +459,9 @@ describe('game copy builders', () => {
 				}
 			]
 		};
-		expect(localizeDecision(expansionCashBlocked, japanese).context).not.toBe(
-			expansionCashBlocked.context
-		);
+		const expansionCashLocalized = localizeDecision(expansionCashBlocked, japanese);
+		expect(expansionCashLocalized.context).not.toBe(expansionCashBlocked.context);
+		expect(expansionCashLocalized.context).toContain(japanese.format.currency(15_000));
 
 		const lockedLocation: DecisionItem = {
 			id: 'location-unavailable-locked-1',
@@ -597,19 +589,26 @@ describe('game copy builders', () => {
 	it('golden-phrase guard: regex-matched report warnings still match game module output', () => {
 		expect.assertions(4);
 		const japanese = createI18n('ja');
+		const stores: Store[] = [
+			{ ...createNewGame('convenience', 1).stores[0]!, name: 'Founding Store' }
+		];
 
-		expect(localizeReportWarning('Founding Store is near staff capacity', japanese)).not.toBe(
-			'Founding Store is near staff capacity'
-		);
-		expect(localizeReportWarning('Founding Store is short 2 manager', japanese)).not.toBe(
-			'Founding Store is short 2 manager'
-		);
-		expect(localizeReportWarning('Founding Store missed product demand', japanese)).not.toBe(
-			'Founding Store missed product demand'
-		);
-		expect(localizeReportWarning('Founding Store reputation is slipping', japanese)).not.toBe(
-			'Founding Store reputation is slipping'
-		);
+		expect(
+			localizeReportWarning({ code: 'nearStaffCapacity', storeId: 'store-1' }, stores, japanese)
+		).not.toBe('Founding Store is near staff capacity');
+		expect(
+			localizeReportWarning(
+				{ code: 'shortManager', storeId: 'store-1', count: 2 },
+				stores,
+				japanese
+			)
+		).not.toBe('Founding Store is short 2 manager');
+		expect(
+			localizeReportWarning({ code: 'missedProductDemand', storeId: 'store-1' }, stores, japanese)
+		).not.toBe('Founding Store missed product demand');
+		expect(
+			localizeReportWarning({ code: 'reputationSlipping', storeId: 'store-1' }, stores, japanese)
+		).not.toBe('Founding Store reputation is slipping');
 	});
 
 	it('golden-phrase guard: regex-matched product-chain graph phrases still match game module output', () => {
@@ -752,5 +751,19 @@ describe('game copy builders', () => {
 		expect(localizeProductChainGraph(graphWithEdgeUsedImported, japanese).edges[0]?.label).not.toBe(
 			'3/day used · 5/cycle · import'
 		);
+	});
+
+	it('storeDisplayName localizes auto-named stores and preserves custom names', () => {
+		expect.assertions(4);
+		const english = createI18n('en');
+		const japanese = createI18n('ja');
+
+		const autoNamed = { name: '', ordinal: 1 };
+		expect(storeDisplayName(autoNamed, english)).toBe('Store #1');
+		expect(storeDisplayName(autoNamed, japanese)).toBe('店舗 #1');
+
+		const customNamed = { name: 'My Shop', ordinal: 3 };
+		expect(storeDisplayName(customNamed, english)).toBe('My Shop');
+		expect(storeDisplayName(customNamed, japanese)).toBe('My Shop');
 	});
 });

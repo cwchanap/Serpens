@@ -273,6 +273,9 @@ export const en = {
 			storeInline: '{role} · Skill {skill} · Morale {morale}'
 		}
 	},
+	store: {
+		defaultName: 'Store #{ordinal}'
+	},
 	storeOverview: {
 		title: 'Stores',
 		dayOpen: 'Day {day}',

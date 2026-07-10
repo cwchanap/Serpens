@@ -187,7 +187,9 @@
 	let activeManagementPanelId = $state<ManagementPanelId | null>(null);
 	let retailPlacementArchetypeId = $state<ArchetypeId | null>(null);
 	let industryPlacementBuildingTypeId = $state<IndustrialBuildingTypeId | null>(null);
-	let activeLocale = $state<SupportedLocale>('en');
+	let activeLocale = $state<SupportedLocale>(
+		readLocalePreference(globalThis.localStorage, globalThis.navigator.languages)
+	);
 	let i18n = $derived(createI18n(activeLocale));
 	let placementFeedback = $state<PlacementBlockReason | null>(null);
 	let saveRepository: SaveRepository | null = $state(null);
@@ -234,8 +236,8 @@
 		activeMapView === 'world'
 			? i18n.t('route.mapTitle.world')
 			: activeMapView === 'industry'
-				? industryCity.name
-				: activeCity.name
+				? i18n.labels.worldCity(industryCity.id).name
+				: i18n.labels.worldCity(activeCity.id).name
 	);
 	let worldCityStatuses = $derived.by((): WorldCityStatus[] => {
 		const currentGame: GameState | null = game;
@@ -371,7 +373,6 @@
 	}
 
 	onMount(() => {
-		activeLocale = readLocalePreference(globalThis.localStorage, globalThis.navigator.languages);
 		void initializeSaves();
 
 		const controller = createGameAudioController({
@@ -875,12 +876,10 @@
 			);
 			playSfx('sfx.build.retail-place');
 		} else {
-			const next = game.stores.length + 1;
 			setGameAndAutosaveWithSfx(
 				game,
 				openStoreAtTile(game, {
 					tileId,
-					name: `Store #${next}`,
 					archetypeId
 				}),
 				'sfx.build.retail-place'
@@ -1390,7 +1389,7 @@
 					{:else if activeManagementPanel.id === 'decisions'}
 						<DecisionQueue {i18n} decisions={panelGame.decisions} onResolve={chooseDecision} />
 					{:else if activeManagementPanel.id === 'reports'}
-						<ReportsPanel {i18n} {summary} />
+						<ReportsPanel {i18n} {summary} stores={panelGame.stores} />
 					{:else if activeManagementPanel.id === 'productChains'}
 						<ProductChainsPanel {i18n} game={panelGame} />
 					{/if}

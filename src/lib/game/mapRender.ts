@@ -1,5 +1,6 @@
 import type { ArchetypeId, CityTile, GameState, Store } from './types';
 import type { PlacementPreview } from './placementPreview';
+import { storeNameOrOrdinal } from './state';
 import {
 	RETAIL_STORE_FOOTPRINT_HEIGHT,
 	RETAIL_STORE_FOOTPRINT_WIDTH,
@@ -196,7 +197,7 @@ function getFeatureRenderVariant(
 function createStoreRender(store: Store): CityMapStoreRender {
 	return {
 		id: store.id,
-		name: store.name,
+		name: storeNameOrOrdinal(store),
 		archetypeId: store.archetypeId,
 		tileId: store.tileId,
 		x: store.mapX,

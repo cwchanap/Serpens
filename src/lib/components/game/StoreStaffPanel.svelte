@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { summarizeStoreStaffing } from '$lib/game/staffing';
 	import type { I18nBundle } from '$lib/i18n';
+	import { storeDisplayName } from '$lib/i18n/gameCopy';
 	import type { HiringCandidate, StaffMember, StaffRole, Store } from '$lib/game/types';
 
 	interface Props {
@@ -36,7 +37,7 @@
 			name: member.name,
 			role: roleLabel(member.role),
 			id: member.id,
-			storeName: store.name
+			storeName: storeDisplayName(store, i18n)
 		});
 	}
 
@@ -45,13 +46,13 @@
 			name: member.name,
 			role: roleLabel(member.role),
 			id: member.id,
-			storeName: store.name
+			storeName: storeDisplayName(store, i18n)
 		});
 	}
 
 	function storeCoverageSummary(): string {
 		return i18n.t('staffPanel.coverage', {
-			storeName: store.name,
+			storeName: storeDisplayName(store, i18n),
 			managerAssigned: i18n.format.integer(staffing.assigned.manager),
 			managerRequired: i18n.format.integer(staffing.requirement.manager),
 			generalAssigned: i18n.format.integer(staffing.assigned.general),
@@ -72,7 +73,7 @@
 	<div class="staff-heading">
 		<div>
 			<h3 id={`${store.id}-staff-heading`}>
-				{i18n.t('storeDetail.staffTitle', { storeName: store.name })}
+				{i18n.t('storeDetail.staffTitle', { storeName: storeDisplayName(store, i18n) })}
 			</h3>
 			<p>{storeCoverageSummary()}</p>
 		</div>

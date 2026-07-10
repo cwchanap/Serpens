@@ -8,6 +8,7 @@ import type { HiringCandidate, StaffMember, Store } from '$lib/game/types';
 
 const store: Store = {
 	id: 'store-1',
+	ordinal: 1,
 	level: 1,
 	name: 'Founding Store',
 	archetypeId: 'boutique',

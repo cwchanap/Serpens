@@ -189,12 +189,10 @@ describe('tile placement', () => {
 
 		const roadResult = openStoreAtTile(game, {
 			tileId: roadTile.id,
-			name: 'Road Store',
 			archetypeId: 'boutique'
 		});
 		const riverResult = openStoreAtTile(game, {
 			tileId: riverTile.id,
-			name: 'River Store',
 			archetypeId: 'grocery'
 		});
 
@@ -229,17 +227,14 @@ describe('tile placement', () => {
 
 		const roadResult = openStoreAtTile(game, {
 			tileId: roadTile.id,
-			name: 'Road Store',
 			archetypeId: 'boutique'
 		});
 		const duplicateRoadResult = openStoreAtTile(roadResult, {
 			tileId: roadTile.id,
-			name: 'Second Road Store',
 			archetypeId: 'boutique'
 		});
 		const riverResult = openStoreAtTile(duplicateRoadResult, {
 			tileId: riverTile.id,
-			name: 'River Store',
 			archetypeId: 'grocery'
 		});
 
@@ -278,7 +273,6 @@ describe('tile placement', () => {
 
 		const result = openStoreAtTile(game, {
 			tileId: tile.id,
-			name: 'Duplicate Store',
 			archetypeId: 'boutique'
 		});
 
@@ -298,7 +292,6 @@ describe('tile placement', () => {
 
 		const result = openStoreAtTile(game, {
 			tileId: 'retail-city-1-1',
-			name: 'Overlap Store',
 			archetypeId: 'grocery'
 		});
 
@@ -332,7 +325,6 @@ describe('tile placement', () => {
 
 		const result = openStoreAtTile(game, {
 			tileId: expansionTile.id,
-			name: 'Expansion Store',
 			archetypeId: 'grocery'
 		});
 
@@ -410,7 +402,6 @@ describe('tile placement', () => {
 
 		const result = openStoreAtTile(game, {
 			tileId: overlappingAnchor.id,
-			name: 'Overlap Store',
 			archetypeId: 'grocery'
 		});
 
@@ -439,7 +430,6 @@ describe('tile placement', () => {
 
 		const result = openStoreAtTile(game, {
 			tileId: 'does-not-exist',
-			name: 'Ghost Store',
 			archetypeId: 'boutique'
 		});
 
@@ -473,7 +463,6 @@ describe('tile placement', () => {
 
 		const result = openStoreAtTile(game, {
 			tileId: expansionTile.id,
-			name: 'Broke Store',
 			archetypeId: 'boutique'
 		});
 

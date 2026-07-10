@@ -9,7 +9,7 @@
 		getUnlockedCategoryCount,
 		isMilestoneLevel
 	} from '$lib/game/leveling';
-	import { localizeStockTrouble } from '$lib/i18n/gameCopy';
+	import { localizeStockTrouble, storeDisplayName } from '$lib/i18n/gameCopy';
 	import type { I18nBundle } from '$lib/i18n';
 	import type { CityTile, DailyStoreReport, GameState, Store } from '$lib/game/types';
 	import type { Attachment } from 'svelte/attachments';
@@ -125,7 +125,7 @@
 						/>
 					</div>
 				{/if}
-				<h3>{store.name}</h3>
+				<h3>{storeDisplayName(store, i18n)}</h3>
 				<p class="location">{store.location}</p>
 
 				<dl class="gauges" aria-label={i18n.t('tileInspector.storeVitals')}>

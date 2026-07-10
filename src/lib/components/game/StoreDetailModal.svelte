@@ -4,6 +4,7 @@
 	import StoreStockTable from '$lib/components/game/StoreStockTable.svelte';
 	import { focusTrap } from '$lib/a11y/focusTrap';
 	import type { I18nBundle } from '$lib/i18n';
+	import { storeDisplayName } from '$lib/i18n/gameCopy';
 	import type {
 		DailyStoreReport,
 		GameState,
@@ -42,6 +43,8 @@
 		onClose,
 		onClickFeedback = () => {}
 	}: Props = $props();
+
+	let displayName = $derived(storeDisplayName(store, i18n));
 
 	type DetailTab = 'stock' | 'chain' | 'staff';
 
@@ -90,13 +93,13 @@
 		class="detail-modal paper"
 		role="dialog"
 		aria-modal="true"
-		aria-label={store.name}
+		aria-label={displayName}
 		{@attach focusTrap}
 	>
 		<header>
 			<div>
 				<p class="eyebrow">{i18n.t('storeDetail.eyebrow')}</p>
-				<h2>{store.name}</h2>
+				<h2>{displayName}</h2>
 			</div>
 			<button
 				type="button"
@@ -109,7 +112,7 @@
 		<div
 			class="detail-tabs"
 			role="tablist"
-			aria-label={i18n.t('storeDetail.sections', { storeName: store.name })}
+			aria-label={i18n.t('storeDetail.sections', { storeName: displayName })}
 			tabindex="-1"
 			onkeydown={handleTabKeydown}
 		>

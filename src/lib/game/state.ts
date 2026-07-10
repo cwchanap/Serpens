@@ -47,6 +47,16 @@ import type {
 } from './types';
 import type { TilePlacementBlockReason } from './city';
 
+/**
+ * Returns the English display name for a store. Used by game-core modules
+ * that generate English strings (alerts, warnings) for the reverse-parsing
+ * localization layer. The UI uses the i18n-aware `storeDisplayName` from
+ * gameCopy.ts instead.
+ */
+export function storeNameOrOrdinal(store: Pick<Store, 'name' | 'ordinal'>): string {
+	return store.name || `Store #${store.ordinal}`;
+}
+
 export const DEFAULT_POLICY: CompanyPolicy = {
 	pricing: 'standard',
 	inventory: 'balanced',
@@ -65,7 +75,6 @@ const TERRAIN_SETUP_COST_PREMIUM: Partial<Record<CityTile['terrain'], number>> =
 };
 
 interface OpenStoreInput {
-	name: string;
 	archetypeId: ArchetypeId;
 	location: string;
 	tileId?: string;
@@ -82,7 +91,8 @@ export function createNewGame(archetypeId: ArchetypeId, seed = Date.now()): Game
 	const rng = createRng(normalizedSeed);
 	const openingStore = createStore({
 		id: 'store-1',
-		name: archetype.name,
+		name: '',
+		ordinal: 1,
 		archetypeId,
 		location: 'Founding location',
 		daysOpen: 1,
@@ -187,7 +197,8 @@ export function openStore(game: GameState, input: OpenStoreInput): GameState {
 	const rng = createRng(game.rngState);
 	const store = createStore({
 		id: `store-${game.stores.length + 1}`,
-		name: input.name,
+		name: '',
+		ordinal: game.stores.length + 1,
 		archetypeId,
 		location: input.location,
 		daysOpen: 0,
@@ -301,6 +312,7 @@ export function upgradeStore(game: GameState, storeId: string): GameState {
 function createStore(input: {
 	id: string;
 	name: string;
+	ordinal: number;
 	archetypeId: ArchetypeId;
 	location: string;
 	daysOpen: number;
@@ -313,6 +325,7 @@ function createStore(input: {
 		id: input.id,
 		level: 1,
 		name: input.name,
+		ordinal: input.ordinal,
 		archetypeId: input.archetypeId,
 		location: input.location,
 		cityId: 'harbor-city',

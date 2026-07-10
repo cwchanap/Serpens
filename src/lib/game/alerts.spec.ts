@@ -25,6 +25,7 @@ function store(overrides: Partial<Store> = {}): Store {
 		id: 'store-1',
 		level: 1,
 		name: 'Corner Market',
+		ordinal: 1,
 		archetypeId: 'convenience',
 		location: 'Main & 3rd',
 		cityId: 'harbor-city',

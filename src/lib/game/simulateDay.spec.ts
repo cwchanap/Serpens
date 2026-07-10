@@ -129,7 +129,9 @@ describe('daily simulation', () => {
 			stores: game.stores.map((store) => ({ ...store, stockHealth: 18 }))
 		});
 
-		expect(result.reports[0]?.warnings.some((warning) => warning.includes('stock'))).toBe(true);
+		expect(result.reports[0]?.warnings.some((warning) => warning.code === 'stockPressure')).toBe(
+			true
+		);
 	});
 
 	test('warnings use post-day store health', () => {
@@ -152,7 +154,7 @@ describe('daily simulation', () => {
 		const report = result.reports[0]?.storeReports[0];
 
 		expect(report?.staffMorale).toBeLessThan(30);
-		expect(report?.warnings.some((warning) => warning.includes('staff'))).toBe(true);
+		expect(report?.warnings.some((warning) => warning.code === 'nearStaffCapacity')).toBe(true);
 	});
 
 	test('resumes persisted rng state across sequential days', () => {
@@ -591,7 +593,11 @@ describe('daily simulation', () => {
 		expect(understaffedReport?.customersServed).toBeLessThan(staffedReport?.customersServed ?? 0);
 		expect(understaffedReport?.staffingCoverage).toBeLessThan(100);
 		expect(understaffedReport?.staffingShortage).toEqual({ manager: 0, general: 3 });
-		expect(understaffedReport?.warnings).toContain('Grocery Market is short 3 general staff');
+		expect(understaffedReport?.warnings).toContainEqual({
+			code: 'shortGeneral',
+			storeId: 'store-1',
+			count: 3
+		});
 	});
 
 	test('handles product categories not in starting categories', () => {
@@ -639,9 +645,10 @@ describe('daily simulation', () => {
 			}))
 		});
 
-		expect(result.reports[0]?.storeReports[0]?.warnings).toContain(
-			'Convenience Store reputation is slipping'
-		);
+		expect(result.reports[0]?.storeReports[0]?.warnings).toContainEqual({
+			code: 'reputationSlipping',
+			storeId: 'store-1'
+		});
 	});
 
 	test('uses fallback averages when no store reports exist', () => {

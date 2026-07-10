@@ -8,6 +8,7 @@ import type { HiringCandidate, StaffMember, Store } from '$lib/game/types';
 
 const store: Store = {
 	id: 'store-1',
+	ordinal: 1,
 	level: 1,
 	name: 'Founding Store',
 	archetypeId: 'boutique',
@@ -30,6 +31,7 @@ const store: Store = {
 const secondStore: Store = {
 	...store,
 	id: 'store-2',
+	ordinal: 2,
 	name: 'Mall Store',
 	tileId: 'harbor-city-2-2',
 	mapX: 2,

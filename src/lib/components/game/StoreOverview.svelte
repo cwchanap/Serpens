@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { summarizeStoreStaffing } from '$lib/game/staffing';
 	import type { I18nBundle } from '$lib/i18n';
-	import { localizeReportWarning } from '$lib/i18n/gameCopy';
+	import { localizeReportWarning, storeDisplayName } from '$lib/i18n/gameCopy';
 	import type { DailyProductReport, DailyStoreReport, StaffMember, Store } from '$lib/game/types';
 
 	let {
@@ -36,7 +36,7 @@
 			<article class="store">
 				<header>
 					<div>
-						<h3>{store.name}</h3>
+						<h3>{storeDisplayName(store, i18n)}</h3>
 						<p>{store.location}</p>
 					</div>
 					<span
@@ -81,7 +81,9 @@
 				{#if productSourceReports.length > 0}
 					<ul
 						class="product-sources"
-						aria-label={i18n.t('storeOverview.productSources', { storeName: store.name })}
+						aria-label={i18n.t('storeOverview.productSources', {
+							storeName: storeDisplayName(store, i18n)
+						})}
 					>
 						{#each productSourceReports as product (product.categoryId)}
 							<li>
@@ -102,9 +104,13 @@
 				{/if}
 
 				{#if report?.warnings.length}
-					<ul aria-label={i18n.t('storeOverview.warnings', { storeName: store.name })}>
-						{#each report.warnings as warning (warning)}
-							<li>{localizeReportWarning(warning, i18n)}</li>
+					<ul
+						aria-label={i18n.t('storeOverview.warnings', {
+							storeName: storeDisplayName(store, i18n)
+						})}
+					>
+						{#each report.warnings as warning (warning.code)}
+							<li>{localizeReportWarning(warning, stores, i18n)}</li>
 						{/each}
 					</ul>
 				{:else}

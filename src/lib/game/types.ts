@@ -314,6 +314,7 @@ export interface Store {
 	id: string;
 	level: number;
 	name: string;
+	ordinal: number;
 	archetypeId: ArchetypeId;
 	location: string;
 	cityId: string;
@@ -416,6 +417,16 @@ export interface DailyProductReport {
 	importSpend: number;
 }
 
+export type StoreReportWarning =
+	| { code: 'stockPressure'; storeId: string }
+	| { code: 'nearStaffCapacity'; storeId: string }
+	| { code: 'shortManager'; storeId: string; count: number }
+	| { code: 'shortGeneral'; storeId: string; count: number }
+	| { code: 'missedProductDemand'; storeId: string }
+	| { code: 'reputationSlipping'; storeId: string };
+
+export type DailyReportWarning = StoreReportWarning | { code: 'cashReservesLow' };
+
 export interface DailyStoreReport {
 	storeId: string;
 	revenue: number;
@@ -433,7 +444,7 @@ export interface DailyStoreReport {
 	reputation: number;
 	marketPosition: number;
 	productReports: DailyProductReport[];
-	warnings: string[];
+	warnings: StoreReportWarning[];
 }
 
 export interface DailyReport {
@@ -449,7 +460,7 @@ export interface DailyReport {
 	scorecard: Scorecard;
 	productionReport: DailyProductionReport;
 	storeReports: DailyStoreReport[];
-	warnings: string[];
+	warnings: DailyReportWarning[];
 }
 
 export interface DecisionOption {

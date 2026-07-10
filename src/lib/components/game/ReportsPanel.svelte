@@ -2,8 +2,10 @@
 	import type { I18nBundle } from '$lib/i18n';
 	import type { ReportSummary } from '$lib/game/reports';
 	import { localizeReportWarning } from '$lib/i18n/gameCopy';
+	import type { Store } from '$lib/game/types';
 
-	let { i18n, summary }: { i18n: I18nBundle; summary: ReportSummary } = $props();
+	let { i18n, summary, stores }: { i18n: I18nBundle; summary: ReportSummary; stores: Store[] } =
+		$props();
 </script>
 
 <section class="panel paper" aria-labelledby="reports-heading">
@@ -51,8 +53,8 @@
 
 		{#if summary.latest.warnings.length}
 			<ul class="warnings" aria-label={i18n.t('reportsPanel.dailyWarnings')}>
-				{#each summary.latest.warnings as warning (warning)}
-					<li>{localizeReportWarning(warning, i18n)}</li>
+				{#each summary.latest.warnings as warning (warning.code)}
+					<li>{localizeReportWarning(warning, stores, i18n)}</li>
 				{/each}
 			</ul>
 		{/if}
