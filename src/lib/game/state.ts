@@ -51,10 +51,21 @@ import type { TilePlacementBlockReason } from './city';
  * Returns the English display name for a store. Used by game-core modules
  * that generate English strings (alerts, warnings) for the reverse-parsing
  * localization layer. The UI uses the i18n-aware `storeDisplayName` from
- * gameCopy.ts instead.
+ * gameCopy.ts instead. `ordinal` is the 1-based position of the store in
+ * `game.stores`, derived at runtime rather than persisted.
  */
-export function storeNameOrOrdinal(store: Pick<Store, 'name' | 'ordinal'>): string {
-	return store.name || `Store #${store.ordinal}`;
+export function storeNameOrOrdinal(store: Pick<Store, 'name'>, ordinal: number): string {
+	return store.name || `Store #${ordinal}`;
+}
+
+/**
+ * Returns the 1-based position of `storeId` within `stores`, or 0 when not
+ * found. Used to derive a store's display ordinal at runtime instead of
+ * persisting it on the store.
+ */
+export function getStoreOrdinal(stores: Store[], storeId: string): number {
+	const index = stores.findIndex((store) => store.id === storeId);
+	return index === -1 ? 0 : index + 1;
 }
 
 export const DEFAULT_POLICY: CompanyPolicy = {
@@ -92,7 +103,6 @@ export function createNewGame(archetypeId: ArchetypeId, seed = Date.now()): Game
 	const openingStore = createStore({
 		id: 'store-1',
 		name: '',
-		ordinal: 1,
 		archetypeId,
 		location: 'Founding location',
 		daysOpen: 1,
@@ -198,7 +208,6 @@ export function openStore(game: GameState, input: OpenStoreInput): GameState {
 	const store = createStore({
 		id: `store-${game.stores.length + 1}`,
 		name: '',
-		ordinal: game.stores.length + 1,
 		archetypeId,
 		location: input.location,
 		daysOpen: 0,
@@ -312,7 +321,6 @@ export function upgradeStore(game: GameState, storeId: string): GameState {
 function createStore(input: {
 	id: string;
 	name: string;
-	ordinal: number;
 	archetypeId: ArchetypeId;
 	location: string;
 	daysOpen: number;
@@ -325,7 +333,6 @@ function createStore(input: {
 		id: input.id,
 		level: 1,
 		name: input.name,
-		ordinal: input.ordinal,
 		archetypeId: input.archetypeId,
 		location: input.location,
 		cityId: 'harbor-city',

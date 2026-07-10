@@ -10,7 +10,6 @@ const store: Store = {
 	id: 'store-1',
 	level: 1,
 	name: 'Founding Store',
-	ordinal: 1,
 	archetypeId: 'boutique',
 	location: 'Downtown (1, 1)',
 	cityId: 'harbor-city',

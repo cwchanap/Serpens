@@ -758,12 +758,12 @@ describe('game copy builders', () => {
 		const english = createI18n('en');
 		const japanese = createI18n('ja');
 
-		const autoNamed = { name: '', ordinal: 1 };
-		expect(storeDisplayName(autoNamed, english)).toBe('Store #1');
-		expect(storeDisplayName(autoNamed, japanese)).toBe('店舗 #1');
+		const autoNamed = { name: '' };
+		expect(storeDisplayName(autoNamed, 1, english)).toBe('Store #1');
+		expect(storeDisplayName(autoNamed, 1, japanese)).toBe('店舗 #1');
 
-		const customNamed = { name: 'My Shop', ordinal: 3 };
-		expect(storeDisplayName(customNamed, english)).toBe('My Shop');
-		expect(storeDisplayName(customNamed, japanese)).toBe('My Shop');
+		const customNamed = { name: 'My Shop' };
+		expect(storeDisplayName(customNamed, 3, english)).toBe('My Shop');
+		expect(storeDisplayName(customNamed, 3, japanese)).toBe('My Shop');
 	});
 });

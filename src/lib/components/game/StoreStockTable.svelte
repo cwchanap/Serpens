@@ -16,11 +16,12 @@
 	interface Props {
 		i18n: I18nBundle;
 		store: Store;
+		ordinal: number;
 		latestReport: DailyStoreReport | null;
 		onUpdate: (storeId: string, categoryId: string, patch: StoreProductPatch) => void;
 	}
 
-	let { i18n, store, latestReport, onUpdate }: Props = $props();
+	let { i18n, store, ordinal, latestReport, onUpdate }: Props = $props();
 
 	const categories = $derived(getArchetype(store.archetypeId).startingCategories);
 
@@ -50,12 +51,14 @@
 
 <section class="stock-table" aria-labelledby={`${store.id}-stock-heading`}>
 	<h3 id={`${store.id}-stock-heading`}>
-		{i18n.t('storeStockTable.title', { storeName: storeDisplayName(store, i18n) })}
+		{i18n.t('storeStockTable.title', { storeName: storeDisplayName(store, ordinal, i18n) })}
 	</h3>
 
 	<div class="table-scroll">
 		<table
-			aria-label={i18n.t('storeStockTable.title', { storeName: storeDisplayName(store, i18n) })}
+			aria-label={i18n.t('storeStockTable.title', {
+				storeName: storeDisplayName(store, ordinal, i18n)
+			})}
 		>
 			<thead>
 				<tr>

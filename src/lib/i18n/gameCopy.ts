@@ -18,8 +18,12 @@ import type { WorldCityStatus } from '$lib/game/world';
 import type { StoreProductStatus } from '$lib/game/stock';
 import type { I18nBundle } from './index';
 
-export function storeDisplayName(store: Pick<Store, 'name' | 'ordinal'>, i18n: I18nBundle): string {
-	return store.name || i18n.t('store.defaultName', { ordinal: store.ordinal });
+export function storeDisplayName(
+	store: Pick<Store, 'name'>,
+	ordinal: number,
+	i18n: I18nBundle
+): string {
+	return store.name || i18n.t('store.defaultName', { ordinal });
 }
 
 const INDUSTRY_RESOURCE_ID_BY_RAW_LABEL = new Map(
@@ -233,7 +237,9 @@ export function localizeReportWarning(
 ): string {
 	const resolveStoreName = (storeId: string): string => {
 		const store = stores.find((candidate) => candidate.id === storeId);
-		return store ? storeDisplayName(store, i18n) : storeId;
+		if (!store) return storeId;
+		const ordinal = stores.findIndex((candidate) => candidate.id === storeId) + 1;
+		return storeDisplayName(store, ordinal, i18n);
 	};
 
 	switch (warning.code) {
@@ -538,7 +544,11 @@ export function localizeAlert(alert: GameAlert, game: GameState, i18n: I18nBundl
 			const summary = localizeStockTrouble(store.products, i18n);
 			if (summary) {
 				return i18n.t('copy.alerts.storeStock', {
-					storeName: storeDisplayName(store, i18n),
+					storeName: storeDisplayName(
+						store,
+						game.stores.findIndex((candidate) => candidate.id === alert.storeId) + 1,
+						i18n
+					),
 					summary
 				});
 			}

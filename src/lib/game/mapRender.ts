@@ -108,7 +108,9 @@ export function createCityMapSnapshot(
 		tiles: city.tiles.map((tile) =>
 			createTileRender(tile, roadCoordinates, riverCoordinates, ownedTileIds, selectedTileId)
 		),
-		stores: activeCityStores.map(createStoreRender)
+		stores: activeCityStores.map((store) =>
+			createStoreRender(store, game.stores.findIndex((candidate) => candidate.id === store.id) + 1)
+		)
 	};
 }
 
@@ -194,10 +196,10 @@ function getFeatureRenderVariant(
 	return 'intersection';
 }
 
-function createStoreRender(store: Store): CityMapStoreRender {
+function createStoreRender(store: Store, ordinal: number): CityMapStoreRender {
 	return {
 		id: store.id,
-		name: storeNameOrOrdinal(store),
+		name: storeNameOrOrdinal(store, ordinal),
 		archetypeId: store.archetypeId,
 		tileId: store.tileId,
 		x: store.mapX,

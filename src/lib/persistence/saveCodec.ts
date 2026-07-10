@@ -50,7 +50,7 @@ export class SaveDataError extends Error {
  * {@link SAVE_SCHEMA_VERSION}. Keep this in sync with the migration table in
  * {@link migrateSaveStoreSnapshot} and {@link migrateSaveRecord}.
  */
-const MIGRATABLE_SCHEMA_VERSIONS = new Set<number>([4, 5, 6]);
+const MIGRATABLE_SCHEMA_VERSIONS = new Set<number>([4, 5]);
 
 function isMigratableSchemaVersion(version: unknown): version is number {
 	return typeof version === 'number' && MIGRATABLE_SCHEMA_VERSIONS.has(version);
@@ -104,60 +104,27 @@ function migrateV4SaveRecord(record: unknown): unknown {
 	if (typeof record !== 'object' || record === null) return record;
 	const recordObject = record as Record<string, unknown>;
 	const migratedGame = migrateV4Game(recordObject.game);
+	// Advance by one version so migrateSaveRecord's chain runs the next step.
 	return {
 		...recordObject,
-		schemaVersion: SAVE_SCHEMA_VERSION,
+		schemaVersion: 5,
 		game: migratedGame
 	};
 }
 
 /**
- * v5 → v6: stores gained an `ordinal` field for locale-neutral display
- * naming. The `name` field is retained but auto-named stores now store an
- * empty string; the ordinal is derived from the store's position in the
- * stores array (1-based).
- */
-function migrateV5Store(store: unknown, index: number): unknown {
-	if (typeof store !== 'object' || store === null) return store;
-	const storeRecord = store as Record<string, unknown>;
-	if (typeof storeRecord.ordinal === 'number') return store;
-	return { ...storeRecord, ordinal: index + 1 };
-}
-
-function migrateV5Game(game: unknown): unknown {
-	if (typeof game !== 'object' || game === null) return game;
-	const gameRecord = game as Record<string, unknown>;
-	if (!Array.isArray(gameRecord.stores)) return game;
-
-	const migratedStores = gameRecord.stores.map((store, index) => migrateV5Store(store, index));
-
-	return { ...gameRecord, stores: migratedStores };
-}
-
-function migrateV5SaveRecord(record: unknown): unknown {
-	if (typeof record !== 'object' || record === null) return record;
-	const recordObject = record as Record<string, unknown>;
-	const migratedGame = migrateV5Game(recordObject.game);
-	return {
-		...recordObject,
-		schemaVersion: SAVE_SCHEMA_VERSION,
-		game: migratedGame
-	};
-}
-
-/**
- * v6 → v7: report warnings changed from free-form English strings to
+ * v5 → v6: report warnings changed from free-form English strings to
  * structured `{ code, ... }` objects. Per the legacy save policy (game is
  * unreleased), old string warnings are dropped rather than reverse-parsed.
  */
-function migrateV6StoreReport(report: unknown): unknown {
+function migrateV5StoreReport(report: unknown): unknown {
 	if (typeof report !== 'object' || report === null) return report;
 	const reportRecord = report as Record<string, unknown>;
 	if (!Array.isArray(reportRecord.warnings)) return report;
 	return { ...reportRecord, warnings: [] };
 }
 
-function migrateV6Game(game: unknown): unknown {
+function migrateV5Game(game: unknown): unknown {
 	if (typeof game !== 'object' || game === null) return game;
 	const gameRecord = game as Record<string, unknown>;
 
@@ -174,7 +141,7 @@ function migrateV6Game(game: unknown): unknown {
 				changed = true;
 			}
 			if (Array.isArray(reportRecord.storeReports)) {
-				const migratedStoreReports = reportRecord.storeReports.map(migrateV6StoreReport);
+				const migratedStoreReports = reportRecord.storeReports.map(migrateV5StoreReport);
 				if (migratedStoreReports !== reportRecord.storeReports) {
 					migrated = { ...migrated, storeReports: migratedStoreReports };
 					changed = true;
@@ -187,10 +154,10 @@ function migrateV6Game(game: unknown): unknown {
 	return changed ? { ...gameRecord, reports: migratedReports } : game;
 }
 
-function migrateV6SaveRecord(record: unknown): unknown {
+function migrateV5SaveRecord(record: unknown): unknown {
 	if (typeof record !== 'object' || record === null) return record;
 	const recordObject = record as Record<string, unknown>;
-	const migratedGame = migrateV6Game(recordObject.game);
+	const migratedGame = migrateV5Game(recordObject.game);
 	return {
 		...recordObject,
 		schemaVersion: SAVE_SCHEMA_VERSION,
@@ -246,9 +213,6 @@ function migrateSaveRecord(value: unknown): unknown {
 	}
 	if (migrated.schemaVersion === 5) {
 		migrated = migrateV5SaveRecord(migrated) as Record<string, unknown>;
-	}
-	if (migrated.schemaVersion === 6) {
-		migrated = migrateV6SaveRecord(migrated) as Record<string, unknown>;
 	}
 
 	return migrated;
@@ -1152,10 +1116,6 @@ function validateSavedStore(value: unknown, label: string): void {
 		throw new SaveDataError(`${label} level must be an integer between 1 and ${MAX_STORE_LEVEL}`);
 	}
 	requireStringAllowEmpty(store.name, `${label} name`);
-	const storeOrdinal = requireNumber(store.ordinal, `${label} ordinal`);
-	if (!Number.isInteger(storeOrdinal) || storeOrdinal < 1) {
-		throw new SaveDataError(`${label} ordinal must be a positive integer`);
-	}
 	requireOneOf(store.archetypeId, `${label} archetypeId`, ARCHETYPE_IDS);
 	requireString(store.location, `${label} location`);
 	requireString(store.cityId, `${label} cityId`);

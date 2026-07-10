@@ -93,7 +93,6 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 				id: 'store-1',
 				level: 1,
 				name: 'Founding Store',
-				ordinal: 1,
 				archetypeId: 'boutique',
 				location: 'Downtown (1, 1)',
 				cityId: 'harbor-city',
@@ -157,13 +156,6 @@ function createV5Record(overrides: SaveRecordOverrides = {}): SaveRecord {
 	return {
 		...createManualSaveRecord(overrides),
 		schemaVersion: 5 as unknown as typeof SAVE_SCHEMA_VERSION
-	};
-}
-
-function createV6Record(overrides: SaveRecordOverrides = {}): SaveRecord {
-	return {
-		...createManualSaveRecord(overrides),
-		schemaVersion: 6 as unknown as typeof SAVE_SCHEMA_VERSION
 	};
 }
 
@@ -1330,44 +1322,9 @@ describe('saveCodec', () => {
 		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow('manualSlots must be an array');
 	});
 
-	test('v5 migration adds ordinal to stores missing the field', () => {
-		expect.assertions(3);
-		const baseStore = createGame().stores[0]!;
-		const storeWithoutOrdinal = { ...baseStore } as Record<string, unknown>;
-		delete storeWithoutOrdinal.ordinal;
-		const record = createV5Record({
-			game: {
-				stores: [
-					storeWithoutOrdinal as unknown as GameState['stores'][number],
-					{
-						...(storeWithoutOrdinal as unknown as GameState['stores'][number]),
-						id: 'store-2'
-					}
-				]
-			}
-		});
-
-		const validated = validateSaveRecord(record);
-		expect(validated.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
-		expect(validated.game.stores[0]?.ordinal).toBe(1);
-		expect(validated.game.stores[1]?.ordinal).toBe(2);
-	});
-
-	test('v5 migration leaves stores with existing ordinal untouched', () => {
-		expect.assertions(2);
-		const baseStore = createGame().stores[0]!;
-		const record = createV5Record({
-			game: { stores: [{ ...baseStore, ordinal: 5 }] }
-		});
-
-		const validated = validateSaveRecord(record);
-		expect(validated.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
-		expect(validated.game.stores[0]?.ordinal).toBe(5);
-	});
-
-	test('v6 migration drops old string warnings from daily and store reports', () => {
+	test('v5 migration drops old string warnings from daily and store reports', () => {
 		// Report warnings changed from free-form English strings to structured
-		// `{ code, ... }` objects in v7. Per the legacy save policy (game is
+		// `{ code, ... }` objects in v6. Per the legacy save policy (game is
 		// unreleased), old string warnings are dropped rather than reverse-parsed.
 		expect.assertions(4);
 		const storeReport = {
@@ -1379,7 +1336,7 @@ describe('saveCodec', () => {
 			storeReports: [storeReport],
 			warnings: ['Healthy day', 'Cash low']
 		} as unknown as DailyReport;
-		const record = createV6Record({
+		const record = createV5Record({
 			game: { reports: [report] }
 		});
 
@@ -1388,6 +1345,31 @@ describe('saveCodec', () => {
 		expect(validated.game.reports[0]?.warnings).toEqual([]);
 		expect(validated.game.reports[0]?.storeReports[0]?.warnings).toEqual([]);
 		expect(() => validateSaveRecord(record)).not.toThrow();
+	});
+
+	test('v4 migration chains into v5 step and drops legacy string warnings', () => {
+		// Regression: each migrateV*SaveRecord step must advance schemaVersion by
+		// one, not jump straight to SAVE_SCHEMA_VERSION. A v4 record carrying
+		// legacy string warnings must flow through the v4 step (boutique rename)
+		// AND the v5 step (drops string warnings) before validation.
+		expect.assertions(3);
+		const storeReport = {
+			...createDailyStoreReport(),
+			warnings: ['Low inventory', 'Understaffed']
+		} as unknown as DailyStoreReport;
+		const report = {
+			...createDailyReport(),
+			storeReports: [storeReport],
+			warnings: ['Healthy day', 'Cash low']
+		} as unknown as DailyReport;
+		const record = createV4Record({
+			game: { reports: [report] }
+		});
+
+		const validated = validateSaveRecord(record);
+		expect(validated.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
+		expect(validated.game.reports[0]?.warnings).toEqual([]);
+		expect(validated.game.reports[0]?.storeReports[0]?.warnings).toEqual([]);
 	});
 
 	test('normalizeSavedStoreLevel defaults to level 1 when products is not an array', () => {
