@@ -1,7 +1,4 @@
-import { en } from './en';
-
 export const ja = {
-	...en,
 	app: {
 		title: 'Serpens'
 	},
@@ -671,7 +668,6 @@ export const ja = {
 			industry: '工業'
 		},
 		managementPanels: {
-			...en.game.managementPanels,
 			dashboard: 'ダッシュボード',
 			policies: '方針',
 			staff: 'スタッフ',
@@ -833,7 +829,6 @@ export const ja = {
 			}
 		},
 		productChainGraph: {
-			...en.copy.productChainGraph,
 			title: {
 				warehouseFlow: '倉庫フロー',
 				productChain: '生産チェーン'

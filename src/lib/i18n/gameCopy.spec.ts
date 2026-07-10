@@ -2,7 +2,7 @@ import { buildWarehouseFlowGraph } from '$lib/game/productChainGraph';
 import { createNewGame } from '$lib/game/state';
 import type { GameAlert } from '$lib/game/alerts';
 import type { DecisionItem } from '$lib/game/types';
-import type { ProductChainGraph } from '$lib/game/productChainGraph';
+import type { ProductChainGraph, ProductChainNode } from '$lib/game/productChainGraph';
 import type { WorldCityId } from '$lib/game/types';
 import { getWorldCityStatus } from '$lib/game/world';
 import { describe, expect, it } from 'vitest';
@@ -447,5 +447,310 @@ describe('game copy builders', () => {
 
 			expect(identicalKeys).toEqual([]);
 		}
+	});
+
+	it('golden-phrase guard: regex-matched decision contexts still match game module output', () => {
+		expect.assertions(10);
+		const japanese = createI18n('ja');
+
+		const expansionCashBlocked: DecisionItem = {
+			id: 'expansion-cash-blocked-1',
+			title: 'Expansion delayed',
+			context: 'Opening another store requires 15,000 cash.',
+			expiresOnDay: 2,
+			options: [
+				{
+					id: 'acknowledge',
+					label: 'Acknowledge',
+					description: 'Return to operations planning.',
+					effects: {}
+				}
+			]
+		};
+		expect(localizeDecision(expansionCashBlocked, japanese).context).not.toBe(
+			expansionCashBlocked.context
+		);
+
+		const lockedLocation: DecisionItem = {
+			id: 'location-unavailable-locked-1',
+			title: 'Location unavailable',
+			context: 'Locked location blocks store placement. Choose another city tile.',
+			expiresOnDay: 2,
+			options: [
+				{
+					id: 'acknowledge',
+					label: 'Acknowledge',
+					description: 'Return to operations planning.',
+					effects: {}
+				}
+			]
+		};
+		expect(localizeDecision(lockedLocation, japanese).context).not.toBe(lockedLocation.context);
+
+		const riverLocation: DecisionItem = {
+			id: 'location-unavailable-river-1',
+			title: 'Location unavailable',
+			context: 'River location blocks store placement. Choose another city tile.',
+			expiresOnDay: 2,
+			options: [
+				{
+					id: 'acknowledge',
+					label: 'Acknowledge',
+					description: 'Return to operations planning.',
+					effects: {}
+				}
+			]
+		};
+		expect(localizeDecision(riverLocation, japanese).context).not.toBe(riverLocation.context);
+
+		const genericLocation: DecisionItem = {
+			id: 'location-unavailable-generic-1',
+			title: 'Location unavailable',
+			context: 'Choose an unlocked, unoccupied city tile before opening this store.',
+			expiresOnDay: 2,
+			options: [
+				{
+					id: 'acknowledge',
+					label: 'Acknowledge',
+					description: 'Return to operations planning.',
+					effects: {}
+				}
+			]
+		};
+		expect(localizeDecision(genericLocation, japanese).context).not.toBe(genericLocation.context);
+
+		const cityUnavailable: DecisionItem = {
+			id: 'world-city-city-unavailable-1',
+			title: 'City unavailable',
+			context: 'Unknown city.',
+			expiresOnDay: 2,
+			options: [
+				{
+					id: 'acknowledge',
+					label: 'Acknowledge',
+					description: 'Return to operations planning.',
+					effects: {}
+				}
+			]
+		};
+		expect(localizeDecision(cityUnavailable, japanese).title).not.toBe(cityUnavailable.title);
+		expect(localizeDecision(cityUnavailable, japanese).context).not.toBe(cityUnavailable.context);
+
+		const cityNotAvailableYet: DecisionItem = {
+			id: 'world-city-city-is-not-available-yet-1',
+			title: 'City is not available yet',
+			context: 'Reach 2 stores or day 7.',
+			expiresOnDay: 2,
+			options: [
+				{
+					id: 'acknowledge',
+					label: 'Acknowledge',
+					description: 'Return to operations planning.',
+					effects: {}
+				}
+			]
+		};
+		expect(localizeDecision(cityNotAvailableYet, japanese).title).not.toBe(
+			cityNotAvailableYet.title
+		);
+		expect(localizeDecision(cityNotAvailableYet, japanese).context).not.toBe(
+			cityNotAvailableYet.context
+		);
+
+		const industrialUnknownTile: DecisionItem = {
+			id: 'industrial-construction-delayed-1',
+			title: 'Industrial construction delayed',
+			context: 'Unknown industrial tile',
+			expiresOnDay: 2,
+			options: [
+				{
+					id: 'acknowledge',
+					label: 'Acknowledge',
+					description: 'Return to industry planning.',
+					effects: {}
+				}
+			]
+		};
+		expect(localizeDecision(industrialUnknownTile, japanese).context).not.toBe(
+			industrialUnknownTile.context
+		);
+
+		const industrialUnknownBuilding: DecisionItem = {
+			id: 'industrial-construction-delayed-2',
+			title: 'Industrial construction delayed',
+			context: 'Unknown industrial building type',
+			expiresOnDay: 2,
+			options: [
+				{
+					id: 'acknowledge',
+					label: 'Acknowledge',
+					description: 'Return to industry planning.',
+					effects: {}
+				}
+			]
+		};
+		expect(localizeDecision(industrialUnknownBuilding, japanese).context).not.toBe(
+			industrialUnknownBuilding.context
+		);
+	});
+
+	it('golden-phrase guard: regex-matched report warnings still match game module output', () => {
+		expect.assertions(4);
+		const japanese = createI18n('ja');
+
+		expect(localizeReportWarning('Founding Store is near staff capacity', japanese)).not.toBe(
+			'Founding Store is near staff capacity'
+		);
+		expect(localizeReportWarning('Founding Store is short 2 manager', japanese)).not.toBe(
+			'Founding Store is short 2 manager'
+		);
+		expect(localizeReportWarning('Founding Store missed product demand', japanese)).not.toBe(
+			'Founding Store missed product demand'
+		);
+		expect(localizeReportWarning('Founding Store reputation is slipping', japanese)).not.toBe(
+			'Founding Store reputation is slipping'
+		);
+	});
+
+	it('golden-phrase guard: regex-matched product-chain graph phrases still match game module output', () => {
+		expect.assertions(9);
+		const japanese = createI18n('ja');
+
+		const baseActual = {
+			produced: 0,
+			consumed: 0,
+			importedInput: 0,
+			warehousePulled: 0,
+			shopImported: 0,
+			unitsSold: 0,
+			demandMissed: 0
+		};
+		const baseCapacity = { buildingCount: 0, outputPerDay: 0, inputPerDay: 0 };
+		const warehouseNoCapacityNode: ProductChainNode = {
+			id: 'warehouse',
+			kind: 'warehouse',
+			label: 'Warehouse',
+			materialId: null,
+			recipeId: null,
+			stage: 'warehouse',
+			layer: 1,
+			row: 0,
+			health: 'shortage',
+			healthLabel: 'Shortage',
+			warehouseStock: 0,
+			capacity: baseCapacity,
+			actual: baseActual,
+			bottleneck: 'No warehouse capacity is available.'
+		};
+		const graphWithBottleneck: ProductChainGraph = {
+			id: 'warehouse-flow',
+			title: 'Warehouse flow',
+			nodes: [warehouseNoCapacityNode],
+			edges: [],
+			details: {},
+			warnings: [],
+			emptyReason: null
+		};
+		const localizedBottleneck = localizeProductChainGraph(graphWithBottleneck, japanese);
+		expect(localizedBottleneck.nodes[0]?.bottleneck).not.toBe(
+			'No warehouse capacity is available.'
+		);
+
+		const overflowNode: ProductChainNode = {
+			...warehouseNoCapacityNode,
+			bottleneck: '42 units are in overflow storage.'
+		};
+		const graphWithOverflow: ProductChainGraph = {
+			...graphWithBottleneck,
+			nodes: [overflowNode]
+		};
+		const localizedOverflow = localizeProductChainGraph(graphWithOverflow, japanese);
+		expect(localizedOverflow.nodes[0]?.bottleneck).not.toBe('42 units are in overflow storage.');
+
+		const availableNode: ProductChainNode = {
+			...warehouseNoCapacityNode,
+			health: 'healthy',
+			bottleneck: 'Warehouse capacity is available.'
+		};
+		const graphWithAvailable: ProductChainGraph = {
+			...graphWithBottleneck,
+			nodes: [availableNode]
+		};
+		const localizedAvailable = localizeProductChainGraph(graphWithAvailable, japanese);
+		expect(localizedAvailable.nodes[0]?.bottleneck).not.toBe('Warehouse capacity is available.');
+
+		const graphWithNoDailyReport: ProductChainGraph = {
+			id: 'warehouse-flow',
+			title: 'Warehouse flow',
+			nodes: [],
+			edges: [],
+			details: {},
+			warnings: ['No daily report yet; latest-day flow is unavailable.'],
+			emptyReason: null
+		};
+		const localizedWarning = localizeProductChainGraph(graphWithNoDailyReport, japanese);
+		expect(localizedWarning.warnings[0]).not.toBe(
+			'No daily report yet; latest-day flow is unavailable.'
+		);
+
+		const graphWithNoLocalChain: ProductChainGraph = {
+			id: 'warehouse-flow',
+			title: 'Warehouse flow',
+			nodes: [],
+			edges: [],
+			details: {},
+			warnings: [],
+			emptyReason: 'No local production chain available for this category yet.'
+		};
+		const localizedEmptyReason = localizeProductChainGraph(graphWithNoLocalChain, japanese);
+		expect(localizedEmptyReason.emptyReason).not.toBe(
+			'No local production chain available for this category yet.'
+		);
+
+		const baseEdge = {
+			id: 'e1',
+			source: 'n1',
+			target: 'n2',
+			materialId: null,
+			requiredPerCycle: 0,
+			actualPerDay: 0,
+			health: 'healthy' as const
+		};
+		const graphWithEdgeIn: ProductChainGraph = {
+			id: 'warehouse-flow',
+			title: 'Warehouse flow',
+			nodes: [],
+			edges: [{ ...baseEdge, label: '10/day in' }],
+			details: {},
+			warnings: [],
+			emptyReason: null
+		};
+		expect(localizeProductChainGraph(graphWithEdgeIn, japanese).edges[0]?.label).not.toBe(
+			'10/day in'
+		);
+
+		const graphWithEdgeOut: ProductChainGraph = {
+			...graphWithEdgeIn,
+			edges: [{ ...baseEdge, label: '5/day out' }]
+		};
+		expect(localizeProductChainGraph(graphWithEdgeOut, japanese).edges[0]?.label).not.toBe(
+			'5/day out'
+		);
+
+		const graphWithEdgeProduced: ProductChainGraph = {
+			...graphWithEdgeIn,
+			edges: [{ ...baseEdge, label: '8/day produced · 10/cycle' }]
+		};
+		expect(localizeProductChainGraph(graphWithEdgeProduced, japanese).edges[0]?.label).not.toBe(
+			'8/day produced · 10/cycle'
+		);
+
+		const graphWithEdgeUsedImported: ProductChainGraph = {
+			...graphWithEdgeIn,
+			edges: [{ ...baseEdge, label: '3/day used · 5/cycle · import' }]
+		};
+		expect(localizeProductChainGraph(graphWithEdgeUsedImported, japanese).edges[0]?.label).not.toBe(
+			'3/day used · 5/cycle · import'
+		);
 	});
 });
