@@ -1,4 +1,5 @@
 import { getArchetype } from '$lib/game/archetypes';
+import type { DecisionContext } from '$lib/game/decisionContext';
 import {
 	computeStoreLocalDemand,
 	DEFAULT_RETAIL_CITY_HEIGHT,
@@ -22,11 +23,18 @@ import {
 } from '$lib/game/storeFootprint';
 import { MAX_STAFF_LEVEL } from '$lib/game/staffLeveling';
 import { clampScore } from '$lib/game/reports';
-import type { City, CityTile, GameState, WorldCityId } from '$lib/game/types';
+import type {
+	City,
+	CityTile,
+	GameState,
+	IndustrialBuildingTypeId,
+	WorldCityId
+} from '$lib/game/types';
 import {
 	STARTER_STORE_CAP,
 	createInitialWorldProgress,
 	getWorldCityDefinition,
+	isWorldCityId,
 	refreshWorldProgress
 } from '$lib/game/world';
 import {
@@ -50,7 +58,7 @@ export class SaveDataError extends Error {
  * {@link SAVE_SCHEMA_VERSION}. Keep this in sync with the migration table in
  * {@link migrateSaveStoreSnapshot} and {@link migrateSaveRecord}.
  */
-const MIGRATABLE_SCHEMA_VERSIONS = new Set<number>([4, 5]);
+const MIGRATABLE_SCHEMA_VERSIONS = new Set<number>([4, 5, 6]);
 
 function isMigratableSchemaVersion(version: unknown): version is number {
 	return typeof version === 'number' && MIGRATABLE_SCHEMA_VERSIONS.has(version);
@@ -158,6 +166,44 @@ function migrateV5SaveRecord(record: unknown): unknown {
 	if (typeof record !== 'object' || record === null) return record;
 	const recordObject = record as Record<string, unknown>;
 	const migratedGame = migrateV5Game(recordObject.game);
+	// Advance by one version so migrateSaveRecord's chain runs the v6→v7 step.
+	// Do NOT use SAVE_SCHEMA_VERSION here — that would skip intermediate migrations.
+	return {
+		...recordObject,
+		schemaVersion: 6,
+		game: migratedGame
+	};
+}
+
+/**
+ * v6 → v7: decision contexts changed from free-form English strings to
+ * structured `{ code, ... }` objects. Per the legacy save policy (game is
+ * unreleased), old string-valued contexts are DROPPED — not reverse-parsed
+ * and not stubbed with a sentinel code that the DecisionContext union
+ * doesn't define.
+ */
+function migrateV6Game(game: unknown): unknown {
+	if (typeof game !== 'object' || game === null) return game;
+	const gameRecord = game as Record<string, unknown>;
+	const decisions = gameRecord.decisions;
+
+	if (!Array.isArray(decisions)) return game;
+
+	const migratedDecisions = decisions.filter((decision) => {
+		if (typeof decision !== 'object' || decision === null) return true;
+		const context = (decision as Record<string, unknown>).context;
+		return typeof context !== 'string'; // keep structured/object contexts, drop string ones
+	});
+
+	if (migratedDecisions.length === decisions.length) return game;
+
+	return { ...gameRecord, decisions: migratedDecisions };
+}
+
+function migrateV6SaveRecord(record: unknown): unknown {
+	if (typeof record !== 'object' || record === null) return record;
+	const recordObject = record as Record<string, unknown>;
+	const migratedGame = migrateV6Game(recordObject.game);
 	return {
 		...recordObject,
 		schemaVersion: SAVE_SCHEMA_VERSION,
@@ -213,6 +259,9 @@ function migrateSaveRecord(value: unknown): unknown {
 	}
 	if (migrated.schemaVersion === 5) {
 		migrated = migrateV5SaveRecord(migrated) as Record<string, unknown>;
+	}
+	if (migrated.schemaVersion === 6) {
+		migrated = migrateV6SaveRecord(migrated) as Record<string, unknown>;
 	}
 
 	return migrated;
@@ -1162,12 +1211,84 @@ function validateSavedStaffMember(value: unknown, label: string): void {
 	}
 }
 
+function requireIndustrialBuildingTypeId(value: unknown, label: string): IndustrialBuildingTypeId {
+	const id = requireString(value, label);
+	if (!INDUSTRIAL_BUILDING_TYPE_ID_SET.has(id)) {
+		throw new SaveDataError(`${label} must be a known industrial building type id: ${id}`);
+	}
+	return id as IndustrialBuildingTypeId;
+}
+
+function requireIndustryResourceId(value: unknown, label: string): string {
+	const id = requireString(value, label);
+	if (!INDUSTRY_RESOURCE_ID_SET.has(id)) {
+		throw new SaveDataError(`${label} must be a known industry resource id: ${id}`);
+	}
+	return id;
+}
+
+function validateSavedDecisionContext(value: unknown, label: string): DecisionContext {
+	const ctx = requireRecord(value, `${label} context`);
+	const code = requireString(ctx.code, `${label} context code`);
+	switch (code) {
+		case 'expansionUnavailable':
+			return { code, storeCap: requireNumber(ctx.storeCap, `${label} context storeCap`) };
+		case 'expansionCashBlocked':
+			return { code, cash: requireNumber(ctx.cash, `${label} context cash`) };
+		case 'locationBlocked':
+			requireString(ctx.reason, `${label} context reason`);
+			if (ctx.reason !== 'locked' && ctx.reason !== 'road' && ctx.reason !== 'river') {
+				throw new SaveDataError(`${label} context reason must be locked|road|river`);
+			}
+			return { code, reason: ctx.reason };
+		case 'locationGeneric':
+			return { code };
+		case 'worldCityOpeningCost':
+			return { code, cash: requireNumber(ctx.cash, `${label} context cash`) };
+		case 'worldCityUnknown':
+			return { code };
+		case 'worldCityNotAvailableYet': {
+			const cityId = requireString(ctx.cityId, `${label} context cityId`);
+			if (!isWorldCityId(cityId)) {
+				throw new SaveDataError(`${label} context cityId must be a known WorldCityId: ${cityId}`);
+			}
+			return { code, cityId };
+		}
+		case 'industrialUnknownTile':
+			return { code };
+		case 'industrialUnknownBuilding':
+			return { code };
+		case 'industrialLockedTile':
+			return { code };
+		case 'industrialOccupiedTile':
+			return { code };
+		case 'industrialRequiresResource':
+			return {
+				code,
+				resourceId: requireIndustryResourceId(ctx.resourceId, `${label} context resourceId`)
+			};
+		case 'industrialRequiresIndustrialTile':
+			return { code };
+		case 'industrialRequiresCash':
+			return {
+				code,
+				buildingTypeId: requireIndustrialBuildingTypeId(
+					ctx.buildingTypeId,
+					`${label} context buildingTypeId`
+				),
+				cash: requireNumber(ctx.cash, `${label} context cash`)
+			};
+		default:
+			throw new SaveDataError(`${label} context code must be a known decision context code`);
+	}
+}
+
 function validateSavedDecision(value: unknown, label: string): void {
 	const decision = requireRecord(value, label);
 
 	requireString(decision.id, `${label} id`);
 	requireString(decision.title, `${label} title`);
-	requireString(decision.context, `${label} context`);
+	validateSavedDecisionContext(decision.context, `${label}`);
 	requireNumber(decision.expiresOnDay, `${label} expiresOnDay`);
 	requireArray(decision.options, `${label} options`).forEach((option, index) =>
 		validateSavedDecisionOption(option, `${label} options[${index}]`)
