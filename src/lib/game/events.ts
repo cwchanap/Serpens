@@ -1,4 +1,9 @@
 import { createRngFromState } from './rng';
+import {
+	decisionContextCashPressure,
+	decisionContextExpansionOpportunity,
+	decisionContextSupplierTerms
+} from './decisionContext';
 import type { DecisionItem, GameState } from './types';
 
 const CASH_PRESSURE_ID = 'cash-pressure';
@@ -43,7 +48,7 @@ function cashPressureDecision(game: GameState): DecisionItem {
 	return {
 		id: CASH_PRESSURE_ID,
 		title: 'Cash pressure',
-		context: 'Cash is below zero. Choose how to keep operations moving while protecting the brand.',
+		context: decisionContextCashPressure(),
 		expiresOnDay: game.day + 2,
 		options: [
 			{
@@ -84,7 +89,7 @@ function expansionOpportunityDecision(game: GameState): DecisionItem {
 	return {
 		id: EXPANSION_ID,
 		title: 'Expansion opportunity',
-		context: 'Strong profit and cash reserves make a second storefront plausible.',
+		context: decisionContextExpansionOpportunity(),
 		expiresOnDay: game.day + 3,
 		options: [
 			{
@@ -114,7 +119,7 @@ function supplierTermsDecision(game: GameState): DecisionItem {
 	return {
 		id: SUPPLIER_TERMS_ID,
 		title: 'Supplier terms',
-		context: 'A supplier is open to revising ordering terms before the next replenishment cycle.',
+		context: decisionContextSupplierTerms(),
 		expiresOnDay: game.day + 2,
 		options: [
 			{

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { collectGameAlerts } from './alerts';
+import { decisionContextLocationGeneric } from './decisionContext';
 import type {
 	GameState,
 	Store,
@@ -138,7 +139,7 @@ describe('collectGameAlerts', () => {
 		const decision: DecisionItem = {
 			id: 'dec-1',
 			title: 'Lease renewal',
-			context: '',
+			context: decisionContextLocationGeneric(),
 			expiresOnDay: 9,
 			options: []
 		};

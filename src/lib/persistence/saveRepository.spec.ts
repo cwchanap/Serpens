@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import { initializeStoreProducts } from '$lib/game/stock';
 import { simulateDay } from '$lib/game/simulateDay';
 import { createNewGame } from '$lib/game/state';
+import { decisionContextLocationGeneric } from '$lib/game/decisionContext';
 import { STARTER_STORE_CAP, createInitialWorldProgress } from '$lib/game/world';
 import type {
 	DailyProductReport,
@@ -1459,7 +1460,7 @@ describe('save records', () => {
 				{
 					id: 'decision-1',
 					title: 'Staffing choice',
-					context: 'A manager asks for overtime.',
+					context: decisionContextLocationGeneric(),
 					expiresOnDay: 4,
 					options: [
 						{

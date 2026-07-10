@@ -3,13 +3,18 @@ import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { createI18n, type I18nBundle } from '$lib/i18n';
 import DecisionQueue from './DecisionQueue.svelte';
+import {
+	decisionContextCashPressure,
+	decisionContextExpansionOpportunity,
+	decisionContextLocationGeneric
+} from '$lib/game/decisionContext';
 import type { DecisionItem } from '$lib/game/types';
 
 const decisions: DecisionItem[] = [
 	{
 		id: 'd1',
 		title: 'Staff Dispute',
-		context: 'Two employees are arguing over shift schedules.',
+		context: decisionContextCashPressure(),
 		expiresOnDay: 12,
 		options: [
 			{
@@ -29,7 +34,7 @@ const decisions: DecisionItem[] = [
 	{
 		id: 'd2',
 		title: 'Supplier Delay',
-		context: 'A shipment is running late.',
+		context: decisionContextExpansionOpportunity(),
 		expiresOnDay: 15,
 		options: [
 			{
@@ -81,7 +86,11 @@ describe('DecisionQueue', () => {
 			.element(page.getByRole('heading', { level: 3, name: 'Staff Dispute' }))
 			.toBeVisible();
 		await expect
-			.element(page.getByText('Two employees are arguing over shift schedules.'))
+			.element(
+				page.getByText(
+					'Cash is below zero. Choose how to keep operations moving while protecting the brand.'
+				)
+			)
 			.toBeVisible();
 		await expect.element(page.getByText('Expires day 12')).toBeVisible();
 		await expect
@@ -109,7 +118,7 @@ describe('DecisionQueue', () => {
 				{
 					id: 'd-empty',
 					title: 'Mystery Offer',
-					context: 'An anonymous vendor makes a strange offer.',
+					context: decisionContextLocationGeneric(),
 					expiresOnDay: 20,
 					options: []
 				}

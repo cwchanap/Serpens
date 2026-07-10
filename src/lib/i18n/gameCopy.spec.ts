@@ -2,7 +2,6 @@ import { buildWarehouseFlowGraph } from '$lib/game/productChainGraph';
 import { createNewGame } from '$lib/game/state';
 import type { GameAlert } from '$lib/game/alerts';
 import type { DecisionItem, Store, MaterialId } from '$lib/game/types';
-import type { DecisionContext } from '$lib/game/decisionContext';
 import type { ProductChainGraph, ProductChainNode } from '$lib/game/productChainGraph';
 import type { WorldCityId } from '$lib/game/types';
 import {
@@ -17,7 +16,10 @@ import {
 	decisionContextLocationGeneric,
 	decisionContextWorldCityNotAvailableYet,
 	decisionContextWorldCityOpeningCost,
-	decisionContextWorldCityUnknown
+	decisionContextWorldCityUnknown,
+	decisionContextCashPressure,
+	decisionContextExpansionOpportunity,
+	decisionContextSupplierTerms
 } from '$lib/game/decisionContext';
 import { getWorldCityStatus } from '$lib/game/world';
 import { describe, expect, it } from 'vitest';
@@ -134,8 +136,7 @@ describe('game copy builders', () => {
 		const decision: DecisionItem = {
 			id: 'cash-pressure',
 			title: 'Cash pressure',
-			context:
-				'Cash is below zero. Choose how to keep operations moving while protecting the brand.' as unknown as DecisionContext,
+			context: decisionContextCashPressure(),
 			expiresOnDay: 3,
 			options: [
 				{
@@ -266,8 +267,7 @@ describe('game copy builders', () => {
 		const expansionOpportunity: DecisionItem = {
 			id: 'expansion-opportunity',
 			title: 'Expansion opportunity',
-			context:
-				'Strong profit and cash reserves make a second storefront plausible.' as unknown as DecisionContext,
+			context: decisionContextExpansionOpportunity(),
 			expiresOnDay: 5,
 			options: [
 				{
@@ -287,8 +287,7 @@ describe('game copy builders', () => {
 		const supplierTerms: DecisionItem = {
 			id: 'supplier-terms',
 			title: 'Supplier terms',
-			context:
-				'A supplier is open to revising ordering terms before the next replenishment cycle.' as unknown as DecisionContext,
+			context: decisionContextSupplierTerms(),
 			expiresOnDay: 5,
 			options: [
 				{

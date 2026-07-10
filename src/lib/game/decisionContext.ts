@@ -14,7 +14,10 @@ export type DecisionContext =
 	| { code: 'industrialOccupiedTile' }
 	| { code: 'industrialRequiresResource'; resourceId: string }
 	| { code: 'industrialRequiresIndustrialTile' }
-	| { code: 'industrialRequiresCash'; buildingTypeId: IndustrialBuildingTypeId; cash: number };
+	| { code: 'industrialRequiresCash'; buildingTypeId: IndustrialBuildingTypeId; cash: number }
+	| { code: 'cashPressure' }
+	| { code: 'expansionOpportunity' }
+	| { code: 'supplierTerms' };
 
 export const decisionContextExpansionUnavailable = (storeCap: number): DecisionContext => ({
 	code: 'expansionUnavailable',
@@ -75,3 +78,11 @@ export const decisionContextIndustrialRequiresCash = (
 	buildingTypeId: IndustrialBuildingTypeId,
 	cash: number
 ): DecisionContext => ({ code: 'industrialRequiresCash', buildingTypeId, cash });
+
+export const decisionContextCashPressure = (): DecisionContext => ({ code: 'cashPressure' });
+
+export const decisionContextExpansionOpportunity = (): DecisionContext => ({
+	code: 'expansionOpportunity'
+});
+
+export const decisionContextSupplierTerms = (): DecisionContext => ({ code: 'supplierTerms' });

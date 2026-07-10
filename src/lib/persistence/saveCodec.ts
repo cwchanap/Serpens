@@ -1278,6 +1278,12 @@ function validateSavedDecisionContext(value: unknown, label: string): DecisionCo
 				),
 				cash: requireNumber(ctx.cash, `${label} context cash`)
 			};
+		case 'cashPressure':
+			return { code };
+		case 'expansionOpportunity':
+			return { code };
+		case 'supplierTerms':
+			return { code };
 		default:
 			throw new SaveDataError(`${label} context code must be a known decision context code`);
 	}

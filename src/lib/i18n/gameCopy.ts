@@ -308,6 +308,12 @@ function localizeDecisionContextValue(ctx: DecisionContext, i18n: I18nBundle): s
 				buildingName: i18n.labels.industrialBuilding(ctx.buildingTypeId),
 				cash: i18n.format.currency(ctx.cash)
 			});
+		case 'cashPressure':
+			return i18n.t('copy.decisions.cashPressure.context');
+		case 'expansionOpportunity':
+			return i18n.t('copy.decisions.expansionOpportunity.context');
+		case 'supplierTerms':
+			return i18n.t('copy.decisions.supplierTerms.context');
 	}
 }
 
@@ -340,22 +346,6 @@ function localizeDecisionTitle(decision: DecisionItem, i18n: I18nBundle): string
 }
 
 function localizeDecisionContext(decision: DecisionItem, i18n: I18nBundle): string {
-	const family = classifyDecision(decision);
-
-	// cashPressure, expansionOpportunity, and supplierTerms still carry
-	// free-form string contexts from events.ts (updated in Task 10). Use the
-	// family-based translation lookup for those.
-	if (
-		family === 'cashPressure' ||
-		family === 'expansionOpportunity' ||
-		family === 'supplierTerms'
-	) {
-		return (
-			translateMessage(i18n, `copy.decisions.${family}.context`) ??
-			(decision.context as unknown as string)
-		);
-	}
-
 	return localizeDecisionContextValue(decision.context, i18n);
 }
 
