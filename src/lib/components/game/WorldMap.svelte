@@ -2,6 +2,7 @@
 	import { asset } from '$app/paths';
 	import { WORLD_MAP_ART } from '$lib/assets/gameArt';
 	import { localizeWorldCityStatus } from '$lib/i18n/gameCopy';
+	import type { LocalizedWorldCityStatus } from '$lib/i18n/localizedTypes';
 	import type { I18nBundle } from '$lib/i18n';
 	import type { WorldCityStatus } from '$lib/game/world';
 
@@ -27,7 +28,7 @@
 			: null
 	);
 
-	function markerPath(status: WorldCityStatus): string {
+	function markerPath(status: LocalizedWorldCityStatus): string {
 		if (status.state === 'locked') {
 			return WORLD_MAP_ART.markers.locked.path;
 		}
@@ -37,29 +38,29 @@
 			: WORLD_MAP_ART.markers.industry.path;
 	}
 
-	function cityDescriptionId(status: WorldCityStatus): string {
+	function cityDescriptionId(status: LocalizedWorldCityStatus): string {
 		return `world-city-${status.city.id}-description`;
 	}
 
-	function cityRequirementId(status: WorldCityStatus): string {
+	function cityRequirementId(status: LocalizedWorldCityStatus): string {
 		return `world-city-${status.city.id}-requirement`;
 	}
 
-	function cityTitleId(status: WorldCityStatus): string {
+	function cityTitleId(status: LocalizedWorldCityStatus): string {
 		return `world-city-${status.city.id}-title`;
 	}
 
-	function cityDescriptionIds(status: WorldCityStatus): string {
+	function cityDescriptionIds(status: LocalizedWorldCityStatus): string {
 		return status.state === 'locked' && status.blockedReason
 			? `${cityDescriptionId(status)} ${cityRequirementId(status)}`
 			: cityDescriptionId(status);
 	}
 
-	function inspectorReasonId(status: WorldCityStatus): string {
+	function inspectorReasonId(status: LocalizedWorldCityStatus): string {
 		return `world-city-${status.city.id}-reason`;
 	}
 
-	function inspectorId(status: WorldCityStatus): string {
+	function inspectorId(status: LocalizedWorldCityStatus): string {
 		return `world-city-${status.city.id}-inspector`;
 	}
 </script>

@@ -13,10 +13,21 @@ import type {
 	DecisionOption,
 	Store
 } from '$lib/game/types';
-import { WORLD_CITY_CATALOG } from '$lib/game/world';
+import type { DecisionContext } from '$lib/game/decisionContext';
 import type { WorldCityStatus } from '$lib/game/world';
 import type { StoreProductStatus } from '$lib/game/stock';
 import type { I18nBundle } from './index';
+import type {
+	LocalizedDecision,
+	LocalizedDecisionOption,
+	LocalizedWorldCityStatus
+} from './localizedTypes';
+
+export type {
+	LocalizedDecision,
+	LocalizedDecisionOption,
+	LocalizedWorldCityStatus
+} from './localizedTypes';
 
 export function storeDisplayName(
 	store: Pick<Store, 'name'>,
@@ -26,35 +37,10 @@ export function storeDisplayName(
 	return store.name || i18n.t('store.defaultName', { ordinal });
 }
 
-const INDUSTRY_RESOURCE_ID_BY_RAW_LABEL = new Map(
-	Object.values(INDUSTRIAL_BUILDING_TYPES)
-		.map((buildingType) => buildingType.requiredResource)
-		.filter((resourceId): resourceId is NonNullable<typeof resourceId> => resourceId !== null)
-		.map((resourceId) => [resourceId.replaceAll('-', ' '), resourceId] as const)
-);
-
-const INDUSTRIAL_BUILDING_ID_BY_NAME = new Map(
-	Object.values(INDUSTRIAL_BUILDING_TYPES).map(
-		(buildingType) => [buildingType.name, buildingType.id] as const
-	)
-);
 const MATERIAL_ID_BY_NAME = new Map(
 	Object.values(MATERIALS).map((material) => [material.name, material.id] as const)
 );
-const WORLD_CITY_OPENING_COST_CONTEXT = /^Opening this city requires ([\d,]+) cash\.$/;
 const NO_PRODUCTION_RECIPE_WARNING = /^No production recipe found for (.+)\.$/;
-
-export type LocalizedDecisionOption = DecisionOption;
-
-export interface LocalizedDecision extends DecisionItem {
-	options: LocalizedDecisionOption[];
-}
-
-export interface LocalizedWorldCityStatus extends WorldCityStatus {
-	city: WorldCityStatus['city'];
-	kindLabel: string;
-	stateLabel: string;
-}
 
 export function formatPlacementBlockReason(
 	reason: PlacementBlockReason | null,
@@ -93,7 +79,7 @@ export function formatPlacementBlockReason(
 				amount: i18n.format.currency(reason.amount)
 			});
 		case 'industry.rawPlacementBlocked':
-			return reason.message;
+			return localizeDecisionContextValue(reason.message, i18n);
 	}
 }
 
@@ -112,21 +98,6 @@ function formatCountMessage(i18n: I18nBundle, baseKey: string, count: number): s
 
 function formatQuantity(quantity: string): string {
 	return quantity;
-}
-
-function formatWorldCityOpeningCost(
-	message: string,
-	i18n: I18nBundle,
-	fallbackAmount?: number
-): string | null {
-	const match = message.match(WORLD_CITY_OPENING_COST_CONTEXT);
-	if (!match) {
-		return null;
-	}
-
-	const parsedAmount = Number((match[1] ?? '').replaceAll(',', ''));
-	const amount = Number.isFinite(parsedAmount) ? parsedAmount : fallbackAmount;
-	return amount === undefined ? null : i18n.format.currency(amount);
 }
 
 function localizeHealth(health: ProductChainNode['health'], i18n: I18nBundle): string {
@@ -304,91 +275,53 @@ function classifyDecision(decision: DecisionItem): string | null {
 	return null;
 }
 
-function localizeLocationUnavailableContext(context: string, i18n: I18nBundle): string {
-	const blockedMatch = context.match(
-		/^(Locked location|Road location|River location) blocks store placement\. Choose another city tile\.$/
-	);
-	if (blockedMatch) {
-		const reason = blockedMatch[1]!;
-		const reasonKey =
-			reason === 'Locked location' ? 'locked' : reason === 'Road location' ? 'road' : 'river';
-		return i18n.t('copy.decisions.locationUnavailable.blockedContext', {
-			reason: i18n.t(`copy.decisions.locationUnavailable.reasons.${reasonKey}` as never)
-		});
-	}
-
-	if (context === 'Choose an unlocked, unoccupied city tile before opening this store.') {
-		return i18n.t('copy.decisions.locationUnavailable.genericContext');
-	}
-
-	return context;
-}
-
-function localizeWorldDecisionContext(decision: DecisionItem, i18n: I18nBundle): string {
-	if (decision.title === 'City unavailable' && decision.context === 'Unknown city.') {
-		return i18n.t('copy.decisions.worldCity.cityUnavailable.context');
-	}
-
-	if (decision.title === 'City is not available yet') {
-		const city = WORLD_CITY_CATALOG.find((entry) => entry.unlockRequirement === decision.context);
-		if (city) {
-			return i18n.t('copy.decisions.worldCity.notAvailableYet.context', {
-				requirement: i18n.t(`game.worldCities.${city.id}.unlockRequirement` as never)
+function localizeDecisionContextValue(ctx: DecisionContext, i18n: I18nBundle): string {
+	switch (ctx.code) {
+		case 'expansionUnavailable':
+			return i18n.t('copy.decisions.expansionUnavailable.context', { storeCap: ctx.storeCap });
+		case 'expansionCashBlocked':
+			return i18n.t('copy.decisions.expansionCashBlocked.context', {
+				cash: i18n.format.currency(ctx.cash)
 			});
-		}
-	}
-
-	if (decision.title === 'City opening delayed') {
-		const cash = formatWorldCityOpeningCost(decision.context, i18n);
-		if (cash) {
+		case 'locationBlocked':
+			return i18n.t('copy.decisions.locationUnavailable.blockedContext', {
+				reason: i18n.t(`copy.decisions.locationUnavailable.reasons.${ctx.reason}` as never)
+			});
+		case 'locationGeneric':
+			return i18n.t('copy.decisions.locationUnavailable.genericContext');
+		case 'worldCityOpeningCost':
 			return i18n.t('copy.decisions.worldCity.openingDelayed.context', {
-				cash
+				cash: i18n.format.currency(ctx.cash)
 			});
-		}
+		case 'worldCityUnknown':
+			return i18n.t('copy.decisions.worldCity.cityUnavailable.context');
+		case 'worldCityNotAvailableYet':
+			// ctx.cityId is a stable WorldCityId enum; the requirement text is
+			// translated under a per-city key. Do NOT use city.unlockRequirement
+			// (that is a free-form English string, not a key).
+			return i18n.t('copy.decisions.worldCity.notAvailableYet.context', {
+				requirement: i18n.t(`game.worldCities.${ctx.cityId}.unlockRequirement` as never)
+			});
+		case 'industrialUnknownTile':
+			return i18n.t('copy.decisions.industrialConstructionDelayed.contexts.unknownTile');
+		case 'industrialUnknownBuilding':
+			return i18n.t('copy.decisions.industrialConstructionDelayed.contexts.unknownBuildingType');
+		case 'industrialLockedTile':
+			return i18n.t('copy.decisions.industrialConstructionDelayed.contexts.lockedTile');
+		case 'industrialOccupiedTile':
+			return i18n.t('copy.decisions.industrialConstructionDelayed.contexts.occupiedTile');
+		case 'industrialRequiresResource':
+			return i18n.t('copy.decisions.industrialConstructionDelayed.contexts.requiresResource', {
+				resource: i18n.labels.industryResource(ctx.resourceId)
+			});
+		case 'industrialRequiresIndustrialTile':
+			return i18n.t('copy.decisions.industrialConstructionDelayed.contexts.requiresIndustrialTile');
+		case 'industrialRequiresCash':
+			return i18n.t('copy.decisions.industrialConstructionDelayed.contexts.requiresCash', {
+				buildingName: i18n.labels.industrialBuilding(ctx.buildingTypeId),
+				cash: i18n.format.currency(ctx.cash)
+			});
 	}
-
-	return decision.context;
-}
-
-function localizeIndustrialConstructionContext(context: string, i18n: I18nBundle): string {
-	const directContexts: Record<string, string> = {
-		'Unknown industrial tile': 'copy.decisions.industrialConstructionDelayed.contexts.unknownTile',
-		'Unknown industrial building type':
-			'copy.decisions.industrialConstructionDelayed.contexts.unknownBuildingType',
-		'Locked industrial tile': 'copy.decisions.industrialConstructionDelayed.contexts.lockedTile',
-		'Occupied industrial tile':
-			'copy.decisions.industrialConstructionDelayed.contexts.occupiedTile',
-		'Requires industrial tile':
-			'copy.decisions.industrialConstructionDelayed.contexts.requiresIndustrialTile'
-	};
-	const directKey = directContexts[context];
-	if (directKey) {
-		return i18n.t(directKey as never);
-	}
-
-	const resourceMatch = context.match(/^Requires (.+)$/);
-	if (resourceMatch) {
-		const rawResource = resourceMatch[1] ?? context;
-		const resourceId = INDUSTRY_RESOURCE_ID_BY_RAW_LABEL.get(rawResource);
-		return i18n.t('copy.decisions.industrialConstructionDelayed.contexts.requiresResource', {
-			resource: resourceId ? i18n.labels.industryResource(resourceId) : rawResource
-		});
-	}
-
-	const cashMatch = context.match(/^(.+) requires ([\d,]+) cash\.$/);
-	if (cashMatch) {
-		const rawBuildingName = cashMatch[1] ?? '';
-		const buildingTypeId = INDUSTRIAL_BUILDING_ID_BY_NAME.get(rawBuildingName);
-		const cashAmount = Number((cashMatch[2] ?? '0').replaceAll(',', ''));
-		return i18n.t('copy.decisions.industrialConstructionDelayed.contexts.requiresCash', {
-			buildingName: buildingTypeId
-				? i18n.labels.industrialBuilding(buildingTypeId)
-				: rawBuildingName,
-			cash: i18n.format.currency(Number.isFinite(cashAmount) ? cashAmount : 0)
-		});
-	}
-
-	return context;
 }
 
 function localizeDecisionTitle(decision: DecisionItem, i18n: I18nBundle): string {
@@ -404,16 +337,16 @@ function localizeDecisionTitle(decision: DecisionItem, i18n: I18nBundle): string
 		case 'industrialConstructionDelayed':
 			return translateMessage(i18n, `copy.decisions.${family}.title`) ?? decision.title;
 		case 'worldCity':
-			if (decision.title === 'City unavailable') {
-				return i18n.t('copy.decisions.worldCity.cityUnavailable.title');
+			switch (decision.context.code) {
+				case 'worldCityUnknown':
+					return i18n.t('copy.decisions.worldCity.cityUnavailable.title');
+				case 'worldCityNotAvailableYet':
+					return i18n.t('copy.decisions.worldCity.notAvailableYet.title');
+				case 'worldCityOpeningCost':
+					return i18n.t('copy.decisions.worldCity.openingDelayed.title');
+				default:
+					return decision.title;
 			}
-			if (decision.title === 'City is not available yet') {
-				return i18n.t('copy.decisions.worldCity.notAvailableYet.title');
-			}
-			if (decision.title === 'City opening delayed') {
-				return i18n.t('copy.decisions.worldCity.openingDelayed.title');
-			}
-			return decision.title;
 		default:
 			return decision.title;
 	}
@@ -422,38 +355,21 @@ function localizeDecisionTitle(decision: DecisionItem, i18n: I18nBundle): string
 function localizeDecisionContext(decision: DecisionItem, i18n: I18nBundle): string {
 	const family = classifyDecision(decision);
 
-	switch (family) {
-		case 'cashPressure':
-		case 'expansionOpportunity':
-		case 'supplierTerms':
-			return translateMessage(i18n, `copy.decisions.${family}.context`) ?? decision.context;
-		case 'expansionUnavailable': {
-			const match = decision.context.match(/^This chain can operate up to (\d+) stores for now\.$/);
-			return match
-				? i18n.t('copy.decisions.expansionUnavailable.context', {
-						storeCap: match[1] ?? '0'
-					})
-				: decision.context;
-		}
-		case 'expansionCashBlocked': {
-			const match = decision.context.match(/^Opening another store requires ([\d,]+) cash\.$/);
-			if (!match) {
-				return decision.context;
-			}
-			const cashAmount = Number((match[1] ?? '0').replaceAll(',', ''));
-			return i18n.t('copy.decisions.expansionCashBlocked.context', {
-				cash: i18n.format.currency(Number.isFinite(cashAmount) ? cashAmount : 0)
-			});
-		}
-		case 'locationUnavailable':
-			return localizeLocationUnavailableContext(decision.context, i18n);
-		case 'industrialConstructionDelayed':
-			return localizeIndustrialConstructionContext(decision.context, i18n);
-		case 'worldCity':
-			return localizeWorldDecisionContext(decision, i18n);
-		default:
-			return decision.context;
+	// cashPressure, expansionOpportunity, and supplierTerms still carry
+	// free-form string contexts from events.ts (updated in Task 10). Use the
+	// family-based translation lookup for those.
+	if (
+		family === 'cashPressure' ||
+		family === 'expansionOpportunity' ||
+		family === 'supplierTerms'
+	) {
+		return (
+			translateMessage(i18n, `copy.decisions.${family}.context`) ??
+			(decision.context as unknown as string)
+		);
 	}
+
+	return localizeDecisionContextValue(decision.context, i18n);
 }
 
 function localizeDecisionOption(
@@ -592,18 +508,22 @@ export function localizeWorldCityStatus(
 	i18n: I18nBundle
 ): LocalizedWorldCityStatus {
 	const cityLabel = i18n.labels.worldCity(status.city.id);
-	let blockedReason = status.blockedReason;
+	let blockedReason: string | null = null;
 
-	if (status.blockedReason === status.city.unlockRequirement) {
-		blockedReason =
-			translateMessage(i18n, `game.worldCities.${status.city.id}.unlockRequirement`) ??
-			status.blockedReason;
-	} else if (status.blockedReason) {
-		const cash = formatWorldCityOpeningCost(status.blockedReason, i18n, status.city.openingCost);
-		if (cash) {
-			blockedReason = i18n.t('copy.worldCity.blockedOpeningCost', {
-				cash
-			});
+	if (status.blockedReason) {
+		switch (status.blockedReason.code) {
+			case 'worldCityOpeningCost':
+				blockedReason = i18n.t('copy.worldCity.blockedOpeningCost', {
+					cash: i18n.format.currency(status.blockedReason.cash)
+				});
+				break;
+			case 'worldCityNotAvailableYet':
+				blockedReason = i18n.t(
+					`game.worldCities.${status.blockedReason.cityId}.unlockRequirement` as never
+				);
+				break;
+			default:
+				blockedReason = null;
 		}
 	}
 
