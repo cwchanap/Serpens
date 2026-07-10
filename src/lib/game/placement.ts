@@ -230,7 +230,7 @@ function getAvailableTileOrThrow(city: City, tileId: string): CityTile {
 function toTilePlacementDecisionReason(
 	reason: StoreFootprintPlacementBlockReason
 ): TilePlacementBlockReason | null {
-	return reason === 'Occupied location' ? null : reason;
+	return reason === 'occupied' ? null : reason;
 }
 
 function placeStoreOnTile(store: Store, tile: CityTile): Store {

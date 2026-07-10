@@ -1,7 +1,7 @@
 import { createRng, randomInt } from './rng';
 import type { City, CityTile, CityTileFeature, NeighborhoodId, TerrainId } from './types';
 
-export type TilePlacementBlockReason = 'Locked location' | 'Road location' | 'River location';
+export type TilePlacementBlockReason = 'locked' | 'road' | 'river';
 
 export const DEFAULT_RETAIL_CITY_WIDTH = 56;
 export const DEFAULT_RETAIL_CITY_HEIGHT = 48;
@@ -20,9 +20,9 @@ const ROAD_DIVIDER_NARROW_ROW_FRACTIONS = [0.25, 0.5, 0.75];
 const RIVER_BEND_HEIGHT_FRACTION = 0.32;
 
 const TILE_PLACEMENT_BLOCK_DECISION_ID_PART: Record<TilePlacementBlockReason, string> = {
-	'Locked location': 'locked',
-	'Road location': 'road',
-	'River location': 'river'
+	locked: 'locked',
+	road: 'road',
+	river: 'river'
 };
 
 interface GenerateCityInput {
@@ -173,15 +173,15 @@ export function getTilesByNeighborhood(city: City, neighborhood: NeighborhoodId)
 
 export function getTilePlacementBlockReason(tile: CityTile): TilePlacementBlockReason | null {
 	if (tile.locked) {
-		return 'Locked location';
+		return 'locked';
 	}
 
 	if (tile.feature === 'road') {
-		return 'Road location';
+		return 'road';
 	}
 
 	if (tile.feature === 'river') {
-		return 'River location';
+		return 'river';
 	}
 
 	return null;

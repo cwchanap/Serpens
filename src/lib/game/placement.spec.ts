@@ -144,7 +144,7 @@ describe('tile placement', () => {
 				tileId: roadTile.id,
 				seed: 101
 			})
-		).toThrow(`Road location: ${roadTile.id}`);
+		).toThrow(`road: ${roadTile.id}`);
 	});
 
 	test('blocks founding a store on a river tile', () => {
@@ -165,7 +165,7 @@ describe('tile placement', () => {
 				tileId: riverTile.id,
 				seed: 101
 			})
-		).toThrow(`River location: ${riverTile.id}`);
+		).toThrow(`river: ${riverTile.id}`);
 	});
 
 	test('blocks expansion on road and river tiles', () => {
@@ -198,11 +198,11 @@ describe('tile placement', () => {
 
 		expect(roadResult.stores).toHaveLength(1);
 		expect(roadResult.decisions.at(-1)?.context).toBe(
-			'Road location blocks store placement. Choose another city tile.'
+			'road blocks store placement. Choose another city tile.'
 		);
 		expect(riverResult.stores).toHaveLength(1);
 		expect(riverResult.decisions.at(-1)?.context).toBe(
-			'River location blocks store placement. Choose another city tile.'
+			'river blocks store placement. Choose another city tile.'
 		);
 	});
 
@@ -247,10 +247,10 @@ describe('tile placement', () => {
 			'location-unavailable-river-1'
 		]);
 		expect(riverResult.decisions.map((decision) => decision.context)).toContain(
-			'Road location blocks store placement. Choose another city tile.'
+			'road blocks store placement. Choose another city tile.'
 		);
 		expect(riverResult.decisions.map((decision) => decision.context)).toContain(
-			'River location blocks store placement. Choose another city tile.'
+			'river blocks store placement. Choose another city tile.'
 		);
 	});
 
@@ -386,7 +386,7 @@ describe('tile placement', () => {
 				tileId: cornerTile.id,
 				seed: 202
 			})
-		).toThrow(`Locked location: ${cornerTile.id}`);
+		).toThrow(`locked: ${cornerTile.id}`);
 	});
 
 	test('openStoreAtTile maps an occupied footprint to a null tile-placement reason', () => {
