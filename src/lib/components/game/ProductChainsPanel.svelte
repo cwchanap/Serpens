@@ -10,7 +10,10 @@
 		buildProductChainTree,
 		buildStoreCategoryChainSummaries
 	} from '$lib/game/productChainTree';
-	import { localizeProductChainGraph } from '$lib/i18n/gameCopy';
+	import {
+		localizeProductChainCategorySummary,
+		localizeProductChainGraph
+	} from '$lib/i18n/gameCopy';
 	import type { I18nBundle } from '$lib/i18n';
 	import type { GameState } from '$lib/game/types';
 
@@ -32,7 +35,11 @@
 	let selectedCategoryId = $state<string | null>(null);
 	let nodeSelection = $state<NodeSelection>({ graphId: null, nodeId: null });
 
-	const summaries = $derived(buildStoreCategoryChainSummaries(game));
+	const summaries = $derived(
+		buildStoreCategoryChainSummaries(game).map((summary) =>
+			localizeProductChainCategorySummary(summary, i18n)
+		)
+	);
 	const defaultCategoryId = $derived(
 		game.stores.flatMap((store) => getSupportedStoreChainCategories(store))[0]?.id ?? null
 	);
