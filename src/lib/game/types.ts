@@ -1,3 +1,5 @@
+import type { DecisionContext } from './decisionContext';
+
 export type ArchetypeId = 'convenience' | 'boutique' | 'electronics' | 'grocery';
 export type PricingPosture = 'discount' | 'competitive' | 'standard' | 'premium';
 export type InventoryBuffer = 'lean' | 'balanced' | 'generous';
@@ -477,7 +479,7 @@ export interface DecisionOption {
 export interface DecisionItem {
 	id: string;
 	title: string;
-	context: string;
+	context: DecisionContext;
 	expiresOnDay: number;
 	options: DecisionOption[];
 }
