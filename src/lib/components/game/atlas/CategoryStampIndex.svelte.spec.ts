@@ -1,11 +1,13 @@
 import { page } from 'vitest/browser';
 import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
-import type { ProductChainCategorySummary } from '$lib/game/productChainGraph';
+import type { LocalizedProductChainCategorySummary } from '$lib/i18n/localizedTypes';
 import { createI18n } from '$lib/i18n';
 import CategoryStampIndex from './CategoryStampIndex.svelte';
 
-function summary(overrides: Partial<ProductChainCategorySummary>): ProductChainCategorySummary {
+function summary(
+	overrides: Partial<LocalizedProductChainCategorySummary>
+): LocalizedProductChainCategorySummary {
 	return {
 		categoryId: 'snacks',
 		name: 'Snacks',

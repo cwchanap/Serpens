@@ -1,9 +1,10 @@
 <script lang="ts">
 	import { chainNodeArt } from '$lib/assets/gameArt';
-	import { formatQuantity, type ProductChainNode } from '$lib/game/productChainGraph';
+	import { formatQuantity } from '$lib/game/productChainGraph';
+	import type { LocalizedProductChainNode } from '$lib/i18n/localizedTypes';
 
 	interface Props {
-		node: ProductChainNode;
+		node: LocalizedProductChainNode;
 		selected: boolean;
 		compact: boolean;
 		position: { x: number; y: number };

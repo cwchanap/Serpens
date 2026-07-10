@@ -20,12 +20,14 @@ import type { I18nBundle } from './index';
 import type {
 	LocalizedDecision,
 	LocalizedDecisionOption,
+	LocalizedProductChainGraph,
 	LocalizedWorldCityStatus
 } from './localizedTypes';
 
 export type {
 	LocalizedDecision,
 	LocalizedDecisionOption,
+	LocalizedProductChainGraph,
 	LocalizedWorldCityStatus
 } from './localizedTypes';
 
@@ -548,7 +550,7 @@ export function localizeWorldCityStatus(
 export function localizeProductChainGraph(
 	graph: ProductChainGraph,
 	i18n: I18nBundle
-): ProductChainGraph {
+): LocalizedProductChainGraph {
 	const localizedNodes = graph.nodes.map((node) => {
 		const label =
 			node.id === 'warehouse'

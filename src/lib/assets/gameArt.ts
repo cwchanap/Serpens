@@ -606,7 +606,9 @@ export interface ChainNodeArt {
 
 const WAREHOUSE_ART_PATH = INDUSTRIAL_BUILDING_ART.warehouse;
 
-export function chainNodeArt(node: ProductChainNode): ChainNodeArt {
+export function chainNodeArt(
+	node: Pick<ProductChainNode, 'kind' | 'materialId' | 'recipeId' | 'label'>
+): ChainNodeArt {
 	if (node.kind === 'material' && node.materialId) {
 		return {
 			src: INDUSTRY_MATERIAL_ART[node.materialId] ?? null,

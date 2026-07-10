@@ -1,8 +1,9 @@
 <script lang="ts">
-	import type { ProductChainEdge, ProductChainHealth } from '$lib/game/productChainGraph';
+	import type { ProductChainHealth } from '$lib/game/productChainGraph';
+	import type { LocalizedProductChainEdge } from '$lib/i18n/localizedTypes';
 
 	interface Props {
-		edge: ProductChainEdge;
+		edge: LocalizedProductChainEdge;
 		source: { x: number; y: number };
 		target: { x: number; y: number };
 		markerPrefix: string;

@@ -20,6 +20,7 @@ import {
 	recipeInputPerDay,
 	recipeOutputPerDay,
 	sortEdges,
+	type GraphWarning,
 	type ProductChainCategorySummary,
 	type ProductChainEdge,
 	type ProductChainGraph,
@@ -78,12 +79,12 @@ export function buildProductChainTree(input: {
 		report,
 		reachableRecipes
 	);
-	const warnings: string[] = [];
+	const warnings: GraphWarning[] = [];
 	const edges: ProductChainEdge[] = [];
 	const recipeCopies = new Map<ProductionRecipeId, ProductChainNode[]>();
 
 	if (!report) {
-		warnings.push('No daily report yet; latest-day flow is unavailable.');
+		warnings.push({ code: 'noDailyReport' });
 	}
 
 	const materialMetrics = (materialId: MaterialId) => {
@@ -155,11 +156,7 @@ export function buildProductChainTree(input: {
 			const producerRecipeId = MATERIAL_PRODUCER_RECIPES.get(inputMaterial.materialId);
 
 			if (!producerRecipeId) {
-				warnings.push(
-					`No production recipe found for ${
-						MATERIALS[inputMaterial.materialId]?.name ?? inputMaterial.materialId
-					}.`
-				);
+				warnings.push({ code: 'noProductionRecipe', materialId: inputMaterial.materialId });
 				continue;
 			}
 

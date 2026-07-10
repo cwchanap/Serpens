@@ -1,10 +1,10 @@
 <script lang="ts">
-	import type { ProductChainNode } from '$lib/game/productChainGraph';
+	import type { LocalizedProductChainNode } from '$lib/i18n/localizedTypes';
 	import type { I18nBundle } from '$lib/i18n';
 
 	interface Props {
 		i18n: I18nBundle;
-		node: ProductChainNode | null;
+		node: LocalizedProductChainNode | null;
 	}
 
 	let { i18n, node }: Props = $props();

@@ -1,13 +1,13 @@
 <script lang="ts">
 	import { SvelteMap } from 'svelte/reactivity';
-	import type { ProductChainGraph } from '$lib/game/productChainGraph';
+	import type { LocalizedProductChainGraph } from '$lib/i18n/localizedTypes';
 	import type { I18nBundle } from '$lib/i18n';
 	import ChainMap from './ChainMap.svelte';
 	import ChainNode from './ChainNode.svelte';
 	import ChainRoute from './ChainRoute.svelte';
 
 	interface Props {
-		graph: ProductChainGraph;
+		graph: LocalizedProductChainGraph;
 		i18n: I18nBundle;
 		selectedNodeId: string | null;
 		compact?: boolean;

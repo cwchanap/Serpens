@@ -1,11 +1,11 @@
 import { page } from 'vitest/browser';
 import { describe, expect, it } from 'vitest';
 import { render } from 'vitest-browser-svelte';
-import type { ProductChainNode } from '$lib/game/productChainGraph';
+import type { LocalizedProductChainNode } from '$lib/i18n/localizedTypes';
 import { createI18n } from '$lib/i18n';
 import NodeBroadside from './NodeBroadside.svelte';
 
-function shortageRecipeNode(): ProductChainNode {
+function shortageRecipeNode(): LocalizedProductChainNode {
 	return {
 		id: 'recipe:flour-milling',
 		kind: 'recipe',
@@ -63,7 +63,7 @@ describe('NodeBroadside', () => {
 
 	it('renders a shared producer note and omits the verdict when there is no bottleneck', async () => {
 		expect.assertions(3);
-		const node: ProductChainNode = {
+		const node: LocalizedProductChainNode = {
 			...shortageRecipeNode(),
 			id: 'recipe:shared-mill',
 			label: 'Shared Mill',

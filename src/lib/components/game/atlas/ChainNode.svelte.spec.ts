@@ -1,10 +1,12 @@
 import { page } from 'vitest/browser';
 import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
-import type { ProductChainNode } from '$lib/game/productChainGraph';
+import type { LocalizedProductChainNode } from '$lib/i18n/localizedTypes';
 import ChainNode from './ChainNode.svelte';
 
-function materialNode(overrides: Partial<ProductChainNode> = {}): ProductChainNode {
+function materialNode(
+	overrides: Partial<LocalizedProductChainNode> = {}
+): LocalizedProductChainNode {
 	return {
 		id: 'material:flour',
 		kind: 'material',

@@ -1,12 +1,12 @@
 <script lang="ts">
 	import { INDUSTRY_MATERIAL_ART } from '$lib/assets/gameArt';
-	import type { ProductChainCategorySummary } from '$lib/game/productChainGraph';
+	import type { LocalizedProductChainCategorySummary } from '$lib/i18n/localizedTypes';
 	import type { I18nBundle } from '$lib/i18n';
 	import type { MaterialId } from '$lib/game/types';
 
 	interface Props {
 		i18n: I18nBundle;
-		summaries: ProductChainCategorySummary[];
+		summaries: LocalizedProductChainCategorySummary[];
 		activeCategoryId: string | null;
 		mode: 'store-categories' | 'warehouse-flow';
 		onSelectCategory: (categoryId: string) => void;

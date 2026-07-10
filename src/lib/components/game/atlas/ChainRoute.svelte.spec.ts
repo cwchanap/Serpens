@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { render } from 'vitest-browser-svelte';
-import type { ProductChainEdge } from '$lib/game/productChainGraph';
+import type { LocalizedProductChainEdge } from '$lib/i18n/localizedTypes';
 import ChainRoute from './ChainRoute.svelte';
 
-function makeEdge(overrides: Partial<ProductChainEdge> = {}): ProductChainEdge {
+function makeEdge(overrides: Partial<LocalizedProductChainEdge> = {}): LocalizedProductChainEdge {
 	return {
 		id: 'material:flour->recipe:flour-milling',
 		source: 'material:flour',
@@ -17,7 +17,11 @@ function makeEdge(overrides: Partial<ProductChainEdge> = {}): ProductChainEdge {
 	};
 }
 
-function renderRoute(edge: ProductChainEdge, source = { x: 0, y: 0 }, target = { x: 200, y: 0 }) {
+function renderRoute(
+	edge: LocalizedProductChainEdge,
+	source = { x: 0, y: 0 },
+	target = { x: 200, y: 0 }
+) {
 	return render(ChainRoute, { props: { edge, source, target, markerPrefix: 'test' } });
 }
 

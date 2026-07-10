@@ -822,7 +822,7 @@ function nodeStub(overrides: Partial<ProductChainNode>): ProductChainNode {
 			unitsSold: 0,
 			demandMissed: 0
 		},
-		bottleneck: '',
+		bottleneck: { code: 'healthStatus', health: 'healthy', label: 'Stub' },
 		...overrides
 	};
 }
