@@ -1,5 +1,19 @@
 import { buildWarehouseFlowGraph } from '$lib/game/productChainGraph';
-import { createNewGame } from '$lib/game/state';
+import { createNewGame, getExpansionSetupCost } from '$lib/game/state';
+import { openStoreAtTile } from '$lib/game/placement';
+import { isTileBuildable } from '$lib/game/city';
+import {
+	createCityTileLookup,
+	getOccupiedStoreTileIds,
+	getStoreFootprintPlacementBlockReason
+} from '$lib/game/storeFootprint';
+import {
+	buildIndustrialBuilding,
+	getIndustrialPlacementBlockReason
+} from '$lib/game/industryPlacement';
+import { INDUSTRIAL_BUILDING_TYPES } from '$lib/game/industry';
+import { generateDecisions } from '$lib/game/events';
+import { getWorldCityDefinition, getWorldCityStatus, openWorldCity } from '$lib/game/world';
 import type { GameAlert } from '$lib/game/alerts';
 import type { DecisionItem, Store, MaterialId } from '$lib/game/types';
 import type { ProductChainGraph, ProductChainNode } from '$lib/game/productChainGraph';
@@ -21,7 +35,6 @@ import {
 	decisionContextExpansionOpportunity,
 	decisionContextSupplierTerms
 } from '$lib/game/decisionContext';
-import { getWorldCityStatus } from '$lib/game/world';
 import { describe, expect, it } from 'vitest';
 import { createI18n } from './index';
 import { messagesByLocale } from './messages';
@@ -813,5 +826,208 @@ describe('game copy builders', () => {
 		const customNamed = { name: 'My Shop' };
 		expect(storeDisplayName(customNamed, 3, english)).toBe('My Shop');
 		expect(storeDisplayName(customNamed, 3, japanese)).toBe('My Shop');
+	});
+
+	describe('real-builder golden-phrase guards', () => {
+		it('real expansion-cash-blocked decision localizes to the exact Japanese phrase', () => {
+			expect.assertions(3);
+			// Use a deterministic seed so the city layout and setup cost are reproducible.
+			const game = createNewGame('convenience', 1);
+			const city = game.cities.find((c) => c.id === game.activeCityId)!;
+			const lookup = createCityTileLookup(city);
+			const occupiedTileIds = getOccupiedStoreTileIds(city, game.stores, lookup);
+
+			// Find a real buildable tile whose 2x2 footprint is not occupied by the
+			// founding store — not a placeholder like 'valid-tile'.
+			const expansionTile = city.tiles.find(
+				(tile) =>
+					isTileBuildable(tile) &&
+					tile.id !== game.stores[0]!.tileId &&
+					getStoreFootprintPlacementBlockReason(lookup, tile, occupiedTileIds) === null
+			)!;
+			expect(expansionTile).toBeDefined();
+
+			// Set cash to 0 so the expansion is cash-blocked (setupCost > 0 for any
+			// buildable tile). storeCap (STARTER_STORE_CAP) is already > 1 store.
+			const cashBlockedGame = { ...game, cash: 0 };
+			const result = openStoreAtTile(cashBlockedGame, {
+				tileId: expansionTile.id,
+				archetypeId: 'convenience'
+			});
+			const decision = result.decisions.find((d) => d.context.code === 'expansionCashBlocked');
+			expect(decision).toBeDefined();
+
+			const japanese = createI18n('ja');
+			const setupCost = getExpansionSetupCost(expansionTile, 'convenience');
+			const localized = localizeDecision(decision!, japanese);
+			// Assert the EXACT expected Japanese phrase — computed from the locale
+			// catalog with the structured params, not a vacuous inequality.
+			expect(localized.context).toBe(
+				japanese.t('copy.decisions.expansionCashBlocked.context', {
+					cash: japanese.format.currency(setupCost)
+				})
+			);
+		});
+
+		it('real expansion-unavailable decision localizes to the exact Japanese phrase', () => {
+			expect.assertions(2);
+			const game = createNewGame('convenience', 1);
+			const city = game.cities.find((c) => c.id === game.activeCityId)!;
+			const lookup = createCityTileLookup(city);
+			const occupiedTileIds = getOccupiedStoreTileIds(city, game.stores, lookup);
+
+			// Find a real buildable tile whose footprint is free.
+			const expansionTile = city.tiles.find(
+				(tile) =>
+					isTileBuildable(tile) &&
+					tile.id !== game.stores[0]!.tileId &&
+					getStoreFootprintPlacementBlockReason(lookup, tile, occupiedTileIds) === null
+			)!;
+
+			// Cap stores at 1 (one founding store already exists) so the expansion
+			// is rejected for capacity, not cash. Keep cash high to avoid the
+			// cash-blocked branch.
+			const cappedGame = { ...game, storeCap: 1, cash: 1_000_000 };
+			const result = openStoreAtTile(cappedGame, {
+				tileId: expansionTile.id,
+				archetypeId: 'convenience'
+			});
+			const decision = result.decisions.find((d) => d.context.code === 'expansionUnavailable');
+			expect(decision).toBeDefined();
+
+			const japanese = createI18n('ja');
+			const localized = localizeDecision(decision!, japanese);
+			expect(localized.context).toBe(
+				japanese.t('copy.decisions.expansionUnavailable.context', { storeCap: 1 })
+			);
+		});
+
+		it('real location-blocked decision localizes to the exact Japanese phrase', () => {
+			expect.assertions(3);
+			const game = createNewGame('convenience', 1);
+			const city = game.cities.find((c) => c.id === game.activeCityId)!;
+
+			// Find a real non-buildable tile (locked, road, or river) so the
+			// placement emits a locationBlocked decision with a stable reason code.
+			const blockedTile = city.tiles.find((tile) => !isTileBuildable(tile))!;
+			expect(blockedTile).toBeDefined();
+
+			const result = openStoreAtTile(game, {
+				tileId: blockedTile.id,
+				archetypeId: 'convenience'
+			});
+			const decision = result.decisions.find((d) => d.context.code === 'locationBlocked');
+			expect(decision).toBeDefined();
+
+			const japanese = createI18n('ja');
+			const ctx = decision!.context as {
+				code: 'locationBlocked';
+				reason: 'locked' | 'road' | 'river';
+			};
+			const localized = localizeDecision(decision!, japanese);
+			expect(localized.context).toBe(
+				japanese.t('copy.decisions.locationUnavailable.blockedContext', {
+					reason: japanese.t(`copy.decisions.locationUnavailable.reasons.${ctx.reason}` as never)
+				})
+			);
+		});
+
+		it('real world-city-opening-cost decision localizes to the exact Japanese phrase', () => {
+			expect.assertions(2);
+			const game = createNewGame('convenience', 1);
+			const campusJunction = getWorldCityDefinition('campus-junction')!;
+
+			// Reveal campus-junction but keep cash below its openingCost (18_000)
+			// so openWorldCity emits the opening-cost decision.
+			const revealedGame = {
+				...game,
+				cash: campusJunction.openingCost - 1,
+				world: {
+					...game.world,
+					revealedCityIds: [...game.world.revealedCityIds, 'campus-junction'] as WorldCityId[]
+				}
+			};
+			const result = openWorldCity(revealedGame, 'campus-junction');
+			const decision = result.decisions.find((d) => d.context.code === 'worldCityOpeningCost');
+			expect(decision).toBeDefined();
+
+			const japanese = createI18n('ja');
+			const localized = localizeDecision(decision!, japanese);
+			expect(localized.context).toBe(
+				japanese.t('copy.decisions.worldCity.openingDelayed.context', {
+					cash: japanese.format.currency(campusJunction.openingCost)
+				})
+			);
+		});
+
+		it('real world-city-not-available-yet decision localizes to the exact Japanese phrase', () => {
+			expect.assertions(2);
+			const game = createNewGame('convenience', 1);
+
+			// garden-borough is not revealed by default, so opening it emits the
+			// not-available-yet decision carrying the city's stable id.
+			const result = openWorldCity(game, 'garden-borough');
+			const decision = result.decisions.find((d) => d.context.code === 'worldCityNotAvailableYet');
+			expect(decision).toBeDefined();
+
+			const japanese = createI18n('ja');
+			const localized = localizeDecision(decision!, japanese);
+			expect(localized.context).toBe(
+				japanese.t('copy.decisions.worldCity.notAvailableYet.context', {
+					requirement: japanese.t('game.worldCities.garden-borough.unlockRequirement' as never)
+				})
+			);
+		});
+
+		it('real industrial-requires-cash decision localizes to the exact Japanese phrase', () => {
+			expect.assertions(3);
+			const game = createNewGame('convenience', 1);
+			const industryCity = game.industryCities.find((c) => c.id === game.activeIndustryCityId)!;
+
+			// Find a real industrial tile whose 2x2 footprint is buildable for a
+			// warehouse (no resource requirement, requires industrial terrain).
+			const warehouseType = INDUSTRIAL_BUILDING_TYPES.warehouse!;
+			const buildableTile = industryCity.tiles.find(
+				(tile) =>
+					tile.terrain === 'industrial' &&
+					!tile.locked &&
+					getIndustrialPlacementBlockReason(game, tile.id, 'warehouse') === null
+			)!;
+			expect(buildableTile).toBeDefined();
+
+			// Set cash below the warehouse buildCost so the build emits the
+			// requires-cash decision.
+			const cashShortGame = { ...game, cash: warehouseType.buildCost - 1 };
+			const result = buildIndustrialBuilding(cashShortGame, {
+				tileId: buildableTile.id,
+				buildingTypeId: 'warehouse'
+			});
+			const decision = result.decisions.find((d) => d.context.code === 'industrialRequiresCash');
+			expect(decision).toBeDefined();
+
+			const japanese = createI18n('ja');
+			const localized = localizeDecision(decision!, japanese);
+			expect(localized.context).toBe(
+				japanese.t('copy.decisions.industrialConstructionDelayed.contexts.requiresCash', {
+					buildingName: japanese.labels.industrialBuilding('warehouse'),
+					cash: japanese.format.currency(warehouseType.buildCost)
+				})
+			);
+		});
+
+		it('real cash-pressure decision localizes to the exact Japanese phrase', () => {
+			expect.assertions(2);
+			const game = createNewGame('convenience', 1);
+
+			// generateDecisions emits a cash-pressure decision when cash < 0.
+			const negativeCashGame = { ...game, cash: -1 };
+			const decisions = generateDecisions(negativeCashGame);
+			const decision = decisions.find((d) => d.context.code === 'cashPressure');
+			expect(decision).toBeDefined();
+
+			const japanese = createI18n('ja');
+			const localized = localizeDecision(decision!, japanese);
+			expect(localized.context).toBe(japanese.t('copy.decisions.cashPressure.context'));
+		});
 	});
 });
