@@ -296,7 +296,7 @@ describe('buildProductChainTree', () => {
 		const tree = buildProductChainTree({ game, store: null, categoryId: 'apparel' });
 
 		expect(tree.nodes).toEqual([]);
-		expect(tree.emptyReason).toBe('No local production chain available for this category yet.');
+		expect(tree.emptyReason).toBe('noLocalChain');
 	});
 
 	it('marks missed finished demand as a shortage even without import movement', () => {
@@ -702,7 +702,7 @@ describe('buildProductChainTree defensive branches', () => {
 		const tree = buildProductChainTree({ game, store: null, categoryId: 'fake-finished' });
 
 		expect(tree.nodes).toEqual([]);
-		expect(tree.emptyReason).toBe('No local production chain available for this category yet.');
+		expect(tree.emptyReason).toBe('noLocalChain');
 		expect(tree.title).toBe('fake-finished');
 	});
 });

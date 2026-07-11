@@ -31,12 +31,13 @@ export interface LocalizedProductChainEdge extends Omit<ProductChainEdge, 'label
 
 export interface LocalizedProductChainGraph extends Omit<
 	ProductChainGraph,
-	'nodes' | 'edges' | 'warnings' | 'details'
+	'nodes' | 'edges' | 'warnings' | 'details' | 'emptyReason'
 > {
 	nodes: LocalizedProductChainNode[];
 	edges: LocalizedProductChainEdge[];
 	warnings: string[]; // localized
 	details: Record<string, LocalizedProductChainNode>;
+	emptyReason: string | null; // localized
 }
 
 export interface LocalizedProductChainCategorySummary extends Omit<

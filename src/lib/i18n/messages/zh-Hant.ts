@@ -377,6 +377,10 @@ export const zhHant = {
 		emptyNodes: '此鏈條沒有可用的圖節點。',
 		warnings: '{title}警告'
 	},
+	mapRenderer: {
+		cityMapUnavailable: '地圖渲染器無法使用。',
+		industryMapUnavailable: '工業地圖渲染器無法使用。'
+	},
 	atlas: {
 		categoryIndex: {
 			ariaLabel: '商品類別索引',

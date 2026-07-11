@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
 	import type { IndustryMapSnapshot } from '$lib/game/industryMapRender';
+	import type { I18nBundle } from '$lib/i18n';
 
 	interface Props {
 		snapshot: IndustryMapSnapshot;
@@ -12,9 +13,10 @@
 		 * menu or management panels are open. Rendering resumes when false.
 		 */
 		paused?: boolean;
+		i18n: I18nBundle;
 	}
 
-	let { snapshot, onTileSelected, active = true, paused = false }: Props = $props();
+	let { snapshot, onTileSelected, active = true, paused = false, i18n }: Props = $props();
 
 	let container: HTMLDivElement | undefined = $state();
 	let loadFailed = $state(false);
@@ -119,7 +121,7 @@
 <section class="map-shell" aria-label="Industry map">
 	<div class="map-canvas" bind:this={container}>
 		{#if loadFailed}
-			<p class="map-fallback">Industry map renderer unavailable.</p>
+			<p class="map-fallback">{i18n.t('mapRenderer.industryMapUnavailable')}</p>
 		{/if}
 	</div>
 </section>

@@ -53,11 +53,7 @@ export function buildProductChainTree(input: {
 	categoryId: string;
 }): ProductChainGraph {
 	if (!isSupportedFinishedMaterial(input.categoryId)) {
-		return emptyGraph(
-			`chain:${input.categoryId}`,
-			'Product chain',
-			'No local production chain available for this category yet.'
-		);
+		return emptyGraph(`chain:${input.categoryId}`, 'Product chain', 'noLocalChain');
 	}
 
 	const rootMaterialId = input.categoryId as MaterialId;
@@ -67,7 +63,7 @@ export function buildProductChainTree(input: {
 		return emptyGraph(
 			`chain:${rootMaterialId}`,
 			MATERIALS[rootMaterialId]?.name ?? rootMaterialId,
-			'No local production chain available for this category yet.'
+			'noLocalChain'
 		);
 	}
 
