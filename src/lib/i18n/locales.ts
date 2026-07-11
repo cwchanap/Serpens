@@ -31,6 +31,7 @@ function resolveLocaleCandidate(candidate: string): SupportedLocale | null {
 
 	if (
 		normalized === 'zh-hant' ||
+		normalized.startsWith('zh-hant-') ||
 		normalized === 'zh-tw' ||
 		normalized === 'zh-hk' ||
 		normalized === 'zh-mo'

@@ -102,7 +102,7 @@ describe('game copy builders', () => {
 		);
 		expect(
 			formatPlacementBlockReason({ code: 'industry.lockedUntilRetail' }, createI18n('zh-Hant'))
-		).not.toBe('Found a retail store to unlock construction.');
+		).not.toBe('Open a retail store to unlock construction.');
 	});
 
 	it('rebuilds known alerts and falls back for unknown ones', () => {

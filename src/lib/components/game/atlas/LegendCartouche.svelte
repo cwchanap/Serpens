@@ -4,7 +4,7 @@
 	let { i18n }: { i18n: I18nBundle } = $props();
 </script>
 
-<aside class="legend" aria-hidden="true">
+<aside class="legend">
 	<h4>{i18n.t('atlas.legend.title')}</h4>
 	<div class="row"><span class="line healthy"></span> {i18n.t('atlas.legend.healthy')}</div>
 	<div class="row"><span class="line shortage"></span> {i18n.t('atlas.legend.shortage')}</div>

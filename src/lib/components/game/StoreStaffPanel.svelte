@@ -62,7 +62,7 @@
 		});
 	}
 
-	function staffMetrics(member: StaffMember): string {
+	function staffMetrics(member: { role: StaffRole; skill: number; morale: number }): string {
 		return i18n.t('staffPanel.levelProgress.storeInline', {
 			role: roleLabel(member.role),
 			skill: i18n.format.integer(member.skill),
@@ -156,13 +156,7 @@
 				<article class="person-row">
 					<div>
 						<h5>{candidate.name}</h5>
-						<p>
-							{i18n.t('staffPanel.levelProgress.storeInline', {
-								role: roleLabel(candidate.role),
-								skill: i18n.format.integer(candidate.skill),
-								morale: i18n.format.integer(candidate.morale)
-							})}
-						</p>
+						<p>{staffMetrics(candidate)}</p>
 						<small>
 							{i18n.t('staffPanel.salaryPerMonth', {
 								salary: i18n.format.currency(candidate.monthlySalary)

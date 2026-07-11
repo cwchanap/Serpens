@@ -57,6 +57,7 @@ export const en = {
 		retail: {
 			buildArchetype: 'Build {name}',
 			setupRevenue: 'Setup {setup} | Revenue {revenue}/day',
+			rangeFormat: '{min}–{max}',
 			validTiles: {
 				one: '{count} valid tile',
 				other: '{count} valid tiles'
@@ -898,7 +899,7 @@ export const en = {
 			noValidTiles: 'No valid tiles'
 		},
 		industry: {
-			lockedUntilRetail: 'Found a retail store to unlock construction.',
+			lockedUntilRetail: 'Open a retail store to unlock construction.',
 			unknownBuildingType: 'Unknown industrial building type',
 			requiresCash: '{buildingName} requires {amount} cash.'
 		}

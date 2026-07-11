@@ -57,6 +57,7 @@ export const ja = {
 		retail: {
 			buildArchetype: '{name}を建設',
 			setupRevenue: '初期費用 {setup} | 売上見込み {revenue}/日',
+			rangeFormat: '{min}～{max}',
 			validTiles: {
 				one: '有効な立地 {count} 件',
 				other: '有効な立地 {count} 件'

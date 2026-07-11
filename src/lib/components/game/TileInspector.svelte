@@ -54,13 +54,13 @@
 	const canAffordUpgrade = $derived(store ? game.cash >= upgradeCost : false);
 	const storeCanUpgrade = $derived(store ? canUpgradeStore(store.level) : false);
 	const nextBenefit = $derived.by(() => {
-		if (!store || !storeCanUpgrade) return i18n.t('tileInspector.maxLevel' as never);
+		if (!store || !storeCanUpgrade) return i18n.t('tileInspector.maxLevel');
 		return isMilestoneLevel(store.level + 1)
-			? i18n.t('tileInspector.nextBenefit.unlockProductStaff' as never, {
+			? i18n.t('tileInspector.nextBenefit.unlockProductStaff', {
 					productNumber: i18n.format.integer(getUnlockedCategoryCount(store.level + 1)),
 					staffCapacity: i18n.format.integer(STORE_MILESTONE_CAPACITY_BONUS)
 				})
-			: i18n.t('tileInspector.nextBenefit.revenue' as never);
+			: i18n.t('tileInspector.nextBenefit.revenue');
 	});
 
 	const attentionMessage = $derived(store ? localizeStockTrouble(store.products, i18n) : null);

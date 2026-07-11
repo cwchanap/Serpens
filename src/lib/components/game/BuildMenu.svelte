@@ -94,7 +94,10 @@
 			return i18n.format.currency(range.min);
 		}
 
-		return `${i18n.format.currency(range.min)}-${i18n.format.currency(range.max)}`;
+		return i18n.t('buildMenu.retail.rangeFormat', {
+			min: i18n.format.currency(range.min),
+			max: i18n.format.currency(range.max)
+		});
 	}
 
 	function validTileLabel(validTileCount: number): string {

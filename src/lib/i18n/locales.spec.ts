@@ -28,10 +28,11 @@ describe('locale resolution', () => {
 	});
 
 	it('maps Traditional Chinese browser locales to zh-Hant', () => {
-		expect.assertions(3);
+		expect.assertions(4);
 		expect(resolveSupportedLocale({ navigatorLanguages: ['zh-TW'] })).toBe('zh-Hant');
 		expect(resolveSupportedLocale({ navigatorLanguages: ['zh-HK'] })).toBe('zh-Hant');
 		expect(resolveSupportedLocale({ navigatorLanguages: ['zh-MO'] })).toBe('zh-Hant');
+		expect(resolveSupportedLocale({ navigatorLanguages: ['zh-Hant-TW'] })).toBe('zh-Hant');
 	});
 
 	it('maps Japanese and English browser locales', () => {
