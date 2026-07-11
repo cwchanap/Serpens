@@ -58,7 +58,7 @@ export class SaveDataError extends Error {
  * {@link SAVE_SCHEMA_VERSION}. Keep this in sync with the migration table in
  * {@link migrateSaveStoreSnapshot} and {@link migrateSaveRecord}.
  */
-const MIGRATABLE_SCHEMA_VERSIONS = new Set<number>([4, 5, 6]);
+const MIGRATABLE_SCHEMA_VERSIONS = new Set<number>([4, 5, 6, 7]);
 
 function isMigratableSchemaVersion(version: unknown): version is number {
 	return typeof version === 'number' && MIGRATABLE_SCHEMA_VERSIONS.has(version);
@@ -206,8 +206,40 @@ function migrateV6SaveRecord(record: unknown): unknown {
 	const migratedGame = migrateV6Game(recordObject.game);
 	return {
 		...recordObject,
-		schemaVersion: SAVE_SCHEMA_VERSION,
+		schemaVersion: 7,
 		game: migratedGame
+	};
+}
+
+/**
+ * v7 → v8: save metadata replaced the English `activeCityName` string with a
+ * stable `activeCityId` so the save panel can localize the city name at render
+ * time. The ID is copied from the saved game state's `activeCityId` field.
+ */
+function migrateV7SaveRecord(record: unknown): unknown {
+	if (typeof record !== 'object' || record === null) return record;
+	const recordObject = record as Record<string, unknown>;
+	const metadata = recordObject.metadata;
+	const game = recordObject.game;
+
+	if (
+		typeof metadata !== 'object' ||
+		metadata === null ||
+		typeof game !== 'object' ||
+		game === null
+	) {
+		return { ...recordObject, schemaVersion: SAVE_SCHEMA_VERSION };
+	}
+
+	const metadataRecord = metadata as Record<string, unknown>;
+	const gameRecord = game as Record<string, unknown>;
+	const activeCityId =
+		typeof gameRecord.activeCityId === 'string' ? gameRecord.activeCityId : 'harbor-city';
+
+	return {
+		...recordObject,
+		schemaVersion: SAVE_SCHEMA_VERSION,
+		metadata: { ...metadataRecord, activeCityId }
 	};
 }
 
@@ -262,6 +294,9 @@ function migrateSaveRecord(value: unknown): unknown {
 	}
 	if (migrated.schemaVersion === 6) {
 		migrated = migrateV6SaveRecord(migrated) as Record<string, unknown>;
+	}
+	if (migrated.schemaVersion === 7) {
+		migrated = migrateV7SaveRecord(migrated) as Record<string, unknown>;
 	}
 
 	return migrated;
@@ -341,7 +376,6 @@ export function createSaveRecord(
 	input: { id: string; name: string; kind: SaveSlotKind; updatedAt: Date }
 ): SaveRecord {
 	const updatedAt = input.updatedAt.toISOString();
-	const activeCity = game.cities.find((city) => city.id === game.activeCityId);
 
 	return {
 		schemaVersion: SAVE_SCHEMA_VERSION,
@@ -353,7 +387,7 @@ export function createSaveRecord(
 			day: game.day,
 			cash: game.cash,
 			storeCount: game.stores.length,
-			activeCityName: activeCity?.name ?? 'No active city'
+			activeCityId: game.activeCityId
 		},
 		game
 	};
@@ -444,7 +478,7 @@ export function validateSaveRecord(value: unknown): SaveRecord {
 	requireNumber(metadata.day, 'Save metadata day');
 	requireNumber(metadata.cash, 'Save metadata cash');
 	requireNumber(metadata.storeCount, 'Save metadata storeCount');
-	requireString(metadata.activeCityName, 'Save metadata activeCityName');
+	requireString(metadata.activeCityId, 'Save metadata activeCityId');
 
 	return {
 		...(migrated as SaveRecord),

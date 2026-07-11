@@ -22,7 +22,7 @@ describe('ProductChainsPanel', () => {
 		await expect.element(page.getByTestId('category-stamp-bottled-water')).toBeVisible();
 		await expect.element(page.getByRole('button', { name: 'Warehouse flow' })).toBeVisible();
 		await expect.element(page.getByTestId('product-chain-graph-chain:bottled-water')).toBeVisible();
-		expect(document.querySelector('.chain-title')?.textContent).toBe('Bottled Water');
+		expect(document.querySelector('.chain-title')?.textContent).toBe('Bottled Water chain');
 	});
 
 	it('toggles from store category chains to warehouse flow', async () => {

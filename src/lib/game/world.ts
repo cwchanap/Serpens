@@ -243,9 +243,22 @@ function appendDecision(game: GameState, decision: DecisionItem): GameState {
 	};
 }
 
-function worldDecision(game: GameState, title: string, context: DecisionContext): DecisionItem {
+function worldDecision(
+	game: GameState,
+	title: string,
+	context: DecisionContext,
+	cityId?: string
+): DecisionItem {
+	const parts = ['world-city', toDecisionIdPart(title), toDecisionIdPart(context.code)];
+
+	if (cityId) {
+		parts.push(toDecisionIdPart(cityId));
+	}
+
+	parts.push(String(game.day));
+
 	return {
-		id: ['world-city', toDecisionIdPart(title), toDecisionIdPart(context.code), game.day].join('-'),
+		id: parts.join('-'),
 		title,
 		context,
 		expiresOnDay: game.day + 1,
@@ -335,7 +348,8 @@ export function openWorldCity(game: GameState, cityId: string): GameState {
 			worldDecision(
 				game,
 				'City is not available yet',
-				decisionContextWorldCityNotAvailableYet(city.id)
+				decisionContextWorldCityNotAvailableYet(city.id),
+				city.id
 			)
 		);
 	}
@@ -346,7 +360,8 @@ export function openWorldCity(game: GameState, cityId: string): GameState {
 			worldDecision(
 				game,
 				'City opening delayed',
-				decisionContextWorldCityOpeningCost(city.openingCost)
+				decisionContextWorldCityOpeningCost(city.openingCost),
+				city.id
 			)
 		);
 	}

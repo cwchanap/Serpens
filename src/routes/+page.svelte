@@ -65,7 +65,12 @@
 		type PlacementBlockReason
 	} from '$lib/game/placementPreview';
 	import { formatPlacementBlockReason } from '$lib/i18n/gameCopy';
-	import { createI18n, readLocalePreference, saveLocalePreference } from '$lib/i18n/index';
+	import {
+		createI18n,
+		readLocalePreference,
+		saveLocalePreference,
+		type StorageLike
+	} from '$lib/i18n/index';
 	import type { SupportedLocale } from '$lib/i18n/locales';
 	import { summarizeReports } from '$lib/game/reports';
 	import {
@@ -108,6 +113,21 @@
 		id: ManagementPanelId;
 		label: string;
 		shortcut: string;
+	}
+
+	/**
+	 * Returns `globalThis.localStorage` when accessible, or `null` when the
+	 * browser blocks storage access (e.g. privacy-restricted origins, sandboxed
+	 * iframes). Accessing the property itself can throw, so the try/catch must
+	 * wrap the property access — not just the `getItem`/`setItem` calls that
+	 * `readLocalePreference` / `saveLocalePreference` already guard internally.
+	 */
+	function safeLocalStorage(): StorageLike | null {
+		try {
+			return globalThis.localStorage;
+		} catch {
+			return null;
+		}
 	}
 
 	const managementPanelMenuConfig: Array<{ id: ManagementPanelId; shortcut: string }> = [
@@ -189,7 +209,7 @@
 	let retailPlacementArchetypeId = $state<ArchetypeId | null>(null);
 	let industryPlacementBuildingTypeId = $state<IndustrialBuildingTypeId | null>(null);
 	let activeLocale = $state<SupportedLocale>(
-		readLocalePreference(globalThis.localStorage, globalThis.navigator.languages)
+		readLocalePreference(safeLocalStorage(), globalThis.navigator.languages)
 	);
 	let i18n = $derived(createI18n(activeLocale));
 	let placementFeedback = $state<PlacementBlockReason | null>(null);
@@ -403,7 +423,7 @@
 	});
 
 	function changeLocale(locale: SupportedLocale): void {
-		activeLocale = saveLocalePreference(locale, globalThis.localStorage);
+		activeLocale = saveLocalePreference(locale, safeLocalStorage());
 	}
 
 	function selectTile(tileId: string) {

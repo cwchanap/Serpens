@@ -64,7 +64,7 @@
 	function formatManualSlotDetails(slot: SaveSlotMetadata): string {
 		return i18n.t('savePanel.manualSlotDetails' as never, {
 			day: i18n.format.integer(slot.day),
-			city: slot.activeCityName,
+			city: i18n.labels.worldCity(slot.activeCityId).name,
 			storeCount: formatStoreCount(slot.storeCount),
 			updatedAt: formatUpdatedAt(slot.updatedAt)
 		});

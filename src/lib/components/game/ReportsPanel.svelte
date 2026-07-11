@@ -53,7 +53,7 @@
 
 		{#if summary.latest.warnings.length}
 			<ul class="warnings" aria-label={i18n.t('reportsPanel.dailyWarnings')}>
-				{#each summary.latest.warnings as warning (warning.code)}
+				{#each summary.latest.warnings as warning, i (`${warning.code}-${i}`)}
 					<li>{localizeReportWarning(warning, stores, i18n)}</li>
 				{/each}
 			</ul>

@@ -340,7 +340,7 @@ describe('save records', () => {
 		expect(record.metadata.day).toBe(3);
 		expect(record.metadata.cash).toBe(12500);
 		expect(record.metadata.storeCount).toBe(1);
-		expect(record.metadata.activeCityName).toBe('Harbor City');
+		expect(record.metadata.activeCityId).toBe('harbor-city');
 	});
 
 	test('rejects unsupported snapshot schema versions', () => {

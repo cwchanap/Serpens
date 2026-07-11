@@ -316,6 +316,17 @@ describe('TileInspector empty tile details', () => {
 			.not.toBeInTheDocument();
 		await expect.element(page.getByText('River location')).not.toBeInTheDocument();
 	});
+
+	it('localizes road and river feature labels in Japanese', async () => {
+		expect.assertions(2);
+		const japanese = createI18n('ja');
+		const roadTile: CityTile = { ...tile, feature: 'road' };
+
+		renderInspector({ tile: roadTile, i18n: japanese });
+
+		await expect.element(page.getByText('道路', { exact: true })).toBeVisible();
+		await expect.element(page.getByText('Road', { exact: true })).not.toBeInTheDocument();
+	});
 });
 
 describe('TileInspector null tile', () => {

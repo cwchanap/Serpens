@@ -249,6 +249,72 @@ describe('game copy builders', () => {
 		);
 	});
 
+	it('labels recipe nodes with the building name, not the output material', () => {
+		expect.assertions(2);
+		const english = createI18n('en');
+		const recipeNode: ProductChainNode = {
+			id: 'recipe:flour-milling',
+			kind: 'recipe',
+			label: 'Flour Mill',
+			subLabel: 'Flour',
+			materialId: 'flour',
+			recipeId: 'flour-milling',
+			stage: 'intermediate',
+			layer: 0,
+			row: 0,
+			health: 'healthy',
+			healthLabel: 'Healthy',
+			warehouseStock: 0,
+			capacity: { buildingCount: 1, outputPerDay: 10, inputPerDay: 10 },
+			actual: {
+				produced: 0,
+				consumed: 0,
+				importedInput: 0,
+				warehousePulled: 0,
+				shopImported: 0,
+				unitsSold: 0,
+				demandMissed: 0
+			},
+			bottleneck: { code: 'healthStatus', health: 'healthy', label: 'Flour Mill' }
+		};
+		const graph: ProductChainGraph = {
+			id: 'chain:snacks',
+			title: 'Snacks chain',
+			nodes: [recipeNode],
+			edges: [],
+			details: { 'recipe:flour-milling': recipeNode },
+			warnings: [],
+			emptyReason: null
+		};
+
+		const localized = localizeProductChainGraph(graph, english);
+
+		expect(localized.nodes[0]?.label).toBe(english.labels.industrialBuilding('flour-mill'));
+		expect(localized.nodes[0]?.label).not.toBe(english.labels.material('flour'));
+	});
+
+	it('preserves the chain suffix in localized product-chain graph titles', () => {
+		expect.assertions(3);
+		const english = createI18n('en');
+		const japanese = createI18n('ja');
+		const graph: ProductChainGraph = {
+			id: 'chain:snacks',
+			title: 'Snacks chain',
+			nodes: [],
+			edges: [],
+			details: {},
+			warnings: [],
+			emptyReason: null
+		};
+
+		const enLocalized = localizeProductChainGraph(graph, english);
+		const jaLocalized = localizeProductChainGraph(graph, japanese);
+
+		expect(enLocalized.title).toBe(`${english.labels.material('snacks')} chain`);
+		expect(enLocalized.title).not.toBe(english.labels.material('snacks'));
+		expect(jaLocalized.title).toBe(`${japanese.labels.material('snacks')}チェーン`);
+	});
+
 	it('localizes known generated report warnings while preserving fallback text', () => {
 		expect.assertions(3);
 		const japanese = createI18n('ja');

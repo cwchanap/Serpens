@@ -195,6 +195,19 @@ describe('world progression and city opening', () => {
 		expect(unknown.decisions.at(-1)?.context).toEqual({ code: 'worldCityUnknown' });
 	});
 
+	test('two unrevealed cities on the same day produce distinct decisions', () => {
+		expect.assertions(2);
+		const game = createNewGame('convenience', 20260530);
+		const result1 = openWorldCity(game, 'campus-junction');
+		const result2 = openWorldCity(result1, 'garden-borough');
+
+		const decision1 = result1.decisions.at(-1);
+		const decision2 = result2.decisions.at(-1);
+
+		expect(decision1?.id).not.toBe(decision2?.id);
+		expect(result2.decisions.filter((d) => d.id === decision1?.id)).toHaveLength(1);
+	});
+
 	test('openWorldCity with insufficient cash emits structured openingCost context', () => {
 		expect.assertions(2);
 		const base = createNewGame('convenience', 20260530);
