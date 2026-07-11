@@ -46,10 +46,15 @@ import {
 	type SaveSummary
 } from './saveTypes';
 
+export type SaveDataErrorCode = 'corrupt' | 'storage-unavailable' | 'slot-not-found';
+
 export class SaveDataError extends Error {
-	constructor(message: string) {
+	readonly code: SaveDataErrorCode;
+
+	constructor(message: string, code: SaveDataErrorCode = 'corrupt') {
 		super(message);
 		this.name = 'SaveDataError';
+		this.code = code;
 	}
 }
 
