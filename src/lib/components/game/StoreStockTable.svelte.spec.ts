@@ -12,7 +12,7 @@ const store: Store = {
 	level: 1,
 	name: 'Founding Store',
 	archetypeId: 'convenience',
-	location: 'Downtown (1, 1)',
+	location: { neighborhoodId: 'downtown', x: 1, y: 1 },
 	cityId: 'harbor-city',
 	tileId: 'harbor-city-1-1',
 	mapX: 1,

@@ -474,7 +474,7 @@ describe('industry placement preview', () => {
 			})
 		).toEqual({
 			code: 'industry.rawPlacementBlocked',
-			message: decisionContextIndustrialRequiresResource('grain-field')
+			context: decisionContextIndustrialRequiresResource('grain-field')
 		});
 	});
 
@@ -506,7 +506,7 @@ describe('industry placement preview', () => {
 			})
 		).toEqual({
 			code: 'industry.rawPlacementBlocked',
-			message: decisionContextIndustrialLockedTile()
+			context: decisionContextIndustrialLockedTile()
 		});
 		expect(
 			getIndustryBuildPlacementBlockReason({
@@ -547,7 +547,7 @@ describe('industry placement preview', () => {
 			})
 		).toEqual({
 			code: 'industry.rawPlacementBlocked',
-			message: decisionContextIndustrialRequiresIndustrialTile()
+			context: decisionContextIndustrialRequiresIndustrialTile()
 		});
 		expect(
 			getIndustryBuildPlacementBlockReason({
@@ -712,7 +712,7 @@ describe('resolveSelectionAnchorTileId', () => {
 			level: 1,
 			name: 'Test Store',
 			archetypeId: 'boutique',
-			location: 'Founding location (1, 1)',
+			location: { neighborhoodId: 'downtown', x: 1, y: 1 },
 			cityId: city.id,
 			tileId: anchor.id,
 			mapX: anchor.x,
@@ -742,7 +742,7 @@ describe('resolveSelectionAnchorTileId', () => {
 			level: 1,
 			name: 'Test Store',
 			archetypeId: 'boutique',
-			location: 'Founding location (1, 1)',
+			location: { neighborhoodId: 'downtown', x: 1, y: 1 },
 			cityId: city.id,
 			tileId: anchor.id,
 			mapX: anchor.x,
@@ -772,7 +772,7 @@ describe('resolveSelectionAnchorTileId', () => {
 			level: 1,
 			name: 'Test Store',
 			archetypeId: 'boutique',
-			location: 'Founding location (1, 1)',
+			location: { neighborhoodId: 'downtown', x: 1, y: 1 },
 			cityId: 'other-city',
 			tileId: anchor.id,
 			mapX: anchor.x,

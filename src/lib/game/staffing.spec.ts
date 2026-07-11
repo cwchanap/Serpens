@@ -424,7 +424,7 @@ function createStore(input: {
 		level: 1,
 		name: input.id,
 		archetypeId: input.archetypeId,
-		location: 'Test location',
+		location: { neighborhoodId: 'downtown', x: 0, y: 0 },
 		cityId: 'city-1',
 		tileId: `${input.id}-tile`,
 		mapX: 0,

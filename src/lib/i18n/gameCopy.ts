@@ -16,7 +16,8 @@ import type {
 	GameState,
 	DecisionItem,
 	DecisionOption,
-	Store
+	Store,
+	StoreLocation
 } from '$lib/game/types';
 import type { DecisionContext } from '$lib/game/decisionContext';
 import type { WorldCityStatus } from '$lib/game/world';
@@ -51,6 +52,14 @@ export function storeDisplayName(
 	i18n: I18nBundle
 ): string {
 	return store.name || i18n.t('store.defaultName', { ordinal });
+}
+
+export function formatStoreLocation(location: StoreLocation, i18n: I18nBundle): string {
+	return i18n.t('store.location', {
+		neighborhood: i18n.labels.neighborhood(location.neighborhoodId),
+		x: location.x,
+		y: location.y
+	});
 }
 
 export function formatPlacementBlockReason(
@@ -90,7 +99,7 @@ export function formatPlacementBlockReason(
 				amount: i18n.format.currency(reason.amount)
 			});
 		case 'industry.rawPlacementBlocked':
-			return localizeDecisionContextValue(reason.message, i18n);
+			return localizeDecisionContextValue(reason.context, i18n);
 	}
 }
 

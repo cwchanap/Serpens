@@ -275,7 +275,8 @@ export const ja = {
 		}
 	},
 	store: {
-		defaultName: '店舗 #{ordinal}'
+		defaultName: '店舗 #{ordinal}',
+		location: '{neighborhood} ({x}, {y})'
 	},
 	storeOverview: {
 		title: '店舗',

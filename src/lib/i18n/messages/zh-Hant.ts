@@ -275,7 +275,8 @@ export const zhHant = {
 		}
 	},
 	store: {
-		defaultName: '店鋪 #{ordinal}'
+		defaultName: '店鋪 #{ordinal}',
+		location: '{neighborhood} ({x}, {y})'
 	},
 	storeOverview: {
 		title: '店鋪',

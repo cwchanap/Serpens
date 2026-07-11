@@ -59,7 +59,7 @@ export type PlacementBlockReason =
 	| { code: 'industry.lockedUntilRetail' }
 	| { code: 'industry.unknownBuildingType' }
 	| { code: 'industry.requiresCash'; buildingTypeId: IndustrialBuildingTypeId; amount: number }
-	| { code: 'industry.rawPlacementBlocked'; message: DecisionContext };
+	| { code: 'industry.rawPlacementBlocked'; context: DecisionContext };
 
 interface RetailPlacementInput {
 	game: GameState | null;
@@ -349,7 +349,7 @@ export function getIndustryBuildPlacementBlockReason(
 		: getIndustrialPlacementBlockReason(input.game, input.tileId, input.buildingTypeId);
 
 	if (placementReason) {
-		return { code: 'industry.rawPlacementBlocked', message: placementReason };
+		return { code: 'industry.rawPlacementBlocked', context: placementReason };
 	}
 
 	const buildingType = INDUSTRIAL_BUILDING_TYPES[input.buildingTypeId];

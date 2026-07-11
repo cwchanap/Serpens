@@ -387,7 +387,7 @@ describe('daily simulation', () => {
 			tileId: secondTile.id,
 			mapX: secondTile.x,
 			mapY: secondTile.y,
-			location: 'Second City'
+			location: { neighborhoodId: 'downtown' as const, x: 0, y: 0 }
 		};
 		const result = simulateDay({
 			...game,
