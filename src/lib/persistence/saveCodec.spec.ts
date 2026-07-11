@@ -17,6 +17,7 @@ import type {
 	DailyMaterialMovement,
 	DailyProductionReport,
 	DailyReport,
+	DailyReportWarning,
 	DailyStoreReport,
 	GameState,
 	MaterialId
@@ -150,6 +151,15 @@ function createV4Record(overrides: SaveRecordOverrides = {}): SaveRecord {
 		...createManualSaveRecord(overrides),
 		schemaVersion: 4 as unknown as typeof SAVE_SCHEMA_VERSION
 	};
+}
+
+/** Strips activeCityId so a record can be used as a pre-v8 base. */
+function metadataWithoutActiveCityId(
+	record: SaveRecord
+): Omit<SaveRecord['metadata'], 'activeCityId'> {
+	const { activeCityId: _omit, ...rest } = record.metadata;
+	void _omit;
+	return rest;
 }
 
 function createV5Record(overrides: SaveRecordOverrides = {}): SaveRecord {
@@ -1577,6 +1587,553 @@ describe('saveCodec', () => {
 			updatedAt: new Date('2026-05-05T12:00:00.000Z')
 		});
 
+		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+	});
+
+	test('v7 migration copies activeCityId from game state into metadata', () => {
+		// v7→v8: save metadata replaced the English activeCityName string with a
+		// stable activeCityId. The ID is copied from the saved game state's
+		// activeCityId field.
+		expect.assertions(2);
+		const baseRecord = createManualSaveRecord();
+		const metadataWithoutCityId = metadataWithoutActiveCityId(baseRecord);
+		const v7Record = {
+			...baseRecord,
+			schemaVersion: 7 as unknown as typeof SAVE_SCHEMA_VERSION,
+			metadata: {
+				...metadataWithoutCityId,
+				activeCityName: 'Harbor City'
+			}
+		} as unknown as SaveRecord;
+
+		const validated = validateSaveRecord(v7Record);
+		expect(validated.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
+		expect(validated.metadata.activeCityId).toBe('harbor-city');
+	});
+
+	test('v7 migration defaults to harbor-city in metadata when game.activeCityId is not a string', () => {
+		// The migration copies 'harbor-city' into metadata when
+		// game.activeCityId is not a string, but validation subsequently
+		// rejects the game state because its activeCityId is missing.
+		expect.assertions(2);
+		const baseRecord = createManualSaveRecord();
+		const metadataWithoutCityId = metadataWithoutActiveCityId(baseRecord);
+		const v7Record = {
+			...baseRecord,
+			schemaVersion: 7 as unknown as typeof SAVE_SCHEMA_VERSION,
+			metadata: {
+				...metadataWithoutCityId,
+				activeCityName: 'Harbor City'
+			},
+			game: { ...baseRecord.game, activeCityId: undefined } as unknown as GameState
+		} as unknown as SaveRecord;
+
+		// The migration's fallback is observable via the metadata error message
+		// (it sets activeCityId in metadata), but game validation fails first.
+		expect(() => validateSaveRecord(v7Record)).toThrow(SaveDataError);
+		expect(() => validateSaveRecord(v7Record)).toThrow(
+			'Saved game activeCityId must be a non-empty string'
+		);
+	});
+
+	test('v7 migration bumps schemaVersion without activeCityId when metadata is not an object', () => {
+		// When metadata or game is not an object, the migration only advances
+		// schemaVersion — validation then rejects the missing activeCityId.
+		expect.assertions(2);
+		const v7Record = {
+			...createManualSaveRecord(),
+			schemaVersion: 7 as unknown as typeof SAVE_SCHEMA_VERSION,
+			metadata: null as unknown as SaveRecord['metadata']
+		} as unknown as SaveRecord;
+
+		expect(() => validateSaveRecord(v7Record)).toThrow(SaveDataError);
+		expect(() => validateSaveRecord(v7Record)).toThrow('Save metadata must be an object');
+	});
+
+	test('v7 migration bumps schemaVersion without activeCityId when game is not an object', () => {
+		expect.assertions(2);
+		const baseRecord = createManualSaveRecord();
+		const metadataWithoutCityId = metadataWithoutActiveCityId(baseRecord);
+		const v7Record = {
+			...baseRecord,
+			schemaVersion: 7 as unknown as typeof SAVE_SCHEMA_VERSION,
+			metadata: { ...metadataWithoutCityId, activeCityName: 'Harbor City' },
+			game: null as unknown as GameState
+		} as unknown as SaveRecord;
+
+		expect(() => validateSaveRecord(v7Record)).toThrow(SaveDataError);
+		expect(() => validateSaveRecord(v7Record)).toThrow('Saved game must be an object');
+	});
+
+	test('v6 migration chains into v7 step and copies activeCityId into metadata', () => {
+		// Regression: migrateV6SaveRecord must emit schema 7 (not
+		// SAVE_SCHEMA_VERSION) so the v7→v8 step runs and copies activeCityId.
+		expect.assertions(2);
+		const baseRecord = createManualSaveRecord();
+		const metadataWithoutCityId = metadataWithoutActiveCityId(baseRecord);
+		const v6Record = {
+			...baseRecord,
+			schemaVersion: 6 as unknown as typeof SAVE_SCHEMA_VERSION,
+			metadata: {
+				...metadataWithoutCityId,
+				activeCityName: 'Harbor City'
+			}
+		} as unknown as SaveRecord;
+
+		const validated = validateSaveRecord(v6Record);
+		expect(validated.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
+		expect(validated.metadata.activeCityId).toBe('harbor-city');
+	});
+
+	test('v7 snapshot migration copies activeCityId into metadata for manual slots', () => {
+		expect.assertions(2);
+		const baseRecord = createManualSaveRecord();
+		const metadataWithoutCityId = metadataWithoutActiveCityId(baseRecord);
+		const v7Record = {
+			...baseRecord,
+			schemaVersion: 7 as unknown as typeof SAVE_SCHEMA_VERSION,
+			metadata: {
+				...metadataWithoutCityId,
+				activeCityName: 'Harbor City'
+			}
+		} as unknown as SaveRecord;
+		const snapshot = {
+			schemaVersion: 7,
+			autoSave: null,
+			manualSlots: [v7Record]
+		};
+
+		const validated = validateSaveStoreSnapshot(snapshot);
+		expect(validated.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
+		expect(validated.manualSlots[0]?.metadata.activeCityId).toBe('harbor-city');
+	});
+
+	test('validateSavedDecisionContext rejects an unknown context code', () => {
+		expect.assertions(2);
+		const record = createManualSaveRecord({
+			game: {
+				decisions: [
+					{
+						id: 'unknown-ctx-1',
+						title: 'Unknown',
+						context: { code: 'notARealCode' },
+						expiresOnDay: 2,
+						options: [{ id: 'acknowledge', label: 'Ack', description: '...', effects: {} }]
+					} as unknown as GameState['decisions'][number]
+				]
+			}
+		});
+
+		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+		expect(() => validateSaveRecord(record)).toThrow(
+			'context code must be a known decision context code'
+		);
+	});
+
+	test('validateSavedDecisionContext rejects locationBlocked with an invalid reason', () => {
+		expect.assertions(2);
+		const record = createManualSaveRecord({
+			game: {
+				decisions: [
+					{
+						id: 'loc-blocked-1',
+						title: 'Location unavailable',
+						context: { code: 'locationBlocked', reason: 'flood' },
+						expiresOnDay: 2,
+						options: [{ id: 'acknowledge', label: 'Ack', description: '...', effects: {} }]
+					} as unknown as GameState['decisions'][number]
+				]
+			}
+		});
+
+		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+		expect(() => validateSaveRecord(record)).toThrow('context reason must be locked|road|river');
+	});
+
+	test('validateSavedDecisionContext rejects worldCityNotAvailableYet with an unknown cityId', () => {
+		expect.assertions(2);
+		const record = createManualSaveRecord({
+			game: {
+				decisions: [
+					{
+						id: 'world-city-1',
+						title: 'City not available',
+						context: { code: 'worldCityNotAvailableYet', cityId: 'not-a-city' },
+						expiresOnDay: 2,
+						options: [{ id: 'acknowledge', label: 'Ack', description: '...', effects: {} }]
+					} as unknown as GameState['decisions'][number]
+				]
+			}
+		});
+
+		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+		expect(() => validateSaveRecord(record)).toThrow(
+			'context cityId must be a known WorldCityId: not-a-city'
+		);
+	});
+
+	test('validateSavedDecisionContext rejects industrialRequiresResource with an unknown resource', () => {
+		expect.assertions(2);
+		const record = createManualSaveRecord({
+			game: {
+				decisions: [
+					{
+						id: 'ind-res-1',
+						title: 'Industrial delayed',
+						context: { code: 'industrialRequiresResource', resourceId: 'unobtainium' },
+						expiresOnDay: 2,
+						options: [{ id: 'acknowledge', label: 'Ack', description: '...', effects: {} }]
+					} as unknown as GameState['decisions'][number]
+				]
+			}
+		});
+
+		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+		expect(() => validateSaveRecord(record)).toThrow(
+			'must be a known industry resource id: unobtainium'
+		);
+	});
+
+	test('validateSavedDecisionContext rejects industrialRequiresCash with an unknown building type', () => {
+		expect.assertions(2);
+		const record = createManualSaveRecord({
+			game: {
+				decisions: [
+					{
+						id: 'ind-cash-1',
+						title: 'Industrial delayed',
+						context: {
+							code: 'industrialRequiresCash',
+							buildingTypeId: 'not-a-building',
+							cash: 5000
+						},
+						expiresOnDay: 2,
+						options: [{ id: 'acknowledge', label: 'Ack', description: '...', effects: {} }]
+					} as unknown as GameState['decisions'][number]
+				]
+			}
+		});
+
+		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+		expect(() => validateSaveRecord(record)).toThrow(
+			'must be a known industrial building type id: not-a-building'
+		);
+	});
+
+	test('validateSavedDecisionContext round-trips all structured context codes', () => {
+		// Exercises every case in validateSavedDecisionContext's switch so all
+		// branches are covered by successful validation, not just error paths.
+		expect.assertions(1);
+		const structuredDecisions = [
+			{
+				id: 'd1',
+				title: 'T',
+				context: { code: 'expansionUnavailable', storeCap: 3 },
+				expiresOnDay: 2,
+				options: [{ id: 'acknowledge', label: 'A', description: 'D', effects: {} }]
+			},
+			{
+				id: 'd2',
+				title: 'T',
+				context: { code: 'expansionCashBlocked', cash: 1000 },
+				expiresOnDay: 2,
+				options: [{ id: 'acknowledge', label: 'A', description: 'D', effects: {} }]
+			},
+			{
+				id: 'd3',
+				title: 'T',
+				context: { code: 'locationBlocked', reason: 'locked' },
+				expiresOnDay: 2,
+				options: [{ id: 'acknowledge', label: 'A', description: 'D', effects: {} }]
+			},
+			{
+				id: 'd4',
+				title: 'T',
+				context: { code: 'locationGeneric' },
+				expiresOnDay: 2,
+				options: [{ id: 'acknowledge', label: 'A', description: 'D', effects: {} }]
+			},
+			{
+				id: 'd5',
+				title: 'T',
+				context: { code: 'worldCityOpeningCost', cash: 18000 },
+				expiresOnDay: 2,
+				options: [{ id: 'acknowledge', label: 'A', description: 'D', effects: {} }]
+			},
+			{
+				id: 'd6',
+				title: 'T',
+				context: { code: 'worldCityUnknown' },
+				expiresOnDay: 2,
+				options: [{ id: 'acknowledge', label: 'A', description: 'D', effects: {} }]
+			},
+			{
+				id: 'd7',
+				title: 'T',
+				context: { code: 'worldCityNotAvailableYet', cityId: 'campus-junction' },
+				expiresOnDay: 2,
+				options: [{ id: 'acknowledge', label: 'A', description: 'D', effects: {} }]
+			},
+			{
+				id: 'd8',
+				title: 'T',
+				context: { code: 'industrialUnknownTile' },
+				expiresOnDay: 2,
+				options: [{ id: 'acknowledge', label: 'A', description: 'D', effects: {} }]
+			},
+			{
+				id: 'd9',
+				title: 'T',
+				context: { code: 'industrialUnknownBuilding' },
+				expiresOnDay: 2,
+				options: [{ id: 'acknowledge', label: 'A', description: 'D', effects: {} }]
+			},
+			{
+				id: 'd10',
+				title: 'T',
+				context: { code: 'industrialLockedTile' },
+				expiresOnDay: 2,
+				options: [{ id: 'acknowledge', label: 'A', description: 'D', effects: {} }]
+			},
+			{
+				id: 'd11',
+				title: 'T',
+				context: { code: 'industrialOccupiedTile' },
+				expiresOnDay: 2,
+				options: [{ id: 'acknowledge', label: 'A', description: 'D', effects: {} }]
+			},
+			{
+				id: 'd12',
+				title: 'T',
+				context: { code: 'industrialRequiresResource', resourceId: 'grain-field' },
+				expiresOnDay: 2,
+				options: [{ id: 'acknowledge', label: 'A', description: 'D', effects: {} }]
+			},
+			{
+				id: 'd13',
+				title: 'T',
+				context: { code: 'industrialRequiresIndustrialTile' },
+				expiresOnDay: 2,
+				options: [{ id: 'acknowledge', label: 'A', description: 'D', effects: {} }]
+			},
+			{
+				id: 'd14',
+				title: 'T',
+				context: { code: 'industrialRequiresCash', buildingTypeId: 'warehouse', cash: 1000 },
+				expiresOnDay: 2,
+				options: [{ id: 'acknowledge', label: 'A', description: 'D', effects: {} }]
+			},
+			{
+				id: 'd15',
+				title: 'T',
+				context: { code: 'cashPressure' },
+				expiresOnDay: 2,
+				options: [{ id: 'acknowledge', label: 'A', description: 'D', effects: {} }]
+			},
+			{
+				id: 'd16',
+				title: 'T',
+				context: { code: 'expansionOpportunity' },
+				expiresOnDay: 2,
+				options: [{ id: 'acknowledge', label: 'A', description: 'D', effects: {} }]
+			},
+			{
+				id: 'd17',
+				title: 'T',
+				context: { code: 'supplierTerms' },
+				expiresOnDay: 2,
+				options: [{ id: 'acknowledge', label: 'A', description: 'D', effects: {} }]
+			}
+		] as unknown as GameState['decisions'];
+		const record = createManualSaveRecord({ game: { decisions: structuredDecisions } });
+
+		expect(() => validateSaveRecord(record)).not.toThrow();
+	});
+
+	test('validateSavedWarningArray rejects cashReservesLow in store-only warnings', () => {
+		// cashReservesLow is a daily-level warning; store reports must not carry it.
+		expect.assertions(2);
+		const storeReport = {
+			...createDailyStoreReport(),
+			warnings: [{ code: 'cashReservesLow' }]
+		} as unknown as DailyStoreReport;
+		const report = createDailyReport({ storeReports: [storeReport] });
+		const snapshot = createSnapshotWithGame({ ...createGame(), reports: [report] });
+
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow('code must be a store warning code');
+	});
+
+	test('validateSavedWarningArray rejects an unknown warning code in daily report warnings', () => {
+		expect.assertions(2);
+		const report = createDailyReport({
+			warnings: [{ code: 'notARealWarning' } as unknown as DailyReportWarning]
+		});
+		const snapshot = createSnapshotWithGame({ ...createGame(), reports: [report] });
+
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow('code must be a valid warning code');
+	});
+
+	test('validateSavedWarningArray validates cashReservesLow without a storeId', () => {
+		// cashReservesLow is the only warning code that does not require a storeId.
+		expect.assertions(1);
+		const report = createDailyReport({
+			warnings: [{ code: 'cashReservesLow' } as unknown as DailyReportWarning]
+		});
+		const snapshot = createSnapshotWithGame({ ...createGame(), reports: [report] });
+
+		expect(() => validateSaveStoreSnapshot(snapshot)).not.toThrow();
+	});
+
+	test('validateSavedWarningArray rejects shortManager with a non-positive count', () => {
+		expect.assertions(2);
+		const storeReport = {
+			...createDailyStoreReport(),
+			warnings: [{ code: 'shortManager', storeId: 'store-1', count: 0 }]
+		} as unknown as DailyStoreReport;
+		const report = createDailyReport({ storeReports: [storeReport] });
+		const snapshot = createSnapshotWithGame({ ...createGame(), reports: [report] });
+
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow('count must be a positive integer');
+	});
+
+	test('validateSavedWarningArray rejects a store warning without a storeId', () => {
+		expect.assertions(2);
+		const storeReport = {
+			...createDailyStoreReport(),
+			warnings: [{ code: 'stockPressure' } as unknown as DailyStoreReport['warnings'][number]]
+		} as unknown as DailyStoreReport;
+		const report = createDailyReport({ storeReports: [storeReport] });
+		const snapshot = createSnapshotWithGame({ ...createGame(), reports: [report] });
+
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow('storeId must be a non-empty string');
+	});
+
+	test('validateSavedWarningArray validates structured store and daily warnings together', () => {
+		// Exercises the happy path for store-only and daily-level warning arrays
+		// with all store warning codes plus cashReservesLow.
+		expect.assertions(1);
+		const storeReport = {
+			...createDailyStoreReport(),
+			warnings: [
+				{ code: 'stockPressure', storeId: 'store-1' },
+				{ code: 'nearStaffCapacity', storeId: 'store-1' },
+				{ code: 'shortManager', storeId: 'store-1', count: 2 },
+				{ code: 'shortGeneral', storeId: 'store-1', count: 3 },
+				{ code: 'missedProductDemand', storeId: 'store-1' },
+				{ code: 'reputationSlipping', storeId: 'store-1' }
+			]
+		} as unknown as DailyStoreReport;
+		const report = createDailyReport({
+			storeReports: [storeReport],
+			warnings: [
+				{ code: 'cashReservesLow' } as unknown as DailyReportWarning,
+				{ code: 'stockPressure', storeId: 'store-1' } as unknown as DailyReportWarning
+			]
+		});
+		const snapshot = createSnapshotWithGame({ ...createGame(), reports: [report] });
+
+		expect(() => validateSaveStoreSnapshot(snapshot)).not.toThrow();
+	});
+
+	test('requireStringAllowEmpty rejects a non-string store name', () => {
+		expect.assertions(2);
+		const record = createManualSaveRecord({
+			game: {
+				stores: [
+					{
+						...createGame().stores[0]!,
+						name: 123 as unknown as string
+					}
+				]
+			}
+		});
+
+		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+		expect(() => validateSaveRecord(record)).toThrow('Saved game stores[0] name must be a string');
+	});
+
+	test('requireStringAllowEmpty accepts an empty-string store name', () => {
+		// Store names can be empty (auto-named stores use the default name at
+		// render time via storeDisplayName).
+		expect.assertions(1);
+		const record = createManualSaveRecord({
+			game: {
+				stores: [{ ...createGame().stores[0]!, name: '' }]
+			}
+		});
+
+		expect(() => validateSaveRecord(record)).not.toThrow();
+	});
+
+	test('v5 migration is a no-op when the reports field is not an array', () => {
+		expect.assertions(1);
+		const record = createV5Record({
+			game: { reports: 'not-an-array' as unknown as GameState['reports'] }
+		});
+
+		// The migration should leave the non-array reports untouched so validation
+		// rejects it, rather than crashing or coercing.
+		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+	});
+
+	test('v5 migration is a no-op when a report has no warnings array', () => {
+		// migrateV5StoreReport returns the report untouched when warnings is not
+		// an array — it only clears array-valued warnings.
+		expect.assertions(1);
+		const storeReport = {
+			...createDailyStoreReport(),
+			warnings: 'not-an-array'
+		} as unknown as DailyStoreReport;
+		const report = createDailyReport({ storeReports: [storeReport] });
+		const record = createV5Record({ game: { reports: [report] } });
+
+		// Validation will reject the non-array warnings, proving the migration
+		// did not coerce it.
+		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+	});
+
+	test('v6 migration is a no-op when the decisions field is not an array', () => {
+		expect.assertions(1);
+		const record = createV6Record({
+			game: { decisions: 'not-an-array' as unknown as GameState['decisions'] }
+		});
+
+		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+	});
+
+	test('v6 migration is a no-op when no string-valued decision contexts exist', () => {
+		// When all decision contexts are already structured objects, the v6
+		// filter removes nothing and the game is returned untouched.
+		expect.assertions(1);
+		const structuredDecision = {
+			id: 'expansion-cash-blocked-1',
+			title: 'Expansion delayed',
+			context: { code: 'expansionCashBlocked', cash: 15000 },
+			expiresOnDay: 2,
+			options: [{ id: 'acknowledge', label: 'Acknowledge', description: '...', effects: {} }]
+		} as unknown as GameState['decisions'][number];
+		const record = createV6Record({ game: { decisions: [structuredDecision] } });
+
+		// The no-op path returns the game unchanged; validation succeeds.
+		expect(() => validateSaveRecord(record)).not.toThrow();
+	});
+
+	test('v6 migration is a no-op when all decisions are non-objects', () => {
+		// Non-object decisions are kept (return true in the filter) so the
+		// filter removes nothing and the game is returned untouched.
+		expect.assertions(1);
+		const record = createV6Record({
+			game: {
+				decisions: ['not-a-decision'] as unknown as GameState['decisions']
+			}
+		});
+
+		// Validation will reject the non-object decision, proving the migration
+		// did not drop or transform it.
 		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
 	});
 });

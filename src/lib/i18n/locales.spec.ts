@@ -58,4 +58,48 @@ describe('locale resolution', () => {
 		expect(saveLocalePreference('zh-Hant', storage)).toBe('zh-Hant');
 		expect(storage.setItem).toHaveBeenCalledWith(LANGUAGE_PREFERENCE_STORAGE_KEY, 'zh-Hant');
 	});
+
+	it('falls back to navigator locale when storage.getItem throws', () => {
+		expect.assertions(2);
+		const storage = {
+			getItem: vi.fn(() => {
+				throw new Error('storage unavailable');
+			}),
+			setItem: vi.fn()
+		};
+		expect(readLocalePreference(storage, ['ja-JP'])).toBe('ja');
+		expect(storage.getItem).toHaveBeenCalledWith(LANGUAGE_PREFERENCE_STORAGE_KEY);
+	});
+
+	it('still returns the locale when storage.setItem throws', () => {
+		expect.assertions(2);
+		const storage = {
+			getItem: vi.fn(() => null),
+			setItem: vi.fn(() => {
+				throw new Error('storage unavailable');
+			})
+		};
+		expect(saveLocalePreference('zh-Hant', storage)).toBe('zh-Hant');
+		expect(storage.setItem).toHaveBeenCalledWith(LANGUAGE_PREFERENCE_STORAGE_KEY, 'zh-Hant');
+	});
+
+	it('falls through to navigator languages when storedLocale is not a string', () => {
+		expect.assertions(1);
+		expect(
+			resolveSupportedLocale({
+				storedLocale: 123,
+				navigatorLanguages: ['ja-JP']
+			})
+		).toBe('ja');
+	});
+
+	it('returns English when navigatorLanguages is undefined', () => {
+		expect.assertions(1);
+		expect(resolveSupportedLocale({})).toBe('en');
+	});
+
+	it('uses navigator languages when storage is null', () => {
+		expect.assertions(1);
+		expect(readLocalePreference(null, ['ja-JP'])).toBe('ja');
+	});
 });

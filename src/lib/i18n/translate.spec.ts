@@ -10,6 +10,20 @@ describe('createTranslator', () => {
 		expect(createTranslator('ja')('gameMenu.language')).toBe('言語');
 	});
 
+	it('leaves placeholders unchanged when params are not provided', () => {
+		expect.assertions(1);
+		const t = createTranslator('en');
+		expect(t('topBar.day')).toBe('Day {day}');
+	});
+
+	it('returns the key without warning when a key is missing and dev mode is off', () => {
+		expect.assertions(2);
+		const warn = vi.fn();
+		const t = createTranslator('ja', { warn });
+		expect(t('nonexistent.key' as never)).toBe('nonexistent.key');
+		expect(warn).not.toHaveBeenCalled();
+	});
+
 	it('falls back to English and warns in development', () => {
 		expect.assertions(2);
 		const warn = vi.fn();
@@ -32,7 +46,7 @@ describe('createTranslator', () => {
 	});
 
 	it('warns for missing localized keys so untranslated strings are visible in dev', () => {
-		expect.assertions(3);
+		expect.assertions(4);
 		const keys = (value: unknown, prefix = ''): string[] =>
 			typeof value === 'string'
 				? [prefix]
@@ -54,5 +68,6 @@ describe('createTranslator', () => {
 		const tMissing = createTranslator('ja', { dev: true, warn: warnMissing });
 		tMissing('nonexistent.key' as never);
 		expect(warnMissing).toHaveBeenCalledTimes(1);
+		expect(warnMissing).toHaveBeenCalledWith('Missing translation for nonexistent.key');
 	});
 });

@@ -34,4 +34,23 @@ describe('game labels', () => {
 			expect(identicalKeys).toEqual([]);
 		}
 	});
+
+	it('localizes additional game-domain label functions', () => {
+		expect.assertions(12);
+		const labels = createI18n('en').labels;
+		expect(labels.archetypeRisk('convenience', 0)).toBe('Stockouts');
+		expect(labels.tileFeature('road')).toBe('Road');
+		expect(labels.industryTerrain('farmland')).toBe('Farmland');
+		expect(labels.neighborhood('downtown')).toBe('Downtown');
+		expect(labels.terrain('commercial')).toBe('Commercial');
+		expect(labels.policyField('pricing')).toBe('Pricing');
+		expect(labels.scoreKey('profit')).toBe('Profit');
+		expect(labels.mapView('retail')).toBe('Retail');
+		expect(labels.managementPanel('stores')).toBe('Stores');
+		expect(labels.industrialBuilding('warehouse')).toBe('Warehouse');
+		expect(labels.industryResource('grain-field')).toBe('Grain Field');
+		expect(labels.archetype('convenience').description).toBe(
+			'Fast turnover, steady foot traffic, low margins, and stockout sensitivity.'
+		);
+	});
 });
