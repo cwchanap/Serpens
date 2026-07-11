@@ -44,7 +44,7 @@
 	const storeArtSrc = $derived(storeArt ? asset(storeArt.path) : '');
 	const tileLabel = $derived(
 		tile?.feature
-			? i18n.labels.terrain(tile.feature)
+			? i18n.labels.tileFeature(tile.feature)
 			: tile
 				? i18n.labels.terrain(tile.terrain)
 				: ''

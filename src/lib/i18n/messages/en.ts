@@ -588,6 +588,10 @@ export const en = {
 			transit: 'Transit',
 			industrial: 'Industrial'
 		},
+		tileFeatures: {
+			road: 'Road',
+			river: 'River'
+		},
 		industryTerrain: {
 			farmland: 'Farmland',
 			forest: 'Forest',
@@ -843,7 +847,7 @@ export const en = {
 		productChainGraph: {
 			title: {
 				warehouseFlow: 'Warehouse flow',
-				productChain: 'Product chain'
+				productChain: '{label} chain'
 			},
 			warehouseNode: 'Warehouse',
 			health: {

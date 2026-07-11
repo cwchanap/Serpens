@@ -586,6 +586,10 @@ export const ja = {
 			transit: '交通地',
 			industrial: '工業地'
 		},
+		tileFeatures: {
+			road: '道路',
+			river: '河川'
+		},
 		industryTerrain: {
 			farmland: '農地',
 			forest: '森林',
@@ -838,7 +842,7 @@ export const ja = {
 		productChainGraph: {
 			title: {
 				warehouseFlow: '倉庫フロー',
-				productChain: '生産チェーン'
+				productChain: '{label}チェーン'
 			},
 			warehouseNode: '倉庫',
 			health: {

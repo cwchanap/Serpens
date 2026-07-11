@@ -1,5 +1,6 @@
 import type {
 	ArchetypeId,
+	CityTileFeature,
 	IndustryResourceId,
 	IndustryTerrainId,
 	IndustrialBuildingTypeId,
@@ -33,6 +34,7 @@ export interface GameLabelLookup {
 	industryResource(id: IndustryResourceId | string): string;
 	neighborhood(id: NeighborhoodId | string): string;
 	terrain(id: TerrainId | string): string;
+	tileFeature(id: NonNullable<CityTileFeature> | string): string;
 	industryTerrain(id: IndustryTerrainId | string): string;
 	policyField(
 		field: 'pricing' | 'inventory' | 'staffing' | 'marketing' | 'service' | string
@@ -98,6 +100,9 @@ export function createGameLabelLookup(t: Translator): GameLabelLookup {
 		},
 		terrain(id) {
 			return labelOrFallback(t, `game.terrain.${id}`, id);
+		},
+		tileFeature(id) {
+			return labelOrFallback(t, `game.tileFeatures.${id}`, id);
 		},
 		industryTerrain(id) {
 			return labelOrFallback(t, `game.industryTerrain.${id}`, id);

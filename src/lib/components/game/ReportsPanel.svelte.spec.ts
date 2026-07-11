@@ -175,6 +175,32 @@ describe('ReportsPanel', () => {
 			.not.toBeInTheDocument();
 	});
 
+	it('renders duplicate warning codes from different stores without key collisions', async () => {
+		expect.assertions(2);
+
+		const store2: Store = { ...store, id: 'store-2', name: 'Second Store' };
+
+		render(ReportsPanel, {
+			i18n: createI18n('en'),
+			stores: [store, store2],
+			summary: {
+				...summary,
+				latest: {
+					...summary.latest!,
+					warnings: [
+						{ code: 'stockPressure', storeId: 'store-1' },
+						{ code: 'stockPressure', storeId: 'store-2' }
+					]
+				}
+			}
+		});
+
+		const warningsList = page.getByRole('list', { name: 'Daily warnings' });
+
+		await expect.element(warningsList.getByText('Founding Store')).toBeVisible();
+		await expect.element(warningsList.getByText('Second Store')).toBeVisible();
+	});
+
 	it('shows the empty state when there is no latest report', async () => {
 		expect.assertions(1);
 

@@ -38,7 +38,7 @@ describe('StoreProductChainPanel', () => {
 		await page.getByLabelText('Product category').selectOptions('drinks');
 
 		await expect.element(page.getByTestId('product-chain-graph-chain:drinks')).toBeVisible();
-		expect(document.querySelector('.chain-title')?.textContent).toBe('Drinks');
+		expect(document.querySelector('.chain-title')?.textContent).toBe('Drinks chain');
 	});
 
 	it('fires interaction feedback for category and node selection clicks', async () => {
@@ -86,7 +86,7 @@ describe('StoreProductChainPanel', () => {
 		view.rerender({ game, i18n: createI18n('en'), store: secondStore });
 
 		await expect.element(page.getByTestId('product-chain-graph-chain:bottled-water')).toBeVisible();
-		expect(document.querySelector('.chain-title')?.textContent).toBe('Bottled Water');
+		expect(document.querySelector('.chain-title')?.textContent).toBe('Bottled Water chain');
 
 		view.rerender({ game, i18n: createI18n('en'), store: game.stores[0]! });
 

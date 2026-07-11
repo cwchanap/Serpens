@@ -1173,7 +1173,7 @@ describe('saveCodec', () => {
 		);
 	});
 
-	test('createSaveRecord uses "No active city" when the active city is missing', () => {
+	test('createSaveRecord stores the active city ID even when the city is missing from the cities array', () => {
 		expect.assertions(1);
 		const game = createGame({ activeCityId: 'nonexistent-city' });
 		const record = createSaveRecord(game, {
@@ -1183,7 +1183,7 @@ describe('saveCodec', () => {
 			updatedAt: new Date('2026-05-05T12:00:00.000Z')
 		});
 
-		expect(record.metadata.activeCityName).toBe('No active city');
+		expect(record.metadata.activeCityId).toBe('nonexistent-city');
 	});
 
 	test('createManualSlotId falls back to "slot" when the name produces an empty slug', () => {

@@ -586,6 +586,10 @@ export const zhHant = {
 			transit: '交通地',
 			industrial: '工業地'
 		},
+		tileFeatures: {
+			road: '道路',
+			river: '河流'
+		},
 		industryTerrain: {
 			farmland: '農地',
 			forest: '森林',
@@ -836,7 +840,7 @@ export const zhHant = {
 		productChainGraph: {
 			title: {
 				warehouseFlow: '倉庫流向',
-				productChain: '產品鏈'
+				productChain: '{label}鏈'
 			},
 			warehouseNode: '倉庫',
 			health: {

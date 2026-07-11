@@ -16,7 +16,7 @@ const autoSave: SaveSlotMetadata = {
 	day: 5,
 	cash: 12500,
 	storeCount: 1,
-	activeCityName: 'Harbor City'
+	activeCityId: 'harbor-city'
 };
 
 const manualSlot: SaveSlotMetadata = {
@@ -27,7 +27,7 @@ const manualSlot: SaveSlotMetadata = {
 	day: 5,
 	cash: 12500,
 	storeCount: 1,
-	activeCityName: 'Harbor City'
+	activeCityId: 'harbor-city'
 };
 
 function renderPanel(

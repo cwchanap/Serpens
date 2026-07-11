@@ -187,7 +187,9 @@ function localizeGraphTitle(graph: ProductChainGraph, i18n: I18nBundle): string 
 
 	if (graph.id.startsWith('chain:')) {
 		const materialId = graph.id.slice('chain:'.length);
-		return i18n.labels.material(materialId);
+		return i18n.t('copy.productChainGraph.title.productChain', {
+			label: i18n.labels.material(materialId)
+		});
 	}
 
 	return graph.title;
@@ -544,14 +546,14 @@ export function localizeProductChainGraph(
 		const label =
 			node.id === 'warehouse'
 				? i18n.t('copy.productChainGraph.warehouseNode')
-				: node.materialId
-					? i18n.labels.material(node.materialId)
-					: node.recipeId
-						? i18n.labels.industrialBuilding(
-								Object.values(INDUSTRIAL_BUILDING_TYPES).find(
-									(type) => type.recipeId === node.recipeId
-								)?.id ?? node.label
-							)
+				: node.recipeId
+					? i18n.labels.industrialBuilding(
+							Object.values(INDUSTRIAL_BUILDING_TYPES).find(
+								(type) => type.recipeId === node.recipeId
+							)?.id ?? node.label
+						)
+					: node.materialId
+						? i18n.labels.material(node.materialId)
 						: node.label;
 
 		return {
