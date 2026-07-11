@@ -84,4 +84,16 @@ describe('NodeBroadside', () => {
 		const section = document.querySelector('section.broadside');
 		expect(section?.querySelector('.verdict')).toBeNull();
 	});
+
+	it('preserves fractional capacity values for upgraded recipe nodes', async () => {
+		expect.assertions(1);
+		const node: LocalizedProductChainNode = {
+			...shortageRecipeNode(),
+			capacity: { buildingCount: 3, outputPerDay: 11.2, inputPerDay: 15.4 }
+		};
+
+		render(NodeBroadside, { i18n: createI18n('en'), node });
+
+		await expect.element(page.getByText('11.2 out / 15.4 in')).toBeVisible();
+	});
 });
