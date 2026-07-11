@@ -49,7 +49,7 @@ function makeStore(cityId: string, tileId: string, mapX: number, mapY: number): 
 		level: 1,
 		name: 'Store',
 		archetypeId: 'convenience',
-		location: 'Downtown',
+		location: { neighborhoodId: 'downtown', x: 0, y: 0 },
 		cityId,
 		tileId,
 		mapX,

@@ -58,7 +58,7 @@ export class SaveDataError extends Error {
  * {@link SAVE_SCHEMA_VERSION}. Keep this in sync with the migration table in
  * {@link migrateSaveStoreSnapshot} and {@link migrateSaveRecord}.
  */
-const MIGRATABLE_SCHEMA_VERSIONS = new Set<number>([4, 5, 6, 7]);
+const MIGRATABLE_SCHEMA_VERSIONS = new Set<number>([4, 5, 6, 7, 8]);
 
 function isMigratableSchemaVersion(version: unknown): version is number {
 	return typeof version === 'number' && MIGRATABLE_SCHEMA_VERSIONS.has(version);
@@ -228,7 +228,7 @@ function migrateV7SaveRecord(record: unknown): unknown {
 		typeof game !== 'object' ||
 		game === null
 	) {
-		return { ...recordObject, schemaVersion: SAVE_SCHEMA_VERSION };
+		return { ...recordObject, schemaVersion: 8 };
 	}
 
 	const metadataRecord = metadata as Record<string, unknown>;
@@ -238,8 +238,81 @@ function migrateV7SaveRecord(record: unknown): unknown {
 
 	return {
 		...recordObject,
-		schemaVersion: SAVE_SCHEMA_VERSION,
+		schemaVersion: 8,
 		metadata: { ...metadataRecord, activeCityId }
+	};
+}
+
+/**
+ * v8 → v9: `Store.location` changed from a free-form English string
+ * (`"Downtown (12, 34)"`) to a structured `StoreLocation` object
+ * (`{ neighborhoodId, x, y }`) so the UI can localize the neighborhood name
+ * at render time. The neighborhood is looked up from the saved city/tile
+ * data; coordinates are copied from the store's `mapX`/`mapY` fields.
+ */
+function migrateV8Store(store: unknown, cities: unknown[]): unknown {
+	if (typeof store !== 'object' || store === null) return store;
+	const storeRecord = store as Record<string, unknown>;
+
+	// Already structured (not a string) — skip.
+	if (typeof storeRecord.location !== 'string') return store;
+
+	const cityId = storeRecord.cityId;
+	const tileId = storeRecord.tileId;
+	const mapX = typeof storeRecord.mapX === 'number' ? storeRecord.mapX : 0;
+	const mapY = typeof storeRecord.mapY === 'number' ? storeRecord.mapY : 0;
+
+	let neighborhoodId = 'downtown';
+	for (const city of cities) {
+		if (typeof city !== 'object' || city === null) continue;
+		const cityRecord = city as Record<string, unknown>;
+		if (cityRecord.id !== cityId) continue;
+		const tiles = cityRecord.tiles;
+		if (!Array.isArray(tiles)) break;
+		const tile = tiles.find((t) => {
+			if (typeof t !== 'object' || t === null) return false;
+			return (t as Record<string, unknown>).id === tileId;
+		});
+		if (tile && typeof tile === 'object') {
+			const tileNeighborhood = (tile as Record<string, unknown>).neighborhood;
+			if (typeof tileNeighborhood === 'string') {
+				neighborhoodId = tileNeighborhood;
+			}
+		}
+		break;
+	}
+
+	return {
+		...storeRecord,
+		location: { neighborhoodId, x: mapX, y: mapY }
+	};
+}
+
+function migrateV8Game(game: unknown): unknown {
+	if (typeof game !== 'object' || game === null) return game;
+	const gameRecord = game as Record<string, unknown>;
+	if (!Array.isArray(gameRecord.stores)) return game;
+
+	const cities = Array.isArray(gameRecord.cities) ? gameRecord.cities : [];
+
+	let changed = false;
+	const migratedStores = gameRecord.stores.map((store) => {
+		const migrated = migrateV8Store(store, cities);
+		if (migrated !== store) changed = true;
+		return migrated;
+	});
+
+	return changed ? { ...gameRecord, stores: migratedStores } : game;
+}
+
+function migrateV8SaveRecord(record: unknown): unknown {
+	if (typeof record !== 'object' || record === null) return record;
+	const recordObject = record as Record<string, unknown>;
+	const migratedGame = migrateV8Game(recordObject.game);
+	return {
+		...recordObject,
+		schemaVersion: SAVE_SCHEMA_VERSION,
+		game: migratedGame
 	};
 }
 
@@ -297,6 +370,9 @@ function migrateSaveRecord(value: unknown): unknown {
 	}
 	if (migrated.schemaVersion === 7) {
 		migrated = migrateV7SaveRecord(migrated) as Record<string, unknown>;
+	}
+	if (migrated.schemaVersion === 8) {
+		migrated = migrateV8SaveRecord(migrated) as Record<string, unknown>;
 	}
 
 	return migrated;
@@ -756,8 +832,7 @@ function normalizeSavedRetailStorePlacements(
 	// coordinates, and simulateDay reads localDemand, so leaving it stale
 	// skews revenue. Stores in non-regenerated cities keep their saved fields
 	// untouched (the opening store intentionally carries an archetype-based
-	// localDemand and a "Founding location" label rather than tile-derived
-	// values).
+	// localDemand rather than tile-derived values).
 	//
 	// The reservation covers the store's full 2x2 footprint, not just the
 	// anchor tile, so a relocated store can never land at an anchor whose
@@ -1200,7 +1275,7 @@ function validateSavedStore(value: unknown, label: string): void {
 	}
 	requireStringAllowEmpty(store.name, `${label} name`);
 	requireOneOf(store.archetypeId, `${label} archetypeId`, ARCHETYPE_IDS);
-	requireString(store.location, `${label} location`);
+	validateStoreLocation(store.location, `${label} location`);
 	requireString(store.cityId, `${label} cityId`);
 	requireString(store.tileId, `${label} tileId`);
 	requireNumber(store.mapX, `${label} mapX`);
@@ -1639,4 +1714,11 @@ function requireNumber(value: unknown, label: string): number {
 	}
 
 	return value;
+}
+
+function validateStoreLocation(value: unknown, label: string): void {
+	const location = requireRecord(value, label);
+	requireOneOf(location.neighborhoodId, `${label} neighborhoodId`, NEIGHBORHOOD_IDS);
+	requireNumber(location.x, `${label} x`);
+	requireNumber(location.y, `${label} y`);
 }

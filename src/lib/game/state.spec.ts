@@ -118,17 +118,17 @@ describe('game state', () => {
 		const game = { ...createNewGame('electronics', 44), storeCap: 2 };
 		const second = openStore(game, {
 			archetypeId: 'electronics',
-			location: 'West Mall'
+			location: { neighborhoodId: 'downtown', x: 0, y: 0 }
 		});
 		const third = openStore(second, {
 			archetypeId: 'electronics',
-			location: 'North Campus'
+			location: { neighborhoodId: 'downtown', x: 0, y: 0 }
 		});
 		const expandedCap = openStore(
 			{ ...second, storeCap: 3 },
 			{
 				archetypeId: 'electronics',
-				location: 'North Campus'
+				location: { neighborhoodId: 'downtown', x: 0, y: 0 }
 			}
 		);
 
@@ -146,7 +146,7 @@ describe('game state', () => {
 
 		const result = openStore(game, {
 			archetypeId: 'electronics',
-			location: 'West Mall'
+			location: { neighborhoodId: 'downtown', x: 0, y: 0 }
 		});
 		const openedStore = result.stores.at(-1);
 
@@ -196,7 +196,7 @@ describe('game state', () => {
 			{ ...game, cities: [reorderedCity] },
 			{
 				archetypeId: 'electronics',
-				location: 'West Mall'
+				location: { neighborhoodId: 'downtown', x: 0, y: 0 }
 			}
 		);
 		const openedStore = result.stores.at(-1);
@@ -215,7 +215,7 @@ describe('game state', () => {
 
 		const result = openStore(game, {
 			archetypeId: 'electronics',
-			location: 'Roadside',
+			location: { neighborhoodId: 'downtown', x: 0, y: 0 },
 			tileId: roadTile.id
 		});
 
@@ -229,7 +229,7 @@ describe('game state', () => {
 		const game = { ...createNewGame('electronics', 44), storeCap: 1 };
 		const result = openStore(game, {
 			archetypeId: 'electronics',
-			location: 'West Mall'
+			location: { neighborhoodId: 'downtown', x: 0, y: 0 }
 		});
 		const decision = result.decisions.find((d) => d.id.startsWith('expansion-unavailable'));
 		expect(decision).toBeDefined();
@@ -242,7 +242,7 @@ describe('game state', () => {
 
 		const result = openStore(game, {
 			archetypeId: 'electronics',
-			location: 'West Mall'
+			location: { neighborhoodId: 'downtown', x: 0, y: 0 }
 		});
 
 		expect(game.stores[0]?.archetypeId).toBe('boutique');
@@ -255,19 +255,19 @@ describe('game state', () => {
 		const game = createNewGame('electronics', 44);
 		const second = openStore(game, {
 			archetypeId: 'electronics',
-			location: 'West Mall'
+			location: { neighborhoodId: 'downtown', x: 0, y: 0 }
 		});
 		const third = openStore(second, {
 			archetypeId: 'electronics',
-			location: 'North Campus'
+			location: { neighborhoodId: 'downtown', x: 0, y: 0 }
 		});
 		const fourth = openStore(third, {
 			archetypeId: 'electronics',
-			location: 'Airport'
+			location: { neighborhoodId: 'downtown', x: 0, y: 0 }
 		});
 		const fifth = openStore(fourth, {
 			archetypeId: 'electronics',
-			location: 'Station'
+			location: { neighborhoodId: 'downtown', x: 0, y: 0 }
 		});
 
 		expect(fifth.decisions).toHaveLength(1);
@@ -490,7 +490,7 @@ describe('game state', () => {
 		const game = { ...createNewGame('electronics', 44), cash: 0 };
 		const result = openStore(game, {
 			archetypeId: 'electronics',
-			location: 'West Mall'
+			location: { neighborhoodId: 'downtown', x: 0, y: 0 }
 		});
 
 		expect(result.stores).toHaveLength(1);
@@ -575,7 +575,7 @@ describe('game state', () => {
 		const game = { ...base, cash: 1_000_000 };
 		const withSecond = openStore(game, {
 			archetypeId: 'convenience',
-			location: 'East Mall'
+			location: { neighborhoodId: 'downtown', x: 0, y: 0 }
 		});
 		const firstStoreId = withSecond.stores[0]!.id;
 		const siblingBefore = withSecond.stores.find((store) => store.id !== firstStoreId)!;
@@ -593,7 +593,7 @@ describe('game state', () => {
 		const game = { ...createNewGame('electronics', 44), activeCityId: 'missing-city' };
 		const result = openStore(game, {
 			archetypeId: 'electronics',
-			location: 'West Mall'
+			location: { neighborhoodId: 'downtown', x: 0, y: 0 }
 		});
 
 		expect(result.stores).toHaveLength(1);
@@ -605,7 +605,7 @@ describe('game state', () => {
 		const game = createNewGame('electronics', 44);
 		const result = openStore(game, {
 			archetypeId: 'electronics',
-			location: 'West Mall',
+			location: { neighborhoodId: 'downtown', x: 0, y: 0 },
 			tileId: 'does-not-exist'
 		});
 
@@ -631,7 +631,7 @@ describe('game state', () => {
 
 		const result = openStore(game, {
 			archetypeId: 'electronics',
-			location: 'Overlap',
+			location: { neighborhoodId: 'downtown', x: 0, y: 0 },
 			tileId: overlappingTile.id
 		});
 
@@ -662,7 +662,7 @@ describe('game state', () => {
 
 		const result = openStore(game, {
 			archetypeId: 'grocery',
-			location: 'River Edge',
+			location: { neighborhoodId: 'downtown', x: 0, y: 0 },
 			tileId: riverFootprintAnchor.id
 		});
 
@@ -685,7 +685,7 @@ describe('game state', () => {
 
 		const result = openStore(game, {
 			archetypeId: 'grocery',
-			location: 'Locked Edge',
+			location: { neighborhoodId: 'downtown', x: 0, y: 0 },
 			tileId: lockedTile.id
 		});
 		const decision = result.decisions.find((d) => d.id.startsWith('location-unavailable'));
@@ -708,7 +708,7 @@ describe('game state', () => {
 
 		const result = openStore(game, {
 			archetypeId: 'grocery',
-			location: 'Edge',
+			location: { neighborhoodId: 'downtown', x: 0, y: 0 },
 			tileId: edgeAnchor.id
 		});
 
@@ -743,7 +743,7 @@ describe('game state', () => {
 
 		const result = openStore(game, {
 			archetypeId: 'grocery',
-			location: 'Auto'
+			location: { neighborhoodId: 'downtown', x: 0, y: 0 }
 		});
 
 		// First prove auto-pick actually created a store. Without this guard,

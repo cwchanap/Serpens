@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { summarizeStoreStaffing } from '$lib/game/staffing';
 	import type { I18nBundle } from '$lib/i18n';
-	import { localizeReportWarning, storeDisplayName } from '$lib/i18n/gameCopy';
+	import { formatStoreLocation, localizeReportWarning, storeDisplayName } from '$lib/i18n/gameCopy';
 	import type { DailyProductReport, DailyStoreReport, StaffMember, Store } from '$lib/game/types';
 
 	let {
@@ -37,7 +37,7 @@
 				<header>
 					<div>
 						<h3>{storeDisplayName(store, storeIndex + 1, i18n)}</h3>
-						<p>{store.location}</p>
+						<p>{formatStoreLocation(store.location, i18n)}</p>
 					</div>
 					<span
 						>{i18n.t('storeOverview.dayOpen', { day: i18n.format.integer(store.daysOpen) })}</span

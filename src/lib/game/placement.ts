@@ -21,7 +21,8 @@ import type {
 	DecisionItem,
 	GameState,
 	OpeningForecast,
-	Store
+	Store,
+	StoreLocation
 } from './types';
 import type { TilePlacementBlockReason } from './city';
 
@@ -250,14 +251,8 @@ function placeStoreOnTile(store: Store, tile: CityTile): Store {
 	};
 }
 
-export function formatLocation(tile: CityTile): string {
-	return `${formatNeighborhood(tile.neighborhood)} (${tile.x}, ${tile.y})`;
-}
-
-function formatNeighborhood(neighborhood: CityTile['neighborhood']): string {
-	return neighborhood
-		.replace(/([A-Z])/g, ' $1')
-		.replace(/^./, (character) => character.toUpperCase());
+export function formatLocation(tile: CityTile): StoreLocation {
+	return { neighborhoodId: tile.neighborhood, x: tile.x, y: tile.y };
 }
 
 function appendLocationUnavailableDecision(

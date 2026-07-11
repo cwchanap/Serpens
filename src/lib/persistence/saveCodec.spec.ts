@@ -95,7 +95,7 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 				level: 1,
 				name: 'Founding Store',
 				archetypeId: 'boutique',
-				location: 'Downtown (1, 1)',
+				location: { neighborhoodId: 'downtown', x: 1, y: 1 },
 				cityId: 'harbor-city',
 				tileId: 'harbor-city-1-1',
 				mapX: 1,
@@ -384,7 +384,7 @@ describe('saveCodec', () => {
 						tileId: 'harbor-city-28-8',
 						mapX: 28,
 						mapY: 8,
-						location: 'Stale Location (28, 8)',
+						location: { neighborhoodId: 'downtown', x: 28, y: 8 },
 						localDemand: 1
 					}
 				]
@@ -405,7 +405,7 @@ describe('saveCodec', () => {
 		expect(storeTile?.feature).toBeNull();
 		// Relocation must refresh tile-derived fields so the store does not
 		// carry stale coordinates/demand from the pre-migration tile.
-		expect(store.location).toBe(formatLocation(storeTile!));
+		expect(store.location).toEqual(formatLocation(storeTile!));
 		expect(store.location).not.toBe('Stale Location (28, 8)');
 		expect(store.localDemand).toBe(computeStoreLocalDemand(storeTile!));
 		expect(store.localDemand).not.toBe(1);
@@ -473,7 +473,7 @@ describe('saveCodec', () => {
 		expect(store.mapX).toBe(19);
 		expect(store.mapY).toBe(1);
 		// But tile-derived fields must match the regenerated (residential) tile.
-		expect(store.location).toBe(formatLocation(newTile));
+		expect(store.location).toEqual(formatLocation(newTile));
 		expect(store.localDemand).toBe(computeStoreLocalDemand(newTile));
 	});
 

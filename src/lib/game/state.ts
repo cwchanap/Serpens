@@ -49,7 +49,8 @@ import type {
 	DecisionOption,
 	GameState,
 	Scorecard,
-	Store
+	Store,
+	StoreLocation
 } from './types';
 import type { TilePlacementBlockReason } from './city';
 
@@ -93,7 +94,7 @@ const TERRAIN_SETUP_COST_PREMIUM: Partial<Record<CityTile['terrain'], number>> =
 
 interface OpenStoreInput {
 	archetypeId: ArchetypeId;
-	location: string;
+	location: StoreLocation;
 	tileId?: string;
 }
 
@@ -106,14 +107,6 @@ export function createNewGame(archetypeId: ArchetypeId, seed = Date.now()): Game
 	const archetype = getArchetype(archetypeId);
 	const normalizedSeed = normalizeSeed(seed);
 	const rng = createRng(normalizedSeed);
-	const openingStore = createStore({
-		id: 'store-1',
-		name: '',
-		archetypeId,
-		location: 'Founding location',
-		daysOpen: 1,
-		rng
-	});
 	const city = generateCity({
 		id: 'harbor-city',
 		name: 'Harbor City',
@@ -129,13 +122,20 @@ export function createNewGame(archetypeId: ArchetypeId, seed = Date.now()): Game
 		seed: normalizedSeed + 101
 	});
 	const fallbackTile = city.tiles.find(isTileBuildable) ?? city.tiles[0]!;
+	const openingStore = createStore({
+		id: 'store-1',
+		name: '',
+		archetypeId,
+		location: { neighborhoodId: fallbackTile.neighborhood, x: fallbackTile.x, y: fallbackTile.y },
+		daysOpen: 1,
+		rng
+	});
 	const placedOpeningStore = {
 		...openingStore,
 		cityId: city.id,
 		tileId: fallbackTile.id,
 		mapX: fallbackTile.x,
-		mapY: fallbackTile.y,
-		location: `Founding location (${fallbackTile.x}, ${fallbackTile.y})`
+		mapY: fallbackTile.y
 	};
 	const staff = generateStarterStaffForStore({
 		storeId: placedOpeningStore.id,
@@ -328,7 +328,7 @@ function createStore(input: {
 	id: string;
 	name: string;
 	archetypeId: ArchetypeId;
-	location: string;
+	location: StoreLocation;
 	daysOpen: number;
 	rng: ReturnType<typeof createRng>;
 }): Store {
@@ -464,7 +464,7 @@ function placeStore(store: Store, tile: CityTile): Store {
 		tileId: tile.id,
 		mapX: tile.x,
 		mapY: tile.y,
-		location: `${store.location} (${tile.x}, ${tile.y})`,
+		location: { neighborhoodId: tile.neighborhood, x: tile.x, y: tile.y },
 		localDemand: computeStoreLocalDemand(tile)
 	};
 }

@@ -312,12 +312,18 @@ export interface StoreArchetype {
 	risks: string[];
 }
 
+export interface StoreLocation {
+	neighborhoodId: NeighborhoodId;
+	x: number;
+	y: number;
+}
+
 export interface Store {
 	id: string;
 	level: number;
 	name: string;
 	archetypeId: ArchetypeId;
-	location: string;
+	location: StoreLocation;
 	cityId: string;
 	tileId: string;
 	mapX: number;

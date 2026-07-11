@@ -11,7 +11,7 @@ function store(): Store {
 		level: 3,
 		name: 'Corner Market',
 		archetypeId: 'convenience',
-		location: 'Main & 3rd',
+		location: { neighborhoodId: 'downtown', x: 0, y: 0 },
 		cityId: 'harbor-city',
 		tileId: 'tile-1',
 		mapX: 1,

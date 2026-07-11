@@ -275,7 +275,8 @@ export const en = {
 		}
 	},
 	store: {
-		defaultName: 'Store #{ordinal}'
+		defaultName: 'Store #{ordinal}',
+		location: '{neighborhood} ({x}, {y})'
 	},
 	storeOverview: {
 		title: 'Stores',

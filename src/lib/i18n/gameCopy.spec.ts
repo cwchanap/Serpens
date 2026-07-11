@@ -94,7 +94,7 @@ describe('game copy builders', () => {
 			formatPlacementBlockReason(
 				{
 					code: 'industry.rawPlacementBlocked',
-					message: decisionContextIndustrialLockedTile()
+					context: decisionContextIndustrialLockedTile()
 				},
 				i18n
 			)
@@ -1123,7 +1123,7 @@ describe('game copy builders', () => {
 		expect(formatPlacementBlockReason({ code: 'retail.riverLocation' }, en)).toBe('River location');
 		expect(
 			formatPlacementBlockReason(
-				{ code: 'industry.rawPlacementBlocked', message: decisionContextIndustrialOccupiedTile() },
+				{ code: 'industry.rawPlacementBlocked', context: decisionContextIndustrialOccupiedTile() },
 				en
 			)
 		).toBe('Occupied industrial tile');
@@ -1131,7 +1131,7 @@ describe('game copy builders', () => {
 			formatPlacementBlockReason(
 				{
 					code: 'industry.rawPlacementBlocked',
-					message: decisionContextIndustrialRequiresIndustrialTile()
+					context: decisionContextIndustrialRequiresIndustrialTile()
 				},
 				en
 			)

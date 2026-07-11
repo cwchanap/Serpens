@@ -149,7 +149,7 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 				level: 1,
 				name: 'Founding Store',
 				archetypeId: 'boutique',
-				location: 'Downtown (1, 1)',
+				location: { neighborhoodId: 'downtown', x: 1, y: 1 },
 				cityId: 'harbor-city',
 				tileId: 'harbor-city-1-1',
 				mapX: 1,
