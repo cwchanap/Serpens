@@ -3,6 +3,7 @@ import type { PlacementBlockReason } from '$lib/game/placementPreview';
 import type {
 	BottleneckInfo,
 	EdgeLabelInfo,
+	GraphEmptyReason,
 	GraphWarning,
 	ProductChainCategorySummary,
 	ProductChainGraph,
@@ -96,12 +97,26 @@ function translateMessage(
 	return value === key ? null : value;
 }
 
+/**
+ * Looks up a translation key built from a fixed prefix plus a dynamic suffix
+ * (e.g. a union-valued enum). Centralises the `as never` cast so it lives in
+ * one place rather than at every call site.
+ */
+function tScoped(
+	i18n: I18nBundle,
+	prefix: string,
+	suffix: string,
+	params?: Record<string, string | number>
+): string {
+	return i18n.t(`${prefix}.${suffix}` as never, params);
+}
+
 function formatCountMessage(i18n: I18nBundle, baseKey: string, count: number): string {
-	return i18n.t(`${baseKey}.${count === 1 ? 'one' : 'other'}` as never, { count });
+	return tScoped(i18n, baseKey, count === 1 ? 'one' : 'other', { count });
 }
 
 function localizeHealth(health: ProductChainHealth, i18n: I18nBundle): string {
-	return i18n.t(`copy.productChainGraph.health.${health}` as never);
+	return tScoped(i18n, 'copy.productChainGraph.health', health);
 }
 
 function localizeHealthBottleneck(
@@ -178,20 +193,17 @@ function localizeGraphTitle(graph: ProductChainGraph, i18n: I18nBundle): string 
 	return graph.title;
 }
 
-function localizeGraphReason(reason: string | null, i18n: I18nBundle): string | null {
+function localizeGraphReason(reason: GraphEmptyReason | null, i18n: I18nBundle): string | null {
 	if (reason === null) {
 		return null;
 	}
 
-	if (reason === 'No warehouse stock or daily report yet.') {
-		return i18n.t('copy.productChainGraph.emptyReason.noWarehouseData');
+	switch (reason) {
+		case 'noWarehouseData':
+			return i18n.t('copy.productChainGraph.emptyReason.noWarehouseData');
+		case 'noLocalChain':
+			return i18n.t('copy.productChainGraph.emptyReason.noLocalChain');
 	}
-
-	if (reason === 'No local production chain available for this category yet.') {
-		return i18n.t('copy.productChainGraph.emptyReason.noLocalChain');
-	}
-
-	return reason;
 }
 
 export function localizeReportWarning(
@@ -272,7 +284,7 @@ function localizeDecisionContextValue(ctx: DecisionContext, i18n: I18nBundle): s
 			});
 		case 'locationBlocked':
 			return i18n.t('copy.decisions.locationUnavailable.blockedContext', {
-				reason: i18n.t(`copy.decisions.locationUnavailable.reasons.${ctx.reason}` as never)
+				reason: tScoped(i18n, 'copy.decisions.locationUnavailable.reasons', ctx.reason)
 			});
 		case 'locationGeneric':
 			return i18n.t('copy.decisions.locationUnavailable.genericContext');
@@ -287,7 +299,7 @@ function localizeDecisionContextValue(ctx: DecisionContext, i18n: I18nBundle): s
 			// translated under a per-city key. Do NOT use city.unlockRequirement
 			// (that is a free-form English string, not a key).
 			return i18n.t('copy.decisions.worldCity.notAvailableYet.context', {
-				requirement: i18n.t(`game.worldCities.${ctx.cityId}.unlockRequirement` as never)
+				requirement: tScoped(i18n, `game.worldCities.${ctx.cityId}`, 'unlockRequirement')
 			});
 		case 'industrialUnknownTile':
 			return i18n.t('copy.decisions.industrialConstructionDelayed.contexts.unknownTile');
@@ -495,8 +507,10 @@ export function localizeWorldCityStatus(
 				});
 				break;
 			case 'worldCityNotAvailableYet':
-				blockedReason = i18n.t(
-					`game.worldCities.${status.blockedReason.cityId}.unlockRequirement` as never
+				blockedReason = tScoped(
+					i18n,
+					`game.worldCities.${status.blockedReason.cityId}`,
+					'unlockRequirement'
 				);
 				break;
 			default:
@@ -517,8 +531,8 @@ export function localizeWorldCityStatus(
 				status.city.specialtySummary
 		},
 		blockedReason,
-		kindLabel: i18n.t(`copy.worldCity.kind.${status.city.kind}` as never),
-		stateLabel: i18n.t(`copy.worldCity.state.${status.state}` as never)
+		kindLabel: tScoped(i18n, 'copy.worldCity.kind', status.city.kind),
+		stateLabel: tScoped(i18n, 'copy.worldCity.state', status.state)
 	};
 }
 

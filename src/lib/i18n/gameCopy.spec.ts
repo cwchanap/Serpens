@@ -738,12 +738,10 @@ describe('game copy builders', () => {
 			edges: [],
 			details: {},
 			warnings: [],
-			emptyReason: 'No local production chain available for this category yet.'
+			emptyReason: 'noLocalChain'
 		};
 		const localizedEmptyReason = localizeProductChainGraph(graphWithNoLocalChain, japanese);
-		expect(localizedEmptyReason.emptyReason).not.toBe(
-			'No local production chain available for this category yet.'
-		);
+		expect(localizedEmptyReason.emptyReason).not.toBe('noLocalChain');
 
 		const baseEdge = {
 			id: 'e1',

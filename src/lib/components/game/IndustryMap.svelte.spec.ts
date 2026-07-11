@@ -2,6 +2,9 @@ import { page } from 'vitest/browser';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import type { IndustryMapSnapshot } from '$lib/game/industryMapRender';
+import { createI18n, type I18nBundle } from '$lib/i18n';
+
+const i18n: I18nBundle = createI18n('en');
 
 const mockUpdateSnapshot = vi.fn();
 const mockSetEventHandler = vi.fn();
@@ -64,7 +67,8 @@ describe('IndustryMap', () => {
 
 		render(IndustryMap, {
 			snapshot: emptySnapshot,
-			onTileSelected: vi.fn()
+			onTileSelected: vi.fn(),
+			i18n
 		});
 
 		await expect.element(page.getByRole('region', { name: 'Industry map' })).toBeInTheDocument();
@@ -76,7 +80,8 @@ describe('IndustryMap', () => {
 
 		render(IndustryMap, {
 			snapshot: emptySnapshot,
-			onTileSelected: vi.fn()
+			onTileSelected: vi.fn(),
+			i18n
 		});
 
 		await expect.element(page.getByText('Industry map renderer unavailable.')).toBeInTheDocument();
@@ -88,7 +93,8 @@ describe('IndustryMap', () => {
 		render(IndustryMap, {
 			snapshot: emptySnapshot,
 			onTileSelected: vi.fn(),
-			paused: true
+			paused: true,
+			i18n
 		});
 
 		await waitForMock(mockPause);
@@ -101,7 +107,8 @@ describe('IndustryMap', () => {
 		render(IndustryMap, {
 			snapshot: emptySnapshot,
 			onTileSelected: vi.fn(),
-			active: false
+			active: false,
+			i18n
 		});
 
 		await waitForMock(mockPause);
@@ -113,7 +120,8 @@ describe('IndustryMap', () => {
 
 		render(IndustryMap, {
 			snapshot: emptySnapshot,
-			onTileSelected: vi.fn()
+			onTileSelected: vi.fn(),
+			i18n
 		});
 
 		await waitForMock(mockResume);
@@ -124,7 +132,7 @@ describe('IndustryMap', () => {
 		expect.assertions(1);
 		const onTileSelected = vi.fn();
 
-		render(IndustryMap, { snapshot: emptySnapshot, onTileSelected });
+		render(IndustryMap, { snapshot: emptySnapshot, onTileSelected, i18n });
 
 		await waitForMock(mockSetEventHandler);
 		const handler = mockSetEventHandler.mock.calls.at(-1)![0] as (event: {

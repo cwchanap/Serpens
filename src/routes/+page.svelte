@@ -1161,6 +1161,7 @@
 						onTileSelected={selectTile}
 						active={activeMapView === 'retail'}
 						paused={isMapPaused}
+						{i18n}
 					/>
 				</div>
 			{/if}
@@ -1174,6 +1175,7 @@
 						onTileSelected={selectIndustryTile}
 						active={activeMapView === 'industry'}
 						paused={isMapPaused}
+						{i18n}
 					/>
 				</div>
 			{/if}

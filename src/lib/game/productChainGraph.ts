@@ -96,6 +96,8 @@ export interface ProductChainEdge {
 	health: ProductChainHealth;
 }
 
+export type GraphEmptyReason = 'noWarehouseData' | 'noLocalChain';
+
 export interface ProductChainGraph {
 	id: string;
 	title: string;
@@ -103,7 +105,7 @@ export interface ProductChainGraph {
 	edges: ProductChainEdge[];
 	details: Record<string, ProductChainNode>;
 	warnings: GraphWarning[];
-	emptyReason: string | null;
+	emptyReason: GraphEmptyReason | null;
 }
 
 export interface ProductChainCategorySummary {
@@ -156,11 +158,7 @@ export function buildWarehouseFlowGraph(game: GameState): ProductChainGraph {
 	}
 
 	if (materialIds.size === 0 && !report) {
-		return emptyGraph(
-			'warehouse-flow',
-			'Warehouse flow',
-			'No warehouse stock or daily report yet.'
-		);
+		return emptyGraph('warehouse-flow', 'Warehouse flow', 'noWarehouseData');
 	}
 
 	const warehouseHealth: ProductChainHealth =
@@ -666,7 +664,11 @@ export function sortEdges(edges: ProductChainEdge[]): ProductChainEdge[] {
 	);
 }
 
-export function emptyGraph(id: string, title: string, emptyReason: string): ProductChainGraph {
+export function emptyGraph(
+	id: string,
+	title: string,
+	emptyReason: GraphEmptyReason
+): ProductChainGraph {
 	return {
 		id,
 		title,

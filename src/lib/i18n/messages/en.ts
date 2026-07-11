@@ -377,6 +377,10 @@ export const en = {
 		emptyNodes: 'No graph nodes are available for this chain.',
 		warnings: '{title} warnings'
 	},
+	mapRenderer: {
+		cityMapUnavailable: 'Map renderer unavailable.',
+		industryMapUnavailable: 'Industry map renderer unavailable.'
+	},
 	atlas: {
 		categoryIndex: {
 			ariaLabel: 'Product category index',

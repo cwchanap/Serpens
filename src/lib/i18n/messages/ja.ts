@@ -377,6 +377,10 @@ export const ja = {
 		emptyNodes: 'このチェーンで利用できるグラフノードはありません。',
 		warnings: '{title}の警告'
 	},
+	mapRenderer: {
+		cityMapUnavailable: 'マップレンダラーを利用できません。',
+		industryMapUnavailable: '産業マップレンダラーを利用できません。'
+	},
 	atlas: {
 		categoryIndex: {
 			ariaLabel: '商品カテゴリ索引',

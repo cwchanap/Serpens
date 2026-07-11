@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
 	import type { CityMapSnapshot } from '$lib/game/mapRender';
+	import type { I18nBundle } from '$lib/i18n';
 
 	interface Props {
 		snapshot: CityMapSnapshot;
@@ -13,9 +14,10 @@
 		 * panels are open. Rendering resumes automatically when this is false.
 		 */
 		paused?: boolean;
+		i18n: I18nBundle;
 	}
 
-	let { snapshot, onTileSelected, active = true, paused = false }: Props = $props();
+	let { snapshot, onTileSelected, active = true, paused = false, i18n }: Props = $props();
 
 	let container: HTMLDivElement | undefined = $state();
 	let loadFailed = $state(false);
@@ -120,7 +122,7 @@
 <section class="map-shell" aria-label="City map">
 	<div class="map-canvas" bind:this={container}>
 		{#if loadFailed}
-			<p class="map-fallback">Map renderer unavailable.</p>
+			<p class="map-fallback">{i18n.t('mapRenderer.cityMapUnavailable')}</p>
 		{/if}
 	</div>
 </section>

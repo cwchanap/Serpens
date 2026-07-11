@@ -2,7 +2,10 @@ import { page } from 'vitest/browser';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import type { CityMapSnapshot } from '$lib/game/mapRender';
+import { createI18n, type I18nBundle } from '$lib/i18n';
 import CityMap from './CityMap.svelte';
+
+const i18n: I18nBundle = createI18n('en');
 
 const mockUpdateSnapshot = vi.fn();
 const mockSetEventHandler = vi.fn();
@@ -66,7 +69,8 @@ describe('CityMap', () => {
 
 		render(CityMap, {
 			snapshot: stubSnapshot,
-			onTileSelected: vi.fn()
+			onTileSelected: vi.fn(),
+			i18n
 		});
 
 		await waitForMock(mockSetEventHandler);
@@ -80,7 +84,8 @@ describe('CityMap', () => {
 
 		render(CityMap, {
 			snapshot: stubSnapshot,
-			onTileSelected: vi.fn()
+			onTileSelected: vi.fn(),
+			i18n
 		});
 
 		await expect.element(page.getByText('Map renderer unavailable.')).toBeVisible();
@@ -92,7 +97,8 @@ describe('CityMap', () => {
 		render(CityMap, {
 			snapshot: stubSnapshot,
 			onTileSelected: vi.fn(),
-			paused: true
+			paused: true,
+			i18n
 		});
 
 		await waitForMock(MockGame);
@@ -106,11 +112,12 @@ describe('CityMap', () => {
 		const { rerender } = render(CityMap, {
 			snapshot: stubSnapshot,
 			onTileSelected: vi.fn(),
-			paused: true
+			paused: true,
+			i18n
 		});
 
 		await waitForMock(mockPause);
-		rerender({ snapshot: stubSnapshot, onTileSelected: vi.fn(), paused: false });
+		rerender({ snapshot: stubSnapshot, onTileSelected: vi.fn(), paused: false, i18n });
 		await waitForMock(mockResume);
 		expect(mockResume).toHaveBeenCalled();
 	});
@@ -119,7 +126,7 @@ describe('CityMap', () => {
 		expect.assertions(1);
 		const onTileSelected = vi.fn();
 
-		render(CityMap, { snapshot: stubSnapshot, onTileSelected });
+		render(CityMap, { snapshot: stubSnapshot, onTileSelected, i18n });
 
 		await waitForMock(mockSetEventHandler);
 		const handler = mockSetEventHandler.mock.calls.at(-1)![0] as (event: { type: string }) => void;
@@ -132,7 +139,7 @@ describe('CityMap', () => {
 		expect.assertions(1);
 		const onTileSelected = vi.fn();
 
-		render(CityMap, { snapshot: stubSnapshot, onTileSelected });
+		render(CityMap, { snapshot: stubSnapshot, onTileSelected, i18n });
 
 		await waitForMock(mockSetEventHandler);
 		const handler = mockSetEventHandler.mock.calls.at(-1)![0] as (event: {
@@ -150,7 +157,8 @@ describe('CityMap', () => {
 		render(CityMap, {
 			snapshot: stubSnapshot,
 			onTileSelected: vi.fn(),
-			active: false
+			active: false,
+			i18n
 		});
 
 		await waitForMock(MockGame);

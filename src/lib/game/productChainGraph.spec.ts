@@ -230,7 +230,7 @@ describe('warehouse flow graph', () => {
 
 		expect(graph.nodes).toEqual([]);
 		expect(graph.edges).toEqual([]);
-		expect(graph.emptyReason).toBe('No warehouse stock or daily report yet.');
+		expect(graph.emptyReason).toBe('noWarehouseData');
 	});
 
 	test('counts placed warehouse buildings in the warehouse node capacity', () => {
