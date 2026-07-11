@@ -16,13 +16,19 @@ import { generateDecisions } from '$lib/game/events';
 import { getWorldCityDefinition, getWorldCityStatus, openWorldCity } from '$lib/game/world';
 import type { GameAlert } from '$lib/game/alerts';
 import type { DecisionItem, Store, MaterialId } from '$lib/game/types';
-import type { ProductChainGraph, ProductChainNode } from '$lib/game/productChainGraph';
+import type {
+	ProductChainCategorySummary,
+	ProductChainGraph,
+	ProductChainNode
+} from '$lib/game/productChainGraph';
 import type { WorldCityId } from '$lib/game/types';
 import {
 	decisionContextExpansionCashBlocked,
 	decisionContextExpansionUnavailable,
 	decisionContextIndustrialLockedTile,
+	decisionContextIndustrialOccupiedTile,
 	decisionContextIndustrialRequiresCash,
+	decisionContextIndustrialRequiresIndustrialTile,
 	decisionContextIndustrialRequiresResource,
 	decisionContextIndustrialUnknownBuilding,
 	decisionContextIndustrialUnknownTile,
@@ -42,6 +48,7 @@ import {
 	formatPlacementBlockReason,
 	localizeAlert,
 	localizeDecision,
+	localizeProductChainCategorySummary,
 	localizeProductChainGraph,
 	localizeReportWarning,
 	localizeStockStatus,
@@ -1093,5 +1100,457 @@ describe('game copy builders', () => {
 			const localized = localizeDecision(decision!, japanese);
 			expect(localized.context).toBe(japanese.t('copy.decisions.cashPressure.context'));
 		});
+	});
+
+	it('formats all remaining placement block reason codes', () => {
+		// Covers the formatPlacementBlockReason branches not exercised by the
+		// existing test: null input, retail tile/limit/location reasons, and
+		// industry unknown-building-type.
+		expect.assertions(9);
+		const en = createI18n('en');
+
+		expect(formatPlacementBlockReason(null, en)).toBeNull();
+		expect(formatPlacementBlockReason({ code: 'retail.unknownCityTile' }, en)).toBe(
+			'Unknown city tile'
+		);
+		expect(formatPlacementBlockReason({ code: 'retail.occupiedLocation' }, en)).toBe(
+			'Occupied location'
+		);
+		expect(formatPlacementBlockReason({ code: 'retail.lockedLocation' }, en)).toBe(
+			'Locked location'
+		);
+		expect(formatPlacementBlockReason({ code: 'retail.roadLocation' }, en)).toBe('Road location');
+		expect(formatPlacementBlockReason({ code: 'retail.riverLocation' }, en)).toBe('River location');
+		expect(
+			formatPlacementBlockReason(
+				{ code: 'industry.rawPlacementBlocked', message: decisionContextIndustrialOccupiedTile() },
+				en
+			)
+		).toBe('Occupied industrial tile');
+		expect(
+			formatPlacementBlockReason(
+				{
+					code: 'industry.rawPlacementBlocked',
+					message: decisionContextIndustrialRequiresIndustrialTile()
+				},
+				en
+			)
+		).toBe('Requires industrial tile');
+		expect(formatPlacementBlockReason({ code: 'industry.unknownBuildingType' }, en)).toBe(
+			'Unknown industrial building type'
+		);
+	});
+
+	it('localizes industrial-occupied-tile and industrial-requires-industrial-tile decision contexts', () => {
+		expect.assertions(4);
+		const japanese = createI18n('ja');
+		const occupied: DecisionItem = {
+			id: 'industrial-construction-delayed-occupied-1',
+			title: 'Industrial construction delayed',
+			context: decisionContextIndustrialOccupiedTile(),
+			expiresOnDay: 2,
+			options: [
+				{
+					id: 'acknowledge',
+					label: 'Ack',
+					description: 'Return to industry planning.',
+					effects: {}
+				}
+			]
+		};
+		const requiresTile: DecisionItem = {
+			id: 'industrial-construction-delayed-requires-tile-1',
+			title: 'Industrial construction delayed',
+			context: decisionContextIndustrialRequiresIndustrialTile(),
+			expiresOnDay: 2,
+			options: [
+				{
+					id: 'acknowledge',
+					label: 'Ack',
+					description: 'Return to industry planning.',
+					effects: {}
+				}
+			]
+		};
+
+		expect(localizeDecision(occupied, japanese).context).not.toBe(occupied.context);
+		expect(localizeDecision(occupied, japanese).context).not.toBe('');
+		expect(localizeDecision(requiresTile, japanese).context).not.toBe(requiresTile.context);
+		expect(localizeDecision(requiresTile, japanese).context).not.toBe('');
+	});
+
+	it('localizes decision and factory-blocked alerts', () => {
+		expect.assertions(3);
+		const en = createI18n('en');
+		const game = createNewGame('convenience', 1);
+		const cashDecision: DecisionItem = {
+			id: 'cash-pressure',
+			title: 'Cash pressure',
+			context: decisionContextCashPressure(),
+			expiresOnDay: 3,
+			options: [
+				{ id: 'short-loan', label: 'Short loan', description: '...', effects: { cash: 12000 } }
+			]
+		};
+		const gameWithDecision = { ...game, decisions: [cashDecision] };
+		const decisionAlert: GameAlert = {
+			id: 'decision:cash-pressure',
+			kind: 'decision',
+			message: 'stale',
+			decisionId: 'cash-pressure'
+		};
+		expect(localizeAlert(decisionAlert, gameWithDecision, en)).toContain(
+			en.t('copy.decisions.cashPressure.title')
+		);
+
+		const gameWithBuilding = {
+			...game,
+			industrialBuildings: [
+				{
+					...game.industrialBuildings[0]!,
+					id: 'building-1',
+					typeId: 'warehouse' as const
+				}
+			]
+		};
+		const factoryAlert: GameAlert = {
+			id: 'factory-blocked:building-1',
+			kind: 'factory-blocked',
+			message: 'stale',
+			buildingId: 'building-1'
+		};
+		expect(localizeAlert(factoryAlert, gameWithBuilding, en)).toContain(
+			en.labels.industrialBuilding('warehouse')
+		);
+
+		// Factory-blocked alert for a missing building falls back to the raw message.
+		expect(localizeAlert({ ...factoryAlert, buildingId: 'missing' }, gameWithBuilding, en)).toBe(
+			'stale'
+		);
+	});
+
+	it('localizeStockTrouble returns null for all-healthy products and pluralizes multiple out-of-stock', () => {
+		expect.assertions(2);
+		const en = createI18n('en');
+
+		expect(
+			localizeStockTrouble(
+				[
+					{ stock: 10, reorderThreshold: 4 },
+					{ stock: 20, reorderThreshold: 5 }
+				],
+				en
+			)
+		).toBeNull();
+
+		expect(
+			localizeStockTrouble(
+				[
+					{ stock: 0, reorderThreshold: 4 },
+					{ stock: 0, reorderThreshold: 4 }
+				],
+				en
+			)
+		).toBe('2 products out of stock');
+	});
+
+	it('localizeWorldCityStatus handles not-available-yet and null blocked reasons', () => {
+		expect.assertions(4);
+		const en = createI18n('en');
+		const ja = createI18n('ja');
+		const game = createNewGame('convenience', 1);
+
+		// garden-borough is locked (not revealed) → blockedReason is
+		// worldCityNotAvailableYet. The blocked reason is the localized
+		// unlock requirement text.
+		const lockedStatus = getWorldCityStatus(game, 'garden-borough');
+		expect(lockedStatus).not.toBeNull();
+		const localizedLocked = localizeWorldCityStatus(lockedStatus!, en);
+		expect(localizedLocked.blockedReason).not.toBeNull();
+		// In Japanese the blocked reason must differ from the English text.
+		const localizedLockedJa = localizeWorldCityStatus(lockedStatus!, ja);
+		expect(localizedLockedJa.blockedReason).not.toBe(lockedStatus!.city.unlockRequirement);
+
+		// harbor-city is already opened → blockedReason is null.
+		const openedStatus = getWorldCityStatus(game, 'harbor-city');
+		expect(localizeWorldCityStatus(openedStatus!, en).blockedReason).toBeNull();
+	});
+
+	it('localizeProductChainGraph labels warehouse nodes, material nodes, and material sub-labels', () => {
+		expect.assertions(4);
+		const en = createI18n('en');
+
+		const warehouseNode: ProductChainNode = {
+			id: 'warehouse',
+			kind: 'warehouse',
+			label: 'Warehouse',
+			materialId: null,
+			recipeId: null,
+			subLabel: undefined,
+			stage: 'warehouse',
+			layer: 1,
+			row: 0,
+			health: 'healthy',
+			healthLabel: 'Healthy',
+			warehouseStock: 100,
+			capacity: { buildingCount: 0, outputPerDay: 0, inputPerDay: 0 },
+			actual: {
+				produced: 0,
+				consumed: 0,
+				importedInput: 0,
+				warehousePulled: 0,
+				shopImported: 0,
+				unitsSold: 0,
+				demandMissed: 0
+			},
+			bottleneck: { code: 'warehouseAvailable' }
+		};
+		const materialNode: ProductChainNode = {
+			id: 'material:bottled-water',
+			kind: 'material',
+			label: 'Water',
+			materialId: 'bottled-water',
+			recipeId: null,
+			subLabel: 'Water',
+			stage: 'raw',
+			layer: 0,
+			row: 0,
+			health: 'healthy',
+			healthLabel: 'Healthy',
+			warehouseStock: 50,
+			capacity: { buildingCount: 0, outputPerDay: 0, inputPerDay: 0 },
+			actual: {
+				produced: 0,
+				consumed: 0,
+				importedInput: 0,
+				warehousePulled: 0,
+				shopImported: 0,
+				unitsSold: 0,
+				demandMissed: 0
+			},
+			bottleneck: { code: 'healthStatus', health: 'healthy', label: 'Water' }
+		};
+		const graph: ProductChainGraph = {
+			id: 'warehouse-flow',
+			title: 'Warehouse flow',
+			nodes: [warehouseNode, materialNode],
+			edges: [],
+			details: {},
+			warnings: [],
+			emptyReason: null
+		};
+
+		const localized = localizeProductChainGraph(graph, en);
+		expect(localized.nodes[0]?.label).toBe(en.t('copy.productChainGraph.warehouseNode'));
+		// The material node label is replaced with the localized material name.
+		// 'Bottled Water' differs from the raw 'Water' label, proving the
+		// materialId branch ran.
+		expect(localized.nodes[1]?.label).toBe(en.labels.material('bottled-water'));
+		expect(localized.nodes[1]?.label).not.toBe(materialNode.label);
+		expect(localized.nodes[1]?.subLabel).toBe(en.labels.material('bottled-water'));
+	});
+
+	it('localizeProductChainGraph falls back to the raw title for unknown graph ids and null empty reason', () => {
+		expect.assertions(2);
+		const en = createI18n('en');
+		const graph: ProductChainGraph = {
+			id: 'unknown-graph-id',
+			title: 'Custom Graph',
+			nodes: [],
+			edges: [],
+			details: {},
+			warnings: [],
+			emptyReason: null
+		};
+
+		const localized = localizeProductChainGraph(graph, en);
+		expect(localized.title).toBe('Custom Graph');
+		expect(localized.emptyReason).toBeNull();
+	});
+
+	it('localizeProductChainGraph covers remaining cycle edge label combinations', () => {
+		// produced+imported and used+not-imported are not covered by the
+		// existing structured-dispatch guard test. Use Japanese to verify the
+		// labels are localized (differ from the English phrase format).
+		expect.assertions(2);
+		const japanese = createI18n('ja');
+		const baseEdge = {
+			id: 'e1',
+			source: 'n1',
+			target: 'n2',
+			materialId: null,
+			requiredPerCycle: 0,
+			actualPerDay: 0,
+			health: 'healthy' as const
+		};
+		const graphProducedImported: ProductChainGraph = {
+			id: 'warehouse-flow',
+			title: 'Warehouse flow',
+			nodes: [],
+			edges: [
+				{
+					...baseEdge,
+					label: {
+						code: 'cycle',
+						direction: 'produced',
+						actual: 12,
+						required: 10,
+						imported: true
+					}
+				}
+			],
+			details: {},
+			warnings: [],
+			emptyReason: null
+		};
+		expect(localizeProductChainGraph(graphProducedImported, japanese).edges[0]?.label).not.toBe(
+			'12/day produced · 10/cycle · import'
+		);
+
+		const graphUsedNotImported: ProductChainGraph = {
+			...graphProducedImported,
+			edges: [
+				{
+					...baseEdge,
+					label: {
+						code: 'cycle',
+						direction: 'used',
+						actual: 3,
+						required: 5,
+						imported: false
+					}
+				}
+			]
+		};
+		expect(localizeProductChainGraph(graphUsedNotImported, japanese).edges[0]?.label).not.toBe(
+			'3/day used · 5/cycle'
+		);
+	});
+
+	it('localizeProductChainGraph covers remaining health bottleneck states', () => {
+		// watch, no-local-capacity, and no-report health states are not covered
+		// by the existing tests.
+		expect.assertions(3);
+		const en = createI18n('en');
+		const baseNode: ProductChainNode = {
+			id: 'material:water',
+			kind: 'material',
+			label: 'Water',
+			materialId: 'water',
+			recipeId: null,
+			subLabel: undefined,
+			stage: 'raw',
+			layer: 0,
+			row: 0,
+			health: 'healthy',
+			healthLabel: 'Healthy',
+			warehouseStock: 0,
+			capacity: { buildingCount: 0, outputPerDay: 0, inputPerDay: 0 },
+			actual: {
+				produced: 0,
+				consumed: 0,
+				importedInput: 0,
+				warehousePulled: 0,
+				shopImported: 0,
+				unitsSold: 0,
+				demandMissed: 0
+			},
+			bottleneck: { code: 'healthStatus', health: 'healthy', label: 'Water' }
+		};
+
+		const graphWithWatch: ProductChainGraph = {
+			id: 'warehouse-flow',
+			title: 'Warehouse flow',
+			nodes: [
+				{
+					...baseNode,
+					health: 'watch',
+					bottleneck: { code: 'healthStatus', health: 'watch', label: 'Water' }
+				}
+			],
+			edges: [],
+			details: {},
+			warnings: [],
+			emptyReason: null
+		};
+		expect(localizeProductChainGraph(graphWithWatch, en).nodes[0]?.bottleneck).not.toBe('');
+
+		const graphWithNoCapacity: ProductChainGraph = {
+			...graphWithWatch,
+			nodes: [
+				{
+					...baseNode,
+					health: 'no-local-capacity',
+					bottleneck: { code: 'healthStatus', health: 'no-local-capacity', label: 'Water' }
+				}
+			]
+		};
+		expect(localizeProductChainGraph(graphWithNoCapacity, en).nodes[0]?.bottleneck).not.toBe('');
+
+		const graphWithNoReport: ProductChainGraph = {
+			...graphWithWatch,
+			nodes: [
+				{
+					...baseNode,
+					health: 'no-report',
+					bottleneck: { code: 'healthStatus', health: 'no-report', label: 'Water' }
+				}
+			]
+		};
+		expect(localizeProductChainGraph(graphWithNoReport, en).nodes[0]?.bottleneck).not.toBe('');
+	});
+
+	it('localizeProductChainCategorySummary localizes the bottleneck field', () => {
+		expect.assertions(2);
+		const en = createI18n('en');
+		const summary: ProductChainCategorySummary = {
+			categoryId: 'snacks',
+			name: 'Snacks',
+			tier: 1,
+			health: 'healthy',
+			healthLabel: 'Healthy',
+			bottleneck: { code: 'healthStatus', health: 'healthy', label: 'Snacks' },
+			warehouseStock: 100,
+			produced: 10,
+			consumed: 5,
+			imported: 0
+		};
+
+		const localized = localizeProductChainCategorySummary(summary, en);
+		expect(localized.bottleneck).not.toBe(summary.bottleneck);
+		expect(localized.bottleneck).not.toBe('');
+	});
+
+	it('localizeReportWarning falls back to the raw storeId when the store is not found', () => {
+		expect.assertions(1);
+		const en = createI18n('en');
+		const stores: Store[] = [];
+
+		// When no store matches the storeId, resolveStoreName returns the raw
+		// storeId, which is interpolated into the warning text.
+		expect(
+			localizeReportWarning({ code: 'stockPressure', storeId: 'ghost-store' }, stores, en)
+		).toContain('ghost-store');
+	});
+
+	it('localizeDecisionTitle falls back to the raw title for unrecognized world-city contexts', () => {
+		// The worldCity family's default branch returns decision.title when the
+		// context code is not one of the three known world-city codes.
+		expect.assertions(1);
+		const en = createI18n('en');
+		const worldDecision: DecisionItem = {
+			id: 'world-city-unknown-ctx-1',
+			title: 'Custom World Title',
+			context: { code: 'expansionUnavailable', storeCap: 5 },
+			expiresOnDay: 2,
+			options: [{ id: 'acknowledge', label: 'Ack', description: '...', effects: {} }]
+		};
+
+		// The id starts with 'world-city-' so classifyDecision returns
+		// 'worldCity', but the context code is not a world-city code, so the
+		// default branch returns the raw title.
+		expect(localizeDecision({ ...worldDecision, id: 'world-city-custom-1' }, en).title).toBe(
+			'Custom World Title'
+		);
 	});
 });
