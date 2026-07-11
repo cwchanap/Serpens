@@ -68,7 +68,7 @@ export class SaveRepositoryFromDriver implements SaveRepository {
 			const snapshot = await this.readSnapshot();
 
 			if (!snapshot.manualSlots.some((slot) => slot.metadata.id === slotId)) {
-				throw new SaveDataError(`Manual save slot not found: ${slotId}`);
+				throw new SaveDataError(`Manual save slot not found: ${slotId}`, 'slot-not-found');
 			}
 
 			const replacement = createSaveRecord(game, {

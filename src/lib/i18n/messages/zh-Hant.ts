@@ -445,6 +445,9 @@ export const zhHant = {
 		},
 		save: {
 			errorGeneric: '存檔操作失敗',
+			errorCorrupt: '存檔資料已損毀或來自不相容的版本',
+			errorStorageUnavailable: '此瀏覽器無法使用存檔儲存空間',
+			errorSlotNotFound: '找不到存檔槽',
 			autoSavedDay: '已自動儲存第 {day} 天',
 			noAutoSaveFound: '找不到自動存檔',
 			loadedAutoSave: '已載入自動存檔',

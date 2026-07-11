@@ -258,6 +258,18 @@ function createDailyStoreReport(overrides: Partial<DailyStoreReport> = {}): Dail
 }
 
 describe('saveCodec', () => {
+	test('SaveDataError defaults to corrupt code', () => {
+		expect.assertions(1);
+		const error = new SaveDataError('some validation failure');
+		expect(error.code).toBe('corrupt');
+	});
+
+	test('SaveDataError preserves an explicit code', () => {
+		expect.assertions(1);
+		const error = new SaveDataError('storage is gone', 'storage-unavailable');
+		expect(error.code).toBe('storage-unavailable');
+	});
+
 	test('parseSaveStoreSnapshot re-throws SaveDataError from validation unchanged', () => {
 		expect.assertions(2);
 		const invalid = JSON.stringify({ schemaVersion: 99, autoSave: null, manualSlots: [] });

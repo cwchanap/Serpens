@@ -35,7 +35,7 @@ export function createBrowserSaveRepository(
 	now: () => Date = () => new Date()
 ): SaveRepository {
 	if (!storage) {
-		throw new SaveDataError('Browser save storage is unavailable');
+		throw new SaveDataError('Browser save storage is unavailable', 'storage-unavailable');
 	}
 
 	return new SaveRepositoryFromDriver(new BrowserSaveStoreDriver(storage), now);

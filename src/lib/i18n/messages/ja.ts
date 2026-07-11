@@ -445,6 +445,9 @@ export const ja = {
 		},
 		save: {
 			errorGeneric: 'セーブに失敗しました',
+			errorCorrupt: 'セーブデータが破損しているか、互換性のないバージョンのデータです',
+			errorStorageUnavailable: 'このブラウザではセーブ機能を利用できません',
+			errorSlotNotFound: 'セーブスロットが見つかりません',
 			autoSavedDay: '{day}日目を自動保存しました',
 			noAutoSaveFound: '自動セーブが見つかりません',
 			loadedAutoSave: '自動セーブを読み込みました',

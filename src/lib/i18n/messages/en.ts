@@ -445,6 +445,9 @@ export const en = {
 		},
 		save: {
 			errorGeneric: 'Save operation failed',
+			errorCorrupt: 'Saved data is corrupt or from an incompatible version',
+			errorStorageUnavailable: 'Save storage is unavailable in this browser',
+			errorSlotNotFound: 'Save slot not found',
 			autoSavedDay: 'Auto-saved day {day}',
 			noAutoSaveFound: 'No auto-save found',
 			loadedAutoSave: 'Loaded auto-save',

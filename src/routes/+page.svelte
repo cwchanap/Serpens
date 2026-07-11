@@ -106,6 +106,7 @@
 	} from '$lib/game/types';
 	import type { WorldCityStatus } from '$lib/game/world';
 	import type { SaveRepository } from '$lib/persistence/saveRepository';
+	import { SaveDataError } from '$lib/persistence/saveCodec';
 	import { createSaveRepository } from '$lib/persistence/saveRepositoryFactory';
 	import type { SaveSlotMetadata } from '$lib/persistence/saveTypes';
 
@@ -505,7 +506,20 @@
 	}
 
 	function describeSaveError(error: unknown): string {
-		return error instanceof Error ? error.message : i18n.t('route.save.errorGeneric');
+		console.error('Save operation failed:', error);
+
+		if (error instanceof SaveDataError) {
+			switch (error.code) {
+				case 'storage-unavailable':
+					return i18n.t('route.save.errorStorageUnavailable');
+				case 'slot-not-found':
+					return i18n.t('route.save.errorSlotNotFound');
+				default:
+					return i18n.t('route.save.errorCorrupt');
+			}
+		}
+
+		return i18n.t('route.save.errorGeneric');
 	}
 
 	function formatSaveDay(day: number): string {
