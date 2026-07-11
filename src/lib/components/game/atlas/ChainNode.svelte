@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { chainNodeArt } from '$lib/assets/gameArt';
-	import { formatQuantity } from '$lib/game/productChainGraph';
 	import type { LocalizedProductChainNode } from '$lib/i18n/localizedTypes';
 
 	interface Props {
@@ -15,12 +14,6 @@
 
 	const art = $derived(chainNodeArt(node));
 	const ariaLabel = $derived(`${node.label}, ${node.healthLabel}`);
-	const statLine = $derived.by(() => {
-		if (node.kind === 'recipe') {
-			return `${node.capacity.buildingCount} bldg · ${formatQuantity(node.capacity.outputPerDay)}/d`;
-		}
-		return `stock ${formatQuantity(node.warehouseStock)}`;
-	});
 
 	function handleClick(): void {
 		onSelect(node.id);
@@ -57,7 +50,7 @@
 	{#if node.subLabel}
 		<span class="sub-cartouche">{node.subLabel}</span>
 	{/if}
-	<span class="stat">{statLine}</span>
+	<span class="stat">{node.statLine}</span>
 </button>
 
 <style>

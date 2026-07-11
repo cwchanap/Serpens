@@ -380,6 +380,8 @@ export const en = {
 		warnings: '{title} warnings'
 	},
 	mapRenderer: {
+		cityMapAriaLabel: 'City map',
+		industryMapAriaLabel: 'Industry map',
 		cityMapUnavailable: 'Map renderer unavailable.',
 		industryMapUnavailable: 'Industry map renderer unavailable.'
 	},
@@ -852,6 +854,10 @@ export const en = {
 				productChain: '{label} chain'
 			},
 			warehouseNode: 'Warehouse',
+			nodeStats: {
+				recipe: '{buildings} bldg · {output}/d',
+				stock: 'stock {stock}'
+			},
 			health: {
 				healthy: 'Healthy',
 				watch: 'Watch',

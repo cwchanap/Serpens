@@ -119,7 +119,7 @@
 	}
 </script>
 
-<section class="map-shell" aria-label="City map">
+<section class="map-shell" aria-label={i18n.t('mapRenderer.cityMapAriaLabel')}>
 	<div class="map-canvas" bind:this={container}>
 		{#if loadFailed}
 			<p class="map-fallback">{i18n.t('mapRenderer.cityMapUnavailable')}</p>

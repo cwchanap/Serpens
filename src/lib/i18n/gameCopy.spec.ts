@@ -322,6 +322,99 @@ describe('game copy builders', () => {
 		expect(jaLocalized.title).toBe(`${japanese.labels.material('snacks')}チェーン`);
 	});
 
+	it('localizes node stat lines and edge health labels for non-English locales', () => {
+		expect.assertions(8);
+		const english = createI18n('en');
+		const japanese = createI18n('ja');
+		const recipeNode: ProductChainNode = {
+			id: 'recipe:flour-milling',
+			kind: 'recipe',
+			label: 'Flour Mill',
+			subLabel: 'Flour',
+			materialId: 'flour',
+			recipeId: 'flour-milling',
+			stage: 'intermediate',
+			layer: 0,
+			row: 0,
+			health: 'shortage',
+			healthLabel: 'Shortage',
+			warehouseStock: 0,
+			capacity: { buildingCount: 2, outputPerDay: 30, inputPerDay: 30 },
+			actual: {
+				produced: 0,
+				consumed: 0,
+				importedInput: 0,
+				warehousePulled: 0,
+				shopImported: 0,
+				unitsSold: 0,
+				demandMissed: 0
+			},
+			bottleneck: { code: 'healthStatus', health: 'shortage', label: 'Flour Mill' }
+		};
+		const materialNode: ProductChainNode = {
+			id: 'material:flour',
+			kind: 'material',
+			label: 'Flour',
+			subLabel: undefined,
+			materialId: 'flour',
+			recipeId: null,
+			stage: 'process',
+			layer: 1,
+			row: 0,
+			health: 'no-report',
+			healthLabel: 'No report yet',
+			warehouseStock: 15,
+			capacity: { buildingCount: 0, outputPerDay: 0, inputPerDay: 0 },
+			actual: {
+				produced: 0,
+				consumed: 0,
+				importedInput: 0,
+				warehousePulled: 0,
+				shopImported: 0,
+				unitsSold: 0,
+				demandMissed: 0
+			},
+			bottleneck: { code: 'healthStatus', health: 'no-report', label: 'Flour' }
+		};
+		const graph: ProductChainGraph = {
+			id: 'chain:flour',
+			title: 'Flour chain',
+			nodes: [recipeNode, materialNode],
+			edges: [
+				{
+					id: 'material:flour->recipe:flour-milling',
+					source: 'material:flour',
+					target: 'recipe:flour-milling',
+					materialId: 'flour',
+					label: { code: 'in', quantity: 5 },
+					requiredPerCycle: 5,
+					actualPerDay: 5,
+					health: 'no-report'
+				}
+			],
+			details: { 'recipe:flour-milling': recipeNode, 'material:flour': materialNode },
+			warnings: [],
+			emptyReason: null
+		};
+
+		const enLocalized = localizeProductChainGraph(graph, english);
+		const jaLocalized = localizeProductChainGraph(graph, japanese);
+
+		// Recipe node stat line: en uses "bldg" and "/d", ja uses "棟" and "1日"
+		expect(enLocalized.nodes[0]?.statLine).toBe('2 bldg · 30/d');
+		expect(jaLocalized.nodes[0]?.statLine).not.toBe('2 bldg · 30/d');
+		expect(jaLocalized.nodes[0]?.statLine).toContain('棟');
+
+		// Material/warehouse node stat line: en uses "stock", ja uses "在庫"
+		expect(enLocalized.nodes[1]?.statLine).toBe('stock 15');
+		expect(jaLocalized.nodes[1]?.statLine).not.toBe('stock 15');
+		expect(jaLocalized.nodes[1]?.statLine).toContain('在庫');
+
+		// Edge health label: en uses "No report yet", ja uses localized health
+		expect(enLocalized.edges[0]?.healthLabel).toBe('No report yet');
+		expect(jaLocalized.edges[0]?.healthLabel).not.toBe('No report yet');
+	});
+
 	it('localizes known generated report warnings while preserving fallback text', () => {
 		expect.assertions(3);
 		const japanese = createI18n('ja');

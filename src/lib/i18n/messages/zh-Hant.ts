@@ -380,6 +380,8 @@ export const zhHant = {
 		warnings: '{title}警告'
 	},
 	mapRenderer: {
+		cityMapAriaLabel: '城市地圖',
+		industryMapAriaLabel: '工業地圖',
 		cityMapUnavailable: '地圖渲染器無法使用。',
 		industryMapUnavailable: '工業地圖渲染器無法使用。'
 	},
@@ -845,6 +847,10 @@ export const zhHant = {
 				productChain: '{label}鏈'
 			},
 			warehouseNode: '倉庫',
+			nodeStats: {
+				recipe: '{buildings} 棟 · 每日 {output}',
+				stock: '庫存 {stock}'
+			},
 			health: {
 				healthy: '健康',
 				watch: '注意',

@@ -35,7 +35,7 @@
 
 	const stroke = $derived(healthStroke(edge.health));
 	const dashArray = $derived(healthDash(edge.health));
-	const ariaLabel = $derived(`${edge.label}, ${edge.health.replace(/-/g, ' ')}`);
+	const ariaLabel = $derived(`${edge.label}, ${edge.healthLabel}`);
 
 	let textEl: SVGTextElement | null = $state(null);
 	let labelWidth = $state(44);

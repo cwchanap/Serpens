@@ -1,5 +1,6 @@
 import { INDUSTRIAL_BUILDING_TYPES } from '$lib/game/industry';
 import type { PlacementBlockReason } from '$lib/game/placementPreview';
+import { formatQuantity } from '$lib/game/productChainGraph';
 import type {
 	BottleneckInfo,
 	EdgeLabelInfo,
@@ -132,6 +133,18 @@ function formatCountMessage(i18n: I18nBundle, baseKey: string, count: number): s
 
 function localizeHealth(health: ProductChainHealth, i18n: I18nBundle): string {
 	return tScoped(i18n, 'copy.productChainGraph.health', health);
+}
+
+function localizeNodeStatLine(node: ProductChainNode, i18n: I18nBundle): string {
+	if (node.kind === 'recipe') {
+		return i18n.t('copy.productChainGraph.nodeStats.recipe', {
+			buildings: formatQuantity(node.capacity.buildingCount),
+			output: formatQuantity(node.capacity.outputPerDay)
+		});
+	}
+	return i18n.t('copy.productChainGraph.nodeStats.stock', {
+		stock: formatQuantity(node.warehouseStock)
+	});
 }
 
 function localizeHealthBottleneck(
@@ -575,6 +588,7 @@ export function localizeProductChainGraph(
 			subLabel:
 				node.subLabel && node.materialId ? i18n.labels.material(node.materialId) : node.subLabel,
 			healthLabel: localizeHealth(node.health, i18n),
+			statLine: localizeNodeStatLine(node, i18n),
 			bottleneck: localizeBottleneck(node, label, i18n)
 		};
 	});
@@ -588,7 +602,8 @@ export function localizeProductChainGraph(
 		edges: graph.edges.map(
 			(edge): LocalizedProductChainEdge => ({
 				...edge,
-				label: localizeEdgeLabel(edge.label, i18n)
+				label: localizeEdgeLabel(edge.label, i18n),
+				healthLabel: localizeHealth(edge.health, i18n)
 			})
 		),
 		details: localizedNodeMap,

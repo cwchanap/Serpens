@@ -30,6 +30,7 @@ function materialNode(
 			demandMissed: 0
 		},
 		bottleneck: '',
+		statLine: 'stock 12',
 		...overrides
 	};
 }
@@ -104,6 +105,7 @@ describe('ChainNode', () => {
 				recipeId: 'flour-milling',
 				health: 'healthy',
 				healthLabel: 'Healthy',
+				statLine: '3 bldg · 60/d',
 				capacity: { buildingCount: 3, outputPerDay: 60, inputPerDay: 60 },
 				actual: {
 					produced: 0,

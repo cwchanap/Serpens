@@ -380,6 +380,8 @@ export const ja = {
 		warnings: '{title}の警告'
 	},
 	mapRenderer: {
+		cityMapAriaLabel: '都市マップ',
+		industryMapAriaLabel: '産業マップ',
 		cityMapUnavailable: 'マップレンダラーを利用できません。',
 		industryMapUnavailable: '産業マップレンダラーを利用できません。'
 	},
@@ -847,6 +849,10 @@ export const ja = {
 				productChain: '{label}チェーン'
 			},
 			warehouseNode: '倉庫',
+			nodeStats: {
+				recipe: '{buildings} 棟 · 1日 {output}',
+				stock: '在庫 {stock}'
+			},
 			health: {
 				healthy: '健全',
 				watch: '注意',
