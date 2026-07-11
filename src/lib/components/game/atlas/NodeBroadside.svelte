@@ -21,8 +21,8 @@
 			{
 				label: i18n.t('atlas.nodeBroadside.metrics.capacity'),
 				value: i18n.t('atlas.nodeBroadside.metrics.capacityValue', {
-					output: i18n.format.integer(node.capacity.outputPerDay),
-					input: i18n.format.integer(node.capacity.inputPerDay)
+					output: i18n.format.decimal(node.capacity.outputPerDay),
+					input: i18n.format.decimal(node.capacity.inputPerDay)
 				})
 			},
 			{
