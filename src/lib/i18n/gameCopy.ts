@@ -31,6 +31,12 @@ import type {
 	LocalizedWorldCityStatus
 } from './localizedTypes';
 
+const RECIPE_ID_TO_BUILDING_TYPE_ID = new Map<string, string>(
+	Object.values(INDUSTRIAL_BUILDING_TYPES)
+		.filter((type) => type.recipeId !== null)
+		.map((type) => [type.recipeId as string, type.id])
+);
+
 export type {
 	LocalizedDecision,
 	LocalizedDecisionOption,
@@ -509,11 +515,11 @@ export function localizeWorldCityStatus(
 				});
 				break;
 			case 'worldCityNotAvailableYet':
-				blockedReason = tScoped(
-					i18n,
-					`game.worldCities.${status.blockedReason.cityId}`,
-					'unlockRequirement'
-				);
+				blockedReason =
+					translateMessage(
+						i18n,
+						`game.worldCities.${status.blockedReason.cityId}.unlockRequirement`
+					) ?? status.city.unlockRequirement;
 				break;
 			default:
 				blockedReason = null;
@@ -548,9 +554,7 @@ export function localizeProductChainGraph(
 				? i18n.t('copy.productChainGraph.warehouseNode')
 				: node.recipeId
 					? i18n.labels.industrialBuilding(
-							Object.values(INDUSTRIAL_BUILDING_TYPES).find(
-								(type) => type.recipeId === node.recipeId
-							)?.id ?? node.label
+							RECIPE_ID_TO_BUILDING_TYPE_ID.get(node.recipeId) ?? node.label
 						)
 					: node.materialId
 						? i18n.labels.material(node.materialId)

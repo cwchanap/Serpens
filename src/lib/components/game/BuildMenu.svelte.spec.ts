@@ -173,7 +173,7 @@ describe('BuildMenu', () => {
 		);
 
 		await expect
-			.element(page.getByText('Found a retail store to unlock construction.'))
+			.element(page.getByText('Open a retail store to unlock construction.'))
 			.toBeVisible();
 		await expect.element(page.getByRole('button', { name: /build warehouse/i })).toBeDisabled();
 	});

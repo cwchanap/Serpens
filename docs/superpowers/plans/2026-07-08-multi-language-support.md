@@ -232,8 +232,11 @@ describe('createTranslator', () => {
 		expect.assertions(2);
 		const warn = vi.fn();
 		const t = createTranslator('ja', { dev: true, warn });
+		// `app.title` is English-only (no Japanese translation), so the
+		// translator falls back to the English value and emits the
+		// fallback warning expected by createTranslator's dev path.
 		expect(t('app.title')).toBe(messagesByLocale.en.app.title);
-		expect(warn).not.toHaveBeenCalled();
+		expect(warn).toHaveBeenCalledWith('Missing ja translation for app.title');
 	});
 
 	it('keeps message key parity across supported locales', () => {

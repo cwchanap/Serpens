@@ -68,7 +68,7 @@
 	};
 
 	function formatAlertCount(count: number): string {
-		return i18n.t((count === 1 ? 'topBar.alertCount.one' : 'topBar.alertCount.other') as never, {
+		return i18n.t(count === 1 ? 'topBar.alertCount.one' : 'topBar.alertCount.other', {
 			count
 		});
 	}

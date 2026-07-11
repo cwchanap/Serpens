@@ -10,10 +10,12 @@
 		getBuildingUpgradeCost
 	} from '$lib/game/leveling';
 	import type { I18nBundle } from '$lib/i18n';
+	import type { TranslationKey } from '$lib/i18n/translate';
 	import type {
 		DailyMaterialMovement,
 		GameState,
 		IndustrialBuilding,
+		IndustrialBuildingStatus,
 		IndustryTile,
 		MaterialId
 	} from '$lib/game/types';
@@ -82,8 +84,15 @@
 		return asset(getIndustrialBuildingArt(typeId));
 	}
 
+	const INDUSTRIAL_BUILDING_STATUS_KEYS: Record<IndustrialBuildingStatus, TranslationKey> = {
+		idle: 'industryTileInspector.status.idle',
+		produced: 'industryTileInspector.status.produced',
+		'imported-inputs': 'industryTileInspector.status.imported-inputs',
+		blocked: 'industryTileInspector.status.blocked'
+	};
+
 	function buildingStatusLabel(status: IndustrialBuilding['status']): string {
-		return i18n.t(`industryTileInspector.status.${status}` as never);
+		return i18n.t(INDUSTRIAL_BUILDING_STATUS_KEYS[status]);
 	}
 
 	function stopMapInteraction(event: Event): void {

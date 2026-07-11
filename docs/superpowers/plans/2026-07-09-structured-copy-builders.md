@@ -59,11 +59,6 @@
 - `src/lib/components/game/ProductChainsPanel.svelte`, `StoreProductChainPanel.svelte` — already call `localizeProductChainGraph`; ensure they pass and bind the `Localized*` graph and localize summaries for display.
 - `src/routes/+page.svelte` — line ~251 hand-builds `blockedReason: city.unlockRequirement`; must emit a `DecisionContext` instead.
 
-### Modified files — i18n layer (consume structured objects)
-
-- `src/lib/i18n/gameCopy.ts` — replace all regex-based builders with `switch (code)` dispatchers.
-- `src/lib/i18n/gameCopy.spec.ts` — update golden-phrase tests to call real game builders.
-
 ### Modified files — persistence
 
 - `src/lib/persistence/saveTypes.ts` — bump `SAVE_SCHEMA_VERSION` to 7.
