@@ -1,10 +1,17 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { LANGUAGE_PREFERENCE_STORAGE_KEY } from '../lib/i18n/locales';
 import {
 	DEFAULT_INDUSTRY_CITY_HEIGHT,
 	DEFAULT_INDUSTRY_CITY_WIDTH,
 	generateIndustryCity,
 	getIndustryTilesByResource
 } from '../lib/game/industry';
+
+test.beforeEach(async ({ page }) => {
+	await page.addInitScript((key) => {
+		window.localStorage.setItem(key, 'en');
+	}, LANGUAGE_PREFERENCE_STORAGE_KEY);
+});
 
 interface SavedMaterialMovement {
 	materialId: string;
@@ -1055,7 +1062,7 @@ test('player builds convenience production and refills from warehouse', async ({
 	await reports.getByRole('button', { name: /close reports/i }).click();
 	const storesPanel = await openManagementPanel(page, /stores/i);
 	const productSources = storesPanel.getByRole('list', {
-		name: /convenience store product source split/i
+		name: /store #1 product source split/i
 	});
 	await expect(productSources.getByText('Bottled Water')).toBeVisible();
 	await expect(
@@ -1098,7 +1105,7 @@ test('hire and assign named staff from the staff menu', async ({ page }) => {
 
 	const staffPanel = staffDialog.getByRole('region', { name: 'Staff' });
 	await expect(staffPanel.getByRole('heading', { name: 'Staff' })).toBeVisible();
-	await expect(staffDialog.getByText('Store #2: 1/1 managers, 2/2 general')).toBeVisible();
+	await expect(staffDialog.getByText('Store #1: 1/1 managers, 2/2 general')).toBeVisible();
 	const candidatesSection = staffPanel.getByRole('region', { name: 'Candidates' });
 	const generalCandidate = candidatesSection
 		.locator('article')
@@ -1116,9 +1123,9 @@ test('hire and assign named staff from the staff menu', async ({ page }) => {
 	await staffPanel
 		.getByRole('region', { name: 'Unassigned' })
 		.getByLabel(new RegExp(`^Assign ${candidateNamePattern},`))
-		.selectOption({ label: 'Store #2' });
+		.selectOption({ label: 'Store #1' });
 
-	await expect(staffDialog.getByText('Store #2: 1/1 managers, 3/2 general')).toBeVisible();
+	await expect(staffDialog.getByText('Store #1: 1/1 managers, 3/2 general')).toBeVisible();
 });
 
 test('locked map tiles still show inspector feedback', async ({ page }) => {
