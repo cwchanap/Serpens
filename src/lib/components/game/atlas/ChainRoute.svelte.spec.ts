@@ -13,6 +13,7 @@ function makeEdge(overrides: Partial<LocalizedProductChainEdge> = {}): Localized
 		requiredPerCycle: 5,
 		actualPerDay: 5,
 		health: 'healthy',
+		healthLabel: 'Healthy',
 		...overrides
 	};
 }
@@ -75,7 +76,7 @@ describe('ChainRoute', () => {
 
 	it('renders a <title> matching the aria-label for accessibility', async () => {
 		expect.assertions(2);
-		const edge = makeEdge({ label: '3/day used', health: 'no-report' });
+		const edge = makeEdge({ label: '3/day used', health: 'no-report', healthLabel: 'no report' });
 		renderRoute(edge);
 
 		const group = getRouteGroup(edge.id);

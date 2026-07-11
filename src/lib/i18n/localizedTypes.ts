@@ -23,10 +23,12 @@ export interface LocalizedWorldCityStatus extends Omit<WorldCityStatus, 'blocked
 
 export interface LocalizedProductChainNode extends Omit<ProductChainNode, 'bottleneck'> {
 	bottleneck: string; // localized
+	statLine: string; // localized
 }
 
 export interface LocalizedProductChainEdge extends Omit<ProductChainEdge, 'label'> {
 	label: string; // localized
+	healthLabel: string; // localized
 }
 
 export interface LocalizedProductChainGraph extends Omit<

@@ -118,7 +118,7 @@
 	}
 </script>
 
-<section class="map-shell" aria-label="Industry map">
+<section class="map-shell" aria-label={i18n.t('mapRenderer.industryMapAriaLabel')}>
 	<div class="map-canvas" bind:this={container}>
 		{#if loadFailed}
 			<p class="map-fallback">{i18n.t('mapRenderer.industryMapUnavailable')}</p>

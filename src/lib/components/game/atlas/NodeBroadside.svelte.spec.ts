@@ -28,7 +28,8 @@ function shortageRecipeNode(): LocalizedProductChainNode {
 			unitsSold: 0,
 			demandMissed: 8
 		},
-		bottleneck: 'Insufficient flour input for the bakery.'
+		bottleneck: 'Insufficient flour input for the bakery.',
+		statLine: '1 bldg · 20/d'
 	};
 }
 
