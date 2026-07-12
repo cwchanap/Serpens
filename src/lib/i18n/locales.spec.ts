@@ -83,6 +83,27 @@ describe('locale resolution', () => {
 		expect(storage.setItem).toHaveBeenCalledWith(LANGUAGE_PREFERENCE_STORAGE_KEY, 'zh-Hant');
 	});
 
+	it('ignores tag-matched stored preferences that are not exact supported IDs', () => {
+		// saveLocalePreference only ever writes exact supported IDs ('en',
+		// 'zh-Hant', 'ja'). A stored value like 'ja-JP' or 'zh-TW' is a
+		// browser-style tag, not a user-explicit choice, so it must not
+		// override navigator resolution — tag matching is reserved for
+		// navigator candidates.
+		expect.assertions(2);
+		expect(
+			resolveSupportedLocale({
+				storedLocale: 'ja-JP',
+				navigatorLanguages: ['zh-TW']
+			})
+		).toBe('zh-Hant');
+		expect(
+			resolveSupportedLocale({
+				storedLocale: 'zh-TW',
+				navigatorLanguages: ['ja-JP']
+			})
+		).toBe('ja');
+	});
+
 	it('falls through to navigator languages when storedLocale is not a string', () => {
 		expect.assertions(1);
 		expect(
