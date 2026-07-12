@@ -304,6 +304,14 @@ function localizeGraphWarning(warning: GraphWarning, i18n: I18nBundle): string {
 	}
 }
 
+function isWorldCityContext(context: DecisionContext): boolean {
+	return (
+		context.code === 'worldCityOpeningCost' ||
+		context.code === 'worldCityUnknown' ||
+		context.code === 'worldCityNotAvailableYet'
+	);
+}
+
 function classifyDecision(decision: DecisionItem): string | null {
 	if (decision.id === 'cash-pressure') return 'cashPressure';
 	if (decision.id === 'expansion-opportunity') return 'expansionOpportunity';
@@ -313,7 +321,13 @@ function classifyDecision(decision: DecisionItem): string | null {
 	if (decision.id.startsWith('location-unavailable')) return 'locationUnavailable';
 	if (decision.id.startsWith('industrial-construction-delayed'))
 		return 'industrialConstructionDelayed';
-	if (decision.id.startsWith('world-city-')) return 'worldCity';
+	// Restrict the world-city family to decisions carrying a recognized
+	// world-city context code. A saved or future decision whose id merely
+	// shares the 'world-city-' prefix (e.g. 'world-city-custom-1') but has
+	// an unrelated context must fall through to null so its stored options
+	// are preserved instead of being rewritten with world-city copy.
+	if (decision.id.startsWith('world-city-') && isWorldCityContext(decision.context))
+		return 'worldCity';
 	return null;
 }
 

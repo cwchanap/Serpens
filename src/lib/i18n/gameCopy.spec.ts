@@ -1766,4 +1766,32 @@ describe('game copy builders', () => {
 			'Custom World Title'
 		);
 	});
+
+	it('localizeDecision preserves stored options for unrecognized world-city decisions', () => {
+		// A saved or future decision whose id starts with 'world-city-' but
+		// whose context code is not a recognized world-city code must not have
+		// its acknowledge option rewritten with world-city copy. The stored
+		// option label and description must be preserved as-is.
+		expect.assertions(2);
+		const en = createI18n('en');
+		const decision: DecisionItem = {
+			id: 'world-city-custom-1',
+			title: 'Custom World Title',
+			context: { code: 'expansionUnavailable', storeCap: 5 },
+			expiresOnDay: 2,
+			options: [
+				{
+					id: 'acknowledge',
+					label: 'Custom Ack',
+					description: 'Custom ack description',
+					effects: {}
+				}
+			]
+		};
+
+		const localized = localizeDecision(decision, en);
+		const option = localized.options[0]!;
+		expect(option.label).toBe('Custom Ack');
+		expect(option.description).toBe('Custom ack description');
+	});
 });

@@ -80,12 +80,12 @@ export function resolveSupportedLocale(input?: {
 }): SupportedLocale {
 	const storedLocale = input?.storedLocale;
 
-	if (typeof storedLocale === 'string') {
-		const resolvedStoredLocale = resolveLocaleCandidate(storedLocale);
-
-		if (resolvedStoredLocale !== null) {
-			return resolvedStoredLocale;
-		}
+	if (typeof storedLocale === 'string' && isSupportedLocale(storedLocale)) {
+		// Stored preferences are user-explicit choices written by
+		// saveLocalePreference, which only ever writes exact supported IDs.
+		// Accept only exact IDs here; tag matching (e.g. 'ja-JP', 'zh-TW')
+		// is reserved for navigator candidates below.
+		return storedLocale;
 	}
 
 	return readNavigatorLocale(input?.navigatorLanguages);
