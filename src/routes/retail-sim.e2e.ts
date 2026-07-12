@@ -1001,7 +1001,7 @@ test('player builds convenience production and refills from warehouse', async ({
 	const inspector = page.getByRole('dialog', { name: /tile details/i });
 	await expect(inspector).toBeVisible();
 	const storeModal = await openStoreDetail(page);
-	await expect(storeModal.getByRole('table', { name: /Store #1 stock/i })).toBeVisible();
+	await expect(storeModal.getByRole('table', { name: /Convenience Store stock/i })).toBeVisible();
 	await setStoreProductNumber(storeModal, /reorder threshold for bottled water/i, 10);
 	await setStoreProductNumber(storeModal, /target stock for bottled water/i, 25);
 	await storeModal.getByRole('button', { name: /close store details/i }).click();
@@ -1070,7 +1070,7 @@ test('player builds convenience production and refills from warehouse', async ({
 	await expect(reports).toHaveCount(0);
 	const storesPanel = await openManagementPanel(page, /stores/i);
 	const productSources = storesPanel.getByRole('list', {
-		name: /store #1 product source split/i
+		name: /Convenience Store product source split/i
 	});
 	await expect(productSources.getByText('Bottled Water')).toBeVisible();
 	await expect(
@@ -1082,7 +1082,7 @@ test('player builds convenience production and refills from warehouse', async ({
 	await expect(
 		storesPanel.locator('article').filter({
 			hasText: new RegExp(
-				`^Store #1[\\s\\S]*Imports\\s+\\$${escapeRegExp(
+				`^Convenience Store[\\s\\S]*Imports\\s+\\$${escapeRegExp(
 					bottledWaterReport.importSpend.toLocaleString('en-US')
 				)}`
 			)
@@ -1117,7 +1117,7 @@ test('hire and assign named staff from the staff menu', async ({ page }) => {
 
 	const staffPanel = staffDialog.getByRole('region', { name: 'Staff' });
 	await expect(staffPanel.getByRole('heading', { name: 'Staff' })).toBeVisible();
-	await expect(staffDialog.getByText('Store #1: 1/1 managers, 2/2 general')).toBeVisible();
+	await expect(staffDialog.getByText('Boutique Goods: 1/1 managers, 2/2 general')).toBeVisible();
 	const candidatesSection = staffPanel.getByRole('region', { name: 'Candidates' });
 	const generalCandidate = candidatesSection
 		.locator('article')
@@ -1135,9 +1135,9 @@ test('hire and assign named staff from the staff menu', async ({ page }) => {
 	await staffPanel
 		.getByRole('region', { name: 'Unassigned' })
 		.getByLabel(new RegExp(`^Assign ${candidateNamePattern},`))
-		.selectOption({ label: 'Store #1' });
+		.selectOption({ label: 'Boutique Goods' });
 
-	await expect(staffDialog.getByText('Store #1: 1/1 managers, 3/2 general')).toBeVisible();
+	await expect(staffDialog.getByText('Boutique Goods: 1/1 managers, 3/2 general')).toBeVisible();
 });
 
 test('locked map tiles still show inspector feedback', async ({ page }) => {
@@ -1306,7 +1306,7 @@ test('manage selected store stock and see weekly imports', async ({ page }) => {
 	await expect(inspector).toBeVisible();
 	// The basic card carries no in-line tabs or stock table — those moved to the detail modal.
 	await expect(inspector.getByRole('tab', { name: /stock/i })).toHaveCount(0);
-	await expect(inspector.getByRole('table', { name: /Store #1 stock/i })).toHaveCount(0);
+	await expect(inspector.getByRole('table', { name: /Convenience Store stock/i })).toHaveCount(0);
 
 	const storeModal = await openStoreDetail(page);
 	// The modal opens on the Stock tab by default.
@@ -1324,7 +1324,7 @@ test('manage selected store stock and see weekly imports', async ({ page }) => {
 	expect(stockPanelLayout.chain.display).toBe('none');
 	expect(stockPanelLayout.staff.display).toBe('none');
 
-	await expect(storeModal.getByRole('table', { name: /Store #1 stock/i })).toBeVisible();
+	await expect(storeModal.getByRole('table', { name: /Convenience Store stock/i })).toBeVisible();
 	await expect(storeModal.getByRole('cell', { name: 'Bottled Water' })).toBeVisible();
 
 	await storeModal.getByRole('tab', { name: /product chain/i }).click();
