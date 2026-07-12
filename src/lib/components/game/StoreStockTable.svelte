@@ -83,7 +83,8 @@
 								<span class="product-thumb">
 									<img
 										src={asset(productArt.path)}
-										alt={productArt.alt}
+										alt=""
+										data-testid={`product-art-${product.categoryId}`}
 										width="96"
 										height="96"
 										loading="lazy"

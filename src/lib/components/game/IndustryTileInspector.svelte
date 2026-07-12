@@ -69,7 +69,7 @@
 	}
 
 	function movementLabel(movement: DailyMaterialMovement): string {
-		return `${materialName(movement.materialId)}: ${movement.quantity}`;
+		return `${materialName(movement.materialId)}: ${i18n.format.integer(movement.quantity)}`;
 	}
 
 	function materialName(materialId: MaterialId): string {
@@ -186,15 +186,15 @@
 					</div>
 					<div>
 						<dt>{i18n.t('industryTileInspector.producedTotal')}</dt>
-						<dd>{building.producedTotal}</dd>
+						<dd>{i18n.format.integer(building.producedTotal)}</dd>
 					</div>
 					<div>
 						<dt>{i18n.t('industryTileInspector.importedInputs')}</dt>
-						<dd>{building.importedInputTotal}</dd>
+						<dd>{i18n.format.integer(building.importedInputTotal)}</dd>
 					</div>
 					<div>
 						<dt>{i18n.t('industryTileInspector.blockedDays')}</dt>
-						<dd>{building.blockedDays}</dd>
+						<dd>{i18n.format.integer(building.blockedDays)}</dd>
 					</div>
 				</dl>
 
@@ -261,15 +261,15 @@
 					<dl>
 						<div>
 							<dt>{i18n.t('industryTileInspector.capacity')}</dt>
-							<dd>{game.warehouse.capacity}</dd>
+							<dd>{i18n.format.integer(game.warehouse.capacity)}</dd>
 						</div>
 						<div>
 							<dt>{i18n.t('industryTileInspector.used')}</dt>
-							<dd>{warehouseUsed}</dd>
+							<dd>{i18n.format.integer(warehouseUsed)}</dd>
 						</div>
 						<div>
 							<dt>{i18n.t('industryTileInspector.overflowUnits')}</dt>
-							<dd>{game.warehouse.overflowUnits}</dd>
+							<dd>{i18n.format.integer(game.warehouse.overflowUnits)}</dd>
 						</div>
 						<div>
 							<dt>{i18n.t('industryTileInspector.overflowCost')}</dt>
@@ -293,7 +293,7 @@
 											loading="lazy"
 											decoding="async"
 										/>
-										<span>{material.name}: {material.quantity}</span>
+										<span>{material.name}: {i18n.format.integer(material.quantity)}</span>
 									</span>
 								</li>
 							{/each}

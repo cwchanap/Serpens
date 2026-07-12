@@ -1387,7 +1387,9 @@
 								panel: activeManagementPanel.label
 							})}
 						>
-							<span class="ticker">{i18n.t('topBar.day', { day: panelGame.day })}</span>
+							<span class="ticker"
+								>{i18n.t('topBar.day', { day: i18n.format.integer(panelGame.day) })}</span
+							>
 							<strong class="ticker">{i18n.format.currency(panelGame.cash)}</strong>
 							<button
 								type="button"

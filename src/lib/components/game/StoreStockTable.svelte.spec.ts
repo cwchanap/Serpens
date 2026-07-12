@@ -80,10 +80,9 @@ describe('StoreStockTable', () => {
 		await expect.element(page.getByRole('cell', { name: 'Bottled Water' })).toBeVisible();
 		const bottledWaterArt = getProductArt('bottled-water');
 
-		await expect.element(page.getByRole('img', { name: bottledWaterArt.alt })).toBeVisible();
-		await expect
-			.element(page.getByRole('img', { name: bottledWaterArt.alt }))
-			.toHaveAttribute('src', bottledWaterArt.path);
+		const image = page.getByTestId('product-art-bottled-water');
+		await expect.element(image).toBeVisible();
+		await expect.element(image).toHaveAttribute('src', bottledWaterArt.path);
 		await expect.element(page.getByRole('cell', { name: '$2' })).toBeVisible();
 		await expect.element(page.getByText('12 sold / 2 missed')).toBeVisible();
 		await expect
