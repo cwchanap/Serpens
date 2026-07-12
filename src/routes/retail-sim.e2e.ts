@@ -915,7 +915,7 @@ test('industry build menu shows construction status before founding a store', as
 	await page.getByRole('button', { name: /^build$/i }).click();
 	const buildMenu = page.getByRole('dialog', { name: /build menu/i });
 	await expect(buildMenu).toBeVisible();
-	await expect(buildMenu.getByText(/found a retail store to unlock construction/i)).toBeVisible();
+	await expect(buildMenu.getByText(/open a retail store to unlock construction/i)).toBeVisible();
 	await buildMenu.getByRole('button', { name: /filter: all products/i }).click();
 	const filterPopup = buildMenu.getByRole('dialog', { name: /product chain filter/i });
 	await expect(filterPopup).toBeVisible();
