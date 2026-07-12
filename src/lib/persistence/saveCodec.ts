@@ -314,9 +314,11 @@ function migrateV8SaveRecord(record: unknown): unknown {
 	if (typeof record !== 'object' || record === null) return record;
 	const recordObject = record as Record<string, unknown>;
 	const migratedGame = migrateV8Game(recordObject.game);
+	// Advance by one version so migrateSaveRecord's chain can run the next step.
+	// Do NOT use SAVE_SCHEMA_VERSION here — that would skip intermediate migrations.
 	return {
 		...recordObject,
-		schemaVersion: SAVE_SCHEMA_VERSION,
+		schemaVersion: 9,
 		game: migratedGame
 	};
 }
