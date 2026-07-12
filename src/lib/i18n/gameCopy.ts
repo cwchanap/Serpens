@@ -1,6 +1,5 @@
 import { INDUSTRIAL_BUILDING_TYPES } from '$lib/game/industry';
 import type { PlacementBlockReason } from '$lib/game/placementPreview';
-import { formatQuantity } from '$lib/game/productChainGraph';
 import type {
 	BottleneckInfo,
 	EdgeLabelInfo,
@@ -131,6 +130,16 @@ function formatCountMessage(i18n: I18nBundle, baseKey: string, count: number): s
 	return tScoped(i18n, baseKey, count === 1 ? 'one' : 'other', { count });
 }
 
+/**
+ * Locale-aware quantity formatter for product-chain graph text. Mirrors the
+ * integer/decimal split of the pure `formatQuantity` helper but routes
+ * through the active locale's `Intl.NumberFormat` so thousands separators
+ * (e.g. `1,234`) appear for ja/zh-Hant instead of raw `1234`.
+ */
+function formatQuantityForLocale(quantity: number, i18n: I18nBundle): string {
+	return Number.isInteger(quantity) ? i18n.format.integer(quantity) : i18n.format.decimal(quantity);
+}
+
 function localizeHealth(health: ProductChainHealth, i18n: I18nBundle): string {
 	return tScoped(i18n, 'copy.productChainGraph.health', health);
 }
@@ -138,12 +147,12 @@ function localizeHealth(health: ProductChainHealth, i18n: I18nBundle): string {
 function localizeNodeStatLine(node: ProductChainNode, i18n: I18nBundle): string {
 	if (node.kind === 'recipe') {
 		return i18n.t('copy.productChainGraph.nodeStats.recipe', {
-			buildings: formatQuantity(node.capacity.buildingCount),
-			output: formatQuantity(node.capacity.outputPerDay)
+			buildings: formatQuantityForLocale(node.capacity.buildingCount, i18n),
+			output: formatQuantityForLocale(node.capacity.outputPerDay, i18n)
 		});
 	}
 	return i18n.t('copy.productChainGraph.nodeStats.stock', {
-		stock: formatQuantity(node.warehouseStock)
+		stock: formatQuantityForLocale(node.warehouseStock, i18n)
 	});
 }
 
@@ -172,7 +181,7 @@ function localizeBottleneckInfo(info: BottleneckInfo, label: string, i18n: I18nB
 			return i18n.t('copy.productChainGraph.bottlenecks.warehouseNoCapacity');
 		case 'warehouseOverflow':
 			return i18n.t('copy.productChainGraph.bottlenecks.warehouseOverflow', {
-				quantity: info.quantity
+				quantity: formatQuantityForLocale(info.quantity, i18n)
 			});
 		case 'warehouseAvailable':
 			return i18n.t('copy.productChainGraph.bottlenecks.warehouseAvailable');
@@ -188,9 +197,13 @@ function localizeBottleneck(node: ProductChainNode, label: string, i18n: I18nBun
 function localizeEdgeLabel(labelInfo: EdgeLabelInfo, i18n: I18nBundle): string {
 	switch (labelInfo.code) {
 		case 'in':
-			return i18n.t('copy.productChainGraph.edges.in', { quantity: labelInfo.quantity });
+			return i18n.t('copy.productChainGraph.edges.in', {
+				quantity: formatQuantityForLocale(labelInfo.quantity, i18n)
+			});
 		case 'out':
-			return i18n.t('copy.productChainGraph.edges.out', { quantity: labelInfo.quantity });
+			return i18n.t('copy.productChainGraph.edges.out', {
+				quantity: formatQuantityForLocale(labelInfo.quantity, i18n)
+			});
 		case 'cycle': {
 			const key =
 				labelInfo.direction === 'produced'
@@ -201,8 +214,8 @@ function localizeEdgeLabel(labelInfo: EdgeLabelInfo, i18n: I18nBundle): string {
 						? 'copy.productChainGraph.edges.usedImported'
 						: 'copy.productChainGraph.edges.used';
 			return i18n.t(key as never, {
-				actual: labelInfo.actual,
-				required: labelInfo.required
+				actual: formatQuantityForLocale(labelInfo.actual, i18n),
+				required: formatQuantityForLocale(labelInfo.required, i18n)
 			});
 		}
 	}
@@ -408,7 +421,9 @@ function localizeDecisionOption(
 				? 'copy.decisions.industrialConstructionDelayed.acknowledge.description'
 				: family === 'locationUnavailable'
 					? 'copy.decisions.locationUnavailable.acknowledge.description'
-					: 'copy.decisions.acknowledge.description';
+					: family === 'worldCity'
+						? 'copy.decisions.worldCity.acknowledge.description'
+						: 'copy.decisions.acknowledge.description';
 
 		return {
 			...option,

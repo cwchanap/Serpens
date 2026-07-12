@@ -439,7 +439,7 @@ describe('game copy builders', () => {
 	});
 
 	it('localizes event, state, and world decision families while preserving unknown fallback', () => {
-		expect.assertions(19);
+		expect.assertions(21);
 		const japanese = createI18n('ja');
 		const english = createI18n('en');
 
@@ -582,6 +582,12 @@ describe('game copy builders', () => {
 		expect(localizeDecision(stateDecision, japanese).context).not.toBe(stateDecision.context);
 		expect(localizeDecision(worldDecision, japanese).title).not.toBe(worldDecision.title);
 		expect(localizeDecision(worldDecision, japanese).context).not.toBe(worldDecision.context);
+		expect(localizeDecision(worldDecision, english).options[0]?.description).toBe(
+			'Return to the world map.'
+		);
+		expect(localizeDecision(worldDecision, japanese).options[0]?.description).toBe(
+			japanese.t('copy.decisions.worldCity.acknowledge.description')
+		);
 		expect(localizeDecision(unavailableDecision, japanese).context).not.toBe(
 			unavailableDecision.context
 		);
@@ -976,6 +982,97 @@ describe('game copy builders', () => {
 		expect(localizeProductChainGraph(graphWithEdgeUsedImported, japanese).edges[0]?.label).not.toBe(
 			'3/day used · 5/cycle · import'
 		);
+	});
+
+	it('product-chain graph quantities use locale-aware thousands separators', () => {
+		expect.assertions(7);
+		const japanese = createI18n('ja');
+
+		const baseActual = {
+			produced: 0,
+			consumed: 0,
+			importedInput: 0,
+			warehousePulled: 0,
+			shopImported: 0,
+			unitsSold: 0,
+			demandMissed: 0
+		};
+		const baseCapacity = { buildingCount: 0, outputPerDay: 0, inputPerDay: 0 };
+
+		// Node stats: recipe node with 1,234 buildings and 1,500 output/day.
+		const recipeNode: ProductChainNode = {
+			id: 'recipe-1',
+			kind: 'recipe',
+			label: 'Grain Farm',
+			materialId: null,
+			recipeId: 'grain-harvest',
+			stage: 'raw',
+			layer: 1,
+			row: 0,
+			health: 'healthy',
+			healthLabel: 'Healthy',
+			warehouseStock: 0,
+			capacity: { ...baseCapacity, buildingCount: 1234, outputPerDay: 1500 },
+			actual: baseActual,
+			bottleneck: { code: 'healthStatus', health: 'healthy', label: 'Grain Farm' }
+		};
+		const recipeGraph: ProductChainGraph = {
+			id: 'warehouse-flow',
+			title: 'Warehouse flow',
+			nodes: [recipeNode],
+			edges: [],
+			details: {},
+			warnings: [],
+			emptyReason: null
+		};
+		const localizedRecipe = localizeProductChainGraph(recipeGraph, japanese);
+		expect(localizedRecipe.nodes[0]?.statLine).toContain(japanese.format.integer(1234));
+		expect(localizedRecipe.nodes[0]?.statLine).toContain(japanese.format.integer(1500));
+		expect(localizedRecipe.nodes[0]?.statLine).not.toContain('1234');
+
+		// Node stats: warehouse node with 1,234 stock.
+		const warehouseNode: ProductChainNode = {
+			...recipeNode,
+			id: 'warehouse',
+			kind: 'warehouse',
+			recipeId: null,
+			stage: 'warehouse',
+			warehouseStock: 1234,
+			capacity: baseCapacity,
+			bottleneck: { code: 'warehouseAvailable' }
+		};
+		const warehouseGraph: ProductChainGraph = { ...recipeGraph, nodes: [warehouseNode] };
+		const localizedWarehouse = localizeProductChainGraph(warehouseGraph, japanese);
+		expect(localizedWarehouse.nodes[0]?.statLine).toContain(japanese.format.integer(1234));
+
+		// Edge labels: in/out with 1,234 units.
+		const baseEdge = {
+			id: 'e1',
+			source: 'n1',
+			target: 'n2',
+			materialId: null,
+			requiredPerCycle: 0,
+			actualPerDay: 0,
+			health: 'healthy' as const
+		};
+		const edgeInGraph: ProductChainGraph = {
+			...recipeGraph,
+			nodes: [],
+			edges: [{ ...baseEdge, label: { code: 'in', quantity: 1234 } }]
+		};
+		expect(localizeProductChainGraph(edgeInGraph, japanese).edges[0]?.label).toContain(
+			japanese.format.integer(1234)
+		);
+
+		// Overflow bottleneck with 1,234 units.
+		const overflowNode: ProductChainNode = {
+			...warehouseNode,
+			bottleneck: { code: 'warehouseOverflow', quantity: 1234 }
+		};
+		const overflowGraph: ProductChainGraph = { ...recipeGraph, nodes: [overflowNode] };
+		const localizedOverflow = localizeProductChainGraph(overflowGraph, japanese);
+		expect(localizedOverflow.nodes[0]?.bottleneck).toContain(japanese.format.integer(1234));
+		expect(localizedOverflow.nodes[0]?.bottleneck).not.toContain('1234 units');
 	});
 
 	it('storeDisplayName localizes auto-named stores and preserves custom names', () => {

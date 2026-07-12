@@ -839,6 +839,9 @@ export const ja = {
 					title: '都市開放を延期',
 					context: 'この都市を開くには {cash} の資金が必要です。'
 				},
+				acknowledge: {
+					description: 'ワールドマップに戻る。'
+				},
 				options: {}
 			},
 			acknowledge: {
