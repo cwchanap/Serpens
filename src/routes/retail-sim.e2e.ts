@@ -932,6 +932,13 @@ test('industry build menu shows construction status before founding a store', as
 });
 
 test('player builds convenience production and refills from warehouse', async ({ page }) => {
+	// This is the longest e2e test: it founds a retail store, switches to the
+	// industry city, advances 5 days, builds 3 industrial buildings, advances
+	// to the weekly import cycle, returns to retail, tunes stock settings, and
+	// verifies the full warehouse→store flow across 3 management panels. On CI
+	// runners the cumulative wait exceeds the default 60s timeout, so allow
+	// extra time.
+	test.setTimeout(120_000);
 	// Width must exceed the control desk's 980px breakpoint so the management
 	// launchers (Reports, Stores, Product Chains) stay on the desk. Height keeps
 	// the industry map tall enough for the build tiles used below.
@@ -1060,6 +1067,7 @@ test('player builds convenience production and refills from warehouse', async ({
 	const reports = await openManagementPanel(page, /reports/i);
 	await expect(reports.getByText(/latest daily result/i)).toBeVisible();
 	await reports.getByRole('button', { name: /close reports/i }).click();
+	await expect(reports).toHaveCount(0);
 	const storesPanel = await openManagementPanel(page, /stores/i);
 	const productSources = storesPanel.getByRole('list', {
 		name: /store #1 product source split/i
@@ -1081,6 +1089,10 @@ test('player builds convenience production and refills from warehouse', async ({
 		})
 	).toBeVisible();
 	await storesPanel.getByRole('button', { name: /close stores/i }).click();
+	// Wait for the Stores overlay to fully unmount before opening the next
+	// panel; on slower CI runners the Svelte DOM update can lag just enough
+	// for the control-desk button to be briefly non-interactable.
+	await expect(storesPanel).toHaveCount(0);
 	const productChains = await openManagementPanel(page, /product chains/i);
 	await expect(productChains).toBeVisible();
 	await expect(productChains.getByTestId('category-stamp-bottled-water')).toBeVisible();
