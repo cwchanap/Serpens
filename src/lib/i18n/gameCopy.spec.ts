@@ -138,7 +138,7 @@ describe('game copy builders', () => {
 		};
 
 		expect(localizeAlert(alert, troubledGame, createI18n('en'))).toBe(
-			'Convenience Store: 1 product out of stock'
+			'Store #1: 1 product out of stock'
 		);
 		expect(
 			localizeAlert(

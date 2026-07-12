@@ -124,7 +124,7 @@ export function createNewGame(archetypeId: ArchetypeId, seed = Date.now()): Game
 	const fallbackTile = city.tiles.find(isTileBuildable) ?? city.tiles[0]!;
 	const openingStore = createStore({
 		id: 'store-1',
-		name: archetype.name,
+		name: '',
 		archetypeId,
 		location: { neighborhoodId: fallbackTile.neighborhood, x: fallbackTile.x, y: fallbackTile.y },
 		daysOpen: 1,
@@ -213,7 +213,7 @@ export function openStore(game: GameState, input: OpenStoreInput): GameState {
 	const rng = createRng(game.rngState);
 	const store = createStore({
 		id: `store-${game.stores.length + 1}`,
-		name: `Store #${game.stores.length + 1}`,
+		name: '',
 		archetypeId,
 		location: input.location,
 		daysOpen: 0,
