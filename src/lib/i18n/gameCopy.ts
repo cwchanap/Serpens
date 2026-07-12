@@ -484,7 +484,7 @@ export function localizeStockTrouble(
 		parts.push(formatCountMessage(i18n, 'copy.stockTrouble.needsImport', needsImport));
 	}
 
-	return parts.length > 0 ? parts.join(', ') : null;
+	return parts.length > 0 ? i18n.format.list(parts) : null;
 }
 
 export function localizeAlert(alert: GameAlert, game: GameState, i18n: I18nBundle): string {

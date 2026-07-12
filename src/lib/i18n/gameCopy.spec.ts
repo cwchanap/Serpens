@@ -71,7 +71,7 @@ describe('game copy builders', () => {
 				],
 				i18n
 			)
-		).toBe('1 product out of stock, 1 product needs import');
+		).toBe('1 product out of stock and 1 product needs import');
 		expect(localizeStockStatus('Healthy', createI18n('ja'))).not.toBe('Healthy');
 	});
 
@@ -1442,6 +1442,29 @@ describe('game copy builders', () => {
 				en
 			)
 		).toBe('2 products out of stock');
+	});
+
+	it('localizeStockTrouble joins out-of-stock and needs-import with a locale-aware list separator', () => {
+		expect.assertions(3);
+		const en = createI18n('en');
+		const ja = createI18n('ja');
+		const zh = createI18n('zh-Hant');
+
+		const products = [
+			{ stock: 0, reorderThreshold: 4 },
+			{ stock: 2, reorderThreshold: 4 }
+		];
+
+		// English Intl.ListFormat conjunction joins two items with " and ".
+		expect(localizeStockTrouble(products, en)).toBe(
+			'1 product out of stock and 1 product needs import'
+		);
+
+		// Japanese must not retain the English ", " separator.
+		expect(localizeStockTrouble(products, ja)).not.toContain(', ');
+
+		// Traditional Chinese must not retain the English ", " separator.
+		expect(localizeStockTrouble(products, zh)).not.toContain(', ');
 	});
 
 	it('localizeWorldCityStatus handles not-available-yet and null blocked reasons', () => {
