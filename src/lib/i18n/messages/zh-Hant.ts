@@ -837,6 +837,9 @@ export const zhHant = {
 					title: '城市開放延後',
 					context: '開啟這座城市需要 {cash} 現金。'
 				},
+				acknowledge: {
+					description: '返回世界地圖。'
+				},
 				options: {}
 			},
 			acknowledge: {

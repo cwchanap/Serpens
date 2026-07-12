@@ -844,6 +844,9 @@ export const en = {
 					title: 'City opening delayed',
 					context: 'Opening this city requires {cash} cash.'
 				},
+				acknowledge: {
+					description: 'Return to the world map.'
+				},
 				options: {}
 			},
 			acknowledge: {
