@@ -69,7 +69,8 @@
 		createI18n,
 		readLocalePreference,
 		saveLocalePreference,
-		type StorageLike
+		type StorageLike,
+		type TranslationKey
 	} from '$lib/i18n/index';
 	import type { SupportedLocale } from '$lib/i18n/locales';
 	import { summarizeReports } from '$lib/game/reports';
@@ -116,6 +117,14 @@
 		shortcut: string;
 	}
 
+	type SaveFeedbackKind = 'status' | 'error';
+
+	interface SaveFeedback {
+		kind: SaveFeedbackKind;
+		messageKey: TranslationKey;
+		params?: Record<string, string | number>;
+	}
+
 	/**
 	 * Returns `globalThis.localStorage` when accessible, or `null` when the
 	 * browser blocks storage access (e.g. privacy-restricted origins, sandboxed
@@ -129,6 +138,23 @@
 		} catch {
 			return null;
 		}
+	}
+
+	/**
+	 * Returns `navigator.languages` with `navigator.language` appended as a
+	 * fallback candidate. Some webviews expose only `navigator.language` or an
+	 * empty `navigator.languages` array; without this fallback a `ja-JP` or
+	 * `zh-TW` user would start in English despite the browser preference.
+	 */
+	function collectNavigatorLocaleCandidates(): readonly string[] {
+		const languages = globalThis.navigator.languages;
+		const language = globalThis.navigator.language;
+
+		if (language && !languages.includes(language)) {
+			return [...languages, language];
+		}
+
+		return languages;
 	}
 
 	const managementPanelMenuConfig: Array<{ id: ManagementPanelId; shortcut: string }> = [
@@ -210,7 +236,7 @@
 	let retailPlacementArchetypeId = $state<ArchetypeId | null>(null);
 	let industryPlacementBuildingTypeId = $state<IndustrialBuildingTypeId | null>(null);
 	let activeLocale = $state<SupportedLocale>(
-		readLocalePreference(safeLocalStorage(), globalThis.navigator.languages)
+		readLocalePreference(safeLocalStorage(), collectNavigatorLocaleCandidates())
 	);
 	let i18n = $derived(createI18n(activeLocale));
 	let placementFeedback = $state<PlacementBlockReason | null>(null);
@@ -218,8 +244,21 @@
 	let autoSave = $state<SaveSlotMetadata | null>(null);
 	let manualSaveSlots = $state<SaveSlotMetadata[]>([]);
 	let isSavePanelOpen = $state(false);
-	let saveStatus = $state('');
-	let saveError = $state<string | null>(null);
+	let saveFeedback = $state<SaveFeedback | null>(null);
+	let saveStatus = $derived.by(() => {
+		const feedback = saveFeedback;
+		if (!feedback || feedback.kind !== 'status') {
+			return '';
+		}
+		return renderSaveFeedback(feedback);
+	});
+	let saveError = $derived.by(() => {
+		const feedback = saveFeedback;
+		if (!feedback || feedback.kind !== 'error') {
+			return null;
+		}
+		return renderSaveFeedback(feedback);
+	});
 	let audioController: GameAudioController | null = $state(null);
 	let audioPreferences = $state<AudioPreferences>({ ...DEFAULT_AUDIO_PREFERENCES });
 	let managementPanelMenuItems = $derived.by<ManagementPanelMenuItem[]>(() =>
@@ -476,7 +515,7 @@
 				await refreshSaveSummary();
 			}
 		} catch (error) {
-			saveError = describeSaveError(error);
+			saveFeedback = { kind: 'error', messageKey: describeSaveErrorKey(error) };
 		}
 	}
 
@@ -494,10 +533,9 @@
 		isGameMenuOpen = false;
 		activeManagementPanelId = null;
 		isSavePanelOpen = true;
-		saveStatus = '';
-		saveError = null;
+		saveFeedback = null;
 		void refreshSaveSummary().catch((error) => {
-			saveError = describeSaveError(error);
+			saveFeedback = { kind: 'error', messageKey: describeSaveErrorKey(error) };
 		});
 	}
 
@@ -505,25 +543,31 @@
 		isSavePanelOpen = false;
 	}
 
-	function describeSaveError(error: unknown): string {
+	function describeSaveErrorKey(error: unknown): TranslationKey {
 		console.error('Save operation failed:', error);
 
 		if (error instanceof SaveDataError) {
 			switch (error.code) {
 				case 'storage-unavailable':
-					return i18n.t('route.save.errorStorageUnavailable');
+					return 'route.save.errorStorageUnavailable';
 				case 'slot-not-found':
-					return i18n.t('route.save.errorSlotNotFound');
+					return 'route.save.errorSlotNotFound';
 				default:
-					return i18n.t('route.save.errorCorrupt');
+					return 'route.save.errorCorrupt';
 			}
 		}
 
-		return i18n.t('route.save.errorGeneric');
+		return 'route.save.errorGeneric';
 	}
 
-	function formatSaveDay(day: number): string {
-		return i18n.format.integer(day);
+	function renderSaveFeedback(feedback: SaveFeedback): string {
+		const params = feedback.params ? { ...feedback.params } : undefined;
+
+		if (params && typeof params.day === 'number') {
+			params.day = i18n.format.integer(params.day);
+		}
+
+		return i18n.t(feedback.messageKey, params);
 	}
 
 	function openBuildMenu(): void {
@@ -661,12 +705,13 @@
 		try {
 			const metadata = await saveRepository.saveAuto(nextGame);
 			autoSave = metadata;
-			saveStatus = i18n.t('route.save.autoSavedDay', {
-				day: formatSaveDay(metadata.day)
-			});
-			saveError = null;
+			saveFeedback = {
+				kind: 'status',
+				messageKey: 'route.save.autoSavedDay',
+				params: { day: metadata.day }
+			};
 		} catch (error) {
-			saveError = describeSaveError(error);
+			saveFeedback = { kind: 'error', messageKey: describeSaveErrorKey(error) };
 		}
 	}
 
@@ -679,7 +724,7 @@
 			const record = await saveRepository.getAutoSave();
 
 			if (!record) {
-				saveStatus = i18n.t('route.save.noAutoSaveFound');
+				saveFeedback = { kind: 'status', messageKey: 'route.save.noAutoSaveFound' };
 				return;
 			}
 
@@ -688,12 +733,11 @@
 			selectedIndustryTileId = null;
 			selectedWorldCityId = null;
 			cancelPlacement();
-			saveStatus = i18n.t('route.save.loadedAutoSave');
-			saveError = null;
+			saveFeedback = { kind: 'status', messageKey: 'route.save.loadedAutoSave' };
 			await refreshSaveSummary();
 			playSfx('sfx.save.loaded');
 		} catch (error) {
-			saveError = describeSaveError(error);
+			saveFeedback = { kind: 'error', messageKey: describeSaveErrorKey(error) };
 		}
 	}
 
@@ -706,12 +750,15 @@
 			const metadata = slotId
 				? await saveRepository.overwriteManualSlot(slotId, name, game)
 				: await saveRepository.createManualSlot(name, game);
-			saveStatus = i18n.t('route.save.savedManualSlot', { name: metadata.name });
-			saveError = null;
+			saveFeedback = {
+				kind: 'status',
+				messageKey: 'route.save.savedManualSlot',
+				params: { name: metadata.name }
+			};
 			await refreshSaveSummary();
 			playSfx('sfx.save.saved');
 		} catch (error) {
-			saveError = describeSaveError(error);
+			saveFeedback = { kind: 'error', messageKey: describeSaveErrorKey(error) };
 		}
 	}
 
@@ -724,7 +771,7 @@
 			const record = await saveRepository.loadManualSlot(slotId);
 
 			if (!record) {
-				saveStatus = i18n.t('route.save.manualSlotNotFound');
+				saveFeedback = { kind: 'status', messageKey: 'route.save.manualSlotNotFound' };
 				return;
 			}
 
@@ -733,12 +780,15 @@
 			selectedIndustryTileId = null;
 			selectedWorldCityId = null;
 			cancelPlacement();
-			saveStatus = i18n.t('route.save.loadedManualSlot', { name: record.metadata.name });
-			saveError = null;
+			saveFeedback = {
+				kind: 'status',
+				messageKey: 'route.save.loadedManualSlot',
+				params: { name: record.metadata.name }
+			};
 			await refreshSaveSummary();
 			playSfx('sfx.save.loaded');
 		} catch (error) {
-			saveError = describeSaveError(error);
+			saveFeedback = { kind: 'error', messageKey: describeSaveErrorKey(error) };
 		}
 	}
 
@@ -749,11 +799,10 @@
 
 		try {
 			await saveRepository.deleteManualSlot(slotId);
-			saveStatus = i18n.t('route.save.deletedManualSlot');
-			saveError = null;
+			saveFeedback = { kind: 'status', messageKey: 'route.save.deletedManualSlot' };
 			await refreshSaveSummary();
 		} catch (error) {
-			saveError = describeSaveError(error);
+			saveFeedback = { kind: 'error', messageKey: describeSaveErrorKey(error) };
 		}
 	}
 
