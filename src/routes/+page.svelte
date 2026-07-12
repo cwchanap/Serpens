@@ -147,7 +147,7 @@
 	 * `zh-TW` user would start in English despite the browser preference.
 	 */
 	function collectNavigatorLocaleCandidates(): readonly string[] {
-		const languages = globalThis.navigator.languages;
+		const languages = globalThis.navigator.languages ?? [];
 		const language = globalThis.navigator.language;
 
 		if (language && !languages.includes(language)) {
