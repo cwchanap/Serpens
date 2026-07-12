@@ -116,13 +116,9 @@ function renderInspector(
 
 describe('TileInspector storefront art', () => {
 	it('does not show convenience storefront art for an empty selected tile', async () => {
-		const convenienceArt = getStoreArt('convenience');
-
 		renderInspector({ store: null });
 
-		await expect
-			.element(page.getByRole('img', { name: convenienceArt.alt }))
-			.not.toBeInTheDocument();
+		await expect.element(page.getByTestId('store-art-convenience')).not.toBeInTheDocument();
 	});
 
 	it('shows electronics storefront art for an electronics store tile', async () => {
@@ -136,7 +132,7 @@ describe('TileInspector storefront art', () => {
 			}
 		});
 
-		const image = page.getByRole('img', { name: electronicsArt.alt });
+		const image = page.getByTestId('store-art-electronics');
 		await expect.element(image).toBeVisible();
 		await expect.element(image).toHaveAttribute('src', electronicsArt.path);
 	});

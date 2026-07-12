@@ -142,7 +142,7 @@
 				<div class="slots">
 					{#each slots as slot (slot.id)}
 						<article>
-							<span class="slot-seal" aria-hidden="true">{slot.day}</span>
+							<span class="slot-seal" aria-hidden="true">{i18n.format.integer(slot.day)}</span>
 							<div>
 								<h4>{slot.name}</h4>
 								<p>{formatManualSlotDetails(slot)}</p>

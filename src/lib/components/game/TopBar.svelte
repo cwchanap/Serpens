@@ -82,8 +82,8 @@
 
 	<div class="readouts plaque">
 		{#if day !== null}
-			<span class="ticker" aria-label={i18n.t('topBar.day', { day })}>
-				{i18n.t('topBar.day', { day })}
+			<span class="ticker" aria-label={i18n.t('topBar.day', { day: i18n.format.integer(day) })}>
+				{i18n.t('topBar.day', { day: i18n.format.integer(day) })}
 			</span>
 		{/if}
 		{#if cash !== null}

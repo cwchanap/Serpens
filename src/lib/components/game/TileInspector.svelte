@@ -118,7 +118,8 @@
 					<div class="store-art">
 						<img
 							src={storeArtSrc}
-							alt={storeArt.alt}
+							alt=""
+							data-testid={`store-art-${store.archetypeId}`}
 							width="1024"
 							height="1024"
 							loading="lazy"
