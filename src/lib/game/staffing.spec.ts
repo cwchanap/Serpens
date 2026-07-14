@@ -394,7 +394,8 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 				name: 'Industry City',
 				width: 1,
 				height: 1,
-				tiles: []
+				tiles: [],
+				rails: []
 			}
 		],
 		activeIndustryCityId: 'industry-city',

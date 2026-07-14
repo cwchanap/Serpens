@@ -167,6 +167,21 @@ export interface MaterialQuantity {
 	quantity: number;
 }
 
+export interface RailCell {
+	x: number;
+	y: number;
+	level: number; // capacity per day, 1..RAIL_MAX_LEVEL
+}
+
+export interface RailShipment {
+	materialId: MaterialId;
+	quantity: number;
+	value: number;
+	kind: 'pull-producer' | 'pull-warehouse' | 'push-warehouse';
+	fromId: string; // source building id
+	toId: string; // destination building id
+}
+
 export interface IndustryTile {
 	id: string;
 	cityId: string;
@@ -183,6 +198,7 @@ export interface IndustryCity {
 	width: number;
 	height: number;
 	tiles: IndustryTile[];
+	rails: RailCell[];
 }
 
 export interface ProductionRecipe {
@@ -210,6 +226,7 @@ export interface IndustrialBuildingType {
 	requiresIndustrialTile: boolean;
 	recipeId: ProductionRecipeId | null;
 	warehouseCapacity: number;
+	bufferCapacity: number;
 	tier: BuildingTier;
 }
 
@@ -217,7 +234,7 @@ export interface DailyMaterialMovement {
 	materialId: MaterialId;
 	quantity: number;
 	value: number;
-	source: 'local' | 'import' | 'warehouse' | 'overflow';
+	source: 'local' | 'import' | 'warehouse' | 'overflow' | 'rail';
 }
 
 export interface DailyProductionReport {
@@ -232,6 +249,8 @@ export interface DailyProductionReport {
 	overflowCost: number;
 	warehouseCapacity: number;
 	warehouseUsed: number;
+	railShipments: RailShipment[];
+	railUsage: Record<string, number>;
 }
 
 export interface WarehouseInventory {
@@ -241,7 +260,12 @@ export interface WarehouseInventory {
 	overflowCost: number;
 }
 
-export type IndustrialBuildingStatus = 'idle' | 'produced' | 'imported-inputs' | 'blocked';
+export type IndustrialBuildingStatus =
+	| 'idle'
+	| 'produced'
+	| 'imported-inputs'
+	| 'stalled'
+	| 'blocked';
 
 export interface IndustrialBuilding {
 	id: string;
@@ -256,6 +280,7 @@ export interface IndustrialBuilding {
 	producedTotal: number;
 	importedInputTotal: number;
 	blockedDays: number;
+	inventory: Partial<Record<MaterialId, number>>;
 }
 
 export interface CompanyPolicy {

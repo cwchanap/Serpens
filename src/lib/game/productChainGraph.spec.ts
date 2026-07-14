@@ -40,6 +40,8 @@ function emptyProductionReport(
 		overflowCost: 0,
 		warehouseCapacity: 0,
 		warehouseUsed: 0,
+		railShipments: [],
+		railUsage: {},
 		...overrides
 	};
 }

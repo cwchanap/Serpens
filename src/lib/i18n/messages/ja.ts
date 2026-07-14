@@ -158,6 +158,7 @@ export const ja = {
 			idle: '待機中',
 			produced: '生産済み',
 			'imported-inputs': '投入を輸入',
+			stalled: '停滞中（バッファ満杯）',
 			blocked: '停止中'
 		}
 	},

@@ -78,7 +78,8 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 				name: 'Industry City',
 				width: 1,
 				height: 1,
-				tiles: []
+				tiles: [],
+				rails: []
 			}
 		],
 		activeIndustryCityId: 'industry-city',
@@ -206,6 +207,8 @@ function createDailyProductionReport(
 		overflowCost: 0,
 		warehouseCapacity: 0,
 		warehouseUsed: 0,
+		railShipments: [],
+		railUsage: {},
 		...overrides
 	};
 }

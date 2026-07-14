@@ -248,7 +248,8 @@ function createIndustrialBuilding(
 		lastProduction: [],
 		producedTotal: 0,
 		importedInputTotal: 0,
-		blockedDays: 0
+		blockedDays: 0,
+		inventory: {}
 	};
 }
 

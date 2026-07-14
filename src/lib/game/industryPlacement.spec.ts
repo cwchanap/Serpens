@@ -486,5 +486,5 @@ function createUnlockedEdgeIndustryCity(width: number, height: number): Industry
 			});
 		}
 	}
-	return { id: 'edge-city', name: 'Edge City', width, height, tiles };
+	return { id: 'edge-city', name: 'Edge City', width, height, tiles, rails: [] };
 }

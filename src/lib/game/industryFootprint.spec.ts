@@ -34,7 +34,7 @@ function makeCity(id: string, width: number, height: number): IndustryCity {
 			tiles.push(makeTile(id, x, y));
 		}
 	}
-	return { id, name: id, width, height, tiles };
+	return { id, name: id, width, height, tiles, rails: [] };
 }
 
 function makeBuilding(
@@ -55,7 +55,8 @@ function makeBuilding(
 		lastProduction: [],
 		producedTotal: 0,
 		importedInputTotal: 0,
-		blockedDays: 0
+		blockedDays: 0,
+		inventory: {}
 	};
 }
 

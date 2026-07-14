@@ -45,7 +45,8 @@ function building(typeId: IndustrialBuilding['typeId']): IndustrialBuilding {
 		lastProduction: [],
 		producedTotal: 0,
 		importedInputTotal: 0,
-		blockedDays: 0
+		blockedDays: 0,
+		inventory: {}
 	};
 }
 

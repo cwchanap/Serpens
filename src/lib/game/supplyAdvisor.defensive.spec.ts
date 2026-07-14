@@ -138,7 +138,8 @@ describe('buildSupplyAdvisor defensive branches', () => {
 			lastProduction: [],
 			producedTotal: 0,
 			importedInputTotal: 0,
-			blockedDays: 0
+			blockedDays: 0,
+			inventory: {}
 		};
 		// Must not throw; the unknown building simply contributes nothing.
 		const chains = buildSupplyAdvisor(

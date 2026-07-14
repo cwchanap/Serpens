@@ -132,7 +132,8 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 				name: 'Industry City',
 				width: 1,
 				height: 1,
-				tiles: []
+				tiles: [],
+				rails: []
 			}
 		],
 		activeIndustryCityId: 'industry-city',
@@ -295,6 +296,8 @@ function createDailyProductionReport(
 		overflowCost: 0,
 		warehouseCapacity: 0,
 		warehouseUsed: 0,
+		railShipments: [],
+		railUsage: {},
 		...overrides
 	};
 }
@@ -594,14 +597,16 @@ describe('save records', () => {
 					name: 'Industry City',
 					width: 1,
 					height: 1,
-					tiles: []
+					tiles: [],
+					rails: []
 				},
 				{
 					id: 'breadbasket-basin',
 					name: 'Breadbasket Basin',
 					width: 1,
 					height: 1,
-					tiles: []
+					tiles: [],
+					rails: []
 				}
 			]
 		});
@@ -827,7 +832,8 @@ describe('save records', () => {
 							resource: 'bad-resource' as IndustryResourceId,
 							locked: false
 						}
-					]
+					],
+					rails: []
 				}
 			]
 		});
@@ -855,7 +861,8 @@ describe('save records', () => {
 					lastProduction: [],
 					producedTotal: 0,
 					importedInputTotal: 0,
-					blockedDays: 0
+					blockedDays: 0,
+					inventory: {}
 				}
 			]
 		});
@@ -1249,7 +1256,8 @@ describe('save records', () => {
 					],
 					producedTotal: 100,
 					importedInputTotal: 0,
-					blockedDays: 0
+					blockedDays: 0,
+					inventory: {}
 				}
 			]
 		});
@@ -1730,7 +1738,8 @@ describe('save records', () => {
 					lastProduction: [],
 					producedTotal: 0,
 					importedInputTotal: 0,
-					blockedDays: 0
+					blockedDays: 0,
+					inventory: {}
 				}
 			]
 		});
@@ -1758,7 +1767,8 @@ describe('save records', () => {
 					lastProduction: [],
 					producedTotal: 0,
 					importedInputTotal: 0,
-					blockedDays: 0
+					blockedDays: 0,
+					inventory: {}
 				}
 			]
 		});
@@ -1884,7 +1894,8 @@ describe('save records', () => {
 					lastProduction: [],
 					producedTotal: 0,
 					importedInputTotal: 0,
-					blockedDays: 0
+					blockedDays: 0,
+					inventory: {}
 				}
 			]
 		});

@@ -227,7 +227,9 @@ export function createEmptyProductionReport(warehouse: WarehouseInventory): Dail
 		overflowUnits: warehouse.overflowUnits,
 		overflowCost: warehouse.overflowCost,
 		warehouseCapacity: warehouse.capacity,
-		warehouseUsed: getWarehouseUsed(warehouse)
+		warehouseUsed: getWarehouseUsed(warehouse),
+		railShipments: [],
+		railUsage: {}
 	};
 }
 

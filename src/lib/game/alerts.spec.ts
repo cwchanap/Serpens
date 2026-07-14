@@ -59,6 +59,7 @@ function building(overrides: Partial<IndustrialBuilding> = {}): IndustrialBuildi
 		producedTotal: 10,
 		importedInputTotal: 0,
 		blockedDays: 0,
+		inventory: {},
 		...overrides
 	};
 }

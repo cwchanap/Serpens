@@ -61,6 +61,8 @@ function emptyProductionReport(
 		overflowCost: 0,
 		warehouseCapacity: 0,
 		warehouseUsed: 0,
+		railShipments: [],
+		railUsage: {},
 		...overrides
 	};
 }
@@ -318,7 +320,8 @@ describe('buildProductChainTree', () => {
 					lastProduction: [],
 					producedTotal: 0,
 					importedInputTotal: 0,
-					blockedDays: 0
+					blockedDays: 0,
+					inventory: {}
 				}
 			]
 		};
@@ -376,7 +379,8 @@ describe('buildProductChainTree', () => {
 					lastProduction: [],
 					producedTotal: 0,
 					importedInputTotal: 0,
-					blockedDays: 0
+					blockedDays: 0,
+					inventory: {}
 				}
 			]
 		};

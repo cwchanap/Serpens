@@ -818,7 +818,8 @@ describe('resolveIndustrySelectionAnchorTileId', () => {
 			lastProduction: [],
 			producedTotal: 0,
 			importedInputTotal: 0,
-			blockedDays: 0
+			blockedDays: 0,
+			inventory: {}
 		};
 		// (2,2) is the bottom-right cell of the anchor's 2x2 footprint.
 		const bottomRight = city.tiles.find((tile) => tile.x === 2 && tile.y === 2)!;
@@ -843,7 +844,8 @@ describe('resolveIndustrySelectionAnchorTileId', () => {
 			lastProduction: [],
 			producedTotal: 0,
 			importedInputTotal: 0,
-			blockedDays: 0
+			blockedDays: 0,
+			inventory: {}
 		};
 		// Find a tile outside the (1,1) 2x2 footprint.
 		const outside = city.tiles.find((tile) => tile.x === 0 && tile.y === 0)!;
@@ -882,7 +884,8 @@ describe('resolveIndustrySelectionAnchorTileId', () => {
 			lastProduction: [],
 			producedTotal: 0,
 			importedInputTotal: 0,
-			blockedDays: 0
+			blockedDays: 0,
+			inventory: {}
 		};
 		// (2,2) is the bottom-right cell of the foreign building's footprint
 		// geometry, but its cityId differs so it must be ignored.
