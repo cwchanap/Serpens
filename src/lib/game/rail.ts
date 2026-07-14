@@ -260,3 +260,87 @@ export function getSegmentsForCell(
 	const key = railCellKey(x, y);
 	return segments.filter((segment) => segment.cellKeys.includes(key));
 }
+
+export interface RailBudget {
+	remaining: Map<string, number>; // cellKey → units left today
+}
+
+export function createRailBudget(network: RailNetwork): RailBudget {
+	const remaining = new Map<string, number>();
+
+	for (const [key, cell] of network.cells) {
+		remaining.set(key, cell.level);
+	}
+
+	return { remaining };
+}
+
+/**
+ * BFS through budget-positive cells only. `fromKeys` are the search roots
+ * (distance 0); returns the first path reaching any `toKey`, or null.
+ * Deterministic: roots enqueued in given order, neighbors expanded N,E,S,W
+ * (see NEIGHBOR_OFFSETS), frontier visited in insertion order.
+ */
+export function findShippingPath(
+	network: RailNetwork,
+	budget: RailBudget,
+	fromKeys: readonly string[],
+	toKeys: readonly string[]
+): string[] | null {
+	const targets = new Set(toKeys);
+	const cameFrom = new Map<string, string | null>();
+	const queue: string[] = [];
+
+	for (const key of fromKeys) {
+		if ((budget.remaining.get(key) ?? 0) > 0 && !cameFrom.has(key)) {
+			cameFrom.set(key, null);
+			queue.push(key);
+		}
+	}
+
+	while (queue.length > 0) {
+		const key = queue.shift()!;
+
+		if (targets.has(key)) {
+			const path: string[] = [];
+			let cursor: string | null = key;
+
+			while (cursor !== null) {
+				path.unshift(cursor);
+				cursor = cameFrom.get(cursor) ?? null;
+			}
+
+			return path;
+		}
+
+		const { x, y } = parseRailCellKey(key);
+
+		for (const neighborKey of getRailNeighborKeys(network, x, y)) {
+			if (!cameFrom.has(neighborKey) && (budget.remaining.get(neighborKey) ?? 0) > 0) {
+				cameFrom.set(neighborKey, key);
+				queue.push(neighborKey);
+			}
+		}
+	}
+
+	return null;
+}
+
+// Bottleneck capacity model: the path's capacity is the minimum remaining
+// budget over its cells, not the sum — one exhausted cell caps the whole path.
+export function getPathCapacity(budget: RailBudget, path: readonly string[]): number {
+	return path.reduce(
+		(min, key) => Math.min(min, budget.remaining.get(key) ?? 0),
+		Number.POSITIVE_INFINITY
+	);
+}
+
+export function consumeRailBudget(
+	budget: RailBudget,
+	path: readonly string[],
+	units: number
+): void {
+	for (const key of path) {
+		budget.remaining.set(key, Math.max(0, (budget.remaining.get(key) ?? 0) - units));
+	}
+}
