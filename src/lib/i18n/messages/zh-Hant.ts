@@ -158,6 +158,7 @@ export const zhHant = {
 			idle: '閒置',
 			produced: '已生產',
 			'imported-inputs': '已進口投入',
+			stalled: '停滯（緩衝已滿）',
 			blocked: '受阻'
 		}
 	},

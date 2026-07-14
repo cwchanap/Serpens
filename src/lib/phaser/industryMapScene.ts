@@ -37,6 +37,7 @@ const STATUS_COLORS: Record<IndustryMapBuildingRender['status'], number> = {
 	idle: 0x94a3b8,
 	produced: 0x22c55e,
 	'imported-inputs': 0xf59e0b,
+	stalled: 0xa855f7,
 	blocked: 0xef4444
 };
 

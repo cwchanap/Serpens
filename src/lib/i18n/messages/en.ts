@@ -158,6 +158,7 @@ export const en = {
 			idle: 'Idle',
 			produced: 'Produced',
 			'imported-inputs': 'Imported inputs',
+			stalled: 'Stalled (buffer full)',
 			blocked: 'Blocked'
 		}
 	},

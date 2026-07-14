@@ -14,7 +14,9 @@ function emptyProductionReport(): DailyProductionReport {
 		overflowUnits: 0,
 		overflowCost: 0,
 		warehouseCapacity: 0,
-		warehouseUsed: 0
+		warehouseUsed: 0,
+		railShipments: [],
+		railUsage: {}
 	};
 }
 

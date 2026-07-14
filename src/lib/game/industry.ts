@@ -431,6 +431,7 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		requiresIndustrialTile: false,
 		recipeId: 'grain-harvest',
 		warehouseCapacity: 0,
+		bufferCapacity: 150,
 		tier: 1
 	},
 	'salt-mine': {
@@ -442,6 +443,7 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		requiresIndustrialTile: false,
 		recipeId: 'salt-mining',
 		warehouseCapacity: 0,
+		bufferCapacity: 120,
 		tier: 2
 	},
 	'oilseed-farm': {
@@ -453,6 +455,7 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		requiresIndustrialTile: false,
 		recipeId: 'oilseed-harvest',
 		warehouseCapacity: 0,
+		bufferCapacity: 120,
 		tier: 2
 	},
 	'water-pump': {
@@ -464,6 +467,7 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		requiresIndustrialTile: false,
 		recipeId: 'water-pumping',
 		warehouseCapacity: 0,
+		bufferCapacity: 200,
 		tier: 1
 	},
 	'fruit-farm': {
@@ -475,6 +479,7 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		requiresIndustrialTile: false,
 		recipeId: 'fruit-harvest',
 		warehouseCapacity: 0,
+		bufferCapacity: 110,
 		tier: 1
 	},
 	'sugar-farm': {
@@ -486,6 +491,7 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		requiresIndustrialTile: false,
 		recipeId: 'sugar-harvest',
 		warehouseCapacity: 0,
+		bufferCapacity: 130,
 		tier: 2
 	},
 	'pulpwood-grove': {
@@ -497,6 +503,7 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		requiresIndustrialTile: false,
 		recipeId: 'pulpwood-harvest',
 		warehouseCapacity: 0,
+		bufferCapacity: 100,
 		tier: 2
 	},
 	'chemical-feedstock-well': {
@@ -508,6 +515,7 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		requiresIndustrialTile: false,
 		recipeId: 'chemical-feedstock-extraction',
 		warehouseCapacity: 0,
+		bufferCapacity: 90,
 		tier: 2
 	},
 	'flour-mill': {
@@ -519,6 +527,7 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		requiresIndustrialTile: true,
 		recipeId: 'flour-milling',
 		warehouseCapacity: 0,
+		bufferCapacity: 90,
 		tier: 1
 	},
 	'oil-press': {
@@ -530,6 +539,7 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		requiresIndustrialTile: true,
 		recipeId: 'oil-pressing',
 		warehouseCapacity: 0,
+		bufferCapacity: 85,
 		tier: 2
 	},
 	'water-filtration-plant': {
@@ -541,6 +551,7 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		requiresIndustrialTile: true,
 		recipeId: 'water-filtration',
 		warehouseCapacity: 0,
+		bufferCapacity: 110,
 		tier: 2
 	},
 	'syrup-plant': {
@@ -552,6 +563,7 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		requiresIndustrialTile: true,
 		recipeId: 'syrup-production',
 		warehouseCapacity: 0,
+		bufferCapacity: 100,
 		tier: 2
 	},
 	'pulp-mill': {
@@ -563,6 +575,7 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		requiresIndustrialTile: true,
 		recipeId: 'pulp-milling',
 		warehouseCapacity: 0,
+		bufferCapacity: 90,
 		tier: 2
 	},
 	'plastic-plant': {
@@ -574,6 +587,7 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		requiresIndustrialTile: true,
 		recipeId: 'plastic-production',
 		warehouseCapacity: 0,
+		bufferCapacity: 70,
 		tier: 2
 	},
 	'packaging-plant': {
@@ -585,6 +599,7 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		requiresIndustrialTile: true,
 		recipeId: 'packaging-production',
 		warehouseCapacity: 0,
+		bufferCapacity: 85,
 		tier: 2
 	},
 	'chemical-plant': {
@@ -596,6 +611,7 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		requiresIndustrialTile: true,
 		recipeId: 'cleaning-base-production',
 		warehouseCapacity: 0,
+		bufferCapacity: 80,
 		tier: 2
 	},
 	'snack-factory': {
@@ -607,6 +623,7 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		requiresIndustrialTile: true,
 		recipeId: 'snack-production',
 		warehouseCapacity: 0,
+		bufferCapacity: 95,
 		tier: 3
 	},
 	'drink-bottling-plant': {
@@ -618,6 +635,7 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		requiresIndustrialTile: true,
 		recipeId: 'drink-bottling',
 		warehouseCapacity: 0,
+		bufferCapacity: 135,
 		tier: 3
 	},
 	'household-goods-factory': {
@@ -629,6 +647,7 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		requiresIndustrialTile: true,
 		recipeId: 'household-goods-production',
 		warehouseCapacity: 0,
+		bufferCapacity: 80,
 		tier: 3
 	},
 	'gift-workshop': {
@@ -640,6 +659,7 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		requiresIndustrialTile: true,
 		recipeId: 'gift-production',
 		warehouseCapacity: 0,
+		bufferCapacity: 70,
 		tier: 3
 	},
 	'water-bottler': {
@@ -651,6 +671,7 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		requiresIndustrialTile: true,
 		recipeId: 'water-bottling',
 		warehouseCapacity: 0,
+		bufferCapacity: 100,
 		tier: 1
 	},
 	'produce-packhouse': {
@@ -662,6 +683,7 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		requiresIndustrialTile: true,
 		recipeId: 'produce-packing',
 		warehouseCapacity: 0,
+		bufferCapacity: 80,
 		tier: 1
 	},
 	'pantry-works': {
@@ -673,6 +695,7 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		requiresIndustrialTile: true,
 		recipeId: 'pantry-goods-production',
 		warehouseCapacity: 0,
+		bufferCapacity: 70,
 		tier: 1
 	},
 	warehouse: {
@@ -684,6 +707,7 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		requiresIndustrialTile: true,
 		recipeId: null,
 		warehouseCapacity: 200,
+		bufferCapacity: 0,
 		tier: 1
 	}
 };
@@ -841,7 +865,8 @@ export function generateIndustryCity(input: GenerateIndustryCityInput): Industry
 		name: input.name,
 		width,
 		height,
-		tiles
+		tiles,
+		rails: []
 	};
 }
 

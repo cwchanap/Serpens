@@ -88,6 +88,7 @@
 		idle: 'industryTileInspector.status.idle',
 		produced: 'industryTileInspector.status.produced',
 		'imported-inputs': 'industryTileInspector.status.imported-inputs',
+		stalled: 'industryTileInspector.status.stalled',
 		blocked: 'industryTileInspector.status.blocked'
 	};
 

@@ -288,7 +288,9 @@ describe('world progression and city opening', () => {
 						overflowUnits: 0,
 						overflowCost: 0,
 						warehouseCapacity: 0,
-						warehouseUsed: 0
+						warehouseUsed: 0,
+						railShipments: [],
+						railUsage: {}
 					},
 					storeReports: [],
 					warnings: []
@@ -353,7 +355,9 @@ describe('world progression and city opening', () => {
 						overflowUnits: 0,
 						overflowCost: 0,
 						warehouseCapacity: 0,
-						warehouseUsed: 0
+						warehouseUsed: 0,
+						railShipments: [],
+						railUsage: {}
 					},
 					storeReports: [],
 					warnings: []
@@ -422,7 +426,9 @@ describe('world progression and city opening', () => {
 						overflowUnits: 0,
 						overflowCost: 0,
 						warehouseCapacity: 100,
-						warehouseUsed: 0
+						warehouseUsed: 0,
+						railShipments: [],
+						railUsage: {}
 					},
 					storeReports: [],
 					warnings: []
@@ -481,7 +487,9 @@ describe('world progression and city opening', () => {
 						overflowUnits: 0,
 						overflowCost: 0,
 						warehouseCapacity: 0,
-						warehouseUsed: 0
+						warehouseUsed: 0,
+						railShipments: [],
+						railUsage: {}
 					},
 					storeReports: [],
 					warnings: []
@@ -534,7 +542,9 @@ describe('world progression and city opening', () => {
 						overflowUnits: 0,
 						overflowCost: 0,
 						warehouseCapacity: 0,
-						warehouseUsed: 0
+						warehouseUsed: 0,
+						railShipments: [],
+						railUsage: {}
 					},
 					storeReports: [],
 					warnings: []
@@ -581,7 +591,9 @@ describe('world progression and city opening', () => {
 						overflowUnits: 0,
 						overflowCost: 0,
 						warehouseCapacity: 0,
-						warehouseUsed: 0
+						warehouseUsed: 0,
+						railShipments: [],
+						railUsage: {}
 					},
 					storeReports: [],
 					warnings: []

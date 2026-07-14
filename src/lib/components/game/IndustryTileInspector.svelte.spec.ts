@@ -73,7 +73,8 @@ describe('IndustryTileInspector', () => {
 			],
 			producedTotal: 8,
 			importedInputTotal: 0,
-			blockedDays: 0
+			blockedDays: 0,
+			inventory: {}
 		};
 
 		render(IndustryTileInspector, {
@@ -126,7 +127,8 @@ describe('IndustryTileInspector', () => {
 			lastProduction: [],
 			producedTotal: 0,
 			importedInputTotal: 0,
-			blockedDays: 0
+			blockedDays: 0,
+			inventory: {}
 		};
 
 		render(IndustryTileInspector, {
@@ -161,7 +163,8 @@ describe('IndustryTileInspector', () => {
 			lastProduction: [],
 			producedTotal: 0,
 			importedInputTotal: 0,
-			blockedDays: 0
+			blockedDays: 0,
+			inventory: {}
 		};
 
 		render(IndustryTileInspector, {
@@ -194,7 +197,8 @@ describe('IndustryTileInspector', () => {
 			lastProduction: [],
 			producedTotal: 0,
 			importedInputTotal: 0,
-			blockedDays: 0
+			blockedDays: 0,
+			inventory: {}
 		};
 
 		render(IndustryTileInspector, {
@@ -227,7 +231,8 @@ describe('IndustryTileInspector', () => {
 			lastProduction: [],
 			producedTotal: 0,
 			importedInputTotal: 0,
-			blockedDays: 0
+			blockedDays: 0,
+			inventory: {}
 		};
 
 		render(IndustryTileInspector, {
@@ -261,7 +266,8 @@ describe('IndustryTileInspector', () => {
 			lastProduction: [],
 			producedTotal: 0,
 			importedInputTotal: 0,
-			blockedDays: 0
+			blockedDays: 0,
+			inventory: {}
 		};
 
 		render(IndustryTileInspector, {
@@ -306,7 +312,8 @@ describe('IndustryTileInspector', () => {
 			lastProduction: [],
 			producedTotal: 0,
 			importedInputTotal: 0,
-			blockedDays: 0
+			blockedDays: 0,
+			inventory: {}
 		};
 
 		render(IndustryTileInspector, {
@@ -367,7 +374,8 @@ describe('IndustryTileInspector', () => {
 			lastProduction: [],
 			producedTotal: 0,
 			importedInputTotal: 0,
-			blockedDays: 0
+			blockedDays: 0,
+			inventory: {}
 		};
 
 		render(IndustryTileInspector, {
@@ -408,7 +416,8 @@ describe('IndustryTileInspector', () => {
 			lastProduction: [],
 			producedTotal: 0,
 			importedInputTotal: 0,
-			blockedDays: 0
+			blockedDays: 0,
+			inventory: {}
 		};
 
 		render(IndustryTileInspector, {
@@ -448,7 +457,8 @@ describe('IndustryTileInspector', () => {
 			lastProduction: [],
 			producedTotal: 0,
 			importedInputTotal: 0,
-			blockedDays: 0
+			blockedDays: 0,
+			inventory: {}
 		};
 
 		render(IndustryTileInspector, {
@@ -485,7 +495,8 @@ describe('IndustryTileInspector', () => {
 			],
 			producedTotal: 5,
 			importedInputTotal: 0,
-			blockedDays: 0
+			blockedDays: 0,
+			inventory: {}
 		};
 
 		render(IndustryTileInspector, {
@@ -531,7 +542,8 @@ describe('IndustryTileInspector', () => {
 			lastProduction: [],
 			producedTotal: 0,
 			importedInputTotal: 0,
-			blockedDays: 0
+			blockedDays: 0,
+			inventory: {}
 		};
 
 		const result = render(IndustryTileInspector, {
@@ -585,7 +597,8 @@ describe('IndustryTileInspector', () => {
 			lastProduction: [],
 			producedTotal: 0,
 			importedInputTotal: 0,
-			blockedDays: 0
+			blockedDays: 0,
+			inventory: {}
 		};
 
 		const result = render(IndustryTileInspector, {
@@ -638,7 +651,8 @@ describe('IndustryTileInspector', () => {
 			lastProduction: [],
 			producedTotal: 0,
 			importedInputTotal: 0,
-			blockedDays: 0
+			blockedDays: 0,
+			inventory: {}
 		};
 
 		render(IndustryTileInspector, {
