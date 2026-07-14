@@ -21,7 +21,7 @@ import fallback, so rails save money rather than hard-blocking production.
 | Build UX | Endpoints + optional waypoints; auto-path threads the waypoints, previews cost before confirm |
 | Inventories | Per-factory buffers (small, recipe materials only) + one shared warehouse pool (large, any material, rail-gated) |
 | Retail handoff | Unchanged: stores pull from the warehouse pool only; finished-goods factories must rail-connect to a warehouse to supply retail |
-| Upgrade granularity | Segment between junctions: upgrading raises every cell of one derived segment by one level |
+| Upgrade granularity | Segment between junctions: upgrading targets (segment min + 1), raising only cells below that level — see Tuning knobs for the exact rule |
 | Engine | Cell-budget greedy flow (Approach A): per-cell daily shipping budgets, deterministic BFS allocation; bottlenecks and trunk sharing emerge from budget exhaustion |
 | Delivery latency | Same-day: goods arrive within the daily tick, capacity-limited; no multi-day travel bookkeeping |
 | Full output buffer | Producer clips production to remaining space and shows a `stalled` status; no overflow fee at factories (overflow fees stay warehouse-only) |
@@ -39,6 +39,8 @@ interface RailCell {
 //   rails: RailCell[]
 // IndustrialBuilding gains:
 //   inventory: Partial<Record<MaterialId, number>>
+// IndustrialBuildingType gains:
+//   bufferCapacity: number   // local buffer size, hand-tuned per type
 // IndustrialBuildingStatus gains:
 //   'stalled'
 // DailyMaterialMovement['source'] gains:
@@ -57,13 +59,20 @@ interface RailCell {
 ### Inventory semantics
 
 - A factory buffer may only hold materials in its own recipe (inputs +
-  outputs). Total buffer capacity reuses the existing `warehouseCapacity`
-  field on `IndustrialBuildingType`, repurposed from "contribution to the
-  global pool" to "local buffer size".
+  outputs). Total buffer capacity is a **new `bufferCapacity` field** on
+  `IndustrialBuildingType`, hand-tuned per type like every other knob in
+  `INDUSTRIAL_BUILDING_TYPES`. (The existing `warehouseCapacity` field is
+  NOT repurposed: today it is `0` for every factory and `200` for the
+  warehouse, so reusing it would give factories zero-size buffers.) Initial
+  values follow a sizing rule of thumb: roughly 5 days of the recipe's
+  level-1 input + output volume; the implementation populates the table.
 - The shared warehouse pool (`game.warehouse`) remains a single global
-  inventory, but:
-  - its capacity now sums `warehouseCapacity` over **warehouse-type buildings
-    only** (today every building contributes);
+  inventory:
+  - `getWarehouseCapacity` stays unchanged — it sums `warehouseCapacity`
+    over all buildings, and since only warehouse-type buildings have a
+    nonzero value, only they contribute in practice. Factory buffers live in
+    the separate `bufferCapacity` field, so they cannot leak into pool
+    capacity;
   - depositing into or drawing from the pool requires a rail path to a
     warehouse building in the same city;
   - the existing overflow-fee mechanic stays, warehouse-only.
@@ -78,9 +87,11 @@ interface RailCell {
 
 ## Placement rules
 
-- Rails may be laid on tiles not covered by a building footprint and not
-  `blocked` terrain. Rails may cross each other freely — intersections are
-  the point.
+- Rails may be laid on tiles not covered by a building footprint, not
+  `blocked` terrain, and not `locked` (`IndustryTile.locked`). Resource
+  terrain (farmland/forest/water/deposit) outside footprints IS rail-legal —
+  laying track there simply blocks a future building on that tile, like any
+  rail. Rails may cross each other freely — intersections are the point.
 - A rail on a tile blocks later building placement there; demolish the rail
   to reclaim the tile (50% refund of base cell cost).
 - Endpoints attach at any cell orthogonally adjacent to a building footprint;
@@ -94,10 +105,10 @@ interface RailCell {
 | Knob | Initial value |
 | --- | --- |
 | Build cost | $40 per new cell (riding existing track is free) |
-| Segment upgrade level n→n+1 | $30 × segment cell count × n |
+| Segment upgrade | Targets level (segment min + 1): only cells below that level are raised; cost $30 × raised-cell count × segment min. Blocked when the segment min is already 5. Mixed-level segments can exist (demolishing a junction can merge segments of different levels); this rule always lifts the bottleneck first |
 | Max cell level | 5 |
-| Demolish refund | 50% of base cell build cost |
-| Factory buffer capacity | `IndustrialBuildingType.warehouseCapacity` (flat; leveling interplay deferred) |
+| Demolish refund | 50% of base cell build cost — upgrade investment is deliberately sunk |
+| Factory buffer capacity | `IndustrialBuildingType.bufferCapacity`, per-type table (flat; leveling interplay deferred — see Out of scope) |
 
 ## Daily-tick flow (`simulateIndustryProduction`)
 
@@ -106,7 +117,10 @@ Deterministic, no RNG consumption, one pass:
 **Phase 0 — derive the network.** Build each city's rail graph and give every
 rail cell a daily shipping budget equal to its level. Every unit moved
 through a cell consumes 1 budget. This is the entire capacity mechanic:
-bottlenecks and trunk contention emerge from budget exhaustion.
+bottlenecks and trunk contention emerge from budget exhaustion. **Budgets
+are one shared pool for the whole tick**: Phase 1 input pulls and Phase 2
+surplus pushes draw from the same budgets, and Phase 1 runs first by design —
+feeding consumers takes priority over stocking the warehouse.
 
 **Phase 1 — stage-ordered production loop** (existing raw → intermediate →
 final order, ties by building id). For each building with a recipe:
@@ -119,11 +133,22 @@ final order, ties by building id). For each building with a recipe:
       nearest source first, ties by building id. Allocation repeats the
       search until the demand is met or no budget-positive path to any
       source remains, so one pull may split across sources and across
-      parallel paths;
+      parallel paths. Path selection is fully deterministic: BFS expands
+      neighbors in a fixed order (north, east, south, west) and visits
+      frontier cells in insertion order, so equal-length paths always
+      resolve the same way (the implementation plan pins the exact
+      iteration order);
    3. paid import for the remaining shortage (unchanged; the no-rail
       fallback).
 2. **Produce** into its own buffer. If the buffer cannot fit the full
    output, produce only what fits and mark the building `stalled`.
+
+**Status precedence** (a building can import and stall in the same tick;
+today's status is binary, `imported-inputs` vs `produced`):
+`blocked` > `stalled` > `imported-inputs` > `produced` > `idle`. `stalled`
+outranks `imported-inputs` because a jammed output is the more actionable
+signal (build or upgrade rail); import spend stays visible in the report and
+inspector either way. `alerts.ts` keys off `blocked` only and is unaffected.
 
 Because raw producers run before intermediates and finals, same-day
 farm → mill → factory chains keep working — goods ride rails instead of
@@ -140,9 +165,19 @@ warehouse are graph-connected to each other, so same-day transfers go direct
 whenever a physical path exists; the warehouse's storage role is carrying
 surplus across days (and feeding retail).
 
-**Reporting:** rail pulls and pushes are recorded as movements with
-`source: 'rail'` and listed in `DailyProductionReport.railShipments` for the
-reports UI and product-chain views.
+**Reporting — how rail movements map into existing buckets** (the
+product-chain graph sums `importedInputs` and `warehousePulls` filtered by
+source, so rail flows must not vanish from chain metrics):
+
+- Draws from the **warehouse pool** (which now travel by rail) keep
+  `source: 'warehouse'` and stay in `warehousePulls` — existing chain
+  metrics and health logic keep working unchanged.
+- Direct **producer-buffer → consumer** transfers get `source: 'rail'`,
+  appear in `consumed`, and are additionally listed in the new
+  `railShipments` ledger (as are warehouse pushes/pulls, for the segment
+  inspector's utilization display).
+- `productChainGraph.ts` / `productChainTree.ts` are updated to count
+  `source: 'rail'` movements in their consumption/output actuals.
 
 **Retail phase:** untouched. `stock.ts` keeps drawing finished goods from the
 warehouse pool; stores fall back to shop-imports when the pool is dry.
@@ -188,14 +223,20 @@ apply to the whole segment.
 
 ## Persistence
 
-- `saveCodec.ts` serializes `IndustryCity.rails` and
-  `IndustrialBuilding.inventory`.
-- Absent fields decode to an empty network and empty buffers (per the
-  no-legacy-migration policy; in-dev autosaves start unconnected and play on
-  via import fallback).
+- `SAVE_SCHEMA_VERSION` bumps 9 → 10 with a `v9→v10` migration step in the
+  existing chain (`MIGRATABLE_SCHEMA_VERSIONS` gains 9) that injects
+  `rails: []` on each industry city and `inventory: {}` on each building.
+  The codec validates strictly (`requireArray`/`requireRecord`), so
+  "absent → default" is expressed as a migration, matching the repo's
+  pattern, not as optional-field validation.
+- The hardcoded validation arrays `INDUSTRIAL_BUILDING_STATUSES` and
+  `MATERIAL_MOVEMENT_SOURCES` in `saveCodec.ts` gain `'stalled'` and
+  `'rail'` respectively — without this, any save containing the new status
+  or a rail movement fails `requireOneOf` on load.
 - A decode-time guard clamps a building's inventory to its recipe materials
   and buffer capacity.
-- Repository specs are updated together with the codec change.
+- `saveCodec.spec.ts` / `saveRepository.spec.ts` are updated together with
+  the codec change (new fields, new enum members, v9→v10 migration).
 
 ## Edge cases
 
@@ -219,8 +260,15 @@ apply to the whole segment.
   its budget), trunk upgrade relieving both branches, import fallback when
   disconnected, warehouse push/pull gating, determinism (same state → same
   result on repeated runs).
-- `industryProduction.spec.ts` — buffer-based inputs, `stalled` status,
-  phase ordering.
+- `industryProduction.spec.ts` — buffer-based inputs, `stalled` status and
+  precedence, phase ordering.
+- `saveCodec.spec.ts` / `saveRepository.spec.ts` — v9→v10 migration, new
+  fields, `stalled` + `rail` enum members, inventory clamp guard.
+- `productChainGraph.spec.ts` / `productChainTree.spec.ts` — rail-sourced
+  movements counted in chain actuals/health.
+- `industryMapRender.spec.ts` — rails layer in the snapshot (shape/level/
+  utilization derivation).
+- `gameArt.spec.ts` — rail art registration (completeness check).
 - E2e — build a rail between two buildings via clicks, assert
   `data-rail-cell-count`, advance a day, assert the consumer shows a
   rail-supplied status.
@@ -231,5 +279,8 @@ apply to the whole segment.
   (Approach C) — the cell-budget engine supports adding this later.
 - Multi-day travel time.
 - Rails in retail cities.
-- Buffer capacity scaling with building level.
+- Buffer capacity scaling with building level. Known balance item: building
+  throughput scales +20%/level (`leveling.ts`) while buffers stay flat, so
+  high-level factories stall sooner and lean harder on rail throughput —
+  revisit when tuning.
 - Trains/vehicles as visible entities; rails are throughput, not agents.
