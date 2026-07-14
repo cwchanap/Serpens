@@ -45,16 +45,51 @@ interface RailCell {
 //   'stalled'
 // DailyMaterialMovement['source'] gains:
 //   'rail'
+
+interface RailShipment {
+	materialId: MaterialId;
+	quantity: number;
+	value: number;
+	kind: 'pull-producer' | 'pull-warehouse' | 'push-warehouse';
+	fromId: string; // producer building id, or the warehouse building id
+	toId: string; // consumer building id, or the warehouse building id
+}
+
 // DailyProductionReport gains:
-//   railShipments: DailyMaterialMovement[]
+//   railShipments: RailShipment[]
+//   railUsage: Record<string, number> // `${cityId}:${x},${y}` → units moved that day
 ```
+
+`railShipments` is the transport ledger (who shipped what to whom, and
+whether it was a direct pull, a warehouse draw, or a surplus push);
+`railUsage` is the per-cell aggregate the segment inspector reads to show
+yesterday's utilization (segment utilization = max over its cells of
+`used / level`). Plain `DailyMaterialMovement` lacks endpoints and path
+information, so it cannot serve either purpose — chain metrics keep using
+the movement buckets, transport telemetry uses these two fields.
 
 - Rails are city-scoped (each `IndustryCity` has its own network), matching
   how tiles are scoped.
-- Segments and junctions are **derived, never stored**. A junction is a rail
-  cell with 3+ rail neighbors or a building attach cell; a segment is the
-  maximal run of cells between junctions/endpoints. Deriving on demand keeps
-  partial upgrades and new intersections free of stale-state bugs.
+- Segments and junctions are **derived, never stored**. Deriving on demand
+  keeps partial upgrades and new intersections free of stale-state bugs.
+
+### Segment topology (precise rules)
+
+- A rail cell is a **junction** if it has 3+ rail neighbors, or if it is an
+  attach cell serving a building.
+- A **segment** is a maximal run of non-junction cells **plus its bounding
+  junction cells**. Junction cells therefore belong to every adjacent
+  segment.
+- Upgrading a segment raises its interior cells and its endpoint junction
+  cells (per the min+1 rule) — a shared junction must carry the upgraded
+  segment's flow, so it rises with whichever adjacent segment upgrades
+  first.
+- A **pure loop** (a cycle where every cell has ≤2 rail neighbors, so no
+  junction exists) is a single ring-shaped segment; clicking any of its
+  cells selects the whole ring.
+- Clicking a **junction cell** opens the inspector with a list of its
+  adjacent segments to choose from; clicking a non-junction cell selects its
+  unique segment directly.
 
 ### Inventory semantics
 
@@ -75,6 +110,12 @@ interface RailCell {
     capacity;
   - depositing into or drawing from the pool requires a rail path to a
     warehouse building in the same city;
+  - the pool is deliberately **global across cities**: material deposited
+    through a rail-connected warehouse in city A can be drawn through a
+    rail-connected warehouse in city B. Intercity freight is abstracted into
+    the warehouse layer — consistent with retail, which already draws from
+    the global pool regardless of city. Per-city pools are a possible later
+    deepening, out of scope here;
   - the existing overflow-fee mechanic stays, warehouse-only.
 
 ## New modules (pure functions + colocated specs)
@@ -93,7 +134,13 @@ interface RailCell {
   laying track there simply blocks a future building on that tile, like any
   rail. Rails may cross each other freely — intersections are the point.
 - A rail on a tile blocks later building placement there; demolish the rail
-  to reclaim the tile (50% refund of base cell cost).
+  to reclaim the tile (50% refund of base cell cost). Concretely: the
+  industrial placement context (`industryPlacement.ts` /
+  `industryFootprint.ts`) treats rail cells as occupied tiles — footprints
+  overlapping a rail cell get a new rail-occupancy `DecisionContext` block
+  reason, and `placementPreview` marks those tiles invalid. Today occupancy
+  tracks buildings only, so this is an explicit integration point, not an
+  emergent one.
 - Endpoints attach at any cell orthogonally adjacent to a building footprint;
   a building can have any number of attachments.
 - Demolishing a building leaves its rails as dangling but valid track.
@@ -125,7 +172,15 @@ feeding consumers takes priority over stocking the warehouse.
 **Phase 1 — stage-ordered production loop** (existing raw → intermediate →
 final order, ties by building id). For each building with a recipe:
 
-1. **Acquire inputs**, in priority order:
+1. **Size the run before buying anything.** Compute the desired output
+   (recipe outputs × throughput), clamp it to the buffer's free space, and
+   derive the effective ratio `r = clamped / desired`. Production is
+   **scaled atomically**: inputs, outputs, and the recipe's per-run
+   operating cost all scale by `r` (rounded like today's throughput math);
+   the flat `dailyOperatingCost` applies regardless. If `r = 0`, skip input
+   acquisition entirely — a fully stalled factory never pays for inputs it
+   cannot use.
+2. **Acquire inputs** (scaled by `r`), in priority order:
    1. its own buffer;
    2. rail pull from the nearest connected source found by BFS — producer
       buffers holding the material, or the warehouse pool via any connected
@@ -140,8 +195,8 @@ final order, ties by building id). For each building with a recipe:
       iteration order);
    3. paid import for the remaining shortage (unchanged; the no-rail
       fallback).
-2. **Produce** into its own buffer. If the buffer cannot fit the full
-   output, produce only what fits and mark the building `stalled`.
+3. **Produce** the scaled output into its own buffer and mark the building
+   `stalled` whenever `r < 1`.
 
 **Status precedence** (a building can import and stall in the same tick;
 today's status is binary, `imported-inputs` vs `produced`):
@@ -172,10 +227,11 @@ source, so rail flows must not vanish from chain metrics):
 - Draws from the **warehouse pool** (which now travel by rail) keep
   `source: 'warehouse'` and stay in `warehousePulls` — existing chain
   metrics and health logic keep working unchanged.
-- Direct **producer-buffer → consumer** transfers get `source: 'rail'`,
-  appear in `consumed`, and are additionally listed in the new
-  `railShipments` ledger (as are warehouse pushes/pulls, for the segment
-  inspector's utilization display).
+- Direct **producer-buffer → consumer** transfers get `source: 'rail'` and
+  appear in `consumed`. Every transfer that rides rails — direct pulls,
+  warehouse draws, surplus pushes — is additionally recorded in the
+  `railShipments` ledger with its `kind` and endpoints, and its path
+  increments `railUsage` per cell for the inspector's utilization display.
 - `productChainGraph.ts` / `productChainTree.ts` are updated to count
   `source: 'rail'` movements in their consumption/output actuals.
 
@@ -199,11 +255,28 @@ warehouse pool; stores fall back to shop-imports when the pool is dry.
 Insufficient cash and no-valid-path blockers use the `decisionContext.ts`
 pattern and are localized via i18n.
 
+**Interaction contracts** (the existing ones don't cover this feature —
+`PlacementPreview` is only valid/invalid tile-id lists, and
+`IndustryMapEvent` is only `tileSelected`):
+
+- `railPlacement.ts` exposes a `RailBuildPreview`: origin building, ordered
+  waypoints, resolved path split into `newCells` / `reusedCells`, total
+  cost, and `blockReason: DecisionContext | null`. The Svelte page owns the
+  build-mode state machine (origin → waypoints → destination) and derives
+  the preview from clicks; the scene stays snapshot-driven.
+- `IndustryMapSnapshot` gains an optional rail-preview layer (path cells +
+  valid-attach highlights) that the scene renders like the existing
+  placement preview.
+- `IndustryMapEvent` keeps `tileSelected` for cell/building clicks and gains
+  a `buildCancelled` event for right-click/Escape so the page can pop the
+  last waypoint or exit build mode. Exact event shapes are pinned in the
+  implementation plan.
+
 **Segment inspector:** clicking a rail cell outside build mode selects its
 derived segment and opens an inspector (sibling of `IndustryTileInspector`)
-showing level, capacity/day, yesterday's utilization (from `railShipments`),
-an upgrade button with cost, and a demolish button (50% refund). Upgrades
-apply to the whole segment.
+showing level, capacity/day, yesterday's utilization (from the report's
+`railUsage` cells), an upgrade button with cost, and a demolish button (50%
+refund). Upgrades apply to the whole segment.
 
 ## Rendering
 
@@ -225,7 +298,11 @@ apply to the whole segment.
 
 - `SAVE_SCHEMA_VERSION` bumps 9 → 10 with a `v9→v10` migration step in the
   existing chain (`MIGRATABLE_SCHEMA_VERSIONS` gains 9) that injects
-  `rails: []` on each industry city and `inventory: {}` on each building.
+  `rails: []` on each industry city, `inventory: {}` on each building, and
+  `railShipments: []` + `railUsage: {}` on **every persisted production
+  report** in `game.reports` — `validateSavedDailyReport` runs
+  `validateSavedProductionReport` on each historical report, so new
+  required report fields must be backfilled or old saves fail validation.
   The codec validates strictly (`requireArray`/`requireRecord`), so
   "absent → default" is expressed as a migration, matching the repo's
   pattern, not as optional-field validation.
@@ -266,12 +343,17 @@ apply to the whole segment.
   fields, `stalled` + `rail` enum members, inventory clamp guard.
 - `productChainGraph.spec.ts` / `productChainTree.spec.ts` — rail-sourced
   movements counted in chain actuals/health.
+- `industryPlacement.spec.ts` — rail cells block building placement
+  (rail-occupancy decision context, invalid preview tiles).
 - `industryMapRender.spec.ts` — rails layer in the snapshot (shape/level/
   utilization derivation).
 - `gameArt.spec.ts` — rail art registration (completeness check).
-- E2e — build a rail between two buildings via clicks, assert
-  `data-rail-cell-count`, advance a day, assert the consumer shows a
-  rail-supplied status.
+- E2e — there is no "rail-supplied" status (a healthy rail-fed factory shows
+  plain `produced`), so the acceptance signal is the status **flip**: with
+  producer and consumer placed but unconnected, advance a day and assert the
+  consumer shows `imported-inputs`; build the rail via clicks, assert
+  `data-rail-cell-count`; advance a day and assert the consumer now shows
+  `produced` and the daily report lists a nonzero rail shipment.
 
 ## Out of scope (deliberately)
 
