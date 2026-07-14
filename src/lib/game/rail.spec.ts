@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
 	buildRailNetwork,
+	consumeRailBudget,
+	createRailBudget,
 	deriveRailSegments,
+	findShippingPath,
 	getBuildingAttachCellKeys,
+	getPathCapacity,
 	getRailNeighborKeys,
 	getSegmentsForCell,
 	railCellKey
@@ -146,5 +150,72 @@ describe('rail segments', () => {
 		const segments = deriveRailSegments(network, []);
 		expect(segments).toHaveLength(1);
 		expect(segments[0]!.minLevel).toBe(1);
+	});
+});
+
+describe('rail budgets and shipping paths', () => {
+	it('budget equals cell level', () => {
+		const network = buildRailNetwork(
+			makeCity([
+				{ x: 1, y: 1, level: 1 },
+				{ x: 2, y: 1, level: 3 }
+			])
+		);
+		const budget = createRailBudget(network);
+		expect(budget.remaining.get('1,1')).toBe(1);
+		expect(budget.remaining.get('2,1')).toBe(3);
+	});
+
+	it('finds the shortest budget-positive path', () => {
+		const network = buildRailNetwork(makeCity(straightRails(5, 2, 9)));
+		const budget = createRailBudget(network);
+		const path = findShippingPath(network, budget, ['2,5'], ['9,5']);
+		expect(path).toEqual(['2,5', '3,5', '4,5', '5,5', '6,5', '7,5', '8,5', '9,5']);
+	});
+
+	it('path capacity is the min remaining budget along the path (bottleneck)', () => {
+		const network = buildRailNetwork(
+			makeCity(straightRails(5, 2, 5, 3).concat(straightRails(5, 6, 9, 1)))
+		);
+		const budget = createRailBudget(network);
+		const path = findShippingPath(network, budget, ['2,5'], ['9,5'])!;
+		expect(getPathCapacity(budget, path)).toBe(1);
+	});
+
+	it('consuming budget exhausts cells and blocks reuse', () => {
+		const network = buildRailNetwork(makeCity(straightRails(5, 2, 9)));
+		const budget = createRailBudget(network);
+		const path = findShippingPath(network, budget, ['2,5'], ['9,5'])!;
+		consumeRailBudget(budget, path, 1);
+		expect(budget.remaining.get('5,5')).toBe(0);
+		expect(findShippingPath(network, budget, ['2,5'], ['9,5'])).toBeNull();
+	});
+
+	it('reroutes around an exhausted trunk through a parallel line', () => {
+		// Endpoints are the level-2 connectors so they survive the first
+		// shipment; the level-1 trunk exhausts and the second path must
+		// detour through the parallel line at y=7.
+		const rails = [
+			...straightRails(5, 2, 9), // trunk (level 1)
+			...straightRails(7, 2, 9), // parallel line (level 1)
+			{ x: 2, y: 6, level: 2 }, // west connector
+			{ x: 9, y: 6, level: 2 } // east connector
+		];
+		const network = buildRailNetwork(makeCity(rails));
+		const budget = createRailBudget(network);
+		const direct = findShippingPath(network, budget, ['2,6'], ['9,6'])!;
+		expect(direct.some((key) => key === '5,5')).toBe(true); // N-first BFS takes the trunk
+		consumeRailBudget(budget, direct, 1);
+		const detour = findShippingPath(network, budget, ['2,6'], ['9,6']);
+		expect(detour).not.toBeNull();
+		expect(detour!.some((key) => key === '5,7')).toBe(true);
+	});
+
+	it('returns null when no source can reach a target', () => {
+		const network = buildRailNetwork(
+			makeCity([...straightRails(5, 2, 4), ...straightRails(5, 7, 9)])
+		);
+		const budget = createRailBudget(network);
+		expect(findShippingPath(network, budget, ['2,5'], ['9,5'])).toBeNull();
 	});
 });
