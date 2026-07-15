@@ -50,6 +50,7 @@
 	);
 	const warehouseUsed = $derived(getWarehouseUsed(game.warehouse));
 	const warehouseMaterials = $derived.by(() => getWarehouseMaterialRows());
+	const bufferMaterials = $derived.by(() => getBufferMaterialRows());
 	const buildingUpgradeCost = $derived(building ? getBuildingUpgradeCost(building.level) : 0);
 	const buildingCanUpgrade = $derived(
 		building && buildingType?.recipeId ? canUpgradeBuilding(building.level) : false
@@ -66,6 +67,24 @@
 			}))
 			.filter((material) => material.quantity > 0)
 			.sort((first, second) => first.name.localeCompare(second.name));
+	}
+
+	// The building's own production buffer (as opposed to the shared
+	// warehouse). Sorted by material id (plain string comparison — not
+	// localeCompare) to keep row order deterministic across locales.
+	function getBufferMaterialRows(): WarehouseMaterialRow[] {
+		if (!building) {
+			return [];
+		}
+
+		return Object.entries(building.inventory)
+			.map(([materialId, quantity]) => ({
+				id: materialId as MaterialId,
+				name: i18n.labels.material(materialId),
+				quantity: quantity ?? 0
+			}))
+			.filter((material) => material.quantity > 0)
+			.sort((first, second) => (first.id < second.id ? -1 : first.id > second.id ? 1 : 0));
 	}
 
 	function movementLabel(movement: DailyMaterialMovement): string {
@@ -254,6 +273,32 @@
 						<p class="muted">{i18n.t('industryTileInspector.noOutputYet')}</p>
 					{/if}
 				</div>
+			</section>
+
+			<section aria-label={i18n.t('industryTileInspector.buffer')}>
+				<h3>{i18n.t('industryTileInspector.buffer')}</h3>
+				{#if bufferMaterials.length > 0}
+					<ul class="warehouse-materials" aria-label={i18n.t('industryTileInspector.buffer')}>
+						{#each bufferMaterials as material (material.id)}
+							<li>
+								<span class="material-line">
+									<img
+										src={materialArtSrc(material.id)}
+										alt=""
+										data-testid={`industry-buffer-material-${material.id}`}
+										width="24"
+										height="24"
+										loading="lazy"
+										decoding="async"
+									/>
+									<span>{material.name}: {i18n.format.integer(material.quantity)}</span>
+								</span>
+							</li>
+						{/each}
+					</ul>
+				{:else}
+					<p class="muted">{i18n.t('industryTileInspector.noBufferMaterials')}</p>
+				{/if}
 			</section>
 
 			{#if building.typeId === 'warehouse'}
