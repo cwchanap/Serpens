@@ -1,4 +1,5 @@
 import { INDUSTRIAL_BUILDING_TYPES, getIndustryTileById } from './industry';
+import { toCoordinateKey } from './footprintHelpers';
 import {
 	createIndustryTileLookup,
 	getIndustryBuildingFootprint,
@@ -11,6 +12,7 @@ import {
 	decisionContextIndustrialRequiresCash,
 	decisionContextIndustrialRequiresIndustrialTile,
 	decisionContextIndustrialRequiresResource,
+	decisionContextIndustrialTileHasRail,
 	decisionContextIndustrialUnknownBuilding,
 	decisionContextIndustrialUnknownTile
 } from './decisionContext';
@@ -31,6 +33,7 @@ export interface IndustrialPlacementContext {
 	city: IndustryCity;
 	tileLookup: ReturnType<typeof createIndustryTileLookup>;
 	occupiedTileIds: ReadonlySet<string>;
+	railOccupiedTileIds: ReadonlySet<string>;
 }
 
 export interface BuildIndustrialBuildingInput {
@@ -67,10 +70,19 @@ export function createIndustrialPlacementContext(
 	}
 
 	const tileLookup = createIndustryTileLookup(city);
+	const railOccupiedTileIds = new Set<string>();
+	for (const cell of city.rails) {
+		const railTile = tileLookup.byCoordinate.get(toCoordinateKey(cell.x, cell.y));
+		if (railTile) {
+			railOccupiedTileIds.add(railTile.id);
+		}
+	}
+
 	return {
 		city,
 		tileLookup,
-		occupiedTileIds: getOccupiedIndustryTileIds(city, game.industrialBuildings, tileLookup)
+		occupiedTileIds: getOccupiedIndustryTileIds(city, game.industrialBuildings, tileLookup),
+		railOccupiedTileIds
 	};
 }
 
@@ -106,6 +118,10 @@ export function getIndustrialPlacementBlockReasonWithContext(
 
 	if (footprint.tiles.some((footprintTile) => context.occupiedTileIds.has(footprintTile.id))) {
 		return decisionContextIndustrialOccupiedTile();
+	}
+
+	if (footprint.tiles.some((footprintTile) => context.railOccupiedTileIds.has(footprintTile.id))) {
+		return decisionContextIndustrialTileHasRail();
 	}
 
 	// Resource-anchored buildings (well, pumpjack, etc.) are placed on the

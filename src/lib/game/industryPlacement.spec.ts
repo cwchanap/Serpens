@@ -6,6 +6,7 @@ import {
 	decisionContextIndustrialRequiresCash,
 	decisionContextIndustrialRequiresIndustrialTile,
 	decisionContextIndustrialRequiresResource,
+	decisionContextIndustrialTileHasRail,
 	decisionContextIndustrialUnknownBuilding,
 	decisionContextIndustrialUnknownTile
 } from './decisionContext';
@@ -445,7 +446,8 @@ describe('industrial placement', () => {
 		const context = {
 			city,
 			tileLookup: createIndustryTileLookup(city),
-			occupiedTileIds: new Set<string>()
+			occupiedTileIds: new Set<string>(),
+			railOccupiedTileIds: new Set<string>()
 		};
 		const cornerTile = city.tiles.find((tile) => tile.x === 2 && tile.y === 2)!;
 
@@ -469,7 +471,84 @@ describe('industrial placement', () => {
 		expect(context).not.toBeNull();
 		expect(context!.occupiedTileIds.size).toBeGreaterThanOrEqual(4);
 	});
+
+	test('blocks placement when a rail cell overlaps the 2x2 footprint', () => {
+		expect.assertions(1);
+		const base = { ...createNewGame('convenience', 20260512), cash: 100_000 };
+		const city = base.industryCities[0]!;
+		const anchor = findFullyIndustrialFootprintAnchor(city);
+		const mutatedCity: IndustryCity = {
+			...city,
+			rails: [{ x: anchor.x, y: anchor.y, level: 1 }]
+		};
+		const game = {
+			...base,
+			industryCities: [mutatedCity, ...base.industryCities.slice(1)]
+		};
+
+		expect(getIndustrialPlacementBlockReason(game, anchor.id, 'flour-mill')).toEqual(
+			decisionContextIndustrialTileHasRail()
+		);
+	});
+
+	test('allows placement when a rail cell sits outside the 2x2 footprint', () => {
+		expect.assertions(1);
+		const base = { ...createNewGame('convenience', 20260512), cash: 100_000 };
+		const city = base.industryCities[0]!;
+		const anchor = findFullyIndustrialFootprintAnchor(city);
+		// Any of these four coordinates is one tile beyond the anchor's 2x2
+		// footprint (which spans [anchor.x, anchor.x+1] x [anchor.y, anchor.y+1]);
+		// pick whichever one actually exists as a tile in this city.
+		const outsideCandidates = [
+			{ x: anchor.x - 1, y: anchor.y },
+			{ x: anchor.x + 2, y: anchor.y },
+			{ x: anchor.x, y: anchor.y - 1 },
+			{ x: anchor.x, y: anchor.y + 2 }
+		];
+		const outsideCoord = outsideCandidates.find((coord) =>
+			city.tiles.some((tile) => tile.x === coord.x && tile.y === coord.y)
+		)!;
+		const mutatedCity: IndustryCity = {
+			...city,
+			rails: [{ x: outsideCoord.x, y: outsideCoord.y, level: 1 }]
+		};
+		const game = {
+			...base,
+			industryCities: [mutatedCity, ...base.industryCities.slice(1)]
+		};
+
+		expect(getIndustrialPlacementBlockReason(game, anchor.id, 'flour-mill')).toBeNull();
+	});
 });
+
+/**
+ * Finds an anchor tile whose full 2x2 footprint (anchor + right/down/diagonal
+ * neighbors) is all industrial terrain and unlocked, mirroring the search used
+ * by the "non-industrial footprint tile" test above. Rail/footprint tests need
+ * a footprint that is otherwise guaranteed to place cleanly so any block
+ * reason they observe is attributable to the rail cell under test.
+ */
+function findFullyIndustrialFootprintAnchor(city: IndustryCity): IndustryTile {
+	return city.tiles.find(
+		(tile) =>
+			tile.terrain === 'industrial' &&
+			!tile.locked &&
+			[
+				[1, 0],
+				[0, 1],
+				[1, 1]
+			].every(([dx, dy]) => {
+				const footprintTile = city.tiles.find(
+					(other) => other.x === tile.x + dx && other.y === tile.y + dy
+				);
+				return (
+					footprintTile !== undefined &&
+					footprintTile.terrain === 'industrial' &&
+					!footprintTile.locked
+				);
+			})
+	)!;
+}
 
 function createUnlockedEdgeIndustryCity(width: number, height: number): IndustryCity {
 	const tiles: IndustryTile[] = [];
