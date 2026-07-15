@@ -145,4 +145,36 @@ describe('IndustryMap', () => {
 
 		expect(onTileSelected).toHaveBeenCalledWith('ind-tile-7');
 	});
+
+	it('forwards buildCancelled events to onBuildCancelled', async () => {
+		expect.assertions(1);
+		const onTileSelected = vi.fn();
+		const onBuildCancelled = vi.fn();
+
+		render(IndustryMap, { snapshot: emptySnapshot, onTileSelected, onBuildCancelled, i18n });
+
+		await waitForMock(mockSetEventHandler);
+		const handler = mockSetEventHandler.mock.calls.at(-1)![0] as (event: {
+			type: string;
+			tileId?: string;
+		}) => void;
+		handler({ type: 'buildCancelled' });
+
+		expect(onBuildCancelled).toHaveBeenCalledTimes(1);
+	});
+
+	it('does not throw when buildCancelled fires without an onBuildCancelled handler', async () => {
+		expect.assertions(1);
+		const onTileSelected = vi.fn();
+
+		render(IndustryMap, { snapshot: emptySnapshot, onTileSelected, i18n });
+
+		await waitForMock(mockSetEventHandler);
+		const handler = mockSetEventHandler.mock.calls.at(-1)![0] as (event: {
+			type: string;
+			tileId?: string;
+		}) => void;
+
+		expect(() => handler({ type: 'buildCancelled' })).not.toThrow();
+	});
 });

@@ -6,6 +6,11 @@
 	interface Props {
 		snapshot: IndustryMapSnapshot;
 		onTileSelected: (tileId: string) => void;
+		/**
+		 * Fired when the player cancels an in-progress build (rail placement,
+		 * etc.) via Escape or a right-click on the map.
+		 */
+		onBuildCancelled?: () => void;
 		active?: boolean;
 		/**
 		 * When true, the Phaser game loop is paused so the heavy render loop
@@ -16,7 +21,14 @@
 		i18n: I18nBundle;
 	}
 
-	let { snapshot, onTileSelected, active = true, paused = false, i18n }: Props = $props();
+	let {
+		snapshot,
+		onTileSelected,
+		onBuildCancelled,
+		active = true,
+		paused = false,
+		i18n
+	}: Props = $props();
 
 	let container: HTMLDivElement | undefined = $state();
 	let loadFailed = $state(false);
@@ -94,6 +106,8 @@
 			nextScene.setEventHandler((event) => {
 				if (event.type === 'tileSelected') {
 					onTileSelected(event.tileId);
+				} else if (event.type === 'buildCancelled') {
+					onBuildCancelled?.();
 				}
 			});
 

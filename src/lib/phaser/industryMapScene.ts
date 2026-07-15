@@ -5,11 +5,15 @@ import {
 	INDUSTRY_RESOURCE_ART,
 	INDUSTRY_RESOURCE_ART_LIST,
 	INDUSTRY_TERRAIN_ART,
-	INDUSTRY_TERRAIN_ART_LIST
+	INDUSTRY_TERRAIN_ART_LIST,
+	RAIL_ART,
+	RAIL_ART_LIST
 } from '$lib/assets/gameArt';
+import type { RailArtKind } from '$lib/assets/gameArt';
 import Phaser from 'phaser';
 import type {
 	IndustryMapBuildingRender,
+	IndustryMapRailRender,
 	IndustryMapSnapshot,
 	IndustryMapTileRender
 } from '../game/industryMapRender';
@@ -18,8 +22,63 @@ import {
 	INDUSTRIAL_BUILDING_FOOTPRINT_WIDTH
 } from '../game/industryFootprint';
 
-export type IndustryMapEvent = { type: 'tileSelected'; tileId: string };
+export type IndustryMapEvent =
+	| { type: 'tileSelected'; tileId: string }
+	| { type: 'buildCancelled' };
 export type IndustryMapEventHandler = (event: IndustryMapEvent) => void;
+
+/**
+ * Maps a rail cell's N/E/S/W connection bitmask (N=1, E=2, S=4, W=8) to the
+ * RAIL_ART variant and rotation that render it. The four base sprites have
+ * fixed native orientations (straight=horizontal E+W, corner=E+S,
+ * tee=E+S+W stem south, cross=4-way), so 3-bit tees are rotated so the
+ * missing direction faces away from the stem, and 2-bit corners/straights
+ * are rotated onto the pair of connected directions they represent.
+ * 0/1-bit masks (dead ends / isolated cells) fall back to a straight piece:
+ * horizontal for masks 0/2/8, vertical for masks 1/4.
+ */
+export function railArtForConnections(connections: number): {
+	kind: RailArtKind;
+	rotationDeg: 0 | 90 | 180 | 270;
+} {
+	switch (connections) {
+		case 15:
+			return { kind: 'cross', rotationDeg: 0 };
+		case 14:
+			return { kind: 'tee', rotationDeg: 0 };
+		case 13:
+			return { kind: 'tee', rotationDeg: 90 };
+		case 11:
+			return { kind: 'tee', rotationDeg: 180 };
+		case 7:
+			return { kind: 'tee', rotationDeg: 270 };
+		case 10:
+			return { kind: 'straight', rotationDeg: 0 };
+		case 5:
+			return { kind: 'straight', rotationDeg: 90 };
+		case 6:
+			return { kind: 'corner', rotationDeg: 0 };
+		case 12:
+			return { kind: 'corner', rotationDeg: 90 };
+		case 9:
+			return { kind: 'corner', rotationDeg: 180 };
+		case 3:
+			return { kind: 'corner', rotationDeg: 270 };
+		case 1:
+		case 4:
+			return { kind: 'straight', rotationDeg: 90 };
+		default:
+			// Masks 0/2/8 (no connections, or a single E/W stub) plus any
+			// unexpected combination fall back to a horizontal straight piece.
+			return { kind: 'straight', rotationDeg: 0 };
+	}
+}
+
+const RAIL_UTILIZATION_HIGH_TINT = 0xef4444;
+const RAIL_UTILIZATION_MEDIUM_TINT = 0xf59e0b;
+const RAIL_UTILIZATION_HIGH_THRESHOLD = 1.0;
+const RAIL_UTILIZATION_MEDIUM_THRESHOLD = 0.75;
+const RAIL_PREVIEW_REUSED_COLOR = 0x94a3b8;
 
 const TILE_SIZE = 32;
 const MIN_ZOOM = 0.6;
@@ -90,6 +149,7 @@ export class IndustryMapScene extends Phaser.Scene {
 	private lastCameraKey: string | null = null;
 	private terrainSprites: Phaser.GameObjects.Image[] = [];
 	private resourceSprites: Phaser.GameObjects.Image[] = [];
+	private railSprites: Phaser.GameObjects.Image[] = [];
 	private buildingSprites: Phaser.GameObjects.Image[] = [];
 	private buildingSpriteEntries: BuildingSpriteEntry[] = [];
 	private buildingSpriteById = new Map<string, Phaser.GameObjects.Image>();
@@ -108,7 +168,8 @@ export class IndustryMapScene extends Phaser.Scene {
 		for (const path of [
 			...INDUSTRY_TERRAIN_ART_LIST,
 			...INDUSTRY_RESOURCE_ART_LIST,
-			...INDUSTRIAL_BUILDING_ART_LIST
+			...INDUSTRIAL_BUILDING_ART_LIST,
+			...RAIL_ART_LIST
 		]) {
 			preloadIndustryAsset(this, path);
 		}
@@ -125,6 +186,7 @@ export class IndustryMapScene extends Phaser.Scene {
 		this.input.on('pointermove', this.handlePointerMove, this);
 		this.input.on('pointerup', this.handlePointerUp, this);
 		this.input.on('wheel', this.handleWheel, this);
+		this.input.keyboard?.on('keydown-ESC', this.handleBuildCancelKey, this);
 		this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.destroySceneObjects, this);
 		this.renderSnapshot();
 	}
@@ -150,6 +212,7 @@ export class IndustryMapScene extends Phaser.Scene {
 			this.placementPreviewGraphics?.clear();
 			this.updateCanvasPlacementPreviewAttributes(0, 0);
 			this.updateCanvasIndustryAttributes();
+			this.drawRails();
 			return;
 		}
 
@@ -206,7 +269,9 @@ export class IndustryMapScene extends Phaser.Scene {
 		this.drawOccupancyOutlines();
 		this.placementPreviewGraphics?.clear();
 		this.drawPlacementPreview();
+		this.drawRailPreview();
 		this.rebuildMarkerSprites();
+		this.drawRails();
 		this.drawMarkerGraphics(0);
 		this.drawInteractionOutlines();
 	}
@@ -286,7 +351,16 @@ export class IndustryMapScene extends Phaser.Scene {
 			.setInteractive({ useHandCursor: true });
 
 		zone.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-			if (this.isCanvasPointer(pointer) && pointer.leftButtonDown()) {
+			if (!this.isCanvasPointer(pointer)) {
+				return;
+			}
+
+			if (pointer.button === 2) {
+				this.eventHandler?.({ type: 'buildCancelled' });
+				return;
+			}
+
+			if (pointer.leftButtonDown()) {
 				this.isDragging = true;
 				this.hasDragged = false;
 				this.dragStartPoint = { x: pointer.x, y: pointer.y };
@@ -350,6 +424,66 @@ export class IndustryMapScene extends Phaser.Scene {
 
 		this.updateBuildingSprites(0);
 		this.updateCanvasIndustryAttributes();
+	}
+
+	private drawRails(): void {
+		this.destroyRailSprites();
+
+		if (!this.snapshot) {
+			this.updateCanvasRailAttributes();
+			return;
+		}
+
+		for (const rail of this.snapshot.rails) {
+			this.createRailSprite(rail);
+		}
+
+		this.updateCanvasRailAttributes();
+	}
+
+	private createRailSprite(rail: IndustryMapRailRender): void {
+		const { kind, rotationDeg } = railArtForConnections(rail.connections);
+		const railPath = RAIL_ART[kind];
+		const railTextureKey = industryTextureKey(railPath);
+
+		if (!this.textures.exists(railTextureKey)) {
+			return;
+		}
+
+		const x = rail.x * TILE_SIZE + TILE_SIZE / 2;
+		const y = rail.y * TILE_SIZE + TILE_SIZE / 2;
+		const railSprite = this.add
+			.image(x, y, railTextureKey)
+			.setDisplaySize(TILE_SIZE, TILE_SIZE)
+			.setDepth(OCCUPANCY_OUTLINE_DEPTH + 1)
+			.setAngle(rotationDeg);
+
+		if (rail.utilization >= RAIL_UTILIZATION_HIGH_THRESHOLD) {
+			railSprite.setTint(RAIL_UTILIZATION_HIGH_TINT);
+		} else if (rail.utilization >= RAIL_UTILIZATION_MEDIUM_THRESHOLD) {
+			railSprite.setTint(RAIL_UTILIZATION_MEDIUM_TINT);
+		} else {
+			railSprite.clearTint();
+		}
+
+		this.railSprites.push(railSprite);
+	}
+
+	private drawRailPreview(): void {
+		if (!this.placementPreviewGraphics || !this.snapshot?.railPreview) {
+			return;
+		}
+
+		const graphics = this.placementPreviewGraphics;
+
+		for (const cell of this.snapshot.railPreview.cells) {
+			const color = cell.isNew ? PLACEMENT_PREVIEW_VALID_COLOR : RAIL_PREVIEW_REUSED_COLOR;
+			const x = cell.x * TILE_SIZE;
+			const y = cell.y * TILE_SIZE;
+
+			graphics.fillStyle(color, PLACEMENT_PREVIEW_ALPHA);
+			graphics.fillRect(x + 6, y + 6, TILE_SIZE - 12, TILE_SIZE - 12);
+		}
 	}
 
 	private drawPlacementPreview(): void {
@@ -707,6 +841,10 @@ export class IndustryMapScene extends Phaser.Scene {
 		this.fitCameraToViewport();
 	}
 
+	private handleBuildCancelKey(): void {
+		this.eventHandler?.({ type: 'buildCancelled' });
+	}
+
 	private didDrag(pointer: Phaser.Input.Pointer): boolean {
 		return (
 			this.hasDragged ||
@@ -779,6 +917,17 @@ export class IndustryMapScene extends Phaser.Scene {
 		canvas.dataset.placementPreviewMode = validCount + invalidCount > 0 ? 'active' : 'inactive';
 		canvas.dataset.placementValidTileCount = String(validCount);
 		canvas.dataset.placementInvalidTileCount = String(invalidCount);
+	}
+
+	private updateCanvasRailAttributes(): void {
+		const canvas = this.game?.canvas;
+
+		if (!canvas) {
+			return;
+		}
+
+		canvas.dataset.railCellCount = String(this.snapshot?.rails.length ?? 0);
+		canvas.dataset.railSpriteCount = String(this.railSprites.length);
 	}
 
 	private updateCanvasCameraAttributes(): void {
@@ -855,16 +1004,26 @@ export class IndustryMapScene extends Phaser.Scene {
 		this.buildingSpriteById.clear();
 	}
 
+	private destroyRailSprites(): void {
+		for (const sprite of this.railSprites) {
+			sprite.destroy();
+		}
+
+		this.railSprites = [];
+	}
+
 	private destroySceneObjects(): void {
 		this.destroyTileZones();
 		this.destroyTerrainSprites();
 		this.destroyResourceSprites();
 		this.destroyBuildingSprites();
+		this.destroyRailSprites();
 		this.terrainKey = null;
 		this.lastCameraKey = null;
 		this.input.off('pointermove', this.handlePointerMove, this);
 		this.input.off('pointerup', this.handlePointerUp, this);
 		this.input.off('wheel', this.handleWheel, this);
+		this.input.keyboard?.off('keydown-ESC', this.handleBuildCancelKey, this);
 		this.scale.off(Phaser.Scale.Events.RESIZE, this.handleResize, this);
 		this.mapGraphics?.destroy();
 		this.occupancyGraphics?.destroy();

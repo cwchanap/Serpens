@@ -55,6 +55,7 @@ function createImageMock() {
 		setTint: vi.fn(),
 		clearTint: vi.fn(),
 		setPosition: vi.fn(),
+		setAngle: vi.fn(),
 		destroy: vi.fn()
 	};
 	const chainable = createChainableMock(mock);
@@ -101,6 +102,7 @@ vi.mock('phaser', () => ({
 			Pointer: class {
 				x = 0;
 				y = 0;
+				button = 0;
 				isDown = false;
 				event: { target: unknown } = { target: null };
 				downElement: unknown = null;
@@ -121,7 +123,7 @@ vi.mock('phaser', () => ({
 const RESIZE_EVENT = 'resize';
 const SHUTDOWN_EVENT = 'shutdown';
 
-import { IndustryMapScene } from './industryMapScene';
+import { IndustryMapScene, railArtForConnections } from './industryMapScene';
 
 const s = (scene: IndustryMapScene) => scene as unknown as Record<string, any>;
 
@@ -130,6 +132,7 @@ function setupScene() {
 	const loadImageSpy = vi.fn();
 	const texturesExistsSpy = vi.fn(() => false);
 	const inputListeners: Record<string, Listener[]> = {};
+	const keyboardListeners: Record<string, Listener[]> = {};
 	const scaleListeners: Record<string, Listener[]> = {};
 	let sceneEventsListeners: Record<string, Listener[]> = {};
 
@@ -181,7 +184,18 @@ function setupScene() {
 				if (inputListeners[event]) {
 					inputListeners[event] = inputListeners[event].filter((h) => h !== handler);
 				}
-			})
+			}),
+			keyboard: {
+				on: vi.fn((event: string, handler: Listener) => {
+					if (!keyboardListeners[event]) keyboardListeners[event] = [];
+					keyboardListeners[event].push(handler);
+				}),
+				off: vi.fn((event: string, handler: Listener) => {
+					if (keyboardListeners[event]) {
+						keyboardListeners[event] = keyboardListeners[event].filter((h) => h !== handler);
+					}
+				})
+			}
 		},
 		writable: false,
 		configurable: true
@@ -247,6 +261,12 @@ function setupScene() {
 		sceneEventsListeners = {};
 	}
 
+	function fireKeydownEscape() {
+		for (const handler of keyboardListeners['keydown-ESC'] ?? []) {
+			handler.call(scene);
+		}
+	}
+
 	function makePointer(overrides: Record<string, unknown> = {}) {
 		return {
 			x: 0,
@@ -271,8 +291,10 @@ function setupScene() {
 		imageInstances,
 		zoneInstances,
 		inputListeners,
+		keyboardListeners,
 		scaleListeners,
 		fireSceneShutdown,
+		fireKeydownEscape,
 		makePointer
 	};
 }
@@ -1695,5 +1717,286 @@ describe('IndustryMapScene', () => {
 			expect(spy.mock.calls[1]![1]).toBe(0x6b7e3a);
 			spy.mockRestore();
 		});
+	});
+
+	describe('rail rendering', () => {
+		test('does not create rail sprites when no rail texture exists', () => {
+			expect.assertions(1);
+			const { scene, imageInstances, texturesExistsSpy } = setupScene();
+			texturesExistsSpy.mockReturnValue(false);
+			scene.create();
+			scene.updateSnapshot(
+				makeSnapshot({ rails: [{ x: 0, y: 0, level: 1, connections: 10, utilization: 0 }] })
+			);
+			expect(imageInstances.length).toBe(0);
+		});
+
+		test('creates a rail sprite sized, depthed, and rotated per connection mask', () => {
+			expect.assertions(3);
+			const { scene, imageInstances, texturesExistsSpy } = setupScene();
+			texturesExistsSpy.mockReturnValue(true);
+			scene.create();
+			scene.updateSnapshot(
+				makeSnapshot({ rails: [{ x: 1, y: 2, level: 1, connections: 10, utilization: 0 }] })
+			);
+			const railSprite = imageInstances[imageInstances.length - 1]!;
+			expect(railSprite.mock.setDisplaySize).toHaveBeenCalledWith(32, 32);
+			// OCCUPANCY_OUTLINE_DEPTH + 1 = 3
+			expect(railSprite.mock.setDepth).toHaveBeenCalledWith(3);
+			// connections=10 (E+W) -> straight rotated 0 degrees
+			expect(railSprite.mock.setAngle).toHaveBeenCalledWith(0);
+		});
+
+		test('leaves rail sprite untinted below the medium utilization threshold', () => {
+			expect.assertions(2);
+			const { scene, imageInstances, texturesExistsSpy } = setupScene();
+			texturesExistsSpy.mockReturnValue(true);
+			scene.create();
+			scene.updateSnapshot(
+				makeSnapshot({ rails: [{ x: 0, y: 0, level: 1, connections: 10, utilization: 0.5 }] })
+			);
+			const railSprite = imageInstances[imageInstances.length - 1]!;
+			expect(railSprite.mock.clearTint).toHaveBeenCalled();
+			expect(railSprite.mock.setTint).not.toHaveBeenCalled();
+		});
+
+		test('tints rail sprite amber at or above the 0.75 utilization threshold', () => {
+			expect.assertions(1);
+			const { scene, imageInstances, texturesExistsSpy } = setupScene();
+			texturesExistsSpy.mockReturnValue(true);
+			scene.create();
+			scene.updateSnapshot(
+				makeSnapshot({ rails: [{ x: 0, y: 0, level: 1, connections: 10, utilization: 0.75 }] })
+			);
+			const railSprite = imageInstances[imageInstances.length - 1]!;
+			expect(railSprite.mock.setTint).toHaveBeenCalledWith(0xf59e0b);
+		});
+
+		test('tints rail sprite red at or above the 1.0 utilization threshold', () => {
+			expect.assertions(1);
+			const { scene, imageInstances, texturesExistsSpy } = setupScene();
+			texturesExistsSpy.mockReturnValue(true);
+			scene.create();
+			scene.updateSnapshot(
+				makeSnapshot({ rails: [{ x: 0, y: 0, level: 1, connections: 10, utilization: 1 }] })
+			);
+			const railSprite = imageInstances[imageInstances.length - 1]!;
+			expect(railSprite.mock.setTint).toHaveBeenCalledWith(0xef4444);
+		});
+
+		test('updates rail canvas data attributes with cell and sprite counts', () => {
+			expect.assertions(2);
+			const { scene, canvas, texturesExistsSpy } = setupScene();
+			texturesExistsSpy.mockReturnValue(true);
+			scene.create();
+			scene.updateSnapshot(
+				makeSnapshot({
+					rails: [
+						{ x: 0, y: 0, level: 1, connections: 10, utilization: 0 },
+						{ x: 1, y: 0, level: 1, connections: 10, utilization: 0 }
+					]
+				})
+			);
+			expect(canvas.dataset.railCellCount).toBe('2');
+			expect(canvas.dataset.railSpriteCount).toBe('2');
+		});
+
+		test('sets rail attributes to zero when there is no snapshot', () => {
+			expect.assertions(2);
+			const { scene, canvas } = setupScene();
+			scene.create();
+			expect(canvas.dataset.railCellCount).toBe('0');
+			expect(canvas.dataset.railSpriteCount).toBe('0');
+		});
+
+		test('destroys previous rail sprites when re-rendering', () => {
+			expect.assertions(1);
+			const { scene, imageInstances, texturesExistsSpy } = setupScene();
+			texturesExistsSpy.mockReturnValue(true);
+			scene.create();
+			scene.updateSnapshot(
+				makeSnapshot({ rails: [{ x: 0, y: 0, level: 1, connections: 10, utilization: 0 }] })
+			);
+			const firstRailSprite = imageInstances[imageInstances.length - 1]!;
+			scene.updateSnapshot(
+				makeSnapshot({ rails: [{ x: 0, y: 0, level: 1, connections: 15, utilization: 0 }] })
+			);
+			expect(firstRailSprite.mock.destroy).toHaveBeenCalled();
+		});
+
+		test('destroys rail sprites on shutdown', () => {
+			expect.assertions(1);
+			const { scene, imageInstances, texturesExistsSpy, fireSceneShutdown } = setupScene();
+			texturesExistsSpy.mockReturnValue(true);
+			scene.create();
+			scene.updateSnapshot(
+				makeSnapshot({ rails: [{ x: 0, y: 0, level: 1, connections: 10, utilization: 0 }] })
+			);
+			const railSprite = imageInstances[imageInstances.length - 1]!;
+			fireSceneShutdown();
+			expect(railSprite.mock.destroy).toHaveBeenCalled();
+		});
+	});
+
+	describe('rail build preview', () => {
+		test('draws new preview cells with the valid placement color', () => {
+			expect.assertions(2);
+			const { scene, graphicsInstances } = setupScene();
+			scene.create();
+			scene.updateSnapshot(makeSnapshot({ railPreview: { cells: [{ x: 0, y: 0, isNew: true }] } }));
+			expect(graphicsInstances[2].mock.fillStyle).toHaveBeenCalledWith(0x6b7e3a, 0.28);
+			expect(graphicsInstances[2].mock.fillRect).toHaveBeenCalledWith(6, 6, 20, 20);
+		});
+
+		test('draws reused preview cells with the neutral gray color', () => {
+			expect.assertions(1);
+			const { scene, graphicsInstances } = setupScene();
+			scene.create();
+			scene.updateSnapshot(
+				makeSnapshot({ railPreview: { cells: [{ x: 0, y: 0, isNew: false }] } })
+			);
+			expect(graphicsInstances[2].mock.fillStyle).toHaveBeenCalledWith(0x94a3b8, 0.28);
+		});
+
+		test('draws nothing when there is no rail preview', () => {
+			expect.assertions(1);
+			const { scene, graphicsInstances } = setupScene();
+			scene.create();
+			graphicsInstances[2].mock.fillStyle.mockClear();
+			scene.updateSnapshot(makeSnapshot({ railPreview: null }));
+			expect(graphicsInstances[2].mock.fillStyle).not.toHaveBeenCalled();
+		});
+	});
+
+	describe('build cancel events', () => {
+		test('emits buildCancelled when Escape is pressed', () => {
+			expect.assertions(1);
+			const { scene, fireKeydownEscape } = setupScene();
+			const handler = vi.fn();
+			scene.setEventHandler(handler);
+			scene.create();
+			fireKeydownEscape();
+			expect(handler).toHaveBeenCalledWith({ type: 'buildCancelled' });
+		});
+
+		test('emits buildCancelled on right-click within the canvas', () => {
+			expect.assertions(1);
+			const { scene, zoneInstances, makePointer } = setupScene();
+			const handler = vi.fn();
+			scene.setEventHandler(handler);
+			scene.create();
+			scene.updateSnapshot(makeSnapshot());
+			const pointer = makePointer({ x: 10, y: 10, button: 2 });
+			zoneInstances[0].fire('pointerdown', pointer);
+			expect(handler).toHaveBeenCalledWith({ type: 'buildCancelled' });
+		});
+
+		test('does not start a drag on right-click', () => {
+			expect.assertions(1);
+			const { scene, zoneInstances, makePointer } = setupScene();
+			scene.create();
+			scene.updateSnapshot(makeSnapshot());
+			const pointer = makePointer({ x: 10, y: 10, button: 2 });
+			zoneInstances[0].fire('pointerdown', pointer);
+			expect(s(scene).isDragging).toBe(false);
+		});
+
+		test('ignores right-click that did not originate on the canvas', () => {
+			expect.assertions(1);
+			const { scene, zoneInstances, makePointer } = setupScene();
+			const handler = vi.fn();
+			scene.setEventHandler(handler);
+			scene.create();
+			scene.updateSnapshot(makeSnapshot());
+			const pointer = makePointer({
+				x: 10,
+				y: 10,
+				button: 2,
+				event: { target: 'not-canvas' }
+			});
+			zoneInstances[0].fire('pointerdown', pointer);
+			expect(handler).not.toHaveBeenCalled();
+		});
+
+		test('unregisters the Escape keydown handler on shutdown', () => {
+			expect.assertions(1);
+			const { scene, fireSceneShutdown, fireKeydownEscape } = setupScene();
+			const handler = vi.fn();
+			scene.setEventHandler(handler);
+			scene.create();
+			fireSceneShutdown();
+			fireKeydownEscape();
+			expect(handler).not.toHaveBeenCalled();
+		});
+	});
+});
+
+describe('railArtForConnections', () => {
+	test('four bits set (mask 15) -> cross rotated 0 degrees', () => {
+		expect.assertions(1);
+		expect(railArtForConnections(15)).toEqual({ kind: 'cross', rotationDeg: 0 });
+	});
+
+	test('three bits missing N (mask 14) -> tee rotated 0 degrees', () => {
+		expect.assertions(1);
+		expect(railArtForConnections(14)).toEqual({ kind: 'tee', rotationDeg: 0 });
+	});
+
+	test('three bits missing E (mask 13) -> tee rotated 90 degrees', () => {
+		expect.assertions(1);
+		expect(railArtForConnections(13)).toEqual({ kind: 'tee', rotationDeg: 90 });
+	});
+
+	test('three bits missing S (mask 11) -> tee rotated 180 degrees', () => {
+		expect.assertions(1);
+		expect(railArtForConnections(11)).toEqual({ kind: 'tee', rotationDeg: 180 });
+	});
+
+	test('three bits missing W (mask 7) -> tee rotated 270 degrees', () => {
+		expect.assertions(1);
+		expect(railArtForConnections(7)).toEqual({ kind: 'tee', rotationDeg: 270 });
+	});
+
+	test('opposite bits E+W (mask 10) -> straight rotated 0 degrees', () => {
+		expect.assertions(1);
+		expect(railArtForConnections(10)).toEqual({ kind: 'straight', rotationDeg: 0 });
+	});
+
+	test('opposite bits N+S (mask 5) -> straight rotated 90 degrees', () => {
+		expect.assertions(1);
+		expect(railArtForConnections(5)).toEqual({ kind: 'straight', rotationDeg: 90 });
+	});
+
+	test('adjacent bits E+S (mask 6) -> corner rotated 0 degrees', () => {
+		expect.assertions(1);
+		expect(railArtForConnections(6)).toEqual({ kind: 'corner', rotationDeg: 0 });
+	});
+
+	test('adjacent bits S+W (mask 12) -> corner rotated 90 degrees', () => {
+		expect.assertions(1);
+		expect(railArtForConnections(12)).toEqual({ kind: 'corner', rotationDeg: 90 });
+	});
+
+	test('adjacent bits W+N (mask 9) -> corner rotated 180 degrees', () => {
+		expect.assertions(1);
+		expect(railArtForConnections(9)).toEqual({ kind: 'corner', rotationDeg: 180 });
+	});
+
+	test('adjacent bits N+E (mask 3) -> corner rotated 270 degrees', () => {
+		expect.assertions(1);
+		expect(railArtForConnections(3)).toEqual({ kind: 'corner', rotationDeg: 270 });
+	});
+
+	test('isolated/end masks 0, 2, 8 -> straight rotated 0 degrees (horizontal)', () => {
+		expect.assertions(3);
+		expect(railArtForConnections(0)).toEqual({ kind: 'straight', rotationDeg: 0 });
+		expect(railArtForConnections(2)).toEqual({ kind: 'straight', rotationDeg: 0 });
+		expect(railArtForConnections(8)).toEqual({ kind: 'straight', rotationDeg: 0 });
+	});
+
+	test('isolated/end masks 1, 4 -> straight rotated 90 degrees (vertical)', () => {
+		expect.assertions(2);
+		expect(railArtForConnections(1)).toEqual({ kind: 'straight', rotationDeg: 90 });
+		expect(railArtForConnections(4)).toEqual({ kind: 'straight', rotationDeg: 90 });
 	});
 });
