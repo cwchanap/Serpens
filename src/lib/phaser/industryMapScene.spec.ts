@@ -377,6 +377,8 @@ function makeSnapshot(overrides: Partial<IndustryMapSnapshot> = {}): IndustryMap
 			}
 		],
 		buildings: [],
+		rails: [],
+		railPreview: null,
 		...overrides
 	};
 }

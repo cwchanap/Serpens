@@ -3,7 +3,49 @@ import { DEFAULT_RETAIL_CITY_HEIGHT, DEFAULT_RETAIL_CITY_WIDTH } from './city';
 import { getIndustryTilesByResource } from './industry';
 import { buildIndustrialBuilding } from './industryPlacement';
 import { createIndustryMapSnapshot } from './industryMapRender';
+import { railUsageKey } from './rail';
 import { createNewGame } from './state';
+import type { DailyProductionReport, DailyReport, IndustryCity, RailCell } from './types';
+
+function emptyProductionReport(): DailyProductionReport {
+	return {
+		produced: [],
+		consumed: [],
+		importedInputs: [],
+		warehousePulls: [],
+		shopImports: [],
+		importSpend: 0,
+		operatingCost: 0,
+		overflowUnits: 0,
+		overflowCost: 0,
+		warehouseCapacity: 0,
+		warehouseUsed: 0,
+		railShipments: [],
+		railUsage: {}
+	};
+}
+
+function makeReport(railUsage: Record<string, number>): DailyReport {
+	return {
+		day: 1,
+		revenue: 0,
+		costOfGoods: 0,
+		grossMargin: 0,
+		operatingCosts: 0,
+		payrollCost: 0,
+		importSpend: 0,
+		netIncome: 0,
+		cashAfter: 0,
+		scorecard: { profit: 0, customerSatisfaction: 0, staffMorale: 0, marketPosition: 0 },
+		productionReport: { ...emptyProductionReport(), railUsage },
+		storeReports: [],
+		warnings: []
+	};
+}
+
+function withRails(city: IndustryCity, rails: RailCell[]): IndustryCity {
+	return { ...city, rails };
+}
 
 describe('industry map render snapshot', () => {
 	test('creates a serializable snapshot for the active industry city', () => {
@@ -119,5 +161,87 @@ describe('industry map render snapshot', () => {
 		expect(building.y).toBe(grainTile.y);
 		expect(building).toMatchObject({ width: 2, height: 2 });
 		expect(building.status).toBe('idle');
+	});
+
+	test('renders an L-shaped rail network with per-cell connection bitmasks', () => {
+		expect.assertions(6);
+		const baseGame = createNewGame('convenience', 20260512);
+		const city = baseGame.industryCities[0]!;
+		const rails: RailCell[] = [
+			{ x: 2, y: 2, level: 1 },
+			{ x: 3, y: 2, level: 4 },
+			{ x: 3, y: 3, level: 1 }
+		];
+		const game = {
+			...baseGame,
+			industryCities: [withRails(city, rails), ...baseGame.industryCities.slice(1)],
+			reports: []
+		};
+
+		const snapshot = createIndustryMapSnapshot(game, null);
+
+		expect(snapshot.rails).toHaveLength(3);
+		const corner = snapshot.rails.find((cell) => cell.x === 3 && cell.y === 2);
+		expect(corner).toBeDefined();
+		// (2,2) is W of the corner => bit 8; (3,3) is S of the corner => bit 4.
+		expect(corner?.connections).toBe(12);
+		expect(corner?.level).toBe(4);
+		// No reports yet => usage defaults to 0.
+		expect(corner?.utilization).toBe(0);
+		expect(snapshot.railPreview).toBeNull();
+	});
+
+	test("computes rail utilization from yesterday's railUsage report", () => {
+		expect.assertions(2);
+		const baseGame = createNewGame('convenience', 20260512);
+		const city = baseGame.industryCities[0]!;
+		const rails: RailCell[] = [
+			{ x: 2, y: 2, level: 1 },
+			{ x: 3, y: 2, level: 4 },
+			{ x: 3, y: 3, level: 1 }
+		];
+		const railUsage = { [railUsageKey(city.id, 3, 2)]: 2 };
+		const game = {
+			...baseGame,
+			industryCities: [withRails(city, rails), ...baseGame.industryCities.slice(1)],
+			reports: [makeReport(railUsage)]
+		};
+
+		const snapshot = createIndustryMapSnapshot(game, null);
+
+		const corner = snapshot.rails.find((cell) => cell.x === 3 && cell.y === 2);
+		expect(corner?.utilization).toBe(0.5);
+		const west = snapshot.rails.find((cell) => cell.x === 2 && cell.y === 2);
+		expect(west?.utilization).toBe(0);
+	});
+
+	test('passes railPreview through to the snapshot unchanged', () => {
+		expect.assertions(2);
+		const game = createNewGame('convenience', 20260512);
+		const railPreview = { cells: [{ x: 1, y: 1, isNew: true }] };
+
+		const snapshot = createIndustryMapSnapshot(game, null, null, railPreview);
+		const missingCitySnapshot = createIndustryMapSnapshot(
+			{ ...game, activeIndustryCityId: 'missing-industry-city' },
+			null,
+			null,
+			railPreview
+		);
+
+		expect(snapshot.railPreview).toBe(railPreview);
+		expect(missingCitySnapshot.railPreview).toBeNull();
+	});
+
+	test('returns empty rails and null railPreview when the active industry city is missing', () => {
+		expect.assertions(2);
+		const game = createNewGame('convenience', 20260512);
+
+		const snapshot = createIndustryMapSnapshot(
+			{ ...game, activeIndustryCityId: 'missing-industry-city' },
+			null
+		);
+
+		expect(snapshot.rails).toEqual([]);
+		expect(snapshot.railPreview).toBeNull();
 	});
 });
