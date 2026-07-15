@@ -6,6 +6,8 @@ import {
 	getOccupiedIndustryTileIds
 } from './industryFootprint';
 import type { PlacementPreview } from './placementPreview';
+import { buildRailNetwork, getRailNeighborKeys, parseRailCellKey, railUsageKey } from './rail';
+import type { RailNetwork } from './rail';
 import type {
 	GameState,
 	IndustrialBuilding,
@@ -13,7 +15,8 @@ import type {
 	IndustrialBuildingTypeId,
 	IndustryResourceId,
 	IndustryTerrainId,
-	IndustryTile
+	IndustryTile,
+	RailCell
 } from './types';
 
 export interface IndustryMapTileRender {
@@ -39,6 +42,18 @@ export interface IndustryMapBuildingRender {
 	status: IndustrialBuildingStatus;
 }
 
+export interface IndustryMapRailRender {
+	x: number;
+	y: number;
+	level: number;
+	connections: number; // bitmask N=1, E=2, S=4, W=8
+	utilization: number; // 0..1: yesterday's units through this cell / level
+}
+
+export interface IndustryMapRailPreviewRender {
+	cells: Array<{ x: number; y: number; isNew: boolean }>;
+}
+
 export interface IndustryMapSnapshot {
 	cityId: string;
 	width: number;
@@ -47,12 +62,15 @@ export interface IndustryMapSnapshot {
 	placementPreview: PlacementPreview | null;
 	tiles: IndustryMapTileRender[];
 	buildings: IndustryMapBuildingRender[];
+	rails: IndustryMapRailRender[];
+	railPreview: IndustryMapRailPreviewRender | null;
 }
 
 export function createIndustryMapSnapshot(
 	game: GameState,
 	selectedTileId: string | null,
-	placementPreview: PlacementPreview | null = null
+	placementPreview: PlacementPreview | null = null,
+	railPreview: IndustryMapRailPreviewRender | null = null
 ): IndustryMapSnapshot {
 	const city = game.industryCities.find((candidate) => candidate.id === game.activeIndustryCityId);
 
@@ -64,7 +82,9 @@ export function createIndustryMapSnapshot(
 			selectedTileId,
 			placementPreview: clonePlacementPreview(placementPreview),
 			tiles: [],
-			buildings: []
+			buildings: [],
+			rails: [],
+			railPreview: null
 		};
 	}
 
@@ -73,6 +93,8 @@ export function createIndustryMapSnapshot(
 	);
 	const tileLookup = createIndustryTileLookup(city);
 	const occupiedTileIds = getOccupiedIndustryTileIds(city, activeCityBuildings, tileLookup);
+	const railNetwork = buildRailNetwork(city);
+	const railUsage = game.reports.at(-1)?.productionReport.railUsage ?? {};
 
 	return {
 		cityId: city.id,
@@ -81,7 +103,9 @@ export function createIndustryMapSnapshot(
 		selectedTileId,
 		placementPreview: clonePlacementPreview(placementPreview),
 		tiles: city.tiles.map((tile) => createTileRender(tile, occupiedTileIds, selectedTileId)),
-		buildings: activeCityBuildings.map(createBuildingRender)
+		buildings: activeCityBuildings.map(createBuildingRender),
+		rails: city.rails.map((cell) => createRailRender(cell, city.id, railNetwork, railUsage)),
+		railPreview
 	};
 }
 
@@ -110,6 +134,43 @@ function createTileRender(
 		locked: tile.locked,
 		selected: tile.id === selectedTileId,
 		occupied: occupiedTileIds.has(tile.id)
+	};
+}
+
+function createRailRender(
+	cell: RailCell,
+	cityId: string,
+	network: RailNetwork,
+	railUsage: Record<string, number>
+): IndustryMapRailRender {
+	let connections = 0;
+
+	for (const neighborKey of getRailNeighborKeys(network, cell.x, cell.y)) {
+		const { x: neighborX, y: neighborY } = parseRailCellKey(neighborKey);
+
+		if (neighborY < cell.y) {
+			connections |= 1; // N
+		}
+		if (neighborX > cell.x) {
+			connections |= 2; // E
+		}
+		if (neighborY > cell.y) {
+			connections |= 4; // S
+		}
+		if (neighborX < cell.x) {
+			connections |= 8; // W
+		}
+	}
+
+	const usage = railUsage[railUsageKey(cityId, cell.x, cell.y)] ?? 0;
+	const utilization = Math.min(1, Math.max(0, usage / cell.level));
+
+	return {
+		x: cell.x,
+		y: cell.y,
+		level: cell.level,
+		connections,
+		utilization
 	};
 }
 

@@ -46,7 +46,9 @@ const emptySnapshot: IndustryMapSnapshot = {
 	selectedTileId: null,
 	placementPreview: null,
 	tiles: [],
-	buildings: []
+	buildings: [],
+	rails: [],
+	railPreview: null
 };
 
 async function waitForMock(fn: ReturnType<typeof vi.fn>): Promise<void> {
