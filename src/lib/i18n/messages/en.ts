@@ -145,6 +145,8 @@ export const en = {
 		notEnoughCash: 'Not enough cash.',
 		lastProduction: 'Last production',
 		noOutputYet: 'No output yet',
+		buffer: 'Buffer',
+		noBufferMaterials: 'No materials buffered',
 		warehouseSummary: 'Warehouse summary',
 		warehouse: 'Warehouse',
 		warehouseMaterials: 'Warehouse materials',
@@ -161,6 +163,23 @@ export const en = {
 			stalled: 'Stalled (buffer full)',
 			blocked: 'Blocked'
 		}
+	},
+	railBuild: {
+		toolbar: 'Build rail',
+		pickOrigin: 'Select the first building',
+		pickDestination: 'Select waypoints, then the destination building',
+		confirm: '{cells} new cells · {cost}'
+	},
+	railSegmentInspector: {
+		title: 'Rail segment',
+		cells: 'Cells',
+		level: 'Level',
+		capacity: 'Capacity per day',
+		utilization: 'Utilization yesterday',
+		upgrade: 'Upgrade ({cost})',
+		demolish: 'Demolish (+{refund})',
+		pickSegment: 'Junction — pick a segment',
+		atMaxLevel: 'At max level'
 	},
 	worldMap: {
 		ariaLabel: 'World map',

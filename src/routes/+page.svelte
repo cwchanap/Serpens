@@ -8,6 +8,7 @@
 	import ControlDesk from '$lib/components/game/ControlDesk.svelte';
 	import IndustryMap from '$lib/components/game/IndustryMap.svelte';
 	import IndustryTileInspector from '$lib/components/game/IndustryTileInspector.svelte';
+	import RailSegmentInspector from '$lib/components/game/RailSegmentInspector.svelte';
 	import PolicyPanel from '$lib/components/game/PolicyPanel.svelte';
 	import ProductChainsPanel from '$lib/components/game/ProductChainsPanel.svelte';
 	import ReportsPanel from '$lib/components/game/ReportsPanel.svelte';
@@ -42,9 +43,25 @@
 		generateIndustryCity,
 		getIndustryTileById
 	} from '$lib/game/industry';
-	import { createIndustryMapSnapshot } from '$lib/game/industryMapRender';
+	import {
+		createIndustryMapSnapshot,
+		type IndustryMapRailPreviewRender
+	} from '$lib/game/industryMapRender';
 	import { buildIndustrialBuilding, upgradeBuilding } from '$lib/game/industryPlacement';
 	import { createCityMapSnapshot } from '$lib/game/mapRender';
+	import {
+		buildRailNetwork,
+		deriveRailSegments,
+		getSegmentsForCell,
+		parseRailCellKey,
+		type RailSegment
+	} from '$lib/game/rail';
+	import {
+		buildRail,
+		buildRailPreview,
+		demolishRailSegment,
+		upgradeRailSegment
+	} from '$lib/game/railPlacement';
 	import {
 		createInitialVisitedMapViews,
 		markMapViewVisited,
@@ -124,6 +141,14 @@
 		messageKey: TranslationKey;
 		params?: Record<string, string | number>;
 	}
+
+	// Rail build click routing on the industry map: `origin` waits for the
+	// first building click, `routing` accumulates waypoint clicks until a
+	// second building click resolves the destination (or the player cancels).
+	type RailBuildMode =
+		| { step: 'idle' }
+		| { step: 'origin' }
+		| { step: 'routing'; originBuildingId: string; waypoints: Array<{ x: number; y: number }> };
 
 	/**
 	 * Returns `globalThis.localStorage` when accessible, or `null` when the
@@ -235,6 +260,12 @@
 	let activeManagementPanelId = $state<ManagementPanelId | null>(null);
 	let retailPlacementArchetypeId = $state<ArchetypeId | null>(null);
 	let industryPlacementBuildingTypeId = $state<IndustrialBuildingTypeId | null>(null);
+	let railBuildMode = $state<RailBuildMode>({ step: 'idle' });
+	// Set on each destination-building click while routing, so `railPreview`
+	// below can keep showing the last attempted path (including blocked
+	// attempts) until the player clicks a different building or cancels.
+	// There is no map hover event to drive this continuously.
+	let railPreviewTargetBuildingId = $state<string | null>(null);
 	let activeLocale = $state<SupportedLocale>(
 		readLocalePreference(safeLocalStorage(), collectNavigatorLocaleCandidates())
 	);
@@ -352,8 +383,28 @@
 			? (summary.latest?.storeReports.find((report) => report.storeId === store.id) ?? null)
 			: null;
 	});
+	// A rail-cell click (outside build mode) resolves to the same
+	// `selectedIndustryTileId` a building click would — this derives the
+	// segment(s) at that cell so the template can show RailSegmentInspector
+	// instead of IndustryTileInspector. Junction cells return >1 segment.
+	let selectedRailSegments = $derived.by((): RailSegment[] | null => {
+		const currentGame: GameState | null = game;
+		if (!currentGame || !selectedIndustryTileId || railBuildMode.step !== 'idle') {
+			return null;
+		}
+		const tile = getIndustryTileById(industryCity, selectedIndustryTileId);
+		if (!tile) {
+			return null;
+		}
+		const network = buildRailNetwork(industryCity);
+		const segments = deriveRailSegments(network, currentGame.industrialBuildings);
+		const cellSegments = getSegmentsForCell(segments, tile.x, tile.y);
+		return cellSegments.length > 0 ? cellSegments : null;
+	});
 	let isPlacementModeActive = $derived(
-		retailPlacementArchetypeId !== null || industryPlacementBuildingTypeId !== null
+		retailPlacementArchetypeId !== null ||
+			industryPlacementBuildingTypeId !== null ||
+			railBuildMode.step !== 'idle'
 	);
 	// Pause the Phaser render loop while an overlay covers the map or the map
 	// menu is open. The large-city render loop iterates thousands of terrain
@@ -398,6 +449,34 @@
 	let industryLockedReason = $derived<PlacementBlockReason | null>(
 		game ? null : { code: 'industry.lockedUntilRetail' }
 	);
+	// Full preview (path, new/reused cells, cost, block reason) for the last
+	// destination-building attempt while routing. There is no continuous map
+	// hover event, so this only updates on a destination click — including a
+	// blocked one, so the toast and the highlighted path stay in sync.
+	let railBuildPreview = $derived.by(() => {
+		const currentGame: GameState | null = game;
+		if (railBuildMode.step !== 'routing' || !currentGame || !railPreviewTargetBuildingId) {
+			return null;
+		}
+		return buildRailPreview(currentGame, {
+			originBuildingId: railBuildMode.originBuildingId,
+			waypoints: railBuildMode.waypoints,
+			destinationBuildingId: railPreviewTargetBuildingId
+		});
+	});
+	let railPreview = $derived.by((): IndustryMapRailPreviewRender | null => {
+		const preview = railBuildPreview;
+		if (!preview) {
+			return null;
+		}
+		const newCellKeys = new Set(preview.newCellKeys);
+		return {
+			cells: preview.pathKeys.map((key) => {
+				const { x, y } = parseRailCellKey(key);
+				return { x, y, isNew: newCellKeys.has(key) };
+			})
+		};
+	});
 	// True when a modal/overlay that should swallow game shortcuts is open. Used both
 	// to gate the `?` cheat-sheet toggle (so it doesn't stack on an open modal) and to
 	// inform `resolveShortcutAction` that letter/Space/B keys must not fire behind it.
@@ -427,12 +506,35 @@
 		createIndustryMapSnapshot(
 			game ?? starterMapState,
 			selectedIndustryTileId,
-			industryPlacementPreview
+			industryPlacementPreview,
+			railPreview
 		)
 	);
 
 	function formatPlacementFeedback(reason: PlacementBlockReason | null): string | null {
 		return formatPlacementBlockReason(reason, i18n);
+	}
+
+	// Text for the placement-status plaque while rail-building: a block
+	// reason (if any) always wins, then a ready-to-confirm cost summary once
+	// a valid destination attempt exists, then step-specific instructions.
+	function railBuildStatusText(): string {
+		const blocked = formatPlacementFeedback(placementFeedback);
+		if (blocked) {
+			return blocked;
+		}
+
+		const preview = railBuildPreview;
+		if (preview && !preview.blockReason) {
+			return i18n.t('railBuild.confirm', {
+				cells: i18n.format.integer(preview.newCellKeys.length),
+				cost: i18n.format.currency(preview.cost)
+			});
+		}
+
+		return railBuildMode.step === 'origin'
+			? i18n.t('railBuild.pickOrigin')
+			: i18n.t('railBuild.pickDestination');
 	}
 
 	onMount(() => {
@@ -488,6 +590,11 @@
 	}
 
 	function selectIndustryTile(tileId: string) {
+		if (railBuildMode.step !== 'idle') {
+			handleRailBuildTileClick(tileId);
+			return;
+		}
+
 		if (industryPlacementBuildingTypeId) {
 			const anchorTileId = industryPlacementPreview
 				? resolveIndustryPlacementAnchorTileId(industryPlacementPreview, industryCity, tileId)
@@ -498,11 +605,137 @@
 
 		// Resolve a click inside a placed 2x2 industrial building footprint to
 		// that building's anchor for the same reason as selectTile above.
+		// A rail-cell tile has no footprint to resolve, so it is left as-is —
+		// `selectedRailSegments` then derives the segment(s) for it, and the
+		// template shows RailSegmentInspector instead of IndustryTileInspector.
 		selectedIndustryTileId = game
 			? resolveIndustrySelectionAnchorTileId(industryCity, game.industrialBuildings, tileId)
 			: tileId;
 		selectedTileId = null;
 		selectedWorldCityId = null;
+	}
+
+	/**
+	 * Rail build click routing (step 'origin' | 'routing' only, see
+	 * `RailBuildMode`). Origin/waypoint/destination clicks all flow through
+	 * `selectIndustryTile` above rather than the normal tile-selection path.
+	 */
+	function handleRailBuildTileClick(tileId: string): void {
+		if (!game) {
+			return;
+		}
+
+		const tile = getIndustryTileById(industryCity, tileId);
+		if (!tile) {
+			return;
+		}
+
+		const building = game.industrialBuildings.find(
+			(candidate) =>
+				candidate.cityId === industryCity.id && isTileInIndustryBuildingFootprint(tile, candidate)
+		);
+
+		if (railBuildMode.step === 'origin') {
+			if (!building) {
+				return; // Ignore clicks that aren't on a building footprint.
+			}
+			placementFeedback = null;
+			railBuildMode = { step: 'routing', originBuildingId: building.id, waypoints: [] };
+			return;
+		}
+
+		if (railBuildMode.step !== 'routing') {
+			return;
+		}
+
+		if (building) {
+			railPreviewTargetBuildingId = building.id;
+			const input = {
+				originBuildingId: railBuildMode.originBuildingId,
+				waypoints: railBuildMode.waypoints,
+				destinationBuildingId: building.id
+			};
+			const preview = buildRailPreview(game, input);
+
+			if (preview.blockReason) {
+				placementFeedback = { code: 'industry.rawPlacementBlocked', context: preview.blockReason };
+				playSfx('sfx.build.invalid');
+				return;
+			}
+
+			setGameAndAutosave(buildRail(game, input));
+			playSfx('sfx.build.industry-place');
+			railBuildMode = { step: 'idle' };
+			railPreviewTargetBuildingId = null;
+			placementFeedback = null;
+			return;
+		}
+
+		// Empty, rail-legal tile → push as a waypoint. Reachability is
+		// validated against the eventual destination via buildRailPreview.
+		placementFeedback = null;
+		railBuildMode = {
+			step: 'routing',
+			originBuildingId: railBuildMode.originBuildingId,
+			waypoints: [...railBuildMode.waypoints, { x: tile.x, y: tile.y }]
+		};
+	}
+
+	/**
+	 * Handles the industry map's `buildCancelled` event (Escape or right-click
+	 * on the canvas while a rail is being routed): pops the last waypoint, or
+	 * exits build mode outright when there is nothing left to pop.
+	 */
+	function cancelRailBuildStep(): void {
+		if (railBuildMode.step === 'idle') {
+			return;
+		}
+
+		if (railBuildMode.step === 'routing' && railBuildMode.waypoints.length > 0) {
+			railBuildMode = {
+				step: 'routing',
+				originBuildingId: railBuildMode.originBuildingId,
+				waypoints: railBuildMode.waypoints.slice(0, -1)
+			};
+			return;
+		}
+
+		railBuildMode = { step: 'idle' };
+		railPreviewTargetBuildingId = null;
+		placementFeedback = null;
+	}
+
+	function toggleRailBuildMode(): void {
+		if (railBuildMode.step !== 'idle') {
+			railBuildMode = { step: 'idle' };
+			railPreviewTargetBuildingId = null;
+			placementFeedback = null;
+			return;
+		}
+
+		if (!game || activeMapView !== 'industry') {
+			return;
+		}
+
+		isBuildMenuOpen = false;
+		placementFeedback = null;
+		railBuildMode = { step: 'origin' };
+	}
+
+	function upgradeRailSegmentHandler(segmentId: string): void {
+		if (game) {
+			setGameAndAutosaveWithSfx(
+				game,
+				upgradeRailSegment(game, industryCity.id, segmentId),
+				'sfx.industry.upgrade'
+			);
+		}
+	}
+
+	function demolishRailSegmentHandler(segmentId: string): void {
+		if (game) {
+			setGameAndAutosave(demolishRailSegment(game, industryCity.id, segmentId));
+		}
 	}
 
 	async function initializeSaves(): Promise<void> {
@@ -831,6 +1064,8 @@
 	function cancelPlacement(): void {
 		retailPlacementArchetypeId = null;
 		industryPlacementBuildingTypeId = null;
+		railBuildMode = { step: 'idle' };
+		railPreviewTargetBuildingId = null;
 		placementFeedback = null;
 	}
 
@@ -1140,6 +1375,15 @@
 				isAlertsMenuOpen = false;
 				return;
 			}
+			if (railBuildMode.step !== 'idle') {
+				// The industry map canvas has its own Escape/right-click handling
+				// for rail build mode (IndustryMap's onBuildCancelled ->
+				// cancelRailBuildStep), which pops the last waypoint instead of
+				// exiting outright. Returning here (rather than falling into the
+				// generic isPlacementModeActive branch) avoids handling the same
+				// Escape keydown a second time at the page level.
+				return;
+			}
 			if (isPlacementModeActive) {
 				cancelPlacement();
 				return;
@@ -1256,6 +1500,7 @@
 					<IndustryMap
 						snapshot={industryMapSnapshot}
 						onTileSelected={selectIndustryTile}
+						onBuildCancelled={cancelRailBuildStep}
 						active={activeMapView === 'industry'}
 						paused={isMapPaused}
 						{i18n}
@@ -1312,6 +1557,9 @@
 			onOpenManagement={(id) => openManagementPanel(id)}
 			onAdvanceDay={advanceDay}
 			onOpenShortcuts={() => (isCheatSheetOpen = true)}
+			showRailBuild={activeMapView === 'industry' && game !== null}
+			railBuildActive={railBuildMode.step !== 'idle'}
+			onToggleRailBuild={toggleRailBuildMode}
 		/>
 		{#if isPlacementModeActive}
 			<div
@@ -1320,8 +1568,10 @@
 				aria-label={i18n.t('route.placement.status')}
 			>
 				<span
-					>{formatPlacementFeedback(placementFeedback) ??
-						i18n.t('placement.chooseHighlightedTile')}</span
+					>{railBuildMode.step !== 'idle'
+						? railBuildStatusText()
+						: (formatPlacementFeedback(placementFeedback) ??
+							i18n.t('placement.chooseHighlightedTile'))}</span
 				>
 				<button type="button" class="btn-danger" onclick={cancelPlacement}>
 					{i18n.t('route.placement.cancel')}
@@ -1369,7 +1619,24 @@
 				/>
 			</div>
 		{/if}
-		{#if selectedIndustryTile && shouldShowIndustryInspector}
+		{#if selectedRailSegments && shouldShowIndustryInspector}
+			<div
+				class="inspector-overlay paper"
+				role="dialog"
+				aria-modal="false"
+				aria-label={i18n.t('railSegmentInspector.title')}
+			>
+				<RailSegmentInspector
+					game={game ?? starterMapState}
+					cityId={industryCity.id}
+					segments={selectedRailSegments}
+					{i18n}
+					onClose={closeIndustryInspector}
+					onUpgradeSegment={upgradeRailSegmentHandler}
+					onDemolishSegment={demolishRailSegmentHandler}
+				/>
+			</div>
+		{:else if selectedIndustryTile && shouldShowIndustryInspector}
 			<div
 				class="inspector-overlay paper"
 				role="dialog"

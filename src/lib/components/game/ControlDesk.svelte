@@ -18,6 +18,10 @@
 		onOpenManagement: (id: ManagementPanelId) => void;
 		onAdvanceDay: () => void;
 		onOpenShortcuts: () => void;
+		/** Shows the rail-build toggle next to Build — industry map only. */
+		showRailBuild?: boolean;
+		railBuildActive?: boolean;
+		onToggleRailBuild?: () => void;
 	}
 
 	let {
@@ -28,7 +32,10 @@
 		onBuild,
 		onOpenManagement,
 		onAdvanceDay,
-		onOpenShortcuts
+		onOpenShortcuts,
+		showRailBuild = false,
+		railBuildActive = false,
+		onToggleRailBuild
 	}: Props = $props();
 </script>
 
@@ -43,6 +50,18 @@
 		>
 			{i18n.t('controlDesk.build')} <kbd class="keycap">B</kbd>
 		</button>
+		{#if showRailBuild}
+			<button
+				type="button"
+				class="desk-build rail-toggle"
+				class:active={railBuildActive}
+				aria-pressed={railBuildActive}
+				aria-label={i18n.t('railBuild.toolbar')}
+				onclick={onToggleRailBuild}
+			>
+				{i18n.t('railBuild.toolbar')}
+			</button>
+		{/if}
 	</div>
 
 	<div class="cluster manage" role="group" aria-label={i18n.t('controlDesk.management')}>
@@ -123,6 +142,11 @@
 	.desk-build:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
+	}
+
+	.rail-toggle.active {
+		background: var(--brass-500);
+		color: var(--paper-50);
 	}
 
 	.manage-btn {

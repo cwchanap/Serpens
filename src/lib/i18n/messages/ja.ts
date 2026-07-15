@@ -145,6 +145,8 @@ export const ja = {
 		notEnoughCash: '現金が足りません。',
 		lastProduction: '直近の生産',
 		noOutputYet: 'まだ生産実績がありません',
+		buffer: 'バッファ',
+		noBufferMaterials: 'バッファに資材はありません',
 		warehouseSummary: '倉庫概要',
 		warehouse: '倉庫',
 		warehouseMaterials: '倉庫内資材',
@@ -161,6 +163,23 @@ export const ja = {
 			stalled: '停滞中（バッファ満杯）',
 			blocked: '停止中'
 		}
+	},
+	railBuild: {
+		toolbar: '線路を建設',
+		pickOrigin: '最初の施設を選択してください。',
+		pickDestination: '経由地を選択し、その後に目的地の施設を選択してください。',
+		confirm: '新規タイル {cells} 枚 · {cost}'
+	},
+	railSegmentInspector: {
+		title: '線路区間',
+		cells: 'マス数',
+		level: 'レベル',
+		capacity: '1日あたりの容量',
+		utilization: '前日の稼働率',
+		upgrade: 'アップグレード（{cost}）',
+		demolish: '撤去（+{refund}）',
+		pickSegment: '分岐点 — 区間を選択',
+		atMaxLevel: '最大レベル'
 	},
 	worldMap: {
 		ariaLabel: 'ワールドマップ',

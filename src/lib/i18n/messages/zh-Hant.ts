@@ -145,6 +145,8 @@ export const zhHant = {
 		notEnoughCash: '現金不足。',
 		lastProduction: '最近一次生產',
 		noOutputYet: '尚未有產出',
+		buffer: '緩衝庫存',
+		noBufferMaterials: '緩衝庫存中沒有物料',
 		warehouseSummary: '倉庫摘要',
 		warehouse: '倉庫',
 		warehouseMaterials: '倉庫物料',
@@ -161,6 +163,23 @@ export const zhHant = {
 			stalled: '停滯（緩衝已滿）',
 			blocked: '受阻'
 		}
+	},
+	railBuild: {
+		toolbar: '建設鐵路',
+		pickOrigin: '請選擇起點建築。',
+		pickDestination: '請先選擇經由點，再選擇目的地建築。',
+		confirm: '新增 {cells} 格 · {cost}'
+	},
+	railSegmentInspector: {
+		title: '鐵路區段',
+		cells: '格數',
+		level: '等級',
+		capacity: '每日容量',
+		utilization: '昨日使用率',
+		upgrade: '升級（{cost}）',
+		demolish: '拆除（+{refund}）',
+		pickSegment: '交會點 — 選擇區段',
+		atMaxLevel: '最高等級'
 	},
 	worldMap: {
 		ariaLabel: '世界地圖',
