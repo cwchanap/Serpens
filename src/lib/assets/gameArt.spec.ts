@@ -20,6 +20,8 @@ import {
 	PRODUCT_ART,
 	PRODUCT_ART_LIST,
 	RECIPE_BUILDING_ART,
+	RAIL_ART,
+	RAIL_ART_LIST,
 	DOWNTOWN_TERRAIN_ART,
 	DOWNTOWN_TERRAIN_ART_VARIANTS,
 	CAMPUS_TERRAIN_ART,
@@ -659,6 +661,33 @@ describe('game art asset constants', () => {
 
 		expect(INDUSTRY_ART_LIST).toEqual(expectedPaths);
 		expect(new Set(INDUSTRY_ART_LIST).size).toBe(expectedPaths.length);
+	});
+
+	it('defines transparent 64x64 rail track art for every variant', () => {
+		const railPaths = {
+			straight: '/assets/game/rail/rail-straight.png',
+			corner: '/assets/game/rail/rail-corner.png',
+			tee: '/assets/game/rail/rail-tee.png',
+			cross: '/assets/game/rail/rail-cross.png'
+		} as const;
+
+		expect(RAIL_ART).toEqual(railPaths);
+		expect(RAIL_ART_LIST).toEqual(Object.values(railPaths));
+		expect(duplicateAssetPaths(RAIL_ART_LIST)).toEqual([]);
+
+		for (const path of RAIL_ART_LIST) {
+			expect(existsSync(staticPath(path))).toBe(true);
+
+			const { width, height, opaquePixels, transparentPixels } = imageStats(path);
+
+			expect(width).toBe(64);
+			expect(height).toBe(64);
+			expect(opaquePixels, `${path} should preserve visible rail pixels`).toBeGreaterThan(0);
+			expect(
+				transparentPixels,
+				`${path} should have a transparent background to overlay terrain`
+			).toBeGreaterThan(0);
+		}
 	});
 
 	it('keeps generated industry catalog sprites byte-distinct within each catalog', () => {
