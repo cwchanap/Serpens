@@ -32,14 +32,26 @@ interface SavedProductReport {
 	importSpend: number;
 }
 
+interface SavedRailShipment {
+	materialId: string;
+	quantity: number;
+	value: number;
+	kind: 'pull-producer' | 'pull-warehouse' | 'push-warehouse';
+	fromId: string;
+	toId: string;
+}
+
 interface SavedDailyReport {
 	day: number;
 	importSpend: number;
 	productionReport: {
 		produced: SavedMaterialMovement[];
+		importedInputs: SavedMaterialMovement[];
 		warehousePulls: SavedMaterialMovement[];
 		shopImports: SavedMaterialMovement[];
 		importSpend: number;
+		railShipments: SavedRailShipment[];
+		railUsage: Record<string, number>;
 	};
 	storeReports: Array<{
 		storeId: string;
@@ -1651,4 +1663,157 @@ test('supply advisor recommends and arms a starter build', async ({ page }) => {
 		.click();
 	await expect(advisor).toHaveCount(0);
 	await expect(page.getByText(/choose a highlighted tile to build/i)).toBeVisible();
+});
+
+test('rail-fed production connects two industrial buildings and records a rail shipment', async ({
+	page
+}) => {
+	// The spec's suggested pair for this scenario is grain-farm (on a
+	// grain-field resource tile) -> flour-mill (on an industrial tile). That
+	// pair is not reachable by rail in the generated STARTER_INDUSTRY_CITY:
+	// `isInternalServiceSeparator` (industry.ts) forces a fully
+	// 'blocked' + locked column at x = floor(width * 0.45) that spans every
+	// row (the internal separator covers y = 1..height-2; the generic border
+	// check already blocks y = 0 and y = height-1 regardless of x), and every
+	// resource anchor (grain-field included) sits at xFrac <= 0.389 while
+	// every 'industrial' tile sits at x >= ~0.48 * width — strictly on the
+	// far side of that wall. Rail pathing treats 'blocked'/locked tiles as
+	// impassable (same as building placement), so no waypoint sequence can
+	// cross it. Confirmed directly against STARTER_INDUSTRY_CITY:
+	// `buildRailPreview` from the grain-field anchor to the closest possible
+	// industrial anchor returns `blockReason: { code: 'railNoValidPath' }`
+	// with an empty path.
+	//
+	// flour-mill and pantry-works both have `requiresIndustrialTile: true`,
+	// so both can be placed on industrial-district tiles without ever
+	// crossing that wall. This still exercises the same rail-fed-production
+	// mechanics the brief's pair was meant to demonstrate (local buffer ->
+	// rail pull -> import fallback, `data-rail-cell-count`, a recorded
+	// `railShipments` entry): flour-mill produces flour into its own local
+	// buffer (its own grain input is always imported here, since nothing
+	// produces grain in this city instance — irrelevant to the assertions
+	// below, which only look at pantry-works' flour sourcing), and
+	// pantry-works consumes flour from a *different* building, so a rail
+	// connecting them is the same producer/consumer relationship the
+	// grain/flour pair would have exercised.
+	test.setTimeout(90_000);
+	// Width keeps the management launchers on the control desk; height keeps
+	// the industry map tall enough for the build tiles used below.
+	await page.setViewportSize({ width: 1200, height: 1000 });
+	await page.goto('/');
+
+	await buildRetailStoreAt(page, {
+		x: 1,
+		y: 6,
+		storeTypeName: /build convenience store/i,
+		expectedStoreCount: 1
+	});
+	await waitForAutoSaveDay(page, 1);
+	// flour-mill (1200) + pantry-works (900) + the rail itself comfortably
+	// exceed the starter cash, so grant funds up front like the other
+	// industrial-upgrade tests do.
+	await injectCashAndReload(page, 1_000_000);
+
+	await openMapMenuItem(page, /industry city map/i);
+	await expect(page.getByRole('heading', { name: /industry city/i })).toBeVisible();
+	const industryCanvas = await expectIndustryMapReady(page);
+
+	const millTile = INDUSTRIAL_BUILD_TILES[0]!;
+	const pantryTile = INDUSTRIAL_BUILD_TILES[1]!;
+
+	await buildIndustryBuildingAt(page, industryCanvas, {
+		x: millTile.x,
+		y: millTile.y,
+		buildingName: /build flour mill/i,
+		expectedBuildingCount: 1
+	});
+	await buildIndustryBuildingAt(page, industryCanvas, {
+		x: pantryTile.x,
+		y: pantryTile.y,
+		buildingName: /build pantry works/i,
+		expectedBuildingCount: 2
+	});
+
+	// Day 1 production: pantry-works has no local flour, no rail connection,
+	// and nothing in the shared warehouse, so its whole flour need (6
+	// units/day) is imported.
+	await page.getByRole('button', { name: /^advance day$/i }).click();
+	let game = await waitForAutoSaveDay(page, 2);
+
+	const industryInspector = page.getByRole('dialog', { name: /industry tile details/i });
+	await clickCanvasTile(page, industryCanvas, pantryTile.x, pantryTile.y);
+	await expect(industryInspector).toBeVisible();
+	const pantryDetails = industryInspector.getByRole('region', {
+		name: /industrial building details/i
+	});
+	await expect(
+		pantryDetails.getByRole('definition').filter({ hasText: /^Imported inputs$/i })
+	).toBeVisible();
+	await closeIndustryInspectorIfOpen(page);
+
+	const preRailReport = getLatestReport(game);
+	const preRailImportedFlour = sumMaterialMovementQuantity(
+		preRailReport.productionReport.importedInputs,
+		'flour',
+		'import'
+	);
+	expect(preRailImportedFlour).toBeGreaterThan(0);
+
+	// Build a rail connecting flour-mill (origin) to pantry-works
+	// (destination). Both anchors are industrial-district tiles on the same
+	// side of the wall described above, so a direct path exists with no
+	// waypoints needed — the destination click resolves immediately (there
+	// is no separate confirm step; see handleRailBuildTileClick).
+	await page.getByRole('button', { name: /build rail/i }).click();
+	const placementStatus = page.getByRole('status', { name: /placement status/i });
+	await expect(placementStatus).toContainText(/select the first building/i);
+
+	await clickCanvasTile(page, industryCanvas, millTile.x, millTile.y);
+	await expect(placementStatus).toContainText(/select waypoints, then the destination building/i);
+
+	await clickCanvasTile(page, industryCanvas, pantryTile.x, pantryTile.y);
+	await expect(placementStatus).toHaveCount(0);
+	await expect(industryCanvas).toHaveAttribute('data-rail-cell-count', /^[1-9]\d*$/);
+
+	// Day 2 production: a freshly-built rail segment is level 1, whose
+	// bottleneck capacity is 1 unit/day regardless of path length (the design
+	// doc's own test note: "an 8-cell level-1 path moves 1/day"). Pantry-works
+	// still needs 6 flour/day, so only 1 unit arrives via rail and 5 remain
+	// imported — the status stays 'imported-inputs' rather than flipping to
+	// 'produced'. This is the brief's documented fallback: assert the rail
+	// cell count, a nonzero rail shipment, and a drop in imports instead of a
+	// full status flip.
+	await page.getByRole('button', { name: /^advance day$/i }).click();
+	game = await waitForAutoSaveDay(page, 3);
+
+	const postRailReport = getLatestReport(game);
+	const postRailImportedFlour = sumMaterialMovementQuantity(
+		postRailReport.productionReport.importedInputs,
+		'flour',
+		'import'
+	);
+	const railFlourShipments = postRailReport.productionReport.railShipments.filter(
+		(shipment) => shipment.materialId === 'flour'
+	);
+	const railFlourQuantity = railFlourShipments.reduce(
+		(total, shipment) => total + shipment.quantity,
+		0
+	);
+
+	expect(railFlourShipments.length).toBeGreaterThan(0);
+	expect(railFlourQuantity).toBeGreaterThan(0);
+	expect(postRailImportedFlour).toBeLessThan(preRailImportedFlour);
+	expect(Object.keys(postRailReport.productionReport.railUsage).length).toBeGreaterThan(0);
+
+	// The consuming building's status is still 'imported-inputs' (per the
+	// bottleneck math above), never a synthetic "rail-supplied" status — the
+	// spec is explicit that no such status exists.
+	await clickCanvasTile(page, industryCanvas, pantryTile.x, pantryTile.y);
+	await expect(industryInspector).toBeVisible();
+	await expect(
+		industryInspector
+			.getByRole('region', { name: /industrial building details/i })
+			.getByRole('definition')
+			.filter({ hasText: /^Imported inputs$/i })
+	).toBeVisible();
 });
