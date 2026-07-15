@@ -477,7 +477,7 @@ describe('daily simulation', () => {
 		expect(withWarehouse.reports[0]!.importSpend).toBeLessThan(noWarehouse.reports[0]!.importSpend);
 	});
 
-	test('uses same-day finished production for weekly shop refill before importing shortage', () => {
+	test('without a rail link, same-day production stays in the factory buffer and the weekly refill fully imports', () => {
 		expect.assertions(13);
 		const startingCash = 50_000;
 		let game = {
@@ -530,21 +530,20 @@ describe('daily simulation', () => {
 			0
 		);
 
+		// The snack factory still produces same-day (into its own buffer), but
+		// with no rail connecting it to the warehouse building, that output
+		// never reaches the shared warehouse pool — the store's weekly refill
+		// finds nothing there and imports the full target stock instead.
 		expect(dailyReport.productionReport.produced).toContainEqual({
 			materialId: 'snacks',
 			quantity: 8,
 			value: 64,
 			source: 'local'
 		});
-		expect(dailyReport.productionReport.warehousePulls).toContainEqual({
-			materialId: 'snacks',
-			quantity: 8,
-			value: 64,
-			source: 'warehouse'
-		});
-		expect(productReport.warehouseUnits).toBe(8);
-		expect(productReport.importedUnits).toBe(12);
-		expect(productReport.importSpend).toBe(36);
+		expect(dailyReport.productionReport.warehousePulls).toHaveLength(0);
+		expect(productReport.warehouseUnits).toBe(0);
+		expect(productReport.importedUnits).toBe(20);
+		expect(productReport.importSpend).toBe(60);
 		expect(result.stores[0]!.products[0]!.stock).toBe(20);
 		expect(result.warehouse.materials.snacks).toBe(0);
 		expect(dailyReport.productionReport.operatingCost).toBeGreaterThan(0);

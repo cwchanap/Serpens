@@ -1,5 +1,7 @@
+import { addInventory, inventoryUsed, removeInventory } from './buildingInventory';
 import { INDUSTRIAL_BUILDING_TYPES, MATERIALS, PRODUCTION_RECIPES } from './industry';
 import { getBuildingThroughputMultiplier } from './leveling';
+import { createRailTickState, pullViaRail, pushSurplusViaRail } from './railShipping';
 import type {
 	DailyMaterialMovement,
 	DailyProductionReport,
@@ -96,10 +98,15 @@ export function simulateIndustryProduction(game: GameState): {
 		capacity: getWarehouseCapacity(game),
 		materials: { ...game.warehouse.materials }
 	});
+	// One shared rail budget + working inventories/warehouse for the whole tick:
+	// stage-ordered buildings mutate this in place, so a raw producer's output
+	// is visible to a same-day rail pull by a downstream processor.
+	const railState = createRailTickState(game, warehouse);
 	const report: DailyProductionReport = createEmptyProductionReport(warehouse);
 	const buildingUpdates = new Map<string, IndustrialBuilding>();
+	const sorted = [...game.industrialBuildings].sort(compareIndustrialBuildingsByStage);
 
-	for (const building of [...game.industrialBuildings].sort(compareIndustrialBuildingsByStage)) {
+	for (const building of sorted) {
 		const buildingType = INDUSTRIAL_BUILDING_TYPES[building.typeId];
 
 		if (!buildingType) {
@@ -111,7 +118,8 @@ export function simulateIndustryProduction(game: GameState): {
 			buildingUpdates.set(building.id, {
 				...building,
 				status: 'idle',
-				lastProduction: []
+				lastProduction: [],
+				inventory: railState.inventories.get(building.id) ?? {}
 			});
 			continue;
 		}
@@ -124,70 +132,131 @@ export function simulateIndustryProduction(game: GameState): {
 		}
 
 		// Throughput is a pure function of building level: 1 + 0.2 × (level - 1).
-		// The deterministic daily production chain must round both inputs (imported
-		// pulls at line 135, produced output at line 167) and operating cost
-		// (line 178) so that two runs at the same seed + level produce identical
-		// warehouse state and identical cash.
+		// The deterministic daily production chain must round inputs, produced
+		// output, and operating cost so that two runs at the same seed + level
+		// produce identical warehouse state and identical cash.
 		const throughput = getBuildingThroughputMultiplier(building.level);
+		let inventory = railState.inventories.get(building.id) ?? {};
+		const desiredOutputs = recipe.outputs.map((output) => ({
+			materialId: output.materialId,
+			quantity: Math.round(output.quantity * throughput)
+		}));
+		const desiredTotal = desiredOutputs.reduce((total, output) => total + output.quantity, 0);
+		const free = Math.max(0, buildingType.bufferCapacity - inventoryUsed(inventory));
+		const ratio = desiredTotal > 0 ? Math.min(desiredTotal, free) / desiredTotal : 0;
+
+		// Buffer is full and there's nowhere to put new output: skip acquiring
+		// inputs entirely, pay only the flat daily cost, and mark stalled.
+		if (desiredTotal > 0 && ratio === 0) {
+			report.operatingCost += buildingType.dailyOperatingCost;
+			buildingUpdates.set(building.id, {
+				...building,
+				status: 'stalled',
+				inventory,
+				lastProduction: [],
+				blockedDays: 0
+			});
+			continue;
+		}
 
 		let importSpend = 0;
 		let importedInputQuantity = 0;
 
 		for (const input of recipe.inputs) {
-			const removal = removeWarehouseMaterial(
-				warehouse,
-				input.materialId,
-				Math.round(input.quantity * throughput)
-			);
-			warehouse = removal.warehouse;
+			const needed = Math.round(input.quantity * throughput * ratio);
+			const own = removeInventory(inventory, input.materialId, needed);
+			inventory = own.inventory;
+			railState.inventories.set(building.id, inventory);
 
-			if (removal.quantityRemoved > 0) {
+			if (own.removed > 0) {
 				const movement = createMovement(
 					input.materialId,
-					removal.quantityRemoved,
+					own.removed,
 					MATERIALS[input.materialId].localValue,
-					'warehouse'
+					'local'
 				);
 				report.consumed.push(movement);
-				report.warehousePulls.push(movement);
 			}
 
-			if (removal.shortage > 0) {
+			let shortage = own.shortage;
+
+			if (shortage > 0) {
+				const pulled = pullViaRail(railState, building, input.materialId, shortage);
+				inventory = railState.inventories.get(building.id) ?? inventory;
+
+				if (pulled.fromProducers > 0) {
+					report.consumed.push(
+						createMovement(
+							input.materialId,
+							pulled.fromProducers,
+							MATERIALS[input.materialId].localValue,
+							'rail'
+						)
+					);
+				}
+
+				if (pulled.fromWarehouse > 0) {
+					const movement = createMovement(
+						input.materialId,
+						pulled.fromWarehouse,
+						MATERIALS[input.materialId].localValue,
+						'warehouse'
+					);
+					report.consumed.push(movement);
+					report.warehousePulls.push(movement);
+				}
+
+				shortage -= pulled.fromProducers + pulled.fromWarehouse;
+			}
+
+			if (shortage > 0) {
 				const importMovement = createMovement(
 					input.materialId,
-					removal.shortage,
+					shortage,
 					MATERIALS[input.materialId].importCost,
 					'import'
 				);
 				importSpend += importMovement.value;
-				importedInputQuantity += removal.shortage;
+				importedInputQuantity += shortage;
 				report.consumed.push(importMovement);
 				report.importedInputs.push(importMovement);
 			}
 		}
 
-		const produced = recipe.outputs.map((output) =>
-			createMovement(
-				output.materialId,
-				Math.round(output.quantity * throughput),
-				MATERIALS[output.materialId].localValue,
-				'local'
-			)
-		);
+		const produced: DailyMaterialMovement[] = [];
 
-		for (const movement of produced) {
-			warehouse = addWarehouseMaterial(warehouse, movement.materialId, movement.quantity);
-			report.produced.push(movement);
+		for (const output of desiredOutputs) {
+			const scaled = Math.round(output.quantity * ratio);
+			const addition = addInventory(
+				inventory,
+				output.materialId,
+				scaled,
+				buildingType.bufferCapacity
+			);
+			inventory = addition.inventory;
+
+			if (addition.added > 0) {
+				const movement = createMovement(
+					output.materialId,
+					addition.added,
+					MATERIALS[output.materialId].localValue,
+					'local'
+				);
+				produced.push(movement);
+				report.produced.push(movement);
+			}
 		}
 
+		railState.inventories.set(building.id, inventory);
 		const operatingCost = Math.round(
-			recipe.operatingCost * throughput + buildingType.dailyOperatingCost
+			recipe.operatingCost * throughput * ratio + buildingType.dailyOperatingCost
 		);
 		report.importSpend += importSpend;
 		report.operatingCost += operatingCost;
 		buildingUpdates.set(building.id, {
 			...building,
-			status: importSpend > 0 ? 'imported-inputs' : 'produced',
+			status: ratio < 1 ? 'stalled' : importSpend > 0 ? 'imported-inputs' : 'produced',
+			inventory,
 			lastProduction: produced,
 			producedTotal:
 				building.producedTotal + produced.reduce((total, movement) => total + movement.quantity, 0),
@@ -196,20 +265,39 @@ export function simulateIndustryProduction(game: GameState): {
 		});
 	}
 
-	warehouse = recalculateWarehousePressure(warehouse);
+	// Push phase: same stage order, after every building has had a chance to
+	// produce, so surplus buffers drain to the shared warehouse for retail.
+	for (const building of sorted) {
+		const buildingType = INDUSTRIAL_BUILDING_TYPES[building.typeId];
+
+		if (buildingType?.recipeId) {
+			pushSurplusViaRail(railState, building);
+		}
+	}
+
+	warehouse = recalculateWarehousePressure(railState.warehouse);
 	report.overflowUnits = warehouse.overflowUnits;
 	report.overflowCost = warehouse.overflowCost;
 	report.warehouseCapacity = warehouse.capacity;
 	report.warehouseUsed = getWarehouseUsed(warehouse);
+	report.railShipments = railState.shipments;
+	report.railUsage = railState.usage;
 
 	return {
 		game: {
 			...game,
 			cash: game.cash - report.importSpend - report.operatingCost - report.overflowCost,
 			warehouse,
-			industrialBuildings: game.industrialBuildings.map(
-				(building) => buildingUpdates.get(building.id) ?? building
-			)
+			industrialBuildings: game.industrialBuildings.map((building) => {
+				// Push phase can drain a building's buffer after buildingUpdates was
+				// written, so re-read railState.inventories here or pushed units
+				// would resurrect in the returned GameState.
+				const updated = buildingUpdates.get(building.id) ?? building;
+				return {
+					...updated,
+					inventory: railState.inventories.get(building.id) ?? updated.inventory ?? {}
+				};
+			})
 		},
 		report
 	};
