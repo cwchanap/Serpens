@@ -9,7 +9,13 @@ import {
 	simulateIndustryProduction
 } from './industryProduction';
 import { createNewGame } from './state';
-import type { IndustrialBuildingTypeId } from './types';
+import type {
+	GameState,
+	IndustrialBuilding,
+	IndustrialBuildingTypeId,
+	IndustryCity,
+	RailCell
+} from './types';
 
 function buildOnResource(
 	game: ReturnType<typeof createNewGame>,
@@ -81,14 +87,17 @@ describe('industry production simulation', () => {
 		expect(result.game.industrialBuildings[0]?.status).toBe('idle');
 	});
 
-	test('raw producers add materials to warehouse inventory', () => {
-		expect.assertions(3);
+	test('raw producers buffer materials locally when they have no rail connection', () => {
+		expect.assertions(4);
 		let game = { ...createNewGame('convenience', 20260512), cash: 100_000 };
 		game = buildOnResource(game, 'grain-field', 'grain-farm');
 
 		const result = simulateIndustryProduction(game);
 
-		expect(result.game.warehouse.materials.grain).toBeGreaterThan(0);
+		// Without a rail link to a warehouse, output stays in the farm's own
+		// buffer — the shared warehouse pool is untouched.
+		expect(result.game.warehouse.materials.grain ?? 0).toBe(0);
+		expect(result.game.industrialBuildings[0]?.inventory.grain).toBeGreaterThan(0);
 		expect(result.report.produced.some((item) => item.materialId === 'grain')).toBe(true);
 		expect(result.game.industrialBuildings[0]?.status).toBe('produced');
 	});
@@ -109,14 +118,16 @@ describe('industry production simulation', () => {
 		expect(result.report.importedInputs.some((item) => item.materialId === 'grain')).toBe(true);
 		expect(result.report.importSpend).toBe(20);
 		expect(result.report.operatingCost).toBe(42);
-		expect(result.report.overflowCost).toBe(16);
+		// Output fills the mill's own buffer (bufferCapacity 90), not the shared
+		// warehouse, so there's no warehouse-capacity overflow to pay for.
+		expect(result.report.overflowCost).toBe(0);
 		expect(result.game.cash).toBe(
 			game.cash -
 				result.report.importSpend -
 				result.report.operatingCost -
 				result.report.overflowCost
 		);
-		expect(result.game.warehouse.materials.flour).toBe(8);
+		expect(result.game.industrialBuildings[0]?.inventory.flour).toBe(8);
 		expect(game.warehouse.materials.flour).toBeUndefined();
 	});
 
@@ -172,8 +183,8 @@ describe('industry production simulation', () => {
 		expect(result.report.operatingCost).toBe(46); // Math.round(18 * 1.2 + 24)
 	});
 
-	test('runs raw production before processors can withdraw local inputs', () => {
-		expect.assertions(5);
+	test('without a rail link, a same-day raw producer cannot feed a processor and its inputs import instead', () => {
+		expect.assertions(6);
 		let game = { ...createNewGame('convenience', 20260512), cash: 100_000 };
 		game = buildOnResource(game, 'grain-field', 'grain-farm');
 		const industrialTile = game.industryCities[0]!.tiles.find(
@@ -186,13 +197,22 @@ describe('industry production simulation', () => {
 
 		const result = simulateIndustryProduction(game);
 
-		expect(result.game.warehouse.materials.grain).toBe(20);
-		expect(result.game.warehouse.materials.flour).toBe(8);
-		expect(result.report.importedInputs.some((item) => item.materialId === 'grain')).toBe(false);
-		expect(result.report.warehousePulls.some((item) => item.materialId === 'grain')).toBe(true);
+		// Grain and flour both stay trapped in their own producers' buffers —
+		// there is no rail connecting farm, mill, or a warehouse building.
+		expect(result.game.warehouse.materials.grain ?? 0).toBe(0);
+		expect(
+			result.game.industrialBuildings.find((building) => building.typeId === 'grain-farm')
+				?.inventory.grain
+		).toBe(30);
+		expect(
+			result.game.industrialBuildings.find((building) => building.typeId === 'flour-mill')
+				?.inventory.flour
+		).toBe(8);
+		expect(result.report.importedInputs.some((item) => item.materialId === 'grain')).toBe(true);
+		expect(result.report.warehousePulls.some((item) => item.materialId === 'grain')).toBe(false);
 		expect(result.game.industrialBuildings.map((building) => building.status)).toEqual([
 			'produced',
-			'produced'
+			'imported-inputs'
 		]);
 	});
 
@@ -228,5 +248,150 @@ describe('industry production simulation', () => {
 		};
 
 		expect(getWarehouseUsed(warehouse)).toBe(0);
+	});
+});
+
+// Minimal fixtures for the buffer/rail-fed production model: a GameState
+// stub the way railShipping.spec.ts builds one, since simulateIndustryProduction
+// only touches cash, warehouse, industryCities, and industrialBuildings.
+function makeIndustryBuilding(
+	id: string,
+	typeId: IndustrialBuilding['typeId'],
+	mapX: number,
+	mapY: number,
+	inventory: IndustrialBuilding['inventory'] = {}
+): IndustrialBuilding {
+	return {
+		id,
+		level: 1,
+		typeId,
+		cityId: 'ind-city',
+		tileId: `ind-city-${mapX}-${mapY}`,
+		mapX,
+		mapY,
+		status: 'idle',
+		inventory,
+		lastProduction: [],
+		producedTotal: 0,
+		importedInputTotal: 0,
+		blockedDays: 0
+	};
+}
+
+function makeIndustryCity(rails: RailCell[]): IndustryCity {
+	return { id: 'ind-city', name: 'Industry City', width: 30, height: 30, tiles: [], rails };
+}
+
+function straightRails(y: number, fromX: number, toX: number, level = 1): RailCell[] {
+	const cells: RailCell[] = [];
+	for (let x = fromX; x <= toX; x += 1) cells.push({ x, y, level });
+	return cells;
+}
+
+function makeProductionGame(city: IndustryCity, buildings: IndustrialBuilding[]): GameState {
+	return {
+		cash: 10_000,
+		reports: [],
+		industryCities: [city],
+		activeIndustryCityId: city.id,
+		industrialBuildings: buildings,
+		warehouse: { capacity: 0, materials: {}, overflowUnits: 0, overflowCost: 0 }
+	} as unknown as GameState;
+}
+
+// farm (2,2) footprint (2..3, 2..3); mill (10,2) footprint (10..11, 2..3) —
+// same layout as railShipping.spec.ts so the rail-pull bottlenecks (1/day at
+// level 1, 3/day at level 3) are already-proven behavior.
+const baseGame = makeProductionGame(makeIndustryCity([]), [
+	makeIndustryBuilding('farm', 'grain-farm', 2, 2),
+	makeIndustryBuilding('mill', 'flour-mill', 20, 20)
+]);
+
+const railGame = makeProductionGame(makeIndustryCity(straightRails(4, 2, 11, 3)), [
+	makeIndustryBuilding('farm', 'grain-farm', 2, 2),
+	makeIndustryBuilding('mill', 'flour-mill', 10, 2)
+]);
+
+const fullBufferGame = makeProductionGame(makeIndustryCity([]), [
+	makeIndustryBuilding('farm', 'grain-farm', 2, 2, { grain: 150 })
+]);
+
+const partialBufferGame = makeProductionGame(makeIndustryCity([]), [
+	makeIndustryBuilding('mill', 'flour-mill', 2, 2, { flour: 86 })
+]);
+
+const farmWarehouseGame = makeProductionGame(makeIndustryCity(straightRails(4, 2, 11)), [
+	makeIndustryBuilding('farm', 'grain-farm', 2, 2),
+	makeIndustryBuilding('wh1', 'warehouse', 10, 2)
+]);
+
+describe('rail-fed production', () => {
+	test('unconnected mill imports its inputs (fallback) and warehouse pool stays untouched', () => {
+		expect.assertions(3);
+		const { game, report } = simulateIndustryProduction(baseGame);
+		const mill = game.industrialBuildings.find((b) => b.typeId === 'flour-mill')!;
+
+		expect(mill.status).toBe('imported-inputs');
+		expect(report.importedInputs.some((m) => m.materialId === 'grain')).toBe(true);
+		expect(report.railShipments).toHaveLength(0);
+	});
+
+	test('rail-connected mill pulls grain from the farm buffer same-day', () => {
+		expect.assertions(3);
+		const { game, report } = simulateIndustryProduction(railGame);
+
+		expect(report.railShipments.some((s) => s.kind === 'pull-producer')).toBe(true);
+		expect(report.consumed.some((m) => m.source === 'rail')).toBe(true);
+		const mill = game.industrialBuildings.find((b) => b.typeId === 'flour-mill')!;
+		expect(mill.importedInputTotal).toBeLessThan(10); // partially rail-fed
+	});
+
+	test('farm with a full buffer and no outlet stalls and pays only dailyOperatingCost', () => {
+		expect.assertions(3);
+		const { game, report } = simulateIndustryProduction(fullBufferGame);
+		const farm = game.industrialBuildings.find((b) => b.typeId === 'grain-farm')!;
+
+		expect(farm.status).toBe('stalled');
+		expect(farm.lastProduction).toHaveLength(0);
+		// operating cost = only the flat 10 (no recipe cost at ratio 0)
+		expect(report.operatingCost).toBe(10);
+	});
+
+	test('partially full buffer clips production and consumes proportional inputs', () => {
+		expect.assertions(3);
+		// flour-mill bufferCapacity 90, prefilled { flour: 86 } → free = 4.
+		// Desired output at level 1 = 8 flour → ratio = 4/8 = 0.5.
+		// Inputs scale: round(10 grain × 0.5) = 5 (imported — no rails here).
+		const { game, report } = simulateIndustryProduction(partialBufferGame);
+		const mill = game.industrialBuildings.find((b) => b.typeId === 'flour-mill')!;
+
+		expect(mill.status).toBe('stalled');
+		expect(mill.inventory.flour).toBe(90);
+		const grainImport = report.importedInputs.find((m) => m.materialId === 'grain');
+		expect(grainImport?.quantity).toBe(5);
+	});
+
+	test('connected farm pushes surplus to the warehouse pool for retail', () => {
+		expect.assertions(2);
+		const { game, report } = simulateIndustryProduction(farmWarehouseGame);
+
+		expect(report.railShipments.some((s) => s.kind === 'push-warehouse')).toBe(true);
+		expect(game.warehouse.materials.grain ?? 0).toBeGreaterThan(0);
+	});
+
+	test('railUsage records per-cell units for the segment inspector', () => {
+		expect.assertions(1);
+		const { report } = simulateIndustryProduction(railGame);
+
+		expect(Object.keys(report.railUsage).length).toBeGreaterThan(0);
+	});
+
+	test('same input state twice produces identical reports (determinism)', () => {
+		expect.assertions(2);
+		const first = simulateIndustryProduction(railGame);
+		const second = simulateIndustryProduction(railGame);
+
+		expect(first.report).toEqual(second.report);
+		expect(first.game.warehouse).toEqual(second.game.warehouse);
 	});
 });
