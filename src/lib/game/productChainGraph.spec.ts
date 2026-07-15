@@ -9,6 +9,7 @@ import {
 	formatQuantity,
 	getSupportedStoreChainCategories,
 	healthLabel,
+	materialActualMetrics,
 	materialHealth,
 	sortEdges,
 	SUPPORTED_FINISHED_MATERIALS
@@ -372,6 +373,39 @@ describe('materialHealth', () => {
 				hasProducerRecipe: false
 			})
 		).toBe('no-report');
+	});
+});
+
+describe('materialActualMetrics rail flows', () => {
+	test('sums source:"rail" consumed movements into railPulled without inflating imports', () => {
+		expect.assertions(3);
+		const report = emptyProductionReport({
+			consumed: [{ materialId: 'grain', quantity: 7, value: 21, source: 'rail' }]
+		});
+
+		const actual = materialActualMetrics(report, 'grain', null);
+
+		expect(actual.railPulled).toBe(7);
+		expect(actual.consumed).toBe(7);
+		expect(actual.importedInput).toBe(0);
+	});
+
+	test('does not read rail-sourced supply as a shortage when producers are present', () => {
+		expect.assertions(1);
+		const report = emptyProductionReport({
+			consumed: [{ materialId: 'grain', quantity: 7, value: 21, source: 'rail' }]
+		});
+		const actual = materialActualMetrics(report, 'grain', null);
+
+		expect(
+			materialHealth({
+				hasReport: true,
+				actual,
+				warehouseStock: 7,
+				producerBuildingCount: 1,
+				hasProducerRecipe: true
+			})
+		).toBe('healthy');
 	});
 });
 
