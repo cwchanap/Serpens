@@ -1863,7 +1863,8 @@ describe('save records', () => {
 			lastProduction: [],
 			producedTotal: 0,
 			importedInputTotal: 0,
-			blockedDays: 0
+			blockedDays: 0,
+			inventory: {}
 		};
 		// eslint-disable-next-line @typescript-eslint/no-unused-vars
 		const { level: _omit, ...legacyWithoutLevel } = fullBuilding;
