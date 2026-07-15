@@ -1497,6 +1497,22 @@ function validateSavedDecisionContext(value: unknown, label: string): DecisionCo
 			return { code };
 		case 'supplierTerms':
 			return { code };
+		case 'railUnknownBuilding':
+			return { code };
+		case 'railNoValidPath':
+			return { code };
+		case 'railRequiresCash':
+			return {
+				code,
+				cost: requireNumber(ctx.cost, `${label} context cost`),
+				cash: requireNumber(ctx.cash, `${label} context cash`)
+			};
+		case 'railSegmentAtMaxLevel':
+			return { code };
+		case 'railUnknownSegment':
+			return { code };
+		case 'industrialTileHasRail':
+			return { code };
 		default:
 			throw new SaveDataError(`${label} context code must be a known decision context code`);
 	}

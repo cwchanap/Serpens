@@ -825,6 +825,16 @@ export const zhHant = {
 				},
 				options: {}
 			},
+			railConstruction: {
+				contexts: {
+					unknownBuilding: '未知的鐵路建築。',
+					noValidPath: '沒有通往目的地的有效軌道路徑。',
+					requiresCash: '鋪設這段鐵路需要 {cost}，但你只有 {cash}。',
+					segmentAtMaxLevel: '此鐵路區段已達最高等級。',
+					unknownSegment: '未知的鐵路區段。',
+					tileHasRail: '此格位已鋪設鐵路。'
+				}
+			},
 			worldCity: {
 				cityUnavailable: {
 					title: '城市不可用',
