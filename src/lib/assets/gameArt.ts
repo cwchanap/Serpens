@@ -515,6 +515,18 @@ export const INDUSTRY_ART_LIST: readonly string[] = Object.freeze([
 	...INDUSTRIAL_BUILDING_ART_LIST
 ]);
 
+// Rail track tiles (64x64 transparent cutouts) drawn on top of industry
+// terrain. The connection-aware scene layer (industryMapScene) picks and
+// rotates these four base variants to render every rail shape.
+export const RAIL_ART = Object.freeze({
+	straight: '/assets/game/rail/rail-straight.png', // native orientation: horizontal (connects E + W)
+	corner: '/assets/game/rail/rail-corner.png', // native orientation: connects E + S
+	tee: '/assets/game/rail/rail-tee.png', // native orientation: connects E + S + W (stem south)
+	cross: '/assets/game/rail/rail-cross.png' // 4-way, rotation-invariant
+} as const);
+export type RailArtKind = keyof typeof RAIL_ART;
+export const RAIL_ART_LIST: readonly string[] = Object.freeze(Object.values(RAIL_ART));
+
 export interface WorldMapArt {
 	background: {
 		path: string;
