@@ -8,6 +8,7 @@ import {
 	getTileById,
 	isTileBuildable
 } from '$lib/game/city';
+import { clampInventoryToRecipe } from '$lib/game/buildingInventory';
 import { INDUSTRIAL_BUILDING_TYPES, MATERIALS } from '$lib/game/industry';
 import {
 	getStoreStaffCapacityBonus,
@@ -16,6 +17,7 @@ import {
 	MAX_BUILDING_LEVEL
 } from '$lib/game/leveling';
 import { formatLocation } from '$lib/game/placement';
+import { RAIL_MAX_LEVEL } from '$lib/game/rail';
 import {
 	createCityTileLookup,
 	getRetailStoreFootprint,
@@ -63,7 +65,7 @@ export class SaveDataError extends Error {
  * {@link SAVE_SCHEMA_VERSION}. Keep this in sync with the migration table in
  * {@link migrateSaveStoreSnapshot} and {@link migrateSaveRecord}.
  */
-const MIGRATABLE_SCHEMA_VERSIONS = new Set<number>([4, 5, 6, 7, 8]);
+const MIGRATABLE_SCHEMA_VERSIONS = new Set<number>([4, 5, 6, 7, 8, 9]);
 
 function isMigratableSchemaVersion(version: unknown): version is number {
 	return typeof version === 'number' && MIGRATABLE_SCHEMA_VERSIONS.has(version);
@@ -324,6 +326,56 @@ function migrateV8SaveRecord(record: unknown): unknown {
 }
 
 /**
+ * v9 → v10: rail transport. Industry cities gain `rails: []`, industrial
+ * buildings gain `inventory: {}`, and every persisted production report
+ * gains `railShipments: []` / `railUsage: {}` (strict report validation
+ * would reject historical reports otherwise).
+ */
+function migrateV9Game(game: unknown): unknown {
+	if (typeof game !== 'object' || game === null) return game;
+	const gameRecord = game as Record<string, unknown>;
+
+	const industryCities = Array.isArray(gameRecord.industryCities)
+		? gameRecord.industryCities.map((city) =>
+				typeof city === 'object' && city !== null
+					? { ...(city as Record<string, unknown>), rails: [] }
+					: city
+			)
+		: gameRecord.industryCities;
+	const industrialBuildings = Array.isArray(gameRecord.industrialBuildings)
+		? gameRecord.industrialBuildings.map((building) =>
+				typeof building === 'object' && building !== null
+					? { ...(building as Record<string, unknown>), inventory: {} }
+					: building
+			)
+		: gameRecord.industrialBuildings;
+	const reports = Array.isArray(gameRecord.reports)
+		? gameRecord.reports.map((report) => {
+				if (typeof report !== 'object' || report === null) return report;
+				const reportRecord = report as Record<string, unknown>;
+				const production = reportRecord.productionReport;
+				if (typeof production !== 'object' || production === null) return report;
+				return {
+					...reportRecord,
+					productionReport: {
+						...(production as Record<string, unknown>),
+						railShipments: [],
+						railUsage: {}
+					}
+				};
+			})
+		: gameRecord.reports;
+
+	return { ...gameRecord, industryCities, industrialBuildings, reports };
+}
+
+function migrateV9SaveRecord(record: unknown): unknown {
+	if (typeof record !== 'object' || record === null) return record;
+	const recordObject = record as Record<string, unknown>;
+	return { ...recordObject, schemaVersion: 10, game: migrateV9Game(recordObject.game) };
+}
+
+/**
  * Bring a serialized save store snapshot forward to the current
  * {@link SAVE_SCHEMA_VERSION}. Returns the value untouched when it is already
  * current or when we cannot recognise the schema version (so the caller's
@@ -381,6 +433,9 @@ function migrateSaveRecord(value: unknown): unknown {
 	if (migrated.schemaVersion === 8) {
 		migrated = migrateV8SaveRecord(migrated) as Record<string, unknown>;
 	}
+	if (migrated.schemaVersion === 9) {
+		migrated = migrateV9SaveRecord(migrated) as Record<string, unknown>;
+	}
 
 	return migrated;
 }
@@ -412,8 +467,15 @@ const INDUSTRY_TERRAIN_IDS = [
 	'industrial',
 	'blocked'
 ] as const;
-const INDUSTRIAL_BUILDING_STATUSES = ['idle', 'produced', 'imported-inputs', 'blocked'] as const;
-const MATERIAL_MOVEMENT_SOURCES = ['local', 'import', 'warehouse', 'overflow'] as const;
+const INDUSTRIAL_BUILDING_STATUSES = [
+	'idle',
+	'produced',
+	'imported-inputs',
+	'stalled',
+	'blocked'
+] as const;
+const MATERIAL_MOVEMENT_SOURCES = ['local', 'import', 'warehouse', 'overflow', 'rail'] as const;
+const RAIL_SHIPMENT_KINDS = ['pull-producer', 'pull-warehouse', 'push-warehouse'] as const;
 const MATERIAL_ID_SET = new Set<string>(Object.keys(MATERIALS));
 const INDUSTRIAL_BUILDING_TYPE_ID_SET = new Set<string>(Object.keys(INDUSTRIAL_BUILDING_TYPES));
 const INDUSTRY_RESOURCE_ID_SET = new Set<string>(
@@ -624,7 +686,17 @@ function validateSavedGame(value: unknown): GameState {
 		throw new SaveDataError('Saved game storeCap must be at least the current store count');
 	}
 
-	return refreshWorldProgress(game);
+	const refreshedGame = refreshWorldProgress(game);
+	return {
+		...refreshedGame,
+		industrialBuildings: refreshedGame.industrialBuildings.map((building) => ({
+			...building,
+			inventory: clampInventoryToRecipe(
+				building.inventory,
+				INDUSTRIAL_BUILDING_TYPES[building.typeId]
+			)
+		}))
+	};
 }
 
 function validateSlotInvariants(autoSave: SaveRecord | null, manualSlots: SaveRecord[]): void {
@@ -1193,6 +1265,19 @@ function validateSavedIndustryCity(value: unknown, label: string): void {
 	requireArray(city.tiles, `${label} tiles`).forEach((tile, index) =>
 		validateSavedIndustryTile(tile, `${label} tiles[${index}]`)
 	);
+	requireArray(city.rails, `${label} rails`).forEach((cell, index) =>
+		validateSavedRailCell(cell, `${label} rails[${index}]`)
+	);
+}
+
+function validateSavedRailCell(value: unknown, label: string): void {
+	const cell = requireRecord(value, label);
+	requireNumber(cell.x, `${label} x`);
+	requireNumber(cell.y, `${label} y`);
+	const level = requireNumber(cell.level, `${label} level`);
+	if (!Number.isInteger(level) || level < 1 || level > RAIL_MAX_LEVEL) {
+		throw new SaveDataError(`${label} level must be an integer between 1 and ${RAIL_MAX_LEVEL}`);
+	}
 }
 
 function validateSavedIndustryTile(value: unknown, label: string): void {
@@ -1242,6 +1327,18 @@ function validateSavedIndustrialBuilding(value: unknown, label: string): void {
 	requireNumber(building.producedTotal, `${label} producedTotal`);
 	requireNumber(building.importedInputTotal, `${label} importedInputTotal`);
 	requireNumber(building.blockedDays, `${label} blockedDays`);
+
+	const inventory = requireRecord(building.inventory, `${label} inventory`);
+	for (const [materialId, quantity] of Object.entries(inventory)) {
+		if (!MATERIAL_ID_SET.has(materialId)) {
+			throw new SaveDataError(`${label} inventory ${materialId} must be a known material`);
+		}
+
+		const inventoryQuantity = requireNumber(quantity, `${label} inventory ${materialId}`);
+		if (inventoryQuantity < 0) {
+			throw new SaveDataError(`${label} inventory ${materialId} must be at least 0`);
+		}
+	}
 }
 
 function validateSavedDailyMaterialMovement(value: unknown, label: string): void {
@@ -1476,6 +1573,24 @@ function validateSavedProductionReport(value: unknown, label: string): void {
 	requireNumber(report.overflowCost, `${label} overflowCost`);
 	requireNumber(report.warehouseCapacity, `${label} warehouseCapacity`);
 	requireNumber(report.warehouseUsed, `${label} warehouseUsed`);
+	requireArray(report.railShipments, `${label} railShipments`).forEach((shipment, index) =>
+		validateSavedRailShipment(shipment, `${label} railShipments[${index}]`)
+	);
+	const railUsage = requireRecord(report.railUsage, `${label} railUsage`);
+	for (const [key, units] of Object.entries(railUsage)) {
+		const usageUnits = requireNumber(units, `${label} railUsage ${key}`);
+		if (usageUnits < 0) throw new SaveDataError(`${label} railUsage ${key} must be at least 0`);
+	}
+}
+
+function validateSavedRailShipment(value: unknown, label: string): void {
+	const shipment = requireRecord(value, label);
+	requireKnownId(shipment.materialId, `${label} materialId`, MATERIAL_ID_SET, 'material');
+	requireNumber(shipment.quantity, `${label} quantity`);
+	requireNumber(shipment.value, `${label} value`);
+	requireOneOf(shipment.kind, `${label} kind`, RAIL_SHIPMENT_KINDS);
+	requireString(shipment.fromId, `${label} fromId`);
+	requireString(shipment.toId, `${label} toId`);
 }
 
 function validateSavedStoreReport(value: unknown, label: string): void {

@@ -260,6 +260,58 @@ function createDailyStoreReport(overrides: Partial<DailyStoreReport> = {}): Dail
 	};
 }
 
+function createIndustrialBuilding(
+	overrides: Partial<GameState['industrialBuildings'][number]> = {}
+): GameState['industrialBuildings'][number] {
+	return {
+		id: 'flour-mill-1',
+		level: 1,
+		typeId: 'flour-mill',
+		cityId: 'industry-city',
+		tileId: 'industry-city-1-1',
+		mapX: 1,
+		mapY: 1,
+		status: 'idle',
+		lastProduction: [],
+		producedTotal: 0,
+		importedInputTotal: 0,
+		blockedDays: 0,
+		inventory: {},
+		...overrides
+	};
+}
+
+/**
+ * Strips the rail-transport fields (v10) from an otherwise-current game so
+ * it matches the shape of a genuine v9 payload: `IndustryCity.rails`,
+ * `IndustrialBuilding.inventory`, and `DailyProductionReport.railShipments`
+ * / `railUsage` are all absent, not merely empty.
+ */
+function stripRailFields(game: GameState): unknown {
+	const industryCities = game.industryCities.map((city) => {
+		const { rails: _rails, ...rest } = city;
+		void _rails;
+		return rest;
+	});
+	const industrialBuildings = game.industrialBuildings.map((building) => {
+		const { inventory: _inventory, ...rest } = building;
+		void _inventory;
+		return rest;
+	});
+	const reports = game.reports.map((report) => {
+		const {
+			railShipments: _railShipments,
+			railUsage: _railUsage,
+			...restProduction
+		} = report.productionReport;
+		void _railShipments;
+		void _railUsage;
+		return { ...report, productionReport: restProduction };
+	});
+
+	return { ...game, industryCities, industrialBuildings, reports };
+}
+
 describe('saveCodec', () => {
 	test('SaveDataError defaults to corrupt code', () => {
 		expect.assertions(1);
@@ -2150,5 +2202,86 @@ describe('saveCodec', () => {
 		// Validation will reject the non-object decision, proving the migration
 		// did not drop or transform it.
 		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+	});
+
+	test('v9 migration adds rails, inventories, and report rail fields', () => {
+		// v9→v10: rail transport. A genuine v9 payload predates
+		// IndustryCity.rails, IndustrialBuilding.inventory, and
+		// DailyProductionReport.railShipments/railUsage entirely — the
+		// migration must add them rather than assume they already exist.
+		expect.assertions(4);
+		const game = createGame({
+			industrialBuildings: [createIndustrialBuilding()],
+			reports: [createDailyReport()]
+		});
+		const v9Game = stripRailFields(game);
+		const record = {
+			...createManualSaveRecord(),
+			schemaVersion: 9 as unknown as typeof SAVE_SCHEMA_VERSION,
+			game: v9Game as GameState
+		};
+
+		const validated = validateSaveRecord(record);
+		expect(validated.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
+		expect(validated.game.industryCities[0]!.rails).toEqual([]);
+		expect(
+			validated.game.industrialBuildings.every((building) => typeof building.inventory === 'object')
+		).toBe(true);
+		expect(
+			validated.game.reports.every((report) => Array.isArray(report.productionReport.railShipments))
+		).toBe(true);
+	});
+
+	test('accepts stalled status and rail movement source at v10', () => {
+		expect.assertions(2);
+		const building = createIndustrialBuilding({ status: 'stalled' });
+		const report = createDailyReport({
+			productionReport: createDailyProductionReport({
+				consumed: [{ materialId: 'grain', quantity: 1, value: 1, source: 'rail' }]
+			})
+		});
+		const record = createManualSaveRecord({
+			game: { industrialBuildings: [building], reports: [report] }
+		});
+
+		const validated = validateSaveRecord(record);
+		expect(validated.game.industrialBuildings[0]!.status).toBe('stalled');
+		expect(
+			validated.game.reports[0]!.productionReport.consumed.some(
+				(movement) => movement.source === 'rail'
+			)
+		).toBe(true);
+	});
+
+	test('rejects a rail cell with level 0', () => {
+		expect.assertions(2);
+		const baseIndustryCity = createGame().industryCities[0]!;
+		const record = createManualSaveRecord({
+			game: {
+				industryCities: [{ ...baseIndustryCity, rails: [{ x: 3, y: 3, level: 0 }] }]
+			}
+		});
+
+		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+		expect(() => validateSaveRecord(record)).toThrow(/level/);
+	});
+
+	test('clamps loaded building inventory to recipe materials', () => {
+		// flour-mill's recipe (flour-milling) only touches grain (input) and
+		// flour (output); snacks belongs to no part of that recipe and must be
+		// dropped on load rather than persisted as dead buffer weight.
+		expect.assertions(2);
+		const mill = createIndustrialBuilding({
+			typeId: 'flour-mill',
+			inventory: { grain: 5, snacks: 5 }
+		});
+		const record = createManualSaveRecord({
+			game: { industrialBuildings: [mill] }
+		});
+
+		const validated = validateSaveRecord(record);
+		const decodedMill = validated.game.industrialBuildings.find((b) => b.typeId === 'flour-mill')!;
+		expect(decodedMill.inventory.snacks).toBeUndefined();
+		expect(decodedMill.inventory.grain).toBe(5);
 	});
 });
