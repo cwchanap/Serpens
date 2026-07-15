@@ -24,6 +24,7 @@ function shortageRecipeNode(): LocalizedProductChainNode {
 			consumed: 22,
 			importedInput: 0,
 			warehousePulled: 0,
+			railPulled: 0,
 			shopImported: 0,
 			unitsSold: 0,
 			demandMissed: 8

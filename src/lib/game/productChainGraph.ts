@@ -53,6 +53,7 @@ export interface ProductChainActualMetrics {
 	consumed: number;
 	importedInput: number;
 	warehousePulled: number;
+	railPulled: number;
 	shopImported: number;
 	unitsSold: number;
 	demandMissed: number;
@@ -494,6 +495,7 @@ export function emptyActualMetrics(): ProductChainActualMetrics {
 		consumed: 0,
 		importedInput: 0,
 		warehousePulled: 0,
+		railPulled: 0,
 		shopImported: 0,
 		unitsSold: 0,
 		demandMissed: 0
@@ -510,6 +512,7 @@ export function materialActualMetrics(
 		consumed: sumMovements(report?.consumed, materialId),
 		importedInput: sumMovements(report?.importedInputs, materialId, 'import'),
 		warehousePulled: sumMovements(report?.warehousePulls, materialId, 'warehouse'),
+		railPulled: sumMovements(report?.consumed, materialId, 'rail'),
 		shopImported: sumMovements(report?.shopImports, materialId, 'import'),
 		unitsSold: productReport?.unitsSold ?? 0,
 		demandMissed: productReport?.demandMissed ?? 0

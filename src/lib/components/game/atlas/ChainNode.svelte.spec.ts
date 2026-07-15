@@ -25,6 +25,7 @@ function materialNode(
 			consumed: 28,
 			importedInput: 0,
 			warehousePulled: 0,
+			railPulled: 0,
 			shopImported: 0,
 			unitsSold: 0,
 			demandMissed: 0
@@ -112,6 +113,7 @@ describe('ChainNode', () => {
 					consumed: 0,
 					importedInput: 0,
 					warehousePulled: 0,
+					railPulled: 0,
 					shopImported: 0,
 					unitsSold: 0,
 					demandMissed: 0
