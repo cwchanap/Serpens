@@ -17,7 +17,13 @@ export type DecisionContext =
 	| { code: 'industrialRequiresCash'; buildingTypeId: IndustrialBuildingTypeId; cash: number }
 	| { code: 'cashPressure' }
 	| { code: 'expansionOpportunity' }
-	| { code: 'supplierTerms' };
+	| { code: 'supplierTerms' }
+	| { code: 'railUnknownBuilding' }
+	| { code: 'railNoValidPath' }
+	| { code: 'railRequiresCash'; cost: number; cash: number }
+	| { code: 'railSegmentAtMaxLevel' }
+	| { code: 'railUnknownSegment' }
+	| { code: 'industrialTileHasRail' };
 
 export const decisionContextExpansionUnavailable = (storeCap: number): DecisionContext => ({
 	code: 'expansionUnavailable',
@@ -86,3 +92,29 @@ export const decisionContextExpansionOpportunity = (): DecisionContext => ({
 });
 
 export const decisionContextSupplierTerms = (): DecisionContext => ({ code: 'supplierTerms' });
+
+export const decisionContextRailUnknownBuilding = (): DecisionContext => ({
+	code: 'railUnknownBuilding'
+});
+
+export const decisionContextRailNoValidPath = (): DecisionContext => ({
+	code: 'railNoValidPath'
+});
+
+export const decisionContextRailRequiresCash = (cost: number, cash: number): DecisionContext => ({
+	code: 'railRequiresCash',
+	cost,
+	cash
+});
+
+export const decisionContextRailSegmentAtMaxLevel = (): DecisionContext => ({
+	code: 'railSegmentAtMaxLevel'
+});
+
+export const decisionContextRailUnknownSegment = (): DecisionContext => ({
+	code: 'railUnknownSegment'
+});
+
+export const decisionContextIndustrialTileHasRail = (): DecisionContext => ({
+	code: 'industrialTileHasRail'
+});

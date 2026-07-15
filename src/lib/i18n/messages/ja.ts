@@ -827,6 +827,16 @@ export const ja = {
 				},
 				options: {}
 			},
+			railConstruction: {
+				contexts: {
+					unknownBuilding: '不明な鉄道建物です。',
+					noValidPath: '目的地までの有効な線路経路がありません。',
+					requiresCash: 'この線路の敷設には {cost} が必要ですが、所持金は {cash} です。',
+					segmentAtMaxLevel: 'この線路区間はすでに最大レベルです。',
+					unknownSegment: '不明な線路区間です。',
+					tileHasRail: 'このタイルにはすでに線路が敷かれています。'
+				}
+			},
 			worldCity: {
 				cityUnavailable: {
 					title: '都市を利用できません',

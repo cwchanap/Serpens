@@ -832,6 +832,16 @@ export const en = {
 				},
 				options: {}
 			},
+			railConstruction: {
+				contexts: {
+					unknownBuilding: 'Unknown rail building.',
+					noValidPath: 'No valid rail path to the destination.',
+					requiresCash: 'Building this rail costs {cost} but you only have {cash}.',
+					segmentAtMaxLevel: 'This rail segment is already at the maximum level.',
+					unknownSegment: 'Unknown rail segment.',
+					tileHasRail: 'This tile already has rail on it.'
+				}
+			},
 			worldCity: {
 				cityUnavailable: {
 					title: 'City unavailable',

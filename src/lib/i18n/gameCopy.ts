@@ -383,6 +383,21 @@ function localizeDecisionContextValue(ctx: DecisionContext, i18n: I18nBundle): s
 			return i18n.t('copy.decisions.expansionOpportunity.context');
 		case 'supplierTerms':
 			return i18n.t('copy.decisions.supplierTerms.context');
+		case 'railUnknownBuilding':
+			return i18n.t('copy.decisions.railConstruction.contexts.unknownBuilding');
+		case 'railNoValidPath':
+			return i18n.t('copy.decisions.railConstruction.contexts.noValidPath');
+		case 'railRequiresCash':
+			return i18n.t('copy.decisions.railConstruction.contexts.requiresCash', {
+				cost: i18n.format.currency(ctx.cost),
+				cash: i18n.format.currency(ctx.cash)
+			});
+		case 'railSegmentAtMaxLevel':
+			return i18n.t('copy.decisions.railConstruction.contexts.segmentAtMaxLevel');
+		case 'railUnknownSegment':
+			return i18n.t('copy.decisions.railConstruction.contexts.unknownSegment');
+		case 'industrialTileHasRail':
+			return i18n.t('copy.decisions.railConstruction.contexts.tileHasRail');
 	}
 }
 
