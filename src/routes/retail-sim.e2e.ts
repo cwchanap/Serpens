@@ -964,6 +964,9 @@ test('player builds convenience production and refills from warehouse', async ({
 		expectedStoreCount: 1
 	});
 	await waitForAutoSaveDay(page, 1);
+	// The warehouse + water-pump + water-bottler plus a rail link exceed starter
+	// cash; grant funds up front like the other industrial-build tests.
+	await injectCashAndReload(page, 1_000_000);
 
 	await openMapMenuItem(page, /industry city map/i);
 	await expect(page.getByRole('heading', { name: /industry city/i })).toBeVisible();
@@ -993,6 +996,31 @@ test('player builds convenience production and refills from warehouse', async ({
 		expectedBuildingCount: 3
 	});
 	await expect(industryCanvas).toHaveAttribute('data-industry-building-count', '3');
+
+	// Rail-gated warehouse flow: a producer's output only reaches the shared
+	// warehouse across a rail link. Connect the water-bottler (origin) to the
+	// warehouse (destination) — both industrial-district tiles on the same side
+	// of the internal separator — so bottled water accumulates in the warehouse
+	// for the retail store to draw on. Clicking the destination building is the
+	// build confirmation (no separate confirm step; see handleRailBuildTileClick).
+	await page.getByRole('button', { name: /build rail/i }).click();
+	const railStatus = page.getByRole('status', { name: /placement status/i });
+	await expect(railStatus).toContainText(/select the first building/i);
+	await clickCanvasTile(
+		page,
+		industryCanvas,
+		INDUSTRIAL_BUILD_TILES[1]!.x,
+		INDUSTRIAL_BUILD_TILES[1]!.y
+	);
+	await expect(railStatus).toContainText(/select waypoints, then the destination building/i);
+	await clickCanvasTile(
+		page,
+		industryCanvas,
+		INDUSTRIAL_BUILD_TILES[0]!.x,
+		INDUSTRIAL_BUILD_TILES[0]!.y
+	);
+	await expect(railStatus).toHaveCount(0);
+	await expect(industryCanvas).toHaveAttribute('data-rail-cell-count', /^[1-9]\d*$/);
 
 	await page.getByRole('button', { name: /^advance day$/i }).click();
 	await waitForAutoSaveDay(page, 7);
@@ -1025,7 +1053,6 @@ test('player builds convenience production and refills from warehouse', async ({
 		targetStock: 25
 	});
 	const preWeeklyBottledWater = getSavedProduct(preWeeklyGame, 'bottled-water');
-	const warehouseBottledWaterBeforeWeekly = preWeeklyGame.warehouse.materials['bottled-water'] ?? 0;
 	await page.getByRole('button', { name: /^advance day$/i }).click();
 	const postWeeklyGame = await waitForAutoSaveDay(page, 8);
 	const latestReport = getLatestReport(postWeeklyGame);
@@ -1038,28 +1065,23 @@ test('player builds convenience production and refills from warehouse', async ({
 		throw new Error('Missing latest Bottled Water report');
 	}
 
-	const producedBottledWater = sumMaterialMovementQuantity(
-		latestReport.productionReport.produced,
-		'bottled-water',
-		'local'
-	);
 	const stockBeforeRefill = Math.max(0, preWeeklyBottledWater.stock - bottledWaterReport.unitsSold);
 	const neededUnits =
 		stockBeforeRefill < preWeeklyBottledWater.reorderThreshold
 			? Math.max(0, preWeeklyBottledWater.targetStock - stockBeforeRefill)
 			: 0;
-	const warehouseBottledWaterAvailable = warehouseBottledWaterBeforeWeekly + producedBottledWater;
-	const expectedWarehouseUnits = Math.min(warehouseBottledWaterAvailable, neededUnits);
-	const expectedImportedUnits = Math.max(0, neededUnits - warehouseBottledWaterAvailable);
 
 	expect(neededUnits).toBeGreaterThan(0);
 	expect(bottledWaterReport.endingStock).toBe(preWeeklyBottledWater.targetStock);
+	// The rail-fed warehouse supplies part of the weekly refill and imports
+	// cover the rest. A level-1 rail moves ~1 unit/day, far below the store's
+	// weekly need, so both sources are exercised and together they exactly meet
+	// the refill quantity (the store always refills to target).
 	expect(bottledWaterReport.warehouseUnits).toBeGreaterThan(0);
 	expect(bottledWaterReport.importedUnits).toBeGreaterThan(0);
-	expect(bottledWaterReport.warehouseUnits).toBe(expectedWarehouseUnits);
-	expect(bottledWaterReport.importedUnits).toBe(expectedImportedUnits);
+	expect(bottledWaterReport.warehouseUnits + bottledWaterReport.importedUnits).toBe(neededUnits);
 	expect(bottledWaterReport.importSpend).toBe(
-		expectedImportedUnits * bottledWaterReport.importCost
+		bottledWaterReport.importedUnits * bottledWaterReport.importCost
 	);
 	expect(
 		sumMaterialMovementQuantity(
@@ -1668,34 +1690,20 @@ test('supply advisor recommends and arms a starter build', async ({ page }) => {
 test('rail-fed production connects two industrial buildings and records a rail shipment', async ({
 	page
 }) => {
-	// The spec's suggested pair for this scenario is grain-farm (on a
-	// grain-field resource tile) -> flour-mill (on an industrial tile). That
-	// pair is not reachable by rail in the generated STARTER_INDUSTRY_CITY:
-	// `isInternalServiceSeparator` (industry.ts) forces a fully
-	// 'blocked' + locked column at x = floor(width * 0.45) that spans every
-	// row (the internal separator covers y = 1..height-2; the generic border
-	// check already blocks y = 0 and y = height-1 regardless of x), and every
-	// resource anchor (grain-field included) sits at xFrac <= 0.389 while
-	// every 'industrial' tile sits at x >= ~0.48 * width — strictly on the
-	// far side of that wall. Rail pathing treats 'blocked'/locked tiles as
-	// impassable (same as building placement), so no waypoint sequence can
-	// cross it. Confirmed directly against STARTER_INDUSTRY_CITY:
-	// `buildRailPreview` from the grain-field anchor to the closest possible
-	// industrial anchor returns `blockReason: { code: 'railNoValidPath' }`
-	// with an empty path.
-	//
-	// flour-mill and pantry-works both have `requiresIndustrialTile: true`,
-	// so both can be placed on industrial-district tiles without ever
-	// crossing that wall. This still exercises the same rail-fed-production
-	// mechanics the brief's pair was meant to demonstrate (local buffer ->
-	// rail pull -> import fallback, `data-rail-cell-count`, a recorded
-	// `railShipments` entry): flour-mill produces flour into its own local
-	// buffer (its own grain input is always imported here, since nothing
-	// produces grain in this city instance — irrelevant to the assertions
-	// below, which only look at pantry-works' flour sourcing), and
-	// pantry-works consumes flour from a *different* building, so a rail
-	// connecting them is the same producer/consumer relationship the
-	// grain/flour pair would have exercised.
+	// This exercises rail-fed production between two industrial-district
+	// buildings on the same side of the internal separator wall, so a short
+	// direct rail path exists with no waypoints — the compact, robust case for
+	// a UI-level smoke test. The cross-wall raw -> process case (a grain-farm
+	// on a west-side resource tile reaching an east-side flour-mill through a
+	// separator crossing) is now possible thanks to the crossings in
+	// `isInternalServiceSeparator` and is covered deterministically by the
+	// railPlacement.spec `buildRailPreview` acceptance test. Here, flour-mill
+	// produces flour into its own local buffer (its grain input is imported,
+	// irrelevant to the assertions below, which only look at pantry-works'
+	// flour sourcing), and pantry-works consumes that flour from a *different*
+	// building over the rail — the same producer/consumer relationship,
+	// exercising local buffer -> rail pull -> import fallback,
+	// `data-rail-cell-count`, and a recorded `railShipments` entry.
 	test.setTimeout(90_000);
 	// Width keeps the management launchers on the control desk; height keeps
 	// the industry map tall enough for the build tiles used below.

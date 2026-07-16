@@ -7,7 +7,8 @@ import {
 	getSegmentUpgradeCost,
 	upgradeRailSegment
 } from './railPlacement';
-import { buildRailNetwork, deriveRailSegments, railCellKey } from './rail';
+import { buildRailNetwork, deriveRailSegments, parseRailCellKey, railCellKey } from './rail';
+import { generateIndustryCity } from './industry';
 import type { GameState, IndustrialBuilding, IndustryCity, IndustryTile, RailCell } from './types';
 
 const CITY_ID = 'rail-city';
@@ -75,6 +76,29 @@ function straightRails(y: number, fromX: number, toX: number, level = 1): RailCe
 	return cells;
 }
 
+// First unlocked 2x2 all-industrial footprint anchor strictly east of `minX`,
+// used to place a processing plant on the far side of the separator wall.
+function findIndustrialAnchorEastOf(city: IndustryCity, minX: number): { x: number; y: number } {
+	const byCoord = new Map(city.tiles.map((tile) => [railCellKey(tile.x, tile.y), tile]));
+	const isIndustrial = (x: number, y: number): boolean => {
+		const tile = byCoord.get(railCellKey(x, y));
+		return !!tile && tile.terrain === 'industrial' && !tile.locked;
+	};
+	for (let y = 1; y < city.height - 2; y += 1) {
+		for (let x = minX + 1; x < city.width - 2; x += 1) {
+			if (
+				isIndustrial(x, y) &&
+				isIndustrial(x + 1, y) &&
+				isIndustrial(x, y + 1) &&
+				isIndustrial(x + 1, y + 1)
+			) {
+				return { x, y };
+			}
+		}
+	}
+	throw new Error('no industrial footprint east of the separator');
+}
+
 // Origin footprint (2..3, 2..3); destination footprint (10..11, 2..3).
 const ORIGIN = () => makeBuilding('origin', 2, 2);
 const DEST = () => makeBuilding('dest', 10, 2);
@@ -138,6 +162,44 @@ describe('buildRailPreview', () => {
 		expect(preview.blockReason?.code).toBe('railNoValidPath');
 		expect(preview.newCellKeys).toEqual([]);
 		expect(preview.pathKeys).toEqual([]);
+	});
+
+	it('routes rail from a west-side resource extractor across the internal separator to an east-side plant', () => {
+		// Acceptance for the raw -> process rail chain on a real generated city:
+		// the internal separator wall keeps three crossings (industry.ts), so a
+		// grain-farm on a west-side grain-field can reach a flour-mill on an
+		// east-side industrial tile. buildRailPreview only reads footprint
+		// geometry, so plain makeBuilding fixtures stand in for the two types.
+		const width = 56;
+		const height = 48;
+		const city = generateIndustryCity({
+			id: CITY_ID,
+			name: 'Real City',
+			width,
+			height,
+			seed: 20260512
+		});
+		const separatorX = Math.floor(width * 0.45);
+		const grainTile = city.tiles.find((tile) => tile.resource === 'grain-field');
+		expect(grainTile).toBeDefined();
+		const millAnchor = findIndustrialAnchorEastOf(city, separatorX);
+		const game = makeGame(city, [
+			makeBuilding('farm', grainTile!.x, grainTile!.y),
+			makeBuilding('mill', millAnchor.x, millAnchor.y)
+		]);
+
+		const preview = buildRailPreview(game, {
+			originBuildingId: 'farm',
+			waypoints: [],
+			destinationBuildingId: 'mill'
+		});
+
+		expect(grainTile!.x).toBeLessThan(separatorX);
+		expect(millAnchor.x).toBeGreaterThan(separatorX);
+		expect(preview.blockReason).toBeNull();
+		// The only passable route between the two halves is through a separator
+		// crossing, so the path must include a cell at x = separatorX.
+		expect(preview.pathKeys.some((key) => parseRailCellKey(key).x === separatorX)).toBe(true);
 	});
 
 	it('reports required cash when the build cost exceeds available cash', () => {
