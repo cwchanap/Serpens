@@ -136,13 +136,18 @@ export function pullViaRail(
 
 	let remaining = Math.max(0, requested);
 
+	// Sort once — the building-id order is constant for the whole tick; only
+	// stock levels change between iterations, so candidates are rebuilt from
+	// this pre-sorted list each pass.
+	const sortedEntries = [...state.buildingsById.entries()].sort(([a], [b]) =>
+		compareBuildingIds(a, b)
+	);
+
 	while (remaining > 0) {
 		// Candidate sources, sorted by building id (plain string compare).
 		const candidates: ShipmentCandidate[] = [];
 
-		for (const [buildingId, building] of [...state.buildingsById.entries()].sort(([a], [b]) =>
-			compareBuildingIds(a, b)
-		)) {
+		for (const [buildingId, building] of sortedEntries) {
 			if (building.cityId !== consumer.cityId || buildingId === consumer.id) {
 				continue;
 			}
@@ -253,15 +258,18 @@ export function pushSurplusViaRail(state: RailTickState, producer: IndustrialBui
 	// Push only recipe outputs; retain buffered inputs for local production.
 	const materialIds = (recipe?.outputs.map((output) => output.materialId) ?? []).sort();
 
+	// Sort once — the building-id order is constant for the whole tick.
+	const sortedEntries = [...state.buildingsById.entries()].sort(([a], [b]) =>
+		compareBuildingIds(a, b)
+	);
+
 	for (const materialId of materialIds) {
 		let stock = Math.max(0, inventory[materialId] ?? 0);
 
 		while (stock > 0) {
 			let best: { warehouseId: string; path: string[] } | null = null;
 
-			for (const [buildingId, building] of [...state.buildingsById.entries()].sort(([a], [b]) =>
-				compareBuildingIds(a, b)
-			)) {
+			for (const [buildingId, building] of sortedEntries) {
 				if (building.cityId !== producer.cityId || building.typeId !== 'warehouse') {
 					continue;
 				}

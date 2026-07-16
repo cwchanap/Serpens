@@ -336,7 +336,12 @@ function compareIndustrialBuildingsByStage(
 ): number {
 	const firstStage = getIndustrialBuildingStage(INDUSTRIAL_BUILDING_TYPES[first.typeId]);
 	const secondStage = getIndustrialBuildingStage(INDUSTRIAL_BUILDING_TYPES[second.typeId]);
-	return RECIPE_STAGE_ORDER[firstStage] - RECIPE_STAGE_ORDER[secondStage];
+	const stageDiff = RECIPE_STAGE_ORDER[firstStage] - RECIPE_STAGE_ORDER[secondStage];
+	// Plain string compare tie-break (never localeCompare — engine code must
+	// stay locale-independent). The spec requires "ties by building id" so
+	// same-stage buildings process in a deterministic order regardless of
+	// the input array's insertion order.
+	return stageDiff !== 0 ? stageDiff : first.id < second.id ? -1 : first.id > second.id ? 1 : 0;
 }
 
 function getIndustrialBuildingStage(
