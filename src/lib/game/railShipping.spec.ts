@@ -77,6 +77,25 @@ describe('pullViaRail', () => {
 		expect(state.usage['rail-city:6,4']).toBe(1);
 	});
 
+	it('does not pull consumer input stock from another processor buffer', () => {
+		// Mill A holds grain (its recipe input), not flour. Grain is not an
+		// output of flour-milling, so mill B must not treat that stock as
+		// transferable producer surplus.
+		const millA = makeBuilding('industry-building-1', 'flour-mill', 2, 2, { grain: 30 });
+		const millB = makeBuilding('industry-building-2', 'flour-mill', 10, 2);
+		const state = createRailTickState(makeGame(makeCity(LINE), [millA, millB]), {
+			capacity: 500,
+			materials: {},
+			overflowUnits: 0,
+			overflowCost: 0
+		});
+		const result = pullViaRail(state, millB, 'grain', 10);
+		expect(result.fromProducers).toBe(0);
+		expect(result.fromWarehouse).toBe(0);
+		expect(state.inventories.get('industry-building-1')!.grain).toBe(30);
+		expect(state.shipments).toHaveLength(0);
+	});
+
 	it('a level-3 line moves 3/day', () => {
 		const farm = makeBuilding('industry-building-1', 'grain-farm', 2, 2, { grain: 30 });
 		const mill = makeBuilding('industry-building-2', 'flour-mill', 10, 2);
@@ -168,6 +187,29 @@ describe('pushSurplusViaRail', () => {
 		expect(state.warehouse.materials.grain).toBe(1); // bottlenecked at 1/day
 		expect(state.inventories.get('industry-building-1')!.grain).toBe(4);
 		expect(state.shipments[0]!.kind).toBe('push-warehouse');
+	});
+
+	it('pushes processor outputs while retaining buffered inputs', () => {
+		const mill = makeBuilding('industry-building-1', 'flour-mill', 2, 2, {
+			grain: 12,
+			flour: 5
+		});
+		const warehouse = makeBuilding('industry-building-2', 'warehouse', 10, 2);
+		const state = createRailTickState(makeGame(makeCity(LINE), [mill, warehouse]), {
+			capacity: 500,
+			materials: {},
+			overflowUnits: 0,
+			overflowCost: 0
+		});
+		pushSurplusViaRail(state, mill);
+		expect(state.warehouse.materials.flour).toBe(1);
+		expect(state.warehouse.materials.grain).toBeUndefined();
+		expect(state.inventories.get('industry-building-1')).toEqual({ grain: 12, flour: 4 });
+		expect(state.shipments[0]).toMatchObject({
+			kind: 'push-warehouse',
+			materialId: 'flour',
+			quantity: 1
+		});
 	});
 
 	it('does nothing without a reachable warehouse', () => {

@@ -371,6 +371,22 @@ describe('rail-fed production', () => {
 		expect(grainImport?.quantity).toBe(5);
 	});
 
+	test('processor whose buffer is full of recipe inputs can still produce', () => {
+		// flour-mill capacity 90 filled entirely with grain (its recipe input).
+		// Projected free after consuming 10 grain is 10, enough for 8 flour.
+		expect.assertions(4);
+		const fullInputMill = makeProductionGame(makeIndustryCity([]), [
+			makeIndustryBuilding('mill', 'flour-mill', 2, 2, { grain: 90 })
+		]);
+		const { game, report } = simulateIndustryProduction(fullInputMill);
+		const mill = game.industrialBuildings.find((b) => b.typeId === 'flour-mill')!;
+
+		expect(mill.status).toBe('produced');
+		expect(mill.inventory.grain).toBe(80);
+		expect(mill.inventory.flour).toBe(8);
+		expect(report.produced.some((m) => m.materialId === 'flour' && m.quantity === 8)).toBe(true);
+	});
+
 	test('connected farm pushes surplus to the warehouse pool for retail', () => {
 		expect.assertions(2);
 		const { game, report } = simulateIndustryProduction(farmWarehouseGame);
@@ -380,10 +396,21 @@ describe('rail-fed production', () => {
 	});
 
 	test('railUsage records per-cell units for the segment inspector', () => {
-		expect.assertions(1);
 		const { report } = simulateIndustryProduction(railGame);
 
-		expect(Object.keys(report.railUsage).length).toBeGreaterThan(0);
+		// Level-3 line y=4 x=2..11 between farm (2,2) and mill (10,2). Pull
+		// ships 3 grain/day along the attach-connected path; assert the full
+		// deterministic usage map for this fixture.
+		expect(report.railUsage).toEqual({
+			'ind-city:3,4': 3,
+			'ind-city:4,4': 3,
+			'ind-city:5,4': 3,
+			'ind-city:6,4': 3,
+			'ind-city:7,4': 3,
+			'ind-city:8,4': 3,
+			'ind-city:9,4': 3,
+			'ind-city:10,4': 3
+		});
 	});
 
 	test('same input state twice produces identical reports (determinism)', () => {

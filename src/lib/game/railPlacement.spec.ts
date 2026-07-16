@@ -215,6 +215,51 @@ describe('buildRailPreview', () => {
 		expect(reason && reason.code === 'railRequiresCash' ? reason.cost : null).toBe(240);
 		expect(reason && reason.code === 'railRequiresCash' ? reason.cash : null).toBe(100);
 	});
+
+	it('rejects cross-city endpoints without a path or cost', () => {
+		const origin = ORIGIN();
+		const dest = { ...DEST(), cityId: 'other-city' };
+		const game = makeGame(makeCity([]), [origin, dest]);
+		const preview = buildRailPreview(game, {
+			originBuildingId: 'origin',
+			waypoints: [],
+			destinationBuildingId: 'dest'
+		});
+		expect(preview.blockReason?.code).toBe('railUnknownBuilding');
+		expect(preview.pathKeys).toEqual([]);
+		expect(preview.newCellKeys).toEqual([]);
+		expect(preview.cost).toBe(0);
+	});
+
+	it('explores forked existing track in deterministic N/E/S/W order', () => {
+		// Existing rails form a cross centered at (6,4). Origin at (2,2) and
+		// dest at (10,2) can both attach along y=4; from the western trunk the
+		// zero-cost neighbors must be considered N then E then S then W so the
+		// chosen equal-cost route is stable across runs.
+		const rails: RailCell[] = [
+			...straightRails(4, 4, 8),
+			{ x: 6, y: 2, level: 1 },
+			{ x: 6, y: 3, level: 1 },
+			{ x: 6, y: 5, level: 1 },
+			{ x: 6, y: 6, level: 1 }
+		];
+		const game = makeGame(makeCity(rails), [ORIGIN(), DEST()]);
+		const first = buildRailPreview(game, {
+			originBuildingId: 'origin',
+			waypoints: [],
+			destinationBuildingId: 'dest'
+		});
+		const second = buildRailPreview(game, {
+			originBuildingId: 'origin',
+			waypoints: [],
+			destinationBuildingId: 'dest'
+		});
+		expect(first.blockReason).toBeNull();
+		expect(first.pathKeys).toEqual(second.pathKeys);
+		// Zero-cost neighbors are batch-prepended in N/E/S/W order, so equal-cost
+		// forked exploration stays deterministic across runs.
+		expect(first.pathKeys).toEqual(['4,3', '4,4', '5,4', '6,4', '7,4', '8,4', '8,3', '9,3']);
+	});
 });
 
 describe('buildRail', () => {

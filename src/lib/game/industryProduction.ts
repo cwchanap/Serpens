@@ -142,11 +142,20 @@ export function simulateIndustryProduction(game: GameState): {
 			quantity: Math.round(output.quantity * throughput)
 		}));
 		const desiredTotal = desiredOutputs.reduce((total, output) => total + output.quantity, 0);
-		const free = Math.max(0, buildingType.bufferCapacity - inventoryUsed(inventory));
+		// Project free capacity after consuming recipe inputs already in the
+		// buffer so a full buffer of inputs can still produce and free space.
+		let projectedUsed = inventoryUsed(inventory);
+		for (const input of recipe.inputs) {
+			const needed = Math.round(input.quantity * throughput);
+			const available = Math.max(0, inventory[input.materialId] ?? 0);
+			projectedUsed -= Math.min(needed, available);
+		}
+		const free = Math.max(0, buildingType.bufferCapacity - projectedUsed);
 		const ratio = desiredTotal > 0 ? Math.min(desiredTotal, free) / desiredTotal : 0;
 
 		// Buffer is full and there's nowhere to put new output: skip acquiring
 		// inputs entirely, pay only the flat daily cost, and mark stalled.
+		// Zero bufferCapacity keeps free at 0, so ratio stays 0.
 		if (desiredTotal > 0 && ratio === 0) {
 			report.operatingCost += buildingType.dailyOperatingCost;
 			buildingUpdates.set(building.id, {

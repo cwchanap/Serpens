@@ -109,6 +109,7 @@ function findLegPath(
 	const cameFrom = new Map<string, string | null>();
 	const deque: DequeEntry[] = [];
 
+	const zeroCostSeeds: DequeEntry[] = [];
 	for (const key of sourceKeys) {
 		const { x, y } = parseRailCellKey(key);
 		const seed = cellCost(ctx, x, y);
@@ -116,10 +117,13 @@ function findLegPath(
 		if (seed < (distance.get(key) ?? Number.POSITIVE_INFINITY)) {
 			distance.set(key, seed);
 			cameFrom.set(key, null);
-			if (seed === 0) deque.unshift({ key, distance: seed });
+			if (seed === 0) zeroCostSeeds.push({ key, distance: seed });
 			else deque.push({ key, distance: seed });
 		}
 	}
+	// Prepend zero-cost seeds as a batch so NEIGHBOR_OFFSETS / source order is
+	// preserved (per-entry unshift would reverse it).
+	deque.unshift(...zeroCostSeeds);
 
 	while (deque.length > 0) {
 		const { key, distance: popped } = deque.shift()!;
@@ -136,6 +140,7 @@ function findLegPath(
 		}
 
 		const { x, y } = parseRailCellKey(key);
+		const zeroCostNeighbors: DequeEntry[] = [];
 		for (const offset of NEIGHBOR_OFFSETS) {
 			const nx = x + offset.dx;
 			const ny = y + offset.dy;
@@ -146,10 +151,12 @@ function findLegPath(
 			if (next < (distance.get(neighborKey) ?? Number.POSITIVE_INFINITY)) {
 				distance.set(neighborKey, next);
 				cameFrom.set(neighborKey, key);
-				if (step === 0) deque.unshift({ key: neighborKey, distance: next });
+				if (step === 0) zeroCostNeighbors.push({ key: neighborKey, distance: next });
 				else deque.push({ key: neighborKey, distance: next });
 			}
 		}
+		// Batch-prepend zero-cost neighbors in N/E/S/W order (not reverse).
+		deque.unshift(...zeroCostNeighbors);
 	}
 
 	return null;
@@ -220,6 +227,11 @@ export function buildRailPreview(game: GameState, input: RailBuildInput): RailBu
 	};
 
 	if (!originBuilding || !destinationBuilding) {
+		return { ...base, blockReason: decisionContextRailUnknownBuilding() };
+	}
+
+	// Cross-city endpoints are rejected before pathing; rails never span cities.
+	if (originBuilding.cityId !== destinationBuilding.cityId) {
 		return { ...base, blockReason: decisionContextRailUnknownBuilding() };
 	}
 

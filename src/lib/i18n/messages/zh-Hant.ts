@@ -167,7 +167,7 @@ export const zhHant = {
 	railBuild: {
 		toolbar: '建設鐵路',
 		pickOrigin: '請選擇起點建築。',
-		pickDestination: '請先選擇經由點，再選擇目的地建築。',
+		pickDestination: '可選擇經由點，或直接選擇目的地建築。',
 		confirm: '新增 {cells} 格 · {cost}'
 	},
 	railSegmentInspector: {

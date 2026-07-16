@@ -1,5 +1,5 @@
 import { removeInventory } from './buildingInventory';
-import { MATERIALS } from './industry';
+import { INDUSTRIAL_BUILDING_TYPES, MATERIALS, PRODUCTION_RECIPES } from './industry';
 import { addWarehouseMaterial, removeWarehouseMaterial } from './industryProduction';
 import {
 	buildRailNetwork,
@@ -157,6 +157,14 @@ export function pullViaRail(
 				continue;
 			}
 
+			// Only recipe outputs count as transferable producer surplus —
+			// buffered consumer inputs on a processor must not satisfy a pull.
+			const buildingType = INDUSTRIAL_BUILDING_TYPES[building.typeId];
+			const recipe = buildingType?.recipeId ? PRODUCTION_RECIPES[buildingType.recipeId] : undefined;
+			if (!recipe?.outputs.some((output) => output.materialId === materialId)) {
+				continue;
+			}
+
 			const stock = Math.max(0, state.inventories.get(buildingId)?.[materialId] ?? 0);
 
 			if (stock > 0) {
@@ -240,7 +248,10 @@ export function pushSurplusViaRail(state: RailTickState, producer: IndustrialBui
 	}
 
 	const inventory = state.inventories.get(producer.id) ?? {};
-	const materialIds = (Object.keys(inventory) as MaterialId[]).sort();
+	const buildingType = INDUSTRIAL_BUILDING_TYPES[producer.typeId];
+	const recipe = buildingType?.recipeId ? PRODUCTION_RECIPES[buildingType.recipeId] : undefined;
+	// Push only recipe outputs; retain buffered inputs for local production.
+	const materialIds = (recipe?.outputs.map((output) => output.materialId) ?? []).sort();
 
 	for (const materialId of materialIds) {
 		let stock = Math.max(0, inventory[materialId] ?? 0);

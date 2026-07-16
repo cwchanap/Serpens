@@ -274,6 +274,7 @@ function setupScene() {
 			worldX: 0,
 			worldY: 0,
 			isDown: false,
+			button: 0,
 			event: { target: canvas },
 			downElement: canvas,
 			leftButtonDown: vi.fn(() => true),
@@ -1889,6 +1890,28 @@ describe('IndustryMapScene', () => {
 			const pointer = makePointer({ x: 10, y: 10, button: 2 });
 			zoneInstances[0].fire('pointerdown', pointer);
 			expect(handler).toHaveBeenCalledWith({ type: 'buildCancelled' });
+		});
+
+		test('right-click down/up sequence never emits tileSelected', () => {
+			expect.assertions(2);
+			const { scene, zoneInstances, makePointer } = setupScene();
+			const handler = vi.fn();
+			scene.setEventHandler(handler);
+			scene.create();
+			const snapshot = makeSnapshot();
+			scene.updateSnapshot(snapshot);
+			const pointer = makePointer({
+				x: 5,
+				y: 5,
+				worldX: 5,
+				worldY: 5,
+				button: 2,
+				isDown: true
+			});
+			zoneInstances[0].fire('pointerdown', pointer);
+			zoneInstances[0].fire('pointerup', pointer);
+			expect(handler).toHaveBeenCalledWith({ type: 'buildCancelled' });
+			expect(handler).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'tileSelected' }));
 		});
 
 		test('does not start a drag on right-click', () => {

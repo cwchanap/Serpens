@@ -649,7 +649,6 @@
 		}
 
 		if (building) {
-			railPreviewTargetBuildingId = building.id;
 			const input = {
 				originBuildingId: railBuildMode.originBuildingId,
 				waypoints: railBuildMode.waypoints,
@@ -658,15 +657,25 @@
 			const preview = buildRailPreview(game, input);
 
 			if (preview.blockReason) {
+				railPreviewTargetBuildingId = building.id;
 				placementFeedback = { code: 'industry.rawPlacementBlocked', context: preview.blockReason };
 				playSfx('sfx.build.invalid');
 				return;
 			}
 
-			setGameAndAutosave(buildRail(game, input));
-			playSfx('sfx.build.industry-place');
-			railBuildMode = { step: 'idle' };
-			railPreviewTargetBuildingId = null;
+			// First valid destination click only stores the target and keeps
+			// routing/preview active. A subsequent click on the same building
+			// (or an explicit confirm) commits the build.
+			if (railPreviewTargetBuildingId === building.id) {
+				setGameAndAutosave(buildRail(game, input));
+				playSfx('sfx.build.industry-place');
+				railBuildMode = { step: 'idle' };
+				railPreviewTargetBuildingId = null;
+				placementFeedback = null;
+				return;
+			}
+
+			railPreviewTargetBuildingId = building.id;
 			placementFeedback = null;
 			return;
 		}
@@ -1563,7 +1572,7 @@
 		/>
 		{#if isPlacementModeActive}
 			<div
-				class="placement-status plaque"
+				class="placement-status plaque z-[26]"
 				role="status"
 				aria-label={i18n.t('route.placement.status')}
 			>
@@ -1830,10 +1839,6 @@
 		position: absolute;
 		left: 1rem;
 		bottom: 4.5rem;
-		/* Above the control desk (z-index 25): on the industry map the desk gains
-		   the Build-rail button and can wrap to a second row that reaches into
-		   this plaque's zone, so the Cancel button must win pointer events. */
-		z-index: 26;
 		display: flex;
 		align-items: center;
 		gap: 0.6rem;
