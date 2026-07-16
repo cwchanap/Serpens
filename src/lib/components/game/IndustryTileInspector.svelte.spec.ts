@@ -681,4 +681,88 @@ describe('IndustryTileInspector', () => {
 		await expect.element(page.getByText('タイル未選択')).toBeVisible();
 		await expect.element(page.getByText('No tile selected')).not.toBeInTheDocument();
 	});
+
+	it('shows empty buffer state when inventory has no positive quantities', async () => {
+		expect.assertions(1);
+		const game = createNewGame('convenience', 20260512);
+		const tile = getIndustryTilesByResource(game.industryCities[0]!, 'grain-field')[0]!;
+		const building: IndustrialBuilding = {
+			id: 'industry-building-empty-buffer',
+			level: 1,
+			typeId: 'flour-mill',
+			cityId: tile.cityId,
+			tileId: tile.id,
+			mapX: tile.x,
+			mapY: tile.y,
+			status: 'idle',
+			lastProduction: [],
+			producedTotal: 0,
+			importedInputTotal: 0,
+			blockedDays: 0,
+			inventory: { grain: 0, flour: 0 }
+		};
+
+		render(IndustryTileInspector, {
+			game,
+			tile,
+			building,
+			i18n: createI18n('en'),
+			onClose: vi.fn()
+		});
+
+		await expect.element(page.getByText('No materials buffered')).toBeVisible();
+	});
+
+	it('renders non-empty buffer rows with icons, excluding zeros, in id order', async () => {
+		expect.assertions(6);
+		const game = createNewGame('convenience', 20260512);
+		const tile = getIndustryTilesByResource(game.industryCities[0]!, 'grain-field')[0]!;
+		const building: IndustrialBuilding = {
+			id: 'industry-building-buffer',
+			level: 1,
+			typeId: 'flour-mill',
+			cityId: tile.cityId,
+			tileId: tile.id,
+			mapX: tile.x,
+			mapY: tile.y,
+			status: 'produced',
+			lastProduction: [],
+			producedTotal: 0,
+			importedInputTotal: 0,
+			blockedDays: 0,
+			// flour before grain alphabetically; zero snacks must be excluded.
+			inventory: { flour: 8, grain: 12, snacks: 0 }
+		};
+
+		const { rerender } = render(IndustryTileInspector, {
+			game,
+			tile,
+			building,
+			i18n: createI18n('en'),
+			onClose: vi.fn()
+		});
+
+		const bufferList = page.getByRole('list', { name: 'Buffer' });
+		const rows = bufferList.getByRole('listitem');
+		await expect.element(rows.nth(0)).toHaveTextContent(/Flour: 8/);
+		await expect.element(rows.nth(1)).toHaveTextContent(/Grain: 12/);
+		await expect
+			.element(page.getByTestId('industry-buffer-material-flour'))
+			.toHaveAttribute('src', '/assets/game/industry/materials/flour.png');
+		await expect
+			.element(page.getByTestId('industry-buffer-material-grain'))
+			.toHaveAttribute('src', '/assets/game/industry/materials/grain.png');
+		await expect
+			.element(page.getByTestId('industry-buffer-material-snacks'))
+			.not.toBeInTheDocument();
+
+		await rerender({
+			game,
+			tile,
+			building: { ...building, inventory: { flour: 3, grain: 12 } },
+			i18n: createI18n('en'),
+			onClose: vi.fn()
+		});
+		await expect.element(page.getByText(/Flour: 3/)).toBeVisible();
+	});
 });

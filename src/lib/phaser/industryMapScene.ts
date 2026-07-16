@@ -373,6 +373,12 @@ export class IndustryMapScene extends Phaser.Scene {
 				return;
 			}
 
+			// Only left-click completes tile selection; right-click cancel is
+			// handled on pointerdown and must never emit tileSelected on up.
+			if (pointer.button !== 0) {
+				return;
+			}
+
 			if (this.didDrag(pointer)) {
 				return;
 			}

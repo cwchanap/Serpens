@@ -2209,7 +2209,7 @@ describe('saveCodec', () => {
 		// IndustryCity.rails, IndustrialBuilding.inventory, and
 		// DailyProductionReport.railShipments/railUsage entirely — the
 		// migration must add them rather than assume they already exist.
-		expect.assertions(4);
+		expect.assertions(5);
 		const game = createGame({
 			industrialBuildings: [createIndustrialBuilding()],
 			reports: [createDailyReport()]
@@ -2229,6 +2229,14 @@ describe('saveCodec', () => {
 		).toBe(true);
 		expect(
 			validated.game.reports.every((report) => Array.isArray(report.productionReport.railShipments))
+		).toBe(true);
+		expect(
+			validated.game.reports.every(
+				(report) =>
+					typeof report.productionReport.railUsage === 'object' &&
+					report.productionReport.railUsage !== null &&
+					Object.keys(report.productionReport.railUsage).length === 0
+			)
 		).toBe(true);
 	});
 
@@ -2258,7 +2266,8 @@ describe('saveCodec', () => {
 		const baseIndustryCity = createGame().industryCities[0]!;
 		const record = createManualSaveRecord({
 			game: {
-				industryCities: [{ ...baseIndustryCity, rails: [{ x: 3, y: 3, level: 0 }] }]
+				// Fixture city is 1×1, so (0,0) is the only valid grid tile.
+				industryCities: [{ ...baseIndustryCity, rails: [{ x: 0, y: 0, level: 0 }] }]
 			}
 		});
 

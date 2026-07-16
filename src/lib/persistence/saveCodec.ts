@@ -1260,20 +1260,41 @@ function validateSavedIndustryCity(value: unknown, label: string): void {
 
 	requireString(city.id, `${label} id`);
 	requireString(city.name, `${label} name`);
-	requireNumber(city.width, `${label} width`);
-	requireNumber(city.height, `${label} height`);
+	const width = requireNumber(city.width, `${label} width`);
+	const height = requireNumber(city.height, `${label} height`);
 	requireArray(city.tiles, `${label} tiles`).forEach((tile, index) =>
 		validateSavedIndustryTile(tile, `${label} tiles[${index}]`)
 	);
+	const seenRailKeys = new Set<string>();
 	requireArray(city.rails, `${label} rails`).forEach((cell, index) =>
-		validateSavedRailCell(cell, `${label} rails[${index}]`)
+		validateSavedRailCell(cell, `${label} rails[${index}]`, width, height, seenRailKeys)
 	);
 }
 
-function validateSavedRailCell(value: unknown, label: string): void {
+function validateSavedRailCell(
+	value: unknown,
+	label: string,
+	cityWidth: number,
+	cityHeight: number,
+	seenKeys: Set<string>
+): void {
 	const cell = requireRecord(value, label);
-	requireNumber(cell.x, `${label} x`);
-	requireNumber(cell.y, `${label} y`);
+	const x = requireNumber(cell.x, `${label} x`);
+	const y = requireNumber(cell.y, `${label} y`);
+	if (!Number.isInteger(x)) {
+		throw new SaveDataError(`${label} x must be an integer`);
+	}
+	if (!Number.isInteger(y)) {
+		throw new SaveDataError(`${label} y must be an integer`);
+	}
+	if (x < 0 || y < 0 || x >= cityWidth || y >= cityHeight) {
+		throw new SaveDataError(`${label} coordinates (${x},${y}) must map to a valid city grid tile`);
+	}
+	const key = `${x},${y}`;
+	if (seenKeys.has(key)) {
+		throw new SaveDataError(`${label} duplicates rail coordinate ${key}`);
+	}
+	seenKeys.add(key);
 	const level = requireNumber(cell.level, `${label} level`);
 	if (!Number.isInteger(level) || level < 1 || level > RAIL_MAX_LEVEL) {
 		throw new SaveDataError(`${label} level must be an integer between 1 and ${RAIL_MAX_LEVEL}`);
@@ -1602,8 +1623,14 @@ function validateSavedProductionReport(value: unknown, label: string): void {
 function validateSavedRailShipment(value: unknown, label: string): void {
 	const shipment = requireRecord(value, label);
 	requireKnownId(shipment.materialId, `${label} materialId`, MATERIAL_ID_SET, 'material');
-	requireNumber(shipment.quantity, `${label} quantity`);
-	requireNumber(shipment.value, `${label} value`);
+	const quantity = requireNumber(shipment.quantity, `${label} quantity`);
+	if (quantity < 0) {
+		throw new SaveDataError(`${label} quantity must be non-negative`);
+	}
+	const shipmentValue = requireNumber(shipment.value, `${label} value`);
+	if (shipmentValue < 0) {
+		throw new SaveDataError(`${label} value must be non-negative`);
+	}
 	requireOneOf(shipment.kind, `${label} kind`, RAIL_SHIPMENT_KINDS);
 	requireString(shipment.fromId, `${label} fromId`);
 	requireString(shipment.toId, `${label} toId`);
