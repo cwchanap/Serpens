@@ -108,4 +108,21 @@ describe('ControlDesk', () => {
 			.not.toBeInTheDocument();
 		await expect.element(page.getByRole('group', { name: /management/i })).toBeInTheDocument();
 	});
+
+	it('shows the rail-build toggle and fires onToggleRailBuild when showRailBuild is set', async () => {
+		expect.assertions(3);
+		const onToggleRailBuild = vi.fn();
+		render(ControlDesk, {
+			...baseProps(),
+			showRailBuild: true,
+			railBuildActive: true,
+			onToggleRailBuild
+		});
+
+		const toggle = page.getByRole('button', { name: /build rail/i });
+		await expect.element(toggle).toBeVisible();
+		await expect.element(toggle).toHaveAttribute('aria-pressed', 'true');
+		await toggle.click();
+		expect(onToggleRailBuild).toHaveBeenCalledTimes(1);
+	});
 });

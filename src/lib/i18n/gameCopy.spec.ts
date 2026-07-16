@@ -39,6 +39,12 @@ import {
 	decisionContextWorldCityUnknown,
 	decisionContextCashPressure,
 	decisionContextExpansionOpportunity,
+	decisionContextIndustrialTileHasRail,
+	decisionContextRailNoValidPath,
+	decisionContextRailRequiresCash,
+	decisionContextRailSegmentAtMaxLevel,
+	decisionContextRailUnknownBuilding,
+	decisionContextRailUnknownSegment,
 	decisionContextSupplierTerms
 } from '$lib/game/decisionContext';
 import { describe, expect, it } from 'vitest';
@@ -619,6 +625,69 @@ describe('game copy builders', () => {
 		);
 		expect(localizeDecision({ ...worldDecision, id: 'unknown-decision' }, english).title).toBe(
 			worldDecision.title
+		);
+	});
+
+	it('localizes every rail-construction decision context', () => {
+		expect.assertions(7);
+		const english = createI18n('en');
+		const japanese = createI18n('ja');
+		const baseDecision = {
+			id: 'rail-construction-1',
+			title: 'Rail construction delayed',
+			expiresOnDay: 2,
+			options: [
+				{
+					id: 'acknowledge',
+					label: 'Acknowledge',
+					description: 'Return to operations planning.',
+					effects: {}
+				}
+			]
+		};
+
+		const railUnknownBuilding: DecisionItem = {
+			...baseDecision,
+			context: decisionContextRailUnknownBuilding()
+		};
+		const railNoValidPath: DecisionItem = {
+			...baseDecision,
+			context: decisionContextRailNoValidPath()
+		};
+		const railRequiresCash: DecisionItem = {
+			...baseDecision,
+			context: decisionContextRailRequiresCash(2_000, 500)
+		};
+		const railSegmentAtMaxLevel: DecisionItem = {
+			...baseDecision,
+			context: decisionContextRailSegmentAtMaxLevel()
+		};
+		const railUnknownSegment: DecisionItem = {
+			...baseDecision,
+			context: decisionContextRailUnknownSegment()
+		};
+		const industrialTileHasRail: DecisionItem = {
+			...baseDecision,
+			context: decisionContextIndustrialTileHasRail()
+		};
+
+		expect(localizeDecision(railUnknownBuilding, english).context).toBe('Unknown rail building.');
+		expect(localizeDecision(railNoValidPath, english).context).toBe(
+			'No valid rail path to the destination.'
+		);
+		expect(localizeDecision(railRequiresCash, english).context).toBe(
+			'Building this rail costs $2,000 but you only have $500.'
+		);
+		expect(localizeDecision(railSegmentAtMaxLevel, english).context).toBe(
+			'This rail segment is already at the maximum level.'
+		);
+		expect(localizeDecision(railUnknownSegment, english).context).toBe('Unknown rail segment.');
+		expect(localizeDecision(industrialTileHasRail, english).context).toBe(
+			'This tile already has rail on it.'
+		);
+		// Non-English catalog must not leave the copy identical to English.
+		expect(localizeDecision(railUnknownBuilding, japanese).context).not.toBe(
+			'Unknown rail building.'
 		);
 	});
 
