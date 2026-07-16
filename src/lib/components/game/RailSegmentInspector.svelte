@@ -48,7 +48,14 @@
 
 	const cellCount = $derived(selectedSegment?.cellKeys.length ?? 0);
 	const level = $derived(selectedSegment?.minLevel ?? 0);
-	const capacity = $derived(selectedSegment?.minLevel ?? 0);
+	const capacity = $derived.by(() => {
+		if (!selectedSegment) return 0;
+		let total = 0;
+		for (const key of selectedSegment.cellKeys) {
+			total += network.cells.get(key)?.level ?? 0;
+		}
+		return total;
+	});
 	const utilization = $derived.by(() => {
 		if (!selectedSegment) {
 			return 0;

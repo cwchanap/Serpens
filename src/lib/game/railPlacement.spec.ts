@@ -434,4 +434,34 @@ describe('rail segment demolish', () => {
 		// original state untouched
 		expect(game.industryCities[0]!.rails).toHaveLength(10);
 	});
+
+	it('is a no-op with zero refund when every cell is a shared junction', () => {
+		// Two adjacent buildings whose attach cells form a chain of junction
+		// pairs: (2,4)|(3,4) [building A], (3,4)|(4,4) [pair], (4,4)|(5,4)
+		// [building B]. Demolishing the middle pair (3,4)|(4,4) leaves zero
+		// removable cells — both cells are shared with neighbouring segments
+		// and each has an outside rail neighbour — so no cells are removed and
+		// no refund is issued.
+		const rails: RailCell[] = straightRails(4, 2, 7);
+		const buildingA = makeBuilding('building-a', 2, 2);
+		const buildingB = makeBuilding('building-b', 4, 2);
+		const game = makeGame(makeCity(rails), [buildingA, buildingB], 1_000);
+
+		const network = buildRailNetwork(game.industryCities[0]!);
+		const segments = deriveRailSegments(network, [buildingA, buildingB]);
+		const middle = segments.find(
+			(segment) => segment.cellKeys.includes('3,4') && segment.cellKeys.includes('4,4')
+		)!;
+		expect(middle.cellKeys).toEqual(['3,4', '4,4']);
+
+		const removable = getDemolishRemovableCellKeys(middle, segments, network);
+		expect(removable.size).toBe(0);
+		expect(getSegmentDemolishRefund(removable.size)).toBe(0);
+
+		const result = demolishRailSegment(game, CITY_ID, middle.id);
+		expect(result.cash).toBe(1_000);
+		expect(result.industryCities[0]!.rails).toHaveLength(rails.length);
+		// original state untouched
+		expect(game.cash).toBe(1_000);
+	});
 });

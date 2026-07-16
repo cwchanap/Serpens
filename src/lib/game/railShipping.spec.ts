@@ -208,6 +208,37 @@ describe('pullViaRail', () => {
 		expect(state.shipments).toHaveLength(1);
 		expect(state.inventories.get('industry-building-1')!.grain).toBe(29);
 	});
+
+	it('splits a pull across multiple producers when the nearest source is exhausted', () => {
+		// Farm A (west, 1 grain) and Farm B (east, 10 grain) flank a mill on
+		// a level-3 line. The mill requests 5. Farm A is nearer (tied distance,
+		// lower id wins), ships its 1 unit, then the loop repeats and pulls
+		// from Farm B until the shared budget is exhausted. Total = 1 + 3 = 4.
+		const farmA = makeBuilding('industry-building-1', 'grain-farm', 2, 2, { grain: 1 });
+		const farmB = makeBuilding('industry-building-2', 'grain-farm', 15, 2, { grain: 10 });
+		const mill = makeBuilding('industry-building-3', 'flour-mill', 8, 2);
+		const rails = straightRails(4, 2, 16, 3);
+		const state = createRailTickState(makeGame(makeCity(rails), [farmA, farmB, mill]), {
+			capacity: 500,
+			materials: {},
+			overflowUnits: 0,
+			overflowCost: 0
+		});
+		const result = pullViaRail(state, mill, 'grain', 5);
+		expect(result.fromProducers).toBe(4);
+		expect(result.fromWarehouse).toBe(0);
+		expect(state.inventories.get('industry-building-1')!.grain).toBe(0);
+		expect(state.inventories.get('industry-building-2')!.grain).toBe(7);
+		expect(state.shipments).toHaveLength(2);
+		expect(state.shipments[0]).toMatchObject({
+			fromId: 'industry-building-1',
+			quantity: 1
+		});
+		expect(state.shipments[1]).toMatchObject({
+			fromId: 'industry-building-2',
+			quantity: 3
+		});
+	});
 });
 
 describe('pushSurplusViaRail', () => {
@@ -276,5 +307,53 @@ describe('pushSurplusViaRail', () => {
 		expect(state.warehouse.materials.grain).toBe(1);
 		expect(state.shipments).toHaveLength(1);
 		expect(state.shipments[0]!.toId).toBe('industry-building-2');
+	});
+
+	it('pushes surplus to two warehouses on non-overlapping paths', () => {
+		// Farm at (2,2) has 10 grain. Warehouse B (south, 6-cell path) is
+		// nearer than warehouse A (east, 8-cell path); the two paths share no
+		// cells (one starts at attach (2,4), the other at (3,4)). On a level-3
+		// line the first push sends 3 to B, the second sends 3 to A, then both
+		// budgets are exhausted. Total pushed = 6, farm retains 4.
+		const farm = makeBuilding('industry-building-1', 'grain-farm', 2, 2, { grain: 10 });
+		const warehouseA = makeBuilding('industry-building-2', 'warehouse', 10, 2);
+		const warehouseB = makeBuilding('industry-building-3', 'warehouse', 2, 10);
+		const rails: RailCell[] = [
+			// Horizontal from farm's (3,4) east to warehouse A's (10,4)
+			{ x: 3, y: 4, level: 3 },
+			{ x: 4, y: 4, level: 3 },
+			{ x: 5, y: 4, level: 3 },
+			{ x: 6, y: 4, level: 3 },
+			{ x: 7, y: 4, level: 3 },
+			{ x: 8, y: 4, level: 3 },
+			{ x: 9, y: 4, level: 3 },
+			{ x: 10, y: 4, level: 3 },
+			// Vertical from farm's (2,4) south to warehouse B's (2,9)
+			{ x: 2, y: 4, level: 3 },
+			{ x: 2, y: 5, level: 3 },
+			{ x: 2, y: 6, level: 3 },
+			{ x: 2, y: 7, level: 3 },
+			{ x: 2, y: 8, level: 3 },
+			{ x: 2, y: 9, level: 3 }
+		];
+		const state = createRailTickState(makeGame(makeCity(rails), [farm, warehouseA, warehouseB]), {
+			capacity: 500,
+			materials: {},
+			overflowUnits: 0,
+			overflowCost: 0
+		});
+		pushSurplusViaRail(state, farm);
+		expect(state.warehouse.materials.grain).toBe(6);
+		expect(state.inventories.get('industry-building-1')!.grain).toBe(4);
+		expect(state.shipments).toHaveLength(2);
+		// Nearer warehouse B (shorter path) is served first.
+		expect(state.shipments[0]).toMatchObject({
+			toId: 'industry-building-3',
+			quantity: 3
+		});
+		expect(state.shipments[1]).toMatchObject({
+			toId: 'industry-building-2',
+			quantity: 3
+		});
 	});
 });

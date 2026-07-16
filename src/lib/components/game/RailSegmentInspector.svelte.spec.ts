@@ -52,7 +52,7 @@ describe('RailSegmentInspector', () => {
 		await expect.element(page.getByRole('heading', { name: 'Rail segment' })).toBeVisible();
 		await expect.element(page.getByTestId('rail-segment-cells')).toHaveTextContent('3');
 		await expect.element(page.getByTestId('rail-segment-level')).toHaveTextContent('2 / 5');
-		await expect.element(page.getByTestId('rail-segment-capacity')).toHaveTextContent('2');
+		await expect.element(page.getByTestId('rail-segment-capacity')).toHaveTextContent('6');
 		await expect.element(page.getByTestId('rail-segment-utilization')).toHaveTextContent('50%');
 	});
 
