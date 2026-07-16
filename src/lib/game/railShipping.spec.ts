@@ -183,6 +183,28 @@ describe('pullViaRail', () => {
 		expect(pullB.fromProducers).toBe(0); // trunk exhausted
 	});
 
+	it('trunk-contention ordering is deterministic: same state twice yields identical shipments', () => {
+		// Same trunk+branch layout as the contention case above — this is the
+		// highest-risk ordering path (multiple candidates, id tie-break,
+		// shared-budget exhaustion), so guard it directly.
+		const build = () => {
+			const rails = [...straightRails(4, 2, 8), { x: 7, y: 5, level: 1 }, { x: 7, y: 6, level: 1 }];
+			const farm = makeBuilding('industry-building-1', 'grain-farm', 2, 2, { grain: 30 });
+			const millA = makeBuilding('industry-building-2', 'flour-mill', 8, 2);
+			const millB = makeBuilding('industry-building-3', 'flour-mill', 8, 6);
+			const state = createRailTickState(makeGame(makeCity(rails), [farm, millA, millB]), {
+				capacity: 500,
+				materials: {},
+				overflowUnits: 0,
+				overflowCost: 0
+			});
+			pullViaRail(state, millA, 'grain', 5);
+			pullViaRail(state, millB, 'grain', 5);
+			return state.shipments;
+		};
+		expect(build()).toEqual(build());
+	});
+
 	it('is deterministic: same state twice yields identical shipments', () => {
 		const build = () => {
 			const farm = makeBuilding('industry-building-1', 'grain-farm', 2, 2, { grain: 30 });

@@ -1983,8 +1983,8 @@ export interface RailBuildPreview {
 
 export function buildRailPreview(game: GameState, input: RailBuildInput): RailBuildPreview;
 export function buildRail(game: GameState, input: RailBuildInput): GameState;
-export function getSegmentUpgradeCost(segment: RailSegment): number; // cellsBelowTarget * RAIL_UPGRADE_COST_PER_CELL_PER_LEVEL * minLevel
-export function getSegmentDemolishRefund(segment: RailSegment): number; // round(cellCount * RAIL_BUILD_COST_PER_CELL * RAIL_DEMOLISH_REFUND_RATIO)
+export function getSegmentUpgradeCost(segment: RailSegment, network: RailNetwork): number; // cellsBelowTarget * RAIL_UPGRADE_COST_PER_CELL_PER_LEVEL * minLevel
+export function getSegmentDemolishRefund(cellCount: number): number; // round(cellCount * RAIL_BUILD_COST_PER_CELL * RAIL_DEMOLISH_REFUND_RATIO)
 export function upgradeRailSegment(game: GameState, cityId: string, segmentId: string): GameState;
 export function demolishRailSegment(game: GameState, cityId: string, segmentId: string): GameState;
 
