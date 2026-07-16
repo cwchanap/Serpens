@@ -3,6 +3,7 @@ import {
 	buildRail,
 	buildRailPreview,
 	demolishRailSegment,
+	getDemolishRemovableCellKeys,
 	getSegmentDemolishRefund,
 	getSegmentUpgradeCost,
 	upgradeRailSegment
@@ -279,6 +280,25 @@ describe('rail segment upgrade', () => {
 		);
 	});
 
+	it('is a no-op when cash is insufficient to cover the upgrade cost', () => {
+		const rails: RailCell[] = [
+			{ x: 2, y: 5, level: 1 },
+			{ x: 3, y: 5, level: 1 },
+			{ x: 4, y: 5, level: 2 },
+			{ x: 5, y: 5, level: 2 },
+			{ x: 6, y: 5, level: 1 }
+		];
+		const game = makeGame(makeCity(rails), [], 50);
+		const network = buildRailNetwork(game.industryCities[0]!);
+		const segments = deriveRailSegments(network, []);
+		const segment = segments[0]!;
+		expect(getSegmentUpgradeCost(segment, network)).toBe(90);
+		const result = upgradeRailSegment(game, CITY_ID, segment.id);
+		expect(result).toBe(game);
+		expect(result.cash).toBe(50);
+		expect(result.industryCities[0]!.rails.every((cell) => cell.level <= 2)).toBe(true);
+	});
+
 	it('is a no-op when the segment is already at the maximum level', () => {
 		const game = makeGame(makeCity(straightRails(5, 2, 4, 5)), [], 1_000);
 		const network = buildRailNetwork(game.industryCities[0]!);
@@ -306,10 +326,16 @@ describe('rail segment demolish', () => {
 		const vertical = segments.find((segment) => segment.cellKeys.includes('5,8'))!;
 		expect(vertical.cellKeys).toContain('5,5');
 		expect(vertical.cellKeys).toHaveLength(4);
-		expect(getSegmentDemolishRefund(vertical)).toBe(80);
+		// Junction cell (5,5) is shared with the horizontal segment and survives,
+		// so only 3 of the 4 cells are actually removable — refund is based on
+		// the removable count, not the full segment length.
+		const removable = getDemolishRemovableCellKeys(vertical, segments, network);
+		expect(removable.size).toBe(3);
+		expect(removable.has('5,5')).toBe(false);
+		expect(getSegmentDemolishRefund(removable.size)).toBe(60);
 
 		const result = demolishRailSegment(game, CITY_ID, vertical.id);
-		expect(result.cash).toBe(1_080);
+		expect(result.cash).toBe(1_060);
 		const keys = new Set(
 			result.industryCities[0]!.rails.map((cell) => railCellKey(cell.x, cell.y))
 		);

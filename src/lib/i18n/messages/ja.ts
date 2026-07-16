@@ -171,6 +171,7 @@ export const ja = {
 		confirm: '新規タイル {cells} 枚 · {cost}'
 	},
 	railSegmentInspector: {
+		eyebrow: '線路',
 		title: '線路区間',
 		cells: 'マス数',
 		level: 'レベル',

@@ -171,6 +171,7 @@ export const zhHant = {
 		confirm: '新增 {cells} 格 · {cost}'
 	},
 	railSegmentInspector: {
+		eyebrow: '鐵路',
 		title: '鐵路區段',
 		cells: '格數',
 		level: '等級',

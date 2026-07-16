@@ -171,6 +171,7 @@ export const en = {
 		confirm: '{cells} new cells · {cost}'
 	},
 	railSegmentInspector: {
+		eyebrow: 'Rail',
 		title: 'Rail segment',
 		cells: 'Cells',
 		level: 'Level',
