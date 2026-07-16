@@ -149,6 +149,14 @@ export function simulateIndustryProduction(game: GameState): {
 		// used space *after* consuming the recipe inputs already in the buffer,
 		// so a full input buffer still permits a production cycle that frees
 		// room for its outputs. This prevents input-locked stalls.
+		//
+		// Note: `needed` here is the unscaled (full-ratio) input quantity, while
+		// the actual consumption below scales by `ratio`. This is deliberate —
+		// the projection assumes full input consumption to maximise projected
+		// free space (the optimistic case), which is what prevents the stall.
+		// The discrepancy is bounded: projectedUsed never goes negative (clamped
+		// by `free = Math.max(0, ...)`), so it only affects how much room we
+		// reserve, not correctness of the consumption itself.
 		let projectedUsed = inventoryUsed(inventory);
 		for (const input of recipe.inputs) {
 			const needed = Math.round(input.quantity * throughput);

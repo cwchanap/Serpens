@@ -119,6 +119,9 @@ function compareBuildingIds(a: string, b: string): number {
  * `min(remaining, pathCapacity, sourceStock)` and the loop repeats against
  * the updated budget/stock until `remaining` hits 0 or no candidate has a
  * reachable, budget-positive path.
+ *
+ * Complexity: O(pulls × candidates × BFS) per tick — fine for current
+ * building counts, but worth profiling if industry cities grow large.
  */
 export function pullViaRail(
 	state: RailTickState,
