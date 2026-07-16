@@ -20,6 +20,7 @@ import type {
 	DailyReportWarning,
 	DailyStoreReport,
 	GameState,
+	IndustryTile,
 	MaterialId
 } from '$lib/game/types';
 import {
@@ -2010,6 +2011,48 @@ describe('saveCodec', () => {
 				context: { code: 'supplierTerms' },
 				expiresOnDay: 2,
 				options: [{ id: 'acknowledge', label: 'A', description: 'D', effects: {} }]
+			},
+			{
+				id: 'd18',
+				title: 'T',
+				context: { code: 'railUnknownBuilding' },
+				expiresOnDay: 2,
+				options: [{ id: 'acknowledge', label: 'A', description: 'D', effects: {} }]
+			},
+			{
+				id: 'd19',
+				title: 'T',
+				context: { code: 'railNoValidPath' },
+				expiresOnDay: 2,
+				options: [{ id: 'acknowledge', label: 'A', description: 'D', effects: {} }]
+			},
+			{
+				id: 'd20',
+				title: 'T',
+				context: { code: 'railRequiresCash', cost: 1000, cash: 500 },
+				expiresOnDay: 2,
+				options: [{ id: 'acknowledge', label: 'A', description: 'D', effects: {} }]
+			},
+			{
+				id: 'd21',
+				title: 'T',
+				context: { code: 'railSegmentAtMaxLevel' },
+				expiresOnDay: 2,
+				options: [{ id: 'acknowledge', label: 'A', description: 'D', effects: {} }]
+			},
+			{
+				id: 'd22',
+				title: 'T',
+				context: { code: 'railUnknownSegment' },
+				expiresOnDay: 2,
+				options: [{ id: 'acknowledge', label: 'A', description: 'D', effects: {} }]
+			},
+			{
+				id: 'd23',
+				title: 'T',
+				context: { code: 'industrialTileHasRail' },
+				expiresOnDay: 2,
+				options: [{ id: 'acknowledge', label: 'A', description: 'D', effects: {} }]
 			}
 		] as unknown as GameState['decisions'];
 		const record = createManualSaveRecord({ game: { decisions: structuredDecisions } });
@@ -2292,5 +2335,186 @@ describe('saveCodec', () => {
 		const decodedMill = validated.game.industrialBuildings.find((b) => b.typeId === 'flour-mill')!;
 		expect(decodedMill.inventory.snacks).toBeUndefined();
 		expect(decodedMill.inventory.grain).toBe(5);
+	});
+
+	test('validates an industry city with populated tiles', () => {
+		expect.assertions(1);
+		const baseIndustryCity = createGame().industryCities[0]!;
+		const city = {
+			...baseIndustryCity,
+			width: 2,
+			height: 1,
+			tiles: [
+				{
+					id: 'industry-city-0-0',
+					cityId: 'industry-city',
+					x: 0,
+					y: 0,
+					terrain: 'industrial',
+					resource: null,
+					locked: false
+				},
+				{
+					id: 'industry-city-1-0',
+					cityId: 'industry-city',
+					x: 1,
+					y: 0,
+					terrain: 'farmland',
+					resource: 'grain-field',
+					locked: false
+				}
+			] as IndustryTile[]
+		};
+		const record = createManualSaveRecord({ game: { industryCities: [city] } });
+		expect(() => validateSaveRecord(record)).not.toThrow();
+	});
+
+	test('rejects a rail cell with a non-integer x coordinate', () => {
+		expect.assertions(2);
+		const baseIndustryCity = createGame().industryCities[0]!;
+		const record = createManualSaveRecord({
+			game: { industryCities: [{ ...baseIndustryCity, rails: [{ x: 0.5, y: 0, level: 1 }] }] }
+		});
+		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+		expect(() => validateSaveRecord(record)).toThrow('x must be an integer');
+	});
+
+	test('rejects a rail cell with a non-integer y coordinate', () => {
+		expect.assertions(2);
+		const baseIndustryCity = createGame().industryCities[0]!;
+		const record = createManualSaveRecord({
+			game: { industryCities: [{ ...baseIndustryCity, rails: [{ x: 0, y: 0.5, level: 1 }] }] }
+		});
+		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+		expect(() => validateSaveRecord(record)).toThrow('y must be an integer');
+	});
+
+	test('rejects a rail cell whose coordinates fall outside the city grid', () => {
+		expect.assertions(2);
+		const baseIndustryCity = createGame().industryCities[0]!;
+		const record = createManualSaveRecord({
+			game: { industryCities: [{ ...baseIndustryCity, rails: [{ x: 5, y: 0, level: 1 }] }] }
+		});
+		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+		expect(() => validateSaveRecord(record)).toThrow('must map to a valid city grid tile');
+	});
+
+	test('rejects duplicate rail coordinates within a city', () => {
+		expect.assertions(2);
+		const baseIndustryCity = createGame().industryCities[0]!;
+		const record = createManualSaveRecord({
+			game: {
+				industryCities: [
+					{
+						...baseIndustryCity,
+						rails: [
+							{ x: 0, y: 0, level: 1 },
+							{ x: 0, y: 0, level: 2 }
+						]
+					}
+				]
+			}
+		});
+		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+		expect(() => validateSaveRecord(record)).toThrow('duplicates rail coordinate');
+	});
+
+	test('rejects a building inventory with an unknown material id', () => {
+		expect.assertions(2);
+		const mill = createIndustrialBuilding({
+			typeId: 'flour-mill',
+			inventory: { 'nonexistent-material': 5 } as unknown as Record<MaterialId, number>
+		});
+		const record = createManualSaveRecord({ game: { industrialBuildings: [mill] } });
+		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+		expect(() => validateSaveRecord(record)).toThrow('must be a known material');
+	});
+
+	test('rejects a building inventory with a negative quantity', () => {
+		expect.assertions(2);
+		const mill = createIndustrialBuilding({
+			typeId: 'flour-mill',
+			inventory: { grain: -5 }
+		});
+		const record = createManualSaveRecord({ game: { industrialBuildings: [mill] } });
+		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+		expect(() => validateSaveRecord(record)).toThrow('must be at least 0');
+	});
+
+	test('round-trips a production report with rail shipments and usage', () => {
+		expect.assertions(3);
+		const report = createDailyReport({
+			productionReport: createDailyProductionReport({
+				railShipments: [
+					{
+						materialId: 'grain',
+						quantity: 3,
+						value: 9,
+						kind: 'pull-producer',
+						fromId: 'farm-1',
+						toId: 'mill-1'
+					}
+				],
+				railUsage: { 'industry-city:1,1': 3 }
+			})
+		});
+		const snapshot = createSnapshotWithGame({ ...createGame(), reports: [report] });
+		const validated = validateSaveStoreSnapshot(snapshot);
+		const decoded = validated.manualSlots[0]!.game.reports[0]!.productionReport;
+		expect(decoded.railShipments).toHaveLength(1);
+		expect(decoded.railShipments[0]).toMatchObject({ kind: 'pull-producer', quantity: 3 });
+		expect(decoded.railUsage).toEqual({ 'industry-city:1,1': 3 });
+	});
+
+	test('rejects a production report with negative rail usage units', () => {
+		expect.assertions(2);
+		const report = createDailyReport({
+			productionReport: createDailyProductionReport({ railUsage: { 'industry-city:1,1': -1 } })
+		});
+		const snapshot = createSnapshotWithGame({ ...createGame(), reports: [report] });
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow('railUsage');
+	});
+
+	test('rejects a rail shipment with a negative quantity', () => {
+		expect.assertions(2);
+		const report = createDailyReport({
+			productionReport: createDailyProductionReport({
+				railShipments: [
+					{
+						materialId: 'grain',
+						quantity: -1,
+						value: 9,
+						kind: 'pull-producer',
+						fromId: 'farm-1',
+						toId: 'mill-1'
+					}
+				]
+			})
+		});
+		const snapshot = createSnapshotWithGame({ ...createGame(), reports: [report] });
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow('quantity must be non-negative');
+	});
+
+	test('rejects a rail shipment with a negative value', () => {
+		expect.assertions(2);
+		const report = createDailyReport({
+			productionReport: createDailyProductionReport({
+				railShipments: [
+					{
+						materialId: 'grain',
+						quantity: 1,
+						value: -1,
+						kind: 'pull-producer',
+						fromId: 'farm-1',
+						toId: 'mill-1'
+					}
+				]
+			})
+		});
+		const snapshot = createSnapshotWithGame({ ...createGame(), reports: [report] });
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow('value must be non-negative');
 	});
 });

@@ -231,6 +231,47 @@ describe('buildRailPreview', () => {
 		expect(preview.cost).toBe(0);
 	});
 
+	it('reports an unknown building when the origin id does not exist', () => {
+		const game = makeGame(makeCity([]), [DEST()]);
+		const preview = buildRailPreview(game, {
+			originBuildingId: 'missing-origin',
+			waypoints: [],
+			destinationBuildingId: 'dest'
+		});
+		expect(preview.blockReason?.code).toBe('railUnknownBuilding');
+		expect(preview.pathKeys).toEqual([]);
+		expect(preview.cost).toBe(0);
+	});
+
+	it('reports an unknown building when the destination id does not exist', () => {
+		const game = makeGame(makeCity([]), [ORIGIN()]);
+		const preview = buildRailPreview(game, {
+			originBuildingId: 'origin',
+			waypoints: [],
+			destinationBuildingId: 'missing-dest'
+		});
+		expect(preview.blockReason?.code).toBe('railUnknownBuilding');
+		expect(preview.destinationBuildingId).toBeNull();
+		expect(preview.pathKeys).toEqual([]);
+	});
+
+	it('reports an unknown building when the endpoints share a city absent from the world', () => {
+		// Both buildings exist and share a cityId that is absent from
+		// industryCities, so the cross-city check passes but findCity returns
+		// null and the preview short-circuits with an unknown-building reason.
+		const origin = { ...ORIGIN(), cityId: 'missing-city' };
+		const dest = { ...DEST(), cityId: 'missing-city' };
+		const game = makeGame(makeCity([]), [origin, dest]);
+		const preview = buildRailPreview(game, {
+			originBuildingId: 'origin',
+			waypoints: [],
+			destinationBuildingId: 'dest'
+		});
+		expect(preview.blockReason?.code).toBe('railUnknownBuilding');
+		expect(preview.pathKeys).toEqual([]);
+		expect(preview.cost).toBe(0);
+	});
+
 	it('explores forked existing track in deterministic N/E/S/W order', () => {
 		// Existing rails form a cross centered at (6,4). Origin at (2,2) and
 		// dest at (10,2) can both attach along y=4; from the western trunk the

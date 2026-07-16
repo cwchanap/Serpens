@@ -171,6 +171,43 @@ describe('pullViaRail', () => {
 		};
 		expect(build()).toEqual(build());
 	});
+
+	it('skips a stocked producer with no rail attach cells', () => {
+		// A disconnected farm (no attach cells) holds grain but cannot ship; the
+		// pull must skip it and return zero with no shipments.
+		const connectedFarm = makeBuilding('industry-building-1', 'grain-farm', 2, 2, { grain: 30 });
+		const disconnectedFarm = makeBuilding('industry-building-3', 'grain-farm', 20, 20, {
+			grain: 30
+		});
+		const mill = makeBuilding('industry-building-2', 'flour-mill', 10, 2);
+		const state = createRailTickState(
+			makeGame(makeCity(LINE), [connectedFarm, disconnectedFarm, mill]),
+			{ capacity: 500, materials: {}, overflowUnits: 0, overflowCost: 0 }
+		);
+		const result = pullViaRail(state, mill, 'grain', 10);
+		// Only the connected farm ships (1/day bottleneck); the disconnected
+		// farm's stock is untouched.
+		expect(result.fromProducers).toBe(1);
+		expect(state.inventories.get('industry-building-3')!.grain).toBe(30);
+	});
+
+	it('fully satisfies a small request and exits the pull loop cleanly', () => {
+		// Requesting exactly one unit on a level-1 line drains the budget of
+		// the bottleneck cell to zero, but remaining hits 0 first so the while
+		// loop terminates normally rather than bailing on a missing path.
+		const farm = makeBuilding('industry-building-1', 'grain-farm', 2, 2, { grain: 30 });
+		const mill = makeBuilding('industry-building-2', 'flour-mill', 10, 2);
+		const state = createRailTickState(makeGame(makeCity(LINE), [farm, mill]), {
+			capacity: 500,
+			materials: {},
+			overflowUnits: 0,
+			overflowCost: 0
+		});
+		const result = pullViaRail(state, mill, 'grain', 1);
+		expect(result.fromProducers).toBe(1);
+		expect(state.shipments).toHaveLength(1);
+		expect(state.inventories.get('industry-building-1')!.grain).toBe(29);
+	});
 });
 
 describe('pushSurplusViaRail', () => {
@@ -223,5 +260,21 @@ describe('pushSurplusViaRail', () => {
 		pushSurplusViaRail(state, farm);
 		expect(state.shipments).toHaveLength(0);
 		expect(state.inventories.get('industry-building-1')!.grain).toBe(5);
+	});
+
+	it('skips a warehouse with no rail attach cells', () => {
+		// A disconnected warehouse (no attach cells) is ignored while the
+		// connected warehouse still receives the push.
+		const farm = makeBuilding('industry-building-1', 'grain-farm', 2, 2, { grain: 5 });
+		const connectedWarehouse = makeBuilding('industry-building-2', 'warehouse', 10, 2);
+		const disconnectedWarehouse = makeBuilding('industry-building-3', 'warehouse', 20, 20);
+		const state = createRailTickState(
+			makeGame(makeCity(LINE), [farm, connectedWarehouse, disconnectedWarehouse]),
+			{ capacity: 500, materials: {}, overflowUnits: 0, overflowCost: 0 }
+		);
+		pushSurplusViaRail(state, farm);
+		expect(state.warehouse.materials.grain).toBe(1);
+		expect(state.shipments).toHaveLength(1);
+		expect(state.shipments[0]!.toId).toBe('industry-building-2');
 	});
 });

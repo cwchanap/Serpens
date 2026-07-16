@@ -9,6 +9,7 @@ import {
 	getPathCapacity,
 	getRailNeighborKeys,
 	getSegmentsForCell,
+	isJunctionKey,
 	railCellKey
 } from './rail';
 import type { IndustrialBuilding, IndustryCity, RailCell } from './types';
@@ -18,12 +19,21 @@ function makeCity(rails: RailCell[]): IndustryCity {
 }
 
 function makeBuilding(id: string, mapX: number, mapY: number): IndustrialBuilding {
+	return makeBuildingInCity(id, 'test-city', mapX, mapY);
+}
+
+function makeBuildingInCity(
+	id: string,
+	cityId: string,
+	mapX: number,
+	mapY: number
+): IndustrialBuilding {
 	return {
 		id,
 		level: 1,
 		typeId: 'grain-farm',
-		cityId: 'test-city',
-		tileId: `test-city-${mapX}-${mapY}`,
+		cityId,
+		tileId: `${cityId}-${mapX}-${mapY}`,
 		mapX,
 		mapY,
 		status: 'idle',
@@ -120,6 +130,53 @@ describe('rail segments', () => {
 		expect(segments).toHaveLength(3);
 		// (5,9) belongs to the left run and the junction-pair segment (not the right run).
 		expect(getSegmentsForCell(segments, 5, 9)).toHaveLength(2);
+	});
+
+	it('a run between two separated junctions is one segment spanning both junctions', () => {
+		// Two buildings on the same line create two attach-junction pairs; the
+		// non-junction run between them is bounded by two junctions, exercising
+		// the coveredJunctionPairs bookkeeping.
+		const network = buildRailNetwork(makeCity(straightRails(5, 1, 13)));
+		const segments = deriveRailSegments(network, [
+			makeBuilding('b1', 3, 6), // attach cells (3,5),(4,5)
+			makeBuilding('b2', 10, 6) // attach cells (10,5),(11,5)
+		]);
+		// The middle run (5,5)-(9,5) is bounded by junctions (4,5) and (10,5)
+		// and forms one segment that includes both bounding junctions.
+		const middle = segments.find(
+			(segment) => segment.cellKeys.includes('5,5') && segment.cellKeys.includes('9,5')
+		);
+		expect(middle).toBeDefined();
+		expect(middle!.cellKeys).toContain('4,5');
+		expect(middle!.cellKeys).toContain('10,5');
+	});
+
+	it('buildings in a different city do not create attach junctions', () => {
+		// A rail line passing a foreign-city building stays a single segment
+		// because that building's attach cells are ignored.
+		const network = buildRailNetwork(makeCity(straightRails(5, 2, 12)));
+		const segments = deriveRailSegments(network, [
+			makeBuildingInCity('foreign', 'other-city', 5, 10)
+		]);
+		expect(segments).toHaveLength(1);
+		expect(segments[0]!.cellKeys).toHaveLength(11);
+	});
+
+	it('isJunctionKey flags attach cells and 3-way neighbors', () => {
+		const rails = [
+			...straightRails(5, 2, 8),
+			{ x: 5, y: 6, level: 1 },
+			{ x: 5, y: 7, level: 1 },
+			{ x: 5, y: 8, level: 1 }
+		];
+		const network = buildRailNetwork(makeCity(rails));
+		// (5,5) has 3 rail neighbors (E/W/S) → junction.
+		expect(isJunctionKey(network, [], '5,5')).toBe(true);
+		// (2,5) is a plain endpoint → not a junction.
+		expect(isJunctionKey(network, [], '2,5')).toBe(false);
+		// A rail cell adjacent to a building footprint is an attach junction.
+		const lineNetwork = buildRailNetwork(makeCity(straightRails(9, 2, 12)));
+		expect(isJunctionKey(lineNetwork, [makeBuilding('b1', 5, 10)], '5,9')).toBe(true);
 	});
 
 	it('assigns collision-free ids even when segments share a junction cell', () => {

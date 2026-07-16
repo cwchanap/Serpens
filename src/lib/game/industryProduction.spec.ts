@@ -325,6 +325,17 @@ const farmWarehouseGame = makeProductionGame(makeIndustryCity(straightRails(4, 2
 	makeIndustryBuilding('wh1', 'warehouse', 10, 2)
 ]);
 
+// Mill connected by rail to a warehouse building, with grain pre-stocked in
+// the shared warehouse pool so the mill's input shortage is satisfied by a
+// rail pull from the warehouse (exercising the fromWarehouse report branch).
+const warehousePullGame: GameState = {
+	...makeProductionGame(makeIndustryCity(straightRails(4, 2, 11)), [
+		makeIndustryBuilding('mill', 'flour-mill', 2, 2),
+		makeIndustryBuilding('wh1', 'warehouse', 10, 2)
+	]),
+	warehouse: { capacity: 100, materials: { grain: 50 }, overflowUnits: 0, overflowCost: 0 }
+};
+
 describe('rail-fed production', () => {
 	test('unconnected mill imports its inputs (fallback) and warehouse pool stays untouched', () => {
 		expect.assertions(3);
@@ -393,6 +404,22 @@ describe('rail-fed production', () => {
 
 		expect(report.railShipments.some((s) => s.kind === 'push-warehouse')).toBe(true);
 		expect(game.warehouse.materials.grain ?? 0).toBeGreaterThan(0);
+	});
+
+	test('rail-connected mill pulls inputs from the warehouse pool and records the pull', () => {
+		expect.assertions(4);
+		const { game, report } = simulateIndustryProduction(warehousePullGame);
+
+		// The mill's grain shortage is satisfied by a rail pull from the
+		// warehouse building, so fromWarehouse > 0 surfaces as both a
+		// warehouse-labeled consumed movement and a warehousePulls entry.
+		expect(report.railShipments.some((s) => s.kind === 'pull-warehouse')).toBe(true);
+		expect(report.consumed.some((m) => m.source === 'warehouse' && m.materialId === 'grain')).toBe(
+			true
+		);
+		expect(report.warehousePulls.some((m) => m.materialId === 'grain')).toBe(true);
+		// The pool was drained by the pulled quantity (level-1 line → 1 unit).
+		expect(game.warehouse.materials.grain ?? 0).toBeLessThan(50);
 	});
 
 	test('railUsage records per-cell units for the segment inspector', () => {

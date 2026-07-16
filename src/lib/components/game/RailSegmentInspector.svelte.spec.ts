@@ -123,4 +123,31 @@ describe('RailSegmentInspector', () => {
 		await page.getByRole('button', { name: /demolish/i }).click();
 		expect(onDemolishSegment).toHaveBeenCalledWith('seg:1,1|2,1');
 	});
+
+	it('renders without a selected segment when segments is empty', async () => {
+		expect.assertions(2);
+		const game = makeGame([], {});
+
+		render(RailSegmentInspector, baseProps(game, []));
+
+		await expect.element(page.getByRole('heading', { name: 'Rail segment' })).toBeVisible();
+		// No stats section renders when there is no selected segment.
+		await expect.element(page.getByTestId('rail-segment-cells')).not.toBeInTheDocument();
+	});
+
+	it('shows the not-enough-cash hint when upgrade is available but unaffordable', async () => {
+		expect.assertions(2);
+		const rails: RailCell[] = [
+			{ x: 1, y: 1, level: 1 },
+			{ x: 2, y: 1, level: 1 }
+		];
+		const segment: RailSegment = { id: 'seg:1,1|2,1', cellKeys: ['1,1', '2,1'], minLevel: 1 };
+		const game = makeGame(rails, {}, 0);
+
+		render(RailSegmentInspector, baseProps(game, [segment]));
+
+		const upgrade = page.getByRole('button', { name: /upgrade/i });
+		await expect.element(upgrade).toBeDisabled();
+		await expect.element(page.getByText('Not enough cash.')).toBeVisible();
+	});
 });
