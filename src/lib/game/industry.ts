@@ -933,11 +933,31 @@ function getFillerTerrain(
 
 function isInternalServiceSeparator(width: number, height: number, x: number, y: number): boolean {
 	const separatorX = Math.max(1, Math.floor(width * 0.45));
-	const isVerticalSeparator = width >= 10 && x === separatorX && y > 0 && y < height - 1;
+	const isVerticalSeparator =
+		width >= 10 &&
+		x === separatorX &&
+		y > 0 &&
+		y < height - 1 &&
+		!isSeparatorRailCrossing(height, y);
 	const isLowerAccessBlock =
 		width >= 10 && height >= 12 && y === Math.floor(height * 0.62) && (x === 1 || x === 2);
 
 	return isVerticalSeparator || isLowerAccessBlock;
+}
+
+// The internal separator is a district divider between the western resource
+// belts and the eastern industrial park. It keeps three evenly spaced one-tile
+// crossings (quarter, half, three-quarter height) so rail can carry raw
+// materials across the wall to processing plants; without these the resource
+// extractors would be permanently unreachable by rail. Crossing tiles fall
+// through to ordinary passable district terrain (never 'blocked'), so
+// isRailLegalTile admits them.
+function isSeparatorRailCrossing(height: number, y: number): boolean {
+	return (
+		y === Math.floor(height * 0.25) ||
+		y === Math.floor(height * 0.5) ||
+		y === Math.floor(height * 0.75)
+	);
 }
 
 function isCropDistrict(width: number, height: number, x: number, y: number): boolean {

@@ -247,7 +247,39 @@ describe('industry city generation', () => {
 			countTerrain(utilityBelt, 'water') + countTerrain(utilityBelt, 'forest')
 		).toBeGreaterThanOrEqual(22);
 		expect(countTerrain(industrialPark, 'industrial')).toBeGreaterThanOrEqual(82);
-		expect(internalBlockedTiles).toHaveLength(18);
+		// Vertical separator (x=8, y=1..16 = 16 tiles) minus the three rail
+		// crossings at y = floor(18*0.25|0.5|0.75) = 4, 9, 13, plus the two
+		// lower-access-block tiles at (1,11) and (2,11): 16 - 3 + 2 = 15.
+		expect(internalBlockedTiles).toHaveLength(15);
+	});
+
+	test('keeps three rail crossings through the internal separator wall', () => {
+		expect.assertions(4);
+		const width = 18;
+		const height = 18;
+		const city = generateIndustryCity({
+			id: 'industry-city',
+			name: 'Industry City',
+			width,
+			height,
+			seed: 20260512
+		});
+		const separatorX = Math.floor(width * 0.45);
+		const separatorColumn = city.tiles.filter(
+			(tile) => tile.x === separatorX && tile.y > 0 && tile.y < height - 1
+		);
+		const crossings = separatorColumn.filter((tile) => tile.terrain !== 'blocked' && !tile.locked);
+		const crossingRows = crossings.map((tile) => tile.y).sort((a, b) => a - b);
+
+		// The wall is otherwise solid, with exactly the three quarter-height gaps.
+		expect(crossingRows).toEqual([4, 9, 13]);
+		expect(crossings.every((tile) => !tile.locked)).toBe(true);
+		expect(separatorColumn.filter((tile) => tile.terrain === 'blocked')).toHaveLength(
+			separatorColumn.length - 3
+		);
+		// A crossing tile is rail-legal terrain (never 'blocked'), so rail can
+		// route material from the western resource belts to the eastern plants.
+		expect(crossings.every((tile) => tile.terrain !== 'blocked')).toBe(true);
 	});
 
 	test('high industrial bias produces more industrial terrain than low bias', () => {
