@@ -142,8 +142,13 @@ export function simulateIndustryProduction(game: GameState): {
 			quantity: Math.round(output.quantity * throughput)
 		}));
 		const desiredTotal = desiredOutputs.reduce((total, output) => total + output.quantity, 0);
-		// Project free capacity after consuming recipe inputs already in the
-		// buffer so a full buffer of inputs can still produce and free space.
+		// Deviation from plan: the plan computed free space as
+		// `bufferCapacity - inventoryUsed(inventory)`. That stalls a building
+		// whose buffer is full of inputs it is about to consume — it can never
+		// free room for output and so never produces. Instead we project the
+		// used space *after* consuming the recipe inputs already in the buffer,
+		// so a full input buffer still permits a production cycle that frees
+		// room for its outputs. This prevents input-locked stalls.
 		let projectedUsed = inventoryUsed(inventory);
 		for (const input of recipe.inputs) {
 			const needed = Math.round(input.quantity * throughput);

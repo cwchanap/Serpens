@@ -96,6 +96,33 @@ describe('pullViaRail', () => {
 		expect(state.shipments).toHaveLength(0);
 	});
 
+	it('pulls a processor output (flour) to a downstream consumer via rail', () => {
+		// Positive case for the recipe-outputs-only source restriction: a
+		// flour-mill holding flour (its recipe output) must satisfy a
+		// snack-factory's flour pull. The restriction excludes buffered
+		// inputs (covered above) but must not exclude legitimate outputs.
+		const mill = makeBuilding('industry-building-1', 'flour-mill', 2, 2, { flour: 30 });
+		const snackFactory = makeBuilding('industry-building-2', 'snack-factory', 10, 2);
+		const state = createRailTickState(makeGame(makeCity(LINE), [mill, snackFactory]), {
+			capacity: 500,
+			materials: {},
+			overflowUnits: 0,
+			overflowCost: 0
+		});
+		const result = pullViaRail(state, snackFactory, 'flour', 10);
+		expect(result.fromProducers).toBe(1); // level-1 line → 1/day bottleneck
+		expect(result.fromWarehouse).toBe(0);
+		expect(state.inventories.get('industry-building-1')!.flour).toBe(29);
+		expect(state.shipments).toHaveLength(1);
+		expect(state.shipments[0]).toMatchObject({
+			kind: 'pull-producer',
+			fromId: 'industry-building-1',
+			toId: 'industry-building-2',
+			materialId: 'flour',
+			quantity: 1
+		});
+	});
+
 	it('a level-3 line moves 3/day', () => {
 		const farm = makeBuilding('industry-building-1', 'grain-farm', 2, 2, { grain: 30 });
 		const mill = makeBuilding('industry-building-2', 'flour-mill', 10, 2);
