@@ -1830,7 +1830,10 @@
 		position: absolute;
 		left: 1rem;
 		bottom: 4.5rem;
-		z-index: 22;
+		/* Above the control desk (z-index 25): on the industry map the desk gains
+		   the Build-rail button and can wrap to a second row that reaches into
+		   this plaque's zone, so the Cancel button must win pointer events. */
+		z-index: 26;
 		display: flex;
 		align-items: center;
 		gap: 0.6rem;
