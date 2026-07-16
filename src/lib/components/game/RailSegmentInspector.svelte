@@ -48,14 +48,11 @@
 
 	const cellCount = $derived(selectedSegment?.cellKeys.length ?? 0);
 	const level = $derived(selectedSegment?.minLevel ?? 0);
-	const capacity = $derived.by(() => {
-		if (!selectedSegment) return 0;
-		let total = 0;
-		for (const key of selectedSegment.cellKeys) {
-			total += network.cells.get(key)?.level ?? 0;
-		}
-		return total;
-	});
+	// A serial rail chain's daily throughput is the bottleneck cell level
+	// (the minimum), not the sum — matching getPathCapacity's min-over-path
+	// model. Summing cell levels would overstate capacity for multi-cell
+	// segments (e.g. 3 cells at level 2 → 2/day, not 6/day).
+	const capacity = $derived(selectedSegment?.minLevel ?? 0);
 	const utilization = $derived.by(() => {
 		if (!selectedSegment) {
 			return 0;
