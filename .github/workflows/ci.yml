@@ -77,11 +77,15 @@ jobs:
       - name: Run unit tests with coverage
         run: bun run test:coverage
 
+      # Authenticate via GitHub OIDC (Codecov GitHub App) instead of a long-lived
+      # CODECOV_TOKEN. Requires job permissions.id-token: write above. Tokenless
+      # public uploads still land data on codecov.io, but PR checks/comments need
+      # a verified identity — OIDC is that path for same-repo GitHub Actions.
       - name: Upload coverage to Codecov
         if: ${{ !cancelled() }}
         uses: codecov/codecov-action@v5
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
+          use_oidc: true
           files: ./coverage/lcov.info
           flags: unit
           fail_ci_if_error: true
