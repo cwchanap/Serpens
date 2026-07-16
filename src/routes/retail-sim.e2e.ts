@@ -1001,8 +1001,8 @@ test('player builds convenience production and refills from warehouse', async ({
 	// warehouse across a rail link. Connect the water-bottler (origin) to the
 	// warehouse (destination) — both industrial-district tiles on the same side
 	// of the internal separator — so bottled water accumulates in the warehouse
-	// for the retail store to draw on. Clicking the destination building is the
-	// build confirmation (no separate confirm step; see handleRailBuildTileClick).
+	// for the retail store to draw on. Destination selection is two-step
+	// (select target → re-click same building to confirm; see handleRailBuildTileClick).
 	await page.getByRole('button', { name: /build rail/i }).click();
 	const railStatus = page.getByRole('status', { name: /placement status/i });
 	await expect(railStatus).toContainText(/select the first building/i);
@@ -1013,6 +1013,14 @@ test('player builds convenience production and refills from warehouse', async ({
 		INDUSTRIAL_BUILD_TILES[1]!.y
 	);
 	await expect(railStatus).toContainText(/select waypoints, then the destination building/i);
+	await clickCanvasTile(
+		page,
+		industryCanvas,
+		INDUSTRIAL_BUILD_TILES[0]!.x,
+		INDUSTRIAL_BUILD_TILES[0]!.y
+	);
+	// First destination click only previews; confirm cost summary stays visible.
+	await expect(railStatus).toContainText(/new cells/i);
 	await clickCanvasTile(
 		page,
 		industryCanvas,
@@ -1770,8 +1778,8 @@ test('rail-fed production connects two industrial buildings and records a rail s
 	// Build a rail connecting flour-mill (origin) to pantry-works
 	// (destination). Both anchors are industrial-district tiles on the same
 	// side of the wall described above, so a direct path exists with no
-	// waypoints needed — the destination click resolves immediately (there
-	// is no separate confirm step; see handleRailBuildTileClick).
+	// waypoints needed. Destination selection is two-step (select target →
+	// re-click same building to confirm; see handleRailBuildTileClick).
 	await page.getByRole('button', { name: /build rail/i }).click();
 	const placementStatus = page.getByRole('status', { name: /placement status/i });
 	await expect(placementStatus).toContainText(/select the first building/i);
@@ -1779,6 +1787,9 @@ test('rail-fed production connects two industrial buildings and records a rail s
 	await clickCanvasTile(page, industryCanvas, millTile.x, millTile.y);
 	await expect(placementStatus).toContainText(/select waypoints, then the destination building/i);
 
+	await clickCanvasTile(page, industryCanvas, pantryTile.x, pantryTile.y);
+	// First destination click only previews; confirm cost summary stays visible.
+	await expect(placementStatus).toContainText(/new cells/i);
 	await clickCanvasTile(page, industryCanvas, pantryTile.x, pantryTile.y);
 	await expect(placementStatus).toHaveCount(0);
 	await expect(industryCanvas).toHaveAttribute('data-rail-cell-count', /^[1-9]\d*$/);
