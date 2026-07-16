@@ -163,7 +163,9 @@ function createRailRender(
 	}
 
 	const usage = railUsage[railUsageKey(cityId, cell.x, cell.y)] ?? 0;
-	const utilization = Math.min(1, Math.max(0, usage / cell.level));
+	// cell.level is 1..RAIL_MAX_LEVEL by invariant; Math.max guards the divisor
+	// against a 0 the type allows, so utilization can never render NaN.
+	const utilization = Math.min(1, Math.max(0, usage / Math.max(1, cell.level)));
 
 	return {
 		x: cell.x,
