@@ -7,7 +7,11 @@
 		type RailNetwork,
 		type RailSegment
 	} from '$lib/game/rail';
-	import { getSegmentDemolishRefund, getSegmentUpgradeCost } from '$lib/game/railPlacement';
+	import {
+		getDemolishRemovableCellKeys,
+		getSegmentDemolishRefund,
+		getSegmentUpgradeCost
+	} from '$lib/game/railPlacement';
 	import type { I18nBundle } from '$lib/i18n';
 	import type { GameState } from '$lib/game/types';
 	import type { Attachment } from 'svelte/attachments';
@@ -58,9 +62,9 @@
 				continue;
 			}
 			const usage = railUsage[railUsageKey(cityId, x, y)] ?? 0;
-			max = Math.max(max, usage / cellLevel);
+			max = Math.max(max, usage / Math.max(1, cellLevel));
 		}
-		return max;
+		return Math.min(1, max);
 	});
 
 	const canUpgrade = $derived(selectedSegment ? selectedSegment.minLevel < RAIL_MAX_LEVEL : false);
@@ -68,7 +72,11 @@
 		selectedSegment && canUpgrade ? getSegmentUpgradeCost(selectedSegment, network) : 0
 	);
 	const canAffordUpgrade = $derived(canUpgrade && game.cash >= upgradeCost);
-	const demolishRefund = $derived(selectedSegment ? getSegmentDemolishRefund(selectedSegment) : 0);
+	const demolishRefund = $derived.by(() => {
+		if (!selectedSegment) return 0;
+		const removable = getDemolishRemovableCellKeys(selectedSegment, segments, network);
+		return getSegmentDemolishRefund(removable.size);
+	});
 
 	function segmentOptionLabel(segment: RailSegment): string {
 		return `${i18n.t('railSegmentInspector.level')} ${segment.minLevel} / ${RAIL_MAX_LEVEL} · ${i18n.format.integer(segment.cellKeys.length)}`;
@@ -107,7 +115,7 @@
 
 	<div class="heading">
 		<div>
-			<p>{i18n.t('railSegmentInspector.title')}</p>
+			<p>{i18n.t('railSegmentInspector.eyebrow')}</p>
 			<h2>{i18n.t('railSegmentInspector.title')}</h2>
 		</div>
 	</div>

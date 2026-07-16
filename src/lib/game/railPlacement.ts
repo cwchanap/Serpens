@@ -290,10 +290,37 @@ export function getSegmentUpgradeCost(segment: RailSegment, network: RailNetwork
 	return cellsBelowTarget * RAIL_UPGRADE_COST_PER_CELL_PER_LEVEL * segment.minLevel;
 }
 
-export function getSegmentDemolishRefund(segment: RailSegment): number {
-	return Math.round(
-		segment.cellKeys.length * RAIL_BUILD_COST_PER_CELL * RAIL_DEMOLISH_REFUND_RATIO
-	);
+/**
+ * Cells that would actually be removed when demolishing `segment`: every cell
+ * except junction cells shared with another segment that still have a rail
+ * neighbour outside this segment. Exposed so the demolish transition and the
+ * inspector refund preview agree on the removable count.
+ */
+export function getDemolishRemovableCellKeys(
+	segment: RailSegment,
+	segments: readonly RailSegment[],
+	network: RailNetwork
+): Set<string> {
+	const demolishSet = new Set(segment.cellKeys);
+	const removable = new Set<string>();
+
+	for (const key of segment.cellKeys) {
+		const { x, y } = parseRailCellKey(key);
+		const hasOutsideRailNeighbor = getRailNeighborKeys(network, x, y).some(
+			(neighborKey) => !demolishSet.has(neighborKey)
+		);
+		const sharedWithAnotherSegment = segments.some(
+			(candidate) => candidate.id !== segment.id && candidate.cellKeys.includes(key)
+		);
+		if (sharedWithAnotherSegment && hasOutsideRailNeighbor) continue;
+		removable.add(key);
+	}
+
+	return removable;
+}
+
+export function getSegmentDemolishRefund(cellCount: number): number {
+	return Math.round(cellCount * RAIL_BUILD_COST_PER_CELL * RAIL_DEMOLISH_REFUND_RATIO);
 }
 
 export function upgradeRailSegment(game: GameState, cityId: string, segmentId: string): GameState {
@@ -309,6 +336,7 @@ export function upgradeRailSegment(game: GameState, cityId: string, segmentId: s
 
 	const target = segment.minLevel + 1;
 	const cost = getSegmentUpgradeCost(segment, network);
+	if (game.cash < cost) return game;
 	const upgradeKeys = new Set(
 		segment.cellKeys.filter((key) => (network.cells.get(key)?.level ?? RAIL_MAX_LEVEL) < target)
 	);
@@ -333,24 +361,8 @@ export function demolishRailSegment(game: GameState, cityId: string, segmentId: 
 	const segment = segments.find((candidate) => candidate.id === segmentId);
 	if (!segment) return game;
 
-	const refund = getSegmentDemolishRefund(segment);
-	const demolishSet = new Set(segment.cellKeys);
-	const cellsToRemove = new Set<string>();
-
-	for (const key of segment.cellKeys) {
-		const { x, y } = parseRailCellKey(key);
-		const hasOutsideRailNeighbor = getRailNeighborKeys(network, x, y).some(
-			(neighborKey) => !demolishSet.has(neighborKey)
-		);
-		const sharedWithAnotherSegment = segments.some(
-			(candidate) => candidate.id !== segmentId && candidate.cellKeys.includes(key)
-		);
-		// A junction cell shared with another segment survives demolition when it
-		// would still connect to a rail cell outside this segment — otherwise
-		// removing the trunk amputates the neighbouring segments' endpoints.
-		if (sharedWithAnotherSegment && hasOutsideRailNeighbor) continue;
-		cellsToRemove.add(key);
-	}
+	const cellsToRemove = getDemolishRemovableCellKeys(segment, segments, network);
+	const refund = getSegmentDemolishRefund(cellsToRemove.size);
 
 	const newRails = city.rails.filter((cell) => !cellsToRemove.has(railCellKey(cell.x, cell.y)));
 	const newCity: IndustryCity = { ...city, rails: newRails };
