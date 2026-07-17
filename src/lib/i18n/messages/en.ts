@@ -180,7 +180,8 @@ export const en = {
 		upgrade: 'Upgrade ({cost})',
 		demolish: 'Demolish (+{refund})',
 		pickSegment: 'Junction — pick a segment',
-		atMaxLevel: 'At max level'
+		atMaxLevel: 'At max level',
+		cannotDemolish: 'All cells are shared junctions — nothing to remove.'
 	},
 	worldMap: {
 		ariaLabel: 'World map',

@@ -2,7 +2,13 @@ import { page } from 'vitest/browser';
 import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import RailSegmentInspector from './RailSegmentInspector.svelte';
-import { RAIL_MAX_LEVEL, type RailSegment } from '$lib/game/rail';
+import {
+	buildRailNetwork,
+	deriveRailSegments,
+	getSegmentsForCell,
+	RAIL_MAX_LEVEL,
+	type RailSegment
+} from '$lib/game/rail';
 import { createI18n } from '$lib/i18n';
 import { createNewGame } from '$lib/game/state';
 import type { GameState, RailCell } from '$lib/game/types';
@@ -149,5 +155,47 @@ describe('RailSegmentInspector', () => {
 		const upgrade = page.getByRole('button', { name: /upgrade/i });
 		await expect.element(upgrade).toBeDisabled();
 		await expect.element(page.getByText('Not enough cash.')).toBeVisible();
+	});
+
+	it('disables the demolish button when all cells are shared junctions', async () => {
+		expect.assertions(3);
+		// Two adjacent junctions (2,1) and (3,1), each with 3+ rail neighbors.
+		// The junction-to-junction segment (2,1)-(3,1) consists entirely of
+		// shared junction cells with outside rail neighbors, so
+		// getDemolishRemovableCellKeys returns an empty set.
+		//
+		//       (2,0)
+		//         |
+		// (1,1)-(2,1)-(3,1)-(4,1)
+		//               |     |
+		//              (3,2) (4,2)
+		const rails: RailCell[] = [
+			{ x: 2, y: 0, level: 1 },
+			{ x: 1, y: 1, level: 1 },
+			{ x: 2, y: 1, level: 1 },
+			{ x: 3, y: 1, level: 1 },
+			{ x: 4, y: 1, level: 1 },
+			{ x: 3, y: 2, level: 1 },
+			{ x: 4, y: 2, level: 1 }
+		];
+		const game = makeGame(rails, {});
+		const city = game.industryCities[0]!;
+		const network = buildRailNetwork({ ...city, rails });
+		const allSegments = deriveRailSegments(network, game.industrialBuildings);
+		// The real app passes all segments at the clicked cell — for a
+		// junction cell like (2,1), that includes every segment touching it.
+		const cellSegments = getSegmentsForCell(allSegments, 2, 1);
+		const junctionSegment = cellSegments.find((seg) => seg.id === 'seg:2,1|3,1');
+		expect(junctionSegment).toBeDefined();
+
+		render(RailSegmentInspector, baseProps(game, cellSegments));
+
+		// Select the junction-to-junction segment in the picker.
+		const junctionIndex = cellSegments.findIndex((seg) => seg.id === 'seg:2,1|3,1');
+		await page.getByTestId(`rail-segment-option-${junctionIndex}`).click();
+
+		const demolish = page.getByRole('button', { name: /demolish/i });
+		await expect.element(demolish).toBeDisabled();
+		await expect.element(page.getByText(/shared junctions/i)).toBeVisible();
 	});
 });

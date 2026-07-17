@@ -180,7 +180,8 @@ export const zhHant = {
 		upgrade: '升級（{cost}）',
 		demolish: '拆除（+{refund}）',
 		pickSegment: '交會點 — 選擇區段',
-		atMaxLevel: '最高等級'
+		atMaxLevel: '最高等級',
+		cannotDemolish: '所有格均為共享交會點 — 無法拆除。'
 	},
 	worldMap: {
 		ariaLabel: '世界地圖',
