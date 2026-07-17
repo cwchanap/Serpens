@@ -858,6 +858,7 @@ export const en = {
 					unknownBuilding: 'Unknown rail building.',
 					crossCity: 'Rails cannot span different cities.',
 					noValidPath: 'No valid rail path to the destination.',
+					alreadyConnected: 'These buildings are already connected by rail.',
 					requiresCash: 'Building this rail costs {cost} but you only have {cash}.',
 					segmentAtMaxLevel: 'This rail segment is already at the maximum level.',
 					unknownSegment: 'Unknown rail segment.',

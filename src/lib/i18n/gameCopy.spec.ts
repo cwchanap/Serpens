@@ -40,6 +40,7 @@ import {
 	decisionContextCashPressure,
 	decisionContextExpansionOpportunity,
 	decisionContextIndustrialTileHasRail,
+	decisionContextRailAlreadyConnected,
 	decisionContextRailNoValidPath,
 	decisionContextRailRequiresCash,
 	decisionContextRailSegmentAtMaxLevel,
@@ -630,7 +631,7 @@ describe('game copy builders', () => {
 	});
 
 	it('localizes every rail-construction decision context', () => {
-		expect.assertions(8);
+		expect.assertions(9);
 		const english = createI18n('en');
 		const japanese = createI18n('ja');
 		const baseDecision = {
@@ -675,6 +676,10 @@ describe('game copy builders', () => {
 			...baseDecision,
 			context: decisionContextIndustrialTileHasRail()
 		};
+		const railAlreadyConnected: DecisionItem = {
+			...baseDecision,
+			context: decisionContextRailAlreadyConnected()
+		};
 
 		expect(localizeDecision(railUnknownBuilding, english).context).toBe('Unknown rail building.');
 		expect(localizeDecision(railCrossCity, english).context).toBe(
@@ -682,6 +687,9 @@ describe('game copy builders', () => {
 		);
 		expect(localizeDecision(railNoValidPath, english).context).toBe(
 			'No valid rail path to the destination.'
+		);
+		expect(localizeDecision(railAlreadyConnected, english).context).toBe(
+			'These buildings are already connected by rail.'
 		);
 		expect(localizeDecision(railRequiresCash, english).context).toBe(
 			'Building this rail costs $2,000 but you only have $500.'

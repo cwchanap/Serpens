@@ -389,6 +389,8 @@ function localizeDecisionContextValue(ctx: DecisionContext, i18n: I18nBundle): s
 			return i18n.t('copy.decisions.railConstruction.contexts.crossCity');
 		case 'railNoValidPath':
 			return i18n.t('copy.decisions.railConstruction.contexts.noValidPath');
+		case 'railAlreadyConnected':
+			return i18n.t('copy.decisions.railConstruction.contexts.alreadyConnected');
 		case 'railRequiresCash':
 			return i18n.t('copy.decisions.railConstruction.contexts.requiresCash', {
 				cost: i18n.format.currency(ctx.cost),
