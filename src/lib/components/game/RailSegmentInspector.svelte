@@ -1,6 +1,7 @@
 <script lang="ts">
 	import {
 		buildRailNetwork,
+		deriveRailSegments,
 		parseRailCellKey,
 		railUsageKey,
 		RAIL_MAX_LEVEL,
@@ -44,6 +45,12 @@
 		const city = game.industryCities.find((candidate) => candidate.id === cityId);
 		return city ? buildRailNetwork(city) : { cityId, cells: new Map() };
 	});
+	// All segments in the city, not just the ones at the selected cell.
+	// getDemolishRemovableCellKeys needs the full segment set to detect
+	// cells shared with segments that don't pass through the selected cell.
+	const allSegments = $derived.by<RailSegment[]>(() =>
+		deriveRailSegments(network, game.industrialBuildings)
+	);
 	const railUsage = $derived(game.reports.at(-1)?.productionReport.railUsage ?? {});
 
 	const cellCount = $derived(selectedSegment?.cellKeys.length ?? 0);
@@ -76,11 +83,14 @@
 		selectedSegment && canUpgrade ? getSegmentUpgradeCost(selectedSegment, network) : 0
 	);
 	const canAffordUpgrade = $derived(canUpgrade && game.cash >= upgradeCost);
-	const demolishRefund = $derived.by(() => {
+	const demolishRemovableCount = $derived.by(() => {
 		if (!selectedSegment) return 0;
-		const removable = getDemolishRemovableCellKeys(selectedSegment, segments, network);
-		return getSegmentDemolishRefund(removable.size);
+		return getDemolishRemovableCellKeys(selectedSegment, allSegments, network).size;
 	});
+	const canDemolish = $derived(demolishRemovableCount > 0);
+	const demolishRefund = $derived(
+		canDemolish ? getSegmentDemolishRefund(demolishRemovableCount) : 0
+	);
 
 	function segmentOptionLabel(segment: RailSegment): string {
 		return `${i18n.t('railSegmentInspector.level')} ${segment.minLevel} / ${RAIL_MAX_LEVEL} · ${i18n.format.integer(segment.cellKeys.length)}`;
@@ -186,12 +196,16 @@
 				<button
 					type="button"
 					class="demolish"
+					disabled={!canDemolish}
 					onclick={() => onDemolishSegment(selectedSegment.id)}
 				>
 					{i18n.t('railSegmentInspector.demolish', {
 						refund: i18n.format.currency(demolishRefund)
 					})}
 				</button>
+				{#if !canDemolish}
+					<p class="hint">{i18n.t('railSegmentInspector.cannotDemolish')}</p>
+				{/if}
 			</div>
 		</section>
 	{/if}
@@ -371,7 +385,8 @@
 		background: var(--paper-200);
 	}
 
-	.upgrade:disabled {
+	.upgrade:disabled,
+	.demolish:disabled {
 		opacity: 0.45;
 		cursor: not-allowed;
 	}

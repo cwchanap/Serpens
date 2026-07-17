@@ -180,7 +180,8 @@ export const ja = {
 		upgrade: 'アップグレード（{cost}）',
 		demolish: '撤去（+{refund}）',
 		pickSegment: '分岐点 — 区間を選択',
-		atMaxLevel: '最大レベル'
+		atMaxLevel: '最大レベル',
+		cannotDemolish: '全マスが分岐点の共有セル — 撤去できません。'
 	},
 	worldMap: {
 		ariaLabel: 'ワールドマップ',

@@ -383,22 +383,29 @@
 			? (summary.latest?.storeReports.find((report) => report.storeId === store.id) ?? null)
 			: null;
 	});
+	// Rail network + segments for the current industry city. Depends only
+	// on game state (rails + buildings), not on which tile is selected — so
+	// clicking a different rail cell reuses the cached segments instead of
+	// rebuilding the network and recomputing connected components.
+	let industryRailSegments = $derived.by<RailSegment[]>(() => {
+		const currentGame: GameState | null = game;
+		if (!currentGame) return [];
+		const network = buildRailNetwork(industryCity);
+		return deriveRailSegments(network, currentGame.industrialBuildings);
+	});
 	// A rail-cell click (outside build mode) resolves to the same
 	// `selectedIndustryTileId` a building click would — this derives the
 	// segment(s) at that cell so the template can show RailSegmentInspector
 	// instead of IndustryTileInspector. Junction cells return >1 segment.
 	let selectedRailSegments = $derived.by((): RailSegment[] | null => {
-		const currentGame: GameState | null = game;
-		if (!currentGame || !selectedIndustryTileId || railBuildMode.step !== 'idle') {
+		if (!selectedIndustryTileId || railBuildMode.step !== 'idle') {
 			return null;
 		}
 		const tile = getIndustryTileById(industryCity, selectedIndustryTileId);
 		if (!tile) {
 			return null;
 		}
-		const network = buildRailNetwork(industryCity);
-		const segments = deriveRailSegments(network, currentGame.industrialBuildings);
-		const cellSegments = getSegmentsForCell(segments, tile.x, tile.y);
+		const cellSegments = getSegmentsForCell(industryRailSegments, tile.x, tile.y);
 		return cellSegments.length > 0 ? cellSegments : null;
 	});
 	let isPlacementModeActive = $derived(

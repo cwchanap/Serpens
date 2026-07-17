@@ -150,21 +150,34 @@ export function simulateIndustryProduction(game: GameState): {
 		// so a full input buffer still permits a production cycle that frees
 		// room for its outputs. This prevents input-locked stalls.
 		//
-		// Note: `needed` here is the unscaled (full-ratio) input quantity, while
-		// the actual consumption below scales by `ratio`. This is deliberate —
-		// the projection assumes full input consumption to maximise projected
-		// free space (the optimistic case), which is what prevents the stall.
-		// The discrepancy is bounded: projectedUsed never goes negative (clamped
-		// by `free = Math.max(0, ...)`), so it only affects how much room we
-		// reserve, not correctness of the consumption itself.
+		// Two-pass projection: the first pass assumes full input consumption
+		// (unscaled) to maximise projected free space — this is what prevents
+		// the stall. When the first pass yields ratio < 1, the actual
+		// consumption is ratio-scaled (less than full), so less buffer space is
+		// freed than the optimistic projection assumed. The second pass
+		// recomputes with the actual ratio-scaled consumption to prevent
+		// addInventory from silently clamping output below the ratio-predicted
+		// amount. projectedUsed never goes negative (clamped by
+		// `free = Math.max(0, ...)`).
 		let projectedUsed = inventoryUsed(inventory);
 		for (const input of recipe.inputs) {
 			const needed = Math.round(input.quantity * throughput);
 			const available = Math.max(0, inventory[input.materialId] ?? 0);
 			projectedUsed -= Math.min(needed, available);
 		}
-		const free = Math.max(0, buildingType.bufferCapacity - projectedUsed);
-		const ratio = desiredTotal > 0 ? Math.min(desiredTotal, free) / desiredTotal : 0;
+		let free = Math.max(0, buildingType.bufferCapacity - projectedUsed);
+		let ratio = desiredTotal > 0 ? Math.min(desiredTotal, free) / desiredTotal : 0;
+
+		if (desiredTotal > 0 && ratio > 0 && ratio < 1) {
+			projectedUsed = inventoryUsed(inventory);
+			for (const input of recipe.inputs) {
+				const needed = Math.round(input.quantity * throughput * ratio);
+				const available = Math.max(0, inventory[input.materialId] ?? 0);
+				projectedUsed -= Math.min(needed, available);
+			}
+			free = Math.max(0, buildingType.bufferCapacity - projectedUsed);
+			ratio = Math.min(desiredTotal, free) / desiredTotal;
+		}
 
 		// Buffer is full and there's nowhere to put new output: skip acquiring
 		// inputs entirely, pay only the flat daily cost, and mark stalled.

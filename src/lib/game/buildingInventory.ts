@@ -59,13 +59,30 @@ export function clampInventoryToRecipe(
 	inventory: Inventory,
 	buildingType: IndustrialBuildingType
 ): Inventory {
-	const allowed = getRecipeMaterialIds(buildingType);
+	const recipe = buildingType.recipeId ? PRODUCTION_RECIPES[buildingType.recipeId] : null;
+	if (!recipe) {
+		return {};
+	}
+	const inputIds = recipe.inputs.map((input) => input.materialId).sort();
+	const outputIds = recipe.outputs
+		.map((output) => output.materialId)
+		.filter((id) => !inputIds.includes(id))
+		.sort();
 	const clamped: Inventory = {};
 	let remaining = buildingType.bufferCapacity;
 
-	for (const materialId of [...allowed].sort()) {
+	// Inputs first: they are needed for the next production cycle, so
+	// preserving them over outputs keeps the building operational after
+	// a save/load that exceeded capacity.
+	for (const materialId of inputIds) {
 		const quantity = Math.min(Math.max(0, inventory[materialId] ?? 0), remaining);
-
+		if (quantity > 0) {
+			clamped[materialId] = quantity;
+			remaining -= quantity;
+		}
+	}
+	for (const materialId of outputIds) {
+		const quantity = Math.min(Math.max(0, inventory[materialId] ?? 0), remaining);
 		if (quantity > 0) {
 			clamped[materialId] = quantity;
 			remaining -= quantity;
