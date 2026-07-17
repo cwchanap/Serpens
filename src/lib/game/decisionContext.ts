@@ -19,6 +19,7 @@ export type DecisionContext =
 	| { code: 'expansionOpportunity' }
 	| { code: 'supplierTerms' }
 	| { code: 'railUnknownBuilding' }
+	| { code: 'railCrossCity' }
 	| { code: 'railNoValidPath' }
 	| { code: 'railRequiresCash'; cost: number; cash: number }
 	| { code: 'railSegmentAtMaxLevel' }
@@ -95,6 +96,10 @@ export const decisionContextSupplierTerms = (): DecisionContext => ({ code: 'sup
 
 export const decisionContextRailUnknownBuilding = (): DecisionContext => ({
 	code: 'railUnknownBuilding'
+});
+
+export const decisionContextRailCrossCity = (): DecisionContext => ({
+	code: 'railCrossCity'
 });
 
 export const decisionContextRailNoValidPath = (): DecisionContext => ({

@@ -1520,6 +1520,8 @@ function validateSavedDecisionContext(value: unknown, label: string): DecisionCo
 			return { code };
 		case 'railUnknownBuilding':
 			return { code };
+		case 'railCrossCity':
+			return { code };
 		case 'railNoValidPath':
 			return { code };
 		case 'railRequiresCash':

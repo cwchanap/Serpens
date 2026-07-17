@@ -385,6 +385,8 @@ function localizeDecisionContextValue(ctx: DecisionContext, i18n: I18nBundle): s
 			return i18n.t('copy.decisions.supplierTerms.context');
 		case 'railUnknownBuilding':
 			return i18n.t('copy.decisions.railConstruction.contexts.unknownBuilding');
+		case 'railCrossCity':
+			return i18n.t('copy.decisions.railConstruction.contexts.crossCity');
 		case 'railNoValidPath':
 			return i18n.t('copy.decisions.railConstruction.contexts.noValidPath');
 		case 'railRequiresCash':

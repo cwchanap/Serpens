@@ -1,4 +1,5 @@
 import {
+	decisionContextRailCrossCity,
 	decisionContextRailNoValidPath,
 	decisionContextRailRequiresCash,
 	decisionContextRailUnknownBuilding,
@@ -232,7 +233,7 @@ export function buildRailPreview(game: GameState, input: RailBuildInput): RailBu
 
 	// Cross-city endpoints are rejected before pathing; rails never span cities.
 	if (originBuilding.cityId !== destinationBuilding.cityId) {
-		return { ...base, blockReason: decisionContextRailUnknownBuilding() };
+		return { ...base, blockReason: decisionContextRailCrossCity() };
 	}
 
 	const city = findCity(game, originBuilding.cityId);

@@ -137,9 +137,14 @@ export function simulateIndustryProduction(game: GameState): {
 		// produce identical warehouse state and identical cash.
 		const throughput = getBuildingThroughputMultiplier(building.level);
 		let inventory = railState.inventories.get(building.id) ?? {};
+		// Store the RAW (unrounded) output quantity × throughput so the final
+		// scaling at `Math.round(output.quantity * ratio)` is a single round —
+		// matching the input pattern `Math.round(input.quantity * throughput *
+		// ratio)`. Pre-rounding here would double-round outputs and cause ±1-
+		// unit drift at non-integer throughput levels (level ≥ 2).
 		const desiredOutputs = recipe.outputs.map((output) => ({
 			materialId: output.materialId,
-			quantity: Math.round(output.quantity * throughput)
+			quantity: output.quantity * throughput
 		}));
 		const desiredTotal = desiredOutputs.reduce((total, output) => total + output.quantity, 0);
 		// Deviation from plan: the plan computed free space as
@@ -302,6 +307,9 @@ export function simulateIndustryProduction(game: GameState): {
 
 	// Push phase: same stage order, after every building has had a chance to
 	// produce, so surplus buffers drain to the shared warehouse for retail.
+	// buildingType is re-fetched here (already looked up in the production
+	// loop above) because the two loops are separate phases — the lookup is a
+	// cheap map read and keeping them independent avoids sharing mutable state.
 	for (const building of sorted) {
 		const buildingType = INDUSTRIAL_BUILDING_TYPES[building.typeId];
 
@@ -330,6 +338,9 @@ export function simulateIndustryProduction(game: GameState): {
 				const updated = buildingUpdates.get(building.id) ?? building;
 				return {
 					...updated,
+					// railState.inventories always has an entry for every building
+					// (seeded by createRailTickState); updated.inventory is a dead
+					// fallback kept as a safety net for hypothetical edge cases.
 					inventory: railState.inventories.get(building.id) ?? updated.inventory ?? {}
 				};
 			})

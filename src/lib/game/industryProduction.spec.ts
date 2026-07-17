@@ -183,6 +183,39 @@ describe('industry production simulation', () => {
 		expect(result.report.operatingCost).toBe(46); // Math.round(18 * 1.2 + 24)
 	});
 
+	test('output rounding is single-pass at non-integer throughput (level 2)', () => {
+		// Oil-press at level 2: throughput 1.2, recipe output 7 cooking-oil →
+		// raw desired = 7 × 1.2 = 8.4. With 77 cooking-oil already in the
+		// 85-cap buffer, free = 8. Pre-rounding 8.4 → 8 would make ratio =
+		// 8/8 = 1.0 (full production, 12 oilseeds imported), but the raw 8.4
+		// desired exceeds the 8 free units, so ratio must be 8/8.4 ≈ 0.952
+		// (stalled, 11 oilseeds imported). This pins the single-round output
+		// behavior and prevents reintroducing the double-round asymmetry that
+		// caused ±1-unit import drift and a misleading status at level ≥ 2.
+		expect.assertions(4);
+		const game = makeProductionGame(makeIndustryCity([]), [
+			makeIndustryBuilding('press', 'oil-press', 2, 2, { 'cooking-oil': 77 })
+		]);
+		const leveled = {
+			...game,
+			industrialBuildings: game.industrialBuildings.map((building) => ({
+				...building,
+				level: 2
+			}))
+		};
+
+		const { game: result, report } = simulateIndustryProduction(leveled);
+		const press = result.industrialBuildings[0]!;
+
+		expect(press.status).toBe('stalled');
+		expect(press.inventory['cooking-oil']).toBe(85);
+		const oilseedImport = report.importedInputs.find((m) => m.materialId === 'oilseeds');
+		expect(oilseedImport?.quantity).toBe(11);
+		expect(report.produced.some((m) => m.materialId === 'cooking-oil' && m.quantity === 8)).toBe(
+			true
+		);
+	});
+
 	test('without a rail link, a same-day raw producer cannot feed a processor and its inputs import instead', () => {
 		expect.assertions(6);
 		let game = { ...createNewGame('convenience', 20260512), cash: 100_000 };

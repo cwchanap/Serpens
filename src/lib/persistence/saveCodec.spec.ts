@@ -2419,6 +2419,31 @@ describe('saveCodec', () => {
 		expect(() => validateSaveRecord(record)).toThrow('duplicates rail coordinate');
 	});
 
+	test('round-trips a populated rails array at the maximum rail level', () => {
+		// Positive round-trip: the v9 migration test only checks rails: [], and
+		// the rejection tests cover invalid cells. This pins that a populated
+		// rails array with cells at RAIL_MAX_LEVEL (5) survives a full
+		// clone → validate → decode cycle intact.
+		expect.assertions(3);
+		const baseIndustryCity = createGame().industryCities[0]!;
+		const city = {
+			...baseIndustryCity,
+			rails: [{ x: 0, y: 0, level: 5 }]
+		};
+		const record = createManualSaveRecord({ game: { industryCities: [city] } });
+
+		const validated = validateSaveRecord(record);
+		expect(validated.game.industryCities[0]!.rails).toHaveLength(1);
+		expect(validated.game.industryCities[0]!.rails[0]).toEqual({ x: 0, y: 0, level: 5 });
+
+		// Full snapshot round-trip (clone → parse) must also preserve the rails.
+		const snapshot = createSnapshotWithGame({ ...createGame(), industryCities: [city] });
+		const decoded = validateSaveStoreSnapshot(snapshot);
+		expect(decoded.manualSlots[0]!.game.industryCities[0]!.rails).toEqual([
+			{ x: 0, y: 0, level: 5 }
+		]);
+	});
+
 	test('rejects a building inventory with an unknown material id', () => {
 		expect.assertions(2);
 		const mill = createIndustrialBuilding({

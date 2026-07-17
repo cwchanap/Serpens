@@ -225,7 +225,7 @@ describe('buildRailPreview', () => {
 			waypoints: [],
 			destinationBuildingId: 'dest'
 		});
-		expect(preview.blockReason?.code).toBe('railUnknownBuilding');
+		expect(preview.blockReason?.code).toBe('railCrossCity');
 		expect(preview.pathKeys).toEqual([]);
 		expect(preview.newCellKeys).toEqual([]);
 		expect(preview.cost).toBe(0);
