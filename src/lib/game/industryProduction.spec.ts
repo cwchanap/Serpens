@@ -292,11 +292,12 @@ function makeIndustryBuilding(
 	typeId: IndustrialBuilding['typeId'],
 	mapX: number,
 	mapY: number,
-	inventory: IndustrialBuilding['inventory'] = {}
+	inventory: IndustrialBuilding['inventory'] = {},
+	level = 1
 ): IndustrialBuilding {
 	return {
 		id,
-		level: 1,
+		level,
 		typeId,
 		cityId: 'ind-city',
 		tileId: `ind-city-${mapX}-${mapY}`,
@@ -431,12 +432,42 @@ describe('rail-fed production', () => {
 		expect(report.produced.some((m) => m.materialId === 'flour' && m.quantity === 8)).toBe(true);
 	});
 
+	test('level-2 partial buffer uses unrounded desiredOutputs for ratio (single-round, no drift)', () => {
+		// flour-mill at level 2: throughput = 1.2, so desiredOutputs flour =
+		// 8 × 1.2 = 9.6 (kept unrounded). Buffer pre-filled with 83 flour →
+		// free = 7, ratio = 7 / 9.6 ≈ 0.7292.
+		// Input needed = Math.round(10 × 1.2 × 0.7292) = Math.round(8.75) = 9.
+		// If desiredOutputs were pre-rounded to 10, ratio would be 7/10 = 0.7
+		// and input needed would be Math.round(8.4) = 8 — a 1-unit drift.
+		// This test pins the single-round behavior documented in
+		// industryProduction.ts:140-148.
+		expect.assertions(3);
+		const level2Mill = makeProductionGame(makeIndustryCity([]), [
+			makeIndustryBuilding('mill', 'flour-mill', 2, 2, { flour: 83 }, 2)
+		]);
+		const { game, report } = simulateIndustryProduction(level2Mill);
+		const mill = game.industrialBuildings.find((b) => b.typeId === 'flour-mill')!;
+
+		const grainImport = report.importedInputs.find((m) => m.materialId === 'grain');
+		expect(grainImport?.quantity).toBe(9);
+		expect(mill.inventory.flour).toBe(90);
+		expect(mill.status).toBe('stalled');
+	});
+
 	test('connected farm pushes surplus to the warehouse pool for retail', () => {
-		expect.assertions(2);
+		expect.assertions(3);
 		const { game, report } = simulateIndustryProduction(farmWarehouseGame);
+		const farm = game.industrialBuildings.find((b) => b.typeId === 'grain-farm')!;
 
 		expect(report.railShipments.some((s) => s.kind === 'push-warehouse')).toBe(true);
 		expect(game.warehouse.materials.grain ?? 0).toBeGreaterThan(0);
+		// Guard the push-resurrect invariant: the re-read at the end of
+		// simulateIndustryProduction must reflect the push phase draining 1
+		// unit via the level-1 rail. If the re-read regressed to
+		// buildingUpdates (post-production, pre-push), the farm would show
+		// 30 — double-counting the pushed unit in both the farm buffer and
+		// the warehouse pool.
+		expect(farm.inventory.grain ?? 0).toBe(29);
 	});
 
 	test('rail-connected mill pulls inputs from the warehouse pool and records the pull', () => {
