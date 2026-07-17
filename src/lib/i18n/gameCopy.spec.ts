@@ -43,6 +43,7 @@ import {
 	decisionContextRailNoValidPath,
 	decisionContextRailRequiresCash,
 	decisionContextRailSegmentAtMaxLevel,
+	decisionContextRailCrossCity,
 	decisionContextRailUnknownBuilding,
 	decisionContextRailUnknownSegment,
 	decisionContextSupplierTerms
@@ -629,7 +630,7 @@ describe('game copy builders', () => {
 	});
 
 	it('localizes every rail-construction decision context', () => {
-		expect.assertions(7);
+		expect.assertions(8);
 		const english = createI18n('en');
 		const japanese = createI18n('ja');
 		const baseDecision = {
@@ -649,6 +650,10 @@ describe('game copy builders', () => {
 		const railUnknownBuilding: DecisionItem = {
 			...baseDecision,
 			context: decisionContextRailUnknownBuilding()
+		};
+		const railCrossCity: DecisionItem = {
+			...baseDecision,
+			context: decisionContextRailCrossCity()
 		};
 		const railNoValidPath: DecisionItem = {
 			...baseDecision,
@@ -672,6 +677,9 @@ describe('game copy builders', () => {
 		};
 
 		expect(localizeDecision(railUnknownBuilding, english).context).toBe('Unknown rail building.');
+		expect(localizeDecision(railCrossCity, english).context).toBe(
+			'Rails cannot span different cities.'
+		);
 		expect(localizeDecision(railNoValidPath, english).context).toBe(
 			'No valid rail path to the destination.'
 		);
@@ -701,6 +709,7 @@ describe('game copy builders', () => {
 			'expansionCashBlocked',
 			'locationUnavailable',
 			'industrialConstructionDelayed',
+			'railConstruction',
 			'worldCity',
 			'acknowledge'
 		] as const;

@@ -849,6 +849,7 @@ export const zhHant = {
 			railConstruction: {
 				contexts: {
 					unknownBuilding: '未知的鐵路建築。',
+					crossCity: '鐵路無法跨越不同城市。',
 					noValidPath: '沒有通往目的地的有效軌道路徑。',
 					requiresCash: '鋪設這段鐵路需要 {cost}，但你只有 {cash}。',
 					segmentAtMaxLevel: '此鐵路區段已達最高等級。',

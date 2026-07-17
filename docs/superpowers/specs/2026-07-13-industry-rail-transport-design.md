@@ -228,7 +228,10 @@ source, so rail flows must not vanish from chain metrics):
   `source: 'warehouse'` and stay in `warehousePulls` — existing chain
   metrics and health logic keep working unchanged.
 - Direct **producer-buffer → consumer** transfers get `source: 'rail'` and
-  appear in `consumed`. Every transfer that rides rails — direct pulls,
+  appear in `consumed`. Only a producer's **recipe outputs** count as
+  transferable surplus — buffered recipe *inputs* on a processor must not
+  satisfy a pull, because that would siphon another processor's inputs and
+  break the production chain. Every transfer that rides rails — direct pulls,
   warehouse draws, surplus pushes — is additionally recorded in the
   `railShipments` ledger with its `kind` and endpoints, and its path
   increments `railUsage` per cell for the inspector's utilization display.

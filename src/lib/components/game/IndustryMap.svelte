@@ -119,6 +119,9 @@
 				height: Math.max(container.clientHeight, 520),
 				backgroundColor: '#14100A',
 				scene: nextScene,
+				// Right-click cancels an in-progress rail build; suppress the
+				// native browser context menu so it does not flash on top.
+				disableContextMenu: true,
 				scale: {
 					mode: Phaser.Scale.RESIZE,
 					autoCenter: Phaser.Scale.CENTER_BOTH
