@@ -1,4 +1,5 @@
 import {
+	decisionContextRailAlreadyConnected,
 	decisionContextRailCrossCity,
 	decisionContextRailNoValidPath,
 	decisionContextRailRequiresCash,
@@ -260,7 +261,12 @@ export function buildRailPreview(game: GameState, input: RailBuildInput): RailBu
 	const newCellKeys = path.filter((key) => !railKeys.has(key));
 	const reusedCellKeys = path.filter((key) => railKeys.has(key));
 	const cost = newCellKeys.length * RAIL_BUILD_COST_PER_CELL;
-	const blockReason = cost > game.cash ? decisionContextRailRequiresCash(cost, game.cash) : null;
+	const blockReason =
+		cost > game.cash
+			? decisionContextRailRequiresCash(cost, game.cash)
+			: newCellKeys.length === 0 && reusedCellKeys.length > 0
+				? decisionContextRailAlreadyConnected()
+				: null;
 
 	return { ...base, pathKeys: path, newCellKeys, reusedCellKeys, cost, blockReason };
 }

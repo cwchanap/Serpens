@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { createRailTickState, pullViaRail, pushSurplusViaRail } from './railShipping';
+import { simulateIndustryProduction } from './industryProduction';
+import { demolishRailSegment } from './railPlacement';
+import { buildRailNetwork, deriveRailSegments, railCellKey } from './rail';
 import type { GameState, IndustrialBuilding, IndustryCity, RailCell } from './types';
 
 function makeBuilding(
@@ -40,6 +43,7 @@ function straightRails(y: number, fromX: number, toX: number, level = 1): RailCe
 // industrialBuildings, and warehouse.
 function makeGame(city: IndustryCity, buildings: IndustrialBuilding[]): GameState {
 	return {
+		cash: 100_000,
 		industryCities: [city],
 		industrialBuildings: buildings,
 		warehouse: { capacity: 500, materials: {}, overflowUnits: 0, overflowCost: 0 }
@@ -404,5 +408,40 @@ describe('pushSurplusViaRail', () => {
 			toId: 'industry-building-2',
 			quantity: 3
 		});
+	});
+});
+
+describe('demolish-mid-trunk-then-retick integration', () => {
+	// Layout: grain-farm at (2,2), flour-mill at (10,2), trunk rail at y=4
+	// from x=2..11. The farm produces grain (raw stage); the mill pulls
+	// grain via rail (process stage). Demolishing the trunk and re-running
+	// the production tick must stop rail shipments and force the mill to
+	// import grain instead.
+	it('stops rail shipments and switches to imports after trunk demolish', () => {
+		const farm = makeBuilding('industry-building-1', 'grain-farm', 2, 2);
+		const mill = makeBuilding('industry-building-2', 'flour-mill', 10, 2);
+		const game = makeGame(makeCity(straightRails(4, 2, 11)), [farm, mill]);
+
+		// Tick 1: mill pulls grain from farm via rail.
+		const tick1 = simulateIndustryProduction(game);
+		expect(tick1.report.railShipments.length).toBeGreaterThan(0);
+		expect(tick1.report.railShipments.some((s) => s.materialId === 'grain')).toBe(true);
+
+		// Demolish the trunk segment containing cell (5,4).
+		const network = buildRailNetwork(tick1.game.industryCities[0]!);
+		const segments = deriveRailSegments(network, tick1.game.industrialBuildings);
+		const trunk = segments.find((seg) => seg.cellKeys.includes('5,4'))!;
+		expect(trunk).toBeDefined();
+		const afterDemolish = demolishRailSegment(tick1.game, 'rail-city', trunk.id);
+		const remainingKeys = new Set(
+			afterDemolish.industryCities[0]!.rails.map((c) => railCellKey(c.x, c.y))
+		);
+		expect(remainingKeys.has('5,4')).toBe(false);
+
+		// Tick 2: mill can no longer pull grain via rail — no rail shipments,
+		// and the mill must import grain to keep producing.
+		const tick2 = simulateIndustryProduction(afterDemolish);
+		expect(tick2.report.railShipments).toHaveLength(0);
+		expect(tick2.report.importedInputs.some((imp) => imp.materialId === 'grain')).toBe(true);
 	});
 });

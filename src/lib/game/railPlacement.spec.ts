@@ -133,6 +133,30 @@ describe('buildRailPreview', () => {
 		expect(new Set(preview.reusedCellKeys)).toEqual(new Set(['5,2', '6,2', '7,2', '8,2']));
 	});
 
+	it('reports already connected when every cell on the path is reused track', () => {
+		const game = makeGame(makeCity(straightRails(2, 4, 9)), [ORIGIN(), DEST()]);
+		const preview = buildRailPreview(game, {
+			originBuildingId: 'origin',
+			waypoints: [],
+			destinationBuildingId: 'dest'
+		});
+		expect(preview.blockReason?.code).toBe('railAlreadyConnected');
+		expect(preview.newCellKeys).toEqual([]);
+		expect(preview.reusedCellKeys.length).toBeGreaterThan(0);
+		expect(preview.cost).toBe(0);
+	});
+
+	it('buildRail is a no-op when already connected', () => {
+		const game = makeGame(makeCity(straightRails(2, 4, 9)), [ORIGIN(), DEST()]);
+		const result = buildRail(game, {
+			originBuildingId: 'origin',
+			waypoints: [],
+			destinationBuildingId: 'dest'
+		});
+		expect(result).toBe(game);
+		expect(result.cash).toBe(game.cash);
+	});
+
 	it('threads the path through a waypoint south of the direct line', () => {
 		const game = makeGame(makeCity([]), [ORIGIN(), DEST()]);
 		const direct = buildRailPreview(game, {

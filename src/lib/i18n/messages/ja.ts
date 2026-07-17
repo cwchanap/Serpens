@@ -853,6 +853,7 @@ export const ja = {
 					unknownBuilding: '不明な鉄道建物です。',
 					crossCity: '鉄道は異なる都市間をまたぐことはできません。',
 					noValidPath: '目的地までの有効な線路経路がありません。',
+					alreadyConnected: 'これらの建物はすでに鉄道で接続されています。',
 					requiresCash: 'この線路の敷設には {cost} が必要ですが、所持金は {cash} です。',
 					segmentAtMaxLevel: 'この線路区間はすでに最大レベルです。',
 					unknownSegment: '不明な線路区間です。',

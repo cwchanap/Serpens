@@ -21,6 +21,7 @@ export type DecisionContext =
 	| { code: 'railUnknownBuilding' }
 	| { code: 'railCrossCity' }
 	| { code: 'railNoValidPath' }
+	| { code: 'railAlreadyConnected' }
 	| { code: 'railRequiresCash'; cost: number; cash: number }
 	| { code: 'railSegmentAtMaxLevel' }
 	| { code: 'railUnknownSegment' }
@@ -104,6 +105,10 @@ export const decisionContextRailCrossCity = (): DecisionContext => ({
 
 export const decisionContextRailNoValidPath = (): DecisionContext => ({
 	code: 'railNoValidPath'
+});
+
+export const decisionContextRailAlreadyConnected = (): DecisionContext => ({
+	code: 'railAlreadyConnected'
 });
 
 export const decisionContextRailRequiresCash = (cost: number, cash: number): DecisionContext => ({
