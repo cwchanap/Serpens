@@ -189,6 +189,26 @@ describe('buildRailPreview', () => {
 		expect(preview.pathKeys).toEqual([]);
 	});
 
+	it('rejects identical origin and destination buildings before pathing', () => {
+		const game = makeGame(makeCity([]), [ORIGIN(), DEST()]);
+		const preview = buildRailPreview(game, {
+			originBuildingId: 'origin',
+			waypoints: [],
+			destinationBuildingId: 'origin'
+		});
+		expect(preview.blockReason?.code).toBe('railSelfConnected');
+		expect(preview.pathKeys).toEqual([]);
+		expect(preview.newCellKeys).toEqual([]);
+		expect(preview.cost).toBe(0);
+
+		const result = buildRail(game, {
+			originBuildingId: 'origin',
+			waypoints: [],
+			destinationBuildingId: 'origin'
+		});
+		expect(result).toBe(game);
+	});
+
 	it('routes rail from a west-side resource extractor across the internal separator to an east-side plant', () => {
 		// Acceptance for the raw -> process rail chain on a real generated city:
 		// the internal separator wall keeps three crossings (industry.ts), so a

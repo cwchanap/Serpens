@@ -852,6 +852,7 @@ export const ja = {
 				contexts: {
 					unknownBuilding: '不明な鉄道建物です。',
 					crossCity: '鉄道は異なる都市間をまたぐことはできません。',
+					selfConnected: '線路は異なる2つの建物を結ぶ必要があります。',
 					noValidPath: '目的地までの有効な線路経路がありません。',
 					alreadyConnected: 'これらの建物はすでに鉄道で接続されています。',
 					requiresCash: 'この線路の敷設には {cost} が必要ですが、所持金は {cash} です。',

@@ -20,6 +20,7 @@ export type DecisionContext =
 	| { code: 'supplierTerms' }
 	| { code: 'railUnknownBuilding' }
 	| { code: 'railCrossCity' }
+	| { code: 'railSelfConnected' }
 	| { code: 'railNoValidPath' }
 	| { code: 'railAlreadyConnected' }
 	| { code: 'railRequiresCash'; cost: number; cash: number }
@@ -101,6 +102,10 @@ export const decisionContextRailUnknownBuilding = (): DecisionContext => ({
 
 export const decisionContextRailCrossCity = (): DecisionContext => ({
 	code: 'railCrossCity'
+});
+
+export const decisionContextRailSelfConnected = (): DecisionContext => ({
+	code: 'railSelfConnected'
 });
 
 export const decisionContextRailNoValidPath = (): DecisionContext => ({

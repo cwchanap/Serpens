@@ -1922,6 +1922,7 @@ describe('saveCodec', () => {
 			supplierTerms: { code: 'supplierTerms' },
 			railUnknownBuilding: { code: 'railUnknownBuilding' },
 			railCrossCity: { code: 'railCrossCity' },
+			railSelfConnected: { code: 'railSelfConnected' },
 			railNoValidPath: { code: 'railNoValidPath' },
 			railAlreadyConnected: { code: 'railAlreadyConnected' },
 			railRequiresCash: { code: 'railRequiresCash', cost: 1000, cash: 500 },
@@ -1930,9 +1931,9 @@ describe('saveCodec', () => {
 			industrialTileHasRail: { code: 'industrialTileHasRail' }
 		};
 		const contexts = Object.values(ALL_DECISION_CONTEXTS);
-		// 25 = number of variants in the DecisionContext union. If this fails,
+		// 26 = number of variants in the DecisionContext union. If this fails,
 		// a variant was added or removed without updating ALL_DECISION_CONTEXTS.
-		expect(contexts).toHaveLength(25);
+		expect(contexts).toHaveLength(26);
 		const structuredDecisions = contexts.map((context, index) => ({
 			id: `d${index + 1}`,
 			title: 'T',

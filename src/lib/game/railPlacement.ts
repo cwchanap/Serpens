@@ -3,6 +3,7 @@ import {
 	decisionContextRailCrossCity,
 	decisionContextRailNoValidPath,
 	decisionContextRailRequiresCash,
+	decisionContextRailSelfConnected,
 	decisionContextRailUnknownBuilding,
 	type DecisionContext
 } from './decisionContext';
@@ -230,6 +231,11 @@ export function buildRailPreview(game: GameState, input: RailBuildInput): RailBu
 
 	if (!originBuilding || !destinationBuilding) {
 		return { ...base, blockReason: decisionContextRailUnknownBuilding() };
+	}
+
+	// A spur attached to only one building cannot transport material.
+	if (originBuilding.id === destinationBuilding.id) {
+		return { ...base, blockReason: decisionContextRailSelfConnected() };
 	}
 
 	// Cross-city endpoints are rejected before pathing; rails never span cities.

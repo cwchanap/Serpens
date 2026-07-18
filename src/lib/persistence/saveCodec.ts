@@ -1522,6 +1522,8 @@ function validateSavedDecisionContext(value: unknown, label: string): DecisionCo
 			return { code };
 		case 'railCrossCity':
 			return { code };
+		case 'railSelfConnected':
+			return { code };
 		case 'railNoValidPath':
 			return { code };
 		case 'railAlreadyConnected':
