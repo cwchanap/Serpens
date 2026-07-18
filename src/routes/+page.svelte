@@ -1713,6 +1713,7 @@
 					game={game ?? starterMapState}
 					cityId={industryCity.id}
 					segments={selectedRailSegments}
+					allSegments={industryRailSegments}
 					{i18n}
 					onClose={closeIndustryInspector}
 					onUpgradeSegment={upgradeRailSegmentHandler}

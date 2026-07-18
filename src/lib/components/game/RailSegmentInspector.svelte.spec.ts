@@ -27,10 +27,14 @@ function makeGame(rails: RailCell[], railUsage: Record<string, number>, cash = 9
 }
 
 function baseProps(game: GameState, segments: RailSegment[]) {
+	const city = game.industryCities[0]!;
+	const network = buildRailNetwork(city);
+	const allSegments = deriveRailSegments(network, game.industrialBuildings);
 	return {
 		game,
 		cityId: CITY_ID,
 		segments,
+		allSegments,
 		i18n: createI18n('en'),
 		onClose: vi.fn(),
 		onUpgradeSegment: vi.fn(),
