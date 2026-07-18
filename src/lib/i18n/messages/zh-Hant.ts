@@ -181,6 +181,7 @@ export const zhHant = {
 		demolish: '拆除（+{refund}）',
 		pickSegment: '交會點 — 選擇區段',
 		atMaxLevel: '最高等級',
+		notEnoughCash: '現金不足。',
 		cannotDemolish: '所有格均為共享交會點 — 無法拆除。'
 	},
 	worldMap: {

@@ -259,7 +259,10 @@ export function pushSurplusViaRail(state: RailTickState, producer: IndustrialBui
 		return;
 	}
 
-	const inventory = state.inventories.get(producer.id) ?? {};
+	// createRailTickState seeds an entry for every building, so this is
+	// always defined; the local is reassigned each iteration so the map
+	// lookup + ?? {} fallback inside the loop is unnecessary.
+	let inventory = state.inventories.get(producer.id)!;
 	const buildingType = INDUSTRIAL_BUILDING_TYPES[producer.typeId];
 	const recipe = buildingType?.recipeId ? PRODUCTION_RECIPES[buildingType.recipeId] : undefined;
 	// Push only recipe outputs; retain buffered inputs for local production.
@@ -303,12 +306,9 @@ export function pushSurplusViaRail(state: RailTickState, producer: IndustrialBui
 				return;
 			}
 
-			const removal = removeInventory(
-				state.inventories.get(producer.id) ?? {},
-				materialId,
-				quantity
-			);
-			state.inventories.set(producer.id, removal.inventory);
+			const removal = removeInventory(inventory, materialId, quantity);
+			inventory = removal.inventory;
+			state.inventories.set(producer.id, inventory);
 			state.warehouse = addWarehouseMaterial(state.warehouse, materialId, quantity);
 			consumeRailBudget(city.budget, best.path, quantity);
 			recordUsage(state, producer.cityId, best.path, quantity);

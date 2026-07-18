@@ -457,6 +457,10 @@ export function upgradeRailSegment(game: GameState, cityId: string, segmentId: s
 
 	const target = segment.minLevel + 1;
 	const cost = getSegmentUpgradeCost(segment, network);
+	// Defense-in-depth: the UI disables the upgrade button when cash is
+	// insufficient, so this guard should never fire in normal play. Return
+	// the state unchanged rather than throwing so a stale UI can't corrupt
+	// a save.
 	if (game.cash < cost) return game;
 	const upgradeKeys = new Set(
 		segment.cellKeys.filter((key) => (network.cells.get(key)?.level ?? RAIL_MAX_LEVEL) < target)
