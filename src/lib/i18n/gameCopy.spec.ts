@@ -631,7 +631,7 @@ describe('game copy builders', () => {
 	});
 
 	it('localizes every rail-construction decision context', () => {
-		expect.assertions(9);
+		expect.assertions(16);
 		const english = createI18n('en');
 		const japanese = createI18n('ja');
 		const baseDecision = {
@@ -704,6 +704,27 @@ describe('game copy builders', () => {
 		// Non-English catalog must not leave the copy identical to English.
 		expect(localizeDecision(railUnknownBuilding, japanese).context).not.toBe(
 			'Unknown rail building.'
+		);
+		expect(localizeDecision(railCrossCity, japanese).context).not.toBe(
+			'Rails cannot span different cities.'
+		);
+		expect(localizeDecision(railNoValidPath, japanese).context).not.toBe(
+			'No valid rail path to the destination.'
+		);
+		expect(localizeDecision(railAlreadyConnected, japanese).context).not.toBe(
+			'These buildings are already connected by rail.'
+		);
+		expect(localizeDecision(railRequiresCash, japanese).context).not.toBe(
+			'Building this rail costs $2,000 but you only have $500.'
+		);
+		expect(localizeDecision(railSegmentAtMaxLevel, japanese).context).not.toBe(
+			'This rail segment is already at the maximum level.'
+		);
+		expect(localizeDecision(railUnknownSegment, japanese).context).not.toBe(
+			'Unknown rail segment.'
+		);
+		expect(localizeDecision(industrialTileHasRail, japanese).context).not.toBe(
+			'This tile already has rail on it.'
 		);
 	});
 
