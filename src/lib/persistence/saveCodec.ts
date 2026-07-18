@@ -1524,6 +1524,8 @@ function validateSavedDecisionContext(value: unknown, label: string): DecisionCo
 			return { code };
 		case 'railNoValidPath':
 			return { code };
+		case 'railAlreadyConnected':
+			return { code };
 		case 'railRequiresCash':
 			return {
 				code,
