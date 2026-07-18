@@ -240,6 +240,7 @@ export const ja = {
 			imports: '輸入',
 			productionImports: '生産輸入',
 			warehouseOverflow: '倉庫あふれ',
+			railShipments: '鉄路出荷',
 			sevenDayNet: '7日純益',
 			thirtyDayNet: '30日純益'
 		},

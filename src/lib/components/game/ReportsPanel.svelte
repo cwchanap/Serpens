@@ -6,6 +6,13 @@
 
 	let { i18n, summary, stores }: { i18n: I18nBundle; summary: ReportSummary; stores: Store[] } =
 		$props();
+
+	const railShipmentUnits = $derived(
+		(summary.latest?.productionReport.railShipments ?? []).reduce(
+			(total, shipment) => total + shipment.quantity,
+			0
+		)
+	);
 </script>
 
 <section class="panel paper" aria-labelledby="reports-heading">
@@ -40,6 +47,10 @@
 			<div>
 				<span>{i18n.t('reportsPanel.metrics.warehouseOverflow')}</span>
 				<strong>{i18n.format.currency(summary.latest.productionReport.overflowCost)}</strong>
+			</div>
+			<div>
+				<span>{i18n.t('reportsPanel.metrics.railShipments')}</span>
+				<strong>{i18n.format.integer(railShipmentUnits)}</strong>
 			</div>
 			<div>
 				<span>{i18n.t('reportsPanel.metrics.sevenDayNet')}</span>

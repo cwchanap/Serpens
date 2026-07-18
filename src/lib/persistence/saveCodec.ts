@@ -328,8 +328,13 @@ function migrateV8SaveRecord(record: unknown): unknown {
 /**
  * v9 → v10: rail transport. Industry cities gain `rails: []`, industrial
  * buildings gain `inventory: {}`, and every persisted production report
- * gains `railShipments: []` / `railUsage: {}` (strict report validation
- * would reject historical reports otherwise).
+ * gains `railShipments` / `railUsage` (strict report validation would
+ * reject historical reports otherwise). Pre-rail, every `produced`
+ * movement flowed directly into the warehouse; the post-rail
+ * product-chain graph derives the warehouse in-edge from
+ * `push-warehouse` rail shipments, so the migration synthesizes one
+ * such shipment per produced movement to preserve that delivery signal
+ * for historical reports.
  */
 function migrateV9Game(game: unknown): unknown {
 	if (typeof game !== 'object' || game === null) return game;
@@ -355,11 +360,25 @@ function migrateV9Game(game: unknown): unknown {
 				const reportRecord = report as Record<string, unknown>;
 				const production = reportRecord.productionReport;
 				if (typeof production !== 'object' || production === null) return report;
+				const productionRecord = production as Record<string, unknown>;
+				const producedMovements = Array.isArray(productionRecord.produced)
+					? (productionRecord.produced as Array<Record<string, unknown>>)
+					: [];
+				const railShipments = producedMovements
+					.filter((movement) => movement.source === 'local')
+					.map((movement) => ({
+						materialId: movement.materialId,
+						quantity: movement.quantity,
+						value: movement.value,
+						kind: 'push-warehouse',
+						fromId: 'legacy',
+						toId: 'warehouse'
+					}));
 				return {
 					...reportRecord,
 					productionReport: {
-						...(production as Record<string, unknown>),
-						railShipments: [],
+						...productionRecord,
+						railShipments,
 						railUsage: {}
 					}
 				};

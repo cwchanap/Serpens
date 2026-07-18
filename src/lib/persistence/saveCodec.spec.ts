@@ -2169,6 +2169,41 @@ describe('saveCodec', () => {
 		).toBe(true);
 	});
 
+	test('v9 migration synthesizes push-warehouse shipments from produced movements', () => {
+		// Pre-rail, every produced movement flowed directly into the
+		// warehouse. The post-rail product-chain graph derives the
+		// warehouse in-edge from push-warehouse rail shipments, so the
+		// migration must synthesize one per produced movement or
+		// historical reports lose their warehouse delivery edges.
+		expect.assertions(3);
+		const report = createDailyReport({
+			productionReport: createDailyProductionReport({
+				produced: [
+					{ materialId: 'grain', quantity: 5, value: 15, source: 'local' },
+					{ materialId: 'flour', quantity: 3, value: 9, source: 'local' }
+				]
+			})
+		});
+		const game = createGame({ reports: [report] });
+		const v9Game = stripRailFields(game);
+		const record = {
+			...createManualSaveRecord(),
+			schemaVersion: 9 as unknown as typeof SAVE_SCHEMA_VERSION,
+			game: v9Game as GameState
+		};
+
+		const validated = validateSaveRecord(record);
+		const migrated = validated.game.reports[0]!.productionReport;
+		expect(migrated.railShipments).toHaveLength(2);
+		expect(migrated.railShipments.every((shipment) => shipment.kind === 'push-warehouse')).toBe(
+			true
+		);
+		expect(migrated.railShipments.map((shipment) => shipment.materialId)).toEqual([
+			'grain',
+			'flour'
+		]);
+	});
+
 	test('accepts stalled status and rail movement source at v10', () => {
 		expect.assertions(2);
 		const building = createIndustrialBuilding({ status: 'stalled' });

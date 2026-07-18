@@ -240,6 +240,7 @@ export const en = {
 			imports: 'Imports',
 			productionImports: 'Production imports',
 			warehouseOverflow: 'Warehouse overflow',
+			railShipments: 'Rail shipments',
 			sevenDayNet: '7-day net',
 			thirtyDayNet: '30-day net'
 		},
