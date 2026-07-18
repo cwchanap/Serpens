@@ -1895,6 +1895,17 @@ describe('IndustryMapScene', () => {
 			expect(handler).toHaveBeenCalledWith({ type: 'buildCancelled' });
 		});
 
+		test('suppresses buildCancelled when keyboard is disabled', () => {
+			expect.assertions(1);
+			const { scene, fireKeydownEscape } = setupScene();
+			const handler = vi.fn();
+			scene.setEventHandler(handler);
+			scene.create();
+			scene.setKeyboardEnabled(false);
+			fireKeydownEscape();
+			expect(handler).not.toHaveBeenCalled();
+		});
+
 		test('emits buildCancelled on right-click within the canvas', () => {
 			expect.assertions(1);
 			const { scene, zoneInstances, makePointer } = setupScene();

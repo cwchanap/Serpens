@@ -159,6 +159,11 @@ export class IndustryMapScene extends Phaser.Scene {
 	private dragStartPoint: { x: number; y: number } | null = null;
 	private lastDragPoint: { x: number; y: number } | null = null;
 	private hasUserAdjustedCamera = false;
+	// When false, the always-on keydown-ESC listener is suppressed so Escape
+	// presses that close a page-level overlay (save panel, build menu, etc.)
+	// do not also fire buildCancelled behind the overlay and silently pop a
+	// rail waypoint or exit rail mode.
+	private keyboardEnabled = true;
 
 	constructor() {
 		super({ key: 'IndustryMapScene' });
@@ -199,6 +204,16 @@ export class IndustryMapScene extends Phaser.Scene {
 
 	setEventHandler(handler: IndustryMapEventHandler | null): void {
 		this.eventHandler = handler;
+	}
+
+	/**
+	 * Enables or disables the scene's keyboard shortcuts (currently only the
+	 * Escape-to-cancel-build listener). Called by IndustryMap.svelte based on
+	 * whether a page-level overlay is open, so Escape that closes an overlay
+	 * does not also fire buildCancelled behind it.
+	 */
+	setKeyboardEnabled(enabled: boolean): void {
+		this.keyboardEnabled = enabled;
 	}
 
 	updateSnapshot(snapshot: IndustryMapSnapshot): void {
@@ -860,6 +875,7 @@ export class IndustryMapScene extends Phaser.Scene {
 	}
 
 	private handleBuildCancelKey(): void {
+		if (!this.keyboardEnabled) return;
 		this.eventHandler?.({ type: 'buildCancelled' });
 	}
 

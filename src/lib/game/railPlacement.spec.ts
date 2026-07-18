@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	buildRail,
 	buildRailPreview,
+	buildRailWaypointPreview,
 	demolishRailSegment,
 	getDemolishRemovableCellKeys,
 	getSegmentDemolishRefund,
@@ -177,6 +178,33 @@ describe('buildRailPreview', () => {
 		expect(routed.cost).toBe(routed.newCellKeys.length * 40);
 	});
 
+	it('reuses earlier leg cells when a later waypoint backtracks through them', () => {
+		// Origin at (2,2), waypoint1 at (8,2) east of origin, waypoint2 at
+		// (2,8) south of origin, destination at (10,8). Leg 1 builds cells
+		// from origin-adjacent to (8,2). Leg 2 from (8,2) to (2,8) backtracks
+		// west through leg 1's cells — those must be reused (cost 0), not
+		// rebuilt as parallel new cells.
+		const dest2 = makeBuilding('dest2', 10, 8);
+		const game = makeGame(makeCity([]), [ORIGIN(), dest2]);
+		const preview = buildRailPreview(game, {
+			originBuildingId: 'origin',
+			waypoints: [
+				{ x: 8, y: 2 },
+				{ x: 2, y: 8 }
+			],
+			destinationBuildingId: 'dest2'
+		});
+		expect(preview.blockReason).toBeNull();
+		// The path must include both waypoints.
+		expect(preview.pathKeys).toContain('8,2');
+		expect(preview.pathKeys).toContain('2,8');
+		// newCellKeys + reusedCellKeys must equal pathKeys with no duplicates.
+		const allKeys = new Set(preview.pathKeys);
+		expect(preview.newCellKeys.length + preview.reusedCellKeys.length).toBe(allKeys.size);
+		// The cost must be based only on new cells.
+		expect(preview.cost).toBe(preview.newCellKeys.length * 40);
+	});
+
 	it('reports no valid path when the destination is walled off by blocked terrain', () => {
 		const blocked = new Set(['10,1', '11,1', '10,4', '11,4', '9,2', '9,3', '12,2', '12,3']);
 		const game = makeGame(makeCity([], blocked), [ORIGIN(), DEST()]);
@@ -345,6 +373,45 @@ describe('buildRailPreview', () => {
 		// Zero-cost neighbors are batch-prepended in N/E/S/W order, so equal-cost
 		// forked exploration stays deterministic across runs.
 		expect(first.pathKeys).toEqual(['4,3', '4,4', '5,4', '6,4', '7,4', '8,4', '8,3', '9,3']);
+	});
+});
+
+describe('buildRailWaypointPreview', () => {
+	it('returns rail-legal origin-adjacent cells when no waypoints are set', () => {
+		const game = makeGame(makeCity([]), [ORIGIN()]);
+		const preview = buildRailWaypointPreview(game, 'origin', []);
+		expect(preview).not.toBeNull();
+		expect(preview!.pathKeys.length).toBeGreaterThan(0);
+		// Every cell must be adjacent to the origin footprint (2,2)-(3,3).
+		for (const key of preview!.pathKeys) {
+			const { x, y } = parseRailCellKey(key);
+			const isAdjacent =
+				(x >= 2 && x <= 3 && (y === 1 || y === 4)) || (y >= 2 && y <= 3 && (x === 1 || x === 4));
+			expect(isAdjacent).toBe(true);
+		}
+	});
+
+	it('threads the path from origin through waypoints', () => {
+		const game = makeGame(makeCity([]), [ORIGIN()]);
+		const preview = buildRailWaypointPreview(game, 'origin', [{ x: 8, y: 2 }]);
+		expect(preview).not.toBeNull();
+		expect(preview!.pathKeys).toContain('8,2');
+		expect(preview!.newCellKeys.length).toBeGreaterThan(0);
+	});
+
+	it('returns null when a waypoint is unreachable', () => {
+		// Block the entire column x=5 so the origin (at x=2-3) cannot reach
+		// the waypoint at (8,2) on the far side.
+		const blocked = new Set(Array.from({ length: SIZE }, (_, y) => `5,${y}`));
+		const game = makeGame(makeCity([], blocked), [ORIGIN()]);
+		const preview = buildRailWaypointPreview(game, 'origin', [{ x: 8, y: 2 }]);
+		expect(preview).toBeNull();
+	});
+
+	it('returns null when the origin building does not exist', () => {
+		const game = makeGame(makeCity([]), [ORIGIN()]);
+		const preview = buildRailWaypointPreview(game, 'nonexistent', []);
+		expect(preview).toBeNull();
 	});
 });
 

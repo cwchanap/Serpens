@@ -58,7 +58,9 @@ const NEIGHBOR_OFFSETS = [
 interface RailPathContext {
 	lookup: IndustryTileLookup;
 	occupiedTileIds: ReadonlySet<string>;
-	railKeys: ReadonlySet<string>;
+	// Mutable: findFullPath adds each leg's newly planned cells so later
+	// legs can reuse them at cost 0 instead of building a parallel path.
+	railKeys: Set<string>;
 }
 
 /**
@@ -189,6 +191,55 @@ function findLegPath(
 }
 
 /**
+ * Threads a path through a sequence of legs, starting from origin-adjacent
+ * coords. Each leg starts from the previous leg's endpoint. Newly planned
+ * cells are added to ctx.railKeys so later legs can reuse them at cost 0.
+ * Returns the de-duplicated ordered cell keys, or null when any leg has no
+ * reachable endpoint. When legTargets is empty, returns the rail-legal
+ * origin-adjacent cells (the valid attachment points for the origin building).
+ */
+function findPathThroughLegs(
+	ctx: RailPathContext,
+	originAdjacent: ReadonlyArray<{ x: number; y: number }>,
+	legTargets: Array<ReadonlySet<string>>
+): string[] | null {
+	if (legTargets.length === 0) {
+		// No legs: return the origin-adjacent cells that are rail-legal
+		// (existing rail or buildable empty tile) so the player can see
+		// where the rail will attach.
+		return originAdjacent
+			.map((coord) => railCellKey(coord.x, coord.y))
+			.filter((key) => {
+				const { x, y } = parseRailCellKey(key);
+				return cellCost(ctx, x, y) !== null;
+			});
+	}
+
+	let sourceKeys: string[] = originAdjacent.map((coord) => railCellKey(coord.x, coord.y));
+	const ordered: string[] = [];
+	const seen = new Set<string>();
+
+	for (const targets of legTargets) {
+		const legPath = findLegPath(ctx, sourceKeys, targets);
+		if (legPath === null) return null;
+
+		for (const key of legPath) {
+			if (!seen.has(key)) {
+				seen.add(key);
+				ordered.push(key);
+			}
+			// Add newly planned cells to the reusable path context so a
+			// later waypoint leg can traverse them at cost 0 instead of
+			// building an unnecessary parallel detour.
+			ctx.railKeys.add(key);
+		}
+		sourceKeys = [legPath[legPath.length - 1]!];
+	}
+
+	return ordered;
+}
+
+/**
  * Threads a full route through legs: origin-adjacent coords → waypoint₁ → … →
  * waypointₙ → destination-adjacent coords. Each leg starts from the previous
  * leg's endpoint. Returns the de-duplicated ordered cell keys, or null when any
@@ -206,24 +257,7 @@ function findFullPath(
 	}
 	legTargets.push(new Set(destinationAdjacent.map((coord) => railCellKey(coord.x, coord.y))));
 
-	let sourceKeys: string[] = originAdjacent.map((coord) => railCellKey(coord.x, coord.y));
-	const ordered: string[] = [];
-	const seen = new Set<string>();
-
-	for (const targets of legTargets) {
-		const legPath = findLegPath(ctx, sourceKeys, targets);
-		if (legPath === null) return null;
-
-		for (const key of legPath) {
-			if (!seen.has(key)) {
-				seen.add(key);
-				ordered.push(key);
-			}
-		}
-		sourceKeys = [legPath[legPath.length - 1]!];
-	}
-
-	return ordered;
+	return findPathThroughLegs(ctx, originAdjacent, legTargets);
 }
 
 function findBuilding(game: GameState, id: string): IndustrialBuilding | undefined {
@@ -274,7 +308,10 @@ export function buildRailPreview(game: GameState, input: RailBuildInput): RailBu
 	const lookup = createIndustryTileLookup(city);
 	const occupiedTileIds = getOccupiedIndustryTileIds(city, game.industrialBuildings, lookup);
 	const railKeys = new Set(city.rails.map((cell) => railCellKey(cell.x, cell.y)));
-	const ctx: RailPathContext = { lookup, occupiedTileIds, railKeys };
+	// Pass a copy so findFullPath can mutate the context's set (adding each
+	// leg's new cells for reuse by later legs) without corrupting the
+	// original railKeys used below to classify new vs reused cells.
+	const ctx: RailPathContext = { lookup, occupiedTileIds, railKeys: new Set(railKeys) };
 
 	const path = findFullPath(
 		ctx,
@@ -298,6 +335,42 @@ export function buildRailPreview(game: GameState, input: RailBuildInput): RailBu
 				: null;
 
 	return { ...base, pathKeys: path, newCellKeys, reusedCellKeys, cost, blockReason };
+}
+
+/**
+ * Partial preview for the origin/waypoint steps of rail routing, before a
+ * destination building is selected. When waypoints is empty, returns the
+ * rail-legal cells adjacent to the origin building's footprint (the valid
+ * attachment points). When waypoints exist, returns the path threaded from
+ * the origin through all waypoints. Returns null when the origin building
+ * or city cannot be found, or when a waypoint is unreachable.
+ */
+export function buildRailWaypointPreview(
+	game: GameState,
+	originBuildingId: string,
+	waypoints: Array<{ x: number; y: number }>
+): { pathKeys: string[]; newCellKeys: string[]; reusedCellKeys: string[] } | null {
+	const originBuilding = findBuilding(game, originBuildingId);
+	if (!originBuilding) return null;
+
+	const city = findCity(game, originBuilding.cityId);
+	if (!city) return null;
+
+	const lookup = createIndustryTileLookup(city);
+	const occupiedTileIds = getOccupiedIndustryTileIds(city, game.industrialBuildings, lookup);
+	const railKeys = new Set(city.rails.map((cell) => railCellKey(cell.x, cell.y)));
+	const ctx: RailPathContext = { lookup, occupiedTileIds, railKeys: new Set(railKeys) };
+
+	const legTargets = waypoints.map((wp) => new Set([railCellKey(wp.x, wp.y)]));
+	const path = findPathThroughLegs(ctx, getFootprintAdjacentCoords(originBuilding), legTargets);
+
+	if (path === null) return null;
+
+	return {
+		pathKeys: path,
+		newCellKeys: path.filter((key) => !railKeys.has(key)),
+		reusedCellKeys: path.filter((key) => railKeys.has(key))
+	};
 }
 
 export function buildRail(game: GameState, input: RailBuildInput): GameState {
