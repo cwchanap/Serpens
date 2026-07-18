@@ -158,6 +158,12 @@ export function buildWarehouseFlowGraph(game: GameState): ProductChainGraph {
 		materialIds.add(movement.materialId);
 	}
 
+	for (const shipment of report?.railShipments ?? []) {
+		if (shipment.kind === 'push-warehouse') {
+			materialIds.add(shipment.materialId);
+		}
+	}
+
 	if (materialIds.size === 0 && !report) {
 		return emptyGraph('warehouse-flow', 'Warehouse flow', 'noWarehouseData');
 	}
@@ -228,15 +234,19 @@ export function buildWarehouseFlowGraph(game: GameState): ProductChainGraph {
 		};
 		nodes.push(materialNode);
 
-		if (actual.produced > 0) {
+		// In-edge is actual warehouse delivery (push-warehouse), not local
+		// production that may still sit in a building buffer.
+		const warehouseDelivered = sumPushWarehouseDeliveries(report, materialId);
+
+		if (warehouseDelivered > 0) {
 			edges.push({
 				id: `material:${materialId}->warehouse`,
 				source: `material:${materialId}`,
 				target: 'warehouse',
 				materialId,
-				label: { code: 'in', quantity: actual.produced },
+				label: { code: 'in', quantity: warehouseDelivered },
 				requiredPerCycle: 0,
-				actualPerDay: actual.produced,
+				actualPerDay: warehouseDelivered,
 				health
 			});
 		}
@@ -645,11 +655,25 @@ export function materialHealth(input: {
 		return 'no-local-capacity';
 	}
 
-	if (input.actual.consumed > 0 && input.warehouseStock < input.actual.consumed) {
+	// Watch only warehouse-sourced demand. Local buffer and rail pulls satisfy
+	// consumption without touching warehouse stock, so counting them here marks
+	// healthy rail-fed processors as short when warehouse stock is zero.
+	const warehouseSourcedDemand = input.actual.warehousePulled;
+
+	if (warehouseSourcedDemand > 0 && input.warehouseStock < warehouseSourcedDemand) {
 		return 'watch';
 	}
 
 	return 'healthy';
+}
+
+function sumPushWarehouseDeliveries(
+	report: DailyProductionReport | null,
+	materialId: MaterialId
+): number {
+	return (report?.railShipments ?? [])
+		.filter((shipment) => shipment.kind === 'push-warehouse' && shipment.materialId === materialId)
+		.reduce((total, shipment) => total + shipment.quantity, 0);
 }
 
 export function bottleneckText(

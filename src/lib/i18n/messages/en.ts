@@ -857,6 +857,7 @@ export const en = {
 				contexts: {
 					unknownBuilding: 'Unknown rail building.',
 					crossCity: 'Rails cannot span different cities.',
+					selfConnected: 'A rail route needs two different buildings.',
 					noValidPath: 'No valid rail path to the destination.',
 					alreadyConnected: 'These buildings are already connected by rail.',
 					requiresCash: 'Building this rail costs {cost} but you only have {cash}.',

@@ -5,6 +5,7 @@ import {
 	addWarehouseMaterial,
 	getWarehouseCapacity,
 	getWarehouseUsed,
+	quantizeAtomicRecipeRatio,
 	removeWarehouseMaterial,
 	simulateIndustryProduction
 } from './industryProduction';
@@ -414,6 +415,38 @@ describe('rail-fed production', () => {
 		expect(mill.inventory.flour).toBe(90);
 		const grainImport = report.importedInputs.find((m) => m.materialId === 'grain');
 		expect(grainImport?.quantity).toBe(5);
+	});
+
+	test('partial multi-input runs stay atomic and never undercharge required ingredients', () => {
+		expect.assertions(4);
+		// snack-factory bufferCapacity 95; prefill snacks so only 1 free slot.
+		// Naive ratio 1/8 rounds flour to 1 but salt/oil/packaging to 0 while still
+		// producing 1 snack. Atomic quantize must refuse that partial run.
+		const snackFactory = makeProductionGame(makeIndustryCity([]), [
+			makeIndustryBuilding('snacks', 'snack-factory', 2, 2, { snacks: 94 })
+		]);
+
+		const { game, report } = simulateIndustryProduction(snackFactory);
+		const factory = game.industrialBuildings.find((b) => b.typeId === 'snack-factory')!;
+
+		expect(factory.status).toBe('stalled');
+		expect(factory.lastProduction).toHaveLength(0);
+		expect(report.produced.filter((m) => m.materialId === 'snacks')).toHaveLength(0);
+		expect(report.importedInputs.reduce((total, movement) => total + movement.quantity, 0)).toBe(0);
+	});
+
+	test('quantizeAtomicRecipeRatio drops scales that zero any required input', () => {
+		expect.assertions(2);
+		const snackInputs = [
+			{ materialId: 'flour' as const, quantity: 6 },
+			{ materialId: 'cooking-oil' as const, quantity: 2 },
+			{ materialId: 'salt' as const, quantity: 1 },
+			{ materialId: 'packaging' as const, quantity: 2 }
+		];
+		const snackOutputs = [{ materialId: 'snacks' as const, quantity: 8 }];
+
+		expect(quantizeAtomicRecipeRatio(1 / 8, 8, 1, snackInputs, snackOutputs)).toBe(0);
+		expect(quantizeAtomicRecipeRatio(0.5, 8, 1, snackInputs, snackOutputs)).toBe(0.5);
 	});
 
 	test('processor whose buffer is full of recipe inputs can still produce', () => {

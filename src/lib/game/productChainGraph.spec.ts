@@ -199,6 +199,16 @@ describe('warehouse flow graph', () => {
 				importedInputs: [{ materialId: 'packaging', quantity: 2, value: 10, source: 'import' }],
 				warehousePulls: [{ materialId: 'snacks', quantity: 6, value: 48, source: 'warehouse' }],
 				shopImports: [{ materialId: 'snacks', quantity: 4, value: 48, source: 'import' }],
+				railShipments: [
+					{
+						materialId: 'snacks',
+						quantity: 8,
+						value: 64,
+						kind: 'push-warehouse',
+						fromId: 'factory-1',
+						toId: 'warehouse-1'
+					}
+				],
 				importSpend: 58,
 				warehouseCapacity: 0,
 				warehouseUsed: 14,
@@ -224,6 +234,23 @@ describe('warehouse flow graph', () => {
 		expect(snacksInEdge?.label).toEqual({ code: 'in', quantity: 8 });
 		expect(snacksOutEdge?.actualPerDay).toBe(6);
 		expect(snacksOutEdge?.label).toEqual({ code: 'out', quantity: 6 });
+	});
+
+	test('omits material-to-warehouse edges when production stays in local buffers', () => {
+		expect.assertions(2);
+		let game = createNewGame('convenience', 20260518);
+		game = withLatestReport(
+			game,
+			emptyProductionReport({
+				produced: [{ materialId: 'snacks', quantity: 8, value: 64, source: 'local' }],
+				railShipments: []
+			})
+		);
+
+		const graph = buildWarehouseFlowGraph(game);
+
+		expect(graph.nodes.some((node) => node.id === 'material:snacks')).toBe(true);
+		expect(graph.edges.some((edge) => edge.id === 'material:snacks->warehouse')).toBe(false);
 	});
 
 	test('returns an empty graph before any warehouse stock or daily report exists', () => {
@@ -301,12 +328,12 @@ describe('bottleneckText', () => {
 });
 
 describe('materialHealth', () => {
-	test('flags a watch state when warehouse stock is below latest consumption', () => {
+	test('flags a watch state when warehouse stock is below warehouse-sourced demand', () => {
 		expect.assertions(1);
 		expect(
 			materialHealth({
 				hasReport: true,
-				actual: { ...emptyActualMetrics(), consumed: 10 },
+				actual: { ...emptyActualMetrics(), consumed: 10, warehousePulled: 10 },
 				warehouseStock: 3,
 				producerBuildingCount: 0,
 				hasProducerRecipe: false
@@ -314,15 +341,32 @@ describe('materialHealth', () => {
 		).toBe('watch');
 	});
 
-	test('defaults to healthy when stock covers consumption and no imports occurred', () => {
+	test('defaults to healthy when stock covers warehouse pulls and no imports occurred', () => {
 		expect.assertions(1);
 		expect(
 			materialHealth({
 				hasReport: true,
-				actual: { ...emptyActualMetrics(), consumed: 5 },
+				actual: { ...emptyActualMetrics(), consumed: 5, warehousePulled: 5 },
 				warehouseStock: 12,
 				producerBuildingCount: 0,
 				hasProducerRecipe: false
+			})
+		).toBe('healthy');
+	});
+
+	test('ignores rail and local consumption when judging warehouse stock pressure', () => {
+		expect.assertions(1);
+		expect(
+			materialHealth({
+				hasReport: true,
+				actual: {
+					...emptyActualMetrics(),
+					consumed: 10,
+					railPulled: 7
+				},
+				warehouseStock: 0,
+				producerBuildingCount: 1,
+				hasProducerRecipe: true
 			})
 		).toBe('healthy');
 	});

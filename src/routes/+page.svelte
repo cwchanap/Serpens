@@ -734,6 +734,8 @@
 		}
 
 		isBuildMenuOpen = false;
+		retailPlacementArchetypeId = null;
+		industryPlacementBuildingTypeId = null;
 		placementFeedback = null;
 		railBuildMode = { step: 'origin' };
 	}
@@ -1058,6 +1060,8 @@
 	function armRetailPlacement(archetypeId: ArchetypeId): void {
 		retailPlacementArchetypeId = archetypeId;
 		industryPlacementBuildingTypeId = null;
+		railBuildMode = { step: 'idle' };
+		railPreviewTargetBuildingId = null;
 		selectedTileId = null;
 		selectedIndustryTileId = null;
 		selectedWorldCityId = null;
@@ -1069,6 +1073,8 @@
 	function armIndustryPlacement(buildingTypeId: IndustrialBuildingTypeId): void {
 		industryPlacementBuildingTypeId = buildingTypeId;
 		retailPlacementArchetypeId = null;
+		railBuildMode = { step: 'idle' };
+		railPreviewTargetBuildingId = null;
 		selectedTileId = null;
 		selectedIndustryTileId = null;
 		selectedWorldCityId = null;

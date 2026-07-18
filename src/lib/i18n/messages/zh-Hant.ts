@@ -850,6 +850,7 @@ export const zhHant = {
 				contexts: {
 					unknownBuilding: '未知的鐵路建築。',
 					crossCity: '鐵路無法跨越不同城市。',
+					selfConnected: '鐵路線路需要連接兩座不同的建築。',
 					noValidPath: '沒有通往目的地的有效軌道路徑。',
 					alreadyConnected: '這些建築物已經由鐵路連接。',
 					requiresCash: '鋪設這段鐵路需要 {cost}，但你只有 {cash}。',

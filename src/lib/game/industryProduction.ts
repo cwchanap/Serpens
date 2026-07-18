@@ -9,6 +9,7 @@ import type {
 	IndustrialBuilding,
 	IndustrialBuildingType,
 	MaterialId,
+	MaterialQuantity,
 	WarehouseInventory
 } from './types';
 
@@ -183,6 +184,18 @@ export function simulateIndustryProduction(game: GameState): {
 			free = Math.max(0, buildingType.bufferCapacity - projectedUsed);
 			ratio = Math.min(desiredTotal, free) / desiredTotal;
 		}
+
+		// Independently rounding each multi-input line at ratio < 1 can zero out
+		// small ingredients while still producing output (e.g. 1 free snack slot
+		// charges flour but not salt/oil/packaging). Quantize down to a scale
+		// where every positive base input is represented, or produce nothing.
+		ratio = quantizeAtomicRecipeRatio(
+			ratio,
+			desiredTotal,
+			throughput,
+			recipe.inputs,
+			desiredOutputs
+		);
 
 		// Buffer is full and there's nowhere to put new output: skip acquiring
 		// inputs entirely, pay only the flat daily cost, and mark stalled.
@@ -412,4 +425,61 @@ function markBuildingBlocked(building: IndustrialBuilding): IndustrialBuilding {
 		lastProduction: [],
 		blockedDays: building.blockedDays + 1
 	};
+}
+
+/**
+ * Caps a fractional recipe scale so partial multi-input runs stay atomic:
+ * if any output rounds above zero, every positive base input must also round
+ * above zero. Walks integer output-unit counts downward from the buffer-limited
+ * scale so production never undercharges a required ingredient.
+ */
+export function quantizeAtomicRecipeRatio(
+	ratio: number,
+	desiredTotal: number,
+	throughput: number,
+	inputs: readonly MaterialQuantity[],
+	outputs: readonly MaterialQuantity[]
+): number {
+	if (ratio <= 0 || desiredTotal <= 0) {
+		return 0;
+	}
+
+	if (ratio >= 1) {
+		return isAtomicRecipeScale(1, throughput, inputs, outputs) ? 1 : 0;
+	}
+
+	const maxUnits = Math.max(0, Math.floor(ratio * desiredTotal + 1e-9));
+
+	for (let units = maxUnits; units >= 1; units -= 1) {
+		const candidate = units / desiredTotal;
+
+		if (isAtomicRecipeScale(candidate, throughput, inputs, outputs)) {
+			return candidate;
+		}
+	}
+
+	return 0;
+}
+
+function isAtomicRecipeScale(
+	ratio: number,
+	throughput: number,
+	inputs: readonly MaterialQuantity[],
+	outputs: readonly MaterialQuantity[]
+): boolean {
+	const hasOutput = outputs.some((output) => Math.round(output.quantity * ratio) > 0);
+
+	if (!hasOutput) {
+		return false;
+	}
+
+	for (const input of inputs) {
+		const base = input.quantity * throughput;
+
+		if (base > 0 && Math.round(base * ratio) <= 0) {
+			return false;
+		}
+	}
+
+	return true;
 }
