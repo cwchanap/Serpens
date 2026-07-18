@@ -198,7 +198,7 @@
 						: i18n.t('railSegmentInspector.atMaxLevel')}
 				</button>
 				{#if canUpgrade && !canAffordUpgrade}
-					<p class="hint">{i18n.t('industryTileInspector.notEnoughCash')}</p>
+					<p class="hint">{i18n.t('railSegmentInspector.notEnoughCash')}</p>
 				{/if}
 				<button
 					type="button"

@@ -181,6 +181,7 @@ export const ja = {
 		demolish: '撤去（+{refund}）',
 		pickSegment: '分岐点 — 区間を選択',
 		atMaxLevel: '最大レベル',
+		notEnoughCash: '現金が足りません。',
 		cannotDemolish: '全マスが分岐点の共有セル — 撤去できません。'
 	},
 	worldMap: {

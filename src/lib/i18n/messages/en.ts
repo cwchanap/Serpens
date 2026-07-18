@@ -181,6 +181,7 @@ export const en = {
 		demolish: 'Demolish (+{refund})',
 		pickSegment: 'Junction — pick a segment',
 		atMaxLevel: 'At max level',
+		notEnoughCash: 'Not enough cash.',
 		cannotDemolish: 'All cells are shared junctions — nothing to remove.'
 	},
 	worldMap: {
