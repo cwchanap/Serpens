@@ -730,8 +730,8 @@ describe('IndustryTileInspector', () => {
 			producedTotal: 0,
 			importedInputTotal: 0,
 			blockedDays: 0,
-			// flour before grain alphabetically; zero snacks must be excluded.
-			inventory: { flour: 8, grain: 12, snacks: 0 }
+			// grain inserted before flour to verify alphabetical sorting (not Object.entries order); zero snacks must be excluded.
+			inventory: { grain: 12, flour: 8, snacks: 0 }
 		};
 
 		const { rerender } = render(IndustryTileInspector, {
