@@ -60,6 +60,7 @@
 		buildRail,
 		buildRailPreview,
 		demolishRailSegment,
+		isRailWaypointTarget,
 		upgradeRailSegment
 	} from '$lib/game/railPlacement';
 	import {
@@ -113,7 +114,10 @@
 		openWorldCity,
 		selectWorldCity
 	} from '$lib/game/world';
-	import { decisionContextWorldCityNotAvailableYet } from '$lib/game/decisionContext';
+	import {
+		decisionContextRailNoValidPath,
+		decisionContextWorldCityNotAvailableYet
+	} from '$lib/game/decisionContext';
 	import type {
 		ArchetypeId,
 		CompanyPolicy,
@@ -687,8 +691,20 @@
 			return;
 		}
 
-		// Empty, rail-legal tile → push as a waypoint. Reachability is
-		// validated against the eventual destination via buildRailPreview.
+		// Empty, rail-legal tile → push as a waypoint. Reject blocked/locked/
+		// occupied cells up front (existing rail cells stay valid) so the
+		// waypoint is reachable by findFullPath; otherwise the next
+		// destination click would always report railNoValidPath and force the
+		// player to undo the bad waypoint. Reachability to the eventual
+		// destination is still validated via buildRailPreview.
+		if (!isRailWaypointTarget(game, industryCity.id, tile.x, tile.y)) {
+			placementFeedback = {
+				code: 'industry.rawPlacementBlocked',
+				context: decisionContextRailNoValidPath()
+			};
+			playSfx('sfx.build.invalid');
+			return;
+		}
 		placementFeedback = null;
 		railBuildMode = {
 			step: 'routing',

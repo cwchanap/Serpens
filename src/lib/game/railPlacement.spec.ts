@@ -6,6 +6,7 @@ import {
 	getDemolishRemovableCellKeys,
 	getSegmentDemolishRefund,
 	getSegmentUpgradeCost,
+	isRailWaypointTarget,
 	upgradeRailSegment
 } from './railPlacement';
 import { buildRailNetwork, deriveRailSegments, parseRailCellKey, railCellKey } from './rail';
@@ -507,5 +508,49 @@ describe('rail segment demolish', () => {
 		expect(result.industryCities[0]!.rails).toHaveLength(rails.length);
 		// original state untouched
 		expect(game.cash).toBe(1_000);
+	});
+});
+
+describe('isRailWaypointTarget', () => {
+	it('accepts an existing rail cell', () => {
+		expect.assertions(1);
+		const game = makeGame(makeCity(straightRails(2, 4, 8)), []);
+		expect(isRailWaypointTarget(game, CITY_ID, 5, 2)).toBe(true);
+	});
+
+	it('accepts a rail-legal empty industrial tile', () => {
+		expect.assertions(1);
+		const game = makeGame(makeCity([]), []);
+		expect(isRailWaypointTarget(game, CITY_ID, 6, 6)).toBe(true);
+	});
+
+	it('rejects a blocked tile', () => {
+		expect.assertions(1);
+		const game = makeGame(makeCity([], new Set(['7,7'])), []);
+		expect(isRailWaypointTarget(game, CITY_ID, 7, 7)).toBe(false);
+	});
+
+	it('rejects a locked tile', () => {
+		expect.assertions(1);
+		const city = makeCity([]);
+		const tile = city.tiles.find((candidate) => candidate.x === 6 && candidate.y === 6)!;
+		city.tiles = city.tiles.map((candidate) =>
+			candidate.id === tile.id ? { ...candidate, locked: true } : candidate
+		);
+		const game = makeGame(city, []);
+		expect(isRailWaypointTarget(game, CITY_ID, 6, 6)).toBe(false);
+	});
+
+	it('rejects a tile occupied by a building footprint', () => {
+		expect.assertions(1);
+		// ORIGIN() sits at (2,2); its 2x2 footprint covers (2,2),(3,2),(2,3),(3,3).
+		const game = makeGame(makeCity([]), [ORIGIN()]);
+		expect(isRailWaypointTarget(game, CITY_ID, 2, 2)).toBe(false);
+	});
+
+	it('returns false when the city does not exist', () => {
+		expect.assertions(1);
+		const game = makeGame(makeCity([]), []);
+		expect(isRailWaypointTarget(game, 'missing-city', 6, 6)).toBe(false);
 	});
 });

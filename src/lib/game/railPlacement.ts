@@ -81,6 +81,29 @@ function isRailLegalTile(
 }
 
 /**
+ * Whether a coordinate is a valid rail waypoint target for the UI click
+ * handler: an existing rail cell (always traversable, cost 0) or a rail-legal
+ * empty tile (cost 1). Mirrors `cellCost` so the UI can reject an invalid
+ * waypoint click — on blocked/locked/occupied ground — before appending it,
+ * instead of letting `findFullPath` fail with `railNoValidPath` on the next
+ * destination click and forcing the player to undo the bad waypoint.
+ */
+export function isRailWaypointTarget(
+	game: GameState,
+	cityId: string,
+	x: number,
+	y: number
+): boolean {
+	const city = findCity(game, cityId);
+	if (!city) return false;
+	const railKeys = new Set(city.rails.map((cell) => railCellKey(cell.x, cell.y)));
+	if (railKeys.has(railCellKey(x, y))) return true;
+	const lookup = createIndustryTileLookup(city);
+	const occupiedTileIds = getOccupiedIndustryTileIds(city, game.industrialBuildings, lookup);
+	return isRailLegalTile(lookup, occupiedTileIds, x, y);
+}
+
+/**
  * Cost of moving onto (x, y): 0 for an existing rail cell, 1 for a rail-legal
  * empty tile, `null` for an impassable coordinate.
  */
