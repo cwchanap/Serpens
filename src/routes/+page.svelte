@@ -565,6 +565,12 @@
 	// Text for the placement-status plaque while rail-building: a block
 	// reason (if any) always wins, then a ready-to-confirm cost summary once
 	// a valid destination attempt exists, then step-specific instructions.
+	// The block reason can come from either an explicit destination-click
+	// rejection (placementFeedback) or the derived preview recomputing
+	// against a freshly pushed waypoint that makes the route unreachable —
+	// handleRailBuildTileClick clears placementFeedback when a waypoint is
+	// added, so without surfacing preview.blockReason the plaque would
+	// silently fall back to "pick destination" and hide the real blocker.
 	function railBuildStatusText(): string {
 		const blocked = formatPlacementFeedback(placementFeedback);
 		if (blocked) {
@@ -572,7 +578,16 @@
 		}
 
 		const preview = railBuildPreview;
-		if (preview && !preview.blockReason) {
+		if (preview?.blockReason) {
+			return (
+				formatPlacementBlockReason(
+					{ code: 'industry.rawPlacementBlocked', context: preview.blockReason },
+					i18n
+				) ?? i18n.t('railBuild.pickDestination')
+			);
+		}
+
+		if (preview) {
 			return i18n.t('railBuild.confirm', {
 				cells: i18n.format.integer(preview.newCellKeys.length),
 				cost: i18n.format.currency(preview.cost)
