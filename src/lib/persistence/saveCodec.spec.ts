@@ -7,6 +7,7 @@ import {
 	isTileBuildable
 } from '$lib/game/city';
 import { formatLocation } from '$lib/game/placement';
+import type { DecisionContext } from '$lib/game/decisionContext';
 import { initializeStoreProducts } from '$lib/game/stock';
 import {
 	STARTER_STORE_CAP,
@@ -1889,172 +1890,56 @@ describe('saveCodec', () => {
 	});
 
 	test('validateSavedDecisionContext round-trips all structured context codes', () => {
-		// Exercises every case in validateSavedDecisionContext's switch so all
-		// branches are covered by successful validation, not just error paths.
-		expect.assertions(1);
-		const structuredDecisions = [
-			{
-				id: 'd1',
-				title: 'T',
-				context: { code: 'expansionUnavailable', storeCap: 3 },
-				expiresOnDay: 2,
-				options: [{ id: 'acknowledge', label: 'A', description: 'D', effects: {} }]
+		// Compile-time-exhaustive: ALL_DECISION_CONTEXTS is typed as
+		// Record<DecisionContext['code'], DecisionContext>, so adding a new
+		// variant to the union without adding a key here is a TypeScript error.
+		// Runtime: each context is round-tripped through validateSaveRecord, so
+		// a missing case in validateSavedDecisionContext's switch throws. This
+		// guards against the class of gap where a new DecisionContext code was
+		// added to the union and the factories but not the save-codec switch.
+		expect.assertions(2);
+		const ALL_DECISION_CONTEXTS: Record<DecisionContext['code'], DecisionContext> = {
+			expansionUnavailable: { code: 'expansionUnavailable', storeCap: 3 },
+			expansionCashBlocked: { code: 'expansionCashBlocked', cash: 1000 },
+			locationBlocked: { code: 'locationBlocked', reason: 'locked' },
+			locationGeneric: { code: 'locationGeneric' },
+			worldCityOpeningCost: { code: 'worldCityOpeningCost', cash: 18000 },
+			worldCityUnknown: { code: 'worldCityUnknown' },
+			worldCityNotAvailableYet: { code: 'worldCityNotAvailableYet', cityId: 'campus-junction' },
+			industrialUnknownTile: { code: 'industrialUnknownTile' },
+			industrialUnknownBuilding: { code: 'industrialUnknownBuilding' },
+			industrialLockedTile: { code: 'industrialLockedTile' },
+			industrialOccupiedTile: { code: 'industrialOccupiedTile' },
+			industrialRequiresResource: { code: 'industrialRequiresResource', resourceId: 'grain-field' },
+			industrialRequiresIndustrialTile: { code: 'industrialRequiresIndustrialTile' },
+			industrialRequiresCash: {
+				code: 'industrialRequiresCash',
+				buildingTypeId: 'warehouse',
+				cash: 1000
 			},
-			{
-				id: 'd2',
-				title: 'T',
-				context: { code: 'expansionCashBlocked', cash: 1000 },
-				expiresOnDay: 2,
-				options: [{ id: 'acknowledge', label: 'A', description: 'D', effects: {} }]
-			},
-			{
-				id: 'd3',
-				title: 'T',
-				context: { code: 'locationBlocked', reason: 'locked' },
-				expiresOnDay: 2,
-				options: [{ id: 'acknowledge', label: 'A', description: 'D', effects: {} }]
-			},
-			{
-				id: 'd4',
-				title: 'T',
-				context: { code: 'locationGeneric' },
-				expiresOnDay: 2,
-				options: [{ id: 'acknowledge', label: 'A', description: 'D', effects: {} }]
-			},
-			{
-				id: 'd5',
-				title: 'T',
-				context: { code: 'worldCityOpeningCost', cash: 18000 },
-				expiresOnDay: 2,
-				options: [{ id: 'acknowledge', label: 'A', description: 'D', effects: {} }]
-			},
-			{
-				id: 'd6',
-				title: 'T',
-				context: { code: 'worldCityUnknown' },
-				expiresOnDay: 2,
-				options: [{ id: 'acknowledge', label: 'A', description: 'D', effects: {} }]
-			},
-			{
-				id: 'd7',
-				title: 'T',
-				context: { code: 'worldCityNotAvailableYet', cityId: 'campus-junction' },
-				expiresOnDay: 2,
-				options: [{ id: 'acknowledge', label: 'A', description: 'D', effects: {} }]
-			},
-			{
-				id: 'd8',
-				title: 'T',
-				context: { code: 'industrialUnknownTile' },
-				expiresOnDay: 2,
-				options: [{ id: 'acknowledge', label: 'A', description: 'D', effects: {} }]
-			},
-			{
-				id: 'd9',
-				title: 'T',
-				context: { code: 'industrialUnknownBuilding' },
-				expiresOnDay: 2,
-				options: [{ id: 'acknowledge', label: 'A', description: 'D', effects: {} }]
-			},
-			{
-				id: 'd10',
-				title: 'T',
-				context: { code: 'industrialLockedTile' },
-				expiresOnDay: 2,
-				options: [{ id: 'acknowledge', label: 'A', description: 'D', effects: {} }]
-			},
-			{
-				id: 'd11',
-				title: 'T',
-				context: { code: 'industrialOccupiedTile' },
-				expiresOnDay: 2,
-				options: [{ id: 'acknowledge', label: 'A', description: 'D', effects: {} }]
-			},
-			{
-				id: 'd12',
-				title: 'T',
-				context: { code: 'industrialRequiresResource', resourceId: 'grain-field' },
-				expiresOnDay: 2,
-				options: [{ id: 'acknowledge', label: 'A', description: 'D', effects: {} }]
-			},
-			{
-				id: 'd13',
-				title: 'T',
-				context: { code: 'industrialRequiresIndustrialTile' },
-				expiresOnDay: 2,
-				options: [{ id: 'acknowledge', label: 'A', description: 'D', effects: {} }]
-			},
-			{
-				id: 'd14',
-				title: 'T',
-				context: { code: 'industrialRequiresCash', buildingTypeId: 'warehouse', cash: 1000 },
-				expiresOnDay: 2,
-				options: [{ id: 'acknowledge', label: 'A', description: 'D', effects: {} }]
-			},
-			{
-				id: 'd15',
-				title: 'T',
-				context: { code: 'cashPressure' },
-				expiresOnDay: 2,
-				options: [{ id: 'acknowledge', label: 'A', description: 'D', effects: {} }]
-			},
-			{
-				id: 'd16',
-				title: 'T',
-				context: { code: 'expansionOpportunity' },
-				expiresOnDay: 2,
-				options: [{ id: 'acknowledge', label: 'A', description: 'D', effects: {} }]
-			},
-			{
-				id: 'd17',
-				title: 'T',
-				context: { code: 'supplierTerms' },
-				expiresOnDay: 2,
-				options: [{ id: 'acknowledge', label: 'A', description: 'D', effects: {} }]
-			},
-			{
-				id: 'd18',
-				title: 'T',
-				context: { code: 'railUnknownBuilding' },
-				expiresOnDay: 2,
-				options: [{ id: 'acknowledge', label: 'A', description: 'D', effects: {} }]
-			},
-			{
-				id: 'd19',
-				title: 'T',
-				context: { code: 'railNoValidPath' },
-				expiresOnDay: 2,
-				options: [{ id: 'acknowledge', label: 'A', description: 'D', effects: {} }]
-			},
-			{
-				id: 'd20',
-				title: 'T',
-				context: { code: 'railRequiresCash', cost: 1000, cash: 500 },
-				expiresOnDay: 2,
-				options: [{ id: 'acknowledge', label: 'A', description: 'D', effects: {} }]
-			},
-			{
-				id: 'd21',
-				title: 'T',
-				context: { code: 'railSegmentAtMaxLevel' },
-				expiresOnDay: 2,
-				options: [{ id: 'acknowledge', label: 'A', description: 'D', effects: {} }]
-			},
-			{
-				id: 'd22',
-				title: 'T',
-				context: { code: 'railUnknownSegment' },
-				expiresOnDay: 2,
-				options: [{ id: 'acknowledge', label: 'A', description: 'D', effects: {} }]
-			},
-			{
-				id: 'd23',
-				title: 'T',
-				context: { code: 'industrialTileHasRail' },
-				expiresOnDay: 2,
-				options: [{ id: 'acknowledge', label: 'A', description: 'D', effects: {} }]
-			}
-		] as unknown as GameState['decisions'];
+			cashPressure: { code: 'cashPressure' },
+			expansionOpportunity: { code: 'expansionOpportunity' },
+			supplierTerms: { code: 'supplierTerms' },
+			railUnknownBuilding: { code: 'railUnknownBuilding' },
+			railCrossCity: { code: 'railCrossCity' },
+			railNoValidPath: { code: 'railNoValidPath' },
+			railAlreadyConnected: { code: 'railAlreadyConnected' },
+			railRequiresCash: { code: 'railRequiresCash', cost: 1000, cash: 500 },
+			railSegmentAtMaxLevel: { code: 'railSegmentAtMaxLevel' },
+			railUnknownSegment: { code: 'railUnknownSegment' },
+			industrialTileHasRail: { code: 'industrialTileHasRail' }
+		};
+		const contexts = Object.values(ALL_DECISION_CONTEXTS);
+		// 25 = number of variants in the DecisionContext union. If this fails,
+		// a variant was added or removed without updating ALL_DECISION_CONTEXTS.
+		expect(contexts).toHaveLength(25);
+		const structuredDecisions = contexts.map((context, index) => ({
+			id: `d${index + 1}`,
+			title: 'T',
+			context,
+			expiresOnDay: 2,
+			options: [{ id: 'acknowledge', label: 'A', description: 'D', effects: {} }]
+		})) as unknown as GameState['decisions'];
 		const record = createManualSaveRecord({ game: { decisions: structuredDecisions } });
 
 		expect(() => validateSaveRecord(record)).not.toThrow();
