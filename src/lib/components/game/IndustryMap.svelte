@@ -18,6 +18,12 @@
 		 * menu or management panels are open. Rendering resumes when false.
 		 */
 		paused?: boolean;
+		/**
+		 * When false, the scene's keyboard shortcuts (Escape-to-cancel-build)
+		 * are suppressed so Escape that closes a page-level overlay does not
+		 * also fire buildCancelled behind the overlay.
+		 */
+		keyboardEnabled?: boolean;
 		i18n: I18nBundle;
 	}
 
@@ -27,6 +33,7 @@
 		onBuildCancelled,
 		active = true,
 		paused = false,
+		keyboardEnabled = true,
 		i18n
 	}: Props = $props();
 
@@ -72,6 +79,13 @@
 		} else {
 			currentGame.resume?.();
 		}
+	});
+
+	// Suppress the scene's Escape-to-cancel-build listener while a page-level
+	// overlay is open so the same Escape press does not also pop a rail
+	// waypoint or exit rail mode behind the overlay.
+	$effect(() => {
+		scene?.setKeyboardEnabled(keyboardEnabled);
 	});
 
 	$effect(() => {

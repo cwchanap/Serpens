@@ -59,6 +59,7 @@
 	import {
 		buildRail,
 		buildRailPreview,
+		buildRailWaypointPreview,
 		demolishRailSegment,
 		isRailWaypointTarget,
 		upgradeRailSegment
@@ -433,6 +434,21 @@
 				isSavePanelOpen ||
 				isGameMenuOpen)
 	);
+	// When false, the industry map scene suppresses its Escape-to-cancel-build
+	// listener so Escape that closes any page-level overlay does not also fire
+	// buildCancelled behind the overlay. Covers every overlay the page-level
+	// Escape handler closes, including the alerts dropdown (which does not
+	// pause the map but still competes for the Escape key).
+	let railKeyboardEnabled = $derived(
+		!isSavePanelOpen &&
+			!isCheatSheetOpen &&
+			!isSupplyAdvisorOpen &&
+			!isStoreDetailOpen &&
+			!isBuildMenuOpen &&
+			!isGameMenuOpen &&
+			!isAlertsMenuOpen &&
+			activeManagementPanelId === null
+	);
 	let shouldShowRetailInspector = $derived(
 		selectedTile !== null && (!isPlacementModeActive || placementFeedback !== null)
 	);
@@ -477,16 +493,36 @@
 	});
 	let railPreview = $derived.by((): IndustryMapRailPreviewRender | null => {
 		const preview = railBuildPreview;
-		if (!preview) {
-			return null;
+		if (preview) {
+			const newCellKeys = new Set(preview.newCellKeys);
+			return {
+				cells: preview.pathKeys.map((key) => {
+					const { x, y } = parseRailCellKey(key);
+					return { x, y, isNew: newCellKeys.has(key) };
+				})
+			};
 		}
-		const newCellKeys = new Set(preview.newCellKeys);
-		return {
-			cells: preview.pathKeys.map((key) => {
-				const { x, y } = parseRailCellKey(key);
-				return { x, y, isNew: newCellKeys.has(key) };
-			})
-		};
+		// No destination selected yet: show a partial preview so the player
+		// can see legal attach cells after selecting an origin and watch the
+		// auto-path extend through waypoints as they are added.
+		const currentGame: GameState | null = game;
+		if (railBuildMode.step === 'routing' && currentGame) {
+			const waypointPreview = buildRailWaypointPreview(
+				currentGame,
+				railBuildMode.originBuildingId,
+				railBuildMode.waypoints
+			);
+			if (waypointPreview) {
+				const newCellKeys = new Set(waypointPreview.newCellKeys);
+				return {
+					cells: waypointPreview.pathKeys.map((key) => {
+						const { x, y } = parseRailCellKey(key);
+						return { x, y, isNew: newCellKeys.has(key) };
+					})
+				};
+			}
+		}
+		return null;
 	});
 	// True when a modal/overlay that should swallow game shortcuts is open. Used both
 	// to gate the `?` cheat-sheet toggle (so it doesn't stack on an open modal) and to
@@ -729,6 +765,14 @@
 				originBuildingId: railBuildMode.originBuildingId,
 				waypoints: railBuildMode.waypoints.slice(0, -1)
 			};
+			// Popping a waypoint invalidates the last destination attempt's
+			// feedback: the shortened route may now be valid (or have a
+			// different blocker), so clear the stale error and let the next
+			// destination click recompute it. Also drop the preview target so
+			// the old path highlight does not persist for a route that no
+			// longer matches.
+			railPreviewTargetBuildingId = null;
+			placementFeedback = null;
 			return;
 		}
 
@@ -1541,6 +1585,7 @@
 						onBuildCancelled={cancelRailBuildStep}
 						active={activeMapView === 'industry'}
 						paused={isMapPaused}
+						keyboardEnabled={railKeyboardEnabled}
 						{i18n}
 					/>
 				</div>

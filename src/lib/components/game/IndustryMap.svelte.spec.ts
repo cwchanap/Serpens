@@ -8,6 +8,7 @@ const i18n: I18nBundle = createI18n('en');
 
 const mockUpdateSnapshot = vi.fn();
 const mockSetEventHandler = vi.fn();
+const mockSetKeyboardEnabled = vi.fn();
 const mockPause = vi.fn();
 const mockResume = vi.fn();
 let shouldFail = false;
@@ -31,6 +32,7 @@ vi.mock('$lib/phaser/industryMapScene', () => {
 	function FakeIndustryMapScene(this: object) {
 		return {
 			setEventHandler: mockSetEventHandler,
+			setKeyboardEnabled: mockSetKeyboardEnabled,
 			updateSnapshot: mockUpdateSnapshot
 		};
 	}

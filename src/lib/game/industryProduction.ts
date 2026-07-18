@@ -301,18 +301,29 @@ export function simulateIndustryProduction(game: GameState): {
 		}
 
 		railState.inventories.set(building.id, inventory);
+		// Derive the final ratio from the rounded quantities that actually fit
+		// in the buffer. The projection above does not account for rail pulls
+		// replenishing consumed inputs, so addInventory can silently clip
+		// output below the ratio-predicted amount. Using the unclipped ratio
+		// for operating cost and status would charge for more production than
+		// occurred and misreport the building's state.
+		const actualProducedTotal = produced.reduce((total, movement) => total + movement.quantity, 0);
+		const scaledTotal = desiredOutputs.reduce(
+			(total, output) => total + Math.round(output.quantity * ratio),
+			0
+		);
+		const actualRatio = scaledTotal > 0 ? (actualProducedTotal / scaledTotal) * ratio : 0;
 		const operatingCost = Math.round(
-			recipe.operatingCost * throughput * ratio + buildingType.dailyOperatingCost
+			recipe.operatingCost * throughput * actualRatio + buildingType.dailyOperatingCost
 		);
 		report.importSpend += importSpend;
 		report.operatingCost += operatingCost;
 		buildingUpdates.set(building.id, {
 			...building,
-			status: ratio < 1 ? 'stalled' : importSpend > 0 ? 'imported-inputs' : 'produced',
+			status: actualRatio < 1 ? 'stalled' : importSpend > 0 ? 'imported-inputs' : 'produced',
 			inventory,
 			lastProduction: produced,
-			producedTotal:
-				building.producedTotal + produced.reduce((total, movement) => total + movement.quantity, 0),
+			producedTotal: building.producedTotal + actualProducedTotal,
 			importedInputTotal: building.importedInputTotal + importedInputQuantity,
 			blockedDays: 0
 		});
