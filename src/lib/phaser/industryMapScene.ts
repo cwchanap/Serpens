@@ -207,7 +207,19 @@ export class IndustryMapScene extends Phaser.Scene {
 	}
 
 	private renderSnapshot(): void {
-		if (!this.mapGraphics || !this.snapshot) {
+		// Scene services (textures, add, cameras, game.canvas) are not
+		// injected until create() runs. updateSnapshot can be called right
+		// after `new Phaser.Game()` and before the scene boots (see
+		// IndustryMap.svelte's startPhaser), so defer ALL rendering here —
+		// drawRails/createRailSprite dereference this.textures, which would
+		// throw and mark the map unavailable. create() calls renderSnapshot
+		// once booted, and updateSnapshot stores the latest snapshot in the
+		// meantime.
+		if (!this.mapGraphics) {
+			return;
+		}
+
+		if (!this.snapshot) {
 			this.occupancyGraphics?.clear();
 			this.placementPreviewGraphics?.clear();
 			this.updateCanvasPlacementPreviewAttributes(0, 0);

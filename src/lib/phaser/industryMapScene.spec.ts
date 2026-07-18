@@ -531,6 +531,21 @@ describe('IndustryMapScene', () => {
 			scene.updateSnapshot(snapshotWithoutTile);
 			expect((scene as unknown as { hoverTileId: string | null }).hoverTileId).toBeNull();
 		});
+
+		test('does not throw when called before create() with rails in the snapshot', () => {
+			// Reproduces the pre-boot path in IndustryMap.svelte's startPhaser:
+			// `new Phaser.Game()` does not inject scene services synchronously,
+			// so updateSnapshot runs before textures/add exist. A snapshot with
+			// rails must not crash (it would mark the map unavailable) and must
+			// be stored so create() can render it once the scene boots.
+			expect.assertions(2);
+			const scene = new IndustryMapScene();
+			const snapshot = makeSnapshot({
+				rails: [{ x: 0, y: 0, level: 1, connections: 5, utilization: 0 }]
+			});
+			expect(() => scene.updateSnapshot(snapshot)).not.toThrow();
+			expect((scene as unknown as { snapshot: IndustryMapSnapshot }).snapshot).toBe(snapshot);
+		});
 	});
 
 	describe('update', () => {
