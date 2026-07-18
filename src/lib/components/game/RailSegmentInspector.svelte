@@ -1,7 +1,6 @@
 <script lang="ts">
 	import {
 		buildRailNetwork,
-		deriveRailSegments,
 		parseRailCellKey,
 		railUsageKey,
 		RAIL_MAX_LEVEL,
@@ -22,14 +21,28 @@
 		game: GameState;
 		cityId: string;
 		segments: RailSegment[];
+		// All segments in the city, not just the ones at the selected cell.
+		// getDemolishRemovableCellKeys needs the full segment set to detect
+		// cells shared with segments that don't pass through the selected cell.
+		// Passed from +page.svelte (industryRailSegments) so the inspector
+		// doesn't re-derive the whole-city segment set on every render frame.
+		allSegments: RailSegment[];
 		i18n: I18nBundle;
 		onClose: () => void;
 		onUpgradeSegment: (segmentId: string) => void;
 		onDemolishSegment: (segmentId: string) => void;
 	}
 
-	let { game, cityId, segments, i18n, onClose, onUpgradeSegment, onDemolishSegment }: Props =
-		$props();
+	let {
+		game,
+		cityId,
+		segments,
+		allSegments,
+		i18n,
+		onClose,
+		onUpgradeSegment,
+		onDemolishSegment
+	}: Props = $props();
 
 	// Starts unset (rather than capturing segments[0]?.id at mount) so the
 	// fallback below re-derives correctly if the `segments` prop changes to a
@@ -45,12 +58,6 @@
 		const city = game.industryCities.find((candidate) => candidate.id === cityId);
 		return city ? buildRailNetwork(city) : { cityId, cells: new Map() };
 	});
-	// All segments in the city, not just the ones at the selected cell.
-	// getDemolishRemovableCellKeys needs the full segment set to detect
-	// cells shared with segments that don't pass through the selected cell.
-	const allSegments = $derived.by<RailSegment[]>(() =>
-		deriveRailSegments(network, game.industrialBuildings)
-	);
 	const railUsage = $derived(game.reports.at(-1)?.productionReport.railUsage ?? {});
 
 	const cellCount = $derived(selectedSegment?.cellKeys.length ?? 0);

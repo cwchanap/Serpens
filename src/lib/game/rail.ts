@@ -18,6 +18,12 @@ const NEIGHBOR_OFFSETS = [
 	{ dx: -1, dy: 0 }
 ] as const;
 
+// Cell keys are unpadded `${x},${y}` strings. They MUST NOT be sorted as raw
+// strings — "10,5" sorts before "2,5" lexicographically. Every sort over rail
+// cell keys goes through `compareKeys` (below), which parses via
+// `parseRailCellKey` and compares numerically (y, then x). Do not introduce a
+// `.sort()` on raw keys without routing it through `compareKeys`, or segment
+// ids, ordering, and determinism will silently break for grids wider than 9.
 export function railCellKey(x: number, y: number): string {
 	return `${x},${y}`;
 }
@@ -26,6 +32,8 @@ export function railUsageKey(cityId: string, x: number, y: number): string {
 	return `${cityId}:${x},${y}`;
 }
 
+// Inverse of `railCellKey`. Used by `compareKeys` and every BFS/neighbor
+// lookup that needs numeric coords from a stored key.
 export function parseRailCellKey(key: string): { x: number; y: number } {
 	const [x, y] = key.split(',').map(Number);
 	return { x: x ?? 0, y: y ?? 0 };
