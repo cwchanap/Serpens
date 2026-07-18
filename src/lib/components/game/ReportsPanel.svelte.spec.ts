@@ -203,6 +203,47 @@ describe('ReportsPanel', () => {
 		await expect.element(warningsList.getByText('Second Store')).toBeVisible();
 	});
 
+	it('renders the rail shipment total when the latest report has rail shipments', async () => {
+		expect.assertions(2);
+
+		render(ReportsPanel, {
+			i18n: createI18n('en'),
+			stores: [],
+			summary: {
+				...summary,
+				latest: {
+					...summary.latest!,
+					productionReport: {
+						...emptyProductionReport(),
+						railShipments: [
+							{
+								materialId: 'grain',
+								quantity: 12,
+								value: 36,
+								kind: 'push-warehouse',
+								fromId: 'farm-1',
+								toId: 'mill-1'
+							},
+							{
+								materialId: 'flour',
+								quantity: 8,
+								value: 24,
+								kind: 'pull-warehouse',
+								fromId: 'mill-1',
+								toId: 'warehouse-1'
+							}
+						]
+					}
+				}
+			}
+		});
+
+		const reportsRegion = page.getByRole('region', { name: 'Reports' });
+
+		await expect.element(reportsRegion.getByText('Rail shipments')).toBeVisible();
+		await expect.element(reportsRegion.getByText('20', { exact: true })).toBeVisible();
+	});
+
 	it('shows the empty state when there is no latest report', async () => {
 		expect.assertions(1);
 

@@ -240,6 +240,7 @@ export const zhHant = {
 			imports: '進口',
 			productionImports: '生產進口',
 			warehouseOverflow: '倉庫溢出',
+			railShipments: '鐵路出貨',
 			sevenDayNet: '7 日淨利',
 			thirtyDayNet: '30 日淨利'
 		},
