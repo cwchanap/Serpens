@@ -41,11 +41,7 @@ function makeTiles(width = 8, height = 8, blocked = new Set<string>()): Industry
 	return tiles;
 }
 
-function makeCity(
-	rails: RailCell[] = [],
-	blocked = new Set<string>(),
-	id = CITY_ID
-): IndustryCity {
+function makeCity(rails: RailCell[] = [], blocked = new Set<string>(), id = CITY_ID): IndustryCity {
 	return {
 		id,
 		name: id,
@@ -83,7 +79,11 @@ function makeBuilding(
 	};
 }
 
-function makeGame(cities: IndustryCity[], buildings: IndustrialBuilding[], cash = 1_000): GameState {
+function makeGame(
+	cities: IndustryCity[],
+	buildings: IndustrialBuilding[],
+	cash = 1_000
+): GameState {
 	return {
 		cash,
 		industryCities: cities,
@@ -112,9 +112,9 @@ describe('rail utility coverage', () => {
 		const budget = createRailBudget(network);
 		budget.remaining.set('1,2', 0);
 
-		expect(
-			findShippingPath(network, budget, ['missing', '1,2', '2,2', '2,2'], ['2,2'])
-		).toEqual(['2,2']);
+		expect(findShippingPath(network, budget, ['missing', '1,2', '2,2', '2,2'], ['2,2'])).toEqual([
+			'2,2'
+		]);
 	});
 
 	it('ignores exhausted and already-visited neighbors during BFS', () => {
@@ -160,7 +160,11 @@ describe('rail placement guard coverage', () => {
 
 	it('uses the max-level fallback for segment cells absent from the network', () => {
 		const network: RailNetwork = { cityId: CITY_ID, cells: new Map() };
-		const segment: RailSegment = { id: 'seg:missing', cellKeys: ['9,9'], minLevel: 1 };
+		const segment: RailSegment = {
+			id: 'seg:missing',
+			cellKeys: ['9,9'],
+			minLevel: 1
+		};
 		expect(getSegmentUpgradeCost(segment, network)).toBe(0);
 	});
 
@@ -183,7 +187,11 @@ describe('rail placement guard coverage', () => {
 		const network = buildRailNetwork(city);
 		const segments = deriveRailSegments(network, []);
 		const segment = segments[0]!;
-		const unrelated: RailSegment = { id: 'seg:other', cellKeys: ['7,7'], minLevel: 1 };
+		const unrelated: RailSegment = {
+			id: 'seg:other',
+			cellKeys: ['7,7'],
+			minLevel: 1
+		};
 		const removable = getDemolishRemovableCellKeys(segment, [segment, unrelated], network);
 		expect(removable).toEqual(new Set(segment.cellKeys));
 	});
