@@ -57,19 +57,24 @@ describe('RailSegmentInspector coverage fallbacks', () => {
 		await expect.element(page.getByRole('button', { name: /upgrade/i })).toBeEnabled();
 	});
 
-	it('falls back to the segment level for a missing cell and clamps utilization to 100%', async () => {
-		expect.assertions(1);
-		const segment: RailSegment = {
-			id: 'seg:8,8',
-			cellKeys: ['8,8'],
-			minLevel: 2
-		};
-		const game = makeGame([], { [`${CITY_ID}:8,8`]: 10 });
+	it(
+		'falls back to the segment level for a missing cell and clamps utilization to 100%',
+		async () => {
+			expect.assertions(1);
+			const segment: RailSegment = {
+				id: 'seg:8,8',
+				cellKeys: ['8,8'],
+				minLevel: 2
+			};
+			const game = makeGame([], { [`${CITY_ID}:8,8`]: 10 });
 
-		render(RailSegmentInspector, props(game, CITY_ID, [segment]));
+			render(RailSegmentInspector, props(game, CITY_ID, [segment]));
 
-		await expect.element(page.getByTestId('rail-segment-utilization')).toHaveTextContent('100%');
-	});
+			await expect
+				.element(page.getByTestId('rail-segment-utilization'))
+				.toHaveTextContent('100%');
+		}
+	);
 
 	it('skips non-positive cell levels when calculating utilization', async () => {
 		expect.assertions(2);
@@ -94,7 +99,11 @@ describe('RailSegmentInspector coverage fallbacks', () => {
 		render(RailSegmentInspector, props(game, CITY_ID, []));
 
 		await expect.element(page.getByTestId('rail-segment-cells')).not.toBeInTheDocument();
-		await expect.element(page.getByRole('button', { name: /upgrade/i })).not.toBeInTheDocument();
-		await expect.element(page.getByRole('button', { name: /demolish/i })).not.toBeInTheDocument();
+		await expect
+			.element(page.getByRole('button', { name: /upgrade/i }))
+			.not.toBeInTheDocument();
+		await expect
+			.element(page.getByRole('button', { name: /demolish/i }))
+			.not.toBeInTheDocument();
 	});
 });
