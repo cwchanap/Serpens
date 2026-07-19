@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { getIndustryTilesByResource } from './industry';
+import { INDUSTRIAL_BUILDING_TYPES, getIndustryTilesByResource } from './industry';
 import { buildIndustrialBuilding } from './industryPlacement';
 import {
 	addWarehouseMaterial,
@@ -272,6 +272,53 @@ describe('industry production simulation', () => {
 		expect(result.game.industrialBuildings[0]?.blockedDays).toBe(1);
 	});
 
+	test('marks buildings with a dangling recipeId as blocked', () => {
+		// A building type whose recipeId doesn't exist in PRODUCTION_RECIPES
+		// is a data-integrity error — the production tick must mark the
+		// building as blocked rather than crashing on a missing recipe.
+		expect.assertions(2);
+		const fakeTypeId = 'fake-dangling-recipe' as IndustrialBuildingTypeId;
+		const types = INDUSTRIAL_BUILDING_TYPES as Record<string, unknown>;
+		const original = types[fakeTypeId];
+		types[fakeTypeId] = {
+			id: fakeTypeId,
+			name: 'Fake Dangling Recipe',
+			buildCost: 100,
+			dailyOperatingCost: 1,
+			requiredResource: null,
+			requiresIndustrialTile: false,
+			recipeId: 'nonexistent-recipe',
+			warehouseCapacity: 0,
+			bufferCapacity: 10,
+			tier: 1
+		};
+		try {
+			const built = buildOnResource(
+				{ ...createNewGame('convenience', 20260512), cash: 100_000 },
+				'grain-field',
+				'grain-farm'
+			);
+			const game = {
+				...built,
+				industrialBuildings: built.industrialBuildings.map((building) => ({
+					...building,
+					typeId: fakeTypeId,
+					blockedDays: 0
+				}))
+			};
+
+			const result = simulateIndustryProduction(game);
+			expect(result.game.industrialBuildings[0]?.status).toBe('blocked');
+			expect(result.game.industrialBuildings[0]?.blockedDays).toBe(1);
+		} finally {
+			if (original === undefined) {
+				delete types[fakeTypeId];
+			} else {
+				types[fakeTypeId] = original;
+			}
+		}
+	});
+
 	test('getWarehouseUsed treats null material quantities as zero', () => {
 		expect.assertions(1);
 		const warehouse = {
@@ -447,6 +494,20 @@ describe('rail-fed production', () => {
 
 		expect(quantizeAtomicRecipeRatio(1 / 8, 8, 1, snackInputs, snackOutputs)).toBe(0);
 		expect(quantizeAtomicRecipeRatio(0.5, 8, 1, snackInputs, snackOutputs)).toBe(0.5);
+	});
+
+	test('quantizeAtomicRecipeRatio returns 0 when the scale is too small to round any output above zero', () => {
+		// With a tiny ratio and a large desiredTotal, the only candidate
+		// (units=1) yields output.quantity * (1/desiredTotal) < 0.5, so
+		// Math.round(...) = 0 for every output — isAtomicRecipeScale's
+		// !hasOutput early return fires and the loop exhausts to 0.
+		expect.assertions(2);
+		const inputs = [{ materialId: 'grain' as const, quantity: 10 }];
+		const outputs = [{ materialId: 'flour' as const, quantity: 1 }];
+
+		expect(quantizeAtomicRecipeRatio(0.001, 1000, 1, inputs, outputs)).toBe(0);
+		// Sanity: a large enough ratio still produces a valid scale.
+		expect(quantizeAtomicRecipeRatio(0.5, 1000, 1, inputs, outputs)).toBe(0.5);
 	});
 
 	test('processor whose buffer is full of recipe inputs can still produce', () => {
