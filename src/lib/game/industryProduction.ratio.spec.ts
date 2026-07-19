@@ -67,7 +67,7 @@ describe('production ratio edge cases', () => {
 				],
 				[
 					{ materialId: 'snacks', quantity: 0 },
-					{ materialId: 'packaged-food', quantity: 2 }
+					{ materialId: 'drinks', quantity: 2 }
 				]
 			)
 		).toBe(1);
