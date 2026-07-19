@@ -212,10 +212,6 @@ export function pullViaRail(
 			best.candidate.stock
 		);
 
-		if (quantity <= 0) {
-			return result;
-		}
-
 		if (best.candidate.kind === 'pull-warehouse') {
 			state.warehouse = removeWarehouseMaterial(state.warehouse, materialId, quantity).warehouse;
 			result.fromWarehouse += quantity;
@@ -301,10 +297,6 @@ export function pushSurplusViaRail(state: RailTickState, producer: IndustrialBui
 			}
 
 			const quantity = Math.min(stock, getPathCapacity(city.budget, best.path));
-
-			if (quantity <= 0) {
-				return;
-			}
 
 			const removal = removeInventory(inventory, materialId, quantity);
 			inventory = removal.inventory;

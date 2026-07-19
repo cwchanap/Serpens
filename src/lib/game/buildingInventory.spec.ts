@@ -60,4 +60,13 @@ describe('buildingInventory', () => {
 			}
 		}
 	});
+
+	it('clampInventoryToRecipe returns an empty record for a recipe-less building (warehouse)', () => {
+		// A warehouse has no recipeId, so clampInventoryToRecipe ditches every
+		// material and returns {} — warehouses are not recipe-buffered.
+		const warehouseType = INDUSTRIAL_BUILDING_TYPES.warehouse;
+		expect(warehouseType.recipeId).toBeFalsy();
+		const clamped = clampInventoryToRecipe({ grain: 5, flour: 10 }, warehouseType);
+		expect(clamped).toEqual({});
+	});
 });

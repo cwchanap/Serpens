@@ -1777,6 +1777,198 @@ describe('saveCodec', () => {
 		expect(validated.manualSlots[0]?.metadata.activeCityId).toBe('harbor-city');
 	});
 
+	test('v8 migration converts a string store location into a structured StoreLocation', () => {
+		// v8→v9: Store.location changed from a free-form English string to a
+		// structured { neighborhoodId, x, y } object. The neighborhood is
+		// looked up from the saved city tile matching the store's tileId.
+		expect.assertions(3);
+		const baseRecord = createManualSaveRecord();
+		const v8Record = {
+			...baseRecord,
+			schemaVersion: 8 as unknown as typeof SAVE_SCHEMA_VERSION,
+			game: {
+				...baseRecord.game,
+				cities: [
+					{
+						...baseRecord.game.cities[0]!,
+						tiles: [
+							{
+								id: 'harbor-city-1-1',
+								cityId: 'harbor-city',
+								x: 1,
+								y: 1,
+								neighborhood: 'downtown',
+								terrain: 'commercial',
+								feature: null,
+								demand: 50,
+								rent: 40,
+								footTraffic: 60,
+								customerFit: 70,
+								locked: false
+							}
+						]
+					}
+				],
+				stores: [
+					{
+						...baseRecord.game.stores[0]!,
+						location: 'Downtown (1, 1)' as unknown as GameState['stores'][number]['location']
+					}
+				]
+			}
+		} as unknown as SaveRecord;
+
+		const validated = validateSaveRecord(v8Record);
+		expect(validated.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
+		const store = validated.game.stores[0]!;
+		expect(store.location).toEqual({ neighborhoodId: 'downtown', x: 1, y: 1 });
+		expect(typeof store.location).toBe('object');
+	});
+
+	test('v8 migration defaults to downtown when the saved tile is missing from the city', () => {
+		// When the store's tileId doesn't match any tile in the city (e.g. the
+		// city was regenerated), the migration falls back to 'downtown' and
+		// copies mapX/mapY from the store record.
+		expect.assertions(1);
+		const baseRecord = createManualSaveRecord();
+		const v8Record = {
+			...baseRecord,
+			schemaVersion: 8 as unknown as typeof SAVE_SCHEMA_VERSION,
+			game: {
+				...baseRecord.game,
+				cities: [
+					{
+						...baseRecord.game.cities[0]!,
+						tiles: []
+					}
+				],
+				stores: [
+					{
+						...baseRecord.game.stores[0]!,
+						location: 'Old Town (3, 4)' as unknown as GameState['stores'][number]['location'],
+						mapX: 3,
+						mapY: 4
+					}
+				]
+			}
+		} as unknown as SaveRecord;
+
+		const validated = validateSaveRecord(v8Record);
+		expect(validated.game.stores[0]!.location).toEqual({
+			neighborhoodId: 'downtown',
+			x: 3,
+			y: 4
+		});
+	});
+
+	test('v8 migration defaults coordinates to 0 when mapX/mapY are not numbers', () => {
+		// The migration defaults non-number mapX/mapY to 0 in the location
+		// object. Validation subsequently rejects the corrupt store record
+		// (mapX must be finite), but the migration line still runs.
+		expect.assertions(1);
+		const baseRecord = createManualSaveRecord();
+		const v8Record = {
+			...baseRecord,
+			schemaVersion: 8 as unknown as typeof SAVE_SCHEMA_VERSION,
+			game: {
+				...baseRecord.game,
+				cities: [{ ...baseRecord.game.cities[0]!, tiles: [] }],
+				stores: [
+					{
+						...baseRecord.game.stores[0]!,
+						location: 'Downtown' as unknown as GameState['stores'][number]['location'],
+						mapX: 'bad' as unknown as number,
+						mapY: 'bad' as unknown as number
+					}
+				]
+			}
+		} as unknown as SaveRecord;
+
+		expect(() => validateSaveRecord(v8Record)).toThrow(SaveDataError);
+	});
+
+	test('v8 migration skips a store whose location is already structured', () => {
+		// A store with a non-string location is left untouched — the migration
+		// only transforms string locations.
+		expect.assertions(1);
+		const baseRecord = createManualSaveRecord();
+		const v8Record = {
+			...baseRecord,
+			schemaVersion: 8 as unknown as typeof SAVE_SCHEMA_VERSION,
+			game: {
+				...baseRecord.game,
+				cities: [{ ...baseRecord.game.cities[0]!, tiles: [] }],
+				stores: [
+					{
+						...baseRecord.game.stores[0]!,
+						location: { neighborhoodId: 'mall', x: 5, y: 6 }
+					}
+				]
+			}
+		} as unknown as SaveRecord;
+
+		const validated = validateSaveRecord(v8Record);
+		expect(validated.game.stores[0]!.location).toEqual({
+			neighborhoodId: 'mall',
+			x: 5,
+			y: 6
+		});
+	});
+
+	test('v8 migration handles a city with non-array tiles by defaulting to downtown', () => {
+		// When the matching city's tiles field is not an array, the migration
+		// breaks out of the loop and defaults neighborhoodId to 'downtown'.
+		// Validation subsequently rejects the corrupt city, but the migration
+		// branch still runs.
+		expect.assertions(1);
+		const baseRecord = createManualSaveRecord();
+		const v8Record = {
+			...baseRecord,
+			schemaVersion: 8 as unknown as typeof SAVE_SCHEMA_VERSION,
+			game: {
+				...baseRecord.game,
+				cities: [
+					{
+						...baseRecord.game.cities[0]!,
+						tiles: null as unknown as GameState['cities'][number]['tiles']
+					}
+				],
+				stores: [
+					{
+						...baseRecord.game.stores[0]!,
+						location: 'Downtown (1, 1)' as unknown as GameState['stores'][number]['location']
+					}
+				]
+			}
+		} as unknown as SaveRecord;
+
+		expect(() => validateSaveRecord(v8Record)).toThrow(SaveDataError);
+	});
+
+	test('v8 migration skips non-object cities in the cities array', () => {
+		// A non-object city entry is skipped via `continue` in the migration
+		// loop; the store defaults to 'downtown'. Validation rejects the
+		// corrupt city, but the migration branch still runs.
+		expect.assertions(1);
+		const baseRecord = createManualSaveRecord();
+		const v8Record = {
+			...baseRecord,
+			schemaVersion: 8 as unknown as typeof SAVE_SCHEMA_VERSION,
+			game: {
+				...baseRecord.game,
+				cities: [null as unknown as GameState['cities'][number]],
+				stores: [
+					{
+						...baseRecord.game.stores[0]!,
+						location: 'Downtown (1, 1)' as unknown as GameState['stores'][number]['location']
+					}
+				]
+			}
+		} as unknown as SaveRecord;
+
+		expect(() => validateSaveRecord(v8Record)).toThrow(SaveDataError);
+	});
+
 	test('validateSavedDecisionContext rejects an unknown context code', () => {
 		expect.assertions(2);
 		const record = createManualSaveRecord({
