@@ -27,9 +27,9 @@ function withRails(rails: Array<{ x: number; y: number; level: number }>) {
 
 describe('rail save validation edge cases', () => {
 	test('accepts a unique in-bounds rail cell', () => {
-		expect(validateSaveRecord(withRails([{ x: 1, y: 1, level: 1 }])).game.industryCities[0]?.rails).toEqual([
-			{ x: 1, y: 1, level: 1 }
-		]);
+		expect(
+			validateSaveRecord(withRails([{ x: 1, y: 1, level: 1 }])).game.industryCities[0]?.rails
+		).toEqual([{ x: 1, y: 1, level: 1 }]);
 	});
 
 	test('rejects fractional x coordinates', () => {
