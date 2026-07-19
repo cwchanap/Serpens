@@ -81,14 +81,18 @@ jobs:
       # CODECOV_TOKEN. Requires job permissions.id-token: write above. Tokenless
       # public uploads still land data on codecov.io, but PR checks/comments need
       # a verified identity — OIDC is that path for same-repo GitHub Actions.
+      # Fork PRs cannot mint a write-scoped OIDC credential (and have no access
+      # to repo secrets), so disable OIDC there and keep the upload non-fatal to
+      # avoid breaking the Unit Tests check after tests pass. See
+      # codecov/codecov-action#1821, #1435.
       - name: Upload coverage to Codecov
         if: ${{ !cancelled() }}
         uses: codecov/codecov-action@v5
         with:
-          use_oidc: true
+          use_oidc: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
           files: ./coverage/lcov.info
           flags: unit
-          fail_ci_if_error: true
+          fail_ci_if_error: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
           verbose: true
 
       - name: Upload coverage artifact
