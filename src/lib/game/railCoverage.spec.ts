@@ -51,7 +51,11 @@ function makeCity(
 		name: id,
 		width: 8,
 		height: 8,
-		tiles: makeTiles(8, 8, blocked).map((tile) => ({ ...tile, id: `${id}-${tile.x}-${tile.y}`, cityId: id })),
+		tiles: makeTiles(8, 8, blocked).map((tile) => ({
+			...tile,
+			id: `${id}-${tile.x}-${tile.y}`,
+			cityId: id
+		})),
 		rails
 	};
 }
@@ -108,9 +112,9 @@ describe('rail utility coverage', () => {
 		const budget = createRailBudget(network);
 		budget.remaining.set('1,2', 0);
 
-		expect(findShippingPath(network, budget, ['missing', '1,2', '2,2', '2,2'], ['2,2'])).toEqual([
-			'2,2'
-		]);
+		expect(
+			findShippingPath(network, budget, ['missing', '1,2', '2,2', '2,2'], ['2,2'])
+		).toEqual(['2,2']);
 	});
 
 	it('ignores exhausted and already-visited neighbors during BFS', () => {
