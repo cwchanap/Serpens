@@ -87,6 +87,17 @@ describe('RailSegmentInspector coverage fallbacks', () => {
 		await expect.element(page.getByTestId('rail-segment-level')).toHaveTextContent('0 / 5');
 	});
 
+	it('returns zero utilization for a selected segment with no cells', async () => {
+		expect.assertions(2);
+		const segment: RailSegment = { id: 'seg:empty', cellKeys: [], minLevel: 1 };
+		const game = makeGame([], {}, true);
+
+		render(RailSegmentInspector, props(game, CITY_ID, [segment]));
+
+		await expect.element(page.getByTestId('rail-segment-cells')).toHaveTextContent('0');
+		await expect.element(page.getByTestId('rail-segment-utilization')).toHaveTextContent('0%');
+	});
+
 	it('renders the no-selection path without segment statistics or actions', async () => {
 		expect.assertions(3);
 		const game = makeGame([], undefined, false);
