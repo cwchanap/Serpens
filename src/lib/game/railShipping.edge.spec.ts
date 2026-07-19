@@ -91,14 +91,7 @@ describe('rail shipping edge cases', () => {
 	});
 
 	it('returns zero when the consumer city is absent from the rail tick state', () => {
-		const consumer = makeBuilding(
-			'industry-building-1',
-			'flour-mill',
-			10,
-			2,
-			{},
-			'missing-city'
-		);
+		const consumer = makeBuilding('industry-building-1', 'flour-mill', 10, 2, {}, 'missing-city');
 		const state = createRailTickState(
 			makeGame([makeCity('rail-city', LINE)], [consumer]),
 			makeWarehouse({ grain: 10 })
@@ -125,10 +118,7 @@ describe('rail shipping edge cases', () => {
 		);
 		const state = createRailTickState(
 			makeGame(
-				[
-					makeCity('rail-city', LINE),
-					makeCity('other-city', straightRails(4, 2, 3))
-				],
+				[makeCity('rail-city', LINE), makeCity('other-city', straightRails(4, 2, 3))],
 				[localFarm, localWarehouse, consumer, remoteFarm]
 			),
 			makeWarehouse({ grain: 0 })
