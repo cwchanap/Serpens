@@ -254,13 +254,13 @@ export function resolveDecision(game: GameState, decisionId: string, optionId: s
 		return game;
 	}
 
-	return {
+	return refreshWorldProgress({
 		...game,
 		cash: game.cash + (option.effects.cash ?? 0),
 		scorecard: applyScoreEffects(game.scorecard, option),
 		stores: game.stores.map((store) => applyStoreEffects(store, option)),
 		decisions: game.decisions.filter((candidate) => candidate.id !== decisionId)
-	};
+	});
 }
 
 export function upgradeStore(game: GameState, storeId: string): GameState {

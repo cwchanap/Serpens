@@ -16,6 +16,10 @@ import {
 import { INDUSTRIAL_BUILDING_TYPES, MATERIALS } from '$lib/game/industry';
 import { getWarehouseCapacity, recalculateWarehousePressure } from '$lib/game/industryProduction';
 import {
+	createIndustryTileLookup,
+	getIndustryBuildingFootprint
+} from '$lib/game/industryFootprint';
+import {
 	getStoreStaffCapacityBonus,
 	getUnlockedCategoryCount,
 	MAX_STORE_LEVEL,
@@ -35,7 +39,9 @@ import type {
 	City,
 	CityTile,
 	GameState,
+	IndustrialBuilding,
 	IndustrialBuildingTypeId,
+	IndustryCity,
 	StoreProduct,
 	WorldCityId
 } from '$lib/game/types';
@@ -670,6 +676,10 @@ export function validateSaveRecord(value: unknown): SaveRecord {
 	};
 }
 
+/**
+ * Validates the current required schema while preserving additional own data
+ * properties. Extras are allowed only when the whole state is structured-cloneable.
+ */
 export function validateCurrentGameState(value: unknown): GameState {
 	const game = requireRecord(value, 'Saved game');
 	const policy = requireRecord(game.policy, 'Saved game policy');
@@ -706,14 +716,26 @@ export function validateCurrentGameState(value: unknown): GameState {
 		validateSavedCity(city, label);
 		validateCurrentRetailCitySize(city, label);
 	});
-	requireString(game.activeCityId, 'Saved game activeCityId');
+	const activeCityId = requireString(game.activeCityId, 'Saved game activeCityId');
+	if (!cities.some((city) => (city as Record<string, unknown>).id === activeCityId)) {
+		throw new SaveDataError('Saved game activeCityId must reference a materialized city');
+	}
 	industryCities.forEach((city, index) =>
 		validateSavedIndustryCity(city, `Saved game industryCities[${index}]`)
 	);
-	requireString(game.activeIndustryCityId, 'Saved game activeIndustryCityId');
+	const activeIndustryCityId = requireString(
+		game.activeIndustryCityId,
+		'Saved game activeIndustryCityId'
+	);
+	if (
+		!industryCities.some((city) => (city as Record<string, unknown>).id === activeIndustryCityId)
+	) {
+		throw new SaveDataError('Saved game activeIndustryCityId must reference a materialized city');
+	}
 	industrialBuildings.forEach((building, index) =>
 		validateSavedIndustrialBuilding(building, `Saved game industrialBuildings[${index}]`)
 	);
+	validateCurrentIndustrialBuildingPlacements(industrialBuildings, industryCities);
 	validateSavedWarehouse(game.warehouse, 'Saved game warehouse');
 	stores.forEach((store, index) => validateSavedStore(store, `Saved game stores[${index}]`));
 	validateCurrentRetailStorePlacements(stores, cities);
@@ -773,7 +795,13 @@ export function validateCurrentGameState(value: unknown): GameState {
 		}
 	}
 
-	return structuredClone(currentGame);
+	try {
+		return structuredClone(currentGame);
+	} catch {
+		throw new SaveDataError(
+			'Saved game must contain only structured-cloneable own data properties'
+		);
+	}
 }
 
 function validateSlotInvariants(autoSave: SaveRecord | null, manualSlots: SaveRecord[]): void {
@@ -1265,7 +1293,16 @@ function normalizeSavedRetailStorePlacements(
 		}
 
 		const record = store as Record<string, unknown>;
-		if (typeof record.cityId !== 'string') {
+		if (
+			typeof record.cityId !== 'string' ||
+			record.cityId.length === 0 ||
+			typeof record.tileId !== 'string' ||
+			record.tileId.length === 0 ||
+			typeof record.mapX !== 'number' ||
+			!Number.isFinite(record.mapX) ||
+			typeof record.mapY !== 'number' ||
+			!Number.isFinite(record.mapY)
+		) {
 			onInvalidPlacement?.(index);
 			return store;
 		}
@@ -1275,11 +1312,6 @@ function normalizeSavedRetailStorePlacements(
 			onInvalidPlacement?.(index);
 			return store;
 		}
-		// Synthetic city payloads smaller than the retail footprint have no
-		// placement topology to validate. Production-sized cities must satisfy the
-		// same footprint rules as live placement, even when sandbox relocation
-		// cannot find a replacement tile.
-		if (city.width < 2 || city.height < 2) return store;
 		onInvalidPlacement?.(index);
 
 		const occupiedTileIds = getOccupiedTileIds(occupiedTileIdsByCity, city.id);
@@ -1335,6 +1367,68 @@ function validateCurrentRetailStorePlacements(stores: unknown[], cities: unknown
 		throw new SaveDataError(
 			`Saved game stores[${invalidIndex}] placement must already match a buildable, non-overlapping city footprint`
 		);
+	}
+}
+
+function validateCurrentIndustrialBuildingPlacements(
+	buildings: unknown[],
+	industryCities: unknown[]
+): void {
+	const citiesById = new Map(
+		(industryCities as IndustryCity[]).map((city) => [city.id, city] as const)
+	);
+	const occupiedTileIdsByCity = new Map<string, Set<string>>();
+
+	for (const [index, building] of (buildings as IndustrialBuilding[]).entries()) {
+		const label = `Saved game industrialBuildings[${index}] placement`;
+		const city = citiesById.get(building.cityId);
+		if (!city) {
+			throw new SaveDataError(`${label} must reference a materialized industry city`);
+		}
+		const lookup = createIndustryTileLookup(city);
+		const anchor = lookup.byId.get(building.tileId);
+		if (!anchor) {
+			throw new SaveDataError(`${label} must reference an existing industry tile`);
+		}
+		if (building.mapX !== anchor.x || building.mapY !== anchor.y) {
+			throw new SaveDataError(`${label} coordinates must match its anchor tile`);
+		}
+
+		const footprint = getIndustryBuildingFootprint(lookup, anchor);
+		if (footprint.missingCoordinates.length > 0 || footprint.tiles.length !== 4) {
+			throw new SaveDataError(`${label} footprint must fit entirely within its city`);
+		}
+		if (footprint.tiles.some((tile) => tile.locked)) {
+			throw new SaveDataError(`${label} footprint must contain only unlocked tiles`);
+		}
+		if (
+			city.rails.some((rail) =>
+				footprint.tiles.some((tile) => tile.x === rail.x && tile.y === rail.y)
+			)
+		) {
+			throw new SaveDataError(`${label} footprint must not overlap rail`);
+		}
+
+		const buildingType = INDUSTRIAL_BUILDING_TYPES[building.typeId];
+		if (buildingType.requiredResource && anchor.resource !== buildingType.requiredResource) {
+			throw new SaveDataError(`${label} anchor must provide its required resource`);
+		}
+		if (
+			buildingType.requiresIndustrialTile &&
+			footprint.tiles.some((tile) => tile.terrain !== 'industrial')
+		) {
+			throw new SaveDataError(`${label} footprint must contain only industrial terrain`);
+		}
+
+		let occupiedTileIds = occupiedTileIdsByCity.get(city.id);
+		if (!occupiedTileIds) {
+			occupiedTileIds = new Set();
+			occupiedTileIdsByCity.set(city.id, occupiedTileIds);
+		}
+		if (footprint.tiles.some((tile) => occupiedTileIds.has(tile.id))) {
+			throw new SaveDataError(`${label} footprint must not overlap another industrial building`);
+		}
+		for (const tile of footprint.tiles) occupiedTileIds.add(tile.id);
 	}
 }
 
@@ -1523,12 +1617,12 @@ function validateSavedWorld(value: unknown, label: string): GameState['world'] {
 function validateSavedCity(value: unknown, label: string): void {
 	const city = requireRecord(value, label);
 
-	requireString(city.id, `${label} id`);
+	const cityId = requireString(city.id, `${label} id`);
 	requireString(city.name, `${label} name`);
-	requireNumber(city.width, `${label} width`);
-	requireNumber(city.height, `${label} height`);
+	const width = requirePositiveInteger(city.width, `${label} width`);
+	const height = requirePositiveInteger(city.height, `${label} height`);
 	requireArray(city.tiles, `${label} tiles`).forEach((tile, index) =>
-		validateSavedCityTile(tile, `${label} tiles[${index}]`)
+		validateSavedCityTile(tile, `${label} tiles[${index}]`, cityId, width, height)
 	);
 }
 
@@ -1541,13 +1635,22 @@ function validateCurrentRetailCitySize(value: unknown, label: string): void {
 	}
 }
 
-function validateSavedCityTile(value: unknown, label: string): void {
+function validateSavedCityTile(
+	value: unknown,
+	label: string,
+	cityId: string,
+	cityWidth: number,
+	cityHeight: number
+): void {
 	const tile = requireRecord(value, label);
 
 	requireString(tile.id, `${label} id`);
-	requireString(tile.cityId, `${label} cityId`);
-	requireNumber(tile.x, `${label} x`);
-	requireNumber(tile.y, `${label} y`);
+	if (requireString(tile.cityId, `${label} cityId`) !== cityId) {
+		throw new SaveDataError(`${label} cityId must match containing city ${cityId}`);
+	}
+	const x = requireNumber(tile.x, `${label} x`);
+	const y = requireNumber(tile.y, `${label} y`);
+	validateTileCoordinates(x, y, label, cityWidth, cityHeight);
 	requireOneOf(tile.neighborhood, `${label} neighborhood`, NEIGHBORHOOD_IDS);
 	requireOneOf(tile.terrain, `${label} terrain`, TERRAIN_IDS);
 	validateSavedCityTileFeature(tile, `${label} feature`);
@@ -1572,12 +1675,12 @@ function validateSavedCityTileFeature(tile: Record<string, unknown>, label: stri
 function validateSavedIndustryCity(value: unknown, label: string): void {
 	const city = requireRecord(value, label);
 
-	requireString(city.id, `${label} id`);
+	const cityId = requireString(city.id, `${label} id`);
 	requireString(city.name, `${label} name`);
-	const width = requireNumber(city.width, `${label} width`);
-	const height = requireNumber(city.height, `${label} height`);
+	const width = requirePositiveInteger(city.width, `${label} width`);
+	const height = requirePositiveInteger(city.height, `${label} height`);
 	requireArray(city.tiles, `${label} tiles`).forEach((tile, index) =>
-		validateSavedIndustryTile(tile, `${label} tiles[${index}]`)
+		validateSavedIndustryTile(tile, `${label} tiles[${index}]`, cityId, width, height)
 	);
 	const seenRailKeys = new Set<string>();
 	requireArray(city.rails, `${label} rails`).forEach((cell, index) =>
@@ -1615,13 +1718,22 @@ function validateSavedRailCell(
 	}
 }
 
-function validateSavedIndustryTile(value: unknown, label: string): void {
+function validateSavedIndustryTile(
+	value: unknown,
+	label: string,
+	cityId: string,
+	cityWidth: number,
+	cityHeight: number
+): void {
 	const tile = requireRecord(value, label);
 
 	requireString(tile.id, `${label} id`);
-	requireString(tile.cityId, `${label} cityId`);
-	requireNumber(tile.x, `${label} x`);
-	requireNumber(tile.y, `${label} y`);
+	if (requireString(tile.cityId, `${label} cityId`) !== cityId) {
+		throw new SaveDataError(`${label} cityId must match containing city ${cityId}`);
+	}
+	const x = requireNumber(tile.x, `${label} x`);
+	const y = requireNumber(tile.y, `${label} y`);
+	validateTileCoordinates(x, y, label, cityWidth, cityHeight);
 	requireOneOf(tile.terrain, `${label} terrain`, INDUSTRY_TERRAIN_IDS);
 	validateSavedIndustryResource(tile.resource, `${label} resource`);
 	requireBoolean(tile.locked, `${label} locked`);
@@ -2168,8 +2280,37 @@ function requireRecord(value: unknown, label: string): Record<string, unknown> {
 	if (!value || typeof value !== 'object' || Array.isArray(value)) {
 		throw new SaveDataError(`${label} must be an object`);
 	}
+	const prototype = Object.getPrototypeOf(value);
+	const hasAccessor = Object.values(Object.getOwnPropertyDescriptors(value)).some(
+		(descriptor) => !('value' in descriptor)
+	);
+	if ((prototype !== Object.prototype && prototype !== null) || hasAccessor) {
+		throw new SaveDataError(`${label} must be a plain record with own data properties`);
+	}
 
 	return value as Record<string, unknown>;
+}
+
+function requirePositiveInteger(value: unknown, label: string): number {
+	const number = requireNumber(value, label);
+	if (!Number.isInteger(number) || number <= 0) {
+		throw new SaveDataError(`${label} must be a positive integer`);
+	}
+	return number;
+}
+
+function validateTileCoordinates(
+	x: number,
+	y: number,
+	label: string,
+	cityWidth: number,
+	cityHeight: number
+): void {
+	if (!Number.isInteger(x)) throw new SaveDataError(`${label} x must be an integer`);
+	if (!Number.isInteger(y)) throw new SaveDataError(`${label} y must be an integer`);
+	if (x < 0 || y < 0 || x >= cityWidth || y >= cityHeight) {
+		throw new SaveDataError(`${label} coordinates (${x},${y}) must be within city bounds`);
+	}
 }
 
 function requireArray(value: unknown, label: string): unknown[] {

@@ -157,6 +157,16 @@ describe('validateScenarioDefinition', () => {
 		]);
 	});
 
+	it('rejects a zero product selling price before setup builds a non-current state', () => {
+		const definition = validDefinition();
+		definition.start.overrides.stores![0]!.products![0]!.sellingPrice = 0;
+
+		expect(codes(definition)).toContainEqual({
+			path: 'start.overrides.stores[0].products[0].sellingPrice',
+			code: 'invalid-positive-number'
+		});
+	});
+
 	it('rejects unknown keys on every closed blueprint object', () => {
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed recursive fixture
 		const definition = validDefinition() as unknown as Record<string, any>;

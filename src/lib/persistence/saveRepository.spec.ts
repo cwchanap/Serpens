@@ -90,6 +90,58 @@ class NonSaveDataErrorDriver extends MemorySaveStoreDriver {
 	}
 }
 
+function createFixtureRetailCity(): GameState['cities'][number] {
+	return {
+		id: 'harbor-city',
+		name: 'Harbor City',
+		width: 3,
+		height: 3,
+		tiles: [
+			[1, 1],
+			[2, 1],
+			[1, 2],
+			[2, 2]
+		].map(([x, y]) => ({
+			id: `harbor-city-${x}-${y}`,
+			cityId: 'harbor-city',
+			x: x!,
+			y: y!,
+			neighborhood: 'downtown',
+			terrain: 'commercial',
+			feature: null,
+			demand: 72,
+			rent: 180,
+			footTraffic: 66,
+			customerFit: 70,
+			locked: false
+		}))
+	};
+}
+
+function createFixtureIndustryCity(): GameState['industryCities'][number] {
+	return {
+		id: 'industry-city',
+		name: 'Industry City',
+		width: 2,
+		height: 2,
+		tiles: [
+			[0, 0],
+			[1, 0],
+			[0, 1],
+			[1, 1]
+		].map(([x, y]) => ({
+			id: `industry-city-${x}-${y}`,
+			cityId: 'industry-city',
+			x: x!,
+			y: y!,
+			terrain: 'farmland',
+			resource: x === 0 && y === 0 ? ('grain-field' as const) : null,
+			locked: false
+		})),
+		rails: []
+	};
+}
+
 function delay(): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, 0));
 }
@@ -116,26 +168,9 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 		},
 		world: createInitialWorldProgress(),
 		storeCap: STARTER_STORE_CAP,
-		cities: [
-			{
-				id: 'harbor-city',
-				name: 'Harbor City',
-				width: 1,
-				height: 1,
-				tiles: []
-			}
-		],
+		cities: [createFixtureRetailCity()],
 		activeCityId: 'harbor-city',
-		industryCities: [
-			{
-				id: 'industry-city',
-				name: 'Industry City',
-				width: 1,
-				height: 1,
-				tiles: [],
-				rails: []
-			}
-		],
+		industryCities: [createFixtureIndustryCity()],
 		activeIndustryCityId: 'industry-city',
 		industrialBuildings: [],
 		warehouse: {
@@ -500,13 +535,7 @@ describe('save records', () => {
 		expect.assertions(1);
 		const game = createGame({
 			cities: [
-				{
-					id: 'harbor-city',
-					name: 'Harbor City',
-					width: 1,
-					height: 1,
-					tiles: []
-				},
+				createFixtureRetailCity(),
 				{
 					id: 'campus-junction',
 					name: 'Campus Junction',
@@ -576,13 +605,7 @@ describe('save records', () => {
 		expect.assertions(6);
 		const game = createGame({
 			cities: [
-				{
-					id: 'harbor-city',
-					name: 'Harbor City',
-					width: 1,
-					height: 1,
-					tiles: []
-				},
+				createFixtureRetailCity(),
 				{
 					id: 'campus-junction',
 					name: 'Campus Junction',
@@ -592,14 +615,7 @@ describe('save records', () => {
 				}
 			],
 			industryCities: [
-				{
-					id: 'industry-city',
-					name: 'Industry City',
-					width: 1,
-					height: 1,
-					tiles: [],
-					rails: []
-				},
+				createFixtureIndustryCity(),
 				{
 					id: 'breadbasket-basin',
 					name: 'Breadbasket Basin',
@@ -1402,21 +1418,12 @@ describe('save records', () => {
 			cities: [
 				{
 					...game.cities[0]!,
-					tiles: [
-						{
-							id: 'tile-1',
-							cityId: 'harbor-city',
-							x: 1,
-							y: 1,
-							neighborhood: 'downtown',
-							terrain: 'commercial',
-							demand: 72,
-							rent: 180,
-							footTraffic: 66,
-							customerFit: 70,
-							locked: false
-						} as unknown as GameState['cities'][number]['tiles'][number]
-					]
+					tiles: game.cities[0]!.tiles.map((tile, index) => {
+						if (index !== 0) return tile;
+						const { feature: _feature, ...withoutFeature } = tile;
+						void _feature;
+						return withoutFeature as unknown as GameState['cities'][number]['tiles'][number];
+					})
 				}
 			]
 		});

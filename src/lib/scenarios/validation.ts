@@ -342,6 +342,21 @@ function nonNegativeNumber(
 	return true;
 }
 
+function positiveNumber(context: ValidationContext, value: unknown, path: string): value is number {
+	if (!finiteNumber(context, value, path)) return false;
+	if (value <= 0) {
+		diagnostic(
+			context,
+			path,
+			'invalid-positive-number',
+			value,
+			`${path} must be greater than zero.`
+		);
+		return false;
+	}
+	return true;
+}
+
 function nonEmptyString(context: ValidationContext, value: unknown, path: string): value is string {
 	if (typeof value !== 'string' || value.length === 0) {
 		diagnostic(context, path, 'invalid-string', value, `${path} must be a non-empty string.`);
@@ -1019,9 +1034,10 @@ function validateProductOverrides(
 				);
 			validateIncluded(context, categoryId, `${path}.categoryId`, context.content.products);
 		}
-		for (const key of ['stock', 'reorderThreshold', 'targetStock', 'sellingPrice'] as const) {
+		for (const key of ['stock', 'reorderThreshold', 'targetStock'] as const) {
 			nonNegativeNumber(context, product[key], `${path}.${key}`);
 		}
+		positiveNumber(context, product.sellingPrice, `${path}.sellingPrice`);
 		if (
 			typeof product.reorderThreshold === 'number' &&
 			typeof product.targetStock === 'number' &&

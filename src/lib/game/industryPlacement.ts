@@ -18,6 +18,7 @@ import {
 } from './decisionContext';
 import type { DecisionContext } from './decisionContext';
 import { refreshWorldProgress } from './world';
+import { getWarehouseCapacity, recalculateWarehousePressure } from './industryProduction';
 import type {
 	DecisionItem,
 	DecisionOption,
@@ -196,13 +197,21 @@ export function buildIndustrialBuilding(
 		);
 	}
 
-	return refreshWorldProgress({
+	const builtGame: GameState = {
 		...game,
 		cash: game.cash - buildingType.buildCost,
 		industrialBuildings: [
 			...game.industrialBuildings,
 			createIndustrialBuilding(game, tile, buildingType)
 		]
+	};
+	return refreshWorldProgress({
+		...builtGame,
+		warehouse: recalculateWarehousePressure({
+			...builtGame.warehouse,
+			capacity: getWarehouseCapacity(builtGame),
+			materials: { ...builtGame.warehouse.materials }
+		})
 	});
 }
 

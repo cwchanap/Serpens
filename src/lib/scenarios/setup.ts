@@ -21,10 +21,6 @@ import { isRailWaypointTarget } from '$lib/game/railPlacement';
 import { normalizeSeed } from '$lib/game/rng';
 import { getExpansionSetupCost, upgradeStore } from '$lib/game/state';
 import { calculateStockHealth } from '$lib/game/stock';
-import {
-	createCityTileLookup,
-	getStoreFootprintPlacementBlockReason
-} from '$lib/game/storeFootprint';
 import type { City, GameState, IndustryCity, RailCell, WorldCityId } from '$lib/game/types';
 import { getWorldCityDefinition, refreshWorldProgress } from '$lib/game/world';
 import { SaveDataError, validateCurrentGameState } from '$lib/persistence/saveCodec';
@@ -417,16 +413,8 @@ function validateBuiltScenarioInvariants(
 			detail: 'The founding store ref does not resolve in the built game.'
 		});
 	} else {
-		const city = game.cities.find((candidate) => candidate.id === foundingStore.cityId);
-		const tile = city?.tiles.find((candidate) => candidate.id === foundingStore.tileId);
 		const invalidPlacement =
-			!city ||
-			!tile ||
-			foundingStore.cityId !== founding.cityId ||
-			foundingStore.tileId !== founding.tileId ||
-			foundingStore.mapX !== tile.x ||
-			foundingStore.mapY !== tile.y ||
-			getStoreFootprintPlacementBlockReason(createCityTileLookup(city), tile) !== null;
+			foundingStore.cityId !== founding.cityId || foundingStore.tileId !== founding.tileId;
 		if (invalidPlacement) {
 			diagnostics.push({
 				path: 'start.foundingStore.tileId',
@@ -449,18 +437,10 @@ function validateBuiltScenarioInvariants(
 			});
 			continue;
 		}
-		const withoutBuilding: GameState = {
-			...game,
-			activeIndustryCityId: authored.cityId,
-			industrialBuildings: game.industrialBuildings.filter(
-				(candidate) => candidate.id !== building.id
-			)
-		};
 		if (
 			building.cityId !== authored.cityId ||
 			building.tileId !== authored.tileId ||
-			building.typeId !== authored.typeId ||
-			getIndustrialPlacementBlockReason(withoutBuilding, authored.tileId, authored.typeId) !== null
+			building.typeId !== authored.typeId
 		) {
 			diagnostics.push({
 				path: `start.industrialBuildings[${index}].tileId`,
@@ -500,8 +480,6 @@ function validateBuiltScenarioInvariants(
 		});
 	}
 
-	const activeRetail = game.cities.some((city) => city.id === game.activeCityId);
-	const activeIndustry = game.industryCities.some((city) => city.id === game.activeIndustryCityId);
 	const opened = new Set<string>(game.world.openedCityIds);
 	const revealed = new Set<string>(game.world.revealedCityIds);
 	const everyStartingContentCityIsOpened =
@@ -516,8 +494,6 @@ function validateBuiltScenarioInvariants(
 			: game.industryCities.some((candidate) => candidate.id === cityId);
 	});
 	if (
-		!activeRetail ||
-		!activeIndustry ||
 		!opened.has(game.activeCityId) ||
 		!opened.has(game.activeIndustryCityId) ||
 		!everyStartingContentCityIsOpened ||
@@ -530,7 +506,7 @@ function validateBuiltScenarioInvariants(
 				activeRetailCityId: game.activeCityId,
 				activeIndustryCityId: game.activeIndustryCityId
 			},
-			detail: 'The built game active cities must be materialized and opened.'
+			detail: 'The built game active and starting-content cities must be opened.'
 		});
 	}
 
@@ -555,7 +531,7 @@ function strictSetupFailure(error: SaveDataError, game: GameState): ScenarioDiag
 			path: 'start.overrides.storeCap',
 			code: 'setup-invariant-failed',
 			value: game.storeCap,
-			detail: 'The built game store cap is lower than its starting store count.'
+			detail: 'The built game store cap must be an integer and at least its starting store count.'
 		};
 	}
 
@@ -738,27 +714,13 @@ export function buildScenarioGame(
 		return { ok: false, diagnostics: invariantDiagnostics };
 	}
 
-	let validatedGame: GameState;
 	try {
-		validatedGame = validateCurrentGameState(game);
+		validateCurrentGameState(game);
 	} catch (error) {
 		if (error instanceof SaveDataError) {
 			return { ok: false, diagnostics: [strictSetupFailure(error, game)] };
 		}
 		throw error;
-	}
-	if (JSON.stringify(validatedGame) !== JSON.stringify(game)) {
-		return {
-			ok: false,
-			diagnostics: [
-				{
-					path: 'start',
-					code: 'setup-invariant-failed',
-					value: game,
-					detail: 'Strict validation changed the built game instead of returning an exact clone.'
-				}
-			]
-		};
 	}
 
 	return { ok: true, game, refs };
