@@ -65,11 +65,22 @@ export type SaveDataErrorCode = 'corrupt' | 'storage-unavailable' | 'slot-not-fo
 
 export class SaveDataError extends Error {
 	readonly code: SaveDataErrorCode;
+	readonly cause?: unknown;
 
-	constructor(message: string, code: SaveDataErrorCode = 'corrupt') {
+	constructor(message: string, code: SaveDataErrorCode = 'corrupt', cause?: unknown) {
 		super(message);
 		this.name = 'SaveDataError';
 		this.code = code;
+		this.cause = cause;
+	}
+}
+
+function withSaveDataBoundary<T>(context: string, operation: () => T): T {
+	try {
+		return operation();
+	} catch (error) {
+		if (error instanceof SaveDataError) throw error;
+		throw new SaveDataError(`${context} rejected malformed save data`, 'corrupt', error);
 	}
 }
 
@@ -104,6 +115,9 @@ function migrateV4Store(store: unknown): unknown {
 	const migratedProducts = storeRecord.products.map((product) => {
 		if (typeof product !== 'object' || product === null) return product;
 		const productRecord = product as Record<string, unknown>;
+		if (typeof productRecord.categoryId !== 'string') {
+			throw new SaveDataError('Saved v4 product categoryId must be a string');
+		}
 		const rename = BOUTIQUE_LEGACY_CATEGORY_RENAMES[productRecord.categoryId as string];
 		if (rename === undefined) return product;
 		changed = true;
@@ -408,6 +422,12 @@ function migrateV9SaveRecord(record: unknown): unknown {
  * save-record migration pipeline below.
  */
 export function migrateSavedGame(value: unknown, sourceGameSchemaVersion: number): unknown {
+	return withSaveDataBoundary('Game migration', () =>
+		migrateSavedGameInternal(value, sourceGameSchemaVersion)
+	);
+}
+
+function migrateSavedGameInternal(value: unknown, sourceGameSchemaVersion: number): unknown {
 	const sourceGame = createPlainSnapshot(value, 'Saved game');
 	if (
 		sourceGameSchemaVersion !== SAVE_SCHEMA_VERSION &&
@@ -626,6 +646,12 @@ export function parseSaveStoreSnapshot(serialized: string): SaveStoreSnapshot {
 }
 
 export function validateSaveStoreSnapshot(value: unknown): SaveStoreSnapshot {
+	return withSaveDataBoundary('Save-store validation', () =>
+		validateSaveStoreSnapshotInternal(value)
+	);
+}
+
+function validateSaveStoreSnapshotInternal(value: unknown): SaveStoreSnapshot {
 	const sourceStore = createPlainSnapshot(value, 'Save store');
 	const migrated = migrateSaveStoreSnapshot(sourceStore);
 	const record = requireRecord(migrated, 'Save store');
@@ -648,6 +674,10 @@ export function validateSaveStoreSnapshot(value: unknown): SaveStoreSnapshot {
 }
 
 export function validateSaveRecord(value: unknown): SaveRecord {
+	return withSaveDataBoundary('Save-record validation', () => validateSaveRecordInternal(value));
+}
+
+function validateSaveRecordInternal(value: unknown): SaveRecord {
 	const sourceValue = createPlainSnapshot(value, 'Save record');
 	const sourceRecord = requireRecord(sourceValue, 'Save record');
 	const sourceSchemaVersion = requireNumber(
@@ -692,6 +722,12 @@ export function validateSaveRecord(value: unknown): SaveRecord {
  * properties. Extras are allowed only when the whole state is structured-cloneable.
  */
 export function validateCurrentGameState(value: unknown): GameState {
+	return withSaveDataBoundary('Current-game validation', () =>
+		validateCurrentGameStateInternal(value)
+	);
+}
+
+function validateCurrentGameStateInternal(value: unknown): GameState {
 	const sourceGame = createPlainSnapshot(value, 'Saved game');
 	const game = requireRecord(sourceGame, 'Saved game');
 	const policy = requireRecord(game.policy, 'Saved game policy');
@@ -940,8 +976,15 @@ function normalizeSavedStaffLevel(member: unknown): unknown {
 }
 
 export function normalizeSandboxSavedGame(value: unknown): unknown {
+	return withSaveDataBoundary('Sandbox save normalization', () =>
+		normalizeSandboxSavedGameInternal(value)
+	);
+}
+
+function normalizeSandboxSavedGameInternal(value: unknown): unknown {
 	const sourceGame = createPlainSnapshot(value, 'Saved game');
 	const game = requireRecord(sourceGame, 'Saved game');
+	requireNumber(game.cash, 'Saved game cash');
 	const normalizedWorld =
 		game.world === undefined
 			? inferWorldProgress(game)
@@ -1066,6 +1109,10 @@ function normalizeSavedCityTileFeatures(cities: unknown): unknown {
 
 function canRefreshSandboxWorldProgress(game: GameState): boolean {
 	if (
+		typeof game.cash !== 'number' ||
+		!Number.isFinite(game.cash) ||
+		typeof game.day !== 'number' ||
+		!Number.isFinite(game.day) ||
 		!Array.isArray(game.stores) ||
 		!Array.isArray(game.industrialBuildings) ||
 		!game.industrialBuildings.every(
@@ -1076,7 +1123,13 @@ function canRefreshSandboxWorldProgress(game: GameState): boolean {
 		typeof game.warehouse !== 'object' ||
 		game.warehouse === null ||
 		typeof game.warehouse.materials !== 'object' ||
-		game.warehouse.materials === null
+		game.warehouse.materials === null ||
+		Object.values(game.warehouse.materials).some(
+			(quantity) => typeof quantity !== 'number' || !Number.isFinite(quantity)
+		) ||
+		game.reports.some(
+			(report) => typeof report.netIncome !== 'number' || !Number.isFinite(report.netIncome)
+		)
 	) {
 		return false;
 	}
@@ -2461,13 +2514,42 @@ function assertOwnDataContainer(value: object, label: string): PropertyDescripto
 	return descriptors;
 }
 
-function assertOwnDataGraph(value: unknown, label: string, seen = new WeakSet<object>()): void {
-	if (typeof value !== 'object' || value === null || seen.has(value)) return;
-	seen.add(value);
-	const descriptors = assertOwnDataContainer(value, label);
-	for (const [key, descriptor] of Object.entries(descriptors)) {
-		if (isArrayWithoutTraps(value, label) && key === 'length') continue;
-		if ('value' in descriptor) assertOwnDataGraph(descriptor.value, `${label}.${key}`, seen);
+const MAX_OWN_DATA_DEPTH = 512;
+const MAX_OWN_DATA_NODES = 250_000;
+
+function assertOwnDataGraph(value: unknown, label: string): void {
+	const seen = new WeakSet<object>();
+	const worklist: Array<{ value: unknown; label: string; depth: number }> = [
+		{ value, label, depth: 0 }
+	];
+	let nodeCount = 0;
+
+	while (worklist.length > 0) {
+		const current = worklist.pop()!;
+		if (typeof current.value !== 'object' || current.value === null || seen.has(current.value)) {
+			continue;
+		}
+		if (current.depth > MAX_OWN_DATA_DEPTH) {
+			throw new SaveDataError(`${current.label} exceeds the maximum save-data depth`);
+		}
+		seen.add(current.value);
+		nodeCount += 1;
+		if (nodeCount > MAX_OWN_DATA_NODES) {
+			throw new SaveDataError(`${label} exceeds the maximum save-data node budget`);
+		}
+
+		const descriptors = assertOwnDataContainer(current.value, current.label);
+		const array = isArrayWithoutTraps(current.value, current.label);
+		for (const [key, descriptor] of Object.entries(descriptors)) {
+			if (array && key === 'length') continue;
+			if ('value' in descriptor) {
+				worklist.push({
+					value: descriptor.value,
+					label: `${current.label}.${key}`,
+					depth: current.depth + 1
+				});
+			}
+		}
 	}
 }
 
