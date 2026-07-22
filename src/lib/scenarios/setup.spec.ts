@@ -10,6 +10,7 @@ import { normalizeSeed } from '$lib/game/rng';
 import { upgradeStore } from '$lib/game/state';
 import { calculateStockHealth } from '$lib/game/stock';
 import type { ArchetypeId } from '$lib/game/types';
+import { validateCurrentGameState } from '$lib/persistence/saveCodec';
 import type { ScenarioDefinition } from './types';
 import { buildScenarioGame } from './setup';
 import { validateScenarioDefinition } from './validation';
@@ -111,7 +112,7 @@ function scenarioDefinition(): ScenarioDefinition {
 								stock: 5,
 								reorderThreshold: 2,
 								targetStock: 10,
-								sellingPrice: 0
+								sellingPrice: 1
 							}
 						]
 					}
@@ -273,7 +274,7 @@ describe('buildScenarioGame', () => {
 			stock: 5,
 			reorderThreshold: 2,
 			targetStock: 10,
-			sellingPrice: 0
+			sellingPrice: 1
 		});
 		expect(store.stockHealth).toBe(calculateStockHealth(store.products));
 		expect(result.game.industrialBuildings[0]?.inventory).toEqual({ water: 20 });
@@ -562,5 +563,16 @@ describe('buildScenarioGame', () => {
 		expect(result.game.reports).toEqual([]);
 		expect(result.game).not.toHaveProperty('scenario');
 		expect(result.game).not.toHaveProperty('scenarioDefinition');
+	});
+
+	it('returns a built game that strict validation deep-clones without changing', () => {
+		const definition = scenarioDefinition();
+		const result = buildScenarioGame(definition, definition.officialSeed);
+
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		const validated = validateCurrentGameState(result.game);
+		expect(validated).toEqual(result.game);
+		expect(validated).not.toBe(result.game);
 	});
 });

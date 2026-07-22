@@ -8,11 +8,14 @@ import {
 } from '$lib/game/city';
 import { formatLocation } from '$lib/game/placement';
 import type { DecisionContext } from '$lib/game/decisionContext';
-import { initializeStoreProducts } from '$lib/game/stock';
+import { simulateDay } from '$lib/game/simulateDay';
+import { createNewGame } from '$lib/game/state';
+import { calculateStockHealth, initializeStoreProducts } from '$lib/game/stock';
 import {
 	STARTER_STORE_CAP,
 	createInitialWorldProgress,
-	getWorldCityDefinition
+	getWorldCityDefinition,
+	refreshWorldProgress
 } from '$lib/game/world';
 import type {
 	DailyMaterialMovement,
@@ -37,7 +40,9 @@ import {
 	createManualSlotId,
 	createSaveRecord,
 	createSaveSummary,
+	migrateSavedGame,
 	parseSaveStoreSnapshot,
+	validateCurrentGameState,
 	validateSaveRecord,
 	validateSaveStoreSnapshot
 } from './saveCodec';
@@ -105,7 +110,7 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 				mapY: 1,
 				daysOpen: 2,
 				reputation: 60,
-				stockHealth: 70,
+				stockHealth: calculateStockHealth(initializeStoreProducts('boutique')),
 				products: initializeStoreProducts('boutique'),
 				staffMorale: 65,
 				staffCapacity: 66,
@@ -314,7 +319,207 @@ function stripRailFields(game: GameState): unknown {
 	return { ...game, industryCities, industrialBuildings, reports };
 }
 
+function createBareMigrationFixture(sourceVersion: number): unknown {
+	const base = createGame({
+		industrialBuildings: [createIndustrialBuilding()],
+		reports: [createDailyReport({ storeReports: [createDailyStoreReport()] })]
+	});
+	const game = structuredClone(stripRailFields(base)) as Record<string, unknown>;
+	const stores = game.stores as Array<Record<string, unknown>>;
+	const reports = game.reports as Array<Record<string, unknown>>;
+
+	if (sourceVersion <= 8) {
+		stores[0] = { ...stores[0], location: 'Downtown (1, 1)' };
+	}
+	if (sourceVersion <= 6) {
+		game.decisions = [
+			{
+				id: 'legacy-decision',
+				title: 'Legacy decision',
+				context: 'Old free-form context',
+				expiresOnDay: 4,
+				options: []
+			}
+		];
+	}
+	if (sourceVersion <= 5) {
+		const report = reports[0]!;
+		const storeReports = report.storeReports as Array<Record<string, unknown>>;
+		reports[0] = {
+			...report,
+			warnings: ['Old daily warning'],
+			storeReports: [{ ...storeReports[0], warnings: ['Old store warning'] }]
+		};
+	}
+	if (sourceVersion <= 4) {
+		const products = stores[0]!.products as Array<Record<string, unknown>>;
+		stores[0] = {
+			...stores[0],
+			products: [{ ...products[0], categoryId: 'accessories' }]
+		};
+	}
+
+	return game;
+}
+
 describe('saveCodec', () => {
+	test.each([4, 5, 6, 7, 8, 9])(
+		'migrateSavedGame runs the complete v%s-to-v10 game chain without skipping a step',
+		(sourceVersion) => {
+			const migrated = migrateSavedGame(
+				createBareMigrationFixture(sourceVersion),
+				sourceVersion
+			) as GameState;
+
+			expect(migrated.industryCities[0]?.rails).toEqual([]);
+			expect(migrated.industrialBuildings[0]?.inventory).toEqual({});
+			expect(migrated.reports[0]?.productionReport.railShipments).toEqual([]);
+			expect(migrated.reports[0]?.productionReport.railUsage).toEqual({});
+			if (sourceVersion <= 8) {
+				expect(migrated.stores[0]?.location).toEqual({
+					neighborhoodId: 'downtown',
+					x: 1,
+					y: 1
+				});
+			}
+			if (sourceVersion <= 6) {
+				expect(migrated.decisions).toEqual([]);
+			}
+			if (sourceVersion <= 5) {
+				expect(migrated.reports[0]?.warnings).toEqual([]);
+				expect(migrated.reports[0]?.storeReports[0]?.warnings).toEqual([]);
+			}
+			if (sourceVersion <= 4) {
+				expect(migrated.stores[0]?.products[0]?.categoryId).toBe('fashion-accessories');
+			}
+		}
+	);
+
+	test.each([3, 11])('migrateSavedGame rejects unsupported source schema %s', (schemaVersion) => {
+		expect(() => migrateSavedGame(createGame(), schemaVersion)).toThrow(SaveDataError);
+		expect(() => migrateSavedGame(createGame(), schemaVersion)).toThrow(
+			`Unsupported save schema version: ${schemaVersion}`
+		);
+	});
+
+	test('migrateSavedGame leaves a current-schema game byte-for-byte untouched', () => {
+		const game = createGame();
+
+		expect(migrateSavedGame(game, SAVE_SCHEMA_VERSION)).toBe(game);
+	});
+
+	test('strict current-game validation returns an exact deep clone without mutating its input', () => {
+		const game = createGame();
+		const before = structuredClone(game);
+
+		const validated = validateCurrentGameState(game);
+
+		expect(validated).toEqual(game);
+		expect(validated).not.toBe(game);
+		expect(validated.world).not.toBe(game.world);
+		expect(game).toEqual(before);
+	});
+
+	test('strict validation rejects a fractional store cap', () => {
+		expect(() => validateCurrentGameState(createGame({ storeCap: 3.5 }))).toThrow(
+			'Saved game storeCap must be an integer'
+		);
+	});
+
+	test('strict validation rejects a locked product category substituted at the same count', () => {
+		const store = createGame().stores[0]!;
+		const products = initializeStoreProducts('boutique', 4);
+		const lockedSubstitution = [products[0]!, { ...products[1]!, categoryId: 'gifts' }];
+
+		expect(() =>
+			validateCurrentGameState(
+				createGame({
+					stores: [
+						{
+							...store,
+							level: 4,
+							products: lockedSubstitution,
+							stockHealth: calculateStockHealth(lockedSubstitution)
+						}
+					]
+				})
+			)
+		).toThrow('products[1] categoryId must be unlocked at level 4');
+	});
+
+	test('strict validation rejects stock health that is inconsistent with products', () => {
+		const store = createGame().stores[0]!;
+		const staleStore = { ...store, stockHealth: store.stockHealth + 1 };
+
+		expect(() => validateCurrentGameState(createGame({ stores: [staleStore] }))).toThrow(
+			'stockHealth must match its products'
+		);
+		expect(
+			validateSaveRecord(createManualSaveRecord({ game: { stores: [staleStore] } })).game.stores[0]
+				?.stockHealth
+		).toBe(calculateStockHealth(staleStore.products));
+	});
+
+	test('sandbox normalization leaves non-finite stock health for strict validation', () => {
+		const store = createGame().stores[0]!;
+		const record = createManualSaveRecord({
+			game: { stores: [{ ...store, stockHealth: Number.NaN }] }
+		});
+
+		expect(() => validateSaveRecord(record)).toThrow(
+			'Saved game stores[0] stockHealth must be a finite number'
+		);
+	});
+
+	test.each([
+		{
+			name: 'capacity',
+			warehouse: { capacity: 1, materials: {}, overflowUnits: 0, overflowCost: 0 },
+			expected: { capacity: 0, materials: {}, overflowUnits: 0, overflowCost: 0 }
+		},
+		{
+			name: 'pressure',
+			warehouse: { capacity: 0, materials: { water: 1 }, overflowUnits: 0, overflowCost: 0 },
+			expected: { capacity: 0, materials: { water: 1 }, overflowUnits: 1, overflowCost: 2 }
+		}
+	])(
+		'strict validation rejects warehouse $name inconsistent with derived state while sandbox loading repairs it',
+		({ warehouse, expected }) => {
+			expect(() => validateCurrentGameState(createGame({ warehouse }))).toThrow(
+				'Saved game warehouse capacity and pressure must match current buildings and materials'
+			);
+			expect(
+				validateSaveRecord(createManualSaveRecord({ game: { warehouse } })).game.warehouse
+			).toEqual(expected);
+		}
+	);
+
+	test('strict validation accepts correctly derived nonzero warehouse overflow', () => {
+		const game = createGame({
+			warehouse: { capacity: 0, materials: { water: 1 }, overflowUnits: 1, overflowCost: 2 }
+		});
+
+		expect(validateCurrentGameState(game)).toEqual(game);
+	});
+
+	test('strict current-game cloning preserves JSON-edge numeric identity', () => {
+		const game = createGame({ cash: -0 });
+
+		const validated = validateCurrentGameState(game);
+
+		expect(Object.is(validated.cash, -0)).toBe(true);
+	});
+
+	test('strict validation rejects stale world progress while sandbox loading refreshes it', () => {
+		const stale = createGame({ day: 7 });
+		const expected = refreshWorldProgress(stale);
+
+		expect(() => validateCurrentGameState(stale)).toThrow(SaveDataError);
+		expect(validateSaveRecord(createManualSaveRecord({ game: stale })).game.world).toEqual(
+			expected.world
+		);
+	});
+
 	test('SaveDataError defaults to corrupt code', () => {
 		expect.assertions(1);
 		const error = new SaveDataError('some validation failure');
@@ -435,7 +640,7 @@ describe('saveCodec', () => {
 	});
 
 	test('expands saved retail city maps to the current default size', () => {
-		expect.assertions(11);
+		expect.assertions(12);
 		const record = createManualSaveRecord({
 			game: {
 				cities: [
@@ -460,6 +665,7 @@ describe('saveCodec', () => {
 			}
 		});
 
+		expect(() => validateCurrentGameState(record.game)).toThrow(SaveDataError);
 		const validated = validateSaveRecord(record);
 		const city = validated.game.cities[0]!;
 		const store = validated.game.stores[0]!;
@@ -736,7 +942,7 @@ describe('saveCodec', () => {
 		);
 	});
 
-	test('leaves a store on its stale tile and warns when no buildable tile remains', () => {
+	test('rejects a stale store after warning when no buildable tile remains', () => {
 		expect.assertions(3);
 		const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 		// A 2x2 city whose only tile is locked — no buildable tile exists, so
@@ -780,13 +986,31 @@ describe('saveCodec', () => {
 			}
 		});
 
-		const validated = validateSaveRecord(record);
-		const store = validated.game.stores[0]!;
-
-		expect(store.tileId).toBe('harbor-city-0-0');
-		expect(store.mapX).toBe(0);
+		expect(() => validateCurrentGameState(record.game)).toThrow(SaveDataError);
+		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
 		expect(warnSpy).toHaveBeenCalledWith(
 			expect.stringContaining('store "store-stale" in city "harbor-city" has no buildable tile')
+		);
+	});
+
+	test('strict validation rejects a store whose city is not materialized', () => {
+		const store = createGame().stores[0]!;
+		const game = createGame({ stores: [{ ...store, cityId: 'missing-city' }] });
+
+		expect(() => validateCurrentGameState(game)).toThrow(
+			'Saved game stores[0] placement must already match a buildable, non-overlapping city footprint'
+		);
+	});
+
+	test('strict validation rejects a production-sized city with no placement topology', () => {
+		const game = createNewGame('convenience', 20260722);
+		const harborCity = game.cities.find((city) => city.id === 'harbor-city')!;
+		const cities = game.cities.map((city) =>
+			city.id === harborCity.id ? { ...city, tiles: [] } : city
+		);
+
+		expect(() => validateCurrentGameState({ ...game, cities })).toThrow(
+			'Saved game stores[0] placement must already match a buildable, non-overlapping city footprint'
 		);
 	});
 
@@ -846,6 +1070,55 @@ describe('saveCodec', () => {
 		const snapshot = createSnapshotWithGame({ ...createGame(), reports: [report] });
 
 		expect(() => validateSaveStoreSnapshot(snapshot)).not.toThrow();
+	});
+
+	test('sandbox normalization leaves malformed production movements for strict SaveDataError validation', () => {
+		const report = createDailyReport({
+			productionReport: createDailyProductionReport({
+				produced: [null as unknown as DailyMaterialMovement]
+			})
+		});
+		const record = createManualSaveRecord({ game: { reports: [report] } });
+
+		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+		expect(() => validateSaveRecord(record)).toThrow(
+			'Saved game reports[0] productionReport produced[0] must be an object'
+		);
+	});
+
+	test('v9 migration leaves malformed production movements for strict SaveDataError validation', () => {
+		const report = createDailyReport({
+			productionReport: createDailyProductionReport({
+				produced: [null as unknown as DailyMaterialMovement]
+			})
+		});
+		const record = {
+			...createManualSaveRecord({ game: { reports: [report] } }),
+			schemaVersion: 9 as unknown as typeof SAVE_SCHEMA_VERSION
+		};
+
+		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+		expect(() => validateSaveRecord(record)).toThrow(
+			'Saved game reports[0] productionReport produced[0] must be an object'
+		);
+	});
+
+	test('sandbox normalization defers malformed city tiles to strict SaveDataError validation', () => {
+		const record = createManualSaveRecord({
+			game: {
+				cities: [
+					{
+						...createGame().cities[0]!,
+						tiles: [null as unknown as GameState['cities'][number]['tiles'][number]]
+					}
+				]
+			}
+		});
+
+		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+		expect(() => validateSaveRecord(record)).toThrow(
+			'Saved game cities[0] tiles[0] must be an object'
+		);
 	});
 
 	test('rejects a city tile whose locked field is not a boolean', () => {
@@ -1036,7 +1309,7 @@ describe('saveCodec', () => {
 	});
 
 	test('relocates a store whose tileId is buildable but whose coordinates are stale', () => {
-		expect.assertions(4);
+		expect.assertions(7);
 		const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 		// A default-size city is not regenerated, so the store is only relocated
 		// because its saved mapX/mapY disagree with the tile it names.
@@ -1058,13 +1331,17 @@ describe('saveCodec', () => {
 						tileId: tile.id,
 						mapX: tile.x + 5,
 						mapY: tile.y + 5,
-						location: 'Stale (5, 5)',
+						location: formatLocation(tile),
 						localDemand: 1
 					}
 				]
 			} as unknown as Partial<GameState>
 		});
+		const before = structuredClone(record.game);
 
+		expect(() => validateCurrentGameState(record.game)).toThrow(SaveDataError);
+		expect(record.game).toEqual(before);
+		expect(warnSpy).not.toHaveBeenCalled();
 		const validated = validateSaveRecord(record);
 		const store = validated.game.stores[0]!;
 
@@ -1117,7 +1394,7 @@ describe('saveCodec', () => {
 		expect(storeB.tileId).not.toBe(tile.id);
 	});
 
-	test('leaves a store untouched when its saved cityId is not in the city list', () => {
+	test('rejects a store whose saved cityId is not in the city list', () => {
 		expect.assertions(2);
 		const city = generateCity({
 			id: 'harbor-city',
@@ -1142,11 +1419,8 @@ describe('saveCodec', () => {
 			} as unknown as Partial<GameState>
 		});
 
-		const validated = validateSaveRecord(record);
-		const store = validated.game.stores[0]!;
-
-		expect(store.cityId).toBe('ghost-city');
-		expect(store.tileId).toBe(tile.id);
+		expect(() => validateCurrentGameState(record.game)).toThrow(SaveDataError);
+		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
 	});
 
 	test('leaves a store untouched when its cityId is not a string', () => {
@@ -1323,20 +1597,27 @@ describe('saveCodec', () => {
 	test('v4 migration renames a legacy boutique accessories category to fashion-accessories', () => {
 		expect.assertions(2);
 		const baseStore = createGame().stores[0]!;
+		const products = initializeStoreProducts('boutique', 10).map((product) =>
+			product.categoryId === 'fashion-accessories'
+				? { ...product, categoryId: 'accessories' }
+				: product
+		);
 		const record = createV4Record({
 			game: {
 				stores: [
 					{
 						...baseStore,
+						level: 10,
 						archetypeId: 'boutique',
-						products: [{ ...baseStore.products[0]!, categoryId: 'accessories' }]
+						products,
+						stockHealth: calculateStockHealth(products)
 					}
 				]
 			}
 		});
 
 		const validated = validateSaveRecord(record);
-		expect(validated.game.stores[0]?.products[0]?.categoryId).toBe('fashion-accessories');
+		expect(validated.game.stores[0]?.products[3]?.categoryId).toBe('fashion-accessories');
 		expect(validated.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
 	});
 
@@ -1783,6 +2064,25 @@ describe('saveCodec', () => {
 		// looked up from the saved city tile matching the store's tileId.
 		expect.assertions(3);
 		const baseRecord = createManualSaveRecord();
+		const footprintTiles = [
+			[1, 1],
+			[2, 1],
+			[1, 2],
+			[2, 2]
+		].map(([x, y]) => ({
+			id: `harbor-city-${x}-${y}`,
+			cityId: 'harbor-city',
+			x: x!,
+			y: y!,
+			neighborhood: 'downtown' as const,
+			terrain: 'commercial' as const,
+			feature: null,
+			demand: 50,
+			rent: 40,
+			footTraffic: 60,
+			customerFit: 70,
+			locked: false
+		}));
 		const v8Record = {
 			...baseRecord,
 			schemaVersion: 8 as unknown as typeof SAVE_SCHEMA_VERSION,
@@ -1791,22 +2091,9 @@ describe('saveCodec', () => {
 				cities: [
 					{
 						...baseRecord.game.cities[0]!,
-						tiles: [
-							{
-								id: 'harbor-city-1-1',
-								cityId: 'harbor-city',
-								x: 1,
-								y: 1,
-								neighborhood: 'downtown',
-								terrain: 'commercial',
-								feature: null,
-								demand: 50,
-								rent: 40,
-								footTraffic: 60,
-								customerFit: 70,
-								locked: false
-							}
-						]
+						width: 3,
+						height: 3,
+						tiles: footprintTiles
 					}
 				],
 				stores: [
@@ -2435,7 +2722,7 @@ describe('saveCodec', () => {
 		// flour-mill's recipe (flour-milling) only touches grain (input) and
 		// flour (output); snacks belongs to no part of that recipe and must be
 		// dropped on load rather than persisted as dead buffer weight.
-		expect.assertions(2);
+		expect.assertions(3);
 		const mill = createIndustrialBuilding({
 			typeId: 'flour-mill',
 			inventory: { grain: 5, snacks: 5 }
@@ -2444,10 +2731,36 @@ describe('saveCodec', () => {
 			game: { industrialBuildings: [mill] }
 		});
 
+		expect(() => validateCurrentGameState(record.game)).toThrow(SaveDataError);
 		const validated = validateSaveRecord(record);
 		const decodedMill = validated.game.industrialBuildings.find((b) => b.typeId === 'flour-mill')!;
 		expect(decodedMill.inventory.snacks).toBeUndefined();
 		expect(decodedMill.inventory.grain).toBe(5);
+	});
+
+	test('strict validation rejects over-capacity building inventory while sandbox loading clamps it', () => {
+		const mill = createIndustrialBuilding({
+			typeId: 'flour-mill',
+			inventory: { grain: 80, flour: 80 }
+		});
+		const game = createGame({ industrialBuildings: [mill] });
+		const record = createManualSaveRecord({ game });
+
+		expect(() => validateCurrentGameState(game)).toThrow(SaveDataError);
+		expect(validateSaveRecord(record).game.industrialBuildings[0]?.inventory).toEqual({
+			grain: 80,
+			flour: 10
+		});
+	});
+
+	test('strict validation accepts runtime inventory with a consumed input retained at zero', () => {
+		const game = simulateDay({
+			...createNewGame('convenience', 20260722),
+			industrialBuildings: [createIndustrialBuilding({ inventory: { grain: 10 } })]
+		});
+
+		expect(game.industrialBuildings[0]?.inventory).toEqual({ grain: 0, flour: 8 });
+		expect(validateCurrentGameState(game)).toEqual(game);
 	});
 
 	test('validates an industry city with populated tiles', () => {
