@@ -3,7 +3,8 @@ import { SCENARIO_COMMAND_KINDS, type ScenarioDefinition } from './types';
 import {
 	assertValidScenarioDefinition,
 	sortScenarioDiagnostics,
-	validateScenarioDefinition
+	validateScenarioDefinition,
+	validateScenarioSetupReserve
 } from './validation';
 
 function validDefinition(): ScenarioDefinition {
@@ -882,4 +883,25 @@ describe('sortScenarioDiagnostics', () => {
 		]);
 		expect(diagnostics[0]?.code).toBe('b');
 	});
+});
+
+describe('validateScenarioSetupReserve', () => {
+	it('accepts finite non-negative calculated reserves', () => {
+		expect(validateScenarioSetupReserve(0)).toEqual([]);
+		expect(validateScenarioSetupReserve(12_345)).toEqual([]);
+	});
+
+	it.each([Number.NaN, Number.POSITIVE_INFINITY, -1])(
+		'rejects a non-finite or negative calculated reserve: %s',
+		(reserve) => {
+			expect(validateScenarioSetupReserve(reserve)).toEqual([
+				{
+					path: 'start',
+					code: 'invalid-setup-reserve',
+					value: reserve,
+					detail: 'The calculated transient setup reserve must be finite and non-negative.'
+				}
+			]);
+		}
+	);
 });

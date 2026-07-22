@@ -228,6 +228,19 @@ export function sortScenarioDiagnostics(
 	);
 }
 
+export function validateScenarioSetupReserve(reserve: number): ScenarioDiagnostic[] {
+	if (Number.isFinite(reserve) && reserve >= 0) return [];
+
+	return [
+		{
+			path: 'start',
+			code: 'invalid-setup-reserve',
+			value: reserve,
+			detail: 'The calculated transient setup reserve must be finite and non-negative.'
+		}
+	];
+}
+
 function diagnostic(
 	context: ValidationContext,
 	path: string,
