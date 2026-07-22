@@ -9,6 +9,7 @@ import {
 	removeWarehouseMaterial,
 	simulateIndustryProduction
 } from './industryProduction';
+import { DEFAULT_SIMULATION_RULES, type SimulationRules } from './simulationRules';
 import { createNewGame } from './state';
 import type {
 	GameState,
@@ -70,6 +71,97 @@ describe('warehouse operations', () => {
 });
 
 describe('industry production simulation', () => {
+	test('keeps omitted and explicit defaults deeply equal', () => {
+		let game = { ...createNewGame('convenience', 280_004), cash: 100_000 };
+		const industrialTile = game.industryCities[0]!.tiles.find(
+			(tile) => tile.terrain === 'industrial' && !tile.locked
+		)!;
+		game = buildIndustrialBuilding(game, {
+			tileId: industrialTile.id,
+			buildingTypeId: 'flour-mill'
+		});
+
+		expect(simulateIndustryProduction(game)).toEqual(
+			simulateIndustryProduction(game, DEFAULT_SIMULATION_RULES)
+		);
+	});
+
+	test('multiplies only selected industrial paid-input fallback movements', () => {
+		let game = { ...createNewGame('convenience', 280_005), cash: 100_000 };
+		const industrialTile = game.industryCities[0]!.tiles.find(
+			(tile) => tile.terrain === 'industrial' && !tile.locked
+		)!;
+		game = buildIndustrialBuilding(game, {
+			tileId: industrialTile.id,
+			buildingTypeId: 'snack-factory'
+		});
+		const rules: SimulationRules = {
+			importCostMultipliers: [
+				{ scope: 'industrial-material', target: { kind: 'ids', ids: ['salt'] }, multiplier: 2 }
+			]
+		};
+		const baseline = simulateIndustryProduction(game);
+		const doubled = simulateIndustryProduction(game, rules);
+		const baselineByMaterial = new Map(
+			baseline.report.importedInputs.map((movement) => [movement.materialId, movement])
+		);
+
+		for (const movement of doubled.report.importedInputs) {
+			const baselineMovement = baselineByMaterial.get(movement.materialId)!;
+			expect(movement.quantity).toBe(baselineMovement.quantity);
+			expect(movement.value).toBe(
+				movement.materialId === 'salt' ? baselineMovement.value * 2 : baselineMovement.value
+			);
+		}
+		expect(doubled.report.importSpend).toBe(
+			baseline.report.importSpend + baselineByMaterial.get('salt')!.value
+		);
+	});
+
+	test('rounds the whole industrial paid-input movement after applying its multiplier', () => {
+		let game = { ...createNewGame('convenience', 280_006), cash: 100_000 };
+		const industrialTile = game.industryCities[0]!.tiles.find(
+			(tile) => tile.terrain === 'industrial' && !tile.locked
+		)!;
+		game = buildIndustrialBuilding(game, {
+			tileId: industrialTile.id,
+			buildingTypeId: 'flour-mill'
+		});
+		const rules: SimulationRules = {
+			importCostMultipliers: [
+				{
+					scope: 'industrial-material',
+					target: { kind: 'ids', ids: ['grain'] },
+					multiplier: 1.025
+				}
+			]
+		};
+
+		const result = simulateIndustryProduction(game, rules);
+
+		expect(
+			result.report.importedInputs.find((movement) => movement.materialId === 'grain')?.value
+		).toBe(21);
+	});
+
+	test('does not apply same-id retail rules to industrial paid inputs', () => {
+		let game = { ...createNewGame('convenience', 280_007), cash: 100_000 };
+		const industrialTile = game.industryCities[0]!.tiles.find(
+			(tile) => tile.terrain === 'industrial' && !tile.locked
+		)!;
+		game = buildIndustrialBuilding(game, {
+			tileId: industrialTile.id,
+			buildingTypeId: 'flour-mill'
+		});
+		const rules: SimulationRules = {
+			importCostMultipliers: [
+				{ scope: 'retail-product', target: { kind: 'ids', ids: ['grain'] }, multiplier: 2 }
+			]
+		};
+
+		expect(simulateIndustryProduction(game, rules)).toEqual(simulateIndustryProduction(game));
+	});
+
 	test('uses placed warehouse buildings as warehouse capacity', () => {
 		expect.assertions(3);
 		let game = { ...createNewGame('convenience', 20260512), cash: 100_000 };

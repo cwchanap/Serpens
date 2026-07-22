@@ -5,6 +5,11 @@ import { removeWarehouseMaterial } from './industryProduction';
 import { getStoreRevenueMultiplier, getUnlockedCategoryCount } from './leveling';
 import { clampScore } from './reports';
 import { randomBetween, type Rng } from './rng';
+import {
+	DEFAULT_SIMULATION_RULES,
+	getImportCostMultiplier,
+	type SimulationRules
+} from './simulationRules';
 import { getRetailCityDemandMultiplier } from './world';
 import type {
 	ArchetypeId,
@@ -315,7 +320,9 @@ export function simulateProductSalesForCity(input: {
 export function applyWeeklyImports(input: {
 	game: GameState;
 	storeReports: Map<string, DailyProductReport[]>;
+	rules?: SimulationRules;
 }): WeeklyImportResult {
+	const rules = input.rules ?? DEFAULT_SIMULATION_RULES;
 	let importSpend = 0;
 	let warehouse = input.game.warehouse;
 	const productReports = cloneProductReports(input.storeReports);
@@ -338,7 +345,8 @@ export function applyWeeklyImports(input: {
 				? removeWarehouseMaterial(warehouse, materialId, neededUnits)
 				: null;
 			const importedUnits = removal?.shortage ?? neededUnits;
-			const spend = importedUnits * category.importCost;
+			const multiplier = getImportCostMultiplier(rules, 'retail-product', category.id);
+			const spend = Math.round(importedUnits * category.importCost * multiplier);
 			const warehouseUnits = removal?.quantityRemoved ?? 0;
 			const warehouseValue =
 				warehouseUnits * (materialId ? MATERIALS[materialId].localValue : category.importCost);

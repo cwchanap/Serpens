@@ -2,6 +2,11 @@ import { addInventory, inventoryUsed, removeInventory } from './buildingInventor
 import { INDUSTRIAL_BUILDING_TYPES, MATERIALS, PRODUCTION_RECIPES } from './industry';
 import { getBuildingThroughputMultiplier } from './leveling';
 import { createRailTickState, pullViaRail, pushSurplusViaRail } from './railShipping';
+import {
+	DEFAULT_SIMULATION_RULES,
+	getImportCostMultiplier,
+	type SimulationRules
+} from './simulationRules';
 import type {
 	DailyMaterialMovement,
 	DailyProductionReport,
@@ -90,7 +95,10 @@ export function getWarehouseCapacity(game: GameState): number {
 	}, 0);
 }
 
-export function simulateIndustryProduction(game: GameState): {
+export function simulateIndustryProduction(
+	game: GameState,
+	rules: SimulationRules = DEFAULT_SIMULATION_RULES
+): {
 	game: GameState;
 	report: DailyProductionReport;
 } {
@@ -263,10 +271,14 @@ export function simulateIndustryProduction(game: GameState): {
 			}
 
 			if (shortage > 0) {
-				const importMovement = createMovement(
+				const multiplier = getImportCostMultiplier(rules, 'industrial-material', input.materialId);
+				const importValue = Math.round(
+					shortage * MATERIALS[input.materialId].importCost * multiplier
+				);
+				const importMovement = createMovementWithValue(
 					input.materialId,
 					shortage,
-					MATERIALS[input.materialId].importCost,
+					importValue,
 					'import'
 				);
 				importSpend += importMovement.value;
@@ -425,6 +437,20 @@ function createMovement(
 		materialId,
 		quantity,
 		value: quantity * unitValue,
+		source
+	};
+}
+
+function createMovementWithValue(
+	materialId: MaterialId,
+	quantity: number,
+	value: number,
+	source: DailyMaterialMovement['source']
+): DailyMaterialMovement {
+	return {
+		materialId,
+		quantity,
+		value,
 		source
 	};
 }
