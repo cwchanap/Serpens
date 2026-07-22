@@ -1,3 +1,4 @@
+import { resolveScenarioDefinition } from './catalog';
 import type {
 	ScenarioDefinition,
 	ScenarioDefinitionRef,
@@ -7,6 +8,7 @@ import type {
 
 const SHARE_CODE_PREFIX = 'SC1';
 const MAX_SEED = 2_147_483_647;
+const SCENARIO_IDS = ['first-profit', 'import-squeeze', 'local-lifeline'] as const;
 
 export interface DecodedScenarioShareCode {
 	definition: ScenarioDefinitionRef;
@@ -51,10 +53,17 @@ function parseVersion(value: string): number | undefined {
 }
 
 function parseSeed(value: string): number | undefined {
-	if (!/^[0-9a-z]+$/.test(value)) return undefined;
-	const seed = Number.parseInt(value, 36);
-	if (!Number.isSafeInteger(seed) || seed < 1 || seed > MAX_SEED) return undefined;
-	return seed.toString(36) === value ? seed : undefined;
+	let seed = 0;
+	for (const character of value) {
+		const digit = Number.parseInt(character, 36);
+		if (seed > Math.floor((MAX_SEED - digit) / 36)) return undefined;
+		seed = seed * 36 + digit;
+	}
+	return seed;
+}
+
+function isKnownScenarioId(value: string): value is ScenarioId {
+	return (SCENARIO_IDS as readonly string[]).includes(value);
 }
 
 function assertEncodableDefinition(definition: ScenarioDefinitionRef): void {
@@ -75,7 +84,9 @@ export function encodeScenarioShareCode(definition: ScenarioDefinitionRef, seed:
 
 export function decodeScenarioShareCode(
 	input: string,
-	resolveDefinition?: (ref: ScenarioDefinitionRef) => ScenarioDefinition | undefined
+	resolveDefinition: (
+		ref: ScenarioDefinitionRef
+	) => ScenarioDefinition | undefined = resolveScenarioDefinition
 ): ShareCodeDecodeResult {
 	const fields = input.trim().split('.');
 	if (fields.length !== 5) return { ok: false, code: 'malformed' };
@@ -96,21 +107,25 @@ export function decodeScenarioShareCode(
 	if (version === undefined) return { ok: false, code: 'malformed' };
 
 	if (rawSeed === '0') return { ok: false, code: 'invalid-seed' };
-	if (!/^[0-9a-z]+$/.test(rawSeed) || Number.parseInt(rawSeed, 36).toString(36) !== rawSeed) {
+	if (!/^[1-9a-z][0-9a-z]*$/.test(rawSeed)) {
 		return { ok: false, code: 'malformed' };
 	}
 	const seed = parseSeed(rawSeed);
 	if (seed === undefined) return { ok: false, code: 'invalid-seed' };
 
-	const definition = { scenarioId: rawScenarioId as ScenarioId, version };
-	const canonicalCode = encodeScenarioShareCode(definition, seed);
+	const canonicalCode = encodeScenarioShareCode(
+		{ scenarioId: rawScenarioId as ScenarioId, version },
+		seed
+	);
 	if (rawChecksum !== canonicalCode.split('.')[4]) {
 		return { ok: false, code: 'checksum-mismatch' };
 	}
+	if (!isKnownScenarioId(rawScenarioId)) return { ok: false, code: 'unknown-scenario' };
+	const definition = { scenarioId: rawScenarioId, version };
 
-	const resolved = resolveDefinition?.(definition);
+	const resolved = resolveDefinition(definition);
 	if (!resolved) {
-		return { ok: false, code: 'unknown-scenario' };
+		return { ok: false, code: 'unsupported-version' };
 	}
 	if (resolved.version !== version) {
 		return { ok: false, code: 'unsupported-version' };

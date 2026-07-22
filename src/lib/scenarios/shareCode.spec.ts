@@ -10,7 +10,9 @@ const fixtureDefinitions = [
 ] as const;
 
 function resolveFixtureDefinition(ref: ScenarioDefinitionRef): ScenarioDefinition | undefined {
-	const definition = fixtureDefinitions.find((candidate) => candidate.id === ref.scenarioId);
+	const definition = fixtureDefinitions.find(
+		(candidate) => candidate.id === ref.scenarioId && candidate.version === ref.version
+	);
 	return definition as ScenarioDefinition | undefined;
 }
 
@@ -96,12 +98,17 @@ describe('scenario share codes', () => {
 	it('rejects seed zero and a seed above the signed 32-bit maximum', () => {
 		const zero = `SC1.first-profit.1.0.${checksumFor('SC1.first-profit.1.0')}`;
 		const aboveMaximum = `SC1.first-profit.1.zik0zk.${checksumFor('SC1.first-profit.1.zik0zk')}`;
+		const huge = `SC1.first-profit.1.zzzzzzzzzzzzzzzz.${checksumFor('SC1.first-profit.1.zzzzzzzzzzzzzzzz')}`;
 
 		expect(decodeScenarioShareCode(zero, resolveFixtureDefinition)).toEqual({
 			ok: false,
 			code: 'invalid-seed'
 		});
 		expect(decodeScenarioShareCode(aboveMaximum, resolveFixtureDefinition)).toEqual({
+			ok: false,
+			code: 'invalid-seed'
+		});
+		expect(decodeScenarioShareCode(huge, resolveFixtureDefinition)).toEqual({
 			ok: false,
 			code: 'invalid-seed'
 		});
@@ -120,6 +127,14 @@ describe('scenario share codes', () => {
 		expect(decodeScenarioShareCode(input, resolveFixtureDefinition)).toEqual({
 			ok: false,
 			code: 'unknown-scenario'
+		});
+	});
+
+	it('uses the catalog resolver by default after recognizing a closed scenario ID', () => {
+		const code = encodeScenarioShareCode({ scenarioId: 'first-profit', version: 1 }, 280_001);
+		expect(decodeScenarioShareCode(code)).toEqual({
+			ok: false,
+			code: 'unsupported-version'
 		});
 	});
 
