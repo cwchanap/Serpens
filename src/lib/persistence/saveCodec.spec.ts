@@ -46,6 +46,7 @@ import {
 	createSaveRecord,
 	createSaveSummary,
 	migrateSavedGame,
+	normalizeSandboxSavedGame,
 	parseSaveStoreSnapshot,
 	validateCurrentGameState,
 	validateSaveRecord,
@@ -100,6 +101,12 @@ function createFixtureIndustryCity(): GameState['industryCities'][number] {
 		}),
 		rails: []
 	};
+}
+
+function createDeepEnumerableExtra(depth: number): Record<string, unknown> {
+	let value: Record<string, unknown> = { leaf: true };
+	for (let index = 0; index < depth; index += 1) value = { next: value };
+	return value;
 }
 
 function createGame(overrides: Partial<GameState> = {}): GameState {
@@ -640,6 +647,70 @@ describe('saveCodec', () => {
 			};
 			expect(validate).toThrow(SaveDataError);
 			expect(invoked).toBe(false);
+		}
+	);
+
+	test('v4 migration maps malformed category coercion to SaveDataError', () => {
+		const game = createGame();
+		const malformedCategory = { valueOf: {}, toString: {} };
+		game.stores = [
+			{
+				...game.stores[0]!,
+				products: [
+					{
+						...game.stores[0]!.products[0]!,
+						categoryId: malformedCategory as unknown as string
+					}
+				]
+			}
+		];
+
+		expect(() => migrateSavedGame(game, 4)).toThrow(SaveDataError);
+	});
+
+	test.each(['normalize-cash', 'record-report', 'snapshot-warehouse'] as const)(
+		'$case maps structured-cloneable scalar coercion data to SaveDataError',
+		(testCase) => {
+			const malformed = { valueOf: {}, toString: {} };
+			const validate = () => {
+				if (testCase === 'normalize-cash') {
+					return normalizeSandboxSavedGame({ ...createGame(), cash: malformed });
+				}
+				if (testCase === 'record-report') {
+					const report = {
+						...createDailyReport(),
+						netIncome: malformed as unknown as number
+					};
+					return validateSaveRecord(createManualSaveRecord({ game: { reports: [report] } }));
+				}
+				const game = createGame({
+					warehouse: {
+						capacity: 0,
+						materials: { water: malformed as unknown as number },
+						overflowUnits: 0,
+						overflowCost: 0
+					}
+				});
+				return validateSaveStoreSnapshot(createSnapshotWithGame(game));
+			};
+
+			expect(validate).toThrow(SaveDataError);
+		}
+	);
+
+	test.each(['strict', 'snapshot'] as const)(
+		'$boundary boundary rejects a 20,000-deep enumerable extra as SaveDataError',
+		(boundary) => {
+			const deepExtra = createDeepEnumerableExtra(20_000);
+			const validate = () =>
+				boundary === 'strict'
+					? validateCurrentGameState(Object.assign(createGame(), { deepExtra }))
+					: validateSaveStoreSnapshot(
+							Object.assign(createSnapshotWithGame(createGame()), { deepExtra })
+						);
+
+			expect(validate).toThrow(SaveDataError);
+			expect(validate).toThrow(/depth|budget/);
 		}
 	);
 
