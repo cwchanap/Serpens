@@ -13,12 +13,16 @@ import {
 	getIndustrialBuildingTypesForProductChain
 } from '$lib/game/industry';
 import {
+	INDUSTRIAL_BUILDING_FOOTPRINT_HEIGHT,
+	INDUSTRIAL_BUILDING_FOOTPRINT_WIDTH,
 	createIndustryTileLookup,
 	getIndustryBuildingFootprint
 } from '$lib/game/industryFootprint';
 import { MAX_STORE_LEVEL, getUnlockedCategoryCount } from '$lib/game/leveling';
 import { RAIL_MAX_LEVEL, railCellKey } from '$lib/game/rail';
 import {
+	RETAIL_STORE_FOOTPRINT_HEIGHT,
+	RETAIL_STORE_FOOTPRINT_WIDTH,
 	createCityTileLookup,
 	getStoreFootprintPlacementBlockReason
 } from '$lib/game/storeFootprint';
@@ -167,10 +171,19 @@ interface ValidationContext {
 	};
 	allowedCommands: Set<string>;
 	optionalObjectiveIds: Set<string>;
+	permittedRetailPlacements: PermittedRetailPlacement[];
+	storeCap: number;
 	startBuildingPlacements: AuthoredBuilding[];
 	permittedBuildingPlacements: AuthoredBuilding[];
 	railBuildingGraph: Map<string, Set<string>>;
 	cities: Map<string, City | IndustryCity>;
+}
+
+interface PermittedRetailPlacement {
+	archetypeId: string;
+	cityId: string;
+	x: number;
+	y: number;
 }
 
 interface AuthoredBuilding {
@@ -181,6 +194,7 @@ interface AuthoredBuilding {
 	tileId: string;
 	x?: number;
 	y?: number;
+	validPlacement: boolean;
 }
 
 function compareCodeUnits(first: string, second: string): number {
@@ -486,7 +500,7 @@ function validateRetailPlacement(
 	context: ValidationContext,
 	placement: JsonObject,
 	path: string
-): void {
+): boolean {
 	const validCity = validateKnownReference(
 		context,
 		placement.cityId,
@@ -512,7 +526,7 @@ function validateRetailPlacement(
 				context.content.archetypes
 			);
 	}
-	if (!nonEmptyString(context, placement.tileId, `${path}.tileId`) || !validCity) return;
+	if (!nonEmptyString(context, placement.tileId, `${path}.tileId`) || !validCity) return false;
 	const cityDefinition = getWorldCityDefinition(placement.cityId as string);
 	const city = getValidationCity(context, placement.cityId as string);
 	if (!cityDefinition || cityDefinition.kind !== 'retail') {
@@ -523,11 +537,11 @@ function validateRetailPlacement(
 			placement.cityId,
 			'Retail placements require a retail city.'
 		);
-		return;
+		return false;
 	}
 	// Placement generation depends on a valid seed. Avoid derivative placement
 	// noise when the seed itself has already failed validation.
-	if (!city) return;
+	if (!city) return false;
 	const retailCity = city as City;
 	const lookup = createCityTileLookup(retailCity);
 	const tile = lookup.byId.get(placement.tileId as string);
@@ -539,7 +553,9 @@ function validateRetailPlacement(
 			placement.tileId,
 			'The retail placement is not buildable.'
 		);
+		return false;
 	}
+	return validArchetype;
 }
 
 function validateRetailPlacements(context: ValidationContext, value: unknown): void {
@@ -549,7 +565,18 @@ function validateRetailPlacements(context: ValidationContext, value: unknown): v
 		const path = `content.retailPlacements[${index}]`;
 		const placement = closedObject(context, candidate, path, RETAIL_PLACEMENT_KEYS);
 		if (!placement) continue;
-		validateRetailPlacement(context, placement, path);
+		if (validateRetailPlacement(context, placement, path)) {
+			const city = getValidationCity(context, placement.cityId as string) as City | undefined;
+			const tile = city?.tiles.find((candidate) => candidate.id === placement.tileId);
+			if (tile) {
+				context.permittedRetailPlacements.push({
+					archetypeId: placement.archetypeId as string,
+					cityId: placement.cityId as string,
+					x: tile.x,
+					y: tile.y
+				});
+			}
+		}
 	}
 }
 
@@ -579,7 +606,8 @@ function validateIndustrialPlacementShape(
 		path,
 		typeId: placement[typeKey] as string,
 		cityId: placement.cityId as string,
-		tileId: placement.tileId as string
+		tileId: placement.tileId as string,
+		validPlacement: false
 	};
 }
 
@@ -600,7 +628,7 @@ function validateIndustrialPlacements(context: ValidationContext, value: unknown
 			context.content.buildingTypes
 		);
 		context.permittedBuildingPlacements.push(authored);
-		validateIndustrialBuildingPlacement(context, authored, new Map());
+		authored.validPlacement = validateIndustrialBuildingPlacement(context, authored, new Map());
 	}
 }
 
@@ -608,7 +636,7 @@ function validateIndustrialBuildingPlacement(
 	context: ValidationContext,
 	building: AuthoredBuilding,
 	occupiedByCity: Map<string, Set<string>>
-): void {
+): boolean {
 	const definition = getWorldCityDefinition(building.cityId);
 	const city = getValidationCity(context, building.cityId);
 	if (!definition || definition.kind !== 'industry' || !city) {
@@ -619,7 +647,7 @@ function validateIndustrialBuildingPlacement(
 			building.cityId,
 			'Industrial buildings require an industry city.'
 		);
-		return;
+		return false;
 	}
 	const industryCity = city as IndustryCity;
 	const lookup = createIndustryTileLookup(industryCity);
@@ -633,7 +661,7 @@ function validateIndustrialBuildingPlacement(
 			building.tileId,
 			'The industrial placement tile does not exist.'
 		);
-		return;
+		return false;
 	}
 	building.x = tile.x;
 	building.y = tile.y;
@@ -655,7 +683,7 @@ function validateIndustrialBuildingPlacement(
 			building.tileId,
 			'The industrial placement violates its footprint, terrain, or resource requirement.'
 		);
-		return;
+		return false;
 	}
 	if (footprint.tiles.some((candidate) => occupied.has(candidate.id))) {
 		diagnostic(
@@ -665,9 +693,10 @@ function validateIndustrialBuildingPlacement(
 			building.tileId,
 			'The industrial building overlaps an earlier authored building.'
 		);
-		return;
+		return false;
 	}
 	for (const footprintTile of footprint.tiles) occupied.add(footprintTile.id);
+	return true;
 }
 
 function validateStart(context: ValidationContext, value: unknown): void {
@@ -721,7 +750,11 @@ function validateStart(context: ValidationContext, value: unknown): void {
 			if (!authored) continue;
 			authored.ref = typeof building.ref === 'string' ? building.ref : undefined;
 			context.startBuildingPlacements.push(authored);
-			validateIndustrialBuildingPlacement(context, authored, occupiedByCity);
+			authored.validPlacement = validateIndustrialBuildingPlacement(
+				context,
+				authored,
+				occupiedByCity
+			);
 			validateIncluded(context, authored.cityId, `${path}.cityId`, context.content.cities);
 			validateIncluded(context, authored.typeId, `${path}.typeId`, context.content.buildingTypes);
 			validateStartingIndustrialPlacementAllowed(context, authored);
@@ -986,6 +1019,12 @@ function validateBuildingInventories(
 		const path = `start.overrides.buildingInventories[${index}]`;
 		const inventory = closedObject(context, candidate, path, BUILDING_INVENTORY_KEYS);
 		if (!inventory) continue;
+		const materials = validateMaterialRecord(
+			context,
+			inventory.materials,
+			`${path}.materials`,
+			true
+		);
 		if (nonEmptyString(context, inventory.buildingRef, `${path}.buildingRef`)) {
 			if (seen.has(inventory.buildingRef))
 				diagnostic(
@@ -1006,12 +1045,6 @@ function validateBuildingInventories(
 					'Building inventories must reference a building created earlier in setup.'
 				);
 			else {
-				const materials = validateMaterialRecord(
-					context,
-					inventory.materials,
-					`${path}.materials`,
-					true
-				);
 				const used = [...materials.values()].reduce((total, quantity) => total + quantity, 0);
 				const capacity =
 					INDUSTRIAL_BUILDING_TYPES[building.typeId as IndustrialBuildingTypeId]?.bufferCapacity ??
@@ -1112,13 +1145,6 @@ function validateWorldOverride(context: ValidationContext, value: unknown): void
 		KNOWN_CITY_IDS,
 		'city'
 	);
-	for (const cityId of revealed)
-		validateIncluded(
-			context,
-			cityId,
-			`start.overrides.world.revealedCityIds[${[...revealed].indexOf(cityId)}]`,
-			context.content.cities
-		);
 	for (const cityId of opened) {
 		if (!revealed.has(cityId))
 			diagnostic(
@@ -1128,13 +1154,13 @@ function validateWorldOverride(context: ValidationContext, value: unknown): void
 				cityId,
 				`Opened city ${cityId} must also be revealed.`
 			);
-		validateIncluded(
-			context,
-			cityId,
-			`start.overrides.world.openedCityIds[${[...opened].indexOf(cityId)}]`,
-			context.content.cities
-		);
 	}
+	validateWorldArrayInclusions(
+		context,
+		world.revealedCityIds,
+		'start.overrides.world.revealedCityIds'
+	);
+	validateWorldArrayInclusions(context, world.openedCityIds, 'start.overrides.world.openedCityIds');
 	for (const [key, kind] of [
 		['activeRetailCityId', 'retail'],
 		['activeIndustryCityId', 'industry']
@@ -1154,8 +1180,22 @@ function validateWorldOverride(context: ValidationContext, value: unknown): void
 	}
 }
 
+function validateWorldArrayInclusions(
+	context: ValidationContext,
+	value: unknown,
+	path: string
+): void {
+	if (!Array.isArray(value)) return;
+	for (const [index, cityId] of value.entries()) {
+		if (typeof cityId === 'string' && KNOWN_CITY_IDS.has(cityId)) {
+			validateIncluded(context, cityId, `${path}[${index}]`, context.content.cities);
+		}
+	}
+}
+
 function validateStoreCap(context: ValidationContext, value: unknown): void {
 	if (value === undefined) {
+		context.storeCap = STARTER_STORE_CAP;
 		if (!context.allowedCommands.has('openStore')) {
 			diagnostic(
 				context,
@@ -1177,6 +1217,7 @@ function validateStoreCap(context: ValidationContext, value: unknown): void {
 		);
 		return;
 	}
+	context.storeCap = value;
 	if (!context.allowedCommands.has('openStore') && value !== 1) {
 		diagnostic(
 			context,
@@ -1199,11 +1240,21 @@ function validateAllowlistedProductUnlocks(
 			if (!context.content.archetypes.has(archetype.id)) continue;
 			const index = archetype.startingCategories.findIndex((category) => category.id === productId);
 			if (index < 0) continue;
-			let reachableLevel = 1;
+			const isFoundingArchetype = foundingStore?.archetypeId === archetype.id;
+			const isOpenableArchetype =
+				context.allowedCommands.has('openStore') &&
+				context.storeCap > 1 &&
+				context.permittedRetailPlacements.some(
+					(placement) =>
+						placement.archetypeId === archetype.id &&
+						!overlapsFoundingStore(context, placement, foundingStore)
+				);
+			if (!isFoundingArchetype && !isOpenableArchetype) continue;
+			let reachableLevel =
+				isFoundingArchetype && typeof foundingStore.ref === 'string'
+					? (targetLevels.get(foundingStore.ref) ?? 1)
+					: 1;
 			if (context.allowedCommands.has('upgradeStore')) reachableLevel = MAX_STORE_LEVEL;
-			if (foundingStore?.archetypeId === archetype.id && typeof foundingStore.ref === 'string') {
-				reachableLevel = Math.max(reachableLevel, targetLevels.get(foundingStore.ref) ?? 1);
-			}
 			if (index < getUnlockedCategoryCount(reachableLevel)) available = true;
 		}
 		if (!available) {
@@ -1218,6 +1269,75 @@ function validateAllowlistedProductUnlocks(
 			);
 		}
 	}
+}
+
+function overlapsFoundingStore(
+	context: ValidationContext,
+	placement: PermittedRetailPlacement,
+	foundingStore: JsonObject | undefined
+): boolean {
+	if (
+		typeof foundingStore?.cityId !== 'string' ||
+		typeof foundingStore.tileId !== 'string' ||
+		foundingStore.cityId !== placement.cityId
+	)
+		return false;
+	const city = getValidationCity(context, foundingStore.cityId) as City | undefined;
+	const foundingTile = city?.tiles.find((tile) => tile.id === foundingStore.tileId);
+	if (!foundingTile) return true;
+	return rectanglesOverlap(
+		placement.x,
+		placement.y,
+		RETAIL_STORE_FOOTPRINT_WIDTH,
+		RETAIL_STORE_FOOTPRINT_HEIGHT,
+		foundingTile.x,
+		foundingTile.y,
+		RETAIL_STORE_FOOTPRINT_WIDTH,
+		RETAIL_STORE_FOOTPRINT_HEIGHT
+	);
+}
+
+function rectanglesOverlap(
+	firstX: number,
+	firstY: number,
+	firstWidth: number,
+	firstHeight: number,
+	secondX: number,
+	secondY: number,
+	secondWidth: number,
+	secondHeight: number
+): boolean {
+	return (
+		firstX < secondX + secondWidth &&
+		firstX + firstWidth > secondX &&
+		firstY < secondY + secondHeight &&
+		firstY + firstHeight > secondY
+	);
+}
+
+function physicalBuildingKey(building: AuthoredBuilding): string {
+	return `${building.cityId}:${building.x},${building.y}`;
+}
+
+function dedupePhysicalBuildings(buildings: readonly AuthoredBuilding[]): AuthoredBuilding[] {
+	const byFootprint = new Map<string, AuthoredBuilding>();
+	for (const building of buildings) {
+		if (!building.validPlacement || building.x === undefined || building.y === undefined) continue;
+		const key = physicalBuildingKey(building);
+		if (!byFootprint.has(key)) byFootprint.set(key, building);
+	}
+	return [...byFootprint.values()];
+}
+
+function isCoordinateInsideBuilding(x: number, y: number, building: AuthoredBuilding): boolean {
+	return (
+		building.x !== undefined &&
+		building.y !== undefined &&
+		x >= building.x &&
+		x < building.x + INDUSTRIAL_BUILDING_FOOTPRINT_WIDTH &&
+		y >= building.y &&
+		y < building.y + INDUSTRIAL_BUILDING_FOOTPRINT_HEIGHT
+	);
 }
 
 function validateRails(
@@ -1291,7 +1411,18 @@ function validateRails(
 			definition?.kind === 'industry' && city
 				? createIndustryTileLookup(city as IndustryCity).byCoordinate.get(`${rail.x},${rail.y}`)
 				: undefined;
-		if (!tile || tile.locked || occupiedByCity.get(cityId)?.has(tile.id)) {
+		const overlapsPermittedBuilding = context.permittedBuildingPlacements.some(
+			(building) =>
+				building.validPlacement &&
+				building.cityId === cityId &&
+				isCoordinateInsideBuilding(rail.x as number, rail.y as number, building)
+		);
+		if (
+			!tile ||
+			tile.locked ||
+			occupiedByCity.get(cityId)?.has(tile.id) ||
+			overlapsPermittedBuilding
+		) {
 			diagnostic(
 				context,
 				path,
@@ -1324,10 +1455,13 @@ function hasValidRailTopology(
 	for (const [cityId, rails] of byCity) {
 		const coordinates = new Set(rails.map((rail) => railCellKey(rail.x, rail.y)));
 		const visited = new Set<string>();
-		const buildings = [
+		const permittedBuildings = context.allowedCommands.has('buildIndustrialBuilding')
+			? context.permittedBuildingPlacements
+			: [];
+		const buildings = dedupePhysicalBuildings([
 			...context.startBuildingPlacements,
-			...context.permittedBuildingPlacements
-		].filter(
+			...permittedBuildings
+		]).filter(
 			(building) =>
 				building.cityId === cityId && building.x !== undefined && building.y !== undefined
 		);
@@ -1357,12 +1491,18 @@ function hasValidRailTopology(
 			const attached = buildings.filter((building) => {
 				const x = building.x!;
 				const y = building.y!;
-				for (let cellX = x; cellX <= x + 1; cellX++) {
-					if (component.has(railCellKey(cellX, y - 1)) || component.has(railCellKey(cellX, y + 2)))
+				for (let cellX = x; cellX < x + INDUSTRIAL_BUILDING_FOOTPRINT_WIDTH; cellX++) {
+					if (
+						component.has(railCellKey(cellX, y - 1)) ||
+						component.has(railCellKey(cellX, y + INDUSTRIAL_BUILDING_FOOTPRINT_HEIGHT))
+					)
 						return true;
 				}
-				for (let cellY = y; cellY <= y + 1; cellY++) {
-					if (component.has(railCellKey(x - 1, cellY)) || component.has(railCellKey(x + 2, cellY)))
+				for (let cellY = y; cellY < y + INDUSTRIAL_BUILDING_FOOTPRINT_HEIGHT; cellY++) {
+					if (
+						component.has(railCellKey(x - 1, cellY)) ||
+						component.has(railCellKey(x + INDUSTRIAL_BUILDING_FOOTPRINT_WIDTH, cellY))
+					)
 						return true;
 				}
 				return false;
@@ -1792,52 +1932,98 @@ function hasLocalProductionPath(
 		)
 			return false;
 		if (!context.content.buildingTypes.has('warehouse')) return false;
-		const availablePlacements = [
+		const futurePlacements = context.allowedCommands.has('buildIndustrialBuilding')
+			? context.permittedBuildingPlacements
+			: [];
+		const availablePlacements = dedupePhysicalBuildings([
 			...context.startBuildingPlacements,
-			...context.permittedBuildingPlacements
-		];
-		if (
-			![...requiredTypes, 'warehouse'].every((typeId) =>
-				availablePlacements.some((placement) => placement.typeId === typeId)
-			)
-		)
-			return false;
-		if (!context.allowedCommands.has('buildRail')) {
-			if (
-				!hasRailPathForBuildingTypes(context, availablePlacements, [...requiredTypes, 'warehouse'])
-			)
-				return false;
-		}
+			...futurePlacements
+		]);
+		const requiredTypeIds = [...requiredTypes, 'warehouse'];
+		const feasibleCityIds = new Set(availablePlacements.map((placement) => placement.cityId));
+		const hasFeasibleCity = [...feasibleCityIds].some((cityId) => {
+			const cityPlacements = availablePlacements.filter((placement) => placement.cityId === cityId);
+			return hasFeasibleBuildingPath(
+				context,
+				cityPlacements,
+				requiredTypeIds,
+				context.allowedCommands.has('buildRail')
+			);
+		});
+		if (!hasFeasibleCity) return false;
 	}
 	return true;
 }
 
-function hasRailPathForBuildingTypes(
+function hasFeasibleBuildingPath(
 	context: ValidationContext,
 	placements: readonly AuthoredBuilding[],
-	requiredTypeIds: readonly string[]
+	requiredTypeIds: readonly string[],
+	canBuildRail: boolean
 ): boolean {
-	for (const start of placements) {
-		if (!context.railBuildingGraph.has(start.path)) continue;
-		const visited = new Set<string>([start.path]);
-		const queue = [start.path];
-		while (queue.length > 0) {
-			const current = queue.shift()!;
-			for (const neighbor of context.railBuildingGraph.get(current) ?? []) {
-				if (!visited.has(neighbor)) {
-					visited.add(neighbor);
-					queue.push(neighbor);
-				}
+	const required = [...new Set(requiredTypeIds)];
+	const startingBuildings = placements.filter((placement) => placement.path.startsWith('start.'));
+
+	function choose(index: number, selected: AuthoredBuilding[]): boolean {
+		if (index === required.length) {
+			return canBuildRail || areBuildingsRailConnected(context, selected);
+		}
+		const candidates = placements.filter((placement) => placement.typeId === required[index]);
+		for (const candidate of candidates) {
+			if (selected.some((existing) => buildingsOverlap(existing, candidate))) continue;
+			if (
+				candidate.path.startsWith('content.') &&
+				startingBuildings.some((existing) => buildingsOverlap(existing, candidate))
+			)
+				continue;
+			if (choose(index + 1, [...selected, candidate])) return true;
+		}
+		return false;
+	}
+
+	return choose(0, []);
+}
+
+function buildingsOverlap(first: AuthoredBuilding, second: AuthoredBuilding): boolean {
+	if (
+		first.path === second.path ||
+		first.cityId !== second.cityId ||
+		first.x === undefined ||
+		first.y === undefined ||
+		second.x === undefined ||
+		second.y === undefined
+	)
+		return first.path === second.path;
+	return rectanglesOverlap(
+		first.x,
+		first.y,
+		INDUSTRIAL_BUILDING_FOOTPRINT_WIDTH,
+		INDUSTRIAL_BUILDING_FOOTPRINT_HEIGHT,
+		second.x,
+		second.y,
+		INDUSTRIAL_BUILDING_FOOTPRINT_WIDTH,
+		INDUSTRIAL_BUILDING_FOOTPRINT_HEIGHT
+	);
+}
+
+function areBuildingsRailConnected(
+	context: ValidationContext,
+	buildings: readonly AuthoredBuilding[]
+): boolean {
+	const first = buildings[0];
+	if (!first || !context.railBuildingGraph.has(first.path)) return false;
+	const visited = new Set<string>([first.path]);
+	const queue = [first.path];
+	while (queue.length > 0) {
+		const current = queue.shift()!;
+		for (const neighbor of context.railBuildingGraph.get(current) ?? []) {
+			if (!visited.has(neighbor)) {
+				visited.add(neighbor);
+				queue.push(neighbor);
 			}
 		}
-		const connectedTypes = new Set(
-			placements
-				.filter((placement) => visited.has(placement.path))
-				.map((placement) => placement.typeId)
-		);
-		if (requiredTypeIds.every((typeId) => connectedTypes.has(typeId))) return true;
 	}
-	return false;
+	return buildings.every((building) => visited.has(building.path));
 }
 
 function validateScores(context: ValidationContext, definition: JsonObject): void {
@@ -1985,6 +2171,8 @@ export function validateScenarioDefinition(definition: unknown): ScenarioDiagnos
 		},
 		allowedCommands: new Set(),
 		optionalObjectiveIds: new Set(),
+		permittedRetailPlacements: [],
+		storeCap: STARTER_STORE_CAP,
 		startBuildingPlacements: [],
 		permittedBuildingPlacements: [],
 		railBuildingGraph: new Map(),
