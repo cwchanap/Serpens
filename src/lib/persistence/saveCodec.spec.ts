@@ -6,10 +6,15 @@ import {
 	generateCity,
 	isTileBuildable
 } from '$lib/game/city';
+import {
+	buildIndustrialBuilding,
+	getIndustrialPlacementBlockReason
+} from '$lib/game/industryPlacement';
+import { getWarehouseCapacity, recalculateWarehousePressure } from '$lib/game/industryProduction';
 import { formatLocation } from '$lib/game/placement';
 import type { DecisionContext } from '$lib/game/decisionContext';
 import { simulateDay } from '$lib/game/simulateDay';
-import { createNewGame } from '$lib/game/state';
+import { createNewGame, resolveDecision } from '$lib/game/state';
 import { calculateStockHealth, initializeStoreProducts } from '$lib/game/stock';
 import {
 	STARTER_STORE_CAP,
@@ -47,6 +52,58 @@ import {
 	validateSaveStoreSnapshot
 } from './saveCodec';
 
+function createFixtureRetailCity(): GameState['cities'][number] {
+	return {
+		id: 'harbor-city',
+		name: 'Harbor City',
+		width: 3,
+		height: 3,
+		tiles: [
+			[1, 1],
+			[2, 1],
+			[1, 2],
+			[2, 2]
+		].map(([x, y]) => ({
+			id: `harbor-city-${x}-${y}`,
+			cityId: 'harbor-city',
+			x: x!,
+			y: y!,
+			neighborhood: 'downtown',
+			terrain: 'commercial',
+			feature: null,
+			demand: 72,
+			rent: 180,
+			footTraffic: 66,
+			customerFit: 70,
+			locked: false
+		}))
+	};
+}
+
+function createFixtureIndustryCity(): GameState['industryCities'][number] {
+	return {
+		id: 'industry-city',
+		name: 'Industry City',
+		width: 3,
+		height: 3,
+		tiles: [
+			[1, 1],
+			[2, 1],
+			[1, 2],
+			[2, 2]
+		].map(([x, y]) => ({
+			id: `industry-city-${x}-${y}`,
+			cityId: 'industry-city',
+			x: x!,
+			y: y!,
+			terrain: 'industrial',
+			resource: null,
+			locked: false
+		})),
+		rails: []
+	};
+}
+
 function createGame(overrides: Partial<GameState> = {}): GameState {
 	return {
 		seed: 20260505,
@@ -69,26 +126,9 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 		},
 		world: createInitialWorldProgress(),
 		storeCap: STARTER_STORE_CAP,
-		cities: [
-			{
-				id: 'harbor-city',
-				name: 'Harbor City',
-				width: 1,
-				height: 1,
-				tiles: []
-			}
-		],
+		cities: [createFixtureRetailCity()],
 		activeCityId: 'harbor-city',
-		industryCities: [
-			{
-				id: 'industry-city',
-				name: 'Industry City',
-				width: 1,
-				height: 1,
-				tiles: [],
-				rails: []
-			}
-		],
+		industryCities: [createFixtureIndustryCity()],
 		activeIndustryCityId: 'industry-city',
 		industrialBuildings: [],
 		warehouse: {
@@ -288,6 +328,26 @@ function createIndustrialBuilding(
 	};
 }
 
+function createValidWarehouseBuildingGame(): GameState {
+	const game = { ...createNewGame('convenience', 20260722), cash: 1_000_000 };
+	const city = game.industryCities[0]!;
+	const tile = city.tiles.find(
+		(candidate) => getIndustrialPlacementBlockReason(game, candidate.id, 'warehouse') === null
+	)!;
+	const built = buildIndustrialBuilding(game, {
+		tileId: tile.id,
+		buildingTypeId: 'warehouse'
+	});
+	return {
+		...built,
+		warehouse: recalculateWarehousePressure({
+			...built.warehouse,
+			capacity: getWarehouseCapacity(built),
+			materials: { ...built.warehouse.materials }
+		})
+	};
+}
+
 /**
  * Strips the rail-transport fields (v10) from an otherwise-current game so
  * it matches the shape of a genuine v9 payload: `IndustryCity.rails`,
@@ -420,6 +480,276 @@ describe('saveCodec', () => {
 		expect(game).toEqual(before);
 	});
 
+	test('strict validation rejects a game inherited through its prototype', () => {
+		const inherited = Object.create(createGame()) as GameState;
+
+		expect(() => validateCurrentGameState(inherited)).toThrow(SaveDataError);
+		expect(() => validateCurrentGameState(inherited)).toThrow(
+			'Saved game must be a plain record with own data properties'
+		);
+	});
+
+	test.each([
+		{ name: 'function', value: () => true },
+		{ name: 'symbol', value: Symbol('uncloneable') }
+	])('strict validation wraps a structured-clone failure for a $name extra', ({ value }) => {
+		const game = Object.assign(createGame(), { uncloneable: value });
+
+		expect(() => validateCurrentGameState(game)).toThrow(SaveDataError);
+		expect(() => validateCurrentGameState(game)).toThrow(
+			'Saved game must contain only structured-cloneable own data properties'
+		);
+	});
+
+	test('strict validation accepts a successful warehouse construction transition', () => {
+		const game = { ...createNewGame('convenience', 20260722), cash: 1_000_000 };
+		const city = game.industryCities[0]!;
+		const tile = city.tiles.find(
+			(candidate) => getIndustrialPlacementBlockReason(game, candidate.id, 'warehouse') === null
+		)!;
+
+		const built = buildIndustrialBuilding(game, {
+			tileId: tile.id,
+			buildingTypeId: 'warehouse'
+		});
+
+		expect(built.industrialBuildings.at(-1)?.typeId).toBe('warehouse');
+		expect(validateCurrentGameState(built)).toEqual(built);
+	});
+
+	test('strict validation accepts a cash-changing decision transition that unlocks world progress', () => {
+		const simulated = simulateDay(createNewGame('convenience', 20260722));
+		const game: GameState = {
+			...simulated,
+			cash: -1,
+			world: {
+				revealedCityIds: simulated.world.revealedCityIds.filter(
+					(cityId) => cityId !== 'garden-borough'
+				),
+				openedCityIds: [...simulated.world.openedCityIds],
+				claimedMilestoneIds: simulated.world.claimedMilestoneIds.filter(
+					(milestoneId) => milestoneId !== 'reveal-garden-borough'
+				)
+			},
+			decisions: [
+				{
+					id: 'cash-recovery',
+					title: 'Cash recovery',
+					context: { code: 'cashPressure' },
+					expiresOnDay: simulated.day + 1,
+					options: [
+						{
+							id: 'accept',
+							label: 'Accept',
+							description: 'Receive cash',
+							effects: { cash: 100 }
+						}
+					]
+				}
+			]
+		};
+		expect(refreshWorldProgress(game)).toBe(game);
+
+		const resolved = resolveDecision(game, 'cash-recovery', 'accept');
+
+		expect(resolved.world.revealedCityIds).toContain('garden-borough');
+		expect(validateCurrentGameState(resolved)).toEqual(resolved);
+	});
+
+	test.each([
+		{ collection: 'retail', dimension: 'width', value: 0 },
+		{ collection: 'retail', dimension: 'height', value: 1.5 },
+		{ collection: 'industry', dimension: 'width', value: 0 },
+		{ collection: 'industry', dimension: 'height', value: 1.5 }
+	] as const)(
+		'strict validation rejects $collection city $dimension=$value',
+		({ collection, dimension, value }) => {
+			const game = createGame();
+			const changed =
+				collection === 'retail'
+					? {
+							...game,
+							cities: [{ ...game.cities[0]!, [dimension]: value }]
+						}
+					: {
+							...game,
+							industryCities: [{ ...game.industryCities[0]!, [dimension]: value }]
+						};
+
+			expect(() => validateCurrentGameState(changed)).toThrow(
+				new RegExp(`${dimension} must be a positive integer`)
+			);
+		}
+	);
+
+	test.each([
+		{ field: 'x', value: 3, error: 'coordinates (3,0) must be within city bounds' },
+		{ field: 'x', value: 0.5, error: 'x must be an integer' },
+		{ field: 'cityId', value: 'ghost-city', error: 'cityId must match containing city harbor-city' }
+	] as const)(
+		'strict validation rejects malformed retail tile $field',
+		({ field, value, error }) => {
+			const game = createGame();
+			const city = game.cities[0]!;
+			const sample = city.tiles[0]!;
+			const extra = {
+				...sample,
+				id: 'harbor-city-extra',
+				x: 0,
+				y: 0,
+				[field]: value
+			};
+
+			expect(() =>
+				validateCurrentGameState({
+					...game,
+					cities: [{ ...city, tiles: [...city.tiles, extra] }]
+				})
+			).toThrow(error);
+		}
+	);
+
+	test.each([
+		{ field: 'x', value: 3, error: 'coordinates (3,0) must be within city bounds' },
+		{ field: 'x', value: 0.5, error: 'x must be an integer' },
+		{
+			field: 'cityId',
+			value: 'ghost-city',
+			error: 'cityId must match containing city industry-city'
+		}
+	] as const)(
+		'strict validation rejects malformed industry tile $field',
+		({ field, value, error }) => {
+			const game = createGame();
+			const city = game.industryCities[0]!;
+			const extra: IndustryTile = {
+				id: 'industry-city-extra',
+				cityId: 'industry-city',
+				x: 0,
+				y: 0,
+				terrain: 'industrial',
+				resource: null,
+				locked: false,
+				[field]: value
+			} as IndustryTile;
+
+			expect(() =>
+				validateCurrentGameState({
+					...game,
+					industryCities: [{ ...city, tiles: [...city.tiles, extra] }]
+				})
+			).toThrow(error);
+		}
+	);
+
+	test('strict validation rejects a tiny city whose store footprint cannot fit', () => {
+		const game = createGame();
+		const tile = { ...game.cities[0]!.tiles[0]!, id: 'tiny-0-0', x: 0, y: 0 };
+		const store = {
+			...game.stores[0]!,
+			tileId: tile.id,
+			mapX: 0,
+			mapY: 0,
+			location: { neighborhoodId: tile.neighborhood, x: 0, y: 0 }
+		};
+
+		expect(() =>
+			validateCurrentGameState({
+				...game,
+				cities: [{ ...game.cities[0]!, width: 1, height: 1, tiles: [tile] }],
+				stores: [store]
+			})
+		).toThrow('placement must already match a buildable, non-overlapping city footprint');
+	});
+
+	test.each([
+		{ field: 'tileId', value: null, error: 'tileId must be a non-empty string' },
+		{ field: 'mapX', value: '1', error: 'mapX must be a finite number' },
+		{ field: 'mapY', value: Number.NaN, error: 'mapY must be a finite number' }
+	])(
+		'sandbox normalization leaves malformed store $field for strict validation',
+		({ field, value, error }) => {
+			const store = { ...createGame().stores[0]!, [field]: value };
+			const record = createManualSaveRecord({
+				game: { stores: [store as unknown as GameState['stores'][number]] }
+			});
+
+			expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+			expect(() => validateSaveRecord(record)).toThrow(error);
+		}
+	);
+
+	test.each([
+		{ field: 'activeCityId', value: 'ghost-retail' },
+		{ field: 'activeIndustryCityId', value: 'ghost-industry' }
+	] as const)(
+		'strict validation rejects missing active city through $field',
+		({ field, value }) => {
+			expect(() => validateCurrentGameState({ ...createGame(), [field]: value })).toThrow(
+				new RegExp(`${field} must reference a materialized city`)
+			);
+		}
+	);
+
+	test.each([
+		{
+			name: 'missing city',
+			mutate: (game: GameState) => ({
+				...game,
+				industrialBuildings: [{ ...game.industrialBuildings[0]!, cityId: 'ghost-city' }]
+			})
+		},
+		{
+			name: 'missing tile',
+			mutate: (game: GameState) => ({
+				...game,
+				industrialBuildings: [{ ...game.industrialBuildings[0]!, tileId: 'ghost-tile' }]
+			})
+		},
+		{
+			name: 'off-grid footprint',
+			mutate: (game: GameState) => {
+				const city = game.industryCities[0]!;
+				const edge = city.tiles.find(
+					(tile) => tile.x === city.width - 1 && tile.y === city.height - 1
+				)!;
+				return {
+					...game,
+					industrialBuildings: [
+						{
+							...game.industrialBuildings[0]!,
+							tileId: edge.id,
+							mapX: edge.x,
+							mapY: edge.y
+						}
+					]
+				};
+			}
+		},
+		{
+			name: 'overlap',
+			mutate: (game: GameState) => {
+				const duplicate = { ...game.industrialBuildings[0]!, id: 'warehouse-overlap' };
+				const withDuplicate = {
+					...game,
+					industrialBuildings: [...game.industrialBuildings, duplicate]
+				};
+				return {
+					...withDuplicate,
+					warehouse: recalculateWarehousePressure({
+						...withDuplicate.warehouse,
+						capacity: getWarehouseCapacity(withDuplicate),
+						materials: { ...withDuplicate.warehouse.materials }
+					})
+				};
+			}
+		}
+	])('strict validation rejects industrial building $name', ({ mutate }) => {
+		expect(() => validateCurrentGameState(mutate(createValidWarehouseBuildingGame()))).toThrow(
+			/industrialBuildings\[\d+\] placement/
+		);
+	});
+
 	test('strict validation rejects a fractional store cap', () => {
 		expect(() => validateCurrentGameState(createGame({ storeCap: 3.5 }))).toThrow(
 			'Saved game storeCap must be an integer'
@@ -502,12 +832,14 @@ describe('saveCodec', () => {
 		expect(validateCurrentGameState(game)).toEqual(game);
 	});
 
-	test('strict current-game cloning preserves JSON-edge numeric identity', () => {
-		const game = createGame({ cash: -0 });
+	test('strict current-game cloning preserves -0 and permitted undefined extras', () => {
+		const game = Object.assign(createGame({ cash: -0 }), { optionalExtra: undefined });
 
 		const validated = validateCurrentGameState(game);
 
 		expect(Object.is(validated.cash, -0)).toBe(true);
+		expect(Object.hasOwn(validated, 'optionalExtra')).toBe(true);
+		expect((validated as GameState & { optionalExtra?: unknown }).optionalExtra).toBeUndefined();
 	});
 
 	test('strict validation rejects stale world progress while sandbox loading refreshes it', () => {
@@ -1018,13 +1350,7 @@ describe('saveCodec', () => {
 		expect.assertions(1);
 		const legacyGame = createGame({
 			cities: [
-				{
-					id: 'harbor-city',
-					name: 'Harbor City',
-					width: 1,
-					height: 1,
-					tiles: []
-				},
+				createFixtureRetailCity(),
 				{
 					id: 'not-a-real-city',
 					name: 'Unknown',
@@ -1135,8 +1461,8 @@ describe('saveCodec', () => {
 						{
 							id: 'tile-1',
 							cityId: 'harbor-city',
-							x: 1,
-							y: 1,
+							x: 0,
+							y: 0,
 							neighborhood: 'downtown',
 							terrain: 'commercial',
 							feature: null,
@@ -1443,8 +1769,8 @@ describe('saveCodec', () => {
 		);
 	});
 
-	test('warns with an unknown store id and non-string tileId when no buildable tile remains', () => {
-		expect.assertions(3);
+	test('does not relocate malformed non-string tileId when no buildable tile remains', () => {
+		expect.assertions(2);
 		const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 		const lockedTile = {
 			id: 'harbor-city-0-0',
@@ -1485,13 +1811,10 @@ describe('saveCodec', () => {
 		});
 
 		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
-		expect(warnSpy).toHaveBeenCalledWith(
-			expect.stringContaining('store "<unknown>" in city "harbor-city" has no buildable tile')
-		);
-		expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('saved tileId "?"'));
+		expect(warnSpy).not.toHaveBeenCalled();
 	});
 
-	test('relocates a store with an unknown id and non-string tileId to the closest buildable tile', () => {
+	test('does not relocate a store with an unknown id and non-string tileId', () => {
 		expect.assertions(2);
 		const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 		const city = generateCity({
@@ -1521,9 +1844,7 @@ describe('saveCodec', () => {
 		});
 
 		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
-		expect(warnSpy).toHaveBeenCalledWith(
-			expect.stringContaining('relocated store "<unknown>" in city "harbor-city" from tile "?"')
-		);
+		expect(warnSpy).not.toHaveBeenCalled();
 	});
 
 	test('createSaveRecord stores the active city ID even when the city is missing from the cities array', () => {
@@ -2140,8 +2461,8 @@ describe('saveCodec', () => {
 			}
 		} as unknown as SaveRecord;
 
-		const validated = validateSaveRecord(v8Record);
-		expect(validated.game.stores[0]!.location).toEqual({
+		const migrated = migrateSavedGame(v8Record.game, 8) as GameState;
+		expect(migrated.stores[0]!.location).toEqual({
 			neighborhoodId: 'downtown',
 			x: 3,
 			y: 4
@@ -2194,8 +2515,8 @@ describe('saveCodec', () => {
 			}
 		} as unknown as SaveRecord;
 
-		const validated = validateSaveRecord(v8Record);
-		expect(validated.game.stores[0]!.location).toEqual({
+		const migrated = migrateSavedGame(v8Record.game, 8) as GameState;
+		expect(migrated.stores[0]!.location).toEqual({
 			neighborhoodId: 'mall',
 			x: 5,
 			y: 6
@@ -2754,9 +3075,20 @@ describe('saveCodec', () => {
 	});
 
 	test('strict validation accepts runtime inventory with a consumed input retained at zero', () => {
+		const initial = { ...createNewGame('convenience', 20260722), cash: 1_000_000 };
+		const tile = initial.industryCities[0]!.tiles.find(
+			(candidate) => getIndustrialPlacementBlockReason(initial, candidate.id, 'flour-mill') === null
+		)!;
+		const built = buildIndustrialBuilding(initial, {
+			tileId: tile.id,
+			buildingTypeId: 'flour-mill'
+		});
 		const game = simulateDay({
-			...createNewGame('convenience', 20260722),
-			industrialBuildings: [createIndustrialBuilding({ inventory: { grain: 10 } })]
+			...built,
+			industrialBuildings: built.industrialBuildings.map((building) => ({
+				...building,
+				inventory: { grain: 10 }
+			}))
 		});
 
 		expect(game.industrialBuildings[0]?.inventory).toEqual({ grain: 0, flour: 8 });
