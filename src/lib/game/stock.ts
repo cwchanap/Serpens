@@ -246,7 +246,7 @@ export function simulateProductSalesForCity(input: {
 			.sort(
 				(left, right) =>
 					scoreStoreForCategory(right, categoryId) - scoreStoreForCategory(left, categoryId) ||
-					left.id.localeCompare(right.id)
+					compareCodeUnitStrings(left.id, right.id)
 			);
 		const totalScore = sellers.reduce(
 			(sum, store) => sum + scoreStoreForCategory(store, categoryId),
@@ -465,6 +465,10 @@ function scoreStoreForCategory(store: Store, categoryId: string): number {
 		1,
 		store.reputation * 0.55 + store.staffCapacity * 0.25 + (100 - store.competition) * 0.2
 	);
+}
+
+function compareCodeUnitStrings(left: string, right: string): number {
+	return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function priceDemandMultiplier(category: ProductCategory, sellingPrice: number): number {
