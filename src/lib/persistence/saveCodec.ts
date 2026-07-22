@@ -408,6 +408,7 @@ function migrateV9SaveRecord(record: unknown): unknown {
  * save-record migration pipeline below.
  */
 export function migrateSavedGame(value: unknown, sourceGameSchemaVersion: number): unknown {
+	assertOwnDataGraph(value, 'Saved game');
 	if (
 		sourceGameSchemaVersion !== SAVE_SCHEMA_VERSION &&
 		!isMigratableSchemaVersion(sourceGameSchemaVersion)
@@ -602,7 +603,14 @@ export function createSaveSummary(snapshot: SaveStoreSnapshot): SaveSummary {
 }
 
 export function cloneSaveStoreSnapshot(snapshot: SaveStoreSnapshot): SaveStoreSnapshot {
-	return validateSaveStoreSnapshot(cloneJson(snapshot));
+	const validated = validateSaveStoreSnapshot(snapshot);
+	try {
+		return structuredClone(validated);
+	} catch {
+		throw new SaveDataError(
+			'Save store must contain only structured-cloneable own data properties'
+		);
+	}
 }
 
 export function parseSaveStoreSnapshot(serialized: string): SaveStoreSnapshot {
@@ -618,6 +626,7 @@ export function parseSaveStoreSnapshot(serialized: string): SaveStoreSnapshot {
 }
 
 export function validateSaveStoreSnapshot(value: unknown): SaveStoreSnapshot {
+	assertOwnDataGraph(value, 'Save store');
 	const migrated = migrateSaveStoreSnapshot(value);
 	const record = requireRecord(migrated, 'Save store');
 	const schemaVersion = requireNumber(record.schemaVersion, 'Save store schemaVersion');
@@ -638,6 +647,7 @@ export function validateSaveStoreSnapshot(value: unknown): SaveStoreSnapshot {
 }
 
 export function validateSaveRecord(value: unknown): SaveRecord {
+	assertOwnDataGraph(value, 'Save record');
 	const sourceRecord = requireRecord(value, 'Save record');
 	const sourceSchemaVersion = requireNumber(
 		sourceRecord.schemaVersion,
@@ -681,6 +691,7 @@ export function validateSaveRecord(value: unknown): SaveRecord {
  * properties. Extras are allowed only when the whole state is structured-cloneable.
  */
 export function validateCurrentGameState(value: unknown): GameState {
+	assertOwnDataGraph(value, 'Saved game');
 	const game = requireRecord(value, 'Saved game');
 	const policy = requireRecord(game.policy, 'Saved game policy');
 	const scorecard = requireRecord(game.scorecard, 'Saved game scorecard');
@@ -701,7 +712,7 @@ export function validateCurrentGameState(value: unknown): GameState {
 	requireNumber(game.day, 'Saved game day');
 	requireNumber(game.cash, 'Saved game cash');
 	requireNumber(game.debt, 'Saved game debt');
-	validateSavedWorld(game.world, 'Saved game world');
+	const world = validateSavedWorld(game.world, 'Saved game world');
 	requireOneOf(policy.pricing, 'Saved game policy pricing', PRICING_POSTURES);
 	requireOneOf(policy.inventory, 'Saved game policy inventory', INVENTORY_BUFFERS);
 	requireOneOf(policy.staffing, 'Saved game policy staffing', STAFFING_POSTURES);
@@ -716,6 +727,7 @@ export function validateCurrentGameState(value: unknown): GameState {
 		validateSavedCity(city, label);
 		validateCurrentRetailCitySize(city, label);
 	});
+	validateUniqueCityIds(cities, 'Saved game retail city IDs');
 	const activeCityId = requireString(game.activeCityId, 'Saved game activeCityId');
 	if (!cities.some((city) => (city as Record<string, unknown>).id === activeCityId)) {
 		throw new SaveDataError('Saved game activeCityId must reference a materialized city');
@@ -723,6 +735,7 @@ export function validateCurrentGameState(value: unknown): GameState {
 	industryCities.forEach((city, index) =>
 		validateSavedIndustryCity(city, `Saved game industryCities[${index}]`)
 	);
+	validateUniqueCityIds(industryCities, 'Saved game industry city IDs');
 	const activeIndustryCityId = requireString(
 		game.activeIndustryCityId,
 		'Saved game activeIndustryCityId'
@@ -732,6 +745,13 @@ export function validateCurrentGameState(value: unknown): GameState {
 	) {
 		throw new SaveDataError('Saved game activeIndustryCityId must reference a materialized city');
 	}
+	validateCurrentWorldCityReferences(
+		world,
+		cities,
+		industryCities,
+		activeCityId,
+		activeIndustryCityId
+	);
 	industrialBuildings.forEach((building, index) =>
 		validateSavedIndustrialBuilding(building, `Saved game industrialBuildings[${index}]`)
 	);
@@ -925,6 +945,7 @@ function normalizeSavedStaffLevel(member: unknown): unknown {
 }
 
 export function normalizeSandboxSavedGame(value: unknown): unknown {
+	assertOwnDataGraph(value, 'Saved game');
 	const game = requireRecord(value, 'Saved game');
 	const normalizedWorld =
 		game.world === undefined
@@ -1614,6 +1635,47 @@ function validateSavedWorld(value: unknown, label: string): GameState['world'] {
 	};
 }
 
+function validateUniqueCityIds(cities: unknown[], label: string): void {
+	const seen = new Set<string>();
+	for (const city of cities as Array<Record<string, unknown>>) {
+		const cityId = city.id as string;
+		if (seen.has(cityId)) throw new SaveDataError(`${label} must be unique`);
+		seen.add(cityId);
+	}
+}
+
+function validateCurrentWorldCityReferences(
+	world: GameState['world'],
+	cities: unknown[],
+	industryCities: unknown[],
+	activeCityId: string,
+	activeIndustryCityId: string
+): void {
+	const opened = new Set<string>(world.openedCityIds);
+	if (!opened.has(activeCityId)) {
+		throw new SaveDataError('Saved game activeCityId must reference an opened city');
+	}
+	if (!opened.has(activeIndustryCityId)) {
+		throw new SaveDataError('Saved game activeIndustryCityId must reference an opened city');
+	}
+
+	const retailIds = new Set(
+		(cities as Array<Record<string, unknown>>).map((city) => city.id as string)
+	);
+	const industryIds = new Set(
+		(industryCities as Array<Record<string, unknown>>).map((city) => city.id as string)
+	);
+	for (const cityId of world.openedCityIds) {
+		const definition = getWorldCityDefinition(cityId);
+		if (definition?.kind === 'retail' && !retailIds.has(cityId)) {
+			throw new SaveDataError(`Saved game opened retail city ${cityId} must be materialized`);
+		}
+		if (definition?.kind === 'industry' && !industryIds.has(cityId)) {
+			throw new SaveDataError(`Saved game opened industry city ${cityId} must be materialized`);
+		}
+	}
+}
+
 function validateSavedCity(value: unknown, label: string): void {
 	const city = requireRecord(value, label);
 
@@ -1621,9 +1683,10 @@ function validateSavedCity(value: unknown, label: string): void {
 	requireString(city.name, `${label} name`);
 	const width = requirePositiveInteger(city.width, `${label} width`);
 	const height = requirePositiveInteger(city.height, `${label} height`);
-	requireArray(city.tiles, `${label} tiles`).forEach((tile, index) =>
+	const tiles = requireArray(city.tiles, `${label} tiles`).map((tile, index) =>
 		validateSavedCityTile(tile, `${label} tiles[${index}]`, cityId, width, height)
 	);
+	validateCompleteCityTileGrid(tiles, width, height, label);
 }
 
 function validateCurrentRetailCitySize(value: unknown, label: string): void {
@@ -1635,16 +1698,44 @@ function validateCurrentRetailCitySize(value: unknown, label: string): void {
 	}
 }
 
+interface ValidatedTileIdentity {
+	id: string;
+	x: number;
+	y: number;
+}
+
+function validateCompleteCityTileGrid(
+	tiles: ValidatedTileIdentity[],
+	width: number,
+	height: number,
+	label: string
+): void {
+	if (tiles.length !== width * height) {
+		throw new SaveDataError(`${label} city tile grid must contain exactly width * height tiles`);
+	}
+	const tileIds = new Set<string>();
+	const coordinateKeys = new Set<string>();
+	for (const tile of tiles) {
+		if (tileIds.has(tile.id)) throw new SaveDataError(`${label} tile IDs must be unique`);
+		tileIds.add(tile.id);
+		const key = `${tile.x},${tile.y}`;
+		if (coordinateKeys.has(key)) {
+			throw new SaveDataError(`${label} tile coordinates must be unique`);
+		}
+		coordinateKeys.add(key);
+	}
+}
+
 function validateSavedCityTile(
 	value: unknown,
 	label: string,
 	cityId: string,
 	cityWidth: number,
 	cityHeight: number
-): void {
+): ValidatedTileIdentity {
 	const tile = requireRecord(value, label);
 
-	requireString(tile.id, `${label} id`);
+	const id = requireString(tile.id, `${label} id`);
 	if (requireString(tile.cityId, `${label} cityId`) !== cityId) {
 		throw new SaveDataError(`${label} cityId must match containing city ${cityId}`);
 	}
@@ -1659,6 +1750,7 @@ function validateSavedCityTile(
 	requireNumber(tile.footTraffic, `${label} footTraffic`);
 	requireNumber(tile.customerFit, `${label} customerFit`);
 	requireBoolean(tile.locked, `${label} locked`);
+	return { id, x, y };
 }
 
 function validateSavedCityTileFeature(tile: Record<string, unknown>, label: string): void {
@@ -1679,13 +1771,22 @@ function validateSavedIndustryCity(value: unknown, label: string): void {
 	requireString(city.name, `${label} name`);
 	const width = requirePositiveInteger(city.width, `${label} width`);
 	const height = requirePositiveInteger(city.height, `${label} height`);
-	requireArray(city.tiles, `${label} tiles`).forEach((tile, index) =>
+	const tiles = requireArray(city.tiles, `${label} tiles`).map((tile, index) =>
 		validateSavedIndustryTile(tile, `${label} tiles[${index}]`, cityId, width, height)
 	);
+	const tileCoordinateKeys = new Set(tiles.map((tile) => `${tile.x},${tile.y}`));
 	const seenRailKeys = new Set<string>();
 	requireArray(city.rails, `${label} rails`).forEach((cell, index) =>
-		validateSavedRailCell(cell, `${label} rails[${index}]`, width, height, seenRailKeys)
+		validateSavedRailCell(
+			cell,
+			`${label} rails[${index}]`,
+			width,
+			height,
+			seenRailKeys,
+			tileCoordinateKeys
+		)
 	);
+	validateCompleteCityTileGrid(tiles, width, height, label);
 }
 
 function validateSavedRailCell(
@@ -1693,7 +1794,8 @@ function validateSavedRailCell(
 	label: string,
 	cityWidth: number,
 	cityHeight: number,
-	seenKeys: Set<string>
+	seenKeys: Set<string>,
+	tileCoordinateKeys: ReadonlySet<string>
 ): void {
 	const cell = requireRecord(value, label);
 	const x = requireNumber(cell.x, `${label} x`);
@@ -1708,6 +1810,9 @@ function validateSavedRailCell(
 		throw new SaveDataError(`${label} coordinates (${x},${y}) must map to a valid city grid tile`);
 	}
 	const key = `${x},${y}`;
+	if (!tileCoordinateKeys.has(key)) {
+		throw new SaveDataError(`${label} rail coordinate ${key} must reference an actual tile`);
+	}
 	if (seenKeys.has(key)) {
 		throw new SaveDataError(`${label} duplicates rail coordinate ${key}`);
 	}
@@ -1724,10 +1829,10 @@ function validateSavedIndustryTile(
 	cityId: string,
 	cityWidth: number,
 	cityHeight: number
-): void {
+): ValidatedTileIdentity {
 	const tile = requireRecord(value, label);
 
-	requireString(tile.id, `${label} id`);
+	const id = requireString(tile.id, `${label} id`);
 	if (requireString(tile.cityId, `${label} cityId`) !== cityId) {
 		throw new SaveDataError(`${label} cityId must match containing city ${cityId}`);
 	}
@@ -1737,6 +1842,7 @@ function validateSavedIndustryTile(
 	requireOneOf(tile.terrain, `${label} terrain`, INDUSTRY_TERRAIN_IDS);
 	validateSavedIndustryResource(tile.resource, `${label} resource`);
 	requireBoolean(tile.locked, `${label} locked`);
+	return { id, x, y };
 }
 
 function validateSavedIndustryResource(value: unknown, label: string): void {
@@ -2272,21 +2378,78 @@ function validateSavedWarningArray(value: unknown, label: string, storeOnly: boo
 	});
 }
 
-function cloneJson<T>(value: T): T {
-	return JSON.parse(JSON.stringify(value)) as T;
+const ARRAY_INDEX_KEY = /^(0|[1-9]\d*)$/;
+
+function ownDataFailure(label: string): SaveDataError {
+	return new SaveDataError(
+		`${label} must contain only own enumerable string-keyed data properties`
+	);
+}
+
+function isArrayWithoutTraps(value: unknown, label: string): boolean {
+	try {
+		return Array.isArray(value);
+	} catch {
+		throw ownDataFailure(label);
+	}
+}
+
+function assertOwnDataContainer(value: object, label: string): PropertyDescriptorMap {
+	let prototype: object | null;
+	let keys: PropertyKey[];
+	let descriptors: PropertyDescriptorMap;
+	try {
+		prototype = Object.getPrototypeOf(value);
+		keys = Reflect.ownKeys(value);
+		descriptors = Object.getOwnPropertyDescriptors(value);
+	} catch {
+		throw ownDataFailure(label);
+	}
+
+	if (isArrayWithoutTraps(value, label)) {
+		if (prototype !== Array.prototype) {
+			throw new SaveDataError(`${label} must be an array with own data properties`);
+		}
+		const arrayLength = descriptors.length?.value;
+		if (typeof arrayLength !== 'number') throw ownDataFailure(label);
+		for (const key of keys) {
+			if (typeof key !== 'string') throw ownDataFailure(label);
+			const descriptor = descriptors[key];
+			if (!descriptor || !('value' in descriptor)) throw ownDataFailure(label);
+			if (key === 'length') continue;
+			if (!descriptor.enumerable || !ARRAY_INDEX_KEY.test(key) || Number(key) >= arrayLength) {
+				throw ownDataFailure(label);
+			}
+		}
+		return descriptors;
+	}
+
+	if (prototype !== Object.prototype && prototype !== null) {
+		throw new SaveDataError(`${label} must be a plain record with own data properties`);
+	}
+	for (const key of keys) {
+		if (typeof key !== 'string') throw ownDataFailure(label);
+		const descriptor = descriptors[key];
+		if (!descriptor?.enumerable || !('value' in descriptor)) throw ownDataFailure(label);
+	}
+	return descriptors;
+}
+
+function assertOwnDataGraph(value: unknown, label: string, seen = new WeakSet<object>()): void {
+	if (typeof value !== 'object' || value === null || seen.has(value)) return;
+	seen.add(value);
+	const descriptors = assertOwnDataContainer(value, label);
+	for (const [key, descriptor] of Object.entries(descriptors)) {
+		if (isArrayWithoutTraps(value, label) && key === 'length') continue;
+		if ('value' in descriptor) assertOwnDataGraph(descriptor.value, `${label}.${key}`, seen);
+	}
 }
 
 function requireRecord(value: unknown, label: string): Record<string, unknown> {
-	if (!value || typeof value !== 'object' || Array.isArray(value)) {
+	if (!value || typeof value !== 'object' || isArrayWithoutTraps(value, label)) {
 		throw new SaveDataError(`${label} must be an object`);
 	}
-	const prototype = Object.getPrototypeOf(value);
-	const hasAccessor = Object.values(Object.getOwnPropertyDescriptors(value)).some(
-		(descriptor) => !('value' in descriptor)
-	);
-	if ((prototype !== Object.prototype && prototype !== null) || hasAccessor) {
-		throw new SaveDataError(`${label} must be a plain record with own data properties`);
-	}
+	assertOwnDataContainer(value, label);
 
 	return value as Record<string, unknown>;
 }
@@ -2314,9 +2477,10 @@ function validateTileCoordinates(
 }
 
 function requireArray(value: unknown, label: string): unknown[] {
-	if (!Array.isArray(value)) {
+	if (!isArrayWithoutTraps(value, label)) {
 		throw new SaveDataError(`${label} must be an array`);
 	}
+	assertOwnDataContainer(value, label);
 
 	return value;
 }
