@@ -460,10 +460,12 @@ describe('saveCodec', () => {
 		);
 	});
 
-	test('migrateSavedGame leaves a current-schema game byte-for-byte untouched', () => {
+	test('migrateSavedGame returns an exact plain clone for a current-schema game', () => {
 		const game = createGame();
+		const migrated = migrateSavedGame(game, SAVE_SCHEMA_VERSION);
 
-		expect(migrateSavedGame(game, SAVE_SCHEMA_VERSION)).toBe(game);
+		expect(migrated).toStrictEqual(game);
+		expect(migrated).not.toBe(game);
 	});
 
 	test('strict current-game validation returns an exact deep clone without mutating its input', () => {
@@ -578,6 +580,103 @@ describe('saveCodec', () => {
 
 			expect(() => validateCurrentGameState(game)).toThrow(SaveDataError);
 			expect(() => validateCurrentGameState(game)).toThrow(/own enumerable string-keyed data/);
+		}
+	);
+
+	test.each(['strict', 'sandbox'] as const)(
+		'$boundary validation rejects a sparse nested city tile array as SaveDataError',
+		(boundary) => {
+			const game = createGame();
+			const city = structuredClone(game.cities[0]!);
+			delete city.tiles[0];
+			const changed = { ...game, cities: [city] };
+
+			const validate = () =>
+				boundary === 'strict'
+					? validateCurrentGameState(changed)
+					: validateSaveRecord(createManualSaveRecord({ game: changed }));
+			expect(validate).toThrow(SaveDataError);
+			expect(validate).toThrow(/dense array/);
+		}
+	);
+
+	test.each(['stores', 'staff', 'decisions', 'reports'] as const)(
+		'strict and sandbox validation reject a sparse $field array',
+		(field) => {
+			const sparse = new Array(1) as unknown[];
+			const game = { ...createGame(), [field]: sparse } as unknown as GameState;
+
+			expect(() => validateCurrentGameState(game)).toThrow(SaveDataError);
+			expect(() => validateSaveRecord(createManualSaveRecord({ game }))).toThrow(SaveDataError);
+		}
+	);
+
+	test('snapshot validation rejects sparse manualSlots as SaveDataError', () => {
+		const snapshot = {
+			...createSnapshotWithGame(createGame()),
+			manualSlots: new Array(1)
+		} as SaveStoreSnapshot;
+
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(/dense array/);
+	});
+
+	test.each(['strict', 'record', 'migration'] as const)(
+		'$boundary boundary maps a proxy get trap to SaveDataError without invoking it',
+		(boundary) => {
+			const target = boundary === 'record' ? createManualSaveRecord() : (createGame() as unknown);
+			let invoked = false;
+			const proxy = new Proxy(target as object, {
+				get() {
+					invoked = true;
+					throw new Error('authored proxy get trap must not run');
+				}
+			});
+
+			const validate = () => {
+				if (boundary === 'strict') return validateCurrentGameState(proxy);
+				if (boundary === 'record') return validateSaveRecord(proxy);
+				return migrateSavedGame(proxy, SAVE_SCHEMA_VERSION);
+			};
+			expect(validate).toThrow(SaveDataError);
+			expect(invoked).toBe(false);
+		}
+	);
+
+	test('snapshot validation preserves enumerable cloneable own extras exactly', () => {
+		const snapshot = Object.assign(createSnapshotWithGame(createGame()), {
+			undefinedExtra: undefined,
+			negativeZeroExtra: -0,
+			nestedExtra: { value: 42 }
+		});
+
+		const validated = validateSaveStoreSnapshot(snapshot) as SaveStoreSnapshot & {
+			undefinedExtra?: unknown;
+			negativeZeroExtra: number;
+			nestedExtra: { value: number };
+		};
+
+		expect(Object.hasOwn(validated, 'undefinedExtra')).toBe(true);
+		expect(validated.undefinedExtra).toBeUndefined();
+		expect(Object.is(validated.negativeZeroExtra, -0)).toBe(true);
+		expect(validated.nestedExtra).toEqual({ value: 42 });
+		expect(validated.nestedExtra).not.toBe(snapshot.nestedExtra);
+	});
+
+	test.each(['function', 'toJSON', 'symbol'] as const)(
+		'snapshot validation rejects an uncloneable $kind extra without invoking it',
+		(kind) => {
+			let invoked = false;
+			const callable = () => {
+				invoked = true;
+			};
+			const snapshot = Object.assign(createSnapshotWithGame(createGame()), {
+				[kind === 'toJSON' ? 'toJSON' : 'uncloneable']:
+					kind === 'symbol' ? Symbol('uncloneable') : callable
+			});
+
+			expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
+			expect(invoked).toBe(false);
 		}
 	);
 
@@ -846,6 +945,80 @@ describe('saveCodec', () => {
 			expect(() => validateCurrentGameState({ ...game, world })).toThrow(
 				new RegExp(`opened ${kind} city ${cityId} must be materialized`)
 			);
+		}
+	);
+
+	test.each([
+		{ collection: 'retail', wrongId: 'industry-city' },
+		{ collection: 'industry', wrongId: 'harbor-city' }
+	] as const)(
+		'strict validation rejects a catalog ID materialized in the $collection collection',
+		({ collection, wrongId }) => {
+			const game = createGame();
+			if (collection === 'retail') {
+				const wrongCity = structuredClone(game.cities[0]!);
+				wrongCity.id = wrongId;
+				wrongCity.tiles = wrongCity.tiles.map((tile) => ({
+					...tile,
+					id: tile.id.replace('harbor-city', wrongId),
+					cityId: wrongId
+				}));
+				expect(() =>
+					validateCurrentGameState({ ...game, cities: [...game.cities, wrongCity] })
+				).toThrow(/retail city industry-city must use a retail catalog ID/);
+			} else {
+				const wrongCity = structuredClone(game.industryCities[0]!);
+				wrongCity.id = wrongId;
+				wrongCity.tiles = wrongCity.tiles.map((tile) => ({
+					...tile,
+					id: tile.id.replace('industry-city', wrongId),
+					cityId: wrongId
+				}));
+				expect(() =>
+					validateCurrentGameState({
+						...game,
+						industryCities: [...game.industryCities, wrongCity]
+					})
+				).toThrow(/industry city harbor-city must use an industry catalog ID/);
+			}
+		}
+	);
+
+	test.each(['activeCityId', 'activeIndustryCityId'] as const)(
+		'strict validation rejects a cross-category active ID through $field',
+		(field) => {
+			const game = createGame();
+			if (field === 'activeCityId') {
+				const wrongCity = structuredClone(game.cities[0]!);
+				wrongCity.id = 'industry-city';
+				wrongCity.tiles = wrongCity.tiles.map((tile) => ({
+					...tile,
+					id: tile.id.replace('harbor-city', 'industry-city'),
+					cityId: 'industry-city'
+				}));
+				expect(() =>
+					validateCurrentGameState({
+						...game,
+						cities: [...game.cities, wrongCity],
+						activeCityId: 'industry-city'
+					})
+				).toThrow(/activeCityId must reference a retail catalog city/);
+			} else {
+				const wrongCity = structuredClone(game.industryCities[0]!);
+				wrongCity.id = 'harbor-city';
+				wrongCity.tiles = wrongCity.tiles.map((tile) => ({
+					...tile,
+					id: tile.id.replace('industry-city', 'harbor-city'),
+					cityId: 'harbor-city'
+				}));
+				expect(() =>
+					validateCurrentGameState({
+						...game,
+						industryCities: [...game.industryCities, wrongCity],
+						activeIndustryCityId: 'harbor-city'
+					})
+				).toThrow(/activeIndustryCityId must reference an industry catalog city/);
+			}
 		}
 	);
 
