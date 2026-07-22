@@ -12,8 +12,13 @@ import { calculateStockHealth } from '$lib/game/stock';
 import type { ArchetypeId } from '$lib/game/types';
 import type { ScenarioDefinition } from './types';
 import { buildScenarioGame } from './setup';
+import { validateScenarioDefinition } from './validation';
 
-const transitionControls = vi.hoisted(() => ({ failBuild: false, failUpgrade: false }));
+const transitionControls = vi.hoisted(() => ({
+	failBuild: false,
+	failUpgrade: false,
+	omitMilestoneProduct: false
+}));
 
 vi.mock('$lib/game/industryPlacement', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('$lib/game/industryPlacement')>();
@@ -28,8 +33,23 @@ vi.mock('$lib/game/state', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('$lib/game/state')>();
 	return {
 		...actual,
-		upgradeStore: (...args: Parameters<typeof actual.upgradeStore>) =>
-			transitionControls.failUpgrade ? args[0] : actual.upgradeStore(...args)
+		upgradeStore: (...args: Parameters<typeof actual.upgradeStore>) => {
+			if (transitionControls.failUpgrade) return args[0];
+			const next = actual.upgradeStore(...args);
+			if (!transitionControls.omitMilestoneProduct) return next;
+			const [beforeGame, storeId] = args;
+			const before = beforeGame.stores.find((store) => store.id === storeId);
+			const after = next.stores.find((store) => store.id === storeId);
+			if (!before || after?.level !== 4) return next;
+			return {
+				...next,
+				stores: next.stores.map((store) =>
+					store.id === storeId
+						? { ...store, products: before.products, stockHealth: before.stockHealth }
+						: store
+				)
+			};
+		}
 	};
 });
 
@@ -333,6 +353,26 @@ describe('buildScenarioGame', () => {
 		expect(scenarioStore.stockHealth).toBe(ordinaryStore.stockHealth);
 	});
 
+	it('rejects a level-4 state missing its milestone product', () => {
+		transitionControls.omitMilestoneProduct = true;
+		try {
+			expect(buildScenarioGame(importSqueezeFixture(), 280_002)).toEqual({
+				ok: false,
+				diagnostics: [
+					{
+						path: 'start.overrides.stores',
+						code: 'setup-invariant-failed',
+						value: ['games'],
+						detail:
+							'The built game product categories must exactly match the categories unlocked at its store level.'
+					}
+				]
+			});
+		} finally {
+			transitionControls.omitMilestoneProduct = false;
+		}
+	});
+
 	it('sorts authored rail cells by city, y, and x using code-unit ordering', () => {
 		const definition = scenarioDefinition();
 		const authoredOrder = [...definition.start.rails];
@@ -462,6 +502,41 @@ describe('buildScenarioGame', () => {
 			path: 'start.overrides.world',
 			code: 'setup-invariant-failed'
 		});
+	});
+
+	it('rejects a rail-only starting city that is not opened', () => {
+		const definition = scenarioDefinition();
+		definition.start.industrialBuildings = [];
+		definition.start.overrides.buildingInventories = [];
+		definition.start.overrides.warehouseMaterials = {};
+		definition.start.overrides.storeCap = 1;
+		definition.start.overrides.world = {
+			revealedCityIds: ['harbor-city', 'breadbasket-basin'],
+			openedCityIds: ['harbor-city', 'breadbasket-basin'],
+			activeRetailCityId: 'harbor-city',
+			activeIndustryCityId: 'breadbasket-basin'
+		};
+		definition.content.cityIds = ['harbor-city', 'industry-city', 'breadbasket-basin'];
+		definition.content.materialIds = [];
+		definition.content.buildingTypeIds = ['water-bottler', 'warehouse'];
+		definition.content.industrialPlacements = [
+			{
+				cityId: 'industry-city',
+				tileId: 'industry-city-26-6',
+				buildingTypeId: 'water-bottler'
+			},
+			{
+				cityId: 'industry-city',
+				tileId: 'industry-city-30-6',
+				buildingTypeId: 'warehouse'
+			}
+		];
+		definition.allowedCommands = ['advanceDay', 'buildIndustrialBuilding'];
+
+		expect(validateScenarioDefinition(definition)).toEqual([]);
+		expect(diagnosticCodes(buildScenarioGame(definition, definition.officialSeed))).toEqual([
+			{ path: 'start.overrides.world', code: 'setup-invariant-failed' }
+		]);
 	});
 
 	it('refreshes world progress after authored warehouse inventory is applied', () => {
