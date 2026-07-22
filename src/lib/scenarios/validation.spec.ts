@@ -406,6 +406,55 @@ describe('validateScenarioDefinition', () => {
 		expect(codes(definition)).toEqual([]);
 	});
 
+	it('does not treat a placement in an inaccessible retail city as openable', () => {
+		const definition = validDefinition();
+		definition.content.cityIds = ['harbor-city', 'campus-junction'];
+		definition.content.archetypeIds = ['convenience', 'electronics'];
+		definition.content.productCategoryIds = ['bottled-water', 'devices'];
+		definition.content.retailPlacements = [
+			...definition.content.retailPlacements,
+			{
+				cityId: 'campus-junction',
+				tileId: 'campus-junction-1-1',
+				archetypeId: 'electronics'
+			}
+		];
+		definition.allowedCommands = ['advanceDay', 'openStore', 'upgradeStore'];
+		definition.start.overrides.storeCap = 2;
+
+		expect(codes(definition)).toEqual([
+			{ path: 'content.productCategoryIds[1]', code: 'product-locked' }
+		]);
+	});
+
+	it('accepts openable placements in opened or revealed retail cities with the matching command', () => {
+		const definition = validDefinition();
+		definition.content.cityIds = ['harbor-city', 'industry-city', 'campus-junction'];
+		definition.content.archetypeIds = ['convenience', 'electronics'];
+		definition.content.productCategoryIds = ['bottled-water', 'devices'];
+		definition.content.retailPlacements = [
+			...definition.content.retailPlacements,
+			{
+				cityId: 'campus-junction',
+				tileId: 'campus-junction-1-1',
+				archetypeId: 'electronics'
+			}
+		];
+		definition.start.overrides.storeCap = 2;
+		definition.start.overrides.world = {
+			revealedCityIds: ['harbor-city', 'industry-city', 'campus-junction'],
+			openedCityIds: ['harbor-city', 'industry-city', 'campus-junction'],
+			activeRetailCityId: 'harbor-city',
+			activeIndustryCityId: 'industry-city'
+		};
+		definition.allowedCommands = ['advanceDay', 'openStore', 'upgradeStore', 'selectWorldCity'];
+		expect(codes(definition)).toEqual([]);
+
+		definition.start.overrides.world.openedCityIds = ['harbor-city', 'industry-city'];
+		definition.allowedCommands = ['advanceDay', 'openStore', 'upgradeStore', 'openWorldCity'];
+		expect(codes(definition)).toEqual([]);
+	});
+
 	it('enforces the authored store cap and the no-open-store boundary', () => {
 		const definition = validDefinition();
 		definition.start.overrides.storeCap = 2;
@@ -705,6 +754,50 @@ describe('validateScenarioDefinition', () => {
 					: placement
 		);
 		expect(codes(overlapping)).toEqual([
+			{ path: 'requiredObjectives[0].query', code: 'unavailable-local-production-path' }
+		]);
+	});
+
+	it('rejects a local-production chain whose endpoint has no usable rail attachment cell', () => {
+		const definition = localProductionDefinition();
+		definition.allowedCommands = ['advanceDay', 'buildIndustrialBuilding', 'buildRail'];
+		definition.content.buildingTypeIds = [...definition.content.buildingTypeIds, 'flour-mill'];
+		definition.content.industrialPlacements = [
+			definition.content.industrialPlacements[0]!,
+			{
+				cityId: 'industry-city' as const,
+				tileId: 'industry-city-34-6',
+				buildingTypeId: 'water-bottler'
+			},
+			{
+				cityId: 'industry-city',
+				tileId: 'industry-city-28-8',
+				buildingTypeId: 'warehouse'
+			},
+			...[
+				'industry-city-28-6',
+				'industry-city-28-10',
+				'industry-city-26-8',
+				'industry-city-30-8'
+			].map((tileId) => ({
+				cityId: 'industry-city' as const,
+				tileId,
+				buildingTypeId: 'flour-mill' as const
+			}))
+		];
+		definition.start.industrialBuildings = [
+			'industry-city-28-6',
+			'industry-city-28-10',
+			'industry-city-26-8',
+			'industry-city-30-8'
+		].map((tileId, index) => ({
+			ref: `blocker-${index}`,
+			typeId: 'flour-mill' as const,
+			cityId: 'industry-city',
+			tileId
+		}));
+
+		expect(codes(definition)).toEqual([
 			{ path: 'requiredObjectives[0].query', code: 'unavailable-local-production-path' }
 		]);
 	});

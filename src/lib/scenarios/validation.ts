@@ -20,14 +20,28 @@ import {
 } from '$lib/game/industryFootprint';
 import { MAX_STORE_LEVEL, getUnlockedCategoryCount } from '$lib/game/leveling';
 import { RAIL_MAX_LEVEL, railCellKey } from '$lib/game/rail';
+import { buildRail, buildRailPreview } from '$lib/game/railPlacement';
 import {
 	RETAIL_STORE_FOOTPRINT_HEIGHT,
 	RETAIL_STORE_FOOTPRINT_WIDTH,
 	createCityTileLookup,
 	getStoreFootprintPlacementBlockReason
 } from '$lib/game/storeFootprint';
-import type { City, IndustrialBuildingTypeId, IndustryCity, MaterialId } from '$lib/game/types';
-import { STARTER_STORE_CAP, WORLD_CITY_CATALOG, getWorldCityDefinition } from '$lib/game/world';
+import type {
+	City,
+	GameState,
+	IndustrialBuilding,
+	IndustrialBuildingTypeId,
+	IndustryCity,
+	MaterialId,
+	RailCell
+} from '$lib/game/types';
+import {
+	STARTER_STORE_CAP,
+	WORLD_CITY_CATALOG,
+	createInitialWorldProgress,
+	getWorldCityDefinition
+} from '$lib/game/world';
 import { SCENARIO_COMMAND_KINDS, type ScenarioDefinition, type ScenarioDiagnostic } from './types';
 
 const MAX_CANONICAL_SEED = 2_147_483_646;
@@ -176,6 +190,10 @@ interface ValidationContext {
 	startBuildingPlacements: AuthoredBuilding[];
 	permittedBuildingPlacements: AuthoredBuilding[];
 	railBuildingGraph: Map<string, Set<string>>;
+	authoredRailsByCity: Map<string, RailCell[]>;
+	revealedCityIds: Set<string>;
+	openedCityIds: Set<string>;
+	activeRetailCityId?: string;
 	cities: Map<string, City | IndustryCity>;
 }
 
@@ -712,7 +730,9 @@ function validateStart(context: ValidationContext, value: unknown): void {
 	if (foundingStore) {
 		if (nonEmptyString(context, foundingStore.ref, 'start.foundingStore.ref'))
 			setupRefs.add(foundingStore.ref);
-		validateRetailPlacement(context, foundingStore, 'start.foundingStore');
+		if (validateRetailPlacement(context, foundingStore, 'start.foundingStore')) {
+			context.activeRetailCityId = foundingStore.cityId as string;
+		}
 		validateIncluded(
 			context,
 			foundingStore.cityId,
@@ -1145,6 +1165,8 @@ function validateWorldOverride(context: ValidationContext, value: unknown): void
 		KNOWN_CITY_IDS,
 		'city'
 	);
+	context.revealedCityIds = revealed;
+	context.openedCityIds = opened;
 	for (const cityId of opened) {
 		if (!revealed.has(cityId))
 			diagnostic(
@@ -1168,6 +1190,7 @@ function validateWorldOverride(context: ValidationContext, value: unknown): void
 		const path = `start.overrides.world.${key}`;
 		if (!validateKnownReference(context, world[key], path, KNOWN_CITY_IDS, 'city')) continue;
 		const cityId = world[key] as string;
+		if (key === 'activeRetailCityId') context.activeRetailCityId = cityId;
 		if (getWorldCityDefinition(cityId)?.kind !== kind || !opened.has(cityId))
 			diagnostic(
 				context,
@@ -1247,6 +1270,7 @@ function validateAllowlistedProductUnlocks(
 				context.permittedRetailPlacements.some(
 					(placement) =>
 						placement.archetypeId === archetype.id &&
+						canActivateRetailCity(context, placement.cityId) &&
 						!overlapsFoundingStore(context, placement, foundingStore)
 				);
 			if (!isFoundingArchetype && !isOpenableArchetype) continue;
@@ -1269,6 +1293,16 @@ function validateAllowlistedProductUnlocks(
 			);
 		}
 	}
+}
+
+function canActivateRetailCity(context: ValidationContext, cityId: string): boolean {
+	if (context.activeRetailCityId === cityId) return true;
+	if (context.openedCityIds.has(cityId)) {
+		return (
+			context.allowedCommands.has('selectWorldCity') || context.allowedCommands.has('openWorldCity')
+		);
+	}
+	return context.revealedCityIds.has(cityId) && context.allowedCommands.has('openWorldCity');
 }
 
 function overlapsFoundingStore(
@@ -1435,6 +1469,9 @@ function validateRails(
 		const cityRails = byCity.get(cityId) ?? [];
 		cityRails.push({ path, x: rail.x as number, y: rail.y as number, level: rail.level as number });
 		byCity.set(cityId, cityRails);
+		const authoredRails = context.authoredRailsByCity.get(cityId) ?? [];
+		authoredRails.push({ x: rail.x as number, y: rail.y as number, level: rail.level as number });
+		context.authoredRailsByCity.set(cityId, authoredRails);
 	}
 	if (rails.length > 0 && !hasValidRailTopology(context, byCity)) {
 		diagnostic(
@@ -1966,7 +2003,9 @@ function hasFeasibleBuildingPath(
 
 	function choose(index: number, selected: AuthoredBuilding[]): boolean {
 		if (index === required.length) {
-			return canBuildRail || areBuildingsRailConnected(context, selected);
+			return canBuildRail
+				? canConnectBuildingsWithRail(context, selected)
+				: areBuildingsRailConnected(context, selected);
 		}
 		const candidates = placements.filter((placement) => placement.typeId === required[index]);
 		for (const candidate of candidates) {
@@ -1982,6 +2021,74 @@ function hasFeasibleBuildingPath(
 	}
 
 	return choose(0, []);
+}
+
+function canConnectBuildingsWithRail(
+	context: ValidationContext,
+	selected: readonly AuthoredBuilding[]
+): boolean {
+	const first = selected[0];
+	if (!first || selected.some((building) => building.cityId !== first.cityId)) return false;
+	const city = getValidationCity(context, first.cityId);
+	if (!city || getWorldCityDefinition(first.cityId)?.kind !== 'industry') return false;
+
+	const physicalBuildings = dedupePhysicalBuildings([
+		...context.startBuildingPlacements.filter((building) => building.cityId === first.cityId),
+		...selected
+	]);
+	const buildingIds = new Map<string, string>();
+	const industrialBuildings: IndustrialBuilding[] = physicalBuildings.map((building, index) => {
+		const id = `scenario-validation-building-${index}`;
+		buildingIds.set(physicalBuildingKey(building), id);
+		return {
+			id,
+			level: 1,
+			typeId: building.typeId as IndustrialBuildingTypeId,
+			cityId: building.cityId,
+			tileId: building.tileId,
+			mapX: building.x!,
+			mapY: building.y!,
+			status: 'idle',
+			lastProduction: [],
+			producedTotal: 0,
+			importedInputTotal: 0,
+			blockedDays: 0,
+			inventory: {}
+		};
+	});
+	let game = {
+		cash: Number.MAX_SAFE_INTEGER,
+		industryCities: [
+			{
+				...(city as IndustryCity),
+				rails: [...(context.authoredRailsByCity.get(first.cityId) ?? [])]
+			}
+		],
+		industrialBuildings
+	} as GameState;
+	const connected = new Set<AuthoredBuilding>([first]);
+
+	while (connected.size < selected.length) {
+		let connectedOne = false;
+		for (const origin of connected) {
+			for (const destination of selected) {
+				if (connected.has(destination)) continue;
+				const originBuildingId = buildingIds.get(physicalBuildingKey(origin));
+				const destinationBuildingId = buildingIds.get(physicalBuildingKey(destination));
+				if (!originBuildingId || !destinationBuildingId) continue;
+				const input = { originBuildingId, waypoints: [], destinationBuildingId };
+				const preview = buildRailPreview(game, input);
+				if (preview.blockReason && preview.blockReason.code !== 'railAlreadyConnected') continue;
+				if (preview.blockReason === null) game = buildRail(game, input);
+				connected.add(destination);
+				connectedOne = true;
+				break;
+			}
+			if (connectedOne) break;
+		}
+		if (!connectedOne) return false;
+	}
+	return true;
 }
 
 function buildingsOverlap(first: AuthoredBuilding, second: AuthoredBuilding): boolean {
@@ -2160,6 +2267,7 @@ function validateScoreAnchors(
 }
 
 export function validateScenarioDefinition(definition: unknown): ScenarioDiagnostic[] {
+	const initialWorld = createInitialWorldProgress();
 	const context: ValidationContext = {
 		diagnostics: [],
 		content: {
@@ -2176,6 +2284,9 @@ export function validateScenarioDefinition(definition: unknown): ScenarioDiagnos
 		startBuildingPlacements: [],
 		permittedBuildingPlacements: [],
 		railBuildingGraph: new Map(),
+		authoredRailsByCity: new Map(),
+		revealedCityIds: new Set(initialWorld.revealedCityIds),
+		openedCityIds: new Set(initialWorld.openedCityIds),
 		cities: new Map()
 	};
 	const root = closedObject(context, definition, '', DEFINITION_KEYS);
