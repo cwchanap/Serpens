@@ -96,25 +96,24 @@ function createFixtureRetailCity(): GameState['cities'][number] {
 		name: 'Harbor City',
 		width: 3,
 		height: 3,
-		tiles: [
-			[1, 1],
-			[2, 1],
-			[1, 2],
-			[2, 2]
-		].map(([x, y]) => ({
-			id: `harbor-city-${x}-${y}`,
-			cityId: 'harbor-city',
-			x: x!,
-			y: y!,
-			neighborhood: 'downtown',
-			terrain: 'commercial',
-			feature: null,
-			demand: 72,
-			rent: 180,
-			footTraffic: 66,
-			customerFit: 70,
-			locked: false
-		}))
+		tiles: Array.from({ length: 9 }, (_, index) => {
+			const x = index % 3;
+			const y = Math.floor(index / 3);
+			return {
+				id: `harbor-city-${x}-${y}`,
+				cityId: 'harbor-city',
+				x,
+				y,
+				neighborhood: 'downtown',
+				terrain: 'commercial',
+				feature: null,
+				demand: 72,
+				rent: 180,
+				footTraffic: 66,
+				customerFit: 70,
+				locked: false
+			};
+		})
 	};
 }
 
@@ -138,6 +137,37 @@ function createFixtureIndustryCity(): GameState['industryCities'][number] {
 			resource: x === 0 && y === 0 ? ('grain-field' as const) : null,
 			locked: false
 		})),
+		rails: []
+	};
+}
+
+function createOneTileRetailCity(id: string, name: string): GameState['cities'][number] {
+	return {
+		id,
+		name,
+		width: 1,
+		height: 1,
+		tiles: [{ ...createFixtureRetailCity().tiles[0]!, id: `${id}-0-0`, cityId: id, x: 0, y: 0 }]
+	};
+}
+
+function createOneTileIndustryCity(id: string, name: string): GameState['industryCities'][number] {
+	return {
+		id,
+		name,
+		width: 1,
+		height: 1,
+		tiles: [
+			{
+				id: `${id}-0-0`,
+				cityId: id,
+				x: 0,
+				y: 0,
+				terrain: 'industrial',
+				resource: null,
+				locked: false
+			}
+		],
 		rails: []
 	};
 }
@@ -536,13 +566,7 @@ describe('save records', () => {
 		const game = createGame({
 			cities: [
 				createFixtureRetailCity(),
-				{
-					id: 'campus-junction',
-					name: 'Campus Junction',
-					width: 1,
-					height: 1,
-					tiles: []
-				}
+				createOneTileRetailCity('campus-junction', 'Campus Junction')
 			]
 		});
 		const record = createSaveRecord(game, {
@@ -606,24 +630,11 @@ describe('save records', () => {
 		const game = createGame({
 			cities: [
 				createFixtureRetailCity(),
-				{
-					id: 'campus-junction',
-					name: 'Campus Junction',
-					width: 1,
-					height: 1,
-					tiles: []
-				}
+				createOneTileRetailCity('campus-junction', 'Campus Junction')
 			],
 			industryCities: [
 				createFixtureIndustryCity(),
-				{
-					id: 'breadbasket-basin',
-					name: 'Breadbasket Basin',
-					width: 1,
-					height: 1,
-					tiles: [],
-					rails: []
-				}
+				createOneTileIndustryCity('breadbasket-basin', 'Breadbasket Basin')
 			]
 		});
 		const record = createSaveRecord(game, {

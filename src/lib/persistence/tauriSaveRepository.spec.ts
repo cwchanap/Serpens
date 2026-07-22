@@ -54,7 +54,30 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 		},
 		world: createInitialWorldProgress(),
 		storeCap: STARTER_STORE_CAP,
-		cities: [{ id: 'harbor-city', name: 'Harbor City', width: 1, height: 1, tiles: [] }],
+		cities: [
+			{
+				id: 'harbor-city',
+				name: 'Harbor City',
+				width: 1,
+				height: 1,
+				tiles: [
+					{
+						id: 'harbor-city-0-0',
+						cityId: 'harbor-city',
+						x: 0,
+						y: 0,
+						neighborhood: 'downtown',
+						terrain: 'commercial',
+						feature: null,
+						demand: 50,
+						rent: 50,
+						footTraffic: 50,
+						customerFit: 50,
+						locked: false
+					}
+				]
+			}
+		],
 		activeCityId: 'harbor-city',
 		industryCities: [
 			{
@@ -62,7 +85,17 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 				name: 'Industry City',
 				width: 1,
 				height: 1,
-				tiles: [],
+				tiles: [
+					{
+						id: 'industry-city-0-0',
+						cityId: 'industry-city',
+						x: 0,
+						y: 0,
+						terrain: 'industrial',
+						resource: null,
+						locked: false
+					}
+				],
 				rails: []
 			}
 		],

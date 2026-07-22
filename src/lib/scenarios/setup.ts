@@ -481,24 +481,11 @@ function validateBuiltScenarioInvariants(
 	}
 
 	const opened = new Set<string>(game.world.openedCityIds);
-	const revealed = new Set<string>(game.world.revealedCityIds);
 	const everyStartingContentCityIsOpened =
 		game.stores.every((store) => opened.has(store.cityId)) &&
 		game.industrialBuildings.every((building) => opened.has(building.cityId)) &&
 		definition.start.rails.every((rail) => opened.has(rail.cityId));
-	const everyOpenedCityIsRevealedAndMaterialized = game.world.openedCityIds.every((cityId) => {
-		const city = getWorldCityDefinition(cityId);
-		if (!city || !revealed.has(cityId)) return false;
-		return city.kind === 'retail'
-			? game.cities.some((candidate) => candidate.id === cityId)
-			: game.industryCities.some((candidate) => candidate.id === cityId);
-	});
-	if (
-		!opened.has(game.activeCityId) ||
-		!opened.has(game.activeIndustryCityId) ||
-		!everyStartingContentCityIsOpened ||
-		!everyOpenedCityIsRevealedAndMaterialized
-	) {
+	if (!everyStartingContentCityIsOpened) {
 		diagnostics.push({
 			path: 'start.overrides.world',
 			code: 'setup-invariant-failed',
@@ -506,7 +493,7 @@ function validateBuiltScenarioInvariants(
 				activeRetailCityId: game.activeCityId,
 				activeIndustryCityId: game.activeIndustryCityId
 			},
-			detail: 'The built game active and starting-content cities must be opened.'
+			detail: 'The built game starting-content cities must be opened.'
 		});
 	}
 

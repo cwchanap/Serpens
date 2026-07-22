@@ -58,25 +58,24 @@ function createFixtureRetailCity(): GameState['cities'][number] {
 		name: 'Harbor City',
 		width: 3,
 		height: 3,
-		tiles: [
-			[1, 1],
-			[2, 1],
-			[1, 2],
-			[2, 2]
-		].map(([x, y]) => ({
-			id: `harbor-city-${x}-${y}`,
-			cityId: 'harbor-city',
-			x: x!,
-			y: y!,
-			neighborhood: 'downtown',
-			terrain: 'commercial',
-			feature: null,
-			demand: 72,
-			rent: 180,
-			footTraffic: 66,
-			customerFit: 70,
-			locked: false
-		}))
+		tiles: Array.from({ length: 9 }, (_, index) => {
+			const x = index % 3;
+			const y = Math.floor(index / 3);
+			return {
+				id: `harbor-city-${x}-${y}`,
+				cityId: 'harbor-city',
+				x,
+				y,
+				neighborhood: 'downtown',
+				terrain: 'commercial',
+				feature: null,
+				demand: 72,
+				rent: 180,
+				footTraffic: 66,
+				customerFit: 70,
+				locked: false
+			};
+		})
 	};
 }
 
@@ -86,20 +85,19 @@ function createFixtureIndustryCity(): GameState['industryCities'][number] {
 		name: 'Industry City',
 		width: 3,
 		height: 3,
-		tiles: [
-			[1, 1],
-			[2, 1],
-			[1, 2],
-			[2, 2]
-		].map(([x, y]) => ({
-			id: `industry-city-${x}-${y}`,
-			cityId: 'industry-city',
-			x: x!,
-			y: y!,
-			terrain: 'industrial',
-			resource: null,
-			locked: false
-		})),
+		tiles: Array.from({ length: 9 }, (_, index) => {
+			const x = index % 3;
+			const y = Math.floor(index / 3);
+			return {
+				id: `industry-city-${x}-${y}`,
+				cityId: 'industry-city',
+				x,
+				y,
+				terrain: 'industrial',
+				resource: null,
+				locked: false
+			};
+		}),
 		rails: []
 	};
 }
@@ -501,6 +499,88 @@ describe('saveCodec', () => {
 		);
 	});
 
+	test.each(['index', 'property'] as const)(
+		'strict validation rejects an accessor-backed array $arrayCase without invoking it',
+		(arrayCase) => {
+			const game = createGame();
+			const stores = [...game.stores];
+			let invoked = false;
+			Object.defineProperty(stores, arrayCase === 'index' ? '0' : 'trap', {
+				enumerable: true,
+				configurable: true,
+				get() {
+					invoked = true;
+					throw new Error('array getter must not run');
+				}
+			});
+
+			expect(() => validateCurrentGameState({ ...game, stores })).toThrow(SaveDataError);
+			expect(invoked).toBe(false);
+		}
+	);
+
+	test.each(['products', 'product-index', 'product-field'] as const)(
+		'sandbox validation rejects a nested accessor-backed $accessorCase without invoking it',
+		(accessorCase) => {
+			const record = createManualSaveRecord();
+			const store = { ...record.game.stores[0]! };
+			let invoked = false;
+			if (accessorCase === 'products') {
+				Object.defineProperty(store, 'products', {
+					enumerable: true,
+					configurable: true,
+					get() {
+						invoked = true;
+						throw new Error('products getter must not run');
+					}
+				});
+			} else if (accessorCase === 'product-index') {
+				const products = [...store.products];
+				Object.defineProperty(products, '0', {
+					enumerable: true,
+					configurable: true,
+					get() {
+						invoked = true;
+						throw new Error('product getter must not run');
+					}
+				});
+				store.products = products;
+			} else {
+				const product = { ...store.products[0]! };
+				Object.defineProperty(product, 'sellingPrice', {
+					enumerable: true,
+					configurable: true,
+					get() {
+						invoked = true;
+						throw new Error('product field getter must not run');
+					}
+				});
+				store.products = [product, ...store.products.slice(1)];
+			}
+			record.game = { ...record.game, stores: [store] };
+
+			expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+			expect(invoked).toBe(false);
+		}
+	);
+
+	test.each(['required-cash', 'hidden-extra', 'symbol-extra'] as const)(
+		'strict validation rejects an own-property clone-loss case: $propertyCase',
+		(propertyCase) => {
+			const game = createGame() as GameState & Record<PropertyKey, unknown>;
+			if (propertyCase === 'required-cash') {
+				Object.defineProperty(game, 'cash', { value: game.cash, enumerable: false });
+			} else if (propertyCase === 'hidden-extra') {
+				Object.defineProperty(game, 'hiddenExtra', { value: 42, enumerable: false });
+			} else {
+				game[Symbol('extra')] = 42;
+			}
+
+			expect(() => validateCurrentGameState(game)).toThrow(SaveDataError);
+			expect(() => validateCurrentGameState(game)).toThrow(/own enumerable string-keyed data/);
+		}
+	);
+
 	test('strict validation accepts a successful warehouse construction transition', () => {
 		const game = { ...createNewGame('convenience', 20260722), cash: 1_000_000 };
 		const city = game.industryCities[0]!;
@@ -642,6 +722,59 @@ describe('saveCodec', () => {
 		}
 	);
 
+	test.each(['retail', 'industry'] as const)(
+		'strict validation rejects duplicate $kind city IDs',
+		(kind) => {
+			const game = createGame();
+			const changed =
+				kind === 'retail'
+					? { ...game, cities: [...game.cities, structuredClone(game.cities[0]!)] }
+					: {
+							...game,
+							industryCities: [...game.industryCities, structuredClone(game.industryCities[0]!)]
+						};
+
+			expect(() => validateCurrentGameState(changed)).toThrow(/city IDs must be unique/);
+		}
+	);
+
+	test.each([
+		{ kind: 'retail', defect: 'missing tile' },
+		{ kind: 'retail', defect: 'duplicate tile ID' },
+		{ kind: 'retail', defect: 'duplicate coordinate' },
+		{ kind: 'industry', defect: 'missing tile' },
+		{ kind: 'industry', defect: 'duplicate tile ID' },
+		{ kind: 'industry', defect: 'duplicate coordinate' }
+	] as const)('strict validation rejects $kind city topology: $defect', ({ kind, defect }) => {
+		const game = createGame();
+		const city = structuredClone(kind === 'retail' ? game.cities[0]! : game.industryCities[0]!);
+		if (defect === 'missing tile') {
+			city.tiles.pop();
+		} else if (defect === 'duplicate tile ID') {
+			city.tiles.at(-1)!.id = city.tiles[0]!.id;
+		} else {
+			city.tiles.at(-1)!.x = city.tiles[0]!.x;
+			city.tiles.at(-1)!.y = city.tiles[0]!.y;
+		}
+		const changed =
+			kind === 'retail'
+				? { ...game, cities: [city as GameState['cities'][number]] }
+				: { ...game, industryCities: [city as GameState['industryCities'][number]] };
+
+		expect(() => validateCurrentGameState(changed)).toThrow(/city tile grid|tile IDs|coordinates/);
+	});
+
+	test('strict validation rejects rail coordinates that have no materialized industry tile', () => {
+		const game = createGame();
+		const city = structuredClone(game.industryCities[0]!);
+		city.tiles = city.tiles.filter((tile) => tile.x !== 0 || tile.y !== 0);
+		city.rails = [{ x: 0, y: 0, level: 1 }];
+
+		expect(() => validateCurrentGameState({ ...game, industryCities: [city] })).toThrow(
+			/rail.*actual tile/i
+		);
+	});
+
 	test('strict validation rejects a tiny city whose store footprint cannot fit', () => {
 		const game = createGame();
 		const tile = { ...game.cities[0]!.tiles[0]!, id: 'tiny-0-0', x: 0, y: 0 };
@@ -676,6 +809,43 @@ describe('saveCodec', () => {
 
 			expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
 			expect(() => validateSaveRecord(record)).toThrow(error);
+		}
+	);
+
+	test.each([
+		{ field: 'activeCityId', openedId: 'harbor-city' },
+		{ field: 'activeIndustryCityId', openedId: 'industry-city' }
+	] as const)(
+		'strict validation rejects unopened active city through $field',
+		({ field, openedId }) => {
+			const game = createGame();
+			const world = {
+				...game.world,
+				openedCityIds: game.world.openedCityIds.filter((cityId) => cityId !== openedId)
+			};
+
+			expect(() => validateCurrentGameState({ ...game, world, [field]: openedId })).toThrow(
+				new RegExp(`${field} must reference an opened city`)
+			);
+		}
+	);
+
+	test.each([
+		{ kind: 'retail', cityId: 'campus-junction' },
+		{ kind: 'industry', cityId: 'breadbasket-basin' }
+	] as const)(
+		'strict validation rejects an opened unmaterialized $kind city',
+		({ kind, cityId }) => {
+			const game = createGame();
+			const world = {
+				...game.world,
+				revealedCityIds: [...game.world.revealedCityIds, cityId],
+				openedCityIds: [...game.world.openedCityIds, cityId]
+			};
+
+			expect(() => validateCurrentGameState({ ...game, world })).toThrow(
+				new RegExp(`opened ${kind} city ${cityId} must be materialized`)
+			);
 		}
 	);
 
@@ -832,14 +1002,23 @@ describe('saveCodec', () => {
 		expect(validateCurrentGameState(game)).toEqual(game);
 	});
 
-	test('strict current-game cloning preserves -0 and permitted undefined extras', () => {
-		const game = Object.assign(createGame({ cash: -0 }), { optionalExtra: undefined });
+	test('strict current-game cloning preserves -0 and enumerable cloneable extras', () => {
+		const game = Object.assign(createGame({ cash: -0 }), {
+			optionalExtra: undefined,
+			cloneableExtra: { nested: true }
+		});
 
 		const validated = validateCurrentGameState(game);
 
 		expect(Object.is(validated.cash, -0)).toBe(true);
 		expect(Object.hasOwn(validated, 'optionalExtra')).toBe(true);
 		expect((validated as GameState & { optionalExtra?: unknown }).optionalExtra).toBeUndefined();
+		expect((validated as GameState & { cloneableExtra: unknown }).cloneableExtra).toEqual({
+			nested: true
+		});
+		expect((validated as GameState & { cloneableExtra: unknown }).cloneableExtra).not.toBe(
+			game.cloneableExtra
+		);
 	});
 
 	test('strict validation rejects stale world progress while sandbox loading refreshes it', () => {
@@ -1342,7 +1521,7 @@ describe('saveCodec', () => {
 		);
 
 		expect(() => validateCurrentGameState({ ...game, cities })).toThrow(
-			'Saved game stores[0] placement must already match a buildable, non-overlapping city footprint'
+			'Saved game cities[0] city tile grid must contain exactly width * height tiles'
 		);
 	});
 
@@ -1356,7 +1535,15 @@ describe('saveCodec', () => {
 					name: 'Unknown',
 					width: 1,
 					height: 1,
-					tiles: []
+					tiles: [
+						{
+							...createFixtureRetailCity().tiles[0]!,
+							id: 'not-a-real-city-0-0',
+							cityId: 'not-a-real-city',
+							x: 0,
+							y: 0
+						}
+					]
 				}
 			]
 		}) as Partial<GameState>;
@@ -1585,7 +1772,13 @@ describe('saveCodec', () => {
 			game: {
 				seed: 999,
 				activeCityId: 'campus-junction',
+				world: {
+					...createInitialWorldProgress(),
+					revealedCityIds: ['harbor-city', 'industry-city', 'campus-junction'],
+					openedCityIds: ['harbor-city', 'industry-city', 'campus-junction']
+				},
 				cities: [
+					createFixtureRetailCity(),
 					{
 						id: 'campus-junction',
 						name: 'Campus Junction',
@@ -1599,7 +1792,7 @@ describe('saveCodec', () => {
 		});
 
 		const validated = validateSaveRecord(record);
-		const city = validated.game.cities[0]!;
+		const city = validated.game.cities.find((candidate) => candidate.id === 'campus-junction')!;
 		const reference = generateCity({
 			id: definition.id,
 			name: 'Campus Junction',
@@ -2385,19 +2578,8 @@ describe('saveCodec', () => {
 		// looked up from the saved city tile matching the store's tileId.
 		expect.assertions(3);
 		const baseRecord = createManualSaveRecord();
-		const footprintTiles = [
-			[1, 1],
-			[2, 1],
-			[1, 2],
-			[2, 2]
-		].map(([x, y]) => ({
-			id: `harbor-city-${x}-${y}`,
-			cityId: 'harbor-city',
-			x: x!,
-			y: y!,
-			neighborhood: 'downtown' as const,
-			terrain: 'commercial' as const,
-			feature: null,
+		const footprintTiles = createFixtureRetailCity().tiles.map((tile) => ({
+			...tile,
 			demand: 50,
 			rent: 40,
 			footTraffic: 60,
