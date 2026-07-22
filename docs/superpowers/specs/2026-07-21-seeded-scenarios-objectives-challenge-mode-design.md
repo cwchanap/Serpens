@@ -1,7 +1,7 @@
 # Seeded Scenarios, Objectives, and Challenge Mode — Design
 
 **Date:** 2026-07-21
-**Status:** Revised after three review rounds, pending final re-approval
+**Status:** Approved 2026-07-22; implementation plan drafted
 **Linear:** HPA-280
 
 ## Summary
@@ -768,6 +768,7 @@ result, and a mode selector:
 let sandboxGame: GameState | null;
 let activeScenarioRun: ScenarioRun | null;
 let lastScenarioResult: ScenarioResult | null;
+let lastScenarioBestUpdated: boolean;
 let playMode: 'sandbox' | 'scenario';
 ```
 
@@ -780,9 +781,10 @@ commit/load seam before challenge UI is added. Existing sandbox semantics remain
 the regression baseline. The same map and management components continue to
 receive the derived `GameState`.
 
-Starting, resuming, or restarting a run clears `lastScenarioResult`. Closing a
-results dialog may keep it only for the current route session; it is never
-loaded as resumable state or used as the displayed game.
+Starting, resuming, or restarting a run clears `lastScenarioResult` and
+`lastScenarioBestUpdated`. Closing a results dialog may keep them only for the
+current route session; they are never loaded as resumable state or used as the
+displayed game.
 
 ### Catalog
 
@@ -836,11 +838,12 @@ Completion and failure open a blocking results dialog with:
 - failure/deadline evidence;
 - Restart, Challenge catalog, and Return to sandbox actions.
 
-The dialog uses route-owned `lastScenarioResult`, published from the
-`ScenarioCommitOutcome` only after the serialized terminal snapshot write
-completes. It therefore never claims a completion or best result before commit,
-but failed/unranked/non-best results intentionally disappear on reload instead
-of becoming attempt history.
+The dialog uses route-owned `lastScenarioResult` and
+`lastScenarioBestUpdated`, published from the `ScenarioCommitOutcome` only
+after the serialized terminal snapshot write completes. It therefore never
+claims a completion or best result before commit, but
+failed/unranked/non-best results intentionally disappear on reload instead of
+becoming attempt history.
 
 All challenge text is localized through stable i18n keys. Required accessibility
 includes dialog focus management, keyboard operation, focus restoration,
