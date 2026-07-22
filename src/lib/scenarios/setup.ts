@@ -1,5 +1,3 @@
-import { getArchetype } from '$lib/game/archetypes';
-import { inventoryUsed } from '$lib/game/buildingInventory';
 import {
 	DEFAULT_RETAIL_CITY_HEIGHT,
 	DEFAULT_RETAIL_CITY_WIDTH,
@@ -15,12 +13,8 @@ import {
 	buildIndustrialBuilding,
 	getIndustrialPlacementBlockReason
 } from '$lib/game/industryPlacement';
-import {
-	getWarehouseCapacity,
-	getWarehouseUsed,
-	recalculateWarehousePressure
-} from '$lib/game/industryProduction';
-import { getStoreUpgradeCost, getUnlockedCategoryCount } from '$lib/game/leveling';
+import { getWarehouseCapacity, recalculateWarehousePressure } from '$lib/game/industryProduction';
+import { getStoreUpgradeCost } from '$lib/game/leveling';
 import { createFoundingGameAtTile } from '$lib/game/placement';
 import { getFootprintAdjacentCoords, railCellKey } from '$lib/game/rail';
 import { isRailWaypointTarget } from '$lib/game/railPlacement';
@@ -33,6 +27,7 @@ import {
 } from '$lib/game/storeFootprint';
 import type { City, GameState, IndustryCity, RailCell, WorldCityId } from '$lib/game/types';
 import { getWorldCityDefinition, refreshWorldProgress } from '$lib/game/world';
+import { SaveDataError, validateCurrentGameState } from '$lib/persistence/saveCodec';
 import type { ScenarioDefinition, ScenarioDiagnostic } from './types';
 import {
 	sortScenarioDiagnostics,
@@ -405,7 +400,7 @@ function railComponentsReachEndpoints(definition: ScenarioDefinition, game: Game
 	return true;
 }
 
-function validateBuiltScenarioGame(
+function validateBuiltScenarioInvariants(
 	definition: ScenarioDefinition,
 	game: GameState,
 	refs: ScenarioSetupRefs
@@ -476,46 +471,6 @@ function validateBuiltScenarioGame(
 		}
 	}
 
-	if (!Number.isInteger(game.storeCap) || game.storeCap < game.stores.length) {
-		diagnostics.push({
-			path: 'start.overrides.storeCap',
-			code: 'setup-invariant-failed',
-			value: game.storeCap,
-			detail: 'The built game store cap is lower than its starting store count.'
-		});
-	}
-
-	for (const store of game.stores) {
-		const unlocked = new Set(
-			getArchetype(store.archetypeId)
-				.startingCategories.slice(0, getUnlockedCategoryCount(store.level))
-				.map((category) => category.id)
-		);
-		const productIds = store.products.map((product) => product.categoryId);
-		const productIdSet = new Set(productIds);
-		const hasExactProductCategorySet =
-			productIds.length === unlocked.size &&
-			productIdSet.size === unlocked.size &&
-			productIds.every((categoryId) => unlocked.has(categoryId));
-		if (!hasExactProductCategorySet) {
-			diagnostics.push({
-				path: 'start.overrides.stores',
-				code: 'setup-invariant-failed',
-				value: productIds,
-				detail:
-					'The built game product categories must exactly match the categories unlocked at its store level.'
-			});
-		}
-		if (store.stockHealth !== calculateStockHealth(store.products)) {
-			diagnostics.push({
-				path: 'start.overrides.stores',
-				code: 'setup-invariant-failed',
-				value: store.stockHealth,
-				detail: 'The built game store stock health does not match its products.'
-			});
-		}
-	}
-
 	const expectedRails = expectedRailsByCity(definition);
 	for (const [cityId, cells] of expectedRails) {
 		const actual = game.industryCities.find((city) => city.id === cityId)?.rails ?? [];
@@ -543,33 +498,6 @@ function validateBuiltScenarioGame(
 			value: definition.start.rails,
 			detail: 'An authored rail component cannot reach two valid building footprints.'
 		});
-	}
-
-	const warehouseCapacity = getWarehouseCapacity(game);
-	if (
-		game.warehouse.capacity !== warehouseCapacity ||
-		getWarehouseUsed(game.warehouse) > warehouseCapacity ||
-		game.warehouse.overflowUnits !== 0 ||
-		game.warehouse.overflowCost !== 0
-	) {
-		diagnostics.push({
-			path: 'start.overrides.warehouseMaterials',
-			code: 'setup-invariant-failed',
-			value: game.warehouse,
-			detail: 'The built game warehouse contents or pressure exceed derived capacity.'
-		});
-	}
-	for (const building of game.industrialBuildings) {
-		const capacity = INDUSTRIAL_BUILDING_TYPES[building.typeId]?.bufferCapacity ?? 0;
-		const used = inventoryUsed(building.inventory);
-		if (used > capacity) {
-			diagnostics.push({
-				path: 'start.overrides.buildingInventories',
-				code: 'setup-invariant-failed',
-				value: building.inventory,
-				detail: 'A built game industrial inventory exceeds its derived buffer capacity.'
-			});
-		}
 	}
 
 	const activeRetail = game.cities.some((city) => city.id === game.activeCityId);
@@ -616,6 +544,67 @@ function validateBuiltScenarioGame(
 	}
 
 	return sortScenarioDiagnostics(diagnostics);
+}
+
+function strictSetupFailure(error: SaveDataError, game: GameState): ScenarioDiagnostic {
+	if (
+		error.message.includes('storeCap must be an integer') ||
+		error.message.includes('storeCap must be at least the current store count')
+	) {
+		return {
+			path: 'start.overrides.storeCap',
+			code: 'setup-invariant-failed',
+			value: game.storeCap,
+			detail: 'The built game store cap is lower than its starting store count.'
+		};
+	}
+
+	if (
+		error.message.includes(' products length (') ||
+		error.message.includes(' categoryId must be')
+	) {
+		return {
+			path: 'start.overrides.stores',
+			code: 'setup-invariant-failed',
+			value: game.stores.flatMap((store) => store.products.map((product) => product.categoryId)),
+			detail:
+				'The built game product categories must exactly match the categories unlocked at its store level.'
+		};
+	}
+
+	if (error.message.includes(' stockHealth must match its products')) {
+		return {
+			path: 'start.overrides.stores',
+			code: 'setup-invariant-failed',
+			value: game.stores.map((store) => store.stockHealth),
+			detail: 'The built game store stock health does not match its products.'
+		};
+	}
+
+	if (error.message.includes('warehouse capacity and pressure must match')) {
+		return {
+			path: 'start.overrides.warehouseMaterials',
+			code: 'setup-invariant-failed',
+			value: game.warehouse,
+			detail: 'The built game warehouse contents or pressure exceed derived capacity.'
+		};
+	}
+
+	if (error.message.includes(' inventory must fit its recipe buffer')) {
+		return {
+			path: 'start.overrides.buildingInventories',
+			code: 'setup-invariant-failed',
+			value: game.industrialBuildings.map((building) => building.inventory),
+			detail: 'A built game industrial inventory exceeds its derived buffer capacity.'
+		};
+	}
+
+	return {
+		path: 'start',
+		code: 'setup-invariant-failed',
+		value: error.message,
+		detail: 'The built game failed strict current-state validation.'
+	};
 }
 
 export function buildScenarioGame(
@@ -744,9 +733,32 @@ export function buildScenarioGame(
 	};
 	game = refreshWorldProgress(game);
 
-	const invariantDiagnostics = validateBuiltScenarioGame(definition, game, refs);
+	const invariantDiagnostics = validateBuiltScenarioInvariants(definition, game, refs);
 	if (invariantDiagnostics.length > 0) {
 		return { ok: false, diagnostics: invariantDiagnostics };
+	}
+
+	let validatedGame: GameState;
+	try {
+		validatedGame = validateCurrentGameState(game);
+	} catch (error) {
+		if (error instanceof SaveDataError) {
+			return { ok: false, diagnostics: [strictSetupFailure(error, game)] };
+		}
+		throw error;
+	}
+	if (JSON.stringify(validatedGame) !== JSON.stringify(game)) {
+		return {
+			ok: false,
+			diagnostics: [
+				{
+					path: 'start',
+					code: 'setup-invariant-failed',
+					value: game,
+					detail: 'Strict validation changed the built game instead of returning an exact clone.'
+				}
+			]
+		};
 	}
 
 	return { ok: true, game, refs };

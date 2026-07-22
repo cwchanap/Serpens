@@ -8,8 +8,13 @@ import {
 	getTileById,
 	isTileBuildable
 } from '$lib/game/city';
-import { clampInventoryToRecipe } from '$lib/game/buildingInventory';
+import {
+	clampInventoryToRecipe,
+	getRecipeMaterialIds,
+	inventoryUsed
+} from '$lib/game/buildingInventory';
 import { INDUSTRIAL_BUILDING_TYPES, MATERIALS } from '$lib/game/industry';
+import { getWarehouseCapacity, recalculateWarehousePressure } from '$lib/game/industryProduction';
 import {
 	getStoreStaffCapacityBonus,
 	getUnlockedCategoryCount,
@@ -25,11 +30,13 @@ import {
 } from '$lib/game/storeFootprint';
 import { MAX_STAFF_LEVEL } from '$lib/game/staffLeveling';
 import { clampScore } from '$lib/game/reports';
+import { calculateStockHealth } from '$lib/game/stock';
 import type {
 	City,
 	CityTile,
 	GameState,
 	IndustrialBuildingTypeId,
+	StoreProduct,
 	WorldCityId
 } from '$lib/game/types';
 import {
@@ -118,12 +125,10 @@ function migrateV4Game(game: unknown): unknown {
 function migrateV4SaveRecord(record: unknown): unknown {
 	if (typeof record !== 'object' || record === null) return record;
 	const recordObject = record as Record<string, unknown>;
-	const migratedGame = migrateV4Game(recordObject.game);
 	// Advance by one version so migrateSaveRecord's chain runs the next step.
 	return {
 		...recordObject,
-		schemaVersion: 5,
-		game: migratedGame
+		schemaVersion: 5
 	};
 }
 
@@ -172,13 +177,11 @@ function migrateV5Game(game: unknown): unknown {
 function migrateV5SaveRecord(record: unknown): unknown {
 	if (typeof record !== 'object' || record === null) return record;
 	const recordObject = record as Record<string, unknown>;
-	const migratedGame = migrateV5Game(recordObject.game);
 	// Advance by one version so migrateSaveRecord's chain runs the v6→v7 step.
 	// Do NOT use SAVE_SCHEMA_VERSION here — that would skip intermediate migrations.
 	return {
 		...recordObject,
-		schemaVersion: 6,
-		game: migratedGame
+		schemaVersion: 6
 	};
 }
 
@@ -210,11 +213,9 @@ function migrateV6Game(game: unknown): unknown {
 function migrateV6SaveRecord(record: unknown): unknown {
 	if (typeof record !== 'object' || record === null) return record;
 	const recordObject = record as Record<string, unknown>;
-	const migratedGame = migrateV6Game(recordObject.game);
 	return {
 		...recordObject,
-		schemaVersion: 7,
-		game: migratedGame
+		schemaVersion: 7
 	};
 }
 
@@ -315,13 +316,11 @@ function migrateV8Game(game: unknown): unknown {
 function migrateV8SaveRecord(record: unknown): unknown {
 	if (typeof record !== 'object' || record === null) return record;
 	const recordObject = record as Record<string, unknown>;
-	const migratedGame = migrateV8Game(recordObject.game);
 	// Advance by one version so migrateSaveRecord's chain can run the next step.
 	// Do NOT use SAVE_SCHEMA_VERSION here — that would skip intermediate migrations.
 	return {
 		...recordObject,
-		schemaVersion: 9,
-		game: migratedGame
+		schemaVersion: 9
 	};
 }
 
@@ -362,10 +361,13 @@ function migrateV9Game(game: unknown): unknown {
 				if (typeof production !== 'object' || production === null) return report;
 				const productionRecord = production as Record<string, unknown>;
 				const producedMovements = Array.isArray(productionRecord.produced)
-					? (productionRecord.produced as Array<Record<string, unknown>>)
+					? productionRecord.produced
 					: [];
 				const railShipments = producedMovements
-					.filter((movement) => movement.source === 'local')
+					.filter(
+						(movement): movement is Record<string, unknown> =>
+							typeof movement === 'object' && movement !== null && movement.source === 'local'
+					)
 					.map((movement) => ({
 						materialId: movement.materialId,
 						quantity: movement.quantity,
@@ -391,14 +393,37 @@ function migrateV9Game(game: unknown): unknown {
 function migrateV9SaveRecord(record: unknown): unknown {
 	if (typeof record !== 'object' || record === null) return record;
 	const recordObject = record as Record<string, unknown>;
-	return { ...recordObject, schemaVersion: 10, game: migrateV9Game(recordObject.game) };
+	return { ...recordObject, schemaVersion: 10 };
 }
 
 /**
- * Bring a serialized save store snapshot forward to the current
- * {@link SAVE_SCHEMA_VERSION}. Returns the value untouched when it is already
- * current or when we cannot recognise the schema version (so the caller's
- * subsequent strict validation can throw a precise error).
+ * Migrates a bare serialized game through every historical game-schema step.
+ * Record metadata is deliberately excluded; it remains owned by the sandbox
+ * save-record migration pipeline below.
+ */
+export function migrateSavedGame(value: unknown, sourceGameSchemaVersion: number): unknown {
+	if (
+		sourceGameSchemaVersion !== SAVE_SCHEMA_VERSION &&
+		!isMigratableSchemaVersion(sourceGameSchemaVersion)
+	) {
+		throw new SaveDataError(`Unsupported save schema version: ${sourceGameSchemaVersion}`);
+	}
+
+	let migrated = value;
+	if (sourceGameSchemaVersion <= 4) migrated = migrateV4Game(migrated);
+	if (sourceGameSchemaVersion <= 5) migrated = migrateV5Game(migrated);
+	if (sourceGameSchemaVersion <= 6) migrated = migrateV6Game(migrated);
+	// v7→v8 changed save-record metadata only.
+	if (sourceGameSchemaVersion <= 8) migrated = migrateV8Game(migrated);
+	if (sourceGameSchemaVersion <= 9) migrated = migrateV9Game(migrated);
+
+	return migrated;
+}
+
+/**
+ * Bring the save-store envelope forward to the current schema. Nested records
+ * retain their source versions so validateSaveRecord can migrate each bare
+ * game and its record metadata exactly once.
  */
 function migrateSaveStoreSnapshot(value: unknown): unknown {
 	if (typeof value !== 'object' || value === null) return value;
@@ -407,28 +432,15 @@ function migrateSaveStoreSnapshot(value: unknown): unknown {
 	if (!isMigratableSchemaVersion(snapshot.schemaVersion)) return value;
 	if (snapshot.schemaVersion === SAVE_SCHEMA_VERSION) return value;
 
-	let migratedAutoSave = snapshot.autoSave;
-	if (migratedAutoSave !== null && migratedAutoSave !== undefined) {
-		migratedAutoSave = migrateSaveRecord(migratedAutoSave);
-	}
-
-	let migratedManualSlots = snapshot.manualSlots;
-	if (Array.isArray(migratedManualSlots)) {
-		migratedManualSlots = migratedManualSlots.map(migrateSaveRecord);
-	}
-
 	return {
 		...snapshot,
-		schemaVersion: SAVE_SCHEMA_VERSION,
-		autoSave: migratedAutoSave,
-		manualSlots: migratedManualSlots
+		schemaVersion: SAVE_SCHEMA_VERSION
 	};
 }
 
 /**
- * Record-level mirror of {@link migrateSaveStoreSnapshot} for callers that
- * validate a single {@link SaveRecord} without going through the snapshot
- * validator first. Applies version-specific migrations in order.
+ * Migrate save-record metadata in historical order. Bare game migration is
+ * deliberately handled by migrateSavedGame before sandbox normalization.
  */
 function migrateSaveRecord(value: unknown): unknown {
 	if (typeof value !== 'object' || value === null) return value;
@@ -620,7 +632,13 @@ export function validateSaveStoreSnapshot(value: unknown): SaveStoreSnapshot {
 }
 
 export function validateSaveRecord(value: unknown): SaveRecord {
-	const migrated = migrateSaveRecord(value);
+	const sourceRecord = requireRecord(value, 'Save record');
+	const sourceSchemaVersion = requireNumber(
+		sourceRecord.schemaVersion,
+		'Save record schemaVersion'
+	);
+	const migratedGame = migrateSavedGame(sourceRecord.game, sourceSchemaVersion);
+	const migrated = migrateSaveRecord(sourceRecord);
 	const record = requireRecord(migrated, 'Save record');
 	const schemaVersion = requireNumber(record.schemaVersion, 'Save record schemaVersion');
 
@@ -629,7 +647,8 @@ export function validateSaveRecord(value: unknown): SaveRecord {
 	}
 
 	const metadata = requireRecord(record.metadata, 'Save metadata');
-	const game = validateSavedGame(record.game);
+	const normalizedGame = normalizeSandboxSavedGame(migratedGame);
+	const game = validateCurrentGameState(normalizedGame);
 	const kind = requireString(metadata.kind, 'Save metadata kind');
 
 	if (kind !== 'auto' && kind !== 'manual') {
@@ -651,8 +670,8 @@ export function validateSaveRecord(value: unknown): SaveRecord {
 	};
 }
 
-function validateSavedGame(value: unknown): GameState {
-	const game = normalizeSavedGame(requireRecord(value, 'Saved game'));
+export function validateCurrentGameState(value: unknown): GameState {
+	const game = requireRecord(value, 'Saved game');
 	const policy = requireRecord(game.policy, 'Saved game policy');
 	const scorecard = requireRecord(game.scorecard, 'Saved game scorecard');
 	const cities = requireArray(game.cities, 'Saved game cities');
@@ -672,6 +691,7 @@ function validateSavedGame(value: unknown): GameState {
 	requireNumber(game.day, 'Saved game day');
 	requireNumber(game.cash, 'Saved game cash');
 	requireNumber(game.debt, 'Saved game debt');
+	validateSavedWorld(game.world, 'Saved game world');
 	requireOneOf(policy.pricing, 'Saved game policy pricing', PRICING_POSTURES);
 	requireOneOf(policy.inventory, 'Saved game policy inventory', INVENTORY_BUFFERS);
 	requireOneOf(policy.staffing, 'Saved game policy staffing', STAFFING_POSTURES);
@@ -681,7 +701,11 @@ function validateSavedGame(value: unknown): GameState {
 	requireNumber(scorecard.customerSatisfaction, 'Saved game scorecard customerSatisfaction');
 	requireNumber(scorecard.staffMorale, 'Saved game scorecard staffMorale');
 	requireNumber(scorecard.marketPosition, 'Saved game scorecard marketPosition');
-	cities.forEach((city, index) => validateSavedCity(city, `Saved game cities[${index}]`));
+	cities.forEach((city, index) => {
+		const label = `Saved game cities[${index}]`;
+		validateSavedCity(city, label);
+		validateCurrentRetailCitySize(city, label);
+	});
 	requireString(game.activeCityId, 'Saved game activeCityId');
 	industryCities.forEach((city, index) =>
 		validateSavedIndustryCity(city, `Saved game industryCities[${index}]`)
@@ -692,6 +716,7 @@ function validateSavedGame(value: unknown): GameState {
 	);
 	validateSavedWarehouse(game.warehouse, 'Saved game warehouse');
 	stores.forEach((store, index) => validateSavedStore(store, `Saved game stores[${index}]`));
+	validateCurrentRetailStorePlacements(stores, cities);
 	staff.forEach((member, index) => validateSavedStaffMember(member, `Saved game staff[${index}]`));
 	hiringCandidates.forEach((candidate, index) =>
 		validateSavedHiringCandidate(candidate, `Saved game hiringCandidates[${index}]`)
@@ -699,23 +724,56 @@ function validateSavedGame(value: unknown): GameState {
 	decisions.forEach((decision, index) =>
 		validateSavedDecision(decision, `Saved game decisions[${index}]`)
 	);
-	reports.forEach((report, index) => validateSavedReport(report, `Saved game reports[${index}]`));
-	requireNumber(game.storeCap, 'Saved game storeCap');
-	if (game.storeCap < game.stores.length) {
+	let previousReportDay: number | undefined;
+	reports.forEach((report, index) => {
+		const reportDay = validateSavedReport(report, `Saved game reports[${index}]`);
+		if (previousReportDay !== undefined && reportDay <= previousReportDay) {
+			throw new SaveDataError('Saved game report days must be strictly increasing and unique');
+		}
+		previousReportDay = reportDay;
+	});
+	const storeCap = requireNumber(game.storeCap, 'Saved game storeCap');
+	if (!Number.isInteger(storeCap)) {
+		throw new SaveDataError('Saved game storeCap must be an integer');
+	}
+	if (storeCap < stores.length) {
 		throw new SaveDataError('Saved game storeCap must be at least the current store count');
 	}
 
-	const refreshedGame = refreshWorldProgress(game);
-	return {
-		...refreshedGame,
-		industrialBuildings: refreshedGame.industrialBuildings.map((building) => ({
-			...building,
-			inventory: clampInventoryToRecipe(
-				building.inventory,
-				INDUSTRIAL_BUILDING_TYPES[building.typeId]
-			)
-		}))
-	};
+	const currentGame = game as unknown as GameState;
+	const expectedWarehouse = recalculateWarehousePressure({
+		...currentGame.warehouse,
+		capacity: getWarehouseCapacity(currentGame),
+		materials: { ...currentGame.warehouse.materials }
+	});
+	if (
+		currentGame.warehouse.capacity !== expectedWarehouse.capacity ||
+		currentGame.warehouse.overflowUnits !== expectedWarehouse.overflowUnits ||
+		currentGame.warehouse.overflowCost !== expectedWarehouse.overflowCost
+	) {
+		throw new SaveDataError(
+			'Saved game warehouse capacity and pressure must match current buildings and materials'
+		);
+	}
+	if (refreshWorldProgress(currentGame) !== currentGame) {
+		throw new SaveDataError('Saved game world progress must already be current');
+	}
+	for (const [index, building] of currentGame.industrialBuildings.entries()) {
+		const buildingType = INDUSTRIAL_BUILDING_TYPES[building.typeId];
+		const recipeMaterialIds = getRecipeMaterialIds(buildingType);
+		if (
+			Object.keys(building.inventory).some(
+				(materialId) => !recipeMaterialIds.has(materialId as keyof typeof MATERIALS)
+			) ||
+			inventoryUsed(building.inventory) > buildingType.bufferCapacity
+		) {
+			throw new SaveDataError(
+				`Saved game industrialBuildings[${index}] inventory must fit its recipe buffer`
+			);
+		}
+	}
+
+	return structuredClone(currentGame);
 }
 
 function validateSlotInvariants(autoSave: SaveRecord | null, manualSlots: SaveRecord[]): void {
@@ -777,6 +835,47 @@ function normalizeSavedStoreLevel(store: unknown): unknown {
 	return { ...record, level, staffCapacity };
 }
 
+function normalizeSandboxStoreStockHealth(store: unknown): unknown {
+	if (typeof store !== 'object' || store === null) return store;
+	const record = store as Record<string, unknown>;
+	if (
+		!Array.isArray(record.products) ||
+		typeof record.stockHealth !== 'number' ||
+		!Number.isFinite(record.stockHealth)
+	) {
+		return store;
+	}
+
+	const products: StoreProduct[] = [];
+	for (const value of record.products) {
+		if (typeof value !== 'object' || value === null) return store;
+		const product = value as Record<string, unknown>;
+		if (
+			typeof product.categoryId !== 'string' ||
+			typeof product.stock !== 'number' ||
+			!Number.isFinite(product.stock) ||
+			typeof product.reorderThreshold !== 'number' ||
+			!Number.isFinite(product.reorderThreshold) ||
+			typeof product.targetStock !== 'number' ||
+			!Number.isFinite(product.targetStock) ||
+			typeof product.sellingPrice !== 'number' ||
+			!Number.isFinite(product.sellingPrice)
+		) {
+			return store;
+		}
+		products.push({
+			categoryId: product.categoryId,
+			stock: product.stock,
+			reorderThreshold: product.reorderThreshold,
+			targetStock: product.targetStock,
+			sellingPrice: product.sellingPrice
+		});
+	}
+
+	const stockHealth = calculateStockHealth(products);
+	return record.stockHealth === stockHealth ? store : { ...record, stockHealth };
+}
+
 function normalizeSavedBuildingLevel(building: unknown): unknown {
 	if (typeof building !== 'object' || building === null) {
 		return building;
@@ -797,7 +896,8 @@ function normalizeSavedStaffLevel(member: unknown): unknown {
 	return { ...record, level, xp };
 }
 
-function normalizeSavedGame(game: Record<string, unknown>): GameState {
+export function normalizeSandboxSavedGame(value: unknown): unknown {
+	const game = requireRecord(value, 'Saved game');
 	const normalizedWorld =
 		game.world === undefined
 			? inferWorldProgress(game)
@@ -808,7 +908,9 @@ function normalizeSavedGame(game: Record<string, unknown>): GameState {
 			: game.storeCap;
 
 	const normalizedStores = Array.isArray(game.stores)
-		? game.stores.map((store) => normalizeSavedStoreLevel(store))
+		? game.stores
+				.map((store) => normalizeSavedStoreLevel(store))
+				.map((store) => normalizeSandboxStoreStockHealth(store))
 		: game.stores;
 	const normalizedBuildings = Array.isArray(game.industrialBuildings)
 		? game.industrialBuildings.map((building) => normalizeSavedBuildingLevel(building))
@@ -823,15 +925,165 @@ function normalizeSavedGame(game: Record<string, unknown>): GameState {
 		normalizedCities.regeneratedCityIds
 	);
 
-	return {
+	let normalizedGame = {
 		...game,
-		cities: normalizedCities.cities,
+		cities: normalizeSavedCityTileFeatures(normalizedCities.cities),
 		stores: normalizedRetailStores,
 		staff: normalizedStaff,
 		industrialBuildings: normalizedBuildings,
 		world: normalizedWorld,
 		storeCap: normalizedStoreCap
 	} as GameState;
+	normalizedGame = normalizeSandboxWarehouseState(normalizedGame);
+
+	if (canRefreshSandboxWorldProgress(normalizedGame)) {
+		normalizedGame = refreshWorldProgress(normalizedGame);
+	}
+
+	return {
+		...normalizedGame,
+		industrialBuildings: Array.isArray(normalizedGame.industrialBuildings)
+			? normalizedGame.industrialBuildings.map(normalizeSandboxBuildingInventory)
+			: normalizedGame.industrialBuildings
+	};
+}
+
+function normalizeSandboxWarehouseState(game: GameState): GameState {
+	if (
+		typeof game.warehouse !== 'object' ||
+		game.warehouse === null ||
+		Array.isArray(game.warehouse) ||
+		!Array.isArray(game.industrialBuildings) ||
+		!game.industrialBuildings.every(
+			(building) =>
+				typeof building === 'object' && building !== null && typeof building.typeId === 'string'
+		)
+	) {
+		return game;
+	}
+
+	const warehouse = game.warehouse as unknown as Record<string, unknown>;
+	if (
+		typeof warehouse.capacity !== 'number' ||
+		!Number.isFinite(warehouse.capacity) ||
+		typeof warehouse.overflowUnits !== 'number' ||
+		!Number.isFinite(warehouse.overflowUnits) ||
+		typeof warehouse.overflowCost !== 'number' ||
+		!Number.isFinite(warehouse.overflowCost) ||
+		typeof warehouse.materials !== 'object' ||
+		warehouse.materials === null ||
+		Array.isArray(warehouse.materials)
+	) {
+		return game;
+	}
+	const materials = warehouse.materials as Record<string, unknown>;
+	if (
+		Object.values(materials).some(
+			(quantity) => typeof quantity !== 'number' || !Number.isFinite(quantity) || quantity < 0
+		)
+	) {
+		return game;
+	}
+
+	const normalizedWarehouse = recalculateWarehousePressure({
+		...(game.warehouse as GameState['warehouse']),
+		capacity: getWarehouseCapacity(game),
+		materials: { ...game.warehouse.materials }
+	});
+	if (
+		game.warehouse.capacity === normalizedWarehouse.capacity &&
+		game.warehouse.overflowUnits === normalizedWarehouse.overflowUnits &&
+		game.warehouse.overflowCost === normalizedWarehouse.overflowCost
+	) {
+		return game;
+	}
+
+	return { ...game, warehouse: normalizedWarehouse };
+}
+
+function normalizeSavedCityTileFeatures(cities: unknown): unknown {
+	if (!Array.isArray(cities)) return cities;
+
+	return cities.map((city) => {
+		if (typeof city !== 'object' || city === null) return city;
+		const cityRecord = city as Record<string, unknown>;
+		if (!Array.isArray(cityRecord.tiles)) return city;
+		let changed = false;
+		const tiles = cityRecord.tiles.map((tile) => {
+			if (typeof tile !== 'object' || tile === null) return tile;
+			const tileRecord = tile as Record<string, unknown>;
+			if (tileRecord.feature !== undefined) return tile;
+			changed = true;
+			return { ...tileRecord, feature: null };
+		});
+		return changed ? { ...cityRecord, tiles } : city;
+	});
+}
+
+function canRefreshSandboxWorldProgress(game: GameState): boolean {
+	if (
+		!Array.isArray(game.stores) ||
+		!Array.isArray(game.industrialBuildings) ||
+		!game.industrialBuildings.every(
+			(building) => typeof building === 'object' && building !== null
+		) ||
+		!Array.isArray(game.reports) ||
+		!game.reports.every((report) => typeof report === 'object' && report !== null) ||
+		typeof game.warehouse !== 'object' ||
+		game.warehouse === null ||
+		typeof game.warehouse.materials !== 'object' ||
+		game.warehouse.materials === null
+	) {
+		return false;
+	}
+
+	const latestReport = game.reports.at(-1);
+	return (
+		latestReport === undefined ||
+		(typeof latestReport.productionReport === 'object' &&
+			latestReport.productionReport !== null &&
+			Array.isArray(latestReport.productionReport.produced) &&
+			latestReport.productionReport.produced.every(
+				(movement) => typeof movement === 'object' && movement !== null
+			))
+	);
+}
+
+function normalizeSandboxBuildingInventory(building: unknown): unknown {
+	if (typeof building !== 'object' || building === null) return building;
+	const record = building as Record<string, unknown>;
+	const buildingType =
+		typeof record.typeId === 'string'
+			? INDUSTRIAL_BUILDING_TYPES[record.typeId as IndustrialBuildingTypeId]
+			: undefined;
+	if (
+		!buildingType ||
+		typeof record.inventory !== 'object' ||
+		record.inventory === null ||
+		Array.isArray(record.inventory)
+	) {
+		return building;
+	}
+	const inventory = record.inventory as Record<string, unknown>;
+	if (
+		Object.entries(inventory).some(
+			([materialId, quantity]) =>
+				!MATERIAL_ID_SET.has(materialId) ||
+				typeof quantity !== 'number' ||
+				!Number.isFinite(quantity) ||
+				quantity < 0
+		)
+	) {
+		return building;
+	}
+
+	return {
+		...record,
+		inventory: clampInventoryToRecipe(
+			inventory as GameState['industrialBuildings'][number]['inventory'],
+			buildingType
+		)
+	};
 }
 
 function normalizeSavedRetailCities(game: Record<string, unknown>): {
@@ -904,7 +1156,9 @@ function normalizeSavedRetailCity(game: Record<string, unknown>, city: unknown):
 function normalizeSavedRetailStorePlacements(
 	stores: unknown,
 	cities: unknown,
-	regeneratedCityIds: Set<string>
+	regeneratedCityIds: Set<string>,
+	emitWarnings = true,
+	onInvalidPlacement?: (index: number) => void
 ): unknown {
 	if (!Array.isArray(stores) || !Array.isArray(cities)) {
 		return stores;
@@ -1006,27 +1260,38 @@ function normalizeSavedRetailStorePlacements(
 			};
 		}
 		if (typeof store !== 'object' || store === null) {
+			onInvalidPlacement?.(index);
 			return store;
 		}
 
 		const record = store as Record<string, unknown>;
 		if (typeof record.cityId !== 'string') {
+			onInvalidPlacement?.(index);
 			return store;
 		}
 
 		const city = cityById.get(record.cityId);
 		if (!city) {
+			onInvalidPlacement?.(index);
 			return store;
 		}
+		// Synthetic city payloads smaller than the retail footprint have no
+		// placement topology to validate. Production-sized cities must satisfy the
+		// same footprint rules as live placement, even when sandbox relocation
+		// cannot find a replacement tile.
+		if (city.width < 2 || city.height < 2) return store;
+		onInvalidPlacement?.(index);
 
 		const occupiedTileIds = getOccupiedTileIds(occupiedTileIdsByCity, city.id);
 		const lookup = cityLookupById.get(city.id);
 		const targetTile = findSavedStoreTile(city, record, occupiedTileIds, lookup);
 		if (!targetTile) {
 			const storeId = typeof record.id === 'string' ? record.id : '<unknown>';
-			console.warn(
-				`saveCodec: store "${storeId}" in city "${city.id}" has no buildable tile (saved tileId "${record.tileId ?? '?'}"); left on stale tile.`
-			);
+			if (emitWarnings) {
+				console.warn(
+					`saveCodec: store "${storeId}" in city "${city.id}" has no buildable tile (saved tileId "${record.tileId ?? '?'}"); left on stale tile.`
+				);
+			}
 			return store;
 		}
 
@@ -1041,9 +1306,11 @@ function normalizeSavedRetailStorePlacements(
 		}
 
 		const storeId = typeof record.id === 'string' ? record.id : '<unknown>';
-		console.warn(
-			`saveCodec: relocated store "${storeId}" in city "${city.id}" from tile "${record.tileId ?? '?'}" (${record.mapX ?? '?'}, ${record.mapY ?? '?'}) to tile "${targetTile.id}" (${targetTile.x}, ${targetTile.y}).`
-		);
+		if (emitWarnings) {
+			console.warn(
+				`saveCodec: relocated store "${storeId}" in city "${city.id}" from tile "${record.tileId ?? '?'}" (${record.mapX ?? '?'}, ${record.mapY ?? '?'}) to tile "${targetTile.id}" (${targetTile.x}, ${targetTile.y}).`
+			);
+		}
 
 		return {
 			...record,
@@ -1059,12 +1326,34 @@ function normalizeSavedRetailStorePlacements(
 	});
 }
 
+function validateCurrentRetailStorePlacements(stores: unknown[], cities: unknown[]): void {
+	let invalidIndex = -1;
+	normalizeSavedRetailStorePlacements(stores, cities, new Set(), false, (index) => {
+		if (invalidIndex < 0) invalidIndex = index;
+	});
+	if (invalidIndex >= 0) {
+		throw new SaveDataError(
+			`Saved game stores[${invalidIndex}] placement must already match a buildable, non-overlapping city footprint`
+		);
+	}
+}
+
 function isSavedCityLike(value: unknown): value is City {
+	const tiles = (value as { tiles?: unknown } | null)?.tiles;
 	return (
 		typeof value === 'object' &&
 		value !== null &&
 		typeof (value as { id?: unknown }).id === 'string' &&
-		Array.isArray((value as { tiles?: unknown }).tiles)
+		Array.isArray(tiles) &&
+		tiles.every(
+			(tile) =>
+				typeof tile === 'object' &&
+				tile !== null &&
+				typeof (tile as { id?: unknown }).id === 'string' &&
+				typeof (tile as { cityId?: unknown }).cityId === 'string' &&
+				typeof (tile as { x?: unknown }).x === 'number' &&
+				typeof (tile as { y?: unknown }).y === 'number'
+		)
 	);
 }
 
@@ -1243,6 +1532,15 @@ function validateSavedCity(value: unknown, label: string): void {
 	);
 }
 
+function validateCurrentRetailCitySize(value: unknown, label: string): void {
+	const city = value as Record<string, unknown>;
+	if (typeof city.id !== 'string') return;
+	const definition = getWorldCityDefinition(city.id);
+	if (definition?.kind === 'retail' && city.width === 28 && city.height === 24) {
+		throw new SaveDataError(`${label} uses the legacy 28x24 sandbox city size`);
+	}
+}
+
 function validateSavedCityTile(value: unknown, label: string): void {
 	const tile = requireRecord(value, label);
 
@@ -1261,10 +1559,7 @@ function validateSavedCityTile(value: unknown, label: string): void {
 }
 
 function validateSavedCityTileFeature(tile: Record<string, unknown>, label: string): void {
-	if (tile.feature === undefined || tile.feature === null) {
-		tile.feature = null;
-		return;
-	}
+	if (tile.feature === null) return;
 
 	if (
 		typeof tile.feature !== 'string' ||
@@ -1426,8 +1721,11 @@ function validateSavedStore(value: unknown, label: string): void {
 	requireNumber(store.mapY, `${label} mapY`);
 	requireNumber(store.daysOpen, `${label} daysOpen`);
 	requireNumber(store.reputation, `${label} reputation`);
-	requireNumber(store.stockHealth, `${label} stockHealth`);
-	validateSavedStoreProducts(store, label);
+	const stockHealth = requireNumber(store.stockHealth, `${label} stockHealth`);
+	const products = validateSavedStoreProducts(store, label);
+	if (stockHealth !== calculateStockHealth(products)) {
+		throw new SaveDataError(`${label} stockHealth must match its products`);
+	}
 	requireNumber(store.staffMorale, `${label} staffMorale`);
 	requireNumber(store.staffCapacity, `${label} staffCapacity`);
 	requireNumber(store.localDemand, `${label} localDemand`);
@@ -1591,10 +1889,10 @@ function validateSavedDecisionOption(value: unknown, label: string): void {
 	}
 }
 
-function validateSavedReport(value: unknown, label: string): void {
+function validateSavedReport(value: unknown, label: string): number {
 	const report = requireRecord(value, label);
 
-	requireNumber(report.day, `${label} day`);
+	const day = requireNumber(report.day, `${label} day`);
 	requireNumber(report.revenue, `${label} revenue`);
 	requireNumber(report.costOfGoods, `${label} costOfGoods`);
 	requireNumber(report.grossMargin, `${label} grossMargin`);
@@ -1605,10 +1903,18 @@ function validateSavedReport(value: unknown, label: string): void {
 	requireNumber(report.cashAfter, `${label} cashAfter`);
 	validateSavedScorecard(report.scorecard, `${label} scorecard`);
 	validateSavedProductionReport(report.productionReport, `${label} productionReport`);
-	requireArray(report.storeReports, `${label} storeReports`).forEach((storeReport, index) =>
-		validateSavedStoreReport(storeReport, `${label} storeReports[${index}]`)
-	);
+	const seenStoreIds = new Set<string>();
+	requireArray(report.storeReports, `${label} storeReports`).forEach((storeReport, index) => {
+		const storeId = validateSavedStoreReport(storeReport, `${label} storeReports[${index}]`);
+		if (seenStoreIds.has(storeId)) {
+			throw new SaveDataError(
+				`${label} storeReports[${index}] storeId must be unique within its daily report`
+			);
+		}
+		seenStoreIds.add(storeId);
+	});
 	validateSavedWarningArray(report.warnings, `${label} warnings`, false);
+	return day;
 }
 
 function validateSavedProductionReport(value: unknown, label: string): void {
@@ -1661,10 +1967,10 @@ function validateSavedRailShipment(value: unknown, label: string): void {
 	requireString(shipment.toId, `${label} toId`);
 }
 
-function validateSavedStoreReport(value: unknown, label: string): void {
+function validateSavedStoreReport(value: unknown, label: string): string {
 	const report = requireRecord(value, label);
 
-	requireString(report.storeId, `${label} storeId`);
+	const storeId = requireString(report.storeId, `${label} storeId`);
 	requireNumber(report.revenue, `${label} revenue`);
 	requireNumber(report.costOfGoods, `${label} costOfGoods`);
 	requireNumber(report.grossMargin, `${label} grossMargin`);
@@ -1679,26 +1985,43 @@ function validateSavedStoreReport(value: unknown, label: string): void {
 	requireNumber(report.staffMorale, `${label} staffMorale`);
 	requireNumber(report.reputation, `${label} reputation`);
 	requireNumber(report.marketPosition, `${label} marketPosition`);
-	requireArray(report.productReports, `${label} productReports`).forEach((productReport, index) =>
-		validateSavedProductReport(productReport, `${label} productReports[${index}]`)
-	);
+	const seenCategoryIds = new Set<string>();
+	requireArray(report.productReports, `${label} productReports`).forEach((productReport, index) => {
+		const categoryId = validateSavedProductReport(
+			productReport,
+			`${label} productReports[${index}]`
+		);
+		if (seenCategoryIds.has(categoryId)) {
+			throw new SaveDataError(
+				`${label} productReports[${index}] categoryId must be unique within its store report`
+			);
+		}
+		seenCategoryIds.add(categoryId);
+	});
 	validateSavedWarningArray(report.warnings, `${label} warnings`, true);
+	return storeId;
 }
 
-function validateSavedStoreProducts(store: Record<string, unknown>, label: string): void {
+function validateSavedStoreProducts(store: Record<string, unknown>, label: string): StoreProduct[] {
 	const archetypeId = requireOneOf(store.archetypeId, `${label} archetypeId`, ARCHETYPE_IDS);
-	const expectedCategoryIds = getArchetype(archetypeId).startingCategories.map(
+	const storeLevel = requireNumber(store.level, `${label} level`);
+	const unlockedCount = getUnlockedCategoryCount(storeLevel);
+	const archetypeCategoryIds = getArchetype(archetypeId).startingCategories.map(
 		(category) => category.id
 	);
-	const expectedCategories = new Set(expectedCategoryIds);
+	const archetypeCategories = new Set(archetypeCategoryIds);
+	const unlockedCategoryIds = getArchetype(archetypeId)
+		.startingCategories.slice(0, unlockedCount)
+		.map((category) => category.id);
+	const unlockedCategories = new Set(unlockedCategoryIds);
 	const seenCategories = new Set<string>();
 	const products = requireArray(store.products, `${label} products`);
-	const storeLevel = requireNumber(store.level, `${label} level`);
+	const validatedProducts: StoreProduct[] = [];
 
 	for (const [index, productValue] of products.entries()) {
 		const product = validateSavedStoreProduct(productValue, `${label} products[${index}]`);
 
-		if (!expectedCategories.has(product.categoryId)) {
+		if (!archetypeCategories.has(product.categoryId)) {
 			throw new SaveDataError(
 				`${label} products[${index}] categoryId must belong to archetype ${archetypeId}`
 			);
@@ -1711,21 +2034,31 @@ function validateSavedStoreProducts(store: Record<string, unknown>, label: strin
 		}
 
 		seenCategories.add(product.categoryId);
+		validatedProducts.push(product);
 	}
 
 	if (products.length === 0) {
 		throw new SaveDataError(`${label} products must have at least one category`);
 	}
 
-	const unlockedCount = getUnlockedCategoryCount(storeLevel);
 	if (products.length !== unlockedCount) {
 		throw new SaveDataError(
 			`${label} products length (${products.length}) must equal unlocked category count (${unlockedCount}) for level ${storeLevel}`
 		);
 	}
+
+	for (const [index, product] of validatedProducts.entries()) {
+		if (!unlockedCategories.has(product.categoryId)) {
+			throw new SaveDataError(
+				`${label} products[${index}] categoryId must be unlocked at level ${storeLevel} for archetype ${archetypeId}`
+			);
+		}
+	}
+
+	return validatedProducts;
 }
 
-function validateSavedStoreProduct(value: unknown, label: string): { categoryId: string } {
+function validateSavedStoreProduct(value: unknown, label: string): StoreProduct {
 	const product = requireRecord(value, label);
 
 	const categoryId = requireString(product.categoryId, `${label} categoryId`);
@@ -1752,13 +2085,13 @@ function validateSavedStoreProduct(value: unknown, label: string): { categoryId:
 		throw new SaveDataError(`${label} sellingPrice must be greater than 0`);
 	}
 
-	return { categoryId };
+	return { categoryId, stock, reorderThreshold, targetStock, sellingPrice };
 }
 
-function validateSavedProductReport(value: unknown, label: string): void {
+function validateSavedProductReport(value: unknown, label: string): string {
 	const report = requireRecord(value, label);
 
-	requireString(report.categoryId, `${label} categoryId`);
+	const categoryId = requireString(report.categoryId, `${label} categoryId`);
 	requireString(report.name, `${label} name`);
 	requireNumber(report.unitsSold, `${label} unitsSold`);
 	requireNumber(report.demandMissed, `${label} demandMissed`);
@@ -1771,6 +2104,7 @@ function validateSavedProductReport(value: unknown, label: string): void {
 	requireNumber(report.importedUnits, `${label} importedUnits`);
 	requireNumber(report.importCost, `${label} importCost`);
 	requireNumber(report.importSpend, `${label} importSpend`);
+	return categoryId;
 }
 
 function validateSavedStaffingShortage(value: unknown, label: string): void {
