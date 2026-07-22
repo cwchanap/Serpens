@@ -408,7 +408,7 @@ function migrateV9SaveRecord(record: unknown): unknown {
  * save-record migration pipeline below.
  */
 export function migrateSavedGame(value: unknown, sourceGameSchemaVersion: number): unknown {
-	assertOwnDataGraph(value, 'Saved game');
+	const sourceGame = createPlainSnapshot(value, 'Saved game');
 	if (
 		sourceGameSchemaVersion !== SAVE_SCHEMA_VERSION &&
 		!isMigratableSchemaVersion(sourceGameSchemaVersion)
@@ -416,7 +416,7 @@ export function migrateSavedGame(value: unknown, sourceGameSchemaVersion: number
 		throw new SaveDataError(`Unsupported save schema version: ${sourceGameSchemaVersion}`);
 	}
 
-	let migrated = value;
+	let migrated = sourceGame;
 	if (sourceGameSchemaVersion <= 4) migrated = migrateV4Game(migrated);
 	if (sourceGameSchemaVersion <= 5) migrated = migrateV5Game(migrated);
 	if (sourceGameSchemaVersion <= 6) migrated = migrateV6Game(migrated);
@@ -626,8 +626,8 @@ export function parseSaveStoreSnapshot(serialized: string): SaveStoreSnapshot {
 }
 
 export function validateSaveStoreSnapshot(value: unknown): SaveStoreSnapshot {
-	assertOwnDataGraph(value, 'Save store');
-	const migrated = migrateSaveStoreSnapshot(value);
+	const sourceStore = createPlainSnapshot(value, 'Save store');
+	const migrated = migrateSaveStoreSnapshot(sourceStore);
 	const record = requireRecord(migrated, 'Save store');
 	const schemaVersion = requireNumber(record.schemaVersion, 'Save store schemaVersion');
 
@@ -640,6 +640,7 @@ export function validateSaveStoreSnapshot(value: unknown): SaveStoreSnapshot {
 	validateSlotInvariants(autoSave, manualSlots);
 
 	return {
+		...(record as unknown as SaveStoreSnapshot),
 		schemaVersion: SAVE_SCHEMA_VERSION,
 		autoSave,
 		manualSlots
@@ -647,8 +648,8 @@ export function validateSaveStoreSnapshot(value: unknown): SaveStoreSnapshot {
 }
 
 export function validateSaveRecord(value: unknown): SaveRecord {
-	assertOwnDataGraph(value, 'Save record');
-	const sourceRecord = requireRecord(value, 'Save record');
+	const sourceValue = createPlainSnapshot(value, 'Save record');
+	const sourceRecord = requireRecord(sourceValue, 'Save record');
 	const sourceSchemaVersion = requireNumber(
 		sourceRecord.schemaVersion,
 		'Save record schemaVersion'
@@ -691,8 +692,8 @@ export function validateSaveRecord(value: unknown): SaveRecord {
  * properties. Extras are allowed only when the whole state is structured-cloneable.
  */
 export function validateCurrentGameState(value: unknown): GameState {
-	assertOwnDataGraph(value, 'Saved game');
-	const game = requireRecord(value, 'Saved game');
+	const sourceGame = createPlainSnapshot(value, 'Saved game');
+	const game = requireRecord(sourceGame, 'Saved game');
 	const policy = requireRecord(game.policy, 'Saved game policy');
 	const scorecard = requireRecord(game.scorecard, 'Saved game scorecard');
 	const cities = requireArray(game.cities, 'Saved game cities');
@@ -815,13 +816,7 @@ export function validateCurrentGameState(value: unknown): GameState {
 		}
 	}
 
-	try {
-		return structuredClone(currentGame);
-	} catch {
-		throw new SaveDataError(
-			'Saved game must contain only structured-cloneable own data properties'
-		);
-	}
+	return currentGame;
 }
 
 function validateSlotInvariants(autoSave: SaveRecord | null, manualSlots: SaveRecord[]): void {
@@ -945,8 +940,8 @@ function normalizeSavedStaffLevel(member: unknown): unknown {
 }
 
 export function normalizeSandboxSavedGame(value: unknown): unknown {
-	assertOwnDataGraph(value, 'Saved game');
-	const game = requireRecord(value, 'Saved game');
+	const sourceGame = createPlainSnapshot(value, 'Saved game');
+	const game = requireRecord(sourceGame, 'Saved game');
 	const normalizedWorld =
 		game.world === undefined
 			? inferWorldProgress(game)
@@ -1651,6 +1646,15 @@ function validateCurrentWorldCityReferences(
 	activeCityId: string,
 	activeIndustryCityId: string
 ): void {
+	if (getWorldCityDefinition(activeCityId)?.kind !== 'retail') {
+		throw new SaveDataError('Saved game activeCityId must reference a retail catalog city');
+	}
+	if (getWorldCityDefinition(activeIndustryCityId)?.kind !== 'industry') {
+		throw new SaveDataError(
+			'Saved game activeIndustryCityId must reference an industry catalog city'
+		);
+	}
+
 	const opened = new Set<string>(world.openedCityIds);
 	if (!opened.has(activeCityId)) {
 		throw new SaveDataError('Saved game activeCityId must reference an opened city');
@@ -1665,6 +1669,23 @@ function validateCurrentWorldCityReferences(
 	const industryIds = new Set(
 		(industryCities as Array<Record<string, unknown>>).map((city) => city.id as string)
 	);
+	for (const cityId of retailIds) {
+		if (getWorldCityDefinition(cityId)?.kind === 'industry') {
+			throw new SaveDataError(`Saved game retail city ${cityId} must use a retail catalog ID`);
+		}
+	}
+	for (const cityId of industryIds) {
+		if (getWorldCityDefinition(cityId)?.kind === 'retail') {
+			throw new SaveDataError(`Saved game industry city ${cityId} must use an industry catalog ID`);
+		}
+	}
+	for (const cityId of retailIds) {
+		if (industryIds.has(cityId)) {
+			throw new SaveDataError(
+				`Saved game retail and industry city IDs must be disjoint: ${cityId}`
+			);
+		}
+	}
 	for (const cityId of world.openedCityIds) {
 		const definition = getWorldCityDefinition(cityId);
 		if (definition?.kind === 'retail' && !retailIds.has(cityId)) {
@@ -2386,7 +2407,7 @@ function ownDataFailure(label: string): SaveDataError {
 	);
 }
 
-function isArrayWithoutTraps(value: unknown, label: string): boolean {
+function isArrayWithoutTraps(value: unknown, label: string): value is unknown[] {
 	try {
 		return Array.isArray(value);
 	} catch {
@@ -2412,6 +2433,7 @@ function assertOwnDataContainer(value: object, label: string): PropertyDescripto
 		}
 		const arrayLength = descriptors.length?.value;
 		if (typeof arrayLength !== 'number') throw ownDataFailure(label);
+		let ownIndexCount = 0;
 		for (const key of keys) {
 			if (typeof key !== 'string') throw ownDataFailure(label);
 			const descriptor = descriptors[key];
@@ -2420,6 +2442,10 @@ function assertOwnDataContainer(value: object, label: string): PropertyDescripto
 			if (!descriptor.enumerable || !ARRAY_INDEX_KEY.test(key) || Number(key) >= arrayLength) {
 				throw ownDataFailure(label);
 			}
+			ownIndexCount += 1;
+		}
+		if (ownIndexCount !== arrayLength) {
+			throw new SaveDataError(`${label} must be a dense array of own enumerable data properties`);
 		}
 		return descriptors;
 	}
@@ -2442,6 +2468,15 @@ function assertOwnDataGraph(value: unknown, label: string, seen = new WeakSet<ob
 	for (const [key, descriptor] of Object.entries(descriptors)) {
 		if (isArrayWithoutTraps(value, label) && key === 'length') continue;
 		if ('value' in descriptor) assertOwnDataGraph(descriptor.value, `${label}.${key}`, seen);
+	}
+}
+
+function createPlainSnapshot(value: unknown, label: string): unknown {
+	assertOwnDataGraph(value, label);
+	try {
+		return structuredClone(value);
+	} catch {
+		throw new SaveDataError(`${label} must contain only structured-cloneable own data properties`);
 	}
 }
 
