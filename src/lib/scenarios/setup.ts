@@ -492,16 +492,18 @@ function validateBuiltScenarioGame(
 				.map((category) => category.id)
 		);
 		const productIds = store.products.map((product) => product.categoryId);
-		if (
-			productIds.some((categoryId) => !unlocked.has(categoryId)) ||
-			new Set(productIds).size !== productIds.length ||
-			productIds.length > unlocked.size
-		) {
+		const productIdSet = new Set(productIds);
+		const hasExactProductCategorySet =
+			productIds.length === unlocked.size &&
+			productIdSet.size === unlocked.size &&
+			productIds.every((categoryId) => unlocked.has(categoryId));
+		if (!hasExactProductCategorySet) {
 			diagnostics.push({
 				path: 'start.overrides.stores',
 				code: 'setup-invariant-failed',
 				value: productIds,
-				detail: 'The built game contains a product that is not unlocked at its store level.'
+				detail:
+					'The built game product categories must exactly match the categories unlocked at its store level.'
 			});
 		}
 		if (store.stockHealth !== calculateStockHealth(store.products)) {
@@ -574,9 +576,10 @@ function validateBuiltScenarioGame(
 	const activeIndustry = game.industryCities.some((city) => city.id === game.activeIndustryCityId);
 	const opened = new Set<string>(game.world.openedCityIds);
 	const revealed = new Set<string>(game.world.revealedCityIds);
-	const everyStartingEntityCityIsOpened =
+	const everyStartingContentCityIsOpened =
 		game.stores.every((store) => opened.has(store.cityId)) &&
-		game.industrialBuildings.every((building) => opened.has(building.cityId));
+		game.industrialBuildings.every((building) => opened.has(building.cityId)) &&
+		definition.start.rails.every((rail) => opened.has(rail.cityId));
 	const everyOpenedCityIsRevealedAndMaterialized = game.world.openedCityIds.every((cityId) => {
 		const city = getWorldCityDefinition(cityId);
 		if (!city || !revealed.has(cityId)) return false;
@@ -589,7 +592,7 @@ function validateBuiltScenarioGame(
 		!activeIndustry ||
 		!opened.has(game.activeCityId) ||
 		!opened.has(game.activeIndustryCityId) ||
-		!everyStartingEntityCityIsOpened ||
+		!everyStartingContentCityIsOpened ||
 		!everyOpenedCityIsRevealedAndMaterialized
 	) {
 		diagnostics.push({
