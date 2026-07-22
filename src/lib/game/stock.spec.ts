@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from 'vitest';
 import { createRng, createRngFromState } from './rng';
+import { DEFAULT_SIMULATION_RULES, type SimulationRules } from './simulationRules';
 import { createNewGame } from './state';
 import {
 	applyWeeklyImports,
@@ -60,6 +61,156 @@ function equalSellerCapacity(game: GameState): Map<string, number> {
 }
 
 describe('stock rules', () => {
+	test('keeps omitted and explicit weekly-import defaults deeply equal', () => {
+		const game = createNewGame('electronics', 280_008);
+		const store = {
+			...game.stores[0]!,
+			products: game.stores[0]!.products.map((product) => ({
+				...product,
+				stock: 0,
+				reorderThreshold: 5,
+				targetStock: 10
+			}))
+		};
+		const input = { game: { ...game, stores: [store] }, storeReports: new Map() };
+
+		expect(applyWeeklyImports(input)).toEqual(
+			applyWeeklyImports({ ...input, rules: DEFAULT_SIMULATION_RULES })
+		);
+	});
+
+	test('doubles actual weekly spend for selected electronics products only', () => {
+		const game = createNewGame('electronics', 280_009);
+		const store = {
+			...game.stores[0]!,
+			products: [
+				{ categoryId: 'games', stock: 1, reorderThreshold: 5, targetStock: 4, sellingPrice: 48 },
+				{
+					categoryId: 'accessories',
+					stock: 2,
+					reorderThreshold: 5,
+					targetStock: 5,
+					sellingPrice: 22
+				},
+				{ categoryId: 'devices', stock: 3, reorderThreshold: 5, targetStock: 6, sellingPrice: 240 }
+			]
+		};
+		const input = { game: { ...game, stores: [store] }, storeReports: new Map() };
+		const rules: SimulationRules = {
+			importCostMultipliers: [
+				{
+					scope: 'retail-product',
+					target: { kind: 'ids', ids: ['games', 'accessories'] },
+					multiplier: 2
+				}
+			]
+		};
+		const baseline = applyWeeklyImports(input);
+		const doubled = applyWeeklyImports({ ...input, rules });
+		const baselineReports = new Map(
+			baseline.productReports.get(store.id)!.map((report) => [report.categoryId, report])
+		);
+		const doubledReports = new Map(
+			doubled.productReports.get(store.id)!.map((report) => [report.categoryId, report])
+		);
+
+		expect(doubledReports.get('games')!.importSpend).toBe(
+			baselineReports.get('games')!.importSpend * 2
+		);
+		expect(doubledReports.get('accessories')!.importSpend).toBe(
+			baselineReports.get('accessories')!.importSpend * 2
+		);
+		expect(doubledReports.get('devices')!.importSpend).toBe(
+			baselineReports.get('devices')!.importSpend
+		);
+	});
+
+	test('multiplies only paid retail shortage and keeps warehouse valuation unchanged', () => {
+		const game = {
+			...createNewGame('convenience', 280_010),
+			warehouse: {
+				capacity: 200,
+				materials: { snacks: 12 },
+				overflowUnits: 0,
+				overflowCost: 0
+			}
+		};
+		const store = {
+			...game.stores[0]!,
+			products: [
+				{ categoryId: 'snacks', stock: 4, reorderThreshold: 10, targetStock: 25, sellingPrice: 5 }
+			]
+		};
+		const rules: SimulationRules = {
+			importCostMultipliers: [
+				{ scope: 'retail-product', target: { kind: 'ids', ids: ['snacks'] }, multiplier: 2 }
+			]
+		};
+
+		const result = applyWeeklyImports({
+			game: { ...game, stores: [store] },
+			storeReports: new Map(),
+			rules
+		});
+		const report = result.productReports.get(store.id)![0]!;
+
+		expect(report.warehouseUnits).toBe(12);
+		expect(report.warehouseValue).toBe(96);
+		expect(report.importedUnits).toBe(9);
+		expect(report.importSpend).toBe(54);
+	});
+
+	test('rounds weekly import spend after applying the multiplier to the whole shortage', () => {
+		const game = createNewGame('electronics', 280_011);
+		const store = {
+			...game.stores[0]!,
+			products: [
+				{
+					categoryId: 'accessories',
+					stock: 0,
+					reorderThreshold: 1,
+					targetStock: 3,
+					sellingPrice: 22
+				}
+			]
+		};
+		const rules: SimulationRules = {
+			importCostMultipliers: [
+				{
+					scope: 'retail-product',
+					target: { kind: 'ids', ids: ['accessories'] },
+					multiplier: 1.5
+				}
+			]
+		};
+
+		const result = applyWeeklyImports({
+			game: { ...game, stores: [store] },
+			storeReports: new Map(),
+			rules
+		});
+
+		expect(result.productReports.get(store.id)![0]!.importSpend).toBe(50);
+	});
+
+	test('does not apply same-id industrial rules to weekly retail imports', () => {
+		const game = createNewGame('electronics', 280_012);
+		const store = {
+			...game.stores[0]!,
+			products: [
+				{ categoryId: 'games', stock: 0, reorderThreshold: 1, targetStock: 3, sellingPrice: 48 }
+			]
+		};
+		const input = { game: { ...game, stores: [store] }, storeReports: new Map() };
+		const rules: SimulationRules = {
+			importCostMultipliers: [
+				{ scope: 'industrial-material', target: { kind: 'ids', ids: ['games'] }, multiplier: 2 }
+			]
+		};
+
+		expect(applyWeeklyImports({ ...input, rules })).toEqual(applyWeeklyImports(input));
+	});
+
 	test('initializes a single product at level 1', () => {
 		expect.assertions(2);
 		const products = initializeStoreProducts('convenience');

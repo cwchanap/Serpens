@@ -5,10 +5,49 @@ import { buildIndustrialBuilding } from './industryPlacement';
 import { decisionContextLocationGeneric } from './decisionContext';
 import { createNewGame, updatePolicy } from './state';
 import { getStaffXpForLevel } from './staffLeveling';
+import { DEFAULT_SIMULATION_RULES, type SimulationRules } from './simulationRules';
 import { simulateDay } from './simulateDay';
 import type { DecisionItem, GameState, StaffMember } from './types';
 
 describe('daily simulation', () => {
+	test('keeps omitted and explicit defaults deeply equal', () => {
+		const game = createNewGame('electronics', 280_002);
+
+		expect(simulateDay(game)).toEqual(simulateDay(game, DEFAULT_SIMULATION_RULES));
+	});
+
+	test('changes weekly retail import spend without changing sales cost or rng', () => {
+		const base = createNewGame('electronics', 280_003);
+		const game = {
+			...base,
+			day: 7,
+			stores: base.stores.map((store) => ({
+				...store,
+				products: store.products.map((product) => ({
+					...product,
+					stock: 20,
+					reorderThreshold: 100,
+					targetStock: 100
+				}))
+			}))
+		};
+		const rules: SimulationRules = {
+			importCostMultipliers: [
+				{ scope: 'retail-product', target: { kind: 'ids', ids: ['games'] }, multiplier: 2 }
+			]
+		};
+		const baseline = simulateDay(game);
+		const doubled = simulateDay(game, rules);
+		const baselineProduct = baseline.reports[0]!.storeReports[0]!.productReports[0]!;
+		const doubledProduct = doubled.reports[0]!.storeReports[0]!.productReports[0]!;
+
+		expect(doubledProduct.importedUnits).toBe(baselineProduct.importedUnits);
+		expect(doubledProduct.importSpend).toBe(baselineProduct.importSpend * 2);
+		expect(doubledProduct.costOfGoods).toBe(baselineProduct.costOfGoods);
+		expect(doubled.reports[0]!.costOfGoods).toBe(baseline.reports[0]!.costOfGoods);
+		expect(doubled.rngState).toBe(baseline.rngState);
+	});
+
 	test('advances one day deterministically for the same seed and actions', () => {
 		expect.assertions(5);
 		const first = simulateDay(createNewGame('convenience', 2026));

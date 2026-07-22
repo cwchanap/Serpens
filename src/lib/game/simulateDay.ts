@@ -3,6 +3,7 @@ import { generateDecisions, pruneExpiredDecisions } from './events';
 import { simulateIndustryProduction } from './industryProduction';
 import { clampScore } from './reports';
 import { createRngFromState, randomBetween } from './rng';
+import { DEFAULT_SIMULATION_RULES, type SimulationRules } from './simulationRules';
 import {
 	calculateMonthlyPayroll,
 	generateHiringCandidates,
@@ -82,8 +83,11 @@ interface StoreOperationProfile {
 	stockPressureThreshold: number;
 }
 
-export function simulateDay(game: GameState): GameState {
-	const industryResult = simulateIndustryProduction(game);
+export function simulateDay(
+	game: GameState,
+	rules: SimulationRules = DEFAULT_SIMULATION_RULES
+): GameState {
+	const industryResult = simulateIndustryProduction(game, rules);
 	const productionGame = industryResult.game;
 	const rng = createRngFromState(productionGame.rngState);
 	const profiles = productionGame.stores.map((store) =>
@@ -124,7 +128,7 @@ export function simulateDay(game: GameState): GameState {
 		stores: restoreProductSettings(citySales.stores, productionGame.stores)
 	};
 	const importResult = isImportDay(productionGame.day)
-		? applyWeeklyImports({ game: stockGame, storeReports: citySales.productReports })
+		? applyWeeklyImports({ game: stockGame, storeReports: citySales.productReports, rules })
 		: {
 				stores: stockGame.stores,
 				productReports: citySales.productReports,
