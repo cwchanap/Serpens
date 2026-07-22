@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'vitest';
-import { createRng } from './rng';
+import { describe, expect, test, vi } from 'vitest';
+import { createRng, createRngFromState } from './rng';
 import { createNewGame } from './state';
 import {
 	applyWeeklyImports,
@@ -27,6 +27,36 @@ function withOneStoreProducts(products: StoreProduct[]): GameState {
 			}
 		]
 	};
+}
+
+function createEqualSellerGame(storeIds: string[]): GameState {
+	const game = createNewGame('convenience', 20260508);
+	const baseStore = {
+		...game.stores[0]!,
+		products: [
+			{
+				categoryId: 'bottled-water',
+				stock: 100,
+				reorderThreshold: 10,
+				targetStock: 100,
+				sellingPrice: 3
+			}
+		]
+	};
+
+	return {
+		...game,
+		stores: storeIds.map((id) => ({
+			...baseStore,
+			id,
+			name: id,
+			tileId: `${id}-tile`
+		}))
+	};
+}
+
+function equalSellerCapacity(game: GameState): Map<string, number> {
+	return new Map(game.stores.map((store) => [store.id, 100]));
 }
 
 describe('stock rules', () => {
@@ -264,6 +294,39 @@ describe('stock rules', () => {
 		expect(result.productReports.get(secondStore.id)?.[0]?.unitsSold).toBeGreaterThan(0);
 		expect(sold).toBeLessThanOrEqual(result.initialDemand.snacks ?? 0);
 		expect(result.remainingDemand.snacks).toBe((result.initialDemand.snacks ?? 0) - sold);
+	});
+
+	test('uses a code-unit seller tie-break independent of input order', () => {
+		const ascending = createEqualSellerGame(['store-a', 'store-z']);
+		const descending = createEqualSellerGame(['store-z', 'store-a']);
+		const firstRng = createRngFromState(ascending.rngState);
+		const secondRng = createRngFromState(descending.rngState);
+		const localeCompare = vi.spyOn(String.prototype, 'localeCompare').mockImplementation(() => {
+			throw new Error('seller ordering must not use localeCompare');
+		});
+
+		try {
+			const first = simulateProductSalesForCity({
+				game: ascending,
+				city: ascending.cities[0]!,
+				rng: firstRng,
+				storeCapacity: equalSellerCapacity(ascending)
+			});
+			const second = simulateProductSalesForCity({
+				game: descending,
+				city: descending.cities[0]!,
+				rng: secondRng,
+				storeCapacity: equalSellerCapacity(descending)
+			});
+
+			expect(Object.fromEntries(first.stores.map((store) => [store.id, store]))).toEqual(
+				Object.fromEntries(second.stores.map((store) => [store.id, store]))
+			);
+			expect(firstRng.getState()).toBe(secondRng.getState());
+			expect([...first.productReports.keys()]).toEqual(['store-a', 'store-z']);
+		} finally {
+			localeCompare.mockRestore();
+		}
 	});
 
 	test('higher selling price reduces category units sold under stable conditions', () => {
