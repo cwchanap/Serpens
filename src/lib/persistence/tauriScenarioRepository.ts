@@ -1,4 +1,4 @@
-import { load } from '@tauri-apps/plugin-store';
+import { load, type ReloadOptions } from '@tauri-apps/plugin-store';
 import { resolveScenarioDefinition } from '$lib/scenarios/catalog';
 import type { ScenarioStoreSnapshot } from '$lib/scenarios/types';
 import {
@@ -17,11 +17,12 @@ export const SCENARIO_STORE_KEY = 'scenarios';
 export interface ScenarioStoreLike {
 	get<T>(key: string): Promise<T | undefined>;
 	set(key: string, value: unknown): Promise<void>;
-	reload(): Promise<void>;
+	reload(options?: ReloadOptions): Promise<void>;
 	save(): Promise<void>;
 }
 
 class TauriScenarioStoreDriver implements ScenarioStoreDriver {
+	private accessQueue: Promise<void> = Promise.resolve();
 	private recoveryRequired = false;
 
 	constructor(
@@ -29,7 +30,15 @@ class TauriScenarioStoreDriver implements ScenarioStoreDriver {
 		private readonly resolveDefinition: ScenarioDefinitionResolver
 	) {}
 
-	async read(): Promise<DecodeScenarioStoreResult> {
+	read(): Promise<DecodeScenarioStoreResult> {
+		return this.enqueue(() => this.readUnqueued());
+	}
+
+	write(snapshot: ScenarioStoreSnapshot): Promise<void> {
+		return this.enqueue(() => this.writeUnqueued(snapshot));
+	}
+
+	private async readUnqueued(): Promise<DecodeScenarioStoreResult> {
 		const store = await this.storePromise;
 		await this.ensureRecovered(store);
 		const snapshot = await store.get<unknown>(SCENARIO_STORE_KEY);
@@ -38,7 +47,7 @@ class TauriScenarioStoreDriver implements ScenarioStoreDriver {
 			: decodeScenarioStoreSnapshot(snapshot, this.resolveDefinition);
 	}
 
-	async write(snapshot: ScenarioStoreSnapshot): Promise<void> {
+	private async writeUnqueued(snapshot: ScenarioStoreSnapshot): Promise<void> {
 		const store = await this.storePromise;
 		await this.ensureRecovered(store);
 		const validated = validateScenarioStoreSnapshot(snapshot, this.resolveDefinition);
@@ -56,9 +65,18 @@ class TauriScenarioStoreDriver implements ScenarioStoreDriver {
 		}
 	}
 
+	private enqueue<T>(operation: () => Promise<T>): Promise<T> {
+		const result = this.accessQueue.then(operation);
+		this.accessQueue = result.then(
+			() => undefined,
+			() => undefined
+		);
+		return result;
+	}
+
 	private async ensureRecovered(store: ScenarioStoreLike): Promise<void> {
 		if (!this.recoveryRequired) return;
-		await store.reload();
+		await store.reload({ ignoreDefaults: true });
 		this.recoveryRequired = false;
 	}
 }
