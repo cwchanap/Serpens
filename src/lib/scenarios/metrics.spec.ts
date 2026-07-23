@@ -400,12 +400,7 @@ describe('registered scenario metrics', () => {
 			20,
 			['report:1', 'report:2', 'report:7', 'report:8']
 		],
-		[
-			{ metric: 'consecutive-positive-net-income-reports' },
-			{ kind: 'current' },
-			2,
-			['report:7', 'report:8']
-		],
+		[{ metric: 'consecutive-positive-net-income-reports' }, { kind: 'current' }, 1, ['report:8']],
 		[{ metric: 'completed-retail-import-cycles' }, { kind: 'run-to-date' }, 1, ['report:7']],
 		[
 			{ metric: 'retail-import-spend', categoryIds: ['bottled-water'] },
@@ -468,6 +463,45 @@ describe('registered scenario metrics', () => {
 		expect(
 			evaluateMetric(state, { metric: 'daily-net-income' }, { kind: 'run-to-date' }).actual
 		).toBe(2);
+	});
+
+	it('bounds consecutive positive income to the selected trailing-report window', () => {
+		const query = { metric: 'consecutive-positive-net-income-reports' } as const;
+		const window = { kind: 'trailing-reports', count: 3 } as const;
+
+		expect(
+			evaluateMetric(
+				game({ reports: [1, 2, 3, 4, 5].map((day) => report(day, 10)) }),
+				query,
+				window,
+				true
+			)
+		).toEqual({
+			actual: 3,
+			contributingIds: ['report:3', 'report:4', 'report:5'],
+			windowComplete: true
+		});
+		expect(
+			evaluateMetric(
+				game({
+					reports: [report(1, 10), report(2, -1), report(3, 10), report(4, 10), report(5, 10)]
+				}),
+				query,
+				window,
+				true
+			)
+		).toEqual({
+			actual: 3,
+			contributingIds: ['report:3', 'report:4', 'report:5'],
+			windowComplete: true
+		});
+		expect(
+			evaluateMetric(game({ reports: [report(1, 10), report(2, 10)] }), query, window, true)
+		).toEqual({
+			actual: 2,
+			contributingIds: ['report:1', 'report:2'],
+			windowComplete: false
+		});
 	});
 
 	it('counts only reports whose exact report day is an import day', () => {

@@ -155,7 +155,7 @@ function sumProductMetric(
 }
 
 function consecutivePositiveIncome(context: MetricContext): MetricValue {
-	const reports = sortedReports(context.game.reports);
+	const reports = sortedReports(context.reports);
 	const contributingIds: string[] = [];
 
 	for (let index = reports.length - 1; index >= 0; index -= 1) {
