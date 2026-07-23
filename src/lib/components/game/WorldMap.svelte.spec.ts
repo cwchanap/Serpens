@@ -256,4 +256,26 @@ describe('WorldMap', () => {
 		await expect.element(page.getByRole('button', { name: /^Campus Junction$/i })).toBeDisabled();
 		expect(onOpenCity).not.toHaveBeenCalled();
 	});
+
+	it('explains why allowlisted city selection is temporarily disabled', async () => {
+		expect.assertions(3);
+		const onSelectCity = vi.fn();
+		render(WorldMap, {
+			statuses: [status('harbor-city', 'opened')],
+			i18n: createI18n('en'),
+			selectedCityId: null,
+			onSelectCity,
+			onOpenCity: vi.fn(),
+			onCloseInspector: vi.fn(),
+			allowedCityIds: ['harbor-city'],
+			selectionDisabled: true,
+			selectionDisabledReason: 'Finishing the current challenge action.'
+		});
+
+		const cityButton = page.getByRole('button', { name: /^Harbor City$/i });
+		await expect.element(cityButton).toBeDisabled();
+		(cityButton.element() as HTMLButtonElement).click();
+		expect(onSelectCity).not.toHaveBeenCalled();
+		await expect.element(page.getByText('Finishing the current challenge action.')).toBeVisible();
+	});
 });

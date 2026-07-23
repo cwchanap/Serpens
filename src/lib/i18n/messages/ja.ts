@@ -193,6 +193,8 @@ export const ja = {
 			retail: '小売都市',
 			industry: '工業都市'
 		},
+		selectionPending: '現在のチャレンジ操作が完了するまで都市を変更できません。',
+		selectionUnavailable: 'このチャレンジでは都市を変更できません。',
 		openForCash: '{cash} の資金で開放'
 	},
 	savePanel: {

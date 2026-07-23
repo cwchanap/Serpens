@@ -334,6 +334,13 @@
 				activeScenarioDefinition !== null &&
 				activeScenarioDefinition.allowedCommands.includes('selectWorldCity'))
 	);
+	let worldCitySelectionDisabledReason = $derived(
+		playMode !== 'scenario' || worldCitySelectionAvailable
+			? null
+			: scenarioCommandPending
+				? i18n.t('worldMap.selectionPending')
+				: i18n.t('worldMap.selectionUnavailable')
+	);
 	let allowedRetailArchetypeIds = $derived.by<ArchetypeId[]>(() =>
 		retailBuildOptions
 			.map((option) => option.archetypeId)
@@ -1718,6 +1725,7 @@
 						canOpenWorldCity={mutationAvailability.openWorldCity}
 						allowedCityIds={allowedWorldCityIds}
 						selectionDisabled={!worldCitySelectionAvailable}
+						selectionDisabledReason={worldCitySelectionDisabledReason}
 						disabledReason={mutationDisabledReason}
 					/>
 				</div>

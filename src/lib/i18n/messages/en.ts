@@ -193,6 +193,8 @@ export const en = {
 			retail: 'Retail city',
 			industry: 'Industrial city'
 		},
+		selectionPending: 'Finishing the current challenge action before changing cities.',
+		selectionUnavailable: 'Changing cities is unavailable in this challenge.',
 		openForCash: 'Open for {cash} cash'
 	},
 	savePanel: {

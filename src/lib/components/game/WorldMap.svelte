@@ -16,6 +16,7 @@
 		canOpenWorldCity?: boolean;
 		allowedCityIds?: string[];
 		selectionDisabled?: boolean;
+		selectionDisabledReason?: string | null;
 		disabledReason?: string | null;
 	}
 
@@ -29,6 +30,7 @@
 		canOpenWorldCity = true,
 		allowedCityIds = statuses.map((status) => status.city.id),
 		selectionDisabled = false,
+		selectionDisabledReason = null,
 		disabledReason = null
 	}: Props = $props();
 	const allowedCitySet = $derived(new Set(allowedCityIds));
@@ -152,6 +154,9 @@
 			</button>
 		{/each}
 	</div>
+	{#if selectionDisabled && selectionDisabledReason}
+		<p class="blocked-reason" role="status">{selectionDisabledReason}</p>
+	{/if}
 
 	{#if selectedStatus}
 		<div
