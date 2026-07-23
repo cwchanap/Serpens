@@ -1001,15 +1001,64 @@ export const ja = {
 		ranked: 'ランク対象',
 		unranked: 'ランク対象外',
 		activeVersion: '進行中 v{active}（現行 v{current}）',
-		versionEligibility: 'バージョン {version} · {eligibility}'
+		versionEligibility: 'バージョン {version} · {eligibility}',
+		day: '{limit}日中 {day}日目',
+		remaining: '残り{count}日',
+		requiredProgress: '必須 {complete}/{total}',
+		optionalProgress: '任意 {complete}/{total}',
+		projectedScore: '予想スコア {score} ポイント',
+		projectedMedal: '予想メダル {medal}',
+		deadlineRisk: '期限: 残り{count}日',
+		conditionRisk: '失敗リスク: 境界まで {distance} · {status}',
+		progressAnnouncement: '{day}日目のチャレンジ進捗を更新しました。',
+		showDetails: '目標の詳細を表示',
+		hideDetails: '目標の詳細を非表示',
+		dismiss: '閉じる'
 	},
-	scenarioObjectives: { heading: '目標', required: '必須', optional: '任意' },
+	scenarioObjectives: {
+		heading: '目標',
+		required: '必須',
+		optional: '任意',
+		requiredHeading: '必須目標',
+		optionalHeading: '任意目標',
+		failuresHeading: '失敗条件',
+		actualTarget: '現在 {actual} · 目標 {target}',
+		contributors: '貢献',
+		noContributors: '該当記録なし',
+		reportContributor: '{day}日目のレポート',
+		status: {
+			pending: '進行中',
+			satisfied: '達成',
+			missed: '未達',
+			inactive: '非アクティブ',
+			triggered: '発動'
+		},
+		windows: {
+			current: '現在値',
+			runToDate: '開始から現在まで',
+			trailingReports: '直近{count}件のレポート',
+			fixedReportDays: 'レポート日 {start}～{end}'
+		}
+	},
 	scenarioResults: {
+		title: 'チャレンジ結果',
 		points: '{score} ポイント',
 		bronze: 'ブロンズ',
 		silver: 'シルバー',
 		gold: 'ゴールド',
-		noMedal: 'メダルなし'
+		noMedal: 'メダルなし',
+		outcome: {
+			completed: 'チャレンジ達成',
+			failed: 'チャレンジ失敗',
+			abandoned: 'チャレンジ放棄'
+		},
+		newBest: 'ベスト更新',
+		bestUnchanged: 'ベストは更新されませんでした',
+		nextMedal: '{medal}まであと{points}ポイント',
+		deadlineNotTriggered: '期限未到達: {limit}日中 {day}日目',
+		deadlineTriggered: '{day}日目に期限到達',
+		announcement: '{outcome}、{score}ポイント。',
+		close: '結果を閉じる'
 	},
 	scenarioDiagnostics: {
 		invalidBuiltIn: '組み込みチャレンジが無効です: {detail}',

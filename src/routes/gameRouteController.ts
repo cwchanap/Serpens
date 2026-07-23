@@ -126,6 +126,7 @@ export interface GameRouteControllerOptions {
 	onSaveRepositoryReady?(repository: SaveRepository): void;
 	onSaveSummary?(summary: SaveSummary): void;
 	onScenarioSummary?(summary: import('$lib/scenarios/types').ScenarioPersistenceSummary): void;
+	onScenarioTerminalRun?(run: ScenarioRun): void;
 	onAutoSave?(metadata: SaveSlotMetadata): void;
 	onAutoSaveError?(error: unknown): void;
 	onReadOnlySelection?(kind: 'retail' | 'industry', tileId: string): void;
@@ -741,6 +742,7 @@ export class GameRouteController {
 		}
 
 		let rejectedCode: ScenarioOperationError['code'] | null = null;
+		let preparedRun: ScenarioRun | null = null;
 		try {
 			const result = await runPersistenceGatedOperation<ScenarioRun, ScenarioCommitOutcome>(
 				this.scenarioCommandGate,
@@ -761,15 +763,20 @@ export class GameRouteController {
 							rejectedCode = execution.code;
 							return { status: 'rejected' as const };
 						}
-						return execution.changed
-							? { status: 'changed' as const, value: execution.run }
-							: { status: 'unchanged' as const };
+						if (!execution.changed) return { status: 'unchanged' as const };
+						preparedRun = execution.run;
+						return { status: 'changed' as const, value: execution.run };
 					},
 					persist: (run) =>
 						run.status === 'active'
 							? repository.saveActiveRun(run)
 							: repository.commitTerminalRun(run),
-					publish: (outcome) => this.publishScenarioOutcome(outcome),
+					publish: (outcome) => {
+						if (outcome.terminalResult && preparedRun) {
+							this.options.onScenarioTerminalRun?.(preparedRun);
+						}
+						this.publishScenarioOutcome(outcome);
+					},
 					afterPublish: request.cueId ? () => this.options.playSfx(request.cueId!) : undefined,
 					onPendingChange: (scenarioCommandPending) => this.patchState({ scenarioCommandPending })
 				}

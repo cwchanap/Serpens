@@ -993,15 +993,64 @@ export const zhHant = {
 		ranked: '計入排名',
 		unranked: '不計排名',
 		activeVersion: '進行中版本 {active}（目前版本 {current}）',
-		versionEligibility: '版本 {version} · {eligibility}'
+		versionEligibility: '版本 {version} · {eligibility}',
+		day: '第 {day} 天，共 {limit} 天',
+		remaining: '剩餘 {count} 天',
+		requiredProgress: '必要 {complete}/{total}',
+		optionalProgress: '選擇 {complete}/{total}',
+		projectedScore: '預計分數 {score} 分',
+		projectedMedal: '預計獎牌 {medal}',
+		deadlineRisk: '期限：剩餘 {count} 天',
+		conditionRisk: '失敗風險：距界線 {distance} · {status}',
+		progressAnnouncement: '已更新第 {day} 天的挑戰進度。',
+		showDetails: '顯示目標詳情',
+		hideDetails: '隱藏目標詳情',
+		dismiss: '關閉'
 	},
-	scenarioObjectives: { heading: '目標', required: '必要', optional: '選擇' },
+	scenarioObjectives: {
+		heading: '目標',
+		required: '必要',
+		optional: '選擇',
+		requiredHeading: '必要目標',
+		optionalHeading: '選擇目標',
+		failuresHeading: '失敗條件',
+		actualTarget: '目前 {actual} · 目標 {target}',
+		contributors: '貢獻項目',
+		noContributors: '沒有貢獻記錄',
+		reportContributor: '第 {day} 天報告',
+		status: {
+			pending: '進行中',
+			satisfied: '已達成',
+			missed: '未達成',
+			inactive: '未觸發',
+			triggered: '已觸發'
+		},
+		windows: {
+			current: '目前數值',
+			runToDate: '挑戰至今',
+			trailingReports: '最近 {count} 份報告',
+			fixedReportDays: '報告日 {start}–{end}'
+		}
+	},
 	scenarioResults: {
+		title: '挑戰結果',
 		points: '{score} 分',
 		bronze: '銅牌',
 		silver: '銀牌',
 		gold: '金牌',
-		noMedal: '無獎牌'
+		noMedal: '無獎牌',
+		outcome: {
+			completed: '挑戰完成',
+			failed: '挑戰失敗',
+			abandoned: '挑戰已放棄'
+		},
+		newBest: '刷新最佳成績',
+		bestUnchanged: '最佳成績未變',
+		nextMedal: '距離{medal}還差 {points} 分',
+		deadlineNotTriggered: '未觸及期限：第 {day} 天，共 {limit} 天',
+		deadlineTriggered: '第 {day} 天觸及期限',
+		announcement: '{outcome}，獲得 {score} 分。',
+		close: '關閉結果'
 	},
 	scenarioDiagnostics: {
 		invalidBuiltIn: '內建挑戰無效：{detail}',

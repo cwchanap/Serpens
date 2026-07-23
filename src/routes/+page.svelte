@@ -15,6 +15,9 @@
 	import SavePanel from '$lib/components/game/SavePanel.svelte';
 	import ScenarioCatalog from '$lib/components/game/ScenarioCatalog.svelte';
 	import ScenarioMenuSection from '$lib/components/game/ScenarioMenuSection.svelte';
+	import ScenarioObjectivePanel from '$lib/components/game/ScenarioObjectivePanel.svelte';
+	import ScenarioResultsDialog from '$lib/components/game/ScenarioResultsDialog.svelte';
+	import ScenarioStatusStrip from '$lib/components/game/ScenarioStatusStrip.svelte';
 	import Scorecard from '$lib/components/game/Scorecard.svelte';
 	import ShortcutCheatSheet from '$lib/components/game/ShortcutCheatSheet.svelte';
 	import StaffPanel from '$lib/components/game/StaffPanel.svelte';
@@ -83,6 +86,8 @@
 	} from '$lib/game/placementPreview';
 	import { formatPlacementBlockReason } from '$lib/i18n/gameCopy';
 	import {
+		buildScenarioProgressView,
+		buildScenarioResultsView,
 		buildScenarioCatalogCards,
 		scenarioDiagnosticText,
 		scenarioShareCodeErrorText,
@@ -267,6 +272,7 @@
 
 	let sandboxGame = $state<GameState | null>(null);
 	let activeScenarioRun = $state<ScenarioRun | null>(null);
+	let scenarioEvidenceGame = $state<GameState | null>(null);
 	let lastScenarioResult = $state<ScenarioResult | null>(null);
 	let lastScenarioBestUpdated = $state(false);
 	let scenarioOperationError = $state<ScenarioOperationError | null>(null);
@@ -288,6 +294,9 @@
 		},
 		onScenarioSummary: (summary) => {
 			scenarioSummary = summary;
+		},
+		onScenarioTerminalRun: (run) => {
+			scenarioEvidenceGame = run.game;
 		},
 		onAutoSave: (metadata) => {
 			autoSave = metadata;
@@ -352,6 +361,37 @@
 					)
 				})
 			: ''
+	);
+	let dismissedScenarioResult = $state<ScenarioResult | null>(null);
+	let isScenarioObjectivePanelOpen = $state(false);
+	let scenarioProgressView = $derived(
+		activeScenarioDefinition && activeScenarioRun
+			? buildScenarioProgressView(
+					activeScenarioDefinition,
+					activeScenarioRun,
+					i18n,
+					resolveScenarioContributor
+				)
+			: null
+	);
+	let lastScenarioDefinition = $derived(
+		lastScenarioResult ? (resolveScenarioDefinition(lastScenarioResult.definition) ?? null) : null
+	);
+	let scenarioResultsView = $derived(
+		lastScenarioDefinition && lastScenarioResult
+			? buildScenarioResultsView(
+					lastScenarioDefinition,
+					lastScenarioResult,
+					lastScenarioBestUpdated,
+					i18n,
+					resolveScenarioContributor
+				)
+			: null
+	);
+	let isScenarioResultsDialogOpen = $derived(
+		scenarioResultsView !== null &&
+			lastScenarioResult !== null &&
+			lastScenarioResult !== dismissedScenarioResult
 	);
 	let mutationAvailability = $derived(
 		createMutationAvailability({
@@ -611,6 +651,7 @@
 				activeManagementPanelId !== null ||
 				isSavePanelOpen ||
 				isScenarioCatalogOpen ||
+				isScenarioResultsDialogOpen ||
 				isGameMenuOpen)
 	);
 	// When false, the industry map scene suppresses its Escape-to-cancel-build
@@ -621,6 +662,7 @@
 	let railKeyboardEnabled = $derived(
 		!isSavePanelOpen &&
 			!isScenarioCatalogOpen &&
+			!isScenarioResultsDialogOpen &&
 			!isCheatSheetOpen &&
 			!isSupplyAdvisorOpen &&
 			!isStoreDetailOpen &&
@@ -755,6 +797,7 @@
 			isCheatSheetOpen ||
 			isSavePanelOpen ||
 			isScenarioCatalogOpen ||
+			isScenarioResultsDialogOpen ||
 			isAlertsMenuOpen ||
 			isGameMenuOpen ||
 			isPlacementModeActive
@@ -1095,6 +1138,29 @@
 		isScenarioCatalogOpen = true;
 	}
 
+	function resolveScenarioContributor(id: string): string {
+		const currentGame = activeScenarioRun?.game ?? scenarioEvidenceGame ?? game;
+		const reportMatch = /^report:(\d+)/.exec(id);
+		if (reportMatch) {
+			const storeMatch = /\/store:([^/]+)/.exec(id);
+			if (storeMatch) {
+				try {
+					const storeId = decodeURIComponent(storeMatch[1]!);
+					const store = currentGame?.stores.find((candidate) => candidate.id === storeId);
+					if (store) return store.name || i18n.t('store.defaultName');
+				} catch {
+					// Preserve the canonical ID below when a segment cannot be decoded.
+				}
+			}
+			return i18n.t('scenarioObjectives.reportContributor', { day: reportMatch[1]! });
+		}
+		const store = currentGame?.stores.find((candidate) => candidate.id === id);
+		if (store) return store.name || i18n.t('store.defaultName');
+		const building = currentGame?.industrialBuildings.find((candidate) => candidate.id === id);
+		if (building) return i18n.labels.industrialBuilding(building.typeId);
+		return i18n.labels.material(id);
+	}
+
 	async function startScenarioCard(card: ScenarioCatalogCardViewModel): Promise<void> {
 		const definition = currentScenarioDefinition(card.id);
 		if (!definition) return;
@@ -1117,6 +1183,29 @@
 		if (!activeScenarioRun) return;
 		const result = await gameRouteController.restartScenarioRun(activeScenarioRun.definition);
 		if (result.status === 'committed') isScenarioCatalogOpen = false;
+	}
+
+	async function restartResultScenario(): Promise<void> {
+		if (!lastScenarioResult || !lastScenarioDefinition) return;
+		const result = await gameRouteController.startScenarioRun(
+			lastScenarioDefinition,
+			lastScenarioResult.seed
+		);
+		if (result.status === 'committed') dismissedScenarioResult = lastScenarioResult;
+	}
+
+	function closeScenarioResults(): void {
+		dismissedScenarioResult = lastScenarioResult;
+	}
+
+	function openCatalogFromResults(): void {
+		closeScenarioResults();
+		openScenarioCatalog();
+	}
+
+	function returnToSandboxFromResults(): void {
+		closeScenarioResults();
+		gameRouteController.returnToSandbox();
 	}
 
 	async function importScenarioCode(
@@ -1976,6 +2065,22 @@
 			{/snippet}
 		</TopBar>
 
+		{#if playMode === 'scenario' && activeScenarioRun && scenarioProgressView}
+			<ScenarioStatusStrip
+				view={scenarioProgressView}
+				{i18n}
+				expanded={isScenarioObjectivePanelOpen}
+				pending={scenarioCommandPending}
+				error={scenarioOperationErrorText}
+				onToggle={() => (isScenarioObjectivePanelOpen = !isScenarioObjectivePanelOpen)}
+				onRetry={() => retryScenarioOperation?.()}
+				onDismissError={() => gameRouteController.dismissScenarioOperationError()}
+			/>
+			{#if isScenarioObjectivePanelOpen}
+				<ScenarioObjectivePanel view={scenarioProgressView} {i18n} />
+			{/if}
+		{/if}
+
 		<ControlDesk
 			managementItems={managementPanelMenuItems}
 			buildDisabled={activeMapView === 'world' ||
@@ -2255,6 +2360,18 @@
 			onCopy={copyScenarioCode}
 			onRetry={() => retryScenarioOperation?.()}
 			onClose={() => (isScenarioCatalogOpen = false)}
+		/>
+	{/if}
+
+	{#if isScenarioResultsDialogOpen && scenarioResultsView}
+		<ScenarioResultsDialog
+			view={scenarioResultsView}
+			{i18n}
+			pending={scenarioCommandPending}
+			onRestart={restartResultScenario}
+			onCatalog={openCatalogFromResults}
+			onSandbox={returnToSandboxFromResults}
+			onClose={closeScenarioResults}
 		/>
 	{/if}
 

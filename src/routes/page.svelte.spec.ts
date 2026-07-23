@@ -735,6 +735,70 @@ describe('GameRouteController scenario integration', () => {
 		expect(controller.state.scenarioOperationError).toBeNull();
 	});
 
+	it('publishes a terminal result and best flag only after the terminal commit resolves', async () => {
+		expect.assertions(7);
+		const base = scenarioDefinition();
+		const definition = scenarioDefinition({
+			requiredObjectives: [{ ...base.requiredObjectives[0]!, target: 0 }]
+		});
+		const run = runForDefinition(definition);
+		const terminalWrite = deferred<ScenarioCommitOutcome>();
+		const repository = createScenarioRepositoryHarness(run, {
+			commitTerminalRun: vi.fn(() => terminalWrite.promise)
+		});
+		const controller = new GameRouteController(
+			controllerOptions({ scenarioRepository: repository, definition })
+		);
+		await controller.initializeScenarios();
+
+		const pending = controller.updatePolicy({ pricing: 'premium' });
+		expect(controller.state.lastScenarioResult).toBeNull();
+		expect(controller.state.lastScenarioBestUpdated).toBe(false);
+		expect(controller.state.activeScenarioRun).toBe(run);
+		await Promise.resolve();
+		const terminalRun = vi.mocked(repository.commitTerminalRun).mock.calls[0]![0];
+		expect(terminalRun.result?.outcome).toBe('completed');
+		terminalWrite.resolve({
+			activeRun: null,
+			terminalResult: terminalRun.result,
+			bestUpdated: true
+		});
+		expect(await pending).toMatchObject({ status: 'committed' });
+		expect(controller.state.lastScenarioResult).toBe(terminalRun.result);
+		expect(controller.state.lastScenarioBestUpdated).toBe(true);
+	});
+
+	it('keeps committed objective progress on an in-run write error and retries the exact command once', async () => {
+		expect.assertions(8);
+		const definition = scenarioDefinition();
+		const run = runForDefinition(definition);
+		const repository = createScenarioRepositoryHarness(run);
+		vi.mocked(repository.saveActiveRun)
+			.mockRejectedValueOnce(new Error('disk'))
+			.mockImplementationOnce(async (nextRun) => ({
+				activeRun: nextRun,
+				terminalResult: null,
+				bestUpdated: false
+			}));
+		const controller = new GameRouteController(
+			controllerOptions({ scenarioRepository: repository, definition })
+		);
+		await controller.initializeScenarios();
+
+		expect(await controller.updatePolicy({ pricing: 'premium' })).toMatchObject({
+			status: 'failed'
+		});
+		expect(controller.state.activeScenarioRun).toBe(run);
+		expect(controller.state.activeScenarioRun?.evaluation).toBe(run.evaluation);
+		expect(controller.state.scenarioOperationError?.code).toBe('persistence-write-failed');
+		await controller.state.retryScenarioOperation!();
+		expect(repository.saveActiveRun).toHaveBeenCalledTimes(2);
+		const attempts = vi.mocked(repository.saveActiveRun).mock.calls.map(([attempt]) => attempt);
+		expect(attempts[0]?.game.policy.pricing).toBe('premium');
+		expect(attempts[1]?.game.policy.pricing).toBe('premium');
+		expect(controller.state.scenarioOperationError).toBeNull();
+	});
+
 	it('abandons by removing the active record without committing a best and returns to sandbox losslessly', async () => {
 		expect.assertions(7);
 		const definition = scenarioDefinition();
