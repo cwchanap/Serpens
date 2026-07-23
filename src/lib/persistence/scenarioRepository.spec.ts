@@ -66,7 +66,7 @@ function fixtureDefinition(ref: ScenarioDefinitionRef): ScenarioDefinition {
 				labelKey: 'store.defaultName',
 				query: { metric: 'cash' },
 				comparator: 'gte',
-				target: 0,
+				target: 100,
 				window: { kind: 'current' }
 			},
 			{
