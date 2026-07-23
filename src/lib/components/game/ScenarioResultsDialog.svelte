@@ -8,13 +8,27 @@
 		view: ScenarioResultsViewModel;
 		i18n: I18nBundle;
 		pending: boolean;
+		error: string | null;
 		onRestart: () => void | Promise<void>;
 		onCatalog: () => void | Promise<void>;
 		onSandbox: () => void | Promise<void>;
+		onRetry: () => void | Promise<void>;
+		onDismissError: () => void;
 		onClose: () => void;
 	}
 
-	let { view, i18n, pending, onRestart, onCatalog, onSandbox, onClose }: Props = $props();
+	let {
+		view,
+		i18n,
+		pending,
+		error,
+		onRestart,
+		onCatalog,
+		onSandbox,
+		onRetry,
+		onDismissError,
+		onClose
+	}: Props = $props();
 
 	function handleKeydown(event: KeyboardEvent): void {
 		if (event.key !== 'Escape') return;
@@ -47,6 +61,17 @@
 		<p>{view.bestLabel}</p>
 		{#if view.nextMedalLabel}<p>{view.nextMedalLabel}</p>{/if}
 		<ScenarioObjectivePanel {view} {i18n} />
+		{#if error}
+			<div class="error" role="alert" aria-live="assertive">
+				<span>{error}</span>
+				<button type="button" disabled={pending} onclick={() => void onRetry()}>
+					{i18n.t('scenarioCatalog.retry')}
+				</button>
+				<button type="button" disabled={pending} onclick={onDismissError}>
+					{i18n.t('scenarioStatus.dismiss')}
+				</button>
+			</div>
+		{/if}
 		<div class="actions">
 			<button type="button" disabled={pending} onclick={() => void onRestart()}>
 				{i18n.t('scenarioCatalog.restartChallenge')}
@@ -95,6 +120,15 @@
 		justify-content: flex-start;
 		flex-wrap: wrap;
 		margin-top: 0.8rem;
+	}
+	.error {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+		align-items: center;
+		margin-top: 0.8rem;
+		border-left: 3px solid var(--wax-red);
+		padding: 0.35rem 0.5rem;
 	}
 	.live {
 		position: absolute;

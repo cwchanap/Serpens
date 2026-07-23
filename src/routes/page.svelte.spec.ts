@@ -768,6 +768,84 @@ describe('GameRouteController scenario integration', () => {
 		expect(controller.state.lastScenarioBestUpdated).toBe(true);
 	});
 
+	it('keeps a terminal result visible when restart persistence fails and retries the exact restart once', async () => {
+		expect.assertions(16);
+		const base = scenarioDefinition();
+		const definition = scenarioDefinition({
+			requiredObjectives: [{ ...base.requiredObjectives[0]!, target: 0 }]
+		});
+		const run = runForDefinition(definition);
+		const restartWrite = deferred<ScenarioCommitOutcome>();
+		const repository = createScenarioRepositoryHarness(run, {
+			saveActiveRun: vi
+				.fn()
+				.mockImplementationOnce(() => restartWrite.promise)
+				.mockImplementationOnce(async (nextRun: ScenarioRun) => ({
+					activeRun: nextRun,
+					terminalResult: null,
+					bestUpdated: false
+				}))
+		});
+		const controller = new GameRouteController(
+			controllerOptions({ scenarioRepository: repository, definition })
+		);
+		await controller.initializeScenarios();
+		await controller.updatePolicy({ pricing: 'premium' });
+		const committedResult = controller.state.lastScenarioResult;
+		expect(committedResult?.outcome).toBe('completed');
+
+		const pendingRestart = controller.startScenarioRun(definition, committedResult!.seed);
+		expect(controller.state.scenarioCommandPending).toBe(true);
+		expect(controller.state.lastScenarioResult).toBe(committedResult);
+		expect(controller.state.activeScenarioRun).toBeNull();
+		restartWrite.reject(new Error('raw storage failure must not be exposed'));
+		expect(await pendingRestart).toMatchObject({ status: 'failed' });
+		expect(controller.state.scenarioCommandPending).toBe(false);
+		expect(controller.state.lastScenarioResult).toBe(committedResult);
+		expect(controller.state.scenarioOperationError?.code).toBe('persistence-write-failed');
+		expect(controller.state.retryScenarioOperation).not.toBeNull();
+
+		await controller.state.retryScenarioOperation!();
+		expect(repository.saveActiveRun).toHaveBeenCalledTimes(2);
+		const [firstAttempt, retryAttempt] = vi
+			.mocked(repository.saveActiveRun)
+			.mock.calls.map(([attempt]) => attempt);
+		expect(retryAttempt.definition).toEqual(firstAttempt.definition);
+		expect(retryAttempt.seed).toBe(firstAttempt.seed);
+		expect(controller.state.activeScenarioRun).toBe(retryAttempt);
+		expect(controller.state.lastScenarioResult).toBeNull();
+		expect(controller.state.scenarioOperationError).toBeNull();
+		expect(controller.state.retryScenarioOperation).toBeNull();
+	});
+
+	it('dismisses a terminal restart error without changing the committed result', async () => {
+		expect.assertions(6);
+		const base = scenarioDefinition();
+		const definition = scenarioDefinition({
+			requiredObjectives: [{ ...base.requiredObjectives[0]!, target: 0 }]
+		});
+		const run = runForDefinition(definition);
+		const repository = createScenarioRepositoryHarness(run, {
+			saveActiveRun: vi.fn().mockRejectedValue(new Error('raw storage failure must not be exposed'))
+		});
+		const controller = new GameRouteController(
+			controllerOptions({ scenarioRepository: repository, definition })
+		);
+		await controller.initializeScenarios();
+		await controller.updatePolicy({ pricing: 'premium' });
+		const committedResult = controller.state.lastScenarioResult;
+
+		expect(await controller.startScenarioRun(definition, committedResult!.seed)).toMatchObject({
+			status: 'failed'
+		});
+		expect(controller.state.lastScenarioResult).toBe(committedResult);
+		expect(controller.state.scenarioOperationError?.code).toBe('persistence-write-failed');
+		controller.dismissScenarioOperationError();
+		expect(controller.state.lastScenarioResult).toBe(committedResult);
+		expect(controller.state.scenarioOperationError).toBeNull();
+		expect(controller.state.retryScenarioOperation).toBeNull();
+	});
+
 	it('keeps committed objective progress on an in-run write error and retries the exact command once', async () => {
 		expect.assertions(8);
 		const definition = scenarioDefinition();

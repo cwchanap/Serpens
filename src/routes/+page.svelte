@@ -2368,9 +2368,12 @@
 			view={scenarioResultsView}
 			{i18n}
 			pending={scenarioCommandPending}
+			error={scenarioOperationErrorText}
 			onRestart={restartResultScenario}
 			onCatalog={openCatalogFromResults}
 			onSandbox={returnToSandboxFromResults}
+			onRetry={() => retryScenarioOperation?.()}
+			onDismissError={() => gameRouteController.dismissScenarioOperationError()}
 			onClose={closeScenarioResults}
 		/>
 	{/if}
