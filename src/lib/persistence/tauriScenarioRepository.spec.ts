@@ -52,12 +52,16 @@ class FakeStore implements ScenarioStoreLike {
 	readonly persistedValues = new Map<string, unknown>();
 	readonly getKeys: string[] = [];
 	readonly setKeys: string[] = [];
+	readonly deleteKeys: string[] = [];
 	readonly reloadOptions: Array<ReloadOptions | undefined> = [];
+	fileExists = false;
 	reloadCount = 0;
 	saveCount = 0;
 	failNextReload: unknown;
 	failNextSave: unknown;
 	failNextSet: unknown;
+	private readonly setFailures = new Map<number, unknown>();
+	private readonly deleteFailures = new Map<number, unknown>();
 	private nextSaveGate: { started: Deferred<void>; release: Deferred<void> } | undefined;
 
 	async get<T>(key: string): Promise<T | undefined> {
@@ -68,11 +72,18 @@ class FakeStore implements ScenarioStoreLike {
 	async set(key: string, value: unknown): Promise<void> {
 		this.setKeys.push(key);
 		this.values.set(key, value);
-		if (this.failNextSet !== undefined) {
-			const error = this.failNextSet;
+		const error = this.setFailures.get(this.setKeys.length) ?? this.failNextSet;
+		if (error !== undefined) {
 			this.failNextSet = undefined;
 			throw error;
 		}
+	}
+
+	async delete(key: string): Promise<boolean> {
+		this.deleteKeys.push(key);
+		const error = this.deleteFailures.get(this.deleteKeys.length);
+		if (error !== undefined) throw error;
+		return this.values.delete(key);
 	}
 
 	async reload(options?: ReloadOptions): Promise<void> {
@@ -82,6 +93,9 @@ class FakeStore implements ScenarioStoreLike {
 			const error = this.failNextReload;
 			this.failNextReload = undefined;
 			throw error;
+		}
+		if (!this.fileExists) {
+			throw Object.assign(new Error('No such file or directory'), { code: 'ENOENT' });
 		}
 		if (options?.ignoreDefaults === true) {
 			this.copyValues(this.persistedValues, this.values);
@@ -106,6 +120,7 @@ class FakeStore implements ScenarioStoreLike {
 			throw error;
 		}
 		this.copyValues(this.values, this.persistedValues);
+		this.fileExists = true;
 	}
 
 	deferNextSave(): { started: Promise<void>; release(): void } {
@@ -118,6 +133,20 @@ class FakeStore implements ScenarioStoreLike {
 		};
 	}
 
+	failSetOnCall(call: number, error: unknown): void {
+		this.setFailures.set(call, error);
+	}
+
+	failDeleteOnCall(call: number, error: unknown): void {
+		this.deleteFailures.set(call, error);
+	}
+
+	seedPersisted(key: string, value: unknown): void {
+		this.fileExists = true;
+		this.persistedValues.set(key, structuredClone(value));
+		this.values.set(key, structuredClone(value));
+	}
+
 	private copyValues(source: Map<string, unknown>, target: Map<string, unknown>): void {
 		target.clear();
 		for (const [key, value] of source) {
@@ -128,10 +157,14 @@ class FakeStore implements ScenarioStoreLike {
 
 describe('Tauri scenario repository', () => {
 	it('models plugin-store reload merging unless defaults are ignored', async () => {
+		const missingStore = new FakeStore();
 		const store = new FakeStore();
 		store.values.set('cache-only', 'pending');
-		store.persistedValues.set('durable', 'saved');
+		store.seedPersisted('durable', 'saved');
 
+		await expect(missingStore.reload({ ignoreDefaults: true })).rejects.toMatchObject({
+			code: 'ENOENT'
+		});
 		await store.reload();
 
 		expect(store.values.get('cache-only')).toBe('pending');
@@ -204,7 +237,7 @@ describe('Tauri scenario repository', () => {
 		expect(store.getKeys).toEqual([SCENARIO_STORE_KEY]);
 	});
 
-	it('reloads after a failed save so a later mutation cannot persist the rejected run', async () => {
+	it('rolls back a failed first save when no store file exists and allows the next save', async () => {
 		const store = new FakeStore();
 		const saveError = new Error('disk unavailable');
 		store.failNextSave = saveError;
@@ -214,39 +247,43 @@ describe('Tauri scenario repository', () => {
 		);
 
 		await expect(repository.saveActiveRun(createFixtureScenarioRun())).rejects.toBe(saveError);
+		const summary = await repository.getSummary();
 		await repository.removeActiveRun('local-lifeline');
 
 		const persisted = store.persistedValues.get(SCENARIO_STORE_KEY) as ScenarioStoreSnapshot;
+		expect(summary.activeRunsByScenarioId).toEqual({});
+		expect(summary.diagnostics).toEqual([]);
 		expect(persisted.activeRunsByScenarioId['first-profit']).toBeUndefined();
 		expect(persisted.activeRunsByScenarioId['local-lifeline']).toBeUndefined();
-		expect(store.reloadCount).toBe(1);
-		expect(store.reloadOptions).toEqual([{ ignoreDefaults: true }]);
+		expect(store.deleteKeys).toEqual([SCENARIO_STORE_KEY]);
+		expect(store.reloadCount).toBe(0);
 		expect(store.saveCount).toBe(2);
 	});
 
-	it('preserves the original write error and retries recovery before the next queued mutation', async () => {
+	it('restores an existing prior value directly after a failed save', async () => {
 		const store = new FakeStore();
+		const priorRun = createFixtureScenarioRun();
+		await createTauriScenarioRepositoryFromStore(
+			Promise.resolve(store),
+			resolveFixtureDefinition
+		).saveActiveRun(priorRun);
 		const saveError = new Error('disk unavailable');
 		store.failNextSave = saveError;
-		store.failNextReload = new Error('reload unavailable');
 		const repository = createTauriScenarioRepositoryFromStore(
 			Promise.resolve(store),
 			resolveFixtureDefinition
 		);
 
-		await expect(repository.saveActiveRun(createFixtureScenarioRun())).rejects.toBe(saveError);
-		expect(store.reloadCount).toBe(1);
+		await expect(repository.removeActiveRun('first-profit')).rejects.toBe(saveError);
 
-		await repository.removeActiveRun('local-lifeline');
-
-		const persisted = store.persistedValues.get(SCENARIO_STORE_KEY) as ScenarioStoreSnapshot;
-		expect(persisted.activeRunsByScenarioId['first-profit']).toBeUndefined();
-		expect(store.reloadCount).toBe(2);
-		expect(store.reloadOptions).toEqual([{ ignoreDefaults: true }, { ignoreDefaults: true }]);
+		const loaded = await repository.loadActiveRun('first-profit');
+		expect(loaded).toEqual(priorRun);
+		expect(store.setKeys).toEqual([SCENARIO_STORE_KEY, SCENARIO_STORE_KEY, SCENARIO_STORE_KEY]);
+		expect(store.reloadCount).toBe(0);
 		expect(store.saveCount).toBe(2);
 	});
 
-	it('recovers from a set failure before allowing the mutation queue to continue', async () => {
+	it('rolls back a partially mutating set failure before allowing reads', async () => {
 		const store = new FakeStore();
 		const setError = new Error('cache mutation failed');
 		store.failNextSet = setError;
@@ -256,13 +293,35 @@ describe('Tauri scenario repository', () => {
 		);
 
 		await expect(repository.saveActiveRun(createFixtureScenarioRun())).rejects.toBe(setError);
-		await repository.removeActiveRun('local-lifeline');
 
-		const persisted = store.persistedValues.get(SCENARIO_STORE_KEY) as ScenarioStoreSnapshot;
-		expect(persisted.activeRunsByScenarioId['first-profit']).toBeUndefined();
-		expect(store.reloadCount).toBe(1);
+		expect(await repository.loadActiveRun('first-profit')).toBeNull();
+		expect(store.deleteKeys).toEqual([SCENARIO_STORE_KEY]);
+		expect(store.reloadCount).toBe(0);
+		expect(store.saveCount).toBe(0);
+	});
+
+	it('falls back to replacement reload when restoring the prior value fails', async () => {
+		const store = new FakeStore();
+		const priorRun = createFixtureScenarioRun();
+		await createTauriScenarioRepositoryFromStore(
+			Promise.resolve(store),
+			resolveFixtureDefinition
+		).saveActiveRun(priorRun);
+		const saveError = new Error('disk unavailable');
+		const rollbackError = new Error('cache rollback unavailable');
+		store.failNextSave = saveError;
+		store.failSetOnCall(3, rollbackError);
+		const repository = createTauriScenarioRepositoryFromStore(
+			Promise.resolve(store),
+			resolveFixtureDefinition
+		);
+
+		await expect(repository.removeActiveRun('first-profit')).rejects.toBe(saveError);
+
+		expect(await repository.loadActiveRun('first-profit')).toEqual(priorRun);
+		expect(store.setKeys).toEqual([SCENARIO_STORE_KEY, SCENARIO_STORE_KEY, SCENARIO_STORE_KEY]);
 		expect(store.reloadOptions).toEqual([{ ignoreDefaults: true }]);
-		expect(store.saveCount).toBe(1);
+		expect(store.saveCount).toBe(2);
 	});
 
 	it('keeps reads pending behind a failed save and returns only durable state after recovery', async () => {
@@ -291,7 +350,8 @@ describe('Tauri scenario repository', () => {
 		expect(summary.activeRunsByScenarioId).toEqual({});
 		expect(summary.diagnostics).toEqual([]);
 		expect(loaded).toBeNull();
-		expect(store.reloadOptions).toEqual([{ ignoreDefaults: true }]);
+		expect(store.deleteKeys).toEqual([SCENARIO_STORE_KEY]);
+		expect(store.reloadOptions).toEqual([]);
 	});
 
 	it('keeps reads pending behind a successful save and then returns the committed run', async () => {
@@ -325,7 +385,8 @@ describe('Tauri scenario repository', () => {
 		const saveGate = store.deferNextSave();
 		const saveError = new Error('disk unavailable');
 		store.failNextSave = saveError;
-		store.failNextReload = new Error('reload unavailable');
+		store.failDeleteOnCall(1, new Error('delete unavailable'));
+		store.failDeleteOnCall(2, new Error('delete still unavailable'));
 		const repository = createTauriScenarioRepositoryFromStore(
 			Promise.resolve(store),
 			resolveFixtureDefinition
@@ -343,6 +404,7 @@ describe('Tauri scenario repository', () => {
 		const summary = await summaryPromise;
 		expect(summary.activeRunsByScenarioId).toEqual({});
 		expect(summary.diagnostics).toEqual([]);
-		expect(store.reloadOptions).toEqual([{ ignoreDefaults: true }, { ignoreDefaults: true }]);
+		expect(store.reloadOptions).toEqual([{ ignoreDefaults: true }]);
+		expect(store.deleteKeys).toEqual([SCENARIO_STORE_KEY, SCENARIO_STORE_KEY, SCENARIO_STORE_KEY]);
 	});
 });
