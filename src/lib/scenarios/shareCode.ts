@@ -1,13 +1,13 @@
 import { resolveScenarioDefinition } from './catalog';
-import type {
-	ScenarioDefinition,
-	ScenarioDefinitionRef,
-	ScenarioEligibility,
-	ScenarioId
+import {
+	MAX_SCENARIO_SEED,
+	type ScenarioDefinition,
+	type ScenarioDefinitionRef,
+	type ScenarioEligibility,
+	type ScenarioId
 } from './types';
 
 const SHARE_CODE_PREFIX = 'SC1';
-const MAX_SEED = 2_147_483_647;
 const SCENARIO_IDS = ['first-profit', 'import-squeeze', 'local-lifeline'] as const;
 
 export interface DecodedScenarioShareCode {
@@ -56,7 +56,7 @@ function parseSeed(value: string): number | undefined {
 	let seed = 0;
 	for (const character of value) {
 		const digit = Number.parseInt(character, 36);
-		if (seed > Math.floor((MAX_SEED - digit) / 36)) return undefined;
+		if (seed > Math.floor((MAX_SCENARIO_SEED - digit) / 36)) return undefined;
 		seed = seed * 36 + digit;
 	}
 	return seed;
@@ -74,8 +74,8 @@ function assertEncodableDefinition(definition: ScenarioDefinitionRef): void {
 
 export function encodeScenarioShareCode(definition: ScenarioDefinitionRef, seed: number): string {
 	assertEncodableDefinition(definition);
-	if (!Number.isSafeInteger(seed) || seed < 1 || seed > MAX_SEED) {
-		throw new RangeError(`Scenario seed must be an integer from 1 through ${MAX_SEED}.`);
+	if (!Number.isSafeInteger(seed) || seed < 1 || seed > MAX_SCENARIO_SEED) {
+		throw new RangeError(`Scenario seed must be an integer from 1 through ${MAX_SCENARIO_SEED}.`);
 	}
 
 	const preimage = `${SHARE_CODE_PREFIX}.${definition.scenarioId.toLowerCase()}.${definition.version}.${seed.toString(36)}`;
