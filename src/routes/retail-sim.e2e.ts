@@ -724,7 +724,7 @@ async function advanceChallengeDay(page: Page): Promise<void> {
 
 async function openChallengeMenu(page: Page): Promise<Locator> {
 	await page.getByTestId('game-menu-trigger').click();
-	const menu = page.locator('.scenario-menu');
+	const menu = page.getByRole('dialog', { name: 'Menu' });
 	await expect(menu).toBeVisible();
 	return menu;
 }
@@ -781,12 +781,40 @@ test('challenge advance updates objective progress and deadline state', async ({
 
 	await expect(challengeStatus(page)).toContainText('Day 2 of 14');
 	await expect(challengeStatus(page)).toContainText('12 days remaining');
+	await expect(challengeStatus(page)).toContainText('Required 1 of 2');
 	await challengeStatus(page).getByRole('button', { name: 'Show objective details' }).click();
 	const objectiveDetails = page.locator('#scenario-objective-panel');
-	await expect(objectiveDetails).toContainText('Earn cumulative net income');
-	await expect(objectiveDetails).toContainText('Maintain a positive income streak');
+	const cumulativeIncome = objectiveDetails
+		.getByRole('article')
+		.filter({ hasText: 'Earn cumulative net income' });
+	await expect(cumulativeIncome).toContainText('Satisfied');
+	await expect(cumulativeIncome).toContainText('Actual $146');
+	await expect(cumulativeIncome).toContainText('Day 1 report');
+	const positiveIncomeStreak = objectiveDetails
+		.getByRole('article')
+		.filter({ hasText: 'Maintain a positive income streak' });
+	await expect(positiveIncomeStreak).toContainText('Pending');
+	await expect(positiveIncomeStreak).toContainText('Actual 1');
+	await expect(positiveIncomeStreak).toContainText('Day 1 report');
 	const snapshot = await readChallengeSnapshot(page);
-	expect(snapshot.activeRunsByScenarioId['first-profit']?.game).toMatchObject({ day: 2 });
+	const active = snapshot.activeRunsByScenarioId['first-profit'];
+	expect(active?.game).toMatchObject({ day: 2 });
+	expect(
+		active?.run.evaluation.required.find(
+			(objective) => objective.conditionId === 'cumulative-net-income'
+		)
+	).toMatchObject({
+		status: 'satisfied',
+		evidence: { actual: 146, contributingIds: ['report:1'] }
+	});
+	expect(
+		active?.run.evaluation.required.find(
+			(objective) => objective.conditionId === 'positive-income-streak'
+		)
+	).toMatchObject({
+		status: 'pending',
+		evidence: { actual: 1, contributingIds: ['report:1'] }
+	});
 });
 
 test('challenge returns to sandbox and resumes its isolated run from the catalog', async ({
