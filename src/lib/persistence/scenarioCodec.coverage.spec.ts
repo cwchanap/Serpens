@@ -89,7 +89,7 @@ describe('scenario codec defensive coverage', () => {
 
 		expect(decoded.snapshot).toEqual(createEmptyScenarioStore());
 		expect(codes).toContain('invalid-entry-descriptor');
-		expect(codes).toContain('invalid-envelope-property');
+		expect(codes).toContain('invalid-store');
 		expect(decoded.diagnostics.map((diagnostic) => diagnostic.path)).toEqual(
 			[...decoded.diagnostics.map((diagnostic) => diagnostic.path)].sort()
 		);
@@ -109,7 +109,7 @@ describe('scenario codec defensive coverage', () => {
 
 		expect(thrown).toBeInstanceOf(ScenarioCodecError);
 		expect((thrown as ScenarioCodecError).diagnostics).toMatchObject([
-			{ code: 'invalid-map', path: 'scenarioStore.activeRunsByScenarioId' }
+			{ code: 'invalid-record', path: 'scenarioStore.activeRunsByScenarioId' }
 		]);
 	});
 
