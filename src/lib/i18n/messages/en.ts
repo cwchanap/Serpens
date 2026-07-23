@@ -1006,15 +1006,64 @@ export const en = {
 		ranked: 'Ranked',
 		unranked: 'Unranked',
 		activeVersion: 'Active version {active} (current version {current})',
-		versionEligibility: 'Version {version} · {eligibility}'
+		versionEligibility: 'Version {version} · {eligibility}',
+		day: 'Day {day} of {limit}',
+		remaining: '{count} days remaining',
+		requiredProgress: 'Required {complete} of {total}',
+		optionalProgress: 'Optional {complete} of {total}',
+		projectedScore: 'Projected score {score} points',
+		projectedMedal: 'Projected medal {medal}',
+		deadlineRisk: 'Deadline: {count} days remaining',
+		conditionRisk: 'Failure risk: {distance} from boundary · {status}',
+		progressAnnouncement: 'Challenge progress updated on day {day}.',
+		showDetails: 'Show objective details',
+		hideDetails: 'Hide objective details',
+		dismiss: 'Dismiss'
 	},
-	scenarioObjectives: { heading: 'Objectives', required: 'Required', optional: 'Optional' },
+	scenarioObjectives: {
+		heading: 'Objectives',
+		required: 'Required',
+		optional: 'Optional',
+		requiredHeading: 'Required objectives',
+		optionalHeading: 'Optional objectives',
+		failuresHeading: 'Failure conditions',
+		actualTarget: 'Actual {actual} · Target {target}',
+		contributors: 'Contributors',
+		noContributors: 'No contributing records',
+		reportContributor: 'Day {day} report',
+		status: {
+			pending: 'Pending',
+			satisfied: 'Satisfied',
+			missed: 'Missed',
+			inactive: 'Inactive',
+			triggered: 'Triggered'
+		},
+		windows: {
+			current: 'Current value',
+			runToDate: 'Run to date',
+			trailingReports: 'Trailing {count} reports',
+			fixedReportDays: 'Report days {start}–{end}'
+		}
+	},
 	scenarioResults: {
+		title: 'Challenge results',
 		points: '{score} points',
 		bronze: 'Bronze',
 		silver: 'Silver',
 		gold: 'Gold',
-		noMedal: 'No medal'
+		noMedal: 'No medal',
+		outcome: {
+			completed: 'Challenge completed',
+			failed: 'Challenge failed',
+			abandoned: 'Challenge abandoned'
+		},
+		newBest: 'New best recorded',
+		bestUnchanged: 'Best unchanged',
+		nextMedal: '{points} points to {medal}',
+		deadlineNotTriggered: 'Deadline not triggered: day {day} of {limit}',
+		deadlineTriggered: 'Deadline triggered on day {day}',
+		announcement: '{outcome} with {score} points.',
+		close: 'Close results'
 	},
 	scenarioDiagnostics: {
 		invalidBuiltIn: 'Invalid built-in challenge: {detail}',

@@ -6,6 +6,8 @@ import type {
 	ScenarioResult
 } from '$lib/scenarios/types';
 import {
+	buildScenarioProgressView,
+	buildScenarioResultsView,
 	buildScenarioCatalogCards,
 	scenarioDiagnosticText,
 	scenarioShareCodeErrorText
@@ -228,5 +230,175 @@ describe('scenario copy', () => {
 				createI18n('en')
 			)
 		).toContain('save');
+	});
+
+	it('formats committed evaluation progress, evidence, modifiers, risks, and contributor names', () => {
+		expect.assertions(12);
+		const current = definition('first-profit', 1, 'firstProfit', 101);
+		current.modifiers = [
+			{
+				kind: 'import-cost-multiplier',
+				scope: 'retail-product',
+				target: { kind: 'all' },
+				multiplier: 1.5
+			}
+		];
+		current.optionalObjectives = [
+			{
+				...current.requiredObjectives[0]!,
+				id: 'optional',
+				labelKey: 'scenarioDefinitions.firstProfit.objectives.positiveIncomeStreak'
+			}
+		];
+		current.failures = [
+			{
+				...current.requiredObjectives[0]!,
+				id: 'negative-cash',
+				labelKey: 'scenarioDefinitions.firstProfit.failures.negativeCash',
+				comparator: 'lt',
+				target: 0
+			}
+		];
+		const evidence = {
+			conditionId: 'required',
+			metric: 'cumulative-net-income' as const,
+			comparator: 'gte' as const,
+			target: 1_000,
+			actual: 1_200,
+			day: 4,
+			window: { kind: 'run-to-date' as const },
+			windowComplete: true,
+			contributingIds: ['store:store-1', 'report:3']
+		};
+		const evaluation = {
+			day: 4,
+			required: [{ conditionId: 'required', status: 'satisfied' as const, evidence }],
+			optional: [
+				{
+					conditionId: 'optional',
+					status: 'pending' as const,
+					evidence: { ...evidence, conditionId: 'optional', actual: 2, target: 3 }
+				}
+			],
+			failures: [
+				{
+					conditionId: 'negative-cash',
+					status: 'inactive' as const,
+					evidence: { ...evidence, conditionId: 'negative-cash', actual: 500, target: 0 }
+				}
+			],
+			deadline: null,
+			risks: [
+				{
+					kind: 'condition' as const,
+					conditionId: 'negative-cash',
+					distance: 500,
+					triggered: false
+				},
+				{ kind: 'deadline' as const, daysRemaining: 10, triggered: false }
+			],
+			projection: {
+				score: 760,
+				medal: 'silver' as const,
+				componentPoints: [],
+				componentEvidence: []
+			}
+		};
+
+		const view = buildScenarioProgressView(
+			current,
+			{
+				definition: { scenarioId: current.id, version: 1 },
+				seed: 101,
+				eligibility: 'ranked',
+				status: 'active',
+				game: {} as never,
+				evaluation,
+				result: null
+			},
+			createI18n('en'),
+			(id) => ({ 'store:store-1': 'Harbor Shop', 'report:3': 'Day 3 report' })[id] ?? id
+		);
+
+		expect(view.eligibilityLabel).toBe('Ranked');
+		expect(view.dayLabel).toBe('Day 4 of 14');
+		expect(view.remainingLabel).toBe('10 days remaining');
+		expect(view.requiredProgressLabel).toBe('Required 1 of 1');
+		expect(view.optionalProgressLabel).toBe('Optional 0 of 1');
+		expect(view.scoreLabel).toBe('Projected score 760 points');
+		expect(view.medalLabel).toBe('Projected medal Silver');
+		expect(view.modifierLabels).toContain('Import costs ×1.5');
+		expect(view.riskLabels).toContain('Deadline: 10 days remaining');
+		expect(view.required[0]?.evidenceLabel).toContain('Actual $1,200');
+		expect(view.required[0]?.windowLabel).toBe('Run to date');
+		expect(view.required[0]?.contributorLabels).toEqual(['Harbor Shop', 'Day 3 report']);
+	});
+
+	it('formats completed and failed result views with next medal, best, and deadline evidence', () => {
+		expect.assertions(8);
+		const current = definition('first-profit', 1, 'firstProfit', 101);
+		const evaluation = {
+			day: 10,
+			required: [],
+			optional: [],
+			failures: [],
+			deadline: {
+				triggered: false,
+				evidence: { conditionId: 'deadline-exceeded' as const, day: 10, dayLimit: 14 }
+			},
+			risks: [],
+			projection: {
+				score: 880,
+				medal: 'silver' as const,
+				componentPoints: [],
+				componentEvidence: []
+			}
+		};
+		const completed = buildScenarioResultsView(
+			current,
+			{
+				definition: { scenarioId: current.id, version: 1 },
+				seed: 101,
+				eligibility: 'ranked',
+				outcome: 'completed',
+				completionDay: 10,
+				score: 880,
+				medal: 'silver',
+				evaluation
+			},
+			true,
+			createI18n('en')
+		);
+		const failed = buildScenarioResultsView(
+			current,
+			{
+				definition: { scenarioId: current.id, version: 1 },
+				seed: 101,
+				eligibility: 'ranked',
+				outcome: 'failed',
+				completionDay: 14,
+				score: 300,
+				medal: null,
+				evaluation: {
+					...evaluation,
+					day: 14,
+					deadline: {
+						triggered: true,
+						evidence: { conditionId: 'deadline-exceeded', day: 14, dayLimit: 14 }
+					}
+				}
+			},
+			false,
+			createI18n('en')
+		);
+
+		expect(completed.outcomeLabel).toBe('Challenge completed');
+		expect(completed.bestLabel).toBe('New best recorded');
+		expect(completed.nextMedalLabel).toBe('20 points to Gold');
+		expect(completed.deadlineLabel).toBe('Deadline not triggered: day 10 of 14');
+		expect(failed.outcomeLabel).toBe('Challenge failed');
+		expect(failed.medalLabel).toBe('No medal');
+		expect(failed.bestLabel).toBe('Best unchanged');
+		expect(failed.deadlineLabel).toBe('Deadline triggered on day 14');
 	});
 });
