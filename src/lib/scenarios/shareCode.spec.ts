@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import { decodeScenarioShareCode, encodeScenarioShareCode } from './shareCode';
-import type { ScenarioDefinition, ScenarioDefinitionRef, ScenarioId } from './types';
+import {
+	MAX_SCENARIO_SEED,
+	type ScenarioDefinition,
+	type ScenarioDefinitionRef,
+	type ScenarioId
+} from './types';
 
 const fixtureDefinitions = [
 	{ id: 'first-profit', version: 1, officialSeed: 280_001 },
@@ -57,6 +62,28 @@ describe('scenario share codes', () => {
 						: 'unranked',
 				canonicalCode: code
 			}
+		});
+	});
+
+	it('enforces the shared canonical seed maximum for encoding and external decoding', () => {
+		const definition = { scenarioId: 'local-lifeline' as const, version: 1 };
+		const maximumCode = encodeScenarioShareCode(definition, MAX_SCENARIO_SEED);
+		const oversizedSeed = MAX_SCENARIO_SEED + 1;
+		const oversizedPreimage = `SC1.local-lifeline.1.${oversizedSeed.toString(36)}`;
+		const externallyChecksummedOversizedCode = `${oversizedPreimage}.${checksumFor(oversizedPreimage)}`;
+
+		expect(decodeScenarioShareCode(maximumCode, resolveFixtureDefinition)).toMatchObject({
+			ok: true,
+			value: { seed: 2_147_483_646 }
+		});
+		expect(() => encodeScenarioShareCode(definition, oversizedSeed)).toThrow(
+			'Scenario seed must be an integer from 1 through 2147483646.'
+		);
+		expect(
+			decodeScenarioShareCode(externallyChecksummedOversizedCode, resolveFixtureDefinition)
+		).toEqual({
+			ok: false,
+			code: 'invalid-seed'
 		});
 	});
 
