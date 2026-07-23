@@ -1,4 +1,6 @@
 import { resolveScenarioDefinition } from '$lib/scenarios/catalog';
+import { evaluateScenario } from '$lib/scenarios/runtime';
+import { medalForScore } from '$lib/scenarios/scoring';
 import type {
 	ScenarioBestResultRecord,
 	ScenarioDefinition,
@@ -12,7 +14,7 @@ import type {
 	ScenarioRunRecord,
 	ScenarioStoreSnapshot
 } from '$lib/scenarios/types';
-import { migrateSavedGame, validateCurrentGameState } from './saveCodec';
+import { createPlainSnapshot, migrateSavedGame, validateCurrentGameState } from './saveCodec';
 import { SAVE_SCHEMA_VERSION } from './saveTypes';
 
 export const SCENARIO_STORE_SCHEMA_VERSION = 1;
@@ -95,9 +97,14 @@ function fail(code: string, path: string, value: unknown, detail: string): never
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-	if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
-	const prototype = Object.getPrototypeOf(value);
-	return prototype === Object.prototype || prototype === null;
+	if (typeof value !== 'object' || value === null) return false;
+	try {
+		if (Array.isArray(value)) return false;
+		const prototype = Object.getPrototypeOf(value);
+		return prototype === Object.prototype || prototype === null;
+	} catch {
+		return false;
+	}
 }
 
 function requireRecord(value: unknown, path: string): Record<string, unknown> {
@@ -154,31 +161,63 @@ function requireOneOf<const T extends readonly string[]>(
 
 function cloneValue<T>(value: T, path = 'scenarioStore'): T {
 	try {
-		return structuredClone(value);
+		return createPlainSnapshot(value, path, { rejectCycles: true }) as T;
 	} catch (error) {
 		fail(
 			'not-cloneable',
 			path,
 			String(error),
-			`${path} must contain only structured-cloneable data.`
+			`${path} must contain only bounded, acyclic, structured-cloneable own data properties.`
 		);
 	}
 }
 
 function deeplyEqual(left: unknown, right: unknown): boolean {
-	if (Object.is(left, right)) return true;
-	if (typeof left !== 'object' || left === null || typeof right !== 'object' || right === null) {
-		return false;
+	const worklist: Array<[unknown, unknown]> = [[left, right]];
+	const compared = new WeakMap<object, WeakSet<object>>();
+	let nodes = 0;
+	while (worklist.length > 0) {
+		const [first, second] = worklist.pop()!;
+		if (Object.is(first, second)) continue;
+		if (
+			typeof first !== 'object' ||
+			first === null ||
+			typeof second !== 'object' ||
+			second === null
+		) {
+			return false;
+		}
+		nodes += 1;
+		if (nodes > 250_000) return false;
+		let seconds = compared.get(first);
+		if (seconds?.has(second)) continue;
+		if (!seconds) {
+			seconds = new WeakSet<object>();
+			compared.set(first, seconds);
+		}
+		seconds.add(second);
+		const firstIsArray = Array.isArray(first);
+		const secondIsArray = Array.isArray(second);
+		if (firstIsArray || secondIsArray) {
+			if (!firstIsArray || !secondIsArray) return false;
+			const firstArray = first as unknown[];
+			const secondArray = second as unknown[];
+			if (firstArray.length !== secondArray.length) return false;
+			for (let index = 0; index < firstArray.length; index += 1) {
+				worklist.push([firstArray[index], secondArray[index]]);
+			}
+			continue;
+		}
+		if (!isRecord(first) || !isRecord(second)) return false;
+		const firstKeys = Object.keys(first);
+		const secondKeys = Object.keys(second);
+		if (firstKeys.length !== secondKeys.length) return false;
+		for (const key of firstKeys) {
+			if (!Object.hasOwn(second, key)) return false;
+			worklist.push([first[key], second[key]]);
+		}
 	}
-	if (Array.isArray(left) || Array.isArray(right)) {
-		if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) return false;
-		return left.every((value, index) => deeplyEqual(value, right[index]));
-	}
-	if (!isRecord(left) || !isRecord(right)) return false;
-	const leftKeys = Object.keys(left);
-	const rightKeys = Object.keys(right);
-	if (leftKeys.length !== rightKeys.length) return false;
-	return leftKeys.every((key) => Object.hasOwn(right, key) && deeplyEqual(left[key], right[key]));
+	return true;
 }
 
 function isScenarioId(value: string): value is ScenarioId {
@@ -317,6 +356,160 @@ function validateEvaluation(value: unknown, path: string): ScenarioEvaluation {
 	return evaluation as unknown as ScenarioEvaluation;
 }
 
+function validateConditionContract(
+	evaluation: ScenarioEvaluation['required'][number] | ScenarioEvaluation['failures'][number],
+	condition: ScenarioDefinition['requiredObjectives'][number],
+	path: string
+): void {
+	if (
+		evaluation.conditionId !== condition.id ||
+		evaluation.evidence.conditionId !== condition.id ||
+		evaluation.evidence.metric !== condition.query.metric ||
+		evaluation.evidence.comparator !== condition.comparator ||
+		evaluation.evidence.target !== condition.target ||
+		!deeplyEqual(evaluation.evidence.window, condition.window)
+	) {
+		fail(
+			'evaluation-mismatch',
+			path,
+			evaluation,
+			'Evaluation evidence must match the resolved scenario condition.'
+		);
+	}
+}
+
+function validateEvaluationContract(
+	evaluation: ScenarioEvaluation,
+	definition: ScenarioDefinition,
+	path: string
+): void {
+	const groups = [
+		['required', evaluation.required, definition.requiredObjectives],
+		['optional', evaluation.optional, definition.optionalObjectives],
+		['failures', evaluation.failures, definition.failures]
+	] as const;
+	for (const [name, evaluated, conditions] of groups) {
+		if (evaluated.length !== conditions.length) {
+			fail(
+				'evaluation-mismatch',
+				`${path}.${name}`,
+				evaluated.length,
+				`${name} evaluations must match the resolved definition cardinality.`
+			);
+		}
+		for (let index = 0; index < conditions.length; index += 1) {
+			validateConditionContract(evaluated[index], conditions[index], `${path}.${name}[${index}]`);
+		}
+	}
+
+	const deadlineTriggered = evaluation.day >= definition.dayLimit;
+	if (
+		deadlineTriggered !== (evaluation.deadline !== null) ||
+		(evaluation.deadline !== null &&
+			(!evaluation.deadline.triggered ||
+				evaluation.deadline.evidence.day !== evaluation.day ||
+				evaluation.deadline.evidence.dayLimit !== definition.dayLimit))
+	) {
+		fail(
+			'evaluation-mismatch',
+			`${path}.deadline`,
+			evaluation.deadline,
+			'Deadline evaluation must match the resolved definition and evaluation day.'
+		);
+	}
+
+	if (evaluation.risks.length !== definition.failures.length + 1) {
+		fail(
+			'evaluation-mismatch',
+			`${path}.risks`,
+			evaluation.risks.length,
+			'Risk projections must contain the resolved failures followed by the deadline risk.'
+		);
+	}
+	for (let index = 0; index < definition.failures.length; index += 1) {
+		const risk = evaluation.risks[index];
+		if (
+			risk?.kind !== 'condition' ||
+			risk.conditionId !== definition.failures[index].id ||
+			risk.triggered !== (evaluation.failures[index].status === 'triggered')
+		) {
+			fail(
+				'evaluation-mismatch',
+				`${path}.risks[${index}]`,
+				risk,
+				'Failure risk identity and state must match the resolved definition evaluation.'
+			);
+		}
+	}
+	const deadlineRisk = evaluation.risks[definition.failures.length];
+	if (
+		deadlineRisk?.kind !== 'deadline' ||
+		deadlineRisk.triggered !== deadlineTriggered ||
+		deadlineRisk.daysRemaining !== Math.max(0, definition.dayLimit - evaluation.day)
+	) {
+		fail(
+			'evaluation-mismatch',
+			`${path}.risks[${definition.failures.length}]`,
+			deadlineRisk,
+			'Deadline risk must match the resolved definition and evaluation day.'
+		);
+	}
+
+	const points = evaluation.projection.componentPoints;
+	if (points.length !== definition.scoreComponents.length) {
+		fail(
+			'evaluation-mismatch',
+			`${path}.projection.componentPoints`,
+			points.length,
+			'Score components must match the resolved definition cardinality.'
+		);
+	}
+	for (let index = 0; index < definition.scoreComponents.length; index += 1) {
+		const component = definition.scoreComponents[index];
+		const componentPoints = points[index];
+		if (componentPoints > component.points) {
+			fail(
+				'evaluation-mismatch',
+				`${path}.projection.componentPoints[${index}]`,
+				componentPoints,
+				'Score component points cannot exceed the resolved component maximum.'
+			);
+		}
+		if (component.kind === 'optional-objective') {
+			const objective = evaluation.optional.find(
+				(candidate) => candidate.conditionId === component.objectiveId
+			);
+			const expected = objective?.status === 'satisfied' ? component.points : 0;
+			if (!objective || componentPoints !== expected) {
+				fail(
+					'evaluation-mismatch',
+					`${path}.projection.componentPoints[${index}]`,
+					componentPoints,
+					'Optional-objective points must match the resolved objective state.'
+				);
+			}
+		}
+	}
+	const expectedScore = Math.min(
+		1000,
+		Math.max(
+			0,
+			points.reduce((total, componentPoints) => total + componentPoints, 500)
+		)
+	);
+	if (
+		evaluation.projection.score !== expectedScore ||
+		evaluation.projection.medal !== medalForScore(definition, 'completed', expectedScore)
+	) {
+		fail(
+			'evaluation-mismatch',
+			`${path}.projection`,
+			evaluation.projection,
+			'Score and projected medal must follow the resolved definition scoring contract.'
+		);
+	}
+}
+
 function validateResult(
 	value: unknown,
 	resolveDefinition: ScenarioDefinitionResolver,
@@ -350,6 +543,7 @@ function validateResult(
 	if (score > 1000)
 		fail('invalid-score', `${path}.score`, score, 'Scenario score cannot exceed 1000.');
 	const evaluation = validateEvaluation(result.evaluation, `${path}.evaluation`);
+	validateEvaluationContract(evaluation, definition, `${path}.evaluation`);
 	if (evaluation.day !== completionDay || evaluation.projection.score !== score) {
 		fail(
 			'result-evaluation-mismatch',
@@ -360,7 +554,12 @@ function validateResult(
 	}
 	if (outcome === 'completed') {
 		const medal = requireOneOf(result.medal, MEDALS, `${path}.medal`);
-		if (medal !== evaluation.projection.medal) {
+		if (
+			medal !== evaluation.projection.medal ||
+			medal !== medalForScore(definition, 'completed', score) ||
+			evaluation.required.some((objective) => objective.status !== 'satisfied') ||
+			evaluation.failures.some((failure) => failure.status === 'triggered')
+		) {
 			fail('medal-mismatch', `${path}.medal`, medal, 'Result medal must match its projection.');
 		}
 	} else if (result.medal !== null) {
@@ -371,7 +570,41 @@ function validateResult(
 			'Failed and abandoned runs have no medal.'
 		);
 	}
+	if (
+		outcome === 'failed' &&
+		!evaluation.failures.some((failure) => failure.status === 'triggered') &&
+		!evaluation.deadline?.triggered
+	) {
+		fail(
+			'evaluation-mismatch',
+			`${path}.evaluation`,
+			evaluation,
+			'A failed result must contain a triggered failure condition or deadline.'
+		);
+	}
 	return result as unknown as ScenarioResult;
+}
+
+function expectedRunEvaluation(
+	definition: ScenarioDefinition,
+	game: ReturnType<typeof validateCurrentGameState>,
+	status: ScenarioRun['status']
+): ScenarioEvaluation {
+	const expected = evaluateScenario(
+		definition,
+		game,
+		status !== 'active' && status !== 'abandoned'
+	);
+	if (status !== 'abandoned') return expected;
+	return {
+		...expected,
+		required: expected.required.map((objective) =>
+			objective.status === 'pending' ? { ...objective, status: 'missed' as const } : objective
+		),
+		optional: expected.optional.map((objective) =>
+			objective.status === 'pending' ? { ...objective, status: 'missed' as const } : objective
+		)
+	};
 }
 
 function validateRunWithGame(
@@ -400,12 +633,22 @@ function validateRunWithGame(
 	}
 	const status = requireOneOf(run.status, RUN_STATUSES, `${path}.status`);
 	const evaluation = validateEvaluation(run.evaluation, `${path}.evaluation`);
+	validateEvaluationContract(evaluation, definition, `${path}.evaluation`);
 	if (seed !== game.seed || evaluation.day !== game.day) {
 		fail(
 			'run-game-mismatch',
 			path,
 			{ runSeed: seed, gameSeed: game.seed, evaluationDay: evaluation.day, gameDay: game.day },
 			'Run seed and evaluation day must match the embedded game.'
+		);
+	}
+	const expectedEvaluation = expectedRunEvaluation(definition, game, status);
+	if (!deeplyEqual(evaluation, expectedEvaluation)) {
+		fail(
+			'evaluation-mismatch',
+			`${path}.evaluation`,
+			undefined,
+			'Run evaluation must exactly match the resolved definition and embedded game.'
 		);
 	}
 	let result: ScenarioResult | null;
@@ -655,6 +898,90 @@ function decodeBestResultRecord(
 	return { scenarioSchemaVersion: SCENARIO_RUN_SCHEMA_VERSION, result };
 }
 
+function ownDataDescriptors(value: unknown, path: string, code: string): PropertyDescriptorMap {
+	if (typeof value !== 'object' || value === null) {
+		fail(code, path, value, `${path} must be a plain object with own data properties.`);
+	}
+	try {
+		if (Array.isArray(value)) {
+			fail(code, path, value, `${path} must be a plain object with own data properties.`);
+		}
+		const prototype = Object.getPrototypeOf(value);
+		if (prototype !== Object.prototype && prototype !== null) {
+			fail(code, path, undefined, `${path} must have a plain-object prototype.`);
+		}
+		return Object.getOwnPropertyDescriptors(value);
+	} catch (error) {
+		if (error instanceof ScenarioValidationFailure) throw error;
+		fail(code, path, String(error), `${path} descriptors could not be inspected safely.`);
+	}
+}
+
+function requireEnvelopeData(
+	descriptors: PropertyDescriptorMap,
+	key: string,
+	path: string
+): unknown {
+	const descriptor = descriptors[key];
+	if (!descriptor?.enumerable || !('value' in descriptor)) {
+		fail(
+			'invalid-store',
+			`${path}.${key}`,
+			undefined,
+			`${path}.${key} must be an own enumerable data property.`
+		);
+	}
+	return descriptor.value;
+}
+
+function collectOwnMapEntries(
+	value: unknown,
+	path: string,
+	diagnostics: ScenarioDiagnostic[]
+): Array<[string, unknown]> {
+	const descriptors = collectEntry(
+		() => ownDataDescriptors(value, path, 'invalid-record'),
+		diagnostics
+	);
+	if (!descriptors) return [];
+	let keys: PropertyKey[];
+	try {
+		keys = Reflect.ownKeys(value as object);
+	} catch (error) {
+		diagnostics.push(
+			diagnostic(
+				'invalid-record',
+				path,
+				String(error),
+				`${path} keys could not be inspected safely.`
+			)
+		);
+		return [];
+	}
+	const entries: Array<[string, unknown]> = [];
+	for (const key of keys) {
+		const descriptor = descriptors[key as keyof PropertyDescriptorMap];
+		const entryPath = `${path}.${typeof key === 'string' ? key : String(key)}`;
+		if (typeof key !== 'string' || !descriptor?.enumerable || !('value' in descriptor)) {
+			diagnostics.push(
+				diagnostic(
+					'invalid-entry-descriptor',
+					entryPath,
+					typeof key === 'string' ? key : String(key),
+					'Scenario entry must be an own enumerable string-keyed data property.'
+				)
+			);
+			continue;
+		}
+		entries.push([key, descriptor.value]);
+	}
+	return entries.sort(([left], [right]) => compareCodeUnits(left, right));
+}
+
+function cloneScenarioEntry(value: unknown, path: string): unknown {
+	return cloneValue(value, path);
+}
+
 function collectEntry<T>(operation: () => T, diagnostics: ScenarioDiagnostic[]): T | undefined {
 	try {
 		return operation();
@@ -671,37 +998,28 @@ export function decodeScenarioStoreSnapshot(
 	value: unknown,
 	resolveDefinition: ScenarioDefinitionResolver = resolveScenarioDefinition
 ): DecodeScenarioStoreResult {
-	let source: unknown;
+	let sourceDescriptors: PropertyDescriptorMap;
 	try {
-		source = cloneValue(value);
+		sourceDescriptors = ownDataDescriptors(value, 'scenarioStore', 'invalid-store');
 	} catch (error) {
 		if (error instanceof ScenarioValidationFailure) {
 			return { snapshot: createEmptyScenarioStore(), diagnostics: [error.diagnostic] };
 		}
 		throw error;
 	}
-	if (!isRecord(source)) {
-		return {
-			snapshot: createEmptyScenarioStore(),
-			diagnostics: [
-				diagnostic(
-					'invalid-store',
-					'scenarioStore',
-					source,
-					'Scenario store must be a plain object.'
-				)
-			]
-		};
-	}
-	if (source.schemaVersion !== SCENARIO_STORE_SCHEMA_VERSION) {
+	const schemaVersion = collectEntry(
+		() => requireEnvelopeData(sourceDescriptors, 'schemaVersion', 'scenarioStore'),
+		[]
+	);
+	if (schemaVersion !== SCENARIO_STORE_SCHEMA_VERSION) {
 		return {
 			snapshot: createEmptyScenarioStore(),
 			diagnostics: [
 				diagnostic(
 					'unsupported-store-schema',
 					'scenarioStore.schemaVersion',
-					source.schemaVersion,
-					`Unsupported scenario store schema version: ${String(source.schemaVersion)}.`
+					schemaVersion,
+					`Unsupported scenario store schema version: ${String(schemaVersion)}.`
 				)
 			]
 		};
@@ -710,12 +1028,14 @@ export function decodeScenarioStoreSnapshot(
 	const diagnostics: ScenarioDiagnostic[] = [];
 	const decoded = createEmptyScenarioStore();
 	const activeSource = collectEntry(
-		() => requireRecord(source.activeRunsByScenarioId, 'activeRunsByScenarioId'),
+		() => requireEnvelopeData(sourceDescriptors, 'activeRunsByScenarioId', 'scenarioStore'),
 		diagnostics
 	);
-	if (activeSource) {
-		for (const [key, entry] of Object.entries(activeSource).sort(([left], [right]) =>
-			compareCodeUnits(left, right)
+	if (activeSource !== undefined) {
+		for (const [key, rawEntry] of collectOwnMapEntries(
+			activeSource,
+			'activeRunsByScenarioId',
+			diagnostics
 		)) {
 			if (!isScenarioId(key)) {
 				diagnostics.push(
@@ -728,32 +1048,38 @@ export function decodeScenarioStoreSnapshot(
 				);
 				continue;
 			}
-			const record = collectEntry(
-				() => decodeActiveRunRecord(entry, key, resolveDefinition, `activeRunsByScenarioId.${key}`),
-				diagnostics
-			);
+			const record = collectEntry(() => {
+				const path = `activeRunsByScenarioId.${key}`;
+				return decodeActiveRunRecord(
+					cloneScenarioEntry(rawEntry, path),
+					key,
+					resolveDefinition,
+					path
+				);
+			}, diagnostics);
 			if (record) decoded.activeRunsByScenarioId[key] = record;
 		}
 	}
 
 	const bestSource = collectEntry(
-		() => requireRecord(source.bestResultsByDefinitionKey, 'bestResultsByDefinitionKey'),
+		() => requireEnvelopeData(sourceDescriptors, 'bestResultsByDefinitionKey', 'scenarioStore'),
 		diagnostics
 	);
-	if (bestSource) {
-		for (const [key, entry] of Object.entries(bestSource).sort(([left], [right]) =>
-			compareCodeUnits(left, right)
+	if (bestSource !== undefined) {
+		for (const [key, rawEntry] of collectOwnMapEntries(
+			bestSource,
+			'bestResultsByDefinitionKey',
+			diagnostics
 		)) {
-			const record = collectEntry(
-				() =>
-					decodeBestResultRecord(
-						entry,
-						key,
-						resolveDefinition,
-						`bestResultsByDefinitionKey.${key}`
-					),
-				diagnostics
-			);
+			const record = collectEntry(() => {
+				const path = `bestResultsByDefinitionKey.${key}`;
+				return decodeBestResultRecord(
+					cloneScenarioEntry(rawEntry, path),
+					key,
+					resolveDefinition,
+					path
+				);
+			}, diagnostics);
 			if (record) {
 				decoded.bestResultsByDefinitionKey[key as ScenarioDefinitionKey] = record;
 			}

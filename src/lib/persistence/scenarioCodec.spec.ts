@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import { simulateDay } from '$lib/game/simulateDay';
 import { createNewGame } from '$lib/game/state';
 import type { GameState } from '$lib/game/types';
+import { abandonScenario, evaluateScenario } from '$lib/scenarios/runtime';
 import type {
 	ScenarioDefinition,
 	ScenarioDefinitionRef,
-	ScenarioEvaluation,
 	ScenarioId,
 	ScenarioRun,
 	ScenarioRunRecord,
@@ -19,6 +20,7 @@ import {
 	parseScenarioStoreSnapshot,
 	scenarioDefinitionKey
 } from './scenarioCodec';
+import { ScenarioMemoryRepository } from './scenarioMemoryRepository';
 
 const OFFICIAL_SEEDS: Record<ScenarioId, number> = {
 	'first-profit': 280_001,
@@ -58,10 +60,54 @@ function fixtureDefinition(ref: ScenarioDefinitionRef): ScenarioDefinition {
 		},
 		allowedCommands: ['advanceDay'],
 		modifiers: [],
-		requiredObjectives: [],
-		optionalObjectives: [],
-		failures: [],
-		scoreComponents: [],
+		requiredObjectives: [
+			{
+				id: 'cash-nonnegative',
+				labelKey: 'store.defaultName',
+				query: { metric: 'cash' },
+				comparator: 'gte',
+				target: 0,
+				window: { kind: 'current' }
+			},
+			{
+				id: 'store-open',
+				labelKey: 'store.defaultName',
+				query: { metric: 'store-count' },
+				comparator: 'gte',
+				target: 1,
+				window: { kind: 'current' }
+			}
+		],
+		optionalObjectives: [
+			{
+				id: 'cash-rich',
+				labelKey: 'store.defaultName',
+				query: { metric: 'cash' },
+				comparator: 'gte',
+				target: 500,
+				window: { kind: 'current' }
+			}
+		],
+		failures: [
+			{
+				id: 'cash-negative',
+				labelKey: 'store.defaultName',
+				query: { metric: 'cash' },
+				comparator: 'lt',
+				target: 0,
+				window: { kind: 'current' }
+			}
+		],
+		scoreComponents: [
+			{
+				kind: 'metric',
+				query: { metric: 'cash' },
+				window: { kind: 'current' },
+				zeroBonusAt: 0,
+				fullBonusAt: 1000,
+				points: 500
+			}
+		],
 		medalThresholds: { silver: 700, gold: 850 }
 	};
 }
@@ -73,22 +119,6 @@ function resolveFixtureDefinition(ref: ScenarioDefinitionRef): ScenarioDefinitio
 	return fixtureDefinition(ref);
 }
 
-function fixtureEvaluation(day: number, score = 500): ScenarioEvaluation {
-	return {
-		day,
-		required: [],
-		optional: [],
-		failures: [],
-		deadline: null,
-		risks: [],
-		projection: {
-			score,
-			medal: score >= 850 ? 'gold' : score >= 700 ? 'silver' : 'bronze',
-			componentPoints: []
-		}
-	};
-}
-
 function fixtureRun(
 	ref: ScenarioDefinitionRef = { scenarioId: 'first-profit', version: 1 },
 	options: {
@@ -96,37 +126,48 @@ function fixtureRun(
 		seed?: number;
 		score?: number;
 		game?: GameState;
+		advanceDays?: number;
 	} = {}
 ): ScenarioRun {
 	const definition = fixtureDefinition(ref);
 	const seed = options.seed ?? definition.officialSeed;
-	const game = options.game ?? createNewGame('convenience', seed);
 	const status = options.status ?? 'active';
-	const score = options.score ?? 500;
-	const evaluation = fixtureEvaluation(game.day, score);
-	const result =
-		status === 'active'
-			? null
-			: {
-					definition: ref,
-					seed,
-					eligibility:
-						seed === definition.officialSeed ? ('ranked' as const) : ('unranked' as const),
-					outcome: status,
-					completionDay: game.day,
-					score,
-					medal: status === 'completed' ? evaluation.projection.medal : null,
-					evaluation
-				};
-
-	return {
+	let game = options.game ?? createNewGame('convenience', seed);
+	if (!options.game) {
+		for (let day = 0; day < (options.advanceDays ?? 0); day += 1) game = simulateDay(game);
+		game = {
+			...game,
+			cash: status === 'failed' ? -1 : Math.max(0, Math.min(1000, (options.score ?? 500) - 500) * 2)
+		};
+	}
+	const eligibility =
+		seed === definition.officialSeed ? ('ranked' as const) : ('unranked' as const);
+	const active: ScenarioRun = {
 		definition: ref,
 		seed,
-		eligibility: seed === definition.officialSeed ? 'ranked' : 'unranked',
-		status,
+		eligibility,
+		status: 'active',
 		game,
+		evaluation: evaluateScenario(definition, game, false),
+		result: null
+	};
+	if (status === 'active') return active;
+	if (status === 'abandoned') return abandonScenario(active);
+	const evaluation = evaluateScenario(definition, game, true);
+	return {
+		...active,
+		status,
 		evaluation,
-		result
+		result: {
+			definition: ref,
+			seed,
+			eligibility,
+			outcome: status,
+			completionDay: game.day,
+			score: evaluation.projection.score,
+			medal: status === 'completed' ? evaluation.projection.medal : null,
+			evaluation
+		}
 	};
 }
 
@@ -298,6 +339,181 @@ describe('scenario codec', () => {
 		expect(decoded.diagnostics.length).toBeGreaterThan(0);
 	});
 
+	it.each(['prototype', 'non-enumerable', 'symbol', 'accessor', 'cycle', 'deep'] as const)(
+		'isolates a game with a %s extra without laundering or executing it',
+		(propertyCase) => {
+			const corrupt = runRecord(fixtureRun());
+			const game = corrupt.game as GameState & Record<PropertyKey, unknown>;
+			let invoked = false;
+			if (propertyCase === 'prototype') {
+				Object.setPrototypeOf(game, { inherited: true });
+			} else if (propertyCase === 'non-enumerable') {
+				Object.defineProperty(game, 'hidden', { value: true, enumerable: false });
+			} else if (propertyCase === 'symbol') {
+				game[Symbol('hidden')] = true;
+			} else if (propertyCase === 'accessor') {
+				Object.defineProperty(game, 'trap', {
+					enumerable: true,
+					get() {
+						invoked = true;
+						throw new Error('scenario getter must not run');
+					}
+				});
+			} else if (propertyCase === 'cycle') {
+				const cyclic: Record<string, unknown> = {};
+				cyclic.self = cyclic;
+				game.cyclic = cyclic;
+			} else {
+				let deep: Record<string, unknown> = {};
+				for (let depth = 0; depth < 520; depth += 1) deep = { next: deep };
+				game.deep = deep;
+			}
+			const valid = fixtureRun({ scenarioId: 'import-squeeze', version: 1 });
+			let decoded!: ReturnType<typeof decodeScenarioStoreSnapshot>;
+
+			expect(() => {
+				decoded = decodeScenarioStoreSnapshot(
+					snapshot({ 'first-profit': corrupt, 'import-squeeze': runRecord(valid) }),
+					resolveFixtureDefinition
+				);
+			}).not.toThrow();
+			expect(invoked).toBe(false);
+			expect(decoded.snapshot.activeRunsByScenarioId['first-profit']).toBeUndefined();
+			expect(decoded.snapshot.activeRunsByScenarioId['import-squeeze']).toEqual(runRecord(valid));
+			expect(decoded.diagnostics.length).toBeGreaterThan(0);
+		}
+	);
+
+	it.each(['accessor', 'non-enumerable', 'symbol'] as const)(
+		'isolates an invalid %s entry descriptor while preserving valid siblings',
+		(propertyCase) => {
+			const valid = fixtureRun({ scenarioId: 'import-squeeze', version: 1 });
+			const activeRuns: Record<PropertyKey, unknown> = {
+				'import-squeeze': runRecord(valid)
+			};
+			let invoked = false;
+			if (propertyCase === 'accessor') {
+				Object.defineProperty(activeRuns, 'first-profit', {
+					enumerable: true,
+					get() {
+						invoked = true;
+						throw new Error('entry getter must not run');
+					}
+				});
+			} else if (propertyCase === 'non-enumerable') {
+				Object.defineProperty(activeRuns, 'first-profit', {
+					value: runRecord(fixtureRun()),
+					enumerable: false
+				});
+			} else {
+				activeRuns[Symbol('first-profit')] = runRecord(fixtureRun());
+			}
+			const raw = snapshot();
+			raw.activeRunsByScenarioId = activeRuns as ScenarioStoreSnapshot['activeRunsByScenarioId'];
+			const decoded = decodeScenarioStoreSnapshot(raw, resolveFixtureDefinition);
+
+			expect(invoked).toBe(false);
+			expect(decoded.snapshot.activeRunsByScenarioId['import-squeeze']).toEqual(runRecord(valid));
+			expect(decoded.diagnostics.length).toBeGreaterThan(0);
+		}
+	);
+
+	it('rejects a prototype-bearing store envelope before cloning it', () => {
+		const raw = snapshot({ 'first-profit': runRecord(fixtureRun()) });
+		Object.setPrototypeOf(raw, { inherited: true });
+
+		const decoded = decodeScenarioStoreSnapshot(raw, resolveFixtureDefinition);
+
+		expect(decoded.snapshot).toEqual(createEmptyScenarioStore());
+		expect(decoded.diagnostics.map((entry) => entry.code)).toContain('invalid-store');
+	});
+
+	it('keeps memory decoding descriptor-safe and reports corrupt entries without invoking accessors', async () => {
+		const valid = fixtureRun({ scenarioId: 'import-squeeze', version: 1 });
+		const activeRuns: Record<string, unknown> = { 'import-squeeze': runRecord(valid) };
+		let invoked = false;
+		Object.defineProperty(activeRuns, 'first-profit', {
+			enumerable: true,
+			get() {
+				invoked = true;
+				throw new Error('memory entry getter must not run');
+			}
+		});
+		const raw = snapshot();
+		raw.activeRunsByScenarioId = activeRuns as ScenarioStoreSnapshot['activeRunsByScenarioId'];
+		let repository!: ScenarioMemoryRepository;
+
+		expect(() => {
+			repository = new ScenarioMemoryRepository(raw, resolveFixtureDefinition);
+		}).not.toThrow();
+		const summary = await repository.getSummary();
+		expect(invoked).toBe(false);
+		expect(summary.activeRunsByScenarioId['import-squeeze']).toEqual(valid);
+		expect(summary.diagnostics.length).toBeGreaterThan(0);
+	});
+
+	it('rejects an active evaluation whose objective identities do not match the definition', () => {
+		const active = fixtureRun();
+		const record = runRecord(active);
+		record.run = {
+			...record.run,
+			evaluation: {
+				...record.run.evaluation,
+				required: [...record.run.evaluation.required].reverse()
+			}
+		};
+
+		const decoded = decodeScenarioStoreSnapshot(
+			snapshot({ 'first-profit': record }),
+			resolveFixtureDefinition
+		);
+
+		expect(decoded.snapshot.activeRunsByScenarioId).toEqual({});
+		expect(decoded.diagnostics.map((entry) => entry.code)).toContain('evaluation-mismatch');
+	});
+
+	it.each(['objective-order', 'component-shape', 'score-formula', 'completed-failure'] as const)(
+		'rejects a best result with a fabricated %s',
+		(fabrication) => {
+			const completed = fixtureRun(undefined, { status: 'completed', score: 750 });
+			const result = structuredClone(completed.result!);
+			if (fabrication === 'objective-order') {
+				result.evaluation.required.reverse();
+			} else if (fabrication === 'component-shape') {
+				result.evaluation.projection.componentPoints = [];
+			} else if (fabrication === 'score-formula') {
+				result.score = 900;
+				result.medal = 'gold';
+				result.evaluation.projection = {
+					...result.evaluation.projection,
+					score: 900,
+					medal: 'gold',
+					componentPoints: [100]
+				};
+			} else {
+				result.evaluation.failures[0] = {
+					...result.evaluation.failures[0]!,
+					status: 'triggered'
+				};
+			}
+			const decoded = decodeScenarioStoreSnapshot(
+				snapshot(
+					{},
+					{
+						'first-profit@1': {
+							scenarioSchemaVersion: SCENARIO_RUN_SCHEMA_VERSION,
+							result
+						}
+					}
+				),
+				resolveFixtureDefinition
+			);
+
+			expect(decoded.snapshot.bestResultsByDefinitionKey).toEqual({});
+			expect(decoded.diagnostics.length).toBeGreaterThan(0);
+		}
+	);
+
 	it('keeps current-schema games exactly equal and rejects states sandbox normalization would repair', () => {
 		const exactGame = Object.assign(createNewGame('convenience', OFFICIAL_SEEDS['first-profit']), {
 			scenarioMarker: { exact: true }
@@ -336,10 +552,15 @@ describe('scenario codec', () => {
 		);
 
 		const staleLegacyRecord = structuredClone(legacyRecord);
-		staleLegacyRecord.game = { ...(staleLegacyRecord.game as GameState), day: 7 };
+		const staleLegacyGame = { ...(staleLegacyRecord.game as GameState), day: 7 };
+		staleLegacyRecord.game = staleLegacyGame;
 		staleLegacyRecord.run = {
 			...staleLegacyRecord.run,
-			evaluation: fixtureEvaluation(7)
+			evaluation: evaluateScenario(
+				fixtureDefinition(staleLegacyRecord.run.definition),
+				staleLegacyGame,
+				false
+			)
 		};
 		const stale = decodeScenarioStoreSnapshot(
 			snapshot({ 'first-profit': staleLegacyRecord }),

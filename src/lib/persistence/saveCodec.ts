@@ -2517,22 +2517,45 @@ function assertOwnDataContainer(value: object, label: string): PropertyDescripto
 const MAX_OWN_DATA_DEPTH = 512;
 const MAX_OWN_DATA_NODES = 250_000;
 
-function assertOwnDataGraph(value: unknown, label: string): void {
+export interface PlainSnapshotOptions {
+	rejectCycles?: boolean;
+}
+
+function assertOwnDataGraph(
+	value: unknown,
+	label: string,
+	options: PlainSnapshotOptions = {}
+): void {
 	const seen = new WeakSet<object>();
-	const worklist: Array<{ value: unknown; label: string; depth: number }> = [
+	const visiting = new WeakSet<object>();
+	const worklist: Array<{ value: unknown; label: string; depth: number; exit?: boolean }> = [
 		{ value, label, depth: 0 }
 	];
 	let nodeCount = 0;
 
 	while (worklist.length > 0) {
 		const current = worklist.pop()!;
-		if (typeof current.value !== 'object' || current.value === null || seen.has(current.value)) {
+		if (typeof current.value !== 'object' || current.value === null) {
+			continue;
+		}
+		if (current.exit) {
+			visiting.delete(current.value);
+			seen.add(current.value);
+			continue;
+		}
+		if (visiting.has(current.value)) {
+			if (options.rejectCycles) {
+				throw new SaveDataError(`${current.label} contains a cyclic reference`);
+			}
+			continue;
+		}
+		if (seen.has(current.value)) {
 			continue;
 		}
 		if (current.depth > MAX_OWN_DATA_DEPTH) {
 			throw new SaveDataError(`${current.label} exceeds the maximum save-data depth`);
 		}
-		seen.add(current.value);
+		visiting.add(current.value);
 		nodeCount += 1;
 		if (nodeCount > MAX_OWN_DATA_NODES) {
 			throw new SaveDataError(`${label} exceeds the maximum save-data node budget`);
@@ -2540,6 +2563,7 @@ function assertOwnDataGraph(value: unknown, label: string): void {
 
 		const descriptors = assertOwnDataContainer(current.value, current.label);
 		const array = isArrayWithoutTraps(current.value, current.label);
+		worklist.push({ ...current, exit: true });
 		for (const [key, descriptor] of Object.entries(descriptors)) {
 			if (array && key === 'length') continue;
 			if ('value' in descriptor) {
@@ -2553,8 +2577,12 @@ function assertOwnDataGraph(value: unknown, label: string): void {
 	}
 }
 
-function createPlainSnapshot(value: unknown, label: string): unknown {
-	assertOwnDataGraph(value, label);
+export function createPlainSnapshot(
+	value: unknown,
+	label: string,
+	options: PlainSnapshotOptions = {}
+): unknown {
+	assertOwnDataGraph(value, label, options);
 	try {
 		return structuredClone(value);
 	} catch {

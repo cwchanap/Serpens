@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { simulateDay } from '$lib/game/simulateDay';
 import { createNewGame } from '$lib/game/state';
+import { abandonScenario, evaluateScenario } from '$lib/scenarios/runtime';
 import type {
 	ScenarioDefinition,
 	ScenarioDefinitionRef,
-	ScenarioEvaluation,
 	ScenarioId,
 	ScenarioRun,
 	ScenarioRunRecord,
@@ -59,10 +60,54 @@ function fixtureDefinition(ref: ScenarioDefinitionRef): ScenarioDefinition {
 		},
 		allowedCommands: ['advanceDay'],
 		modifiers: [],
-		requiredObjectives: [],
-		optionalObjectives: [],
-		failures: [],
-		scoreComponents: [],
+		requiredObjectives: [
+			{
+				id: 'cash-nonnegative',
+				labelKey: 'store.defaultName',
+				query: { metric: 'cash' },
+				comparator: 'gte',
+				target: 0,
+				window: { kind: 'current' }
+			},
+			{
+				id: 'store-open',
+				labelKey: 'store.defaultName',
+				query: { metric: 'store-count' },
+				comparator: 'gte',
+				target: 1,
+				window: { kind: 'current' }
+			}
+		],
+		optionalObjectives: [
+			{
+				id: 'cash-rich',
+				labelKey: 'store.defaultName',
+				query: { metric: 'cash' },
+				comparator: 'gte',
+				target: 500,
+				window: { kind: 'current' }
+			}
+		],
+		failures: [
+			{
+				id: 'cash-negative',
+				labelKey: 'store.defaultName',
+				query: { metric: 'cash' },
+				comparator: 'lt',
+				target: 0,
+				window: { kind: 'current' }
+			}
+		],
+		scoreComponents: [
+			{
+				kind: 'metric',
+				query: { metric: 'cash' },
+				window: { kind: 'current' },
+				zeroBonusAt: 0,
+				fullBonusAt: 1000,
+				points: 500
+			}
+		],
 		medalThresholds: { silver: 700, gold: 850 }
 	};
 }
@@ -74,58 +119,52 @@ function resolveFixtureDefinition(ref: ScenarioDefinitionRef): ScenarioDefinitio
 	return fixtureDefinition(ref);
 }
 
-function fixtureEvaluation(day: number, score = 500): ScenarioEvaluation {
-	return {
-		day,
-		required: [],
-		optional: [],
-		failures: [],
-		deadline: null,
-		risks: [],
-		projection: {
-			score,
-			medal: score >= 850 ? 'gold' : score >= 700 ? 'silver' : 'bronze',
-			componentPoints: []
-		}
-	};
-}
-
 function fixtureRun(
 	ref: ScenarioDefinitionRef = { scenarioId: 'first-profit', version: 1 },
 	options: {
 		status?: ScenarioRun['status'];
 		seed?: number;
 		score?: number;
+		advanceDays?: number;
 	} = {}
 ): ScenarioRun {
 	const definition = fixtureDefinition(ref);
 	const seed = options.seed ?? definition.officialSeed;
-	const game = createNewGame('convenience', seed);
 	const status = options.status ?? 'active';
-	const score = options.score ?? 500;
-	const evaluation = fixtureEvaluation(game.day, score);
+	let game = createNewGame('convenience', seed);
+	for (let day = 0; day < (options.advanceDays ?? 0); day += 1) game = simulateDay(game);
+	game = {
+		...game,
+		cash: status === 'failed' ? -1 : Math.max(0, Math.min(1000, (options.score ?? 500) - 500) * 2)
+	};
 	const eligibility =
 		seed === definition.officialSeed ? ('ranked' as const) : ('unranked' as const);
-	return {
+	const active: ScenarioRun = {
 		definition: ref,
 		seed,
 		eligibility,
-		status,
+		status: 'active',
 		game,
+		evaluation: evaluateScenario(definition, game, false),
+		result: null
+	};
+	if (status === 'active') return active;
+	if (status === 'abandoned') return abandonScenario(active);
+	const evaluation = evaluateScenario(definition, game, true);
+	return {
+		...active,
+		status,
 		evaluation,
-		result:
-			status === 'active'
-				? null
-				: {
-						definition: ref,
-						seed,
-						eligibility,
-						outcome: status,
-						completionDay: game.day,
-						score,
-						medal: status === 'completed' ? evaluation.projection.medal : null,
-						evaluation
-					}
+		result: {
+			definition: ref,
+			seed,
+			eligibility,
+			outcome: status,
+			completionDay: game.day,
+			score: evaluation.projection.score,
+			medal: status === 'completed' ? evaluation.projection.medal : null,
+			evaluation
+		}
 	};
 }
 
@@ -319,12 +358,11 @@ describe('scenario repository', () => {
 		await repository.saveActiveRun(fixtureRun());
 		const firstOutcome = await repository.commitTerminalRun(existing);
 		await repository.saveActiveRun(fixtureRun());
-		const equal = fixtureRun(undefined, { status: 'completed', score: 750 });
-		equal.evaluation = {
-			...equal.evaluation,
-			risks: [{ kind: 'deadline', daysRemaining: 3, triggered: false }]
-		};
-		equal.result = { ...equal.result!, evaluation: equal.evaluation };
+		const equal = fixtureRun(undefined, {
+			status: 'completed',
+			score: 750,
+			advanceDays: 1
+		});
 
 		const equalOutcome = await repository.commitTerminalRun(equal);
 		const summary = await repository.getSummary();
@@ -336,6 +374,37 @@ describe('scenario repository', () => {
 			bestUpdated: false
 		});
 		expect(summary.bestResultsByDefinitionKey['first-profit@1']).toEqual(existing.result);
+	});
+
+	it('rejects a fabricated terminal evaluation before it can replace the persisted best', async () => {
+		const driver = new CountingDriver();
+		const repository = new ScenarioRepositoryFromDriver(driver, resolveFixtureDefinition);
+		await repository.saveActiveRun(fixtureRun());
+		const existing = fixtureRun(undefined, { status: 'completed', score: 750 });
+		await repository.commitTerminalRun(existing);
+		const active = fixtureRun();
+		await repository.saveActiveRun(active);
+		const fabricated = fixtureRun(undefined, { status: 'completed', score: 700 });
+		fabricated.evaluation = {
+			...fabricated.evaluation,
+			projection: {
+				...fabricated.evaluation.projection,
+				score: 1000,
+				medal: 'gold',
+				componentPoints: [500]
+			}
+		};
+		fabricated.result = {
+			...fabricated.result!,
+			score: 1000,
+			medal: 'gold',
+			evaluation: fabricated.evaluation
+		};
+
+		await expect(repository.commitTerminalRun(fabricated)).rejects.toThrow();
+		const summary = await repository.getSummary();
+		expect(summary.bestResultsByDefinitionKey['first-profit@1']).toEqual(existing.result);
+		expect(summary.activeRunsByScenarioId['first-profit']).toEqual(active);
 	});
 
 	it('stores best results separately for each immutable definition version', async () => {
