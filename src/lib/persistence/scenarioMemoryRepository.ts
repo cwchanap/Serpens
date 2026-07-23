@@ -12,20 +12,28 @@ import { ScenarioRepositoryFromDriver, type ScenarioStoreDriver } from './scenar
 
 export class ScenarioMemoryStoreDriver implements ScenarioStoreDriver {
 	private value: unknown;
+	private diagnostics: DecodeScenarioStoreResult['diagnostics'];
 
 	constructor(
 		initial: unknown = createEmptyScenarioStore(),
 		private readonly resolveDefinition: ScenarioDefinitionResolver = resolveScenarioDefinition
 	) {
-		this.value = structuredClone(initial);
+		const decoded = decodeScenarioStoreSnapshot(initial, resolveDefinition);
+		this.value = decoded.snapshot;
+		this.diagnostics = decoded.diagnostics;
 	}
 
 	async read(): Promise<DecodeScenarioStoreResult> {
-		return decodeScenarioStoreSnapshot(this.value, this.resolveDefinition);
+		const decoded = decodeScenarioStoreSnapshot(this.value, this.resolveDefinition);
+		return {
+			snapshot: decoded.snapshot,
+			diagnostics: structuredClone([...this.diagnostics, ...decoded.diagnostics])
+		};
 	}
 
 	async write(snapshot: ScenarioStoreSnapshot): Promise<void> {
 		this.value = validateScenarioStoreSnapshot(snapshot, this.resolveDefinition);
+		this.diagnostics = [];
 	}
 }
 
