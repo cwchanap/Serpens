@@ -111,10 +111,24 @@ describe('ScenarioResultsDialog', () => {
 	});
 
 	it('keeps committed results visible while exposing localized restart retry and dismiss actions', async () => {
-		expect.assertions(6);
+		expect.assertions(11);
 		const onRetry = vi.fn();
-		const onDismissError = vi.fn();
-		render(ScenarioResultsDialog, {
+		const rendered: { current: ReturnType<typeof render> | null } = { current: null };
+		const onDismissError = vi.fn(async () => {
+			await rendered.current?.rerender({
+				view,
+				i18n: createI18n('en'),
+				pending: false,
+				error: null,
+				onRestart: vi.fn(),
+				onCatalog: vi.fn(),
+				onSandbox: vi.fn(),
+				onRetry,
+				onDismissError,
+				onClose: vi.fn()
+			});
+		});
+		rendered.current = render(ScenarioResultsDialog, {
 			view,
 			i18n: createI18n('en'),
 			pending: false,
@@ -134,8 +148,51 @@ describe('ScenarioResultsDialog', () => {
 		await expect.element(page.getByRole('button', { name: 'Retry' })).toBeVisible();
 		await expect.element(page.getByRole('button', { name: 'Dismiss' })).toBeVisible();
 		await page.getByRole('button', { name: 'Retry' }).click();
-		await page.getByRole('button', { name: 'Dismiss' }).click();
+		const dismiss = page.getByRole('button', { name: 'Dismiss' });
+		(await dismiss.element()).focus();
+		expect(document.activeElement).toBe(await dismiss.element());
+		await dismiss.click();
+		await expect.element(page.getByRole('alert')).not.toBeInTheDocument();
+		await expect.element(page.getByRole('dialog', { name: 'Challenge results' })).toBeVisible();
+		await expect.element(page.getByText('Challenge completed', { exact: true })).toBeVisible();
+		expect(document.activeElement).toBe(
+			await page.getByRole('button', { name: 'Restart challenge' }).element()
+		);
 		expect(onRetry).toHaveBeenCalledOnce();
 		expect(onDismissError).toHaveBeenCalledOnce();
+	});
+
+	it('restores the opener focus when a successful retry removes the dialog', async () => {
+		expect.assertions(5);
+		const opener = document.createElement('button');
+		opener.textContent = 'Open results';
+		document.body.append(opener);
+		opener.focus();
+		expect(document.activeElement).toBe(opener);
+		const rendered: { current: ReturnType<typeof render> | null } = { current: null };
+		const onRetry = vi.fn(async () => {
+			await rendered.current?.unmount();
+		});
+		rendered.current = render(ScenarioResultsDialog, {
+			view,
+			i18n: createI18n('en'),
+			pending: false,
+			error: 'The challenge could not be saved.',
+			onRestart: vi.fn(),
+			onCatalog: vi.fn(),
+			onSandbox: vi.fn(),
+			onRetry,
+			onDismissError: vi.fn(),
+			onClose: vi.fn()
+		});
+
+		await page.getByRole('button', { name: 'Retry' }).click();
+		expect(onRetry).toHaveBeenCalledOnce();
+		await expect
+			.element(page.getByRole('dialog', { name: 'Challenge results' }))
+			.not.toBeInTheDocument();
+		await expect.element(page.getByRole('alert')).not.toBeInTheDocument();
+		expect(document.activeElement).toBe(opener);
+		opener.remove();
 	});
 });

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tick } from 'svelte';
 	import { focusTrap } from '$lib/a11y/focusTrap';
 	import type { I18nBundle } from '$lib/i18n';
 	import type { ScenarioResultsViewModel } from '$lib/i18n/scenarioCopy';
@@ -13,7 +14,7 @@
 		onCatalog: () => void | Promise<void>;
 		onSandbox: () => void | Promise<void>;
 		onRetry: () => void | Promise<void>;
-		onDismissError: () => void;
+		onDismissError: () => void | Promise<void>;
 		onClose: () => void;
 	}
 
@@ -29,12 +30,19 @@
 		onDismissError,
 		onClose
 	}: Props = $props();
+	let restartButton: HTMLButtonElement;
 
 	function handleKeydown(event: KeyboardEvent): void {
 		if (event.key !== 'Escape') return;
 		event.preventDefault();
 		event.stopPropagation();
 		onClose();
+	}
+
+	async function dismissError(): Promise<void> {
+		await onDismissError();
+		await tick();
+		restartButton?.focus({ preventScroll: true });
 	}
 </script>
 
@@ -67,13 +75,18 @@
 				<button type="button" disabled={pending} onclick={() => void onRetry()}>
 					{i18n.t('scenarioCatalog.retry')}
 				</button>
-				<button type="button" disabled={pending} onclick={onDismissError}>
+				<button type="button" disabled={pending} onclick={() => void dismissError()}>
 					{i18n.t('scenarioStatus.dismiss')}
 				</button>
 			</div>
 		{/if}
 		<div class="actions">
-			<button type="button" disabled={pending} onclick={() => void onRestart()}>
+			<button
+				bind:this={restartButton}
+				type="button"
+				disabled={pending}
+				onclick={() => void onRestart()}
+			>
 				{i18n.t('scenarioCatalog.restartChallenge')}
 			</button>
 			<button type="button" disabled={pending} onclick={() => void onCatalog()}>
