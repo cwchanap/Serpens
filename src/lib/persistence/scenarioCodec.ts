@@ -2,18 +2,19 @@ import { resolveScenarioDefinition } from '$lib/scenarios/catalog';
 import { areScenarioEvidenceIdsCanonical, scenarioConditionPasses } from '$lib/scenarios/metrics';
 import { evaluateScenario } from '$lib/scenarios/runtime';
 import { medalForScore } from '$lib/scenarios/scoring';
-import type {
-	ScenarioBestResultRecord,
-	ScenarioDefinition,
-	ScenarioDefinitionKey,
-	ScenarioDefinitionRef,
-	ScenarioDiagnostic,
-	ScenarioEvaluation,
-	ScenarioId,
-	ScenarioResult,
-	ScenarioRun,
-	ScenarioRunRecord,
-	ScenarioStoreSnapshot
+import {
+	MAX_SCENARIO_SEED,
+	type ScenarioBestResultRecord,
+	type ScenarioDefinition,
+	type ScenarioDefinitionKey,
+	type ScenarioDefinitionRef,
+	type ScenarioDiagnostic,
+	type ScenarioEvaluation,
+	type ScenarioId,
+	type ScenarioResult,
+	type ScenarioRun,
+	type ScenarioRunRecord,
+	type ScenarioStoreSnapshot
 } from '$lib/scenarios/types';
 import { createPlainSnapshot, migrateSavedGame, validateCurrentGameState } from './saveCodec';
 import { SAVE_SCHEMA_VERSION } from './saveTypes';
@@ -192,6 +193,19 @@ function requireInteger(value: unknown, path: string, minimum?: number): number 
 		);
 	}
 	return number;
+}
+
+function requireScenarioSeed(value: unknown, path: string): number {
+	const seed = requireInteger(value, path, 1);
+	if (seed > MAX_SCENARIO_SEED) {
+		fail(
+			'invalid-integer',
+			path,
+			value,
+			`${path} must be an integer from 1 through ${MAX_SCENARIO_SEED}.`
+		);
+	}
+	return seed;
 }
 
 function requireOneOf<const T extends readonly string[]>(
@@ -735,7 +749,7 @@ function validateResult(
 		resolveDefinition,
 		`${path}.definition`
 	);
-	const seed = requireInteger(result.seed, `${path}.seed`, 1);
+	const seed = requireScenarioSeed(result.seed, `${path}.seed`);
 	const eligibility = requireOneOf(result.eligibility, ELIGIBILITIES, `${path}.eligibility`);
 	const expectedEligibility = seed === definition.officialSeed ? 'ranked' : 'unranked';
 	if (eligibility !== expectedEligibility) {
@@ -845,7 +859,7 @@ function validateRunWithGame(
 		resolveDefinition,
 		`${path}.definition`
 	);
-	const seed = requireInteger(run.seed, `${path}.seed`, 1);
+	const seed = requireScenarioSeed(run.seed, `${path}.seed`);
 	const eligibility = requireOneOf(run.eligibility, ELIGIBILITIES, `${path}.eligibility`);
 	const expectedEligibility = seed === definition.officialSeed ? 'ranked' : 'unranked';
 	if (eligibility !== expectedEligibility) {
@@ -881,16 +895,20 @@ function validateRunWithGame(
 			'Run evaluation must exactly match the resolved definition and embedded game.'
 		);
 	}
-	const nonterminalEvaluation = evaluateScenario(definition, game, false);
-	const selectedStatus = selectedTerminalStatus(nonterminalEvaluation);
-	const expectedStatus = status === 'abandoned' ? 'active' : status;
-	if (selectedStatus !== expectedStatus) {
-		fail(
-			'lifecycle-mismatch',
-			`${path}.status`,
-			status,
-			'Run status must match runtime failure, completion, then deadline selection.'
-		);
+	if (status !== 'active') {
+		// startScenario always emits active, even when its initial evaluation is already terminal.
+		// With no command-history marker, exact game/evaluation equality is the canonical proof.
+		const nonterminalEvaluation = evaluateScenario(definition, game, false);
+		const selectedStatus = selectedTerminalStatus(nonterminalEvaluation);
+		const expectedStatus = status === 'abandoned' ? 'active' : status;
+		if (selectedStatus !== expectedStatus) {
+			fail(
+				'lifecycle-mismatch',
+				`${path}.status`,
+				status,
+				'Run status must match runtime failure, completion, then deadline selection.'
+			);
+		}
 	}
 	let result: ScenarioResult | null;
 	if (status === 'active') {

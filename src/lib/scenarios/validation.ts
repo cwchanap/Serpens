@@ -42,9 +42,13 @@ import {
 	createInitialWorldProgress,
 	getWorldCityDefinition
 } from '$lib/game/world';
-import { SCENARIO_COMMAND_KINDS, type ScenarioDefinition, type ScenarioDiagnostic } from './types';
+import {
+	MAX_SCENARIO_SEED,
+	SCENARIO_COMMAND_KINDS,
+	type ScenarioDefinition,
+	type ScenarioDiagnostic
+} from './types';
 
-const MAX_CANONICAL_SEED = 2_147_483_646;
 const SUPPORTED_DEFINITION_VERSION = 1;
 const BRONZE_SCORE = 500;
 const MAX_SCORE = 1_000;
@@ -434,14 +438,14 @@ function validateDefinitionIdentity(context: ValidationContext, definition: Json
 		!Number.isInteger(definition.officialSeed) ||
 		typeof definition.officialSeed !== 'number' ||
 		definition.officialSeed < 1 ||
-		definition.officialSeed > MAX_CANONICAL_SEED
+		definition.officialSeed > MAX_SCENARIO_SEED
 	) {
 		diagnostic(
 			context,
 			'officialSeed',
 			'invalid-seed',
 			definition.officialSeed,
-			`Scenario seeds must be integers from 1 through ${MAX_CANONICAL_SEED}.`
+			`Scenario seeds must be integers from 1 through ${MAX_SCENARIO_SEED}.`
 		);
 	} else {
 		context.officialSeed = definition.officialSeed;

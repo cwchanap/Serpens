@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { simulateDay } from '$lib/game/simulateDay';
 import { createNewGame } from '$lib/game/state';
 import type { GameState } from '$lib/game/types';
-import { abandonScenario, evaluateScenario } from '$lib/scenarios/runtime';
+import { abandonScenario, evaluateScenario, startScenario } from '$lib/scenarios/runtime';
 import type {
 	ScenarioDefinition,
 	ScenarioDefinitionRef,
@@ -17,8 +17,10 @@ import {
 	SCENARIO_STORE_SCHEMA_VERSION,
 	createEmptyScenarioStore,
 	decodeScenarioStoreSnapshot,
+	encodeScenarioRunRecord,
 	parseScenarioStoreSnapshot,
-	scenarioDefinitionKey
+	scenarioDefinitionKey,
+	validateScenarioRun
 } from './scenarioCodec';
 import { ScenarioMemoryRepository } from './scenarioMemoryRepository';
 
@@ -1036,28 +1038,111 @@ describe('scenario codec', () => {
 		expect(decoded.diagnostics.map((entry) => entry.code)).toContain('evaluation-mismatch');
 	});
 
-	it.each(['completed', 'deadline'] as const)(
-		'rejects an active run whose game state is already %s-terminal',
-		(terminalCase) => {
-			const active = fixtureRun(undefined, {
-				advanceDays: terminalCase === 'deadline' ? 13 : 0
-			});
-			active.game = {
-				...active.game,
-				cash: terminalCase === 'completed' ? 200 : 0
+	it.each(['required-satisfied', 'failure-triggered', 'day-limit'] as const)(
+		'round-trips the runtime-produced active start when %s initially',
+		(startCase) => {
+			const base = fixtureDefinition({ scenarioId: 'first-profit', version: 1 });
+			const definition: ScenarioDefinition = {
+				...base,
+				start: {
+					...base.start,
+					overrides: { ...base.start.overrides, storeCap: 1 }
+				},
+				content: {
+					...base.content,
+					retailPlacements: [
+						{
+							cityId: 'harbor-city',
+							tileId: 'harbor-city-1-1',
+							archetypeId: 'convenience'
+						}
+					]
+				},
+				dayLimit: startCase === 'day-limit' ? 1 : base.dayLimit,
+				requiredObjectives:
+					startCase === 'day-limit'
+						? [{ ...base.requiredObjectives[0]!, target: 1_000_000_000 }]
+						: base.requiredObjectives,
+				failures:
+					startCase === 'failure-triggered'
+						? [{ ...base.failures[0]!, comparator: 'gte', target: 0 }]
+						: base.failures
 			};
-			active.evaluation = evaluateScenario(
-				fixtureDefinition(active.definition),
-				active.game,
-				false
-			);
+			const started = startScenario(definition, definition.officialSeed);
+			if (!started.ok) {
+				throw new Error(
+					`Scenario start failed: ${started.error.code} ${JSON.stringify(started.error.diagnostics)}`
+				);
+			}
+
+			const record = encodeScenarioRunRecord(started.value, () => definition);
 			const decoded = decodeScenarioStoreSnapshot(
-				snapshot({ 'first-profit': runRecord(active) }),
-				resolveFixtureDefinition
+				snapshot({ 'first-profit': record }),
+				() => definition
 			);
 
-			expect(decoded.snapshot.activeRunsByScenarioId).toEqual({});
-			expect(decoded.diagnostics.map((entry) => entry.code)).toContain('lifecycle-mismatch');
+			expect(started.value.status).toBe('active');
+			if (startCase === 'required-satisfied') {
+				expect(
+					started.value.evaluation.required.every((objective) => objective.status === 'satisfied')
+				).toBe(true);
+			} else if (startCase === 'failure-triggered') {
+				expect(
+					started.value.evaluation.failures.some((failure) => failure.status === 'triggered')
+				).toBe(true);
+			} else {
+				expect(started.value.evaluation.deadline?.triggered).toBe(true);
+			}
+			expect(decoded.diagnostics).toEqual([]);
+			expect(decoded.snapshot.activeRunsByScenarioId['first-profit']).toEqual(record);
+		}
+	);
+
+	it('retains terminal outcome precedence validation', () => {
+		const completed = fixtureRun(undefined, { status: 'completed', score: 750 });
+		const wrongOutcome = structuredClone(completed);
+		wrongOutcome.result = {
+			...wrongOutcome.result!,
+			outcome: 'failed',
+			medal: null
+		};
+
+		expect(() => validateScenarioRun(wrongOutcome, resolveFixtureDefinition)).toThrow(
+			/Terminal outcome must follow failure, completion, then deadline precedence/
+		);
+	});
+
+	it('accepts the maximum canonical run and result seed', () => {
+		const maximumSeed = 2_147_483_646;
+		const completed = fixtureRun(undefined, {
+			status: 'completed',
+			score: 750,
+			seed: maximumSeed
+		});
+
+		expect(validateScenarioRun(completed, resolveFixtureDefinition)).toEqual(completed);
+	});
+
+	it.each(['run', 'result'] as const)(
+		'rejects a seed above the canonical maximum in a %s',
+		(kind) => {
+			const maximumSeed = 2_147_483_646;
+			const completed = fixtureRun(undefined, {
+				status: 'completed',
+				score: 750,
+				seed: maximumSeed
+			});
+			const oversized = structuredClone(completed);
+			if (kind === 'run') {
+				oversized.seed = maximumSeed + 1;
+				oversized.game.seed = maximumSeed + 1;
+			} else {
+				oversized.result = { ...oversized.result!, seed: maximumSeed + 1 };
+			}
+
+			expect(() => validateScenarioRun(oversized, resolveFixtureDefinition)).toThrow(
+				/must be an integer from 1 through 2147483646/
+			);
 		}
 	);
 
