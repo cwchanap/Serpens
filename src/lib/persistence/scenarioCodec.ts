@@ -1,6 +1,6 @@
 import { resolveScenarioDefinition } from '$lib/scenarios/catalog';
 import { areScenarioEvidenceIdsCanonical, scenarioConditionPasses } from '$lib/scenarios/metrics';
-import { evaluateScenario } from '$lib/scenarios/runtime';
+import { abandonScenario, evaluateScenario, startScenario } from '$lib/scenarios/runtime';
 import { medalForScore } from '$lib/scenarios/scoring';
 import {
 	MAX_SCENARIO_SEED,
@@ -846,6 +846,19 @@ function expectedRunEvaluation(
 	};
 }
 
+function isCanonicalInitialLifecycleRun(
+	definition: ScenarioDefinition,
+	seed: number,
+	run: Omit<ScenarioRun, 'game'>,
+	game: ReturnType<typeof validateCurrentGameState>
+): boolean {
+	if (run.status !== 'active' && run.status !== 'abandoned') return false;
+	const started = startScenario(definition, seed);
+	if (!started.ok) return false;
+	const canonical = run.status === 'abandoned' ? abandonScenario(started.value) : started.value;
+	return deeplyEqual({ ...run, game }, canonical);
+}
+
 function validateRunWithGame(
 	runValue: unknown,
 	game: ReturnType<typeof validateCurrentGameState>,
@@ -895,20 +908,27 @@ function validateRunWithGame(
 			'Run evaluation must exactly match the resolved definition and embedded game.'
 		);
 	}
-	if (status !== 'active') {
-		// startScenario always emits active, even when its initial evaluation is already terminal.
-		// With no command-history marker, exact game/evaluation equality is the canonical proof.
-		const nonterminalEvaluation = evaluateScenario(definition, game, false);
-		const selectedStatus = selectedTerminalStatus(nonterminalEvaluation);
-		const expectedStatus = status === 'abandoned' ? 'active' : status;
-		if (selectedStatus !== expectedStatus) {
-			fail(
-				'lifecycle-mismatch',
-				`${path}.status`,
-				status,
-				'Run status must match runtime failure, completion, then deadline selection.'
-			);
-		}
+	const nonterminalEvaluation = evaluateScenario(definition, game, false);
+	const selectedStatus = selectedTerminalStatus(nonterminalEvaluation);
+	const expectedStatus = status === 'abandoned' ? 'active' : status;
+	const candidateRun = {
+		...(run as Omit<ScenarioRun, 'game'>),
+		definition: definitionRef,
+		seed,
+		eligibility,
+		status,
+		evaluation
+	};
+	if (
+		selectedStatus !== expectedStatus &&
+		!isCanonicalInitialLifecycleRun(definition, seed, candidateRun, game)
+	) {
+		fail(
+			'lifecycle-mismatch',
+			`${path}.status`,
+			status,
+			'Run status must match runtime failure, completion, then deadline selection.'
+		);
 	}
 	let result: ScenarioResult | null;
 	if (status === 'active') {
