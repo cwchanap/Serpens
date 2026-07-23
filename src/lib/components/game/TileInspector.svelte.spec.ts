@@ -96,6 +96,8 @@ function renderInspector(
 		onOpenDetails: () => void;
 		onClickFeedback: () => void;
 		i18n: I18nBundle;
+		canUpgradeStore: boolean;
+		disabledReason: string;
 	}> = {}
 ) {
 	const props = {
@@ -358,5 +360,24 @@ describe('TileInspector localization', () => {
 		await expect
 			.element(page.getByRole('heading', { name: 'Select a city tile' }))
 			.not.toBeInTheDocument();
+	});
+});
+
+describe('TileInspector capability', () => {
+	it('combines challenge permission with level and affordability guards', async () => {
+		expect.assertions(3);
+		const onUpgradeStore = vi.fn();
+		const upgradeable = { ...store, level: 2 };
+		renderInspector({
+			game: { ...defaultGame, cash: 1_000_000, stores: [upgradeable] },
+			store: upgradeable,
+			onUpgradeStore,
+			canUpgradeStore: false,
+			disabledReason: 'Unavailable in this challenge.'
+		});
+
+		await expect.element(page.getByRole('button', { name: /upgrade/i })).toBeDisabled();
+		await expect.element(page.getByText('Unavailable in this challenge.')).toBeVisible();
+		expect(onUpgradeStore).not.toHaveBeenCalled();
 	});
 });

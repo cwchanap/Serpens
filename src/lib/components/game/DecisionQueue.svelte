@@ -6,11 +6,15 @@
 	let {
 		decisions,
 		i18n,
-		onResolve
+		onResolve,
+		canResolve = true,
+		disabledReason = null
 	}: {
 		decisions: DecisionItem[];
 		i18n: I18nBundle;
 		onResolve: (decisionId: string, optionId: string) => void;
+		canResolve?: boolean;
+		disabledReason?: string | null;
 	} = $props();
 </script>
 
@@ -38,7 +42,13 @@
 
 					<div class="options">
 						{#each localizedDecision.options as option (option.id)}
-							<button type="button" onclick={() => onResolve(decision.id, option.id)}>
+							<button
+								type="button"
+								disabled={!canResolve}
+								onclick={() => {
+									if (canResolve) onResolve(decision.id, option.id);
+								}}
+							>
 								<strong>{option.label}</strong>
 								<span>{option.description}</span>
 							</button>
@@ -47,6 +57,9 @@
 				</article>
 			{/each}
 		</div>
+		{#if !canResolve && disabledReason}
+			<p class="disabled-copy" role="status">{disabledReason}</p>
+		{/if}
 	{/if}
 </section>
 

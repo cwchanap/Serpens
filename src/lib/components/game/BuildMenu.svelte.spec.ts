@@ -436,6 +436,24 @@ describe('BuildMenu', () => {
 
 		await expect.element(page.getByRole('button', { name: /build warehouse/i })).toBeDisabled();
 	});
+
+	it('blocks disallowed retail content with text and never arms its placement', async () => {
+		expect.assertions(3);
+		const onChooseRetail = vi.fn();
+		render(
+			BuildMenu,
+			buildMenuProps({
+				onChooseRetail,
+				canOpenStore: true,
+				allowedRetailArchetypeIds: ['convenience'],
+				disabledReason: 'Unavailable in this challenge.'
+			})
+		);
+
+		await expect.element(page.getByRole('button', { name: /build boutique/i })).toBeDisabled();
+		await expect.element(page.getByText('Unavailable in this challenge.')).toBeVisible();
+		expect(onChooseRetail).not.toHaveBeenCalled();
+	});
 });
 
 describe('BuildMenu industry recipe cards', () => {
@@ -510,5 +528,25 @@ describe('BuildMenu industry recipe cards', () => {
 		await expect
 			.element(page.getByText(/needs a water source resource tile/i).first())
 			.toBeVisible();
+	});
+
+	it('blocks disallowed industrial content and cannot arm it', async () => {
+		expect.assertions(3);
+		const onChooseIndustry = vi.fn();
+		render(
+			BuildMenu,
+			buildMenuProps({
+				activeMapView: 'industry',
+				retailOptions: [],
+				onChooseIndustry,
+				canBuildIndustrialBuilding: true,
+				allowedIndustryBuildingTypeIds: ['water-bottler'],
+				disabledReason: 'Unavailable in this challenge.'
+			})
+		);
+
+		await expect.element(page.getByRole('button', { name: /build warehouse/i })).toBeDisabled();
+		await expect.element(page.getByText('Unavailable in this challenge.').first()).toBeVisible();
+		expect(onChooseIndustry).not.toHaveBeenCalled();
 	});
 });

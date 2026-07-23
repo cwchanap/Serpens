@@ -5,11 +5,15 @@
 	let {
 		i18n,
 		policy,
-		onChange
+		onChange,
+		canUpdate = true,
+		disabledReason = null
 	}: {
 		i18n: I18nBundle;
 		policy: CompanyPolicy;
 		onChange: (patch: Partial<CompanyPolicy>) => void;
+		canUpdate?: boolean;
+		disabledReason?: string | null;
 	} = $props();
 
 	const fields = [
@@ -39,6 +43,7 @@
 	}[];
 
 	function update(key: keyof CompanyPolicy, value: string) {
+		if (!canUpdate) return;
 		onChange({ [key]: value } as Partial<CompanyPolicy>);
 	}
 </script>
@@ -53,6 +58,7 @@
 				<span>{fieldLabel}</span>
 				<select
 					aria-label={fieldLabel}
+					disabled={!canUpdate}
 					value={policy[field.key]}
 					onchange={(event) => update(field.key, event.currentTarget.value)}
 				>
@@ -63,6 +69,9 @@
 			</label>
 		{/each}
 	</div>
+	{#if !canUpdate && disabledReason}
+		<p class="disabled-copy" role="status">{disabledReason}</p>
+	{/if}
 </section>
 
 <style>

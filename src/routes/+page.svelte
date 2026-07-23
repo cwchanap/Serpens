@@ -40,6 +40,7 @@
 	import {
 		DEFAULT_INDUSTRY_CITY_HEIGHT,
 		DEFAULT_INDUSTRY_CITY_WIDTH,
+		INDUSTRIAL_BUILDING_TYPES,
 		generateIndustryCity,
 		getIndustryTileById
 	} from '$lib/game/industry';
@@ -119,8 +120,18 @@
 	import type { SaveSlotMetadata } from '$lib/persistence/saveTypes';
 	import { createScenarioRepository } from '$lib/persistence/scenarioRepositoryFactory';
 	import { resolveScenarioDefinition } from '$lib/scenarios/catalog';
-	import type { ScenarioOperationError, ScenarioResult, ScenarioRun } from '$lib/scenarios/types';
-	import { GameRouteController, type GameRouteControllerState } from './gameRouteController';
+	import { isScenarioContentAllowed } from '$lib/scenarios/capabilities';
+	import type {
+		ScenarioDefinition,
+		ScenarioOperationError,
+		ScenarioResult,
+		ScenarioRun
+	} from '$lib/scenarios/types';
+	import {
+		GameRouteController,
+		createMutationAvailability,
+		type GameRouteControllerState
+	} from './gameRouteController';
 
 	interface ManagementPanelMenuItem {
 		id: ManagementPanelId;
@@ -304,6 +315,73 @@
 		readLocalePreference(safeLocalStorage(), collectNavigatorLocaleCandidates())
 	);
 	let i18n = $derived(createI18n(activeLocale));
+	let activeScenarioDefinition = $derived<ScenarioDefinition | null>(
+		activeScenarioRun ? (resolveScenarioDefinition(activeScenarioRun.definition) ?? null) : null
+	);
+	let mutationAvailability = $derived(
+		createMutationAvailability({
+			playMode,
+			pending: scenarioCommandPending,
+			definition: activeScenarioDefinition
+		})
+	);
+	let mutationDisabledReason = $derived(
+		playMode === 'scenario' ? i18n.t('buildMenu.unavailable') : null
+	);
+	let worldCitySelectionAvailable = $derived(
+		playMode === 'sandbox' ||
+			(!scenarioCommandPending &&
+				activeScenarioDefinition !== null &&
+				activeScenarioDefinition.allowedCommands.includes('selectWorldCity'))
+	);
+	let allowedRetailArchetypeIds = $derived.by<ArchetypeId[]>(() =>
+		retailBuildOptions
+			.map((option) => option.archetypeId)
+			.filter(
+				(archetypeId) =>
+					playMode === 'sandbox' ||
+					(activeScenarioDefinition !== null &&
+						isScenarioContentAllowed(activeScenarioDefinition, {
+							kind: 'archetype',
+							archetypeId
+						}))
+			)
+	);
+	let allowedIndustryBuildingTypeIds = $derived.by<IndustrialBuildingTypeId[]>(() =>
+		(Object.keys(INDUSTRIAL_BUILDING_TYPES) as IndustrialBuildingTypeId[]).filter(
+			(buildingTypeId) =>
+				playMode === 'sandbox' ||
+				(activeScenarioDefinition !== null &&
+					isScenarioContentAllowed(activeScenarioDefinition, {
+						kind: 'building',
+						buildingTypeId
+					}))
+		)
+	);
+	let allowedWorldCityIds = $derived.by(() =>
+		WORLD_CITY_CATALOG.map((city) => city.id).filter(
+			(cityId) =>
+				playMode === 'sandbox' ||
+				(activeScenarioDefinition !== null &&
+					isScenarioContentAllowed(activeScenarioDefinition, { kind: 'city', cityId }))
+		)
+	);
+	let allowedProductCategoryIds = $derived.by(() => {
+		const categoryIds = [
+			...new Set(
+				(game?.stores ?? []).flatMap((store) => store.products.map((product) => product.categoryId))
+			)
+		];
+		return categoryIds.filter(
+			(categoryId) =>
+				playMode === 'sandbox' ||
+				(activeScenarioDefinition !== null &&
+					isScenarioContentAllowed(activeScenarioDefinition, {
+						kind: 'product',
+						categoryId
+					}))
+		);
+	});
 	let placementFeedback = $state<PlacementBlockReason | null>(null);
 	let saveRepository: SaveRepository | null = $state(null);
 	let autoSave = $state<SaveSlotMetadata | null>(null);
@@ -485,23 +563,65 @@
 		selectedIndustryTile !== null && (!isPlacementModeActive || placementFeedback !== null)
 	);
 	let retailBuildOptions = $derived(getRetailBuildMenuOptions({ game, city: activeCity }));
-	let retailPlacementPreview = $derived(
-		retailPlacementArchetypeId
-			? createRetailPlacementPreview({
-					game,
-					city: activeCity,
-					archetypeId: retailPlacementArchetypeId
-				})
-			: null
-	);
-	let industryPlacementPreview = $derived(
-		industryPlacementBuildingTypeId
-			? createIndustryPlacementPreview({
-					game,
-					buildingTypeId: industryPlacementBuildingTypeId
-				})
-			: null
-	);
+	let retailPlacementPreview = $derived.by(() => {
+		const archetypeId = retailPlacementArchetypeId;
+		if (!archetypeId) return null;
+		const preview = createRetailPlacementPreview({
+			game,
+			city: activeCity,
+			archetypeId
+		});
+		if (playMode === 'sandbox' || !activeScenarioDefinition) return preview;
+		if (!isWorldCityId(activeCity.id)) return { ...preview, validTileIds: [] };
+		const cityId = activeCity.id;
+		const validTileIds = preview.validTileIds.filter((tileId) =>
+			isScenarioContentAllowed(activeScenarioDefinition!, {
+				kind: 'retail-placement',
+				cityId,
+				tileId,
+				archetypeId
+			})
+		);
+		return {
+			...preview,
+			validTileIds,
+			invalidTileIds: [
+				...new Set([
+					...preview.invalidTileIds,
+					...preview.validTileIds.filter((tileId) => !validTileIds.includes(tileId))
+				])
+			]
+		};
+	});
+	let industryPlacementPreview = $derived.by(() => {
+		const buildingTypeId = industryPlacementBuildingTypeId;
+		if (!buildingTypeId) return null;
+		const preview = createIndustryPlacementPreview({
+			game,
+			buildingTypeId
+		});
+		if (playMode === 'sandbox' || !activeScenarioDefinition) return preview;
+		if (!isWorldCityId(industryCity.id)) return { ...preview, validTileIds: [] };
+		const cityId = industryCity.id;
+		const validTileIds = preview.validTileIds.filter((tileId) =>
+			isScenarioContentAllowed(activeScenarioDefinition!, {
+				kind: 'industrial-placement',
+				cityId,
+				tileId,
+				buildingTypeId
+			})
+		);
+		return {
+			...preview,
+			validTileIds,
+			invalidTileIds: [
+				...new Set([
+					...preview.invalidTileIds,
+					...preview.validTileIds.filter((tileId) => !validTileIds.includes(tileId))
+				])
+			]
+		};
+	});
 	let industryLockedReason = $derived<PlacementBlockReason | null>(
 		game ? null : { code: 'industry.lockedUntilRetail' }
 	);
@@ -839,7 +959,7 @@
 			return;
 		}
 
-		if (!game || activeMapView !== 'industry') {
+		if (!game || activeMapView !== 'industry' || !mutationAvailability.buildRail) {
 			return;
 		}
 
@@ -851,13 +971,13 @@
 	}
 
 	function upgradeRailSegmentHandler(segmentId: string): void {
-		if (game) {
+		if (game && mutationAvailability.upgradeRail) {
 			void gameRouteController.upgradeRail(industryCity.id, segmentId);
 		}
 	}
 
 	function demolishRailSegmentHandler(segmentId: string): void {
-		if (game) {
+		if (game && mutationAvailability.demolishRail) {
 			void gameRouteController.demolishRail(industryCity.id, segmentId);
 		}
 	}
@@ -922,7 +1042,12 @@
 	}
 
 	function openBuildMenu(): void {
-		if (activeMapView === 'world') {
+		if (
+			activeMapView === 'world' ||
+			(activeMapView === 'retail'
+				? !mutationAvailability.openStore
+				: !mutationAvailability.buildIndustrialBuilding)
+		) {
 			return;
 		}
 
@@ -966,6 +1091,13 @@
 	}
 
 	function selectWorldCityNode(cityId: string): void {
+		if (
+			!worldCitySelectionAvailable ||
+			!isWorldCityId(cityId) ||
+			!allowedWorldCityIds.includes(cityId)
+		) {
+			return;
+		}
 		if (!game) {
 			selectedWorldCityId = cityId;
 			return;
@@ -996,7 +1128,11 @@
 			return;
 		}
 
-		if (!isWorldCityId(cityId)) {
+		if (
+			!isWorldCityId(cityId) ||
+			!mutationAvailability.openWorldCity ||
+			!allowedWorldCityIds.includes(cityId)
+		) {
 			return;
 		}
 		void gameRouteController.openWorldCity(cityId);
@@ -1122,6 +1258,7 @@
 	}
 
 	function armRetailPlacement(archetypeId: ArchetypeId): void {
+		if (!mutationAvailability.openStore || !allowedRetailArchetypeIds.includes(archetypeId)) return;
 		retailPlacementArchetypeId = archetypeId;
 		industryPlacementBuildingTypeId = null;
 		railBuildMode = { step: 'idle' };
@@ -1135,6 +1272,11 @@
 	}
 
 	function armIndustryPlacement(buildingTypeId: IndustrialBuildingTypeId): void {
+		if (
+			!mutationAvailability.buildIndustrialBuilding ||
+			!allowedIndustryBuildingTypeIds.includes(buildingTypeId)
+		)
+			return;
 		industryPlacementBuildingTypeId = buildingTypeId;
 		retailPlacementArchetypeId = null;
 		railBuildMode = { step: 'idle' };
@@ -1176,43 +1318,43 @@
 	}
 
 	function advanceDay() {
-		if (game) {
+		if (game && mutationAvailability.advanceDay) {
 			void gameRouteController.advanceDay();
 		}
 	}
 
 	function changePolicy(patch: Partial<CompanyPolicy>) {
-		if (game) {
+		if (game && mutationAvailability.updatePolicy) {
 			void gameRouteController.updatePolicy(patch);
 		}
 	}
 
 	function chooseDecision(decisionId: string, optionId: string) {
-		if (game) {
+		if (game && mutationAvailability.resolveDecision) {
 			void gameRouteController.resolveDecision(decisionId, optionId);
 		}
 	}
 
 	function hireStaff(candidateId: string) {
-		if (game) {
+		if (game && mutationAvailability.hireStaff) {
 			void gameRouteController.hireStaff(candidateId);
 		}
 	}
 
 	function assignStaff(staffId: string, storeId: string) {
-		if (game) {
+		if (game && mutationAvailability.assignStaff) {
 			void gameRouteController.assignStaff(staffId, storeId);
 		}
 	}
 
 	function unassignStoreStaff(staffId: string) {
-		if (game) {
+		if (game && mutationAvailability.unassignStaff) {
 			void gameRouteController.unassignStaff(staffId);
 		}
 	}
 
 	function promoteStaffMember(staffId: string) {
-		if (game) {
+		if (game && mutationAvailability.promoteStaff) {
 			void gameRouteController.promoteStaff(staffId);
 		}
 	}
@@ -1229,9 +1371,11 @@
 		}
 
 		if (patch.sellingPrice !== undefined) {
+			if (!mutationAvailability.updateStoreSellingPrice) return;
 			void gameRouteController.updateStoreSellingPrice(storeId, categoryId, patch.sellingPrice);
 			return;
 		}
+		if (!mutationAvailability.updateStoreInventoryTargets) return;
 		void gameRouteController.updateStoreInventoryTargets(
 			storeId,
 			categoryId,
@@ -1241,18 +1385,24 @@
 	}
 
 	function upgradeStoreHandler(storeId: string): void {
-		if (game) {
+		if (game && mutationAvailability.upgradeStore) {
 			void gameRouteController.upgradeStore(storeId);
 		}
 	}
 
 	function upgradeBuildingHandler(buildingId: string): void {
-		if (game) {
+		if (game && mutationAvailability.upgradeIndustrialBuilding) {
 			void gameRouteController.upgradeIndustrialBuilding(buildingId);
 		}
 	}
 
 	function placeRetailAtTile(archetypeId: ArchetypeId, tileId: string): void {
+		if (
+			!mutationAvailability.openStore ||
+			!allowedRetailArchetypeIds.includes(archetypeId) ||
+			(retailPlacementPreview !== null && !retailPlacementPreview.validTileIds.includes(tileId))
+		)
+			return;
 		const blockReason = getRetailPlacementBlockReason({
 			game,
 			city: activeCity,
@@ -1295,6 +1445,12 @@
 	}
 
 	function placeIndustryAtTile(buildingTypeId: IndustrialBuildingTypeId, tileId: string): void {
+		if (
+			!mutationAvailability.buildIndustrialBuilding ||
+			!allowedIndustryBuildingTypeIds.includes(buildingTypeId) ||
+			(industryPlacementPreview !== null && !industryPlacementPreview.validTileIds.includes(tileId))
+		)
+			return;
 		const blockReason = getIndustryBuildPlacementBlockReason({
 			game,
 			tileId,
@@ -1376,7 +1532,9 @@
 				game &&
 				alert.cityId &&
 				alert.cityId !== game.activeCityId &&
-				isWorldCityId(alert.cityId)
+				isWorldCityId(alert.cityId) &&
+				worldCitySelectionAvailable &&
+				allowedWorldCityIds.includes(alert.cityId)
 			) {
 				void gameRouteController.selectAlertCity(alert.cityId);
 			}
@@ -1389,7 +1547,9 @@
 				game &&
 				alert.cityId &&
 				alert.cityId !== game.activeIndustryCityId &&
-				isWorldCityId(alert.cityId)
+				isWorldCityId(alert.cityId) &&
+				worldCitySelectionAvailable &&
+				allowedWorldCityIds.includes(alert.cityId)
 			) {
 				void gameRouteController.selectAlertCity(alert.cityId);
 			}
@@ -1555,6 +1715,10 @@
 						onSelectCity={selectWorldCityNode}
 						onOpenCity={openSelectedWorldCity}
 						onCloseInspector={closeWorldInspector}
+						canOpenWorldCity={mutationAvailability.openWorldCity}
+						allowedCityIds={allowedWorldCityIds}
+						selectionDisabled={!worldCitySelectionAvailable}
+						disabledReason={mutationDisabledReason}
 					/>
 				</div>
 			{/if}
@@ -1631,8 +1795,13 @@
 
 		<ControlDesk
 			managementItems={managementPanelMenuItems}
-			buildDisabled={activeMapView === 'world'}
-			advanceDisabled={game === null}
+			buildDisabled={activeMapView === 'world' ||
+				(activeMapView === 'retail'
+					? !mutationAvailability.openStore
+					: !mutationAvailability.buildIndustrialBuilding)}
+			advanceDisabled={game === null || !mutationAvailability.advanceDay}
+			railBuildDisabled={!mutationAvailability.buildRail}
+			disabledReason={mutationDisabledReason}
 			{i18n}
 			onBuild={openBuildMenu}
 			onOpenManagement={(id) => openManagementPanel(id)}
@@ -1666,6 +1835,11 @@
 				retailOptions={retailBuildOptions}
 				{industryLockedReason}
 				{availableMaterialIds}
+				canOpenStore={mutationAvailability.openStore}
+				canBuildIndustrialBuilding={mutationAvailability.buildIndustrialBuilding}
+				{allowedRetailArchetypeIds}
+				{allowedIndustryBuildingTypeIds}
+				disabledReason={mutationDisabledReason}
 				onChooseRetail={armRetailPlacement}
 				onChooseIndustry={armIndustryPlacement}
 				onOpenAdvisor={openSupplyAdvisor}
@@ -1694,6 +1868,8 @@
 					latestStoreReport={latestSelectedStoreReport}
 					{i18n}
 					onUpgradeStore={upgradeStoreHandler}
+					canUpgradeStore={mutationAvailability.upgradeStore}
+					disabledReason={mutationDisabledReason}
 					onOpenDetails={openStoreDetail}
 					onClickFeedback={() => playSfx('sfx.ui.click')}
 					onClose={closeInspector}
@@ -1716,6 +1892,9 @@
 					onClose={closeIndustryInspector}
 					onUpgradeSegment={upgradeRailSegmentHandler}
 					onDemolishSegment={demolishRailSegmentHandler}
+					canUpgradeRail={mutationAvailability.upgradeRail}
+					canDemolishRail={mutationAvailability.demolishRail}
+					disabledReason={mutationDisabledReason}
 				/>
 			</div>
 		{:else if selectedIndustryTile && shouldShowIndustryInspector}
@@ -1731,6 +1910,8 @@
 					building={selectedIndustryBuilding}
 					{i18n}
 					onUpgradeBuilding={upgradeBuildingHandler}
+					canUpgradeBuilding={mutationAvailability.upgradeIndustrialBuilding}
+					disabledReason={mutationDisabledReason}
 					onClose={closeIndustryInspector}
 				/>
 			</div>
@@ -1749,6 +1930,13 @@
 			onHireStaff={hireStaff}
 			onAssignStaff={assignStaff}
 			onUnassignStaff={unassignStoreStaff}
+			canUpdateSellingPrice={mutationAvailability.updateStoreSellingPrice}
+			canUpdateInventoryTargets={mutationAvailability.updateStoreInventoryTargets}
+			{allowedProductCategoryIds}
+			canHireStaff={mutationAvailability.hireStaff}
+			canAssignStaff={mutationAvailability.assignStaff}
+			canUnassignStaff={mutationAvailability.unassignStaff}
+			disabledReason={mutationDisabledReason}
 			onClickFeedback={() => playSfx('sfx.ui.click')}
 			onClose={closeStoreDetail}
 		/>
@@ -1805,7 +1993,13 @@
 					{#if activeManagementPanel.id === 'dashboard'}
 						<Scorecard {i18n} scorecard={panelGame.scorecard} />
 					{:else if activeManagementPanel.id === 'policies'}
-						<PolicyPanel {i18n} policy={panelGame.policy} onChange={changePolicy} />
+						<PolicyPanel
+							{i18n}
+							policy={panelGame.policy}
+							onChange={changePolicy}
+							canUpdate={mutationAvailability.updatePolicy}
+							disabledReason={mutationDisabledReason}
+						/>
 					{:else if activeManagementPanel.id === 'staff'}
 						<StaffPanel
 							{i18n}
@@ -1817,6 +2011,11 @@
 							onAssign={assignStaff}
 							onUnassign={unassignStoreStaff}
 							onPromote={promoteStaffMember}
+							canHire={mutationAvailability.hireStaff}
+							canAssign={mutationAvailability.assignStaff}
+							canUnassign={mutationAvailability.unassignStaff}
+							canPromote={mutationAvailability.promoteStaff}
+							disabledReason={mutationDisabledReason}
 						/>
 					{:else if activeManagementPanel.id === 'stores'}
 						<StoreOverview
@@ -1826,7 +2025,13 @@
 							latestReports={summary.latest?.storeReports ?? []}
 						/>
 					{:else if activeManagementPanel.id === 'decisions'}
-						<DecisionQueue {i18n} decisions={panelGame.decisions} onResolve={chooseDecision} />
+						<DecisionQueue
+							{i18n}
+							decisions={panelGame.decisions}
+							onResolve={chooseDecision}
+							canResolve={mutationAvailability.resolveDecision}
+							disabledReason={mutationDisabledReason}
+						/>
 					{:else if activeManagementPanel.id === 'reports'}
 						<ReportsPanel {i18n} {summary} stores={panelGame.stores} />
 					{:else if activeManagementPanel.id === 'productChains'}

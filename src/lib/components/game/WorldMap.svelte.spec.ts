@@ -232,4 +232,28 @@ describe('WorldMap', () => {
 		await expect.element(page.getByRole('region', { name: 'ワールドマップ' })).toBeVisible();
 		await expect.element(page.getByRole('region', { name: /world map/i })).not.toBeInTheDocument();
 	});
+
+	it('suppresses challenge unlock prompts while preserving allowlisted opened-city selection', async () => {
+		expect.assertions(5);
+		const onSelectCity = vi.fn();
+		const onOpenCity = vi.fn();
+		render(WorldMap, {
+			statuses: [status('harbor-city', 'opened'), status('campus-junction', 'revealed')],
+			i18n: createI18n('en'),
+			selectedCityId: 'campus-junction',
+			onSelectCity,
+			onOpenCity,
+			onCloseInspector: vi.fn(),
+			canOpenWorldCity: false,
+			allowedCityIds: ['harbor-city'],
+			disabledReason: 'Unavailable in this challenge.'
+		});
+
+		await expect.element(page.getByRole('button', { name: /open for/i })).not.toBeInTheDocument();
+		await expect.element(page.getByText('Unavailable in this challenge.').first()).toBeVisible();
+		await page.getByRole('button', { name: /^Harbor City$/i }).click();
+		expect(onSelectCity).toHaveBeenCalledWith('harbor-city');
+		await expect.element(page.getByRole('button', { name: /^Campus Junction$/i })).toBeDisabled();
+		expect(onOpenCity).not.toHaveBeenCalled();
+	});
 });

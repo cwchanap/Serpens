@@ -28,6 +28,13 @@
 		onUnassignStaff: (staffId: string) => void;
 		onClose: () => void;
 		onClickFeedback?: () => void;
+		canUpdateSellingPrice?: boolean;
+		canUpdateInventoryTargets?: boolean;
+		allowedProductCategoryIds?: string[];
+		canHireStaff?: boolean;
+		canAssignStaff?: boolean;
+		canUnassignStaff?: boolean;
+		disabledReason?: string | null;
 	}
 
 	let {
@@ -42,7 +49,14 @@
 		onAssignStaff,
 		onUnassignStaff,
 		onClose,
-		onClickFeedback = () => {}
+		onClickFeedback = () => {},
+		canUpdateSellingPrice = true,
+		canUpdateInventoryTargets = true,
+		allowedProductCategoryIds = store.products.map((product) => product.categoryId),
+		canHireStaff = true,
+		canAssignStaff = true,
+		canUnassignStaff = true,
+		disabledReason = null
 	}: Props = $props();
 
 	let storeOrdinal = $derived(getStoreOrdinal(game.stores, store.id));
@@ -151,6 +165,10 @@
 					ordinal={storeOrdinal}
 					latestReport={latestStoreReport}
 					onUpdate={onUpdateStoreProduct}
+					{canUpdateSellingPrice}
+					{canUpdateInventoryTargets}
+					{allowedProductCategoryIds}
+					{disabledReason}
 				/>
 			</div>
 			<div
@@ -178,6 +196,10 @@
 					onHire={onHireStaff}
 					onAssign={onAssignStaff}
 					onUnassign={onUnassignStaff}
+					canHire={canHireStaff}
+					canAssign={canAssignStaff}
+					canUnassign={canUnassignStaff}
+					{disabledReason}
 				/>
 			</div>
 		</div>

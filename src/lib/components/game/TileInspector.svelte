@@ -26,6 +26,8 @@
 		onOpenDetails: () => void;
 		onClose: () => void;
 		onClickFeedback?: () => void;
+		canUpgradeStore?: boolean;
+		disabledReason?: string | null;
 	}
 
 	let {
@@ -37,7 +39,9 @@
 		onUpgradeStore = () => {},
 		onOpenDetails,
 		onClose,
-		onClickFeedback = () => {}
+		onClickFeedback = () => {},
+		canUpgradeStore: upgradeAllowed = true,
+		disabledReason = null
 	}: Props = $props();
 
 	const storeArt = $derived(store ? getStoreArt(store.archetypeId) : null);
@@ -160,8 +164,10 @@
 					<button
 						type="button"
 						class="upgrade"
-						disabled={!storeCanUpgrade || !canAffordUpgrade}
-						onclick={() => onUpgradeStore(store.id)}
+						disabled={!upgradeAllowed || !storeCanUpgrade || !canAffordUpgrade}
+						onclick={() => {
+							if (upgradeAllowed) onUpgradeStore(store.id);
+						}}
 					>
 						{storeCanUpgrade
 							? i18n.t('tileInspector.upgrade', {
@@ -171,6 +177,9 @@
 					</button>
 					{#if storeCanUpgrade && !canAffordUpgrade}
 						<p class="level-hint">{i18n.t('tileInspector.notEnoughCash')}</p>
+					{/if}
+					{#if !upgradeAllowed && disabledReason}
+						<p class="level-hint">{disabledReason}</p>
 					{/if}
 				</div>
 

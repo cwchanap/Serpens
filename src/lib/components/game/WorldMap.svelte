@@ -13,10 +13,25 @@
 		onSelectCity: (cityId: string) => void;
 		onOpenCity: (cityId: string) => void;
 		onCloseInspector: () => void;
+		canOpenWorldCity?: boolean;
+		allowedCityIds?: string[];
+		selectionDisabled?: boolean;
+		disabledReason?: string | null;
 	}
 
-	let { statuses, i18n, selectedCityId, onSelectCity, onOpenCity, onCloseInspector }: Props =
-		$props();
+	let {
+		statuses,
+		i18n,
+		selectedCityId,
+		onSelectCity,
+		onOpenCity,
+		onCloseInspector,
+		canOpenWorldCity = true,
+		allowedCityIds = statuses.map((status) => status.city.id),
+		selectionDisabled = false,
+		disabledReason = null
+	}: Props = $props();
+	const allowedCitySet = $derived(new Set(allowedCityIds));
 
 	const localizedStatuses = $derived(
 		statuses.map((status) => localizeWorldCityStatus(status, i18n))
@@ -118,7 +133,11 @@
 				aria-current={selectedCityId === status.city.id ? 'true' : undefined}
 				aria-expanded={selectedCityId === status.city.id}
 				aria-controls={selectedCityId === status.city.id ? inspectorId(status) : undefined}
-				onclick={() => onSelectCity(status.city.id)}
+				disabled={selectionDisabled || !allowedCitySet.has(status.city.id)}
+				onclick={() => {
+					if (!selectionDisabled && allowedCitySet.has(status.city.id))
+						onSelectCity(status.city.id);
+				}}
 			>
 				<strong id={cityTitleId(status)}>{status.city.name}</strong>
 				<span id={cityDescriptionId(status)}>
@@ -126,6 +145,9 @@
 				</span>
 				{#if status.state === 'locked' && status.blockedReason}
 					<small id={cityRequirementId(status)}>{status.blockedReason}</small>
+				{/if}
+				{#if !allowedCitySet.has(status.city.id) && disabledReason}
+					<small>{disabledReason}</small>
 				{/if}
 			</button>
 		{/each}
@@ -150,7 +172,7 @@
 			<p class="eyebrow">{i18n.t(`worldMap.cityEyebrow.${selectedStatus.city.kind}` as never)}</p>
 			<h2>{selectedStatus.city.name}</h2>
 			<p>{selectedStatus.city.specialtySummary}</p>
-			{#if selectedStatus.state === 'revealed'}
+			{#if selectedStatus.state === 'revealed' && canOpenWorldCity && allowedCitySet.has(selectedStatus.city.id)}
 				<button
 					type="button"
 					class="open-city"
@@ -158,7 +180,15 @@
 					aria-describedby={selectedStatus.blockedReason
 						? inspectorReasonId(selectedStatus)
 						: undefined}
-					onclick={() => onOpenCity(selectedStatus.city.id)}
+					onclick={() => {
+						if (
+							canOpenWorldCity &&
+							allowedCitySet.has(selectedStatus.city.id) &&
+							selectedStatus.canOpen
+						) {
+							onOpenCity(selectedStatus.city.id);
+						}
+					}}
 				>
 					{i18n.t('worldMap.openForCash' as never, {
 						cash: i18n.format.currency(selectedStatus.city.openingCost)
@@ -169,6 +199,10 @@
 						{selectedStatus.blockedReason}
 					</p>
 				{/if}
+			{:else if selectedStatus.state === 'revealed'}
+				<p id={inspectorReasonId(selectedStatus)} class="blocked-reason">
+					{disabledReason}
+				</p>
 			{:else if selectedStatus.state === 'locked'}
 				<p id={inspectorReasonId(selectedStatus)} class="blocked-reason">
 					{selectedStatus.blockedReason}

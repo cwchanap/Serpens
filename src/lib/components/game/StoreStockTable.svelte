@@ -19,9 +19,27 @@
 		ordinal: number;
 		latestReport: DailyStoreReport | null;
 		onUpdate: (storeId: string, categoryId: string, patch: StoreProductPatch) => void;
+		canUpdateSellingPrice?: boolean;
+		canUpdateInventoryTargets?: boolean;
+		allowedProductCategoryIds?: string[];
+		disabledReason?: string | null;
 	}
 
-	let { i18n, store, ordinal, latestReport, onUpdate }: Props = $props();
+	let {
+		i18n,
+		store,
+		ordinal,
+		latestReport,
+		onUpdate,
+		canUpdateSellingPrice = true,
+		canUpdateInventoryTargets = true,
+		allowedProductCategoryIds = store.products.map((product) => product.categoryId),
+		disabledReason = null
+	}: Props = $props();
+	const allowedProductSet = $derived(new Set(allowedProductCategoryIds));
+	const hasDisallowedProduct = $derived(
+		store.products.some((product) => !allowedProductSet.has(product.categoryId))
+	);
 
 	const categories = $derived(getArchetype(store.archetypeId).startingCategories);
 
@@ -38,6 +56,10 @@
 	}
 
 	function updateNumber(categoryId: string, field: keyof StoreProductPatch, event: Event): void {
+		const allowed =
+			allowedProductSet.has(categoryId) &&
+			(field === 'sellingPrice' ? canUpdateSellingPrice : canUpdateInventoryTargets);
+		if (!allowed) return;
 		const input = event.currentTarget as HTMLInputElement;
 		const value = input.valueAsNumber;
 
@@ -53,6 +75,9 @@
 	<h3 id={`${store.id}-stock-heading`}>
 		{i18n.t('storeStockTable.title', { storeName: storeDisplayName(store, ordinal, i18n) })}
 	</h3>
+	{#if disabledReason && (!canUpdateSellingPrice || !canUpdateInventoryTargets || hasDisallowedProduct)}
+		<p class="disabled-copy" role="status">{disabledReason}</p>
+	{/if}
 
 	<div class="table-scroll">
 		<table
@@ -102,6 +127,7 @@
 								min="1"
 								step="1"
 								value={product.sellingPrice}
+								disabled={!canUpdateSellingPrice || !allowedProductSet.has(product.categoryId)}
 								aria-label={i18n.t('storeStockTable.inputLabels.sellingPrice', {
 									categoryName
 								})}
@@ -114,6 +140,7 @@
 								min="0"
 								step="1"
 								value={product.reorderThreshold}
+								disabled={!canUpdateInventoryTargets || !allowedProductSet.has(product.categoryId)}
 								aria-label={i18n.t('storeStockTable.inputLabels.reorderThreshold', {
 									categoryName
 								})}
@@ -126,6 +153,7 @@
 								min="0"
 								step="1"
 								value={product.targetStock}
+								disabled={!canUpdateInventoryTargets || !allowedProductSet.has(product.categoryId)}
 								aria-label={i18n.t('storeStockTable.inputLabels.targetStock', {
 									categoryName
 								})}

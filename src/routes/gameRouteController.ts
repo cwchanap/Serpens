@@ -48,6 +48,59 @@ export interface GameRouteControllerState {
 	scenarioCommandPending: boolean;
 }
 
+export interface MutationAvailability {
+	pending: boolean;
+	advanceDay: boolean;
+	resolveDecision: boolean;
+	updatePolicy: boolean;
+	openWorldCity: boolean;
+	openStore: boolean;
+	upgradeStore: boolean;
+	hireStaff: boolean;
+	assignStaff: boolean;
+	unassignStaff: boolean;
+	promoteStaff: boolean;
+	updateStoreSellingPrice: boolean;
+	updateStoreInventoryTargets: boolean;
+	buildIndustrialBuilding: boolean;
+	upgradeIndustrialBuilding: boolean;
+	buildRail: boolean;
+	upgradeRail: boolean;
+	demolishRail: boolean;
+}
+
+export function createMutationAvailability(input: {
+	playMode: 'sandbox' | 'scenario';
+	pending: boolean;
+	definition: ScenarioDefinition | null;
+}): MutationAvailability {
+	const available = (kind: ScenarioCommand['kind']) =>
+		input.playMode === 'sandbox' ||
+		(!input.pending &&
+			input.definition !== null &&
+			input.definition.allowedCommands.includes(kind));
+	return {
+		pending: input.playMode === 'scenario' && input.pending,
+		advanceDay: available('advanceDay'),
+		resolveDecision: available('resolveDecision'),
+		updatePolicy: available('updatePolicy'),
+		openWorldCity: available('openWorldCity'),
+		openStore: available('openStore'),
+		upgradeStore: available('upgradeStore'),
+		hireStaff: available('hireStaff'),
+		assignStaff: available('assignStaff'),
+		unassignStaff: available('unassignStaff'),
+		promoteStaff: available('promoteStaff'),
+		updateStoreSellingPrice: available('updateStoreSellingPrice'),
+		updateStoreInventoryTargets: available('updateStoreInventoryTargets'),
+		buildIndustrialBuilding: available('buildIndustrialBuilding'),
+		upgradeIndustrialBuilding: available('upgradeIndustrialBuilding'),
+		buildRail: available('buildRail'),
+		upgradeRail: available('upgradeRail'),
+		demolishRail: available('demolishRail')
+	};
+}
+
 export type GameRouteCommitResult =
 	| { status: 'sandbox-committed'; changed: boolean }
 	| { status: 'committed' }

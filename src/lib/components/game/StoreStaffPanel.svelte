@@ -13,10 +13,26 @@
 		onHire: (candidateId: string) => void;
 		onAssign: (staffId: string, storeId: string) => void;
 		onUnassign: (staffId: string) => void;
+		canHire?: boolean;
+		canAssign?: boolean;
+		canUnassign?: boolean;
+		disabledReason?: string | null;
 	}
 
-	let { i18n, store, ordinal, staff, hiringCandidates, onHire, onAssign, onUnassign }: Props =
-		$props();
+	let {
+		i18n,
+		store,
+		ordinal,
+		staff,
+		hiringCandidates,
+		onHire,
+		onAssign,
+		onUnassign,
+		canHire = true,
+		canAssign = true,
+		canUnassign = true,
+		disabledReason = null
+	}: Props = $props();
 
 	const assignedStaff = $derived(staff.filter((member) => member.assignedStoreId === store.id));
 	const unassignedStaff = $derived(staff.filter((member) => member.assignedStoreId === null));
@@ -72,6 +88,9 @@
 </script>
 
 <section class="store-staff" aria-labelledby={`${store.id}-staff-heading`}>
+	{#if disabledReason && (!canHire || !canAssign || !canUnassign)}
+		<p class="disabled-copy" role="status">{disabledReason}</p>
+	{/if}
 	<div class="staff-heading">
 		<div>
 			<h3 id={`${store.id}-staff-heading`}>
@@ -109,8 +128,11 @@
 					</div>
 					<button
 						type="button"
+						disabled={!canUnassign}
 						aria-label={unassignActionLabel(member)}
-						onclick={() => onUnassign(member.id)}
+						onclick={() => {
+							if (canUnassign) onUnassign(member.id);
+						}}
 					>
 						{i18n.t('staffPanel.unassignButton')}
 					</button>
@@ -137,8 +159,11 @@
 					</div>
 					<button
 						type="button"
+						disabled={!canAssign}
 						aria-label={assignActionLabel(member)}
-						onclick={() => onAssign(member.id, store.id)}
+						onclick={() => {
+							if (canAssign) onAssign(member.id, store.id);
+						}}
 					>
 						{i18n.t('staffPanel.assignButton')}
 					</button>
@@ -165,8 +190,11 @@
 					</div>
 					<button
 						type="button"
+						disabled={!canHire}
 						aria-label={hireActionLabel(candidate)}
-						onclick={() => onHire(candidate.id)}
+						onclick={() => {
+							if (canHire) onHire(candidate.id);
+						}}
 					>
 						{i18n.t('staffPanel.hireButton', { name: candidate.name })}
 					</button>
