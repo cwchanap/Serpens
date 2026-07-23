@@ -146,6 +146,9 @@
 		display: grid;
 		gap: 0.5rem;
 		width: min(20rem, 80vw);
+		max-height: calc(100dvh - 5rem);
+		overflow-y: auto;
+		overscroll-behavior: contain;
 		padding: 0.7rem;
 	}
 
