@@ -933,6 +933,101 @@ export const ja = {
 			}
 		}
 	},
+	scenarioDefinitions: {
+		firstProfit: {
+			title: '最初の利益',
+			summary: '小さな店を収益事業へ育てます。',
+			briefing: '期限までに黒字化してください。',
+			strategyHint: 'コストを抑え、安定した顧客基盤を築きましょう。',
+			objectives: {
+				cumulativeNetIncome: '累積純利益を得る',
+				positiveIncomeStreak: '黒字を連続して維持する'
+			},
+			failures: { negativeCash: '現金残高のマイナスを避ける' }
+		},
+		importSqueeze: {
+			title: '輸入圧力',
+			summary: '輸入品の値上がりの中で利益を守ります。',
+			briefing: '輸入サイクルを完了し、利益率を守ってください。',
+			strategyHint: '発注を慎重に計画し、過剰在庫を避けましょう。',
+			objectives: {
+				completedImportCycles: '輸入サイクルを完了する',
+				cumulativeNetIncome: '累積純利益を得る'
+			},
+			failures: { negativeCash: '現金残高のマイナスを避ける' }
+		},
+		localLifeline: {
+			title: '地域の生命線',
+			summary: '強い地域サプライチェーンを築きます。',
+			briefing: '地域生産品を店舗へ供給してください。',
+			strategyHint: '生産能力と小売需要のバランスを取りましょう。',
+			objectives: { localUnits: '地域生産品を供給する', localShare: '地域供給比率を達成する' },
+			failures: { negativeCash: '現金残高のマイナスを避ける' }
+		}
+	},
+	scenarioCatalog: {
+		title: 'チャレンジカタログ',
+		close: 'チャレンジカタログを閉じる',
+		start: '開始',
+		resume: '再開',
+		restart: 'リスタート',
+		startCurrent: '現行版を開始',
+		confirmReplacement: '置き換えを確認',
+		cancel: 'キャンセル',
+		shareCode: '共有コード',
+		importCode: 'コードを読み込む',
+		copyCode: '{title} のコードをコピー',
+		copySuccess: '共有コードをコピーしました。',
+		copyFailure: '共有コードをコピーできません。',
+		retry: '再試行',
+		olderVersionConfirmation: '現行版を開始すると、進行中の旧版ランが置き換えられます。',
+		importReplacementConfirmation: '進行中のランを置き換えますか？',
+		best: 'ベスト',
+		noBest: 'ランク対象の結果はまだありません',
+		priorVersion: '旧版の結果',
+		dayLimit: '{days}日制限',
+		allowedContent: '都市{cities}、店舗タイプ{stores}、商品{products}',
+		challengeDetails: 'チャレンジ詳細',
+		restartChallenge: 'チャレンジをリスタート',
+		catalog: 'チャレンジカタログ',
+		returnSandbox: 'サンドボックスへ戻る',
+		abandon: 'チャレンジを放棄',
+		confirmAbandon: '放棄を確認'
+	},
+	scenarioStatus: {
+		officialSeed: '公式シード {seed}',
+		customSeed: 'カスタムシード {seed}',
+		ranked: 'ランク対象',
+		unranked: 'ランク対象外',
+		activeVersion: '進行中 v{active}（現行 v{current}）',
+		versionEligibility: 'バージョン {version} · {eligibility}'
+	},
+	scenarioObjectives: { heading: '目標', required: '必須', optional: '任意' },
+	scenarioResults: {
+		points: '{score} ポイント',
+		bronze: 'ブロンズ',
+		silver: 'シルバー',
+		gold: 'ゴールド',
+		noMedal: 'メダルなし'
+	},
+	scenarioDiagnostics: {
+		invalidBuiltIn: '組み込みチャレンジが無効です: {detail}',
+		malformedShareCode: '共有コードの形式が正しくありません。',
+		unknownScenario: '不明なチャレンジです。',
+		unsupportedVersion: '未対応のチャレンジバージョンです。',
+		invalidSeed: 'チャレンジシードが無効です。',
+		checksumMismatch: '共有コードのチェックサムが一致しません。',
+		invalidDefinition: 'チャレンジ定義が無効です。',
+		setupInvariantFailed: 'チャレンジを準備できませんでした。',
+		staleDefinition: 'このチャレンジバージョンは利用できません。',
+		persistenceReadFailed: 'チャレンジを読み込めませんでした。',
+		persistenceWriteFailed: 'チャレンジを保存できませんでした。',
+		missingRun: '進行中のチャレンジを利用できません。',
+		forbiddenCommand: 'この操作はチャレンジで利用できません。',
+		forbiddenContent: 'このコンテンツはチャレンジで利用できません。',
+		terminalRun: 'このチャレンジは終了しています。'
+	},
+	scenarioModifiers: { importCostMultiplier: '輸入コスト ×{multiplier}' },
 	placement: {
 		chooseHighlightedTile: 'ハイライトされたタイルを選んで建設してください。',
 		retail: {

@@ -13,6 +13,8 @@
 	import ProductChainsPanel from '$lib/components/game/ProductChainsPanel.svelte';
 	import ReportsPanel from '$lib/components/game/ReportsPanel.svelte';
 	import SavePanel from '$lib/components/game/SavePanel.svelte';
+	import ScenarioCatalog from '$lib/components/game/ScenarioCatalog.svelte';
+	import ScenarioMenuSection from '$lib/components/game/ScenarioMenuSection.svelte';
 	import Scorecard from '$lib/components/game/Scorecard.svelte';
 	import ShortcutCheatSheet from '$lib/components/game/ShortcutCheatSheet.svelte';
 	import StaffPanel from '$lib/components/game/StaffPanel.svelte';
@@ -81,6 +83,13 @@
 	} from '$lib/game/placementPreview';
 	import { formatPlacementBlockReason } from '$lib/i18n/gameCopy';
 	import {
+		buildScenarioCatalogCards,
+		scenarioDiagnosticText,
+		scenarioShareCodeErrorText,
+		type ScenarioCatalogActionResult,
+		type ScenarioCatalogCardViewModel
+	} from '$lib/i18n/scenarioCopy';
+	import {
 		createI18n,
 		readLocalePreference,
 		saveLocalePreference,
@@ -119,11 +128,17 @@
 	import { createSaveRepository } from '$lib/persistence/saveRepositoryFactory';
 	import type { SaveSlotMetadata } from '$lib/persistence/saveTypes';
 	import { createScenarioRepository } from '$lib/persistence/scenarioRepositoryFactory';
-	import { resolveScenarioDefinition } from '$lib/scenarios/catalog';
+	import {
+		currentScenarioDefinition,
+		listScenarioCatalogEntries,
+		resolveScenarioDefinition
+	} from '$lib/scenarios/catalog';
 	import { isScenarioContentAllowed } from '$lib/scenarios/capabilities';
+	import { decodeScenarioShareCode } from '$lib/scenarios/shareCode';
 	import type {
 		ScenarioDefinition,
 		ScenarioOperationError,
+		ScenarioPersistenceSummary,
 		ScenarioResult,
 		ScenarioRun
 	} from '$lib/scenarios/types';
@@ -271,6 +286,9 @@
 			autoSave = summary.autoSave;
 			manualSaveSlots = summary.manualSlots;
 		},
+		onScenarioSummary: (summary) => {
+			scenarioSummary = summary;
+		},
 		onAutoSave: (metadata) => {
 			autoSave = metadata;
 			saveFeedback = {
@@ -317,6 +335,23 @@
 	let i18n = $derived(createI18n(activeLocale));
 	let activeScenarioDefinition = $derived<ScenarioDefinition | null>(
 		activeScenarioRun ? (resolveScenarioDefinition(activeScenarioRun.definition) ?? null) : null
+	);
+	let activeScenarioTitle = $derived(
+		activeScenarioDefinition
+			? i18n.t(activeScenarioDefinition.titleKey)
+			: (activeScenarioRun?.definition.scenarioId ?? '')
+	);
+	let activeScenarioVersionLabel = $derived(
+		activeScenarioRun
+			? i18n.t('scenarioStatus.versionEligibility', {
+					version: activeScenarioRun.definition.version,
+					eligibility: i18n.t(
+						activeScenarioRun.eligibility === 'ranked'
+							? 'scenarioStatus.ranked'
+							: 'scenarioStatus.unranked'
+					)
+				})
+			: ''
 	);
 	let mutationAvailability = $derived(
 		createMutationAvailability({
@@ -394,6 +429,27 @@
 	let autoSave = $state<SaveSlotMetadata | null>(null);
 	let manualSaveSlots = $state<SaveSlotMetadata[]>([]);
 	let isSavePanelOpen = $state(false);
+	let isScenarioCatalogOpen = $state(false);
+	let scenarioSummary = $state<ScenarioPersistenceSummary>({
+		activeRunsByScenarioId: {},
+		bestResultsByDefinitionKey: {},
+		diagnostics: []
+	});
+	let effectiveScenarioSummary = $derived<ScenarioPersistenceSummary>({
+		...scenarioSummary,
+		activeRunsByScenarioId: activeScenarioRun
+			? {
+					...scenarioSummary.activeRunsByScenarioId,
+					[activeScenarioRun.definition.scenarioId]: activeScenarioRun
+				}
+			: scenarioSummary.activeRunsByScenarioId
+	});
+	let scenarioCatalogCards = $derived(
+		buildScenarioCatalogCards(listScenarioCatalogEntries(), effectiveScenarioSummary, i18n)
+	);
+	let scenarioOperationErrorText = $derived(
+		scenarioOperationError ? scenarioDiagnosticText(scenarioOperationError, i18n) : null
+	);
 	let saveFeedback = $state<SaveFeedback | null>(null);
 	let saveStatus = $derived.by(() => {
 		const feedback = saveFeedback;
@@ -546,6 +602,7 @@
 				isBuildMenuOpen ||
 				activeManagementPanelId !== null ||
 				isSavePanelOpen ||
+				isScenarioCatalogOpen ||
 				isGameMenuOpen)
 	);
 	// When false, the industry map scene suppresses its Escape-to-cancel-build
@@ -555,6 +612,7 @@
 	// pause the map but still competes for the Escape key).
 	let railKeyboardEnabled = $derived(
 		!isSavePanelOpen &&
+			!isScenarioCatalogOpen &&
 			!isCheatSheetOpen &&
 			!isSupplyAdvisorOpen &&
 			!isStoreDetailOpen &&
@@ -688,6 +746,7 @@
 			isStoreDetailOpen ||
 			isCheatSheetOpen ||
 			isSavePanelOpen ||
+			isScenarioCatalogOpen ||
 			isAlertsMenuOpen ||
 			isGameMenuOpen ||
 			isPlacementModeActive
@@ -1019,6 +1078,82 @@
 
 	function closeSavePanel(): void {
 		isSavePanelOpen = false;
+	}
+
+	function openScenarioCatalog(): void {
+		isGameMenuOpen = false;
+		isSavePanelOpen = false;
+		activeManagementPanelId = null;
+		isScenarioCatalogOpen = true;
+	}
+
+	async function startScenarioCard(card: ScenarioCatalogCardViewModel): Promise<void> {
+		const definition = currentScenarioDefinition(card.id);
+		if (!definition) return;
+		const result = await gameRouteController.startScenarioRun(definition, definition.officialSeed);
+		if (result.status === 'committed') isScenarioCatalogOpen = false;
+	}
+
+	async function resumeScenarioCard(card: ScenarioCatalogCardViewModel): Promise<void> {
+		const result = await gameRouteController.resumeScenarioRun(card.id);
+		if (result.status === 'committed') isScenarioCatalogOpen = false;
+	}
+
+	async function restartActiveScenario(): Promise<void> {
+		const result = await gameRouteController.restartScenarioRun();
+		if (result.status === 'committed') isScenarioCatalogOpen = false;
+	}
+
+	async function importScenarioCode(
+		code: string,
+		confirmed: boolean
+	): Promise<ScenarioCatalogActionResult> {
+		const decoded = decodeScenarioShareCode(code, resolveScenarioDefinition);
+		if (!decoded.ok)
+			return { status: 'error', message: scenarioShareCodeErrorText(decoded.code, i18n) };
+		if (activeScenarioRun && !confirmed) {
+			return {
+				status: 'confirmation-required',
+				message: i18n.t('scenarioCatalog.importReplacementConfirmation')
+			};
+		}
+		const definition = resolveScenarioDefinition(decoded.value.definition);
+		if (!definition) {
+			return {
+				status: 'error',
+				message: scenarioShareCodeErrorText('unsupported-version', i18n)
+			};
+		}
+		const result = await gameRouteController.startScenarioRun(definition, decoded.value.seed);
+		if (result.status !== 'committed') {
+			return {
+				status: 'error',
+				message: scenarioOperationError
+					? scenarioDiagnosticText(scenarioOperationError, i18n)
+					: i18n.t('scenarioDiagnostics.persistenceWriteFailed')
+			};
+		}
+		isScenarioCatalogOpen = false;
+		return { status: 'started' };
+	}
+
+	async function copyScenarioCode(code: string): Promise<boolean> {
+		try {
+			await globalThis.navigator.clipboard.writeText(code);
+			return true;
+		} catch {
+			return false;
+		}
+	}
+
+	async function abandonActiveScenario(): Promise<void> {
+		const scenarioId = activeScenarioRun?.definition.scenarioId;
+		const result = await gameRouteController.abandonScenarioRun();
+		if (result.status === 'committed' && scenarioId) {
+			const activeRunsByScenarioId = { ...scenarioSummary.activeRunsByScenarioId };
+			delete activeRunsByScenarioId[scenarioId];
+			scenarioSummary = { ...scenarioSummary, activeRunsByScenarioId };
+		}
 	}
 
 	function describeSaveErrorKey(error: unknown): TranslationKey {
@@ -1796,7 +1931,24 @@
 						{/each}
 					</div>
 				</div>
-				<button type="button" onclick={openSavePanel}>{i18n.t('gameMenu.saves')}</button>
+				{#if playMode === 'scenario' && activeScenarioRun}
+					<ScenarioMenuSection
+						{i18n}
+						title={activeScenarioTitle}
+						versionLabel={activeScenarioVersionLabel}
+						pending={scenarioCommandPending}
+						onDetails={openScenarioCatalog}
+						onRestart={restartActiveScenario}
+						onCatalog={openScenarioCatalog}
+						onSandbox={() => gameRouteController.returnToSandbox()}
+						onAbandon={abandonActiveScenario}
+					/>
+				{:else}
+					<button type="button" onclick={openScenarioCatalog}>
+						{i18n.t('scenarioCatalog.catalog')}
+					</button>
+					<button type="button" onclick={openSavePanel}>{i18n.t('gameMenu.saves')}</button>
+				{/if}
 				<AudioSettings {i18n} preferences={audioPreferences} onChange={updateAudioPreferences} />
 			{/snippet}
 		</TopBar>
@@ -2063,6 +2215,23 @@
 			onLoadSlot={loadManualSlot}
 			onDeleteSlot={deleteManualSlot}
 			onClose={closeSavePanel}
+		/>
+	{/if}
+
+	{#if isScenarioCatalogOpen}
+		<ScenarioCatalog
+			cards={scenarioCatalogCards}
+			{i18n}
+			operationError={scenarioOperationErrorText}
+			pending={scenarioCommandPending}
+			onStart={startScenarioCard}
+			onResume={resumeScenarioCard}
+			onRestart={() => restartActiveScenario()}
+			onStartCurrent={startScenarioCard}
+			onImport={importScenarioCode}
+			onCopy={copyScenarioCode}
+			onRetry={() => retryScenarioOperation?.()}
+			onClose={() => (isScenarioCatalogOpen = false)}
 		/>
 	{/if}
 

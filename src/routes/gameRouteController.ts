@@ -26,7 +26,11 @@ import {
 	runImmediateSandboxOperation,
 	runPersistenceGatedOperation
 } from '$lib/scenarios/commandGate';
-import { executeScenarioCommand } from '$lib/scenarios/runtime';
+import {
+	executeScenarioCommand,
+	restartScenario as restartScenarioTransition,
+	startScenario as startScenarioTransition
+} from '$lib/scenarios/runtime';
 import type {
 	ScenarioCommand,
 	ScenarioCommitOutcome,
@@ -120,6 +124,7 @@ export interface GameRouteControllerOptions {
 	onStateChange?(state: Readonly<GameRouteControllerState>): void;
 	onSaveRepositoryReady?(repository: SaveRepository): void;
 	onSaveSummary?(summary: SaveSummary): void;
+	onScenarioSummary?(summary: import('$lib/scenarios/types').ScenarioPersistenceSummary): void;
 	onAutoSave?(metadata: SaveSlotMetadata): void;
 	onAutoSaveError?(error: unknown): void;
 	onReadOnlySelection?(kind: 'retail' | 'industry', tileId: string): void;
@@ -196,6 +201,7 @@ export class GameRouteController {
 			const repository = await this.options.createScenarioRepository();
 			this.scenarioRepository = repository;
 			const summary = await repository.getSummary();
+			this.options.onScenarioSummary?.(summary);
 			if (summary.diagnostics.length > 0) {
 				this.patchState({
 					scenarioOperationError: {
@@ -263,6 +269,121 @@ export class GameRouteController {
 			return;
 		}
 		this.patchState({ scenarioOperationError: null, retryScenarioOperation: null });
+	}
+
+	startScenarioRun(definition: ScenarioDefinition, seed: number): Promise<GameRouteCommitResult> {
+		const started = startScenarioTransition(definition, seed);
+		if (!started.ok) {
+			this.patchState({
+				scenarioOperationError: started.error,
+				retryScenarioOperation: null
+			});
+			return Promise.resolve({ status: 'rejected' });
+		}
+		return this.persistScenarioRun(started.value, () => this.startScenarioRun(definition, seed));
+	}
+
+	async resumeScenarioRun(
+		scenarioId: ScenarioRun['definition']['scenarioId']
+	): Promise<GameRouteCommitResult> {
+		const repository = this.scenarioRepository;
+		if (!repository) return { status: 'unavailable' };
+		if (this.currentState.scenarioCommandPending) return { status: 'busy' };
+
+		this.patchState({ scenarioCommandPending: true });
+		try {
+			const run = await repository.loadActiveRun(scenarioId);
+			if (!run) {
+				this.patchState({
+					scenarioCommandPending: false,
+					scenarioOperationError: scenarioError('missing-run'),
+					retryScenarioOperation: null
+				});
+				return { status: 'unavailable' };
+			}
+			this.patchState({
+				activeScenarioRun: run,
+				lastScenarioResult: null,
+				lastScenarioBestUpdated: false,
+				playMode: 'scenario',
+				scenarioCommandPending: false,
+				scenarioOperationError: null,
+				retryScenarioOperation: null
+			});
+			return { status: 'committed' };
+		} catch {
+			this.patchState({
+				scenarioCommandPending: false,
+				scenarioOperationError: scenarioError('persistence-read-failed'),
+				retryScenarioOperation: async () => {
+					await this.resumeScenarioRun(scenarioId);
+				}
+			});
+			return { status: 'failed' };
+		}
+	}
+
+	restartScenarioRun(): Promise<GameRouteCommitResult> {
+		const run = this.currentState.activeScenarioRun;
+		if (!run) {
+			this.patchState({
+				scenarioOperationError: scenarioError('missing-run'),
+				retryScenarioOperation: null
+			});
+			return Promise.resolve({ status: 'unavailable' });
+		}
+		const definition = this.options.resolveScenarioDefinition(run.definition);
+		if (!definition) {
+			this.patchState({
+				scenarioOperationError: scenarioError('stale-definition'),
+				retryScenarioOperation: null
+			});
+			return Promise.resolve({ status: 'rejected' });
+		}
+		const restarted = restartScenarioTransition(run, definition);
+		if (!restarted.ok) {
+			this.patchState({
+				scenarioOperationError: restarted.error,
+				retryScenarioOperation: null
+			});
+			return Promise.resolve({ status: 'rejected' });
+		}
+		return this.persistScenarioRun(restarted.value, () => this.restartScenarioRun());
+	}
+
+	returnToSandbox(): void {
+		this.patchState({ playMode: 'sandbox' });
+	}
+
+	async abandonScenarioRun(): Promise<GameRouteCommitResult> {
+		const run = this.currentState.activeScenarioRun;
+		const repository = this.scenarioRepository;
+		if (!run || !repository) return { status: 'unavailable' };
+		if (this.currentState.scenarioCommandPending) return { status: 'busy' };
+
+		this.patchState({ scenarioCommandPending: true });
+		try {
+			await repository.removeActiveRun(run.definition.scenarioId);
+			this.patchState({
+				activeScenarioRun: null,
+				lastScenarioResult: null,
+				lastScenarioBestUpdated: false,
+				playMode: 'sandbox',
+				scenarioCommandPending: false,
+				scenarioOperationError: null,
+				retryScenarioOperation: null
+			});
+			return { status: 'committed' };
+		} catch {
+			this.patchState({
+				scenarioCommandPending: false,
+				scenarioOperationError: scenarioError('persistence-write-failed'),
+				retryScenarioOperation: async () => {
+					await this.abandonScenarioRun();
+				}
+			});
+			return { status: 'failed' };
+		}
 	}
 
 	foundStore(input: FoundStoreInput): Promise<GameRouteCommitResult> {
@@ -467,6 +588,39 @@ export class GameRouteController {
 			scenarioOperationError: null,
 			retryScenarioOperation: null
 		});
+	}
+
+	private async persistScenarioRun(
+		run: ScenarioRun,
+		retry: () => Promise<GameRouteCommitResult>
+	): Promise<GameRouteCommitResult> {
+		const repository = this.scenarioRepository;
+		if (!repository) return { status: 'unavailable' };
+		if (this.currentState.scenarioCommandPending) return { status: 'busy' };
+
+		this.patchState({ scenarioCommandPending: true });
+		try {
+			const outcome = await repository.saveActiveRun(run);
+			this.patchState({
+				activeScenarioRun: outcome.activeRun,
+				lastScenarioResult: null,
+				lastScenarioBestUpdated: false,
+				playMode: 'scenario',
+				scenarioCommandPending: false,
+				scenarioOperationError: null,
+				retryScenarioOperation: null
+			});
+			return { status: 'committed' };
+		} catch {
+			this.patchState({
+				scenarioCommandPending: false,
+				scenarioOperationError: scenarioError('persistence-write-failed'),
+				retryScenarioOperation: async () => {
+					await retry();
+				}
+			});
+			return { status: 'failed' };
+		}
 	}
 
 	private async commitMutation(request: RouteGameMutation): Promise<GameRouteCommitResult> {

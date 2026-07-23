@@ -938,6 +938,103 @@ export const en = {
 			}
 		}
 	},
+	scenarioDefinitions: {
+		firstProfit: {
+			title: 'First Profit',
+			summary: 'Turn a small shop into a profitable business.',
+			briefing: 'Reach positive income before the deadline.',
+			strategyHint: 'Control costs while building a dependable customer base.',
+			objectives: {
+				cumulativeNetIncome: 'Earn cumulative net income',
+				positiveIncomeStreak: 'Maintain a positive income streak'
+			},
+			failures: { negativeCash: 'Avoid negative cash' }
+		},
+		importSqueeze: {
+			title: 'Import Squeeze',
+			summary: 'Stay profitable while imported stock costs more.',
+			briefing: 'Complete import cycles and protect your margin.',
+			strategyHint: 'Plan orders carefully and avoid excess inventory.',
+			objectives: {
+				completedImportCycles: 'Complete import cycles',
+				cumulativeNetIncome: 'Earn cumulative net income'
+			},
+			failures: { negativeCash: 'Avoid negative cash' }
+		},
+		localLifeline: {
+			title: 'Local Lifeline',
+			summary: 'Build a resilient local supply chain.',
+			briefing: 'Supply stores with locally produced goods.',
+			strategyHint: 'Balance production capacity with retail demand.',
+			objectives: { localUnits: 'Supply local units', localShare: 'Reach the local supply share' },
+			failures: { negativeCash: 'Avoid negative cash' }
+		}
+	},
+	scenarioCatalog: {
+		title: 'Challenge catalog',
+		close: 'Close challenge catalog',
+		start: 'Start',
+		resume: 'Resume',
+		restart: 'Restart',
+		startCurrent: 'Start current',
+		confirmReplacement: 'Confirm replacement',
+		cancel: 'Cancel',
+		shareCode: 'Share code',
+		importCode: 'Import code',
+		copyCode: 'Copy code for {title}',
+		copySuccess: 'Share code copied.',
+		copyFailure: 'Unable to copy the share code.',
+		retry: 'Retry',
+		olderVersionConfirmation: 'Starting the current version replaces the active older run.',
+		importReplacementConfirmation: 'Replace the active run?',
+		best: 'Best',
+		noBest: 'No ranked result yet',
+		priorVersion: 'Prior version result',
+		dayLimit: '{days} day limit',
+		allowedContent: '{cities} city, {stores} store type, {products} product',
+		challengeDetails: 'Challenge details',
+		restartChallenge: 'Restart challenge',
+		catalog: 'Challenge catalog',
+		returnSandbox: 'Return to sandbox',
+		abandon: 'Abandon challenge',
+		confirmAbandon: 'Confirm abandon'
+	},
+	scenarioStatus: {
+		officialSeed: 'Official seed {seed}',
+		customSeed: 'Custom seed {seed}',
+		ranked: 'Ranked',
+		unranked: 'Unranked',
+		activeVersion: 'Active version {active} (current version {current})',
+		versionEligibility: 'Version {version} · {eligibility}'
+	},
+	scenarioObjectives: { heading: 'Objectives', required: 'Required', optional: 'Optional' },
+	scenarioResults: {
+		points: '{score} points',
+		bronze: 'Bronze',
+		silver: 'Silver',
+		gold: 'Gold',
+		noMedal: 'No medal'
+	},
+	scenarioDiagnostics: {
+		invalidBuiltIn: 'Invalid built-in challenge: {detail}',
+		malformedShareCode: 'Malformed share-code format.',
+		unknownScenario: 'Unknown challenge.',
+		unsupportedVersion: 'Unsupported challenge version.',
+		invalidSeed: 'Invalid challenge seed.',
+		checksumMismatch: 'Share-code checksum does not match.',
+		invalidDefinition: 'The challenge definition is invalid.',
+		setupInvariantFailed: 'The challenge setup could not be created.',
+		staleDefinition: 'This challenge version is unavailable.',
+		persistenceReadFailed: 'The challenge could not be loaded.',
+		persistenceWriteFailed: 'The challenge could not be saved.',
+		missingRun: 'The active challenge run is unavailable.',
+		forbiddenCommand: 'That action is unavailable in this challenge.',
+		forbiddenContent: 'That content is unavailable in this challenge.',
+		terminalRun: 'This challenge run has already ended.'
+	},
+	scenarioModifiers: {
+		importCostMultiplier: 'Import costs ×{multiplier}'
+	},
 	placement: {
 		chooseHighlightedTile: 'Choose a highlighted tile to build.',
 		retail: {
