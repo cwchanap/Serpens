@@ -208,7 +208,7 @@
 				{#if canUpgrade && !canAffordUpgrade}
 					<p class="hint">{i18n.t('railSegmentInspector.notEnoughCash')}</p>
 				{/if}
-				{#if !canUpgradeRail && disabledReason}
+				{#if !canUpgradeRail && canDemolishRail && disabledReason}
 					<p class="hint">{disabledReason}</p>
 				{/if}
 				<button

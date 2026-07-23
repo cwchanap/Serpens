@@ -71,16 +71,17 @@ function componentEvaluations(
 	});
 }
 
+function aggregateScore(components: ComponentEvaluation[]): number {
+	const score = components.reduce((total, component) => total + component.points, 500);
+	return Math.min(1000, Math.max(0, score));
+}
+
 export function calculateScenarioScore(
 	definition: ScenarioDefinition,
 	game: GameState,
 	evaluation: Omit<ScenarioEvaluation, 'projection'>
 ): number {
-	const score = componentEvaluations(definition, game, evaluation).reduce(
-		(total, component) => total + component.points,
-		500
-	);
-	return Math.min(1000, Math.max(0, score));
+	return aggregateScore(componentEvaluations(definition, game, evaluation));
 }
 
 export function calculateScenarioScoreProjection(
@@ -90,13 +91,7 @@ export function calculateScenarioScoreProjection(
 ): ScenarioScoreProjection {
 	const components = componentEvaluations(definition, game, evaluation);
 	const points = components.map((component) => component.points);
-	const score = Math.min(
-		1000,
-		Math.max(
-			0,
-			points.reduce((total, component) => total + component, 500)
-		)
-	);
+	const score = aggregateScore(components);
 	return {
 		score,
 		medal: medalForScore(definition, 'completed', score)!,

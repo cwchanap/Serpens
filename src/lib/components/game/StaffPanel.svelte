@@ -106,8 +106,9 @@
 	}
 
 	function hasAssignmentAction(member: StaffMember): boolean {
+		const hasAssignment = member.assignedStoreId !== null;
 		return (
-			canUnassign ||
+			(hasAssignment && canUnassign) ||
 			(canAssign && stores.some((candidateStore) => candidateStore.id !== member.assignedStoreId))
 		);
 	}

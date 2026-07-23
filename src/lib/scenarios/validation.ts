@@ -1572,6 +1572,7 @@ function validateCommands(context: ValidationContext, value: unknown): void {
 function validateModifiers(context: ValidationContext, value: unknown): void {
 	const modifiers = arrayValue(context, value, 'modifiers');
 	if (!modifiers) return;
+	const claimedByScope = new Map<string, { all: boolean; ids: Set<string> }>();
 	for (const [index, candidate] of modifiers.entries()) {
 		const path = `modifiers[${index}]`;
 		if (!isObject(candidate)) {
@@ -1626,6 +1627,54 @@ function validateModifiers(context: ValidationContext, value: unknown): void {
 				);
 		}
 		validateModifierTarget(context, modifier.target, `${path}.target`, modifier.scope);
+		trackModifierTargetOverlap(
+			context,
+			{ scope: modifier.scope, target: modifier.target },
+			`${path}.target`,
+			claimedByScope
+		);
+	}
+}
+
+function trackModifierTargetOverlap(
+	context: ValidationContext,
+	modifier: { scope: unknown; target: unknown },
+	path: string,
+	claimedByScope: Map<string, { all: boolean; ids: Set<string> }>
+): void {
+	if (modifier.scope !== 'retail-product' && modifier.scope !== 'industrial-material') return;
+	if (!isObject(modifier.target)) return;
+	const scope = modifier.scope as string;
+	let claimed = claimedByScope.get(scope);
+	if (!claimed) {
+		claimed = { all: false, ids: new Set() };
+		claimedByScope.set(scope, claimed);
+	}
+	if (modifier.target.kind === 'all') {
+		if (claimed.all || claimed.ids.size > 0)
+			diagnostic(
+				context,
+				path,
+				'invalid-modifier',
+				modifier.target,
+				'Import multiplier target overlaps a previous target in the same scope.'
+			);
+		claimed.all = true;
+		return;
+	}
+	if (modifier.target.kind === 'ids' && Array.isArray(modifier.target.ids)) {
+		const ids = (modifier.target.ids as readonly unknown[]).filter(
+			(id): id is string => typeof id === 'string'
+		);
+		if (claimed.all || ids.some((id) => claimed!.ids.has(id)))
+			diagnostic(
+				context,
+				path,
+				'invalid-modifier',
+				modifier.target,
+				'Import multiplier target overlaps a previous target in the same scope.'
+			);
+		for (const id of ids) claimed.ids.add(id);
 	}
 }
 

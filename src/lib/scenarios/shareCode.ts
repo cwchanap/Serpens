@@ -9,6 +9,15 @@ import {
 
 const SHARE_CODE_PREFIX = 'SC1';
 const SCENARIO_IDS = ['first-profit', 'import-squeeze', 'local-lifeline'] as const;
+// Compile-time exhaustiveness: errors if SCENARIO_IDS and ScenarioId diverge
+// (a new ScenarioId must be added to SCENARIO_IDS, and vice versa).
+type _ScenarioIdExhaustive = (typeof SCENARIO_IDS)[number] extends ScenarioId
+	? ScenarioId extends (typeof SCENARIO_IDS)[number]
+		? true
+		: never
+	: never;
+const _scenarioIdExhaustive: _ScenarioIdExhaustive = true;
+void _scenarioIdExhaustive;
 
 export interface DecodedScenarioShareCode {
 	definition: ScenarioDefinitionRef;
