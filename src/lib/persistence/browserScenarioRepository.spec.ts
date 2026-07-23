@@ -1,8 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import type { GameState } from '$lib/game/types';
-import { STARTER_STORE_CAP, createInitialWorldProgress } from '$lib/game/world';
-import { evaluateScenario } from '$lib/scenarios/runtime';
-import type { ScenarioDefinition, ScenarioDefinitionRef, ScenarioRun } from '$lib/scenarios/types';
 import { BROWSER_SAVE_STORAGE_KEY } from './browserSaveRepository';
 import {
 	BROWSER_SCENARIO_STORAGE_KEY,
@@ -12,170 +8,13 @@ import {
 import { createScenarioMemoryRepository } from './scenarioMemoryRepository';
 import type { ScenarioRepository } from './scenarioRepository';
 import {
+	createFixtureScenarioRun as fixtureRun,
+	resolveFixtureDefinition
+} from './scenarioRepository.testUtils';
+import {
 	createTauriScenarioRepositoryFromStore,
 	type ScenarioStoreLike
 } from './tauriScenarioRepository';
-
-const FIXTURE_DEFINITION: ScenarioDefinition = {
-	id: 'first-profit',
-	version: 1,
-	titleKey: 'store.defaultName',
-	summaryKey: 'store.defaultName',
-	briefingKey: 'store.defaultName',
-	strategyHintKey: 'store.defaultName',
-	officialSeed: 280_001,
-	dayLimit: 14,
-	start: {
-		foundingStore: {
-			ref: 'founder',
-			archetypeId: 'convenience',
-			cityId: 'harbor-city',
-			tileId: 'harbor-city-1-1'
-		},
-		industrialBuildings: [],
-		rails: [],
-		overrides: {}
-	},
-	content: {
-		cityIds: ['harbor-city'],
-		archetypeIds: ['convenience'],
-		productCategoryIds: ['bottled-water'],
-		materialIds: [],
-		buildingTypeIds: [],
-		retailPlacements: [],
-		industrialPlacements: []
-	},
-	allowedCommands: ['advanceDay'],
-	modifiers: [],
-	requiredObjectives: [
-		{
-			id: 'cash-goal',
-			labelKey: 'store.defaultName',
-			query: { metric: 'cash' },
-			comparator: 'gte',
-			target: 1_000_000,
-			window: { kind: 'current' }
-		}
-	],
-	optionalObjectives: [],
-	failures: [],
-	scoreComponents: [
-		{
-			kind: 'metric',
-			query: { metric: 'cash' },
-			window: { kind: 'current' },
-			zeroBonusAt: 0,
-			fullBonusAt: 1_000_000,
-			points: 500
-		}
-	],
-	medalThresholds: { silver: 700, gold: 850 }
-};
-
-function resolveFixtureDefinition(ref: ScenarioDefinitionRef): ScenarioDefinition | undefined {
-	return ref.scenarioId === FIXTURE_DEFINITION.id && ref.version === FIXTURE_DEFINITION.version
-		? FIXTURE_DEFINITION
-		: undefined;
-}
-
-function fixtureGame(): GameState {
-	return {
-		seed: FIXTURE_DEFINITION.officialSeed,
-		rngState: 99,
-		day: 2,
-		cash: 11_000,
-		debt: 1_000,
-		policy: {
-			pricing: 'standard',
-			inventory: 'balanced',
-			staffing: 'efficient',
-			marketing: 'awareness',
-			service: 'balanced'
-		},
-		scorecard: {
-			profit: 55,
-			customerSatisfaction: 60,
-			staffMorale: 65,
-			marketPosition: 50
-		},
-		world: createInitialWorldProgress(),
-		storeCap: STARTER_STORE_CAP,
-		cities: [
-			{
-				id: 'harbor-city',
-				name: 'Harbor City',
-				width: 1,
-				height: 1,
-				tiles: [
-					{
-						id: 'harbor-city-0-0',
-						cityId: 'harbor-city',
-						x: 0,
-						y: 0,
-						neighborhood: 'downtown',
-						terrain: 'commercial',
-						feature: null,
-						demand: 50,
-						rent: 50,
-						footTraffic: 50,
-						customerFit: 50,
-						locked: false
-					}
-				]
-			}
-		],
-		activeCityId: 'harbor-city',
-		industryCities: [
-			{
-				id: 'industry-city',
-				name: 'Industry City',
-				width: 1,
-				height: 1,
-				tiles: [
-					{
-						id: 'industry-city-0-0',
-						cityId: 'industry-city',
-						x: 0,
-						y: 0,
-						terrain: 'industrial',
-						resource: null,
-						locked: false
-					}
-				],
-				rails: []
-			}
-		],
-		activeIndustryCityId: 'industry-city',
-		industrialBuildings: [],
-		warehouse: {
-			capacity: 0,
-			materials: {},
-			overflowUnits: 0,
-			overflowCost: 0
-		},
-		stores: [],
-		staff: [],
-		hiringCandidates: [],
-		decisions: [],
-		reports: []
-	};
-}
-
-function fixtureRun(): ScenarioRun {
-	const game = fixtureGame();
-	return {
-		definition: {
-			scenarioId: FIXTURE_DEFINITION.id,
-			version: FIXTURE_DEFINITION.version
-		},
-		seed: FIXTURE_DEFINITION.officialSeed,
-		eligibility: 'ranked',
-		status: 'active',
-		game,
-		evaluation: evaluateScenario(FIXTURE_DEFINITION, game, false),
-		result: null
-	};
-}
 
 class MemoryStorage implements ScenarioStorageLike {
 	readonly readKeys: string[] = [];
@@ -208,13 +47,15 @@ class MemoryStorage implements ScenarioStorageLike {
 class MemoryScenarioStore implements ScenarioStoreLike {
 	readonly values = new Map<string, unknown>();
 
-	async get<T>(key: string): Promise<T | null | undefined> {
-		return this.values.get(key) as T | null | undefined;
+	async get<T>(key: string): Promise<T | undefined> {
+		return this.values.get(key) as T | undefined;
 	}
 
 	async set(key: string, value: unknown): Promise<void> {
 		this.values.set(key, value);
 	}
+
+	async reload(): Promise<void> {}
 
 	async save(): Promise<void> {}
 }
