@@ -962,6 +962,7 @@ export const zhHant = {
 		close: '關閉挑戰目錄',
 		start: '開始',
 		resume: '繼續',
+		resumeVersion: '繼續版本 {version}',
 		restart: '重新開始',
 		startCurrent: '開始目前版本',
 		confirmReplacement: '確認取代',

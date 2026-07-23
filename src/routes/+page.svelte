@@ -435,6 +435,9 @@
 		bestResultsByDefinitionKey: {},
 		diagnostics: []
 	});
+	let inspectedScenarioRefs = $state<
+		Partial<Record<ScenarioRun['definition']['scenarioId'], ScenarioRun['definition']>>
+	>({});
 	let effectiveScenarioSummary = $derived<ScenarioPersistenceSummary>({
 		...scenarioSummary,
 		activeRunsByScenarioId: activeScenarioRun
@@ -445,7 +448,12 @@
 			: scenarioSummary.activeRunsByScenarioId
 	});
 	let scenarioCatalogCards = $derived(
-		buildScenarioCatalogCards(listScenarioCatalogEntries(), effectiveScenarioSummary, i18n)
+		buildScenarioCatalogCards(
+			listScenarioCatalogEntries(),
+			effectiveScenarioSummary,
+			i18n,
+			inspectedScenarioRefs
+		)
 	);
 	let scenarioOperationErrorText = $derived(
 		scenarioOperationError ? scenarioDiagnosticText(scenarioOperationError, i18n) : null
@@ -1099,8 +1107,15 @@
 		if (result.status === 'committed') isScenarioCatalogOpen = false;
 	}
 
+	async function restartScenarioCard(card: ScenarioCatalogCardViewModel): Promise<void> {
+		if (!card.activeDefinitionRef) return;
+		const result = await gameRouteController.restartScenarioRun(card.activeDefinitionRef);
+		if (result.status === 'committed') isScenarioCatalogOpen = false;
+	}
+
 	async function restartActiveScenario(): Promise<void> {
-		const result = await gameRouteController.restartScenarioRun();
+		if (!activeScenarioRun) return;
+		const result = await gameRouteController.restartScenarioRun(activeScenarioRun.definition);
 		if (result.status === 'committed') isScenarioCatalogOpen = false;
 	}
 
@@ -1111,12 +1126,10 @@
 		const decoded = decodeScenarioShareCode(code, resolveScenarioDefinition);
 		if (!decoded.ok)
 			return { status: 'error', message: scenarioShareCodeErrorText(decoded.code, i18n) };
-		if (activeScenarioRun && !confirmed) {
-			return {
-				status: 'confirmation-required',
-				message: i18n.t('scenarioCatalog.importReplacementConfirmation')
-			};
-		}
+		inspectedScenarioRefs = {
+			...inspectedScenarioRefs,
+			[decoded.value.definition.scenarioId]: decoded.value.definition
+		};
 		const definition = resolveScenarioDefinition(decoded.value.definition);
 		if (!definition) {
 			return {
@@ -1124,7 +1137,17 @@
 				message: scenarioShareCodeErrorText('unsupported-version', i18n)
 			};
 		}
-		const result = await gameRouteController.startScenarioRun(definition, decoded.value.seed);
+		const result = await gameRouteController.importScenarioRun(
+			definition,
+			decoded.value.seed,
+			confirmed
+		);
+		if (result.status === 'confirmation-required') {
+			return {
+				status: 'confirmation-required',
+				message: i18n.t('scenarioCatalog.importReplacementConfirmation')
+			};
+		}
 		if (result.status !== 'committed') {
 			return {
 				status: 'error',
@@ -2226,7 +2249,7 @@
 			pending={scenarioCommandPending}
 			onStart={startScenarioCard}
 			onResume={resumeScenarioCard}
-			onRestart={() => restartActiveScenario()}
+			onRestart={restartScenarioCard}
 			onStartCurrent={startScenarioCard}
 			onImport={importScenarioCode}
 			onCopy={copyScenarioCode}

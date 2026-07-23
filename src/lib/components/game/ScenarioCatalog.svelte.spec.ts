@@ -30,6 +30,7 @@ function card(
 		primaryAction: 'start',
 		primaryLabel: 'Start',
 		showRestart: false,
+		activeDefinitionRef: null,
 		showStartCurrent: false,
 		activeVersionLabel: null,
 		best: null,
