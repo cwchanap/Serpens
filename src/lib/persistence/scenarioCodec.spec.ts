@@ -570,7 +570,7 @@ describe('scenario codec', () => {
 		}
 	);
 
-	it('recomputes game-less metric score components from matching definition evidence', () => {
+	it('recomputes game-less metric score components from canonical component evidence', () => {
 		const completed = fixtureRun(undefined, { status: 'completed', score: 750 });
 		const result = structuredClone(completed.result!);
 		result.score = 1000;
@@ -599,7 +599,64 @@ describe('scenario codec', () => {
 		expect(decoded.diagnostics.map((entry) => entry.code)).toContain('evaluation-mismatch');
 	});
 
-	it('rejects a game-less metric score component without one unique matching condition', () => {
+	it('rejects forged canonical metric component evidence even when legacy objective evidence matches', () => {
+		const completed = fixtureRun(undefined, { status: 'completed', score: 750 });
+		const result = structuredClone(completed.result!);
+		(result.evaluation.projection as unknown as Record<string, unknown>).componentEvidence = [
+			{
+				kind: 'metric',
+				query: { metric: 'warehouse-quantity', materialId: 'water' },
+				window: { kind: 'current' },
+				actual: 500,
+				day: result.evaluation.day,
+				windowComplete: true
+			}
+		];
+		const decoded = decodeScenarioStoreSnapshot(
+			snapshot(
+				{},
+				{
+					'first-profit@1': {
+						scenarioSchemaVersion: SCENARIO_RUN_SCHEMA_VERSION,
+						result
+					}
+				}
+			),
+			resolveFixtureDefinition
+		);
+
+		expect(decoded.snapshot.bestResultsByDefinitionKey).toEqual({});
+		expect(decoded.diagnostics.map((entry) => entry.code)).toContain('evaluation-mismatch');
+	});
+
+	it.each(['actual', 'day', 'window-completeness'] as const)(
+		'rejects fabricated metric component %s evidence',
+		(fabrication) => {
+			const completed = fixtureRun(undefined, { status: 'completed', score: 750 });
+			const result = structuredClone(completed.result!);
+			const evidence = result.evaluation.projection.componentEvidence[0]!;
+			if (fabrication === 'actual') evidence.actual = 1000;
+			if (fabrication === 'day') evidence.day += 1;
+			if (fabrication === 'window-completeness') evidence.windowComplete = false;
+			const decoded = decodeScenarioStoreSnapshot(
+				snapshot(
+					{},
+					{
+						'first-profit@1': {
+							scenarioSchemaVersion: SCENARIO_RUN_SCHEMA_VERSION,
+							result
+						}
+					}
+				),
+				resolveFixtureDefinition
+			);
+
+			expect(decoded.snapshot.bestResultsByDefinitionKey).toEqual({});
+			expect(decoded.diagnostics.map((entry) => entry.code)).toContain('evaluation-mismatch');
+		}
+	);
+
+	it('rejects component evidence whose identity does not match a standalone metric definition', () => {
 		const definition: ScenarioDefinition = {
 			...fixtureDefinition({ scenarioId: 'first-profit', version: 1 }),
 			scoreComponents: [
@@ -618,6 +675,7 @@ describe('scenario codec', () => {
 		result.score = 1000;
 		result.medal = 'gold';
 		result.evaluation.projection = {
+			...result.evaluation.projection,
 			score: 1000,
 			medal: 'gold',
 			componentPoints: [500]
@@ -639,7 +697,7 @@ describe('scenario codec', () => {
 		expect(decoded.diagnostics.map((entry) => entry.code)).toContain('evaluation-mismatch');
 	});
 
-	it('rejects a game-less metric score component with multiple matching conditions', () => {
+	it('uses canonical component evidence instead of ambiguous objective evidence', () => {
 		const definition: ScenarioDefinition = {
 			...fixtureDefinition({ scenarioId: 'first-profit', version: 1 }),
 			scoreComponents: [
@@ -850,7 +908,12 @@ describe('scenario codec', () => {
 			medal: 'gold' as const,
 			evaluation: {
 				...evaluation,
-				projection: { score: 1000, medal: 'gold' as const, componentPoints: [500] }
+				projection: {
+					...evaluation.projection,
+					score: 1000,
+					medal: 'gold' as const,
+					componentPoints: [500]
+				}
 			}
 		};
 

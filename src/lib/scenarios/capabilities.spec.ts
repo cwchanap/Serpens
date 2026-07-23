@@ -82,7 +82,7 @@ function run(gameOverrides: Partial<GameState> = {}): ScenarioRun {
 			failures: [],
 			deadline: null,
 			risks: [],
-			projection: { score: 500, medal: 'bronze', componentPoints: [] }
+			projection: { score: 500, medal: 'bronze', componentPoints: [], componentEvidence: [] }
 		},
 		result: null
 	};

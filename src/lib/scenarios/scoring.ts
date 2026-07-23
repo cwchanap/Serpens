@@ -4,6 +4,7 @@ import type {
 	ScenarioDefinition,
 	ScenarioEvaluation,
 	ScenarioMedal,
+	ScenarioMetricScoreEvidence,
 	ScenarioResult,
 	ScenarioRunStatus,
 	ScenarioScoreProjection
@@ -15,36 +16,57 @@ function normalizePoints(actual: number, zeroAt: number, fullAt: number, points:
 	return Math.round(Math.min(1, Math.max(0, ratio)) * points);
 }
 
-function componentPoints(
+interface ComponentEvaluation {
+	points: number;
+	evidence: ScenarioMetricScoreEvidence | null;
+}
+
+function componentEvaluations(
 	definition: ScenarioDefinition,
 	game: GameState,
 	evaluation: Omit<ScenarioEvaluation, 'projection'>
-): number[] {
+): ComponentEvaluation[] {
 	return definition.scoreComponents.map((component) => {
 		switch (component.kind) {
 			case 'optional-objective':
-				return evaluation.optional.some(
-					(objective) =>
-						objective.conditionId === component.objectiveId && objective.status === 'satisfied'
-				)
-					? component.points
-					: 0;
+				return {
+					points: evaluation.optional.some(
+						(objective) =>
+							objective.conditionId === component.objectiveId && objective.status === 'satisfied'
+					)
+						? component.points
+						: 0,
+					evidence: null
+				};
 			case 'metric': {
 				const metric = evaluateMetric(game, component.query, component.window);
-				return normalizePoints(
-					metric.actual,
-					component.zeroBonusAt,
-					component.fullBonusAt,
-					component.points
-				);
+				return {
+					points: normalizePoints(
+						metric.actual,
+						component.zeroBonusAt,
+						component.fullBonusAt,
+						component.points
+					),
+					evidence: {
+						kind: 'metric',
+						query: component.query,
+						window: component.window,
+						actual: metric.actual,
+						day: game.day,
+						windowComplete: metric.windowComplete
+					}
+				};
 			}
 			case 'remaining-days':
-				return normalizePoints(
-					definition.dayLimit - game.day,
-					component.zeroBonusAt,
-					component.fullBonusAt,
-					component.points
-				);
+				return {
+					points: normalizePoints(
+						definition.dayLimit - game.day,
+						component.zeroBonusAt,
+						component.fullBonusAt,
+						component.points
+					),
+					evidence: null
+				};
 		}
 	});
 }
@@ -54,8 +76,8 @@ export function calculateScenarioScore(
 	game: GameState,
 	evaluation: Omit<ScenarioEvaluation, 'projection'>
 ): number {
-	const score = componentPoints(definition, game, evaluation).reduce(
-		(total, points) => total + points,
+	const score = componentEvaluations(definition, game, evaluation).reduce(
+		(total, component) => total + component.points,
 		500
 	);
 	return Math.min(1000, Math.max(0, score));
@@ -66,7 +88,8 @@ export function calculateScenarioScoreProjection(
 	game: GameState,
 	evaluation: Omit<ScenarioEvaluation, 'projection'>
 ): ScenarioScoreProjection {
-	const points = componentPoints(definition, game, evaluation);
+	const components = componentEvaluations(definition, game, evaluation);
+	const points = components.map((component) => component.points);
 	const score = Math.min(
 		1000,
 		Math.max(
@@ -77,7 +100,8 @@ export function calculateScenarioScoreProjection(
 	return {
 		score,
 		medal: medalForScore(definition, 'completed', score)!,
-		componentPoints: points
+		componentPoints: points,
+		componentEvidence: components.map((component) => component.evidence)
 	};
 }
 

@@ -407,6 +407,26 @@ function validateEvaluation(value: unknown, path: string): ScenarioEvaluation {
 	requireArray(projection.componentPoints, `${path}.projection.componentPoints`).forEach(
 		(points, index) => requireInteger(points, `${path}.projection.componentPoints[${index}]`, 0)
 	);
+	requireArray(projection.componentEvidence, `${path}.projection.componentEvidence`).forEach(
+		(evidenceValue, index) => {
+			if (evidenceValue === null) return;
+			const evidencePath = `${path}.projection.componentEvidence[${index}]`;
+			const evidence = requireRecord(evidenceValue, evidencePath);
+			if (evidence.kind !== 'metric') {
+				fail(
+					'invalid-value',
+					`${evidencePath}.kind`,
+					evidence.kind,
+					'Score component evidence must use the metric kind.'
+				);
+			}
+			requireRecord(evidence.query, `${evidencePath}.query`);
+			validateWindow(evidence.window, `${evidencePath}.window`);
+			requireFiniteNumber(evidence.actual, `${evidencePath}.actual`);
+			requireInteger(evidence.day, `${evidencePath}.day`, 1);
+			requireBoolean(evidence.windowComplete, `${evidencePath}.windowComplete`);
+		}
+	);
 	return evaluation as unknown as ScenarioEvaluation;
 }
 
@@ -477,8 +497,7 @@ function validateEvaluationContract(
 	evaluation: ScenarioEvaluation,
 	definition: ScenarioDefinition,
 	path: string,
-	phase: EvaluationPhase,
-	requireMetricEvidence: boolean
+	phase: EvaluationPhase
 ): void {
 	const groups = [
 		['required', evaluation.required, definition.requiredObjectives],
@@ -565,6 +584,7 @@ function validateEvaluationContract(
 	}
 
 	const points = evaluation.projection.componentPoints;
+	const componentEvidence = evaluation.projection.componentEvidence;
 	if (points.length !== definition.scoreComponents.length) {
 		fail(
 			'evaluation-mismatch',
@@ -573,9 +593,18 @@ function validateEvaluationContract(
 			'Score components must match the resolved definition cardinality.'
 		);
 	}
+	if (componentEvidence.length !== definition.scoreComponents.length) {
+		fail(
+			'evaluation-mismatch',
+			`${path}.projection.componentEvidence`,
+			componentEvidence.length,
+			'Score component evidence must align with the resolved definition cardinality.'
+		);
+	}
 	for (let index = 0; index < definition.scoreComponents.length; index += 1) {
 		const component = definition.scoreComponents[index];
 		const componentPoints = points[index];
+		const evidence = componentEvidence[index];
 		if (componentPoints > component.points) {
 			fail(
 				'evaluation-mismatch',
@@ -585,6 +614,14 @@ function validateEvaluationContract(
 			);
 		}
 		if (component.kind === 'optional-objective') {
+			if (evidence !== null) {
+				fail(
+					'evaluation-mismatch',
+					`${path}.projection.componentEvidence[${index}]`,
+					evidence,
+					'Optional-objective components do not carry metric evidence.'
+				);
+			}
 			const objective = evaluation.optional.find(
 				(candidate) => candidate.conditionId === component.objectiveId
 			);
@@ -598,6 +635,14 @@ function validateEvaluationContract(
 				);
 			}
 		} else if (component.kind === 'remaining-days') {
+			if (evidence !== null) {
+				fail(
+					'evaluation-mismatch',
+					`${path}.projection.componentEvidence[${index}]`,
+					evidence,
+					'Remaining-day components do not carry metric evidence.'
+				);
+			}
 			const expected = normalizedPoints(
 				definition.dayLimit - evaluation.day,
 				component.zeroBonusAt,
@@ -613,48 +658,34 @@ function validateEvaluationContract(
 				);
 			}
 		} else {
-			const candidates = [
-				...definition.requiredObjectives.map((condition, conditionIndex) => ({
-					condition,
-					evaluation: evaluation.required[conditionIndex]
-				})),
-				...definition.optionalObjectives.map((condition, conditionIndex) => ({
-					condition,
-					evaluation: evaluation.optional[conditionIndex]
-				})),
-				...definition.failures.map((condition, conditionIndex) => ({
-					condition,
-					evaluation: evaluation.failures[conditionIndex]
-				}))
-			].filter(
-				(candidate) =>
-					deeplyEqual(candidate.condition.query, component.query) &&
-					deeplyEqual(candidate.condition.window, component.window)
+			if (
+				evidence === null ||
+				evidence.kind !== 'metric' ||
+				!deeplyEqual(evidence.query, component.query) ||
+				!deeplyEqual(evidence.window, component.window) ||
+				evidence.day !== evaluation.day ||
+				evidence.windowComplete !== true
+			) {
+				fail(
+					'evaluation-mismatch',
+					`${path}.projection.componentEvidence[${index}]`,
+					evidence,
+					'Metric component evidence must match its definition query, window, day, and completeness.'
+				);
+			}
+			const expected = normalizedPoints(
+				evidence.actual,
+				component.zeroBonusAt,
+				component.fullBonusAt,
+				component.points
 			);
-			if (requireMetricEvidence && candidates.length !== 1) {
+			if (componentPoints !== expected) {
 				fail(
 					'evaluation-mismatch',
 					`${path}.projection.componentPoints[${index}]`,
 					componentPoints,
-					'Metric score components require exactly one matching definition condition and evidence.'
+					'Metric points must be derived from canonical score component evidence.'
 				);
-			}
-			if (candidates.length === 1) {
-				const actual = candidates[0].evaluation.evidence.actual;
-				const expected = normalizedPoints(
-					actual,
-					component.zeroBonusAt,
-					component.fullBonusAt,
-					component.points
-				);
-				if (componentPoints !== expected) {
-					fail(
-						'evaluation-mismatch',
-						`${path}.projection.componentPoints[${index}]`,
-						componentPoints,
-						'Metric points must be derived from matching definition evidence.'
-					);
-				}
 			}
 		}
 	}
@@ -689,8 +720,7 @@ function selectedTerminalStatus(evaluation: ScenarioEvaluation): 'active' | 'com
 function validateResult(
 	value: unknown,
 	resolveDefinition: ScenarioDefinitionResolver,
-	path: string,
-	requireMetricEvidence = true
+	path: string
 ): ScenarioResult {
 	const result = requireRecord(value, path);
 	const definitionRef = validateDefinitionRef(result.definition, `${path}.definition`);
@@ -720,13 +750,7 @@ function validateResult(
 	if (score > 1000)
 		fail('invalid-score', `${path}.score`, score, 'Scenario score cannot exceed 1000.');
 	const evaluation = validateEvaluation(result.evaluation, `${path}.evaluation`);
-	validateEvaluationContract(
-		evaluation,
-		definition,
-		`${path}.evaluation`,
-		'terminal',
-		requireMetricEvidence
-	);
+	validateEvaluationContract(evaluation, definition, `${path}.evaluation`, 'terminal');
 	if (evaluation.day !== completionDay || evaluation.projection.score !== score) {
 		fail(
 			'result-evaluation-mismatch',
@@ -831,8 +855,7 @@ function validateRunWithGame(
 		evaluation,
 		definition,
 		`${path}.evaluation`,
-		status === 'active' ? 'active' : 'terminal',
-		false
+		status === 'active' ? 'active' : 'terminal'
 	);
 	if (seed !== game.seed || evaluation.day !== game.day) {
 		fail(
@@ -882,7 +905,7 @@ function validateRunWithGame(
 				'A terminal run must have a result.'
 			);
 		}
-		result = validateResult(run.result, resolveDefinition, `${path}.result`, false);
+		result = validateResult(run.result, resolveDefinition, `${path}.result`);
 		if (
 			result.outcome !== status ||
 			result.seed !== seed ||
