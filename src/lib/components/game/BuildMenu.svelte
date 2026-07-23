@@ -30,6 +30,11 @@
 		retailOptions: RetailBuildMenuOption[];
 		industryLockedReason: PlacementBlockReason | null;
 		availableMaterialIds?: string[];
+		canOpenStore?: boolean;
+		canBuildIndustrialBuilding?: boolean;
+		allowedRetailArchetypeIds?: ArchetypeId[];
+		allowedIndustryBuildingTypeIds?: IndustrialBuildingTypeId[];
+		disabledReason?: string | null;
 		onChooseRetail: (archetypeId: ArchetypeId) => void;
 		onChooseIndustry: (buildingTypeId: IndustrialBuildingTypeId) => void;
 		onOpenAdvisor?: () => void;
@@ -42,6 +47,13 @@
 		retailOptions,
 		industryLockedReason,
 		availableMaterialIds = [],
+		canOpenStore = true,
+		canBuildIndustrialBuilding = true,
+		allowedRetailArchetypeIds = retailOptions.map((option) => option.archetypeId),
+		allowedIndustryBuildingTypeIds = Object.keys(
+			INDUSTRIAL_BUILDING_TYPES
+		) as IndustrialBuildingTypeId[],
+		disabledReason = null,
 		onChooseRetail,
 		onChooseIndustry,
 		onOpenAdvisor = () => {},
@@ -88,6 +100,8 @@
 		);
 	});
 	const availableSet = $derived(new Set(availableMaterialIds));
+	const allowedRetailSet = $derived(new Set(allowedRetailArchetypeIds));
+	const allowedIndustrySet = $derived(new Set(allowedIndustryBuildingTypeIds));
 
 	function formatRange(range: { min: number; max: number }): string {
 		if (range.min === range.max) {
@@ -172,11 +186,16 @@
 	}
 
 	function chooseRetail(archetypeId: ArchetypeId): void {
+		if (!canOpenStore || !allowedRetailSet.has(archetypeId)) return;
 		onChooseRetail(archetypeId);
 	}
 
 	function chooseIndustry(buildingTypeId: IndustrialBuildingTypeId): void {
-		if (industryLockedReason) {
+		if (
+			industryLockedReason ||
+			!canBuildIndustrialBuilding ||
+			!allowedIndustrySet.has(buildingTypeId)
+		) {
 			return;
 		}
 
@@ -246,11 +265,13 @@
 					<button
 						type="button"
 						class="build-option"
-						disabled={option.disabledReason !== null}
+						disabled={option.disabledReason !== null ||
+							!canOpenStore ||
+							!allowedRetailSet.has(option.archetypeId)}
 						onclick={() => chooseRetail(option.archetypeId)}
 					>
 						<img src={asset(art.path)} alt="" width="64" height="48" />
-						{#if option.disabledReason}
+						{#if option.disabledReason || !canOpenStore || !allowedRetailSet.has(option.archetypeId)}
 							<span class="disabled-badge">{i18n.t('buildMenu.unavailable')}</span>
 						{/if}
 						<span>
@@ -270,6 +291,9 @@
 								<small class="disabled-copy">
 									{formatPlacementReason(option.disabledReason)}
 								</small>
+							{/if}
+							{#if !canOpenStore || !allowedRetailSet.has(option.archetypeId)}
+								<small class="disabled-copy">{disabledReason}</small>
 							{/if}
 						</span>
 					</button>
@@ -376,11 +400,13 @@
 					<button
 						type="button"
 						class="build-option"
-						disabled={industryLockedReason !== null}
+						disabled={industryLockedReason !== null ||
+							!canBuildIndustrialBuilding ||
+							!allowedIndustrySet.has(type.id)}
 						onclick={() => chooseIndustry(type.id)}
 					>
 						<img src={asset(getIndustrialBuildingArt(type.id))} alt="" width="44" height="44" />
-						{#if industryLockedReason}
+						{#if industryLockedReason || !canBuildIndustrialBuilding || !allowedIndustrySet.has(type.id)}
 							<span class="disabled-badge">{i18n.t('buildMenu.unavailable')}</span>
 						{/if}
 						<span>
@@ -392,6 +418,9 @@
 									<em class="starter">{i18n.t('buildMenu.industry.starter')}</em>
 								{/if}
 							</strong>
+							{#if !canBuildIndustrialBuilding || !allowedIndustrySet.has(type.id)}
+								<small class="disabled-copy">{disabledReason}</small>
+							{/if}
 							<small>
 								{i18n.t('buildMenu.industry.costOperating' as never, {
 									cost: i18n.format.currency(type.buildCost),

@@ -31,6 +31,9 @@
 		onClose: () => void;
 		onUpgradeSegment: (segmentId: string) => void;
 		onDemolishSegment: (segmentId: string) => void;
+		canUpgradeRail?: boolean;
+		canDemolishRail?: boolean;
+		disabledReason?: string | null;
 	}
 
 	let {
@@ -41,7 +44,10 @@
 		i18n,
 		onClose,
 		onUpgradeSegment,
-		onDemolishSegment
+		onDemolishSegment,
+		canUpgradeRail = true,
+		canDemolishRail = true,
+		disabledReason = null
 	}: Props = $props();
 
 	// Starts unset (rather than capturing segments[0]?.id at mount) so the
@@ -188,8 +194,10 @@
 				<button
 					type="button"
 					class="upgrade"
-					disabled={!canUpgrade || !canAffordUpgrade}
-					onclick={() => onUpgradeSegment(selectedSegment.id)}
+					disabled={!canUpgradeRail || !canUpgrade || !canAffordUpgrade}
+					onclick={() => {
+						if (canUpgradeRail) onUpgradeSegment(selectedSegment.id);
+					}}
 				>
 					{canUpgrade
 						? i18n.t('railSegmentInspector.upgrade', {
@@ -200,11 +208,16 @@
 				{#if canUpgrade && !canAffordUpgrade}
 					<p class="hint">{i18n.t('railSegmentInspector.notEnoughCash')}</p>
 				{/if}
+				{#if !canUpgradeRail && disabledReason}
+					<p class="hint">{disabledReason}</p>
+				{/if}
 				<button
 					type="button"
 					class="demolish"
-					disabled={!canDemolish}
-					onclick={() => onDemolishSegment(selectedSegment.id)}
+					disabled={!canDemolishRail || !canDemolish}
+					onclick={() => {
+						if (canDemolishRail) onDemolishSegment(selectedSegment.id);
+					}}
 				>
 					{i18n.t('railSegmentInspector.demolish', {
 						refund: i18n.format.currency(demolishRefund)
@@ -212,6 +225,9 @@
 				</button>
 				{#if !canDemolish}
 					<p class="hint">{i18n.t('railSegmentInspector.cannotDemolish')}</p>
+				{/if}
+				{#if !canDemolishRail && disabledReason}
+					<p class="hint">{disabledReason}</p>
 				{/if}
 			</div>
 		</section>

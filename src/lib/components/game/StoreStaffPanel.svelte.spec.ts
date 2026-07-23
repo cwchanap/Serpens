@@ -91,6 +91,10 @@ function renderStaffPanel(
 		onHire: (candidateId: string) => void;
 		onAssign: (staffId: string, storeId: string) => void;
 		onUnassign: (staffId: string) => void;
+		canHire: boolean;
+		canAssign: boolean;
+		canUnassign: boolean;
+		disabledReason: string;
 	}> = {}
 ) {
 	const props = {
@@ -201,5 +205,25 @@ describe('StoreStaffPanel', () => {
 		expect(onHire).toHaveBeenCalledWith('candidate-morgan');
 		expect(onAssign).toHaveBeenCalledWith('staff-drew', store.id);
 		expect(onUnassign).toHaveBeenCalledWith('staff-blair');
+	});
+
+	it('disables all store staffing mutations with a textual explanation', async () => {
+		expect.assertions(5);
+		const props = renderStaffPanel({
+			canHire: false,
+			canAssign: false,
+			canUnassign: false,
+			disabledReason: 'Unavailable in this challenge.'
+		});
+
+		await expect.element(page.getByRole('button', { name: /hire morgan/i })).toBeDisabled();
+		await expect.element(page.getByRole('button', { name: /assign drew/i })).toBeDisabled();
+		await expect.element(page.getByRole('button', { name: /unassign blair/i })).toBeDisabled();
+		await expect.element(page.getByText('Unavailable in this challenge.')).toBeVisible();
+		expect(
+			[props.onHire, props.onAssign, props.onUnassign].every(
+				(callback) => vi.mocked(callback).mock.calls.length === 0
+			)
+		).toBe(true);
 	});
 });

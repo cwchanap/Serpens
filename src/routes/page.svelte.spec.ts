@@ -32,7 +32,11 @@ import type {
 	ScenarioPersistenceSummary,
 	ScenarioRun
 } from '$lib/scenarios/types';
-import { GameRouteController, type GameRouteControllerOptions } from './gameRouteController';
+import {
+	GameRouteController,
+	createMutationAvailability,
+	type GameRouteControllerOptions
+} from './gameRouteController';
 
 interface Deferred<T> {
 	promise: Promise<T>;
@@ -222,6 +226,42 @@ function controllerOptions(input: {
 }
 
 describe('GameRouteController sandbox handlers', () => {
+	it('derives sandbox, challenge, and pending mutation availability independently', () => {
+		expect.assertions(7);
+		const definition = scenarioDefinition({
+			allowedCommands: ['advanceDay', 'updateStoreSellingPrice', 'openStore']
+		});
+
+		const sandbox = createMutationAvailability({
+			playMode: 'sandbox',
+			pending: false,
+			definition: null
+		});
+		expect(sandbox.pending).toBe(false);
+		expect(
+			Object.entries(sandbox)
+				.filter(([key]) => key !== 'pending')
+				.every(([, value]) => value)
+		).toBe(true);
+
+		const challenge = createMutationAvailability({
+			playMode: 'scenario',
+			pending: false,
+			definition
+		});
+		expect(challenge.advanceDay).toBe(true);
+		expect(challenge.updateStoreSellingPrice).toBe(true);
+		expect(challenge.updateStoreInventoryTargets).toBe(false);
+		expect(challenge.buildRail).toBe(false);
+
+		const pending = createMutationAvailability({
+			playMode: 'scenario',
+			pending: true,
+			definition
+		});
+		expect(pending.pending && !pending.advanceDay && !pending.openStore).toBe(true);
+	});
+
 	it('runs every sandbox handler through real domain transitions with immediate publish/autosave/SFX ordering', async () => {
 		const events: string[] = [];
 		const save = createSaveRepositoryHarness({ events });

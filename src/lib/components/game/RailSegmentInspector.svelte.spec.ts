@@ -202,4 +202,26 @@ describe('RailSegmentInspector', () => {
 		await expect.element(demolish).toBeDisabled();
 		await expect.element(page.getByText(/shared junctions/i)).toBeVisible();
 	});
+
+	it('combines independent rail permissions with normal constraints', async () => {
+		expect.assertions(5);
+		const rails: RailCell[] = [
+			{ x: 1, y: 1, level: 1 },
+			{ x: 2, y: 1, level: 1 }
+		];
+		const segment: RailSegment = { id: 'seg:1,1|2,1', cellKeys: ['1,1', '2,1'], minLevel: 1 };
+		const props = baseProps(makeGame(rails, {}), [segment]);
+		render(RailSegmentInspector, {
+			...props,
+			canUpgradeRail: false,
+			canDemolishRail: false,
+			disabledReason: 'Unavailable in this challenge.'
+		});
+
+		await expect.element(page.getByRole('button', { name: /upgrade/i })).toBeDisabled();
+		await expect.element(page.getByRole('button', { name: /demolish/i })).toBeDisabled();
+		await expect.element(page.getByText('Unavailable in this challenge.').first()).toBeVisible();
+		expect(props.onUpgradeSegment).not.toHaveBeenCalled();
+		expect(props.onDemolishSegment).not.toHaveBeenCalled();
+	});
 });

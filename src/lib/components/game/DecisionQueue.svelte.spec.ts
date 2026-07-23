@@ -52,6 +52,8 @@ function renderQueue(
 		decisions: DecisionItem[];
 		i18n: I18nBundle;
 		onResolve: (decisionId: string, optionId: string) => void;
+		canResolve: boolean;
+		disabledReason: string;
 	}> = {}
 ) {
 	const props = {
@@ -143,5 +145,20 @@ describe('DecisionQueue', () => {
 		await expect
 			.element(page.getByRole('heading', { name: 'Decision Queue' }))
 			.not.toBeInTheDocument();
+	});
+
+	it('keeps decisions readable while disabling resolution and protecting the callback', async () => {
+		expect.assertions(4);
+		const onResolve = vi.fn();
+		renderQueue({
+			onResolve,
+			canResolve: false,
+			disabledReason: 'Unavailable in this challenge.'
+		});
+
+		await expect.element(page.getByRole('heading', { name: 'Staff Dispute' })).toBeVisible();
+		await expect.element(page.getByRole('button', { name: /Mediate/ })).toBeDisabled();
+		await expect.element(page.getByText('Unavailable in this challenge.')).toBeVisible();
+		expect(onResolve).not.toHaveBeenCalled();
 	});
 });

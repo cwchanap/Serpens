@@ -198,4 +198,32 @@ describe('StoreStockTable', () => {
 		expect(onUpdate).toHaveBeenCalledTimes(1);
 		expect(onUpdate).toHaveBeenCalledWith('store-1', 'bottled-water', { targetStock: 120 });
 	});
+
+	it('disables price separately from inventory targets and preserves change-only callbacks', async () => {
+		expect.assertions(5);
+		const onUpdate = vi.fn();
+		render(StoreStockTable, {
+			i18n: createI18n('en'),
+			store,
+			ordinal: 1,
+			latestReport,
+			onUpdate,
+			canUpdateSellingPrice: true,
+			canUpdateInventoryTargets: false,
+			disabledReason: 'Unavailable in this challenge.'
+		});
+
+		const sellingPrice = page.getByRole('spinbutton', { name: 'Selling price for Bottled Water' });
+		await expect.element(sellingPrice).not.toBeDisabled();
+		await expect
+			.element(page.getByRole('spinbutton', { name: 'Reorder threshold for Bottled Water' }))
+			.toBeDisabled();
+		await expect
+			.element(page.getByRole('spinbutton', { name: 'Target stock for Bottled Water' }))
+			.toBeDisabled();
+		await expect.element(page.getByText('Unavailable in this challenge.')).toBeVisible();
+		await sellingPrice.fill('8');
+		await page.getByRole('cell', { name: 'Bottled Water' }).click();
+		expect(onUpdate).toHaveBeenCalledWith('store-1', 'bottled-water', { sellingPrice: 8 });
+	});
 });

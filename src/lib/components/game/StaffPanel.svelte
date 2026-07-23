@@ -21,6 +21,11 @@
 		onAssign: (staffId: string, storeId: string) => void;
 		onUnassign: (staffId: string) => void;
 		onPromote: (staffId: string) => void;
+		canHire?: boolean;
+		canAssign?: boolean;
+		canUnassign?: boolean;
+		canPromote?: boolean;
+		disabledReason?: string | null;
 	}
 
 	let {
@@ -32,7 +37,12 @@
 		onHire,
 		onAssign,
 		onUnassign,
-		onPromote
+		onPromote,
+		canHire = true,
+		canAssign = true,
+		canUnassign = true,
+		canPromote = true,
+		disabledReason = null
 	}: Props = $props();
 
 	const unassignedStaff = $derived(staff.filter((member) => member.assignedStoreId === null));
@@ -88,11 +98,11 @@
 
 	function handleAssignment(member: StaffMember, storeId: string): void {
 		if (storeId) {
-			onAssign(member.id, storeId);
+			if (canAssign) onAssign(member.id, storeId);
 			return;
 		}
 
-		onUnassign(member.id);
+		if (canUnassign) onUnassign(member.id);
 	}
 
 	function canAffordPromotion(member: StaffMember): boolean {
@@ -139,6 +149,9 @@
 			<p>{i18n.t('staffPanel.hiredCount', { count: i18n.format.integer(staff.length) })}</p>
 		</div>
 	</div>
+	{#if disabledReason && (!canHire || !canAssign || !canUnassign || !canPromote)}
+		<p class="disabled-copy" role="status">{disabledReason}</p>
+	{/if}
 
 	<section class="section-group" aria-labelledby="candidates-heading">
 		<h3 id="candidates-heading">{i18n.t('staffPanel.candidates')}</h3>
@@ -168,9 +181,11 @@
 					</dl>
 					<button
 						type="button"
+						disabled={!canHire}
 						aria-label={hireActionLabel(candidate)}
-						onclick={() => onHire(candidate.id)}
-						>{i18n.t('staffPanel.hireButton', { name: candidate.name })}</button
+						onclick={() => {
+							if (canHire) onHire(candidate.id);
+						}}>{i18n.t('staffPanel.hireButton', { name: candidate.name })}</button
 					>
 				</article>
 			{:else}
@@ -212,6 +227,7 @@
 					<p class="progress">{levelProgress(member)}</p>
 					<select
 						aria-label={assignActionLabel(member)}
+						disabled={!canAssign}
 						value=""
 						onchange={(event) => handleAssignment(member, event.currentTarget.value)}
 					>
@@ -223,9 +239,11 @@
 					{#if canPromoteStaff(member)}
 						<button
 							type="button"
-							disabled={!canAffordPromotion(member)}
+							disabled={!canPromote || !canAffordPromotion(member)}
 							aria-label={promoteActionLabel(member)}
-							onclick={() => onPromote(member.id)}
+							onclick={() => {
+								if (canPromote) onPromote(member.id);
+							}}
 						>
 							{i18n.t('staffPanel.promoteButton', {
 								name: member.name,
@@ -271,6 +289,7 @@
 							<div class="assignment-actions">
 								<select
 									aria-label={assignActionLabel(member)}
+									disabled={!canAssign && !canUnassign}
 									value={member.assignedStoreId ?? ''}
 									onchange={(event) => handleAssignment(member, event.currentTarget.value)}
 								>
@@ -283,9 +302,11 @@
 								{#if canPromoteStaff(member)}
 									<button
 										type="button"
-										disabled={!canAffordPromotion(member)}
+										disabled={!canPromote || !canAffordPromotion(member)}
 										aria-label={promoteActionLabel(member)}
-										onclick={() => onPromote(member.id)}
+										onclick={() => {
+											if (canPromote) onPromote(member.id);
+										}}
 									>
 										{i18n.t('staffPanel.promoteButton', {
 											name: member.name,
@@ -296,9 +317,11 @@
 								<button
 									type="button"
 									class="secondary"
+									disabled={!canUnassign}
 									aria-label={unassignActionLabel(member, item.store)}
-									onclick={() => onUnassign(member.id)}
-									>{i18n.t('staffPanel.unassignButton')} {member.name}</button
+									onclick={() => {
+										if (canUnassign) onUnassign(member.id);
+									}}>{i18n.t('staffPanel.unassignButton')} {member.name}</button
 								>
 							</div>
 						</div>

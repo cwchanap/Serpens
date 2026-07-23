@@ -183,4 +183,27 @@ describe('StoreDetailModal', () => {
 			.toHaveAttribute('aria-selected', 'true');
 		expect(p.onClickFeedback).not.toHaveBeenCalled();
 	});
+
+	it('threads independent stock and staff capabilities to both tabs', async () => {
+		expect.assertions(4);
+		render(StoreDetailModal, {
+			...props(),
+			canUpdateSellingPrice: false,
+			canUpdateInventoryTargets: false,
+			canHireStaff: false,
+			canAssignStaff: false,
+			canUnassignStaff: false,
+			disabledReason: 'Unavailable in this challenge.'
+		});
+
+		await expect.element(page.getByRole('spinbutton', { name: /selling price/i })).toBeDisabled();
+		await expect
+			.element(page.getByRole('spinbutton', { name: /reorder threshold/i }))
+			.toBeDisabled();
+		await page.getByRole('tab', { name: /staff/i }).click();
+		expect(document.querySelector('.detail-panel.active [role="status"]')?.textContent).toBe(
+			'Unavailable in this challenge.'
+		);
+		await expect.element(page.getByRole('tab', { name: /stock/i })).toBeVisible();
+	});
 });

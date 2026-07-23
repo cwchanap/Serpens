@@ -125,4 +125,31 @@ describe('ControlDesk', () => {
 		await toggle.click();
 		expect(onToggleRailBuild).toHaveBeenCalledTimes(1);
 	});
+
+	it('disables advance, build, and rail independently without blocking navigation callbacks', async () => {
+		expect.assertions(7);
+		const props = baseProps();
+		const onToggleRailBuild = vi.fn();
+		render(ControlDesk, {
+			...props,
+			buildDisabled: true,
+			advanceDisabled: true,
+			showRailBuild: true,
+			railBuildDisabled: true,
+			disabledReason: 'Unavailable in this challenge.',
+			onToggleRailBuild
+		});
+
+		const build = page.getByRole('button', { name: /^build$/i });
+		const advance = page.getByRole('button', { name: /^advance day$/i });
+		const rail = page.getByRole('button', { name: /build rail/i });
+		await expect.element(build).toBeDisabled();
+		await expect.element(advance).toBeDisabled();
+		await expect.element(rail).toBeDisabled();
+		await expect.element(page.getByText('Unavailable in this challenge.')).toBeVisible();
+		await page.getByRole('button', { name: /dashboard/i }).click();
+		expect(props.onOpenManagement).toHaveBeenCalledWith('dashboard');
+		expect(props.onBuild).not.toHaveBeenCalled();
+		expect(onToggleRailBuild).not.toHaveBeenCalled();
+	});
 });

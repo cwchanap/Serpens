@@ -29,6 +29,8 @@
 		i18n: I18nBundle;
 		onClose: () => void;
 		onUpgradeBuilding?: (buildingId: string) => void;
+		canUpgradeBuilding?: boolean;
+		disabledReason?: string | null;
 	}
 
 	interface WarehouseMaterialRow {
@@ -37,7 +39,16 @@
 		quantity: number;
 	}
 
-	let { game, tile, building, i18n, onClose, onUpgradeBuilding = () => {} }: Props = $props();
+	let {
+		game,
+		tile,
+		building,
+		i18n,
+		onClose,
+		onUpgradeBuilding = () => {},
+		canUpgradeBuilding: upgradeAllowed = true,
+		disabledReason = null
+	}: Props = $props();
 
 	const buildingType = $derived(building ? INDUSTRIAL_BUILDING_TYPES[building.typeId] : null);
 	const tileTerrain = $derived(
@@ -232,8 +243,10 @@
 						<button
 							type="button"
 							class="upgrade"
-							disabled={!buildingCanUpgrade || !canAffordBuildingUpgrade}
-							onclick={() => onUpgradeBuilding(building.id)}
+							disabled={!upgradeAllowed || !buildingCanUpgrade || !canAffordBuildingUpgrade}
+							onclick={() => {
+								if (upgradeAllowed) onUpgradeBuilding(building.id);
+							}}
 						>
 							{buildingCanUpgrade
 								? i18n.t('industryTileInspector.upgrade', {
@@ -243,6 +256,9 @@
 						</button>
 						{#if buildingCanUpgrade && !canAffordBuildingUpgrade}
 							<p class="level-hint">{i18n.t('industryTileInspector.notEnoughCash')}</p>
+						{/if}
+						{#if !upgradeAllowed && disabledReason}
+							<p class="level-hint">{disabledReason}</p>
 						{/if}
 					{/if}
 				</div>

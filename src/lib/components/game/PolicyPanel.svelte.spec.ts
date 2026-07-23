@@ -18,6 +18,8 @@ function renderPolicyPanel(
 		policy: CompanyPolicy;
 		i18n: I18nBundle;
 		onChange: (patch: Partial<CompanyPolicy>) => void;
+		canUpdate: boolean;
+		disabledReason: string;
 	}> = {}
 ) {
 	const props = {
@@ -116,5 +118,19 @@ describe('PolicyPanel', () => {
 		await page.getByLabelText('Service').selectOptions('highTouch');
 
 		expect(onChange).toHaveBeenCalledWith({ service: 'highTouch' });
+	});
+
+	it('keeps policy readable but blocks changes with a textual explanation', async () => {
+		expect.assertions(3);
+		const onChange = vi.fn();
+		renderPolicyPanel({
+			onChange,
+			canUpdate: false,
+			disabledReason: 'Unavailable in this challenge.'
+		});
+
+		await expect.element(page.getByLabelText('Pricing')).toBeDisabled();
+		await expect.element(page.getByText('Unavailable in this challenge.')).toBeVisible();
+		expect(onChange).not.toHaveBeenCalled();
 	});
 });

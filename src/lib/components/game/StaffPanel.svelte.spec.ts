@@ -84,6 +84,11 @@ function renderStaffPanel(
 		onAssign: (staffId: string, storeId: string) => void;
 		onUnassign: (staffId: string) => void;
 		onPromote: (staffId: string) => void;
+		canHire: boolean;
+		canAssign: boolean;
+		canUnassign: boolean;
+		canPromote: boolean;
+		disabledReason: string;
 	}> = {}
 ) {
 	const props = {
@@ -550,5 +555,36 @@ describe('StaffPanel', () => {
 
 		await expect.element(page.getByRole('heading', { name: 'Alex II' })).toBeVisible();
 		await expect.element(page.getByText('No candidates available')).toBeVisible();
+	});
+
+	it('disables hire, assign, unassign, and promote independently with callback protection', async () => {
+		expect.assertions(6);
+		const onHire = vi.fn();
+		const onAssign = vi.fn();
+		const onUnassign = vi.fn();
+		const onPromote = vi.fn();
+		renderStaffPanel({
+			staff: staff.map((member) => ({ ...member, xp: 100_000 })),
+			onHire,
+			onAssign,
+			onUnassign,
+			onPromote,
+			canHire: false,
+			canAssign: false,
+			canUnassign: false,
+			canPromote: false,
+			disabledReason: 'Unavailable in this challenge.'
+		});
+
+		await expect.element(page.getByRole('button', { name: /hire casey/i })).toBeDisabled();
+		await expect.element(page.getByLabelText(/assign blair/i)).toBeDisabled();
+		await expect.element(page.getByRole('button', { name: /unassign alex/i })).toBeDisabled();
+		await expect.element(page.getByRole('button', { name: /promote/i }).first()).toBeDisabled();
+		await expect.element(page.getByText('Unavailable in this challenge.')).toBeVisible();
+		expect(
+			[onHire, onAssign, onUnassign, onPromote].every(
+				(callback) => callback.mock.calls.length === 0
+			)
+		).toBe(true);
 	});
 });

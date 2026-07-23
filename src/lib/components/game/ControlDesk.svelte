@@ -13,6 +13,8 @@
 		managementItems: ManagementItem[];
 		buildDisabled: boolean;
 		advanceDisabled: boolean;
+		railBuildDisabled?: boolean;
+		disabledReason?: string | null;
 		i18n: I18nBundle;
 		onBuild: () => void;
 		onOpenManagement: (id: ManagementPanelId) => void;
@@ -28,6 +30,8 @@
 		managementItems,
 		buildDisabled,
 		advanceDisabled,
+		railBuildDisabled = false,
+		disabledReason = null,
 		i18n,
 		onBuild,
 		onOpenManagement,
@@ -57,12 +61,16 @@
 				class:active={railBuildActive}
 				aria-pressed={railBuildActive}
 				aria-label={i18n.t('railBuild.toolbar')}
+				disabled={railBuildDisabled}
 				onclick={onToggleRailBuild}
 			>
 				{i18n.t('railBuild.toolbar')}
 			</button>
 		{/if}
 	</div>
+	{#if disabledReason && (buildDisabled || advanceDisabled || railBuildDisabled)}
+		<p class="disabled-copy" role="status">{disabledReason}</p>
+	{/if}
 
 	<div class="cluster manage" role="group" aria-label={i18n.t('controlDesk.management')}>
 		{#each managementItems as item (item.id)}
