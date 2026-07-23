@@ -150,10 +150,10 @@ describe('scenario copy branches', () => {
 		expect(view.required[2]?.evidenceLabel).toContain('8');
 		expect(view.required.map((item) => item.windowLabel)).toEqual([
 			'Current value',
-			'Last 3 reports',
-			'Days 2–4'
+			'Trailing 3 reports',
+			'Report days 2–4'
 		]);
-		expect(view.deadlineLabel).toContain('Deadline reached');
+		expect(view.deadlineLabel).toBe('Deadline triggered on day 4');
 		expect(view.riskLabels[0]).toContain('Triggered');
 	});
 
