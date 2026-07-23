@@ -156,6 +156,7 @@ export interface ObjectiveEvidence {
 	actual: number;
 	day: number;
 	window: ScenarioMetricWindow;
+	windowComplete: boolean;
 	contributingIds: string[];
 }
 
@@ -252,6 +253,10 @@ export interface ScenarioMetricScoreEvidence {
 	kind: 'metric';
 	query: ScenarioMetricQuery;
 	window: ScenarioMetricWindow;
+	/**
+	 * Canonical persisted scoring input for result-only best records. Decoding recomputes derived
+	 * points, score, and medal from this value, but cannot authenticate coordinated rewrites.
+	 */
 	actual: number;
 	day: number;
 	windowComplete: boolean;
@@ -330,6 +335,12 @@ export interface ScenarioRunRecord {
 	game: unknown;
 }
 
+/**
+ * A result-only best record. Its persisted condition actuals and score-component evidence are the
+ * canonical sources used to derive statuses, points, score, and medal for internal consistency
+ * checks; unlike a game-backed run, it cannot be re-evaluated against runtime state or treated as
+ * tamper-proof.
+ */
 export interface ScenarioBestResultRecord {
 	scenarioSchemaVersion: number;
 	result: ScenarioResult;

@@ -637,6 +637,7 @@ describe('scenario condition statuses and risk projections', () => {
 					actual: 10,
 					day: 4,
 					window: { kind: 'current' },
+					windowComplete: true,
 					contributingIds: []
 				}
 			},
@@ -651,6 +652,7 @@ describe('scenario condition statuses and risk projections', () => {
 					actual: 10,
 					day: 4,
 					window: { kind: 'current' },
+					windowComplete: true,
 					contributingIds: []
 				}
 			}

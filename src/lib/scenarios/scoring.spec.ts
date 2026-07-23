@@ -92,6 +92,7 @@ function evaluation(
 					actual: 0,
 					day: 1,
 					window: { kind: 'current' },
+					windowComplete: true,
 					contributingIds: []
 				}
 			}

@@ -61,25 +61,18 @@ const AGGREGATE_REPORT_WINDOWS = new Set<WindowKind>([
 	'trailing-reports',
 	'fixed-report-days'
 ]);
-const REPORT_METRIC_IDS = new Set<MetricId>([
-	'daily-net-income',
-	'cumulative-net-income',
-	'consecutive-positive-net-income-reports',
-	'completed-retail-import-cycles',
-	'retail-import-spend',
-	'retail-imported-units',
-	'retail-local-units',
-	'retail-local-share',
-	'units-sold',
-	'demand-missed'
-]);
-
-function compareCodeUnits(first: string, second: string): number {
+export function compareScenarioEvidenceIds(first: string, second: string): number {
 	return first < second ? -1 : first > second ? 1 : 0;
 }
 
+export function areScenarioEvidenceIdsCanonical(ids: readonly string[]): boolean {
+	return ids.every(
+		(id, index) => index === 0 || compareScenarioEvidenceIds(ids[index - 1]!, id) < 0
+	);
+}
+
 function sortedIds(ids: readonly string[]): string[] {
-	return [...ids].sort(compareCodeUnits);
+	return [...new Set(ids)].sort(compareScenarioEvidenceIds);
 }
 
 function stateMetricComplete(): boolean {
@@ -147,7 +140,7 @@ function productContributions(context: MetricContext): ProductContribution[] {
 		}
 	}
 
-	return contributions.sort((first, second) => compareCodeUnits(first.id, second.id));
+	return contributions.sort((first, second) => compareScenarioEvidenceIds(first.id, second.id));
 }
 
 function sumProductMetric(
@@ -398,26 +391,6 @@ export function scenarioConditionPasses(
 	return windowComplete && comparatorPasses(actual, condition.comparator, condition.target);
 }
 
-export function isScenarioConditionWindowCompleteAtDay(
-	condition: ScenarioCondition,
-	evaluationDay: number
-): boolean {
-	if (!condition.requiresCompleteWindow || !REPORT_METRIC_IDS.has(condition.query.metric)) {
-		return true;
-	}
-	const reportCount = Math.max(0, evaluationDay - 1);
-	switch (condition.window.kind) {
-		case 'current':
-			return reportCount >= 1;
-		case 'run-to-date':
-			return true;
-		case 'trailing-reports':
-			return reportCount >= condition.window.count;
-		case 'fixed-report-days':
-			return reportCount >= condition.window.endDay;
-	}
-}
-
 function evaluateCondition(condition: ScenarioCondition, game: GameState) {
 	const evaluation = evaluateMetric(
 		game,
@@ -433,6 +406,7 @@ function evaluateCondition(condition: ScenarioCondition, game: GameState) {
 		actual: evaluation.actual,
 		day: game.day,
 		window: condition.window,
+		windowComplete: evaluation.windowComplete,
 		contributingIds: evaluation.contributingIds
 	};
 	return {
@@ -563,6 +537,7 @@ export function validateScenarioReportInvariants(
 
 	return diagnostics.sort(
 		(first, second) =>
-			compareCodeUnits(first.path, second.path) || compareCodeUnits(first.code, second.code)
+			compareScenarioEvidenceIds(first.path, second.path) ||
+			compareScenarioEvidenceIds(first.code, second.code)
 	);
 }
