@@ -38,9 +38,12 @@ describe('ScenarioResultsDialog', () => {
 			view,
 			i18n: createI18n('en'),
 			pending: false,
+			error: null,
 			onRestart,
 			onCatalog,
 			onSandbox,
+			onRetry: vi.fn(),
+			onDismissError: vi.fn(),
 			onClose: vi.fn()
 		});
 
@@ -86,9 +89,12 @@ describe('ScenarioResultsDialog', () => {
 			},
 			i18n: createI18n('en'),
 			pending: false,
+			error: null,
 			onRestart: vi.fn(),
 			onCatalog: vi.fn(),
 			onSandbox: vi.fn(),
+			onRetry: vi.fn(),
+			onDismissError: vi.fn(),
 			onClose
 		});
 
@@ -102,5 +108,34 @@ describe('ScenarioResultsDialog', () => {
 		await unmount();
 		expect(document.activeElement).toBe(opener);
 		opener.remove();
+	});
+
+	it('keeps committed results visible while exposing localized restart retry and dismiss actions', async () => {
+		expect.assertions(6);
+		const onRetry = vi.fn();
+		const onDismissError = vi.fn();
+		render(ScenarioResultsDialog, {
+			view,
+			i18n: createI18n('en'),
+			pending: false,
+			error: 'The challenge could not be saved.',
+			onRestart: vi.fn(),
+			onCatalog: vi.fn(),
+			onSandbox: vi.fn(),
+			onRetry,
+			onDismissError,
+			onClose: vi.fn()
+		});
+
+		await expect.element(page.getByText('Challenge completed', { exact: true })).toBeVisible();
+		await expect
+			.element(page.getByRole('alert'))
+			.toHaveTextContent('The challenge could not be saved.');
+		await expect.element(page.getByRole('button', { name: 'Retry' })).toBeVisible();
+		await expect.element(page.getByRole('button', { name: 'Dismiss' })).toBeVisible();
+		await page.getByRole('button', { name: 'Retry' }).click();
+		await page.getByRole('button', { name: 'Dismiss' }).click();
+		expect(onRetry).toHaveBeenCalledOnce();
+		expect(onDismissError).toHaveBeenCalledOnce();
 	});
 });
