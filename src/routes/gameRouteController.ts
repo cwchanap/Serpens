@@ -172,6 +172,7 @@ export class GameRouteController {
 	private saveRepository: SaveRepository | null = null;
 	private scenarioRepository: ScenarioRepository | null = null;
 	private readonly scenarioCommandGate = new ScenarioCommandGate();
+	private scenarioRetryEpoch = 0;
 
 	constructor(private readonly options: GameRouteControllerOptions) {}
 
@@ -210,7 +211,7 @@ export class GameRouteController {
 						code: 'persistence-read-failed',
 						diagnostics: summary.diagnostics
 					},
-					retryScenarioOperation: () => this.initializeScenarios()
+					retryScenarioOperation: this.createScenarioRetry(() => this.initializeScenarios())
 				});
 				return;
 			}
@@ -231,13 +232,18 @@ export class GameRouteController {
 		} catch {
 			this.patchState({
 				scenarioOperationError: scenarioError('persistence-read-failed'),
-				retryScenarioOperation: () => this.initializeScenarios()
+				retryScenarioOperation: this.createScenarioRetry(() => this.initializeScenarios())
 			});
 		}
 	}
 
 	loadSandboxGame(game: GameState, cueId?: SfxCueId): void {
-		this.patchState({ sandboxGame: game, playMode: 'sandbox' });
+		this.patchState({
+			sandboxGame: game,
+			playMode: 'sandbox',
+			scenarioOperationError: null,
+			retryScenarioOperation: null
+		});
 		if (cueId) {
 			this.options.playSfx(cueId);
 		}
@@ -317,9 +323,9 @@ export class GameRouteController {
 			this.patchState({
 				scenarioCommandPending: false,
 				scenarioOperationError: scenarioError('persistence-read-failed'),
-				retryScenarioOperation: async () => {
+				retryScenarioOperation: this.createScenarioRetry(async () => {
 					await this.resumeScenarioRun(scenarioId);
-				}
+				})
 			});
 			return { status: 'failed' };
 		}
@@ -382,9 +388,9 @@ export class GameRouteController {
 				scenarioOperationError: scenarioError(
 					phase === 'read' ? 'persistence-read-failed' : 'persistence-write-failed'
 				),
-				retryScenarioOperation: async () => {
+				retryScenarioOperation: this.createScenarioRetry(async () => {
 					await this.restartScenarioRun(ref);
-				}
+				})
 			});
 			return { status: 'failed' };
 		}
@@ -438,16 +444,20 @@ export class GameRouteController {
 				scenarioOperationError: scenarioError(
 					phase === 'read' ? 'persistence-read-failed' : 'persistence-write-failed'
 				),
-				retryScenarioOperation: async () => {
+				retryScenarioOperation: this.createScenarioRetry(async () => {
 					await this.importScenarioRun(definition, seed, confirmed);
-				}
+				})
 			});
 			return { status: 'failed' };
 		}
 	}
 
 	returnToSandbox(): void {
-		this.patchState({ playMode: 'sandbox' });
+		this.patchState({
+			playMode: 'sandbox',
+			scenarioOperationError: null,
+			retryScenarioOperation: null
+		});
 	}
 
 	async abandonScenarioRun(): Promise<GameRouteCommitResult> {
@@ -473,9 +483,9 @@ export class GameRouteController {
 			this.patchState({
 				scenarioCommandPending: false,
 				scenarioOperationError: scenarioError('persistence-write-failed'),
-				retryScenarioOperation: async () => {
+				retryScenarioOperation: this.createScenarioRetry(async () => {
 					await this.abandonScenarioRun();
-				}
+				})
 			});
 			return { status: 'failed' };
 		}
@@ -660,7 +670,24 @@ export class GameRouteController {
 		return this.selectWorldCity(cityId);
 	}
 
+	private createScenarioRetry(
+		operation: () => Promise<void>,
+		isValid: () => boolean = () => true
+	): () => Promise<void> {
+		const epoch = ++this.scenarioRetryEpoch;
+		return async () => {
+			if (epoch !== this.scenarioRetryEpoch || !isValid()) return;
+			await operation();
+		};
+	}
+
 	private patchState(patch: Partial<GameRouteControllerState>): void {
+		if (
+			Object.prototype.hasOwnProperty.call(patch, 'retryScenarioOperation') &&
+			patch.retryScenarioOperation === null
+		) {
+			this.scenarioRetryEpoch += 1;
+		}
 		this.currentState = { ...this.currentState, ...patch };
 		this.options.onStateChange?.(this.currentState);
 	}
@@ -710,9 +737,9 @@ export class GameRouteController {
 			this.patchState({
 				scenarioCommandPending: false,
 				scenarioOperationError: scenarioError('persistence-write-failed'),
-				retryScenarioOperation: async () => {
+				retryScenarioOperation: this.createScenarioRetry(async () => {
 					await retry();
-				}
+				})
 			});
 			return { status: 'failed' };
 		}
@@ -742,6 +769,7 @@ export class GameRouteController {
 		}
 
 		let rejectedCode: ScenarioOperationError['code'] | null = null;
+		let attemptedRun: ScenarioRun | null = null;
 		let preparedRun: ScenarioRun | null = null;
 		try {
 			const result = await runPersistenceGatedOperation<ScenarioRun, ScenarioCommitOutcome>(
@@ -753,6 +781,7 @@ export class GameRouteController {
 							rejectedCode = 'missing-run';
 							return { status: 'rejected' as const };
 						}
+						attemptedRun = run;
 						const definition = this.options.resolveScenarioDefinition(run.definition);
 						if (!definition) {
 							rejectedCode = 'stale-definition';
@@ -792,9 +821,14 @@ export class GameRouteController {
 		} catch {
 			this.patchState({
 				scenarioOperationError: scenarioError('persistence-write-failed'),
-				retryScenarioOperation: async () => {
-					await this.commitMutation(request);
-				}
+				retryScenarioOperation: this.createScenarioRetry(
+					async () => {
+						await this.commitMutation(request);
+					},
+					() =>
+						this.currentState.playMode === 'scenario' &&
+						this.currentState.activeScenarioRun === attemptedRun
+				)
 			});
 			return { status: 'failed' };
 		}

@@ -877,6 +877,40 @@ describe('GameRouteController scenario integration', () => {
 		expect(controller.state.scenarioOperationError).toBeNull();
 	});
 
+	it('invalidates an in-run retry when returning to the sandbox', async () => {
+		expect.assertions(11);
+		const definition = scenarioDefinition();
+		const run = runForDefinition(definition);
+		const sandbox = boostedGame(12_099);
+		const repository = createScenarioRepositoryHarness(run, {
+			saveActiveRun: vi.fn().mockRejectedValueOnce(new Error('disk'))
+		});
+		const controller = new GameRouteController(
+			controllerOptions({ scenarioRepository: repository, definition })
+		);
+		controller.loadSandboxGame(sandbox);
+		await controller.initializeScenarios();
+
+		expect(await controller.updatePolicy({ pricing: 'premium' })).toMatchObject({
+			status: 'failed'
+		});
+		expect(controller.state.activeScenarioRun).toBe(run);
+		expect(controller.state.activeScenarioRun?.game.policy).toEqual(run.game.policy);
+		expect(controller.state.scenarioOperationError?.code).toBe('persistence-write-failed');
+		const staleRetry = controller.state.retryScenarioOperation;
+		expect(staleRetry).not.toBeNull();
+
+		controller.returnToSandbox();
+		expect(controller.state.playMode).toBe('sandbox');
+		expect(controller.state.scenarioOperationError).toBeNull();
+		expect(controller.state.retryScenarioOperation).toBeNull();
+
+		await staleRetry!();
+		expect(controller.state.sandboxGame).toBe(sandbox);
+		expect(controller.state.sandboxGame?.policy.pricing).toBe(sandbox.policy.pricing);
+		expect(repository.saveActiveRun).toHaveBeenCalledTimes(1);
+	});
+
 	it('abandons by removing the active record without committing a best and returns to sandbox losslessly', async () => {
 		expect.assertions(7);
 		const definition = scenarioDefinition();
