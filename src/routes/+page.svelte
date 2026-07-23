@@ -132,6 +132,22 @@
 	import { SaveDataError } from '$lib/persistence/saveCodec';
 	import { createSaveRepository } from '$lib/persistence/saveRepositoryFactory';
 	import type { SaveSlotMetadata } from '$lib/persistence/saveTypes';
+	import type { ScenarioRepository } from '$lib/persistence/scenarioRepository';
+	import { createScenarioRepository } from '$lib/persistence/scenarioRepositoryFactory';
+	import { resolveScenarioDefinition } from '$lib/scenarios/catalog';
+	import {
+		ScenarioCommandGate,
+		runImmediateSandboxOperation,
+		runPersistenceGatedOperation
+	} from '$lib/scenarios/commandGate';
+	import { executeScenarioCommand } from '$lib/scenarios/runtime';
+	import type {
+		ScenarioCommand,
+		ScenarioCommitOutcome,
+		ScenarioOperationError,
+		ScenarioResult,
+		ScenarioRun
+	} from '$lib/scenarios/types';
 
 	interface ManagementPanelMenuItem {
 		id: ManagementPanelId;
@@ -154,6 +170,15 @@
 		| { step: 'idle' }
 		| { step: 'origin' }
 		| { step: 'routing'; originBuildingId: string; waypoints: Array<{ x: number; y: number }> };
+
+	type RouteGameMutation =
+		| {
+				kind: 'transition';
+				sandboxTransition(currentGame: GameState | null): GameState;
+				scenarioCommand?: ScenarioCommand;
+				cueId?: SfxCueId;
+		  }
+		| { kind: 'sandbox-load'; nextGame: GameState; cueId?: SfxCueId };
 
 	/**
 	 * Returns `globalThis.localStorage` when accessible, or `null` when the
@@ -250,7 +275,16 @@
 		world: 'bgm.world-map'
 	};
 
-	let game: GameState | null = $state(null);
+	let sandboxGame = $state<GameState | null>(null);
+	let activeScenarioRun = $state<ScenarioRun | null>(null);
+	let lastScenarioResult = $state<ScenarioResult | null>(null);
+	let lastScenarioBestUpdated = $state(false);
+	let scenarioOperationError = $state<ScenarioOperationError | null>(null);
+	let retryScenarioOperation = $state<(() => Promise<void>) | null>(null);
+	let playMode = $state<'sandbox' | 'scenario'>('sandbox');
+	let scenarioCommandPending = $state(false);
+	const scenarioCommandGate = new ScenarioCommandGate();
+	let game = $derived(playMode === 'scenario' ? (activeScenarioRun?.game ?? null) : sandboxGame);
 	let activeMapView = $state<MapViewId>('retail');
 	let visitedMapViews = $state(createInitialVisitedMapViews('retail'));
 	let selectedWorldCityId = $state<string | null>(null);
@@ -277,6 +311,7 @@
 	let i18n = $derived(createI18n(activeLocale));
 	let placementFeedback = $state<PlacementBlockReason | null>(null);
 	let saveRepository: SaveRepository | null = $state(null);
+	let scenarioRepository: ScenarioRepository | null = $state(null);
 	let autoSave = $state<SaveSlotMetadata | null>(null);
 	let manualSaveSlots = $state<SaveSlotMetadata[]>([]);
 	let isSavePanelOpen = $state(false);
@@ -601,6 +636,7 @@
 
 	onMount(() => {
 		void initializeSaves();
+		void initializeScenarios();
 
 		const controller = createGameAudioController({
 			onPreferencesChanged: (nextPreferences) => {
@@ -729,8 +765,12 @@
 			// routing/preview active. A subsequent click on the same building
 			// (or an explicit confirm) commits the build.
 			if (railPreviewTargetBuildingId === building.id) {
-				setGameAndAutosave(buildRail(game, input));
-				playSfx('sfx.build.industry-place');
+				void commitGameMutation({
+					kind: 'transition',
+					sandboxTransition: (currentGame) => buildRail(currentGame!, input),
+					scenarioCommand: { kind: 'buildRail', ...input },
+					cueId: 'sfx.build.industry-place'
+				});
 				railBuildMode = { step: 'idle' };
 				railPreviewTargetBuildingId = null;
 				placementFeedback = null;
@@ -817,17 +857,32 @@
 
 	function upgradeRailSegmentHandler(segmentId: string): void {
 		if (game) {
-			setGameAndAutosaveWithSfx(
-				game,
-				upgradeRailSegment(game, industryCity.id, segmentId),
-				'sfx.industry.upgrade'
-			);
+			void commitGameMutation({
+				kind: 'transition',
+				sandboxTransition: (currentGame) =>
+					upgradeRailSegment(currentGame!, industryCity.id, segmentId),
+				scenarioCommand: {
+					kind: 'upgradeRail',
+					cityId: industryCity.id,
+					segmentId
+				},
+				cueId: 'sfx.industry.upgrade'
+			});
 		}
 	}
 
 	function demolishRailSegmentHandler(segmentId: string): void {
 		if (game) {
-			setGameAndAutosave(demolishRailSegment(game, industryCity.id, segmentId));
+			void commitGameMutation({
+				kind: 'transition',
+				sandboxTransition: (currentGame) =>
+					demolishRailSegment(currentGame!, industryCity.id, segmentId),
+				scenarioCommand: {
+					kind: 'demolishRail',
+					cityId: industryCity.id,
+					segmentId
+				}
+			});
 		}
 	}
 
@@ -835,13 +890,44 @@
 		try {
 			saveRepository = await createSaveRepository();
 
-			if (game) {
-				await writeAutoSave(game);
+			if (sandboxGame) {
+				await writeAutoSave(sandboxGame);
 			} else {
 				await refreshSaveSummary();
 			}
 		} catch (error) {
 			saveFeedback = { kind: 'error', messageKey: describeSaveErrorKey(error) };
+		}
+	}
+
+	async function initializeScenarios(): Promise<void> {
+		try {
+			const repository = await createScenarioRepository();
+			scenarioRepository = repository;
+			const scenarioSummary = await repository.getSummary();
+			if (scenarioSummary.diagnostics.length > 0) {
+				scenarioOperationError = {
+					code: 'persistence-read-failed',
+					diagnostics: scenarioSummary.diagnostics
+				};
+				retryScenarioOperation = initializeScenarios;
+				return;
+			}
+
+			dismissScenarioOperationError();
+			const resumedRun = Object.entries(scenarioSummary.activeRunsByScenarioId)
+				.sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+				.map(([, run]) => run)
+				.find((run): run is ScenarioRun => run !== undefined);
+			if (resumedRun) {
+				activeScenarioRun = resumedRun;
+				lastScenarioResult = null;
+				lastScenarioBestUpdated = false;
+				playMode = 'scenario';
+			}
+		} catch {
+			scenarioOperationError = { code: 'persistence-read-failed', diagnostics: [] };
+			retryScenarioOperation = initializeScenarios;
 		}
 	}
 
@@ -958,14 +1044,16 @@
 			return;
 		}
 
-		const nextGame = selectWorldCity(game, status.city.id);
-		game = nextGame;
+		void commitGameMutation({
+			kind: 'transition',
+			sandboxTransition: (currentGame) => selectWorldCity(currentGame!, status.city.id),
+			scenarioCommand: { kind: 'selectWorldCity', cityId: status.city.id }
+		});
 		setActiveMapView(status.city.kind === 'retail' ? 'retail' : 'industry');
 		selectedWorldCityId = null;
 		selectedTileId = null;
 		selectedIndustryTileId = null;
 		cancelPlacement();
-		void writeAutoSave(nextGame);
 	}
 
 	function openSelectedWorldCity(cityId: string): void {
@@ -973,7 +1061,15 @@
 			return;
 		}
 
-		setGameAndAutosaveWithSfx(game, openWorldCity(game, cityId), 'sfx.world.city-unlock');
+		if (!isWorldCityId(cityId)) {
+			return;
+		}
+		void commitGameMutation({
+			kind: 'transition',
+			sandboxTransition: (currentGame) => openWorldCity(currentGame!, cityId),
+			scenarioCommand: { kind: 'openWorldCity', cityId },
+			cueId: 'sfx.world.city-unlock'
+		});
 		selectedWorldCityId = cityId;
 	}
 
@@ -994,11 +1090,6 @@
 		activeManagementPanelId = null;
 	}
 
-	function setGameAndAutosave(nextGame: GameState): void {
-		game = nextGame;
-		void writeAutoSave(nextGame);
-	}
-
 	function unlockAudio(): void {
 		void audioController?.unlock();
 	}
@@ -1011,15 +1102,100 @@
 		audioController?.updatePreferences(patch);
 	}
 
-	function setGameAndAutosaveWithSfx(
-		currentGame: GameState,
-		nextGame: GameState,
-		cueId: SfxCueId
-	): void {
-		setGameAndAutosave(nextGame);
+	function scenarioError(code: ScenarioOperationError['code']): ScenarioOperationError {
+		return { code, diagnostics: [] };
+	}
 
-		if (nextGame !== currentGame) {
-			playSfx(cueId);
+	function publishScenarioOutcome(outcome: ScenarioCommitOutcome): void {
+		activeScenarioRun = outcome.activeRun;
+		lastScenarioResult = outcome.terminalResult;
+		lastScenarioBestUpdated = outcome.bestUpdated;
+		dismissScenarioOperationError();
+	}
+
+	function dismissScenarioOperationError(): void {
+		scenarioOperationError = null;
+		retryScenarioOperation = null;
+	}
+
+	async function commitGameMutation(request: RouteGameMutation): Promise<void> {
+		if (request.kind === 'sandbox-load') {
+			sandboxGame = request.nextGame;
+			playMode = 'sandbox';
+			if (request.cueId) {
+				playSfx(request.cueId);
+			}
+			return;
+		}
+
+		if (playMode === 'sandbox') {
+			runImmediateSandboxOperation({
+				current: sandboxGame,
+				transition: request.sandboxTransition,
+				publish: (nextGame) => {
+					sandboxGame = nextGame;
+				},
+				autosave: (nextGame) => {
+					void writeAutoSave(nextGame);
+				},
+				afterPublish: request.cueId ? () => playSfx(request.cueId!) : undefined
+			});
+			return;
+		}
+
+		if (!activeScenarioRun || !scenarioRepository || !request.scenarioCommand) {
+			return;
+		}
+
+		const repository = scenarioRepository;
+		const scenarioCommand = request.scenarioCommand;
+		const cueId = request.cueId;
+		let rejectedCode: ScenarioOperationError['code'] | null = null;
+		try {
+			const result = await runPersistenceGatedOperation<ScenarioRun, ScenarioCommitOutcome>(
+				scenarioCommandGate,
+				{
+					prepare: () => {
+						const currentRun = activeScenarioRun;
+						if (!currentRun) {
+							rejectedCode = 'missing-run';
+							return { status: 'rejected' as const };
+						}
+						const definition = resolveScenarioDefinition(currentRun.definition);
+						if (!definition) {
+							rejectedCode = 'stale-definition';
+							return { status: 'rejected' as const };
+						}
+						const execution = executeScenarioCommand(currentRun, definition, scenarioCommand);
+						if (!execution.ok) {
+							rejectedCode = execution.code;
+							return { status: 'rejected' as const };
+						}
+						return execution.changed
+							? { status: 'changed' as const, value: execution.run }
+							: { status: 'unchanged' as const };
+					},
+					persist: (nextRun) =>
+						nextRun.status === 'active'
+							? repository.saveActiveRun(nextRun)
+							: repository.commitTerminalRun(nextRun),
+					publish: publishScenarioOutcome,
+					afterPublish: cueId ? () => playSfx(cueId) : undefined,
+					onPendingChange: (pending) => {
+						scenarioCommandPending = pending;
+					}
+				}
+			);
+
+			if (result.status === 'rejected' && rejectedCode) {
+				scenarioOperationError = scenarioError(rejectedCode);
+				retryScenarioOperation = null;
+			}
+		} catch {
+			scenarioOperationError = scenarioError('persistence-write-failed');
+			retryScenarioOperation = async () => {
+				await commitGameMutation(request);
+			};
 		}
 	}
 
@@ -1054,14 +1230,17 @@
 				return;
 			}
 
-			game = record.game;
+			await commitGameMutation({
+				kind: 'sandbox-load',
+				nextGame: record.game,
+				cueId: 'sfx.save.loaded'
+			});
 			selectedTileId = null;
 			selectedIndustryTileId = null;
 			selectedWorldCityId = null;
 			cancelPlacement();
 			saveFeedback = { kind: 'status', messageKey: 'route.save.loadedAutoSave' };
 			await refreshSaveSummary();
-			playSfx('sfx.save.loaded');
 		} catch (error) {
 			saveFeedback = { kind: 'error', messageKey: describeSaveErrorKey(error) };
 		}
@@ -1101,7 +1280,11 @@
 				return;
 			}
 
-			game = record.game;
+			await commitGameMutation({
+				kind: 'sandbox-load',
+				nextGame: record.game,
+				cueId: 'sfx.save.loaded'
+			});
 			selectedTileId = null;
 			selectedIndustryTileId = null;
 			selectedWorldCityId = null;
@@ -1112,7 +1295,6 @@
 				params: { name: record.metadata.name }
 			};
 			await refreshSaveSummary();
-			playSfx('sfx.save.loaded');
 		} catch (error) {
 			saveFeedback = { kind: 'error', messageKey: describeSaveErrorKey(error) };
 		}
@@ -1188,73 +1370,135 @@
 
 	function advanceDay() {
 		if (game) {
-			setGameAndAutosaveWithSfx(game, simulateDay(game), 'sfx.time.advance-day');
+			void commitGameMutation({
+				kind: 'transition',
+				sandboxTransition: (currentGame) => simulateDay(currentGame!),
+				scenarioCommand: { kind: 'advanceDay' },
+				cueId: 'sfx.time.advance-day'
+			});
 		}
 	}
 
 	function changePolicy(patch: Partial<CompanyPolicy>) {
 		if (game) {
-			setGameAndAutosaveWithSfx(game, updatePolicy(game, patch), 'sfx.policy.change');
+			void commitGameMutation({
+				kind: 'transition',
+				sandboxTransition: (currentGame) => updatePolicy(currentGame!, patch),
+				scenarioCommand: { kind: 'updatePolicy', patch },
+				cueId: 'sfx.policy.change'
+			});
 		}
 	}
 
 	function chooseDecision(decisionId: string, optionId: string) {
 		if (game) {
-			setGameAndAutosaveWithSfx(
-				game,
-				resolveDecision(game, decisionId, optionId),
-				'sfx.decision.resolve'
-			);
+			void commitGameMutation({
+				kind: 'transition',
+				sandboxTransition: (currentGame) => resolveDecision(currentGame!, decisionId, optionId),
+				scenarioCommand: { kind: 'resolveDecision', decisionId, optionId },
+				cueId: 'sfx.decision.resolve'
+			});
 		}
 	}
 
 	function hireStaff(candidateId: string) {
 		if (game) {
-			setGameAndAutosaveWithSfx(game, hireCandidate(game, candidateId), 'sfx.staff.hire');
+			void commitGameMutation({
+				kind: 'transition',
+				sandboxTransition: (currentGame) => hireCandidate(currentGame!, candidateId),
+				scenarioCommand: { kind: 'hireStaff', candidateId },
+				cueId: 'sfx.staff.hire'
+			});
 		}
 	}
 
 	function assignStaff(staffId: string, storeId: string) {
 		if (game) {
-			setGameAndAutosaveWithSfx(
-				game,
-				assignStaffToStore(game, staffId, storeId),
-				'sfx.staff.assign'
-			);
+			void commitGameMutation({
+				kind: 'transition',
+				sandboxTransition: (currentGame) => assignStaffToStore(currentGame!, staffId, storeId),
+				scenarioCommand: { kind: 'assignStaff', staffId, storeId },
+				cueId: 'sfx.staff.assign'
+			});
 		}
 	}
 
 	function unassignStoreStaff(staffId: string) {
 		if (game) {
-			setGameAndAutosaveWithSfx(game, unassignStaff(game, staffId), 'sfx.staff.unassign');
+			void commitGameMutation({
+				kind: 'transition',
+				sandboxTransition: (currentGame) => unassignStaff(currentGame!, staffId),
+				scenarioCommand: { kind: 'unassignStaff', staffId },
+				cueId: 'sfx.staff.unassign'
+			});
 		}
 	}
 
 	function promoteStaffMember(staffId: string) {
 		if (game) {
-			setGameAndAutosaveWithSfx(game, promoteStaff(game, staffId), 'sfx.staff.promote');
+			void commitGameMutation({
+				kind: 'transition',
+				sandboxTransition: (currentGame) => promoteStaff(currentGame!, staffId),
+				scenarioCommand: { kind: 'promoteStaff', staffId },
+				cueId: 'sfx.staff.promote'
+			});
 		}
 	}
 
 	function changeStoreProduct(storeId: string, categoryId: string, patch: StoreProductPatch): void {
-		if (game) {
-			setGameAndAutosaveWithSfx(
-				game,
-				updateStoreProduct(game, storeId, categoryId, patch),
-				'sfx.stock.edit'
-			);
+		if (!game) {
+			return;
 		}
+		const product = game.stores
+			.find((store) => store.id === storeId)
+			?.products.find((candidate) => candidate.categoryId === categoryId);
+		if (!product) {
+			return;
+		}
+
+		const scenarioCommand: ScenarioCommand =
+			patch.sellingPrice !== undefined
+				? {
+						kind: 'updateStoreSellingPrice',
+						storeId,
+						categoryId,
+						sellingPrice: patch.sellingPrice
+					}
+				: {
+						kind: 'updateStoreInventoryTargets',
+						storeId,
+						categoryId,
+						reorderThreshold: patch.reorderThreshold ?? product.reorderThreshold,
+						targetStock: patch.targetStock ?? product.targetStock
+					};
+		void commitGameMutation({
+			kind: 'transition',
+			sandboxTransition: (currentGame) =>
+				updateStoreProduct(currentGame!, storeId, categoryId, patch),
+			scenarioCommand,
+			cueId: 'sfx.stock.edit'
+		});
 	}
 
 	function upgradeStoreHandler(storeId: string): void {
 		if (game) {
-			setGameAndAutosaveWithSfx(game, upgradeStore(game, storeId), 'sfx.store.upgrade');
+			void commitGameMutation({
+				kind: 'transition',
+				sandboxTransition: (currentGame) => upgradeStore(currentGame!, storeId),
+				scenarioCommand: { kind: 'upgradeStore', storeId },
+				cueId: 'sfx.store.upgrade'
+			});
 		}
 	}
 
 	function upgradeBuildingHandler(buildingId: string): void {
 		if (game) {
-			setGameAndAutosaveWithSfx(game, upgradeBuilding(game, buildingId), 'sfx.industry.upgrade');
+			void commitGameMutation({
+				kind: 'transition',
+				sandboxTransition: (currentGame) => upgradeBuilding(currentGame!, buildingId),
+				scenarioCommand: { kind: 'upgradeIndustrialBuilding', buildingId },
+				cueId: 'sfx.industry.upgrade'
+			});
 		}
 	}
 
@@ -1284,24 +1528,28 @@
 				return;
 			}
 
-			setGameAndAutosave(
-				createFoundingGameAtTile({
-					archetypeId,
-					city: activeCity,
-					tileId: tile.id,
-					seed: starterMapState.seed
-				})
-			);
-			playSfx('sfx.build.retail-place');
+			void commitGameMutation({
+				kind: 'transition',
+				sandboxTransition: () =>
+					createFoundingGameAtTile({
+						archetypeId,
+						city: activeCity,
+						tileId: tile.id,
+						seed: starterMapState.seed
+					}),
+				cueId: 'sfx.build.retail-place'
+			});
 		} else {
-			setGameAndAutosaveWithSfx(
-				game,
-				openStoreAtTile(game, {
-					tileId,
-					archetypeId
-				}),
-				'sfx.build.retail-place'
-			);
+			void commitGameMutation({
+				kind: 'transition',
+				sandboxTransition: (currentGame) =>
+					openStoreAtTile(currentGame!, {
+						tileId,
+						archetypeId
+					}),
+				scenarioCommand: { kind: 'openStore', tileId, archetypeId },
+				cueId: 'sfx.build.retail-place'
+			});
 		}
 
 		selectedTileId = null;
@@ -1332,11 +1580,13 @@
 			return;
 		}
 
-		setGameAndAutosaveWithSfx(
-			game,
-			buildIndustrialBuilding(game, { tileId, buildingTypeId }),
-			'sfx.build.industry-place'
-		);
+		void commitGameMutation({
+			kind: 'transition',
+			sandboxTransition: (currentGame) =>
+				buildIndustrialBuilding(currentGame!, { tileId, buildingTypeId }),
+			scenarioCommand: { kind: 'buildIndustrialBuilding', tileId, buildingTypeId },
+			cueId: 'sfx.build.industry-place'
+		});
 		selectedIndustryTileId = null;
 		selectedTileId = null;
 		selectedWorldCityId = null;
@@ -1398,10 +1648,12 @@
 				alert.cityId !== game.activeCityId &&
 				isWorldCityId(alert.cityId)
 			) {
-				const switched = selectWorldCity(game, alert.cityId);
-				if (switched !== game) {
-					setGameAndAutosave(switched);
-				}
+				const cityId = alert.cityId;
+				void commitGameMutation({
+					kind: 'transition',
+					sandboxTransition: (currentGame) => selectWorldCity(currentGame!, cityId),
+					scenarioCommand: { kind: 'selectWorldCity', cityId }
+				});
 			}
 			showRetailMap();
 			selectedTileId = alert.tileId;
@@ -1414,10 +1666,12 @@
 				alert.cityId !== game.activeIndustryCityId &&
 				isWorldCityId(alert.cityId)
 			) {
-				const switched = selectWorldCity(game, alert.cityId);
-				if (switched !== game) {
-					setGameAndAutosave(switched);
-				}
+				const cityId = alert.cityId;
+				void commitGameMutation({
+					kind: 'transition',
+					sandboxTransition: (currentGame) => selectWorldCity(currentGame!, cityId),
+					scenarioCommand: { kind: 'selectWorldCity', cityId }
+				});
 			}
 			showIndustryMap();
 			selectedIndustryTileId = alert.tileId;
@@ -1557,7 +1811,16 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-<main class="app" onpointerdown={unlockAudio}>
+<main
+	class="app"
+	data-play-mode={playMode}
+	data-scenario-command-pending={scenarioCommandPending}
+	data-scenario-result={lastScenarioResult?.outcome ?? ''}
+	data-scenario-best-updated={lastScenarioBestUpdated}
+	data-scenario-error={scenarioOperationError?.code ?? ''}
+	data-scenario-retry-available={retryScenarioOperation !== null}
+	onpointerdown={unlockAudio}
+>
 	<section class="map-layout" aria-label={i18n.t('route.cityPlanning')}>
 		<div class="map-surfaces">
 			{#if shouldRenderMapView(visitedMapViews, 'world')}
