@@ -193,6 +193,8 @@ export const zhHant = {
 			retail: '零售城市',
 			industry: '工業城市'
 		},
+		selectionPending: '目前的挑戰操作完成前無法切換城市。',
+		selectionUnavailable: '此挑戰無法切換城市。',
 		openForCash: '花費 {cash} 開啟'
 	},
 	savePanel: {

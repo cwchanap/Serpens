@@ -105,6 +105,13 @@
 		if (canUnassign) onUnassign(member.id);
 	}
 
+	function hasAssignmentAction(member: StaffMember): boolean {
+		return (
+			canUnassign ||
+			(canAssign && stores.some((candidateStore) => candidateStore.id !== member.assignedStoreId))
+		);
+	}
+
 	function canAffordPromotion(member: StaffMember): boolean {
 		return cash >= getStaffTrainingFee(member.level);
 	}
@@ -289,13 +296,18 @@
 							<div class="assignment-actions">
 								<select
 									aria-label={assignActionLabel(member)}
-									disabled={!canAssign && !canUnassign}
+									disabled={!hasAssignmentAction(member)}
 									value={member.assignedStoreId ?? ''}
 									onchange={(event) => handleAssignment(member, event.currentTarget.value)}
 								>
-									<option value="">{i18n.t('staffPanel.assignment.unassigned')}</option>
+									<option value="" disabled={!canUnassign}>
+										{i18n.t('staffPanel.assignment.unassigned')}
+									</option>
 									{#each stores as store, storeIndex (store.id)}
-										<option value={store.id}>{storeDisplayName(store, storeIndex + 1, i18n)}</option
+										<option
+											value={store.id}
+											disabled={!canAssign && store.id !== member.assignedStoreId}
+											>{storeDisplayName(store, storeIndex + 1, i18n)}</option
 										>
 									{/each}
 								</select>

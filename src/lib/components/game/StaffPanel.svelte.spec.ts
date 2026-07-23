@@ -239,6 +239,70 @@ describe('StaffPanel', () => {
 		expect(onUnassign).toHaveBeenCalledWith('staff-alex');
 	});
 
+	it('allows unassigning but disables transfer destinations when assignment is unavailable', async () => {
+		expect.assertions(7);
+		const onAssign = vi.fn();
+		const onUnassign = vi.fn();
+		renderStaffPanel({
+			stores: [store, secondStore],
+			onAssign,
+			onUnassign,
+			canAssign: false,
+			canUnassign: true,
+			disabledReason: 'Assignment is unavailable in this challenge.'
+		});
+
+		const select = page.getByLabelText(
+			'Assign Alex Chen, Manager staff staff-alex, currently assigned to Founding Store'
+		);
+		const options = Array.from(select.element().querySelectorAll('option'));
+
+		await expect.element(select).not.toBeDisabled();
+		expect(options.find((option) => option.value === '')?.disabled).toBe(false);
+		expect(options.find((option) => option.value === 'store-1')?.disabled).toBe(false);
+		expect(options.find((option) => option.value === 'store-2')?.disabled).toBe(true);
+		await expect
+			.element(page.getByText('Assignment is unavailable in this challenge.'))
+			.toBeVisible();
+
+		await select.selectOptions('');
+
+		expect(onUnassign).toHaveBeenCalledWith('staff-alex');
+		expect(onAssign).not.toHaveBeenCalled();
+	});
+
+	it('allows transfers but disables Unassigned when unassignment is unavailable', async () => {
+		expect.assertions(7);
+		const onAssign = vi.fn();
+		const onUnassign = vi.fn();
+		renderStaffPanel({
+			stores: [store, secondStore],
+			onAssign,
+			onUnassign,
+			canAssign: true,
+			canUnassign: false,
+			disabledReason: 'Unassignment is unavailable in this challenge.'
+		});
+
+		const select = page.getByLabelText(
+			'Assign Alex Chen, Manager staff staff-alex, currently assigned to Founding Store'
+		);
+		const options = Array.from(select.element().querySelectorAll('option'));
+
+		await expect.element(select).not.toBeDisabled();
+		expect(options.find((option) => option.value === '')?.disabled).toBe(true);
+		expect(options.find((option) => option.value === 'store-1')?.disabled).toBe(false);
+		expect(options.find((option) => option.value === 'store-2')?.disabled).toBe(false);
+		await expect
+			.element(page.getByText('Unassignment is unavailable in this challenge.'))
+			.toBeVisible();
+
+		await select.selectOptions('store-2');
+
+		expect(onAssign).toHaveBeenCalledWith('staff-alex', 'store-2');
+		expect(onUnassign).not.toHaveBeenCalled();
+	});
+
 	it('fires onPromote for an eligible, affordable staff member', async () => {
 		expect.assertions(1);
 		const onPromote = vi.fn();
