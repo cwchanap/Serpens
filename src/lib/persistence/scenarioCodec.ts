@@ -1,4 +1,8 @@
 import { resolveScenarioDefinition } from '$lib/scenarios/catalog';
+import {
+	isScenarioConditionWindowCompleteAtDay,
+	scenarioConditionPasses
+} from '$lib/scenarios/metrics';
 import { evaluateScenario } from '$lib/scenarios/runtime';
 import { medalForScore } from '$lib/scenarios/scoring';
 import type {
@@ -408,23 +412,6 @@ function validateEvaluation(value: unknown, path: string): ScenarioEvaluation {
 
 type EvaluationPhase = 'active' | 'terminal';
 
-function comparatorPasses(actual: number, comparator: string, target: number): boolean {
-	switch (comparator) {
-		case 'lt':
-			return actual < target;
-		case 'lte':
-			return actual <= target;
-		case 'eq':
-			return actual === target;
-		case 'gte':
-			return actual >= target;
-		case 'gt':
-			return actual > target;
-		default:
-			return false;
-	}
-}
-
 function normalizedPoints(actual: number, zeroAt: number, fullAt: number, points: number): number {
 	if (zeroAt === fullAt) return actual >= fullAt ? points : 0;
 	const ratio = (actual - zeroAt) / (fullAt - zeroAt);
@@ -454,18 +441,18 @@ function validateConditionContract(
 			'Evaluation evidence must match the resolved scenario condition.'
 		);
 	}
-	if (evaluation.evidence.day > evaluationDay) {
+	if (evaluation.evidence.day !== evaluationDay) {
 		fail(
 			'evaluation-mismatch',
 			`${path}.evidence.day`,
 			evaluation.evidence.day,
-			'Condition evidence cannot come from after the evaluation day.'
+			'Condition evidence day must equal the containing evaluation day.'
 		);
 	}
-	const passes = comparatorPasses(
+	const passes = scenarioConditionPasses(
+		condition,
 		evaluation.evidence.actual,
-		condition.comparator,
-		condition.target
+		isScenarioConditionWindowCompleteAtDay(condition, evaluationDay)
 	);
 	const expectedStatus = isFailure
 		? passes
@@ -490,7 +477,8 @@ function validateEvaluationContract(
 	evaluation: ScenarioEvaluation,
 	definition: ScenarioDefinition,
 	path: string,
-	phase: EvaluationPhase
+	phase: EvaluationPhase,
+	requireMetricEvidence: boolean
 ): void {
 	const groups = [
 		['required', evaluation.required, definition.requiredObjectives],
@@ -544,12 +532,15 @@ function validateEvaluationContract(
 	}
 	for (let index = 0; index < definition.failures.length; index += 1) {
 		const risk = evaluation.risks[index];
+		const distance = Math.abs(
+			evaluation.failures[index].evidence.actual - definition.failures[index].target
+		);
+		const expectedDistance = Number.isFinite(distance) ? distance : 0;
 		if (
 			risk?.kind !== 'condition' ||
 			risk.conditionId !== definition.failures[index].id ||
 			risk.triggered !== (evaluation.failures[index].status === 'triggered') ||
-			risk.distance !==
-				Math.abs(evaluation.failures[index].evidence.actual - definition.failures[index].target)
+			risk.distance !== expectedDistance
 		) {
 			fail(
 				'evaluation-mismatch',
@@ -640,16 +631,16 @@ function validateEvaluationContract(
 					deeplyEqual(candidate.condition.query, component.query) &&
 					deeplyEqual(candidate.condition.window, component.window)
 			);
-			if (candidates.length > 0) {
+			if (requireMetricEvidence && candidates.length !== 1) {
+				fail(
+					'evaluation-mismatch',
+					`${path}.projection.componentPoints[${index}]`,
+					componentPoints,
+					'Metric score components require exactly one matching definition condition and evidence.'
+				);
+			}
+			if (candidates.length === 1) {
 				const actual = candidates[0].evaluation.evidence.actual;
-				if (candidates.some((candidate) => candidate.evaluation.evidence.actual !== actual)) {
-					fail(
-						'evaluation-mismatch',
-						`${path}.projection.componentPoints[${index}]`,
-						componentPoints,
-						'Matching metric evidence must agree on its actual value.'
-					);
-				}
 				const expected = normalizedPoints(
 					actual,
 					component.zeroBonusAt,
@@ -698,7 +689,8 @@ function selectedTerminalStatus(evaluation: ScenarioEvaluation): 'active' | 'com
 function validateResult(
 	value: unknown,
 	resolveDefinition: ScenarioDefinitionResolver,
-	path: string
+	path: string,
+	requireMetricEvidence = true
 ): ScenarioResult {
 	const result = requireRecord(value, path);
 	const definitionRef = validateDefinitionRef(result.definition, `${path}.definition`);
@@ -728,7 +720,13 @@ function validateResult(
 	if (score > 1000)
 		fail('invalid-score', `${path}.score`, score, 'Scenario score cannot exceed 1000.');
 	const evaluation = validateEvaluation(result.evaluation, `${path}.evaluation`);
-	validateEvaluationContract(evaluation, definition, `${path}.evaluation`, 'terminal');
+	validateEvaluationContract(
+		evaluation,
+		definition,
+		`${path}.evaluation`,
+		'terminal',
+		requireMetricEvidence
+	);
 	if (evaluation.day !== completionDay || evaluation.projection.score !== score) {
 		fail(
 			'result-evaluation-mismatch',
@@ -833,7 +831,8 @@ function validateRunWithGame(
 		evaluation,
 		definition,
 		`${path}.evaluation`,
-		status === 'active' ? 'active' : 'terminal'
+		status === 'active' ? 'active' : 'terminal',
+		false
 	);
 	if (seed !== game.seed || evaluation.day !== game.day) {
 		fail(
@@ -883,7 +882,7 @@ function validateRunWithGame(
 				'A terminal run must have a result.'
 			);
 		}
-		result = validateResult(run.result, resolveDefinition, `${path}.result`);
+		result = validateResult(run.result, resolveDefinition, `${path}.result`, false);
 		if (
 			result.outcome !== status ||
 			result.seed !== seed ||
@@ -1216,6 +1215,25 @@ function collectEntry<T>(operation: () => T, diagnostics: ScenarioDiagnostic[]):
 	}
 }
 
+type EnvelopeDataRead = { ok: true; value: unknown } | { ok: false };
+
+function readEnvelopeData(
+	descriptors: PropertyDescriptorMap,
+	key: string,
+	path: string,
+	diagnostics: ScenarioDiagnostic[]
+): EnvelopeDataRead {
+	try {
+		return { ok: true, value: requireEnvelopeData(descriptors, key, path) };
+	} catch (error) {
+		if (isScenarioValidationFailure(error)) {
+			diagnostics.push(error.diagnostic);
+			return { ok: false };
+		}
+		throw error;
+	}
+}
+
 export function decodeScenarioStoreSnapshot(
 	value: unknown,
 	resolveDefinition: ScenarioDefinitionResolver = resolveScenarioDefinition
@@ -1249,14 +1267,16 @@ export function decodeScenarioStoreSnapshot(
 
 	const diagnostics: ScenarioDiagnostic[] = [];
 	const decoded = createEmptyScenarioStore();
-	const activeSource = collectEntry(
-		() => requireEnvelopeData(sourceDescriptors, 'activeRunsByScenarioId', 'scenarioStore'),
+	const activeSource = readEnvelopeData(
+		sourceDescriptors,
+		'activeRunsByScenarioId',
+		'scenarioStore',
 		diagnostics
 	);
-	if (activeSource !== undefined) {
+	if (activeSource.ok) {
 		for (const [key, rawEntry] of collectOwnMapEntries(
-			activeSource,
-			'activeRunsByScenarioId',
+			activeSource.value,
+			'scenarioStore.activeRunsByScenarioId',
 			diagnostics
 		)) {
 			if (!isScenarioId(key)) {
@@ -1283,14 +1303,16 @@ export function decodeScenarioStoreSnapshot(
 		}
 	}
 
-	const bestSource = collectEntry(
-		() => requireEnvelopeData(sourceDescriptors, 'bestResultsByDefinitionKey', 'scenarioStore'),
+	const bestSource = readEnvelopeData(
+		sourceDescriptors,
+		'bestResultsByDefinitionKey',
+		'scenarioStore',
 		diagnostics
 	);
-	if (bestSource !== undefined) {
+	if (bestSource.ok) {
 		for (const [key, rawEntry] of collectOwnMapEntries(
-			bestSource,
-			'bestResultsByDefinitionKey',
+			bestSource.value,
+			'scenarioStore.bestResultsByDefinitionKey',
 			diagnostics
 		)) {
 			const record = collectEntry(() => {

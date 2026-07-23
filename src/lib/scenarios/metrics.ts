@@ -61,6 +61,18 @@ const AGGREGATE_REPORT_WINDOWS = new Set<WindowKind>([
 	'trailing-reports',
 	'fixed-report-days'
 ]);
+const REPORT_METRIC_IDS = new Set<MetricId>([
+	'daily-net-income',
+	'cumulative-net-income',
+	'consecutive-positive-net-income-reports',
+	'completed-retail-import-cycles',
+	'retail-import-spend',
+	'retail-imported-units',
+	'retail-local-units',
+	'retail-local-share',
+	'units-sold',
+	'demand-missed'
+]);
 
 function compareCodeUnits(first: string, second: string): number {
 	return first < second ? -1 : first > second ? 1 : 0;
@@ -378,6 +390,34 @@ function comparatorPasses(actual: number, comparator: ScenarioComparator, target
 	}
 }
 
+export function scenarioConditionPasses(
+	condition: ScenarioCondition,
+	actual: number,
+	windowComplete: boolean
+): boolean {
+	return windowComplete && comparatorPasses(actual, condition.comparator, condition.target);
+}
+
+export function isScenarioConditionWindowCompleteAtDay(
+	condition: ScenarioCondition,
+	evaluationDay: number
+): boolean {
+	if (!condition.requiresCompleteWindow || !REPORT_METRIC_IDS.has(condition.query.metric)) {
+		return true;
+	}
+	const reportCount = Math.max(0, evaluationDay - 1);
+	switch (condition.window.kind) {
+		case 'current':
+			return reportCount >= 1;
+		case 'run-to-date':
+			return true;
+		case 'trailing-reports':
+			return reportCount >= condition.window.count;
+		case 'fixed-report-days':
+			return reportCount >= condition.window.endDay;
+	}
+}
+
 function evaluateCondition(condition: ScenarioCondition, game: GameState) {
 	const evaluation = evaluateMetric(
 		game,
@@ -397,9 +437,7 @@ function evaluateCondition(condition: ScenarioCondition, game: GameState) {
 	};
 	return {
 		evidence,
-		passes:
-			evaluation.windowComplete &&
-			comparatorPasses(evaluation.actual, condition.comparator, condition.target)
+		passes: scenarioConditionPasses(condition, evaluation.actual, evaluation.windowComplete)
 	};
 }
 

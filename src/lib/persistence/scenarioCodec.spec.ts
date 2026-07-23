@@ -82,7 +82,7 @@ function fixtureDefinition(ref: ScenarioDefinitionRef): ScenarioDefinition {
 			{
 				id: 'cash-rich',
 				labelKey: 'store.defaultName',
-				query: { metric: 'cash' },
+				query: { metric: 'scorecard', score: 'profit' },
 				comparator: 'gte',
 				target: 500,
 				window: { kind: 'current' }
@@ -92,7 +92,7 @@ function fixtureDefinition(ref: ScenarioDefinitionRef): ScenarioDefinition {
 			{
 				id: 'cash-negative',
 				labelKey: 'store.defaultName',
-				query: { metric: 'cash' },
+				query: { metric: 'scorecard', score: 'profit' },
 				comparator: 'lt',
 				target: 0,
 				window: { kind: 'current' }
@@ -137,7 +137,8 @@ function fixtureRun(
 		for (let day = 0; day < (options.advanceDays ?? 0); day += 1) game = simulateDay(game);
 		game = {
 			...game,
-			cash: status === 'failed' ? -1 : Math.max(0, Math.min(1000, (options.score ?? 500) - 500) * 2)
+			cash: Math.max(0, Math.min(1000, (options.score ?? 500) - 500) * 2),
+			scorecard: status === 'failed' ? { ...game.scorecard, profit: -1 } : game.scorecard
 		};
 	}
 	const eligibility =
@@ -596,6 +597,232 @@ describe('scenario codec', () => {
 
 		expect(decoded.snapshot.bestResultsByDefinitionKey).toEqual({});
 		expect(decoded.diagnostics.map((entry) => entry.code)).toContain('evaluation-mismatch');
+	});
+
+	it('rejects a game-less metric score component without one unique matching condition', () => {
+		const definition: ScenarioDefinition = {
+			...fixtureDefinition({ scenarioId: 'first-profit', version: 1 }),
+			scoreComponents: [
+				{
+					kind: 'metric',
+					query: { metric: 'warehouse-quantity', materialId: 'water' },
+					window: { kind: 'current' },
+					zeroBonusAt: 0,
+					fullBonusAt: 1,
+					points: 500
+				}
+			]
+		};
+		const completed = fixtureRun(undefined, { status: 'completed', score: 750 });
+		const result = structuredClone(completed.result!);
+		result.score = 1000;
+		result.medal = 'gold';
+		result.evaluation.projection = {
+			score: 1000,
+			medal: 'gold',
+			componentPoints: [500]
+		};
+		const decoded = decodeScenarioStoreSnapshot(
+			snapshot(
+				{},
+				{
+					'first-profit@1': {
+						scenarioSchemaVersion: SCENARIO_RUN_SCHEMA_VERSION,
+						result
+					}
+				}
+			),
+			() => definition
+		);
+
+		expect(decoded.snapshot.bestResultsByDefinitionKey).toEqual({});
+		expect(decoded.diagnostics.map((entry) => entry.code)).toContain('evaluation-mismatch');
+	});
+
+	it('rejects a game-less metric score component with multiple matching conditions', () => {
+		const definition: ScenarioDefinition = {
+			...fixtureDefinition({ scenarioId: 'first-profit', version: 1 }),
+			scoreComponents: [
+				{
+					kind: 'metric',
+					query: { metric: 'scorecard', score: 'profit' },
+					window: { kind: 'current' },
+					zeroBonusAt: 0,
+					fullBonusAt: 124,
+					points: 500
+				}
+			]
+		};
+		const completed = fixtureRun(undefined, { status: 'completed', score: 750 });
+		const result = structuredClone(completed.result!);
+		const decoded = decodeScenarioStoreSnapshot(
+			snapshot(
+				{},
+				{
+					'first-profit@1': {
+						scenarioSchemaVersion: SCENARIO_RUN_SCHEMA_VERSION,
+						result
+					}
+				}
+			),
+			() => definition
+		);
+
+		expect(result.evaluation.projection.componentPoints).toEqual([250]);
+		expect(decoded.snapshot.bestResultsByDefinitionKey).toEqual({});
+		expect(decoded.diagnostics.map((entry) => entry.code)).toContain('evaluation-mismatch');
+	});
+
+	it('mirrors incomplete required trailing windows for active and terminal evaluations', () => {
+		const base = fixtureDefinition({ scenarioId: 'first-profit', version: 1 });
+		const incompleteCondition = {
+			id: 'three-day-income',
+			labelKey: 'store.defaultName' as const,
+			query: { metric: 'daily-net-income' as const },
+			comparator: 'gte' as const,
+			target: 0,
+			window: { kind: 'trailing-reports' as const, count: 3 },
+			requiresCompleteWindow: true
+		};
+		const activeDefinition: ScenarioDefinition = {
+			...base,
+			requiredObjectives: [incompleteCondition],
+			optionalObjectives: [],
+			failures: [],
+			scoreComponents: []
+		};
+		const activeGame = { ...createNewGame('convenience', activeDefinition.officialSeed), cash: 0 };
+		const active: ScenarioRun = {
+			definition: { scenarioId: 'first-profit', version: 1 },
+			seed: activeDefinition.officialSeed,
+			eligibility: 'ranked',
+			status: 'active',
+			game: activeGame,
+			evaluation: evaluateScenario(activeDefinition, activeGame, false),
+			result: null
+		};
+		const activeDecoded = decodeScenarioStoreSnapshot(
+			snapshot({ 'first-profit': runRecord(active) }),
+			() => activeDefinition
+		);
+
+		const terminalDefinition: ScenarioDefinition = {
+			...base,
+			optionalObjectives: [incompleteCondition],
+			scoreComponents: []
+		};
+		const completed = fixtureRun(undefined, { status: 'completed', score: 750 });
+		const terminalEvaluation = evaluateScenario(terminalDefinition, completed.game, true);
+		const terminalResult = {
+			...completed.result!,
+			score: terminalEvaluation.projection.score,
+			medal: terminalEvaluation.projection.medal,
+			evaluation: terminalEvaluation
+		};
+		const terminalDecoded = decodeScenarioStoreSnapshot(
+			snapshot(
+				{},
+				{
+					'first-profit@1': {
+						scenarioSchemaVersion: SCENARIO_RUN_SCHEMA_VERSION,
+						result: terminalResult
+					}
+				}
+			),
+			() => terminalDefinition
+		);
+
+		expect(active.evaluation.required[0]?.status).toBe('pending');
+		expect(activeDecoded.diagnostics).toEqual([]);
+		expect(terminalEvaluation.optional[0]?.status).toBe('missed');
+		expect(terminalDecoded.diagnostics).toEqual([]);
+	});
+
+	it('requires every evidence day to equal its containing evaluation day', () => {
+		const completed = fixtureRun(undefined, {
+			status: 'completed',
+			score: 750,
+			advanceDays: 1
+		});
+		const result = structuredClone(completed.result!);
+		result.evaluation.required[0] = {
+			...result.evaluation.required[0]!,
+			evidence: { ...result.evaluation.required[0]!.evidence, day: 1 }
+		};
+		const decoded = decodeScenarioStoreSnapshot(
+			snapshot(
+				{},
+				{
+					'first-profit@1': {
+						scenarioSchemaVersion: SCENARIO_RUN_SCHEMA_VERSION,
+						result
+					}
+				}
+			),
+			resolveFixtureDefinition
+		);
+
+		expect(result.evaluation.day).toBe(2);
+		expect(decoded.snapshot.bestResultsByDefinitionKey).toEqual({});
+		expect(decoded.diagnostics.map((entry) => entry.code)).toContain('evaluation-mismatch');
+	});
+
+	it.each(['activeRunsByScenarioId', 'bestResultsByDefinitionKey'] as const)(
+		'diagnoses an explicitly undefined %s envelope field',
+		(field) => {
+			const raw = snapshot() as unknown as Record<string, unknown>;
+			raw[field] = undefined;
+			const decoded = decodeScenarioStoreSnapshot(raw, resolveFixtureDefinition);
+
+			expect(decoded.diagnostics.map((entry) => entry.path)).toContain(`scenarioStore.${field}`);
+		}
+	);
+
+	it('accepts the runtime finite fallback for an overflowing failure-risk distance', () => {
+		const definition: ScenarioDefinition = {
+			...fixtureDefinition({ scenarioId: 'first-profit', version: 1 }),
+			failures: [
+				{
+					id: 'cash-impossibly-low',
+					labelKey: 'store.defaultName',
+					query: { metric: 'cash' },
+					comparator: 'lt',
+					target: -Number.MAX_VALUE,
+					window: { kind: 'current' }
+				}
+			],
+			scoreComponents: []
+		};
+		const game = {
+			...createNewGame('convenience', definition.officialSeed),
+			cash: Number.MAX_VALUE
+		};
+		const evaluation = evaluateScenario(definition, game, true);
+		const result = {
+			definition: { scenarioId: 'first-profit' as const, version: 1 },
+			seed: definition.officialSeed,
+			eligibility: 'ranked' as const,
+			outcome: 'completed' as const,
+			completionDay: game.day,
+			score: evaluation.projection.score,
+			medal: evaluation.projection.medal,
+			evaluation
+		};
+		const decoded = decodeScenarioStoreSnapshot(
+			snapshot(
+				{},
+				{
+					'first-profit@1': {
+						scenarioSchemaVersion: SCENARIO_RUN_SCHEMA_VERSION,
+						result
+					}
+				}
+			),
+			() => definition
+		);
+
+		expect(evaluation.risks[0]).toMatchObject({ distance: 0 });
+		expect(decoded.diagnostics).toEqual([]);
 	});
 
 	it('recomputes remaining-day points from the definition day limit', () => {
