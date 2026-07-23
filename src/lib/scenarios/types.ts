@@ -30,6 +30,9 @@ export const SCENARIO_COMMAND_KINDS = [
 	'demolishRail'
 ] as const;
 
+/** Largest seed that remains a non-zero Park-Miller RNG state without normalization. */
+export const MAX_SCENARIO_SEED = 2_147_483_646;
+
 export type ScenarioId = 'first-profit' | 'import-squeeze' | 'local-lifeline';
 export type ScenarioDefinitionKey = `${ScenarioId}@${number}`;
 export type ScenarioRunStatus = 'active' | 'completed' | 'failed' | 'abandoned';
