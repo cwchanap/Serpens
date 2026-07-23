@@ -47,7 +47,6 @@
 		createIndustryMapSnapshot,
 		type IndustryMapRailPreviewRender
 	} from '$lib/game/industryMapRender';
-	import { buildIndustrialBuilding, upgradeBuilding } from '$lib/game/industryPlacement';
 	import { createCityMapSnapshot } from '$lib/game/mapRender';
 	import {
 		buildRailNetwork,
@@ -57,12 +56,9 @@
 		type RailSegment
 	} from '$lib/game/rail';
 	import {
-		buildRail,
 		buildRailPreview,
 		buildRailWaypointPreview,
-		demolishRailSegment,
-		isRailWaypointTarget,
-		upgradeRailSegment
+		isRailWaypointTarget
 	} from '$lib/game/railPlacement';
 	import {
 		createInitialVisitedMapViews,
@@ -70,7 +66,6 @@
 		shouldRenderMapView,
 		type MapViewId
 	} from '$lib/game/mapViewKeepAlive';
-	import { createFoundingGameAtTile, openStoreAtTile } from '$lib/game/placement';
 	import {
 		createIndustryPlacementPreview,
 		createRetailPlacementPreview,
@@ -93,27 +88,17 @@
 	} from '$lib/i18n/index';
 	import type { SupportedLocale } from '$lib/i18n/locales';
 	import { summarizeReports } from '$lib/game/reports';
-	import {
-		assignStaffToStore,
-		hireCandidate,
-		promoteStaff,
-		unassignStaff
-	} from '$lib/game/staffing';
-	import { DEFAULT_POLICY, resolveDecision, updatePolicy, upgradeStore } from '$lib/game/state';
+	import { DEFAULT_POLICY } from '$lib/game/state';
 	import { buildSupplyAdvisor, getAvailableMaterialIds } from '$lib/game/supplyAdvisor';
 	import type { AdvisorChain } from '$lib/game/supplyAdvisor';
 	import { isTileInStoreFootprint } from '$lib/game/storeFootprint';
 	import { isTileInIndustryBuildingFootprint } from '$lib/game/industryFootprint';
-	import { updateStoreProduct } from '$lib/game/stock';
-	import { simulateDay } from '$lib/game/simulateDay';
 	import {
 		STARTER_STORE_CAP,
 		WORLD_CITY_CATALOG,
 		createInitialWorldProgress,
 		getWorldCityStatus,
-		isWorldCityId,
-		openWorldCity,
-		selectWorldCity
+		isWorldCityId
 	} from '$lib/game/world';
 	import {
 		decisionContextRailNoValidPath,
@@ -132,22 +117,10 @@
 	import { SaveDataError } from '$lib/persistence/saveCodec';
 	import { createSaveRepository } from '$lib/persistence/saveRepositoryFactory';
 	import type { SaveSlotMetadata } from '$lib/persistence/saveTypes';
-	import type { ScenarioRepository } from '$lib/persistence/scenarioRepository';
 	import { createScenarioRepository } from '$lib/persistence/scenarioRepositoryFactory';
 	import { resolveScenarioDefinition } from '$lib/scenarios/catalog';
-	import {
-		ScenarioCommandGate,
-		runImmediateSandboxOperation,
-		runPersistenceGatedOperation
-	} from '$lib/scenarios/commandGate';
-	import { executeScenarioCommand } from '$lib/scenarios/runtime';
-	import type {
-		ScenarioCommand,
-		ScenarioCommitOutcome,
-		ScenarioOperationError,
-		ScenarioResult,
-		ScenarioRun
-	} from '$lib/scenarios/types';
+	import type { ScenarioOperationError, ScenarioResult, ScenarioRun } from '$lib/scenarios/types';
+	import { GameRouteController, type GameRouteControllerState } from './gameRouteController';
 
 	interface ManagementPanelMenuItem {
 		id: ManagementPanelId;
@@ -170,15 +143,6 @@
 		| { step: 'idle' }
 		| { step: 'origin' }
 		| { step: 'routing'; originBuildingId: string; waypoints: Array<{ x: number; y: number }> };
-
-	type RouteGameMutation =
-		| {
-				kind: 'transition';
-				sandboxTransition(currentGame: GameState | null): GameState;
-				scenarioCommand?: ScenarioCommand;
-				cueId?: SfxCueId;
-		  }
-		| { kind: 'sandbox-load'; nextGame: GameState; cueId?: SfxCueId };
 
 	/**
 	 * Returns `globalThis.localStorage` when accessible, or `null` when the
@@ -283,7 +247,38 @@
 	let retryScenarioOperation = $state<(() => Promise<void>) | null>(null);
 	let playMode = $state<'sandbox' | 'scenario'>('sandbox');
 	let scenarioCommandPending = $state(false);
-	const scenarioCommandGate = new ScenarioCommandGate();
+	const gameRouteController = new GameRouteController({
+		createSaveRepository,
+		createScenarioRepository,
+		resolveScenarioDefinition,
+		playSfx,
+		onStateChange: synchronizeControllerState,
+		onSaveRepositoryReady: (repository) => {
+			saveRepository = repository;
+		},
+		onSaveSummary: (summary) => {
+			autoSave = summary.autoSave;
+			manualSaveSlots = summary.manualSlots;
+		},
+		onAutoSave: (metadata) => {
+			autoSave = metadata;
+			saveFeedback = {
+				kind: 'status',
+				messageKey: 'route.save.autoSavedDay',
+				params: { day: metadata.day }
+			};
+		},
+		onAutoSaveError: (error) => {
+			saveFeedback = { kind: 'error', messageKey: describeSaveErrorKey(error) };
+		},
+		onReadOnlySelection: (kind, tileId) => {
+			if (kind === 'retail') {
+				selectedTileId = tileId;
+			} else {
+				selectedIndustryTileId = tileId;
+			}
+		}
+	});
 	let game = $derived(playMode === 'scenario' ? (activeScenarioRun?.game ?? null) : sandboxGame);
 	let activeMapView = $state<MapViewId>('retail');
 	let visitedMapViews = $state(createInitialVisitedMapViews('retail'));
@@ -311,7 +306,6 @@
 	let i18n = $derived(createI18n(activeLocale));
 	let placementFeedback = $state<PlacementBlockReason | null>(null);
 	let saveRepository: SaveRepository | null = $state(null);
-	let scenarioRepository: ScenarioRepository | null = $state(null);
 	let autoSave = $state<SaveSlotMetadata | null>(null);
 	let manualSaveSlots = $state<SaveSlotMetadata[]>([]);
 	let isSavePanelOpen = $state(false);
@@ -636,7 +630,7 @@
 
 	onMount(() => {
 		void initializeSaves();
-		void initializeScenarios();
+		void gameRouteController.initializeScenarios();
 
 		const controller = createGameAudioController({
 			onPreferencesChanged: (nextPreferences) => {
@@ -682,7 +676,10 @@
 		// Resolve a click inside a placed 2x2 store footprint to that store's
 		// anchor so the inspector shows the anchor's tile-derived stats
 		// (neighborhood/demand/rent) instead of the clicked cell's.
-		selectedTileId = game ? resolveSelectionAnchorTileId(activeCity, game.stores, tileId) : tileId;
+		gameRouteController.selectReadOnlyTile(
+			'retail',
+			game ? resolveSelectionAnchorTileId(activeCity, game.stores, tileId) : tileId
+		);
 		selectedIndustryTileId = null;
 		selectedWorldCityId = null;
 	}
@@ -706,9 +703,12 @@
 		// A rail-cell tile has no footprint to resolve, so it is left as-is —
 		// `selectedRailSegments` then derives the segment(s) for it, and the
 		// template shows RailSegmentInspector instead of IndustryTileInspector.
-		selectedIndustryTileId = game
-			? resolveIndustrySelectionAnchorTileId(industryCity, game.industrialBuildings, tileId)
-			: tileId;
+		gameRouteController.selectReadOnlyTile(
+			'industry',
+			game
+				? resolveIndustrySelectionAnchorTileId(industryCity, game.industrialBuildings, tileId)
+				: tileId
+		);
 		selectedTileId = null;
 		selectedWorldCityId = null;
 	}
@@ -765,12 +765,7 @@
 			// routing/preview active. A subsequent click on the same building
 			// (or an explicit confirm) commits the build.
 			if (railPreviewTargetBuildingId === building.id) {
-				void commitGameMutation({
-					kind: 'transition',
-					sandboxTransition: (currentGame) => buildRail(currentGame!, input),
-					scenarioCommand: { kind: 'buildRail', ...input },
-					cueId: 'sfx.build.industry-place'
-				});
+				void gameRouteController.buildRail(input);
 				railBuildMode = { step: 'idle' };
 				railPreviewTargetBuildingId = null;
 				placementFeedback = null;
@@ -857,77 +852,21 @@
 
 	function upgradeRailSegmentHandler(segmentId: string): void {
 		if (game) {
-			void commitGameMutation({
-				kind: 'transition',
-				sandboxTransition: (currentGame) =>
-					upgradeRailSegment(currentGame!, industryCity.id, segmentId),
-				scenarioCommand: {
-					kind: 'upgradeRail',
-					cityId: industryCity.id,
-					segmentId
-				},
-				cueId: 'sfx.industry.upgrade'
-			});
+			void gameRouteController.upgradeRail(industryCity.id, segmentId);
 		}
 	}
 
 	function demolishRailSegmentHandler(segmentId: string): void {
 		if (game) {
-			void commitGameMutation({
-				kind: 'transition',
-				sandboxTransition: (currentGame) =>
-					demolishRailSegment(currentGame!, industryCity.id, segmentId),
-				scenarioCommand: {
-					kind: 'demolishRail',
-					cityId: industryCity.id,
-					segmentId
-				}
-			});
+			void gameRouteController.demolishRail(industryCity.id, segmentId);
 		}
 	}
 
 	async function initializeSaves(): Promise<void> {
 		try {
-			saveRepository = await createSaveRepository();
-
-			if (sandboxGame) {
-				await writeAutoSave(sandboxGame);
-			} else {
-				await refreshSaveSummary();
-			}
+			await gameRouteController.initializeSaves();
 		} catch (error) {
 			saveFeedback = { kind: 'error', messageKey: describeSaveErrorKey(error) };
-		}
-	}
-
-	async function initializeScenarios(): Promise<void> {
-		try {
-			const repository = await createScenarioRepository();
-			scenarioRepository = repository;
-			const scenarioSummary = await repository.getSummary();
-			if (scenarioSummary.diagnostics.length > 0) {
-				scenarioOperationError = {
-					code: 'persistence-read-failed',
-					diagnostics: scenarioSummary.diagnostics
-				};
-				retryScenarioOperation = initializeScenarios;
-				return;
-			}
-
-			dismissScenarioOperationError();
-			const resumedRun = Object.entries(scenarioSummary.activeRunsByScenarioId)
-				.sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
-				.map(([, run]) => run)
-				.find((run): run is ScenarioRun => run !== undefined);
-			if (resumedRun) {
-				activeScenarioRun = resumedRun;
-				lastScenarioResult = null;
-				lastScenarioBestUpdated = false;
-				playMode = 'scenario';
-			}
-		} catch {
-			scenarioOperationError = { code: 'persistence-read-failed', diagnostics: [] };
-			retryScenarioOperation = initializeScenarios;
 		}
 	}
 
@@ -1044,11 +983,7 @@
 			return;
 		}
 
-		void commitGameMutation({
-			kind: 'transition',
-			sandboxTransition: (currentGame) => selectWorldCity(currentGame!, status.city.id),
-			scenarioCommand: { kind: 'selectWorldCity', cityId: status.city.id }
-		});
+		void gameRouteController.selectWorldCity(status.city.id);
 		setActiveMapView(status.city.kind === 'retail' ? 'retail' : 'industry');
 		selectedWorldCityId = null;
 		selectedTileId = null;
@@ -1064,12 +999,7 @@
 		if (!isWorldCityId(cityId)) {
 			return;
 		}
-		void commitGameMutation({
-			kind: 'transition',
-			sandboxTransition: (currentGame) => openWorldCity(currentGame!, cityId),
-			scenarioCommand: { kind: 'openWorldCity', cityId },
-			cueId: 'sfx.world.city-unlock'
-		});
+		void gameRouteController.openWorldCity(cityId);
 		selectedWorldCityId = cityId;
 	}
 
@@ -1102,139 +1032,25 @@
 		audioController?.updatePreferences(patch);
 	}
 
-	function scenarioError(code: ScenarioOperationError['code']): ScenarioOperationError {
-		return { code, diagnostics: [] };
-	}
-
-	function publishScenarioOutcome(outcome: ScenarioCommitOutcome): void {
-		activeScenarioRun = outcome.activeRun;
-		lastScenarioResult = outcome.terminalResult;
-		lastScenarioBestUpdated = outcome.bestUpdated;
-		dismissScenarioOperationError();
-	}
-
-	function dismissScenarioOperationError(): void {
-		scenarioOperationError = null;
-		retryScenarioOperation = null;
-	}
-
-	async function commitGameMutation(request: RouteGameMutation): Promise<void> {
-		if (request.kind === 'sandbox-load') {
-			sandboxGame = request.nextGame;
-			playMode = 'sandbox';
-			if (request.cueId) {
-				playSfx(request.cueId);
-			}
-			return;
-		}
-
-		if (playMode === 'sandbox') {
-			runImmediateSandboxOperation({
-				current: sandboxGame,
-				transition: request.sandboxTransition,
-				publish: (nextGame) => {
-					sandboxGame = nextGame;
-				},
-				autosave: (nextGame) => {
-					void writeAutoSave(nextGame);
-				},
-				afterPublish: request.cueId ? () => playSfx(request.cueId!) : undefined
-			});
-			return;
-		}
-
-		if (!activeScenarioRun || !scenarioRepository || !request.scenarioCommand) {
-			return;
-		}
-
-		const repository = scenarioRepository;
-		const scenarioCommand = request.scenarioCommand;
-		const cueId = request.cueId;
-		let rejectedCode: ScenarioOperationError['code'] | null = null;
-		try {
-			const result = await runPersistenceGatedOperation<ScenarioRun, ScenarioCommitOutcome>(
-				scenarioCommandGate,
-				{
-					prepare: () => {
-						const currentRun = activeScenarioRun;
-						if (!currentRun) {
-							rejectedCode = 'missing-run';
-							return { status: 'rejected' as const };
-						}
-						const definition = resolveScenarioDefinition(currentRun.definition);
-						if (!definition) {
-							rejectedCode = 'stale-definition';
-							return { status: 'rejected' as const };
-						}
-						const execution = executeScenarioCommand(currentRun, definition, scenarioCommand);
-						if (!execution.ok) {
-							rejectedCode = execution.code;
-							return { status: 'rejected' as const };
-						}
-						return execution.changed
-							? { status: 'changed' as const, value: execution.run }
-							: { status: 'unchanged' as const };
-					},
-					persist: (nextRun) =>
-						nextRun.status === 'active'
-							? repository.saveActiveRun(nextRun)
-							: repository.commitTerminalRun(nextRun),
-					publish: publishScenarioOutcome,
-					afterPublish: cueId ? () => playSfx(cueId) : undefined,
-					onPendingChange: (pending) => {
-						scenarioCommandPending = pending;
-					}
-				}
-			);
-
-			if (result.status === 'rejected' && rejectedCode) {
-				scenarioOperationError = scenarioError(rejectedCode);
-				retryScenarioOperation = null;
-			}
-		} catch {
-			scenarioOperationError = scenarioError('persistence-write-failed');
-			retryScenarioOperation = async () => {
-				await commitGameMutation(request);
-			};
-		}
-	}
-
-	async function writeAutoSave(nextGame: GameState): Promise<void> {
-		if (!saveRepository) {
-			return;
-		}
-
-		try {
-			const metadata = await saveRepository.saveAuto(nextGame);
-			autoSave = metadata;
-			saveFeedback = {
-				kind: 'status',
-				messageKey: 'route.save.autoSavedDay',
-				params: { day: metadata.day }
-			};
-		} catch (error) {
-			saveFeedback = { kind: 'error', messageKey: describeSaveErrorKey(error) };
-		}
+	function synchronizeControllerState(state: Readonly<GameRouteControllerState>): void {
+		sandboxGame = state.sandboxGame;
+		activeScenarioRun = state.activeScenarioRun;
+		lastScenarioResult = state.lastScenarioResult;
+		lastScenarioBestUpdated = state.lastScenarioBestUpdated;
+		scenarioOperationError = state.scenarioOperationError;
+		retryScenarioOperation = state.retryScenarioOperation;
+		playMode = state.playMode;
+		scenarioCommandPending = state.scenarioCommandPending;
 	}
 
 	async function resumeAutoSave(): Promise<void> {
-		if (!saveRepository) {
-			return;
-		}
-
 		try {
-			const record = await saveRepository.getAutoSave();
-
-			if (!record) {
+			const result = await gameRouteController.resumeAutoSave();
+			if (result !== 'loaded') {
 				saveFeedback = { kind: 'status', messageKey: 'route.save.noAutoSaveFound' };
 				return;
 			}
 
-			await commitGameMutation({
-				kind: 'sandbox-load',
-				nextGame: record.game,
-				cueId: 'sfx.save.loaded'
-			});
 			selectedTileId = null;
 			selectedIndustryTileId = null;
 			selectedWorldCityId = null;
@@ -1268,23 +1084,14 @@
 	}
 
 	async function loadManualSlot(slotId: string): Promise<void> {
-		if (!saveRepository) {
-			return;
-		}
-
 		try {
-			const record = await saveRepository.loadManualSlot(slotId);
-
-			if (!record) {
+			const slotName = manualSaveSlots.find((slot) => slot.id === slotId)?.name ?? slotId;
+			const result = await gameRouteController.loadManualSave(slotId);
+			if (result !== 'loaded') {
 				saveFeedback = { kind: 'status', messageKey: 'route.save.manualSlotNotFound' };
 				return;
 			}
 
-			await commitGameMutation({
-				kind: 'sandbox-load',
-				nextGame: record.game,
-				cueId: 'sfx.save.loaded'
-			});
 			selectedTileId = null;
 			selectedIndustryTileId = null;
 			selectedWorldCityId = null;
@@ -1292,7 +1099,7 @@
 			saveFeedback = {
 				kind: 'status',
 				messageKey: 'route.save.loadedManualSlot',
-				params: { name: record.metadata.name }
+				params: { name: slotName }
 			};
 			await refreshSaveSummary();
 		} catch (error) {
@@ -1370,78 +1177,43 @@
 
 	function advanceDay() {
 		if (game) {
-			void commitGameMutation({
-				kind: 'transition',
-				sandboxTransition: (currentGame) => simulateDay(currentGame!),
-				scenarioCommand: { kind: 'advanceDay' },
-				cueId: 'sfx.time.advance-day'
-			});
+			void gameRouteController.advanceDay();
 		}
 	}
 
 	function changePolicy(patch: Partial<CompanyPolicy>) {
 		if (game) {
-			void commitGameMutation({
-				kind: 'transition',
-				sandboxTransition: (currentGame) => updatePolicy(currentGame!, patch),
-				scenarioCommand: { kind: 'updatePolicy', patch },
-				cueId: 'sfx.policy.change'
-			});
+			void gameRouteController.updatePolicy(patch);
 		}
 	}
 
 	function chooseDecision(decisionId: string, optionId: string) {
 		if (game) {
-			void commitGameMutation({
-				kind: 'transition',
-				sandboxTransition: (currentGame) => resolveDecision(currentGame!, decisionId, optionId),
-				scenarioCommand: { kind: 'resolveDecision', decisionId, optionId },
-				cueId: 'sfx.decision.resolve'
-			});
+			void gameRouteController.resolveDecision(decisionId, optionId);
 		}
 	}
 
 	function hireStaff(candidateId: string) {
 		if (game) {
-			void commitGameMutation({
-				kind: 'transition',
-				sandboxTransition: (currentGame) => hireCandidate(currentGame!, candidateId),
-				scenarioCommand: { kind: 'hireStaff', candidateId },
-				cueId: 'sfx.staff.hire'
-			});
+			void gameRouteController.hireStaff(candidateId);
 		}
 	}
 
 	function assignStaff(staffId: string, storeId: string) {
 		if (game) {
-			void commitGameMutation({
-				kind: 'transition',
-				sandboxTransition: (currentGame) => assignStaffToStore(currentGame!, staffId, storeId),
-				scenarioCommand: { kind: 'assignStaff', staffId, storeId },
-				cueId: 'sfx.staff.assign'
-			});
+			void gameRouteController.assignStaff(staffId, storeId);
 		}
 	}
 
 	function unassignStoreStaff(staffId: string) {
 		if (game) {
-			void commitGameMutation({
-				kind: 'transition',
-				sandboxTransition: (currentGame) => unassignStaff(currentGame!, staffId),
-				scenarioCommand: { kind: 'unassignStaff', staffId },
-				cueId: 'sfx.staff.unassign'
-			});
+			void gameRouteController.unassignStaff(staffId);
 		}
 	}
 
 	function promoteStaffMember(staffId: string) {
 		if (game) {
-			void commitGameMutation({
-				kind: 'transition',
-				sandboxTransition: (currentGame) => promoteStaff(currentGame!, staffId),
-				scenarioCommand: { kind: 'promoteStaff', staffId },
-				cueId: 'sfx.staff.promote'
-			});
+			void gameRouteController.promoteStaff(staffId);
 		}
 	}
 
@@ -1456,49 +1228,27 @@
 			return;
 		}
 
-		const scenarioCommand: ScenarioCommand =
-			patch.sellingPrice !== undefined
-				? {
-						kind: 'updateStoreSellingPrice',
-						storeId,
-						categoryId,
-						sellingPrice: patch.sellingPrice
-					}
-				: {
-						kind: 'updateStoreInventoryTargets',
-						storeId,
-						categoryId,
-						reorderThreshold: patch.reorderThreshold ?? product.reorderThreshold,
-						targetStock: patch.targetStock ?? product.targetStock
-					};
-		void commitGameMutation({
-			kind: 'transition',
-			sandboxTransition: (currentGame) =>
-				updateStoreProduct(currentGame!, storeId, categoryId, patch),
-			scenarioCommand,
-			cueId: 'sfx.stock.edit'
-		});
+		if (patch.sellingPrice !== undefined) {
+			void gameRouteController.updateStoreSellingPrice(storeId, categoryId, patch.sellingPrice);
+			return;
+		}
+		void gameRouteController.updateStoreInventoryTargets(
+			storeId,
+			categoryId,
+			patch.reorderThreshold ?? product.reorderThreshold,
+			patch.targetStock ?? product.targetStock
+		);
 	}
 
 	function upgradeStoreHandler(storeId: string): void {
 		if (game) {
-			void commitGameMutation({
-				kind: 'transition',
-				sandboxTransition: (currentGame) => upgradeStore(currentGame!, storeId),
-				scenarioCommand: { kind: 'upgradeStore', storeId },
-				cueId: 'sfx.store.upgrade'
-			});
+			void gameRouteController.upgradeStore(storeId);
 		}
 	}
 
 	function upgradeBuildingHandler(buildingId: string): void {
 		if (game) {
-			void commitGameMutation({
-				kind: 'transition',
-				sandboxTransition: (currentGame) => upgradeBuilding(currentGame!, buildingId),
-				scenarioCommand: { kind: 'upgradeIndustrialBuilding', buildingId },
-				cueId: 'sfx.industry.upgrade'
-			});
+			void gameRouteController.upgradeIndustrialBuilding(buildingId);
 		}
 	}
 
@@ -1528,28 +1278,14 @@
 				return;
 			}
 
-			void commitGameMutation({
-				kind: 'transition',
-				sandboxTransition: () =>
-					createFoundingGameAtTile({
-						archetypeId,
-						city: activeCity,
-						tileId: tile.id,
-						seed: starterMapState.seed
-					}),
-				cueId: 'sfx.build.retail-place'
+			void gameRouteController.foundStore({
+				archetypeId,
+				city: activeCity,
+				tileId: tile.id,
+				seed: starterMapState.seed
 			});
 		} else {
-			void commitGameMutation({
-				kind: 'transition',
-				sandboxTransition: (currentGame) =>
-					openStoreAtTile(currentGame!, {
-						tileId,
-						archetypeId
-					}),
-				scenarioCommand: { kind: 'openStore', tileId, archetypeId },
-				cueId: 'sfx.build.retail-place'
-			});
+			void gameRouteController.openStore(tileId, archetypeId);
 		}
 
 		selectedTileId = null;
@@ -1580,13 +1316,7 @@
 			return;
 		}
 
-		void commitGameMutation({
-			kind: 'transition',
-			sandboxTransition: (currentGame) =>
-				buildIndustrialBuilding(currentGame!, { tileId, buildingTypeId }),
-			scenarioCommand: { kind: 'buildIndustrialBuilding', tileId, buildingTypeId },
-			cueId: 'sfx.build.industry-place'
-		});
+		void gameRouteController.buildIndustrialBuilding(tileId, buildingTypeId);
 		selectedIndustryTileId = null;
 		selectedTileId = null;
 		selectedWorldCityId = null;
@@ -1648,12 +1378,7 @@
 				alert.cityId !== game.activeCityId &&
 				isWorldCityId(alert.cityId)
 			) {
-				const cityId = alert.cityId;
-				void commitGameMutation({
-					kind: 'transition',
-					sandboxTransition: (currentGame) => selectWorldCity(currentGame!, cityId),
-					scenarioCommand: { kind: 'selectWorldCity', cityId }
-				});
+				void gameRouteController.selectAlertCity(alert.cityId);
 			}
 			showRetailMap();
 			selectedTileId = alert.tileId;
@@ -1666,12 +1391,7 @@
 				alert.cityId !== game.activeIndustryCityId &&
 				isWorldCityId(alert.cityId)
 			) {
-				const cityId = alert.cityId;
-				void commitGameMutation({
-					kind: 'transition',
-					sandboxTransition: (currentGame) => selectWorldCity(currentGame!, cityId),
-					scenarioCommand: { kind: 'selectWorldCity', cityId }
-				});
+				void gameRouteController.selectAlertCity(alert.cityId);
 			}
 			showIndustryMap();
 			selectedIndustryTileId = alert.tileId;
