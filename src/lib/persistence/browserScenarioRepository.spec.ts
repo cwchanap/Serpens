@@ -55,6 +55,10 @@ class MemoryScenarioStore implements ScenarioStoreLike {
 		this.values.set(key, value);
 	}
 
+	async delete(key: string): Promise<boolean> {
+		return this.values.delete(key);
+	}
+
 	async reload(): Promise<void> {}
 
 	async save(): Promise<void> {}
