@@ -2066,19 +2066,21 @@
 		</TopBar>
 
 		{#if playMode === 'scenario' && activeScenarioRun && scenarioProgressView}
-			<ScenarioStatusStrip
-				view={scenarioProgressView}
-				{i18n}
-				expanded={isScenarioObjectivePanelOpen}
-				pending={scenarioCommandPending}
-				error={scenarioOperationErrorText}
-				onToggle={() => (isScenarioObjectivePanelOpen = !isScenarioObjectivePanelOpen)}
-				onRetry={() => retryScenarioOperation?.()}
-				onDismissError={() => gameRouteController.dismissScenarioOperationError()}
-			/>
-			{#if isScenarioObjectivePanelOpen}
-				<ScenarioObjectivePanel view={scenarioProgressView} {i18n} />
-			{/if}
+			<div class="scenario-progress">
+				<ScenarioStatusStrip
+					view={scenarioProgressView}
+					{i18n}
+					expanded={isScenarioObjectivePanelOpen}
+					pending={scenarioCommandPending}
+					error={scenarioOperationErrorText}
+					onToggle={() => (isScenarioObjectivePanelOpen = !isScenarioObjectivePanelOpen)}
+					onRetry={() => retryScenarioOperation?.()}
+					onDismissError={() => gameRouteController.dismissScenarioOperationError()}
+				/>
+				{#if isScenarioObjectivePanelOpen}
+					<ScenarioObjectivePanel view={scenarioProgressView} {i18n} />
+				{/if}
+			</div>
 		{/if}
 
 		<ControlDesk
@@ -2407,6 +2409,16 @@
 		height: 100%;
 		min-height: 100vh;
 		overflow: hidden;
+	}
+
+	.scenario-progress {
+		position: fixed;
+		top: 5rem;
+		right: 0.75rem;
+		left: 0.75rem;
+		z-index: 29;
+		max-height: calc(100vh - 10rem);
+		overflow: auto;
 	}
 
 	.map-surfaces,
