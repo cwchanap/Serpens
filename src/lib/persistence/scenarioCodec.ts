@@ -1,8 +1,5 @@
 import { resolveScenarioDefinition } from '$lib/scenarios/catalog';
-import {
-	isScenarioConditionWindowCompleteAtDay,
-	scenarioConditionPasses
-} from '$lib/scenarios/metrics';
+import { areScenarioEvidenceIdsCanonical, scenarioConditionPasses } from '$lib/scenarios/metrics';
 import { evaluateScenario } from '$lib/scenarios/runtime';
 import { medalForScore } from '$lib/scenarios/scoring';
 import type {
@@ -336,9 +333,18 @@ function validateEvidence(value: unknown, path: string, conditionId: string): vo
 	requireFiniteNumber(evidence.actual, `${path}.actual`);
 	requireInteger(evidence.day, `${path}.day`, 1);
 	validateWindow(evidence.window, `${path}.window`);
-	requireArray(evidence.contributingIds, `${path}.contributingIds`).forEach((id, index) =>
-		requireString(id, `${path}.contributingIds[${index}]`)
+	requireBoolean(evidence.windowComplete, `${path}.windowComplete`);
+	const contributingIds = requireArray(evidence.contributingIds, `${path}.contributingIds`).map(
+		(id, index) => requireString(id, `${path}.contributingIds[${index}]`)
 	);
+	if (!areScenarioEvidenceIdsCanonical(contributingIds)) {
+		fail(
+			'evaluation-mismatch',
+			`${path}.contributingIds`,
+			evidence.contributingIds,
+			'Contributing evidence IDs must be unique and sorted by code unit.'
+		);
+	}
 }
 
 function validateObjectiveEvaluation(value: unknown, path: string): void {
@@ -472,7 +478,7 @@ function validateConditionContract(
 	const passes = scenarioConditionPasses(
 		condition,
 		evaluation.evidence.actual,
-		isScenarioConditionWindowCompleteAtDay(condition, evaluationDay)
+		evaluation.evidence.windowComplete
 	);
 	const expectedStatus = isFailure
 		? passes
@@ -808,6 +814,7 @@ function expectedRunEvaluation(
 	game: ReturnType<typeof validateCurrentGameState>,
 	status: ScenarioRun['status']
 ): ScenarioEvaluation {
+	// Game-backed records are re-evaluated exactly from the embedded runtime state.
 	const expected = evaluateScenario(
 		definition,
 		game,

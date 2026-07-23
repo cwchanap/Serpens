@@ -191,6 +191,7 @@ const run = {
 					actual: 2_000,
 					day: 1,
 					window: { kind: 'current' },
+					windowComplete: true,
 					contributingIds: []
 				}
 			}

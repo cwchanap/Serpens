@@ -570,6 +570,67 @@ describe('scenario codec', () => {
 		}
 	);
 
+	it('requires contributing evidence ids to be unique and code-unit sorted', () => {
+		const canonical = fixtureRun(undefined, { status: 'completed', score: 750 });
+		const canonicalResult = structuredClone(canonical.result!);
+		canonicalResult.evaluation.required[0]!.evidence.contributingIds = ['a', 'z'];
+		const canonicalDecoded = decodeScenarioStoreSnapshot(
+			snapshot(
+				{},
+				{
+					'first-profit@1': {
+						scenarioSchemaVersion: SCENARIO_RUN_SCHEMA_VERSION,
+						result: canonicalResult
+					}
+				}
+			),
+			resolveFixtureDefinition
+		);
+
+		const nonCanonicalResult = structuredClone(canonical.result!);
+		nonCanonicalResult.evaluation.required[0]!.evidence.contributingIds = ['z', 'a', 'a'];
+		const nonCanonicalDecoded = decodeScenarioStoreSnapshot(
+			snapshot(
+				{},
+				{
+					'first-profit@1': {
+						scenarioSchemaVersion: SCENARIO_RUN_SCHEMA_VERSION,
+						result: nonCanonicalResult
+					}
+				}
+			),
+			resolveFixtureDefinition
+		);
+
+		expect(canonicalDecoded.diagnostics).toEqual([]);
+		expect(nonCanonicalDecoded.snapshot.bestResultsByDefinitionKey).toEqual({});
+		expect(nonCanonicalDecoded.diagnostics.map((entry) => entry.code)).toContain(
+			'evaluation-mismatch'
+		);
+	});
+
+	it('requires condition window completeness evidence to be boolean', () => {
+		const completed = fixtureRun(undefined, { status: 'completed', score: 750 });
+		const result = structuredClone(completed.result!);
+		(result.evaluation.required[0]!.evidence as unknown as Record<string, unknown>).windowComplete =
+			'yes';
+		const decoded = decodeScenarioStoreSnapshot(
+			snapshot(
+				{},
+				{
+					'first-profit@1': {
+						scenarioSchemaVersion: SCENARIO_RUN_SCHEMA_VERSION,
+						result
+					}
+				}
+			),
+			resolveFixtureDefinition
+		);
+
+		expect(decoded.snapshot.bestResultsByDefinitionKey).toEqual({});
+		expect(decoded.diagnostics.length).toBeGreaterThan(0);
+	});
+
 	it('recomputes game-less metric score components from canonical component evidence', () => {
 		const completed = fixtureRun(undefined, { status: 'completed', score: 750 });
 		const result = structuredClone(completed.result!);
@@ -731,14 +792,14 @@ describe('scenario codec', () => {
 		expect(decoded.diagnostics.map((entry) => entry.code)).toContain('evaluation-mismatch');
 	});
 
-	it('mirrors incomplete required trailing windows for active and terminal evaluations', () => {
+	it('persists report-gap window completeness for active and terminal evaluations', () => {
 		const base = fixtureDefinition({ scenarioId: 'first-profit', version: 1 });
 		const incompleteCondition = {
 			id: 'three-day-income',
 			labelKey: 'store.defaultName' as const,
 			query: { metric: 'daily-net-income' as const },
 			comparator: 'gte' as const,
-			target: 0,
+			target: -1_000_000_000,
 			window: { kind: 'trailing-reports' as const, count: 3 },
 			requiresCompleteWindow: true
 		};
@@ -749,7 +810,13 @@ describe('scenario codec', () => {
 			failures: [],
 			scoreComponents: []
 		};
-		const activeGame = { ...createNewGame('convenience', activeDefinition.officialSeed), cash: 0 };
+		let activeGame = createNewGame('convenience', activeDefinition.officialSeed);
+		for (let day = 0; day < 3; day += 1) activeGame = simulateDay(activeGame);
+		activeGame = {
+			...activeGame,
+			cash: 500,
+			reports: activeGame.reports.filter((report) => report.day !== 1)
+		};
 		const active: ScenarioRun = {
 			definition: { scenarioId: 'first-profit', version: 1 },
 			seed: activeDefinition.officialSeed,
@@ -769,10 +836,13 @@ describe('scenario codec', () => {
 			optionalObjectives: [incompleteCondition],
 			scoreComponents: []
 		};
-		const completed = fixtureRun(undefined, { status: 'completed', score: 750 });
-		const terminalEvaluation = evaluateScenario(terminalDefinition, completed.game, true);
+		const terminalEvaluation = evaluateScenario(terminalDefinition, activeGame, true);
 		const terminalResult = {
-			...completed.result!,
+			definition: { scenarioId: 'first-profit' as const, version: 1 },
+			seed: terminalDefinition.officialSeed,
+			eligibility: 'ranked' as const,
+			outcome: 'completed' as const,
+			completionDay: activeGame.day,
 			score: terminalEvaluation.projection.score,
 			medal: terminalEvaluation.projection.medal,
 			evaluation: terminalEvaluation
@@ -791,8 +861,10 @@ describe('scenario codec', () => {
 		);
 
 		expect(active.evaluation.required[0]?.status).toBe('pending');
+		expect(active.evaluation.required[0]?.evidence.windowComplete).toBe(false);
 		expect(activeDecoded.diagnostics).toEqual([]);
 		expect(terminalEvaluation.optional[0]?.status).toBe('missed');
+		expect(terminalEvaluation.optional[0]?.evidence.windowComplete).toBe(false);
 		expect(terminalDecoded.diagnostics).toEqual([]);
 	});
 
