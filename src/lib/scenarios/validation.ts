@@ -149,7 +149,7 @@ const METRIC_WINDOWS: Readonly<Record<string, ReadonlySet<WindowKind>>> = {
 	cash: new Set(['current']),
 	'daily-net-income': new Set(['current', 'run-to-date', 'trailing-reports', 'fixed-report-days']),
 	'cumulative-net-income': new Set(['run-to-date']),
-	'consecutive-positive-net-income-reports': new Set(['current']),
+	'consecutive-positive-net-income-reports': new Set(['current', 'trailing-reports']),
 	'completed-retail-import-cycles': new Set(['run-to-date']),
 	'retail-import-spend': new Set(['run-to-date', 'trailing-reports', 'fixed-report-days']),
 	'retail-imported-units': new Set(['run-to-date', 'trailing-reports', 'fixed-report-days']),
@@ -777,7 +777,6 @@ function validateStart(context: ValidationContext, value: unknown): void {
 			'start.foundingStore.archetypeId',
 			context.content.archetypes
 		);
-		validateFoundingPlacementAllowed(context, foundingStore);
 	}
 
 	const occupiedByCity = new Map<string, Set<string>>();
@@ -809,7 +808,6 @@ function validateStart(context: ValidationContext, value: unknown): void {
 			);
 			validateIncluded(context, authored.cityId, `${path}.cityId`, context.content.cities);
 			validateIncluded(context, authored.typeId, `${path}.typeId`, context.content.buildingTypes);
-			validateStartingIndustrialPlacementAllowed(context, authored);
 		}
 	}
 
@@ -837,54 +835,6 @@ function validateIncluded(
 function contentObject(context: ValidationContext): JsonObject | undefined {
 	const content = context.definition?.content;
 	return isObject(content) ? content : undefined;
-}
-
-function validateFoundingPlacementAllowed(
-	context: ValidationContext,
-	foundingStore: JsonObject
-): void {
-	const placements = contentObject(context)?.retailPlacements;
-	if (!Array.isArray(placements)) return;
-	const found = placements.some(
-		(candidate) =>
-			isObject(candidate) &&
-			candidate.cityId === foundingStore.cityId &&
-			candidate.tileId === foundingStore.tileId &&
-			candidate.archetypeId === foundingStore.archetypeId
-	);
-	if (!found) {
-		diagnostic(
-			context,
-			'start.foundingStore.tileId',
-			'excluded-content',
-			foundingStore.tileId,
-			'The founding-store placement is not permitted by content rules.'
-		);
-	}
-}
-
-function validateStartingIndustrialPlacementAllowed(
-	context: ValidationContext,
-	building: AuthoredBuilding
-): void {
-	const placements = contentObject(context)?.industrialPlacements;
-	if (!Array.isArray(placements)) return;
-	const found = placements.some(
-		(candidate) =>
-			isObject(candidate) &&
-			candidate.cityId === building.cityId &&
-			candidate.tileId === building.tileId &&
-			candidate.buildingTypeId === building.typeId
-	);
-	if (!found) {
-		diagnostic(
-			context,
-			`${building.path}.tileId`,
-			'excluded-content',
-			building.tileId,
-			'The starting industrial placement is not permitted by content rules.'
-		);
-	}
 }
 
 function validateOverrides(

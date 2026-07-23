@@ -190,7 +190,7 @@ const METRIC_REGISTRY = {
 		})
 	},
 	'consecutive-positive-net-income-reports': {
-		supportedWindows: CURRENT,
+		supportedWindows: new Set<WindowKind>(['current', 'trailing-reports']),
 		neutral: 0,
 		isComplete: reportMetricComplete,
 		evaluate: consecutivePositiveIncome

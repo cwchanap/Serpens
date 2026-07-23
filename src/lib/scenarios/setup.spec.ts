@@ -12,6 +12,7 @@ import { calculateStockHealth } from '$lib/game/stock';
 import type { ArchetypeId } from '$lib/game/types';
 import { validateCurrentGameState } from '$lib/persistence/saveCodec';
 import type { ScenarioDefinition } from './types';
+import { listCurrentScenarioDefinitions } from './catalog';
 import { buildScenarioGame } from './setup';
 import { validateScenarioDefinition } from './validation';
 
@@ -574,5 +575,25 @@ describe('buildScenarioGame', () => {
 		const validated = validateCurrentGameState(result.game);
 		expect(validated).toEqual(result.game);
 		expect(validated).not.toBe(result.game);
+	});
+});
+
+describe('launch catalog setup isolation', () => {
+	it('builds each official run deterministically without sharing mutable game branches', () => {
+		for (const definition of listCurrentScenarioDefinitions()) {
+			const first = buildScenarioGame(definition, definition.officialSeed);
+			const second = buildScenarioGame(definition, definition.officialSeed);
+			expect(first.ok).toBe(true);
+			expect(second.ok).toBe(true);
+			if (!first.ok || !second.ok) continue;
+			expect(first.game).toEqual(second.game);
+			expect(first.game).not.toBe(second.game);
+			expect(first.game.cities).not.toBe(second.game.cities);
+			expect(first.game.industryCities).not.toBe(second.game.industryCities);
+			expect(first.game.stores).not.toBe(second.game.stores);
+			expect(first.game.industrialBuildings).not.toBe(second.game.industrialBuildings);
+			expect(first.game.warehouse).not.toBe(second.game.warehouse);
+			expect(first.game.reports).not.toBe(second.game.reports);
+		}
 	});
 });
