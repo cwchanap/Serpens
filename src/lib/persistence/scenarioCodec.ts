@@ -65,11 +65,20 @@ export class ScenarioCodecError extends Error {
 	}
 }
 
+const scenarioValidationFailures = new WeakSet<object>();
+
 class ScenarioValidationFailure extends Error {
 	constructor(readonly diagnostic: ScenarioDiagnostic) {
 		super(diagnostic.detail);
 		this.name = 'ScenarioValidationFailure';
+		scenarioValidationFailures.add(this);
 	}
+}
+
+function isScenarioValidationFailure(error: unknown): error is ScenarioValidationFailure {
+	return (
+		typeof error === 'object' && error !== null && scenarioValidationFailures.has(error as object)
+	);
 }
 
 function compareCodeUnits(left: string, right: string): number {
@@ -83,13 +92,49 @@ function sortDiagnostics(diagnostics: readonly ScenarioDiagnostic[]): ScenarioDi
 	);
 }
 
+function safeDescribe(value: unknown): string {
+	if (value === null) return 'null';
+	switch (typeof value) {
+		case 'string':
+			return value;
+		case 'number':
+			return Number.isFinite(value) ? `${value}` : 'non-finite number';
+		case 'boolean':
+			return value ? 'true' : 'false';
+		case 'undefined':
+			return 'undefined';
+		case 'bigint':
+			return `${value}`;
+		case 'symbol':
+			return '[symbol]';
+		case 'function':
+			return '[function]';
+		case 'object':
+			return '[object]';
+	}
+	return '[unknown]';
+}
+
+function sanitizeDiagnosticValue(value: unknown): unknown {
+	if (
+		value === null ||
+		typeof value === 'string' ||
+		typeof value === 'boolean' ||
+		typeof value === 'undefined'
+	) {
+		return value;
+	}
+	if (typeof value === 'number') return Number.isFinite(value) ? value : safeDescribe(value);
+	return safeDescribe(value);
+}
+
 function diagnostic(
 	code: string,
 	path: string,
 	value: unknown,
 	detail: string
 ): ScenarioDiagnostic {
-	return { code, path, value, detail };
+	return { code, path, value: sanitizeDiagnosticValue(value), detail };
 }
 
 function fail(code: string, path: string, value: unknown, detail: string): never {
@@ -166,7 +211,7 @@ function cloneValue<T>(value: T, path = 'scenarioStore'): T {
 		fail(
 			'not-cloneable',
 			path,
-			String(error),
+			safeDescribe(error),
 			`${path} must contain only bounded, acyclic, structured-cloneable own data properties.`
 		);
 	}
@@ -243,7 +288,12 @@ function resolveSupportedDefinition(
 	try {
 		definition = resolveDefinition(ref);
 	} catch (error) {
-		fail('unsupported-definition', path, ref, `Definition resolution failed: ${String(error)}`);
+		fail(
+			'unsupported-definition',
+			path,
+			ref,
+			`Definition resolution failed: ${safeDescribe(error)}`
+		);
 	}
 	if (!definition || definition.id !== ref.scenarioId || definition.version !== ref.version) {
 		fail(
@@ -356,9 +406,37 @@ function validateEvaluation(value: unknown, path: string): ScenarioEvaluation {
 	return evaluation as unknown as ScenarioEvaluation;
 }
 
+type EvaluationPhase = 'active' | 'terminal';
+
+function comparatorPasses(actual: number, comparator: string, target: number): boolean {
+	switch (comparator) {
+		case 'lt':
+			return actual < target;
+		case 'lte':
+			return actual <= target;
+		case 'eq':
+			return actual === target;
+		case 'gte':
+			return actual >= target;
+		case 'gt':
+			return actual > target;
+		default:
+			return false;
+	}
+}
+
+function normalizedPoints(actual: number, zeroAt: number, fullAt: number, points: number): number {
+	if (zeroAt === fullAt) return actual >= fullAt ? points : 0;
+	const ratio = (actual - zeroAt) / (fullAt - zeroAt);
+	return Math.round(Math.min(1, Math.max(0, ratio)) * points);
+}
+
 function validateConditionContract(
 	evaluation: ScenarioEvaluation['required'][number] | ScenarioEvaluation['failures'][number],
 	condition: ScenarioDefinition['requiredObjectives'][number],
+	evaluationDay: number,
+	phase: EvaluationPhase,
+	isFailure: boolean,
 	path: string
 ): void {
 	if (
@@ -376,12 +454,43 @@ function validateConditionContract(
 			'Evaluation evidence must match the resolved scenario condition.'
 		);
 	}
+	if (evaluation.evidence.day > evaluationDay) {
+		fail(
+			'evaluation-mismatch',
+			`${path}.evidence.day`,
+			evaluation.evidence.day,
+			'Condition evidence cannot come from after the evaluation day.'
+		);
+	}
+	const passes = comparatorPasses(
+		evaluation.evidence.actual,
+		condition.comparator,
+		condition.target
+	);
+	const expectedStatus = isFailure
+		? passes
+			? 'triggered'
+			: 'inactive'
+		: passes
+			? 'satisfied'
+			: phase === 'active'
+				? 'pending'
+				: 'missed';
+	if (evaluation.status !== expectedStatus) {
+		fail(
+			'evaluation-mismatch',
+			`${path}.status`,
+			evaluation.status,
+			'Condition status must be derived from its actual value, comparator, target, and phase.'
+		);
+	}
 }
 
 function validateEvaluationContract(
 	evaluation: ScenarioEvaluation,
 	definition: ScenarioDefinition,
-	path: string
+	path: string,
+	phase: EvaluationPhase
 ): void {
 	const groups = [
 		['required', evaluation.required, definition.requiredObjectives],
@@ -398,7 +507,14 @@ function validateEvaluationContract(
 			);
 		}
 		for (let index = 0; index < conditions.length; index += 1) {
-			validateConditionContract(evaluated[index], conditions[index], `${path}.${name}[${index}]`);
+			validateConditionContract(
+				evaluated[index],
+				conditions[index],
+				evaluation.day,
+				phase,
+				name === 'failures',
+				`${path}.${name}[${index}]`
+			);
 		}
 	}
 
@@ -431,7 +547,9 @@ function validateEvaluationContract(
 		if (
 			risk?.kind !== 'condition' ||
 			risk.conditionId !== definition.failures[index].id ||
-			risk.triggered !== (evaluation.failures[index].status === 'triggered')
+			risk.triggered !== (evaluation.failures[index].status === 'triggered') ||
+			risk.distance !==
+				Math.abs(evaluation.failures[index].evidence.actual - definition.failures[index].target)
 		) {
 			fail(
 				'evaluation-mismatch',
@@ -488,6 +606,65 @@ function validateEvaluationContract(
 					'Optional-objective points must match the resolved objective state.'
 				);
 			}
+		} else if (component.kind === 'remaining-days') {
+			const expected = normalizedPoints(
+				definition.dayLimit - evaluation.day,
+				component.zeroBonusAt,
+				component.fullBonusAt,
+				component.points
+			);
+			if (componentPoints !== expected) {
+				fail(
+					'evaluation-mismatch',
+					`${path}.projection.componentPoints[${index}]`,
+					componentPoints,
+					'Remaining-day points must be derived from the definition day limit and evaluation day.'
+				);
+			}
+		} else {
+			const candidates = [
+				...definition.requiredObjectives.map((condition, conditionIndex) => ({
+					condition,
+					evaluation: evaluation.required[conditionIndex]
+				})),
+				...definition.optionalObjectives.map((condition, conditionIndex) => ({
+					condition,
+					evaluation: evaluation.optional[conditionIndex]
+				})),
+				...definition.failures.map((condition, conditionIndex) => ({
+					condition,
+					evaluation: evaluation.failures[conditionIndex]
+				}))
+			].filter(
+				(candidate) =>
+					deeplyEqual(candidate.condition.query, component.query) &&
+					deeplyEqual(candidate.condition.window, component.window)
+			);
+			if (candidates.length > 0) {
+				const actual = candidates[0].evaluation.evidence.actual;
+				if (candidates.some((candidate) => candidate.evaluation.evidence.actual !== actual)) {
+					fail(
+						'evaluation-mismatch',
+						`${path}.projection.componentPoints[${index}]`,
+						componentPoints,
+						'Matching metric evidence must agree on its actual value.'
+					);
+				}
+				const expected = normalizedPoints(
+					actual,
+					component.zeroBonusAt,
+					component.fullBonusAt,
+					component.points
+				);
+				if (componentPoints !== expected) {
+					fail(
+						'evaluation-mismatch',
+						`${path}.projection.componentPoints[${index}]`,
+						componentPoints,
+						'Metric points must be derived from matching definition evidence.'
+					);
+				}
+			}
 		}
 	}
 	const expectedScore = Math.min(
@@ -508,6 +685,14 @@ function validateEvaluationContract(
 			'Score and projected medal must follow the resolved definition scoring contract.'
 		);
 	}
+}
+
+function selectedTerminalStatus(evaluation: ScenarioEvaluation): 'active' | 'completed' | 'failed' {
+	if (evaluation.failures.some((failure) => failure.status === 'triggered')) return 'failed';
+	if (evaluation.required.every((objective) => objective.status === 'satisfied'))
+		return 'completed';
+	if (evaluation.deadline?.triggered) return 'failed';
+	return 'active';
 }
 
 function validateResult(
@@ -543,7 +728,7 @@ function validateResult(
 	if (score > 1000)
 		fail('invalid-score', `${path}.score`, score, 'Scenario score cannot exceed 1000.');
 	const evaluation = validateEvaluation(result.evaluation, `${path}.evaluation`);
-	validateEvaluationContract(evaluation, definition, `${path}.evaluation`);
+	validateEvaluationContract(evaluation, definition, `${path}.evaluation`, 'terminal');
 	if (evaluation.day !== completionDay || evaluation.projection.score !== score) {
 		fail(
 			'result-evaluation-mismatch',
@@ -551,6 +736,17 @@ function validateResult(
 			{ completionDay, score },
 			'Terminal result day and score must match its evaluation.'
 		);
+	}
+	if (outcome !== 'abandoned') {
+		const selected = selectedTerminalStatus(evaluation);
+		if (selected !== outcome) {
+			fail(
+				'lifecycle-mismatch',
+				`${path}.outcome`,
+				outcome,
+				'Terminal outcome must follow failure, completion, then deadline precedence.'
+			);
+		}
 	}
 	if (outcome === 'completed') {
 		const medal = requireOneOf(result.medal, MEDALS, `${path}.medal`);
@@ -633,7 +829,12 @@ function validateRunWithGame(
 	}
 	const status = requireOneOf(run.status, RUN_STATUSES, `${path}.status`);
 	const evaluation = validateEvaluation(run.evaluation, `${path}.evaluation`);
-	validateEvaluationContract(evaluation, definition, `${path}.evaluation`);
+	validateEvaluationContract(
+		evaluation,
+		definition,
+		`${path}.evaluation`,
+		status === 'active' ? 'active' : 'terminal'
+	);
 	if (seed !== game.seed || evaluation.day !== game.day) {
 		fail(
 			'run-game-mismatch',
@@ -649,6 +850,17 @@ function validateRunWithGame(
 			`${path}.evaluation`,
 			undefined,
 			'Run evaluation must exactly match the resolved definition and embedded game.'
+		);
+	}
+	const nonterminalEvaluation = evaluateScenario(definition, game, false);
+	const selectedStatus = selectedTerminalStatus(nonterminalEvaluation);
+	const expectedStatus = status === 'abandoned' ? 'active' : status;
+	if (selectedStatus !== expectedStatus) {
+		fail(
+			'lifecycle-mismatch',
+			`${path}.status`,
+			status,
+			'Run status must match runtime failure, completion, then deadline selection.'
 		);
 	}
 	let result: ScenarioResult | null;
@@ -732,7 +944,12 @@ export function validateScenarioRun(
 	try {
 		game = validateCurrentGameState(run.game);
 	} catch (error) {
-		fail('invalid-game', 'run.game', String(error), 'Run game failed strict current validation.');
+		fail(
+			'invalid-game',
+			'run.game',
+			safeDescribe(error),
+			'Run game failed strict current validation.'
+		);
 	}
 	if (!deeplyEqual(game, run.game)) {
 		fail(
@@ -813,14 +1030,19 @@ function decodeActiveRunRecord(
 			'unsupported-game-schema',
 			`${path}.gameSchemaVersion`,
 			gameSchemaVersion,
-			`Embedded game migration failed: ${String(error)}`
+			`Embedded game migration failed: ${safeDescribe(error)}`
 		);
 	}
 	let game: ReturnType<typeof validateCurrentGameState>;
 	try {
 		game = validateCurrentGameState(migrated);
 	} catch (error) {
-		fail('invalid-game', `${path}.game`, String(error), 'Embedded game failed strict validation.');
+		fail(
+			'invalid-game',
+			`${path}.game`,
+			safeDescribe(error),
+			'Embedded game failed strict validation.'
+		);
 	}
 	if (gameSchemaVersion === SAVE_SCHEMA_VERSION && !deeplyEqual(game, record.game)) {
 		fail(
@@ -912,8 +1134,8 @@ function ownDataDescriptors(value: unknown, path: string, code: string): Propert
 		}
 		return Object.getOwnPropertyDescriptors(value);
 	} catch (error) {
-		if (error instanceof ScenarioValidationFailure) throw error;
-		fail(code, path, String(error), `${path} descriptors could not be inspected safely.`);
+		if (isScenarioValidationFailure(error)) throw error;
+		fail(code, path, safeDescribe(error), `${path} descriptors could not be inspected safely.`);
 	}
 }
 
@@ -952,7 +1174,7 @@ function collectOwnMapEntries(
 			diagnostic(
 				'invalid-record',
 				path,
-				String(error),
+				safeDescribe(error),
 				`${path} keys could not be inspected safely.`
 			)
 		);
@@ -961,13 +1183,13 @@ function collectOwnMapEntries(
 	const entries: Array<[string, unknown]> = [];
 	for (const key of keys) {
 		const descriptor = descriptors[key as keyof PropertyDescriptorMap];
-		const entryPath = `${path}.${typeof key === 'string' ? key : String(key)}`;
+		const entryPath = `${path}.${typeof key === 'string' ? key : '[symbol]'}`;
 		if (typeof key !== 'string' || !descriptor?.enumerable || !('value' in descriptor)) {
 			diagnostics.push(
 				diagnostic(
 					'invalid-entry-descriptor',
 					entryPath,
-					typeof key === 'string' ? key : String(key),
+					typeof key === 'string' ? key : '[symbol]',
 					'Scenario entry must be an own enumerable string-keyed data property.'
 				)
 			);
@@ -986,7 +1208,7 @@ function collectEntry<T>(operation: () => T, diagnostics: ScenarioDiagnostic[]):
 	try {
 		return operation();
 	} catch (error) {
-		if (error instanceof ScenarioValidationFailure) {
+		if (isScenarioValidationFailure(error)) {
 			diagnostics.push(error.diagnostic);
 			return undefined;
 		}
@@ -1002,7 +1224,7 @@ export function decodeScenarioStoreSnapshot(
 	try {
 		sourceDescriptors = ownDataDescriptors(value, 'scenarioStore', 'invalid-store');
 	} catch (error) {
-		if (error instanceof ScenarioValidationFailure) {
+		if (isScenarioValidationFailure(error)) {
 			return { snapshot: createEmptyScenarioStore(), diagnostics: [error.diagnostic] };
 		}
 		throw error;
@@ -1019,7 +1241,7 @@ export function decodeScenarioStoreSnapshot(
 					'unsupported-store-schema',
 					'scenarioStore.schemaVersion',
 					schemaVersion,
-					`Unsupported scenario store schema version: ${String(schemaVersion)}.`
+					`Unsupported scenario store schema version: ${safeDescribe(schemaVersion)}.`
 				)
 			]
 		};
@@ -1102,7 +1324,7 @@ export function parseScenarioStoreSnapshot(
 				diagnostic(
 					'invalid-json',
 					'scenarioStore',
-					String(error),
+					safeDescribe(error),
 					'Scenario store is not valid JSON.'
 				)
 			]

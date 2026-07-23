@@ -66,7 +66,7 @@ function fixtureDefinition(ref: ScenarioDefinitionRef): ScenarioDefinition {
 				labelKey: 'store.defaultName',
 				query: { metric: 'cash' },
 				comparator: 'gte',
-				target: 0,
+				target: 100,
 				window: { kind: 'current' }
 			},
 			{
@@ -241,7 +241,11 @@ describe('scenario codec', () => {
 		'isolates a %s run incorrectly stored as active',
 		(status) => {
 			const decoded = decodeScenarioStoreSnapshot(
-				snapshot({ 'first-profit': runRecord(fixtureRun(undefined, { status })) }),
+				snapshot({
+					'first-profit': runRecord(
+						fixtureRun(undefined, { status, score: status === 'completed' ? 700 : undefined })
+					)
+				}),
 				resolveFixtureDefinition
 			);
 
@@ -514,8 +518,242 @@ describe('scenario codec', () => {
 		}
 	);
 
+	it.each(['required-status', 'optional-status', 'failure-status', 'future-evidence'] as const)(
+		'rejects a best result with semantically fabricated %s evidence',
+		(fabrication) => {
+			const completed = fixtureRun(undefined, { status: 'completed', score: 750 });
+			const result = structuredClone(completed.result!);
+			if (fabrication === 'required-status') {
+				result.evaluation.required[0] = {
+					...result.evaluation.required[0]!,
+					status: 'satisfied',
+					evidence: { ...result.evaluation.required[0]!.evidence, actual: 0 }
+				};
+			} else if (fabrication === 'optional-status') {
+				result.evaluation.optional[0] = {
+					...result.evaluation.optional[0]!,
+					status: 'satisfied',
+					evidence: { ...result.evaluation.optional[0]!.evidence, actual: 0 }
+				};
+			} else if (fabrication === 'failure-status') {
+				result.evaluation.failures[0] = {
+					...result.evaluation.failures[0]!,
+					status: 'inactive',
+					evidence: { ...result.evaluation.failures[0]!.evidence, actual: -1 }
+				};
+			} else {
+				result.evaluation.required[0] = {
+					...result.evaluation.required[0]!,
+					evidence: {
+						...result.evaluation.required[0]!.evidence,
+						day: result.evaluation.day + 1
+					}
+				};
+			}
+
+			const decoded = decodeScenarioStoreSnapshot(
+				snapshot(
+					{},
+					{
+						'first-profit@1': {
+							scenarioSchemaVersion: SCENARIO_RUN_SCHEMA_VERSION,
+							result
+						}
+					}
+				),
+				resolveFixtureDefinition
+			);
+
+			expect(decoded.snapshot.bestResultsByDefinitionKey).toEqual({});
+			expect(decoded.diagnostics.map((entry) => entry.code)).toContain('evaluation-mismatch');
+		}
+	);
+
+	it('recomputes game-less metric score components from matching definition evidence', () => {
+		const completed = fixtureRun(undefined, { status: 'completed', score: 750 });
+		const result = structuredClone(completed.result!);
+		result.score = 1000;
+		result.medal = 'gold';
+		result.evaluation.projection = {
+			...result.evaluation.projection,
+			score: 1000,
+			medal: 'gold',
+			componentPoints: [500]
+		};
+
+		const decoded = decodeScenarioStoreSnapshot(
+			snapshot(
+				{},
+				{
+					'first-profit@1': {
+						scenarioSchemaVersion: SCENARIO_RUN_SCHEMA_VERSION,
+						result
+					}
+				}
+			),
+			resolveFixtureDefinition
+		);
+
+		expect(decoded.snapshot.bestResultsByDefinitionKey).toEqual({});
+		expect(decoded.diagnostics.map((entry) => entry.code)).toContain('evaluation-mismatch');
+	});
+
+	it('recomputes remaining-day points from the definition day limit', () => {
+		const definition: ScenarioDefinition = {
+			...fixtureDefinition({ scenarioId: 'first-profit', version: 1 }),
+			scoreComponents: [
+				{
+					kind: 'remaining-days',
+					zeroBonusAt: 0,
+					fullBonusAt: 14,
+					points: 500
+				}
+			]
+		};
+		const completed = fixtureRun(undefined, {
+			status: 'completed',
+			score: 750,
+			advanceDays: 13
+		});
+		const evaluation = evaluateScenario(definition, completed.game, true);
+		const result = {
+			...completed.result!,
+			completionDay: completed.game.day,
+			score: 1000,
+			medal: 'gold' as const,
+			evaluation: {
+				...evaluation,
+				projection: { score: 1000, medal: 'gold' as const, componentPoints: [500] }
+			}
+		};
+
+		const decoded = decodeScenarioStoreSnapshot(
+			snapshot(
+				{},
+				{
+					'first-profit@1': {
+						scenarioSchemaVersion: SCENARIO_RUN_SCHEMA_VERSION,
+						result
+					}
+				}
+			),
+			() => definition
+		);
+
+		expect(completed.game.day).toBe(14);
+		expect(decoded.snapshot.bestResultsByDefinitionKey).toEqual({});
+		expect(decoded.diagnostics.map((entry) => entry.code)).toContain('evaluation-mismatch');
+	});
+
+	it('rejects terminal pending objectives at and beyond the deadline', () => {
+		const completed = fixtureRun(undefined, {
+			status: 'completed',
+			score: 700,
+			advanceDays: 14
+		});
+		const result = structuredClone(completed.result!);
+		result.evaluation.optional[0] = {
+			...result.evaluation.optional[0]!,
+			status: 'pending'
+		};
+		const decoded = decodeScenarioStoreSnapshot(
+			snapshot(
+				{},
+				{
+					'first-profit@1': {
+						scenarioSchemaVersion: SCENARIO_RUN_SCHEMA_VERSION,
+						result
+					}
+				}
+			),
+			resolveFixtureDefinition
+		);
+
+		expect(completed.game.day).toBe(15);
+		expect(decoded.snapshot.bestResultsByDefinitionKey).toEqual({});
+		expect(decoded.diagnostics.map((entry) => entry.code)).toContain('evaluation-mismatch');
+	});
+
+	it.each(['completed', 'deadline'] as const)(
+		'rejects an active run whose game state is already %s-terminal',
+		(terminalCase) => {
+			const active = fixtureRun(undefined, {
+				advanceDays: terminalCase === 'deadline' ? 13 : 0
+			});
+			active.game = {
+				...active.game,
+				cash: terminalCase === 'completed' ? 200 : 0
+			};
+			active.evaluation = evaluateScenario(
+				fixtureDefinition(active.definition),
+				active.game,
+				false
+			);
+			const decoded = decodeScenarioStoreSnapshot(
+				snapshot({ 'first-profit': runRecord(active) }),
+				resolveFixtureDefinition
+			);
+
+			expect(decoded.snapshot.activeRunsByScenarioId).toEqual({});
+			expect(decoded.diagnostics.map((entry) => entry.code)).toContain('lifecycle-mismatch');
+		}
+	);
+
+	it.each([
+		['null-prototype', () => Object.create(null)],
+		[
+			'throwing proxy',
+			() =>
+				new Proxy(Object.create(null), {
+					getPrototypeOf: () => {
+						throw new Error('trap');
+					}
+				})
+		],
+		['function', () => function invalidSchemaVersion() {}]
+	] as const)(
+		'returns clone-safe diagnostics for a %s schema version',
+		async (_name, createSchemaVersion) => {
+			const raw = snapshot() as ScenarioStoreSnapshot & { schemaVersion: unknown };
+			raw.schemaVersion = createSchemaVersion();
+			let decoded!: ReturnType<typeof decodeScenarioStoreSnapshot>;
+			let repository!: ScenarioMemoryRepository;
+
+			expect(() => {
+				decoded = decodeScenarioStoreSnapshot(raw, resolveFixtureDefinition);
+				repository = new ScenarioMemoryRepository(raw, resolveFixtureDefinition);
+			}).not.toThrow();
+			expect(() => structuredClone(decoded.diagnostics)).not.toThrow();
+			await expect(repository.getSummary()).resolves.toMatchObject({
+				activeRunsByScenarioId: {},
+				bestResultsByDefinitionKey: {}
+			});
+		}
+	);
+
+	it('contains a hostile object thrown while inspecting the store envelope', () => {
+		const thrown = new Proxy(Object.create(null), {
+			getPrototypeOf() {
+				throw new Error('thrown-value prototype must not be inspected');
+			}
+		});
+		const raw = new Proxy(Object.create(null), {
+			getPrototypeOf() {
+				throw thrown;
+			}
+		});
+		let decoded!: ReturnType<typeof decodeScenarioStoreSnapshot>;
+
+		expect(() => {
+			decoded = decodeScenarioStoreSnapshot(raw, resolveFixtureDefinition);
+		}).not.toThrow();
+		expect(decoded.snapshot).toEqual(createEmptyScenarioStore());
+		expect(() => structuredClone(decoded.diagnostics)).not.toThrow();
+	});
+
 	it('keeps current-schema games exactly equal and rejects states sandbox normalization would repair', () => {
 		const exactGame = Object.assign(createNewGame('convenience', OFFICIAL_SEEDS['first-profit']), {
+			cash: 0,
 			scenarioMarker: { exact: true }
 		});
 		const exactRun = fixtureRun(undefined, { game: exactGame });
