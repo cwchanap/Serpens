@@ -82,7 +82,7 @@ function fixtureDefinition(ref: ScenarioDefinitionRef): ScenarioDefinition {
 			{
 				id: 'cash-rich',
 				labelKey: 'store.defaultName',
-				query: { metric: 'cash' },
+				query: { metric: 'scorecard', score: 'profit' },
 				comparator: 'gte',
 				target: 500,
 				window: { kind: 'current' }
@@ -92,7 +92,7 @@ function fixtureDefinition(ref: ScenarioDefinitionRef): ScenarioDefinition {
 			{
 				id: 'cash-negative',
 				labelKey: 'store.defaultName',
-				query: { metric: 'cash' },
+				query: { metric: 'scorecard', score: 'profit' },
 				comparator: 'lt',
 				target: 0,
 				window: { kind: 'current' }
@@ -135,7 +135,8 @@ function fixtureRun(
 	for (let day = 0; day < (options.advanceDays ?? 0); day += 1) game = simulateDay(game);
 	game = {
 		...game,
-		cash: status === 'failed' ? -1 : Math.max(0, Math.min(1000, (options.score ?? 500) - 500) * 2)
+		cash: Math.max(0, Math.min(1000, (options.score ?? 500) - 500) * 2),
+		scorecard: status === 'failed' ? { ...game.scorecard, profit: -1 } : game.scorecard
 	};
 	const eligibility =
 		seed === definition.officialSeed ? ('ranked' as const) : ('unranked' as const);
