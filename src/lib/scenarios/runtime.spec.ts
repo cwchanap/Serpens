@@ -28,6 +28,7 @@ import {
 import type { GameState } from '$lib/game/types';
 import { openWorldCity, selectWorldCity } from '$lib/game/world';
 import { shouldReplaceBestResult } from './scoring';
+import { currentScenarioDefinition } from './catalog';
 import type {
 	ScenarioCommand,
 	ScenarioCondition,
@@ -42,6 +43,95 @@ import {
 	restartScenario,
 	startScenario
 } from './runtime';
+
+const FIRST_PROFIT_REFERENCE_OPENING: ScenarioCommand[] = [
+	{
+		kind: 'updatePolicy',
+		patch: {
+			pricing: 'competitive',
+			inventory: 'lean',
+			staffing: 'service',
+			marketing: 'none',
+			service: 'highTouch'
+		}
+	},
+	{
+		kind: 'updateStoreSellingPrice',
+		storeId: 'store-1',
+		categoryId: 'bottled-water',
+		sellingPrice: 6
+	},
+	{
+		kind: 'updateStoreInventoryTargets',
+		storeId: 'store-1',
+		categoryId: 'bottled-water',
+		reorderThreshold: 200,
+		targetStock: 280
+	}
+];
+
+const IMPORT_SQUEEZE_REFERENCE_OPENING: ScenarioCommand[] = [
+	{
+		kind: 'updatePolicy',
+		patch: {
+			pricing: 'premium',
+			inventory: 'lean',
+			staffing: 'service',
+			marketing: 'loyalty',
+			service: 'balanced'
+		}
+	},
+	{
+		kind: 'updateStoreSellingPrice',
+		storeId: 'store-1',
+		categoryId: 'games',
+		sellingPrice: 72
+	},
+	{
+		kind: 'updateStoreSellingPrice',
+		storeId: 'store-1',
+		categoryId: 'accessories',
+		sellingPrice: 32
+	},
+	{
+		kind: 'updateStoreInventoryTargets',
+		storeId: 'store-1',
+		categoryId: 'games',
+		reorderThreshold: 10,
+		targetStock: 45
+	},
+	{
+		kind: 'updateStoreInventoryTargets',
+		storeId: 'store-1',
+		categoryId: 'accessories',
+		reorderThreshold: 12,
+		targetStock: 50
+	}
+];
+
+const LOCAL_LIFELINE_REFERENCE_OPENING: ScenarioCommand[] = [
+	{
+		kind: 'buildIndustrialBuilding',
+		tileId: 'industry-city-26-8',
+		buildingTypeId: 'water-bottler'
+	},
+	{
+		kind: 'updatePolicy',
+		patch: {
+			pricing: 'competitive',
+			inventory: 'balanced',
+			staffing: 'service',
+			marketing: 'loyalty',
+			service: 'balanced'
+		}
+	},
+	{
+		kind: 'updateStoreSellingPrice',
+		storeId: 'store-1',
+		categoryId: 'bottled-water',
+		sellingPrice: 4
+	}
+];
 
 const ALL_CITY_IDS = [
 	'harbor-city',
@@ -658,6 +748,82 @@ describe('executeScenarioCommand dispatch', () => {
 
 		expect(next.game).toEqual(demolishRailSegment(game, city.id, segment.id));
 	});
+});
+
+function replayLaunchCalibration(
+	scenarioId: ScenarioId,
+	openingCommands: readonly ScenarioCommand[],
+	resolveSupplierTerms: boolean
+): ScenarioRun {
+	const definition = currentScenarioDefinition(scenarioId);
+	if (!definition) throw new Error(`Missing launch definition ${scenarioId}.`);
+	const started = startScenario(definition, definition.officialSeed);
+	if (!started.ok) throw new Error(`Launch definition ${scenarioId} failed setup.`);
+	let run = started.value;
+
+	for (const command of openingCommands) {
+		const result = executeScenarioCommand(run, definition, command);
+		if (!result.ok || !result.changed) {
+			throw new Error(`${scenarioId} calibration command ${command.kind} did not change the run.`);
+		}
+		run = result.run;
+		if (run.status !== 'active') return run;
+	}
+
+	while (run.status === 'active') {
+		const day = executeScenarioCommand(run, definition, { kind: 'advanceDay' });
+		if (!day.ok || !day.changed) {
+			throw new Error(`${scenarioId} calibration failed to advance.`);
+		}
+		run = day.run;
+		if (run.status !== 'active' || !resolveSupplierTerms) continue;
+		const supplierTerms = run.game.decisions.find((decision) => decision.id === 'supplier-terms');
+		if (!supplierTerms) continue;
+		const resolved = executeScenarioCommand(run, definition, {
+			kind: 'resolveDecision',
+			decisionId: 'supplier-terms',
+			optionId: 'negotiate-credit'
+		});
+		if (!resolved.ok || !resolved.changed) {
+			throw new Error(`${scenarioId} supplier terms were not resolved deterministically.`);
+		}
+		run = resolved.run;
+	}
+
+	return run;
+}
+
+describe('launch scenario calibration contracts', () => {
+	it.each([
+		['first-profit', [], 'completed', 4, 682],
+		['import-squeeze', [], 'completed', 18, 656],
+		['local-lifeline', [], 'failed', 21, 500]
+	] as const)(
+		'%s no-action trace ends %s on day %i with the calibrated score %i',
+		(scenarioId, opening, outcome, completionDay, score) => {
+			const run = replayLaunchCalibration(scenarioId, opening, false);
+			expect(run.status).not.toBe('active');
+			expect(run.result).not.toBeNull();
+			expect(run.result).toMatchObject({ outcome, completionDay, score });
+			expect(run.result!.score).toBeLessThan(700);
+			expect(run.result!.medal === null || run.result!.medal === 'bronze').toBe(true);
+		}
+	);
+
+	it.each([
+		['first-profit', FIRST_PROFIT_REFERENCE_OPENING, 4, 880],
+		['import-squeeze', IMPORT_SQUEEZE_REFERENCE_OPENING, 15, 852],
+		['local-lifeline', LOCAL_LIFELINE_REFERENCE_OPENING, 15, 877]
+	] as const)(
+		'%s documented reference trace completes on day %i with Gold score %i',
+		(scenarioId, opening, completionDay, score) => {
+			const run = replayLaunchCalibration(scenarioId, opening, true);
+			expect(run.status).toBe('completed');
+			expect(run.result).toMatchObject({ outcome: 'completed', completionDay, score });
+			expect(run.result?.score).toBeGreaterThanOrEqual(850);
+			expect(run.result?.medal).toBe('gold');
+		}
+	);
 });
 
 describe('scenario runtime lifecycle order', () => {

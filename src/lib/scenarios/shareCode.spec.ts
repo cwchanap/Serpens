@@ -11,7 +11,7 @@ import {
 const fixtureDefinitions = [
 	{ id: 'first-profit', version: 1, officialSeed: 280_001 },
 	{ id: 'import-squeeze', version: 1, officialSeed: 280_002 },
-	{ id: 'local-lifeline', version: 1, officialSeed: 2_147_483_646 }
+	{ id: 'local-lifeline', version: 1, officialSeed: 280_003 }
 ] as const;
 
 function resolveFixtureDefinition(ref: ScenarioDefinitionRef): ScenarioDefinition | undefined {
@@ -45,7 +45,7 @@ describe('scenario share codes', () => {
 	it.each([
 		['first-profit', 1, 280_001],
 		['import-squeeze', 1, 280_002],
-		['local-lifeline', 1, 2_147_483_646]
+		['local-lifeline', 1, 280_003]
 	])('round-trips %s version %i seed %i', (scenarioId, version, seed) => {
 		const code = encodeScenarioShareCode({ scenarioId: scenarioId as ScenarioId, version }, seed);
 		const decoded = decodeScenarioShareCode(code, resolveFixtureDefinition);
@@ -160,8 +160,26 @@ describe('scenario share codes', () => {
 	it('uses the catalog resolver by default after recognizing a closed scenario ID', () => {
 		const code = encodeScenarioShareCode({ scenarioId: 'first-profit', version: 1 }, 280_001);
 		expect(decodeScenarioShareCode(code)).toEqual({
-			ok: false,
-			code: 'unsupported-version'
+			ok: true,
+			value: {
+				definition: { scenarioId: 'first-profit', version: 1 },
+				seed: 280_001,
+				eligibility: 'ranked',
+				canonicalCode: 'SC1.first-profit.1.601t.04d9xyn'
+			}
+		});
+	});
+
+	it.each([
+		['first-profit', 280_001, 'SC1.first-profit.1.601t.04d9xyn'],
+		['import-squeeze', 280_002, 'SC1.import-squeeze.1.601u.12s7q19'],
+		['local-lifeline', 280_003, 'SC1.local-lifeline.1.601v.0455cvi']
+	] as const)('publishes the canonical ranked code for %s', (scenarioId, seed, expected) => {
+		const code = encodeScenarioShareCode({ scenarioId, version: 1 }, seed);
+		expect(code).toBe(expected);
+		expect(decodeScenarioShareCode(code)).toMatchObject({
+			ok: true,
+			value: { eligibility: 'ranked', canonicalCode: expected }
 		});
 	});
 

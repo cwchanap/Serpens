@@ -134,6 +134,48 @@ describe('validateScenarioDefinition', () => {
 		expect(validateScenarioDefinition(validDefinition())).toEqual([]);
 	});
 
+	it('does not require authored starting entities to be future gameplay placements', () => {
+		const definition = validDefinition();
+		definition.content.cityIds = ['harbor-city', 'industry-city'];
+		definition.content.materialIds = ['water'];
+		definition.content.buildingTypeIds = ['water-pump', 'warehouse'];
+		definition.content.retailPlacements = [];
+		definition.content.industrialPlacements = [];
+		definition.start.industrialBuildings = [
+			{
+				ref: 'pump',
+				typeId: 'water-pump',
+				cityId: 'industry-city',
+				tileId: 'industry-city-3-19'
+			},
+			{
+				ref: 'warehouse',
+				typeId: 'warehouse',
+				cityId: 'industry-city',
+				tileId: 'industry-city-26-20'
+			}
+		];
+
+		expect(validateScenarioDefinition(definition)).toEqual([]);
+	});
+
+	it('supports a complete trailing window for consecutive positive reports', () => {
+		const definition = validDefinition();
+		definition.requiredObjectives = [
+			{
+				id: 'positive-income-streak',
+				labelKey: 'store.defaultName',
+				query: { metric: 'consecutive-positive-net-income-reports' },
+				comparator: 'gte',
+				target: 3,
+				window: { kind: 'trailing-reports', count: 3 },
+				requiresCompleteWindow: true
+			}
+		];
+
+		expect(validateScenarioDefinition(definition)).toEqual([]);
+	});
+
 	it('returns every diagnostic in stable path/code order', () => {
 		const invalid = {
 			...validDefinition(),
