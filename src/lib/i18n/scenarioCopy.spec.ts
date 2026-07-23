@@ -151,6 +151,56 @@ describe('scenario copy', () => {
 		expect(card?.priorVersionResult?.scoreLabel).toBe('999 points');
 	});
 
+	it('only exposes the exact explicitly inspected prior version', () => {
+		expect.assertions(4);
+		const current = definition('first-profit', 3, 'firstProfit', 101);
+		const versionOne = definition('first-profit', 1, 'firstProfit', 99);
+		const versionTwo = definition('first-profit', 2, 'firstProfit', 100);
+		const summary: ScenarioPersistenceSummary = {
+			activeRunsByScenarioId: {},
+			bestResultsByDefinitionKey: {
+				'first-profit@1': result(versionOne, 610, 'bronze'),
+				'first-profit@2': result(versionTwo, 920, 'gold')
+			},
+			diagnostics: []
+		};
+		const entries = [{ definition: current, available: true, diagnostics: [] }];
+
+		expect(
+			buildScenarioCatalogCards(entries, summary, createI18n('en'))[0]?.priorVersionResult
+		).toBeNull();
+		expect(
+			buildScenarioCatalogCards(entries, summary, createI18n('en'), {
+				'first-profit': { scenarioId: 'first-profit', version: 1 }
+			})[0]?.priorVersionResult?.scoreLabel
+		).toBe('610 points');
+		expect(
+			buildScenarioCatalogCards(entries, summary, createI18n('en'), {
+				'first-profit': { scenarioId: 'first-profit', version: 2 }
+			})[0]?.priorVersionResult?.scoreLabel
+		).toBe('920 points');
+		expect(
+			buildScenarioCatalogCards(
+				entries,
+				{
+					...summary,
+					activeRunsByScenarioId: {
+						'first-profit': {
+							definition: { scenarioId: 'first-profit', version: 1 },
+							seed: 99,
+							eligibility: 'ranked',
+							status: 'active',
+							game: {} as never,
+							evaluation: {} as never,
+							result: null
+						}
+					}
+				},
+				createI18n('ja')
+			)[0]?.primaryLabel
+		).toBe('バージョン 1 を再開');
+	});
+
 	it('localizes invalid built-ins and share-code/runtime diagnostics', () => {
 		expect.assertions(5);
 		const current = definition('first-profit', 2, 'firstProfit', 101);

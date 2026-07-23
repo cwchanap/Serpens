@@ -2,7 +2,6 @@ import type { I18nBundle, TranslationKey } from '$lib/i18n';
 import type { ScenarioCatalogEntry } from '$lib/scenarios/catalog';
 import { encodeScenarioShareCode } from '$lib/scenarios/shareCode';
 import type {
-	ScenarioDefinition,
 	ScenarioOperationError,
 	ScenarioPersistenceSummary,
 	ScenarioResult,
@@ -36,6 +35,7 @@ export interface ScenarioCatalogCardViewModel {
 	primaryAction: 'start' | 'resume';
 	primaryLabel: string;
 	showRestart: boolean;
+	activeDefinitionRef: ScenarioResult['definition'] | null;
 	showStartCurrent: boolean;
 	activeVersionLabel: string | null;
 	best: ScenarioResultCopy | null;
@@ -56,22 +56,13 @@ function resultCopy(
 	};
 }
 
-function priorResult(
-	definition: ScenarioDefinition,
-	summary: ScenarioPersistenceSummary
-): ScenarioResult | undefined {
-	return Object.entries(summary.bestResultsByDefinitionKey)
-		.filter(([, result]) => result?.definition.scenarioId === definition.id)
-		.map(([, result]) => result)
-		.filter((result): result is ScenarioResult => Boolean(result))
-		.filter((result) => result.definition.version !== definition.version)
-		.sort((left, right) => right.definition.version - left.definition.version)[0];
-}
-
 export function buildScenarioCatalogCards(
 	entries: readonly ScenarioCatalogEntry[],
 	summary: ScenarioPersistenceSummary,
-	i18n: I18nBundle
+	i18n: I18nBundle,
+	inspectedDefinitionRefsByScenarioId: Partial<
+		Record<ScenarioId, ScenarioResult['definition']>
+	> = {}
 ): ScenarioCatalogCardViewModel[] {
 	return entries.map(({ definition, available, diagnostics }) => {
 		const active = summary.activeRunsByScenarioId[definition.id];
@@ -80,6 +71,14 @@ export function buildScenarioCatalogCards(
 		const isOlderActive = Boolean(active && active.definition.version !== definition.version);
 		const currentBest =
 			summary.bestResultsByDefinitionKey[`${definition.id}@${definition.version}`];
+		const inspectedRef =
+			active && active.definition.version !== definition.version
+				? active.definition
+				: inspectedDefinitionRefsByScenarioId[definition.id];
+		const inspectedPriorResult =
+			inspectedRef && inspectedRef.version !== definition.version
+				? summary.bestResultsByDefinitionKey[`${inspectedRef.scenarioId}@${inspectedRef.version}`]
+				: undefined;
 		return {
 			id: definition.id,
 			version: definition.version,
@@ -114,10 +113,13 @@ export function buildScenarioCatalogCards(
 			primaryAction: active ? 'resume' : 'start',
 			primaryLabel: active
 				? isOlderActive
-					? `${i18n.t('scenarioCatalog.resume')} version ${active.definition.version}`
+					? i18n.t('scenarioCatalog.resumeVersion', {
+							version: active.definition.version
+						})
 					: i18n.t('scenarioCatalog.resume')
 				: i18n.t('scenarioCatalog.start'),
 			showRestart: Boolean(active),
+			activeDefinitionRef: active?.definition ?? null,
 			showStartCurrent: isOlderActive,
 			activeVersionLabel: active
 				? i18n.t('scenarioStatus.activeVersion', {
@@ -126,7 +128,7 @@ export function buildScenarioCatalogCards(
 					})
 				: null,
 			best: resultCopy(currentBest, i18n),
-			priorVersionResult: resultCopy(priorResult(definition, summary), i18n),
+			priorVersionResult: resultCopy(inspectedPriorResult, i18n),
 			shareCode: encodeScenarioShareCode(
 				active?.definition ?? { scenarioId: definition.id, version: definition.version },
 				seed

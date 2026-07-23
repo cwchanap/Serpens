@@ -970,6 +970,7 @@ export const ja = {
 		close: 'チャレンジカタログを閉じる',
 		start: '開始',
 		resume: '再開',
+		resumeVersion: 'バージョン {version} を再開',
 		restart: 'リスタート',
 		startCurrent: '現行版を開始',
 		confirmReplacement: '置き換えを確認',

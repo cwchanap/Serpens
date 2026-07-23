@@ -975,6 +975,7 @@ export const en = {
 		close: 'Close challenge catalog',
 		start: 'Start',
 		resume: 'Resume',
+		resumeVersion: 'Resume version {version}',
 		restart: 'Restart',
 		startCurrent: 'Start current',
 		confirmReplacement: 'Confirm replacement',

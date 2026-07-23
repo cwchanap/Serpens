@@ -221,6 +221,7 @@ function controllerOptions(input: {
 	saveRepository?: SaveRepository;
 	scenarioRepository?: ScenarioRepository;
 	definition?: ScenarioDefinition;
+	definitions?: ScenarioDefinition[];
 	events?: string[];
 	onReadOnlySelection?: (kind: 'retail' | 'industry', tileId: string) => void;
 }): GameRouteControllerOptions {
@@ -231,11 +232,11 @@ function controllerOptions(input: {
 		createScenarioRepository: async () =>
 			input.scenarioRepository ?? createScenarioRepositoryHarness(),
 		resolveScenarioDefinition: (ref) =>
-			input.definition &&
-			ref.scenarioId === input.definition.id &&
-			ref.version === input.definition.version
-				? input.definition
-				: undefined,
+			[input.definition, ...(input.definitions ?? [])]
+				.filter((definition): definition is ScenarioDefinition => Boolean(definition))
+				.find(
+					(definition) => ref.scenarioId === definition.id && ref.version === definition.version
+				),
 		playSfx: (cueId) => events.push(`sfx:${cueId}`),
 		onStateChange: () => events.push('publish'),
 		onReadOnlySelection: input.onReadOnlySelection
@@ -584,12 +585,126 @@ describe('GameRouteController scenario integration', () => {
 		expect(controller.state.activeScenarioRun).toBe(stored);
 		expect(repository.saveActiveRun).not.toHaveBeenCalled();
 
-		const restarted = await controller.restartScenarioRun();
+		const restarted = await controller.restartScenarioRun(stored.definition);
 		const saved = vi.mocked(repository.saveActiveRun).mock.calls[0]![0];
 		expect(restarted).toMatchObject({ status: 'committed' });
 		expect(saved.definition).toEqual(stored.definition);
 		expect(saved.seed).toBe(999);
 		expect(saved.eligibility).toBe('unranked');
+	});
+
+	it('restarts the selected saved scenario instead of the currently displayed run', async () => {
+		expect.assertions(9);
+		const displayedDefinition = scenarioDefinition();
+		const selectedDefinition = scenarioDefinition({ id: 'import-squeeze' });
+		const displayed = runForDefinition(displayedDefinition);
+		const selected = {
+			...runForDefinition(selectedDefinition),
+			seed: 999,
+			eligibility: 'unranked' as const
+		};
+		const write = deferred<ScenarioCommitOutcome>();
+		const repository = createScenarioRepositoryHarness(displayed, {
+			getSummary: vi.fn(async () => ({
+				activeRunsByScenarioId: {
+					'first-profit': displayed,
+					'import-squeeze': selected
+				},
+				bestResultsByDefinitionKey: {},
+				diagnostics: []
+			})),
+			loadActiveRun: vi.fn(async (id) => (id === selectedDefinition.id ? selected : displayed)),
+			saveActiveRun: vi.fn(() => write.promise)
+		});
+		const controller = new GameRouteController(
+			controllerOptions({
+				scenarioRepository: repository,
+				definitions: [displayedDefinition, selectedDefinition]
+			})
+		);
+		await controller.initializeScenarios();
+
+		const pending = controller.restartScenarioRun(selected.definition);
+		expect(repository.loadActiveRun).toHaveBeenCalledWith('import-squeeze');
+		expect(controller.state.activeScenarioRun).toBe(displayed);
+		await Promise.resolve();
+		const restarted = vi.mocked(repository.saveActiveRun).mock.calls[0]![0];
+		expect(restarted.definition).toEqual(selected.definition);
+		expect(restarted.seed).toBe(999);
+		expect(restarted.eligibility).toBe('unranked');
+		expect(displayed.definition.scenarioId).toBe('first-profit');
+		expect(repository.removeActiveRun).not.toHaveBeenCalled();
+		write.resolve({ activeRun: restarted, terminalResult: null, bestUpdated: false });
+		expect(await pending).toMatchObject({ status: 'committed' });
+		expect(controller.state.activeScenarioRun).toBe(restarted);
+	});
+
+	it('confirms imports only for a persisted run of the decoded scenario', async () => {
+		expect.assertions(13);
+		const displayedDefinition = scenarioDefinition();
+		const importedDefinition = scenarioDefinition({ id: 'import-squeeze' });
+		const displayed = runForDefinition(displayedDefinition);
+		const imported = runForDefinition(importedDefinition);
+		const repository = createScenarioRepositoryHarness(displayed, {
+			getSummary: vi.fn(async () => ({
+				activeRunsByScenarioId: { 'first-profit': displayed },
+				bestResultsByDefinitionKey: {},
+				diagnostics: []
+			})),
+			loadActiveRun: vi.fn(async (id) => (id === importedDefinition.id ? null : displayed))
+		});
+		const controller = new GameRouteController(
+			controllerOptions({
+				scenarioRepository: repository,
+				definitions: [displayedDefinition, importedDefinition]
+			})
+		);
+		await controller.initializeScenarios();
+
+		expect(await controller.importScenarioRun(importedDefinition, 999, false)).toMatchObject({
+			status: 'committed'
+		});
+		expect(repository.loadActiveRun).toHaveBeenLastCalledWith('import-squeeze');
+		expect(repository.saveActiveRun).toHaveBeenCalledTimes(1);
+		expect(displayed.definition.scenarioId).toBe('first-profit');
+
+		const replacementRepository = createScenarioRepositoryHarness(displayed, {
+			getSummary: vi.fn(async () => ({
+				activeRunsByScenarioId: {
+					'first-profit': displayed,
+					'import-squeeze': imported
+				},
+				bestResultsByDefinitionKey: {},
+				diagnostics: []
+			})),
+			loadActiveRun: vi.fn(async (id) => (id === importedDefinition.id ? imported : displayed))
+		});
+		const replacementController = new GameRouteController(
+			controllerOptions({
+				scenarioRepository: replacementRepository,
+				definitions: [displayedDefinition, importedDefinition]
+			})
+		);
+		await replacementController.initializeScenarios();
+		expect(replacementController.state.activeScenarioRun).toBe(displayed);
+		expect(
+			await replacementController.importScenarioRun(importedDefinition, 999, false)
+		).toMatchObject({
+			status: 'confirmation-required'
+		});
+		expect(replacementRepository.saveActiveRun).not.toHaveBeenCalled();
+		expect(replacementController.state.activeScenarioRun).toBe(displayed);
+		expect(
+			await replacementController.importScenarioRun(importedDefinition, 999, true)
+		).toMatchObject({
+			status: 'committed'
+		});
+		expect(replacementRepository.saveActiveRun).toHaveBeenCalledTimes(1);
+		expect(vi.mocked(replacementRepository.saveActiveRun).mock.calls[0]![0].definition).toEqual(
+			imported.definition
+		);
+		expect(replacementRepository.removeActiveRun).not.toHaveBeenCalled();
+		expect(displayed.definition.scenarioId).toBe('first-profit');
 	});
 
 	it('keeps prior state on lifecycle write failure and retries the exact start', async () => {
