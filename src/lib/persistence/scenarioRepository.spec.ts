@@ -408,6 +408,61 @@ describe('scenario repository', () => {
 		expect(summary.activeRunsByScenarioId['first-profit']).toEqual(active);
 	});
 
+	it('commits and reloads a ranked best with a standalone customer-satisfaction score metric', async () => {
+		const definition: ScenarioDefinition = {
+			...fixtureDefinition({ scenarioId: 'first-profit', version: 1 }),
+			scoreComponents: [
+				{
+					kind: 'metric',
+					query: { metric: 'scorecard', score: 'customerSatisfaction' },
+					window: { kind: 'current' },
+					zeroBonusAt: 0,
+					fullBonusAt: 100,
+					points: 500
+				}
+			]
+		};
+		const resolveStandalone = () => definition;
+		const repository = createScenarioMemoryRepository(undefined, resolveStandalone);
+		const seed = definition.officialSeed;
+		const activeGame = { ...createNewGame('convenience', seed), cash: 0 };
+		const active: ScenarioRun = {
+			definition: { scenarioId: 'first-profit', version: 1 },
+			seed,
+			eligibility: 'ranked',
+			status: 'active',
+			game: activeGame,
+			evaluation: evaluateScenario(definition, activeGame, false),
+			result: null
+		};
+		const terminalGame = { ...activeGame, cash: 200 };
+		const evaluation = evaluateScenario(definition, terminalGame, true);
+		const terminal: ScenarioRun = {
+			...active,
+			status: 'completed',
+			game: terminalGame,
+			evaluation,
+			result: {
+				definition: active.definition,
+				seed,
+				eligibility: 'ranked',
+				outcome: 'completed',
+				completionDay: terminalGame.day,
+				score: evaluation.projection.score,
+				medal: evaluation.projection.medal,
+				evaluation
+			}
+		};
+
+		await repository.saveActiveRun(active);
+		const committed = await repository.commitTerminalRun(terminal);
+		const summary = await repository.getSummary();
+
+		expect(committed.bestUpdated).toBe(true);
+		expect(summary.activeRunsByScenarioId['first-profit']).toBeUndefined();
+		expect(summary.bestResultsByDefinitionKey['first-profit@1']).toEqual(terminal.result);
+	});
+
 	it('stores best results separately for each immutable definition version', async () => {
 		const driver = new CountingDriver();
 		const repository = new ScenarioRepositoryFromDriver(driver, resolveFixtureDefinition);

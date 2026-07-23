@@ -248,10 +248,20 @@ export type ScenarioRiskProjection =
 	| { kind: 'condition'; conditionId: string; distance: number; triggered: boolean }
 	| { kind: 'deadline'; daysRemaining: number; triggered: boolean };
 
+export interface ScenarioMetricScoreEvidence {
+	kind: 'metric';
+	query: ScenarioMetricQuery;
+	window: ScenarioMetricWindow;
+	actual: number;
+	day: number;
+	windowComplete: boolean;
+}
+
 export interface ScenarioScoreProjection {
 	score: number;
 	medal: ScenarioMedal;
 	componentPoints: number[];
+	componentEvidence: Array<ScenarioMetricScoreEvidence | null>;
 }
 
 export interface ScenarioEvaluation {

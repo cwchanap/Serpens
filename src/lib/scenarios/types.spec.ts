@@ -199,7 +199,23 @@ const run = {
 		failures: [],
 		deadline: null,
 		risks: [{ kind: 'deadline', daysRemaining: 29, triggered: false }],
-		projection: { score: 0, medal: 'bronze', componentPoints: [0, 0, 0] }
+		projection: {
+			score: 0,
+			medal: 'bronze',
+			componentPoints: [0, 0, 0],
+			componentEvidence: [
+				null,
+				{
+					kind: 'metric',
+					query: { metric: 'scorecard', score: 'profit' },
+					window: { kind: 'run-to-date' },
+					actual: 0,
+					day: 1,
+					windowComplete: true
+				},
+				null
+			]
+		}
 	},
 	result: null
 } satisfies ScenarioRun;

@@ -138,6 +138,38 @@ describe('scenario scoring', () => {
 		expect(calculateScenarioScore(scenario, game({ cash: 1 }), evaluation())).toBe(503);
 	});
 
+	it('emits canonical evidence for a standalone customer-satisfaction metric component', () => {
+		const scenario = definition([
+			{
+				kind: 'metric',
+				query: { metric: 'scorecard', score: 'customerSatisfaction' },
+				window: { kind: 'current' },
+				zeroBonusAt: 0,
+				fullBonusAt: 100,
+				points: 500
+			}
+		]);
+		const state = game({
+			scorecard: { ...game().scorecard, customerSatisfaction: 80 }
+		});
+
+		expect(calculateScenarioScoreProjection(scenario, state, evaluation())).toEqual({
+			score: 900,
+			medal: 'gold',
+			componentPoints: [400],
+			componentEvidence: [
+				{
+					kind: 'metric',
+					query: { metric: 'scorecard', score: 'customerSatisfaction' },
+					window: { kind: 'current' },
+					actual: 80,
+					day: state.day,
+					windowComplete: true
+				}
+			]
+		});
+	});
+
 	it('clamps component values outside their anchors and the final score to 0 through 1000', () => {
 		const scenario = definition([
 			{
@@ -195,7 +227,8 @@ describe('scenario scoring', () => {
 		expect(calculateScenarioScoreProjection(scenario, game({ day: 5 }), conditions)).toEqual({
 			score: 650,
 			medal: 'bronze',
-			componentPoints: [100, 50]
+			componentPoints: [100, 50],
+			componentEvidence: [null, null]
 		});
 	});
 
