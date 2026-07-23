@@ -6,12 +6,143 @@ import {
 	generateIndustryCity,
 	getIndustryTilesByResource
 } from '../lib/game/industry';
+import { BROWSER_SCENARIO_STORAGE_KEY } from '../lib/persistence/browserScenarioRepository';
+import {
+	createEmptyScenarioStore,
+	encodeScenarioBestResultRecord,
+	encodeScenarioRunRecord,
+	scenarioDefinitionKey
+} from '../lib/persistence/scenarioCodec';
+import { currentScenarioDefinition } from '../lib/scenarios/catalog';
+import { evaluateScenario, executeScenarioCommand, startScenario } from '../lib/scenarios/runtime';
+import { encodeScenarioShareCode } from '../lib/scenarios/shareCode';
+import type {
+	ScenarioCommand,
+	ScenarioDefinition,
+	ScenarioId,
+	ScenarioResult,
+	ScenarioRun,
+	ScenarioStoreSnapshot
+} from '../lib/scenarios/types';
 
 test.beforeEach(async ({ page }) => {
-	await page.addInitScript((key) => {
-		window.localStorage.setItem(key, 'en');
-	}, LANGUAGE_PREFERENCE_STORAGE_KEY);
+	await page.addInitScript(
+		({ languageKey, scenarioKey }) => {
+			window.localStorage.setItem(languageKey, 'en');
+			const isolationKey = 'serpens.e2e.challenge-storage-isolated';
+			if (window.sessionStorage.getItem(isolationKey) !== 'true') {
+				window.localStorage.removeItem(scenarioKey);
+				window.sessionStorage.setItem(isolationKey, 'true');
+			}
+		},
+		{
+			languageKey: LANGUAGE_PREFERENCE_STORAGE_KEY,
+			scenarioKey: BROWSER_SCENARIO_STORAGE_KEY
+		}
+	);
 });
+
+const FIRST_PROFIT_REFERENCE_OPENING: ScenarioCommand[] = [
+	{
+		kind: 'updatePolicy',
+		patch: {
+			pricing: 'competitive',
+			inventory: 'lean',
+			staffing: 'service',
+			marketing: 'none',
+			service: 'highTouch'
+		}
+	},
+	{
+		kind: 'updateStoreSellingPrice',
+		storeId: 'store-1',
+		categoryId: 'bottled-water',
+		sellingPrice: 6
+	},
+	{
+		kind: 'updateStoreInventoryTargets',
+		storeId: 'store-1',
+		categoryId: 'bottled-water',
+		reorderThreshold: 200,
+		targetStock: 280
+	}
+];
+
+function challengeDefinition(scenarioId: ScenarioId): ScenarioDefinition {
+	const definition = currentScenarioDefinition(scenarioId);
+	if (!definition) throw new Error(`Missing challenge definition ${scenarioId}.`);
+	return definition;
+}
+
+function startChallengeRun(scenarioId: ScenarioId, seed?: number): ScenarioRun {
+	const definition = challengeDefinition(scenarioId);
+	const started = startScenario(definition, seed ?? definition.officialSeed);
+	if (!started.ok) throw new Error(`Could not start challenge ${scenarioId}.`);
+	return started.value;
+}
+
+function applyChallengeCommands(
+	run: ScenarioRun,
+	commands: readonly ScenarioCommand[]
+): ScenarioRun {
+	const definition = challengeDefinition(run.definition.scenarioId);
+	let current = run;
+
+	for (const command of commands) {
+		const execution = executeScenarioCommand(current, definition, command);
+		if (!execution.ok || !execution.changed) {
+			throw new Error(`Challenge command ${command.kind} did not change the run.`);
+		}
+		current = execution.run;
+	}
+
+	return current;
+}
+
+function advanceActiveChallengeToDay(run: ScenarioRun, day: number): ScenarioRun {
+	let current = run;
+	while (current.status === 'active' && current.game.day < day) {
+		current = applyChallengeCommands(current, [{ kind: 'advanceDay' }]);
+	}
+	if (current.status !== 'active' || current.game.day !== day) {
+		throw new Error(`Challenge did not remain active through day ${day}.`);
+	}
+	return current;
+}
+
+function firstProfitReferenceRun(
+	seed = challengeDefinition('first-profit').officialSeed
+): ScenarioRun {
+	return applyChallengeCommands(
+		startChallengeRun('first-profit', seed),
+		FIRST_PROFIT_REFERENCE_OPENING
+	);
+}
+
+function terminalFirstProfitReferenceRun(): ScenarioRun {
+	let run = firstProfitReferenceRun();
+	while (run.status === 'active') {
+		run = applyChallengeCommands(run, [{ kind: 'advanceDay' }]);
+	}
+	if (!run.result) throw new Error('First Profit reference run did not produce a result.');
+	return run;
+}
+
+function challengeSnapshot(input: {
+	activeRun?: ScenarioRun;
+	bestResult?: ScenarioResult;
+}): ScenarioStoreSnapshot {
+	const snapshot = createEmptyScenarioStore();
+	if (input.activeRun) {
+		snapshot.activeRunsByScenarioId[input.activeRun.definition.scenarioId] =
+			encodeScenarioRunRecord(input.activeRun);
+	}
+	if (input.bestResult) {
+		snapshot.bestResultsByDefinitionKey[scenarioDefinitionKey(input.bestResult.definition)] =
+			encodeScenarioBestResultRecord(input.bestResult);
+	}
+	return snapshot;
+}
 
 interface SavedMaterialMovement {
 	materialId: string;
@@ -508,6 +639,340 @@ function sumMaterialMovementQuantity(
 		.filter((movement) => movement.materialId === materialId && movement.source === source)
 		.reduce((total, movement) => total + movement.quantity, 0);
 }
+
+function challengeRoot(page: Page): Locator {
+	return page.locator('main.app');
+}
+
+function challengeStatus(page: Page): Locator {
+	return page.getByRole('region', { name: 'Objectives' });
+}
+
+function challengeCard(page: Page, title: string): Locator {
+	return page
+		.getByRole('dialog', { name: 'Challenge catalog' })
+		.getByRole('article')
+		.filter({ has: page.getByRole('heading', { name: title, exact: true }) });
+}
+
+async function openChallengeCatalog(page: Page): Promise<Locator> {
+	const menuTrigger = page.getByTestId('game-menu-trigger');
+	if ((await menuTrigger.getAttribute('aria-expanded')) !== 'true') {
+		await menuTrigger.click();
+	}
+	await page.getByRole('button', { name: 'Challenge catalog', exact: true }).click();
+	const catalog = page.getByRole('dialog', { name: 'Challenge catalog' });
+	await expect(catalog).toBeVisible();
+	return catalog;
+}
+
+async function startFirstProfitChallenge(page: Page): Promise<void> {
+	await openChallengeCatalog(page);
+	await challengeCard(page, 'First Profit')
+		.getByRole('button', { name: 'Start First Profit', exact: true })
+		.click();
+	await expectChallengeReady(page, { day: 1, eligibility: 'Ranked' });
+}
+
+async function expectChallengeReady(
+	page: Page,
+	input: { day: number; eligibility: 'Ranked' | 'Unranked' }
+): Promise<void> {
+	await expect(challengeRoot(page)).toHaveAttribute('data-play-mode', 'scenario');
+	await expect(challengeRoot(page)).toHaveAttribute('data-scenario-command-pending', 'false');
+	await expect(challengeStatus(page)).toContainText(`First Profit · ${input.eligibility}`);
+	await expect(challengeStatus(page)).toContainText(`Day ${input.day} of 14`);
+	const canvas = await expectRetailMapReady(page);
+	await expect(canvas).toHaveAttribute('data-store-sprite-count', '1');
+}
+
+async function installChallengeSnapshot(
+	page: Page,
+	snapshot: ScenarioStoreSnapshot
+): Promise<void> {
+	await page.goto('/');
+	await page.evaluate(({ key, serialized }) => window.localStorage.setItem(key, serialized), {
+		key: BROWSER_SCENARIO_STORAGE_KEY,
+		serialized: JSON.stringify(snapshot)
+	});
+	await page.reload();
+}
+
+async function resumeFirstProfitChallenge(
+	page: Page,
+	input: { day: number; eligibility: 'Ranked' | 'Unranked' }
+): Promise<void> {
+	await openChallengeCatalog(page);
+	await challengeCard(page, 'First Profit')
+		.getByRole('button', { name: 'Resume First Profit', exact: true })
+		.click();
+	await expectChallengeReady(page, input);
+}
+
+async function readChallengeSnapshot(page: Page): Promise<ScenarioStoreSnapshot> {
+	return page.evaluate((key) => {
+		const serialized = window.localStorage.getItem(key);
+		if (!serialized) throw new Error('Challenge storage is empty.');
+		return JSON.parse(serialized) as ScenarioStoreSnapshot;
+	}, BROWSER_SCENARIO_STORAGE_KEY);
+}
+
+async function advanceChallengeDay(page: Page): Promise<void> {
+	await page.getByRole('button', { name: 'Advance day', exact: true }).click();
+	await expect(challengeRoot(page)).toHaveAttribute('data-scenario-command-pending', 'false');
+}
+
+async function openChallengeMenu(page: Page): Promise<Locator> {
+	await page.getByTestId('game-menu-trigger').click();
+	const menu = page.locator('.scenario-menu');
+	await expect(menu).toBeVisible();
+	return menu;
+}
+
+function negativeCashDecisionRun(): ScenarioRun {
+	const definition = challengeDefinition('first-profit');
+	const started = startChallengeRun('first-profit');
+	const game = {
+		...started.game,
+		cash: 1_000,
+		decisions: [
+			{
+				id: 'supplier-terms',
+				title: 'Supplier terms',
+				context: { code: 'supplierTerms' as const },
+				expiresOnDay: started.game.day + 2,
+				options: [
+					{
+						id: 'bulk-discount',
+						label: 'Bulk discount',
+						description: 'Commit to larger orders for better unit economics.',
+						effects: { cash: -2_500, profit: 3, stockHealth: 6 }
+					}
+				]
+			}
+		]
+	};
+	return {
+		...started,
+		game,
+		evaluation: evaluateScenario(definition, game, false)
+	};
+}
+
+test('challenge starts First Profit on the official ranked seed', async ({ page }) => {
+	await page.goto('/');
+
+	await startFirstProfitChallenge(page);
+
+	await expect(challengeStatus(page)).toContainText('Required 0 of 2');
+	await expect(challengeStatus(page)).toContainText('13 days remaining');
+	const snapshot = await readChallengeSnapshot(page);
+	const active = snapshot.activeRunsByScenarioId['first-profit'];
+	expect(active?.run.seed).toBe(280_001);
+	expect(active?.run.eligibility).toBe('ranked');
+	expect(active?.run.status).toBe('active');
+});
+
+test('challenge advance updates objective progress and deadline state', async ({ page }) => {
+	await page.goto('/');
+	await startFirstProfitChallenge(page);
+
+	await advanceChallengeDay(page);
+
+	await expect(challengeStatus(page)).toContainText('Day 2 of 14');
+	await expect(challengeStatus(page)).toContainText('12 days remaining');
+	await challengeStatus(page).getByRole('button', { name: 'Show objective details' }).click();
+	const objectiveDetails = page.locator('#scenario-objective-panel');
+	await expect(objectiveDetails).toContainText('Earn cumulative net income');
+	await expect(objectiveDetails).toContainText('Maintain a positive income streak');
+	const snapshot = await readChallengeSnapshot(page);
+	expect(snapshot.activeRunsByScenarioId['first-profit']?.game).toMatchObject({ day: 2 });
+});
+
+test('challenge returns to sandbox and resumes its isolated run from the catalog', async ({
+	page
+}) => {
+	await page.goto('/');
+	await startFirstProfitChallenge(page);
+	await advanceChallengeDay(page);
+	await expect(challengeStatus(page)).toContainText('Day 2 of 14');
+
+	const menu = await openChallengeMenu(page);
+	await menu.getByRole('button', { name: 'Return to sandbox', exact: true }).click();
+	await expect(challengeRoot(page)).toHaveAttribute('data-play-mode', 'sandbox');
+	await expect(activeMapCanvas(page)).toHaveAttribute('data-store-sprite-count', '0');
+
+	await resumeFirstProfitChallenge(page, { day: 2, eligibility: 'Ranked' });
+	const snapshot = await readChallengeSnapshot(page);
+	expect(snapshot.activeRunsByScenarioId['first-profit']?.game).toMatchObject({ day: 2 });
+});
+
+test('challenge completes the deterministic reference run and persists its ranked best', async ({
+	page
+}) => {
+	const activeRun = advanceActiveChallengeToDay(firstProfitReferenceRun(), 3);
+	await installChallengeSnapshot(page, challengeSnapshot({ activeRun }));
+	await resumeFirstProfitChallenge(page, { day: 3, eligibility: 'Ranked' });
+
+	await advanceChallengeDay(page);
+
+	const results = page.getByRole('dialog', { name: 'Challenge results' });
+	await expect(results).toBeVisible();
+	await expect(results.getByRole('heading', { name: 'Challenge completed' })).toBeVisible();
+	await expect(results).toContainText('Gold · 880 points');
+	await expect(results).toContainText('New best recorded');
+	await expect(challengeRoot(page)).toHaveAttribute('data-scenario-result', 'completed');
+	await expect(challengeRoot(page)).toHaveAttribute('data-scenario-best-updated', 'true');
+	const snapshot = await readChallengeSnapshot(page);
+	expect(snapshot.activeRunsByScenarioId['first-profit']).toBeUndefined();
+	expect(snapshot.bestResultsByDefinitionKey['first-profit@1']?.result).toMatchObject({
+		outcome: 'completed',
+		eligibility: 'ranked',
+		score: 880,
+		medal: 'gold'
+	});
+});
+
+test('challenge fails at the deadline and shows objective evidence', async ({ page }) => {
+	const activeRun = advanceActiveChallengeToDay(startChallengeRun('local-lifeline'), 20);
+	await installChallengeSnapshot(page, challengeSnapshot({ activeRun }));
+	await openChallengeCatalog(page);
+	await challengeCard(page, 'Local Lifeline')
+		.getByRole('button', { name: 'Resume Local Lifeline', exact: true })
+		.click();
+	await expect(challengeStatus(page)).toContainText('Day 20 of 21');
+
+	await advanceChallengeDay(page);
+
+	const results = page.getByRole('dialog', { name: 'Challenge results' });
+	await expect(results.getByRole('heading', { name: 'Challenge failed' })).toBeVisible();
+	await expect(results).toContainText('Deadline triggered on day 21');
+	await expect(results).toContainText('Supply local units');
+	await expect(results).toContainText('Reach the local supply share');
+	await expect(challengeRoot(page)).toHaveAttribute('data-scenario-result', 'failed');
+	const snapshot = await readChallengeSnapshot(page);
+	expect(snapshot.activeRunsByScenarioId['local-lifeline']).toBeUndefined();
+	expect(snapshot.bestResultsByDefinitionKey['local-lifeline@1']).toBeUndefined();
+});
+
+test('challenge commits a non-day negative-cash decision before showing failure', async ({
+	page
+}) => {
+	await installChallengeSnapshot(page, challengeSnapshot({ activeRun: negativeCashDecisionRun() }));
+	await resumeFirstProfitChallenge(page, { day: 1, eligibility: 'Ranked' });
+	await expect(page.getByRole('dialog', { name: 'Challenge results' })).toHaveCount(0);
+	await expect(challengeRoot(page)).toHaveAttribute('data-scenario-result', '');
+
+	const decisions = await openManagementPanel(page, 'Decisions');
+	await decisions.getByRole('button', { name: /Bulk discount/ }).click();
+
+	const results = page.getByRole('dialog', { name: 'Challenge results' });
+	await expect(results.getByRole('heading', { name: 'Challenge failed' })).toBeVisible();
+	await expect(results).toContainText('Avoid negative cash');
+	await expect(challengeRoot(page)).toHaveAttribute('data-scenario-command-pending', 'false');
+	await expect(challengeRoot(page)).toHaveAttribute('data-scenario-result', 'failed');
+	const snapshot = await readChallengeSnapshot(page);
+	expect(snapshot.activeRunsByScenarioId['first-profit']).toBeUndefined();
+});
+
+test('challenge restart restores the official seed and opening state', async ({ page }) => {
+	const activeRun = advanceActiveChallengeToDay(startChallengeRun('first-profit'), 2);
+	await installChallengeSnapshot(page, challengeSnapshot({ activeRun }));
+	await resumeFirstProfitChallenge(page, { day: 2, eligibility: 'Ranked' });
+
+	const menu = await openChallengeMenu(page);
+	await menu.getByRole('button', { name: 'Restart challenge', exact: true }).click();
+
+	await expectChallengeReady(page, { day: 1, eligibility: 'Ranked' });
+	const snapshot = await readChallengeSnapshot(page);
+	const restarted = snapshot.activeRunsByScenarioId['first-profit'];
+	expect(restarted?.run.seed).toBe(280_001);
+	expect(restarted?.game).toMatchObject({ day: 1, cash: 9_000, reports: [] });
+});
+
+test('challenge imports and completes an unranked seed without replacing the ranked best', async ({
+	page
+}) => {
+	const rankedBest = terminalFirstProfitReferenceRun().result!;
+	await installChallengeSnapshot(page, challengeSnapshot({ bestResult: rankedBest }));
+	await openChallengeCatalog(page);
+	const customSeed = 280_004;
+	await page
+		.getByLabel('Share code')
+		.fill(encodeScenarioShareCode({ scenarioId: 'first-profit', version: 1 }, customSeed));
+	await page.getByRole('button', { name: 'Import code', exact: true }).click();
+	await expectChallengeReady(page, { day: 1, eligibility: 'Unranked' });
+
+	const activeRun = advanceActiveChallengeToDay(firstProfitReferenceRun(customSeed), 3);
+	await page.evaluate(({ key, serialized }) => window.localStorage.setItem(key, serialized), {
+		key: BROWSER_SCENARIO_STORAGE_KEY,
+		serialized: JSON.stringify(challengeSnapshot({ activeRun, bestResult: rankedBest }))
+	});
+	await page.reload();
+	await resumeFirstProfitChallenge(page, { day: 3, eligibility: 'Unranked' });
+	await advanceChallengeDay(page);
+
+	const results = page.getByRole('dialog', { name: 'Challenge results' });
+	await expect(results.getByRole('heading', { name: 'Challenge completed' })).toBeVisible();
+	await expect(results).toContainText('Best unchanged');
+	const snapshot = await readChallengeSnapshot(page);
+	expect(snapshot.bestResultsByDefinitionKey['first-profit@1']?.result).toEqual(rankedBest);
+});
+
+test('challenge reload clears transient failed, unranked, and non-best results without history', async ({
+	page
+}) => {
+	const rankedBest = terminalFirstProfitReferenceRun().result!;
+
+	await installChallengeSnapshot(page, challengeSnapshot({ activeRun: negativeCashDecisionRun() }));
+	await resumeFirstProfitChallenge(page, { day: 1, eligibility: 'Ranked' });
+	const decisions = await openManagementPanel(page, 'Decisions');
+	await decisions.getByRole('button', { name: /Bulk discount/ }).click();
+	await expect(page.getByRole('dialog', { name: 'Challenge results' })).toContainText(
+		'Challenge failed'
+	);
+	await page.reload();
+	await expect(page.getByRole('dialog', { name: 'Challenge results' })).toHaveCount(0);
+	await openChallengeCatalog(page);
+	await expect(challengeCard(page, 'First Profit')).not.toContainText('Challenge failed');
+	await page.getByRole('button', { name: 'Close challenge catalog' }).click();
+
+	const customRun = advanceActiveChallengeToDay(firstProfitReferenceRun(280_004), 3);
+	await page.evaluate(({ key, serialized }) => window.localStorage.setItem(key, serialized), {
+		key: BROWSER_SCENARIO_STORAGE_KEY,
+		serialized: JSON.stringify(challengeSnapshot({ activeRun: customRun, bestResult: rankedBest }))
+	});
+	await page.reload();
+	await resumeFirstProfitChallenge(page, { day: 3, eligibility: 'Unranked' });
+	await advanceChallengeDay(page);
+	await expect(page.getByRole('dialog', { name: 'Challenge results' })).toContainText(
+		'Challenge completed'
+	);
+	await page.reload();
+	await expect(page.getByRole('dialog', { name: 'Challenge results' })).toHaveCount(0);
+
+	const nonBestRun = advanceActiveChallengeToDay(startChallengeRun('first-profit'), 3);
+	await page.evaluate(({ key, serialized }) => window.localStorage.setItem(key, serialized), {
+		key: BROWSER_SCENARIO_STORAGE_KEY,
+		serialized: JSON.stringify(challengeSnapshot({ activeRun: nonBestRun, bestResult: rankedBest }))
+	});
+	await page.reload();
+	await resumeFirstProfitChallenge(page, { day: 3, eligibility: 'Ranked' });
+	await advanceChallengeDay(page);
+	await expect(page.getByRole('dialog', { name: 'Challenge results' })).toContainText(
+		'Best unchanged'
+	);
+	await page.reload();
+	await expect(page.getByRole('dialog', { name: 'Challenge results' })).toHaveCount(0);
+	await openChallengeCatalog(page);
+	const card = challengeCard(page, 'First Profit');
+	await expect(card).toContainText('Gold · 880 points');
+	await expect(card).not.toContainText('682 points');
+	await expect(card).not.toContainText('Unranked result');
+	const snapshot = await readChallengeSnapshot(page);
+	expect(snapshot.activeRunsByScenarioId['first-profit']).toBeUndefined();
+	expect(Object.keys(snapshot.bestResultsByDefinitionKey)).toEqual(['first-profit@1']);
+});
 
 test('player can found a store from the city map and advance a day', async ({ page }) => {
 	await page.goto('/');
