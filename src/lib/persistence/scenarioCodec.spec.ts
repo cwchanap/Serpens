@@ -121,6 +121,38 @@ function resolveFixtureDefinition(ref: ScenarioDefinitionRef): ScenarioDefinitio
 	return fixtureDefinition(ref);
 }
 
+type TerminalLookingStartCase = 'required-satisfied' | 'failure-triggered' | 'day-limit';
+
+function terminalLookingStartDefinition(startCase: TerminalLookingStartCase): ScenarioDefinition {
+	const base = fixtureDefinition({ scenarioId: 'first-profit', version: 1 });
+	return {
+		...base,
+		start: {
+			...base.start,
+			overrides: { ...base.start.overrides, storeCap: 1 }
+		},
+		content: {
+			...base.content,
+			retailPlacements: [
+				{
+					cityId: 'harbor-city',
+					tileId: 'harbor-city-1-1',
+					archetypeId: 'convenience'
+				}
+			]
+		},
+		dayLimit: startCase === 'day-limit' ? 1 : base.dayLimit,
+		requiredObjectives:
+			startCase === 'day-limit'
+				? [{ ...base.requiredObjectives[0]!, target: 1_000_000_000 }]
+				: base.requiredObjectives,
+		failures:
+			startCase === 'failure-triggered'
+				? [{ ...base.failures[0]!, comparator: 'gte', target: 0 }]
+				: base.failures
+	};
+}
+
 function fixtureRun(
 	ref: ScenarioDefinitionRef = { scenarioId: 'first-profit', version: 1 },
 	options: {
@@ -1041,33 +1073,7 @@ describe('scenario codec', () => {
 	it.each(['required-satisfied', 'failure-triggered', 'day-limit'] as const)(
 		'round-trips the runtime-produced active start when %s initially',
 		(startCase) => {
-			const base = fixtureDefinition({ scenarioId: 'first-profit', version: 1 });
-			const definition: ScenarioDefinition = {
-				...base,
-				start: {
-					...base.start,
-					overrides: { ...base.start.overrides, storeCap: 1 }
-				},
-				content: {
-					...base.content,
-					retailPlacements: [
-						{
-							cityId: 'harbor-city',
-							tileId: 'harbor-city-1-1',
-							archetypeId: 'convenience'
-						}
-					]
-				},
-				dayLimit: startCase === 'day-limit' ? 1 : base.dayLimit,
-				requiredObjectives:
-					startCase === 'day-limit'
-						? [{ ...base.requiredObjectives[0]!, target: 1_000_000_000 }]
-						: base.requiredObjectives,
-				failures:
-					startCase === 'failure-triggered'
-						? [{ ...base.failures[0]!, comparator: 'gte', target: 0 }]
-						: base.failures
-			};
+			const definition = terminalLookingStartDefinition(startCase);
 			const started = startScenario(definition, definition.officialSeed);
 			if (!started.ok) {
 				throw new Error(
@@ -1097,6 +1103,77 @@ describe('scenario codec', () => {
 			expect(decoded.snapshot.activeRunsByScenarioId['first-profit']).toEqual(record);
 		}
 	);
+
+	it('rejects a later terminal-looking active state that is not the canonical start', () => {
+		const definition = terminalLookingStartDefinition('failure-triggered');
+		const started = startScenario(definition, definition.officialSeed);
+		if (!started.ok) throw new Error(`Scenario start failed: ${started.error.code}`);
+		const laterGame = simulateDay(started.value.game);
+		const laterActive: ScenarioRun = {
+			...started.value,
+			game: laterGame,
+			evaluation: evaluateScenario(definition, laterGame, false)
+		};
+
+		expect(laterActive.evaluation.failures.some((failure) => failure.status === 'triggered')).toBe(
+			true
+		);
+		expect(() => validateScenarioRun(laterActive, () => definition)).toThrow(
+			/Run status must match runtime failure, completion, then deadline selection/
+		);
+	});
+
+	it('round-trips an immediate abandoned canonical terminal-looking start', () => {
+		const definition = terminalLookingStartDefinition('required-satisfied');
+		const started = startScenario(definition, definition.officialSeed);
+		if (!started.ok) throw new Error(`Scenario start failed: ${started.error.code}`);
+		const abandoned = abandonScenario(started.value);
+
+		const encoded = encodeScenarioRunRecord(abandoned, () => definition);
+		const decoded = validateScenarioRun({ ...encoded.run, game: encoded.game }, () => definition);
+
+		expect(decoded).toEqual(abandoned);
+	});
+
+	it('rejects both active and abandoned forms of a later terminal-looking state', () => {
+		const definition = terminalLookingStartDefinition('failure-triggered');
+		const started = startScenario(definition, definition.officialSeed);
+		if (!started.ok) throw new Error(`Scenario start failed: ${started.error.code}`);
+		const laterGame = simulateDay(started.value.game);
+		const laterActive: ScenarioRun = {
+			...started.value,
+			game: laterGame,
+			evaluation: evaluateScenario(definition, laterGame, false)
+		};
+		const laterAbandoned = abandonScenario(laterActive);
+
+		const lifecycleMismatch =
+			/Run status must match runtime failure, completion, then deadline selection/;
+		expect(() => validateScenarioRun(laterActive, () => definition)).toThrow(lifecycleMismatch);
+		expect(() => validateScenarioRun(laterAbandoned, () => definition)).toThrow(lifecycleMismatch);
+	});
+
+	it('accepts abandonment from a later nonterminal active predecessor', () => {
+		const definition = {
+			...terminalLookingStartDefinition('day-limit'),
+			dayLimit: 14
+		};
+		const started = startScenario(definition, definition.officialSeed);
+		if (!started.ok) throw new Error(`Scenario start failed: ${started.error.code}`);
+		const laterGame = simulateDay(started.value.game);
+		const laterActive: ScenarioRun = {
+			...started.value,
+			game: laterGame,
+			evaluation: evaluateScenario(definition, laterGame, false)
+		};
+		const laterAbandoned = abandonScenario(laterActive);
+
+		expect(laterActive.evaluation.required[0]?.status).toBe('pending');
+		expect(laterActive.evaluation.failures.some((failure) => failure.status === 'triggered')).toBe(
+			false
+		);
+		expect(validateScenarioRun(laterAbandoned, () => definition)).toEqual(laterAbandoned);
+	});
 
 	it('retains terminal outcome precedence validation', () => {
 		const completed = fixtureRun(undefined, { status: 'completed', score: 750 });
