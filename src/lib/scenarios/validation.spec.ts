@@ -677,6 +677,81 @@ describe('validateScenarioDefinition', () => {
 		);
 	});
 
+	it('rejects overlapping import-cost-multiplier targets within the same scope', () => {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed recursive fixture
+		const definition = validDefinition() as unknown as Record<string, any>;
+		definition.content.productCategoryIds = ['bottled-water', 'produce'];
+		definition.modifiers = [
+			{
+				kind: 'import-cost-multiplier',
+				scope: 'retail-product',
+				target: { kind: 'ids', ids: ['bottled-water'] },
+				multiplier: 1.5
+			},
+			{
+				kind: 'import-cost-multiplier',
+				scope: 'retail-product',
+				target: { kind: 'ids', ids: ['bottled-water', 'produce'] },
+				multiplier: 2
+			},
+			{
+				kind: 'import-cost-multiplier',
+				scope: 'retail-product',
+				target: { kind: 'all' },
+				multiplier: 3
+			}
+		];
+		expect(codes(definition)).toEqual(
+			expect.arrayContaining([
+				{ path: 'modifiers[1].target', code: 'invalid-modifier' },
+				{ path: 'modifiers[2].target', code: 'invalid-modifier' }
+			])
+		);
+		expect(codes(definition).filter((item) => item.path === 'modifiers[0].target')).toEqual([]);
+	});
+
+	it('does not flag overlapping import-cost-multiplier targets across different scopes', () => {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed recursive fixture
+		const definition = validDefinition() as unknown as Record<string, any>;
+		definition.content.productCategoryIds = ['bottled-water'];
+		definition.content.materialIds = ['water'];
+		definition.modifiers = [
+			{
+				kind: 'import-cost-multiplier',
+				scope: 'retail-product',
+				target: { kind: 'all' },
+				multiplier: 1.5
+			},
+			{
+				kind: 'import-cost-multiplier',
+				scope: 'industrial-material',
+				target: { kind: 'all' },
+				multiplier: 2
+			}
+		];
+		expect(codes(definition)).toEqual([]);
+	});
+
+	it('flags a broad all-target that shadows later specific targets', () => {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed recursive fixture
+		const definition = validDefinition() as unknown as Record<string, any>;
+		definition.modifiers = [
+			{
+				kind: 'import-cost-multiplier',
+				scope: 'retail-product',
+				target: { kind: 'all' },
+				multiplier: 1.5
+			},
+			{
+				kind: 'import-cost-multiplier',
+				scope: 'retail-product',
+				target: { kind: 'ids', ids: ['bottled-water'] },
+				multiplier: 2
+			}
+		];
+		expect(codes(definition)).toEqual([{ path: 'modifiers[1].target', code: 'invalid-modifier' }]);
+	});
+
 	it('validates metric/window support and complete-window semantics', () => {
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed recursive fixture
 		const definition = validDefinition() as unknown as Record<string, any>;
