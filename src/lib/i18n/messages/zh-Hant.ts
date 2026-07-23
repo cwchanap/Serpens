@@ -931,6 +931,95 @@ export const zhHant = {
 			}
 		}
 	},
+	scenarioDefinitions: {
+		firstProfit: {
+			title: '首次獲利',
+			summary: '將小商店發展成獲利事業。',
+			briefing: '在期限前達成正收益。',
+			strategyHint: '控制成本並建立穩定客群。',
+			objectives: { cumulativeNetIncome: '賺取累計淨收入', positiveIncomeStreak: '維持連續正收益' },
+			failures: { negativeCash: '避免現金為負' }
+		},
+		importSqueeze: {
+			title: '進口壓力',
+			summary: '在進口成本上升時維持獲利。',
+			briefing: '完成進口週期並守住利潤。',
+			strategyHint: '謹慎規劃訂單並避免過量庫存。',
+			objectives: { completedImportCycles: '完成進口週期', cumulativeNetIncome: '賺取累計淨收入' },
+			failures: { negativeCash: '避免現金為負' }
+		},
+		localLifeline: {
+			title: '在地生命線',
+			summary: '建立韌性的在地供應鏈。',
+			briefing: '以在地生產商品供應商店。',
+			strategyHint: '平衡生產能力與零售需求。',
+			objectives: { localUnits: '供應在地商品', localShare: '達成在地供應占比' },
+			failures: { negativeCash: '避免現金為負' }
+		}
+	},
+	scenarioCatalog: {
+		title: '挑戰目錄',
+		close: '關閉挑戰目錄',
+		start: '開始',
+		resume: '繼續',
+		restart: '重新開始',
+		startCurrent: '開始目前版本',
+		confirmReplacement: '確認取代',
+		cancel: '取消',
+		shareCode: '分享代碼',
+		importCode: '匯入代碼',
+		copyCode: '複製 {title} 的代碼',
+		copySuccess: '已複製分享代碼。',
+		copyFailure: '無法複製分享代碼。',
+		retry: '重試',
+		olderVersionConfirmation: '開始目前版本會取代進行中的舊版挑戰。',
+		importReplacementConfirmation: '要取代進行中的挑戰嗎？',
+		best: '最佳',
+		noBest: '尚無排名結果',
+		priorVersion: '舊版結果',
+		dayLimit: '{days} 天期限',
+		allowedContent: '{cities} 個城市、{stores} 種商店、{products} 種商品',
+		challengeDetails: '挑戰詳情',
+		restartChallenge: '重新開始挑戰',
+		catalog: '挑戰目錄',
+		returnSandbox: '返回沙盒',
+		abandon: '放棄挑戰',
+		confirmAbandon: '確認放棄'
+	},
+	scenarioStatus: {
+		officialSeed: '官方種子 {seed}',
+		customSeed: '自訂種子 {seed}',
+		ranked: '計入排名',
+		unranked: '不計排名',
+		activeVersion: '進行中版本 {active}（目前版本 {current}）',
+		versionEligibility: '版本 {version} · {eligibility}'
+	},
+	scenarioObjectives: { heading: '目標', required: '必要', optional: '選擇' },
+	scenarioResults: {
+		points: '{score} 分',
+		bronze: '銅牌',
+		silver: '銀牌',
+		gold: '金牌',
+		noMedal: '無獎牌'
+	},
+	scenarioDiagnostics: {
+		invalidBuiltIn: '內建挑戰無效：{detail}',
+		malformedShareCode: '分享代碼格式錯誤。',
+		unknownScenario: '未知的挑戰。',
+		unsupportedVersion: '不支援的挑戰版本。',
+		invalidSeed: '挑戰種子無效。',
+		checksumMismatch: '分享代碼校驗碼不符。',
+		invalidDefinition: '挑戰定義無效。',
+		setupInvariantFailed: '無法建立挑戰。',
+		staleDefinition: '此挑戰版本無法使用。',
+		persistenceReadFailed: '無法載入挑戰。',
+		persistenceWriteFailed: '無法儲存挑戰。',
+		missingRun: '進行中的挑戰無法使用。',
+		forbiddenCommand: '此挑戰不允許這項操作。',
+		forbiddenContent: '此挑戰不允許這項內容。',
+		terminalRun: '此挑戰已結束。'
+	},
+	scenarioModifiers: { importCostMultiplier: '進口成本 ×{multiplier}' },
 	placement: {
 		chooseHighlightedTile: '請選擇已高亮的地塊來建設。',
 		retail: {

@@ -175,6 +175,20 @@ function scenarioDefinition(overrides: Partial<ScenarioDefinition> = {}): Scenar
 	const base = resolveFixtureDefinition(run.definition)!;
 	return {
 		...base,
+		start: {
+			...base.start,
+			overrides: { ...base.start.overrides, storeCap: 1 }
+		},
+		content: {
+			...base.content,
+			retailPlacements: [
+				{
+					cityId: base.start.foundingStore.cityId,
+					tileId: base.start.foundingStore.tileId,
+					archetypeId: base.start.foundingStore.archetypeId
+				}
+			]
+		},
 		allowedCommands: [
 			'advanceDay',
 			'updatePolicy',
@@ -196,6 +210,9 @@ function runForDefinition(definition: ScenarioDefinition): ScenarioRun {
 	const fixture = createFixtureScenarioRun();
 	return {
 		...fixture,
+		definition: { scenarioId: definition.id, version: definition.version },
+		seed: definition.officialSeed,
+		eligibility: 'ranked',
 		evaluation: evaluateScenario(definition, fixture.game, false)
 	};
 }
@@ -523,6 +540,107 @@ describe('GameRouteController sandbox handlers', () => {
 });
 
 describe('GameRouteController scenario integration', () => {
+	it('persists starts before publication and can replace an older run with the selected current definition', async () => {
+		expect.assertions(8);
+		const current = scenarioDefinition({ version: 1 });
+		const olderDefinition = scenarioDefinition({ version: 0 });
+		const olderRun = runForDefinition(olderDefinition);
+		const write = deferred<ScenarioCommitOutcome>();
+		const repository = createScenarioRepositoryHarness(olderRun, {
+			saveActiveRun: vi.fn(() => write.promise)
+		});
+		const controller = new GameRouteController(
+			controllerOptions({ scenarioRepository: repository, definition: current })
+		);
+		await controller.initializeScenarios();
+
+		const pending = controller.startScenarioRun(current, current.officialSeed);
+		expect(controller.state.activeScenarioRun).toBe(olderRun);
+		const nextRun = vi.mocked(repository.saveActiveRun).mock.calls[0]![0];
+		expect(nextRun.definition).toEqual({ scenarioId: current.id, version: 1 });
+		expect(nextRun.seed).toBe(current.officialSeed);
+		expect(nextRun.eligibility).toBe('ranked');
+		write.resolve({ activeRun: nextRun, terminalResult: null, bestUpdated: false });
+		expect(await pending).toMatchObject({ status: 'committed' });
+		expect(controller.state.activeScenarioRun).toBe(nextRun);
+		expect(controller.state.lastScenarioResult).toBeNull();
+		expect(controller.state.lastScenarioBestUpdated).toBe(false);
+	});
+
+	it('resumes the exact stored run and restarts its exact version and selected seed', async () => {
+		expect.assertions(7);
+		const definition = scenarioDefinition({ version: 1 });
+		const stored = { ...runForDefinition(definition), seed: 999, eligibility: 'unranked' as const };
+		const repository = createScenarioRepositoryHarness(stored);
+		const controller = new GameRouteController(
+			controllerOptions({ scenarioRepository: repository, definition })
+		);
+		await controller.initializeScenarios();
+
+		controller.returnToSandbox();
+		expect(await controller.resumeScenarioRun(definition.id)).toMatchObject({
+			status: 'committed'
+		});
+		expect(controller.state.activeScenarioRun).toBe(stored);
+		expect(repository.saveActiveRun).not.toHaveBeenCalled();
+
+		const restarted = await controller.restartScenarioRun();
+		const saved = vi.mocked(repository.saveActiveRun).mock.calls[0]![0];
+		expect(restarted).toMatchObject({ status: 'committed' });
+		expect(saved.definition).toEqual(stored.definition);
+		expect(saved.seed).toBe(999);
+		expect(saved.eligibility).toBe('unranked');
+	});
+
+	it('keeps prior state on lifecycle write failure and retries the exact start', async () => {
+		expect.assertions(7);
+		const definition = scenarioDefinition();
+		const oldRun = runForDefinition(definition);
+		const repository = createScenarioRepositoryHarness(oldRun);
+		vi.mocked(repository.saveActiveRun)
+			.mockRejectedValueOnce(new Error('disk'))
+			.mockImplementationOnce(async (run) => ({
+				activeRun: run,
+				terminalResult: null,
+				bestUpdated: false
+			}));
+		const controller = new GameRouteController(
+			controllerOptions({ scenarioRepository: repository, definition })
+		);
+		await controller.initializeScenarios();
+
+		expect(await controller.startScenarioRun(definition, 999)).toMatchObject({ status: 'failed' });
+		expect(controller.state.activeScenarioRun).toBe(oldRun);
+		expect(controller.state.scenarioOperationError?.code).toBe('persistence-write-failed');
+		expect(controller.state.retryScenarioOperation).not.toBeNull();
+		await controller.state.retryScenarioOperation!();
+		const attempts = vi.mocked(repository.saveActiveRun).mock.calls.map(([run]) => run);
+		expect(attempts[1]?.seed).toBe(attempts[0]?.seed);
+		expect(controller.state.activeScenarioRun?.seed).toBe(999);
+		expect(controller.state.scenarioOperationError).toBeNull();
+	});
+
+	it('abandons by removing the active record without committing a best and returns to sandbox losslessly', async () => {
+		expect.assertions(7);
+		const definition = scenarioDefinition();
+		const run = runForDefinition(definition);
+		const repository = createScenarioRepositoryHarness(run);
+		const controller = new GameRouteController(
+			controllerOptions({ scenarioRepository: repository, definition })
+		);
+		await controller.initializeScenarios();
+
+		controller.returnToSandbox();
+		expect(controller.state.playMode).toBe('sandbox');
+		expect(controller.state.activeScenarioRun).toBe(run);
+		expect(repository.removeActiveRun).not.toHaveBeenCalled();
+		expect(repository.saveActiveRun).not.toHaveBeenCalled();
+
+		expect(await controller.abandonScenarioRun()).toMatchObject({ status: 'committed' });
+		expect(repository.removeActiveRun).toHaveBeenCalledWith(definition.id);
+		expect(repository.commitTerminalRun).not.toHaveBeenCalled();
+	});
+
 	it('resumes independently, rejects busy commands, and keeps read-only selection callable', async () => {
 		const definition = scenarioDefinition();
 		const run = runForDefinition(definition);
