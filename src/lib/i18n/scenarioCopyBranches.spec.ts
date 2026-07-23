@@ -120,7 +120,7 @@ function evaluation(): ScenarioRun['evaluation'] {
 		failures: [],
 		deadline: {
 			triggered: true,
-			evidence: evidence('deadline', 'cash', 125, 100, { kind: 'current' })
+			evidence: { conditionId: 'deadline-exceeded', day: 4, dayLimit: 14 }
 		},
 		risks: [{ kind: 'condition', conditionId: 'share', distance: 0.1, triggered: true }],
 		projection: { score: 650, medal: 'bronze', componentPoints: [], componentEvidence: [] }
