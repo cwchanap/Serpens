@@ -1,3 +1,5 @@
+import type { Messages } from './en';
+
 export const zhHant = {
 	app: {
 		title: 'Serpens'
@@ -1089,4 +1091,4 @@ export const zhHant = {
 			requiresCash: '{buildingName} 需要 {amount} 現金。'
 		}
 	}
-} as const;
+} as const satisfies Messages;

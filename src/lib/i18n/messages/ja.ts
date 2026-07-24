@@ -1,3 +1,5 @@
+import type { Messages } from './en';
+
 export const ja = {
 	app: {
 		title: 'Serpens'
@@ -1097,4 +1099,4 @@ export const ja = {
 			requiresCash: '{buildingName} の建設には {amount} の現金が必要です。'
 		}
 	}
-} as const;
+} as const satisfies Messages;

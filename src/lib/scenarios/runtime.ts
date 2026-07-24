@@ -232,6 +232,10 @@ function dispatchScenarioCommand(
 	}
 }
 
+// GameState is pure JSON (no Date/Map/Set/class instances), so this structural
+// comparison is sufficient. Do not use util.isDeepStrictEqual here — runtime.ts
+// runs in the browser via gameRouteController/+page.svelte, and that API is
+// Node-only. If GameState ever gains non-JSON types, extend this accordingly.
 function deeplyEqual(first: unknown, second: unknown): boolean {
 	if (Object.is(first, second)) return true;
 	if (
