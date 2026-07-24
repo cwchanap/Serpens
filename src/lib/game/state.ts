@@ -254,6 +254,12 @@ export function resolveDecision(game: GameState, decisionId: string, optionId: s
 		return game;
 	}
 
+	// Wrapping the result in refreshWorldProgress is intentional (commit a6b9e40,
+	// "fix: enforce strict game state invariants"): decision effects can change
+	// store/warehouse state, so the post-transition state must be re-normalized to
+	// pass the strict invariants that scenario setup validation enforces. Do not
+	// revert this to a plain spread return — scenario post-command evaluation
+	// depends on the resulting state being invariant-valid.
 	return refreshWorldProgress({
 		...game,
 		cash: game.cash + (option.effects.cash ?? 0),

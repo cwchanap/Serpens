@@ -397,6 +397,7 @@ export function scenarioDiagnosticText(error: ScenarioOperationError, i18n: I18n
 		'invalid-share-code': 'scenarioDiagnostics.malformedShareCode',
 		'forbidden-command': 'scenarioDiagnostics.forbiddenCommand',
 		'forbidden-content': 'scenarioDiagnostics.forbiddenContent',
+		'invalid-command': 'scenarioDiagnostics.invalidCommand',
 		'stale-definition': 'scenarioDiagnostics.staleDefinition',
 		'persistence-read-failed': 'scenarioDiagnostics.persistenceReadFailed',
 		'persistence-write-failed': 'scenarioDiagnostics.persistenceWriteFailed',

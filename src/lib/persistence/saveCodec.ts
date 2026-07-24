@@ -61,7 +61,15 @@ import {
 	type SaveSummary
 } from './saveTypes';
 
-export type SaveDataErrorCode = 'corrupt' | 'storage-unavailable' | 'slot-not-found';
+export type SaveDataErrorCode =
+	| 'corrupt'
+	| 'storage-unavailable'
+	| 'slot-not-found'
+	| 'invariant-store-cap'
+	| 'invariant-products'
+	| 'invariant-stock-health'
+	| 'invariant-warehouse'
+	| 'invariant-inventory';
 
 export class SaveDataError extends Error {
 	readonly code: SaveDataErrorCode;
@@ -813,10 +821,13 @@ function validateCurrentGameStateInternal(value: unknown): GameState {
 	});
 	const storeCap = requireNumber(game.storeCap, 'Saved game storeCap');
 	if (!Number.isInteger(storeCap)) {
-		throw new SaveDataError('Saved game storeCap must be an integer');
+		throw new SaveDataError('Saved game storeCap must be an integer', 'invariant-store-cap');
 	}
 	if (storeCap < stores.length) {
-		throw new SaveDataError('Saved game storeCap must be at least the current store count');
+		throw new SaveDataError(
+			'Saved game storeCap must be at least the current store count',
+			'invariant-store-cap'
+		);
 	}
 
 	const currentGame = game as unknown as GameState;
@@ -831,7 +842,8 @@ function validateCurrentGameStateInternal(value: unknown): GameState {
 		currentGame.warehouse.overflowCost !== expectedWarehouse.overflowCost
 	) {
 		throw new SaveDataError(
-			'Saved game warehouse capacity and pressure must match current buildings and materials'
+			'Saved game warehouse capacity and pressure must match current buildings and materials',
+			'invariant-warehouse'
 		);
 	}
 	if (refreshWorldProgress(currentGame) !== currentGame) {
@@ -847,7 +859,8 @@ function validateCurrentGameStateInternal(value: unknown): GameState {
 			inventoryUsed(building.inventory) > buildingType.bufferCapacity
 		) {
 			throw new SaveDataError(
-				`Saved game industrialBuildings[${index}] inventory must fit its recipe buffer`
+				`Saved game industrialBuildings[${index}] inventory must fit its recipe buffer`,
+				'invariant-inventory'
 			);
 		}
 	}
@@ -2016,7 +2029,10 @@ function validateSavedStore(value: unknown, label: string): void {
 	const stockHealth = requireNumber(store.stockHealth, `${label} stockHealth`);
 	const products = validateSavedStoreProducts(store, label);
 	if (stockHealth !== calculateStockHealth(products)) {
-		throw new SaveDataError(`${label} stockHealth must match its products`);
+		throw new SaveDataError(
+			`${label} stockHealth must match its products`,
+			'invariant-stock-health'
+		);
 	}
 	requireNumber(store.staffMorale, `${label} staffMorale`);
 	requireNumber(store.staffCapacity, `${label} staffCapacity`);
@@ -2315,13 +2331,15 @@ function validateSavedStoreProducts(store: Record<string, unknown>, label: strin
 
 		if (!archetypeCategories.has(product.categoryId)) {
 			throw new SaveDataError(
-				`${label} products[${index}] categoryId must belong to archetype ${archetypeId}`
+				`${label} products[${index}] categoryId must belong to archetype ${archetypeId}`,
+				'invariant-products'
 			);
 		}
 
 		if (seenCategories.has(product.categoryId)) {
 			throw new SaveDataError(
-				`${label} products[${index}] categoryId must be unique for archetype ${archetypeId}`
+				`${label} products[${index}] categoryId must be unique for archetype ${archetypeId}`,
+				'invariant-products'
 			);
 		}
 
@@ -2335,14 +2353,16 @@ function validateSavedStoreProducts(store: Record<string, unknown>, label: strin
 
 	if (products.length !== unlockedCount) {
 		throw new SaveDataError(
-			`${label} products length (${products.length}) must equal unlocked category count (${unlockedCount}) for level ${storeLevel}`
+			`${label} products length (${products.length}) must equal unlocked category count (${unlockedCount}) for level ${storeLevel}`,
+			'invariant-products'
 		);
 	}
 
 	for (const [index, product] of validatedProducts.entries()) {
 		if (!unlockedCategories.has(product.categoryId)) {
 			throw new SaveDataError(
-				`${label} products[${index}] categoryId must be unlocked at level ${storeLevel} for archetype ${archetypeId}`
+				`${label} products[${index}] categoryId must be unlocked at level ${storeLevel} for archetype ${archetypeId}`,
+				'invariant-products'
 			);
 		}
 	}

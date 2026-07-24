@@ -27,7 +27,12 @@ export type ExecuteScenarioCommandResult =
 	| { ok: true; changed: true; run: ScenarioRun }
 	| {
 			ok: false;
-			code: 'forbidden-command' | 'forbidden-content' | 'terminal-run' | 'stale-definition';
+			code:
+				| 'forbidden-command'
+				| 'forbidden-content'
+				| 'invalid-command'
+				| 'terminal-run'
+				| 'stale-definition';
 	  };
 
 export type ScenarioStartResult = ScenarioOperationResult<ScenarioRun>;
@@ -290,7 +295,18 @@ export function executeScenarioCommand(
 	const capability = isScenarioCommandAllowed(definition, run, command);
 	if (!capability.allowed) return { ok: false, code: capability.code };
 
-	const game = dispatchScenarioCommand(run.game, definition, command);
+	let game: GameState;
+	try {
+		game = dispatchScenarioCommand(run.game, definition, command);
+	} catch {
+		// The command passed capability/content checks but the transition itself
+		// rejected it (e.g. openStoreAtTile throws on a locked/occupied tile, or
+		// buildIndustrialBuilding throws on an invalid placement). Surface this as
+		// a rejected command instead of letting it propagate to the controller's
+		// catch-all, which would mislabel a state-validation error as a
+		// persistence-write failure and offer a pointless retry.
+		return { ok: false, code: 'invalid-command' };
+	}
 	if (deeplyEqual(run.game, game)) return { ok: true, changed: false, run };
 
 	const conditions = evaluateScenarioConditions(definition, game, false);

@@ -1080,6 +1080,7 @@ export const en = {
 		missingRun: 'The active challenge run is unavailable.',
 		forbiddenCommand: 'That action is unavailable in this challenge.',
 		forbiddenContent: 'That content is unavailable in this challenge.',
+		invalidCommand: 'That action is not valid for the current state.',
 		terminalRun: 'This challenge run has already ended.'
 	},
 	scenarioModifiers: {

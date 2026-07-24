@@ -510,64 +510,54 @@ function validateBuiltScenarioInvariants(
 }
 
 function strictSetupFailure(error: SaveDataError, game: GameState): ScenarioDiagnostic {
-	if (
-		error.message.includes('storeCap must be an integer') ||
-		error.message.includes('storeCap must be at least the current store count')
-	) {
-		return {
-			path: 'start.overrides.storeCap',
-			code: 'setup-invariant-failed',
-			value: game.storeCap,
-			detail: 'The built game store cap must be an integer and at least its starting store count.'
-		};
+	// Map structured SaveDataError invariant codes to scenario setup diagnostics.
+	// The codes are set at the throw sites in saveCodec.ts validateCurrentGameState
+	// path; the default branch covers any untagged validation failure.
+	switch (error.code) {
+		case 'invariant-store-cap':
+			return {
+				path: 'start.overrides.storeCap',
+				code: 'setup-invariant-failed',
+				value: game.storeCap,
+				detail: 'The built game store cap must be an integer and at least its starting store count.'
+			};
+		case 'invariant-products':
+			return {
+				path: 'start.overrides.stores',
+				code: 'setup-invariant-failed',
+				value: game.stores.flatMap((store) => store.products.map((product) => product.categoryId)),
+				detail:
+					'The built game product categories must exactly match the categories unlocked at its store level.'
+			};
+		case 'invariant-stock-health':
+			return {
+				path: 'start.overrides.stores',
+				code: 'setup-invariant-failed',
+				value: game.stores.map((store) => store.stockHealth),
+				detail: 'The built game store stock health does not match its products.'
+			};
+		case 'invariant-warehouse':
+			return {
+				path: 'start.overrides.warehouseMaterials',
+				code: 'setup-invariant-failed',
+				value: game.warehouse,
+				detail: 'The built game warehouse contents or pressure exceed derived capacity.'
+			};
+		case 'invariant-inventory':
+			return {
+				path: 'start.overrides.buildingInventories',
+				code: 'setup-invariant-failed',
+				value: game.industrialBuildings.map((building) => building.inventory),
+				detail: 'A built game industrial inventory exceeds its derived buffer capacity.'
+			};
+		default:
+			return {
+				path: 'start',
+				code: 'setup-invariant-failed',
+				value: error.message,
+				detail: 'The built game failed strict current-state validation.'
+			};
 	}
-
-	if (
-		error.message.includes(' products length (') ||
-		error.message.includes(' categoryId must be')
-	) {
-		return {
-			path: 'start.overrides.stores',
-			code: 'setup-invariant-failed',
-			value: game.stores.flatMap((store) => store.products.map((product) => product.categoryId)),
-			detail:
-				'The built game product categories must exactly match the categories unlocked at its store level.'
-		};
-	}
-
-	if (error.message.includes(' stockHealth must match its products')) {
-		return {
-			path: 'start.overrides.stores',
-			code: 'setup-invariant-failed',
-			value: game.stores.map((store) => store.stockHealth),
-			detail: 'The built game store stock health does not match its products.'
-		};
-	}
-
-	if (error.message.includes('warehouse capacity and pressure must match')) {
-		return {
-			path: 'start.overrides.warehouseMaterials',
-			code: 'setup-invariant-failed',
-			value: game.warehouse,
-			detail: 'The built game warehouse contents or pressure exceed derived capacity.'
-		};
-	}
-
-	if (error.message.includes(' inventory must fit its recipe buffer')) {
-		return {
-			path: 'start.overrides.buildingInventories',
-			code: 'setup-invariant-failed',
-			value: game.industrialBuildings.map((building) => building.inventory),
-			detail: 'A built game industrial inventory exceeds its derived buffer capacity.'
-		};
-	}
-
-	return {
-		path: 'start',
-		code: 'setup-invariant-failed',
-		value: error.message,
-		detail: 'The built game failed strict current-state validation.'
-	};
 }
 
 export function buildScenarioGame(

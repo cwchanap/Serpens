@@ -200,6 +200,7 @@ describe('scenario copy branches', () => {
 			'invalid-share-code',
 			'forbidden-command',
 			'forbidden-content',
+			'invalid-command',
 			'stale-definition',
 			'persistence-read-failed',
 			'persistence-write-failed',
