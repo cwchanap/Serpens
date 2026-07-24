@@ -94,12 +94,22 @@ export function calculateScenarioScoreProjection(
 	const score = aggregateScore(components);
 	return {
 		score,
-		medal: medalForScore(definition, 'completed', score)!,
+		medal: medalForScore(definition, 'completed', score),
 		componentPoints: points,
 		componentEvidence: components.map((component) => component.evidence)
 	};
 }
 
+export function medalForScore(
+	definition: ScenarioDefinition,
+	status: 'completed',
+	score: number
+): ScenarioMedal;
+export function medalForScore(
+	definition: ScenarioDefinition,
+	status: ScenarioRunStatus,
+	score: number
+): ScenarioMedal | null;
 export function medalForScore(
 	definition: ScenarioDefinition,
 	status: ScenarioRunStatus,

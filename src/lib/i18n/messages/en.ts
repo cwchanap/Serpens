@@ -1105,3 +1105,14 @@ export const en = {
 		}
 	}
 } as const;
+
+type StringifyMessages<T> = T extends string
+	? string
+	: T extends Record<string, unknown>
+		? { [K in keyof T]: StringifyMessages<T[K]> }
+		: T;
+
+// Shape of `en` with every leaf widened to `string`. Used by `satisfies Messages`
+// on the other locale files so structural key drift (missing/extra/misnamed keys)
+// fails at check time, while still allowing each locale to use its own text.
+export type Messages = StringifyMessages<typeof en>;
