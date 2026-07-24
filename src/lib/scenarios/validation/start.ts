@@ -1,0 +1,552 @@
+import { ARCHETYPES } from '$lib/game/archetypes';
+import { INDUSTRIAL_BUILDING_TYPES } from '$lib/game/industry';
+import { MAX_STORE_LEVEL, getUnlockedCategoryCount } from '$lib/game/leveling';
+import type { IndustrialBuildingTypeId } from '$lib/game/types';
+import { STARTER_STORE_CAP, getWorldCityDefinition } from '$lib/game/world';
+import type { AuthoredBuilding, JsonObject, ValidationContext } from './shared';
+import {
+	BUILDING_INVENTORY_KEYS,
+	FOUNDING_STORE_KEYS,
+	INDUSTRIAL_BUILDING_KEYS,
+	KNOWN_CITY_IDS,
+	KNOWN_MATERIAL_IDS,
+	KNOWN_PRODUCT_IDS,
+	OVERRIDE_KEYS,
+	POLICY_KEYS,
+	POLICY_VALUES,
+	PRODUCT_OVERRIDE_KEYS,
+	START_KEYS,
+	STORE_OVERRIDE_KEYS,
+	WORLD_OVERRIDE_KEYS,
+	arrayValue,
+	closedObject,
+	diagnostic,
+	isObject,
+	nonEmptyString,
+	nonNegativeNumber,
+	positiveNumber,
+	validateIncluded,
+	validateKnownReference,
+	validateReferenceArray
+} from './shared';
+import {
+	validateIndustrialBuildingPlacement,
+	validateIndustrialPlacementShape,
+	validateRetailPlacement
+} from './content';
+import { canActivateRetailCity, overlapsFoundingStore } from './geometry';
+import { validateRails } from './rails';
+
+function validateStart(context: ValidationContext, value: unknown): void {
+	const start = closedObject(context, value, 'start', START_KEYS);
+	if (!start) return;
+	const foundingStore = closedObject(
+		context,
+		start.foundingStore,
+		'start.foundingStore',
+		FOUNDING_STORE_KEYS
+	);
+	const setupRefs = new Set<string>();
+	if (foundingStore) {
+		if (nonEmptyString(context, foundingStore.ref, 'start.foundingStore.ref'))
+			setupRefs.add(foundingStore.ref);
+		if (validateRetailPlacement(context, foundingStore, 'start.foundingStore')) {
+			context.activeRetailCityId = foundingStore.cityId as string;
+		}
+		validateIncluded(
+			context,
+			foundingStore.cityId,
+			'start.foundingStore.cityId',
+			context.content.cities
+		);
+		validateIncluded(
+			context,
+			foundingStore.archetypeId,
+			'start.foundingStore.archetypeId',
+			context.content.archetypes
+		);
+	}
+
+	const occupiedByCity = new Map<string, Set<string>>();
+	const buildings = arrayValue(context, start.industrialBuildings, 'start.industrialBuildings');
+	if (buildings) {
+		for (const [index, candidate] of buildings.entries()) {
+			const path = `start.industrialBuildings[${index}]`;
+			const building = closedObject(context, candidate, path, INDUSTRIAL_BUILDING_KEYS);
+			if (!building) continue;
+			if (nonEmptyString(context, building.ref, `${path}.ref`)) {
+				if (setupRefs.has(building.ref))
+					diagnostic(
+						context,
+						`${path}.ref`,
+						'duplicate-reference',
+						building.ref,
+						`Duplicate setup ref: ${building.ref}.`
+					);
+				setupRefs.add(building.ref);
+			}
+			const authored = validateIndustrialPlacementShape(context, building, path, 'typeId');
+			if (!authored) continue;
+			authored.ref = typeof building.ref === 'string' ? building.ref : undefined;
+			context.startBuildingPlacements.push(authored);
+			authored.validPlacement = validateIndustrialBuildingPlacement(
+				context,
+				authored,
+				occupiedByCity
+			);
+			validateIncluded(context, authored.cityId, `${path}.cityId`, context.content.cities);
+			validateIncluded(context, authored.typeId, `${path}.typeId`, context.content.buildingTypes);
+		}
+	}
+
+	validateRails(context, start.rails, occupiedByCity);
+	validateOverrides(context, start.overrides, foundingStore, context.startBuildingPlacements);
+}
+
+function contentObject(context: ValidationContext): JsonObject | undefined {
+	const content = context.definition?.content;
+	return isObject(content) ? content : undefined;
+}
+
+function validateOverrides(
+	context: ValidationContext,
+	value: unknown,
+	foundingStore: JsonObject | undefined,
+	buildings: readonly AuthoredBuilding[]
+): void {
+	const overrides = closedObject(context, value, 'start.overrides', OVERRIDE_KEYS, []);
+	if (!overrides) return;
+	for (const key of ['cash', 'debt'] as const) {
+		if (Object.hasOwn(overrides, key))
+			nonNegativeNumber(context, overrides[key], `start.overrides.${key}`);
+	}
+	if (Object.hasOwn(overrides, 'policy')) validatePolicy(context, overrides.policy);
+	const targetLevels = validateStoreOverrides(context, overrides.stores, foundingStore);
+	validateBuildingInventories(context, overrides.buildingInventories, buildings);
+	validateMaterialRecord(
+		context,
+		overrides.warehouseMaterials,
+		'start.overrides.warehouseMaterials',
+		true
+	);
+	validateWarehouseCapacity(context, overrides.warehouseMaterials, buildings);
+	if (Object.hasOwn(overrides, 'world')) validateWorldOverride(context, overrides.world);
+	validateStoreCap(context, overrides.storeCap);
+	validateAllowlistedProductUnlocks(context, foundingStore, targetLevels);
+}
+
+function validatePolicy(context: ValidationContext, value: unknown): void {
+	const policy = closedObject(context, value, 'start.overrides.policy', POLICY_KEYS);
+	if (!policy) return;
+	for (const key of POLICY_KEYS) {
+		if (!POLICY_VALUES[key].has(policy[key] as string)) {
+			diagnostic(
+				context,
+				`start.overrides.policy.${key}`,
+				'invalid-policy',
+				policy[key],
+				`Unsupported ${key} policy value.`
+			);
+		}
+	}
+}
+
+function validateStoreOverrides(
+	context: ValidationContext,
+	value: unknown,
+	foundingStore: JsonObject | undefined
+): Map<string, number> {
+	const levels = new Map<string, number>();
+	if (value === undefined) return levels;
+	const overrides = arrayValue(context, value, 'start.overrides.stores');
+	if (!overrides) return levels;
+	const seen = new Set<string>();
+	for (const [index, candidate] of overrides.entries()) {
+		const path = `start.overrides.stores[${index}]`;
+		const override = closedObject(context, candidate, path, STORE_OVERRIDE_KEYS, ['storeRef']);
+		if (!override) continue;
+		const storeRef = override.storeRef;
+		const validRef = nonEmptyString(context, storeRef, `${path}.storeRef`);
+		if (validRef) {
+			if (seen.has(storeRef))
+				diagnostic(
+					context,
+					`${path}.storeRef`,
+					'duplicate-reference',
+					storeRef,
+					`Duplicate store override for ${storeRef}.`
+				);
+			seen.add(storeRef);
+			if (!foundingStore || storeRef !== foundingStore.ref) {
+				diagnostic(
+					context,
+					`${path}.storeRef`,
+					'invalid-reference',
+					storeRef,
+					'Store overrides must reference a store created earlier in setup.'
+				);
+			}
+		}
+		let targetLevel = 1;
+		if (Object.hasOwn(override, 'targetLevel')) {
+			if (
+				typeof override.targetLevel !== 'number' ||
+				!Number.isInteger(override.targetLevel) ||
+				override.targetLevel < 1 ||
+				override.targetLevel > MAX_STORE_LEVEL
+			) {
+				diagnostic(
+					context,
+					`${path}.targetLevel`,
+					'invalid-target-level',
+					override.targetLevel,
+					`Target level must be an integer from 1 through ${MAX_STORE_LEVEL}.`
+				);
+			} else targetLevel = override.targetLevel;
+		}
+		if (validRef) levels.set(storeRef, targetLevel);
+		validateProductOverrides(context, override.products, path, foundingStore, targetLevel);
+	}
+	return levels;
+}
+
+function validateProductOverrides(
+	context: ValidationContext,
+	value: unknown,
+	storePath: string,
+	foundingStore: JsonObject | undefined,
+	targetLevel: number
+): void {
+	if (value === undefined) return;
+	const products = arrayValue(context, value, `${storePath}.products`);
+	if (!products) return;
+	const archetype = ARCHETYPES.find((candidate) => candidate.id === foundingStore?.archetypeId);
+	const unlockedIds = new Set(
+		archetype?.startingCategories
+			.slice(0, getUnlockedCategoryCount(targetLevel))
+			.map((category) => category.id) ?? []
+	);
+	const seen = new Set<string>();
+	for (const [index, candidate] of products.entries()) {
+		const path = `${storePath}.products[${index}]`;
+		const product = closedObject(context, candidate, path, PRODUCT_OVERRIDE_KEYS);
+		if (!product) continue;
+		const categoryId = product.categoryId;
+		const validCategory = validateKnownReference(
+			context,
+			categoryId,
+			`${path}.categoryId`,
+			KNOWN_PRODUCT_IDS,
+			'product category'
+		);
+		if (validCategory) {
+			if (seen.has(categoryId))
+				diagnostic(
+					context,
+					`${path}.categoryId`,
+					'duplicate-reference',
+					categoryId,
+					`Duplicate product override for ${categoryId}.`
+				);
+			seen.add(categoryId);
+			if (!unlockedIds.has(categoryId))
+				diagnostic(
+					context,
+					`${path}.categoryId`,
+					'product-locked',
+					categoryId,
+					`Product ${categoryId} is not unlocked at target level ${targetLevel}.`
+				);
+			validateIncluded(context, categoryId, `${path}.categoryId`, context.content.products);
+		}
+		for (const key of ['stock', 'reorderThreshold', 'targetStock'] as const) {
+			nonNegativeNumber(context, product[key], `${path}.${key}`);
+		}
+		positiveNumber(context, product.sellingPrice, `${path}.sellingPrice`);
+		if (
+			typeof product.reorderThreshold === 'number' &&
+			typeof product.targetStock === 'number' &&
+			product.reorderThreshold > product.targetStock
+		) {
+			diagnostic(
+				context,
+				`${path}.reorderThreshold`,
+				'invalid-inventory-target',
+				product.reorderThreshold,
+				'Reorder threshold cannot exceed target stock.'
+			);
+		}
+	}
+}
+
+function validateBuildingInventories(
+	context: ValidationContext,
+	value: unknown,
+	buildings: readonly AuthoredBuilding[]
+): void {
+	if (value === undefined) return;
+	const inventories = arrayValue(context, value, 'start.overrides.buildingInventories');
+	if (!inventories) return;
+	const byRef = new Map(buildings.map((building) => [building.ref, building]));
+	const seen = new Set<string>();
+	for (const [index, candidate] of inventories.entries()) {
+		const path = `start.overrides.buildingInventories[${index}]`;
+		const inventory = closedObject(context, candidate, path, BUILDING_INVENTORY_KEYS);
+		if (!inventory) continue;
+		const materials = validateMaterialRecord(
+			context,
+			inventory.materials,
+			`${path}.materials`,
+			true
+		);
+		if (nonEmptyString(context, inventory.buildingRef, `${path}.buildingRef`)) {
+			if (seen.has(inventory.buildingRef))
+				diagnostic(
+					context,
+					`${path}.buildingRef`,
+					'duplicate-reference',
+					inventory.buildingRef,
+					`Duplicate building inventory for ${inventory.buildingRef}.`
+				);
+			seen.add(inventory.buildingRef);
+			const building = byRef.get(inventory.buildingRef);
+			if (!building)
+				diagnostic(
+					context,
+					`${path}.buildingRef`,
+					'invalid-reference',
+					inventory.buildingRef,
+					'Building inventories must reference a building created earlier in setup.'
+				);
+			else {
+				const used = [...materials.values()].reduce((total, quantity) => total + quantity, 0);
+				const capacity =
+					INDUSTRIAL_BUILDING_TYPES[building.typeId as IndustrialBuildingTypeId]?.bufferCapacity ??
+					0;
+				if (used > capacity)
+					diagnostic(
+						context,
+						`${path}.materials`,
+						'building-inventory-capacity-exceeded',
+						inventory.materials,
+						`Building inventory uses ${used} units but capacity is ${capacity}.`
+					);
+			}
+		}
+	}
+}
+
+function validateMaterialRecord(
+	context: ValidationContext,
+	value: unknown,
+	path: string,
+	requireAllowed: boolean
+): Map<string, number> {
+	const result = new Map<string, number>();
+	if (value === undefined) return result;
+	if (!isObject(value)) {
+		diagnostic(
+			context,
+			path,
+			'invalid-object',
+			value,
+			`${path} must be a material quantity object.`
+		);
+		return result;
+	}
+	for (const [materialId, quantity] of Object.entries(value)) {
+		const itemPath = `${path}.${materialId}`;
+		if (!KNOWN_MATERIAL_IDS.has(materialId)) {
+			diagnostic(
+				context,
+				itemPath,
+				'invalid-reference',
+				materialId,
+				`Unknown material reference: ${materialId}.`
+			);
+			continue;
+		}
+		if (requireAllowed) validateIncluded(context, materialId, itemPath, context.content.materials);
+		if (nonNegativeNumber(context, quantity, itemPath)) result.set(materialId, quantity);
+	}
+	return result;
+}
+
+function validateWarehouseCapacity(
+	context: ValidationContext,
+	value: unknown,
+	buildings: readonly AuthoredBuilding[]
+): void {
+	if (value === undefined || !isObject(value)) return;
+	const used = Object.values(value).reduce<number>(
+		(total, quantity) =>
+			total +
+			(typeof quantity === 'number' && Number.isFinite(quantity) && quantity >= 0 ? quantity : 0),
+		0
+	);
+	const capacity = buildings.reduce(
+		(total, building) =>
+			total +
+			(INDUSTRIAL_BUILDING_TYPES[building.typeId as IndustrialBuildingTypeId]?.warehouseCapacity ??
+				0),
+		0
+	);
+	if (used > capacity) {
+		diagnostic(
+			context,
+			'start.overrides.warehouseMaterials',
+			'warehouse-capacity-exceeded',
+			value,
+			`Starting warehouse contents use ${used} units but authored capacity is ${capacity}.`
+		);
+	}
+}
+
+function validateWorldOverride(context: ValidationContext, value: unknown): void {
+	const world = closedObject(context, value, 'start.overrides.world', WORLD_OVERRIDE_KEYS);
+	if (!world) return;
+	const revealed = validateReferenceArray(
+		context,
+		world.revealedCityIds,
+		'start.overrides.world.revealedCityIds',
+		KNOWN_CITY_IDS,
+		'city'
+	);
+	const opened = validateReferenceArray(
+		context,
+		world.openedCityIds,
+		'start.overrides.world.openedCityIds',
+		KNOWN_CITY_IDS,
+		'city'
+	);
+	context.revealedCityIds = revealed;
+	context.openedCityIds = opened;
+	for (const cityId of opened) {
+		if (!revealed.has(cityId))
+			diagnostic(
+				context,
+				'start.overrides.world.openedCityIds',
+				'invalid-world-state',
+				cityId,
+				`Opened city ${cityId} must also be revealed.`
+			);
+	}
+	validateWorldArrayInclusions(
+		context,
+		world.revealedCityIds,
+		'start.overrides.world.revealedCityIds'
+	);
+	validateWorldArrayInclusions(context, world.openedCityIds, 'start.overrides.world.openedCityIds');
+	for (const [key, kind] of [
+		['activeRetailCityId', 'retail'],
+		['activeIndustryCityId', 'industry']
+	] as const) {
+		const path = `start.overrides.world.${key}`;
+		if (!validateKnownReference(context, world[key], path, KNOWN_CITY_IDS, 'city')) continue;
+		const cityId = world[key] as string;
+		if (key === 'activeRetailCityId') context.activeRetailCityId = cityId;
+		if (getWorldCityDefinition(cityId)?.kind !== kind || !opened.has(cityId))
+			diagnostic(
+				context,
+				path,
+				'invalid-world-state',
+				cityId,
+				`Active ${kind} city must be an opened ${kind} city.`
+			);
+		validateIncluded(context, cityId, path, context.content.cities);
+	}
+}
+
+function validateWorldArrayInclusions(
+	context: ValidationContext,
+	value: unknown,
+	path: string
+): void {
+	if (!Array.isArray(value)) return;
+	for (const [index, cityId] of value.entries()) {
+		if (typeof cityId === 'string' && KNOWN_CITY_IDS.has(cityId)) {
+			validateIncluded(context, cityId, `${path}[${index}]`, context.content.cities);
+		}
+	}
+}
+
+function validateStoreCap(context: ValidationContext, value: unknown): void {
+	if (value === undefined) {
+		context.storeCap = STARTER_STORE_CAP;
+		if (!context.allowedCommands.has('openStore')) {
+			diagnostic(
+				context,
+				'start.overrides.storeCap',
+				'invalid-store-cap',
+				STARTER_STORE_CAP,
+				`When openStore is forbidden, the default store cap ${STARTER_STORE_CAP} must be overridden to the starting store count.`
+			);
+		}
+		return;
+	}
+	if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) {
+		diagnostic(
+			context,
+			'start.overrides.storeCap',
+			'invalid-store-cap',
+			value,
+			'Store cap must be an integer no lower than the starting store count.'
+		);
+		return;
+	}
+	context.storeCap = value;
+	if (!context.allowedCommands.has('openStore') && value !== 1) {
+		diagnostic(
+			context,
+			'start.overrides.storeCap',
+			'invalid-store-cap',
+			value,
+			'When openStore is forbidden, store cap must equal the starting store count.'
+		);
+	}
+}
+
+function validateAllowlistedProductUnlocks(
+	context: ValidationContext,
+	foundingStore: JsonObject | undefined,
+	targetLevels: ReadonlyMap<string, number>
+): void {
+	for (const productId of context.content.products) {
+		let available = false;
+		for (const archetype of ARCHETYPES) {
+			if (!context.content.archetypes.has(archetype.id)) continue;
+			const index = archetype.startingCategories.findIndex((category) => category.id === productId);
+			if (index < 0) continue;
+			const isFoundingArchetype = foundingStore?.archetypeId === archetype.id;
+			const isOpenableArchetype =
+				context.allowedCommands.has('openStore') &&
+				context.storeCap > 1 &&
+				context.permittedRetailPlacements.some(
+					(placement) =>
+						placement.archetypeId === archetype.id &&
+						canActivateRetailCity(context, placement.cityId) &&
+						!overlapsFoundingStore(context, placement, foundingStore)
+				);
+			if (!isFoundingArchetype && !isOpenableArchetype) continue;
+			let reachableLevel =
+				isFoundingArchetype && typeof foundingStore.ref === 'string'
+					? (targetLevels.get(foundingStore.ref) ?? 1)
+					: 1;
+			if (context.allowedCommands.has('upgradeStore')) reachableLevel = MAX_STORE_LEVEL;
+			if (index < getUnlockedCategoryCount(reachableLevel)) available = true;
+		}
+		if (!available) {
+			const values = contentObject(context)?.productCategoryIds;
+			const index = Array.isArray(values) ? values.indexOf(productId) : -1;
+			diagnostic(
+				context,
+				`content.productCategoryIds[${Math.max(0, index)}]`,
+				'product-locked',
+				productId,
+				`No allowed archetype can unlock ${productId} under the permitted commands.`
+			);
+		}
+	}
+}
+
+export { validateStart };

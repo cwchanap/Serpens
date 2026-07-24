@@ -12,6 +12,13 @@ export default defineConfig({
 	test: {
 		expect: { requireAssertions: true },
 		restoreMocks: true,
+		// Heavy specs (scenarioRepository, setup, runtime, ScenarioMenuSection) run full
+		// encode -> deep-validate cycles over large game states. When both Vitest projects
+		// run concurrently the default 5s per-test timeout is too tight (observed ~6.2s on
+		// the slowest scenarioRepository test, ~23s for the whole file). 30s gives headroom
+		// without making genuinely-hung tests wait excessively. Applies to both projects
+		// since they extend this config.
+		testTimeout: 30_000,
 		coverage: {
 			provider: 'v8',
 			reporter: ['text', 'lcov', 'html'],

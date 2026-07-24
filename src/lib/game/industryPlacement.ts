@@ -205,6 +205,12 @@ export function buildIndustrialBuilding(
 			createIndustrialBuilding(game, tile, buildingType)
 		]
 	};
+	// Recalculating warehouse capacity/pressure inline and wrapping in
+	// refreshWorldProgress is intentional (commit a6b9e40, "fix: enforce strict
+	// game state invariants"): adding an industrial building changes derived
+	// warehouse capacity, so the post-transition state must be re-normalized to
+	// pass the strict invariants that scenario setup validation enforces. Do not
+	// revert this to returning builtGame directly.
 	return refreshWorldProgress({
 		...builtGame,
 		warehouse: recalculateWarehousePressure({

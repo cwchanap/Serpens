@@ -1075,6 +1075,7 @@ export const ja = {
 		missingRun: '進行中のチャレンジを利用できません。',
 		forbiddenCommand: 'この操作はチャレンジで利用できません。',
 		forbiddenContent: 'このコンテンツはチャレンジで利用できません。',
+		invalidCommand: 'その操作は現在の状態では無効です。',
 		terminalRun: 'このチャレンジは終了しています。'
 	},
 	scenarioModifiers: { importCostMultiplier: '輸入コスト ×{multiplier}' },

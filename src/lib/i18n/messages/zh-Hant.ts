@@ -1067,6 +1067,7 @@ export const zhHant = {
 		missingRun: '進行中的挑戰無法使用。',
 		forbiddenCommand: '此挑戰不允許這項操作。',
 		forbiddenContent: '此挑戰不允許這項內容。',
+		invalidCommand: '此操作對目前狀態無效。',
 		terminalRun: '此挑戰已結束。'
 	},
 	scenarioModifiers: { importCostMultiplier: '進口成本 ×{multiplier}' },
