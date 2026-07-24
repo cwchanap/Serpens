@@ -88,6 +88,7 @@ class TauriScenarioStoreDriver implements ScenarioStoreDriver {
 
 		try {
 			await this.restoreBaseline(store, baseline);
+			await store.save();
 			this.recoveryBaseline = undefined;
 			return;
 		} catch {

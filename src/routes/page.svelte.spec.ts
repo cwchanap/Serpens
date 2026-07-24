@@ -224,6 +224,7 @@ function controllerOptions(input: {
 	definitions?: ScenarioDefinition[];
 	events?: string[];
 	onReadOnlySelection?: (kind: 'retail' | 'industry', tileId: string) => void;
+	onScenarioSummary?: (summary: ScenarioPersistenceSummary) => void;
 }): GameRouteControllerOptions {
 	const events = input.events ?? [];
 	return {
@@ -239,7 +240,8 @@ function controllerOptions(input: {
 				),
 		playSfx: (cueId) => events.push(`sfx:${cueId}`),
 		onStateChange: () => events.push('publish'),
-		onReadOnlySelection: input.onReadOnlySelection
+		onReadOnlySelection: input.onReadOnlySelection,
+		onScenarioSummary: input.onScenarioSummary
 	};
 }
 
@@ -766,6 +768,48 @@ describe('GameRouteController scenario integration', () => {
 		expect(await pending).toMatchObject({ status: 'committed' });
 		expect(controller.state.lastScenarioResult).toBe(terminalRun.result);
 		expect(controller.state.lastScenarioBestUpdated).toBe(true);
+	});
+
+	it('refreshes the scenario summary after a terminal commit so the catalog reflects the deleted active run and new best', async () => {
+		const base = scenarioDefinition();
+		const definition = scenarioDefinition({
+			requiredObjectives: [{ ...base.requiredObjectives[0]!, target: 0 }]
+		});
+		const run = runForDefinition(definition);
+		const refreshedSummary: ScenarioPersistenceSummary = {
+			activeRunsByScenarioId: {},
+			bestResultsByDefinitionKey: {},
+			diagnostics: []
+		};
+		const repository = createScenarioRepositoryHarness(run, {
+			commitTerminalRun: vi.fn(async (terminalRun) => ({
+				activeRun: null,
+				terminalResult: terminalRun.result,
+				bestUpdated: true
+			})),
+			getSummary: vi
+				.fn(async () => refreshedSummary)
+				.mockImplementationOnce(async () => emptyScenarioSummary(run))
+		});
+		const summaries: ScenarioPersistenceSummary[] = [];
+		const controller = new GameRouteController(
+			controllerOptions({
+				scenarioRepository: repository,
+				definition,
+				onScenarioSummary: (summary) => summaries.push(summary)
+			})
+		);
+		await controller.initializeScenarios();
+
+		await controller.updatePolicy({ pricing: 'premium' });
+
+		expect(vi.mocked(repository.commitTerminalRun)).toHaveBeenCalledTimes(1);
+		expect(vi.mocked(repository.getSummary)).toHaveBeenCalledTimes(2);
+		expect(summaries.length).toBeGreaterThanOrEqual(2);
+		expect(summaries[summaries.length - 1]).toBe(refreshedSummary);
+		expect(
+			summaries[summaries.length - 1]!.activeRunsByScenarioId[run.definition.scenarioId]
+		).toBeUndefined();
 	});
 
 	it('keeps a terminal result visible when restart persistence fails and retries the exact restart once', async () => {
