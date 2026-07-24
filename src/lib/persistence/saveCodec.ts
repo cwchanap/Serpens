@@ -846,6 +846,13 @@ function validateCurrentGameStateInternal(value: unknown): GameState {
 			'invariant-warehouse'
 		);
 	}
+	// Reference-stability contract: refreshWorldProgress returns the SAME game
+	// reference when no milestone/city reveal applies (see world.ts: `if (!changed
+	// && !normalized && storeCap === game.storeCap) return game;`). This check
+	// relies on that identity — a structural comparison would mask the real
+	// invariant (the caller must have already run refreshWorldProgress). If
+	// refreshWorldProgress ever changes to always return a new object, this check
+	// must switch to a structural equality test.
 	if (refreshWorldProgress(currentGame) !== currentGame) {
 		throw new SaveDataError('Saved game world progress must already be current');
 	}

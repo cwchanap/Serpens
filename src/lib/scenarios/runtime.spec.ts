@@ -421,7 +421,7 @@ function mustStart(definition: ScenarioDefinition, seed = definition.officialSee
 	return result.value;
 }
 
-describe('executeScenarioCommand dispatch', () => {
+describe('executeScenarioCommand dispatch', { timeout: 30_000 }, () => {
 	it('executes advanceDay with definition modifiers and preserves automatic world reveals', () => {
 		const game: GameState = {
 			...foundingGame(),
@@ -793,7 +793,7 @@ function replayLaunchCalibration(
 	return run;
 }
 
-describe('launch scenario calibration contracts', () => {
+describe('launch scenario calibration contracts', { timeout: 30_000 }, () => {
 	it.each([
 		['first-profit', [], 'completed', 4, 682],
 		['import-squeeze', [], 'completed', 18, 656],
@@ -826,7 +826,7 @@ describe('launch scenario calibration contracts', () => {
 	);
 });
 
-describe('scenario runtime lifecycle order', () => {
+describe('scenario runtime lifecycle order', { timeout: 30_000 }, () => {
 	it('returns the exact run without refreshing evaluation for a semantic no-op', () => {
 		const game = foundingGame();
 		const definition = commandDefinition(['updatePolicy']);
@@ -1093,61 +1093,65 @@ describe('scenario runtime lifecycle order', () => {
 	});
 });
 
-describe('scenario start and deterministic launch-shaped decision streams', () => {
-	it('maps setup diagnostics into the shared scenario operation result', () => {
-		const definition = startableDefinition();
-		const invalid = {
-			...definition,
-			start: {
-				...definition.start,
-				foundingStore: { ...definition.start.foundingStore, tileId: 'missing-tile' }
-			}
-		};
+describe(
+	'scenario start and deterministic launch-shaped decision streams',
+	{ timeout: 30_000 },
+	() => {
+		it('maps setup diagnostics into the shared scenario operation result', () => {
+			const definition = startableDefinition();
+			const invalid = {
+				...definition,
+				start: {
+					...definition.start,
+					foundingStore: { ...definition.start.foundingStore, tileId: 'missing-tile' }
+				}
+			};
 
-		expect(startScenario(invalid, invalid.officialSeed)).toMatchObject({
-			ok: false,
-			error: { code: 'invalid-definition' }
+			expect(startScenario(invalid, invalid.officialSeed)).toMatchObject({
+				ok: false,
+				error: { code: 'invalid-definition' }
+			});
 		});
-	});
 
-	it.each([
-		['first-profit', 280_001],
-		['import-squeeze', 280_002],
-		['local-lifeline', 280_003]
-	] as const)(
-		'accepts the normal deterministic decision stream for %s',
-		(scenarioId, officialSeed) => {
-			const definition = startableDefinition(scenarioId, { officialSeed });
-			let run = mustStart(definition);
-			let resolvedCount = 0;
+		it.each([
+			['first-profit', 280_001],
+			['import-squeeze', 280_002],
+			['local-lifeline', 280_003]
+		] as const)(
+			'accepts the normal deterministic decision stream for %s',
+			(scenarioId, officialSeed) => {
+				const definition = startableDefinition(scenarioId, { officialSeed });
+				let run = mustStart(definition);
+				let resolvedCount = 0;
 
-			while (run.status === 'active') {
-				const dayResult = executeScenarioCommand(run, definition, { kind: 'advanceDay' });
-				if (!dayResult.ok || !dayResult.changed) {
-					throw new Error('Launch-shaped fixture failed to advance deterministically.');
-				}
-				run = dayResult.run;
-				if (run.status !== 'active') break;
-
-				for (const decision of [...run.game.decisions]) {
-					const option = decision.options[0];
-					if (!option) continue;
-					const decisionResult = executeScenarioCommand(run, definition, {
-						kind: 'resolveDecision',
-						decisionId: decision.id,
-						optionId: option.id
-					});
-					if (!decisionResult.ok || !decisionResult.changed) {
-						throw new Error('Generated scenario decision was rejected.');
+				while (run.status === 'active') {
+					const dayResult = executeScenarioCommand(run, definition, { kind: 'advanceDay' });
+					if (!dayResult.ok || !dayResult.changed) {
+						throw new Error('Launch-shaped fixture failed to advance deterministically.');
 					}
-					run = decisionResult.run;
-					resolvedCount += 1;
-				}
-			}
+					run = dayResult.run;
+					if (run.status !== 'active') break;
 
-			expect(resolvedCount).toBeGreaterThan(0);
-			expect(run.status).toBe('failed');
-			expect(run.evaluation.deadline?.triggered).toBe(true);
-		}
-	);
-});
+					for (const decision of [...run.game.decisions]) {
+						const option = decision.options[0];
+						if (!option) continue;
+						const decisionResult = executeScenarioCommand(run, definition, {
+							kind: 'resolveDecision',
+							decisionId: decision.id,
+							optionId: option.id
+						});
+						if (!decisionResult.ok || !decisionResult.changed) {
+							throw new Error('Generated scenario decision was rejected.');
+						}
+						run = decisionResult.run;
+						resolvedCount += 1;
+					}
+				}
+
+				expect(resolvedCount).toBeGreaterThan(0);
+				expect(run.status).toBe('failed');
+				expect(run.evaluation.deadline?.triggered).toBe(true);
+			}
+		);
+	}
+);

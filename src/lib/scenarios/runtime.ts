@@ -8,6 +8,7 @@ import { resolveDecision, updatePolicy, upgradeStore } from '$lib/game/state';
 import { updateStoreProduct } from '$lib/game/stock';
 import type { GameState } from '$lib/game/types';
 import { openWorldCity, selectWorldCity } from '$lib/game/world';
+import { deeplyEqual } from '$lib/game/equality';
 import { isScenarioCommandAllowed } from './capabilities';
 import { evaluateScenarioConditions } from './metrics';
 import { calculateScenarioScoreProjection, medalForScore } from './scoring';
@@ -230,36 +231,6 @@ function dispatchScenarioCommand(
 		case 'demolishRail':
 			return demolishRailSegment(game, command.cityId, command.segmentId);
 	}
-}
-
-// GameState is pure JSON (no Date/Map/Set/class instances), so this structural
-// comparison is sufficient. Do not use util.isDeepStrictEqual here — runtime.ts
-// runs in the browser via gameRouteController/+page.svelte, and that API is
-// Node-only. If GameState ever gains non-JSON types, extend this accordingly.
-function deeplyEqual(first: unknown, second: unknown): boolean {
-	if (Object.is(first, second)) return true;
-	if (
-		typeof first !== 'object' ||
-		first === null ||
-		typeof second !== 'object' ||
-		second === null
-	) {
-		return false;
-	}
-	if (Array.isArray(first) || Array.isArray(second)) {
-		if (!Array.isArray(first) || !Array.isArray(second) || first.length !== second.length) {
-			return false;
-		}
-		return first.every((value, index) => deeplyEqual(value, second[index]));
-	}
-	const firstRecord = first as Record<string, unknown>;
-	const secondRecord = second as Record<string, unknown>;
-	const firstKeys = Object.keys(firstRecord);
-	const secondKeys = Object.keys(secondRecord);
-	if (firstKeys.length !== secondKeys.length) return false;
-	return firstKeys.every(
-		(key) => Object.hasOwn(secondRecord, key) && deeplyEqual(firstRecord[key], secondRecord[key])
-	);
 }
 
 function terminalRun(
