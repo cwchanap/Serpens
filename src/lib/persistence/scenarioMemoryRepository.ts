@@ -11,7 +11,12 @@ import type { ScenarioRepository } from './scenarioRepository';
 import { ScenarioRepositoryFromDriver, type ScenarioStoreDriver } from './scenarioStoreRepository';
 
 export class ScenarioMemoryStoreDriver implements ScenarioStoreDriver {
-	private value: unknown;
+	// this.value is always an already-decoded, validated ScenarioStoreSnapshot:
+	// the constructor decodes the initial input, and write() validates before
+	// storing. read() therefore returns it directly instead of re-decoding on
+	// every call — the redundant re-validation was flagged in code review
+	// (scenarioMemoryRepository.ts:27 re-decoded an already-valid value).
+	private value: ScenarioStoreSnapshot;
 	private diagnostics: DecodeScenarioStoreResult['diagnostics'];
 
 	constructor(
@@ -24,10 +29,9 @@ export class ScenarioMemoryStoreDriver implements ScenarioStoreDriver {
 	}
 
 	async read(): Promise<DecodeScenarioStoreResult> {
-		const decoded = decodeScenarioStoreSnapshot(this.value, this.resolveDefinition);
 		return {
-			snapshot: decoded.snapshot,
-			diagnostics: structuredClone([...this.diagnostics, ...decoded.diagnostics])
+			snapshot: this.value,
+			diagnostics: structuredClone([...this.diagnostics])
 		};
 	}
 

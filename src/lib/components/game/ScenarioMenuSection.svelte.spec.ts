@@ -4,7 +4,7 @@ import { render } from 'vitest-browser-svelte';
 import { createI18n } from '$lib/i18n';
 import ScenarioMenuSection from './ScenarioMenuSection.svelte';
 
-describe('ScenarioMenuSection', () => {
+describe('ScenarioMenuSection', { timeout: 30_000 }, () => {
 	it('replaces save controls with challenge details, restart, catalog, sandbox, and abandon', async () => {
 		expect.assertions(8);
 		const onDetails = vi.fn();

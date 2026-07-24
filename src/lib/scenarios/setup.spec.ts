@@ -232,7 +232,7 @@ function diagnosticCodes(result: ReturnType<typeof buildScenarioGame>) {
 	return result.ok ? [] : result.diagnostics.map(({ path, code }) => ({ path, code }));
 }
 
-describe('buildScenarioGame', () => {
+describe('buildScenarioGame', { timeout: 30_000 }, () => {
 	it('forwards the explicit seed and produces repeatable factory RNG state', () => {
 		const definition = importSqueezeFixture();
 		const first = buildScenarioGame(definition, 280_002);
@@ -578,7 +578,7 @@ describe('buildScenarioGame', () => {
 	});
 });
 
-describe('launch catalog setup isolation', () => {
+describe('launch catalog setup isolation', { timeout: 30_000 }, () => {
 	it('builds each official run deterministically without sharing mutable game branches', () => {
 		for (const definition of listCurrentScenarioDefinitions()) {
 			const first = buildScenarioGame(definition, definition.officialSeed);

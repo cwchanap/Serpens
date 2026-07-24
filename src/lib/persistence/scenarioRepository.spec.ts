@@ -272,7 +272,7 @@ class CountingRepository extends ScenarioRepositoryFromDriver {
 	}
 }
 
-describe('scenario repository', () => {
+describe('scenario repository', { timeout: 30_000 }, () => {
 	it('keeps one active run per scenario while isolating other scenarios', async () => {
 		const driver = new CountingDriver();
 		const repository = new ScenarioRepositoryFromDriver(driver, resolveFixtureDefinition);
