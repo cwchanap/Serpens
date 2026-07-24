@@ -279,6 +279,7 @@
 	let retryScenarioOperation = $state<(() => Promise<void>) | null>(null);
 	let playMode = $state<'sandbox' | 'scenario'>('sandbox');
 	let scenarioCommandPending = $state(false);
+	let scenariosReady = $state(false);
 	const gameRouteController = new GameRouteController({
 		createSaveRepository,
 		createScenarioRepository,
@@ -1175,18 +1176,30 @@
 		const definition = currentScenarioDefinition(card.id);
 		if (!definition) return;
 		const result = await gameRouteController.startScenarioRun(definition, definition.officialSeed);
-		if (result.status === 'committed') isScenarioCatalogOpen = false;
+		if (result.status === 'committed') {
+			isScenarioCatalogOpen = false;
+		} else if (result.status === 'unavailable' && !scenarioOperationError) {
+			scenarioOperationError = { code: 'persistence-read-failed', diagnostics: [] };
+		}
 	}
 
 	async function resumeScenarioCard(card: ScenarioCatalogCardViewModel): Promise<void> {
 		const result = await gameRouteController.resumeScenarioRun(card.id);
-		if (result.status === 'committed') isScenarioCatalogOpen = false;
+		if (result.status === 'committed') {
+			isScenarioCatalogOpen = false;
+		} else if (result.status === 'unavailable' && !scenarioOperationError) {
+			scenarioOperationError = { code: 'persistence-read-failed', diagnostics: [] };
+		}
 	}
 
 	async function restartScenarioCard(card: ScenarioCatalogCardViewModel): Promise<void> {
 		if (!card.activeDefinitionRef) return;
 		const result = await gameRouteController.restartScenarioRun(card.activeDefinitionRef);
-		if (result.status === 'committed') isScenarioCatalogOpen = false;
+		if (result.status === 'committed') {
+			isScenarioCatalogOpen = false;
+		} else if (result.status === 'unavailable' && !scenarioOperationError) {
+			scenarioOperationError = { code: 'persistence-read-failed', diagnostics: [] };
+		}
 	}
 
 	async function restartActiveScenario(): Promise<void> {
@@ -1441,6 +1454,7 @@
 		retryScenarioOperation = state.retryScenarioOperation;
 		playMode = state.playMode;
 		scenarioCommandPending = state.scenarioCommandPending;
+		scenariosReady = state.scenariosReady;
 	}
 
 	async function resumeAutoSave(): Promise<void> {
@@ -2364,6 +2378,7 @@
 			{i18n}
 			operationError={scenarioOperationErrorText}
 			pending={scenarioCommandPending}
+			persistenceReady={scenariosReady}
 			onStart={startScenarioCard}
 			onResume={resumeScenarioCard}
 			onRestart={restartScenarioCard}

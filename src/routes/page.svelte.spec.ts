@@ -1105,4 +1105,80 @@ describe('GameRouteController scenario integration', () => {
 		expect(controller.state.scenarioOperationError).toBeNull();
 		expect(controller.state.retryScenarioOperation).toBeNull();
 	});
+
+	it('marks scenariosReady false until initializeScenarios loads the summary successfully', async () => {
+		expect.assertions(4);
+		const definition = scenarioDefinition();
+		const run = runForDefinition(definition);
+		const repository = createScenarioRepositoryHarness(run);
+		const controller = new GameRouteController(
+			controllerOptions({ scenarioRepository: repository, definition })
+		);
+
+		expect(controller.state.scenariosReady).toBe(false);
+		await controller.initializeScenarios();
+		expect(controller.state.scenariosReady).toBe(true);
+		expect(controller.state.activeScenarioRun).toBe(run);
+		expect(controller.state.scenarioOperationError).toBeNull();
+	});
+
+	it('keeps scenariosReady false when initializeScenarios throws', async () => {
+		expect.assertions(3);
+		const definition = scenarioDefinition();
+		const repository = createScenarioRepositoryHarness(undefined, {
+			getSummary: vi.fn().mockRejectedValue(new Error('storage unavailable'))
+		});
+		const controller = new GameRouteController(
+			controllerOptions({ scenarioRepository: repository, definition })
+		);
+
+		await controller.initializeScenarios();
+		expect(controller.state.scenariosReady).toBe(false);
+		expect(controller.state.scenarioOperationError?.code).toBe('persistence-read-failed');
+		expect(controller.state.retryScenarioOperation).not.toBeNull();
+	});
+
+	it('keeps scenariosReady false when the summary reports diagnostics', async () => {
+		expect.assertions(3);
+		const definition = scenarioDefinition();
+		const repository = createScenarioRepositoryHarness(undefined, {
+			getSummary: vi.fn(async () => ({
+				activeRunsByScenarioId: {},
+				bestResultsByDefinitionKey: {},
+				diagnostics: [
+					{ code: 'corrupt-record', path: 'runs/alpha', value: null, detail: 'partial read' }
+				]
+			}))
+		});
+		const controller = new GameRouteController(
+			controllerOptions({ scenarioRepository: repository, definition })
+		);
+
+		await controller.initializeScenarios();
+		expect(controller.state.scenariosReady).toBe(false);
+		expect(controller.state.scenarioOperationError?.code).toBe('persistence-read-failed');
+		expect(controller.state.retryScenarioOperation).not.toBeNull();
+	});
+
+	it('flips scenariosReady to true after a failed init is retried successfully', async () => {
+		expect.assertions(3);
+		const definition = scenarioDefinition();
+		const run = runForDefinition(definition);
+		const goodSummary = emptyScenarioSummary(run);
+		const repository = createScenarioRepositoryHarness(undefined, {
+			getSummary: vi
+				.fn()
+				.mockRejectedValueOnce(new Error('storage unavailable'))
+				.mockResolvedValueOnce(goodSummary)
+		});
+		const controller = new GameRouteController(
+			controllerOptions({ scenarioRepository: repository, definition })
+		);
+
+		await controller.initializeScenarios();
+		expect(controller.state.scenariosReady).toBe(false);
+		await controller.state.retryScenarioOperation!();
+		expect(controller.state.scenariosReady).toBe(true);
+		expect(controller.state.activeScenarioRun).toBe(run);
+	});
 });

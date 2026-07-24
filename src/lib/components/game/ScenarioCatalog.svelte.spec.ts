@@ -56,6 +56,7 @@ function renderCatalog(
 	overrides: Partial<{
 		cards: ScenarioCatalogCardViewModel[];
 		operationError: string | null;
+		persistenceReady: boolean;
 		onStart: (card: ScenarioCatalogCardViewModel) => void | Promise<void>;
 		onResume: (card: ScenarioCatalogCardViewModel) => void | Promise<void>;
 		onRestart: (card: ScenarioCatalogCardViewModel) => void | Promise<void>;
@@ -74,6 +75,7 @@ function renderCatalog(
 		i18n: createI18n('en'),
 		operationError: null,
 		pending: false,
+		persistenceReady: true,
 		onStart: vi.fn(),
 		onResume: vi.fn(),
 		onRestart: vi.fn(),
@@ -210,5 +212,51 @@ describe('ScenarioCatalog', () => {
 		await result.unmount();
 		expect(document.activeElement).toBe(opener);
 		opener.remove();
+	});
+
+	it('disables Start/Resume/Restart/StartCurrent/Import while persistence is not ready', async () => {
+		expect.assertions(6);
+		const onStart = vi.fn();
+		const onResume = vi.fn();
+		const onRestart = vi.fn();
+		const onStartCurrent = vi.fn();
+		const onImport = vi.fn(
+			async (): Promise<ScenarioCatalogActionResult> => ({
+				status: 'started'
+			})
+		);
+		const readyCard = card('import-squeeze', 'Import Squeeze', {
+			primaryAction: 'resume',
+			primaryLabel: 'Resume',
+			showRestart: true,
+			showStartCurrent: true,
+			activeVersionLabel: 'Active version 1 (current version 2)',
+			version: 2
+		});
+		renderCatalog({
+			cards: [readyCard],
+			persistenceReady: false,
+			onStart,
+			onResume,
+			onRestart,
+			onStartCurrent,
+			onImport
+		});
+
+		await expect
+			.element(page.getByRole('button', { name: 'Resume Import Squeeze' }))
+			.toBeDisabled();
+		await expect
+			.element(page.getByRole('button', { name: 'Restart Import Squeeze' }))
+			.toBeDisabled();
+		await expect
+			.element(page.getByRole('button', { name: 'Start current Import Squeeze' }))
+			.toBeDisabled();
+		const submit = page.getByRole('button', { name: 'Import code' });
+		await expect.element(submit).toBeDisabled();
+
+		await page.getByRole('button', { name: 'Copy code for Import Squeeze' }).click();
+		expect(onStart).not.toHaveBeenCalled();
+		expect(onImport).not.toHaveBeenCalled();
 	});
 });

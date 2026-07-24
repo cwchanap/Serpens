@@ -50,6 +50,7 @@ export interface GameRouteControllerState {
 	retryScenarioOperation: (() => Promise<void>) | null;
 	playMode: 'sandbox' | 'scenario';
 	scenarioCommandPending: boolean;
+	scenariosReady: boolean;
 }
 
 export interface MutationAvailability {
@@ -160,7 +161,8 @@ const INITIAL_STATE: GameRouteControllerState = {
 	scenarioOperationError: null,
 	retryScenarioOperation: null,
 	playMode: 'sandbox',
-	scenarioCommandPending: false
+	scenarioCommandPending: false,
+	scenariosReady: false
 };
 
 function scenarioError(code: ScenarioOperationError['code']): ScenarioOperationError {
@@ -226,8 +228,11 @@ export class GameRouteController {
 					activeScenarioRun: resumedRun,
 					lastScenarioResult: null,
 					lastScenarioBestUpdated: false,
-					playMode: 'scenario'
+					playMode: 'scenario',
+					scenariosReady: true
 				});
+			} else {
+				this.patchState({ scenariosReady: true });
 			}
 		} catch {
 			this.patchState({

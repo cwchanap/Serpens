@@ -11,6 +11,7 @@
 		i18n: I18nBundle;
 		operationError: string | null;
 		pending: boolean;
+		persistenceReady: boolean;
 		onStart: (card: ScenarioCatalogCardViewModel) => void | Promise<void>;
 		onResume: (card: ScenarioCatalogCardViewModel) => void | Promise<void>;
 		onRestart: (card: ScenarioCatalogCardViewModel) => void | Promise<void>;
@@ -29,6 +30,7 @@
 		i18n,
 		operationError,
 		pending,
+		persistenceReady,
 		onStart,
 		onResume,
 		onRestart,
@@ -144,7 +146,7 @@
 					<div class="actions">
 						<button
 							type="button"
-							disabled={pending || !card.available}
+							disabled={pending || !persistenceReady || !card.available}
 							aria-label={`${card.primaryLabel} ${card.title}`}
 							onclick={() =>
 								void (card.primaryAction === 'resume' ? onResume(card) : onStart(card))}
@@ -154,7 +156,7 @@
 						{#if card.showRestart}
 							<button
 								type="button"
-								disabled={pending}
+								disabled={pending || !persistenceReady}
 								aria-label={`${i18n.t('scenarioCatalog.restart')} ${card.title}`}
 								onclick={() => void onRestart(card)}
 							>
@@ -164,7 +166,7 @@
 						{#if card.showStartCurrent}
 							<button
 								type="button"
-								disabled={pending || !card.available}
+								disabled={pending || !persistenceReady || !card.available}
 								aria-label={`${i18n.t('scenarioCatalog.startCurrent')} ${card.title}`}
 								onclick={() =>
 									(confirmation = {
@@ -197,7 +199,9 @@
 		>
 			<label for="scenario-share-code">{i18n.t('scenarioCatalog.shareCode')}</label>
 			<input id="scenario-share-code" bind:value={shareCode} />
-			<button type="submit" disabled={pending}>{i18n.t('scenarioCatalog.importCode')}</button>
+			<button type="submit" disabled={pending || !persistenceReady}
+				>{i18n.t('scenarioCatalog.importCode')}</button
+			>
 		</form>
 
 		<div aria-live="polite">{announcement}</div>
