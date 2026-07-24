@@ -817,6 +817,13 @@ export class GameRouteController {
 					retryScenarioOperation: null
 				});
 			}
+			if (result.status === 'committed' && result.value.terminalResult) {
+				try {
+					this.options.onScenarioSummary?.(await repository.getSummary());
+				} catch {
+					// Summary refresh is best-effort; the terminal outcome itself already published.
+				}
+			}
 			return { status: result.status };
 		} catch {
 			this.patchState({

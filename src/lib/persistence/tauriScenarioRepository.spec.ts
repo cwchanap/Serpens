@@ -257,7 +257,7 @@ describe('Tauri scenario repository', () => {
 		expect(persisted.activeRunsByScenarioId['local-lifeline']).toBeUndefined();
 		expect(store.deleteKeys).toEqual([SCENARIO_STORE_KEY]);
 		expect(store.reloadCount).toBe(0);
-		expect(store.saveCount).toBe(2);
+		expect(store.saveCount).toBe(3);
 	});
 
 	it('restores an existing prior value directly after a failed save', async () => {
@@ -280,7 +280,30 @@ describe('Tauri scenario repository', () => {
 		expect(loaded).toEqual(priorRun);
 		expect(store.setKeys).toEqual([SCENARIO_STORE_KEY, SCENARIO_STORE_KEY, SCENARIO_STORE_KEY]);
 		expect(store.reloadCount).toBe(0);
-		expect(store.saveCount).toBe(2);
+		expect(store.saveCount).toBe(3);
+	});
+
+	it('persists the rolled-back baseline to disk after a failed save so a restart loads durable state', async () => {
+		const store = new FakeStore();
+		const priorRun = createFixtureScenarioRun();
+		await createTauriScenarioRepositoryFromStore(
+			Promise.resolve(store),
+			resolveFixtureDefinition
+		).saveActiveRun(priorRun);
+		const saveError = new Error('disk unavailable');
+		store.failNextSave = saveError;
+		const repository = createTauriScenarioRepositoryFromStore(
+			Promise.resolve(store),
+			resolveFixtureDefinition
+		);
+
+		await expect(repository.removeActiveRun('first-profit')).rejects.toBe(saveError);
+
+		const persisted = store.persistedValues.get(SCENARIO_STORE_KEY) as ScenarioStoreSnapshot;
+		expect(persisted.activeRunsByScenarioId['first-profit']?.run.definition.scenarioId).toBe(
+			priorRun.definition.scenarioId
+		);
+		expect(persisted.activeRunsByScenarioId['first-profit']?.run.seed).toBe(priorRun.seed);
 	});
 
 	it('rolls back a partially mutating set failure before allowing reads', async () => {
@@ -297,7 +320,7 @@ describe('Tauri scenario repository', () => {
 		expect(await repository.loadActiveRun('first-profit')).toBeNull();
 		expect(store.deleteKeys).toEqual([SCENARIO_STORE_KEY]);
 		expect(store.reloadCount).toBe(0);
-		expect(store.saveCount).toBe(0);
+		expect(store.saveCount).toBe(1);
 	});
 
 	it('falls back to replacement reload when restoring the prior value fails', async () => {

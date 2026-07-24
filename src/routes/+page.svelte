@@ -431,13 +431,23 @@
 	);
 	let allowedIndustryBuildingTypeIds = $derived.by<IndustrialBuildingTypeId[]>(() =>
 		(Object.keys(INDUSTRIAL_BUILDING_TYPES) as IndustrialBuildingTypeId[]).filter(
-			(buildingTypeId) =>
-				playMode === 'sandbox' ||
-				(activeScenarioDefinition !== null &&
+			(buildingTypeId) => {
+				if (playMode === 'sandbox') return true;
+				if (!activeScenarioDefinition) return false;
+				// buildingTypeIds includes pre-placed starting buildings that may
+				// have no permitted future placement entries. Only offer types
+				// that have at least one industrial placement slot so the player
+				// cannot arm a placement that can never commit.
+				return (
 					isScenarioContentAllowed(activeScenarioDefinition, {
 						kind: 'building',
 						buildingTypeId
-					}))
+					}) &&
+					activeScenarioDefinition.content.industrialPlacements.some(
+						(placement) => placement.buildingTypeId === buildingTypeId
+					)
+				);
+			}
 		)
 	);
 	let allowedWorldCityIds = $derived.by(() =>
