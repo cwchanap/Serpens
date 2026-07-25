@@ -6,7 +6,6 @@ import {
 	arrayValue,
 	closedObject,
 	diagnostic,
-	finiteNumber,
 	isObject,
 	validateIncluded,
 	validateReferenceArray
@@ -78,25 +77,22 @@ function validateModifiers(context: ValidationContext, value: unknown): void {
 				'Unsupported import multiplier scope.'
 			);
 		}
-		if (
-			!finiteNumber(context, modifier.multiplier, `${path}.multiplier`) ||
-			(typeof modifier.multiplier === 'number' && modifier.multiplier <= 0)
-		) {
-			if (typeof modifier.multiplier === 'number' && Number.isFinite(modifier.multiplier))
-				diagnostic(
-					context,
-					`${path}.multiplier`,
-					'invalid-modifier',
-					modifier.multiplier,
-					'Import multiplier must be greater than zero.'
-				);
-			else
-				replaceDiagnosticCode(
-					context,
-					`${path}.multiplier`,
-					'invalid-finite-number',
-					'invalid-modifier'
-				);
+		if (typeof modifier.multiplier !== 'number' || !Number.isFinite(modifier.multiplier)) {
+			diagnostic(
+				context,
+				`${path}.multiplier`,
+				'invalid-modifier',
+				modifier.multiplier,
+				'Import multiplier must be a finite number.'
+			);
+		} else if (modifier.multiplier <= 0) {
+			diagnostic(
+				context,
+				`${path}.multiplier`,
+				'invalid-modifier',
+				modifier.multiplier,
+				'Import multiplier must be greater than zero.'
+			);
 		}
 		validateModifierTarget(context, modifier.target, `${path}.target`, modifier.scope);
 		trackModifierTargetOverlap(
@@ -148,16 +144,6 @@ function trackModifierTargetOverlap(
 			);
 		for (const id of ids) claimed.ids.add(id);
 	}
-}
-
-function replaceDiagnosticCode(
-	context: ValidationContext,
-	path: string,
-	oldCode: string,
-	newCode: string
-): void {
-	const found = context.diagnostics.findLast((item) => item.path === path && item.code === oldCode);
-	if (found) found.code = newCode;
 }
 
 function validateModifierTarget(

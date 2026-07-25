@@ -30,8 +30,8 @@ export class ScenarioMemoryStoreDriver implements ScenarioStoreDriver {
 
 	async read(): Promise<DecodeScenarioStoreResult> {
 		return {
-			snapshot: this.value,
-			diagnostics: structuredClone([...this.diagnostics])
+			snapshot: structuredClone(this.value),
+			diagnostics: structuredClone(this.diagnostics)
 		};
 	}
 

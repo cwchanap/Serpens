@@ -150,6 +150,7 @@
 	import {
 		GameRouteController,
 		createMutationAvailability,
+		type GameRouteCommitResult,
 		type GameRouteControllerState
 	} from './gameRouteController';
 
@@ -1165,10 +1166,7 @@
 		return i18n.labels.material(id);
 	}
 
-	async function startScenarioCard(card: ScenarioCatalogCardViewModel): Promise<void> {
-		const definition = currentScenarioDefinition(card.id);
-		if (!definition) return;
-		const result = await gameRouteController.startScenarioRun(definition, definition.officialSeed);
+	function handleScenarioCardResult(result: GameRouteCommitResult): void {
 		if (result.status === 'committed') {
 			isScenarioCatalogOpen = false;
 		} else if (result.status === 'unavailable' && !scenarioOperationError) {
@@ -1176,23 +1174,22 @@
 		}
 	}
 
+	async function startScenarioCard(card: ScenarioCatalogCardViewModel): Promise<void> {
+		const definition = currentScenarioDefinition(card.id);
+		if (!definition) return;
+		const result = await gameRouteController.startScenarioRun(definition, definition.officialSeed);
+		handleScenarioCardResult(result);
+	}
+
 	async function resumeScenarioCard(card: ScenarioCatalogCardViewModel): Promise<void> {
 		const result = await gameRouteController.resumeScenarioRun(card.id);
-		if (result.status === 'committed') {
-			isScenarioCatalogOpen = false;
-		} else if (result.status === 'unavailable' && !scenarioOperationError) {
-			scenarioOperationError = { code: 'persistence-read-failed', diagnostics: [] };
-		}
+		handleScenarioCardResult(result);
 	}
 
 	async function restartScenarioCard(card: ScenarioCatalogCardViewModel): Promise<void> {
 		if (!card.activeDefinitionRef) return;
 		const result = await gameRouteController.restartScenarioRun(card.activeDefinitionRef);
-		if (result.status === 'committed') {
-			isScenarioCatalogOpen = false;
-		} else if (result.status === 'unavailable' && !scenarioOperationError) {
-			scenarioOperationError = { code: 'persistence-read-failed', diagnostics: [] };
-		}
+		handleScenarioCardResult(result);
 	}
 
 	async function restartActiveScenario(): Promise<void> {

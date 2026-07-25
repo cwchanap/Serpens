@@ -131,7 +131,7 @@ function validateOverrides(
 	);
 	validateWarehouseCapacity(context, overrides.warehouseMaterials, buildings);
 	if (Object.hasOwn(overrides, 'world')) validateWorldOverride(context, overrides.world);
-	validateStoreCap(context, overrides.storeCap);
+	validateStoreCap(context, overrides.storeCap, foundingStore);
 	validateAllowlistedProductUnlocks(context, foundingStore, targetLevels);
 }
 
@@ -470,21 +470,28 @@ function validateWorldArrayInclusions(
 	}
 }
 
-function validateStoreCap(context: ValidationContext, value: unknown): void {
+function validateStoreCap(
+	context: ValidationContext,
+	value: unknown,
+	foundingStore: JsonObject | undefined
+): void {
+	const startingStoreCount = foundingStore ? 1 : 0;
 	if (value === undefined) {
-		context.storeCap = STARTER_STORE_CAP;
 		if (!context.allowedCommands.has('openStore')) {
+			context.storeCap = startingStoreCount;
 			diagnostic(
 				context,
 				'start.overrides.storeCap',
 				'invalid-store-cap',
-				STARTER_STORE_CAP,
+				startingStoreCount,
 				`When openStore is forbidden, the default store cap ${STARTER_STORE_CAP} must be overridden to the starting store count.`
 			);
+		} else {
+			context.storeCap = STARTER_STORE_CAP;
 		}
 		return;
 	}
-	if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) {
+	if (typeof value !== 'number' || !Number.isInteger(value) || value < startingStoreCount) {
 		diagnostic(
 			context,
 			'start.overrides.storeCap',
@@ -495,7 +502,7 @@ function validateStoreCap(context: ValidationContext, value: unknown): void {
 		return;
 	}
 	context.storeCap = value;
-	if (!context.allowedCommands.has('openStore') && value !== 1) {
+	if (!context.allowedCommands.has('openStore') && value !== startingStoreCount) {
 		diagnostic(
 			context,
 			'start.overrides.storeCap',

@@ -14,6 +14,7 @@ import {
 import type { City, IndustryCity, RailCell } from '$lib/game/types';
 import { WORLD_CITY_CATALOG, getWorldCityDefinition } from '$lib/game/world';
 import { SCENARIO_COMMAND_KINDS, type ScenarioDiagnostic } from '../types';
+import { citySeed } from '../setup';
 
 const SUPPORTED_DEFINITION_VERSION = 1;
 const BRONZE_SCORE = 500;
@@ -397,10 +398,8 @@ export function getValidationCity(
 	if (cached) return cached;
 	const definition = getWorldCityDefinition(cityId);
 	if (!definition || context.officialSeed === undefined) return undefined;
-	const seed =
-		definition.id === 'harbor-city' || definition.id === 'industry-city'
-			? context.officialSeed + (definition.kind === 'industry' ? 101 : 0)
-			: definition.seed;
+	const seed = citySeed(definition.id, context.officialSeed);
+	if (seed === undefined) return undefined;
 	const city =
 		definition.kind === 'retail'
 			? generateCity({

@@ -308,7 +308,13 @@ export class GameRouteController {
 		scenarioId: ScenarioRun['definition']['scenarioId']
 	): Promise<GameRouteCommitResult> {
 		const repository = this.scenarioRepository;
-		if (!repository) return { status: 'unavailable' };
+		if (!repository) {
+			this.patchState({
+				scenarioOperationError: scenarioError('persistence-read-failed'),
+				retryScenarioOperation: null
+			});
+			return { status: 'unavailable' };
+		}
 		if (this.currentState.scenarioCommandPending) return { status: 'busy' };
 
 		this.patchState({ scenarioCommandPending: true });
@@ -346,7 +352,13 @@ export class GameRouteController {
 
 	async restartScenarioRun(ref: ScenarioDefinitionRef): Promise<GameRouteCommitResult> {
 		const repository = this.scenarioRepository;
-		if (!repository) return { status: 'unavailable' };
+		if (!repository) {
+			this.patchState({
+				scenarioOperationError: scenarioError('persistence-read-failed'),
+				retryScenarioOperation: null
+			});
+			return { status: 'unavailable' };
+		}
 		if (this.currentState.scenarioCommandPending) return { status: 'busy' };
 
 		this.patchState({ scenarioCommandPending: true });
@@ -763,7 +775,15 @@ export class GameRouteController {
 		retry: () => Promise<GameRouteCommitResult>
 	): Promise<GameRouteCommitResult> {
 		const repository = this.scenarioRepository;
-		if (!repository) return { status: 'unavailable' };
+		if (!repository) {
+			this.patchState({
+				scenarioOperationError: scenarioError('persistence-write-failed'),
+				retryScenarioOperation: this.createScenarioRetry(async () => {
+					await retry();
+				})
+			});
+			return { status: 'unavailable' };
+		}
 		if (this.currentState.scenarioCommandPending) return { status: 'busy' };
 
 		this.patchState({ scenarioCommandPending: true });

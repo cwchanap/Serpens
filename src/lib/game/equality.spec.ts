@@ -89,4 +89,11 @@ describe('deeplyEqual', () => {
 		expect(deeplyEqual({ a: NaN }, { a: NaN })).toBe(true);
 		expect(deeplyEqual({ a: NaN }, { a: 0 })).toBe(false);
 	});
+
+	it('returns false when equal structures exceed the 250k node cap', () => {
+		const length = 260_000;
+		const left = Array.from({ length }, () => ({}));
+		const right = Array.from({ length }, () => ({}));
+		expect(deeplyEqual(left, right)).toBe(false);
+	});
 });
