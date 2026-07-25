@@ -95,15 +95,15 @@ function isCoordinateInsideBuilding(x: number, y: number, building: AuthoredBuil
 }
 
 function buildingsOverlap(first: AuthoredBuilding, second: AuthoredBuilding): boolean {
+	if (first.path === second.path) return true;
+	if (first.cityId !== second.cityId) return false;
 	if (
-		first.path === second.path ||
-		first.cityId !== second.cityId ||
 		first.x === undefined ||
 		first.y === undefined ||
 		second.x === undefined ||
 		second.y === undefined
 	)
-		return first.path === second.path;
+		return false;
 	return rectanglesOverlap(
 		first.x,
 		first.y,

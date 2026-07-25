@@ -56,7 +56,7 @@ function compareCodeUnits(first: string, second: string): number {
 	return first < second ? -1 : first > second ? 1 : 0;
 }
 
-function citySeed(cityId: WorldCityId, normalizedSeed: number): number | undefined {
+export function citySeed(cityId: WorldCityId, normalizedSeed: number): number | undefined {
 	if (cityId === 'harbor-city') return normalizedSeed;
 	if (cityId === 'industry-city') return normalizedSeed + 101;
 	return getWorldCityDefinition(cityId)?.seed;
