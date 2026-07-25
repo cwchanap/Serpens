@@ -1,6 +1,7 @@
 import { buildIndustrialBuilding, upgradeBuilding } from '$lib/game/industryPlacement';
 import { openStoreAtTile } from '$lib/game/placement';
 import { buildRail, demolishRailSegment, upgradeRailSegment } from '$lib/game/railPlacement';
+import { normalizeSeed } from '$lib/game/rng';
 import { simulateDay } from '$lib/game/simulateDay';
 import type { SimulationRules } from '$lib/game/simulationRules';
 import { assignStaffToStore, hireCandidate, promoteStaff, unassignStaff } from '$lib/game/staffing';
@@ -65,7 +66,8 @@ function setupErrorCode(diagnostics: readonly ScenarioDiagnostic[]) {
 }
 
 export function startScenario(definition: ScenarioDefinition, seed: number): ScenarioStartResult {
-	const built = buildScenarioGame(definition, seed);
+	const normalizedSeed = normalizeSeed(seed);
+	const built = buildScenarioGame(definition, normalizedSeed);
 	if (!built.ok) {
 		return {
 			ok: false,
@@ -80,8 +82,8 @@ export function startScenario(definition: ScenarioDefinition, seed: number): Sce
 		ok: true,
 		value: {
 			definition: { scenarioId: definition.id, version: definition.version },
-			seed,
-			eligibility: seed === definition.officialSeed ? 'ranked' : 'unranked',
+			seed: normalizedSeed,
+			eligibility: normalizedSeed === definition.officialSeed ? 'ranked' : 'unranked',
 			status: 'active',
 			game: built.game,
 			evaluation: evaluateScenario(definition, built.game, false),
