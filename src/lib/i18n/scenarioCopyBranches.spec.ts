@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createI18n } from '$lib/i18n';
+import { createI18n, type TranslationKey } from '$lib/i18n';
 import type {
 	ObjectiveEvidence,
 	ScenarioDefinition,
@@ -195,6 +195,13 @@ describe('scenario copy branches', () => {
 			'invalid-seed',
 			'checksum-mismatch'
 		] as const;
+		const shareCodeKeys: Record<(typeof shareCodes)[number], TranslationKey> = {
+			malformed: 'scenarioDiagnostics.malformedShareCode',
+			'unknown-scenario': 'scenarioDiagnostics.unknownScenario',
+			'unsupported-version': 'scenarioDiagnostics.unsupportedVersion',
+			'invalid-seed': 'scenarioDiagnostics.invalidSeed',
+			'checksum-mismatch': 'scenarioDiagnostics.checksumMismatch'
+		};
 		const operationCodes: ScenarioOperationError['code'][] = [
 			'invalid-definition',
 			'invalid-share-code',
@@ -208,12 +215,25 @@ describe('scenario copy branches', () => {
 			'missing-run',
 			'setup-invariant-failed'
 		];
+		const operationKeys: Record<ScenarioOperationError['code'], TranslationKey> = {
+			'invalid-definition': 'scenarioDiagnostics.invalidDefinition',
+			'invalid-share-code': 'scenarioDiagnostics.malformedShareCode',
+			'forbidden-command': 'scenarioDiagnostics.forbiddenCommand',
+			'forbidden-content': 'scenarioDiagnostics.forbiddenContent',
+			'invalid-command': 'scenarioDiagnostics.invalidCommand',
+			'stale-definition': 'scenarioDiagnostics.staleDefinition',
+			'persistence-read-failed': 'scenarioDiagnostics.persistenceReadFailed',
+			'persistence-write-failed': 'scenarioDiagnostics.persistenceWriteFailed',
+			'terminal-run': 'scenarioDiagnostics.terminalRun',
+			'missing-run': 'scenarioDiagnostics.missingRun',
+			'setup-invariant-failed': 'scenarioDiagnostics.setupInvariantFailed'
+		};
 		const shareCodeMessages = shareCodes.map((code) => scenarioShareCodeErrorText(code, i18n));
 		const operationMessages = operationCodes.map((code) =>
 			scenarioDiagnosticText({ code, diagnostics: [] } as ScenarioOperationError, i18n)
 		);
 
-		expect(shareCodeMessages.every((message) => message.length > 0)).toBe(true);
-		expect(operationMessages.every((message) => message.length > 0)).toBe(true);
+		expect(shareCodeMessages).toEqual(shareCodes.map((code) => i18n.t(shareCodeKeys[code])));
+		expect(operationMessages).toEqual(operationCodes.map((code) => i18n.t(operationKeys[code])));
 	});
 });
