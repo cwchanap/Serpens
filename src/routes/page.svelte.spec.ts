@@ -1161,8 +1161,8 @@ describe('GameRouteController scenario integration', () => {
 		expect(controller.state.retryScenarioOperation).not.toBeNull();
 	});
 
-	it('keeps scenariosReady false when the summary reports diagnostics', async () => {
-		expect.assertions(3);
+	it('keeps scenariosReady true and surfaces diagnostics when the summary reports partial corruption', async () => {
+		expect.assertions(4);
 		const definition = scenarioDefinition();
 		const repository = createScenarioRepositoryHarness(undefined, {
 			getSummary: vi.fn(async () => ({
@@ -1178,9 +1178,11 @@ describe('GameRouteController scenario integration', () => {
 		);
 
 		await controller.initializeScenarios();
-		expect(controller.state.scenariosReady).toBe(false);
+		// Valid siblings remain usable despite the corrupt sibling record.
+		expect(controller.state.scenariosReady).toBe(true);
 		expect(controller.state.scenarioOperationError?.code).toBe('persistence-read-failed');
 		expect(controller.state.retryScenarioOperation).not.toBeNull();
+		expect(controller.state.activeScenarioRun).toBeNull();
 	});
 
 	it('flips scenariosReady to true after a failed init is retried successfully', async () => {
