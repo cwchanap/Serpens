@@ -1483,10 +1483,17 @@
 			return;
 		}
 
+		// `game` is a Svelte reactive Proxy ($derived from a $state field).
+		// The save codec's plain-snapshot boundary rejects Proxies during
+		// structuredClone, so unwrap to a plain object before handing it to
+		// the repository. Autosaves go through the route controller's raw
+		// (non-proxy) state, which is why they don't need this.
+		const snapshot = $state.snapshot(game);
+
 		try {
 			const metadata = slotId
-				? await saveRepository.overwriteManualSlot(slotId, name, game)
-				: await saveRepository.createManualSlot(name, game);
+				? await saveRepository.overwriteManualSlot(slotId, name, snapshot)
+				: await saveRepository.createManualSlot(name, snapshot);
 			saveFeedback = {
 				kind: 'status',
 				messageKey: 'route.save.savedManualSlot',
@@ -1677,12 +1684,10 @@
 	}
 
 	function placeRetailAtTile(archetypeId: ArchetypeId, tileId: string): void {
-		if (
-			!mutationAvailability.openStore ||
-			!allowedRetailArchetypeIds.includes(archetypeId) ||
-			(retailPlacementPreview !== null && !retailPlacementPreview.validTileIds.includes(tileId))
-		)
-			return;
+		if (!mutationAvailability.openStore || !allowedRetailArchetypeIds.includes(archetypeId)) return;
+		// Don't early-return on tiles outside the preview's validTileIds: let
+		// the block-reason helper run so a click on a road/river/occupied tile
+		// surfaces the specific reason instead of a silent no-op.
 		const blockReason = getRetailPlacementBlockReason({
 			game,
 			city: activeCity,
@@ -1727,10 +1732,12 @@
 	function placeIndustryAtTile(buildingTypeId: IndustrialBuildingTypeId, tileId: string): void {
 		if (
 			!mutationAvailability.buildIndustrialBuilding ||
-			!allowedIndustryBuildingTypeIds.includes(buildingTypeId) ||
-			(industryPlacementPreview !== null && !industryPlacementPreview.validTileIds.includes(tileId))
+			!allowedIndustryBuildingTypeIds.includes(buildingTypeId)
 		)
 			return;
+		// Don't early-return on tiles outside the preview's validTileIds: let
+		// the block-reason helper run so a click on a wrong-resource/occupied
+		// tile surfaces the specific reason instead of a silent no-op.
 		const blockReason = getIndustryBuildPlacementBlockReason({
 			game,
 			tileId,
