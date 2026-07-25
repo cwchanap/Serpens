@@ -410,13 +410,6 @@
 				activeScenarioDefinition !== null &&
 				activeScenarioDefinition.allowedCommands.includes('selectWorldCity'))
 	);
-	let worldCitySelectionDisabledReason = $derived(
-		playMode !== 'scenario' || worldCitySelectionAvailable
-			? null
-			: scenarioCommandPending
-				? i18n.t('worldMap.selectionPending')
-				: i18n.t('worldMap.selectionUnavailable')
-	);
 	let allowedRetailArchetypeIds = $derived.by<ArchetypeId[]>(() =>
 		retailBuildOptions
 			.map((option) => option.archetypeId)
@@ -1219,6 +1212,10 @@
 
 	function closeScenarioResults(): void {
 		dismissedScenarioResult = lastScenarioResult;
+		// After terminal publication `game` is null, so an open control-tower
+		// panel would fall back to the starter state. Clear it to avoid
+		// rendering a stale, empty panel behind the dismissed result.
+		activeManagementPanelId = null;
 	}
 
 	function openCatalogFromResults(): void {
@@ -1367,12 +1364,8 @@
 		visitedMapViews = markMapViewVisited(visitedMapViews, mapView);
 	}
 
-	function selectWorldCityNode(cityId: string): void {
-		if (
-			!worldCitySelectionAvailable ||
-			!isWorldCityId(cityId) ||
-			!allowedWorldCityIds.includes(cityId)
-		) {
+	async function selectWorldCityNode(cityId: string): Promise<void> {
+		if (!isWorldCityId(cityId) || !allowedWorldCityIds.includes(cityId)) {
 			return;
 		}
 		if (!game) {
@@ -1386,13 +1379,19 @@
 			return;
 		}
 
+		// Read-only inspector selection is always available — only the
+		// opened-city transition (which switches the active map) is gated
+		// by worldCitySelectionAvailable so navigation survives pending writes.
 		selectedWorldCityId = cityId;
 
-		if (status.state !== 'opened') {
+		if (status.state !== 'opened' || !worldCitySelectionAvailable) {
 			return;
 		}
 
-		void gameRouteController.selectWorldCity(status.city.id);
+		const result = await gameRouteController.selectWorldCity(status.city.id);
+		if (result.status !== 'committed' && result.status !== 'sandbox-committed') {
+			return;
+		}
 		setActiveMapView(status.city.kind === 'retail' ? 'retail' : 'industry');
 		selectedWorldCityId = null;
 		selectedTileId = null;
@@ -1803,36 +1802,42 @@
 		return target.closest(INTERACTIVE_CONTROL_SELECTOR) !== null;
 	}
 
-	function handleSelectAlert(alert: GameAlert): void {
+	async function handleSelectAlert(alert: GameAlert): Promise<void> {
 		if (alert.kind === 'decision') {
 			openManagementPanel('decisions');
 			return;
 		}
 		if (alert.kind === 'store-stock' && alert.tileId) {
-			if (
-				game &&
-				alert.cityId &&
-				alert.cityId !== game.activeCityId &&
-				isWorldCityId(alert.cityId) &&
-				worldCitySelectionAvailable &&
-				allowedWorldCityIds.includes(alert.cityId)
-			) {
-				void gameRouteController.selectAlertCity(alert.cityId);
+			if (game && alert.cityId && alert.cityId !== game.activeCityId) {
+				if (
+					!isWorldCityId(alert.cityId) ||
+					!worldCitySelectionAvailable ||
+					!allowedWorldCityIds.includes(alert.cityId)
+				) {
+					return;
+				}
+				const result = await gameRouteController.selectAlertCity(alert.cityId);
+				if (result.status !== 'committed' && result.status !== 'sandbox-committed') {
+					return;
+				}
 			}
 			showRetailMap();
 			selectedTileId = alert.tileId;
 			return;
 		}
 		if (alert.kind === 'factory-blocked' && alert.tileId) {
-			if (
-				game &&
-				alert.cityId &&
-				alert.cityId !== game.activeIndustryCityId &&
-				isWorldCityId(alert.cityId) &&
-				worldCitySelectionAvailable &&
-				allowedWorldCityIds.includes(alert.cityId)
-			) {
-				void gameRouteController.selectAlertCity(alert.cityId);
+			if (game && alert.cityId && alert.cityId !== game.activeIndustryCityId) {
+				if (
+					!isWorldCityId(alert.cityId) ||
+					!worldCitySelectionAvailable ||
+					!allowedWorldCityIds.includes(alert.cityId)
+				) {
+					return;
+				}
+				const result = await gameRouteController.selectAlertCity(alert.cityId);
+				if (result.status !== 'committed' && result.status !== 'sandbox-committed') {
+					return;
+				}
 			}
 			showIndustryMap();
 			selectedIndustryTileId = alert.tileId;
@@ -1998,8 +2003,6 @@
 						onCloseInspector={closeWorldInspector}
 						canOpenWorldCity={mutationAvailability.openWorldCity}
 						allowedCityIds={allowedWorldCityIds}
-						selectionDisabled={!worldCitySelectionAvailable}
-						selectionDisabledReason={worldCitySelectionDisabledReason}
 						disabledReason={mutationDisabledReason}
 					/>
 				</div>
