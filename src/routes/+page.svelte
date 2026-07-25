@@ -1212,9 +1212,13 @@
 
 	function closeScenarioResults(): void {
 		dismissedScenarioResult = lastScenarioResult;
-		// After terminal publication `game` is null, so an open control-tower
-		// panel would fall back to the starter state. Clear it to avoid
-		// rendering a stale, empty panel behind the dismissed result.
+		// After terminal publication `activeScenarioRun` is null and `playMode`
+		// is still `scenario`, so `game` is null and the menu no longer offers
+		// Return to sandbox — `foundStore` is also rejected by the scenario-mode
+		// gate. Flip back to sandbox so the player can continue sandbox play.
+		gameRouteController.returnToSandbox();
+		// An open control-tower panel would fall back to the starter state under
+		// the sandbox game; clear it to avoid rendering a stale panel.
 		activeManagementPanelId = null;
 	}
 
@@ -1389,7 +1393,13 @@
 		}
 
 		const result = await gameRouteController.selectWorldCity(status.city.id);
-		if (result.status !== 'committed' && result.status !== 'sandbox-committed') {
+		// `unchanged` means the city is already the active one — the controller
+		// skipped the write, but navigation to its map should still proceed.
+		if (
+			result.status !== 'committed' &&
+			result.status !== 'sandbox-committed' &&
+			result.status !== 'unchanged'
+		) {
 			return;
 		}
 		setActiveMapView(status.city.kind === 'retail' ? 'retail' : 'industry');
@@ -1444,6 +1454,22 @@
 		audioController?.updatePreferences(patch);
 	}
 
+	let previousPlayMode: 'sandbox' | 'scenario' | undefined = undefined;
+	let previousScenarioRunKey: string | null | undefined = undefined;
+
+	function resetTransientViewState(): void {
+		selectedTileId = null;
+		selectedIndustryTileId = null;
+		selectedWorldCityId = null;
+		isStoreDetailOpen = false;
+		isBuildMenuOpen = false;
+		isSupplyAdvisorOpen = false;
+		isGameMenuOpen = false;
+		isAlertsMenuOpen = false;
+		activeManagementPanelId = null;
+		cancelPlacement();
+	}
+
 	function synchronizeControllerState(state: Readonly<GameRouteControllerState>): void {
 		sandboxGame = state.sandboxGame;
 		activeScenarioRun = state.activeScenarioRun;
@@ -1457,6 +1483,23 @@
 		if (state.playMode === 'sandbox') {
 			scenarioEvidenceGame = null;
 		}
+		// Reset route-only selections, detail/advisor/build overlays, menu state,
+		// and retail/industry/rail placement modes whenever the active mode or
+		// scenario run changes — otherwise an armed placement or inspector from
+		// the previous GameState stays active against the new one (e.g. a
+		// placement armed in sandbox remaining armed inside a challenge that
+		// forbids it). Skip on the first synchronizer call (initial state).
+		const runKey = state.activeScenarioRun
+			? `${state.activeScenarioRun.definition.scenarioId}:${state.activeScenarioRun.seed}`
+			: null;
+		if (
+			previousPlayMode !== undefined &&
+			(previousPlayMode !== state.playMode || previousScenarioRunKey !== runKey)
+		) {
+			resetTransientViewState();
+		}
+		previousPlayMode = state.playMode;
+		previousScenarioRunKey = runKey;
 	}
 
 	async function resumeAutoSave(): Promise<void> {
