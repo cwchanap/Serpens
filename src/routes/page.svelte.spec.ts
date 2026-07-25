@@ -932,7 +932,6 @@ describe('GameRouteController scenario integration', () => {
 		const controller = new GameRouteController(
 			controllerOptions({ scenarioRepository: repository, definition })
 		);
-		controller.loadSandboxGame(sandbox);
 		await controller.initializeScenarios();
 
 		expect(await controller.updatePolicy({ pricing: 'premium' })).toMatchObject({
@@ -945,6 +944,7 @@ describe('GameRouteController scenario integration', () => {
 		expect(staleRetry).not.toBeNull();
 
 		controller.returnToSandbox();
+		controller.loadSandboxGame(sandbox);
 		expect(controller.state.playMode).toBe('sandbox');
 		expect(controller.state.scenarioOperationError).toBeNull();
 		expect(controller.state.retryScenarioOperation).toBeNull();
@@ -1120,6 +1120,25 @@ describe('GameRouteController scenario integration', () => {
 		expect(controller.state.scenariosReady).toBe(true);
 		expect(controller.state.activeScenarioRun).toBe(run);
 		expect(controller.state.scenarioOperationError).toBeNull();
+	});
+
+	it('preserves an explicit sandbox selection when initializeScenarios resumes a run', async () => {
+		expect.assertions(4);
+		const definition = scenarioDefinition();
+		const run = runForDefinition(definition);
+		const sandbox = boostedGame(12_099);
+		const repository = createScenarioRepositoryHarness(run);
+		const controller = new GameRouteController(
+			controllerOptions({ scenarioRepository: repository, definition })
+		);
+
+		controller.loadSandboxGame(sandbox);
+		await controller.initializeScenarios();
+
+		expect(controller.state.playMode).toBe('sandbox');
+		expect(controller.state.sandboxGame).toBe(sandbox);
+		expect(controller.state.activeScenarioRun).toBe(run);
+		expect(controller.state.scenariosReady).toBe(true);
 	});
 
 	it('keeps scenariosReady false when initializeScenarios throws', async () => {

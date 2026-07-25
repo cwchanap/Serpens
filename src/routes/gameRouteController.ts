@@ -224,11 +224,16 @@ export class GameRouteController {
 				.map(([, run]) => run)
 				.find((run): run is ScenarioRun => run !== undefined);
 			if (resumedRun) {
+				// If the user has already loaded a sandbox save while scenario
+				// initialization was awaiting persistence, preserve that explicit
+				// selection — only stage the resumed run for later scenario resume
+				// without overriding playMode or the sandbox game.
+				const sandboxAlreadySelected = this.currentState.sandboxGame !== null;
 				this.patchState({
 					activeScenarioRun: resumedRun,
 					lastScenarioResult: null,
 					lastScenarioBestUpdated: false,
-					playMode: 'scenario',
+					playMode: sandboxAlreadySelected ? this.currentState.playMode : 'scenario',
 					scenariosReady: true
 				});
 			} else {

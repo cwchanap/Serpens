@@ -29,6 +29,7 @@ import type { GameState } from '$lib/game/types';
 import { openWorldCity, selectWorldCity } from '$lib/game/world';
 import { shouldReplaceBestResult } from './scoring';
 import { currentScenarioDefinition } from './catalog';
+import { MAX_SCENARIO_SEED } from './types';
 import type {
 	ScenarioCommand,
 	ScenarioCondition,
@@ -1112,6 +1113,23 @@ describe(
 				error: { code: 'invalid-definition' }
 			});
 		});
+
+		it.each([
+			['zero', 0, 1],
+			['negative', -5, 5],
+			['over-max', MAX_SCENARIO_SEED + 1, 1]
+		] as const)(
+			'normalizes a non-canonical seed (%s) so the run seed matches the game seed',
+			(_label, input, expected) => {
+				const definition = startableDefinition();
+				const result = startScenario(definition, input);
+				expect.assertions(3);
+				if (!result.ok) throw new Error('Expected start to succeed with a normalized seed.');
+				expect(result.value.seed).toBe(expected);
+				expect(result.value.game.seed).toBe(expected);
+				expect(result.value.seed).toBe(result.value.game.seed);
+			}
+		);
 
 		it.each([
 			['first-profit', 280_001],
