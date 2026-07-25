@@ -44,6 +44,14 @@
 		await tick();
 		restartButton?.focus({ preventScroll: true });
 	}
+
+	async function retryError(): Promise<void> {
+		await onRetry();
+		await tick();
+		// Mirror dismissError: a successful retry clears the error block and would
+		// leave focus on document.body. Refocus the stable primary action.
+		restartButton?.focus({ preventScroll: true });
+	}
 </script>
 
 <div class="results-backdrop">
@@ -72,7 +80,7 @@
 		{#if error}
 			<div class="error" role="alert" aria-live="assertive">
 				<span>{error}</span>
-				<button type="button" disabled={pending} onclick={() => void onRetry()}>
+				<button type="button" disabled={pending} onclick={() => void retryError()}>
 					{i18n.t('scenarioCatalog.retry')}
 				</button>
 				<button type="button" disabled={pending} onclick={() => void dismissError()}>

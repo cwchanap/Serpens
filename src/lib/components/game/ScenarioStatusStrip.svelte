@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tick } from 'svelte';
 	import type { I18nBundle } from '$lib/i18n';
 	import type { ScenarioProgressViewModel } from '$lib/i18n/scenarioCopy';
 
@@ -14,6 +15,23 @@
 	}
 
 	let { view, i18n, expanded, pending, error, onToggle, onRetry, onDismissError }: Props = $props();
+
+	let toggleButton: HTMLButtonElement;
+
+	async function retryError(): Promise<void> {
+		await onRetry();
+		await tick();
+		// Neither retry nor dismiss refocused in this strip; a successful retry clears
+		// the error block and would leave focus on document.body. Refocus the stable
+		// toggle button, mirroring the dialog's error-recovery refocus.
+		toggleButton?.focus({ preventScroll: true });
+	}
+
+	async function dismissError(): Promise<void> {
+		await onDismissError();
+		await tick();
+		toggleButton?.focus({ preventScroll: true });
+	}
 </script>
 
 <section class="scenario-strip" aria-label={i18n.t('scenarioObjectives.heading')}>
@@ -23,6 +41,7 @@
 		<span>{view.requiredProgressLabel} · {view.optionalProgressLabel}</span>
 		<span>{view.scoreLabel} · {view.medalLabel}</span>
 		<button
+			bind:this={toggleButton}
 			type="button"
 			aria-expanded={expanded}
 			aria-controls="scenario-objective-panel"
@@ -49,10 +68,10 @@
 	{#if error}
 		<div class="error" role="alert" aria-live="assertive">
 			<span>{error}</span>
-			<button type="button" disabled={pending} onclick={() => void onRetry()}>
+			<button type="button" disabled={pending} onclick={() => void retryError()}>
 				{i18n.t('scenarioCatalog.retry')}
 			</button>
-			<button type="button" disabled={pending} onclick={onDismissError}>
+			<button type="button" disabled={pending} onclick={() => void dismissError()}>
 				{i18n.t('scenarioStatus.dismiss')}
 			</button>
 		</div>

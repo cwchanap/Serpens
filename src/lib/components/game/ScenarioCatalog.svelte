@@ -43,6 +43,12 @@
 
 	let shareCode = $state('');
 	let announcement = $state('');
+	let confirmButton = $state<HTMLButtonElement | undefined>(undefined);
+	// Focus the primary action when the replacement confirmation opens so keyboard
+	// users do not have to Tab through the remaining catalog cards.
+	$effect(() => {
+		if (confirmation) confirmButton?.focus({ preventScroll: true });
+	});
 	let confirmation = $state<
 		| { kind: 'current'; card: ScenarioCatalogCardViewModel; message: string }
 		| { kind: 'import'; code: string; message: string }
@@ -208,7 +214,12 @@
 		{#if confirmation}
 			<div class="confirmation" role="alertdialog" aria-label={confirmation.message}>
 				<p>{confirmation.message}</p>
-				<button type="button" disabled={pending} onclick={() => void confirmReplacement()}>
+				<button
+					bind:this={confirmButton}
+					type="button"
+					disabled={pending}
+					onclick={() => void confirmReplacement()}
+				>
 					{i18n.t('scenarioCatalog.confirmReplacement')}
 				</button>
 				<button type="button" onclick={() => (confirmation = null)}>
