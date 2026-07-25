@@ -1,4 +1,5 @@
 import type { SfxCueId } from '$lib/audio/audioCatalog';
+import { deeplyEqual } from '$lib/game/equality';
 import { buildIndustrialBuilding, upgradeBuilding } from '$lib/game/industryPlacement';
 import { createFoundingGameAtTile, openStoreAtTile } from '$lib/game/placement';
 import { buildRail, demolishRailSegment, upgradeRailSegment } from '$lib/game/railPlacement';
@@ -211,6 +212,11 @@ export class GameRouteController {
 			const summary = await repository.getSummary();
 			this.publishScenarioSummary(summary);
 			if (summary.diagnostics.length > 0) {
+				// One or more persisted records were malformed, but the codec and
+				// repository return the valid siblings alongside diagnostics. Gate
+				// the catalog on those valid records rather than locking every
+				// start/resume/restart/import action — retry stays available for
+				// transient read errors, and the diagnostics surface to the user.
 				this.patchState({
 					scenarioOperationError: {
 						code: 'persistence-read-failed',
@@ -218,10 +224,10 @@ export class GameRouteController {
 					},
 					retryScenarioOperation: this.createScenarioRetry(() => this.initializeScenarios())
 				});
-				return;
+			} else {
+				this.dismissScenarioOperationError();
 			}
 
-			this.dismissScenarioOperationError();
 			const resumedRun = Object.entries(summary.activeRunsByScenarioId)
 				.sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
 				.map(([, run]) => run)
@@ -327,6 +333,20 @@ export class GameRouteController {
 					retryScenarioOperation: null
 				});
 				return { status: 'unavailable' };
+			}
+			// If the loaded run is content-identical to the currently active one,
+			// skip the patch so the ScenarioRun object reference stays stable —
+			// the route synchronizer keys transient-view-state resets on the run
+			// reference, and preserving it means resume-same-run keeps armed
+			// placements, open inspectors, and selection state intact.
+			const current = this.currentState.activeScenarioRun;
+			if (current && deeplyEqual(current, run)) {
+				this.patchState({
+					scenarioCommandPending: false,
+					scenarioOperationError: null,
+					retryScenarioOperation: null
+				});
+				return { status: 'committed' };
 			}
 			this.patchState({
 				activeScenarioRun: run,

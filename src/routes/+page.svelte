@@ -1453,6 +1453,14 @@
 
 	let previousPlayMode: 'sandbox' | 'scenario' | undefined = undefined;
 	let previousScenarioRunKey: string | null | undefined = undefined;
+	// Track the active run object reference so a restart/import that reuses the
+	// same `scenarioId:seed` key (restartScenario reuses run.seed, and importing
+	// the same seed produces the same key) still triggers a transient-state
+	// reset. The controller keeps the reference stable on a no-op resume (see
+	// resumeScenarioRun's deep-equality short-circuit) so resume-same-run
+	// preserves selections, while start/restart/import/resume-different-run
+	// assign a fresh ScenarioRun and trigger the reset.
+	let previousScenarioRunRef: ScenarioRun | null | undefined = undefined;
 
 	function resetTransientViewState(): void {
 		selectedTileId = null;
@@ -1489,14 +1497,18 @@
 		const runKey = state.activeScenarioRun
 			? `${state.activeScenarioRun.definition.scenarioId}:${state.activeScenarioRun.seed}`
 			: null;
+		const runRef = state.activeScenarioRun;
 		if (
 			previousPlayMode !== undefined &&
-			(previousPlayMode !== state.playMode || previousScenarioRunKey !== runKey)
+			(previousPlayMode !== state.playMode ||
+				previousScenarioRunKey !== runKey ||
+				previousScenarioRunRef !== runRef)
 		) {
 			resetTransientViewState();
 		}
 		previousPlayMode = state.playMode;
 		previousScenarioRunKey = runKey;
+		previousScenarioRunRef = runRef;
 	}
 
 	async function resumeAutoSave(): Promise<void> {
