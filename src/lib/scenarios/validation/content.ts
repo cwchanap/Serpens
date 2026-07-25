@@ -149,7 +149,8 @@ function validateRetailPlacements(context: ValidationContext, value: unknown): v
 					archetypeId: placement.archetypeId as string,
 					cityId: placement.cityId as string,
 					x: tile.x,
-					y: tile.y
+					y: tile.y,
+					path
 				});
 			}
 		}

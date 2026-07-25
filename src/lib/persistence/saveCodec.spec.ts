@@ -1019,6 +1019,119 @@ describe('saveCodec', () => {
 		}
 	);
 
+	test('strict validation rejects a placed store in an unopened retail city', () => {
+		const definition = getWorldCityDefinition('campus-junction')!;
+		expect(definition.kind).toBe('retail');
+		const campusCity = generateCity({
+			id: definition.id,
+			name: 'Campus Junction',
+			width: DEFAULT_RETAIL_CITY_WIDTH,
+			height: DEFAULT_RETAIL_CITY_HEIGHT,
+			seed: definition.seed
+		});
+		const tile = campusCity.tiles.find((candidate) => isTileBuildable(candidate))!;
+		const base = createGame();
+		// Materialize campus-junction but omit it from openedCityIds. harbor-city
+		// stays opened so the activeCityId check still passes. The store placed
+		// in campus-junction must be rejected even though its footprint is valid.
+		const game: GameState = {
+			...base,
+			cities: [...base.cities, campusCity],
+			world: {
+				...base.world,
+				revealedCityIds: [...base.world.revealedCityIds, 'campus-junction']
+			},
+			stores: [
+				{
+					...base.stores[0]!,
+					id: 'store-campus',
+					cityId: 'campus-junction',
+					tileId: tile.id,
+					mapX: tile.x,
+					mapY: tile.y,
+					location: formatLocation(tile)
+				}
+			]
+		};
+
+		expect(() => validateCurrentGameState(game)).toThrow(
+			/stores\[0\] must belong to an opened city \(found campus-junction\)/
+		);
+	});
+
+	test('strict validation rejects a placed industrial building in an unopened industry city', () => {
+		const base = createValidWarehouseBuildingGame();
+		const warehouse = base.industrialBuildings[0]!;
+		// Build a second materialized industry city (breadbasket-basin) that is
+		// revealed but NOT opened, and relocate the warehouse into it. The
+		// building footprint stays valid, so only the opened-city gate fires.
+		const basinCity: GameState['industryCities'][number] = {
+			id: 'breadbasket-basin',
+			name: 'Breadbasket Basin',
+			width: 3,
+			height: 3,
+			tiles: Array.from({ length: 9 }, (_, index) => {
+				const x = index % 3;
+				const y = Math.floor(index / 3);
+				return {
+					id: `breadbasket-basin-${x}-${y}`,
+					cityId: 'breadbasket-basin',
+					x,
+					y,
+					terrain: 'industrial',
+					resource: null,
+					locked: false
+				};
+			}),
+			rails: []
+		};
+		const relocatedWarehouse = {
+			...warehouse,
+			cityId: 'breadbasket-basin',
+			tileId: 'breadbasket-basin-0-0',
+			mapX: 0,
+			mapY: 0
+		};
+		const game: GameState = {
+			...base,
+			industryCities: [...base.industryCities, basinCity],
+			industrialBuildings: [relocatedWarehouse],
+			world: {
+				...base.world,
+				revealedCityIds: [...base.world.revealedCityIds, 'breadbasket-basin']
+			}
+		};
+
+		expect(() => validateCurrentGameState(game)).toThrow(
+			/industrialBuildings\[0\] must belong to an opened city \(found breadbasket-basin\)/
+		);
+	});
+
+	test('strict validation accepts an unoccupied materialized city that is not opened', () => {
+		const definition = getWorldCityDefinition('campus-junction')!;
+		const campusCity = generateCity({
+			id: definition.id,
+			name: 'Campus Junction',
+			width: DEFAULT_RETAIL_CITY_WIDTH,
+			height: DEFAULT_RETAIL_CITY_HEIGHT,
+			seed: definition.seed
+		});
+		const base = createGame();
+		// campus-junction is materialized and revealed but not opened, and has
+		// no stores or buildings. This must remain valid — the opened-city gate
+		// only applies to placed entities, not to unoccupied generated cities.
+		const game: GameState = {
+			...base,
+			cities: [...base.cities, campusCity],
+			world: {
+				...base.world,
+				revealedCityIds: [...base.world.revealedCityIds, 'campus-junction']
+			}
+		};
+
+		expect(() => validateCurrentGameState(game)).not.toThrow();
+	});
+
 	test.each([
 		{ collection: 'retail', wrongId: 'industry-city' },
 		{ collection: 'industry', wrongId: 'harbor-city' }

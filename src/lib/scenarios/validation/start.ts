@@ -155,8 +155,8 @@ function validateStoreOverrides(
 	context: ValidationContext,
 	value: unknown,
 	foundingStore: JsonObject | undefined
-): Map<string, number> {
-	const levels = new Map<string, number>();
+): Map<string, { level: number; path: string; explicitLevel: boolean }> {
+	const levels = new Map<string, { level: number; path: string; explicitLevel: boolean }>();
 	if (value === undefined) return levels;
 	const overrides = arrayValue(context, value, 'start.overrides.stores');
 	if (!overrides) return levels;
@@ -188,6 +188,7 @@ function validateStoreOverrides(
 			}
 		}
 		let targetLevel = 1;
+		let explicitLevel = false;
 		if (Object.hasOwn(override, 'targetLevel')) {
 			if (
 				typeof override.targetLevel !== 'number' ||
@@ -202,9 +203,12 @@ function validateStoreOverrides(
 					override.targetLevel,
 					`Target level must be an integer from 1 through ${MAX_STORE_LEVEL}.`
 				);
-			} else targetLevel = override.targetLevel;
+			} else {
+				targetLevel = override.targetLevel;
+				explicitLevel = true;
+			}
 		}
-		if (validRef) levels.set(storeRef, targetLevel);
+		if (validRef) levels.set(storeRef, { level: targetLevel, path, explicitLevel });
 		validateProductOverrides(context, override.products, path, foundingStore, targetLevel);
 	}
 	return levels;
@@ -516,31 +520,64 @@ function validateStoreCap(
 function validateAllowlistedProductUnlocks(
 	context: ValidationContext,
 	foundingStore: JsonObject | undefined,
-	targetLevels: ReadonlyMap<string, number>
+	targetLevels: ReadonlyMap<string, { level: number; path: string; explicitLevel: boolean }>
 ): void {
+	const upgradeAllowed = context.allowedCommands.has('upgradeStore');
+	// Each reachable archetype instance pairs an archetype with the level it
+	// can reach and the path to point at when its materialized products fall
+	// outside the content boundary.
+	interface ReachableInstance {
+		archetypeId: string;
+		reachableLevel: number;
+		path: string;
+	}
+	const reachable: ReachableInstance[] = [];
+	for (const archetype of ARCHETYPES) {
+		if (!context.content.archetypes.has(archetype.id)) continue;
+		const isFoundingArchetype = foundingStore?.archetypeId === archetype.id;
+		const isOpenableArchetype =
+			context.allowedCommands.has('openStore') &&
+			context.storeCap > 1 &&
+			context.permittedRetailPlacements.some(
+				(placement) =>
+					placement.archetypeId === archetype.id &&
+					canActivateRetailCity(context, placement.cityId) &&
+					!overlapsFoundingStore(context, placement, foundingStore)
+			);
+		if (!isFoundingArchetype && !isOpenableArchetype) continue;
+		let reachableLevel = 1;
+		let instancePath = 'start.foundingStore';
+		if (isFoundingArchetype && typeof foundingStore.ref === 'string') {
+			const override = targetLevels.get(foundingStore.ref);
+			reachableLevel = override?.level ?? 1;
+			if (override && override.explicitLevel) {
+				instancePath = `${override.path}.targetLevel`;
+			}
+		}
+		if (upgradeAllowed) reachableLevel = MAX_STORE_LEVEL;
+		if (isFoundingArchetype) {
+			reachable.push({ archetypeId: archetype.id, reachableLevel, path: instancePath });
+		}
+		if (!isOpenableArchetype) continue;
+		for (const placement of context.permittedRetailPlacements) {
+			if (placement.archetypeId !== archetype.id) continue;
+			if (!canActivateRetailCity(context, placement.cityId)) continue;
+			if (overlapsFoundingStore(context, placement, foundingStore)) continue;
+			reachable.push({
+				archetypeId: archetype.id,
+				reachableLevel: upgradeAllowed ? MAX_STORE_LEVEL : 1,
+				path: placement.path
+			});
+		}
+	}
+
 	for (const productId of context.content.products) {
 		let available = false;
-		for (const archetype of ARCHETYPES) {
-			if (!context.content.archetypes.has(archetype.id)) continue;
+		for (const instance of reachable) {
+			const archetype = ARCHETYPES.find((candidate) => candidate.id === instance.archetypeId)!;
 			const index = archetype.startingCategories.findIndex((category) => category.id === productId);
 			if (index < 0) continue;
-			const isFoundingArchetype = foundingStore?.archetypeId === archetype.id;
-			const isOpenableArchetype =
-				context.allowedCommands.has('openStore') &&
-				context.storeCap > 1 &&
-				context.permittedRetailPlacements.some(
-					(placement) =>
-						placement.archetypeId === archetype.id &&
-						canActivateRetailCity(context, placement.cityId) &&
-						!overlapsFoundingStore(context, placement, foundingStore)
-				);
-			if (!isFoundingArchetype && !isOpenableArchetype) continue;
-			let reachableLevel =
-				isFoundingArchetype && typeof foundingStore.ref === 'string'
-					? (targetLevels.get(foundingStore.ref) ?? 1)
-					: 1;
-			if (context.allowedCommands.has('upgradeStore')) reachableLevel = MAX_STORE_LEVEL;
-			if (index < getUnlockedCategoryCount(reachableLevel)) available = true;
+			if (index < getUnlockedCategoryCount(instance.reachableLevel)) available = true;
 		}
 		if (!available) {
 			const values = contentObject(context)?.productCategoryIds;
@@ -551,6 +588,29 @@ function validateAllowlistedProductUnlocks(
 				'product-locked',
 				productId,
 				`No allowed archetype can unlock ${productId} under the permitted commands.`
+			);
+		}
+	}
+
+	// Reverse check: every product a reachable archetype materializes must
+	// be in the content allowlist. Without this, an upgradeStore path could
+	// materialize a milestone category (e.g. snacks at level 4) that the
+	// scenario never allowlisted, and simulateDay would still process it.
+	const reported = new Set<string>();
+	for (const instance of reachable) {
+		const archetype = ARCHETYPES.find((candidate) => candidate.id === instance.archetypeId)!;
+		const unlockedCount = getUnlockedCategoryCount(instance.reachableLevel);
+		for (const category of archetype.startingCategories.slice(0, unlockedCount)) {
+			if (context.content.products.has(category.id)) continue;
+			const key = `${instance.path}:${category.id}`;
+			if (reported.has(key)) continue;
+			reported.add(key);
+			diagnostic(
+				context,
+				instance.path,
+				'product-not-allowlisted',
+				category.id,
+				`Upgrade path materializes ${category.id}, which is not in content.productCategoryIds.`
 			);
 		}
 	}
