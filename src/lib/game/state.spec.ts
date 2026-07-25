@@ -328,6 +328,35 @@ describe('game state', () => {
 		expect(resolved.world.claimedMilestoneIds).toContain('reveal-campus-junction');
 	});
 
+	test('resolveDecision does not bump storeCap when the positive-income-store-cap milestone is unmet', () => {
+		// Sandbox regression guard (see commit a6b9e40): resolveDecision wraps the
+		// result in refreshWorldProgress, which can bump storeCap once a non-harbor
+		// retail city is opened and a positive-income report exists. The shipped
+		// scenarios only run in harbor-city with no positive report at decision
+		// time, so storeCap must stay unchanged through a decision there. This
+		// locks that invariant so a future scenario cannot silently gain a mid-run
+		// storeCap bump via a decision without an accompanying test update.
+		expect.assertions(2);
+		const base = createNewGame('grocery', 55);
+		const game: GameState = {
+			...base,
+			decisions: [
+				{
+					id: 'noop-1',
+					title: 'Noop',
+					context: decisionContextLocationGeneric(),
+					expiresOnDay: 9,
+					options: [{ id: 'ok', label: 'OK', description: 'noop', effects: {} }]
+				}
+			]
+		};
+		expect(game.world.openedCityIds).not.toContain('campus-junction');
+
+		const resolved = resolveDecision(game, 'noop-1', 'ok');
+
+		expect(resolved.storeCap).toBe(game.storeCap);
+	});
+
 	test('resolves store-level effects and clamps boundaries', () => {
 		expect.assertions(4);
 		const game = createNewGame('grocery', 55);

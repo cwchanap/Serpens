@@ -772,6 +772,12 @@ export class GameRouteController {
 		if (!this.currentState.activeScenarioRun || !repository || !scenarioCommand) {
 			return { status: 'unavailable' };
 		}
+		// The scenarioCommandGate below guards re-entrant game commands, but lifecycle
+		// ops (start/resume/restart/import/abandon) gate on scenarioCommandPending
+		// instead and do not hold the gate. Reject here so a game command cannot race
+		// an in-flight lifecycle write. The UI also disables buttons while pending,
+		// but the controller is the authoritative guard.
+		if (this.currentState.scenarioCommandPending) return { status: 'busy' };
 
 		let rejectedCode: ScenarioOperationError['code'] | null = null;
 		let attemptedRun: ScenarioRun | null = null;

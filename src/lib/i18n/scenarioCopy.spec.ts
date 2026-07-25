@@ -401,4 +401,78 @@ describe('scenario copy', () => {
 		expect(failed.bestLabel).toBe('Best unchanged');
 		expect(failed.deadlineLabel).toBe('Deadline triggered on day 14');
 	});
+
+	it('localizes catalog card titles, eligibility, medals, and scores for ja and zh-Hant', () => {
+		expect.assertions(12);
+		const definitions = [
+			definition('first-profit', 2, 'firstProfit', 101),
+			definition('import-squeeze', 1, 'importSqueeze', 202),
+			definition('local-lifeline', 1, 'localLifeline', 303)
+		];
+		const summary: ScenarioPersistenceSummary = {
+			activeRunsByScenarioId: {},
+			bestResultsByDefinitionKey: {
+				'first-profit@2': result(definitions[0]!, 880, 'silver')
+			},
+			diagnostics: []
+		};
+		const entries = definitions.map((definitionValue) => ({
+			definition: definitionValue,
+			available: true,
+			diagnostics: []
+		}));
+
+		const ja = buildScenarioCatalogCards(entries, summary, createI18n('ja'));
+		expect(ja.map((card) => card.title)).toEqual(['最初の利益', '輸入圧力', '地域の生命線']);
+		expect(ja[0]?.eligibilityLabel).toBe('ランク対象');
+		expect(ja[0]?.best?.scoreLabel).toBe('880 ポイント');
+		expect(ja[0]?.best?.medalLabel).toBe('シルバー');
+		expect(ja[1]?.best).toBeNull();
+
+		const zh = buildScenarioCatalogCards(entries, summary, createI18n('zh-Hant'));
+		expect(zh.map((card) => card.title)).toEqual(['首次獲利', '進口壓力', '在地生命線']);
+		expect(zh[0]?.eligibilityLabel).toBe('計入排名');
+		expect(zh[0]?.best?.scoreLabel).toBe('880 分');
+		expect(zh[0]?.best?.medalLabel).toBe('銀牌');
+		expect(zh[1]?.best).toBeNull();
+		expect(ja.every((card) => card.primaryAction === 'start')).toBe(true);
+		expect(zh.every((card) => card.primaryAction === 'start')).toBe(true);
+	});
+
+	it('uses singular copy when exactly one day remains (plural slip regression)', () => {
+		expect.assertions(4);
+		const current = definition('first-profit', 1, 'firstProfit', 101);
+		const evaluation = {
+			day: 13,
+			required: [],
+			optional: [],
+			failures: [],
+			deadline: null,
+			risks: [{ kind: 'deadline' as const, daysRemaining: 1, triggered: false }],
+			projection: {
+				score: 760,
+				medal: 'silver' as const,
+				componentPoints: [],
+				componentEvidence: []
+			}
+		};
+		const run = {
+			definition: { scenarioId: current.id, version: 1 },
+			seed: 101,
+			eligibility: 'ranked' as const,
+			status: 'active' as const,
+			game: {} as never,
+			evaluation,
+			result: null
+		};
+
+		const en = buildScenarioProgressView(current, run, createI18n('en'));
+		expect(en.remainingLabel).toBe('1 day remaining');
+		expect(en.riskLabels).toContain('Deadline: 1 day remaining');
+
+		// ja has no singular/plural distinction; both forms render identically.
+		const ja = buildScenarioProgressView(current, run, createI18n('ja'));
+		expect(ja.remainingLabel).toBe('残り1日');
+		expect(ja.riskLabels).toContain('期限: 残り1日');
+	});
 });

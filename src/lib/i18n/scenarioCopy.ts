@@ -290,15 +290,19 @@ export function buildScenarioProgressView(
 		({ status }) => status === 'satisfied'
 	).length;
 	const evidence = progressEvidence(definition, evaluation, i18n, resolveContributor);
+	const remainingCount = Math.max(0, definition.dayLimit - evaluation.day);
 	return {
 		title: i18n.t(definition.titleKey),
 		eligibilityLabel: i18n.t(
 			run.eligibility === 'ranked' ? 'scenarioStatus.ranked' : 'scenarioStatus.unranked'
 		),
 		dayLabel: i18n.t('scenarioStatus.day', { day: evaluation.day, limit: definition.dayLimit }),
-		remainingLabel: i18n.t('scenarioStatus.remaining', {
-			count: Math.max(0, definition.dayLimit - evaluation.day)
-		}),
+		remainingLabel: i18n.t(
+			(remainingCount === 1
+				? 'scenarioStatus.remaining.one'
+				: 'scenarioStatus.remaining.other') as TranslationKey,
+			{ count: remainingCount }
+		),
 		requiredProgressLabel: i18n.t('scenarioStatus.requiredProgress', {
 			complete: satisfiedRequired,
 			total: evaluation.required.length
@@ -320,7 +324,12 @@ export function buildScenarioProgressView(
 		),
 		riskLabels: evaluation.risks.map((risk) =>
 			risk.kind === 'deadline'
-				? i18n.t('scenarioStatus.deadlineRisk', { count: risk.daysRemaining })
+				? i18n.t(
+						(risk.daysRemaining === 1
+							? 'scenarioStatus.deadlineRisk.one'
+							: 'scenarioStatus.deadlineRisk.other') as TranslationKey,
+						{ count: risk.daysRemaining }
+					)
 				: i18n.t('scenarioStatus.conditionRisk', {
 						distance: i18n.format.decimal(risk.distance),
 						status: risk.triggered

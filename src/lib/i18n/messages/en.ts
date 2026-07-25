@@ -1008,12 +1008,15 @@ export const en = {
 		activeVersion: 'Active version {active} (current version {current})',
 		versionEligibility: 'Version {version} · {eligibility}',
 		day: 'Day {day} of {limit}',
-		remaining: '{count} days remaining',
+		remaining: { one: '{count} day remaining', other: '{count} days remaining' },
 		requiredProgress: 'Required {complete} of {total}',
 		optionalProgress: 'Optional {complete} of {total}',
 		projectedScore: 'Projected score {score} points',
 		projectedMedal: 'Projected medal {medal}',
-		deadlineRisk: 'Deadline: {count} days remaining',
+		deadlineRisk: {
+			one: 'Deadline: {count} day remaining',
+			other: 'Deadline: {count} days remaining'
+		},
 		conditionRisk: 'Failure risk: {distance} from boundary · {status}',
 		progressAnnouncement: 'Challenge progress updated on day {day}.',
 		showDetails: 'Show objective details',
