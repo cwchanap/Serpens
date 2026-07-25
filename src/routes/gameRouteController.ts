@@ -36,7 +36,9 @@ import type {
 	ScenarioCommitOutcome,
 	ScenarioDefinition,
 	ScenarioDefinitionRef,
+	ScenarioId,
 	ScenarioOperationError,
+	ScenarioPersistenceSummary,
 	ScenarioResult,
 	ScenarioRun
 } from '$lib/scenarios/types';
@@ -175,6 +177,7 @@ export class GameRouteController {
 	private scenarioRepository: ScenarioRepository | null = null;
 	private readonly scenarioCommandGate = new ScenarioCommandGate();
 	private scenarioRetryEpoch = 0;
+	private lastScenarioSummary: ScenarioPersistenceSummary | null = null;
 
 	constructor(private readonly options: GameRouteControllerOptions) {}
 
@@ -206,7 +209,7 @@ export class GameRouteController {
 			const repository = await this.options.createScenarioRepository();
 			this.scenarioRepository = repository;
 			const summary = await repository.getSummary();
-			this.options.onScenarioSummary?.(summary);
+			this.publishScenarioSummary(summary);
 			if (summary.diagnostics.length > 0) {
 				this.patchState({
 					scenarioOperationError: {
@@ -391,6 +394,7 @@ export class GameRouteController {
 				scenarioOperationError: null,
 				retryScenarioOperation: null
 			});
+			await this.refreshScenarioSummary();
 			return { status: 'committed' };
 		} catch {
 			this.patchState({
@@ -447,6 +451,7 @@ export class GameRouteController {
 				scenarioOperationError: null,
 				retryScenarioOperation: null
 			});
+			await this.refreshScenarioSummary();
 			return { status: 'committed' };
 		} catch {
 			this.patchState({
@@ -722,6 +727,37 @@ export class GameRouteController {
 		});
 	}
 
+	private publishScenarioSummary(summary: ScenarioPersistenceSummary): void {
+		this.lastScenarioSummary = summary;
+		this.options.onScenarioSummary?.(summary);
+	}
+
+	// Best-effort summary refresh after a lifecycle write (start/restart/import).
+	// Refreshing keeps earlier active runs visible in the catalog — without it,
+	// only the just-started run is published via `activeScenarioRun` and prior
+	// runs disappear from the catalog until reload.
+	private async refreshScenarioSummary(): Promise<void> {
+		const repository = this.scenarioRepository;
+		if (!repository) return;
+		try {
+			this.publishScenarioSummary(await repository.getSummary());
+		} catch {
+			// Best-effort: leave the last known summary in place.
+		}
+	}
+
+	// Drop a terminal run's entry from the last known summary when the
+	// post-terminal `getSummary` refresh fails, so the catalog doesn't keep
+	// offering a stale Resume action whose `loadActiveRun` would return null.
+	private dropTerminalRunFromSummary(scenarioId: ScenarioId): void {
+		const base = this.lastScenarioSummary;
+		if (!base) return;
+		if (!(scenarioId in base.activeRunsByScenarioId)) return;
+		const { [scenarioId]: _removed, ...rest } = base.activeRunsByScenarioId;
+		void _removed;
+		this.publishScenarioSummary({ ...base, activeRunsByScenarioId: rest });
+	}
+
 	private async persistScenarioRun(
 		run: ScenarioRun,
 		retry: () => Promise<GameRouteCommitResult>
@@ -742,6 +778,9 @@ export class GameRouteController {
 				scenarioOperationError: null,
 				retryScenarioOperation: null
 			});
+			// Refresh the catalog summary so previously-started active runs
+			// remain resumable after a new run is started in the same session.
+			await this.refreshScenarioSummary();
 			return { status: 'committed' };
 		} catch {
 			this.patchState({
@@ -787,6 +826,7 @@ export class GameRouteController {
 		let rejectedCode: ScenarioOperationError['code'] | null = null;
 		let attemptedRun: ScenarioRun | null = null;
 		let preparedRun: ScenarioRun | null = null;
+		let terminalScenarioId: ScenarioId | null = null;
 		try {
 			const result = await runPersistenceGatedOperation<ScenarioRun, ScenarioCommitOutcome>(
 				this.scenarioCommandGate,
@@ -798,6 +838,7 @@ export class GameRouteController {
 							return { status: 'rejected' as const };
 						}
 						attemptedRun = run;
+						terminalScenarioId = run.definition.scenarioId;
 						const definition = this.options.resolveScenarioDefinition(run.definition);
 						if (!definition) {
 							rejectedCode = 'stale-definition';
@@ -835,9 +876,15 @@ export class GameRouteController {
 			}
 			if (result.status === 'committed' && result.value.terminalResult) {
 				try {
-					this.options.onScenarioSummary?.(await repository.getSummary());
+					this.publishScenarioSummary(await repository.getSummary());
 				} catch {
-					// Summary refresh is best-effort; the terminal outcome itself already published.
+					// Summary refresh failed. The terminal run was already persisted
+					// and `activeScenarioRun` cleared, so drop its entry from the
+					// last known summary to avoid leaving a stale Resume action
+					// whose `loadActiveRun` would return null.
+					if (terminalScenarioId) {
+						this.dropTerminalRunFromSummary(terminalScenarioId);
+					}
 				}
 			}
 			return { status: result.status };
