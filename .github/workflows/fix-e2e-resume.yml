@@ -89,3 +89,5 @@ jobs:
           git add src/routes/gameRouteController.ts src/routes/page.svelte.spec.ts .github/workflows/fix-e2e-resume.yml
           git commit -m "fix: restore scenario mode on same-run resume"
           git push origin HEAD:codex/hpa-280-seeded-scenarios
+
+# Trigger the branch-scoped repair workflow after its initial introduction.
