@@ -181,6 +181,10 @@ function scenarioDefinition(overrides: Partial<ScenarioDefinition> = {}): Scenar
 		},
 		content: {
 			...base.content,
+			// upgradeStore is included below, so the founding convenience store
+			// can reach MAX and materialize its full category set — allowlist all
+			// of it to satisfy the bidirectional content boundary check.
+			productCategoryIds: ['bottled-water', 'snacks', 'drinks', 'essentials'],
 			retailPlacements: [
 				{
 					cityId: base.start.foundingStore.cityId,

@@ -427,11 +427,21 @@ describe('validateScenarioDefinition', () => {
 	it('does not let upgradeStore unlock products for an archetype with no materialized or openable store', () => {
 		const definition = validDefinition();
 		definition.content.archetypeIds = ['convenience', 'electronics'];
-		definition.content.productCategoryIds = ['bottled-water', 'devices'];
+		// Convenience is the founding archetype and upgradeStore is allowed, so
+		// the full convenience category set must be allowlisted to satisfy the
+		// reverse check; devices stays unallowlisted-reachable to test the
+		// forward product-locked diagnostic.
+		definition.content.productCategoryIds = [
+			'bottled-water',
+			'snacks',
+			'drinks',
+			'essentials',
+			'devices'
+		];
 		definition.allowedCommands = ['advanceDay', 'upgradeStore'];
 
 		expect(codes(definition)).toEqual([
-			{ path: 'content.productCategoryIds[1]', code: 'product-locked' }
+			{ path: 'content.productCategoryIds[4]', code: 'product-locked' }
 		]);
 
 		definition.allowedCommands = ['advanceDay', 'openStore', 'upgradeStore'];
@@ -441,14 +451,23 @@ describe('validateScenarioDefinition', () => {
 			{ cityId: 'harbor-city', tileId: 'harbor-city-1-1', archetypeId: 'electronics' }
 		];
 		expect(codes(definition)).toEqual([
-			{ path: 'content.productCategoryIds[1]', code: 'product-locked' }
+			{ path: 'content.productCategoryIds[4]', code: 'product-locked' }
 		]);
 	});
 
 	it('allows upgradeStore unlocks through an actually openable archetype placement', () => {
 		const definition = validDefinition();
 		definition.content.archetypeIds = ['convenience', 'electronics'];
-		definition.content.productCategoryIds = ['bottled-water', 'devices'];
+		definition.content.productCategoryIds = [
+			'bottled-water',
+			'snacks',
+			'drinks',
+			'essentials',
+			'games',
+			'accessories',
+			'devices',
+			'peripherals'
+		];
 		definition.content.retailPlacements = [
 			...definition.content.retailPlacements,
 			{ cityId: 'harbor-city', tileId: 'harbor-city-3-1', archetypeId: 'electronics' }
@@ -463,7 +482,13 @@ describe('validateScenarioDefinition', () => {
 		const definition = validDefinition();
 		definition.content.cityIds = ['harbor-city', 'campus-junction'];
 		definition.content.archetypeIds = ['convenience', 'electronics'];
-		definition.content.productCategoryIds = ['bottled-water', 'devices'];
+		definition.content.productCategoryIds = [
+			'bottled-water',
+			'snacks',
+			'drinks',
+			'essentials',
+			'devices'
+		];
 		definition.content.retailPlacements = [
 			...definition.content.retailPlacements,
 			{
@@ -476,7 +501,7 @@ describe('validateScenarioDefinition', () => {
 		definition.start.overrides.storeCap = 2;
 
 		expect(codes(definition)).toEqual([
-			{ path: 'content.productCategoryIds[1]', code: 'product-locked' }
+			{ path: 'content.productCategoryIds[4]', code: 'product-locked' }
 		]);
 	});
 
@@ -484,7 +509,16 @@ describe('validateScenarioDefinition', () => {
 		const definition = validDefinition();
 		definition.content.cityIds = ['harbor-city', 'industry-city', 'campus-junction'];
 		definition.content.archetypeIds = ['convenience', 'electronics'];
-		definition.content.productCategoryIds = ['bottled-water', 'devices'];
+		definition.content.productCategoryIds = [
+			'bottled-water',
+			'snacks',
+			'drinks',
+			'essentials',
+			'games',
+			'accessories',
+			'devices',
+			'peripherals'
+		];
 		definition.content.retailPlacements = [
 			...definition.content.retailPlacements,
 			{
@@ -506,6 +540,45 @@ describe('validateScenarioDefinition', () => {
 		definition.start.overrides.world.openedCityIds = ['harbor-city', 'industry-city'];
 		definition.allowedCommands = ['advanceDay', 'openStore', 'upgradeStore', 'openWorldCity'];
 		expect(codes(definition)).toEqual([]);
+	});
+
+	it('flags products materialized by an allowed upgradeStore path that are not in the content allowlist', () => {
+		const definition = validDefinition();
+		definition.content.productCategoryIds = ['bottled-water'];
+		definition.allowedCommands = ['advanceDay', 'upgradeStore'];
+
+		expect(codes(definition)).toEqual([
+			{ path: 'start.overrides.stores[0].targetLevel', code: 'product-not-allowlisted' },
+			{ path: 'start.overrides.stores[0].targetLevel', code: 'product-not-allowlisted' },
+			{ path: 'start.overrides.stores[0].targetLevel', code: 'product-not-allowlisted' }
+		]);
+	});
+
+	it('flags products materialized by an openable placement upgrade path that are not in the content allowlist', () => {
+		const definition = validDefinition();
+		definition.content.archetypeIds = ['convenience', 'electronics'];
+		// Convenience founding store is fully allowlisted, but the openable
+		// electronics placement's upgrade path materializes categories that
+		// are not allowlisted.
+		definition.content.productCategoryIds = [
+			'bottled-water',
+			'snacks',
+			'drinks',
+			'essentials',
+			'devices'
+		];
+		definition.content.retailPlacements = [
+			...definition.content.retailPlacements,
+			{ cityId: 'harbor-city', tileId: 'harbor-city-3-1', archetypeId: 'electronics' }
+		];
+		definition.allowedCommands = ['advanceDay', 'openStore', 'upgradeStore'];
+		definition.start.overrides.storeCap = 2;
+
+		expect(codes(definition)).toEqual([
+			{ path: 'content.retailPlacements[1]', code: 'product-not-allowlisted' },
+			{ path: 'content.retailPlacements[1]', code: 'product-not-allowlisted' },
+			{ path: 'content.retailPlacements[1]', code: 'product-not-allowlisted' }
+		]);
 	});
 
 	it('enforces the authored store cap and the no-open-store boundary', () => {

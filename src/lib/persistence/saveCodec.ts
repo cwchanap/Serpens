@@ -69,7 +69,8 @@ export type SaveDataErrorCode =
 	| 'invariant-products'
 	| 'invariant-stock-health'
 	| 'invariant-warehouse'
-	| 'invariant-inventory';
+	| 'invariant-inventory'
+	| 'invariant-entity-city-opened';
 
 export class SaveDataError extends Error {
 	readonly code: SaveDataErrorCode;
@@ -804,6 +805,7 @@ function validateCurrentGameStateInternal(value: unknown): GameState {
 	validateSavedWarehouse(game.warehouse, 'Saved game warehouse');
 	stores.forEach((store, index) => validateSavedStore(store, `Saved game stores[${index}]`));
 	validateCurrentRetailStorePlacements(stores, cities);
+	validateCurrentEntityCitiesOpened(stores, industrialBuildings, world.openedCityIds);
 	staff.forEach((member, index) => validateSavedStaffMember(member, `Saved game staff[${index}]`));
 	hiringCandidates.forEach((candidate, index) =>
 		validateSavedHiringCandidate(candidate, `Saved game hiringCandidates[${index}]`)
@@ -1766,6 +1768,40 @@ function validateCurrentWorldCityReferences(
 		}
 		if (definition?.kind === 'industry' && !industryIds.has(cityId)) {
 			throw new SaveDataError(`Saved game opened industry city ${cityId} must be materialized`);
+		}
+	}
+}
+
+// Placed entities (stores and industrial buildings) must belong to an opened
+// city. Without this cross-check, a save can materialize a city, place an
+// entity there, omit the city from world.openedCityIds, and still pass
+// validation while simulateDay processes the entity — bypassing the
+// world-progression unlock gate. Unoccupied materialized cities (e.g. a
+// revealed-but-not-opened city with no entities) remain allowed.
+function validateCurrentEntityCitiesOpened(
+	stores: unknown[],
+	industrialBuildings: unknown[],
+	openedCityIds: readonly string[]
+): void {
+	const opened = new Set(openedCityIds);
+	for (const [index, store] of (stores as Array<Record<string, unknown>>).entries()) {
+		const cityId = store.cityId;
+		if (typeof cityId === 'string' && !opened.has(cityId)) {
+			throw new SaveDataError(
+				`Saved game stores[${index}] must belong to an opened city (found ${cityId})`,
+				'invariant-entity-city-opened'
+			);
+		}
+	}
+	for (const [index, building] of (
+		industrialBuildings as Array<Record<string, unknown>>
+	).entries()) {
+		const cityId = building.cityId;
+		if (typeof cityId === 'string' && !opened.has(cityId)) {
+			throw new SaveDataError(
+				`Saved game industrialBuildings[${index}] must belong to an opened city (found ${cityId})`,
+				'invariant-entity-city-opened'
+			);
 		}
 	}
 }

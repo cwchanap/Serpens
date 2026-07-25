@@ -173,6 +173,7 @@ interface PermittedRetailPlacement {
 	cityId: string;
 	x: number;
 	y: number;
+	path: string;
 }
 
 interface AuthoredBuilding {
