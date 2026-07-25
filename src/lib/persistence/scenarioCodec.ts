@@ -1358,8 +1358,9 @@ export function parseScenarioStoreSnapshot(
 	serialized: string,
 	resolveDefinition: ScenarioDefinitionResolver = resolveScenarioDefinition
 ): DecodeScenarioStoreResult {
+	let parsed: unknown;
 	try {
-		return decodeScenarioStoreSnapshot(JSON.parse(serialized), resolveDefinition);
+		parsed = JSON.parse(serialized);
 	} catch (error) {
 		return {
 			snapshot: createEmptyScenarioStore(),
@@ -1373,6 +1374,7 @@ export function parseScenarioStoreSnapshot(
 			]
 		};
 	}
+	return decodeScenarioStoreSnapshot(parsed, resolveDefinition);
 }
 
 export function validateScenarioStoreSnapshot(

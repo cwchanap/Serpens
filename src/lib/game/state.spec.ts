@@ -299,6 +299,35 @@ describe('game state', () => {
 		expect(resolved.scorecard.customerSatisfaction).toBe(game.scorecard.customerSatisfaction - 1);
 	});
 
+	test('resolveDecision normalizes world progress on the same command via refreshWorldProgress', () => {
+		expect.assertions(3);
+		const base = createNewGame('grocery', 55);
+		expect(base.world.revealedCityIds).not.toContain('campus-junction');
+		const game: GameState = {
+			...base,
+			day: 7,
+			world: {
+				...base.world,
+				revealedCityIds: ['harbor-city', 'industry-city'],
+				claimedMilestoneIds: []
+			},
+			decisions: [
+				{
+					id: 'timing-1',
+					title: 'Timing probe',
+					context: decisionContextLocationGeneric(),
+					expiresOnDay: 9,
+					options: [{ id: 'ok', label: 'OK', description: 'noop', effects: {} }]
+				}
+			]
+		};
+
+		const resolved = resolveDecision(game, 'timing-1', 'ok');
+
+		expect(resolved.world.revealedCityIds).toContain('campus-junction');
+		expect(resolved.world.claimedMilestoneIds).toContain('reveal-campus-junction');
+	});
+
 	test('resolves store-level effects and clamps boundaries', () => {
 		expect.assertions(4);
 		const game = createNewGame('grocery', 55);

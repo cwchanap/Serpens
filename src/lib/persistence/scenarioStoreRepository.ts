@@ -12,7 +12,6 @@ import type {
 } from '$lib/scenarios/types';
 import { resolveScenarioDefinition } from '$lib/scenarios/catalog';
 import {
-	cloneScenarioStoreSnapshot,
 	encodeScenarioBestResultRecord,
 	encodeScenarioRunRecord,
 	scenarioDefinitionKey,
@@ -83,7 +82,7 @@ export class ScenarioRepositoryFromDriver implements ScenarioRepository {
 					[run.definition.scenarioId]: record
 				}
 			};
-			await this.driver.write(cloneScenarioStoreSnapshot(next, this.resolveDefinition));
+			await this.driver.write(next);
 			return {
 				activeRun: runFromRecord(record),
 				terminalResult: null,
@@ -97,12 +96,7 @@ export class ScenarioRepositoryFromDriver implements ScenarioRepository {
 			const decoded = await this.driver.read();
 			const activeRunsByScenarioId = { ...decoded.snapshot.activeRunsByScenarioId };
 			delete activeRunsByScenarioId[scenarioId];
-			await this.driver.write(
-				cloneScenarioStoreSnapshot(
-					{ ...decoded.snapshot, activeRunsByScenarioId },
-					this.resolveDefinition
-				)
-			);
+			await this.driver.write({ ...decoded.snapshot, activeRunsByScenarioId });
 		});
 	}
 
@@ -129,12 +123,11 @@ export class ScenarioRepositoryFromDriver implements ScenarioRepository {
 				);
 			}
 
-			await this.driver.write(
-				cloneScenarioStoreSnapshot(
-					{ ...decoded.snapshot, activeRunsByScenarioId, bestResultsByDefinitionKey },
-					this.resolveDefinition
-				)
-			);
+			await this.driver.write({
+				...decoded.snapshot,
+				activeRunsByScenarioId,
+				bestResultsByDefinitionKey
+			});
 			return {
 				activeRun: null,
 				terminalResult: structuredClone(terminal.result) as ScenarioResult,

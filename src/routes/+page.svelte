@@ -1455,6 +1455,9 @@
 		playMode = state.playMode;
 		scenarioCommandPending = state.scenarioCommandPending;
 		scenariosReady = state.scenariosReady;
+		if (state.playMode === 'sandbox') {
+			scenarioEvidenceGame = null;
+		}
 	}
 
 	async function resumeAutoSave(): Promise<void> {

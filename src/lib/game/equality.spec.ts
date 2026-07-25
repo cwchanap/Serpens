@@ -79,4 +79,14 @@ describe('deeplyEqual', () => {
 	it('returns false when key sets differ', () => {
 		expect(deeplyEqual({ a: 1, b: 2 }, { a: 1, c: 2 })).toBe(false);
 	});
+
+	it('treats NaN as equal to NaN via Object.is', () => {
+		expect(deeplyEqual(NaN, NaN)).toBe(true);
+		expect(deeplyEqual(NaN, 0)).toBe(false);
+		expect(deeplyEqual(0, NaN)).toBe(false);
+		expect(deeplyEqual(NaN, Infinity)).toBe(false);
+		expect(deeplyEqual([NaN], [NaN])).toBe(true);
+		expect(deeplyEqual({ a: NaN }, { a: NaN })).toBe(true);
+		expect(deeplyEqual({ a: NaN }, { a: 0 })).toBe(false);
+	});
 });
