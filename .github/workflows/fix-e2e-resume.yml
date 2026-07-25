@@ -1,0 +1,91 @@
+name: Apply E2E resume fix
+
+on:
+  push:
+    branches:
+      - codex/hpa-280-seeded-scenarios
+
+permissions:
+  contents: write
+
+jobs:
+  apply-fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: codex/hpa-280-seeded-scenarios
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Sync SvelteKit
+        run: bun run prepare
+
+      - name: Apply focused regression fix
+        run: |
+          python <<'PY'
+          from pathlib import Path
+
+          controller_path = Path('src/routes/gameRouteController.ts')
+          controller = controller_path.read_text()
+          old_controller = """\t\t\tif (current && deeplyEqual(current, run)) {
+          \t\t\t\tthis.patchState({
+          \t\t\t\t\tscenarioCommandPending: false,
+          \t\t\t\t\tscenarioOperationError: null,
+          \t\t\t\t\tretryScenarioOperation: null
+          \t\t\t\t});
+          """
+          new_controller = """\t\t\tif (current && deeplyEqual(current, run)) {
+          \t\t\t\tthis.patchState({
+          \t\t\t\t\tplayMode: 'scenario',
+          \t\t\t\t\tscenarioCommandPending: false,
+          \t\t\t\t\tscenarioOperationError: null,
+          \t\t\t\t\tretryScenarioOperation: null
+          \t\t\t\t});
+          """
+          if controller.count(old_controller) != 1:
+              raise SystemExit('Expected controller resume block exactly once')
+          controller_path.write_text(controller.replace(old_controller, new_controller, 1))
+
+          spec_path = Path('src/routes/page.svelte.spec.ts')
+          spec = spec_path.read_text()
+          old_test = """\tit('resumes the exact stored run and restarts its exact version and selected seed', async () => {
+          \t\texpect.assertions(7);
+          """
+          new_test = """\tit('resumes the exact stored run and restarts its exact version and selected seed', async () => {
+          \t\texpect.assertions(8);
+          """
+          if spec.count(old_test) != 1:
+              raise SystemExit('Expected resume unit test exactly once')
+          spec = spec.replace(old_test, new_test, 1)
+
+          old_assertion = """\t\texpect(controller.state.activeScenarioRun).toBe(stored);
+          \t\texpect(repository.saveActiveRun).not.toHaveBeenCalled();
+          """
+          new_assertion = """\t\texpect(controller.state.playMode).toBe('scenario');
+          \t\texpect(controller.state.activeScenarioRun).toBe(stored);
+          \t\texpect(repository.saveActiveRun).not.toHaveBeenCalled();
+          """
+          if spec.count(old_assertion) != 1:
+              raise SystemExit('Expected resume assertions exactly once')
+          spec_path.write_text(spec.replace(old_assertion, new_assertion, 1))
+          PY
+
+      - name: Run focused unit regression
+        run: bun run test:unit -- src/routes/page.svelte.spec.ts --run -t "resumes the exact stored run"
+
+      - name: Commit fix and remove temporary workflow
+        run: |
+          rm .github/workflows/fix-e2e-resume.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/routes/gameRouteController.ts src/routes/page.svelte.spec.ts .github/workflows/fix-e2e-resume.yml
+          git commit -m "fix: restore scenario mode on same-run resume"
+          git push origin HEAD:codex/hpa-280-seeded-scenarios
