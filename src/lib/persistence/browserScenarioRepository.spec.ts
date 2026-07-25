@@ -136,4 +136,18 @@ describe('browser scenario repository', () => {
 		expect(storage.readKeys).toEqual([BROWSER_SCENARIO_STORAGE_KEY]);
 		expect(storage.peek(BROWSER_SAVE_STORAGE_KEY)).toBe('sandbox-sentinel');
 	});
+
+	it('propagates a QuotaExceededError from setItem without swallowing or mislabeling it', async () => {
+		const quotaError = new DOMException('localStorage quota exceeded', 'QuotaExceededError');
+		const storage: ScenarioStorageLike = {
+			getItem: () => null,
+			setItem: () => {
+				throw quotaError;
+			},
+			removeItem: () => {}
+		};
+		const repository = createBrowserScenarioRepository(storage, resolveFixtureDefinition);
+
+		await expect(repository.saveActiveRun(fixtureRun())).rejects.toBe(quotaError);
+	});
 });

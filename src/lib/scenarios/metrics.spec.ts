@@ -19,9 +19,11 @@ import {
 	encodeEvidenceSegment,
 	evaluateMetric,
 	evaluateScenarioConditions,
+	METRIC_REGISTRY,
 	productEvidenceId,
 	validateScenarioReportInvariants
 } from './metrics';
+import { METRIC_WINDOWS } from './validation/shared';
 
 function productionReport(): DailyProductionReport {
 	return {
@@ -816,5 +818,27 @@ describe('scenario report invariants', () => {
 				value: 1
 			}
 		]);
+	});
+});
+
+describe('METRIC_REGISTRY / METRIC_WINDOWS parity', () => {
+	it('exposes the same metric keys in both registries', () => {
+		const registryKeys = new Set(Object.keys(METRIC_REGISTRY));
+		const windowKeys = new Set(Object.keys(METRIC_WINDOWS));
+		expect([...registryKeys].sort()).toEqual([...windowKeys].sort());
+	});
+
+	it('declares identical supported windows for every metric', () => {
+		const windowKinds = ['current', 'run-to-date', 'trailing-reports', 'fixed-report-days'];
+		for (const metric of Object.keys(METRIC_REGISTRY)) {
+			const registryWindows =
+				METRIC_REGISTRY[metric as keyof typeof METRIC_REGISTRY].supportedWindows;
+			const validationWindows = METRIC_WINDOWS[metric];
+			expect(registryWindows).toBeDefined();
+			expect(validationWindows).toBeDefined();
+			for (const kind of windowKinds) {
+				expect(registryWindows.has(kind as never)).toBe(validationWindows?.has(kind as never));
+			}
+		}
 	});
 });

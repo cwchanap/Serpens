@@ -167,7 +167,7 @@ function consecutivePositiveIncome(context: MetricContext): MetricValue {
 	return { actual: contributingIds.length, contributingIds: sortedIds(contributingIds) };
 }
 
-const METRIC_REGISTRY = {
+export const METRIC_REGISTRY = {
 	cash: {
 		supportedWindows: CURRENT,
 		neutral: 0,

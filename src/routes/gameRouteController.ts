@@ -806,10 +806,10 @@ export class GameRouteController {
 							? repository.saveActiveRun(run)
 							: repository.commitTerminalRun(run),
 					publish: (outcome) => {
+						this.publishScenarioOutcome(outcome);
 						if (outcome.terminalResult && preparedRun) {
 							this.options.onScenarioTerminalRun?.(preparedRun);
 						}
-						this.publishScenarioOutcome(outcome);
 					},
 					afterPublish: request.cueId ? () => this.options.playSfx(request.cueId!) : undefined,
 					onPendingChange: (scenarioCommandPending) => this.patchState({ scenarioCommandPending })
