@@ -272,6 +272,78 @@ describe('focusTrap', () => {
 		detach();
 	});
 
+	it('inerts backdrop siblings on attach so screen-reader browse mode cannot reach page chrome', () => {
+		expect.assertions(3);
+		const pageChrome = document.createElement('button');
+		pageChrome.id = 'page-chrome';
+		document.body.appendChild(pageChrome);
+
+		const backdrop = document.createElement('div');
+		backdrop.className = 'dialog-backdrop';
+		backdrop.innerHTML = '<div role="dialog" tabindex="-1"><button id="first">First</button></div>';
+		document.body.appendChild(backdrop);
+		const node = backdrop.querySelector<HTMLDivElement>('[role="dialog"]')!;
+
+		expect(pageChrome.hasAttribute('inert')).toBe(false);
+		const detach = focusTrap(node) as () => void;
+		expect(pageChrome.hasAttribute('inert')).toBe(true);
+		// The backdrop itself is not inerted — only its siblings.
+		expect(backdrop.hasAttribute('inert')).toBe(false);
+
+		detach();
+	});
+
+	it('removes inert from backdrop siblings on detach', () => {
+		expect.assertions(2);
+		const pageChrome = document.createElement('button');
+		pageChrome.id = 'page-chrome';
+		document.body.appendChild(pageChrome);
+
+		const backdrop = document.createElement('div');
+		backdrop.className = 'dialog-backdrop';
+		backdrop.innerHTML = '<div role="dialog" tabindex="-1"><button id="first">First</button></div>';
+		document.body.appendChild(backdrop);
+		const node = backdrop.querySelector<HTMLDivElement>('[role="dialog"]')!;
+
+		const detach = focusTrap(node) as () => void;
+		expect(pageChrome.hasAttribute('inert')).toBe(true);
+		detach();
+		expect(pageChrome.hasAttribute('inert')).toBe(false);
+	});
+
+	it('keeps a sibling inerted while a stacked inner dialog is still open', () => {
+		expect.assertions(3);
+		const pageChrome = document.createElement('button');
+		pageChrome.id = 'page-chrome';
+		document.body.appendChild(pageChrome);
+
+		const outerBackdrop = document.createElement('div');
+		outerBackdrop.innerHTML =
+			'<div role="dialog" tabindex="-1"><button id="outer">Outer</button></div>';
+		document.body.appendChild(outerBackdrop);
+		const outerNode = outerBackdrop.querySelector<HTMLDivElement>('[role="dialog"]')!;
+
+		const innerBackdrop = document.createElement('div');
+		innerBackdrop.innerHTML =
+			'<div role="dialog" tabindex="-1"><button id="inner">Inner</button></div>';
+		document.body.appendChild(innerBackdrop);
+		const innerNode = innerBackdrop.querySelector<HTMLDivElement>('[role="dialog"]')!;
+
+		const outerDetach = focusTrap(outerNode) as () => void;
+		expect(pageChrome.hasAttribute('inert')).toBe(true);
+		// Inner dialog also inerts pageChrome (ref-count to 2) and inerts the
+		// outer backdrop so SR browse mode cannot reach the paused outer dialog.
+		const innerDetach = focusTrap(innerNode) as () => void;
+		expect(pageChrome.hasAttribute('inert')).toBe(true);
+
+		// Closing the outer dialog first must NOT un-inert pageChrome while the
+		// inner dialog is still open.
+		outerDetach();
+		expect(pageChrome.hasAttribute('inert')).toBe(true);
+
+		innerDetach();
+	});
+
 	it('does not wrap focus when shift-tabbing from a middle focusable element', () => {
 		expect.assertions(1);
 		const dialog = mountDialog(
