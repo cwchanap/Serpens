@@ -191,4 +191,28 @@ describe('scenario share codes', () => {
 			code: 'checksum-mismatch'
 		});
 	});
+
+	it('throws when encoding a definition with an invalid version', () => {
+		expect(() =>
+			encodeScenarioShareCode({ scenarioId: 'first-profit', version: 0 }, 280_001)
+		).toThrow(RangeError);
+		expect(() =>
+			encodeScenarioShareCode({ scenarioId: 'first-profit', version: -1 }, 280_001)
+		).toThrow(RangeError);
+	});
+
+	it('rejects a version that resolves to a definition with a different version', () => {
+		// The resolver returns a version-1 definition for first-profit regardless of
+		// the requested version, so a code claiming version 2 hits the
+		// resolved.version !== version check.
+		const resolver = (ref: ScenarioDefinitionRef): ScenarioDefinition | undefined => {
+			const match = fixtureDefinitions.find((candidate) => candidate.id === ref.scenarioId);
+			return match as ScenarioDefinition | undefined;
+		};
+		const input = `SC1.first-profit.2.1.${checksumFor('SC1.first-profit.2.1')}`;
+		expect(decodeScenarioShareCode(input, resolver)).toEqual({
+			ok: false,
+			code: 'unsupported-version'
+		});
+	});
 });

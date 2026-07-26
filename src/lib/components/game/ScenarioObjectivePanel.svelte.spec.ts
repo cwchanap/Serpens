@@ -40,4 +40,26 @@ describe('ScenarioObjectivePanel', () => {
 		await expect.element(page.getByText('Day 3 report').first()).toBeVisible();
 		await expect.element(page.getByText('Deadline not triggered: day 4 of 14')).toBeVisible();
 	});
+
+	it('omits empty sections, shows no-contributors text, and hides the deadline when absent', async () => {
+		expect.assertions(4);
+		const sparseView = {
+			...view,
+			required: [{ ...objective, id: 'solo', contributorLabels: [] }],
+			optional: [],
+			failures: [],
+			deadlineLabel: null
+		} as ScenarioProgressViewModel;
+
+		render(ScenarioObjectivePanel, { view: sparseView, i18n: createI18n('en') });
+
+		await expect.element(page.getByRole('heading', { name: 'Required objectives' })).toBeVisible();
+		await expect.element(page.getByText('No contributing records')).toBeVisible();
+		await expect
+			.element(page.getByRole('heading', { name: 'Optional objectives' }))
+			.not.toBeInTheDocument();
+		await expect
+			.element(page.getByRole('heading', { name: 'Failure conditions' }))
+			.not.toBeInTheDocument();
+	});
 });

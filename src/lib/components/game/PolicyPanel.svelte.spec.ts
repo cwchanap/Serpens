@@ -133,4 +133,28 @@ describe('PolicyPanel', () => {
 		await expect.element(page.getByText('Unavailable in this challenge.')).toBeVisible();
 		expect(onChange).not.toHaveBeenCalled();
 	});
+
+	it('disables selects without rendering a reason when canUpdate is false and no disabledReason is supplied', async () => {
+		expect.assertions(3);
+		const onChange = vi.fn();
+		renderPolicyPanel({ onChange, canUpdate: false });
+
+		await expect.element(page.getByLabelText('Pricing')).toBeDisabled();
+		// The disabled-copy paragraph only renders when a disabledReason is
+		// supplied, so the status region stays empty here.
+		await expect.element(page.getByRole('status')).not.toBeInTheDocument();
+		expect(onChange).not.toHaveBeenCalled();
+	});
+
+	it('guards onChange when a change event is dispatched on a disabled select', async () => {
+		expect.assertions(1);
+		const onChange = vi.fn();
+		renderPolicyPanel({ onChange, canUpdate: false });
+
+		// A programmatic change event still reaches the onchange handler, which
+		// must bail out via the `if (!canUpdate) return` guard.
+		const select = await page.getByLabelText('Pricing').element();
+		select.dispatchEvent(new Event('change', { bubbles: true }));
+		expect(onChange).not.toHaveBeenCalled();
+	});
 });

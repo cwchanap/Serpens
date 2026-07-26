@@ -12,16 +12,19 @@ import type {
 	ScenarioDefinition,
 	ScenarioDefinitionRef,
 	ScenarioId,
+	ScenarioResult,
 	ScenarioRun,
 	ScenarioRunRecord,
 	ScenarioStoreSnapshot
 } from '$lib/scenarios/types';
 import { SAVE_SCHEMA_VERSION } from './saveTypes';
 import {
+	type ScenarioDefinitionResolver,
 	SCENARIO_RUN_SCHEMA_VERSION,
 	SCENARIO_STORE_SCHEMA_VERSION,
 	createEmptyScenarioStore,
 	decodeScenarioStoreSnapshot,
+	encodeScenarioBestResultRecord,
 	encodeScenarioRunRecord,
 	parseScenarioStoreSnapshot,
 	scenarioDefinitionKey,
@@ -382,6 +385,18 @@ describe('scenario codec', () => {
 		expect(decoded.snapshot.activeRunsByScenarioId['first-profit']).toBeUndefined();
 		expect(decoded.snapshot.activeRunsByScenarioId['import-squeeze']).toEqual(runRecord(valid));
 		expect(decoded.diagnostics.length).toBeGreaterThan(0);
+	});
+
+	it('emits an unknown-scenario diagnostic for an activeRunsByScenarioId key that is not a known scenario id', () => {
+		const valid = fixtureRun();
+		const decoded = decodeScenarioStoreSnapshot(
+			snapshot({ 'first-profit': runRecord(valid), 'unknown-scenario': runRecord(valid) }),
+			resolveFixtureDefinition
+		);
+
+		expect(decoded.snapshot.activeRunsByScenarioId['first-profit']).toEqual(runRecord(valid));
+		expect(decoded.snapshot.activeRunsByScenarioId['unknown-scenario']).toBeUndefined();
+		expect(decoded.diagnostics.map((diagnostic) => diagnostic.code)).toContain('unknown-scenario');
 	});
 
 	it.each(['prototype', 'non-enumerable', 'symbol', 'accessor', 'cycle', 'deep'] as const)(
@@ -1452,5 +1467,589 @@ describe('scenario codec', () => {
 		).toBe(true);
 		expect(stale.snapshot.activeRunsByScenarioId).toEqual({});
 		expect(stale.diagnostics.map((diagnostic) => diagnostic.code)).toContain('invalid-game');
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Defensive validation branch coverage.
+//
+// The codec validates every persisted field with `fail()` branches that are
+// only reached by malformed input. The tests below construct valid fixtures
+// and apply a single targeted mutation so each defensive branch fires in
+// isolation, then decode via `decodeScenarioStoreSnapshot` (which collects
+// diagnostics instead of throwing) and assert the expected diagnostic code.
+// ---------------------------------------------------------------------------
+
+function bestResultEntry(result: ScenarioResult): {
+	scenarioSchemaVersion: number;
+	result: ScenarioResult;
+} {
+	return { scenarioSchemaVersion: SCENARIO_RUN_SCHEMA_VERSION, result };
+}
+
+function decodeBestResult(
+	result: ScenarioResult,
+	resolver: ScenarioDefinitionResolver = resolveFixtureDefinition,
+	key: string = scenarioDefinitionKey(result.definition)
+): ReturnType<typeof decodeScenarioStoreSnapshot> {
+	return decodeScenarioStoreSnapshot(snapshot({}, { [key]: bestResultEntry(result) }), resolver);
+}
+
+function buildResult(
+	definition: ScenarioDefinition,
+	game: GameState,
+	outcome: 'completed' | 'failed' = 'completed'
+): ScenarioResult {
+	const evaluation = evaluateScenario(definition, game, true);
+	return {
+		definition: { scenarioId: definition.id, version: definition.version },
+		seed: definition.officialSeed,
+		eligibility: 'ranked',
+		outcome,
+		completionDay: game.day,
+		score: evaluation.projection.score,
+		medal: outcome === 'completed' ? evaluation.projection.medal : null,
+		evaluation
+	};
+}
+
+describe('scenario codec defensive validation branches', () => {
+	describe('primitive require guards', () => {
+		it('rejects an empty runId string in an active run', () => {
+			const active = fixtureRun();
+			const record = runRecord(active);
+			record.run = { ...record.run, runId: '' } as never;
+			const decoded = decodeScenarioStoreSnapshot(
+				snapshot({ 'first-profit': record }),
+				resolveFixtureDefinition
+			);
+
+			expect(decoded.snapshot.activeRunsByScenarioId).toEqual({});
+			expect(decoded.diagnostics.map((d) => d.code)).toContain('invalid-string');
+		});
+
+		it('rejects a non-integer evaluation day in a best result', () => {
+			const completed = fixtureRun(undefined, { status: 'completed', score: 750 });
+			const result = structuredClone(completed.result!);
+			(result.evaluation as unknown as Record<string, unknown>).day = 1.5;
+			const decoded = decodeBestResult(result);
+
+			expect(decoded.snapshot.bestResultsByDefinitionKey).toEqual({});
+			expect(decoded.diagnostics.map((d) => d.code)).toContain('invalid-integer');
+		});
+
+		it('rejects an unsupported eligibility value in a best result', () => {
+			const completed = fixtureRun(undefined, { status: 'completed', score: 750 });
+			const result = structuredClone(completed.result!);
+			(result as unknown as Record<string, unknown>).eligibility = 'bogus';
+			const decoded = decodeBestResult(result);
+
+			expect(decoded.snapshot.bestResultsByDefinitionKey).toEqual({});
+			expect(decoded.diagnostics.map((d) => d.code)).toContain('invalid-value');
+		});
+	});
+
+	describe('definition resolution', () => {
+		it('rejects an unknown scenario id in a result definition ref', () => {
+			const completed = fixtureRun(undefined, { status: 'completed', score: 750 });
+			const result = structuredClone(completed.result!);
+			result.definition = { scenarioId: 'bogus-scenario' as ScenarioId, version: 1 };
+			const decoded = decodeBestResult(result, resolveFixtureDefinition, 'bogus-scenario@1');
+
+			expect(decoded.snapshot.bestResultsByDefinitionKey).toEqual({});
+			expect(decoded.diagnostics.map((d) => d.code)).toContain('unknown-scenario');
+		});
+
+		it('rejects a result whose definition resolver throws', () => {
+			const completed = fixtureRun(undefined, { status: 'completed', score: 750 });
+			const result = structuredClone(completed.result!);
+			const throwing: ScenarioDefinitionResolver = () => {
+				throw new Error('resolver boom');
+			};
+			const decoded = decodeBestResult(result, throwing);
+
+			expect(decoded.snapshot.bestResultsByDefinitionKey).toEqual({});
+			expect(decoded.diagnostics.map((d) => d.code)).toContain('unsupported-definition');
+		});
+	});
+
+	describe('evidence and window validation', () => {
+		it('rejects a fixed-report-days window with a non-integer startDay', () => {
+			const base = fixtureDefinition({ scenarioId: 'first-profit', version: 1 });
+			const definition: ScenarioDefinition = {
+				...base,
+				requiredObjectives: [
+					{
+						id: 'fixed-window-obj',
+						labelKey: 'store.defaultName',
+						query: { metric: 'daily-net-income' },
+						comparator: 'gte',
+						target: -1_000_000_000,
+						window: { kind: 'fixed-report-days', startDay: 1, endDay: 5 }
+					}
+				],
+				optionalObjectives: [],
+				failures: [],
+				scoreComponents: []
+			};
+			let game = createNewGame('convenience', definition.officialSeed);
+			for (let day = 0; day < 5; day += 1) game = simulateDay(game);
+			const result = buildResult(definition, game);
+			result.evaluation.required[0]!.evidence.window = {
+				kind: 'fixed-report-days',
+				startDay: 0.5,
+				endDay: 5
+			};
+			const decoded = decodeBestResult(result, () => definition);
+
+			expect(decoded.snapshot.bestResultsByDefinitionKey).toEqual({});
+			expect(decoded.diagnostics.map((d) => d.code)).toContain('invalid-integer');
+		});
+
+		it('rejects evidence whose conditionId does not match its containing objective', () => {
+			const completed = fixtureRun(undefined, { status: 'completed', score: 750 });
+			const result = structuredClone(completed.result!);
+			result.evaluation.required[0]!.evidence.conditionId = 'wrong-condition';
+			const decoded = decodeBestResult(result);
+
+			expect(decoded.snapshot.bestResultsByDefinitionKey).toEqual({});
+			expect(decoded.diagnostics.map((d) => d.code)).toContain('condition-id-mismatch');
+		});
+
+		it('rejects deadline evidence with the wrong condition id', () => {
+			const completed = fixtureRun(undefined, {
+				status: 'completed',
+				score: 750,
+				advanceDays: 14
+			});
+			const result = structuredClone(completed.result!);
+			result.evaluation.deadline!.evidence.conditionId = 'not-deadline' as never;
+			const decoded = decodeBestResult(result);
+
+			expect(decoded.snapshot.bestResultsByDefinitionKey).toEqual({});
+			expect(decoded.diagnostics.map((d) => d.code)).toContain('invalid-deadline');
+		});
+	});
+
+	describe('evaluation structural validation', () => {
+		it('rejects an unsupported risk kind', () => {
+			const completed = fixtureRun(undefined, { status: 'completed', score: 750 });
+			const result = structuredClone(completed.result!);
+			(result.evaluation.risks[0] as unknown as Record<string, unknown>).kind = 'bogus';
+			const decoded = decodeBestResult(result);
+
+			expect(decoded.snapshot.bestResultsByDefinitionKey).toEqual({});
+			expect(decoded.diagnostics.map((d) => d.code)).toContain('invalid-risk');
+		});
+
+		it('rejects a projection score above 1000', () => {
+			const completed = fixtureRun(undefined, { status: 'completed', score: 750 });
+			const result = structuredClone(completed.result!);
+			result.evaluation.projection.score = 1001;
+			const decoded = decodeBestResult(result);
+
+			expect(decoded.snapshot.bestResultsByDefinitionKey).toEqual({});
+			expect(decoded.diagnostics.map((d) => d.code)).toContain('invalid-score');
+		});
+
+		it('rejects score component evidence with a non-metric kind', () => {
+			const completed = fixtureRun(undefined, { status: 'completed', score: 750 });
+			const result = structuredClone(completed.result!);
+			const evidence = result.evaluation.projection.componentEvidence[0]!;
+			(evidence as unknown as Record<string, unknown>).kind = 'bogus';
+			const decoded = decodeBestResult(result);
+
+			expect(decoded.snapshot.bestResultsByDefinitionKey).toEqual({});
+			expect(decoded.diagnostics.map((d) => d.code)).toContain('invalid-value');
+		});
+	});
+
+	describe('evaluation contract cardinality and identity', () => {
+		it('rejects a required-objective cardinality mismatch', () => {
+			const completed = fixtureRun(undefined, { status: 'completed', score: 750 });
+			const result = structuredClone(completed.result!);
+			result.evaluation.required = [];
+			const decoded = decodeBestResult(result);
+
+			expect(decoded.snapshot.bestResultsByDefinitionKey).toEqual({});
+			expect(decoded.diagnostics.map((d) => d.code)).toContain('evaluation-mismatch');
+		});
+
+		it('rejects a deadline evaluation that disagrees with the evaluation day', () => {
+			const completed = fixtureRun(undefined, { status: 'completed', score: 750 });
+			const result = structuredClone(completed.result!);
+			result.evaluation.deadline = {
+				triggered: true,
+				evidence: {
+					conditionId: 'deadline-exceeded',
+					day: result.evaluation.day,
+					dayLimit: 14
+				}
+			};
+			const decoded = decodeBestResult(result);
+
+			expect(decoded.snapshot.bestResultsByDefinitionKey).toEqual({});
+			expect(decoded.diagnostics.map((d) => d.code)).toContain('evaluation-mismatch');
+		});
+
+		it('rejects a risk projection with the wrong cardinality', () => {
+			const completed = fixtureRun(undefined, { status: 'completed', score: 750 });
+			const result = structuredClone(completed.result!);
+			result.evaluation.risks = [];
+			const decoded = decodeBestResult(result);
+
+			expect(decoded.snapshot.bestResultsByDefinitionKey).toEqual({});
+			expect(decoded.diagnostics.map((d) => d.code)).toContain('evaluation-mismatch');
+		});
+
+		it('rejects a failure risk with the wrong condition id', () => {
+			const completed = fixtureRun(undefined, { status: 'completed', score: 750 });
+			const result = structuredClone(completed.result!);
+			result.evaluation.risks[0]!.conditionId = 'wrong-failure';
+			const decoded = decodeBestResult(result);
+
+			expect(decoded.snapshot.bestResultsByDefinitionKey).toEqual({});
+			expect(decoded.diagnostics.map((d) => d.code)).toContain('evaluation-mismatch');
+		});
+
+		it('rejects a deadline risk with the wrong daysRemaining', () => {
+			const completed = fixtureRun(undefined, { status: 'completed', score: 750 });
+			const result = structuredClone(completed.result!);
+			result.evaluation.risks[1]!.daysRemaining = 999;
+			const decoded = decodeBestResult(result);
+
+			expect(decoded.snapshot.bestResultsByDefinitionKey).toEqual({});
+			expect(decoded.diagnostics.map((d) => d.code)).toContain('evaluation-mismatch');
+		});
+
+		it('rejects component evidence with the wrong cardinality', () => {
+			const completed = fixtureRun(undefined, { status: 'completed', score: 750 });
+			const result = structuredClone(completed.result!);
+			result.evaluation.projection.componentEvidence = [];
+			const decoded = decodeBestResult(result);
+
+			expect(decoded.snapshot.bestResultsByDefinitionKey).toEqual({});
+			expect(decoded.diagnostics.map((d) => d.code)).toContain('evaluation-mismatch');
+		});
+
+		it('rejects score component points exceeding the component maximum', () => {
+			const completed = fixtureRun(undefined, { status: 'completed', score: 750 });
+			const result = structuredClone(completed.result!);
+			result.evaluation.projection.componentPoints[0] = 501;
+			const decoded = decodeBestResult(result);
+
+			expect(decoded.snapshot.bestResultsByDefinitionKey).toEqual({});
+			expect(decoded.diagnostics.map((d) => d.code)).toContain('evaluation-mismatch');
+		});
+
+		it('rejects a projection score that does not match the component sum', () => {
+			const completed = fixtureRun(undefined, { status: 'completed', score: 750 });
+			const result = structuredClone(completed.result!);
+			result.score = 751;
+			result.evaluation.projection.score = 751;
+			const decoded = decodeBestResult(result);
+
+			expect(decoded.snapshot.bestResultsByDefinitionKey).toEqual({});
+			expect(decoded.diagnostics.map((d) => d.code)).toContain('evaluation-mismatch');
+		});
+	});
+
+	describe('optional-objective and remaining-day score components', () => {
+		it('rejects metric evidence on an optional-objective score component', () => {
+			const base = fixtureDefinition({ scenarioId: 'first-profit', version: 1 });
+			const definition: ScenarioDefinition = {
+				...base,
+				scoreComponents: [{ kind: 'optional-objective', objectiveId: 'cash-rich', points: 500 }]
+			};
+			const game = createNewGame('convenience', definition.officialSeed);
+			const result = buildResult(definition, game);
+			result.evaluation.projection.componentEvidence[0] = {
+				kind: 'metric',
+				query: { metric: 'cash' },
+				window: { kind: 'current' },
+				actual: 0,
+				day: result.evaluation.day,
+				windowComplete: true
+			};
+			const decoded = decodeBestResult(result, () => definition);
+
+			expect(decoded.snapshot.bestResultsByDefinitionKey).toEqual({});
+			expect(decoded.diagnostics.map((d) => d.code)).toContain('evaluation-mismatch');
+		});
+
+		it('rejects optional-objective points that do not match the objective state', () => {
+			const base = fixtureDefinition({ scenarioId: 'first-profit', version: 1 });
+			const definition: ScenarioDefinition = {
+				...base,
+				scoreComponents: [{ kind: 'optional-objective', objectiveId: 'cash-rich', points: 500 }]
+			};
+			const game = createNewGame('convenience', definition.officialSeed);
+			const result = buildResult(definition, game);
+			const expected = result.evaluation.optional[0]?.status === 'satisfied' ? 500 : 0;
+			result.evaluation.projection.componentPoints[0] = expected === 0 ? 500 : 0;
+			const decoded = decodeBestResult(result, () => definition);
+
+			expect(decoded.snapshot.bestResultsByDefinitionKey).toEqual({});
+			expect(decoded.diagnostics.map((d) => d.code)).toContain('evaluation-mismatch');
+		});
+
+		it('rejects metric evidence on a remaining-days score component', () => {
+			const base = fixtureDefinition({ scenarioId: 'first-profit', version: 1 });
+			const definition: ScenarioDefinition = {
+				...base,
+				scoreComponents: [{ kind: 'remaining-days', zeroBonusAt: 0, fullBonusAt: 14, points: 500 }]
+			};
+			const game = createNewGame('convenience', definition.officialSeed);
+			const result = buildResult(definition, game);
+			result.evaluation.projection.componentEvidence[0] = {
+				kind: 'metric',
+				query: { metric: 'cash' },
+				window: { kind: 'current' },
+				actual: 0,
+				day: result.evaluation.day,
+				windowComplete: true
+			};
+			const decoded = decodeBestResult(result, () => definition);
+
+			expect(decoded.snapshot.bestResultsByDefinitionKey).toEqual({});
+			expect(decoded.diagnostics.map((d) => d.code)).toContain('evaluation-mismatch');
+		});
+	});
+
+	describe('result-level validation', () => {
+		it('rejects an eligibility that does not match the official seed', () => {
+			const completed = fixtureRun(undefined, { status: 'completed', score: 750 });
+			const result = structuredClone(completed.result!);
+			result.eligibility = 'unranked';
+			const decoded = decodeBestResult(result);
+
+			expect(decoded.snapshot.bestResultsByDefinitionKey).toEqual({});
+			expect(decoded.diagnostics.map((d) => d.code)).toContain('eligibility-mismatch');
+		});
+
+		it('rejects a result score above 1000', () => {
+			const completed = fixtureRun(undefined, { status: 'completed', score: 750 });
+			const result = structuredClone(completed.result!);
+			result.score = 1001;
+			const decoded = decodeBestResult(result);
+
+			expect(decoded.snapshot.bestResultsByDefinitionKey).toEqual({});
+			expect(decoded.diagnostics.map((d) => d.code)).toContain('invalid-score');
+		});
+
+		it('rejects a completion day that does not match the evaluation day', () => {
+			const completed = fixtureRun(undefined, { status: 'completed', score: 750 });
+			const result = structuredClone(completed.result!);
+			result.completionDay = result.evaluation.day + 1;
+			const decoded = decodeBestResult(result);
+
+			expect(decoded.snapshot.bestResultsByDefinitionKey).toEqual({});
+			expect(decoded.diagnostics.map((d) => d.code)).toContain('result-evaluation-mismatch');
+		});
+
+		it('rejects a completed result medal that does not match the projection', () => {
+			const completed = fixtureRun(undefined, { status: 'completed', score: 750 });
+			const result = structuredClone(completed.result!);
+			result.medal = 'bronze';
+			const decoded = decodeBestResult(result);
+
+			expect(decoded.snapshot.bestResultsByDefinitionKey).toEqual({});
+			expect(decoded.diagnostics.map((d) => d.code)).toContain('medal-mismatch');
+		});
+
+		it('rejects a medal on a failed result', () => {
+			const failed = fixtureRun(undefined, { status: 'failed' });
+			const result = structuredClone(failed.result!);
+			result.medal = 'silver';
+			const decoded = decodeBestResult(result);
+
+			expect(decoded.snapshot.bestResultsByDefinitionKey).toEqual({});
+			expect(decoded.diagnostics.map((d) => d.code)).toContain('invalid-medal');
+		});
+	});
+
+	describe('run-with-game validation', () => {
+		it('rejects an active run eligibility that does not match the official seed', () => {
+			const active = fixtureRun();
+			const record = runRecord(active);
+			record.run = { ...record.run, eligibility: 'unranked' } as never;
+			const decoded = decodeScenarioStoreSnapshot(
+				snapshot({ 'first-profit': record }),
+				resolveFixtureDefinition
+			);
+
+			expect(decoded.snapshot.activeRunsByScenarioId).toEqual({});
+			expect(decoded.diagnostics.map((d) => d.code)).toContain('eligibility-mismatch');
+		});
+
+		it('rejects an active run whose seed does not match the embedded game', () => {
+			const active = fixtureRun();
+			const record = runRecord(active);
+			record.run = {
+				...record.run,
+				seed: active.seed + 1,
+				eligibility: 'unranked'
+			} as never;
+			const decoded = decodeScenarioStoreSnapshot(
+				snapshot({ 'first-profit': record }),
+				resolveFixtureDefinition
+			);
+
+			expect(decoded.snapshot.activeRunsByScenarioId).toEqual({});
+			expect(decoded.diagnostics.map((d) => d.code)).toContain('run-game-mismatch');
+		});
+
+		it('rejects an active run evaluation that does not match the embedded game', () => {
+			const active = fixtureRun();
+			const record = runRecord(active);
+			const mutated = structuredClone(record.run);
+			mutated.evaluation.required[0]!.evidence.contributingIds = ['x', 'y'];
+			record.run = mutated;
+			const decoded = decodeScenarioStoreSnapshot(
+				snapshot({ 'first-profit': record }),
+				resolveFixtureDefinition
+			);
+
+			expect(decoded.snapshot.activeRunsByScenarioId).toEqual({});
+			expect(decoded.diagnostics.map((d) => d.code)).toContain('evaluation-mismatch');
+		});
+
+		it('rejects an active run that carries a result', () => {
+			const active = fixtureRun();
+			const record = runRecord(active);
+			record.run = { ...record.run, result: {} } as never;
+			const decoded = decodeScenarioStoreSnapshot(
+				snapshot({ 'first-profit': record }),
+				resolveFixtureDefinition
+			);
+
+			expect(decoded.snapshot.activeRunsByScenarioId).toEqual({});
+			expect(decoded.diagnostics.map((d) => d.code)).toContain('invalid-active-run');
+		});
+
+		it('rejects a terminal run that lacks a result', () => {
+			const completed = fixtureRun(undefined, { status: 'completed', score: 750 });
+			const record = runRecord(completed);
+			record.run = { ...record.run, result: null } as never;
+			const decoded = decodeScenarioStoreSnapshot(
+				snapshot({ 'first-profit': record }),
+				resolveFixtureDefinition
+			);
+
+			expect(decoded.snapshot.activeRunsByScenarioId).toEqual({});
+			expect(decoded.diagnostics.map((d) => d.code)).toContain('invalid-terminal-run');
+		});
+
+		it('rejects a terminal run whose result evaluation diverges from the run evaluation', () => {
+			const completed = fixtureRun(undefined, { status: 'completed', score: 750 });
+			const record = runRecord(completed);
+			const mutated = structuredClone(record.run);
+			mutated.result!.evaluation = structuredClone(mutated.evaluation);
+			mutated.result!.evaluation.required[0]!.evidence.contributingIds = ['x', 'y'];
+			record.run = mutated;
+			const decoded = decodeScenarioStoreSnapshot(
+				snapshot({ 'first-profit': record }),
+				resolveFixtureDefinition
+			);
+
+			expect(decoded.snapshot.activeRunsByScenarioId).toEqual({});
+			expect(decoded.diagnostics.map((d) => d.code)).toContain('terminal-run-mismatch');
+		});
+	});
+
+	describe('envelope and best-result record decoding', () => {
+		it('rejects an active run envelope that embeds a game property', () => {
+			const active = fixtureRun();
+			const record = runRecord(active);
+			record.run = { ...record.run, game: record.game } as never;
+			const decoded = decodeScenarioStoreSnapshot(
+				snapshot({ 'first-profit': record }),
+				resolveFixtureDefinition
+			);
+
+			expect(decoded.snapshot.activeRunsByScenarioId).toEqual({});
+			expect(decoded.diagnostics.map((d) => d.code)).toContain('invalid-run-envelope');
+		});
+
+		it('rejects an active run whose definition scenario id does not match its key', () => {
+			const active = fixtureRun({ scenarioId: 'import-squeeze', version: 1 });
+			const decoded = decodeScenarioStoreSnapshot(
+				snapshot({ 'first-profit': runRecord(active) }),
+				resolveFixtureDefinition
+			);
+
+			expect(decoded.snapshot.activeRunsByScenarioId).toEqual({});
+			expect(decoded.diagnostics.map((d) => d.code)).toContain('definition-key-mismatch');
+		});
+
+		it('rejects a best-result record with an unsupported scenario schema version', () => {
+			const completed = fixtureRun(undefined, { status: 'completed', score: 750 });
+			const decoded = decodeScenarioStoreSnapshot(
+				snapshot(
+					{},
+					{
+						'first-profit@1': {
+							scenarioSchemaVersion: SCENARIO_RUN_SCHEMA_VERSION + 1,
+							result: completed.result!
+						}
+					}
+				),
+				resolveFixtureDefinition
+			);
+
+			expect(decoded.snapshot.bestResultsByDefinitionKey).toEqual({});
+			expect(decoded.diagnostics.map((d) => d.code)).toContain('unsupported-scenario-schema');
+		});
+
+		it('rejects a best-result record whose result is not a ranked completed run', () => {
+			const failed = fixtureRun(undefined, { status: 'failed' });
+			const decoded = decodeScenarioStoreSnapshot(
+				snapshot(
+					{},
+					{
+						'first-profit@1': bestResultEntry(failed.result!)
+					}
+				),
+				resolveFixtureDefinition
+			);
+
+			expect(decoded.snapshot.bestResultsByDefinitionKey).toEqual({});
+			expect(decoded.diagnostics.map((d) => d.code)).toContain('invalid-best-result');
+		});
+	});
+
+	describe('encode guards', () => {
+		it('validateScenarioRun rejects an embedded game that fails strict validation', () => {
+			const active = fixtureRun();
+			const stale = {
+				...active,
+				game: { ...active.game, day: active.game.day + 99 }
+			};
+
+			expect(() => validateScenarioRun(stale, resolveFixtureDefinition)).toThrow(
+				/Run game failed strict current validation/
+			);
+		});
+
+		it('encodeScenarioBestResultRecord rejects a failed result', () => {
+			const failed = fixtureRun(undefined, { status: 'failed' });
+
+			expect(() =>
+				encodeScenarioBestResultRecord(failed.result!, resolveFixtureDefinition)
+			).toThrow(/Only ranked completed results can be stored as best results/);
+		});
+
+		it('encodeScenarioBestResultRecord rejects an unranked completed result', () => {
+			const completed = fixtureRun(undefined, {
+				status: 'completed',
+				score: 750,
+				seed: 999_999
+			});
+
+			expect(completed.eligibility).toBe('unranked');
+			expect(() =>
+				encodeScenarioBestResultRecord(completed.result!, resolveFixtureDefinition)
+			).toThrow(/Only ranked completed results can be stored as best results/);
+		});
 	});
 });

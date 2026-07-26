@@ -551,6 +551,17 @@ describe('registered scenario metrics', () => {
 			'Metric cash does not support run-to-date.'
 		);
 	});
+
+	it('substitutes the metric neutral value when the evaluated actual is not finite', () => {
+		// cash returns game.cash directly; a non-finite cash triggers the
+		// Number.isFinite guard in evaluateMetric, which falls back to neutral (0).
+		const state = game({ cash: Number.NaN });
+		expect(evaluateMetric(state, { metric: 'cash' }, { kind: 'current' })).toEqual({
+			actual: 0,
+			contributingIds: [],
+			windowComplete: true
+		});
+	});
 });
 
 describe('metric window completeness', () => {

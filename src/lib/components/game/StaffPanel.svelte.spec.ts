@@ -682,4 +682,63 @@ describe('StaffPanel', () => {
 
 		expect(onUnassign).toHaveBeenCalledWith('staff-alex');
 	});
+
+	it('disables the assigned-staff select when canUnassign is false and no transfer destinations exist', async () => {
+		expect.assertions(2);
+		renderStaffPanel({
+			canAssign: true,
+			canUnassign: false,
+			disabledReason: 'Unassignment is unavailable in this challenge.'
+		});
+
+		// With only one store and canUnassign=false, hasAssignmentAction returns
+		// false because there is no other store to transfer to.
+		const select = page.getByLabelText(
+			'Assign Alex Chen, Manager staff staff-alex, currently assigned to Founding Store'
+		);
+		await expect.element(select).toBeDisabled();
+		await expect
+			.element(page.getByText('Unassignment is unavailable in this challenge.'))
+			.toBeVisible();
+	});
+
+	it('shows the disabled reason when only canPromote is false', async () => {
+		expect.assertions(2);
+		renderStaffPanel({
+			staff: staff.map((member) => ({ ...member, xp: 100_000 })),
+			canHire: true,
+			canAssign: true,
+			canUnassign: true,
+			canPromote: false,
+			disabledReason: 'Promotions are unavailable in this challenge.'
+		});
+
+		await expect
+			.element(page.getByText('Promotions are unavailable in this challenge.'))
+			.toBeVisible();
+		await expect.element(page.getByRole('button', { name: /promote/i }).first()).toBeDisabled();
+	});
+
+	it('guards onPromote when a click is dispatched on a disabled promote button', async () => {
+		expect.assertions(1);
+		const onPromote = vi.fn();
+		const { result } = renderStaffPanel({
+			cash: 100_000,
+			canPromote: false,
+			staff: [
+				{
+					...staff[0]!,
+					assignedStoreId: null,
+					xp: 100
+				}
+			],
+			onPromote
+		});
+
+		const promoteButton = Array.from(result.container.querySelectorAll('button')).find((btn) =>
+			/promote/i.test(btn.textContent ?? '')
+		);
+		promoteButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+		expect(onPromote).not.toHaveBeenCalled();
+	});
 });

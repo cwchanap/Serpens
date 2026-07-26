@@ -138,6 +138,16 @@ describe('TileInspector storefront art', () => {
 		await expect.element(image).toBeVisible();
 		await expect.element(image).toHaveAttribute('src', electronicsArt.path);
 	});
+
+	it('omits the storefront art when the archetype has no registered art', async () => {
+		expect.assertions(2);
+		renderInspector({
+			store: { ...store, archetypeId: 'unknown' as Store['archetypeId'] }
+		});
+
+		await expect.element(page.getByRole('heading', { name: 'Founding Store' })).toBeVisible();
+		await expect.element(page.getByTestId('store-art-unknown')).not.toBeInTheDocument();
+	});
 });
 
 describe('TileInspector basic card', () => {

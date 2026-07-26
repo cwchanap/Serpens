@@ -237,6 +237,29 @@ describe('scenario scoring', () => {
 		expect(calculateScenarioScore(definition(), game(), evaluation())).toBe(500);
 	});
 
+	it('awards full points when zeroBonusAt equals fullBonusAt and the target is met', () => {
+		const scenario = definition([
+			{
+				kind: 'metric',
+				query: { metric: 'cash' },
+				window: { kind: 'current' },
+				zeroBonusAt: 500,
+				fullBonusAt: 500,
+				points: 100
+			}
+		]);
+		expect(calculateScenarioScore(scenario, game({ cash: 500 }), evaluation())).toBe(600);
+		expect(calculateScenarioScore(scenario, game({ cash: 499 }), evaluation())).toBe(500);
+	});
+
+	it('awards zero points for an unsatisfied optional-objective score component', () => {
+		const scenario = definition([
+			{ kind: 'optional-objective', objectiveId: 'optional-cash', points: 100 }
+		]);
+		// The default evaluation has the optional objective as 'pending', not 'satisfied'.
+		expect(calculateScenarioScore(scenario, game(), evaluation())).toBe(500);
+	});
+
 	it('awards Bronze below 700, Silver from 700, and Gold from 850 only on completion', () => {
 		const scenario = definition();
 

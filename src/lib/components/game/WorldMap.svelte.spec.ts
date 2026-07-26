@@ -278,4 +278,42 @@ describe('WorldMap', () => {
 		expect(onSelectCity).not.toHaveBeenCalled();
 		await expect.element(page.getByText('Finishing the current challenge action.')).toBeVisible();
 	});
+
+	it('guards onOpenCity when a click is dispatched on a disabled open button', async () => {
+		expect.assertions(1);
+		const onOpenCity = vi.fn();
+		render(WorldMap, {
+			statuses: [{ ...status('campus-junction', 'revealed'), canOpen: false }],
+			i18n: createI18n('en'),
+			selectedCityId: 'campus-junction',
+			onSelectCity: vi.fn(),
+			onOpenCity,
+			onCloseInspector: vi.fn()
+		});
+
+		const openButton = page
+			.getByRole('button', { name: /open for/i })
+			.element() as HTMLButtonElement;
+		openButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+		expect(onOpenCity).not.toHaveBeenCalled();
+	});
+
+	it('shows the disabled reason in the inspector for a revealed city when canOpenWorldCity is false', async () => {
+		expect.assertions(2);
+		render(WorldMap, {
+			statuses: [status('campus-junction', 'revealed')],
+			i18n: createI18n('en'),
+			selectedCityId: 'campus-junction',
+			onSelectCity: vi.fn(),
+			onOpenCity: vi.fn(),
+			onCloseInspector: vi.fn(),
+			canOpenWorldCity: false,
+			allowedCityIds: ['campus-junction'],
+			disabledReason: 'No new cities in this challenge.'
+		});
+
+		const inspector = page.getByRole('dialog', { name: /city details/i });
+		await expect.element(inspector).toBeVisible();
+		await expect.element(inspector.getByText('No new cities in this challenge.')).toBeVisible();
+	});
 });

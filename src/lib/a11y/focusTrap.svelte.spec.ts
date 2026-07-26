@@ -312,7 +312,7 @@ describe('focusTrap', () => {
 	});
 
 	it('keeps a sibling inerted while a stacked inner dialog is still open', () => {
-		expect.assertions(3);
+		expect.assertions(4);
 		const pageChrome = document.createElement('button');
 		pageChrome.id = 'page-chrome';
 		document.body.appendChild(pageChrome);
@@ -341,7 +341,10 @@ describe('focusTrap', () => {
 		outerDetach();
 		expect(pageChrome.hasAttribute('inert')).toBe(true);
 
+		// Once both dialogs are detached the ref-count drops to zero and
+		// pageChrome must be re-enabled.
 		innerDetach();
+		expect(pageChrome.hasAttribute('inert')).toBe(false);
 	});
 
 	it('does not wrap focus when shift-tabbing from a middle focusable element', () => {

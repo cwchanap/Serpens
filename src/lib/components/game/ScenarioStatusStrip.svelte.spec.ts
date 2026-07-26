@@ -76,4 +76,40 @@ describe('ScenarioStatusStrip', () => {
 		expect(onRetry).toHaveBeenCalledTimes(1);
 		expect(onDismissError).toHaveBeenCalledTimes(1);
 	});
+
+	it('omits the modifiers and risks lists when both are empty', async () => {
+		expect.assertions(3);
+		render(ScenarioStatusStrip, {
+			view: { ...view, modifierLabels: [], riskLabels: [] },
+			i18n: createI18n('en'),
+			expanded: false,
+			pending: false,
+			error: null,
+			onToggle: vi.fn(),
+			onRetry: vi.fn(),
+			onDismissError: vi.fn()
+		});
+
+		await expect.element(page.getByText('Import costs ×1.5')).not.toBeInTheDocument();
+		await expect.element(page.getByText('Deadline: 10 days remaining')).not.toBeInTheDocument();
+		// The announcement live region still renders even without modifiers/risks.
+		await expect.element(page.getByText('Challenge progress updated on day 4.')).toBeVisible();
+	});
+
+	it('disables the retry and dismiss buttons while a persistence operation is pending', async () => {
+		expect.assertions(2);
+		render(ScenarioStatusStrip, {
+			view,
+			i18n: createI18n('en'),
+			expanded: false,
+			pending: true,
+			error: 'The challenge could not be saved.',
+			onToggle: vi.fn(),
+			onRetry: vi.fn(),
+			onDismissError: vi.fn()
+		});
+
+		await expect.element(page.getByRole('button', { name: 'Retry' })).toBeDisabled();
+		await expect.element(page.getByRole('button', { name: 'Dismiss' })).toBeDisabled();
+	});
 });

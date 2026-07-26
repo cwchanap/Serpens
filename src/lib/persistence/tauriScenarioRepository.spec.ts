@@ -430,4 +430,45 @@ describe('Tauri scenario repository', () => {
 		expect(store.reloadOptions).toEqual([{ ignoreDefaults: true }]);
 		expect(store.deleteKeys).toEqual([SCENARIO_STORE_KEY, SCENARIO_STORE_KEY, SCENARIO_STORE_KEY]);
 	});
+
+	it('restores the baseline when reload fails with ENOENT on a first save and the second delete succeeds', async () => {
+		const store = new FakeStore();
+		const saveError = new Error('disk unavailable');
+		store.failNextSave = saveError;
+		// First delete (restoreBaseline) fails, reload fails with ENOENT,
+		// second delete (restoreBaseline retry) succeeds.
+		store.failDeleteOnCall(1, new Error('delete unavailable'));
+		store.fileExists = false;
+		const repository = createTauriScenarioRepositoryFromStore(
+			Promise.resolve(store),
+			resolveFixtureDefinition
+		);
+
+		await expect(repository.saveActiveRun(createFixtureScenarioRun())).rejects.toBe(saveError);
+
+		const summary = await repository.getSummary();
+		expect(summary.activeRunsByScenarioId).toEqual({});
+		expect(store.reloadOptions).toEqual([{ ignoreDefaults: true }]);
+		expect(store.deleteKeys).toEqual([SCENARIO_STORE_KEY, SCENARIO_STORE_KEY]);
+	});
+
+	it('detects a missing-store-file error from a plain Error message without a code property', async () => {
+		const store = new FakeStore();
+		const saveError = new Error('disk unavailable');
+		store.failNextSave = saveError;
+		store.failDeleteOnCall(1, new Error('delete unavailable'));
+		// A plain Error with 'No such file or directory' in the message (no code)
+		// exercises the string-message branch of isMissingStoreFileError.
+		store.failNextReload = new Error('No such file or directory');
+		const repository = createTauriScenarioRepositoryFromStore(
+			Promise.resolve(store),
+			resolveFixtureDefinition
+		);
+
+		await expect(repository.saveActiveRun(createFixtureScenarioRun())).rejects.toBe(saveError);
+
+		const summary = await repository.getSummary();
+		expect(summary.activeRunsByScenarioId).toEqual({});
+		expect(store.deleteKeys).toEqual([SCENARIO_STORE_KEY, SCENARIO_STORE_KEY]);
+	});
 });

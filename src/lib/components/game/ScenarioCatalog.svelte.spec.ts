@@ -259,4 +259,112 @@ describe('ScenarioCatalog', () => {
 		expect(onStart).not.toHaveBeenCalled();
 		expect(onImport).not.toHaveBeenCalled();
 	});
+
+	it('renders the prior version result line when a previous run exists', async () => {
+		expect.assertions(1);
+		const prior = card('first-profit', 'First Profit', {
+			priorVersionResult: { medalLabel: 'Gold', scoreLabel: '900 points' }
+		});
+		renderCatalog({ cards: [prior] });
+
+		await expect.element(page.getByText('Prior version result: Gold · 900 points')).toBeVisible();
+	});
+
+	it('disables the import submit and operation-error retry buttons while an operation is pending', async () => {
+		expect.assertions(2);
+		renderCatalog({
+			cards: [cards[0]!],
+			operationError: 'The challenge could not be saved.',
+			pending: true
+		});
+
+		await expect.element(page.getByRole('button', { name: 'Retry' })).toBeDisabled();
+		await expect.element(page.getByRole('button', { name: 'Import code' })).toBeDisabled();
+	});
+
+	it('does not call onImport when the share-code field is empty', async () => {
+		expect.assertions(1);
+		const onImport = vi.fn();
+		renderCatalog({ cards: [cards[0]!], onImport });
+
+		await page.getByRole('button', { name: 'Import code' }).click();
+		expect(onImport).not.toHaveBeenCalled();
+	});
+
+	it('clears the announcement when an import starts successfully on the first try', async () => {
+		expect.assertions(2);
+		const onImport = vi.fn(
+			async (): Promise<ScenarioCatalogActionResult> => ({ status: 'started' })
+		);
+		renderCatalog({ cards: [cards[0]!], onImport });
+
+		await page.getByLabelText('Share code').fill('valid');
+		await page.getByRole('button', { name: 'Import code' }).click();
+		expect(onImport).toHaveBeenCalledWith('valid', false);
+		// A successful start neither opens a confirmation nor announces an error.
+		await expect.element(page.getByRole('alertdialog')).not.toBeInTheDocument();
+	});
+
+	it('announces the error when a confirmed import replacement fails', async () => {
+		expect.assertions(3);
+		const onImport = vi.fn(
+			async (code: string, confirmed: boolean): Promise<ScenarioCatalogActionResult> => {
+				if (!confirmed) {
+					return { status: 'confirmation-required', message: 'Replace the active run?' };
+				}
+				return { status: 'error', message: 'The challenge could not be imported.' };
+			}
+		);
+		renderCatalog({ cards: [cards[0]!], onImport });
+
+		await page.getByLabelText('Share code').fill('valid');
+		await page.getByRole('button', { name: 'Import code' }).click();
+		await expect
+			.element(page.getByRole('alertdialog', { name: 'Replace the active run?' }))
+			.toBeVisible();
+		await page.getByRole('button', { name: 'Confirm replacement' }).click();
+		expect(onImport).toHaveBeenLastCalledWith('valid', true);
+		await expect.element(page.getByText('The challenge could not be imported.')).toBeVisible();
+	});
+
+	it('clears an open confirmation with Escape instead of closing the catalog', async () => {
+		expect.assertions(3);
+		const onClose = vi.fn();
+		const old = card('first-profit', 'First Profit', {
+			primaryAction: 'resume',
+			primaryLabel: 'Resume version 1',
+			showRestart: true,
+			showStartCurrent: true,
+			activeVersionLabel: 'Active version 1 (current version 2)',
+			version: 2
+		});
+		const { result } = renderCatalog({ cards: [old], onClose });
+
+		await page.getByRole('button', { name: 'Start current First Profit' }).click();
+		await expect
+			.element(
+				page.getByRole('alertdialog', {
+					name: 'Starting the current version replaces the active older run.'
+				})
+			)
+			.toBeVisible();
+		(document.activeElement as HTMLElement).dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })
+		);
+		await expect.element(page.getByRole('alertdialog')).not.toBeInTheDocument();
+		expect(onClose).not.toHaveBeenCalled();
+		await result.unmount();
+	});
+
+	it('ignores non-Escape keydowns and leaves the catalog open', async () => {
+		expect.assertions(1);
+		const onClose = vi.fn();
+		const { result } = renderCatalog({ cards: [cards[0]!], onClose });
+
+		(document.activeElement as HTMLElement).dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })
+		);
+		expect(onClose).not.toHaveBeenCalled();
+		await result.unmount();
+	});
 });
