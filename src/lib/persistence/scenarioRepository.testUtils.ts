@@ -153,6 +153,7 @@ function fixtureGame(): GameState {
 export function createFixtureScenarioRun(): ScenarioRun {
 	const game = fixtureGame();
 	return {
+		runId: crypto.randomUUID(),
 		definition: {
 			scenarioId: FIXTURE_DEFINITION.id,
 			version: FIXTURE_DEFINITION.version

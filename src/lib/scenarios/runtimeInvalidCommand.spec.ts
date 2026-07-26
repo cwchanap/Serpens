@@ -120,6 +120,7 @@ function openStoreDefinition(): ScenarioDefinition {
 
 function activeRun(definition: ScenarioDefinition, game: GameState): ScenarioRun {
 	return {
+		runId: crypto.randomUUID(),
 		definition: { scenarioId: definition.id, version: definition.version },
 		seed: game.seed,
 		eligibility: 'unranked',

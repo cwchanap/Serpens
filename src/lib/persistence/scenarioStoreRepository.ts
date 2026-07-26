@@ -109,17 +109,15 @@ export class ScenarioRepositoryFromDriver implements ScenarioRepository {
 
 			const decoded = await this.driver.read();
 			const activeRunsByScenarioId = { ...decoded.snapshot.activeRunsByScenarioId };
-			// Only clear the active run when it is the same run that just terminated.
-			// The map is keyed by scenarioId, so a replacement run started between
-			// termination and commit (e.g. user clicked restart on a stale results
-			// dialog) would otherwise be silently deleted. Match on (version, seed)
-			// — scenarioId is implied by the key.
+			// Only clear the active run when it is the same run instance that just
+			// terminated. The map is keyed by scenarioId, so a replacement run
+			// started between termination and commit (e.g. user clicked restart on
+			// a stale results dialog) would otherwise be silently deleted. Match on
+			// runId — a unique identity generated per startScenario call. Restart
+			// preserves (version, seed) but produces a fresh runId, so a stale
+			// commit cannot remove the resumable replacement.
 			const existingActive = activeRunsByScenarioId[terminal.definition.scenarioId];
-			if (
-				existingActive &&
-				existingActive.run.definition.version === terminal.definition.version &&
-				existingActive.run.seed === terminal.seed
-			) {
+			if (existingActive && existingActive.run.runId === terminal.runId) {
 				delete activeRunsByScenarioId[terminal.definition.scenarioId];
 			}
 			const bestResultsByDefinitionKey = {

@@ -170,6 +170,14 @@ function requireString(value: unknown, path: string): string {
 	return value;
 }
 
+function requireNonEmptyString(value: unknown, path: string): string {
+	const string = requireString(value, path);
+	if (string.length === 0) {
+		fail('invalid-string', path, value, `${path} must be a non-empty string.`);
+	}
+	return string;
+}
+
 function requireBoolean(value: unknown, path: string): boolean {
 	if (typeof value !== 'boolean')
 		fail('invalid-boolean', path, value, `${path} must be a boolean.`);
@@ -690,6 +698,14 @@ function selectedTerminalStatus(evaluation: ScenarioEvaluation): 'active' | 'com
 	return 'active';
 }
 
+function isDeadlineOnlyFailure(evaluation: ScenarioEvaluation): boolean {
+	return (
+		!evaluation.failures.some((failure) => failure.status === 'triggered') &&
+		!evaluation.required.every((objective) => objective.status === 'satisfied') &&
+		evaluation.deadline?.triggered === true
+	);
+}
+
 function validateResult(
 	value: unknown,
 	resolveDefinition: ScenarioDefinitionResolver,
@@ -809,7 +825,13 @@ function isCanonicalInitialLifecycleRun(
 	const started = startScenario(definition, seed);
 	if (!started.ok) return false;
 	const canonical = run.status === 'abandoned' ? abandonScenario(started.value) : started.value;
-	return deeplyEqual({ ...run, game }, canonical);
+	// runId is a persistence identity generated per startScenario call, not a
+	// game-state property, so it must be excluded from canonical comparison.
+	const { runId: _runId, ...runWithoutId } = run;
+	void _runId;
+	const { runId: _canonicalRunId, ...canonicalWithoutId } = canonical;
+	void _canonicalRunId;
+	return deeplyEqual({ ...runWithoutId, game }, canonicalWithoutId);
 }
 
 function validateRunWithGame(
@@ -826,6 +848,7 @@ function validateRunWithGame(
 		`${path}.definition`
 	);
 	const seed = requireScenarioSeed(run.seed, `${path}.seed`);
+	const runId = requireNonEmptyString(run.runId, `${path}.runId`);
 	const eligibility = requireOneOf(run.eligibility, ELIGIBILITIES, `${path}.eligibility`);
 	const expectedEligibility = seed === definition.officialSeed ? 'ranked' : 'unranked';
 	if (eligibility !== expectedEligibility) {
@@ -864,8 +887,16 @@ function validateRunWithGame(
 	const nonterminalEvaluation = evaluateScenario(definition, game, false);
 	const selectedStatus = selectedTerminalStatus(nonterminalEvaluation);
 	const expectedStatus = status === 'abandoned' ? 'active' : status;
+	// The runtime defers deadline-triggered failure to the next advanceDay
+	// (runtime.ts: executeScenarioCommand only terminates on deadline when
+	// command.kind === 'advanceDay'). A non-advanceDay command at the deadline
+	// day keeps the run active with deadline.triggered === true, so an active
+	// or abandoned run whose only terminal signal is the deadline is valid.
+	const deadlineDeferred =
+		(status === 'active' || status === 'abandoned') && isDeadlineOnlyFailure(nonterminalEvaluation);
 	const candidateRun = {
 		...(run as Omit<ScenarioRun, 'game'>),
+		runId,
 		definition: definitionRef,
 		seed,
 		eligibility,
@@ -874,6 +905,7 @@ function validateRunWithGame(
 	};
 	if (
 		selectedStatus !== expectedStatus &&
+		!deadlineDeferred &&
 		!isCanonicalInitialLifecycleRun(definition, seed, candidateRun, game)
 	) {
 		fail(
@@ -921,6 +953,7 @@ function validateRunWithGame(
 	}
 	return {
 		...(run as Omit<ScenarioRun, 'game'>),
+		runId,
 		definition: definitionRef,
 		seed,
 		eligibility,
@@ -933,6 +966,7 @@ function validateRunWithGame(
 
 function scenarioRunEnvelope(run: ScenarioRun): Omit<ScenarioRun, 'game'> {
 	return {
+		runId: run.runId,
 		definition: run.definition,
 		seed: run.seed,
 		eligibility: run.eligibility,

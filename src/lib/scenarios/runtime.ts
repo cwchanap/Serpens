@@ -81,6 +81,7 @@ export function startScenario(definition: ScenarioDefinition, seed: number): Sce
 	return {
 		ok: true,
 		value: {
+			runId: crypto.randomUUID(),
 			definition: { scenarioId: definition.id, version: definition.version },
 			seed: normalizedSeed,
 			eligibility: normalizedSeed === definition.officialSeed ? 'ranked' : 'unranked',
