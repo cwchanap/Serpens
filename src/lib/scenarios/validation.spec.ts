@@ -88,6 +88,18 @@ function validDefinition(): ScenarioDefinition {
 	};
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
+type MalformedDefinition = Record<string, any>;
+
+/**
+ * Returns a writable copy of {@link validDefinition} typed as a permissive
+ * record so individual tests can mutate it into an invalid shape without
+ * repeating the `as unknown as Record<string, any>` cast and eslint suppression.
+ */
+function malformedDefinition(): MalformedDefinition {
+	return validDefinition() as unknown as MalformedDefinition;
+}
+
 function codes(definition: unknown): Array<{ path: string; code: string }> {
 	return validateScenarioDefinition(definition).map(({ path, code }) => ({ path, code }));
 }
@@ -210,8 +222,7 @@ describe('validateScenarioDefinition', () => {
 	});
 
 	it('rejects unknown keys on every closed blueprint object', () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed recursive fixture
-		const definition = validDefinition() as unknown as Record<string, any>;
+		const definition = malformedDefinition();
 		definition.unexpected = true;
 		definition.start = withExtra(definition.start);
 		definition.start.foundingStore = withExtra(definition.start.foundingStore);
@@ -265,8 +276,7 @@ describe('validateScenarioDefinition', () => {
 	});
 
 	it('rejects unknown keys on content, modifier, condition, metric, window, score, and medal objects', () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed recursive fixture
-		const definition = validDefinition() as unknown as Record<string, any>;
+		const definition = malformedDefinition();
 		definition.content = withExtra(definition.content);
 		definition.content.retailPlacements[0] = withExtra(definition.content.retailPlacements[0]);
 		definition.content.industrialPlacements = [
@@ -308,8 +318,7 @@ describe('validateScenarioDefinition', () => {
 	});
 
 	it('rejects unknown keys for every specialized query, window, target, and score variant', () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed recursive fixture
-		const definition = validDefinition() as unknown as Record<string, any>;
+		const definition = malformedDefinition();
 		definition.content.materialIds = ['water'];
 		definition.modifiers = [
 			{
@@ -394,8 +403,7 @@ describe('validateScenarioDefinition', () => {
 	});
 
 	it('validates content and override references against game registries', () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed recursive fixture
-		const definition = validDefinition() as unknown as Record<string, any>;
+		const definition = malformedDefinition();
 		definition.start.foundingStore.archetypeId = 'missing-store';
 		definition.content.cityIds = ['missing-city'];
 		definition.content.materialIds = ['missing-material'];
@@ -658,8 +666,7 @@ describe('validateScenarioDefinition', () => {
 	});
 
 	it('validates rail levels, coordinates, duplicates, and topology', () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed recursive fixture
-		const definition = validDefinition() as unknown as Record<string, any>;
+		const definition = malformedDefinition();
 		definition.content.cityIds.push('industry-city');
 		definition.start.rails = [
 			{ cityId: 'industry-city', x: 24, y: 6, level: 0 },
@@ -717,8 +724,7 @@ describe('validateScenarioDefinition', () => {
 	});
 
 	it('rejects warehouse contents beyond capacity from authored warehouse buildings', () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed recursive fixture
-		const definition = validDefinition() as unknown as Record<string, any>;
+		const definition = malformedDefinition();
 		definition.start.overrides.warehouseMaterials = { water: 1 };
 		definition.content.materialIds = ['water'];
 		expect(codes(definition)).toContainEqual({
@@ -728,8 +734,7 @@ describe('validateScenarioDefinition', () => {
 	});
 
 	it('validates supported commands and modifier variants', () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed recursive fixture
-		const definition = validDefinition() as unknown as Record<string, any>;
+		const definition = malformedDefinition();
 		definition.allowedCommands = [...SCENARIO_COMMAND_KINDS, 'teleport'];
 		definition.modifiers = [
 			{
@@ -751,8 +756,7 @@ describe('validateScenarioDefinition', () => {
 	});
 
 	it('rejects overlapping import-cost-multiplier targets within the same scope', () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed recursive fixture
-		const definition = validDefinition() as unknown as Record<string, any>;
+		const definition = malformedDefinition();
 		definition.content.productCategoryIds = ['bottled-water', 'produce'];
 		definition.modifiers = [
 			{
@@ -784,8 +788,7 @@ describe('validateScenarioDefinition', () => {
 	});
 
 	it('does not flag overlapping import-cost-multiplier targets across different scopes', () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed recursive fixture
-		const definition = validDefinition() as unknown as Record<string, any>;
+		const definition = malformedDefinition();
 		definition.content.productCategoryIds = ['bottled-water'];
 		definition.content.materialIds = ['water'];
 		definition.modifiers = [
@@ -806,8 +809,7 @@ describe('validateScenarioDefinition', () => {
 	});
 
 	it('flags a broad all-target that shadows later specific targets', () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed recursive fixture
-		const definition = validDefinition() as unknown as Record<string, any>;
+		const definition = malformedDefinition();
 		definition.modifiers = [
 			{
 				kind: 'import-cost-multiplier',
@@ -826,8 +828,7 @@ describe('validateScenarioDefinition', () => {
 	});
 
 	it('validates metric/window support and complete-window semantics', () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed recursive fixture
-		const definition = validDefinition() as unknown as Record<string, any>;
+		const definition = malformedDefinition();
 		definition.requiredObjectives = [
 			{
 				...definition.requiredObjectives[0],
@@ -1108,8 +1109,7 @@ describe('validateScenarioSetupReserve', () => {
 
 describe('validateScenarioDefinition coverage gaps', () => {
 	it('rejects a non-object score component', () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
-		const definition = validDefinition() as unknown as Record<string, any>;
+		const definition = malformedDefinition();
 		definition.scoreComponents = ['not-an-object'];
 		expect(codes(definition)).toContainEqual({
 			path: 'scoreComponents[0]',
@@ -1147,8 +1147,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 	});
 
 	it('rejects a score component with an unsupported kind', () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
-		const definition = validDefinition() as unknown as Record<string, any>;
+		const definition = malformedDefinition();
 		definition.scoreComponents = [{ kind: 'mystery', points: 500 }];
 		expect(codes(definition)).toContainEqual({
 			path: 'scoreComponents[0].kind',
@@ -1179,8 +1178,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 	});
 
 	it('rejects a non-object modifier', () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
-		const definition = validDefinition() as unknown as Record<string, any>;
+		const definition = malformedDefinition();
 		definition.modifiers = ['not-an-object'];
 		expect(codes(definition)).toContainEqual({
 			path: 'modifiers[0]',
@@ -1189,8 +1187,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 	});
 
 	it('rejects an import-cost-multiplier with an unsupported scope', () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
-		const definition = validDefinition() as unknown as Record<string, any>;
+		const definition = malformedDefinition();
 		definition.modifiers = [
 			{
 				kind: 'import-cost-multiplier',
@@ -1206,8 +1203,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 	});
 
 	it('rejects an import-cost-multiplier with a non-positive multiplier', () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
-		const definition = validDefinition() as unknown as Record<string, any>;
+		const definition = malformedDefinition();
 		definition.modifiers = [
 			{
 				kind: 'import-cost-multiplier',
@@ -1223,8 +1219,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 	});
 
 	it('rejects a non-object modifier target', () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
-		const definition = validDefinition() as unknown as Record<string, any>;
+		const definition = malformedDefinition();
 		definition.modifiers = [
 			{
 				kind: 'import-cost-multiplier',
@@ -1240,8 +1235,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 	});
 
 	it('rejects a modifier target with an unsupported kind', () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
-		const definition = validDefinition() as unknown as Record<string, any>;
+		const definition = malformedDefinition();
 		definition.modifiers = [
 			{
 				kind: 'import-cost-multiplier',
@@ -1257,8 +1251,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 	});
 
 	it('rejects an unsupported objective comparator', () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
-		const definition = validDefinition() as unknown as Record<string, any>;
+		const definition = malformedDefinition();
 		definition.requiredObjectives[0].comparator = 'bad';
 		expect(codes(definition)).toContainEqual({
 			path: 'requiredObjectives[0].comparator',
@@ -1267,8 +1260,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 	});
 
 	it('rejects a non-boolean requiresCompleteWindow', () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
-		const definition = validDefinition() as unknown as Record<string, any>;
+		const definition = malformedDefinition();
 		definition.requiredObjectives[0].requiresCompleteWindow = 'yes';
 		expect(codes(definition)).toContainEqual({
 			path: 'requiredObjectives[0].requiresCompleteWindow',
@@ -1277,8 +1269,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 	});
 
 	it('rejects a non-object metric query', () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
-		const definition = validDefinition() as unknown as Record<string, any>;
+		const definition = malformedDefinition();
 		definition.requiredObjectives[0].query = 'not-an-object';
 		expect(codes(definition)).toContainEqual({
 			path: 'requiredObjectives[0].query',
@@ -1287,8 +1278,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 	});
 
 	it('rejects a category metric query with an empty categoryIds array', () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
-		const definition = validDefinition() as unknown as Record<string, any>;
+		const definition = malformedDefinition();
 		definition.requiredObjectives = [
 			{
 				...definition.requiredObjectives[0],
@@ -1303,8 +1293,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 	});
 
 	it('rejects a scorecard query with an unknown score key', () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
-		const definition = validDefinition() as unknown as Record<string, any>;
+		const definition = malformedDefinition();
 		definition.requiredObjectives = [
 			{
 				...definition.requiredObjectives[0],
@@ -1319,8 +1308,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 	});
 
 	it('flags industrial-building-count building types excluded by content rules', () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
-		const definition = validDefinition() as unknown as Record<string, any>;
+		const definition = malformedDefinition();
 		definition.requiredObjectives = [
 			{
 				...definition.requiredObjectives[0],
@@ -1335,8 +1323,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 	});
 
 	it('rejects a non-object metric window', () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
-		const definition = validDefinition() as unknown as Record<string, any>;
+		const definition = malformedDefinition();
 		definition.requiredObjectives[0].window = 'not-an-object';
 		expect(codes(definition)).toContainEqual({
 			path: 'requiredObjectives[0].window',
@@ -1345,8 +1332,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 	});
 
 	it('rejects a trailing-reports window with a non-positive count', () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
-		const definition = validDefinition() as unknown as Record<string, any>;
+		const definition = malformedDefinition();
 		definition.requiredObjectives = [
 			{
 				...definition.requiredObjectives[0],
@@ -1360,8 +1346,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 	});
 
 	it('rejects an unsupported window kind', () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
-		const definition = validDefinition() as unknown as Record<string, any>;
+		const definition = malformedDefinition();
 		definition.requiredObjectives[0].window = { kind: 'bad-window' };
 		expect(codes(definition)).toContainEqual({
 			path: 'requiredObjectives[0].window.kind',
@@ -1379,8 +1364,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 	});
 
 	it('rejects a local-production category that is not a finished material', () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
-		const definition = validDefinition() as unknown as Record<string, any>;
+		const definition = malformedDefinition();
 		definition.content.productCategoryIds = ['bottled-water', 'household'];
 		definition.requiredObjectives = [
 			{
@@ -1396,8 +1380,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 	});
 
 	it('rejects a retail placement in an industry city', () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
-		const definition = validDefinition() as unknown as Record<string, any>;
+		const definition = malformedDefinition();
 		definition.content.cityIds = ['harbor-city', 'industry-city'];
 		definition.content.retailPlacements = [
 			{
@@ -1413,8 +1396,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 	});
 
 	it('rejects an industrial placement in a retail city', () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
-		const definition = validDefinition() as unknown as Record<string, any>;
+		const definition = malformedDefinition();
 		definition.content.cityIds = ['harbor-city', 'industry-city'];
 		definition.content.buildingTypeIds = ['warehouse'];
 		definition.content.industrialPlacements = [
@@ -1431,8 +1413,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 	});
 
 	it('rejects an industrial placement on a non-existent tile', () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
-		const definition = validDefinition() as unknown as Record<string, any>;
+		const definition = malformedDefinition();
 		definition.content.cityIds = ['harbor-city', 'industry-city'];
 		definition.content.buildingTypeIds = ['warehouse'];
 		definition.content.industrialPlacements = [
@@ -1449,8 +1430,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 	});
 
 	it('rejects a rail with non-integer coordinates', () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
-		const definition = validDefinition() as unknown as Record<string, any>;
+		const definition = malformedDefinition();
 		definition.content.cityIds = ['harbor-city', 'industry-city'];
 		definition.start.rails = [{ cityId: 'industry-city', x: 1.5, y: 2.5, level: 1 }];
 		expect(codes(definition)).toContainEqual({
@@ -1464,8 +1444,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 	});
 
 	it('rejects an unsupported policy value', () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
-		const definition = validDefinition() as unknown as Record<string, any>;
+		const definition = malformedDefinition();
 		definition.start.overrides.policy = {
 			pricing: 'bad',
 			inventory: 'lean',
@@ -1533,8 +1512,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 	});
 
 	it('rejects a duplicate building inventory reference', () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
-		const definition = validDefinition() as unknown as Record<string, any>;
+		const definition = malformedDefinition();
 		definition.content.cityIds = ['harbor-city', 'industry-city'];
 		definition.content.buildingTypeIds = ['warehouse'];
 		definition.start.industrialBuildings = [
@@ -1556,8 +1534,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 	});
 
 	it('rejects a non-object warehouseMaterials value', () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
-		const definition = validDefinition() as unknown as Record<string, any>;
+		const definition = malformedDefinition();
 		definition.start.overrides.warehouseMaterials = 'not-an-object';
 		expect(codes(definition)).toContainEqual({
 			path: 'start.overrides.warehouseMaterials',
@@ -1566,8 +1543,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 	});
 
 	it('rejects an opened city that is not revealed', () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
-		const definition = validDefinition() as unknown as Record<string, any>;
+		const definition = malformedDefinition();
 		definition.content.cityIds = ['harbor-city', 'industry-city'];
 		definition.start.overrides.world = {
 			revealedCityIds: ['harbor-city'],
@@ -1600,8 +1576,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 	});
 
 	it('rejects a non-object content value', () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
-		const definition = validDefinition() as unknown as Record<string, any>;
+		const definition = malformedDefinition();
 		definition.content = 'not-an-object';
 		expect(codes(definition)).toContainEqual({
 			path: 'content',
@@ -1610,8 +1585,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 	});
 
 	it('rejects a missing required definition key', () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
-		const definition = validDefinition() as unknown as Record<string, any>;
+		const definition = malformedDefinition();
 		delete definition.id;
 		expect(codes(definition)).toContainEqual({
 			path: 'id',
@@ -1620,8 +1594,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 	});
 
 	it('rejects a non-array allowedCommands value', () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
-		const definition = validDefinition() as unknown as Record<string, any>;
+		const definition = malformedDefinition();
 		definition.allowedCommands = 'advanceDay';
 		expect(codes(definition)).toContainEqual({
 			path: 'allowedCommands',
@@ -1630,8 +1603,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 	});
 
 	it('rejects a non-finite objective target', () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
-		const definition = validDefinition() as unknown as Record<string, any>;
+		const definition = malformedDefinition();
 		definition.requiredObjectives[0].target = Number.NaN;
 		expect(codes(definition)).toContainEqual({
 			path: 'requiredObjectives[0].target',
@@ -1640,8 +1612,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 	});
 
 	it('rejects an empty objective labelKey', () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
-		const definition = validDefinition() as unknown as Record<string, any>;
+		const definition = malformedDefinition();
 		definition.requiredObjectives[0].labelKey = '';
 		expect(codes(definition)).toContainEqual({
 			path: 'requiredObjectives[0].labelKey',

@@ -107,8 +107,10 @@ describe('industrial placement', () => {
 		expect(built.warehouse.overflowUnits).toBe(expected.overflowUnits);
 		expect(built.warehouse.overflowCost).toBe(expected.overflowCost);
 		// Building a non-warehouse producer must still leave the warehouse normalized.
+		// Derive from `built` so the warehouse already has non-zero capacity/overflow
+		// and the normalization assertion exercises the non-trivial path.
 		const grainTile = getIndustryTilesByResource(city, 'grain-field')[0]!;
-		const withProducer = buildIndustrialBuilding(base, {
+		const withProducer = buildIndustrialBuilding(built, {
 			tileId: grainTile.id,
 			buildingTypeId: 'grain-farm'
 		});
