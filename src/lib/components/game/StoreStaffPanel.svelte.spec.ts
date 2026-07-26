@@ -226,4 +226,34 @@ describe('StoreStaffPanel', () => {
 			)
 		).toBe(true);
 	});
+
+	it('does not show the disabled reason when all mutations are still permitted', async () => {
+		expect.assertions(2);
+
+		renderStaffPanel({
+			canHire: true,
+			canAssign: true,
+			canUnassign: true,
+			disabledReason: 'Unavailable in this challenge.'
+		});
+
+		expect(document.querySelector('.disabled-copy')).toBeNull();
+		await expect.element(page.getByRole('button', { name: /hire morgan/i })).toBeEnabled();
+	});
+
+	it('disables only hiring while leaving assign and unassign enabled', async () => {
+		expect.assertions(4);
+
+		renderStaffPanel({
+			canHire: false,
+			canAssign: true,
+			canUnassign: true,
+			disabledReason: 'Hiring is unavailable.'
+		});
+
+		await expect.element(page.getByRole('button', { name: /hire morgan/i })).toBeDisabled();
+		await expect.element(page.getByRole('button', { name: /assign drew/i })).toBeEnabled();
+		await expect.element(page.getByRole('button', { name: /unassign blair/i })).toBeEnabled();
+		await expect.element(page.getByText('Hiring is unavailable.')).toBeVisible();
+	});
 });
