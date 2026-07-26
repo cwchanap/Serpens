@@ -32,20 +32,66 @@ function getFocusableCandidates(root: HTMLElement): HTMLElement[] {
 }
 
 /**
+ * Ref-counted `inert` management for stacked dialogs.
+ *
+ * Each active focusTrap that inerts a given sibling increments its count; the
+ * `inert` attribute is applied while the count is positive and removed when it
+ * drops back to zero. This keeps stacked dialogs correct: the outer dialog's
+ * trap won't un-inert a sibling that an inner dialog's trap still needs inerted.
+ */
+const inertCounts = new Map<Element, number>();
+
+function addInert(element: Element): void {
+	const next = (inertCounts.get(element) ?? 0) + 1;
+	inertCounts.set(element, next);
+	if (next === 1) element.setAttribute('inert', '');
+}
+
+function removeInert(element: Element): void {
+	const current = inertCounts.get(element);
+	if (current === undefined) return;
+	if (current <= 1) {
+		inertCounts.delete(element);
+		element.removeAttribute('inert');
+	} else {
+		inertCounts.set(element, current - 1);
+	}
+}
+
+/**
  * Attachment that traps keyboard focus inside a dialog and restores focus to the
  * previously-focused element when the dialog is removed.
  *
  * - On attach: records the active element, moves focus into the dialog (first
- *   focusable, else the container itself when it is focusable), and intercepts
- *   Tab/Shift+Tab so focus wraps within the dialog.
+ *   focusable, else the container itself when it is focusable), intercepts
+ *   Tab/Shift+Tab so focus wraps within the dialog, and sets `inert` on the
+ *   dialog's backdrop siblings so screen-reader virtual cursor and browse mode
+ *   cannot reach underlying page chrome.
  * - On detach: returns focus to the element that was focused before the dialog
- *   opened.
+ *   opened and releases the `inert` counts (stacking-safe).
  *
  * The container should carry `role="dialog"` / `aria-modal="true"` and either
  * contain focusable controls or be given `tabindex="-1"` so it can receive focus.
+ * The markup is expected to wrap the dialog in a full-viewport backdrop element
+ * (`<div class="...backdrop"><div role="dialog" ...>{@attach focusTrap}</div></div>`);
+ * the backdrop's siblings are the page chrome that gets inerted.
  */
 export const focusTrap: Attachment<HTMLElement> = (node) => {
 	const previouslyFocused = document.activeElement as HTMLElement | null;
+
+	// Inert the backdrop's siblings so screen-reader browse mode and the virtual
+	// cursor cannot reach underlying controls. `aria-modal` + Tab trapping alone
+	// do not block SR browse mode; `inert` is the spec-correct mechanism.
+	const backdrop = node.parentElement;
+	const inerted: Element[] = [];
+	if (backdrop?.parentElement) {
+		for (const sibling of backdrop.parentElement.children) {
+			if (sibling === backdrop) continue;
+			if (!(sibling instanceof Element)) continue;
+			addInert(sibling);
+			inerted.push(sibling);
+		}
+	}
 
 	const focusable = getFocusableCandidates(node);
 	// Fall back to the container itself when there are no focusable children.
@@ -85,6 +131,9 @@ export const focusTrap: Attachment<HTMLElement> = (node) => {
 
 	return () => {
 		node.removeEventListener('keydown', handleKeydown);
+		for (const sibling of inerted) {
+			removeInert(sibling);
+		}
 		// Only restore focus if the previously-focused element is still in the
 		// DOM. If it was removed while the dialog was open (e.g. a list item that
 		// re-rendered), focus would silently fall to `document.body` anyway, but
