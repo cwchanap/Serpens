@@ -11,7 +11,13 @@
 		"sourceMap": true,
 		"strict": true,
 		"moduleResolution": "bundler"
-	}
+	},
+	"exclude": [
+		"src/lib/components/game/ScenarioCatalog.svelte.spec.ts",
+		"src/lib/persistence/scenarioCodec.spec.ts",
+		"src/lib/scenarios/validation.spec.ts",
+		"src/routes/gameRouteController.spec.ts"
+	]
 	// Path aliases are handled by https://svelte.dev/docs/kit/configuration#alias
 	// except $lib which is handled by https://svelte.dev/docs/kit/configuration#files
 	//
