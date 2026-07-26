@@ -20,6 +20,7 @@ import {
 	upgradeBuilding
 } from './industryPlacement';
 import { getBuildingUpgradeCost, MAX_BUILDING_LEVEL } from './leveling';
+import { getWarehouseCapacity, recalculateWarehousePressure } from './industryProduction';
 import { createNewGame } from './state';
 import type { IndustrialBuildingTypeId, IndustryCity, IndustryTile } from './types';
 
@@ -57,6 +58,67 @@ describe('industrial placement', () => {
 		expect(result.industrialBuildings[0]?.mapX).toBe(grainTile.x);
 		expect(result.cash).toBeLessThan(game.cash);
 		expect(game.industrialBuildings).toHaveLength(0);
+	});
+
+	test('recalculates warehouse capacity and pressure inline after building (sandbox normalization)', () => {
+		// Sandbox regression guard (see commit a6b9e40): buildIndustrialBuilding
+		// wraps the result in recalculateWarehousePressure + refreshWorldProgress so
+		// the post-transition state passes the strict invariants that scenario
+		// setup validation enforces. This locks the sandbox-observable warehouse
+		// normalization so a future refactor cannot silently drop it.
+		expect.assertions(6);
+		const base = { ...createNewGame('convenience', 20260512), cash: 1_000_000 };
+		const city = base.industryCities[0]!;
+		const anchor = city.tiles.find(
+			(tile) =>
+				tile.terrain === 'industrial' &&
+				!tile.locked &&
+				[
+					[1, 0],
+					[0, 1],
+					[1, 1]
+				].every(([dx, dy]) => {
+					const footprintTile = city.tiles.find(
+						(other) => other.x === tile.x + dx && other.y === tile.y + dy
+					);
+					return (
+						footprintTile !== undefined &&
+						footprintTile.terrain === 'industrial' &&
+						!footprintTile.locked
+					);
+				})
+		)!;
+
+		const built = buildIndustrialBuilding(base, {
+			tileId: anchor.id,
+			buildingTypeId: 'warehouse'
+		});
+
+		expect(built.industrialBuildings).toHaveLength(1);
+		expect(built.industrialBuildings[0]?.typeId).toBe('warehouse');
+		// Capacity must reflect the newly-built warehouse.
+		expect(built.warehouse.capacity).toBe(getWarehouseCapacity(built));
+		// Pressure must match a fresh recalculation over the resulting warehouse.
+		const expected = recalculateWarehousePressure({
+			...built.warehouse,
+			capacity: getWarehouseCapacity(built),
+			materials: { ...built.warehouse.materials }
+		});
+		expect(built.warehouse.overflowUnits).toBe(expected.overflowUnits);
+		expect(built.warehouse.overflowCost).toBe(expected.overflowCost);
+		// Building a non-warehouse producer must still leave the warehouse normalized.
+		const grainTile = getIndustryTilesByResource(city, 'grain-field')[0]!;
+		const withProducer = buildIndustrialBuilding(base, {
+			tileId: grainTile.id,
+			buildingTypeId: 'grain-farm'
+		});
+		expect(withProducer.warehouse).toEqual(
+			recalculateWarehousePressure({
+				...withProducer.warehouse,
+				capacity: getWarehouseCapacity(withProducer),
+				materials: { ...withProducer.warehouse.materials }
+			})
+		);
 	});
 
 	test('rejects insufficient cash with a construction decision', () => {
