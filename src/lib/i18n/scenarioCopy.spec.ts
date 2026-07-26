@@ -122,6 +122,7 @@ describe('scenario copy', () => {
 		const summary: ScenarioPersistenceSummary = {
 			activeRunsByScenarioId: {
 				'first-profit': {
+					runId: '00000000-0000-4000-8000-000000000000',
 					definition: { scenarioId: 'first-profit', version: 1 },
 					seed: 777,
 					eligibility: 'unranked',
@@ -188,6 +189,7 @@ describe('scenario copy', () => {
 					...summary,
 					activeRunsByScenarioId: {
 						'first-profit': {
+							runId: '00000000-0000-4000-8000-000000000000',
 							definition: { scenarioId: 'first-profit', version: 1 },
 							seed: 99,
 							eligibility: 'ranked',
@@ -308,6 +310,7 @@ describe('scenario copy', () => {
 		const view = buildScenarioProgressView(
 			current,
 			{
+				runId: '00000000-0000-4000-8000-000000000000',
 				definition: { scenarioId: current.id, version: 1 },
 				seed: 101,
 				eligibility: 'ranked',
@@ -457,6 +460,7 @@ describe('scenario copy', () => {
 			}
 		};
 		const run = {
+			runId: '00000000-0000-4000-8000-000000000000',
 			definition: { scenarioId: current.id, version: 1 },
 			seed: 101,
 			eligibility: 'ranked' as const,

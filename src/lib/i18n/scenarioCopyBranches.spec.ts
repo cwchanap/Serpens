@@ -133,6 +133,7 @@ describe('scenario copy branches', () => {
 		const view = buildScenarioProgressView(
 			current,
 			{
+				runId: '00000000-0000-4000-8000-000000000000',
 				definition: { scenarioId: current.id, version: current.version },
 				seed: current.officialSeed,
 				eligibility: 'unranked',

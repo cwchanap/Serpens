@@ -294,6 +294,7 @@ export interface ScenarioResult {
 }
 
 export interface ScenarioRun {
+	runId: string;
 	definition: ScenarioDefinitionRef;
 	seed: number;
 	eligibility: ScenarioEligibility;

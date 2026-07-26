@@ -172,6 +172,7 @@ const commands = [
 ] as const satisfies readonly ScenarioCommand[];
 
 const run = {
+	runId: '00000000-0000-4000-8000-000000000000',
 	definition: { scenarioId: definition.id, version: definition.version },
 	seed: definition.officialSeed,
 	eligibility: 'ranked',

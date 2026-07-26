@@ -70,6 +70,7 @@ function run(gameOverrides: Partial<GameState> = {}): ScenarioRun {
 	const game = createNewGame('convenience', 280_001);
 	const scenario = definition();
 	return {
+		runId: crypto.randomUUID(),
 		definition: { scenarioId: scenario.id, version: scenario.version },
 		seed: scenario.officialSeed,
 		eligibility: 'ranked',

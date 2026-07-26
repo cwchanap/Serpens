@@ -141,6 +141,7 @@ function fixtureRun(
 	const eligibility =
 		seed === definition.officialSeed ? ('ranked' as const) : ('unranked' as const);
 	const active: ScenarioRun = {
+		runId: crypto.randomUUID(),
 		definition: ref,
 		seed,
 		eligibility,
@@ -325,8 +326,10 @@ describe('scenario repository', { timeout: 30_000 }, () => {
 	it('returns a failed terminal result while removing it from resumable persistence', async () => {
 		const driver = new CountingDriver();
 		const repository = new ScenarioRepositoryFromDriver(driver, resolveFixtureDefinition);
-		await repository.saveActiveRun(fixtureRun());
+		const active = fixtureRun();
+		await repository.saveActiveRun(active);
 		const failed = fixtureRun(undefined, { status: 'failed', score: 610 });
+		failed.runId = active.runId;
 
 		const outcome = await repository.commitTerminalRun(failed);
 		const summary = await repository.getSummary();
@@ -433,6 +436,57 @@ describe('scenario repository', { timeout: 30_000 }, () => {
 		expect(summary.bestResultsByDefinitionKey['first-profit@1']).toEqual(staleTerminal.result);
 	});
 
+	it('preserves a restart-produced replacement when a stale commit shares the same seed', async () => {
+		// restartScenario preserves the seed but produces a fresh runId. A stale
+		// terminal commit for the original run must not delete the replacement,
+		// even though both share (version, seed). The runId identity check
+		// prevents the stale commit from clearing the resumable replacement.
+		const driver = new CountingDriver();
+		const repository = new ScenarioRepositoryFromDriver(driver, resolveFixtureDefinition);
+		const original = fixtureRun(undefined, { seed: OFFICIAL_SEEDS['first-profit'] });
+		await repository.saveActiveRun(original);
+		// User restarts mid-results-dialog: restartScenario calls startScenario
+		// with the same seed, producing a new run with a fresh runId.
+		const replacement = fixtureRun(undefined, { seed: original.seed });
+		expect(replacement.runId).not.toBe(original.runId);
+		await repository.saveActiveRun(replacement);
+		// The stale results dialog commits the original (now terminal) run.
+		// It carries the original's runId, not the replacement's.
+		const staleTerminal = fixtureRun(undefined, {
+			status: 'completed',
+			seed: original.seed,
+			score: 750
+		});
+		staleTerminal.runId = original.runId;
+
+		const outcome = await repository.commitTerminalRun(staleTerminal);
+		const summary = await repository.getSummary();
+
+		// The replacement active run must survive — it is the user's current run.
+		expect(summary.activeRunsByScenarioId['first-profit']).toEqual(replacement);
+		// The terminal run's best result is still recorded.
+		expect(outcome.bestUpdated).toBe(true);
+		expect(summary.bestResultsByDefinitionKey['first-profit@1']).toEqual(staleTerminal.result);
+	});
+
+	it('clears the active entry when the terminal run is the same run instance', async () => {
+		// In the normal flow (no restart), the terminal run carries the same
+		// runId as the active run that was saved. The commit must clear the
+		// active entry so the scenario is no longer resumable.
+		const driver = new CountingDriver();
+		const repository = new ScenarioRepositoryFromDriver(driver, resolveFixtureDefinition);
+		const active = fixtureRun();
+		await repository.saveActiveRun(active);
+		const terminal = fixtureRun(undefined, { status: 'completed', score: 750 });
+		terminal.runId = active.runId;
+
+		await repository.commitTerminalRun(terminal);
+		const summary = await repository.getSummary();
+
+		expect(summary.activeRunsByScenarioId['first-profit']).toBeUndefined();
+		expect(summary.bestResultsByDefinitionKey['first-profit@1']).toEqual(terminal.result);
+	});
+
 	it('commits and reloads a ranked best with a standalone customer-satisfaction score metric', async () => {
 		const definition: ScenarioDefinition = {
 			...fixtureDefinition({ scenarioId: 'first-profit', version: 1 }),
@@ -452,6 +506,7 @@ describe('scenario repository', { timeout: 30_000 }, () => {
 		const seed = definition.officialSeed;
 		const activeGame = { ...createNewGame('convenience', seed), cash: 0 };
 		const active: ScenarioRun = {
+			runId: crypto.randomUUID(),
 			definition: { scenarioId: 'first-profit', version: 1 },
 			seed,
 			eligibility: 'ranked',
@@ -541,6 +596,7 @@ describe('scenario repository', { timeout: 30_000 }, () => {
 		const driver = new CountingDriver(snapshot({ 'first-profit': runRecord(active) }));
 		const repository = new CountingRepository(driver, resolveFixtureDefinition);
 		const terminal = fixtureRun(undefined, { status: 'completed', score: 850 });
+		terminal.runId = active.runId;
 		driver.resetCounts();
 
 		const outcome = await repository.commitTerminalRun(terminal);

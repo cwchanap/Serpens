@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { simulateDay } from '$lib/game/simulateDay';
 import { createNewGame } from '$lib/game/state';
 import type { GameState } from '$lib/game/types';
-import { abandonScenario, evaluateScenario, startScenario } from '$lib/scenarios/runtime';
+import {
+	abandonScenario,
+	evaluateScenario,
+	executeScenarioCommand,
+	startScenario
+} from '$lib/scenarios/runtime';
 import type {
 	ScenarioDefinition,
 	ScenarioDefinitionRef,
@@ -178,6 +183,7 @@ function fixtureRun(
 	const eligibility =
 		seed === definition.officialSeed ? ('ranked' as const) : ('unranked' as const);
 	const active: ScenarioRun = {
+		runId: crypto.randomUUID(),
 		definition: ref,
 		seed,
 		eligibility,
@@ -852,6 +858,7 @@ describe('scenario codec', () => {
 			reports: activeGame.reports.filter((report) => report.day !== 1)
 		};
 		const active: ScenarioRun = {
+			runId: crypto.randomUUID(),
 			definition: { scenarioId: 'first-profit', version: 1 },
 			seed: activeDefinition.officialSeed,
 			eligibility: 'ranked',
@@ -1173,6 +1180,111 @@ describe('scenario codec', () => {
 			false
 		);
 		expect(validateScenarioRun(laterAbandoned, () => definition)).toEqual(laterAbandoned);
+	});
+
+	it('accepts a deadline-deferred active run produced by a non-advanceDay command', () => {
+		// The runtime keeps a run active when the deadline triggers via a
+		// non-advanceDay command (runtime.ts: executeScenarioCommand only
+		// terminates on deadline when command.kind === 'advanceDay'). With
+		// dayLimit: 1 the initial game already sits at the deadline day, so
+		// any non-advanceDay command produces a deadline-deferred active run
+		// that is not the canonical initial state. The codec must accept it
+		// so it can be autosaved.
+		const base = fixtureDefinition({ scenarioId: 'first-profit', version: 1 });
+		const definition: ScenarioDefinition = {
+			...base,
+			dayLimit: 1,
+			allowedCommands: ['advanceDay', 'updatePolicy'],
+			start: { ...base.start, overrides: { storeCap: 1 } },
+			requiredObjectives: [
+				{
+					id: 'unreachable-cash',
+					labelKey: 'store.defaultName',
+					query: { metric: 'cash' },
+					comparator: 'gt',
+					target: 2_000_000_000,
+					window: { kind: 'current' }
+				}
+			],
+			failures: [
+				{
+					id: 'catastrophic-cash',
+					labelKey: 'store.defaultName',
+					query: { metric: 'cash' },
+					comparator: 'lt',
+					target: -2_000_000_000,
+					window: { kind: 'current' }
+				}
+			]
+		};
+		const started = startScenario(definition, definition.officialSeed);
+		if (!started.ok) throw new Error(`Scenario start failed: ${started.error.code}`);
+		expect(started.value.evaluation.deadline?.triggered).toBe(true);
+		expect(started.value.status).toBe('active');
+
+		// Execute a non-advanceDay command at the deadline day — the runtime
+		// keeps the run active (deadline is deferred to the next advanceDay).
+		const result = executeScenarioCommand(started.value, definition, {
+			kind: 'updatePolicy',
+			patch: { pricing: 'premium' }
+		});
+		if (!result.ok || !result.changed) {
+			throw new Error('Expected updatePolicy to change the run.');
+		}
+		expect(result.run.status).toBe('active');
+		expect(result.run.evaluation.deadline?.triggered).toBe(true);
+		expect(result.run.result).toBeNull();
+
+		// The codec must accept this deadline-deferred active run.
+		const encoded = encodeScenarioRunRecord(result.run, () => definition);
+		const decoded = validateScenarioRun({ ...encoded.run, game: encoded.game }, () => definition);
+		expect(decoded).toEqual(result.run);
+	});
+
+	it('accepts abandonment from a deadline-deferred active state', () => {
+		const base = fixtureDefinition({ scenarioId: 'first-profit', version: 1 });
+		const definition: ScenarioDefinition = {
+			...base,
+			dayLimit: 1,
+			allowedCommands: ['advanceDay', 'updatePolicy'],
+			start: { ...base.start, overrides: { storeCap: 1 } },
+			requiredObjectives: [
+				{
+					id: 'unreachable-cash',
+					labelKey: 'store.defaultName',
+					query: { metric: 'cash' },
+					comparator: 'gt',
+					target: 2_000_000_000,
+					window: { kind: 'current' }
+				}
+			],
+			failures: [
+				{
+					id: 'catastrophic-cash',
+					labelKey: 'store.defaultName',
+					query: { metric: 'cash' },
+					comparator: 'lt',
+					target: -2_000_000_000,
+					window: { kind: 'current' }
+				}
+			]
+		};
+		const started = startScenario(definition, definition.officialSeed);
+		if (!started.ok) throw new Error(`Scenario start failed: ${started.error.code}`);
+		const result = executeScenarioCommand(started.value, definition, {
+			kind: 'updatePolicy',
+			patch: { pricing: 'premium' }
+		});
+		if (!result.ok || !result.changed) {
+			throw new Error('Expected updatePolicy to change the run.');
+		}
+		const abandoned = abandonScenario(result.run);
+		expect(abandoned.status).toBe('abandoned');
+		expect(abandoned.evaluation.deadline?.triggered).toBe(true);
+
+		const encoded = encodeScenarioRunRecord(abandoned, () => definition);
+		const decoded = validateScenarioRun({ ...encoded.run, game: encoded.game }, () => definition);
+		expect(decoded).toEqual(abandoned);
 	});
 
 	it('retains terminal outcome precedence validation', () => {

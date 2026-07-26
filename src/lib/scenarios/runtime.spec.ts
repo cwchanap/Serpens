@@ -236,6 +236,7 @@ function commandDefinition(
 
 function activeRun(definition: ScenarioDefinition, game: GameState): ScenarioRun {
 	return {
+		runId: crypto.randomUUID(),
 		definition: { scenarioId: definition.id, version: definition.version },
 		seed: game.seed,
 		eligibility: game.seed === definition.officialSeed ? 'ranked' : 'unranked',
@@ -1028,7 +1029,16 @@ describe('scenario runtime lifecycle order', { timeout: 30_000 }, () => {
 
 		const restarted = restartScenario(run, definition);
 		const fresh = startScenario(definition, customSeed);
-		expect(restarted).toEqual(fresh);
+		// runId is a persistence identity generated per startScenario call,
+		// so exclude it when comparing restart equivalence.
+		expect(restarted.ok).toBe(fresh.ok);
+		if (restarted.ok && fresh.ok) {
+			const { runId: _restartedId, ...restartedWithoutId } = restarted.value;
+			void _restartedId;
+			const { runId: _freshId, ...freshWithoutId } = fresh.value;
+			void _freshId;
+			expect(restartedWithoutId).toEqual(freshWithoutId);
+		}
 		if (restarted.ok) {
 			expect(restarted.value.definition).toEqual(run.definition);
 			expect(restarted.value.seed).toBe(customSeed);
