@@ -21,7 +21,7 @@ import {
 } from '$lib/game/world';
 import type { SaveRepository } from '$lib/persistence/saveRepository';
 import type { SaveSlotMetadata, SaveSummary } from '$lib/persistence/saveTypes';
-import type { ScenarioRepository } from '$lib/persistence/scenarioRepository';
+import type { ScenarioRepository, ScenarioSaveOutcome } from '$lib/persistence/scenarioRepository';
 import {
 	ScenarioCommandGate,
 	runImmediateSandboxOperation,
@@ -170,6 +170,17 @@ const INITIAL_STATE: GameRouteControllerState = {
 
 function scenarioError(code: ScenarioOperationError['code']): ScenarioOperationError {
 	return { code, diagnostics: [] };
+}
+
+function isSaveConflict(
+	outcome: ScenarioSaveOutcome
+): outcome is { status: 'conflict'; activeRun: ScenarioRun } {
+	return (
+		typeof outcome === 'object' &&
+		outcome !== null &&
+		'status' in outcome &&
+		outcome.status === 'conflict'
+	);
 }
 
 export class GameRouteController {
@@ -417,7 +428,7 @@ export class GameRouteController {
 				return { status: 'rejected' };
 			}
 			phase = 'write';
-			const outcome = await repository.saveActiveRun(restarted.value);
+			const outcome = await repository.saveActiveRun(restarted.value, { replace: true });
 			this.patchState({
 				activeScenarioRun: outcome.activeRun,
 				lastScenarioResult: null,
@@ -474,7 +485,7 @@ export class GameRouteController {
 				return { status: 'rejected' };
 			}
 			phase = 'write';
-			const outcome = await repository.saveActiveRun(started.value);
+			const outcome = await repository.saveActiveRun(started.value, { replace: true });
 			this.patchState({
 				activeScenarioRun: outcome.activeRun,
 				lastScenarioResult: null,
@@ -516,7 +527,13 @@ export class GameRouteController {
 
 		this.patchState({ scenarioCommandPending: true });
 		try {
-			await repository.removeActiveRun(run.definition.scenarioId);
+			const outcome = await repository.removeActiveRun(run.definition.scenarioId, run.runId);
+			// On conflict the stored run is a different (e.g. newer) run than
+			// the one the user is abandoning — the run being abandoned is
+			// already not stored, so the user's intent is satisfied. Clear the
+			// stale in-memory state and return to sandbox; the summary refresh
+			// surfaces the actual stored run in the catalog for later resume.
+			void outcome;
 			this.patchState({
 				activeScenarioRun: null,
 				lastScenarioResult: null,
@@ -526,6 +543,7 @@ export class GameRouteController {
 				scenarioOperationError: null,
 				retryScenarioOperation: null
 			});
+			await this.refreshScenarioSummary();
 			return { status: 'committed' };
 		} catch {
 			this.patchState({
@@ -791,6 +809,23 @@ export class GameRouteController {
 		this.publishScenarioSummary({ ...base, activeRunsByScenarioId: rest });
 	}
 
+	// Update a terminal run's entry in the last known summary when the
+	// post-terminal `getSummary` refresh fails but the repository retained a
+	// replacement active run (returned as `outcome.activeRun`). Without this,
+	// dropping the entry would hide a valid resumable run and expose a
+	// misleading Start action.
+	private updateTerminalRunInSummary(run: ScenarioRun): void {
+		const base = this.lastScenarioSummary;
+		if (!base) return;
+		this.publishScenarioSummary({
+			...base,
+			activeRunsByScenarioId: {
+				...base.activeRunsByScenarioId,
+				[run.definition.scenarioId]: run
+			}
+		});
+	}
+
 	private async persistScenarioRun(
 		run: ScenarioRun,
 		retry: () => Promise<GameRouteCommitResult>
@@ -810,6 +845,23 @@ export class GameRouteController {
 		this.patchState({ scenarioCommandPending: true });
 		try {
 			const outcome = await repository.saveActiveRun(run);
+			if (isSaveConflict(outcome)) {
+				// A different active run is already persisted for this scenario
+				// (stale catalog, second tab, or a restart that raced this
+				// start). Surface the persisted run so the UI can offer Resume
+				// instead of silently overwriting it, and refresh the summary so
+				// the catalog cards reflect the actual stored state. The caller
+				// treats this like import's confirmation-required: the user can
+				// resume the surfaced run or explicitly abandon/restart it.
+				this.patchState({
+					activeScenarioRun: outcome.activeRun,
+					scenarioCommandPending: false,
+					scenarioOperationError: null,
+					retryScenarioOperation: null
+				});
+				await this.refreshScenarioSummary();
+				return { status: 'confirmation-required' };
+			}
 			this.patchState({
 				activeScenarioRun: outcome.activeRun,
 				lastScenarioResult: null,
@@ -896,7 +948,22 @@ export class GameRouteController {
 					},
 					persist: (run) =>
 						run.status === 'active'
-							? repository.saveActiveRun(run)
+							? repository.saveActiveRun(run).then((outcome) => {
+									if (isSaveConflict(outcome)) {
+										// Another tab replaced this run between the
+										// command's prepare and persist. Surface the
+										// actual stored run so the user sees current
+										// state, then fail the write. The retry's
+										// isValid check (activeScenarioRun ===
+										// attemptedRun) invalidates because we just
+										// changed activeScenarioRun, so the stale
+										// retry does not re-attempt against the
+										// replacement.
+										this.patchState({ activeScenarioRun: outcome.activeRun });
+										throw new Error('scenario-run-replaced');
+									}
+									return outcome;
+								})
 							: repository.commitTerminalRun(run),
 					publish: (outcome) => {
 						this.publishScenarioOutcome(outcome);
@@ -919,12 +986,20 @@ export class GameRouteController {
 				try {
 					this.publishScenarioSummary(await repository.getSummary());
 				} catch {
-					// Summary refresh failed. The terminal run was already persisted
-					// and `activeScenarioRun` cleared, so drop its entry from the
-					// last known summary to avoid leaving a stale Resume action
-					// whose `loadActiveRun` would return null.
+					// Summary refresh failed. The terminal run was already
+					// persisted. When the repository cleared the active entry
+					// (`activeRun === null`), drop its summary entry to avoid
+					// leaving a stale Resume action whose `loadActiveRun` would
+					// return null. When the repository retained a replacement
+					// active run (`activeRun !== null`), update the summary
+					// entry so the catalog keeps offering Resume on the valid
+					// run instead of hiding it and exposing a misleading Start.
 					if (terminalScenarioId) {
-						this.dropTerminalRunFromSummary(terminalScenarioId);
+						if (result.value.activeRun === null) {
+							this.dropTerminalRunFromSummary(terminalScenarioId);
+						} else {
+							this.updateTerminalRunInSummary(result.value.activeRun);
+						}
 					}
 				}
 			}

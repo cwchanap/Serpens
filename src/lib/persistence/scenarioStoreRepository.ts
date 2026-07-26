@@ -19,7 +19,11 @@ import {
 	type DecodeScenarioStoreResult,
 	type ScenarioDefinitionResolver
 } from './scenarioCodec';
-import type { ScenarioRepository } from './scenarioRepository';
+import {
+	type ScenarioRepository,
+	type ScenarioRemoveOutcome,
+	type ScenarioSaveOutcome
+} from './scenarioRepository';
 
 export interface ScenarioStoreDriver {
 	read(): Promise<DecodeScenarioStoreResult>;
@@ -68,13 +72,33 @@ export class ScenarioRepositoryFromDriver implements ScenarioRepository {
 		return record ? runFromRecord(record) : null;
 	}
 
-	async saveActiveRun(run: ScenarioRun): Promise<ScenarioCommitOutcome> {
+	async saveActiveRun(
+		run: ScenarioRun,
+		options?: { replace?: boolean }
+	): Promise<ScenarioSaveOutcome> {
 		return this.mutate(async () => {
 			const record = encodeScenarioRunRecord(run, this.resolveDefinition);
 			if (record.run.status !== 'active' || record.run.result !== null) {
 				throw new TypeError('saveActiveRun requires an active run without a terminal result.');
 			}
 			const decoded = await this.driver.read();
+			const existing = decoded.snapshot.activeRunsByScenarioId[run.definition.scenarioId];
+			// Compare-and-swap: refuse to silently overwrite a different active
+			// run. A stale catalog, second browser tab, or results dialog can
+			// call save when a newer run is already persisted. Same-runId saves
+			// (normal in-run evolution) and explicit `replace: true` (restart,
+			// confirmed import) proceed. The check is best-effort across tabs
+			// — it serializes within this repository's mutation queue but two
+			// tabs have separate queues, so cross-tab races are last-write-wins
+			// at the storage layer; the guard still catches the common case
+			// where a stale in-memory catalog drives a start against a run that
+			// was started elsewhere in this tab.
+			if (existing && existing.run.runId !== run.runId && !options?.replace) {
+				return {
+					status: 'conflict' as const,
+					activeRun: runFromRecord(existing)
+				};
+			}
 			const next: ScenarioStoreSnapshot = {
 				...decoded.snapshot,
 				activeRunsByScenarioId: {
@@ -91,12 +115,22 @@ export class ScenarioRepositoryFromDriver implements ScenarioRepository {
 		});
 	}
 
-	async removeActiveRun(scenarioId: ScenarioId): Promise<void> {
+	async removeActiveRun(scenarioId: ScenarioId, runId?: string): Promise<ScenarioRemoveOutcome> {
 		return this.mutate(async () => {
 			const decoded = await this.driver.read();
+			const existing = decoded.snapshot.activeRunsByScenarioId[scenarioId];
+			// Compare-and-swap on abandon: only delete when the stored run is
+			// the one the caller is abandoning. A stale results dialog or second
+			// tab could otherwise delete a newer replacement run. Without a
+			// `runId` the removal stays unconditional for backwards-compatible
+			// callers that have already verified identity.
+			if (runId && existing && existing.run.runId !== runId) {
+				return { status: 'conflict' as const, activeRun: runFromRecord(existing) };
+			}
 			const activeRunsByScenarioId = { ...decoded.snapshot.activeRunsByScenarioId };
 			delete activeRunsByScenarioId[scenarioId];
 			await this.driver.write({ ...decoded.snapshot, activeRunsByScenarioId });
+			return { status: 'removed' as const };
 		});
 	}
 
@@ -117,8 +151,15 @@ export class ScenarioRepositoryFromDriver implements ScenarioRepository {
 			// preserves (version, seed) but produces a fresh runId, so a stale
 			// commit cannot remove the resumable replacement.
 			const existingActive = activeRunsByScenarioId[terminal.definition.scenarioId];
+			let preservedActiveRun: ScenarioRun | null = null;
 			if (existingActive && existingActive.run.runId === terminal.runId) {
 				delete activeRunsByScenarioId[terminal.definition.scenarioId];
+			} else if (existingActive) {
+				// A replacement run started between termination and this stale
+				// commit. It survives in storage; surface it as the outcome's
+				// activeRun so the controller's in-memory state stays consistent
+				// with the persisted catalog instead of being cleared to null.
+				preservedActiveRun = runFromRecord(existingActive);
 			}
 			const bestResultsByDefinitionKey = {
 				...decoded.snapshot.bestResultsByDefinitionKey
@@ -139,7 +180,7 @@ export class ScenarioRepositoryFromDriver implements ScenarioRepository {
 				bestResultsByDefinitionKey
 			});
 			return {
-				activeRun: null,
+				activeRun: preservedActiveRun,
 				terminalResult: structuredClone(terminal.result) as ScenarioResult,
 				bestUpdated
 			};
