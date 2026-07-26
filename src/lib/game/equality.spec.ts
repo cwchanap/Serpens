@@ -96,4 +96,32 @@ describe('deeplyEqual', () => {
 		const right = Array.from({ length }, () => ({}));
 		expect(deeplyEqual(left, right)).toBe(false);
 	});
+
+	it('returns false when equal primitive arrays exceed the 250k node cap', () => {
+		// Equal primitives short-circuit via Object.is, so a previous version
+		// only counted object pairs against the budget. A 260k-element array of
+		// equal numbers bypassed the cap entirely (1 node counted, 260k work
+		// items processed). The budget must count every popped pair.
+		const length = 260_000;
+		const left = Array.from({ length }, (_, i) => i);
+		const right = Array.from({ length }, (_, i) => i);
+		expect(deeplyEqual(left, right)).toBe(false);
+	});
+
+	it('returns false when a single array would queue more work than the budget allows', () => {
+		// A multi-million-element array must be rejected before eagerly
+		// expanding every element pair onto the worklist, otherwise the
+		// per-pop budget check fires too late to prevent the allocation.
+		const length = 5_000_000;
+		const left = new Array(length).fill(0);
+		const right = new Array(length).fill(0);
+		expect(deeplyEqual(left, right)).toBe(false);
+	});
+
+	it('accepts equal primitive arrays within the budget', () => {
+		const length = 100_000;
+		const left = Array.from({ length }, (_, i) => i);
+		const right = Array.from({ length }, (_, i) => i);
+		expect(deeplyEqual(left, right)).toBe(true);
+	});
 });

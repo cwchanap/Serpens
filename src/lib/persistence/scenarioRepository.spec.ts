@@ -283,7 +283,7 @@ describe('scenario repository', { timeout: 30_000 }, () => {
 
 		await repository.saveActiveRun(first);
 		await repository.saveActiveRun(other);
-		await repository.saveActiveRun(replacement);
+		await repository.saveActiveRun(replacement, { replace: true });
 		const summary = await repository.getSummary();
 
 		expect(Object.keys(summary.activeRunsByScenarioId).sort()).toEqual([
@@ -347,7 +347,9 @@ describe('scenario repository', { timeout: 30_000 }, () => {
 			seed: OFFICIAL_SEEDS['first-profit'] + 99,
 			score: 900
 		});
-		await repository.saveActiveRun(fixtureRun(undefined, { seed: custom.seed }));
+		const customActive = fixtureRun(undefined, { seed: custom.seed });
+		await repository.saveActiveRun(customActive);
+		custom.runId = customActive.runId;
 
 		const outcome = await repository.commitTerminalRun(custom);
 
@@ -359,14 +361,18 @@ describe('scenario repository', { timeout: 30_000 }, () => {
 		const driver = new CountingDriver();
 		const repository = new ScenarioRepositoryFromDriver(driver, resolveFixtureDefinition);
 		const existing = fixtureRun(undefined, { status: 'completed', score: 750 });
-		await repository.saveActiveRun(fixtureRun());
+		const existingActive = fixtureRun();
+		await repository.saveActiveRun(existingActive);
+		existing.runId = existingActive.runId;
 		const firstOutcome = await repository.commitTerminalRun(existing);
-		await repository.saveActiveRun(fixtureRun());
+		const equalActive = fixtureRun();
+		await repository.saveActiveRun(equalActive);
 		const equal = fixtureRun(undefined, {
 			status: 'completed',
 			score: 750,
 			advanceDays: 1
 		});
+		equal.runId = equalActive.runId;
 
 		const equalOutcome = await repository.commitTerminalRun(equal);
 		const summary = await repository.getSummary();
@@ -387,7 +393,7 @@ describe('scenario repository', { timeout: 30_000 }, () => {
 		const existing = fixtureRun(undefined, { status: 'completed', score: 750 });
 		await repository.commitTerminalRun(existing);
 		const active = fixtureRun();
-		await repository.saveActiveRun(active);
+		await repository.saveActiveRun(active, { replace: true });
 		const fabricated = fixtureRun(undefined, { status: 'completed', score: 700 });
 		fabricated.evaluation = {
 			...fabricated.evaluation,
@@ -418,7 +424,7 @@ describe('scenario repository', { timeout: 30_000 }, () => {
 		await repository.saveActiveRun(original);
 		// User restarts mid-results-dialog: a new active run replaces the original.
 		const replacement = fixtureRun(undefined, { seed: original.seed + 50 });
-		await repository.saveActiveRun(replacement);
+		await repository.saveActiveRun(replacement, { replace: true });
 		// The stale results dialog then commits the original (now terminal) run.
 		const staleTerminal = fixtureRun(undefined, {
 			status: 'completed',
@@ -431,6 +437,9 @@ describe('scenario repository', { timeout: 30_000 }, () => {
 
 		// The replacement active run must survive — it is the user's current run.
 		expect(summary.activeRunsByScenarioId['first-profit']).toEqual(replacement);
+		// The outcome must surface the preserved replacement as the active run so
+		// the controller's in-memory state stays consistent with storage.
+		expect(outcome.activeRun).toEqual(replacement);
 		// The terminal run's best result is still recorded.
 		expect(outcome.bestUpdated).toBe(true);
 		expect(summary.bestResultsByDefinitionKey['first-profit@1']).toEqual(staleTerminal.result);
@@ -449,7 +458,7 @@ describe('scenario repository', { timeout: 30_000 }, () => {
 		// with the same seed, producing a new run with a fresh runId.
 		const replacement = fixtureRun(undefined, { seed: original.seed });
 		expect(replacement.runId).not.toBe(original.runId);
-		await repository.saveActiveRun(replacement);
+		await repository.saveActiveRun(replacement, { replace: true });
 		// The stale results dialog commits the original (now terminal) run.
 		// It carries the original's runId, not the replacement's.
 		const staleTerminal = fixtureRun(undefined, {
@@ -464,6 +473,9 @@ describe('scenario repository', { timeout: 30_000 }, () => {
 
 		// The replacement active run must survive — it is the user's current run.
 		expect(summary.activeRunsByScenarioId['first-profit']).toEqual(replacement);
+		// The outcome must surface the preserved replacement as the active run so
+		// the controller's in-memory state stays consistent with storage.
+		expect(outcome.activeRun).toEqual(replacement);
 		// The terminal run's best result is still recorded.
 		expect(outcome.bestUpdated).toBe(true);
 		expect(summary.bestResultsByDefinitionKey['first-profit@1']).toEqual(staleTerminal.result);
@@ -480,10 +492,12 @@ describe('scenario repository', { timeout: 30_000 }, () => {
 		const terminal = fixtureRun(undefined, { status: 'completed', score: 750 });
 		terminal.runId = active.runId;
 
-		await repository.commitTerminalRun(terminal);
+		const outcome = await repository.commitTerminalRun(terminal);
 		const summary = await repository.getSummary();
 
 		expect(summary.activeRunsByScenarioId['first-profit']).toBeUndefined();
+		// The active entry was cleared, so the outcome must report no active run.
+		expect(outcome.activeRun).toBeNull();
 		expect(summary.bestResultsByDefinitionKey['first-profit@1']).toEqual(terminal.result);
 	});
 
@@ -553,7 +567,9 @@ describe('scenario repository', { timeout: 30_000 }, () => {
 		);
 		await repository.saveActiveRun(fixtureRun());
 		await repository.commitTerminalRun(versionOne);
-		await repository.saveActiveRun(fixtureRun({ scenarioId: 'first-profit', version: 2 }));
+		await repository.saveActiveRun(fixtureRun({ scenarioId: 'first-profit', version: 2 }), {
+			replace: true
+		});
 
 		const outcome = await repository.commitTerminalRun(versionTwo);
 		const summary = await repository.getSummary();
@@ -579,7 +595,7 @@ describe('scenario repository', { timeout: 30_000 }, () => {
 		const blocker = driver.blockNextWrite();
 
 		const firstSave = repository.saveActiveRun(first);
-		const secondSave = repository.saveActiveRun(second);
+		const secondSave = repository.saveActiveRun(second, { replace: true });
 		await blocker.started;
 
 		expect(driver.readCount).toBe(1);
@@ -620,5 +636,111 @@ describe('scenario repository', { timeout: 30_000 }, () => {
 
 		expect(saved).toEqual({ activeRun: active, terminalResult: null, bestUpdated: false });
 		expect(loaded).toEqual(active);
+	});
+
+	it('saveActiveRun refuses to silently overwrite a different active run (CAS)', async () => {
+		const driver = new CountingDriver();
+		const repository = new ScenarioRepositoryFromDriver(driver, resolveFixtureDefinition);
+		const first = fixtureRun();
+		await repository.saveActiveRun(first);
+
+		// A second start in another tab produces a different runId for the same
+		// scenario. Without `replace: true` the save must be refused so the
+		// first run is not silently clobbered.
+		const stale = fixtureRun(undefined, { seed: first.seed + 100 });
+		expect(stale.runId).not.toBe(first.runId);
+		const outcome = await repository.saveActiveRun(stale);
+
+		expect(outcome).toEqual({ status: 'conflict', activeRun: first });
+		const summary = await repository.getSummary();
+		expect(summary.activeRunsByScenarioId['first-profit']).toEqual(first);
+	});
+
+	it('saveActiveRun with replace:true overwrites a different active run', async () => {
+		const driver = new CountingDriver();
+		const repository = new ScenarioRepositoryFromDriver(driver, resolveFixtureDefinition);
+		const first = fixtureRun();
+		await repository.saveActiveRun(first);
+
+		const replacement = fixtureRun(undefined, { seed: first.seed + 100 });
+		const outcome = await repository.saveActiveRun(replacement, { replace: true });
+
+		expect(outcome).toEqual({
+			activeRun: replacement,
+			terminalResult: null,
+			bestUpdated: false
+		});
+		const summary = await repository.getSummary();
+		expect(summary.activeRunsByScenarioId['first-profit']).toEqual(replacement);
+	});
+
+	it('saveActiveRun allows same-runId saves (in-game evolution)', async () => {
+		const driver = new CountingDriver();
+		const repository = new ScenarioRepositoryFromDriver(driver, resolveFixtureDefinition);
+		const run = fixtureRun();
+		await repository.saveActiveRun(run);
+
+		// Re-saving the same run (same runId, e.g. after a command advanced its
+		// game state) must succeed without `replace: true`. The CAS guard only
+		// refuses saves whose runId differs from the stored one.
+		const outcome = await repository.saveActiveRun(run);
+
+		expect(outcome).toEqual({
+			activeRun: run,
+			terminalResult: null,
+			bestUpdated: false
+		});
+	});
+
+	it('removeActiveRun refuses to delete a different run when runId is provided (CAS)', async () => {
+		const driver = new CountingDriver();
+		const repository = new ScenarioRepositoryFromDriver(driver, resolveFixtureDefinition);
+		const stored = fixtureRun();
+		await repository.saveActiveRun(stored);
+
+		// A stale results dialog tries to abandon a run that is no longer the
+		// stored one. The removal must be refused so the replacement survives.
+		const stale = fixtureRun(undefined, { seed: stored.seed + 100 });
+		expect(stale.runId).not.toBe(stored.runId);
+		const outcome = await repository.removeActiveRun('first-profit', stale.runId);
+
+		expect(outcome).toEqual({ status: 'conflict', activeRun: stored });
+		const summary = await repository.getSummary();
+		expect(summary.activeRunsByScenarioId['first-profit']).toEqual(stored);
+	});
+
+	it('removeActiveRun without runId is unconditional (backwards-compatible)', async () => {
+		const driver = new CountingDriver();
+		const repository = new ScenarioRepositoryFromDriver(driver, resolveFixtureDefinition);
+		const stored = fixtureRun();
+		await repository.saveActiveRun(stored);
+
+		const outcome = await repository.removeActiveRun('first-profit');
+
+		expect(outcome).toEqual({ status: 'removed' });
+		const summary = await repository.getSummary();
+		expect(summary.activeRunsByScenarioId['first-profit']).toBeUndefined();
+	});
+
+	it('removeActiveRun with matching runId removes the run', async () => {
+		const driver = new CountingDriver();
+		const repository = new ScenarioRepositoryFromDriver(driver, resolveFixtureDefinition);
+		const stored = fixtureRun();
+		await repository.saveActiveRun(stored);
+
+		const outcome = await repository.removeActiveRun('first-profit', stored.runId);
+
+		expect(outcome).toEqual({ status: 'removed' });
+		const summary = await repository.getSummary();
+		expect(summary.activeRunsByScenarioId['first-profit']).toBeUndefined();
+	});
+
+	it('removeActiveRun with runId on a missing entry reports removed', async () => {
+		const driver = new CountingDriver();
+		const repository = new ScenarioRepositoryFromDriver(driver, resolveFixtureDefinition);
+
+		const outcome = await repository.removeActiveRun('first-profit', 'never-stored');
+
+		expect(outcome).toEqual({ status: 'removed' });
 	});
 });

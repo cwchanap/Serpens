@@ -1280,13 +1280,12 @@
 	}
 
 	async function abandonActiveScenario(): Promise<void> {
-		const scenarioId = activeScenarioRun?.definition.scenarioId;
-		const result = await gameRouteController.abandonScenarioRun();
-		if (result.status === 'committed' && scenarioId) {
-			const activeRunsByScenarioId = { ...scenarioSummary.activeRunsByScenarioId };
-			delete activeRunsByScenarioId[scenarioId];
-			scenarioSummary = { ...scenarioSummary, activeRunsByScenarioId };
-		}
+		// The controller refreshes the scenario summary after abandon (including
+		// the conflict case where a newer replacement run survives in storage),
+		// so the catalog stays in sync via onScenarioSummary. Do not manually
+		// delete the entry here — that would hide a replacement run that the
+		// controller intentionally preserved.
+		await gameRouteController.abandonScenarioRun();
 	}
 
 	function describeSaveErrorKey(error: unknown): TranslationKey {

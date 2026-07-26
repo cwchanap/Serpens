@@ -116,7 +116,7 @@ function createScenarioRepositoryHarness(
 			terminalResult: null,
 			bestUpdated: false
 		})),
-		removeActiveRun: vi.fn(async () => {}),
+		removeActiveRun: vi.fn(async () => ({ status: 'removed' as const })),
 		commitTerminalRun: vi.fn(async (nextRun) => ({
 			activeRun: null,
 			terminalResult: nextRun.result,
@@ -976,8 +976,68 @@ describe('GameRouteController scenario integration', () => {
 		expect(repository.saveActiveRun).not.toHaveBeenCalled();
 
 		expect(await controller.abandonScenarioRun()).toMatchObject({ status: 'committed' });
-		expect(repository.removeActiveRun).toHaveBeenCalledWith(definition.id);
+		expect(repository.removeActiveRun).toHaveBeenCalledWith(definition.id, run.runId);
 		expect(repository.commitTerminalRun).not.toHaveBeenCalled();
+	});
+
+	it('startScenarioRun surfaces a save conflict as confirmation-required and exposes the persisted run', async () => {
+		const definition = scenarioDefinition();
+		const run = runForDefinition(definition);
+		const stored = runForDefinition(definition);
+		expect(stored.runId).not.toBe(run.runId);
+		const repository = createScenarioRepositoryHarness(stored, {
+			saveActiveRun: vi.fn(async () => ({ status: 'conflict' as const, activeRun: stored }))
+		});
+		const controller = new GameRouteController(
+			controllerOptions({ scenarioRepository: repository, definition })
+		);
+		await controller.initializeScenarios();
+
+		const result = await controller.startScenarioRun(definition, definition.officialSeed);
+
+		expect(result).toEqual({ status: 'confirmation-required' });
+		// The conflict surfaces the actually-persisted run so the UI can offer
+		// Resume instead of silently overwriting it.
+		expect(controller.state.activeScenarioRun).toBe(stored);
+	});
+
+	it('abandonScenarioRun clears in-memory state even when removeActiveRun reports a conflict', async () => {
+		const definition = scenarioDefinition();
+		const run = runForDefinition(definition);
+		const stored = runForDefinition(definition);
+		expect(stored.runId).not.toBe(run.runId);
+		// `run` is the in-memory state the user is abandoning; `stored` is the
+		// newer replacement that survives in storage. getSummary returns `run`
+		// on the initializeScenarios call, then `stored` after the abandon
+		// refresh so the catalog picks up the surviving replacement.
+		let summaryCall = 0;
+		const summaries: ScenarioPersistenceSummary[] = [];
+		const repository = createScenarioRepositoryHarness(run, {
+			removeActiveRun: vi.fn(async () => ({ status: 'conflict' as const, activeRun: stored })),
+			getSummary: vi.fn(async () => {
+				summaryCall += 1;
+				return emptyScenarioSummary(summaryCall === 1 ? run : stored);
+			})
+		});
+		const controller = new GameRouteController(
+			controllerOptions({
+				scenarioRepository: repository,
+				definition,
+				onScenarioSummary: (summary) => summaries.push(summary)
+			})
+		);
+		await controller.initializeScenarios();
+		expect(controller.state.activeScenarioRun).toBe(run);
+
+		const result = await controller.abandonScenarioRun();
+
+		expect(result).toEqual({ status: 'committed' });
+		expect(repository.removeActiveRun).toHaveBeenCalledWith(definition.id, run.runId);
+		expect(controller.state.activeScenarioRun).toBeNull();
+		expect(controller.state.playMode).toBe('sandbox');
+		// The summary refresh surfaces the surviving replacement run so the
+		// catalog can offer Resume on it instead of hiding it.
+		expect(summaries.at(-1)?.activeRunsByScenarioId[definition.id]).toBe(stored);
 	});
 
 	it('resumes independently, rejects busy commands, and keeps read-only selection callable', async () => {
