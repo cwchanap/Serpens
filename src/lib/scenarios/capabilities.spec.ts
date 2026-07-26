@@ -340,4 +340,48 @@ describe('scenario content capabilities', () => {
 			})
 		).toBe(false);
 	});
+
+	it('rejects openStore when the archetype is outside the content allowlist', () => {
+		const scenario = definition({
+			allowedCommands: ['openStore'],
+			content: {
+				...definition().content,
+				archetypeIds: ['convenience']
+			}
+		});
+
+		expect(
+			isScenarioCommandAllowed(scenario, run(), {
+				kind: 'openStore',
+				tileId: 'harbor-tile',
+				archetypeId: 'grocery'
+			})
+		).toEqual({
+			allowed: false,
+			code: 'forbidden-content',
+			path: 'command.openStore.archetypeId'
+		});
+	});
+
+	it('rejects buildIndustrialBuilding when the building type is outside the content allowlist', () => {
+		const scenario = definition({
+			allowedCommands: ['buildIndustrialBuilding'],
+			content: {
+				...definition().content,
+				buildingTypeIds: ['water-pump']
+			}
+		});
+
+		expect(
+			isScenarioCommandAllowed(scenario, run(), {
+				kind: 'buildIndustrialBuilding',
+				tileId: 'industry-tile',
+				buildingTypeId: 'water-bottler'
+			})
+		).toEqual({
+			allowed: false,
+			code: 'forbidden-content',
+			path: 'command.buildIndustrialBuilding.buildingTypeId'
+		});
+	});
 });

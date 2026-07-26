@@ -454,6 +454,29 @@ describe('BuildMenu', () => {
 		await expect.element(page.getByText('Unavailable in this challenge.')).toBeVisible();
 		expect(onChooseRetail).not.toHaveBeenCalled();
 	});
+
+	it('disables all retail options when canOpenStore is false and guards the callback', async () => {
+		expect.assertions(4);
+		const onChooseRetail = vi.fn();
+		render(
+			BuildMenu,
+			buildMenuProps({
+				onChooseRetail,
+				canOpenStore: false,
+				disabledReason: 'No construction permitted.'
+			})
+		);
+
+		const convenience = page.getByRole('button', { name: /build convenience store/i });
+		const boutique = page.getByRole('button', { name: /build boutique goods/i });
+		await expect.element(convenience).toBeDisabled();
+		await expect.element(boutique).toBeDisabled();
+		await expect.element(page.getByText('No construction permitted.').first()).toBeVisible();
+
+		// Programmatic click on the disabled button must not fire onChooseRetail.
+		document.querySelector<HTMLButtonElement>('button.build-option')!.click();
+		expect(onChooseRetail).not.toHaveBeenCalled();
+	});
 });
 
 describe('BuildMenu industry recipe cards', () => {
@@ -547,6 +570,32 @@ describe('BuildMenu industry recipe cards', () => {
 
 		await expect.element(page.getByRole('button', { name: /build warehouse/i })).toBeDisabled();
 		await expect.element(page.getByText('Unavailable in this challenge.').first()).toBeVisible();
+		expect(onChooseIndustry).not.toHaveBeenCalled();
+	});
+
+	it('disables all industry options when canBuildIndustrialBuilding is false and guards the callback', async () => {
+		expect.assertions(3);
+		const onChooseIndustry = vi.fn();
+		render(
+			BuildMenu,
+			buildMenuProps({
+				activeMapView: 'industry',
+				retailOptions: [],
+				onChooseIndustry,
+				canBuildIndustrialBuilding: false,
+				disabledReason: 'No industrial construction permitted.'
+			})
+		);
+
+		const warehouse = page.getByRole('button', { name: /build warehouse/i });
+		await expect.element(warehouse).toBeDisabled();
+		await expect
+			.element(page.getByText('No industrial construction permitted.').first())
+			.toBeVisible();
+
+		// Programmatic click on a disabled industry button must not fire onChooseIndustry.
+		const button = document.querySelector<HTMLButtonElement>('button.build-option')!;
+		button.click();
 		expect(onChooseIndustry).not.toHaveBeenCalled();
 	});
 });

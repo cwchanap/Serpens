@@ -1068,6 +1068,21 @@ describe('validateScenarioDefinition', () => {
 			);
 		}
 	});
+
+	it('uses the singular "diagnostic" label when exactly one diagnostic is produced', () => {
+		// A definition with only an invalid dayLimit produces a single diagnostic.
+		const minimal: unknown = { ...validDefinition(), dayLimit: 0 };
+		const diagnostics = validateScenarioDefinition(minimal);
+		expect(diagnostics).toHaveLength(1);
+		try {
+			assertValidScenarioDefinition(minimal);
+			expect.fail('expected validation to throw');
+		} catch (error) {
+			expect((error as Error).message).toContain('(1 diagnostic)');
+			expect((error as Error).message).not.toContain('diagnostics');
+			expect((error as Error & { name?: string }).name).toBe('ScenarioDefinitionValidationError');
+		}
+	});
 });
 
 describe('sortScenarioDiagnostics', () => {
@@ -1617,6 +1632,1576 @@ describe('validateScenarioDefinition coverage gaps', () => {
 		expect(codes(definition)).toContainEqual({
 			path: 'requiredObjectives[0].labelKey',
 			code: 'invalid-string'
+		});
+	});
+
+	it('validates cash and debt override values', () => {
+		const definition = malformedDefinition();
+		definition.start.overrides.cash = -100;
+		definition.start.overrides.debt = -50;
+		expect(codes(definition)).toEqual(
+			expect.arrayContaining([
+				{ path: 'start.overrides.cash', code: 'invalid-non-negative-number' },
+				{ path: 'start.overrides.debt', code: 'invalid-non-negative-number' }
+			])
+		);
+	});
+
+	it('rejects a store override referencing an unknown store ref', () => {
+		const definition = validDefinition();
+		definition.start.overrides.stores = [
+			{
+				storeRef: 'nonexistent',
+				targetLevel: 1,
+				products: definition.start.overrides.stores?.[0]?.products
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'start.overrides.stores[0].storeRef',
+			code: 'invalid-reference'
+		});
+	});
+
+	it('rejects building inventory materials exceeding buffer capacity', () => {
+		const definition = malformedDefinition();
+		definition.content.cityIds = ['harbor-city', 'industry-city'];
+		definition.content.materialIds = ['water'];
+		definition.content.buildingTypeIds = ['water-pump'];
+		definition.start.industrialBuildings = [
+			{
+				ref: 'pump',
+				typeId: 'water-pump',
+				cityId: 'industry-city',
+				tileId: 'industry-city-3-19'
+			}
+		];
+		definition.start.overrides.buildingInventories = [
+			{ buildingRef: 'pump', materials: { water: 999 } }
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'start.overrides.buildingInventories[0].materials',
+			code: 'building-inventory-capacity-exceeded'
+		});
+	});
+
+	it('accepts warehouse materials within authored warehouse capacity', () => {
+		const definition = validDefinition();
+		definition.content.cityIds = ['harbor-city', 'industry-city'];
+		definition.content.materialIds = ['water'];
+		definition.content.buildingTypeIds = ['warehouse'];
+		definition.content.industrialPlacements = [
+			{
+				cityId: 'industry-city',
+				tileId: 'industry-city-26-6',
+				buildingTypeId: 'warehouse'
+			}
+		];
+		definition.start.industrialBuildings = [
+			{
+				ref: 'warehouse',
+				typeId: 'warehouse',
+				cityId: 'industry-city',
+				tileId: 'industry-city-26-6'
+			}
+		];
+		definition.start.overrides.warehouseMaterials = { water: 100 };
+		expect(
+			codes(definition).filter((diagnostic) => diagnostic.code === 'warehouse-capacity-exceeded')
+		).toEqual([]);
+	});
+
+	it('rejects a duplicate allowed command', () => {
+		const definition = malformedDefinition();
+		definition.allowedCommands = ['advanceDay', 'advanceDay'];
+		expect(codes(definition)).toContainEqual({
+			path: 'allowedCommands[1]',
+			code: 'duplicate-command'
+		});
+	});
+
+	it('rejects an import-cost-multiplier modifier that is not a closed object', () => {
+		const definition = malformedDefinition();
+		definition.modifiers = [
+			{
+				kind: 'import-cost-multiplier',
+				scope: 'retail-product',
+				target: { kind: 'all' },
+				multiplier: 1.5,
+				extra: true
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'modifiers[0].extra',
+			code: 'unknown-key'
+		});
+	});
+
+	it('validates inclusion of ids-target product references against content rules', () => {
+		const definition = malformedDefinition();
+		definition.content.productCategoryIds = ['bottled-water'];
+		definition.modifiers = [
+			{
+				kind: 'import-cost-multiplier',
+				scope: 'retail-product',
+				target: { kind: 'ids', ids: ['produce'] },
+				multiplier: 1.5
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'modifiers[0].target.ids[0]',
+			code: 'excluded-content'
+		});
+	});
+
+	it('accepts a valid rail topology connecting two authored buildings', () => {
+		const definition = validDefinition();
+		definition.content.cityIds = ['harbor-city', 'industry-city'];
+		definition.content.buildingTypeIds = ['warehouse'];
+		definition.content.industrialPlacements = [
+			{
+				cityId: 'industry-city',
+				tileId: 'industry-city-26-6',
+				buildingTypeId: 'warehouse'
+			},
+			{
+				cityId: 'industry-city',
+				tileId: 'industry-city-30-6',
+				buildingTypeId: 'warehouse'
+			}
+		];
+		definition.start.industrialBuildings = [
+			{
+				ref: 'wh-a',
+				typeId: 'warehouse',
+				cityId: 'industry-city',
+				tileId: 'industry-city-26-6'
+			},
+			{
+				ref: 'wh-b',
+				typeId: 'warehouse',
+				cityId: 'industry-city',
+				tileId: 'industry-city-30-6'
+			}
+		];
+		definition.allowedCommands = ['advanceDay', 'buildIndustrialBuilding', 'buildRail'];
+		definition.start.rails = [
+			{ cityId: 'industry-city', x: 28, y: 6, level: 1 },
+			{ cityId: 'industry-city', x: 29, y: 6, level: 1 }
+		];
+		expect(codes(definition)).toEqual([]);
+	});
+
+	it('validates local-production paths using authored rail connections without buildRail', () => {
+		const definition = validDefinition();
+		definition.content.cityIds = ['harbor-city', 'industry-city'];
+		definition.content.materialIds = ['water'];
+		definition.content.buildingTypeIds = ['water-pump', 'water-bottler', 'warehouse'];
+		definition.content.industrialPlacements = [];
+		definition.start.industrialBuildings = [
+			{
+				ref: 'pump',
+				typeId: 'water-pump',
+				cityId: 'industry-city',
+				tileId: 'industry-city-3-19'
+			},
+			{
+				ref: 'bottler',
+				typeId: 'water-bottler',
+				cityId: 'industry-city',
+				tileId: 'industry-city-26-6'
+			},
+			{
+				ref: 'warehouse',
+				typeId: 'warehouse',
+				cityId: 'industry-city',
+				tileId: 'industry-city-30-6'
+			}
+		];
+		// Authored rails connecting all three buildings in one component.
+		// The industry city has an internal separator at x=25 (blocked except
+		// at y=12, 24, 36), so the path crosses at y=12. The path routes
+		// around the bottler footprint (26,6)-(27,7) via its bottom edge.
+		const rails: Array<{ cityId: string; x: number; y: number; level: number }> = [];
+		for (let x = 5; x <= 24; x++) rails.push({ cityId: 'industry-city', x, y: 19, level: 1 });
+		for (let y = 18; y >= 12; y--) rails.push({ cityId: 'industry-city', x: 24, y, level: 1 });
+		rails.push({ cityId: 'industry-city', x: 25, y: 12, level: 1 });
+		for (let y = 12; y >= 8; y--) rails.push({ cityId: 'industry-city', x: 26, y, level: 1 });
+		rails.push({ cityId: 'industry-city', x: 27, y: 8, level: 1 });
+		rails.push({ cityId: 'industry-city', x: 28, y: 8, level: 1 });
+		rails.push({ cityId: 'industry-city', x: 28, y: 7, level: 1 });
+		rails.push({ cityId: 'industry-city', x: 28, y: 6, level: 1 });
+		rails.push({ cityId: 'industry-city', x: 29, y: 6, level: 1 });
+		definition.start.rails = rails;
+		definition.requiredObjectives = [
+			{
+				...definition.requiredObjectives[0]!,
+				query: { metric: 'retail-local-units', categoryIds: ['bottled-water'] },
+				window: { kind: 'run-to-date' }
+			}
+		];
+		expect(codes(definition)).toEqual([]);
+	});
+
+	it('skips a content industrial placement that overlaps a starting building in local-production', () => {
+		const definition = validDefinition();
+		definition.content.cityIds = ['harbor-city', 'industry-city'];
+		definition.content.materialIds = ['water'];
+		definition.content.buildingTypeIds = ['water-pump', 'water-bottler', 'warehouse'];
+		// Content bottler at 27-6 overlaps the start warehouse at 26-6.
+		// hasFeasibleBuildingPath must skip the content bottler because it
+		// overlaps a starting building, leaving no valid bottler candidate.
+		definition.content.industrialPlacements = [
+			{
+				cityId: 'industry-city',
+				tileId: 'industry-city-3-19',
+				buildingTypeId: 'water-pump'
+			},
+			{
+				cityId: 'industry-city',
+				tileId: 'industry-city-27-6',
+				buildingTypeId: 'water-bottler'
+			},
+			{
+				cityId: 'industry-city',
+				tileId: 'industry-city-30-6',
+				buildingTypeId: 'warehouse'
+			}
+		];
+		definition.start.industrialBuildings = [
+			{
+				ref: 'pump',
+				typeId: 'water-pump',
+				cityId: 'industry-city',
+				tileId: 'industry-city-3-19'
+			},
+			{
+				ref: 'warehouse',
+				typeId: 'warehouse',
+				cityId: 'industry-city',
+				tileId: 'industry-city-26-6'
+			}
+		];
+		definition.allowedCommands = ['advanceDay', 'buildIndustrialBuilding', 'buildRail'];
+		definition.requiredObjectives = [
+			{
+				...definition.requiredObjectives[0]!,
+				query: { metric: 'retail-local-units', categoryIds: ['bottled-water'] },
+				window: { kind: 'run-to-date' }
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'requiredObjectives[0].query',
+			code: 'unavailable-local-production-path'
+		});
+	});
+
+	it('rejects a non-string known reference value', () => {
+		const definition = malformedDefinition();
+		definition.content.cityIds = [123];
+		expect(codes(definition)).toContainEqual({
+			path: 'content.cityIds[0]',
+			code: 'invalid-string'
+		});
+	});
+
+	it('rejects a non-array reference array value', () => {
+		const definition = malformedDefinition();
+		definition.content.cityIds = 'not-an-array';
+		expect(codes(definition)).toContainEqual({
+			path: 'content.cityIds',
+			code: 'invalid-array'
+		});
+	});
+
+	it('rejects a retail placement with a non-string tileId', () => {
+		const definition = malformedDefinition();
+		definition.content.retailPlacements = [
+			{
+				cityId: 'harbor-city',
+				tileId: 123,
+				archetypeId: 'convenience'
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'content.retailPlacements[0].tileId',
+			code: 'invalid-string'
+		});
+	});
+
+	it('rejects an industrial placement with an invalid city reference', () => {
+		const definition = malformedDefinition();
+		definition.content.cityIds = ['harbor-city', 'industry-city'];
+		definition.content.buildingTypeIds = ['warehouse'];
+		definition.content.industrialPlacements = [
+			{
+				cityId: 'missing-city',
+				tileId: 'industry-city-26-6',
+				buildingTypeId: 'warehouse'
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'content.industrialPlacements[0].cityId',
+			code: 'invalid-reference'
+		});
+	});
+
+	it('rejects an industrial placement with an invalid building type reference', () => {
+		const definition = malformedDefinition();
+		definition.content.cityIds = ['harbor-city', 'industry-city'];
+		definition.content.buildingTypeIds = ['warehouse'];
+		definition.content.industrialPlacements = [
+			{
+				cityId: 'industry-city',
+				tileId: 'industry-city-26-6',
+				buildingTypeId: 'missing-type'
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'content.industrialPlacements[0].buildingTypeId',
+			code: 'invalid-reference'
+		});
+	});
+
+	it('rejects an industrial placement with a non-string tileId', () => {
+		const definition = malformedDefinition();
+		definition.content.cityIds = ['harbor-city', 'industry-city'];
+		definition.content.buildingTypeIds = ['warehouse'];
+		definition.content.industrialPlacements = [
+			{
+				cityId: 'industry-city',
+				tileId: 123,
+				buildingTypeId: 'warehouse'
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'content.industrialPlacements[0].tileId',
+			code: 'invalid-string'
+		});
+	});
+
+	it('rejects a retail placement in a non-retail city via founding store', () => {
+		const definition = malformedDefinition();
+		definition.content.cityIds = ['harbor-city', 'industry-city'];
+		definition.start.foundingStore.cityId = 'industry-city';
+		definition.start.foundingStore.tileId = 'industry-city-3-19';
+		expect(codes(definition)).toContainEqual({
+			path: 'start.foundingStore.cityId',
+			code: 'invalid-placement'
+		});
+	});
+
+	it('rejects a founding store with a non-string tileId', () => {
+		const definition = malformedDefinition();
+		definition.start.foundingStore.tileId = 123;
+		expect(codes(definition)).toContainEqual({
+			path: 'start.foundingStore.tileId',
+			code: 'invalid-string'
+		});
+	});
+
+	it('rejects a start industrial building with an invalid city reference', () => {
+		const definition = validDefinition();
+		definition.content.cityIds = ['harbor-city', 'industry-city'];
+		definition.content.buildingTypeIds = ['warehouse'];
+		definition.start.industrialBuildings = [
+			{
+				ref: 'wh',
+				typeId: 'warehouse',
+				cityId: 'missing-city',
+				tileId: 'industry-city-26-6'
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'start.industrialBuildings[0].cityId',
+			code: 'invalid-reference'
+		});
+	});
+
+	it('rejects a start industrial building with an invalid type reference', () => {
+		const definition = validDefinition();
+		definition.content.cityIds = ['harbor-city', 'industry-city'];
+		definition.content.buildingTypeIds = ['warehouse'];
+		definition.start.industrialBuildings = [
+			{
+				ref: 'wh',
+				typeId: 'missing-type',
+				cityId: 'industry-city',
+				tileId: 'industry-city-26-6'
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'start.industrialBuildings[0].typeId',
+			code: 'invalid-reference'
+		});
+	});
+
+	it('rejects a start industrial building with a non-string tileId', () => {
+		const definition = validDefinition();
+		definition.content.cityIds = ['harbor-city', 'industry-city'];
+		definition.content.buildingTypeIds = ['warehouse'];
+		definition.start.industrialBuildings = [
+			{
+				ref: 'wh',
+				typeId: 'warehouse',
+				cityId: 'industry-city',
+				tileId: 123
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'start.industrialBuildings[0].tileId',
+			code: 'invalid-string'
+		});
+	});
+
+	it('rejects a start industrial building in a retail city', () => {
+		const definition = validDefinition();
+		definition.content.cityIds = ['harbor-city', 'industry-city'];
+		definition.content.buildingTypeIds = ['warehouse'];
+		definition.start.industrialBuildings = [
+			{
+				ref: 'wh',
+				typeId: 'warehouse',
+				cityId: 'harbor-city',
+				tileId: 'harbor-city-1-1'
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'start.industrialBuildings[0].cityId',
+			code: 'invalid-placement'
+		});
+	});
+
+	it('rejects a start industrial building on a non-existent tile', () => {
+		const definition = validDefinition();
+		definition.content.cityIds = ['harbor-city', 'industry-city'];
+		definition.content.buildingTypeIds = ['warehouse'];
+		definition.start.industrialBuildings = [
+			{
+				ref: 'wh',
+				typeId: 'warehouse',
+				cityId: 'industry-city',
+				tileId: 'industry-city-99-99'
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'start.industrialBuildings[0].tileId',
+			code: 'invalid-placement'
+		});
+	});
+
+	it('rejects a rail referencing an unknown city', () => {
+		const definition = malformedDefinition();
+		definition.content.cityIds = ['harbor-city', 'industry-city'];
+		definition.start.rails = [{ cityId: 'missing-city', x: 28, y: 6, level: 1 }];
+		expect(codes(definition)).toContainEqual({
+			path: 'start.rails[0].cityId',
+			code: 'invalid-reference'
+		});
+	});
+
+	it('rejects a rail with an invalid level', () => {
+		const definition = malformedDefinition();
+		definition.content.cityIds = ['harbor-city', 'industry-city'];
+		definition.start.rails = [{ cityId: 'industry-city', x: 28, y: 6, level: 99 }];
+		expect(codes(definition)).toContainEqual({
+			path: 'start.rails[0].level',
+			code: 'invalid-rail-level'
+		});
+	});
+
+	it('rejects a rail on a locked or occupied tile', () => {
+		const definition = malformedDefinition();
+		definition.content.cityIds = ['harbor-city', 'industry-city'];
+		definition.content.buildingTypeIds = ['warehouse'];
+		definition.content.industrialPlacements = [
+			{
+				cityId: 'industry-city',
+				tileId: 'industry-city-26-6',
+				buildingTypeId: 'warehouse'
+			}
+		];
+		definition.start.industrialBuildings = [
+			{
+				ref: 'wh',
+				typeId: 'warehouse',
+				cityId: 'industry-city',
+				tileId: 'industry-city-26-6'
+			}
+		];
+		// Rail on a tile occupied by the building footprint
+		definition.start.rails = [{ cityId: 'industry-city', x: 26, y: 6, level: 1 }];
+		expect(codes(definition)).toContainEqual({
+			path: 'start.rails[0]',
+			code: 'invalid-rail-coordinate'
+		});
+	});
+
+	it('rejects a world override with an invalid active retail city', () => {
+		const definition = malformedDefinition();
+		definition.content.cityIds = ['harbor-city', 'industry-city'];
+		definition.start.overrides.world = {
+			revealedCityIds: ['harbor-city', 'industry-city'],
+			openedCityIds: ['harbor-city', 'industry-city'],
+			activeRetailCityId: 'industry-city',
+			activeIndustryCityId: 'industry-city'
+		};
+		expect(codes(definition)).toContainEqual({
+			path: 'start.overrides.world.activeRetailCityId',
+			code: 'invalid-world-state'
+		});
+	});
+
+	it('rejects a world override with an invalid active industry city', () => {
+		const definition = malformedDefinition();
+		definition.content.cityIds = ['harbor-city', 'industry-city'];
+		definition.start.overrides.world = {
+			revealedCityIds: ['harbor-city', 'industry-city'],
+			openedCityIds: ['harbor-city', 'industry-city'],
+			activeRetailCityId: 'harbor-city',
+			activeIndustryCityId: 'harbor-city'
+		};
+		expect(codes(definition)).toContainEqual({
+			path: 'start.overrides.world.activeIndustryCityId',
+			code: 'invalid-world-state'
+		});
+	});
+
+	it('rejects a store override with a non-integer target level', () => {
+		const definition = validDefinition();
+		definition.start.overrides.stores = [
+			{
+				storeRef: 'founder',
+				targetLevel: 1.5,
+				products: definition.start.overrides.stores?.[0]?.products
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'start.overrides.stores[0].targetLevel',
+			code: 'invalid-target-level'
+		});
+	});
+
+	it('rejects a store override with a target level below 1', () => {
+		const definition = validDefinition();
+		definition.start.overrides.stores = [
+			{
+				storeRef: 'founder',
+				targetLevel: 0,
+				products: definition.start.overrides.stores?.[0]?.products
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'start.overrides.stores[0].targetLevel',
+			code: 'invalid-target-level'
+		});
+	});
+
+	it('rejects a product override with an unknown category reference', () => {
+		const definition = validDefinition();
+		definition.start.overrides.stores = [
+			{
+				storeRef: 'founder',
+				targetLevel: 1,
+				products: [
+					{
+						categoryId: 'missing-category',
+						stock: 10,
+						reorderThreshold: 2,
+						targetStock: 12,
+						sellingPrice: 3
+					}
+				]
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'start.overrides.stores[0].products[0].categoryId',
+			code: 'invalid-reference'
+		});
+	});
+
+	it('rejects a product override with a non-finite selling price', () => {
+		const definition = validDefinition();
+		definition.start.overrides.stores = [
+			{
+				storeRef: 'founder',
+				targetLevel: 1,
+				products: [
+					{
+						categoryId: 'bottled-water',
+						stock: 10,
+						reorderThreshold: 2,
+						targetStock: 12,
+						sellingPrice: Number.NaN
+					}
+				]
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'start.overrides.stores[0].products[0].sellingPrice',
+			code: 'invalid-finite-number'
+		});
+	});
+
+	it('rejects a product override with negative stock', () => {
+		const definition = validDefinition();
+		definition.start.overrides.stores = [
+			{
+				storeRef: 'founder',
+				targetLevel: 1,
+				products: [
+					{
+						categoryId: 'bottled-water',
+						stock: -5,
+						reorderThreshold: 2,
+						targetStock: 12,
+						sellingPrice: 3
+					}
+				]
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'start.overrides.stores[0].products[0].stock',
+			code: 'invalid-non-negative-number'
+		});
+	});
+
+	it('rejects a building inventory with a non-string buildingRef', () => {
+		const definition = validDefinition();
+		definition.start.overrides.buildingInventories = [{ buildingRef: 123, materials: {} }];
+		expect(codes(definition)).toContainEqual({
+			path: 'start.overrides.buildingInventories[0].buildingRef',
+			code: 'invalid-string'
+		});
+	});
+
+	it('rejects a warehouse materials entry with an unknown material', () => {
+		const definition = malformedDefinition();
+		definition.start.overrides.warehouseMaterials = { 'missing-material': 5 };
+		expect(codes(definition)).toContainEqual({
+			path: 'start.overrides.warehouseMaterials.missing-material',
+			code: 'invalid-reference'
+		});
+	});
+
+	it('rejects a warehouse materials entry with a negative quantity', () => {
+		const definition = malformedDefinition();
+		definition.content.materialIds = ['water'];
+		definition.start.overrides.warehouseMaterials = { water: -3 };
+		expect(codes(definition)).toContainEqual({
+			path: 'start.overrides.warehouseMaterials.water',
+			code: 'invalid-non-negative-number'
+		});
+	});
+
+	it('rejects a building inventory materials value that is not an object', () => {
+		const definition = validDefinition();
+		definition.start.overrides.buildingInventories = [
+			{ buildingRef: 'founder', materials: 'not-an-object' }
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'start.overrides.buildingInventories[0].materials',
+			code: 'invalid-object'
+		});
+	});
+
+	it('rejects a policy override that is not a closed object', () => {
+		const definition = malformedDefinition();
+		definition.start.overrides.policy = 'not-an-object';
+		expect(codes(definition)).toContainEqual({
+			path: 'start.overrides.policy',
+			code: 'invalid-object'
+		});
+	});
+
+	it('rejects a store overrides value that is not an array', () => {
+		const definition = validDefinition();
+		definition.start.overrides.stores = 'not-an-array';
+		expect(codes(definition)).toContainEqual({
+			path: 'start.overrides.stores',
+			code: 'invalid-array'
+		});
+	});
+
+	it('rejects a building inventories value that is not an array', () => {
+		const definition = validDefinition();
+		definition.start.overrides.buildingInventories = 'not-an-array';
+		expect(codes(definition)).toContainEqual({
+			path: 'start.overrides.buildingInventories',
+			code: 'invalid-array'
+		});
+	});
+
+	it('rejects a world override that is not a closed object', () => {
+		const definition = malformedDefinition();
+		definition.start.overrides.world = 'not-an-object';
+		expect(codes(definition)).toContainEqual({
+			path: 'start.overrides.world',
+			code: 'invalid-object'
+		});
+	});
+
+	it('rejects a store cap that is not an integer', () => {
+		const definition = validDefinition();
+		definition.start.overrides.storeCap = 1.5;
+		expect(codes(definition)).toContainEqual({
+			path: 'start.overrides.storeCap',
+			code: 'invalid-store-cap'
+		});
+	});
+
+	it('rejects a store cap that does not equal the starting store count when openStore is forbidden', () => {
+		const definition = validDefinition();
+		definition.allowedCommands = ['advanceDay'];
+		definition.start.overrides.storeCap = 2;
+		expect(codes(definition)).toContainEqual({
+			path: 'start.overrides.storeCap',
+			code: 'invalid-store-cap'
+		});
+	});
+
+	it('rejects a product override for a category not unlocked at target level', () => {
+		const definition = validDefinition();
+		definition.content.productCategoryIds = ['bottled-water', 'snacks'];
+		definition.start.overrides.stores = [
+			{
+				storeRef: 'founder',
+				targetLevel: 1,
+				products: [
+					{
+						categoryId: 'snacks',
+						stock: 10,
+						reorderThreshold: 2,
+						targetStock: 12,
+						sellingPrice: 3
+					}
+				]
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'start.overrides.stores[0].products[0].categoryId',
+			code: 'product-locked'
+		});
+	});
+
+	it('rejects a start overrides value that is not a closed object', () => {
+		const definition = malformedDefinition();
+		definition.start.overrides = 'not-an-object';
+		expect(codes(definition)).toContainEqual({
+			path: 'start.overrides',
+			code: 'invalid-object'
+		});
+	});
+
+	it('rejects a founding store that is not a closed object', () => {
+		const definition = malformedDefinition();
+		definition.start.foundingStore = 'not-an-object';
+		expect(codes(definition)).toContainEqual({
+			path: 'start.foundingStore',
+			code: 'invalid-object'
+		});
+	});
+
+	it('rejects a start value that is not a closed object', () => {
+		const definition = malformedDefinition();
+		definition.start = 'not-an-object';
+		expect(codes(definition)).toContainEqual({
+			path: 'start',
+			code: 'invalid-object'
+		});
+	});
+
+	it('rejects a rail with a non-integer x coordinate only', () => {
+		const definition = malformedDefinition();
+		definition.content.cityIds = ['harbor-city', 'industry-city'];
+		definition.start.rails = [{ cityId: 'industry-city', x: 1.5, y: 6, level: 1 }];
+		expect(codes(definition)).toContainEqual({
+			path: 'start.rails[0].x',
+			code: 'invalid-rail-coordinate'
+		});
+		expect(codes(definition).filter((d) => d.path === 'start.rails[0].y')).toEqual([]);
+	});
+
+	it('rejects a rail with a non-integer y coordinate only', () => {
+		const definition = malformedDefinition();
+		definition.content.cityIds = ['harbor-city', 'industry-city'];
+		definition.start.rails = [{ cityId: 'industry-city', x: 28, y: 6.5, level: 1 }];
+		expect(codes(definition)).toContainEqual({
+			path: 'start.rails[0].y',
+			code: 'invalid-rail-coordinate'
+		});
+	});
+
+	it('rejects a modifier target ids array with a non-string entry', () => {
+		const definition = malformedDefinition();
+		definition.content.productCategoryIds = ['bottled-water'];
+		definition.modifiers = [
+			{
+				kind: 'import-cost-multiplier',
+				scope: 'retail-product',
+				target: { kind: 'ids', ids: [123] },
+				multiplier: 1.5
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'modifiers[0].target.ids[0]',
+			code: 'invalid-string'
+		});
+	});
+
+	it('rejects an industrial-material modifier target with an unknown material', () => {
+		const definition = malformedDefinition();
+		definition.content.materialIds = ['water'];
+		definition.modifiers = [
+			{
+				kind: 'import-cost-multiplier',
+				scope: 'industrial-material',
+				target: { kind: 'ids', ids: ['missing-material'] },
+				multiplier: 1.5
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'modifiers[0].target.ids[0]',
+			code: 'invalid-reference'
+		});
+	});
+
+	it('rejects an industrial-material modifier target excluded by content rules', () => {
+		const definition = malformedDefinition();
+		definition.content.materialIds = ['water'];
+		definition.modifiers = [
+			{
+				kind: 'import-cost-multiplier',
+				scope: 'industrial-material',
+				target: { kind: 'ids', ids: ['water', 'sugar'] },
+				multiplier: 1.5
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'modifiers[0].target.ids[1]',
+			code: 'excluded-content'
+		});
+	});
+
+	it('rejects a modifier target with an ids kind but missing ids field', () => {
+		const definition = malformedDefinition();
+		definition.modifiers = [
+			{
+				kind: 'import-cost-multiplier',
+				scope: 'retail-product',
+				target: { kind: 'ids' },
+				multiplier: 1.5
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'modifiers[0].target.ids',
+			code: 'missing-key'
+		});
+	});
+
+	it('rejects a non-finite import multiplier', () => {
+		const definition = malformedDefinition();
+		definition.modifiers = [
+			{
+				kind: 'import-cost-multiplier',
+				scope: 'retail-product',
+				target: { kind: 'all' },
+				multiplier: Number.NaN
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'modifiers[0].multiplier',
+			code: 'invalid-modifier'
+		});
+	});
+
+	it('tracks overlapping ids-target modifiers within the same scope', () => {
+		const definition = malformedDefinition();
+		definition.content.productCategoryIds = ['bottled-water', 'produce'];
+		definition.modifiers = [
+			{
+				kind: 'import-cost-multiplier',
+				scope: 'retail-product',
+				target: { kind: 'ids', ids: ['bottled-water'] },
+				multiplier: 1.5
+			},
+			{
+				kind: 'import-cost-multiplier',
+				scope: 'retail-product',
+				target: { kind: 'ids', ids: ['bottled-water'] },
+				multiplier: 2
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'modifiers[1].target',
+			code: 'invalid-modifier'
+		});
+	});
+
+	it('tracks an all-target modifier followed by an ids-target modifier in the same scope', () => {
+		const definition = malformedDefinition();
+		definition.content.productCategoryIds = ['bottled-water'];
+		definition.modifiers = [
+			{
+				kind: 'import-cost-multiplier',
+				scope: 'retail-product',
+				target: { kind: 'all' },
+				multiplier: 1.5
+			},
+			{
+				kind: 'import-cost-multiplier',
+				scope: 'retail-product',
+				target: { kind: 'ids', ids: ['bottled-water'] },
+				multiplier: 2
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'modifiers[1].target',
+			code: 'invalid-modifier'
+		});
+	});
+
+	it('rejects a retail placement with an unknown archetype reference', () => {
+		const definition = malformedDefinition();
+		definition.content.retailPlacements = [
+			{
+				cityId: 'harbor-city',
+				tileId: 'harbor-city-1-1',
+				archetypeId: 'missing-archetype'
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'content.retailPlacements[0].archetypeId',
+			code: 'invalid-reference'
+		});
+	});
+
+	it('rejects a retail placement with an unknown city reference', () => {
+		const definition = malformedDefinition();
+		definition.content.retailPlacements = [
+			{
+				cityId: 'missing-city',
+				tileId: 'harbor-city-1-1',
+				archetypeId: 'convenience'
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'content.retailPlacements[0].cityId',
+			code: 'invalid-reference'
+		});
+	});
+
+	it('rejects a retail placement with a non-string cityId', () => {
+		const definition = malformedDefinition();
+		definition.content.retailPlacements = [
+			{
+				cityId: 123,
+				tileId: 'harbor-city-1-1',
+				archetypeId: 'convenience'
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'content.retailPlacements[0].cityId',
+			code: 'invalid-string'
+		});
+	});
+
+	it('rejects a retail placement that is not a closed object', () => {
+		const definition = malformedDefinition();
+		definition.content.retailPlacements = ['not-an-object'];
+		expect(codes(definition)).toContainEqual({
+			path: 'content.retailPlacements[0]',
+			code: 'invalid-object'
+		});
+	});
+
+	it('rejects an industrial placement that is not a closed object', () => {
+		const definition = malformedDefinition();
+		definition.content.cityIds = ['harbor-city', 'industry-city'];
+		definition.content.buildingTypeIds = ['warehouse'];
+		definition.content.industrialPlacements = ['not-an-object'];
+		expect(codes(definition)).toContainEqual({
+			path: 'content.industrialPlacements[0]',
+			code: 'invalid-object'
+		});
+	});
+
+	it('rejects a start industrial building that is not a closed object', () => {
+		const definition = validDefinition();
+		definition.content.cityIds = ['harbor-city', 'industry-city'];
+		definition.content.buildingTypeIds = ['warehouse'];
+		definition.start.industrialBuildings = ['not-an-object'];
+		expect(codes(definition)).toContainEqual({
+			path: 'start.industrialBuildings[0]',
+			code: 'invalid-object'
+		});
+	});
+
+	it('rejects a rail that is not a closed object', () => {
+		const definition = malformedDefinition();
+		definition.content.cityIds = ['harbor-city', 'industry-city'];
+		definition.start.rails = ['not-an-object'];
+		expect(codes(definition)).toContainEqual({
+			path: 'start.rails[0]',
+			code: 'invalid-object'
+		});
+	});
+
+	it('rejects a store override that is not a closed object', () => {
+		const definition = validDefinition();
+		definition.start.overrides.stores = ['not-an-object'];
+		expect(codes(definition)).toContainEqual({
+			path: 'start.overrides.stores[0]',
+			code: 'invalid-object'
+		});
+	});
+
+	it('rejects a product override that is not a closed object', () => {
+		const definition = validDefinition();
+		definition.start.overrides.stores = [
+			{
+				storeRef: 'founder',
+				targetLevel: 1,
+				products: ['not-an-object']
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'start.overrides.stores[0].products[0]',
+			code: 'invalid-object'
+		});
+	});
+
+	it('rejects a building inventory that is not a closed object', () => {
+		const definition = validDefinition();
+		definition.start.overrides.buildingInventories = ['not-an-object'];
+		expect(codes(definition)).toContainEqual({
+			path: 'start.overrides.buildingInventories[0]',
+			code: 'invalid-object'
+		});
+	});
+
+	it('rejects a start industrial buildings value that is not an array', () => {
+		const definition = validDefinition();
+		definition.start.industrialBuildings = 'not-an-array';
+		expect(codes(definition)).toContainEqual({
+			path: 'start.industrialBuildings',
+			code: 'invalid-array'
+		});
+	});
+
+	it('rejects a rails value that is not an array', () => {
+		const definition = validDefinition();
+		definition.start.rails = 'not-an-array';
+		expect(codes(definition)).toContainEqual({
+			path: 'start.rails',
+			code: 'invalid-array'
+		});
+	});
+
+	it('rejects a product overrides value that is not an array', () => {
+		const definition = validDefinition();
+		definition.start.overrides.stores = [
+			{
+				storeRef: 'founder',
+				targetLevel: 1,
+				products: 'not-an-array'
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'start.overrides.stores[0].products',
+			code: 'invalid-array'
+		});
+	});
+
+	it('rejects a world override with an unknown active city reference', () => {
+		const definition = malformedDefinition();
+		definition.content.cityIds = ['harbor-city', 'industry-city'];
+		definition.start.overrides.world = {
+			revealedCityIds: ['harbor-city', 'industry-city'],
+			openedCityIds: ['harbor-city', 'industry-city'],
+			activeRetailCityId: 'missing-city',
+			activeIndustryCityId: 'industry-city'
+		};
+		expect(codes(definition)).toContainEqual({
+			path: 'start.overrides.world.activeRetailCityId',
+			code: 'invalid-reference'
+		});
+	});
+
+	it('rejects a world override with an active city not in opened cities', () => {
+		const definition = malformedDefinition();
+		definition.content.cityIds = ['harbor-city', 'industry-city'];
+		definition.start.overrides.world = {
+			revealedCityIds: ['harbor-city', 'industry-city'],
+			openedCityIds: ['harbor-city'],
+			activeRetailCityId: 'harbor-city',
+			activeIndustryCityId: 'industry-city'
+		};
+		expect(codes(definition)).toContainEqual({
+			path: 'start.overrides.world.activeIndustryCityId',
+			code: 'invalid-world-state'
+		});
+	});
+
+	it('rejects a world override with a non-array revealedCityIds', () => {
+		const definition = malformedDefinition();
+		definition.content.cityIds = ['harbor-city', 'industry-city'];
+		definition.start.overrides.world = {
+			revealedCityIds: 'not-an-array',
+			openedCityIds: ['harbor-city', 'industry-city'],
+			activeRetailCityId: 'harbor-city',
+			activeIndustryCityId: 'industry-city'
+		};
+		expect(codes(definition)).toContainEqual({
+			path: 'start.overrides.world.revealedCityIds',
+			code: 'invalid-array'
+		});
+	});
+
+	it('rejects a world override with a non-array openedCityIds', () => {
+		const definition = malformedDefinition();
+		definition.content.cityIds = ['harbor-city', 'industry-city'];
+		definition.start.overrides.world = {
+			revealedCityIds: ['harbor-city', 'industry-city'],
+			openedCityIds: 'not-an-array',
+			activeRetailCityId: 'harbor-city',
+			activeIndustryCityId: 'industry-city'
+		};
+		expect(codes(definition)).toContainEqual({
+			path: 'start.overrides.world.openedCityIds',
+			code: 'invalid-array'
+		});
+	});
+
+	it('rejects a warehouse-quantity query with an unknown material reference', () => {
+		const definition = malformedDefinition();
+		definition.requiredObjectives = [
+			{
+				...definition.requiredObjectives[0],
+				query: { metric: 'warehouse-quantity', materialId: 'missing-material' },
+				window: { kind: 'current' }
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'requiredObjectives[0].query.materialId',
+			code: 'invalid-reference'
+		});
+	});
+
+	it('rejects a warehouse-quantity query with a non-string materialId', () => {
+		const definition = malformedDefinition();
+		definition.requiredObjectives = [
+			{
+				...definition.requiredObjectives[0],
+				query: { metric: 'warehouse-quantity', materialId: 123 },
+				window: { kind: 'current' }
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'requiredObjectives[0].query.materialId',
+			code: 'invalid-string'
+		});
+	});
+
+	it('rejects a scorecard query with a non-string score key', () => {
+		const definition = malformedDefinition();
+		definition.requiredObjectives = [
+			{
+				...definition.requiredObjectives[0],
+				query: { metric: 'scorecard', score: 123 },
+				window: { kind: 'current' }
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'requiredObjectives[0].query.score',
+			code: 'invalid-reference'
+		});
+	});
+
+	it('rejects an industrial-building-count query with a non-array buildingTypeIds', () => {
+		const definition = malformedDefinition();
+		definition.requiredObjectives = [
+			{
+				...definition.requiredObjectives[0],
+				query: { metric: 'industrial-building-count', buildingTypeIds: 'not-an-array' },
+				window: { kind: 'current' }
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'requiredObjectives[0].query.buildingTypeIds',
+			code: 'invalid-array'
+		});
+	});
+
+	it('rejects a category metric query with an unknown category reference', () => {
+		const definition = malformedDefinition();
+		definition.requiredObjectives = [
+			{
+				...definition.requiredObjectives[0],
+				query: { metric: 'retail-import-spend', categoryIds: ['missing-product'] },
+				window: { kind: 'run-to-date' }
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'requiredObjectives[0].query.categoryIds[0]',
+			code: 'invalid-reference'
+		});
+	});
+
+	it('rejects a category metric query with a duplicate category reference', () => {
+		const definition = malformedDefinition();
+		definition.content.productCategoryIds = ['bottled-water'];
+		definition.requiredObjectives = [
+			{
+				...definition.requiredObjectives[0],
+				query: { metric: 'retail-import-spend', categoryIds: ['bottled-water', 'bottled-water'] },
+				window: { kind: 'run-to-date' }
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'requiredObjectives[0].query.categoryIds[1]',
+			code: 'duplicate-reference'
+		});
+	});
+
+	it('rejects a fixed-report-days window with endDay exceeding dayLimit', () => {
+		const definition = malformedDefinition();
+		definition.requiredObjectives = [
+			{
+				...definition.requiredObjectives[0],
+				query: { metric: 'daily-net-income' },
+				window: { kind: 'fixed-report-days', startDay: 1, endDay: 31 }
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'requiredObjectives[0].window',
+			code: 'invalid-window'
+		});
+	});
+
+	it('rejects a fixed-report-days window with startDay greater than endDay', () => {
+		const definition = malformedDefinition();
+		definition.requiredObjectives = [
+			{
+				...definition.requiredObjectives[0],
+				query: { metric: 'daily-net-income' },
+				window: { kind: 'fixed-report-days', startDay: 5, endDay: 3 }
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'requiredObjectives[0].window',
+			code: 'invalid-window'
+		});
+	});
+
+	it('rejects a fixed-report-days window with a non-integer startDay', () => {
+		const definition = malformedDefinition();
+		definition.requiredObjectives = [
+			{
+				...definition.requiredObjectives[0],
+				query: { metric: 'daily-net-income' },
+				window: { kind: 'fixed-report-days', startDay: 1.5, endDay: 3 }
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'requiredObjectives[0].window',
+			code: 'invalid-window'
+		});
+	});
+
+	it('rejects a trailing-reports window with a non-integer count', () => {
+		const definition = malformedDefinition();
+		definition.requiredObjectives = [
+			{
+				...definition.requiredObjectives[0],
+				query: { metric: 'daily-net-income' },
+				window: { kind: 'trailing-reports', count: 1.5 }
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'requiredObjectives[0].window',
+			code: 'invalid-window'
+		});
+	});
+
+	it('rejects a window without a kind field', () => {
+		const definition = malformedDefinition();
+		definition.requiredObjectives[0].window = {};
+		expect(codes(definition)).toContainEqual({
+			path: 'requiredObjectives[0].window.kind',
+			code: 'missing-key'
+		});
+	});
+
+	it('rejects a metric query without a metric field', () => {
+		const definition = malformedDefinition();
+		definition.requiredObjectives[0].query = {};
+		expect(codes(definition)).toContainEqual({
+			path: 'requiredObjectives[0].query.metric',
+			code: 'missing-key'
+		});
+	});
+
+	it('rejects an objective without an id field', () => {
+		const definition = malformedDefinition();
+		delete definition.requiredObjectives[0].id;
+		expect(codes(definition)).toContainEqual({
+			path: 'requiredObjectives[0].id',
+			code: 'missing-key'
+		});
+	});
+
+	it('rejects an objective without a query field', () => {
+		const definition = malformedDefinition();
+		delete definition.requiredObjectives[0].query;
+		expect(codes(definition)).toContainEqual({
+			path: 'requiredObjectives[0].query',
+			code: 'missing-key'
+		});
+	});
+
+	it('rejects an objective without a window field', () => {
+		const definition = malformedDefinition();
+		delete definition.requiredObjectives[0].window;
+		expect(codes(definition)).toContainEqual({
+			path: 'requiredObjectives[0].window',
+			code: 'missing-key'
+		});
+	});
+
+	it('rejects an objective without a comparator field', () => {
+		const definition = malformedDefinition();
+		delete definition.requiredObjectives[0].comparator;
+		expect(codes(definition)).toContainEqual({
+			path: 'requiredObjectives[0].comparator',
+			code: 'missing-key'
+		});
+	});
+
+	it('rejects an objective without a target field', () => {
+		const definition = malformedDefinition();
+		delete definition.requiredObjectives[0].target;
+		expect(codes(definition)).toContainEqual({
+			path: 'requiredObjectives[0].target',
+			code: 'missing-key'
+		});
+	});
+
+	it('rejects an objective without a labelKey field', () => {
+		const definition = malformedDefinition();
+		delete definition.requiredObjectives[0].labelKey;
+		expect(codes(definition)).toContainEqual({
+			path: 'requiredObjectives[0].labelKey',
+			code: 'missing-key'
+		});
+	});
+
+	it('rejects an objective that is not a closed object', () => {
+		const definition = malformedDefinition();
+		definition.requiredObjectives[0] = 'not-an-object';
+		expect(codes(definition)).toContainEqual({
+			path: 'requiredObjectives[0]',
+			code: 'invalid-object'
+		});
+	});
+
+	it('rejects a non-array requiredObjectives value', () => {
+		const definition = malformedDefinition();
+		definition.requiredObjectives = 'not-an-array';
+		expect(codes(definition)).toContainEqual({
+			path: 'requiredObjectives',
+			code: 'invalid-array'
+		});
+	});
+
+	it('rejects a non-array optionalObjectives value', () => {
+		const definition = malformedDefinition();
+		definition.optionalObjectives = 'not-an-array';
+		expect(codes(definition)).toContainEqual({
+			path: 'optionalObjectives',
+			code: 'invalid-array'
+		});
+	});
+
+	it('rejects a non-array failures value', () => {
+		const definition = malformedDefinition();
+		definition.failures = 'not-an-array';
+		expect(codes(definition)).toContainEqual({
+			path: 'failures',
+			code: 'invalid-array'
+		});
+	});
+
+	it('rejects a non-array modifiers value', () => {
+		const definition = malformedDefinition();
+		definition.modifiers = 'not-an-array';
+		expect(codes(definition)).toContainEqual({
+			path: 'modifiers',
+			code: 'invalid-array'
+		});
+	});
+
+	it('rejects a non-array scoreComponents value', () => {
+		const definition = malformedDefinition();
+		definition.scoreComponents = 'not-an-array';
+		expect(codes(definition)).toContainEqual({
+			path: 'scoreComponents',
+			code: 'invalid-array'
+		});
+	});
+
+	it('rejects a non-object medalThresholds value', () => {
+		const definition = malformedDefinition();
+		definition.medalThresholds = 'not-an-object';
+		expect(codes(definition)).toContainEqual({
+			path: 'medalThresholds',
+			code: 'invalid-object'
+		});
+	});
+
+	it('rejects a content object missing required keys', () => {
+		const definition = malformedDefinition();
+		definition.content = { retailPlacements: 'not-an-array' };
+		expect(codes(definition)).toContainEqual({
+			path: 'content.cityIds',
+			code: 'missing-key'
+		});
+	});
+
+	it('rejects a retail placement with an invalid cityId in founding store path', () => {
+		const definition = malformedDefinition();
+		definition.start.foundingStore.cityId = 'missing-city';
+		expect(codes(definition)).toContainEqual({
+			path: 'start.foundingStore.cityId',
+			code: 'invalid-reference'
+		});
+	});
+
+	it('rejects a founding store with an unknown archetype reference', () => {
+		const definition = malformedDefinition();
+		definition.start.foundingStore.archetypeId = 'missing-archetype';
+		expect(codes(definition)).toContainEqual({
+			path: 'start.foundingStore.archetypeId',
+			code: 'invalid-reference'
+		});
+	});
+
+	it('rejects a founding store with a non-string ref', () => {
+		const definition = malformedDefinition();
+		definition.start.foundingStore.ref = 123;
+		expect(codes(definition)).toContainEqual({
+			path: 'start.foundingStore.ref',
+			code: 'invalid-string'
+		});
+	});
+
+	it('rejects a start industrial building with a non-string ref', () => {
+		const definition = validDefinition();
+		definition.content.cityIds = ['harbor-city', 'industry-city'];
+		definition.content.buildingTypeIds = ['warehouse'];
+		definition.start.industrialBuildings = [
+			{
+				ref: 123,
+				typeId: 'warehouse',
+				cityId: 'industry-city',
+				tileId: 'industry-city-26-6'
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'start.industrialBuildings[0].ref',
+			code: 'invalid-string'
+		});
+	});
+
+	it('rejects a store override with a non-string storeRef', () => {
+		const definition = validDefinition();
+		definition.start.overrides.stores = [
+			{
+				storeRef: 123,
+				targetLevel: 1,
+				products: definition.start.overrides.stores?.[0]?.products
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'start.overrides.stores[0].storeRef',
+			code: 'invalid-string'
+		});
+	});
+
+	it('rejects a product override with a non-string categoryId', () => {
+		const definition = validDefinition();
+		definition.start.overrides.stores = [
+			{
+				storeRef: 'founder',
+				targetLevel: 1,
+				products: [
+					{
+						categoryId: 123,
+						stock: 10,
+						reorderThreshold: 2,
+						targetStock: 12,
+						sellingPrice: 3
+					}
+				]
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'start.overrides.stores[0].products[0].categoryId',
+			code: 'invalid-string'
+		});
+	});
+
+	it('rejects a product override with negative reorderThreshold', () => {
+		const definition = validDefinition();
+		definition.start.overrides.stores = [
+			{
+				storeRef: 'founder',
+				targetLevel: 1,
+				products: [
+					{
+						categoryId: 'bottled-water',
+						stock: 10,
+						reorderThreshold: -2,
+						targetStock: 12,
+						sellingPrice: 3
+					}
+				]
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'start.overrides.stores[0].products[0].reorderThreshold',
+			code: 'invalid-non-negative-number'
+		});
+	});
+
+	it('rejects a product override with negative targetStock', () => {
+		const definition = validDefinition();
+		definition.start.overrides.stores = [
+			{
+				storeRef: 'founder',
+				targetLevel: 1,
+				products: [
+					{
+						categoryId: 'bottled-water',
+						stock: 10,
+						reorderThreshold: 2,
+						targetStock: -12,
+						sellingPrice: 3
+					}
+				]
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'start.overrides.stores[0].products[0].targetStock',
+			code: 'invalid-non-negative-number'
+		});
+	});
+
+	it('rejects a modifier with an unsupported kind that is not an object', () => {
+		const definition = malformedDefinition();
+		definition.modifiers = ['not-an-object'];
+		expect(codes(definition)).toContainEqual({
+			path: 'modifiers[0]',
+			code: 'invalid-object'
 		});
 	});
 });

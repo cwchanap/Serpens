@@ -126,6 +126,33 @@ describe('ControlDesk', () => {
 		expect(onToggleRailBuild).toHaveBeenCalledTimes(1);
 	});
 
+	it('renders the rail-build toggle as not pressed when railBuildActive is false', async () => {
+		expect.assertions(2);
+		render(ControlDesk, {
+			...baseProps(),
+			showRailBuild: true,
+			railBuildActive: false,
+			onToggleRailBuild: vi.fn()
+		});
+
+		const toggle = page.getByRole('button', { name: /build rail/i });
+		await expect.element(toggle).toBeVisible();
+		await expect.element(toggle).toHaveAttribute('aria-pressed', 'false');
+	});
+
+	it('does not show the disabled reason when no desk action is disabled', async () => {
+		expect.assertions(2);
+		render(ControlDesk, {
+			...baseProps(),
+			buildDisabled: false,
+			advanceDisabled: false,
+			disabledReason: 'Unavailable in this challenge.'
+		});
+
+		await expect.element(page.getByRole('status')).not.toBeInTheDocument();
+		await expect.element(page.getByRole('button', { name: /^build$/i })).toBeEnabled();
+	});
+
 	it('disables advance, build, and rail independently without blocking navigation callbacks', async () => {
 		expect.assertions(7);
 		const props = baseProps();

@@ -93,4 +93,36 @@ describe('ProductChainsPanel', () => {
 			.element(page.getByText('Select a graph node to inspect its latest flow metrics.'))
 			.not.toBeInTheDocument();
 	});
+
+	it('selects a category stamp to filter the chain view', async () => {
+		expect.assertions(2);
+		const game = createNewGame('convenience', 20260518);
+
+		renderProductChainsPanel(game);
+
+		await page.getByTestId('category-stamp-bottled-water').click();
+
+		// After selecting a category, the heading shows the category name.
+		await expect.element(page.getByRole('heading', { name: 'Bottled water' })).toBeVisible();
+		await expect.element(page.getByTestId('product-chain-graph-chain:bottled-water')).toBeVisible();
+	});
+
+	it('toggles back to store category chains from warehouse flow mode', async () => {
+		expect.assertions(2);
+		const baseGame = createNewGame('convenience', 20260518);
+		const game = {
+			...baseGame,
+			warehouse: addWarehouseMaterial(baseGame.warehouse, 'snacks', 12)
+		};
+
+		renderProductChainsPanel(game);
+
+		// Switch to warehouse flow first.
+		await page.getByRole('button', { name: 'Warehouse flow' }).click();
+		await expect.element(page.getByTestId('product-chain-graph-warehouse-flow')).toBeVisible();
+
+		// Switch back to store category chains (exercises selectMode('store-categories')).
+		await page.getByRole('button', { name: 'Store category chains' }).click();
+		await expect.element(page.getByTestId('product-chain-graph-chain:bottled-water')).toBeVisible();
+	});
 });

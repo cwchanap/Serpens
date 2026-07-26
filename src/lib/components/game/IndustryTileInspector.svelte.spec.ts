@@ -184,6 +184,45 @@ describe('IndustryTileInspector', () => {
 		expect(onUpgradeBuilding).not.toHaveBeenCalled();
 	});
 
+	it('guards onUpgradeBuilding when a click is dispatched on a disabled upgrade button', async () => {
+		expect.assertions(1);
+		const onUpgradeBuilding = vi.fn();
+		const game = { ...createNewGame('convenience', 20260512), cash: 999_999 };
+		const tile = getIndustryTilesByResource(game.industryCities[0]!, 'grain-field')[0]!;
+		const building: IndustrialBuilding = {
+			id: 'industry-building-guard-test',
+			level: 1,
+			typeId: 'grain-farm',
+			cityId: tile.cityId,
+			tileId: tile.id,
+			mapX: tile.x,
+			mapY: tile.y,
+			status: 'idle',
+			lastProduction: [],
+			producedTotal: 0,
+			importedInputTotal: 0,
+			blockedDays: 0,
+			inventory: {}
+		};
+
+		render(IndustryTileInspector, {
+			game,
+			tile,
+			building,
+			i18n: createI18n('en'),
+			onClose: vi.fn(),
+			onUpgradeBuilding,
+			canUpgradeBuilding: false,
+			disabledReason: 'Unavailable in this challenge.'
+		});
+
+		// A programmatic click still reaches the onclick handler, which must
+		// bail out via the `if (upgradeAllowed) return` guard.
+		const button = await page.getByRole('button', { name: /upgrade/i }).element();
+		button.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+		expect(onUpgradeBuilding).not.toHaveBeenCalled();
+	});
+
 	it('shows Max level button text and hides the cash hint at MAX_BUILDING_LEVEL', async () => {
 		expect.assertions(3);
 		const game = { ...createNewGame('convenience', 20260512), cash: 1_000_000 };

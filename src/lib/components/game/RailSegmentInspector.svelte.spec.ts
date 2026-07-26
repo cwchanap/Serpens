@@ -246,4 +246,63 @@ describe('RailSegmentInspector', () => {
 			.element(page.getByText('Upgrades are unavailable in this challenge.'))
 			.toBeVisible();
 	});
+
+	it('falls back to an empty network when the city id does not match an industry city', async () => {
+		expect.assertions(3);
+		const rails: RailCell[] = [
+			{ x: 1, y: 1, level: 2 },
+			{ x: 2, y: 1, level: 2 }
+		];
+		const segment: RailSegment = { id: 'seg:1,1|2,1', cellKeys: ['1,1', '2,1'], minLevel: 2 };
+		const game = makeGame(rails, {});
+
+		render(RailSegmentInspector, {
+			...baseProps(game, [segment]),
+			cityId: 'nonexistent-city'
+		});
+
+		await expect.element(page.getByRole('heading', { name: 'Rail segment' })).toBeVisible();
+		// With no matching city the network has no cells, so utilization falls
+		// back to the segment min level for each cell (2/day capacity, no usage).
+		await expect.element(page.getByTestId('rail-segment-cells')).toHaveTextContent('2');
+		await expect.element(page.getByTestId('rail-segment-utilization')).toHaveTextContent('0%');
+	});
+
+	it('skips zero-level cells when computing utilization', async () => {
+		expect.assertions(2);
+		// A segment whose cells are absent from the city network and whose
+		// minLevel is 0 exercises the `cellLevel <= 0` continue branch in the
+		// utilization loop — every cell is skipped, so utilization stays 0%.
+		const segment: RailSegment = { id: 'seg:1,1|2,1', cellKeys: ['1,1', '2,1'], minLevel: 0 };
+		const game = makeGame([], {});
+
+		render(RailSegmentInspector, baseProps(game, [segment]));
+
+		await expect.element(page.getByTestId('rail-segment-level')).toHaveTextContent('0 / 5');
+		await expect.element(page.getByTestId('rail-segment-utilization')).toHaveTextContent('0%');
+	});
+
+	it('falls back to an empty rail-usage map when the latest report omits railUsage', async () => {
+		expect.assertions(2);
+		const rails: RailCell[] = [
+			{ x: 1, y: 1, level: 2 },
+			{ x: 2, y: 1, level: 2 }
+		];
+		const segment: RailSegment = { id: 'seg:1,1|2,1', cellKeys: ['1,1', '2,1'], minLevel: 2 };
+		// Reports without a railUsage key exercise the `?? {}` fallback so the
+		// utilization loop reads 0 usage for every cell.
+		const base = createNewGame('convenience', 12_345);
+		const city = { ...base.industryCities[0]!, rails };
+		const game: GameState = {
+			...base,
+			cash: 999_999,
+			industryCities: [city],
+			reports: [{ productionReport: {} }] as unknown as GameState['reports']
+		};
+
+		render(RailSegmentInspector, baseProps(game, [segment]));
+
+		await expect.element(page.getByTestId('rail-segment-cells')).toHaveTextContent('2');
+		await expect.element(page.getByTestId('rail-segment-utilization')).toHaveTextContent('0%');
+	});
 });

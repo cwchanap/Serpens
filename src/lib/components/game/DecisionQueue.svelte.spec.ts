@@ -161,4 +161,24 @@ describe('DecisionQueue', () => {
 		await expect.element(page.getByText('Unavailable in this challenge.')).toBeVisible();
 		expect(onResolve).not.toHaveBeenCalled();
 	});
+
+	it('guards onResolve when a click is dispatched on a disabled option button', async () => {
+		expect.assertions(1);
+		const onResolve = vi.fn();
+		renderQueue({ onResolve, canResolve: false });
+
+		// A programmatic click still reaches the onclick handler, which must
+		// bail out via the `if (canResolve) return` guard.
+		const button = await page.getByRole('button', { name: /Ignore/ }).element();
+		button.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+		expect(onResolve).not.toHaveBeenCalled();
+	});
+
+	it('omits the disabled-copy paragraph when canResolve is false but no reason is supplied', async () => {
+		expect.assertions(2);
+		renderQueue({ canResolve: false });
+
+		await expect.element(page.getByRole('button', { name: /Mediate/ })).toBeDisabled();
+		await expect.element(page.getByRole('status')).not.toBeInTheDocument();
+	});
 });

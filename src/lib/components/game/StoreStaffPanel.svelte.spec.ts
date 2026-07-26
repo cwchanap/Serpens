@@ -256,4 +256,57 @@ describe('StoreStaffPanel', () => {
 		await expect.element(page.getByRole('button', { name: /unassign blair/i })).toBeEnabled();
 		await expect.element(page.getByText('Hiring is unavailable.')).toBeVisible();
 	});
+
+	it('guards callbacks when clicks are dispatched on disabled buttons', async () => {
+		expect.assertions(1);
+		const onHire = vi.fn();
+		const onAssign = vi.fn();
+		const onUnassign = vi.fn();
+		renderStaffPanel({
+			onHire,
+			onAssign,
+			onUnassign,
+			canHire: false,
+			canAssign: false,
+			canUnassign: false
+		});
+
+		// Programmatic clicks still reach the onclick handlers, which must each
+		// bail out via their `if (canX)` guards.
+		const hire = await page.getByRole('button', { name: /hire morgan/i }).element();
+		const assign = await page.getByRole('button', { name: /assign drew/i }).element();
+		const unassign = await page.getByRole('button', { name: /unassign blair/i }).element();
+		hire.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+		assign.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+		unassign.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+		expect([onHire, onAssign, onUnassign].every((fn) => fn.mock.calls.length === 0)).toBe(true);
+	});
+
+	it('shows the disabled reason when only assignment is unavailable', async () => {
+		expect.assertions(3);
+		renderStaffPanel({
+			canAssign: false,
+			canUnassign: true,
+			canHire: true,
+			disabledReason: 'Assignment is unavailable.'
+		});
+
+		await expect.element(page.getByRole('button', { name: /assign drew/i })).toBeDisabled();
+		await expect.element(page.getByRole('button', { name: /unassign blair/i })).toBeEnabled();
+		await expect.element(page.getByText('Assignment is unavailable.')).toBeVisible();
+	});
+
+	it('shows the disabled reason when only unassignment is unavailable', async () => {
+		expect.assertions(3);
+		renderStaffPanel({
+			canUnassign: false,
+			canAssign: true,
+			canHire: true,
+			disabledReason: 'Unassignment is unavailable.'
+		});
+
+		await expect.element(page.getByRole('button', { name: /unassign blair/i })).toBeDisabled();
+		await expect.element(page.getByRole('button', { name: /assign drew/i })).toBeEnabled();
+		await expect.element(page.getByText('Unassignment is unavailable.')).toBeVisible();
+	});
 });
