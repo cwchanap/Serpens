@@ -408,6 +408,31 @@ describe('scenario repository', { timeout: 30_000 }, () => {
 		expect(summary.activeRunsByScenarioId['first-profit']).toEqual(active);
 	});
 
+	it('preserves a replacement active run when committing a stale terminal run', async () => {
+		const driver = new CountingDriver();
+		const repository = new ScenarioRepositoryFromDriver(driver, resolveFixtureDefinition);
+		const original = fixtureRun(undefined, { seed: OFFICIAL_SEEDS['first-profit'] });
+		await repository.saveActiveRun(original);
+		// User restarts mid-results-dialog: a new active run replaces the original.
+		const replacement = fixtureRun(undefined, { seed: original.seed + 50 });
+		await repository.saveActiveRun(replacement);
+		// The stale results dialog then commits the original (now terminal) run.
+		const staleTerminal = fixtureRun(undefined, {
+			status: 'completed',
+			seed: original.seed,
+			score: 750
+		});
+
+		const outcome = await repository.commitTerminalRun(staleTerminal);
+		const summary = await repository.getSummary();
+
+		// The replacement active run must survive — it is the user's current run.
+		expect(summary.activeRunsByScenarioId['first-profit']).toEqual(replacement);
+		// The terminal run's best result is still recorded.
+		expect(outcome.bestUpdated).toBe(true);
+		expect(summary.bestResultsByDefinitionKey['first-profit@1']).toEqual(staleTerminal.result);
+	});
+
 	it('commits and reloads a ranked best with a standalone customer-satisfaction score metric', async () => {
 		const definition: ScenarioDefinition = {
 			...fixtureDefinition({ scenarioId: 'first-profit', version: 1 }),
