@@ -335,13 +335,14 @@ export class GameRouteController {
 				return { status: 'unavailable' };
 			}
 			// If the loaded run is content-identical to the currently active one,
-			// skip the patch so the ScenarioRun object reference stays stable —
-			// the route synchronizer keys transient-view-state resets on the run
-			// reference, and preserving it means resume-same-run keeps armed
-			// placements, open inspectors, and selection state intact.
+			// keep the ScenarioRun object reference stable while reactivating scenario
+			// mode. The route synchronizer keys transient-view-state resets on the run
+			// reference, so preserving it means resume-same-run keeps armed placements,
+			// open inspectors, and selection state intact.
 			const current = this.currentState.activeScenarioRun;
 			if (current && deeplyEqual(current, run)) {
 				this.patchState({
+					playMode: 'scenario',
 					scenarioCommandPending: false,
 					scenarioOperationError: null,
 					retryScenarioOperation: null
