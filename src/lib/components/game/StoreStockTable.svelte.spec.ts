@@ -199,6 +199,28 @@ describe('StoreStockTable', () => {
 		expect(onUpdate).toHaveBeenCalledWith('store-1', 'bottled-water', { targetStock: 120 });
 	});
 
+	it('sends a reorder threshold update for the edited product', async () => {
+		expect.assertions(2);
+		const onUpdate = vi.fn();
+
+		render(StoreStockTable, {
+			i18n: createI18n('en'),
+			store,
+			ordinal: 1,
+			latestReport,
+			onUpdate
+		});
+
+		const reorderThreshold = page.getByRole('spinbutton', {
+			name: 'Reorder threshold for Bottled Water'
+		});
+		await reorderThreshold.fill('8');
+		await page.getByRole('cell', { name: 'Bottled Water' }).click();
+
+		expect(onUpdate).toHaveBeenCalledTimes(1);
+		expect(onUpdate).toHaveBeenCalledWith('store-1', 'bottled-water', { reorderThreshold: 8 });
+	});
+
 	it('disables price separately from inventory targets and preserves change-only callbacks', async () => {
 		expect.assertions(5);
 		const onUpdate = vi.fn();
@@ -225,5 +247,58 @@ describe('StoreStockTable', () => {
 		await sellingPrice.fill('8');
 		await page.getByRole('cell', { name: 'Bottled Water' }).click();
 		expect(onUpdate).toHaveBeenCalledWith('store-1', 'bottled-water', { sellingPrice: 8 });
+	});
+
+	it('does not show the disabled reason when every mutation is still permitted', async () => {
+		expect.assertions(2);
+
+		render(StoreStockTable, {
+			i18n: createI18n('en'),
+			store,
+			ordinal: 1,
+			latestReport,
+			onUpdate: vi.fn(),
+			canUpdateSellingPrice: true,
+			canUpdateInventoryTargets: true,
+			disabledReason: 'Unavailable in this challenge.'
+		});
+
+		expect(document.querySelector('.disabled-copy')).toBeNull();
+		await expect
+			.element(page.getByRole('spinbutton', { name: 'Selling price for Bottled Water' }))
+			.toBeEnabled();
+	});
+
+	it('shows the disabled reason when the store carries a disallowed product category', async () => {
+		expect.assertions(2);
+
+		const storeWithDisallowed: Store = {
+			...store,
+			products: [
+				...store.products,
+				{
+					categoryId: 'apparel',
+					stock: 10,
+					reorderThreshold: 4,
+					targetStock: 16,
+					sellingPrice: 9
+				}
+			]
+		};
+
+		render(StoreStockTable, {
+			i18n: createI18n('en'),
+			store: storeWithDisallowed,
+			ordinal: 1,
+			latestReport,
+			onUpdate: vi.fn(),
+			canUpdateSellingPrice: true,
+			canUpdateInventoryTargets: true,
+			allowedProductCategoryIds: ['bottled-water'],
+			disabledReason: 'This category is locked.'
+		});
+
+		await expect.element(page.getByText('This category is locked.')).toBeVisible();
+		await expect.element(page.getByRole('cell', { name: 'apparel' })).toBeVisible();
 	});
 });

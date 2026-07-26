@@ -651,4 +651,35 @@ describe('StaffPanel', () => {
 			)
 		).toBe(true);
 	});
+
+	it('does not show the disabled reason when every mutation is still permitted', async () => {
+		expect.assertions(2);
+
+		renderStaffPanel({
+			staff: staff.map((member) => ({ ...member, xp: 100_000 })),
+			canHire: true,
+			canAssign: true,
+			canUnassign: true,
+			canPromote: true,
+			disabledReason: 'Unavailable in this challenge.'
+		});
+
+		expect(document.querySelector('.disabled-copy')).toBeNull();
+		await expect.element(page.getByRole('button', { name: /hire casey/i })).toBeEnabled();
+	});
+
+	it('calls onUnassign when an assigned staff member is moved to the unassigned option', async () => {
+		expect.assertions(1);
+		const onUnassign = vi.fn();
+
+		renderStaffPanel({ onUnassign });
+
+		await page
+			.getByLabelText(
+				'Assign Alex Chen, Manager staff staff-alex, currently assigned to Founding Store'
+			)
+			.selectOptions('');
+
+		expect(onUnassign).toHaveBeenCalledWith('staff-alex');
+	});
 });

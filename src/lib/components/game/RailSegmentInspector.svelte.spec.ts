@@ -224,4 +224,26 @@ describe('RailSegmentInspector', () => {
 		expect(props.onUpgradeSegment).not.toHaveBeenCalled();
 		expect(props.onDemolishSegment).not.toHaveBeenCalled();
 	});
+
+	it('shows the disabled reason hint next to the upgrade button when only upgrade is disabled', async () => {
+		expect.assertions(3);
+		const rails: RailCell[] = [
+			{ x: 1, y: 1, level: 1 },
+			{ x: 2, y: 1, level: 1 }
+		];
+		const segment: RailSegment = { id: 'seg:1,1|2,1', cellKeys: ['1,1', '2,1'], minLevel: 1 };
+		const props = baseProps(makeGame(rails, {}), [segment]);
+		render(RailSegmentInspector, {
+			...props,
+			canUpgradeRail: false,
+			canDemolishRail: true,
+			disabledReason: 'Upgrades are unavailable in this challenge.'
+		});
+
+		await expect.element(page.getByRole('button', { name: /upgrade/i })).toBeDisabled();
+		await expect.element(page.getByRole('button', { name: /demolish/i })).toBeEnabled();
+		await expect
+			.element(page.getByText('Upgrades are unavailable in this challenge.'))
+			.toBeVisible();
+	});
 });

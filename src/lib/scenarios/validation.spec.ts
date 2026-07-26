@@ -1105,3 +1105,547 @@ describe('validateScenarioSetupReserve', () => {
 		}
 	);
 });
+
+describe('validateScenarioDefinition coverage gaps', () => {
+	it('rejects a non-object score component', () => {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
+		const definition = validDefinition() as unknown as Record<string, any>;
+		definition.scoreComponents = ['not-an-object'];
+		expect(codes(definition)).toContainEqual({
+			path: 'scoreComponents[0]',
+			code: 'invalid-object'
+		});
+	});
+
+	it('rejects an optional-objective score component referencing an unknown objective', () => {
+		const definition = validDefinition();
+		definition.scoreComponents = [
+			{ kind: 'optional-objective', objectiveId: 'missing-objective', points: 500 }
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'scoreComponents[0].objectiveId',
+			code: 'invalid-reference'
+		});
+	});
+
+	it('rejects a metric score component with an unsupported window', () => {
+		const definition = validDefinition();
+		definition.scoreComponents = [
+			{
+				kind: 'metric',
+				query: { metric: 'cash' },
+				window: { kind: 'run-to-date' },
+				zeroBonusAt: 0,
+				fullBonusAt: 1,
+				points: 500
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'scoreComponents[0].window.kind',
+			code: 'unsupported-window'
+		});
+	});
+
+	it('rejects a score component with an unsupported kind', () => {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
+		const definition = validDefinition() as unknown as Record<string, any>;
+		definition.scoreComponents = [{ kind: 'mystery', points: 500 }];
+		expect(codes(definition)).toContainEqual({
+			path: 'scoreComponents[0].kind',
+			code: 'unsupported-score-component'
+		});
+	});
+
+	it('rejects a score component with non-integer points', () => {
+		const definition = validDefinition();
+		definition.scoreComponents = [
+			{ kind: 'optional-objective', objectiveId: 'one-store', points: 500.5 }
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'scoreComponents[0].points',
+			code: 'invalid-score-points'
+		});
+	});
+
+	it('rejects equal score anchors', () => {
+		const definition = validDefinition();
+		definition.scoreComponents = [
+			{ kind: 'remaining-days', zeroBonusAt: 5, fullBonusAt: 5, points: 500 }
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'scoreComponents[0]',
+			code: 'invalid-score-anchors'
+		});
+	});
+
+	it('rejects a non-object modifier', () => {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
+		const definition = validDefinition() as unknown as Record<string, any>;
+		definition.modifiers = ['not-an-object'];
+		expect(codes(definition)).toContainEqual({
+			path: 'modifiers[0]',
+			code: 'invalid-object'
+		});
+	});
+
+	it('rejects an import-cost-multiplier with an unsupported scope', () => {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
+		const definition = validDefinition() as unknown as Record<string, any>;
+		definition.modifiers = [
+			{
+				kind: 'import-cost-multiplier',
+				scope: 'bad-scope',
+				target: { kind: 'all' },
+				multiplier: 1.5
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'modifiers[0].scope',
+			code: 'invalid-modifier'
+		});
+	});
+
+	it('rejects an import-cost-multiplier with a non-positive multiplier', () => {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
+		const definition = validDefinition() as unknown as Record<string, any>;
+		definition.modifiers = [
+			{
+				kind: 'import-cost-multiplier',
+				scope: 'retail-product',
+				target: { kind: 'all' },
+				multiplier: 0
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'modifiers[0].multiplier',
+			code: 'invalid-modifier'
+		});
+	});
+
+	it('rejects a non-object modifier target', () => {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
+		const definition = validDefinition() as unknown as Record<string, any>;
+		definition.modifiers = [
+			{
+				kind: 'import-cost-multiplier',
+				scope: 'retail-product',
+				target: 'not-an-object',
+				multiplier: 1.5
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'modifiers[0].target',
+			code: 'invalid-object'
+		});
+	});
+
+	it('rejects a modifier target with an unsupported kind', () => {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
+		const definition = validDefinition() as unknown as Record<string, any>;
+		definition.modifiers = [
+			{
+				kind: 'import-cost-multiplier',
+				scope: 'retail-product',
+				target: { kind: 'bad' },
+				multiplier: 1.5
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'modifiers[0].target.kind',
+			code: 'invalid-modifier'
+		});
+	});
+
+	it('rejects an unsupported objective comparator', () => {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
+		const definition = validDefinition() as unknown as Record<string, any>;
+		definition.requiredObjectives[0].comparator = 'bad';
+		expect(codes(definition)).toContainEqual({
+			path: 'requiredObjectives[0].comparator',
+			code: 'unsupported-comparator'
+		});
+	});
+
+	it('rejects a non-boolean requiresCompleteWindow', () => {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
+		const definition = validDefinition() as unknown as Record<string, any>;
+		definition.requiredObjectives[0].requiresCompleteWindow = 'yes';
+		expect(codes(definition)).toContainEqual({
+			path: 'requiredObjectives[0].requiresCompleteWindow',
+			code: 'invalid-boolean'
+		});
+	});
+
+	it('rejects a non-object metric query', () => {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
+		const definition = validDefinition() as unknown as Record<string, any>;
+		definition.requiredObjectives[0].query = 'not-an-object';
+		expect(codes(definition)).toContainEqual({
+			path: 'requiredObjectives[0].query',
+			code: 'invalid-object'
+		});
+	});
+
+	it('rejects a category metric query with an empty categoryIds array', () => {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
+		const definition = validDefinition() as unknown as Record<string, any>;
+		definition.requiredObjectives = [
+			{
+				...definition.requiredObjectives[0],
+				query: { metric: 'retail-import-spend', categoryIds: [] },
+				window: { kind: 'run-to-date' }
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'requiredObjectives[0].query.categoryIds',
+			code: 'missing-reference'
+		});
+	});
+
+	it('rejects a scorecard query with an unknown score key', () => {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
+		const definition = validDefinition() as unknown as Record<string, any>;
+		definition.requiredObjectives = [
+			{
+				...definition.requiredObjectives[0],
+				query: { metric: 'scorecard', score: 'bad' },
+				window: { kind: 'current' }
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'requiredObjectives[0].query.score',
+			code: 'invalid-reference'
+		});
+	});
+
+	it('flags industrial-building-count building types excluded by content rules', () => {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
+		const definition = validDefinition() as unknown as Record<string, any>;
+		definition.requiredObjectives = [
+			{
+				...definition.requiredObjectives[0],
+				query: { metric: 'industrial-building-count', buildingTypeIds: ['water-pump'] },
+				window: { kind: 'current' }
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'requiredObjectives[0].query.buildingTypeIds[0]',
+			code: 'excluded-content'
+		});
+	});
+
+	it('rejects a non-object metric window', () => {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
+		const definition = validDefinition() as unknown as Record<string, any>;
+		definition.requiredObjectives[0].window = 'not-an-object';
+		expect(codes(definition)).toContainEqual({
+			path: 'requiredObjectives[0].window',
+			code: 'invalid-object'
+		});
+	});
+
+	it('rejects a trailing-reports window with a non-positive count', () => {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
+		const definition = validDefinition() as unknown as Record<string, any>;
+		definition.requiredObjectives = [
+			{
+				...definition.requiredObjectives[0],
+				window: { kind: 'trailing-reports', count: 0 }
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'requiredObjectives[0].window',
+			code: 'invalid-window'
+		});
+	});
+
+	it('rejects an unsupported window kind', () => {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
+		const definition = validDefinition() as unknown as Record<string, any>;
+		definition.requiredObjectives[0].window = { kind: 'bad-window' };
+		expect(codes(definition)).toContainEqual({
+			path: 'requiredObjectives[0].window.kind',
+			code: 'unsupported-window'
+		});
+	});
+
+	it('rejects requiresCompleteWindow on a non-trailing window', () => {
+		const definition = validDefinition();
+		definition.requiredObjectives[0].requiresCompleteWindow = true;
+		expect(codes(definition)).toContainEqual({
+			path: 'requiredObjectives[0].requiresCompleteWindow',
+			code: 'invalid-complete-window'
+		});
+	});
+
+	it('rejects a local-production category that is not a finished material', () => {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
+		const definition = validDefinition() as unknown as Record<string, any>;
+		definition.content.productCategoryIds = ['bottled-water', 'household'];
+		definition.requiredObjectives = [
+			{
+				...definition.requiredObjectives[0],
+				query: { metric: 'retail-local-units', categoryIds: ['household'] },
+				window: { kind: 'run-to-date' }
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'requiredObjectives[0].query',
+			code: 'unavailable-local-production-path'
+		});
+	});
+
+	it('rejects a retail placement in an industry city', () => {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
+		const definition = validDefinition() as unknown as Record<string, any>;
+		definition.content.cityIds = ['harbor-city', 'industry-city'];
+		definition.content.retailPlacements = [
+			{
+				cityId: 'industry-city',
+				tileId: 'industry-city-3-19',
+				archetypeId: 'convenience'
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'content.retailPlacements[0].cityId',
+			code: 'invalid-placement'
+		});
+	});
+
+	it('rejects an industrial placement in a retail city', () => {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
+		const definition = validDefinition() as unknown as Record<string, any>;
+		definition.content.cityIds = ['harbor-city', 'industry-city'];
+		definition.content.buildingTypeIds = ['warehouse'];
+		definition.content.industrialPlacements = [
+			{
+				cityId: 'harbor-city',
+				tileId: 'harbor-city-1-1',
+				buildingTypeId: 'warehouse'
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'content.industrialPlacements[0].cityId',
+			code: 'invalid-placement'
+		});
+	});
+
+	it('rejects an industrial placement on a non-existent tile', () => {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
+		const definition = validDefinition() as unknown as Record<string, any>;
+		definition.content.cityIds = ['harbor-city', 'industry-city'];
+		definition.content.buildingTypeIds = ['warehouse'];
+		definition.content.industrialPlacements = [
+			{
+				cityId: 'industry-city',
+				tileId: 'industry-city-99-99',
+				buildingTypeId: 'warehouse'
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'content.industrialPlacements[0].tileId',
+			code: 'invalid-placement'
+		});
+	});
+
+	it('rejects a rail with non-integer coordinates', () => {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
+		const definition = validDefinition() as unknown as Record<string, any>;
+		definition.content.cityIds = ['harbor-city', 'industry-city'];
+		definition.start.rails = [{ cityId: 'industry-city', x: 1.5, y: 2.5, level: 1 }];
+		expect(codes(definition)).toContainEqual({
+			path: 'start.rails[0].x',
+			code: 'invalid-rail-coordinate'
+		});
+		expect(codes(definition)).toContainEqual({
+			path: 'start.rails[0].y',
+			code: 'invalid-rail-coordinate'
+		});
+	});
+
+	it('rejects an unsupported policy value', () => {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
+		const definition = validDefinition() as unknown as Record<string, any>;
+		definition.start.overrides.policy = {
+			pricing: 'bad',
+			inventory: 'lean',
+			staffing: 'efficient',
+			marketing: 'none',
+			service: 'balanced'
+		};
+		expect(codes(definition)).toContainEqual({
+			path: 'start.overrides.policy.pricing',
+			code: 'invalid-policy'
+		});
+	});
+
+	it('rejects a duplicate product category in store overrides', () => {
+		const definition = validDefinition();
+		definition.start.overrides.stores = [
+			{
+				storeRef: 'founder',
+				targetLevel: 1,
+				products: [
+					{
+						categoryId: 'bottled-water',
+						stock: 10,
+						reorderThreshold: 2,
+						targetStock: 12,
+						sellingPrice: 3
+					},
+					{
+						categoryId: 'bottled-water',
+						stock: 5,
+						reorderThreshold: 2,
+						targetStock: 8,
+						sellingPrice: 3
+					}
+				]
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'start.overrides.stores[0].products[1].categoryId',
+			code: 'duplicate-reference'
+		});
+	});
+
+	it('rejects a reorder threshold exceeding target stock', () => {
+		const definition = validDefinition();
+		definition.start.overrides.stores = [
+			{
+				storeRef: 'founder',
+				targetLevel: 1,
+				products: [
+					{
+						categoryId: 'bottled-water',
+						stock: 10,
+						reorderThreshold: 20,
+						targetStock: 10,
+						sellingPrice: 3
+					}
+				]
+			}
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'start.overrides.stores[0].products[0].reorderThreshold',
+			code: 'invalid-inventory-target'
+		});
+	});
+
+	it('rejects a duplicate building inventory reference', () => {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
+		const definition = validDefinition() as unknown as Record<string, any>;
+		definition.content.cityIds = ['harbor-city', 'industry-city'];
+		definition.content.buildingTypeIds = ['warehouse'];
+		definition.start.industrialBuildings = [
+			{
+				ref: 'warehouse',
+				typeId: 'warehouse',
+				cityId: 'industry-city',
+				tileId: 'industry-city-26-6'
+			}
+		];
+		definition.start.overrides.buildingInventories = [
+			{ buildingRef: 'warehouse', materials: {} },
+			{ buildingRef: 'warehouse', materials: {} }
+		];
+		expect(codes(definition)).toContainEqual({
+			path: 'start.overrides.buildingInventories[1].buildingRef',
+			code: 'duplicate-reference'
+		});
+	});
+
+	it('rejects a non-object warehouseMaterials value', () => {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
+		const definition = validDefinition() as unknown as Record<string, any>;
+		definition.start.overrides.warehouseMaterials = 'not-an-object';
+		expect(codes(definition)).toContainEqual({
+			path: 'start.overrides.warehouseMaterials',
+			code: 'invalid-object'
+		});
+	});
+
+	it('rejects an opened city that is not revealed', () => {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
+		const definition = validDefinition() as unknown as Record<string, any>;
+		definition.content.cityIds = ['harbor-city', 'industry-city'];
+		definition.start.overrides.world = {
+			revealedCityIds: ['harbor-city'],
+			openedCityIds: ['harbor-city', 'industry-city'],
+			activeRetailCityId: 'harbor-city',
+			activeIndustryCityId: 'industry-city'
+		};
+		expect(codes(definition)).toContainEqual({
+			path: 'start.overrides.world.openedCityIds',
+			code: 'invalid-world-state'
+		});
+	});
+
+	it('defaults the store cap to the starter cap when openStore is allowed and storeCap is absent', () => {
+		const definition = validDefinition();
+		definition.allowedCommands = ['advanceDay', 'openStore'];
+		delete definition.start.overrides.storeCap;
+		expect(
+			codes(definition).filter((diagnostic) => diagnostic.code === 'invalid-store-cap')
+		).toEqual([]);
+	});
+
+	it('rejects a store cap below the starting store count', () => {
+		const definition = validDefinition();
+		definition.start.overrides.storeCap = 0;
+		expect(codes(definition)).toContainEqual({
+			path: 'start.overrides.storeCap',
+			code: 'invalid-store-cap'
+		});
+	});
+
+	it('rejects a non-object content value', () => {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
+		const definition = validDefinition() as unknown as Record<string, any>;
+		definition.content = 'not-an-object';
+		expect(codes(definition)).toContainEqual({
+			path: 'content',
+			code: 'invalid-object'
+		});
+	});
+
+	it('rejects a missing required definition key', () => {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
+		const definition = validDefinition() as unknown as Record<string, any>;
+		delete definition.id;
+		expect(codes(definition)).toContainEqual({
+			path: 'id',
+			code: 'missing-key'
+		});
+	});
+
+	it('rejects a non-array allowedCommands value', () => {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
+		const definition = validDefinition() as unknown as Record<string, any>;
+		definition.allowedCommands = 'advanceDay';
+		expect(codes(definition)).toContainEqual({
+			path: 'allowedCommands',
+			code: 'invalid-array'
+		});
+	});
+
+	it('rejects a non-finite objective target', () => {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
+		const definition = validDefinition() as unknown as Record<string, any>;
+		definition.requiredObjectives[0].target = Number.NaN;
+		expect(codes(definition)).toContainEqual({
+			path: 'requiredObjectives[0].target',
+			code: 'invalid-finite-number'
+		});
+	});
+
+	it('rejects an empty objective labelKey', () => {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately malformed fixture
+		const definition = validDefinition() as unknown as Record<string, any>;
+		definition.requiredObjectives[0].labelKey = '';
+		expect(codes(definition)).toContainEqual({
+			path: 'requiredObjectives[0].labelKey',
+			code: 'invalid-string'
+		});
+	});
+});
