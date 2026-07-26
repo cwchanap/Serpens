@@ -9,6 +9,7 @@ import {
 } from './scenarioCodec';
 import type { ScenarioRepository } from './scenarioRepository';
 import { ScenarioRepositoryFromDriver, type ScenarioStoreDriver } from './scenarioStoreRepository';
+import { createDefaultScenarioStoreLock } from './scenarioStoreLock';
 
 export const BROWSER_SCENARIO_STORAGE_KEY = 'serpens.scenarios.v1';
 
@@ -47,6 +48,7 @@ export function createBrowserScenarioRepository(
 
 	return new ScenarioRepositoryFromDriver(
 		new BrowserScenarioStoreDriver(storage, resolveDefinition),
-		resolveDefinition
+		resolveDefinition,
+		createDefaultScenarioStoreLock()
 	);
 }

@@ -13,6 +13,7 @@ import type {
 	ScenarioDefinitionRef,
 	ScenarioId,
 	ScenarioResult,
+	ScenarioRiskProjection,
 	ScenarioRun,
 	ScenarioRunRecord,
 	ScenarioStoreSnapshot
@@ -215,23 +216,25 @@ function fixtureRun(
 	};
 }
 
-function runRecord(run: ScenarioRun): ScenarioRunRecord {
+function runRecord(run: ScenarioRun, revision = 0): ScenarioRunRecord {
 	const { game, ...runEnvelope } = structuredClone(run);
 	return {
 		scenarioSchemaVersion: SCENARIO_RUN_SCHEMA_VERSION,
 		gameSchemaVersion: SAVE_SCHEMA_VERSION,
+		revision,
 		run: runEnvelope,
 		game
 	};
 }
 
 function snapshot(
-	activeRunsByScenarioId: ScenarioStoreSnapshot['activeRunsByScenarioId'] = {},
+	activeRunsByScenarioId: Record<string, ScenarioRunRecord> = {},
 	bestResultsByDefinitionKey: ScenarioStoreSnapshot['bestResultsByDefinitionKey'] = {}
 ): ScenarioStoreSnapshot {
 	return {
 		schemaVersion: SCENARIO_STORE_SCHEMA_VERSION,
-		activeRunsByScenarioId,
+		activeRunsByScenarioId:
+			activeRunsByScenarioId as ScenarioStoreSnapshot['activeRunsByScenarioId'],
 		bestResultsByDefinitionKey
 	};
 }
@@ -395,7 +398,11 @@ describe('scenario codec', () => {
 		);
 
 		expect(decoded.snapshot.activeRunsByScenarioId['first-profit']).toEqual(runRecord(valid));
-		expect(decoded.snapshot.activeRunsByScenarioId['unknown-scenario']).toBeUndefined();
+		expect(
+			(decoded.snapshot.activeRunsByScenarioId as Record<string, ScenarioRunRecord | undefined>)[
+				'unknown-scenario'
+			]
+		).toBeUndefined();
 		expect(decoded.diagnostics.map((diagnostic) => diagnostic.code)).toContain('unknown-scenario');
 	});
 
@@ -1705,7 +1712,9 @@ describe('scenario codec defensive validation branches', () => {
 		it('rejects a failure risk with the wrong condition id', () => {
 			const completed = fixtureRun(undefined, { status: 'completed', score: 750 });
 			const result = structuredClone(completed.result!);
-			result.evaluation.risks[0]!.conditionId = 'wrong-failure';
+			(
+				result.evaluation.risks[0] as Extract<ScenarioRiskProjection, { kind: 'condition' }>
+			).conditionId = 'wrong-failure';
 			const decoded = decodeBestResult(result);
 
 			expect(decoded.snapshot.bestResultsByDefinitionKey).toEqual({});
@@ -1715,7 +1724,9 @@ describe('scenario codec defensive validation branches', () => {
 		it('rejects a deadline risk with the wrong daysRemaining', () => {
 			const completed = fixtureRun(undefined, { status: 'completed', score: 750 });
 			const result = structuredClone(completed.result!);
-			result.evaluation.risks[1]!.daysRemaining = 999;
+			(
+				result.evaluation.risks[1] as Extract<ScenarioRiskProjection, { kind: 'deadline' }>
+			).daysRemaining = 999;
 			const decoded = decodeBestResult(result);
 
 			expect(decoded.snapshot.bestResultsByDefinitionKey).toEqual({});

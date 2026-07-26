@@ -13,7 +13,12 @@ import type {
 
 export type ScenarioCatalogActionResult =
 	| { status: 'started' }
-	| { status: 'confirmation-required'; message: string }
+	| {
+			status: 'confirmation-required';
+			message: string;
+			expectedRunId?: string | null;
+			expectedRevision?: number | null;
+	  }
 	| { status: 'error'; message: string };
 
 export interface ScenarioResultCopy {
@@ -39,6 +44,13 @@ export interface ScenarioCatalogCardViewModel {
 	primaryLabel: string;
 	showRestart: boolean;
 	activeDefinitionRef: ScenarioResult['definition'] | null;
+	/**
+	 * The runId of the active run for this scenario, or null when no active
+	 * run is stored. The current-version replacement flow binds its
+	 * confirmed write to this identity so a newer run written between the
+	 * dialog opening and the confirm click is not silently clobbered.
+	 */
+	activeRunId: string | null;
 	showStartCurrent: boolean;
 	activeVersionLabel: string | null;
 	best: ScenarioResultCopy | null;
@@ -164,6 +176,7 @@ export function buildScenarioCatalogCards(
 				: i18n.t('scenarioCatalog.start'),
 			showRestart: Boolean(active),
 			activeDefinitionRef: active?.definition ?? null,
+			activeRunId: active?.runId ?? null,
 			showStartCurrent: isOlderActive,
 			activeVersionLabel: active
 				? i18n.t('scenarioStatus.activeVersion', {

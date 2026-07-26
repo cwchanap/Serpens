@@ -15,6 +15,7 @@ import {
 	createTauriScenarioRepositoryFromStore,
 	type ScenarioStoreLike
 } from './tauriScenarioRepository';
+import { NoopScenarioStoreLock } from './scenarioStoreLock';
 
 class MemoryStorage implements ScenarioStorageLike {
 	readonly readKeys: string[] = [];
@@ -81,7 +82,8 @@ const repositoryFactories: Array<{
 		create: () =>
 			createTauriScenarioRepositoryFromStore(
 				Promise.resolve(new MemoryScenarioStore()),
-				resolveFixtureDefinition
+				resolveFixtureDefinition,
+				new NoopScenarioStoreLock()
 			)
 	}
 ];

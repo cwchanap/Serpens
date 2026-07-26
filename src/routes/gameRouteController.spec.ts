@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { resolveScenarioDefinition } from '$lib/scenarios/catalog';
 import { createNewGame } from '$lib/game/state';
+import type { WorldCityId } from '$lib/game/types';
 import { createEmptySaveStore } from '$lib/persistence/saveCodec';
 import {
 	SaveRepositoryFromDriver,
@@ -196,6 +197,7 @@ function failingScenarioRepository(
 	return {
 		getSummary: async () => base,
 		loadActiveRun: async () => null,
+		loadActiveRunWithRevision: async () => null,
 		saveActiveRun: async () => {
 			throw new Error('write failed');
 		},
@@ -355,7 +357,7 @@ describe('GameRouteController', () => {
 			const harness = createHarness({ scenarioRepository });
 			await harness.controller.initializeScenarios();
 			await startScenario(harness.controller);
-			const driver = scenarioRepository.memoryDriver;
+			const driver = (scenarioRepository as ScenarioMemoryRepository).memoryDriver;
 			const raw = await driver.read();
 			const validRecord = raw.snapshot.activeRunsByScenarioId['first-profit']!;
 			const corruptInitial = {
@@ -379,6 +381,51 @@ describe('GameRouteController', () => {
 			);
 			expect(harness2.controller.state.retryScenarioOperation).not.toBeNull();
 		});
+	});
+
+	it('clears a previously staged active run when re-initialization finds no active runs in the summary', async () => {
+		const scenarioRepository = createScenarioMemoryRepository();
+		const harness = createHarness({ scenarioRepository });
+		await harness.controller.initializeScenarios();
+		await startScenario(harness.controller);
+		expect(harness.controller.state.activeScenarioRun).not.toBeNull();
+
+		// Another tab abandons the run, removing it from the store.
+		await harness.controller.abandonScenarioRun();
+
+		// Re-initialize. The summary no longer lists any active run, so
+		// the outer else path clears the previously staged activeScenarioRun
+		// instead of leaving it paired with a null revision.
+		await harness.controller.initializeScenarios();
+		expect(harness.controller.state.activeScenarioRun).toBeNull();
+		expect(harness.controller.state.activeScenarioRevision).toBeNull();
+		expect(harness.controller.state.scenariosReady).toBe(true);
+	});
+
+	it('clears a previously staged active run when the re-read returns no record during re-initialization', async () => {
+		const scenarioRepository = createScenarioMemoryRepository();
+		const harness = createHarness({ scenarioRepository });
+		await harness.controller.initializeScenarios();
+		await startScenario(harness.controller);
+		const run = harness.controller.state.activeScenarioRun!;
+		expect(harness.controller.state.activeScenarioRevision).toBe(1);
+
+		// Simulate the race: the summary still lists the run, but the
+		// re-read returns null (the run was removed between the summary
+		// read and the re-read). Mock getSummary to return the stale
+		// summary and loadActiveRunWithRevision to return null.
+		const staleSummary: ScenarioPersistenceSummary = {
+			activeRunsByScenarioId: { 'first-profit': run },
+			bestResultsByDefinitionKey: {},
+			diagnostics: []
+		};
+		vi.spyOn(harness.scenarioRepository, 'getSummary').mockResolvedValue(staleSummary);
+		vi.spyOn(harness.scenarioRepository, 'loadActiveRunWithRevision').mockResolvedValue(null);
+
+		await harness.controller.initializeScenarios();
+		expect(harness.controller.state.activeScenarioRun).toBeNull();
+		expect(harness.controller.state.activeScenarioRevision).toBeNull();
+		expect(harness.controller.state.scenariosReady).toBe(true);
 	});
 
 	describe('sandbox load and resume', () => {
@@ -480,7 +527,10 @@ describe('GameRouteController', () => {
 				...definition,
 				start: {
 					...definition.start,
-					foundingStore: { ...definition.start.foundingStore, cityId: 'does-not-exist' }
+					foundingStore: {
+						...definition.start.foundingStore,
+						cityId: 'does-not-exist' as WorldCityId
+					}
 				}
 			};
 			const result = await harness.controller.startScenarioRun(broken, definition.officialSeed);
@@ -498,7 +548,7 @@ describe('GameRouteController', () => {
 			);
 		});
 
-		it('returns confirmation-required when a different active run is already persisted', async () => {
+		it('returns confirmation-required with the existing runId when an active run exists and confirmed is false', async () => {
 			const scenarioRepository = createScenarioMemoryRepository();
 			const harness = createHarness({ scenarioRepository });
 			await harness.controller.initializeScenarios();
@@ -511,8 +561,80 @@ describe('GameRouteController', () => {
 				definition,
 				definition.officialSeed + 1
 			);
-			expect(result).toEqual({ status: 'confirmation-required' });
+			expect(result).toEqual({
+				status: 'confirmation-required',
+				expectedRunId: firstRunId,
+				expectedRevision: 1
+			});
 			expect(harness.controller.state.activeScenarioRun?.runId).toBe(firstRunId);
+		});
+
+		it('starts and persists when confirmed is true with the expected runId', async () => {
+			const scenarioRepository = createScenarioMemoryRepository();
+			const harness = createHarness({ scenarioRepository });
+			await harness.controller.initializeScenarios();
+			await startScenario(harness.controller);
+			const originalRunId = harness.controller.state.activeScenarioRun!.runId;
+			const definition = firstProfitDefinition();
+			const result = await harness.controller.startScenarioRun(
+				definition,
+				definition.officialSeed + 1,
+				true,
+				originalRunId
+			);
+			expect(result).toEqual({ status: 'committed' });
+			expect(harness.controller.state.activeScenarioRun?.runId).not.toBe(originalRunId);
+		});
+
+		it('returns confirmation-required when a confirmed start loses the compare-and-swap', async () => {
+			const scenarioRepository = createScenarioMemoryRepository();
+			const harness = createHarness({ scenarioRepository });
+			await harness.controller.initializeScenarios();
+			await startScenario(harness.controller);
+			const definition = firstProfitDefinition();
+
+			// Step 1: unconfirmed start discovers the existing run and returns
+			// its runId as the expected identity.
+			const confirmResult = await harness.controller.startScenarioRun(
+				definition,
+				definition.officialSeed + 1,
+				false
+			);
+			expect(confirmResult).toEqual({
+				status: 'confirmation-required',
+				expectedRunId: harness.controller.state.activeScenarioRun!.runId,
+				expectedRevision: 1
+			});
+			if (confirmResult.status !== 'confirmation-required') {
+				throw new Error('Expected confirmation-required');
+			}
+			const expectedRunId = confirmResult.expectedRunId!;
+
+			// Another tab replaces the run between confirmation and commit.
+			const replacementStarted = await import('$lib/scenarios/runtime').then((m) =>
+				m.startScenario(definition, definition.officialSeed + 5)
+			);
+			if (!replacementStarted.ok) throw new Error('replacement start failed');
+			const replacement = replacementStarted.value;
+			await scenarioRepository.saveActiveRun(replacement, { replace: true });
+
+			// Step 2: confirmed start with the stale expectedRunId. The
+			// compare-and-swap detects the identity mismatch and refuses the
+			// write instead of silently clobbering the newer run.
+			const result = await harness.controller.startScenarioRun(
+				definition,
+				definition.officialSeed + 1,
+				true,
+				expectedRunId
+			);
+			expect(result).toEqual({
+				status: 'confirmation-required',
+				expectedRunId: replacement.runId,
+				expectedRevision: 2
+			});
+			expect(harness.controller.state.activeScenarioRun?.runId).toBe(replacement.runId);
+			expect(harness.controller.state.scenarioOperationError).toBeNull();
+			expect(harness.controller.state.retryScenarioOperation).toBeNull();
 		});
 
 		it('returns failed and arms a retry when saveActiveRun throws', async () => {
@@ -528,6 +650,60 @@ describe('GameRouteController', () => {
 			);
 			expect(harness.controller.state.retryScenarioOperation).not.toBeNull();
 		});
+	});
+
+	it('returns confirmation-required when another tab advances the same run between dialog-open and confirm-click', async () => {
+		const scenarioRepository = createScenarioMemoryRepository();
+		const harness = createHarness({ scenarioRepository });
+		await harness.controller.initializeScenarios();
+		await startScenario(harness.controller);
+		const existingRun = harness.controller.state.activeScenarioRun!;
+		const definition = firstProfitDefinition();
+
+		// Step 1: unconfirmed start discovers the existing run and returns
+		// its (runId, revision) pair as the confirmation token.
+		const confirmResult = await harness.controller.startScenarioRun(
+			definition,
+			definition.officialSeed + 1,
+			false
+		);
+		expect(confirmResult.status).toBe('confirmation-required');
+		if (confirmResult.status !== 'confirmation-required') {
+			throw new Error('Expected confirmation-required');
+		}
+		const expectedRunId = confirmResult.expectedRunId!;
+		const expectedRevision = confirmResult.expectedRevision!;
+		expect(expectedRunId).toBe(existingRun.runId);
+		expect(expectedRevision).toBe(1);
+
+		// Another tab advances the SAME run (runId unchanged, revision
+		// bumped from 1 to 2) between dialog-open and confirm-click. This
+		// is the race the revision token closes: without binding the
+		// confirmed write to the stale revision, the confirmed call would
+		// re-read the now-bumped revision, the runId check would pass, the
+		// fresh-revision check would pass, and the replacement would
+		// silently clobber the other tab's progress.
+		await scenarioRepository.saveActiveRun(existingRun, { expectedRevision: 1 });
+
+		// Step 2: confirmed start with the stale (runId, revision) token.
+		// The CAS detects the revision mismatch and refuses the write,
+		// re-surfacing confirmation with the newer revision.
+		const result = await harness.controller.startScenarioRun(
+			definition,
+			definition.officialSeed + 1,
+			true,
+			expectedRunId,
+			expectedRevision
+		);
+		expect(result).toEqual({
+			status: 'confirmation-required',
+			expectedRunId: existingRun.runId,
+			expectedRevision: 2
+		});
+		expect(harness.controller.state.activeScenarioRun?.runId).toBe(existingRun.runId);
+		expect(harness.controller.state.activeScenarioRevision).toBe(2);
+		expect(harness.controller.state.scenarioOperationError).toBeNull();
+		expect(harness.controller.state.retryScenarioOperation).toBeNull();
 	});
 
 	describe('resumeScenarioRun', () => {
@@ -575,6 +751,9 @@ describe('GameRouteController', () => {
 				createScenarioRepository: async () =>
 					failingScenarioRepository({
 						loadActiveRun: async () => {
+							throw new Error('read failed');
+						},
+						loadActiveRunWithRevision: async () => {
 							throw new Error('read failed');
 						}
 					})
@@ -653,6 +832,9 @@ describe('GameRouteController', () => {
 			const failing = failingScenarioRepository({
 				loadActiveRun: async () => {
 					throw new Error('read failed');
+				},
+				loadActiveRunWithRevision: async () => {
+					throw new Error('read failed');
 				}
 			});
 			const harness2 = createHarness({
@@ -675,6 +857,7 @@ describe('GameRouteController', () => {
 
 			const failing = failingScenarioRepository({
 				loadActiveRun: async () => storedRun,
+				loadActiveRunWithRevision: async () => ({ run: storedRun, revision: 0 }),
 				saveActiveRun: async () => {
 					throw new Error('write failed');
 				}
@@ -688,6 +871,37 @@ describe('GameRouteController', () => {
 			expect(harness2.controller.state.scenarioOperationError?.code).toBe(
 				'persistence-write-failed'
 			);
+		});
+
+		it('returns confirmation-required when another tab replaced the run between read and write', async () => {
+			const scenarioRepository = createScenarioMemoryRepository();
+			const harness = createHarness({ scenarioRepository });
+			await harness.controller.initializeScenarios();
+			await startScenario(harness.controller);
+
+			// Simulate another tab replacing the run between the controller's
+			// loadActiveRun read and the saveActiveRun write. The controller
+			// passes the loaded run's runId as the compare-and-swap identity;
+			// the repository's internal read finds a different runId and
+			// refuses the save. Mock saveActiveRun to return that conflict.
+			const definition = firstProfitDefinition();
+			const replacementStarted = await import('$lib/scenarios/runtime').then((m) =>
+				m.startScenario(definition, definition.officialSeed + 5)
+			);
+			if (!replacementStarted.ok) throw new Error('replacement start failed');
+			const replacement = replacementStarted.value;
+			const conflictOutcome: ScenarioSaveOutcome = {
+				status: 'conflict',
+				activeRun: replacement,
+				revision: 0
+			};
+			vi.spyOn(harness.scenarioRepository, 'saveActiveRun').mockResolvedValue(conflictOutcome);
+
+			const result = await harness.controller.restartScenarioRun(FIRST_PROFIT_REF);
+			expect(result).toEqual({ status: 'confirmation-required' });
+			expect(harness.controller.state.activeScenarioRun?.runId).toBe(replacement.runId);
+			expect(harness.controller.state.scenarioOperationError).toBeNull();
+			expect(harness.controller.state.retryScenarioOperation).toBeNull();
 		});
 	});
 
@@ -703,18 +917,23 @@ describe('GameRouteController', () => {
 			expect(result).toEqual({ status: 'unavailable' });
 		});
 
-		it('returns confirmation-required when an active run exists and confirmed is false', async () => {
+		it('returns confirmation-required with the existing runId when an active run exists and confirmed is false', async () => {
 			const scenarioRepository = createScenarioMemoryRepository();
 			const harness = createHarness({ scenarioRepository });
 			await harness.controller.initializeScenarios();
 			await startScenario(harness.controller);
+			const existingRunId = harness.controller.state.activeScenarioRun!.runId;
 			const definition = firstProfitDefinition();
 			const result = await harness.controller.importScenarioRun(
 				definition,
 				definition.officialSeed + 1,
 				false
 			);
-			expect(result).toEqual({ status: 'confirmation-required' });
+			expect(result).toEqual({
+				status: 'confirmation-required',
+				expectedRunId: existingRunId,
+				expectedRevision: 1
+			});
 		});
 
 		it('starts and persists when confirmed is true', async () => {
@@ -741,7 +960,10 @@ describe('GameRouteController', () => {
 				...definition,
 				start: {
 					...definition.start,
-					foundingStore: { ...definition.start.foundingStore, cityId: 'missing-city' }
+					foundingStore: {
+						...definition.start.foundingStore,
+						cityId: 'missing-city' as WorldCityId
+					}
 				}
 			};
 			const result = await harness.controller.importScenarioRun(
@@ -757,6 +979,9 @@ describe('GameRouteController', () => {
 				createScenarioRepository: async () =>
 					failingScenarioRepository({
 						loadActiveRun: async () => {
+							throw new Error('read failed');
+						},
+						loadActiveRunWithRevision: async () => {
 							throw new Error('read failed');
 						}
 					})
@@ -788,6 +1013,140 @@ describe('GameRouteController', () => {
 				'persistence-write-failed'
 			);
 		});
+
+		it('returns confirmation-required when a confirmed import loses the compare-and-swap', async () => {
+			const scenarioRepository = createScenarioMemoryRepository();
+			const harness = createHarness({ scenarioRepository });
+			await harness.controller.initializeScenarios();
+			await startScenario(harness.controller);
+			const definition = firstProfitDefinition();
+
+			// Step 1: unconfirmed import discovers the existing run and returns
+			// its runId as the expected identity.
+			const confirmResult = await harness.controller.importScenarioRun(
+				definition,
+				definition.officialSeed + 1,
+				false
+			);
+			expect(confirmResult).toEqual({
+				status: 'confirmation-required',
+				expectedRunId: harness.controller.state.activeScenarioRun!.runId,
+				expectedRevision: 1
+			});
+			if (confirmResult.status !== 'confirmation-required') {
+				throw new Error('Expected confirmation-required');
+			}
+			const expectedRunId = confirmResult.expectedRunId!;
+
+			// Another tab replaces the run between confirmation and commit.
+			const replacementStarted = await import('$lib/scenarios/runtime').then((m) =>
+				m.startScenario(definition, definition.officialSeed + 5)
+			);
+			if (!replacementStarted.ok) throw new Error('replacement start failed');
+			const replacement = replacementStarted.value;
+			await scenarioRepository.saveActiveRun(replacement, { replace: true });
+
+			// Step 2: confirmed import with the stale expectedRunId. The
+			// compare-and-swap detects the identity mismatch and refuses the
+			// write instead of silently clobbering the newer run.
+			const result = await harness.controller.importScenarioRun(
+				definition,
+				definition.officialSeed + 1,
+				true,
+				expectedRunId
+			);
+			expect(result).toEqual({
+				status: 'confirmation-required',
+				expectedRunId: replacement.runId,
+				expectedRevision: 2
+			});
+			expect(harness.controller.state.activeScenarioRun?.runId).toBe(replacement.runId);
+			expect(harness.controller.state.scenarioOperationError).toBeNull();
+			expect(harness.controller.state.retryScenarioOperation).toBeNull();
+		});
+
+		it('returns confirmation-required when an import into an empty slot loses the compare-and-swap', async () => {
+			const scenarioRepository = createScenarioMemoryRepository();
+			const harness = createHarness({ scenarioRepository });
+			await harness.controller.initializeScenarios();
+			const definition = firstProfitDefinition();
+
+			// No existing run — the unconfirmed import proceeds to save with
+			// expectedRunId: null (expecting absence). Before the write lands,
+			// another tab starts a run. Mock saveActiveRun to return the
+			// conflict the repository would produce.
+			const other = await import('$lib/scenarios/runtime').then((m) =>
+				m.startScenario(definition, definition.officialSeed + 5)
+			);
+			if (!other.ok) throw new Error('other start failed');
+			const conflictOutcome: ScenarioSaveOutcome = {
+				status: 'conflict',
+				activeRun: other.value,
+				revision: 0
+			};
+			vi.spyOn(harness.scenarioRepository, 'saveActiveRun').mockResolvedValue(conflictOutcome);
+
+			const result = await harness.controller.importScenarioRun(
+				definition,
+				definition.officialSeed + 1,
+				false
+			);
+			expect(result).toEqual({
+				status: 'confirmation-required',
+				expectedRunId: other.value.runId,
+				expectedRevision: 0
+			});
+			expect(harness.controller.state.activeScenarioRun?.runId).toBe(other.value.runId);
+			expect(harness.controller.state.scenarioOperationError).toBeNull();
+		});
+	});
+
+	it('returns confirmation-required when another tab advances the same run between dialog-open and confirm-click', async () => {
+		const scenarioRepository = createScenarioMemoryRepository();
+		const harness = createHarness({ scenarioRepository });
+		await harness.controller.initializeScenarios();
+		await startScenario(harness.controller);
+		const existingRun = harness.controller.state.activeScenarioRun!;
+		const definition = firstProfitDefinition();
+
+		// Step 1: unconfirmed import discovers the existing run and returns
+		// its (runId, revision) pair as the confirmation token.
+		const confirmResult = await harness.controller.importScenarioRun(
+			definition,
+			definition.officialSeed + 1,
+			false
+		);
+		expect(confirmResult.status).toBe('confirmation-required');
+		if (confirmResult.status !== 'confirmation-required') {
+			throw new Error('Expected confirmation-required');
+		}
+		const expectedRunId = confirmResult.expectedRunId!;
+		const expectedRevision = confirmResult.expectedRevision!;
+		expect(expectedRunId).toBe(existingRun.runId);
+		expect(expectedRevision).toBe(1);
+
+		// Another tab advances the SAME run (runId unchanged, revision
+		// bumped from 1 to 2) between dialog-open and confirm-click.
+		await scenarioRepository.saveActiveRun(existingRun, { expectedRevision: 1 });
+
+		// Step 2: confirmed import with the stale (runId, revision) token.
+		// The CAS detects the revision mismatch and refuses the write.
+		const result = await harness.controller.importScenarioRun(
+			definition,
+			definition.officialSeed + 1,
+			true,
+			expectedRunId,
+			expectedRevision
+		);
+		expect(result).toEqual({
+			status: 'confirmation-required',
+			expectedRunId: existingRun.runId,
+			expectedRevision: 2
+		});
+		expect(harness.controller.state.activeScenarioRun?.runId).toBe(existingRun.runId);
+		expect(harness.controller.state.activeScenarioRevision).toBe(2);
+		expect(harness.controller.state.scenarioOperationError).toBeNull();
+		expect(harness.controller.state.retryScenarioOperation).toBeNull();
 	});
 
 	describe('abandonScenarioRun', () => {
@@ -808,12 +1167,12 @@ describe('GameRouteController', () => {
 			expect(harness.controller.state.playMode).toBe('sandbox');
 		});
 
-		it('returns failed and arms a retry when removeActiveRun throws', async () => {
+		it('returns failed and arms a retry when commitTerminalRun throws', async () => {
 			const harness = createHarness();
 			await harness.controller.initializeScenarios();
 			await startScenario(harness.controller);
-			vi.spyOn(harness.scenarioRepository, 'removeActiveRun').mockRejectedValue(
-				new Error('remove failed')
+			vi.spyOn(harness.scenarioRepository, 'commitTerminalRun').mockRejectedValue(
+				new Error('commit failed')
 			);
 			const result = await harness.controller.abandonScenarioRun();
 			expect(result).toEqual({ status: 'failed' });
@@ -821,6 +1180,153 @@ describe('GameRouteController', () => {
 				'persistence-write-failed'
 			);
 			expect(harness.controller.state.retryScenarioOperation).not.toBeNull();
+		});
+
+		it('refuses to commit a terminal over a run advanced by another tab and surfaces the preserved run', async () => {
+			const scenarioRepository = createScenarioMemoryRepository();
+			const harness1 = createHarness({ scenarioRepository });
+			await harness1.controller.initializeScenarios();
+			await startScenario(harness1.controller);
+			const run = harness1.controller.state.activeScenarioRun!;
+
+			// harness2 resumes the same run (gets revision 1).
+			const harness2 = createHarness({ scenarioRepository });
+			await harness2.controller.initializeScenarios();
+			expect(harness2.controller.state.activeScenarioRun?.runId).toBe(run.runId);
+			expect(harness2.controller.state.activeScenarioRevision).toBe(1);
+
+			// harness1 advances the run (revision becomes 2, game state
+			// changes). harness2's in-memory run is now stale.
+			await harness1.controller.advanceDay();
+			expect(harness1.controller.state.activeScenarioRevision).toBe(2);
+
+			// harness2 abandons. The repository must refuse the terminal
+			// commit because the stored revision (2) no longer matches
+			// harness2's tracked revision (1). The preserved run is surfaced
+			// so the UI can offer Resume instead of silently destroying
+			// progress.
+			const commitSpy = vi.spyOn(harness2.scenarioRepository, 'commitTerminalRun');
+			const result = await harness2.controller.abandonScenarioRun();
+			expect(result).toEqual({ status: 'confirmation-required' });
+			expect(harness2.controller.state.activeScenarioRun?.runId).toBe(run.runId);
+			expect(harness2.controller.state.activeScenarioRun?.game.day).toBe(run.game.day + 1);
+			expect(harness2.controller.state.activeScenarioRevision).toBe(2);
+			// The run is still in storage.
+			const stored = await scenarioRepository.loadActiveRun(run.definition.scenarioId);
+			expect(stored?.runId).toBe(run.runId);
+			expect(commitSpy).toHaveBeenCalledWith(
+				expect.objectContaining({
+					definition: run.definition,
+					status: 'abandoned'
+				}),
+				{ expectedRevision: 1 }
+			);
+		});
+
+		it('rereads an atomic run/revision pair when the tracked revision is null and refuses to commit a terminal over a run advanced by another tab', async () => {
+			// When the tracked revision is null (init read failure,
+			// post-terminal replacement, or re-init after removal), the
+			// abandon must NOT call commitTerminalRun with an undefined
+			// expectedRevision — that would omit the revision CAS and clear
+			// the active entry on runId alone. Another tab can advance the
+			// same run (same runId, bumped revision) between this tab's last
+			// observation and the abandon; the runId check passes and the
+			// stale tab commits a stale terminal over the newer revision.
+			// The reread catches this: it re-reads an atomic run/revision
+			// pair, compares the full run state, and surfaces a conflict if
+			// they differ.
+			const scenarioRepository = createScenarioMemoryRepository();
+			const harness1 = createHarness({ scenarioRepository });
+			await harness1.controller.initializeScenarios();
+			await startScenario(harness1.controller);
+			const run = harness1.controller.state.activeScenarioRun!;
+
+			// harness2 resumes the same run but simulates a null tracked
+			// revision (init read failure path).
+			const harness2 = createHarness({ scenarioRepository });
+			await harness2.controller.initializeScenarios();
+			// Force the tracked revision to null to exercise the reread path.
+			harness2.controller['patchState']({
+				activeScenarioRevision: null
+			});
+			expect(harness2.controller.state.activeScenarioRevision).toBeNull();
+
+			// harness1 advances the run (revision becomes 2, game state
+			// changes). harness2's in-memory run is now stale.
+			await harness1.controller.advanceDay();
+			expect(harness1.controller.state.activeScenarioRevision).toBe(2);
+
+			// harness2 abandons with a null revision. The reread must
+			// detect the content difference and surface a conflict instead
+			// of calling commitTerminalRun with an undefined expectedRevision.
+			const commitSpy = vi.spyOn(harness2.scenarioRepository, 'commitTerminalRun');
+			const result = await harness2.controller.abandonScenarioRun();
+			expect(result).toEqual({ status: 'confirmation-required' });
+			expect(harness2.controller.state.activeScenarioRun?.runId).toBe(run.runId);
+			expect(harness2.controller.state.activeScenarioRun?.game.day).toBe(run.game.day + 1);
+			// commitTerminalRun must NOT have been called — the reread
+			// detected the content difference and refused before reaching
+			// the terminal commit call.
+			expect(commitSpy).not.toHaveBeenCalled();
+		});
+
+		it('rereads and successfully commits the terminal when the tracked revision is null and the stored run still matches', async () => {
+			// When the tracked revision is null but the reread confirms the
+			// stored run is identical to the in-memory run, the abandon
+			// proceeds with the reread's revision bound to the terminal
+			// commit's CAS.
+			const scenarioRepository = createScenarioMemoryRepository();
+			const harness = createHarness({ scenarioRepository });
+			await harness.controller.initializeScenarios();
+			await startScenario(harness.controller);
+			const run = harness.controller.state.activeScenarioRun!;
+			expect(harness.controller.state.activeScenarioRevision).toBe(1);
+
+			// Force the tracked revision to null to exercise the reread path.
+			harness.controller['patchState']({ activeScenarioRevision: null });
+
+			const commitSpy = vi.spyOn(harness.scenarioRepository, 'commitTerminalRun');
+			const result = await harness.controller.abandonScenarioRun();
+			expect(result).toEqual({ status: 'committed' });
+			expect(harness.controller.state.activeScenarioRun).toBeNull();
+			// commitTerminalRun must have been called with the reread's
+			// revision (1), not undefined, and the abandoned terminal run.
+			expect(commitSpy).toHaveBeenCalledWith(
+				expect.objectContaining({
+					definition: run.definition,
+					status: 'abandoned',
+					result: expect.objectContaining({ outcome: 'abandoned' })
+				}),
+				{ expectedRevision: 1 }
+			);
+		});
+
+		it('rereads and surfaces confirmation-required when the run was removed by another tab and the tracked revision is null', async () => {
+			// When the tracked revision is null and the reread returns no
+			// record (another tab abandoned the run between this tab's last
+			// observation and the reread), surface the absence as a
+			// confirmation-required so the UI reconciles instead of
+			// claiming a successful abandon that did nothing.
+			const scenarioRepository = createScenarioMemoryRepository();
+			const harness1 = createHarness({ scenarioRepository });
+			await harness1.controller.initializeScenarios();
+			await startScenario(harness1.controller);
+
+			const harness2 = createHarness({ scenarioRepository });
+			await harness2.controller.initializeScenarios();
+			harness2.controller['patchState']({ activeScenarioRevision: null });
+
+			// harness1 abandons first, removing the run from storage.
+			await harness1.controller.abandonScenarioRun();
+
+			const commitSpy = vi.spyOn(harness2.scenarioRepository, 'commitTerminalRun');
+			const result = await harness2.controller.abandonScenarioRun();
+			expect(result).toEqual({ status: 'confirmation-required' });
+			expect(harness2.controller.state.activeScenarioRun).toBeNull();
+			expect(harness2.controller.state.activeScenarioRevision).toBeNull();
+			// commitTerminalRun must NOT have been called — the reread
+			// returned no record and the abandon refused.
+			expect(commitSpy).not.toHaveBeenCalled();
 		});
 	});
 
@@ -932,7 +1438,7 @@ describe('GameRouteController', () => {
 			expect(harness.controller.state.retryScenarioOperation).not.toBeNull();
 		});
 
-		it('surfaces the stored run and fails on a save conflict', async () => {
+		it('surfaces the stored run and returns confirmation-required on a save conflict', async () => {
 			const harness = createHarness();
 			await harness.controller.initializeScenarios();
 			await startScenario(harness.controller);
@@ -946,15 +1452,45 @@ describe('GameRouteController', () => {
 			const replacement = started.value;
 			const conflictOutcome: ScenarioSaveOutcome = {
 				status: 'conflict',
-				activeRun: replacement
+				activeRun: replacement,
+				revision: 0
 			};
 			vi.spyOn(harness.scenarioRepository, 'saveActiveRun').mockResolvedValue(conflictOutcome);
 			const result = await harness.controller.advanceDay();
-			expect(result).toEqual({ status: 'failed' });
+			// The conflict is not a persistence-write failure — the write was
+			// refused by compare-and-swap. Surface the stored replacement and
+			// return confirmation-required so the UI can offer Resume. No retry
+			// is armed (it would be dead: the conflict already replaced
+			// activeScenarioRun, so the retry's isValid guard is false).
+			expect(result).toEqual({ status: 'confirmation-required' });
 			expect(harness.controller.state.activeScenarioRun?.runId).toBe(replacement.runId);
-			expect(harness.controller.state.scenarioOperationError?.code).toBe(
-				'persistence-write-failed'
+			expect(harness.controller.state.scenarioOperationError).toBeNull();
+			expect(harness.controller.state.retryScenarioOperation).toBeNull();
+		});
+
+		it('suppresses the success sound effect when a save conflict refuses the command (P3)', async () => {
+			const harness = createHarness();
+			await harness.controller.initializeScenarios();
+			await startScenario(harness.controller);
+			const definition = firstProfitDefinition();
+			const started = await import('$lib/scenarios/runtime').then((m) =>
+				m.startScenario(definition, definition.officialSeed + 5)
 			);
+			if (!started.ok) throw new Error('replacement start failed');
+			const replacement = started.value;
+			const conflictOutcome: ScenarioSaveOutcome = {
+				status: 'conflict',
+				activeRun: replacement,
+				revision: 0
+			};
+			vi.spyOn(harness.scenarioRepository, 'saveActiveRun').mockResolvedValue(conflictOutcome);
+			harness.sfx.mockClear();
+			const result = await harness.controller.advanceDay();
+			expect(result).toEqual({ status: 'confirmation-required' });
+			// The command was refused by compare-and-swap, so the success
+			// sound effect must NOT play — playing it would mislead the user
+			// into thinking the advance-day command landed.
+			expect(harness.sfx).not.toHaveBeenCalled();
 		});
 
 		it('returns unchanged when the command produces an identical game', async () => {
@@ -965,6 +1501,131 @@ describe('GameRouteController', () => {
 			const result = await harness.controller.updatePolicy(run.game.policy);
 			expect(result).toEqual({ status: 'unchanged' });
 		});
+	});
+
+	it('re-reads an atomic run/revision pair when the tracked revision is null and binds the write to the fresh revision', async () => {
+		const scenarioRepository = createScenarioMemoryRepository();
+		const harness = createHarness({ scenarioRepository });
+		await harness.controller.initializeScenarios();
+		await startScenario(harness.controller);
+		const run = harness.controller.state.activeScenarioRun!;
+
+		// Stage the run with a null revision by failing the init re-read
+		// on a second controller sharing the same repository. The summary
+		// still lists the run, so the controller stages it with a null
+		// revision (the documented init-failure fallback).
+		const harness2 = createHarness({ scenarioRepository });
+		const loadSpy = vi.spyOn(harness2.scenarioRepository, 'loadActiveRunWithRevision');
+		loadSpy.mockRejectedValueOnce(new Error('transient read failure'));
+		await harness2.controller.initializeScenarios();
+		expect(harness2.controller.state.activeScenarioRun?.runId).toBe(run.runId);
+		expect(harness2.controller.state.activeScenarioRevision).toBeNull();
+
+		// Issue a command. The persist step must re-read (because the
+		// tracked revision is null) and bind the write to the fresh
+		// revision instead of writing without CAS.
+		const saveSpy = vi.spyOn(harness2.scenarioRepository, 'saveActiveRun');
+		const result = await harness2.controller.advanceDay();
+		expect(result).toEqual({ status: 'committed' });
+		expect(saveSpy).toHaveBeenCalledWith(
+			expect.anything(),
+			expect.objectContaining({ expectedRevision: 1 })
+		);
+		expect(harness2.controller.state.activeScenarioRevision).toBe(2);
+	});
+
+	it('surfaces a conflict when the re-read returns the same runId but a different game state and the tracked revision is null', async () => {
+		const scenarioRepository = createScenarioMemoryRepository();
+		const harness1 = createHarness({ scenarioRepository });
+		await harness1.controller.initializeScenarios();
+		await startScenario(harness1.controller);
+		const run = harness1.controller.state.activeScenarioRun!;
+
+		// Stage the run with a null revision on a second controller sharing
+		// the same repository. The summary still lists the run, so the
+		// controller stages it with a null revision (the documented
+		// init-failure fallback).
+		const harness2 = createHarness({ scenarioRepository });
+		const loadSpy = vi.spyOn(harness2.scenarioRepository, 'loadActiveRunWithRevision');
+		loadSpy.mockRejectedValueOnce(new Error('transient read failure'));
+		await harness2.controller.initializeScenarios();
+		expect(harness2.controller.state.activeScenarioRun?.runId).toBe(run.runId);
+		expect(harness2.controller.state.activeScenarioRevision).toBeNull();
+
+		// Another tab advances the same run (same runId, bumped revision,
+		// different game state) between harness2's prepare and persist.
+		// harness2's in-memory run is now stale (day-1) while the stored
+		// run is day-2.
+		await harness1.controller.advanceDay();
+		expect(harness1.controller.state.activeScenarioRun?.game.day).toBe(run.game.day + 1);
+
+		// harness2 issues a command computed from its stale in-memory run.
+		// The persist step re-reads (because the tracked revision is null)
+		// and must detect that the re-read run differs from the in-memory
+		// run it prepared against — surfacing a conflict instead of writing
+		// the stale-state-derived result over the other tab's progress.
+		const saveSpy = vi.spyOn(harness2.scenarioRepository, 'saveActiveRun');
+		const result = await harness2.controller.advanceDay();
+		expect(result).toEqual({ status: 'confirmation-required' });
+		expect(harness2.controller.state.activeScenarioRun?.runId).toBe(run.runId);
+		expect(harness2.controller.state.activeScenarioRun?.game.day).toBe(run.game.day + 1);
+		expect(harness2.controller.state.scenarioOperationError).toBeNull();
+		expect(harness2.controller.state.retryScenarioOperation).toBeNull();
+		expect(saveSpy).not.toHaveBeenCalled();
+	});
+
+	it('surfaces a conflict when the re-read returns no record and the tracked revision is null', async () => {
+		const scenarioRepository = createScenarioMemoryRepository();
+		const harness = createHarness({ scenarioRepository });
+		await harness.controller.initializeScenarios();
+		await startScenario(harness.controller);
+
+		// Stage the run with a null revision on a second controller.
+		const harness2 = createHarness({ scenarioRepository });
+		const loadSpy = vi.spyOn(harness2.scenarioRepository, 'loadActiveRunWithRevision');
+		loadSpy.mockRejectedValueOnce(new Error('transient read failure'));
+		await harness2.controller.initializeScenarios();
+		expect(harness2.controller.state.activeScenarioRevision).toBeNull();
+
+		// Another tab removes the run between init and the next command.
+		// The persist step's re-read returns null — surface a conflict
+		// instead of writing without CAS (which would resurrect the run).
+		loadSpy.mockResolvedValueOnce(null);
+		const result = await harness2.controller.advanceDay();
+		expect(result).toEqual({ status: 'confirmation-required' });
+		expect(harness2.controller.state.activeScenarioRun).toBeNull();
+		expect(harness2.controller.state.scenarioOperationError).toBeNull();
+		expect(harness2.controller.state.retryScenarioOperation).toBeNull();
+	});
+
+	it('surfaces a conflict when the re-read returns a different runId and the tracked revision is null', async () => {
+		const scenarioRepository = createScenarioMemoryRepository();
+		const harness = createHarness({ scenarioRepository });
+		await harness.controller.initializeScenarios();
+		await startScenario(harness.controller);
+
+		// Stage the run with a null revision on a second controller.
+		const harness2 = createHarness({ scenarioRepository });
+		const loadSpy = vi.spyOn(harness2.scenarioRepository, 'loadActiveRunWithRevision');
+		loadSpy.mockRejectedValueOnce(new Error('transient read failure'));
+		await harness2.controller.initializeScenarios();
+		expect(harness2.controller.state.activeScenarioRevision).toBeNull();
+
+		// Another tab replaces the run between init and the next command.
+		// The persist step's re-read returns a different runId — surface
+		// the replacement as a conflict instead of writing without CAS.
+		const definition = firstProfitDefinition();
+		const replacementStarted = await import('$lib/scenarios/runtime').then((m) =>
+			m.startScenario(definition, definition.officialSeed + 5)
+		);
+		if (!replacementStarted.ok) throw new Error('replacement start failed');
+		const replacement = replacementStarted.value;
+		loadSpy.mockResolvedValueOnce({ run: replacement, revision: 1 });
+		const result = await harness2.controller.advanceDay();
+		expect(result).toEqual({ status: 'confirmation-required' });
+		expect(harness2.controller.state.activeScenarioRun?.runId).toBe(replacement.runId);
+		expect(harness2.controller.state.scenarioOperationError).toBeNull();
+		expect(harness2.controller.state.retryScenarioOperation).toBeNull();
 	});
 
 	describe('terminal scenario commands', () => {
@@ -1062,6 +1723,9 @@ describe('GameRouteController', () => {
 							throw new Error('storage down');
 						},
 						loadActiveRun: async () => {
+							throw new Error('read failed');
+						},
+						loadActiveRunWithRevision: async () => {
 							throw new Error('read failed');
 						}
 					})

@@ -21,13 +21,19 @@ import {
 } from '$lib/game/world';
 import type { SaveRepository } from '$lib/persistence/saveRepository';
 import type { SaveSlotMetadata, SaveSummary } from '$lib/persistence/saveTypes';
-import type { ScenarioRepository, ScenarioSaveOutcome } from '$lib/persistence/scenarioRepository';
+import type {
+	ScenarioCommitRunOutcome,
+	ScenarioRepository,
+	ScenarioSaveOutcome,
+	ScenarioTerminalConflict
+} from '$lib/persistence/scenarioRepository';
 import {
 	ScenarioCommandGate,
 	runImmediateSandboxOperation,
 	runPersistenceGatedOperation
 } from '$lib/scenarios/commandGate';
 import {
+	abandonScenario as abandonScenarioTransition,
 	executeScenarioCommand,
 	restartScenario as restartScenarioTransition,
 	startScenario as startScenarioTransition
@@ -47,6 +53,19 @@ import type {
 export interface GameRouteControllerState {
 	sandboxGame: GameState | null;
 	activeScenarioRun: ScenarioRun | null;
+	/**
+	 * The persisted `revision` of the currently active scenario run, tracked
+	 * alongside `activeScenarioRun` so `commitMutation` can bind writes to it
+	 * via `ScenarioSaveOptions.expectedRevision` /
+	 * `ScenarioCommitTerminalOptions.expectedRevision`. `null` when no run is
+	 * active or when the revision is unknown (e.g. a conflict surfaced a run
+	 * whose revision has not been re-read). The repository increments the
+	 * stored revision on every successful write, so two tabs resuming the same
+	 * run (which share its `runId`) cannot silently roll back each other's
+	 * progress: the first tab's write advances the revision, and the second
+	 * tab's save (bound to the stale revision it loaded) is refused.
+	 */
+	activeScenarioRevision: number | null;
 	lastScenarioResult: ScenarioResult | null;
 	lastScenarioBestUpdated: boolean;
 	scenarioOperationError: ScenarioOperationError | null;
@@ -115,7 +134,11 @@ export type GameRouteCommitResult =
 	| { status: 'busy' }
 	| { status: 'rejected' }
 	| { status: 'unchanged' }
-	| { status: 'confirmation-required' }
+	| {
+			status: 'confirmation-required';
+			expectedRunId?: string | null;
+			expectedRevision?: number | null;
+	  }
 	| { status: 'unavailable' }
 	| { status: 'failed' };
 
@@ -156,9 +179,28 @@ interface RailInput {
 	destinationBuildingId: string;
 }
 
+/**
+ * The prepared value carried from `commitMutation`'s prepare step to its
+ * persist step. It pairs the executed `ScenarioRun` with the scenario
+ * revision the controller observed at prepare time, so the persist step can
+ * bind its `saveActiveRun` / `commitTerminalRun` write to that revision via
+ * `expectedRevision`. This is what prevents two tabs resuming the same run
+ * (which share its `runId`) from silently rolling back each other's
+ * progress: the first tab's write advances the stored revision, and the
+ * second tab's save (bound to the stale revision it loaded) is refused.
+ * `null` means the revision is unknown (e.g. a conflict surfaced a run whose
+ * revision has not been re-read); the persist step then omits the CAS option
+ * rather than bind a stale token.
+ */
+interface PreparedScenarioRun {
+	run: ScenarioRun;
+	expectedRevision: number | null;
+}
+
 const INITIAL_STATE: GameRouteControllerState = {
 	sandboxGame: null,
 	activeScenarioRun: null,
+	activeScenarioRevision: null,
 	lastScenarioResult: null,
 	lastScenarioBestUpdated: false,
 	scenarioOperationError: null,
@@ -174,7 +216,18 @@ function scenarioError(code: ScenarioOperationError['code']): ScenarioOperationE
 
 function isSaveConflict(
 	outcome: ScenarioSaveOutcome
-): outcome is { status: 'conflict'; activeRun: ScenarioRun } {
+): outcome is { status: 'conflict'; activeRun: ScenarioRun | null; revision: number | null } {
+	return (
+		typeof outcome === 'object' &&
+		outcome !== null &&
+		'status' in outcome &&
+		outcome.status === 'conflict'
+	);
+}
+
+function isTerminalConflict(
+	outcome: ScenarioCommitRunOutcome
+): outcome is ScenarioTerminalConflict {
 	return (
 		typeof outcome === 'object' &&
 		outcome !== null &&
@@ -239,25 +292,76 @@ export class GameRouteController {
 				this.dismissScenarioOperationError();
 			}
 
-			const resumedRun = Object.entries(summary.activeRunsByScenarioId)
+			const resumedEntry = Object.entries(summary.activeRunsByScenarioId)
 				.sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
-				.map(([, run]) => run)
-				.find((run): run is ScenarioRun => run !== undefined);
-			if (resumedRun) {
+				.map(([scenarioId, run]) => (run ? { scenarioId: scenarioId as ScenarioId, run } : null))
+				.find((entry): entry is { scenarioId: ScenarioId; run: ScenarioRun } => entry !== null);
+			if (resumedEntry) {
 				// If the user has already loaded a sandbox save while scenario
 				// initialization was awaiting persistence, preserve that explicit
 				// selection — only stage the resumed run for later scenario resume
 				// without overriding playMode or the sandbox game.
 				const sandboxAlreadySelected = this.currentState.sandboxGame !== null;
-				this.patchState({
-					activeScenarioRun: resumedRun,
-					lastScenarioResult: null,
-					lastScenarioBestUpdated: false,
-					playMode: sandboxAlreadySelected ? this.currentState.playMode : 'scenario',
-					scenariosReady: true
-				});
+				// Re-read the single record to get an atomic run/revision pair.
+				// The summary does not carry revisions, and — more importantly —
+				// the summary's run was read in a separate earlier `getSummary()`
+				// call. Another browser tab or Tauri window sharing this run's
+				// `runId` can advance it between that summary read and this
+				// re-read. Staging the summary's (stale) run alongside the
+				// re-read's (newer) revision would let the next command bind the
+				// new revision while computing its transition from stale state,
+				// silently rolling back the other tab's progress. Use the run and
+				// revision from the same `loadActiveRunWithRevision()` result so
+				// they are consistent. When the re-read returns null the run was
+				// removed between the two reads; do not stage a stale run — fall
+				// through to the no-resumed-run path. A failed read is
+				// best-effort: stage the summary's run with a null revision so
+				// the first command's CAS is skipped (no regression from
+				// pre-revision behavior) and a later save sets it.
+				let stagedRun: ScenarioRun | null = resumedEntry.run;
+				let stagedRevision: number | null = null;
+				try {
+					const loaded = await repository.loadActiveRunWithRevision(resumedEntry.scenarioId);
+					if (loaded) {
+						stagedRun = loaded.run;
+						stagedRevision = loaded.revision;
+					} else {
+						stagedRun = null;
+					}
+				} catch {
+					// Leave stagedRun as the summary's run and stagedRevision null.
+				}
+				if (stagedRun) {
+					this.patchState({
+						activeScenarioRun: stagedRun,
+						activeScenarioRevision: stagedRevision,
+						lastScenarioResult: null,
+						lastScenarioBestUpdated: false,
+						playMode: sandboxAlreadySelected ? this.currentState.playMode : 'scenario',
+						scenariosReady: true
+					});
+				} else {
+					// The re-read returned no record: the run was removed between
+					// the summary read and this re-read (another tab abandoned it,
+					// or a terminal commit cleared it). Clear any previously active
+					// run staged by a prior initialization attempt — pairing a
+					// stale in-memory run with a null revision would let a later
+					// command's re-read resurrect it or clobber a replacement.
+					this.patchState({
+						scenariosReady: true,
+						activeScenarioRun: null,
+						activeScenarioRevision: null
+					});
+				}
 			} else {
-				this.patchState({ scenariosReady: true });
+				// No active runs in the summary. Clear any previously active run
+				// staged by a prior initialization attempt so a stale in-memory
+				// run is not paired with a null revision.
+				this.patchState({
+					scenariosReady: true,
+					activeScenarioRun: null,
+					activeScenarioRevision: null
+				});
 			}
 		} catch {
 			this.patchState({
@@ -309,16 +413,130 @@ export class GameRouteController {
 		this.patchState({ scenarioOperationError: null, retryScenarioOperation: null });
 	}
 
-	startScenarioRun(definition: ScenarioDefinition, seed: number): Promise<GameRouteCommitResult> {
+	async startScenarioRun(
+		definition: ScenarioDefinition,
+		seed: number,
+		confirmed?: boolean,
+		expectedRunId?: string | null,
+		expectedRevision?: number | null
+	): Promise<GameRouteCommitResult> {
 		const started = startScenarioTransition(definition, seed);
 		if (!started.ok) {
 			this.patchState({
 				scenarioOperationError: started.error,
 				retryScenarioOperation: null
 			});
-			return Promise.resolve({ status: 'rejected' });
+			return { status: 'rejected' };
 		}
-		return this.persistScenarioRun(started.value, () => this.startScenarioRun(definition, seed));
+		const repository = this.scenarioRepository;
+		if (!repository) {
+			this.patchState({
+				scenarioOperationError: scenarioError('persistence-write-failed'),
+				retryScenarioOperation: null
+			});
+			return { status: 'unavailable' };
+		}
+		if (this.currentState.scenarioCommandPending) return { status: 'busy' };
+
+		this.patchState({ scenarioCommandPending: true });
+		let phase: 'read' | 'write' = 'read';
+		try {
+			const existingRecord = await repository.loadActiveRunWithRevision(definition.id);
+			const existing = existingRecord?.run ?? null;
+			if (existing && !confirmed) {
+				this.patchState({
+					scenarioCommandPending: false,
+					scenarioOperationError: null,
+					retryScenarioOperation: null
+				});
+				// Surface the existing run's identity AND the revision observed
+				// at this read so the caller can bind the confirmed write to
+				// both. Binding only the runId would let a concurrent tab
+				// advance the same run (runId unchanged, revision bumped)
+				// between this dialog opening and the confirm click: the
+				// confirmed call re-reads the now-bumped revision, the runId
+				// check passes, the fresh-revision check passes, and the
+				// replacement silently clobbers the other tab's progress.
+				// Carrying the revision through the token makes the confirmed
+				// write bind to the stale revision, so the CAS refuses and
+				// re-surfaces confirmation with the newer token.
+				return {
+					status: 'confirmation-required',
+					expectedRunId: existing.runId,
+					expectedRevision: existingRecord?.revision ?? null
+				};
+			}
+			phase = 'write';
+			// Determine the compare-and-swap identity for the write. When the
+			// caller confirmed replacement, bind to the (runId, revision) pair
+			// they confirmed against (passed back from the
+			// confirmation-required result). When the caller did not supply an
+			// expectedRunId (programmatic callers / fresh start), fall back to
+			// the identity just read so the narrow read-to-write race is still
+			// protected. When there was no existing run, expect absence (null)
+			// so a run appearing between the read and the write is not silently
+			// clobbered.
+			const casExpectedRunId =
+				confirmed && expectedRunId !== undefined ? expectedRunId : (existing?.runId ?? null);
+			// Bind the write to the revision the caller confirmed against when
+			// supplied; otherwise bind to the revision just read. `0` means no
+			// run was stored. When the caller confirmed against a stale
+			// revision (another tab advanced the same run between dialog-open
+			// and confirm-click), the CAS fails and re-surfaces confirmation
+			// with the newer revision instead of silently clobbering.
+			const casExpectedRevision =
+				confirmed && expectedRevision !== undefined && expectedRevision !== null
+					? expectedRevision
+					: (existingRecord?.revision ?? 0);
+			const outcome = await repository.saveActiveRun(started.value, {
+				replace: true,
+				expectedRunId: casExpectedRunId,
+				expectedRevision: casExpectedRevision
+			});
+			if (isSaveConflict(outcome)) {
+				this.patchState({
+					activeScenarioRun: outcome.activeRun,
+					activeScenarioRevision: outcome.revision,
+					scenarioCommandPending: false,
+					scenarioOperationError: null,
+					retryScenarioOperation: null
+				});
+				await this.refreshScenarioSummary();
+				return {
+					status: 'confirmation-required',
+					expectedRunId: outcome.activeRun?.runId ?? null,
+					expectedRevision: outcome.revision
+				};
+			}
+			// The repository incremented the stored revision on the matching
+			// write; track it so the next command's CAS binds to it.
+			const nextRevision = casExpectedRevision + 1;
+			this.patchState({
+				activeScenarioRun: outcome.activeRun,
+				activeScenarioRevision: nextRevision,
+				lastScenarioResult: null,
+				lastScenarioBestUpdated: false,
+				playMode: 'scenario',
+				scenarioCommandPending: false,
+				scenarioOperationError: null,
+				retryScenarioOperation: null
+			});
+			// Refresh the catalog summary so previously-started active runs
+			// remain resumable after a new run is started in the same session.
+			await this.refreshScenarioSummary();
+			return { status: 'committed' };
+		} catch {
+			this.patchState({
+				scenarioCommandPending: false,
+				scenarioOperationError: scenarioError(
+					phase === 'read' ? 'persistence-read-failed' : 'persistence-write-failed'
+				),
+				retryScenarioOperation: this.createScenarioRetry(async () => {
+					await this.startScenarioRun(definition, seed, confirmed, expectedRunId, expectedRevision);
+				})
+			});
+			return { status: 'failed' };
+		}
 	}
 
 	async resumeScenarioRun(
@@ -336,8 +554,8 @@ export class GameRouteController {
 
 		this.patchState({ scenarioCommandPending: true });
 		try {
-			const run = await repository.loadActiveRun(scenarioId);
-			if (!run) {
+			const loaded = await repository.loadActiveRunWithRevision(scenarioId);
+			if (!loaded) {
 				this.patchState({
 					scenarioCommandPending: false,
 					scenarioOperationError: scenarioError('missing-run'),
@@ -345,14 +563,18 @@ export class GameRouteController {
 				});
 				return { status: 'unavailable' };
 			}
+			const run = loaded.run;
 			// If the loaded run is content-identical to the currently active one,
 			// keep the ScenarioRun object reference stable while reactivating scenario
 			// mode. The route synchronizer keys transient-view-state resets on the run
 			// reference, so preserving it means resume-same-run keeps armed placements,
-			// open inspectors, and selection state intact.
+			// open inspectors, and selection state intact. Preserve the freshly-read
+			// revision so the next command's CAS binds to the persisted revision
+			// instead of a stale in-memory one.
 			const current = this.currentState.activeScenarioRun;
 			if (current && deeplyEqual(current, run)) {
 				this.patchState({
+					activeScenarioRevision: loaded.revision,
 					playMode: 'scenario',
 					scenarioCommandPending: false,
 					scenarioOperationError: null,
@@ -362,6 +584,7 @@ export class GameRouteController {
 			}
 			this.patchState({
 				activeScenarioRun: run,
+				activeScenarioRevision: loaded.revision,
 				lastScenarioResult: null,
 				lastScenarioBestUpdated: false,
 				playMode: 'scenario',
@@ -396,13 +619,16 @@ export class GameRouteController {
 		this.patchState({ scenarioCommandPending: true });
 		let phase: 'read' | 'write' = 'read';
 		try {
-			const run = await repository.loadActiveRun(ref.scenarioId);
+			const loaded = await repository.loadActiveRunWithRevision(ref.scenarioId);
+			const run = loaded?.run ?? null;
+			const loadedRevision = loaded?.revision ?? null;
 			if (
 				!run ||
 				run.definition.scenarioId !== ref.scenarioId ||
 				run.definition.version !== ref.version
 			) {
 				this.patchState({
+					activeScenarioRevision: loadedRevision,
 					scenarioCommandPending: false,
 					scenarioOperationError: scenarioError(run ? 'stale-definition' : 'missing-run'),
 					retryScenarioOperation: null
@@ -428,9 +654,38 @@ export class GameRouteController {
 				return { status: 'rejected' };
 			}
 			phase = 'write';
-			const outcome = await repository.saveActiveRun(restarted.value, { replace: true });
+			// Bind the replacement to the run the user actually inspected by
+			// passing its runId as the compare-and-swap identity. If another
+			// tab replaced or removed this run between the read above and the
+			// write, the save is refused with a conflict instead of silently
+			// clobbering the newer run. `replace: true` is still needed because
+			// the restarted run has a fresh runId (restart preserves version and
+			// seed but generates a new identity), so the runId-difference guard
+			// would otherwise refuse the save. Bind the revision too so a
+			// concurrent tab that advanced the same run between read and write
+			// is refused instead of clobbering the newer state.
+			const expectedRevision = loadedRevision ?? 0;
+			const outcome = await repository.saveActiveRun(restarted.value, {
+				replace: true,
+				expectedRunId: run.runId,
+				expectedRevision
+			});
+			if (isSaveConflict(outcome)) {
+				this.patchState({
+					activeScenarioRun: outcome.activeRun,
+					activeScenarioRevision: outcome.revision,
+					scenarioCommandPending: false,
+					scenarioOperationError: null,
+					retryScenarioOperation: null
+				});
+				await this.refreshScenarioSummary();
+				return { status: 'confirmation-required' };
+			}
+			// The repository incremented the stored revision on the matching write.
+			const nextRevision = expectedRevision + 1;
 			this.patchState({
 				activeScenarioRun: outcome.activeRun,
+				activeScenarioRevision: nextRevision,
 				lastScenarioResult: null,
 				lastScenarioBestUpdated: false,
 				playMode: 'scenario',
@@ -457,7 +712,9 @@ export class GameRouteController {
 	async importScenarioRun(
 		definition: ScenarioDefinition,
 		seed: number,
-		confirmed: boolean
+		confirmed: boolean,
+		expectedRunId?: string | null,
+		expectedRevision?: number | null
 	): Promise<GameRouteCommitResult> {
 		const repository = this.scenarioRepository;
 		if (!repository) return { status: 'unavailable' };
@@ -466,14 +723,22 @@ export class GameRouteController {
 		this.patchState({ scenarioCommandPending: true });
 		let phase: 'read' | 'write' = 'read';
 		try {
-			const existing = await repository.loadActiveRun(definition.id);
+			const existingRecord = await repository.loadActiveRunWithRevision(definition.id);
+			const existing = existingRecord?.run ?? null;
 			if (existing && !confirmed) {
 				this.patchState({
 					scenarioCommandPending: false,
 					scenarioOperationError: null,
 					retryScenarioOperation: null
 				});
-				return { status: 'confirmation-required' };
+				// Surface the existing run's identity AND the revision observed
+				// at this read so the caller can bind the confirmed write to
+				// both. See startScenarioRun for the same-runId race rationale.
+				return {
+					status: 'confirmation-required',
+					expectedRunId: existing.runId,
+					expectedRevision: existingRecord?.revision ?? null
+				};
 			}
 			const started = startScenarioTransition(definition, seed);
 			if (!started.ok) {
@@ -485,9 +750,50 @@ export class GameRouteController {
 				return { status: 'rejected' };
 			}
 			phase = 'write';
-			const outcome = await repository.saveActiveRun(started.value, { replace: true });
+			// Determine the compare-and-swap identity for the write. When the
+			// caller confirmed replacement, bind to the (runId, revision) pair
+			// they confirmed against (passed back from the
+			// confirmation-required result). When the caller did not supply an
+			// expectedRunId (backwards-compatible programmatic callers), fall
+			// back to the identity just read so the narrow read-to-write race
+			// is still protected. When there was no existing run, expect
+			// absence (null) so a run appearing between the read and the write
+			// is not silently clobbered.
+			const casExpectedRunId =
+				confirmed && expectedRunId !== undefined ? expectedRunId : (existing?.runId ?? null);
+			// Bind the write to the revision the caller confirmed against when
+			// supplied; otherwise bind to the revision just read. `0` means no
+			// run was stored. See startScenarioRun for the stale-revision
+			// race rationale.
+			const casExpectedRevision =
+				confirmed && expectedRevision !== undefined && expectedRevision !== null
+					? expectedRevision
+					: (existingRecord?.revision ?? 0);
+			const outcome = await repository.saveActiveRun(started.value, {
+				replace: true,
+				expectedRunId: casExpectedRunId,
+				expectedRevision: casExpectedRevision
+			});
+			if (isSaveConflict(outcome)) {
+				this.patchState({
+					activeScenarioRun: outcome.activeRun,
+					activeScenarioRevision: outcome.revision,
+					scenarioCommandPending: false,
+					scenarioOperationError: null,
+					retryScenarioOperation: null
+				});
+				await this.refreshScenarioSummary();
+				return {
+					status: 'confirmation-required',
+					expectedRunId: outcome.activeRun?.runId ?? null,
+					expectedRevision: outcome.revision
+				};
+			}
+			// The repository incremented the stored revision on the matching write.
+			const nextRevision = casExpectedRevision + 1;
 			this.patchState({
 				activeScenarioRun: outcome.activeRun,
+				activeScenarioRevision: nextRevision,
 				lastScenarioResult: null,
 				lastScenarioBestUpdated: false,
 				playMode: 'scenario',
@@ -504,7 +810,13 @@ export class GameRouteController {
 					phase === 'read' ? 'persistence-read-failed' : 'persistence-write-failed'
 				),
 				retryScenarioOperation: this.createScenarioRetry(async () => {
-					await this.importScenarioRun(definition, seed, confirmed);
+					await this.importScenarioRun(
+						definition,
+						seed,
+						confirmed,
+						expectedRunId,
+						expectedRevision
+					);
 				})
 			});
 			return { status: 'failed' };
@@ -527,23 +839,123 @@ export class GameRouteController {
 
 		this.patchState({ scenarioCommandPending: true });
 		try {
-			const outcome = await repository.removeActiveRun(run.definition.scenarioId, run.runId);
-			// On conflict the stored run is a different (e.g. newer) run than
-			// the one the user is abandoning — the run being abandoned is
-			// already not stored, so the user's intent is satisfied. Clear the
-			// stale in-memory state and return to sandbox; the summary refresh
-			// surfaces the actual stored run in the catalog for later resume.
-			void outcome;
-			this.patchState({
-				activeScenarioRun: null,
-				lastScenarioResult: null,
-				lastScenarioBestUpdated: false,
-				playMode: 'sandbox',
-				scenarioCommandPending: false,
-				scenarioOperationError: null,
-				retryScenarioOperation: null
+			// Abandonment is a terminal transition: it freezes pending
+			// objectives as missed, produces a ScenarioResult with outcome
+			// 'abandoned', and removes the run from resumable persistence via
+			// the same revision-bound terminal commit path as completed/failed
+			// runs. The domain transition produces the terminal run; the
+			// repository's commitTerminalRun clears the active entry and
+			// records the result (best-result replacement is refused for
+			// non-completed outcomes by shouldReplaceBestResult, so abandoned
+			// runs never replace a best record).
+			//
+			// When the tracked revision is null (init read failure,
+			// post-terminal replacement, or re-init after removal), do NOT
+			// call commitTerminalRun with an undefined expectedRevision — that
+			// would omit the revision CAS and clear the active entry on runId
+			// alone. Another tab can advance the same run (same runId, bumped
+			// revision, different game state) between this tab's last
+			// observation and the abandon; the runId check passes and the
+			// stale tab clobbers the newer revision. Mirror the atomic reread
+			// used by commitMutation's slow path: re-read an atomic
+			// run/revision pair, verify the runId AND the full run state still
+			// match the in-memory run, then bind the terminal commit to the
+			// loaded revision. If the reread fails or differs, preserve and
+			// surface the stored run rather than committing a stale terminal.
+			let casExpectedRevision: number | undefined =
+				this.currentState.activeScenarioRevision ?? undefined;
+			if (casExpectedRevision === undefined) {
+				const reloaded = await repository.loadActiveRunWithRevision(run.definition.scenarioId);
+				if (!reloaded) {
+					// The run was removed between this tab's last observation
+					// and the reread (another tab abandoned it, or a terminal
+					// commit cleared it). Surface the absence as a conflict
+					// so the UI reconciles to the stored state instead of
+					// claiming a successful abandon that did nothing.
+					this.patchState({
+						activeScenarioRun: null,
+						activeScenarioRevision: null,
+						lastScenarioResult: null,
+						lastScenarioBestUpdated: false,
+						scenarioCommandPending: false,
+						scenarioOperationError: null,
+						retryScenarioOperation: null
+					});
+					await this.refreshScenarioSummary();
+					return { status: 'confirmation-required' };
+				}
+				if (reloaded.run.runId !== run.runId || !deeplyEqual(reloaded.run, run)) {
+					// Another tab advanced the same run (same runId, newer
+					// revision, different game state) or replaced it (different
+					// runId). Surface the preserved stored run so the UI can
+					// offer Resume instead of silently committing a stale
+					// terminal over newer progress.
+					this.patchState({
+						activeScenarioRun: reloaded.run,
+						activeScenarioRevision: reloaded.revision,
+						lastScenarioResult: null,
+						lastScenarioBestUpdated: false,
+						scenarioCommandPending: false,
+						scenarioOperationError: null,
+						retryScenarioOperation: null
+					});
+					await this.refreshScenarioSummary();
+					return { status: 'confirmation-required' };
+				}
+				casExpectedRevision = reloaded.revision ?? 0;
+			}
+			const abandoned = abandonScenarioTransition(run);
+			const outcome = await repository.commitTerminalRun(abandoned, {
+				expectedRevision: casExpectedRevision
 			});
-			await this.refreshScenarioSummary();
+			if (isTerminalConflict(outcome)) {
+				// On conflict the stored run is either a different run (e.g. a
+				// newer replacement) or the same runId but a newer revision
+				// (another tab advanced it). In both cases the repository
+				// refused the terminal commit — committing would either
+				// destroy that progress or record a stale terminal result.
+				// Surface the preserved stored run so the UI can offer Resume
+				// instead of silently clearing it. Mirror the conflict
+				// handling in startScenarioRun and commitMutation.
+				this.patchState({
+					activeScenarioRun: outcome.activeRun,
+					activeScenarioRevision: outcome.revision,
+					lastScenarioResult: null,
+					lastScenarioBestUpdated: false,
+					scenarioCommandPending: false,
+					scenarioOperationError: null,
+					retryScenarioOperation: null
+				});
+				await this.refreshScenarioSummary();
+				return { status: 'confirmation-required' };
+			}
+			// On success the terminal commit cleared the active entry (or
+			// preserved a replacement) and recorded the abandoned result.
+			// Publish the terminal outcome through the same path as
+			// completed/failed runs so the UI surfaces the abandoned result
+			// and the catalog reconciles to the stored state.
+			this.publishScenarioOutcome(outcome);
+			this.options.onScenarioTerminalRun?.(abandoned);
+			this.patchState({
+				playMode: 'sandbox',
+				scenarioCommandPending: false
+			});
+			try {
+				this.publishScenarioSummary(await repository.getSummary());
+			} catch {
+				// Summary refresh failed. The terminal run was already
+				// persisted. When the repository cleared the active entry
+				// (`activeRun === null`), drop its summary entry to avoid
+				// leaving a stale Resume action whose `loadActiveRun` would
+				// return null. When the repository retained a replacement
+				// active run (`activeRun !== null`), update the summary entry
+				// so the catalog keeps offering Resume on the valid run.
+				if (outcome.activeRun === null) {
+					this.dropTerminalRunFromSummary(abandoned.definition.scenarioId);
+				} else {
+					this.updateTerminalRunInSummary(outcome.activeRun);
+				}
+			}
 			return { status: 'committed' };
 		} catch {
 			this.patchState({
@@ -771,6 +1183,21 @@ export class GameRouteController {
 	private publishScenarioOutcome(outcome: ScenarioCommitOutcome): void {
 		this.patchState({
 			activeScenarioRun: outcome.activeRun,
+			// Drop the tracked revision on a terminal commit. When the active
+			// entry was cleared the revision is gone; when a replacement run
+			// was preserved (stale commit against a restarted run) the
+			// controller does not know the replacement's revision. In both
+			// cases binding the next command to the terminated run's revision
+			// would either CAS-fail against a different stored revision or,
+			// worse, silently pass against a coincidentally matching one and
+			// roll back the replacement. Setting `null` makes the next
+			// command skip the CAS until a resume/re-read repopulates the
+			// revision. For an active save (`terminalResult === null`) the
+			// tracked revision is retained here; the caller increments it
+			// after mirroring the repository's revision bump.
+			activeScenarioRevision: outcome.terminalResult
+				? null
+				: this.currentState.activeScenarioRevision,
 			lastScenarioResult: outcome.terminalResult,
 			lastScenarioBestUpdated: outcome.bestUpdated,
 			scenarioOperationError: null,
@@ -826,67 +1253,6 @@ export class GameRouteController {
 		});
 	}
 
-	private async persistScenarioRun(
-		run: ScenarioRun,
-		retry: () => Promise<GameRouteCommitResult>
-	): Promise<GameRouteCommitResult> {
-		const repository = this.scenarioRepository;
-		if (!repository) {
-			this.patchState({
-				scenarioOperationError: scenarioError('persistence-write-failed'),
-				retryScenarioOperation: this.createScenarioRetry(async () => {
-					await retry();
-				})
-			});
-			return { status: 'unavailable' };
-		}
-		if (this.currentState.scenarioCommandPending) return { status: 'busy' };
-
-		this.patchState({ scenarioCommandPending: true });
-		try {
-			const outcome = await repository.saveActiveRun(run);
-			if (isSaveConflict(outcome)) {
-				// A different active run is already persisted for this scenario
-				// (stale catalog, second tab, or a restart that raced this
-				// start). Surface the persisted run so the UI can offer Resume
-				// instead of silently overwriting it, and refresh the summary so
-				// the catalog cards reflect the actual stored state. The caller
-				// treats this like import's confirmation-required: the user can
-				// resume the surfaced run or explicitly abandon/restart it.
-				this.patchState({
-					activeScenarioRun: outcome.activeRun,
-					scenarioCommandPending: false,
-					scenarioOperationError: null,
-					retryScenarioOperation: null
-				});
-				await this.refreshScenarioSummary();
-				return { status: 'confirmation-required' };
-			}
-			this.patchState({
-				activeScenarioRun: outcome.activeRun,
-				lastScenarioResult: null,
-				lastScenarioBestUpdated: false,
-				playMode: 'scenario',
-				scenarioCommandPending: false,
-				scenarioOperationError: null,
-				retryScenarioOperation: null
-			});
-			// Refresh the catalog summary so previously-started active runs
-			// remain resumable after a new run is started in the same session.
-			await this.refreshScenarioSummary();
-			return { status: 'committed' };
-		} catch {
-			this.patchState({
-				scenarioCommandPending: false,
-				scenarioOperationError: scenarioError('persistence-write-failed'),
-				retryScenarioOperation: this.createScenarioRetry(async () => {
-					await retry();
-				})
-			});
-			return { status: 'failed' };
-		}
-	}
-
 	private async commitMutation(request: RouteGameMutation): Promise<GameRouteCommitResult> {
 		if (this.currentState.playMode === 'sandbox') {
 			if (!this.currentState.sandboxGame && !request.allowMissingSandboxGame) {
@@ -920,8 +1286,26 @@ export class GameRouteController {
 		let attemptedRun: ScenarioRun | null = null;
 		let preparedRun: ScenarioRun | null = null;
 		let terminalScenarioId: ScenarioId | null = null;
+		// Captured when the persist step detects a compare-and-swap conflict.
+		// Throwing to escape `runPersistenceGatedOperation` would land in the
+		// generic catch below, which classifies the error as
+		// `persistence-write-failed` and arms a retry whose `isValid` requires
+		// `activeScenarioRun === attemptedRun` — already false because the
+		// conflict branch replaced `activeScenarioRun`. Instead, capture the
+		// conflict here and handle it after the gated operation returns, as an
+		// explicit `confirmation-required` result that mirrors `startScenarioRun`.
+		let conflictOutcome: {
+			status: 'conflict';
+			activeRun: ScenarioRun | null;
+			revision: number | null;
+		} | null = null;
+		// Captured when the persist step re-reads an atomic run/revision pair
+		// (because the tracked revision was null) so the publish step mirrors
+		// the actual stored revision bump instead of computing it from the
+		// (null) tracked revision.
+		let usedCasRevision: number | null = null;
 		try {
-			const result = await runPersistenceGatedOperation<ScenarioRun, ScenarioCommitOutcome>(
+			const result = await runPersistenceGatedOperation<PreparedScenarioRun, ScenarioCommitOutcome>(
 				this.scenarioCommandGate,
 				{
 					prepare: () => {
@@ -944,34 +1328,180 @@ export class GameRouteController {
 						}
 						if (!execution.changed) return { status: 'unchanged' as const };
 						preparedRun = execution.run;
-						return { status: 'changed' as const, value: execution.run };
+						// Capture the tracked revision at prepare time so the
+						// persist step can bind its write to it. The repository
+						// increments the stored revision on a matching write; the
+						// publish step mirrors that locally. `null` means the
+						// revision is unknown (init read failure, post-terminal
+						// replacement, or re-init after removal); the persist step
+						// then re-reads an atomic run/revision pair and binds the
+						// write to that, refusing to write without CAS.
+						return {
+							status: 'changed' as const,
+							value: {
+								run: execution.run,
+								expectedRevision: this.currentState.activeScenarioRevision
+							}
+						};
 					},
-					persist: (run) =>
-						run.status === 'active'
-							? repository.saveActiveRun(run).then((outcome) => {
-									if (isSaveConflict(outcome)) {
-										// Another tab replaced this run between the
-										// command's prepare and persist. Surface the
-										// actual stored run so the user sees current
-										// state, then fail the write. The retry's
-										// isValid check (activeScenarioRun ===
-										// attemptedRun) invalidates because we just
-										// changed activeScenarioRun, so the stale
-										// retry does not re-attempt against the
-										// replacement.
-										this.patchState({ activeScenarioRun: outcome.activeRun });
-										throw new Error('scenario-run-replaced');
-									}
-									return outcome;
-								})
-							: repository.commitTerminalRun(run),
+					persist: (prepared) => {
+						const { run, expectedRevision } = prepared;
+						// Fast path: when the tracked revision is known, bind the
+						// write to it directly (no async re-read) so the persist
+						// step calls saveActiveRun/commitTerminalRun synchronously,
+						// preserving the microtask timing callers and tests rely on.
+						usedCasRevision = expectedRevision;
+						const writeWith = (resolvedRevision: number) =>
+							run.status === 'active'
+								? repository
+										.saveActiveRun(run, { expectedRevision: resolvedRevision })
+										.then((outcome) => {
+											if (isSaveConflict(outcome)) {
+												// Another tab replaced or advanced this run
+												// between the command's prepare and persist.
+												// Capture the conflict and surface the stored
+												// replacement so the UI can reconcile. Do not
+												// throw — throwing lands in the generic catch,
+												// which misclassifies this as a persistence-
+												// write failure and arms a dead retry (its
+												// isValid requires the old run still be
+												// active, but we just replaced it). Return a
+												// synthetic outcome the gated operation treats
+												// as committed; the conflict is handled below.
+												conflictOutcome = outcome;
+												return {
+													activeRun: outcome.activeRun,
+													terminalResult: null,
+													bestUpdated: false
+												};
+											}
+											return outcome;
+										})
+								: repository
+										.commitTerminalRun(run, { expectedRevision: resolvedRevision })
+										.then((outcome) => {
+											if (isTerminalConflict(outcome)) {
+												// A stale terminal result (computed from
+												// obsolete game state) lost the revision CAS:
+												// another tab advanced the same run after this
+												// command's prepare. Capture the conflict and
+												// surface the stored run so the UI can
+												// reconcile. Same synthetic-outcome pattern as
+												// the save-conflict branch above.
+												conflictOutcome = outcome;
+												return {
+													activeRun: outcome.activeRun,
+													terminalResult: null,
+													bestUpdated: false
+												};
+											}
+											return outcome;
+										});
+						if (expectedRevision !== null) {
+							return writeWith(expectedRevision);
+						}
+						// Slow path: the tracked revision is null (init read
+						// failure, post-terminal replacement, or re-init after
+						// removal). Do NOT write without CAS — that would risk
+						// clobbering newer progress or resurrecting a run removed
+						// by another tab. Re-read an atomic run/revision pair and
+						// bind the write to it. If the re-read throws, the error
+						// propagates to the outer catch (no write lands). If the
+						// re-read returns no record or a different runId, surface
+						// a conflict so the UI can reconcile instead of writing
+						// blindly.
+						return repository
+							.loadActiveRunWithRevision(run.definition.scenarioId)
+							.then((reloaded) => {
+								if (!reloaded) {
+									conflictOutcome = { status: 'conflict', activeRun: null, revision: null };
+									return { activeRun: null, terminalResult: null, bestUpdated: false };
+								}
+								if (reloaded.run.runId !== run.runId) {
+									conflictOutcome = {
+										status: 'conflict',
+										activeRun: reloaded.run,
+										revision: reloaded.revision
+									};
+									return {
+										activeRun: reloaded.run,
+										terminalResult: null,
+										bestUpdated: false
+									};
+								}
+								// Content compare-and-swap: the re-read returned the
+								// same runId, but another tab may have advanced the
+								// same run (same runId, bumped revision, different
+								// game state) between this tab's prepare and persist.
+								// The prepare step computed `execution.run` from the
+								// stale in-memory `attemptedRun`; writing it would
+								// clobber the other tab's progress. Compare the
+								// re-read run against `attemptedRun` (the in-memory
+								// run captured at prepare time) — if they differ,
+								// surface a conflict instead of calling `writeWith`.
+								if (attemptedRun && !deeplyEqual(reloaded.run, attemptedRun)) {
+									conflictOutcome = {
+										status: 'conflict',
+										activeRun: reloaded.run,
+										revision: reloaded.revision
+									};
+									return {
+										activeRun: reloaded.run,
+										terminalResult: null,
+										bestUpdated: false
+									};
+								}
+								const resolvedRevision = reloaded.revision ?? 0;
+								usedCasRevision = resolvedRevision;
+								return writeWith(resolvedRevision);
+							});
+					},
 					publish: (outcome) => {
+						if (conflictOutcome) {
+							// Surface the persisted replacement (or clear the
+							// active run when the expected run is gone) without
+							// claiming a successful command commit. Track the
+							// conflict's revision so a subsequent confirmed
+							// write can bind to it.
+							this.patchState({
+								activeScenarioRun: conflictOutcome.activeRun,
+								activeScenarioRevision: conflictOutcome.revision,
+								scenarioOperationError: null,
+								retryScenarioOperation: null
+							});
+							return;
+						}
 						this.publishScenarioOutcome(outcome);
+						// Advance the tracked revision on a successful active
+						// save. The repository incremented the stored revision;
+						// mirror it so the next command's CAS binds to it. On a
+						// terminal commit, publishScenarioOutcome already dropped
+						// the revision (the active entry was cleared or a
+						// replacement whose revision is unknown was preserved).
+						// When the persist step re-read an atomic run/revision pair
+						// (because the tracked revision was null), use the actual
+						// CAS revision captured by the persist step instead of
+						// computing from the stale tracked value.
+						if (outcome.terminalResult === null && this.currentState.activeScenarioRun) {
+							const base = usedCasRevision ?? this.currentState.activeScenarioRevision ?? 0;
+							this.patchState({ activeScenarioRevision: base + 1 });
+						}
 						if (outcome.terminalResult && preparedRun) {
 							this.options.onScenarioTerminalRun?.(preparedRun);
 						}
 					},
-					afterPublish: request.cueId ? () => this.options.playSfx(request.cueId!) : undefined,
+					// P3: Suppress the success sound effect when the persist step
+					// detected a compare-and-swap conflict. The gated operation
+					// calls afterPublish unconditionally (it treats the synthetic
+					// conflict outcome as committed), so without this guard a
+					// rejected command would play its success cue — misleading the
+					// user into thinking the command landed.
+					afterPublish: request.cueId
+						? () => {
+								if (conflictOutcome) return;
+								this.options.playSfx(request.cueId!);
+							}
+						: undefined,
 					onPendingChange: (scenarioCommandPending) => this.patchState({ scenarioCommandPending })
 				}
 			);
@@ -1002,6 +1532,16 @@ export class GameRouteController {
 						}
 					}
 				}
+			}
+			if (conflictOutcome) {
+				// The compare-and-swap lost: another tab replaced the run (or
+				// the expected run is gone). Refresh the catalog so it reflects
+				// the actual stored state and return confirmation-required so
+				// the UI can offer Resume on the surfaced run — mirroring
+				// startScenarioRun's conflict handling. Do not classify this
+				// as a persistence-write failure or arm a retry.
+				await this.refreshScenarioSummary();
+				return { status: 'confirmation-required' };
 			}
 			return { status: result.status };
 		} catch {

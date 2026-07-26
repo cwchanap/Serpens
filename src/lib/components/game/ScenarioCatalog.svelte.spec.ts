@@ -31,6 +31,7 @@ function card(
 		primaryLabel: 'Start',
 		showRestart: false,
 		activeDefinitionRef: null,
+		activeRunId: null,
 		showStartCurrent: false,
 		activeVersionLabel: null,
 		best: null,
@@ -56,14 +57,22 @@ function renderCatalog(
 	overrides: Partial<{
 		cards: ScenarioCatalogCardViewModel[];
 		operationError: string | null;
+		pending: boolean;
 		persistenceReady: boolean;
 		onStart: (card: ScenarioCatalogCardViewModel) => void | Promise<void>;
 		onResume: (card: ScenarioCatalogCardViewModel) => void | Promise<void>;
 		onRestart: (card: ScenarioCatalogCardViewModel) => void | Promise<void>;
-		onStartCurrent: (card: ScenarioCatalogCardViewModel) => void | Promise<void>;
+		onStartCurrent: (
+			card: ScenarioCatalogCardViewModel,
+			confirmed: boolean,
+			expectedRunId?: string | null,
+			expectedRevision?: number | null
+		) => ScenarioCatalogActionResult | Promise<ScenarioCatalogActionResult>;
 		onImport: (
 			code: string,
-			confirmed: boolean
+			confirmed: boolean,
+			expectedRunId?: string | null,
+			expectedRevision?: number | null
 		) => ScenarioCatalogActionResult | Promise<ScenarioCatalogActionResult>;
 		onCopy: (code: string) => boolean | Promise<boolean>;
 		onRetry: () => void | Promise<void>;
@@ -79,7 +88,9 @@ function renderCatalog(
 		onStart: vi.fn(),
 		onResume: vi.fn(),
 		onRestart: vi.fn(),
-		onStartCurrent: vi.fn(),
+		onStartCurrent: vi.fn(
+			async (): Promise<ScenarioCatalogActionResult> => ({ status: 'started' })
+		),
 		onImport: vi.fn(async (): Promise<ScenarioCatalogActionResult> => ({ status: 'started' })),
 		onCopy: vi.fn(async () => true),
 		onRetry: vi.fn(),
@@ -111,23 +122,93 @@ describe('ScenarioCatalog', () => {
 	});
 
 	it('confirms replacing an older active version with the current version', async () => {
-		expect.assertions(3);
-		const onStartCurrent = vi.fn();
+		expect.assertions(4);
+		const onStartCurrent = vi.fn(
+			async (
+				_card: ScenarioCatalogCardViewModel,
+				confirmed: boolean
+			): Promise<ScenarioCatalogActionResult> => {
+				if (!confirmed) {
+					return {
+						status: 'confirmation-required',
+						message: 'Starting the current version replaces the active older run.',
+						expectedRunId: 'run-old',
+						expectedRevision: 1
+					};
+				}
+				return { status: 'started' };
+			}
+		);
 		const old = card('first-profit', 'First Profit', {
 			primaryAction: 'resume',
 			primaryLabel: 'Resume version 1',
 			showRestart: true,
 			showStartCurrent: true,
 			activeVersionLabel: 'Active version 1 (current version 2)',
+			activeRunId: 'run-old',
 			version: 2
 		});
 		renderCatalog({ cards: [old], onStartCurrent });
 
 		await expect.element(page.getByText('Active version 1 (current version 2)')).toBeVisible();
 		await page.getByRole('button', { name: 'Start current First Profit' }).click();
-		expect(onStartCurrent).not.toHaveBeenCalled();
+		expect(onStartCurrent).toHaveBeenCalledWith(old, false);
+		await expect
+			.element(
+				page.getByRole('alertdialog', {
+					name: 'Starting the current version replaces the active older run.'
+				})
+			)
+			.toBeVisible();
 		await page.getByRole('button', { name: 'Confirm replacement' }).click();
-		expect(onStartCurrent).toHaveBeenCalledWith(old);
+		expect(onStartCurrent).toHaveBeenLastCalledWith(old, true, 'run-old', 1);
+	});
+
+	it('reopens the current-version confirmation when the confirmed write loses the compare-and-swap', async () => {
+		expect.assertions(5);
+		const responses: Array<
+			(card: ScenarioCatalogCardViewModel, confirmed: boolean) => ScenarioCatalogActionResult
+		> = [
+			() => ({
+				status: 'confirmation-required',
+				message: 'Replace run A?',
+				expectedRunId: 'runA',
+				expectedRevision: 1
+			}),
+			() => ({
+				status: 'confirmation-required',
+				message: 'Replace run B?',
+				expectedRunId: 'runB',
+				expectedRevision: 2
+			}),
+			() => ({ status: 'started' })
+		];
+		const onStartCurrent = vi.fn(async (_card: ScenarioCatalogCardViewModel, _confirmed: boolean) =>
+			responses.shift()!(_card, _confirmed)
+		);
+		const old = card('first-profit', 'First Profit', {
+			primaryAction: 'resume',
+			primaryLabel: 'Resume version 1',
+			showRestart: true,
+			showStartCurrent: true,
+			activeVersionLabel: 'Active version 1 (current version 2)',
+			activeRunId: 'run-old',
+			version: 2
+		});
+		renderCatalog({ cards: [old], onStartCurrent });
+
+		// The initial (confirmed=false) call discovers the existing run and
+		// returns its (runId, revision) pair as the confirmation token.
+		await page.getByRole('button', { name: 'Start current First Profit' }).click();
+		expect(onStartCurrent).toHaveBeenLastCalledWith(old, false);
+		await expect.element(page.getByRole('alertdialog', { name: 'Replace run A?' })).toBeVisible();
+		// The confirmed write lost the compare-and-swap to a newer run; the
+		// dialog reopens with run B's message and token instead of closing.
+		await page.getByRole('button', { name: 'Confirm replacement' }).click();
+		expect(onStartCurrent).toHaveBeenLastCalledWith(old, true, 'runA', 1);
+		await expect.element(page.getByRole('alertdialog', { name: 'Replace run B?' })).toBeVisible();
+		await page.getByRole('button', { name: 'Confirm replacement' }).click();
+		expect(onStartCurrent).toHaveBeenLastCalledWith(old, true, 'runB', 2);
 	});
 
 	it('confirms imported replacement and announces malformed, unsupported, and checksum errors', async () => {
@@ -157,7 +238,7 @@ describe('ScenarioCatalog', () => {
 		await submit.click();
 		await expect.element(page.getByText('Replace the active run?')).toBeVisible();
 		await page.getByRole('button', { name: 'Confirm replacement' }).click();
-		expect(onImport).toHaveBeenLastCalledWith('valid', true);
+		expect(onImport).toHaveBeenLastCalledWith('valid', true, undefined, undefined);
 		expect(onImport).toHaveBeenCalledTimes(5);
 	});
 
@@ -323,13 +404,56 @@ describe('ScenarioCatalog', () => {
 			.element(page.getByRole('alertdialog', { name: 'Replace the active run?' }))
 			.toBeVisible();
 		await page.getByRole('button', { name: 'Confirm replacement' }).click();
-		expect(onImport).toHaveBeenLastCalledWith('valid', true);
+		expect(onImport).toHaveBeenLastCalledWith('valid', true, undefined, undefined);
 		await expect.element(page.getByText('The challenge could not be imported.')).toBeVisible();
+	});
+
+	it('reopens the confirmation with the new token when a confirmed import returns a second confirmation-required', async () => {
+		expect.assertions(5);
+		const responses: Array<(code: string, confirmed: boolean) => ScenarioCatalogActionResult> = [
+			() => ({
+				status: 'confirmation-required',
+				message: 'Replace run A?',
+				expectedRunId: 'runA',
+				expectedRevision: 1
+			}),
+			() => ({
+				status: 'confirmation-required',
+				message: 'Replace run B?',
+				expectedRunId: 'runB',
+				expectedRevision: 2
+			}),
+			() => ({ status: 'started' })
+		];
+		const onImport = vi.fn(async (_code: string, _confirmed: boolean) =>
+			responses.shift()!(_code, _confirmed)
+		);
+		renderCatalog({ cards: [cards[0]!], onImport });
+
+		await page.getByLabelText('Share code').fill('valid');
+		await page.getByRole('button', { name: 'Import code' }).click();
+		await expect.element(page.getByRole('alertdialog', { name: 'Replace run A?' })).toBeVisible();
+		await page.getByRole('button', { name: 'Confirm replacement' }).click();
+		expect(onImport).toHaveBeenLastCalledWith('valid', true, 'runA', 1);
+		// The confirmed write lost the compare-and-swap to a newer run; the
+		// dialog reopens with run B's message and token instead of closing.
+		await expect.element(page.getByRole('alertdialog', { name: 'Replace run B?' })).toBeVisible();
+		await page.getByRole('button', { name: 'Confirm replacement' }).click();
+		expect(onImport).toHaveBeenLastCalledWith('valid', true, 'runB', 2);
+		await expect.element(page.getByRole('alertdialog')).not.toBeInTheDocument();
 	});
 
 	it('clears an open confirmation with Escape instead of closing the catalog', async () => {
 		expect.assertions(3);
 		const onClose = vi.fn();
+		const onStartCurrent = vi.fn(
+			async (): Promise<ScenarioCatalogActionResult> => ({
+				status: 'confirmation-required',
+				message: 'Starting the current version replaces the active older run.',
+				expectedRunId: 'run-old',
+				expectedRevision: 1
+			})
+		);
 		const old = card('first-profit', 'First Profit', {
 			primaryAction: 'resume',
 			primaryLabel: 'Resume version 1',
@@ -338,7 +462,7 @@ describe('ScenarioCatalog', () => {
 			activeVersionLabel: 'Active version 1 (current version 2)',
 			version: 2
 		});
-		const { result } = renderCatalog({ cards: [old], onClose });
+		const { result } = renderCatalog({ cards: [old], onClose, onStartCurrent });
 
 		await page.getByRole('button', { name: 'Start current First Profit' }).click();
 		await expect
