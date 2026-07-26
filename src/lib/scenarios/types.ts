@@ -336,8 +336,29 @@ export type ScenarioOperationResult<T> =
 export interface ScenarioRunRecord {
 	scenarioSchemaVersion: number;
 	gameSchemaVersion: number;
+	/**
+	 * Monotonic write counter incremented by the repository on every successful
+	 * persist of this scenario's active run. Used as a compare-and-swap token so
+	 * two tabs resuming the same run (which share the same `runId`) cannot
+	 * silently roll back each other's progress: a tab that loaded at revision N
+	 * passes `expectedRevision: N`, and the repository refuses the write if the
+	 * stored revision has advanced. `0` means the record was decoded from a
+	 * pre-revision payload (in-development save) and has not been re-written
+	 * since; the next write sets it to `1`.
+	 */
+	revision: number;
 	run: Omit<ScenarioRun, 'game'>;
 	game: unknown;
+}
+
+/**
+ * A run loaded from persistence together with its stored `revision`, so the
+ * controller can bind subsequent writes to the revision it observed. Returned
+ * by `loadActiveRunWithRevision`.
+ */
+export interface LoadedScenarioRun {
+	run: ScenarioRun;
+	revision: number;
 }
 
 /**

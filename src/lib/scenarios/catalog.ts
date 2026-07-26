@@ -1,6 +1,7 @@
 import { validateScenarioDefinition } from './validation';
 import type {
 	ScenarioDefinition,
+	ScenarioDefinitionKey,
 	ScenarioDefinitionRef,
 	ScenarioDiagnostic,
 	ScenarioId
@@ -443,11 +444,75 @@ function deepFreeze<T>(value: T): T {
 	return value;
 }
 
-export const SCENARIO_CATALOG: readonly ScenarioDefinition[] = deepFreeze([
+/**
+ * Complete immutable definition registry keyed by `${scenarioId}@${version}`.
+ * Old definitions remain resolvable here so active runs, best results, and
+ * share codes that reference a prior version stay supported after a new
+ * version is published. The catalog UI never lists from this map directly —
+ * it derives the current-version list from {@link CURRENT_VERSION_BY_SCENARIO}.
+ */
+const ALL_DEFINITIONS: readonly ScenarioDefinition[] = deepFreeze([
 	firstProfit,
 	importSqueeze,
 	localLifeline
 ]);
+
+function buildDefinitionByKey(
+	definitions: readonly ScenarioDefinition[]
+): ReadonlyMap<ScenarioDefinitionKey, ScenarioDefinition> {
+	const map = new Map<ScenarioDefinitionKey, ScenarioDefinition>();
+	for (const definition of definitions) {
+		const key: ScenarioDefinitionKey = `${definition.id}@${definition.version}`;
+		if (map.has(key)) {
+			throw new Error(`Duplicate scenario definition key: ${key}`);
+		}
+		map.set(key, definition);
+	}
+	return map;
+}
+
+function buildCurrentVersionByScenario(
+	definitions: readonly ScenarioDefinition[]
+): Readonly<Record<ScenarioId, number>> {
+	const latest = new Map<ScenarioId, number>();
+	for (const definition of definitions) {
+		const existing = latest.get(definition.id);
+		if (existing === undefined || definition.version > existing) {
+			latest.set(definition.id, definition.version);
+		}
+	}
+	const record = {} as Record<ScenarioId, number>;
+	for (const [id, version] of latest) record[id] = version;
+	return deepFreeze(record);
+}
+
+/**
+ * The complete definition registry. Use this to resolve active runs, best
+ * results, and share codes that may reference any published version.
+ */
+const DEFINITIONS_BY_KEY: ReadonlyMap<ScenarioDefinitionKey, ScenarioDefinition> =
+	buildDefinitionByKey(ALL_DEFINITIONS);
+
+/**
+ * The current version per scenario ID. The catalog presents only these
+ * versions; {@link listCurrentScenarioDefinitions} and
+ * {@link currentScenarioDefinition} derive from this map so publishing a new
+ * version updates the catalog without affecting historical-version
+ * resolution from {@link DEFINITIONS_BY_KEY}.
+ */
+const CURRENT_VERSION_BY_SCENARIO: Readonly<Record<ScenarioId, number>> =
+	buildCurrentVersionByScenario(ALL_DEFINITIONS);
+
+/**
+ * The current-version catalog: one definition per scenario ID, in the
+ * canonical registry order. Retained as a public export for tests and
+ * callers that need the current-version list as a single array.
+ */
+export const SCENARIO_CATALOG: readonly ScenarioDefinition[] = deepFreeze(
+	ALL_DEFINITIONS.filter(
+		(definition) => CURRENT_VERSION_BY_SCENARIO[definition.id] === definition.version
+	)
+);
 
 export interface ScenarioCatalogEntry {
 	definition: ScenarioDefinition;
@@ -481,11 +546,13 @@ export function listCurrentScenarioDefinitions(): readonly ScenarioDefinition[] 
 export function resolveScenarioDefinition(
 	ref: ScenarioDefinitionRef
 ): ScenarioDefinition | undefined {
-	return SCENARIO_CATALOG.find(
-		(definition) => definition.id === ref.scenarioId && definition.version === ref.version
-	);
+	const key: ScenarioDefinitionKey = `${ref.scenarioId}@${ref.version}`;
+	return DEFINITIONS_BY_KEY.get(key);
 }
 
 export function currentScenarioDefinition(scenarioId: ScenarioId): ScenarioDefinition | undefined {
-	return SCENARIO_CATALOG.find((definition) => definition.id === scenarioId);
+	const version = CURRENT_VERSION_BY_SCENARIO[scenarioId];
+	if (version === undefined) return undefined;
+	const key: ScenarioDefinitionKey = `${scenarioId}@${version}`;
+	return DEFINITIONS_BY_KEY.get(key);
 }

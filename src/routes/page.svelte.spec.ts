@@ -111,6 +111,7 @@ function createScenarioRepositoryHarness(
 	return {
 		getSummary: vi.fn(async () => emptyScenarioSummary(run)),
 		loadActiveRun: vi.fn(async () => run ?? null),
+		loadActiveRunWithRevision: vi.fn(async () => (run ? { run, revision: 0 } : null)),
 		saveActiveRun: vi.fn(async (nextRun) => ({
 			activeRun: nextRun,
 			terminalResult: null,
@@ -561,8 +562,19 @@ describe('GameRouteController scenario integration', () => {
 		);
 		await controller.initializeScenarios();
 
-		const pending = controller.startScenarioRun(current, current.officialSeed);
+		// Pass confirmed=true with the older run's identity so the
+		// read-first CAS proceeds to the write instead of returning
+		// confirmation-required.
+		const pending = controller.startScenarioRun(
+			current,
+			current.officialSeed,
+			true,
+			olderRun.runId
+		);
 		expect(controller.state.activeScenarioRun).toBe(olderRun);
+		// startScenarioRun awaits loadActiveRun before calling saveActiveRun,
+		// so flush the microtask queue to let the save call land.
+		await Promise.resolve();
 		const nextRun = vi.mocked(repository.saveActiveRun).mock.calls[0]![0];
 		expect(nextRun.definition).toEqual({ scenarioId: current.id, version: 1 });
 		expect(nextRun.seed).toBe(current.officialSeed);
@@ -620,6 +632,11 @@ describe('GameRouteController scenario integration', () => {
 				diagnostics: []
 			})),
 			loadActiveRun: vi.fn(async (id) => (id === selectedDefinition.id ? selected : displayed)),
+			loadActiveRunWithRevision: vi.fn(async (id) =>
+				id === selectedDefinition.id
+					? { run: selected, revision: 0 }
+					: { run: displayed, revision: 0 }
+			),
 			saveActiveRun: vi.fn(() => write.promise)
 		});
 		const controller = new GameRouteController(
@@ -631,7 +648,7 @@ describe('GameRouteController scenario integration', () => {
 		await controller.initializeScenarios();
 
 		const pending = controller.restartScenarioRun(selected.definition);
-		expect(repository.loadActiveRun).toHaveBeenCalledWith('import-squeeze');
+		expect(repository.loadActiveRunWithRevision).toHaveBeenCalledWith('import-squeeze');
 		expect(controller.state.activeScenarioRun).toBe(displayed);
 		await Promise.resolve();
 		const restarted = vi.mocked(repository.saveActiveRun).mock.calls[0]![0];
@@ -657,7 +674,10 @@ describe('GameRouteController scenario integration', () => {
 				bestResultsByDefinitionKey: {},
 				diagnostics: []
 			})),
-			loadActiveRun: vi.fn(async (id) => (id === importedDefinition.id ? null : displayed))
+			loadActiveRun: vi.fn(async (id) => (id === importedDefinition.id ? null : displayed)),
+			loadActiveRunWithRevision: vi.fn(async (id) =>
+				id === importedDefinition.id ? null : { run: displayed, revision: 0 }
+			)
 		});
 		const controller = new GameRouteController(
 			controllerOptions({
@@ -670,7 +690,7 @@ describe('GameRouteController scenario integration', () => {
 		expect(await controller.importScenarioRun(importedDefinition, 999, false)).toMatchObject({
 			status: 'committed'
 		});
-		expect(repository.loadActiveRun).toHaveBeenLastCalledWith('import-squeeze');
+		expect(repository.loadActiveRunWithRevision).toHaveBeenLastCalledWith('import-squeeze');
 		expect(repository.saveActiveRun).toHaveBeenCalledTimes(1);
 		expect(displayed.definition.scenarioId).toBe('first-profit');
 
@@ -683,7 +703,12 @@ describe('GameRouteController scenario integration', () => {
 				bestResultsByDefinitionKey: {},
 				diagnostics: []
 			})),
-			loadActiveRun: vi.fn(async (id) => (id === importedDefinition.id ? imported : displayed))
+			loadActiveRun: vi.fn(async (id) => (id === importedDefinition.id ? imported : displayed)),
+			loadActiveRunWithRevision: vi.fn(async (id) =>
+				id === importedDefinition.id
+					? { run: imported, revision: 0 }
+					: { run: displayed, revision: 0 }
+			)
 		});
 		const replacementController = new GameRouteController(
 			controllerOptions({
@@ -730,7 +755,9 @@ describe('GameRouteController scenario integration', () => {
 		);
 		await controller.initializeScenarios();
 
-		expect(await controller.startScenarioRun(definition, 999)).toMatchObject({ status: 'failed' });
+		expect(await controller.startScenarioRun(definition, 999, true, oldRun.runId)).toMatchObject({
+			status: 'failed'
+		});
 		expect(controller.state.activeScenarioRun).toBe(oldRun);
 		expect(controller.state.scenarioOperationError?.code).toBe('persistence-write-failed');
 		expect(controller.state.retryScenarioOperation).not.toBeNull();
@@ -842,7 +869,12 @@ describe('GameRouteController scenario integration', () => {
 		const committedResult = controller.state.lastScenarioResult;
 		expect(committedResult?.outcome).toBe('completed');
 
-		const pendingRestart = controller.startScenarioRun(definition, committedResult!.seed);
+		const pendingRestart = controller.startScenarioRun(
+			definition,
+			committedResult!.seed,
+			true,
+			run.runId
+		);
 		expect(controller.state.scenarioCommandPending).toBe(true);
 		expect(controller.state.lastScenarioResult).toBe(committedResult);
 		expect(controller.state.activeScenarioRun).toBeNull();
@@ -883,7 +915,9 @@ describe('GameRouteController scenario integration', () => {
 		await controller.updatePolicy({ pricing: 'premium' });
 		const committedResult = controller.state.lastScenarioResult;
 
-		expect(await controller.startScenarioRun(definition, committedResult!.seed)).toMatchObject({
+		expect(
+			await controller.startScenarioRun(definition, committedResult!.seed, true, run.runId)
+		).toMatchObject({
 			status: 'failed'
 		});
 		expect(controller.state.lastScenarioResult).toBe(committedResult);
@@ -959,7 +993,7 @@ describe('GameRouteController scenario integration', () => {
 		expect(repository.saveActiveRun).toHaveBeenCalledTimes(1);
 	});
 
-	it('abandons by removing the active record without committing a best and returns to sandbox losslessly', async () => {
+	it('abandons by committing a terminal run without replacing the best and returns to sandbox losslessly', async () => {
 		expect.assertions(7);
 		const definition = scenarioDefinition();
 		const run = runForDefinition(definition);
@@ -976,8 +1010,15 @@ describe('GameRouteController scenario integration', () => {
 		expect(repository.saveActiveRun).not.toHaveBeenCalled();
 
 		expect(await controller.abandonScenarioRun()).toMatchObject({ status: 'committed' });
-		expect(repository.removeActiveRun).toHaveBeenCalledWith(definition.id, run.runId);
-		expect(repository.commitTerminalRun).not.toHaveBeenCalled();
+		expect(repository.commitTerminalRun).toHaveBeenCalledWith(
+			expect.objectContaining({
+				definition: run.definition,
+				status: 'abandoned',
+				result: expect.objectContaining({ outcome: 'abandoned' })
+			}),
+			{ expectedRevision: 0 }
+		);
+		expect(repository.removeActiveRun).not.toHaveBeenCalled();
 	});
 
 	it('startScenarioRun surfaces a save conflict as confirmation-required and exposes the persisted run', async () => {
@@ -986,7 +1027,11 @@ describe('GameRouteController scenario integration', () => {
 		const stored = runForDefinition(definition);
 		expect(stored.runId).not.toBe(run.runId);
 		const repository = createScenarioRepositoryHarness(stored, {
-			saveActiveRun: vi.fn(async () => ({ status: 'conflict' as const, activeRun: stored }))
+			saveActiveRun: vi.fn(async () => ({
+				status: 'conflict' as const,
+				activeRun: stored,
+				revision: 0
+			}))
 		});
 		const controller = new GameRouteController(
 			controllerOptions({ scenarioRepository: repository, definition })
@@ -995,13 +1040,20 @@ describe('GameRouteController scenario integration', () => {
 
 		const result = await controller.startScenarioRun(definition, definition.officialSeed);
 
-		expect(result).toEqual({ status: 'confirmation-required' });
+		// The read-first CAS detects the stored run (different runId than
+		// the new run) and returns confirmation-required with the stored
+		// run's identity, so the caller can bind the confirmed write to it.
+		expect(result).toEqual({
+			status: 'confirmation-required',
+			expectedRunId: stored.runId,
+			expectedRevision: 0
+		});
 		// The conflict surfaces the actually-persisted run so the UI can offer
 		// Resume instead of silently overwriting it.
 		expect(controller.state.activeScenarioRun).toBe(stored);
 	});
 
-	it('abandonScenarioRun clears in-memory state even when removeActiveRun reports a conflict', async () => {
+	it('abandonScenarioRun surfaces the preserved run when commitTerminalRun reports a conflict', async () => {
 		const definition = scenarioDefinition();
 		const run = runForDefinition(definition);
 		const stored = runForDefinition(definition);
@@ -1013,7 +1065,11 @@ describe('GameRouteController scenario integration', () => {
 		let summaryCall = 0;
 		const summaries: ScenarioPersistenceSummary[] = [];
 		const repository = createScenarioRepositoryHarness(run, {
-			removeActiveRun: vi.fn(async () => ({ status: 'conflict' as const, activeRun: stored })),
+			commitTerminalRun: vi.fn(async () => ({
+				status: 'conflict' as const,
+				activeRun: stored,
+				revision: 1
+			})),
 			getSummary: vi.fn(async () => {
 				summaryCall += 1;
 				return emptyScenarioSummary(summaryCall === 1 ? run : stored);
@@ -1031,10 +1087,16 @@ describe('GameRouteController scenario integration', () => {
 
 		const result = await controller.abandonScenarioRun();
 
-		expect(result).toEqual({ status: 'committed' });
-		expect(repository.removeActiveRun).toHaveBeenCalledWith(definition.id, run.runId);
-		expect(controller.state.activeScenarioRun).toBeNull();
-		expect(controller.state.playMode).toBe('sandbox');
+		expect(result).toEqual({ status: 'confirmation-required' });
+		expect(repository.commitTerminalRun).toHaveBeenCalledWith(
+			expect.objectContaining({
+				definition: run.definition,
+				status: 'abandoned'
+			}),
+			{ expectedRevision: 0 }
+		);
+		expect(controller.state.activeScenarioRun).toBe(stored);
+		expect(controller.state.playMode).toBe('scenario');
 		// The summary refresh surfaces the surviving replacement run so the
 		// catalog can offer Resume on it instead of hiding it.
 		expect(summaries.at(-1)?.activeRunsByScenarioId[definition.id]).toBe(stored);
@@ -1254,7 +1316,13 @@ describe('GameRouteController scenario integration', () => {
 			getSummary: vi
 				.fn()
 				.mockRejectedValueOnce(new Error('storage unavailable'))
-				.mockResolvedValueOnce(goodSummary)
+				.mockResolvedValueOnce(goodSummary),
+			// The retry re-reads the run via loadActiveRunWithRevision to get an
+			// atomic run/revision pair. The harness is built with no run, so
+			// override the re-read to return the same run the summary reports —
+			// otherwise the controller correctly refuses to stage a stale
+			// summary run whose re-read came back empty.
+			loadActiveRunWithRevision: vi.fn(async () => ({ run, revision: 0 }))
 		});
 		const controller = new GameRouteController(
 			controllerOptions({ scenarioRepository: repository, definition })

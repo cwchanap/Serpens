@@ -1831,7 +1831,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 		rails.push({ cityId: 'industry-city', x: 28, y: 7, level: 1 });
 		rails.push({ cityId: 'industry-city', x: 28, y: 6, level: 1 });
 		rails.push({ cityId: 'industry-city', x: 29, y: 6, level: 1 });
-		definition.start.rails = rails;
+		definition.start.rails = rails as ScenarioDefinition['start']['rails'];
 		definition.requiredObjectives = [
 			{
 				...definition.requiredObjectives[0]!,
@@ -2000,7 +2000,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 	});
 
 	it('rejects a start industrial building with an invalid city reference', () => {
-		const definition = validDefinition();
+		const definition = malformedDefinition();
 		definition.content.cityIds = ['harbor-city', 'industry-city'];
 		definition.content.buildingTypeIds = ['warehouse'];
 		definition.start.industrialBuildings = [
@@ -2018,7 +2018,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 	});
 
 	it('rejects a start industrial building with an invalid type reference', () => {
-		const definition = validDefinition();
+		const definition = malformedDefinition();
 		definition.content.cityIds = ['harbor-city', 'industry-city'];
 		definition.content.buildingTypeIds = ['warehouse'];
 		definition.start.industrialBuildings = [
@@ -2036,7 +2036,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 	});
 
 	it('rejects a start industrial building with a non-string tileId', () => {
-		const definition = validDefinition();
+		const definition = malformedDefinition();
 		definition.content.cityIds = ['harbor-city', 'industry-city'];
 		definition.content.buildingTypeIds = ['warehouse'];
 		definition.start.industrialBuildings = [
@@ -2266,7 +2266,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 	});
 
 	it('rejects a building inventory with a non-string buildingRef', () => {
-		const definition = validDefinition();
+		const definition = malformedDefinition();
 		definition.start.overrides.buildingInventories = [{ buildingRef: 123, materials: {} }];
 		expect(codes(definition)).toContainEqual({
 			path: 'start.overrides.buildingInventories[0].buildingRef',
@@ -2294,7 +2294,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 	});
 
 	it('rejects a building inventory materials value that is not an object', () => {
-		const definition = validDefinition();
+		const definition = malformedDefinition();
 		definition.start.overrides.buildingInventories = [
 			{ buildingRef: 'founder', materials: 'not-an-object' }
 		];
@@ -2314,7 +2314,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 	});
 
 	it('rejects a store overrides value that is not an array', () => {
-		const definition = validDefinition();
+		const definition = malformedDefinition();
 		definition.start.overrides.stores = 'not-an-array';
 		expect(codes(definition)).toContainEqual({
 			path: 'start.overrides.stores',
@@ -2323,7 +2323,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 	});
 
 	it('rejects a building inventories value that is not an array', () => {
-		const definition = validDefinition();
+		const definition = malformedDefinition();
 		definition.start.overrides.buildingInventories = 'not-an-array';
 		expect(codes(definition)).toContainEqual({
 			path: 'start.overrides.buildingInventories',
@@ -2626,7 +2626,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 	});
 
 	it('rejects a start industrial building that is not a closed object', () => {
-		const definition = validDefinition();
+		const definition = malformedDefinition();
 		definition.content.cityIds = ['harbor-city', 'industry-city'];
 		definition.content.buildingTypeIds = ['warehouse'];
 		definition.start.industrialBuildings = ['not-an-object'];
@@ -2647,7 +2647,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 	});
 
 	it('rejects a store override that is not a closed object', () => {
-		const definition = validDefinition();
+		const definition = malformedDefinition();
 		definition.start.overrides.stores = ['not-an-object'];
 		expect(codes(definition)).toContainEqual({
 			path: 'start.overrides.stores[0]',
@@ -2656,7 +2656,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 	});
 
 	it('rejects a product override that is not a closed object', () => {
-		const definition = validDefinition();
+		const definition = malformedDefinition();
 		definition.start.overrides.stores = [
 			{
 				storeRef: 'founder',
@@ -2671,7 +2671,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 	});
 
 	it('rejects a building inventory that is not a closed object', () => {
-		const definition = validDefinition();
+		const definition = malformedDefinition();
 		definition.start.overrides.buildingInventories = ['not-an-object'];
 		expect(codes(definition)).toContainEqual({
 			path: 'start.overrides.buildingInventories[0]',
@@ -2680,7 +2680,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 	});
 
 	it('rejects a start industrial buildings value that is not an array', () => {
-		const definition = validDefinition();
+		const definition = malformedDefinition();
 		definition.start.industrialBuildings = 'not-an-array';
 		expect(codes(definition)).toContainEqual({
 			path: 'start.industrialBuildings',
@@ -2689,7 +2689,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 	});
 
 	it('rejects a rails value that is not an array', () => {
-		const definition = validDefinition();
+		const definition = malformedDefinition();
 		definition.start.rails = 'not-an-array';
 		expect(codes(definition)).toContainEqual({
 			path: 'start.rails',
@@ -2698,7 +2698,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 	});
 
 	it('rejects a product overrides value that is not an array', () => {
-		const definition = validDefinition();
+		const definition = malformedDefinition();
 		definition.start.overrides.stores = [
 			{
 				storeRef: 'founder',
@@ -3095,7 +3095,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 	});
 
 	it('rejects a start industrial building with a non-string ref', () => {
-		const definition = validDefinition();
+		const definition = malformedDefinition();
 		definition.content.cityIds = ['harbor-city', 'industry-city'];
 		definition.content.buildingTypeIds = ['warehouse'];
 		definition.start.industrialBuildings = [
@@ -3113,7 +3113,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 	});
 
 	it('rejects a store override with a non-string storeRef', () => {
-		const definition = validDefinition();
+		const definition = malformedDefinition();
 		definition.start.overrides.stores = [
 			{
 				storeRef: 123,
@@ -3128,7 +3128,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 	});
 
 	it('rejects a product override with a non-string categoryId', () => {
-		const definition = validDefinition();
+		const definition = malformedDefinition();
 		definition.start.overrides.stores = [
 			{
 				storeRef: 'founder',

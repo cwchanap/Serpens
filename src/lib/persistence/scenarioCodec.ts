@@ -1023,13 +1023,15 @@ export function validateScenarioRun(
 
 export function encodeScenarioRunRecord(
 	run: ScenarioRun,
-	resolveDefinition: ScenarioDefinitionResolver = resolveScenarioDefinition
+	resolveDefinition: ScenarioDefinitionResolver = resolveScenarioDefinition,
+	revision = 0
 ): ScenarioRunRecord {
 	const validated = validateScenarioRun(run, resolveDefinition);
 	const { game, ...runEnvelope } = validated;
 	return {
 		scenarioSchemaVersion: SCENARIO_RUN_SCHEMA_VERSION,
 		gameSchemaVersion: SAVE_SCHEMA_VERSION,
+		revision,
 		run: runEnvelope,
 		game
 	};
@@ -1076,6 +1078,13 @@ function decodeActiveRunRecord(
 		);
 	}
 	const gameSchemaVersion = requireInteger(record.gameSchemaVersion, `${path}.gameSchemaVersion`);
+	// `revision` is optional on the stored payload so in-development saves
+	// written before the revision CAS shipped decode without a diagnostic.
+	// A missing revision defaults to 0; the next successful write sets it to
+	// 1, so the CAS protects writes from this point forward. When present it
+	// must be a non-negative integer.
+	const revision =
+		record.revision === undefined ? 0 : requireInteger(record.revision, `${path}.revision`, 0);
 	let migrated: unknown;
 	try {
 		migrated = migrateSavedGame(record.game, gameSchemaVersion);
@@ -1130,6 +1139,7 @@ function decodeActiveRunRecord(
 	return {
 		scenarioSchemaVersion: SCENARIO_RUN_SCHEMA_VERSION,
 		gameSchemaVersion: SAVE_SCHEMA_VERSION,
+		revision,
 		run: scenarioRunEnvelope(run),
 		game
 	};

@@ -1181,6 +1181,46 @@
 		handleScenarioCardResult(result);
 	}
 
+	async function startCurrentVersionCard(
+		card: ScenarioCatalogCardViewModel,
+		confirmed: boolean,
+		expectedRunId?: string | null,
+		expectedRevision?: number | null
+	): Promise<ScenarioCatalogActionResult> {
+		const definition = currentScenarioDefinition(card.id);
+		if (!definition) {
+			return {
+				status: 'error',
+				message: i18n.t('scenarioDiagnostics.staleDefinition')
+			};
+		}
+		const result = await gameRouteController.startScenarioRun(
+			definition,
+			definition.officialSeed,
+			confirmed,
+			expectedRunId,
+			expectedRevision
+		);
+		if (result.status === 'confirmation-required') {
+			return {
+				status: 'confirmation-required',
+				message: i18n.t('scenarioCatalog.olderVersionConfirmation'),
+				expectedRunId: result.expectedRunId,
+				expectedRevision: result.expectedRevision
+			};
+		}
+		if (result.status !== 'committed') {
+			return {
+				status: 'error',
+				message: scenarioOperationError
+					? scenarioDiagnosticText(scenarioOperationError, i18n)
+					: i18n.t('scenarioDiagnostics.persistenceWriteFailed')
+			};
+		}
+		isScenarioCatalogOpen = false;
+		return { status: 'started' };
+	}
+
 	async function resumeScenarioCard(card: ScenarioCatalogCardViewModel): Promise<void> {
 		const result = await gameRouteController.resumeScenarioRun(card.id);
 		handleScenarioCardResult(result);
@@ -1231,7 +1271,9 @@
 
 	async function importScenarioCode(
 		code: string,
-		confirmed: boolean
+		confirmed: boolean,
+		expectedRunId?: string | null,
+		expectedRevision?: number | null
 	): Promise<ScenarioCatalogActionResult> {
 		const decoded = decodeScenarioShareCode(code, resolveScenarioDefinition);
 		if (!decoded.ok)
@@ -1250,12 +1292,16 @@
 		const result = await gameRouteController.importScenarioRun(
 			definition,
 			decoded.value.seed,
-			confirmed
+			confirmed,
+			expectedRunId,
+			expectedRevision
 		);
 		if (result.status === 'confirmation-required') {
 			return {
 				status: 'confirmation-required',
-				message: i18n.t('scenarioCatalog.importReplacementConfirmation')
+				message: i18n.t('scenarioCatalog.importReplacementConfirmation'),
+				expectedRunId: result.expectedRunId,
+				expectedRevision: result.expectedRevision
 			};
 		}
 		if (result.status !== 'committed') {
@@ -2446,7 +2492,7 @@
 			onStart={startScenarioCard}
 			onResume={resumeScenarioCard}
 			onRestart={restartScenarioCard}
-			onStartCurrent={startScenarioCard}
+			onStartCurrent={startCurrentVersionCard}
 			onImport={importScenarioCode}
 			onCopy={copyScenarioCode}
 			onRetry={() => retryScenarioOperation?.()}

@@ -15,10 +15,17 @@
 		onStart: (card: ScenarioCatalogCardViewModel) => void | Promise<void>;
 		onResume: (card: ScenarioCatalogCardViewModel) => void | Promise<void>;
 		onRestart: (card: ScenarioCatalogCardViewModel) => void | Promise<void>;
-		onStartCurrent: (card: ScenarioCatalogCardViewModel) => void | Promise<void>;
+		onStartCurrent: (
+			card: ScenarioCatalogCardViewModel,
+			confirmed: boolean,
+			expectedRunId?: string | null,
+			expectedRevision?: number | null
+		) => ScenarioCatalogActionResult | Promise<ScenarioCatalogActionResult>;
 		onImport: (
 			code: string,
-			confirmed: boolean
+			confirmed: boolean,
+			expectedRunId?: string | null,
+			expectedRevision?: number | null
 		) => ScenarioCatalogActionResult | Promise<ScenarioCatalogActionResult>;
 		onCopy: (code: string) => boolean | Promise<boolean>;
 		onRetry: () => void | Promise<void>;
@@ -50,8 +57,20 @@
 		if (confirmation) confirmButton?.focus({ preventScroll: true });
 	});
 	let confirmation = $state<
-		| { kind: 'current'; card: ScenarioCatalogCardViewModel; message: string }
-		| { kind: 'import'; code: string; message: string }
+		| {
+				kind: 'current';
+				card: ScenarioCatalogCardViewModel;
+				message: string;
+				expectedRunId?: string | null;
+				expectedRevision?: number | null;
+		  }
+		| {
+				kind: 'import';
+				code: string;
+				message: string;
+				expectedRunId?: string | null;
+				expectedRevision?: number | null;
+		  }
 		| null
 	>(null);
 
@@ -71,7 +90,38 @@
 		if (!code) return;
 		const result = await onImport(code, false);
 		if (result.status === 'confirmation-required') {
-			confirmation = { kind: 'import', code, message: result.message };
+			confirmation = {
+				kind: 'import',
+				code,
+				message: result.message,
+				expectedRunId: result.expectedRunId,
+				expectedRevision: result.expectedRevision
+			};
+			announcement = '';
+		} else if (result.status === 'error') {
+			announcement = result.message;
+		} else {
+			announcement = '';
+		}
+	}
+
+	// Route the current-version replacement through the controller's initial
+	// (confirmed=false) call so the confirmation token carries the revision
+	// observed at dialog-open time, not just the runId from the (revision-less)
+	// catalog summary. Binding the confirmed write to that revision makes a
+	// concurrent tab that advances the same run (runId unchanged, revision
+	// bumped) between dialog-open and confirm-click lose the CAS and re-surface
+	// confirmation instead of silently clobbering the other tab's progress.
+	async function requestStartCurrent(card: ScenarioCatalogCardViewModel): Promise<void> {
+		const result = await onStartCurrent(card, false);
+		if (result.status === 'confirmation-required') {
+			confirmation = {
+				kind: 'current',
+				card,
+				message: result.message,
+				expectedRunId: result.expectedRunId,
+				expectedRevision: result.expectedRevision
+			};
 			announcement = '';
 		} else if (result.status === 'error') {
 			announcement = result.message;
@@ -84,12 +134,50 @@
 		const pendingConfirmation = confirmation;
 		confirmation = null;
 		if (!pendingConfirmation) return;
-		if (pendingConfirmation.kind === 'current') {
-			await onStartCurrent(pendingConfirmation.card);
-			return;
+		const result =
+			pendingConfirmation.kind === 'current'
+				? await onStartCurrent(
+						pendingConfirmation.card,
+						true,
+						pendingConfirmation.expectedRunId,
+						pendingConfirmation.expectedRevision
+					)
+				: await onImport(
+						pendingConfirmation.code,
+						true,
+						pendingConfirmation.expectedRunId,
+						pendingConfirmation.expectedRevision
+					);
+		if (result.status === 'confirmation-required') {
+			// The confirmed write lost the compare-and-swap to a newer run
+			// that appeared between the initial conflict and this confirmed
+			// write. Reopen the confirmation with the new message and token
+			// so the user can reconcile instead of silently discarding the
+			// conflict (which would leave an empty announcement and no way
+			// to surface the newer run). Both the current-version and import
+			// replacement flows share this reopen path.
+			confirmation =
+				pendingConfirmation.kind === 'current'
+					? {
+							kind: 'current',
+							card: pendingConfirmation.card,
+							message: result.message,
+							expectedRunId: result.expectedRunId,
+							expectedRevision: result.expectedRevision
+						}
+					: {
+							kind: 'import',
+							code: pendingConfirmation.code,
+							message: result.message,
+							expectedRunId: result.expectedRunId,
+							expectedRevision: result.expectedRevision
+						};
+			announcement = '';
+		} else if (result.status === 'error') {
+			announcement = result.message;
+		} else {
+			announcement = '';
 		}
-		const result = await onImport(pendingConfirmation.code, true);
-		announcement = result.status === 'error' ? result.message : '';
 	}
 
 	async function copyCode(card: ScenarioCatalogCardViewModel): Promise<void> {
@@ -174,12 +262,7 @@
 								type="button"
 								disabled={pending || !persistenceReady || !card.available}
 								aria-label={`${i18n.t('scenarioCatalog.startCurrent')} ${card.title}`}
-								onclick={() =>
-									(confirmation = {
-										kind: 'current',
-										card,
-										message: i18n.t('scenarioCatalog.olderVersionConfirmation')
-									})}
+								onclick={() => void requestStartCurrent(card)}
 							>
 								{i18n.t('scenarioCatalog.startCurrent')}
 							</button>
