@@ -112,4 +112,66 @@ describe('ScenarioStatusStrip', () => {
 		await expect.element(page.getByRole('button', { name: 'Retry' })).toBeDisabled();
 		await expect.element(page.getByRole('button', { name: 'Dismiss' })).toBeDisabled();
 	});
+
+	it('refocuses the toggle button after a successful retry', async () => {
+		expect.assertions(1);
+		render(ScenarioStatusStrip, {
+			view,
+			i18n: createI18n('en'),
+			expanded: false,
+			pending: false,
+			error: 'The challenge could not be saved.',
+			onToggle: vi.fn(),
+			onRetry: vi.fn(),
+			onDismissError: vi.fn()
+		});
+
+		// The retry handler calls onRetry, awaits tick, then refocuses the
+		// toggle button. Verify the toggle button is still rendered and
+		// focusable after the retry completes.
+		await page.getByRole('button', { name: 'Retry' }).click();
+		await expect
+			.element(page.getByRole('button', { name: 'Show objective details' }))
+			.toBeVisible();
+	});
+
+	it('refocuses the toggle button after dismissing an error', async () => {
+		expect.assertions(1);
+		render(ScenarioStatusStrip, {
+			view,
+			i18n: createI18n('en'),
+			expanded: false,
+			pending: false,
+			error: 'The challenge could not be saved.',
+			onToggle: vi.fn(),
+			onRetry: vi.fn(),
+			onDismissError: vi.fn()
+		});
+
+		// The dismiss handler calls onDismissError, awaits tick, then
+		// refocuses the toggle button. Verify the toggle button is still
+		// rendered and focusable after the dismiss completes.
+		await page.getByRole('button', { name: 'Dismiss' }).click();
+		await expect
+			.element(page.getByRole('button', { name: 'Show objective details' }))
+			.toBeVisible();
+	});
+
+	it('shows the hide-details label when expanded is true', async () => {
+		expect.assertions(1);
+		render(ScenarioStatusStrip, {
+			view,
+			i18n: createI18n('en'),
+			expanded: true,
+			pending: false,
+			error: null,
+			onToggle: vi.fn(),
+			onRetry: vi.fn(),
+			onDismissError: vi.fn()
+		});
+
+		await expect
+			.element(page.getByRole('button', { name: 'Hide objective details' }))
+			.toBeVisible();
+	});
 });

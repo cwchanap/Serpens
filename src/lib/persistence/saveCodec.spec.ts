@@ -43,6 +43,7 @@ import {
 	SaveDataError,
 	cloneSaveStoreSnapshot,
 	createManualSlotId,
+	createPlainSnapshot,
 	createSaveRecord,
 	createSaveSummary,
 	migrateSavedGame,
@@ -107,6 +108,14 @@ function createDeepEnumerableExtra(depth: number): Record<string, unknown> {
 	let value: Record<string, unknown> = { leaf: true };
 	for (let index = 0; index < depth; index += 1) value = { next: value };
 	return value;
+}
+
+function createWideEnumerableExtra(nodeCount: number): Record<string, unknown> {
+	const extra: Record<string, unknown> = {};
+	for (let index = 0; index < nodeCount; index += 1) {
+		extra[`n${index}`] = { leaf: true };
+	}
+	return extra;
 }
 
 function createGame(overrides: Partial<GameState> = {}): GameState {
@@ -3838,5 +3847,688 @@ describe('saveCodec', () => {
 		const snapshot = createSnapshotWithGame({ ...createGame(), reports: [report] });
 		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
 		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow('value must be non-negative');
+	});
+
+	test('normalizeSandboxWarehouseState returns early when warehouse capacity is non-numeric', () => {
+		expect.assertions(2);
+		const record = createManualSaveRecord({
+			game: {
+				warehouse: {
+					...createGame().warehouse,
+					capacity: 'not-a-number' as unknown as number
+				}
+			}
+		});
+
+		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+		expect(() => validateSaveRecord(record)).toThrow('warehouse capacity must be a finite number');
+	});
+
+	describe('industrial building placement validation', () => {
+		function baseWarehouseGame(): GameState {
+			return createValidWarehouseBuildingGame();
+		}
+
+		function anchorTile(game: GameState) {
+			const building = game.industrialBuildings[0]!;
+			const city = game.industryCities[0]!;
+			return city.tiles.find((t) => t.id === building.tileId)!;
+		}
+
+		function footprintNeighbor(game: GameState) {
+			const anchor = anchorTile(game);
+			const city = game.industryCities[0]!;
+			return city.tiles.find((t) => t.x === anchor.x + 1 && t.y === anchor.y)!;
+		}
+
+		test('rejects a building whose coordinates do not match its anchor tile', () => {
+			expect.assertions(1);
+			const base = baseWarehouseGame();
+			const anchor = anchorTile(base);
+			const building = base.industrialBuildings[0]!;
+			const game: GameState = {
+				...base,
+				industrialBuildings: [{ ...building, mapX: anchor.x + 1 }]
+			};
+
+			expect(() => validateCurrentGameState(game)).toThrow(
+				'coordinates must match its anchor tile'
+			);
+		});
+
+		test('rejects a building whose footprint contains a locked tile', () => {
+			expect.assertions(1);
+			const base = baseWarehouseGame();
+			const neighbor = footprintNeighbor(base);
+			const city = base.industryCities[0]!;
+			const game: GameState = {
+				...base,
+				industryCities: [
+					{
+						...city,
+						tiles: city.tiles.map((t) => (t.id === neighbor.id ? { ...t, locked: true } : t))
+					}
+				]
+			};
+
+			expect(() => validateCurrentGameState(game)).toThrow(
+				'footprint must contain only unlocked tiles'
+			);
+		});
+
+		test('rejects a building whose footprint overlaps a rail', () => {
+			expect.assertions(1);
+			const base = baseWarehouseGame();
+			const neighbor = footprintNeighbor(base);
+			const city = base.industryCities[0]!;
+			const game: GameState = {
+				...base,
+				industryCities: [
+					{
+						...city,
+						rails: [{ x: neighbor.x, y: neighbor.y, level: 1 }]
+					}
+				]
+			};
+
+			expect(() => validateCurrentGameState(game)).toThrow('footprint must not overlap rail');
+		});
+
+		test('rejects a building whose anchor does not provide its required resource', () => {
+			expect.assertions(1);
+			const base = baseWarehouseGame();
+			const building = base.industrialBuildings[0]!;
+			const game: GameState = {
+				...base,
+				industrialBuildings: [
+					{ ...building, typeId: 'grain-farm' as unknown as typeof building.typeId }
+				]
+			};
+
+			expect(() => validateCurrentGameState(game)).toThrow(
+				'anchor must provide its required resource'
+			);
+		});
+
+		test('rejects a building that requires industrial tiles but whose footprint has non-industrial terrain', () => {
+			expect.assertions(1);
+			const base = baseWarehouseGame();
+			const neighbor = footprintNeighbor(base);
+			const city = base.industryCities[0]!;
+			const game: GameState = {
+				...base,
+				industryCities: [
+					{
+						...city,
+						tiles: city.tiles.map((t) => (t.id === neighbor.id ? { ...t, terrain: 'farmland' } : t))
+					}
+				]
+			};
+
+			expect(() => validateCurrentGameState(game)).toThrow(
+				'footprint must contain only industrial terrain'
+			);
+		});
+
+		test('rejects an industrial building with an unknown typeId via requireKnownId', () => {
+			expect.assertions(2);
+			const base = baseWarehouseGame();
+			const building = base.industrialBuildings[0]!;
+			const game: GameState = {
+				...base,
+				industrialBuildings: [
+					{ ...building, typeId: 'not-a-building' as unknown as typeof building.typeId }
+				]
+			};
+
+			expect(() => validateCurrentGameState(game)).toThrow(SaveDataError);
+			expect(() => validateCurrentGameState(game)).toThrow(
+				'must be a known industrial building type'
+			);
+		});
+	});
+
+	test('strict validation rejects a city ID shared between retail and industry collections', () => {
+		expect.assertions(1);
+		const game = createGame();
+		const sharedRetailCity = {
+			...createFixtureRetailCity(),
+			id: 'shared-city',
+			name: 'Shared',
+			tiles: createFixtureRetailCity().tiles.map((t) => ({
+				...t,
+				id: `shared-city-${t.x}-${t.y}`,
+				cityId: 'shared-city'
+			}))
+		};
+		const sharedIndustryCity = {
+			...createFixtureIndustryCity(),
+			id: 'shared-city',
+			name: 'Shared',
+			tiles: createFixtureIndustryCity().tiles.map((t) => ({
+				...t,
+				id: `shared-city-${t.x}-${t.y}`,
+				cityId: 'shared-city'
+			}))
+		};
+		const mutated: GameState = {
+			...game,
+			cities: [...game.cities, sharedRetailCity],
+			industryCities: [...game.industryCities, sharedIndustryCity]
+		};
+
+		expect(() => validateCurrentGameState(mutated)).toThrow(
+			'retail and industry city IDs must be disjoint: shared-city'
+		);
+	});
+
+	describe('createPlainSnapshot own-data graph edge cases', () => {
+		test('rejects a revoked proxy as own-data', () => {
+			expect.assertions(2);
+			const { proxy, revoke } = Proxy.revocable({}, {});
+			revoke();
+
+			expect(() => createPlainSnapshot(proxy, 'test')).toThrow(SaveDataError);
+			expect(() => createPlainSnapshot(proxy, 'test')).toThrow(
+				'test must contain only own enumerable string-keyed data properties'
+			);
+		});
+
+		test('rejects an array with a non-Array prototype', () => {
+			expect.assertions(2);
+			const arr = Object.setPrototypeOf([1, 2, 3], null);
+
+			expect(() => createPlainSnapshot(arr, 'test')).toThrow(SaveDataError);
+			expect(() => createPlainSnapshot(arr, 'test')).toThrow(
+				'test must be an array with own data properties'
+			);
+		});
+
+		test('rejects an array with a non-index enumerable own key', () => {
+			expect.assertions(2);
+			const arr = [1, 2, 3];
+			Object.defineProperty(arr, 'foo', {
+				value: 42,
+				enumerable: true,
+				configurable: true,
+				writable: true
+			});
+
+			expect(() => createPlainSnapshot(arr, 'test')).toThrow(SaveDataError);
+			expect(() => createPlainSnapshot(arr, 'test')).toThrow(
+				'test must contain only own enumerable string-keyed data properties'
+			);
+		});
+
+		test('clones a cyclic object when rejectCycles is not set', () => {
+			expect.assertions(2);
+			const obj: Record<string, unknown> = { a: 1 };
+			obj.self = obj;
+
+			const cloned = createPlainSnapshot(obj, 'test') as Record<string, unknown>;
+
+			expect(cloned.a).toBe(1);
+			expect(cloned.self).toBe(cloned);
+		});
+
+		test('rejects a cyclic reference when rejectCycles is true', () => {
+			expect.assertions(2);
+			const obj: Record<string, unknown> = { a: 1 };
+			obj.self = obj;
+
+			expect(() => createPlainSnapshot(obj, 'test', { rejectCycles: true })).toThrow(SaveDataError);
+			expect(() => createPlainSnapshot(obj, 'test', { rejectCycles: true })).toThrow(
+				'contains a cyclic reference'
+			);
+		});
+	});
+
+	describe('saveCodec coverage gap fills', () => {
+		test('v4 migration throws SaveDataError when a boutique product categoryId is a number', () => {
+			expect.assertions(2);
+			const baseStore = createGame().stores[0]!;
+			const game = {
+				...createGame(),
+				stores: [
+					{
+						...baseStore,
+						archetypeId: 'boutique',
+						products: [
+							{
+								...baseStore.products[0]!,
+								categoryId: 123 as unknown as string
+							}
+						]
+					}
+				]
+			};
+
+			expect(() => migrateSavedGame(game, 4)).toThrow(SaveDataError);
+			expect(() => migrateSavedGame(game, 4)).toThrow(
+				'Saved v4 product categoryId must be a string'
+			);
+		});
+
+		test('strict validation rejects save data exceeding MAX_OWN_DATA_DEPTH with a 513-deep extra', () => {
+			expect.assertions(2);
+			const deepExtra = createDeepEnumerableExtra(513);
+			const game = Object.assign(createGame(), { deepExtra });
+
+			expect(() => validateCurrentGameState(game)).toThrow(SaveDataError);
+			expect(() => validateCurrentGameState(game)).toThrow(/depth/);
+		});
+
+		test(
+			'strict validation rejects save data exceeding MAX_OWN_DATA_NODES with a wide extra',
+			{ timeout: 30_000 },
+			() => {
+				expect.assertions(2);
+				const wideExtra = createWideEnumerableExtra(250_001);
+				const game = Object.assign(createGame(), { wideExtra });
+
+				expect(() => validateCurrentGameState(game)).toThrow(SaveDataError);
+				expect(() => validateCurrentGameState(game)).toThrow(/budget/);
+			}
+		);
+
+		test('strict validation rejects a non-integer storeCap with invariant-store-cap error code', () => {
+			expect.assertions(2);
+			const game = createGame({ storeCap: 3.5 });
+
+			let caught: unknown;
+			try {
+				validateCurrentGameState(game);
+			} catch (error) {
+				caught = error;
+			}
+			expect(caught).toBeInstanceOf(SaveDataError);
+			expect((caught as SaveDataError).code).toBe('invariant-store-cap');
+		});
+
+		test('strict validation rejects storeCap below store count with invariant-store-cap error code', () => {
+			expect.assertions(2);
+			const game = createGame({ storeCap: 0 });
+
+			let caught: unknown;
+			try {
+				validateCurrentGameState(game);
+			} catch (error) {
+				caught = error;
+			}
+			expect(caught).toBeInstanceOf(SaveDataError);
+			expect((caught as SaveDataError).code).toBe('invariant-store-cap');
+		});
+
+		test('strict validation rejects warehouse mismatch with invariant-warehouse error code', () => {
+			expect.assertions(2);
+			const game = createGame({
+				warehouse: { capacity: 1, materials: {}, overflowUnits: 0, overflowCost: 0 }
+			});
+
+			let caught: unknown;
+			try {
+				validateCurrentGameState(game);
+			} catch (error) {
+				caught = error;
+			}
+			expect(caught).toBeInstanceOf(SaveDataError);
+			expect((caught as SaveDataError).code).toBe('invariant-warehouse');
+		});
+
+		test('strict validation rejects inventory exceeding buffer capacity with invariant-inventory error code', () => {
+			expect.assertions(2);
+			const mill = createIndustrialBuilding({
+				typeId: 'flour-mill',
+				inventory: { grain: 80, flour: 80 }
+			});
+			const game = createGame({ industrialBuildings: [mill] });
+
+			let caught: unknown;
+			try {
+				validateCurrentGameState(game);
+			} catch (error) {
+				caught = error;
+			}
+			expect(caught).toBeInstanceOf(SaveDataError);
+			expect((caught as SaveDataError).code).toBe('invariant-inventory');
+		});
+
+		test('strict validation rejects a legacy 28x24 retail city size', () => {
+			expect.assertions(2);
+			const game = createGame({
+				cities: [
+					{
+						id: 'harbor-city',
+						name: 'Harbor City',
+						width: 28,
+						height: 24,
+						tiles: Array.from({ length: 28 * 24 }, (_, index) => {
+							const x = index % 28;
+							const y = Math.floor(index / 28);
+							return {
+								id: `harbor-city-${x}-${y}`,
+								cityId: 'harbor-city',
+								x,
+								y,
+								neighborhood: 'downtown',
+								terrain: 'commercial',
+								feature: null,
+								demand: 72,
+								rent: 180,
+								footTraffic: 66,
+								customerFit: 70,
+								locked: false
+							};
+						})
+					}
+				],
+				stores: []
+			});
+
+			expect(() => validateCurrentGameState(game)).toThrow(SaveDataError);
+			expect(() => validateCurrentGameState(game)).toThrow(
+				'uses the legacy 28x24 sandbox city size'
+			);
+		});
+
+		test('v4 migration is a no-op for a non-boutique store archetype', () => {
+			expect.assertions(1);
+			const game = createGame();
+			game.stores = [{ ...game.stores[0]!, archetypeId: 'convenience' }];
+
+			expect(() => migrateSavedGame(game, 4)).not.toThrow();
+		});
+
+		test('v4 migration is a no-op for a boutique store with non-array products', () => {
+			expect.assertions(1);
+			const game = createGame();
+			game.stores = [
+				{
+					...game.stores[0]!,
+					archetypeId: 'boutique',
+					products: 'not-an-array' as unknown as GameState['stores'][number]['products']
+				}
+			];
+
+			expect(() => migrateSavedGame(game, 4)).not.toThrow();
+		});
+
+		test('v5 migration leaves a non-object game untouched then fails validation', () => {
+			expect.assertions(2);
+			const record: SaveRecord = {
+				...createManualSaveRecord(),
+				schemaVersion: 5 as unknown as typeof SAVE_SCHEMA_VERSION,
+				game: null as unknown as GameState
+			};
+
+			expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+			expect(() => validateSaveRecord(record)).toThrow('Saved game must be an object');
+		});
+
+		test('v6 migration leaves a non-object game untouched then fails validation', () => {
+			expect.assertions(2);
+			const record: SaveRecord = {
+				...createManualSaveRecord(),
+				schemaVersion: 6 as unknown as typeof SAVE_SCHEMA_VERSION,
+				game: null as unknown as GameState
+			};
+
+			expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+			expect(() => validateSaveRecord(record)).toThrow('Saved game must be an object');
+		});
+
+		test('normalizeSandboxStoreStockHealth leaves a store with non-array products for strict validation', () => {
+			expect.assertions(2);
+			const record = createManualSaveRecord({
+				game: {
+					stores: [
+						{
+							...createGame().stores[0]!,
+							products: 'not-an-array' as unknown as GameState['stores'][number]['products']
+						}
+					]
+				}
+			});
+
+			expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+			expect(() => validateSaveRecord(record)).toThrow(
+				'Saved game stores[0] products must be an array'
+			);
+		});
+
+		test('normalizeSandboxWarehouseState leaves a non-object warehouse for strict validation', () => {
+			expect.assertions(2);
+			const record = createManualSaveRecord({
+				game: {
+					warehouse: 'not-an-object' as unknown as GameState['warehouse']
+				}
+			});
+
+			expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+			expect(() => validateSaveRecord(record)).toThrow('Saved game warehouse must be an object');
+		});
+
+		test('normalizeSandboxWarehouseState leaves non-finite overflowUnits for strict validation', () => {
+			expect.assertions(2);
+			const record = createManualSaveRecord({
+				game: {
+					warehouse: {
+						...createGame().warehouse,
+						overflowUnits: Number.NaN
+					}
+				}
+			});
+
+			expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+			expect(() => validateSaveRecord(record)).toThrow(
+				'warehouse overflowUnits must be a finite number'
+			);
+		});
+
+		test('normalizeSandboxWarehouseState leaves non-finite overflowCost for strict validation', () => {
+			expect.assertions(2);
+			const record = createManualSaveRecord({
+				game: {
+					warehouse: {
+						...createGame().warehouse,
+						overflowCost: Number.NaN
+					}
+				}
+			});
+
+			expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+			expect(() => validateSaveRecord(record)).toThrow(
+				'warehouse overflowCost must be a finite number'
+			);
+		});
+
+		test('normalizeSandboxWarehouseState leaves non-object materials for strict validation', () => {
+			expect.assertions(2);
+			const record = createManualSaveRecord({
+				game: {
+					warehouse: {
+						...createGame().warehouse,
+						materials: 'not-an-object' as unknown as Record<MaterialId, number>
+					}
+				}
+			});
+
+			expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+			expect(() => validateSaveRecord(record)).toThrow('warehouse materials must be an object');
+		});
+
+		test('normalizeSandboxWarehouseState leaves array materials for strict validation', () => {
+			expect.assertions(2);
+			const record = createManualSaveRecord({
+				game: {
+					warehouse: {
+						...createGame().warehouse,
+						materials: [] as unknown as Record<MaterialId, number>
+					}
+				}
+			});
+
+			expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+			expect(() => validateSaveRecord(record)).toThrow('warehouse materials must be an object');
+		});
+
+		test('normalizeSandboxWarehouseState leaves non-finite material quantities for strict validation', () => {
+			expect.assertions(2);
+			const record = createManualSaveRecord({
+				game: {
+					warehouse: {
+						...createGame().warehouse,
+						materials: { water: Number.NaN } as Partial<Record<MaterialId, number>>
+					}
+				}
+			});
+
+			expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+			expect(() => validateSaveRecord(record)).toThrow(
+				'warehouse materials water must be a finite number'
+			);
+		});
+
+		test('normalizeSandboxWarehouseState leaves negative material quantities for strict validation', () => {
+			expect.assertions(2);
+			const record = createManualSaveRecord({
+				game: {
+					warehouse: {
+						...createGame().warehouse,
+						materials: { water: -1 } as Partial<Record<MaterialId, number>>
+					}
+				}
+			});
+
+			expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+			expect(() => validateSaveRecord(record)).toThrow(
+				'warehouse materials water must be at least 0'
+			);
+		});
+
+		test('normalizeSavedRetailStorePlacements leaves a store with an empty cityId for strict validation', () => {
+			expect.assertions(2);
+			const record = createManualSaveRecord({
+				game: {
+					stores: [
+						{
+							...createGame().stores[0]!,
+							cityId: '',
+							tileId: 'harbor-city-1-1'
+						}
+					]
+				} as unknown as Partial<GameState>
+			});
+
+			expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+			expect(() => validateSaveRecord(record)).toThrow(
+				'Saved game stores[0] cityId must be a non-empty string'
+			);
+		});
+
+		test('normalizeSavedRetailStorePlacements leaves a store with non-finite mapX for strict validation', () => {
+			expect.assertions(2);
+			const record = createManualSaveRecord({
+				game: {
+					stores: [
+						{
+							...createGame().stores[0]!,
+							mapX: Number.NaN
+						}
+					]
+				} as unknown as Partial<GameState>
+			});
+
+			expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+			expect(() => validateSaveRecord(record)).toThrow('mapX must be a finite number');
+		});
+
+		test('normalizeSavedRetailStorePlacements leaves a store with non-string mapY for strict validation', () => {
+			expect.assertions(2);
+			const record = createManualSaveRecord({
+				game: {
+					stores: [
+						{
+							...createGame().stores[0]!,
+							mapY: 'bad' as unknown as number
+						}
+					]
+				} as unknown as Partial<GameState>
+			});
+
+			expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+			expect(() => validateSaveRecord(record)).toThrow('mapY must be a finite number');
+		});
+
+		test('normalizeSavedRetailCity leaves a non-retail city id in the cities array for validation', () => {
+			expect.assertions(2);
+			const record = createManualSaveRecord({
+				game: {
+					cities: [
+						createFixtureRetailCity(),
+						{
+							id: 'industry-city',
+							name: 'Industry City',
+							width: 3,
+							height: 3,
+							tiles: Array.from({ length: 9 }, (_, index) => {
+								const x = index % 3;
+								const y = Math.floor(index / 3);
+								return {
+									id: `industry-city-${x}-${y}`,
+									cityId: 'industry-city',
+									x,
+									y,
+									neighborhood: 'downtown',
+									terrain: 'commercial',
+									feature: null,
+									demand: 72,
+									rent: 180,
+									footTraffic: 66,
+									customerFit: 70,
+									locked: false
+								};
+							})
+						}
+					],
+					stores: []
+				} as unknown as Partial<GameState>
+			});
+
+			expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+			expect(() => validateSaveRecord(record)).toThrow(
+				'retail city industry-city must use a retail catalog ID'
+			);
+		});
+
+		test('normalizeSavedRetailCity leaves a current-size retail city untouched', () => {
+			expect.assertions(1);
+			const city = generateCity({
+				id: 'harbor-city',
+				name: 'Harbor City',
+				width: DEFAULT_RETAIL_CITY_WIDTH,
+				height: DEFAULT_RETAIL_CITY_HEIGHT,
+				seed: 20260505
+			});
+			const tile = city.tiles.find((t) => isTileBuildable(t))!;
+			const record = createManualSaveRecord({
+				game: {
+					cities: [city],
+					stores: [
+						{
+							...createGame().stores[0]!,
+							cityId: 'harbor-city',
+							tileId: tile.id,
+							mapX: tile.x,
+							mapY: tile.y,
+							location: formatLocation(tile),
+							localDemand: computeStoreLocalDemand(tile)
+						}
+					]
+				} as unknown as Partial<GameState>
+			});
+
+			expect(() => validateSaveRecord(record)).not.toThrow();
+		});
 	});
 });

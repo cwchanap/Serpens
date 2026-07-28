@@ -124,4 +124,56 @@ describe('deeplyEqual', () => {
 		const right = Array.from({ length }, (_, i) => i);
 		expect(deeplyEqual(left, right)).toBe(true);
 	});
+
+	it(
+		'returns false when a single record would queue more key pairs than the budget allows',
+		{ timeout: 30_000 },
+		() => {
+			// The record-key budget guard mirrors the array-element guard: a
+			// record with more keys than the remaining budget can absorb must
+			// be rejected before eagerly pushing every key pair onto the
+			// worklist, otherwise the per-pop budget check fires too late to
+			// prevent the allocation.
+			const length = 300_000;
+			const left: Record<string, number> = {};
+			const right: Record<string, number> = {};
+			for (let i = 0; i < length; i += 1) {
+				left[`k${i}`] = 0;
+				right[`k${i}`] = 0;
+			}
+			expect(deeplyEqual(left, right)).toBe(false);
+		}
+	);
+
+	it('reuses the per-first WeakSet when the same object is paired with different seconds', () => {
+		// The cycle-detection map keys by `first` and stores a WeakSet of
+		// already-compared `second` values. When the same `first` appears
+		// against a new `second`, the existing WeakSet is reused (the
+		// `seconds` branch where `seconds` is defined but does not yet
+		// contain `second`) rather than allocating a fresh one.
+		const shared = { x: 1 };
+		const left = { a: shared, b: shared };
+		const right = { a: { x: 1 }, b: { x: 1 } };
+		// `shared` is compared first against right.a (new WeakSet, add it),
+		// then against right.b (existing WeakSet, does not contain it, so
+		// the reuse branch runs and adds right.b).
+		expect(deeplyEqual(left, right)).toBe(true);
+	});
+
+	it('returns false when isRecord cannot read the prototype', () => {
+		// `isRecord` defensively catches a thrown `Object.getPrototypeOf`.
+		// A Proxy whose getPrototypeOf trap throws is treated as a
+		// non-record, so the comparison returns false rather than
+		// propagating the trap error.
+		const throwing = new Proxy(
+			{},
+			{
+				getPrototypeOf() {
+					throw new Error('no prototype for you');
+				}
+			}
+		);
+		expect(deeplyEqual(throwing, {})).toBe(false);
+		expect(deeplyEqual({}, throwing)).toBe(false);
+	});
 });

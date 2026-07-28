@@ -122,4 +122,26 @@ describe('scenario codec defensive cases', () => {
 		expect(cloned.activeRunsByScenarioId).not.toBe(snapshot.activeRunsByScenarioId);
 		expect(cloned.bestResultsByDefinitionKey).not.toBe(snapshot.bestResultsByDefinitionKey);
 	});
+
+	it.each([
+		['symbol', Symbol('schema'), '[symbol]'],
+		['function', () => undefined, '[function]']
+	] as const)(
+		'sanitizes a %s schema version diagnostic value via safeDescribe',
+		(_name, schemaVersion, expected) => {
+			const decoded = decodeScenarioStoreSnapshot({
+				schemaVersion,
+				activeRunsByScenarioId: {},
+				bestResultsByDefinitionKey: {}
+			});
+
+			expect(decoded.snapshot).toEqual(createEmptyScenarioStore());
+			expect(decoded.diagnostics[0]).toMatchObject({
+				code: 'unsupported-store-schema',
+				path: 'scenarioStore.schemaVersion'
+			});
+			expect(decoded.diagnostics[0]?.value).toBe(expected);
+			expect(() => structuredClone(decoded.diagnostics)).not.toThrow();
+		}
+	);
 });

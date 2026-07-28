@@ -1125,4 +1125,101 @@ describe('scenario repository', { timeout: 30_000 }, () => {
 			expect(driverSnapshot.activeRunsByScenarioId['first-profit']).toBeUndefined();
 		});
 	});
+
+	describe('scenario repository validation and edge cases', () => {
+		it('saveActiveRun throws a TypeError when passed an abandoned run', async () => {
+			const driver = new CountingDriver();
+			const repository = new ScenarioRepositoryFromDriver(driver, resolveFixtureDefinition);
+			const abandoned = abandonScenario(fixtureRun());
+
+			await expect(repository.saveActiveRun(abandoned)).rejects.toThrow(
+				'saveActiveRun requires an active run without a terminal result.'
+			);
+		});
+
+		it('commitTerminalRun throws a TypeError when passed an active run', async () => {
+			const driver = new CountingDriver();
+			const repository = new ScenarioRepositoryFromDriver(driver, resolveFixtureDefinition);
+			const active = fixtureRun();
+
+			await expect(repository.commitTerminalRun(active)).rejects.toThrow(
+				'commitTerminalRun requires a completed, failed, or abandoned run.'
+			);
+		});
+
+		it('loadActiveRunWithRevision returns null when no run is stored', async () => {
+			const driver = new CountingDriver();
+			const repository = new ScenarioRepositoryFromDriver(driver, resolveFixtureDefinition);
+
+			const loaded = await repository.loadActiveRunWithRevision('first-profit');
+			expect(loaded).toBeNull();
+		});
+
+		it('getSummary skips null entries in activeRunsByScenarioId and bestResultsByDefinitionKey', async () => {
+			const driver = new CountingDriver({
+				schemaVersion: SCENARIO_STORE_SCHEMA_VERSION,
+				activeRunsByScenarioId: { 'first-profit': null as unknown as undefined },
+				bestResultsByDefinitionKey: { 'first-profit@1': null as unknown as undefined }
+			});
+			const repository = new ScenarioRepositoryFromDriver(driver, resolveFixtureDefinition);
+			const summary = await repository.getSummary();
+
+			expect(summary.activeRunsByScenarioId['first-profit']).toBeUndefined();
+			expect(summary.bestResultsByDefinitionKey['first-profit@1']).toBeUndefined();
+		});
+
+		it('saveActiveRun with expectedRunId on an empty slot proceeds when expected is null', async () => {
+			const driver = new CountingDriver();
+			const repository = new ScenarioRepositoryFromDriver(driver, resolveFixtureDefinition);
+			const run = fixtureRun();
+
+			const outcome = await repository.saveActiveRun(run, { expectedRunId: null });
+			expect('status' in outcome && outcome.status === 'conflict').toBe(false);
+		});
+
+		it('saveActiveRun with expectedRunId mismatch on an empty slot surfaces a null conflict', async () => {
+			const driver = new CountingDriver();
+			const repository = new ScenarioRepositoryFromDriver(driver, resolveFixtureDefinition);
+			const run = fixtureRun();
+
+			const outcome = await repository.saveActiveRun(run, { expectedRunId: 'some-other-id' });
+			expect(outcome).toEqual({ status: 'conflict', activeRun: null, revision: null });
+		});
+
+		it('saveActiveRun with expectedRevision: 0 on an empty slot proceeds', async () => {
+			const driver = new CountingDriver();
+			const repository = new ScenarioRepositoryFromDriver(driver, resolveFixtureDefinition);
+			const run = fixtureRun();
+
+			const outcome = await repository.saveActiveRun(run, { expectedRevision: 0 });
+			expect('status' in outcome && outcome.status === 'conflict').toBe(false);
+			const loaded = await repository.loadActiveRunWithRevision('first-profit');
+			expect(loaded!.revision).toBe(1);
+		});
+
+		it('saveActiveRun with an empty options object proceeds without CAS checks', async () => {
+			const driver = new CountingDriver();
+			const repository = new ScenarioRepositoryFromDriver(driver, resolveFixtureDefinition);
+			const run = fixtureRun();
+
+			const outcome = await repository.saveActiveRun(run, {});
+			expect('status' in outcome && outcome.status === 'conflict').toBe(false);
+		});
+
+		it('removeActiveRun with expectedRunId: null on an empty slot proceeds', async () => {
+			const driver = new CountingDriver();
+			const repository = new ScenarioRepositoryFromDriver(driver, resolveFixtureDefinition);
+
+			const outcome = await repository.removeActiveRun('first-profit', { expectedRunId: null });
+			expect(outcome).toEqual({ status: 'removed' });
+		});
+
+		it('removeActiveRun with expectedRevision: 0 on an empty slot proceeds', async () => {
+			const driver = new CountingDriver();
+			const repository = new ScenarioRepositoryFromDriver(driver, resolveFixtureDefinition);
+
+			const outcome = await repository.removeActiveRun('first-profit', { expectedRevision: 0 });
+			expect(outcome).toEqual({ status: 'removed' });
+		});
+	});
 });

@@ -1636,6 +1636,78 @@ describe('scenario codec defensive validation branches', () => {
 			expect(decoded.snapshot.bestResultsByDefinitionKey).toEqual({});
 			expect(decoded.diagnostics.map((d) => d.code)).toContain('invalid-deadline');
 		});
+
+		it('accepts a run-to-date window kind in an objective', () => {
+			const base = fixtureDefinition({ scenarioId: 'first-profit', version: 1 });
+			const definition: ScenarioDefinition = {
+				...base,
+				requiredObjectives: [
+					{
+						id: 'cumulative-income',
+						labelKey: 'store.defaultName',
+						query: { metric: 'cumulative-net-income' },
+						comparator: 'gte',
+						target: -1_000_000_000,
+						window: { kind: 'run-to-date' }
+					}
+				],
+				optionalObjectives: [],
+				failures: [],
+				scoreComponents: []
+			};
+			let game = createNewGame('convenience', definition.officialSeed);
+			for (let day = 0; day < 3; day += 1) game = simulateDay(game);
+			const result = buildResult(definition, game);
+			const decoded = decodeBestResult(result, () => definition);
+
+			expect(result.evaluation.required[0]?.evidence.window).toEqual({ kind: 'run-to-date' });
+			expect(decoded.diagnostics).toEqual([]);
+		});
+
+		it('rejects a trailing-reports window with a non-integer count', () => {
+			const base = fixtureDefinition({ scenarioId: 'first-profit', version: 1 });
+			const definition: ScenarioDefinition = {
+				...base,
+				requiredObjectives: [
+					{
+						id: 'trailing-income',
+						labelKey: 'store.defaultName',
+						query: { metric: 'daily-net-income' },
+						comparator: 'gte',
+						target: -1_000_000_000,
+						window: { kind: 'trailing-reports', count: 3 }
+					}
+				],
+				optionalObjectives: [],
+				failures: [],
+				scoreComponents: []
+			};
+			let game = createNewGame('convenience', definition.officialSeed);
+			for (let day = 0; day < 3; day += 1) game = simulateDay(game);
+			const result = buildResult(definition, game);
+			result.evaluation.required[0]!.evidence.window = {
+				kind: 'trailing-reports',
+				count: 0.5
+			};
+			const decoded = decodeBestResult(result, () => definition);
+
+			expect(decoded.snapshot.bestResultsByDefinitionKey).toEqual({});
+			expect(decoded.diagnostics.map((d) => d.code)).toContain('invalid-integer');
+		});
+
+		it('validates the window of metric component evidence', () => {
+			const completed = fixtureRun(undefined, { status: 'completed', score: 750 });
+			const result = structuredClone(completed.result!);
+			const evidence = result.evaluation.projection.componentEvidence[0]!;
+			(evidence as unknown as Record<string, unknown>).window = {
+				kind: 'trailing-reports',
+				count: 0
+			};
+			const decoded = decodeBestResult(result);
+
+			expect(decoded.snapshot.bestResultsByDefinitionKey).toEqual({});
+			expect(decoded.diagnostics.map((d) => d.code)).toContain('invalid-integer');
+		});
 	});
 
 	describe('evaluation structural validation', () => {
@@ -1824,6 +1896,74 @@ describe('scenario codec defensive validation branches', () => {
 
 			expect(decoded.snapshot.bestResultsByDefinitionKey).toEqual({});
 			expect(decoded.diagnostics.map((d) => d.code)).toContain('evaluation-mismatch');
+		});
+
+		it('computes full metric points when zeroBonusAt equals fullBonusAt and actual meets the threshold', () => {
+			const base = fixtureDefinition({ scenarioId: 'first-profit', version: 1 });
+			const definition: ScenarioDefinition = {
+				...base,
+				requiredObjectives: [
+					{
+						id: 'cash-nonnegative',
+						labelKey: 'store.defaultName',
+						query: { metric: 'cash' },
+						comparator: 'gte',
+						target: 0,
+						window: { kind: 'current' }
+					},
+					base.requiredObjectives[1]!
+				],
+				scoreComponents: [
+					{
+						kind: 'metric',
+						query: { metric: 'cash' },
+						window: { kind: 'current' },
+						zeroBonusAt: 100,
+						fullBonusAt: 100,
+						points: 500
+					}
+				]
+			};
+			const game = { ...createNewGame('convenience', definition.officialSeed), cash: 100 };
+			const result = buildResult(definition, game);
+			const decoded = decodeBestResult(result, () => definition);
+
+			expect(result.evaluation.projection.componentPoints).toEqual([500]);
+			expect(decoded.diagnostics).toEqual([]);
+		});
+
+		it('computes zero metric points when zeroBonusAt equals fullBonusAt and actual is below the threshold', () => {
+			const base = fixtureDefinition({ scenarioId: 'first-profit', version: 1 });
+			const definition: ScenarioDefinition = {
+				...base,
+				requiredObjectives: [
+					{
+						id: 'cash-nonnegative',
+						labelKey: 'store.defaultName',
+						query: { metric: 'cash' },
+						comparator: 'gte',
+						target: 0,
+						window: { kind: 'current' }
+					},
+					base.requiredObjectives[1]!
+				],
+				scoreComponents: [
+					{
+						kind: 'metric',
+						query: { metric: 'cash' },
+						window: { kind: 'current' },
+						zeroBonusAt: 100,
+						fullBonusAt: 100,
+						points: 500
+					}
+				]
+			};
+			const game = { ...createNewGame('convenience', definition.officialSeed), cash: 50 };
+			const result = buildResult(definition, game);
+			const decoded = decodeBestResult(result, () => definition);
+
+			expect(result.evaluation.projection.componentPoints).toEqual([0]);
+			expect(decoded.diagnostics).toEqual([]);
 		});
 	});
 
@@ -2062,5 +2202,29 @@ describe('scenario codec defensive validation branches', () => {
 				encodeScenarioBestResultRecord(completed.result!, resolveFixtureDefinition)
 			).toThrow(/Only ranked completed results can be stored as best results/);
 		});
+	});
+
+	describe('diagnostic value sanitization', () => {
+		it.each([
+			['non-finite number', Number.POSITIVE_INFINITY, 'non-finite number'],
+			['NaN', Number.NaN, 'non-finite number'],
+			['bigint', 1n, '1'],
+			['object', { foo: 'bar' }, '[object]']
+		] as const)(
+			'sanitizes a %s diagnostic value via safeDescribe',
+			(_name, corruptValue, expected) => {
+				const completed = fixtureRun(undefined, { status: 'completed', score: 750 });
+				const result = structuredClone(completed.result!);
+				(result.evaluation.required[0]!.evidence as unknown as Record<string, unknown>).target =
+					corruptValue as unknown;
+				const decoded = decodeBestResult(result);
+
+				expect(decoded.snapshot.bestResultsByDefinitionKey).toEqual({});
+				const diagnostic = decoded.diagnostics.find((d) => d.code === 'invalid-number');
+				expect(diagnostic).toBeDefined();
+				expect(diagnostic!.value).toBe(expected);
+				expect(() => structuredClone(decoded.diagnostics)).not.toThrow();
+			}
+		);
 	});
 });
