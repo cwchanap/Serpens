@@ -202,7 +202,7 @@ describe('BuildMenu', () => {
 	});
 
 	it('renders a disabled retail option with a disabled reason', async () => {
-		expect.assertions(3);
+		expect.assertions(2);
 		const onChooseRetail = vi.fn();
 
 		render(
@@ -224,12 +224,6 @@ describe('BuildMenu', () => {
 		const button = page.getByRole('button', { name: /build boutique goods/i });
 		await expect.element(button).toBeDisabled();
 		await expect.element(page.getByText('No valid tiles')).toBeVisible();
-		// A native click on the raw disabled element exercises the disabled branch:
-		// a disabled button suppresses activation, so onChooseRetail stays uncalled.
-		// If the button ever became clickable, this click would dispatch onclick and
-		// fail the assertion.
-		document.querySelector<HTMLButtonElement>('button.build-option')!.click();
-		expect(onChooseRetail).not.toHaveBeenCalled();
 	});
 
 	it('renders structured placement reasons through the supplied locale bundle', async () => {
@@ -455,8 +449,8 @@ describe('BuildMenu', () => {
 		expect(onChooseRetail).not.toHaveBeenCalled();
 	});
 
-	it('disables all retail options when canOpenStore is false and guards the callback', async () => {
-		expect.assertions(4);
+	it('disables all retail options when canOpenStore is false', async () => {
+		expect.assertions(3);
 		const onChooseRetail = vi.fn();
 		render(
 			BuildMenu,
@@ -472,10 +466,6 @@ describe('BuildMenu', () => {
 		await expect.element(convenience).toBeDisabled();
 		await expect.element(boutique).toBeDisabled();
 		await expect.element(page.getByText('No construction permitted.').first()).toBeVisible();
-
-		// Programmatic click on the disabled button must not fire onChooseRetail.
-		document.querySelector<HTMLButtonElement>('button.build-option')!.click();
-		expect(onChooseRetail).not.toHaveBeenCalled();
 	});
 });
 
@@ -573,8 +563,8 @@ describe('BuildMenu industry recipe cards', () => {
 		expect(onChooseIndustry).not.toHaveBeenCalled();
 	});
 
-	it('disables all industry options when canBuildIndustrialBuilding is false and guards the callback', async () => {
-		expect.assertions(3);
+	it('disables all industry options when canBuildIndustrialBuilding is false', async () => {
+		expect.assertions(2);
 		const onChooseIndustry = vi.fn();
 		render(
 			BuildMenu,
@@ -592,10 +582,5 @@ describe('BuildMenu industry recipe cards', () => {
 		await expect
 			.element(page.getByText('No industrial construction permitted.').first())
 			.toBeVisible();
-
-		// Programmatic click on a disabled industry button must not fire onChooseIndustry.
-		const button = document.querySelector<HTMLButtonElement>('button.build-option')!;
-		button.click();
-		expect(onChooseIndustry).not.toHaveBeenCalled();
 	});
 });

@@ -210,7 +210,11 @@ describe('Tauri scenario repository', () => {
 	it('writes and saves only the scenario key', async () => {
 		const store = new FakeStore();
 		store.values.set(SAVE_STORE_KEY, 'sandbox-sentinel');
-		const repository = createTauriScenarioRepositoryFromStore(Promise.resolve(store));
+		const repository = createTauriScenarioRepositoryFromStore(
+			Promise.resolve(store),
+			resolveFixtureDefinition,
+			new NoopScenarioStoreLock()
+		);
 
 		await repository.removeActiveRun('first-profit');
 
@@ -259,7 +263,8 @@ describe('Tauri scenario repository', () => {
 		store.failNextSave = saveError;
 		const repository = createTauriScenarioRepositoryFromStore(
 			Promise.resolve(store),
-			resolveFixtureDefinition
+			resolveFixtureDefinition,
+			new NoopScenarioStoreLock()
 		);
 
 		await expect(repository.saveActiveRun(createFixtureScenarioRun())).rejects.toBe(saveError);
@@ -281,13 +286,15 @@ describe('Tauri scenario repository', () => {
 		const priorRun = createFixtureScenarioRun();
 		await createTauriScenarioRepositoryFromStore(
 			Promise.resolve(store),
-			resolveFixtureDefinition
+			resolveFixtureDefinition,
+			new NoopScenarioStoreLock()
 		).saveActiveRun(priorRun);
 		const saveError = new Error('disk unavailable');
 		store.failNextSave = saveError;
 		const repository = createTauriScenarioRepositoryFromStore(
 			Promise.resolve(store),
-			resolveFixtureDefinition
+			resolveFixtureDefinition,
+			new NoopScenarioStoreLock()
 		);
 
 		await expect(repository.removeActiveRun('first-profit')).rejects.toBe(saveError);
@@ -304,13 +311,15 @@ describe('Tauri scenario repository', () => {
 		const priorRun = createFixtureScenarioRun();
 		await createTauriScenarioRepositoryFromStore(
 			Promise.resolve(store),
-			resolveFixtureDefinition
+			resolveFixtureDefinition,
+			new NoopScenarioStoreLock()
 		).saveActiveRun(priorRun);
 		const saveError = new Error('disk unavailable');
 		store.failNextSave = saveError;
 		const repository = createTauriScenarioRepositoryFromStore(
 			Promise.resolve(store),
-			resolveFixtureDefinition
+			resolveFixtureDefinition,
+			new NoopScenarioStoreLock()
 		);
 
 		await expect(repository.removeActiveRun('first-profit')).rejects.toBe(saveError);
@@ -328,7 +337,8 @@ describe('Tauri scenario repository', () => {
 		store.failNextSet = setError;
 		const repository = createTauriScenarioRepositoryFromStore(
 			Promise.resolve(store),
-			resolveFixtureDefinition
+			resolveFixtureDefinition,
+			new NoopScenarioStoreLock()
 		);
 
 		await expect(repository.saveActiveRun(createFixtureScenarioRun())).rejects.toBe(setError);
@@ -344,7 +354,8 @@ describe('Tauri scenario repository', () => {
 		const priorRun = createFixtureScenarioRun();
 		await createTauriScenarioRepositoryFromStore(
 			Promise.resolve(store),
-			resolveFixtureDefinition
+			resolveFixtureDefinition,
+			new NoopScenarioStoreLock()
 		).saveActiveRun(priorRun);
 		const saveError = new Error('disk unavailable');
 		const rollbackError = new Error('cache rollback unavailable');
@@ -352,7 +363,8 @@ describe('Tauri scenario repository', () => {
 		store.failSetOnCall(3, rollbackError);
 		const repository = createTauriScenarioRepositoryFromStore(
 			Promise.resolve(store),
-			resolveFixtureDefinition
+			resolveFixtureDefinition,
+			new NoopScenarioStoreLock()
 		);
 
 		await expect(repository.removeActiveRun('first-profit')).rejects.toBe(saveError);
@@ -370,7 +382,8 @@ describe('Tauri scenario repository', () => {
 		store.failNextSave = saveError;
 		const repository = createTauriScenarioRepositoryFromStore(
 			Promise.resolve(store),
-			resolveFixtureDefinition
+			resolveFixtureDefinition,
+			new NoopScenarioStoreLock()
 		);
 
 		const savePromise = repository.saveActiveRun(createFixtureScenarioRun());
@@ -398,7 +411,8 @@ describe('Tauri scenario repository', () => {
 		const saveGate = store.deferNextSave();
 		const repository = createTauriScenarioRepositoryFromStore(
 			Promise.resolve(store),
-			resolveFixtureDefinition
+			resolveFixtureDefinition,
+			new NoopScenarioStoreLock()
 		);
 		const run = createFixtureScenarioRun();
 
@@ -428,7 +442,8 @@ describe('Tauri scenario repository', () => {
 		store.failDeleteOnCall(2, new Error('delete still unavailable'));
 		const repository = createTauriScenarioRepositoryFromStore(
 			Promise.resolve(store),
-			resolveFixtureDefinition
+			resolveFixtureDefinition,
+			new NoopScenarioStoreLock()
 		);
 
 		const savePromise = repository.saveActiveRun(createFixtureScenarioRun());
@@ -457,7 +472,8 @@ describe('Tauri scenario repository', () => {
 		store.fileExists = false;
 		const repository = createTauriScenarioRepositoryFromStore(
 			Promise.resolve(store),
-			resolveFixtureDefinition
+			resolveFixtureDefinition,
+			new NoopScenarioStoreLock()
 		);
 
 		await expect(repository.saveActiveRun(createFixtureScenarioRun())).rejects.toBe(saveError);
@@ -478,7 +494,8 @@ describe('Tauri scenario repository', () => {
 		store.failNextReload = new Error('No such file or directory');
 		const repository = createTauriScenarioRepositoryFromStore(
 			Promise.resolve(store),
-			resolveFixtureDefinition
+			resolveFixtureDefinition,
+			new NoopScenarioStoreLock()
 		);
 
 		await expect(repository.saveActiveRun(createFixtureScenarioRun())).rejects.toBe(saveError);
@@ -492,22 +509,39 @@ describe('Tauri scenario repository', () => {
 		// The Tauri factory defaults to TauriScenarioStoreLock, which invokes
 		// the Rust-side acquire_scenario_lock / release_scenario_lock commands.
 		// A mutating operation (saveActiveRun) must call acquire before the
-		// read-modify-write and release after — even on the success path.
+		// read-modify-write and release after — even on the success path. The
+		// invoke fake returns a valid acquisition ID and routes the fenced
+		// write to the FakeStore so the save succeeds end-to-end.
 		const store = new FakeStore();
-		tauriInvokeMock.mockClear();
+		let acquisitionIdCounter = 0;
+		const invoke = vi.fn(async (command: string, args?: Record<string, unknown>) => {
+			void command;
+			void args;
+			if (command === 'acquire_scenario_lock') {
+				acquisitionIdCounter += 1;
+				return acquisitionIdCounter;
+			}
+			if (command === 'write_scenario_store_locked' && args) {
+				await store.set(SCENARIO_STORE_KEY, args.snapshot);
+				await store.save();
+			}
+		});
 		const repository = createTauriScenarioRepositoryFromStore(
 			Promise.resolve(store),
-			resolveFixtureDefinition
+			resolveFixtureDefinition,
+			new TauriScenarioStoreLock(invoke),
+			invoke
 		);
 
 		await repository.saveActiveRun(createFixtureScenarioRun());
 
-		const calls = tauriInvokeMock.mock.calls.map((call) => ({
+		const calls = invoke.mock.calls.map((call) => ({
 			command: call[0] as string,
 			name: (call[1] as { name: string }).name
 		}));
 		expect(calls).toEqual([
 			{ command: 'acquire_scenario_lock', name: 'serpens.scenarios' },
+			{ command: 'write_scenario_store_locked', name: 'serpens.scenarios' },
 			{ command: 'release_scenario_lock', name: 'serpens.scenarios' }
 		]);
 	});
@@ -515,22 +549,32 @@ describe('Tauri scenario repository', () => {
 	it('releases the Rust mutex even when the operation rejects', async () => {
 		// A failed save must not orphan the lock — the finally block in
 		// TauriScenarioStoreLock.withLock must call release_scenario_lock
-		// so other windows are not blocked.
+		// so other windows are not blocked. The invoke fake returns a valid
+		// acquisition ID and routes the fenced write to the FakeStore, whose
+		// failNextSave makes the durable write reject so the operation fails.
 		const store = new FakeStore();
 		store.failNextSave = new Error('disk unavailable');
-		tauriInvokeMock.mockClear();
+		const invoke = vi.fn(async (command: string, args?: Record<string, unknown>) => {
+			void command;
+			void args;
+			if (command === 'acquire_scenario_lock') return 1;
+			if (command === 'write_scenario_store_locked' && args) {
+				await store.set(SCENARIO_STORE_KEY, args.snapshot);
+				await store.save();
+			}
+		});
 		const repository = createTauriScenarioRepositoryFromStore(
 			Promise.resolve(store),
-			resolveFixtureDefinition
+			resolveFixtureDefinition,
+			new TauriScenarioStoreLock(invoke),
+			invoke
 		);
 
 		await expect(repository.saveActiveRun(createFixtureScenarioRun())).rejects.toThrow(
 			'disk unavailable'
 		);
 
-		const releaseCalls = tauriInvokeMock.mock.calls.filter(
-			(call) => call[0] === 'release_scenario_lock'
-		);
+		const releaseCalls = invoke.mock.calls.filter((call) => call[0] === 'release_scenario_lock');
 		expect(releaseCalls).toHaveLength(1);
 	});
 });
@@ -542,6 +586,10 @@ describe('TauriScenarioStoreLock lease renewal', () => {
 			const invoke = vi.fn(async (command: string, args?: Record<string, unknown>) => {
 				void command;
 				void args;
+				// acquire_scenario_lock returns a concrete acquisition ID so
+				// the renew/release payload assertions can detect a regression
+				// that omits the fencing token.
+				if (command === 'acquire_scenario_lock') return 42;
 			});
 			const lock = new TauriScenarioStoreLock(invoke);
 			let releaseOperation!: () => void;
@@ -558,10 +606,12 @@ describe('TauriScenarioStoreLock lease renewal', () => {
 			});
 
 			// Advance past one renewal interval while the operation is still
-			// pending; the lease must be renewed.
+			// pending; the lease must be renewed with the full fencing
+			// payload (name + acquisitionId).
 			await vi.advanceTimersByTimeAsync(10_000);
 			expect(invoke).toHaveBeenCalledWith('renew_scenario_lock', {
-				name: 'serpens.scenarios'
+				name: 'serpens.scenarios',
+				acquisitionId: 42
 			});
 
 			// Complete the operation so the finally block runs.
@@ -579,7 +629,8 @@ describe('TauriScenarioStoreLock lease renewal', () => {
 			).length;
 			expect(renewCallsAfter).toBe(renewCallsBefore);
 			expect(invoke).toHaveBeenCalledWith('release_scenario_lock', {
-				name: 'serpens.scenarios'
+				name: 'serpens.scenarios',
+				acquisitionId: 42
 			});
 		} finally {
 			vi.useRealTimers();
@@ -592,6 +643,7 @@ describe('TauriScenarioStoreLock lease renewal', () => {
 			const invoke = vi.fn(async (command: string, args?: Record<string, unknown>) => {
 				void command;
 				void args;
+				if (command === 'acquire_scenario_lock') return 42;
 			});
 			const lock = new TauriScenarioStoreLock(invoke);
 
@@ -612,7 +664,8 @@ describe('TauriScenarioStoreLock lease renewal', () => {
 			).length;
 			expect(renewCallsAfter).toBe(renewCallsBefore);
 			expect(invoke).toHaveBeenCalledWith('release_scenario_lock', {
-				name: 'serpens.scenarios'
+				name: 'serpens.scenarios',
+				acquisitionId: 42
 			});
 		} finally {
 			vi.useRealTimers();
@@ -752,15 +805,20 @@ describe('TauriScenarioStoreDriver fenced write', () => {
 
 	it('falls back to store.set/store.save when no acquisition ID is present (browser/in-process lock)', async () => {
 		const store = new FakeStore();
+		// NoopScenarioStoreLock passes an empty LockContext (no
+		// acquisitionId), mirroring the browser/in-process lock path. The
+		// driver must fall back to store.set/store.save instead of routing
+		// through the fenced write command. The invoke fake is wired as the
+		// driver's invokeFn only so we can assert no fenced write was
+		// attempted; it is never called by the no-op lock.
 		const invoke = vi.fn(async (command: string, args?: Record<string, unknown>) => {
+			void command;
 			void args;
-			// acquire returns undefined — simulates a non-Tauri lock or a
-			// mock that does not issue acquisition IDs.
 		});
 		const repository = createTauriScenarioRepositoryFromStore(
 			Promise.resolve(store),
 			resolveFixtureDefinition,
-			new TauriScenarioStoreLock(invoke),
+			new NoopScenarioStoreLock(),
 			invoke
 		);
 

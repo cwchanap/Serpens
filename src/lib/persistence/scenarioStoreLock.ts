@@ -179,7 +179,29 @@ export class TauriScenarioStoreLock implements ScenarioStoreLock {
 	constructor(private readonly invoke: TauriInvokeLike) {}
 
 	async withLock<T>(name: string, operation: (context: LockContext) => Promise<T>): Promise<T> {
-		const acquisitionId = (await this.invoke('acquire_scenario_lock', { name })) as number;
+		const acquired = await this.invoke('acquire_scenario_lock', { name });
+		// Validate the fencing token before threading it through the
+		// critical section. The Rust `acquire_scenario_lock` command returns
+		// a process-wide monotonic acquisition ID (never 0). An undefined or
+		// non-finite value means the lock was not actually acquired — either
+		// the command rejected, the runtime returned an unexpected payload,
+		// or a mock/fallback bypassed the Rust-side guard. Treating that as
+		// a valid acquisition would let an unfenced write proceed against a
+		// potentially stale or absent owner, so surface a clear error instead
+		// of casting silently. The unfenced fallback path is covered by
+		// `NoopScenarioStoreLock`, which passes an empty `LockContext` and
+		// never calls `acquire_scenario_lock`.
+		if (
+			typeof acquired !== 'number' ||
+			!Number.isFinite(acquired) ||
+			!Number.isInteger(acquired) ||
+			acquired <= 0
+		) {
+			throw new Error(
+				`acquire_scenario_lock returned an invalid acquisition ID for "${name}": ${String(acquired)}`
+			);
+		}
+		const acquisitionId = acquired;
 		// A renewal failure means the acquisition is no longer current on
 		// the Rust side (lease expired and another window acquired, or the
 		// window-destroyed handler released it). Continuing the critical

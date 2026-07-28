@@ -15,14 +15,19 @@ import type { GameState, RailCell } from '$lib/game/types';
 
 const CITY_ID = 'industry-city';
 
-function makeGame(rails: RailCell[], railUsage: Record<string, number>, cash = 999_999): GameState {
+function makeGame(
+	rails: RailCell[],
+	railUsage: Record<string, number>,
+	cash = 999_999,
+	report: unknown = { productionReport: { railUsage } }
+): GameState {
 	const base = createNewGame('convenience', 12_345);
 	const city = { ...base.industryCities[0]!, rails };
 	return {
 		...base,
 		cash,
 		industryCities: [city],
-		reports: [{ productionReport: { railUsage } }] as unknown as GameState['reports']
+		reports: [report] as unknown as GameState['reports']
 	};
 }
 
@@ -291,14 +296,7 @@ describe('RailSegmentInspector', () => {
 		const segment: RailSegment = { id: 'seg:1,1|2,1', cellKeys: ['1,1', '2,1'], minLevel: 2 };
 		// Reports without a railUsage key exercise the `?? {}` fallback so the
 		// utilization loop reads 0 usage for every cell.
-		const base = createNewGame('convenience', 12_345);
-		const city = { ...base.industryCities[0]!, rails };
-		const game: GameState = {
-			...base,
-			cash: 999_999,
-			industryCities: [city],
-			reports: [{ productionReport: {} }] as unknown as GameState['reports']
-		};
+		const game = makeGame(rails, {}, 999_999, { productionReport: {} });
 
 		render(RailSegmentInspector, baseProps(game, [segment]));
 

@@ -8,11 +8,9 @@ import type {
 	ScenarioDefinitionRef,
 	ScenarioId,
 	ScenarioRun,
-	ScenarioRunRecord,
 	ScenarioStoreSnapshot
 } from '$lib/scenarios/types';
 import {
-	SCENARIO_RUN_SCHEMA_VERSION,
 	SCENARIO_STORE_SCHEMA_VERSION,
 	createEmptyScenarioStore,
 	decodeScenarioStoreSnapshot,
@@ -27,7 +25,7 @@ import {
 	NoopScenarioStoreLock,
 	SCENARIO_STORE_LOCK_NAME
 } from './scenarioStoreLock';
-import { SAVE_SCHEMA_VERSION } from './saveTypes';
+import { runRecord, snapshot } from './scenarioRepository.testUtils';
 
 const OFFICIAL_SEEDS: Record<ScenarioId, number> = {
 	'first-profit': 280_001,
@@ -174,28 +172,6 @@ function fixtureRun(
 			medal: status === 'completed' ? evaluation.projection.medal : null,
 			evaluation
 		}
-	};
-}
-
-function runRecord(run: ScenarioRun, revision = 0): ScenarioRunRecord {
-	const { game, ...runEnvelope } = structuredClone(run);
-	return {
-		scenarioSchemaVersion: SCENARIO_RUN_SCHEMA_VERSION,
-		gameSchemaVersion: SAVE_SCHEMA_VERSION,
-		revision,
-		run: runEnvelope,
-		game
-	};
-}
-
-function snapshot(
-	activeRunsByScenarioId: ScenarioStoreSnapshot['activeRunsByScenarioId'] = {},
-	bestResultsByDefinitionKey: ScenarioStoreSnapshot['bestResultsByDefinitionKey'] = {}
-): ScenarioStoreSnapshot {
-	return {
-		schemaVersion: SCENARIO_STORE_SCHEMA_VERSION,
-		activeRunsByScenarioId,
-		bestResultsByDefinitionKey
 	};
 }
 

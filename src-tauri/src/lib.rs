@@ -186,25 +186,40 @@ async fn renew_lock(
     Ok(())
 }
 
-async fn release_locks_owned_by(registry: &LockRegistry, label: &str) {
+async fn release_locks_owned_by(registry: &LockRegistry, label: &str, max_acquisition_id: u64) {
     let map = registry.locks.lock().await;
     for lock in map.values() {
-        // Release any acquisition owned by this window label, regardless of
-        // acquisition ID — the window is being destroyed, so all of its
-        // acquisitions are orphaned. Pass acquisition_id = 0 with a special
-        // label-only path to bypass the acquisition-ID check.
-        release_lock_owned_by_label(lock, label).await;
+        // Release any acquisition owned by this window label whose
+        // acquisition ID predates the generation boundary captured when the
+        // window was destroyed. The boundary is required because Tauri
+        // permits a replacement window to reuse a destroyed window's label:
+        // without the ID check, a delayed cleanup task could clear the
+        // replacement window's active acquisition simply because its label
+        // matches.
+        release_lock_owned_by_label(lock, label, max_acquisition_id).await;
     }
 }
 
-/// Label-only release used by the window-destroyed handler. A destroyed
-/// window can no longer issue renew/release/write commands, so all of its
-/// acquisitions (regardless of acquisition ID) are orphaned and must be
-/// recovered.
-async fn release_lock_owned_by_label(lock: &NamedLock, owner_label: &str) -> bool {
+/// Label-plus-generation release used by the window-destroyed handler. A
+/// destroyed window can no longer issue renew/release/write commands, so
+/// all of its acquisitions (regardless of acquisition ID) are orphaned and
+/// must be recovered — but only those whose `acquisition_id` predates the
+/// `max_acquisition_id` boundary captured at destroy time. Acquisitions
+/// with `acquisition_id >= max_acquisition_id` were made after the
+/// destruction by a replacement window reusing the same label and must be
+/// preserved.
+async fn release_lock_owned_by_label(
+    lock: &NamedLock,
+    owner_label: &str,
+    max_acquisition_id: u64,
+) -> bool {
     let mut held = lock.held.lock().await;
     let mut owner = lock.owner.lock().await;
-    if owner.as_ref().map(|o| o.window_label.as_str()) != Some(owner_label) {
+    let is_destroyed_owner = match owner.as_ref() {
+        Some(o) => o.window_label == owner_label && o.acquisition_id < max_acquisition_id,
+        None => false,
+    };
+    if !is_destroyed_owner {
         return false;
     }
     *held = false;
@@ -231,10 +246,10 @@ async fn release_scenario_lock(
     acquisition_id: u64,
     webview_window: tauri::WebviewWindow,
     state: State<'_, LockRegistry>,
-) -> Result<(), String> {
+) -> Result<bool, String> {
     let lock = state.get(&name).await;
-    release_lock_owned_by(&lock, webview_window.label(), acquisition_id).await;
-    Ok(())
+    let released = release_lock_owned_by(&lock, webview_window.label(), acquisition_id).await;
+    Ok(released)
 }
 
 #[tauri::command]
@@ -329,11 +344,29 @@ pub fn run() {
         .manage(LockRegistry::default())
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {
+                // Spawn the async cleanup instead of block_on so the event
+                // handler returns immediately and does not stall the window
+                // event loop while release_locks_owned_by awaits the lock
+                // registry's mutexes. The cloned app handle keeps the
+                // LockRegistry state alive until the spawned task completes,
+                // and the label is moved into the task so the same
+                // window-label-based cleanup runs as before.
                 let label = window.label().to_string();
                 let app = window.app_handle().clone();
-                tauri::async_runtime::block_on(async move {
+                // Capture a generation boundary synchronously, before the
+                // async cleanup task runs. `next_acquisition_id` consumes one
+                // monotonic ID and returns a value strictly greater than
+                // every previously-completed acquisition ID and strictly
+                // less than every future one (the atomic's modification
+                // order is total, so this holds even under Relaxed). The
+                // cleanup task will only release matching-label owners
+                // whose acquisition ID predates this boundary, so a
+                // replacement window that reuses the destroyed window's
+                // label before the cleanup runs keeps its own acquisition.
+                let boundary = app.state::<LockRegistry>().next_acquisition_id();
+                tauri::async_runtime::spawn(async move {
                     let state = app.state::<LockRegistry>();
-                    release_locks_owned_by(&state, &label).await;
+                    release_locks_owned_by(&state, &label, boundary).await;
                 });
             }
         })
@@ -432,13 +465,23 @@ mod tests {
         assert!(!*lock.held.lock().await);
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn lease_auto_releases_after_expiry_without_release() {
         let registry = make_registry(Duration::from_millis(50));
         acquire_lock(&registry, "serpens.scenarios", "main")
             .await
             .unwrap();
-        tokio::time::sleep(Duration::from_millis(150)).await;
+        // Yield so the spawned lease-expiry task polls once and registers its
+        // sleep_until timer with the paused clock before we advance.
+        tokio::task::yield_now().await;
+        // Advance Tokio's paused clock past the 50ms lease deadline; the
+        // lease-expiry task fires and auto-releases without a real-time sleep.
+        tokio::time::advance(Duration::from_millis(150)).await;
+        // Pump the scheduler so the woken lease-expiry task runs its body
+        // (acquires the mutexes and clears the owner) before we assert.
+        for _ in 0..5 {
+            tokio::task::yield_now().await;
+        }
         let lock = registry.get("serpens.scenarios").await;
         assert!(
             !*lock.held.lock().await,
@@ -448,23 +491,30 @@ mod tests {
         assert_eq!(*lock.lease_deadline.lock().await, None);
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn renew_extends_lease_past_original_deadline() {
         let registry = make_registry(Duration::from_millis(50));
         let acquisition_id = acquire_lock(&registry, "serpens.scenarios", "main")
             .await
             .unwrap();
-        tokio::time::sleep(Duration::from_millis(20)).await;
+        tokio::task::yield_now().await;
+        tokio::time::advance(Duration::from_millis(20)).await;
         renew_lock(&registry, "serpens.scenarios", "main", acquisition_id)
             .await
             .unwrap();
-        tokio::time::sleep(Duration::from_millis(40)).await;
+        tokio::time::advance(Duration::from_millis(40)).await;
+        for _ in 0..5 {
+            tokio::task::yield_now().await;
+        }
         let lock = registry.get("serpens.scenarios").await;
         assert!(
             *lock.held.lock().await,
             "lock should still be held after renew past original deadline"
         );
-        tokio::time::sleep(Duration::from_millis(80)).await;
+        tokio::time::advance(Duration::from_millis(80)).await;
+        for _ in 0..5 {
+            tokio::task::yield_now().await;
+        }
         let lock = registry.get("serpens.scenarios").await;
         assert!(
             !*lock.held.lock().await,
@@ -508,8 +558,11 @@ mod tests {
         let registry = make_registry(DEFAULT_LEASE_DURATION);
         acquire_lock(&registry, "lock-a", "main").await.unwrap();
         acquire_lock(&registry, "lock-b", "other").await.unwrap();
+        // Capture the generation boundary the same way the Destroyed
+        // handler does: after both acquisitions, so both IDs predate it.
+        let boundary = registry.next_acquisition_id();
 
-        release_locks_owned_by(&registry, "main").await;
+        release_locks_owned_by(&registry, "main", boundary).await;
 
         let lock_a = registry.get("lock-a").await;
         let lock_b = registry.get("lock-b").await;
@@ -523,6 +576,53 @@ mod tests {
             lock_b.owner.lock().await.as_ref().unwrap().window_label,
             "other"
         );
+    }
+
+    #[tokio::test]
+    async fn destroyed_cleanup_preserves_replacement_window_with_same_label() {
+        // The P2 label-reuse regression: window "main" is destroyed and its
+        // async cleanup task is queued. Before the task runs, the original's
+        // lease releases the lock and a replacement "main" window reacquires
+        // it. The stale cleanup must NOT release the replacement's
+        // acquisition even though its label matches the destroyed window.
+        let registry = make_registry(DEFAULT_LEASE_DURATION);
+        // Original "main" acquires.
+        let id_original = acquire_lock(&registry, "serpens.scenarios", "main")
+            .await
+            .unwrap();
+        let lock = registry.get("serpens.scenarios").await;
+        // Capture the generation boundary synchronously at Destroyed time,
+        // before the async cleanup task runs.
+        let boundary = registry.next_acquisition_id();
+        assert!(boundary > id_original, "boundary must exceed original id");
+        // The original's lease expires (or the window is destroyed mid-hold),
+        // releasing the lock before the delayed cleanup task runs.
+        release_lock_owned_by(&lock, "main", id_original).await;
+        // A replacement "main" window reacquires the same lock. Its
+        // acquisition ID is >= the captured boundary.
+        let id_replacement = acquire_lock(&registry, "serpens.scenarios", "main")
+            .await
+            .unwrap();
+        assert!(
+            id_replacement >= boundary,
+            "replacement acquisition must be >= boundary"
+        );
+        // The stale cleanup task now runs with the captured boundary. It
+        // must NOT release the replacement's acquisition even though the
+        // label matches.
+        release_locks_owned_by(&registry, "main", boundary).await;
+        assert!(
+            *lock.held.lock().await,
+            "replacement's lock must survive stale cleanup"
+        );
+        assert_eq!(
+            lock.owner.lock().await.as_ref().unwrap().acquisition_id,
+            id_replacement
+        );
+        // The replacement can still release normally.
+        let released = release_lock_owned_by(&lock, "main", id_replacement).await;
+        assert!(released);
+        assert!(!*lock.held.lock().await);
     }
 
     #[tokio::test]
