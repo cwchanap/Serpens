@@ -254,12 +254,19 @@ describe('RailSegmentInspector', () => {
 
 	it('falls back to an empty network when the city id does not match an industry city', async () => {
 		expect.assertions(3);
+		// Rail cells are level 3, deliberately differing from the segment's
+		// minLevel of 2. When the city id matches no industry city the network
+		// is empty, so the utilization loop falls back to selectedSegment.minLevel
+		// as the per-cell level divisor — NOT the real cell level 3. Nonzero usage
+		// keyed to the nonexistent city makes the resulting utilization
+		// distinguish the fallback path: 1/2 = 50% under fallback, 1/3 = 33% if
+		// the real network (and its level-3 cells) had been used.
 		const rails: RailCell[] = [
-			{ x: 1, y: 1, level: 2 },
-			{ x: 2, y: 1, level: 2 }
+			{ x: 1, y: 1, level: 3 },
+			{ x: 2, y: 1, level: 3 }
 		];
 		const segment: RailSegment = { id: 'seg:1,1|2,1', cellKeys: ['1,1', '2,1'], minLevel: 2 };
-		const game = makeGame(rails, {});
+		const game = makeGame(rails, { 'nonexistent-city:1,1': 1 });
 
 		render(RailSegmentInspector, {
 			...baseProps(game, [segment]),
@@ -268,18 +275,20 @@ describe('RailSegmentInspector', () => {
 
 		await expect.element(page.getByRole('heading', { name: 'Rail segment' })).toBeVisible();
 		// With no matching city the network has no cells, so utilization falls
-		// back to the segment min level for each cell (2/day capacity, no usage).
+		// back to the segment min level as the divisor (2/day capacity, 1 usage).
 		await expect.element(page.getByTestId('rail-segment-cells')).toHaveTextContent('2');
-		await expect.element(page.getByTestId('rail-segment-utilization')).toHaveTextContent('0%');
+		await expect.element(page.getByTestId('rail-segment-utilization')).toHaveTextContent('50%');
 	});
 
 	it('skips zero-level cells when computing utilization', async () => {
 		expect.assertions(2);
 		// A segment whose cells are absent from the city network and whose
 		// minLevel is 0 exercises the `cellLevel <= 0` continue branch in the
-		// utilization loop — every cell is skipped, so utilization stays 0%.
+		// utilization loop. Nonzero usage is keyed to the cells so the expected
+		// 0% can only come from the skip branch — without the skip, the loop
+		// would compute usage / Math.max(1, 0) = 5 / 1 = 5, clamped to 100%.
 		const segment: RailSegment = { id: 'seg:1,1|2,1', cellKeys: ['1,1', '2,1'], minLevel: 0 };
-		const game = makeGame([], {});
+		const game = makeGame([], { 'industry-city:1,1': 5, 'industry-city:2,1': 5 });
 
 		render(RailSegmentInspector, baseProps(game, [segment]));
 

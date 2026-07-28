@@ -94,17 +94,24 @@ describe('ProductChainsPanel', () => {
 			.not.toBeInTheDocument();
 	});
 
-	it('selects a category stamp to filter the chain view', async () => {
-		expect.assertions(2);
+	it('selects a non-default category stamp to filter the chain view', async () => {
+		expect.assertions(3);
 		const game = createNewGame('convenience', 20260518);
 
 		renderProductChainsPanel(game);
 
-		await page.getByTestId('category-stamp-bottled-water').click();
+		// Bottled water is the default category (first supported chain category),
+		// so clicking its stamp cannot prove the stamp click changes the selection.
+		// Snacks is a non-default supported convenience category; clicking its
+		// stamp must swap both the heading and the rendered graph id.
+		await expect.element(page.getByTestId('category-stamp-bottled-water')).toBeVisible();
+		await page.getByTestId('category-stamp-snacks').click();
 
-		// After selecting a category, the heading shows the category name.
-		await expect.element(page.getByRole('heading', { name: 'Bottled water' })).toBeVisible();
-		await expect.element(page.getByTestId('product-chain-graph-chain:bottled-water')).toBeVisible();
+		// After selecting snacks, the heading shows the snacks category name and
+		// the graph id switches to the snacks chain — neither matches the default
+		// bottled-water state, so the click demonstrably drove the change.
+		await expect.element(page.getByRole('heading', { name: 'Snacks' })).toBeVisible();
+		await expect.element(page.getByTestId('product-chain-graph-chain:snacks')).toBeVisible();
 	});
 
 	it('toggles back to store category chains from warehouse flow mode', async () => {
