@@ -420,6 +420,8 @@ export class GameRouteController {
 		expectedRunId?: string | null,
 		expectedRevision?: number | null
 	): Promise<GameRouteCommitResult> {
+		if (this.currentState.scenarioCommandPending) return { status: 'busy' };
+
 		const started = startScenarioTransition(definition, seed);
 		if (!started.ok) {
 			this.patchState({
@@ -436,7 +438,6 @@ export class GameRouteController {
 			});
 			return { status: 'unavailable' };
 		}
-		if (this.currentState.scenarioCommandPending) return { status: 'busy' };
 
 		this.patchState({ scenarioCommandPending: true });
 		let phase: 'read' | 'write' = 'read';

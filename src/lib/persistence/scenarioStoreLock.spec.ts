@@ -5,6 +5,7 @@ import {
 	SCENARIO_STORE_LOCK_NAME,
 	WebLocksScenarioStoreLock,
 	createDefaultScenarioStoreLock,
+	type LockContext,
 	type LockManagerLike
 } from './scenarioStoreLock';
 
@@ -20,7 +21,10 @@ describe('scenarioStoreLock', () => {
 	describe('NoopScenarioStoreLock', () => {
 		it('runs the operation directly without coordination', async () => {
 			const lock = new NoopScenarioStoreLock();
-			const operation = vi.fn(async () => 'result');
+			const operation = vi.fn(async (context: LockContext) => {
+				void context;
+				return 'result';
+			});
 			const result = await lock.withLock('any-name', operation);
 			expect(result).toBe('result');
 			expect(operation).toHaveBeenCalledTimes(1);

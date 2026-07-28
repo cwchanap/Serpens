@@ -110,12 +110,14 @@ export class ScenarioRepositoryFromDriver implements ScenarioRepository {
 			// run. A stale catalog, second browser tab, or results dialog can
 			// call save when a newer run is already persisted. Same-runId saves
 			// (normal in-run evolution) and explicit `replace: true` (restart,
-			// confirmed import) proceed. The check is best-effort across tabs
-			// — it serializes within this repository's mutation queue but two
-			// tabs have separate queues, so cross-tab races are last-write-wins
-			// at the storage layer; the guard still catches the common case
-			// where a stale in-memory catalog drives a start against a run that
-			// was started elsewhere in this tab.
+			// confirmed import) proceed. `mutate` wraps this read-modify-write
+			// in `withLock`, whose critical section serializes cross-tab reads
+			// and writes (browser Web Locks or the Tauri named mutex), so the
+			// second tab's read happens after the first tab's write and this
+			// compare-and-swap guard observes the committed run and refuses the
+			// clobber instead of last-write-wins. The per-instance
+			// `mutationQueue` is a secondary guard that serializes overlapping
+			// calls within this repository even when the lock is a no-op.
 			if (existing && existing.run.runId !== run.runId && !options?.replace) {
 				return {
 					status: 'conflict' as const,

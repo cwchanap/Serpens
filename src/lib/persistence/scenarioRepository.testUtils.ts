@@ -1,7 +1,15 @@
 import type { GameState } from '$lib/game/types';
 import { STARTER_STORE_CAP, createInitialWorldProgress } from '$lib/game/world';
 import { evaluateScenario } from '$lib/scenarios/runtime';
-import type { ScenarioDefinition, ScenarioDefinitionRef, ScenarioRun } from '$lib/scenarios/types';
+import type {
+	ScenarioDefinition,
+	ScenarioDefinitionRef,
+	ScenarioRun,
+	ScenarioRunRecord,
+	ScenarioStoreSnapshot
+} from '$lib/scenarios/types';
+import { SAVE_SCHEMA_VERSION } from './saveTypes';
+import { SCENARIO_RUN_SCHEMA_VERSION, SCENARIO_STORE_SCHEMA_VERSION } from './scenarioCodec';
 
 const FIXTURE_DEFINITION: ScenarioDefinition = {
 	id: 'first-profit',
@@ -164,5 +172,42 @@ export function createFixtureScenarioRun(): ScenarioRun {
 		game,
 		evaluation: evaluateScenario(FIXTURE_DEFINITION, game, false),
 		result: null
+	};
+}
+
+/**
+ * Build a `ScenarioRunRecord` from a `ScenarioRun`, splitting the game out of
+ * the run envelope and stamping the current schema versions. Shared by the
+ * scenario repository and scenario codec specs so both exercise the same
+ * encoding shape the production codec writes.
+ */
+export function runRecord(run: ScenarioRun, revision = 0): ScenarioRunRecord {
+	const { game, ...runEnvelope } = structuredClone(run);
+	return {
+		scenarioSchemaVersion: SCENARIO_RUN_SCHEMA_VERSION,
+		gameSchemaVersion: SAVE_SCHEMA_VERSION,
+		revision,
+		run: runEnvelope,
+		game
+	};
+}
+
+/**
+ * Build a `ScenarioStoreSnapshot` with the current store schema version.
+ * The `activeRunsByScenarioId` parameter accepts `Record<string, ScenarioRunRecord>`
+ * (wider than the production `Partial<Record<ScenarioId, ScenarioRunRecord>>`)
+ * so codec tests can pass unknown-scenario keys to exercise diagnostic paths;
+ * the cast mirrors what the production codec does when decoding raw input.
+ * Shared by the scenario repository and scenario codec specs.
+ */
+export function snapshot(
+	activeRunsByScenarioId: Record<string, ScenarioRunRecord> = {},
+	bestResultsByDefinitionKey: ScenarioStoreSnapshot['bestResultsByDefinitionKey'] = {}
+): ScenarioStoreSnapshot {
+	return {
+		schemaVersion: SCENARIO_STORE_SCHEMA_VERSION,
+		activeRunsByScenarioId:
+			activeRunsByScenarioId as ScenarioStoreSnapshot['activeRunsByScenarioId'],
+		bestResultsByDefinitionKey
 	};
 }

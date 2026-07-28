@@ -304,7 +304,7 @@ describe('StaffPanel', () => {
 	});
 
 	it('fires onPromote for an eligible, affordable staff member', async () => {
-		expect.assertions(1);
+		expect.assertions(2);
 		const onPromote = vi.fn();
 
 		renderStaffPanel({
@@ -326,7 +326,9 @@ describe('StaffPanel', () => {
 			]
 		});
 
-		await page.getByRole('button', { name: /Promote Drew Stone/ }).click();
+		const promoteButton = page.getByRole('button', { name: /Promote Drew Stone/ });
+		await expect.element(promoteButton).toBeVisible();
+		await promoteButton.click();
 
 		expect(onPromote).toHaveBeenCalledWith('staff-grow');
 	});
@@ -720,7 +722,7 @@ describe('StaffPanel', () => {
 	});
 
 	it('guards onPromote when a click is dispatched on a disabled promote button', async () => {
-		expect.assertions(1);
+		expect.assertions(2);
 		const onPromote = vi.fn();
 		const { result } = renderStaffPanel({
 			cash: 100_000,
@@ -738,7 +740,12 @@ describe('StaffPanel', () => {
 		const promoteButton = Array.from(result.container.querySelectorAll('button')).find((btn) =>
 			/promote/i.test(btn.textContent ?? '')
 		);
-		promoteButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+		// Assert the promote button is actually rendered so the dispatched
+		// click reaches a real target. The optional-short-circuit (`?.`)
+		// would silently pass the test if the button were absent, masking a
+		// regression where the disabled guard is never exercised.
+		expect(promoteButton).toBeInstanceOf(HTMLButtonElement);
+		promoteButton!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 		expect(onPromote).not.toHaveBeenCalled();
 	});
 
@@ -763,8 +770,9 @@ describe('StaffPanel', () => {
 		const select = page.getByLabelText(
 			'Assign Blair Kim, General staff staff-blair, currently unassigned'
 		);
-		select.element().value = 'store-2';
-		select.element().dispatchEvent(new Event('change', { bubbles: true }));
+		const selectElement = select.element() as HTMLSelectElement;
+		selectElement.value = 'store-2';
+		selectElement.dispatchEvent(new Event('change', { bubbles: true }));
 
 		expect(onAssign).not.toHaveBeenCalled();
 		// The early return means onUnassign is also not called even though
@@ -793,8 +801,9 @@ describe('StaffPanel', () => {
 		const select = page.getByLabelText(
 			'Assign Alex Chen, Manager staff staff-alex, currently assigned to Founding Store'
 		);
-		select.element().value = '';
-		select.element().dispatchEvent(new Event('change', { bubbles: true }));
+		const selectElement = select.element() as HTMLSelectElement;
+		selectElement.value = '';
+		selectElement.dispatchEvent(new Event('change', { bubbles: true }));
 
 		expect(onUnassign).not.toHaveBeenCalled();
 		expect(onAssign).not.toHaveBeenCalled();

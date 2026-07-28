@@ -32,6 +32,7 @@ import {
 	validateScenarioRun
 } from './scenarioCodec';
 import { ScenarioMemoryRepository } from './scenarioMemoryRepository';
+import { runRecord, snapshot } from './scenarioRepository.testUtils';
 
 const OFFICIAL_SEEDS: Record<ScenarioId, number> = {
 	'first-profit': 280_001,
@@ -213,29 +214,6 @@ function fixtureRun(
 			medal: status === 'completed' ? evaluation.projection.medal : null,
 			evaluation
 		}
-	};
-}
-
-function runRecord(run: ScenarioRun, revision = 0): ScenarioRunRecord {
-	const { game, ...runEnvelope } = structuredClone(run);
-	return {
-		scenarioSchemaVersion: SCENARIO_RUN_SCHEMA_VERSION,
-		gameSchemaVersion: SAVE_SCHEMA_VERSION,
-		revision,
-		run: runEnvelope,
-		game
-	};
-}
-
-function snapshot(
-	activeRunsByScenarioId: Record<string, ScenarioRunRecord> = {},
-	bestResultsByDefinitionKey: ScenarioStoreSnapshot['bestResultsByDefinitionKey'] = {}
-): ScenarioStoreSnapshot {
-	return {
-		schemaVersion: SCENARIO_STORE_SCHEMA_VERSION,
-		activeRunsByScenarioId:
-			activeRunsByScenarioId as ScenarioStoreSnapshot['activeRunsByScenarioId'],
-		bestResultsByDefinitionKey
 	};
 }
 

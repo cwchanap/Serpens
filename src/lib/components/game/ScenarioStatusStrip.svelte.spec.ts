@@ -127,12 +127,12 @@ describe('ScenarioStatusStrip', () => {
 		});
 
 		// The retry handler calls onRetry, awaits tick, then refocuses the
-		// toggle button. Verify the toggle button is still rendered and
-		// focusable after the retry completes.
+		// toggle button. Verify the toggle button is actually focused after
+		// the retry completes.
 		await page.getByRole('button', { name: 'Retry' }).click();
 		await expect
 			.element(page.getByRole('button', { name: 'Show objective details' }))
-			.toBeVisible();
+			.toHaveFocus();
 	});
 
 	it('refocuses the toggle button after dismissing an error', async () => {
@@ -149,12 +149,12 @@ describe('ScenarioStatusStrip', () => {
 		});
 
 		// The dismiss handler calls onDismissError, awaits tick, then
-		// refocuses the toggle button. Verify the toggle button is still
-		// rendered and focusable after the dismiss completes.
+		// refocuses the toggle button. Verify the toggle button is actually
+		// focused after the dismiss completes.
 		await page.getByRole('button', { name: 'Dismiss' }).click();
 		await expect
 			.element(page.getByRole('button', { name: 'Show objective details' }))
-			.toBeVisible();
+			.toHaveFocus();
 	});
 
 	it('shows the hide-details label when expanded is true', async () => {

@@ -7,21 +7,29 @@ import type {
 } from '$lib/scenarios/types';
 
 /**
- * Returned by `saveActiveRun` when a different active run already exists for
- * the same scenario and the caller did not opt into replacement, or when an
- * `expectedRunId` or `expectedRevision` compare-and-swap did not match. The
- * run is left untouched; `activeRun` is the conflicting persisted run so
- * callers can surface it (e.g. refresh a stale catalog) without a separate
- * read. When the conflict is because the caller expected a specific run that
- * is no longer stored, `activeRun` is `null`. `revision` is the stored
- * record's revision (or `null` when no run is stored) so the caller can bind
- * a subsequent confirmed write to it via `expectedRevision`.
+ * Shared conflict shape returned by `saveActiveRun`, `removeActiveRun`, and
+ * `commitTerminalRun` when a compare-and-swap (`expectedRunId` /
+ * `expectedRevision`) did not match, or when a different active run already
+ * occupies the scenario slot. The run is left untouched; `activeRun` is the
+ * conflicting persisted run so callers can surface it (e.g. refresh a stale
+ * catalog) without a separate read. When the conflict is because the caller
+ * expected a specific run that is no longer stored, `activeRun` is `null`.
+ * `revision` is the stored record's revision (or `null` when no run is
+ * stored) so the caller can bind a subsequent confirmed write to it via
+ * `expectedRevision`.
  */
-export interface ScenarioSaveConflict {
+export interface ScenarioConflict {
 	status: 'conflict';
 	activeRun: ScenarioRun | null;
 	revision: number | null;
 }
+
+/**
+ * Returned by `saveActiveRun` when a different active run already exists for
+ * the same scenario and the caller did not opt into replacement, or when an
+ * `expectedRunId` or `expectedRevision` compare-and-swap did not match.
+ */
+export type ScenarioSaveConflict = ScenarioConflict;
 
 /**
  * Returned by `removeActiveRun`. When `expectedRunId` or `expectedRevision`
@@ -31,9 +39,7 @@ export interface ScenarioSaveConflict {
  * is the stored record's revision (or `null` when no run is stored) so the
  * caller can bind a subsequent confirmed write to it via `expectedRevision`.
  */
-export type ScenarioRemoveOutcome =
-	| { status: 'removed' }
-	| { status: 'conflict'; activeRun: ScenarioRun | null; revision: number | null };
+export type ScenarioRemoveOutcome = { status: 'removed' } | ScenarioConflict;
 
 export type ScenarioSaveOutcome = ScenarioCommitOutcome | ScenarioSaveConflict;
 
@@ -45,11 +51,7 @@ export type ScenarioSaveOutcome = ScenarioCommitOutcome | ScenarioSaveConflict;
  * expected run is gone, `activeRun` is `null`. `revision` is the stored
  * record's revision (or `null` when no run is stored).
  */
-export interface ScenarioTerminalConflict {
-	status: 'conflict';
-	activeRun: ScenarioRun | null;
-	revision: number | null;
-}
+export type ScenarioTerminalConflict = ScenarioConflict;
 
 export type ScenarioCommitRunOutcome = ScenarioCommitOutcome | ScenarioTerminalConflict;
 
