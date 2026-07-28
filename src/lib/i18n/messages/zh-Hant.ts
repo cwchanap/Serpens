@@ -977,6 +977,7 @@ export const zhHant = {
 		retry: '重試',
 		olderVersionConfirmation: '開始目前版本會取代進行中的舊版挑戰。',
 		importReplacementConfirmation: '要取代進行中的挑戰嗎？',
+		startReplacementConfirmation: '開始此挑戰會取代進行中的挑戰。',
 		best: '最佳',
 		noBest: '尚無排名結果',
 		priorVersion: '舊版結果',

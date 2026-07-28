@@ -1174,11 +1174,44 @@
 		}
 	}
 
-	async function startScenarioCard(card: ScenarioCatalogCardViewModel): Promise<void> {
+	async function startScenarioCard(
+		card: ScenarioCatalogCardViewModel,
+		confirmed: boolean,
+		expectedRunId?: string | null,
+		expectedRevision?: number | null
+	): Promise<ScenarioCatalogActionResult> {
 		const definition = currentScenarioDefinition(card.id);
-		if (!definition) return;
-		const result = await gameRouteController.startScenarioRun(definition, definition.officialSeed);
-		handleScenarioCardResult(result);
+		if (!definition) {
+			return {
+				status: 'error',
+				message: i18n.t('scenarioDiagnostics.staleDefinition')
+			};
+		}
+		const result = await gameRouteController.startScenarioRun(
+			definition,
+			definition.officialSeed,
+			confirmed,
+			expectedRunId,
+			expectedRevision
+		);
+		if (result.status === 'confirmation-required') {
+			return {
+				status: 'confirmation-required',
+				message: i18n.t('scenarioCatalog.startReplacementConfirmation'),
+				expectedRunId: result.expectedRunId,
+				expectedRevision: result.expectedRevision
+			};
+		}
+		if (result.status !== 'committed') {
+			return {
+				status: 'error',
+				message: scenarioOperationError
+					? scenarioDiagnosticText(scenarioOperationError, i18n)
+					: i18n.t('scenarioDiagnostics.persistenceWriteFailed')
+			};
+		}
+		isScenarioCatalogOpen = false;
+		return { status: 'started' };
 	}
 
 	async function startCurrentVersionCard(

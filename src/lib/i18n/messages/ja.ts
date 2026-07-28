@@ -985,6 +985,7 @@ export const ja = {
 		retry: '再試行',
 		olderVersionConfirmation: '現行版を開始すると、進行中の旧版ランが置き換えられます。',
 		importReplacementConfirmation: '進行中のランを置き換えますか？',
+		startReplacementConfirmation: 'この挑戦を開始すると、進行中のランが置き換えられます。',
 		best: 'ベスト',
 		noBest: 'ランク対象の結果はまだありません',
 		priorVersion: '旧版の結果',
