@@ -988,6 +988,7 @@ export const en = {
 		retry: 'Retry',
 		olderVersionConfirmation: 'Starting the current version replaces the active older run.',
 		importReplacementConfirmation: 'Replace the active run?',
+		startReplacementConfirmation: 'Starting this challenge replaces the active run.',
 		best: 'Best',
 		noBest: 'No ranked result yet',
 		priorVersion: 'Prior version result',

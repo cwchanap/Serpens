@@ -12,7 +12,12 @@
 		operationError: string | null;
 		pending: boolean;
 		persistenceReady: boolean;
-		onStart: (card: ScenarioCatalogCardViewModel) => void | Promise<void>;
+		onStart: (
+			card: ScenarioCatalogCardViewModel,
+			confirmed: boolean,
+			expectedRunId?: string | null,
+			expectedRevision?: number | null
+		) => ScenarioCatalogActionResult | Promise<ScenarioCatalogActionResult>;
 		onResume: (card: ScenarioCatalogCardViewModel) => void | Promise<void>;
 		onRestart: (card: ScenarioCatalogCardViewModel) => void | Promise<void>;
 		onStartCurrent: (
@@ -57,6 +62,13 @@
 		if (confirmation) confirmButton?.focus({ preventScroll: true });
 	});
 	let confirmation = $state<
+		| {
+				kind: 'start';
+				card: ScenarioCatalogCardViewModel;
+				message: string;
+				expectedRunId?: string | null;
+				expectedRevision?: number | null;
+		  }
 		| {
 				kind: 'current';
 				card: ScenarioCatalogCardViewModel;
@@ -105,6 +117,31 @@
 		}
 	}
 
+	// Route the ordinary Start action through the same confirmation-result
+	// flow used by Start Current and Import. When another tab starts the same
+	// scenario after this tab loaded an empty catalogue, the controller
+	// returns confirmation-required from the (confirmed=false) call; routing
+	// it through here surfaces the replacement prompt with the existing run's
+	// (runId, revision) token instead of silently discarding it and leaving
+	// the stale Start button doing nothing visible on repeated clicks.
+	async function requestStart(card: ScenarioCatalogCardViewModel): Promise<void> {
+		const result = await onStart(card, false);
+		if (result.status === 'confirmation-required') {
+			confirmation = {
+				kind: 'start',
+				card,
+				message: result.message,
+				expectedRunId: result.expectedRunId,
+				expectedRevision: result.expectedRevision
+			};
+			announcement = '';
+		} else if (result.status === 'error') {
+			announcement = result.message;
+		} else {
+			announcement = '';
+		}
+	}
+
 	// Route the current-version replacement through the controller's initial
 	// (confirmed=false) call so the confirmation token carries the revision
 	// observed at dialog-open time, not just the runId from the (revision-less)
@@ -135,39 +172,46 @@
 		confirmation = null;
 		if (!pendingConfirmation) return;
 		const result =
-			pendingConfirmation.kind === 'current'
-				? await onStartCurrent(
+			pendingConfirmation.kind === 'start'
+				? await onStart(
 						pendingConfirmation.card,
 						true,
 						pendingConfirmation.expectedRunId,
 						pendingConfirmation.expectedRevision
 					)
-				: await onImport(
-						pendingConfirmation.code,
-						true,
-						pendingConfirmation.expectedRunId,
-						pendingConfirmation.expectedRevision
-					);
+				: pendingConfirmation.kind === 'current'
+					? await onStartCurrent(
+							pendingConfirmation.card,
+							true,
+							pendingConfirmation.expectedRunId,
+							pendingConfirmation.expectedRevision
+						)
+					: await onImport(
+							pendingConfirmation.code,
+							true,
+							pendingConfirmation.expectedRunId,
+							pendingConfirmation.expectedRevision
+						);
 		if (result.status === 'confirmation-required') {
 			// The confirmed write lost the compare-and-swap to a newer run
 			// that appeared between the initial conflict and this confirmed
 			// write. Reopen the confirmation with the new message and token
 			// so the user can reconcile instead of silently discarding the
 			// conflict (which would leave an empty announcement and no way
-			// to surface the newer run). Both the current-version and import
-			// replacement flows share this reopen path.
+			// to surface the newer run). The start, current-version, and
+			// import replacement flows share this reopen path.
 			confirmation =
-				pendingConfirmation.kind === 'current'
+				pendingConfirmation.kind === 'import'
 					? {
-							kind: 'current',
-							card: pendingConfirmation.card,
+							kind: 'import',
+							code: pendingConfirmation.code,
 							message: result.message,
 							expectedRunId: result.expectedRunId,
 							expectedRevision: result.expectedRevision
 						}
 					: {
-							kind: 'import',
-							code: pendingConfirmation.code,
+							kind: pendingConfirmation.kind,
+							card: pendingConfirmation.card,
 							message: result.message,
 							expectedRunId: result.expectedRunId,
 							expectedRevision: result.expectedRevision
@@ -243,7 +287,7 @@
 							disabled={pending || !persistenceReady || !card.available}
 							aria-label={`${card.primaryLabel} ${card.title}`}
 							onclick={() =>
-								void (card.primaryAction === 'resume' ? onResume(card) : onStart(card))}
+								void (card.primaryAction === 'resume' ? onResume(card) : requestStart(card))}
 						>
 							{card.primaryLabel}
 						</button>
