@@ -491,4 +491,70 @@ describe('ScenarioCatalog', () => {
 		expect(onClose).not.toHaveBeenCalled();
 		await result.unmount();
 	});
+
+	it('announces the error when start-current returns an error status', async () => {
+		expect.assertions(2);
+		const onStartCurrent = vi.fn(
+			async (): Promise<ScenarioCatalogActionResult> => ({
+				status: 'error',
+				message: 'The challenge could not be started.'
+			})
+		);
+		const startCard = card('first-profit', 'First Profit', {
+			showStartCurrent: true,
+			version: 2
+		});
+		renderCatalog({ cards: [startCard], onStartCurrent });
+
+		await page.getByRole('button', { name: 'Start current First Profit' }).click();
+		expect(onStartCurrent).toHaveBeenCalledWith(startCard, false);
+		await expect.element(page.getByText('The challenge could not be started.')).toBeVisible();
+	});
+
+	it('clears the announcement when start-current succeeds on the first try', async () => {
+		expect.assertions(2);
+		const onStartCurrent = vi.fn(
+			async (): Promise<ScenarioCatalogActionResult> => ({ status: 'started' })
+		);
+		const startCard = card('first-profit', 'First Profit', {
+			showStartCurrent: true,
+			version: 2
+		});
+		renderCatalog({ cards: [startCard], onStartCurrent });
+
+		await page.getByRole('button', { name: 'Start current First Profit' }).click();
+		expect(onStartCurrent).toHaveBeenCalledWith(startCard, false);
+		// A successful start neither opens a confirmation nor announces an error.
+		await expect.element(page.getByRole('alertdialog')).not.toBeInTheDocument();
+	});
+
+	it('announces the error when a confirmed start-current replacement fails', async () => {
+		expect.assertions(2);
+		const onStartCurrent = vi.fn(
+			async (
+				_card: ScenarioCatalogCardViewModel,
+				confirmed: boolean
+			): Promise<ScenarioCatalogActionResult> => {
+				if (!confirmed) {
+					return {
+						status: 'confirmation-required',
+						message: 'Starting the current version replaces the active older run.',
+						expectedRunId: 'run-old',
+						expectedRevision: 1
+					};
+				}
+				return { status: 'error', message: 'The challenge could not be started.' };
+			}
+		);
+		const old = card('first-profit', 'First Profit', {
+			showStartCurrent: true,
+			version: 2
+		});
+		renderCatalog({ cards: [old], onStartCurrent });
+
+		await page.getByRole('button', { name: 'Start current First Profit' }).click();
+		await page.getByRole('button', { name: 'Confirm replacement' }).click();
+		expect(onStartCurrent).toHaveBeenLastCalledWith(old, true, 'run-old', 1);
+		await expect.element(page.getByText('The challenge could not be started.')).toBeVisible();
+	});
 });

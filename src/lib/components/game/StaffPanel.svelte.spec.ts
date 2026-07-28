@@ -741,4 +741,106 @@ describe('StaffPanel', () => {
 		promoteButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 		expect(onPromote).not.toHaveBeenCalled();
 	});
+
+	it('guards onAssign when a change event is dispatched on a disabled select with a store value', async () => {
+		// handleAssignment's `if (canAssign)` guard: when canAssign is false
+		// but a change event fires with a truthy storeId (bypassing the
+		// disabled option), onAssign must not be called. The function
+		// returns early without falling through to onUnassign.
+		expect.assertions(2);
+		const onAssign = vi.fn();
+		const onUnassign = vi.fn();
+		renderStaffPanel({
+			stores: [store, secondStore],
+			onAssign,
+			onUnassign,
+			canAssign: false,
+			canUnassign: true
+		});
+
+		// Find the unassigned staff select (Blair's) and dispatch a change
+		// event directly, bypassing the disabled option UI restriction.
+		const select = page.getByLabelText(
+			'Assign Blair Kim, General staff staff-blair, currently unassigned'
+		);
+		select.element().value = 'store-2';
+		select.element().dispatchEvent(new Event('change', { bubbles: true }));
+
+		expect(onAssign).not.toHaveBeenCalled();
+		// The early return means onUnassign is also not called even though
+		// canUnassign is true — the storeId is truthy so we never reach the
+		// unassign branch.
+		expect(onUnassign).not.toHaveBeenCalled();
+	});
+
+	it('guards onUnassign when a change event is dispatched with an empty storeId and canUnassign is false', async () => {
+		// handleAssignment's `if (canUnassign)` guard: when canUnassign is
+		// false and a change event fires with an empty storeId, onUnassign
+		// must not be called.
+		expect.assertions(2);
+		const onAssign = vi.fn();
+		const onUnassign = vi.fn();
+		renderStaffPanel({
+			stores: [store, secondStore],
+			onAssign,
+			onUnassign,
+			canAssign: true,
+			canUnassign: false
+		});
+
+		// Find the assigned staff select (Alex's) and dispatch a change
+		// event with an empty value, bypassing the disabled option.
+		const select = page.getByLabelText(
+			'Assign Alex Chen, Manager staff staff-alex, currently assigned to Founding Store'
+		);
+		select.element().value = '';
+		select.element().dispatchEvent(new Event('change', { bubbles: true }));
+
+		expect(onUnassign).not.toHaveBeenCalled();
+		expect(onAssign).not.toHaveBeenCalled();
+	});
+
+	it('shows the disabled reason when only canHire is false', async () => {
+		expect.assertions(2);
+		renderStaffPanel({
+			canHire: false,
+			canAssign: true,
+			canUnassign: true,
+			canPromote: true,
+			disabledReason: 'Hiring is unavailable in this challenge.'
+		});
+
+		await expect.element(page.getByText('Hiring is unavailable in this challenge.')).toBeVisible();
+		await expect.element(page.getByRole('button', { name: /hire casey/i })).toBeDisabled();
+	});
+
+	it('shows the disabled reason when only canAssign is false', async () => {
+		expect.assertions(1);
+		renderStaffPanel({
+			canHire: true,
+			canAssign: false,
+			canUnassign: true,
+			canPromote: true,
+			disabledReason: 'Assignment is unavailable in this challenge.'
+		});
+
+		await expect
+			.element(page.getByText('Assignment is unavailable in this challenge.'))
+			.toBeVisible();
+	});
+
+	it('shows the disabled reason when only canUnassign is false', async () => {
+		expect.assertions(1);
+		renderStaffPanel({
+			canHire: true,
+			canAssign: true,
+			canUnassign: false,
+			canPromote: true,
+			disabledReason: 'Unassignment is unavailable in this challenge.'
+		});
+
+		await expect
+			.element(page.getByText('Unassignment is unavailable in this challenge.'))
+			.toBeVisible();
+	});
 });

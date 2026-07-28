@@ -368,4 +368,26 @@ describe('focusTrap', () => {
 
 		detach();
 	});
+
+	it('does not wrap focus when tabbing forward from a middle focusable element', () => {
+		expect.assertions(1);
+		const dialog = mountDialog(
+			'<div role="dialog" tabindex="-1">' +
+				'<button id="first">First</button>' +
+				'<button id="middle">Middle</button>' +
+				'<button id="last">Last</button>' +
+				'</div>'
+		);
+		const node = dialog.querySelector<HTMLDivElement>('[role="dialog"]')!;
+		const detach = focusTrap(node) as () => void;
+
+		const middle = node.querySelector<HTMLButtonElement>('#middle')!;
+		middle.focus();
+		// Tab forward from a middle element is neither the last nor outside
+		// the dialog, so the trap must not intercept/wrap — focus stays put.
+		node.dispatchEvent(tabKey(false));
+		expect(document.activeElement).toBe(middle);
+
+		detach();
+	});
 });

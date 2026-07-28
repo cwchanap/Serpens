@@ -237,4 +237,97 @@ describe('scenario copy branches', () => {
 		expect(shareCodeMessages).toEqual(shareCodes.map((code) => i18n.t(shareCodeKeys[code])));
 		expect(operationMessages).toEqual(operationCodes.map((code) => i18n.t(operationKeys[code])));
 	});
+
+	it('formats daily-net-income and retail-import-spend as currency', () => {
+		const current = definition();
+		const evaluationWithCurrencyMetrics: ScenarioRun['evaluation'] = {
+			day: 4,
+			required: [
+				{
+					conditionId: 'cash',
+					status: 'satisfied',
+					evidence: evidence('cash', 'daily-net-income', 200, 100, { kind: 'current' })
+				},
+				{
+					conditionId: 'share',
+					status: 'satisfied',
+					evidence: evidence('share', 'retail-import-spend', 50, 100, {
+						kind: 'current'
+					})
+				}
+			],
+			optional: [],
+			failures: [],
+			deadline: null,
+			risks: [],
+			projection: { score: 650, medal: 'bronze', componentPoints: [], componentEvidence: [] }
+		};
+		const view = buildScenarioProgressView(
+			current,
+			{
+				runId: '00000000-0000-4000-8000-000000000000',
+				definition: { scenarioId: current.id, version: current.version },
+				seed: current.officialSeed,
+				eligibility: 'ranked',
+				status: 'active',
+				game: {} as never,
+				evaluation: evaluationWithCurrencyMetrics,
+				result: null
+			},
+			createI18n('en')
+		);
+
+		expect(view.required[0]?.evidenceLabel).toContain('$200');
+		expect(view.required[1]?.evidenceLabel).toContain('$50');
+	});
+
+	it('falls back to the conditionId label when an evaluation references an unknown condition', () => {
+		// conditionViews looks up the condition in the definition's
+		// objective/failure arrays by id. When the evaluation references a
+		// conditionId that is not in the definition (e.g. a stale run from
+		// an older definition version), the label falls back to the raw
+		// conditionId rather than crashing.
+		const current = definition();
+		const view = buildScenarioProgressView(
+			current,
+			{
+				runId: '00000000-0000-4000-8000-000000000000',
+				definition: { scenarioId: current.id, version: current.version },
+				seed: current.officialSeed,
+				eligibility: 'ranked',
+				status: 'active',
+				game: {} as never,
+				evaluation: {
+					day: 4,
+					required: [
+						{
+							conditionId: 'unknown-condition',
+							status: 'pending',
+							evidence: evidence('unknown-condition', 'cash', 50, 100, {
+								kind: 'current'
+							})
+						}
+					],
+					optional: [],
+					failures: [
+						{
+							conditionId: 'unknown-failure',
+							status: 'inactive',
+							evidence: evidence('unknown-failure', 'cash', 50, 0, {
+								kind: 'current'
+							})
+						}
+					],
+					deadline: null,
+					risks: [],
+					projection: { score: 650, medal: 'bronze', componentPoints: [], componentEvidence: [] }
+				},
+				result: null
+			},
+			createI18n('en')
+		);
+
+		expect(view.required[0]?.label).toBe('unknown-condition');
+		expect(view.failures[0]?.label).toBe('unknown-failure');
+	});
 });
