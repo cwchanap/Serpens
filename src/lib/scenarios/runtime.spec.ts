@@ -7,7 +7,14 @@ import {
 import { decisionContextWorldCityUnknown } from '$lib/game/decisionContext';
 import { getIndustryTilesByResource } from '$lib/game/industry';
 import { buildIndustrialBuilding, upgradeBuilding } from '$lib/game/industryPlacement';
-import { createFoundingGameAtTile, openStoreAtTile } from '$lib/game/placement';
+import { financeIndustrialBuilding } from '$lib/game/industryPlacement';
+import { borrow, payOffLoan, refinanceLoan, repayLoan } from '$lib/game/finance';
+import {
+	createFoundingGameAtTile,
+	financeRetailStoreOpening,
+	forecastOpening,
+	openStoreAtTile
+} from '$lib/game/placement';
 import { buildRailNetwork, deriveRailSegments } from '$lib/game/rail';
 import {
 	buildRail,
@@ -26,7 +33,12 @@ import {
 	getStoreFootprintPlacementBlockReason
 } from '$lib/game/storeFootprint';
 import type { GameState } from '$lib/game/types';
-import { openWorldCity, selectWorldCity } from '$lib/game/world';
+import {
+	financeWorldCityOpening,
+	getWorldCityDefinition,
+	openWorldCity,
+	selectWorldCity
+} from '$lib/game/world';
 import { shouldReplaceBestResult } from './scoring';
 import { currentScenarioDefinition } from './catalog';
 import { MAX_SCENARIO_SEED } from './types';
@@ -750,6 +762,151 @@ describe('executeScenarioCommand dispatch', { timeout: 30_000 }, () => {
 
 		expect(next.game).toEqual(demolishRailSegment(game, city.id, segment.id));
 	});
+
+	it('replays working-capital borrowing with its exact term and amount payload', () => {
+		const game = foundingGame();
+		const definition = commandDefinition(['borrow']);
+		const command: ScenarioCommand = { kind: 'borrow', amount: 1_000, termDays: 56 };
+		const next = changedRun(activeRun(definition, game), definition, command);
+		const expected = borrow(game, { purpose: 'workingCapital', amount: 1_000, termDays: 56 });
+		expect(expected).toMatchObject({ ok: true });
+		if (!expected.ok) throw new Error('Expected finance fixture to borrow.');
+		expect(next.game).toEqual(expected.game);
+	});
+
+	it('replays repayment, payoff, and refinance against the exact recorded loan id', () => {
+		const borrowed = borrow(foundingGame(), {
+			purpose: 'workingCapital',
+			amount: 1_000,
+			termDays: 56
+		});
+		if (!borrowed.ok) throw new Error('Expected finance fixture to borrow.');
+		const loanId = borrowed.receipt.loanId;
+		for (const [command, expected] of [
+			[
+				{ kind: 'repayLoan', loanId, amount: 100 } as const,
+				repayLoan(borrowed.game, { loanId, amount: 100 })
+			],
+			[{ kind: 'payOffLoan', loanId } as const, payOffLoan(borrowed.game, loanId)],
+			[
+				{ kind: 'refinanceLoan', loanId, termDays: 84 } as const,
+				refinanceLoan(borrowed.game, { loanId, termDays: 84 })
+			]
+		] as const) {
+			expect(expected).toMatchObject({ ok: true });
+			if (!expected.ok) throw new Error(`Expected ${command.kind} fixture to succeed.`);
+			const definition = commandDefinition([command.kind]);
+			const next = changedRun(activeRun(definition, borrowed.game), definition, command);
+			expect(next.game).toEqual(expected.game);
+		}
+	});
+
+	it('replays financed purchases with their exact expected-cost payloads', () => {
+		const cityGame: GameState = {
+			...foundingGame(),
+			world: {
+				revealedCityIds: ['harbor-city', 'industry-city', 'campus-junction'],
+				openedCityIds: ['harbor-city', 'industry-city'],
+				claimedMilestoneIds: []
+			}
+		};
+		const city = getWorldCityDefinition('campus-junction')!;
+		const retailTile = findExpansionTile(cityGame);
+		const industry = grainBuildFixture();
+		const commands: Array<{
+			game: GameState;
+			command: ScenarioCommand;
+			expected: ReturnType<typeof financeWorldCityOpening>;
+		}> = [
+			{
+				game: cityGame,
+				command: { kind: 'financeWorldCity', cityId: city.id, expectedCost: city.openingCost },
+				expected: financeWorldCityOpening(cityGame, {
+					cityId: city.id,
+					expectedCost: city.openingCost
+				})
+			},
+			{
+				game: cityGame,
+				command: {
+					kind: 'financeRetailStore',
+					tileId: retailTile.id,
+					archetypeId: 'convenience',
+					expectedCost: forecastOpening(retailTile, 'convenience').setupCost
+				},
+				expected: financeRetailStoreOpening(cityGame, {
+					tileId: retailTile.id,
+					archetypeId: 'convenience',
+					expectedCost: forecastOpening(retailTile, 'convenience').setupCost
+				})
+			},
+			{
+				game: industry.game,
+				command: {
+					kind: 'financeIndustrialBuilding',
+					tileId: industry.tile.id,
+					buildingTypeId: 'grain-farm',
+					expectedCost: 600
+				},
+				expected: financeIndustrialBuilding(industry.game, {
+					tileId: industry.tile.id,
+					buildingTypeId: 'grain-farm',
+					expectedCost: 600
+				})
+			}
+		];
+		for (const { game, command, expected } of commands) {
+			expect(expected).toMatchObject({ ok: true });
+			if (!expected.ok) throw new Error(`Expected ${command.kind} fixture to succeed.`);
+			const base = commandDefinition([command.kind]);
+			const definition = {
+				...base,
+				content: {
+					...base.content,
+					retailPlacements:
+						command.kind === 'financeRetailStore'
+							? [
+									{
+										cityId: 'harbor-city' as const,
+										tileId: command.tileId,
+										archetypeId: command.archetypeId
+									}
+								]
+							: base.content.retailPlacements,
+					industrialPlacements:
+						command.kind === 'financeIndustrialBuilding'
+							? [
+									{
+										cityId: 'industry-city' as const,
+										tileId: command.tileId,
+										buildingTypeId: command.buildingTypeId
+									}
+								]
+							: base.content.industrialPlacements
+				}
+			};
+			const next = changedRun(activeRun(definition, game), definition, command);
+			expect(next.game).toEqual(expected.game);
+		}
+	});
+
+	it('maps a typed finance failure to invalid-command without advancing the run', () => {
+		const game = foundingGame();
+		const definition = commandDefinition(['repayLoan']);
+		const run = activeRun(definition, game);
+		expect(
+			executeScenarioCommand(run, definition, {
+				kind: 'repayLoan',
+				loanId: 'missing-loan',
+				amount: 100
+			})
+		).toEqual({
+			ok: false,
+			code: 'invalid-command',
+			financeFailure: { code: 'loanNotFound', context: { loanId: 'missing-loan' } }
+		});
+		expect(run.game).toBe(game);
+	});
 });
 
 function replayLaunchCalibration(
@@ -1168,9 +1325,13 @@ describe(
 							decisionId: decision.id,
 							optionId: option.id
 						});
-						if (!decisionResult.ok || !decisionResult.changed) {
+						if (!decisionResult.ok) {
 							throw new Error('Generated scenario decision was rejected.');
 						}
+						// A generated finance decision can be unavailable under the
+						// deterministic credit model. Its state transition is a safe
+						// no-op; leave it pending and continue the day trace.
+						if (!decisionResult.changed) continue;
 						run = decisionResult.run;
 						resolvedCount += 1;
 					}

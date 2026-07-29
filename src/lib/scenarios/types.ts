@@ -3,6 +3,7 @@ import type {
 	CompanyPolicy,
 	GameState,
 	IndustrialBuildingTypeId,
+	LoanTermDays,
 	MaterialId,
 	ScoreKey,
 	WorldCityId
@@ -27,7 +28,14 @@ export const SCENARIO_COMMAND_KINDS = [
 	'upgradeIndustrialBuilding',
 	'buildRail',
 	'upgradeRail',
-	'demolishRail'
+	'demolishRail',
+	'borrow',
+	'repayLoan',
+	'payOffLoan',
+	'refinanceLoan',
+	'financeWorldCity',
+	'financeRetailStore',
+	'financeIndustrialBuilding'
 ] as const;
 
 /** Largest seed that remains a non-zero Park-Miller RNG state without normalization. */
@@ -70,7 +78,24 @@ export type ScenarioCommand =
 			destinationBuildingId: string;
 	  }
 	| { kind: 'upgradeRail'; cityId: string; segmentId: string }
-	| { kind: 'demolishRail'; cityId: string; segmentId: string };
+	| { kind: 'demolishRail'; cityId: string; segmentId: string }
+	| { kind: 'borrow'; amount: number; termDays: LoanTermDays }
+	| { kind: 'repayLoan'; loanId: string; amount: number }
+	| { kind: 'payOffLoan'; loanId: string }
+	| { kind: 'refinanceLoan'; loanId: string; termDays: LoanTermDays }
+	| { kind: 'financeWorldCity'; cityId: WorldCityId; expectedCost: number }
+	| {
+			kind: 'financeRetailStore';
+			tileId: string;
+			archetypeId: ArchetypeId;
+			expectedCost: number;
+	  }
+	| {
+			kind: 'financeIndustrialBuilding';
+			tileId: string;
+			buildingTypeId: IndustrialBuildingTypeId;
+			expectedCost: number;
+	  };
 
 export interface ScenarioStartBlueprint {
 	foundingStore: {

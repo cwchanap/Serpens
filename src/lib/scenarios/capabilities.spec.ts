@@ -123,7 +123,24 @@ const commands = [
 		destinationBuildingId: 'missing-destination'
 	},
 	{ kind: 'upgradeRail', cityId: 'industry-city', segmentId: 'missing-segment' },
-	{ kind: 'demolishRail', cityId: 'industry-city', segmentId: 'missing-segment' }
+	{ kind: 'demolishRail', cityId: 'industry-city', segmentId: 'missing-segment' },
+	{ kind: 'borrow', amount: 1_000, termDays: 56 },
+	{ kind: 'repayLoan', loanId: 'loan-1', amount: 100 },
+	{ kind: 'payOffLoan', loanId: 'loan-1' },
+	{ kind: 'refinanceLoan', loanId: 'loan-1', termDays: 84 },
+	{ kind: 'financeWorldCity', cityId: 'campus-junction', expectedCost: 12_000 },
+	{
+		kind: 'financeRetailStore',
+		tileId: 'harbor-tile',
+		archetypeId: 'convenience',
+		expectedCost: 12_000
+	},
+	{
+		kind: 'financeIndustrialBuilding',
+		tileId: 'industry-tile',
+		buildingTypeId: 'water-pump',
+		expectedCost: 12_000
+	}
 ] as const satisfies readonly ScenarioCommand[];
 
 describe('scenario command capabilities', () => {
@@ -260,6 +277,45 @@ describe('scenario command capabilities', () => {
 			code: 'forbidden-content',
 			path: 'command.buildIndustrialBuilding.tileId'
 		});
+	});
+
+	it.each([
+		{
+			kind: 'financeRetailStore' as const,
+			tileId: 'different-tile',
+			archetypeId: 'convenience' as const,
+			expectedCost: 12_000
+		},
+		{
+			kind: 'financeIndustrialBuilding' as const,
+			tileId: 'different-tile',
+			buildingTypeId: 'water-pump' as const,
+			expectedCost: 12_000
+		}
+	])('enforces exact content tuples for $kind', (command) => {
+		const scenario = definition({ allowedCommands: [command.kind] });
+		expect(isScenarioCommandAllowed(scenario, run(), command)).toMatchObject({
+			allowed: false,
+			code: 'forbidden-content'
+		});
+	});
+
+	it('rejects malformed finance payloads before dispatch', () => {
+		const scenario = definition({ allowedCommands: ['borrow', 'repayLoan'] });
+		expect(
+			isScenarioCommandAllowed(scenario, run(), {
+				kind: 'borrow',
+				amount: 100.5,
+				termDays: 56
+			} as ScenarioCommand)
+		).toMatchObject({ allowed: false, code: 'forbidden-content' });
+		expect(
+			isScenarioCommandAllowed(scenario, run(), {
+				kind: 'repayLoan',
+				loanId: '',
+				amount: 100
+			} as ScenarioCommand)
+		).toMatchObject({ allowed: false, code: 'forbidden-content' });
 	});
 
 	it.each(['upgradeRail', 'demolishRail'] as const)(

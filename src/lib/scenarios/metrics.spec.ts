@@ -282,6 +282,28 @@ function metricGame(): GameState {
 	});
 }
 
+it('uses operating cash flow rather than net income for profit-like metrics', () => {
+	const fixture = game({
+		reports: [
+			report(1, 900, [], { operatingCashFlow: -10 }),
+			report(2, -900, [], { operatingCashFlow: 20 })
+		]
+	});
+	expect(
+		evaluateMetric(fixture, { metric: 'daily-net-income' }, { kind: 'run-to-date' })
+	).toMatchObject({ actual: 5 });
+	expect(
+		evaluateMetric(fixture, { metric: 'cumulative-net-income' }, { kind: 'run-to-date' })
+	).toMatchObject({ actual: 10 });
+	expect(
+		evaluateMetric(
+			fixture,
+			{ metric: 'consecutive-positive-net-income-reports' },
+			{ kind: 'current' }
+		)
+	).toMatchObject({ actual: 1 });
+});
+
 function condition(
 	id: string,
 	query: ScenarioMetricQuery,

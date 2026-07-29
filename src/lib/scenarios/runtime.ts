@@ -1,5 +1,14 @@
 import { buildIndustrialBuilding, upgradeBuilding } from '$lib/game/industryPlacement';
+import {
+	borrow,
+	payOffLoan,
+	refinanceLoan,
+	repayLoan,
+	type FinanceActionResult,
+	type FinanceFailureCode
+} from '$lib/game/finance';
 import { openStoreAtTile } from '$lib/game/placement';
+import { financeRetailStoreOpening } from '$lib/game/placement';
 import { buildRail, demolishRailSegment, upgradeRailSegment } from '$lib/game/railPlacement';
 import { normalizeSeed } from '$lib/game/rng';
 import { simulateDay } from '$lib/game/simulateDay';
@@ -8,7 +17,8 @@ import { assignStaffToStore, hireCandidate, promoteStaff, unassignStaff } from '
 import { resolveDecision, updatePolicy, upgradeStore } from '$lib/game/state';
 import { updateStoreProduct } from '$lib/game/stock';
 import type { GameState } from '$lib/game/types';
-import { openWorldCity, selectWorldCity } from '$lib/game/world';
+import { financeWorldCityOpening, openWorldCity, selectWorldCity } from '$lib/game/world';
+import { financeIndustrialBuilding } from '$lib/game/industryPlacement';
 import { deeplyEqual } from '$lib/game/equality';
 import { isScenarioCommandAllowed } from './capabilities';
 import { evaluateScenarioConditions } from './metrics';
@@ -35,6 +45,10 @@ export type ExecuteScenarioCommandResult =
 				| 'invalid-command'
 				| 'terminal-run'
 				| 'stale-definition';
+			financeFailure?: {
+				code: FinanceFailureCode;
+				context: Record<string, string | number>;
+			};
 	  };
 
 export type ScenarioStartResult = ScenarioOperationResult<ScenarioRun>;
@@ -176,11 +190,14 @@ function compileSimulationRules(definition: ScenarioDefinition): SimulationRules
 	};
 }
 
+type FinanceActionFailure = Extract<FinanceActionResult<unknown>, { ok: false }>;
+type ScenarioDispatchResult = GameState | FinanceActionFailure;
+
 function dispatchScenarioCommand(
 	game: GameState,
 	definition: ScenarioDefinition,
 	command: ScenarioCommand
-): GameState {
+): ScenarioDispatchResult {
 	switch (command.kind) {
 		case 'advanceDay':
 			return simulateDay(game, compileSimulationRules(definition));
@@ -233,6 +250,38 @@ function dispatchScenarioCommand(
 			return upgradeRailSegment(game, command.cityId, command.segmentId);
 		case 'demolishRail':
 			return demolishRailSegment(game, command.cityId, command.segmentId);
+		case 'borrow': {
+			const result = borrow(game, {
+				purpose: 'workingCapital',
+				amount: command.amount,
+				termDays: command.termDays
+			});
+			return result.ok ? result.game : result;
+		}
+		case 'repayLoan': {
+			const result = repayLoan(game, { loanId: command.loanId, amount: command.amount });
+			return result.ok ? result.game : result;
+		}
+		case 'payOffLoan': {
+			const result = payOffLoan(game, command.loanId);
+			return result.ok ? result.game : result;
+		}
+		case 'refinanceLoan': {
+			const result = refinanceLoan(game, { loanId: command.loanId, termDays: command.termDays });
+			return result.ok ? result.game : result;
+		}
+		case 'financeWorldCity': {
+			const result = financeWorldCityOpening(game, command);
+			return result.ok ? result.game : result;
+		}
+		case 'financeRetailStore': {
+			const result = financeRetailStoreOpening(game, command);
+			return result.ok ? result.game : result;
+		}
+		case 'financeIndustrialBuilding': {
+			const result = financeIndustrialBuilding(game, command);
+			return result.ok ? result.game : result;
+		}
 	}
 }
 
@@ -275,7 +324,15 @@ export function executeScenarioCommand(
 
 	let game: GameState;
 	try {
-		game = dispatchScenarioCommand(run.game, definition, command);
+		const dispatched = dispatchScenarioCommand(run.game, definition, command);
+		if ('ok' in dispatched) {
+			return {
+				ok: false,
+				code: 'invalid-command',
+				financeFailure: { code: dispatched.code, context: dispatched.context }
+			};
+		}
+		game = dispatched;
 	} catch {
 		// The command passed capability/content checks but the transition itself
 		// rejected it (e.g. openStoreAtTile throws on a locked/occupied tile, or
