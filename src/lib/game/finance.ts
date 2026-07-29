@@ -26,7 +26,12 @@ export type FinanceFailureCode =
 
 export type FinanceActionResult<TReceipt> =
 	| { ok: true; game: GameState; receipt: TReceipt }
-	| { ok: false; code: FinanceFailureCode; context: Record<string, string | number> };
+	| {
+			ok: false;
+			game?: GameState;
+			code: FinanceFailureCode;
+			context: Record<string, string | number>;
+	  };
 
 type FinanceActionFailure = Extract<FinanceActionResult<never>, { ok: false }>;
 type ActionLoanLookup = { ok: true; loan: LoanInstrument } | FinanceActionFailure;
@@ -86,60 +91,6 @@ export interface FinancedPurchaseReceipt {
 	loanId: string;
 	purchaseCost: number;
 	financedPrincipal: number;
-}
-
-export function financeExpansionPurchase(
-	game: GameState,
-	input: {
-		expectedCost: number;
-		resolveLiveCost: (candidate: GameState) => number | null;
-		cashOnlyPurchase: (candidate: GameState) => GameState;
-		postcondition: (candidate: GameState) => boolean;
-	}
-): FinanceActionResult<FinancedPurchaseReceipt> {
-	const purchaseCost = input.resolveLiveCost(game);
-	if (purchaseCost === null || !Number.isSafeInteger(purchaseCost) || purchaseCost < 0) {
-		return failure('purchaseUnavailable');
-	}
-	if (input.expectedCost !== purchaseCost) {
-		return failure('purchaseCostChanged', {
-			expectedCost: input.expectedCost,
-			purchaseCost
-		});
-	}
-
-	const shortfall = purchaseCost - game.cash;
-	if (shortfall <= 0) {
-		const purchased = input.cashOnlyPurchase(game);
-		return input.postcondition(purchased)
-			? {
-					ok: true,
-					game: purchased,
-					receipt: { loanId: '', purchaseCost, financedPrincipal: 0 }
-				}
-			: failure('purchaseUnavailable');
-	}
-
-	const borrowed = borrow(game, {
-		purpose: 'expansion',
-		amount: shortfall,
-		termDays: FOUNDING_LOAN_TERM_DAYS,
-		allowBelowMinimum: true
-	});
-	if (!borrowed.ok) return borrowed;
-
-	const purchased = input.cashOnlyPurchase(borrowed.game);
-	if (!input.postcondition(purchased)) return failure('purchaseUnavailable');
-
-	return {
-		ok: true,
-		game: purchased,
-		receipt: {
-			loanId: borrowed.receipt.loanId,
-			purchaseCost,
-			financedPrincipal: shortfall
-		}
-	};
 }
 
 export interface FinanceServicingResult {

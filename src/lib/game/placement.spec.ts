@@ -86,6 +86,7 @@ describe('tile placement', () => {
 		});
 
 		expect(result).toMatchObject({ ok: false, code: 'purchaseCostChanged' });
+		if (!result.ok) expect(result.game).toBe(game);
 		expect(game.stores).toHaveLength(base.stores.length);
 		expect(game.finance).toBe(base.finance);
 	});

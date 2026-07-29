@@ -57,6 +57,7 @@ describe('industrial placement', () => {
 		});
 
 		expect(result).toMatchObject({ ok: false, code: 'purchaseUnavailable' });
+		if (!result.ok) expect(result.game).toBe(game);
 		expect(game.industrialBuildings).toHaveLength(0);
 		expect(game.finance.loans).toHaveLength(1);
 		expect(game.finance.transactions).toHaveLength(0);

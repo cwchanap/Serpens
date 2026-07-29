@@ -18,11 +18,6 @@ import {
 } from './decisionContext';
 import type { DecisionContext } from './decisionContext';
 import { refreshWorldProgress } from './world';
-import {
-	financeExpansionPurchase,
-	type FinanceActionResult,
-	type FinancedPurchaseReceipt
-} from './finance';
 import { getWarehouseCapacity, recalculateWarehousePressure } from './industryProduction';
 import type {
 	DecisionItem,
@@ -226,31 +221,7 @@ export function buildIndustrialBuilding(
 	});
 }
 
-export function financeIndustrialBuilding(
-	game: GameState,
-	input: {
-		tileId: string;
-		buildingTypeId: IndustrialBuildingTypeId;
-		expectedCost: number;
-	}
-): FinanceActionResult<FinancedPurchaseReceipt> {
-	return financeExpansionPurchase(game, {
-		expectedCost: input.expectedCost,
-		resolveLiveCost: (candidate) => {
-			const buildingType = INDUSTRIAL_BUILDING_TYPES[input.buildingTypeId];
-			return buildingType &&
-				getIndustrialPlacementBlockReason(candidate, input.tileId, input.buildingTypeId) === null
-				? buildingType.buildCost
-				: null;
-		},
-		cashOnlyPurchase: (candidate) => buildIndustrialBuilding(candidate, input),
-		postcondition: (candidate) =>
-			candidate.industrialBuildings.length === game.industrialBuildings.length + 1 &&
-			candidate.industrialBuildings.some(
-				(building) => building.tileId === input.tileId && building.typeId === input.buildingTypeId
-			)
-	});
-}
+export { financeIndustrialBuilding } from './expansionFinancing';
 
 export function upgradeBuilding(game: GameState, buildingId: string): GameState {
 	const index = game.industrialBuildings.findIndex((building) => building.id === buildingId);
