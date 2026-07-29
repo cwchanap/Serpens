@@ -127,6 +127,7 @@ describe('world progression and city opening', () => {
 
 		expect(result.ok).toBe(true);
 		if (!result.ok) return;
+		expect(result.receipt.loanId).toBe('loan-2');
 		expect(result.game.cash).toBe(0);
 		expect(result.game.finance.loans.at(-1)).toMatchObject({
 			purpose: 'expansion',
@@ -157,6 +158,7 @@ describe('world progression and city opening', () => {
 
 		expect(result.ok).toBe(true);
 		if (!result.ok) return;
+		expect(result.receipt.loanId).toBeNull();
 		expect(result.game.finance).toBe(game.finance);
 		expect(result.game.cash).toBe(0);
 		expect(result.game.world.openedCityIds).toContain('campus-junction');

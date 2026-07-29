@@ -45,7 +45,7 @@ export function runExpansionPurchase(
 			? {
 					ok: true,
 					game: purchased,
-					receipt: { loanId: '', purchaseCost, financedPrincipal: 0 }
+					receipt: { loanId: null, purchaseCost, financedPrincipal: 0 }
 				}
 			: purchaseFailure(game, 'purchaseUnavailable');
 	}

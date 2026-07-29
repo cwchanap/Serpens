@@ -88,7 +88,7 @@ export interface ExpansionFinanceOffer {
 }
 
 export interface FinancedPurchaseReceipt {
-	loanId: string;
+	loanId: string | null;
 	purchaseCost: number;
 	financedPrincipal: number;
 }
