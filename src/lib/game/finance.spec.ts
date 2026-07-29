@@ -467,8 +467,8 @@ describe('finance servicing', () => {
 			overduePrincipal: 0
 		});
 		expect(serviced.finance.transactions.map((transaction) => transaction.kind)).toEqual([
-			'interestPayment',
-			'principalPayment'
+			'principalPayment',
+			'interestPayment'
 		]);
 	});
 
@@ -493,11 +493,16 @@ describe('finance servicing', () => {
 			remainingPrincipal: 0,
 			overduePrincipal: 0,
 			overdueInterest: 0,
-			accruedInterestMicros: 1
+			accruedInterestMicros: 1,
+			scheduledPaymentCount: 1,
+			missedPaymentCount: 0
 		});
 		expect(insolvent.finance.transactions).toEqual([
-			expect.objectContaining({ kind: 'principalPayment', principalAmount: 1 }),
-			expect.objectContaining({ kind: 'missedPayment', interestAmount: 1 })
+			expect.objectContaining({
+				kind: 'principalPayment',
+				principalAmount: 1,
+				interestAmount: 0
+			})
 		]);
 
 		const recovered = serviceFinanceForDay({

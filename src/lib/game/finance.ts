@@ -354,25 +354,9 @@ function serviceScheduledLoan(input: {
 	const wholeAccruedInterest = Math.floor(loan.accruedInterestMicros / 1_000_000);
 	const fractionalAccruedInterestMicros =
 		loan.accruedInterestMicros - wholeAccruedInterest * 1_000_000;
-	const fractionalInterestCeiling = Math.ceil(fractionalAccruedInterestMicros / 1_000_000);
-	const canCloseFinalInstallment =
-		isFinalInstallment &&
-		fractionalInterestCeiling > 0 &&
-		Math.max(0, input.cash) >=
-			loan.overdueInterest +
-				wholeAccruedInterest +
-				loan.overduePrincipal +
-				scheduledPrincipal +
-				fractionalInterestCeiling;
-	const accruedInterestDue =
-		wholeAccruedInterest + (canCloseFinalInstallment ? fractionalInterestCeiling : 0);
-	const remainingAccruedInterestMicros = canCloseFinalInstallment
-		? 0
-		: fractionalAccruedInterestMicros;
-	const scheduledObligation =
-		wholeAccruedInterest +
-		scheduledPrincipal +
-		(isFinalInstallment ? fractionalInterestCeiling : 0);
+	const accruedInterestDue = wholeAccruedInterest;
+	const remainingAccruedInterestMicros = fractionalAccruedInterestMicros;
+	const scheduledObligation = wholeAccruedInterest + scheduledPrincipal;
 
 	loan = {
 		...loan,
@@ -390,9 +374,7 @@ function serviceScheduledLoan(input: {
 	loan = paid.loan;
 	const cash = paid.cash;
 
-	const unpaidInterest =
-		Math.max(0, loan.overdueInterest - priorOverdueInterest) +
-		(isFinalInstallment ? Math.ceil(loan.accruedInterestMicros / 1_000_000) : 0);
+	const unpaidInterest = Math.max(0, loan.overdueInterest - priorOverdueInterest);
 	const unpaidPrincipal = Math.max(0, loan.overduePrincipal - priorOverduePrincipal);
 	if (scheduledObligation > 0) {
 		loan = {
@@ -407,7 +389,9 @@ function serviceScheduledLoan(input: {
 			arrearsSinceDay:
 				unpaidInterest > 0 || unpaidPrincipal > 0
 					? (loan.arrearsSinceDay ?? input.day)
-					: loan.arrearsSinceDay
+					: isFinalInstallment && loan.accruedInterestMicros > 0
+						? (loan.arrearsSinceDay ?? input.day)
+						: loan.arrearsSinceDay
 		};
 		if (unpaidInterest > 0 || unpaidPrincipal > 0) {
 			finance = appendFinanceTransaction(finance, {
@@ -435,11 +419,8 @@ function moveMaturedAccruedInterestToArrears(loan: LoanInstrument, cash: number)
 		overdueInterest: loan.overdueInterest + wholeInterest,
 		accruedInterestMicros: loan.accruedInterestMicros - wholeInterest * 1_000_000
 	};
-	const payoff =
-		next.overdueInterest +
-		next.overduePrincipal +
-		Math.ceil(next.accruedInterestMicros / 1_000_000);
-	if (next.accruedInterestMicros > 0 && Math.max(0, cash) >= payoff) {
+	const payoffBeforeFractionalInterest = next.overdueInterest + next.overduePrincipal;
+	if (next.accruedInterestMicros > 0 && Math.max(0, cash) > payoffBeforeFractionalInterest) {
 		next = {
 			...next,
 			overdueInterest: next.overdueInterest + Math.ceil(next.accruedInterestMicros / 1_000_000),
