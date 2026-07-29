@@ -313,7 +313,11 @@ function payLoanArrears(input: {
 }
 
 function hasArrears(loan: LoanInstrument): boolean {
-	return loan.overdueInterest > 0 || loan.overduePrincipal > 0;
+	return (
+		loan.overdueInterest > 0 ||
+		loan.overduePrincipal > 0 ||
+		(loan.nextPaymentDay === null && loan.accruedInterestMicros > 0)
+	);
 }
 
 function finalizeLoanStatus(loan: LoanInstrument): LoanInstrument {
@@ -347,13 +351,28 @@ function serviceScheduledLoan(input: {
 	const installmentCount = getInstallmentCount(loan.termDays);
 	const isFinalInstallment = loan.installmentsProcessed === installmentCount - 1;
 	const scheduledPrincipal = getScheduledPrincipalForInstallment(loan, loan.installmentsProcessed);
-	const accruedInterestDue = isFinalInstallment
-		? Math.ceil(loan.accruedInterestMicros / 1_000_000)
-		: Math.floor(loan.accruedInterestMicros / 1_000_000);
-	const remainingAccruedInterestMicros = isFinalInstallment
+	const wholeAccruedInterest = Math.floor(loan.accruedInterestMicros / 1_000_000);
+	const fractionalAccruedInterestMicros =
+		loan.accruedInterestMicros - wholeAccruedInterest * 1_000_000;
+	const fractionalInterestCeiling = Math.ceil(fractionalAccruedInterestMicros / 1_000_000);
+	const canCloseFinalInstallment =
+		isFinalInstallment &&
+		fractionalInterestCeiling > 0 &&
+		Math.max(0, input.cash) >=
+			loan.overdueInterest +
+				wholeAccruedInterest +
+				loan.overduePrincipal +
+				scheduledPrincipal +
+				fractionalInterestCeiling;
+	const accruedInterestDue =
+		wholeAccruedInterest + (canCloseFinalInstallment ? fractionalInterestCeiling : 0);
+	const remainingAccruedInterestMicros = canCloseFinalInstallment
 		? 0
-		: loan.accruedInterestMicros - accruedInterestDue * 1_000_000;
-	const scheduledObligation = accruedInterestDue + scheduledPrincipal;
+		: fractionalAccruedInterestMicros;
+	const scheduledObligation =
+		wholeAccruedInterest +
+		scheduledPrincipal +
+		(isFinalInstallment ? fractionalInterestCeiling : 0);
 
 	loan = {
 		...loan,
@@ -371,7 +390,9 @@ function serviceScheduledLoan(input: {
 	loan = paid.loan;
 	const cash = paid.cash;
 
-	const unpaidInterest = Math.max(0, loan.overdueInterest - priorOverdueInterest);
+	const unpaidInterest =
+		Math.max(0, loan.overdueInterest - priorOverdueInterest) +
+		(isFinalInstallment ? Math.ceil(loan.accruedInterestMicros / 1_000_000) : 0);
 	const unpaidPrincipal = Math.max(0, loan.overduePrincipal - priorOverduePrincipal);
 	if (scheduledObligation > 0) {
 		loan = {
