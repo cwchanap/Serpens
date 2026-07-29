@@ -1,4 +1,5 @@
 import type { GameState } from '$lib/game/types';
+import { createFoundingFinanceState } from '$lib/game/finance';
 import { STARTER_STORE_CAP, createInitialWorldProgress } from '$lib/game/world';
 import { evaluateScenario } from '$lib/scenarios/runtime';
 import type {
@@ -81,7 +82,7 @@ function fixtureGame(): GameState {
 		rngState: 99,
 		day: 2,
 		cash: 11_000,
-		debt: 1_000,
+		finance: createFoundingFinanceState(2, 1_000),
 		policy: {
 			pricing: 'standard',
 			inventory: 'balanced',

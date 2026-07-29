@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { createRng } from './rng';
+import { createEmptyFinanceState } from './finance';
 import { initializeStoreProducts } from './stock';
 import { STARTER_STORE_CAP, createInitialWorldProgress } from './world';
 import {
@@ -370,7 +371,7 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 		rngState: 1,
 		day: 4,
 		cash: 10_000,
-		debt: 0,
+		finance: createEmptyFinanceState(4),
 		policy: {
 			pricing: 'standard',
 			inventory: 'balanced',

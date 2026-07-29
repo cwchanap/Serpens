@@ -3,6 +3,7 @@ import { buildIndustrialBuilding } from './industryPlacement';
 import { addWarehouseMaterial } from './industryProduction';
 import { DEFAULT_RETAIL_CITY_HEIGHT, DEFAULT_RETAIL_CITY_WIDTH, generateCity } from './city';
 import { generateIndustryCity } from './industry';
+import { createEmptyFinanceState } from './finance';
 import { createNewGame } from './state';
 import {
 	STARTER_STORE_CAP,
@@ -25,7 +26,7 @@ function gameStub(overrides: Partial<GameState> = {}): GameState {
 		rngState: 1,
 		day: 1,
 		cash: 20_000,
-		debt: 0,
+		finance: createEmptyFinanceState(1),
 		policy: {
 			pricing: 'standard',
 			inventory: 'balanced',

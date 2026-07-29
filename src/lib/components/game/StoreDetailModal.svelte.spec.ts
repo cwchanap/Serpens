@@ -2,6 +2,7 @@ import { page } from 'vitest/browser';
 import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import type { GameState, Store } from '$lib/game/types';
+import { createEmptyFinanceState } from '$lib/game/finance';
 import { createI18n } from '$lib/i18n';
 import StoreDetailModal from './StoreDetailModal.svelte';
 
@@ -36,7 +37,7 @@ function game(): GameState {
 		rngState: 0,
 		day: 5,
 		cash: 5000,
-		debt: 0,
+		finance: createEmptyFinanceState(5),
 		policy: {} as GameState['policy'],
 		scorecard: {} as GameState['scorecard'],
 		world: {} as GameState['world'],

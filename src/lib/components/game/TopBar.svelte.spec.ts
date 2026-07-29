@@ -5,6 +5,7 @@ import type { GameAlert } from '$lib/game/alerts';
 import { createI18n } from '$lib/i18n';
 import { generateCity } from '$lib/game/city';
 import { createInitialWorldProgress } from '$lib/game/world';
+import { createEmptyFinanceState } from '$lib/game/finance';
 import type { GameState } from '$lib/game/types';
 import { DEFAULT_POLICY } from '$lib/game/state';
 import TopBar from './TopBar.svelte';
@@ -23,7 +24,7 @@ const alertGame: GameState = {
 	rngState: 0,
 	day: 1,
 	cash: 0,
-	debt: 0,
+	finance: createEmptyFinanceState(1),
 	policy: { ...DEFAULT_POLICY },
 	scorecard: {
 		profit: 0,

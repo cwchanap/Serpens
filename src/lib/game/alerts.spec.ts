@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { collectGameAlerts } from './alerts';
+import { createEmptyFinanceState } from './finance';
 import { decisionContextLocationGeneric } from './decisionContext';
 import type {
 	GameState,
@@ -70,7 +71,7 @@ function baseGame(overrides: Partial<GameState> = {}): GameState {
 		rngState: 0,
 		day: 5,
 		cash: 1000,
-		debt: 0,
+		finance: createEmptyFinanceState(5),
 		policy: {} as GameState['policy'],
 		scorecard: {} as GameState['scorecard'],
 		world: {} as GameState['world'],

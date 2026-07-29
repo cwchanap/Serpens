@@ -21,6 +21,7 @@ import { isRailWaypointTarget } from '$lib/game/railPlacement';
 import { normalizeSeed } from '$lib/game/rng';
 import { getExpansionSetupCost, upgradeStore } from '$lib/game/state';
 import { calculateStockHealth } from '$lib/game/stock';
+import { replaceFoundingLoan } from '$lib/game/finance';
 import type { City, GameState, IndustryCity, RailCell, WorldCityId } from '$lib/game/types';
 import { getWorldCityDefinition, refreshWorldProgress } from '$lib/game/world';
 import { SaveDataError, validateCurrentGameState } from '$lib/persistence/saveCodec';
@@ -206,7 +207,7 @@ function applyAuthoredOverrides(
 	definition: ScenarioDefinition,
 	game: GameState,
 	refs: ScenarioSetupRefs,
-	baseFinances: Pick<GameState, 'cash' | 'debt'>
+	baseFinances: Pick<GameState, 'cash' | 'finance'>
 ): { game?: GameState; diagnostics: ScenarioDiagnostic[] } {
 	const diagnostics: ScenarioDiagnostic[] = [];
 	let stores = game.stores;
@@ -299,7 +300,10 @@ function applyAuthoredOverrides(
 		game: {
 			...next,
 			cash: overrides.cash ?? baseFinances.cash,
-			debt: overrides.debt ?? baseFinances.debt
+			finance:
+				overrides.debt === undefined
+					? baseFinances.finance
+					: replaceFoundingLoan(baseFinances.finance, game.day, overrides.debt)
 		},
 		diagnostics: []
 	};
@@ -606,7 +610,7 @@ export function buildScenarioGame(
 	}
 	const storeIdsByRef = new Map<string, string>([[founding.ref, foundingStore.id]]);
 	const buildingIdsByRef = new Map<string, string>();
-	const baseFinances = { cash: game.cash, debt: game.debt };
+	const baseFinances = { cash: game.cash, finance: game.finance };
 
 	game = materializeStartingCities(definition, game, normalizedSeed);
 	const reserve = calculateTransientSetupReserve(definition, game);

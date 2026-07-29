@@ -8,6 +8,7 @@ import type {
 	IndustrialBuilding,
 	Store
 } from '$lib/game/types';
+import { createEmptyFinanceState } from '$lib/game/finance';
 import type {
 	ScenarioComparator,
 	ScenarioCondition,
@@ -165,7 +166,7 @@ function game(overrides: Partial<GameState> = {}): GameState {
 		rngState: 12_345,
 		day: 1,
 		cash: 10,
-		debt: 0,
+		finance: createEmptyFinanceState(1),
 		policy: {
 			pricing: 'standard',
 			inventory: 'balanced',
