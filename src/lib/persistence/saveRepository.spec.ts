@@ -178,12 +178,13 @@ function delay(): Promise<void> {
 }
 
 function createGame(overrides: Partial<GameState> = {}): GameState {
+	const day = overrides.day ?? 3;
 	return {
 		seed: 20260505,
 		rngState: 99,
-		day: 3,
+		day,
 		cash: 12500,
-		finance: createFoundingFinanceState(3, 2000),
+		finance: overrides.finance ?? createFoundingFinanceState(day, 2000),
 		policy: {
 			pricing: 'standard',
 			inventory: 'balanced',
