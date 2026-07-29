@@ -593,7 +593,21 @@ export const en = {
 			unchanged: 'No finance changes were made.',
 			failed: 'Finance action could not be completed.',
 			days: '{days} days',
-			ninetyPlusDays: '90+ days'
+			ninetyPlusDays: '90+ days',
+			apr: 'APR',
+			healthAdjustment: 'Health +{amount}',
+			historyAdjustment: 'History +{amount}',
+			principal: 'Principal',
+			interest: 'Interest',
+			reviewAction: 'Review {action}',
+			actionBorrowing: 'borrowing',
+			actionRepayment: 'repayment',
+			actionPayoff: 'payoff',
+			actionRefinancing: 'refinancing',
+			reviewSubmission: '{amount} will be submitted only after confirmation.',
+			refinanceReview: 'Refinance {amount} with {term}. No cash-out is included.',
+			replacementComparison:
+				'Replacement APR {apr} · First payment {firstPayment} · Peak payment {peakPayment} · No cash-out is included.'
 		}
 	},
 	game: {

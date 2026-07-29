@@ -595,7 +595,21 @@ export const ja = {
 			unchanged: '財務の変更はありません。',
 			failed: '財務アクションを完了できませんでした。',
 			days: '{days}日',
-			ninetyPlusDays: '90日以上'
+			ninetyPlusDays: '90日以上',
+			apr: 'APR',
+			healthAdjustment: '健全性 +{amount}',
+			historyAdjustment: '履歴 +{amount}',
+			principal: '元本',
+			interest: '利息',
+			reviewAction: '{action}を確認',
+			actionBorrowing: '借入',
+			actionRepayment: '返済',
+			actionPayoff: '完済',
+			actionRefinancing: '借換え',
+			reviewSubmission: '{amount} は確定後に実行されます。',
+			refinanceReview: '{amount} を {term} で借換えます。現金受取は含まれません。',
+			replacementComparison:
+				'借換後APR {apr} · 初回支払 {firstPayment} · 最大支払 {peakPayment} · 現金受取は含まれません。'
 		}
 	},
 	game: {
