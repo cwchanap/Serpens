@@ -254,6 +254,23 @@ describe('createMutationAvailability', () => {
 		expect(availability.buildRail).toBe(false);
 	});
 
+	it('exposes finance-only retail and industry expansion paths without granting cash commands', () => {
+		const definition = {
+			...firstProfitDefinition(),
+			allowedCommands: ['financeRetailStore', 'financeIndustrialBuilding'] as const
+		};
+		const availability = createMutationAvailability({
+			playMode: 'scenario',
+			pending: false,
+			definition
+		});
+
+		expect(availability.openStore).toBe(false);
+		expect(availability.financeRetailStore).toBe(true);
+		expect(availability.buildIndustrialBuilding).toBe(false);
+		expect(availability.financeIndustrialBuilding).toBe(true);
+	});
+
 	it('marks pending and disables all commands while a scenario command is pending', () => {
 		const definition = firstProfitDefinition();
 		const availability = createMutationAvailability({

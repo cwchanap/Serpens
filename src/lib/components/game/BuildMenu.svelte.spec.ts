@@ -469,6 +469,25 @@ describe('BuildMenu', () => {
 		await expect.element(boutique).toBeDisabled();
 		await expect.element(page.getByText('No construction permitted.').first()).toBeVisible();
 	});
+
+	it('allows a finance-only scenario to arm an allowed retail placement', async () => {
+		expect.assertions(2);
+		const onChooseRetail = vi.fn();
+		render(
+			BuildMenu,
+			buildMenuProps({
+				onChooseRetail,
+				canOpenStore: false,
+				canFinanceRetailStore: true,
+				allowedRetailArchetypeIds: ['convenience']
+			})
+		);
+
+		const convenience = page.getByRole('button', { name: /build convenience store/i });
+		await expect.element(convenience).not.toBeDisabled();
+		await convenience.click();
+		expect(onChooseRetail).toHaveBeenCalledWith('convenience');
+	});
 });
 
 describe('BuildMenu industry recipe cards', () => {
@@ -584,5 +603,26 @@ describe('BuildMenu industry recipe cards', () => {
 		await expect
 			.element(page.getByText('No industrial construction permitted.').first())
 			.toBeVisible();
+	});
+
+	it('allows a finance-only scenario to arm an allowed industrial placement', async () => {
+		expect.assertions(2);
+		const onChooseIndustry = vi.fn();
+		render(
+			BuildMenu,
+			buildMenuProps({
+				activeMapView: 'industry',
+				retailOptions: [],
+				onChooseIndustry,
+				canBuildIndustrialBuilding: false,
+				canFinanceIndustrialBuilding: true,
+				allowedIndustryBuildingTypeIds: ['water-bottler']
+			})
+		);
+
+		const waterBottler = page.getByRole('button', { name: /build water bottler/i });
+		await expect.element(waterBottler).not.toBeDisabled();
+		await waterBottler.click();
+		expect(onChooseIndustry).toHaveBeenCalledWith('water-bottler');
 	});
 });

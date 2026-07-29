@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
-	import type { Attachment } from 'svelte/attachments';
 	import { focusTrap } from '$lib/a11y/focusTrap';
 	import BuildMenu from '$lib/components/game/BuildMenu.svelte';
+	import FinancePurchaseReviewDialog from '$lib/components/game/FinancePurchaseReviewDialog.svelte';
 	import DecisionQueue from '$lib/components/game/DecisionQueue.svelte';
 	import FinancePanel from '$lib/components/game/FinancePanel.svelte';
 	import AudioSettings from '$lib/components/game/AudioSettings.svelte';
@@ -108,7 +108,6 @@
 	import {
 		createEmptyFinanceState,
 		getExpansionFinanceOffer,
-		type ExpansionFinanceOffer,
 		type FinanceFailureCode
 	} from '$lib/game/finance';
 	import { forecastOpening } from '$lib/game/placement';
@@ -136,7 +135,6 @@
 		IndustrialBuildingTypeId,
 		LoanTermDays,
 		MaterialId,
-		WorldCityId,
 		StoreProductPatch
 	} from '$lib/game/types';
 	import type { WorldCityStatus } from '$lib/game/world';
@@ -166,8 +164,12 @@
 		type GameRouteControllerState
 	} from './gameRouteController';
 	import {
-		canConfirmFinancedPurchase,
-		hasFinancedPurchaseOffer,
+		beginFinancePurchaseConfirmation,
+		createFinancePurchaseReviewState,
+		dismissFinancePurchaseReview,
+		openFinancePurchaseReview,
+		settleFinancePurchaseConfirmation,
+		type PendingFinancedPurchase,
 		shouldRefreshFinancedPurchase
 	} from './financePurchaseReview';
 
@@ -192,28 +194,6 @@
 		| { step: 'idle' }
 		| { step: 'origin' }
 		| { step: 'routing'; originBuildingId: string; waypoints: Array<{ x: number; y: number }> };
-
-	type PendingFinancedPurchase =
-		| {
-				kind: 'world';
-				cityId: WorldCityId;
-				expectedCost: number;
-				offer: ExpansionFinanceOffer | null;
-		  }
-		| {
-				kind: 'retail';
-				tileId: string;
-				archetypeId: ArchetypeId;
-				expectedCost: number;
-				offer: ExpansionFinanceOffer | null;
-		  }
-		| {
-				kind: 'industry';
-				tileId: string;
-				buildingTypeId: IndustrialBuildingTypeId;
-				expectedCost: number;
-				offer: ExpansionFinanceOffer | null;
-		  };
 
 	/**
 	 * Returns `globalThis.localStorage` when accessible, or `null` when the
@@ -443,6 +423,12 @@
 			definition: activeScenarioDefinition
 		})
 	);
+	let canStartRetailExpansion = $derived(
+		mutationAvailability.openStore || mutationAvailability.financeRetailStore
+	);
+	let canStartIndustryExpansion = $derived(
+		mutationAvailability.buildIndustrialBuilding || mutationAvailability.financeIndustrialBuilding
+	);
 	let mutationDisabledReason = $derived(
 		playMode === 'scenario' ? i18n.t('buildMenu.unavailable') : null
 	);
@@ -511,11 +497,8 @@
 		);
 	});
 	let placementFeedback = $state<PlacementBlockReason | null>(null);
-	let pendingFinancedPurchase = $state<PendingFinancedPurchase | null>(null);
-	let financedPurchaseFeedback = $state<string | null>(null);
+	let financePurchaseReview = $state(createFinancePurchaseReviewState());
 	let financedPurchaseReturnFocus = $state<HTMLElement | null>(null);
-	let financedPurchaseConfirmPending = $state(false);
-	let financedPurchaseCancelButton = $state<HTMLButtonElement | null>(null);
 	let saveRepository: SaveRepository | null = $state(null);
 	let autoSave = $state<SaveSlotMetadata | null>(null);
 	let manualSaveSlots = $state<SaveSlotMetadata[]>([]);
@@ -698,7 +681,7 @@
 	// placement preview over the map.
 	let isMapPaused = $derived(
 		!isPlacementModeActive &&
-			(pendingFinancedPurchase !== null ||
+			(financePurchaseReview.purchase !== null ||
 				isSupplyAdvisorOpen ||
 				isStoreDetailOpen ||
 				isCheatSheetOpen ||
@@ -715,7 +698,7 @@
 	// Escape handler closes, including the alerts dropdown (which does not
 	// pause the map but still competes for the Escape key).
 	let railKeyboardEnabled = $derived(
-		pendingFinancedPurchase === null &&
+		financePurchaseReview.purchase === null &&
 			!isSavePanelOpen &&
 			!isScenarioCatalogOpen &&
 			!isScenarioResultsDialogOpen &&
@@ -848,7 +831,7 @@
 	// to gate the `?` cheat-sheet toggle (so it doesn't stack on an open modal) and to
 	// inform `resolveShortcutAction` that letter/Space/B keys must not fire behind it.
 	let hasBlockingOverlay = $derived(
-		pendingFinancedPurchase !== null ||
+		financePurchaseReview.purchase !== null ||
 			isSupplyAdvisorOpen ||
 			isStoreDetailOpen ||
 			isCheatSheetOpen ||
@@ -899,9 +882,7 @@
 
 	function clearPendingFinancedPurchase(restoreFocus = false): void {
 		const returnFocus = financedPurchaseReturnFocus;
-		pendingFinancedPurchase = null;
-		financedPurchaseFeedback = null;
-		financedPurchaseConfirmPending = false;
+		financePurchaseReview = dismissFinancePurchaseReview(financePurchaseReview);
 		financedPurchaseReturnFocus = null;
 		if (restoreFocus && returnFocus) {
 			void tick().then(() => returnFocus.focus());
@@ -911,17 +892,8 @@
 	function openFinancedPurchaseReview(purchase: PendingFinancedPurchase): void {
 		financedPurchaseReturnFocus =
 			document.activeElement instanceof HTMLElement ? document.activeElement : null;
-		financedPurchaseFeedback = null;
-		pendingFinancedPurchase = purchase;
-		void tick().then(() => financedPurchaseCancelButton?.focus());
+		financePurchaseReview = openFinancePurchaseReview(financePurchaseReview, purchase);
 	}
-
-	const captureFinancedPurchaseCancel: Attachment<HTMLButtonElement> = (node) => {
-		financedPurchaseCancelButton = node;
-		return () => {
-			if (financedPurchaseCancelButton === node) financedPurchaseCancelButton = null;
-		};
-	};
 
 	// Text for the placement-status plaque while rail-building: a block
 	// reason (if any) always wins, then a ready-to-confirm cost summary once
@@ -1487,9 +1459,7 @@
 	function openBuildMenu(): void {
 		if (
 			activeMapView === 'world' ||
-			(activeMapView === 'retail'
-				? !mutationAvailability.openStore
-				: !mutationAvailability.buildIndustrialBuilding)
+			(activeMapView === 'retail' ? !canStartRetailExpansion : !canStartIndustryExpansion)
 		) {
 			return;
 		}
@@ -1789,7 +1759,7 @@
 	}
 
 	function armRetailPlacement(archetypeId: ArchetypeId): void {
-		if (!mutationAvailability.openStore || !allowedRetailArchetypeIds.includes(archetypeId)) return;
+		if (!canStartRetailExpansion || !allowedRetailArchetypeIds.includes(archetypeId)) return;
 		retailPlacementArchetypeId = archetypeId;
 		industryPlacementBuildingTypeId = null;
 		railBuildMode = { step: 'idle' };
@@ -1803,10 +1773,7 @@
 	}
 
 	function armIndustryPlacement(buildingTypeId: IndustrialBuildingTypeId): void {
-		if (
-			!mutationAvailability.buildIndustrialBuilding ||
-			!allowedIndustryBuildingTypeIds.includes(buildingTypeId)
-		)
+		if (!canStartIndustryExpansion || !allowedIndustryBuildingTypeIds.includes(buildingTypeId))
 			return;
 		industryPlacementBuildingTypeId = buildingTypeId;
 		retailPlacementArchetypeId = null;
@@ -2134,49 +2101,44 @@
 	}
 
 	async function confirmFinancedPurchase(): Promise<void> {
-		const purchase = pendingFinancedPurchase;
-		if (
-			!purchase ||
-			!game ||
-			!canConfirmFinancedPurchase(purchase.offer, financedPurchaseConfirmPending)
-		)
-			return;
-		financedPurchaseConfirmPending = true;
+		if (!game) return;
+		const started = beginFinancePurchaseConfirmation(financePurchaseReview);
+		if (!started) return;
+		financePurchaseReview = started.state;
+		const { request } = started;
 
 		let result: GameRouteCommitResult;
-		if (purchase.kind === 'world') {
-			result = await gameRouteController.financeWorldCity(purchase.cityId, purchase.expectedCost);
-		} else if (purchase.kind === 'retail') {
-			result = await gameRouteController.financeRetailStore(
-				purchase.tileId,
-				purchase.archetypeId,
-				purchase.expectedCost
-			);
+		if (request.command.kind === 'world') {
+			result = await gameRouteController.financeWorldCity(...request.command.args);
+		} else if (request.command.kind === 'retail') {
+			result = await gameRouteController.financeRetailStore(...request.command.args);
 		} else {
-			result = await gameRouteController.financeIndustrialBuilding(
-				purchase.tileId,
-				purchase.buildingTypeId,
-				purchase.expectedCost
-			);
+			result = await gameRouteController.financeIndustrialBuilding(...request.command.args);
 		}
 
 		if (isCommittedFinancePurchase(result)) {
+			if (financePurchaseReview.generation !== request.generation) return;
 			selectedTileId = null;
 			selectedIndustryTileId = null;
 			selectedWorldCityId = null;
 			clearPlacementMode();
-			clearPendingFinancedPurchase();
+			financePurchaseReview = settleFinancePurchaseConfirmation(financePurchaseReview, request, {
+				kind: 'committed'
+			});
 			return;
 		}
 
-		financedPurchaseConfirmPending = false;
-		financedPurchaseFeedback =
+		const feedback =
 			result.status === 'domain-rejected'
 				? financeFailureMessage(result.code)
 				: i18n.t('financePanel.ui.failed');
-		if (shouldRefreshFinancedPurchase(result)) {
-			pendingFinancedPurchase = refreshedFinancedPurchase(purchase, game);
-		}
+		financePurchaseReview = settleFinancePurchaseConfirmation(financePurchaseReview, request, {
+			kind: 'rejected',
+			feedback,
+			refreshedPurchase: shouldRefreshFinancedPurchase(result)
+				? refreshedFinancedPurchase(request.purchase, game)
+				: undefined
+		});
 	}
 
 	function cancelFinancedPurchaseReview(): void {
@@ -2294,11 +2256,6 @@
 		}
 
 		if (event.key === 'Escape') {
-			if (pendingFinancedPurchase !== null) {
-				event.preventDefault();
-				cancelFinancedPurchaseReview();
-				return;
-			}
 			if (isSavePanelOpen) {
 				isSavePanelOpen = false;
 				return;
@@ -2553,9 +2510,7 @@
 		<ControlDesk
 			managementItems={managementPanelMenuItems}
 			buildDisabled={activeMapView === 'world' ||
-				(activeMapView === 'retail'
-					? !mutationAvailability.openStore
-					: !mutationAvailability.buildIndustrialBuilding)}
+				(activeMapView === 'retail' ? !canStartRetailExpansion : !canStartIndustryExpansion)}
 			advanceDisabled={game === null || !mutationAvailability.advanceDay}
 			railBuildDisabled={!mutationAvailability.buildRail}
 			disabledReason={mutationDisabledReason}
@@ -2585,81 +2540,17 @@
 				</button>
 			</div>
 		{/if}
-		{#if pendingFinancedPurchase}
-			<div class="finance-review-backdrop">
-				<button
-					type="button"
-					class="finance-review-dismiss"
-					aria-label={i18n.t('financePanel.ui.cancelReview')}
-					onclick={cancelFinancedPurchaseReview}
-				></button>
-				<div
-					{@attach focusTrap}
-					class="finance-review paper"
-					role="dialog"
-					aria-modal="true"
-					aria-labelledby="financed-purchase-review-heading"
-				>
-					<h2 id="financed-purchase-review-heading">
-						{i18n.t('financePanel.financedPurchase.review' as never)}
-					</h2>
-					<dl>
-						<div>
-							<dt>{i18n.t('financePanel.financedPurchase.purchaseCost' as never)}</dt>
-							<dd>{i18n.format.currency(pendingFinancedPurchase.expectedCost)}</dd>
-						</div>
-						<div>
-							<dt>{i18n.t('financePanel.ui.cash')}</dt>
-							<dd>{i18n.format.currency(game?.cash ?? 0)}</dd>
-						</div>
-						{#if hasFinancedPurchaseOffer(pendingFinancedPurchase.offer)}
-							<div>
-								<dt>{i18n.t('financePanel.financedPurchase.shortfall' as never)}</dt>
-								<dd>{i18n.format.currency(pendingFinancedPurchase.offer.principal)}</dd>
-							</div>
-							<div>
-								<dt>{i18n.t('financePanel.ui.loanTerm')}</dt>
-								<dd>
-									{i18n.t('financePanel.ui.days', {
-										days: i18n.format.integer(pendingFinancedPurchase.offer.termDays)
-									})}
-								</dd>
-							</div>
-							<div>
-								<dt>{i18n.t('financePanel.ui.apr')}</dt>
-								<dd>{formatApr(pendingFinancedPurchase.offer.annualInterestRateBps)}</dd>
-							</div>
-							<div>
-								<dt>{i18n.t('financePanel.ui.peakPayment')}</dt>
-								<dd>{i18n.format.currency(pendingFinancedPurchase.offer.estimatedPeakPayment)}</dd>
-							</div>
-						{/if}
-					</dl>
-					<p class="live-status" role="status" aria-live="polite">
-						{financedPurchaseFeedback ?? ''}
-					</p>
-					<div class="finance-review-actions">
-						<button
-							type="button"
-							class="btn-danger"
-							onclick={cancelFinancedPurchaseReview}
-							{@attach captureFinancedPurchaseCancel}
-						>
-							{i18n.t('financePanel.ui.cancelReview')}
-						</button>
-						{#if pendingFinancedPurchase.offer}
-							<button
-								type="button"
-								class="btn-primary"
-								disabled={financedPurchaseConfirmPending}
-								onclick={confirmFinancedPurchase}
-							>
-								{i18n.t('financePanel.financedPurchase.confirm' as never)}
-							</button>
-						{/if}
-					</div>
-				</div>
-			</div>
+		{#if financePurchaseReview.purchase}
+			<FinancePurchaseReviewDialog
+				purchase={financePurchaseReview.purchase}
+				cash={game?.cash ?? 0}
+				feedback={financePurchaseReview.feedback}
+				confirmationPending={financePurchaseReview.confirmationPending}
+				{i18n}
+				{formatApr}
+				onConfirm={confirmFinancedPurchase}
+				onCancel={cancelFinancedPurchaseReview}
+			/>
 		{/if}
 		{#if isBuildMenuOpen && activeMapView !== 'world'}
 			<BuildMenu
@@ -2669,7 +2560,9 @@
 				{industryLockedReason}
 				{availableMaterialIds}
 				canOpenStore={mutationAvailability.openStore}
+				canFinanceRetailStore={mutationAvailability.financeRetailStore}
 				canBuildIndustrialBuilding={mutationAvailability.buildIndustrialBuilding}
+				canFinanceIndustrialBuilding={mutationAvailability.financeIndustrialBuilding}
 				{allowedRetailArchetypeIds}
 				{allowedIndustryBuildingTypeIds}
 				disabledReason={mutationDisabledReason}
@@ -3140,7 +3033,7 @@
 		border-color: var(--brass-500);
 	}
 
-	.finance-review-backdrop {
+	:global(.finance-review-backdrop) {
 		position: fixed;
 		inset: 0;
 		z-index: 45;
@@ -3150,7 +3043,7 @@
 		background: rgba(27, 19, 12, 0.58);
 	}
 
-	.finance-review-dismiss {
+	:global(.finance-review-dismiss) {
 		position: absolute;
 		inset: 0;
 		border: 0;
@@ -3158,7 +3051,7 @@
 		cursor: default;
 	}
 
-	.finance-review {
+	:global(.finance-review) {
 		position: relative;
 		z-index: 1;
 		width: min(32rem, 100%);
@@ -3167,7 +3060,7 @@
 		padding: 1.25rem;
 	}
 
-	.finance-review h2 {
+	:global(.finance-review h2) {
 		margin: 0;
 		font-family: var(--font-display);
 		font-size: 1.45rem;
@@ -3175,20 +3068,20 @@
 		color: var(--ink-700);
 	}
 
-	.finance-review dl {
+	:global(.finance-review dl) {
 		display: grid;
 		grid-template-columns: repeat(2, minmax(0, 1fr));
 		gap: 0.65rem;
 		margin: 0;
 	}
 
-	.finance-review dl > div {
+	:global(.finance-review dl > div) {
 		padding: 0.55rem;
 		border: 1px solid var(--paper-edge);
 		background: var(--paper-50);
 	}
 
-	.finance-review dt {
+	:global(.finance-review dt) {
 		font-family: var(--font-ui);
 		font-size: 0.68rem;
 		font-weight: 700;
@@ -3197,7 +3090,7 @@
 		color: var(--brass-700);
 	}
 
-	.finance-review dd {
+	:global(.finance-review dd) {
 		margin: 0.2rem 0 0;
 		font-family: var(--font-mono);
 		font-weight: 700;
@@ -3205,14 +3098,14 @@
 		color: var(--ink-700);
 	}
 
-	.finance-review .live-status {
+	:global(.finance-review .live-status) {
 		min-height: 1.25rem;
 		margin: 0;
 		color: var(--wax-red);
 		font-family: var(--font-body);
 	}
 
-	.finance-review-actions {
+	:global(.finance-review-actions) {
 		display: flex;
 		justify-content: flex-end;
 		gap: 0.6rem;
