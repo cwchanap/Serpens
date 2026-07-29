@@ -2,20 +2,25 @@ import { describe, expect, it } from 'vitest';
 import { ARCHETYPES } from './archetypes';
 import {
 	appendFinanceTransaction,
+	assessCredit,
 	calculateDailyInterestMicros,
 	createEmptyFinanceState,
 	createFoundingFinanceState,
 	estimateNextLoanPayment,
 	getInstallmentCount,
+	getLifetimeRepaymentHistory,
+	getNormalizedWeeklyService,
+	getOfferRateBps,
 	getScheduledPrincipalForInstallment,
 	getTotalAmountDue,
 	getTotalDebt,
+	projectLoanSchedule,
 	replaceFoundingLoan,
 	resetFinanceDayActivity,
 	serviceFinanceForDay
 } from './finance';
 import { createNewGame } from './state';
-import type { FinanceState, LoanInstrument } from './types';
+import type { FinanceState, GameState, LoanInstrument } from './types';
 
 function createLoan(overrides: Partial<LoanInstrument> = {}): LoanInstrument {
 	const loan = createFoundingFinanceState(1, 1_200).loans[0]!;
@@ -24,6 +29,33 @@ function createLoan(overrides: Partial<LoanInstrument> = {}): LoanInstrument {
 
 function createFinance(loans: LoanInstrument[], day = 1): FinanceState {
 	return { ...createEmptyFinanceState(day), loans };
+}
+
+function createCreditGame(
+	input: {
+		cash?: number;
+		finance?: FinanceState;
+		scorecard?: Partial<GameState['scorecard']>;
+		operatingCashFlows?: number[];
+	} = {}
+): GameState {
+	const game = createNewGame('convenience', 123);
+	return {
+		...game,
+		cash: input.cash ?? 0,
+		finance: input.finance ?? createEmptyFinanceState(game.day),
+		scorecard: {
+			profit: 50,
+			customerSatisfaction: 50,
+			staffMorale: 50,
+			marketPosition: 50,
+			...input.scorecard
+		},
+		reports: (input.operatingCashFlows ?? []).map(
+			(operatingCashFlow, index) =>
+				({ day: index + 1, operatingCashFlow }) as GameState['reports'][number]
+		)
+	};
 }
 
 describe('finance state', () => {
@@ -602,5 +634,187 @@ describe('finance servicing', () => {
 			refinancedPrincipal: 0,
 			financingCashFlow: 0
 		});
+	});
+});
+
+describe('credit assessment', () => {
+	it('uses a zero operating-cash-flow baseline when no reports exist', () => {
+		const assessment = assessCredit(createCreditGame(), 28);
+
+		expect(assessment).toMatchObject({
+			averageDailyOperatingCashFlow: 0,
+			weeklyOperatingCashFlow: 0,
+			healthScore: 50,
+			healthFactor: 1,
+			historyFactor: 1,
+			grossPrincipalLimit: 15_000,
+			weeklyPaymentBudget: 2_500,
+			outstandingPrincipal: 0,
+			principalHeadroom: 15_000,
+			existingWeeklyDebtService: 0,
+			weeklyServiceHeadroom: 2_500
+		});
+	});
+
+	it('uses explicit trailing-seven-day operating cash flow and clamps negative weekly flow', () => {
+		const positive = assessCredit(
+			createCreditGame({ operatingCashFlows: [10, 20, 30, 40, 50, 60, 70, 800] }),
+			28
+		);
+		const negative = assessCredit(createCreditGame({ operatingCashFlows: [-100, -200] }), 28);
+
+		expect(positive.averageDailyOperatingCashFlow).toBe(1070 / 7);
+		expect(positive.weeklyOperatingCashFlow).toBe(1070);
+		expect(negative.averageDailyOperatingCashFlow).toBe(-150);
+		expect(negative.weeklyOperatingCashFlow).toBe(0);
+	});
+
+	it('derives health, offer penalties, and term base rates deterministically', () => {
+		const game = createCreditGame({
+			scorecard: { profit: 40, customerSatisfaction: 60, staffMorale: 80, marketPosition: 20 },
+			finance: createFinance([
+				createLoan({ scheduledPaymentCount: 4, onTimePaymentCount: 3, missedPaymentCount: 1 })
+			])
+		});
+
+		expect(getOfferRateBps(game, 28)).toBe(1_500);
+		expect(getOfferRateBps(game, 56)).toBe(1_700);
+		expect(getOfferRateBps(game, 84)).toBe(1_900);
+		expect(assessCredit(game, 56)).toMatchObject({
+			healthScore: 50,
+			healthPenaltyBps: 300,
+			historyPenaltyBps: 200,
+			annualInterestRateBps: 1_700,
+			historyFactor: 0.875
+		});
+	});
+
+	it('retains repayment history across closed loans and dilutes only through later schedules', () => {
+		const finance = createFinance([
+			createLoan({
+				id: 'loan-active',
+				scheduledPaymentCount: 2,
+				onTimePaymentCount: 1,
+				missedPaymentCount: 1
+			}),
+			createLoan({
+				id: 'loan-paid',
+				status: 'paid',
+				remainingPrincipal: 0,
+				nextPaymentDay: null,
+				scheduledPaymentCount: 6,
+				onTimePaymentCount: 6,
+				missedPaymentCount: 0
+			}),
+			createLoan({
+				id: 'loan-refinanced',
+				status: 'refinanced',
+				remainingPrincipal: 0,
+				nextPaymentDay: null,
+				scheduledPaymentCount: 2,
+				onTimePaymentCount: 1,
+				missedPaymentCount: 1
+			})
+		]);
+
+		expect(getLifetimeRepaymentHistory(finance)).toEqual({
+			scheduledPaymentCount: 10,
+			onTimePaymentCount: 8,
+			missedPaymentCount: 2,
+			missRate: 0.2
+		});
+		expect(
+			getLifetimeRepaymentHistory({
+				...finance,
+				loans: finance.loans.map((loan) =>
+					loan.id === 'loan-active'
+						? { ...loan, scheduledPaymentCount: 3, onTimePaymentCount: 2 }
+						: loan
+				)
+			}).missRate
+		).toBeCloseTo(2 / 11);
+	});
+
+	it('normalizes open-loan service independently of the due-date position', () => {
+		const loan = createLoan({
+			originalPrincipal: 1_200,
+			remainingPrincipal: 1_200,
+			annualInterestRateBps: 1_200,
+			termDays: 84,
+			installmentsProcessed: 0
+		});
+
+		expect(getNormalizedWeeklyService(createFinance([{ ...loan, nextPaymentDay: 2 }]))).toBe(
+			102.761647
+		);
+		expect(getNormalizedWeeklyService(createFinance([{ ...loan, nextPaymentDay: 999 }]))).toBe(
+			102.761647
+		);
+	});
+
+	it('projects final remainders and fractional final interest into the peak weekly payment', () => {
+		expect(
+			projectLoanSchedule({ principal: 5, annualInterestRateBps: 10_000, termDays: 28 })
+		).toEqual({
+			firstPayment: 1,
+			regularPayment: 1,
+			peakPayment: 3
+		});
+	});
+
+	it('returns zero available credit for delinquency and zero service headroom', () => {
+		const delinquent = assessCredit(
+			createCreditGame({
+				finance: createFinance([
+					createLoan({ status: 'delinquent', overduePrincipal: 1, arrearsSinceDay: 1 })
+				])
+			}),
+			28
+		);
+		const noServiceHeadroom = assessCredit(
+			createCreditGame({
+				scorecard: { profit: 0, customerSatisfaction: 0, staffMorale: 0, marketPosition: 0 },
+				finance: createFinance([
+					createLoan({
+						originalPrincipal: 100_000,
+						remainingPrincipal: 100_000,
+						annualInterestRateBps: 0,
+						termDays: 28,
+						installmentsProcessed: 0
+					})
+				])
+			}),
+			28
+		);
+
+		expect(delinquent).toMatchObject({
+			availableCredit: 0,
+			reasons: ['delinquentObligation']
+		});
+		expect(noServiceHeadroom).toMatchObject({
+			weeklyServiceHeadroom: 0,
+			maxPrincipalByService: 0,
+			availableCredit: 0
+		});
+	});
+
+	it('excludes the replaced loan from refinance principal and service capacity', () => {
+		const loan = createLoan({
+			id: 'loan-replaced',
+			originalPrincipal: 1_200,
+			remainingPrincipal: 1_200,
+			annualInterestRateBps: 1_200,
+			termDays: 84,
+			installmentsProcessed: 0
+		});
+		const game = createCreditGame({ cash: 0, finance: createFinance([loan]) });
+
+		const ordinary = assessCredit(game, 56);
+		const refinance = assessCredit(game, 56, { excludeLoanId: loan.id });
+		expect(ordinary.outstandingPrincipal).toBe(1_200);
+		expect(refinance.outstandingPrincipal).toBe(0);
+		expect(ordinary.existingWeeklyDebtService).toBe(102.761647);
+		expect(refinance.existingWeeklyDebtService).toBe(0);
+		expect(refinance.principalHeadroom).toBeGreaterThan(ordinary.principalHeadroom);
 	});
 });
