@@ -3,6 +3,7 @@ import { generateCity, isTileBuildable } from './city';
 import {
 	createFoundingGameAtTile,
 	forecastOpening,
+	financeRetailStoreOpening,
 	getRecommendedArchetypes,
 	openStoreAtTile
 } from './placement';
@@ -14,6 +15,80 @@ import {
 import type { City, CityTile, Store } from './types';
 
 describe('tile placement', () => {
+	test('finances a structurally valid store by borrowing its exact shortfall', () => {
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 20,
+			height: 20,
+			seed: 202
+		});
+		const foundingTile = city.tiles.find(isTileBuildable)!;
+		const base = createFoundingGameAtTile({
+			archetypeId: 'boutique',
+			city,
+			tileId: foundingTile.id,
+			seed: 202
+		});
+		const tile = city.tiles.find(
+			(candidate) =>
+				isTileBuildable(candidate) &&
+				candidate.id !== foundingTile.id &&
+				isRetailFootprintAvailable(city, candidate, base.stores)
+		)!;
+		const cost = forecastOpening(tile, 'boutique').setupCost;
+		const game = { ...base, cash: cost - 250 };
+
+		const result = financeRetailStoreOpening(game, {
+			tileId: tile.id,
+			archetypeId: 'boutique',
+			expectedCost: cost
+		});
+
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		expect(result.game.cash).toBe(0);
+		expect(result.game.finance.loans.at(-1)).toMatchObject({
+			purpose: 'expansion',
+			originalPrincipal: 250
+		});
+		expect(result.game.stores).toHaveLength(base.stores.length + 1);
+	});
+
+	test('rejects a retail financing commit when the quoted tile cost has changed', () => {
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 20,
+			height: 20,
+			seed: 202
+		});
+		const foundingTile = city.tiles.find(isTileBuildable)!;
+		const base = createFoundingGameAtTile({
+			archetypeId: 'boutique',
+			city,
+			tileId: foundingTile.id,
+			seed: 202
+		});
+		const tile = city.tiles.find(
+			(candidate) =>
+				isTileBuildable(candidate) &&
+				candidate.id !== foundingTile.id &&
+				isRetailFootprintAvailable(city, candidate, base.stores)
+		)!;
+		const actualCost = forecastOpening(tile, 'boutique').setupCost;
+		const game = { ...base, cash: 0 };
+
+		const result = financeRetailStoreOpening(game, {
+			tileId: tile.id,
+			archetypeId: 'boutique',
+			expectedCost: actualCost + 1
+		});
+
+		expect(result).toMatchObject({ ok: false, code: 'purchaseCostChanged' });
+		expect(game.stores).toHaveLength(base.stores.length);
+		expect(game.finance).toBe(base.finance);
+	});
 	test('recommends archetypes from selected tile traits', () => {
 		expect.assertions(2);
 		const city = generateCity({

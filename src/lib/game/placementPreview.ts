@@ -10,6 +10,7 @@ import {
 	type IndustrialPlacementContext
 } from './industryPlacement';
 import { forecastOpening } from './placement';
+import { getExpansionFinanceOffer, type ExpansionFinanceOffer } from './finance';
 import {
 	createCityTileLookup,
 	getOccupiedStoreTileIds,
@@ -45,6 +46,7 @@ export interface RetailBuildMenuOption {
 	projectedDailyRevenueRange: NumberRange;
 	validTileCount: number;
 	disabledReason: PlacementBlockReason | null;
+	financeOffer: ExpansionFinanceOffer | null;
 }
 
 export type PlacementBlockReason =
@@ -85,6 +87,7 @@ interface RetailPlacementContext {
 	storeCount: number | null;
 	storeCap: number | null;
 	cash: number | null;
+	game: GameState | null;
 }
 
 interface RetailTilePlacementInput {
@@ -171,6 +174,9 @@ function getRetailTilePlacementBlockReason(
 	const setupCost = forecastOpening(input.tile, input.archetypeId).setupCost;
 
 	if (input.context.cash < setupCost) {
+		if (input.context.game && getExpansionFinanceOffer(input.context.game, setupCost)) {
+			return null;
+		}
 		return { code: 'retail.requiresCash', amount: setupCost };
 	}
 
@@ -197,7 +203,6 @@ export function getRetailBuildMenuOptions(input: RetailBuildMenuInput): RetailBu
 	return ARCHETYPES.map((archetype) => {
 		const validForecasts: ReturnType<typeof forecastOpening>[] = [];
 		const footprintReasons = new Set<StoreFootprintPlacementBlockReason>();
-		let cheapestBlockedSetupCost: number | null = null;
 
 		for (const { tile, footprintReason } of tileFootprintReasons) {
 			if (footprintReason) {
@@ -215,14 +220,6 @@ export function getRetailBuildMenuOptions(input: RetailBuildMenuInput): RetailBu
 
 			const forecast = forecastOpening(tile, archetype.id);
 
-			if (context.cash !== null && context.cash < forecast.setupCost) {
-				cheapestBlockedSetupCost =
-					cheapestBlockedSetupCost === null
-						? forecast.setupCost
-						: Math.min(cheapestBlockedSetupCost, forecast.setupCost);
-				continue;
-			}
-
 			validForecasts.push(forecast);
 		}
 
@@ -232,13 +229,18 @@ export function getRetailBuildMenuOptions(input: RetailBuildMenuInput): RetailBu
 				setupCostRange: { min: 0, max: 0 },
 				projectedDailyRevenueRange: { min: 0, max: 0 },
 				validTileCount: 0,
-				disabledReason: resolveRetailDisabledReason(
-					context,
-					footprintReasons,
-					cheapestBlockedSetupCost
-				)
+				disabledReason: resolveRetailDisabledReason(context, footprintReasons),
+				financeOffer: null
 			};
 		}
+
+		const minimumSetupCost = Math.min(...validForecasts.map((forecast) => forecast.setupCost));
+		const financeOffer =
+			context.game && context.cash !== null && context.cash < minimumSetupCost
+				? getExpansionFinanceOffer(context.game, minimumSetupCost)
+				: null;
+		const noFunding =
+			context.cash !== null && context.cash < minimumSetupCost && financeOffer === null;
 
 		return {
 			archetypeId: archetype.id,
@@ -247,15 +249,15 @@ export function getRetailBuildMenuOptions(input: RetailBuildMenuInput): RetailBu
 				validForecasts.map((forecast) => forecast.projectedDailyRevenue)
 			),
 			validTileCount: validForecasts.length,
-			disabledReason: null
+			disabledReason: noFunding ? { code: 'retail.requiresCash', amount: minimumSetupCost } : null,
+			financeOffer
 		};
 	});
 }
 
 function resolveRetailDisabledReason(
 	context: RetailPlacementContext,
-	footprintReasons: Set<StoreFootprintPlacementBlockReason>,
-	cheapestBlockedSetupCost: number | null
+	footprintReasons: Set<StoreFootprintPlacementBlockReason>
 ): PlacementBlockReason {
 	if (
 		context.storeCount !== null &&
@@ -263,10 +265,6 @@ function resolveRetailDisabledReason(
 		context.storeCount >= context.storeCap
 	) {
 		return { code: 'retail.storeLimitReached' };
-	}
-
-	if (cheapestBlockedSetupCost !== null) {
-		return { code: 'retail.requiresCash', amount: cheapestBlockedSetupCost };
 	}
 
 	for (const reason of ['occupied', 'locked', 'road', 'river'] as const) {
@@ -301,7 +299,8 @@ function createRetailPlacementContext(game: GameState | null, city: City): Retai
 		occupiedTileIds: game ? getOccupiedStoreTileIds(city, game.stores, tileLookup) : new Set(),
 		storeCount: game?.stores.length ?? null,
 		storeCap: game?.storeCap ?? null,
-		cash: game?.cash ?? null
+		cash: game?.cash ?? null,
+		game
 	};
 }
 
@@ -359,6 +358,9 @@ export function getIndustryBuildPlacementBlockReason(
 	}
 
 	if (input.game.cash < buildingType.buildCost) {
+		if (getExpansionFinanceOffer(input.game, buildingType.buildCost)) {
+			return null;
+		}
 		return {
 			code: 'industry.requiresCash',
 			buildingTypeId: input.buildingTypeId,

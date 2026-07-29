@@ -17,7 +17,8 @@ function status(cityId: string, state: WorldCityStatus['state']): WorldCityStatu
 		canOpen: state === 'revealed',
 		blockedReason: state === 'locked' ? decisionContextWorldCityNotAvailableYet(city.id) : null,
 		storeCount: city.kind === 'retail' && state === 'opened' ? 1 : 0,
-		buildingCount: city.kind === 'industry' && state === 'opened' ? 2 : 0
+		buildingCount: city.kind === 'industry' && state === 'opened' ? 2 : 0,
+		financeOffer: null
 	};
 }
 

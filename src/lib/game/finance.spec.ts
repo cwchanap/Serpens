@@ -4,11 +4,13 @@ import {
 	appendFinanceTransaction,
 	assessCredit,
 	borrow,
+	financeExpansionPurchase,
 	calculateDailyInterestMicros,
 	createEmptyFinanceState,
 	createFoundingFinanceState,
 	estimateNextLoanPayment,
 	getInstallmentCount,
+	getExpansionFinanceOffer,
 	getPayoffQuote,
 	getLifetimeRepaymentHistory,
 	getNormalizedWeeklyService,
@@ -1116,5 +1118,43 @@ describe('credit assessment', () => {
 		expect(ordinary.existingWeeklyDebtService).toBe(102.761647);
 		expect(refinance.existingWeeklyDebtService).toBe(0);
 		expect(refinance.principalHeadroom).toBeGreaterThan(ordinary.principalHeadroom);
+	});
+});
+
+describe('expansion finance offers', () => {
+	it('quotes an 84-day offer for the exact sub-$1,000 cash shortfall', () => {
+		const game = createCreditGame({ cash: 9_750 });
+
+		const offer = getExpansionFinanceOffer(game, 10_000);
+
+		expect(offer).toMatchObject({
+			principal: 250,
+			termDays: 84
+		});
+		expect(offer?.annualInterestRateBps).toBe(assessCredit(game, 84).annualInterestRateBps);
+		expect(offer?.estimatedPeakPayment).toBe(
+			projectLoanSchedule({
+				principal: 250,
+				annualInterestRateBps: assessCredit(game, 84).annualInterestRateBps,
+				termDays: 84
+			}).peakPayment
+		);
+	});
+
+	it('does not commit a borrowed candidate when the purchase postcondition fails', () => {
+		const game = createCreditGame({ cash: 9_750 });
+		const financeBefore = game.finance;
+
+		const result = financeExpansionPurchase(game, {
+			expectedCost: 10_000,
+			resolveLiveCost: () => 10_000,
+			cashOnlyPurchase: (candidate) => ({ ...candidate, cash: candidate.cash - 10_000 }),
+			postcondition: () => false
+		});
+
+		expect(result).toMatchObject({ ok: false, code: 'purchaseUnavailable' });
+		expect(game.finance).toBe(financeBefore);
+		expect(game.finance.loans).toHaveLength(0);
+		expect(game.cash).toBe(9_750);
 	});
 });

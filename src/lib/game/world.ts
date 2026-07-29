@@ -5,6 +5,13 @@ import {
 	generateIndustryCity
 } from './industry';
 import {
+	financeExpansionPurchase,
+	getExpansionFinanceOffer,
+	type ExpansionFinanceOffer,
+	type FinanceActionResult,
+	type FinancedPurchaseReceipt
+} from './finance';
+import {
 	decisionContextWorldCityNotAvailableYet,
 	decisionContextWorldCityOpeningCost,
 	decisionContextWorldCityUnknown
@@ -48,6 +55,7 @@ export interface WorldCityStatus {
 	blockedReason: DecisionContext | null;
 	storeCount: number;
 	buildingCount: number;
+	financeOffer: ExpansionFinanceOffer | null;
 }
 
 export const WORLD_CITY_CATALOG: readonly WorldCityDefinition[] = [
@@ -224,7 +232,11 @@ export function getWorldCityStatus(game: GameState, cityId: string): WorldCitySt
 		canOpen: state === 'revealed' && game.cash >= city.openingCost,
 		blockedReason,
 		storeCount,
-		buildingCount
+		buildingCount,
+		financeOffer:
+			state === 'revealed' && game.cash < city.openingCost
+				? getExpansionFinanceOffer(game, city.openingCost)
+				: null
 	};
 }
 
@@ -378,6 +390,25 @@ export function openWorldCity(game: GameState, cityId: string): GameState {
 	};
 
 	return refreshWorldProgress(selectWorldCity(ensureWorldCityMap(openedGame, city), city.id));
+}
+
+export function financeWorldCityOpening(
+	game: GameState,
+	input: { cityId: WorldCityId; expectedCost: number }
+): FinanceActionResult<FinancedPurchaseReceipt> {
+	return financeExpansionPurchase(game, {
+		expectedCost: input.expectedCost,
+		resolveLiveCost: (candidate) => {
+			const city = getWorldCityDefinition(input.cityId);
+			return city &&
+				!candidate.world.openedCityIds.includes(city.id) &&
+				candidate.world.revealedCityIds.includes(city.id)
+				? city.openingCost
+				: null;
+		},
+		cashOnlyPurchase: (candidate) => openWorldCity(candidate, input.cityId),
+		postcondition: (candidate) => candidate.world.openedCityIds.includes(input.cityId)
+	});
 }
 
 export function selectWorldCity(game: GameState, cityId: WorldCityId): GameState {
