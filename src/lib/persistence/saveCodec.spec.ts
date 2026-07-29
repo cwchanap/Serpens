@@ -615,6 +615,19 @@ describe('saveCodec', () => {
 	});
 
 	test.each([
+		['loan', { nextLoanSequence: Number.MAX_SAFE_INTEGER }],
+		['transaction', { nextTransactionSequence: Number.MAX_SAFE_INTEGER }]
+	] as const)(
+		'strict validation rejects a $0 sequence that cannot advance safely',
+		(_name, patch) => {
+			const game = createGame();
+			const finance = { ...game.finance, ...patch };
+
+			expect(() => validateCurrentGameState({ ...game, finance })).toThrow(SaveDataError);
+		}
+	);
+
+	test.each([
 		['loan', 'loan-01'],
 		['loan', 'loan-9007199254740992'],
 		['transaction', 'finance-transaction-01'],
