@@ -249,6 +249,8 @@ describe('createMutationAvailability', () => {
 		expect(availability.advanceDay).toBe(true);
 		expect(availability.updatePolicy).toBe(true);
 		expect(availability.openStore).toBe(false);
+		expect(availability.financeRetailStore).toBe(false);
+		expect(availability.financeIndustrialBuilding).toBe(false);
 		expect(availability.buildRail).toBe(false);
 	});
 
