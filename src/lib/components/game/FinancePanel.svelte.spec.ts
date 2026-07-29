@@ -236,11 +236,18 @@ describe('FinancePanel', () => {
 	});
 
 	it('fits the complete finance panel within a narrow viewport', async () => {
-		expect.assertions(2);
-		await page.viewport(320, 800);
-		renderPanel();
-		const panel = page.getByRole('region', { name: 'Finance' }).element();
-		expect(panel.clientWidth).toBeGreaterThan(0);
-		expect(panel.scrollWidth).toBeLessThanOrEqual(panel.clientWidth);
+		expect.assertions(4);
+		const originalViewport = { width: window.innerWidth, height: window.innerHeight };
+		try {
+			await page.viewport(320, 800);
+			renderPanel();
+			const panel = page.getByRole('region', { name: 'Finance' }).element();
+			expect(panel.clientWidth).toBeGreaterThan(0);
+			expect(panel.scrollWidth).toBeLessThanOrEqual(panel.clientWidth);
+		} finally {
+			await page.viewport(originalViewport.width, originalViewport.height);
+		}
+		expect(window.innerWidth).toBe(originalViewport.width);
+		expect(window.innerHeight).toBe(originalViewport.height);
 	});
 });
