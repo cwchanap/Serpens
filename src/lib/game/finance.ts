@@ -5,6 +5,12 @@ export const FOUNDING_LOAN_TERM_DAYS = 84;
 export const FOUNDING_LOAN_APR_BPS = 1_200;
 export const FINANCE_TRANSACTION_LIMIT = 200;
 
+function requireNonNegativeIntegerPrincipal(principal: number): void {
+	if (!Number.isInteger(principal) || principal < 0) {
+		throw new RangeError('Founding loan principal must be a non-negative integer');
+	}
+}
+
 function createDayActivity(day: number): FinanceState['currentDayActivity'] {
 	return {
 		day,
@@ -51,6 +57,7 @@ function createFoundingLoan(day: number, principal: number, sequence: number): L
 }
 
 export function createFoundingFinanceState(day: number, principal: number): FinanceState {
+	requireNonNegativeIntegerPrincipal(principal);
 	const finance = createEmptyFinanceState(day);
 	return principal === 0
 		? finance
@@ -66,6 +73,7 @@ export function replaceFoundingLoan(
 	day: number,
 	principal: number
 ): FinanceState {
+	requireNonNegativeIntegerPrincipal(principal);
 	const loans = finance.loans.filter(
 		(loan) =>
 			loan.purpose !== 'founding' || (loan.status !== 'active' && loan.status !== 'delinquent')

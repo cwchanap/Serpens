@@ -23,6 +23,7 @@ import {
 	diagnostic,
 	isObject,
 	nonEmptyString,
+	nonNegativeInteger,
 	nonNegativeNumber,
 	positiveNumber,
 	validateIncluded,
@@ -118,7 +119,7 @@ function validateOverrides(
 	if (!overrides) return;
 	for (const key of ['cash', 'debt'] as const) {
 		if (Object.hasOwn(overrides, key))
-			nonNegativeNumber(context, overrides[key], `start.overrides.${key}`);
+			nonNegativeInteger(context, overrides[key], `start.overrides.${key}`);
 	}
 	if (Object.hasOwn(overrides, 'policy')) validatePolicy(context, overrides.policy);
 	const targetLevels = validateStoreOverrides(context, overrides.stores, foundingStore);

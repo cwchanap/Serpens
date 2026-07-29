@@ -54,6 +54,11 @@ describe('finance state', () => {
 		expect(createFoundingFinanceState(5, 0)).toEqual(createEmptyFinanceState(5));
 	});
 
+	it.each([-1, 12.5])('rejects an invalid founding principal of %s', (principal) => {
+		expect(() => createFoundingFinanceState(5, principal)).toThrow(RangeError);
+		expect(() => replaceFoundingLoan(createEmptyFinanceState(5), 5, principal)).toThrow(RangeError);
+	});
+
 	it.each([
 		[28, 4],
 		[56, 8],

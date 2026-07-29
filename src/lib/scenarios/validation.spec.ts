@@ -1637,12 +1637,12 @@ describe('validateScenarioDefinition coverage gaps', () => {
 
 	it('validates cash and debt override values', () => {
 		const definition = malformedDefinition();
-		definition.start.overrides.cash = -100;
+		definition.start.overrides.cash = 100.5;
 		definition.start.overrides.debt = -50;
 		expect(codes(definition)).toEqual(
 			expect.arrayContaining([
-				{ path: 'start.overrides.cash', code: 'invalid-non-negative-number' },
-				{ path: 'start.overrides.debt', code: 'invalid-non-negative-number' }
+				{ path: 'start.overrides.cash', code: 'invalid-non-negative-integer' },
+				{ path: 'start.overrides.debt', code: 'invalid-non-negative-integer' }
 			])
 		);
 	});

@@ -497,6 +497,113 @@ describe('saveCodec', () => {
 		expect(game).toEqual(before);
 	});
 
+	test.each([
+		['fractional original principal', 'originalPrincipal', 1.5],
+		['negative remaining principal', 'remainingPrincipal', -1],
+		['fractional overdue principal', 'overduePrincipal', 2.5],
+		['negative accrued interest micros', 'accruedInterestMicros', -1]
+	] as const)('strict validation rejects $0 in saved finance', (_name, field, value) => {
+		const game = createGame();
+		const loan = game.finance.loans[0]!;
+		const finance = {
+			...game.finance,
+			loans: [{ ...loan, [field]: value }]
+		};
+
+		expect(() => validateCurrentGameState({ ...game, finance })).toThrow(SaveDataError);
+	});
+
+	test.each([
+		['a non-string refinanced-from link', { refinancedFromLoanId: 1 }],
+		['a non-string refinanced-by link', { refinancedByLoanId: null }]
+	] as const)('strict validation rejects $0', (_name, patch) => {
+		const game = createGame();
+		const loan = game.finance.loans[0]!;
+		const finance = { ...game.finance, loans: [{ ...loan, ...patch }] };
+
+		expect(() => validateCurrentGameState({ ...game, finance })).toThrow(SaveDataError);
+	});
+
+	test('strict validation rejects a non-string related-loan link', () => {
+		const game = createGame();
+		const finance = {
+			...game.finance,
+			transactions: [
+				{
+					id: 'finance-transaction-1',
+					day: 3,
+					kind: 'disbursement' as const,
+					loanId: 'loan-1',
+					relatedLoanId: 1,
+					cashDelta: 0,
+					principalAmount: 0,
+					principalDelta: 0,
+					interestAmount: 0
+				}
+			]
+		};
+
+		expect(() => validateCurrentGameState({ ...game, finance })).toThrow(SaveDataError);
+	});
+
+	test('strict validation rejects duplicate loan IDs', () => {
+		const game = createGame();
+		const loan = game.finance.loans[0]!;
+		const finance = {
+			...game.finance,
+			loans: [loan, { ...loan }]
+		};
+
+		expect(() => validateCurrentGameState({ ...game, finance })).toThrow(SaveDataError);
+	});
+
+	test('strict validation rejects duplicate transaction IDs', () => {
+		const game = createGame();
+		const transaction = {
+			id: 'finance-transaction-1',
+			day: 3,
+			kind: 'disbursement' as const,
+			loanId: 'loan-1',
+			cashDelta: 0,
+			principalAmount: 0,
+			principalDelta: 0,
+			interestAmount: 0
+		};
+		const finance = {
+			...game.finance,
+			transactions: [transaction, { ...transaction }]
+		};
+
+		expect(() => validateCurrentGameState({ ...game, finance })).toThrow(SaveDataError);
+	});
+
+	test.each([
+		['loan', { nextLoanSequence: 1 }],
+		[
+			'transaction',
+			{
+				nextTransactionSequence: 1,
+				transactions: [
+					{
+						id: 'finance-transaction-1',
+						day: 3,
+						kind: 'disbursement' as const,
+						loanId: 'loan-1',
+						cashDelta: 0,
+						principalAmount: 0,
+						principalDelta: 0,
+						interestAmount: 0
+					}
+				]
+			}
+		]
+	] as const)('strict validation rejects a reused $0 sequence', (_name, patch) => {
+		const game = createGame();
+		const finance = { ...game.finance, ...patch };
+
+		expect(() => validateCurrentGameState({ ...game, finance })).toThrow(SaveDataError);
+	});
+
 	test('strict validation rejects a game inherited through its prototype', () => {
 		const inherited = Object.create(createGame()) as GameState;
 

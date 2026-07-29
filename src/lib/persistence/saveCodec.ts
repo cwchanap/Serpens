@@ -2056,8 +2056,14 @@ function validateSavedFinance(value: unknown, label: string): void {
 	const finance = requireRecord(value, label);
 	const loans = requireArray(finance.loans, `${label} loans`);
 	const transactions = requireArray(finance.transactions, `${label} transactions`);
-	requirePositiveInteger(finance.nextLoanSequence, `${label} nextLoanSequence`);
-	requirePositiveInteger(finance.nextTransactionSequence, `${label} nextTransactionSequence`);
+	const nextLoanSequence = requirePositiveInteger(
+		finance.nextLoanSequence,
+		`${label} nextLoanSequence`
+	);
+	const nextTransactionSequence = requirePositiveInteger(
+		finance.nextTransactionSequence,
+		`${label} nextTransactionSequence`
+	);
 	const activity = requireRecord(finance.currentDayActivity, `${label} currentDayActivity`);
 	requireNumber(activity.day, `${label} currentDayActivity day`);
 	requireNumber(activity.principalBorrowed, `${label} currentDayActivity principalBorrowed`);
@@ -2067,9 +2073,14 @@ function validateSavedFinance(value: unknown, label: string): void {
 	requireNumber(activity.refinancedPrincipal, `${label} currentDayActivity refinancedPrincipal`);
 	requireNumber(activity.financingCashFlow, `${label} currentDayActivity financingCashFlow`);
 
+	const loanIds = new Set<string>();
+	let highestLoanSequence = 0;
 	loans.forEach((value, index) => {
 		const loan = requireRecord(value, `${label} loans[${index}]`);
-		requireString(loan.id, `${label} loans[${index}] id`);
+		const id = requireString(loan.id, `${label} loans[${index}] id`);
+		if (loanIds.has(id)) throw new SaveDataError(`${label} loans must have unique IDs`);
+		loanIds.add(id);
+		highestLoanSequence = Math.max(highestLoanSequence, generatedIdSequence(id, 'loan-'));
 		requireOneOf(loan.purpose, `${label} loans[${index}] purpose`, [
 			'founding',
 			'workingCapital',
@@ -2085,8 +2096,11 @@ function validateSavedFinance(value: unknown, label: string): void {
 			'refinanced'
 		] as const);
 		requireNumber(loan.openedOnDay, `${label} loans[${index}] openedOnDay`);
-		requireNumber(loan.originalPrincipal, `${label} loans[${index}] originalPrincipal`);
-		requireNumber(loan.remainingPrincipal, `${label} loans[${index}] remainingPrincipal`);
+		requireNonNegativeInteger(loan.originalPrincipal, `${label} loans[${index}] originalPrincipal`);
+		requireNonNegativeInteger(
+			loan.remainingPrincipal,
+			`${label} loans[${index}] remainingPrincipal`
+		);
 		requireNumber(loan.annualInterestRateBps, `${label} loans[${index}] annualInterestRateBps`);
 		if (loan.termDays !== 28 && loan.termDays !== 56 && loan.termDays !== 84) {
 			throw new SaveDataError(`${label} loans[${index}] termDays must be 28, 56, or 84`);
@@ -2096,20 +2110,41 @@ function validateSavedFinance(value: unknown, label: string): void {
 			requireNumber(loan.nextPaymentDay, `${label} loans[${index}] nextPaymentDay`);
 		}
 		requireNumber(loan.lastInterestAccrualDay, `${label} loans[${index}] lastInterestAccrualDay`);
-		requireNumber(loan.accruedInterestMicros, `${label} loans[${index}] accruedInterestMicros`);
-		requireNumber(loan.overdueInterest, `${label} loans[${index}] overdueInterest`);
-		requireNumber(loan.overduePrincipal, `${label} loans[${index}] overduePrincipal`);
+		requireNonNegativeInteger(
+			loan.accruedInterestMicros,
+			`${label} loans[${index}] accruedInterestMicros`
+		);
+		requireNonNegativeInteger(loan.overdueInterest, `${label} loans[${index}] overdueInterest`);
+		requireNonNegativeInteger(loan.overduePrincipal, `${label} loans[${index}] overduePrincipal`);
 		if (loan.arrearsSinceDay !== null) {
 			requireNumber(loan.arrearsSinceDay, `${label} loans[${index}] arrearsSinceDay`);
 		}
 		requireNumber(loan.scheduledPaymentCount, `${label} loans[${index}] scheduledPaymentCount`);
 		requireNumber(loan.onTimePaymentCount, `${label} loans[${index}] onTimePaymentCount`);
 		requireNumber(loan.missedPaymentCount, `${label} loans[${index}] missedPaymentCount`);
+		if (loan.refinancedFromLoanId !== undefined) {
+			requireString(loan.refinancedFromLoanId, `${label} loans[${index}] refinancedFromLoanId`);
+		}
+		if (loan.refinancedByLoanId !== undefined) {
+			requireString(loan.refinancedByLoanId, `${label} loans[${index}] refinancedByLoanId`);
+		}
 	});
+	if (nextLoanSequence <= highestLoanSequence) {
+		throw new SaveDataError(`${label} nextLoanSequence must exceed generated loan IDs`);
+	}
 
+	const transactionIds = new Set<string>();
+	let highestTransactionSequence = 0;
 	transactions.forEach((value, index) => {
 		const transaction = requireRecord(value, `${label} transactions[${index}]`);
-		requireString(transaction.id, `${label} transactions[${index}] id`);
+		const id = requireString(transaction.id, `${label} transactions[${index}] id`);
+		if (transactionIds.has(id))
+			throw new SaveDataError(`${label} transactions must have unique IDs`);
+		transactionIds.add(id);
+		highestTransactionSequence = Math.max(
+			highestTransactionSequence,
+			generatedIdSequence(id, 'finance-transaction-')
+		);
 		requireNumber(transaction.day, `${label} transactions[${index}] day`);
 		requireOneOf(transaction.kind, `${label} transactions[${index}] kind`, [
 			'disbursement',
@@ -2119,11 +2154,19 @@ function validateSavedFinance(value: unknown, label: string): void {
 			'refinance'
 		] as const);
 		requireString(transaction.loanId, `${label} transactions[${index}] loanId`);
+		if (transaction.relatedLoanId !== undefined) {
+			requireString(transaction.relatedLoanId, `${label} transactions[${index}] relatedLoanId`);
+		}
 		requireNumber(transaction.cashDelta, `${label} transactions[${index}] cashDelta`);
 		requireNumber(transaction.principalAmount, `${label} transactions[${index}] principalAmount`);
 		requireNumber(transaction.principalDelta, `${label} transactions[${index}] principalDelta`);
 		requireNumber(transaction.interestAmount, `${label} transactions[${index}] interestAmount`);
 	});
+	if (nextTransactionSequence <= highestTransactionSequence) {
+		throw new SaveDataError(
+			`${label} nextTransactionSequence must exceed generated transaction IDs`
+		);
+	}
 }
 
 function validateSavedStore(value: unknown, label: string): void {
@@ -2742,6 +2785,20 @@ function requirePositiveInteger(value: unknown, label: string): number {
 		throw new SaveDataError(`${label} must be a positive integer`);
 	}
 	return number;
+}
+
+function requireNonNegativeInteger(value: unknown, label: string): number {
+	const number = requireNumber(value, label);
+	if (!Number.isInteger(number) || number < 0) {
+		throw new SaveDataError(`${label} must be a non-negative integer`);
+	}
+	return number;
+}
+
+function generatedIdSequence(id: string, prefix: string): number {
+	if (!id.startsWith(prefix)) return 0;
+	const sequence = Number(id.slice(prefix.length));
+	return Number.isSafeInteger(sequence) && sequence > 0 ? sequence : 0;
 }
 
 function validateTileCoordinates(
