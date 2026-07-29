@@ -39,6 +39,8 @@
 	}
 </script>
 
+<svelte:window onkeydown={handlePageKeydown} />
+
 <FinancePurchaseReviewHost
 	bind:review
 	{cash}
@@ -47,8 +49,6 @@
 	onConfirm={() => {}}
 	onDismiss={() => (dismissCalls += 1)}
 />
-
-<svelte:window onkeydown={handlePageKeydown} />
 
 <output data-testid="review-state">{review.purchase === null ? 'closed' : 'open'}</output>
 <output data-testid="selected-world-city">{selectedWorldCityId ?? 'none'}</output>
