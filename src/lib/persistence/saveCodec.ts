@@ -2789,8 +2789,8 @@ function requirePositiveInteger(value: unknown, label: string): number {
 
 function requirePositiveSafeInteger(value: unknown, label: string): number {
 	const number = requireNumber(value, label);
-	if (!Number.isSafeInteger(number) || number <= 0) {
-		throw new SaveDataError(`${label} must be a positive safe integer`);
+	if (!Number.isSafeInteger(number) || number <= 0 || number >= Number.MAX_SAFE_INTEGER) {
+		throw new SaveDataError(`${label} must be a positive safe integer that can advance safely`);
 	}
 	return number;
 }
