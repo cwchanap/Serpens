@@ -290,6 +290,7 @@ git commit -m "feat(finance): model founding loans"
 
 - Modify: `src/lib/game/finance.ts`
 - Modify: `src/lib/game/finance.spec.ts`
+- Modify: `src/lib/game/simulateDay.spec.ts`
 
 **Interfaces:**
 
@@ -661,6 +662,7 @@ Cover successful and rejected:
 - refinance assessment excluding the old obligation;
 - capitalized interest disclosure and symmetric links;
 - delinquent/closed refinance rejection;
+- borrowing changes financing cash flow but never improves `operatingCashFlow`, `netIncome`, or the profit score;
 - lifetime micro-interest reconciliation, permitting only the explicit 0–999,999 micro close/refinance premium.
 
 - [ ] **Step 2: Run the red tests**
@@ -697,7 +699,7 @@ Repayment uses the approved allocation order and may close the loan. Reject an a
 Run:
 
 ```bash
-bun run test:unit -- src/lib/game/finance.spec.ts --run --project server
+bun run test:unit -- src/lib/game/finance.spec.ts src/lib/game/simulateDay.spec.ts --run --project server
 bun run check
 ```
 
@@ -706,7 +708,7 @@ Expected: PASS.
 Commit:
 
 ```bash
-git add src/lib/game/finance.ts src/lib/game/finance.spec.ts
+git add src/lib/game/finance.ts src/lib/game/finance.spec.ts src/lib/game/simulateDay.spec.ts
 git commit -m "feat(finance): add debt actions"
 ```
 
@@ -764,7 +766,6 @@ Add tests that:
 - produce a report for D and return state D+1;
 - reset `currentDayActivity` to zero values stamped D+1 only after the report;
 - reconcile `cashAfter === cashBefore + operatingCashFlow + financingCashFlow`;
-- prove borrowing does not improve `operatingCashFlow`, `netIncome`, or the profit score;
 - stack import, payroll, and finance service when their schedules coincide;
 - preserve a fractional `interestAccrued` value.
 
@@ -1939,9 +1940,9 @@ git commit -m "test(finance): cover debt and expansion flows"
 ```text
 1 state/founding
   → 2 servicing/ledger
-    → 3 credit
-      → 4 actions
-        → 5 simulation/reports
+    → 5 simulation/reports
+      → 3 credit
+        → 4 actions
           → 6 metrics
             → 7 persistence
               → 8 decisions
