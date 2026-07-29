@@ -2056,11 +2056,11 @@ function validateSavedFinance(value: unknown, label: string): void {
 	const finance = requireRecord(value, label);
 	const loans = requireArray(finance.loans, `${label} loans`);
 	const transactions = requireArray(finance.transactions, `${label} transactions`);
-	const nextLoanSequence = requirePositiveInteger(
+	const nextLoanSequence = requirePositiveSafeInteger(
 		finance.nextLoanSequence,
 		`${label} nextLoanSequence`
 	);
-	const nextTransactionSequence = requirePositiveInteger(
+	const nextTransactionSequence = requirePositiveSafeInteger(
 		finance.nextTransactionSequence,
 		`${label} nextTransactionSequence`
 	);
@@ -2787,6 +2787,14 @@ function requirePositiveInteger(value: unknown, label: string): number {
 	return number;
 }
 
+function requirePositiveSafeInteger(value: unknown, label: string): number {
+	const number = requireNumber(value, label);
+	if (!Number.isSafeInteger(number) || number <= 0) {
+		throw new SaveDataError(`${label} must be a positive safe integer`);
+	}
+	return number;
+}
+
 function requireNonNegativeInteger(value: unknown, label: string): number {
 	const number = requireNumber(value, label);
 	if (!Number.isInteger(number) || number < 0) {
@@ -2797,8 +2805,10 @@ function requireNonNegativeInteger(value: unknown, label: string): number {
 
 function generatedIdSequence(id: string, prefix: string): number {
 	if (!id.startsWith(prefix)) return 0;
-	const sequence = Number(id.slice(prefix.length));
-	return Number.isSafeInteger(sequence) && sequence > 0 ? sequence : 0;
+	const text = id.slice(prefix.length);
+	if (!/^[1-9]\d*$/.test(text)) return 0;
+	const sequence = Number(text);
+	return Number.isSafeInteger(sequence) ? sequence : 0;
 }
 
 function validateTileCoordinates(

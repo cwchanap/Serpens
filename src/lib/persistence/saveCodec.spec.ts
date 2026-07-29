@@ -604,6 +604,53 @@ describe('saveCodec', () => {
 		expect(() => validateCurrentGameState({ ...game, finance })).toThrow(SaveDataError);
 	});
 
+	test.each([
+		['loan', { nextLoanSequence: Number.MAX_SAFE_INTEGER + 1 }],
+		['transaction', { nextTransactionSequence: Number.MAX_SAFE_INTEGER + 1 }]
+	] as const)('strict validation rejects an unsafe $0 sequence', (_name, patch) => {
+		const game = createGame();
+		const finance = { ...game.finance, ...patch };
+
+		expect(() => validateCurrentGameState({ ...game, finance })).toThrow(SaveDataError);
+	});
+
+	test.each([
+		['loan', 'loan-01'],
+		['loan', 'loan-9007199254740992'],
+		['transaction', 'finance-transaction-01'],
+		['transaction', 'finance-transaction-9007199254740992']
+	] as const)(
+		'strict validation does not consume a sequence for non-emitted $0 ID %s',
+		(kind, id) => {
+			const game = createGame();
+			const finance =
+				kind === 'loan'
+					? {
+							...game.finance,
+							nextLoanSequence: 1,
+							loans: [{ ...game.finance.loans[0]!, id }]
+						}
+					: {
+							...game.finance,
+							nextTransactionSequence: 1,
+							transactions: [
+								{
+									id,
+									day: 3,
+									kind: 'disbursement' as const,
+									loanId: 'loan-1',
+									cashDelta: 0,
+									principalAmount: 0,
+									principalDelta: 0,
+									interestAmount: 0
+								}
+							]
+						};
+
+			expect(validateCurrentGameState({ ...game, finance })).toEqual({ ...game, finance });
+		}
+	);
+
 	test('strict validation rejects a game inherited through its prototype', () => {
 		const inherited = Object.create(createGame()) as GameState;
 
