@@ -28,7 +28,11 @@ export type ScenarioContentQuery =
 
 export type ScenarioCapabilityResult =
 	| { allowed: true }
-	| { allowed: false; code: 'forbidden-command' | 'forbidden-content'; path: string };
+	| {
+			allowed: false;
+			code: 'forbidden-command' | 'forbidden-content' | 'invalid-command';
+			path: string;
+	  };
 
 export function isScenarioContentAllowed(
 	definition: ScenarioDefinition,
@@ -66,8 +70,12 @@ function forbiddenContent(path: string): ScenarioCapabilityResult {
 	return { allowed: false, code: 'forbidden-content', path };
 }
 
-function nonEmpty(value: string): boolean {
-	return value.length > 0;
+function invalidCommand(path: string): ScenarioCapabilityResult {
+	return { allowed: false, code: 'invalid-command', path };
+}
+
+function nonEmptyString(value: unknown): value is string {
+	return typeof value === 'string' && value.length > 0;
 }
 
 function wholeDollar(value: number, minimum = 0): boolean {
@@ -156,15 +164,17 @@ export function isScenarioCommandAllowed(
 				? { allowed: true }
 				: forbiddenContent('command.borrow');
 		case 'repayLoan':
-			return nonEmpty(command.loanId) && wholeDollar(command.amount, 1)
+			if (!nonEmptyString(command.loanId)) return invalidCommand('command.repayLoan.loanId');
+			return wholeDollar(command.amount, 1)
 				? { allowed: true }
 				: forbiddenContent('command.repayLoan');
 		case 'payOffLoan':
-			return nonEmpty(command.loanId)
+			return nonEmptyString(command.loanId)
 				? { allowed: true }
-				: forbiddenContent('command.payOffLoan.loanId');
+				: invalidCommand('command.payOffLoan.loanId');
 		case 'refinanceLoan':
-			return nonEmpty(command.loanId) && supportedTerm(command.termDays)
+			if (!nonEmptyString(command.loanId)) return invalidCommand('command.refinanceLoan.loanId');
+			return supportedTerm(command.termDays)
 				? { allowed: true }
 				: forbiddenContent('command.refinanceLoan');
 		case 'financeWorldCity':

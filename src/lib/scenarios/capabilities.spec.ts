@@ -315,8 +315,26 @@ describe('scenario command capabilities', () => {
 				loanId: '',
 				amount: 100
 			} as ScenarioCommand)
-		).toMatchObject({ allowed: false, code: 'forbidden-content' });
+		).toMatchObject({ allowed: false, code: 'invalid-command' });
 	});
+
+	it.each([null, 42, { id: 'loan-1' }] as const)(
+		'rejects a non-string loan id as an invalid command: %j',
+		(loanId) => {
+			const scenario = definition({
+				allowedCommands: ['repayLoan', 'payOffLoan', 'refinanceLoan']
+			});
+			for (const command of [
+				{ kind: 'repayLoan', loanId, amount: 100 },
+				{ kind: 'payOffLoan', loanId },
+				{ kind: 'refinanceLoan', loanId, termDays: 56 }
+			] as const) {
+				expect(
+					isScenarioCommandAllowed(scenario, run(), command as unknown as ScenarioCommand)
+				).toMatchObject({ allowed: false, code: 'invalid-command' });
+			}
+		}
+	);
 
 	it.each(['upgradeRail', 'demolishRail'] as const)(
 		'rejects %s when its explicit city is outside the content allowlist',
