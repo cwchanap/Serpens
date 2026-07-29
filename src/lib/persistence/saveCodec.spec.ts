@@ -833,6 +833,64 @@ describe('saveCodec', () => {
 		).toThrow(SaveDataError);
 	});
 
+	test('rejects two-node and three-node refinance cycles while accepting a linear chain', () => {
+		expect.assertions(3);
+		const game = createGame();
+		const base = game.finance.loans[0]!;
+		const closed = (id: string, from: string, by: string) => ({
+			...base,
+			id,
+			purpose: 'refinance' as const,
+			status: 'refinanced' as const,
+			remainingPrincipal: 0,
+			nextPaymentDay: null,
+			refinancedFromLoanId: from,
+			refinancedByLoanId: by
+		});
+		const active = {
+			...base,
+			id: 'loan-3',
+			purpose: 'refinance' as const,
+			refinancedFromLoanId: 'loan-2'
+		};
+		const source = {
+			...base,
+			status: 'refinanced' as const,
+			remainingPrincipal: 0,
+			nextPaymentDay: null,
+			refinancedByLoanId: 'loan-2'
+		};
+		const record = (loans: GameState['finance']['loans']) =>
+			createManualSaveRecord({
+				game: { finance: { ...game.finance, nextLoanSequence: 4, loans } }
+			});
+
+		expect(() =>
+			validateSaveRecord(
+				record([closed('loan-1', 'loan-2', 'loan-2'), closed('loan-2', 'loan-1', 'loan-1')])
+			)
+		).toThrow(SaveDataError);
+		expect(() =>
+			validateSaveRecord(
+				record([
+					closed('loan-1', 'loan-3', 'loan-2'),
+					closed('loan-2', 'loan-1', 'loan-3'),
+					closed('loan-3', 'loan-2', 'loan-1')
+				])
+			)
+		).toThrow(SaveDataError);
+		expect(() =>
+			validateSaveRecord(record([source, closed('loan-2', 'loan-1', 'loan-3'), active]))
+		).not.toThrow();
+	});
+
+	test.each([-1, 1.5, 4])('rejects a report day outside the loaded game timeline: %s', (day) => {
+		const record = createManualSaveRecord({
+			game: { reports: [createDailyReport({ day })] }
+		});
+		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+	});
+
 	test.each([
 		'cashBefore',
 		'operatingIncome',

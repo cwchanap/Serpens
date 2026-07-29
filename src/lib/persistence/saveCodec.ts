@@ -893,7 +893,7 @@ function validateCurrentGameStateInternal(value: unknown): GameState {
 	);
 	let previousReportDay: number | undefined;
 	reports.forEach((report, index) => {
-		const reportDay = validateSavedReport(report, `Saved game reports[${index}]`);
+		const reportDay = validateSavedReport(report, gameDay, `Saved game reports[${index}]`);
 		if (previousReportDay !== undefined && reportDay <= previousReportDay) {
 			throw new SaveDataError('Saved game report days must be strictly increasing and unique');
 		}
@@ -2392,6 +2392,17 @@ function validateSavedFinance(value: unknown, gameDay: number, label: string): v
 				throw new SaveDataError(`${label} refinance links must be symmetric and non-cyclic`);
 		}
 	}
+	for (const loanId of loansById.keys()) {
+		const seenLoanIds = new Set<string>();
+		let currentLoanId: string | undefined = loanId;
+		while (currentLoanId !== undefined) {
+			if (seenLoanIds.has(currentLoanId)) {
+				throw new SaveDataError(`${label} refinance links must not form a cycle`);
+			}
+			seenLoanIds.add(currentLoanId);
+			currentLoanId = loansById.get(currentLoanId)?.refinancedByLoanId as string | undefined;
+		}
+	}
 }
 
 function validateSavedFinanceDayActivity(value: unknown, gameDay: number, label: string): void {
@@ -2605,10 +2616,11 @@ function validateSavedDecisionOption(value: unknown, label: string): void {
 	}
 }
 
-function validateSavedReport(value: unknown, label: string): number {
+function validateSavedReport(value: unknown, gameDay: number, label: string): number {
 	const report = requireRecord(value, label);
 
-	const day = requireNumber(report.day, `${label} day`);
+	const day = requireNonNegativeInteger(report.day, `${label} day`);
+	if (day > gameDay) throw new SaveDataError(`${label} day must not be after the game day`);
 	requireNumber(report.revenue, `${label} revenue`);
 	requireNumber(report.costOfGoods, `${label} costOfGoods`);
 	requireNumber(report.grossMargin, `${label} grossMargin`);
