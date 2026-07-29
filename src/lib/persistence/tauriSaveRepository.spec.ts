@@ -34,12 +34,13 @@ class FakeStore implements StoreLike {
 }
 
 function createGame(overrides: Partial<GameState> = {}): GameState {
+	const day = overrides.day ?? 2;
 	return {
 		seed: 20260505,
 		rngState: 99,
-		day: 2,
+		day,
 		cash: 11000,
-		finance: createFoundingFinanceState(2, 1000),
+		finance: overrides.finance ?? createFoundingFinanceState(day, 1000),
 		policy: {
 			pricing: 'standard',
 			inventory: 'balanced',

@@ -239,6 +239,68 @@ function createV6Record(overrides: SaveRecordOverrides = {}): SaveRecord {
 	};
 }
 
+/**
+ * Builds a literal v10 payload. Finance and the new report cash-flow fields
+ * did not exist in that schema; it instead persisted scalar `debt`.
+ */
+function createV10Record(input: { debt: number; day?: number; reports?: unknown[] }): SaveRecord {
+	const current = createManualSaveRecord({
+		game: {
+			day: input.day ?? 12,
+			cash: 12_345,
+			reports: (input.reports ?? [
+				createDailyReport({
+					day: 11,
+					netIncome: 321,
+					grossMargin: 700,
+					operatingCosts: 250,
+					cashAfter: 12_345
+				})
+			]) as GameState['reports']
+		}
+	});
+	const game = structuredClone(current.game) as unknown as Record<string, unknown>;
+	delete game.finance;
+	game.debt = input.debt;
+	game.reports = (game.reports as Array<Record<string, unknown>>).map((report) => {
+		const {
+			cashBefore: _cashBefore,
+			operatingIncome: _operatingIncome,
+			operatingCashFlow: _operatingCashFlow,
+			interestAccrued: _interestAccrued,
+			interestPaid: _interestPaid,
+			interestCapitalized: _interestCapitalized,
+			principalBorrowed: _principalBorrowed,
+			principalRepaid: _principalRepaid,
+			refinancedPrincipal: _refinancedPrincipal,
+			financingCashFlow: _financingCashFlow,
+			netCashChange: _netCashChange,
+			outstandingPrincipalAfter: _outstandingPrincipalAfter,
+			nextLoanPayment: _nextLoanPayment,
+			...legacy
+		} = report;
+		void _cashBefore;
+		void _operatingIncome;
+		void _operatingCashFlow;
+		void _interestAccrued;
+		void _interestPaid;
+		void _interestCapitalized;
+		void _principalBorrowed;
+		void _principalRepaid;
+		void _refinancedPrincipal;
+		void _financingCashFlow;
+		void _netCashChange;
+		void _outstandingPrincipalAfter;
+		void _nextLoanPayment;
+		return legacy;
+	});
+	return {
+		...current,
+		schemaVersion: 10 as unknown as typeof SAVE_SCHEMA_VERSION,
+		game: game as unknown as GameState
+	};
+}
+
 function createSnapshotWithGame(game: Partial<GameState>): SaveStoreSnapshot {
 	const record = createSaveRecord(createGame(), {
 		id: 'manual-test-run',
@@ -451,6 +513,349 @@ function createBareMigrationFixture(sourceVersion: number): unknown {
 }
 
 describe('saveCodec', () => {
+	test('migrates a literal v10 scalar debt save into a neutral founding loan and report finance fields', () => {
+		expect.assertions(21);
+		const record = createV10Record({ debt: 2_000, day: 12 });
+
+		const validated = validateSaveRecord(record);
+		const loan = validated.game.finance.loans[0]!;
+		const report = validated.game.reports[0]!;
+		expect(validated.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
+		expect(validated.game.cash).toBe(12_345);
+		expect(validated.game.finance.loans).toHaveLength(1);
+		expect(loan).toMatchObject({
+			id: 'loan-1',
+			purpose: 'founding',
+			status: 'active',
+			openedOnDay: 12,
+			originalPrincipal: 2_000,
+			remainingPrincipal: 2_000,
+			nextPaymentDay: 19,
+			lastInterestAccrualDay: 12,
+			accruedInterestMicros: 0,
+			overdueInterest: 0,
+			overduePrincipal: 0,
+			arrearsSinceDay: null,
+			installmentsProcessed: 0,
+			scheduledPaymentCount: 0,
+			onTimePaymentCount: 0,
+			missedPaymentCount: 0
+		});
+		expect(validated.game.finance.transactions).toEqual([]);
+		expect(validated.game.finance.nextLoanSequence).toBe(2);
+		expect(validated.game.finance.nextTransactionSequence).toBe(1);
+		expect(validated.game.finance.currentDayActivity).toEqual({
+			day: 12,
+			principalBorrowed: 0,
+			principalRepaid: 0,
+			interestPaid: 0,
+			interestCapitalized: 0,
+			refinancedPrincipal: 0,
+			financingCashFlow: 0
+		});
+		expect(report.cashBefore).toBe(12_024);
+		expect(report.operatingIncome).toBe(450);
+		expect(report.operatingCashFlow).toBe(321);
+		expect(report.interestAccrued).toBe(0);
+		expect(report.interestPaid).toBe(0);
+		expect(report.interestCapitalized).toBe(0);
+		expect(report.principalBorrowed).toBe(0);
+		expect(report.principalRepaid).toBe(0);
+		expect(report.refinancedPrincipal).toBe(0);
+		expect(report.financingCashFlow).toBe(0);
+		expect(report.netCashChange).toBe(321);
+		expect(report.outstandingPrincipalAfter).toBe(2_000);
+		expect(report.nextLoanPayment).toBeNull();
+	});
+
+	test('migrates a literal v10 zero debt save to empty finance while retaining cash and report history', () => {
+		expect.assertions(6);
+		const validated = validateSaveRecord(createV10Record({ debt: 0, day: 12 }));
+		const report = validated.game.reports[0]!;
+		expect(validated.game.cash).toBe(12_345);
+		expect(validated.game.finance.loans).toEqual([]);
+		expect(validated.game.finance.nextLoanSequence).toBe(1);
+		expect(validated.game.finance.currentDayActivity.day).toBe(12);
+		expect(report.outstandingPrincipalAfter).toBe(0);
+		expect(report.nextLoanPayment).toBeNull();
+	});
+
+	test.each([4, 5, 6, 7, 8, 9])(
+		'v%s record migration continues through rail and finance schema steps',
+		(sourceVersion) => {
+			const base = createV10Record({ debt: 500, day: 12 });
+			const record = {
+				...base,
+				schemaVersion: sourceVersion as unknown as typeof SAVE_SCHEMA_VERSION
+			};
+			const validated = validateSaveRecord(record);
+			expect(validated.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
+			expect(validated.game.finance.loans[0]?.remainingPrincipal).toBe(500);
+			expect(validated.game.industryCities[0]?.rails).toEqual([]);
+		}
+	);
+
+	test.each([
+		['negative sequence', (game: GameState) => ({ ...game.finance, nextLoanSequence: -1 })],
+		[
+			'fractional sequence',
+			(game: GameState) => ({ ...game.finance, nextTransactionSequence: 1.5 })
+		],
+		[
+			'duplicate loan ids',
+			(game: GameState) => ({
+				...game.finance,
+				loans: [game.finance.loans[0]!, game.finance.loans[0]!]
+			})
+		],
+		[
+			'unsupported loan purpose',
+			(game: GameState) => ({
+				...game.finance,
+				loans: [{ ...game.finance.loans[0]!, purpose: 'bad' }]
+			})
+		],
+		[
+			'unsupported loan status',
+			(game: GameState) => ({
+				...game.finance,
+				loans: [{ ...game.finance.loans[0]!, status: 'bad' }]
+			})
+		],
+		[
+			'unsupported term',
+			(game: GameState) => ({
+				...game.finance,
+				loans: [{ ...game.finance.loans[0]!, termDays: 7 }]
+			})
+		],
+		[
+			'too many installments',
+			(game: GameState) => ({
+				...game.finance,
+				loans: [{ ...game.finance.loans[0]!, installmentsProcessed: 13 }]
+			})
+		],
+		[
+			'arrears exceeding remaining principal',
+			(game: GameState) => ({
+				...game.finance,
+				loans: [{ ...game.finance.loans[0]!, overduePrincipal: 2_001 }]
+			})
+		],
+		[
+			'paid balance',
+			(game: GameState) => ({
+				...game.finance,
+				loans: [
+					{ ...game.finance.loans[0]!, status: 'paid', nextPaymentDay: null, remainingPrincipal: 1 }
+				]
+			})
+		],
+		[
+			'active arrears',
+			(game: GameState) => ({
+				...game.finance,
+				loans: [{ ...game.finance.loans[0]!, overdueInterest: 1 }]
+			})
+		],
+		[
+			'delinquent without arrears',
+			(game: GameState) => ({
+				...game.finance,
+				loans: [{ ...game.finance.loans[0]!, status: 'delinquent', arrearsSinceDay: 3 }]
+			})
+		],
+		[
+			'contradictory next payment',
+			(game: GameState) => ({
+				...game.finance,
+				loans: [{ ...game.finance.loans[0]!, nextPaymentDay: 99 }]
+			})
+		],
+		[
+			'activity day mismatch',
+			(game: GameState) => ({
+				...game.finance,
+				currentDayActivity: { ...game.finance.currentDayActivity, day: 999 }
+			})
+		],
+		[
+			'non-reconciling financing cash flow',
+			(game: GameState) => ({
+				...game.finance,
+				currentDayActivity: { ...game.finance.currentDayActivity, financingCashFlow: 1 }
+			})
+		]
+	] as const)('rejects finance corruption: %s', (_name, mutate) => {
+		const game = createGame();
+		const record = createManualSaveRecord({
+			game: { finance: mutate(game) as GameState['finance'] }
+		});
+		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+	});
+
+	test('rejects finance transaction links, ordering, and report finance corruption', () => {
+		expect.assertions(5);
+		const game = createGame();
+		const transaction = {
+			id: 'finance-transaction-1',
+			day: 3,
+			kind: 'disbursement' as const,
+			loanId: 'unknown',
+			cashDelta: 1,
+			principalAmount: 1,
+			principalDelta: 1,
+			interestAmount: 0
+		};
+		expect(() =>
+			validateSaveRecord(
+				createManualSaveRecord({
+					game: { finance: { ...game.finance, transactions: [transaction] } }
+				})
+			)
+		).toThrow(SaveDataError);
+		expect(() =>
+			validateSaveRecord(
+				createManualSaveRecord({
+					game: {
+						finance: {
+							...game.finance,
+							transactions: Array.from({ length: 201 }, (_, index) => ({
+								...transaction,
+								id: `finance-transaction-${index + 1}`,
+								loanId: 'loan-1',
+								day: index + 1
+							}))
+						}
+					}
+				})
+			)
+		).toThrow(SaveDataError);
+		expect(() =>
+			validateSaveRecord(
+				createManualSaveRecord({
+					game: { reports: [{ ...createDailyReport(), interestAccrued: -0.1 }] }
+				})
+			)
+		).toThrow(SaveDataError);
+		expect(() =>
+			validateSaveRecord(
+				createManualSaveRecord({
+					game: { reports: [{ ...createDailyReport(), operatingCashFlow: Number.NaN }] }
+				})
+			)
+		).toThrow(SaveDataError);
+		expect(() =>
+			validateSaveRecord(
+				createManualSaveRecord({
+					game: { reports: [{ ...createDailyReport(), interestAccrued: 0.125 }] }
+				})
+			)
+		).not.toThrow();
+	});
+
+	test('rejects closed/refinance relationship corruption and out-of-order transaction history', () => {
+		expect.assertions(4);
+		const game = createGame();
+		const source = {
+			...game.finance.loans[0]!,
+			status: 'refinanced' as const,
+			remainingPrincipal: 0,
+			nextPaymentDay: null,
+			refinancedByLoanId: 'loan-2'
+		};
+		const replacement = {
+			...game.finance.loans[0]!,
+			id: 'loan-2',
+			purpose: 'refinance' as const,
+			refinancedFromLoanId: 'loan-1'
+		};
+		expect(() =>
+			validateSaveRecord(
+				createManualSaveRecord({
+					game: {
+						finance: {
+							...game.finance,
+							nextLoanSequence: 3,
+							loans: [source, { ...replacement, refinancedFromLoanId: 'missing' }]
+						}
+					}
+				})
+			)
+		).toThrow(SaveDataError);
+		expect(() =>
+			validateSaveRecord(
+				createManualSaveRecord({
+					game: {
+						finance: { ...game.finance, loans: [{ ...source, refinancedByLoanId: undefined }] }
+					}
+				})
+			)
+		).toThrow(SaveDataError);
+		const transaction = (day: number, id: string) => ({
+			id,
+			day,
+			kind: 'disbursement' as const,
+			loanId: 'loan-1',
+			cashDelta: 1,
+			principalAmount: 1,
+			principalDelta: 1,
+			interestAmount: 0
+		});
+		expect(() =>
+			validateSaveRecord(
+				createManualSaveRecord({
+					game: {
+						finance: {
+							...game.finance,
+							nextTransactionSequence: 3,
+							transactions: [
+								transaction(3, 'finance-transaction-1'),
+								transaction(2, 'finance-transaction-2')
+							]
+						}
+					}
+				})
+			)
+		).toThrow(SaveDataError);
+		expect(() =>
+			validateSaveRecord(
+				createManualSaveRecord({
+					game: {
+						finance: {
+							...game.finance,
+							currentDayActivity: { ...game.finance.currentDayActivity, principalBorrowed: 1.5 }
+						}
+					}
+				})
+			)
+		).toThrow(SaveDataError);
+	});
+
+	test.each([
+		'cashBefore',
+		'operatingIncome',
+		'operatingCashFlow',
+		'interestAccrued',
+		'interestPaid',
+		'interestCapitalized',
+		'principalBorrowed',
+		'principalRepaid',
+		'refinancedPrincipal',
+		'financingCashFlow',
+		'netCashChange',
+		'outstandingPrincipalAfter',
+		'nextLoanPayment'
+	] as const)('rejects a current report missing %s', (field) => {
+		const report = { ...createDailyReport() } as Record<string, unknown>;
+		delete report[field];
+		expect(() =>
+			validateSaveRecord(
+				createManualSaveRecord({ game: { reports: [report as unknown as DailyReport] } })
+			)
+		).toThrow(SaveDataError);
+	});
 	test.each([4, 5, 6, 7, 8, 9])(
 		'migrateSavedGame runs the complete v%s-to-v10 game chain without skipping a step',
 		(sourceVersion) => {
@@ -483,7 +888,7 @@ describe('saveCodec', () => {
 		}
 	);
 
-	test.each([3, 11])('migrateSavedGame rejects unsupported source schema %s', (schemaVersion) => {
+	test.each([3, 12])('migrateSavedGame rejects unsupported source schema %s', (schemaVersion) => {
 		expect(() => migrateSavedGame(createGame(), schemaVersion)).toThrow(SaveDataError);
 		expect(() => migrateSavedGame(createGame(), schemaVersion)).toThrow(
 			`Unsupported save schema version: ${schemaVersion}`
@@ -1569,7 +1974,7 @@ describe('saveCodec', () => {
 	});
 
 	test('strict validation rejects stale world progress while sandbox loading refreshes it', () => {
-		const stale = createGame({ day: 7 });
+		const stale = createGame({ day: 7, finance: createFoundingFinanceState(7, 2_000) });
 		const expected = refreshWorldProgress(stale);
 
 		expect(() => validateCurrentGameState(stale)).toThrow(SaveDataError);

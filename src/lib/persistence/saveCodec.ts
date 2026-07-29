@@ -33,6 +33,7 @@ import {
 	type CityTileLookup
 } from '$lib/game/storeFootprint';
 import { MAX_STAFF_LEVEL } from '$lib/game/staffLeveling';
+import { createFoundingFinanceState, getInstallmentCount } from '$lib/game/finance';
 import { clampScore } from '$lib/game/reports';
 import { calculateStockHealth } from '$lib/game/stock';
 import type {
@@ -98,7 +99,7 @@ function withSaveDataBoundary<T>(context: string, operation: () => T): T {
  * {@link SAVE_SCHEMA_VERSION}. Keep this in sync with the migration table in
  * {@link migrateSaveStoreSnapshot} and {@link migrateSaveRecord}.
  */
-const MIGRATABLE_SCHEMA_VERSIONS = new Set<number>([4, 5, 6, 7, 8, 9]);
+const MIGRATABLE_SCHEMA_VERSIONS = new Set<number>([4, 5, 6, 7, 8, 9, 10]);
 
 function isMigratableSchemaVersion(version: unknown): version is number {
 	return typeof version === 'number' && MIGRATABLE_SCHEMA_VERSIONS.has(version);
@@ -426,6 +427,79 @@ function migrateV9SaveRecord(record: unknown): unknown {
 }
 
 /**
+ * v10 → v11: scalar debt became an explicit finance ledger. Historical debt
+ * has no payment or accrual history, so it becomes one neutral founding loan
+ * opened on the loaded day. Historical reports retain their original cash and
+ * income values and gain zero financing activity.
+ */
+function migrateV10Game(game: unknown): unknown {
+	if (typeof game !== 'object' || game === null) return game;
+	const gameRecord = game as Record<string, unknown>;
+	const day = gameRecord.day;
+	const debt = gameRecord.debt;
+	if (
+		typeof day !== 'number' ||
+		!Number.isFinite(day) ||
+		!Number.isInteger(day) ||
+		day < 0 ||
+		typeof debt !== 'number' ||
+		!Number.isFinite(debt) ||
+		!Number.isInteger(debt) ||
+		debt < 0
+	) {
+		return game;
+	}
+	const { debt: _debt, ...withoutDebt } = gameRecord;
+	void _debt;
+	const reports = Array.isArray(gameRecord.reports)
+		? gameRecord.reports.map((report) => migrateV10Report(report, debt))
+		: gameRecord.reports;
+	return {
+		...withoutDebt,
+		finance: createFoundingFinanceState(day, debt),
+		reports
+	};
+}
+
+function migrateV10Report(report: unknown, outstandingPrincipalAfter: number): unknown {
+	if (typeof report !== 'object' || report === null) return report;
+	const value = report as Record<string, unknown>;
+	const cashAfter = value.cashAfter;
+	const netIncome = value.netIncome;
+	const grossMargin = value.grossMargin;
+	const operatingCosts = value.operatingCosts;
+	if (
+		typeof cashAfter !== 'number' ||
+		typeof netIncome !== 'number' ||
+		typeof grossMargin !== 'number' ||
+		typeof operatingCosts !== 'number'
+	) {
+		return report;
+	}
+	return {
+		...value,
+		cashBefore: cashAfter - netIncome,
+		operatingIncome: grossMargin - operatingCosts,
+		operatingCashFlow: netIncome,
+		interestAccrued: 0,
+		interestPaid: 0,
+		interestCapitalized: 0,
+		principalBorrowed: 0,
+		principalRepaid: 0,
+		refinancedPrincipal: 0,
+		financingCashFlow: 0,
+		netCashChange: netIncome,
+		outstandingPrincipalAfter,
+		nextLoanPayment: null
+	};
+}
+
+function migrateV10SaveRecord(record: unknown): unknown {
+	if (typeof record !== 'object' || record === null) return record;
+	return { ...(record as Record<string, unknown>), schemaVersion: 11 };
+}
+
+/**
  * Migrates a bare serialized game through every historical game-schema step.
  * Record metadata is deliberately excluded; it remains owned by the sandbox
  * save-record migration pipeline below.
@@ -452,6 +526,7 @@ function migrateSavedGameInternal(value: unknown, sourceGameSchemaVersion: numbe
 	// v7→v8 changed save-record metadata only.
 	if (sourceGameSchemaVersion <= 8) migrated = migrateV8Game(migrated);
 	if (sourceGameSchemaVersion <= 9) migrated = migrateV9Game(migrated);
+	if (sourceGameSchemaVersion <= 10) migrated = migrateV10Game(migrated);
 
 	return migrated;
 }
@@ -502,6 +577,9 @@ function migrateSaveRecord(value: unknown): unknown {
 	}
 	if (migrated.schemaVersion === 9) {
 		migrated = migrateV9SaveRecord(migrated) as Record<string, unknown>;
+	}
+	if (migrated.schemaVersion === 10) {
+		migrated = migrateV10SaveRecord(migrated) as Record<string, unknown>;
 	}
 
 	return migrated;
@@ -755,9 +833,9 @@ function validateCurrentGameStateInternal(value: unknown): GameState {
 
 	requireNumber(game.seed, 'Saved game seed');
 	requireNumber(game.rngState, 'Saved game rngState');
-	requireNumber(game.day, 'Saved game day');
+	const gameDay = requireNonNegativeInteger(game.day, 'Saved game day');
 	requireNumber(game.cash, 'Saved game cash');
-	validateSavedFinance(game.finance, 'Saved game finance');
+	validateSavedFinance(game.finance, gameDay, 'Saved game finance');
 	const world = validateSavedWorld(game.world, 'Saved game world');
 	requireOneOf(policy.pricing, 'Saved game policy pricing', PRICING_POSTURES);
 	requireOneOf(policy.inventory, 'Saved game policy inventory', INVENTORY_BUFFERS);
@@ -2052,7 +2130,7 @@ function validateSavedWarehouse(value: unknown, label: string): void {
 	requireNumber(warehouse.overflowCost, `${label} overflowCost`);
 }
 
-function validateSavedFinance(value: unknown, label: string): void {
+function validateSavedFinance(value: unknown, gameDay: number, label: string): void {
 	const finance = requireRecord(value, label);
 	const loans = requireArray(finance.loans, `${label} loans`);
 	const transactions = requireArray(finance.transactions, `${label} transactions`);
@@ -2064,24 +2142,23 @@ function validateSavedFinance(value: unknown, label: string): void {
 		finance.nextTransactionSequence,
 		`${label} nextTransactionSequence`
 	);
-	const activity = requireRecord(finance.currentDayActivity, `${label} currentDayActivity`);
-	requireNumber(activity.day, `${label} currentDayActivity day`);
-	requireNumber(activity.principalBorrowed, `${label} currentDayActivity principalBorrowed`);
-	requireNumber(activity.principalRepaid, `${label} currentDayActivity principalRepaid`);
-	requireNumber(activity.interestPaid, `${label} currentDayActivity interestPaid`);
-	requireNumber(activity.interestCapitalized, `${label} currentDayActivity interestCapitalized`);
-	requireNumber(activity.refinancedPrincipal, `${label} currentDayActivity refinancedPrincipal`);
-	requireNumber(activity.financingCashFlow, `${label} currentDayActivity financingCashFlow`);
+	validateSavedFinanceDayActivity(
+		finance.currentDayActivity,
+		gameDay,
+		`${label} currentDayActivity`
+	);
 
 	const loanIds = new Set<string>();
+	const loansById = new Map<string, Record<string, unknown>>();
 	let highestLoanSequence = 0;
 	loans.forEach((value, index) => {
 		const loan = requireRecord(value, `${label} loans[${index}]`);
 		const id = requireString(loan.id, `${label} loans[${index}] id`);
 		if (loanIds.has(id)) throw new SaveDataError(`${label} loans must have unique IDs`);
 		loanIds.add(id);
+		loansById.set(id, loan);
 		highestLoanSequence = Math.max(highestLoanSequence, generatedIdSequence(id, 'loan-'));
-		requireOneOf(loan.purpose, `${label} loans[${index}] purpose`, [
+		const purpose = requireOneOf(loan.purpose, `${label} loans[${index}] purpose`, [
 			'founding',
 			'workingCapital',
 			'emergency',
@@ -2089,39 +2166,149 @@ function validateSavedFinance(value: unknown, label: string): void {
 			'expansion',
 			'refinance'
 		] as const);
-		requireOneOf(loan.status, `${label} loans[${index}] status`, [
+		const status = requireOneOf(loan.status, `${label} loans[${index}] status`, [
 			'active',
 			'delinquent',
 			'paid',
 			'refinanced'
 		] as const);
-		requireNumber(loan.openedOnDay, `${label} loans[${index}] openedOnDay`);
-		requireNonNegativeInteger(loan.originalPrincipal, `${label} loans[${index}] originalPrincipal`);
-		requireNonNegativeInteger(
+		const openedOnDay = requireNonNegativeInteger(
+			loan.openedOnDay,
+			`${label} loans[${index}] openedOnDay`
+		);
+		if (openedOnDay > gameDay)
+			throw new SaveDataError(
+				`${label} loans[${index}] openedOnDay must not be after the game day`
+			);
+		const originalPrincipal = requireNonNegativeInteger(
+			loan.originalPrincipal,
+			`${label} loans[${index}] originalPrincipal`
+		);
+		if (originalPrincipal === 0)
+			throw new SaveDataError(`${label} loans[${index}] originalPrincipal must be positive`);
+		const remainingPrincipal = requireNonNegativeInteger(
 			loan.remainingPrincipal,
 			`${label} loans[${index}] remainingPrincipal`
 		);
-		requireNumber(loan.annualInterestRateBps, `${label} loans[${index}] annualInterestRateBps`);
+		if (remainingPrincipal > originalPrincipal)
+			throw new SaveDataError(
+				`${label} loans[${index}] remainingPrincipal must not exceed originalPrincipal`
+			);
+		requireNonNegativeInteger(
+			loan.annualInterestRateBps,
+			`${label} loans[${index}] annualInterestRateBps`
+		);
 		if (loan.termDays !== 28 && loan.termDays !== 56 && loan.termDays !== 84) {
 			throw new SaveDataError(`${label} loans[${index}] termDays must be 28, 56, or 84`);
 		}
-		requireNumber(loan.installmentsProcessed, `${label} loans[${index}] installmentsProcessed`);
-		if (loan.nextPaymentDay !== null) {
-			requireNumber(loan.nextPaymentDay, `${label} loans[${index}] nextPaymentDay`);
-		}
-		requireNumber(loan.lastInterestAccrualDay, `${label} loans[${index}] lastInterestAccrualDay`);
-		requireNonNegativeInteger(
+		const installmentCount = getInstallmentCount(loan.termDays);
+		const installmentsProcessed = requireNonNegativeInteger(
+			loan.installmentsProcessed,
+			`${label} loans[${index}] installmentsProcessed`
+		);
+		if (installmentsProcessed > installmentCount)
+			throw new SaveDataError(`${label} loans[${index}] installmentsProcessed exceeds its term`);
+		const nextPaymentDay =
+			loan.nextPaymentDay === null
+				? null
+				: requireNonNegativeInteger(loan.nextPaymentDay, `${label} loans[${index}] nextPaymentDay`);
+		const lastInterestAccrualDay = requireNonNegativeInteger(
+			loan.lastInterestAccrualDay,
+			`${label} loans[${index}] lastInterestAccrualDay`
+		);
+		if (lastInterestAccrualDay < openedOnDay || lastInterestAccrualDay > gameDay)
+			throw new SaveDataError(
+				`${label} loans[${index}] lastInterestAccrualDay must be between openedOnDay and game day`
+			);
+		const accruedInterestMicros = requireNonNegativeInteger(
 			loan.accruedInterestMicros,
 			`${label} loans[${index}] accruedInterestMicros`
 		);
-		requireNonNegativeInteger(loan.overdueInterest, `${label} loans[${index}] overdueInterest`);
-		requireNonNegativeInteger(loan.overduePrincipal, `${label} loans[${index}] overduePrincipal`);
-		if (loan.arrearsSinceDay !== null) {
-			requireNumber(loan.arrearsSinceDay, `${label} loans[${index}] arrearsSinceDay`);
-		}
-		requireNumber(loan.scheduledPaymentCount, `${label} loans[${index}] scheduledPaymentCount`);
-		requireNumber(loan.onTimePaymentCount, `${label} loans[${index}] onTimePaymentCount`);
-		requireNumber(loan.missedPaymentCount, `${label} loans[${index}] missedPaymentCount`);
+		const overdueInterest = requireNonNegativeInteger(
+			loan.overdueInterest,
+			`${label} loans[${index}] overdueInterest`
+		);
+		const overduePrincipal = requireNonNegativeInteger(
+			loan.overduePrincipal,
+			`${label} loans[${index}] overduePrincipal`
+		);
+		if (overduePrincipal > remainingPrincipal)
+			throw new SaveDataError(
+				`${label} loans[${index}] overduePrincipal must not exceed remainingPrincipal`
+			);
+		const arrearsSinceDay =
+			loan.arrearsSinceDay === null
+				? null
+				: requireNonNegativeInteger(
+						loan.arrearsSinceDay,
+						`${label} loans[${index}] arrearsSinceDay`
+					);
+		if (arrearsSinceDay !== null && (arrearsSinceDay < openedOnDay || arrearsSinceDay > gameDay))
+			throw new SaveDataError(
+				`${label} loans[${index}] arrearsSinceDay must be between openedOnDay and game day`
+			);
+		const scheduledPaymentCount = requireNonNegativeInteger(
+			loan.scheduledPaymentCount,
+			`${label} loans[${index}] scheduledPaymentCount`
+		);
+		const onTimePaymentCount = requireNonNegativeInteger(
+			loan.onTimePaymentCount,
+			`${label} loans[${index}] onTimePaymentCount`
+		);
+		const missedPaymentCount = requireNonNegativeInteger(
+			loan.missedPaymentCount,
+			`${label} loans[${index}] missedPaymentCount`
+		);
+		if (
+			scheduledPaymentCount !== installmentsProcessed ||
+			onTimePaymentCount + missedPaymentCount !== scheduledPaymentCount
+		)
+			throw new SaveDataError(
+				`${label} loans[${index}] payment counters must reconcile with installmentsProcessed`
+			);
+		const hasArrears =
+			overdueInterest > 0 ||
+			overduePrincipal > 0 ||
+			(nextPaymentDay === null && accruedInterestMicros > 0);
+		const expectedNextPaymentDay =
+			installmentsProcessed === installmentCount
+				? null
+				: openedOnDay + (installmentsProcessed + 1) * 7;
+		if (
+			(status === 'active' || status === 'delinquent') &&
+			nextPaymentDay !== expectedNextPaymentDay
+		)
+			throw new SaveDataError(
+				`${label} loans[${index}] nextPaymentDay must match its installment schedule`
+			);
+		if (status === 'active' && (hasArrears || arrearsSinceDay !== null || nextPaymentDay === null))
+			throw new SaveDataError(
+				`${label} loans[${index}] active loan must have no arrears and a next payment`
+			);
+		if (status === 'delinquent' && (!hasArrears || arrearsSinceDay === null))
+			throw new SaveDataError(
+				`${label} loans[${index}] delinquent loan must have arrears and arrearsSinceDay`
+			);
+		if (
+			(status === 'paid' || status === 'refinanced') &&
+			(remainingPrincipal !== 0 ||
+				accruedInterestMicros !== 0 ||
+				overdueInterest !== 0 ||
+				overduePrincipal !== 0 ||
+				arrearsSinceDay !== null ||
+				nextPaymentDay !== null)
+		)
+			throw new SaveDataError(
+				`${label} loans[${index}] closed loan must not retain a balance, interest, arrears, or next payment`
+			);
+		if (purpose === 'refinance' && loan.refinancedFromLoanId === undefined)
+			throw new SaveDataError(
+				`${label} loans[${index}] refinance loan must retain its source link`
+			);
+		if (status === 'refinanced' && loan.refinancedByLoanId === undefined)
+			throw new SaveDataError(
+				`${label} loans[${index}] refinanced loan must retain its replacement link`
+			);
 		if (loan.refinancedFromLoanId !== undefined) {
 			requireString(loan.refinancedFromLoanId, `${label} loans[${index}] refinancedFromLoanId`);
 		}
@@ -2135,6 +2322,7 @@ function validateSavedFinance(value: unknown, label: string): void {
 
 	const transactionIds = new Set<string>();
 	let highestTransactionSequence = 0;
+	let previousDay = -1;
 	transactions.forEach((value, index) => {
 		const transaction = requireRecord(value, `${label} transactions[${index}]`);
 		const id = requireString(transaction.id, `${label} transactions[${index}] id`);
@@ -2145,7 +2333,12 @@ function validateSavedFinance(value: unknown, label: string): void {
 			highestTransactionSequence,
 			generatedIdSequence(id, 'finance-transaction-')
 		);
-		requireNumber(transaction.day, `${label} transactions[${index}] day`);
+		const day = requireNonNegativeInteger(transaction.day, `${label} transactions[${index}] day`);
+		if (day > gameDay || day < previousDay)
+			throw new SaveDataError(
+				`${label} transactions must be ordered by day within the game timeline`
+			);
+		previousDay = day;
 		requireOneOf(transaction.kind, `${label} transactions[${index}] kind`, [
 			'disbursement',
 			'principalPayment',
@@ -2153,20 +2346,75 @@ function validateSavedFinance(value: unknown, label: string): void {
 			'missedPayment',
 			'refinance'
 		] as const);
-		requireString(transaction.loanId, `${label} transactions[${index}] loanId`);
+		const loanId = requireString(transaction.loanId, `${label} transactions[${index}] loanId`);
+		if (!loanIds.has(loanId))
+			throw new SaveDataError(`${label} transactions[${index}] loanId must reference a known loan`);
 		if (transaction.relatedLoanId !== undefined) {
-			requireString(transaction.relatedLoanId, `${label} transactions[${index}] relatedLoanId`);
+			const relatedLoanId = requireString(
+				transaction.relatedLoanId,
+				`${label} transactions[${index}] relatedLoanId`
+			);
+			if (!loanIds.has(relatedLoanId))
+				throw new SaveDataError(
+					`${label} transactions[${index}] relatedLoanId must reference a known loan`
+				);
 		}
-		requireNumber(transaction.cashDelta, `${label} transactions[${index}] cashDelta`);
-		requireNumber(transaction.principalAmount, `${label} transactions[${index}] principalAmount`);
-		requireNumber(transaction.principalDelta, `${label} transactions[${index}] principalDelta`);
-		requireNumber(transaction.interestAmount, `${label} transactions[${index}] interestAmount`);
+		requireInteger(transaction.cashDelta, `${label} transactions[${index}] cashDelta`);
+		requireNonNegativeInteger(
+			transaction.principalAmount,
+			`${label} transactions[${index}] principalAmount`
+		);
+		requireInteger(transaction.principalDelta, `${label} transactions[${index}] principalDelta`);
+		requireNonNegativeInteger(
+			transaction.interestAmount,
+			`${label} transactions[${index}] interestAmount`
+		);
 	});
+	if (transactions.length > 200)
+		throw new SaveDataError(`${label} transactions must not exceed 200 entries`);
 	if (nextTransactionSequence <= highestTransactionSequence) {
 		throw new SaveDataError(
 			`${label} nextTransactionSequence must exceed generated transaction IDs`
 		);
 	}
+
+	for (const [loanId, loan] of loansById) {
+		const from = loan.refinancedFromLoanId;
+		const by = loan.refinancedByLoanId;
+		if (from !== undefined) {
+			const source = loansById.get(from as string);
+			if (!source || source.refinancedByLoanId !== loanId || from === loanId)
+				throw new SaveDataError(`${label} refinance links must be symmetric and non-cyclic`);
+		}
+		if (by !== undefined) {
+			const replacement = loansById.get(by as string);
+			if (!replacement || replacement.refinancedFromLoanId !== loanId || by === loanId)
+				throw new SaveDataError(`${label} refinance links must be symmetric and non-cyclic`);
+		}
+	}
+}
+
+function validateSavedFinanceDayActivity(value: unknown, gameDay: number, label: string): void {
+	const activity = requireRecord(value, label);
+	if (requireNonNegativeInteger(activity.day, `${label} day`) !== gameDay)
+		throw new SaveDataError(`${label} day must equal the game day`);
+	const principalBorrowed = requireNonNegativeInteger(
+		activity.principalBorrowed,
+		`${label} principalBorrowed`
+	);
+	const principalRepaid = requireNonNegativeInteger(
+		activity.principalRepaid,
+		`${label} principalRepaid`
+	);
+	const interestPaid = requireNonNegativeInteger(activity.interestPaid, `${label} interestPaid`);
+	requireNonNegativeInteger(activity.interestCapitalized, `${label} interestCapitalized`);
+	requireNonNegativeInteger(activity.refinancedPrincipal, `${label} refinancedPrincipal`);
+	const financingCashFlow = requireInteger(
+		activity.financingCashFlow,
+		`${label} financingCashFlow`
+	);
+	if (financingCashFlow !== principalBorrowed - principalRepaid - interestPaid)
+		throw new SaveDataError(`${label} financingCashFlow must reconcile with cash transactions`);
 }
 
 function validateSavedStore(value: unknown, label: string): void {
@@ -2367,6 +2615,25 @@ function validateSavedReport(value: unknown, label: string): number {
 	requireNumber(report.operatingCosts, `${label} operatingCosts`);
 	requireNumber(report.payrollCost, `${label} payrollCost`);
 	requireNumber(report.importSpend, `${label} importSpend`);
+	requireInteger(report.cashBefore, `${label} cashBefore`);
+	requireInteger(report.operatingIncome, `${label} operatingIncome`);
+	requireInteger(report.operatingCashFlow, `${label} operatingCashFlow`);
+	const interestAccrued = requireNumber(report.interestAccrued, `${label} interestAccrued`);
+	if (interestAccrued < 0) throw new SaveDataError(`${label} interestAccrued must be non-negative`);
+	requireNonNegativeInteger(report.interestPaid, `${label} interestPaid`);
+	requireNonNegativeInteger(report.interestCapitalized, `${label} interestCapitalized`);
+	requireNonNegativeInteger(report.principalBorrowed, `${label} principalBorrowed`);
+	requireNonNegativeInteger(report.principalRepaid, `${label} principalRepaid`);
+	requireNonNegativeInteger(report.refinancedPrincipal, `${label} refinancedPrincipal`);
+	requireInteger(report.financingCashFlow, `${label} financingCashFlow`);
+	requireInteger(report.netCashChange, `${label} netCashChange`);
+	requireNonNegativeInteger(report.outstandingPrincipalAfter, `${label} outstandingPrincipalAfter`);
+	if (report.nextLoanPayment !== null) {
+		const payment = requireRecord(report.nextLoanPayment, `${label} nextLoanPayment`);
+		requireString(payment.loanId, `${label} nextLoanPayment loanId`);
+		requireNonNegativeInteger(payment.day, `${label} nextLoanPayment day`);
+		requireNonNegativeInteger(payment.amount, `${label} nextLoanPayment amount`);
+	}
 	requireNumber(report.netIncome, `${label} netIncome`);
 	requireNumber(report.cashAfter, `${label} cashAfter`);
 	validateSavedScorecard(report.scorecard, `${label} scorecard`);
@@ -2799,6 +3066,14 @@ function requireNonNegativeInteger(value: unknown, label: string): number {
 	const number = requireNumber(value, label);
 	if (!Number.isInteger(number) || number < 0) {
 		throw new SaveDataError(`${label} must be a non-negative integer`);
+	}
+	return number;
+}
+
+function requireInteger(value: unknown, label: string): number {
+	const number = requireNumber(value, label);
+	if (!Number.isInteger(number)) {
+		throw new SaveDataError(`${label} must be an integer`);
 	}
 	return number;
 }
