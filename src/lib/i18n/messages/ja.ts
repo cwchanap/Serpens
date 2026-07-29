@@ -535,7 +535,13 @@ export const ja = {
 			purchaseCostChanged: '購入価格が変更されました'
 		},
 		decisionAvailability: { available: '利用可能', unavailable: '資金調達を利用できません' },
-		financedPurchase: { financeOpening: '開設費を融資する', review: '融資内容を確認' },
+		financedPurchase: {
+			financeOpening: '開設費を融資する',
+			review: '融資内容を確認',
+			purchaseCost: '購入費用',
+			shortfall: '不足資金',
+			confirm: '融資を確定'
+		},
 		transactions: {
 			disbursement: '借入実行',
 			principalPayment: '元本返済',

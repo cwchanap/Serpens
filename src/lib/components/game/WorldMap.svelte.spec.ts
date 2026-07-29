@@ -118,6 +118,65 @@ describe('WorldMap', () => {
 		await expect.element(page.getByRole('button', { name: /open for/i })).toBeDisabled();
 	});
 
+	it('keeps the cash action separate and offers financing when credit covers the opening', async () => {
+		expect.assertions(3);
+		const onOpenCity = vi.fn();
+		const onFinanceCity = vi.fn();
+		render(WorldMap, {
+			statuses: [
+				{
+					...status('campus-junction', 'revealed'),
+					canOpen: false,
+					financeOffer: {
+						principal: 2_400,
+						termDays: 84,
+						annualInterestRateBps: 1_200,
+						estimatedPeakPayment: 240
+					}
+				}
+			],
+			i18n: createI18n('en'),
+			selectedCityId: 'campus-junction',
+			onSelectCity: vi.fn(),
+			onOpenCity,
+			onFinanceCity,
+			onCloseInspector: vi.fn()
+		});
+
+		await page.getByRole('button', { name: /finance opening/i }).click();
+		expect(onFinanceCity).toHaveBeenCalledWith('campus-junction');
+		expect(onOpenCity).not.toHaveBeenCalled();
+		await expect.element(page.getByRole('button', { name: /open for/i })).toBeDisabled();
+	});
+
+	it('keeps financing available when a scenario permits financing but not cash opening', async () => {
+		expect.assertions(2);
+		render(WorldMap, {
+			statuses: [
+				{
+					...status('campus-junction', 'revealed'),
+					financeOffer: {
+						principal: 2_400,
+						termDays: 84,
+						annualInterestRateBps: 1_200,
+						estimatedPeakPayment: 240
+					}
+				}
+			],
+			i18n: createI18n('en'),
+			selectedCityId: 'campus-junction',
+			onSelectCity: vi.fn(),
+			onOpenCity: vi.fn(),
+			onFinanceCity: vi.fn(),
+			onCloseInspector: vi.fn(),
+			canOpenWorldCity: false,
+			canFinanceWorldCity: true
+		});
+
+		await expect.element(page.getByRole('button', { name: /finance opening/i })).toBeVisible();
+		await expect.element(page.getByRole('button', { name: /open for/i })).not.toBeInTheDocument();
+	});
+
 	it('shows industrial city eyebrow and store/building counts for an opened industry city', async () => {
 		expect.assertions(3);
 		render(WorldMap, {
