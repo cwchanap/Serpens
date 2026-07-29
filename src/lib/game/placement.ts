@@ -6,6 +6,8 @@ import {
 	getTilePlacementBlockReason
 } from './city';
 import { clampScore } from './reports';
+import { runExpansionPurchase } from './expansionFinancing';
+import type { FinanceActionResult, FinancedPurchaseReceipt } from './finance';
 import { createNewGame, getExpansionSetupCost, openStore } from './state';
 import { decisionContextLocationBlocked, decisionContextLocationGeneric } from './decisionContext';
 import {
@@ -169,7 +171,31 @@ export function openStoreAtTile(
 	};
 }
 
-export { financeRetailStoreOpening } from './expansionFinancing';
+export function financeRetailStoreOpening(
+	game: GameState,
+	input: { tileId: string; archetypeId: ArchetypeId; expectedCost: number }
+): FinanceActionResult<FinancedPurchaseReceipt> {
+	return runExpansionPurchase(game, {
+		expectedCost: input.expectedCost,
+		resolveLiveCost: (candidate) => {
+			const city = candidate.cities.find((item) => item.id === candidate.activeCityId);
+			const tile = city ? getTileById(city, input.tileId) : undefined;
+			if (!city || !tile || candidate.stores.length >= candidate.storeCap) return null;
+
+			const tileLookup = createCityTileLookup(city);
+			const occupiedTileIds = getOccupiedStoreTileIds(city, candidate.stores, tileLookup);
+			return getStoreFootprintPlacementBlockReason(tileLookup, tile, occupiedTileIds)
+				? null
+				: forecastOpening(tile, input.archetypeId).setupCost;
+		},
+		cashOnlyPurchase: (candidate) => openStoreAtTile(candidate, input),
+		postcondition: (candidate) =>
+			candidate.stores.length === game.stores.length + 1 &&
+			candidate.stores.some(
+				(store) => store.tileId === input.tileId && store.archetypeId === input.archetypeId
+			)
+	});
+}
 
 function scoreTileForArchetype(tile: CityTile, archetypeId: ArchetypeId): number {
 	const neighborhoodFit = ARCHETYPE_NEIGHBORHOOD_FIT[archetypeId][tile.neighborhood] ?? 0;
