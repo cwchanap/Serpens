@@ -762,6 +762,84 @@ describe('credit assessment', () => {
 		});
 	});
 
+	it.each([
+		[28, 4],
+		[56, 8],
+		[84, 12]
+	] as const)(
+		'keeps the final-remainder peak visible at each %i-day installment boundary',
+		(termDays, installments) => {
+			expect(
+				projectLoanSchedule({
+					principal: installments - 1,
+					annualInterestRateBps: 0,
+					termDays
+				}).peakPayment
+			).toBe(installments - 1);
+			expect(
+				projectLoanSchedule({ principal: installments, annualInterestRateBps: 0, termDays })
+					.peakPayment
+			).toBe(1);
+		}
+	);
+
+	it('counts an overdue principal classification only once in principal headroom', () => {
+		const assessment = assessCredit(
+			createCreditGame({
+				finance: createFinance([
+					createLoan({
+						originalPrincipal: 1_000,
+						remainingPrincipal: 1_000,
+						overduePrincipal: 300,
+						status: 'delinquent',
+						arrearsSinceDay: 1
+					})
+				])
+			}),
+			28
+		);
+
+		expect(assessment.outstandingPrincipal).toBe(1_000);
+		expect(assessment.principalHeadroom).toBe(14_000);
+	});
+
+	it('finds the true maximum across a non-monotonic 28-day remainder boundary', () => {
+		const constrainedLoan = createLoan({
+			originalPrincipal: 11_246,
+			remainingPrincipal: 11_246,
+			annualInterestRateBps: 43_398,
+			termDays: 84,
+			installmentsProcessed: 0
+		});
+		const assessment = assessCredit(
+			createCreditGame({
+				scorecard: { profit: 0, customerSatisfaction: 0, staffMorale: 0, marketPosition: 0 },
+				finance: createFinance([constrainedLoan])
+			}),
+			28
+		);
+
+		expect(assessment.principalHeadroom).toBe(4);
+		expect(assessment.weeklyServiceHeadroom).toBeGreaterThanOrEqual(2);
+		expect(assessment.weeklyServiceHeadroom).toBeLessThan(3);
+		expect(
+			projectLoanSchedule({
+				principal: 3,
+				annualInterestRateBps: assessment.annualInterestRateBps,
+				termDays: 28
+			}).peakPayment
+		).toBeGreaterThan(assessment.weeklyServiceHeadroom);
+		expect(
+			projectLoanSchedule({
+				principal: 4,
+				annualInterestRateBps: assessment.annualInterestRateBps,
+				termDays: 28
+			}).peakPayment
+		).toBeLessThanOrEqual(assessment.weeklyServiceHeadroom);
+		expect(assessment.maxPrincipalByService).toBe(4);
+		expect(assessment.availableCredit).toBe(4);
+	});
+
 	it('returns zero available credit for delinquency and zero service headroom', () => {
 		const delinquent = assessCredit(
 			createCreditGame({

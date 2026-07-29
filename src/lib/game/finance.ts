@@ -671,7 +671,7 @@ function getOutstandingPrincipal(
 	return finance.loans.reduce(
 		(total, loan) =>
 			isOutstandingLoan(loan) && loan.id !== options.excludeLoanId
-				? total + loan.remainingPrincipal + loan.overduePrincipal
+				? total + loan.remainingPrincipal
 				: total,
 		0
 	);
@@ -681,6 +681,32 @@ function getAverageDailyOperatingCashFlow(game: Pick<GameState, 'reports'>): num
 	const reports = game.reports.slice(-7);
 	if (reports.length === 0) return 0;
 	return reports.reduce((total, report) => total + report.operatingCashFlow, 0) / reports.length;
+}
+
+function findMaxPrincipalByService(input: {
+	principalHeadroom: number;
+	weeklyServiceHeadroom: number;
+	annualInterestRateBps: number;
+	termDays: LoanTermDays;
+}): number {
+	if (input.weeklyServiceHeadroom === 0) return 0;
+
+	// Principal headroom is capped at $100,000. Scanning downward therefore evaluates at most
+	// 100,001 complete schedules (1.2M installment steps for the 84-day term), and returns the
+	// first affordable whole-dollar amount. This remains exact at remainder boundaries where
+	// peak payments are deliberately non-monotonic across consecutive principals.
+	for (let principal = input.principalHeadroom; principal >= 0; principal -= 1) {
+		if (
+			projectLoanSchedule({
+				principal,
+				annualInterestRateBps: input.annualInterestRateBps,
+				termDays: input.termDays
+			}).peakPayment <= input.weeklyServiceHeadroom
+		) {
+			return principal;
+		}
+	}
+	return 0;
 }
 
 export function assessCredit(
@@ -721,21 +747,14 @@ export function assessCredit(
 		(loan) => isOutstandingLoan(loan) && (loan.status === 'delinquent' || hasArrears(loan))
 	);
 
-	let maxPrincipalByService = 0;
-	if (!hasDelinquentObligation && weeklyServiceHeadroom > 0) {
-		let lower = 0;
-		let upper = principalHeadroom;
-		while (lower < upper) {
-			const principal = Math.floor((lower + upper + 1) / 2);
-			const schedule = projectLoanSchedule({ principal, annualInterestRateBps, termDays });
-			if (schedule.peakPayment <= weeklyServiceHeadroom) {
-				lower = principal;
-			} else {
-				upper = principal - 1;
-			}
-		}
-		maxPrincipalByService = lower;
-	}
+	const maxPrincipalByService = hasDelinquentObligation
+		? 0
+		: findMaxPrincipalByService({
+				principalHeadroom,
+				weeklyServiceHeadroom,
+				annualInterestRateBps,
+				termDays
+			});
 	const availableCredit = hasDelinquentObligation
 		? 0
 		: Math.min(principalHeadroom, maxPrincipalByService);
