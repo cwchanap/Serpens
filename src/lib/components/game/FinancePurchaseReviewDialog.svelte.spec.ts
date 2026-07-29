@@ -2,12 +2,7 @@ import { page } from 'vitest/browser';
 import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { createI18n } from '$lib/i18n';
-import {
-	dismissFinancePurchaseReview,
-	openFinancePurchaseReview,
-	createFinancePurchaseReviewState,
-	type PendingFinancedPurchase
-} from '../../../routes/financePurchaseReview';
+import type { PendingFinancedPurchase } from '../../../routes/financePurchaseReview';
 import FinancePurchaseReviewDialog from './FinancePurchaseReviewDialog.svelte';
 
 const purchase: PendingFinancedPurchase = {
@@ -42,7 +37,7 @@ async function nextFrame(): Promise<void> {
 }
 
 describe('FinancePurchaseReviewDialog', () => {
-	it('focuses Cancel and dismisses through its production Escape handler', async () => {
+	it('focuses Cancel and delegates cancellation through its callback', async () => {
 		expect.assertions(3);
 		const onCancel = vi.fn();
 		render(FinancePurchaseReviewDialog, dialogProps({ onCancel }));
@@ -50,7 +45,7 @@ describe('FinancePurchaseReviewDialog', () => {
 		await nextFrame();
 		const cancel = page.getByText('Cancel review');
 		await expect.element(cancel).toHaveFocus();
-		window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+		await cancel.click();
 		expect(onCancel).toHaveBeenCalledTimes(1);
 		await expect.element(page.getByRole('dialog', { name: /review financing/i })).toBeVisible();
 	});
@@ -65,28 +60,7 @@ describe('FinancePurchaseReviewDialog', () => {
 		await expect
 			.element(document.querySelector<HTMLButtonElement>('.finance-review-dismiss')!)
 			.toBeDisabled();
-		window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
 		expect(onCancel).not.toHaveBeenCalled();
 		await expect.element(page.getByRole('button', { name: /confirm financing/i })).toBeDisabled();
-	});
-
-	it('integrates production review state with Escape without clearing the outer selected tile', async () => {
-		expect.assertions(3);
-		let review = openFinancePurchaseReview(createFinancePurchaseReviewState(), purchase);
-		const selectedTileId: string | null = 'tile-12';
-		render(
-			FinancePurchaseReviewDialog,
-			dialogProps({
-				purchase: review.purchase!,
-				onCancel: () => {
-					review = dismissFinancePurchaseReview(review);
-				}
-			})
-		);
-
-		window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-		expect(review.purchase).toBeNull();
-		expect(review.confirmationPending).toBe(false);
-		expect(selectedTileId).toBe('tile-12');
 	});
 });

@@ -2,7 +2,6 @@
 	import { onMount, tick } from 'svelte';
 	import { focusTrap } from '$lib/a11y/focusTrap';
 	import BuildMenu from '$lib/components/game/BuildMenu.svelte';
-	import FinancePurchaseReviewDialog from '$lib/components/game/FinancePurchaseReviewDialog.svelte';
 	import DecisionQueue from '$lib/components/game/DecisionQueue.svelte';
 	import FinancePanel from '$lib/components/game/FinancePanel.svelte';
 	import AudioSettings from '$lib/components/game/AudioSettings.svelte';
@@ -174,6 +173,7 @@
 		type PendingFinancedPurchase,
 		shouldRefreshFinancedPurchase
 	} from './financePurchaseReview';
+	import FinancePurchaseReviewHost from './FinancePurchaseReviewHost.svelte';
 
 	interface ManagementPanelMenuItem {
 		id: ManagementPanelId;
@@ -2153,9 +2153,13 @@
 		});
 	}
 
-	function cancelFinancedPurchaseReview(): void {
+	function finishFinancedPurchaseReviewDismissal(): void {
 		clearPlacementMode();
-		clearPendingFinancedPurchase(true);
+		const returnFocus = financedPurchaseReturnFocus;
+		financedPurchaseReturnFocus = null;
+		if (returnFocus) {
+			void tick().then(() => returnFocus.focus());
+		}
 	}
 
 	function closeInspector() {
@@ -2553,18 +2557,14 @@
 				</button>
 			</div>
 		{/if}
-		{#if financePurchaseReview.purchase}
-			<FinancePurchaseReviewDialog
-				purchase={financePurchaseReview.purchase}
-				cash={game?.cash ?? 0}
-				feedback={financePurchaseReview.feedback}
-				confirmationPending={financePurchaseReview.confirmationPending}
-				{i18n}
-				{formatApr}
-				onConfirm={confirmFinancedPurchase}
-				onCancel={cancelFinancedPurchaseReview}
-			/>
-		{/if}
+		<FinancePurchaseReviewHost
+			bind:review={financePurchaseReview}
+			cash={game?.cash ?? 0}
+			{i18n}
+			{formatApr}
+			onConfirm={confirmFinancedPurchase}
+			onDismiss={finishFinancedPurchaseReviewDismissal}
+		/>
 		{#if isBuildMenuOpen && activeMapView !== 'world'}
 			<BuildMenu
 				activeMapView={activeMapView === 'industry' ? 'industry' : 'retail'}

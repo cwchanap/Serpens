@@ -37,17 +37,7 @@
 	function cancel(): void {
 		if (!confirmationPending) onCancel();
 	}
-
-	function handleKeydown(event: KeyboardEvent): void {
-		if (event.key !== 'Escape') return;
-		event.preventDefault();
-		event.stopPropagation();
-		if (confirmationPending) return;
-		cancel();
-	}
 </script>
-
-<svelte:window onkeydown={handleKeydown} />
 
 <div class="finance-review-backdrop">
 	<button
