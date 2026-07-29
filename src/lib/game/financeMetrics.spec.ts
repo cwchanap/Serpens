@@ -82,13 +82,13 @@ describe('finance metrics', () => {
 		const finalInstallment = createLoan({
 			id: 'loan-final',
 			originalPrincipal: 1_003,
-			remainingPrincipal: 1_003,
+			remainingPrincipal: 253,
 			annualInterestRateBps: 3_650,
 			termDays: 28,
 			installmentsProcessed: 3,
 			nextPaymentDay: 11,
 			lastInterestAccrualDay: 10,
-			accruedInterestMicros: 500_000
+			accruedInterestMicros: 1_500_000
 		});
 		const weekEnd = createLoan({
 			id: 'loan-week-end',
@@ -109,6 +109,107 @@ describe('finance metrics', () => {
 			{ day: 17, principal: 100, interest: 0, total: 100, loanIds: ['loan-week-end'] }
 		]);
 		expect(getFinanceMetrics(game).scheduledDebtServiceNextSevenDays).toBe(355);
+	});
+
+	it('projects a matured delinquent payoff into D+1 coverage and runway', () => {
+		const finance = createEmptyFinanceState(10);
+		const game = createGame({
+			day: 10,
+			cash: 105,
+			operatingCashFlows: [106],
+			finance: {
+				...finance,
+				loans: [
+					createLoan({
+						id: 'loan-matured',
+						status: 'delinquent',
+						remainingPrincipal: 100,
+						overduePrincipal: 100,
+						overdueInterest: 5,
+						accruedInterestMicros: 500_000,
+						nextPaymentDay: null,
+						lastInterestAccrualDay: 10,
+						annualInterestRateBps: 0,
+						arrearsSinceDay: 8
+					})
+				]
+			}
+		});
+
+		expect(projectScheduledDebtService(game, 11, 17)).toEqual([
+			{ day: 11, principal: 100, interest: 6, total: 106, loanIds: ['loan-matured'] }
+		]);
+		expect(getFinanceMetrics(game)).toMatchObject({
+			scheduledDebtServiceNextSevenDays: 106,
+			debtServiceCoverage: 1
+		});
+		expect(projectCashRunway({ ...game, reports: [] })).toEqual({ kind: 'days', days: 1 });
+	});
+
+	it('sweeps future-due arrears on D+1 without double-counting them at the later checkpoint', () => {
+		const finance = createEmptyFinanceState(10);
+		const game = createGame({
+			day: 10,
+			finance: {
+				...finance,
+				loans: [
+					createLoan({
+						id: 'loan-future-due',
+						status: 'delinquent',
+						remainingPrincipal: 600,
+						overduePrincipal: 100,
+						overdueInterest: 20,
+						accruedInterestMicros: 900_000,
+						nextPaymentDay: 17,
+						lastInterestAccrualDay: 10,
+						annualInterestRateBps: 0,
+						arrearsSinceDay: 8
+					})
+				]
+			}
+		});
+
+		expect(projectScheduledDebtService(game, 11, 17)).toEqual([
+			{ day: 11, principal: 100, interest: 20, total: 120, loanIds: ['loan-future-due'] },
+			{ day: 17, principal: 83, interest: 0, total: 83, loanIds: ['loan-future-due'] }
+		]);
+	});
+
+	it('keeps multi-loan service order and honors the requested date range', () => {
+		const finance = createEmptyFinanceState(10);
+		const makeDueLoan = (id: string): LoanInstrument =>
+			createLoan({
+				id,
+				originalPrincipal: 400,
+				remainingPrincipal: 400,
+				annualInterestRateBps: 0,
+				termDays: 28,
+				nextPaymentDay: 17,
+				lastInterestAccrualDay: 10
+			});
+		const game = createGame({
+			day: 10,
+			finance: {
+				...finance,
+				loans: [
+					makeDueLoan('loan-b'),
+					createLoan({
+						id: 'loan-outside-range',
+						status: 'delinquent',
+						remainingPrincipal: 10,
+						overduePrincipal: 10,
+						nextPaymentDay: null,
+						annualInterestRateBps: 0,
+						arrearsSinceDay: 1
+					}),
+					makeDueLoan('loan-a')
+				]
+			}
+		});
+
+		expect(projectScheduledDebtService(game, 12, 17)).toEqual([
+			{ day: 17, principal: 200, interest: 0, total: 200, loanIds: ['loan-a', 'loan-b'] }
+		]);
 	});
 
 	it('clamps negative operating cash flow for coverage and returns null when no service is due', () => {
