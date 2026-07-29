@@ -1891,9 +1891,12 @@ test('finance flow borrows, reconciles a scheduled payment, focuses its alert, a
 
 	await page.getByRole('button', { name: /alert/i }).click();
 	const alerts = page.getByRole('group', { name: 'Alerts list' });
-	const expectedWorkingCapitalAlertName = `Loan payment of $${estimateNextLoanPayment(
+	const scheduledWorkingCapitalPayment = estimateNextLoanPayment(
 		scheduledWorkingCapitalLoan as LoanInstrument
-	).toLocaleString('en-US')} due on day ${scheduledWorkingCapitalLoan.nextPaymentDay}`;
+	).toLocaleString('en-US');
+	const expectedWorkingCapitalAlertName = new RegExp(
+		`^Working capital payment of ${escapeRegExp(`$${scheduledWorkingCapitalPayment}`)} is due on day ${scheduledWorkingCapitalLoan.nextPaymentDay}\\.$`
+	);
 	const upcomingLoanAlert = alerts.getByRole('button', {
 		name: expectedWorkingCapitalAlertName,
 		exact: true
