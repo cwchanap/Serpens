@@ -9,6 +9,7 @@ import { getIndustryTilesByResource } from './industry';
 import {
 	createIndustryPlacementPreview,
 	createRetailPlacementPreview,
+	getIndustrialBuildMenuOptions,
 	getIndustryBuildPlacementBlockReason,
 	getRetailBuildMenuOptions,
 	getRetailPlacementBlockReason,
@@ -445,6 +446,55 @@ function isRetailFootprintAvailable(
 }
 
 describe('industry placement preview', () => {
+	test('build menu options require a usable cash command or exact-shortfall finance offer per building', () => {
+		expect.assertions(6);
+		const game = createNewGame('convenience', 20260512);
+		const warehouseOption = (
+			inputGame: typeof game,
+			cashCommandAvailable: boolean,
+			financeCommandAvailable: boolean
+		) =>
+			getIndustrialBuildMenuOptions({
+				game: inputGame,
+				cashCommandAvailable,
+				financeCommandAvailable
+			}).find((option) => option.buildingTypeId === 'warehouse')!;
+
+		expect(warehouseOption({ ...game, cash: 1000 }, true, false).disabledReason).toBeNull();
+
+		const financed = warehouseOption({ ...game, cash: 900 }, false, true);
+		expect(financed.disabledReason).toBeNull();
+		expect(financed.financeOffer).toMatchObject({ principal: 100, termDays: 84 });
+
+		expect(warehouseOption({ ...game, cash: 900 }, true, false).disabledReason).toEqual({
+			code: 'industry.requiresCash',
+			buildingTypeId: 'warehouse',
+			amount: 1000
+		});
+		expect(warehouseOption({ ...game, cash: 1000 }, false, true).disabledReason).toEqual({
+			code: 'industry.commandUnavailable'
+		});
+
+		const delinquent = {
+			...game,
+			cash: 900,
+			finance: {
+				...game.finance,
+				loans: game.finance.loans.map((loan) => ({
+					...loan,
+					status: 'delinquent' as const,
+					overduePrincipal: 1,
+					arrearsSinceDay: game.day
+				}))
+			}
+		};
+		expect(warehouseOption(delinquent, false, true).disabledReason).toEqual({
+			code: 'industry.requiresCash',
+			buildingTypeId: 'warehouse',
+			amount: 1000
+		});
+	});
+
 	test('marks matching resource tiles valid for raw producers', () => {
 		expect.assertions(5);
 		const game = { ...createNewGame('convenience', 20260512), cash: 100_000 };

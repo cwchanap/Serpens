@@ -15,7 +15,12 @@
 	import { focusTrap } from '$lib/a11y/focusTrap';
 	import { formatPlacementBlockReason } from '$lib/i18n/gameCopy';
 	import type { I18nBundle } from '$lib/i18n/index';
-	import type { PlacementBlockReason, RetailBuildMenuOption } from '$lib/game/placementPreview';
+	import type {
+		IndustrialBuildMenuDisabledReason,
+		IndustrialBuildMenuOption,
+		PlacementBlockReason,
+		RetailBuildMenuOption
+	} from '$lib/game/placementPreview';
 	import type { ArchetypeId, IndustrialBuildingTypeId, MaterialId } from '$lib/game/types';
 
 	interface ProductChainFilter {
@@ -28,6 +33,7 @@
 		activeMapView: 'retail' | 'industry';
 		i18n: I18nBundle;
 		retailOptions: RetailBuildMenuOption[];
+		industryOptions?: IndustrialBuildMenuOption[];
 		industryLockedReason: PlacementBlockReason | null;
 		availableMaterialIds?: string[];
 		canOpenStore?: boolean;
@@ -47,6 +53,11 @@
 		activeMapView,
 		i18n,
 		retailOptions,
+		industryOptions = Object.keys(INDUSTRIAL_BUILDING_TYPES).map((buildingTypeId) => ({
+			buildingTypeId: buildingTypeId as IndustrialBuildingTypeId,
+			disabledReason: null,
+			financeOffer: null
+		})),
 		industryLockedReason,
 		availableMaterialIds = [],
 		canOpenStore = true,
@@ -106,6 +117,9 @@
 	const availableSet = $derived(new Set(availableMaterialIds));
 	const allowedRetailSet = $derived(new Set(allowedRetailArchetypeIds));
 	const allowedIndustrySet = $derived(new Set(allowedIndustryBuildingTypeIds));
+	const industryOptionById = $derived(
+		new Map(industryOptions.map((option) => [option.buildingTypeId, option]))
+	);
 	const canStartRetailExpansion = $derived(canOpenStore || canFinanceRetailStore);
 	const canStartIndustryExpansion = $derived(
 		canBuildIndustrialBuilding || canFinanceIndustrialBuilding
@@ -135,6 +149,20 @@
 
 	function formatPlacementReason(reason: PlacementBlockReason | null): string | null {
 		return formatPlacementBlockReason(reason, i18n);
+	}
+
+	function formatIndustryDisabledReason(
+		reason: IndustrialBuildMenuDisabledReason | null
+	): string | null {
+		return reason?.code === 'industry.commandUnavailable'
+			? disabledReason
+			: formatPlacementReason(reason);
+	}
+
+	function industryDisabledReason(
+		buildingTypeId: IndustrialBuildingTypeId
+	): IndustrialBuildMenuDisabledReason | null {
+		return industryOptionById.get(buildingTypeId)?.disabledReason ?? null;
 	}
 
 	function recipeForType(typeId: IndustrialBuildingTypeId) {
@@ -202,6 +230,7 @@
 		if (
 			industryLockedReason ||
 			!canStartIndustryExpansion ||
+			industryDisabledReason(buildingTypeId) !== null ||
 			!allowedIndustrySet.has(buildingTypeId)
 		) {
 			return;
@@ -405,16 +434,18 @@
 			<div class="option-list">
 				{#each visibleIndustryBuildingTypes as type (type.id)}
 					{@const recipe = recipeForType(type.id)}
+					{@const optionDisabledReason = industryDisabledReason(type.id)}
 					<button
 						type="button"
 						class="build-option"
 						disabled={industryLockedReason !== null ||
 							!canStartIndustryExpansion ||
+							optionDisabledReason !== null ||
 							!allowedIndustrySet.has(type.id)}
 						onclick={() => chooseIndustry(type.id)}
 					>
 						<img src={asset(getIndustrialBuildingArt(type.id))} alt="" width="44" height="44" />
-						{#if industryLockedReason || !canStartIndustryExpansion || !allowedIndustrySet.has(type.id)}
+						{#if industryLockedReason || !canStartIndustryExpansion || optionDisabledReason || !allowedIndustrySet.has(type.id)}
 							<span class="disabled-badge">{i18n.t('buildMenu.unavailable')}</span>
 						{/if}
 						<span>
@@ -428,6 +459,11 @@
 							</strong>
 							{#if !canStartIndustryExpansion || !allowedIndustrySet.has(type.id)}
 								<small class="disabled-copy">{disabledReason}</small>
+							{/if}
+							{#if optionDisabledReason}
+								<small class="disabled-copy">
+									{formatIndustryDisabledReason(optionDisabledReason)}
+								</small>
 							{/if}
 							<small>
 								{i18n.t('buildMenu.industry.costOperating' as never, {

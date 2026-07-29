@@ -433,6 +433,46 @@ describe('BuildMenu', () => {
 		await expect.element(page.getByRole('button', { name: /build warehouse/i })).toBeDisabled();
 	});
 
+	it('disables only an unfunded industry card and shows its localized cash requirement', async () => {
+		expect.assertions(4);
+		const onChooseIndustry = vi.fn();
+		render(
+			BuildMenu,
+			buildMenuProps({
+				activeMapView: 'industry',
+				onChooseIndustry,
+				industryOptions: [
+					{
+						buildingTypeId: 'warehouse',
+						disabledReason: {
+							code: 'industry.requiresCash',
+							buildingTypeId: 'warehouse',
+							amount: 1000
+						},
+						financeOffer: null
+					},
+					{
+						buildingTypeId: 'water-pump',
+						disabledReason: null,
+						financeOffer: {
+							principal: 100,
+							termDays: 84,
+							annualInterestRateBps: 1200,
+							estimatedPeakPayment: 10
+						}
+					}
+				]
+			})
+		);
+
+		const warehouse = page.getByRole('button', { name: /build warehouse/i });
+		const waterPump = page.getByRole('button', { name: /build water pump/i });
+		await expect.element(warehouse).toBeDisabled();
+		await expect.element(page.getByText('Requires $1,000 cash')).toBeVisible();
+		await expect.element(waterPump).not.toBeDisabled();
+		expect(onChooseIndustry).not.toHaveBeenCalled();
+	});
+
 	it('blocks disallowed retail content with text and never arms its placement', async () => {
 		expect.assertions(3);
 		const onChooseRetail = vi.fn();

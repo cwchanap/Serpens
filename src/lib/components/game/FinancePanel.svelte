@@ -1,6 +1,11 @@
 <script lang="ts">
 	import { tick } from 'svelte';
-	import { assessCredit, estimateNextLoanPayment, projectLoanSchedule } from '$lib/game/finance';
+	import {
+		assessCredit,
+		estimateNextLoanPayment,
+		getLoanArrearsAmount,
+		projectLoanSchedule
+	} from '$lib/game/finance';
 	import type { FinanceMetrics } from '$lib/game/financeMetrics';
 	import type { I18nBundle } from '$lib/i18n';
 	import type { FinanceFailureCode } from '$lib/game/finance';
@@ -450,7 +455,7 @@
 					</p>
 					<p>
 						{i18n.t('financePanel.ui.arrears')}
-						{i18n.format.currency(loan.overduePrincipal + loan.overdueInterest)} · {i18n.t(
+						{i18n.format.currency(getLoanArrearsAmount(loan))} · {i18n.t(
 							'financePanel.metrics.nextPayment'
 						)}
 						{loan.nextPaymentDay === null

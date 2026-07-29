@@ -178,6 +178,33 @@ describe('FinancePanel', () => {
 		expect(document.body.textContent).toMatch(/Payoff quote\s+\$725/);
 	});
 
+	it('shows a matured fractional interest balance as one dollar of arrears', async () => {
+		expect.assertions(1);
+		const game = gameWithLoan();
+		const loan = game.finance.loans.at(-1)!;
+		const matured = {
+			...game,
+			finance: {
+				...game.finance,
+				loans: game.finance.loans.map((candidate) =>
+					candidate.id === loan.id
+						? {
+								...candidate,
+								status: 'delinquent' as const,
+								remainingPrincipal: 0,
+								nextPaymentDay: null,
+								accruedInterestMicros: 1,
+								arrearsSinceDay: game.day
+							}
+						: candidate
+				)
+			}
+		};
+
+		renderPanel({ game: matured });
+		expect(document.body.textContent).toMatch(/Arrears\s+\$1/);
+	});
+
 	it('renders localized finance copy outside English', async () => {
 		expect.assertions(1);
 		renderPanel({ i18n: createI18n('ja') });
