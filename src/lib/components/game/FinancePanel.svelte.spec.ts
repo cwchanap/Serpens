@@ -195,10 +195,43 @@ describe('FinancePanel', () => {
 		const payoff = page.getByRole('button', { name: 'Review payoff' }).nth(0);
 		await payoff.click();
 		await page.getByRole('button', { name: 'Confirm payoff' }).click();
-		await expect.element(payoff).toHaveAttribute('aria-invalid', 'true');
+		await expect.element(payoff).not.toHaveAttribute('aria-invalid');
 		const describedBy = (await payoff.element()).getAttribute('aria-describedby');
 		expect(describedBy).toMatch(/payoff-.+-error/);
 		await expect.element(page.getByRole('status')).toHaveTextContent('Insufficient cash');
 		expect(onPayoff).toHaveBeenCalledOnce();
+	});
+
+	it('renders the full panel in Traditional Chinese and formats APR with locale punctuation', async () => {
+		expect.assertions(2);
+		renderPanel({ i18n: createI18n('zh-Hant') });
+		await expect.element(page.getByRole('heading', { name: '信用方案' })).toBeVisible();
+		await expect.element(page.getByText(/14\.42%/)).toBeVisible();
+	});
+
+	it('focuses the alert-target loan row', async () => {
+		expect.assertions(1);
+		const game = gameWithLoan();
+		const id = game.finance.loans.at(-1)!.id;
+		renderPanel({ game, focusedLoanId: id });
+		await expect.element(page.getByRole('article').nth(1)).toHaveFocus();
+	});
+
+	it('associates refinance rejection with its action control while retaining review', async () => {
+		expect.assertions(3);
+		const onRefinance = vi.fn().mockResolvedValue({
+			status: 'domain-rejected',
+			code: 'insufficientCredit',
+			context: { availableCredit: 0 }
+		});
+		renderPanel({ onRefinance });
+		const refinance = page.getByRole('button', { name: 'Refinance 28 days' }).nth(0);
+		await refinance.click();
+		await page.getByRole('button', { name: 'Confirm refinancing' }).click();
+		expect((await refinance.element()).getAttribute('aria-describedby')).toMatch(
+			/refinance-.+-error/
+		);
+		await expect.element(page.getByRole('heading', { name: 'Review refinancing' })).toBeVisible();
+		expect(onRefinance).toHaveBeenCalledOnce();
 	});
 });

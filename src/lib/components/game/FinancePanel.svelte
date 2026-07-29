@@ -79,7 +79,11 @@
 	}
 
 	function formatApr(bps: number): string {
-		return `${(bps / 100).toFixed(2)}%`;
+		return new Intl.NumberFormat(i18n.locale, {
+			style: 'percent',
+			minimumFractionDigits: 2,
+			maximumFractionDigits: 2
+		}).format(bps / 10_000);
 	}
 
 	function formatRunway(): string {
@@ -486,13 +490,10 @@
 							<button type="button" disabled={mutationPending} onclick={() => openRepayReview(loan)}
 								>{i18n.t('financePanel.ui.reviewRepayment')}</button
 							>
-							<!-- The trigger owns an action-level error, so keep its invalid state and error reference explicit. -->
-							<!-- svelte-ignore a11y_role_supports_aria_props_implicit -->
 							<button
 								id={`payoff-${loan.id}`}
 								type="button"
 								disabled={mutationPending}
-								aria-invalid={fieldError?.field === `payoff-${loan.id}`}
 								aria-describedby={fieldError?.field === `payoff-${loan.id}`
 									? `payoff-${loan.id}-error`
 									: undefined}
@@ -505,11 +506,10 @@
 								>
 									{fieldError.message}
 								</p>{/if}
-							{#each [28, 56, 84] as term (term)}<!-- svelte-ignore a11y_role_supports_aria_props_implicit --><button
+							{#each [28, 56, 84] as term (term)}<button
 									id={`refinance-${loan.id}-${term}`}
 									type="button"
 									disabled={mutationPending || loan.status === 'delinquent'}
-									aria-invalid={fieldError?.field === `refinance-${loan.id}-${term}`}
 									aria-describedby={fieldError?.field === `refinance-${loan.id}-${term}`
 										? `refinance-${loan.id}-${term}-error`
 										: undefined}
