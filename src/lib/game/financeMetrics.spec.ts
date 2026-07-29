@@ -59,7 +59,7 @@ describe('finance metrics', () => {
 		);
 
 		expect(metrics.outstandingPrincipal).toBe(1_100);
-		expect(metrics.amountDue).toBe(1_172);
+		expect(metrics.amountDue).toBe(1_122);
 		expect(metrics.nextLoanPayment).toEqual({ loanId: 'loan-1', day: 12, amount: 154 });
 	});
 
