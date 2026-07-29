@@ -102,6 +102,25 @@ describe('focusTrap', () => {
 		detach();
 	});
 
+	it('keeps a finance review cancel action inside the trap on Shift+Tab', () => {
+		expect.assertions(2);
+		const dialog = mountDialog(
+			'<div role="dialog" tabindex="-1">' +
+				'<button id="finance-review-cancel">Cancel review</button>' +
+				'<button id="finance-review-confirm">Confirm financing</button>' +
+				'</div>'
+		);
+		const node = dialog.querySelector<HTMLDivElement>('[role="dialog"]')!;
+		const detach = focusTrap(node) as () => void;
+		const cancel = node.querySelector<HTMLButtonElement>('#finance-review-cancel')!;
+
+		expect(document.activeElement).toBe(cancel);
+		node.dispatchEvent(tabKey(true));
+		expect(document.activeElement).toBe(node.querySelector('#finance-review-confirm'));
+
+		detach();
+	});
+
 	it('ignores non-Tab keydown events', () => {
 		expect.assertions(1);
 		const dialog = mountDialog(

@@ -165,6 +165,11 @@
 		type GameRouteCommitResult,
 		type GameRouteControllerState
 	} from './gameRouteController';
+	import {
+		canConfirmFinancedPurchase,
+		hasFinancedPurchaseOffer,
+		shouldRefreshFinancedPurchase
+	} from './financePurchaseReview';
 
 	interface ManagementPanelMenuItem {
 		id: ManagementPanelId;
@@ -193,21 +198,21 @@
 				kind: 'world';
 				cityId: WorldCityId;
 				expectedCost: number;
-				offer: ExpansionFinanceOffer;
+				offer: ExpansionFinanceOffer | null;
 		  }
 		| {
 				kind: 'retail';
 				tileId: string;
 				archetypeId: ArchetypeId;
 				expectedCost: number;
-				offer: ExpansionFinanceOffer;
+				offer: ExpansionFinanceOffer | null;
 		  }
 		| {
 				kind: 'industry';
 				tileId: string;
 				buildingTypeId: IndustrialBuildingTypeId;
 				expectedCost: number;
-				offer: ExpansionFinanceOffer;
+				offer: ExpansionFinanceOffer | null;
 		  };
 
 	/**
@@ -509,7 +514,8 @@
 	let pendingFinancedPurchase = $state<PendingFinancedPurchase | null>(null);
 	let financedPurchaseFeedback = $state<string | null>(null);
 	let financedPurchaseReturnFocus = $state<HTMLElement | null>(null);
-	let financedPurchaseHeading = $state<HTMLHeadingElement | null>(null);
+	let financedPurchaseConfirmPending = $state(false);
+	let financedPurchaseCancelButton = $state<HTMLButtonElement | null>(null);
 	let saveRepository: SaveRepository | null = $state(null);
 	let autoSave = $state<SaveSlotMetadata | null>(null);
 	let manualSaveSlots = $state<SaveSlotMetadata[]>([]);
@@ -895,6 +901,7 @@
 		const returnFocus = financedPurchaseReturnFocus;
 		pendingFinancedPurchase = null;
 		financedPurchaseFeedback = null;
+		financedPurchaseConfirmPending = false;
 		financedPurchaseReturnFocus = null;
 		if (restoreFocus && returnFocus) {
 			void tick().then(() => returnFocus.focus());
@@ -906,13 +913,13 @@
 			document.activeElement instanceof HTMLElement ? document.activeElement : null;
 		financedPurchaseFeedback = null;
 		pendingFinancedPurchase = purchase;
-		void tick().then(() => financedPurchaseHeading?.focus());
+		void tick().then(() => financedPurchaseCancelButton?.focus());
 	}
 
-	const captureFinancedPurchaseHeading: Attachment<HTMLHeadingElement> = (node) => {
-		financedPurchaseHeading = node;
+	const captureFinancedPurchaseCancel: Attachment<HTMLButtonElement> = (node) => {
+		financedPurchaseCancelButton = node;
 		return () => {
-			if (financedPurchaseHeading === node) financedPurchaseHeading = null;
+			if (financedPurchaseCancelButton === node) financedPurchaseCancelButton = null;
 		};
 	};
 
@@ -1999,6 +2006,11 @@
 			}
 			const expectedCost = forecastOpening(tile, archetypeId).setupCost;
 			if (game.cash < expectedCost) {
+				if (!mutationAvailability.financeRetailStore) {
+					placementFeedback = { code: 'retail.requiresCash', amount: expectedCost };
+					playSfx('sfx.build.invalid');
+					return;
+				}
 				const offer = getExpansionFinanceOffer(game, expectedCost);
 				if (!offer) {
 					placementFeedback = { code: 'retail.requiresCash', amount: expectedCost };
@@ -2058,6 +2070,11 @@
 			return;
 		}
 		if (game.cash < expectedCost) {
+			if (!mutationAvailability.financeIndustrialBuilding) {
+				placementFeedback = { code: 'industry.requiresCash', buildingTypeId, amount: expectedCost };
+				playSfx('sfx.build.invalid');
+				return;
+			}
 			const offer = getExpansionFinanceOffer(game, expectedCost);
 			if (!offer) {
 				placementFeedback = { code: 'industry.requiresCash', buildingTypeId, amount: expectedCost };
@@ -2085,7 +2102,7 @@
 	): PendingFinancedPurchase | null {
 		if (purchase.kind === 'world') {
 			const status = getWorldCityStatus(currentGame, purchase.cityId);
-			if (!status?.financeOffer) return null;
+			if (!status) return { ...purchase, offer: null };
 			return {
 				...purchase,
 				expectedCost: status.city.openingCost,
@@ -2098,16 +2115,16 @@
 				(candidate) => candidate.id === currentGame.activeCityId
 			);
 			const tile = city ? getTileById(city, purchase.tileId) : undefined;
-			if (!tile) return null;
+			if (!tile) return { ...purchase, offer: null };
 			const expectedCost = forecastOpening(tile, purchase.archetypeId).setupCost;
 			const offer = getExpansionFinanceOffer(currentGame, expectedCost);
-			return offer ? { ...purchase, expectedCost, offer } : null;
+			return { ...purchase, expectedCost, offer };
 		}
 
 		const expectedCost = INDUSTRIAL_BUILDING_TYPES[purchase.buildingTypeId]?.buildCost;
-		if (expectedCost === undefined) return null;
+		if (expectedCost === undefined) return { ...purchase, offer: null };
 		const offer = getExpansionFinanceOffer(currentGame, expectedCost);
-		return offer ? { ...purchase, expectedCost, offer } : null;
+		return { ...purchase, expectedCost, offer };
 	}
 
 	function isCommittedFinancePurchase(result: GameRouteCommitResult): boolean {
@@ -2118,7 +2135,13 @@
 
 	async function confirmFinancedPurchase(): Promise<void> {
 		const purchase = pendingFinancedPurchase;
-		if (!purchase || !game) return;
+		if (
+			!purchase ||
+			!game ||
+			!canConfirmFinancedPurchase(purchase.offer, financedPurchaseConfirmPending)
+		)
+			return;
+		financedPurchaseConfirmPending = true;
 
 		let result: GameRouteCommitResult;
 		if (purchase.kind === 'world') {
@@ -2146,12 +2169,14 @@
 			return;
 		}
 
+		financedPurchaseConfirmPending = false;
 		financedPurchaseFeedback =
 			result.status === 'domain-rejected'
 				? financeFailureMessage(result.code)
 				: i18n.t('financePanel.ui.failed');
-		const refreshed = refreshedFinancedPurchase(purchase, game);
-		if (refreshed) pendingFinancedPurchase = refreshed;
+		if (shouldRefreshFinancedPurchase(result)) {
+			pendingFinancedPurchase = refreshedFinancedPurchase(purchase, game);
+		}
 	}
 
 	function cancelFinancedPurchaseReview(): void {
@@ -2575,11 +2600,7 @@
 					aria-modal="true"
 					aria-labelledby="financed-purchase-review-heading"
 				>
-					<h2
-						id="financed-purchase-review-heading"
-						tabindex="-1"
-						{@attach captureFinancedPurchaseHeading}
-					>
+					<h2 id="financed-purchase-review-heading">
 						{i18n.t('financePanel.financedPurchase.review' as never)}
 					</h2>
 					<dl>
@@ -2591,37 +2612,51 @@
 							<dt>{i18n.t('financePanel.ui.cash')}</dt>
 							<dd>{i18n.format.currency(game?.cash ?? 0)}</dd>
 						</div>
-						<div>
-							<dt>{i18n.t('financePanel.financedPurchase.shortfall' as never)}</dt>
-							<dd>{i18n.format.currency(pendingFinancedPurchase.offer.principal)}</dd>
-						</div>
-						<div>
-							<dt>{i18n.t('financePanel.ui.loanTerm')}</dt>
-							<dd>
-								{i18n.t('financePanel.ui.days', {
-									days: i18n.format.integer(pendingFinancedPurchase.offer.termDays)
-								})}
-							</dd>
-						</div>
-						<div>
-							<dt>{i18n.t('financePanel.ui.apr')}</dt>
-							<dd>{formatApr(pendingFinancedPurchase.offer.annualInterestRateBps)}</dd>
-						</div>
-						<div>
-							<dt>{i18n.t('financePanel.ui.peakPayment')}</dt>
-							<dd>{i18n.format.currency(pendingFinancedPurchase.offer.estimatedPeakPayment)}</dd>
-						</div>
+						{#if hasFinancedPurchaseOffer(pendingFinancedPurchase.offer)}
+							<div>
+								<dt>{i18n.t('financePanel.financedPurchase.shortfall' as never)}</dt>
+								<dd>{i18n.format.currency(pendingFinancedPurchase.offer.principal)}</dd>
+							</div>
+							<div>
+								<dt>{i18n.t('financePanel.ui.loanTerm')}</dt>
+								<dd>
+									{i18n.t('financePanel.ui.days', {
+										days: i18n.format.integer(pendingFinancedPurchase.offer.termDays)
+									})}
+								</dd>
+							</div>
+							<div>
+								<dt>{i18n.t('financePanel.ui.apr')}</dt>
+								<dd>{formatApr(pendingFinancedPurchase.offer.annualInterestRateBps)}</dd>
+							</div>
+							<div>
+								<dt>{i18n.t('financePanel.ui.peakPayment')}</dt>
+								<dd>{i18n.format.currency(pendingFinancedPurchase.offer.estimatedPeakPayment)}</dd>
+							</div>
+						{/if}
 					</dl>
 					<p class="live-status" role="status" aria-live="polite">
 						{financedPurchaseFeedback ?? ''}
 					</p>
 					<div class="finance-review-actions">
-						<button type="button" class="btn-danger" onclick={cancelFinancedPurchaseReview}>
+						<button
+							type="button"
+							class="btn-danger"
+							onclick={cancelFinancedPurchaseReview}
+							{@attach captureFinancedPurchaseCancel}
+						>
 							{i18n.t('financePanel.ui.cancelReview')}
 						</button>
-						<button type="button" class="btn-primary" onclick={confirmFinancedPurchase}>
-							{i18n.t('financePanel.financedPurchase.confirm' as never)}
-						</button>
+						{#if pendingFinancedPurchase.offer}
+							<button
+								type="button"
+								class="btn-primary"
+								disabled={financedPurchaseConfirmPending}
+								onclick={confirmFinancedPurchase}
+							>
+								{i18n.t('financePanel.financedPurchase.confirm' as never)}
+							</button>
+						{/if}
 					</div>
 				</div>
 			</div>
