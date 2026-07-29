@@ -239,15 +239,27 @@ export const zhHant = {
 		title: '報表',
 		metrics: {
 			latestDailyResult: '最新每日結果',
+			operatingIncome: '營業利益',
+			operatingCashFlow: '營業現金流',
+			financingCashFlow: '融資現金流',
 			revenue: '營收',
 			cashAfter: '結束現金',
+			principalBorrowed: '借入本金',
+			principalRepaid: '償還本金',
+			interestPaid: '已付利息',
+			interestAccrued: '應計利息',
+			interestCapitalized: '資本化利息',
+			refinancedPrincipal: '再融資本金',
+			endingPrincipal: '期末本金',
 			payroll: '薪資',
 			imports: '進口',
 			productionImports: '生產進口',
 			warehouseOverflow: '倉庫溢出',
 			railShipments: '鐵路出貨',
 			sevenDayNet: '7 日淨利',
-			thirtyDayNet: '30 日淨利'
+			thirtyDayNet: '30 日淨利',
+			sevenDayOperatingCashFlow: '7 日營業現金流',
+			thirtyDayOperatingCashFlow: '30 日營業現金流'
 		},
 		dailyWarnings: '每日警告',
 		empty: '尚未有報表。推進第一天後會產生結果。'
