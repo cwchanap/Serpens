@@ -54,8 +54,21 @@ const summary: ReportSummary = {
 		operatingCosts: 275,
 		payrollCost: 320,
 		importSpend: 456,
+		cashBefore: 12_280,
+		operatingIncome: 525,
+		operatingCashFlow: 69,
+		interestAccrued: 0.25,
+		interestPaid: 9,
+		interestCapitalized: 0,
+		principalBorrowed: 0,
+		principalRepaid: 30,
+		refinancedPrincipal: 0,
+		financingCashFlow: -39,
+		netCashChange: 30,
 		netIncome: 69,
 		cashAfter: 12_345,
+		outstandingPrincipalAfter: 5_970,
+		nextLoanPayment: { loanId: 'loan-1', day: 11, amount: 49 },
 		scorecard: {
 			profit: 55,
 			customerSatisfaction: 60,
@@ -70,17 +83,59 @@ const summary: ReportSummary = {
 		days: 1,
 		revenue: 1_250,
 		importSpend: 456,
+		operatingIncome: 525,
+		operatingCashFlow: 69,
+		interestAccrued: 0.25,
+		interestPaid: 9,
+		interestCapitalized: 0,
+		principalBorrowed: 0,
+		principalRepaid: 30,
+		refinancedPrincipal: 0,
+		financingCashFlow: -39,
+		netCashChange: 30,
 		netIncome: 69,
 		averageRevenue: 1_250,
+		averageOperatingIncome: 525,
+		averageOperatingCashFlow: 69,
+		averageInterestAccrued: 0.25,
+		averageInterestPaid: 9,
+		averageInterestCapitalized: 0,
+		averagePrincipalBorrowed: 0,
+		averagePrincipalRepaid: 30,
+		averageRefinancedPrincipal: 0,
+		averageFinancingCashFlow: -39,
+		averageNetCashChange: 30,
 		averageNetIncome: 69
 	},
 	thirtyDay: {
-		days: 1,
-		revenue: 1_250,
-		importSpend: 456,
-		netIncome: 69,
-		averageRevenue: 1_250,
-		averageNetIncome: 69
+		...{
+			days: 1,
+			revenue: 1_250,
+			importSpend: 456,
+			operatingIncome: 525,
+			operatingCashFlow: 69,
+			interestAccrued: 0.25,
+			interestPaid: 9,
+			interestCapitalized: 0,
+			principalBorrowed: 0,
+			principalRepaid: 30,
+			refinancedPrincipal: 0,
+			financingCashFlow: -39,
+			netCashChange: 30,
+			netIncome: 69,
+			averageRevenue: 1_250,
+			averageOperatingIncome: 525,
+			averageOperatingCashFlow: 69,
+			averageInterestAccrued: 0.25,
+			averageInterestPaid: 9,
+			averageInterestCapitalized: 0,
+			averagePrincipalBorrowed: 0,
+			averagePrincipalRepaid: 30,
+			averageRefinancedPrincipal: 0,
+			averageFinancingCashFlow: -39,
+			averageNetCashChange: 30,
+			averageNetIncome: 69
+		}
 	}
 };
 
@@ -124,6 +179,26 @@ describe('ReportsPanel', () => {
 
 		await expect.element(reportsRegion.getByText('Imports', { exact: true })).toBeVisible();
 		await expect.element(reportsRegion.getByText('$456')).toBeVisible();
+	});
+
+	it('labels reconciled operating and financing movements without calling principal amount due', async () => {
+		expect.assertions(9);
+
+		render(ReportsPanel, { i18n: createI18n('en'), stores: [], summary });
+
+		const reportsRegion = page.getByRole('region', { name: 'Reports' });
+
+		await expect.element(reportsRegion.getByText('Operating income')).toBeVisible();
+		await expect
+			.element(reportsRegion.getByText('Operating cash flow', { exact: true }))
+			.toBeVisible();
+		await expect.element(reportsRegion.getByText('Financing cash flow')).toBeVisible();
+		await expect.element(reportsRegion.getByText('Principal repaid')).toBeVisible();
+		await expect.element(reportsRegion.getByText('Interest accrued')).toBeVisible();
+		await expect.element(reportsRegion.getByText('Interest capitalized')).toBeVisible();
+		await expect.element(reportsRegion.getByText('Refinanced principal')).toBeVisible();
+		await expect.element(reportsRegion.getByText('Ending principal')).toBeVisible();
+		await expect.element(reportsRegion.getByText('Amount due')).not.toBeInTheDocument();
 	});
 
 	it('lists the latest daily warnings when present', async () => {

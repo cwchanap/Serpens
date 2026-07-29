@@ -487,12 +487,31 @@ export interface DailyReport {
 	operatingCosts: number;
 	payrollCost: number;
 	importSpend: number;
+	cashBefore: number;
+	operatingIncome: number;
+	operatingCashFlow: number;
+	interestAccrued: number;
+	interestPaid: number;
+	interestCapitalized: number;
+	principalBorrowed: number;
+	principalRepaid: number;
+	refinancedPrincipal: number;
+	financingCashFlow: number;
+	netCashChange: number;
 	netIncome: number;
 	cashAfter: number;
+	outstandingPrincipalAfter: number;
+	nextLoanPayment: LoanPaymentSnapshot | null;
 	scorecard: Scorecard;
 	productionReport: DailyProductionReport;
 	storeReports: DailyStoreReport[];
 	warnings: DailyReportWarning[];
+}
+
+export interface LoanPaymentSnapshot {
+	loanId: string;
+	day: number;
+	amount: number;
 }
 
 export interface DecisionOption {

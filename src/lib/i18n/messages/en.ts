@@ -237,15 +237,27 @@ export const en = {
 		title: 'Reports',
 		metrics: {
 			latestDailyResult: 'Latest daily result',
+			operatingIncome: 'Operating income',
+			operatingCashFlow: 'Operating cash flow',
+			financingCashFlow: 'Financing cash flow',
 			revenue: 'Revenue',
 			cashAfter: 'Cash after',
+			principalBorrowed: 'Principal borrowed',
+			principalRepaid: 'Principal repaid',
+			interestPaid: 'Interest paid',
+			interestAccrued: 'Interest accrued',
+			interestCapitalized: 'Interest capitalized',
+			refinancedPrincipal: 'Refinanced principal',
+			endingPrincipal: 'Ending principal',
 			payroll: 'Payroll',
 			imports: 'Imports',
 			productionImports: 'Production imports',
 			warehouseOverflow: 'Warehouse overflow',
 			railShipments: 'Rail shipments',
 			sevenDayNet: '7-day net',
-			thirtyDayNet: '30-day net'
+			thirtyDayNet: '30-day net',
+			sevenDayOperatingCashFlow: '7-day operating cash flow',
+			thirtyDayOperatingCashFlow: '30-day operating cash flow'
 		},
 		dailyWarnings: 'Daily warnings',
 		empty: 'No reports yet. Advance the first day to generate results.'

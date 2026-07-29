@@ -21,8 +21,16 @@
 	{#if summary.latest}
 		<div class="metrics">
 			<div>
-				<span>{i18n.t('reportsPanel.metrics.latestDailyResult')}</span>
-				<strong>{i18n.format.currency(summary.latest.netIncome)}</strong>
+				<span>{i18n.t('reportsPanel.metrics.operatingIncome')}</span>
+				<strong>{i18n.format.currency(summary.latest.operatingIncome)}</strong>
+			</div>
+			<div>
+				<span>{i18n.t('reportsPanel.metrics.operatingCashFlow')}</span>
+				<strong>{i18n.format.currency(summary.latest.operatingCashFlow)}</strong>
+			</div>
+			<div>
+				<span>{i18n.t('reportsPanel.metrics.financingCashFlow')}</span>
+				<strong>{i18n.format.currency(summary.latest.financingCashFlow)}</strong>
 			</div>
 			<div>
 				<span>{i18n.t('reportsPanel.metrics.revenue')}</span>
@@ -31,6 +39,34 @@
 			<div>
 				<span>{i18n.t('reportsPanel.metrics.cashAfter')}</span>
 				<strong>{i18n.format.currency(summary.latest.cashAfter)}</strong>
+			</div>
+			<div>
+				<span>{i18n.t('reportsPanel.metrics.principalBorrowed')}</span>
+				<strong>{i18n.format.currency(summary.latest.principalBorrowed)}</strong>
+			</div>
+			<div>
+				<span>{i18n.t('reportsPanel.metrics.principalRepaid')}</span>
+				<strong>{i18n.format.currency(summary.latest.principalRepaid)}</strong>
+			</div>
+			<div>
+				<span>{i18n.t('reportsPanel.metrics.interestPaid')}</span>
+				<strong>{i18n.format.currency(summary.latest.interestPaid)}</strong>
+			</div>
+			<div>
+				<span>{i18n.t('reportsPanel.metrics.interestAccrued')}</span>
+				<strong>{i18n.format.decimal(summary.latest.interestAccrued)}</strong>
+			</div>
+			<div>
+				<span>{i18n.t('reportsPanel.metrics.interestCapitalized')}</span>
+				<strong>{i18n.format.currency(summary.latest.interestCapitalized)}</strong>
+			</div>
+			<div>
+				<span>{i18n.t('reportsPanel.metrics.refinancedPrincipal')}</span>
+				<strong>{i18n.format.currency(summary.latest.refinancedPrincipal)}</strong>
+			</div>
+			<div>
+				<span>{i18n.t('reportsPanel.metrics.endingPrincipal')}</span>
+				<strong>{i18n.format.currency(summary.latest.outstandingPrincipalAfter)}</strong>
 			</div>
 			<div>
 				<span>{i18n.t('reportsPanel.metrics.payroll')}</span>
@@ -53,12 +89,12 @@
 				<strong>{i18n.format.integer(railShipmentUnits)}</strong>
 			</div>
 			<div>
-				<span>{i18n.t('reportsPanel.metrics.sevenDayNet')}</span>
-				<strong>{i18n.format.currency(summary.sevenDay.netIncome)}</strong>
+				<span>{i18n.t('reportsPanel.metrics.sevenDayOperatingCashFlow')}</span>
+				<strong>{i18n.format.currency(summary.sevenDay.operatingCashFlow)}</strong>
 			</div>
 			<div>
-				<span>{i18n.t('reportsPanel.metrics.thirtyDayNet')}</span>
-				<strong>{i18n.format.currency(summary.thirtyDay.netIncome)}</strong>
+				<span>{i18n.t('reportsPanel.metrics.thirtyDayOperatingCashFlow')}</span>
+				<strong>{i18n.format.currency(summary.thirtyDay.operatingCashFlow)}</strong>
 			</div>
 		</div>
 

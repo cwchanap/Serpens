@@ -40,8 +40,21 @@ function report(
 		operatingCosts: 300,
 		payrollCost: 0,
 		importSpend: options.storeImportSpend ?? 0,
+		cashBefore: 10_000,
+		operatingIncome: 300,
+		operatingCashFlow: netIncome,
+		interestAccrued: 0.125,
+		interestPaid: 3,
+		interestCapitalized: 2,
+		principalBorrowed: 4,
+		principalRepaid: 5,
+		refinancedPrincipal: 6,
+		financingCashFlow: -4,
+		netCashChange: netIncome - 4,
 		netIncome,
-		cashAfter: 10_000 + netIncome,
+		cashAfter: 10_000 + netIncome - 4,
+		outstandingPrincipalAfter: 9_000,
+		nextLoanPayment: { loanId: 'loan-1', day: day + 7, amount: 120 },
 		scorecard: {
 			profit: 50,
 			customerSatisfaction: 60,
@@ -114,6 +127,22 @@ describe('reports', () => {
 
 		expect(summary.sevenDay.importSpend).toBe(26);
 		expect(summary.thirtyDay.importSpend).toBe(26);
+	});
+
+	test('aggregates operating and financing fields without rounding accrued interest', () => {
+		expect.assertions(10);
+		const summary = summarizeReports([report(1, 100), report(2, 200)]).sevenDay;
+
+		expect(summary.operatingIncome).toBe(600);
+		expect(summary.operatingCashFlow).toBe(300);
+		expect(summary.interestAccrued).toBe(0.25);
+		expect(summary.interestPaid).toBe(6);
+		expect(summary.interestCapitalized).toBe(4);
+		expect(summary.principalBorrowed).toBe(8);
+		expect(summary.principalRepaid).toBe(10);
+		expect(summary.refinancedPrincipal).toBe(12);
+		expect(summary.financingCashFlow).toBe(-8);
+		expect(summary.netCashChange).toBe(292);
 	});
 
 	test('returns zero averages when there are no reports', () => {

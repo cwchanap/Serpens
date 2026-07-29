@@ -239,15 +239,27 @@ export const ja = {
 		title: 'レポート',
 		metrics: {
 			latestDailyResult: '直近日次結果',
+			operatingIncome: '営業利益',
+			operatingCashFlow: '営業キャッシュフロー',
+			financingCashFlow: '財務キャッシュフロー',
 			revenue: '売上',
 			cashAfter: '終了時現金',
+			principalBorrowed: '借入元本',
+			principalRepaid: '返済元本',
+			interestPaid: '支払利息',
+			interestAccrued: '未払利息',
+			interestCapitalized: '資本化利息',
+			refinancedPrincipal: '借換元本',
+			endingPrincipal: '期末元本',
 			payroll: '給与',
 			imports: '輸入',
 			productionImports: '生産輸入',
 			warehouseOverflow: '倉庫あふれ',
 			railShipments: '鉄路出荷',
 			sevenDayNet: '7日純益',
-			thirtyDayNet: '30日純益'
+			thirtyDayNet: '30日純益',
+			sevenDayOperatingCashFlow: '7日営業キャッシュフロー',
+			thirtyDayOperatingCashFlow: '30日営業キャッシュフロー'
 		},
 		dailyWarnings: '日次警告',
 		empty: 'まだレポートがありません。最初の日を進めると結果が生成されます。'

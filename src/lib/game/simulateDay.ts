@@ -1,5 +1,11 @@
 import { getArchetype } from './archetypes';
 import { generateDecisions, pruneExpiredDecisions } from './events';
+import {
+	estimateNextLoanPayment,
+	getTotalDebt,
+	resetFinanceDayActivity,
+	serviceFinanceForDay
+} from './finance';
 import { simulateIndustryProduction } from './industryProduction';
 import { clampScore } from './reports';
 import { createRngFromState, randomBetween } from './rng';
@@ -87,6 +93,8 @@ export function simulateDay(
 	game: GameState,
 	rules: SimulationRules = DEFAULT_SIMULATION_RULES
 ): GameState {
+	const closingDay = game.day;
+	const cashBefore = game.cash - game.finance.currentDayActivity.financingCashFlow;
 	const industryResult = simulateIndustryProduction(game, rules);
 	const productionGame = industryResult.game;
 	const rng = createRngFromState(productionGame.rngState);
@@ -143,7 +151,7 @@ export function simulateDay(
 	);
 	const storeReports = storeResults.map((result) => result.report);
 	const staffWithXp = accrueStaffXp(productionGame.staff, storeReports, profileByStoreId);
-	const nextDay = game.day + 1;
+	const nextDay = closingDay + 1;
 	const revenue = sum(storeReports, 'revenue');
 	const costOfGoods = sum(storeReports, 'costOfGoods');
 	const grossMargin = revenue - costOfGoods;
@@ -160,48 +168,85 @@ export function simulateDay(
 		productionReport.operatingCost +
 		productionReport.overflowCost;
 	const importSpend = sum(storeReports, 'importSpend') + productionReport.importSpend;
-	const netIncome = revenue - operatingCosts - importSpend;
-	const cashAfter = Math.round(game.cash + netIncome);
-	const warnings = collectWarnings(storeReports, cashAfter);
-	const scorecard = buildScorecard(game.scorecard, storeReports, netIncome);
+	const operatingIncome = Math.round(grossMargin - operatingCosts);
+	const operatingCashFlow = Math.round(revenue - operatingCosts - importSpend);
+	const scorecard = buildScorecard(game.scorecard, storeReports, operatingCashFlow);
 	const hiringCandidates = shouldRefreshHiringMarket(nextDay)
 		? generateHiringCandidates({ count: HIRING_CANDIDATE_COUNT, day: nextDay, rng })
 		: productionGame.hiringCandidates;
-	const postDayGame = {
+	const afterOperations = {
 		...productionGame,
-		day: nextDay,
 		rngState: rng.getState(),
-		cash: cashAfter,
+		cash: game.cash + operatingCashFlow,
 		scorecard,
+		stores: storeResults.map((result) => result.store),
 		warehouse: importResult.warehouse,
 		hiringCandidates,
 		staff: staffWithXp
 	};
-	const preservedDecisions = pruneExpiredDecisions(postDayGame);
+	const serviced = serviceFinanceForDay({
+		finance: afterOperations.finance,
+		cash: afterOperations.cash,
+		day: closingDay
+	});
+	const financingCashFlow = serviced.finance.currentDayActivity.financingCashFlow;
+	const netCashChange = operatingCashFlow + financingCashFlow;
+	const cashAfter = serviced.cash;
 
+	if (cashAfter !== cashBefore + netCashChange) {
+		throw new Error('Daily cash reconciliation failed');
+	}
+
+	const postServiceGame = {
+		...afterOperations,
+		cash: cashAfter,
+		finance: serviced.finance
+	};
+	const warnings = collectWarnings(storeReports, cashAfter);
+	const nextLoanPayment = getNextLoanPaymentSnapshot(postServiceGame);
+	const activity = serviced.finance.currentDayActivity;
 	const report: DailyReport = {
-		day: game.day,
+		day: closingDay,
 		revenue: Math.round(revenue),
 		costOfGoods: Math.round(costOfGoods),
 		grossMargin: Math.round(grossMargin),
 		operatingCosts: Math.round(operatingCosts),
 		payrollCost,
 		importSpend: Math.round(importSpend),
-		netIncome: Math.round(netIncome),
+		cashBefore,
+		operatingIncome,
+		operatingCashFlow,
+		interestAccrued: serviced.interestAccruedThisDayMicros / 1_000_000,
+		interestPaid: activity.interestPaid,
+		interestCapitalized: activity.interestCapitalized,
+		principalBorrowed: activity.principalBorrowed,
+		principalRepaid: activity.principalRepaid,
+		refinancedPrincipal: activity.refinancedPrincipal,
+		financingCashFlow,
+		netCashChange,
+		netIncome: operatingCashFlow,
 		cashAfter,
+		outstandingPrincipalAfter: getTotalDebt(postServiceGame),
+		nextLoanPayment,
 		scorecard,
 		productionReport,
 		storeReports,
 		warnings
 	};
+	const postDayGame = {
+		...postServiceGame,
+		day: nextDay,
+		finance: resetFinanceDayActivity(serviced.finance, nextDay),
+		reports: [...game.reports, report]
+	};
+	const preservedDecisions = pruneExpiredDecisions(postDayGame);
 
 	return refreshWorldProgress({
-		...productionGame,
+		...postDayGame,
 		day: nextDay,
 		rngState: rng.getState(),
 		cash: cashAfter,
 		scorecard,
-		stores: storeResults.map((result) => result.store),
 		warehouse: importResult.warehouse,
 		hiringCandidates,
 		staff: staffWithXp,
@@ -212,9 +257,31 @@ export function simulateDay(
 				decisions: preservedDecisions,
 				stores: storeResults.map((result) => result.store)
 			})
-		],
-		reports: [...productionGame.reports, report]
+		]
 	});
+}
+
+function getNextLoanPaymentSnapshot(
+	game: Pick<GameState, 'finance'>
+): DailyReport['nextLoanPayment'] {
+	return (
+		game.finance.loans
+			.filter(
+				(loan) =>
+					(loan.status === 'active' || loan.status === 'delinquent') && loan.nextPaymentDay !== null
+			)
+			.sort(
+				(left, right) =>
+					left.nextPaymentDay! - right.nextPaymentDay! ||
+					left.openedOnDay - right.openedOnDay ||
+					left.id.localeCompare(right.id)
+			)
+			.map((loan) => ({
+				loanId: loan.id,
+				day: loan.nextPaymentDay!,
+				amount: estimateNextLoanPayment(loan)
+			}))[0] ?? null
+	);
 }
 
 function buildStoreOperationProfile(

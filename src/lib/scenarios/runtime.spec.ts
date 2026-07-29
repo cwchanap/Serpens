@@ -798,7 +798,7 @@ function replayLaunchCalibration(
 describe('launch scenario calibration contracts', { timeout: 30_000 }, () => {
 	it.each([
 		['first-profit', [], 'completed', 4, 682],
-		['import-squeeze', [], 'completed', 18, 656],
+		['import-squeeze', [], 'completed', 18, 645],
 		['local-lifeline', [], 'failed', 21, 500]
 	] as const)(
 		'%s no-action trace ends %s on day %i with the calibrated score %i',

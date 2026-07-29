@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'vitest';
+import { ARCHETYPES } from './archetypes';
 import { generateDecisions } from './events';
+import { appendFinanceTransaction, getTotalDebt } from './finance';
 import { generateCity } from './city';
 import { buildIndustrialBuilding } from './industryPlacement';
 import { decisionContextLocationGeneric } from './decisionContext';
@@ -58,6 +60,264 @@ describe('daily simulation', () => {
 		expect(first.reports[0]?.netIncome).toBe(second.reports[0]?.netIncome);
 		expect(first.rngState).toBe(second.rngState);
 		expect(first.staff).toEqual(second.staff);
+	});
+
+	test('reconciles the founding loan day-8 tick and resets finance activity for day 9', () => {
+		expect.assertions(14);
+		let beforeClosingDay = createNewGame('grocery', 277_008);
+
+		for (let day = 1; day < 8; day += 1) {
+			beforeClosingDay = simulateDay(beforeClosingDay);
+		}
+
+		const result = simulateDay(beforeClosingDay);
+		const report = result.reports.at(-1)!;
+
+		expect(report.day).toBe(8);
+		expect(result.day).toBe(9);
+		expect(report.cashBefore).toBe(
+			beforeClosingDay.cash - beforeClosingDay.finance.currentDayActivity.financingCashFlow
+		);
+		expect(report.operatingIncome).toBe(report.grossMargin - report.operatingCosts);
+		expect(report.netIncome).toBe(report.operatingCashFlow);
+		expect(report.interestAccrued).toBeGreaterThan(0);
+		expect(report.interestAccrued % 1).not.toBe(0);
+		expect(report.principalRepaid).toBeGreaterThan(0);
+		expect(report.interestPaid).toBeGreaterThanOrEqual(0);
+		expect(report.financingCashFlow).toBe(
+			report.principalBorrowed - report.principalRepaid - report.interestPaid
+		);
+		expect(report.cashAfter).toBe(
+			report.cashBefore + report.operatingCashFlow + report.financingCashFlow
+		);
+		expect(report.outstandingPrincipalAfter).toBe(getTotalDebt(result));
+		expect(report.nextLoanPayment).toMatchObject({ loanId: 'loan-1', day: 15 });
+		expect(result.finance.currentDayActivity).toEqual({
+			day: 9,
+			principalBorrowed: 0,
+			principalRepaid: 0,
+			interestPaid: 0,
+			interestCapitalized: 0,
+			refinancedPrincipal: 0,
+			financingCashFlow: 0
+		});
+	});
+
+	test('reports same-day manual financing activity before resetting it for the next day', () => {
+		expect.assertions(6);
+		const base = createNewGame('boutique', 277_009);
+		const finance = appendFinanceTransaction(base.finance, {
+			day: base.day,
+			kind: 'disbursement',
+			loanId: 'manual-credit',
+			cashDelta: 500,
+			principalAmount: 500,
+			principalDelta: 500,
+			interestAmount: 0
+		});
+		const result = simulateDay({ ...base, cash: base.cash + 500, finance });
+		const report = result.reports.at(-1)!;
+
+		expect(report.principalBorrowed).toBe(500);
+		expect(report.financingCashFlow).toBe(500);
+		expect(report.cashBefore).toBe(base.cash);
+		expect(report.cashAfter).toBe(
+			report.cashBefore + report.operatingCashFlow + report.financingCashFlow
+		);
+		expect(result.finance.transactions.at(-1)).toMatchObject({ day: 1, kind: 'disbursement' });
+		expect(result.finance.currentDayActivity.day).toBe(2);
+	});
+
+	test('keeps imports, payroll, and scheduled finance service in one reconciled closing day', () => {
+		expect.assertions(7);
+		const base = createNewGame('convenience', 277_210);
+		const loan = base.finance.loans[0]!;
+		const game = {
+			...base,
+			day: 210,
+			finance: {
+				...base.finance,
+				loans: [{ ...loan, nextPaymentDay: 210, lastInterestAccrualDay: 209 }]
+			}
+		};
+		const result = simulateDay(game);
+		const report = result.reports.at(-1)!;
+
+		expect(report.importSpend).toBeGreaterThan(0);
+		expect(report.payrollCost).toBeGreaterThan(0);
+		expect(report.principalRepaid).toBeGreaterThan(0);
+		expect(report.interestAccrued).toBeGreaterThan(0);
+		expect(report.cashAfter).toBe(
+			report.cashBefore + report.operatingCashFlow + report.financingCashFlow
+		);
+		expect(result.finance.transactions.every((transaction) => transaction.day === 210)).toBe(true);
+		expect(result.finance.currentDayActivity.day).toBe(211);
+	});
+
+	test('keeps a deterministic 28-day finance snapshot for every archetype', () => {
+		expect.assertions(ARCHETYPES.length * 2);
+		const expectedSnapshots: Record<
+			string,
+			Array<{
+				day: number;
+				cashBefore: number;
+				cashAfter: number;
+				reserveWarning: boolean;
+				cashPressureDecision: boolean;
+				missedPaymentCount: number;
+				arrears: number;
+			}>
+		> = {
+			convenience: [
+				{
+					day: 8,
+					cashBefore: 30_643,
+					cashAfter: 29_967,
+					reserveWarning: false,
+					cashPressureDecision: false,
+					missedPaymentCount: 0,
+					arrears: 0
+				},
+				{
+					day: 15,
+					cashBefore: 28_674,
+					cashAfter: 27_981,
+					reserveWarning: false,
+					cashPressureDecision: false,
+					missedPaymentCount: 0,
+					arrears: 0
+				},
+				{
+					day: 22,
+					cashBefore: 26_706,
+					cashAfter: 26_024,
+					reserveWarning: false,
+					cashPressureDecision: false,
+					missedPaymentCount: 0,
+					arrears: 0
+				}
+			],
+			boutique: [
+				{
+					day: 8,
+					cashBefore: 37_507,
+					cashAfter: 39_321,
+					reserveWarning: false,
+					cashPressureDecision: false,
+					missedPaymentCount: 0,
+					arrears: 0
+				},
+				{
+					day: 15,
+					cashBefore: 37_261,
+					cashAfter: 38_999,
+					reserveWarning: false,
+					cashPressureDecision: false,
+					missedPaymentCount: 0,
+					arrears: 0
+				},
+				{
+					day: 22,
+					cashBefore: 37_015,
+					cashAfter: 38_641,
+					reserveWarning: false,
+					cashPressureDecision: false,
+					missedPaymentCount: 0,
+					arrears: 0
+				}
+			],
+			electronics: [
+				{
+					day: 8,
+					cashBefore: 44_835,
+					cashAfter: 46_789,
+					reserveWarning: false,
+					cashPressureDecision: false,
+					missedPaymentCount: 0,
+					arrears: 0
+				},
+				{
+					day: 15,
+					cashBefore: 43_603,
+					cashAfter: 45_463,
+					reserveWarning: false,
+					cashPressureDecision: false,
+					missedPaymentCount: 0,
+					arrears: 0
+				},
+				{
+					day: 22,
+					cashBefore: 42_373,
+					cashAfter: 44_091,
+					reserveWarning: false,
+					cashPressureDecision: false,
+					missedPaymentCount: 0,
+					arrears: 0
+				}
+			],
+			grocery: [
+				{
+					day: 8,
+					cashBefore: 40_350,
+					cashAfter: 39_186,
+					reserveWarning: false,
+					cashPressureDecision: false,
+					missedPaymentCount: 0,
+					arrears: 0
+				},
+				{
+					day: 15,
+					cashBefore: 37_582,
+					cashAfter: 36_417,
+					reserveWarning: false,
+					cashPressureDecision: false,
+					missedPaymentCount: 0,
+					arrears: 0
+				},
+				{
+					day: 22,
+					cashBefore: 34_817,
+					cashAfter: 33_642,
+					reserveWarning: false,
+					cashPressureDecision: false,
+					missedPaymentCount: 0,
+					arrears: 0
+				}
+			]
+		};
+
+		for (const archetype of ARCHETYPES) {
+			let game = createNewGame(archetype.id, 277_280);
+			const scheduledDays: Array<{
+				day: number;
+				cashBefore: number;
+				cashAfter: number;
+				reserveWarning: boolean;
+				cashPressureDecision: boolean;
+				missedPaymentCount: number;
+				arrears: number;
+			}> = [];
+
+			for (let day = 1; day <= 28; day += 1) {
+				game = simulateDay(game);
+				const report = game.reports.at(-1)!;
+				if (report.principalRepaid > 0 || report.interestPaid > 0) {
+					const loan = game.finance.loans[0]!;
+					scheduledDays.push({
+						day: report.day,
+						cashBefore: report.cashBefore,
+						cashAfter: report.cashAfter,
+						reserveWarning: report.warnings.some((warning) => warning.code === 'cashReservesLow'),
+						cashPressureDecision: game.decisions.some((decision) => decision.id.includes('cash')),
+						missedPaymentCount: loan.missedPaymentCount,
+						arrears: loan.overdueInterest + loan.overduePrincipal
+					});
+				}
+			}
+
+			expect(scheduledDays).toEqual(expectedSnapshots[archetype.id]);
+			expect(game.reports).toHaveLength(28);
+		}
 	});
 
 	test('assigned staff accrue xp each day while unassigned staff do not', () => {
