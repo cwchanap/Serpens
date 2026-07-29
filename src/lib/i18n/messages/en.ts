@@ -228,7 +228,10 @@ export const en = {
 	decisionQueue: {
 		title: 'Decision Queue',
 		empty: 'No urgent decisions today.',
-		expiresDay: 'Expires day {day}'
+		expiresDay: 'Expires day {day}',
+		creditUnavailableDelinquent: 'Borrowing is unavailable while an obligation is delinquent.',
+		creditUnavailableService: 'Current debt-service capacity cannot cover this loan.',
+		creditUnavailableCapacity: 'Current credit capacity cannot cover this loan.'
 	},
 	policyPanel: {
 		title: 'Policies'

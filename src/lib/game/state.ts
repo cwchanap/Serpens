@@ -40,7 +40,12 @@ import {
 } from './staffing';
 import { calculateStockHealth, createStoreProduct, initializeStoreProducts } from './stock';
 import { STARTER_STORE_CAP, createInitialWorldProgress, refreshWorldProgress } from './world';
-import { createFoundingFinanceState } from './finance';
+import {
+	assessCredit,
+	borrow,
+	createFoundingFinanceState,
+	type CreditAssessmentReason
+} from './finance';
 import type {
 	ArchetypeId,
 	City,
@@ -247,6 +252,36 @@ export function getExpansionSetupCost(tile: CityTile, archetypeId: ArchetypeId):
 	);
 }
 
+export type DecisionOptionAvailability =
+	| { available: true }
+	| {
+			available: false;
+			code: 'insufficientCredit';
+			reasons: CreditAssessmentReason[];
+			context: Record<string, string | number>;
+	  };
+
+export function getDecisionOptionAvailability(
+	game: GameState,
+	option: DecisionOption
+): DecisionOptionAvailability {
+	const finance = option.effects.finance;
+	if (!finance) return { available: true };
+
+	const assessment = assessCredit(game, finance.termDays);
+	if (finance.amount <= assessment.availableCredit) return { available: true };
+
+	return {
+		available: false,
+		code: 'insufficientCredit',
+		reasons: assessment.reasons,
+		context: {
+			amount: finance.amount,
+			availableCredit: assessment.availableCredit
+		}
+	};
+}
+
 export function resolveDecision(game: GameState, decisionId: string, optionId: string): GameState {
 	const decision = game.decisions.find((candidate) => candidate.id === decisionId);
 	const option = decision?.options.find((candidate) => candidate.id === optionId);
@@ -255,6 +290,16 @@ export function resolveDecision(game: GameState, decisionId: string, optionId: s
 		return game;
 	}
 
+	const financeEffect = option.effects.finance;
+	const financedGame = financeEffect
+		? (() => {
+				if (!getDecisionOptionAvailability(game, option).available) return null;
+				const borrowing = borrow(game, financeEffect);
+				return borrowing.ok ? borrowing.game : null;
+			})()
+		: game;
+	if (!financedGame) return game;
+
 	// Wrapping the result in refreshWorldProgress is intentional (commit a6b9e40,
 	// "fix: enforce strict game state invariants"): decision effects can change
 	// store/warehouse state, so the post-transition state must be re-normalized to
@@ -262,11 +307,11 @@ export function resolveDecision(game: GameState, decisionId: string, optionId: s
 	// revert this to a plain spread return — scenario post-command evaluation
 	// depends on the resulting state being invariant-valid.
 	return refreshWorldProgress({
-		...game,
-		cash: game.cash + (option.effects.cash ?? 0),
-		scorecard: applyScoreEffects(game.scorecard, option),
-		stores: game.stores.map((store) => applyStoreEffects(store, option)),
-		decisions: game.decisions.filter((candidate) => candidate.id !== decisionId)
+		...financedGame,
+		cash: financedGame.cash + (financeEffect ? 0 : (option.effects.cash ?? 0)),
+		scorecard: applyScoreEffects(financedGame.scorecard, option),
+		stores: financedGame.stores.map((store) => applyStoreEffects(store, option)),
+		decisions: financedGame.decisions.filter((candidate) => candidate.id !== decisionId)
 	});
 }
 

@@ -6,6 +6,7 @@ import { isTileInStoreFootprint } from './storeFootprint';
 import { calculateStockHealth, createStoreProduct } from './stock';
 import {
 	createNewGame,
+	getDecisionOptionAvailability,
 	getExpansionSetupCost,
 	openStore,
 	resolveDecision,
@@ -297,6 +298,137 @@ describe('game state', () => {
 		expect(resolved.cash).toBe(game.cash + 500);
 		expect(resolved.decisions).toHaveLength(0);
 		expect(resolved.scorecard.customerSatisfaction).toBe(game.scorecard.customerSatisfaction - 1);
+	});
+
+	test('funds an eligible decision through the finance ledger before applying its remaining effects', () => {
+		expect.assertions(7);
+		const base = createNewGame('grocery', 55);
+		const game = {
+			...base,
+			cash: 40_000,
+			finance: { ...base.finance, loans: [] },
+			decisions: [
+				{
+					id: 'supplier-credit',
+					title: 'Supplier credit',
+					context: decisionContextLocationGeneric(),
+					expiresOnDay: 3,
+					options: [
+						{
+							id: 'accept',
+							label: 'Accept',
+							description: 'Borrow against the supplier terms.',
+							effects: {
+								cash: 999,
+								profit: -2,
+								finance: {
+									kind: 'borrow' as const,
+									purpose: 'supplierCredit' as const,
+									amount: 4_000,
+									termDays: 28 as const
+								}
+							}
+						}
+					]
+				}
+			]
+		};
+
+		const resolved = resolveDecision(game, 'supplier-credit', 'accept');
+
+		expect(resolved.cash).toBe(game.cash + 4_000);
+		expect(resolved.scorecard.profit).toBe(game.scorecard.profit - 2);
+		expect(resolved.decisions).toHaveLength(0);
+		expect(resolved.finance.loans.at(-1)).toMatchObject({
+			purpose: 'supplierCredit',
+			originalPrincipal: 4_000,
+			termDays: 28
+		});
+		expect(resolved.finance.transactions.at(-1)).toMatchObject({
+			kind: 'disbursement',
+			cashDelta: 4_000,
+			principalAmount: 4_000
+		});
+		expect(resolved.finance.currentDayActivity.principalBorrowed).toBe(4_000);
+		expect(resolved.finance.currentDayActivity.financingCashFlow).toBe(4_000);
+	});
+
+	test('rechecks persisted decision financing live and keeps the original queued decision on failure', () => {
+		expect.assertions(6);
+		const base = createNewGame('grocery', 55);
+		const option = {
+			id: 'accept',
+			label: 'Accept',
+			description: 'Borrow against the supplier terms.',
+			effects: {
+				cash: 999,
+				customerSatisfaction: -10,
+				finance: {
+					kind: 'borrow' as const,
+					purpose: 'supplierCredit' as const,
+					amount: 8_000,
+					termDays: 28 as const
+				}
+			}
+		};
+		const decision = {
+			id: 'supplier-credit',
+			title: 'Supplier credit',
+			context: decisionContextLocationGeneric(),
+			expiresOnDay: 3,
+			options: [option]
+		};
+		const generatedAt = { ...base, cash: 40_000, finance: { ...base.finance, loans: [] } };
+		const constrained = {
+			...generatedAt,
+			cash: -1_000,
+			scorecard: { profit: 0, customerSatisfaction: 0, staffMorale: 0, marketPosition: 0 },
+			decisions: [decision]
+		};
+
+		expect(getDecisionOptionAvailability(generatedAt, option).available).toBe(true);
+		const availability = getDecisionOptionAvailability(constrained, option);
+		expect(availability).toMatchObject({ available: false, code: 'insufficientCredit' });
+		expect(availability.available ? [] : availability.reasons).not.toHaveLength(0);
+		const resolved = resolveDecision(constrained, decision.id, option.id);
+		expect(resolved).toBe(constrained);
+		expect(resolved.decisions).toBe(constrained.decisions);
+		expect(resolved.scorecard.customerSatisfaction).toBe(
+			constrained.scorecard.customerSatisfaction
+		);
+	});
+
+	test('reports a delinquent obligation as a structured decision-finance availability failure', () => {
+		expect.assertions(4);
+		const base = createNewGame('grocery', 55);
+		const option = {
+			id: 'accept',
+			label: 'Accept',
+			description: 'Borrow.',
+			effects: {
+				finance: {
+					kind: 'borrow' as const,
+					purpose: 'emergency' as const,
+					amount: 4_000,
+					termDays: 56 as const
+				}
+			}
+		};
+		const game = {
+			...base,
+			cash: 40_000,
+			finance: {
+				...base.finance,
+				loans: [{ ...base.finance.loans[0]!, status: 'delinquent' as const }]
+			}
+		};
+
+		const availability = getDecisionOptionAvailability(game, option);
+
+		expect(availability).toMatchObject({ available: false, code: 'insufficientCredit' });
+		expect(availability.available ? [] : availability.reasons).toContain('delinquentObligation');
+		expect(availability.available ? {} : availability.context.amount).toBe(4_000);
+		expect(availability.available ? {} : availability.context.availableCredit).toBe(0);
 	});
 
 	test('resolveDecision normalizes world progress on the same command via refreshWorldProgress', () => {

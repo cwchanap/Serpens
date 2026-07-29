@@ -230,7 +230,10 @@ export const ja = {
 	decisionQueue: {
 		title: '意思決定キュー',
 		empty: '本日の緊急判断はありません。',
-		expiresDay: '{day}日目で期限切れ'
+		expiresDay: '{day}日目で期限切れ',
+		creditUnavailableDelinquent: '延滞中の債務があるため、借入は利用できません。',
+		creditUnavailableService: '現在の債務返済余力では、この借入を賄えません。',
+		creditUnavailableCapacity: '現在の与信枠では、この借入を賄えません。'
 	},
 	policyPanel: {
 		title: 'ポリシー'
