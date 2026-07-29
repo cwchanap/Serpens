@@ -411,6 +411,7 @@ export const en = {
 			decisions: 'Toggle Decisions',
 			reports: 'Toggle Reports',
 			productChains: 'Toggle Product Chains',
+			finance: 'Toggle Finance',
 			advanceDay: 'Advance day',
 			escape: 'Open menu, or close / cancel',
 			cheatSheet: 'Toggle this cheat sheet'
@@ -496,6 +497,55 @@ export const en = {
 			manualSlotNotFound: 'Manual save slot not found',
 			loadedManualSlot: 'Loaded {name}',
 			deletedManualSlot: 'Deleted save slot'
+		}
+	},
+	financePanel: {
+		title: 'Finance',
+		metrics: {
+			outstandingPrincipal: 'Outstanding principal',
+			amountDue: 'Amount due',
+			nextPayment: 'Next payment',
+			debtServiceCoverage: 'Debt-service coverage',
+			cashRunway: 'Cash runway',
+			availableCredit: '84-day available credit',
+			noDebtServiceDue: 'No debt service due'
+		},
+		credit: {
+			baseApr: 'Base APR',
+			adjustments: 'APR adjustments',
+			reasons: {
+				delinquentObligation: 'Delinquent obligation',
+				principalCapacityLimited: 'Principal capacity limited',
+				debtServiceCapacityLimited: 'Debt-service capacity limited'
+			}
+		},
+		failures: {
+			loanNotFound: 'Loan not found',
+			loanClosed: 'Loan is closed',
+			loanDelinquent: 'Loan is delinquent',
+			invalidAmount: 'Enter a whole-dollar amount',
+			belowMinimumBorrowing: 'Amount is below the minimum borrowing',
+			insufficientCash: 'Insufficient cash',
+			overpayment: 'Amount exceeds the payoff quote',
+			unsupportedTerm: 'Unsupported loan term',
+			insufficientCredit: 'Insufficient credit',
+			purchaseUnavailable: 'Purchase is unavailable',
+			purchaseCostChanged: 'Purchase cost changed'
+		},
+		decisionAvailability: { available: 'Available', unavailable: 'Financing unavailable' },
+		financedPurchase: { financeOpening: 'Finance opening', review: 'Review financing' },
+		transactions: {
+			disbursement: 'Loan disbursement',
+			principalPayment: 'Principal payment',
+			interestPayment: 'Interest payment',
+			missedPayment: 'Missed payment',
+			refinance: 'Refinance'
+		},
+		activity: {
+			principalBorrowed: 'Principal borrowed',
+			principalRepaid: 'Principal repaid',
+			interestPaid: 'Interest paid',
+			financingCashFlow: 'Financing cash flow'
 		}
 	},
 	game: {
@@ -737,8 +787,24 @@ export const en = {
 			stores: 'Stores',
 			decisions: 'Decisions',
 			reports: 'Reports',
-			productChains: 'Product Chains'
-		}
+			productChains: 'Product Chains',
+			finance: 'Finance'
+		},
+		loanPurposes: {
+			founding: 'Founding loan',
+			workingCapital: 'Working capital',
+			emergency: 'Emergency funding',
+			supplierCredit: 'Supplier credit',
+			expansion: 'Expansion',
+			refinance: 'Refinance'
+		},
+		loanStatuses: {
+			active: 'Active',
+			delinquent: 'Delinquent',
+			paid: 'Paid',
+			refinanced: 'Refinanced'
+		},
+		loanTerms: { 28: '28 days', 56: '56 days', 84: '84 days' }
 	},
 	copy: {
 		stockStatus: {
@@ -759,7 +825,11 @@ export const en = {
 		alerts: {
 			storeStock: '{storeName}: {summary}',
 			decision: 'Decision: {title}',
-			factoryBlocked: '{buildingName} starved of inputs'
+			factoryBlocked: '{buildingName} starved of inputs',
+			upcomingLoanPayment: '{purpose} payment of {amount} is due on day {day}.',
+			missedLoanPayment: '{purpose} has a missed payment of {amount}.',
+			covenantRisk: 'Debt-service coverage is {coverage}, below 1.25.',
+			lowCashRunway: 'Cash runway is {days} days.'
 		},
 		reportWarnings: {
 			stockPressure: '{storeName} has stock pressure',

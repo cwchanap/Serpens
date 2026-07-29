@@ -6,12 +6,13 @@ import ShortcutCheatSheet from './ShortcutCheatSheet.svelte';
 
 describe('ShortcutCheatSheet', () => {
 	it('lists shortcuts and closes', async () => {
-		expect.assertions(4);
+		expect.assertions(5);
 		const onClose = vi.fn();
 		render(ShortcutCheatSheet, { i18n: createI18n('en'), onClose });
 		await expect.element(page.getByRole('dialog', { name: /keyboard shortcuts/i })).toBeVisible();
 		await expect.element(page.getByText(/toggle build menu/i)).toBeVisible();
 		await expect.element(page.getByText(/toggle dashboard/i)).toBeVisible();
+		await expect.element(page.getByText(/toggle finance/i)).toBeVisible();
 		await page
 			.getByRole('button', { name: /close shortcuts/i })
 			.first()

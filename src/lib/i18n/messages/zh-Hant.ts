@@ -413,6 +413,7 @@ export const zhHant = {
 			decisions: '切換決策',
 			reports: '切換報表',
 			productChains: '切換商品鏈',
+			finance: '切換財務',
 			advanceDay: '推進一天',
 			escape: '開啟選單，或關閉 / 取消',
 			cheatSheet: '切換此快捷鍵表'
@@ -498,6 +499,55 @@ export const zhHant = {
 			manualSlotNotFound: '找不到手動存檔槽',
 			loadedManualSlot: '已載入 {name}',
 			deletedManualSlot: '已刪除存檔槽'
+		}
+	},
+	financePanel: {
+		title: '財務',
+		metrics: {
+			outstandingPrincipal: '未償還本金',
+			amountDue: '應付總額',
+			nextPayment: '下次付款',
+			debtServiceCoverage: '債務償付覆蓋率',
+			cashRunway: '現金續航',
+			availableCredit: '84 天可用信用額度',
+			noDebtServiceDue: '沒有到期債務服務'
+		},
+		credit: {
+			baseApr: '基本年利率',
+			adjustments: '年利率調整',
+			reasons: {
+				delinquentObligation: '有逾期債務',
+				principalCapacityLimited: '本金額度受限',
+				debtServiceCapacityLimited: '償債能力受限'
+			}
+		},
+		failures: {
+			loanNotFound: '找不到貸款',
+			loanClosed: '貸款已結清',
+			loanDelinquent: '貸款已逾期',
+			invalidAmount: '請輸入整數金額',
+			belowMinimumBorrowing: '金額低於最低借款額',
+			insufficientCash: '現金不足',
+			overpayment: '金額超過清償報價',
+			unsupportedTerm: '不支援的貸款期限',
+			insufficientCredit: '信用額度不足',
+			purchaseUnavailable: '無法購買',
+			purchaseCostChanged: '購買成本已變更'
+		},
+		decisionAvailability: { available: '可用', unavailable: '無法取得融資' },
+		financedPurchase: { financeOpening: '融資開設', review: '檢視融資' },
+		transactions: {
+			disbursement: '貸款撥款',
+			principalPayment: '本金付款',
+			interestPayment: '利息付款',
+			missedPayment: '逾期付款',
+			refinance: '再融資'
+		},
+		activity: {
+			principalBorrowed: '借入本金',
+			principalRepaid: '償還本金',
+			interestPaid: '已付利息',
+			financingCashFlow: '融資現金流'
 		}
 	},
 	game: {
@@ -734,8 +784,19 @@ export const zhHant = {
 			stores: '商店',
 			decisions: '決策',
 			reports: '報表',
-			productChains: '產品鏈'
-		}
+			productChains: '產品鏈',
+			finance: '財務'
+		},
+		loanPurposes: {
+			founding: '創業貸款',
+			workingCapital: '營運資金',
+			emergency: '緊急資金',
+			supplierCredit: '供應商信用',
+			expansion: '擴張',
+			refinance: '再融資'
+		},
+		loanStatuses: { active: '有效', delinquent: '逾期', paid: '已結清', refinanced: '已再融資' },
+		loanTerms: { 28: '28 天', 56: '56 天', 84: '84 天' }
 	},
 	copy: {
 		stockStatus: {
@@ -756,7 +817,11 @@ export const zhHant = {
 		alerts: {
 			storeStock: '{storeName}: {summary}',
 			decision: '決策: {title}',
-			factoryBlocked: '{buildingName} 缺少投入原料'
+			factoryBlocked: '{buildingName} 缺少投入原料',
+			upcomingLoanPayment: '{purpose}的 {amount} 付款將於第 {day} 天到期。',
+			missedLoanPayment: '{purpose}有 {amount} 的逾期付款。',
+			covenantRisk: '債務償付覆蓋率為 {coverage}，低於 1.25。',
+			lowCashRunway: '現金續航只剩 {days} 天。'
 		},
 		reportWarnings: {
 			stockPressure: '{storeName} 有庫存壓力',

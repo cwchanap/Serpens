@@ -5,6 +5,7 @@ import {
 	resolveSupportedLocale,
 	saveLocalePreference
 } from './locales';
+import { createI18n } from './index';
 
 function storageMock(initial: Record<string, string> = {}) {
 	const data = new Map(Object.entries(initial));
@@ -17,6 +18,32 @@ function storageMock(initial: Record<string, string> = {}) {
 }
 
 describe('locale resolution', () => {
+	it('provides every finance localization surface in every supported locale', () => {
+		const keys = [
+			'game.managementPanels.finance',
+			'game.loanPurposes.founding',
+			'game.loanStatuses.delinquent',
+			'game.loanTerms.84',
+			'financePanel.metrics.outstandingPrincipal',
+			'financePanel.metrics.noDebtServiceDue',
+			'financePanel.credit.baseApr',
+			'financePanel.credit.reasons.debtServiceCapacityLimited',
+			'financePanel.failures.insufficientCredit',
+			'financePanel.decisionAvailability.unavailable',
+			'copy.alerts.upcomingLoanPayment',
+			'financePanel.financedPurchase.financeOpening',
+			'financePanel.transactions.disbursement',
+			'financePanel.activity.principalBorrowed',
+			'shortcutCheatSheet.actions.finance'
+		];
+
+		for (const locale of ['en', 'ja', 'zh-Hant'] as const) {
+			const i18n = createI18n(locale);
+			for (const key of keys) {
+				expect(i18n.t(key as never)).not.toBe(key);
+			}
+		}
+	});
 	it('prefers a valid stored preference over browser language', () => {
 		expect.assertions(1);
 		expect(

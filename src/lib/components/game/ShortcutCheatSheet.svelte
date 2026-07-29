@@ -13,6 +13,7 @@
 		| 'decisions'
 		| 'reports'
 		| 'productChains'
+		| 'finance'
 		| 'advanceDay'
 		| 'escape'
 		| 'cheatSheet';
@@ -34,6 +35,7 @@
 		{ keys: 'C', actionKey: 'decisions' },
 		{ keys: 'R', actionKey: 'reports' },
 		{ keys: 'G', actionKey: 'productChains' },
+		{ keys: 'F', actionKey: 'finance' },
 		{ keys: 'Space', actionKey: 'advanceDay' },
 		{ keys: 'Esc', actionKey: 'escape' },
 		{ keys: '?', actionKey: 'cheatSheet' }

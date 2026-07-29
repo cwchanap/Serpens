@@ -7,7 +7,8 @@ export type ManagementPanelId =
 	| 'stores'
 	| 'decisions'
 	| 'reports'
-	| 'productChains';
+	| 'productChains'
+	| 'finance';
 
 export type ShortcutAction =
 	| { type: 'toggle-build' }
@@ -44,7 +45,8 @@ export const MANAGEMENT_PANEL_SHORTCUTS: Record<string, ManagementPanelId> = {
 	t: 'stores',
 	c: 'decisions',
 	r: 'reports',
-	g: 'productChains'
+	g: 'productChains',
+	f: 'finance'
 };
 
 /** Panel id → the uppercase key that toggles it, for surfacing the hotkey in the UI. */

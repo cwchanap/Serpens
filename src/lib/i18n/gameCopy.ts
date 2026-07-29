@@ -1,4 +1,6 @@
 import { INDUSTRIAL_BUILDING_TYPES } from '$lib/game/industry';
+import { estimateNextLoanPayment } from '$lib/game/finance';
+import { getFinanceMetrics } from '$lib/game/financeMetrics';
 import type { PlacementBlockReason } from '$lib/game/placementPreview';
 import type {
 	BottleneckInfo,
@@ -557,6 +559,41 @@ export function localizeAlert(alert: GameAlert, game: GameState, i18n: I18nBundl
 			return i18n.t('copy.alerts.factoryBlocked', {
 				buildingName: i18n.labels.industrialBuilding(building.typeId)
 			});
+		}
+	}
+
+	if (alert.kind === 'upcomingLoanPayment' && alert.loanId) {
+		const loan = game.finance.loans.find((candidate) => candidate.id === alert.loanId);
+		if (loan && loan.nextPaymentDay !== null) {
+			return i18n.t('copy.alerts.upcomingLoanPayment', {
+				purpose: i18n.labels.loanPurpose(loan.purpose),
+				amount: i18n.format.currency(estimateNextLoanPayment(loan)),
+				day: loan.nextPaymentDay
+			});
+		}
+	}
+
+	if (alert.kind === 'missedLoanPayment' && alert.loanId) {
+		const loan = game.finance.loans.find((candidate) => candidate.id === alert.loanId);
+		if (loan) {
+			return i18n.t('copy.alerts.missedLoanPayment', {
+				purpose: i18n.labels.loanPurpose(loan.purpose),
+				amount: i18n.format.currency(loan.overdueInterest + loan.overduePrincipal)
+			});
+		}
+	}
+
+	if (alert.kind === 'covenantRisk') {
+		const coverage = getFinanceMetrics(game).debtServiceCoverage;
+		if (coverage !== null) {
+			return i18n.t('copy.alerts.covenantRisk', { coverage: coverage.toFixed(2) });
+		}
+	}
+
+	if (alert.kind === 'lowCashRunway') {
+		const runway = getFinanceMetrics(game).cashRunway;
+		if (runway.kind === 'days') {
+			return i18n.t('copy.alerts.lowCashRunway', { days: runway.days });
 		}
 	}
 
