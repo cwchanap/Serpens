@@ -72,7 +72,6 @@ function collectFinanceAlerts(game: GameState): GameAlert[] {
 		.filter(
 			(loan) =>
 				isOpenLoan(loan) &&
-				!hasArrears(loan) &&
 				loan.nextPaymentDay !== null &&
 				loan.nextPaymentDay >= game.day &&
 				loan.nextPaymentDay <= game.day + 3
