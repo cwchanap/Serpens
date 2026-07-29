@@ -3,6 +3,7 @@
 	import { focusTrap } from '$lib/a11y/focusTrap';
 	import BuildMenu from '$lib/components/game/BuildMenu.svelte';
 	import DecisionQueue from '$lib/components/game/DecisionQueue.svelte';
+	import FinancePanel from '$lib/components/game/FinancePanel.svelte';
 	import AudioSettings from '$lib/components/game/AudioSettings.svelte';
 	import CityMap from '$lib/components/game/CityMap.svelte';
 	import ControlDesk from '$lib/components/game/ControlDesk.svelte';
@@ -104,6 +105,7 @@
 	import type { SupportedLocale } from '$lib/i18n/locales';
 	import { summarizeReports } from '$lib/game/reports';
 	import { createEmptyFinanceState } from '$lib/game/finance';
+	import { getFinanceMetrics } from '$lib/game/financeMetrics';
 	import { DEFAULT_POLICY } from '$lib/game/state';
 	import { buildSupplyAdvisor, getAvailableMaterialIds } from '$lib/game/supplyAdvisor';
 	import type { AdvisorChain } from '$lib/game/supplyAdvisor';
@@ -125,6 +127,7 @@
 		CompanyPolicy,
 		GameState,
 		IndustrialBuildingTypeId,
+		LoanTermDays,
 		MaterialId,
 		StoreProductPatch
 	} from '$lib/game/types';
@@ -536,6 +539,9 @@
 		const currentGame: GameState | null = game;
 		return currentGame ? summarizeReports(currentGame.reports) : summarizeReports([]);
 	});
+	let financeMetrics = $derived(
+		game ? getFinanceMetrics(game) : getFinanceMetrics(starterMapState)
+	);
 	let activeCity = $derived.by(() => {
 		const currentGame: GameState | null = game;
 		return currentGame?.cities.find((city) => city.id === currentGame.activeCityId) ?? starterCity;
@@ -1756,6 +1762,35 @@
 		}
 	}
 
+	function borrowWorkingCapital(
+		amount: number,
+		termDays: LoanTermDays
+	): Promise<GameRouteCommitResult> {
+		if (!game || !mutationAvailability.borrow) return Promise.resolve({ status: 'unavailable' });
+		return gameRouteController.borrowWorkingCapital(amount, termDays);
+	}
+
+	function repayFinanceLoan(loanId: string, amount: number): Promise<GameRouteCommitResult> {
+		if (!game || !mutationAvailability.repayLoan) return Promise.resolve({ status: 'unavailable' });
+		return gameRouteController.repayFinanceLoan(loanId, amount);
+	}
+
+	function payOffFinanceLoan(loanId: string): Promise<GameRouteCommitResult> {
+		if (!game || !mutationAvailability.payOffLoan)
+			return Promise.resolve({ status: 'unavailable' });
+		return gameRouteController.payOffFinanceLoan(loanId);
+	}
+
+	function refinanceFinanceLoan(
+		loanId: string,
+		termDays: LoanTermDays
+	): Promise<GameRouteCommitResult> {
+		if (!game || !mutationAvailability.refinanceLoan) {
+			return Promise.resolve({ status: 'unavailable' });
+		}
+		return gameRouteController.refinanceFinanceLoan(loanId, termDays);
+	}
+
 	function hireStaff(candidateId: string) {
 		if (game && mutationAvailability.hireStaff) {
 			void gameRouteController.hireStaff(candidateId);
@@ -2506,6 +2541,18 @@
 						<ReportsPanel {i18n} {summary} stores={panelGame.stores} />
 					{:else if activeManagementPanel.id === 'productChains'}
 						<ProductChainsPanel {i18n} game={panelGame} />
+					{:else if activeManagementPanel.id === 'finance'}
+						<FinancePanel
+							game={panelGame}
+							metrics={financeMetrics}
+							{i18n}
+							focusedLoanId={focusedFinanceLoanId}
+							mutationPending={scenarioCommandPending}
+							onBorrow={borrowWorkingCapital}
+							onRepay={repayFinanceLoan}
+							onPayoff={payOffFinanceLoan}
+							onRefinance={refinanceFinanceLoan}
+						/>
 					{/if}
 				</div>
 			</div>

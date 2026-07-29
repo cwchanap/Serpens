@@ -1,0 +1,136 @@
+import { page } from 'vitest/browser';
+import { describe, expect, it, vi } from 'vitest';
+import { render } from 'vitest-browser-svelte';
+import { borrow } from '$lib/game/finance';
+import { getFinanceMetrics } from '$lib/game/financeMetrics';
+import { createI18n, type I18nBundle } from '$lib/i18n';
+import { createNewGame } from '$lib/game/state';
+import type { GameState, LoanTermDays } from '$lib/game/types';
+import type { GameRouteCommitResult } from '../../../routes/gameRouteController';
+import FinancePanel from './FinancePanel.svelte';
+
+function creditworthyGame(): GameState {
+	const game = createNewGame('grocery', 44);
+	return {
+		...game,
+		cash: 50_000
+	};
+}
+
+function gameWithLoan(): GameState {
+	const result = borrow(creditworthyGame(), {
+		purpose: 'workingCapital',
+		amount: 2_000,
+		termDays: 56
+	});
+	if (!result.ok) throw new Error('expected fixture loan');
+	return result.game;
+}
+
+function renderPanel(
+	overrides: Partial<{
+		game: GameState;
+		i18n: I18nBundle;
+		mutationPending: boolean;
+		focusedLoanId: string | null;
+		onBorrow: (amount: number, term: LoanTermDays) => Promise<GameRouteCommitResult>;
+		onRepay: (id: string, amount: number) => Promise<GameRouteCommitResult>;
+		onPayoff: (id: string) => Promise<GameRouteCommitResult>;
+		onRefinance: (id: string, term: LoanTermDays) => Promise<GameRouteCommitResult>;
+	}> = {}
+) {
+	const game = overrides.game ?? gameWithLoan();
+	const props = {
+		game,
+		metrics: getFinanceMetrics(game),
+		i18n: createI18n('en'),
+		mutationPending: false,
+		onBorrow: vi.fn().mockResolvedValue({ status: 'sandbox-committed', changed: true }),
+		onRepay: vi.fn().mockResolvedValue({ status: 'sandbox-committed', changed: true }),
+		onPayoff: vi.fn().mockResolvedValue({ status: 'sandbox-committed', changed: true }),
+		onRefinance: vi.fn().mockResolvedValue({ status: 'sandbox-committed', changed: true }),
+		...overrides
+	};
+	render(FinancePanel, props);
+	return props;
+}
+
+describe('FinancePanel', () => {
+	it('renders distinct overview, credit, loan register, and activity labels', async () => {
+		expect.assertions(10);
+		renderPanel();
+		for (const label of [
+			'Outstanding principal',
+			'Amount due',
+			'Next payment',
+			'Debt-service coverage',
+			'Cash runway',
+			'84-day available credit',
+			'Operating cash flow',
+			'Principal headroom',
+			'Service headroom',
+			'Loan disbursement'
+		]) {
+			await expect.element(page.getByText(label, { exact: true })).toBeVisible();
+		}
+	});
+
+	it('validates a whole-dollar borrow before showing an explicit review', async () => {
+		expect.assertions(3);
+		const props = renderPanel();
+		await page.getByLabelText('Borrow amount').fill('12.50');
+		await page.getByRole('button', { name: 'Review borrowing' }).click();
+		await expect.element(page.getByRole('status')).toHaveTextContent('Enter a whole-dollar amount');
+		expect(props.onBorrow).not.toHaveBeenCalled();
+		await page.getByLabelText('Borrow amount').fill('1200');
+		await page.getByRole('button', { name: 'Review borrowing' }).click();
+		await expect.element(page.getByRole('heading', { name: 'Review borrowing' })).toBeVisible();
+	});
+
+	it('does not borrow until confirmation and restores focus after cancelling review', async () => {
+		expect.assertions(3);
+		const props = renderPanel();
+		await page.getByLabelText('Borrow amount').fill('1200');
+		await page.getByRole('button', { name: 'Review borrowing' }).click();
+		expect(props.onBorrow).not.toHaveBeenCalled();
+		await page.getByRole('button', { name: 'Cancel review' }).click();
+		await expect.element(page.getByLabelText('Borrow amount')).toHaveFocus();
+		expect(props.onBorrow).not.toHaveBeenCalled();
+	});
+
+	it('confirms borrowing with the selected term only after review', async () => {
+		expect.assertions(2);
+		const props = renderPanel();
+		await page.getByLabelText('Borrow amount').fill('1200');
+		await page.getByRole('button', { name: '56 days', exact: true }).click();
+		await page.getByRole('button', { name: 'Review borrowing' }).click();
+		await page.getByRole('button', { name: 'Confirm borrowing' }).click();
+		expect(props.onBorrow).toHaveBeenCalledWith(1200, 56);
+		await expect.element(page.getByRole('status')).toBeVisible();
+	});
+
+	it('keeps paid/refinanced history visible without mutation controls', async () => {
+		expect.assertions(2);
+		const active = gameWithLoan();
+		const closed = {
+			...active,
+			finance: {
+				...active.finance,
+				loans: active.finance.loans.map((loan) => ({ ...loan, status: 'paid' as const }))
+			}
+		};
+		renderPanel({ game: closed });
+		await expect.element(page.getByRole('button', { name: /Repay/ })).not.toBeInTheDocument();
+		await expect.element(page.getByRole('heading', { name: /Paid/ }).nth(0)).toBeVisible();
+	});
+
+	it('disables all mutation controls while pending', async () => {
+		expect.assertions(3);
+		renderPanel({ mutationPending: true });
+		await expect.element(page.getByRole('button', { name: 'Review borrowing' })).toBeDisabled();
+		await expect
+			.element(page.getByRole('button', { name: /Review repayment/ }).nth(0))
+			.toBeDisabled();
+		await expect.element(page.getByRole('button', { name: /Review payoff/ }).nth(0)).toBeDisabled();
+	});
+});
