@@ -167,7 +167,9 @@
 		beginFinancePurchaseConfirmation,
 		createFinancePurchaseReviewState,
 		dismissFinancePurchaseReview,
+		isFinanceReviewEscapeOwned,
 		openFinancePurchaseReview,
+		resolveExpansionPurchasePaymentPath,
 		settleFinancePurchaseConfirmation,
 		type PendingFinancedPurchase,
 		shouldRefreshFinancedPurchase
@@ -1929,7 +1931,7 @@
 	}
 
 	function placeRetailAtTile(archetypeId: ArchetypeId, tileId: string): void {
-		if (!mutationAvailability.openStore || !allowedRetailArchetypeIds.includes(archetypeId)) return;
+		if (!canStartRetailExpansion || !allowedRetailArchetypeIds.includes(archetypeId)) return;
 		// Don't early-return on tiles outside the preview's validTileIds: let
 		// the block-reason helper run so a click on a road/river/occupied tile
 		// surfaces the specific reason instead of a silent no-op.
@@ -1950,6 +1952,7 @@
 		}
 
 		if (!game) {
+			if (!mutationAvailability.openStore) return;
 			const tile = getTileById(activeCity, tileId);
 
 			if (!tile) {
@@ -1972,12 +1975,13 @@
 				return;
 			}
 			const expectedCost = forecastOpening(tile, archetypeId).setupCost;
-			if (game.cash < expectedCost) {
-				if (!mutationAvailability.financeRetailStore) {
-					placementFeedback = { code: 'retail.requiresCash', amount: expectedCost };
-					playSfx('sfx.build.invalid');
-					return;
-				}
+			const paymentPath = resolveExpansionPurchasePaymentPath({
+				cashCommandAvailable: mutationAvailability.openStore,
+				financeCommandAvailable: mutationAvailability.financeRetailStore,
+				cash: game.cash,
+				expectedCost
+			});
+			if (paymentPath === 'finance') {
 				const offer = getExpansionFinanceOffer(game, expectedCost);
 				if (!offer) {
 					placementFeedback = { code: 'retail.requiresCash', amount: expectedCost };
@@ -1991,6 +1995,11 @@
 				selectedWorldCityId = null;
 				return;
 			}
+			if (paymentPath === 'requiresCash') {
+				placementFeedback = { code: 'retail.requiresCash', amount: expectedCost };
+				playSfx('sfx.build.invalid');
+				return;
+			}
 			void gameRouteController.openStore(tileId, archetypeId);
 		}
 
@@ -2001,10 +2010,7 @@
 	}
 
 	function placeIndustryAtTile(buildingTypeId: IndustrialBuildingTypeId, tileId: string): void {
-		if (
-			!mutationAvailability.buildIndustrialBuilding ||
-			!allowedIndustryBuildingTypeIds.includes(buildingTypeId)
-		)
+		if (!canStartIndustryExpansion || !allowedIndustryBuildingTypeIds.includes(buildingTypeId))
 			return;
 		// Don't early-return on tiles outside the preview's validTileIds: let
 		// the block-reason helper run so a click on a wrong-resource/occupied
@@ -2036,12 +2042,13 @@
 			playSfx('sfx.build.invalid');
 			return;
 		}
-		if (game.cash < expectedCost) {
-			if (!mutationAvailability.financeIndustrialBuilding) {
-				placementFeedback = { code: 'industry.requiresCash', buildingTypeId, amount: expectedCost };
-				playSfx('sfx.build.invalid');
-				return;
-			}
+		const paymentPath = resolveExpansionPurchasePaymentPath({
+			cashCommandAvailable: mutationAvailability.buildIndustrialBuilding,
+			financeCommandAvailable: mutationAvailability.financeIndustrialBuilding,
+			cash: game.cash,
+			expectedCost
+		});
+		if (paymentPath === 'finance') {
 			const offer = getExpansionFinanceOffer(game, expectedCost);
 			if (!offer) {
 				placementFeedback = { code: 'industry.requiresCash', buildingTypeId, amount: expectedCost };
@@ -2053,6 +2060,11 @@
 			selectedIndustryTileId = tileId;
 			selectedTileId = null;
 			selectedWorldCityId = null;
+			return;
+		}
+		if (paymentPath === 'requiresCash') {
+			placementFeedback = { code: 'industry.requiresCash', buildingTypeId, amount: expectedCost };
+			playSfx('sfx.build.invalid');
 			return;
 		}
 
@@ -2256,6 +2268,7 @@
 		}
 
 		if (event.key === 'Escape') {
+			if (isFinanceReviewEscapeOwned(financePurchaseReview)) return;
 			if (isSavePanelOpen) {
 				isSavePanelOpen = false;
 				return;

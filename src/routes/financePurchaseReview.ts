@@ -48,6 +48,28 @@ export interface FinancePurchaseReviewRequest {
 	command: FinancePurchaseCommand;
 }
 
+export interface ExpansionPurchasePaymentPathInput {
+	cashCommandAvailable: boolean;
+	financeCommandAvailable: boolean;
+	cash: number;
+	expectedCost: number;
+}
+
+/**
+ * Keeps entry capability and payment capability distinct. A finance-only
+ * scenario may inspect a selected tile and review a genuine shortfall, but it
+ * cannot spend cash through a command it was not granted.
+ */
+export function resolveExpansionPurchasePaymentPath(
+	input: ExpansionPurchasePaymentPathInput
+): 'cash' | 'finance' | 'requiresCash' {
+	if (input.cash >= input.expectedCost) {
+		return input.cashCommandAvailable ? 'cash' : 'requiresCash';
+	}
+
+	return input.financeCommandAvailable ? 'finance' : 'requiresCash';
+}
+
 export type FinancePurchaseReviewCompletion =
 	| { kind: 'committed' }
 	| {
@@ -59,6 +81,11 @@ export type FinancePurchaseReviewCompletion =
 
 export function createFinancePurchaseReviewState(): FinancePurchaseReviewState {
 	return { purchase: null, feedback: null, confirmationPending: false, generation: 0 };
+}
+
+/** The route must leave Escape to the review dialog while it is mounted. */
+export function isFinanceReviewEscapeOwned(state: FinancePurchaseReviewState): boolean {
+	return state.purchase !== null;
 }
 
 export function openFinancePurchaseReview(
