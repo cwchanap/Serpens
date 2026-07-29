@@ -13,6 +13,7 @@ import {
 import { createIndustryTileLookup } from './industryFootprint';
 import {
 	buildIndustrialBuilding,
+	financeIndustrialBuilding,
 	createIndustrialPlacementContext,
 	getAllowedIndustrialBuildingTypes,
 	getIndustrialPlacementBlockReason,
@@ -25,6 +26,41 @@ import { createNewGame } from './state';
 import type { IndustrialBuildingTypeId, IndustryCity, IndustryTile } from './types';
 
 describe('industrial placement', () => {
+	test('finances a valid building by borrowing only the exact shortfall', () => {
+		const base = createNewGame('convenience', 20260512);
+		const tile = getIndustryTilesByResource(base.industryCities[0]!, 'grain-field')[0]!;
+		const game = { ...base, cash: 375 };
+
+		const result = financeIndustrialBuilding(game, {
+			tileId: tile.id,
+			buildingTypeId: 'grain-farm',
+			expectedCost: 600
+		});
+
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		expect(result.game.cash).toBe(0);
+		expect(result.game.finance.loans.at(-1)).toMatchObject({
+			purpose: 'expansion',
+			originalPrincipal: 225
+		});
+		expect(result.game.industrialBuildings).toHaveLength(1);
+	});
+
+	test('rejects a stale industrial target without borrowing or changing state', () => {
+		const game = { ...createNewGame('convenience', 20260512), cash: 0 };
+
+		const result = financeIndustrialBuilding(game, {
+			tileId: 'missing-tile',
+			buildingTypeId: 'grain-farm',
+			expectedCost: 600
+		});
+
+		expect(result).toMatchObject({ ok: false, code: 'purchaseUnavailable' });
+		expect(game.industrialBuildings).toHaveLength(0);
+		expect(game.finance.loans).toHaveLength(1);
+		expect(game.finance.transactions).toHaveLength(0);
+	});
 	test('allows raw buildings only on matching resource tiles', () => {
 		expect.assertions(3);
 		const game = createNewGame('convenience', 20260512);

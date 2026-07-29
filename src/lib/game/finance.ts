@@ -75,6 +75,73 @@ export interface CreditAssessment {
 	reasons: CreditAssessmentReason[];
 }
 
+export interface ExpansionFinanceOffer {
+	principal: number;
+	termDays: 84;
+	annualInterestRateBps: number;
+	estimatedPeakPayment: number;
+}
+
+export interface FinancedPurchaseReceipt {
+	loanId: string;
+	purchaseCost: number;
+	financedPrincipal: number;
+}
+
+export function financeExpansionPurchase(
+	game: GameState,
+	input: {
+		expectedCost: number;
+		resolveLiveCost: (candidate: GameState) => number | null;
+		cashOnlyPurchase: (candidate: GameState) => GameState;
+		postcondition: (candidate: GameState) => boolean;
+	}
+): FinanceActionResult<FinancedPurchaseReceipt> {
+	const purchaseCost = input.resolveLiveCost(game);
+	if (purchaseCost === null || !Number.isSafeInteger(purchaseCost) || purchaseCost < 0) {
+		return failure('purchaseUnavailable');
+	}
+	if (input.expectedCost !== purchaseCost) {
+		return failure('purchaseCostChanged', {
+			expectedCost: input.expectedCost,
+			purchaseCost
+		});
+	}
+
+	const shortfall = purchaseCost - game.cash;
+	if (shortfall <= 0) {
+		const purchased = input.cashOnlyPurchase(game);
+		return input.postcondition(purchased)
+			? {
+					ok: true,
+					game: purchased,
+					receipt: { loanId: '', purchaseCost, financedPrincipal: 0 }
+				}
+			: failure('purchaseUnavailable');
+	}
+
+	const borrowed = borrow(game, {
+		purpose: 'expansion',
+		amount: shortfall,
+		termDays: FOUNDING_LOAN_TERM_DAYS,
+		allowBelowMinimum: true
+	});
+	if (!borrowed.ok) return borrowed;
+
+	const purchased = input.cashOnlyPurchase(borrowed.game);
+	if (!input.postcondition(purchased)) return failure('purchaseUnavailable');
+
+	return {
+		ok: true,
+		game: purchased,
+		receipt: {
+			loanId: borrowed.receipt.loanId,
+			purchaseCost,
+			financedPrincipal: shortfall
+		}
+	};
+}
+
 export interface FinanceServicingResult {
 	finance: FinanceState;
 	cash: number;
@@ -825,6 +892,28 @@ export function assessCredit(
 			termDays
 		}),
 		reasons
+	};
+}
+
+export function getExpansionFinanceOffer(
+	game: GameState,
+	purchaseCost: number
+): ExpansionFinanceOffer | null {
+	const principal = purchaseCost - game.cash;
+	if (!Number.isSafeInteger(purchaseCost) || principal <= 0) return null;
+
+	const assessment = assessCredit(game, FOUNDING_LOAN_TERM_DAYS);
+	if (principal > assessment.availableCredit) return null;
+
+	return {
+		principal,
+		termDays: FOUNDING_LOAN_TERM_DAYS,
+		annualInterestRateBps: assessment.annualInterestRateBps,
+		estimatedPeakPayment: projectLoanSchedule({
+			principal,
+			annualInterestRateBps: assessment.annualInterestRateBps,
+			termDays: FOUNDING_LOAN_TERM_DAYS
+		}).peakPayment
 	};
 }
 

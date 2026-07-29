@@ -299,8 +299,8 @@ describe('retail placement preview', () => {
 		]);
 	});
 
-	test('uses the cheapest cash blocker when build menu options only fail affordability', () => {
-		expect.assertions(2);
+	test('keeps cash-short retail menu options selectable when the minimum setup cost has credit', () => {
+		expect.assertions(3);
 		const city = generateCity({
 			id: 'harbor-city',
 			name: 'Harbor City',
@@ -323,14 +323,15 @@ describe('retail placement preview', () => {
 		);
 
 		const electronicsOption = getRetailBuildMenuOptions({
-			game: { ...game, cash: 0 },
+			game: { ...game, cash: cheapestElectronicsSetupCost - 100 },
 			city
 		}).find((option) => option.archetypeId === 'electronics')!;
 
-		expect(electronicsOption.validTileCount).toBe(0);
-		expect(electronicsOption.disabledReason).toEqual({
-			code: 'retail.requiresCash',
-			amount: cheapestElectronicsSetupCost
+		expect(electronicsOption.validTileCount).toBe(availableTiles.length);
+		expect(electronicsOption.disabledReason).toBeNull();
+		expect(electronicsOption.financeOffer).toMatchObject({
+			principal: 100,
+			termDays: 84
 		});
 	});
 
@@ -510,7 +511,19 @@ describe('industry placement preview', () => {
 		});
 		expect(
 			getIndustryBuildPlacementBlockReason({
-				game: { ...game, cash: 0 },
+				game: {
+					...game,
+					cash: 0,
+					finance: {
+						...game.finance,
+						loans: game.finance.loans.map((loan) => ({
+							...loan,
+							status: 'delinquent',
+							overduePrincipal: 1,
+							arrearsSinceDay: game.day
+						}))
+					}
+				},
 				tileId: industrialTile.id,
 				buildingTypeId: 'warehouse'
 			})

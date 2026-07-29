@@ -11,14 +11,16 @@ const retailOptions: RetailBuildMenuOption[] = [
 		setupCostRange: { min: 1100, max: 1500 },
 		projectedDailyRevenueRange: { min: 700, max: 980 },
 		validTileCount: 24,
-		disabledReason: null
+		disabledReason: null,
+		financeOffer: null
 	},
 	{
 		archetypeId: 'boutique',
 		setupCostRange: { min: 1200, max: 1900 },
 		projectedDailyRevenueRange: { min: 420, max: 880 },
 		validTileCount: 18,
-		disabledReason: null
+		disabledReason: null,
+		financeOffer: null
 	}
 ];
 

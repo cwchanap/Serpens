@@ -13,6 +13,7 @@ import {
 	getRetailCityDemandMultiplier,
 	getWorldCityDefinition,
 	getWorldCityStatus,
+	financeWorldCityOpening,
 	isWorldCityId,
 	openWorldCity,
 	refreshWorldProgress,
@@ -108,6 +109,58 @@ describe('world city catalog', () => {
 });
 
 describe('world progression and city opening', () => {
+	test('finances a revealed city by borrowing only its exact shortfall', () => {
+		const base = createNewGame('convenience', 20260530);
+		const game: GameState = {
+			...base,
+			cash: 17_750,
+			world: {
+				...base.world,
+				revealedCityIds: [...base.world.revealedCityIds, 'campus-junction']
+			}
+		};
+
+		const result = financeWorldCityOpening(game, {
+			cityId: 'campus-junction',
+			expectedCost: 18_000
+		});
+
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		expect(result.game.cash).toBe(0);
+		expect(result.game.finance.loans.at(-1)).toMatchObject({
+			purpose: 'expansion',
+			originalPrincipal: 250
+		});
+		expect(
+			result.game.finance.transactions.filter((transaction) => transaction.kind === 'disbursement')
+		).toHaveLength(1);
+		expect(result.game.finance.currentDayActivity.principalBorrowed).toBe(250);
+		expect(result.game.world.openedCityIds).toContain('campus-junction');
+	});
+
+	test('uses the existing cash-only city opening without creating a loan', () => {
+		const base = createNewGame('convenience', 20260530);
+		const game: GameState = {
+			...base,
+			cash: 18_000,
+			world: {
+				...base.world,
+				revealedCityIds: [...base.world.revealedCityIds, 'campus-junction']
+			}
+		};
+
+		const result = financeWorldCityOpening(game, {
+			cityId: 'campus-junction',
+			expectedCost: 18_000
+		});
+
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		expect(result.game.finance).toBe(game.finance);
+		expect(result.game.cash).toBe(0);
+		expect(result.game.world.openedCityIds).toContain('campus-junction');
+	});
 	test('reveals the second retail city after the company reaches two stores', () => {
 		expect.assertions(1);
 		const game = gameStub({
