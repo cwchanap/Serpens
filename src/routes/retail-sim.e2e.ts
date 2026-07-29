@@ -1653,9 +1653,8 @@ test('player builds convenience production and refills from warehouse', async ({
 		(total, shipment) => total + shipment.quantity,
 		0
 	);
-	await expect(reports.getByText('Rail shipments', { exact: true }).locator('..')).toContainText(
-		String(railShipmentUnits)
-	);
+	const railShipmentsMetric = reports.getByText('Rail shipments', { exact: true }).locator('..');
+	await expect(railShipmentsMetric.locator('strong')).toHaveText(String(railShipmentUnits));
 	await reports.getByRole('button', { name: /close reports/i }).click();
 	await expect(reports).toHaveCount(0);
 	const storesPanel = await openManagementPanel(page, /stores/i);
@@ -2344,6 +2343,42 @@ test('store card Open Details stays reachable above the control desk on a narrow
 	await expect(inspector).toBeVisible();
 
 	const modal = await openStoreDetail(page);
+	await expect(modal.getByRole('tab', { name: /stock/i })).toBeVisible();
+});
+
+test('store card Open Details clears the three-row control desk just above compact mode', async ({
+	page
+}) => {
+	// At 981–1023px the desktop management launchers remain visible and wrap the
+	// Control Desk to three rows. The inspector must reserve that taller footprint
+	// until the <=980px compact bottom-sheet rule takes over.
+	await page.setViewportSize({ width: 1000, height: 800 });
+	await page.goto('/');
+
+	await buildRetailStoreAt(page, {
+		x: 1,
+		y: 6,
+		storeTypeName: /build convenience store/i,
+		expectedStoreCount: 1
+	});
+
+	await clickMapTile(page, 1, 6);
+	const inspector = page.getByRole('dialog', { name: /tile details/i });
+	await expect(inspector).toBeVisible();
+
+	const openDetails = inspector.getByRole('button', { name: /open details/i });
+	await openDetails.scrollIntoViewIfNeeded();
+	const [openDetailsBox, controlDeskBox] = await Promise.all([
+		openDetails.boundingBox(),
+		page.getByLabel('Control desk').boundingBox()
+	]);
+	if (!openDetailsBox || !controlDeskBox) {
+		throw new Error('Open Details or control desk has no bounding box');
+	}
+	expect(openDetailsBox.y + openDetailsBox.height).toBeLessThanOrEqual(controlDeskBox.y);
+
+	await openDetails.click();
+	const modal = page.locator('[role="dialog"][aria-modal="true"]');
 	await expect(modal.getByRole('tab', { name: /stock/i })).toBeVisible();
 });
 
