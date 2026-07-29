@@ -157,6 +157,74 @@ describe('game copy builders', () => {
 		).toBe('Keep original message');
 	});
 
+	it('localizes finance alerts from current loan and metric state, with the retained message fallback', () => {
+		const game = createNewGame('convenience', 20260708);
+		const overdueGame = {
+			...game,
+			cash: -1,
+			finance: {
+				...game.finance,
+				loans: game.finance.loans.map((loan) => ({
+					...loan,
+					status: 'delinquent' as const,
+					overduePrincipal: 50,
+					arrearsSinceDay: 1
+				}))
+			}
+		};
+
+		expect(
+			localizeAlert(
+				{
+					id: 'upcomingLoanPayment:loan-1',
+					kind: 'upcomingLoanPayment',
+					message: 'stale',
+					loanId: 'loan-1'
+				},
+				game,
+				createI18n('en')
+			)
+		).toMatch(/^Founding loan payment of \$[\d,]+ is due on day 8\.$/);
+		expect(
+			localizeAlert(
+				{
+					id: 'missedLoanPayment:loan-1',
+					kind: 'missedLoanPayment',
+					message: 'stale',
+					loanId: 'loan-1'
+				},
+				overdueGame,
+				createI18n('en')
+			)
+		).toBe('Founding loan has a missed payment of $50.');
+		expect(
+			localizeAlert(
+				{ id: 'covenantRisk', kind: 'covenantRisk', message: 'stale' },
+				overdueGame,
+				createI18n('en')
+			)
+		).toBe('Debt-service coverage is 0.00, below 1.25.');
+		expect(
+			localizeAlert(
+				{ id: 'lowCashRunway', kind: 'lowCashRunway', message: 'stale' },
+				overdueGame,
+				createI18n('en')
+			)
+		).toBe('Cash runway is 0 days.');
+		expect(
+			localizeAlert(
+				{
+					id: 'missing-loan',
+					kind: 'upcomingLoanPayment',
+					message: 'Keep original message',
+					loanId: 'missing'
+				},
+				game,
+				createI18n('en')
+			)
+		).toBe('Keep original message');
+	});
+
 	it('localizes known decisions, world-city status copy, and product-chain graph labels', () => {
 		expect.assertions(9);
 		const english = createI18n('en');

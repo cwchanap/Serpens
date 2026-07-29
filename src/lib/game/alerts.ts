@@ -1,9 +1,18 @@
 import { INDUSTRIAL_BUILDING_TYPES } from './industry';
+import { estimateNextLoanPayment } from './finance';
+import { getFinanceMetrics } from './financeMetrics';
 import { storeNameOrOrdinal } from './state';
 import { summarizeStockTrouble } from './stock';
-import type { GameState } from './types';
+import type { GameState, LoanInstrument } from './types';
 
-export type GameAlertKind = 'store-stock' | 'decision' | 'factory-blocked';
+export type GameAlertKind =
+	| 'store-stock'
+	| 'decision'
+	| 'factory-blocked'
+	| 'upcomingLoanPayment'
+	| 'missedLoanPayment'
+	| 'covenantRisk'
+	| 'lowCashRunway';
 
 export interface GameAlert {
 	id: string;
@@ -14,6 +23,94 @@ export interface GameAlert {
 	buildingId?: string;
 	tileId?: string;
 	decisionId?: string;
+	loanId?: string;
+	managementPanelId?: 'finance';
+}
+
+function compareByNumberThenId(
+	left: LoanInstrument,
+	right: LoanInstrument,
+	leftValue: number | null,
+	rightValue: number | null
+): number {
+	return (
+		(leftValue ?? Number.MAX_SAFE_INTEGER) - (rightValue ?? Number.MAX_SAFE_INTEGER) ||
+		(left.id < right.id ? -1 : left.id > right.id ? 1 : 0)
+	);
+}
+
+function hasArrears(loan: LoanInstrument): boolean {
+	return loan.overdueInterest > 0 || loan.overduePrincipal > 0;
+}
+
+function isOpenLoan(loan: LoanInstrument): boolean {
+	return loan.status === 'active' || loan.status === 'delinquent';
+}
+
+function collectFinanceAlerts(game: GameState): GameAlert[] {
+	// Finance metrics are a single coherent snapshot for the entire group. They
+	// are derived here rather than persisted, just like the existing alert groups.
+	const metrics = getFinanceMetrics(game);
+	const alerts: GameAlert[] = [];
+	const missedLoans = game.finance.loans
+		.filter((loan) => isOpenLoan(loan) && hasArrears(loan))
+		.sort((left, right) =>
+			compareByNumberThenId(left, right, left.arrearsSinceDay, right.arrearsSinceDay)
+		);
+
+	for (const loan of missedLoans) {
+		alerts.push({
+			id: `missedLoanPayment:${loan.id}`,
+			kind: 'missedLoanPayment',
+			message: `Missed payment on ${loan.id}`,
+			loanId: loan.id,
+			managementPanelId: 'finance'
+		});
+	}
+
+	const upcomingLoans = game.finance.loans
+		.filter(
+			(loan) =>
+				isOpenLoan(loan) &&
+				!hasArrears(loan) &&
+				loan.nextPaymentDay !== null &&
+				loan.nextPaymentDay >= game.day &&
+				loan.nextPaymentDay <= game.day + 3
+		)
+		.sort((left, right) =>
+			compareByNumberThenId(left, right, left.nextPaymentDay, right.nextPaymentDay)
+		);
+
+	for (const loan of upcomingLoans) {
+		const amount = estimateNextLoanPayment(loan);
+		alerts.push({
+			id: `upcomingLoanPayment:${loan.id}`,
+			kind: 'upcomingLoanPayment',
+			message: `Loan payment of $${amount.toLocaleString('en-US')} due on day ${loan.nextPaymentDay}`,
+			loanId: loan.id,
+			managementPanelId: 'finance'
+		});
+	}
+
+	if (metrics.debtServiceCoverage !== null && metrics.debtServiceCoverage < 1.25) {
+		alerts.push({
+			id: 'covenantRisk',
+			kind: 'covenantRisk',
+			message: 'Debt-service coverage is below 1.25.',
+			managementPanelId: 'finance'
+		});
+	}
+
+	if (metrics.cashRunway.kind === 'days' && metrics.cashRunway.days <= 7) {
+		alerts.push({
+			id: 'lowCashRunway',
+			kind: 'lowCashRunway',
+			message: `Cash runway is ${metrics.cashRunway.days} days.`,
+			managementPanelId: 'finance'
+		});
+	}
+
+	return alerts;
 }
 
 export function collectGameAlerts(game: GameState): GameAlert[] {
@@ -61,6 +158,8 @@ export function collectGameAlerts(game: GameState): GameAlert[] {
 			tileId: building.tileId
 		});
 	}
+
+	alerts.push(...collectFinanceAlerts(game));
 
 	return alerts;
 }

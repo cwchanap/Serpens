@@ -36,7 +36,7 @@ describe('game labels', () => {
 	});
 
 	it('localizes additional game-domain label functions', () => {
-		expect.assertions(12);
+		expect.assertions(16);
 		const labels = createI18n('en').labels;
 		expect(labels.archetypeRisk('convenience', 0)).toBe('Stockouts');
 		expect(labels.tileFeature('road')).toBe('Road');
@@ -47,6 +47,10 @@ describe('game labels', () => {
 		expect(labels.scoreKey('profit')).toBe('Profit');
 		expect(labels.mapView('retail')).toBe('Retail');
 		expect(labels.managementPanel('stores')).toBe('Stores');
+		expect(labels.managementPanel('finance')).toBe('Finance');
+		expect(labels.loanPurpose('workingCapital')).toBe('Working capital');
+		expect(labels.loanStatus('delinquent')).toBe('Delinquent');
+		expect(labels.loanTerm(56)).toBe('56 days');
 		expect(labels.industrialBuilding('warehouse')).toBe('Warehouse');
 		expect(labels.industryResource('grain-field')).toBe('Grain Field');
 		expect(labels.archetype('convenience').description).toBe(

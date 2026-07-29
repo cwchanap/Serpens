@@ -35,7 +35,7 @@ describe('resolveShortcutAction', () => {
 	});
 
 	it('toggles each management panel by its mnemonic key', () => {
-		expect.assertions(7);
+		expect.assertions(8);
 		expect(resolveShortcutAction(context({ key: 'd' }))).toEqual({
 			type: 'toggle-panel',
 			panel: 'dashboard'
@@ -63,6 +63,10 @@ describe('resolveShortcutAction', () => {
 		expect(resolveShortcutAction(context({ key: 'g' }))).toEqual({
 			type: 'toggle-panel',
 			panel: 'productChains'
+		});
+		expect(resolveShortcutAction(context({ key: 'f' }))).toEqual({
+			type: 'toggle-panel',
+			panel: 'finance'
 		});
 	});
 
@@ -116,7 +120,7 @@ describe('resolveShortcutAction', () => {
 	});
 
 	it('suppresses only activation keys when a focused interactive control owns the keypress', () => {
-		expect.assertions(4);
+		expect.assertions(5);
 		// Space on a focused button must activate the button, not advance the day.
 		expect(resolveShortcutAction(context({ key: ' ', isInteractiveTarget: true }))).toBeNull();
 		// Enter is also a native activation key for buttons/links/summaries.
@@ -130,6 +134,10 @@ describe('resolveShortcutAction', () => {
 		});
 		expect(resolveShortcutAction(context({ key: 'b', isInteractiveTarget: true }))).toEqual({
 			type: 'toggle-build'
+		});
+		expect(resolveShortcutAction(context({ key: 'f', isInteractiveTarget: true }))).toEqual({
+			type: 'toggle-panel',
+			panel: 'finance'
 		});
 	});
 

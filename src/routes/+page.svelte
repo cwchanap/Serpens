@@ -216,7 +216,8 @@
 		{ id: 'stores', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.stores },
 		{ id: 'decisions', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.decisions },
 		{ id: 'reports', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.reports },
-		{ id: 'productChains', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.productChains }
+		{ id: 'productChains', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.productChains },
+		{ id: 'finance', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.finance }
 	];
 
 	const starterCity = generateCity({
@@ -333,6 +334,7 @@
 	let isBuildMenuOpen = $state(false);
 	let isSupplyAdvisorOpen = $state(false);
 	let activeManagementPanelId = $state<ManagementPanelId | null>(null);
+	let focusedFinanceLoanId = $state<string | null>(null);
 	let retailPlacementArchetypeId = $state<ArchetypeId | null>(null);
 	let industryPlacementBuildingTypeId = $state<IndustrialBuildingTypeId | null>(null);
 	let railBuildMode = $state<RailBuildMode>({ step: 'idle' });
@@ -1551,6 +1553,7 @@
 		isGameMenuOpen = false;
 		isAlertsMenuOpen = false;
 		activeManagementPanelId = null;
+		focusedFinanceLoanId = null;
 		cancelPlacement();
 	}
 
@@ -1941,6 +1944,11 @@
 	}
 
 	async function handleSelectAlert(alert: GameAlert): Promise<void> {
+		if (alert.managementPanelId === 'finance') {
+			focusedFinanceLoanId = alert.loanId ?? null;
+			openManagementPanel('finance');
+			return;
+		}
 		if (alert.kind === 'decision') {
 			openManagementPanel('decisions');
 			return;
@@ -2417,6 +2425,9 @@
 					role="dialog"
 					aria-modal="true"
 					aria-label={activeManagementPanel.label}
+					data-focused-finance-loan={activeManagementPanel.id === 'finance'
+						? (focusedFinanceLoanId ?? undefined)
+						: undefined}
 					{@attach focusTrap}
 				>
 					<div class="tower-header">

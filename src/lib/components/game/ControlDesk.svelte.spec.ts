@@ -7,7 +7,8 @@ import ControlDesk from './ControlDesk.svelte';
 
 const managementItems: { id: ManagementPanelId; label: string; shortcut: string }[] = [
 	{ id: 'dashboard', label: 'Dashboard', shortcut: 'D' },
-	{ id: 'policies', label: 'Policies', shortcut: 'P' }
+	{ id: 'policies', label: 'Policies', shortcut: 'P' },
+	{ id: 'finance', label: 'Finance', shortcut: 'F' }
 ];
 
 function baseProps() {
@@ -40,10 +41,11 @@ describe('ControlDesk', () => {
 	});
 
 	it('shows each management panel with its hotkey', async () => {
-		expect.assertions(2);
+		expect.assertions(3);
 		render(ControlDesk, baseProps());
 		await expect.element(page.getByRole('button', { name: /dashboard\s*d/i })).toBeVisible();
 		await expect.element(page.getByRole('button', { name: /policies\s*p/i })).toBeVisible();
+		await expect.element(page.getByRole('button', { name: /finance\s*f/i })).toBeVisible();
 	});
 
 	it('no longer hosts the map-view menu (moved to the top bar)', async () => {

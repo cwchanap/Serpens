@@ -8,8 +8,33 @@ import type {
 	IndustrialBuilding,
 	IndustrialBuildingTypeId,
 	DecisionItem,
-	StoreProduct
+	StoreProduct,
+	LoanInstrument
 } from './types';
+
+function loan(overrides: Partial<LoanInstrument> = {}): LoanInstrument {
+	return {
+		id: 'loan-1',
+		purpose: 'workingCapital',
+		status: 'active',
+		openedOnDay: 1,
+		originalPrincipal: 1_000,
+		remainingPrincipal: 1_000,
+		annualInterestRateBps: 0,
+		termDays: 28,
+		installmentsProcessed: 0,
+		nextPaymentDay: 8,
+		lastInterestAccrualDay: 1,
+		accruedInterestMicros: 0,
+		overdueInterest: 0,
+		overduePrincipal: 0,
+		arrearsSinceDay: null,
+		scheduledPaymentCount: 0,
+		onTimePaymentCount: 0,
+		missedPaymentCount: 0,
+		...overrides
+	};
+}
 
 function product(overrides: Partial<StoreProduct> = {}): StoreProduct {
 	return {
@@ -73,7 +98,12 @@ function baseGame(overrides: Partial<GameState> = {}): GameState {
 		cash: 1000,
 		finance: createEmptyFinanceState(5),
 		policy: {} as GameState['policy'],
-		scorecard: {} as GameState['scorecard'],
+		scorecard: {
+			profit: 50,
+			customerSatisfaction: 50,
+			staffMorale: 50,
+			marketPosition: 50
+		},
 		world: {} as GameState['world'],
 		storeCap: 5,
 		cities: [],
@@ -195,5 +225,134 @@ describe('collectGameAlerts', () => {
 		);
 		expect(alerts).toHaveLength(1);
 		expect(alerts[0].message).toBe('unknown-type starved of inputs');
+	});
+
+	it('adds finance alerts after stock, decisions, and factories with stable deep links', () => {
+		const finance = createEmptyFinanceState(5);
+		const alerts = collectGameAlerts(
+			baseGame({
+				cash: -1,
+				stores: [store({ products: [product({ stock: 0 })] })],
+				decisions: [
+					{
+						id: 'decision-1',
+						title: 'Lease renewal',
+						context: decisionContextLocationGeneric(),
+						expiresOnDay: 9,
+						options: []
+					}
+				],
+				industrialBuildings: [building({ status: 'blocked', blockedDays: 1 })],
+				finance: {
+					...finance,
+					loans: [
+						loan({
+							id: 'loan-overdue',
+							status: 'delinquent',
+							overduePrincipal: 50,
+							arrearsSinceDay: 2
+						}),
+						loan({ id: 'loan-today', nextPaymentDay: 5 }),
+						loan({ id: 'loan-soon', nextPaymentDay: 8 })
+					]
+				}
+			})
+		);
+
+		expect(alerts.map((alert) => alert.kind)).toEqual([
+			'store-stock',
+			'decision',
+			'factory-blocked',
+			'missedLoanPayment',
+			'upcomingLoanPayment',
+			'upcomingLoanPayment',
+			'covenantRisk',
+			'lowCashRunway'
+		]);
+		expect(alerts.slice(3)).toMatchObject([
+			{
+				id: 'missedLoanPayment:loan-overdue',
+				loanId: 'loan-overdue',
+				managementPanelId: 'finance'
+			},
+			{ id: 'upcomingLoanPayment:loan-today', loanId: 'loan-today', managementPanelId: 'finance' },
+			{ id: 'upcomingLoanPayment:loan-soon', loanId: 'loan-soon', managementPanelId: 'finance' },
+			{ id: 'covenantRisk', managementPanelId: 'finance' },
+			{ id: 'lowCashRunway', managementPanelId: 'finance' }
+		]);
+	});
+
+	it('includes payments due today through D+3 but not D+4, and sorts finance loans by their dates', () => {
+		const finance = createEmptyFinanceState(5);
+		const alerts = collectGameAlerts(
+			baseGame({
+				finance: {
+					...finance,
+					loans: [
+						loan({ id: 'loan-d4', nextPaymentDay: 9 }),
+						loan({ id: 'loan-d1-b', nextPaymentDay: 6 }),
+						loan({ id: 'loan-d1-a', nextPaymentDay: 6 }),
+						loan({ id: 'loan-d3', nextPaymentDay: 8 })
+					]
+				}
+			})
+		);
+
+		expect(alerts.map((alert) => alert.id)).toEqual([
+			'upcomingLoanPayment:loan-d1-a',
+			'upcomingLoanPayment:loan-d1-b',
+			'upcomingLoanPayment:loan-d3',
+			'covenantRisk'
+		]);
+	});
+
+	it('sorts missed loans by arrears day and keeps aggregate alerts free of a loan target', () => {
+		const finance = createEmptyFinanceState(5);
+		const alerts = collectGameAlerts(
+			baseGame({
+				cash: -1,
+				finance: {
+					...finance,
+					loans: [
+						loan({
+							id: 'loan-later',
+							status: 'delinquent',
+							overdueInterest: 2,
+							arrearsSinceDay: 4
+						}),
+						loan({
+							id: 'loan-earlier-b',
+							status: 'delinquent',
+							overduePrincipal: 2,
+							arrearsSinceDay: 2
+						}),
+						loan({
+							id: 'loan-earlier-a',
+							status: 'delinquent',
+							overduePrincipal: 2,
+							arrearsSinceDay: 2
+						})
+					]
+				}
+			})
+		);
+
+		expect(alerts.slice(0, 3).map((alert) => alert.id)).toEqual([
+			'missedLoanPayment:loan-earlier-a',
+			'missedLoanPayment:loan-earlier-b',
+			'missedLoanPayment:loan-later'
+		]);
+		expect(
+			alerts
+				.slice(3)
+				.map(({ kind, managementPanelId, loanId }) => ({ kind, managementPanelId, loanId }))
+		).toEqual([
+			{ kind: 'covenantRisk', managementPanelId: 'finance', loanId: undefined },
+			{ kind: 'lowCashRunway', managementPanelId: 'finance', loanId: undefined }
+		]);
+	});
+
+	it('omits covenant risk without debt service and runway risk beyond seven days', () => {
+		expect(collectGameAlerts(baseGame())).toEqual([]);
 	});
 });

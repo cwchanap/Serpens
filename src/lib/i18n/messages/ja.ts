@@ -413,6 +413,7 @@ export const ja = {
 			decisions: '意思決定を切り替え',
 			reports: 'レポートを切り替え',
 			productChains: '商品チェーンを切り替え',
+			finance: '財務を切り替え',
 			advanceDay: '日を進める',
 			escape: 'メニューを開く、または閉じる / キャンセル',
 			cheatSheet: 'このチートシートを切り替え'
@@ -498,6 +499,55 @@ export const ja = {
 			manualSlotNotFound: '手動セーブスロットが見つかりません',
 			loadedManualSlot: '{name} を読み込みました',
 			deletedManualSlot: 'セーブスロットを削除しました'
+		}
+	},
+	financePanel: {
+		title: '財務',
+		metrics: {
+			outstandingPrincipal: '未返済元本',
+			amountDue: '支払総額',
+			nextPayment: '次回支払',
+			debtServiceCoverage: '債務返済カバレッジ',
+			cashRunway: '資金余力',
+			availableCredit: '84日間の利用可能枠',
+			noDebtServiceDue: '予定されている債務返済はありません'
+		},
+		credit: {
+			baseApr: '基本APR',
+			adjustments: 'APR調整',
+			reasons: {
+				delinquentObligation: '延滞中の債務',
+				principalCapacityLimited: '元本枠の上限',
+				debtServiceCapacityLimited: '返済能力の上限'
+			}
+		},
+		failures: {
+			loanNotFound: '借入が見つかりません',
+			loanClosed: '借入は完済済みです',
+			loanDelinquent: '借入は延滞中です',
+			invalidAmount: '整数ドル額を入力してください',
+			belowMinimumBorrowing: '借入額が最低額を下回っています',
+			insufficientCash: '現金が不足しています',
+			overpayment: '金額が完済見積額を超えています',
+			unsupportedTerm: '未対応の借入期間です',
+			insufficientCredit: '利用可能な信用枠が不足しています',
+			purchaseUnavailable: '購入できません',
+			purchaseCostChanged: '購入価格が変更されました'
+		},
+		decisionAvailability: { available: '利用可能', unavailable: '資金調達を利用できません' },
+		financedPurchase: { financeOpening: '開設費を融資する', review: '融資内容を確認' },
+		transactions: {
+			disbursement: '借入実行',
+			principalPayment: '元本返済',
+			interestPayment: '利息支払',
+			missedPayment: '支払遅延',
+			refinance: '借換え'
+		},
+		activity: {
+			principalBorrowed: '借入元本',
+			principalRepaid: '返済元本',
+			interestPaid: '支払利息',
+			financingCashFlow: '財務キャッシュフロー'
 		}
 	},
 	game: {
@@ -735,8 +785,19 @@ export const ja = {
 			stores: '店舗',
 			decisions: '意思決定',
 			reports: 'レポート',
-			productChains: '製品チェーン'
-		}
+			productChains: '製品チェーン',
+			finance: '財務'
+		},
+		loanPurposes: {
+			founding: '創業ローン',
+			workingCapital: '運転資金',
+			emergency: '緊急資金',
+			supplierCredit: '仕入先信用',
+			expansion: '拡張',
+			refinance: '借換え'
+		},
+		loanStatuses: { active: '有効', delinquent: '延滞', paid: '完済', refinanced: '借換え済み' },
+		loanTerms: { 28: '28日', 56: '56日', 84: '84日' }
 	},
 	copy: {
 		stockStatus: {
@@ -757,7 +818,11 @@ export const ja = {
 		alerts: {
 			storeStock: '{storeName}: {summary}',
 			decision: '決定事項: {title}',
-			factoryBlocked: '{buildingName} は原料不足です'
+			factoryBlocked: '{buildingName} は原料不足です',
+			upcomingLoanPayment: '{purpose}の支払額 {amount} は{day}日目が期限です。',
+			missedLoanPayment: '{purpose}に未払い {amount} があります。',
+			covenantRisk: '債務返済カバレッジは {coverage} で、1.25を下回っています。',
+			lowCashRunway: '資金余力はあと{days}日です。'
 		},
 		reportWarnings: {
 			stockPressure: '{storeName} に在庫圧力があります',

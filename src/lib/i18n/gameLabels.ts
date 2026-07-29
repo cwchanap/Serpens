@@ -8,6 +8,9 @@ import type {
 	ScoreKey,
 	ServicePriority,
 	TerrainId,
+	LoanPurpose,
+	LoanStatus,
+	LoanTermDays,
 	WorldCityId
 } from '$lib/game/types';
 import type { ManagementPanelId } from '$lib/game/keyboardShortcuts';
@@ -53,6 +56,9 @@ export interface GameLabelLookup {
 	worldCity(id: WorldCityId | string): NamedLabel;
 	mapView(id: MapViewId | string): string;
 	managementPanel(id: ManagementPanelId | string): string;
+	loanPurpose(id: LoanPurpose | string): string;
+	loanStatus(id: LoanStatus | string): string;
+	loanTerm(days: LoanTermDays | number): string;
 }
 
 function readMessage(t: Translator, key: string): string | null {
@@ -127,6 +133,15 @@ export function createGameLabelLookup(t: Translator): GameLabelLookup {
 		},
 		managementPanel(id) {
 			return labelOrFallback(t, `game.managementPanels.${id}`, id);
+		},
+		loanPurpose(id) {
+			return labelOrFallback(t, `game.loanPurposes.${id}`, id);
+		},
+		loanStatus(id) {
+			return labelOrFallback(t, `game.loanStatuses.${id}`, id);
+		},
+		loanTerm(days) {
+			return labelOrFallback(t, `game.loanTerms.${days}`, `${days} days`);
 		}
 	};
 }
