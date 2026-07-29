@@ -1,7 +1,22 @@
 import type { SfxCueId } from '$lib/audio/audioCatalog';
 import { deeplyEqual } from '$lib/game/equality';
-import { buildIndustrialBuilding, upgradeBuilding } from '$lib/game/industryPlacement';
-import { createFoundingGameAtTile, openStoreAtTile } from '$lib/game/placement';
+import {
+	borrow,
+	payOffLoan,
+	refinanceLoan,
+	repayLoan,
+	type FinanceFailureCode
+} from '$lib/game/finance';
+import {
+	buildIndustrialBuilding,
+	financeIndustrialBuilding,
+	upgradeBuilding
+} from '$lib/game/industryPlacement';
+import {
+	createFoundingGameAtTile,
+	financeRetailStoreOpening,
+	openStoreAtTile
+} from '$lib/game/placement';
 import { buildRail, demolishRailSegment, upgradeRailSegment } from '$lib/game/railPlacement';
 import { simulateDay } from '$lib/game/simulateDay';
 import { assignStaffToStore, hireCandidate, promoteStaff, unassignStaff } from '$lib/game/staffing';
@@ -13,10 +28,12 @@ import type {
 	CompanyPolicy,
 	GameState,
 	IndustrialBuildingTypeId,
+	LoanTermDays,
 	WorldCityId
 } from '$lib/game/types';
 import {
 	openWorldCity as openWorldCityTransition,
+	financeWorldCityOpening,
 	selectWorldCity as selectWorldCityTransition
 } from '$lib/game/world';
 import type { SaveRepository } from '$lib/persistence/saveRepository';
@@ -94,6 +111,13 @@ export interface MutationAvailability {
 	buildRail: boolean;
 	upgradeRail: boolean;
 	demolishRail: boolean;
+	borrow: boolean;
+	repayLoan: boolean;
+	payOffLoan: boolean;
+	refinanceLoan: boolean;
+	financeWorldCity: boolean;
+	financeRetailStore: boolean;
+	financeIndustrialBuilding: boolean;
 }
 
 export function createMutationAvailability(input: {
@@ -124,7 +148,14 @@ export function createMutationAvailability(input: {
 		upgradeIndustrialBuilding: available('upgradeIndustrialBuilding'),
 		buildRail: available('buildRail'),
 		upgradeRail: available('upgradeRail'),
-		demolishRail: available('demolishRail')
+		demolishRail: available('demolishRail'),
+		borrow: available('borrow'),
+		repayLoan: available('repayLoan'),
+		payOffLoan: available('payOffLoan'),
+		refinanceLoan: available('refinanceLoan'),
+		financeWorldCity: available('financeWorldCity'),
+		financeRetailStore: available('financeRetailStore'),
+		financeIndustrialBuilding: available('financeIndustrialBuilding')
 	};
 }
 
@@ -133,6 +164,11 @@ export type GameRouteCommitResult =
 	| { status: 'committed' }
 	| { status: 'busy' }
 	| { status: 'rejected' }
+	| {
+			status: 'domain-rejected';
+			code: FinanceFailureCode;
+			context: Record<string, string | number>;
+	  }
 	| { status: 'unchanged' }
 	| {
 			status: 'confirmation-required';
@@ -159,11 +195,22 @@ export interface GameRouteControllerOptions {
 	onReadOnlySelection?(kind: 'retail' | 'industry', tileId: string): void;
 }
 
+type RouteTransitionResult<TReceipt = undefined> =
+	| { ok: true; game: GameState; receipt: TReceipt }
+	| { ok: false; code: FinanceFailureCode; context: Record<string, string | number> };
+
 interface RouteGameMutation {
-	transition(currentGame: GameState | null): GameState;
+	transition(currentGame: GameState | null): GameState | RouteTransitionResult<unknown>;
 	scenarioCommand?: ScenarioCommand;
 	cueId?: SfxCueId;
 	allowMissingSandboxGame?: boolean;
+}
+
+function normalizeRouteTransition(
+	result: GameState | RouteTransitionResult<unknown>
+): RouteTransitionResult<unknown> {
+	if ('ok' in result) return result;
+	return { ok: true, game: result, receipt: undefined };
 }
 
 interface FoundStoreInput {
@@ -1145,6 +1192,67 @@ export class GameRouteController {
 		});
 	}
 
+	borrowWorkingCapital(amount: number, termDays: LoanTermDays): Promise<GameRouteCommitResult> {
+		return this.commitMutation({
+			transition: (game) => borrow(game!, { purpose: 'workingCapital', amount, termDays }),
+			scenarioCommand: { kind: 'borrow', amount, termDays }
+		});
+	}
+
+	repayFinanceLoan(loanId: string, amount: number): Promise<GameRouteCommitResult> {
+		return this.commitMutation({
+			transition: (game) => repayLoan(game!, { loanId, amount }),
+			scenarioCommand: { kind: 'repayLoan', loanId, amount }
+		});
+	}
+
+	payOffFinanceLoan(loanId: string): Promise<GameRouteCommitResult> {
+		return this.commitMutation({
+			transition: (game) => payOffLoan(game!, loanId),
+			scenarioCommand: { kind: 'payOffLoan', loanId }
+		});
+	}
+
+	refinanceFinanceLoan(loanId: string, termDays: LoanTermDays): Promise<GameRouteCommitResult> {
+		return this.commitMutation({
+			transition: (game) => refinanceLoan(game!, { loanId, termDays }),
+			scenarioCommand: { kind: 'refinanceLoan', loanId, termDays }
+		});
+	}
+
+	financeWorldCity(cityId: WorldCityId, expectedCost: number): Promise<GameRouteCommitResult> {
+		return this.commitMutation({
+			transition: (game) => financeWorldCityOpening(game!, { cityId, expectedCost }),
+			scenarioCommand: { kind: 'financeWorldCity', cityId, expectedCost },
+			cueId: 'sfx.world.city-unlock'
+		});
+	}
+
+	financeRetailStore(
+		tileId: string,
+		archetypeId: ArchetypeId,
+		expectedCost: number
+	): Promise<GameRouteCommitResult> {
+		return this.commitMutation({
+			transition: (game) => financeRetailStoreOpening(game!, { tileId, archetypeId, expectedCost }),
+			scenarioCommand: { kind: 'financeRetailStore', tileId, archetypeId, expectedCost },
+			cueId: 'sfx.build.retail-place'
+		});
+	}
+
+	financeIndustrialBuilding(
+		tileId: string,
+		buildingTypeId: IndustrialBuildingTypeId,
+		expectedCost: number
+	): Promise<GameRouteCommitResult> {
+		return this.commitMutation({
+			transition: (game) =>
+				financeIndustrialBuilding(game!, { tileId, buildingTypeId, expectedCost }),
+			scenarioCommand: { kind: 'financeIndustrialBuilding', tileId, buildingTypeId, expectedCost },
+			cueId: 'sfx.build.industry-place'
+		});
+	}
+
 	selectAlertCity(cityId: WorldCityId): Promise<GameRouteCommitResult> {
 		return this.selectWorldCity(cityId);
 	}
@@ -1259,9 +1367,19 @@ export class GameRouteController {
 			if (!this.currentState.sandboxGame && !request.allowMissingSandboxGame) {
 				return { status: 'unavailable' };
 			}
+			const transition = normalizeRouteTransition(
+				request.transition(this.currentState.sandboxGame)
+			);
+			if (!transition.ok) {
+				return {
+					status: 'domain-rejected',
+					code: transition.code,
+					context: transition.context
+				};
+			}
 			const result = runImmediateSandboxOperation({
 				current: this.currentState.sandboxGame,
-				transition: request.transition,
+				transition: () => transition.game,
 				publish: (sandboxGame) => this.patchState({ sandboxGame }),
 				autosave: (game) => {
 					void this.saveAuto(game);
@@ -1284,6 +1402,9 @@ export class GameRouteController {
 		if (this.currentState.scenarioCommandPending) return { status: 'busy' };
 
 		let rejectedCode: ScenarioOperationError['code'] | null = null;
+		const domainRejection: {
+			value: { code: FinanceFailureCode; context: Record<string, string | number> } | null;
+		} = { value: null };
 		let attemptedRun: ScenarioRun | null = null;
 		let preparedRun: ScenarioRun | null = null;
 		let terminalScenarioId: ScenarioId | null = null;
@@ -1324,6 +1445,7 @@ export class GameRouteController {
 						}
 						const execution = executeScenarioCommand(run, definition, scenarioCommand);
 						if (!execution.ok) {
+							if (execution.financeFailure) domainRejection.value = execution.financeFailure;
 							rejectedCode = execution.code;
 							return { status: 'rejected' as const };
 						}
@@ -1507,6 +1629,13 @@ export class GameRouteController {
 				}
 			);
 
+			if (result.status === 'rejected' && domainRejection.value) {
+				return {
+					status: 'domain-rejected',
+					code: domainRejection.value.code,
+					context: domainRejection.value.context
+				};
+			}
 			if (result.status === 'rejected' && rejectedCode) {
 				this.patchState({
 					scenarioOperationError: scenarioError(rejectedCode),

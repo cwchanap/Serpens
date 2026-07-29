@@ -66,6 +66,18 @@ function forbiddenContent(path: string): ScenarioCapabilityResult {
 	return { allowed: false, code: 'forbidden-content', path };
 }
 
+function nonEmpty(value: string): boolean {
+	return value.length > 0;
+}
+
+function wholeDollar(value: number, minimum = 0): boolean {
+	return Number.isSafeInteger(value) && value >= minimum;
+}
+
+function supportedTerm(value: number): boolean {
+	return value === 28 || value === 56 || value === 84;
+}
+
 export function isScenarioCommandAllowed(
 	definition: ScenarioDefinition,
 	run: ScenarioRun,
@@ -138,6 +150,69 @@ export function isScenarioCommandAllowed(
 			)
 				return forbiddenContent('command.buildIndustrialBuilding.tileId');
 			return { allowed: true };
+		}
+		case 'borrow':
+			return wholeDollar(command.amount, 1) && supportedTerm(command.termDays)
+				? { allowed: true }
+				: forbiddenContent('command.borrow');
+		case 'repayLoan':
+			return nonEmpty(command.loanId) && wholeDollar(command.amount, 1)
+				? { allowed: true }
+				: forbiddenContent('command.repayLoan');
+		case 'payOffLoan':
+			return nonEmpty(command.loanId)
+				? { allowed: true }
+				: forbiddenContent('command.payOffLoan.loanId');
+		case 'refinanceLoan':
+			return nonEmpty(command.loanId) && supportedTerm(command.termDays)
+				? { allowed: true }
+				: forbiddenContent('command.refinanceLoan');
+		case 'financeWorldCity':
+			return wholeDollar(command.expectedCost) &&
+				isScenarioContentAllowed(definition, { kind: 'city', cityId: command.cityId })
+				? { allowed: true }
+				: forbiddenContent('command.financeWorldCity');
+		case 'financeRetailStore': {
+			if (!wholeDollar(command.expectedCost))
+				return forbiddenContent('command.financeRetailStore.expectedCost');
+			if (
+				!isScenarioContentAllowed(definition, {
+					kind: 'archetype',
+					archetypeId: command.archetypeId
+				})
+			)
+				return forbiddenContent('command.financeRetailStore.archetypeId');
+			const cityId = run.game.activeCityId;
+			return isWorldCityId(cityId) &&
+				isScenarioContentAllowed(definition, {
+					kind: 'retail-placement',
+					cityId,
+					tileId: command.tileId,
+					archetypeId: command.archetypeId
+				})
+				? { allowed: true }
+				: forbiddenContent('command.financeRetailStore.tileId');
+		}
+		case 'financeIndustrialBuilding': {
+			if (!wholeDollar(command.expectedCost))
+				return forbiddenContent('command.financeIndustrialBuilding.expectedCost');
+			if (
+				!isScenarioContentAllowed(definition, {
+					kind: 'building',
+					buildingTypeId: command.buildingTypeId
+				})
+			)
+				return forbiddenContent('command.financeIndustrialBuilding.buildingTypeId');
+			const cityId = run.game.activeIndustryCityId;
+			return isWorldCityId(cityId) &&
+				isScenarioContentAllowed(definition, {
+					kind: 'industrial-placement',
+					cityId,
+					tileId: command.tileId,
+					buildingTypeId: command.buildingTypeId
+				})
+				? { allowed: true }
+				: forbiddenContent('command.financeIndustrialBuilding.tileId');
 		}
 		case 'upgradeRail':
 		case 'demolishRail':

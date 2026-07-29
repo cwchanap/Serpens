@@ -168,7 +168,24 @@ const commands = [
 		destinationBuildingId: 'building-2'
 	},
 	{ kind: 'upgradeRail', cityId: 'industry-city', segmentId: 'segment-1' },
-	{ kind: 'demolishRail', cityId: 'industry-city', segmentId: 'segment-1' }
+	{ kind: 'demolishRail', cityId: 'industry-city', segmentId: 'segment-1' },
+	{ kind: 'borrow', amount: 1_000, termDays: 56 },
+	{ kind: 'repayLoan', loanId: 'loan-1', amount: 100 },
+	{ kind: 'payOffLoan', loanId: 'loan-1' },
+	{ kind: 'refinanceLoan', loanId: 'loan-1', termDays: 84 },
+	{ kind: 'financeWorldCity', cityId: 'campus-junction', expectedCost: 12_000 },
+	{
+		kind: 'financeRetailStore',
+		tileId: 'harbor-1-2',
+		archetypeId: 'boutique',
+		expectedCost: 12_000
+	},
+	{
+		kind: 'financeIndustrialBuilding',
+		tileId: 'industry-1-2',
+		buildingTypeId: 'water-pump',
+		expectedCost: 12_000
+	}
 ] as const satisfies readonly ScenarioCommand[];
 
 const run = {
@@ -248,7 +265,14 @@ describe('scenario contracts', () => {
 			'upgradeIndustrialBuilding',
 			'buildRail',
 			'upgradeRail',
-			'demolishRail'
+			'demolishRail',
+			'borrow',
+			'repayLoan',
+			'payOffLoan',
+			'refinanceLoan',
+			'financeWorldCity',
+			'financeRetailStore',
+			'financeIndustrialBuilding'
 		]);
 		expect(commands.map((command) => command.kind)).toEqual(SCENARIO_COMMAND_KINDS);
 	});

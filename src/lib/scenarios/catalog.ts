@@ -339,7 +339,11 @@ const localLifeline = {
 		})),
 		overrides: {
 			cash: 12_000,
-			debt: 8_000,
+			// The local-production reference trace must be able to accept its
+			// supplier-credit decision. With the debt-service model in place,
+			// an $8k founding balance exhausts that decision's assessed credit;
+			// preserve the approved trace without changing loan terms or grace.
+			debt: 0,
 			storeCap: 1,
 			stores: [
 				{

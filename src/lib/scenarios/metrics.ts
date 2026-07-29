@@ -111,7 +111,7 @@ function sumReports(
 function averageNetIncome(reports: readonly DailyReport[], neutral: number): MetricValue {
 	if (reports.length === 0) return { actual: neutral, contributingIds: [] };
 	return {
-		actual: Math.round(sumReports(reports, (report) => report.netIncome) / reports.length),
+		actual: Math.round(sumReports(reports, (report) => report.operatingCashFlow) / reports.length),
 		contributingIds: reportIds(reports)
 	};
 }
@@ -160,7 +160,7 @@ function consecutivePositiveIncome(context: MetricContext): MetricValue {
 
 	for (let index = reports.length - 1; index >= 0; index -= 1) {
 		const report = reports[index]!;
-		if (report.netIncome <= 0) break;
+		if (report.operatingCashFlow <= 0) break;
 		contributingIds.push(reportEvidenceId(report.day));
 	}
 
@@ -185,7 +185,7 @@ export const METRIC_REGISTRY = {
 		neutral: 0,
 		isComplete: reportMetricComplete,
 		evaluate: ({ reports }) => ({
-			actual: sumReports(reports, (report) => report.netIncome),
+			actual: sumReports(reports, (report) => report.operatingCashFlow),
 			contributingIds: reportIds(reports)
 		})
 	},

@@ -1342,6 +1342,55 @@ describe('GameRouteController', () => {
 	});
 
 	describe('commitMutation sandbox paths', () => {
+		it('returns a typed finance rejection without publishing or autosaving', async () => {
+			const harness = createHarness();
+			await harness.controller.initializeSaves();
+			const game = createNewGame('convenience', 3);
+			harness.controller.loadSandboxGame(game);
+			const stateChangesBefore = harness.onStateChange.mock.calls.length;
+			const result = await harness.controller.repayFinanceLoan('missing-loan', 100);
+
+			expect(result).toEqual({
+				status: 'domain-rejected',
+				code: 'loanNotFound',
+				context: { loanId: 'missing-loan' }
+			});
+			expect(harness.controller.state.sandboxGame).toBe(game);
+			expect(harness.onStateChange.mock.calls.length).toBe(stateChangesBefore);
+			await flushMicrotasks();
+			expect(harness.onAutoSave).not.toHaveBeenCalled();
+		});
+
+		it('commits a successful finance action exactly once in sandbox mode', async () => {
+			const harness = createHarness();
+			await harness.controller.initializeSaves();
+			harness.controller.loadSandboxGame(createNewGame('convenience', 3));
+			const result = await harness.controller.borrowWorkingCapital(1_000, 56);
+
+			expect(result).toMatchObject({ status: 'sandbox-committed', changed: true });
+			expect(harness.controller.state.sandboxGame?.finance.loans).toHaveLength(2);
+			await flushMicrotasks();
+			expect(harness.onAutoSave).toHaveBeenCalledTimes(1);
+		});
+
+		it('classifies an expected-cost mismatch as a typed domain rejection', async () => {
+			const harness = createHarness();
+			const game = createNewGame('convenience', 3);
+			harness.controller.loadSandboxGame({
+				...game,
+				world: {
+					revealedCityIds: ['harbor-city', 'industry-city', 'campus-junction'],
+					openedCityIds: ['harbor-city', 'industry-city'],
+					claimedMilestoneIds: []
+				}
+			});
+
+			expect(await harness.controller.financeWorldCity('campus-junction', 0)).toEqual({
+				status: 'domain-rejected',
+				code: 'purchaseCostChanged',
+				context: { expectedCost: 0, purchaseCost: 18_000 }
+			});
+		});
 		it('returns unavailable when no sandbox game is loaded and the mutation requires one', async () => {
 			const harness = createHarness();
 			const result = await harness.controller.advanceDay();
@@ -1386,6 +1435,75 @@ describe('GameRouteController', () => {
 	});
 
 	describe('commitMutation scenario paths', () => {
+		it('maps a scenario finance domain rejection without persisting or advancing the run', async () => {
+			const base = firstProfitDefinition();
+			const definition = { ...base, allowedCommands: ['repayLoan'] as const };
+			const harness = createHarness({ resolveDefinition: () => definition });
+			await harness.controller.initializeScenarios();
+			await startScenario(harness.controller, definition);
+			const before = harness.controller.state.activeScenarioRun!;
+			const saveSpy = vi.spyOn(harness.scenarioRepository, 'saveActiveRun');
+			const result = await harness.controller.repayFinanceLoan('missing-loan', 100);
+
+			expect(result).toEqual({
+				status: 'domain-rejected',
+				code: 'loanNotFound',
+				context: { loanId: 'missing-loan' }
+			});
+			expect(harness.controller.state.activeScenarioRun).toBe(before);
+			expect(saveSpy).not.toHaveBeenCalled();
+		});
+
+		it('does not duplicate a pending scenario borrowing command', async () => {
+			const base = firstProfitDefinition();
+			const definition = { ...base, allowedCommands: ['borrow'] as const };
+			const harness = createHarness({ resolveDefinition: () => definition });
+			await harness.controller.initializeScenarios();
+			await startScenario(harness.controller, definition);
+			const saveOriginal = harness.scenarioRepository.saveActiveRun.bind(
+				harness.scenarioRepository
+			);
+			let releaseSave: (() => void) | undefined;
+			vi.spyOn(harness.scenarioRepository, 'saveActiveRun').mockImplementation(async (...args) => {
+				await new Promise<void>((resolve) => {
+					releaseSave = resolve;
+				});
+				return saveOriginal(...args);
+			});
+
+			const first = harness.controller.borrowWorkingCapital(1_000, 56);
+			await Promise.resolve();
+			await Promise.resolve();
+			expect(await harness.controller.borrowWorkingCapital(1_000, 56)).toEqual({ status: 'busy' });
+			releaseSave?.();
+			expect(await first).toEqual({ status: 'committed' });
+			expect(harness.controller.state.activeScenarioRun?.game.finance.loans).toHaveLength(2);
+		});
+
+		it('retries the exact borrowing payload after a persistence failure', async () => {
+			const base = firstProfitDefinition();
+			const definition = { ...base, allowedCommands: ['borrow'] as const };
+			const harness = createHarness({ resolveDefinition: () => definition });
+			await harness.controller.initializeScenarios();
+			await startScenario(harness.controller, definition);
+			const saveSpy = vi.spyOn(harness.scenarioRepository, 'saveActiveRun');
+			saveSpy.mockRejectedValueOnce(new Error('transient write failure'));
+
+			expect(await harness.controller.borrowWorkingCapital(1_000, 56)).toEqual({
+				status: 'failed'
+			});
+			const retry = harness.controller.state.retryScenarioOperation;
+			expect(retry).not.toBeNull();
+			await retry?.();
+
+			const loan = harness.controller.state.activeScenarioRun?.game.finance.loans.at(-1);
+			expect(loan).toMatchObject({
+				purpose: 'workingCapital',
+				originalPrincipal: 1_000,
+				termDays: 56
+			});
+			expect(saveSpy).toHaveBeenCalledTimes(2);
+		});
 		it('commits an allowed scenario command and persists the run', async () => {
 			const harness = createHarness();
 			await harness.controller.initializeScenarios();

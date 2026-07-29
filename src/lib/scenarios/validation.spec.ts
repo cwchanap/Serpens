@@ -747,7 +747,7 @@ describe('validateScenarioDefinition', () => {
 		];
 		expect(codes(definition)).toEqual(
 			expect.arrayContaining([
-				{ path: 'allowedCommands[18]', code: 'unsupported-command' },
+				{ path: 'allowedCommands[25]', code: 'unsupported-command' },
 				{ path: 'modifiers[0].multiplier', code: 'invalid-modifier' },
 				{ path: 'modifiers[0].target.ids[0]', code: 'invalid-reference' },
 				{ path: 'modifiers[1].kind', code: 'unsupported-modifier' }
