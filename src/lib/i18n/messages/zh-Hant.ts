@@ -230,7 +230,10 @@ export const zhHant = {
 	decisionQueue: {
 		title: '決策佇列',
 		empty: '今天沒有緊急決策。',
-		expiresDay: '第 {day} 天到期'
+		expiresDay: '第 {day} 天到期',
+		creditUnavailableDelinquent: '有逾期債務時無法借款。',
+		creditUnavailableService: '目前的債務償付能力無法負擔這筆貸款。',
+		creditUnavailableCapacity: '目前的信用額度無法支應這筆貸款。'
 	},
 	policyPanel: {
 		title: '政策'

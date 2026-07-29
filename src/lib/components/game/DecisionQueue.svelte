@@ -1,21 +1,35 @@
 <script lang="ts">
-	import type { DecisionItem } from '$lib/game/types';
+	import { getDecisionOptionAvailability, type DecisionOptionAvailability } from '$lib/game/state';
+	import type { DecisionItem, GameState } from '$lib/game/types';
 	import { localizeDecision } from '$lib/i18n/gameCopy';
 	import type { I18nBundle } from '$lib/i18n';
 
 	let {
 		decisions,
+		game,
 		i18n,
 		onResolve,
 		canResolve = true,
 		disabledReason = null
 	}: {
 		decisions: DecisionItem[];
+		game?: GameState;
 		i18n: I18nBundle;
 		onResolve: (decisionId: string, optionId: string) => void;
 		canResolve?: boolean;
 		disabledReason?: string | null;
 	} = $props();
+
+	function formatCreditUnavailableReason(availability: DecisionOptionAvailability): string | null {
+		if (availability.available) return null;
+		if (availability.reasons.includes('delinquentObligation')) {
+			return i18n.t('decisionQueue.creditUnavailableDelinquent');
+		}
+		if (availability.reasons.includes('debtServiceCapacityLimited')) {
+			return i18n.t('decisionQueue.creditUnavailableService');
+		}
+		return i18n.t('decisionQueue.creditUnavailableCapacity');
+	}
 </script>
 
 <section class="panel paper" aria-labelledby="decision-heading">
@@ -42,16 +56,25 @@
 
 					<div class="options">
 						{#each localizedDecision.options as option (option.id)}
+							{@const optionAvailability = game
+								? getDecisionOptionAvailability(game, option)
+								: ({ available: true } as const)}
+							{@const optionDisabled = !canResolve || !optionAvailability.available}
 							<button
 								type="button"
-								disabled={!canResolve}
+								disabled={optionDisabled}
 								onclick={() => {
-									if (canResolve) onResolve(decision.id, option.id);
+									if (!optionDisabled) onResolve(decision.id, option.id);
 								}}
 							>
 								<strong>{option.label}</strong>
 								<span>{option.description}</span>
 							</button>
+							{#if !optionAvailability.available}
+								<p class="option-disabled-copy" role="status">
+									{formatCreditUnavailableReason(optionAvailability)}
+								</p>
+							{/if}
 						{/each}
 					</div>
 				</article>
@@ -147,6 +170,10 @@
 	}
 
 	button span {
+		font-size: 0.85rem;
+	}
+
+	.option-disabled-copy {
 		font-size: 0.85rem;
 	}
 </style>

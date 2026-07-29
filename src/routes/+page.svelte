@@ -2485,6 +2485,7 @@
 					{:else if activeManagementPanel.id === 'decisions'}
 						<DecisionQueue
 							{i18n}
+							game={panelGame}
 							decisions={panelGame.decisions}
 							onResolve={chooseDecision}
 							canResolve={mutationAvailability.resolveDecision}

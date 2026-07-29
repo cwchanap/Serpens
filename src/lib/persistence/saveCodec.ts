@@ -652,6 +652,7 @@ const DECISION_EFFECT_NUMBER_FIELDS = [
 	'stockHealth',
 	'reputation'
 ] as const;
+const DECISION_FINANCE_EFFECT_FIELDS = ['kind', 'purpose', 'amount', 'termDays'] as const;
 
 export function createEmptySaveStore(): SaveStoreSnapshot {
 	return {
@@ -2613,6 +2614,38 @@ function validateSavedDecisionOption(value: unknown, label: string): void {
 		if (field in effects) {
 			requireNumber(effects[field], `${label} effects ${field}`);
 		}
+	}
+
+	if ('finance' in effects) {
+		validateSavedDecisionFinanceEffect(effects.finance, `${label} effects finance`);
+	}
+}
+
+function validateSavedDecisionFinanceEffect(value: unknown, label: string): void {
+	const finance = requireRecord(value, label);
+	for (const key of Object.keys(finance)) {
+		if (!(DECISION_FINANCE_EFFECT_FIELDS as readonly string[]).includes(key)) {
+			throw new SaveDataError(`${label} contains an unknown field: ${key}`);
+		}
+	}
+	requireOneOf(finance.kind, `${label} kind`, ['borrow'] as const);
+	const purpose = requireOneOf(finance.purpose, `${label} purpose`, [
+		'emergency',
+		'supplierCredit'
+	] as const);
+	const amount = requireNumber(finance.amount, `${label} amount`);
+	if (!Number.isInteger(amount) || amount <= 0) {
+		throw new SaveDataError(`${label} amount must be a positive whole-dollar amount`);
+	}
+	const termDays = requireNumber(finance.termDays, `${label} termDays`);
+	if (termDays !== 28 && termDays !== 56) {
+		throw new SaveDataError(`${label} termDays must be 28 or 56`);
+	}
+	if (
+		(purpose === 'emergency' && termDays !== 56) ||
+		(purpose === 'supplierCredit' && termDays !== 28)
+	) {
+		throw new SaveDataError(`${label} purpose and termDays must be a supported pair`);
 	}
 }
 

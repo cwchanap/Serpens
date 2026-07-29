@@ -4,6 +4,7 @@ import {
 	decisionContextExpansionOpportunity,
 	decisionContextSupplierTerms
 } from './decisionContext';
+import { assessCredit } from './finance';
 import type { DecisionItem, GameState } from './types';
 
 const CASH_PRESSURE_ID = 'cash-pressure';
@@ -45,6 +46,9 @@ export function pruneExpiredDecisions(game: GameState): DecisionItem[] {
 }
 
 function cashPressureDecision(game: GameState): DecisionItem {
+	const roundedCapacity = Math.floor(assessCredit(game, 56).availableCredit / 1_000) * 1_000;
+	const emergencyPrincipal = Math.min(12_000, Math.max(4_000, roundedCapacity));
+
 	return {
 		id: CASH_PRESSURE_ID,
 		title: 'Cash pressure',
@@ -56,7 +60,12 @@ function cashPressureDecision(game: GameState): DecisionItem {
 				label: 'Short loan',
 				description: 'Add emergency working capital and accept pressure on profitability.',
 				effects: {
-					cash: 12_000,
+					finance: {
+						kind: 'borrow',
+						purpose: 'emergency',
+						amount: emergencyPrincipal,
+						termDays: 56
+					},
 					profit: -4,
 					marketPosition: -1
 				}
@@ -127,7 +136,12 @@ function supplierTermsDecision(game: GameState): DecisionItem {
 				label: 'Negotiate credit',
 				description: 'Stretch payment timing for a small margin penalty.',
 				effects: {
-					cash: 4_000,
+					finance: {
+						kind: 'borrow',
+						purpose: 'supplierCredit',
+						amount: 4_000,
+						termDays: 28
+					},
 					profit: -2
 				}
 			},

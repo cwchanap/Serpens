@@ -3318,6 +3318,39 @@ describe('saveCodec', () => {
 		});
 	});
 
+	test.each([
+		{ finance: { kind: 'borrow', purpose: 'emergency', amount: 4_000, termDays: 56, extra: true } },
+		{ finance: { kind: 'grant', purpose: 'emergency', amount: 4_000, termDays: 56 } },
+		{ finance: { kind: 'borrow', purpose: 'workingCapital', amount: 4_000, termDays: 56 } },
+		{ finance: { kind: 'borrow', purpose: 'emergency', amount: 4_000, termDays: 28 } },
+		{ finance: { kind: 'borrow', purpose: 'supplierCredit', amount: 4_000.5, termDays: 28 } },
+		{ finance: { kind: 'borrow', purpose: 'supplierCredit', amount: 0, termDays: 28 } },
+		{ finance: { kind: 'borrow', purpose: 'supplierCredit', amount: -1, termDays: 28 } }
+	])('rejects a malformed persisted decision finance effect: %o', ({ finance }) => {
+		const record = createManualSaveRecord({
+			game: {
+				decisions: [
+					{
+						id: 'cash-pressure',
+						title: 'Cash pressure',
+						context: { code: 'cashPressure' },
+						expiresOnDay: 3,
+						options: [
+							{
+								id: 'short-loan',
+								label: 'Short loan',
+								description: 'Borrow.',
+								effects: { finance }
+							}
+						]
+					} as unknown as GameState['decisions'][number]
+				]
+			}
+		});
+
+		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+	});
+
 	test('v5 migration chains into v6 step and drops legacy string decision contexts', () => {
 		// Regression: migrateV5SaveRecord must emit schema 6 (not
 		// SAVE_SCHEMA_VERSION) so the v6→v7 step runs and drops string

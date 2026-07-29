@@ -9,6 +9,8 @@ import {
 	decisionContextLocationGeneric
 } from '$lib/game/decisionContext';
 import type { DecisionItem } from '$lib/game/types';
+import type { GameState } from '$lib/game/types';
+import { createNewGame } from '$lib/game/state';
 
 const decisions: DecisionItem[] = [
 	{
@@ -54,6 +56,7 @@ function renderQueue(
 		onResolve: (decisionId: string, optionId: string) => void;
 		canResolve: boolean;
 		disabledReason: string;
+		game: GameState;
 	}> = {}
 ) {
 	const props = {
@@ -172,6 +175,56 @@ describe('DecisionQueue', () => {
 		const button = await page.getByRole('button', { name: /Ignore/ }).element();
 		button.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 		expect(onResolve).not.toHaveBeenCalled();
+	});
+
+	it('disables only a finance-backed option when live credit is unavailable', async () => {
+		expect.assertions(4);
+		const base = createNewGame('grocery', 75);
+		const game = {
+			...base,
+			cash: 40_000,
+			finance: {
+				...base.finance,
+				loans: [{ ...base.finance.loans[0]!, status: 'delinquent' as const }]
+			}
+		};
+		const onResolve = vi.fn();
+		renderQueue({
+			game,
+			onResolve,
+			decisions: [
+				{
+					id: 'credit-choice',
+					title: 'Credit choice',
+					context: decisionContextCashPressure(),
+					expiresOnDay: 12,
+					options: [
+						{
+							id: 'borrow',
+							label: 'Borrow',
+							description: 'Borrow to bridge the gap.',
+							effects: {
+								finance: {
+									kind: 'borrow',
+									purpose: 'emergency',
+									amount: 4_000,
+									termDays: 56
+								}
+							}
+						},
+						{ id: 'wait', label: 'Wait', description: 'Keep cash-free options open.', effects: {} }
+					]
+				}
+			]
+		});
+
+		await expect.element(page.getByRole('button', { name: /Borrow/ })).toBeDisabled();
+		await expect.element(page.getByRole('button', { name: /Wait/ })).not.toBeDisabled();
+		await expect
+			.element(page.getByText('Borrowing is unavailable while an obligation is delinquent.'))
+			.toBeVisible();
+		await page.getByRole('button', { name: /Wait/ }).click();
+		expect(onResolve).toHaveBeenCalledWith('credit-choice', 'wait');
 	});
 
 	it('omits the disabled-copy paragraph when canResolve is false but no reason is supplied', async () => {

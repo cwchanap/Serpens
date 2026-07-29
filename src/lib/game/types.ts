@@ -514,6 +514,13 @@ export interface LoanPaymentSnapshot {
 	amount: number;
 }
 
+export interface DecisionFinanceEffect {
+	kind: 'borrow';
+	purpose: 'emergency' | 'supplierCredit';
+	amount: number;
+	termDays: 28 | 56;
+}
+
 export interface DecisionOption {
 	id: string;
 	label: string;
@@ -523,6 +530,7 @@ export interface DecisionOption {
 		stockHealth?: number;
 		staffMorale?: number;
 		reputation?: number;
+		finance?: DecisionFinanceEffect;
 	};
 }
 
