@@ -177,4 +177,28 @@ describe('FinancePanel', () => {
 		await expect.element(page.getByText('$725')).toBeVisible();
 		expect(document.body.textContent).toMatch(/Payoff quote\s+\$725/);
 	});
+
+	it('renders localized finance copy outside English', async () => {
+		expect.assertions(1);
+		renderPanel({ i18n: createI18n('ja') });
+		await expect.element(page.getByRole('heading', { name: '信用オファー' })).toBeVisible();
+	});
+
+	it('associates payoff and refinance domain errors with their invoking controls', async () => {
+		expect.assertions(4);
+		const onPayoff = vi.fn().mockResolvedValue({
+			status: 'domain-rejected',
+			code: 'insufficientCash',
+			context: { cash: 0 }
+		});
+		renderPanel({ onPayoff });
+		const payoff = page.getByRole('button', { name: 'Review payoff' }).nth(0);
+		await payoff.click();
+		await page.getByRole('button', { name: 'Confirm payoff' }).click();
+		await expect.element(payoff).toHaveAttribute('aria-invalid', 'true');
+		const describedBy = (await payoff.element()).getAttribute('aria-describedby');
+		expect(describedBy).toMatch(/payoff-.+-error/);
+		await expect.element(page.getByRole('status')).toHaveTextContent('Insufficient cash');
+		expect(onPayoff).toHaveBeenCalledOnce();
+	});
 });

@@ -594,7 +594,21 @@ export const zhHant = {
 			unchanged: '沒有財務變更。',
 			failed: '無法完成財務操作。',
 			days: '{days} 天',
-			ninetyPlusDays: '90 天以上'
+			ninetyPlusDays: '90 天以上',
+			apr: '年利率',
+			healthAdjustment: '健康度 +{amount}',
+			historyAdjustment: '歷史 +{amount}',
+			principal: '本金',
+			interest: '利息',
+			reviewAction: '檢視{action}',
+			actionBorrowing: '借款',
+			actionRepayment: '還款',
+			actionPayoff: '清償',
+			actionRefinancing: '再融資',
+			reviewSubmission: '{amount} 僅會在確認後送出。',
+			refinanceReview: '以 {term} 再融資 {amount}。不包含現金套現。',
+			replacementComparison:
+				'替換年利率 {apr} · 首次付款 {firstPayment} · 最高付款 {peakPayment} · 不包含現金套現。'
 		}
 	},
 	game: {
