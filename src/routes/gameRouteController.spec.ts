@@ -1454,6 +1454,22 @@ describe('GameRouteController', () => {
 			expect(saveSpy).not.toHaveBeenCalled();
 		});
 
+		it('rejects a malformed scenario loan id without persistence retry', async () => {
+			const base = firstProfitDefinition();
+			const definition = { ...base, allowedCommands: ['payOffLoan'] as const };
+			const harness = createHarness({ resolveDefinition: () => definition });
+			await harness.controller.initializeScenarios();
+			await startScenario(harness.controller, definition);
+			const saveSpy = vi.spyOn(harness.scenarioRepository, 'saveActiveRun');
+
+			expect(await harness.controller.payOffFinanceLoan(null as unknown as string)).toEqual({
+				status: 'rejected'
+			});
+			expect(harness.controller.state.scenarioOperationError?.code).toBe('invalid-command');
+			expect(harness.controller.state.retryScenarioOperation).toBeNull();
+			expect(saveSpy).not.toHaveBeenCalled();
+		});
+
 		it('does not duplicate a pending scenario borrowing command', async () => {
 			const base = firstProfitDefinition();
 			const definition = { ...base, allowedCommands: ['borrow'] as const };

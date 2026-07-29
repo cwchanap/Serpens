@@ -907,6 +907,25 @@ describe('executeScenarioCommand dispatch', { timeout: 30_000 }, () => {
 		});
 		expect(run.game).toBe(game);
 	});
+
+	it.each([null, 42, { id: 'loan-1' }] as const)(
+		'maps a non-string finance loan id to invalid-command without advancing: %j',
+		(loanId) => {
+			const game = foundingGame();
+			for (const command of [
+				{ kind: 'repayLoan', loanId, amount: 100 },
+				{ kind: 'payOffLoan', loanId },
+				{ kind: 'refinanceLoan', loanId, termDays: 56 }
+			] as const) {
+				const definition = commandDefinition([command.kind]);
+				const run = activeRun(definition, game);
+				expect(
+					executeScenarioCommand(run, definition, command as unknown as ScenarioCommand)
+				).toEqual({ ok: false, code: 'invalid-command' });
+				expect(run.game).toBe(game);
+			}
+		}
+	);
 });
 
 function replayLaunchCalibration(
