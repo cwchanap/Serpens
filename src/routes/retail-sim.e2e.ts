@@ -1083,7 +1083,7 @@ test('player can found a store from the city map and advance a day', async ({ pa
 	await expect(
 		reports.getByRole('group', { name: /reports status/i }).getByText(/^Day 2$/i)
 	).toBeVisible();
-	await expect(reports.getByText(/latest daily result/i)).toBeVisible();
+	await expect(reports.getByText('Operating cash flow', { exact: true })).toBeVisible();
 });
 
 test('city map renders terrain assets and blocks road and river placement', async ({ page }) => {
@@ -1649,7 +1649,13 @@ test('player builds convenience production and refills from warehouse', async ({
 	).toBe(bottledWaterReport.importedUnits);
 
 	const reports = await openManagementPanel(page, /reports/i);
-	await expect(reports.getByText(/latest daily result/i)).toBeVisible();
+	const railShipmentUnits = latestReport.productionReport.railShipments.reduce(
+		(total, shipment) => total + shipment.quantity,
+		0
+	);
+	await expect(reports.getByText('Rail shipments', { exact: true }).locator('..')).toContainText(
+		String(railShipmentUnits)
+	);
 	await reports.getByRole('button', { name: /close reports/i }).click();
 	await expect(reports).toHaveCount(0);
 	const storesPanel = await openManagementPanel(page, /stores/i);
@@ -1838,6 +1844,8 @@ test('finance flow borrows, reconciles a scheduled payment, focuses its alert, a
 		workingCapitalLoan.installmentsProcessed
 	);
 	await expect(finance.getByText('Loan disbursement', { exact: true })).toBeVisible();
+	await finance.getByRole('button', { name: /close finance/i }).click();
+	await expect(finance).toHaveCount(0);
 
 	// Close days 1 through 8 so the day-8 scheduled payment is recorded.
 	for (let day = 0; day < 8; day += 1) {
@@ -1872,14 +1880,17 @@ test('finance flow borrows, reconciles a scheduled payment, focuses its alert, a
 		scheduledReport.operatingCashFlow + scheduledReport.financingCashFlow
 	);
 
-	await finance.getByRole('button', { name: /close finance/i }).click();
 	const reports = await openManagementPanel(page, /reports/i);
 	await expect(
 		reports.getByText('Operating cash flow', { exact: true }).locator('..')
 	).toContainText(`$${scheduledReport.operatingCashFlow.toLocaleString('en-US')}`);
 	await expect(
 		reports.getByText('Financing cash flow', { exact: true }).locator('..')
-	).toContainText(`$${scheduledReport.financingCashFlow.toLocaleString('en-US')}`);
+	).toContainText(
+		scheduledReport.financingCashFlow < 0
+			? `-$${Math.abs(scheduledReport.financingCashFlow).toLocaleString('en-US')}`
+			: `$${scheduledReport.financingCashFlow.toLocaleString('en-US')}`
+	);
 	await reports.getByRole('button', { name: /close reports/i }).click();
 
 	// Closing days 9–11 leaves the next day-15 payment inside the three-day
@@ -1887,15 +1898,19 @@ test('finance flow borrows, reconciles a scheduled payment, focuses its alert, a
 	for (let day = 0; day < 3; day += 1) {
 		await page.getByRole('button', { name: 'Advance day', exact: true }).click();
 	}
-	await waitForAutoSaveDay(page, 12);
+	const alertWindowGame = await waitForAutoSaveDay(page, 12);
+	const alertWindowLoan = alertWindowGame.finance.loans.find(
+		(loan) => loan.id === workingCapitalLoan.id
+	);
+	if (!alertWindowLoan) throw new Error('Working-capital loan disappeared before its alert.');
 
 	await page.getByRole('button', { name: /alert/i }).click();
 	const alerts = page.getByRole('group', { name: 'Alerts list' });
 	const scheduledWorkingCapitalPayment = estimateNextLoanPayment(
-		scheduledWorkingCapitalLoan as LoanInstrument
+		alertWindowLoan as LoanInstrument
 	).toLocaleString('en-US');
 	const expectedWorkingCapitalAlertName = new RegExp(
-		`^Working capital payment of ${escapeRegExp(`$${scheduledWorkingCapitalPayment}`)} is due on day ${scheduledWorkingCapitalLoan.nextPaymentDay}\\.$`
+		`^Working capital payment of ${escapeRegExp(`$${scheduledWorkingCapitalPayment}`)} is due on day ${alertWindowLoan.nextPaymentDay}\\.$`
 	);
 	const upcomingLoanAlert = alerts.getByRole('button', {
 		name: expectedWorkingCapitalAlertName,
@@ -1907,30 +1922,58 @@ test('finance flow borrows, reconciles a scheduled payment, focuses its alert, a
 	const focusedLoan = page.locator(`#finance-loan-${workingCapitalLoan.id}`);
 	await expect(focusedLoan).toBeFocused();
 
-	const principalBeforeRepayment = (await readAutoSaveGame(page)).finance.loans.find(
+	const beforeRepayment = await readAutoSaveGame(page);
+	const principalBeforeRepayment = beforeRepayment.finance.loans.find(
 		(loan) => loan.id === workingCapitalLoan.id
 	)?.remainingPrincipal;
 	if (principalBeforeRepayment === undefined) throw new Error('Working-capital loan disappeared.');
-	const transactionsBeforeRepayment = (await readAutoSaveGame(page)).finance.transactions.length;
+	const transactionIdsBeforeRepayment = new Set(
+		beforeRepayment.finance.transactions.map((transaction) => transaction.id)
+	);
 	await focusedLoan.getByLabel('Repay amount').fill('100');
 	await focusedLoan.getByRole('button', { name: 'Review repayment', exact: true }).click();
 	await expect(finance.getByRole('heading', { name: 'Review repayment' })).toBeVisible();
 	await finance.getByRole('button', { name: 'Confirm repayment', exact: true }).click();
 
 	await expect
-		.poll(async () => (await readAutoSaveGame(page)).finance.transactions.length)
-		.toBe(transactionsBeforeRepayment + 1);
+		.poll(async () => {
+			const saved = await readAutoSaveGame(page);
+			return saved.finance.transactions
+				.filter(
+					(transaction) =>
+						!transactionIdsBeforeRepayment.has(transaction.id) &&
+						transaction.loanId === workingCapitalLoan.id &&
+						(transaction.kind === 'interestPayment' || transaction.kind === 'principalPayment')
+				)
+				.reduce(
+					(total, transaction) => total + transaction.interestAmount + transaction.principalAmount,
+					0
+				);
+		})
+		.toBe(100);
 	const afterRepayment = await readAutoSaveGame(page);
 	const repaidLoan = afterRepayment.finance.loans.find((loan) => loan.id === workingCapitalLoan.id);
-	expect(repaidLoan?.remainingPrincipal).toBe(principalBeforeRepayment - 100);
+	const repaymentTransactions = afterRepayment.finance.transactions.filter(
+		(transaction) =>
+			!transactionIdsBeforeRepayment.has(transaction.id) &&
+			transaction.loanId === workingCapitalLoan.id
+	);
 	expect(
-		afterRepayment.finance.transactions.some(
+		repaymentTransactions.every(
 			(transaction) =>
-				transaction.loanId === workingCapitalLoan.id &&
-				transaction.kind === 'principalPayment' &&
-				transaction.principalAmount === 100
+				transaction.kind === 'interestPayment' || transaction.kind === 'principalPayment'
 		)
 	).toBe(true);
+	const principalPaid = repaymentTransactions.reduce(
+		(total, transaction) => total + transaction.principalAmount,
+		0
+	);
+	const interestPaid = repaymentTransactions.reduce(
+		(total, transaction) => total + transaction.interestAmount,
+		0
+	);
+	expect(principalPaid + interestPaid).toBe(100);
+	expect(repaidLoan?.remainingPrincipal).toBe(principalBeforeRepayment - principalPaid);
 	await expect(finance.getByText('Repayment confirmed.', { exact: true })).toBeVisible();
 });
 
@@ -1953,9 +1996,13 @@ test('financed expansion opens one city with its exact shortfall and no cash-out
 	await page.getByRole('button', { name: 'Finance opening', exact: true }).click();
 	const review = page.getByRole('dialog', { name: 'Review financing' });
 	await expect(review).toBeVisible();
-	await expect(review).toContainText('Purchase cost$18,000');
-	await expect(review).toContainText('Cash$17,000');
-	await expect(review).toContainText('Cash shortfall$1,000');
+	await expect(review.getByText('Purchase cost', { exact: true }).locator('..')).toContainText(
+		'$18,000'
+	);
+	await expect(review.getByText('Cash', { exact: true }).locator('..')).toContainText('$17,000');
+	await expect(review.getByText('Cash shortfall', { exact: true }).locator('..')).toContainText(
+		'$1,000'
+	);
 	await expect(review).toContainText('84 days');
 	await review.getByRole('button', { name: 'Confirm financing', exact: true }).click();
 
@@ -2070,7 +2117,7 @@ test('cross-city stock alert deep-links to the origin city and tile', async ({ p
 	// Active city is harbor-city; the alerts popover should list the
 	// campus-junction stock alert. Clicking it deep-links back to campus-junction.
 	await expect(page.getByRole('heading', { name: /harbor city/i })).toBeVisible();
-	await page.getByRole('button', { name: /alert$/i }).click();
+	await page.getByRole('button', { name: /alerts?$/i }).click();
 	const alertsList = page.getByRole('group', { name: /alerts list/i });
 	await expect(alertsList).toBeVisible();
 	await alertsList
@@ -2102,6 +2149,16 @@ test('manage selected store stock and see weekly imports', async ({ page }) => {
 	// The basic card carries no in-line tabs or stock table — those moved to the detail modal.
 	await expect(inspector.getByRole('tab', { name: /stock/i })).toHaveCount(0);
 	await expect(inspector.getByRole('table', { name: /Store #1 stock/i })).toHaveCount(0);
+	const openDetails = inspector.getByRole('button', { name: /open details/i });
+	await openDetails.scrollIntoViewIfNeeded();
+	const [openDetailsBox, controlDeskBox] = await Promise.all([
+		openDetails.boundingBox(),
+		page.getByLabel('Control desk').boundingBox()
+	]);
+	if (!openDetailsBox || !controlDeskBox) {
+		throw new Error('Open Details or control desk has no bounding box');
+	}
+	expect(openDetailsBox.y + openDetailsBox.height).toBeLessThan(controlDeskBox.y);
 
 	const storeModal = await openStoreDetail(page);
 	// The modal opens on the Stock tab by default.
