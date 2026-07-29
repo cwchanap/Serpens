@@ -6,6 +6,7 @@ import {
 } from '$lib/game/city';
 import { getWarehouseCapacity } from '$lib/game/industryProduction';
 import { createFoundingGameAtTile } from '$lib/game/placement';
+import { getTotalDebt } from '$lib/game/finance';
 import { normalizeSeed } from '$lib/game/rng';
 import { upgradeStore } from '$lib/game/state';
 import { calculateStockHealth } from '$lib/game/stock';
@@ -293,7 +294,16 @@ describe('buildScenarioGame', { timeout: 30_000 }, () => {
 			}
 		});
 		expect(result.game.cash).toBe(1_234);
-		expect(result.game.debt).toBe(432);
+		expect(getTotalDebt(result.game)).toBe(432);
+		expect(result.game.finance.loans[0]).toMatchObject({
+			purpose: 'founding',
+			openedOnDay: result.game.day,
+			nextPaymentDay: result.game.day + 7,
+			installmentsProcessed: 0,
+			scheduledPaymentCount: 0,
+			onTimePaymentCount: 0,
+			missedPaymentCount: 0
+		});
 		expect(result.game.policy).toEqual(definition.start.overrides.policy);
 		expect(result.game.storeCap).toBe(3);
 
@@ -342,7 +352,7 @@ describe('buildScenarioGame', { timeout: 30_000 }, () => {
 		expect(result.game.stores[0]?.level).toBe(4);
 		expect(result.game.industrialBuildings).toHaveLength(2);
 		expect(result.game.cash).toBe(0);
-		expect(result.game.debt).toBe(0);
+		expect(result.game.finance.loans).toEqual([]);
 	});
 
 	it('restores factory finances when cash and debt overrides are omitted', () => {
@@ -358,7 +368,7 @@ describe('buildScenarioGame', { timeout: 30_000 }, () => {
 		expect(result.ok).toBe(true);
 		if (!result.ok) return;
 		expect(result.game.cash).toBe(ordinary.cash);
-		expect(result.game.debt).toBe(ordinary.debt);
+		expect(result.game.finance).toEqual(ordinary.finance);
 	});
 
 	it('materializes a level-4 electronics store through normal upgrades', () => {

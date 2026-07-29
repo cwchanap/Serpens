@@ -757,7 +757,7 @@ function validateCurrentGameStateInternal(value: unknown): GameState {
 	requireNumber(game.rngState, 'Saved game rngState');
 	requireNumber(game.day, 'Saved game day');
 	requireNumber(game.cash, 'Saved game cash');
-	requireNumber(game.debt, 'Saved game debt');
+	validateSavedFinance(game.finance, 'Saved game finance');
 	const world = validateSavedWorld(game.world, 'Saved game world');
 	requireOneOf(policy.pricing, 'Saved game policy pricing', PRICING_POSTURES);
 	requireOneOf(policy.inventory, 'Saved game policy inventory', INVENTORY_BUFFERS);
@@ -2050,6 +2050,80 @@ function validateSavedWarehouse(value: unknown, label: string): void {
 	}
 	requireNumber(warehouse.overflowUnits, `${label} overflowUnits`);
 	requireNumber(warehouse.overflowCost, `${label} overflowCost`);
+}
+
+function validateSavedFinance(value: unknown, label: string): void {
+	const finance = requireRecord(value, label);
+	const loans = requireArray(finance.loans, `${label} loans`);
+	const transactions = requireArray(finance.transactions, `${label} transactions`);
+	requirePositiveInteger(finance.nextLoanSequence, `${label} nextLoanSequence`);
+	requirePositiveInteger(finance.nextTransactionSequence, `${label} nextTransactionSequence`);
+	const activity = requireRecord(finance.currentDayActivity, `${label} currentDayActivity`);
+	requireNumber(activity.day, `${label} currentDayActivity day`);
+	requireNumber(activity.principalBorrowed, `${label} currentDayActivity principalBorrowed`);
+	requireNumber(activity.principalRepaid, `${label} currentDayActivity principalRepaid`);
+	requireNumber(activity.interestPaid, `${label} currentDayActivity interestPaid`);
+	requireNumber(activity.interestCapitalized, `${label} currentDayActivity interestCapitalized`);
+	requireNumber(activity.refinancedPrincipal, `${label} currentDayActivity refinancedPrincipal`);
+	requireNumber(activity.financingCashFlow, `${label} currentDayActivity financingCashFlow`);
+
+	loans.forEach((value, index) => {
+		const loan = requireRecord(value, `${label} loans[${index}]`);
+		requireString(loan.id, `${label} loans[${index}] id`);
+		requireOneOf(loan.purpose, `${label} loans[${index}] purpose`, [
+			'founding',
+			'workingCapital',
+			'emergency',
+			'supplierCredit',
+			'expansion',
+			'refinance'
+		] as const);
+		requireOneOf(loan.status, `${label} loans[${index}] status`, [
+			'active',
+			'delinquent',
+			'paid',
+			'refinanced'
+		] as const);
+		requireNumber(loan.openedOnDay, `${label} loans[${index}] openedOnDay`);
+		requireNumber(loan.originalPrincipal, `${label} loans[${index}] originalPrincipal`);
+		requireNumber(loan.remainingPrincipal, `${label} loans[${index}] remainingPrincipal`);
+		requireNumber(loan.annualInterestRateBps, `${label} loans[${index}] annualInterestRateBps`);
+		if (loan.termDays !== 28 && loan.termDays !== 56 && loan.termDays !== 84) {
+			throw new SaveDataError(`${label} loans[${index}] termDays must be 28, 56, or 84`);
+		}
+		requireNumber(loan.installmentsProcessed, `${label} loans[${index}] installmentsProcessed`);
+		if (loan.nextPaymentDay !== null) {
+			requireNumber(loan.nextPaymentDay, `${label} loans[${index}] nextPaymentDay`);
+		}
+		requireNumber(loan.lastInterestAccrualDay, `${label} loans[${index}] lastInterestAccrualDay`);
+		requireNumber(loan.accruedInterestMicros, `${label} loans[${index}] accruedInterestMicros`);
+		requireNumber(loan.overdueInterest, `${label} loans[${index}] overdueInterest`);
+		requireNumber(loan.overduePrincipal, `${label} loans[${index}] overduePrincipal`);
+		if (loan.arrearsSinceDay !== null) {
+			requireNumber(loan.arrearsSinceDay, `${label} loans[${index}] arrearsSinceDay`);
+		}
+		requireNumber(loan.scheduledPaymentCount, `${label} loans[${index}] scheduledPaymentCount`);
+		requireNumber(loan.onTimePaymentCount, `${label} loans[${index}] onTimePaymentCount`);
+		requireNumber(loan.missedPaymentCount, `${label} loans[${index}] missedPaymentCount`);
+	});
+
+	transactions.forEach((value, index) => {
+		const transaction = requireRecord(value, `${label} transactions[${index}]`);
+		requireString(transaction.id, `${label} transactions[${index}] id`);
+		requireNumber(transaction.day, `${label} transactions[${index}] day`);
+		requireOneOf(transaction.kind, `${label} transactions[${index}] kind`, [
+			'disbursement',
+			'principalPayment',
+			'interestPayment',
+			'missedPayment',
+			'refinance'
+		] as const);
+		requireString(transaction.loanId, `${label} transactions[${index}] loanId`);
+		requireNumber(transaction.cashDelta, `${label} transactions[${index}] cashDelta`);
+		requireNumber(transaction.principalAmount, `${label} transactions[${index}] principalAmount`);
+		requireNumber(transaction.principalDelta, `${label} transactions[${index}] principalDelta`);
+		requireNumber(transaction.interestAmount, `${label} transactions[${index}] interestAmount`);
+	});
 }
 
 function validateSavedStore(value: unknown, label: string): void {

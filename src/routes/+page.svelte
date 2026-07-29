@@ -103,6 +103,7 @@
 	} from '$lib/i18n/index';
 	import type { SupportedLocale } from '$lib/i18n/locales';
 	import { summarizeReports } from '$lib/game/reports';
+	import { createEmptyFinanceState } from '$lib/game/finance';
 	import { DEFAULT_POLICY } from '$lib/game/state';
 	import { buildSupplyAdvisor, getAvailableMaterialIds } from '$lib/game/supplyAdvisor';
 	import type { AdvisorChain } from '$lib/game/supplyAdvisor';
@@ -238,7 +239,7 @@
 		rngState: 0,
 		day: 1,
 		cash: 0,
-		debt: 0,
+		finance: createEmptyFinanceState(1),
 		policy: { ...DEFAULT_POLICY },
 		scorecard: {
 			profit: 0,

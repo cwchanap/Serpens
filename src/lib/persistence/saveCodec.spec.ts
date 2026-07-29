@@ -14,6 +14,7 @@ import { getWarehouseCapacity, recalculateWarehousePressure } from '$lib/game/in
 import { formatLocation } from '$lib/game/placement';
 import type { DecisionContext } from '$lib/game/decisionContext';
 import { simulateDay } from '$lib/game/simulateDay';
+import { createFoundingFinanceState } from '$lib/game/finance';
 import { createNewGame, resolveDecision } from '$lib/game/state';
 import { calculateStockHealth, initializeStoreProducts } from '$lib/game/stock';
 import {
@@ -124,7 +125,7 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 		rngState: 99,
 		day: 3,
 		cash: 12500,
-		debt: 2000,
+		finance: createFoundingFinanceState(3, 2000),
 		policy: {
 			pricing: 'standard',
 			inventory: 'balanced',

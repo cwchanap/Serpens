@@ -40,6 +40,7 @@ import {
 } from './staffing';
 import { calculateStockHealth, createStoreProduct, initializeStoreProducts } from './stock';
 import { STARTER_STORE_CAP, createInitialWorldProgress, refreshWorldProgress } from './world';
+import { createFoundingFinanceState } from './finance';
 import type {
 	ArchetypeId,
 	City,
@@ -150,7 +151,7 @@ export function createNewGame(archetypeId: ArchetypeId, seed = Date.now()): Game
 		rngState: rng.getState(),
 		day: 1,
 		cash: archetype.startingCash,
-		debt: archetype.startingDebt,
+		finance: createFoundingFinanceState(1, archetype.startingDebt),
 		policy: { ...DEFAULT_POLICY },
 		scorecard: {
 			profit: clampScore(

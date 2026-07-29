@@ -4,6 +4,7 @@ import {
 	getAvailableMaterialIds,
 	getBuildingTypeProducing
 } from './supplyAdvisor';
+import { createEmptyFinanceState } from './finance';
 import type { GameState, IndustrialBuilding, MaterialId, Store } from './types';
 
 function baseGame(overrides: Partial<GameState> = {}): GameState {
@@ -12,7 +13,7 @@ function baseGame(overrides: Partial<GameState> = {}): GameState {
 		rngState: 0,
 		day: 1,
 		cash: 0,
-		debt: 0,
+		finance: createEmptyFinanceState(1),
 		policy: {} as GameState['policy'],
 		scorecard: {} as GameState['scorecard'],
 		world: {} as GameState['world'],

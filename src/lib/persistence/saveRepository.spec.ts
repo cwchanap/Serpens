@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { initializeStoreProducts } from '$lib/game/stock';
+import { createFoundingFinanceState } from '$lib/game/finance';
 import { simulateDay } from '$lib/game/simulateDay';
 import { createNewGame } from '$lib/game/state';
 import { decisionContextLocationGeneric } from '$lib/game/decisionContext';
@@ -182,7 +183,7 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 		rngState: 99,
 		day: 3,
 		cash: 12500,
-		debt: 2000,
+		finance: createFoundingFinanceState(3, 2000),
 		policy: {
 			pricing: 'standard',
 			inventory: 'balanced',

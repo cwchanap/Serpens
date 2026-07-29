@@ -515,12 +515,84 @@ export interface DecisionItem {
 	options: DecisionOption[];
 }
 
+export type LoanPurpose =
+	| 'founding'
+	| 'workingCapital'
+	| 'emergency'
+	| 'supplierCredit'
+	| 'expansion'
+	| 'refinance';
+
+export type LoanStatus = 'active' | 'delinquent' | 'paid' | 'refinanced';
+
+export type LoanTermDays = 28 | 56 | 84;
+
+export interface LoanInstrument {
+	id: string;
+	purpose: LoanPurpose;
+	status: LoanStatus;
+	openedOnDay: number;
+	originalPrincipal: number;
+	remainingPrincipal: number;
+	annualInterestRateBps: number;
+	termDays: LoanTermDays;
+	installmentsProcessed: number;
+	nextPaymentDay: number | null;
+	lastInterestAccrualDay: number;
+	accruedInterestMicros: number;
+	overdueInterest: number;
+	overduePrincipal: number;
+	arrearsSinceDay: number | null;
+	scheduledPaymentCount: number;
+	onTimePaymentCount: number;
+	missedPaymentCount: number;
+	refinancedFromLoanId?: string;
+	refinancedByLoanId?: string;
+}
+
+export type FinanceTransactionKind =
+	| 'disbursement'
+	| 'principalPayment'
+	| 'interestPayment'
+	| 'missedPayment'
+	| 'refinance';
+
+export interface FinanceTransaction {
+	id: string;
+	day: number;
+	kind: FinanceTransactionKind;
+	loanId: string;
+	relatedLoanId?: string;
+	cashDelta: number;
+	principalAmount: number;
+	principalDelta: number;
+	interestAmount: number;
+}
+
+export interface FinanceDayActivity {
+	day: number;
+	principalBorrowed: number;
+	principalRepaid: number;
+	interestPaid: number;
+	interestCapitalized: number;
+	refinancedPrincipal: number;
+	financingCashFlow: number;
+}
+
+export interface FinanceState {
+	loans: LoanInstrument[];
+	transactions: FinanceTransaction[];
+	nextLoanSequence: number;
+	nextTransactionSequence: number;
+	currentDayActivity: FinanceDayActivity;
+}
+
 export interface GameState {
 	seed: number;
 	rngState: number;
 	day: number;
 	cash: number;
-	debt: number;
+	finance: FinanceState;
 	policy: CompanyPolicy;
 	scorecard: Scorecard;
 	world: WorldProgress;

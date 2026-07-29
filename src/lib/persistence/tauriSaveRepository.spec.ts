@@ -5,6 +5,7 @@ const { tauriLoadMock } = vi.hoisted(() => ({ tauriLoadMock: vi.fn() }));
 vi.mock('@tauri-apps/plugin-store', () => ({ load: tauriLoadMock }));
 
 import { simulateDay } from '$lib/game/simulateDay';
+import { createFoundingFinanceState } from '$lib/game/finance';
 import { createNewGame } from '$lib/game/state';
 import type { GameState } from '$lib/game/types';
 import { STARTER_STORE_CAP, createInitialWorldProgress } from '$lib/game/world';
@@ -38,7 +39,7 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 		rngState: 99,
 		day: 2,
 		cash: 11000,
-		debt: 1000,
+		finance: createFoundingFinanceState(2, 1000),
 		policy: {
 			pricing: 'standard',
 			inventory: 'balanced',
