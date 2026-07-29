@@ -174,6 +174,14 @@ interface SavedRailShipment {
 
 interface SavedDailyReport {
 	day: number;
+	cashBefore: number;
+	operatingCashFlow: number;
+	financingCashFlow: number;
+	netCashChange: number;
+	cashAfter: number;
+	principalBorrowed: number;
+	principalRepaid: number;
+	interestPaid: number;
 	importSpend: number;
 	productionReport: {
 		produced: SavedMaterialMovement[];
@@ -191,8 +199,43 @@ interface SavedDailyReport {
 	}>;
 }
 
+interface SavedLoan {
+	id: string;
+	purpose:
+		| 'founding'
+		| 'workingCapital'
+		| 'emergency'
+		| 'supplierCredit'
+		| 'expansion'
+		| 'refinance';
+	status: 'active' | 'delinquent' | 'paid' | 'refinanced';
+	originalPrincipal: number;
+	remainingPrincipal: number;
+	nextPaymentDay: number | null;
+}
+
+interface SavedFinanceTransaction {
+	id: string;
+	loanId: string;
+	kind: 'disbursement' | 'principalPayment' | 'interestPayment' | 'missedPayment' | 'refinance';
+	cashDelta: number;
+	principalAmount: number;
+	interestAmount: number;
+}
+
+interface SavedFinance {
+	loans: SavedLoan[];
+	transactions: SavedFinanceTransaction[];
+}
+
 interface SavedGame {
 	day: number;
+	cash: number;
+	finance: SavedFinance;
+	world: {
+		revealedCityIds: string[];
+		openedCityIds: string[];
+	};
 	stores: Array<{
 		id: string;
 		products: Array<{
@@ -1746,6 +1789,168 @@ test('player opens a revealed retail city from the world map and builds there', 
 		expectedStoreCount: 1
 	});
 	await expect.poll(async () => (await readAutoSaveGame(page)).stores.length).toBe(2);
+});
+
+test('finance flow borrows, reconciles a scheduled payment, focuses its alert, and repays', async ({
+	page
+}) => {
+	await page.goto('/');
+	await buildRetailStoreAt(page, {
+		x: 1,
+		y: 6,
+		storeTypeName: /build boutique goods/i,
+		expectedStoreCount: 1
+	});
+	await waitForAutoSaveDay(page, 1);
+
+	const beforeBorrow = await readAutoSaveGame(page);
+	await page.keyboard.press('f');
+	const finance = page.getByRole('dialog', { name: 'Finance' });
+	await expect(finance).toBeVisible();
+	await finance.getByRole('button', { name: '28 days', exact: true }).click();
+	await finance.getByLabel('Borrow amount').fill('1000');
+	await finance.getByRole('button', { name: 'Review borrowing', exact: true }).click();
+	await expect(finance.getByRole('heading', { name: 'Review borrowing' })).toBeVisible();
+	await finance.getByRole('button', { name: 'Confirm borrowing', exact: true }).click();
+
+	await expect
+		.poll(async () => (await readAutoSaveGame(page)).finance.loans.length)
+		.toBe(beforeBorrow.finance.loans.length + 1);
+	const afterBorrow = await readAutoSaveGame(page);
+	const workingCapitalLoan = afterBorrow.finance.loans.find(
+		(loan) => loan.purpose === 'workingCapital'
+	);
+	if (!workingCapitalLoan) throw new Error('Working-capital loan was not saved.');
+	expect(afterBorrow.cash).toBe(beforeBorrow.cash + 1_000);
+	expect(workingCapitalLoan).toMatchObject({
+		originalPrincipal: 1_000,
+		remainingPrincipal: 1_000,
+		status: 'active'
+	});
+	await expect(finance.getByText('Loan disbursement', { exact: true })).toBeVisible();
+
+	// Close days 1 through 8 so the day-8 scheduled payment is recorded.
+	for (let day = 0; day < 8; day += 1) {
+		await page.getByRole('button', { name: 'Advance day', exact: true }).click();
+	}
+	const afterScheduledPayment = await waitForAutoSaveDay(page, 9);
+	const scheduledReport = afterScheduledPayment.reports.find((report) => report.day === 8);
+	if (!scheduledReport) throw new Error('Expected the day-8 scheduled-payment report.');
+	expect(scheduledReport.principalRepaid).toBeGreaterThan(0);
+	expect(scheduledReport.financingCashFlow).toBeLessThan(0);
+	expect(scheduledReport.cashAfter - scheduledReport.cashBefore).toBe(
+		scheduledReport.operatingCashFlow + scheduledReport.financingCashFlow
+	);
+	expect(scheduledReport.netCashChange).toBe(
+		scheduledReport.operatingCashFlow + scheduledReport.financingCashFlow
+	);
+
+	await finance.getByRole('button', { name: /close finance/i }).click();
+	const reports = await openManagementPanel(page, /reports/i);
+	await expect(
+		reports.getByText('Operating cash flow', { exact: true }).locator('..')
+	).toContainText(`$${scheduledReport.operatingCashFlow.toLocaleString('en-US')}`);
+	await expect(
+		reports.getByText('Financing cash flow', { exact: true }).locator('..')
+	).toContainText(`$${scheduledReport.financingCashFlow.toLocaleString('en-US')}`);
+	await reports.getByRole('button', { name: /close reports/i }).click();
+
+	// Closing days 9–11 leaves the next day-15 payment inside the three-day
+	// alert window while retaining the already-verified payment report above.
+	for (let day = 0; day < 3; day += 1) {
+		await page.getByRole('button', { name: 'Advance day', exact: true }).click();
+	}
+	await waitForAutoSaveDay(page, 12);
+
+	await page.getByRole('button', { name: /alert/i }).click();
+	const alerts = page.getByRole('group', { name: 'Alerts list' });
+	const upcomingLoanAlert = alerts.getByRole('button', { name: /loan payment.*due on day 15/i });
+	await expect(upcomingLoanAlert).toBeVisible();
+	await upcomingLoanAlert.click();
+	await expect(finance).toBeVisible();
+	const focusedLoan = page.locator(`#finance-loan-${workingCapitalLoan.id}`);
+	await expect(focusedLoan).toBeFocused();
+
+	const principalBeforeRepayment = (await readAutoSaveGame(page)).finance.loans.find(
+		(loan) => loan.id === workingCapitalLoan.id
+	)?.remainingPrincipal;
+	if (principalBeforeRepayment === undefined) throw new Error('Working-capital loan disappeared.');
+	const transactionsBeforeRepayment = (await readAutoSaveGame(page)).finance.transactions.length;
+	await focusedLoan.getByLabel('Repay amount').fill('100');
+	await focusedLoan.getByRole('button', { name: 'Review repayment', exact: true }).click();
+	await expect(finance.getByRole('heading', { name: 'Review repayment' })).toBeVisible();
+	await finance.getByRole('button', { name: 'Confirm repayment', exact: true }).click();
+
+	await expect
+		.poll(async () => (await readAutoSaveGame(page)).finance.transactions.length)
+		.toBe(transactionsBeforeRepayment + 1);
+	const afterRepayment = await readAutoSaveGame(page);
+	const repaidLoan = afterRepayment.finance.loans.find((loan) => loan.id === workingCapitalLoan.id);
+	expect(repaidLoan?.remainingPrincipal).toBe(principalBeforeRepayment - 100);
+	expect(
+		afterRepayment.finance.transactions.some(
+			(transaction) =>
+				transaction.loanId === workingCapitalLoan.id &&
+				transaction.kind === 'principalPayment' &&
+				transaction.principalAmount === 100
+		)
+	).toBe(true);
+	await expect(finance.getByText('Repayment confirmed.', { exact: true })).toBeVisible();
+});
+
+test('financed expansion opens one city with its exact shortfall and no cash-out', async ({
+	page
+}) => {
+	await page.goto('/');
+	await buildRetailStoreAt(page, {
+		x: 1,
+		y: 6,
+		storeTypeName: /build boutique goods/i,
+		expectedStoreCount: 1
+	});
+	await waitForAutoSaveDay(page, 1);
+	await revealCityAndGrantFunds(page, 'campus-junction', 17_000);
+
+	const beforeFinancing = await readAutoSaveGame(page);
+	await openMapMenuItem(page, /world map/i);
+	await page.getByRole('button', { name: /campus junction/i }).click();
+	await page.getByRole('button', { name: 'Finance opening', exact: true }).click();
+	const review = page.getByRole('dialog', { name: 'Review financing' });
+	await expect(review).toBeVisible();
+	await expect(review).toContainText('Purchase cost$18,000');
+	await expect(review).toContainText('Cash$17,000');
+	await expect(review).toContainText('Cash shortfall$1,000');
+	await expect(review).toContainText('84 days');
+	await review.getByRole('button', { name: 'Confirm financing', exact: true }).click();
+
+	await expect
+		.poll(async () => (await readAutoSaveGame(page)).world.openedCityIds)
+		.toContain('campus-junction');
+	const afterFinancing = await readAutoSaveGame(page);
+	const expansionLoans = afterFinancing.finance.loans.filter(
+		(loan) => loan.purpose === 'expansion'
+	);
+	expect(afterFinancing.world.openedCityIds).toEqual(
+		expect.arrayContaining([...beforeFinancing.world.openedCityIds, 'campus-junction'])
+	);
+	expect(afterFinancing.world.openedCityIds).toHaveLength(
+		beforeFinancing.world.openedCityIds.length + 1
+	);
+	expect(expansionLoans).toHaveLength(1);
+	expect(expansionLoans[0]).toMatchObject({
+		originalPrincipal: 1_000,
+		remainingPrincipal: 1_000,
+		status: 'active'
+	});
+	expect(afterFinancing.cash).toBe(0);
+	expect(
+		afterFinancing.finance.transactions.filter(
+			(transaction) =>
+				transaction.loanId === expansionLoans[0]?.id &&
+				transaction.kind === 'disbursement' &&
+				transaction.cashDelta === 1_000
+		)
+	).toHaveLength(1);
 });
 
 test('cross-city stock alert deep-links to the origin city and tile', async ({ page }) => {
