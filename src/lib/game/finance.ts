@@ -11,6 +11,33 @@ export const FOUNDING_LOAN_TERM_DAYS = 84;
 export const FOUNDING_LOAN_APR_BPS = 1_200;
 export const FINANCE_TRANSACTION_LIMIT = 200;
 
+export type FinanceFailureCode =
+	| 'loanNotFound'
+	| 'loanClosed'
+	| 'loanDelinquent'
+	| 'invalidAmount'
+	| 'belowMinimumBorrowing'
+	| 'insufficientCash'
+	| 'overpayment'
+	| 'unsupportedTerm'
+	| 'insufficientCredit'
+	| 'purchaseUnavailable'
+	| 'purchaseCostChanged';
+
+export type FinanceActionResult<TReceipt> =
+	| { ok: true; game: GameState; receipt: TReceipt }
+	| { ok: false; code: FinanceFailureCode; context: Record<string, string | number> };
+
+type FinanceActionFailure = Extract<FinanceActionResult<never>, { ok: false }>;
+type ActionLoanLookup = { ok: true; loan: LoanInstrument } | FinanceActionFailure;
+
+export interface BorrowInput {
+	purpose: Exclude<LoanInstrument['purpose'], 'founding' | 'refinance'>;
+	amount: number;
+	termDays: LoanTermDays;
+	allowBelowMinimum?: boolean;
+}
+
 export interface CreditScheduleEstimate {
 	firstPayment: number;
 	regularPayment: number;
@@ -212,6 +239,7 @@ function updateFinanceDayActivity(
 			break;
 		case 'principalPayment':
 			next.principalRepaid += transaction.principalAmount;
+			next.interestPaid += transaction.interestAmount;
 			break;
 		case 'interestPayment':
 			next.interestPaid += transaction.interestAmount;
@@ -797,5 +825,317 @@ export function assessCredit(
 			termDays
 		}),
 		reasons
+	};
+}
+
+function failure(
+	code: FinanceFailureCode,
+	context: Record<string, string | number> = {}
+): FinanceActionFailure {
+	return { ok: false, code, context };
+}
+
+function isSupportedTermDays(termDays: number): termDays is LoanTermDays {
+	return termDays === 28 || termDays === 56 || termDays === 84;
+}
+
+function isValidActionAmount(amount: number): boolean {
+	return Number.isSafeInteger(amount) && amount > 0;
+}
+
+function createActionLoan(input: {
+	id: string;
+	purpose: LoanInstrument['purpose'];
+	principal: number;
+	annualInterestRateBps: number;
+	termDays: LoanTermDays;
+	day: number;
+	refinancedFromLoanId?: string;
+}): LoanInstrument {
+	return {
+		id: input.id,
+		purpose: input.purpose,
+		status: 'active',
+		openedOnDay: input.day,
+		originalPrincipal: input.principal,
+		remainingPrincipal: input.principal,
+		annualInterestRateBps: input.annualInterestRateBps,
+		termDays: input.termDays,
+		installmentsProcessed: 0,
+		nextPaymentDay: input.day + LOAN_PAYMENT_FREQUENCY_DAYS,
+		lastInterestAccrualDay: input.day,
+		accruedInterestMicros: 0,
+		overdueInterest: 0,
+		overduePrincipal: 0,
+		arrearsSinceDay: null,
+		scheduledPaymentCount: 0,
+		onTimePaymentCount: 0,
+		missedPaymentCount: 0,
+		...(input.refinancedFromLoanId === undefined
+			? {}
+			: { refinancedFromLoanId: input.refinancedFromLoanId })
+	};
+}
+
+export function borrow(
+	game: GameState,
+	input: BorrowInput
+): FinanceActionResult<{
+	loanId: string;
+	amount: number;
+	annualInterestRateBps: number;
+}> {
+	if (!isSupportedTermDays(input.termDays)) {
+		return failure('unsupportedTerm', { termDays: input.termDays });
+	}
+	if (!isValidActionAmount(input.amount)) {
+		return failure('invalidAmount', { amount: input.amount });
+	}
+	if (input.purpose === 'workingCapital' && !input.allowBelowMinimum && input.amount < 1_000) {
+		return failure('belowMinimumBorrowing', { amount: input.amount, minimum: 1_000 });
+	}
+	if (!['workingCapital', 'emergency', 'supplierCredit', 'expansion'].includes(input.purpose)) {
+		return failure('invalidAmount', { purpose: input.purpose });
+	}
+
+	const assessment = assessCredit(game, input.termDays);
+	if (input.amount > assessment.availableCredit) {
+		return failure('insufficientCredit', {
+			amount: input.amount,
+			availableCredit: assessment.availableCredit
+		});
+	}
+
+	const loanId = `loan-${game.finance.nextLoanSequence}`;
+	const loan = createActionLoan({
+		id: loanId,
+		purpose: input.purpose,
+		principal: input.amount,
+		annualInterestRateBps: assessment.annualInterestRateBps,
+		termDays: input.termDays,
+		day: game.day
+	});
+	let finance: FinanceState = {
+		...game.finance,
+		loans: [...game.finance.loans, loan],
+		nextLoanSequence: game.finance.nextLoanSequence + 1
+	};
+	finance = appendFinanceTransaction(finance, {
+		day: game.day,
+		kind: 'disbursement',
+		loanId,
+		cashDelta: input.amount,
+		principalAmount: input.amount,
+		principalDelta: input.amount,
+		interestAmount: 0
+	});
+	return {
+		ok: true,
+		game: { ...game, cash: game.cash + input.amount, finance },
+		receipt: {
+			loanId,
+			amount: input.amount,
+			annualInterestRateBps: assessment.annualInterestRateBps
+		}
+	};
+}
+
+function findActionLoan(game: GameState, loanId: string): ActionLoanLookup {
+	const loan = game.finance.loans.find((candidate) => candidate.id === loanId);
+	if (loan === undefined) return failure('loanNotFound', { loanId });
+	if (!isOutstandingLoan(loan)) return failure('loanClosed', { loanId, status: loan.status });
+	return { ok: true, loan };
+}
+
+function getPayoffAmount(loan: LoanInstrument): number {
+	return (
+		loan.remainingPrincipal +
+		loan.overdueInterest +
+		Math.ceil(loan.accruedInterestMicros / 1_000_000)
+	);
+}
+
+export function getPayoffQuote(
+	game: GameState,
+	loanId: string
+): FinanceActionResult<{ loanId: string; amount: number }> {
+	const found = findActionLoan(game, loanId);
+	if (!found.ok) return found;
+	return { ok: true, game, receipt: { loanId, amount: getPayoffAmount(found.loan) } };
+}
+
+function applyRepayment(
+	loan: LoanInstrument,
+	amount: number
+): {
+	loan: LoanInstrument;
+	principalPaid: number;
+	interestPaid: number;
+} {
+	const payoffAmount = getPayoffAmount(loan);
+	const isClosingPayment = amount === payoffAmount;
+	let remainingAmount = amount;
+	let next = loan;
+	let interestPaid = 0;
+	let principalPaid = 0;
+
+	const overdueInterestPaid = Math.min(remainingAmount, next.overdueInterest);
+	next = { ...next, overdueInterest: next.overdueInterest - overdueInterestPaid };
+	remainingAmount -= overdueInterestPaid;
+	interestPaid += overdueInterestPaid;
+
+	const wholeAccruedInterest = Math.floor(next.accruedInterestMicros / 1_000_000);
+	const accruedInterestPaid = Math.min(remainingAmount, wholeAccruedInterest);
+	next = {
+		...next,
+		accruedInterestMicros: next.accruedInterestMicros - accruedInterestPaid * 1_000_000
+	};
+	remainingAmount -= accruedInterestPaid;
+	interestPaid += accruedInterestPaid;
+
+	const overduePrincipalPaid = Math.min(remainingAmount, next.overduePrincipal);
+	next = {
+		...next,
+		overduePrincipal: next.overduePrincipal - overduePrincipalPaid,
+		remainingPrincipal: next.remainingPrincipal - overduePrincipalPaid
+	};
+	remainingAmount -= overduePrincipalPaid;
+	principalPaid += overduePrincipalPaid;
+
+	const principalPayment = Math.min(remainingAmount, next.remainingPrincipal);
+	next = { ...next, remainingPrincipal: next.remainingPrincipal - principalPayment };
+	remainingAmount -= principalPayment;
+	principalPaid += principalPayment;
+
+	if (isClosingPayment && next.accruedInterestMicros > 0) {
+		const fractionalClosePayment = Math.ceil(next.accruedInterestMicros / 1_000_000);
+		next = { ...next, accruedInterestMicros: 0 };
+		remainingAmount -= fractionalClosePayment;
+		interestPaid += fractionalClosePayment;
+	}
+
+	if (remainingAmount !== 0) {
+		throw new Error('Repayment allocation did not reconcile');
+	}
+	return { loan: finalizeLoanStatus(next), principalPaid, interestPaid };
+}
+
+export function repayLoan(
+	game: GameState,
+	input: { loanId: string; amount: number }
+): FinanceActionResult<{ loanId: string; principalPaid: number; interestPaid: number }> {
+	const found = findActionLoan(game, input.loanId);
+	if (!found.ok) return found;
+	if (!isValidActionAmount(input.amount)) {
+		return failure('invalidAmount', { amount: input.amount });
+	}
+	const payoffAmount = getPayoffAmount(found.loan);
+	if (input.amount > payoffAmount) {
+		return failure('overpayment', { amount: input.amount, payoffAmount });
+	}
+	if (game.cash < input.amount) {
+		return failure('insufficientCash', { cash: game.cash, amount: input.amount });
+	}
+
+	const repayment = applyRepayment(found.loan, input.amount);
+	let finance = replaceLoan(game.finance, repayment.loan);
+	finance = appendFinanceTransaction(finance, {
+		day: game.day,
+		kind: 'principalPayment',
+		loanId: found.loan.id,
+		cashDelta: -input.amount,
+		principalAmount: repayment.principalPaid,
+		principalDelta: -repayment.principalPaid,
+		interestAmount: repayment.interestPaid
+	});
+	return {
+		ok: true,
+		game: { ...game, cash: game.cash - input.amount, finance },
+		receipt: {
+			loanId: found.loan.id,
+			principalPaid: repayment.principalPaid,
+			interestPaid: repayment.interestPaid
+		}
+	};
+}
+
+export function payOffLoan(
+	game: GameState,
+	loanId: string
+): FinanceActionResult<{ loanId: string; principalPaid: number; interestPaid: number }> {
+	const quote = getPayoffQuote(game, loanId);
+	if (!quote.ok) return quote;
+	return repayLoan(game, { loanId, amount: quote.receipt.amount });
+}
+
+export function refinanceLoan(
+	game: GameState,
+	input: { loanId: string; termDays: LoanTermDays }
+): FinanceActionResult<{ oldLoanId: string; newLoanId: string; capitalizedInterest: number }> {
+	if (!isSupportedTermDays(input.termDays)) {
+		return failure('unsupportedTerm', { termDays: input.termDays });
+	}
+	const found = findActionLoan(game, input.loanId);
+	if (!found.ok) return found;
+	if (found.loan.status === 'delinquent' || hasArrears(found.loan)) {
+		return failure('loanDelinquent', { loanId: found.loan.id });
+	}
+
+	const payoffAmount = getPayoffAmount(found.loan);
+	const assessment = assessCredit(game, input.termDays, { excludeLoanId: found.loan.id });
+	if (payoffAmount > assessment.availableCredit) {
+		return failure('insufficientCredit', {
+			amount: payoffAmount,
+			availableCredit: assessment.availableCredit
+		});
+	}
+
+	const newLoanId = `loan-${game.finance.nextLoanSequence}`;
+	const capitalizedInterest = payoffAmount - found.loan.remainingPrincipal;
+	const newLoan = createActionLoan({
+		id: newLoanId,
+		purpose: 'refinance',
+		principal: payoffAmount,
+		annualInterestRateBps: assessment.annualInterestRateBps,
+		termDays: input.termDays,
+		day: game.day,
+		refinancedFromLoanId: found.loan.id
+	});
+	const closedLoan: LoanInstrument = {
+		...found.loan,
+		status: 'refinanced',
+		remainingPrincipal: 0,
+		accruedInterestMicros: 0,
+		overdueInterest: 0,
+		overduePrincipal: 0,
+		arrearsSinceDay: null,
+		nextPaymentDay: null,
+		refinancedByLoanId: newLoanId
+	};
+	let finance: FinanceState = {
+		...game.finance,
+		loans: game.finance.loans
+			.map((loan) => (loan.id === found.loan.id ? closedLoan : loan))
+			.concat(newLoan),
+		nextLoanSequence: game.finance.nextLoanSequence + 1
+	};
+	finance = appendFinanceTransaction(finance, {
+		day: game.day,
+		kind: 'refinance',
+		loanId: newLoanId,
+		relatedLoanId: found.loan.id,
+		cashDelta: 0,
+		principalAmount: found.loan.remainingPrincipal,
+		principalDelta: 0,
+		interestAmount: capitalizedInterest
+	});
+	return {
+		ok: true,
+		game: { ...game, finance },
+		receipt: {
+			oldLoanId: found.loan.id,
+			newLoanId,
+			capitalizedInterest
+		}
 	};
 }

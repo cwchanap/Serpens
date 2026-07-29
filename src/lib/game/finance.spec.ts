@@ -3,11 +3,13 @@ import { ARCHETYPES } from './archetypes';
 import {
 	appendFinanceTransaction,
 	assessCredit,
+	borrow,
 	calculateDailyInterestMicros,
 	createEmptyFinanceState,
 	createFoundingFinanceState,
 	estimateNextLoanPayment,
 	getInstallmentCount,
+	getPayoffQuote,
 	getLifetimeRepaymentHistory,
 	getNormalizedWeeklyService,
 	getOfferRateBps,
@@ -15,11 +17,15 @@ import {
 	getTotalAmountDue,
 	getTotalDebt,
 	projectLoanSchedule,
+	payOffLoan,
+	refinanceLoan,
+	repayLoan,
 	replaceFoundingLoan,
 	resetFinanceDayActivity,
 	serviceFinanceForDay
 } from './finance';
 import { createNewGame } from './state';
+import { simulateDay } from './simulateDay';
 import type { FinanceState, GameState, LoanInstrument } from './types';
 
 function createLoan(overrides: Partial<LoanInstrument> = {}): LoanInstrument {
@@ -184,6 +190,222 @@ describe('finance state', () => {
 		]);
 		expect(result.transactions).toEqual(withUnrelated.transactions);
 		expect(replaceFoundingLoan(result, 9, 0).loans).toEqual([unrelated]);
+	});
+});
+
+describe('borrow, repay, payoff, and refinance actions', () => {
+	function creditworthyGame(input: { cash?: number; finance?: FinanceState } = {}): GameState {
+		return createCreditGame({
+			cash: input.cash ?? 50_000,
+			finance: input.finance,
+			operatingCashFlows: [1_000, 1_000, 1_000, 1_000, 1_000, 1_000, 1_000]
+		});
+	}
+
+	it('disburses an eligible working-capital loan once and preserves operating measures', () => {
+		const game = creditworthyGame();
+		const result = borrow(game, { purpose: 'workingCapital', amount: 1_000, termDays: 56 });
+
+		expect(result).toMatchObject({
+			ok: true,
+			receipt: { loanId: 'loan-1', amount: 1_000 }
+		});
+		if (!result.ok) return;
+		expect(result.game.cash).toBe(game.cash + 1_000);
+		expect(result.game.finance.loans[0]).toMatchObject({
+			purpose: 'workingCapital',
+			originalPrincipal: 1_000,
+			remainingPrincipal: 1_000,
+			termDays: 56,
+			nextPaymentDay: game.day + 7
+		});
+		expect(result.game.finance.transactions).toEqual([
+			expect.objectContaining({
+				kind: 'disbursement',
+				cashDelta: 1_000,
+				principalAmount: 1_000,
+				principalDelta: 1_000
+			})
+		]);
+		expect(result.game.finance.currentDayActivity).toMatchObject({
+			principalBorrowed: 1_000,
+			financingCashFlow: 1_000
+		});
+		expect(result.game.scorecard).toEqual(game.scorecard);
+
+		const beforeTick = simulateDay(game);
+		const afterBorrowTick = simulateDay(result.game);
+		expect(afterBorrowTick.reports.at(-1)).toMatchObject({
+			operatingCashFlow: beforeTick.reports.at(-1)?.operatingCashFlow,
+			netIncome: beforeTick.reports.at(-1)?.netIncome
+		});
+		expect(afterBorrowTick.scorecard.profit).toBe(beforeTick.scorecard.profit);
+		expect(afterBorrowTick.reports.at(-1)?.financingCashFlow).toBe(1_000);
+	});
+
+	it.each([
+		{ amount: 999, termDays: 28, code: 'belowMinimumBorrowing' },
+		{ amount: 0, termDays: 28, code: 'invalidAmount' },
+		{ amount: 1.5, termDays: 28, code: 'invalidAmount' },
+		{ amount: 1_000, termDays: 7 as unknown as 28, code: 'unsupportedTerm' }
+	])('rejects invalid voluntary borrowing %#', ({ amount, termDays, code }) => {
+		const result = borrow(creditworthyGame(), {
+			purpose: 'workingCapital',
+			amount,
+			termDays: termDays as LoanInstrument['termDays']
+		});
+		expect(result).toMatchObject({ ok: false, code });
+	});
+
+	it('allocates repayment to overdue interest, whole accrued interest, overdue principal, then principal', () => {
+		const loan = createLoan({
+			remainingPrincipal: 900,
+			overduePrincipal: 100,
+			overdueInterest: 10,
+			accruedInterestMicros: 2_300_000
+		});
+		const result = repayLoan(creditworthyGame({ cash: 1_000, finance: createFinance([loan]) }), {
+			loanId: loan.id,
+			amount: 160
+		});
+
+		expect(result).toMatchObject({
+			ok: true,
+			receipt: { loanId: loan.id, interestPaid: 12, principalPaid: 148 }
+		});
+		if (!result.ok) return;
+		expect(result.game.cash).toBe(840);
+		expect(result.game.finance.loans[0]).toMatchObject({
+			remainingPrincipal: 752,
+			overduePrincipal: 0,
+			overdueInterest: 0,
+			accruedInterestMicros: 300_000
+		});
+		expect(result.game.finance.currentDayActivity).toMatchObject({
+			principalRepaid: 148,
+			interestPaid: 12,
+			financingCashFlow: -160
+		});
+	});
+
+	it('rejects invalid, unavailable, closed, and over-payments without mutation', () => {
+		const loan = createLoan({ remainingPrincipal: 100, accruedInterestMicros: 1 });
+		const game = creditworthyGame({ cash: 10, finance: createFinance([loan]) });
+		expect(repayLoan(game, { loanId: loan.id, amount: 0 })).toMatchObject({
+			ok: false,
+			code: 'invalidAmount'
+		});
+		expect(repayLoan(game, { loanId: loan.id, amount: 102 })).toMatchObject({
+			ok: false,
+			code: 'overpayment'
+		});
+		expect(repayLoan(game, { loanId: loan.id, amount: 100 })).toMatchObject({
+			ok: false,
+			code: 'insufficientCash'
+		});
+		expect(repayLoan(game, { loanId: 'missing', amount: 1 })).toMatchObject({
+			ok: false,
+			code: 'loanNotFound'
+		});
+		expect(
+			repayLoan(creditworthyGame({ finance: createFinance([{ ...loan, status: 'paid' }]) }), {
+				loanId: loan.id,
+				amount: 1
+			})
+		).toMatchObject({ ok: false, code: 'loanClosed' });
+	});
+
+	it('quotes and pays off a final fractional interest balance exactly once', () => {
+		const loan = createLoan({
+			remainingPrincipal: 100,
+			overdueInterest: 2,
+			accruedInterestMicros: 300_001
+		});
+		const game = creditworthyGame({ cash: 103, finance: createFinance([loan]) });
+		expect(getPayoffQuote(game, loan.id)).toMatchObject({
+			ok: true,
+			receipt: { loanId: loan.id, amount: 103 }
+		});
+
+		const result = payOffLoan(game, loan.id);
+		expect(result).toMatchObject({
+			ok: true,
+			receipt: { loanId: loan.id, principalPaid: 100, interestPaid: 3 }
+		});
+		if (!result.ok) return;
+		expect(result.game.finance.loans[0]).toMatchObject({
+			status: 'paid',
+			remainingPrincipal: 0,
+			accruedInterestMicros: 0,
+			nextPaymentDay: null
+		});
+		const paidInterestMicros = result.receipt.interestPaid * 1_000_000;
+		const exactInterestMicros = loan.overdueInterest * 1_000_000 + loan.accruedInterestMicros;
+		expect(paidInterestMicros - exactInterestMicros).toBeGreaterThanOrEqual(0);
+		expect(paidInterestMicros - exactInterestMicros).toBeLessThan(1_000_000);
+		expect(payOffLoan(result.game, loan.id)).toMatchObject({ ok: false, code: 'loanClosed' });
+	});
+
+	it('refinances an active loan cash-neutrally with symmetric links and capitalized interest', () => {
+		const oldLoan = createLoan({
+			id: 'loan-7',
+			remainingPrincipal: 1_000,
+			accruedInterestMicros: 4_300_001
+		});
+		const game = creditworthyGame({ cash: 50_000, finance: createFinance([oldLoan]) });
+		const result = refinanceLoan(game, { loanId: oldLoan.id, termDays: 56 });
+
+		expect(result).toMatchObject({
+			ok: true,
+			receipt: { oldLoanId: oldLoan.id, newLoanId: 'loan-1', capitalizedInterest: 5 }
+		});
+		if (!result.ok) return;
+		const [old, replacement] = result.game.finance.loans;
+		expect(result.game.cash).toBe(game.cash);
+		expect(old).toMatchObject({ status: 'refinanced', refinancedByLoanId: replacement?.id });
+		expect(replacement).toMatchObject({
+			purpose: 'refinance',
+			originalPrincipal: 1_005,
+			remainingPrincipal: 1_005,
+			refinancedFromLoanId: old?.id
+		});
+		expect(result.game.finance.transactions).toEqual([
+			expect.objectContaining({
+				kind: 'refinance',
+				loanId: replacement?.id,
+				relatedLoanId: old?.id,
+				cashDelta: 0,
+				principalAmount: 1_000,
+				interestAmount: 5
+			})
+		]);
+		expect(result.game.finance.currentDayActivity).toMatchObject({
+			refinancedPrincipal: 1_000,
+			interestCapitalized: 5,
+			financingCashFlow: 0
+		});
+		expect(result.receipt.capitalizedInterest * 1_000_000 - oldLoan.accruedInterestMicros).toBe(
+			699_999
+		);
+	});
+
+	it('rejects delinquent and closed refinance attempts', () => {
+		const loan = createLoan();
+		expect(
+			refinanceLoan(
+				creditworthyGame({ finance: createFinance([{ ...loan, status: 'delinquent' }]) }),
+				{
+					loanId: loan.id,
+					termDays: 28
+				}
+			)
+		).toMatchObject({ ok: false, code: 'loanDelinquent' });
+		expect(
+			refinanceLoan(creditworthyGame({ finance: createFinance([{ ...loan, status: 'paid' }]) }), {
+				loanId: loan.id,
+				termDays: 28
+			})
+		).toMatchObject({ ok: false, code: 'loanClosed' });
 	});
 });
 
