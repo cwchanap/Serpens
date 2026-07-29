@@ -266,6 +266,7 @@ describe('collectGameAlerts', () => {
 			'missedLoanPayment',
 			'upcomingLoanPayment',
 			'upcomingLoanPayment',
+			'upcomingLoanPayment',
 			'covenantRisk',
 			'lowCashRunway'
 		]);
@@ -276,6 +277,11 @@ describe('collectGameAlerts', () => {
 				managementPanelId: 'finance'
 			},
 			{ id: 'upcomingLoanPayment:loan-today', loanId: 'loan-today', managementPanelId: 'finance' },
+			{
+				id: 'upcomingLoanPayment:loan-overdue',
+				loanId: 'loan-overdue',
+				managementPanelId: 'finance'
+			},
 			{ id: 'upcomingLoanPayment:loan-soon', loanId: 'loan-soon', managementPanelId: 'finance' },
 			{ id: 'covenantRisk', managementPanelId: 'finance' },
 			{ id: 'lowCashRunway', managementPanelId: 'finance' }
@@ -303,6 +309,45 @@ describe('collectGameAlerts', () => {
 			'upcomingLoanPayment:loan-d1-b',
 			'upcomingLoanPayment:loan-d3',
 			'covenantRisk'
+		]);
+	});
+
+	it('keeps a delinquent loan visible in both missed and upcoming groups when its next payment is imminent', () => {
+		const finance = createEmptyFinanceState(5);
+		const alerts = collectGameAlerts(
+			baseGame({
+				finance: {
+					...finance,
+					loans: [
+						loan({
+							id: 'loan-dual-risk',
+							status: 'delinquent',
+							overduePrincipal: 25,
+							arrearsSinceDay: 3,
+							nextPaymentDay: 7
+						})
+					]
+				}
+			})
+		);
+
+		expect(
+			alerts
+				.filter((alert) => alert.loanId === 'loan-dual-risk')
+				.map(({ id, kind, loanId, managementPanelId }) => ({ id, kind, loanId, managementPanelId }))
+		).toEqual([
+			{
+				id: 'missedLoanPayment:loan-dual-risk',
+				kind: 'missedLoanPayment',
+				loanId: 'loan-dual-risk',
+				managementPanelId: 'finance'
+			},
+			{
+				id: 'upcomingLoanPayment:loan-dual-risk',
+				kind: 'upcomingLoanPayment',
+				loanId: 'loan-dual-risk',
+				managementPanelId: 'finance'
+			}
 		]);
 	});
 
@@ -347,6 +392,9 @@ describe('collectGameAlerts', () => {
 				.slice(3)
 				.map(({ kind, managementPanelId, loanId }) => ({ kind, managementPanelId, loanId }))
 		).toEqual([
+			{ kind: 'upcomingLoanPayment', managementPanelId: 'finance', loanId: 'loan-earlier-a' },
+			{ kind: 'upcomingLoanPayment', managementPanelId: 'finance', loanId: 'loan-earlier-b' },
+			{ kind: 'upcomingLoanPayment', managementPanelId: 'finance', loanId: 'loan-later' },
 			{ kind: 'covenantRisk', managementPanelId: 'finance', loanId: undefined },
 			{ kind: 'lowCashRunway', managementPanelId: 'finance', loanId: undefined }
 		]);
