@@ -11,6 +11,43 @@ export const FOUNDING_LOAN_TERM_DAYS = 84;
 export const FOUNDING_LOAN_APR_BPS = 1_200;
 export const FINANCE_TRANSACTION_LIMIT = 200;
 
+export interface CreditScheduleEstimate {
+	firstPayment: number;
+	regularPayment: number;
+	peakPayment: number;
+}
+
+export type CreditAssessmentReason =
+	| 'delinquentObligation'
+	| 'principalCapacityLimited'
+	| 'debtServiceCapacityLimited';
+
+export interface CreditAssessment {
+	termDays: LoanTermDays;
+	baseRateBps: number;
+	healthPenaltyBps: number;
+	historyPenaltyBps: number;
+	annualInterestRateBps: number;
+	averageDailyOperatingCashFlow: number;
+	weeklyOperatingCashFlow: number;
+	healthScore: number;
+	healthFactor: number;
+	lifetimeScheduledPaymentCount: number;
+	lifetimeMissedPaymentCount: number;
+	lifetimeMissRate: number;
+	historyFactor: number;
+	grossPrincipalLimit: number;
+	outstandingPrincipal: number;
+	principalHeadroom: number;
+	weeklyPaymentBudget: number;
+	existingWeeklyDebtService: number;
+	weeklyServiceHeadroom: number;
+	maxPrincipalByService: number;
+	availableCredit: number;
+	availableCreditSchedule: CreditScheduleEstimate;
+	reasons: CreditAssessmentReason[];
+}
+
 export interface FinanceServicingResult {
 	finance: FinanceState;
 	cash: number;
@@ -515,4 +552,231 @@ export function getTotalAmountDue(game: Pick<GameState, 'finance'>): number {
 				: total,
 		0
 	);
+}
+
+export function getLifetimeRepaymentHistory(finance: FinanceState): {
+	scheduledPaymentCount: number;
+	onTimePaymentCount: number;
+	missedPaymentCount: number;
+	missRate: number;
+} {
+	const history = finance.loans.reduce(
+		(total, loan) => ({
+			scheduledPaymentCount: total.scheduledPaymentCount + loan.scheduledPaymentCount,
+			onTimePaymentCount: total.onTimePaymentCount + loan.onTimePaymentCount,
+			missedPaymentCount: total.missedPaymentCount + loan.missedPaymentCount
+		}),
+		{ scheduledPaymentCount: 0, onTimePaymentCount: 0, missedPaymentCount: 0 }
+	);
+	return {
+		...history,
+		missRate:
+			history.scheduledPaymentCount === 0
+				? 0
+				: history.missedPaymentCount / history.scheduledPaymentCount
+	};
+}
+
+function getHealthScore(game: Pick<GameState, 'scorecard'>): number {
+	const { profit, customerSatisfaction, staffMorale, marketPosition } = game.scorecard;
+	return (profit + customerSatisfaction + staffMorale + marketPosition) / 4;
+}
+
+function getBaseOfferRateBps(termDays: LoanTermDays): number {
+	switch (termDays) {
+		case 28:
+			return 1_000;
+		case 56:
+			return 1_200;
+		case 84:
+			return 1_400;
+	}
+}
+
+export function getOfferRateBps(game: GameState, termDays: LoanTermDays): number {
+	const healthScore = getHealthScore(game);
+	const { missRate } = getLifetimeRepaymentHistory(game.finance);
+	return (
+		getBaseOfferRateBps(termDays) + Math.round((100 - healthScore) * 6) + Math.round(missRate * 800)
+	);
+}
+
+export function projectLoanSchedule(input: {
+	principal: number;
+	annualInterestRateBps: number;
+	termDays: LoanTermDays;
+}): CreditScheduleEstimate {
+	if (!Number.isInteger(input.principal) || input.principal < 0) {
+		throw new RangeError('Projected loan principal must be a non-negative integer');
+	}
+	const installmentCount = getInstallmentCount(input.termDays);
+	const basePrincipal = Math.floor(input.principal / installmentCount);
+	const finalRemainder = input.principal % installmentCount;
+	let remainingPrincipal = input.principal;
+	let accruedInterestMicros = 0;
+	const payments: number[] = [];
+
+	for (let installmentIndex = 0; installmentIndex < installmentCount; installmentIndex += 1) {
+		accruedInterestMicros +=
+			calculateDailyInterestMicros(remainingPrincipal, input.annualInterestRateBps) *
+			LOAN_PAYMENT_FREQUENCY_DAYS;
+		const isFinalInstallment = installmentIndex === installmentCount - 1;
+		const principalPayment =
+			installmentIndex === installmentCount - 1 ? basePrincipal + finalRemainder : basePrincipal;
+		const interestPayment = isFinalInstallment
+			? Math.ceil(accruedInterestMicros / 1_000_000)
+			: Math.floor(accruedInterestMicros / 1_000_000);
+		payments.push(principalPayment + interestPayment);
+		remainingPrincipal -= principalPayment;
+		accruedInterestMicros = isFinalInstallment
+			? 0
+			: accruedInterestMicros - interestPayment * 1_000_000;
+	}
+
+	return {
+		firstPayment: payments[0] ?? 0,
+		regularPayment: payments[1] ?? payments[0] ?? 0,
+		peakPayment: Math.max(0, ...payments)
+	};
+}
+
+export function getNormalizedWeeklyService(
+	finance: FinanceState,
+	options: { excludeLoanId?: string } = {}
+): number {
+	return finance.loans.reduce((total, loan) => {
+		if (
+			!isOutstandingLoan(loan) ||
+			loan.id === options.excludeLoanId ||
+			loan.nextPaymentDay === null
+		) {
+			return total;
+		}
+		const scheduledPrincipal = getScheduledPrincipalForInstallment(
+			loan,
+			loan.installmentsProcessed
+		);
+		const exactWeeklyInterest =
+			(calculateDailyInterestMicros(loan.remainingPrincipal, loan.annualInterestRateBps) *
+				LOAN_PAYMENT_FREQUENCY_DAYS) /
+			1_000_000;
+		return total + scheduledPrincipal + exactWeeklyInterest;
+	}, 0);
+}
+
+function getOutstandingPrincipal(
+	finance: FinanceState,
+	options: { excludeLoanId?: string }
+): number {
+	return finance.loans.reduce(
+		(total, loan) =>
+			isOutstandingLoan(loan) && loan.id !== options.excludeLoanId
+				? total + loan.remainingPrincipal + loan.overduePrincipal
+				: total,
+		0
+	);
+}
+
+function getAverageDailyOperatingCashFlow(game: Pick<GameState, 'reports'>): number {
+	const reports = game.reports.slice(-7);
+	if (reports.length === 0) return 0;
+	return reports.reduce((total, report) => total + report.operatingCashFlow, 0) / reports.length;
+}
+
+export function assessCredit(
+	game: GameState,
+	termDays: LoanTermDays,
+	options: { excludeLoanId?: string } = {}
+): CreditAssessment {
+	const averageDailyOperatingCashFlow = getAverageDailyOperatingCashFlow(game);
+	const weeklyOperatingCashFlow = Math.max(0, averageDailyOperatingCashFlow * 7);
+	const healthScore = getHealthScore(game);
+	const healthFactor = 0.75 + 0.5 * (healthScore / 100);
+	const history = getLifetimeRepaymentHistory(game.finance);
+	const historyFactor = Math.max(0.5, 1 - 0.5 * history.missRate);
+	const baseRateBps = getBaseOfferRateBps(termDays);
+	const healthPenaltyBps = Math.round((100 - healthScore) * 6);
+	const historyPenaltyBps = Math.round(history.missRate * 800);
+	const annualInterestRateBps = baseRateBps + healthPenaltyBps + historyPenaltyBps;
+	const grossPrincipalLimit = Math.max(
+		0,
+		Math.min(
+			100_000,
+			Math.floor(
+				(15_000 + weeklyOperatingCashFlow * 2 + Math.max(0, game.cash) * 0.25) *
+					healthFactor *
+					historyFactor
+			)
+		)
+	);
+	const outstandingPrincipal = getOutstandingPrincipal(game.finance, options);
+	const principalHeadroom = Math.max(0, grossPrincipalLimit - outstandingPrincipal);
+	const weeklyPaymentBudget = Math.max(
+		0,
+		Math.floor((2_500 + weeklyOperatingCashFlow * 0.35) * healthFactor * historyFactor)
+	);
+	const existingWeeklyDebtService = getNormalizedWeeklyService(game.finance, options);
+	const weeklyServiceHeadroom = Math.max(0, weeklyPaymentBudget - existingWeeklyDebtService);
+	const hasDelinquentObligation = game.finance.loans.some(
+		(loan) => isOutstandingLoan(loan) && (loan.status === 'delinquent' || hasArrears(loan))
+	);
+
+	let maxPrincipalByService = 0;
+	if (!hasDelinquentObligation && weeklyServiceHeadroom > 0) {
+		let lower = 0;
+		let upper = principalHeadroom;
+		while (lower < upper) {
+			const principal = Math.floor((lower + upper + 1) / 2);
+			const schedule = projectLoanSchedule({ principal, annualInterestRateBps, termDays });
+			if (schedule.peakPayment <= weeklyServiceHeadroom) {
+				lower = principal;
+			} else {
+				upper = principal - 1;
+			}
+		}
+		maxPrincipalByService = lower;
+	}
+	const availableCredit = hasDelinquentObligation
+		? 0
+		: Math.min(principalHeadroom, maxPrincipalByService);
+	const reasons: CreditAssessmentReason[] = hasDelinquentObligation
+		? ['delinquentObligation']
+		: [
+				...(principalHeadroom <= maxPrincipalByService
+					? (['principalCapacityLimited'] as const)
+					: []),
+				...(maxPrincipalByService <= principalHeadroom
+					? (['debtServiceCapacityLimited'] as const)
+					: [])
+			];
+
+	return {
+		termDays,
+		baseRateBps,
+		healthPenaltyBps,
+		historyPenaltyBps,
+		annualInterestRateBps,
+		averageDailyOperatingCashFlow,
+		weeklyOperatingCashFlow,
+		healthScore,
+		healthFactor,
+		lifetimeScheduledPaymentCount: history.scheduledPaymentCount,
+		lifetimeMissedPaymentCount: history.missedPaymentCount,
+		lifetimeMissRate: history.missRate,
+		historyFactor,
+		grossPrincipalLimit,
+		outstandingPrincipal,
+		principalHeadroom,
+		weeklyPaymentBudget,
+		existingWeeklyDebtService,
+		weeklyServiceHeadroom,
+		maxPrincipalByService,
+		availableCredit,
+		availableCreditSchedule: projectLoanSchedule({
+			principal: availableCredit,
+			annualInterestRateBps,
+			termDays
+		}),
+		reasons
+	};
 }
