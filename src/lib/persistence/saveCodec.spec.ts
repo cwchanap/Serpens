@@ -580,6 +580,43 @@ describe('saveCodec', () => {
 		expect(report.nextLoanPayment).toBeNull();
 	});
 
+	test('rejects an outstanding loan whose scheduled payment is already in the past', () => {
+		expect.assertions(1);
+		const game = createGame();
+		const record = createManualSaveRecord({
+			metadata: { day: 11 },
+			game: {
+				day: 11,
+				finance: {
+					...game.finance,
+					currentDayActivity: { ...game.finance.currentDayActivity, day: 11 }
+				}
+			}
+		});
+
+		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+	});
+
+	test('round-trips an outstanding loan whose scheduled payment is due today', () => {
+		expect.assertions(2);
+		const game = createGame();
+		const record = createManualSaveRecord({
+			metadata: { day: 10 },
+			game: {
+				day: 10,
+				finance: {
+					...game.finance,
+					currentDayActivity: { ...game.finance.currentDayActivity, day: 10 }
+				}
+			}
+		});
+
+		const validated = validateSaveRecord(record);
+
+		expect(validated.game.finance.loans[0]?.nextPaymentDay).toBe(10);
+		expect(validateSaveRecord(structuredClone(validated))).toEqual(validated);
+	});
+
 	test.each([4, 5, 6, 7, 8, 9])(
 		'v%s record migration continues through rail and finance schema steps',
 		(sourceVersion) => {
