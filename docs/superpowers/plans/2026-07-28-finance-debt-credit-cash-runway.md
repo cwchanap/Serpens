@@ -1853,7 +1853,7 @@ git commit -m "feat(finance): review financed expansion"
 - Modify: any targeted fixtures whose assertions legitimately changed under approved debt service
 - Modify: `docs/superpowers/plans/2026-07-28-finance-debt-credit-cash-runway.md` only to check completed boxes during execution
 
-- [ ] **Step 1: Add the core Finance Playwright flow**
+- [x] **Step 1: Add the core Finance Playwright flow**
 
 Following existing route helpers and settled-canvas waits:
 
@@ -1869,7 +1869,7 @@ Following existing route helpers and settled-canvas waits:
 
 Use accessible labels/roles rather than CSS implementation selectors where practical.
 
-- [ ] **Step 2: Add financed-expansion coverage**
+- [x] **Step 2: Add financed-expansion coverage**
 
 Create a deterministic cash-short state through supported UI actions/fixture setup, then:
 
@@ -1880,7 +1880,7 @@ Create a deterministic cash-short state through supported UI actions/fixture set
 
 Keep stale-cost rejection primarily in domain/component tests unless the existing E2E harness has a stable way to alter the target between review and confirm.
 
-- [ ] **Step 3: Run targeted E2E**
+- [x] **Step 3: Run targeted E2E**
 
 Run:
 
@@ -1890,7 +1890,7 @@ bun run test:e2e -- src/routes/retail-sim.e2e.ts -g "finance|financed expansion"
 
 Expected: PASS.
 
-- [ ] **Step 4: Run the full verification matrix**
+- [x] **Step 4: Run the full verification matrix**
 
 Run:
 
@@ -1903,7 +1903,7 @@ bun run test:e2e
 
 Expected: all commands exit 0.
 
-- [ ] **Step 5: Audit invariants and scope**
+- [x] **Step 5: Audit invariants and scope**
 
 Run:
 
