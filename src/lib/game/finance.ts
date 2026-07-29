@@ -1,9 +1,21 @@
-import type { FinanceState, GameState, LoanInstrument, LoanTermDays } from './types';
+import type {
+	FinanceState,
+	FinanceTransaction,
+	GameState,
+	LoanInstrument,
+	LoanTermDays
+} from './types';
 
 export const LOAN_PAYMENT_FREQUENCY_DAYS = 7;
 export const FOUNDING_LOAN_TERM_DAYS = 84;
 export const FOUNDING_LOAN_APR_BPS = 1_200;
 export const FINANCE_TRANSACTION_LIMIT = 200;
+
+export interface FinanceServicingResult {
+	finance: FinanceState;
+	cash: number;
+	interestAccruedThisDayMicros: number;
+}
 
 function requireNonNegativeIntegerPrincipal(principal: number): void {
 	if (!Number.isInteger(principal) || principal < 0) {
@@ -91,6 +103,390 @@ export function replaceFoundingLoan(
 
 export function getInstallmentCount(termDays: LoanTermDays): number {
 	return termDays / LOAN_PAYMENT_FREQUENCY_DAYS;
+}
+
+export function calculateDailyInterestMicros(
+	principal: number,
+	annualInterestRateBps: number
+): number {
+	return Math.round((principal * annualInterestRateBps * 1_000_000) / (10_000 * 365));
+}
+
+export function getScheduledPrincipalForInstallment(
+	loan: LoanInstrument,
+	installmentIndex: number
+): number {
+	const installmentCount = getInstallmentCount(loan.termDays);
+	if (installmentIndex < 0 || installmentIndex >= installmentCount) return 0;
+
+	const basePrincipal = Math.floor(loan.originalPrincipal / installmentCount);
+	const finalRemainder = loan.originalPrincipal % installmentCount;
+	const scheduled =
+		installmentIndex === installmentCount - 1 ? basePrincipal + finalRemainder : basePrincipal;
+	return Math.min(scheduled, Math.max(0, loan.remainingPrincipal - loan.overduePrincipal));
+}
+
+export function estimateNextLoanPayment(loan: LoanInstrument): number {
+	if (!isOutstandingLoan(loan) || loan.nextPaymentDay === null) return 0;
+	const isFinalInstallment = loan.installmentsProcessed === getInstallmentCount(loan.termDays) - 1;
+	const accruedInterest = isFinalInstallment
+		? Math.ceil(loan.accruedInterestMicros / 1_000_000)
+		: Math.floor(loan.accruedInterestMicros / 1_000_000);
+	return (
+		loan.overdueInterest +
+		loan.overduePrincipal +
+		accruedInterest +
+		getScheduledPrincipalForInstallment(loan, loan.installmentsProcessed)
+	);
+}
+
+function isZeroActivity(finance: FinanceState): boolean {
+	const activity = finance.currentDayActivity;
+	return (
+		activity.principalBorrowed === 0 &&
+		activity.principalRepaid === 0 &&
+		activity.interestPaid === 0 &&
+		activity.interestCapitalized === 0 &&
+		activity.refinancedPrincipal === 0 &&
+		activity.financingCashFlow === 0
+	);
+}
+
+function assertActivityReconciliation(finance: FinanceState): void {
+	const activity = finance.currentDayActivity;
+	if (
+		activity.financingCashFlow !==
+		activity.principalBorrowed - activity.principalRepaid - activity.interestPaid
+	) {
+		throw new Error('Finance day activity does not reconcile');
+	}
+}
+
+function updateFinanceDayActivity(
+	finance: FinanceState,
+	transaction: Omit<FinanceTransaction, 'id'>
+): FinanceState['currentDayActivity'] {
+	const activity = finance.currentDayActivity;
+	const next = { ...activity };
+
+	switch (transaction.kind) {
+		case 'disbursement':
+			next.principalBorrowed += transaction.principalAmount;
+			break;
+		case 'principalPayment':
+			next.principalRepaid += transaction.principalAmount;
+			break;
+		case 'interestPayment':
+			next.interestPaid += transaction.interestAmount;
+			break;
+		case 'refinance':
+			next.refinancedPrincipal += transaction.principalAmount;
+			next.interestCapitalized += transaction.interestAmount;
+			break;
+		case 'missedPayment':
+			break;
+	}
+	next.financingCashFlow = next.principalBorrowed - next.principalRepaid - next.interestPaid;
+	return next;
+}
+
+export function appendFinanceTransaction(
+	finance: FinanceState,
+	transaction: Omit<FinanceTransaction, 'id'>
+): FinanceState {
+	const appended: FinanceTransaction = {
+		...transaction,
+		id: `finance-transaction-${finance.nextTransactionSequence}`
+	};
+	const next = {
+		...finance,
+		transactions: [...finance.transactions, appended].slice(-FINANCE_TRANSACTION_LIMIT),
+		nextTransactionSequence: finance.nextTransactionSequence + 1,
+		currentDayActivity: updateFinanceDayActivity(finance, transaction)
+	};
+	assertActivityReconciliation(next);
+	return next;
+}
+
+export function resetFinanceDayActivity(finance: FinanceState, nextDay: number): FinanceState {
+	const next = { ...finance, currentDayActivity: createDayActivity(nextDay) };
+	assertActivityReconciliation(next);
+	return next;
+}
+
+function replaceLoan(finance: FinanceState, nextLoan: LoanInstrument): FinanceState {
+	return {
+		...finance,
+		loans: finance.loans.map((loan) => (loan.id === nextLoan.id ? nextLoan : loan))
+	};
+}
+
+function compareIds(left: string, right: string): number {
+	if (left < right) return -1;
+	if (left > right) return 1;
+	return 0;
+}
+
+function accrueLoanThroughDay(
+	loan: LoanInstrument,
+	day: number
+): {
+	loan: LoanInstrument;
+	interestAccruedThisDayMicros: number;
+} {
+	if (!isOutstandingLoan(loan) || day <= loan.lastInterestAccrualDay) {
+		return { loan, interestAccruedThisDayMicros: 0 };
+	}
+
+	const dailyInterestMicros = calculateDailyInterestMicros(
+		loan.remainingPrincipal,
+		loan.annualInterestRateBps
+	);
+	const accrualDays = day - loan.lastInterestAccrualDay;
+	return {
+		loan: {
+			...loan,
+			lastInterestAccrualDay: day,
+			accruedInterestMicros: loan.accruedInterestMicros + dailyInterestMicros * accrualDays
+		},
+		interestAccruedThisDayMicros: dailyInterestMicros * accrualDays
+	};
+}
+
+function appendPaymentTransaction(
+	finance: FinanceState,
+	loanId: string,
+	day: number,
+	kind: 'interestPayment' | 'principalPayment',
+	amount: number
+): FinanceState {
+	if (amount === 0) return finance;
+	return appendFinanceTransaction(finance, {
+		day,
+		kind,
+		loanId,
+		cashDelta: -amount,
+		principalAmount: kind === 'principalPayment' ? amount : 0,
+		principalDelta: kind === 'principalPayment' ? -amount : 0,
+		interestAmount: kind === 'interestPayment' ? amount : 0
+	});
+}
+
+function payLoanArrears(input: {
+	finance: FinanceState;
+	loan: LoanInstrument;
+	cash: number;
+	day: number;
+}): { finance: FinanceState; loan: LoanInstrument; cash: number } {
+	let { finance, loan } = input;
+	let cash = input.cash;
+	const availableCash = Math.max(0, cash);
+	const interestPayment = Math.min(availableCash, loan.overdueInterest);
+	if (interestPayment > 0) {
+		loan = { ...loan, overdueInterest: loan.overdueInterest - interestPayment };
+		cash -= interestPayment;
+		finance = appendPaymentTransaction(
+			finance,
+			loan.id,
+			input.day,
+			'interestPayment',
+			interestPayment
+		);
+	}
+	const principalPayment = Math.min(Math.max(0, cash), loan.overduePrincipal);
+	if (principalPayment > 0) {
+		loan = {
+			...loan,
+			overduePrincipal: loan.overduePrincipal - principalPayment,
+			remainingPrincipal: loan.remainingPrincipal - principalPayment
+		};
+		cash -= principalPayment;
+		finance = appendPaymentTransaction(
+			finance,
+			loan.id,
+			input.day,
+			'principalPayment',
+			principalPayment
+		);
+	}
+	return { finance, loan, cash };
+}
+
+function hasArrears(loan: LoanInstrument): boolean {
+	return loan.overdueInterest > 0 || loan.overduePrincipal > 0;
+}
+
+function finalizeLoanStatus(loan: LoanInstrument): LoanInstrument {
+	if (
+		loan.remainingPrincipal === 0 &&
+		loan.overdueInterest === 0 &&
+		loan.overduePrincipal === 0 &&
+		loan.accruedInterestMicros === 0
+	) {
+		return { ...loan, status: 'paid', arrearsSinceDay: null, nextPaymentDay: null };
+	}
+	if (hasArrears(loan)) {
+		return { ...loan, status: 'delinquent', arrearsSinceDay: loan.arrearsSinceDay };
+	}
+	if (loan.status === 'delinquent' && loan.nextPaymentDay !== null) {
+		return { ...loan, status: 'active', arrearsSinceDay: null };
+	}
+	return loan;
+}
+
+function serviceScheduledLoan(input: {
+	finance: FinanceState;
+	loan: LoanInstrument;
+	cash: number;
+	day: number;
+}): { finance: FinanceState; loan: LoanInstrument; cash: number } {
+	let { finance, loan } = input;
+	const priorOverdueInterest = loan.overdueInterest;
+	const priorOverduePrincipal = loan.overduePrincipal;
+	const hadPriorArrears = hasArrears(loan);
+	const installmentCount = getInstallmentCount(loan.termDays);
+	const isFinalInstallment = loan.installmentsProcessed === installmentCount - 1;
+	const scheduledPrincipal = getScheduledPrincipalForInstallment(loan, loan.installmentsProcessed);
+	const accruedInterestDue = isFinalInstallment
+		? Math.ceil(loan.accruedInterestMicros / 1_000_000)
+		: Math.floor(loan.accruedInterestMicros / 1_000_000);
+	const remainingAccruedInterestMicros = isFinalInstallment
+		? 0
+		: loan.accruedInterestMicros - accruedInterestDue * 1_000_000;
+	const scheduledObligation = accruedInterestDue + scheduledPrincipal;
+
+	loan = {
+		...loan,
+		accruedInterestMicros: remainingAccruedInterestMicros,
+		overdueInterest: loan.overdueInterest + accruedInterestDue,
+		overduePrincipal: loan.overduePrincipal + scheduledPrincipal,
+		installmentsProcessed: loan.installmentsProcessed + 1,
+		nextPaymentDay:
+			loan.installmentsProcessed + 1 === installmentCount
+				? null
+				: input.day + LOAN_PAYMENT_FREQUENCY_DAYS
+	};
+	const paid = payLoanArrears({ finance, loan, cash: input.cash, day: input.day });
+	finance = paid.finance;
+	loan = paid.loan;
+	const cash = paid.cash;
+
+	const unpaidInterest = Math.max(0, loan.overdueInterest - priorOverdueInterest);
+	const unpaidPrincipal = Math.max(0, loan.overduePrincipal - priorOverduePrincipal);
+	if (scheduledObligation > 0) {
+		loan = {
+			...loan,
+			scheduledPaymentCount: loan.scheduledPaymentCount + 1,
+			onTimePaymentCount:
+				loan.onTimePaymentCount +
+				(hadPriorArrears || unpaidInterest > 0 || unpaidPrincipal > 0 ? 0 : 1),
+			missedPaymentCount:
+				loan.missedPaymentCount +
+				(hadPriorArrears || unpaidInterest > 0 || unpaidPrincipal > 0 ? 1 : 0),
+			arrearsSinceDay:
+				unpaidInterest > 0 || unpaidPrincipal > 0
+					? (loan.arrearsSinceDay ?? input.day)
+					: loan.arrearsSinceDay
+		};
+		if (unpaidInterest > 0 || unpaidPrincipal > 0) {
+			finance = appendFinanceTransaction(finance, {
+				day: input.day,
+				kind: 'missedPayment',
+				loanId: loan.id,
+				cashDelta: 0,
+				principalAmount: unpaidPrincipal,
+				principalDelta: 0,
+				interestAmount: unpaidInterest
+			});
+		}
+	}
+
+	loan = finalizeLoanStatus(loan);
+	finance = replaceLoan(finance, loan);
+	return { finance, loan, cash };
+}
+
+function moveMaturedAccruedInterestToArrears(loan: LoanInstrument, cash: number): LoanInstrument {
+	if (loan.nextPaymentDay !== null || loan.accruedInterestMicros === 0) return loan;
+	const wholeInterest = Math.floor(loan.accruedInterestMicros / 1_000_000);
+	let next = {
+		...loan,
+		overdueInterest: loan.overdueInterest + wholeInterest,
+		accruedInterestMicros: loan.accruedInterestMicros - wholeInterest * 1_000_000
+	};
+	const payoff =
+		next.overdueInterest +
+		next.overduePrincipal +
+		Math.ceil(next.accruedInterestMicros / 1_000_000);
+	if (next.accruedInterestMicros > 0 && Math.max(0, cash) >= payoff) {
+		next = {
+			...next,
+			overdueInterest: next.overdueInterest + Math.ceil(next.accruedInterestMicros / 1_000_000),
+			accruedInterestMicros: 0
+		};
+	}
+	return next;
+}
+
+export function serviceFinanceForDay(input: {
+	finance: FinanceState;
+	cash: number;
+	day: number;
+}): FinanceServicingResult {
+	let finance = input.finance;
+	if (finance.currentDayActivity.day !== input.day && isZeroActivity(finance)) {
+		finance = resetFinanceDayActivity(finance, input.day);
+	}
+	let interestAccruedThisDayMicros = 0;
+	const accruedLoans = finance.loans.map((loan) => {
+		const accrued = accrueLoanThroughDay(loan, input.day);
+		interestAccruedThisDayMicros += accrued.interestAccruedThisDayMicros;
+		return accrued.loan;
+	});
+	finance = { ...finance, loans: accruedLoans };
+	let cash = input.cash;
+
+	const dueLoanIds = finance.loans
+		.filter(
+			(loan) =>
+				isOutstandingLoan(loan) && loan.nextPaymentDay !== null && loan.nextPaymentDay === input.day
+		)
+		.sort(
+			(left, right) =>
+				left.nextPaymentDay! - right.nextPaymentDay! ||
+				left.openedOnDay - right.openedOnDay ||
+				compareIds(left.id, right.id)
+		)
+		.map((loan) => loan.id);
+	for (const loanId of dueLoanIds) {
+		const loan = finance.loans.find((candidate) => candidate.id === loanId)!;
+		const serviced = serviceScheduledLoan({ finance, loan, cash, day: input.day });
+		finance = serviced.finance;
+		cash = serviced.cash;
+	}
+
+	const delinquentLoanIds = finance.loans
+		.filter((loan) => loan.status === 'delinquent')
+		.sort(
+			(left, right) =>
+				(left.arrearsSinceDay ?? Number.MAX_SAFE_INTEGER) -
+					(right.arrearsSinceDay ?? Number.MAX_SAFE_INTEGER) ||
+				left.openedOnDay - right.openedOnDay ||
+				compareIds(left.id, right.id)
+		)
+		.map((loan) => loan.id);
+	for (const loanId of delinquentLoanIds) {
+		let loan = finance.loans.find((candidate) => candidate.id === loanId)!;
+		loan = moveMaturedAccruedInterestToArrears(loan, cash);
+		const swept = payLoanArrears({ finance, loan, cash, day: input.day });
+		finance = swept.finance;
+		cash = swept.cash;
+		loan = finalizeLoanStatus(swept.loan);
+		finance = replaceLoan(finance, loan);
+	}
+
+	assertActivityReconciliation(finance);
+	return { finance, cash, interestAccruedThisDayMicros };
 }
 
 function isOutstandingLoan(loan: LoanInstrument): boolean {
