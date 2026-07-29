@@ -318,6 +318,25 @@ export function nonNegativeNumber(
 	return true;
 }
 
+export function nonNegativeInteger(
+	context: ValidationContext,
+	value: unknown,
+	path: string
+): value is number {
+	if (!finiteNumber(context, value, path)) return false;
+	if (!Number.isInteger(value) || value < 0) {
+		diagnostic(
+			context,
+			path,
+			'invalid-non-negative-integer',
+			value,
+			`${path} must be a non-negative integer.`
+		);
+		return false;
+	}
+	return true;
+}
+
 export function positiveNumber(
 	context: ValidationContext,
 	value: unknown,
