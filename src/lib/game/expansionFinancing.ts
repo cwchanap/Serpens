@@ -4,20 +4,9 @@ import {
 	type FinanceActionResult,
 	type FinancedPurchaseReceipt
 } from './finance';
-import { INDUSTRIAL_BUILDING_TYPES } from './industry';
-import { getIndustrialPlacementBlockReason, buildIndustrialBuilding } from './industryPlacement';
-import { getTileById } from './city';
-import { openStoreAtTile } from './placement';
-import { getExpansionSetupCost } from './state';
-import {
-	createCityTileLookup,
-	getOccupiedStoreTileIds,
-	getStoreFootprintPlacementBlockReason
-} from './storeFootprint';
-import { getWorldCityDefinition, openWorldCity } from './world';
-import type { ArchetypeId, GameState, IndustrialBuildingTypeId, WorldCityId } from './types';
+import type { GameState } from './types';
 
-interface ExpansionPurchaseInput {
+export interface ExpansionPurchaseInput {
 	expectedCost: number;
 	resolveLiveCost: (candidate: GameState) => number | null;
 	cashOnlyPurchase: (candidate: GameState) => GameState;
@@ -32,7 +21,9 @@ function purchaseFailure(
 	return { ok: false, game, code, context };
 }
 
-function financeExpansionPurchase(
+// This runner is internal-only: its callback-bearing input is consumed solely by
+// the three domain adapters, never re-exported from their public modules.
+export function runExpansionPurchase(
 	game: GameState,
 	input: ExpansionPurchaseInput
 ): FinanceActionResult<FinancedPurchaseReceipt> {
@@ -79,75 +70,4 @@ function financeExpansionPurchase(
 			financedPrincipal: shortfall
 		}
 	};
-}
-
-export function financeWorldCityOpening(
-	game: GameState,
-	input: { cityId: WorldCityId; expectedCost: number }
-): FinanceActionResult<FinancedPurchaseReceipt> {
-	return financeExpansionPurchase(game, {
-		expectedCost: input.expectedCost,
-		resolveLiveCost: (candidate) => {
-			const city = getWorldCityDefinition(input.cityId);
-			return city &&
-				!candidate.world.openedCityIds.includes(city.id) &&
-				candidate.world.revealedCityIds.includes(city.id)
-				? city.openingCost
-				: null;
-		},
-		cashOnlyPurchase: (candidate) => openWorldCity(candidate, input.cityId),
-		postcondition: (candidate) => candidate.world.openedCityIds.includes(input.cityId)
-	});
-}
-
-export function financeRetailStoreOpening(
-	game: GameState,
-	input: { tileId: string; archetypeId: ArchetypeId; expectedCost: number }
-): FinanceActionResult<FinancedPurchaseReceipt> {
-	return financeExpansionPurchase(game, {
-		expectedCost: input.expectedCost,
-		resolveLiveCost: (candidate) => {
-			const city = candidate.cities.find((item) => item.id === candidate.activeCityId);
-			const tile = city ? getTileById(city, input.tileId) : undefined;
-			if (!city || !tile || candidate.stores.length >= candidate.storeCap) return null;
-
-			const tileLookup = createCityTileLookup(city);
-			const occupiedTileIds = getOccupiedStoreTileIds(city, candidate.stores, tileLookup);
-			if (getStoreFootprintPlacementBlockReason(tileLookup, tile, occupiedTileIds)) return null;
-
-			return getExpansionSetupCost(tile, input.archetypeId);
-		},
-		cashOnlyPurchase: (candidate) => openStoreAtTile(candidate, input),
-		postcondition: (candidate) =>
-			candidate.stores.length === game.stores.length + 1 &&
-			candidate.stores.some(
-				(store) => store.tileId === input.tileId && store.archetypeId === input.archetypeId
-			)
-	});
-}
-
-export function financeIndustrialBuilding(
-	game: GameState,
-	input: {
-		tileId: string;
-		buildingTypeId: IndustrialBuildingTypeId;
-		expectedCost: number;
-	}
-): FinanceActionResult<FinancedPurchaseReceipt> {
-	return financeExpansionPurchase(game, {
-		expectedCost: input.expectedCost,
-		resolveLiveCost: (candidate) => {
-			const buildingType = INDUSTRIAL_BUILDING_TYPES[input.buildingTypeId];
-			return buildingType &&
-				getIndustrialPlacementBlockReason(candidate, input.tileId, input.buildingTypeId) === null
-				? buildingType.buildCost
-				: null;
-		},
-		cashOnlyPurchase: (candidate) => buildIndustrialBuilding(candidate, input),
-		postcondition: (candidate) =>
-			candidate.industrialBuildings.length === game.industrialBuildings.length + 1 &&
-			candidate.industrialBuildings.some(
-				(building) => building.tileId === input.tileId && building.typeId === input.buildingTypeId
-			)
-	});
 }
