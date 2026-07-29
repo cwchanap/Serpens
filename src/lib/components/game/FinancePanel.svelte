@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { tick } from 'svelte';
-	import { projectLoanSchedule } from '$lib/game/finance';
+	import { assessCredit, estimateNextLoanPayment, projectLoanSchedule } from '$lib/game/finance';
 	import type { FinanceMetrics } from '$lib/game/financeMetrics';
 	import type { I18nBundle } from '$lib/i18n';
 	import type { FinanceFailureCode } from '$lib/game/finance';
@@ -42,6 +42,7 @@
 	let fieldError = $state<{ field: string; message: string } | null>(null);
 	let statusMessage = $state('');
 	let returnFocusField = $state<string | null>(null);
+	let reviewHeading = $state<HTMLHeadingElement | null>(null);
 
 	let selectedAssessment = $derived(metrics.creditAssessments[selectedTerm]);
 	let enteredBorrowAmount = $derived(parseWholeDollars(borrowAmount));
@@ -66,6 +67,11 @@
 		});
 	});
 
+	$effect(() => {
+		if (!review) return;
+		void tick().then(() => reviewHeading?.focus());
+	});
+
 	function parseWholeDollars(value: string): number | null {
 		if (!/^\d+$/.test(value.trim())) return null;
 		const amount = Number(value);
@@ -78,14 +84,13 @@
 
 	function formatRunway(): string {
 		return metrics.cashRunway.kind === 'ninetyPlus'
-			? '90+ days'
-			: `${i18n.format.integer(metrics.cashRunway.days)} days`;
+			? i18n.t('financePanel.ui.ninetyPlusDays')
+			: i18n.t('financePanel.ui.days', { days: i18n.format.integer(metrics.cashRunway.days) });
 	}
 
 	function loanPayoffQuote(loan: LoanInstrument): number {
 		return (
 			loan.remainingPrincipal +
-			loan.overduePrincipal +
 			loan.overdueInterest +
 			Math.ceil(loan.accruedInterestMicros / 1_000_000)
 		);
@@ -154,6 +159,18 @@
 		review = { kind: 'refinance', loanId: loan.id, termDays, amount: loanPayoffQuote(loan) };
 	}
 
+	function refinanceComparison(action: Extract<ReviewAction, { kind: 'refinance' }>) {
+		const assessment = assessCredit(game, action.termDays, { excludeLoanId: action.loanId });
+		return {
+			assessment,
+			schedule: projectLoanSchedule({
+				principal: action.amount,
+				annualInterestRateBps: assessment.annualInterestRateBps,
+				termDays: action.termDays
+			})
+		};
+	}
+
 	async function cancelReview(): Promise<void> {
 		const focusId = returnFocusField;
 		review = null;
@@ -188,14 +205,24 @@
 		}
 	}
 
-	function describeResult(result: GameRouteCommitResult): string | null {
+	function isCommitted(result: GameRouteCommitResult): boolean {
+		return (
+			result.status === 'committed' || (result.status === 'sandbox-committed' && result.changed)
+		);
+	}
+
+	function describeResult(result: GameRouteCommitResult): string {
 		if (result.status === 'domain-rejected') return financeFailureMessage(result.code);
-		if (result.status === 'busy') return 'A finance action is already in progress.';
+		if (result.status === 'busy') return i18n.t('financePanel.ui.busy');
 		if (result.status === 'unavailable')
 			return i18n.t('financePanel.decisionAvailability.unavailable');
+		if (result.status === 'confirmation-required')
+			return i18n.t('financePanel.ui.confirmationRequired');
+		if (result.status === 'unchanged' || result.status === 'sandbox-committed')
+			return i18n.t('financePanel.ui.unchanged');
 		if (result.status === 'failed' || result.status === 'rejected')
-			return 'Finance action could not be completed.';
-		return null;
+			return i18n.t('financePanel.ui.failed');
+		return i18n.t('financePanel.ui.failed');
 	}
 
 	async function confirmReview(): Promise<void> {
@@ -212,8 +239,8 @@
 			result = await onRefinance(action.loanId, action.termDays);
 		}
 
-		const failure = describeResult(result);
-		if (failure) {
+		if (!isCommitted(result)) {
+			const failure = describeResult(result);
 			const field =
 				action.kind === 'borrow'
 					? 'borrow'
@@ -221,9 +248,10 @@
 						? fieldIdForLoan('repay-amount', action.loanId)
 						: (returnFocusField ?? 'borrow');
 			setError(field, failure);
-			review = null;
-			await tick();
-			document.getElementById(returnFocusField ?? 'borrow-amount')?.focus();
+			if (result.status === 'domain-rejected') {
+				await tick();
+				document.getElementById(returnFocusField ?? 'borrow-amount')?.focus();
+			}
 			return;
 		}
 
@@ -233,12 +261,12 @@
 		review = null;
 		statusMessage =
 			action.kind === 'borrow'
-				? 'Borrowing confirmed.'
+				? i18n.t('financePanel.ui.borrowingConfirmed')
 				: action.kind === 'repay'
-					? 'Repayment confirmed.'
+					? i18n.t('financePanel.ui.repaymentConfirmed')
 					: action.kind === 'payoff'
-						? 'Payoff confirmed.'
-						: 'Refinancing confirmed.';
+						? i18n.t('financePanel.ui.payoffConfirmed')
+						: i18n.t('financePanel.ui.refinancingConfirmed');
 	}
 
 	function transactionLabel(kind: GameState['finance']['transactions'][number]['kind']): string {
@@ -251,7 +279,10 @@
 	<p class="live-status" aria-live="polite" role="status">{statusMessage}</p>
 
 	<div class="metrics" aria-label="Finance overview">
-		<div><span>Cash</span><strong>{i18n.format.currency(game.cash)}</strong></div>
+		<div>
+			<span>{i18n.t('financePanel.ui.cash')}</span><strong>{i18n.format.currency(game.cash)}</strong
+			>
+		</div>
 		<div>
 			<span>{i18n.t('financePanel.metrics.outstandingPrincipal')}</span><strong
 				>{i18n.format.currency(metrics.outstandingPrincipal)}</strong
@@ -287,12 +318,11 @@
 	</div>
 
 	<section class="credit" aria-labelledby="credit-heading">
-		<h3 id="credit-heading">Credit offer</h3>
+		<h3 id="credit-heading">{i18n.t('financePanel.ui.creditOffer')}</h3>
 		<p>
-			Credit is based on operating cash flow, obligations, health, repayment history, principal
-			headroom, and service headroom.
+			{i18n.t('financePanel.ui.creditExplanation')}
 		</p>
-		<div class="term-buttons" role="group" aria-label="Loan term">
+		<div class="term-buttons" role="group" aria-label={i18n.t('financePanel.ui.loanTerm')}>
 			{#each [28, 56, 84] as term (term)}
 				<button
 					type="button"
@@ -317,26 +347,30 @@
 				>
 			</div>
 			<div>
-				<span>Final APR</span><strong>{formatApr(selectedAssessment.annualInterestRateBps)}</strong>
+				<span>{i18n.t('financePanel.ui.finalApr')}</span><strong
+					>{formatApr(selectedAssessment.annualInterestRateBps)}</strong
+				>
 			</div>
 			<div>
-				<span>Available credit</span><strong
+				<span>{i18n.t('financePanel.ui.availableCredit')}</span><strong
 					>{i18n.format.currency(selectedAssessment.availableCredit)}</strong
 				>
 			</div>
 			<div>
-				<span>Operating cash flow</span><strong
-					>{i18n.format.currency(selectedAssessment.weeklyOperatingCashFlow)} / week</strong
+				<span>{i18n.t('financePanel.ui.operatingCashFlow')}</span><strong
+					>{i18n.format.currency(selectedAssessment.weeklyOperatingCashFlow)}
+					{i18n.t('financePanel.ui.perWeek')}</strong
 				>
 			</div>
 			<div>
-				<span>Principal headroom</span><strong
+				<span>{i18n.t('financePanel.ui.principalHeadroom')}</span><strong
 					>{i18n.format.currency(selectedAssessment.principalHeadroom)}</strong
 				>
 			</div>
 			<div>
-				<span>Service headroom</span><strong
-					>{i18n.format.currency(selectedAssessment.weeklyServiceHeadroom)} / week</strong
+				<span>{i18n.t('financePanel.ui.serviceHeadroom')}</span><strong
+					>{i18n.format.currency(selectedAssessment.weeklyServiceHeadroom)}
+					{i18n.t('financePanel.ui.perWeek')}</strong
 				>
 			</div>
 		</div>
@@ -348,7 +382,7 @@
 			</p>
 		{/if}
 		<label class="field" for="borrow-amount">
-			<span>Borrow amount</span>
+			<span>{i18n.t('financePanel.ui.borrowAmount')}</span>
 			<input
 				id="borrow-amount"
 				inputmode="numeric"
@@ -365,45 +399,60 @@
 			</p>{/if}
 		{#if enteredBorrowSchedule}
 			<p class="schedule">
-				First payment {i18n.format.currency(enteredBorrowSchedule.firstPayment)} · Regular payment {i18n.format.currency(
-					enteredBorrowSchedule.regularPayment
-				)} · Peak payment {i18n.format.currency(enteredBorrowSchedule.peakPayment)}
+				{i18n.t('financePanel.ui.firstPayment')}
+				{i18n.format.currency(enteredBorrowSchedule.firstPayment)} · {i18n.t(
+					'financePanel.ui.regularPayment'
+				)}
+				{i18n.format.currency(enteredBorrowSchedule.regularPayment)} · {i18n.t(
+					'financePanel.ui.peakPayment'
+				)}
+				{i18n.format.currency(enteredBorrowSchedule.peakPayment)}
 			</p>
 		{/if}
 		<button type="button" disabled={mutationPending} onclick={openBorrowReview}
-			>Review borrowing</button
+			>{i18n.t('financePanel.ui.reviewBorrowing')}</button
 		>
 	</section>
 
 	<section aria-labelledby="loans-heading">
-		<h3 id="loans-heading">Loans and history</h3>
+		<h3 id="loans-heading">{i18n.t('financePanel.ui.loansAndHistory')}</h3>
 		<div class="loan-list">
 			{#each game.finance.loans as loan (loan.id)}
 				<article id={`finance-loan-${loan.id}`} class="loan" tabindex="-1">
 					<h4>{i18n.labels.loanPurpose(loan.purpose)} · {i18n.labels.loanStatus(loan.status)}</h4>
 					<p>
-						Original principal {i18n.format.currency(loan.originalPrincipal)} · Remaining principal {i18n.format.currency(
-							loan.remainingPrincipal
-						)} · APR {formatApr(loan.annualInterestRateBps)} · Term {i18n.labels.loanTerm(
-							loan.termDays
+						{i18n.t('financePanel.ui.originalPrincipal')}
+						{i18n.format.currency(loan.originalPrincipal)} · {i18n.t(
+							'financePanel.ui.remainingPrincipal'
 						)}
+						{i18n.format.currency(loan.remainingPrincipal)} · APR {formatApr(
+							loan.annualInterestRateBps
+						)} · {i18n.t('financePanel.ui.term')}
+						{i18n.labels.loanTerm(loan.termDays)}
 					</p>
 					<p>
-						Arrears {i18n.format.currency(loan.overduePrincipal + loan.overdueInterest)} · Next payment
-						{loan.nextPaymentDay === null
-							? 'No payment scheduled'
-							: `Day ${i18n.format.integer(loan.nextPaymentDay)}`} · Payoff quote {i18n.format.currency(
-							loanPayoffQuote(loan)
+						{i18n.t('financePanel.ui.arrears')}
+						{i18n.format.currency(loan.overduePrincipal + loan.overdueInterest)} · {i18n.t(
+							'financePanel.metrics.nextPayment'
 						)}
+						{loan.nextPaymentDay === null
+							? i18n.t('financePanel.ui.noPaymentScheduled')
+							: `${i18n.format.currency(estimateNextLoanPayment(loan))} · ${i18n.t('financePanel.ui.day', { day: i18n.format.integer(loan.nextPaymentDay) })}`}
+						· {i18n.t('financePanel.ui.payoffQuote')}
+						{i18n.format.currency(loanPayoffQuote(loan))}
 					</p>
 					{#if loan.status === 'active' || loan.status === 'delinquent'}
 						<div class="loan-actions">
 							<label class="field" for={fieldIdForLoan('repay-amount', loan.id)}
-								><span>Repay amount</span><input
+								><span>{i18n.t('financePanel.ui.repayAmount')}</span><input
 									id={fieldIdForLoan('repay-amount', loan.id)}
 									inputmode="numeric"
 									autocomplete="off"
 									disabled={mutationPending}
+									aria-invalid={fieldError?.field === fieldIdForLoan('repay-amount', loan.id)}
+									aria-describedby={fieldError?.field === fieldIdForLoan('repay-amount', loan.id)
+										? `${fieldIdForLoan('repay-amount', loan.id)}-error`
+										: undefined}
 									value={repaymentAmounts[loan.id] ?? ''}
 									oninput={(event) => {
 										repaymentAmounts = {
@@ -414,25 +463,34 @@
 									}}
 								/></label
 							>
-							{#if fieldError?.field === fieldIdForLoan('repay-amount', loan.id)}<p class="error">
+							{#if fieldError?.field === fieldIdForLoan('repay-amount', loan.id)}<p
+									id={`${fieldIdForLoan('repay-amount', loan.id)}-error`}
+									class="error"
+								>
 									{fieldError.message}
 								</p>{/if}
 							<button type="button" disabled={mutationPending} onclick={() => openRepayReview(loan)}
-								>Review repayment</button
+								>{i18n.t('financePanel.ui.reviewRepayment')}</button
 							>
 							<button
 								id={`payoff-${loan.id}`}
 								type="button"
 								disabled={mutationPending}
-								onclick={() => openPayoffReview(loan)}>Review payoff</button
+								onclick={() => openPayoffReview(loan)}
+								>{i18n.t('financePanel.ui.reviewPayoff')}</button
 							>
+							{#if fieldError?.field === `payoff-${loan.id}`}<p class="error">
+									{fieldError.message}
+								</p>{/if}
 							{#each [28, 56, 84] as term (term)}<button
 									id={`refinance-${loan.id}-${term}`}
 									type="button"
 									disabled={mutationPending || loan.status === 'delinquent'}
 									onclick={() => openRefinanceReview(loan, term as LoanTermDays)}
-									>Refinance {i18n.labels.loanTerm(term)}</button
-								>{/each}
+									>{i18n.t('financePanel.ui.refinance')} {i18n.labels.loanTerm(term)}</button
+								>{#if fieldError?.field === `refinance-${loan.id}-${term}`}<p class="error">
+										{fieldError.message}
+									</p>{/if}{/each}
 						</div>
 					{/if}
 				</article>
@@ -441,25 +499,29 @@
 	</section>
 
 	<section aria-labelledby="activity-heading">
-		<h3 id="activity-heading">Transaction activity</h3>
+		<h3 id="activity-heading">{i18n.t('financePanel.ui.transactionActivity')}</h3>
 		{#if transactions.length}
 			<ol class="transactions">
 				{#each transactions as transaction (transaction.id)}
 					<li>
-						<strong>{transactionLabel(transaction.kind)}</strong> · Day {i18n.format.integer(
-							transaction.day
-						)} · Cash {i18n.format.currency(transaction.cashDelta)} · Principal {i18n.format.currency(
-							transaction.principalAmount
-						)} · Interest {i18n.format.currency(transaction.interestAmount)}
+						<strong>{transactionLabel(transaction.kind)}</strong> · {i18n.t('financePanel.ui.day', {
+							day: i18n.format.integer(transaction.day)
+						})} · {i18n.t('financePanel.ui.cash')}
+						{i18n.format.currency(transaction.cashDelta)} · {i18n.t(
+							'financePanel.ui.originalPrincipal'
+						)}
+						{i18n.format.currency(transaction.principalAmount)} · Interest {i18n.format.currency(
+							transaction.interestAmount
+						)}
 					</li>
 				{/each}
 			</ol>
-		{:else}<p>No finance activity yet.</p>{/if}
+		{:else}<p>{i18n.t('financePanel.ui.noActivity')}</p>{/if}
 	</section>
 
 	{#if review}
-		<div class="review" role="dialog" aria-modal="true" aria-labelledby="finance-review-heading">
-			<h3 id="finance-review-heading">
+		<div class="review" role="group" aria-labelledby="finance-review-heading">
+			<h3 id="finance-review-heading" tabindex="-1" bind:this={reviewHeading}>
 				Review {review.kind === 'borrow'
 					? 'borrowing'
 					: review.kind === 'repay'
@@ -473,6 +535,14 @@
 					? `Refinance ${i18n.format.currency(review.amount)} with ${i18n.labels.loanTerm(review.termDays)}. No cash-out is included.`
 					: `${i18n.format.currency(review.amount)} will be submitted only after confirmation.`}
 			</p>
+			{#if review.kind === 'refinance'}
+				{@const comparison = refinanceComparison(review)}
+				<p>
+					Replacement APR {formatApr(comparison.assessment.annualInterestRateBps)} · First payment {i18n.format.currency(
+						comparison.schedule.firstPayment
+					)} · Peak payment {i18n.format.currency(comparison.schedule.peakPayment)} · No cash-out is included.
+				</p>
+			{/if}
 			<div class="review-actions">
 				<button type="button" disabled={mutationPending} onclick={cancelReview}
 					>Cancel review</button

@@ -155,7 +155,7 @@ describe('finance state', () => {
 			}
 		};
 
-		expect(getTotalAmountDue(game)).toBe(772);
+		expect(getTotalAmountDue(game)).toBe(722);
 	});
 
 	it('replaces only the founding loan without changing unrelated loans or history', () => {

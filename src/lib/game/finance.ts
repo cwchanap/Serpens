@@ -581,7 +581,9 @@ function isOutstandingLoan(loan: LoanInstrument): boolean {
 export function getTotalDebt(game: Pick<GameState, 'finance'>): number {
 	return game.finance.loans.reduce(
 		(total, loan) =>
-			isOutstandingLoan(loan) ? total + loan.remainingPrincipal + loan.overduePrincipal : total,
+			// overduePrincipal is already part of remainingPrincipal; it tracks the
+			// overdue slice for servicing priority and must not inflate debt.
+			isOutstandingLoan(loan) ? total + loan.remainingPrincipal : total,
 		0
 	);
 }
@@ -592,7 +594,6 @@ export function getTotalAmountDue(game: Pick<GameState, 'finance'>): number {
 			isOutstandingLoan(loan)
 				? total +
 					loan.remainingPrincipal +
-					loan.overduePrincipal +
 					loan.overdueInterest +
 					Math.ceil(loan.accruedInterestMicros / 1_000_000)
 				: total,

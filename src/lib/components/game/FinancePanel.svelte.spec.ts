@@ -133,4 +133,48 @@ describe('FinancePanel', () => {
 			.toBeDisabled();
 		await expect.element(page.getByRole('button', { name: /Review payoff/ }).nth(0)).toBeDisabled();
 	});
+
+	it.each([
+		{ status: 'confirmation-required', expected: 'Confirmation is required' },
+		{ status: 'unchanged', expected: 'No finance changes were made.' }
+	] as const)(
+		'keeps the borrow review and input for non-committed $status results',
+		async ({ status, expected }) => {
+			expect.assertions(3);
+			const onBorrow = vi.fn().mockResolvedValue({ status });
+			renderPanel({ onBorrow });
+			await page.getByLabelText('Borrow amount').fill('1200');
+			await page.getByRole('button', { name: 'Review borrowing' }).click();
+			await page.getByRole('button', { name: 'Confirm borrowing' }).click();
+			expect(onBorrow).toHaveBeenCalledOnce();
+			await expect.element(page.getByRole('heading', { name: 'Review borrowing' })).toBeVisible();
+			await expect.element(page.getByRole('status')).toHaveTextContent(expected);
+		}
+	);
+
+	it('does not double-count delinquent principal in amount due or payoff quote', async () => {
+		expect.assertions(2);
+		const game = gameWithLoan();
+		const loan = game.finance.loans.at(-1)!;
+		const delinquent = {
+			...game,
+			finance: {
+				...game.finance,
+				loans: game.finance.loans.map((candidate) =>
+					candidate.id === loan.id
+						? {
+								...candidate,
+								status: 'delinquent' as const,
+								remainingPrincipal: 700,
+								overduePrincipal: 200,
+								overdueInterest: 25
+							}
+						: candidate
+				)
+			}
+		};
+		renderPanel({ game: delinquent });
+		await expect.element(page.getByText('$725')).toBeVisible();
+		expect(document.body.textContent).toMatch(/Payoff quote\s+\$725/);
+	});
 });
