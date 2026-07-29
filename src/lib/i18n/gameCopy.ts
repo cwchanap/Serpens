@@ -1,5 +1,5 @@
 import { INDUSTRIAL_BUILDING_TYPES } from '$lib/game/industry';
-import { estimateNextLoanPayment } from '$lib/game/finance';
+import { estimateNextLoanPayment, getLoanArrearsAmount, hasLoanArrears } from '$lib/game/finance';
 import { getFinanceMetrics } from '$lib/game/financeMetrics';
 import type { PlacementBlockReason } from '$lib/game/placementPreview';
 import type {
@@ -575,10 +575,10 @@ export function localizeAlert(alert: GameAlert, game: GameState, i18n: I18nBundl
 
 	if (alert.kind === 'missedLoanPayment' && alert.loanId) {
 		const loan = game.finance.loans.find((candidate) => candidate.id === alert.loanId);
-		if (loan) {
+		if (loan && hasLoanArrears(loan)) {
 			return i18n.t('copy.alerts.missedLoanPayment', {
 				purpose: i18n.labels.loanPurpose(loan.purpose),
-				amount: i18n.format.currency(loan.overdueInterest + loan.overduePrincipal)
+				amount: i18n.format.currency(getLoanArrearsAmount(loan))
 			});
 		}
 	}

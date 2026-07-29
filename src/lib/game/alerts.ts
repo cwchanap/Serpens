@@ -1,5 +1,5 @@
 import { INDUSTRIAL_BUILDING_TYPES } from './industry';
-import { estimateNextLoanPayment } from './finance';
+import { estimateNextLoanPayment, hasLoanArrears } from './finance';
 import { getFinanceMetrics } from './financeMetrics';
 import { storeNameOrOrdinal } from './state';
 import { summarizeStockTrouble } from './stock';
@@ -39,10 +39,6 @@ function compareByNumberThenId(
 	);
 }
 
-function hasArrears(loan: LoanInstrument): boolean {
-	return loan.overdueInterest > 0 || loan.overduePrincipal > 0;
-}
-
 function isOpenLoan(loan: LoanInstrument): boolean {
 	return loan.status === 'active' || loan.status === 'delinquent';
 }
@@ -53,7 +49,7 @@ function collectFinanceAlerts(game: GameState): GameAlert[] {
 	const metrics = getFinanceMetrics(game);
 	const alerts: GameAlert[] = [];
 	const missedLoans = game.finance.loans
-		.filter((loan) => isOpenLoan(loan) && hasArrears(loan))
+		.filter((loan) => isOpenLoan(loan) && hasLoanArrears(loan))
 		.sort((left, right) =>
 			compareByNumberThenId(left, right, left.arrearsSinceDay, right.arrearsSinceDay)
 		);

@@ -351,6 +351,35 @@ describe('collectGameAlerts', () => {
 		]);
 	});
 
+	it('flags terminal fractional accrued interest as a missed loan payment', () => {
+		const alerts = collectGameAlerts(
+			baseGame({
+				finance: {
+					...createEmptyFinanceState(5),
+					loans: [
+						loan({
+							id: 'loan-terminal-fraction',
+							status: 'delinquent',
+							remainingPrincipal: 0,
+							installmentsProcessed: 4,
+							nextPaymentDay: null,
+							accruedInterestMicros: 1,
+							arrearsSinceDay: 5
+						})
+					]
+				}
+			})
+		);
+
+		expect(alerts).toContainEqual(
+			expect.objectContaining({
+				id: 'missedLoanPayment:loan-terminal-fraction',
+				kind: 'missedLoanPayment',
+				loanId: 'loan-terminal-fraction'
+			})
+		);
+	});
+
 	it('sorts missed loans by arrears day and keeps aggregate alerts free of a loan target', () => {
 		const finance = createEmptyFinanceState(5);
 		const alerts = collectGameAlerts(
