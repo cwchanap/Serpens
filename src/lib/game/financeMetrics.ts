@@ -5,6 +5,7 @@ import {
 	getInstallmentCount,
 	getScheduledPrincipalForInstallment,
 	getTotalAmountDue,
+	hasLoanArrears,
 	LOAN_PAYMENT_FREQUENCY_DAYS
 } from './finance';
 import type { CreditAssessment } from './finance';
@@ -54,14 +55,6 @@ function compareArrears(left: LoanInstrument, right: LoanInstrument): number {
 	);
 }
 
-function hasArrears(loan: LoanInstrument): boolean {
-	return (
-		loan.overdueInterest > 0 ||
-		loan.overduePrincipal > 0 ||
-		(loan.nextPaymentDay === null && loan.accruedInterestMicros > 0)
-	);
-}
-
 function finalizeProjectedLoanStatus(loan: LoanInstrument): void {
 	if (
 		loan.remainingPrincipal === 0 &&
@@ -74,7 +67,7 @@ function finalizeProjectedLoanStatus(loan: LoanInstrument): void {
 		loan.nextPaymentDay = null;
 		return;
 	}
-	if (hasArrears(loan)) {
+	if (hasLoanArrears(loan)) {
 		loan.status = 'delinquent';
 		return;
 	}

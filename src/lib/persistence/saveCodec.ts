@@ -2261,7 +2261,7 @@ function validateSavedFinance(value: unknown, gameDay: number, label: string): v
 			`${label} loans[${index}] missedPaymentCount`
 		);
 		if (
-			scheduledPaymentCount !== installmentsProcessed ||
+			scheduledPaymentCount > installmentsProcessed ||
 			onTimePaymentCount + missedPaymentCount !== scheduledPaymentCount
 		)
 			throw new SaveDataError(

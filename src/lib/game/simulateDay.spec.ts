@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { ARCHETYPES } from './archetypes';
 import { generateDecisions } from './events';
 import { appendFinanceTransaction, getTotalDebt } from './finance';
@@ -101,6 +101,30 @@ describe('daily simulation', () => {
 			refinancedPrincipal: 0,
 			financingCashFlow: 0
 		});
+	});
+
+	test('uses plain ID ordering for equal-date next-loan-payment snapshots', () => {
+		const base = createNewGame('convenience', 277_281);
+		const [foundingLoan] = base.finance.loans;
+		const game = {
+			...base,
+			finance: {
+				...base.finance,
+				loans: [
+					{ ...foundingLoan!, id: 'loan-10' },
+					{ ...foundingLoan!, id: 'loan-2' }
+				]
+			}
+		};
+		const localeCompare = vi.spyOn(String.prototype, 'localeCompare').mockImplementation(() => {
+			throw new Error('finance ordering must not depend on locale');
+		});
+
+		try {
+			expect(simulateDay(game).reports.at(-1)?.nextLoanPayment?.loanId).toBe('loan-10');
+		} finally {
+			localeCompare.mockRestore();
+		}
 	});
 
 	test('reports same-day manual financing activity before resetting it for the next day', () => {

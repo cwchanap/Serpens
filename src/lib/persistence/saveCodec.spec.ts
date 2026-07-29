@@ -973,6 +973,57 @@ describe('saveCodec', () => {
 		expect(game).toEqual(before);
 	});
 
+	test('round-trips a zero-dollar checkpoint while rejecting counters beyond processed installments', () => {
+		const game = createGame({
+			day: 10,
+			finance: {
+				...createFoundingFinanceState(3, 1),
+				currentDayActivity: {
+					...createFoundingFinanceState(3, 1).currentDayActivity,
+					day: 10
+				},
+				loans: [
+					{
+						...createFoundingFinanceState(3, 1).loans[0]!,
+						installmentsProcessed: 1,
+						nextPaymentDay: 17,
+						lastInterestAccrualDay: 10,
+						accruedInterestMicros: 2_303
+					}
+				]
+			}
+		});
+		const record = createManualSaveRecord({ game });
+
+		const validated = validateSaveRecord(record);
+		expect(validated.game.finance.loans[0]).toMatchObject({
+			originalPrincipal: 1,
+			termDays: 84,
+			installmentsProcessed: 1,
+			scheduledPaymentCount: 0,
+			onTimePaymentCount: 0,
+			missedPaymentCount: 0
+		});
+		expect(() =>
+			validateSaveRecord({
+				...record,
+				game: {
+					...record.game,
+					finance: {
+						...record.game.finance,
+						loans: [
+							{
+								...record.game.finance.loans[0]!,
+								scheduledPaymentCount: 2,
+								onTimePaymentCount: 2
+							}
+						]
+					}
+				}
+			})
+		).toThrow(SaveDataError);
+	});
+
 	test.each([
 		['fractional original principal', 'originalPrincipal', 1.5],
 		['negative remaining principal', 'remainingPrincipal', -1],

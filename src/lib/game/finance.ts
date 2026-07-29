@@ -395,11 +395,19 @@ function payLoanArrears(input: {
 	return { finance, loan, cash };
 }
 
-function hasArrears(loan: LoanInstrument): boolean {
+export function hasLoanArrears(loan: LoanInstrument): boolean {
 	return (
 		loan.overdueInterest > 0 ||
 		loan.overduePrincipal > 0 ||
 		(loan.nextPaymentDay === null && loan.accruedInterestMicros > 0)
+	);
+}
+
+export function getLoanArrearsAmount(loan: LoanInstrument): number {
+	return (
+		loan.overdueInterest +
+		loan.overduePrincipal +
+		(loan.nextPaymentDay === null ? Math.ceil(loan.accruedInterestMicros / 1_000_000) : 0)
 	);
 }
 
@@ -412,7 +420,7 @@ function finalizeLoanStatus(loan: LoanInstrument): LoanInstrument {
 	) {
 		return { ...loan, status: 'paid', arrearsSinceDay: null, nextPaymentDay: null };
 	}
-	if (hasArrears(loan)) {
+	if (hasLoanArrears(loan)) {
 		return { ...loan, status: 'delinquent', arrearsSinceDay: loan.arrearsSinceDay };
 	}
 	if (loan.status === 'delinquent' && loan.nextPaymentDay !== null) {
@@ -430,7 +438,7 @@ function serviceScheduledLoan(input: {
 	let { finance, loan } = input;
 	const priorOverdueInterest = loan.overdueInterest;
 	const priorOverduePrincipal = loan.overduePrincipal;
-	const hadPriorArrears = hasArrears(loan);
+	const hadPriorArrears = hasLoanArrears(loan);
 	const installmentCount = getInstallmentCount(loan.termDays);
 	const isFinalInstallment = loan.installmentsProcessed === installmentCount - 1;
 	const scheduledPrincipal = getScheduledPrincipalForInstallment(loan, loan.installmentsProcessed);
@@ -791,7 +799,7 @@ export function assessCredit(
 	const existingWeeklyDebtService = getNormalizedWeeklyService(game.finance, options);
 	const weeklyServiceHeadroom = Math.max(0, weeklyPaymentBudget - existingWeeklyDebtService);
 	const hasDelinquentObligation = game.finance.loans.some(
-		(loan) => isOutstandingLoan(loan) && (loan.status === 'delinquent' || hasArrears(loan))
+		(loan) => isOutstandingLoan(loan) && (loan.status === 'delinquent' || hasLoanArrears(loan))
 	);
 
 	const maxPrincipalByService = hasDelinquentObligation
@@ -1118,7 +1126,7 @@ export function refinanceLoan(
 	}
 	const found = findActionLoan(game, input.loanId);
 	if (!found.ok) return found;
-	if (found.loan.status === 'delinquent' || hasArrears(found.loan)) {
+	if (found.loan.status === 'delinquent' || hasLoanArrears(found.loan)) {
 		return failure('loanDelinquent', { loanId: found.loan.id });
 	}
 

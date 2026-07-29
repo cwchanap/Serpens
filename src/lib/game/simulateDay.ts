@@ -274,7 +274,7 @@ function getNextLoanPaymentSnapshot(
 				(left, right) =>
 					left.nextPaymentDay! - right.nextPaymentDay! ||
 					left.openedOnDay - right.openedOnDay ||
-					left.id.localeCompare(right.id)
+					(left.id < right.id ? -1 : left.id > right.id ? 1 : 0)
 			)
 			.map((loan) => ({
 				loanId: loan.id,

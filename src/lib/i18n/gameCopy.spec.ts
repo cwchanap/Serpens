@@ -225,6 +225,38 @@ describe('game copy builders', () => {
 		).toBe('Keep original message');
 	});
 
+	it('rounds a terminal fractional loan arrears alert up to one dollar', () => {
+		const game = createNewGame('convenience', 20260708);
+		const terminalFractionalGame = {
+			...game,
+			finance: {
+				...game.finance,
+				loans: game.finance.loans.map((loan) => ({
+					...loan,
+					status: 'delinquent' as const,
+					remainingPrincipal: 0,
+					installmentsProcessed: 12,
+					nextPaymentDay: null,
+					accruedInterestMicros: 1,
+					arrearsSinceDay: 1
+				}))
+			}
+		};
+
+		expect(
+			localizeAlert(
+				{
+					id: 'missedLoanPayment:loan-1',
+					kind: 'missedLoanPayment',
+					message: 'stale',
+					loanId: 'loan-1'
+				},
+				terminalFractionalGame,
+				createI18n('en')
+			)
+		).toBe('Founding loan has a missed payment of $1.');
+	});
+
 	it('localizes known decisions, world-city status copy, and product-chain graph labels', () => {
 		expect.assertions(9);
 		const english = createI18n('en');
