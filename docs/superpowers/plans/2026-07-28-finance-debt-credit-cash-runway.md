@@ -1922,11 +1922,11 @@ Expected:
 - all three message catalogs contain every new key;
 - transaction list cap is 200 while closed loans remain unpruned.
 
-- [ ] **Step 6: Request whole-branch review and fix valid findings**
+- [x] **Step 6: Request whole-branch review and fix valid findings**
 
 Use `superpowers:requesting-code-review` against the branch diff. Verify every finding against current source, fix only valid issues, and rerun the smallest affected test plus the full check/lint/unit matrix. Repeat until no actionable findings remain.
 
-- [ ] **Step 7: Commit E2E/final review fixes**
+- [x] **Step 7: Commit E2E/final review fixes**
 
 ```bash
 git add src docs/superpowers/plans/2026-07-28-finance-debt-credit-cash-runway.md
