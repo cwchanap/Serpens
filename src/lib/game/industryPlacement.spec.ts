@@ -39,11 +39,30 @@ describe('industrial placement', () => {
 
 		expect(result.ok).toBe(true);
 		if (!result.ok) return;
+		expect(result.receipt.loanId).toBe('loan-2');
 		expect(result.game.cash).toBe(0);
 		expect(result.game.finance.loans.at(-1)).toMatchObject({
 			purpose: 'expansion',
 			originalPrincipal: 225
 		});
+		expect(result.game.industrialBuildings).toHaveLength(1);
+	});
+
+	test('returns a null loan id for a cash-only industrial building', () => {
+		const base = createNewGame('convenience', 20260513);
+		const tile = getIndustryTilesByResource(base.industryCities[0]!, 'grain-field')[0]!;
+		const game = { ...base, cash: 600 };
+
+		const result = financeIndustrialBuilding(game, {
+			tileId: tile.id,
+			buildingTypeId: 'grain-farm',
+			expectedCost: 600
+		});
+
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		expect(result.receipt.loanId).toBeNull();
+		expect(result.game.finance).toBe(game.finance);
 		expect(result.game.industrialBuildings).toHaveLength(1);
 	});
 

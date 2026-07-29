@@ -47,11 +47,49 @@ describe('tile placement', () => {
 
 		expect(result.ok).toBe(true);
 		if (!result.ok) return;
+		expect(result.receipt.loanId).toBe('loan-2');
 		expect(result.game.cash).toBe(0);
 		expect(result.game.finance.loans.at(-1)).toMatchObject({
 			purpose: 'expansion',
 			originalPrincipal: 250
 		});
+		expect(result.game.stores).toHaveLength(base.stores.length + 1);
+	});
+
+	test('returns a null loan id for a cash-only retail opening', () => {
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 20,
+			height: 20,
+			seed: 203
+		});
+		const foundingTile = city.tiles.find(isTileBuildable)!;
+		const base = createFoundingGameAtTile({
+			archetypeId: 'boutique',
+			city,
+			tileId: foundingTile.id,
+			seed: 203
+		});
+		const tile = city.tiles.find(
+			(candidate) =>
+				isTileBuildable(candidate) &&
+				candidate.id !== foundingTile.id &&
+				isRetailFootprintAvailable(city, candidate, base.stores)
+		)!;
+		const cost = forecastOpening(tile, 'boutique').setupCost;
+		const game = { ...base, cash: cost };
+
+		const result = financeRetailStoreOpening(game, {
+			tileId: tile.id,
+			archetypeId: 'boutique',
+			expectedCost: cost
+		});
+
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		expect(result.receipt.loanId).toBeNull();
+		expect(result.game.finance).toBe(game.finance);
 		expect(result.game.stores).toHaveLength(base.stores.length + 1);
 	});
 
