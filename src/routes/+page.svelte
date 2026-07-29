@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
+	import type { Attachment } from 'svelte/attachments';
 	import { focusTrap } from '$lib/a11y/focusTrap';
 	import BuildMenu from '$lib/components/game/BuildMenu.svelte';
 	import DecisionQueue from '$lib/components/game/DecisionQueue.svelte';
@@ -104,7 +105,13 @@
 	} from '$lib/i18n/index';
 	import type { SupportedLocale } from '$lib/i18n/locales';
 	import { summarizeReports } from '$lib/game/reports';
-	import { createEmptyFinanceState } from '$lib/game/finance';
+	import {
+		createEmptyFinanceState,
+		getExpansionFinanceOffer,
+		type ExpansionFinanceOffer,
+		type FinanceFailureCode
+	} from '$lib/game/finance';
+	import { forecastOpening } from '$lib/game/placement';
 	import { getFinanceMetrics } from '$lib/game/financeMetrics';
 	import { DEFAULT_POLICY } from '$lib/game/state';
 	import { buildSupplyAdvisor, getAvailableMaterialIds } from '$lib/game/supplyAdvisor';
@@ -129,6 +136,7 @@
 		IndustrialBuildingTypeId,
 		LoanTermDays,
 		MaterialId,
+		WorldCityId,
 		StoreProductPatch
 	} from '$lib/game/types';
 	import type { WorldCityStatus } from '$lib/game/world';
@@ -179,6 +187,28 @@
 		| { step: 'idle' }
 		| { step: 'origin' }
 		| { step: 'routing'; originBuildingId: string; waypoints: Array<{ x: number; y: number }> };
+
+	type PendingFinancedPurchase =
+		| {
+				kind: 'world';
+				cityId: WorldCityId;
+				expectedCost: number;
+				offer: ExpansionFinanceOffer;
+		  }
+		| {
+				kind: 'retail';
+				tileId: string;
+				archetypeId: ArchetypeId;
+				expectedCost: number;
+				offer: ExpansionFinanceOffer;
+		  }
+		| {
+				kind: 'industry';
+				tileId: string;
+				buildingTypeId: IndustrialBuildingTypeId;
+				expectedCost: number;
+				offer: ExpansionFinanceOffer;
+		  };
 
 	/**
 	 * Returns `globalThis.localStorage` when accessible, or `null` when the
@@ -476,6 +506,10 @@
 		);
 	});
 	let placementFeedback = $state<PlacementBlockReason | null>(null);
+	let pendingFinancedPurchase = $state<PendingFinancedPurchase | null>(null);
+	let financedPurchaseFeedback = $state<string | null>(null);
+	let financedPurchaseReturnFocus = $state<HTMLElement | null>(null);
+	let financedPurchaseHeading = $state<HTMLHeadingElement | null>(null);
 	let saveRepository: SaveRepository | null = $state(null);
 	let autoSave = $state<SaveSlotMetadata | null>(null);
 	let manualSaveSlots = $state<SaveSlotMetadata[]>([]);
@@ -658,7 +692,8 @@
 	// placement preview over the map.
 	let isMapPaused = $derived(
 		!isPlacementModeActive &&
-			(isSupplyAdvisorOpen ||
+			(pendingFinancedPurchase !== null ||
+				isSupplyAdvisorOpen ||
 				isStoreDetailOpen ||
 				isCheatSheetOpen ||
 				isBuildMenuOpen ||
@@ -674,7 +709,8 @@
 	// Escape handler closes, including the alerts dropdown (which does not
 	// pause the map but still competes for the Escape key).
 	let railKeyboardEnabled = $derived(
-		!isSavePanelOpen &&
+		pendingFinancedPurchase === null &&
+			!isSavePanelOpen &&
 			!isScenarioCatalogOpen &&
 			!isScenarioResultsDialogOpen &&
 			!isCheatSheetOpen &&
@@ -806,7 +842,8 @@
 	// to gate the `?` cheat-sheet toggle (so it doesn't stack on an open modal) and to
 	// inform `resolveShortcutAction` that letter/Space/B keys must not fire behind it.
 	let hasBlockingOverlay = $derived(
-		isSupplyAdvisorOpen ||
+		pendingFinancedPurchase !== null ||
+			isSupplyAdvisorOpen ||
 			isStoreDetailOpen ||
 			isCheatSheetOpen ||
 			isSavePanelOpen ||
@@ -841,6 +878,43 @@
 	function formatPlacementFeedback(reason: PlacementBlockReason | null): string | null {
 		return formatPlacementBlockReason(reason, i18n);
 	}
+
+	function formatApr(bps: number): string {
+		return new Intl.NumberFormat(i18n.locale, {
+			style: 'percent',
+			minimumFractionDigits: 2,
+			maximumFractionDigits: 2
+		}).format(bps / 10_000);
+	}
+
+	function financeFailureMessage(code: FinanceFailureCode): string {
+		return i18n.t(`financePanel.failures.${code}` as never);
+	}
+
+	function clearPendingFinancedPurchase(restoreFocus = false): void {
+		const returnFocus = financedPurchaseReturnFocus;
+		pendingFinancedPurchase = null;
+		financedPurchaseFeedback = null;
+		financedPurchaseReturnFocus = null;
+		if (restoreFocus && returnFocus) {
+			void tick().then(() => returnFocus.focus());
+		}
+	}
+
+	function openFinancedPurchaseReview(purchase: PendingFinancedPurchase): void {
+		financedPurchaseReturnFocus =
+			document.activeElement instanceof HTMLElement ? document.activeElement : null;
+		financedPurchaseFeedback = null;
+		pendingFinancedPurchase = purchase;
+		void tick().then(() => financedPurchaseHeading?.focus());
+	}
+
+	const captureFinancedPurchaseHeading: Attachment<HTMLHeadingElement> = (node) => {
+		financedPurchaseHeading = node;
+		return () => {
+			if (financedPurchaseHeading === node) financedPurchaseHeading = null;
+		};
+	};
 
 	// Text for the placement-status plaque while rail-building: a block
 	// reason (if any) always wins, then a ready-to-confirm cost summary once
@@ -1509,6 +1583,29 @@
 		selectedWorldCityId = cityId;
 	}
 
+	function reviewSelectedWorldCityFinancing(cityId: string): void {
+		if (
+			!game ||
+			!isWorldCityId(cityId) ||
+			!mutationAvailability.financeWorldCity ||
+			!allowedWorldCityIds.includes(cityId)
+		) {
+			return;
+		}
+
+		const status = getWorldCityStatus(game, cityId);
+		if (!status?.financeOffer || game.cash >= status.city.openingCost) {
+			return;
+		}
+
+		openFinancedPurchaseReview({
+			kind: 'world',
+			cityId,
+			expectedCost: status.city.openingCost,
+			offer: status.financeOffer
+		});
+	}
+
 	function closeWorldInspector(): void {
 		selectedWorldCityId = null;
 	}
@@ -1716,12 +1813,17 @@
 		playSfx('sfx.build.arm');
 	}
 
-	function cancelPlacement(): void {
+	function clearPlacementMode(): void {
 		retailPlacementArchetypeId = null;
 		industryPlacementBuildingTypeId = null;
 		railBuildMode = { step: 'idle' };
 		railPreviewTargetBuildingId = null;
 		placementFeedback = null;
+	}
+
+	function cancelPlacement(): void {
+		clearPlacementMode();
+		clearPendingFinancedPurchase();
 	}
 
 	function openSupplyAdvisor(): void {
@@ -1889,6 +1991,27 @@
 				seed: starterMapState.seed
 			});
 		} else {
+			const tile = getTileById(activeCity, tileId);
+			if (!tile) {
+				placementFeedback = { code: 'retail.unknownCityTile' };
+				playSfx('sfx.build.invalid');
+				return;
+			}
+			const expectedCost = forecastOpening(tile, archetypeId).setupCost;
+			if (game.cash < expectedCost) {
+				const offer = getExpansionFinanceOffer(game, expectedCost);
+				if (!offer) {
+					placementFeedback = { code: 'retail.requiresCash', amount: expectedCost };
+					playSfx('sfx.build.invalid');
+					return;
+				}
+				openFinancedPurchaseReview({ kind: 'retail', tileId, archetypeId, expectedCost, offer });
+				clearPlacementMode();
+				selectedTileId = tileId;
+				selectedIndustryTileId = null;
+				selectedWorldCityId = null;
+				return;
+			}
 			void gameRouteController.openStore(tileId, archetypeId);
 		}
 
@@ -1928,11 +2051,112 @@
 			return;
 		}
 
+		const expectedCost = INDUSTRIAL_BUILDING_TYPES[buildingTypeId]?.buildCost;
+		if (expectedCost === undefined) {
+			placementFeedback = { code: 'industry.unknownBuildingType' };
+			playSfx('sfx.build.invalid');
+			return;
+		}
+		if (game.cash < expectedCost) {
+			const offer = getExpansionFinanceOffer(game, expectedCost);
+			if (!offer) {
+				placementFeedback = { code: 'industry.requiresCash', buildingTypeId, amount: expectedCost };
+				playSfx('sfx.build.invalid');
+				return;
+			}
+			openFinancedPurchaseReview({ kind: 'industry', tileId, buildingTypeId, expectedCost, offer });
+			clearPlacementMode();
+			selectedIndustryTileId = tileId;
+			selectedTileId = null;
+			selectedWorldCityId = null;
+			return;
+		}
+
 		void gameRouteController.buildIndustrialBuilding(tileId, buildingTypeId);
 		selectedIndustryTileId = null;
 		selectedTileId = null;
 		selectedWorldCityId = null;
 		cancelPlacement();
+	}
+
+	function refreshedFinancedPurchase(
+		purchase: PendingFinancedPurchase,
+		currentGame: GameState
+	): PendingFinancedPurchase | null {
+		if (purchase.kind === 'world') {
+			const status = getWorldCityStatus(currentGame, purchase.cityId);
+			if (!status?.financeOffer) return null;
+			return {
+				...purchase,
+				expectedCost: status.city.openingCost,
+				offer: status.financeOffer
+			};
+		}
+
+		if (purchase.kind === 'retail') {
+			const city = currentGame.cities.find(
+				(candidate) => candidate.id === currentGame.activeCityId
+			);
+			const tile = city ? getTileById(city, purchase.tileId) : undefined;
+			if (!tile) return null;
+			const expectedCost = forecastOpening(tile, purchase.archetypeId).setupCost;
+			const offer = getExpansionFinanceOffer(currentGame, expectedCost);
+			return offer ? { ...purchase, expectedCost, offer } : null;
+		}
+
+		const expectedCost = INDUSTRIAL_BUILDING_TYPES[purchase.buildingTypeId]?.buildCost;
+		if (expectedCost === undefined) return null;
+		const offer = getExpansionFinanceOffer(currentGame, expectedCost);
+		return offer ? { ...purchase, expectedCost, offer } : null;
+	}
+
+	function isCommittedFinancePurchase(result: GameRouteCommitResult): boolean {
+		return (
+			result.status === 'committed' || (result.status === 'sandbox-committed' && result.changed)
+		);
+	}
+
+	async function confirmFinancedPurchase(): Promise<void> {
+		const purchase = pendingFinancedPurchase;
+		if (!purchase || !game) return;
+
+		let result: GameRouteCommitResult;
+		if (purchase.kind === 'world') {
+			result = await gameRouteController.financeWorldCity(purchase.cityId, purchase.expectedCost);
+		} else if (purchase.kind === 'retail') {
+			result = await gameRouteController.financeRetailStore(
+				purchase.tileId,
+				purchase.archetypeId,
+				purchase.expectedCost
+			);
+		} else {
+			result = await gameRouteController.financeIndustrialBuilding(
+				purchase.tileId,
+				purchase.buildingTypeId,
+				purchase.expectedCost
+			);
+		}
+
+		if (isCommittedFinancePurchase(result)) {
+			selectedTileId = null;
+			selectedIndustryTileId = null;
+			selectedWorldCityId = null;
+			clearPlacementMode();
+			clearPendingFinancedPurchase();
+			return;
+		}
+
+		financedPurchaseFeedback =
+			result.status === 'domain-rejected'
+				? financeFailureMessage(result.code)
+				: i18n.t('financePanel.ui.failed');
+		const refreshed = refreshedFinancedPurchase(purchase, game);
+		if (refreshed) pendingFinancedPurchase = refreshed;
+	}
+
+	function cancelFinancedPurchaseReview(): void {
+		clearPlacementMode();
+		clearPendingFinancedPurchase(true);
 	}
 
 	function closeInspector() {
@@ -2045,6 +2269,11 @@
 		}
 
 		if (event.key === 'Escape') {
+			if (pendingFinancedPurchase !== null) {
+				event.preventDefault();
+				cancelFinancedPurchaseReview();
+				return;
+			}
 			if (isSavePanelOpen) {
 				isSavePanelOpen = false;
 				return;
@@ -2181,8 +2410,10 @@
 						selectedCityId={selectedWorldCityId}
 						onSelectCity={selectWorldCityNode}
 						onOpenCity={openSelectedWorldCity}
+						onFinanceCity={reviewSelectedWorldCityFinancing}
 						onCloseInspector={closeWorldInspector}
 						canOpenWorldCity={mutationAvailability.openWorldCity}
+						canFinanceWorldCity={mutationAvailability.financeWorldCity}
 						allowedCityIds={allowedWorldCityIds}
 						disabledReason={mutationDisabledReason}
 					/>
@@ -2327,6 +2558,72 @@
 				<button type="button" class="btn-danger" onclick={cancelPlacement}>
 					{i18n.t('route.placement.cancel')}
 				</button>
+			</div>
+		{/if}
+		{#if pendingFinancedPurchase}
+			<div class="finance-review-backdrop">
+				<button
+					type="button"
+					class="finance-review-dismiss"
+					aria-label={i18n.t('financePanel.ui.cancelReview')}
+					onclick={cancelFinancedPurchaseReview}
+				></button>
+				<div
+					{@attach focusTrap}
+					class="finance-review paper"
+					role="dialog"
+					aria-modal="true"
+					aria-labelledby="financed-purchase-review-heading"
+				>
+					<h2
+						id="financed-purchase-review-heading"
+						tabindex="-1"
+						{@attach captureFinancedPurchaseHeading}
+					>
+						{i18n.t('financePanel.financedPurchase.review' as never)}
+					</h2>
+					<dl>
+						<div>
+							<dt>{i18n.t('financePanel.financedPurchase.purchaseCost' as never)}</dt>
+							<dd>{i18n.format.currency(pendingFinancedPurchase.expectedCost)}</dd>
+						</div>
+						<div>
+							<dt>{i18n.t('financePanel.ui.cash')}</dt>
+							<dd>{i18n.format.currency(game?.cash ?? 0)}</dd>
+						</div>
+						<div>
+							<dt>{i18n.t('financePanel.financedPurchase.shortfall' as never)}</dt>
+							<dd>{i18n.format.currency(pendingFinancedPurchase.offer.principal)}</dd>
+						</div>
+						<div>
+							<dt>{i18n.t('financePanel.ui.loanTerm')}</dt>
+							<dd>
+								{i18n.t('financePanel.ui.days', {
+									days: i18n.format.integer(pendingFinancedPurchase.offer.termDays)
+								})}
+							</dd>
+						</div>
+						<div>
+							<dt>{i18n.t('financePanel.ui.apr')}</dt>
+							<dd>{formatApr(pendingFinancedPurchase.offer.annualInterestRateBps)}</dd>
+						</div>
+						<div>
+							<dt>{i18n.t('financePanel.ui.peakPayment')}</dt>
+							<dd>{i18n.format.currency(pendingFinancedPurchase.offer.estimatedPeakPayment)}</dd>
+						</div>
+					</dl>
+					<p class="live-status" role="status" aria-live="polite">
+						{financedPurchaseFeedback ?? ''}
+					</p>
+					<div class="finance-review-actions">
+						<button type="button" class="btn-danger" onclick={cancelFinancedPurchaseReview}>
+							{i18n.t('financePanel.ui.cancelReview')}
+						</button>
+						<button type="button" class="btn-primary" onclick={confirmFinancedPurchase}>
+							{i18n.t('financePanel.financedPurchase.confirm' as never)}
+						</button>
+					</div>
+				</div>
 			</div>
 		{/if}
 		{#if isBuildMenuOpen && activeMapView !== 'world'}
@@ -2806,6 +3103,84 @@
 	.menu-management button:focus-visible {
 		background: var(--paper-200);
 		border-color: var(--brass-500);
+	}
+
+	.finance-review-backdrop {
+		position: fixed;
+		inset: 0;
+		z-index: 45;
+		display: grid;
+		place-items: center;
+		padding: 1rem;
+		background: rgba(27, 19, 12, 0.58);
+	}
+
+	.finance-review-dismiss {
+		position: absolute;
+		inset: 0;
+		border: 0;
+		background: transparent;
+		cursor: default;
+	}
+
+	.finance-review {
+		position: relative;
+		z-index: 1;
+		width: min(32rem, 100%);
+		display: grid;
+		gap: 1rem;
+		padding: 1.25rem;
+	}
+
+	.finance-review h2 {
+		margin: 0;
+		font-family: var(--font-display);
+		font-size: 1.45rem;
+		font-weight: 400;
+		color: var(--ink-700);
+	}
+
+	.finance-review dl {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 0.65rem;
+		margin: 0;
+	}
+
+	.finance-review dl > div {
+		padding: 0.55rem;
+		border: 1px solid var(--paper-edge);
+		background: var(--paper-50);
+	}
+
+	.finance-review dt {
+		font-family: var(--font-ui);
+		font-size: 0.68rem;
+		font-weight: 700;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--brass-700);
+	}
+
+	.finance-review dd {
+		margin: 0.2rem 0 0;
+		font-family: var(--font-mono);
+		font-weight: 700;
+		font-variant-numeric: tabular-nums lining-nums;
+		color: var(--ink-700);
+	}
+
+	.finance-review .live-status {
+		min-height: 1.25rem;
+		margin: 0;
+		color: var(--wax-red);
+		font-family: var(--font-body);
+	}
+
+	.finance-review-actions {
+		display: flex;
+		justify-content: flex-end;
+		gap: 0.6rem;
 	}
 
 	@media (max-width: 980px) {

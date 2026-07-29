@@ -535,7 +535,13 @@ export const zhHant = {
 			purchaseCostChanged: '購買成本已變更'
 		},
 		decisionAvailability: { available: '可用', unavailable: '無法取得融資' },
-		financedPurchase: { financeOpening: '融資開設', review: '檢視融資' },
+		financedPurchase: {
+			financeOpening: '融資開設',
+			review: '檢視融資',
+			purchaseCost: '購買成本',
+			shortfall: '現金缺口',
+			confirm: '確認融資'
+		},
 		transactions: {
 			disbursement: '貸款撥款',
 			principalPayment: '本金付款',

@@ -12,8 +12,10 @@
 		selectedCityId: string | null;
 		onSelectCity: (cityId: string) => void;
 		onOpenCity: (cityId: string) => void;
+		onFinanceCity?: (cityId: string) => void;
 		onCloseInspector: () => void;
 		canOpenWorldCity?: boolean;
+		canFinanceWorldCity?: boolean;
 		allowedCityIds?: string[];
 		selectionDisabled?: boolean;
 		selectionDisabledReason?: string | null;
@@ -26,8 +28,10 @@
 		selectedCityId,
 		onSelectCity,
 		onOpenCity,
+		onFinanceCity = () => {},
 		onCloseInspector,
 		canOpenWorldCity = true,
+		canFinanceWorldCity = true,
 		allowedCityIds = statuses.map((status) => status.city.id),
 		selectionDisabled = false,
 		selectionDisabledReason = null,
@@ -177,29 +181,43 @@
 			<p class="eyebrow">{i18n.t(`worldMap.cityEyebrow.${selectedStatus.city.kind}` as never)}</p>
 			<h2>{selectedStatus.city.name}</h2>
 			<p>{selectedStatus.city.specialtySummary}</p>
-			{#if selectedStatus.state === 'revealed' && canOpenWorldCity && allowedCitySet.has(selectedStatus.city.id)}
-				<button
-					type="button"
-					class="open-city"
-					disabled={!selectedStatus.canOpen}
-					aria-describedby={selectedStatus.blockedReason
-						? inspectorReasonId(selectedStatus)
-						: undefined}
-					onclick={() => {
-						if (
-							canOpenWorldCity &&
-							allowedCitySet.has(selectedStatus.city.id) &&
-							selectedStatus.canOpen
-						) {
-							onOpenCity(selectedStatus.city.id);
-						}
-					}}
-				>
-					{i18n.t('worldMap.openForCash' as never, {
-						cash: i18n.format.currency(selectedStatus.city.openingCost)
-					})}
-				</button>
-				{#if selectedStatus.blockedReason}
+			{#if selectedStatus.state === 'revealed' && allowedCitySet.has(selectedStatus.city.id)}
+				{#if canOpenWorldCity}
+					<button
+						type="button"
+						class="open-city"
+						disabled={!selectedStatus.canOpen}
+						aria-describedby={selectedStatus.blockedReason
+							? inspectorReasonId(selectedStatus)
+							: undefined}
+						onclick={() => {
+							if (selectedStatus.canOpen) onOpenCity(selectedStatus.city.id);
+						}}
+					>
+						{i18n.t('worldMap.openForCash' as never, {
+							cash: i18n.format.currency(selectedStatus.city.openingCost)
+						})}
+					</button>
+				{/if}
+				{#if selectedStatus.financeOffer && canFinanceWorldCity}
+					<button
+						type="button"
+						class="finance-city"
+						onclick={() => {
+							if (allowedCitySet.has(selectedStatus.city.id)) {
+								onFinanceCity(selectedStatus.city.id);
+							}
+						}}
+					>
+						{i18n.t('financePanel.financedPurchase.financeOpening' as never)}
+					</button>
+				{/if}
+				{#if !canOpenWorldCity && (!selectedStatus.financeOffer || !canFinanceWorldCity)}
+					<p id={inspectorReasonId(selectedStatus)} class="blocked-reason">
+						{disabledReason}
+					</p>
+				{/if}
+				{#if selectedStatus.blockedReason && canOpenWorldCity}
 					<p id={inspectorReasonId(selectedStatus)} class="blocked-reason">
 						{selectedStatus.blockedReason}
 					</p>
@@ -419,6 +437,17 @@
 	.open-city:disabled {
 		cursor: not-allowed;
 		opacity: 0.55;
+	}
+
+	.finance-city {
+		border: 1px solid var(--brass-700);
+		border-radius: 2px;
+		background: var(--paper-50);
+		color: var(--ink-700);
+		padding: 0.55rem 0.8rem;
+		font-family: var(--font-ui);
+		font-size: 0.84rem;
+		font-weight: 700;
 	}
 
 	.blocked-reason {

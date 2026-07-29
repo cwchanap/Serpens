@@ -533,7 +533,13 @@ export const en = {
 			purchaseCostChanged: 'Purchase cost changed'
 		},
 		decisionAvailability: { available: 'Available', unavailable: 'Financing unavailable' },
-		financedPurchase: { financeOpening: 'Finance opening', review: 'Review financing' },
+		financedPurchase: {
+			financeOpening: 'Finance opening',
+			review: 'Review financing',
+			purchaseCost: 'Purchase cost',
+			shortfall: 'Cash shortfall',
+			confirm: 'Confirm financing'
+		},
 		transactions: {
 			disbursement: 'Loan disbursement',
 			principalPayment: 'Principal payment',
