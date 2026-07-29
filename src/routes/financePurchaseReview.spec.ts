@@ -4,7 +4,9 @@ import {
 	beginFinancePurchaseConfirmation,
 	createFinancePurchaseReviewState,
 	dismissFinancePurchaseReview,
+	isFinanceReviewEscapeOwned,
 	openFinancePurchaseReview,
+	resolveExpansionPurchasePaymentPath,
 	settleFinancePurchaseConfirmation,
 	shouldRefreshFinancedPurchase,
 	type PendingFinancedPurchase
@@ -26,6 +28,49 @@ const retailPurchase: PendingFinancedPurchase = {
 };
 
 describe('finance purchase review coordinator', () => {
+	it('allows selected-tile entry through either the cash or matching finance command', () => {
+		const selectedTilePurchase = { ...retailPurchase, expectedCost: 1_000 };
+		const financeOnlyPath = resolveExpansionPurchasePaymentPath({
+			cashCommandAvailable: false,
+			financeCommandAvailable: true,
+			cash: 500,
+			expectedCost: 1_000
+		});
+		expect(financeOnlyPath).toBe('finance');
+		const review =
+			financeOnlyPath === 'finance'
+				? openFinancePurchaseReview(createFinancePurchaseReviewState(), selectedTilePurchase)
+				: createFinancePurchaseReviewState();
+		expect(review.purchase).toEqual(selectedTilePurchase);
+		expect(
+			resolveExpansionPurchasePaymentPath({
+				cashCommandAvailable: true,
+				financeCommandAvailable: false,
+				cash: 500,
+				expectedCost: 1_000
+			})
+		).toBe('requiresCash');
+	});
+
+	it('keeps cash-covered selected-tile purchases on their cash command only', () => {
+		expect(
+			resolveExpansionPurchasePaymentPath({
+				cashCommandAvailable: true,
+				financeCommandAvailable: false,
+				cash: 1_000,
+				expectedCost: 1_000
+			})
+		).toBe('cash');
+		expect(
+			resolveExpansionPurchasePaymentPath({
+				cashCommandAvailable: false,
+				financeCommandAvailable: true,
+				cash: 1_000,
+				expectedCost: 1_000
+			})
+		).toBe('requiresCash');
+	});
+
 	it('forwards the exact quoted expected cost to every typed controller command', () => {
 		const cases: Array<{ purchase: PendingFinancedPurchase; expected: unknown[] }> = [
 			{
@@ -106,6 +151,13 @@ describe('finance purchase review coordinator', () => {
 			expect(late.purchase).toBeNull();
 		});
 	}
+
+	it('defers route Escape ownership while a financed review is active', () => {
+		const closed = createFinancePurchaseReviewState();
+		const open = openFinancePurchaseReview(closed, retailPurchase);
+		expect(isFinanceReviewEscapeOwned(closed)).toBe(false);
+		expect(isFinanceReviewEscapeOwned(open)).toBe(true);
+	});
 
 	it('identifies only stale cost or credit rejections for live quote refresh', () => {
 		expect(

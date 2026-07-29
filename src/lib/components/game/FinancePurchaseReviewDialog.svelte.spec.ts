@@ -2,7 +2,12 @@ import { page } from 'vitest/browser';
 import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { createI18n } from '$lib/i18n';
-import type { PendingFinancedPurchase } from '../../../routes/financePurchaseReview';
+import {
+	dismissFinancePurchaseReview,
+	openFinancePurchaseReview,
+	createFinancePurchaseReviewState,
+	type PendingFinancedPurchase
+} from '../../../routes/financePurchaseReview';
 import FinancePurchaseReviewDialog from './FinancePurchaseReviewDialog.svelte';
 
 const purchase: PendingFinancedPurchase = {
@@ -63,5 +68,25 @@ describe('FinancePurchaseReviewDialog', () => {
 		window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
 		expect(onCancel).not.toHaveBeenCalled();
 		await expect.element(page.getByRole('button', { name: /confirm financing/i })).toBeDisabled();
+	});
+
+	it('integrates production review state with Escape without clearing the outer selected tile', async () => {
+		expect.assertions(3);
+		let review = openFinancePurchaseReview(createFinancePurchaseReviewState(), purchase);
+		const selectedTileId: string | null = 'tile-12';
+		render(
+			FinancePurchaseReviewDialog,
+			dialogProps({
+				purchase: review.purchase!,
+				onCancel: () => {
+					review = dismissFinancePurchaseReview(review);
+				}
+			})
+		);
+
+		window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+		expect(review.purchase).toBeNull();
+		expect(review.confirmationPending).toBe(false);
+		expect(selectedTileId).toBe('tile-12');
 	});
 });
