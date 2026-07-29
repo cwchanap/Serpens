@@ -6,6 +6,8 @@ import {
 	generateIndustryCity,
 	getIndustryTilesByResource
 } from '../lib/game/industry';
+import { estimateNextLoanPayment, getScheduledPrincipalForInstallment } from '../lib/game/finance';
+import type { LoanInstrument } from '../lib/game/types';
 import { BROWSER_SCENARIO_STORAGE_KEY } from '../lib/persistence/browserScenarioRepository';
 import {
 	createEmptyScenarioStore,
@@ -211,6 +213,8 @@ interface SavedLoan {
 	status: 'active' | 'delinquent' | 'paid' | 'refinanced';
 	originalPrincipal: number;
 	remainingPrincipal: number;
+	termDays: 28 | 56 | 84;
+	installmentsProcessed: number;
 	nextPaymentDay: number | null;
 }
 
@@ -226,6 +230,8 @@ interface SavedFinanceTransaction {
 interface SavedFinance {
 	loans: SavedLoan[];
 	transactions: SavedFinanceTransaction[];
+	nextLoanSequence: number;
+	nextTransactionSequence: number;
 }
 
 interface SavedGame {
@@ -1827,6 +1833,10 @@ test('finance flow borrows, reconciles a scheduled payment, focuses its alert, a
 		remainingPrincipal: 1_000,
 		status: 'active'
 	});
+	const scheduledWorkingCapitalPrincipal = getScheduledPrincipalForInstallment(
+		workingCapitalLoan as LoanInstrument,
+		workingCapitalLoan.installmentsProcessed
+	);
 	await expect(finance.getByText('Loan disbursement', { exact: true })).toBeVisible();
 
 	// Close days 1 through 8 so the day-8 scheduled payment is recorded.
@@ -1836,6 +1846,23 @@ test('finance flow borrows, reconciles a scheduled payment, focuses its alert, a
 	const afterScheduledPayment = await waitForAutoSaveDay(page, 9);
 	const scheduledReport = afterScheduledPayment.reports.find((report) => report.day === 8);
 	if (!scheduledReport) throw new Error('Expected the day-8 scheduled-payment report.');
+	const scheduledWorkingCapitalLoan = afterScheduledPayment.finance.loans.find(
+		(loan) => loan.id === workingCapitalLoan.id
+	);
+	if (!scheduledWorkingCapitalLoan)
+		throw new Error('Working-capital loan disappeared after service.');
+	expect(scheduledWorkingCapitalLoan.remainingPrincipal).toBe(
+		workingCapitalLoan.remainingPrincipal - scheduledWorkingCapitalPrincipal
+	);
+	expect(scheduledWorkingCapitalLoan.nextPaymentDay).toBe(workingCapitalLoan.nextPaymentDay! + 7);
+	expect(
+		afterScheduledPayment.finance.transactions.some(
+			(transaction) =>
+				transaction.loanId === workingCapitalLoan.id &&
+				transaction.kind === 'principalPayment' &&
+				transaction.principalAmount === scheduledWorkingCapitalPrincipal
+		)
+	).toBe(true);
 	expect(scheduledReport.principalRepaid).toBeGreaterThan(0);
 	expect(scheduledReport.financingCashFlow).toBeLessThan(0);
 	expect(scheduledReport.cashAfter - scheduledReport.cashBefore).toBe(
@@ -1864,8 +1891,14 @@ test('finance flow borrows, reconciles a scheduled payment, focuses its alert, a
 
 	await page.getByRole('button', { name: /alert/i }).click();
 	const alerts = page.getByRole('group', { name: 'Alerts list' });
-	const upcomingLoanAlert = alerts.getByRole('button', { name: /loan payment.*due on day 15/i });
-	await expect(upcomingLoanAlert).toBeVisible();
+	const expectedWorkingCapitalAlertName = `Loan payment of $${estimateNextLoanPayment(
+		scheduledWorkingCapitalLoan as LoanInstrument
+	).toLocaleString('en-US')} due on day ${scheduledWorkingCapitalLoan.nextPaymentDay}`;
+	const upcomingLoanAlert = alerts.getByRole('button', {
+		name: expectedWorkingCapitalAlertName,
+		exact: true
+	});
+	await expect(upcomingLoanAlert).toHaveCount(1);
 	await upcomingLoanAlert.click();
 	await expect(finance).toBeVisible();
 	const focusedLoan = page.locator(`#finance-loan-${workingCapitalLoan.id}`);
@@ -1927,8 +1960,15 @@ test('financed expansion opens one city with its exact shortfall and no cash-out
 		.poll(async () => (await readAutoSaveGame(page)).world.openedCityIds)
 		.toContain('campus-junction');
 	const afterFinancing = await readAutoSaveGame(page);
-	const expansionLoans = afterFinancing.finance.loans.filter(
-		(loan) => loan.purpose === 'expansion'
+	const priorLoanIds = new Set(beforeFinancing.finance.loans.map((loan) => loan.id));
+	const priorTransactionIds = new Set(
+		beforeFinancing.finance.transactions.map((transaction) => transaction.id)
+	);
+	const newExpansionLoans = afterFinancing.finance.loans.filter(
+		(loan) => !priorLoanIds.has(loan.id)
+	);
+	const newTransactions = afterFinancing.finance.transactions.filter(
+		(transaction) => !priorTransactionIds.has(transaction.id)
 	);
 	expect(afterFinancing.world.openedCityIds).toEqual(
 		expect.arrayContaining([...beforeFinancing.world.openedCityIds, 'campus-junction'])
@@ -1936,21 +1976,33 @@ test('financed expansion opens one city with its exact shortfall and no cash-out
 	expect(afterFinancing.world.openedCityIds).toHaveLength(
 		beforeFinancing.world.openedCityIds.length + 1
 	);
-	expect(expansionLoans).toHaveLength(1);
-	expect(expansionLoans[0]).toMatchObject({
+	expect(afterFinancing.finance.loans).toHaveLength(beforeFinancing.finance.loans.length + 1);
+	expect(afterFinancing.finance.transactions).toHaveLength(
+		beforeFinancing.finance.transactions.length + 1
+	);
+	expect(afterFinancing.finance.nextLoanSequence).toBe(
+		beforeFinancing.finance.nextLoanSequence + 1
+	);
+	expect(afterFinancing.finance.nextTransactionSequence).toBe(
+		beforeFinancing.finance.nextTransactionSequence + 1
+	);
+	expect(newExpansionLoans).toHaveLength(1);
+	expect(newExpansionLoans[0]).toMatchObject({
+		purpose: 'expansion',
 		originalPrincipal: 1_000,
 		remainingPrincipal: 1_000,
 		status: 'active'
 	});
 	expect(afterFinancing.cash).toBe(0);
-	expect(
-		afterFinancing.finance.transactions.filter(
-			(transaction) =>
-				transaction.loanId === expansionLoans[0]?.id &&
-				transaction.kind === 'disbursement' &&
-				transaction.cashDelta === 1_000
-		)
-	).toHaveLength(1);
+	expect(newTransactions).toEqual([
+		expect.objectContaining({
+			loanId: newExpansionLoans[0]?.id,
+			kind: 'disbursement',
+			cashDelta: 1_000,
+			principalAmount: 1_000,
+			interestAmount: 0
+		})
+	]);
 });
 
 test('cross-city stock alert deep-links to the origin city and tile', async ({ page }) => {
