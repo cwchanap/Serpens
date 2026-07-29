@@ -472,6 +472,52 @@ describe('finance servicing', () => {
 		]);
 	});
 
+	it('preserves final fractional interest through an insolvent checkpoint until a later sweep can close it', () => {
+		const finance = createFinance([
+			createLoan({
+				originalPrincipal: 1,
+				remainingPrincipal: 1,
+				termDays: 28,
+				installmentsProcessed: 3,
+				nextPaymentDay: 8,
+				annualInterestRateBps: 0,
+				lastInterestAccrualDay: 7,
+				accruedInterestMicros: 1
+			})
+		]);
+
+		const insolvent = serviceFinanceForDay({ finance, cash: 1, day: 8 });
+		expect(insolvent.cash).toBe(0);
+		expect(insolvent.finance.loans[0]).toMatchObject({
+			status: 'delinquent',
+			remainingPrincipal: 0,
+			overduePrincipal: 0,
+			overdueInterest: 0,
+			accruedInterestMicros: 1
+		});
+		expect(insolvent.finance.transactions).toEqual([
+			expect.objectContaining({ kind: 'principalPayment', principalAmount: 1 }),
+			expect.objectContaining({ kind: 'missedPayment', interestAmount: 1 })
+		]);
+
+		const recovered = serviceFinanceForDay({
+			finance: resetFinanceDayActivity(insolvent.finance, 9),
+			cash: 1,
+			day: 9
+		});
+		expect(recovered.cash).toBe(0);
+		expect(recovered.finance.loans[0]).toMatchObject({
+			status: 'paid',
+			accruedInterestMicros: 0,
+			overdueInterest: 0
+		});
+		expect(recovered.finance.transactions.at(-1)).toMatchObject({
+			kind: 'interestPayment',
+			interestAmount: 1,
+			cashDelta: -1
+		});
+	});
+
 	it('retains paid and refinanced loans but excludes them from servicing', () => {
 		const paid = createLoan({
 			id: 'loan-paid',
