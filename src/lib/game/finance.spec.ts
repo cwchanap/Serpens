@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import * as financeModule from './finance';
+import * as expansionFinancingModule from './expansionFinancing';
 import { ARCHETYPES } from './archetypes';
 import {
 	appendFinanceTransaction,
 	assessCredit,
 	borrow,
-	financeExpansionPurchase,
 	calculateDailyInterestMicros,
 	createEmptyFinanceState,
 	createFoundingFinanceState,
@@ -1141,20 +1142,8 @@ describe('expansion finance offers', () => {
 		);
 	});
 
-	it('does not commit a borrowed candidate when the purchase postcondition fails', () => {
-		const game = createCreditGame({ cash: 9_750 });
-		const financeBefore = game.finance;
-
-		const result = financeExpansionPurchase(game, {
-			expectedCost: 10_000,
-			resolveLiveCost: () => 10_000,
-			cashOnlyPurchase: (candidate) => ({ ...candidate, cash: candidate.cash - 10_000 }),
-			postcondition: () => false
-		});
-
-		expect(result).toMatchObject({ ok: false, code: 'purchaseUnavailable' });
-		expect(game.finance).toBe(financeBefore);
-		expect(game.finance.loans).toHaveLength(0);
-		expect(game.cash).toBe(9_750);
+	it('does not expose a callback-driven expansion-purchase API', () => {
+		expect('financeExpansionPurchase' in financeModule).toBe(false);
+		expect('financeExpansionPurchase' in expansionFinancingModule).toBe(false);
 	});
 });

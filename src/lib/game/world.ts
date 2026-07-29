@@ -4,13 +4,7 @@ import {
 	DEFAULT_INDUSTRY_CITY_WIDTH,
 	generateIndustryCity
 } from './industry';
-import {
-	financeExpansionPurchase,
-	getExpansionFinanceOffer,
-	type ExpansionFinanceOffer,
-	type FinanceActionResult,
-	type FinancedPurchaseReceipt
-} from './finance';
+import { getExpansionFinanceOffer, type ExpansionFinanceOffer } from './finance';
 import {
 	decisionContextWorldCityNotAvailableYet,
 	decisionContextWorldCityOpeningCost,
@@ -392,24 +386,7 @@ export function openWorldCity(game: GameState, cityId: string): GameState {
 	return refreshWorldProgress(selectWorldCity(ensureWorldCityMap(openedGame, city), city.id));
 }
 
-export function financeWorldCityOpening(
-	game: GameState,
-	input: { cityId: WorldCityId; expectedCost: number }
-): FinanceActionResult<FinancedPurchaseReceipt> {
-	return financeExpansionPurchase(game, {
-		expectedCost: input.expectedCost,
-		resolveLiveCost: (candidate) => {
-			const city = getWorldCityDefinition(input.cityId);
-			return city &&
-				!candidate.world.openedCityIds.includes(city.id) &&
-				candidate.world.revealedCityIds.includes(city.id)
-				? city.openingCost
-				: null;
-		},
-		cashOnlyPurchase: (candidate) => openWorldCity(candidate, input.cityId),
-		postcondition: (candidate) => candidate.world.openedCityIds.includes(input.cityId)
-	});
-}
+export { financeWorldCityOpening } from './expansionFinancing';
 
 export function selectWorldCity(game: GameState, cityId: WorldCityId): GameState {
 	const city = getWorldCityDefinition(cityId);
