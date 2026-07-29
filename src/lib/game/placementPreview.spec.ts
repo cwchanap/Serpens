@@ -336,6 +336,143 @@ describe('retail placement preview', () => {
 		});
 	});
 
+	test('disables a cash-short retail menu option when its financing command is unavailable', () => {
+		expect.assertions(3);
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 20,
+			height: 20,
+			seed: 20260503
+		});
+		const foundingTile = city.tiles.find((tile) => isRetailFootprintAvailable(city, tile))!;
+		const game = createFoundingGameAtTile({
+			archetypeId: 'convenience',
+			city,
+			tileId: foundingTile.id,
+			seed: 20260503
+		});
+		const availableTiles = city.tiles.filter(
+			(tile) => tile.id !== foundingTile.id && isRetailFootprintAvailable(city, tile, game.stores)
+		);
+		const cheapestElectronicsSetupCost = Math.min(
+			...availableTiles.map((tile) => forecastOpening(tile, 'electronics').setupCost)
+		);
+
+		const electronicsOption = getRetailBuildMenuOptions({
+			game: { ...game, cash: cheapestElectronicsSetupCost - 100 },
+			city,
+			cashCommandAvailable: true,
+			financeCommandAvailable: false
+		}).find((option) => option.archetypeId === 'electronics')!;
+
+		expect(electronicsOption.validTileCount).toBe(availableTiles.length);
+		expect(electronicsOption.disabledReason).toEqual({
+			code: 'retail.requiresCash',
+			amount: cheapestElectronicsSetupCost
+		});
+		expect(electronicsOption.financeOffer).toBeNull();
+	});
+
+	test('requires the cash command for a cash-covered retail menu option', () => {
+		expect.assertions(2);
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 20,
+			height: 20,
+			seed: 20260503
+		});
+		const foundingTile = city.tiles.find((tile) => isRetailFootprintAvailable(city, tile))!;
+		const game = createFoundingGameAtTile({
+			archetypeId: 'convenience',
+			city,
+			tileId: foundingTile.id,
+			seed: 20260503
+		});
+		const availableTiles = city.tiles.filter(
+			(tile) => tile.id !== foundingTile.id && isRetailFootprintAvailable(city, tile, game.stores)
+		);
+		const cheapestBoutiqueSetupCost = Math.min(
+			...availableTiles.map((tile) => forecastOpening(tile, 'boutique').setupCost)
+		);
+
+		const boutiqueOption = getRetailBuildMenuOptions({
+			game: { ...game, cash: cheapestBoutiqueSetupCost },
+			city,
+			cashCommandAvailable: false,
+			financeCommandAvailable: true
+		}).find((option) => option.archetypeId === 'boutique')!;
+
+		expect(boutiqueOption.disabledReason).toEqual({
+			code: 'retail.requiresCash',
+			amount: cheapestBoutiqueSetupCost
+		});
+		expect(boutiqueOption.financeOffer).toBeNull();
+	});
+
+	test('excludes cash-short retail tiles from the preview when financing is unavailable', () => {
+		expect.assertions(5);
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 20,
+			height: 20,
+			seed: 20260503
+		});
+		const foundingTile = city.tiles.find((tile) => isRetailFootprintAvailable(city, tile))!;
+		const game = createFoundingGameAtTile({
+			archetypeId: 'convenience',
+			city,
+			tileId: foundingTile.id,
+			seed: 20260503
+		});
+		const targetTile = city.tiles.find(
+			(tile) => tile.id !== foundingTile.id && isRetailFootprintAvailable(city, tile, game.stores)
+		)!;
+		const setupCost = forecastOpening(targetTile, 'electronics').setupCost;
+		const cashShortGame = { ...game, cash: setupCost - 100 };
+
+		const unavailablePreview = createRetailPlacementPreview({
+			game: cashShortGame,
+			city,
+			archetypeId: 'electronics',
+			cashCommandAvailable: true,
+			financeCommandAvailable: false
+		});
+		const financedPreview = createRetailPlacementPreview({
+			game: cashShortGame,
+			city,
+			archetypeId: 'electronics',
+			cashCommandAvailable: false,
+			financeCommandAvailable: true
+		});
+
+		expect(unavailablePreview.invalidTileIds).toContain(targetTile.id);
+		expect(unavailablePreview.validTileIds).not.toContain(targetTile.id);
+		expect(
+			getRetailPlacementBlockReason({
+				game: cashShortGame,
+				city,
+				tileId: targetTile.id,
+				archetypeId: 'electronics',
+				cashCommandAvailable: true,
+				financeCommandAvailable: false
+			})
+		).toEqual({ code: 'retail.requiresCash', amount: setupCost });
+		expect(financedPreview.validTileIds).toContain(targetTile.id);
+		expect(
+			getRetailPlacementBlockReason({
+				game: cashShortGame,
+				city,
+				tileId: targetTile.id,
+				archetypeId: 'electronics',
+				cashCommandAvailable: false,
+				financeCommandAvailable: true
+			})
+		).toBeNull();
+	});
+
 	test('reports occupied-location disabled reason when every buildable tile is taken but storeCap remains', () => {
 		expect.assertions(2);
 		const city = generateCity({

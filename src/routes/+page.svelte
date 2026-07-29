@@ -719,7 +719,14 @@
 	let shouldShowIndustryInspector = $derived(
 		selectedIndustryTile !== null && (!isPlacementModeActive || placementFeedback !== null)
 	);
-	let retailBuildOptions = $derived(getRetailBuildMenuOptions({ game, city: activeCity }));
+	let retailBuildOptions = $derived(
+		getRetailBuildMenuOptions({
+			game,
+			city: activeCity,
+			cashCommandAvailable: mutationAvailability.openStore,
+			financeCommandAvailable: mutationAvailability.financeRetailStore
+		})
+	);
 	let industrialBuildOptions = $derived(
 		getIndustrialBuildMenuOptions({
 			game,
@@ -733,7 +740,9 @@
 		const preview = createRetailPlacementPreview({
 			game,
 			city: activeCity,
-			archetypeId
+			archetypeId,
+			cashCommandAvailable: mutationAvailability.openStore,
+			financeCommandAvailable: mutationAvailability.financeRetailStore
 		});
 		if (playMode === 'sandbox' || !activeScenarioDefinition) return preview;
 		if (!isWorldCityId(activeCity.id)) return { ...preview, validTileIds: [] };
@@ -1947,7 +1956,9 @@
 			game,
 			city: activeCity,
 			tileId,
-			archetypeId
+			archetypeId,
+			cashCommandAvailable: mutationAvailability.openStore,
+			financeCommandAvailable: mutationAvailability.financeRetailStore
 		});
 
 		if (blockReason) {

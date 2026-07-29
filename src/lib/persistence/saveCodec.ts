@@ -2282,6 +2282,14 @@ function validateSavedFinance(value: unknown, gameDay: number, label: string): v
 			throw new SaveDataError(
 				`${label} loans[${index}] nextPaymentDay must match its installment schedule`
 			);
+		if (
+			(status === 'active' || status === 'delinquent') &&
+			nextPaymentDay !== null &&
+			nextPaymentDay < gameDay
+		)
+			throw new SaveDataError(
+				`${label} loans[${index}] nextPaymentDay must not be before the game day`
+			);
 		if (status === 'active' && (hasArrears || arrearsSinceDay !== null || nextPaymentDay === null))
 			throw new SaveDataError(
 				`${label} loans[${index}] active loan must have no arrears and a next payment`
