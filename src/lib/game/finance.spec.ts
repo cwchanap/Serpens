@@ -29,6 +29,8 @@ import {
 } from './finance';
 import { createNewGame } from './state';
 import { simulateDay } from './simulateDay';
+import { refreshWorldProgress } from './world';
+import { validateCurrentGameState } from '../persistence/saveCodec';
 import type { FinanceState, GameState, LoanInstrument } from './types';
 
 function createLoan(overrides: Partial<LoanInstrument> = {}): LoanInstrument {
@@ -267,7 +269,8 @@ describe('borrow, repay, payoff, and refinance actions', () => {
 			overdueInterest: 10,
 			accruedInterestMicros: 2_300_000
 		});
-		const result = repayLoan(creditworthyGame({ cash: 1_000, finance: createFinance([loan]) }), {
+		const game = creditworthyGame({ cash: 1_000, finance: createFinance([loan]) });
+		const result = repayLoan(game, {
 			loanId: loan.id,
 			amount: 160
 		});
@@ -289,6 +292,72 @@ describe('borrow, repay, payoff, and refinance actions', () => {
 			interestPaid: 12,
 			financingCashFlow: -160
 		});
+		expect(result.game.finance.transactions).toEqual([
+			{
+				id: 'finance-transaction-1',
+				day: game.day,
+				kind: 'interestPayment',
+				loanId: loan.id,
+				cashDelta: -12,
+				principalAmount: 0,
+				principalDelta: 0,
+				interestAmount: 12
+			},
+			{
+				id: 'finance-transaction-2',
+				day: game.day,
+				kind: 'principalPayment',
+				loanId: loan.id,
+				cashDelta: -148,
+				principalAmount: 148,
+				principalDelta: -148,
+				interestAmount: 0
+			}
+		]);
+	});
+
+	it('records interest-only and principal-only manual repayments without zero-value entries', () => {
+		const interestLoan = createLoan({
+			remainingPrincipal: 100,
+			overdueInterest: 12,
+			accruedInterestMicros: 0
+		});
+		const interestResult = repayLoan(
+			creditworthyGame({ cash: 12, finance: createFinance([interestLoan]) }),
+			{ loanId: interestLoan.id, amount: 12 }
+		);
+		expect(interestResult.ok).toBe(true);
+		if (!interestResult.ok) return;
+		expect(interestResult.game.finance.transactions).toEqual([
+			expect.objectContaining({
+				kind: 'interestPayment',
+				cashDelta: -12,
+				principalAmount: 0,
+				principalDelta: 0,
+				interestAmount: 12
+			})
+		]);
+
+		const principalLoan = createLoan({
+			remainingPrincipal: 100,
+			overdueInterest: 0,
+			accruedInterestMicros: 0
+		});
+		const principalResult = repayLoan(
+			creditworthyGame({ cash: 25, finance: createFinance([principalLoan]) }),
+			{ loanId: principalLoan.id, amount: 25 }
+		);
+		expect(principalResult.ok).toBe(true);
+		if (!principalResult.ok) return;
+		expect(principalResult.game.finance.transactions).toEqual([
+			expect.objectContaining({
+				kind: 'principalPayment',
+				cashDelta: -25,
+				principalAmount: 25,
+				principalDelta: -25,
+				interestAmount: 0
+			})
+		]);
 	});
 
 	it('rejects invalid, unavailable, closed, and over-payments without mutation', () => {
@@ -378,12 +447,13 @@ describe('borrow, repay, payoff, and refinance actions', () => {
 				loanId: replacement?.id,
 				relatedLoanId: old?.id,
 				cashDelta: 0,
-				principalAmount: 1_000,
+				principalAmount: 1_005,
+				principalDelta: 5,
 				interestAmount: 5
 			})
 		]);
 		expect(result.game.finance.currentDayActivity).toMatchObject({
-			refinancedPrincipal: 1_000,
+			refinancedPrincipal: 1_005,
 			interestCapitalized: 5,
 			financingCashFlow: 0
 		});
@@ -778,6 +848,49 @@ describe('finance servicing', () => {
 			interestAmount: 1,
 			cashDelta: -1
 		});
+	});
+
+	it('dates matured fractional arrears at a prepaid zero-dollar final checkpoint without changing counters', () => {
+		const finance = {
+			...createFinance([
+				createLoan({
+					originalPrincipal: 1,
+					remainingPrincipal: 0,
+					termDays: 84,
+					installmentsProcessed: 11,
+					nextPaymentDay: 8,
+					annualInterestRateBps: 0,
+					lastInterestAccrualDay: 7,
+					accruedInterestMicros: 1,
+					scheduledPaymentCount: 1,
+					onTimePaymentCount: 1,
+					missedPaymentCount: 0
+				})
+			]),
+			nextLoanSequence: 2
+		};
+
+		const serviced = serviceFinanceForDay({ finance, cash: 0, day: 8 });
+		expect(serviced.finance.loans[0]).toMatchObject({
+			status: 'delinquent',
+			nextPaymentDay: null,
+			accruedInterestMicros: 1,
+			arrearsSinceDay: 8,
+			installmentsProcessed: 12,
+			scheduledPaymentCount: 1,
+			onTimePaymentCount: 1,
+			missedPaymentCount: 0
+		});
+		expect(serviced.finance.transactions).toEqual([]);
+		expect(() => {
+			const saveCandidate = refreshWorldProgress({
+				...createCreditGame(),
+				day: 8,
+				cash: serviced.cash,
+				finance: serviced.finance
+			});
+			validateCurrentGameState(saveCandidate);
+		}).not.toThrow();
 	});
 
 	it('retains paid and refinanced loans but excludes them from servicing', () => {

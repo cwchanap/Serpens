@@ -480,9 +480,7 @@ function serviceScheduledLoan(input: {
 			arrearsSinceDay:
 				unpaidInterest > 0 || unpaidPrincipal > 0
 					? (loan.arrearsSinceDay ?? input.day)
-					: isFinalInstallment && loan.accruedInterestMicros > 0
-						? (loan.arrearsSinceDay ?? input.day)
-						: loan.arrearsSinceDay
+					: loan.arrearsSinceDay
 		};
 		if (unpaidInterest > 0 || unpaidPrincipal > 0) {
 			finance = appendFinanceTransaction(finance, {
@@ -495,6 +493,9 @@ function serviceScheduledLoan(input: {
 				interestAmount: unpaidInterest
 			});
 		}
+	}
+	if (isFinalInstallment && loan.accruedInterestMicros > 0) {
+		loan = { ...loan, arrearsSinceDay: loan.arrearsSinceDay ?? input.day };
 	}
 
 	loan = finalizeLoanStatus(loan);
@@ -1088,15 +1089,20 @@ export function repayLoan(
 
 	const repayment = applyRepayment(found.loan, input.amount);
 	let finance = replaceLoan(game.finance, repayment.loan);
-	finance = appendFinanceTransaction(finance, {
-		day: game.day,
-		kind: 'principalPayment',
-		loanId: found.loan.id,
-		cashDelta: -input.amount,
-		principalAmount: repayment.principalPaid,
-		principalDelta: -repayment.principalPaid,
-		interestAmount: repayment.interestPaid
-	});
+	finance = appendPaymentTransaction(
+		finance,
+		found.loan.id,
+		game.day,
+		'interestPayment',
+		repayment.interestPaid
+	);
+	finance = appendPaymentTransaction(
+		finance,
+		found.loan.id,
+		game.day,
+		'principalPayment',
+		repayment.principalPaid
+	);
 	return {
 		ok: true,
 		game: { ...game, cash: game.cash - input.amount, finance },
@@ -1174,8 +1180,8 @@ export function refinanceLoan(
 		loanId: newLoanId,
 		relatedLoanId: found.loan.id,
 		cashDelta: 0,
-		principalAmount: found.loan.remainingPrincipal,
-		principalDelta: 0,
+		principalAmount: payoffAmount,
+		principalDelta: capitalizedInterest,
 		interestAmount: capitalizedInterest
 	});
 	return {

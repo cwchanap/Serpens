@@ -63,6 +63,16 @@ export type PlacementBlockReason =
 	| { code: 'industry.requiresCash'; buildingTypeId: IndustrialBuildingTypeId; amount: number }
 	| { code: 'industry.rawPlacementBlocked'; context: DecisionContext };
 
+export type IndustrialBuildMenuDisabledReason =
+	| Extract<PlacementBlockReason, { code: 'industry.requiresCash' }>
+	| { code: 'industry.commandUnavailable' };
+
+export interface IndustrialBuildMenuOption {
+	buildingTypeId: IndustrialBuildingTypeId;
+	disabledReason: IndustrialBuildMenuDisabledReason | null;
+	financeOffer: ExpansionFinanceOffer | null;
+}
+
 interface RetailPlacementInput {
 	game: GameState | null;
 	city: City;
@@ -106,6 +116,12 @@ interface IndustryPlacementInput {
 interface IndustryPreviewInput {
 	game: GameState | null;
 	buildingTypeId: IndustrialBuildingTypeId;
+}
+
+interface IndustrialBuildMenuInput {
+	game: GameState | null;
+	cashCommandAvailable: boolean;
+	financeCommandAvailable: boolean;
 }
 
 export function createRetailPlacementPreview(input: RetailPreviewInput): PlacementPreview {
@@ -250,6 +266,45 @@ export function getRetailBuildMenuOptions(input: RetailBuildMenuInput): RetailBu
 			),
 			validTileCount: validForecasts.length,
 			disabledReason: noFunding ? { code: 'retail.requiresCash', amount: minimumSetupCost } : null,
+			financeOffer
+		};
+	});
+}
+
+export function getIndustrialBuildMenuOptions(
+	input: IndustrialBuildMenuInput
+): IndustrialBuildMenuOption[] {
+	return Object.values(INDUSTRIAL_BUILDING_TYPES).map((buildingType) => {
+		if (!input.game) {
+			return {
+				buildingTypeId: buildingType.id,
+				disabledReason: null,
+				financeOffer: null
+			};
+		}
+
+		if (input.game.cash >= buildingType.buildCost) {
+			return {
+				buildingTypeId: buildingType.id,
+				disabledReason: input.cashCommandAvailable
+					? null
+					: { code: 'industry.commandUnavailable' as const },
+				financeOffer: null
+			};
+		}
+
+		const financeOffer = input.financeCommandAvailable
+			? getExpansionFinanceOffer(input.game, buildingType.buildCost)
+			: null;
+		return {
+			buildingTypeId: buildingType.id,
+			disabledReason: financeOffer
+				? null
+				: {
+						code: 'industry.requiresCash' as const,
+						buildingTypeId: buildingType.id,
+						amount: buildingType.buildCost
+					},
 			financeOffer
 		};
 	});

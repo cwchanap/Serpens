@@ -76,6 +76,7 @@
 	import {
 		createIndustryPlacementPreview,
 		createRetailPlacementPreview,
+		getIndustrialBuildMenuOptions,
 		getIndustryBuildPlacementBlockReason,
 		getRetailBuildMenuOptions,
 		getRetailPlacementBlockReason,
@@ -719,6 +720,13 @@
 		selectedIndustryTile !== null && (!isPlacementModeActive || placementFeedback !== null)
 	);
 	let retailBuildOptions = $derived(getRetailBuildMenuOptions({ game, city: activeCity }));
+	let industrialBuildOptions = $derived(
+		getIndustrialBuildMenuOptions({
+			game,
+			cashCommandAvailable: mutationAvailability.buildIndustrialBuilding,
+			financeCommandAvailable: mutationAvailability.financeIndustrialBuilding
+		})
+	);
 	let retailPlacementPreview = $derived.by(() => {
 		const archetypeId = retailPlacementArchetypeId;
 		if (!archetypeId) return null;
@@ -2570,6 +2578,7 @@
 				activeMapView={activeMapView === 'industry' ? 'industry' : 'retail'}
 				{i18n}
 				retailOptions={retailBuildOptions}
+				industryOptions={industrialBuildOptions}
 				{industryLockedReason}
 				{availableMaterialIds}
 				canOpenStore={mutationAvailability.openStore}
