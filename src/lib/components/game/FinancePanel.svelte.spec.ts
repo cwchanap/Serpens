@@ -234,4 +234,13 @@ describe('FinancePanel', () => {
 		await expect.element(page.getByRole('heading', { name: 'Review refinancing' })).toBeVisible();
 		expect(onRefinance).toHaveBeenCalledOnce();
 	});
+
+	it('fits the complete finance panel within a narrow viewport', async () => {
+		expect.assertions(2);
+		await page.viewport(320, 800);
+		renderPanel();
+		const panel = page.getByRole('region', { name: 'Finance' }).element();
+		expect(panel.clientWidth).toBeGreaterThan(0);
+		expect(panel.scrollWidth).toBeLessThanOrEqual(panel.clientWidth);
+	});
 });
