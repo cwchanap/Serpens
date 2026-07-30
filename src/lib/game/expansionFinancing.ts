@@ -15,7 +15,7 @@ export interface ExpansionPurchaseInput {
 
 function purchaseFailure(
 	game: GameState,
-	code: 'purchaseUnavailable' | 'purchaseCostChanged',
+	code: 'purchaseUnavailable' | 'purchaseCostChanged' | 'cashSufficient',
 	context: Record<string, string | number> = {}
 ): Extract<FinanceActionResult<FinancedPurchaseReceipt>, { ok: false }> {
 	return { ok: false, game, code, context };
@@ -38,16 +38,18 @@ export function runExpansionPurchase(
 		});
 	}
 
+	// A financed command must not fall back to the cash-only transition when
+	// shortfall <= 0. That bypasses scenario allowedCommands: a definition
+	// granting financeIndustrialBuilding but not buildIndustrialBuilding could
+	// still spend cash through the finance command. The cash-sufficient path is
+	// the cash command's responsibility; the finance command is offered only for
+	// a positive shortfall.
 	const shortfall = purchaseCost - game.cash;
 	if (shortfall <= 0) {
-		const purchased = input.cashOnlyPurchase(game);
-		return input.postcondition(purchased)
-			? {
-					ok: true,
-					game: purchased,
-					receipt: { loanId: null, purchaseCost, financedPrincipal: 0 }
-				}
-			: purchaseFailure(game, 'purchaseUnavailable');
+		return purchaseFailure(game, 'cashSufficient', {
+			purchaseCost,
+			cash: game.cash
+		});
 	}
 
 	const borrowed = borrow(game, {

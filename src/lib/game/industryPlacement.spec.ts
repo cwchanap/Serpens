@@ -48,7 +48,7 @@ describe('industrial placement', () => {
 		expect(result.game.industrialBuildings).toHaveLength(1);
 	});
 
-	test('returns a null loan id for a cash-only industrial building', () => {
+	test('rejects a cash-sufficient industrial financing commit instead of falling back to the cash command', () => {
 		const base = createNewGame('convenience', 20260513);
 		const tile = getIndustryTilesByResource(base.industryCities[0]!, 'grain-field')[0]!;
 		const game = { ...base, cash: 600 };
@@ -59,11 +59,10 @@ describe('industrial placement', () => {
 			expectedCost: 600
 		});
 
-		expect(result.ok).toBe(true);
-		if (!result.ok) return;
-		expect(result.receipt.loanId).toBeNull();
-		expect(result.game.finance).toBe(game.finance);
-		expect(result.game.industrialBuildings).toHaveLength(1);
+		expect(result).toMatchObject({ ok: false, code: 'cashSufficient' });
+		if (!result.ok) expect(result.game).toBe(game);
+		expect(game.industrialBuildings).toHaveLength(0);
+		expect(game.finance).toBe(base.finance);
 	});
 
 	test('rejects a stale industrial target without borrowing or changing state', () => {

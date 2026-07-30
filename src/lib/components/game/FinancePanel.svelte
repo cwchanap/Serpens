@@ -203,6 +203,8 @@
 				return i18n.t('financePanel.failures.purchaseUnavailable');
 			case 'purchaseCostChanged':
 				return i18n.t('financePanel.failures.purchaseCostChanged');
+			case 'cashSufficient':
+				return i18n.t('financePanel.failures.cashSufficient');
 		}
 	}
 

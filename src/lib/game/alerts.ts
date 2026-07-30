@@ -1,6 +1,6 @@
 import { INDUSTRIAL_BUILDING_TYPES } from './industry';
 import { estimateNextLoanPayment, hasLoanArrears, isOutstandingLoan } from './finance';
-import { getFinanceMetrics } from './financeMetrics';
+import { getFinanceMetrics, projectCashRunway } from './financeMetrics';
 import { storeNameOrOrdinal } from './state';
 import { summarizeStockTrouble } from './stock';
 import type { GameState, LoanInstrument } from './types';
@@ -90,9 +90,21 @@ function collectFinanceAlerts(game: GameState): GameAlert[] {
 	// Covenant risk is gated on debt service (debtServiceCoverage is null without
 	// scheduled service), but cash runway is meaningful without debt: a debt-free
 	// company with negative cash has a zero-day runway and must still be alerted.
-	const metrics = getFinanceMetrics(game);
+	//
+	// When there are no outstanding loans, skip getFinanceMetrics entirely — it
+	// would compute three term-specific credit assessments (each potentially
+	// performing an exact whole-dollar downward scan) that are irrelevant for
+	// alerts. projectCashRunway alone covers the debt-free runway case. This
+	// matters because collectGameAlerts is a reactive page derivation that
+	// re-runs on every relevant game-state update.
+	const hasOutstandingLoans = game.finance.loans.some(isOutstandingLoan);
+	const metrics = hasOutstandingLoans ? getFinanceMetrics(game) : null;
 
-	if (metrics.debtServiceCoverage !== null && metrics.debtServiceCoverage < COVENANT_THRESHOLD) {
+	if (
+		metrics &&
+		metrics.debtServiceCoverage !== null &&
+		metrics.debtServiceCoverage < COVENANT_THRESHOLD
+	) {
 		alerts.push({
 			id: 'covenantRisk',
 			kind: 'covenantRisk',
@@ -101,11 +113,12 @@ function collectFinanceAlerts(game: GameState): GameAlert[] {
 		});
 	}
 
-	if (metrics.cashRunway.kind === 'days' && metrics.cashRunway.days <= LOW_CASH_RUNWAY_DAYS) {
+	const cashRunway = metrics ? metrics.cashRunway : projectCashRunway(game);
+	if (cashRunway.kind === 'days' && cashRunway.days <= LOW_CASH_RUNWAY_DAYS) {
 		alerts.push({
 			id: 'lowCashRunway',
 			kind: 'lowCashRunway',
-			message: `Cash runway is ${metrics.cashRunway.days} days.`,
+			message: `Cash runway is ${cashRunway.days} days.`,
 			managementPanelId: 'finance'
 		});
 	}

@@ -533,7 +533,8 @@ export const ja = {
 			unsupportedPurpose: '未対応の借入目的です',
 			insufficientCredit: '利用可能な信用枠が不足しています',
 			purchaseUnavailable: '購入できません',
-			purchaseCostChanged: '購入価格が変更されました'
+			purchaseCostChanged: '購入価格が変更されました',
+			cashSufficient: '現金で購入可能です — 現金コマンドを使用してください'
 		},
 		decisionAvailability: { available: '利用可能', unavailable: '資金調達を利用できません' },
 		financedPurchase: {

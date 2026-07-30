@@ -802,53 +802,63 @@ describe('executeScenarioCommand dispatch', { timeout: 30_000 }, () => {
 	});
 
 	it('replays financed purchases with their exact expected-cost payloads', () => {
-		const cityGame: GameState = {
+		const city = getWorldCityDefinition('campus-junction')!;
+		const retailTile = findExpansionTile(foundingGame());
+		const retailCost = forecastOpening(retailTile, 'convenience').setupCost;
+		const industry = grainBuildFixture();
+
+		// Each game is genuinely cash-short so the finance command borrows a
+		// real shortfall instead of silently falling back to the cash-only
+		// transition. foundingGame() forces cash to $1,000,000, which would
+		// bypass the financing path entirely.
+		const worldGame: GameState = {
 			...foundingGame(),
+			cash: city.openingCost - 250,
 			world: {
 				revealedCityIds: ['harbor-city', 'industry-city', 'campus-junction'],
 				openedCityIds: ['harbor-city', 'industry-city'],
 				claimedMilestoneIds: []
 			}
 		};
-		const city = getWorldCityDefinition('campus-junction')!;
-		const retailTile = findExpansionTile(cityGame);
-		const industry = grainBuildFixture();
+		const retailGame: GameState = { ...foundingGame(), cash: retailCost - 250 };
+		const industryGame: GameState = { ...industry.game, cash: 375 };
+
 		const commands: Array<{
 			game: GameState;
 			command: ScenarioCommand;
 			expected: ReturnType<typeof financeWorldCityOpening>;
 		}> = [
 			{
-				game: cityGame,
+				game: worldGame,
 				command: { kind: 'financeWorldCity', cityId: city.id, expectedCost: city.openingCost },
-				expected: financeWorldCityOpening(cityGame, {
+				expected: financeWorldCityOpening(worldGame, {
 					cityId: city.id,
 					expectedCost: city.openingCost
 				})
 			},
 			{
-				game: cityGame,
+				game: retailGame,
 				command: {
 					kind: 'financeRetailStore',
 					tileId: retailTile.id,
 					archetypeId: 'convenience',
-					expectedCost: forecastOpening(retailTile, 'convenience').setupCost
+					expectedCost: retailCost
 				},
-				expected: financeRetailStoreOpening(cityGame, {
+				expected: financeRetailStoreOpening(retailGame, {
 					tileId: retailTile.id,
 					archetypeId: 'convenience',
-					expectedCost: forecastOpening(retailTile, 'convenience').setupCost
+					expectedCost: retailCost
 				})
 			},
 			{
-				game: industry.game,
+				game: industryGame,
 				command: {
 					kind: 'financeIndustrialBuilding',
 					tileId: industry.tile.id,
 					buildingTypeId: 'grain-farm',
 					expectedCost: 600
 				},
-				expected: financeIndustrialBuilding(industry.game, {
+				expected: financeIndustrialBuilding(industryGame, {
 					tileId: industry.tile.id,
 					buildingTypeId: 'grain-farm',
 					expectedCost: 600
@@ -887,6 +897,98 @@ describe('executeScenarioCommand dispatch', { timeout: 30_000 }, () => {
 			};
 			const next = changedRun(activeRun(definition, game), definition, command);
 			expect(next.game).toEqual(expected.game);
+			// Assert a genuine loan was created — not a silent cash-only fallback.
+			expect(expected.receipt.loanId).not.toBeNull();
+			expect(expected.receipt.financedPrincipal).toBeGreaterThan(0);
+			expect(next.game.finance.loans.at(-1)?.purpose).toBe('expansion');
+		}
+	});
+
+	it('rejects a finance-only command when cash covers the purchase instead of falling back to the cash command', () => {
+		const city = getWorldCityDefinition('campus-junction')!;
+		const retailTile = findExpansionTile(foundingGame());
+		const retailCost = forecastOpening(retailTile, 'convenience').setupCost;
+		const industry = grainBuildFixture();
+
+		// foundingGame() has $1,000,000 cash — more than enough for every
+		// purchase. Each definition grants ONLY the finance command, not the
+		// corresponding cash command. The finance command must reject with
+		// cashSufficient rather than silently executing a cash purchase.
+		const worldGame: GameState = {
+			...foundingGame(),
+			world: {
+				revealedCityIds: ['harbor-city', 'industry-city', 'campus-junction'],
+				openedCityIds: ['harbor-city', 'industry-city'],
+				claimedMilestoneIds: []
+			}
+		};
+		const cases: Array<{
+			game: GameState;
+			command: ScenarioCommand;
+			contentOverrides: Partial<ScenarioDefinition['content']>;
+		}> = [
+			{
+				game: worldGame,
+				command: {
+					kind: 'financeWorldCity',
+					cityId: city.id,
+					expectedCost: city.openingCost
+				},
+				contentOverrides: {}
+			},
+			{
+				game: foundingGame(),
+				command: {
+					kind: 'financeRetailStore',
+					tileId: retailTile.id,
+					archetypeId: 'convenience',
+					expectedCost: retailCost
+				},
+				contentOverrides: {
+					retailPlacements: [
+						{
+							cityId: 'harbor-city' as const,
+							tileId: retailTile.id,
+							archetypeId: 'convenience'
+						}
+					]
+				}
+			},
+			{
+				game: industry.game,
+				command: {
+					kind: 'financeIndustrialBuilding',
+					tileId: industry.tile.id,
+					buildingTypeId: 'grain-farm',
+					expectedCost: 600
+				},
+				contentOverrides: {
+					industrialPlacements: [
+						{
+							cityId: 'industry-city' as const,
+							tileId: industry.tile.id,
+							buildingTypeId: 'grain-farm'
+						}
+					]
+				}
+			}
+		];
+
+		for (const { game, command, contentOverrides } of cases) {
+			const base = commandDefinition([command.kind]);
+			const definition: ScenarioDefinition = {
+				...base,
+				content: { ...base.content, ...contentOverrides }
+			};
+			const run = activeRun(definition, game);
+			const result = executeScenarioCommand(run, definition, command);
+			expect(result).toMatchObject({
+				ok: false,
+				code: 'invalid-command',
+				financeFailure: { code: 'cashSufficient' }
+			});
+			// The run's game must not advance.
+			expect(run.game).toBe(game);
 		}
 	});
 
