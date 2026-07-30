@@ -1,10 +1,11 @@
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { generateCity } from './city';
 import {
 	decisionContextIndustrialLockedTile,
 	decisionContextIndustrialRequiresIndustrialTile,
 	decisionContextIndustrialRequiresResource
 } from './decisionContext';
+import * as financeModule from './finance';
 import { getIndustryTilesByResource } from './industry';
 import {
 	createIndustryPlacementPreview,
@@ -760,6 +761,29 @@ describe('industry placement preview', () => {
 				financeCommandAvailable: true
 			})
 		).toBeNull();
+	});
+
+	test('computes the expansion finance offer once per preview, not once per tile', () => {
+		// The offer depends only on `game` and the building type's fixed
+		// buildCost, so a full-map preview must invoke getExpansionFinanceOffer
+		// (and its assessCredit principal scan) exactly once, regardless of how
+		// many tiles are structurally valid and cash-short.
+		expect.assertions(2);
+		const game = { ...createNewGame('convenience', 20260512), cash: 0 };
+		const city = game.industryCities[0]!;
+		const industrialTileCount = city.tiles.filter(
+			(tile) => tile.terrain === 'industrial' && !tile.locked
+		).length;
+		expect(industrialTileCount).toBeGreaterThan(1);
+
+		const spy = vi.spyOn(financeModule, 'getExpansionFinanceOffer');
+		createIndustryPlacementPreview({
+			game,
+			buildingTypeId: 'warehouse',
+			financeCommandAvailable: true
+		});
+		expect(spy).toHaveBeenCalledTimes(1);
+		spy.mockRestore();
 	});
 
 	test('marks non-industrial tiles invalid for buildings that require industrial terrain', () => {
