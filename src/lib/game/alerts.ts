@@ -1,6 +1,6 @@
 import { INDUSTRIAL_BUILDING_TYPES } from './industry';
 import { estimateNextLoanPayment, hasLoanArrears, isOutstandingLoan } from './finance';
-import { getFinanceMetrics, projectCashRunway } from './financeMetrics';
+import { getAlertFinanceSnapshot } from './financeMetrics';
 import { storeNameOrOrdinal } from './state';
 import { summarizeStockTrouble } from './stock';
 import type { GameState, LoanInstrument } from './types';
@@ -91,20 +91,16 @@ function collectFinanceAlerts(game: GameState): GameAlert[] {
 	// scheduled service), but cash runway is meaningful without debt: a debt-free
 	// company with negative cash has a zero-day runway and must still be alerted.
 	//
-	// When there are no outstanding loans, skip getFinanceMetrics entirely — it
-	// would compute three term-specific credit assessments (each potentially
-	// performing an exact whole-dollar downward scan) that are irrelevant for
-	// alerts. projectCashRunway alone covers the debt-free runway case. This
-	// matters because collectGameAlerts is a reactive page derivation that
-	// re-runs on every relevant game-state update.
-	const hasOutstandingLoans = game.finance.loans.some(isOutstandingLoan);
-	const metrics = hasOutstandingLoans ? getFinanceMetrics(game) : null;
+	// Use the lightweight alert snapshot rather than getFinanceMetrics. The full
+	// snapshot also runs three term-specific credit assessments (each potentially
+	// performing an exact whole-dollar downward scan via findMaxPrincipalByService)
+	// that alerts never consume. Normal games always carry the Founding Loan, so
+	// routing the reactive alert path through getFinanceMetrics would repeat those
+	// scans on every game-state update. debtServiceCoverage is naturally null when
+	// there is no scheduled service, so the debt-free case needs no special branch.
+	const { debtServiceCoverage, cashRunway } = getAlertFinanceSnapshot(game);
 
-	if (
-		metrics &&
-		metrics.debtServiceCoverage !== null &&
-		metrics.debtServiceCoverage < COVENANT_THRESHOLD
-	) {
+	if (debtServiceCoverage !== null && debtServiceCoverage < COVENANT_THRESHOLD) {
 		alerts.push({
 			id: 'covenantRisk',
 			kind: 'covenantRisk',
@@ -113,7 +109,6 @@ function collectFinanceAlerts(game: GameState): GameAlert[] {
 		});
 	}
 
-	const cashRunway = metrics ? metrics.cashRunway : projectCashRunway(game);
 	if (cashRunway.kind === 'days' && cashRunway.days <= LOW_CASH_RUNWAY_DAYS) {
 		alerts.push({
 			id: 'lowCashRunway',

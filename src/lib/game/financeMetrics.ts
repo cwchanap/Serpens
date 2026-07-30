@@ -219,6 +219,37 @@ export function projectCashRunway(game: GameState, horizonDays = 90): CashRunway
 	return { kind: 'ninetyPlus' };
 }
 
+export interface AlertFinanceSnapshot {
+	debtServiceCoverage: number | null;
+	cashRunway: CashRunway;
+}
+
+/**
+ * Lightweight finance slice for alert derivation. Computes only debt-service
+ * coverage and cash runway — the two metrics `collectGameAlerts` consumes —
+ * without the three term-specific `assessCredit` scans that `getFinanceMetrics`
+ * runs for the Finance panel. Each `assessCredit` can perform an exact
+ * whole-dollar downward scan via `findMaxPrincipalByService`, so routing the
+ * reactive alert path through `getFinanceMetrics` would repeat that work on
+ * every game-state update even though alerts never read `creditAssessments`.
+ */
+export function getAlertFinanceSnapshot(game: GameState): AlertFinanceSnapshot {
+	const trailingOperatingCashFlow = getTrailingOperatingCashFlow(game);
+	const scheduledDebtServiceNextSevenDays = projectScheduledDebtService(
+		game,
+		game.day + 1,
+		game.day + 7
+	).reduce((total, scheduled) => total + scheduled.total, 0);
+
+	return {
+		debtServiceCoverage:
+			scheduledDebtServiceNextSevenDays === 0
+				? null
+				: Math.max(0, trailingOperatingCashFlow.total) / scheduledDebtServiceNextSevenDays,
+		cashRunway: projectCashRunway(game)
+	};
+}
+
 export function getFinanceMetrics(game: GameState): FinanceMetrics {
 	const trailingOperatingCashFlow = getTrailingOperatingCashFlow(game);
 	const scheduledDebtServiceByDay = projectScheduledDebtService(game, game.day + 1, game.day + 7);
