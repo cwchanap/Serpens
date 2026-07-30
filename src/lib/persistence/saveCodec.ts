@@ -2154,16 +2154,21 @@ function validateSavedFinance(value: unknown, gameDay: number, label: string): v
 	);
 
 	const loanIds = new Set<string>();
-	const loansById = new Map<string, Record<string, unknown>>();
+	const loansById = new Map<
+		string,
+		{ loan: Record<string, unknown>; purpose: string; status: string }
+	>();
 	let highestLoanSequence = 0;
-	if (loans.length > FINANCE_TRANSACTION_LIMIT)
-		throw new SaveDataError(`${label} loans must not exceed ${FINANCE_TRANSACTION_LIMIT} entries`);
+	// Loans are intentionally append-only: closed (paid/refinanced) instruments
+	// are retained for lifetime repayment history and are never pruned at runtime.
+	// Only `transactions` are bounded by FINANCE_TRANSACTION_LIMIT, so the loan
+	// collection must not be capped here — doing so would make a valid in-memory
+	// state (e.g. the 201st lifetime loan) impossible to save.
 	loans.forEach((value, index) => {
 		const loan = requireRecord(value, `${label} loans[${index}]`);
 		const id = requireString(loan.id, `${label} loans[${index}] id`);
 		if (loanIds.has(id)) throw new SaveDataError(`${label} loans must have unique IDs`);
 		loanIds.add(id);
-		loansById.set(id, loan);
 		highestLoanSequence = Math.max(highestLoanSequence, generatedIdSequence(id, 'loan-'));
 		const purpose = requireOneOf(loan.purpose, `${label} loans[${index}] purpose`, [
 			'founding',
@@ -2179,6 +2184,7 @@ function validateSavedFinance(value: unknown, gameDay: number, label: string): v
 			'paid',
 			'refinanced'
 		] as const);
+		loansById.set(id, { loan, purpose, status });
 		const openedOnDay = requireNonNegativeInteger(
 			loan.openedOnDay,
 			`${label} loans[${index}] openedOnDay`
@@ -2324,6 +2330,19 @@ function validateSavedFinance(value: unknown, gameDay: number, label: string): v
 			throw new SaveDataError(
 				`${label} loans[${index}] refinanced loan must retain its replacement link`
 			);
+		// Reverse constraints: a source link is only valid on a refinance-purpose
+		// loan, and a replacement link is only valid on a refinanced-status loan.
+		// Without these, an active source could carry refinancedByLoanId and a
+		// non-refinance replacement could carry refinancedFromLoanId, forming a
+		// symmetric graph where both instruments remain outstanding.
+		if (loan.refinancedFromLoanId !== undefined && purpose !== 'refinance')
+			throw new SaveDataError(
+				`${label} loans[${index}] refinancedFromLoanId is only valid on a refinance-purpose loan`
+			);
+		if (loan.refinancedByLoanId !== undefined && status !== 'refinanced')
+			throw new SaveDataError(
+				`${label} loans[${index}] refinancedByLoanId is only valid on a refinanced-status loan`
+			);
 		if (loan.refinancedFromLoanId !== undefined) {
 			requireString(loan.refinancedFromLoanId, `${label} loans[${index}] refinancedFromLoanId`);
 		}
@@ -2395,17 +2414,28 @@ function validateSavedFinance(value: unknown, gameDay: number, label: string): v
 		);
 	}
 
-	for (const [loanId, loan] of loansById) {
+	for (const [loanId, entry] of loansById) {
+		const loan = entry.loan;
 		const from = loan.refinancedFromLoanId;
 		const by = loan.refinancedByLoanId;
 		if (from !== undefined) {
 			const source = loansById.get(from as string);
-			if (!source || source.refinancedByLoanId !== loanId || from === loanId)
+			if (
+				!source ||
+				source.loan.refinancedByLoanId !== loanId ||
+				from === loanId ||
+				source.status !== 'refinanced'
+			)
 				throw new SaveDataError(`${label} refinance links must be symmetric and non-cyclic`);
 		}
 		if (by !== undefined) {
 			const replacement = loansById.get(by as string);
-			if (!replacement || replacement.refinancedFromLoanId !== loanId || by === loanId)
+			if (
+				!replacement ||
+				replacement.loan.refinancedFromLoanId !== loanId ||
+				by === loanId ||
+				replacement.purpose !== 'refinance'
+			)
 				throw new SaveDataError(`${label} refinance links must be symmetric and non-cyclic`);
 		}
 	}
@@ -2417,7 +2447,7 @@ function validateSavedFinance(value: unknown, gameDay: number, label: string): v
 				throw new SaveDataError(`${label} refinance links must not form a cycle`);
 			}
 			seenLoanIds.add(currentLoanId);
-			currentLoanId = loansById.get(currentLoanId)?.refinancedByLoanId as string | undefined;
+			currentLoanId = loansById.get(currentLoanId)?.loan.refinancedByLoanId as string | undefined;
 		}
 	}
 }

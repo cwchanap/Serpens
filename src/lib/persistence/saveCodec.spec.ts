@@ -910,11 +910,15 @@ describe('saveCodec', () => {
 		});
 	});
 
-	test('rejects more than the finance transaction limit of loans', () => {
-		expect.assertions(1);
+	test('round-trips more than the finance transaction limit of lifetime loans', () => {
+		// Loans are append-only and closed instruments are retained for lifetime
+		// repayment history, so the loan collection must not be capped by the
+		// transaction limit. A save with >200 paid loans must validate and
+		// round-trip without loss.
+		expect.assertions(3);
 		const game = createGame();
 		const baseLoan = game.finance.loans[0]!;
-		const loans = Array.from({ length: 201 }, (_, index) => ({
+		const loans = Array.from({ length: 205 }, (_, index) => ({
 			...baseLoan,
 			id: `loan-${index + 1}`,
 			openedOnDay: 1,
@@ -923,17 +927,23 @@ describe('saveCodec', () => {
 			status: 'paid' as const,
 			remainingPrincipal: 0,
 			originalPrincipal: 1,
-			installmentsProcessed: 4
+			installmentsProcessed: 4,
+			scheduledPaymentCount: 4,
+			onTimePaymentCount: 4,
+			missedPaymentCount: 0
 		}));
-		expect(() =>
-			validateSaveRecord(
-				createManualSaveRecord({
-					game: {
-						finance: { ...game.finance, nextLoanSequence: 202, loans }
-					}
-				})
-			)
-		).toThrow(SaveDataError);
+		const record = createManualSaveRecord({
+			game: {
+				finance: { ...game.finance, nextLoanSequence: 206, loans }
+			}
+		});
+
+		const validated = validateSaveRecord(record);
+		expect(validated.game.finance.loans).toHaveLength(205);
+
+		const revalidated = validateSaveRecord(structuredClone(validated));
+		expect(revalidated.game.finance.loans).toHaveLength(205);
+		expect(revalidated).toEqual(validated);
 	});
 
 	test('rejects a transaction whose relatedLoanId references an unknown loan', () => {
@@ -1048,6 +1058,54 @@ describe('saveCodec', () => {
 		expect(() =>
 			validateSaveRecord(record([source, closed('loan-2', 'loan-1', 'loan-3'), active]))
 		).not.toThrow();
+	});
+
+	test('rejects refinance links whose endpoint status or purpose is inconsistent', () => {
+		// Symmetry alone does not validate refinance semantics. A replacement
+		// link is only valid on a refinanced-status source, and a source link is
+		// only valid on a refinance-purpose replacement. Both directions must be
+		// enforced so an active source and an ordinary replacement cannot form a
+		// symmetric graph while both remain outstanding.
+		expect.assertions(2);
+		const game = createGame();
+		const base = game.finance.loans[0]!;
+		const replacement = {
+			...base,
+			id: 'loan-2',
+			purpose: 'refinance' as const,
+			refinancedFromLoanId: 'loan-1'
+		};
+		const record = (loans: GameState['finance']['loans']) =>
+			createManualSaveRecord({
+				game: { finance: { ...game.finance, nextLoanSequence: 3, loans } }
+			});
+
+		// Active source carrying a replacement link: status is 'active', not
+		// 'refinanced', so the link is invalid even though the replacement points
+		// back symmetrically.
+		expect(() =>
+			validateSaveRecord(
+				record([{ ...base, status: 'active' as const, refinancedByLoanId: 'loan-2' }, replacement])
+			)
+		).toThrow(SaveDataError);
+
+		// Non-refinance replacement carrying a source link: purpose is 'expansion',
+		// not 'refinance', so the link is invalid even though the source points
+		// back symmetrically.
+		expect(() =>
+			validateSaveRecord(
+				record([
+					{
+						...base,
+						status: 'refinanced' as const,
+						remainingPrincipal: 0,
+						nextPaymentDay: null,
+						refinancedByLoanId: 'loan-2'
+					},
+					{ ...replacement, purpose: 'expansion' as const }
+				])
+			)
+		).toThrow(SaveDataError);
 	});
 
 	test.each([-1, 1.5, 4])('rejects a report day outside the loaded game timeline: %s', (day) => {

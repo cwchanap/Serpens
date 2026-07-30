@@ -466,8 +466,24 @@ function serviceScheduledLoan(input: {
 	loan = paid.loan;
 	const cash = paid.cash;
 
-	const unpaidInterest = Math.max(0, loan.overdueInterest - priorOverdueInterest);
-	const unpaidPrincipal = Math.max(0, loan.overduePrincipal - priorOverduePrincipal);
+	// The current instalment adds accruedInterestDue to the interest bucket and
+	// scheduledPrincipal to the principal bucket, then payLoanArrears pays each
+	// bucket (interest before principal) from the combined old-plus-new pool.
+	// Measuring the unpaid slice of the *current* instalment as the net change in
+	// arrears (ending - starting) is wrong when cash also pays older arrears: the
+	// net change can be <= 0 even though the new obligation was partially unpaid,
+	// which then increments missedPaymentCount while emitting no missedPayment
+	// transaction. Allocate cash to prior arrears first within each bucket (they
+	// are older obligations) and record the current instalment's actual unpaid
+	// remainder.
+	const availableCash = Math.max(0, input.cash);
+	const cashForInterest = Math.min(availableCash, priorOverdueInterest + accruedInterestDue);
+	const currentInterestPaid = Math.max(0, cashForInterest - priorOverdueInterest);
+	const unpaidInterest = Math.max(0, accruedInterestDue - currentInterestPaid);
+	const cashAfterInterest = Math.max(0, availableCash - cashForInterest);
+	const cashForPrincipal = Math.min(cashAfterInterest, priorOverduePrincipal + scheduledPrincipal);
+	const currentPrincipalPaid = Math.max(0, cashForPrincipal - priorOverduePrincipal);
+	const unpaidPrincipal = Math.max(0, scheduledPrincipal - currentPrincipalPaid);
 	if (scheduledObligation > 0) {
 		loan = {
 			...loan,

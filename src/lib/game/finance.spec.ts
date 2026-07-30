@@ -733,6 +733,50 @@ describe('finance servicing', () => {
 		]);
 	});
 
+	it('records the current instalment unpaid slice when cash also pays older arrears', () => {
+		// Prior arrears of 250 from a missed first instalment. The second
+		// instalment (250) falls due with 300 cash. Cash pays 250 of old arrears
+		// and 50 of the new instalment, leaving 200 of the current instalment
+		// unpaid. The missedPayment transaction must record that 200 slice — the
+		// net-change calculation would produce 0 and hide the current miss while
+		// still incrementing missedPaymentCount.
+		const finance = createFinance([
+			createLoan({
+				originalPrincipal: 1_000,
+				remainingPrincipal: 1_000,
+				termDays: 28,
+				annualInterestRateBps: 0,
+				nextPaymentDay: 15,
+				lastInterestAccrualDay: 14,
+				installmentsProcessed: 1,
+				status: 'delinquent',
+				overduePrincipal: 250,
+				arrearsSinceDay: 8,
+				scheduledPaymentCount: 1,
+				onTimePaymentCount: 0,
+				missedPaymentCount: 1
+			})
+		]);
+
+		const serviced = serviceFinanceForDay({ finance, cash: 300, day: 15 });
+		expect(serviced.cash).toBe(0);
+		expect(serviced.finance.loans[0]).toMatchObject({
+			status: 'delinquent',
+			remainingPrincipal: 700,
+			overduePrincipal: 200,
+			arrearsSinceDay: 8,
+			scheduledPaymentCount: 2,
+			onTimePaymentCount: 0,
+			missedPaymentCount: 2
+		});
+		const missed = serviced.finance.transactions.find(
+			(transaction) => transaction.kind === 'missedPayment'
+		);
+		expect(missed).toEqual(
+			expect.objectContaining({ kind: 'missedPayment', principalAmount: 200, cashDelta: 0 })
+		);
+	});
+
 	it('accumulates arrears at later checkpoints and sweeps them as soon as cash recovers', () => {
 		const loan = createLoan({
 			originalPrincipal: 1_000,
