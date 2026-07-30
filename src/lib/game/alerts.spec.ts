@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { collectGameAlerts } from './alerts';
 import { createEmptyFinanceState } from './finance';
+import * as finance from './finance';
 import * as financeMetrics from './financeMetrics';
 import { decisionContextLocationGeneric } from './decisionContext';
 import type {
@@ -462,17 +463,32 @@ describe('collectGameAlerts', () => {
 		spy.mockRestore();
 	});
 
-	it('calls getFinanceMetrics when outstanding loans exist', () => {
-		const spy = vi.spyOn(financeMetrics, 'getFinanceMetrics');
-		collectGameAlerts(
+	it('preserves covenant/runway alerts for an active-loan game without invoking credit assessment', () => {
+		// Normal games always carry the Founding Loan, so collectGameAlerts runs
+		// on essentially every game-state update. It must compute debt-service
+		// coverage and cash runway from the lightweight alert snapshot rather than
+		// getFinanceMetrics, which would run three term-specific assessCredit
+		// scans (each potentially performing an exact whole-dollar downward scan)
+		// that alerts never consume. Covenant risk stays gated on debt service
+		// (null coverage without scheduled service); runway still fires on cash.
+		const financeMetricsSpy = vi.spyOn(financeMetrics, 'getFinanceMetrics');
+		const assessCreditSpy = vi.spyOn(finance, 'assessCredit');
+		const alerts = collectGameAlerts(
 			baseGame({
+				cash: -1,
 				finance: {
 					...createEmptyFinanceState(5),
 					loans: [loan({ id: 'loan-active', nextPaymentDay: 8 })]
 				}
 			})
 		);
-		expect(spy).toHaveBeenCalledTimes(1);
-		spy.mockRestore();
+
+		expect(financeMetricsSpy).not.toHaveBeenCalled();
+		expect(assessCreditSpy).not.toHaveBeenCalled();
+		expect(alerts.map((alert) => alert.kind)).toContain('covenantRisk');
+		expect(alerts.map((alert) => alert.kind)).toContain('lowCashRunway');
+
+		financeMetricsSpy.mockRestore();
+		assessCreditSpy.mockRestore();
 	});
 });
