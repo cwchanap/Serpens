@@ -227,6 +227,87 @@ describe('DecisionQueue', () => {
 		expect(onResolve).toHaveBeenCalledWith('credit-choice', 'wait');
 	});
 
+	it('shows the debt-service-capacity reason when service headroom limits credit', async () => {
+		expect.assertions(2);
+		const base = createNewGame('grocery', 75);
+		const game = { ...base, cash: 40_000 };
+		renderQueue({
+			game,
+			decisions: [
+				{
+					id: 'credit-choice',
+					title: 'Credit choice',
+					context: decisionContextCashPressure(),
+					expiresOnDay: 12,
+					options: [
+						{
+							id: 'borrow',
+							label: 'Borrow',
+							description: 'Borrow to bridge the gap.',
+							effects: {
+								finance: {
+									kind: 'borrow',
+									purpose: 'emergency',
+									amount: 200_000,
+									termDays: 56
+								}
+							}
+						}
+					]
+				}
+			]
+		});
+
+		await expect.element(page.getByRole('button', { name: /Borrow/ })).toBeDisabled();
+		await expect
+			.element(page.getByText('Current debt-service capacity cannot cover this loan.'))
+			.toBeVisible();
+	});
+
+	it('shows the credit-capacity reason when principal headroom limits credit', async () => {
+		expect.assertions(2);
+		const base = createNewGame('grocery', 75);
+		const game = {
+			...base,
+			cash: 0,
+			finance: {
+				...base.finance,
+				loans: [{ ...base.finance.loans[0]!, remainingPrincipal: 14_900 }]
+			}
+		};
+		renderQueue({
+			game,
+			decisions: [
+				{
+					id: 'credit-choice',
+					title: 'Credit choice',
+					context: decisionContextCashPressure(),
+					expiresOnDay: 12,
+					options: [
+						{
+							id: 'borrow',
+							label: 'Borrow',
+							description: 'Borrow to bridge the gap.',
+							effects: {
+								finance: {
+									kind: 'borrow',
+									purpose: 'emergency',
+									amount: 1_000,
+									termDays: 56
+								}
+							}
+						}
+					]
+				}
+			]
+		});
+
+		await expect.element(page.getByRole('button', { name: /Borrow/ })).toBeDisabled();
+		await expect
+			.element(page.getByText('Current credit capacity cannot cover this loan.'))
+			.toBeVisible();
+	});
+
 	it('omits the disabled-copy paragraph when canResolve is false but no reason is supplied', async () => {
 		expect.assertions(2);
 		renderQueue({ canResolve: false });

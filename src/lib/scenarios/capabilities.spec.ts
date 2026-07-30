@@ -318,6 +318,50 @@ describe('scenario command capabilities', () => {
 		).toMatchObject({ allowed: false, code: 'invalid-command' });
 	});
 
+	it.each([
+		{
+			kind: 'financeRetailStore' as const,
+			label: 'expectedCost',
+			tileId: 'harbor-tile',
+			archetypeId: 'convenience' as const,
+			expectedCost: 12_000.5
+		},
+		{
+			kind: 'financeRetailStore' as const,
+			label: 'archetypeId',
+			tileId: 'harbor-tile',
+			archetypeId: 'electronics' as const,
+			expectedCost: 12_000
+		},
+		{
+			kind: 'financeIndustrialBuilding' as const,
+			label: 'expectedCost',
+			tileId: 'industry-tile',
+			buildingTypeId: 'water-pump' as const,
+			expectedCost: 12_000.5
+		},
+		{
+			kind: 'financeIndustrialBuilding' as const,
+			label: 'buildingTypeId',
+			tileId: 'industry-tile',
+			buildingTypeId: 'warehouse' as const,
+			expectedCost: 12_000
+		}
+	])('rejects $kind when $label is outside the content allowlist', ({ kind, ...payload }) => {
+		const scenario = definition({
+			allowedCommands: [kind],
+			content: {
+				...definition().content,
+				archetypeIds: ['convenience'],
+				buildingTypeIds: ['water-pump']
+			}
+		});
+		const command = { kind, ...payload } as ScenarioCommand;
+		const result = isScenarioCommandAllowed(scenario, run(), command);
+		expect(result).toMatchObject({ allowed: false, code: 'forbidden-content' });
+		expect(result).not.toMatchObject({ path: expect.stringContaining('tileId') });
+	});
+
 	it.each([null, 42, { id: 'loan-1' }] as const)(
 		'rejects a non-string loan id as an invalid command: %j',
 		(loanId) => {

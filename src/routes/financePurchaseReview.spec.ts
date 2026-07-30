@@ -4,6 +4,7 @@ import {
 	beginFinancePurchaseConfirmation,
 	createFinancePurchaseReviewState,
 	dismissFinancePurchaseReview,
+	hasFinancedPurchaseOffer,
 	isFinanceReviewEscapeOwned,
 	openFinancePurchaseReview,
 	resolveExpansionPurchasePaymentPath,
@@ -181,5 +182,10 @@ describe('finance purchase review coordinator', () => {
 				context: {}
 			})
 		).toBe(false);
+	});
+
+	it('distinguishes a present offer from a null one', () => {
+		expect(hasFinancedPurchaseOffer(offer)).toBe(true);
+		expect(hasFinancedPurchaseOffer(null)).toBe(false);
 	});
 });

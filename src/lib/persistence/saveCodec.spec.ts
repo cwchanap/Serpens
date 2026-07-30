@@ -870,6 +870,135 @@ describe('saveCodec', () => {
 		).toThrow(SaveDataError);
 	});
 
+	test('rejects loan field-range corruption', () => {
+		expect.assertions(9);
+		const game = createGame();
+		const baseLoan = game.finance.loans[0]!;
+		const expectLoanCorruption = (loan: Partial<GameState['finance']['loans'][number]>) =>
+			expect(() =>
+				validateSaveRecord(
+					createManualSaveRecord({
+						game: { finance: { ...game.finance, loans: [{ ...baseLoan, ...loan }] } }
+					})
+				)
+			).toThrow(SaveDataError);
+
+		expectLoanCorruption({ openedOnDay: 99 });
+		expectLoanCorruption({ originalPrincipal: 0 });
+		expectLoanCorruption({ remainingPrincipal: baseLoan.originalPrincipal + 1 });
+		expectLoanCorruption({ lastInterestAccrualDay: 99 });
+		expectLoanCorruption({ lastInterestAccrualDay: 0 });
+		expectLoanCorruption({
+			status: 'delinquent',
+			arrearsSinceDay: 99,
+			overduePrincipal: 1,
+			overdueInterest: 1
+		});
+		expectLoanCorruption({
+			status: 'delinquent',
+			arrearsSinceDay: 0,
+			overduePrincipal: 1,
+			overdueInterest: 1
+		});
+		expectLoanCorruption({
+			purpose: 'refinance',
+			refinancedFromLoanId: undefined
+		});
+		expectLoanCorruption({
+			purpose: 'refinance',
+			refinancedFromLoanId: 'loan-99'
+		});
+	});
+
+	test('rejects more than the finance transaction limit of loans', () => {
+		expect.assertions(1);
+		const game = createGame();
+		const baseLoan = game.finance.loans[0]!;
+		const loans = Array.from({ length: 201 }, (_, index) => ({
+			...baseLoan,
+			id: `loan-${index + 1}`,
+			openedOnDay: 1,
+			nextPaymentDay: null,
+			lastInterestAccrualDay: 1,
+			status: 'paid' as const,
+			remainingPrincipal: 0,
+			originalPrincipal: 1,
+			installmentsProcessed: 4
+		}));
+		expect(() =>
+			validateSaveRecord(
+				createManualSaveRecord({
+					game: {
+						finance: { ...game.finance, nextLoanSequence: 202, loans }
+					}
+				})
+			)
+		).toThrow(SaveDataError);
+	});
+
+	test('rejects a transaction whose relatedLoanId references an unknown loan', () => {
+		expect.assertions(1);
+		const game = createGame();
+		const transaction = {
+			id: 'finance-transaction-1',
+			day: 3,
+			kind: 'refinance' as const,
+			loanId: 'loan-1',
+			relatedLoanId: 'loan-99',
+			cashDelta: 0,
+			principalAmount: 1,
+			principalDelta: 1,
+			interestAmount: 0
+		};
+		expect(() =>
+			validateSaveRecord(
+				createManualSaveRecord({
+					game: { finance: { ...game.finance, transactions: [transaction] } }
+				})
+			)
+		).toThrow(SaveDataError);
+	});
+
+	test('rejects a transaction with a non-integer cash delta', () => {
+		expect.assertions(1);
+		const game = createGame();
+		const transaction = {
+			id: 'finance-transaction-1',
+			day: 3,
+			kind: 'disbursement' as const,
+			loanId: 'loan-1',
+			cashDelta: 1.5,
+			principalAmount: 1,
+			principalDelta: 1,
+			interestAmount: 0
+		};
+		expect(() =>
+			validateSaveRecord(
+				createManualSaveRecord({
+					game: { finance: { ...game.finance, transactions: [transaction] } }
+				})
+			)
+		).toThrow(SaveDataError);
+	});
+
+	test('rejects a v10 record whose legacy report lacks numeric cash fields', () => {
+		expect.assertions(1);
+		const record = createV10Record({
+			debt: 500,
+			day: 12,
+			reports: [
+				{
+					day: 11,
+					cashAfter: 'not-a-number',
+					netIncome: 321,
+					grossMargin: 700,
+					operatingCosts: 250
+				}
+			] as unknown as GameState['reports']
+		});
+		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+	});
+
 	test('rejects two-node and three-node refinance cycles while accepting a linear chain', () => {
 		expect.assertions(3);
 		const game = createGame();
@@ -3413,7 +3542,8 @@ describe('saveCodec', () => {
 		{ finance: { kind: 'borrow', purpose: 'emergency', amount: 4_000, termDays: 28 } },
 		{ finance: { kind: 'borrow', purpose: 'supplierCredit', amount: 4_000.5, termDays: 28 } },
 		{ finance: { kind: 'borrow', purpose: 'supplierCredit', amount: 0, termDays: 28 } },
-		{ finance: { kind: 'borrow', purpose: 'supplierCredit', amount: -1, termDays: 28 } }
+		{ finance: { kind: 'borrow', purpose: 'supplierCredit', amount: -1, termDays: 28 } },
+		{ finance: { kind: 'borrow', purpose: 'emergency', amount: 4_000, termDays: 84 } }
 	])('rejects a malformed persisted decision finance effect: %o', ({ finance }) => {
 		const record = createManualSaveRecord({
 			game: {

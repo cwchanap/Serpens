@@ -733,6 +733,35 @@ describe('industry placement preview', () => {
 		});
 	});
 
+	test('build menu options default to enabled with no finance offer when no game is loaded', () => {
+		expect.assertions(1);
+		const options = getIndustrialBuildMenuOptions({
+			game: null,
+			cashCommandAvailable: false,
+			financeCommandAvailable: false
+		});
+		expect(
+			options.every((option) => option.disabledReason === null && option.financeOffer === null)
+		).toBe(true);
+	});
+
+	test('clears the cash block when a finance offer covers the industrial building shortfall', () => {
+		expect.assertions(1);
+		const game = { ...createNewGame('convenience', 20260512), cash: 0 };
+		const city = game.industryCities[0]!;
+		const industrialTile = city.tiles.find(
+			(tile) => tile.terrain === 'industrial' && !tile.locked
+		)!;
+		expect(
+			getIndustryBuildPlacementBlockReason({
+				game,
+				tileId: industrialTile.id,
+				buildingTypeId: 'warehouse',
+				financeCommandAvailable: true
+			})
+		).toBeNull();
+	});
+
 	test('marks non-industrial tiles invalid for buildings that require industrial terrain', () => {
 		expect.assertions(4);
 		const game = { ...createNewGame('convenience', 20260512), cash: 100_000 };

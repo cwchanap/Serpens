@@ -261,6 +261,24 @@ describe('borrow, repay, payoff, and refinance actions', () => {
 		expect(result).toMatchObject({ ok: false, code });
 	});
 
+	it('rejects an unsupported borrow purpose before assessing credit', () => {
+		const result = borrow(creditworthyGame(), {
+			purpose: 'bridge' as never,
+			amount: 1_000,
+			termDays: 56
+		});
+		expect(result).toMatchObject({ ok: false, code: 'unsupportedPurpose' });
+	});
+
+	it('rejects a voluntary borrow that exceeds the available credit', () => {
+		const result = borrow(creditworthyGame(), {
+			purpose: 'expansion',
+			amount: 1_000_000,
+			termDays: 84
+		});
+		expect(result).toMatchObject({ ok: false, code: 'insufficientCredit' });
+	});
+
 	it('allocates repayment to overdue interest, whole accrued interest, overdue principal, then principal', () => {
 		const loan = createLoan({
 			remainingPrincipal: 900,
@@ -479,9 +497,51 @@ describe('borrow, repay, payoff, and refinance actions', () => {
 			})
 		).toMatchObject({ ok: false, code: 'loanClosed' });
 	});
+
+	it('rejects a refinance with an unsupported term before touching the loan', () => {
+		const loan = createLoan({ remainingPrincipal: 1_000 });
+		expect(
+			refinanceLoan(creditworthyGame({ finance: createFinance([loan]) }), {
+				loanId: loan.id,
+				termDays: 7 as unknown as 28
+			})
+		).toMatchObject({ ok: false, code: 'unsupportedTerm' });
+	});
+
+	it('rejects a refinance whose payoff exceeds the available credit', () => {
+		const loan = createLoan({ remainingPrincipal: 60_000 });
+		expect(
+			refinanceLoan(creditworthyGame({ finance: createFinance([loan]) }), {
+				loanId: loan.id,
+				termDays: 84
+			})
+		).toMatchObject({ ok: false, code: 'insufficientCredit' });
+	});
 });
 
 describe('finance servicing', () => {
+	it('services multiple loans due the same day in a deterministic id order', () => {
+		const dueLoan = (id: string) =>
+			createLoan({
+				id,
+				openedOnDay: 1,
+				nextPaymentDay: 8,
+				remainingPrincipal: 100,
+				originalPrincipal: 100,
+				annualInterestRateBps: 0,
+				termDays: 28,
+				installmentsProcessed: 0
+			});
+		const finance = createFinance([dueLoan('loan-c'), dueLoan('loan-a'), dueLoan('loan-b')], 1);
+		const serviced = serviceFinanceForDay({ finance, cash: 10_000, day: 8 });
+		expect(serviced.finance.transactions).toHaveLength(3);
+		expect(serviced.finance.transactions.map((tx) => tx.loanId)).toEqual([
+			'loan-a',
+			'loan-b',
+			'loan-c'
+		]);
+	});
+
 	it('follows the founding-loan day 1 through day 9 servicing timeline', () => {
 		let finance = createFoundingFinanceState(1, 1_200);
 		let cash = 1_000;
@@ -1087,6 +1147,12 @@ describe('credit assessment', () => {
 		expect(getNormalizedWeeklyService(createFinance([{ ...loan, nextPaymentDay: 999 }]))).toBe(
 			102.761647
 		);
+	});
+
+	it.each([-1, 1.5, NaN])('rejects a non-negative-integer projected principal: %j', (principal) => {
+		expect(() =>
+			projectLoanSchedule({ principal, annualInterestRateBps: 10_000, termDays: 28 })
+		).toThrow(RangeError);
 	});
 
 	it('projects final remainders and fractional final interest into the peak weekly payment', () => {

@@ -67,4 +67,29 @@ describe('FinancePurchaseReviewHost route Escape boundary', () => {
 		await expect.element(page.getByRole('dialog', { name: /review financing/i })).toBeVisible();
 		await expect.element(page.getByRole('button', { name: /confirm financing/i })).toBeDisabled();
 	});
+
+	it('owns Escape and clears world-city then tile selection when no review is mounted', async () => {
+		expect.assertions(7);
+		render(
+			FinancePurchaseReviewHostHarness,
+			harnessProps({ initialReview: createFinancePurchaseReviewState() })
+		);
+
+		window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+		await expect.element(page.getByTestId('page-escape-handler-calls')).toHaveTextContent('1');
+		await expect.element(page.getByTestId('selected-world-city')).toHaveTextContent('none');
+		await expect.element(page.getByTestId('selected-tile')).toHaveTextContent('tile-12');
+
+		window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+		await expect.element(page.getByTestId('page-escape-handler-calls')).toHaveTextContent('2');
+		await expect.element(page.getByTestId('selected-tile')).toHaveTextContent('none');
+
+		// A non-Escape key must not advance the page escape handler.
+		window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+		await expect.element(page.getByTestId('page-escape-handler-calls')).toHaveTextContent('2');
+
+		await expect
+			.element(page.getByRole('dialog', { name: /review financing/i }))
+			.not.toBeInTheDocument();
+	});
 });

@@ -269,4 +269,27 @@ describe('finance metrics', () => {
 			kind: 'ninetyPlus'
 		});
 	});
+
+	it('excludes paid and refinanced loans from outstanding principal', () => {
+		const finance = createEmptyFinanceState(10);
+		const paid = createLoan({ id: 'loan-paid', status: 'paid', remainingPrincipal: 0 });
+		const refinanced = createLoan({
+			id: 'loan-refinanced',
+			status: 'refinanced',
+			remainingPrincipal: 0
+		});
+		const active = createLoan({ id: 'loan-active', remainingPrincipal: 500 });
+
+		const metrics = getFinanceMetrics(
+			createGame({ finance: { ...finance, loans: [paid, refinanced, active] } })
+		);
+
+		expect(metrics.outstandingPrincipal).toBe(500);
+	});
+
+	it('returns an empty projection when throughDay is before the next day', () => {
+		const game = createGame({ day: 10 });
+		expect(projectScheduledDebtService(game, 11, 10)).toEqual([]);
+		expect(projectScheduledDebtService(game, 15, 12)).toEqual([]);
+	});
 });
