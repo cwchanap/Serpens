@@ -56,7 +56,7 @@ describe('tile placement', () => {
 		expect(result.game.stores).toHaveLength(base.stores.length + 1);
 	});
 
-	test('returns a null loan id for a cash-only retail opening', () => {
+	test('rejects a cash-sufficient retail financing commit instead of falling back to the cash command', () => {
 		const city = generateCity({
 			id: 'harbor-city',
 			name: 'Harbor City',
@@ -86,11 +86,10 @@ describe('tile placement', () => {
 			expectedCost: cost
 		});
 
-		expect(result.ok).toBe(true);
-		if (!result.ok) return;
-		expect(result.receipt.loanId).toBeNull();
-		expect(result.game.finance).toBe(game.finance);
-		expect(result.game.stores).toHaveLength(base.stores.length + 1);
+		expect(result).toMatchObject({ ok: false, code: 'cashSufficient' });
+		if (!result.ok) expect(result.game).toBe(game);
+		expect(game.stores).toHaveLength(base.stores.length);
+		expect(game.finance).toBe(base.finance);
 	});
 
 	test('rejects a retail financing commit when the quoted tile cost has changed', () => {

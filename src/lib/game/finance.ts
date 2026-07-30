@@ -23,7 +23,8 @@ export type FinanceFailureCode =
 	| 'unsupportedPurpose'
 	| 'insufficientCredit'
 	| 'purchaseUnavailable'
-	| 'purchaseCostChanged';
+	| 'purchaseCostChanged'
+	| 'cashSufficient';
 
 export type FinanceActionResult<TReceipt> =
 	| { ok: true; game: GameState; receipt: TReceipt }

@@ -140,7 +140,7 @@ describe('world progression and city opening', () => {
 		expect(result.game.world.openedCityIds).toContain('campus-junction');
 	});
 
-	test('uses the existing cash-only city opening without creating a loan', () => {
+	test('rejects a cash-sufficient city financing commit instead of falling back to the cash command', () => {
 		const base = createNewGame('convenience', 20260530);
 		const game: GameState = {
 			...base,
@@ -156,12 +156,10 @@ describe('world progression and city opening', () => {
 			expectedCost: 18_000
 		});
 
-		expect(result.ok).toBe(true);
-		if (!result.ok) return;
-		expect(result.receipt.loanId).toBeNull();
-		expect(result.game.finance).toBe(game.finance);
-		expect(result.game.cash).toBe(0);
-		expect(result.game.world.openedCityIds).toContain('campus-junction');
+		expect(result).toMatchObject({ ok: false, code: 'cashSufficient' });
+		if (!result.ok) expect(result.game).toBe(game);
+		expect(game.finance).toBe(base.finance);
+		expect(game.world.openedCityIds).not.toContain('campus-junction');
 	});
 	test('reveals the second retail city after the company reaches two stores', () => {
 		expect.assertions(1);

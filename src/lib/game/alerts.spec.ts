@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { collectGameAlerts } from './alerts';
 import { createEmptyFinanceState } from './finance';
+import * as financeMetrics from './financeMetrics';
 import { decisionContextLocationGeneric } from './decisionContext';
 import type {
 	GameState,
@@ -444,5 +445,34 @@ describe('collectGameAlerts', () => {
 		expect(alerts).toHaveLength(1);
 		expect(alerts[0]!.kind).toBe('lowCashRunway');
 		expect(alerts[0]!.managementPanelId).toBe('finance');
+	});
+
+	it('skips getFinanceMetrics and its credit scans for a debt-free negative-cash game', () => {
+		// collectGameAlerts is a reactive page derivation that re-runs on every
+		// relevant game-state update. When there are no outstanding loans,
+		// getFinanceMetrics would compute three term-specific credit assessments
+		// (each potentially performing an exact whole-dollar downward scan) that
+		// are irrelevant for alerts. The debt-free path must call projectCashRunway
+		// directly instead.
+		const spy = vi.spyOn(financeMetrics, 'getFinanceMetrics');
+		const alerts = collectGameAlerts(baseGame({ cash: -1 }));
+		expect(alerts).toHaveLength(1);
+		expect(alerts[0]!.kind).toBe('lowCashRunway');
+		expect(spy).not.toHaveBeenCalled();
+		spy.mockRestore();
+	});
+
+	it('calls getFinanceMetrics when outstanding loans exist', () => {
+		const spy = vi.spyOn(financeMetrics, 'getFinanceMetrics');
+		collectGameAlerts(
+			baseGame({
+				finance: {
+					...createEmptyFinanceState(5),
+					loans: [loan({ id: 'loan-active', nextPaymentDay: 8 })]
+				}
+			})
+		);
+		expect(spy).toHaveBeenCalledTimes(1);
+		spy.mockRestore();
 	});
 });

@@ -533,7 +533,8 @@ export const zhHant = {
 			unsupportedPurpose: '不支援的貸款用途',
 			insufficientCredit: '信用額度不足',
 			purchaseUnavailable: '無法購買',
-			purchaseCostChanged: '購買成本已變更'
+			purchaseCostChanged: '購買成本已變更',
+			cashSufficient: '現金足以支付 — 請使用現金指令'
 		},
 		decisionAvailability: { available: '可用', unavailable: '無法取得融資' },
 		financedPurchase: {

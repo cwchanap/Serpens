@@ -531,7 +531,8 @@ export const en = {
 			unsupportedPurpose: 'Unsupported loan purpose',
 			insufficientCredit: 'Insufficient credit',
 			purchaseUnavailable: 'Purchase is unavailable',
-			purchaseCostChanged: 'Purchase cost changed'
+			purchaseCostChanged: 'Purchase cost changed',
+			cashSufficient: 'Cash covers this purchase — use the cash command instead'
 		},
 		decisionAvailability: { available: 'Available', unavailable: 'Financing unavailable' },
 		financedPurchase: {
