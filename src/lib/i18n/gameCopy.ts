@@ -12,7 +12,7 @@ import type {
 	ProductChainHealth,
 	ProductChainNode
 } from '$lib/game/productChainGraph';
-import type { GameAlert } from '$lib/game/alerts';
+import { COVENANT_THRESHOLD, type GameAlert } from '$lib/game/alerts';
 import type {
 	DailyReportWarning,
 	GameState,
@@ -586,7 +586,10 @@ export function localizeAlert(alert: GameAlert, game: GameState, i18n: I18nBundl
 	if (alert.kind === 'covenantRisk') {
 		const coverage = getFinanceMetrics(game).debtServiceCoverage;
 		if (coverage !== null) {
-			return i18n.t('copy.alerts.covenantRisk', { coverage: coverage.toFixed(2) });
+			return i18n.t('copy.alerts.covenantRisk', {
+				coverage: coverage.toFixed(2),
+				threshold: COVENANT_THRESHOLD.toFixed(2)
+			});
 		}
 	}
 

@@ -1,7 +1,7 @@
 import { page } from 'vitest/browser';
 import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
-import { borrow } from '$lib/game/finance';
+import { assessCredit, borrow } from '$lib/game/finance';
 import { getFinanceMetrics } from '$lib/game/financeMetrics';
 import { createI18n, type I18nBundle } from '$lib/i18n';
 import { createNewGame } from '$lib/game/state';
@@ -174,7 +174,7 @@ describe('FinancePanel', () => {
 			}
 		};
 		renderPanel({ game: delinquent });
-		await expect.element(page.getByText('$725')).toBeVisible();
+		await expect.element(page.getByText('$725').first()).toBeVisible();
 		expect(document.body.textContent).toMatch(/Payoff quote\s+\$725/);
 	});
 
@@ -232,8 +232,12 @@ describe('FinancePanel', () => {
 	it('renders the full panel in Traditional Chinese and formats APR with locale punctuation', async () => {
 		expect.assertions(2);
 		renderPanel({ i18n: createI18n('zh-Hant') });
+		// Derive the expected final APR from the same assessment the panel renders
+		// for the default 84-day term, rather than hard-coding the value.
+		const expectedAprBps = assessCredit(creditworthyGame(), 84).annualInterestRateBps;
+		const expectedAprPercent = (expectedAprBps / 100).toFixed(2).replace('.', '\\.');
 		await expect.element(page.getByRole('heading', { name: '信用方案' })).toBeVisible();
-		await expect.element(page.getByText(/14\.42%/)).toBeVisible();
+		await expect.element(page.getByText(new RegExp(`${expectedAprPercent}%`))).toBeVisible();
 	});
 
 	it('focuses the alert-target loan row', async () => {
@@ -241,7 +245,7 @@ describe('FinancePanel', () => {
 		const game = gameWithLoan();
 		const id = game.finance.loans.at(-1)!.id;
 		renderPanel({ game, focusedLoanId: id });
-		await expect.element(page.getByRole('article').nth(1)).toHaveFocus();
+		await expect.element(document.getElementById(`finance-loan-${id}`)).toHaveFocus();
 	});
 
 	it('associates refinance rejection with its action control while retaining review', async () => {

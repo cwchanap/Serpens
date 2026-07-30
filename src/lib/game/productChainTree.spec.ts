@@ -125,33 +125,39 @@ function latestStoreReport(overrides: Partial<DailyStoreReport> = {}): DailyStor
 	};
 }
 
+function financeReportFields() {
+	return {
+		revenue: 120,
+		costOfGoods: 50,
+		grossMargin: 70,
+		operatingCosts: 30,
+		payrollCost: 0,
+		cashBefore: 0,
+		operatingIncome: 0,
+		operatingCashFlow: 40,
+		interestAccrued: 0,
+		interestPaid: 0,
+		interestCapitalized: 0,
+		principalBorrowed: 0,
+		principalRepaid: 0,
+		refinancedPrincipal: 0,
+		financingCashFlow: 0,
+		netCashChange: 40,
+		netIncome: 40,
+		outstandingPrincipalAfter: 0,
+		nextLoanPayment: null
+	};
+}
+
 function withLatestReport(game: GameState, productionReport: DailyProductionReport): GameState {
 	return {
 		...game,
 		reports: [
 			{
 				day: game.day,
-				revenue: 120,
-				costOfGoods: 50,
-				grossMargin: 70,
-				operatingCosts: 30,
-				payrollCost: 0,
+				...financeReportFields(),
 				importSpend: 48,
-				cashBefore: 0,
-				operatingIncome: 0,
-				operatingCashFlow: 40,
-				interestAccrued: 0,
-				interestPaid: 0,
-				interestCapitalized: 0,
-				principalBorrowed: 0,
-				principalRepaid: 0,
-				refinancedPrincipal: 0,
-				financingCashFlow: 0,
-				netCashChange: 40,
-				netIncome: 40,
 				cashAfter: game.cash + 40,
-				outstandingPrincipalAfter: 0,
-				nextLoanPayment: null,
 				scorecard: game.scorecard,
 				productionReport,
 				storeReports: [latestStoreReport()],
@@ -612,27 +618,9 @@ describe('buildStoreCategoryChainSummaries (tree)', () => {
 			reports: [
 				{
 					day: game.day,
-					revenue: 120,
-					costOfGoods: 50,
-					grossMargin: 70,
-					operatingCosts: 30,
-					payrollCost: 0,
+					...financeReportFields(),
 					importSpend: 0,
-					cashBefore: 0,
-					operatingIncome: 0,
-					operatingCashFlow: 40,
-					interestAccrued: 0,
-					interestPaid: 0,
-					interestCapitalized: 0,
-					principalBorrowed: 0,
-					principalRepaid: 0,
-					refinancedPrincipal: 0,
-					financingCashFlow: 0,
-					netCashChange: 40,
-					netIncome: 40,
 					cashAfter: game.cash + 40,
-					outstandingPrincipalAfter: 0,
-					nextLoanPayment: null,
 					scorecard: game.scorecard,
 					productionReport: emptyProductionReport({
 						produced: [{ materialId: 'snacks', quantity: 18, value: 144, source: 'local' }],
@@ -688,27 +676,9 @@ describe('buildStoreCategoryChainSummaries (tree)', () => {
 			reports: [
 				{
 					day: game.day,
-					revenue: 120,
-					costOfGoods: 50,
-					grossMargin: 70,
-					operatingCosts: 30,
-					payrollCost: 0,
+					...financeReportFields(),
 					importSpend: 0,
-					cashBefore: 0,
-					operatingIncome: 0,
-					operatingCashFlow: 40,
-					interestAccrued: 0,
-					interestPaid: 0,
-					interestCapitalized: 0,
-					principalBorrowed: 0,
-					principalRepaid: 0,
-					refinancedPrincipal: 0,
-					financingCashFlow: 0,
-					netCashChange: 40,
-					netIncome: 40,
 					cashAfter: game.cash + 40,
-					outstandingPrincipalAfter: 0,
-					nextLoanPayment: null,
 					scorecard: game.scorecard,
 					productionReport: emptyProductionReport({
 						produced: [{ materialId: 'snacks', quantity: 8, value: 64, source: 'local' }]

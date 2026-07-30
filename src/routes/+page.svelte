@@ -566,7 +566,7 @@
 		return currentGame ? summarizeReports(currentGame.reports) : summarizeReports([]);
 	});
 	let financeMetrics = $derived(
-		game ? getFinanceMetrics(game) : getFinanceMetrics(starterMapState)
+		activeManagementPanelId === 'finance' ? getFinanceMetrics(game ?? starterMapState) : null
 	);
 	let activeCity = $derived.by(() => {
 		const currentGame: GameState | null = game;
@@ -771,7 +771,8 @@
 		if (!buildingTypeId) return null;
 		const preview = createIndustryPlacementPreview({
 			game,
-			buildingTypeId
+			buildingTypeId,
+			financeCommandAvailable: mutationAvailability.financeIndustrialBuilding
 		});
 		if (playMode === 'sandbox' || !activeScenarioDefinition) return preview;
 		if (!isWorldCityId(industryCity.id)) return { ...preview, validTileIds: [] };
@@ -887,25 +888,13 @@
 		return formatPlacementBlockReason(reason, i18n);
 	}
 
-	function formatApr(bps: number): string {
-		return new Intl.NumberFormat(i18n.locale, {
-			style: 'percent',
-			minimumFractionDigits: 2,
-			maximumFractionDigits: 2
-		}).format(bps / 10_000);
-	}
-
 	function financeFailureMessage(code: FinanceFailureCode): string {
 		return i18n.t(`financePanel.failures.${code}` as never);
 	}
 
-	function clearPendingFinancedPurchase(restoreFocus = false): void {
-		const returnFocus = financedPurchaseReturnFocus;
+	function clearPendingFinancedPurchase(): void {
 		financePurchaseReview = dismissFinancePurchaseReview(financePurchaseReview);
 		financedPurchaseReturnFocus = null;
-		if (restoreFocus && returnFocus) {
-			void tick().then(() => returnFocus.focus());
-		}
 	}
 
 	function openFinancedPurchaseReview(purchase: PendingFinancedPurchase): void {
@@ -2037,7 +2026,8 @@
 		const blockReason = getIndustryBuildPlacementBlockReason({
 			game,
 			tileId,
-			buildingTypeId
+			buildingTypeId,
+			financeCommandAvailable: mutationAvailability.financeIndustrialBuilding
 		});
 
 		if (blockReason) {
@@ -2133,6 +2123,7 @@
 
 	async function confirmFinancedPurchase(): Promise<void> {
 		if (!game) return;
+		const gameSnapshot = game;
 		const started = beginFinancePurchaseConfirmation(financePurchaseReview);
 		if (!started) return;
 		financePurchaseReview = started.state;
@@ -2167,7 +2158,7 @@
 			kind: 'rejected',
 			feedback,
 			refreshedPurchase: shouldRefreshFinancedPurchase(result)
-				? refreshedFinancedPurchase(request.purchase, game)
+				? refreshedFinancedPurchase(request.purchase, game ?? gameSnapshot)
 				: undefined
 		});
 	}
@@ -2580,7 +2571,7 @@
 			bind:review={financePurchaseReview}
 			cash={game?.cash ?? 0}
 			{i18n}
-			{formatApr}
+			formatApr={i18n.format.apr}
 			onConfirm={confirmFinancedPurchase}
 			onDismiss={finishFinancedPurchaseReviewDismissal}
 		/>
@@ -2802,7 +2793,7 @@
 					{:else if activeManagementPanel.id === 'finance'}
 						<FinancePanel
 							game={panelGame}
-							metrics={financeMetrics}
+							metrics={financeMetrics!}
 							{i18n}
 							focusedLoanId={focusedFinanceLoanId}
 							mutationPending={scenarioCommandPending}

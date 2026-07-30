@@ -20,6 +20,7 @@ export type FinanceFailureCode =
 	| 'insufficientCash'
 	| 'overpayment'
 	| 'unsupportedTerm'
+	| 'unsupportedPurpose'
 	| 'insufficientCredit'
 	| 'purchaseUnavailable'
 	| 'purchaseCostChanged';
@@ -505,12 +506,7 @@ function serviceScheduledLoan(input: {
 
 function moveMaturedAccruedInterestToArrears(loan: LoanInstrument, cash: number): LoanInstrument {
 	if (loan.nextPaymentDay !== null || loan.accruedInterestMicros === 0) return loan;
-	const wholeInterest = Math.floor(loan.accruedInterestMicros / 1_000_000);
-	let next = {
-		...loan,
-		overdueInterest: loan.overdueInterest + wholeInterest,
-		accruedInterestMicros: loan.accruedInterestMicros - wholeInterest * 1_000_000
-	};
+	let next = moveWholeMaturedInterestToArrears(loan);
 	const payoffBeforeFractionalInterest = next.overdueInterest + next.overduePrincipal;
 	if (next.accruedInterestMicros > 0 && Math.max(0, cash) > payoffBeforeFractionalInterest) {
 		next = {
@@ -520,6 +516,21 @@ function moveMaturedAccruedInterestToArrears(loan: LoanInstrument, cash: number)
 		};
 	}
 	return next;
+}
+
+/**
+ * Moves the whole-dollar portion of matured accrued interest to arrears.
+ * Shared between the real ledger transition and the projection flow. The
+ * caller is responsible for any fractional-interest cash-availability rule.
+ */
+export function moveWholeMaturedInterestToArrears(loan: LoanInstrument): LoanInstrument {
+	if (loan.nextPaymentDay !== null || loan.accruedInterestMicros === 0) return loan;
+	const wholeInterest = Math.floor(loan.accruedInterestMicros / 1_000_000);
+	return {
+		...loan,
+		overdueInterest: loan.overdueInterest + wholeInterest,
+		accruedInterestMicros: loan.accruedInterestMicros - wholeInterest * 1_000_000
+	};
 }
 
 export function serviceFinanceForDay(input: {
@@ -583,8 +594,13 @@ export function serviceFinanceForDay(input: {
 	return { finance, cash, interestAccruedThisDayMicros };
 }
 
-function isOutstandingLoan(loan: LoanInstrument): boolean {
+export function isOutstandingLoan(loan: LoanInstrument): boolean {
 	return loan.status === 'active' || loan.status === 'delinquent';
+}
+
+/** Stable tiebreaker for loan sorting: compares by loan id. */
+export function compareLoanById(left: LoanInstrument, right: LoanInstrument): number {
+	return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
 }
 
 export function getTotalDebt(game: Pick<GameState, 'finance'>): number {
@@ -747,11 +763,17 @@ function findMaxPrincipalByService(input: {
 }): number {
 	if (input.weeklyServiceHeadroom === 0) return 0;
 
-	// Principal headroom is capped at $100,000. Scanning downward therefore evaluates at most
-	// 100,001 complete schedules (1.2M installment steps for the 84-day term), and returns the
-	// first affordable whole-dollar amount. This remains exact at remainder boundaries where
-	// peak payments are deliberately non-monotonic across consecutive principals.
-	for (let principal = input.principalHeadroom; principal >= 0; principal -= 1) {
+	// Derive an interest-free upper bound before scanning: with zero interest the
+	// peak payment is the largest installment (ceil(principal / installmentCount)),
+	// so any affordable principal satisfies principal <= weeklyServiceHeadroom *
+	// installmentCount. Clamp that to the principal headroom and scan downward from
+	// there for the first affordable whole-dollar amount. Peak payments are
+	// deliberately non-monotonic across consecutive principals, so a binary search
+	// would be unsafe; the downward scan stays exact at remainder boundaries.
+	const installmentCount = getInstallmentCount(input.termDays);
+	const interestFreeBound = Math.floor(input.weeklyServiceHeadroom * installmentCount);
+	const upperBound = Math.min(input.principalHeadroom, interestFreeBound);
+	for (let principal = upperBound; principal >= 0; principal -= 1) {
 		if (
 			projectLoanSchedule({
 				principal,
@@ -816,14 +838,9 @@ export function assessCredit(
 		: Math.min(principalHeadroom, maxPrincipalByService);
 	const reasons: CreditAssessmentReason[] = hasDelinquentObligation
 		? ['delinquentObligation']
-		: [
-				...(principalHeadroom <= maxPrincipalByService
-					? (['principalCapacityLimited'] as const)
-					: []),
-				...(maxPrincipalByService <= principalHeadroom
-					? (['debtServiceCapacityLimited'] as const)
-					: [])
-			];
+		: maxPrincipalByService < principalHeadroom
+			? ['debtServiceCapacityLimited']
+			: ['principalCapacityLimited'];
 
 	return {
 		termDays,
@@ -938,14 +955,14 @@ export function borrow(
 	if (!isSupportedTermDays(input.termDays)) {
 		return failure('unsupportedTerm', { termDays: input.termDays });
 	}
+	if (!['workingCapital', 'emergency', 'supplierCredit', 'expansion'].includes(input.purpose)) {
+		return failure('unsupportedPurpose', { purpose: input.purpose });
+	}
 	if (!isValidActionAmount(input.amount)) {
 		return failure('invalidAmount', { amount: input.amount });
 	}
 	if (input.purpose === 'workingCapital' && !input.allowBelowMinimum && input.amount < 1_000) {
 		return failure('belowMinimumBorrowing', { amount: input.amount, minimum: 1_000 });
-	}
-	if (!['workingCapital', 'emergency', 'supplierCredit', 'expansion'].includes(input.purpose)) {
-		return failure('invalidAmount', { purpose: input.purpose });
 	}
 
 	const assessment = assessCredit(game, input.termDays);
@@ -997,7 +1014,7 @@ function findActionLoan(game: GameState, loanId: string): ActionLoanLookup {
 	return { ok: true, loan };
 }
 
-function getPayoffAmount(loan: LoanInstrument): number {
+export function getPayoffAmount(loan: LoanInstrument): number {
 	return (
 		loan.remainingPrincipal +
 		loan.overdueInterest +

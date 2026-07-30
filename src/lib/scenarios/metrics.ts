@@ -108,7 +108,7 @@ function sumReports(
 	return reports.reduce((sum, report) => sum + getValue(report), 0);
 }
 
-function averageNetIncome(reports: readonly DailyReport[], neutral: number): MetricValue {
+function averageOperatingCashFlow(reports: readonly DailyReport[], neutral: number): MetricValue {
 	if (reports.length === 0) return { actual: neutral, contributingIds: [] };
 	return {
 		actual: Math.round(sumReports(reports, (report) => report.operatingCashFlow) / reports.length),
@@ -154,7 +154,7 @@ function sumProductMetric(
 	};
 }
 
-function consecutivePositiveIncome(context: MetricContext): MetricValue {
+function consecutivePositiveOperatingCashFlow(context: MetricContext): MetricValue {
 	const reports = sortedReports(context.reports);
 	const contributingIds: string[] = [];
 
@@ -178,7 +178,7 @@ export const METRIC_REGISTRY = {
 		supportedWindows: REPORT_WINDOWS,
 		neutral: 0,
 		isComplete: reportMetricComplete,
-		evaluate: (context) => averageNetIncome(context.reports, 0)
+		evaluate: (context) => averageOperatingCashFlow(context.reports, 0)
 	},
 	'cumulative-net-income': {
 		supportedWindows: RUN_TO_DATE,
@@ -193,7 +193,7 @@ export const METRIC_REGISTRY = {
 		supportedWindows: new Set<WindowKind>(['current', 'trailing-reports']),
 		neutral: 0,
 		isComplete: reportMetricComplete,
-		evaluate: consecutivePositiveIncome
+		evaluate: consecutivePositiveOperatingCashFlow
 	},
 	'completed-retail-import-cycles': {
 		supportedWindows: RUN_TO_DATE,

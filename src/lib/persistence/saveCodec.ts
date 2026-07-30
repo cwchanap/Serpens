@@ -33,7 +33,11 @@ import {
 	type CityTileLookup
 } from '$lib/game/storeFootprint';
 import { MAX_STAFF_LEVEL } from '$lib/game/staffLeveling';
-import { createFoundingFinanceState, getInstallmentCount } from '$lib/game/finance';
+import {
+	createFoundingFinanceState,
+	FINANCE_TRANSACTION_LIMIT,
+	getInstallmentCount
+} from '$lib/game/finance';
 import { clampScore } from '$lib/game/reports';
 import { calculateStockHealth } from '$lib/game/stock';
 import type {
@@ -2152,6 +2156,8 @@ function validateSavedFinance(value: unknown, gameDay: number, label: string): v
 	const loanIds = new Set<string>();
 	const loansById = new Map<string, Record<string, unknown>>();
 	let highestLoanSequence = 0;
+	if (loans.length > FINANCE_TRANSACTION_LIMIT)
+		throw new SaveDataError(`${label} loans must not exceed ${FINANCE_TRANSACTION_LIMIT} entries`);
 	loans.forEach((value, index) => {
 		const loan = requireRecord(value, `${label} loans[${index}]`);
 		const id = requireString(loan.id, `${label} loans[${index}] id`);
@@ -2332,6 +2338,10 @@ function validateSavedFinance(value: unknown, gameDay: number, label: string): v
 	const transactionIds = new Set<string>();
 	let highestTransactionSequence = 0;
 	let previousDay = -1;
+	if (transactions.length > FINANCE_TRANSACTION_LIMIT)
+		throw new SaveDataError(
+			`${label} transactions must not exceed ${FINANCE_TRANSACTION_LIMIT} entries`
+		);
 	transactions.forEach((value, index) => {
 		const transaction = requireRecord(value, `${label} transactions[${index}]`);
 		const id = requireString(transaction.id, `${label} transactions[${index}] id`);
@@ -2379,8 +2389,6 @@ function validateSavedFinance(value: unknown, gameDay: number, label: string): v
 			`${label} transactions[${index}] interestAmount`
 		);
 	});
-	if (transactions.length > 200)
-		throw new SaveDataError(`${label} transactions must not exceed 200 entries`);
 	if (nextTransactionSequence <= highestTransactionSequence) {
 		throw new SaveDataError(
 			`${label} nextTransactionSequence must exceed generated transaction IDs`

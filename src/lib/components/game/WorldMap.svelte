@@ -203,16 +203,12 @@
 					<button
 						type="button"
 						class="finance-city"
-						onclick={() => {
-							if (allowedCitySet.has(selectedStatus.city.id)) {
-								onFinanceCity(selectedStatus.city.id);
-							}
-						}}
+						onclick={() => onFinanceCity(selectedStatus.city.id)}
 					>
 						{i18n.t('financePanel.financedPurchase.financeOpening' as never)}
 					</button>
 				{/if}
-				{#if !canOpenWorldCity && (!selectedStatus.financeOffer || !canFinanceWorldCity)}
+				{#if !canOpenWorldCity && (!selectedStatus.financeOffer || !canFinanceWorldCity) && disabledReason}
 					<p id={inspectorReasonId(selectedStatus)} class="blocked-reason">
 						{disabledReason}
 					</p>

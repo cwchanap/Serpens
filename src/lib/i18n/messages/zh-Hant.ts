@@ -530,6 +530,7 @@ export const zhHant = {
 			insufficientCash: '現金不足',
 			overpayment: '金額超過清償報價',
 			unsupportedTerm: '不支援的貸款期限',
+			unsupportedPurpose: '不支援的貸款用途',
 			insufficientCredit: '信用額度不足',
 			purchaseUnavailable: '無法購買',
 			purchaseCostChanged: '購買成本已變更'
@@ -585,12 +586,9 @@ export const zhHant = {
 			transactionActivity: '交易活動',
 			noActivity: '尚無財務活動。',
 			day: '第 {day} 天',
-			review: '檢視{action}',
 			confirm: '確認{action}',
 			cancelReview: '取消檢視',
-			submittedAfterConfirmation: '{amount} 僅會在確認後送出。',
-			noCashOut: '不包含現金套現。',
-			replacementApr: '替換年利率',
+			dismissReview: '關閉檢視',
 			borrowingConfirmed: '借款已確認。',
 			repaymentConfirmed: '還款已確認。',
 			payoffConfirmed: '清償已確認。',
@@ -887,7 +885,7 @@ export const zhHant = {
 			factoryBlocked: '{buildingName} 缺少投入原料',
 			upcomingLoanPayment: '{purpose}的 {amount} 付款將於第 {day} 天到期。',
 			missedLoanPayment: '{purpose}有 {amount} 的逾期付款。',
-			covenantRisk: '債務償付覆蓋率為 {coverage}，低於 1.25。',
+			covenantRisk: '債務償付覆蓋率為 {coverage}，低於 {threshold}。',
 			lowCashRunway: '現金續航只剩 {days} 天。'
 		},
 		reportWarnings: {

@@ -641,7 +641,8 @@ describe('industry placement preview', () => {
 
 		const preview = createIndustryPlacementPreview({
 			game,
-			buildingTypeId: 'grain-farm'
+			buildingTypeId: 'grain-farm',
+			financeCommandAvailable: true
 		});
 
 		expect(preview.validTileIds).toContain(grainTile.id);
@@ -651,14 +652,16 @@ describe('industry placement preview', () => {
 			getIndustryBuildPlacementBlockReason({
 				game,
 				tileId: grainTile.id,
-				buildingTypeId: 'grain-farm'
+				buildingTypeId: 'grain-farm',
+				financeCommandAvailable: true
 			})
 		).toBeNull();
 		expect(
 			getIndustryBuildPlacementBlockReason({
 				game,
 				tileId: saltTile.id,
-				buildingTypeId: 'grain-farm'
+				buildingTypeId: 'grain-farm',
+				financeCommandAvailable: true
 			})
 		).toEqual({
 			code: 'industry.rawPlacementBlocked',
@@ -675,7 +678,13 @@ describe('industry placement preview', () => {
 			(tile) => tile.terrain === 'industrial' && !tile.locked
 		)!;
 
-		expect(createIndustryPlacementPreview({ game: null, buildingTypeId: 'warehouse' })).toEqual({
+		expect(
+			createIndustryPlacementPreview({
+				game: null,
+				buildingTypeId: 'warehouse',
+				financeCommandAvailable: true
+			})
+		).toEqual({
 			validTileIds: [],
 			invalidTileIds: []
 		});
@@ -683,14 +692,16 @@ describe('industry placement preview', () => {
 			getIndustryBuildPlacementBlockReason({
 				game: null,
 				tileId: industrialTile.id,
-				buildingTypeId: 'warehouse'
+				buildingTypeId: 'warehouse',
+				financeCommandAvailable: true
 			})
 		).toEqual({ code: 'industry.lockedUntilRetail' });
 		expect(
 			getIndustryBuildPlacementBlockReason({
 				game,
 				tileId: lockedTile.id,
-				buildingTypeId: 'warehouse'
+				buildingTypeId: 'warehouse',
+				financeCommandAvailable: true
 			})
 		).toEqual({
 			code: 'industry.rawPlacementBlocked',
@@ -712,7 +723,8 @@ describe('industry placement preview', () => {
 					}
 				},
 				tileId: industrialTile.id,
-				buildingTypeId: 'warehouse'
+				buildingTypeId: 'warehouse',
+				financeCommandAvailable: true
 			})
 		).toEqual({
 			code: 'industry.requiresCash',
@@ -734,7 +746,8 @@ describe('industry placement preview', () => {
 
 		const preview = createIndustryPlacementPreview({
 			game,
-			buildingTypeId: 'warehouse'
+			buildingTypeId: 'warehouse',
+			financeCommandAvailable: true
 		});
 
 		expect(preview.invalidTileIds).toContain(nonIndustrialTile.id);
@@ -743,7 +756,8 @@ describe('industry placement preview', () => {
 			getIndustryBuildPlacementBlockReason({
 				game,
 				tileId: nonIndustrialTile.id,
-				buildingTypeId: 'warehouse'
+				buildingTypeId: 'warehouse',
+				financeCommandAvailable: true
 			})
 		).toEqual({
 			code: 'industry.rawPlacementBlocked',
@@ -753,7 +767,8 @@ describe('industry placement preview', () => {
 			getIndustryBuildPlacementBlockReason({
 				game,
 				tileId: industrialTile.id,
-				buildingTypeId: 'warehouse'
+				buildingTypeId: 'warehouse',
+				financeCommandAvailable: true
 			})
 		).toBeNull();
 	});
@@ -842,7 +857,11 @@ describe('resolveIndustryPlacementAnchorTileId', () => {
 		expect.assertions(1);
 		const game = { ...createNewGame('convenience', 20260512), cash: 100_000 };
 		const city = game.industryCities[0]!;
-		const preview = createIndustryPlacementPreview({ game, buildingTypeId: 'warehouse' });
+		const preview = createIndustryPlacementPreview({
+			game,
+			buildingTypeId: 'warehouse',
+			financeCommandAvailable: true
+		});
 		const validAnchor = city.tiles.find((tile) => preview.validTileIds.includes(tile.id))!;
 
 		expect(resolveIndustryPlacementAnchorTileId(preview, city, validAnchor.id)).toBe(
@@ -854,7 +873,11 @@ describe('resolveIndustryPlacementAnchorTileId', () => {
 		expect.assertions(1);
 		const game = { ...createNewGame('convenience', 20260512), cash: 100_000 };
 		const city = game.industryCities[0]!;
-		const preview = createIndustryPlacementPreview({ game, buildingTypeId: 'warehouse' });
+		const preview = createIndustryPlacementPreview({
+			game,
+			buildingTypeId: 'warehouse',
+			financeCommandAvailable: true
+		});
 
 		expect(resolveIndustryPlacementAnchorTileId(preview, city, 'does-not-exist')).toBe(
 			'does-not-exist'
@@ -870,7 +893,11 @@ describe('resolveIndustryPlacementAnchorTileId', () => {
 		expect.assertions(3);
 		const game = { ...createNewGame('convenience', 20260512), cash: 100_000 };
 		const city = game.industryCities[0]!;
-		const preview = createIndustryPlacementPreview({ game, buildingTypeId: 'warehouse' });
+		const preview = createIndustryPlacementPreview({
+			game,
+			buildingTypeId: 'warehouse',
+			financeCommandAvailable: true
+		});
 		const tileByCoord = (x: number, y: number): IndustryTile | undefined =>
 			city.tiles.find((t) => t.x === x && t.y === y);
 		const nonAnchorOffsets = [

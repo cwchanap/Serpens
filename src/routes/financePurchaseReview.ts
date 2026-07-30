@@ -1,4 +1,5 @@
-import type { ExpansionFinanceOffer, FinanceFailureCode } from '$lib/game/finance';
+import type { ExpansionFinanceOffer } from '$lib/game/finance';
+import type { GameRouteCommitResult } from '$lib/game/commandResult';
 import type { ArchetypeId, IndustrialBuildingTypeId, WorldCityId } from '$lib/game/types';
 
 export type PendingFinancedPurchase =
@@ -174,13 +175,7 @@ export function hasFinancedPurchaseOffer<T>(offer: T | null): offer is T {
 	return offer !== null;
 }
 
-export function shouldRefreshFinancedPurchase(
-	result:
-		| { status: 'domain-rejected'; code: FinanceFailureCode }
-		| { status: string; code?: FinanceFailureCode }
-): boolean {
-	return (
-		result.status === 'domain-rejected' &&
-		(result.code === 'purchaseCostChanged' || result.code === 'insufficientCredit')
-	);
+export function shouldRefreshFinancedPurchase(result: GameRouteCommitResult): boolean {
+	if (result.status !== 'domain-rejected') return false;
+	return result.code === 'purchaseCostChanged' || result.code === 'insufficientCredit';
 }

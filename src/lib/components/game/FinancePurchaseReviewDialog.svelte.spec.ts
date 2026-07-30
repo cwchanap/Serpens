@@ -50,7 +50,7 @@ describe('FinancePurchaseReviewDialog', () => {
 		await expect.element(page.getByRole('dialog', { name: /review financing/i })).toBeVisible();
 	});
 
-	it('does not allow backdrop, Cancel, or Escape to dismiss while confirmation is pending', async () => {
+	it('does not allow backdrop or Cancel to dismiss while confirmation is pending', async () => {
 		expect.assertions(4);
 		const onCancel = vi.fn();
 		render(FinancePurchaseReviewDialog, dialogProps({ onCancel, confirmationPending: true }));

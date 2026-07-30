@@ -159,24 +159,8 @@ export function createMutationAvailability(input: {
 	};
 }
 
-export type GameRouteCommitResult =
-	| { status: 'sandbox-committed'; changed: boolean }
-	| { status: 'committed' }
-	| { status: 'busy' }
-	| { status: 'rejected' }
-	| {
-			status: 'domain-rejected';
-			code: FinanceFailureCode;
-			context: Record<string, string | number>;
-	  }
-	| { status: 'unchanged' }
-	| {
-			status: 'confirmation-required';
-			expectedRunId?: string | null;
-			expectedRevision?: number | null;
-	  }
-	| { status: 'unavailable' }
-	| { status: 'failed' };
+export type { GameRouteCommitResult } from '$lib/game/commandResult';
+import type { GameRouteCommitResult } from '$lib/game/commandResult';
 
 export type SandboxLoadResult = 'loaded' | 'missing' | 'unavailable';
 
@@ -1402,6 +1386,10 @@ export class GameRouteController {
 		if (this.currentState.scenarioCommandPending) return { status: 'busy' };
 
 		let rejectedCode: ScenarioOperationError['code'] | null = null;
+		// Object wrapper so TypeScript's closure control-flow analysis can
+		// observe mutations made inside the runPersistenceGatedOperation
+		// callback — a bare `let` would be narrowed back to its initial type
+		// at the post-callback read site.
 		const domainRejection: {
 			value: { code: FinanceFailureCode; context: Record<string, string | number> } | null;
 		} = { value: null };

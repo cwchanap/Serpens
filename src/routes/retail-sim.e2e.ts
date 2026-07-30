@@ -201,23 +201,6 @@ interface SavedDailyReport {
 	}>;
 }
 
-interface SavedLoan {
-	id: string;
-	purpose:
-		| 'founding'
-		| 'workingCapital'
-		| 'emergency'
-		| 'supplierCredit'
-		| 'expansion'
-		| 'refinance';
-	status: 'active' | 'delinquent' | 'paid' | 'refinanced';
-	originalPrincipal: number;
-	remainingPrincipal: number;
-	termDays: 28 | 56 | 84;
-	installmentsProcessed: number;
-	nextPaymentDay: number | null;
-}
-
 interface SavedFinanceTransaction {
 	id: string;
 	loanId: string;
@@ -228,7 +211,7 @@ interface SavedFinanceTransaction {
 }
 
 interface SavedFinance {
-	loans: SavedLoan[];
+	loans: LoanInstrument[];
 	transactions: SavedFinanceTransaction[];
 	nextLoanSequence: number;
 	nextTransactionSequence: number;
@@ -1839,7 +1822,7 @@ test('finance flow borrows, reconciles a scheduled payment, focuses its alert, a
 		status: 'active'
 	});
 	const scheduledWorkingCapitalPrincipal = getScheduledPrincipalForInstallment(
-		workingCapitalLoan as LoanInstrument,
+		workingCapitalLoan,
 		workingCapitalLoan.installmentsProcessed
 	);
 	await expect(finance.getByText('Loan disbursement', { exact: true })).toBeVisible();
@@ -1903,11 +1886,10 @@ test('finance flow borrows, reconciles a scheduled payment, focuses its alert, a
 	);
 	if (!alertWindowLoan) throw new Error('Working-capital loan disappeared before its alert.');
 
-	await page.getByRole('button', { name: /alert/i }).click();
+	await page.getByRole('button', { name: /^alerts/i }).click();
 	const alerts = page.getByRole('group', { name: 'Alerts list' });
-	const scheduledWorkingCapitalPayment = estimateNextLoanPayment(
-		alertWindowLoan as LoanInstrument
-	).toLocaleString('en-US');
+	const scheduledWorkingCapitalPayment =
+		estimateNextLoanPayment(alertWindowLoan).toLocaleString('en-US');
 	const expectedWorkingCapitalAlertName = new RegExp(
 		`^Working capital payment of ${escapeRegExp(`$${scheduledWorkingCapitalPayment}`)} is due on day ${alertWindowLoan.nextPaymentDay}\\.$`
 	);
