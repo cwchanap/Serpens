@@ -873,6 +873,80 @@ describe('finance servicing', () => {
 		]);
 	});
 
+	it('allocates cash to an older matured arrears loan before a new instalment due the same day', () => {
+		// The finance contract requires every due instalment to be staged into
+		// arrears before one unified queue allocates cash ordered by
+		// arrearsSinceDay, openedOnDay, and ID. A new instalment must not jump
+		// ahead of an older delinquent obligation. Loan A carries £100 of old
+		// matured arrears (arrearsSinceDay 1); Loan B has a £100 instalment due
+		// today with £100 of cash. The queue pays A first and B misses.
+		const finance = createFinance(
+			[
+				createLoan({
+					id: 'loan-a',
+					openedOnDay: 1,
+					status: 'delinquent',
+					originalPrincipal: 100,
+					remainingPrincipal: 100,
+					overduePrincipal: 100,
+					arrearsSinceDay: 1,
+					nextPaymentDay: null,
+					annualInterestRateBps: 0,
+					termDays: 28,
+					installmentsProcessed: 4,
+					scheduledPaymentCount: 4,
+					missedPaymentCount: 4
+				}),
+				createLoan({
+					id: 'loan-b',
+					openedOnDay: 2,
+					originalPrincipal: 400,
+					remainingPrincipal: 400,
+					nextPaymentDay: 8,
+					annualInterestRateBps: 0,
+					termDays: 28,
+					installmentsProcessed: 0,
+					lastInterestAccrualDay: 7
+				})
+			],
+			8
+		);
+
+		const serviced = serviceFinanceForDay({ finance, cash: 100, day: 8 });
+		expect(serviced.cash).toBe(0);
+		expect(serviced.finance.loans.find((loan) => loan.id === 'loan-a')).toMatchObject({
+			status: 'paid',
+			overduePrincipal: 0,
+			remainingPrincipal: 0,
+			arrearsSinceDay: null
+		});
+		expect(serviced.finance.loans.find((loan) => loan.id === 'loan-b')).toMatchObject({
+			status: 'delinquent',
+			overduePrincipal: 100,
+			remainingPrincipal: 400,
+			arrearsSinceDay: 8,
+			scheduledPaymentCount: 1,
+			onTimePaymentCount: 0,
+			missedPaymentCount: 1
+		});
+		// The cash movement records the payment to the older loan, and the new
+		// instalment's miss is recorded separately.
+		expect(serviced.finance.transactions.map((transaction) => transaction.kind)).toEqual([
+			'principalPayment',
+			'missedPayment'
+		]);
+		expect(serviced.finance.transactions[0]).toMatchObject({
+			kind: 'principalPayment',
+			loanId: 'loan-a',
+			principalAmount: 100
+		});
+		expect(serviced.finance.transactions[1]).toMatchObject({
+			kind: 'missedPayment',
+			loanId: 'loan-b',
+			principalAmount: 100
+		});
+	});
+
 	it('closes final fractional accrued interest with one ceiling operation', () => {
 		const finance = createFinance([
 			createLoan({
@@ -897,12 +971,18 @@ describe('finance servicing', () => {
 			overduePrincipal: 0
 		});
 		expect(serviced.finance.transactions.map((transaction) => transaction.kind)).toEqual([
-			'principalPayment',
-			'interestPayment'
+			'interestPayment',
+			'principalPayment'
 		]);
 	});
 
-	it('preserves final fractional interest through an insolvent checkpoint until a later sweep can close it', () => {
+	it('stages the final fractional interest with ceil and misses the unpaid principal at an insolvent checkpoint', () => {
+		// The final instalment uses ceil for accrued interest so the obligation
+		// is whole-dollar before counters are classified. With only £1 of cash
+		// against a £1 interest + £1 principal final obligation, the unified
+		// arrears queue pays the interest and misses the principal: the loan
+		// becomes delinquent with a missed payment recorded, and a later sweep
+		// closes the remaining principal.
 		const finance = createFinance([
 			createLoan({
 				originalPrincipal: 1,
@@ -920,18 +1000,26 @@ describe('finance servicing', () => {
 		expect(insolvent.cash).toBe(0);
 		expect(insolvent.finance.loans[0]).toMatchObject({
 			status: 'delinquent',
-			remainingPrincipal: 0,
-			overduePrincipal: 0,
+			remainingPrincipal: 1,
+			overduePrincipal: 1,
 			overdueInterest: 0,
-			accruedInterestMicros: 1,
+			accruedInterestMicros: 0,
 			scheduledPaymentCount: 1,
-			missedPaymentCount: 0
+			onTimePaymentCount: 0,
+			missedPaymentCount: 1,
+			arrearsSinceDay: 8
 		});
 		expect(insolvent.finance.transactions).toEqual([
 			expect.objectContaining({
-				kind: 'principalPayment',
+				kind: 'interestPayment',
+				interestAmount: 1,
+				cashDelta: -1
+			}),
+			expect.objectContaining({
+				kind: 'missedPayment',
 				principalAmount: 1,
-				interestAmount: 0
+				interestAmount: 0,
+				cashDelta: 0
 			})
 		]);
 
@@ -943,17 +1031,25 @@ describe('finance servicing', () => {
 		expect(recovered.cash).toBe(0);
 		expect(recovered.finance.loans[0]).toMatchObject({
 			status: 'paid',
+			remainingPrincipal: 0,
 			accruedInterestMicros: 0,
-			overdueInterest: 0
+			overdueInterest: 0,
+			overduePrincipal: 0
 		});
 		expect(recovered.finance.transactions.at(-1)).toMatchObject({
-			kind: 'interestPayment',
-			interestAmount: 1,
+			kind: 'principalPayment',
+			principalAmount: 1,
 			cashDelta: -1
 		});
 	});
 
-	it('dates matured fractional arrears at a prepaid zero-dollar final checkpoint without changing counters', () => {
+	it('misses the ceiled final fractional interest at a prepaid zero-cash final checkpoint', () => {
+		// A prepaid loan (remainingPrincipal 0) reaching its final checkpoint
+		// with a fractional accrued-interest remainder and no cash: the final
+		// instalment ceils the fractional micros into a whole £1 obligation, so
+		// the zero-cash allocation misses it, increments the counters, and dates
+		// the arrears. The loan stays delinquent until a later sweep clears the
+		// £1 interest.
 		const finance = {
 			...createFinance([
 				createLoan({
@@ -977,14 +1073,23 @@ describe('finance servicing', () => {
 		expect(serviced.finance.loans[0]).toMatchObject({
 			status: 'delinquent',
 			nextPaymentDay: null,
-			accruedInterestMicros: 1,
+			accruedInterestMicros: 0,
+			overdueInterest: 1,
+			overduePrincipal: 0,
 			arrearsSinceDay: 8,
 			installmentsProcessed: 12,
-			scheduledPaymentCount: 1,
+			scheduledPaymentCount: 2,
 			onTimePaymentCount: 1,
-			missedPaymentCount: 0
+			missedPaymentCount: 1
 		});
-		expect(serviced.finance.transactions).toEqual([]);
+		expect(serviced.finance.transactions).toEqual([
+			expect.objectContaining({
+				kind: 'missedPayment',
+				principalAmount: 0,
+				interestAmount: 1,
+				cashDelta: 0
+			})
+		]);
 		expect(() => {
 			const saveCandidate = refreshWorldProgress({
 				...createCreditGame(),

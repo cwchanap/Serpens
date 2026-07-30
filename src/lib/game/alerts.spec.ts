@@ -432,4 +432,17 @@ describe('collectGameAlerts', () => {
 	it('omits covenant risk without debt service and runway risk beyond seven days', () => {
 		expect(collectGameAlerts(baseGame())).toEqual([]);
 	});
+
+	it('fires lowCashRunway for a debt-free company with negative cash', () => {
+		// Cash runway is meaningful without debt: a company that has never
+		// borrowed but holds negative cash has a zero-day runway and must still
+		// receive the alert. The early return on empty loans previously suppressed
+		// this, making alert behaviour depend on whether the player had ever held
+		// a loan. Covenant risk stays gated on debt service (null coverage).
+		expect.assertions(3);
+		const alerts = collectGameAlerts(baseGame({ cash: -1 }));
+		expect(alerts).toHaveLength(1);
+		expect(alerts[0]!.kind).toBe('lowCashRunway');
+		expect(alerts[0]!.managementPanelId).toBe('finance');
+	});
 });
