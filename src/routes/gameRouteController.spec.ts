@@ -1410,6 +1410,26 @@ describe('GameRouteController', () => {
 				context: { expectedCost: 0, purchaseCost: 18_000 }
 			});
 		});
+		it('routes payOff, refinance, financeRetailStore, and financeIndustrialBuilding through commitMutation', async () => {
+			const harness = createHarness();
+			await harness.controller.initializeSaves();
+			harness.controller.loadSandboxGame(createNewGame('convenience', 3));
+
+			expect(await harness.controller.payOffFinanceLoan('missing-loan')).toMatchObject({
+				status: 'domain-rejected',
+				code: 'loanNotFound'
+			});
+			expect(await harness.controller.refinanceFinanceLoan('missing-loan', 56)).toMatchObject({
+				status: 'domain-rejected',
+				code: 'loanNotFound'
+			});
+			expect(
+				await harness.controller.financeRetailStore('harbor-city-1-1', 'convenience', 0)
+			).toMatchObject({ status: 'domain-rejected' });
+			expect(
+				await harness.controller.financeIndustrialBuilding('industry-city-1-1', 'warehouse', 0)
+			).toMatchObject({ status: 'domain-rejected' });
+		});
 		it('returns unavailable when no sandbox game is loaded and the mutation requires one', async () => {
 			const harness = createHarness();
 			const result = await harness.controller.advanceDay();

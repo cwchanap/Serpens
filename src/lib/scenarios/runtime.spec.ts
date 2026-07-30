@@ -908,6 +908,32 @@ describe('executeScenarioCommand dispatch', { timeout: 30_000 }, () => {
 		expect(run.game).toBe(game);
 	});
 
+	it('maps borrow, payoff, and refinance failures to invalid-command', () => {
+		const game = foundingGame();
+		const cases: Array<{ command: ScenarioCommand; allowed: string[] }> = [
+			{
+				command: { kind: 'borrow', amount: 99_999_999, termDays: 56 },
+				allowed: ['borrow']
+			},
+			{
+				command: { kind: 'payOffLoan', loanId: 'missing-loan' },
+				allowed: ['payOffLoan']
+			},
+			{
+				command: { kind: 'refinanceLoan', loanId: 'missing-loan', termDays: 56 },
+				allowed: ['refinanceLoan']
+			}
+		];
+		for (const { command, allowed } of cases) {
+			const definition = commandDefinition(allowed as readonly string[]);
+			const run = activeRun(definition, game);
+			const result = executeScenarioCommand(run, definition, command);
+			expect(result.ok).toBe(false);
+			if (!result.ok) expect(result.code).toBe('invalid-command');
+			expect(run.game).toBe(game);
+		}
+	});
+
 	it.each([null, 42, { id: 'loan-1' }] as const)(
 		'maps a non-string finance loan id to invalid-command without advancing: %j',
 		(loanId) => {

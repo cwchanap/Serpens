@@ -281,4 +281,95 @@ describe('FinancePanel', () => {
 		expect(window.innerWidth).toBe(originalViewport.width);
 		expect(window.innerHeight).toBe(originalViewport.height);
 	});
+
+	it('rejects a borrow below the minimum and above the available credit', async () => {
+		expect.assertions(3);
+		const props = renderPanel();
+		await page.getByLabelText('Borrow amount').fill('500');
+		await page.getByRole('button', { name: 'Review borrowing' }).click();
+		await expect
+			.element(page.getByRole('status'))
+			.toHaveTextContent('Amount is below the minimum borrowing');
+		await page.getByLabelText('Borrow amount').fill('999999');
+		await page.getByRole('button', { name: 'Review borrowing' }).click();
+		await expect.element(page.getByRole('status')).toHaveTextContent('Insufficient credit');
+		expect(props.onBorrow).not.toHaveBeenCalled();
+	});
+
+	it('confirms a repayment after review and clears the input', async () => {
+		expect.assertions(3);
+		const onRepay = vi.fn().mockResolvedValue({ status: 'sandbox-committed', changed: true });
+		renderPanel({ onRepay });
+		const loanId = gameWithLoan().finance.loans[0]!.id;
+		await page.getByLabelText('Repay amount').nth(0).fill('100');
+		await page.getByRole('button', { name: 'Review repayment' }).nth(0).click();
+		await expect.element(page.getByRole('heading', { name: 'Review repayment' })).toBeVisible();
+		await page.getByRole('button', { name: 'Confirm repayment' }).click();
+		expect(onRepay).toHaveBeenCalledWith(loanId, 100);
+		await expect.element(page.getByLabelText('Repay amount').nth(0)).toHaveValue('');
+	});
+
+	it('rejects a repayment that exceeds the payoff quote', async () => {
+		expect.assertions(2);
+		const onRepay = vi.fn();
+		renderPanel({ onRepay });
+		await page.getByLabelText('Repay amount').nth(0).fill('999999');
+		await page.getByRole('button', { name: 'Review repayment' }).nth(0).click();
+		await expect
+			.element(page.getByRole('status'))
+			.toHaveTextContent('Amount exceeds the payoff quote');
+		expect(onRepay).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		{ code: 'loanNotFound', expected: 'Loan not found' },
+		{ code: 'loanClosed', expected: 'Loan is closed' },
+		{ code: 'loanDelinquent', expected: 'Loan is delinquent' },
+		{ code: 'invalidAmount', expected: 'Enter a whole-dollar amount' },
+		{ code: 'belowMinimumBorrowing', expected: 'Amount is below the minimum borrowing' },
+		{ code: 'overpayment', expected: 'Amount exceeds the payoff quote' },
+		{ code: 'unsupportedTerm', expected: 'Unsupported loan term' },
+		{ code: 'unsupportedPurpose', expected: 'Unsupported loan purpose' },
+		{ code: 'purchaseUnavailable', expected: 'Purchase is unavailable' },
+		{ code: 'purchaseCostChanged', expected: 'Purchase cost changed' }
+	] as const)('maps a $code domain rejection to the right message', async ({ code, expected }) => {
+		expect.assertions(2);
+		const onBorrow = vi.fn().mockResolvedValue({
+			status: 'domain-rejected',
+			code,
+			context: {}
+		});
+		renderPanel({ onBorrow });
+		await page.getByLabelText('Borrow amount').fill('1200');
+		await page.getByRole('button', { name: 'Review borrowing' }).click();
+		await page.getByRole('button', { name: 'Confirm borrowing' }).click();
+		expect(onBorrow).toHaveBeenCalledOnce();
+		await expect.element(page.getByRole('status')).toHaveTextContent(expected);
+	});
+
+	it.each([
+		{ status: 'failed', expected: 'Finance action could not be completed.' },
+		{ status: 'rejected', expected: 'Finance action could not be completed.' },
+		{ status: 'busy', expected: 'A finance action is already in progress.' },
+		{ status: 'unavailable', expected: 'Financing unavailable' }
+	] as const)(
+		'shows the right message for a $status borrow result',
+		async ({ status, expected }) => {
+			expect.assertions(2);
+			const onBorrow = vi.fn().mockResolvedValue({ status });
+			renderPanel({ onBorrow });
+			await page.getByLabelText('Borrow amount').fill('1200');
+			await page.getByRole('button', { name: 'Review borrowing' }).click();
+			await page.getByRole('button', { name: 'Confirm borrowing' }).click();
+			expect(onBorrow).toHaveBeenCalledOnce();
+			await expect.element(page.getByRole('status')).toHaveTextContent(expected);
+		}
+	);
+
+	it('shows the no-activity message when there are no transactions', async () => {
+		expect.assertions(1);
+		const game = creditworthyGame();
+		renderPanel({ game });
+		await expect.element(page.getByText('No finance activity yet.')).toBeVisible();
+	});
 });
