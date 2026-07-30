@@ -946,6 +946,61 @@ describe('saveCodec', () => {
 		expect(revalidated).toEqual(validated);
 	});
 
+	test('validates a long linear refinance chain without quadratic traversal', () => {
+		// A valid linear chain of N refinances (loan-1 -> loan-2 -> ... ->
+		// loan-N) makes the per-node refinancedByLoanId walk revisit the tail
+		// from every start, ~N^2/2 lookups. The 205-unlinked-loans test does not
+		// exercise this worst case because none of those loans link to each
+		// other. This chain must validate and round-trip in linear time.
+		expect.assertions(3);
+		const game = createGame();
+		const base = game.finance.loans[0]!;
+		const chainLength = 1_000;
+		const loans: GameState['finance']['loans'] = [];
+		// loan-1: the original, refinanced by loan-2.
+		loans.push({
+			...base,
+			id: 'loan-1',
+			status: 'refinanced' as const,
+			remainingPrincipal: 0,
+			nextPaymentDay: null,
+			refinancedByLoanId: 'loan-2'
+		});
+		// loan-2 .. loan-(N-1): each refinanced from the previous and by the next.
+		for (let i = 2; i <= chainLength - 1; i += 1) {
+			loans.push({
+				...base,
+				id: `loan-${i}`,
+				purpose: 'refinance' as const,
+				status: 'refinanced' as const,
+				remainingPrincipal: 0,
+				nextPaymentDay: null,
+				refinancedFromLoanId: `loan-${i - 1}`,
+				refinancedByLoanId: `loan-${i + 1}`
+			});
+		}
+		// loan-N: the active refinance replacement, closing the chain.
+		loans.push({
+			...base,
+			id: `loan-${chainLength}`,
+			purpose: 'refinance' as const,
+			refinancedFromLoanId: `loan-${chainLength - 1}`
+		});
+
+		const record = createManualSaveRecord({
+			game: {
+				finance: { ...game.finance, nextLoanSequence: chainLength + 1, loans }
+			}
+		});
+
+		const validated = validateSaveRecord(record);
+		expect(validated.game.finance.loans).toHaveLength(chainLength);
+
+		const revalidated = validateSaveRecord(structuredClone(validated));
+		expect(revalidated.game.finance.loans).toHaveLength(chainLength);
+		expect(revalidated).toEqual(validated);
+	});
+
 	test('rejects a transaction whose relatedLoanId references an unknown loan', () => {
 		expect.assertions(1);
 		const game = createGame();

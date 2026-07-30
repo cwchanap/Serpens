@@ -87,13 +87,9 @@ function collectFinanceAlerts(game: GameState): GameAlert[] {
 
 	// Finance metrics are a single coherent snapshot for the entire group. They
 	// are derived here rather than persisted, just like the existing alert groups.
-	// Skip the metric-dependent covenant and runway alerts when there are no
-	// loans, since debt-service coverage is undefined without debt and the
-	// runway alert is only meaningful alongside financing activity.
-	if (game.finance.loans.length === 0) {
-		return alerts;
-	}
-
+	// Covenant risk is gated on debt service (debtServiceCoverage is null without
+	// scheduled service), but cash runway is meaningful without debt: a debt-free
+	// company with negative cash has a zero-day runway and must still be alerted.
 	const metrics = getFinanceMetrics(game);
 
 	if (metrics.debtServiceCoverage !== null && metrics.debtServiceCoverage < COVENANT_THRESHOLD) {

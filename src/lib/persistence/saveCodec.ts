@@ -2439,16 +2439,26 @@ function validateSavedFinance(value: unknown, gameDay: number, label: string): v
 				throw new SaveDataError(`${label} refinance links must be symmetric and non-cyclic`);
 		}
 	}
-	for (const loanId of loansById.keys()) {
-		const seenLoanIds = new Set<string>();
-		let currentLoanId: string | undefined = loanId;
-		while (currentLoanId !== undefined) {
-			if (seenLoanIds.has(currentLoanId)) {
+	// Cycle detection over the refinancedByLoanId links. Each loan has at most
+	// one outgoing refinancedByLoanId edge, so the graph is functional: every
+	// chain either terminates or cycles. A naive per-node traversal is quadratic
+	// for a long valid linear chain (N refinances -> ~N^2/2 lookups), and loans
+	// are now retained unbounded, so use a single-pass tri-colour walk: each loan
+	// and link is visited at most once.
+	const cycleState = new Map<string, 0 | 1 | 2>(); // 0 unvisited, 1 in progress, 2 done
+	for (const startId of loansById.keys()) {
+		if (cycleState.get(startId) === 2) continue;
+		const path: string[] = [];
+		let currentLoanId: string | undefined = startId;
+		while (currentLoanId !== undefined && cycleState.get(currentLoanId) !== 2) {
+			if (cycleState.get(currentLoanId) === 1) {
 				throw new SaveDataError(`${label} refinance links must not form a cycle`);
 			}
-			seenLoanIds.add(currentLoanId);
+			cycleState.set(currentLoanId, 1);
+			path.push(currentLoanId);
 			currentLoanId = loansById.get(currentLoanId)?.loan.refinancedByLoanId as string | undefined;
 		}
+		for (const id of path) cycleState.set(id, 2);
 	}
 }
 

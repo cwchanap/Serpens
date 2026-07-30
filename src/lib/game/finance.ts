@@ -430,70 +430,96 @@ function finalizeLoanStatus(loan: LoanInstrument): LoanInstrument {
 	return loan;
 }
 
-function serviceScheduledLoan(input: {
-	finance: FinanceState;
-	loan: LoanInstrument;
-	cash: number;
-	day: number;
-}): { finance: FinanceState; loan: LoanInstrument; cash: number } {
-	let { finance, loan } = input;
+interface ScheduledInstallmentStage {
+	loanId: string;
+	priorOverdueInterest: number;
+	priorOverduePrincipal: number;
+	accruedInterestDue: number;
+	scheduledPrincipal: number;
+	hadPriorArrears: boolean;
+	scheduledObligation: number;
+}
+
+/**
+ * Stages a due loan's current instalment (spec daily-servicing steps 2-4):
+ * moves the accrued interest and scheduled principal into the overdue buckets,
+ * advances the instalment index, and sets the next payment date (or null after
+ * the final scheduled instalment). This is deliberately separate from cash
+ * allocation so that all due instalments are staged before one unified arrears
+ * queue allocates cash. The final instalment uses `ceil` for the accrued
+ * interest so a successfully completed loan closes with no stranded fractional
+ * interest; the fractional micros are cleared at that point.
+ */
+function stageScheduledInstallment(
+	loan: LoanInstrument,
+	day: number
+): { loan: LoanInstrument; stage: ScheduledInstallmentStage } {
 	const priorOverdueInterest = loan.overdueInterest;
 	const priorOverduePrincipal = loan.overduePrincipal;
 	const hadPriorArrears = hasLoanArrears(loan);
 	const installmentCount = getInstallmentCount(loan.termDays);
 	const isFinalInstallment = loan.installmentsProcessed === installmentCount - 1;
 	const scheduledPrincipal = getScheduledPrincipalForInstallment(loan, loan.installmentsProcessed);
-	const wholeAccruedInterest = Math.floor(loan.accruedInterestMicros / 1_000_000);
-	const fractionalAccruedInterestMicros =
-		loan.accruedInterestMicros - wholeAccruedInterest * 1_000_000;
-	const accruedInterestDue = wholeAccruedInterest;
-	const remainingAccruedInterestMicros = fractionalAccruedInterestMicros;
-	const scheduledObligation = wholeAccruedInterest + scheduledPrincipal;
-
-	loan = {
+	const accruedInterestDue = isFinalInstallment
+		? Math.ceil(loan.accruedInterestMicros / 1_000_000)
+		: Math.floor(loan.accruedInterestMicros / 1_000_000);
+	const remainingAccruedInterestMicros = isFinalInstallment
+		? 0
+		: loan.accruedInterestMicros - accruedInterestDue * 1_000_000;
+	const stagedLoan: LoanInstrument = {
 		...loan,
 		accruedInterestMicros: remainingAccruedInterestMicros,
 		overdueInterest: loan.overdueInterest + accruedInterestDue,
 		overduePrincipal: loan.overduePrincipal + scheduledPrincipal,
 		installmentsProcessed: loan.installmentsProcessed + 1,
 		nextPaymentDay:
-			loan.installmentsProcessed + 1 === installmentCount
-				? null
-				: input.day + LOAN_PAYMENT_FREQUENCY_DAYS
+			loan.installmentsProcessed + 1 === installmentCount ? null : day + LOAN_PAYMENT_FREQUENCY_DAYS
 	};
-	const paid = payLoanArrears({ finance, loan, cash: input.cash, day: input.day });
-	finance = paid.finance;
-	loan = paid.loan;
-	const cash = paid.cash;
+	return {
+		loan: stagedLoan,
+		stage: {
+			loanId: loan.id,
+			priorOverdueInterest,
+			priorOverduePrincipal,
+			accruedInterestDue,
+			scheduledPrincipal,
+			hadPriorArrears,
+			scheduledObligation: accruedInterestDue + scheduledPrincipal
+		}
+	};
+}
 
-	// The current instalment adds accruedInterestDue to the interest bucket and
-	// scheduledPrincipal to the principal bucket, then payLoanArrears pays each
-	// bucket (interest before principal) from the combined old-plus-new pool.
-	// Measuring the unpaid slice of the *current* instalment as the net change in
-	// arrears (ending - starting) is wrong when cash also pays older arrears: the
-	// net change can be <= 0 even though the new obligation was partially unpaid,
-	// which then increments missedPaymentCount while emitting no missedPayment
-	// transaction. Allocate cash to prior arrears first within each bucket (they
-	// are older obligations) and record the current instalment's actual unpaid
-	// remainder.
-	const availableCash = Math.max(0, input.cash);
-	const cashForInterest = Math.min(availableCash, priorOverdueInterest + accruedInterestDue);
-	const currentInterestPaid = Math.max(0, cashForInterest - priorOverdueInterest);
-	const unpaidInterest = Math.max(0, accruedInterestDue - currentInterestPaid);
-	const cashAfterInterest = Math.max(0, availableCash - cashForInterest);
-	const cashForPrincipal = Math.min(cashAfterInterest, priorOverduePrincipal + scheduledPrincipal);
-	const currentPrincipalPaid = Math.max(0, cashForPrincipal - priorOverduePrincipal);
-	const unpaidPrincipal = Math.max(0, scheduledPrincipal - currentPrincipalPaid);
-	if (scheduledObligation > 0) {
+/**
+ * Finalises a staged due loan's on-time/missed counters based on how much of
+ * its current instalment the unified arrears queue actually cleared (spec steps
+ * 9-11). Cash is allocated to prior arrears before the current instalment within
+ * each bucket, so the current instalment's unpaid slice is reconstructed from
+ * the loan's remaining overdue balances rather than from a net-change figure.
+ */
+function classifyScheduledInstallment(input: {
+	finance: FinanceState;
+	loan: LoanInstrument;
+	stage: ScheduledInstallmentStage;
+	day: number;
+}): { finance: FinanceState; loan: LoanInstrument } {
+	let { finance, loan } = input;
+	const stage = input.stage;
+
+	if (stage.scheduledObligation > 0) {
+		const paidInterest =
+			stage.priorOverdueInterest + stage.accruedInterestDue - loan.overdueInterest;
+		const currentInterestPaid = Math.max(0, paidInterest - stage.priorOverdueInterest);
+		const unpaidInterest = Math.max(0, stage.accruedInterestDue - currentInterestPaid);
+		const paidPrincipal =
+			stage.priorOverduePrincipal + stage.scheduledPrincipal - loan.overduePrincipal;
+		const currentPrincipalPaid = Math.max(0, paidPrincipal - stage.priorOverduePrincipal);
+		const unpaidPrincipal = Math.max(0, stage.scheduledPrincipal - currentPrincipalPaid);
+		const missed = stage.hadPriorArrears || unpaidInterest > 0 || unpaidPrincipal > 0;
 		loan = {
 			...loan,
 			scheduledPaymentCount: loan.scheduledPaymentCount + 1,
-			onTimePaymentCount:
-				loan.onTimePaymentCount +
-				(hadPriorArrears || unpaidInterest > 0 || unpaidPrincipal > 0 ? 0 : 1),
-			missedPaymentCount:
-				loan.missedPaymentCount +
-				(hadPriorArrears || unpaidInterest > 0 || unpaidPrincipal > 0 ? 1 : 0),
+			onTimePaymentCount: loan.onTimePaymentCount + (missed ? 0 : 1),
+			missedPaymentCount: loan.missedPaymentCount + (missed ? 1 : 0),
 			arrearsSinceDay:
 				unpaidInterest > 0 || unpaidPrincipal > 0
 					? (loan.arrearsSinceDay ?? input.day)
@@ -511,13 +537,9 @@ function serviceScheduledLoan(input: {
 			});
 		}
 	}
-	if (isFinalInstallment && loan.accruedInterestMicros > 0) {
-		loan = { ...loan, arrearsSinceDay: loan.arrearsSinceDay ?? input.day };
-	}
 
 	loan = finalizeLoanStatus(loan);
-	finance = replaceLoan(finance, loan);
-	return { finance, loan, cash };
+	return { finance, loan };
 }
 
 function moveMaturedAccruedInterestToArrears(loan: LoanInstrument, cash: number): LoanInstrument {
@@ -567,6 +589,11 @@ export function serviceFinanceForDay(input: {
 	finance = { ...finance, loans: accruedLoans };
 	let cash = input.cash;
 
+	// Stage every loan due today (spec steps 2-4): move the current instalment
+	// into the overdue buckets and advance the instalment index WITHOUT
+	// allocating cash or updating counters. All due instalments must be staged
+	// before cash is allocated so a new instalment cannot jump ahead of an older
+	// delinquent obligation in the unified arrears queue.
 	const dueLoanIds = finance.loans
 		.filter(
 			(loan) =>
@@ -579,15 +606,23 @@ export function serviceFinanceForDay(input: {
 				compareIds(left.id, right.id)
 		)
 		.map((loan) => loan.id);
+	const stages = new Map<string, ScheduledInstallmentStage>();
 	for (const loanId of dueLoanIds) {
 		const loan = finance.loans.find((candidate) => candidate.id === loanId)!;
-		const serviced = serviceScheduledLoan({ finance, loan, cash, day: input.day });
-		finance = serviced.finance;
-		cash = serviced.cash;
+		const staged = stageScheduledInstallment(loan, input.day);
+		finance = replaceLoan(finance, staged.loan);
+		stages.set(loanId, staged.stage);
 	}
 
-	const delinquentLoanIds = finance.loans
-		.filter((loan) => loan.status === 'delinquent')
+	// Unified arrears queue (spec steps 5-7): every loan with arrears — including
+	// the just-staged due loans and pre-existing delinquent/matured loans — is
+	// ordered by arrearsSinceDay, then openedOnDay, then loan ID, and cash is
+	// allocated overdue interest first and overdue principal second for each
+	// loan. A just-staged due loan with no prior arrears has arrearsSinceDay
+	// null, so it sorts after older delinquent obligations and cannot consume
+	// cash before them.
+	const arrearsLoanIds = finance.loans
+		.filter((loan) => hasLoanArrears(loan))
 		.sort(
 			(left, right) =>
 				(left.arrearsSinceDay ?? Number.MAX_SAFE_INTEGER) -
@@ -596,14 +631,27 @@ export function serviceFinanceForDay(input: {
 				compareIds(left.id, right.id)
 		)
 		.map((loan) => loan.id);
-	for (const loanId of delinquentLoanIds) {
+	for (const loanId of arrearsLoanIds) {
 		let loan = finance.loans.find((candidate) => candidate.id === loanId)!;
 		loan = moveMaturedAccruedInterestToArrears(loan, cash);
 		const swept = payLoanArrears({ finance, loan, cash, day: input.day });
 		finance = swept.finance;
 		cash = swept.cash;
-		loan = finalizeLoanStatus(swept.loan);
+		loan = swept.loan;
+		// Staged due loans are finalised together with their counter
+		// classification below; non-staged delinquent loans are finalised here.
+		loan = stages.has(loanId) ? loan : finalizeLoanStatus(loan);
 		finance = replaceLoan(finance, loan);
+	}
+
+	// Finalise each staged due loan's on-time/missed counters from the
+	// allocation result, then settle its status (spec steps 9-11).
+	for (const loanId of dueLoanIds) {
+		const stage = stages.get(loanId)!;
+		const loan = finance.loans.find((candidate) => candidate.id === loanId)!;
+		const classified = classifyScheduledInstallment({ finance, loan, stage, day: input.day });
+		finance = classified.finance;
+		finance = replaceLoan(finance, classified.loan);
 	}
 
 	assertActivityReconciliation(finance);
