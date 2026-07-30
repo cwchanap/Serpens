@@ -1886,7 +1886,7 @@ test('finance flow borrows, reconciles a scheduled payment, focuses its alert, a
 	);
 	if (!alertWindowLoan) throw new Error('Working-capital loan disappeared before its alert.');
 
-	await page.getByRole('button', { name: /^alerts/i }).click();
+	await page.getByRole('button', { name: /^\d+ alerts?$/i }).click();
 	const alerts = page.getByRole('group', { name: 'Alerts list' });
 	const scheduledWorkingCapitalPayment =
 		estimateNextLoanPayment(alertWindowLoan).toLocaleString('en-US');
