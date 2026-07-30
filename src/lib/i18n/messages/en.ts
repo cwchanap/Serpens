@@ -528,6 +528,7 @@ export const en = {
 			insufficientCash: 'Insufficient cash',
 			overpayment: 'Amount exceeds the payoff quote',
 			unsupportedTerm: 'Unsupported loan term',
+			unsupportedPurpose: 'Unsupported loan purpose',
 			insufficientCredit: 'Insufficient credit',
 			purchaseUnavailable: 'Purchase is unavailable',
 			purchaseCostChanged: 'Purchase cost changed'
@@ -584,12 +585,9 @@ export const en = {
 			transactionActivity: 'Transaction activity',
 			noActivity: 'No finance activity yet.',
 			day: 'Day {day}',
-			review: 'Review {action}',
 			confirm: 'Confirm {action}',
 			cancelReview: 'Cancel review',
-			submittedAfterConfirmation: '{amount} will be submitted only after confirmation.',
-			noCashOut: 'No cash-out is included.',
-			replacementApr: 'Replacement APR',
+			dismissReview: 'Dismiss review',
 			borrowingConfirmed: 'Borrowing confirmed.',
 			repaymentConfirmed: 'Repayment confirmed.',
 			payoffConfirmed: 'Payoff confirmed.',
@@ -896,7 +894,7 @@ export const en = {
 			factoryBlocked: '{buildingName} starved of inputs',
 			upcomingLoanPayment: '{purpose} payment of {amount} is due on day {day}.',
 			missedLoanPayment: '{purpose} has a missed payment of {amount}.',
-			covenantRisk: 'Debt-service coverage is {coverage}, below 1.25.',
+			covenantRisk: 'Debt-service coverage is {coverage}, below {threshold}.',
 			lowCashRunway: 'Cash runway is {days} days.'
 		},
 		reportWarnings: {

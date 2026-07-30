@@ -526,12 +526,10 @@ export interface DecisionOption {
 	label: string;
 	description: string;
 	effects: Partial<Scorecard> & {
-		cash?: number;
 		stockHealth?: number;
 		staffMorale?: number;
 		reputation?: number;
-		finance?: DecisionFinanceEffect;
-	};
+	} & ({ cash?: number; finance?: never } | { cash?: never; finance?: DecisionFinanceEffect });
 }
 
 export interface DecisionItem {

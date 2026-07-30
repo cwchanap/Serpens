@@ -530,6 +530,7 @@ export const ja = {
 			insufficientCash: '現金が不足しています',
 			overpayment: '金額が完済見積額を超えています',
 			unsupportedTerm: '未対応の借入期間です',
+			unsupportedPurpose: '未対応の借入目的です',
 			insufficientCredit: '利用可能な信用枠が不足しています',
 			purchaseUnavailable: '購入できません',
 			purchaseCostChanged: '購入価格が変更されました'
@@ -586,12 +587,9 @@ export const ja = {
 			transactionActivity: '取引履歴',
 			noActivity: '財務取引はまだありません。',
 			day: '{day}日目',
-			review: '{action}を確認',
 			confirm: '{action}を確定',
 			cancelReview: '確認を取り消す',
-			submittedAfterConfirmation: '{amount} は確定後に実行されます。',
-			noCashOut: '現金受取は含まれません。',
-			replacementApr: '借換後APR',
+			dismissReview: '検討を閉じる',
 			borrowingConfirmed: '借入を確定しました。',
 			repaymentConfirmed: '返済を確定しました。',
 			payoffConfirmed: '完済を確定しました。',
@@ -889,7 +887,7 @@ export const ja = {
 			factoryBlocked: '{buildingName} は原料不足です',
 			upcomingLoanPayment: '{purpose}の支払額 {amount} は{day}日目が期限です。',
 			missedLoanPayment: '{purpose}に未払い {amount} があります。',
-			covenantRisk: '債務返済カバレッジは {coverage} で、1.25を下回っています。',
+			covenantRisk: '債務返済カバレッジは {coverage} で、{threshold}を下回っています。',
 			lowCashRunway: '資金余力はあと{days}日です。'
 		},
 		reportWarnings: {

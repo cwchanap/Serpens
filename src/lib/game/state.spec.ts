@@ -319,7 +319,6 @@ describe('game state', () => {
 							label: 'Accept',
 							description: 'Borrow against the supplier terms.',
 							effects: {
-								cash: 999,
 								profit: -2,
 								finance: {
 									kind: 'borrow' as const,
@@ -361,7 +360,6 @@ describe('game state', () => {
 			label: 'Accept',
 			description: 'Borrow against the supplier terms.',
 			effects: {
-				cash: 999,
 				customerSatisfaction: -10,
 				finance: {
 					kind: 'borrow' as const,

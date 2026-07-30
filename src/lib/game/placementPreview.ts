@@ -118,12 +118,14 @@ interface IndustryPlacementInput {
 	game: GameState | null;
 	tileId: string;
 	buildingTypeId: IndustrialBuildingTypeId;
+	financeCommandAvailable: boolean;
 	placementContext?: IndustrialPlacementContext | null;
 }
 
 interface IndustryPreviewInput {
 	game: GameState | null;
 	buildingTypeId: IndustrialBuildingTypeId;
+	financeCommandAvailable: boolean;
 }
 
 interface IndustrialBuildMenuInput {
@@ -453,7 +455,10 @@ export function getIndustryBuildPlacementBlockReason(
 	}
 
 	if (input.game.cash < buildingType.buildCost) {
-		if (getExpansionFinanceOffer(input.game, buildingType.buildCost)) {
+		if (
+			input.financeCommandAvailable &&
+			getExpansionFinanceOffer(input.game, buildingType.buildCost)
+		) {
 			return null;
 		}
 		return {

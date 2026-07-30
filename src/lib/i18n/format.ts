@@ -5,6 +5,7 @@ export interface LocaleFormatters {
 	integer(value: number): string;
 	decimal(value: number): string;
 	percent(value: number): string;
+	apr(basisPoints: number): string;
 	dateTime(value: string | number | Date): string;
 	list(values: readonly string[]): string;
 }
@@ -26,6 +27,11 @@ export function createLocaleFormatters(locale: SupportedLocale): LocaleFormatter
 		style: 'percent',
 		maximumFractionDigits: 0
 	});
+	const aprFormatter = new Intl.NumberFormat(locale, {
+		style: 'percent',
+		minimumFractionDigits: 2,
+		maximumFractionDigits: 2
+	});
 	const dateTimeFormatter = new Intl.DateTimeFormat(locale, {
 		dateStyle: 'medium',
 		timeStyle: 'short'
@@ -40,6 +46,7 @@ export function createLocaleFormatters(locale: SupportedLocale): LocaleFormatter
 		integer: (value) => integerFormatter.format(value),
 		decimal: (value) => decimalFormatter.format(value),
 		percent: (value) => percentFormatter.format(value),
+		apr: (basisPoints) => aprFormatter.format(basisPoints / 10_000),
 		dateTime: (value) => dateTimeFormatter.format(new Date(value)),
 		list: (values) => listFormatter.format([...values])
 	};

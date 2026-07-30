@@ -40,5 +40,33 @@ export default defineConfig(
 		// Override or add rule settings here, such as:
 		// 'svelte/button-has-type': 'error'
 		rules: {}
+	},
+	{
+		// The expansion financing runner is an internal helper that must not
+		// import domain modules — it receives all domain data through its
+		// inputs. This enforces the dependency-direction rule at lint time
+		// so future edits are caught without a brittle source-text test.
+		files: ['src/lib/game/expansionFinancing.ts'],
+		rules: {
+			'no-restricted-imports': [
+				'error',
+				{
+					paths: [
+						{
+							name: './world',
+							message: 'expansionFinancing must not import domain modules directly.'
+						},
+						{
+							name: './placement',
+							message: 'expansionFinancing must not import domain modules directly.'
+						},
+						{
+							name: './industryPlacement',
+							message: 'expansionFinancing must not import domain modules directly.'
+						}
+					]
+				}
+			]
+		}
 	}
 );

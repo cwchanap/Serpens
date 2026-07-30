@@ -7,12 +7,12 @@ type PrimitiveMessageTree = {
 };
 
 type NestedKeys<T, Prefix extends string = ''> = {
-	[K in keyof T & string]: T[K] extends string
+	[K in keyof T & (string | number)]: T[K] extends string
 		? `${Prefix}${K}`
 		: T[K] extends PrimitiveMessageTree
 			? NestedKeys<T[K], `${Prefix}${K}.`>
 			: never;
-}[keyof T & string];
+}[keyof T & (string | number)];
 
 export type TranslationKey = NestedKeys<(typeof messagesByLocale)['en']>;
 

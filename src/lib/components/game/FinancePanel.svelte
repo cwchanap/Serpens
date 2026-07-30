@@ -4,13 +4,14 @@
 		assessCredit,
 		estimateNextLoanPayment,
 		getLoanArrearsAmount,
+		getPayoffAmount,
 		projectLoanSchedule
 	} from '$lib/game/finance';
 	import type { FinanceMetrics } from '$lib/game/financeMetrics';
 	import type { I18nBundle } from '$lib/i18n';
 	import type { FinanceFailureCode } from '$lib/game/finance';
 	import type { GameState, LoanInstrument, LoanTermDays } from '$lib/game/types';
-	import type { GameRouteCommitResult } from '../../../routes/gameRouteController';
+	import type { GameRouteCommitResult } from '$lib/game/commandResult';
 
 	type ReviewAction =
 		| { kind: 'borrow'; amount: number; termDays: LoanTermDays }
@@ -48,6 +49,7 @@
 	let statusMessage = $state('');
 	let returnFocusField = $state<string | null>(null);
 	let reviewHeading = $state<HTMLHeadingElement | null>(null);
+	let submitting = $state(false);
 
 	let selectedAssessment = $derived(metrics.creditAssessments[selectedTerm]);
 	let enteredBorrowAmount = $derived(parseWholeDollars(borrowAmount));
@@ -83,14 +85,6 @@
 		return Number.isSafeInteger(amount) && amount > 0 ? amount : null;
 	}
 
-	function formatApr(bps: number): string {
-		return new Intl.NumberFormat(i18n.locale, {
-			style: 'percent',
-			minimumFractionDigits: 2,
-			maximumFractionDigits: 2
-		}).format(bps / 10_000);
-	}
-
 	function formatRunway(): string {
 		return metrics.cashRunway.kind === 'ninetyPlus'
 			? i18n.t('financePanel.ui.ninetyPlusDays')
@@ -98,11 +92,7 @@
 	}
 
 	function loanPayoffQuote(loan: LoanInstrument): number {
-		return (
-			loan.remainingPrincipal +
-			loan.overdueInterest +
-			Math.ceil(loan.accruedInterestMicros / 1_000_000)
-		);
+		return getPayoffAmount(loan);
 	}
 
 	function fieldIdForLoan(prefix: string, loanId: string): string {
@@ -205,6 +195,8 @@
 				return i18n.t('financePanel.failures.overpayment');
 			case 'unsupportedTerm':
 				return i18n.t('financePanel.failures.unsupportedTerm');
+			case 'unsupportedPurpose':
+				return i18n.t('financePanel.failures.unsupportedPurpose');
 			case 'insufficientCredit':
 				return i18n.t('financePanel.failures.insufficientCredit');
 			case 'purchaseUnavailable':
@@ -235,47 +227,52 @@
 	}
 
 	async function confirmReview(): Promise<void> {
-		if (!review || mutationPending) return;
+		if (!review || mutationPending || submitting) return;
 		const action = review;
-		let result: GameRouteCommitResult;
-		if (action.kind === 'borrow') {
-			result = await onBorrow(action.amount, action.termDays);
-		} else if (action.kind === 'repay') {
-			result = await onRepay(action.loanId, action.amount);
-		} else if (action.kind === 'payoff') {
-			result = await onPayoff(action.loanId);
-		} else {
-			result = await onRefinance(action.loanId, action.termDays);
-		}
-
-		if (!isCommitted(result)) {
-			const failure = describeResult(result);
-			const field =
-				action.kind === 'borrow'
-					? 'borrow'
-					: action.kind === 'repay'
-						? fieldIdForLoan('repay-amount', action.loanId)
-						: (returnFocusField ?? 'borrow');
-			setError(field, failure);
-			if (result.status === 'domain-rejected') {
-				await tick();
-				document.getElementById(returnFocusField ?? 'borrow-amount')?.focus();
+		submitting = true;
+		try {
+			let result: GameRouteCommitResult;
+			if (action.kind === 'borrow') {
+				result = await onBorrow(action.amount, action.termDays);
+			} else if (action.kind === 'repay') {
+				result = await onRepay(action.loanId, action.amount);
+			} else if (action.kind === 'payoff') {
+				result = await onPayoff(action.loanId);
+			} else {
+				result = await onRefinance(action.loanId, action.termDays);
 			}
-			return;
-		}
 
-		if (action.kind === 'borrow') borrowAmount = '';
-		if (action.kind === 'repay') repaymentAmounts = { ...repaymentAmounts, [action.loanId]: '' };
-		fieldError = null;
-		review = null;
-		statusMessage =
-			action.kind === 'borrow'
-				? i18n.t('financePanel.ui.borrowingConfirmed')
-				: action.kind === 'repay'
-					? i18n.t('financePanel.ui.repaymentConfirmed')
-					: action.kind === 'payoff'
-						? i18n.t('financePanel.ui.payoffConfirmed')
-						: i18n.t('financePanel.ui.refinancingConfirmed');
+			if (!isCommitted(result)) {
+				const failure = describeResult(result);
+				const field =
+					action.kind === 'borrow'
+						? 'borrow'
+						: action.kind === 'repay'
+							? fieldIdForLoan('repay-amount', action.loanId)
+							: (returnFocusField ?? 'borrow');
+				setError(field, failure);
+				if (result.status === 'domain-rejected') {
+					await tick();
+					document.getElementById(returnFocusField ?? 'borrow-amount')?.focus();
+				}
+				return;
+			}
+
+			if (action.kind === 'borrow') borrowAmount = '';
+			if (action.kind === 'repay') repaymentAmounts = { ...repaymentAmounts, [action.loanId]: '' };
+			fieldError = null;
+			review = null;
+			statusMessage =
+				action.kind === 'borrow'
+					? i18n.t('financePanel.ui.borrowingConfirmed')
+					: action.kind === 'repay'
+						? i18n.t('financePanel.ui.repaymentConfirmed')
+						: action.kind === 'payoff'
+							? i18n.t('financePanel.ui.payoffConfirmed')
+							: i18n.t('financePanel.ui.refinancingConfirmed');
+		} finally {
+			submitting = false;
+		}
 	}
 
 	function transactionLabel(kind: GameState['finance']['transactions'][number]['kind']): string {
@@ -358,21 +355,21 @@
 		<div class="credit-grid">
 			<div>
 				<span>{i18n.t('financePanel.credit.baseApr')}</span><strong
-					>{formatApr(selectedAssessment.baseRateBps)}</strong
+					>{i18n.format.apr(selectedAssessment.baseRateBps)}</strong
 				>
 			</div>
 			<div>
 				<span>{i18n.t('financePanel.credit.adjustments')}</span><strong
 					>{i18n.t('financePanel.ui.healthAdjustment', {
-						amount: formatApr(selectedAssessment.healthPenaltyBps)
+						amount: i18n.format.apr(selectedAssessment.healthPenaltyBps)
 					})} · {i18n.t('financePanel.ui.historyAdjustment', {
-						amount: formatApr(selectedAssessment.historyPenaltyBps)
+						amount: i18n.format.apr(selectedAssessment.historyPenaltyBps)
 					})}</strong
 				>
 			</div>
 			<div>
 				<span>{i18n.t('financePanel.ui.finalApr')}</span><strong
-					>{formatApr(selectedAssessment.annualInterestRateBps)}</strong
+					>{i18n.format.apr(selectedAssessment.annualInterestRateBps)}</strong
 				>
 			</div>
 			<div>
@@ -450,7 +447,7 @@
 							'financePanel.ui.remainingPrincipal'
 						)}
 						{i18n.format.currency(loan.remainingPrincipal)} · {i18n.t('financePanel.ui.apr')}
-						{formatApr(loan.annualInterestRateBps)} · {i18n.t('financePanel.ui.term')}
+						{i18n.format.apr(loan.annualInterestRateBps)} · {i18n.t('financePanel.ui.term')}
 						{i18n.labels.loanTerm(loan.termDays)}
 					</p>
 					<p>
@@ -572,16 +569,16 @@
 				{@const comparison = refinanceComparison(review)}
 				<p>
 					{i18n.t('financePanel.ui.replacementComparison', {
-						apr: formatApr(comparison.assessment.annualInterestRateBps),
+						apr: i18n.format.apr(comparison.assessment.annualInterestRateBps),
 						firstPayment: i18n.format.currency(comparison.schedule.firstPayment),
 						peakPayment: i18n.format.currency(comparison.schedule.peakPayment)
 					})}
 				</p>
 			{/if}
 			<div class="review-actions">
-				<button type="button" disabled={mutationPending} onclick={cancelReview}
+				<button type="button" disabled={mutationPending || submitting} onclick={cancelReview}
 					>{i18n.t('financePanel.ui.cancelReview')}</button
-				><button type="button" disabled={mutationPending} onclick={confirmReview}
+				><button type="button" disabled={mutationPending || submitting} onclick={confirmReview}
 					>{i18n.t('financePanel.ui.confirm', { action: reviewActionLabel(review.kind) })}</button
 				>
 			</div>

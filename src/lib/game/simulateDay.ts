@@ -1,6 +1,7 @@
 import { getArchetype } from './archetypes';
 import { generateDecisions, pruneExpiredDecisions } from './events';
 import {
+	compareLoanById,
 	estimateNextLoanPayment,
 	getTotalDebt,
 	resetFinanceDayActivity,
@@ -243,13 +244,6 @@ export function simulateDay(
 
 	return refreshWorldProgress({
 		...postDayGame,
-		day: nextDay,
-		rngState: rng.getState(),
-		cash: cashAfter,
-		scorecard,
-		warehouse: importResult.warehouse,
-		hiringCandidates,
-		staff: staffWithXp,
 		decisions: [
 			...preservedDecisions,
 			...generateDecisions({
@@ -274,7 +268,7 @@ function getNextLoanPaymentSnapshot(
 				(left, right) =>
 					left.nextPaymentDay! - right.nextPaymentDay! ||
 					left.openedOnDay - right.openedOnDay ||
-					(left.id < right.id ? -1 : left.id > right.id ? 1 : 0)
+					compareLoanById(left, right)
 			)
 			.map((loan) => ({
 				loanId: loan.id,

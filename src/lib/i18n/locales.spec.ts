@@ -5,7 +5,8 @@ import {
 	resolveSupportedLocale,
 	saveLocalePreference
 } from './locales';
-import { createI18n } from './index';
+import { messagesByLocale } from './messages';
+import type { TranslationKey } from './translate';
 
 function storageMock(initial: Record<string, string> = {}) {
 	const data = new Map(Object.entries(initial));
@@ -19,7 +20,7 @@ function storageMock(initial: Record<string, string> = {}) {
 
 describe('locale resolution', () => {
 	it('provides every finance localization surface in every supported locale', () => {
-		const keys = [
+		const keys: TranslationKey[] = [
 			'game.managementPanels.finance',
 			'game.loanPurposes.founding',
 			'game.loanStatuses.delinquent',
@@ -37,10 +38,21 @@ describe('locale resolution', () => {
 			'shortcutCheatSheet.actions.finance'
 		];
 
+		const resolveCatalogValue = (catalog: unknown, key: string): unknown =>
+			key
+				.split('.')
+				.reduce<unknown>(
+					(acc, part) =>
+						acc && typeof acc === 'object' ? (acc as Record<string, unknown>)[part] : undefined,
+					catalog
+				);
+
 		for (const locale of ['en', 'ja', 'zh-Hant'] as const) {
-			const i18n = createI18n(locale);
+			const catalog = messagesByLocale[locale];
 			for (const key of keys) {
-				expect(i18n.t(key as never)).not.toBe(key);
+				const value = resolveCatalogValue(catalog, key);
+				expect(value, `${locale} missing ${key}`).toBeDefined();
+				expect(typeof value, `${locale} ${key} is not a string`).toBe('string');
 			}
 		}
 	});

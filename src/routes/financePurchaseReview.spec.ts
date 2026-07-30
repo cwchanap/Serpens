@@ -161,13 +161,25 @@ describe('finance purchase review coordinator', () => {
 
 	it('identifies only stale cost or credit rejections for live quote refresh', () => {
 		expect(
-			shouldRefreshFinancedPurchase({ status: 'domain-rejected', code: 'purchaseCostChanged' })
+			shouldRefreshFinancedPurchase({
+				status: 'domain-rejected',
+				code: 'purchaseCostChanged',
+				context: {}
+			})
 		).toBe(true);
 		expect(
-			shouldRefreshFinancedPurchase({ status: 'domain-rejected', code: 'insufficientCredit' })
+			shouldRefreshFinancedPurchase({
+				status: 'domain-rejected',
+				code: 'insufficientCredit',
+				context: {}
+			})
 		).toBe(true);
 		expect(
-			shouldRefreshFinancedPurchase({ status: 'domain-rejected', code: 'purchaseUnavailable' })
+			shouldRefreshFinancedPurchase({
+				status: 'domain-rejected',
+				code: 'purchaseUnavailable',
+				context: {}
+			})
 		).toBe(false);
 	});
 });

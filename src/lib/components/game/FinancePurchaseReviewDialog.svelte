@@ -43,7 +43,7 @@
 	<button
 		type="button"
 		class="finance-review-dismiss"
-		aria-label={i18n.t('financePanel.ui.cancelReview')}
+		aria-label={i18n.t('financePanel.ui.dismissReview')}
 		disabled={confirmationPending}
 		onclick={cancel}
 	></button>
@@ -55,11 +55,11 @@
 		aria-labelledby="financed-purchase-review-heading"
 	>
 		<h2 id="financed-purchase-review-heading">
-			{i18n.t('financePanel.financedPurchase.review' as never)}
+			{i18n.t('financePanel.financedPurchase.review')}
 		</h2>
 		<dl>
 			<div>
-				<dt>{i18n.t('financePanel.financedPurchase.purchaseCost' as never)}</dt>
+				<dt>{i18n.t('financePanel.financedPurchase.purchaseCost')}</dt>
 				<dd>{i18n.format.currency(purchase.expectedCost)}</dd>
 			</div>
 			<div>
@@ -68,7 +68,7 @@
 			</div>
 			{#if hasFinancedPurchaseOffer(purchase.offer)}
 				<div>
-					<dt>{i18n.t('financePanel.financedPurchase.shortfall' as never)}</dt>
+					<dt>{i18n.t('financePanel.financedPurchase.shortfall')}</dt>
 					<dd>{i18n.format.currency(purchase.offer.principal)}</dd>
 				</div>
 				<div>
@@ -100,14 +100,14 @@
 			>
 				{i18n.t('financePanel.ui.cancelReview')}
 			</button>
-			{#if purchase.offer}
+			{#if hasFinancedPurchaseOffer(purchase.offer)}
 				<button
 					type="button"
 					class="btn-primary"
 					disabled={confirmationPending}
 					onclick={onConfirm}
 				>
-					{i18n.t('financePanel.financedPurchase.confirm' as never)}
+					{i18n.t('financePanel.financedPurchase.confirm')}
 				</button>
 			{/if}
 		</div>

@@ -6,7 +6,9 @@ import {
 	getScheduledPrincipalForInstallment,
 	getTotalAmountDue,
 	hasLoanArrears,
-	LOAN_PAYMENT_FREQUENCY_DAYS
+	isOutstandingLoan,
+	LOAN_PAYMENT_FREQUENCY_DAYS,
+	moveWholeMaturedInterestToArrears
 } from './finance';
 import type { CreditAssessment } from './finance';
 import type { GameState, LoanInstrument, LoanPaymentSnapshot, LoanTermDays } from './types';
@@ -32,10 +34,6 @@ export interface FinanceMetrics {
 	debtServiceCoverage: number | null;
 	creditAssessments: Record<LoanTermDays, CreditAssessment>;
 	cashRunway: CashRunway;
-}
-
-function isOutstandingLoan(loan: LoanInstrument): boolean {
-	return loan.status === 'active' || loan.status === 'delinquent';
 }
 
 function compareLoans(left: LoanInstrument, right: LoanInstrument): number {
@@ -118,9 +116,12 @@ function projectDueLoanPayment(
 
 function moveMaturedProjectedInterestToArrears(loan: LoanInstrument): void {
 	if (loan.nextPaymentDay !== null || loan.accruedInterestMicros === 0) return;
-	const wholeInterest = Math.floor(loan.accruedInterestMicros / 1_000_000);
-	loan.overdueInterest += wholeInterest;
-	loan.accruedInterestMicros -= wholeInterest * 1_000_000;
+	const moved = moveWholeMaturedInterestToArrears(loan);
+	loan.overdueInterest = moved.overdueInterest;
+	loan.accruedInterestMicros = moved.accruedInterestMicros;
+	// The projection has no cash context, so fractional matured interest is
+	// always rounded up to arrears (conservative). The real ledger applies a
+	// cash-availability rule before rounding up fractional interest.
 	if (loan.accruedInterestMicros > 0) {
 		loan.overdueInterest += Math.ceil(loan.accruedInterestMicros / 1_000_000);
 		loan.accruedInterestMicros = 0;

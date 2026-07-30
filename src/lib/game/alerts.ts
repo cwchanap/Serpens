@@ -1,9 +1,14 @@
 import { INDUSTRIAL_BUILDING_TYPES } from './industry';
-import { estimateNextLoanPayment, hasLoanArrears } from './finance';
+import { estimateNextLoanPayment, hasLoanArrears, isOutstandingLoan } from './finance';
 import { getFinanceMetrics } from './financeMetrics';
 import { storeNameOrOrdinal } from './state';
 import { summarizeStockTrouble } from './stock';
 import type { GameState, LoanInstrument } from './types';
+
+/** Debt-service coverage ratio below which a covenant-risk alert fires. */
+export const COVENANT_THRESHOLD = 1.25;
+/** Cash runway (in days) at or below which a low-cash-runway alert fires. */
+export const LOW_CASH_RUNWAY_DAYS = 7;
 
 export type GameAlertKind =
 	| 'store-stock'
@@ -39,17 +44,10 @@ function compareByNumberThenId(
 	);
 }
 
-function isOpenLoan(loan: LoanInstrument): boolean {
-	return loan.status === 'active' || loan.status === 'delinquent';
-}
-
 function collectFinanceAlerts(game: GameState): GameAlert[] {
-	// Finance metrics are a single coherent snapshot for the entire group. They
-	// are derived here rather than persisted, just like the existing alert groups.
-	const metrics = getFinanceMetrics(game);
 	const alerts: GameAlert[] = [];
 	const missedLoans = game.finance.loans
-		.filter((loan) => isOpenLoan(loan) && hasLoanArrears(loan))
+		.filter((loan) => isOutstandingLoan(loan) && hasLoanArrears(loan))
 		.sort((left, right) =>
 			compareByNumberThenId(left, right, left.arrearsSinceDay, right.arrearsSinceDay)
 		);
@@ -67,7 +65,7 @@ function collectFinanceAlerts(game: GameState): GameAlert[] {
 	const upcomingLoans = game.finance.loans
 		.filter(
 			(loan) =>
-				isOpenLoan(loan) &&
+				isOutstandingLoan(loan) &&
 				loan.nextPaymentDay !== null &&
 				loan.nextPaymentDay >= game.day &&
 				loan.nextPaymentDay <= game.day + 3
@@ -87,16 +85,27 @@ function collectFinanceAlerts(game: GameState): GameAlert[] {
 		});
 	}
 
-	if (metrics.debtServiceCoverage !== null && metrics.debtServiceCoverage < 1.25) {
+	// Finance metrics are a single coherent snapshot for the entire group. They
+	// are derived here rather than persisted, just like the existing alert groups.
+	// Skip the metric-dependent covenant and runway alerts when there are no
+	// loans, since debt-service coverage is undefined without debt and the
+	// runway alert is only meaningful alongside financing activity.
+	if (game.finance.loans.length === 0) {
+		return alerts;
+	}
+
+	const metrics = getFinanceMetrics(game);
+
+	if (metrics.debtServiceCoverage !== null && metrics.debtServiceCoverage < COVENANT_THRESHOLD) {
 		alerts.push({
 			id: 'covenantRisk',
 			kind: 'covenantRisk',
-			message: 'Debt-service coverage is below 1.25.',
+			message: `Debt-service coverage is below ${COVENANT_THRESHOLD}.`,
 			managementPanelId: 'finance'
 		});
 	}
 
-	if (metrics.cashRunway.kind === 'days' && metrics.cashRunway.days <= 7) {
+	if (metrics.cashRunway.kind === 'days' && metrics.cashRunway.days <= LOW_CASH_RUNWAY_DAYS) {
 		alerts.push({
 			id: 'lowCashRunway',
 			kind: 'lowCashRunway',

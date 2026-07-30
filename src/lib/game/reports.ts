@@ -53,33 +53,23 @@ export function summarizeReports(reports: DailyReport[]): ReportSummary {
 
 function summarizeWindow(reports: DailyReport[], windowSize: number): ReportWindowSummary {
 	const window = reports.slice(-windowSize);
-	const revenue = Math.round(window.reduce((sum, report) => sum + report.revenue, 0));
-	const importSpend = Math.round(window.reduce((sum, report) => sum + getImportSpend(report), 0));
-	const operatingIncome = Math.round(
-		window.reduce((sum, report) => sum + report.operatingIncome, 0)
-	);
-	const operatingCashFlow = Math.round(
-		window.reduce((sum, report) => sum + report.operatingCashFlow, 0)
-	);
-	const interestAccrued = window.reduce((sum, report) => sum + report.interestAccrued, 0);
-	const interestPaid = Math.round(window.reduce((sum, report) => sum + report.interestPaid, 0));
-	const interestCapitalized = Math.round(
-		window.reduce((sum, report) => sum + report.interestCapitalized, 0)
-	);
-	const principalBorrowed = Math.round(
-		window.reduce((sum, report) => sum + report.principalBorrowed, 0)
-	);
-	const principalRepaid = Math.round(
-		window.reduce((sum, report) => sum + report.principalRepaid, 0)
-	);
-	const refinancedPrincipal = Math.round(
-		window.reduce((sum, report) => sum + report.refinancedPrincipal, 0)
-	);
-	const financingCashFlow = Math.round(
-		window.reduce((sum, report) => sum + report.financingCashFlow, 0)
-	);
-	const netCashChange = Math.round(window.reduce((sum, report) => sum + report.netCashChange, 0));
-	const netIncome = Math.round(window.reduce((sum, report) => sum + report.netIncome, 0));
+	const total = (select: (report: DailyReport) => number, round = true): number => {
+		const sum = window.reduce((acc, report) => acc + select(report), 0);
+		return round ? Math.round(sum) : sum;
+	};
+	const revenue = total((report) => report.revenue);
+	const importSpend = total((report) => getImportSpend(report));
+	const operatingIncome = total((report) => report.operatingIncome);
+	const operatingCashFlow = total((report) => report.operatingCashFlow);
+	const interestAccrued = total((report) => report.interestAccrued, false);
+	const interestPaid = total((report) => report.interestPaid);
+	const interestCapitalized = total((report) => report.interestCapitalized);
+	const principalBorrowed = total((report) => report.principalBorrowed);
+	const principalRepaid = total((report) => report.principalRepaid);
+	const refinancedPrincipal = total((report) => report.refinancedPrincipal);
+	const financingCashFlow = total((report) => report.financingCashFlow);
+	const netCashChange = total((report) => report.netCashChange);
+	const netIncome = total((report) => report.netIncome);
 	const days = window.length;
 
 	return {

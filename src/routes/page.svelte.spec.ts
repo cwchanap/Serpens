@@ -139,7 +139,11 @@ function validRetailTile(game: GameState): string {
 }
 
 function validIndustryTile(game: GameState, typeId: IndustrialBuildingTypeId): string {
-	const preview = createIndustryPlacementPreview({ game, buildingTypeId: typeId });
+	const preview = createIndustryPlacementPreview({
+		game,
+		buildingTypeId: typeId,
+		financeCommandAvailable: true
+	});
 	return preview.validTileIds[0]!;
 }
 

@@ -590,10 +590,15 @@ projectedPeakWeeklyPayment = max(projectedWeeklyPayments);
 
 When `weeklyServiceHeadroom === 0`, `maxPrincipalByService` is exactly zero even if a sub-
 installment principal would produce a zero-dollar first checkpoint. Otherwise,
-`maxPrincipalByService` is found with a deterministic whole-dollar binary search from `0`
-through `principalHeadroom`. It is the largest `P` whose exact
+`maxPrincipalByService` is found with a deterministic whole-dollar downward scan from
+`min(principalHeadroom, weeklyServiceHeadroom * installmentCount)` through `0`. The
+interest-free upper bound is sound because any affordable principal satisfies
+`ceil(principal / installmentCount) <= weeklyServiceHeadroom`; clamping to
+`principalHeadroom` preserves the principal-cap constraint. It is the largest `P` whose exact
 `projectedPeakWeeklyPayment <= weeklyServiceHeadroom`; checking the peak prevents a sub-`N`
-principal from hiding its final remainder behind zero-dollar early checkpoints. Servicing, offer
+principal from hiding its final remainder behind zero-dollar early checkpoints. Peak payments
+are deliberately non-monotonic across consecutive principals, so a binary search would be
+unsafe; the downward scan stays exact at remainder boundaries. Servicing, offer
 previews, debt-service projections, and runway all reuse these integer principal and
 micro-interest helpers; there is no separate floating-point payment formula.
 
