@@ -910,7 +910,7 @@ describe('executeScenarioCommand dispatch', { timeout: 30_000 }, () => {
 
 	it('maps borrow, payoff, and refinance failures to invalid-command', () => {
 		const game = foundingGame();
-		const cases: Array<{ command: ScenarioCommand; allowed: string[] }> = [
+		const cases: Array<{ command: ScenarioCommand; allowed: ScenarioCommand['kind'][] }> = [
 			{
 				command: { kind: 'borrow', amount: 99_999_999, termDays: 56 },
 				allowed: ['borrow']
@@ -925,7 +925,7 @@ describe('executeScenarioCommand dispatch', { timeout: 30_000 }, () => {
 			}
 		];
 		for (const { command, allowed } of cases) {
-			const definition = commandDefinition(allowed as readonly string[]);
+			const definition = commandDefinition(allowed);
 			const run = activeRun(definition, game);
 			const result = executeScenarioCommand(run, definition, command);
 			expect(result.ok).toBe(false);
