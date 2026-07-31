@@ -966,6 +966,11 @@ export function getExpansionFinanceOfferWithAssessment(
 	const principal = purchaseCost - game.cash;
 	if (!Number.isSafeInteger(purchaseCost) || principal <= 0) return null;
 	if (principal > assessment.availableCredit) return null;
+	// buildExpansionFinanceOffer hardcodes FOUNDING_LOAN_TERM_DAYS for both the
+	// offer term and the peak-payment projection, so an assessment priced for a
+	// different term would yield a mismatched rate/payment. Reject it rather
+	// than silently quoting against the wrong curve.
+	if (assessment.termDays !== FOUNDING_LOAN_TERM_DAYS) return null;
 
 	return buildExpansionFinanceOffer(principal, assessment);
 }

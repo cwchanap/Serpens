@@ -172,15 +172,7 @@ export function createRetailPlacementPreview(input: RetailPreviewInput): Placeme
 	// blocked previews never trigger the scan. Retail `setupCost` varies per
 	// tile, so a single offer cannot be shared; the assessment is the
 	// cost-independent part, reused for every cash-short tile.
-	let cachedAssessment: CreditAssessment | null | undefined;
-	const getAssessment = (): CreditAssessment | null => {
-		if (cachedAssessment !== undefined) return cachedAssessment;
-		cachedAssessment =
-			input.game && financeCommandAvailable
-				? assessCredit(input.game, FOUNDING_LOAN_TERM_DAYS)
-				: null;
-		return cachedAssessment;
-	};
+	const getAssessment = createLazyCreditAssessment(input.game, financeCommandAvailable);
 	const context = createRetailPlacementContext(
 		input.game,
 		input.city,
@@ -290,15 +282,7 @@ export function getRetailBuildMenuOptions(input: RetailBuildMenuInput): RetailBu
 	// valid tiles never trigger the principal scan. Without this, each
 	// cash-short archetype re-ran assessCredit's principal scan through
 	// getExpansionFinanceOffer.
-	let cachedAssessment: CreditAssessment | null | undefined;
-	const getAssessment = (): CreditAssessment | null => {
-		if (cachedAssessment !== undefined) return cachedAssessment;
-		cachedAssessment =
-			context.game && financeCommandAvailable
-				? assessCredit(context.game, FOUNDING_LOAN_TERM_DAYS)
-				: null;
-		return cachedAssessment;
-	};
+	const getAssessment = createLazyCreditAssessment(context.game, financeCommandAvailable);
 
 	// Footprint block reasons are archetype-independent (they depend only on
 	// terrain, locked state, edge-of-map, and existing occupancy), so compute
@@ -381,15 +365,7 @@ export function getIndustrialBuildMenuOptions(
 	// so memoize it and run `assessCredit` on first access — cash-covered menus
 	// never trigger the principal scan. Without this, each cash-short building
 	// type re-ran assessCredit's principal scan through getExpansionFinanceOffer.
-	let cachedAssessment: CreditAssessment | null | undefined;
-	const getAssessment = (): CreditAssessment | null => {
-		if (cachedAssessment !== undefined) return cachedAssessment;
-		cachedAssessment =
-			input.game && input.financeCommandAvailable
-				? assessCredit(input.game, FOUNDING_LOAN_TERM_DAYS)
-				: null;
-		return cachedAssessment;
-	};
+	const getAssessment = createLazyCreditAssessment(input.game, input.financeCommandAvailable);
 
 	return Object.values(INDUSTRIAL_BUILDING_TYPES).map((buildingType) => {
 		if (!input.game) {
@@ -486,6 +462,28 @@ function createRetailPlacementContext(
 		cashCommandAvailable,
 		financeCommandAvailable,
 		getAssessment
+	};
+}
+
+/**
+ * Builds a memoizing getter that returns the founding-term credit assessment
+ * for `game`, computing `assessCredit(game, FOUNDING_LOAN_TERM_DAYS)` on first
+ * access and caching the result. Returns `null` when there is no game or
+ * financing is unavailable, so cash-covered or structurally blocked previews
+ * never trigger the principal scan. `assessCredit`'s expensive part depends
+ * only on `game` (not on the per-tile/per-archetype/per-type cost), so one
+ * getter can be shared across every cash-short entry in a build menu or
+ * full-map preview.
+ */
+function createLazyCreditAssessment(
+	game: GameState | null,
+	financeCommandAvailable: boolean
+): () => CreditAssessment | null {
+	let cached: CreditAssessment | null | undefined;
+	return (): CreditAssessment | null => {
+		if (cached !== undefined) return cached;
+		cached = game && financeCommandAvailable ? assessCredit(game, FOUNDING_LOAN_TERM_DAYS) : null;
+		return cached;
 	};
 }
 
