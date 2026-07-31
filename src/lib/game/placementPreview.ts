@@ -113,14 +113,16 @@ interface RetailPlacementContext {
 	game: GameState | null;
 	cashCommandAvailable: boolean;
 	financeCommandAvailable: boolean;
-	// Precomputed founding-term credit assessment for the per-tile finance
-	// check. The full-map preview computes this once (the expensive part is
-	// `assessCredit`'s principal scan, which is independent of `setupCost`) and
-	// reuses it for every cash-short tile, since retail `setupCost` varies per
-	// tile and a single offer cannot represent all of them. Standalone
-	// single-tile callers leave this null and fall back to a single
-	// `getExpansionFinanceOffer` call.
-	assessment: CreditAssessment | null;
+	// Lazy founding-term credit assessment for the per-tile finance check.
+	// `assessCredit`'s expensive part (the principal scan) depends only on
+	// `game`, not on the per-tile `setupCost`, so the full-map preview supplies
+	// a memoizing getter that runs it on first access — cash-covered or
+	// structurally blocked previews never trigger the scan. Retail `setupCost`
+	// varies per tile, so a single offer cannot represent all tiles; the
+	// assessment is the cost-independent part, reused for every cash-short
+	// tile. Standalone single-tile callers supply a getter returning null and
+	// the per-tile helper falls back to a single `getExpansionFinanceOffer`.
+	getAssessment: () => CreditAssessment | null;
 }
 
 interface RetailTilePlacementInput {
@@ -165,19 +167,25 @@ export function createRetailPlacementPreview(input: RetailPreviewInput): Placeme
 	const financeCommandAvailable = input.financeCommandAvailable ?? true;
 	// The per-tile finance check needs a credit assessment, but `assessCredit`'s
 	// principal scan depends only on `game` (not on the per-tile `setupCost`),
-	// so compute it once for the whole preview and reuse it for every
-	// cash-short tile. Retail `setupCost` varies per tile, so a single offer
-	// cannot be shared — the assessment is the cost-independent part.
-	const assessment =
-		input.game && financeCommandAvailable
-			? assessCredit(input.game, FOUNDING_LOAN_TERM_DAYS)
-			: null;
+	// so memoize it and run it on first access — cash-covered or structurally
+	// blocked previews never trigger the scan. Retail `setupCost` varies per
+	// tile, so a single offer cannot be shared; the assessment is the
+	// cost-independent part, reused for every cash-short tile.
+	let cachedAssessment: CreditAssessment | null | undefined;
+	const getAssessment = (): CreditAssessment | null => {
+		if (cachedAssessment !== undefined) return cachedAssessment;
+		cachedAssessment =
+			input.game && financeCommandAvailable
+				? assessCredit(input.game, FOUNDING_LOAN_TERM_DAYS)
+				: null;
+		return cachedAssessment;
+	};
 	const context = createRetailPlacementContext(
 		input.game,
 		input.city,
 		input.cashCommandAvailable,
 		financeCommandAvailable,
-		assessment
+		getAssessment
 	);
 	const validTileIds: string[] = [];
 	const invalidTileIds: string[] = [];
@@ -251,12 +259,9 @@ function getRetailTilePlacementBlockReason(
 
 	if (input.context.cash < setupCost) {
 		if (input.context.financeCommandAvailable && input.context.game) {
-			const offer = input.context.assessment
-				? getExpansionFinanceOfferWithAssessment(
-						input.context.game,
-						setupCost,
-						input.context.assessment
-					)
+			const assessment = input.context.getAssessment();
+			const offer = assessment
+				? getExpansionFinanceOfferWithAssessment(input.context.game, setupCost, assessment)
 				: getExpansionFinanceOffer(input.context.game, setupCost);
 			if (offer) {
 				return null;
@@ -279,14 +284,20 @@ export function getRetailBuildMenuOptions(input: RetailBuildMenuInput): RetailBu
 		financeCommandAvailable
 	);
 	// The assessment depends only on `game` (not on the per-archetype
-	// `minimumSetupCost`), so compute it once for the whole menu and reuse it
-	// via getExpansionFinanceOfferWithAssessment. Without this, each cash-short
-	// archetype re-ran assessCredit's principal scan through
+	// `minimumSetupCost`), so memoize it and run `assessCredit` on first
+	// access — cash-covered menus, capped menus, and menus with no structurally
+	// valid tiles never trigger the principal scan. Without this, each
+	// cash-short archetype re-ran assessCredit's principal scan through
 	// getExpansionFinanceOffer.
-	const assessment =
-		context.game && financeCommandAvailable
-			? assessCredit(context.game, FOUNDING_LOAN_TERM_DAYS)
-			: null;
+	let cachedAssessment: CreditAssessment | null | undefined;
+	const getAssessment = (): CreditAssessment | null => {
+		if (cachedAssessment !== undefined) return cachedAssessment;
+		cachedAssessment =
+			context.game && financeCommandAvailable
+				? assessCredit(context.game, FOUNDING_LOAN_TERM_DAYS)
+				: null;
+		return cachedAssessment;
+	};
 
 	// Footprint block reasons are archetype-independent (they depend only on
 	// terrain, locked state, edge-of-map, and existing occupancy), so compute
@@ -338,6 +349,9 @@ export function getRetailBuildMenuOptions(input: RetailBuildMenuInput): RetailBu
 
 		const minimumSetupCost = Math.min(...validForecasts.map((forecast) => forecast.setupCost));
 		const cashCovered = context.cash === null || context.cash >= minimumSetupCost;
+		// Only pull the (memoized) assessment when this archetype is actually
+		// cash-short — cash-covered archetypes never trigger the principal scan.
+		const assessment = !cashCovered ? getAssessment() : null;
 		const financeOffer =
 			!cashCovered && context.financeCommandAvailable && context.game && assessment
 				? getExpansionFinanceOfferWithAssessment(context.game, minimumSetupCost, assessment)
@@ -363,14 +377,18 @@ export function getIndustrialBuildMenuOptions(
 	input: IndustrialBuildMenuInput
 ): IndustrialBuildMenuOption[] {
 	// The assessment depends only on `game` (not on the per-type `buildCost`),
-	// so compute it once for the whole menu and reuse it via
-	// getExpansionFinanceOfferWithAssessment. Without this, each cash-short
-	// building type re-ran assessCredit's principal scan through
-	// getExpansionFinanceOffer.
-	const assessment =
-		input.game && input.financeCommandAvailable
-			? assessCredit(input.game, FOUNDING_LOAN_TERM_DAYS)
-			: null;
+	// so memoize it and run `assessCredit` on first access — cash-covered menus
+	// never trigger the principal scan. Without this, each cash-short building
+	// type re-ran assessCredit's principal scan through getExpansionFinanceOffer.
+	let cachedAssessment: CreditAssessment | null | undefined;
+	const getAssessment = (): CreditAssessment | null => {
+		if (cachedAssessment !== undefined) return cachedAssessment;
+		cachedAssessment =
+			input.game && input.financeCommandAvailable
+				? assessCredit(input.game, FOUNDING_LOAN_TERM_DAYS)
+				: null;
+		return cachedAssessment;
+	};
 
 	return Object.values(INDUSTRIAL_BUILDING_TYPES).map((buildingType) => {
 		if (!input.game) {
@@ -391,6 +409,9 @@ export function getIndustrialBuildMenuOptions(
 			};
 		}
 
+		// Only pull the (memoized) assessment when this building is actually
+		// cash-short — cash-covered buildings returned above never reach here.
+		const assessment = getAssessment();
 		const financeOffer =
 			input.financeCommandAvailable && assessment
 				? getExpansionFinanceOfferWithAssessment(input.game, buildingType.buildCost, assessment)
@@ -450,7 +471,7 @@ function createRetailPlacementContext(
 	city: City,
 	cashCommandAvailable = true,
 	financeCommandAvailable = true,
-	assessment: CreditAssessment | null = null
+	getAssessment: () => CreditAssessment | null = () => null
 ): RetailPlacementContext {
 	const tileLookup = createCityTileLookup(city);
 
@@ -463,7 +484,7 @@ function createRetailPlacementContext(
 		game,
 		cashCommandAvailable,
 		financeCommandAvailable,
-		assessment
+		getAssessment
 	};
 }
 
