@@ -205,7 +205,7 @@
 						class="finance-city"
 						onclick={() => onFinanceCity(selectedStatus.city.id)}
 					>
-						{i18n.t('financePanel.financedPurchase.financeOpening' as never)}
+						{i18n.t('financePanel.financedPurchase.financeOpening')}
 					</button>
 				{/if}
 				{#if !canOpenWorldCity && (!selectedStatus.financeOffer || !canFinanceWorldCity) && disabledReason}

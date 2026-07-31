@@ -946,12 +946,12 @@ describe('saveCodec', () => {
 		expect(revalidated).toEqual(validated);
 	});
 
-	test('validates a long linear refinance chain without quadratic traversal', () => {
+	test('validates a long linear refinance chain and round-trips it', () => {
 		// A valid linear chain of N refinances (loan-1 -> loan-2 -> ... ->
-		// loan-N) makes the per-node refinancedByLoanId walk revisit the tail
-		// from every start, ~N^2/2 lookups. The 205-unlinked-loans test does not
-		// exercise this worst case because none of those loans link to each
-		// other. This chain must validate and round-trip in linear time.
+		// loan-N) exercises a linked refinancedByLoanId walk across many nodes.
+		// The 205-unlinked-loans test does not cover this because none of those
+		// loans link to each other; this chain validates and round-trips the
+		// linked case.
 		expect.assertions(3);
 		const game = createGame();
 		const base = game.finance.loans[0]!;
@@ -1002,7 +1002,7 @@ describe('saveCodec', () => {
 	});
 
 	test('rejects a transaction whose relatedLoanId references an unknown loan', () => {
-		expect.assertions(1);
+		expect.assertions(2);
 		const game = createGame();
 		const transaction = {
 			id: 'finance-transaction-1',
@@ -1015,17 +1015,20 @@ describe('saveCodec', () => {
 			principalDelta: 1,
 			interestAmount: 0
 		};
-		expect(() =>
+		const call = () =>
 			validateSaveRecord(
 				createManualSaveRecord({
 					game: { finance: { ...game.finance, transactions: [transaction] } }
 				})
-			)
-		).toThrow(SaveDataError);
+			);
+		expect(call).toThrow(SaveDataError);
+		expect(call).toThrow(
+			'Saved game finance transactions[0] relatedLoanId must reference a known loan'
+		);
 	});
 
 	test('rejects a transaction with a non-integer cash delta', () => {
-		expect.assertions(1);
+		expect.assertions(2);
 		const game = createGame();
 		const transaction = {
 			id: 'finance-transaction-1',
@@ -1037,13 +1040,14 @@ describe('saveCodec', () => {
 			principalDelta: 1,
 			interestAmount: 0
 		};
-		expect(() =>
+		const call = () =>
 			validateSaveRecord(
 				createManualSaveRecord({
 					game: { finance: { ...game.finance, transactions: [transaction] } }
 				})
-			)
-		).toThrow(SaveDataError);
+			);
+		expect(call).toThrow(SaveDataError);
+		expect(call).toThrow('Saved game finance transactions[0] cashDelta must be an integer');
 	});
 
 	test('rejects a v10 record whose legacy report lacks numeric cash fields', () => {

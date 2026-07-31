@@ -474,6 +474,50 @@ describe('retail placement preview', () => {
 		).toBeNull();
 	});
 
+	test('computes the credit assessment once per retail preview, not once per cash-short tile', () => {
+		// Retail `setupCost` varies per tile, so the per-tile finance check still
+		// needs a per-tile principal check — but the expensive part of
+		// `getExpansionFinanceOffer` is `assessCredit`'s principal scan, which
+		// depends only on `game`. A full-map preview must run it exactly once
+		// regardless of how many tiles are cash-short and financeable.
+		expect.assertions(2);
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 20,
+			height: 20,
+			seed: 20260503
+		});
+		const foundingTile = city.tiles.find((tile) => isRetailFootprintAvailable(city, tile))!;
+		const game = {
+			...createFoundingGameAtTile({
+				archetypeId: 'convenience',
+				city,
+				tileId: foundingTile.id,
+				seed: 20260503
+			}),
+			cash: 0
+		};
+		const financeableTileCount = city.tiles.filter(
+			(tile) => tile.id !== foundingTile.id && isRetailFootprintAvailable(city, tile, game.stores)
+		).length;
+		expect(financeableTileCount).toBeGreaterThan(1);
+
+		const spy = vi.spyOn(financeModule, 'assessCredit');
+		try {
+			createRetailPlacementPreview({
+				game,
+				city,
+				archetypeId: 'electronics',
+				cashCommandAvailable: false,
+				financeCommandAvailable: true
+			});
+			expect(spy).toHaveBeenCalledTimes(1);
+		} finally {
+			spy.mockRestore();
+		}
+	});
+
 	test('reports occupied-location disabled reason when every buildable tile is taken but storeCap remains', () => {
 		expect.assertions(2);
 		const city = generateCity({
@@ -777,13 +821,16 @@ describe('industry placement preview', () => {
 		expect(industrialTileCount).toBeGreaterThan(1);
 
 		const spy = vi.spyOn(financeModule, 'getExpansionFinanceOffer');
-		createIndustryPlacementPreview({
-			game,
-			buildingTypeId: 'warehouse',
-			financeCommandAvailable: true
-		});
-		expect(spy).toHaveBeenCalledTimes(1);
-		spy.mockRestore();
+		try {
+			createIndustryPlacementPreview({
+				game,
+				buildingTypeId: 'warehouse',
+				financeCommandAvailable: true
+			});
+			expect(spy).toHaveBeenCalledTimes(1);
+		} finally {
+			spy.mockRestore();
+		}
 	});
 
 	test('marks non-industrial tiles invalid for buildings that require industrial terrain', () => {

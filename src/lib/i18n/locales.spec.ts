@@ -47,7 +47,7 @@ describe('locale resolution', () => {
 					catalog
 				);
 
-		for (const locale of ['en', 'ja', 'zh-Hant'] as const) {
+		for (const locale of Object.keys(messagesByLocale) as (keyof typeof messagesByLocale)[]) {
 			const catalog = messagesByLocale[locale];
 			for (const key of keys) {
 				const value = resolveCatalogValue(catalog, key);

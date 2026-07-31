@@ -271,12 +271,14 @@ describe('finance metrics', () => {
 	});
 
 	it('excludes paid and refinanced loans from outstanding principal', () => {
+		// Paid and refinanced loans carry non-zero remainingPrincipal here so the
+		// assertion verifies exclusion by loan status, not by a zeroed balance.
 		const finance = createEmptyFinanceState(10);
-		const paid = createLoan({ id: 'loan-paid', status: 'paid', remainingPrincipal: 0 });
+		const paid = createLoan({ id: 'loan-paid', status: 'paid', remainingPrincipal: 250 });
 		const refinanced = createLoan({
 			id: 'loan-refinanced',
 			status: 'refinanced',
-			remainingPrincipal: 0
+			remainingPrincipal: 300
 		});
 		const active = createLoan({ id: 'loan-active', remainingPrincipal: 500 });
 

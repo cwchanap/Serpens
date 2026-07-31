@@ -16,6 +16,16 @@ describe('createTranslator', () => {
 		expect(t('topBar.day')).toBe('Day {day}');
 	});
 
+	it('resolves numeric message keys via a type-checked lookup', () => {
+		// `game.archetypes.<archetype>.risks` is keyed by numeric indices, so the
+		// path ends in ".0". Passing the literal key (no `as never`) keeps the
+		// compile-time TranslationKey check and verifies getMessage resolves the
+		// numeric segment at runtime.
+		expect.assertions(1);
+		const t = createTranslator('en');
+		expect(t('game.archetypes.convenience.risks.0')).toBe('Stockouts');
+	});
+
 	it('returns the key without warning when a key is missing and dev mode is off', () => {
 		expect.assertions(2);
 		const warn = vi.fn();
