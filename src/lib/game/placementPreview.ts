@@ -137,13 +137,14 @@ interface IndustryPlacementInput {
 	buildingTypeId: IndustrialBuildingTypeId;
 	financeCommandAvailable: boolean;
 	placementContext?: IndustrialPlacementContext | null;
-	// Precomputed finance offer for the building type's fixed buildCost. When
-	// the preview derives block reasons for every map tile, the offer depends
-	// only on `game` and `buildCost` (both constant across tiles), so computing
-	// it once and passing it here avoids re-running the credit-assessment
-	// principal scan per tile. Standalone single-tile callers omit this and the
-	// helper falls back to a single getExpansionFinanceOffer call.
-	financeOffer?: ExpansionFinanceOffer | null;
+	// Lazy finance offer for the building type's fixed buildCost. When the
+	// preview derives block reasons for every map tile, the offer depends only
+	// on `game` and `buildCost` (both constant across tiles), so a memoizing
+	// getter computes it on first access — cash-covered or structurally blocked
+	// previews never trigger the credit-assessment principal scan. Standalone
+	// single-tile callers omit this and the helper falls back to a single
+	// getExpansionFinanceOffer call.
+	getFinanceOffer?: () => ExpansionFinanceOffer | null;
 }
 
 interface IndustryPreviewInput {
@@ -497,14 +498,22 @@ export function createIndustryPlacementPreview(input: IndustryPreviewInput): Pla
 	}
 
 	// The finance offer depends only on `game` and the building type's fixed
-	// buildCost, both constant across tiles. Compute it once instead of letting
-	// getIndustryBuildPlacementBlockReason re-run assessCredit's principal scan
-	// for every cash-short tile (up to 2688 tiles on the default industry map).
+	// buildCost, both constant across tiles. Memoize it and run
+	// getExpansionFinanceOffer (and assessCredit's principal scan) on first
+	// access — cash-covered or structurally blocked previews never trigger the
+	// scan. The preview recomputes on every game update while industrial
+	// placement is armed, so this avoids the scan when it would never be
+	// consulted.
 	const buildingType = input.game ? INDUSTRIAL_BUILDING_TYPES[input.buildingTypeId] : undefined;
-	const financeOffer =
-		input.game && buildingType && input.financeCommandAvailable
-			? getExpansionFinanceOffer(input.game, buildingType.buildCost)
-			: null;
+	let cachedFinanceOffer: ExpansionFinanceOffer | null | undefined;
+	const getFinanceOffer = (): ExpansionFinanceOffer | null => {
+		if (cachedFinanceOffer !== undefined) return cachedFinanceOffer;
+		cachedFinanceOffer =
+			input.game && buildingType && input.financeCommandAvailable
+				? getExpansionFinanceOffer(input.game, buildingType.buildCost)
+				: null;
+		return cachedFinanceOffer;
+	};
 
 	const validTileIds: string[] = [];
 	const invalidTileIds: string[] = [];
@@ -514,7 +523,7 @@ export function createIndustryPlacementPreview(input: IndustryPreviewInput): Pla
 			...input,
 			tileId: tile.id,
 			placementContext,
-			financeOffer
+			getFinanceOffer
 		});
 
 		if (blockReason) {
@@ -553,12 +562,12 @@ export function getIndustryBuildPlacementBlockReason(
 	}
 
 	if (input.game.cash < buildingType.buildCost) {
-		// Use the precomputed offer when the preview supplies one (avoiding a
+		// Use the lazy offer when the preview supplies one (avoiding a
 		// per-tile assessCredit scan); fall back to a single offer computation
-		// for standalone single-tile callers that omit financeOffer.
+		// for standalone single-tile callers that omit getFinanceOffer.
 		const offer =
-			input.financeOffer !== undefined
-				? input.financeOffer
+			input.getFinanceOffer !== undefined
+				? input.getFinanceOffer()
 				: input.financeCommandAvailable
 					? getExpansionFinanceOffer(input.game, buildingType.buildCost)
 					: null;

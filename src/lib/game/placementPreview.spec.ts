@@ -1146,6 +1146,33 @@ describe('industry placement preview', () => {
 		}
 	});
 
+	test('skips the expansion finance offer when every industrial placement preview tile is cash-covered', () => {
+		// The offer is memoized lazily and only pulled when a tile is
+		// cash-short. A fully cash-covered preview (financing enabled) must not
+		// run getExpansionFinanceOffer (and assessCredit's principal scan) at
+		// all — the preview recomputes on every game update while industrial
+		// placement is armed.
+		expect.assertions(2);
+		const game = { ...createNewGame('convenience', 20260512), cash: 100_000_000 };
+		const city = game.industryCities[0]!;
+		const industrialTileCount = city.tiles.filter(
+			(tile) => tile.terrain === 'industrial' && !tile.locked
+		).length;
+		expect(industrialTileCount).toBeGreaterThan(0);
+
+		const spy = vi.spyOn(financeModule, 'getExpansionFinanceOffer');
+		try {
+			createIndustryPlacementPreview({
+				game,
+				buildingTypeId: 'warehouse',
+				financeCommandAvailable: true
+			});
+			expect(spy).not.toHaveBeenCalled();
+		} finally {
+			spy.mockRestore();
+		}
+	});
+
 	test('marks non-industrial tiles invalid for buildings that require industrial terrain', () => {
 		expect.assertions(4);
 		const game = { ...createNewGame('convenience', 20260512), cash: 100_000 };
