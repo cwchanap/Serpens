@@ -10,7 +10,14 @@ import {
 	type IndustrialPlacementContext
 } from './industryPlacement';
 import { forecastOpening } from './placement';
-import { getExpansionFinanceOffer, type ExpansionFinanceOffer } from './finance';
+import {
+	assessCredit,
+	FOUNDING_LOAN_TERM_DAYS,
+	getExpansionFinanceOffer,
+	getExpansionFinanceOfferWithAssessment,
+	type CreditAssessment,
+	type ExpansionFinanceOffer
+} from './finance';
 import {
 	createCityTileLookup,
 	getOccupiedStoreTileIds,
@@ -106,6 +113,14 @@ interface RetailPlacementContext {
 	game: GameState | null;
 	cashCommandAvailable: boolean;
 	financeCommandAvailable: boolean;
+	// Precomputed founding-term credit assessment for the per-tile finance
+	// check. The full-map preview computes this once (the expensive part is
+	// `assessCredit`'s principal scan, which is independent of `setupCost`) and
+	// reuses it for every cash-short tile, since retail `setupCost` varies per
+	// tile and a single offer cannot represent all of them. Standalone
+	// single-tile callers leave this null and fall back to a single
+	// `getExpansionFinanceOffer` call.
+	assessment: CreditAssessment | null;
 }
 
 interface RetailTilePlacementInput {
@@ -142,11 +157,21 @@ interface IndustrialBuildMenuInput {
 }
 
 export function createRetailPlacementPreview(input: RetailPreviewInput): PlacementPreview {
+	// The per-tile finance check needs a credit assessment, but `assessCredit`'s
+	// principal scan depends only on `game` (not on the per-tile `setupCost`),
+	// so compute it once for the whole preview and reuse it for every
+	// cash-short tile. Retail `setupCost` varies per tile, so a single offer
+	// cannot be shared — the assessment is the cost-independent part.
+	const assessment =
+		input.game && input.financeCommandAvailable
+			? assessCredit(input.game, FOUNDING_LOAN_TERM_DAYS)
+			: null;
 	const context = createRetailPlacementContext(
 		input.game,
 		input.city,
 		input.cashCommandAvailable,
-		input.financeCommandAvailable
+		input.financeCommandAvailable,
+		assessment
 	);
 	const validTileIds: string[] = [];
 	const invalidTileIds: string[] = [];
@@ -219,12 +244,17 @@ function getRetailTilePlacementBlockReason(
 	}
 
 	if (input.context.cash < setupCost) {
-		if (
-			input.context.financeCommandAvailable &&
-			input.context.game &&
-			getExpansionFinanceOffer(input.context.game, setupCost)
-		) {
-			return null;
+		if (input.context.financeCommandAvailable && input.context.game) {
+			const offer = input.context.assessment
+				? getExpansionFinanceOfferWithAssessment(
+						input.context.game,
+						setupCost,
+						input.context.assessment
+					)
+				: getExpansionFinanceOffer(input.context.game, setupCost);
+			if (offer) {
+				return null;
+			}
 		}
 		return { code: 'retail.requiresCash', amount: setupCost };
 	}
@@ -392,7 +422,8 @@ function createRetailPlacementContext(
 	game: GameState | null,
 	city: City,
 	cashCommandAvailable = true,
-	financeCommandAvailable = true
+	financeCommandAvailable = true,
+	assessment: CreditAssessment | null = null
 ): RetailPlacementContext {
 	const tileLookup = createCityTileLookup(city);
 
@@ -404,7 +435,8 @@ function createRetailPlacementContext(
 		cash: game?.cash ?? null,
 		game,
 		cashCommandAvailable,
-		financeCommandAvailable
+		financeCommandAvailable,
+		assessment
 	};
 }
 

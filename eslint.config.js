@@ -64,6 +64,15 @@ export default defineConfig(
 							name: './industryPlacement',
 							message: 'expansionFinancing must not import domain modules directly.'
 						}
+					],
+					patterns: [
+						{
+							// Block the same domain modules reached via the `$lib`
+							// path alias, which would bypass the exact relative-path
+							// restrictions above.
+							regex: '^\\$lib/game/(world|placement|industryPlacement)$',
+							message: 'expansionFinancing must not import domain modules directly.'
+						}
 					]
 				}
 			]

@@ -948,6 +948,32 @@ export function getExpansionFinanceOffer(
 	const assessment = assessCredit(game, FOUNDING_LOAN_TERM_DAYS);
 	if (principal > assessment.availableCredit) return null;
 
+	return buildExpansionFinanceOffer(principal, assessment);
+}
+
+/**
+ * Same as {@link getExpansionFinanceOffer} but accepts a precomputed credit
+ * assessment. Callers that derive offers for many purchase costs against the
+ * same game (e.g. the per-tile retail placement preview, where `setupCost`
+ * varies per tile) can run the `assessCredit` principal scan once and reuse it
+ * here, preserving exact per-cost validity without re-scanning loans per tile.
+ */
+export function getExpansionFinanceOfferWithAssessment(
+	game: GameState,
+	purchaseCost: number,
+	assessment: CreditAssessment
+): ExpansionFinanceOffer | null {
+	const principal = purchaseCost - game.cash;
+	if (!Number.isSafeInteger(purchaseCost) || principal <= 0) return null;
+	if (principal > assessment.availableCredit) return null;
+
+	return buildExpansionFinanceOffer(principal, assessment);
+}
+
+function buildExpansionFinanceOffer(
+	principal: number,
+	assessment: CreditAssessment
+): ExpansionFinanceOffer {
 	return {
 		principal,
 		termDays: FOUNDING_LOAN_TERM_DAYS,

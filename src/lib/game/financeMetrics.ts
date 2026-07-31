@@ -233,30 +233,55 @@ export interface AlertFinanceSnapshot {
  * reactive alert path through `getFinanceMetrics` would repeat that work on
  * every game-state update even though alerts never read `creditAssessments`.
  */
-export function getAlertFinanceSnapshot(game: GameState): AlertFinanceSnapshot {
-	const trailingOperatingCashFlow = getTrailingOperatingCashFlow(game);
-	const scheduledDebtServiceNextSevenDays = projectScheduledDebtService(
-		game,
-		game.day + 1,
-		game.day + 7
-	).reduce((total, scheduled) => total + scheduled.total, 0);
-
-	return {
-		debtServiceCoverage:
-			scheduledDebtServiceNextSevenDays === 0
-				? null
-				: Math.max(0, trailingOperatingCashFlow.total) / scheduledDebtServiceNextSevenDays,
-		cashRunway: projectCashRunway(game)
-	};
+interface SevenDayDebtServiceCoverage {
+	trailingOperatingCashFlow: { total: number; average: number };
+	scheduledDebtServiceByDay: ScheduledDebtService[];
+	scheduledDebtServiceNextSevenDays: number;
+	debtServiceCoverage: number | null;
 }
 
-export function getFinanceMetrics(game: GameState): FinanceMetrics {
+/**
+ * Shared seven-day debt-service coverage calculation for the alert snapshot
+ * and the Finance panel metrics. Performs the scheduled debt-service
+ * reduction, the zero-service null handling, and the
+ * `Math.max(0, trailingOperatingCashFlow.total)` clamp once so both callers
+ * stay in sync.
+ */
+function computeSevenDayDebtServiceCoverage(game: GameState): SevenDayDebtServiceCoverage {
 	const trailingOperatingCashFlow = getTrailingOperatingCashFlow(game);
 	const scheduledDebtServiceByDay = projectScheduledDebtService(game, game.day + 1, game.day + 7);
 	const scheduledDebtServiceNextSevenDays = scheduledDebtServiceByDay.reduce(
 		(total, scheduled) => total + scheduled.total,
 		0
 	);
+
+	return {
+		trailingOperatingCashFlow,
+		scheduledDebtServiceByDay,
+		scheduledDebtServiceNextSevenDays,
+		debtServiceCoverage:
+			scheduledDebtServiceNextSevenDays === 0
+				? null
+				: Math.max(0, trailingOperatingCashFlow.total) / scheduledDebtServiceNextSevenDays
+	};
+}
+
+export function getAlertFinanceSnapshot(game: GameState): AlertFinanceSnapshot {
+	const { debtServiceCoverage } = computeSevenDayDebtServiceCoverage(game);
+
+	return {
+		debtServiceCoverage,
+		cashRunway: projectCashRunway(game)
+	};
+}
+
+export function getFinanceMetrics(game: GameState): FinanceMetrics {
+	const {
+		trailingOperatingCashFlow,
+		scheduledDebtServiceByDay,
+		scheduledDebtServiceNextSevenDays,
+		debtServiceCoverage
+	} = computeSevenDayDebtServiceCoverage(game);
 
 	return {
 		outstandingPrincipal: game.finance.loans.reduce(
@@ -269,10 +294,7 @@ export function getFinanceMetrics(game: GameState): FinanceMetrics {
 		averageDailyOperatingCashFlow: trailingOperatingCashFlow.average,
 		scheduledDebtServiceNextSevenDays,
 		scheduledDebtServiceByDay,
-		debtServiceCoverage:
-			scheduledDebtServiceNextSevenDays === 0
-				? null
-				: Math.max(0, trailingOperatingCashFlow.total) / scheduledDebtServiceNextSevenDays,
+		debtServiceCoverage,
 		creditAssessments: {
 			28: assessCredit(game, 28),
 			56: assessCredit(game, 56),

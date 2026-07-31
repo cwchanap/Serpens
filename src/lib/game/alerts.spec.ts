@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { collectGameAlerts } from './alerts';
 import { createEmptyFinanceState } from './finance';
 import * as finance from './finance';
@@ -124,6 +124,10 @@ function baseGame(overrides: Partial<GameState> = {}): GameState {
 }
 
 describe('collectGameAlerts', () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
 	it('returns no alerts for a healthy game', () => {
 		expect.assertions(1);
 		expect(collectGameAlerts(baseGame({ stores: [store()] }))).toEqual([]);
@@ -460,7 +464,6 @@ describe('collectGameAlerts', () => {
 		expect(alerts).toHaveLength(1);
 		expect(alerts[0]!.kind).toBe('lowCashRunway');
 		expect(spy).not.toHaveBeenCalled();
-		spy.mockRestore();
 	});
 
 	it('preserves covenant/runway alerts for an active-loan game without invoking credit assessment', () => {
@@ -487,8 +490,5 @@ describe('collectGameAlerts', () => {
 		expect(assessCreditSpy).not.toHaveBeenCalled();
 		expect(alerts.map((alert) => alert.kind)).toContain('covenantRisk');
 		expect(alerts.map((alert) => alert.kind)).toContain('lowCashRunway');
-
-		financeMetricsSpy.mockRestore();
-		assessCreditSpy.mockRestore();
 	});
 });

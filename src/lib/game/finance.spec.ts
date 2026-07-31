@@ -1472,12 +1472,4 @@ describe('expansion finance offers', () => {
 	it('does not expose a callback-driven expansion-purchase API', () => {
 		expect('financeExpansionPurchase' in financeModule).toBe(false);
 	});
-
-	it('keeps the internal expansion runner free of domain-module imports', () => {
-		// The dependency-direction rule is enforced by an ESLint
-		// no-restricted-imports rule scoped to expansionFinancing.ts in
-		// eslint.config.js. This test remains as a documentation anchor;
-		// the lint rule catches violations for future edits.
-		expect(true).toBe(true);
-	});
 });

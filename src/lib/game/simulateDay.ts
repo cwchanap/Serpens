@@ -4,6 +4,7 @@ import {
 	compareLoanById,
 	estimateNextLoanPayment,
 	getTotalDebt,
+	isOutstandingLoan,
 	resetFinanceDayActivity,
 	serviceFinanceForDay
 } from './finance';
@@ -260,10 +261,7 @@ function getNextLoanPaymentSnapshot(
 ): DailyReport['nextLoanPayment'] {
 	return (
 		game.finance.loans
-			.filter(
-				(loan) =>
-					(loan.status === 'active' || loan.status === 'delinquent') && loan.nextPaymentDay !== null
-			)
+			.filter((loan) => isOutstandingLoan(loan) && loan.nextPaymentDay !== null)
 			.sort(
 				(left, right) =>
 					left.nextPaymentDay! - right.nextPaymentDay! ||
