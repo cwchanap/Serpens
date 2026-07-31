@@ -412,6 +412,51 @@ describe('retail placement preview', () => {
 		expect(boutiqueOption.financeOffer).toBeNull();
 	});
 
+	test('computes the credit assessment once per retail build menu, not once per cash-short archetype', () => {
+		// The assessment depends only on `game` (not on the per-archetype
+		// `minimumSetupCost`), so the build menu must run `assessCredit`'s
+		// principal scan exactly once regardless of how many archetypes are
+		// cash-short and financeable.
+		expect.assertions(2);
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 20,
+			height: 20,
+			seed: 20260503
+		});
+		const foundingTile = city.tiles.find((tile) => isRetailFootprintAvailable(city, tile))!;
+		const game = {
+			...createFoundingGameAtTile({
+				archetypeId: 'convenience',
+				city,
+				tileId: foundingTile.id,
+				seed: 20260503
+			}),
+			cash: 0
+		};
+		const cashShortArchetypes = getRetailBuildMenuOptions({
+			game,
+			city,
+			cashCommandAvailable: false,
+			financeCommandAvailable: true
+		}).filter((option) => option.validTileCount > 0 && option.setupCostRange.min > 0);
+		expect(cashShortArchetypes.length).toBeGreaterThan(1);
+
+		const spy = vi.spyOn(financeModule, 'assessCredit');
+		try {
+			getRetailBuildMenuOptions({
+				game,
+				city,
+				cashCommandAvailable: false,
+				financeCommandAvailable: true
+			});
+			expect(spy).toHaveBeenCalledTimes(1);
+		} finally {
+			spy.mockRestore();
+		}
+	});
+
 	test('excludes cash-short retail tiles from the preview when financing is unavailable', () => {
 		expect.assertions(5);
 		const city = generateCity({
@@ -511,6 +556,49 @@ describe('retail placement preview', () => {
 				archetypeId: 'electronics',
 				cashCommandAvailable: false,
 				financeCommandAvailable: true
+			});
+			expect(spy).toHaveBeenCalledTimes(1);
+		} finally {
+			spy.mockRestore();
+		}
+	});
+
+	test('computes the credit assessment once when financeCommandAvailable is omitted', () => {
+		// `financeCommandAvailable` defaults to true inside
+		// createRetailPlacementContext, so omitting it must still precompute the
+		// assessment once — not leave it null and fall back to a per-tile
+		// getExpansionFinanceOffer (which re-runs assessCredit per cash-short
+		// tile).
+		expect.assertions(2);
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 20,
+			height: 20,
+			seed: 20260503
+		});
+		const foundingTile = city.tiles.find((tile) => isRetailFootprintAvailable(city, tile))!;
+		const game = {
+			...createFoundingGameAtTile({
+				archetypeId: 'convenience',
+				city,
+				tileId: foundingTile.id,
+				seed: 20260503
+			}),
+			cash: 0
+		};
+		const financeableTileCount = city.tiles.filter(
+			(tile) => tile.id !== foundingTile.id && isRetailFootprintAvailable(city, tile, game.stores)
+		).length;
+		expect(financeableTileCount).toBeGreaterThan(1);
+
+		const spy = vi.spyOn(financeModule, 'assessCredit');
+		try {
+			createRetailPlacementPreview({
+				game,
+				city,
+				archetypeId: 'electronics',
+				cashCommandAvailable: false
 			});
 			expect(spy).toHaveBeenCalledTimes(1);
 		} finally {
@@ -675,6 +763,37 @@ describe('industry placement preview', () => {
 			buildingTypeId: 'warehouse',
 			amount: 1000
 		});
+	});
+
+	test('computes the credit assessment once per industrial build menu, not once per cash-short building type', () => {
+		// The assessment depends only on `game` (not on the per-type
+		// `buildCost`), so the build menu must run `assessCredit`'s principal
+		// scan exactly once regardless of how many building types are
+		// cash-short and financeable.
+		expect.assertions(2);
+		const game = { ...createNewGame('convenience', 20260512), cash: 0 };
+		const cashShortTypes = getIndustrialBuildMenuOptions({
+			game,
+			cashCommandAvailable: false,
+			financeCommandAvailable: true
+		}).filter(
+			(option) =>
+				option.financeOffer !== null ||
+				(option.disabledReason !== null && option.disabledReason.code === 'industry.requiresCash')
+		);
+		expect(cashShortTypes.length).toBeGreaterThan(1);
+
+		const spy = vi.spyOn(financeModule, 'assessCredit');
+		try {
+			getIndustrialBuildMenuOptions({
+				game,
+				cashCommandAvailable: false,
+				financeCommandAvailable: true
+			});
+			expect(spy).toHaveBeenCalledTimes(1);
+		} finally {
+			spy.mockRestore();
+		}
 	});
 
 	test('marks matching resource tiles valid for raw producers', () => {
