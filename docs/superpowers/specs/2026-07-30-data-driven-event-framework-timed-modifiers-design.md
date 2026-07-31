@@ -1,531 +1,146 @@
 # Data-Driven Event Framework with Timed Modifiers Design
 
-**Date:** 2026-07-30
+**Date:** 2026-07-31
 
 **Linear:** [HPA-278](https://linear.app/cwchanap/issue/HPA-278/data-driven-event-framework-with-timed-modifiers)
 
-**Status:** Approved architecture consolidated from HPA-288 through HPA-291; awaiting written-spec review
+**Pull request:** [#28](https://github.com/cwchanap/Serpens/pull/28)
+
+**Status:** Approved consolidated design after three written-review passes; ready for implementation planning
 
 ## Outcome
 
-Replace the three hard-coded strategic decisions with a reusable, deterministic event framework
-that supports:
+Replace the three hard-coded strategic decisions with a deterministic, data-driven event core and
+ship one real timed-modifier lifecycle through production gameplay.
 
-- validated typed catalog definitions;
-- recurring event instances with explicit targets;
-- sparse deterministic selection and cooldowns;
-- atomic typed immediate effects;
-- persisted timed modifiers;
-- explicit follow-up chains;
-- save-safe materialized choices;
-- localized player-facing attribution in decisions, reports, and alerts.
+The completed feature must:
 
-The framework must preserve the intended behavior of cash pressure, expansion opportunity, and
-supplier terms while becoming the shared foundation for later product trends, competitor actions,
-route disruptions, equipment failures, city festivals, and scenario content.
+- define cash pressure, expansion opportunity, and supplier terms in a validated TypeScript catalog;
+- preserve their current eligibility, option ordering, immediate effects, expiry behavior, and
+  early-resolution recurrence;
+- materialize pending choices so save/load and later catalog edits cannot alter an already-visible
+  decision;
+- use an isolated, persisted event RNG contract;
+- resolve typed effects atomically, including real HPA-277 finance borrowing;
+- make `supplier-terms.bulk-discount` activate a real three-day retail import-cost discount;
+- persist, apply, replace, expire, report, localize, and display that modifier;
+- keep scenario import-cost behavior unchanged while allowing scenario and event multipliers to
+  compose with provenance;
+- split implementation into two independently reviewable pull requests under the single HPA-278
+  Linear ticket.
 
-HPA-288, HPA-289, HPA-290, and HPA-291 are consolidated into this design because their schema,
-selection, effect, persistence, migration, reporting, and UI work crosses the same
-`DecisionItem`, `GameState`, save schema, simulation loop, localization layer, and Decisions
-surface. The feature is delivered as one implementation ticket and one branch/PR with staged,
-reviewable commits.
+This document is the sole normative HPA-278 design. It replaces the earlier design-plus-amendment
+pair while preserving the accepted findings from all three reviews.
+
+## Scope correction after review
+
+The earlier draft specified follow-up chains, eight target variants, two stacking modes, generic
+missing-target cancellation, and a complete modifier UI while no production event created a
+modifier. That was internally consistent but violated YAGNI and produced dead shipped surfaces.
+
+The final v1 scope is narrower:
+
+- **Production event target:** company only.
+- **Production timed effect:** retail-product import-cost multiplier only.
+- **Production stacking behavior:** replace by stable stacking key only.
+- **Production modifier content:** supplier terms' `bulk-discount` option.
+- **Deferred:** follow-up chains, store/building/material/staff/route event targets, stack semantics,
+  missing-target cancellation, and arbitrary modifier effect families.
+
+Those deferred contracts belong in the first downstream feature that actually needs them, such as
+HPA-39 or HPA-296. They are not persisted as unusable v1 shapes.
 
 ## Current baseline
 
-The current `main` branch has the following behavior:
+The current `main` branch has:
 
-- `src/lib/game/events.ts` hard-codes `cash-pressure`, `expansion-opportunity`, and
-  `supplier-terms`.
-- Eligibility, priority, sampling, copy, option construction, and effects are coupled in that
-  module.
-- `generateDecisions` returns at most one newly generated strategic decision per completed day,
-  but unresolved decisions from earlier days can coexist.
-- Cash pressure and expansion opportunity behave as forced priority checks.
-- Supplier terms samples one derived RNG value and appears when that value is below `0.12`.
-- `DecisionItem` is also the envelope for synchronous command-feedback notices such as unavailable
-  locations, delayed construction, unavailable world cities, and rail failures.
-- `DecisionOption.effects` is a broad mutation object. `state.ts#resolveDecision` interprets it
-  directly, mixes finance and non-finance behavior, and applies the same `staffMorale` delta to
-  both the company scorecard and every store.
-- `simulateDay.ts` performs operations, finance servicing, reporting, day advancement, decision
-  expiry, and new-decision generation.
-- Scenario import-cost modifiers compile into `SimulationRules`.
-- `simulationRules.ts` currently returns only the first matching import-cost multiplier and carries
-  no source provenance.
-- Event copy is localized by hard-coded decision-family classification in `gameCopy.ts`.
-- Save schema version 11 persists the current decision objects and finance state.
-- `DecisionQueue.svelte` is the shared presentation surface and already handles finance-disabled
-  options.
-- `ReportsPanel.svelte` has no event-modifier impact or lifecycle evidence.
+- `events.ts` hard-coding `cash-pressure`, `expansion-opportunity`, and `supplier-terms`;
+- forced cash-pressure and expansion checks followed by a supplier draw from
+  `createRngFromState(game.rngState + game.day * 97)`;
+- at most one newly generated strategic decision per completed day;
+- stable family IDs serving as decision IDs;
+- `DecisionItem` also representing synchronous command-feedback notices;
+- a broad `DecisionOption.effects` object interpreted directly by `state.ts#resolveDecision`;
+- `staffMorale` simultaneously changing the scorecard and every store;
+- the overloaded `stockHealth` effect changing product stock by a percentage of target stock and
+  then recalculating the derived metric;
+- first-match `SimulationRules` import-cost resolution without provenance;
+- save schema version 11;
+- `alerts.ts` reading `decision.title` while event decisions in the new model use structured copy;
+- a `decisions` management panel that currently renders `DecisionQueue.svelte`;
+- no active timed-event content, modifier reporting, or modifier UI.
 
-The feature must work with the completed HPA-277 finance domain and HPA-280 scenario runtime.
+HPA-277 finance and HPA-280 scenarios are complete foundations for this work.
 
 ## Goals
 
-- Keep the simulation pure, immutable, seed-driven, and replayable.
-- Separate strategic catalog events from command-owned system notices without creating a second
-  queue.
-- Make catalog authoring declarative while retaining exhaustive typed effect handlers.
-- Materialize selected choices so unresolved decisions do not change when definitions are revised.
-- Give event sampling its own persisted RNG stream.
-- Consume a fixed event RNG budget every completed day.
-- Preserve sparse decision cadence and permit at most one newly materialized catalog event per
-  completed day.
-- Persist cooldowns, follow-ups, active modifiers, and bounded event history.
-- Apply all event options atomically, including real finance borrowing.
-- Apply timed modifiers on precisely defined days with explicit stacking and replacement rules.
-- Compose event modifiers with scenario rules through `SimulationRules`.
-- Record which modifier affected which result and when it activated, expired, was replaced, or was
-  cancelled.
-- Localize event, target, modifier, report, and alert copy in English, Japanese, and Traditional
-  Chinese.
-- Migrate supported v11 saves to v12 with strict diagnostics.
-- Provide focused unit, component, persistence, and end-to-end coverage.
+- Pure, immutable, deterministic domain transitions.
+- Stable pending choices across save/load and catalog revisions.
+- Explicit separation between strategic events and system notices.
+- Exact current immediate-effect parity for the three migrated families.
+- Exact next-visible-day recurrence after early resolution.
+- Fixed global event-RNG advancement with a documented extension mechanism.
+- Atomic option availability and resolution through one preparation path.
+- A production-used timed modifier rather than fixture-only infrastructure.
+- Structured report and alert attribution for modifier effects.
+- Complete English, Japanese, and Traditional Chinese localization.
+- Two reviewable implementation PRs instead of one approximately thirty-file change.
 
 ## Non-goals
 
-- Moving placement, construction, world, or rail feedback into the event catalog.
-- A visual event-authoring editor.
-- Runtime JSON scripts, arbitrary property paths, `eval`, or opaque mutation payloads.
-- LLM-generated event content.
-- A large new production event pack beyond the three migrated families.
-- Full competitor, logistics-route, product-trend, equipment-maintenance, or festival simulation.
-- Scenario-authored catalog overlays or event allow/deny lists in this release.
-- Multiple mandatory strategic prompts every day.
-- A new management panel, TopBar ticker, or new raster artwork.
-- Aggregating event-modifier impacts into new seven-day or thirty-day report metrics.
-- Supporting custom third-party event plugins at runtime.
-
-## Approved behavior decisions
-
-### Strategic events and system notices share presentation, not ownership
-
-`DecisionItem` becomes a discriminated union:
-
-- `kind: 'system'` represents synchronous feedback created by the command that failed or needs
-  acknowledgement.
-- `kind: 'event'` represents a catalog-selected strategic event instance.
-
-Both render in `DecisionQueue`, expire through the same daily queue cleanup, and are resolved by
-the same route command. Only event decisions participate in event history, cooldowns, follow-ups,
-and modifiers.
-
-System notices retain their current IDs, contexts, expiry offsets, localization rules, and
-acknowledgement behavior. Their options contain no gameplay effects.
-
-### The catalog is typed TypeScript data
-
-Production definitions are TypeScript records checked with `satisfies` and normalized by a
-development/test validator. Definitions never contain JavaScript callbacks, field paths, or
-arbitrary state patches.
-
-The initial condition, target, immediate-effect, and timed-effect unions contain only variants
-needed by the migrated events and the representative modifier lifecycle. Future feature tickets
-extend the exhaustive unions and validators deliberately.
-
-### Selected event instances are self-contained
-
-The catalog is not persisted. Selection materializes a complete event decision containing:
-
-- stable event ID and definition version;
-- unique monotonic instance ID;
-- generated day and expiration day;
-- resolved target;
-- structured copy key and primitive parameters;
-- option IDs;
-- concrete immediate effects;
-- concrete modifier templates;
-- concrete follow-up instructions;
-- optional parent-chain provenance.
-
-An unresolved decision therefore keeps the same choices and amounts across save/load and future
-catalog changes. Translation keys are compatibility keys and must not be removed while supported
-saves can still reference them.
-
-### Event RNG is isolated
-
-Event selection uses a dedicated persisted RNG state derived from `GameState.seed`. It never
-consumes or rewinds the sales/production `GameState.rngState` stream.
-
-This intentionally changes the exact historical days on which supplier terms appears. The
-preserved contract is deterministic 12% weighted cadence, not the old derived
-`game.rngState + game.day * 97` sequence.
-
-### Timed modifiers use exclusive expiration
-
-A modifier created on day `D` with duration `N`:
-
-- has `startsOnDay = D`;
-- has `expiresOnDay = D + N`;
-- applies while `startsOnDay <= closingDay < expiresOnDay`;
-- applies on days `D` through `D + N - 1`;
-- is removed after the report for day `D + N - 1`;
-- is absent from the returned state for day `D + N`.
-
-For an active modifier, `remainingDays = expiresOnDay - game.day`.
-
-### Cooldowns begin at generation
-
-Cooldown eligibility is keyed by event ID and target. If an event is generated on day `D`, it is
-eligible again when:
-
-```ts
-currentDay >= D + cooldownDays
-```
-
-A pending instance of the same event and target is excluded independently of cooldown.
-
-### Effects are atomic
-
-Event option resolution builds a tentative immutable state and activation plan. Any failure
-discards that candidate and returns the original `GameState`. A finance failure, missing target,
-expired decision, invalid option, or invalid effect can never leave behind partial cash, score,
-stock, loan, modifier, history, or follow-up changes.
-
-## Architecture
-
-The implementation is split into focused pure modules.
-
-### `eventDefinitions.ts`
-
-Owns:
-
-- definition and template types;
-- catalog normalization;
-- validation diagnostics;
-- stable event-ID ordering;
-- definition lookup.
-
-It imports domain types but does not inspect or mutate `GameState`.
-
-### `eventCatalog.ts`
-
-Owns the production definitions for:
-
-- cash pressure;
-- expansion opportunity;
-- supplier terms.
-
-It contains no selection loop, state mutation, localization calls, or persistence logic.
-
-### `eventSelection.ts`
-
-Owns:
-
-- condition evaluation;
-- stable target enumeration;
-- target existence checks;
-- fixed RNG draw consumption;
-- follow-up, forced, and weighted selection;
-- cooldown and pending-instance checks;
-- event materialization.
-
-It accepts a normalized catalog as an argument so unit tests and the Playwright state builder can
-use a test-only catalog without shipping test definitions in production.
-
-### `eventEffects.ts`
-
-Owns:
-
-- option availability dry runs;
-- typed immediate-effect application;
-- finance integration;
-- modifier and follow-up preparation;
-- atomic event resolution;
-- typed failure results.
-
-It does not select events or process daily modifier expiry.
-
-### `eventModifiers.ts`
-
-Owns:
-
-- modifier activation;
-- stack and replace behavior;
-- target reconciliation;
-- active-day filtering;
-- `SimulationRules` compilation;
-- final-day expiry;
-- lifecycle history;
-- report-impact aggregation helpers.
-
-### `events.ts`
-
-Remains the small facade imported by `simulateDay.ts`. It wires the production catalog into:
-
-- runtime initialization;
-- expired-decision cleanup;
-- daily event selection;
-- event-resolution delegation where needed.
-
-It contains no production definition literals and no broad mutation logic.
-
-### Existing orchestrators
-
-- `state.ts` dispatches system acknowledgement versus event resolution.
-- `simulateDay.ts` owns the normative daily ordering.
-- `simulationRules.ts` owns rule composition and source provenance.
-- `stock.ts` and `industryProduction.ts` consume resolved rules and return rule-application
-  evidence.
-- `scenarios/runtime.ts` supplies scenario rules with stable source metadata.
-- `saveCodec.ts` owns v11 to v12 migration and strict persisted-state validation.
-- Svelte components render already-derived state and invoke route-controller commands.
-
-Dependency direction remains from orchestration toward pure domain modules. Event modules never
-import Svelte components, repositories, route state, or wall-clock APIs.
-
-## Domain model
-
-### Structured copy
-
-```ts
-export type StructuredCopyParams = Readonly<Record<string, string | number>>;
-
-export interface StructuredCopyRef {
-	key: string;
-	params: StructuredCopyParams;
-}
-```
-
-Copy keys are stable semantic keys. Parameters contain only strings and finite numbers. Localized
-strings are never authoritative persisted state.
-
-### Event targets
-
-```ts
-export type EventTarget =
-	| { kind: 'company' }
-	| { kind: 'city'; cityId: string }
-	| { kind: 'store'; storeId: string }
-	| { kind: 'industrial-building'; buildingId: string }
-	| { kind: 'material'; materialId: MaterialId }
-	| { kind: 'product'; storeId: string; categoryId: string }
-	| { kind: 'staff'; staffId: string }
-	| { kind: 'logistics-route'; routeId: string };
-```
-
-`logistics-route` reserves the persisted target shape for HPA-296. HPA-278 does not add route
-state or a production route selector. A production definition using that selector fails catalog
-validation until HPA-296 registers target enumeration and existence support.
-
-Canonical target keys are derived by an exhaustive `eventTargetKey` switch:
-
-```ts
-company
-city:<cityId>
-store:<storeId>
-industrial-building:<buildingId>
-material:<materialId>
-product:<storeId>:<categoryId>
-staff:<staffId>
-logistics-route:<routeId>
-```
-
-IDs currently contain no colon. Introducing colon-bearing IDs requires escaping in
-`eventTargetKey` before those IDs become valid event targets.
-
-Selectors are explicit and exhaustive:
-
-```ts
-export type EventTargetSelector =
-	| { kind: 'company' }
-	| { kind: 'opened-city' }
-	| { kind: 'store' }
-	| { kind: 'industrial-building' }
-	| { kind: 'material' }
-	| { kind: 'product' }
-	| { kind: 'staff' }
-	| { kind: 'logistics-route' };
-```
-
-Stable target enumeration is:
-
-- company: one target;
-- city: opened city IDs sorted by ID;
-- store: `game.stores` sorted by `id`;
-- industrial building: `game.industrialBuildings` sorted by `id`;
-- material: supported material IDs sorted lexicographically;
-- product: current store products sorted by `storeId`, then `categoryId`;
-- staff: `game.staff` sorted by `id`;
-- logistics route: unsupported and empty until HPA-296 supplies the resolver.
-
-Array insertion order, object iteration order, active city, and UI sorting never influence target
-selection.
-
-### Conditions
-
-```ts
-export type EventCondition =
-	| { kind: 'always' }
-	| { kind: 'all'; conditions: readonly EventCondition[] }
-	| { kind: 'any'; conditions: readonly EventCondition[] }
-	| { kind: 'not'; condition: EventCondition }
-	| { kind: 'day-at-least'; day: number }
-	| { kind: 'cash-below'; amount: number }
-	| { kind: 'cash-at-least'; amount: number }
-	| { kind: 'score-at-least'; score: ScoreKey; value: number }
-	| { kind: 'store-count-below-cap' };
-```
-
-Conditions are pure reads of `GameState`. A definition is a candidate only when its condition is
-true and its target selector returns at least one valid target.
-
-The first release does not add a generic target-filter DSL. Feature-specific tickets extend the
-selector union with typed filters when a real event requires them.
-
-### Selection policy
-
-```ts
-export type EventSelectionPolicy =
-	| { kind: 'forced'; priority: number }
-	| { kind: 'weighted'; weight: number };
-```
-
-The weighted pool uses one global sparse cadence:
-
-```ts
-export const EVENT_WEIGHTED_CADENCE_PROBABILITY = 0.12;
-```
-
-Weights distribute the single available weighted event slot; they do not increase the overall
-daily prompt probability. A later requirement for multiple cadence bands requires a separate
-design rather than overloading weight.
-
-### Definition contracts
-
-```ts
-export interface EventDefinition {
-	id: string;
-	version: number;
-	selection: EventSelectionPolicy;
-	condition: EventCondition;
-	target: EventTargetSelector;
-	expiresAfterDays: number;
-	cooldownDays: number;
-	copyKey: string;
-	options: readonly EventOptionDefinition[];
-}
-
-export interface EventOptionDefinition {
-	id: string;
-	effects: readonly EventImmediateEffectTemplate[];
-	modifiers?: readonly EventModifierTemplate[];
-	followUps?: readonly EventFollowUpDefinition[];
-}
-
-export interface EventFollowUpDefinition {
-	eventId: string;
-	delayDays: number;
-	target: 'inherit' | 'reselect';
-}
-```
-
-`expiresOnDay` is materialized as:
-
-```ts
-generatedOnDay + expiresAfterDays
-```
-
-The decision is valid while `game.day <= expiresOnDay`.
-
-Follow-up delay must be at least one day. Follow-ups are scheduled only after successful option
-resolution:
-
-```ts
-dueOnDay = game.day + delayDays
-```
-
-### Immediate-effect templates and materialized effects
-
-Only finance borrowing has a dynamic authoring expression in the initial catalog. An
-`available-credit-clamped` amount uses the enclosing finance effect's `termDays`; the term is not
-duplicated inside the amount expression.
-
-```ts
-export type EventBorrowAmountTemplate =
-	| { kind: 'fixed'; amount: number }
-	| {
-			kind: 'available-credit-clamped';
-			minimum: number;
-			maximum: number;
-			increment: number;
-	  };
-
-export type EventImmediateEffectTemplate =
-	| { kind: 'cash-adjust'; amount: number }
-	| { kind: 'score-adjust'; score: ScoreKey; amount: number }
-	| {
-			kind: 'store-morale-adjust';
-			scope: 'all-stores' | 'event-target';
-			amount: number;
-	  }
-	| {
-			kind: 'store-reputation-adjust';
-			scope: 'all-stores' | 'event-target';
-			amount: number;
-	  }
-	| {
-			kind: 'store-stock-adjust-by-target-percent';
-			scope: 'all-stores' | 'event-target';
-			percent: number;
-	  }
-	| {
-			kind: 'finance-borrow';
-			purpose: 'emergency' | 'supplierCredit';
-			amount: EventBorrowAmountTemplate;
-			termDays: 28 | 56;
-	  };
-```
-
-A materialized `EventImmediateEffect` has the same variants except `finance-borrow.amount` is a
-concrete whole-dollar number.
-
-`scope: 'event-target'` is valid only when the event target is a store. `all-stores` is explicit
-because the current company events alter every current store.
-
-The stock effect preserves the current algorithm for every selected store and product:
-
-```ts
-nextStock = Math.max(
-	0,
-	product.stock + Math.round(product.targetStock * percent * 0.01)
-);
-```
-
-After product updates, `stockHealth` is recalculated with `calculateStockHealth`.
-
-Score and store-morale effects are separate. The migrated options include both effects where the
-current broad `staffMorale` property changes both company scorecard morale and every store.
-
-### Timed-effect templates
-
-```ts
-export type EventTimedEffect = {
-	kind: 'import-cost-multiplier';
-	scope: ImportCostScope;
-	target: { kind: 'all' } | { kind: 'ids'; ids: readonly string[] };
-	multiplier: number;
-};
-
-export type EventModifierStackingRule = 'stack' | 'replace';
-
-export interface EventModifierTemplate {
-	durationDays: number;
-	stackingKey: string;
-	stackingRule: EventModifierStackingRule;
-	effect: EventTimedEffect;
-	explanation: StructuredCopyRef;
-	importance: 'normal' | 'important';
-}
-```
-
-The template is persisted inside the materialized option. Modifier activation assigns source,
-target, dates, and a unique modifier ID.
-
-The representative three-day import-cost definition lives only in test fixtures. Production
-catalog content remains the three migrated event families.
-
-### Decision union
+- Follow-up chains in v1.
+- Non-company event targets in v1.
+- Logistics-route state or disruption effects.
+- Competitor, product-trend, equipment-maintenance, or festival simulation.
+- A visual or runtime event authoring editor.
+- JSON scripting, callbacks, arbitrary property paths, `eval`, or third-party plugins.
+- Multiple strategic prompts per completed day.
+- A new management panel or TopBar ticker.
+- Rolling seven-day or thirty-day modifier aggregates.
+- A generic `stack` modifier rule before production content needs it.
+- A generic target-deletion cancellation lifecycle before non-company targets exist.
+
+## Delivery structure
+
+HPA-278 remains one Linear implementation ticket but is delivered through two pull requests.
+
+### Implementation PR A — event core
+
+PR A delivers:
+
+- the system/event decision union;
+- the validated production catalog;
+- isolated event RNG and deterministic selection;
+- instance decision IDs and family `eventId` identity;
+- cooldowns and bounded event history;
+- materialized options;
+- atomic typed immediate effects;
+- route and scenario failure adapters;
+- event localization;
+- save schema v12 and v11-to-v12 migration.
+
+PR A is independently valid with the current immediate supplier-terms behavior. It does not persist
+modifier state or add modifier UI.
+
+### Implementation PR B — production timed modifier
+
+PR B is based on PR A and delivers:
+
+- the supplier bulk-discount production modifier;
+- modifier activation, replacement, application, and expiry;
+- provenance-aware multiplicative simulation rules;
+- report attribution;
+- important-modifier alerts;
+- Active Modifiers and Reports UI;
+- save schema v13 and v12-to-v13 migration;
+- the complete production lifecycle e2e.
+
+HPA-278 is complete only after both PRs merge. This split limits review size without recreating
+Linear sub-issues.
+
+## Strategic events and system notices
+
+`DecisionItem` becomes a discriminated union.
 
 ```ts
 export interface SystemDecisionOption {
@@ -546,8 +161,6 @@ export interface SystemDecisionItem {
 export interface EventDecisionOption {
 	id: string;
 	effects: EventImmediateEffect[];
-	modifiers: EventModifierTemplate[];
-	followUps: EventFollowUpDefinition[];
 }
 
 export interface EventDecisionItem {
@@ -557,514 +170,381 @@ export interface EventDecisionItem {
 	definitionVersion: number;
 	generatedOnDay: number;
 	expiresOnDay: number;
-	target: EventTarget;
+	target: { kind: 'company' };
 	copy: StructuredCopyRef;
-	parent?: {
-		eventId: string;
-		instanceId: string;
-	};
 	options: EventDecisionOption[];
 }
 
 export type DecisionItem = SystemDecisionItem | EventDecisionItem;
 ```
 
-Event instance IDs are monotonic:
+System notices remain owned by placement, construction, world, and rail commands. They retain their
+current IDs, context localization, expiry offsets, and acknowledgement behavior. They do not enter
+event history or cooldown state.
+
+Event decisions are catalog-generated strategic instances. Their copy is key-driven and their
+options carry concrete typed gameplay payloads.
+
+## Decision identity
+
+Event instance identity and event-family identity are separate.
 
 ```text
-event-instance-1
-event-instance-2
-...
+id: event-instance-17
+eventId: supplier-terms
 ```
 
-The event ID remains the stable catalog identity such as `cash-pressure`.
+Normative rules:
 
-System decisions do not carry `effects`. Resolving a valid system option removes the notice and
-does not write event history.
+- `resolveDecision`, route commands, and scenario commands always receive `DecisionItem.id`.
+- Family lookup, cooldowns, catalog references, and parity assertions use `eventId`.
+- A runtime caller may not resolve an event with `cash-pressure`, `expansion-opportunity`, or
+  `supplier-terms` as the `decisionId`.
+- v11 migration assigns new instance IDs; old family IDs are not post-migration aliases.
+- Existing system-notice IDs remain unchanged.
+- Decision alert IDs remain `decision:<decision.id>`.
 
-## Event runtime state
+Scenario calibration must locate supplier terms by narrowing `kind === 'event'` and comparing
+`eventId`, then resolve with the discovered instance ID. Static calibration commands may not
+hard-code a family ID as a decision ID.
+
+## Structured copy and alert-title ownership
 
 ```ts
-export interface EventRuntimeState {
-	rngState: number;
-	nextInstanceSequence: number;
-	nextModifierSequence: number;
-	cooldowns: EventCooldownRecord[];
-	scheduledFollowUps: ScheduledEventFollowUp[];
-	activeModifiers: ActiveEventModifier[];
-	history: EventHistoryEntry[];
+export type StructuredCopyParams = Readonly<Record<string, string | number>>;
+
+export interface StructuredCopyRef {
+	key: string;
+	params: StructuredCopyParams;
 }
 ```
 
-`GameState` gains:
+Event decisions do not persist an authoritative English title. `alerts.ts` must not read
+`decision.title` without first narrowing to `kind: 'system'`.
+
+Alert construction and localization follow this boundary:
+
+- `alerts.ts` emits typed IDs and references, not authoritative localized event strings;
+- `GameAlert.message` becomes an optional fallback for alert kinds without a typed localization
+  path;
+- decision alerts carry `decisionId`;
+- `localizeAlert(alert, game, i18n)` finds the current decision;
+- system decision titles use their existing localization/fallback path;
+- event decision titles use the persisted `decision.copy` key;
+- `localizeDecision` and `localizeDecisionTitle` switch on `DecisionItem.kind` before accessing
+  variant fields.
+
+Localized presentation models contain display copy and stable identifiers only. They never contain
+finance effects, modifier templates, or other gameplay payloads.
+
+## Catalog contracts
+
+Production definitions are TypeScript data checked with `satisfies` and normalized by a
+runtime/development validator.
 
 ```ts
-events: EventRuntimeState;
-```
+export type EventCondition =
+	| { kind: 'always' }
+	| { kind: 'all'; conditions: readonly EventCondition[] }
+	| { kind: 'not'; condition: EventCondition }
+	| { kind: 'day-at-least'; day: number }
+	| { kind: 'cash-below'; amount: number }
+	| { kind: 'cash-at-least'; amount: number }
+	| { kind: 'score-at-least'; score: ScoreKey; value: number }
+	| { kind: 'store-count-below-cap' };
 
-The property is named `events`, while `events.ts` remains the runtime facade. This keeps persisted
-event state grouped without overloading the existing `decisions` queue.
+export type EventSelectionPolicy =
+	| { kind: 'forced'; priority: number }
+	| { kind: 'weighted'; weight: number };
 
-### Runtime initialization
-
-```ts
-export const EVENT_RNG_SEED_SALT = 0x45564e54;
-export const EVENT_HISTORY_LIMIT = 200;
-
-export function createInitialEventRuntime(seed: number): EventRuntimeState {
-	return {
-		rngState: normalizeSeed(seed + EVENT_RNG_SEED_SALT),
-		nextInstanceSequence: 1,
-		nextModifierSequence: 1,
-		cooldowns: [],
-		scheduledFollowUps: [],
-		activeModifiers: [],
-		history: []
-	};
+export interface EventDefinition {
+	id: string;
+	version: number;
+	selection: EventSelectionPolicy;
+	condition: EventCondition;
+	target: { kind: 'company' };
+	expiresAfterDays: number;
+	cooldownDays: number;
+	copyKey: string;
+	options: readonly EventOptionDefinition[];
 }
 ```
 
-Scenario setup uses the scenario seed already passed to `createNewGame`. A scenario whose authored
-start day is later than day 1 does not fast-forward event draws; its first played completed day
-uses the first event draw budget because no prior scenario action history exists.
+The production catalog contains exactly these IDs:
 
-### Cooldown records
-
-```ts
-export interface EventCooldownRecord {
-	eventId: string;
-	target: EventTarget;
-	generatedOnDay: number;
-	eligibleOnDay: number;
-}
+```text
+cash-pressure
+expansion-opportunity
+supplier-terms
 ```
 
-There is at most one cooldown record per event ID and canonical target key. Generating a later
-instance replaces the earlier record. Expired cooldown records are pruned during daily selection.
+A completeness test asserts the exact allowlist so fixture definitions cannot leak into the
+production bundle.
 
-Cooldown records are authoritative for eligibility. Bounded history is evidence and is never used
-as the only cooldown source.
+### Bounded contradiction validation
 
-### Scheduled follow-ups
+The validator does not claim to solve arbitrary logical contradictions. It performs only explicit,
+finite checks:
 
-```ts
-export interface ScheduledEventFollowUp {
-	sourceEventId: string;
-	sourceInstanceId: string;
-	eventId: string;
-	dueOnDay: number;
-	target: 'inherit' | 'reselect';
-	inheritedTarget?: EventTarget;
-}
-```
+- `cash-below: A` with `cash-at-least: B` where `B >= A` inside one `all` tree;
+- score thresholds outside `0..100`;
+- a condition paired with its direct `not` equivalent;
+- `not(always)`;
+- unsupported effect/target combinations.
 
-Due follow-ups are ordered by:
+The diagnostic description must say “supported bounded contradiction checks,” not
+“all self-contradictory definitions.”
 
-1. `dueOnDay`;
-2. `sourceInstanceId`;
-3. `eventId`.
+## Immediate-effect model
 
-A due follow-up bypasses ordinary cooldown but cannot create a duplicate pending event/target.
-
-- When blocked only by an already pending matching instance, it remains scheduled and retries on a
-  later day.
-- When its referenced definition no longer exists, it is removed and a
-  `follow-up-skipped: definition-missing` history entry is written.
-- When `target: 'inherit'` references a missing target, it is removed and a
-  `follow-up-skipped: target-missing` history entry is written.
-- When `target: 'reselect'` has no valid target, it is removed with the same target-missing reason.
-- At most one valid due follow-up is materialized per completed day; remaining due entries stay
-  scheduled.
-
-Catalog validation guarantees follow-up references exist at authoring time. Runtime handling still
-covers later catalog revisions.
-
-### History
-
-History is append-only within the newest 200 entries. Entries include:
-
-- event generated;
-- event resolved;
-- event decision expired unresolved;
-- follow-up skipped;
-- modifier activated;
-- modifier replaced;
-- modifier cancelled;
-- modifier expired.
-
-Lifecycle entries snapshot their source, target, effect kind, and explanation so evidence remains
-usable after the active modifier is removed. `DailyReport` stores its own durable impact and
-lifecycle records, so pruning old runtime history does not erase past report evidence.
+The v1 materialized effect union contains only production-used behavior.
 
 ```ts
-export type EventHistoryEntry =
+export type EventImmediateEffect =
+	| { kind: 'cash-adjust'; amount: number }
+	| { kind: 'score-adjust'; score: ScoreKey; amount: number }
+	| { kind: 'all-store-morale-adjust'; amount: number }
+	| { kind: 'all-store-stock-adjust-by-target-percent'; percent: number }
 	| {
-			kind: 'event-generated';
-			day: number;
-			eventId: string;
-			instanceId: string;
-			target: EventTarget;
-	  }
-	| {
-			kind: 'event-resolved';
-			day: number;
-			eventId: string;
-			instanceId: string;
-			optionId: string;
-			target: EventTarget;
-	  }
-	| {
-			kind: 'event-decision-expired';
-			day: number;
-			eventId: string;
-			instanceId: string;
-			target: EventTarget;
-	  }
-	| {
-			kind: 'follow-up-skipped';
-			day: number;
-			eventId: string;
-			sourceInstanceId: string;
-			reason: 'definition-missing' | 'target-missing';
-	  }
-	| {
-			kind: 'modifier-lifecycle';
-			day: number;
-			status: 'activated' | 'replaced' | 'cancelled' | 'expired';
-			modifier: EventModifierSnapshot;
-			reason?: 'target-missing';
-			replacedByModifierId?: string;
+			kind: 'finance-borrow';
+			purpose: 'emergency' | 'supplierCredit';
+			amount: number;
+			termDays: 28 | 56;
 	  };
 ```
 
-Array order is the authoritative order for entries written on the same day. Every append operation
-is deterministic, and pruning retains the newest `EVENT_HISTORY_LIMIT` entries.
+`store-reputation-adjust` is not part of v1. It is added with the first real event that needs it.
 
-## Catalog validation
+### Stock semantics
 
-```ts
-export interface EventDefinitionDiagnostic {
-	code: EventDefinitionDiagnosticCode;
-	eventId: string;
-	path: string;
-	message: string;
-	value?: unknown;
-}
-
-export type EventCatalogValidationResult =
-	| { ok: true; catalog: NormalizedEventCatalog }
-	| { ok: false; diagnostics: EventDefinitionDiagnostic[] };
-```
-
-Validation returns all diagnostics in stable event/path order. Development startup and tests throw
-one formatted error if the production catalog is invalid.
-
-Validation covers:
-
-- event IDs matching `^[a-z][a-z0-9-]*$`;
-- duplicate event IDs;
-- positive integer definition versions;
-- supported selection kinds;
-- finite integer forced priorities;
-- positive finite weights;
-- supported condition variants;
-- non-empty `all` and `any` groups;
-- finite condition values;
-- supported target selectors;
-- route selectors being unavailable until a route resolver is registered;
-- positive integer `expiresAfterDays`;
-- positive integer `cooldownDays`;
-- non-empty copy keys;
-- at least one option;
-- valid and unique option IDs;
-- supported effect kinds;
-- finite whole-dollar cash and finance amounts;
-- valid score keys;
-- valid store-effect scope for the selected target kind;
-- valid finance purpose and term;
-- valid clamped-amount minimum, maximum, and increment;
-- at most one finance-borrow effect per option;
-- positive finite import multipliers;
-- non-empty modifier stacking keys;
-- positive integer modifier durations;
-- known stacking rules;
-- valid structured explanation keys and primitive parameters;
-- follow-up delay of at least one day;
-- duplicate follow-up declarations;
-- unknown follow-up event IDs;
-- self-contradictory definitions that can never produce a target.
-
-TypeScript exhaustiveness prevents most unknown handlers in production code. Runtime validation
-still catches malformed records introduced through unsafe casts and test fixtures.
-
-Normalization:
-
-- sorts definitions by event ID;
-- preserves authored option and effect order;
-- freezes normalized definitions in development/test;
-- builds a read-only lookup by event ID.
+The stock effect preserves the current algorithm exactly:
 
 ```ts
-export interface NormalizedEventCatalog {
-	definitions: readonly EventDefinition[];
-	byId: ReadonlyMap<string, EventDefinition>;
-}
+nextStock = Math.max(
+	0,
+	product.stock + Math.round(product.targetStock * percent * 0.01)
+);
 ```
 
-The contradiction check is deliberately finite rather than a general constraint solver. Within
-an `all` tree it rejects:
+After updating products, the store's derived `stockHealth` is recalculated with
+`calculateStockHealth`. The effect never directly adds `percent` to the metric.
 
-- `cash-below: A` combined with `cash-at-least: B` when `B >= A`;
-- `score-at-least` values outside the scorecard's `0..100` domain;
-- a condition combined with its direct `not` equivalent;
-- `not(always)`;
-- a target-dependent effect whose selector can never produce that target kind.
+### Cash and finance mutual exclusion
 
-More complex business contradictions are expressed as explicit typed validators when a real
-definition requires them.
+The old type permits either cash or finance on one option, not both. V1 preserves that invariant:
 
-## Production catalog parity
+- catalog validation rejects an option containing both `cash-adjust` and `finance-borrow`;
+- migration never emits both on one option;
+- at most one `finance-borrow` effect is allowed per option.
+
+The ordered model still permits score and store effects after a finance effect. Relaxing cash and
+finance mutual exclusion requires a later design backed by production content.
+
+## Production catalog
 
 ### Cash pressure
 
 ```text
 eventId: cash-pressure
 version: 1
-selection: forced, priority 100
+selection: forced priority 100
 condition: cash < 0
 target: company
 expiresAfterDays: 2
-cooldownDays: 3
+cooldownDays: 1
 ```
 
-Options, in order:
+Options preserve current order and effects:
 
 1. `short-loan`
    - borrow the materialized emergency amount for 56 days;
-   - score profit `-4`;
-   - score market position `-1`.
+   - profit `-4`;
+   - market position `-1`.
 2. `cut-costs`
    - cash `+5,500`;
-   - score customer satisfaction `-4`;
-   - score staff morale `-5`;
-   - all-store morale `-5`;
-   - all-store stock adjustment `-8%` of each product target stock.
+   - customer satisfaction `-4`;
+   - scorecard staff morale `-5`;
+   - every store morale `-5`;
+   - every product stock `-8%` of target stock.
 3. `hold-course`
-   - score profit `+1`;
-   - score staff morale `-2`;
-   - all-store morale `-2`.
+   - profit `+1`;
+   - scorecard staff morale `-2`;
+   - every store morale `-2`.
 
-Emergency amount materialization exactly preserves the current formula:
-
-```ts
-const roundedCapacity =
-	Math.floor(assessCredit(game, 56).availableCredit / 1_000) * 1_000;
-
-const amount = Math.min(12_000, Math.max(4_000, roundedCapacity));
-```
-
-The amount is persisted in the event instance. At resolution, current credit is checked again.
-The amount is not silently resized after the player sees the option.
+Emergency amount materialization preserves the current formula and stores the concrete result in
+the pending instance. Resolution rechecks current credit without silently resizing the displayed
+amount.
 
 ### Expansion opportunity
 
 ```text
 eventId: expansion-opportunity
 version: 1
-selection: forced, priority 50
+selection: forced priority 50
 condition:
   day >= 14
   cash >= 55,000
   store count < store cap
-  profit score >= 62
+  profit >= 62
 target: company
 expiresAfterDays: 3
-cooldownDays: 4
+cooldownDays: 1
 ```
 
-Options, in order:
+Options preserve current order and effects:
 
-1. `prepare`
-   - cash `-3,500`;
-   - score market position `+5`;
-   - score profit `-1`.
-2. `pass`
-   - score profit `+1`;
-   - score staff morale `+1`;
-   - all-store morale `+1`.
+1. `prepare`: cash `-3,500`, market position `+5`, profit `-1`.
+2. `pass`: profit `+1`, scorecard staff morale `+1`, every store morale `+1`.
 
-### Supplier terms
+### Supplier terms — core definition
+
+PR A introduces version 1 with exact current immediate behavior:
 
 ```text
 eventId: supplier-terms
 version: 1
-selection: weighted, weight 1
+selection: weighted weight 1
 condition: always
 target: company
 expiresAfterDays: 2
-cooldownDays: 3
+cooldownDays: 1
 ```
 
-Options, in order:
+1. `negotiate-credit`: borrow `$4,000` for 28 days, profit `-2`.
+2. `bulk-discount`: cash `-2,500`, profit `+3`, product stock `+6%` of target stock.
 
-1. `negotiate-credit`
-   - borrow `$4,000` as supplier credit for 28 days;
-   - score profit `-2`.
-2. `bulk-discount`
-   - cash `-2,500`;
-   - score profit `+3`;
-   - all-store stock adjustment `+6%` of each product target stock.
+Supplier terms remains the only weighted event, so cadence remains 12% whenever no forced event
+wins.
 
-With supplier terms as the only weighted definition, the global `0.12` cadence preserves its 12%
-daily probability when no due follow-up or forced event wins the day.
+### Supplier terms — production modifier revision
 
-### Earliest recurrence parity
-
-The cooldown values preserve the earliest day on which the current definitions can reappear after
-their decision expires:
-
-| Event | Generated `D` | Valid through | Earliest current reroll | New cooldown eligibility |
-| --- | ---: | ---: | ---: | ---: |
-| Cash pressure | `D` | `D + 2` | `D + 3` | `D + 3` |
-| Expansion opportunity | `D` | `D + 3` | `D + 4` | `D + 4` |
-| Supplier terms | `D` | `D + 2` | `D + 3` | `D + 3` |
-
-Pending-instance exclusion still prevents duplicates before expiry.
-
-## Deterministic daily selection
-
-### Fixed draw budget
+PR B publishes supplier terms definition version 2. Immediate effects remain unchanged.
+`bulk-discount` additionally activates:
 
 ```ts
-export const EVENT_DRAW_COUNT_PER_DAY = 3;
+{
+	durationDays: 3,
+	stackingKey: 'supplier-bulk-discount:retail-product',
+	stackingRule: 'replace',
+	effect: {
+		kind: 'import-cost-multiplier',
+		scope: 'retail-product',
+		target: { kind: 'all' },
+		multiplier: 0.9
+	},
+	importance: 'important',
+	explanation: { key: 'copy.events.supplierTerms.bulkDiscountModifier', params: {} }
+}
 ```
 
-After every completed day, the event RNG consumes exactly three values in this order:
+This is an intentional additive gameplay change: choosing bulk discount reduces retail-product
+import cost by 10% for the current day plus the next two closing days. Copy must state this effect
+before the player resolves the option.
+
+A pending version-1 supplier event migrated or saved before PR B remains materialized without the
+modifier. New version-2 instances contain it. Catalog revisions never rewrite pending choices.
+
+Repeated version-2 bulk discounts replace the existing modifier with the same stacking key and
+restart the three-day duration. V1 does not implement generic stacking.
+
+## Cooldowns and recurrence
+
+Cooldowns begin at generation and are keyed by event family plus the company target.
+
+```ts
+eligibleOnDay = generatedOnDay + cooldownDays
+```
+
+All three migrated events use `cooldownDays = 1`. Pending-instance exclusion preserves unresolved
+expiry timing while early resolution permits next-visible-day recurrence.
+
+| Event | Resolved on first visible day `D` | Left unresolved |
+| --- | ---: | ---: |
+| Cash pressure | may regenerate `D + 1` | after removal on `D + 3` |
+| Expansion opportunity | may regenerate `D + 1` | after removal on `D + 4` |
+| Supplier terms | may regenerate `D + 1` if cadence passes | after removal on `D + 3` if cadence passes |
+
+A cooldown record may be pruned before selection when `eligibleOnDay <= selectionDay`; at equality
+it no longer blocks. History is evidence only and never substitutes for a future cooldown record.
+
+## Event runtime state and RNG
+
+### Core state in schema v12
+
+```ts
+export interface EventRuntimeStateV1 {
+	selectionSchemaVersion: 1;
+	rngState: number;
+	nextInstanceSequence: number;
+	cooldowns: EventCooldownRecord[];
+	history: EventHistoryEntry[];
+}
+```
+
+History is capped at 200 newest entries. It records event generation, resolution, and unresolved
+expiry. Follow-up and generic target-cancellation entries do not exist in v1.
+
+### Fixed global draw packet
+
+Every completed day consumes exactly three draws from the persisted event RNG:
 
 1. cadence draw;
 2. weighted-event draw;
-3. target draw.
+3. materialization-seed draw.
 
-All three values are consumed before selection branches. They are consumed even when:
+All three are consumed before branching, including forced-win, cadence-fail, cadence-pass with an
+empty pool, and no-candidate paths. A winner prevents every later selection branch from
+materializing another event.
 
-- a follow-up event wins;
-- a forced event wins;
-- no definition is eligible;
-- weighted cadence fails;
-- only one weighted candidate exists;
-- only one target exists.
+The third draw is not permanently defined as “one target draw.” It is converted to a deterministic
+local materialization seed. Future event versions may use a local RNG seeded from that value for
+multiple target, magnitude, or variant choices without changing the global three-draw advancement.
 
-The returned `events.rngState` is the state after the third draw.
+Rules for extending randomness:
+
+- `selectionSchemaVersion` is persisted and decoder-validated;
+- changing global draw count/order requires a new selection schema version and save migration;
+- adding random fields to an existing event requires a new event definition version;
+- local materialization draw order is part of that definition version's contract;
+- local RNG consumption never advances the persisted global event RNG.
+
+V1 company-targeted definitions consume no local materialization draws.
 
 ### Selection order
 
-For the returned state whose day is `D + 1`, selection proceeds:
+For `selectionDay = closingDay + 1`:
 
-1. prune expired cooldown records;
-2. evaluate due follow-ups in stable order;
-3. evaluate eligible forced definitions;
-4. if no forced definition wins and cadence draw is below `0.12`, evaluate the weighted pool;
-5. choose a target using the target draw;
-6. materialize at most one event decision;
-7. append generation history and cooldown state.
+1. consume the three global draws;
+2. prune no-longer-blocking cooldowns;
+3. evaluate forced candidates by descending priority then event ID;
+4. when no forced event wins and cadence is below `0.12`, evaluate weighted candidates;
+5. materialize at most one event;
+6. append generation history and cooldown state.
 
-Forced definitions are ordered by descending priority, then event ID. Weighted definitions and
-their targets are ordered by stable IDs before cumulative selection.
+If cadence passes but the weighted pool is empty or `totalWeight <= 0`, no event materializes. The
+already-consumed draws remain consumed.
 
-Weighted selection uses:
+## Materialization
 
-```ts
-threshold = weightedDraw * totalWeight
-```
+Selection creates a self-contained event instance:
 
-and chooses the first candidate whose cumulative weight is strictly greater than the threshold.
+- allocate `event-instance-<nextInstanceSequence>`;
+- persist `eventId`, definition version, company target, generated day, expiry day, copy reference,
+  option IDs, and concrete effects;
+- in PR B, persist any concrete modifier templates inside the option;
+- advance the instance sequence;
+- write or replace the event cooldown;
+- append generation history.
 
-Target selection uses:
-
-```ts
-index = Math.min(Math.floor(targetDraw * targets.length), targets.length - 1)
-```
-
-### Pending instances
-
-Selection excludes only a pending event with the same event ID and target. It does not impose a
-global one-event queue limit.
-
-This preserves the current ability for a different strategic event to appear while an earlier
-event remains unresolved, while still generating no more than one new catalog event per day.
-
-System notices do not count as pending strategic events and do not consume the daily event slot.
-
-### Pure selection API
-
-The core API is catalog-injectable:
+`generatedOnDay` is always the post-advance `selectionDay`, never the closing day.
 
 ```ts
-export function selectEventForDay(
-	game: GameState,
-	catalog: NormalizedEventCatalog
-): GameState;
+expiresOnDay = generatedOnDay + expiresAfterDays
 ```
 
-The function returns a new state with the fixed RNG advancement and at most one appended event
-decision. `events.ts` supplies the production catalog. Tests may supply a fixture catalog.
+The catalog is not consulted to render, check, or resolve an already-materialized option.
 
-Same input state plus the same normalized catalog must produce deeply equal output.
-
-## Event materialization
-
-Materialization:
-
-1. allocates `event-instance-<nextInstanceSequence>`;
-2. resolves and persists the target;
-3. resolves dynamic effect templates;
-4. copies concrete options, modifiers, and follow-ups;
-5. writes `generatedOnDay` and `expiresOnDay`;
-6. stores the definition version and structured copy key;
-7. records optional parent provenance;
-8. advances `nextInstanceSequence`;
-9. writes or replaces the event/target cooldown;
-10. appends generation history.
-
-Materialization performs no gameplay effect and does not consume additional RNG.
-
-The catalog is not consulted when a materialized option is later rendered, checked, or resolved.
-
-## Decision resolution
-
-### Public result
-
-```ts
-export type DecisionResolutionFailureCode =
-	| 'decision-not-found'
-	| 'option-not-found'
-	| 'decision-expired'
-	| 'target-missing'
-	| 'finance-unavailable'
-	| 'effect-rejected';
-
-export type DecisionResolutionResult =
-	| {
-			ok: true;
-			game: GameState;
-			decisionKind: 'system' | 'event';
-	  }
-	| {
-			ok: false;
-			game: GameState;
-			code: DecisionResolutionFailureCode;
-			context: Record<string, string | number>;
-			financeFailure?: FinanceFailureCode;
-	  };
-```
-
-Every failure returns the original state object as `game`.
-
-`GameRouteController` and scenario command dispatch adapt this typed result. A scenario
-`resolveDecision` command that fails is reported as an invalid command with the decision failure
-context rather than silently recording an unchanged successful command.
-
-### Option availability
+## Availability and atomic resolution
 
 ```ts
 export function getDecisionOptionAvailability(
@@ -1074,185 +554,155 @@ export function getDecisionOptionAvailability(
 ): DecisionOptionAvailability;
 ```
 
-- System options are available when the decision and option exist and the decision is not expired.
-- Event options run the same pure preparation path as resolution.
-- Finance effects call the HPA-277 credit domain against current state.
-- Missing event targets disable the option with an explicit reason.
-- Availability checks never allocate IDs, write history, create loans, or change state.
+Availability reads the persisted decision and option ID. It never receives localized option
+payloads. Event availability executes the same pure preparation path as resolution without
+allocating IDs or mutating state.
 
-`DecisionQueue` retains the existing detailed credit-unavailable messages and adds generic
-localized target/expiry failure text where applicable.
-
-### Atomic event preparation and commit
+```ts
+export type DecisionResolutionFailureCode =
+	| 'decision-not-found'
+	| 'option-not-found'
+	| 'decision-expired'
+	| 'finance-unavailable'
+	| 'effect-rejected';
+```
 
 Event resolution:
 
-1. finds the event decision and option;
-2. rejects `game.day > expiresOnDay`;
-3. confirms the persisted target still exists;
-4. validates every materialized effect and modifier payload;
-5. applies immediate effects to a tentative immutable state in persisted order;
-6. calls finance borrowing against that tentative state when encountered;
-7. prepares modifier activations and replacement lifecycle records;
-8. prepares follow-up schedules;
-9. only after every step succeeds:
-   - removes the decision;
-   - commits the tentative state;
-   - activates modifiers;
-   - appends follow-ups;
-   - appends resolution and lifecycle history;
-   - runs `refreshWorldProgress`.
+1. find the instance and option by IDs;
+2. reject `game.day > expiresOnDay`;
+3. validate every persisted payload;
+4. apply immediate effects to tentative immutable state in persisted order;
+5. perform finance borrowing at its effect position;
+6. in PR B, prepare modifier replacement and activation;
+7. only after all preparation succeeds, remove the decision and commit state/history/modifier
+   changes through `refreshWorldProgress`.
 
-Effect order is semantically significant and is preserved during definition normalization and
-materialization.
+Every failure returns the original state object. No partial cash, score, stock, loan, history, or
+modifier change is committed.
 
-If a preceding effect changes cash or score before a finance effect, the finance effect evaluates
-the tentative state at that point. Availability dry runs and real resolution share the same path,
-so the UI cannot claim an option is available under different ordering semantics.
+The migrated finance options place borrowing before score effects. Availability and real
+resolution share that same order.
 
-### Immediate-effect semantics
+## Route and scenario failure semantics
 
-- `cash-adjust`: add the whole-dollar amount; negative cash remains allowed.
-- `score-adjust`: add then pass through `clampScore`.
-- `store-morale-adjust`: add then `clampScore` on selected stores.
-- `store-reputation-adjust`: add then `clampScore` on selected stores.
-- `store-stock-adjust-by-target-percent`: apply the exact target-stock formula, clamp stock to zero,
-  then recalculate `stockHealth`.
-- `finance-borrow`: call HPA-277 `borrow` with the persisted amount, purpose, and term. Any finance
-  failure aborts the entire decision resolution.
+A failed decision resolution is not an unchanged successful command.
 
-### System acknowledgement
+`GameRouteCommitResult` gains:
 
-Resolving a valid system option only removes that system decision. It does not:
+```ts
+{
+	status: 'decision-rejected';
+	code: DecisionResolutionFailureCode;
+	context: Record<string, string | number>;
+	financeFailure?: FinanceFailureCode;
+}
+```
 
-- apply gameplay effects;
-- write event history;
-- create cooldowns;
-- schedule follow-ups;
-- create modifiers.
+Sandbox rejection performs no state assignment, autosave, or success sound.
 
-System constructors are updated to omit their current empty `effects: {}` objects.
+Scenario rejection maps to `ok: false`, `code: 'invalid-command'`, with structured decision-failure
+evidence. It does not persist the command, change the run or revision, recalculate a result, or
+write scenario state.
 
-## Timed modifier lifecycle
+The route and scenario adapters are one PR-A deliverable with focused unchanged-state,
+no-autosave/no-persist, and no-success-sound tests.
 
-### Active modifier shape
+## Timed modifier state in schema v13
+
+PR B extends event runtime state:
+
+```ts
+export interface EventRuntimeStateV2 extends EventRuntimeStateV1 {
+	nextModifierSequence: number;
+	activeModifiers: ActiveEventModifier[];
+}
+```
+
+V1 supports only company-wide import-cost modifiers and replace semantics.
 
 ```ts
 export interface ActiveEventModifier {
 	id: string;
-	source: {
+	source: Readonly<{
 		eventId: string;
 		instanceId: string;
 		optionId: string;
-	};
-	target: EventTarget;
+	}>;
 	startsOnDay: number;
 	expiresOnDay: number;
 	stackingKey: string;
-	stackingRule: EventModifierStackingRule;
-	effect: EventTimedEffect;
+	stackingRule: 'replace';
+	effect: Readonly<{
+		kind: 'import-cost-multiplier';
+		scope: 'retail-product';
+		target: Readonly<{ kind: 'all' }>;
+		multiplier: number;
+	}>;
 	explanation: StructuredCopyRef;
 	importance: 'normal' | 'important';
 }
+
+export type EventModifierSnapshot = Readonly<{
+	id: string;
+	source: ActiveEventModifier['source'];
+	startsOnDay: number;
+	expiresOnDay: number;
+	stackingKey: string;
+	stackingRule: 'replace';
+	effect: ActiveEventModifier['effect'];
+	explanation: StructuredCopyRef;
+	importance: 'normal' | 'important';
+}>;
 ```
 
-Modifier IDs are monotonic:
+Lifecycle records store a value copy in the dedicated readonly snapshot shape.
 
-```text
-event-modifier-1
-event-modifier-2
-...
-```
+### Activation and replacement
 
-The active array contains only modifiers that have not expired or been cancelled. Historical
-status lives in lifecycle history and reports rather than as a contradictory persisted `status`
-field on active entries.
+A modifier resolved during player actions on day `D` uses:
 
 ```ts
-export type EventModifierSnapshot = ActiveEventModifier;
+startsOnDay = D
+expiresOnDay = D + durationDays
 ```
 
-Lifecycle records copy the modifier value rather than retain a mutable reference.
+It applies when day `D` closes. Remaining duration includes the current day.
 
-### Activation
+Before appending a new modifier, remove any active modifier with the same stacking key and write a
+replacement lifecycle record referencing the new modifier ID. Then append activation history.
 
-A successfully resolved option activates each modifier template in option order:
+### Active days and expiry
+
+A modifier applies while:
 
 ```ts
-startsOnDay = game.day
-expiresOnDay = game.day + durationDays
+startsOnDay <= closingDay && closingDay < expiresOnDay
 ```
 
-Activation allocates an ID, appends an activation history entry, and advances
-`nextModifierSequence`.
+After the final allowed application, a modifier with `expiresOnDay === closingDay + 1` is removed
+and an expiry lifecycle record is written with `day: closingDay`.
 
-### Stack
+There is no generic missing-target cancellation in v1 because every event and modifier target is
+company-wide.
 
-`stack` retains all existing modifiers and appends the new modifier. Matching rules apply in stable
-modifier-ID order.
-
-### Replace
-
-`replace` removes every active modifier with the same `stackingKey` before appending the new one.
-For each removed modifier, history records:
-
-- replacement day;
-- replaced modifier snapshot;
-- `replacedByModifierId`.
-
-The new modifier also receives its activation entry. Replacement is atomic with option resolution.
-
-### Target reconciliation
-
-At the start of each simulated day, each modifier target is checked against current state.
-
-A missing target:
-
-- is removed before rules compile;
-- contributes no rule that day;
-- writes exactly one `modifier-cancelled` history entry with reason `target-missing`;
-- appears in that day's lifecycle report;
-- is never cancelled again.
-
-The save decoder validates target shape, not target existence, because legitimate gameplay can
-delete a target after the event was selected or the modifier was created.
-
-### Active-day compilation
-
-A modifier is compiled when:
+The decoder requires every persisted active modifier to satisfy:
 
 ```ts
-modifier.startsOnDay <= closingDay &&
-closingDay < modifier.expiresOnDay
+startsOnDay <= game.day && game.day < expiresOnDay
 ```
 
-Compiled event rules are sorted by modifier ID.
+This is safe because simulation transitions and scenario command persistence commit only complete
+post-reconciliation states; no intermediate post-expiry/pre-removal state is persistable. Codec
+and scenario replay tests lock that invariant.
 
-### Expiration
+## Simulation rules and provenance
 
-After closing-day operations use the compiled rules, modifiers with:
-
-```ts
-modifier.expiresOnDay === closingDay + 1
-```
-
-are removed. The closing-day report records both:
-
-- the modifier's final application, when it affected a non-zero matching import calculation;
-- a lifecycle entry with status `expired`.
-
-The returned next-day state no longer contains the modifier. Expiration is recorded exactly once.
-
-## Simulation rule composition and provenance
-
-### Source metadata
+PR B changes import-cost resolution from first-match to multiplicative contributions.
 
 ```ts
 export type SimulationRuleSource =
-	| {
-			kind: 'scenario';
-			sourceId: string;
-	  }
+	| { kind: 'scenario'; sourceId: string }
 	| {
 			kind: 'event-modifier';
 			sourceId: string;
@@ -1261,191 +711,126 @@ export type SimulationRuleSource =
 			instanceId: string;
 			explanation: StructuredCopyRef;
 	  };
-
-export interface ImportCostMultiplierRule {
-	source: SimulationRuleSource;
-	scope: ImportCostScope;
-	target: { kind: 'all' } | { kind: 'ids'; ids: readonly string[] };
-	multiplier: number;
-}
 ```
 
-Scenario source IDs are stable:
+`resolveImportCostMultiplier` returns both the product and ordered contributions. The only current
+call sites, `stock.ts` and `industryProduction.ts`, are updated together.
 
-```text
-scenario:<scenarioId>:modifier:<definition-index>
-```
+Current scenario validation already rejects overlapping same-scope import targets. Therefore valid
+scenario-only first-match and multiplication are equivalent by construction. Multiplication becomes
+observable only when event modifiers overlap scenario rules or replace behavior changes the active
+event modifier.
 
-Event source IDs are the modifier IDs.
-
-### Merge
-
-```ts
-export function mergeSimulationRules(
-	...ruleSets: readonly SimulationRules[]
-): SimulationRules;
-```
-
-Merge concatenates rules and sorts them by a stable source key. It never mutates an input rule
-set.
-
-### Resolution
-
-```ts
-export interface ImportCostRuleContribution {
-	source: SimulationRuleSource;
-	multiplier: number;
-}
-
-export interface ImportCostResolution {
-	multiplier: number;
-	contributions: ImportCostRuleContribution[];
-}
-
-export function resolveImportCostMultiplier(
-	rules: SimulationRules,
-	scope: ImportCostScope,
-	targetId: string
-): ImportCostResolution;
-```
-
-Every matching multiplier contributes. The final value is their product:
-
-```ts
-matching.reduce((value, rule) => value * rule.multiplier, 1)
-```
-
-This replaces the current first-match behavior.
-
-Current scenario definitions must retain identical outcomes. Scenario regression tests prove that
-none depends on overlapping first-match semantics. Overlapping future scenario and event rules
-multiply in stable order.
-
-### Application evidence
-
-`stock.ts` and `industryProduction.ts` return pure rule-application evidence alongside their
-existing results. One application record is emitted only when:
-
-- a matching rule contributed;
-- the import quantity and baseline import cost were non-zero.
-
-The evidence includes:
-
-- rule source;
-- scope;
-- affected product/material ID;
-- source multiplier;
-- baseline cost.
-
-`simulateDay` aggregates event-modifier applications by modifier ID into the daily report. Scenario
-sources remain available to scenario diagnostics but are not presented as event-modifier impacts.
-
-No mutable callback or global attribution collector is introduced.
+Application evidence is emitted only when a matching rule contributes to a non-zero imported
+quantity and non-zero baseline cost. Evidence is returned through pure result values, never mutable
+callbacks.
 
 ## Normative daily ordering
 
-For a state whose current day is `D`, `simulateDay` closes day `D`.
+For `closingDay = game.day`:
 
-1. Reconcile active modifier targets for day `D`.
-2. Compile modifiers active on day `D`.
-3. Merge event rules with the supplied scenario rules.
-4. Simulate industrial production using the merged rules and collect rule applications.
-5. Simulate retail operations and imports using the merged rules and collect rule applications.
-6. Apply operating cash flow and score/store transitions.
-7. Service finance for day `D`.
-8. Finalize modifier expiry after its last allowed application.
-9. Build the day-`D` report with:
-   - ordinary business and finance data;
-   - aggregated event-modifier impacts;
-   - modifier lifecycle entries recorded on day `D`.
-10. Advance state to day `D + 1` and reset finance day activity.
-11. Remove decisions no longer valid on day `D + 1`.
-    - expired event decisions write an unresolved-expiry history entry dated day `D`;
-    - expired system decisions are removed without event history.
-12. Consume exactly three event RNG draws.
-13. Select and materialize at most one event for day `D + 1`.
-14. Run the normal world-state refresh and return.
+1. compile active event modifiers for `closingDay`;
+2. merge them with supplied scenario rules;
+3. simulate industry and retail operations while collecting rule evidence;
+4. apply operating cash flow and score/store transitions;
+5. service finance;
+6. finalize modifier expiry after its final application;
+7. write the closing-day report and lifecycle records;
+8. advance to `selectionDay = closingDay + 1`;
+9. remove decisions invalid on `selectionDay`;
+10. stamp unresolved event expiry history with `closingDay`;
+11. consume the three event RNG draws;
+12. select and materialize at most one next-day event;
+13. refresh world state and return.
 
-A modifier resolved during player actions on day `D` therefore applies when day `D` is closed.
-An event generated after day `D` is closed is first visible in state day `D + 1`.
+A supplier bulk-discount modifier resolved on day `D` affects imports when day `D` closes.
 
-## Report attribution
+## Reporting
 
-`DailyReport` gains:
+Schema v13 adds to `DailyReport`:
 
 ```ts
 export interface EventModifierImpact {
 	modifierId: string;
 	source: ActiveEventModifier['source'];
-	target: EventTarget;
-	effectKind: EventTimedEffect['kind'];
+	effectKind: 'import-cost-multiplier';
 	explanation: StructuredCopyRef;
-	scope: ImportCostScope;
 	affectedIds: string[];
 	multiplier: number;
 	baselineCost: number;
 	applicationCount: number;
 }
 
-export type EventModifierLifecycleStatus =
-	| 'activated'
-	| 'replaced'
-	| 'cancelled'
-	| 'expired';
-
 export interface EventModifierLifecycle {
-	status: EventModifierLifecycleStatus;
+	status: 'activated' | 'replaced' | 'expired';
 	modifier: EventModifierSnapshot;
-	reason?: 'target-missing';
 	replacedByModifierId?: string;
-}
-
-export interface DailyReport {
-	// existing fields
-	modifierImpacts: EventModifierImpact[];
-	modifierLifecycle: EventModifierLifecycle[];
 }
 ```
 
-Impact aggregation:
+Impacts are ordered by modifier ID, deduplicate and sort affected IDs, sum baseline cost, and count
+applications. They do not allocate a unique dollar delta among multiplicative sources.
 
-- sorts records by modifier ID;
-- sorts and deduplicates affected IDs;
-- sums baseline cost;
-- counts matching import applications;
-- reports the modifier's own multiplier;
-- does not attempt to allocate a unique dollar delta among overlapping multiplicative sources.
+`reports.ts` exposes the latest arrays without adding rolling modifier aggregates.
 
-Lifecycle records snapshot the modifier so expiration and replacement remain explainable after
-removal.
+## Alerts and Decisions navigation
 
-`reports.ts` preserves the arrays on `latest` but does not add rolling modifier totals in v1.
+`GameAlertKind` gains `event-modifier` and `managementPanelId` becomes:
 
-## Alerts
+```ts
+managementPanelId?: 'finance' | 'decisions';
+```
 
-`GameAlertKind` gains `event-modifier`.
+Each active important modifier emits:
 
-An alert is emitted for each active modifier whose `importance` is `important`:
+```ts
+{
+	id: `event-modifier:${modifier.id}`,
+	kind: 'event-modifier',
+	managementPanelId: 'decisions'
+}
+```
 
-- ID: `event-modifier:<modifierId>`;
-- localized source and effect summary;
-- affected target;
-- remaining duration;
-- deep link to the Decisions management panel.
+Alert ordering is stable:
 
-Normal-importance modifiers remain visible in Active Modifiers and reports without producing
-alert noise.
+1. store-stock alerts in current store order;
+2. pending decision alerts in queue order;
+3. important event-modifier alerts by `expiresOnDay`, then modifier ID;
+4. blocked-factory alerts in current building order;
+5. finance alerts in their existing internal order.
 
-Existing decision alerts continue for both system and event decisions. Event alert titles use the
-event copy key; system alert titles use existing system localization.
+`handleSelectAlert` opens the panel named by `managementPanelId`; finance additionally focuses the
+loan. The existing decision-kind fallback remains for compatibility.
 
-The TopBar continues to show only the existing aggregate alert count.
+Component and e2e coverage click the modifier alert, open Decisions, and find the matching active
+modifier.
+
+## UI
+
+PR B adds `ActiveModifiers.svelte` beside `DecisionQueue.svelte` in the existing Decisions panel.
+It displays:
+
+- source event title;
+- “company-wide retail imports” target copy;
+- 10% discount summary;
+- start day;
+- exclusive expiry day;
+- remaining days;
+- important status.
+
+Ordering is earliest expiry then modifier ID. The empty state is explicit.
+
+`DecisionQueue.svelte` distinguishes system and event cards, shows event provenance, and computes
+availability from the original persisted decision plus displayed option ID.
+
+`ReportsPanel.svelte` adds latest-day modifier impacts and lifecycle sections.
+
+All modified Svelte files require the repository's Svelte MCP workflow: inspect relevant docs first
+and run the autofixer until it reports no issues.
 
 ## Localization
 
-### Event copy
-
-Production event base keys are:
+Production event keys are:
 
 ```text
 copy.events.cashPressure
@@ -1453,561 +838,191 @@ copy.events.expansionOpportunity
 copy.events.supplierTerms
 ```
 
-Each base provides:
+Supplier terms v2 adds modifier disclosure and lifecycle copy. Every key is present in English,
+Japanese, and Traditional Chinese.
 
-```text
-title
-context
-options.<optionId>.label
-options.<optionId>.description
-```
+Catalog completeness iterates the exact production allowlist and checks title, context, option,
+and modifier-explanation keys in every locale.
 
-Event localization uses the persisted `copy.key`, option ID, and structured parameters. It does
-not classify event families from decision IDs.
+## Persistence
 
-### System copy
+### PR A: schema v12
 
-Existing `DecisionContext` localization and system-family classification remain for system
-notices. The classifier is renamed or narrowed so it cannot rewrite event instances.
+The v11-to-v12 migration:
 
-### Targets and modifiers
+- classifies the three strategic family IDs as event instances;
+- validates their expected option IDs and old effect shapes;
+- assigns monotonic instance IDs;
+- derives `generatedOnDay` from known expiry offsets;
+- preserves concrete emergency finance amounts and option ordering;
+- maps broad effects to the v1 typed union;
+- creates company cooldown records and generation history;
+- classifies every other decision as a system notice;
+- rejects non-empty unknown system effects under the pre-release save policy;
+- initializes selection schema version 1 and isolated RNG state.
 
-Localization helpers cover every `EventTarget` variant and timed effect:
+No persisted v11 object outside `game.decisions` references strategic family IDs. Source code,
+calibration helpers, and test command sequences still require explicit instance-ID migration.
 
-- company label;
-- city label;
-- store display name and ordinal;
-- industrial building label;
-- material label;
-- store product label;
-- staff name;
-- route fallback ID until HPA-296 adds route names;
-- import-cost multiplier summary;
-- remaining duration;
-- activation, replacement, cancellation, and expiration status.
+### PR B: schema v13
 
-### Locale completeness
+The v12-to-v13 migration initializes:
 
-Every key is added to:
+- `nextModifierSequence = 1`;
+- `activeModifiers = []`;
+- empty `modifierImpacts` and `modifierLifecycle` on existing reports.
 
-- `messages/en.ts`;
-- `messages/ja.ts`;
-- `messages/zh-Hant.ts`.
+It does not modify pending materialized event options. Version-1 supplier events remain without a
+modifier.
 
-Tests iterate the normalized production catalog and assert all event title, context, option, and
-modifier explanation keys exist in every locale. Existing catalog-completeness tests remain
-passing.
+### Decoder validation
 
-## Active Modifiers UI
+Validation covers exact union shapes, unique IDs, sequence bounds, structured copy, finite numbers,
+finance terms, cooldown ordering, selection schema version, history bounds, and—in v13—modifier
+IDs, dates, replace rule, import effect shape, readonly snapshot data, and report attribution.
 
-`ActiveModifiers.svelte` is added to the existing Decisions management surface.
+Legitimate catalog revision does not invalidate materialized pending events. Unknown persisted
+runtime kinds remain corrupt.
 
-It receives already-persisted active modifiers, current game state, and `i18n`. It displays:
-
-- source event title;
-- affected target;
-- effect summary;
-- start day;
-- exclusive expiry day;
-- remaining days;
-- importance state where meaningful.
-
-Ordering is:
-
-1. earliest `expiresOnDay`;
-2. modifier ID.
-
-The empty state explicitly states that no timed event effects are active.
-
-Each modifier is an accessible article with a heading and meaningful status text. Remaining
-duration is text, not color-only information.
-
-`DecisionQueue.svelte` adds event provenance and target copy for `kind: 'event'`. System cards keep
-their current layout. Finance-disabled option behavior remains unchanged.
-
-`ReportsPanel.svelte` adds two latest-day sections:
-
-- modifier impacts;
-- modifier lifecycle.
-
-No new management panel or map overlay is introduced.
-
-## Persistence and migration
-
-### Schema version
-
-```ts
-export const SAVE_SCHEMA_VERSION = 12;
-```
-
-Version 11 is added to the migratable set and advances through an explicit v11 to v12 step.
-
-### v11 decision migration
-
-Decisions are processed in existing array order.
-
-#### Strategic families
-
-IDs exactly matching:
-
-- `cash-pressure`;
-- `expansion-opportunity`;
-- `supplier-terms`;
-
-are migrated into event instances.
-
-For each:
-
-- validate the expected family option IDs, order-independent uniqueness, and old effect shape;
-- reject missing, duplicate, or unknown family options as corrupt;
-- assign `event-instance-<sequence>`;
-- preserve its concrete option order and values;
-- map the old broad effect object to the exact typed effect list;
-- derive `generatedOnDay` from its known expiry offset;
-- retain `expiresOnDay`;
-- set target to company;
-- set definition version 1;
-- set the stable event copy key;
-- append a generation history entry;
-- create its cooldown record.
-
-The concrete saved emergency finance amount is retained rather than recalculated.
-
-#### System notices
-
-Every other decision becomes `kind: 'system'`.
-
-Migration requires every old system option effect object to be empty. A non-empty unknown system
-effect is rejected as corrupt rather than silently dropped.
-
-System IDs, title, context, option copy, and expiry remain unchanged.
-
-### Runtime initialization during migration
-
-- event RNG derives from the saved game seed and stable salt;
-- instance sequence follows the migrated event count;
-- modifier sequence starts at 1;
-- active modifiers and follow-ups start empty;
-- history contains migrated event-generation snapshots;
-- existing reports receive empty impact and lifecycle arrays.
-
-No persisted field outside `game.decisions` refers to the old strategic decision IDs, so assigning
-instance IDs does not require a cross-object reference rewrite.
-
-### Strict validation
-
-The v12 decoder validates:
-
-- `DecisionItem.kind`;
-- unique decision IDs;
-- event instance ID syntax and sequence bounds;
-- known event target shapes;
-- structured copy keys and primitive parameters;
-- option IDs and typed effects;
-- whole-dollar and finite numeric fields;
-- finance terms and purposes;
-- event runtime RNG range;
-- positive sequence counters greater than every referenced instance/modifier numeric suffix in
-  pending decisions, active modifiers, runtime history, and stored reports;
-- unique cooldown event/target keys;
-- cooldown date ordering;
-- scheduled follow-up shape and date;
-- unique active modifier IDs;
-- modifier source shape;
-- positive duration and `startsOnDay < expiresOnDay`;
-- every active modifier satisfying `startsOnDay <= game.day < expiresOnDay`;
-- non-empty stacking keys and known rules;
-- timed-effect payloads;
-- history length at or below 200;
-- report impact and lifecycle shape.
-
-The decoder does not require a persisted event decision, modifier, or follow-up target to still
-exist in current state or its referenced definition to still exist in the current catalog.
-Runtime reconciliation and follow-up handling own those legitimate stale-reference cases.
-
-Malformed state throws `SaveDataError` with a path-specific message and the
-`invariant-event-runtime` code where appropriate.
-
-### Scenario-run persistence
-
-`scenarioCodec.ts` continues to decode the embedded game through the shared game codec. An active
-scenario run with `gameSchemaVersion: 11` migrates its embedded game to v12 and rewrites
-`gameSchemaVersion` to 12 on the next successful persist. Scenario definition version, run ID,
-revision, evaluation, and result data are unchanged.
-
-Result-only best records contain no `GameState` and require no event migration.
-
-### Repository coverage
-
-Browser, Tauri, and in-memory repository tests cover:
-
-- v12 round-trip;
-- v11 migration;
-- pending materialized event preservation;
-- active modifier preservation;
-- remaining duration after load;
-- cooldown and follow-up preservation;
-- report attribution preservation;
-- malformed event-state rejection.
-
-## Error handling
-
-### Catalog errors
-
-Production catalog validation fails during development/test startup with all diagnostics. It is a
-developer error, not a player-facing recoverable result.
-
-### Expected player failures
-
-Decision resolution returns typed failures for missing decisions/options, expiry, target deletion,
-finance unavailability, and rejected effects. The original state is retained.
-
-### Persisted-state errors
-
-Malformed v12 state throws `SaveDataError`. Legitimate missing gameplay targets are not treated as
-decoder corruption.
-
-### Runtime invariants
-
-Exhaustive switches use `assertNever`. Unknown effect, target, selection, lifecycle, or rule kinds
-cannot silently no-op.
+Scenario codecs continue to decode embedded games through the shared game codec and update the
+embedded game schema version after successful persistence.
 
 ## Test strategy
 
-### Current-behavior parity
+### PR A
 
-Expand `events.spec.ts` before deleting old constructors.
+- Existing eligibility and option-order parity.
+- Immediate cash, score, morale, stock, and finance parity.
+- Early-resolution and unresolved-expiry recurrence.
+- Dedicated RNG isolation and three-draw advancement.
+- Forced/weighted/no-candidate/empty-pool paths.
+- Instance-ID resolution and family-ID lookup.
+- Atomic failure with unchanged state.
+- Route no-autosave/no-sound rejection.
+- Scenario no-persist rejection.
+- v11-to-v12 migration and strict validation.
+- Event/system localization and alert-title narrowing.
+- Scenario calibration updated to find by `eventId` and resolve by instance ID.
 
-Tests lock:
+### PR B
 
-- cash-pressure `cash < 0` boundary;
-- expansion day, cash, store-cap, and profit boundaries;
-- forced priority;
-- supplier 12% cadence boundary;
-- exact decision expiry days;
-- exact option order and IDs;
-- exact emergency amount formula;
-- finance purpose and term;
-- exact cash and score changes;
-- company and all-store morale coupling;
-- stock target-percentage formula and recalculated stock health;
-- no duplicate pending event/target;
-- earliest recurrence after expiry.
+- Supplier version-2 materialization contains the real modifier.
+- Same-day activation and three closing-day applications.
+- Replacement restarts duration and records lifecycle once.
+- Exclusive expiry and strict active-state decoder invariant.
+- Scenario-only parity and scenario/event multiplier product.
+- Retail application evidence; industrial call-site regression remains unchanged for retail-only
+  event scope.
+- v12-to-v13 migration and report preservation.
+- Active Modifiers, Reports, and alert click-through component coverage.
+- Production lifecycle Playwright test using the real production catalog, not a fixture catalog.
+- Production module-graph/allowlist test proving no test event ships.
 
-### Catalog validation
+Every Vitest case executes at least one `expect`.
 
-Every diagnostic family has a focused invalid fixture. Representative valid definitions normalize
-without changing authored option/effect order.
+## File responsibility map
 
-### Selection and RNG
+### PR A core
 
-Tests cover:
+New focused modules:
 
-- exactly three draws on every completed day;
-- identical RNG advancement for no-candidate, cadence-fail, forced, follow-up, and single-target
-  paths;
-- same-state determinism;
-- target array order independence;
-- forced priority and ID tie-break;
-- weighted boundary selection;
-- cooldown day immediately before and at eligibility;
-- pending same-target exclusion;
-- different-target recurrence;
-- multiple unresolved different events;
-- follow-up priority;
-- pending follow-up retry;
-- missing follow-up definition and target handling.
+- `eventDefinitions.ts` and spec;
+- `eventCatalog.ts` and spec;
+- `eventSelection.ts` and spec;
+- `eventEffects.ts` and spec.
 
-### Atomic resolution
+Core modifications:
 
-Tests cover:
+- `types.ts`, `events.ts`, `state.ts`, `simulateDay.ts`;
+- scenario runtime/calibration and route controller adapters;
+- save types/codec/repositories and scenario codecs;
+- `gameCopy.ts`, localized types, and three locale catalogs;
+- `DecisionQueue.svelte` and relevant component/route tests.
 
-- each immediate effect;
-- declared effect order;
-- finance availability changing between generation and resolution;
-- a later failure discarding earlier tentative cash/score/loan changes;
-- target deletion;
-- system acknowledgement without event history;
-- successful event history, modifier activation, follow-up scheduling, and world refresh.
+### PR B modifiers
 
-### Modifier lifecycle
+New focused modules:
 
-Tests cover:
+- `eventModifiers.ts` and spec;
+- `ActiveModifiers.svelte` and spec.
 
-- same-day start;
-- every active day;
-- final active day;
-- exclusive expiry;
-- stack order;
-- replacement lifecycle;
-- target-missing cancellation;
-- exact-once cancellation and expiry;
-- save/load mid-duration;
-- scenario and event multiplier product;
-- stable rule source ordering;
-- application evidence only for non-zero matched imports.
+Modifier modifications:
 
-The test-only representative event creates a three-day import-cost multiplier. It is defined in
-test support, not `eventCatalog.ts`.
-
-### Simulation integration
-
-`simulateDay.spec.ts` verifies the normative order, report day, modifier application, finance
-reconciliation, expiry, decision cleanup, fixed RNG advancement, and next-day event selection.
-
-Existing scenario definitions are replayed to prove the new multiplicative resolver does not alter
-their current outcomes.
-
-### Persistence
-
-Save codec tests cover every migration and validation rule listed above. Repository tests verify
-all backends preserve the v12 shape.
-
-### Components
-
-Client Vitest covers:
-
-- system versus event card rendering;
-- event target and provenance;
-- finance-disabled options;
-- missing-target disabled state;
-- Active Modifiers empty, active, important, and expiring states;
-- target labels;
-- report impacts;
-- activation, replacement, cancellation, and expiry copy;
-- keyboard and accessible-name behavior.
-
-### End-to-end lifecycle
-
-The Playwright test uses a test-only catalog without shipping it in production:
-
-1. Node-side test setup imports the pure game modules.
-2. It creates a deterministic game and calls the real catalog-injectable selection function with
-   the fixture catalog.
-3. It encodes that selected materialized event into a v12 save.
-4. It seeds browser storage before page load.
-5. The browser resolves the option through the real Decisions UI.
-6. It verifies the modifier is active for each intended day.
-7. It verifies final-day application, next-day absence, and report attribution.
-
-This covers real deterministic selection, persisted materialization, UI resolution, simulation,
-expiry, and reporting while keeping fixture content out of the production catalog.
-
-## File and responsibility map
-
-### New files
-
-- `src/lib/game/eventDefinitions.ts`
-- `src/lib/game/eventDefinitions.spec.ts`
-- `src/lib/game/eventCatalog.ts`
-- `src/lib/game/eventCatalog.spec.ts`
-- `src/lib/game/eventSelection.ts`
-- `src/lib/game/eventSelection.spec.ts`
-- `src/lib/game/eventEffects.ts`
-- `src/lib/game/eventEffects.spec.ts`
-- `src/lib/game/eventModifiers.ts`
-- `src/lib/game/eventModifiers.spec.ts`
-- `src/lib/components/game/ActiveModifiers.svelte`
-- `src/lib/components/game/ActiveModifiers.svelte.spec.ts`
-
-### Existing domain files
-
-- `src/lib/game/types.ts`
-  - persisted decision, event, modifier, history, and report shapes only.
-- `src/lib/game/events.ts`
-  - production catalog facade and queue cleanup.
-- `src/lib/game/events.spec.ts`
-  - migrated-event parity.
-- `src/lib/game/state.ts`
-  - system/event resolution dispatch.
-- `src/lib/game/state.spec.ts`
-  - public resolution behavior.
-- `src/lib/game/simulateDay.ts`
-  - daily event/modifier orchestration.
-- `src/lib/game/simulateDay.spec.ts`
-  - normative lifecycle integration.
-- `src/lib/game/simulationRules.ts`
-  - provenance, merge, and multiplicative resolution.
-- `src/lib/game/simulationRules.spec.ts`
-  - rule composition.
-- `src/lib/game/stock.ts`
-  - retail rule application evidence.
-- `src/lib/game/stock.spec.ts`
-  - retail modifier application.
-- `src/lib/game/industryProduction.ts`
-  - industrial rule application evidence.
-- `src/lib/game/industryProduction.spec.ts`
-  - industrial modifier application.
-- `src/lib/game/alerts.ts`
-  - important-modifier alerts.
-- `src/lib/game/alerts.spec.ts`
-  - alert ordering and deep links.
-- `src/lib/game/reports.ts`
-  - retain latest attribution without new rolling aggregates.
-- `src/lib/scenarios/runtime.ts`
-  - scenario source metadata and rule composition.
-- `src/lib/scenarios/runtime.spec.ts`
-  - replay parity.
-
-### Persistence
-
-- `src/lib/persistence/saveTypes.ts`
-- `src/lib/persistence/saveCodec.ts`
-- `src/lib/persistence/saveCodec.spec.ts`
-- `src/lib/persistence/saveRepository.spec.ts`
-- `src/lib/persistence/scenarioCodec.ts`
-- `src/lib/persistence/scenarioCodec.spec.ts`
-- `src/lib/persistence/scenarioRepository.spec.ts`
-- backend-specific repository tests where required.
-
-### Localization
-
-- `src/lib/i18n/gameCopy.ts`
-- `src/lib/i18n/localizedTypes.ts`
-- `src/lib/i18n/gameCopy.spec.ts`
-- `src/lib/i18n/messages/en.ts`
-- `src/lib/i18n/messages/ja.ts`
-- `src/lib/i18n/messages/zh-Hant.ts`
-
-### UI and orchestration
-
-- `src/lib/components/game/DecisionQueue.svelte`
-- `src/lib/components/game/DecisionQueue.svelte.spec.ts`
-- `src/lib/components/game/ReportsPanel.svelte`
-- `src/lib/components/game/ReportsPanel.svelte.spec.ts`
-- `src/routes/gameRouteController.ts`
-- `src/routes/gameRouteController.spec.ts`
-- `src/routes/+page.svelte`
-- `src/routes/page.svelte.spec.ts`
-- `src/routes/retail-sim.e2e.ts`
-
-## Staged implementation sequence
-
-### Stage 1: parity, union, catalog, and validation
-
-- Lock current event behavior.
-- Introduce the system/event union and empty event runtime.
-- Convert system constructors to effect-free system options.
-- Add definition contracts and production catalog.
-- Add catalog validation and locale-key completeness.
-
-### Stage 2: deterministic selection and materialization
-
-- Add condition and target evaluation.
-- Add dedicated RNG initialization and fixed daily draw budget.
-- Add follow-up, forced, and weighted selection.
-- Add cooldowns, pending exclusion, history, and instance materialization.
-- Reduce `events.ts` to the production facade.
-
-### Stage 3: atomic effects and decision resolution
-
-- Add dry-run availability and effect handlers.
-- Integrate finance borrowing.
-- Add typed resolution results.
-- Update route and scenario dispatch.
-- Migrate the three event families away from broad mutation objects.
-- Delete obsolete hard-coded constructors only after parity passes.
-
-### Stage 4: modifiers and simulation rules
-
-- Add modifier activation, stack, replace, reconciliation, and expiry.
-- Add rule provenance, merge, and multiplicative resolution.
-- Add retail and industrial application evidence.
-- Integrate the normative daily order and report records.
-- Add the test-only three-day lifecycle fixture.
-
-### Stage 5: v12 persistence and localization
-
-- Add v11 to v12 migration.
-- Add strict decoder validation.
-- Update all repository backends and fixtures.
-- Move event localization to copy keys.
-- Add event-target, modifier, report, and alert copy in all locales.
-
-### Stage 6: player surfaces and end-to-end coverage
-
-- Add Active Modifiers to Decisions.
-- Extend DecisionQueue and ReportsPanel.
-- Add important-modifier alerts and deep links.
-- Complete component accessibility coverage.
-- Add the deterministic Playwright lifecycle.
-- Run full verification.
+- `eventCatalog.ts`, `types.ts`, `simulateDay.ts`, `simulationRules.ts`;
+- `stock.ts`, `industryProduction.ts`, reports and alerts;
+- v13 save/scenario codecs and repositories;
+- modifier localization;
+- `DecisionQueue.svelte`, `ReportsPanel.svelte`, `+page.svelte`;
+- targeted route/component tests and `retail-sim.e2e.ts`.
 
 ## Risks and mitigations
 
-### Exact supplier selection days change
+### Supplier selection dates change
 
-Isolation from the live simulation RNG changes the old supplier-term sequence.
+The isolated event RNG changes historical supplier-term dates.
 
-Mitigation: explicitly preserve the 12% deterministic cadence contract and add fixed-draw golden
-tests. This is an intentional architecture correction.
+Mitigation: preserve deterministic 12% cadence, version the selection schema, and lock golden draw
+advancement.
 
-### Materialized choices increase save size
+### Bulk-discount balance changes
 
-Persisting concrete options duplicates small catalog payloads.
+Supplier bulk discount gains a real 10% three-day retail import discount.
 
-Mitigation: only pending instances are materialized; event history is bounded; definitions are
-small; correctness across revisions is worth the limited size.
+Mitigation: disclose it in option copy, isolate it to retail imports, use replace rather than stack,
+and add deterministic report evidence. Balance values are explicit product decisions, not hidden
+implementation tuning.
 
-### Rule provenance touches retail and industry paths
+### Two save migrations
 
-Import-cost attribution requires both consumers to return evidence.
+Splitting review creates v12 core and v13 modifier migrations.
 
-Mitigation: keep evidence in pure return values, avoid callbacks, and test scenario-only parity
-before enabling composition.
+Mitigation: each PR is independently valid, migrations are narrow and chained, and the game remains
+pre-release. This is preferable to an unreviewably large atomic change.
 
-### Decision union crosses many constructors
+### Structured alert refactor
 
-System notices are created in several domain modules.
+Event decisions lack an inline title.
 
-Mitigation: convert them mechanically to `kind: 'system'`, remove empty effects, and retain their
-existing IDs, contexts, expiry, and localization tests.
-
-### Bounded history cannot own cooldown truth
-
-Pruning history could otherwise re-enable an event too early.
-
-Mitigation: cooldown records are separate authoritative state and expired records are pruned
-independently.
+Mitigation: narrow decision variants, move event-title resolution to the localization layer, and
+make raw alert messages optional fallbacks.
 
 ## Acceptance criteria
 
-- The production catalog validates without diagnostics.
-- Invalid definitions fail with stable event-and-field diagnostics.
-- Cash pressure, expansion opportunity, and supplier terms preserve exact eligibility boundaries,
-  option order, expiry offsets, finance payloads, immediate effects, and earliest recurrence.
-- Supplier terms retains deterministic 12% weighted cadence.
-- The same state, action history, and catalog produce the same event decisions, targets, modifiers,
-  reports, and event RNG state.
-- Every completed day consumes exactly three event RNG draws without touching `GameState.rngState`.
-- Target ordering never depends on source array or object iteration order.
-- Cooldowns and pending-instance exclusion work at exact boundaries.
-- Follow-ups are explicit, deterministic, and safely handle pending or missing targets and
-  definitions.
-- Pending event choices survive save/load and catalog revision because they are materialized.
-- System notices never enter event history, cooldowns, follow-ups, or modifiers.
-- Event options apply atomically and never leave partial finance or state changes.
-- Timed modifiers apply on the intended days, stack or replace explicitly, cancel missing targets
-  once, expire once, and are absent on the exclusive expiration day.
-- Scenario and event import multipliers compose multiplicatively with stable provenance.
-- Reports identify applied modifier sources, affected IDs, and lifecycle transitions.
-- Important active modifiers produce localized alerts with Decisions deep links.
-- Players can inspect active modifiers, targets, effects, and remaining duration.
-- Save schema v12 round-trips and v11 migrates with useful validation failures in both sandbox
-  saves and embedded active scenario runs.
-- English, Japanese, and Traditional Chinese catalogs remain complete.
-- Unit, persistence, component, scenario regression, and targeted Playwright coverage pass.
-- All modified Svelte files follow the repository's mandatory Svelte MCP documentation and
-  autofixer workflow during implementation.
+### Core event framework
 
-## Verification commands
+- Production catalog contains exactly the three migrated event families.
+- Current eligibility, option order, expiry, immediate effects, and early-resolution recurrence are
+  preserved.
+- Runtime resolution always uses instance IDs; family logic uses `eventId`.
+- Every completed day advances the global event RNG by the version-1 three-draw packet.
+- Future local random materialization cannot alter global draw advancement.
+- Pending choices survive save/load and catalog revision unchanged.
+- System notices never enter event history or cooldowns.
+- Decision availability and resolution share one atomic preparation path.
+- Failed route/scenario resolution commits no state or persistence.
+- v11-to-v12 migration and all three locales are complete.
 
-Targeted commands are defined in the implementation plan. Before the PR is considered ready, run:
+### Production timed modifier
+
+- New supplier-terms version-2 bulk discounts create a real three-day 0.9 retail import multiplier.
+- Repeated bulk discounts replace the prior modifier and restart duration.
+- The modifier applies on resolve day, expires exclusively, and is absent on the returned expiry
+  day.
+- Scenario and event rules compose multiplicatively with stable provenance.
+- Reports explain applied source, affected IDs, multiplier, baseline cost, and lifecycle.
+- Important modifier alerts open the existing Decisions panel.
+- Active Modifiers and Reports surfaces are accessible and localized.
+- v12-to-v13 migration preserves pending v1 supplier decisions without retrofitting modifiers.
+- The production e2e exercises selection, resolution, application, replacement or expiry,
+  reporting, alert navigation, and final removal through real catalog content.
+
+## Verification
+
+Each implementation PR defines targeted commands in its implementation plan. Before each PR is
+ready for review:
 
 ```bash
 bun run check
 bun run lint
 bun run test
 ```
-
-Every Vitest case must execute at least one `expect` because `expect.requireAssertions` is enabled.
