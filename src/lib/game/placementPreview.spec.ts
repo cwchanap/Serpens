@@ -457,6 +457,129 @@ describe('retail placement preview', () => {
 		}
 	});
 
+	test('skips the credit assessment when every retail build menu archetype is cash-covered', () => {
+		// The assessment is memoized lazily and only pulled when an archetype is
+		// cash-short. A fully cash-covered menu (financing enabled) must not run
+		// `assessCredit`'s principal scan at all — these derivations recompute
+		// on every game update regardless of whether the Build Menu is open.
+		expect.assertions(3);
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 20,
+			height: 20,
+			seed: 20260503
+		});
+		const foundingTile = city.tiles.find((tile) => isRetailFootprintAvailable(city, tile))!;
+		const game = {
+			...createFoundingGameAtTile({
+				archetypeId: 'convenience',
+				city,
+				tileId: foundingTile.id,
+				seed: 20260503
+			}),
+			cash: 10_000_000
+		};
+		const cashCoveredOptions = getRetailBuildMenuOptions({
+			game,
+			city,
+			cashCommandAvailable: true,
+			financeCommandAvailable: true
+		}).filter((option) => option.validTileCount > 0);
+		expect(cashCoveredOptions.length).toBeGreaterThan(0);
+		expect(cashCoveredOptions.every((option) => option.financeOffer === null)).toBe(true);
+
+		const spy = vi.spyOn(financeModule, 'assessCredit');
+		try {
+			getRetailBuildMenuOptions({
+				game,
+				city,
+				cashCommandAvailable: true,
+				financeCommandAvailable: true
+			});
+			expect(spy).not.toHaveBeenCalled();
+		} finally {
+			spy.mockRestore();
+		}
+	});
+
+	test('skips the credit assessment when the retail store cap is reached', () => {
+		// When storeCount >= storeCap every archetype short-circuits before the
+		// cash/finance check, so even a cash-short, financing-enabled menu must
+		// not run `assessCredit`'s principal scan.
+		expect.assertions(3);
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 20,
+			height: 20,
+			seed: 20260503
+		});
+		const foundingTile = city.tiles.find((tile) => isRetailFootprintAvailable(city, tile))!;
+		const baseGame = createFoundingGameAtTile({
+			archetypeId: 'convenience',
+			city,
+			tileId: foundingTile.id,
+			seed: 20260503
+		});
+		const cappedGame = { ...baseGame, cash: 0, storeCap: 1 };
+		expect(cappedGame.stores.length).toBeGreaterThanOrEqual(cappedGame.storeCap);
+
+		const spy = vi.spyOn(financeModule, 'assessCredit');
+		try {
+			const options = getRetailBuildMenuOptions({
+				game: cappedGame,
+				city,
+				cashCommandAvailable: false,
+				financeCommandAvailable: true
+			});
+			expect(spy).not.toHaveBeenCalled();
+			expect(
+				options.every((option) => option.disabledReason?.code === 'retail.storeLimitReached')
+			).toBe(true);
+		} finally {
+			spy.mockRestore();
+		}
+	});
+
+	test('skips the credit assessment when no retail tile is structurally valid', () => {
+		// A city with no tiles yields zero valid forecasts per archetype, so the
+		// cash/finance path never runs and `assessCredit` must not be called —
+		// even with financing enabled and cash short.
+		expect.assertions(1);
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 20,
+			height: 20,
+			seed: 20260503
+		});
+		const foundingTile = city.tiles.find((tile) => !tile.locked && tile.feature === null)!;
+		const game = {
+			...createFoundingGameAtTile({
+				archetypeId: 'convenience',
+				city,
+				tileId: foundingTile.id,
+				seed: 20260503
+			}),
+			cash: 0
+		};
+		const emptyCity = { ...city, tiles: [] };
+
+		const spy = vi.spyOn(financeModule, 'assessCredit');
+		try {
+			getRetailBuildMenuOptions({
+				game,
+				city: emptyCity,
+				cashCommandAvailable: false,
+				financeCommandAvailable: true
+			});
+			expect(spy).not.toHaveBeenCalled();
+		} finally {
+			spy.mockRestore();
+		}
+	});
+
 	test('excludes cash-short retail tiles from the preview when financing is unavailable', () => {
 		expect.assertions(5);
 		const city = generateCity({
@@ -601,6 +724,49 @@ describe('retail placement preview', () => {
 				cashCommandAvailable: false
 			});
 			expect(spy).toHaveBeenCalledTimes(1);
+		} finally {
+			spy.mockRestore();
+		}
+	});
+
+	test('skips the credit assessment when every retail placement preview tile is cash-covered', () => {
+		// The assessment is memoized lazily and only pulled when a tile is
+		// cash-short. A fully cash-covered preview (financing enabled) must not
+		// run `assessCredit`'s principal scan at all — the preview recomputes on
+		// every game update regardless of whether placement is armed.
+		expect.assertions(2);
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 20,
+			height: 20,
+			seed: 20260503
+		});
+		const foundingTile = city.tiles.find((tile) => isRetailFootprintAvailable(city, tile))!;
+		const game = {
+			...createFoundingGameAtTile({
+				archetypeId: 'convenience',
+				city,
+				tileId: foundingTile.id,
+				seed: 20260503
+			}),
+			cash: 10_000_000
+		};
+		const financeableTileCount = city.tiles.filter(
+			(tile) => tile.id !== foundingTile.id && isRetailFootprintAvailable(city, tile, game.stores)
+		).length;
+		expect(financeableTileCount).toBeGreaterThan(0);
+
+		const spy = vi.spyOn(financeModule, 'assessCredit');
+		try {
+			createRetailPlacementPreview({
+				game,
+				city,
+				archetypeId: 'electronics',
+				cashCommandAvailable: true,
+				financeCommandAvailable: true
+			});
+			expect(spy).not.toHaveBeenCalled();
 		} finally {
 			spy.mockRestore();
 		}
@@ -791,6 +957,34 @@ describe('industry placement preview', () => {
 				financeCommandAvailable: true
 			});
 			expect(spy).toHaveBeenCalledTimes(1);
+		} finally {
+			spy.mockRestore();
+		}
+	});
+
+	test('skips the credit assessment when every industrial build menu building is cash-covered', () => {
+		// The assessment is memoized lazily and only pulled when a building is
+		// cash-short. A fully cash-covered industrial menu (financing enabled)
+		// must not run `assessCredit`'s principal scan at all — these
+		// derivations recompute on every game update regardless of whether the
+		// Build Menu is open.
+		expect.assertions(2);
+		const game = { ...createNewGame('convenience', 20260512), cash: 100_000_000 };
+		const cashCoveredOptions = getIndustrialBuildMenuOptions({
+			game,
+			cashCommandAvailable: true,
+			financeCommandAvailable: true
+		});
+		expect(cashCoveredOptions.every((option) => option.financeOffer === null)).toBe(true);
+
+		const spy = vi.spyOn(financeModule, 'assessCredit');
+		try {
+			getIndustrialBuildMenuOptions({
+				game,
+				cashCommandAvailable: true,
+				financeCommandAvailable: true
+			});
+			expect(spy).not.toHaveBeenCalled();
 		} finally {
 			spy.mockRestore();
 		}
