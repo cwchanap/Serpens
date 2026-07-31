@@ -157,20 +157,26 @@ interface IndustrialBuildMenuInput {
 }
 
 export function createRetailPlacementPreview(input: RetailPreviewInput): PlacementPreview {
+	// Normalize the optional flag before the precomputation condition so that
+	// omitting it matches the `true` default inside createRetailPlacementContext.
+	// Without this, an omitted flag skips the assessment (the condition tests
+	// the raw `undefined`) while the context enables financing, forcing the
+	// per-tile fallback to re-run assessCredit for every cash-short tile.
+	const financeCommandAvailable = input.financeCommandAvailable ?? true;
 	// The per-tile finance check needs a credit assessment, but `assessCredit`'s
 	// principal scan depends only on `game` (not on the per-tile `setupCost`),
 	// so compute it once for the whole preview and reuse it for every
 	// cash-short tile. Retail `setupCost` varies per tile, so a single offer
 	// cannot be shared — the assessment is the cost-independent part.
 	const assessment =
-		input.game && input.financeCommandAvailable
+		input.game && financeCommandAvailable
 			? assessCredit(input.game, FOUNDING_LOAN_TERM_DAYS)
 			: null;
 	const context = createRetailPlacementContext(
 		input.game,
 		input.city,
 		input.cashCommandAvailable,
-		input.financeCommandAvailable,
+		financeCommandAvailable,
 		assessment
 	);
 	const validTileIds: string[] = [];
@@ -265,12 +271,22 @@ function getRetailTilePlacementBlockReason(
 }
 
 export function getRetailBuildMenuOptions(input: RetailBuildMenuInput): RetailBuildMenuOption[] {
+	const financeCommandAvailable = input.financeCommandAvailable ?? true;
 	const context = createRetailPlacementContext(
 		input.game,
 		input.city,
 		input.cashCommandAvailable,
-		input.financeCommandAvailable
+		financeCommandAvailable
 	);
+	// The assessment depends only on `game` (not on the per-archetype
+	// `minimumSetupCost`), so compute it once for the whole menu and reuse it
+	// via getExpansionFinanceOfferWithAssessment. Without this, each cash-short
+	// archetype re-ran assessCredit's principal scan through
+	// getExpansionFinanceOffer.
+	const assessment =
+		context.game && financeCommandAvailable
+			? assessCredit(context.game, FOUNDING_LOAN_TERM_DAYS)
+			: null;
 
 	// Footprint block reasons are archetype-independent (they depend only on
 	// terrain, locked state, edge-of-map, and existing occupancy), so compute
@@ -323,8 +339,8 @@ export function getRetailBuildMenuOptions(input: RetailBuildMenuInput): RetailBu
 		const minimumSetupCost = Math.min(...validForecasts.map((forecast) => forecast.setupCost));
 		const cashCovered = context.cash === null || context.cash >= minimumSetupCost;
 		const financeOffer =
-			!cashCovered && context.financeCommandAvailable && context.game
-				? getExpansionFinanceOffer(context.game, minimumSetupCost)
+			!cashCovered && context.financeCommandAvailable && context.game && assessment
+				? getExpansionFinanceOfferWithAssessment(context.game, minimumSetupCost, assessment)
 				: null;
 		const fundingUnavailable = cashCovered ? !context.cashCommandAvailable : financeOffer === null;
 
@@ -346,6 +362,16 @@ export function getRetailBuildMenuOptions(input: RetailBuildMenuInput): RetailBu
 export function getIndustrialBuildMenuOptions(
 	input: IndustrialBuildMenuInput
 ): IndustrialBuildMenuOption[] {
+	// The assessment depends only on `game` (not on the per-type `buildCost`),
+	// so compute it once for the whole menu and reuse it via
+	// getExpansionFinanceOfferWithAssessment. Without this, each cash-short
+	// building type re-ran assessCredit's principal scan through
+	// getExpansionFinanceOffer.
+	const assessment =
+		input.game && input.financeCommandAvailable
+			? assessCredit(input.game, FOUNDING_LOAN_TERM_DAYS)
+			: null;
+
 	return Object.values(INDUSTRIAL_BUILDING_TYPES).map((buildingType) => {
 		if (!input.game) {
 			return {
@@ -365,9 +391,10 @@ export function getIndustrialBuildMenuOptions(
 			};
 		}
 
-		const financeOffer = input.financeCommandAvailable
-			? getExpansionFinanceOffer(input.game, buildingType.buildCost)
-			: null;
+		const financeOffer =
+			input.financeCommandAvailable && assessment
+				? getExpansionFinanceOfferWithAssessment(input.game, buildingType.buildCost, assessment)
+				: null;
 		return {
 			buildingTypeId: buildingType.id,
 			disabledReason: financeOffer
