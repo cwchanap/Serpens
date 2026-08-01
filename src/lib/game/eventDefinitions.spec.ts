@@ -395,7 +395,7 @@ describe('validateAndNormalizeEventCatalog', () => {
 				options: [
 					{
 						id: 'accept',
-						effects: [{ kind: 'finance-borrow', purpose: 'emergency', amount: 0, termDays: 28 }],
+						effects: [{ kind: 'finance-borrow', purpose: 'emergency', amount: 0, termDays: 56 }],
 						modifiers: []
 					}
 				]
@@ -410,7 +410,7 @@ describe('validateAndNormalizeEventCatalog', () => {
 								kind: 'finance-borrow',
 								purpose: 'emergency',
 								amount: 'invalid' as never,
-								termDays: 28
+								termDays: 56
 							}
 						],
 						modifiers: []
@@ -440,11 +440,50 @@ describe('validateAndNormalizeEventCatalog', () => {
 						modifiers: []
 					}
 				]
+			}),
+			definition({
+				id: 'bad-finance-fractional-amount',
+				options: [
+					{
+						id: 'accept',
+						effects: [
+							{ kind: 'finance-borrow', purpose: 'emergency', amount: 4_000.5, termDays: 56 }
+						],
+						modifiers: []
+					}
+				]
+			}),
+			definition({
+				id: 'bad-finance-pairing-emergency',
+				options: [
+					{
+						id: 'accept',
+						effects: [
+							{ kind: 'finance-borrow', purpose: 'emergency', amount: 4_000, termDays: 28 }
+						],
+						modifiers: []
+					}
+				]
+			}),
+			definition({
+				id: 'bad-finance-pairing-supplier-credit',
+				options: [
+					{
+						id: 'accept',
+						effects: [
+							{ kind: 'finance-borrow', purpose: 'supplierCredit', amount: 4_000, termDays: 56 }
+						],
+						modifiers: []
+					}
+				]
 			})
 		]);
 		expect(diagnostics.map(({ eventId, path }) => `${eventId}:${path}`)).toEqual([
 			'bad-finance-amount:options[0].effects[0].amount',
 			'bad-finance-amount-type:options[0].effects[0].amount',
+			'bad-finance-fractional-amount:options[0].effects[0].amount',
+			'bad-finance-pairing-emergency:options[0].effects[0].termDays',
+			'bad-finance-pairing-supplier-credit:options[0].effects[0].termDays',
 			'bad-finance-purpose:options[0].effects[0].purpose',
 			'bad-finance-term:options[0].effects[0].termDays'
 		]);
