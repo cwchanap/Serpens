@@ -874,6 +874,80 @@ export const en = {
 		loanTerms: { 28: '28 days', 56: '56 days', 84: '84 days' }
 	},
 	copy: {
+		events: {
+			cashPressure: {
+				title: 'Cash pressure',
+				context:
+					'Cash is below zero. Choose how to keep operations moving while protecting the brand.',
+				options: {
+					'short-loan': {
+						label: 'Short loan',
+						description: 'Add emergency working capital and accept pressure on profitability.'
+					},
+					'cut-costs': {
+						label: 'Cut costs',
+						description: 'Trim discretionary spend and inventory depth to stabilize cash.'
+					},
+					'hold-course': {
+						label: 'Hold course',
+						description: "Avoid reactive changes and let tomorrow's sales carry the business."
+					}
+				}
+			},
+			expansionOpportunity: {
+				title: 'Expansion opportunity',
+				context: 'Strong profit and cash reserves make a second storefront plausible.',
+				options: {
+					prepare: {
+						label: 'Prepare',
+						description: 'Start scouting locations and lining up the opening plan.'
+					},
+					pass: {
+						label: 'Pass',
+						description: 'Keep capital focused on the current store.'
+					}
+				}
+			},
+			supplierTerms: {
+				title: 'Supplier terms',
+				context:
+					'A supplier is open to revising ordering terms before the next replenishment cycle.',
+				options: {
+					'negotiate-credit': {
+						label: 'Negotiate credit',
+						description: 'Stretch payment timing for a small margin penalty.'
+					},
+					'bulk-discount': {
+						label: 'Bulk discount',
+						description: 'Commit to larger orders for a three-day 10% retail import discount.'
+					}
+				},
+				bulkDiscount: {
+					modifier: '10% discount on company-wide retail imports for three days.'
+				}
+			}
+		},
+		modifiers: {
+			companyTarget: 'Company-wide retail imports',
+			importCostDiscount: '{percent}% retail import discount',
+			durationDays: 'Active for {days} days',
+			startsOnDay: 'Starts day {day}',
+			expiresAfterDay: 'Expires after day {day}',
+			replaced: 'Replaces the previous active modifier.',
+			expired: 'Modifier expired.',
+			reportApplied: '{summary} applied to {count} imports.',
+			reportExpired: '{summary} expired after day {day}.',
+			important: 'Important'
+		},
+		decisionFailures: {
+			decisionNotFound: 'This decision is no longer available.',
+			optionNotFound: 'This choice is no longer available.',
+			decisionExpired: 'This decision has expired.',
+			financeDelinquent: 'Borrowing is unavailable while an obligation is delinquent.',
+			financeDebtService: 'Current debt-service capacity cannot cover this loan.',
+			financeCapacity: 'Current credit capacity cannot cover this loan.',
+			effectRejected: 'This decision can no longer be applied.'
+		},
 		stockStatus: {
 			healthy: 'Healthy',
 			needsImport: 'Needs import',

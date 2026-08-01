@@ -13,6 +13,8 @@ import {
 } from '$lib/game/industryPlacement';
 import { INDUSTRIAL_BUILDING_TYPES } from '$lib/game/industry';
 import { generateDecisions } from '$lib/game/events';
+import { PRODUCTION_EVENT_CATALOG } from '$lib/game/eventCatalog';
+import type { DecisionOptionAvailability } from '$lib/game/eventEffects';
 import { getWorldCityDefinition, getWorldCityStatus, openWorldCity } from '$lib/game/world';
 import type { GameAlert } from '$lib/game/alerts';
 import type { DecisionItem, EventDecisionItem, Store, MaterialId } from '$lib/game/types';
@@ -54,6 +56,7 @@ import {
 	formatPlacementBlockReason,
 	localizeAlert,
 	localizeDecision,
+	localizeDecisionFailure,
 	localizeProductChainCategorySummary,
 	localizeProductChainGraph,
 	localizeReportWarning,
@@ -64,7 +67,98 @@ import {
 } from './gameCopy';
 import { flattenStrings } from './testUtils';
 
+function readMessage(messages: unknown, key: string): unknown {
+	return key.split('.').reduce<unknown>((value, segment) => {
+		if (typeof value !== 'object' || value === null) return undefined;
+		return (value as Record<string, unknown>)[segment];
+	}, messages);
+}
+
 describe('game copy builders', () => {
+	it('provides complete localized copy for every production catalog event', () => {
+		const keys = PRODUCTION_EVENT_CATALOG.definitions.flatMap((definition) => [
+			`${definition.copy.key}.title`,
+			`${definition.copy.key}.context`,
+			...definition.options.flatMap((option) => [
+				`${definition.copy.key}.options.${option.id}.label`,
+				`${definition.copy.key}.options.${option.id}.description`,
+				...option.modifiers.map((modifier) => modifier.explanation.key)
+			])
+		]);
+
+		for (const [locale, messages] of Object.entries(messagesByLocale)) {
+			for (const key of keys) {
+				const value = readMessage(messages, `copy.${key}`);
+				expect(value, `${locale} is missing ${key}`).toEqual(expect.any(String));
+				expect(value, `${locale} has an empty ${key}`).not.toBe('');
+			}
+		}
+	});
+
+	it('localizes every decision failure in every supported locale', () => {
+		const unavailable = [
+			{ available: false, code: 'decision-not-found', context: {} },
+			{ available: false, code: 'option-not-found', context: {} },
+			{ available: false, code: 'decision-expired', context: {} },
+			{
+				available: false,
+				code: 'finance-unavailable',
+				context: {},
+				reasons: ['delinquentObligation']
+			},
+			{
+				available: false,
+				code: 'finance-unavailable',
+				context: {},
+				reasons: ['debtServiceCapacityLimited']
+			},
+			{ available: false, code: 'finance-unavailable', context: {} },
+			{ available: false, code: 'effect-rejected', context: {} }
+		] as const satisfies readonly DecisionOptionAvailability[];
+
+		for (const locale of Object.keys(messagesByLocale) as Array<keyof typeof messagesByLocale>) {
+			for (const availability of unavailable) {
+				expect(localizeDecisionFailure(availability, createI18n(locale))).toEqual(
+					expect.any(String)
+				);
+				expect(localizeDecisionFailure(availability, createI18n(locale))).not.toBe('');
+			}
+		}
+	});
+
+	it('localizes event copy from the persisted reference without runtime fields', () => {
+		const decision = {
+			kind: 'event' as const,
+			id: 'event-instance-1',
+			eventId: 'cash-pressure',
+			definitionVersion: 1,
+			generatedOnDay: 1,
+			expiresOnDay: 3,
+			target: { kind: 'company' as const },
+			copy: { key: 'events.cashPressure', params: {} },
+			options: [{ id: 'short-loan', effects: [], modifiers: [] }]
+		};
+		Object.defineProperty(decision, 'title', {
+			get() {
+				throw new Error('event localization must not read decision.title');
+			}
+		});
+
+		expect(localizeDecision(decision, createI18n('en'))).toEqual({
+			id: 'event-instance-1',
+			title: 'Cash pressure',
+			context:
+				'Cash is below zero. Choose how to keep operations moving while protecting the brand.',
+			options: [
+				{
+					id: 'short-loan',
+					label: 'Short loan',
+					description: 'Add emergency working capital and accept pressure on profitability.'
+				}
+			]
+		});
+	});
+
 	it('localizes stock status and stock-trouble summaries', () => {
 		expect.assertions(3);
 		const i18n = createI18n('en');

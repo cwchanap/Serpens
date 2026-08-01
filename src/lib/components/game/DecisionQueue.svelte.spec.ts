@@ -319,6 +319,30 @@ describe('DecisionQueue', () => {
 			.toBeVisible();
 	});
 
+	it('uses generic decision-failure copy for non-finance unavailable options', async () => {
+		expect.assertions(2);
+		const base = createNewGame('grocery', 75);
+		renderQueue({
+			game: base,
+			decisions: [
+				{
+					kind: 'event',
+					id: 'invalid-target-choice',
+					eventId: 'cash-pressure',
+					definitionVersion: 1,
+					generatedOnDay: 1,
+					expiresOnDay: 12,
+					target: { kind: 'not-company' } as never,
+					copy: { key: 'events.cashPressure', params: {} },
+					options: [{ id: 'hold-course', effects: [], modifiers: [] }]
+				}
+			]
+		});
+
+		await expect.element(page.getByRole('button', { name: /Hold course/ })).toBeDisabled();
+		await expect.element(page.getByText('This decision can no longer be applied.')).toBeVisible();
+	});
+
 	it('omits the disabled-copy paragraph when canResolve is false but no reason is supplied', async () => {
 		expect.assertions(2);
 		renderQueue({ canResolve: false });

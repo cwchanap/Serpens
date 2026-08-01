@@ -1,7 +1,7 @@
 <script lang="ts">
-	import { getDecisionOptionAvailability, type DecisionOptionAvailability } from '$lib/game/state';
+	import { getDecisionOptionAvailability } from '$lib/game/state';
 	import type { DecisionItem, GameState } from '$lib/game/types';
-	import { localizeDecision } from '$lib/i18n/gameCopy';
+	import { localizeDecision, localizeDecisionFailure } from '$lib/i18n/gameCopy';
 	import type { I18nBundle } from '$lib/i18n';
 
 	let {
@@ -19,17 +19,6 @@
 		canResolve?: boolean;
 		disabledReason?: string | null;
 	} = $props();
-
-	function formatCreditUnavailableReason(availability: DecisionOptionAvailability): string | null {
-		if (availability.available) return null;
-		if (availability.reasons?.includes('delinquentObligation')) {
-			return i18n.t('decisionQueue.creditUnavailableDelinquent');
-		}
-		if (availability.reasons?.includes('debtServiceCapacityLimited')) {
-			return i18n.t('decisionQueue.creditUnavailableService');
-		}
-		return i18n.t('decisionQueue.creditUnavailableCapacity');
-	}
 </script>
 
 <section class="panel paper" aria-labelledby="decision-heading">
@@ -72,7 +61,7 @@
 							</button>
 							{#if !optionAvailability.available}
 								<p class="option-disabled-copy" role="status">
-									{formatCreditUnavailableReason(optionAvailability)}
+									{localizeDecisionFailure(optionAvailability, i18n)}
 								</p>
 							{/if}
 						{/each}

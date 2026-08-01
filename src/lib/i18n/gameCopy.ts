@@ -17,11 +17,11 @@ import type {
 	DailyReportWarning,
 	GameState,
 	DecisionItem,
-	EventDecisionOption,
 	Store,
 	SystemDecisionOption,
 	StoreLocation
 } from '$lib/game/types';
+import type { DecisionOptionAvailability } from '$lib/game/eventEffects';
 import type { DecisionContext } from '$lib/game/decisionContext';
 import type { WorldCityStatus } from '$lib/game/world';
 import type { StoreProductStatus } from '$lib/game/stock';
@@ -332,19 +332,6 @@ function classifyDecision(decision: DecisionItem): string | null {
 	return null;
 }
 
-function classifyEventCopy(decision: Extract<DecisionItem, { kind: 'event' }>): string | null {
-	switch (decision.copy.key) {
-		case 'events.cashPressure':
-			return 'cashPressure';
-		case 'events.expansionOpportunity':
-			return 'expansionOpportunity';
-		case 'events.supplierTerms':
-			return 'supplierTerms';
-		default:
-			return null;
-	}
-}
-
 function localizeDecisionContextValue(ctx: DecisionContext, i18n: I18nBundle): string {
 	switch (ctx.code) {
 		case 'expansionUnavailable':
@@ -423,10 +410,10 @@ function localizeDecisionContextValue(ctx: DecisionContext, i18n: I18nBundle): s
 
 function localizeDecisionTitle(decision: DecisionItem, i18n: I18nBundle): string {
 	if (decision.kind === 'event') {
-		const family = classifyEventCopy(decision);
-		return family === null
-			? decision.copy.key
-			: (translateMessage(i18n, `copy.decisions.${family}.title`) ?? decision.copy.key);
+		return (
+			translateMessage(i18n, `copy.${decision.copy.key}.title`, decision.copy.params) ??
+			decision.copy.key
+		);
 	}
 	const family = classifyDecision(decision);
 
@@ -457,28 +444,36 @@ function localizeDecisionTitle(decision: DecisionItem, i18n: I18nBundle): string
 
 function localizeDecisionContext(decision: DecisionItem, i18n: I18nBundle): string {
 	if (decision.kind === 'event') {
-		const family = classifyEventCopy(decision);
-		return family === null
-			? decision.copy.key
-			: (translateMessage(i18n, `copy.decisions.${family}.context`) ?? decision.copy.key);
+		return (
+			translateMessage(i18n, `copy.${decision.copy.key}.context`, decision.copy.params) ??
+			decision.copy.key
+		);
 	}
 	return localizeDecisionContextValue(decision.context, i18n);
 }
 
-function localizeDecisionOption(
-	decision: DecisionItem,
-	option: SystemDecisionOption | EventDecisionOption,
+function localizeEventDecisionOption(
+	decision: Extract<DecisionItem, { kind: 'event' }>,
+	optionId: string,
 	i18n: I18nBundle
 ): LocalizedDecisionOption {
-	const family =
-		decision.kind === 'event' ? classifyEventCopy(decision) : classifyDecision(decision);
+	const key = `copy.${decision.copy.key}.options.${optionId}`;
+	return {
+		id: optionId,
+		label: translateMessage(i18n, `${key}.label`) ?? optionId,
+		description: translateMessage(i18n, `${key}.description`) ?? ''
+	};
+}
+
+function localizeSystemDecisionOption(
+	decision: Extract<DecisionItem, { kind: 'system' }>,
+	option: SystemDecisionOption,
+	i18n: I18nBundle
+): LocalizedDecisionOption {
+	const family = classifyDecision(decision);
 
 	if (family === null) {
-		return {
-			id: option.id,
-			label: 'label' in option ? option.label : option.id,
-			description: 'description' in option ? option.description : ''
-		};
+		return { id: option.id, label: option.label, description: option.description };
 	}
 
 	if (option.id === 'acknowledge') {
@@ -501,11 +496,10 @@ function localizeDecisionOption(
 	return {
 		id: option.id,
 		label:
-			translateMessage(i18n, `copy.decisions.${family}.options.${option.id}.label`) ??
-			('label' in option ? option.label : option.id),
+			translateMessage(i18n, `copy.decisions.${family}.options.${option.id}.label`) ?? option.label,
 		description:
 			translateMessage(i18n, `copy.decisions.${family}.options.${option.id}.description`) ??
-			('description' in option ? option.description : '')
+			option.description
 	};
 }
 
@@ -634,13 +628,43 @@ export function localizeAlert(alert: GameAlert, game: GameState, i18n: I18nBundl
 }
 
 export function localizeDecision(decision: DecisionItem, i18n: I18nBundle): LocalizedDecision {
+	const options =
+		decision.kind === 'event'
+			? decision.options.map((option) => localizeEventDecisionOption(decision, option.id, i18n))
+			: decision.options.map((option) => localizeSystemDecisionOption(decision, option, i18n));
+
 	return {
 		id: decision.id,
 		title: localizeDecisionTitle(decision, i18n),
 		context: localizeDecisionContext(decision, i18n),
-		expiresOnDay: decision.expiresOnDay,
-		options: decision.options.map((option) => localizeDecisionOption(decision, option, i18n))
+		options
 	};
+}
+
+export function localizeDecisionFailure(
+	availability: DecisionOptionAvailability,
+	i18n: I18nBundle
+): string | null {
+	if (availability.available) return null;
+
+	switch (availability.code) {
+		case 'decision-not-found':
+			return i18n.t('copy.decisionFailures.decisionNotFound');
+		case 'option-not-found':
+			return i18n.t('copy.decisionFailures.optionNotFound');
+		case 'decision-expired':
+			return i18n.t('copy.decisionFailures.decisionExpired');
+		case 'effect-rejected':
+			return i18n.t('copy.decisionFailures.effectRejected');
+		case 'finance-unavailable':
+			if (availability.reasons?.includes('delinquentObligation')) {
+				return i18n.t('copy.decisionFailures.financeDelinquent');
+			}
+			if (availability.reasons?.includes('debtServiceCapacityLimited')) {
+				return i18n.t('copy.decisionFailures.financeDebtService');
+			}
+			return i18n.t('copy.decisionFailures.financeCapacity');
+	}
 }
 
 export function localizeWorldCityStatus(
