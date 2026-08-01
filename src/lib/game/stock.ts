@@ -356,6 +356,8 @@ export function applyWeeklyImports(input: {
 					scope: 'retail-product',
 					targetId: category.id,
 					baselineCost,
+					resolvedMultiplier: resolution.multiplier,
+					actualCost: spend,
 					contributions: resolution.contributions
 				});
 			}

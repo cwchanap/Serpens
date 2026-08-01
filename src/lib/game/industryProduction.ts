@@ -286,6 +286,8 @@ export function simulateIndustryProduction(
 						scope: 'industrial-material',
 						targetId: input.materialId,
 						baselineCost,
+						resolvedMultiplier: resolution.multiplier,
+						actualCost: importValue,
 						contributions: resolution.contributions
 					});
 				}

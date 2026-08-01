@@ -30,8 +30,24 @@
 		<div class="queue">
 			{#each decisions as decision (decision.id)}
 				{@const localizedDecision = localizeDecision(decision, i18n)}
-				<article>
+				<article data-decision-kind={decision.kind}>
 					<div class="decision-copy">
+						<div class="decision-meta">
+							<span class="decision-kind" data-kind={decision.kind}>
+								{decision.kind === 'event'
+									? i18n.t('decisionQueue.kind.event')
+									: i18n.t('decisionQueue.kind.system')}
+							</span>
+							{#if decision.kind === 'event'}
+								<span class="event-provenance">
+									{i18n.t('decisionQueue.eventProvenance', {
+										eventTitle: localizedDecision.title,
+										eventId: decision.eventId,
+										instanceId: decision.id
+									})}
+								</span>
+							{/if}
+						</div>
 						<h3>{localizedDecision.title}</h3>
 						<p>{localizedDecision.context}</p>
 						<span class="expires"
@@ -124,8 +140,53 @@
 		padding: 0.85rem;
 	}
 
+	article[data-decision-kind='event'] {
+		border-left: 4px solid var(--brass-500);
+	}
+
+	article[data-decision-kind='system'] {
+		border-left: 4px solid var(--ink-500);
+	}
+
 	.decision-copy {
 		gap: 0.4rem;
+	}
+
+	.decision-meta {
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 0.4rem 0.6rem;
+	}
+
+	.decision-kind {
+		display: inline-flex;
+		width: fit-content;
+		border: 1px solid var(--paper-edge);
+		border-radius: 999px;
+		background: var(--paper-100);
+		padding: 0.2rem 0.45rem;
+		font-family: var(--font-ui);
+		font-size: 0.65rem;
+		font-weight: 700;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+	}
+
+	.decision-kind[data-kind='event'] {
+		border-color: var(--brass-500);
+		color: var(--brass-700);
+	}
+
+	.decision-kind[data-kind='system'] {
+		border-color: var(--ink-500);
+		color: var(--ink-700);
+	}
+
+	.event-provenance {
+		font-family: var(--font-ui);
+		font-size: 0.72rem;
+		line-height: 1.4;
 	}
 
 	.decision-copy p {

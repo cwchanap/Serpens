@@ -48,6 +48,18 @@ const decisions: DecisionItem[] = [
 	}
 ];
 
+const supplierEvent: DecisionItem = {
+	kind: 'event',
+	id: 'event-instance-42',
+	eventId: 'supplier-terms',
+	definitionVersion: 2,
+	generatedOnDay: 10,
+	expiresOnDay: 12,
+	target: { kind: 'company' },
+	copy: { key: 'events.supplierTerms', params: {} },
+	options: [{ id: 'bulk-discount', effects: [], modifiers: [] }]
+};
+
 function renderQueue(
 	overrides: Partial<{
 		decisions: DecisionItem[];
@@ -104,6 +116,58 @@ describe('DecisionQueue', () => {
 			.toBeVisible();
 		await expect.element(page.getByRole('button', { name: /Mediate/ })).toBeVisible();
 	});
+
+	it('visually distinguishes catalog events from system notices and shows event provenance', async () => {
+		expect.assertions(7);
+		renderQueue({ decisions: [supplierEvent, decisions[0]!] });
+
+		await expect.element(page.getByText('Catalog event')).toBeVisible();
+		await expect.element(page.getByText('System notice')).toBeVisible();
+		await expect
+			.element(
+				page.getByText('Source event: Supplier terms · supplier-terms · Instance event-instance-42')
+			)
+			.toBeVisible();
+		expect(document.querySelector('article[data-decision-kind="event"]')).not.toBeNull();
+		expect(document.querySelector('article[data-decision-kind="system"]')).not.toBeNull();
+		expect(
+			document
+				.querySelector('article[data-decision-kind="system"]')
+				?.querySelector('.event-provenance')
+		).toBeNull();
+		expect(
+			document
+				.querySelector('article[data-decision-kind="event"]')
+				?.querySelector('.event-provenance')
+		).not.toBeNull();
+	});
+
+	it.each([
+		[
+			'ja',
+			'カタログイベント',
+			'システム通知',
+			'発生イベント: 仕入条件 · supplier-terms · インスタンス event-instance-42'
+		],
+		[
+			'zh-Hant',
+			'目錄事件',
+			'系統通知',
+			'來源事件: 供應條件 · supplier-terms · 實例 event-instance-42'
+		]
+	] as const)(
+		'localizes event and system provenance markers in %s',
+		async (locale, eventMarker, systemMarker, provenance) => {
+			renderQueue({
+				decisions: [supplierEvent, decisions[0]!],
+				i18n: createI18n(locale)
+			});
+
+			await expect.element(page.getByText(eventMarker)).toBeVisible();
+			await expect.element(page.getByText(systemMarker)).toBeVisible();
+			await expect.element(page.getByText(provenance)).toBeVisible();
+		}
+	);
 
 	it('calls onResolve with correct IDs when option is clicked', async () => {
 		expect.assertions(2);

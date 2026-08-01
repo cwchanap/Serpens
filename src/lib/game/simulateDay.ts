@@ -310,6 +310,8 @@ function buildEventModifierImpacts(
 			multiplier: number;
 			affectedIds: Set<string>;
 			baselineCost: number;
+			weightedResolvedCost: number;
+			actualCost: number;
 			applicationCount: number;
 		}
 	>();
@@ -330,10 +332,14 @@ function buildEventModifierImpacts(
 				multiplier,
 				affectedIds: new Set<string>(),
 				baselineCost: 0,
+				weightedResolvedCost: 0,
+				actualCost: 0,
 				applicationCount: 0
 			};
 			impact.affectedIds.add(application.targetId);
 			impact.baselineCost += application.baselineCost;
+			impact.weightedResolvedCost += application.baselineCost * application.resolvedMultiplier;
+			impact.actualCost += application.actualCost;
 			impact.applicationCount += 1;
 			impacts.set(modifierId, impact);
 		}
@@ -353,9 +359,20 @@ function buildEventModifierImpacts(
 			scope: 'retail-product',
 			affectedIds: [...impact.affectedIds].sort(compareIds),
 			multiplier: impact.multiplier,
+			// A company-wide event can span targets that only partially overlap a
+			// scenario rule. Preserve one truthful report value by weighting each
+			// application's effective product by its own baseline cost.
+			resolvedMultiplier: canonicalizeReportMultiplier(
+				impact.weightedResolvedCost / impact.baselineCost
+			),
 			baselineCost: impact.baselineCost,
+			actualCost: impact.actualCost,
 			applicationCount: impact.applicationCount
 		}));
+}
+
+function canonicalizeReportMultiplier(multiplier: number): number {
+	return Number(multiplier.toPrecision(15));
 }
 
 function collectModifierLifecycle(

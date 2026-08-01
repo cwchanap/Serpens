@@ -33,6 +33,8 @@ export interface ImportCostApplicationEvidence {
 	scope: ImportCostScope;
 	targetId: string;
 	baselineCost: number;
+	resolvedMultiplier: number;
+	actualCost: number;
 	contributions: ImportCostResolution['contributions'];
 }
 

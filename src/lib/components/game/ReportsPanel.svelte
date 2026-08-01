@@ -137,8 +137,18 @@
 									})}
 								</li>
 								<li>
+									{i18n.t('reportsPanel.modifierImpacts.resolvedMultiplier', {
+										multiplier: i18n.format.decimal(impact.resolvedMultiplier)
+									})}
+								</li>
+								<li>
 									{i18n.t('reportsPanel.modifierImpacts.baselineCost', {
 										cost: i18n.format.currency(impact.baselineCost)
+									})}
+								</li>
+								<li>
+									{i18n.t('reportsPanel.modifierImpacts.actualCost', {
+										cost: i18n.format.currency(impact.actualCost)
 									})}
 								</li>
 								<li>

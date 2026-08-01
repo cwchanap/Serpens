@@ -231,6 +231,11 @@ export const ja = {
 		title: '意思決定キュー',
 		empty: '本日の緊急判断はありません。',
 		expiresDay: '{day}日目で期限切れ',
+		kind: {
+			event: 'カタログイベント',
+			system: 'システム通知'
+		},
+		eventProvenance: '発生イベント: {eventTitle} · {eventId} · インスタンス {instanceId}',
 		creditUnavailableDelinquent: '延滞中の債務があるため、借入は利用できません。',
 		creditUnavailableService: '現在の債務返済余力では、この借入を賄えません。',
 		creditUnavailableCapacity: '現在の与信枠では、この借入を賄えません。'
@@ -253,7 +258,9 @@ export const ja = {
 			source: '発生元: {source}',
 			affectedIds: '対象ID: {ids}',
 			multiplier: '乗数: ×{multiplier}',
+			resolvedMultiplier: '実効集計乗数: ×{multiplier}',
 			baselineCost: '基準費用: {cost}',
+			actualCost: '実際の丸め後費用: {cost}',
 			applications: '適用回数: {count}'
 		},
 		modifierLifecycle: {

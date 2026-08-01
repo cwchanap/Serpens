@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { validateAndNormalizeEventCatalog, type EventDefinition } from './eventDefinitions';
 import {
 	EVENT_DRAW_COUNT_PER_DAY,
@@ -81,6 +81,36 @@ describe('event selection packet', () => {
 });
 
 describe('event selection and materialization', () => {
+	it('uses code-unit ID ordering for forced and weighted candidates', () => {
+		const localeCompare = vi.spyOn(String.prototype, 'localeCompare').mockImplementation(() => {
+			throw new Error('event selection ordering must not use host collation');
+		});
+
+		try {
+			const forced = selectEventForDay(
+				game(7),
+				validateAndNormalizeEventCatalog([
+					definition({ id: 'aa', selection: { kind: 'forced', priority: 10 } }),
+					definition({ id: 'a-foo', selection: { kind: 'forced', priority: 10 } })
+				])
+			);
+			const weighted = selectEventForDay(
+				withEventRngState(1),
+				validateAndNormalizeEventCatalog([
+					definition({ id: 'aa', selection: { kind: 'weighted', weight: 1 } }),
+					definition({ id: 'a-foo', selection: { kind: 'weighted', weight: 1 } })
+				])
+			);
+
+			expect(forced.decisions.find((decision) => decision.kind === 'event')?.eventId).toBe('a-foo');
+			expect(weighted.decisions.find((decision) => decision.kind === 'event')?.eventId).toBe(
+				'a-foo'
+			);
+		} finally {
+			localeCompare.mockRestore();
+		}
+	});
+
 	it('selects forced events by priority then stable ID order', () => {
 		const selected = selectEventForDay(
 			game(7),

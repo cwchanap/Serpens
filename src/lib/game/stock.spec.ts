@@ -193,6 +193,8 @@ describe('stock rules', () => {
 				scope: 'retail-product',
 				targetId: 'snacks',
 				baselineCost: 27,
+				resolvedMultiplier: 1.8,
+				actualCost: 49,
 				contributions: [
 					{ source: eventSource, multiplier: 0.9 },
 					{ source: scenarioSource, multiplier: 2 }

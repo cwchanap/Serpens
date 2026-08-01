@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
 	EventCatalogValidationError,
@@ -38,6 +38,28 @@ function diagnosticsFor(definitions: readonly EventDefinition[]) {
 }
 
 describe('validateAndNormalizeEventCatalog', () => {
+	it('uses code-unit ordering for normalized IDs and invalid-ID diagnostics', () => {
+		const localeCompare = vi.spyOn(String.prototype, 'localeCompare').mockImplementation(() => {
+			throw new Error('event catalog ordering must not use host collation');
+		});
+
+		try {
+			const catalog = validateAndNormalizeEventCatalog([
+				definition({ id: 'aa' }),
+				definition({ id: 'a-foo' })
+			]);
+			expect(catalog.definitions.map(({ id }) => id)).toEqual(['a-foo', 'aa']);
+
+			const diagnostics = diagnosticsFor([
+				definition({ id: 'ä-event' }),
+				definition({ id: 'z bad' })
+			]);
+			expect(diagnostics.map(({ eventId }) => eventId)).toEqual(['z bad', 'ä-event']);
+		} finally {
+			localeCompare.mockRestore();
+		}
+	});
+
 	it('rejects invalid and duplicate IDs with deterministic event/path diagnostics', () => {
 		const diagnostics = diagnosticsFor([
 			definition({ id: 'z bad' }),
