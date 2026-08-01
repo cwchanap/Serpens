@@ -33,7 +33,12 @@ describe('daily simulation', () => {
 		};
 		const rules: SimulationRules = {
 			importCostMultipliers: [
-				{ scope: 'retail-product', target: { kind: 'ids', ids: ['games'] }, multiplier: 2 }
+				{
+					source: { kind: 'scenario', sourceId: 'scenario:test:modifier:0' },
+					scope: 'retail-product',
+					target: { kind: 'ids', ids: ['games'] },
+					multiplier: 2
+				}
 			]
 		};
 		const baseline = simulateDay(game);

@@ -1,6 +1,10 @@
 import { describe, expect, test, vi } from 'vitest';
 import { createRng, createRngFromState } from './rng';
-import { DEFAULT_SIMULATION_RULES, type SimulationRules } from './simulationRules';
+import {
+	DEFAULT_SIMULATION_RULES,
+	type SimulationRuleSource,
+	type SimulationRules
+} from './simulationRules';
 import { createNewGame } from './state';
 import {
 	applyWeeklyImports,
@@ -15,6 +19,20 @@ import {
 	updateStoreProduct
 } from './stock';
 import type { CompanyPolicy, GameState, StoreProduct } from './types';
+
+const scenarioSource: SimulationRuleSource = {
+	kind: 'scenario',
+	sourceId: 'scenario:test:modifier:0'
+};
+
+const eventSource: SimulationRuleSource = {
+	kind: 'event-modifier',
+	sourceId: 'event-modifier-3',
+	modifierId: 'event-modifier-3',
+	eventId: 'supplier-opportunity',
+	instanceId: 'event-instance-2',
+	explanation: { key: 'events.supplierOpportunity.explanation', params: {} }
+};
 
 function withOneStoreProducts(products: StoreProduct[]): GameState {
 	const game = createNewGame('convenience', 20260508);
@@ -99,6 +117,7 @@ describe('stock rules', () => {
 		const rules: SimulationRules = {
 			importCostMultipliers: [
 				{
+					source: scenarioSource,
 					scope: 'retail-product',
 					target: { kind: 'ids', ids: ['games', 'accessories'] },
 					multiplier: 2
@@ -143,7 +162,18 @@ describe('stock rules', () => {
 		};
 		const rules: SimulationRules = {
 			importCostMultipliers: [
-				{ scope: 'retail-product', target: { kind: 'ids', ids: ['snacks'] }, multiplier: 2 }
+				{
+					source: scenarioSource,
+					scope: 'retail-product',
+					target: { kind: 'ids', ids: ['snacks'] },
+					multiplier: 2
+				},
+				{
+					source: eventSource,
+					scope: 'retail-product',
+					target: { kind: 'all' },
+					multiplier: 0.9
+				}
 			]
 		};
 
@@ -157,7 +187,18 @@ describe('stock rules', () => {
 		expect(report.warehouseUnits).toBe(12);
 		expect(report.warehouseValue).toBe(96);
 		expect(report.importedUnits).toBe(9);
-		expect(report.importSpend).toBe(54);
+		expect(report.importSpend).toBe(49);
+		expect(result.importCostApplications).toEqual([
+			{
+				scope: 'retail-product',
+				targetId: 'snacks',
+				baselineCost: 27,
+				contributions: [
+					{ source: eventSource, multiplier: 0.9 },
+					{ source: scenarioSource, multiplier: 2 }
+				]
+			}
+		]);
 	});
 
 	test('rounds weekly import spend after applying the multiplier to the whole shortage', () => {
@@ -177,6 +218,7 @@ describe('stock rules', () => {
 		const rules: SimulationRules = {
 			importCostMultipliers: [
 				{
+					source: scenarioSource,
 					scope: 'retail-product',
 					target: { kind: 'ids', ids: ['accessories'] },
 					multiplier: 1.5
@@ -204,11 +246,18 @@ describe('stock rules', () => {
 		const input = { game: { ...game, stores: [store] }, storeReports: new Map() };
 		const rules: SimulationRules = {
 			importCostMultipliers: [
-				{ scope: 'industrial-material', target: { kind: 'ids', ids: ['games'] }, multiplier: 2 }
+				{
+					source: scenarioSource,
+					scope: 'industrial-material',
+					target: { kind: 'ids', ids: ['games'] },
+					multiplier: 2
+				}
 			]
 		};
 
-		expect(applyWeeklyImports({ ...input, rules })).toEqual(applyWeeklyImports(input));
+		const result = applyWeeklyImports({ ...input, rules });
+		expect(result).toEqual(applyWeeklyImports(input));
+		expect(result.importCostApplications).toEqual([]);
 	});
 
 	test('initializes a single product at level 1', () => {
