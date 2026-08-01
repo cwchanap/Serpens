@@ -891,21 +891,7 @@ describe('saveCodec', () => {
 						percent: 6
 					}
 				],
-				modifiers: [
-					{
-						durationDays: 3,
-						stackingKey: 'supplier-bulk-discount:retail-product',
-						stackingRule: 'replace',
-						effect: {
-							kind: 'import-cost-multiplier',
-							scope: 'retail-product',
-							target: { kind: 'all' },
-							multiplier: 0.9
-						},
-						explanation: { key: 'events.supplierTerms.bulkDiscount.modifier', params: {} },
-						importance: 'important'
-					}
-				]
+				modifiers: []
 			}
 		]);
 		expect(cashPressure).toMatchObject({

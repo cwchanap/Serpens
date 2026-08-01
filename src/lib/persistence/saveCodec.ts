@@ -701,7 +701,7 @@ function migrateV11StrategicDecision(
 				requireRecord(option.effects, `${optionLabel} effects`),
 				`${optionLabel} effects`
 			),
-			modifiers: migrateV11StrategicModifiers(eventId, expectedId)
+			modifiers: []
 		};
 	});
 
@@ -861,30 +861,6 @@ function migrateV11StrategicEffects(
 		];
 	}
 	throw new SaveDataError(`${label} is not a supported v11 strategic option`);
-}
-
-function migrateV11StrategicModifiers(
-	eventId: LegacyStrategicEventId,
-	optionId: string
-): Array<Record<string, unknown>> {
-	if (eventId === 'supplier-terms' && optionId === 'bulk-discount') {
-		return [
-			{
-				durationDays: 3,
-				stackingKey: 'supplier-bulk-discount:retail-product',
-				stackingRule: 'replace',
-				effect: {
-					kind: 'import-cost-multiplier',
-					scope: 'retail-product',
-					target: { kind: 'all' },
-					multiplier: 0.9
-				},
-				explanation: { key: 'events.supplierTerms.bulkDiscount.modifier', params: {} },
-				importance: 'important'
-			}
-		];
-	}
-	return [];
 }
 
 function requireLegacyExactNumber(

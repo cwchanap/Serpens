@@ -2184,21 +2184,7 @@ describe('schema v11 → v12 repository migration', () => {
 			eventId: 'supplier-terms',
 			definitionVersion: 1
 		});
-		expect(supplier?.kind === 'event' ? supplier.options[1]?.modifiers : null).toEqual([
-			{
-				durationDays: 3,
-				stackingKey: 'supplier-bulk-discount:retail-product',
-				stackingRule: 'replace',
-				effect: {
-					kind: 'import-cost-multiplier',
-					scope: 'retail-product',
-					target: { kind: 'all' },
-					multiplier: 0.9
-				},
-				explanation: { key: 'events.supplierTerms.bulkDiscount.modifier', params: {} },
-				importance: 'important'
-			}
-		]);
+		expect(supplier?.kind === 'event' ? supplier.options[1]?.modifiers : null).toEqual([]);
 		expect(loaded?.game.events).toMatchObject({
 			selectionSchemaVersion: 1,
 			nextModifierSequence: 1
@@ -2236,21 +2222,7 @@ describe('browser save repository', () => {
 			eventId: 'supplier-terms',
 			definitionVersion: 1
 		});
-		expect(supplier?.kind === 'event' ? supplier.options[1]?.modifiers : null).toEqual([
-			{
-				durationDays: 3,
-				stackingKey: 'supplier-bulk-discount:retail-product',
-				stackingRule: 'replace',
-				effect: {
-					kind: 'import-cost-multiplier',
-					scope: 'retail-product',
-					target: { kind: 'all' },
-					multiplier: 0.9
-				},
-				explanation: { key: 'events.supplierTerms.bulkDiscount.modifier', params: {} },
-				importance: 'important'
-			}
-		]);
+		expect(supplier?.kind === 'event' ? supplier.options[1]?.modifiers : null).toEqual([]);
 
 		await repository.saveAuto(createGame());
 		const persisted = JSON.parse(storage.getItem(BROWSER_SAVE_STORAGE_KEY)!) as SaveStoreSnapshot;
