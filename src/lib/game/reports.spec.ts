@@ -63,6 +63,8 @@ function report(
 		},
 		productionReport,
 		storeReports,
+		modifierImpacts: [],
+		modifierLifecycle: [],
 		warnings: []
 	};
 }
@@ -115,6 +117,31 @@ describe('reports', () => {
 		expect(summary.sevenDay.netIncome).toBe(742);
 		expect(summary.thirtyDay.netIncome).toBe(1_045);
 		expect(summary.sevenDay.averageRevenue).toBe(1007);
+	});
+
+	test('exposes modifier detail only through the latest report', () => {
+		const earlier = report(1, 100);
+		const latest = report(2, 200);
+		latest.modifierImpacts = [
+			{
+				modifierId: 'modifier-2',
+				source: { eventId: 'supplier-terms', instanceId: 'event-2', optionId: 'bulk' },
+				target: { kind: 'company' },
+				effectKind: 'import-cost-multiplier',
+				explanation: { key: 'events.supplierTerms.bulk', params: {} },
+				scope: 'retail-product',
+				affectedIds: ['snacks'],
+				multiplier: 0.9,
+				baselineCost: 30,
+				applicationCount: 1
+			}
+		];
+		const summary = summarizeReports([earlier, latest]);
+
+		expect(summary.latest?.modifierImpacts).toBe(latest.modifierImpacts);
+		expect(summary.latest?.modifierLifecycle).toBe(latest.modifierLifecycle);
+		expect(summary.sevenDay).not.toHaveProperty('modifierImpacts');
+		expect(summary.thirtyDay).not.toHaveProperty('modifierLifecycle');
 	});
 
 	test('includes production import spend in summary import totals', () => {

@@ -128,6 +128,8 @@ function report(
 		},
 		productionReport: productionReport(),
 		storeReports,
+		modifierImpacts: [],
+		modifierLifecycle: [],
 		warnings: [],
 		...overrides
 	};

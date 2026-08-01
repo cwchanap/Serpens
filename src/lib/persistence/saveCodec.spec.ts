@@ -371,6 +371,8 @@ function createDailyReport(overrides: Partial<DailyReport> = {}): DailyReport {
 		},
 		productionReport: createDailyProductionReport(),
 		storeReports: [],
+		modifierImpacts: [],
+		modifierLifecycle: [],
 		warnings: [],
 		...overrides
 	};

@@ -83,6 +83,25 @@ export interface EventModifierSnapshot {
 	readonly explanation: Readonly<StructuredCopyRef>;
 	readonly importance: 'normal' | 'important';
 }
+
+export interface EventModifierImpact {
+	modifierId: string;
+	source: ActiveEventModifier['source'];
+	target: EventTarget;
+	effectKind: 'import-cost-multiplier';
+	explanation: StructuredCopyRef;
+	scope: 'retail-product';
+	affectedIds: string[];
+	multiplier: number;
+	baselineCost: number;
+	applicationCount: number;
+}
+
+export interface EventModifierLifecycle {
+	status: 'activated' | 'replaced' | 'expired';
+	modifier: EventModifierSnapshot;
+	replacedByModifierId?: string;
+}
 export type NeighborhoodId =
 	| 'downtown'
 	| 'campus'
@@ -580,6 +599,8 @@ export interface DailyReport {
 	scorecard: Scorecard;
 	productionReport: DailyProductionReport;
 	storeReports: DailyStoreReport[];
+	modifierImpacts: EventModifierImpact[];
+	modifierLifecycle: EventModifierLifecycle[];
 	warnings: DailyReportWarning[];
 }
 
@@ -654,13 +675,10 @@ export type EventHistoryEntry =
 			instanceId: string;
 			target: EventTarget;
 	  }
-	| {
+	| ({
 			kind: 'modifier-lifecycle';
 			day: number;
-			status: 'activated' | 'replaced' | 'expired';
-			modifier: EventModifierSnapshot;
-			replacedByModifierId?: string;
-	  };
+	  } & EventModifierLifecycle);
 
 export interface EventRuntimeState {
 	selectionSchemaVersion: 1;

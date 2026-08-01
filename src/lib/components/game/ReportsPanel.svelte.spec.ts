@@ -77,6 +77,8 @@ const summary: ReportSummary = {
 		},
 		productionReport: emptyProductionReport(),
 		storeReports: [],
+		modifierImpacts: [],
+		modifierLifecycle: [],
 		warnings: []
 	},
 	sevenDay: {
