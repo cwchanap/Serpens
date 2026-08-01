@@ -266,6 +266,45 @@ describe('atomic decision resolution', () => {
 		);
 	});
 
+	it('rolls back immediate effects when a later modifier template is rejected', () => {
+		const base = createNewGame('grocery', 55);
+		const decision = eventDecision({
+			options: [
+				{
+					id: 'accept',
+					effects: [{ kind: 'cash-adjust', amount: 500 }],
+					modifiers: [
+						{
+							durationDays: 0,
+							stackingKey: 'supplier-bulk-discount:retail-product',
+							stackingRule: 'replace',
+							effect: {
+								kind: 'import-cost-multiplier',
+								scope: 'retail-product',
+								target: { kind: 'all' },
+								multiplier: 0.9
+							},
+							explanation: { key: 'events.fixture.modifier', params: {} },
+							importance: 'important'
+						}
+					]
+				}
+			]
+		});
+		const game = withDecision(base, decision);
+		const result = resolveDecision(game, decision.id, 'accept');
+
+		expect(result).toMatchObject({
+			ok: false,
+			code: 'effect-rejected',
+			context: { modifierIndex: 0, payload: 'modifier' }
+		});
+		expect(result.game).toBe(game);
+		expect(game.cash).toBe(base.cash);
+		expect(game.events.activeModifiers).toEqual([]);
+		expect(game.events.history).toEqual(base.events.history);
+	});
+
 	it('rejects an invalid late persisted effect atomically', () => {
 		const base = createNewGame('grocery', 55);
 		const decision = eventDecision({

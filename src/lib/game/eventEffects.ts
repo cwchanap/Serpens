@@ -5,15 +5,14 @@ import {
 	type FinanceFailureCode
 } from './finance';
 import { EVENT_HISTORY_LIMIT } from './eventSelection';
+import { activateEventModifiers } from './eventModifiers';
 import { clampScore } from './reports';
 import { calculateStockHealth } from './stock';
 import type {
-	ActiveEventModifier,
 	DecisionItem,
 	EventDecisionItem,
 	EventHistoryEntry,
 	EventImmediateEffect,
-	EventModifierSnapshot,
 	EventModifierTemplate,
 	GameState,
 	ScoreKey
@@ -243,10 +242,6 @@ function prepareModifiers(
 	optionId: string,
 	templates: readonly EventModifierTemplate[]
 ): PreparedResolution {
-	let activeModifiers = [...tentativeGame.events.activeModifiers];
-	let nextModifierSequence = tentativeGame.events.nextModifierSequence;
-	let history = tentativeGame.events.history;
-
 	for (const [modifierIndex, template] of templates.entries()) {
 		if (!isValidModifierTemplate(template)) {
 			return failure(originalGame, 'effect-rejected', {
@@ -256,55 +251,20 @@ function prepareModifiers(
 				payload: 'modifier'
 			});
 		}
-
-		const modifier: ActiveEventModifier = {
-			id: `event-modifier-${nextModifierSequence}`,
-			source: { eventId: decision.eventId, instanceId: decision.id, optionId },
-			target: { ...decision.target },
-			startsOnDay: tentativeGame.day,
-			expiresOnDay: tentativeGame.day + template.durationDays,
-			stackingKey: template.stackingKey,
-			stackingRule: 'replace',
-			effect: { ...template.effect, target: { ...template.effect.target } },
-			explanation: { ...template.explanation, params: { ...template.explanation.params } },
-			importance: template.importance
-		};
-		nextModifierSequence += 1;
-
-		const replaced = activeModifiers.filter(
-			(candidate) => candidate.stackingKey === modifier.stackingKey
-		);
-		activeModifiers = activeModifiers.filter(
-			(candidate) => candidate.stackingKey !== modifier.stackingKey
-		);
-		for (const candidate of replaced) {
-			history = appendHistory(history, {
-				kind: 'modifier-lifecycle',
-				day: tentativeGame.day,
-				status: 'replaced',
-				modifier: snapshotModifier(candidate),
-				replacedByModifierId: modifier.id
-			});
-		}
-		activeModifiers.push(modifier);
-		history = appendHistory(history, {
-			kind: 'modifier-lifecycle',
-			day: tentativeGame.day,
-			status: 'activated',
-			modifier: snapshotModifier(modifier)
-		});
 	}
+
+	const activated = activateEventModifiers(
+		tentativeGame.events,
+		{ eventId: decision.eventId, instanceId: decision.id, optionId },
+		tentativeGame.day,
+		templates
+	);
 
 	return {
 		ok: true,
 		game: {
 			...tentativeGame,
-			events: {
-				...tentativeGame.events,
-				activeModifiers,
-				nextModifierSequence,
-				history
-			}
+			events: activated.state
 		}
 	};
 }
@@ -331,20 +291,6 @@ function isValidModifierTemplate(template: EventModifierTemplate): boolean {
 
 function isCompanyEvent(decision: EventDecisionItem): boolean {
 	return decision.target?.kind === 'company';
-}
-
-function snapshotModifier(modifier: ActiveEventModifier): EventModifierSnapshot {
-	return {
-		id: modifier.id,
-		source: { ...modifier.source },
-		target: { ...modifier.target },
-		startsOnDay: modifier.startsOnDay,
-		expiresOnDay: modifier.expiresOnDay,
-		stackingKey: modifier.stackingKey,
-		effect: { ...modifier.effect, target: { ...modifier.effect.target } },
-		explanation: { ...modifier.explanation, params: { ...modifier.explanation.params } },
-		importance: modifier.importance
-	};
 }
 
 function appendHistory(
