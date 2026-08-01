@@ -724,7 +724,7 @@ event modifier.
 Application evidence is emitted only when a matching rule contributes to a non-zero imported
 quantity and non-zero pre-rule import cost. Evidence records that pre-rule cost as `baselineCost`.
 Because the supplier modifier is the only active event rule for its stacking key and valid scenarios
-contribute at most one overlapping rule, reports can derive the actual post-rule import cost as:
+contribute at most one overlapping rule, reports calculate the actual post-rule import cost as:
 
 ```ts
 actualCost = round(baselineCost * resolvedMultiplier)
