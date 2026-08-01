@@ -263,5 +263,17 @@ describe('validateAndNormalizeEventCatalog', () => {
 		expect(Object.isFrozen(catalog)).toBe(true);
 		expect(Object.isFrozen(catalog.definitions)).toBe(true);
 		expect(Object.isFrozen(catalog.definitions[0])).toBe(true);
+		const mutableLookup = catalog.byId as unknown as Map<string, EventDefinition>;
+		expect(() => mutableLookup.set('alpha', catalog.definitions[1])).toThrow(TypeError);
+		expect(catalog.byId.get('alpha')).toBe(catalog.definitions[0]);
+		catalog.byId.forEach((_definition, _id, readonlyLookup) => {
+			expect(readonlyLookup).toBe(catalog.byId);
+			expect(() => {
+				(readonlyLookup as unknown as Map<string, EventDefinition>).set(
+					'alpha',
+					catalog.definitions[1]
+				);
+			}).toThrow(TypeError);
+		});
 	});
 });
