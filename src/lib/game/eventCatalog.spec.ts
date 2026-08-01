@@ -1,6 +1,13 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
 
 import { PRODUCTION_EVENT_CATALOG } from './eventCatalog';
+import type {
+	EventCondition,
+	EventImmediateEffect,
+	EventModifierTemplate,
+	EventTarget,
+	EventTimedEffect
+} from './types';
 
 describe('PRODUCTION_EVENT_CATALOG', () => {
 	it('contains only the three approved, versioned production definitions', () => {
@@ -11,6 +18,19 @@ describe('PRODUCTION_EVENT_CATALOG', () => {
 			{ id: 'expansion-opportunity', version: 1 },
 			{ id: 'supplier-terms', version: 2 }
 		]);
+	});
+
+	it('exports no deferred event-framework union variants', () => {
+		expectTypeOf<Extract<EventCondition, { kind: 'not' }>>().toEqualTypeOf<never>();
+		expectTypeOf<
+			Extract<EventImmediateEffect, { kind: 'store-reputation-adjust' }>
+		>().toEqualTypeOf<never>();
+		expectTypeOf<Extract<EventTimedEffect, { kind: 'logistics-route' }>>().toEqualTypeOf<never>();
+		expectTypeOf<
+			Extract<EventModifierTemplate, { stackingRule: 'stack' }>
+		>().toEqualTypeOf<never>();
+		expectTypeOf<Extract<EventTarget, { kind: 'store' }>>().toEqualTypeOf<never>();
+		expect(PRODUCTION_EVENT_CATALOG.definitions).toHaveLength(3);
 	});
 
 	it('preserves production eligibility, selection, expiry, and cooldown contracts', () => {
@@ -51,6 +71,11 @@ describe('PRODUCTION_EVENT_CATALOG', () => {
 			'short-loan',
 			'cut-costs',
 			'hold-course'
+		]);
+		expect(expansion.options.map((option) => option.id)).toEqual(['prepare', 'pass']);
+		expect(supplier.options.map((option) => option.id)).toEqual([
+			'negotiate-credit',
+			'bulk-discount'
 		]);
 		expect(cashPressure.options.map((option) => option.effects)).toEqual([
 			[
@@ -111,6 +136,12 @@ describe('PRODUCTION_EVENT_CATALOG', () => {
 					percent: 6
 				}
 			]
+		]);
+		expect(cashPressure.options.map((option) => option.modifiers)).toEqual([[], [], []]);
+		expect(expansion.options.map((option) => option.modifiers)).toEqual([[], []]);
+		expect(supplier.options.map((option) => option.modifiers)).toEqual([
+			[],
+			supplier.options[1].modifiers
 		]);
 	});
 

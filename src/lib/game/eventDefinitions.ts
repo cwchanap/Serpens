@@ -88,7 +88,7 @@ export function validateAndNormalizeEventCatalog(
 	const normalizedDefinitions = definitions
 		.map(cloneDefinition)
 		.sort((first, second) => first.id.localeCompare(second.id));
-	const byId = new Map(normalizedDefinitions.map((definition) => [definition.id, definition]));
+	const byId = createReadonlyLookup(normalizedDefinitions);
 
 	return deepFreeze({ definitions: normalizedDefinitions, byId });
 }
@@ -401,4 +401,35 @@ function deepFreeze<T>(value: T): T {
 		Object.freeze(value);
 	}
 	return value;
+}
+
+function createReadonlyLookup(
+	definitions: readonly EventDefinition[]
+): ReadonlyMap<string, EventDefinition> {
+	const values = new Map(definitions.map((definition) => [definition.id, definition]));
+	const lookup = {
+		get size() {
+			return values.size;
+		},
+		get: values.get.bind(values),
+		has: values.has.bind(values),
+		entries: values.entries.bind(values),
+		keys: values.keys.bind(values),
+		values: values.values.bind(values),
+		forEach(
+			callback: (
+				value: EventDefinition,
+				key: string,
+				map: ReadonlyMap<string, EventDefinition>
+			) => void,
+			thisArg?: unknown
+		) {
+			values.forEach((value, key) =>
+				callback.call(thisArg, value, key, lookup as ReadonlyMap<string, EventDefinition>)
+			);
+		},
+		[Symbol.iterator]: values[Symbol.iterator].bind(values)
+	};
+
+	return Object.freeze(lookup) as ReadonlyMap<string, EventDefinition>;
 }
