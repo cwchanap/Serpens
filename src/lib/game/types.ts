@@ -8,6 +8,81 @@ export type StaffRole = 'manager' | 'general';
 export type MarketingFocus = 'none' | 'awareness' | 'promotions' | 'loyalty';
 export type ServicePriority = 'speed' | 'balanced' | 'highTouch';
 export type ScoreKey = 'profit' | 'customerSatisfaction' | 'staffMorale' | 'marketPosition';
+
+export type StructuredCopyParams = Readonly<Record<string, string | number>>;
+export interface StructuredCopyRef {
+	key: string;
+	params: StructuredCopyParams;
+}
+
+export type EventTarget = { kind: 'company' };
+export type EventTargetSelector = { kind: 'company' };
+
+export type EventCondition =
+	| { kind: 'always' }
+	| { kind: 'all'; conditions: readonly EventCondition[] }
+	| { kind: 'day-at-least'; day: number }
+	| { kind: 'cash-below'; amount: number }
+	| { kind: 'cash-at-least'; amount: number }
+	| { kind: 'score-at-least'; score: ScoreKey; value: number }
+	| { kind: 'store-count-below-cap' };
+
+export type EventSelectionPolicy =
+	| { kind: 'forced'; priority: number }
+	| { kind: 'weighted'; weight: number };
+
+export type EventImmediateEffect =
+	| { kind: 'cash-adjust'; amount: number }
+	| { kind: 'score-adjust'; score: ScoreKey; amount: number }
+	| { kind: 'store-morale-adjust'; scope: 'all-stores'; amount: number }
+	| { kind: 'store-stock-adjust-by-target-percent'; scope: 'all-stores'; percent: number }
+	| {
+			kind: 'finance-borrow';
+			purpose: 'emergency' | 'supplierCredit';
+			amount: number;
+			termDays: 28 | 56;
+	  };
+
+export type EventTimedEffect = {
+	kind: 'import-cost-multiplier';
+	scope: 'retail-product';
+	target: { kind: 'all' };
+	multiplier: number;
+};
+
+export interface EventModifierTemplate {
+	durationDays: number;
+	stackingKey: string;
+	stackingRule: 'replace';
+	effect: EventTimedEffect;
+	explanation: StructuredCopyRef;
+	importance: 'normal' | 'important';
+}
+
+export interface ActiveEventModifier {
+	id: string;
+	source: { eventId: string; instanceId: string; optionId: string };
+	target: EventTarget;
+	startsOnDay: number;
+	expiresOnDay: number;
+	stackingKey: string;
+	stackingRule: 'replace';
+	effect: EventTimedEffect;
+	explanation: StructuredCopyRef;
+	importance: 'normal' | 'important';
+}
+
+export interface EventModifierSnapshot {
+	readonly id: string;
+	readonly source: Readonly<ActiveEventModifier['source']>;
+	readonly target: Readonly<EventTarget>;
+	readonly startsOnDay: number;
+	readonly expiresOnDay: number;
+	readonly stackingKey: string;
+	readonly effect: Readonly<EventTimedEffect>;
+	readonly explanation: Readonly<StructuredCopyRef>;
+	readonly importance: 'normal' | 'important';
+}
 export type NeighborhoodId =
 	| 'downtown'
 	| 'campus'
