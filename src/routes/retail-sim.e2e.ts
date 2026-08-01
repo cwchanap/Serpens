@@ -1,4 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { PRODUCTION_EVENT_CATALOG } from '../lib/game/eventCatalog';
+import { createInitialEventRuntime, selectEventForDay } from '../lib/game/eventSelection';
 import { LANGUAGE_PREFERENCE_STORAGE_KEY } from '../lib/i18n/locales';
 import {
 	DEFAULT_INDUSTRY_CITY_HEIGHT,
@@ -7,8 +9,15 @@ import {
 	getIndustryTilesByResource
 } from '../lib/game/industry';
 import { estimateNextLoanPayment, getScheduledPrincipalForInstallment } from '../lib/game/finance';
-import type { LoanInstrument } from '../lib/game/types';
+import { createNewGame } from '../lib/game/state';
+import type { GameState, LoanInstrument } from '../lib/game/types';
+import { BROWSER_SAVE_STORAGE_KEY } from '../lib/persistence/browserSaveRepository';
 import { BROWSER_SCENARIO_STORAGE_KEY } from '../lib/persistence/browserScenarioRepository';
+import {
+	createAutoSaveRecord,
+	createEmptySaveStore,
+	validateSaveStoreSnapshot
+} from '../lib/persistence/saveCodec';
 import {
 	createEmptyScenarioStore,
 	encodeScenarioBestResultRecord,
@@ -146,6 +155,65 @@ function challengeSnapshot(input: {
 	return snapshot;
 }
 
+function selectProductionSupplierEvent(game: GameState, quietSelectionDays = 0): GameState {
+	for (let eventSeed = 1; eventSeed <= 100_000; eventSeed += 1) {
+		const selected = selectEventForDay(
+			{
+				...game,
+				events: createInitialEventRuntime(eventSeed),
+				decisions: []
+			},
+			PRODUCTION_EVENT_CATALOG
+		);
+		const supplier = selected.decisions.find(
+			(decision) => decision.kind === 'event' && decision.eventId === 'supplier-terms'
+		);
+		if (!supplier) continue;
+
+		let probe: GameState = { ...selected, decisions: [] };
+		let streamIsQuiet = true;
+		for (let offset = 1; offset <= quietSelectionDays; offset += 1) {
+			probe = selectEventForDay(
+				{ ...probe, day: game.day + offset, decisions: [] },
+				PRODUCTION_EVENT_CATALOG
+			);
+			if (probe.decisions.some((decision) => decision.kind === 'event')) {
+				streamIsQuiet = false;
+				break;
+			}
+		}
+		if (streamIsQuiet) return selected;
+	}
+
+	throw new Error('Could not find a deterministic production supplier event seed.');
+}
+
+function productionSupplierLifecycleGame(): GameState {
+	const closingDay = 5;
+	const base = createNewGame('convenience', 280_278);
+	const prepared: GameState = {
+		...base,
+		day: closingDay,
+		cash: 20_000,
+		finance: {
+			...base.finance,
+			currentDayActivity: { ...base.finance.currentDayActivity, day: closingDay }
+		},
+		stores: base.stores.map((store) => ({
+			...store,
+			products: store.products.map((product) => ({
+				...product,
+				stock: 0,
+				reorderThreshold: 1,
+				targetStock: 10
+			}))
+		})),
+		decisions: []
+	};
+
+	return selectProductionSupplierEvent(prepared, 3);
+}
+
 interface SavedMaterialMovement {
 	materialId: string;
 	quantity: number;
@@ -199,6 +267,18 @@ interface SavedDailyReport {
 		importSpend: number;
 		productReports: SavedProductReport[];
 	}>;
+	modifierImpacts: Array<{
+		modifierId: string;
+		effectKind: 'import-cost-multiplier';
+		affectedIds: string[];
+		multiplier: number;
+		baselineCost: number;
+		applicationCount: number;
+	}>;
+	modifierLifecycle: Array<{
+		status: 'activated' | 'replaced' | 'expired';
+		modifier: { id: string; expiresOnDay: number };
+	}>;
 }
 
 interface SavedFinanceTransaction {
@@ -220,6 +300,9 @@ interface SavedFinance {
 interface SavedGame {
 	day: number;
 	cash: number;
+	scorecard: {
+		profit: number;
+	};
 	finance: SavedFinance;
 	world: {
 		revealedCityIds: string[];
@@ -236,6 +319,13 @@ interface SavedGame {
 	}>;
 	warehouse: {
 		materials: Record<string, number | undefined>;
+	};
+	events: {
+		activeModifiers: Array<{
+			id: string;
+			expiresOnDay: number;
+			effect: { multiplier: number };
+		}>;
 	};
 	reports: SavedDailyReport[];
 }
@@ -583,6 +673,29 @@ async function readAutoSaveGame(page: Page): Promise<SavedGame> {
 	});
 }
 
+async function installSandboxAutoSave(page: Page, game: GameState): Promise<void> {
+	const snapshot = validateSaveStoreSnapshot({
+		...createEmptySaveStore(),
+		autoSave: createAutoSaveRecord(game, new Date('2026-08-01T12:00:00.000Z'))
+	});
+	await page.goto('/');
+	await page.evaluate(({ key, serialized }) => window.localStorage.setItem(key, serialized), {
+		key: BROWSER_SAVE_STORAGE_KEY,
+		serialized: JSON.stringify(snapshot)
+	});
+	await page.reload();
+	await openSaves(page);
+	await page
+		.getByRole('dialog', { name: /saves/i })
+		.getByRole('button', { name: /^resume$/i })
+		.click();
+	await page
+		.getByRole('dialog', { name: /saves/i })
+		.getByRole('button', { name: /^close$/i })
+		.click();
+	await expectRetailMapReady(page);
+}
+
 /**
  * Force-reveal a world city in the auto-save and grant enough cash/storeCap to
  * open it. Mutates localStorage in place and reloads the page so the resume
@@ -764,43 +877,154 @@ async function openChallengeMenu(page: Page): Promise<Locator> {
 function negativeCashDecisionRun(): ScenarioRun {
 	const definition = challengeDefinition('first-profit');
 	const started = startChallengeRun('first-profit');
-	const game = {
-		...started.game,
-		cash: 1_000,
-		decisions: [
-			{
-				kind: 'event' as const,
-				id: 'supplier-terms',
-				eventId: 'supplier-terms',
-				definitionVersion: 1,
-				generatedOnDay: started.game.day,
-				expiresOnDay: started.game.day + 2,
-				target: { kind: 'company' as const },
-				copy: { key: 'events.supplierTerms', params: {} },
-				options: [
-					{
-						id: 'bulk-discount',
-						effects: [
-							{ kind: 'cash-adjust' as const, amount: -2_500 },
-							{ kind: 'score-adjust' as const, score: 'profit' as const, amount: 3 },
-							{
-								kind: 'store-stock-adjust-by-target-percent' as const,
-								scope: 'all-stores' as const,
-								percent: 6
-							}
-						],
-						modifiers: []
-					}
-				]
-			}
-		]
-	};
+	const game = selectProductionSupplierEvent({ ...started.game, cash: 1_000 });
 	return {
 		...started,
 		game,
 		evaluation: evaluateScenario(definition, game, false)
 	};
 }
+
+test('production supplier bulk discount stays active through its final import and then expires', async ({
+	page
+}) => {
+	const seededGame = productionSupplierLifecycleGame();
+	const supplierDecision = seededGame.decisions.find(
+		(decision) => decision.kind === 'event' && decision.eventId === 'supplier-terms'
+	);
+	if (!supplierDecision || supplierDecision.kind !== 'event') {
+		throw new Error('Production selector did not materialize supplier terms.');
+	}
+	expect(supplierDecision.id).toMatch(/^event-instance-\d+$/);
+	const startingProduct = seededGame.stores[0]?.products[0];
+	if (!startingProduct) throw new Error('Supplier lifecycle game has no retail product.');
+	expect(startingProduct).toMatchObject({
+		categoryId: 'bottled-water',
+		stock: 0,
+		targetStock: 10
+	});
+
+	await installSandboxAutoSave(page, seededGame);
+
+	let decisions = await openManagementPanel(page, 'Decisions');
+	const bulkDiscount = decisions
+		.getByRole('region', { name: 'Decision Queue' })
+		.getByRole('button', { name: /Bulk discount/ });
+	await expect(bulkDiscount).toContainText(
+		'Commit to larger orders for a three-day 10% retail import discount.'
+	);
+	await bulkDiscount.click();
+
+	const modifierCard = decisions.getByRole('article', { name: 'Supplier terms', exact: true });
+	await expect(modifierCard).toContainText('10% retail import discount');
+	await expect(modifierCard).toContainText('Starts day 5');
+	await expect(modifierCard).toContainText('Expires after day 7');
+	await expect(modifierCard).toContainText('3 days remaining');
+
+	await expect
+		.poll(async () => {
+			const saved = await readAutoSaveGame(page);
+			return {
+				cash: saved.cash,
+				profit: saved.scorecard.profit,
+				stock: getSavedProduct(saved, startingProduct.categoryId).stock,
+				modifierCount: saved.events.activeModifiers.length
+			};
+		})
+		.toEqual({
+			cash: 17_500,
+			profit: 65,
+			stock: 1,
+			modifierCount: 1
+		});
+	const resolvedGame = await readAutoSaveGame(page);
+	const modifierId = resolvedGame.events.activeModifiers[0]?.id;
+	if (!modifierId) throw new Error('Bulk discount modifier was not persisted.');
+
+	await decisions.getByRole('button', { name: 'Close Decisions', exact: true }).click();
+	await page.locator('button.alerts-bell').click();
+	await page
+		.getByRole('group', { name: 'Alerts list' })
+		.getByRole('button', { name: 'Active modifier: Supplier terms', exact: true })
+		.click();
+	decisions = page.getByRole('dialog', { name: 'Decisions' });
+	await expect(decisions).toBeVisible();
+	await expect(
+		decisions.getByRole('article', { name: 'Supplier terms', exact: true })
+	).toContainText('3 days remaining');
+	await decisions.getByRole('button', { name: 'Close Decisions', exact: true }).click();
+
+	await page.getByRole('button', { name: 'Advance day', exact: true }).click();
+	let saved = await waitForAutoSaveDay(page, 6);
+	expect(saved.events.activeModifiers.map((modifier) => modifier.id)).toEqual([modifierId]);
+	expect(getLatestReport(saved)).toMatchObject({
+		day: 5,
+		modifierImpacts: [],
+		modifierLifecycle: [{ status: 'activated', modifier: { id: modifierId } }]
+	});
+	decisions = await openManagementPanel(page, 'Decisions');
+	await expect(
+		decisions.getByRole('article', { name: 'Supplier terms', exact: true })
+	).toContainText('2 days remaining');
+	await decisions.getByRole('button', { name: 'Close Decisions', exact: true }).click();
+
+	await page.getByRole('button', { name: 'Advance day', exact: true }).click();
+	saved = await waitForAutoSaveDay(page, 7);
+	expect(saved.events.activeModifiers.map((modifier) => modifier.id)).toEqual([modifierId]);
+	expect(getLatestReport(saved)).toMatchObject({
+		day: 6,
+		modifierImpacts: [],
+		modifierLifecycle: []
+	});
+	decisions = await openManagementPanel(page, 'Decisions');
+	await expect(
+		decisions.getByRole('article', { name: 'Supplier terms', exact: true })
+	).toContainText('1 day remaining');
+	await decisions.getByRole('button', { name: 'Close Decisions', exact: true }).click();
+
+	await page.getByRole('button', { name: 'Advance day', exact: true }).click();
+	saved = await waitForAutoSaveDay(page, 8);
+	const finalReport = getLatestReport(saved);
+	expect(saved.events.activeModifiers).toEqual([]);
+	expect(finalReport.day).toBe(7);
+	expect(finalReport.modifierImpacts).toEqual([
+		expect.objectContaining({
+			modifierId,
+			effectKind: 'import-cost-multiplier',
+			affectedIds: ['bottled-water'],
+			multiplier: 0.9,
+			applicationCount: 1
+		})
+	]);
+	expect(finalReport.modifierImpacts[0]?.baselineCost).toBeGreaterThan(0);
+	expect(finalReport.modifierLifecycle).toEqual([
+		expect.objectContaining({
+			status: 'expired',
+			modifier: expect.objectContaining({ id: modifierId, expiresOnDay: 8 })
+		})
+	]);
+
+	const reports = await openManagementPanel(page, 'Reports');
+	await expect(reports.getByRole('region', { name: 'Latest-day modifier impacts' })).toContainText(
+		'Multiplier: ×0.9'
+	);
+	await expect(
+		reports.getByRole('region', { name: 'Latest-day modifier lifecycle' })
+	).toContainText('Status: Expired');
+	await reports.getByRole('button', { name: 'Close Reports', exact: true }).click();
+
+	decisions = await openManagementPanel(page, 'Decisions');
+	await expect(decisions.getByRole('region', { name: 'Active modifiers' })).toContainText(
+		'No active modifiers.'
+	);
+	await decisions.getByRole('button', { name: 'Close Decisions', exact: true }).click();
+	await page.locator('button.alerts-bell').click();
+	await expect(
+		page
+			.getByRole('group', { name: 'Alerts list' })
+			.getByRole('button', { name: 'Active modifier: Supplier terms', exact: true })
+	).toHaveCount(0);
+});
 
 test('challenge starts First Profit on the official ranked seed', async ({ page }) => {
 	await page.goto('/');
