@@ -1,22 +1,23 @@
 import { describe, expect, test } from 'vitest';
 import { getArchetype } from './archetypes';
-import { decisionContextLocationGeneric } from './decisionContext';
-import { generateDecisions } from './events';
 import { createFoundingGameAtTile } from './placement';
 import { isTileInStoreFootprint } from './storeFootprint';
 import { calculateStockHealth, createStoreProduct } from './stock';
 import {
 	createNewGame,
-	getDecisionOptionAvailability,
 	getExpansionSetupCost,
 	openStore,
-	resolveDecision,
 	updatePolicy,
 	upgradeStore
 } from './state';
 import { simulateDay } from './simulateDay';
 import { getStoreUpgradeCost, MAX_STORE_LEVEL } from './leveling';
-import type { City, CityTile, GameState } from './types';
+import type { City, CityTile, DecisionItem, GameState, SystemDecisionItem } from './types';
+
+function systemDecision(decision: DecisionItem | undefined): SystemDecisionItem {
+	if (decision?.kind !== 'system') throw new Error('Expected a system decision');
+	return decision;
+}
 
 type OptionalKeys<T> = {
 	[K in keyof T]-?: undefined extends T[K] ? K : never;
@@ -137,8 +138,11 @@ describe('game state', () => {
 		expect(second.stores).toHaveLength(2);
 		expect(second.cash).toBeLessThan(game.cash);
 		expect(third.stores).toHaveLength(2);
-		expect(third.decisions.at(-1)?.title).toBe('Expansion unavailable');
-		expect(third.decisions.at(-1)?.context).toEqual({ code: 'expansionUnavailable', storeCap: 2 });
+		expect(systemDecision(third.decisions.at(-1)).title).toBe('Expansion unavailable');
+		expect(systemDecision(third.decisions.at(-1)).context).toEqual({
+			code: 'expansionUnavailable',
+			storeCap: 2
+		});
 		expect(expandedCap.stores).toHaveLength(3);
 	});
 
@@ -223,7 +227,10 @@ describe('game state', () => {
 
 		expect(result.stores).toHaveLength(1);
 		expect(result.decisions.at(-1)?.id).toBe('location-unavailable-road-1');
-		expect(result.decisions.at(-1)?.context).toEqual({ code: 'locationBlocked', reason: 'road' });
+		expect(systemDecision(result.decisions.at(-1)).context).toEqual({
+			code: 'locationBlocked',
+			reason: 'road'
+		});
 	});
 
 	test('expansion unavailable decision carries structured context', () => {
@@ -235,7 +242,7 @@ describe('game state', () => {
 		});
 		const decision = result.decisions.find((d) => d.id.startsWith('expansion-unavailable'));
 		expect(decision).toBeDefined();
-		expect(decision?.context).toEqual({ code: 'expansionUnavailable', storeCap: 1 });
+		expect(systemDecision(decision).context).toEqual({ code: 'expansionUnavailable', storeCap: 1 });
 	});
 
 	test('direct store opening uses the selected expansion archetype', () => {
@@ -274,340 +281,6 @@ describe('game state', () => {
 
 		expect(fifth.decisions).toHaveLength(1);
 		expect(fifth.decisions[0]?.id).toBe('expansion-unavailable-1');
-	});
-
-	test('resolves a decision by applying effects and removing it', () => {
-		expect.assertions(3);
-		const game = createNewGame('grocery', 55);
-		const decision = {
-			id: 'supplier-1',
-			title: 'Supplier discount',
-			context: decisionContextLocationGeneric(),
-			expiresOnDay: 3,
-			options: [
-				{
-					id: 'accept',
-					label: 'Accept',
-					description: 'Take the savings.',
-					effects: { cash: 500, customerSatisfaction: -1, stockHealth: 3 }
-				}
-			]
-		};
-
-		const resolved = resolveDecision({ ...game, decisions: [decision] }, 'supplier-1', 'accept');
-
-		expect(resolved.cash).toBe(game.cash + 500);
-		expect(resolved.decisions).toHaveLength(0);
-		expect(resolved.scorecard.customerSatisfaction).toBe(game.scorecard.customerSatisfaction - 1);
-	});
-
-	test('applies cash-pressure cut-costs effects to the scorecard and every store target-stock adjustment', () => {
-		expect.assertions(9);
-		const base = createNewGame('grocery', 55);
-		const firstStore = {
-			...base.stores[0]!,
-			products: base.stores[0]!.products.map((product) => ({
-				...product,
-				stock: 100,
-				targetStock: 200
-			}))
-		};
-		const secondStore = {
-			...firstStore,
-			id: 'store-2',
-			staffMorale: 80,
-			products: firstStore.products.map((product) => ({
-				...product,
-				stock: 40,
-				targetStock: 50
-			}))
-		};
-		const game = {
-			...base,
-			cash: -1,
-			stores: [firstStore, secondStore]
-		};
-		const decision = generateDecisions(game)[0]!;
-		const resolved = resolveDecision({ ...game, decisions: [decision] }, decision.id, 'cut-costs');
-
-		expect(resolved.cash).toBe(5_499);
-		expect(resolved.scorecard.customerSatisfaction).toBe(61);
-		expect(resolved.scorecard.staffMorale).toBe(57);
-		expect(resolved.stores.map((store) => store.staffMorale)).toEqual([57, 75]);
-		expect(firstStore.products[0]?.stock).toBe(100);
-		expect(firstStore.products[0]?.targetStock).toBe(200);
-		expect(resolved.stores.map((store) => store.products[0]?.stock)).toEqual([84, 36]);
-		expect(resolved.stores.map((store) => store.stockHealth)).toEqual([42, 72]);
-		expect(
-			resolved.stores.every((store) => store.stockHealth === calculateStockHealth(store.products))
-		).toBe(true);
-	});
-
-	test('funds an eligible decision through the finance ledger before applying its remaining effects', () => {
-		expect.assertions(7);
-		const base = createNewGame('grocery', 55);
-		const game = {
-			...base,
-			cash: 40_000,
-			finance: { ...base.finance, loans: [] },
-			decisions: [
-				{
-					id: 'supplier-credit',
-					title: 'Supplier credit',
-					context: decisionContextLocationGeneric(),
-					expiresOnDay: 3,
-					options: [
-						{
-							id: 'accept',
-							label: 'Accept',
-							description: 'Borrow against the supplier terms.',
-							effects: {
-								profit: -2,
-								finance: {
-									kind: 'borrow' as const,
-									purpose: 'supplierCredit' as const,
-									amount: 4_000,
-									termDays: 28 as const
-								}
-							}
-						}
-					]
-				}
-			]
-		};
-
-		const resolved = resolveDecision(game, 'supplier-credit', 'accept');
-
-		expect(resolved.cash).toBe(game.cash + 4_000);
-		expect(resolved.scorecard.profit).toBe(game.scorecard.profit - 2);
-		expect(resolved.decisions).toHaveLength(0);
-		expect(resolved.finance.loans.at(-1)).toMatchObject({
-			purpose: 'supplierCredit',
-			originalPrincipal: 4_000,
-			termDays: 28
-		});
-		expect(resolved.finance.transactions.at(-1)).toMatchObject({
-			kind: 'disbursement',
-			cashDelta: 4_000,
-			principalAmount: 4_000
-		});
-		expect(resolved.finance.currentDayActivity.principalBorrowed).toBe(4_000);
-		expect(resolved.finance.currentDayActivity.financingCashFlow).toBe(4_000);
-	});
-
-	test('rechecks persisted decision financing live and keeps the original queued decision on failure', () => {
-		expect.assertions(6);
-		const base = createNewGame('grocery', 55);
-		const option = {
-			id: 'accept',
-			label: 'Accept',
-			description: 'Borrow against the supplier terms.',
-			effects: {
-				customerSatisfaction: -10,
-				finance: {
-					kind: 'borrow' as const,
-					purpose: 'supplierCredit' as const,
-					amount: 8_000,
-					termDays: 28 as const
-				}
-			}
-		};
-		const decision = {
-			id: 'supplier-credit',
-			title: 'Supplier credit',
-			context: decisionContextLocationGeneric(),
-			expiresOnDay: 3,
-			options: [option]
-		};
-		const generatedAt = { ...base, cash: 40_000, finance: { ...base.finance, loans: [] } };
-		const constrained = {
-			...generatedAt,
-			cash: -1_000,
-			scorecard: { profit: 0, customerSatisfaction: 0, staffMorale: 0, marketPosition: 0 },
-			decisions: [decision]
-		};
-
-		expect(getDecisionOptionAvailability(generatedAt, option).available).toBe(true);
-		const availability = getDecisionOptionAvailability(constrained, option);
-		expect(availability).toMatchObject({ available: false, code: 'insufficientCredit' });
-		expect(availability.available ? [] : availability.reasons).not.toHaveLength(0);
-		const resolved = resolveDecision(constrained, decision.id, option.id);
-		expect(resolved).toBe(constrained);
-		expect(resolved.decisions).toBe(constrained.decisions);
-		expect(resolved.scorecard.customerSatisfaction).toBe(
-			constrained.scorecard.customerSatisfaction
-		);
-	});
-
-	test('reports a delinquent obligation as a structured decision-finance availability failure', () => {
-		expect.assertions(4);
-		const base = createNewGame('grocery', 55);
-		const option = {
-			id: 'accept',
-			label: 'Accept',
-			description: 'Borrow.',
-			effects: {
-				finance: {
-					kind: 'borrow' as const,
-					purpose: 'emergency' as const,
-					amount: 4_000,
-					termDays: 56 as const
-				}
-			}
-		};
-		const game = {
-			...base,
-			cash: 40_000,
-			finance: {
-				...base.finance,
-				loans: [{ ...base.finance.loans[0]!, status: 'delinquent' as const }]
-			}
-		};
-
-		const availability = getDecisionOptionAvailability(game, option);
-
-		expect(availability).toMatchObject({ available: false, code: 'insufficientCredit' });
-		expect(availability.available ? [] : availability.reasons).toContain('delinquentObligation');
-		expect(availability.available ? {} : availability.context.amount).toBe(4_000);
-		expect(availability.available ? {} : availability.context.availableCredit).toBe(0);
-	});
-
-	test('resolveDecision normalizes world progress on the same command via refreshWorldProgress', () => {
-		expect.assertions(3);
-		const base = createNewGame('grocery', 55);
-		expect(base.world.revealedCityIds).not.toContain('campus-junction');
-		const game: GameState = {
-			...base,
-			day: 7,
-			world: {
-				...base.world,
-				revealedCityIds: ['harbor-city', 'industry-city'],
-				claimedMilestoneIds: []
-			},
-			decisions: [
-				{
-					id: 'timing-1',
-					title: 'Timing probe',
-					context: decisionContextLocationGeneric(),
-					expiresOnDay: 9,
-					options: [{ id: 'ok', label: 'OK', description: 'noop', effects: {} }]
-				}
-			]
-		};
-
-		const resolved = resolveDecision(game, 'timing-1', 'ok');
-
-		expect(resolved.world.revealedCityIds).toContain('campus-junction');
-		expect(resolved.world.claimedMilestoneIds).toContain('reveal-campus-junction');
-	});
-
-	test('resolveDecision does not bump storeCap when the positive-income-store-cap milestone is unmet', () => {
-		// Sandbox regression guard (see commit a6b9e40): resolveDecision wraps the
-		// result in refreshWorldProgress, which can bump storeCap once a non-harbor
-		// retail city is opened and a positive-income report exists. The shipped
-		// scenarios only run in harbor-city with no positive report at decision
-		// time, so storeCap must stay unchanged through a decision there. This
-		// locks that invariant so a future scenario cannot silently gain a mid-run
-		// storeCap bump via a decision without an accompanying test update.
-		expect.assertions(2);
-		const base = createNewGame('grocery', 55);
-		const game: GameState = {
-			...base,
-			decisions: [
-				{
-					id: 'noop-1',
-					title: 'Noop',
-					context: decisionContextLocationGeneric(),
-					expiresOnDay: 9,
-					options: [{ id: 'ok', label: 'OK', description: 'noop', effects: {} }]
-				}
-			]
-		};
-		expect(game.world.openedCityIds).not.toContain('campus-junction');
-
-		const resolved = resolveDecision(game, 'noop-1', 'ok');
-
-		expect(resolved.storeCap).toBe(game.storeCap);
-	});
-
-	test('resolves store-level effects and clamps boundaries', () => {
-		expect.assertions(4);
-		const game = createNewGame('grocery', 55);
-		const decision = {
-			id: 'store-effects-1',
-			title: 'Store recovery plan',
-			context: decisionContextLocationGeneric(),
-			expiresOnDay: 3,
-			options: [
-				{
-					id: 'approve',
-					label: 'Approve',
-					description: 'Apply the plan.',
-					effects: { stockHealth: 80, staffMorale: -80, reputation: 80 }
-				}
-			]
-		};
-		const store = { ...game.stores[0]!, stockHealth: 50, staffMorale: 20, reputation: 40 };
-
-		const resolved = resolveDecision(
-			{ ...game, stores: [store], decisions: [decision] },
-			'store-effects-1',
-			'approve'
-		);
-
-		expect(resolved.stores[0]?.stockHealth).toBe(100);
-		expect(resolved.stores[0]?.staffMorale).toBe(0);
-		expect(resolved.stores[0]?.reputation).toBe(100);
-		expect(resolved.decisions).toHaveLength(0);
-	});
-
-	test('stock health decision effects adjust product rows and survive the next day', () => {
-		expect.assertions(6);
-		const game = createNewGame('grocery', 55);
-		const decision = {
-			id: 'inventory-plan-1',
-			title: 'Inventory plan',
-			context: decisionContextLocationGeneric(),
-			expiresOnDay: 3,
-			options: [
-				{
-					id: 'stock-up',
-					label: 'Stock up',
-					description: 'Add more stock.',
-					effects: { stockHealth: 20 }
-				}
-			]
-		};
-		const store = {
-			...game.stores[0]!,
-			products: game.stores[0]!.products.map((product) => ({
-				...product,
-				// Scale stock and targetStock up so that the stockHealth effect in
-				// resolveDecision (Math.round(targetStock * stockHealth * 0.01)) is
-				// large enough to survive next-day sales without rounding away to zero.
-				stock: product.targetStock * 3,
-				targetStock: product.targetStock * 6
-			}))
-		};
-		const storeWithHealth = { ...store, stockHealth: calculateStockHealth(store.products) };
-		const resolved = resolveDecision(
-			{ ...game, stores: [storeWithHealth], decisions: [decision] },
-			'inventory-plan-1',
-			'stock-up'
-		);
-		const unboostedNextDay = simulateDay({ ...game, stores: [storeWithHealth] });
-		const nextDay = simulateDay(resolved);
-
-		expect(resolved.stores[0]!.products[0]!.stock).toBeGreaterThan(
-			storeWithHealth.products[0]!.stock
-		);
-		expect(resolved.stores[0]!.stockHealth).toBe(
-			calculateStockHealth(resolved.stores[0]!.products)
-		);
-		expect(resolved.stores[0]!.stockHealth).toBeGreaterThan(storeWithHealth.stockHealth);
-		expect(nextDay.stores[0]!.stockHealth).toBe(calculateStockHealth(nextDay.stores[0]!.products));
-		expect(nextDay.stores[0]!.stockHealth).toBeGreaterThan(unboostedNextDay.stores[0]!.stockHealth);
-		expect(nextDay.stores[0]!.stockHealth).toBeGreaterThan(0);
 	});
 
 	test('upgradeStore deducts cost and increments level on a non-milestone level', () => {
@@ -726,78 +399,7 @@ describe('game state', () => {
 
 		expect(result.stores).toHaveLength(1);
 		expect(result.decisions.at(-1)?.id).toBe('expansion-cash-blocked-1');
-		expect(result.decisions.at(-1)?.title).toBe('Expansion delayed');
-	});
-
-	test('resolveDecision returns the game unchanged when the decision id is unknown', () => {
-		expect.assertions(2);
-		const game = createNewGame('grocery', 55);
-
-		const resolved = resolveDecision(game, 'nonexistent-id', 'whatever');
-
-		expect(resolved).toBe(game);
-		expect(resolved.decisions).toBe(game.decisions);
-	});
-
-	test('resolveDecision leaves store products and stockHealth untouched when the option has no stockHealth effect', () => {
-		expect.assertions(3);
-		const game = createNewGame('grocery', 55);
-		const store = game.stores[0]!;
-		const decision = {
-			id: 'no-stock-effect-1',
-			title: 'Morale boost',
-			context: decisionContextLocationGeneric(),
-			expiresOnDay: 3,
-			options: [
-				{
-					id: 'approve',
-					label: 'Approve',
-					description: 'Apply the plan.',
-					effects: { staffMorale: 10 }
-				}
-			]
-		};
-
-		const resolved = resolveDecision(
-			{ ...game, decisions: [decision] },
-			'no-stock-effect-1',
-			'approve'
-		);
-
-		expect(resolved.stores[0]?.products).toBe(store.products);
-		expect(resolved.stores[0]?.stockHealth).toBe(store.stockHealth);
-		expect(resolved.stores[0]?.staffMorale).toBe(store.staffMorale + 10);
-	});
-
-	test('resolveDecision with a null stockHealth effect adds zero stock and recalculates stockHealth', () => {
-		expect.assertions(2);
-		const game = createNewGame('grocery', 55);
-		const store = game.stores[0]!;
-		const decision = {
-			id: 'null-stock-effect-1',
-			title: 'No-op inventory',
-			context: decisionContextLocationGeneric(),
-			expiresOnDay: 3,
-			options: [
-				{
-					id: 'approve',
-					label: 'Approve',
-					description: 'Apply the plan.',
-					effects: { stockHealth: null as unknown as number }
-				}
-			]
-		};
-
-		const resolved = resolveDecision(
-			{ ...game, stores: [store], decisions: [decision] },
-			'null-stock-effect-1',
-			'approve'
-		);
-
-		expect(resolved.stores[0]?.products[0]?.stock).toBe(store.products[0]!.stock);
-		expect(resolved.stores[0]?.stockHealth).toBe(
-			calculateStockHealth(resolved.stores[0]!.products)
-		);
+		expect(systemDecision(result.decisions.at(-1)).title).toBe('Expansion delayed');
 	});
 
 	test('upgradeStore leaves sibling stores untouched when upgrading one of multiple stores', () => {
@@ -868,7 +470,7 @@ describe('game state', () => {
 
 		expect(result.stores).toHaveLength(1);
 		expect(result.decisions.at(-1)?.id).toBe('location-unavailable-1');
-		expect(result.decisions.at(-1)?.context).toEqual({ code: 'locationGeneric' });
+		expect(systemDecision(result.decisions.at(-1)).context).toEqual({ code: 'locationGeneric' });
 	});
 
 	test('openStore rejects an anchor whose 2x2 footprint includes a river non-anchor tile', () => {
@@ -898,8 +500,11 @@ describe('game state', () => {
 		});
 
 		expect(result.stores).toHaveLength(1);
-		expect(result.decisions.at(-1)?.title).toBe('Location unavailable');
-		expect(result.decisions.at(-1)?.context).toEqual({ code: 'locationBlocked', reason: 'river' });
+		expect(systemDecision(result.decisions.at(-1)).title).toBe('Location unavailable');
+		expect(systemDecision(result.decisions.at(-1)).context).toEqual({
+			code: 'locationBlocked',
+			reason: 'river'
+		});
 	});
 
 	test('location unavailable decision carries structured context for locked tile', () => {
@@ -921,7 +526,10 @@ describe('game state', () => {
 		});
 		const decision = result.decisions.find((d) => d.id.startsWith('location-unavailable'));
 		expect(decision).toBeDefined();
-		expect(decision?.context).toEqual({ code: 'locationBlocked', reason: 'locked' });
+		expect(systemDecision(decision).context).toEqual({
+			code: 'locationBlocked',
+			reason: 'locked'
+		});
 	});
 
 	test('openStore rejects an anchor whose 2x2 footprint extends past the map edge', () => {
@@ -944,7 +552,7 @@ describe('game state', () => {
 		});
 
 		expect(result.stores).toHaveLength(1);
-		expect(result.decisions.at(-1)?.title).toBe('Location unavailable');
+		expect(systemDecision(result.decisions.at(-1)).title).toBe('Location unavailable');
 	});
 
 	test('openStore auto-pick skips an anchor whose footprint includes a river tile', () => {

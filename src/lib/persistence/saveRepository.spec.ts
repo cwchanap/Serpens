@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { initializeStoreProducts } from '$lib/game/stock';
 import { createFoundingFinanceState } from '$lib/game/finance';
+import { createInitialEventRuntime } from '$lib/game/eventSelection';
 import { simulateDay } from '$lib/game/simulateDay';
 import { createNewGame } from '$lib/game/state';
 import { decisionContextLocationGeneric } from '$lib/game/decisionContext';
@@ -235,6 +236,7 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 		],
 		staff: [],
 		hiringCandidates: [],
+		events: overrides.events ?? createInitialEventRuntime(20260505),
 		decisions: [],
 		reports: [],
 		...overrides
@@ -1514,7 +1516,7 @@ describe('save records', () => {
 						}
 					]
 				}
-			]
+			] as unknown as GameState['decisions']
 		});
 
 		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);

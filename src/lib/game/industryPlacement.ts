@@ -23,7 +23,7 @@ import type { FinanceActionResult, FinancedPurchaseReceipt } from './finance';
 import { getWarehouseCapacity, recalculateWarehousePressure } from './industryProduction';
 import type {
 	DecisionItem,
-	DecisionOption,
+	SystemDecisionOption,
 	GameState,
 	IndustrialBuilding,
 	IndustrialBuildingType,
@@ -328,6 +328,7 @@ function industrialConstructionDelayedDecision(
 	delay: IndustrialConstructionDelay
 ): DecisionItem {
 	return {
+		kind: 'system',
 		id: [
 			'industrial-construction-delayed',
 			toDecisionIdPart(delay.buildingTypeId),
@@ -342,12 +343,11 @@ function industrialConstructionDelayedDecision(
 	};
 }
 
-function acknowledgeOption(): DecisionOption {
+function acknowledgeOption(): SystemDecisionOption {
 	return {
 		id: 'acknowledge',
 		label: 'Acknowledge',
-		description: 'Return to industry planning.',
-		effects: {}
+		description: 'Return to industry planning.'
 	};
 }
 

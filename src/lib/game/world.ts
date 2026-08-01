@@ -19,7 +19,7 @@ import {
 import type { DecisionContext } from './decisionContext';
 import type {
 	DecisionItem,
-	DecisionOption,
+	SystemDecisionOption,
 	GameState,
 	IndustrialBuildingTypeId,
 	IndustryResourceProfile,
@@ -270,6 +270,7 @@ function worldDecision(
 	parts.push(String(game.day));
 
 	return {
+		kind: 'system',
 		id: parts.join('-'),
 		title,
 		context,
@@ -507,12 +508,11 @@ function ensureWorldCityMap(game: GameState, city: WorldCityDefinition): GameSta
 	};
 }
 
-function acknowledgeOption(): DecisionOption {
+function acknowledgeOption(): SystemDecisionOption {
 	return {
 		id: 'acknowledge',
 		label: 'Acknowledge',
-		description: 'Return to the world map.',
-		effects: {}
+		description: 'Return to the world map.'
 	};
 }
 

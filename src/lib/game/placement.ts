@@ -306,6 +306,7 @@ function locationUnavailableDecision(
 	const idPart = getTilePlacementBlockDecisionIdPart(reason);
 
 	return {
+		kind: 'system',
 		id: `location-unavailable${idPart ? `-${idPart}` : ''}-${game.day}`,
 		title: 'Location unavailable',
 		// After Task 1b, TilePlacementBlockReason is already 'locked' | 'road' | 'river'
@@ -316,8 +317,7 @@ function locationUnavailableDecision(
 			{
 				id: 'acknowledge',
 				label: 'Acknowledge',
-				description: 'Return to location planning.',
-				effects: {}
+				description: 'Return to location planning.'
 			}
 		]
 	};

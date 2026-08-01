@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from 'vitest';
-import { decisionContextLocationGeneric } from '$lib/game/decisionContext';
 import { buildIndustrialBuilding } from '$lib/game/industryPlacement';
 import {
 	createIndustryPlacementPreview,
@@ -160,16 +159,19 @@ function withTwoWarehouses(game: GameState): GameState {
 
 function decision(): DecisionItem {
 	return {
+		kind: 'event',
 		id: 'route-test-decision',
-		title: 'Route test decision',
-		context: decisionContextLocationGeneric(),
+		eventId: 'route-test-decision',
+		definitionVersion: 1,
+		generatedOnDay: 1,
 		expiresOnDay: 10,
+		target: { kind: 'company' },
+		copy: { key: 'events.routeTestDecision', params: {} },
 		options: [
 			{
 				id: 'accept',
-				label: 'Accept',
-				description: 'Take the cash',
-				effects: { cash: 123 }
+				effects: [{ kind: 'cash-adjust', amount: 123 }],
+				modifiers: []
 			}
 		]
 	};

@@ -9,6 +9,14 @@ import type {
 	WorldCityId
 } from '$lib/game/types';
 import type { TranslationKey } from '$lib/i18n/translate';
+import type { DecisionResolutionFailureCode } from '$lib/game/eventEffects';
+import type { FinanceFailureCode } from '$lib/game/finance';
+
+export interface ScenarioDecisionFailure {
+	code: DecisionResolutionFailureCode;
+	context: Record<string, string | number>;
+	financeFailure?: FinanceFailureCode;
+}
 
 export const SCENARIO_COMMAND_KINDS = [
 	'advanceDay',

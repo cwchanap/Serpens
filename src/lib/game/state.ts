@@ -27,6 +27,7 @@ import {
 	decisionContextLocationGeneric
 } from './decisionContext';
 import { createRng, normalizeSeed, randomInt } from './rng';
+import { createInitialEventRuntime } from './eventSelection';
 import {
 	createCityTileLookup,
 	getOccupiedStoreTileIds,
@@ -40,22 +41,23 @@ import {
 } from './staffing';
 import { calculateStockHealth, createStoreProduct, initializeStoreProducts } from './stock';
 import { STARTER_STORE_CAP, createInitialWorldProgress, refreshWorldProgress } from './world';
-import {
-	assessCredit,
-	borrow,
-	createFoundingFinanceState,
-	type CreditAssessmentReason
-} from './finance';
+import { createFoundingFinanceState } from './finance';
+export {
+	getDecisionOptionAvailability,
+	resolveDecision,
+	type DecisionOptionAvailability,
+	type DecisionResolutionFailureCode,
+	type DecisionResolutionResult
+} from './eventEffects';
 import type {
 	ArchetypeId,
 	City,
 	CityTile,
 	CompanyPolicy,
 	DecisionItem,
-	DecisionOption,
 	GameState,
-	Scorecard,
 	Store,
+	SystemDecisionOption,
 	StoreLocation
 } from './types';
 import type { TilePlacementBlockReason } from './city';
@@ -182,6 +184,7 @@ export function createNewGame(archetypeId: ArchetypeId, seed = Date.now()): Game
 		stores: [placedOpeningStore],
 		staff,
 		hiringCandidates,
+		events: createInitialEventRuntime(normalizedSeed),
 		decisions: [],
 		reports: []
 	};
@@ -250,69 +253,6 @@ export function getExpansionSetupCost(tile: CityTile, archetypeId: ArchetypeId):
 			demandScore * 24 +
 			(TERRAIN_SETUP_COST_PREMIUM[tile.terrain] ?? 0)
 	);
-}
-
-export type DecisionOptionAvailability =
-	| { available: true }
-	| {
-			available: false;
-			code: 'insufficientCredit';
-			reasons: CreditAssessmentReason[];
-			context: Record<string, string | number>;
-	  };
-
-export function getDecisionOptionAvailability(
-	game: GameState,
-	option: DecisionOption
-): DecisionOptionAvailability {
-	const finance = option.effects.finance;
-	if (!finance) return { available: true };
-
-	const assessment = assessCredit(game, finance.termDays);
-	if (finance.amount <= assessment.availableCredit) return { available: true };
-
-	return {
-		available: false,
-		code: 'insufficientCredit',
-		reasons: assessment.reasons,
-		context: {
-			amount: finance.amount,
-			availableCredit: assessment.availableCredit
-		}
-	};
-}
-
-export function resolveDecision(game: GameState, decisionId: string, optionId: string): GameState {
-	const decision = game.decisions.find((candidate) => candidate.id === decisionId);
-	const option = decision?.options.find((candidate) => candidate.id === optionId);
-
-	if (!decision || !option) {
-		return game;
-	}
-
-	const financeEffect = option.effects.finance;
-	const financedGame = financeEffect
-		? (() => {
-				if (!getDecisionOptionAvailability(game, option).available) return null;
-				const borrowing = borrow(game, financeEffect);
-				return borrowing.ok ? borrowing.game : null;
-			})()
-		: game;
-	if (!financedGame) return game;
-
-	// Wrapping the result in refreshWorldProgress is intentional (commit a6b9e40,
-	// "fix: enforce strict game state invariants"): decision effects can change
-	// store/warehouse state, so the post-transition state must be re-normalized to
-	// pass the strict invariants that scenario setup validation enforces. Do not
-	// revert this to a plain spread return — scenario post-command evaluation
-	// depends on the resulting state being invariant-valid.
-	return refreshWorldProgress({
-		...financedGame,
-		cash: financedGame.cash + (financeEffect ? 0 : (option.effects.cash ?? 0)),
-		scorecard: applyScoreEffects(financedGame.scorecard, option),
-		stores: financedGame.stores.map((store) => applyStoreEffects(store, option)),
-		decisions: financedGame.decisions.filter((candidate) => candidate.id !== decisionId)
-	});
 }
 
 export function upgradeStore(game: GameState, storeId: string): GameState {
@@ -409,40 +349,6 @@ function createStore(input: {
 	};
 }
 
-function applyScoreEffects(scorecard: Scorecard, option: DecisionOption): Scorecard {
-	return {
-		profit: clampScore(scorecard.profit + (option.effects.profit ?? 0)),
-		customerSatisfaction: clampScore(
-			scorecard.customerSatisfaction + (option.effects.customerSatisfaction ?? 0)
-		),
-		staffMorale: clampScore(scorecard.staffMorale + (option.effects.staffMorale ?? 0)),
-		marketPosition: clampScore(scorecard.marketPosition + (option.effects.marketPosition ?? 0))
-	};
-}
-
-function applyStoreEffects(store: Store, option: DecisionOption): Store {
-	const products =
-		option.effects.stockHealth === undefined
-			? store.products
-			: store.products.map((product) => ({
-					...product,
-					stock: Math.max(
-						0,
-						product.stock +
-							Math.round(product.targetStock * (option.effects.stockHealth ?? 0) * 0.01)
-					)
-				}));
-
-	return {
-		...store,
-		products,
-		stockHealth:
-			option.effects.stockHealth === undefined ? store.stockHealth : calculateStockHealth(products),
-		staffMorale: clampScore(store.staffMorale + (option.effects.staffMorale ?? 0)),
-		reputation: clampScore(store.reputation + (option.effects.reputation ?? 0))
-	};
-}
-
 function getExpansionTile(
 	game: GameState,
 	requestedTileId: string | undefined
@@ -534,6 +440,7 @@ function appendDecision(game: GameState, decision: DecisionItem): GameState {
 
 function expansionUnavailableDecision(game: GameState): DecisionItem {
 	return {
+		kind: 'system',
 		id: `expansion-unavailable-${game.day}`,
 		title: 'Expansion unavailable',
 		context: decisionContextExpansionUnavailable(game.storeCap),
@@ -544,6 +451,7 @@ function expansionUnavailableDecision(game: GameState): DecisionItem {
 
 function expansionCashBlockedDecision(game: GameState, setupCost: number): DecisionItem {
 	return {
+		kind: 'system',
 		id: `expansion-cash-blocked-${game.day}`,
 		title: 'Expansion delayed',
 		context: decisionContextExpansionCashBlocked(setupCost),
@@ -559,6 +467,7 @@ function locationUnavailableDecision(
 	const idPart = getTilePlacementBlockDecisionIdPart(reason);
 
 	return {
+		kind: 'system',
 		id: `location-unavailable${idPart ? `-${idPart}` : ''}-${game.day}`,
 		title: 'Location unavailable',
 		// After Task 1b, TilePlacementBlockReason is already 'locked' | 'road' | 'river'
@@ -569,11 +478,10 @@ function locationUnavailableDecision(
 	};
 }
 
-function acknowledgeOption(): DecisionOption {
+function acknowledgeOption(): SystemDecisionOption {
 	return {
 		id: 'acknowledge',
 		label: 'Acknowledge',
-		description: 'Return to operations planning.',
-		effects: {}
+		description: 'Return to operations planning.'
 	};
 }

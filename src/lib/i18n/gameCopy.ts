@@ -17,8 +17,9 @@ import type {
 	DailyReportWarning,
 	GameState,
 	DecisionItem,
-	DecisionOption,
+	EventDecisionOption,
 	Store,
+	SystemDecisionOption,
 	StoreLocation
 } from '$lib/game/types';
 import type { DecisionContext } from '$lib/game/decisionContext';
@@ -315,9 +316,7 @@ function isWorldCityContext(context: DecisionContext): boolean {
 }
 
 function classifyDecision(decision: DecisionItem): string | null {
-	if (decision.id === 'cash-pressure') return 'cashPressure';
-	if (decision.id === 'expansion-opportunity') return 'expansionOpportunity';
-	if (decision.id === 'supplier-terms') return 'supplierTerms';
+	if (decision.kind !== 'system') return null;
 	if (decision.id.startsWith('expansion-unavailable-')) return 'expansionUnavailable';
 	if (decision.id.startsWith('expansion-cash-blocked-')) return 'expansionCashBlocked';
 	if (decision.id.startsWith('location-unavailable')) return 'locationUnavailable';
@@ -331,6 +330,19 @@ function classifyDecision(decision: DecisionItem): string | null {
 	if (decision.id.startsWith('world-city-') && isWorldCityContext(decision.context))
 		return 'worldCity';
 	return null;
+}
+
+function classifyEventCopy(decision: Extract<DecisionItem, { kind: 'event' }>): string | null {
+	switch (decision.copy.key) {
+		case 'events.cashPressure':
+			return 'cashPressure';
+		case 'events.expansionOpportunity':
+			return 'expansionOpportunity';
+		case 'events.supplierTerms':
+			return 'supplierTerms';
+		default:
+			return null;
+	}
 }
 
 function localizeDecisionContextValue(ctx: DecisionContext, i18n: I18nBundle): string {
@@ -410,6 +422,12 @@ function localizeDecisionContextValue(ctx: DecisionContext, i18n: I18nBundle): s
 }
 
 function localizeDecisionTitle(decision: DecisionItem, i18n: I18nBundle): string {
+	if (decision.kind === 'event') {
+		const family = classifyEventCopy(decision);
+		return family === null
+			? decision.copy.key
+			: (translateMessage(i18n, `copy.decisions.${family}.title`) ?? decision.copy.key);
+	}
 	const family = classifyDecision(decision);
 
 	switch (family) {
@@ -438,18 +456,29 @@ function localizeDecisionTitle(decision: DecisionItem, i18n: I18nBundle): string
 }
 
 function localizeDecisionContext(decision: DecisionItem, i18n: I18nBundle): string {
+	if (decision.kind === 'event') {
+		const family = classifyEventCopy(decision);
+		return family === null
+			? decision.copy.key
+			: (translateMessage(i18n, `copy.decisions.${family}.context`) ?? decision.copy.key);
+	}
 	return localizeDecisionContextValue(decision.context, i18n);
 }
 
 function localizeDecisionOption(
 	decision: DecisionItem,
-	option: DecisionOption,
+	option: SystemDecisionOption | EventDecisionOption,
 	i18n: I18nBundle
 ): LocalizedDecisionOption {
-	const family = classifyDecision(decision);
+	const family =
+		decision.kind === 'event' ? classifyEventCopy(decision) : classifyDecision(decision);
 
 	if (family === null) {
-		return { ...option };
+		return {
+			id: option.id,
+			label: 'label' in option ? option.label : option.id,
+			description: 'description' in option ? option.description : ''
+		};
 	}
 
 	if (option.id === 'acknowledge') {
@@ -463,19 +492,20 @@ function localizeDecisionOption(
 						: 'copy.decisions.acknowledge.description';
 
 		return {
-			...option,
+			id: option.id,
 			label: i18n.t('copy.decisions.acknowledge.label'),
 			description: i18n.t(descriptionKey as never)
 		};
 	}
 
 	return {
-		...option,
+		id: option.id,
 		label:
-			translateMessage(i18n, `copy.decisions.${family}.options.${option.id}.label`) ?? option.label,
+			translateMessage(i18n, `copy.decisions.${family}.options.${option.id}.label`) ??
+			('label' in option ? option.label : option.id),
 		description:
 			translateMessage(i18n, `copy.decisions.${family}.options.${option.id}.description`) ??
-			option.description
+			('description' in option ? option.description : '')
 	};
 }
 
@@ -600,14 +630,15 @@ export function localizeAlert(alert: GameAlert, game: GameState, i18n: I18nBundl
 		}
 	}
 
-	return alert.message;
+	return alert.message ?? '';
 }
 
 export function localizeDecision(decision: DecisionItem, i18n: I18nBundle): LocalizedDecision {
 	return {
-		...decision,
+		id: decision.id,
 		title: localizeDecisionTitle(decision, i18n),
 		context: localizeDecisionContext(decision, i18n),
+		expiresOnDay: decision.expiresOnDay,
 		options: decision.options.map((option) => localizeDecisionOption(decision, option, i18n))
 	};
 }

@@ -14,7 +14,12 @@ import { normalizeSeed } from '$lib/game/rng';
 import { simulateDay } from '$lib/game/simulateDay';
 import type { SimulationRules } from '$lib/game/simulationRules';
 import { assignStaffToStore, hireCandidate, promoteStaff, unassignStaff } from '$lib/game/staffing';
-import { resolveDecision, updatePolicy, upgradeStore } from '$lib/game/state';
+import {
+	resolveDecision,
+	updatePolicy,
+	upgradeStore,
+	type DecisionResolutionResult
+} from '$lib/game/state';
 import { updateStoreProduct } from '$lib/game/stock';
 import type { GameState } from '$lib/game/types';
 import { financeWorldCityOpening, openWorldCity, selectWorldCity } from '$lib/game/world';
@@ -31,7 +36,8 @@ import type {
 	ScenarioEvaluation,
 	ScenarioOperationResult,
 	ScenarioResult,
-	ScenarioRun
+	ScenarioRun,
+	ScenarioDecisionFailure
 } from './types';
 
 export type ExecuteScenarioCommandResult =
@@ -49,6 +55,7 @@ export type ExecuteScenarioCommandResult =
 				code: FinanceFailureCode;
 				context: Record<string, string | number>;
 			};
+			decisionFailure?: ScenarioDecisionFailure;
 	  };
 
 export type ScenarioStartResult = ScenarioOperationResult<ScenarioRun>;
@@ -191,7 +198,7 @@ function compileSimulationRules(definition: ScenarioDefinition): SimulationRules
 }
 
 type FinanceActionFailure = Extract<FinanceActionResult<unknown>, { ok: false }>;
-type ScenarioDispatchResult = GameState | FinanceActionFailure;
+type ScenarioDispatchResult = GameState | FinanceActionFailure | DecisionResolutionResult;
 
 function dispatchScenarioCommand(
 	game: GameState,
@@ -326,13 +333,32 @@ export function executeScenarioCommand(
 	try {
 		const dispatched = dispatchScenarioCommand(run.game, definition, command);
 		if ('ok' in dispatched) {
-			return {
-				ok: false,
-				code: 'invalid-command',
-				financeFailure: { code: dispatched.code, context: dispatched.context }
-			};
+			if (dispatched.ok) {
+				game = dispatched.game;
+			} else if (isDecisionFailureCode(dispatched.code)) {
+				const decisionFailure = dispatched as Extract<DecisionResolutionResult, { ok: false }>;
+				return {
+					ok: false,
+					code: 'invalid-command',
+					decisionFailure: {
+						code: decisionFailure.code,
+						context: decisionFailure.context,
+						...(decisionFailure.financeFailure === undefined
+							? {}
+							: { financeFailure: decisionFailure.financeFailure })
+					}
+				};
+			} else {
+				const financeFailure = dispatched as FinanceActionFailure;
+				return {
+					ok: false,
+					code: 'invalid-command',
+					financeFailure: { code: financeFailure.code, context: financeFailure.context }
+				};
+			}
+		} else {
+			game = dispatched;
 		}
-		game = dispatched;
 	} catch {
 		// The command passed capability/content checks but the transition itself
 		// rejected it (e.g. openStoreAtTile throws on a locked/occupied tile, or
@@ -369,4 +395,14 @@ export function executeScenarioCommand(
 			result: null
 		}
 	};
+}
+
+function isDecisionFailureCode(code: string): code is ScenarioDecisionFailure['code'] {
+	return (
+		code === 'decision-not-found' ||
+		code === 'option-not-found' ||
+		code === 'decision-expired' ||
+		code === 'finance-unavailable' ||
+		code === 'effect-rejected'
+	);
 }

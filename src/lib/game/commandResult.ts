@@ -1,4 +1,5 @@
 import type { FinanceFailureCode } from './finance';
+import type { DecisionResolutionFailureCode } from './eventEffects';
 
 /**
  * Result of a route-layer commit attempt. Shared between the route controller
@@ -14,6 +15,12 @@ export type GameRouteCommitResult =
 			status: 'domain-rejected';
 			code: FinanceFailureCode;
 			context: Record<string, string | number>;
+	  }
+	| {
+			status: 'decision-rejected';
+			code: DecisionResolutionFailureCode;
+			context: Record<string, string | number>;
+			financeFailure?: FinanceFailureCode;
 	  }
 	| { status: 'unchanged' }
 	| {

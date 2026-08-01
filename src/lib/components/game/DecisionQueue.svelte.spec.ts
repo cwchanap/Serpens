@@ -14,6 +14,7 @@ import { createNewGame } from '$lib/game/state';
 
 const decisions: DecisionItem[] = [
 	{
+		kind: 'system',
 		id: 'd1',
 		title: 'Staff Dispute',
 		context: decisionContextCashPressure(),
@@ -22,18 +23,17 @@ const decisions: DecisionItem[] = [
 			{
 				id: 'o1',
 				label: 'Mediate',
-				description: 'Sit them down and negotiate.',
-				effects: { staffMorale: 5 }
+				description: 'Sit them down and negotiate.'
 			},
 			{
 				id: 'o2',
 				label: 'Ignore',
-				description: 'Let them sort it out.',
-				effects: { staffMorale: -3 }
+				description: 'Let them sort it out.'
 			}
 		]
 	},
 	{
+		kind: 'system',
 		id: 'd2',
 		title: 'Supplier Delay',
 		context: decisionContextExpansionOpportunity(),
@@ -42,8 +42,7 @@ const decisions: DecisionItem[] = [
 			{
 				id: 'o3',
 				label: 'Wait',
-				description: 'Accept the delay.',
-				effects: { cash: 0 }
+				description: 'Accept the delay.'
 			}
 		]
 	}
@@ -59,11 +58,13 @@ function renderQueue(
 		game: GameState;
 	}> = {}
 ) {
+	const selectedDecisions = overrides.decisions ?? decisions;
 	const props = {
-		decisions: decisions as DecisionItem[],
+		decisions: selectedDecisions,
 		i18n: createI18n('en'),
 		onResolve: vi.fn(),
-		...overrides
+		...overrides,
+		...(overrides.game ? { game: { ...overrides.game, decisions: selectedDecisions } } : {})
 	};
 
 	render(DecisionQueue, props);
@@ -121,6 +122,7 @@ describe('DecisionQueue', () => {
 		renderQueue({
 			decisions: [
 				{
+					kind: 'system',
 					id: 'd-empty',
 					title: 'Mystery Offer',
 					context: decisionContextLocationGeneric(),
@@ -194,37 +196,40 @@ describe('DecisionQueue', () => {
 			onResolve,
 			decisions: [
 				{
+					kind: 'event',
 					id: 'credit-choice',
-					title: 'Credit choice',
-					context: decisionContextCashPressure(),
+					eventId: 'cash-pressure',
+					definitionVersion: 1,
+					generatedOnDay: 1,
 					expiresOnDay: 12,
+					target: { kind: 'company' },
+					copy: { key: 'events.cashPressure', params: {} },
 					options: [
 						{
-							id: 'borrow',
-							label: 'Borrow',
-							description: 'Borrow to bridge the gap.',
-							effects: {
-								finance: {
-									kind: 'borrow',
+							id: 'short-loan',
+							effects: [
+								{
+									kind: 'finance-borrow',
 									purpose: 'emergency',
 									amount: 4_000,
 									termDays: 56
 								}
-							}
+							],
+							modifiers: []
 						},
-						{ id: 'wait', label: 'Wait', description: 'Keep cash-free options open.', effects: {} }
+						{ id: 'hold-course', effects: [], modifiers: [] }
 					]
 				}
 			]
 		});
 
-		await expect.element(page.getByRole('button', { name: /Borrow/ })).toBeDisabled();
-		await expect.element(page.getByRole('button', { name: /Wait/ })).not.toBeDisabled();
+		await expect.element(page.getByRole('button', { name: /Short loan/ })).toBeDisabled();
+		await expect.element(page.getByRole('button', { name: /Hold course/ })).not.toBeDisabled();
 		await expect
 			.element(page.getByText('Borrowing is unavailable while an obligation is delinquent.'))
 			.toBeVisible();
-		await page.getByRole('button', { name: /Wait/ }).click();
-		expect(onResolve).toHaveBeenCalledWith('credit-choice', 'wait');
+		await page.getByRole('button', { name: /Hold course/ }).click();
+		expect(onResolve).toHaveBeenCalledWith('credit-choice', 'hold-course');
 	});
 
 	it('shows the debt-service-capacity reason when service headroom limits credit', async () => {
@@ -235,30 +240,33 @@ describe('DecisionQueue', () => {
 			game,
 			decisions: [
 				{
+					kind: 'event',
 					id: 'credit-choice',
-					title: 'Credit choice',
-					context: decisionContextCashPressure(),
+					eventId: 'cash-pressure',
+					definitionVersion: 1,
+					generatedOnDay: 1,
 					expiresOnDay: 12,
+					target: { kind: 'company' },
+					copy: { key: 'events.cashPressure', params: {} },
 					options: [
 						{
-							id: 'borrow',
-							label: 'Borrow',
-							description: 'Borrow to bridge the gap.',
-							effects: {
-								finance: {
-									kind: 'borrow',
+							id: 'short-loan',
+							effects: [
+								{
+									kind: 'finance-borrow',
 									purpose: 'emergency',
 									amount: 200_000,
 									termDays: 56
 								}
-							}
+							],
+							modifiers: []
 						}
 					]
 				}
 			]
 		});
 
-		await expect.element(page.getByRole('button', { name: /Borrow/ })).toBeDisabled();
+		await expect.element(page.getByRole('button', { name: /Short loan/ })).toBeDisabled();
 		await expect
 			.element(page.getByText('Current debt-service capacity cannot cover this loan.'))
 			.toBeVisible();
@@ -279,30 +287,33 @@ describe('DecisionQueue', () => {
 			game,
 			decisions: [
 				{
+					kind: 'event',
 					id: 'credit-choice',
-					title: 'Credit choice',
-					context: decisionContextCashPressure(),
+					eventId: 'cash-pressure',
+					definitionVersion: 1,
+					generatedOnDay: 1,
 					expiresOnDay: 12,
+					target: { kind: 'company' },
+					copy: { key: 'events.cashPressure', params: {} },
 					options: [
 						{
-							id: 'borrow',
-							label: 'Borrow',
-							description: 'Borrow to bridge the gap.',
-							effects: {
-								finance: {
-									kind: 'borrow',
+							id: 'short-loan',
+							effects: [
+								{
+									kind: 'finance-borrow',
 									purpose: 'emergency',
 									amount: 1_000,
 									termDays: 56
 								}
-							}
+							],
+							modifiers: []
 						}
 					]
 				}
 			]
 		});
 
-		await expect.element(page.getByRole('button', { name: /Borrow/ })).toBeDisabled();
+		await expect.element(page.getByRole('button', { name: /Short loan/ })).toBeDisabled();
 		await expect
 			.element(page.getByText('Current credit capacity cannot cover this loan.'))
 			.toBeVisible();

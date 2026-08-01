@@ -1,15 +1,13 @@
 import { describe, expect, test, vi } from 'vitest';
 import { ARCHETYPES } from './archetypes';
-import { generateDecisions, pruneExpiredDecisions } from './events';
 import { appendFinanceTransaction, getTotalDebt } from './finance';
 import { generateCity } from './city';
 import { buildIndustrialBuilding } from './industryPlacement';
-import { decisionContextLocationGeneric } from './decisionContext';
-import { createNewGame, resolveDecision, updatePolicy } from './state';
+import { createNewGame, updatePolicy } from './state';
 import { getStaffXpForLevel } from './staffLeveling';
 import { DEFAULT_SIMULATION_RULES, type SimulationRules } from './simulationRules';
 import { simulateDay } from './simulateDay';
-import type { DecisionItem, GameState, StaffMember } from './types';
+import type { EventDecisionItem, GameState, StaffMember, SystemDecisionItem } from './types';
 
 describe('daily simulation', () => {
 	test('keeps omitted and explicit defaults deeply equal', () => {
@@ -511,13 +509,14 @@ describe('daily simulation', () => {
 		);
 	});
 
-	test('removes expired decisions after a simulated day', () => {
-		expect.assertions(1);
+	test('removes expired system decisions after a simulated day', () => {
+		expect.assertions(2);
 		const game = createNewGame('convenience', 55);
-		const expiredDecision: DecisionItem = {
+		const expiredDecision: SystemDecisionItem = {
+			kind: 'system',
 			id: 'expired',
 			title: 'Expired',
-			context: decisionContextLocationGeneric(),
+			context: { code: 'locationGeneric' },
 			expiresOnDay: game.day,
 			options: []
 		};
@@ -525,15 +524,17 @@ describe('daily simulation', () => {
 		const result = simulateDay({ ...game, decisions: [expiredDecision] });
 
 		expect(result.decisions.some((decision) => decision.id === expiredDecision.id)).toBe(false);
+		expect(result.events.history).toBe(game.events.history);
 	});
 
 	test('preserves non-expired existing decisions after a simulated day', () => {
 		expect.assertions(1);
 		const game = createNewGame('convenience', 56);
-		const activeDecision: DecisionItem = {
+		const activeDecision: SystemDecisionItem = {
+			kind: 'system',
 			id: 'active',
 			title: 'Active',
-			context: decisionContextLocationGeneric(),
+			context: { code: 'locationGeneric' },
 			expiresOnDay: game.day + 2,
 			options: []
 		};
@@ -543,108 +544,30 @@ describe('daily simulation', () => {
 		expect(result.decisions.some((decision) => decision.id === activeDecision.id)).toBe(true);
 	});
 
-	test('generates decisions from the returned post-day rng state', () => {
-		expect.assertions(1);
-		const game = createNewGame('convenience', 1);
-		const activeDecision: DecisionItem = {
-			id: 'active',
-			title: 'Active',
-			context: decisionContextLocationGeneric(),
-			expiresOnDay: game.day + 2,
-			options: []
+	test('records event expiry against the closing day', () => {
+		const game = createNewGame('convenience', 57);
+		const expiredDecision: EventDecisionItem = {
+			kind: 'event',
+			id: 'expired-event-1',
+			eventId: 'fixture-event',
+			definitionVersion: 1,
+			generatedOnDay: game.day,
+			expiresOnDay: game.day,
+			target: { kind: 'company' },
+			copy: { key: 'events.fixture', params: {} },
+			options: [{ id: 'accept', effects: [], modifiers: [] }]
 		};
-		const result = simulateDay({ ...game, decisions: [activeDecision] });
-		const preservedDecisions = result.decisions.filter(
-			(decision) => decision.id === activeDecision.id
-		);
-		const generatedDecisions = result.decisions.filter(
-			(decision) => !preservedDecisions.some((preserved) => preserved.id === decision.id)
-		);
 
-		expect(generatedDecisions).toEqual(
-			generateDecisions({
-				...result,
-				decisions: preservedDecisions
-			})
-		);
-	});
+		const result = simulateDay({ ...game, decisions: [expiredDecision] });
 
-	test('repeats resolved strategic families on the next visible day but never duplicates a pending family', () => {
-		expect.assertions(8);
-		const base = createNewGame('boutique', 33);
-		const families = [
-			{
-				id: 'cash-pressure',
-				game: { ...base, cash: -1, rngState: 1_400_000 },
-				optionId: 'hold-course'
-			},
-			{
-				id: 'expansion-opportunity',
-				game: {
-					...base,
-					day: 14,
-					cash: 55_000,
-					scorecard: { ...base.scorecard, profit: 62 },
-					storeCap: base.stores.length + 1,
-					rngState: 1_400_000
-				},
-				optionId: 'pass'
-			}
-		] as const;
-
-		for (const family of families) {
-			const decision = generateDecisions(family.game)[0]!;
-			const pendingNextDay = simulateDay({ ...family.game, decisions: [decision] });
-			const resolvedNextVisibleDay = generateDecisions({
-				...resolveDecision({ ...family.game, decisions: [decision] }, decision.id, family.optionId),
-				day: family.game.day + 1
-			});
-
-			expect(
-				pendingNextDay.decisions.filter((candidate) => candidate.id === family.id)
-			).toHaveLength(1);
-			expect(resolvedNextVisibleDay.filter((candidate) => candidate.id === family.id)).toHaveLength(
-				1
-			);
-		}
-
-		const supplierGame = {
-			...base,
-			day: 1,
-			cash: 10_000,
-			rngState: 1,
-			scorecard: { profit: 0, customerSatisfaction: 0, staffMorale: 0, marketPosition: 0 }
-		};
-		const supplier = generateDecisions(supplierGame)[0]!;
-		expect(generateDecisions({ ...supplierGame, decisions: [supplier] })).toEqual([]);
-		expect(
-			generateDecisions({
-				...resolveDecision(
-					{ ...supplierGame, decisions: [supplier] },
-					supplier.id,
-					'bulk-discount'
-				),
-				day: 2
-			})[0]?.id
-		).toBe('supplier-terms');
-
-		const expiredCashPressure = {
-			...generateDecisions({ ...base, cash: -1 })[0]!,
-			expiresOnDay: 1
-		};
-		const afterQueueCleanup = {
-			...base,
-			cash: -1,
-			day: 2,
-			decisions: pruneExpiredDecisions({
-				...base,
-				cash: -1,
-				day: 2,
-				decisions: [expiredCashPressure]
-			})
-		};
-		expect(afterQueueCleanup.decisions).toEqual([]);
-		expect(generateDecisions(afterQueueCleanup)[0]?.id).toBe('cash-pressure');
+		expect(result.decisions.some((decision) => decision.id === expiredDecision.id)).toBe(false);
+		expect(result.events.history.at(-1)).toEqual({
+			kind: 'event-decision-expired',
+			day: game.day,
+			eventId: expiredDecision.eventId,
+			instanceId: expiredDecision.id,
+			target: { kind: 'company' }
+		});
 	});
 
 	test('refreshes the hiring market each week with staffed role coverage', () => {

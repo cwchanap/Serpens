@@ -51,6 +51,7 @@ vi.mock('./industry', () => {
 
 import { buildSupplyAdvisor } from './supplyAdvisor';
 import { createEmptyFinanceState } from './finance';
+import { createInitialEventRuntime } from './eventSelection';
 import type { GameState, IndustrialBuilding, Store } from './types';
 
 function baseGame(overrides: Partial<GameState> = {}): GameState {
@@ -73,6 +74,7 @@ function baseGame(overrides: Partial<GameState> = {}): GameState {
 		stores: [],
 		staff: [],
 		hiringCandidates: [],
+		events: createInitialEventRuntime(1),
 		decisions: [],
 		reports: [],
 		...overrides

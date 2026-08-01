@@ -1,4 +1,3 @@
-import type { DecisionItem, DecisionOption } from '$lib/game/types';
 import type { WorldCityStatus } from '$lib/game/world';
 import type {
 	ProductChainNode,
@@ -7,10 +6,17 @@ import type {
 	ProductChainCategorySummary
 } from '$lib/game/productChainGraph';
 
-export type LocalizedDecisionOption = DecisionOption;
+export interface LocalizedDecisionOption {
+	id: string;
+	label: string;
+	description: string;
+}
 
-export interface LocalizedDecision extends Omit<DecisionItem, 'context'> {
-	context: string; // localized display string (was inherited as DecisionContext)
+export interface LocalizedDecision {
+	id: string;
+	title: string;
+	context: string;
+	expiresOnDay: number;
 	options: LocalizedDecisionOption[];
 }
 

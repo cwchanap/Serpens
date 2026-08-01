@@ -589,30 +589,87 @@ export interface LoanPaymentSnapshot {
 	amount: number;
 }
 
-export interface DecisionFinanceEffect {
-	kind: 'borrow';
-	purpose: 'emergency' | 'supplierCredit';
-	amount: number;
-	termDays: 28 | 56;
-}
-
-export interface DecisionOption {
+export interface SystemDecisionOption {
 	id: string;
 	label: string;
 	description: string;
-	effects: Partial<Scorecard> & {
-		stockHealth?: number;
-		staffMorale?: number;
-		reputation?: number;
-	} & ({ cash?: number; finance?: never } | { cash?: never; finance?: DecisionFinanceEffect });
 }
 
-export interface DecisionItem {
+export interface SystemDecisionItem {
+	kind: 'system';
 	id: string;
 	title: string;
 	context: DecisionContext;
 	expiresOnDay: number;
-	options: DecisionOption[];
+	options: SystemDecisionOption[];
+}
+
+export interface EventDecisionOption {
+	id: string;
+	effects: EventImmediateEffect[];
+	modifiers: EventModifierTemplate[];
+}
+
+export interface EventDecisionItem {
+	kind: 'event';
+	id: string;
+	eventId: string;
+	definitionVersion: number;
+	generatedOnDay: number;
+	expiresOnDay: number;
+	target: EventTarget;
+	copy: StructuredCopyRef;
+	options: EventDecisionOption[];
+}
+
+export type DecisionItem = SystemDecisionItem | EventDecisionItem;
+
+export interface EventCooldownRecord {
+	eventId: string;
+	target: EventTarget;
+	generatedOnDay: number;
+	eligibleOnDay: number;
+}
+
+export type EventHistoryEntry =
+	| {
+			kind: 'event-generated';
+			day: number;
+			eventId: string;
+			instanceId: string;
+			target: EventTarget;
+	  }
+	| {
+			kind: 'event-resolved';
+			day: number;
+			eventId: string;
+			instanceId: string;
+			optionId: string;
+			target: EventTarget;
+	  }
+	| {
+			kind: 'event-decision-expired';
+			day: number;
+			eventId: string;
+			instanceId: string;
+			target: EventTarget;
+	  }
+	| {
+			kind: 'modifier-lifecycle';
+			day: number;
+			status: 'activated' | 'replaced' | 'expired';
+			modifier: EventModifierSnapshot;
+			replacedByModifierId?: string;
+	  };
+
+export interface EventRuntimeState {
+	selectionSchemaVersion: 1;
+	rngState: number;
+	nextInstanceSequence: number;
+	nextModifierSequence: number;
+	cooldowns: EventCooldownRecord[];
+	activeModifiers: ActiveEventModifier[];
+	history: EventHistoryEntry[];
 }
 
 export type LoanPurpose =
@@ -706,6 +763,7 @@ export interface GameState {
 	stores: Store[];
 	staff: StaffMember[];
 	hiringCandidates: HiringCandidate[];
+	events: EventRuntimeState;
 	decisions: DecisionItem[];
 	reports: DailyReport[];
 }
