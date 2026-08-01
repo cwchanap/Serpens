@@ -1,5 +1,6 @@
 import { getArchetype } from './archetypes';
 import { generateDecisions, pruneExpiredDecisions } from './events';
+import { expireModifiersAfterDay, isModifierActiveOnDay } from './eventModifiers';
 import {
 	compareLoanById,
 	estimateNextLoanPayment,
@@ -11,7 +12,12 @@ import {
 import { simulateIndustryProduction } from './industryProduction';
 import { clampScore } from './reports';
 import { createRngFromState, randomBetween } from './rng';
-import { DEFAULT_SIMULATION_RULES, type SimulationRules } from './simulationRules';
+import {
+	DEFAULT_SIMULATION_RULES,
+	mergeSimulationRules,
+	type ImportCostApplicationEvidence,
+	type SimulationRules
+} from './simulationRules';
 import {
 	calculateMonthlyPayroll,
 	generateHiringCandidates,
@@ -30,12 +36,16 @@ import {
 } from './stock';
 import { refreshWorldProgress } from './world';
 import type {
+	ActiveEventModifier,
 	DailyMaterialMovement,
 	DailyProductReport,
 	DailyProductionReport,
 	DailyReport,
 	DailyReportWarning,
 	DailyStoreReport,
+	EventHistoryEntry,
+	EventModifierImpact,
+	EventModifierLifecycle,
 	GameState,
 	Scorecard,
 	StaffingRequirement,
@@ -96,8 +106,12 @@ export function simulateDay(
 	rules: SimulationRules = DEFAULT_SIMULATION_RULES
 ): GameState {
 	const closingDay = game.day;
+	const activeEventModifiers = game.events.activeModifiers.filter((modifier) =>
+		isModifierActiveOnDay(modifier, closingDay)
+	);
+	const mergedRules = mergeSimulationRules(rules, compileEventModifierRules(activeEventModifiers));
 	const cashBefore = game.cash - game.finance.currentDayActivity.financingCashFlow;
-	const industryResult = simulateIndustryProduction(game, rules);
+	const industryResult = simulateIndustryProduction(game, mergedRules);
 	const productionGame = industryResult.game;
 	const rng = createRngFromState(productionGame.rngState);
 	const profiles = productionGame.stores.map((store) =>
@@ -138,12 +152,17 @@ export function simulateDay(
 		stores: restoreProductSettings(citySales.stores, productionGame.stores)
 	};
 	const importResult = isImportDay(productionGame.day)
-		? applyWeeklyImports({ game: stockGame, storeReports: citySales.productReports, rules })
+		? applyWeeklyImports({
+				game: stockGame,
+				storeReports: citySales.productReports,
+				rules: mergedRules
+			})
 		: {
 				stores: stockGame.stores,
 				productReports: citySales.productReports,
 				warehouse: stockGame.warehouse,
-				importSpend: 0
+				importSpend: 0,
+				importCostApplications: []
 			};
 	const storeResults = importResult.stores.map((store) =>
 		buildDailyStoreReport(
@@ -204,9 +223,20 @@ export function simulateDay(
 		cash: cashAfter,
 		finance: serviced.finance
 	};
+	const expiry = postServiceGame.events.activeModifiers.some(
+		(modifier) => modifier.expiresOnDay <= closingDay + 1
+	)
+		? expireModifiersAfterDay(postServiceGame.events, closingDay)
+		: { state: postServiceGame.events, expired: [] };
+	const reconciledGame = { ...postServiceGame, events: expiry.state };
 	const warnings = collectWarnings(storeReports, cashAfter);
-	const nextLoanPayment = getNextLoanPaymentSnapshot(postServiceGame);
+	const nextLoanPayment = getNextLoanPaymentSnapshot(reconciledGame);
 	const activity = serviced.finance.currentDayActivity;
+	const modifierImpacts = buildEventModifierImpacts(activeEventModifiers, [
+		...industryResult.importCostApplications,
+		...importResult.importCostApplications
+	]);
+	const modifierLifecycle = collectModifierLifecycle(expiry.state.history, closingDay);
 	const report: DailyReport = {
 		day: closingDay,
 		revenue: Math.round(revenue),
@@ -233,16 +263,128 @@ export function simulateDay(
 		scorecard,
 		productionReport,
 		storeReports,
+		modifierImpacts,
+		modifierLifecycle,
 		warnings
 	};
 	const postDayGame = {
-		...postServiceGame,
+		...reconciledGame,
 		day: nextDay,
 		finance: resetFinanceDayActivity(serviced.finance, nextDay),
 		reports: [...game.reports, report]
 	};
 	const cleaned = pruneExpiredDecisions(postDayGame, closingDay);
 	return refreshWorldProgress(generateDecisions(cleaned));
+}
+
+function compileEventModifierRules(modifiers: readonly ActiveEventModifier[]): SimulationRules {
+	return {
+		importCostMultipliers: modifiers.map((modifier) => ({
+			source: {
+				kind: 'event-modifier',
+				sourceId: modifier.id,
+				modifierId: modifier.id,
+				eventId: modifier.source.eventId,
+				instanceId: modifier.source.instanceId,
+				explanation: {
+					...modifier.explanation,
+					params: { ...modifier.explanation.params }
+				}
+			},
+			scope: modifier.effect.scope,
+			target: { ...modifier.effect.target },
+			multiplier: modifier.effect.multiplier
+		}))
+	};
+}
+
+function buildEventModifierImpacts(
+	activeModifiers: readonly ActiveEventModifier[],
+	applications: readonly ImportCostApplicationEvidence[]
+): EventModifierImpact[] {
+	const modifierById = new Map(activeModifiers.map((modifier) => [modifier.id, modifier]));
+	const impacts = new Map<
+		string,
+		{
+			modifier: ActiveEventModifier;
+			multiplier: number;
+			affectedIds: Set<string>;
+			baselineCost: number;
+			applicationCount: number;
+		}
+	>();
+
+	for (const application of applications) {
+		const eventContributions = new Map<string, number>();
+		for (const contribution of application.contributions) {
+			if (contribution.source.kind !== 'event-modifier') continue;
+			if (!modifierById.has(contribution.source.modifierId)) continue;
+			eventContributions.set(contribution.source.modifierId, contribution.multiplier);
+		}
+
+		for (const [modifierId, multiplier] of eventContributions) {
+			const modifier = modifierById.get(modifierId)!;
+			if (application.scope !== modifier.effect.scope) continue;
+			const impact = impacts.get(modifierId) ?? {
+				modifier,
+				multiplier,
+				affectedIds: new Set<string>(),
+				baselineCost: 0,
+				applicationCount: 0
+			};
+			impact.affectedIds.add(application.targetId);
+			impact.baselineCost += application.baselineCost;
+			impact.applicationCount += 1;
+			impacts.set(modifierId, impact);
+		}
+	}
+
+	return [...impacts.entries()]
+		.sort(([leftId], [rightId]) => compareIds(leftId, rightId))
+		.map(([modifierId, impact]) => ({
+			modifierId,
+			source: { ...impact.modifier.source },
+			target: { ...impact.modifier.target },
+			effectKind: 'import-cost-multiplier',
+			explanation: {
+				...impact.modifier.explanation,
+				params: { ...impact.modifier.explanation.params }
+			},
+			scope: 'retail-product',
+			affectedIds: [...impact.affectedIds].sort(compareIds),
+			multiplier: impact.multiplier,
+			baselineCost: impact.baselineCost,
+			applicationCount: impact.applicationCount
+		}));
+}
+
+function collectModifierLifecycle(
+	history: readonly EventHistoryEntry[],
+	closingDay: number
+): EventModifierLifecycle[] {
+	return history
+		.filter(
+			(entry): entry is Extract<EventHistoryEntry, { kind: 'modifier-lifecycle' }> =>
+				entry.kind === 'modifier-lifecycle' && entry.day === closingDay
+		)
+		.map((entry) => ({
+			status: entry.status,
+			modifier: {
+				...entry.modifier,
+				source: { ...entry.modifier.source },
+				target: { ...entry.modifier.target },
+				effect: { ...entry.modifier.effect, target: { ...entry.modifier.effect.target } },
+				explanation: {
+					...entry.modifier.explanation,
+					params: { ...entry.modifier.explanation.params }
+				}
+			},
+			...(entry.replacedByModifierId ? { replacedByModifierId: entry.replacedByModifierId } : {})
+		}));
+}
+
+function compareIds(left: string, right: string): number {
+	return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function getNextLoanPaymentSnapshot(

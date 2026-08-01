@@ -135,6 +135,8 @@ function withLatestReport(game: GameState, productionReport: DailyProductionRepo
 				scorecard: game.scorecard,
 				productionReport,
 				storeReports: [latestStoreReport()],
+				modifierImpacts: [],
+				modifierLifecycle: [],
 				warnings: []
 			}
 		]

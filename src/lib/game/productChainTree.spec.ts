@@ -161,6 +161,8 @@ function withLatestReport(game: GameState, productionReport: DailyProductionRepo
 				scorecard: game.scorecard,
 				productionReport,
 				storeReports: [latestStoreReport()],
+				modifierImpacts: [],
+				modifierLifecycle: [],
 				warnings: []
 			}
 		]
@@ -647,6 +649,8 @@ describe('buildStoreCategoryChainSummaries (tree)', () => {
 							]
 						})
 					],
+					modifierImpacts: [],
+					modifierLifecycle: [],
 					warnings: []
 				}
 			]
@@ -693,6 +697,8 @@ describe('buildStoreCategoryChainSummaries (tree)', () => {
 							productReports: [snackProductReport({ unitsSold: 5 })]
 						})
 					],
+					modifierImpacts: [],
+					modifierLifecycle: [],
 					warnings: []
 				}
 			]

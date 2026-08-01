@@ -403,6 +403,8 @@ function createDailyReport(overrides: Partial<DailyReport> = {}): DailyReport {
 		},
 		productionReport: createDailyProductionReport(),
 		storeReports: [createDailyStoreReport()],
+		modifierImpacts: [],
+		modifierLifecycle: [],
 		warnings: [],
 		...overrides
 	};

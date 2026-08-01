@@ -1,19 +1,279 @@
 import { describe, expect, test, vi } from 'vitest';
 import { ARCHETYPES } from './archetypes';
+import { EVENT_DRAW_COUNT_PER_DAY } from './eventSelection';
 import { appendFinanceTransaction, getTotalDebt } from './finance';
 import { generateCity } from './city';
 import { buildIndustrialBuilding } from './industryPlacement';
-import { createNewGame, updatePolicy } from './state';
+import { createRngFromState } from './rng';
+import { createNewGame, resolveDecision, updatePolicy } from './state';
 import { getStaffXpForLevel } from './staffLeveling';
 import { DEFAULT_SIMULATION_RULES, type SimulationRules } from './simulationRules';
 import { simulateDay } from './simulateDay';
-import type { EventDecisionItem, GameState, StaffMember, SystemDecisionItem } from './types';
+import type {
+	ActiveEventModifier,
+	EventDecisionItem,
+	GameState,
+	StaffMember,
+	SystemDecisionItem
+} from './types';
+
+function advanceEventRngState(state: number): number {
+	const rng = createRngFromState(state);
+	for (let draw = 0; draw < EVENT_DRAW_COUNT_PER_DAY; draw += 1) rng.next();
+	return rng.getState();
+}
+
+function supplierBulkDiscountDecision(day: number): EventDecisionItem {
+	return {
+		kind: 'event',
+		id: 'event-instance-900',
+		eventId: 'supplier-terms',
+		definitionVersion: 2,
+		generatedOnDay: day,
+		expiresOnDay: day + 2,
+		target: { kind: 'company' },
+		copy: { key: 'events.supplierTerms', params: {} },
+		options: [
+			{
+				id: 'bulk-discount',
+				effects: [],
+				modifiers: [
+					{
+						durationDays: 3,
+						stackingKey: 'supplier-bulk-discount:retail-product',
+						stackingRule: 'replace',
+						effect: {
+							kind: 'import-cost-multiplier',
+							scope: 'retail-product',
+							target: { kind: 'all' },
+							multiplier: 0.9
+						},
+						explanation: {
+							key: 'events.supplierTerms.bulkDiscount.modifier',
+							params: {}
+						},
+						importance: 'important'
+					}
+				]
+			}
+		]
+	};
+}
+
+function activeImportModifier(id: string, multiplier: number, day: number): ActiveEventModifier {
+	return {
+		id,
+		source: {
+			eventId: `event-${id}`,
+			instanceId: `instance-${id}`,
+			optionId: `option-${id}`
+		},
+		target: { kind: 'company' },
+		startsOnDay: day,
+		expiresOnDay: day + 3,
+		stackingKey: `stack-${id}`,
+		stackingRule: 'replace',
+		effect: {
+			kind: 'import-cost-multiplier',
+			scope: 'retail-product',
+			target: { kind: 'all' },
+			multiplier
+		},
+		explanation: { key: `events.${id}`, params: {} },
+		importance: 'normal'
+	};
+}
 
 describe('daily simulation', () => {
 	test('keeps omitted and explicit defaults deeply equal', () => {
 		const game = createNewGame('electronics', 280_002);
 
 		expect(simulateDay(game)).toEqual(simulateDay(game, DEFAULT_SIMULATION_RULES));
+	});
+
+	test('applies a resolved modifier through its final close, reports expiry, then selects', () => {
+		expect.assertions(21);
+		const closingDay = 5;
+		const base = createNewGame('convenience', 280_278);
+		const decision = supplierBulkDiscountDecision(closingDay);
+		const prepared: GameState = {
+			...base,
+			day: closingDay,
+			cash: -1,
+			finance: {
+				...base.finance,
+				currentDayActivity: { ...base.finance.currentDayActivity, day: closingDay }
+			},
+			stores: base.stores.map((store) => ({
+				...store,
+				products: store.products.map((product) => ({
+					...product,
+					stock: 0,
+					reorderThreshold: 1,
+					targetStock: 10
+				}))
+			})),
+			decisions: [decision]
+		};
+		const resolution = resolveDecision(prepared, decision.id, 'bulk-discount');
+
+		expect(resolution.ok).toBe(true);
+		if (!resolution.ok) throw new Error('expected supplier decision to resolve');
+		expect(resolution.game.events.activeModifiers).toHaveLength(1);
+		const modifier = resolution.game.events.activeModifiers[0]!;
+		expect(modifier).toMatchObject({
+			startsOnDay: closingDay,
+			expiresOnDay: closingDay + 3,
+			effect: { multiplier: 0.9 }
+		});
+		const pendingCashPressure: EventDecisionItem = {
+			kind: 'event',
+			id: 'event-instance-901',
+			eventId: 'cash-pressure',
+			definitionVersion: 1,
+			generatedOnDay: closingDay,
+			expiresOnDay: closingDay + 2,
+			target: { kind: 'company' },
+			copy: { key: 'events.cashPressure', params: {} },
+			options: [{ id: 'hold-course', effects: [], modifiers: [] }]
+		};
+
+		let expectedEventRngState = resolution.game.events.rngState;
+		let game: GameState = { ...resolution.game, decisions: [pendingCashPressure] };
+		for (let offset = 0; offset < 3; offset += 1) {
+			expectedEventRngState = advanceEventRngState(expectedEventRngState);
+			game = simulateDay(game);
+			const report = game.reports.at(-1)!;
+
+			expect(report.day).toBe(closingDay + offset);
+			expect(game.day).toBe(closingDay + offset + 1);
+			expect(game.events.rngState).toBe(expectedEventRngState);
+			if (offset < 2) {
+				expect(game.events.activeModifiers.map((candidate) => candidate.id)).toContain(modifier.id);
+			} else {
+				expect(report.modifierImpacts).toEqual([
+					{
+						modifierId: modifier.id,
+						source: modifier.source,
+						target: { kind: 'company' },
+						effectKind: 'import-cost-multiplier',
+						explanation: modifier.explanation,
+						scope: 'retail-product',
+						affectedIds: ['bottled-water'],
+						multiplier: 0.9,
+						baselineCost: 20,
+						applicationCount: 1
+					}
+				]);
+				expect(report.modifierLifecycle).toEqual([
+					{
+						status: 'expired',
+						modifier: expect.objectContaining({ id: modifier.id, expiresOnDay: closingDay + 3 })
+					}
+				]);
+				expect(game.events.activeModifiers).toEqual([]);
+			}
+		}
+
+		expect(game.day).toBe(closingDay + 3);
+		expect(game.decisions).toContainEqual(
+			expect.objectContaining({
+				kind: 'event',
+				eventId: 'cash-pressure',
+				generatedOnDay: closingDay + 3
+			})
+		);
+		expect(game.reports[0]!.modifierLifecycle).toEqual([
+			expect.objectContaining({
+				status: 'activated',
+				modifier: expect.objectContaining({ id: modifier.id })
+			})
+		]);
+		expect(game.reports[1]!.modifierLifecycle).toEqual([]);
+	});
+
+	test('merges scenario and event rules while aggregating only deterministic event impacts', () => {
+		const closingDay = 7;
+		const base = createNewGame('convenience', 280_279);
+		const products = [
+			{
+				categoryId: 'snacks',
+				stock: 0,
+				reorderThreshold: 1,
+				targetStock: 10,
+				sellingPrice: 5
+			},
+			{
+				categoryId: 'bottled-water',
+				stock: 0,
+				reorderThreshold: 1,
+				targetStock: 10,
+				sellingPrice: 3
+			}
+		];
+		const firstStore = { ...base.stores[0]!, products };
+		const rules: SimulationRules = {
+			importCostMultipliers: [
+				{
+					source: { kind: 'scenario', sourceId: 'scenario:test:modifier:0' },
+					scope: 'retail-product',
+					target: { kind: 'all' },
+					multiplier: 2
+				}
+			]
+		};
+		const result = simulateDay(
+			{
+				...base,
+				day: closingDay,
+				stores: [firstStore, { ...firstStore, id: 'store-2' }],
+				events: {
+					...base.events,
+					activeModifiers: [
+						activeImportModifier('modifier-b', 0.8, closingDay),
+						activeImportModifier('modifier-a', 0.9, closingDay)
+					]
+				}
+			},
+			rules
+		);
+		const report = result.reports.at(-1)!;
+
+		expect(report.importSpend).toBe(144);
+		expect(report.modifierImpacts).toEqual([
+			{
+				modifierId: 'modifier-a',
+				source: {
+					eventId: 'event-modifier-a',
+					instanceId: 'instance-modifier-a',
+					optionId: 'option-modifier-a'
+				},
+				target: { kind: 'company' },
+				effectKind: 'import-cost-multiplier',
+				explanation: { key: 'events.modifier-a', params: {} },
+				scope: 'retail-product',
+				affectedIds: ['bottled-water', 'snacks'],
+				multiplier: 0.9,
+				baselineCost: 100,
+				applicationCount: 4
+			},
+			{
+				modifierId: 'modifier-b',
+				source: {
+					eventId: 'event-modifier-b',
+					instanceId: 'instance-modifier-b',
+					optionId: 'option-modifier-b'
+				},
+				target: { kind: 'company' },
+				effectKind: 'import-cost-multiplier',
+				explanation: { key: 'events.modifier-b', params: {} },
+				scope: 'retail-product',
+				affectedIds: ['bottled-water', 'snacks'],
+				multiplier: 0.8,
+				baselineCost: 100,
+				applicationCount: 4
+			}
+		]);
 	});
 
 	test('changes weekly retail import spend without changing sales cost or rng', () => {

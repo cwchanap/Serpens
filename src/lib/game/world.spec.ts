@@ -370,6 +370,8 @@ describe('world progression and city opening', () => {
 						railUsage: {}
 					},
 					storeReports: [],
+					modifierImpacts: [],
+					modifierLifecycle: [],
 					warnings: []
 				}
 			]
@@ -450,6 +452,8 @@ describe('world progression and city opening', () => {
 						railUsage: {}
 					},
 					storeReports: [],
+					modifierImpacts: [],
+					modifierLifecycle: [],
 					warnings: []
 				}
 			]
@@ -534,6 +538,8 @@ describe('world progression and city opening', () => {
 						railUsage: {}
 					},
 					storeReports: [],
+					modifierImpacts: [],
+					modifierLifecycle: [],
 					warnings: []
 				}
 			]
@@ -608,6 +614,8 @@ describe('world progression and city opening', () => {
 						railUsage: {}
 					},
 					storeReports: [],
+					modifierImpacts: [],
+					modifierLifecycle: [],
 					warnings: []
 				}
 			]
@@ -676,6 +684,8 @@ describe('world progression and city opening', () => {
 						railUsage: {}
 					},
 					storeReports: [],
+					modifierImpacts: [],
+					modifierLifecycle: [],
 					warnings: []
 				}
 			]
@@ -738,6 +748,8 @@ describe('world progression and city opening', () => {
 						railUsage: {}
 					},
 					storeReports: [],
+					modifierImpacts: [],
+					modifierLifecycle: [],
 					warnings: []
 				}
 			]
