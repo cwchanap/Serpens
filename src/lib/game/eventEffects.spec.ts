@@ -417,7 +417,7 @@ describe('atomic decision resolution', () => {
 	it('rejects an unknown effect kind', () => {
 		const base = createNewGame('grocery', 55);
 		const decision = eventDecision({
-			options: [{ id: 'accept', effects: [{ kind: 'unknown-kind' as never }], modifiers: [] }]
+			options: [{ id: 'accept', effects: [{ kind: 'unknown-kind' } as never], modifiers: [] }]
 		});
 		const game = withDecision(base, decision);
 		const result = resolveDecision(game, decision.id, 'accept');
