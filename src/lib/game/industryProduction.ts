@@ -4,7 +4,8 @@ import { getBuildingThroughputMultiplier } from './leveling';
 import { createRailTickState, pullViaRail, pushSurplusViaRail } from './railShipping';
 import {
 	DEFAULT_SIMULATION_RULES,
-	getImportCostMultiplier,
+	resolveImportCostMultiplier,
+	type ImportCostApplicationEvidence,
 	type SimulationRules
 } from './simulationRules';
 import type {
@@ -101,6 +102,7 @@ export function simulateIndustryProduction(
 ): {
 	game: GameState;
 	report: DailyProductionReport;
+	importCostApplications: ImportCostApplicationEvidence[];
 } {
 	let warehouse = recalculateWarehousePressure({
 		...game.warehouse,
@@ -112,6 +114,7 @@ export function simulateIndustryProduction(
 	// is visible to a same-day rail pull by a downstream processor.
 	const railState = createRailTickState(game, warehouse);
 	const report: DailyProductionReport = createEmptyProductionReport(warehouse);
+	const importCostApplications: ImportCostApplicationEvidence[] = [];
 	const buildingUpdates = new Map<string, IndustrialBuilding>();
 	const sorted = [...game.industrialBuildings].sort(compareIndustrialBuildingsByStage);
 
@@ -271,10 +274,21 @@ export function simulateIndustryProduction(
 			}
 
 			if (shortage > 0) {
-				const multiplier = getImportCostMultiplier(rules, 'industrial-material', input.materialId);
-				const importValue = Math.round(
-					shortage * MATERIALS[input.materialId].importCost * multiplier
+				const baselineCost = shortage * MATERIALS[input.materialId].importCost;
+				const resolution = resolveImportCostMultiplier(
+					rules,
+					'industrial-material',
+					input.materialId
 				);
+				const importValue = Math.round(baselineCost * resolution.multiplier);
+				if (baselineCost > 0 && resolution.contributions.length > 0) {
+					importCostApplications.push({
+						scope: 'industrial-material',
+						targetId: input.materialId,
+						baselineCost,
+						contributions: resolution.contributions
+					});
+				}
 				const importMovement = createMovementWithValue(
 					input.materialId,
 					shortage,
@@ -381,7 +395,8 @@ export function simulateIndustryProduction(
 				};
 			})
 		},
-		report
+		report,
+		importCostApplications
 	};
 }
 

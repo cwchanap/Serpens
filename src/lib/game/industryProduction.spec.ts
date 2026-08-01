@@ -9,7 +9,11 @@ import {
 	removeWarehouseMaterial,
 	simulateIndustryProduction
 } from './industryProduction';
-import { DEFAULT_SIMULATION_RULES, type SimulationRules } from './simulationRules';
+import {
+	DEFAULT_SIMULATION_RULES,
+	type SimulationRuleSource,
+	type SimulationRules
+} from './simulationRules';
 import { createNewGame } from './state';
 import type {
 	GameState,
@@ -18,6 +22,11 @@ import type {
 	IndustryCity,
 	RailCell
 } from './types';
+
+const scenarioSource: SimulationRuleSource = {
+	kind: 'scenario',
+	sourceId: 'scenario:test:modifier:0'
+};
 
 function buildOnResource(
 	game: ReturnType<typeof createNewGame>,
@@ -97,7 +106,12 @@ describe('industry production simulation', () => {
 		});
 		const rules: SimulationRules = {
 			importCostMultipliers: [
-				{ scope: 'industrial-material', target: { kind: 'ids', ids: ['salt'] }, multiplier: 2 }
+				{
+					source: scenarioSource,
+					scope: 'industrial-material',
+					target: { kind: 'ids', ids: ['salt'] },
+					multiplier: 2
+				}
 			]
 		};
 		const baseline = simulateIndustryProduction(game);
@@ -116,6 +130,14 @@ describe('industry production simulation', () => {
 		expect(doubled.report.importSpend).toBe(
 			baseline.report.importSpend + baselineByMaterial.get('salt')!.value
 		);
+		expect(doubled.importCostApplications).toEqual([
+			{
+				scope: 'industrial-material',
+				targetId: 'salt',
+				baselineCost: baselineByMaterial.get('salt')!.value,
+				contributions: [{ source: scenarioSource, multiplier: 2 }]
+			}
+		]);
 	});
 
 	test('rounds the whole industrial paid-input movement after applying its multiplier', () => {
@@ -130,6 +152,7 @@ describe('industry production simulation', () => {
 		const rules: SimulationRules = {
 			importCostMultipliers: [
 				{
+					source: scenarioSource,
 					scope: 'industrial-material',
 					target: { kind: 'ids', ids: ['grain'] },
 					multiplier: 1.025
@@ -155,7 +178,12 @@ describe('industry production simulation', () => {
 		});
 		const rules: SimulationRules = {
 			importCostMultipliers: [
-				{ scope: 'retail-product', target: { kind: 'ids', ids: ['grain'] }, multiplier: 2 }
+				{
+					source: scenarioSource,
+					scope: 'retail-product',
+					target: { kind: 'ids', ids: ['grain'] },
+					multiplier: 2
+				}
 			]
 		};
 
@@ -605,17 +633,27 @@ describe('rail-fed production', () => {
 	test('processor whose buffer is full of recipe inputs can still produce', () => {
 		// flour-mill capacity 90 filled entirely with grain (its recipe input).
 		// Projected free after consuming 10 grain is 10, enough for 8 flour.
-		expect.assertions(4);
+		expect.assertions(5);
 		const fullInputMill = makeProductionGame(makeIndustryCity([]), [
 			makeIndustryBuilding('mill', 'flour-mill', 2, 2, { grain: 90 })
 		]);
-		const { game, report } = simulateIndustryProduction(fullInputMill);
+		const { game, report, importCostApplications } = simulateIndustryProduction(fullInputMill, {
+			importCostMultipliers: [
+				{
+					source: scenarioSource,
+					scope: 'industrial-material',
+					target: { kind: 'ids', ids: ['grain'] },
+					multiplier: 2
+				}
+			]
+		});
 		const mill = game.industrialBuildings.find((b) => b.typeId === 'flour-mill')!;
 
 		expect(mill.status).toBe('produced');
 		expect(mill.inventory.grain).toBe(80);
 		expect(mill.inventory.flour).toBe(8);
 		expect(report.produced.some((m) => m.materialId === 'flour' && m.quantity === 8)).toBe(true);
+		expect(importCostApplications).toEqual([]);
 	});
 
 	test('level-2 partial buffer uses unrounded desiredOutputs for ratio (single-round, no drift)', () => {

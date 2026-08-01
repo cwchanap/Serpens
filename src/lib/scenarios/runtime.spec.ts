@@ -22,6 +22,7 @@ import {
 	type RailBuildInput
 } from '$lib/game/railPlacement';
 import { simulateDay } from '$lib/game/simulateDay';
+import { resolveImportCostMultiplier } from '$lib/game/simulationRules';
 import { getStaffXpForLevel } from '$lib/game/staffLeveling';
 import { assignStaffToStore, hireCandidate, promoteStaff, unassignStaff } from '$lib/game/staffing';
 import { resolveDecision, updatePolicy, upgradeStore } from '$lib/game/state';
@@ -50,6 +51,7 @@ import type {
 } from './types';
 import {
 	abandonScenario,
+	compileSimulationRules,
 	evaluateScenario,
 	executeScenarioCommand,
 	restartScenario,
@@ -438,6 +440,48 @@ function mustStart(definition: ScenarioDefinition, seed = definition.officialSee
 }
 
 describe('executeScenarioCommand dispatch', { timeout: 30_000 }, () => {
+	it('compiles scenario modifier provenance from the scenario id and definition index', () => {
+		const definition = commandDefinition([], {
+			modifiers: [
+				{
+					kind: 'import-cost-multiplier',
+					scope: 'retail-product',
+					target: { kind: 'ids', ids: ['games'] },
+					multiplier: 1.5
+				},
+				{
+					kind: 'import-cost-multiplier',
+					scope: 'retail-product',
+					target: { kind: 'ids', ids: ['accessories'] },
+					multiplier: 2
+				}
+			]
+		});
+
+		const rules = compileSimulationRules(definition);
+
+		expect(rules.importCostMultipliers).toEqual([
+			{
+				source: { kind: 'scenario', sourceId: `scenario:${definition.id}:modifier:0` },
+				scope: 'retail-product',
+				target: { kind: 'ids', ids: ['games'] },
+				multiplier: 1.5
+			},
+			{
+				source: { kind: 'scenario', sourceId: `scenario:${definition.id}:modifier:1` },
+				scope: 'retail-product',
+				target: { kind: 'ids', ids: ['accessories'] },
+				multiplier: 2
+			}
+		]);
+		expect(
+			resolveImportCostMultiplier(rules, 'retail-product', 'games').contributions
+		).toHaveLength(1);
+		expect(
+			resolveImportCostMultiplier(rules, 'retail-product', 'accessories').contributions
+		).toHaveLength(1);
+	});
+
 	it('executes advanceDay with definition modifiers and preserves automatic world reveals', () => {
 		const game: GameState = {
 			...foundingGame(),
@@ -465,7 +509,13 @@ describe('executeScenarioCommand dispatch', { timeout: 30_000 }, () => {
 
 		const next = changedRun(activeRun(definition, game), definition, { kind: 'advanceDay' });
 		const expected = simulateDay(game, {
-			importCostMultipliers: definition.modifiers
+			importCostMultipliers: definition.modifiers.map((modifier, index) => ({
+				...modifier,
+				source: {
+					kind: 'scenario',
+					sourceId: `scenario:${definition.id}:modifier:${index}`
+				}
+			}))
 		});
 
 		expect(next.game).toEqual(expected);

@@ -7,7 +7,8 @@ import { clampScore } from './reports';
 import { randomBetween, type Rng } from './rng';
 import {
 	DEFAULT_SIMULATION_RULES,
-	getImportCostMultiplier,
+	resolveImportCostMultiplier,
+	type ImportCostApplicationEvidence,
 	type SimulationRules
 } from './simulationRules';
 import { getRetailCityDemandMultiplier } from './world';
@@ -41,6 +42,7 @@ export interface WeeklyImportResult {
 	productReports: Map<string, DailyProductReport[]>;
 	warehouse: WarehouseInventory;
 	importSpend: number;
+	importCostApplications: ImportCostApplicationEvidence[];
 }
 
 export function createStoreProduct(category: ProductCategory): StoreProduct {
@@ -325,6 +327,7 @@ export function applyWeeklyImports(input: {
 	const rules = input.rules ?? DEFAULT_SIMULATION_RULES;
 	let importSpend = 0;
 	let warehouse = input.game.warehouse;
+	const importCostApplications: ImportCostApplicationEvidence[] = [];
 	const productReports = cloneProductReports(input.storeReports);
 	const stores = input.game.stores.map((store) => {
 		const categories = getArchetype(store.archetypeId).startingCategories;
@@ -345,8 +348,17 @@ export function applyWeeklyImports(input: {
 				? removeWarehouseMaterial(warehouse, materialId, neededUnits)
 				: null;
 			const importedUnits = removal?.shortage ?? neededUnits;
-			const multiplier = getImportCostMultiplier(rules, 'retail-product', category.id);
-			const spend = Math.round(importedUnits * category.importCost * multiplier);
+			const baselineCost = importedUnits * category.importCost;
+			const resolution = resolveImportCostMultiplier(rules, 'retail-product', category.id);
+			const spend = Math.round(baselineCost * resolution.multiplier);
+			if (importedUnits > 0 && baselineCost > 0 && resolution.contributions.length > 0) {
+				importCostApplications.push({
+					scope: 'retail-product',
+					targetId: category.id,
+					baselineCost,
+					contributions: resolution.contributions
+				});
+			}
 			const warehouseUnits = removal?.quantityRemoved ?? 0;
 			const warehouseValue =
 				warehouseUnits * (materialId ? MATERIALS[materialId].localValue : category.importCost);
@@ -370,7 +382,7 @@ export function applyWeeklyImports(input: {
 		};
 	});
 
-	return { stores, productReports, warehouse, importSpend };
+	return { stores, productReports, warehouse, importSpend, importCostApplications };
 }
 
 function roundedFiniteOrFallback(value: number | undefined, fallback: number): number {

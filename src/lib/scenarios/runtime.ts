@@ -184,9 +184,13 @@ export function abandonScenario(run: ScenarioRun): ScenarioRun {
 	};
 }
 
-function compileSimulationRules(definition: ScenarioDefinition): SimulationRules {
+export function compileSimulationRules(definition: ScenarioDefinition): SimulationRules {
 	return {
-		importCostMultipliers: definition.modifiers.map((modifier) => ({
+		importCostMultipliers: definition.modifiers.map((modifier, index) => ({
+			source: {
+				kind: 'scenario',
+				sourceId: `scenario:${definition.id}:modifier:${index}`
+			},
 			scope: modifier.scope,
 			target:
 				modifier.target.kind === 'all'
