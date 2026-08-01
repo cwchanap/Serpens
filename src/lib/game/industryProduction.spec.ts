@@ -135,6 +135,8 @@ describe('industry production simulation', () => {
 				scope: 'industrial-material',
 				targetId: 'salt',
 				baselineCost: baselineByMaterial.get('salt')!.value,
+				resolvedMultiplier: 2,
+				actualCost: baselineByMaterial.get('salt')!.value * 2,
 				contributions: [{ source: scenarioSource, multiplier: 2 }]
 			}
 		]);
@@ -165,6 +167,14 @@ describe('industry production simulation', () => {
 		expect(
 			result.report.importedInputs.find((movement) => movement.materialId === 'grain')?.value
 		).toBe(21);
+		expect(result.importCostApplications).toContainEqual({
+			scope: 'industrial-material',
+			targetId: 'grain',
+			baselineCost: 20,
+			resolvedMultiplier: 1.025,
+			actualCost: 21,
+			contributions: [{ source: scenarioSource, multiplier: 1.025 }]
+		});
 	});
 
 	test('does not apply same-id retail rules to industrial paid inputs', () => {

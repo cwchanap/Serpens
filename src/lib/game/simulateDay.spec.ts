@@ -92,7 +92,7 @@ describe('daily simulation', () => {
 	});
 
 	test('applies a resolved modifier through its final close, reports expiry, then selects', () => {
-		expect.assertions(21);
+		expect.assertions(23);
 		const closingDay = 5;
 		const base = createNewGame('convenience', 280_278);
 		const decision = supplierBulkDiscountDecision(closingDay);
@@ -150,6 +150,7 @@ describe('daily simulation', () => {
 			expect(game.events.rngState).toBe(expectedEventRngState);
 			if (offset < 2) {
 				expect(game.events.activeModifiers.map((candidate) => candidate.id)).toContain(modifier.id);
+				expect(report.modifierImpacts).toEqual([]);
 			} else {
 				expect(report.modifierImpacts).toEqual([
 					{
@@ -161,7 +162,9 @@ describe('daily simulation', () => {
 						scope: 'retail-product',
 						affectedIds: ['bottled-water'],
 						multiplier: 0.9,
+						resolvedMultiplier: 0.9,
 						baselineCost: 20,
+						actualCost: 18,
 						applicationCount: 1
 					}
 				]);
@@ -217,7 +220,7 @@ describe('daily simulation', () => {
 				{
 					source: { kind: 'scenario', sourceId: 'scenario:test:modifier:0' },
 					scope: 'retail-product',
-					target: { kind: 'all' },
+					target: { kind: 'ids', ids: ['snacks'] },
 					multiplier: 2
 				}
 			]
@@ -239,7 +242,7 @@ describe('daily simulation', () => {
 		);
 		const report = result.reports.at(-1)!;
 
-		expect(report.importSpend).toBe(144);
+		expect(report.importSpend).toBe(114);
 		expect(report.modifierImpacts).toEqual([
 			{
 				modifierId: 'modifier-a',
@@ -254,7 +257,9 @@ describe('daily simulation', () => {
 				scope: 'retail-product',
 				affectedIds: ['bottled-water', 'snacks'],
 				multiplier: 0.9,
+				resolvedMultiplier: 1.152,
 				baselineCost: 100,
+				actualCost: 114,
 				applicationCount: 4
 			},
 			{
@@ -270,8 +275,52 @@ describe('daily simulation', () => {
 				scope: 'retail-product',
 				affectedIds: ['bottled-water', 'snacks'],
 				multiplier: 0.8,
+				resolvedMultiplier: 1.152,
 				baselineCost: 100,
+				actualCost: 114,
 				applicationCount: 4
+			}
+		]);
+	});
+
+	test('sums each rounded import application instead of rounding aggregate baseline cost', () => {
+		const closingDay = 7;
+		const base = createNewGame('convenience', 280_280);
+		const store = {
+			...base.stores[0]!,
+			products: [
+				{
+					categoryId: 'snacks',
+					stock: 0,
+					reorderThreshold: 1,
+					targetStock: 1,
+					sellingPrice: 5
+				}
+			]
+		};
+		const modifier = activeImportModifier('modifier-rounding', 0.5, closingDay);
+		const result = simulateDay({
+			...base,
+			day: closingDay,
+			stores: [store, { ...store, id: 'store-2' }],
+			warehouse: { ...base.warehouse, materials: {} },
+			events: { ...base.events, activeModifiers: [modifier] }
+		});
+
+		expect(result.reports.at(-1)!.modifierImpacts).toEqual([
+			{
+				modifierId: modifier.id,
+				source: modifier.source,
+				target: { kind: 'company' },
+				effectKind: 'import-cost-multiplier',
+				explanation: modifier.explanation,
+				scope: 'retail-product',
+				affectedIds: ['snacks'],
+				multiplier: 0.5,
+				resolvedMultiplier: 0.5,
+				baselineCost: 6,
+				actualCost: 4,
+				applicationCount: 2
 			}
 		]);
 	});

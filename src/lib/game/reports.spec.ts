@@ -132,7 +132,9 @@ describe('reports', () => {
 				scope: 'retail-product',
 				affectedIds: ['snacks'],
 				multiplier: 0.9,
+				resolvedMultiplier: 0.9,
 				baselineCost: 30,
+				actualCost: 27,
 				applicationCount: 1
 			}
 		];

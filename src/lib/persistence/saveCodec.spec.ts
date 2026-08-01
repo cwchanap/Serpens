@@ -584,7 +584,9 @@ function createCompleteEventGame(): GameState {
 						scope: 'retail-product',
 						affectedIds: ['store-1/product:fashion-accessories'],
 						multiplier: 0.9,
+						resolvedMultiplier: 1.8,
 						baselineCost: 400,
+						actualCost: 720,
 						applicationCount: 1
 					}
 				],
@@ -1073,6 +1075,19 @@ describe('saveCodec', () => {
 			path: 'Saved game reports[0] modifierImpacts[0] affectedIds[1]'
 		},
 		{
+			name: 'zero resolved multiplier',
+			mutate: (game: GameState) => ({
+				...game,
+				reports: [
+					{
+						...game.reports[0]!,
+						modifierImpacts: [{ ...game.reports[0]!.modifierImpacts[0]!, resolvedMultiplier: 0 }]
+					}
+				]
+			}),
+			path: 'Saved game reports[0] modifierImpacts[0] resolvedMultiplier'
+		},
+		{
 			name: 'zero baseline evidence',
 			mutate: (game: GameState) => ({
 				...game,
@@ -1084,6 +1099,19 @@ describe('saveCodec', () => {
 				]
 			}),
 			path: 'Saved game reports[0] modifierImpacts[0] baselineCost'
+		},
+		{
+			name: 'fractional actual cost',
+			mutate: (game: GameState) => ({
+				...game,
+				reports: [
+					{
+						...game.reports[0]!,
+						modifierImpacts: [{ ...game.reports[0]!.modifierImpacts[0]!, actualCost: 719.5 }]
+					}
+				]
+			}),
+			path: 'Saved game reports[0] modifierImpacts[0] actualCost'
 		},
 		{
 			name: 'application count below affected IDs',

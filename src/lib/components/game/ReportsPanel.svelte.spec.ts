@@ -165,7 +165,7 @@ function modifierSnapshot(overrides: Partial<EventModifierSnapshot> = {}): Event
 
 describe('ReportsPanel', () => {
 	it('shows latest-day modifier impact provenance without adding rolling modifier totals', async () => {
-		expect.assertions(7);
+		expect.assertions(9);
 		render(ReportsPanel, {
 			i18n: createI18n('en'),
 			stores: [],
@@ -183,7 +183,9 @@ describe('ReportsPanel', () => {
 							scope: 'retail-product',
 							affectedIds: ['store-b:drinks', 'store-a:snacks'],
 							multiplier: 0.9,
+							resolvedMultiplier: 1.8,
 							baselineCost: 2_500,
+							actualCost: 4_500,
 							applicationCount: 2
 						}
 					]
@@ -197,11 +199,54 @@ describe('ReportsPanel', () => {
 			.element(impacts.getByText('Affected IDs: store-b:drinks and store-a:snacks'))
 			.toBeVisible();
 		await expect.element(impacts.getByText('Multiplier: ×0.9')).toBeVisible();
+		await expect.element(impacts.getByText('Effective aggregate multiplier: ×1.8')).toBeVisible();
 		await expect.element(impacts.getByText('Baseline cost: $2,500')).toBeVisible();
+		await expect.element(impacts.getByText('Actual rounded cost: $4,500')).toBeVisible();
 		await expect.element(impacts.getByText('Applications: 2')).toBeVisible();
 		await expect.element(page.getByText('7-day modifier impacts')).not.toBeInTheDocument();
 		await expect.element(page.getByText('30-day modifier impacts')).not.toBeInTheDocument();
 	});
+
+	it.each([
+		['ja', '実効集計乗数: ×1.15', '実際の丸め後費用: $720'],
+		['zh-Hant', '有效彙總乘數: ×1.15', '實際四捨五入成本: $720']
+	] as const)(
+		'localizes resolved multiplier and actual rounded cost in %s',
+		async (locale, resolvedCopy, actualCostCopy) => {
+			render(ReportsPanel, {
+				i18n: createI18n(locale),
+				stores: [],
+				summary: {
+					...summary,
+					latest: {
+						...summary.latest!,
+						modifierImpacts: [
+							{
+								modifierId: 'event-modifier-4',
+								source: modifierSnapshot().source,
+								target: { kind: 'company' },
+								effectKind: 'import-cost-multiplier',
+								explanation: modifierSnapshot().explanation,
+								scope: 'retail-product',
+								affectedIds: ['snacks'],
+								multiplier: 0.9,
+								resolvedMultiplier: 1.152,
+								baselineCost: 625,
+								actualCost: 720,
+								applicationCount: 2
+							}
+						]
+					}
+				}
+			});
+
+			const impacts = page.getByRole('region', {
+				name: locale === 'ja' ? '直近日の修正効果' : '最近一天的修正效果影響'
+			});
+			await expect.element(impacts.getByText(resolvedCopy)).toBeVisible();
+			await expect.element(impacts.getByText(actualCostCopy)).toBeVisible();
+		}
+	);
 
 	it('shows latest-day replacement and exclusive-expiry lifecycle evidence', async () => {
 		expect.assertions(5);

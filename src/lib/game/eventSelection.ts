@@ -138,7 +138,7 @@ function selectCandidate(
 			(first, second) =>
 				(second.selection.kind === 'forced' ? second.selection.priority : 0) -
 					(first.selection.kind === 'forced' ? first.selection.priority : 0) ||
-				first.id.localeCompare(second.id)
+				compareCodeUnits(first.id, second.id)
 		);
 	if (forced[0]) return forced[0];
 	if (cadenceDraw >= WEIGHTED_EVENT_CADENCE) return undefined;
@@ -147,7 +147,7 @@ function selectCandidate(
 		.filter(
 			(candidate) => candidate.selection.kind === 'weighted' && candidate.selection.weight > 0
 		)
-		.sort((first, second) => first.id.localeCompare(second.id));
+		.sort((first, second) => compareCodeUnits(first.id, second.id));
 	const totalWeight = weighted.reduce(
 		(total, candidate) =>
 			total + (candidate.selection.kind === 'weighted' ? candidate.selection.weight : 0),
@@ -160,6 +160,10 @@ function selectCandidate(
 		if (threshold < 0) return candidate;
 	}
 	return weighted[weighted.length - 1];
+}
+
+function compareCodeUnits(first: string, second: string): number {
+	return first < second ? -1 : first > second ? 1 : 0;
 }
 
 function materializeEvent(

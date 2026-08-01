@@ -229,6 +229,11 @@ export const en = {
 		title: 'Decision Queue',
 		empty: 'No urgent decisions today.',
 		expiresDay: 'Expires day {day}',
+		kind: {
+			event: 'Catalog event',
+			system: 'System notice'
+		},
+		eventProvenance: 'Source event: {eventTitle} · {eventId} · Instance {instanceId}',
 		creditUnavailableDelinquent: 'Borrowing is unavailable while an obligation is delinquent.',
 		creditUnavailableService: 'Current debt-service capacity cannot cover this loan.',
 		creditUnavailableCapacity: 'Current credit capacity cannot cover this loan.'
@@ -251,7 +256,9 @@ export const en = {
 			source: 'Source: {source}',
 			affectedIds: 'Affected IDs: {ids}',
 			multiplier: 'Multiplier: ×{multiplier}',
+			resolvedMultiplier: 'Effective aggregate multiplier: ×{multiplier}',
 			baselineCost: 'Baseline cost: {cost}',
+			actualCost: 'Actual rounded cost: {cost}',
 			applications: 'Applications: {count}'
 		},
 		modifierLifecycle: {

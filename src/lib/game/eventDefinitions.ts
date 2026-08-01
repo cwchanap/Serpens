@@ -87,7 +87,7 @@ export function validateAndNormalizeEventCatalog(
 
 	const normalizedDefinitions = definitions
 		.map(cloneDefinition)
-		.sort((first, second) => first.id.localeCompare(second.id));
+		.sort((first, second) => compareCodeUnits(first.id, second.id));
 	const byId = createReadonlyLookup(normalizedDefinitions);
 
 	return deepFreeze({ definitions: normalizedDefinitions, byId });
@@ -361,8 +361,12 @@ function isPositiveInteger(value: number): boolean {
 function sortDiagnostics(diagnostics: readonly EventCatalogDiagnostic[]): EventCatalogDiagnostic[] {
 	return [...diagnostics].sort(
 		(first, second) =>
-			first.eventId.localeCompare(second.eventId) || first.path.localeCompare(second.path)
+			compareCodeUnits(first.eventId, second.eventId) || compareCodeUnits(first.path, second.path)
 	);
+}
+
+function compareCodeUnits(first: string, second: string): number {
+	return first < second ? -1 : first > second ? 1 : 0;
 }
 
 function cloneDefinition(definition: EventDefinition): EventDefinition {

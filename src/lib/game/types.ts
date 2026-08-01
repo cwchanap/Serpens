@@ -93,7 +93,9 @@ export interface EventModifierImpact {
 	scope: 'retail-product';
 	affectedIds: string[];
 	multiplier: number;
+	resolvedMultiplier: number;
 	baselineCost: number;
+	actualCost: number;
 	applicationCount: number;
 }
 

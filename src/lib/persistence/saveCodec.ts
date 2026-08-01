@@ -3713,7 +3713,9 @@ function validateSavedModifierImpacts(value: unknown, label: string): void {
 				'scope',
 				'affectedIds',
 				'multiplier',
+				'resolvedMultiplier',
 				'baselineCost',
+				'actualCost',
 				'applicationCount'
 			],
 			impactLabel
@@ -3759,9 +3761,20 @@ function validateSavedModifierImpacts(value: unknown, label: string): void {
 		});
 		const multiplier = requireNumber(impact.multiplier, `${impactLabel} multiplier`);
 		if (multiplier <= 0) throw new SaveDataError(`${impactLabel} multiplier must be positive`);
+		const resolvedMultiplier = requireNumber(
+			impact.resolvedMultiplier,
+			`${impactLabel} resolvedMultiplier`
+		);
+		if (resolvedMultiplier <= 0) {
+			throw new SaveDataError(`${impactLabel} resolvedMultiplier must be positive`);
+		}
 		const baselineCost = requireNumber(impact.baselineCost, `${impactLabel} baselineCost`);
 		if (baselineCost <= 0) {
 			throw new SaveDataError(`${impactLabel} baselineCost must be positive`);
+		}
+		const actualCost = requireNumber(impact.actualCost, `${impactLabel} actualCost`);
+		if (!Number.isSafeInteger(actualCost) || actualCost < 0) {
+			throw new SaveDataError(`${impactLabel} actualCost must be a non-negative safe integer`);
 		}
 		const applicationCount = requirePositiveSafeInteger(
 			impact.applicationCount,
