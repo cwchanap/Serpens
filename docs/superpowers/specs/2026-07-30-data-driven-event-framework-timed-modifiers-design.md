@@ -8,6 +8,9 @@
 
 **Status:** Approved consolidated design after three written-review passes; ready for implementation planning
 
+> This is the sole normative HPA-278 design. Earlier review-amendment text was folded into this
+> file and removed, so implementation planning must use this document only.
+
 ## Outcome
 
 Replace the three hard-coded strategic decisions with a deterministic, data-driven event core and
@@ -28,9 +31,6 @@ The completed feature must:
   compose with provenance;
 - split implementation into two independently reviewable pull requests under the single HPA-278
   Linear ticket.
-
-This document is the sole normative HPA-278 design. It replaces the earlier design-plus-amendment
-pair while preserving the accepted findings from all three reviews.
 
 ## Scope correction after review
 
