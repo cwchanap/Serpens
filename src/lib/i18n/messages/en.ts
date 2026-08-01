@@ -233,11 +233,37 @@ export const en = {
 		creditUnavailableService: 'Current debt-service capacity cannot cover this loan.',
 		creditUnavailableCapacity: 'Current credit capacity cannot cover this loan.'
 	},
+	activeModifiers: {
+		title: 'Active modifiers',
+		empty: 'No active modifiers.',
+		remainingDays: {
+			one: '{days} day remaining',
+			other: '{days} days remaining'
+		}
+	},
 	policyPanel: {
 		title: 'Policies'
 	},
 	reportsPanel: {
 		title: 'Reports',
+		modifierImpacts: {
+			title: 'Latest-day modifier impacts',
+			source: 'Source: {source}',
+			affectedIds: 'Affected IDs: {ids}',
+			multiplier: 'Multiplier: ×{multiplier}',
+			baselineCost: 'Baseline cost: {cost}',
+			applications: 'Applications: {count}'
+		},
+		modifierLifecycle: {
+			title: 'Latest-day modifier lifecycle',
+			source: 'Source: {source}',
+			status: {
+				activated: 'Status: Activated',
+				replaced: 'Status: Replaced',
+				expired: 'Status: Expired'
+			},
+			replacedBy: 'Replaced by: {modifierId}'
+		},
 		metrics: {
 			latestDailyResult: 'Latest daily result',
 			operatingIncome: 'Operating income',
@@ -966,6 +992,7 @@ export const en = {
 		alerts: {
 			storeStock: '{storeName}: {summary}',
 			decision: 'Decision: {title}',
+			eventModifier: 'Active modifier: {title}',
 			factoryBlocked: '{buildingName} starved of inputs',
 			upcomingLoanPayment: '{purpose} payment of {amount} is due on day {day}.',
 			missedLoanPayment: '{purpose} has a missed payment of {amount}.',

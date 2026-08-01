@@ -1,8 +1,5 @@
-import { INDUSTRIAL_BUILDING_TYPES } from './industry';
-import { estimateNextLoanPayment, hasLoanArrears, isOutstandingLoan } from './finance';
+import { hasLoanArrears, isOutstandingLoan } from './finance';
 import { getAlertFinanceSnapshot } from './financeMetrics';
-import { storeNameOrOrdinal } from './state';
-import { summarizeStockTrouble } from './stock';
 import type { GameState, LoanInstrument } from './types';
 
 /** Debt-service coverage ratio below which a covenant-risk alert fires. */
@@ -13,6 +10,7 @@ export const LOW_CASH_RUNWAY_DAYS = 7;
 export type GameAlertKind =
 	| 'store-stock'
 	| 'decision'
+	| 'event-modifier'
 	| 'factory-blocked'
 	| 'upcomingLoanPayment'
 	| 'missedLoanPayment'
@@ -28,8 +26,9 @@ export interface GameAlert {
 	buildingId?: string;
 	tileId?: string;
 	decisionId?: string;
+	modifierId?: string;
 	loanId?: string;
-	managementPanelId?: 'finance';
+	managementPanelId?: 'finance' | 'decisions';
 }
 
 function compareByNumberThenId(
@@ -56,7 +55,6 @@ function collectFinanceAlerts(game: GameState): GameAlert[] {
 		alerts.push({
 			id: `missedLoanPayment:${loan.id}`,
 			kind: 'missedLoanPayment',
-			message: `Missed payment on ${loan.id}`,
 			loanId: loan.id,
 			managementPanelId: 'finance'
 		});
@@ -75,11 +73,9 @@ function collectFinanceAlerts(game: GameState): GameAlert[] {
 		);
 
 	for (const loan of upcomingLoans) {
-		const amount = estimateNextLoanPayment(loan);
 		alerts.push({
 			id: `upcomingLoanPayment:${loan.id}`,
 			kind: 'upcomingLoanPayment',
-			message: `Loan payment of $${amount.toLocaleString('en-US')} due on day ${loan.nextPaymentDay}`,
 			loanId: loan.id,
 			managementPanelId: 'finance'
 		});
@@ -104,7 +100,6 @@ function collectFinanceAlerts(game: GameState): GameAlert[] {
 		alerts.push({
 			id: 'covenantRisk',
 			kind: 'covenantRisk',
-			message: `Debt-service coverage is below ${COVENANT_THRESHOLD}.`,
 			managementPanelId: 'finance'
 		});
 	}
@@ -113,7 +108,6 @@ function collectFinanceAlerts(game: GameState): GameAlert[] {
 		alerts.push({
 			id: 'lowCashRunway',
 			kind: 'lowCashRunway',
-			message: `Cash runway is ${cashRunway.days} days.`,
 			managementPanelId: 'finance'
 		});
 	}
@@ -124,17 +118,18 @@ function collectFinanceAlerts(game: GameState): GameAlert[] {
 export function collectGameAlerts(game: GameState): GameAlert[] {
 	const alerts: GameAlert[] = [];
 
-	for (const [index, store] of game.stores.entries()) {
-		const summary = summarizeStockTrouble(store.products);
-
-		if (!summary) {
+	for (const store of game.stores) {
+		if (
+			!store.products.some(
+				(product) => product.stock <= 0 || product.stock < product.reorderThreshold
+			)
+		) {
 			continue;
 		}
 
 		alerts.push({
 			id: `store-stock:${store.id}`,
 			kind: 'store-stock',
-			message: `${storeNameOrOrdinal(store, index + 1)}: ${summary}`,
 			cityId: store.cityId,
 			storeId: store.id,
 			tileId: store.tileId
@@ -145,8 +140,23 @@ export function collectGameAlerts(game: GameState): GameAlert[] {
 		alerts.push({
 			id: `decision:${decision.id}`,
 			kind: 'decision',
-			...(decision.kind === 'system' ? { message: `Decision: ${decision.title}` } : {}),
 			decisionId: decision.id
+		});
+	}
+
+	const importantModifiers = game.events.activeModifiers
+		.filter((modifier) => modifier.importance === 'important')
+		.sort(
+			(left, right) =>
+				left.expiresOnDay - right.expiresOnDay ||
+				(left.id < right.id ? -1 : left.id > right.id ? 1 : 0)
+		);
+	for (const modifier of importantModifiers) {
+		alerts.push({
+			id: `event-modifier:${modifier.id}`,
+			kind: 'event-modifier',
+			modifierId: modifier.id,
+			managementPanelId: 'decisions'
 		});
 	}
 
@@ -155,12 +165,9 @@ export function collectGameAlerts(game: GameState): GameAlert[] {
 			continue;
 		}
 
-		const name = INDUSTRIAL_BUILDING_TYPES[building.typeId]?.name ?? building.typeId;
-
 		alerts.push({
 			id: `factory-blocked:${building.id}`,
 			kind: 'factory-blocked',
-			message: `${name} starved of inputs`,
 			cityId: building.cityId,
 			buildingId: building.id,
 			tileId: building.tileId

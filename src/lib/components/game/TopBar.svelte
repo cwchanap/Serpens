@@ -2,9 +2,7 @@
 	import type { Snippet } from 'svelte';
 	import type { Attachment } from 'svelte/attachments';
 	import { on } from 'svelte/events';
-	import type { GameAlert } from '$lib/game/alerts';
-	import { localizeAlert } from '$lib/i18n/gameCopy';
-	import type { GameState } from '$lib/game/types';
+	import type { LocalizedGameAlert } from '$lib/i18n/localizedTypes';
 	import type { I18nBundle, SupportedLocale } from '$lib/i18n';
 	import type { MapViewId } from '$lib/game/mapViewKeepAlive';
 	import GameMenu from './GameMenu.svelte';
@@ -14,11 +12,10 @@
 		title: string;
 		day: number | null;
 		cash: number | null;
-		alerts: GameAlert[];
-		alertGame: GameState;
+		alerts: LocalizedGameAlert[];
 		i18n: I18nBundle;
 		activeLocale: SupportedLocale;
-		onSelectAlert: (alert: GameAlert) => void;
+		onSelectAlert: (alert: LocalizedGameAlert) => void;
 		activeMapView: MapViewId;
 		onSelectView: (view: MapViewId) => void;
 		onSelectLocale: (locale: SupportedLocale) => void;
@@ -33,7 +30,6 @@
 		day,
 		cash,
 		alerts,
-		alertGame,
 		i18n,
 		activeLocale,
 		onSelectAlert,
@@ -49,7 +45,7 @@
 		alertsOpen = !alertsOpen;
 	}
 
-	function selectAlert(alert: GameAlert): void {
+	function selectAlert(alert: LocalizedGameAlert): void {
 		alertsOpen = false;
 		onSelectAlert(alert);
 	}
@@ -121,7 +117,7 @@
 					{:else}
 						{#each alerts as alert (alert.id)}
 							<button type="button" class="alert-row" onclick={() => selectAlert(alert)}>
-								{localizeAlert(alert, alertGame, i18n)}
+								{alert.message}
 							</button>
 						{/each}
 					{/if}

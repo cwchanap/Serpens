@@ -19,7 +19,8 @@ import type {
 	DecisionItem,
 	Store,
 	SystemDecisionOption,
-	StoreLocation
+	StoreLocation,
+	StructuredCopyRef
 } from '$lib/game/types';
 import type { DecisionOptionAvailability } from '$lib/game/eventEffects';
 import type { DecisionContext } from '$lib/game/decisionContext';
@@ -29,6 +30,7 @@ import type { I18nBundle } from './index';
 import type {
 	LocalizedDecision,
 	LocalizedDecisionOption,
+	LocalizedGameAlert,
 	LocalizedProductChainCategorySummary,
 	LocalizedProductChainEdge,
 	LocalizedProductChainGraph,
@@ -44,6 +46,7 @@ const RECIPE_ID_TO_BUILDING_TYPE_ID = new Map<string, string>(
 export type {
 	LocalizedDecision,
 	LocalizedDecisionOption,
+	LocalizedGameAlert,
 	LocalizedProductChainCategorySummary,
 	LocalizedProductChainGraph,
 	LocalizedWorldCityStatus
@@ -569,8 +572,24 @@ export function localizeAlert(alert: GameAlert, game: GameState, i18n: I18nBundl
 	if (alert.kind === 'decision' && alert.decisionId) {
 		const decision = game.decisions.find((candidate) => candidate.id === alert.decisionId);
 		if (decision) {
+			const title =
+				decision.kind === 'event'
+					? (translateMessage(i18n, `copy.${decision.copy.key}.title`, decision.copy.params) ??
+						decision.copy.key)
+					: localizeDecisionTitle(decision, i18n);
 			return i18n.t('copy.alerts.decision', {
-				title: localizeDecision(decision, i18n).title
+				title
+			});
+		}
+	}
+
+	if (alert.kind === 'event-modifier' && alert.modifierId) {
+		const modifier = game.events.activeModifiers.find(
+			(candidate) => candidate.id === alert.modifierId
+		);
+		if (modifier) {
+			return i18n.t('copy.alerts.eventModifier', {
+				title: localizeEventSourceTitle(modifier.source.eventId, i18n)
 			});
 		}
 	}
@@ -625,6 +644,29 @@ export function localizeAlert(alert: GameAlert, game: GameState, i18n: I18nBundl
 	}
 
 	return alert.message ?? '';
+}
+
+export function localizeGameAlert(
+	game: GameState,
+	alert: GameAlert,
+	i18n: I18nBundle
+): LocalizedGameAlert {
+	return { ...alert, message: localizeAlert(alert, game, i18n) };
+}
+
+const EVENT_COPY_KEY_BY_ID = {
+	'cash-pressure': 'events.cashPressure',
+	'expansion-opportunity': 'events.expansionOpportunity',
+	'supplier-terms': 'events.supplierTerms'
+} as const satisfies Record<string, string>;
+
+export function localizeEventSourceTitle(eventId: string, i18n: I18nBundle): string {
+	const copyKey = EVENT_COPY_KEY_BY_ID[eventId as keyof typeof EVENT_COPY_KEY_BY_ID];
+	return copyKey ? (translateMessage(i18n, `copy.${copyKey}.title`) ?? eventId) : eventId;
+}
+
+export function localizeStructuredCopy(ref: StructuredCopyRef, i18n: I18nBundle): string {
+	return translateMessage(i18n, `copy.${ref.key}`, ref.params) ?? ref.key;
 }
 
 export function localizeDecision(decision: DecisionItem, i18n: I18nBundle): LocalizedDecision {

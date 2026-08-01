@@ -235,11 +235,37 @@ export const zhHant = {
 		creditUnavailableService: '目前的債務償付能力無法負擔這筆貸款。',
 		creditUnavailableCapacity: '目前的信用額度無法支應這筆貸款。'
 	},
+	activeModifiers: {
+		title: '生效中的修正效果',
+		empty: '目前沒有生效中的修正效果。',
+		remainingDays: {
+			one: '剩餘 {days} 天',
+			other: '剩餘 {days} 天'
+		}
+	},
 	policyPanel: {
 		title: '政策'
 	},
 	reportsPanel: {
 		title: '報表',
+		modifierImpacts: {
+			title: '最近一天的修正效果影響',
+			source: '來源: {source}',
+			affectedIds: '受影響 ID: {ids}',
+			multiplier: '乘數: ×{multiplier}',
+			baselineCost: '基準成本: {cost}',
+			applications: '套用次數: {count}'
+		},
+		modifierLifecycle: {
+			title: '最近一天的修正效果生命週期',
+			source: '來源: {source}',
+			status: {
+				activated: '狀態: 已啟用',
+				replaced: '狀態: 已取代',
+				expired: '狀態: 已到期'
+			},
+			replacedBy: '取代者: {modifierId}'
+		},
 		metrics: {
 			latestDailyResult: '最新每日結果',
 			operatingIncome: '營業利益',
@@ -938,6 +964,7 @@ export const zhHant = {
 		alerts: {
 			storeStock: '{storeName}: {summary}',
 			decision: '決策: {title}',
+			eventModifier: '生效中的修正效果: {title}',
 			factoryBlocked: '{buildingName} 缺少投入原料',
 			upcomingLoanPayment: '{purpose}的 {amount} 付款將於第 {day} 天到期。',
 			missedLoanPayment: '{purpose}有 {amount} 的逾期付款。',
