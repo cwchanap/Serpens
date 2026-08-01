@@ -722,8 +722,15 @@ observable only when event modifiers overlap scenario rules or replace behavior 
 event modifier.
 
 Application evidence is emitted only when a matching rule contributes to a non-zero imported
-quantity and non-zero baseline cost. Evidence is returned through pure result values, never mutable
-callbacks.
+quantity and non-zero pre-rule import cost. Evidence records that pre-rule cost as `baselineCost`.
+Because the supplier modifier is the only active event rule for its stacking key and valid scenarios
+contribute at most one overlapping rule, reports can derive the actual post-rule import cost as:
+
+```ts
+actualCost = round(baselineCost * resolvedMultiplier)
+```
+
+Evidence is returned through pure result values, never mutable callbacks.
 
 ## Normative daily ordering
 
@@ -757,7 +764,9 @@ export interface EventModifierImpact {
 	explanation: StructuredCopyRef;
 	affectedIds: string[];
 	multiplier: number;
+	resolvedMultiplier: number;
 	baselineCost: number;
+	actualCost: number;
 	applicationCount: number;
 }
 
@@ -768,8 +777,10 @@ export interface EventModifierLifecycle {
 }
 ```
 
-Impacts are ordered by modifier ID, deduplicate and sort affected IDs, sum baseline cost, and count
-applications. They do not allocate a unique dollar delta among multiplicative sources.
+Impacts are ordered by modifier ID, deduplicate and sort affected IDs, sum pre-rule baseline cost,
+sum actual post-rule cost, and count applications. `multiplier` is the modifier's own contribution;
+`resolvedMultiplier` is the effective product including an overlapping scenario rule. The report
+does not attempt to allocate a unique dollar delta among individual multiplicative sources.
 
 `reports.ts` exposes the latest arrays without adding rolling modifier aggregates.
 
@@ -911,8 +922,9 @@ embedded game schema version after successful persistence.
 - Replacement restarts duration and records lifecycle once.
 - Exclusive expiry and strict active-state decoder invariant.
 - Scenario-only parity and scenario/event multiplier product.
-- Retail application evidence; industrial call-site regression remains unchanged for retail-only
-  event scope.
+- Retail application evidence and report totals include pre-rule baseline cost, resolved multiplier,
+  and actual post-rule cost; the industrial call-site regression remains unchanged for the
+  retail-only event scope.
 - v12-to-v13 migration and report preservation.
 - Active Modifiers, Reports, and alert click-through component coverage.
 - Production lifecycle Playwright test using the real production catalog, not a fixture catalog.
@@ -1009,7 +1021,8 @@ make raw alert messages optional fallbacks.
 - The modifier applies on resolve day, expires exclusively, and is absent on the returned expiry
   day.
 - Scenario and event rules compose multiplicatively with stable provenance.
-- Reports explain applied source, affected IDs, multiplier, baseline cost, and lifecycle.
+- Reports explain applied source, affected IDs, modifier multiplier, resolved multiplier, pre-rule
+  baseline cost, actual post-rule cost, and lifecycle.
 - Important modifier alerts open the existing Decisions panel.
 - Active Modifiers and Reports surfaces are accessible and localized.
 - v12-to-v13 migration preserves pending v1 supplier decisions without retrofitting modifiers.
