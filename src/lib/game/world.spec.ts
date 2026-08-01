@@ -4,6 +4,7 @@ import { addWarehouseMaterial } from './industryProduction';
 import { DEFAULT_RETAIL_CITY_HEIGHT, DEFAULT_RETAIL_CITY_WIDTH, generateCity } from './city';
 import { generateIndustryCity } from './industry';
 import { createEmptyFinanceState } from './finance';
+import { createInitialEventRuntime } from './eventSelection';
 import { createNewGame } from './state';
 import {
 	STARTER_STORE_CAP,
@@ -19,7 +20,12 @@ import {
 	refreshWorldProgress,
 	selectWorldCity
 } from './world';
-import type { GameState } from './types';
+import type { DecisionItem, GameState, SystemDecisionItem } from './types';
+
+function systemDecision(decision: DecisionItem | undefined): SystemDecisionItem {
+	if (decision?.kind !== 'system') throw new Error('Expected a system decision');
+	return decision;
+}
 
 function gameStub(overrides: Partial<GameState> = {}): GameState {
 	return {
@@ -56,6 +62,7 @@ function gameStub(overrides: Partial<GameState> = {}): GameState {
 		staff: [],
 		hiringCandidates: [],
 		decisions: [],
+		events: createInitialEventRuntime(20260530),
 		reports: [],
 		world: createInitialWorldProgress(),
 		storeCap: STARTER_STORE_CAP,
@@ -235,18 +242,18 @@ describe('world progression and city opening', () => {
 		const unaffordable = openWorldCity(revealedWithoutCash, 'campus-junction');
 		const unknown = openWorldCity(game, 'missing-city');
 
-		expect(locked.decisions.at(-1)?.title).toBe('City is not available yet');
-		expect(locked.decisions.at(-1)?.context).toEqual({
+		expect(systemDecision(locked.decisions.at(-1)).title).toBe('City is not available yet');
+		expect(systemDecision(locked.decisions.at(-1)).context).toEqual({
 			code: 'worldCityNotAvailableYet',
 			cityId: 'garden-borough'
 		});
-		expect(unaffordable.decisions.at(-1)?.title).toBe('City opening delayed');
-		expect(unaffordable.decisions.at(-1)?.context).toEqual({
+		expect(systemDecision(unaffordable.decisions.at(-1)).title).toBe('City opening delayed');
+		expect(systemDecision(unaffordable.decisions.at(-1)).context).toEqual({
 			code: 'worldCityOpeningCost',
 			cash: 18_000
 		});
-		expect(unknown.decisions.at(-1)?.title).toBe('City unavailable');
-		expect(unknown.decisions.at(-1)?.context).toEqual({ code: 'worldCityUnknown' });
+		expect(systemDecision(unknown.decisions.at(-1)).title).toBe('City unavailable');
+		expect(systemDecision(unknown.decisions.at(-1)).context).toEqual({ code: 'worldCityUnknown' });
 	});
 
 	test('two unrevealed cities on the same day produce distinct decisions', () => {
@@ -276,7 +283,10 @@ describe('world progression and city opening', () => {
 		const result = openWorldCity(game, 'campus-junction');
 		const decision = result.decisions.find((d) => d.id.startsWith('world-city'));
 		expect(decision).toBeDefined();
-		expect(decision?.context).toEqual({ code: 'worldCityOpeningCost', cash: 18_000 });
+		expect(systemDecision(decision).context).toEqual({
+			code: 'worldCityOpeningCost',
+			cash: 18_000
+		});
 	});
 
 	test('openWorldCity on an unrevealed city emits cityId in the context', () => {
@@ -285,7 +295,7 @@ describe('world progression and city opening', () => {
 		const result = openWorldCity(game, 'campus-junction');
 		const decision = result.decisions.find((d) => d.id.startsWith('world-city'));
 		expect(decision).toBeDefined();
-		expect(decision?.context).toEqual({
+		expect(systemDecision(decision).context).toEqual({
 			code: 'worldCityNotAvailableYet',
 			cityId: 'campus-junction'
 		});

@@ -22,10 +22,10 @@
 
 	function formatCreditUnavailableReason(availability: DecisionOptionAvailability): string | null {
 		if (availability.available) return null;
-		if (availability.reasons.includes('delinquentObligation')) {
+		if (availability.reasons?.includes('delinquentObligation')) {
 			return i18n.t('decisionQueue.creditUnavailableDelinquent');
 		}
-		if (availability.reasons.includes('debtServiceCapacityLimited')) {
+		if (availability.reasons?.includes('debtServiceCapacityLimited')) {
 			return i18n.t('decisionQueue.creditUnavailableService');
 		}
 		return i18n.t('decisionQueue.creditUnavailableCapacity');
@@ -57,7 +57,7 @@
 					<div class="options">
 						{#each localizedDecision.options as option (option.id)}
 							{@const optionAvailability = game
-								? getDecisionOptionAvailability(game, option)
+								? getDecisionOptionAvailability(game, decision, option.id)
 								: ({ available: true } as const)}
 							{@const optionDisabled = !canResolve || !optionAvailability.available}
 							<button

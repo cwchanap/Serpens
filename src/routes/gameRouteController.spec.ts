@@ -1361,6 +1361,28 @@ describe('GameRouteController', () => {
 	});
 
 	describe('commitMutation sandbox paths', () => {
+		it('returns a typed decision rejection without state, autosave, or sound', async () => {
+			const harness = createHarness();
+			await harness.controller.initializeSaves();
+			const game = createNewGame('convenience', 3);
+			harness.controller.loadSandboxGame(game);
+			const stateChangesBefore = harness.onStateChange.mock.calls.length;
+			const sfxCallsBefore = harness.sfx.mock.calls.length;
+
+			const result = await harness.controller.resolveDecision('missing-decision', 'missing-option');
+
+			expect(result).toEqual({
+				status: 'decision-rejected',
+				code: 'decision-not-found',
+				context: { decisionId: 'missing-decision' }
+			});
+			expect(harness.controller.state.sandboxGame).toBe(game);
+			expect(harness.onStateChange).toHaveBeenCalledTimes(stateChangesBefore);
+			expect(harness.sfx).toHaveBeenCalledTimes(sfxCallsBefore);
+			await flushMicrotasks();
+			expect(harness.onAutoSave).not.toHaveBeenCalled();
+		});
+
 		it('returns a typed finance rejection without publishing or autosaving', async () => {
 			const harness = createHarness();
 			await harness.controller.initializeSaves();
@@ -1580,13 +1602,22 @@ describe('GameRouteController', () => {
 			expect(harness.controller.state.scenarioOperationError?.code).toBe('forbidden-command');
 		});
 
-		it('returns unchanged when a no-op command targets a missing entity', async () => {
+		it('returns a typed rejection when a decision target is missing', async () => {
 			const harness = createHarness();
 			await harness.controller.initializeScenarios();
 			await startScenario(harness.controller);
-			// resolveDecision is allowed but returns the same game for a missing decision id.
+			const before = harness.controller.state.activeScenarioRun;
+			const sfxCalls = harness.sfx.mock.calls.length;
+			const saveSpy = vi.spyOn(harness.scenarioRepository, 'saveActiveRun');
 			const result = await harness.controller.resolveDecision('no-such-decision', 'no-such-option');
-			expect(result).toEqual({ status: 'unchanged' });
+			expect(result).toEqual({
+				status: 'decision-rejected',
+				code: 'decision-not-found',
+				context: { decisionId: 'no-such-decision' }
+			});
+			expect(harness.controller.state.activeScenarioRun).toBe(before);
+			expect(harness.sfx).toHaveBeenCalledTimes(sfxCalls);
+			expect(saveSpy).not.toHaveBeenCalled();
 		});
 
 		it('returns rejected when the definition can no longer be resolved', async () => {

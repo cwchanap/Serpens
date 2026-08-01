@@ -5,6 +5,7 @@ import {
 	getBuildingTypeProducing
 } from './supplyAdvisor';
 import { createEmptyFinanceState } from './finance';
+import { createInitialEventRuntime } from './eventSelection';
 import type { GameState, IndustrialBuilding, MaterialId, Store } from './types';
 
 function baseGame(overrides: Partial<GameState> = {}): GameState {
@@ -28,6 +29,7 @@ function baseGame(overrides: Partial<GameState> = {}): GameState {
 		staff: [],
 		hiringCandidates: [],
 		decisions: [],
+		events: createInitialEventRuntime(1),
 		reports: [],
 		...overrides
 	};

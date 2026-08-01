@@ -32,6 +32,7 @@
 	import { DEFAULT_AUDIO_PREFERENCES, type AudioPreferences } from '$lib/audio/audioPreferences';
 	import type { BgmCueId, SfxCueId } from '$lib/audio/audioCatalog';
 	import { collectGameAlerts, type GameAlert } from '$lib/game/alerts';
+	import { createInitialEventRuntime } from '$lib/game/eventSelection';
 	import {
 		MANAGEMENT_PANEL_SHORTCUT_KEY,
 		resolveShortcutAction,
@@ -285,6 +286,7 @@
 		stores: [],
 		staff: [],
 		hiringCandidates: [],
+		events: createInitialEventRuntime(20260503),
 		decisions: [],
 		reports: []
 	};

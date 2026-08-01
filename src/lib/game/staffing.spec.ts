@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { createRng } from './rng';
 import { createEmptyFinanceState } from './finance';
+import { createInitialEventRuntime } from './eventSelection';
 import { initializeStoreProducts } from './stock';
 import { STARTER_STORE_CAP, createInitialWorldProgress } from './world';
 import {
@@ -410,6 +411,7 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 		stores: [createStore({ id: 'store-1', archetypeId: 'convenience' })],
 		staff: [],
 		hiringCandidates: [],
+		events: createInitialEventRuntime(1),
 		decisions: [],
 		reports: [],
 		...overrides

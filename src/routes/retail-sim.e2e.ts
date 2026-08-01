@@ -769,16 +769,27 @@ function negativeCashDecisionRun(): ScenarioRun {
 		cash: 1_000,
 		decisions: [
 			{
+				kind: 'event' as const,
 				id: 'supplier-terms',
-				title: 'Supplier terms',
-				context: { code: 'supplierTerms' as const },
+				eventId: 'supplier-terms',
+				definitionVersion: 1,
+				generatedOnDay: started.game.day,
 				expiresOnDay: started.game.day + 2,
+				target: { kind: 'company' as const },
+				copy: { key: 'events.supplierTerms', params: {} },
 				options: [
 					{
 						id: 'bulk-discount',
-						label: 'Bulk discount',
-						description: 'Commit to larger orders for better unit economics.',
-						effects: { cash: -2_500, profit: 3, stockHealth: 6 }
+						effects: [
+							{ kind: 'cash-adjust' as const, amount: -2_500 },
+							{ kind: 'score-adjust' as const, score: 'profit' as const, amount: 3 },
+							{
+								kind: 'store-stock-adjust-by-target-percent' as const,
+								scope: 'all-stores' as const,
+								percent: 6
+							}
+						],
+						modifiers: []
 					}
 				]
 			}

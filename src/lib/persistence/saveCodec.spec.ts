@@ -15,6 +15,7 @@ import { formatLocation } from '$lib/game/placement';
 import type { DecisionContext } from '$lib/game/decisionContext';
 import { simulateDay } from '$lib/game/simulateDay';
 import { createFoundingFinanceState } from '$lib/game/finance';
+import { createInitialEventRuntime } from '$lib/game/eventSelection';
 import { createNewGame, resolveDecision } from '$lib/game/state';
 import { calculateStockHealth, initializeStoreProducts } from '$lib/game/stock';
 import {
@@ -176,6 +177,7 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 		],
 		staff: [],
 		hiringCandidates: [],
+		events: overrides.events ?? createInitialEventRuntime(20260505),
 		decisions: [],
 		reports: [],
 		...overrides
@@ -1770,16 +1772,19 @@ describe('saveCodec', () => {
 			},
 			decisions: [
 				{
+					kind: 'event',
 					id: 'cash-recovery',
-					title: 'Cash recovery',
-					context: { code: 'cashPressure' },
+					eventId: 'cash-recovery',
+					definitionVersion: 1,
+					generatedOnDay: simulated.day,
 					expiresOnDay: simulated.day + 1,
+					target: { kind: 'company' },
+					copy: { key: 'events.cashRecovery', params: {} },
 					options: [
 						{
 							id: 'accept',
-							label: 'Accept',
-							description: 'Receive cash',
-							effects: { cash: 100 }
+							effects: [{ kind: 'cash-adjust', amount: 100 }],
+							modifiers: []
 						}
 					]
 				}
@@ -1789,8 +1794,10 @@ describe('saveCodec', () => {
 
 		const resolved = resolveDecision(game, 'cash-recovery', 'accept');
 
-		expect(resolved.world.revealedCityIds).toContain('garden-borough');
-		expect(validateCurrentGameState(resolved)).toEqual(resolved);
+		expect(resolved.ok).toBe(true);
+		if (!resolved.ok) return;
+		expect(resolved.game.world.revealedCityIds).toContain('garden-borough');
+		expect(validateCurrentGameState(resolved.game)).toEqual(resolved.game);
 	});
 
 	test.each([
@@ -3625,31 +3632,6 @@ describe('saveCodec', () => {
 		// cannot handle.
 		expect(validated.game.decisions).toHaveLength(0);
 		expect(() => validateSaveRecord(record)).not.toThrow();
-	});
-
-	test('v6 migration keeps structured decision contexts unchanged', () => {
-		// The v6→v7 filter is context-type-specific: it drops only string
-		// contexts, leaving structured `{ code, ... }` objects intact so they
-		// flow through validation unchanged.
-		expect.assertions(3);
-		const structuredDecision = {
-			id: 'expansion-cash-blocked-1',
-			title: 'Expansion delayed',
-			context: { code: 'expansionCashBlocked', cash: 15000 },
-			expiresOnDay: 2,
-			options: [{ id: 'acknowledge', label: 'Acknowledge', description: '...', effects: {} }]
-		} as unknown as GameState['decisions'][number];
-		const record = createV6Record({
-			game: { decisions: [structuredDecision] }
-		});
-
-		const validated = validateSaveRecord(record);
-		expect(validated.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
-		expect(validated.game.decisions).toHaveLength(1);
-		expect(validated.game.decisions[0]?.context).toEqual({
-			code: 'expansionCashBlocked',
-			cash: 15000
-		});
 	});
 
 	test.each([

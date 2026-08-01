@@ -251,13 +251,14 @@ describe('finance metrics', () => {
 			industrialBuildings: [],
 			decisions: [
 				{
+					kind: 'system',
 					id: 'unrelated-event',
 					title: 'Unrelated event',
 					context: { code: 'cashPressure' },
 					expiresOnDay: 2,
 					options: []
 				}
-			] as GameState['decisions']
+			]
 		};
 
 		expect(projectCashRunway(baseline)).toEqual({ kind: 'days', days: 5 });

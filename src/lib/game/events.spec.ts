@@ -1,269 +1,176 @@
 import { describe, expect, test } from 'vitest';
-import { generateDecisions } from './events';
 import { assessCredit } from './finance';
-import { createRngFromState } from './rng';
-import {
-	decisionContextCashPressure,
-	decisionContextExpansionOpportunity,
-	decisionContextSupplierTerms
-} from './decisionContext';
+import { generateDecisions, pruneExpiredDecisions } from './events';
 import { createNewGame } from './state';
+import type { EventDecisionItem, SystemDecisionItem } from './types';
 
-describe('decision generation', () => {
-	test('is sparse for healthy early businesses', () => {
-		expect.assertions(1);
+function withEventRngState<T extends ReturnType<typeof createNewGame>>(
+	game: T,
+	rngState: number
+): T {
+	return { ...game, events: { ...game.events, rngState } };
+}
+
+function generatedEvent(game: ReturnType<typeof createNewGame>): EventDecisionItem | undefined {
+	return generateDecisions(game).decisions.find(
+		(decision): decision is EventDecisionItem => decision.kind === 'event'
+	);
+}
+
+describe('production event facade', () => {
+	test('is sparse for healthy early businesses while still consuming the fixed packet', () => {
 		const game = createNewGame('convenience', 33);
-		const decisions = generateDecisions(game);
+		const selected = generateDecisions(game);
 
-		expect(decisions.length).toBeLessThanOrEqual(1);
+		expect(selected.decisions).toEqual([]);
+		expect(selected.events.rngState).not.toBe(game.events.rngState);
 	});
 
-	test('creates a cash pressure decision when cash is negative', () => {
-		expect.assertions(2);
-		const game = { ...createNewGame('electronics', 33), cash: -500 };
-		const decisions = generateDecisions(game);
+	test('keeps exact cash-pressure eligibility, priority, option order, and effects', () => {
+		const base = createNewGame('electronics', 33);
+		const atZero = generateDecisions({ ...base, cash: 0 });
+		const negative = { ...base, cash: -1 };
+		const selected = generateDecisions(negative);
+		const decision = selected.decisions.find(
+			(candidate): candidate is EventDecisionItem => candidate.kind === 'event'
+		)!;
+		const roundedCapacity = Math.floor(assessCredit(negative, 56).availableCredit / 1_000) * 1_000;
 
-		expect(decisions[0]?.title).toBe('Cash pressure');
-		expect(decisions[0]?.options).toHaveLength(3);
-	});
-
-	test('keeps the exact strategic-decision eligibility boundaries and priority', () => {
-		expect.assertions(7);
-		const base = createNewGame('boutique', 33);
-		const expansionReady = {
-			...base,
-			day: 14,
-			cash: 55_000,
-			scorecard: { ...base.scorecard, profit: 62 },
-			storeCap: base.stores.length + 1,
-			rngState: 1_400_000
-		};
-
-		expect(generateDecisions({ ...expansionReady, cash: -1 })[0]?.id).toBe('cash-pressure');
-		expect(generateDecisions({ ...expansionReady, cash: 0 })).toEqual([]);
-		expect(generateDecisions(expansionReady)[0]?.id).toBe('expansion-opportunity');
-		expect(generateDecisions({ ...expansionReady, day: 13 })).toEqual([]);
-		expect(generateDecisions({ ...expansionReady, cash: 54_999 })).toEqual([]);
-		expect(
-			generateDecisions({ ...expansionReady, scorecard: { ...base.scorecard, profit: 61 } })
-		).toEqual([]);
-		expect(generateDecisions({ ...expansionReady, storeCap: base.stores.length })).toEqual([]);
-	});
-
-	test('emits at most one strategic decision when cash pressure, expansion, and supplier cadence overlap', () => {
-		expect.assertions(2);
-		const base = createNewGame('boutique', 33);
-		const decisions = generateDecisions({
-			...base,
-			day: 14,
-			cash: -1,
-			scorecard: { ...base.scorecard, profit: 62 },
-			storeCap: base.stores.length + 1,
-			rngState: 1
-		});
-
-		expect(decisions).toHaveLength(1);
-		expect(decisions[0]?.id).toBe('cash-pressure');
-	});
-
-	test('persists a credit-sized emergency loan instead of granting cash for a cash-pressure decision', () => {
-		expect.assertions(5);
-		const game = { ...createNewGame('electronics', 33), cash: -500 };
-		const emergency = generateDecisions(game)[0]?.options.find(
-			(option) => option.id === 'short-loan'
-		);
-		const roundedCapacity = Math.floor(assessCredit(game, 56).availableCredit / 1_000) * 1_000;
-		const expectedAmount = Math.min(12_000, Math.max(4_000, roundedCapacity));
-
-		expect(emergency?.effects.finance).toEqual({
-			kind: 'borrow',
-			purpose: 'emergency',
-			amount: expectedAmount,
-			termDays: 56
-		});
-		expect(emergency?.effects.cash).toBeUndefined();
-		expect(emergency?.effects.profit).toBe(-4);
-		expect(emergency?.effects.marketPosition).toBe(-1);
-		expect(emergency?.effects.finance?.amount).toBe(expectedAmount);
-	});
-
-	test('does not duplicate an existing cash pressure decision', () => {
-		expect.assertions(1);
-		const game = {
-			...createNewGame('electronics', 33),
-			cash: -500,
-			decisions: [
-				{
-					id: 'cash-pressure',
-					title: 'Cash pressure',
-					context: decisionContextCashPressure(),
-					expiresOnDay: 3,
-					options: []
-				}
-			]
-		};
-
-		expect(generateDecisions(game)).toHaveLength(0);
-	});
-
-	test('creates an expansion opportunity after the business has traction', () => {
-		expect.assertions(1);
-		const game = {
-			...createNewGame('boutique', 33),
-			day: 16,
-			cash: 70_000,
-			scorecard: {
-				profit: 70,
-				customerSatisfaction: 74,
-				staffMorale: 66,
-				marketPosition: 32
-			}
-		};
-
-		expect(generateDecisions(game)[0]).toMatchObject({
-			id: 'expansion-opportunity',
-			title: 'Expansion opportunity'
-		});
-	});
-
-	test('does not duplicate an existing expansion opportunity decision', () => {
-		expect.assertions(1);
-		const game = {
-			...createNewGame('boutique', 33),
-			day: 16,
-			cash: 70_000,
-			scorecard: {
-				profit: 70,
-				customerSatisfaction: 74,
-				staffMorale: 66,
-				marketPosition: 32
-			},
-			decisions: [
-				{
-					id: 'expansion-opportunity',
-					title: 'Expansion opportunity',
-					context: decisionContextExpansionOpportunity(),
-					expiresOnDay: 19,
-					options: []
-				}
-			]
-		};
-
-		expect(generateDecisions(game)).toHaveLength(0);
-	});
-
-	test('does not duplicate an existing supplier terms decision', () => {
-		expect.assertions(2);
-		const game = { ...createNewGame('convenience', 43), rngState: 1 };
-
-		expect(generateDecisions(game)[0]?.id).toBe('supplier-terms');
-		expect(
-			generateDecisions({
-				...game,
-				decisions: [
-					{
-						id: 'supplier-terms',
-						title: 'Supplier terms',
-						context: decisionContextSupplierTerms(),
-						expiresOnDay: 3,
-						options: []
-					}
-				]
-			})
-		).toHaveLength(0);
-	});
-
-	test('persists supplier credit as a 28-day loan while keeping cash-free alternatives intact', () => {
-		expect.assertions(6);
-		const decision = generateDecisions({ ...createNewGame('convenience', 43), rngState: 1 })[0]!;
-		const supplierCredit = decision.options.find((option) => option.id === 'negotiate-credit');
-		const bulkDiscount = decision.options.find((option) => option.id === 'bulk-discount');
-
-		expect(supplierCredit?.effects.finance).toEqual({
-			kind: 'borrow',
-			purpose: 'supplierCredit',
-			amount: 4_000,
-			termDays: 28
-		});
-		expect(supplierCredit?.effects.cash).toBeUndefined();
-		expect(supplierCredit?.effects.profit).toBe(-2);
-		expect(bulkDiscount?.effects.cash).toBe(-2_500);
-		expect(bulkDiscount?.effects.profit).toBe(3);
-		expect(decision.options).toHaveLength(2);
-	});
-
-	test('keeps exact option order and effects for every strategic decision family', () => {
-		expect.assertions(9);
-		const cashPressure = generateDecisions({ ...createNewGame('electronics', 33), cash: -500 })[0]!;
-		const expansion = generateDecisions({
-			...createNewGame('boutique', 33),
-			day: 14,
-			cash: 55_000,
-			scorecard: { profit: 62, customerSatisfaction: 74, staffMorale: 66, marketPosition: 32 },
-			storeCap: 2,
-			rngState: 1_400_000
-		})[0]!;
-		const supplier = generateDecisions({
-			...createNewGame('convenience', 43),
-			rngState: 1
-		})[0]!;
-
-		expect(cashPressure.options.map((option) => option.id)).toEqual([
+		expect(atZero.decisions).toEqual([]);
+		expect(decision.eventId).toBe('cash-pressure');
+		expect(decision.options.map((option) => option.id)).toEqual([
 			'short-loan',
 			'cut-costs',
 			'hold-course'
 		]);
-		expect(cashPressure.options[0]?.effects.finance).toEqual({
-			kind: 'borrow',
-			purpose: 'emergency',
-			amount: 4_000,
-			termDays: 56
-		});
-		expect(cashPressure.options[1]?.effects).toEqual({
-			cash: 5_500,
-			customerSatisfaction: -4,
-			staffMorale: -5,
-			stockHealth: -8
-		});
-		expect(cashPressure.options[2]?.effects).toEqual({ profit: 1, staffMorale: -2 });
-		expect(expansion.options.map((option) => option.id)).toEqual(['prepare', 'pass']);
-		expect(expansion.options.map((option) => option.effects)).toEqual([
-			{ cash: -3_500, marketPosition: 5, profit: -1 },
-			{ profit: 1, staffMorale: 1 }
+		expect(decision.options[0]?.effects).toEqual([
+			{
+				kind: 'finance-borrow',
+				purpose: 'emergency',
+				amount: Math.min(12_000, Math.max(4_000, roundedCapacity)),
+				termDays: 56
+			},
+			{ kind: 'score-adjust', score: 'profit', amount: -4 },
+			{ kind: 'score-adjust', score: 'marketPosition', amount: -1 }
 		]);
-		expect(supplier.options.map((option) => option.id)).toEqual([
+		expect(decision.options[1]?.effects).toEqual([
+			{ kind: 'cash-adjust', amount: 5_500 },
+			{ kind: 'score-adjust', score: 'customerSatisfaction', amount: -4 },
+			{ kind: 'score-adjust', score: 'staffMorale', amount: -5 },
+			{ kind: 'store-morale-adjust', scope: 'all-stores', amount: -5 },
+			{
+				kind: 'store-stock-adjust-by-target-percent',
+				scope: 'all-stores',
+				percent: -8
+			}
+		]);
+		expect(decision.options[2]?.effects).toEqual([
+			{ kind: 'score-adjust', score: 'profit', amount: 1 },
+			{ kind: 'score-adjust', score: 'staffMorale', amount: -2 },
+			{ kind: 'store-morale-adjust', scope: 'all-stores', amount: -2 }
+		]);
+	});
+
+	test('keeps expansion boundaries and cash-pressure priority', () => {
+		const base = createNewGame('boutique', 33);
+		const ready = {
+			...base,
+			day: 14,
+			cash: 55_000,
+			scorecard: { ...base.scorecard, profit: 62 },
+			storeCap: base.stores.length + 1
+		};
+
+		expect(generatedEvent(ready)?.eventId).toBe('expansion-opportunity');
+		expect(generatedEvent({ ...ready, day: 13 })).toBeUndefined();
+		expect(generatedEvent({ ...ready, cash: 54_999 })).toBeUndefined();
+		expect(
+			generatedEvent({ ...ready, scorecard: { ...ready.scorecard, profit: 61 } })
+		).toBeUndefined();
+		expect(generatedEvent({ ...ready, storeCap: base.stores.length })).toBeUndefined();
+		expect(generatedEvent({ ...ready, cash: -1 })?.eventId).toBe('cash-pressure');
+	});
+
+	test('materializes supplier terms from the isolated cadence packet', () => {
+		const base = withEventRngState(createNewGame('convenience', 43), 1);
+		const decision = generatedEvent(base)!;
+
+		expect(decision.eventId).toBe('supplier-terms');
+		expect(decision.options.map((option) => option.id)).toEqual([
 			'negotiate-credit',
 			'bulk-discount'
 		]);
-		expect(supplier.options[0]?.effects.finance).toEqual({
-			kind: 'borrow',
-			purpose: 'supplierCredit',
-			amount: 4_000,
-			termDays: 28
-		});
-		expect(supplier.options[1]?.effects).toEqual({ cash: -2_500, profit: 3, stockHealth: 6 });
+		expect(decision.options[0]?.effects).toEqual([
+			{
+				kind: 'finance-borrow',
+				purpose: 'supplierCredit',
+				amount: 4_000,
+				termDays: 28
+			},
+			{ kind: 'score-adjust', score: 'profit', amount: -2 }
+		]);
+		expect(decision.options[1]?.effects).toEqual([
+			{ kind: 'cash-adjust', amount: -2_500 },
+			{ kind: 'score-adjust', score: 'profit', amount: 3 },
+			{
+				kind: 'store-stock-adjust-by-target-percent',
+				scope: 'all-stores',
+				percent: 6
+			}
+		]);
+		expect(decision.options[1]?.modifiers).toHaveLength(1);
 	});
 
-	test('legacy supplier cadence characterization', () => {
-		expect.assertions(8);
-		for (const [rngState, day, expected] of [
-			[1_250_000, 1, true],
-			[1_250_000, 14, false],
-			[1_400_000, 1, false],
-			[1, 1, true]
-		] as const) {
-			const game = {
-				...createNewGame('convenience', 43),
-				rngState,
-				day,
-				cash: 0,
-				scorecard: { profit: 0, customerSatisfaction: 0, staffMorale: 0, marketPosition: 0 }
-			};
+	test('never duplicates a pending family and materializes at most one event', () => {
+		const base = { ...createNewGame('electronics', 33), cash: -1 };
+		const first = generateDecisions(base);
+		const second = generateDecisions(first);
 
-			expect(generateDecisions(game).some((decision) => decision.id === 'supplier-terms')).toBe(
-				expected
-			);
-			expect(createRngFromState(rngState + day * 97).next() < 0.12).toBe(expected);
-		}
+		expect(first.decisions.filter((decision) => decision.kind === 'event')).toHaveLength(1);
+		expect(second.decisions.filter((decision) => decision.kind === 'event')).toHaveLength(1);
+	});
+});
+
+describe('decision queue cleanup', () => {
+	test('removes expired system decisions without event history', () => {
+		const base = createNewGame('convenience', 55);
+		const decision: SystemDecisionItem = {
+			kind: 'system',
+			id: 'system-expired',
+			title: 'Expired',
+			context: { code: 'locationGeneric' },
+			expiresOnDay: base.day,
+			options: []
+		};
+		const advanced = { ...base, day: base.day + 1, decisions: [decision] };
+		const cleaned = pruneExpiredDecisions(advanced, base.day);
+
+		expect(cleaned.decisions).toEqual([]);
+		expect(cleaned.events.history).toBe(base.events.history);
+	});
+
+	test('removes an expired event once and stamps expiry history with the closing day', () => {
+		const base = { ...createNewGame('convenience', 55), cash: -1 };
+		const generated = generateDecisions(base);
+		const event = generated.decisions.find(
+			(decision): decision is EventDecisionItem => decision.kind === 'event'
+		)!;
+		const advanced = {
+			...generated,
+			day: event.expiresOnDay + 1,
+			decisions: [event]
+		};
+		const cleaned = pruneExpiredDecisions(advanced, event.expiresOnDay);
+		const cleanedAgain = pruneExpiredDecisions(cleaned, event.expiresOnDay + 1);
+
+		expect(cleaned.decisions).toEqual([]);
+		expect(cleaned.events.history.at(-1)).toEqual({
+			kind: 'event-decision-expired',
+			day: event.expiresOnDay,
+			eventId: event.eventId,
+			instanceId: event.id,
+			target: { kind: 'company' }
+		});
+		expect(cleanedAgain.events.history).toBe(cleaned.events.history);
 	});
 });

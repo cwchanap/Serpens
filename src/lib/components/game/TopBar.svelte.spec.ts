@@ -6,6 +6,7 @@ import { createI18n } from '$lib/i18n';
 import { generateCity } from '$lib/game/city';
 import { createInitialWorldProgress } from '$lib/game/world';
 import { createEmptyFinanceState } from '$lib/game/finance';
+import { createInitialEventRuntime } from '$lib/game/eventSelection';
 import type { GameState } from '$lib/game/types';
 import { DEFAULT_POLICY } from '$lib/game/state';
 import TopBar from './TopBar.svelte';
@@ -43,6 +44,7 @@ const alertGame: GameState = {
 	stores: [],
 	staff: [],
 	hiringCandidates: [],
+	events: createInitialEventRuntime(1),
 	decisions: [],
 	reports: []
 };

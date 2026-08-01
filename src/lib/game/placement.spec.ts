@@ -12,7 +12,12 @@ import {
 	getOccupiedStoreTileIds,
 	getStoreFootprintPlacementBlockReason
 } from './storeFootprint';
-import type { City, CityTile, Store } from './types';
+import type { City, CityTile, DecisionItem, Store, SystemDecisionItem } from './types';
+
+function systemDecision(decision: DecisionItem | undefined): SystemDecisionItem {
+	if (decision?.kind !== 'system') throw new Error('Expected a system decision');
+	return decision;
+}
 
 describe('tile placement', () => {
 	test('finances a structurally valid store by borrowing its exact shortfall', () => {
@@ -310,12 +315,12 @@ describe('tile placement', () => {
 		});
 
 		expect(roadResult.stores).toHaveLength(1);
-		expect(roadResult.decisions.at(-1)?.context).toEqual({
+		expect(systemDecision(roadResult.decisions.at(-1)).context).toEqual({
 			code: 'locationBlocked',
 			reason: 'road'
 		});
 		expect(riverResult.stores).toHaveLength(1);
-		expect(riverResult.decisions.at(-1)?.context).toEqual({
+		expect(systemDecision(riverResult.decisions.at(-1)).context).toEqual({
 			code: 'locationBlocked',
 			reason: 'river'
 		});
@@ -361,11 +366,15 @@ describe('tile placement', () => {
 			'location-unavailable-road-1',
 			'location-unavailable-river-1'
 		]);
-		expect(riverResult.decisions.map((decision) => decision.context)).toContainEqual({
+		expect(
+			riverResult.decisions.map((decision) => systemDecision(decision).context)
+		).toContainEqual({
 			code: 'locationBlocked',
 			reason: 'road'
 		});
-		expect(riverResult.decisions.map((decision) => decision.context)).toContainEqual({
+		expect(
+			riverResult.decisions.map((decision) => systemDecision(decision).context)
+		).toContainEqual({
 			code: 'locationBlocked',
 			reason: 'river'
 		});
@@ -394,7 +403,7 @@ describe('tile placement', () => {
 		});
 
 		expect(result.stores).toHaveLength(1);
-		expect(result.decisions.at(-1)?.title).toBe('Location unavailable');
+		expect(systemDecision(result.decisions.at(-1)).title).toBe('Location unavailable');
 	});
 
 	test('blocks expansion when the requested 2x2 footprint overlaps an existing store', () => {
@@ -413,7 +422,7 @@ describe('tile placement', () => {
 		});
 
 		expect(result.stores).toHaveLength(1);
-		expect(result.decisions.at(-1)?.title).toBe('Location unavailable');
+		expect(systemDecision(result.decisions.at(-1)).title).toBe('Location unavailable');
 	});
 
 	test('deducts the chosen archetype setup cost when opening at a tile', () => {
@@ -523,7 +532,7 @@ describe('tile placement', () => {
 		});
 
 		expect(result.stores).toHaveLength(1);
-		expect(result.decisions.at(-1)?.context).toEqual({ code: 'locationGeneric' });
+		expect(systemDecision(result.decisions.at(-1)).context).toEqual({ code: 'locationGeneric' });
 	});
 
 	test('openStoreAtTile appends a location-unavailable decision when the tile id is unknown', () => {
@@ -549,7 +558,7 @@ describe('tile placement', () => {
 		});
 
 		expect(result.stores).toHaveLength(1);
-		expect(result.decisions.at(-1)?.title).toBe('Location unavailable');
+		expect(systemDecision(result.decisions.at(-1)).title).toBe('Location unavailable');
 	});
 
 	test('openStoreAtTile returns the cash-blocked decision without placing a store when cash is insufficient', () => {
@@ -583,7 +592,7 @@ describe('tile placement', () => {
 
 		expect(result.stores).toHaveLength(1);
 		expect(result.decisions.at(-1)?.id).toBe('expansion-cash-blocked-1');
-		expect(result.decisions.at(-1)?.title).toBe('Expansion delayed');
+		expect(systemDecision(result.decisions.at(-1)).title).toBe('Expansion delayed');
 	});
 });
 

@@ -1,5 +1,6 @@
 import type { GameState } from '$lib/game/types';
 import { createFoundingFinanceState } from '$lib/game/finance';
+import { createInitialEventRuntime } from '$lib/game/eventSelection';
 import { STARTER_STORE_CAP, createInitialWorldProgress } from '$lib/game/world';
 import { evaluateScenario } from '$lib/scenarios/runtime';
 import type {
@@ -154,6 +155,7 @@ function fixtureGame(): GameState {
 		stores: [],
 		staff: [],
 		hiringCandidates: [],
+		events: createInitialEventRuntime(FIXTURE_DEFINITION.officialSeed),
 		decisions: [],
 		reports: []
 	};

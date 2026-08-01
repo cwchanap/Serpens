@@ -1,160 +1,44 @@
-import { createRngFromState } from './rng';
-import {
-	decisionContextCashPressure,
-	decisionContextExpansionOpportunity,
-	decisionContextSupplierTerms
-} from './decisionContext';
-import { assessCredit } from './finance';
-import type { DecisionItem, GameState } from './types';
+import { PRODUCTION_EVENT_CATALOG } from './eventCatalog';
+import { EVENT_HISTORY_LIMIT, selectEventForDay } from './eventSelection';
+import type { EventHistoryEntry, GameState } from './types';
 
-const CASH_PRESSURE_ID = 'cash-pressure';
-const EXPANSION_ID = 'expansion-opportunity';
-const SUPPLIER_TERMS_ID = 'supplier-terms';
+export function generateDecisions(game: GameState): GameState {
+	return selectEventForDay(game, PRODUCTION_EVENT_CATALOG);
+}
 
-export function generateDecisions(game: GameState): DecisionItem[] {
-	const existingIds = new Set(game.decisions.map((decision) => decision.id));
-	const decisions: DecisionItem[] = [];
-
-	if (game.cash < 0 && !existingIds.has(CASH_PRESSURE_ID)) {
-		decisions.push(cashPressureDecision(game));
-	}
-
+export function pruneExpiredDecisions(game: GameState, closingDay: number): GameState {
+	const expiredEvents = game.decisions.filter(
+		(decision) => decision.kind === 'event' && decision.expiresOnDay < game.day
+	);
 	if (
-		decisions.length === 0 &&
-		game.day >= 14 &&
-		game.cash >= 55_000 &&
-		game.stores.length < game.storeCap &&
-		game.scorecard.profit >= 62 &&
-		!existingIds.has(EXPANSION_ID)
+		expiredEvents.length === 0 &&
+		game.decisions.every((decision) => decision.expiresOnDay >= game.day)
 	) {
-		decisions.push(expansionOpportunityDecision(game));
+		return game;
 	}
 
-	if (decisions.length === 0 && !existingIds.has(SUPPLIER_TERMS_ID)) {
-		const rng = createRngFromState(game.rngState + game.day * 97);
-
-		if (rng.next() < 0.12) {
-			decisions.push(supplierTermsDecision(game));
-		}
+	let history = game.events.history;
+	for (const decision of expiredEvents) {
+		if (decision.kind !== 'event') continue;
+		history = appendHistory(history, {
+			kind: 'event-decision-expired',
+			day: closingDay,
+			eventId: decision.eventId,
+			instanceId: decision.id,
+			target: { ...decision.target }
+		});
 	}
 
-	return decisions.slice(0, 1);
-}
-
-export function pruneExpiredDecisions(game: GameState): DecisionItem[] {
-	return game.decisions.filter((decision) => decision.expiresOnDay >= game.day);
-}
-
-function cashPressureDecision(game: GameState): DecisionItem {
-	const roundedCapacity = Math.floor(assessCredit(game, 56).availableCredit / 1_000) * 1_000;
-	const emergencyPrincipal = Math.min(12_000, Math.max(4_000, roundedCapacity));
-
 	return {
-		id: CASH_PRESSURE_ID,
-		title: 'Cash pressure',
-		context: decisionContextCashPressure(),
-		expiresOnDay: game.day + 2,
-		options: [
-			{
-				id: 'short-loan',
-				label: 'Short loan',
-				description: 'Add emergency working capital and accept pressure on profitability.',
-				effects: {
-					finance: {
-						kind: 'borrow',
-						purpose: 'emergency',
-						amount: emergencyPrincipal,
-						termDays: 56
-					},
-					profit: -4,
-					marketPosition: -1
-				}
-			},
-			{
-				id: 'cut-costs',
-				label: 'Cut costs',
-				description: 'Trim discretionary spend and inventory depth to stabilize cash.',
-				effects: {
-					cash: 5_500,
-					customerSatisfaction: -4,
-					staffMorale: -5,
-					stockHealth: -8
-				}
-			},
-			{
-				id: 'hold-course',
-				label: 'Hold course',
-				description: "Avoid reactive changes and let tomorrow's sales carry the business.",
-				effects: {
-					profit: 1,
-					staffMorale: -2
-				}
-			}
-		]
+		...game,
+		decisions: game.decisions.filter((decision) => decision.expiresOnDay >= game.day),
+		events: history === game.events.history ? game.events : { ...game.events, history }
 	};
 }
 
-function expansionOpportunityDecision(game: GameState): DecisionItem {
-	return {
-		id: EXPANSION_ID,
-		title: 'Expansion opportunity',
-		context: decisionContextExpansionOpportunity(),
-		expiresOnDay: game.day + 3,
-		options: [
-			{
-				id: 'prepare',
-				label: 'Prepare',
-				description: 'Start scouting locations and lining up the opening plan.',
-				effects: {
-					cash: -3_500,
-					marketPosition: 5,
-					profit: -1
-				}
-			},
-			{
-				id: 'pass',
-				label: 'Pass',
-				description: 'Keep capital focused on the current store.',
-				effects: {
-					profit: 1,
-					staffMorale: 1
-				}
-			}
-		]
-	};
-}
-
-function supplierTermsDecision(game: GameState): DecisionItem {
-	return {
-		id: SUPPLIER_TERMS_ID,
-		title: 'Supplier terms',
-		context: decisionContextSupplierTerms(),
-		expiresOnDay: game.day + 2,
-		options: [
-			{
-				id: 'negotiate-credit',
-				label: 'Negotiate credit',
-				description: 'Stretch payment timing for a small margin penalty.',
-				effects: {
-					finance: {
-						kind: 'borrow',
-						purpose: 'supplierCredit',
-						amount: 4_000,
-						termDays: 28
-					},
-					profit: -2
-				}
-			},
-			{
-				id: 'bulk-discount',
-				label: 'Bulk discount',
-				description: 'Commit to larger orders for better unit economics.',
-				effects: {
-					cash: -2_500,
-					profit: 3,
-					stockHealth: 6
-				}
-			}
-		]
-	};
+function appendHistory(
+	history: readonly EventHistoryEntry[],
+	entry: EventHistoryEntry
+): EventHistoryEntry[] {
+	return [...history, entry].slice(-EVENT_HISTORY_LIMIT);
 }

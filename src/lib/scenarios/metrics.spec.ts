@@ -9,6 +9,7 @@ import type {
 	Store
 } from '$lib/game/types';
 import { createEmptyFinanceState } from '$lib/game/finance';
+import { createInitialEventRuntime } from '$lib/game/eventSelection';
 import type {
 	ScenarioComparator,
 	ScenarioCondition,
@@ -204,6 +205,7 @@ function game(overrides: Partial<GameState> = {}): GameState {
 		stores: [],
 		staff: [],
 		hiringCandidates: [],
+		events: overrides.events ?? createInitialEventRuntime(280),
 		decisions: [],
 		reports: [],
 		...overrides

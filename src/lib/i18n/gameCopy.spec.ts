@@ -15,7 +15,7 @@ import { INDUSTRIAL_BUILDING_TYPES } from '$lib/game/industry';
 import { generateDecisions } from '$lib/game/events';
 import { getWorldCityDefinition, getWorldCityStatus, openWorldCity } from '$lib/game/world';
 import type { GameAlert } from '$lib/game/alerts';
-import type { DecisionItem, Store, MaterialId } from '$lib/game/types';
+import type { DecisionItem, EventDecisionItem, Store, MaterialId } from '$lib/game/types';
 import type {
 	ProductChainCategorySummary,
 	ProductChainGraph,
@@ -38,7 +38,6 @@ import {
 	decisionContextWorldCityOpeningCost,
 	decisionContextWorldCityUnknown,
 	decisionContextCashPressure,
-	decisionContextExpansionOpportunity,
 	decisionContextIndustrialTileHasRail,
 	decisionContextRailAlreadyConnected,
 	decisionContextRailNoValidPath,
@@ -46,8 +45,7 @@ import {
 	decisionContextRailSegmentAtMaxLevel,
 	decisionContextRailCrossCity,
 	decisionContextRailUnknownBuilding,
-	decisionContextRailUnknownSegment,
-	decisionContextSupplierTerms
+	decisionContextRailUnknownSegment
 } from '$lib/game/decisionContext';
 import { describe, expect, it } from 'vitest';
 import { createI18n } from './index';
@@ -261,17 +259,20 @@ describe('game copy builders', () => {
 		expect.assertions(9);
 		const english = createI18n('en');
 		const japanese = createI18n('ja');
-		const decision: DecisionItem = {
-			id: 'cash-pressure',
-			title: 'Cash pressure',
-			context: decisionContextCashPressure(),
+		const decision: EventDecisionItem = {
+			kind: 'event',
+			id: 'event-instance-1',
+			eventId: 'cash-pressure',
+			definitionVersion: 1,
+			generatedOnDay: 1,
 			expiresOnDay: 3,
+			target: { kind: 'company' },
+			copy: { key: 'events.cashPressure', params: {} },
 			options: [
 				{
 					id: 'short-loan',
-					label: 'Short loan',
-					description: 'Add emergency working capital and accept pressure on profitability.',
-					effects: { cash: 12_000 }
+					effects: [],
+					modifiers: []
 				}
 			]
 		};
@@ -289,9 +290,11 @@ describe('game copy builders', () => {
 		const graph = buildWarehouseFlowGraph(createNewGame('convenience', 20260708));
 		const localizedGraph = localizeProductChainGraph(graph, japanese);
 
-		expect(localizedDecision.title).not.toBe(decision.title);
-		expect(localizedDecision.options[0]?.label).not.toBe(decision.options[0]?.label);
-		expect(localizeDecision({ ...decision, id: 'unknown' }, english).title).toBe(decision.title);
+		expect(localizedDecision.title).not.toBe(decision.copy.key);
+		expect(localizedDecision.options[0]?.label).not.toBe(decision.options[0]?.id);
+		expect(
+			localizeDecision({ ...decision, copy: { key: 'events.unknown', params: {} } }, english).title
+		).toBe('events.unknown');
 		expect(worldStatus).not.toBeNull();
 		expect(localizeWorldCityStatus(worldStatus!, english).city.name).toBe('Campus Junction');
 		expect(localizeWorldCityStatus(worldStatus!, japanese).city.name).not.toBe('Campus Junction');
@@ -305,6 +308,7 @@ describe('game copy builders', () => {
 		const japanese = createI18n('ja');
 		const expectedCash = japanese.format.currency(18_000);
 		const worldDecision: DecisionItem = {
+			kind: 'system',
 			id: 'world-city-city-opening-delayed-opening-this-city-requires-18-000-cash-1',
 			title: 'City opening delayed',
 			context: decisionContextWorldCityOpeningCost(18_000),
@@ -313,8 +317,7 @@ describe('game copy builders', () => {
 				{
 					id: 'acknowledge',
 					label: 'Acknowledge',
-					description: 'Return to operations planning.',
-					effects: {}
+					description: 'Return to operations planning.'
 				}
 			]
 		};
@@ -554,47 +557,52 @@ describe('game copy builders', () => {
 		const japanese = createI18n('ja');
 		const english = createI18n('en');
 
-		const expansionOpportunity: DecisionItem = {
-			id: 'expansion-opportunity',
-			title: 'Expansion opportunity',
-			context: decisionContextExpansionOpportunity(),
+		const expansionOpportunity: EventDecisionItem = {
+			kind: 'event',
+			id: 'event-instance-1',
+			eventId: 'expansion-opportunity',
+			definitionVersion: 1,
+			generatedOnDay: 1,
 			expiresOnDay: 5,
+			target: { kind: 'company' },
+			copy: { key: 'events.expansionOpportunity', params: {} },
 			options: [
 				{
 					id: 'prepare',
-					label: 'Prepare',
-					description: 'Start scouting locations and lining up the opening plan.',
-					effects: {}
+					effects: [],
+					modifiers: []
 				},
 				{
 					id: 'pass',
-					label: 'Pass',
-					description: 'Keep capital focused on the current store.',
-					effects: {}
+					effects: [],
+					modifiers: []
 				}
 			]
 		};
-		const supplierTerms: DecisionItem = {
-			id: 'supplier-terms',
-			title: 'Supplier terms',
-			context: decisionContextSupplierTerms(),
+		const supplierTerms: EventDecisionItem = {
+			kind: 'event',
+			id: 'event-instance-2',
+			eventId: 'supplier-terms',
+			definitionVersion: 2,
+			generatedOnDay: 1,
 			expiresOnDay: 5,
+			target: { kind: 'company' },
+			copy: { key: 'events.supplierTerms', params: {} },
 			options: [
 				{
 					id: 'negotiate-credit',
-					label: 'Negotiate credit',
-					description: 'Stretch payment timing for a small margin penalty.',
-					effects: {}
+					effects: [],
+					modifiers: []
 				},
 				{
 					id: 'bulk-discount',
-					label: 'Bulk discount',
-					description: 'Commit to larger orders for better unit economics.',
-					effects: {}
+					effects: [],
+					modifiers: []
 				}
 			]
 		};
 		const stateDecision: DecisionItem = {
+			kind: 'system',
 			id: 'location-unavailable-road-1',
 			title: 'Location unavailable',
 			context: decisionContextLocationBlocked('road'),
@@ -603,12 +611,12 @@ describe('game copy builders', () => {
 				{
 					id: 'acknowledge',
 					label: 'Acknowledge',
-					description: 'Return to operations planning.',
-					effects: {}
+					description: 'Return to operations planning.'
 				}
 			]
 		};
 		const worldDecision: DecisionItem = {
+			kind: 'system',
 			id: 'world-city-city-opening-delayed-opening-this-city-requires-18-000-cash-1',
 			title: 'City opening delayed',
 			context: decisionContextWorldCityOpeningCost(18_000),
@@ -617,12 +625,12 @@ describe('game copy builders', () => {
 				{
 					id: 'acknowledge',
 					label: 'Acknowledge',
-					description: 'Return to operations planning.',
-					effects: {}
+					description: 'Return to operations planning.'
 				}
 			]
 		};
 		const unavailableDecision: DecisionItem = {
+			kind: 'system',
 			id: 'expansion-unavailable-1',
 			title: 'Expansion unavailable',
 			context: decisionContextExpansionUnavailable(3),
@@ -631,12 +639,12 @@ describe('game copy builders', () => {
 				{
 					id: 'acknowledge',
 					label: 'Acknowledge',
-					description: 'Return to operations planning.',
-					effects: {}
+					description: 'Return to operations planning.'
 				}
 			]
 		};
 		const industrialDecision: DecisionItem = {
+			kind: 'system',
 			id: 'industrial-construction-delayed-grain-farm-industry-city-1-1-locked-industrial-tile-2',
 			title: 'Industrial construction delayed',
 			context: decisionContextIndustrialLockedTile(),
@@ -645,12 +653,12 @@ describe('game copy builders', () => {
 				{
 					id: 'acknowledge',
 					label: 'Acknowledge',
-					description: 'Return to industry planning.',
-					effects: {}
+					description: 'Return to industry planning.'
 				}
 			]
 		};
 		const industrialResourceDecision: DecisionItem = {
+			kind: 'system',
 			id: 'industrial-construction-delayed-grain-farm-industry-city-1-1-requires-grain-field-2',
 			title: 'Industrial construction delayed',
 			context: decisionContextIndustrialRequiresResource('grain-field'),
@@ -659,12 +667,12 @@ describe('game copy builders', () => {
 				{
 					id: 'acknowledge',
 					label: 'Acknowledge',
-					description: 'Return to industry planning.',
-					effects: {}
+					description: 'Return to industry planning.'
 				}
 			]
 		};
 		const industrialCashDecision: DecisionItem = {
+			kind: 'system',
 			id: 'industrial-construction-delayed-grain-farm-industry-city-1-1-grain-farm-requires-1-000-cash-2',
 			title: 'Industrial construction delayed',
 			context: decisionContextIndustrialRequiresCash('grain-farm', 1_000),
@@ -673,21 +681,20 @@ describe('game copy builders', () => {
 				{
 					id: 'acknowledge',
 					label: 'Acknowledge',
-					description: 'Return to industry planning.',
-					effects: {}
+					description: 'Return to industry planning.'
 				}
 			]
 		};
 
 		expect(localizeDecision(expansionOpportunity, japanese).title).not.toBe(
-			expansionOpportunity.title
+			expansionOpportunity.copy.key
 		);
 		expect(localizeDecision(expansionOpportunity, japanese).options[0]?.label).not.toBe(
-			expansionOpportunity.options[0]?.label
+			expansionOpportunity.options[0]?.id
 		);
-		expect(localizeDecision(supplierTerms, japanese).title).not.toBe(supplierTerms.title);
+		expect(localizeDecision(supplierTerms, japanese).title).not.toBe(supplierTerms.copy.key);
 		expect(localizeDecision(supplierTerms, japanese).options[0]?.label).not.toBe(
-			supplierTerms.options[0]?.label
+			supplierTerms.options[0]?.id
 		);
 		expect(localizeDecision(stateDecision, japanese).title).not.toBe(stateDecision.title);
 		expect(localizeDecision(stateDecision, japanese).context).not.toBe(stateDecision.context);
@@ -735,6 +742,7 @@ describe('game copy builders', () => {
 		const english = createI18n('en');
 		const japanese = createI18n('ja');
 		const baseDecision = {
+			kind: 'system' as const,
 			id: 'rail-construction-1',
 			title: 'Rail construction delayed',
 			expiresOnDay: 2,
@@ -742,8 +750,7 @@ describe('game copy builders', () => {
 				{
 					id: 'acknowledge',
 					label: 'Acknowledge',
-					description: 'Return to operations planning.',
-					effects: {}
+					description: 'Return to operations planning.'
 				}
 			]
 		};
@@ -867,6 +874,7 @@ describe('game copy builders', () => {
 		const japanese = createI18n('ja');
 
 		const expansionCashBlocked: DecisionItem = {
+			kind: 'system',
 			id: 'expansion-cash-blocked-1',
 			title: 'Expansion delayed',
 			context: decisionContextExpansionCashBlocked(15_000),
@@ -875,8 +883,7 @@ describe('game copy builders', () => {
 				{
 					id: 'acknowledge',
 					label: 'Acknowledge',
-					description: 'Return to operations planning.',
-					effects: {}
+					description: 'Return to operations planning.'
 				}
 			]
 		};
@@ -885,6 +892,7 @@ describe('game copy builders', () => {
 		expect(expansionCashLocalized.context).toContain(japanese.format.currency(15_000));
 
 		const lockedLocation: DecisionItem = {
+			kind: 'system',
 			id: 'location-unavailable-locked-1',
 			title: 'Location unavailable',
 			context: decisionContextLocationBlocked('locked'),
@@ -893,14 +901,14 @@ describe('game copy builders', () => {
 				{
 					id: 'acknowledge',
 					label: 'Acknowledge',
-					description: 'Return to operations planning.',
-					effects: {}
+					description: 'Return to operations planning.'
 				}
 			]
 		};
 		expect(localizeDecision(lockedLocation, japanese).context).not.toBe(lockedLocation.context);
 
 		const riverLocation: DecisionItem = {
+			kind: 'system',
 			id: 'location-unavailable-river-1',
 			title: 'Location unavailable',
 			context: decisionContextLocationBlocked('river'),
@@ -909,14 +917,14 @@ describe('game copy builders', () => {
 				{
 					id: 'acknowledge',
 					label: 'Acknowledge',
-					description: 'Return to operations planning.',
-					effects: {}
+					description: 'Return to operations planning.'
 				}
 			]
 		};
 		expect(localizeDecision(riverLocation, japanese).context).not.toBe(riverLocation.context);
 
 		const genericLocation: DecisionItem = {
+			kind: 'system',
 			id: 'location-unavailable-generic-1',
 			title: 'Location unavailable',
 			context: decisionContextLocationGeneric(),
@@ -925,14 +933,14 @@ describe('game copy builders', () => {
 				{
 					id: 'acknowledge',
 					label: 'Acknowledge',
-					description: 'Return to operations planning.',
-					effects: {}
+					description: 'Return to operations planning.'
 				}
 			]
 		};
 		expect(localizeDecision(genericLocation, japanese).context).not.toBe(genericLocation.context);
 
 		const cityUnavailable: DecisionItem = {
+			kind: 'system',
 			id: 'world-city-city-unavailable-1',
 			title: 'City unavailable',
 			context: decisionContextWorldCityUnknown(),
@@ -941,8 +949,7 @@ describe('game copy builders', () => {
 				{
 					id: 'acknowledge',
 					label: 'Acknowledge',
-					description: 'Return to operations planning.',
-					effects: {}
+					description: 'Return to operations planning.'
 				}
 			]
 		};
@@ -950,6 +957,7 @@ describe('game copy builders', () => {
 		expect(localizeDecision(cityUnavailable, japanese).context).not.toBe(cityUnavailable.context);
 
 		const cityNotAvailableYet: DecisionItem = {
+			kind: 'system',
 			id: 'world-city-city-is-not-available-yet-1',
 			title: 'City is not available yet',
 			context: decisionContextWorldCityNotAvailableYet('campus-junction'),
@@ -958,8 +966,7 @@ describe('game copy builders', () => {
 				{
 					id: 'acknowledge',
 					label: 'Acknowledge',
-					description: 'Return to operations planning.',
-					effects: {}
+					description: 'Return to operations planning.'
 				}
 			]
 		};
@@ -971,6 +978,7 @@ describe('game copy builders', () => {
 		);
 
 		const industrialUnknownTile: DecisionItem = {
+			kind: 'system',
 			id: 'industrial-construction-delayed-1',
 			title: 'Industrial construction delayed',
 			context: decisionContextIndustrialUnknownTile(),
@@ -979,8 +987,7 @@ describe('game copy builders', () => {
 				{
 					id: 'acknowledge',
 					label: 'Acknowledge',
-					description: 'Return to industry planning.',
-					effects: {}
+					description: 'Return to industry planning.'
 				}
 			]
 		};
@@ -989,6 +996,7 @@ describe('game copy builders', () => {
 		);
 
 		const industrialUnknownBuilding: DecisionItem = {
+			kind: 'system',
 			id: 'industrial-construction-delayed-2',
 			title: 'Industrial construction delayed',
 			context: decisionContextIndustrialUnknownBuilding(),
@@ -997,8 +1005,7 @@ describe('game copy builders', () => {
 				{
 					id: 'acknowledge',
 					label: 'Acknowledge',
-					description: 'Return to industry planning.',
-					effects: {}
+					description: 'Return to industry planning.'
 				}
 			]
 		};
@@ -1327,7 +1334,9 @@ describe('game copy builders', () => {
 				tileId: expansionTile.id,
 				archetypeId: 'convenience'
 			});
-			const decision = result.decisions.find((d) => d.context.code === 'expansionCashBlocked');
+			const decision = result.decisions.find(
+				(d) => d.kind === 'system' && d.context.code === 'expansionCashBlocked'
+			);
 			expect(decision).toBeDefined();
 
 			const japanese = createI18n('ja');
@@ -1365,7 +1374,9 @@ describe('game copy builders', () => {
 				tileId: expansionTile.id,
 				archetypeId: 'convenience'
 			});
-			const decision = result.decisions.find((d) => d.context.code === 'expansionUnavailable');
+			const decision = result.decisions.find(
+				(d) => d.kind === 'system' && d.context.code === 'expansionUnavailable'
+			);
 			expect(decision).toBeDefined();
 
 			const japanese = createI18n('ja');
@@ -1389,11 +1400,14 @@ describe('game copy builders', () => {
 				tileId: blockedTile.id,
 				archetypeId: 'convenience'
 			});
-			const decision = result.decisions.find((d) => d.context.code === 'locationBlocked');
+			const decision = result.decisions.find(
+				(d) => d.kind === 'system' && d.context.code === 'locationBlocked'
+			);
 			expect(decision).toBeDefined();
+			if (decision?.kind !== 'system') throw new Error('Expected a system decision');
 
 			const japanese = createI18n('ja');
-			const ctx = decision!.context as {
+			const ctx = decision.context as {
 				code: 'locationBlocked';
 				reason: 'locked' | 'road' | 'river';
 			};
@@ -1421,7 +1435,9 @@ describe('game copy builders', () => {
 				}
 			};
 			const result = openWorldCity(revealedGame, 'campus-junction');
-			const decision = result.decisions.find((d) => d.context.code === 'worldCityOpeningCost');
+			const decision = result.decisions.find(
+				(d) => d.kind === 'system' && d.context.code === 'worldCityOpeningCost'
+			);
 			expect(decision).toBeDefined();
 
 			const japanese = createI18n('ja');
@@ -1440,7 +1456,9 @@ describe('game copy builders', () => {
 			// garden-borough is not revealed by default, so opening it emits the
 			// not-available-yet decision carrying the city's stable id.
 			const result = openWorldCity(game, 'garden-borough');
-			const decision = result.decisions.find((d) => d.context.code === 'worldCityNotAvailableYet');
+			const decision = result.decisions.find(
+				(d) => d.kind === 'system' && d.context.code === 'worldCityNotAvailableYet'
+			);
 			expect(decision).toBeDefined();
 
 			const japanese = createI18n('ja');
@@ -1475,7 +1493,9 @@ describe('game copy builders', () => {
 				tileId: buildableTile.id,
 				buildingTypeId: 'warehouse'
 			});
-			const decision = result.decisions.find((d) => d.context.code === 'industrialRequiresCash');
+			const decision = result.decisions.find(
+				(d) => d.kind === 'system' && d.context.code === 'industrialRequiresCash'
+			);
 			expect(decision).toBeDefined();
 
 			const japanese = createI18n('ja');
@@ -1494,8 +1514,8 @@ describe('game copy builders', () => {
 
 			// generateDecisions emits a cash-pressure decision when cash < 0.
 			const negativeCashGame = { ...game, cash: -1 };
-			const decisions = generateDecisions(negativeCashGame);
-			const decision = decisions.find((d) => d.context.code === 'cashPressure');
+			const decisions = generateDecisions(negativeCashGame).decisions;
+			const decision = decisions.find((d) => d.kind === 'event' && d.eventId === 'cash-pressure');
 			expect(decision).toBeDefined();
 
 			const japanese = createI18n('ja');
@@ -1547,6 +1567,7 @@ describe('game copy builders', () => {
 		expect.assertions(4);
 		const japanese = createI18n('ja');
 		const occupied: DecisionItem = {
+			kind: 'system',
 			id: 'industrial-construction-delayed-occupied-1',
 			title: 'Industrial construction delayed',
 			context: decisionContextIndustrialOccupiedTile(),
@@ -1555,12 +1576,12 @@ describe('game copy builders', () => {
 				{
 					id: 'acknowledge',
 					label: 'Ack',
-					description: 'Return to industry planning.',
-					effects: {}
+					description: 'Return to industry planning.'
 				}
 			]
 		};
 		const requiresTile: DecisionItem = {
+			kind: 'system',
 			id: 'industrial-construction-delayed-requires-tile-1',
 			title: 'Industrial construction delayed',
 			context: decisionContextIndustrialRequiresIndustrialTile(),
@@ -1569,8 +1590,7 @@ describe('game copy builders', () => {
 				{
 					id: 'acknowledge',
 					label: 'Ack',
-					description: 'Return to industry planning.',
-					effects: {}
+					description: 'Return to industry planning.'
 				}
 			]
 		};
@@ -1586,13 +1606,12 @@ describe('game copy builders', () => {
 		const en = createI18n('en');
 		const game = createNewGame('convenience', 1);
 		const cashDecision: DecisionItem = {
+			kind: 'system',
 			id: 'cash-pressure',
 			title: 'Cash pressure',
 			context: decisionContextCashPressure(),
 			expiresOnDay: 3,
-			options: [
-				{ id: 'short-loan', label: 'Short loan', description: '...', effects: { cash: 12000 } }
-			]
+			options: [{ id: 'short-loan', label: 'Short loan', description: '...' }]
 		};
 		const gameWithDecision = { ...game, decisions: [cashDecision] };
 		const decisionAlert: GameAlert = {
@@ -1967,11 +1986,12 @@ describe('game copy builders', () => {
 		expect.assertions(1);
 		const en = createI18n('en');
 		const worldDecision: DecisionItem = {
+			kind: 'system',
 			id: 'world-city-unknown-ctx-1',
 			title: 'Custom World Title',
 			context: { code: 'expansionUnavailable', storeCap: 5 },
 			expiresOnDay: 2,
-			options: [{ id: 'acknowledge', label: 'Ack', description: '...', effects: {} }]
+			options: [{ id: 'acknowledge', label: 'Ack', description: '...' }]
 		};
 
 		// The id starts with 'world-city-' so classifyDecision returns
@@ -1990,6 +2010,7 @@ describe('game copy builders', () => {
 		expect.assertions(2);
 		const en = createI18n('en');
 		const decision: DecisionItem = {
+			kind: 'system',
 			id: 'world-city-custom-1',
 			title: 'Custom World Title',
 			context: { code: 'expansionUnavailable', storeCap: 5 },
@@ -1998,8 +2019,7 @@ describe('game copy builders', () => {
 				{
 					id: 'acknowledge',
 					label: 'Custom Ack',
-					description: 'Custom ack description',
-					effects: {}
+					description: 'Custom ack description'
 				}
 			]
 		};

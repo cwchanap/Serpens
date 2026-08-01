@@ -22,7 +22,7 @@ export type GameAlertKind =
 export interface GameAlert {
 	id: string;
 	kind: GameAlertKind;
-	message: string;
+	message?: string;
 	cityId?: string;
 	storeId?: string;
 	buildingId?: string;
@@ -145,7 +145,7 @@ export function collectGameAlerts(game: GameState): GameAlert[] {
 		alerts.push({
 			id: `decision:${decision.id}`,
 			kind: 'decision',
-			message: `Decision: ${decision.title}`,
+			...(decision.kind === 'system' ? { message: `Decision: ${decision.title}` } : {}),
 			decisionId: decision.id
 		});
 	}

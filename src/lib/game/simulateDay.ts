@@ -241,19 +241,8 @@ export function simulateDay(
 		finance: resetFinanceDayActivity(serviced.finance, nextDay),
 		reports: [...game.reports, report]
 	};
-	const preservedDecisions = pruneExpiredDecisions(postDayGame);
-
-	return refreshWorldProgress({
-		...postDayGame,
-		decisions: [
-			...preservedDecisions,
-			...generateDecisions({
-				...postDayGame,
-				decisions: preservedDecisions,
-				stores: storeResults.map((result) => result.store)
-			})
-		]
-	});
+	const cleaned = pruneExpiredDecisions(postDayGame, closingDay);
+	return refreshWorldProgress(generateDecisions(cleaned));
 }
 
 function getNextLoanPaymentSnapshot(

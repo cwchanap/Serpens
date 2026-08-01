@@ -20,7 +20,12 @@ import {
 import { buildRail, demolishRailSegment, upgradeRailSegment } from '$lib/game/railPlacement';
 import { simulateDay } from '$lib/game/simulateDay';
 import { assignStaffToStore, hireCandidate, promoteStaff, unassignStaff } from '$lib/game/staffing';
-import { resolveDecision, updatePolicy, upgradeStore } from '$lib/game/state';
+import {
+	resolveDecision,
+	updatePolicy,
+	upgradeStore,
+	type DecisionResolutionResult
+} from '$lib/game/state';
 import { updateStoreProduct } from '$lib/game/stock';
 import type {
 	ArchetypeId,
@@ -181,20 +186,49 @@ export interface GameRouteControllerOptions {
 
 type RouteTransitionResult<TReceipt = undefined> =
 	| { ok: true; game: GameState; receipt: TReceipt }
-	| { ok: false; code: FinanceFailureCode; context: Record<string, string | number> };
+	| { ok: false; code: FinanceFailureCode; context: Record<string, string | number> }
+	| {
+			ok: false;
+			decisionFailure: Extract<DecisionResolutionResult, { ok: false }>;
+	  };
 
 interface RouteGameMutation {
-	transition(currentGame: GameState | null): GameState | RouteTransitionResult<unknown>;
+	transition(
+		currentGame: GameState | null
+	): GameState | RouteTransitionResult<unknown> | DecisionResolutionResult;
 	scenarioCommand?: ScenarioCommand;
 	cueId?: SfxCueId;
 	allowMissingSandboxGame?: boolean;
 }
 
 function normalizeRouteTransition(
-	result: GameState | RouteTransitionResult<unknown>
+	result: GameState | RouteTransitionResult<unknown> | DecisionResolutionResult
 ): RouteTransitionResult<unknown> {
-	if ('ok' in result) return result;
+	if ('ok' in result) {
+		if (result.ok && 'decisionKind' in result) {
+			return { ok: true, game: result.game, receipt: undefined };
+		}
+		if (!result.ok && 'game' in result && isDecisionFailureCode(result.code)) {
+			return {
+				ok: false,
+				decisionFailure: result as Extract<DecisionResolutionResult, { ok: false }>
+			};
+		}
+		return result as RouteTransitionResult<unknown>;
+	}
 	return { ok: true, game: result, receipt: undefined };
+}
+
+function isDecisionFailureCode(
+	code: string
+): code is Extract<DecisionResolutionResult, { ok: false }>['code'] {
+	return (
+		code === 'decision-not-found' ||
+		code === 'option-not-found' ||
+		code === 'decision-expired' ||
+		code === 'finance-unavailable' ||
+		code === 'effect-rejected'
+	);
 }
 
 interface FoundStoreInput {
@@ -1355,6 +1389,16 @@ export class GameRouteController {
 				request.transition(this.currentState.sandboxGame)
 			);
 			if (!transition.ok) {
+				if ('decisionFailure' in transition) {
+					return {
+						status: 'decision-rejected',
+						code: transition.decisionFailure.code,
+						context: transition.decisionFailure.context,
+						...(transition.decisionFailure.financeFailure === undefined
+							? {}
+							: { financeFailure: transition.decisionFailure.financeFailure })
+					};
+				}
 				return {
 					status: 'domain-rejected',
 					code: transition.code,
@@ -1392,6 +1436,9 @@ export class GameRouteController {
 		// at the post-callback read site.
 		const domainRejection: {
 			value: { code: FinanceFailureCode; context: Record<string, string | number> } | null;
+		} = { value: null };
+		const decisionRejection: {
+			value: Extract<DecisionResolutionResult, { ok: false }> | null;
 		} = { value: null };
 		let attemptedRun: ScenarioRun | null = null;
 		let preparedRun: ScenarioRun | null = null;
@@ -1434,6 +1481,17 @@ export class GameRouteController {
 						const execution = executeScenarioCommand(run, definition, scenarioCommand);
 						if (!execution.ok) {
 							if (execution.financeFailure) domainRejection.value = execution.financeFailure;
+							if (execution.decisionFailure) {
+								decisionRejection.value = {
+									ok: false,
+									game: run.game,
+									code: execution.decisionFailure.code,
+									context: execution.decisionFailure.context,
+									...(execution.decisionFailure.financeFailure === undefined
+										? {}
+										: { financeFailure: execution.decisionFailure.financeFailure })
+								};
+							}
 							rejectedCode = execution.code;
 							return { status: 'rejected' as const };
 						}
@@ -1622,6 +1680,16 @@ export class GameRouteController {
 					status: 'domain-rejected',
 					code: domainRejection.value.code,
 					context: domainRejection.value.context
+				};
+			}
+			if (result.status === 'rejected' && decisionRejection.value) {
+				return {
+					status: 'decision-rejected',
+					code: decisionRejection.value.code,
+					context: decisionRejection.value.context,
+					...(decisionRejection.value.financeFailure === undefined
+						? {}
+						: { financeFailure: decisionRejection.value.financeFailure })
 				};
 			}
 			if (result.status === 'rejected' && rejectedCode) {

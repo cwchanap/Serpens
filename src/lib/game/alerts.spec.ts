@@ -3,6 +3,7 @@ import { collectGameAlerts } from './alerts';
 import { createEmptyFinanceState } from './finance';
 import * as finance from './finance';
 import * as financeMetrics from './financeMetrics';
+import { createInitialEventRuntime } from './eventSelection';
 import { decisionContextLocationGeneric } from './decisionContext';
 import type {
 	GameState,
@@ -117,6 +118,7 @@ function baseGame(overrides: Partial<GameState> = {}): GameState {
 		stores: [],
 		staff: [],
 		hiringCandidates: [],
+		events: createInitialEventRuntime(1),
 		decisions: [],
 		reports: [],
 		...overrides
@@ -175,6 +177,7 @@ describe('collectGameAlerts', () => {
 	it('flags pending decisions', () => {
 		expect.assertions(2);
 		const decision: DecisionItem = {
+			kind: 'system',
 			id: 'dec-1',
 			title: 'Lease renewal',
 			context: decisionContextLocationGeneric(),
@@ -241,6 +244,7 @@ describe('collectGameAlerts', () => {
 				stores: [store({ products: [product({ stock: 0 })] })],
 				decisions: [
 					{
+						kind: 'system',
 						id: 'decision-1',
 						title: 'Lease renewal',
 						context: decisionContextLocationGeneric(),

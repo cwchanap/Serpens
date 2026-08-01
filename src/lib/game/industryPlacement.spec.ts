@@ -23,7 +23,18 @@ import {
 import { getBuildingUpgradeCost, MAX_BUILDING_LEVEL } from './leveling';
 import { getWarehouseCapacity, recalculateWarehousePressure } from './industryProduction';
 import { createNewGame } from './state';
-import type { IndustrialBuildingTypeId, IndustryCity, IndustryTile } from './types';
+import type {
+	DecisionItem,
+	IndustrialBuildingTypeId,
+	IndustryCity,
+	IndustryTile,
+	SystemDecisionItem
+} from './types';
+
+function systemDecision(decision: DecisionItem | undefined): SystemDecisionItem {
+	if (decision?.kind !== 'system') throw new Error('Expected a system decision');
+	return decision;
+}
 
 describe('industrial placement', () => {
 	test('finances a valid building by borrowing only the exact shortfall', () => {
@@ -189,8 +200,8 @@ describe('industrial placement', () => {
 		});
 
 		expect(blocked.industrialBuildings).toHaveLength(0);
-		expect(blocked.decisions.at(-1)?.title).toBe('Industrial construction delayed');
-		expect(blocked.decisions.at(-1)?.context).toEqual(
+		expect(systemDecision(blocked.decisions.at(-1)).title).toBe('Industrial construction delayed');
+		expect(systemDecision(blocked.decisions.at(-1)).context).toEqual(
 			decisionContextIndustrialRequiresCash('grain-farm', 600)
 		);
 	});
@@ -209,7 +220,9 @@ describe('industrial placement', () => {
 			decisionContextIndustrialLockedTile()
 		);
 		expect(blocked.industrialBuildings).toHaveLength(0);
-		expect(blocked.decisions.at(-1)?.context).toEqual(decisionContextIndustrialLockedTile());
+		expect(systemDecision(blocked.decisions.at(-1)).context).toEqual(
+			decisionContextIndustrialLockedTile()
+		);
 	});
 
 	test('keeps different same-day construction failures as separate decisions', () => {
@@ -230,7 +243,7 @@ describe('industrial placement', () => {
 		expect(resourceBlocked.industrialBuildings).toHaveLength(0);
 		expect(resourceBlocked.decisions).toHaveLength(2);
 		expect(new Set(resourceBlocked.decisions.map((decision) => decision.id)).size).toBe(2);
-		expect(resourceBlocked.decisions.map((decision) => decision.context)).toEqual([
+		expect(resourceBlocked.decisions.map((decision) => systemDecision(decision).context)).toEqual([
 			decisionContextIndustrialRequiresCash('grain-farm', 600),
 			decisionContextIndustrialRequiresResource('grain-field')
 		]);
@@ -254,8 +267,10 @@ describe('industrial placement', () => {
 			decisionContextIndustrialOccupiedTile()
 		);
 		expect(blocked.industrialBuildings).toHaveLength(1);
-		expect(blocked.decisions.at(-1)?.title).toBe('Industrial construction delayed');
-		expect(blocked.decisions.at(-1)?.context).toEqual(decisionContextIndustrialOccupiedTile());
+		expect(systemDecision(blocked.decisions.at(-1)).title).toBe('Industrial construction delayed');
+		expect(systemDecision(blocked.decisions.at(-1)).context).toEqual(
+			decisionContextIndustrialOccupiedTile()
+		);
 	});
 
 	test('blocks placement when a 2x2 footprint overlaps an existing industrial building', () => {
@@ -473,7 +488,9 @@ describe('industrial placement', () => {
 		});
 
 		expect(result.industrialBuildings).toHaveLength(0);
-		expect(result.decisions.at(-1)?.context).toEqual(decisionContextIndustrialUnknownTile());
+		expect(systemDecision(result.decisions.at(-1)).context).toEqual(
+			decisionContextIndustrialUnknownTile()
+		);
 	});
 
 	test('upgradeBuilding leaves sibling buildings unchanged when upgrading one of multiple buildings', () => {

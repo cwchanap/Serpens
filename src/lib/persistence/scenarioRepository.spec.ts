@@ -1020,7 +1020,9 @@ describe('scenario repository', { timeout: 30_000 }, () => {
 			for (let i = 1; i <= 3; i++) {
 				const loaded = await repository.loadActiveRunWithRevision('first-profit');
 				expect(loaded!.revision).toBe(i);
-				const nextGame = simulateDay(loaded!.run.game);
+				// This repository-CAS test is intentionally decision-agnostic. Event
+				// persistence validation is covered by the event save-codec task.
+				const nextGame = { ...simulateDay(loaded!.run.game), decisions: [] };
 				const next: ScenarioRun = {
 					...run,
 					game: nextGame,

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import type { GameState, Store } from '$lib/game/types';
 import { createEmptyFinanceState } from '$lib/game/finance';
+import { createInitialEventRuntime } from '$lib/game/eventSelection';
 import { createI18n } from '$lib/i18n';
 import StoreDetailModal from './StoreDetailModal.svelte';
 
@@ -51,6 +52,7 @@ function game(): GameState {
 		stores: [store()],
 		staff: [],
 		hiringCandidates: [],
+		events: createInitialEventRuntime(1),
 		decisions: [],
 		reports: []
 	};
