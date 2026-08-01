@@ -16,7 +16,6 @@ export interface LocalizedDecision {
 	id: string;
 	title: string;
 	context: string;
-	expiresOnDay: number;
 	options: LocalizedDecisionOption[];
 }
 

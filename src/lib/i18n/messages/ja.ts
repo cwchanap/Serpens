@@ -867,6 +867,70 @@ export const ja = {
 		loanTerms: { 28: '28日', 56: '56日', 84: '84日' }
 	},
 	copy: {
+		events: {
+			cashPressure: {
+				title: '資金繰り圧力',
+				context: '現金がマイナスです。ブランドを守りながら営業を続ける方法を選びます。',
+				options: {
+					'short-loan': {
+						label: '短期融資',
+						description: '緊急の運転資金を入れ、利益への圧力を受け入れます。'
+					},
+					'cut-costs': {
+						label: 'コスト削減',
+						description: '裁量支出と在庫の厚みを削って現金を安定させます。'
+					},
+					'hold-course': {
+						label: '現状維持',
+						description: '反応的な変更を避け、翌日の売上回復に賭けます。'
+					}
+				}
+			},
+			expansionOpportunity: {
+				title: '出店機会',
+				context: '利益と現金余力が十分にあり、2号店の可能性が見えてきました。',
+				options: {
+					prepare: { label: '準備する', description: '候補地の調査と開店計画の段取りを始めます。' },
+					pass: { label: '見送る', description: '資金を既存店の運営に集中させます。' }
+				}
+			},
+			supplierTerms: {
+				title: '仕入条件',
+				context: '次の補充サイクル前に、仕入先が取引条件の見直しに応じる構えです。',
+				options: {
+					'negotiate-credit': {
+						label: '与信交渉',
+						description: '支払時期を延ばす代わりに、利益率の小さな悪化を受け入れます。'
+					},
+					'bulk-discount': {
+						label: 'まとめ発注',
+						description: '3日間、小売輸入費を10%割り引くために発注量を増やします。'
+					}
+				},
+				bulkDiscount: { modifier: '全社の小売輸入費を3日間10%割り引きます。' }
+			}
+		},
+		modifiers: {
+			companyTarget: '全社の小売輸入',
+			importCostDiscount: '小売輸入費 {percent}% 割引',
+			durationDays: '{days}日間有効',
+			startsOnDay: '{day}日目に開始',
+			expiresAfterDay: '{day}日目終了後に失効',
+			replaced: '以前の有効な修正効果を置き換えます。',
+			expired: '修正効果が失効しました。',
+			reportApplied: '{summary}を{count}件の輸入に適用しました。',
+			reportExpired: '{summary}は{day}日目終了後に失効しました。',
+			important: '重要'
+		},
+		decisionFailures: {
+			decisionNotFound: 'この判断は利用できなくなりました。',
+			optionNotFound: 'この選択肢は利用できなくなりました。',
+			decisionExpired: 'この判断の期限は切れています。',
+			financeDelinquent: '債務の延滞中は借入できません。',
+			financeDebtService: '現在の返済能力ではこの借入をカバーできません。',
+			financeCapacity: '現在の与信枠ではこの借入をカバーできません。',
+			effectRejected: 'この判断は適用できなくなりました。'
+		},
 		stockStatus: {
 			healthy: '健全',
 			needsImport: '輸入が必要',

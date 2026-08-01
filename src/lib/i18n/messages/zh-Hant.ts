@@ -865,6 +865,61 @@ export const zhHant = {
 		loanTerms: { 28: '28 天', 56: '56 天', 84: '84 天' }
 	},
 	copy: {
+		events: {
+			cashPressure: {
+				title: '現金壓力',
+				context: '現金低於零。請選擇如何維持營運，同時保護品牌。',
+				options: {
+					'short-loan': { label: '短期貸款', description: '取得緊急營運資金，並承受獲利壓力。' },
+					'cut-costs': { label: '削減成本', description: '縮減裁量支出與庫存深度，先穩定現金。' },
+					'hold-course': { label: '維持原計畫', description: '避免過度反應，等待明天的銷售回升。' }
+				}
+			},
+			expansionOpportunity: {
+				title: '擴店機會',
+				context: '目前利潤與現金水位穩健，開設第二間店已經具備可能性。',
+				options: {
+					prepare: { label: '開始準備', description: '著手勘查地點並安排展店計畫。' },
+					pass: { label: '先跳過', description: '把資金集中在目前店面的營運上。' }
+				}
+			},
+			supplierTerms: {
+				title: '供應條件',
+				context: '供應商願意在下一次補貨前重新協商訂購條件。',
+				options: {
+					'negotiate-credit': {
+						label: '談授信',
+						description: '延後付款時點，但要接受些微毛利壓力。'
+					},
+					'bulk-discount': {
+						label: '大量折扣',
+						description: '承諾更大的訂單量，換取三天的零售進口成本九折優惠。'
+					}
+				},
+				bulkDiscount: { modifier: '全公司的零售進口成本享三天九折優惠。' }
+			}
+		},
+		modifiers: {
+			companyTarget: '全公司的零售進口',
+			importCostDiscount: '零售進口成本 {percent}% 折扣',
+			durationDays: '持續 {days} 天',
+			startsOnDay: '第 {day} 天開始',
+			expiresAfterDay: '第 {day} 天結束後到期',
+			replaced: '取代先前生效的修正效果。',
+			expired: '修正效果已到期。',
+			reportApplied: '{summary}已套用至 {count} 筆進口。',
+			reportExpired: '{summary}於第 {day} 天結束後到期。',
+			important: '重要'
+		},
+		decisionFailures: {
+			decisionNotFound: '這項決策已無法使用。',
+			optionNotFound: '這個選項已無法使用。',
+			decisionExpired: '這項決策已過期。',
+			financeDelinquent: '有逾期債務時無法借款。',
+			financeDebtService: '目前的償債能力不足以支付這筆貸款。',
+			financeCapacity: '目前的信用額度不足以支付這筆貸款。',
+			effectRejected: '這項決策已無法套用。'
+		},
 		stockStatus: {
 			healthy: '健康',
 			needsImport: '需要進口',
