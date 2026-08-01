@@ -262,20 +262,32 @@ function validateOption(
 				break;
 			case 'finance-borrow':
 				financeEffects += 1;
-				if (
-					typeof effect.amount === 'number' &&
-					(!Number.isFinite(effect.amount) || effect.amount <= 0)
-				) {
-					add(`${effectPath}.amount`, 'must be a finite positive amount');
-				}
-				if (effect.amount !== 'available-credit-clamped' && typeof effect.amount !== 'number') {
-					add(`${effectPath}.amount`, 'must be numeric or available-credit-clamped');
+				if (typeof effect.amount === 'number') {
+					if (!Number.isSafeInteger(effect.amount) || effect.amount <= 0) {
+						add(`${effectPath}.amount`, 'must be a positive safe integer');
+					}
+				} else if (effect.amount !== 'available-credit-clamped') {
+					add(
+						`${effectPath}.amount`,
+						'must be a positive safe integer or available-credit-clamped'
+					);
 				}
 				if (effect.purpose !== 'emergency' && effect.purpose !== 'supplierCredit') {
 					add(`${effectPath}.purpose`, 'must be an allowed borrowing purpose');
 				}
 				if (effect.termDays !== 28 && effect.termDays !== 56) {
 					add(`${effectPath}.termDays`, 'must be 28 or 56');
+				}
+				if (
+					(effect.purpose === 'emergency' || effect.purpose === 'supplierCredit') &&
+					(effect.termDays === 28 || effect.termDays === 56) &&
+					((effect.purpose === 'emergency' && effect.termDays !== 56) ||
+						(effect.purpose === 'supplierCredit' && effect.termDays !== 28))
+				) {
+					add(
+						`${effectPath}.termDays`,
+						'must pair emergency with 56 days or supplierCredit with 28 days'
+					);
 				}
 				break;
 		}
