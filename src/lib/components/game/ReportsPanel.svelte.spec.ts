@@ -276,6 +276,56 @@ describe('ReportsPanel', () => {
 		await expect.element(lifecycle.getByText('Modifier expired.')).not.toBeInTheDocument();
 	});
 
+	it('shows activated lifecycle status without a replaced-by line', async () => {
+		expect.assertions(3);
+		render(ReportsPanel, {
+			i18n: createI18n('en'),
+			stores: [],
+			summary: {
+				...summary,
+				latest: {
+					...summary.latest!,
+					modifierLifecycle: [
+						{
+							status: 'activated',
+							modifier: modifierSnapshot()
+						}
+					]
+				}
+			}
+		});
+
+		const lifecycle = page.getByRole('region', { name: 'Latest-day modifier lifecycle' });
+		await expect.element(lifecycle.getByText('Status: Activated')).toBeVisible();
+		await expect.element(lifecycle.getByText('Expires after day 7')).toBeVisible();
+		await expect.element(lifecycle.getByText('Replaced by')).not.toBeInTheDocument();
+	});
+
+	it('shows expired lifecycle status without a replaced-by line', async () => {
+		expect.assertions(3);
+		render(ReportsPanel, {
+			i18n: createI18n('en'),
+			stores: [],
+			summary: {
+				...summary,
+				latest: {
+					...summary.latest!,
+					modifierLifecycle: [
+						{
+							status: 'expired',
+							modifier: modifierSnapshot()
+						}
+					]
+				}
+			}
+		});
+
+		const lifecycle = page.getByRole('region', { name: 'Latest-day modifier lifecycle' });
+		await expect.element(lifecycle.getByText('Status: Expired')).toBeVisible();
+		await expect.element(lifecycle.getByText('Expires after day 7')).toBeVisible();
+		await expect.element(lifecycle.getByText('Replaced by')).not.toBeInTheDocument();
+	});
+
 	it('shows production import and warehouse overflow metrics with daily imports', async () => {
 		expect.assertions(6);
 

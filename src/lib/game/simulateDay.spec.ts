@@ -1400,4 +1400,119 @@ describe('daily simulation', () => {
 		expect(productionReport.shopImports).toEqual([]);
 		expect(result.reports[0]!.storeReports[0]!.productReports[0]!.importedUnits).toBeGreaterThan(0);
 	});
+
+	test('reports replaced modifier lifecycle with replacedByModifierId on the closing day', () => {
+		const closingDay = 5;
+		const base = createNewGame('convenience', 280_300);
+		const firstDecision = supplierBulkDiscountDecision(closingDay);
+		const prepared: GameState = {
+			...base,
+			day: closingDay,
+			stores: base.stores.map((store) => ({
+				...store,
+				products: store.products.map((product) => ({
+					...product,
+					stock: 0,
+					reorderThreshold: 1,
+					targetStock: 10
+				}))
+			})),
+			decisions: [firstDecision]
+		};
+		const afterFirst = resolveDecision(prepared, firstDecision.id, 'bulk-discount');
+		expect(afterFirst.ok).toBe(true);
+		if (!afterFirst.ok) throw new Error('expected first decision to resolve');
+
+		const secondDecision: EventDecisionItem = {
+			kind: 'event',
+			id: 'event-instance-901',
+			eventId: 'supplier-terms',
+			definitionVersion: 2,
+			generatedOnDay: closingDay,
+			expiresOnDay: closingDay + 2,
+			target: { kind: 'company' },
+			copy: { key: 'events.supplierTerms', params: {} },
+			options: [
+				{
+					id: 'bulk-discount',
+					effects: [],
+					modifiers: [
+						{
+							durationDays: 3,
+							stackingKey: 'supplier-bulk-discount:retail-product',
+							stackingRule: 'replace',
+							effect: {
+								kind: 'import-cost-multiplier',
+								scope: 'retail-product',
+								target: { kind: 'all' },
+								multiplier: 0.8
+							},
+							explanation: {
+								key: 'events.supplierTerms.bulkDiscount.modifier',
+								params: {}
+							},
+							importance: 'important'
+						}
+					]
+				}
+			]
+		};
+		const afterSecond = resolveDecision(
+			{ ...afterFirst.game, decisions: [secondDecision] },
+			secondDecision.id,
+			'bulk-discount'
+		);
+		expect(afterSecond.ok).toBe(true);
+		if (!afterSecond.ok) throw new Error('expected second decision to resolve');
+
+		const result = simulateDay(afterSecond.game);
+		const report = result.reports.at(-1)!;
+
+		expect(report.modifierLifecycle).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					status: 'replaced',
+					replacedByModifierId: expect.any(String)
+				})
+			])
+		);
+	});
+
+	test('skips import contributions from event-modifier sources not in active modifiers', () => {
+		const closingDay = 7;
+		const base = createNewGame('convenience', 280_301);
+		const store = {
+			...base.stores[0]!,
+			products: [
+				{
+					categoryId: 'snacks',
+					stock: 0,
+					reorderThreshold: 1,
+					targetStock: 10,
+					sellingPrice: 5
+				}
+			]
+		};
+		const rules: SimulationRules = {
+			importCostMultipliers: [
+				{
+					source: {
+						kind: 'event-modifier',
+						sourceId: 'non-existent-modifier',
+						modifierId: 'non-existent-modifier',
+						eventId: 'event-x',
+						instanceId: 'instance-x',
+						explanation: { key: 'events.x', params: {} }
+					},
+					scope: 'retail-product',
+					target: { kind: 'all' },
+					multiplier: 0.5
+				}
+			]
+		};
+		const result = simulateDay({ ...base, day: closingDay, stores: [store] }, rules);
+		const report = result.reports.at(-1)!;
+
+		expect(report.modifierImpacts).toEqual([]);
+	});
 });
