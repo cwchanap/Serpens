@@ -55,6 +55,7 @@ import { messagesByLocale } from './messages';
 import {
 	formatPlacementBlockReason,
 	localizeAlert,
+	localizeGameAlert,
 	localizeDecision,
 	localizeDecisionFailure,
 	localizeProductChainCategorySummary,
@@ -247,6 +248,114 @@ describe('game copy builders', () => {
 				createI18n('en')
 			)
 		).toBe('Keep original message');
+	});
+
+	it('returns typed localized alerts and narrows event copy away from system titles', () => {
+		const eventDecision = {
+			kind: 'event' as const,
+			id: 'event-instance-7',
+			eventId: 'supplier-terms',
+			definitionVersion: 2,
+			generatedOnDay: 5,
+			expiresOnDay: 7,
+			target: { kind: 'company' as const },
+			copy: { key: 'events.supplierTerms', params: {} },
+			options: []
+		};
+		Object.defineProperty(eventDecision, 'title', {
+			get() {
+				throw new Error('event alert localization must not read decision.title');
+			}
+		});
+		const systemDecision: DecisionItem = {
+			kind: 'system',
+			id: 'system-notice-1',
+			title: 'Lease renewal',
+			context: decisionContextLocationGeneric(),
+			expiresOnDay: 8,
+			options: []
+		};
+		const game = {
+			...createNewGame('convenience', 20260708),
+			decisions: [eventDecision, systemDecision]
+		};
+
+		expect(
+			localizeGameAlert(
+				{
+					...game,
+					decisions: game.decisions as DecisionItem[]
+				},
+				{
+					id: 'decision:event-instance-7',
+					kind: 'decision',
+					decisionId: 'event-instance-7'
+				},
+				createI18n('en')
+			)
+		).toEqual({
+			id: 'decision:event-instance-7',
+			kind: 'decision',
+			decisionId: 'event-instance-7',
+			message: 'Decision: Supplier terms'
+		});
+		expect(
+			localizeGameAlert(
+				{
+					...game,
+					decisions: game.decisions as DecisionItem[]
+				},
+				{
+					id: 'decision:system-notice-1',
+					kind: 'decision',
+					decisionId: 'system-notice-1'
+				},
+				createI18n('en')
+			).message
+		).toBe('Decision: Lease renewal');
+	});
+
+	it('localizes important modifier alerts from their typed source reference', () => {
+		const game = createNewGame('convenience', 20260708);
+		const modifier = {
+			id: 'event-modifier-4',
+			source: {
+				eventId: 'supplier-terms',
+				instanceId: 'event-instance-7',
+				optionId: 'bulk-discount'
+			},
+			target: { kind: 'company' as const },
+			startsOnDay: 5,
+			expiresOnDay: 8,
+			stackingKey: 'supplier-bulk-discount:retail-product',
+			stackingRule: 'replace' as const,
+			effect: {
+				kind: 'import-cost-multiplier' as const,
+				scope: 'retail-product' as const,
+				target: { kind: 'all' as const },
+				multiplier: 0.9
+			},
+			explanation: { key: 'events.supplierTerms.bulkDiscount.modifier', params: {} },
+			importance: 'important' as const
+		};
+		const localized = localizeGameAlert(
+			{ ...game, events: { ...game.events, activeModifiers: [modifier] } },
+			{
+				id: 'event-modifier:event-modifier-4',
+				kind: 'event-modifier',
+				modifierId: 'event-modifier-4',
+				managementPanelId: 'decisions'
+			},
+			createI18n('en')
+		);
+
+		expect(localized).toEqual({
+			id: 'event-modifier:event-modifier-4',
+			kind: 'event-modifier',
+			modifierId: 'event-modifier-4',
+			managementPanelId: 'decisions',
+			message: 'Active modifier: Supplier terms'
+		});
 	});
 
 	it('localizes finance alerts from current loan and metric state, with the retained message fallback', () => {

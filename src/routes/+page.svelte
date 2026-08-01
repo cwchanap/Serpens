@@ -2,6 +2,7 @@
 	import { onMount, tick } from 'svelte';
 	import { focusTrap } from '$lib/a11y/focusTrap';
 	import BuildMenu from '$lib/components/game/BuildMenu.svelte';
+	import ActiveModifiers from '$lib/components/game/ActiveModifiers.svelte';
 	import DecisionQueue from '$lib/components/game/DecisionQueue.svelte';
 	import FinancePanel from '$lib/components/game/FinancePanel.svelte';
 	import AudioSettings from '$lib/components/game/AudioSettings.svelte';
@@ -32,6 +33,9 @@
 	import { DEFAULT_AUDIO_PREFERENCES, type AudioPreferences } from '$lib/audio/audioPreferences';
 	import type { BgmCueId, SfxCueId } from '$lib/audio/audioCatalog';
 	import { collectGameAlerts, type GameAlert } from '$lib/game/alerts';
+	import { localizeGameAlert } from '$lib/i18n/gameCopy';
+	import type { LocalizedGameAlert } from '$lib/i18n/localizedTypes';
+	import { resolveAlertPanelNavigation } from './alertNavigation';
 	import { createInitialEventRuntime } from '$lib/game/eventSelection';
 	import {
 		MANAGEMENT_PANEL_SHORTCUT_KEY,
@@ -581,7 +585,12 @@
 			starterIndustryCity
 		);
 	});
-	let alerts = $derived<GameAlert[]>(game ? collectGameAlerts(game) : []);
+	let alerts = $derived.by((): LocalizedGameAlert[] => {
+		const currentGame: GameState | null = game;
+		return currentGame
+			? collectGameAlerts(currentGame).map((alert) => localizeGameAlert(currentGame, alert, i18n))
+			: [];
+	});
 	let mapEyebrow = $derived(
 		activeMapView === 'world'
 			? i18n.t('route.mapEyebrow.world')
@@ -2218,13 +2227,10 @@
 	}
 
 	async function handleSelectAlert(alert: GameAlert): Promise<void> {
-		if (alert.managementPanelId === 'finance') {
-			focusedFinanceLoanId = alert.loanId ?? null;
-			openManagementPanel('finance');
-			return;
-		}
-		if (alert.kind === 'decision') {
-			openManagementPanel('decisions');
+		const panelNavigation = resolveAlertPanelNavigation(alert);
+		if (panelNavigation) {
+			focusedFinanceLoanId = panelNavigation.focusedFinanceLoanId;
+			openManagementPanel(panelNavigation.panelId);
 			return;
 		}
 		if (alert.kind === 'store-stock' && alert.tileId) {
@@ -2467,7 +2473,6 @@
 			day={game?.day ?? null}
 			cash={game?.cash ?? null}
 			{alerts}
-			alertGame={game ?? starterMapState}
 			{i18n}
 			{activeLocale}
 			onSelectAlert={handleSelectAlert}
@@ -2780,14 +2785,21 @@
 							latestReports={summary.latest?.storeReports ?? []}
 						/>
 					{:else if activeManagementPanel.id === 'decisions'}
-						<DecisionQueue
-							{i18n}
-							game={panelGame}
-							decisions={panelGame.decisions}
-							onResolve={chooseDecision}
-							canResolve={mutationAvailability.resolveDecision}
-							disabledReason={mutationDisabledReason}
-						/>
+						<div class="decisions-surfaces">
+							<DecisionQueue
+								{i18n}
+								game={panelGame}
+								decisions={panelGame.decisions}
+								onResolve={chooseDecision}
+								canResolve={mutationAvailability.resolveDecision}
+								disabledReason={mutationDisabledReason}
+							/>
+							<ActiveModifiers
+								{i18n}
+								day={panelGame.day}
+								modifiers={panelGame.events.activeModifiers}
+							/>
+						</div>
 					{:else if activeManagementPanel.id === 'reports'}
 						<ReportsPanel {i18n} {summary} stores={panelGame.stores} />
 					{:else if activeManagementPanel.id === 'productChains'}
@@ -2988,6 +3000,13 @@
 		animation-delay: 160ms;
 	}
 
+	.decisions-surfaces {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		align-items: start;
+		gap: 1rem;
+	}
+
 	.tower-header {
 		display: flex;
 		align-items: center;
@@ -3081,6 +3100,10 @@
 		.control-tower-overlay {
 			max-height: calc(100vh - 1rem);
 			padding: 0.85rem;
+		}
+
+		.decisions-surfaces {
+			grid-template-columns: 1fr;
 		}
 
 		.tower-header {

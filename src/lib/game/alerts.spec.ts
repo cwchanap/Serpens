@@ -12,8 +12,34 @@ import type {
 	IndustrialBuildingTypeId,
 	DecisionItem,
 	StoreProduct,
-	LoanInstrument
+	LoanInstrument,
+	ActiveEventModifier
 } from './types';
+
+function modifier(overrides: Partial<ActiveEventModifier> = {}): ActiveEventModifier {
+	return {
+		id: 'event-modifier-1',
+		source: {
+			eventId: 'supplier-terms',
+			instanceId: 'event-instance-1',
+			optionId: 'bulk-discount'
+		},
+		target: { kind: 'company' },
+		startsOnDay: 5,
+		expiresOnDay: 8,
+		stackingKey: 'supplier-bulk-discount:retail-product',
+		stackingRule: 'replace',
+		effect: {
+			kind: 'import-cost-multiplier',
+			scope: 'retail-product',
+			target: { kind: 'all' },
+			multiplier: 0.9
+		},
+		explanation: { key: 'events.supplierTerms.bulkDiscount.modifier', params: {} },
+		importance: 'important',
+		...overrides
+	};
+}
 
 function loan(overrides: Partial<LoanInstrument> = {}): LoanInstrument {
 	return {
@@ -136,14 +162,15 @@ describe('collectGameAlerts', () => {
 	});
 
 	it('flags a store with out-of-stock products and deep-links to its tile', () => {
-		expect.assertions(4);
+		expect.assertions(5);
 		const alerts = collectGameAlerts(
 			baseGame({ stores: [store({ products: [product({ stock: 0 })] })] })
 		);
 		expect(alerts).toHaveLength(1);
 		expect(alerts[0].kind).toBe('store-stock');
 		expect(alerts[0].tileId).toBe('tile-1');
-		expect(alerts[0].message).toMatch(/out of stock/i);
+		expect(alerts[0].storeId).toBe('store-1');
+		expect(alerts[0].message).toBeUndefined();
 	});
 
 	it('flags a store that needs import (below reorder threshold)', () => {
@@ -152,10 +179,10 @@ describe('collectGameAlerts', () => {
 			baseGame({ stores: [store({ products: [product({ stock: 5, reorderThreshold: 10 })] })] })
 		);
 		expect(alerts).toHaveLength(1);
-		expect(alerts[0].message).toMatch(/1 product needs import/i);
+		expect(alerts[0]).toMatchObject({ kind: 'store-stock', storeId: 'store-1' });
 	});
 
-	it('counts out-of-stock and needs-import products separately in a mixed store', () => {
+	it('keeps stock alerts reference-only for localization at the presentation boundary', () => {
 		expect.assertions(2);
 		const alerts = collectGameAlerts(
 			baseGame({
@@ -170,8 +197,8 @@ describe('collectGameAlerts', () => {
 				]
 			})
 		);
-		expect(alerts[0].message).toBe('Corner Market: 1 product out of stock, 2 products need import');
-		expect(alerts[0].message).not.toMatch(/3 products out of stock/i);
+		expect(alerts[0]).toMatchObject({ id: 'store-stock:store-1', storeId: 'store-1' });
+		expect(alerts[0].message).toBeUndefined();
 	});
 
 	it('flags pending decisions', () => {
@@ -188,7 +215,66 @@ describe('collectGameAlerts', () => {
 		expect(alerts.some((alert) => alert.kind === 'decision' && alert.decisionId === 'dec-1')).toBe(
 			true
 		);
-		expect(alerts[0].message).toMatch(/lease renewal/i);
+		expect(alerts[0].message).toBeUndefined();
+	});
+
+	it('orders important modifiers by exclusive expiry then ID between decisions and factories', () => {
+		const decision: DecisionItem = {
+			kind: 'event',
+			id: 'event-instance-9',
+			eventId: 'supplier-terms',
+			definitionVersion: 2,
+			generatedOnDay: 5,
+			expiresOnDay: 7,
+			target: { kind: 'company' },
+			copy: { key: 'events.supplierTerms', params: {} },
+			options: []
+		};
+		const alerts = collectGameAlerts(
+			baseGame({
+				stores: [store({ products: [product({ stock: 0 })] })],
+				decisions: [decision],
+				events: {
+					...createInitialEventRuntime(1),
+					activeModifiers: [
+						modifier({ id: 'event-modifier-b', expiresOnDay: 9 }),
+						modifier({ id: 'event-modifier-z', expiresOnDay: 8 }),
+						modifier({ id: 'event-modifier-a', expiresOnDay: 9 }),
+						modifier({ id: 'event-modifier-normal', importance: 'normal', expiresOnDay: 6 })
+					]
+				},
+				industrialBuildings: [building({ status: 'blocked', blockedDays: 1 })]
+			})
+		);
+
+		expect(alerts.map((alert) => alert.id)).toEqual([
+			'store-stock:store-1',
+			'decision:event-instance-9',
+			'event-modifier:event-modifier-z',
+			'event-modifier:event-modifier-a',
+			'event-modifier:event-modifier-b',
+			'factory-blocked:bld-1'
+		]);
+		expect(alerts.slice(2, 5)).toEqual([
+			{
+				id: 'event-modifier:event-modifier-z',
+				kind: 'event-modifier',
+				modifierId: 'event-modifier-z',
+				managementPanelId: 'decisions'
+			},
+			{
+				id: 'event-modifier:event-modifier-a',
+				kind: 'event-modifier',
+				modifierId: 'event-modifier-a',
+				managementPanelId: 'decisions'
+			},
+			{
+				id: 'event-modifier:event-modifier-b',
+				kind: 'event-modifier',
+				modifierId: 'event-modifier-b',
+				managementPanelId: 'decisions'
+			}
+		]);
 	});
 
 	it('flags a blocked factory and deep-links to its tile', () => {
@@ -233,7 +319,7 @@ describe('collectGameAlerts', () => {
 			})
 		);
 		expect(alerts).toHaveLength(1);
-		expect(alerts[0].message).toBe('unknown-type starved of inputs');
+		expect(alerts[0]).toMatchObject({ buildingId: 'bld-unknown', kind: 'factory-blocked' });
 	});
 
 	it('adds finance alerts after stock, decisions, and factories with stable deep links', () => {

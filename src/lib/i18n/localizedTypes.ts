@@ -1,4 +1,5 @@
 import type { WorldCityStatus } from '$lib/game/world';
+import type { GameAlert } from '$lib/game/alerts';
 import type {
 	ProductChainNode,
 	ProductChainEdge,
@@ -10,6 +11,10 @@ export interface LocalizedDecisionOption {
 	id: string;
 	label: string;
 	description: string;
+}
+
+export interface LocalizedGameAlert extends GameAlert {
+	message: string;
 }
 
 export interface LocalizedDecision {

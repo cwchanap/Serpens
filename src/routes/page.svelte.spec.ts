@@ -36,6 +36,35 @@ import {
 	createMutationAvailability,
 	type GameRouteControllerOptions
 } from './gameRouteController';
+import { resolveAlertPanelNavigation } from './alertNavigation';
+
+describe('alert panel navigation', () => {
+	it('honors explicit Decisions and finance routes while retaining the decision fallback', () => {
+		expect(
+			resolveAlertPanelNavigation({
+				id: 'event-modifier:event-modifier-4',
+				kind: 'event-modifier',
+				modifierId: 'event-modifier-4',
+				managementPanelId: 'decisions'
+			})
+		).toEqual({ panelId: 'decisions', focusedFinanceLoanId: null });
+		expect(
+			resolveAlertPanelNavigation({
+				id: 'upcomingLoanPayment:loan-7',
+				kind: 'upcomingLoanPayment',
+				loanId: 'loan-7',
+				managementPanelId: 'finance'
+			})
+		).toEqual({ panelId: 'finance', focusedFinanceLoanId: 'loan-7' });
+		expect(
+			resolveAlertPanelNavigation({
+				id: 'decision:system-notice-1',
+				kind: 'decision',
+				decisionId: 'system-notice-1'
+			})
+		).toEqual({ panelId: 'decisions', focusedFinanceLoanId: null });
+	});
+});
 
 interface Deferred<T> {
 	promise: Promise<T>;

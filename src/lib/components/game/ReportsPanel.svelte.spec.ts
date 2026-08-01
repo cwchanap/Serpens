@@ -2,7 +2,7 @@ import { page } from 'vitest/browser';
 import { describe, expect, it } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import type { ReportSummary } from '$lib/game/reports';
-import type { DailyProductionReport, Store } from '$lib/game/types';
+import type { DailyProductionReport, EventModifierSnapshot, Store } from '$lib/game/types';
 import { createI18n } from '$lib/i18n';
 import ReportsPanel from './ReportsPanel.svelte';
 
@@ -139,7 +139,98 @@ const summary: ReportSummary = {
 	}
 };
 
+function modifierSnapshot(overrides: Partial<EventModifierSnapshot> = {}): EventModifierSnapshot {
+	return {
+		id: 'event-modifier-4',
+		source: {
+			eventId: 'supplier-terms',
+			instanceId: 'event-instance-7',
+			optionId: 'bulk-discount'
+		},
+		target: { kind: 'company' },
+		startsOnDay: 5,
+		expiresOnDay: 8,
+		stackingKey: 'supplier-bulk-discount:retail-product',
+		effect: {
+			kind: 'import-cost-multiplier',
+			scope: 'retail-product',
+			target: { kind: 'all' },
+			multiplier: 0.9
+		},
+		explanation: { key: 'events.supplierTerms.bulkDiscount.modifier', params: {} },
+		importance: 'important',
+		...overrides
+	};
+}
+
 describe('ReportsPanel', () => {
+	it('shows latest-day modifier impact provenance without adding rolling modifier totals', async () => {
+		expect.assertions(7);
+		render(ReportsPanel, {
+			i18n: createI18n('en'),
+			stores: [],
+			summary: {
+				...summary,
+				latest: {
+					...summary.latest!,
+					modifierImpacts: [
+						{
+							modifierId: 'event-modifier-4',
+							source: modifierSnapshot().source,
+							target: { kind: 'company' },
+							effectKind: 'import-cost-multiplier',
+							explanation: modifierSnapshot().explanation,
+							scope: 'retail-product',
+							affectedIds: ['store-b:drinks', 'store-a:snacks'],
+							multiplier: 0.9,
+							baselineCost: 2_500,
+							applicationCount: 2
+						}
+					]
+				}
+			}
+		});
+
+		const impacts = page.getByRole('region', { name: 'Latest-day modifier impacts' });
+		await expect.element(impacts.getByText('Source: Supplier terms')).toBeVisible();
+		await expect
+			.element(impacts.getByText('Affected IDs: store-b:drinks and store-a:snacks'))
+			.toBeVisible();
+		await expect.element(impacts.getByText('Multiplier: ×0.9')).toBeVisible();
+		await expect.element(impacts.getByText('Baseline cost: $2,500')).toBeVisible();
+		await expect.element(impacts.getByText('Applications: 2')).toBeVisible();
+		await expect.element(page.getByText('7-day modifier impacts')).not.toBeInTheDocument();
+		await expect.element(page.getByText('30-day modifier impacts')).not.toBeInTheDocument();
+	});
+
+	it('shows latest-day replacement and exclusive-expiry lifecycle evidence', async () => {
+		expect.assertions(5);
+		render(ReportsPanel, {
+			i18n: createI18n('en'),
+			stores: [],
+			summary: {
+				...summary,
+				latest: {
+					...summary.latest!,
+					modifierLifecycle: [
+						{
+							status: 'replaced',
+							modifier: modifierSnapshot(),
+							replacedByModifierId: 'event-modifier-5'
+						}
+					]
+				}
+			}
+		});
+
+		const lifecycle = page.getByRole('region', { name: 'Latest-day modifier lifecycle' });
+		await expect.element(lifecycle.getByText('Source: Supplier terms')).toBeVisible();
+		await expect.element(lifecycle.getByText('Status: Replaced')).toBeVisible();
+		await expect.element(lifecycle.getByText('Replaced by: event-modifier-5')).toBeVisible();
+		await expect.element(lifecycle.getByText('Expires after day 7')).toBeVisible();
+		await expect.element(lifecycle.getByText('Modifier expired.')).not.toBeInTheDocument();
+	});
+
 	it('shows production import and warehouse overflow metrics with daily imports', async () => {
 		expect.assertions(6);
 

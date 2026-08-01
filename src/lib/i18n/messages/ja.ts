@@ -235,11 +235,37 @@ export const ja = {
 		creditUnavailableService: '現在の債務返済余力では、この借入を賄えません。',
 		creditUnavailableCapacity: '現在の与信枠では、この借入を賄えません。'
 	},
+	activeModifiers: {
+		title: '有効な修正効果',
+		empty: '有効な修正効果はありません。',
+		remainingDays: {
+			one: '残り{days}日',
+			other: '残り{days}日'
+		}
+	},
 	policyPanel: {
 		title: 'ポリシー'
 	},
 	reportsPanel: {
 		title: 'レポート',
+		modifierImpacts: {
+			title: '直近日の修正効果',
+			source: '発生元: {source}',
+			affectedIds: '対象ID: {ids}',
+			multiplier: '乗数: ×{multiplier}',
+			baselineCost: '基準費用: {cost}',
+			applications: '適用回数: {count}'
+		},
+		modifierLifecycle: {
+			title: '直近日の修正効果ライフサイクル',
+			source: '発生元: {source}',
+			status: {
+				activated: '状態: 有効化',
+				replaced: '状態: 置換',
+				expired: '状態: 失効'
+			},
+			replacedBy: '置換後: {modifierId}'
+		},
 		metrics: {
 			latestDailyResult: '直近日次結果',
 			operatingIncome: '営業利益',
@@ -949,6 +975,7 @@ export const ja = {
 		alerts: {
 			storeStock: '{storeName}: {summary}',
 			decision: '決定事項: {title}',
+			eventModifier: '有効な修正効果: {title}',
 			factoryBlocked: '{buildingName} は原料不足です',
 			upcomingLoanPayment: '{purpose}の支払額 {amount} は{day}日目が期限です。',
 			missedLoanPayment: '{purpose}に未払い {amount} があります。',

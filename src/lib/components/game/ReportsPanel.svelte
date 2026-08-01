@@ -1,8 +1,12 @@
 <script lang="ts">
 	import type { I18nBundle } from '$lib/i18n';
 	import type { ReportSummary } from '$lib/game/reports';
-	import { localizeReportWarning } from '$lib/i18n/gameCopy';
-	import type { Store } from '$lib/game/types';
+	import {
+		localizeEventSourceTitle,
+		localizeReportWarning,
+		localizeStructuredCopy
+	} from '$lib/i18n/gameCopy';
+	import type { EventModifierLifecycle, Store } from '$lib/game/types';
 
 	let { i18n, summary, stores }: { i18n: I18nBundle; summary: ReportSummary; stores: Store[] } =
 		$props();
@@ -13,6 +17,17 @@
 			0
 		)
 	);
+
+	function localizeLifecycleStatus(status: EventModifierLifecycle['status']): string {
+		switch (status) {
+			case 'activated':
+				return i18n.t('reportsPanel.modifierLifecycle.status.activated');
+			case 'replaced':
+				return i18n.t('reportsPanel.modifierLifecycle.status.replaced');
+			case 'expired':
+				return i18n.t('reportsPanel.modifierLifecycle.status.expired');
+		}
+	}
 </script>
 
 <section class="panel paper" aria-labelledby="reports-heading">
@@ -98,6 +113,81 @@
 			</div>
 		</div>
 
+		{#if summary.latest.modifierImpacts.length > 0}
+			<section class="modifier-evidence" aria-labelledby="modifier-impacts-heading">
+				<h3 id="modifier-impacts-heading">{i18n.t('reportsPanel.modifierImpacts.title')}</h3>
+				<div class="evidence-list">
+					{#each summary.latest.modifierImpacts as impact (impact.modifierId)}
+						<article>
+							<p>{localizeStructuredCopy(impact.explanation, i18n)}</p>
+							<ul>
+								<li>
+									{i18n.t('reportsPanel.modifierImpacts.source', {
+										source: localizeEventSourceTitle(impact.source.eventId, i18n)
+									})}
+								</li>
+								<li>
+									{i18n.t('reportsPanel.modifierImpacts.affectedIds', {
+										ids: i18n.format.list(impact.affectedIds)
+									})}
+								</li>
+								<li>
+									{i18n.t('reportsPanel.modifierImpacts.multiplier', {
+										multiplier: i18n.format.decimal(impact.multiplier)
+									})}
+								</li>
+								<li>
+									{i18n.t('reportsPanel.modifierImpacts.baselineCost', {
+										cost: i18n.format.currency(impact.baselineCost)
+									})}
+								</li>
+								<li>
+									{i18n.t('reportsPanel.modifierImpacts.applications', {
+										count: i18n.format.integer(impact.applicationCount)
+									})}
+								</li>
+							</ul>
+						</article>
+					{/each}
+				</div>
+			</section>
+		{/if}
+
+		{#if summary.latest.modifierLifecycle.length > 0}
+			<section class="modifier-evidence" aria-labelledby="modifier-lifecycle-heading">
+				<h3 id="modifier-lifecycle-heading">
+					{i18n.t('reportsPanel.modifierLifecycle.title')}
+				</h3>
+				<div class="evidence-list">
+					{#each summary.latest.modifierLifecycle as lifecycle, index (`${lifecycle.status}-${lifecycle.modifier.id}-${index}`)}
+						<article>
+							<p>{localizeStructuredCopy(lifecycle.modifier.explanation, i18n)}</p>
+							<ul>
+								<li>
+									{i18n.t('reportsPanel.modifierLifecycle.source', {
+										source: localizeEventSourceTitle(lifecycle.modifier.source.eventId, i18n)
+									})}
+								</li>
+								<li>{localizeLifecycleStatus(lifecycle.status)}</li>
+								{#if lifecycle.replacedByModifierId}
+									<li>
+										{i18n.t('reportsPanel.modifierLifecycle.replacedBy', {
+											modifierId: lifecycle.replacedByModifierId
+										})}
+									</li>
+								{/if}
+								<li>
+									{i18n.t('copy.modifiers.expiresAfterDay', {
+										day: i18n.format.integer(lifecycle.modifier.expiresOnDay - 1)
+									})}
+								</li>
+							</ul>
+						</article>
+					{/each}
+				</div>
+			</section>
+		{/if}
+
 		{#if summary.latest.warnings.length}
 			<ul class="warnings" aria-label={i18n.t('reportsPanel.dailyWarnings')}>
 				{#each summary.latest.warnings as warning, i (`${warning.code}-${i}`)}
@@ -116,6 +206,7 @@
 	}
 
 	h2,
+	h3,
 	p {
 		margin: 0;
 	}
@@ -124,6 +215,14 @@
 		margin-bottom: 0.75rem;
 		font-family: var(--font-display);
 		font-size: 1.1rem;
+		font-weight: 400;
+		color: var(--ink-700);
+	}
+
+	h3 {
+		margin: 0;
+		font-family: var(--font-display);
+		font-size: 1rem;
 		font-weight: 400;
 		color: var(--ink-700);
 	}
@@ -173,6 +272,32 @@
 		color: var(--wax-red);
 		font-family: var(--font-body);
 		font-size: 0.92rem;
+	}
+
+	.modifier-evidence,
+	.evidence-list,
+	.evidence-list article {
+		display: grid;
+		gap: 0.65rem;
+	}
+
+	.modifier-evidence {
+		margin-top: 1rem;
+	}
+
+	.evidence-list article {
+		border: 1px solid var(--paper-edge);
+		border-radius: 2px;
+		background: var(--paper-50);
+		padding: 0.8rem;
+	}
+
+	.evidence-list ul {
+		margin: 0;
+		padding-left: 1rem;
+		color: var(--ink-500);
+		font-family: var(--font-body);
+		font-size: 0.85rem;
 	}
 
 	@media (max-width: 980px) {

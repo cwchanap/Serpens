@@ -1,53 +1,19 @@
 import { page } from 'vitest/browser';
 import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
-import type { GameAlert } from '$lib/game/alerts';
+import type { LocalizedGameAlert } from '$lib/i18n/localizedTypes';
 import { createI18n } from '$lib/i18n';
-import { generateCity } from '$lib/game/city';
-import { createInitialWorldProgress } from '$lib/game/world';
-import { createEmptyFinanceState } from '$lib/game/finance';
-import { createInitialEventRuntime } from '$lib/game/eventSelection';
-import type { GameState } from '$lib/game/types';
-import { DEFAULT_POLICY } from '$lib/game/state';
 import TopBar from './TopBar.svelte';
 
-const alerts: GameAlert[] = [
+const alerts: LocalizedGameAlert[] = [
 	{
-		id: 'store-stock:s1',
-		kind: 'store-stock',
-		message: 'Corner Market: 2 products out of stock',
-		tileId: 'tile-1'
+		id: 'event-modifier:event-modifier-1',
+		kind: 'event-modifier',
+		message: 'Corner Market modifier is active',
+		modifierId: 'event-modifier-1',
+		managementPanelId: 'decisions'
 	}
 ];
-
-const alertGame: GameState = {
-	seed: 1,
-	rngState: 0,
-	day: 1,
-	cash: 0,
-	finance: createEmptyFinanceState(1),
-	policy: { ...DEFAULT_POLICY },
-	scorecard: {
-		profit: 0,
-		customerSatisfaction: 0,
-		staffMorale: 0,
-		marketPosition: 0
-	},
-	world: createInitialWorldProgress(),
-	storeCap: 1,
-	cities: [generateCity({ id: 'harbor-city', name: 'Harbor City', width: 4, height: 4, seed: 1 })],
-	activeCityId: 'harbor-city',
-	industryCities: [],
-	activeIndustryCityId: 'industry-city',
-	industrialBuildings: [],
-	warehouse: { capacity: 0, materials: {}, overflowUnits: 0, overflowCost: 0 },
-	stores: [],
-	staff: [],
-	hiringCandidates: [],
-	events: createInitialEventRuntime(1),
-	decisions: [],
-	reports: []
-};
 
 describe('TopBar', () => {
 	it('renders the location, day and cash', async () => {
@@ -58,7 +24,6 @@ describe('TopBar', () => {
 			day: 42,
 			cash: 128400,
 			alerts: [],
-			alertGame,
 			i18n: createI18n('en'),
 			activeLocale: 'en' as const,
 			onSelectAlert: vi.fn(),
@@ -81,7 +46,6 @@ describe('TopBar', () => {
 			day: 1,
 			cash: 0,
 			alerts,
-			alertGame,
 			i18n: createI18n('en'),
 			activeLocale: 'en' as const,
 			onSelectAlert,
@@ -103,7 +67,6 @@ describe('TopBar', () => {
 			day: 1,
 			cash: 0,
 			alerts,
-			alertGame,
 			i18n: createI18n('en'),
 			activeLocale: 'en' as const,
 			onSelectAlert: vi.fn(),
@@ -126,7 +89,6 @@ describe('TopBar', () => {
 			day: 1,
 			cash: 0,
 			alerts: [],
-			alertGame,
 			i18n: createI18n('en'),
 			activeLocale: 'en' as const,
 			onSelectAlert: vi.fn(),
@@ -150,7 +112,6 @@ describe('TopBar', () => {
 			day: null,
 			cash: null,
 			alerts: [],
-			alertGame,
 			i18n: createI18n('en'),
 			activeLocale: 'en' as const,
 			onSelectAlert: vi.fn(),
@@ -170,7 +131,6 @@ describe('TopBar', () => {
 			day: 1,
 			cash: 0,
 			alerts: [],
-			alertGame,
 			i18n: createI18n('en'),
 			activeLocale: 'en' as const,
 			onSelectAlert: vi.fn(),
@@ -193,7 +153,6 @@ describe('TopBar', () => {
 				{ id: 'a1', kind: 'store-stock', message: 'First alert' },
 				{ id: 'a2', kind: 'decision', message: 'Second alert' }
 			],
-			alertGame,
 			i18n: createI18n('en'),
 			activeLocale: 'en' as const,
 			onSelectAlert: vi.fn(),
