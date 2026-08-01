@@ -1,11 +1,11 @@
 import { describe, expect, test, vi } from 'vitest';
 import { ARCHETYPES } from './archetypes';
-import { generateDecisions } from './events';
+import { generateDecisions, pruneExpiredDecisions } from './events';
 import { appendFinanceTransaction, getTotalDebt } from './finance';
 import { generateCity } from './city';
 import { buildIndustrialBuilding } from './industryPlacement';
 import { decisionContextLocationGeneric } from './decisionContext';
-import { createNewGame, updatePolicy } from './state';
+import { createNewGame, resolveDecision, updatePolicy } from './state';
 import { getStaffXpForLevel } from './staffLeveling';
 import { DEFAULT_SIMULATION_RULES, type SimulationRules } from './simulationRules';
 import { simulateDay } from './simulateDay';
@@ -567,6 +567,84 @@ describe('daily simulation', () => {
 				decisions: preservedDecisions
 			})
 		);
+	});
+
+	test('repeats resolved strategic families on the next visible day but never duplicates a pending family', () => {
+		expect.assertions(8);
+		const base = createNewGame('boutique', 33);
+		const families = [
+			{
+				id: 'cash-pressure',
+				game: { ...base, cash: -1, rngState: 1_400_000 },
+				optionId: 'hold-course'
+			},
+			{
+				id: 'expansion-opportunity',
+				game: {
+					...base,
+					day: 14,
+					cash: 55_000,
+					scorecard: { ...base.scorecard, profit: 62 },
+					storeCap: base.stores.length + 1,
+					rngState: 1_400_000
+				},
+				optionId: 'pass'
+			}
+		] as const;
+
+		for (const family of families) {
+			const decision = generateDecisions(family.game)[0]!;
+			const pendingNextDay = simulateDay({ ...family.game, decisions: [decision] });
+			const resolvedNextVisibleDay = generateDecisions({
+				...resolveDecision({ ...family.game, decisions: [decision] }, decision.id, family.optionId),
+				day: family.game.day + 1
+			});
+
+			expect(
+				pendingNextDay.decisions.filter((candidate) => candidate.id === family.id)
+			).toHaveLength(1);
+			expect(resolvedNextVisibleDay.filter((candidate) => candidate.id === family.id)).toHaveLength(
+				1
+			);
+		}
+
+		const supplierGame = {
+			...base,
+			day: 1,
+			cash: 10_000,
+			rngState: 1,
+			scorecard: { profit: 0, customerSatisfaction: 0, staffMorale: 0, marketPosition: 0 }
+		};
+		const supplier = generateDecisions(supplierGame)[0]!;
+		expect(generateDecisions({ ...supplierGame, decisions: [supplier] })).toEqual([]);
+		expect(
+			generateDecisions({
+				...resolveDecision(
+					{ ...supplierGame, decisions: [supplier] },
+					supplier.id,
+					'bulk-discount'
+				),
+				day: 2
+			})[0]?.id
+		).toBe('supplier-terms');
+
+		const expiredCashPressure = {
+			...generateDecisions({ ...base, cash: -1 })[0]!,
+			expiresOnDay: 1
+		};
+		const afterQueueCleanup = {
+			...base,
+			cash: -1,
+			day: 2,
+			decisions: pruneExpiredDecisions({
+				...base,
+				cash: -1,
+				day: 2,
+				decisions: [expiredCashPressure]
+			})
+		};
+		expect(afterQueueCleanup.decisions).toEqual([]);
+		expect(generateDecisions(afterQueueCleanup)[0]?.id).toBe('cash-pressure');
 	});
 
 	test('refreshes the hiring market each week with staffed role coverage', () => {
