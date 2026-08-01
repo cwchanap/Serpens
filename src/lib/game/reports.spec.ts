@@ -143,6 +143,8 @@ describe('reports', () => {
 		expect(summary.latest?.modifierImpacts).toBe(latest.modifierImpacts);
 		expect(summary.latest?.modifierLifecycle).toBe(latest.modifierLifecycle);
 		expect(summary.sevenDay).not.toHaveProperty('modifierImpacts');
+		expect(summary.sevenDay).not.toHaveProperty('modifierLifecycle');
+		expect(summary.thirtyDay).not.toHaveProperty('modifierImpacts');
 		expect(summary.thirtyDay).not.toHaveProperty('modifierLifecycle');
 	});
 

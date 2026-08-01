@@ -1,6 +1,10 @@
 import { getArchetype } from './archetypes';
 import { generateDecisions, pruneExpiredDecisions } from './events';
-import { expireModifiersAfterDay, isModifierActiveOnDay } from './eventModifiers';
+import {
+	expireModifiersAfterDay,
+	hasModifierExpiredAfterDay,
+	isModifierActiveOnDay
+} from './eventModifiers';
 import {
 	compareLoanById,
 	estimateNextLoanPayment,
@@ -223,8 +227,8 @@ export function simulateDay(
 		cash: cashAfter,
 		finance: serviced.finance
 	};
-	const expiry = postServiceGame.events.activeModifiers.some(
-		(modifier) => modifier.expiresOnDay <= closingDay + 1
+	const expiry = postServiceGame.events.activeModifiers.some((modifier) =>
+		hasModifierExpiredAfterDay(modifier, closingDay)
 	)
 		? expireModifiersAfterDay(postServiceGame.events, closingDay)
 		: { state: postServiceGame.events, expired: [] };

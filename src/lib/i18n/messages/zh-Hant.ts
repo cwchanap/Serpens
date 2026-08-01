@@ -235,10 +235,7 @@ export const zhHant = {
 			event: '目錄事件',
 			system: '系統通知'
 		},
-		eventProvenance: '來源事件: {eventTitle} · {eventId} · 實例 {instanceId}',
-		creditUnavailableDelinquent: '有逾期債務時無法借款。',
-		creditUnavailableService: '目前的債務償付能力無法負擔這筆貸款。',
-		creditUnavailableCapacity: '目前的信用額度無法支應這筆貸款。'
+		eventProvenance: '來源事件: {eventTitle} · {eventId} · 實例 {instanceId}'
 	},
 	activeModifiers: {
 		title: '生效中的修正效果',

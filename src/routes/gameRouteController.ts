@@ -1,5 +1,6 @@
 import type { SfxCueId } from '$lib/audio/audioCatalog';
 import { deeplyEqual } from '$lib/game/equality';
+import { isDecisionFailureCode } from '$lib/game/eventEffects';
 import {
 	borrow,
 	payOffLoan,
@@ -217,18 +218,6 @@ function normalizeRouteTransition(
 		return result as RouteTransitionResult<unknown>;
 	}
 	return { ok: true, game: result, receipt: undefined };
-}
-
-function isDecisionFailureCode(
-	code: string
-): code is Extract<DecisionResolutionResult, { ok: false }>['code'] {
-	return (
-		code === 'decision-not-found' ||
-		code === 'option-not-found' ||
-		code === 'decision-expired' ||
-		code === 'finance-unavailable' ||
-		code === 'effect-rejected'
-	);
 }
 
 interface FoundStoreInput {

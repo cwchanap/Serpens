@@ -23,18 +23,8 @@ import {
 import { getBuildingUpgradeCost, MAX_BUILDING_LEVEL } from './leveling';
 import { getWarehouseCapacity, recalculateWarehousePressure } from './industryProduction';
 import { createNewGame } from './state';
-import type {
-	DecisionItem,
-	IndustrialBuildingTypeId,
-	IndustryCity,
-	IndustryTile,
-	SystemDecisionItem
-} from './types';
-
-function systemDecision(decision: DecisionItem | undefined): SystemDecisionItem {
-	if (decision?.kind !== 'system') throw new Error('Expected a system decision');
-	return decision;
-}
+import type { IndustrialBuildingTypeId, IndustryCity, IndustryTile } from './types';
+import { systemDecision } from './testHelpers';
 
 describe('industrial placement', () => {
 	test('finances a valid building by borrowing only the exact shortfall', () => {

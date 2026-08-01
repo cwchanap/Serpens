@@ -609,7 +609,7 @@ function migrateV11GameInternal(game: object): unknown {
 	const reports = requireArray(value.reports, 'Saved v11 reports');
 	const initialEvents = createInitialEventRuntime(seed);
 	let nextInstanceSequence = 1;
-	const cooldowns: Array<Record<string, unknown>> = [];
+	const cooldowns = new Map<string, Record<string, unknown>>();
 	const history: Array<Record<string, unknown>> = [];
 
 	const migratedDecisions = decisions.map((decision, index) => {
@@ -621,7 +621,7 @@ function migrateV11GameInternal(game: object): unknown {
 		const instanceId = `event-instance-${nextInstanceSequence}`;
 		nextInstanceSequence += 1;
 		const migrated = migrateV11StrategicDecision(legacy, id, instanceId, label);
-		cooldowns.push({
+		cooldowns.set(`${id}:company`, {
 			eventId: id,
 			target: { kind: 'company' },
 			generatedOnDay: migrated.generatedOnDay,
@@ -648,8 +648,8 @@ function migrateV11GameInternal(game: object): unknown {
 		events: {
 			...initialEvents,
 			nextInstanceSequence,
-			cooldowns,
-			history
+			cooldowns: [...cooldowns.values()],
+			history: history.sort((a, b) => (a.day as number) - (b.day as number))
 		},
 		decisions: migratedDecisions,
 		reports: migratedReports
@@ -701,7 +701,7 @@ function migrateV11StrategicDecision(
 				requireRecord(option.effects, `${optionLabel} effects`),
 				`${optionLabel} effects`
 			),
-			modifiers: []
+			modifiers: migrateV11StrategicModifiers(eventId, expectedId)
 		};
 	});
 
@@ -728,7 +728,7 @@ function migrateV11SystemDecision(
 	requireExactKeys(legacy, ['id', 'title', 'context', 'expiresOnDay', 'options'], label);
 	const id = requireString(legacy.id, `${label} id`);
 	const title = requireString(legacy.title, `${label} title`);
-	validateSavedDecisionContext(legacy.context, label);
+	const context = validateSavedDecisionContext(legacy.context, label);
 	const expiresOnDay = requireNonNegativeInteger(legacy.expiresOnDay, `${label} expiresOnDay`);
 	const options = requireArray(legacy.options, `${label} options`).map(
 		(optionValue, optionIndex) => {
@@ -746,7 +746,7 @@ function migrateV11SystemDecision(
 			};
 		}
 	);
-	return { kind: 'system', id, title, context: legacy.context, expiresOnDay, options };
+	return { kind: 'system', id, title, context, expiresOnDay, options };
 }
 
 function migrateV11StrategicEffects(
@@ -861,6 +861,30 @@ function migrateV11StrategicEffects(
 		];
 	}
 	throw new SaveDataError(`${label} is not a supported v11 strategic option`);
+}
+
+function migrateV11StrategicModifiers(
+	eventId: LegacyStrategicEventId,
+	optionId: string
+): Array<Record<string, unknown>> {
+	if (eventId === 'supplier-terms' && optionId === 'bulk-discount') {
+		return [
+			{
+				durationDays: 3,
+				stackingKey: 'supplier-bulk-discount:retail-product',
+				stackingRule: 'replace',
+				effect: {
+					kind: 'import-cost-multiplier',
+					scope: 'retail-product',
+					target: { kind: 'all' },
+					multiplier: 0.9
+				},
+				explanation: { key: 'events.supplierTerms.bulkDiscount.modifier', params: {} },
+				importance: 'important'
+			}
+		];
+	}
+	return [];
 }
 
 function requireLegacyExactNumber(

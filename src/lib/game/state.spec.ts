@@ -12,12 +12,8 @@ import {
 } from './state';
 import { simulateDay } from './simulateDay';
 import { getStoreUpgradeCost, MAX_STORE_LEVEL } from './leveling';
-import type { City, CityTile, DecisionItem, GameState, SystemDecisionItem } from './types';
-
-function systemDecision(decision: DecisionItem | undefined): SystemDecisionItem {
-	if (decision?.kind !== 'system') throw new Error('Expected a system decision');
-	return decision;
-}
+import type { City, CityTile, GameState } from './types';
+import { systemDecision } from './testHelpers';
 
 type OptionalKeys<T> = {
 	[K in keyof T]-?: undefined extends T[K] ? K : never;

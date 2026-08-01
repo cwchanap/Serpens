@@ -1472,7 +1472,8 @@ describe('daily simulation', () => {
 			expect.arrayContaining([
 				expect.objectContaining({
 					status: 'replaced',
-					replacedByModifierId: expect.any(String)
+					modifier: expect.objectContaining({ id: 'event-modifier-1' }),
+					replacedByModifierId: 'event-modifier-2'
 				})
 			])
 		);

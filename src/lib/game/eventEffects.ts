@@ -4,14 +4,13 @@ import {
 	type CreditAssessmentReason,
 	type FinanceFailureCode
 } from './finance';
-import { EVENT_HISTORY_LIMIT } from './eventSelection';
+import { appendHistory } from './eventSelection';
 import { activateEventModifiers } from './eventModifiers';
 import { clampScore } from './reports';
 import { calculateStockHealth } from './stock';
 import type {
 	DecisionItem,
 	EventDecisionItem,
-	EventHistoryEntry,
 	EventImmediateEffect,
 	EventModifierTemplate,
 	GameState,
@@ -25,6 +24,18 @@ export type DecisionResolutionFailureCode =
 	| 'decision-expired'
 	| 'finance-unavailable'
 	| 'effect-rejected';
+
+const DECISION_FAILURE_CODES: ReadonlySet<DecisionResolutionFailureCode> = new Set([
+	'decision-not-found',
+	'option-not-found',
+	'decision-expired',
+	'finance-unavailable',
+	'effect-rejected'
+]);
+
+export function isDecisionFailureCode(code: string): code is DecisionResolutionFailureCode {
+	return (DECISION_FAILURE_CODES as Set<string>).has(code);
+}
 
 export type DecisionResolutionResult =
 	| { ok: true; game: GameState; decisionKind: 'system' | 'event' }
@@ -291,13 +302,6 @@ function isValidModifierTemplate(template: EventModifierTemplate): boolean {
 
 function isCompanyEvent(decision: EventDecisionItem): boolean {
 	return decision.target?.kind === 'company';
-}
-
-function appendHistory(
-	history: readonly EventHistoryEntry[],
-	entry: EventHistoryEntry
-): EventHistoryEntry[] {
-	return [...history, entry].slice(-EVENT_HISTORY_LIMIT);
 }
 
 function failure(
