@@ -195,4 +195,44 @@ describe('event selection and materialization', () => {
 		expect(selectEventForDay(input, catalog)).toEqual(selectEventForDay(input, catalog));
 		expect(createInitialEventRuntime(7).nextInstanceSequence).toBe(1);
 	});
+
+	it('evaluates score-at-least conditions against the game scorecard', () => {
+		const input = game(7);
+		const aboveCatalog = validateAndNormalizeEventCatalog([
+			definition({
+				id: 'score-event',
+				selection: { kind: 'forced', priority: 1 },
+				condition: { kind: 'score-at-least', score: 'profit', value: 0 }
+			})
+		]);
+		const above = selectEventForDay(input, aboveCatalog);
+		expect(above.decisions.filter((d) => d.kind === 'event')).toHaveLength(1);
+
+		const belowCatalog = validateAndNormalizeEventCatalog([
+			definition({
+				id: 'score-event',
+				selection: { kind: 'forced', priority: 1 },
+				condition: { kind: 'score-at-least', score: 'profit', value: 100 }
+			})
+		]);
+		const below = selectEventForDay(input, belowCatalog);
+		expect(below.decisions.filter((d) => d.kind === 'event')).toHaveLength(0);
+	});
+
+	it('evaluates store-count-below-cap conditions against the store count', () => {
+		const input = game(7);
+		const eligibleCatalog = validateAndNormalizeEventCatalog([
+			definition({
+				id: 'cap-event',
+				selection: { kind: 'forced', priority: 1 },
+				condition: { kind: 'store-count-below-cap' }
+			})
+		]);
+		const eligible = selectEventForDay(input, eligibleCatalog);
+		expect(eligible.decisions.filter((d) => d.kind === 'event')).toHaveLength(1);
+
+		const fullGame = { ...input, storeCap: input.stores.length };
+		const blocked = selectEventForDay(fullGame, eligibleCatalog);
+		expect(blocked.decisions.filter((d) => d.kind === 'event')).toHaveLength(0);
+	});
 });

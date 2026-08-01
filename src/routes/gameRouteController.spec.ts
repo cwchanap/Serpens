@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { resolveScenarioDefinition } from '$lib/scenarios/catalog';
 import { createNewGame } from '$lib/game/state';
-import type { WorldCityId } from '$lib/game/types';
+import type { EventDecisionItem, GameState, WorldCityId } from '$lib/game/types';
 import { createEmptySaveStore } from '$lib/persistence/saveCodec';
 import {
 	SaveRepositoryFromDriver,
@@ -1479,6 +1479,81 @@ describe('GameRouteController', () => {
 			// upgradeStore returns the same reference when the store id does not exist.
 			const result = await harness.controller.upgradeStore('nonexistent-store');
 			expect(result).toEqual({ status: 'sandbox-committed', changed: false });
+		});
+
+		it('commits a successful event decision resolution in sandbox mode', async () => {
+			const harness = createHarness();
+			await harness.controller.initializeSaves();
+			const base = createNewGame('grocery', 55);
+			const decision: EventDecisionItem = {
+				kind: 'event',
+				id: 'event-instance-1',
+				eventId: 'fixture-event',
+				definitionVersion: 1,
+				generatedOnDay: 1,
+				expiresOnDay: 3,
+				target: { kind: 'company' },
+				copy: { key: 'events.fixture', params: {} },
+				options: [
+					{
+						id: 'accept',
+						effects: [{ kind: 'cash-adjust', amount: 500 }],
+						modifiers: []
+					}
+				]
+			};
+			const game: GameState = { ...base, decisions: [decision] };
+			harness.controller.loadSandboxGame(game);
+
+			const result = await harness.controller.resolveDecision(decision.id, 'accept');
+
+			expect(result).toMatchObject({ status: 'sandbox-committed', changed: true });
+			expect(harness.controller.state.sandboxGame?.decisions).toEqual([]);
+			expect(harness.controller.state.sandboxGame?.cash).toBe(base.cash + 500);
+		});
+
+		it('returns a typed decision rejection with financeFailure for finance-unavailable', async () => {
+			const harness = createHarness();
+			await harness.controller.initializeSaves();
+			const base = createNewGame('grocery', 55);
+			const decision: EventDecisionItem = {
+				kind: 'event',
+				id: 'event-instance-1',
+				eventId: 'fixture-event',
+				definitionVersion: 1,
+				generatedOnDay: 1,
+				expiresOnDay: 3,
+				target: { kind: 'company' },
+				copy: { key: 'events.fixture', params: {} },
+				options: [
+					{
+						id: 'accept',
+						effects: [
+							{ kind: 'score-adjust', score: 'profit', amount: -10 },
+							{
+								kind: 'finance-borrow',
+								purpose: 'emergency',
+								amount: 200_000,
+								termDays: 56
+							}
+						],
+						modifiers: []
+					}
+				]
+			};
+			const game: GameState = { ...base, decisions: [decision] };
+			harness.controller.loadSandboxGame(game);
+
+			const result = await harness.controller.resolveDecision(decision.id, 'accept');
+
+			expect(result).toMatchObject({
+				status: 'decision-rejected',
+				code: 'finance-unavailable',
+				financeFailure: 'insufficientCredit'
+			});
+			expect(harness.controller.state.sandboxGame).toBe(game);
+			await flushMicrotasks();
+			expect(harness.onAutoSave).not.toHaveBeenCalled();
 		});
 
 		it('foundStore allows a missing sandbox game', async () => {

@@ -64,6 +64,33 @@ describe('alert panel navigation', () => {
 			})
 		).toEqual({ panelId: 'decisions', focusedFinanceLoanId: null });
 	});
+
+	it('returns null for alerts without a management panel or decision kind', () => {
+		expect(
+			resolveAlertPanelNavigation({
+				id: 'store-stock:store-1',
+				kind: 'store-stock',
+				storeId: 'store-1'
+			})
+		).toBeNull();
+		expect(
+			resolveAlertPanelNavigation({
+				id: 'factory-blocked:factory-1',
+				kind: 'factory-blocked',
+				buildingId: 'factory-1'
+			})
+		).toBeNull();
+	});
+
+	it('returns null focusedFinanceLoanId for finance panel without a loanId', () => {
+		expect(
+			resolveAlertPanelNavigation({
+				id: 'covenantRisk',
+				kind: 'covenantRisk',
+				managementPanelId: 'finance'
+			})
+		).toEqual({ panelId: 'finance', focusedFinanceLoanId: null });
+	});
 });
 
 interface Deferred<T> {

@@ -55,6 +55,7 @@ import { messagesByLocale } from './messages';
 import {
 	formatPlacementBlockReason,
 	localizeAlert,
+	localizeEventSourceTitle,
 	localizeGameAlert,
 	localizeDecision,
 	localizeDecisionFailure,
@@ -63,6 +64,7 @@ import {
 	localizeReportWarning,
 	localizeStockStatus,
 	localizeStockTrouble,
+	localizeStructuredCopy,
 	localizeWorldCityStatus,
 	storeDisplayName
 } from './gameCopy';
@@ -2231,5 +2233,52 @@ describe('game copy builders', () => {
 		const option = localized.options[0]!;
 		expect(option.label).toBe('Custom Ack');
 		expect(option.description).toBe('Custom ack description');
+	});
+
+	it('localizeDecisionFailure returns null for available options', () => {
+		expect(localizeDecisionFailure({ available: true } as const, createI18n('en'))).toBeNull();
+	});
+
+	it('localizeEventSourceTitle falls back to the raw eventId for unknown events', () => {
+		expect(localizeEventSourceTitle('unknown-event', createI18n('en'))).toBe('unknown-event');
+	});
+
+	it('localizeStructuredCopy falls back to the raw key for untranslated refs', () => {
+		expect(
+			localizeStructuredCopy({ key: 'events.unknown.missing', params: {} }, createI18n('en'))
+		).toBe('events.unknown.missing');
+	});
+
+	it('localizeAlert falls back to empty string for unrecognized alerts without a message', () => {
+		const game = createNewGame('grocery', 55);
+		const alert: GameAlert = {
+			id: 'store-stock:store-1',
+			kind: 'store-stock',
+			storeId: 'store-1'
+		};
+		expect(localizeAlert(alert, game, createI18n('en'))).toBe('');
+	});
+
+	it('localizeAlert uses the event copy key fallback for event decisions without translations', () => {
+		const game = createNewGame('grocery', 55);
+		const decision: EventDecisionItem = {
+			kind: 'event',
+			id: 'event-instance-1',
+			eventId: 'unknown-event',
+			definitionVersion: 1,
+			generatedOnDay: 1,
+			expiresOnDay: 3,
+			target: { kind: 'company' },
+			copy: { key: 'events.unknown', params: {} },
+			options: [{ id: 'accept', effects: [], modifiers: [] }]
+		};
+		const gameWithDecision = { ...game, decisions: [decision] };
+		const alert: GameAlert = {
+			id: 'decision:event-instance-1',
+			kind: 'decision',
+			decisionId: 'event-instance-1'
+		};
+		const result = localizeAlert(alert, gameWithDecision, createI18n('en'));
+		expect(result).toContain('events.unknown');
 	});
 });

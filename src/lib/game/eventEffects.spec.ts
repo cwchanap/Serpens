@@ -326,4 +326,102 @@ describe('atomic decision resolution', () => {
 		expect(result.game).toBe(game);
 		expect(game.cash).toBe(base.cash);
 	});
+
+	it('reports decision-not-found from getDecisionOptionAvailability', () => {
+		const base = createNewGame('grocery', 55);
+		const decision = eventDecision();
+		const availability = getDecisionOptionAvailability(base, decision, 'accept');
+		expect(availability).toMatchObject({
+			available: false,
+			code: 'decision-not-found',
+			context: { decisionId: decision.id }
+		});
+	});
+
+	it('rejects a non-company event target', () => {
+		const base = createNewGame('grocery', 55);
+		const decision = eventDecision({ target: { kind: 'store' as never } });
+		const game = withDecision(base, decision);
+		const result = resolveDecision(game, decision.id, 'accept');
+		expect(result).toMatchObject({
+			ok: false,
+			code: 'effect-rejected',
+			context: { payload: 'target' }
+		});
+	});
+
+	it('rejects a non-object effect', () => {
+		const base = createNewGame('grocery', 55);
+		const decision = eventDecision({
+			options: [{ id: 'accept', effects: [null as never], modifiers: [] }]
+		});
+		const game = withDecision(base, decision);
+		const result = resolveDecision(game, decision.id, 'accept');
+		expect(result).toMatchObject({ ok: false, code: 'effect-rejected' });
+		expect(result.game).toBe(game);
+	});
+
+	it('rejects a cash-adjust with non-finite amount', () => {
+		const base = createNewGame('grocery', 55);
+		const decision = eventDecision({
+			options: [
+				{ id: 'accept', effects: [{ kind: 'cash-adjust', amount: Number.NaN }], modifiers: [] }
+			]
+		});
+		const game = withDecision(base, decision);
+		const result = resolveDecision(game, decision.id, 'accept');
+		expect(result).toMatchObject({ ok: false, code: 'effect-rejected' });
+		expect(result.game).toBe(game);
+	});
+
+	it('rejects a store-morale-adjust with wrong scope', () => {
+		const base = createNewGame('grocery', 55);
+		const decision = eventDecision({
+			options: [
+				{
+					id: 'accept',
+					effects: [{ kind: 'store-morale-adjust', scope: 'single-store' as never, amount: 5 }],
+					modifiers: []
+				}
+			]
+		});
+		const game = withDecision(base, decision);
+		const result = resolveDecision(game, decision.id, 'accept');
+		expect(result).toMatchObject({ ok: false, code: 'effect-rejected' });
+		expect(result.game).toBe(game);
+	});
+
+	it('rejects a store-stock-adjust with wrong scope', () => {
+		const base = createNewGame('grocery', 55);
+		const decision = eventDecision({
+			options: [
+				{
+					id: 'accept',
+					effects: [
+						{
+							kind: 'store-stock-adjust-by-target-percent',
+							scope: 'single-store' as never,
+							percent: 10
+						}
+					],
+					modifiers: []
+				}
+			]
+		});
+		const game = withDecision(base, decision);
+		const result = resolveDecision(game, decision.id, 'accept');
+		expect(result).toMatchObject({ ok: false, code: 'effect-rejected' });
+		expect(result.game).toBe(game);
+	});
+
+	it('rejects an unknown effect kind', () => {
+		const base = createNewGame('grocery', 55);
+		const decision = eventDecision({
+			options: [{ id: 'accept', effects: [{ kind: 'unknown-kind' as never }], modifiers: [] }]
+		});
+		const game = withDecision(base, decision);
+		const result = resolveDecision(game, decision.id, 'accept');
+		expect(result).toMatchObject({ ok: false, code: 'effect-rejected' });
+		expect(result.game).toBe(game);
+	});
 });

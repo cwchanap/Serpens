@@ -90,4 +90,16 @@ describe('ActiveModifiers', () => {
 		await expect.element(region.getByText('有効な修正効果はありません。')).toBeVisible();
 		await expect.element(region.getByText('No active modifiers.')).not.toBeInTheDocument();
 	});
+
+	it('uses the singular remaining-days copy when exactly one day remains', async () => {
+		expect.assertions(1);
+		render(ActiveModifiers, {
+			i18n: createI18n('en'),
+			day: 7,
+			modifiers: [modifier({ expiresOnDay: 8 })]
+		});
+
+		const region = page.getByRole('region', { name: 'Active modifiers' });
+		await expect.element(region.getByText('1 day remaining', { exact: true })).toBeVisible();
+	});
 });

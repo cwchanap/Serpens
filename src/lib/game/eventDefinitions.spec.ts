@@ -298,4 +298,248 @@ describe('validateAndNormalizeEventCatalog', () => {
 			}).toThrow(TypeError);
 		});
 	});
+
+	it('exposes the readonly lookup size getter', () => {
+		const catalog = validateAndNormalizeEventCatalog([
+			definition({ id: 'alpha' }),
+			definition({ id: 'beta' })
+		]);
+		expect(catalog.byId.size).toBe(2);
+		expect(catalog.byId.has('alpha')).toBe(true);
+		expect([...catalog.byId.keys()]).toEqual(['alpha', 'beta']);
+		expect([...catalog.byId.values()].map((d) => d.id)).toEqual(['alpha', 'beta']);
+		expect([...catalog.byId.entries()].map(([k]) => k)).toEqual(['alpha', 'beta']);
+		expect([...catalog.byId].map(([k]) => k)).toEqual(['alpha', 'beta']);
+	});
+
+	it('rejects non-company targets and empty option lists', () => {
+		const diagnostics = diagnosticsFor([
+			definition({ id: 'bad-target', target: { kind: 'store' as never } }),
+			definition({ id: 'no-options', options: [] })
+		]);
+		expect(diagnostics.map(({ eventId, path }) => `${eventId}:${path}`)).toEqual([
+			'bad-target:target',
+			'no-options:options'
+		]);
+	});
+
+	it('rejects invalid option ID format', () => {
+		const diagnostics = diagnosticsFor([
+			definition({ id: 'bad-option-id', options: [{ id: 'Bad ID', effects: [], modifiers: [] }] })
+		]);
+		expect(diagnostics.map(({ path }) => path)).toContain('options[0].id');
+	});
+
+	it('rejects unsupported score keys in conditions and score-adjust effects', () => {
+		const diagnostics = diagnosticsFor([
+			definition({
+				id: 'bad-score-condition',
+				condition: { kind: 'score-at-least', score: 'invalid' as never, value: 50 }
+			}),
+			definition({
+				id: 'bad-score-effect',
+				options: [
+					{
+						id: 'accept',
+						effects: [{ kind: 'score-adjust', score: 'invalid' as never, amount: 1 }],
+						modifiers: []
+					}
+				]
+			})
+		]);
+		expect(diagnostics.map(({ eventId, path }) => `${eventId}:${path}`)).toEqual([
+			'bad-score-condition:condition.score',
+			'bad-score-effect:options[0].effects[0].score'
+		]);
+	});
+
+	it('rejects store-morale and store-stock effects with wrong scope', () => {
+		const diagnostics = diagnosticsFor([
+			definition({
+				id: 'bad-morale-scope',
+				options: [
+					{
+						id: 'accept',
+						effects: [{ kind: 'store-morale-adjust', scope: 'single-store' as never, amount: 1 }],
+						modifiers: []
+					}
+				]
+			}),
+			definition({
+				id: 'bad-stock-scope',
+				options: [
+					{
+						id: 'accept',
+						effects: [
+							{
+								kind: 'store-stock-adjust-by-target-percent',
+								scope: 'single-store' as never,
+								percent: 10
+							}
+						],
+						modifiers: []
+					}
+				]
+			})
+		]);
+		expect(diagnostics.map(({ eventId, path }) => `${eventId}:${path}`)).toEqual([
+			'bad-morale-scope:options[0].effects[0].scope',
+			'bad-stock-scope:options[0].effects[0].scope'
+		]);
+	});
+
+	it('rejects finance-borrow effects with invalid amount, purpose, and term', () => {
+		const diagnostics = diagnosticsFor([
+			definition({
+				id: 'bad-finance-amount',
+				options: [
+					{
+						id: 'accept',
+						effects: [{ kind: 'finance-borrow', purpose: 'emergency', amount: 0, termDays: 28 }],
+						modifiers: []
+					}
+				]
+			}),
+			definition({
+				id: 'bad-finance-amount-type',
+				options: [
+					{
+						id: 'accept',
+						effects: [
+							{
+								kind: 'finance-borrow',
+								purpose: 'emergency',
+								amount: 'invalid' as never,
+								termDays: 28
+							}
+						],
+						modifiers: []
+					}
+				]
+			}),
+			definition({
+				id: 'bad-finance-purpose',
+				options: [
+					{
+						id: 'accept',
+						effects: [
+							{ kind: 'finance-borrow', purpose: 'invalid' as never, amount: 100, termDays: 28 }
+						],
+						modifiers: []
+					}
+				]
+			}),
+			definition({
+				id: 'bad-finance-term',
+				options: [
+					{
+						id: 'accept',
+						effects: [
+							{ kind: 'finance-borrow', purpose: 'emergency', amount: 100, termDays: 14 as never }
+						],
+						modifiers: []
+					}
+				]
+			})
+		]);
+		expect(diagnostics.map(({ eventId, path }) => `${eventId}:${path}`)).toEqual([
+			'bad-finance-amount:options[0].effects[0].amount',
+			'bad-finance-amount-type:options[0].effects[0].amount',
+			'bad-finance-purpose:options[0].effects[0].purpose',
+			'bad-finance-term:options[0].effects[0].termDays'
+		]);
+	});
+
+	it('rejects modifier templates with wrong effect kind, scope, target, and importance', () => {
+		const baseModifier = {
+			durationDays: 1,
+			stackingKey: 'key:retail-product',
+			stackingRule: 'replace' as const,
+			effect: {
+				kind: 'import-cost-multiplier' as const,
+				scope: 'retail-product' as const,
+				target: { kind: 'all' as const },
+				multiplier: 0.9
+			},
+			explanation: { key: 'events.modifier', params: {} },
+			importance: 'normal' as const
+		};
+		const diagnostics = diagnosticsFor([
+			definition({
+				id: 'bad-mod-kind',
+				options: [
+					{
+						id: 'accept',
+						effects: [],
+						modifiers: [
+							{
+								...baseModifier,
+								effect: { ...baseModifier.effect, kind: 'wrong' as never }
+							}
+						]
+					}
+				]
+			}),
+			definition({
+				id: 'bad-mod-scope',
+				options: [
+					{
+						id: 'accept',
+						effects: [],
+						modifiers: [
+							{
+								...baseModifier,
+								effect: { ...baseModifier.effect, scope: 'wrong' as never }
+							}
+						]
+					}
+				]
+			}),
+			definition({
+				id: 'bad-mod-target',
+				options: [
+					{
+						id: 'accept',
+						effects: [],
+						modifiers: [
+							{
+								...baseModifier,
+								effect: { ...baseModifier.effect, target: { kind: 'single' as never } }
+							}
+						]
+					}
+				]
+			}),
+			definition({
+				id: 'bad-mod-importance',
+				options: [
+					{
+						id: 'accept',
+						effects: [],
+						modifiers: [{ ...baseModifier, importance: 'critical' as never }]
+					}
+				]
+			})
+		]);
+		expect(diagnostics.map(({ eventId, path }) => `${eventId}:${path}`)).toEqual([
+			'bad-mod-importance:options[0].modifiers[0].importance',
+			'bad-mod-kind:options[0].modifiers[0].effect.kind',
+			'bad-mod-scope:options[0].modifiers[0].effect.scope',
+			'bad-mod-target:options[0].modifiers[0].effect.target'
+		]);
+	});
+
+	it('rejects copy refs with empty keys and invalid param values', () => {
+		const diagnostics = diagnosticsFor([
+			definition({ id: 'empty-key', copy: { key: '', params: {} } }),
+			definition({
+				id: 'bad-param',
+				copy: { key: 'events.test', params: { foo: null as never } }
+			})
+		]);
+		expect(diagnostics.map(({ eventId, path }) => `${eventId}:${path}`)).toEqual([
+			'bad-param:copy.params.foo',
+			'empty-key:copy.key'
+		]);
+	});
 });
