@@ -301,11 +301,27 @@ describe('game state', () => {
 		expect(resolved.scorecard.customerSatisfaction).toBe(game.scorecard.customerSatisfaction - 1);
 	});
 
-	test('applies cash-pressure cut-costs effects to the scorecard and every store product target', () => {
-		expect.assertions(7);
+	test('applies cash-pressure cut-costs effects to the scorecard and every store target-stock adjustment', () => {
+		expect.assertions(9);
 		const base = createNewGame('grocery', 55);
-		const firstStore = base.stores[0]!;
-		const secondStore = { ...firstStore, id: 'store-2', staffMorale: 80 };
+		const firstStore = {
+			...base.stores[0]!,
+			products: base.stores[0]!.products.map((product) => ({
+				...product,
+				stock: 100,
+				targetStock: 200
+			}))
+		};
+		const secondStore = {
+			...firstStore,
+			id: 'store-2',
+			staffMorale: 80,
+			products: firstStore.products.map((product) => ({
+				...product,
+				stock: 40,
+				targetStock: 50
+			}))
+		};
 		const game = {
 			...base,
 			cash: -1,
@@ -318,8 +334,10 @@ describe('game state', () => {
 		expect(resolved.scorecard.customerSatisfaction).toBe(61);
 		expect(resolved.scorecard.staffMorale).toBe(57);
 		expect(resolved.stores.map((store) => store.staffMorale)).toEqual([57, 75]);
-		expect(resolved.stores.map((store) => store.products[0]?.stock)).toEqual([63, 63]);
-		expect(resolved.stores.map((store) => store.stockHealth)).toEqual([70, 70]);
+		expect(firstStore.products[0]?.stock).toBe(100);
+		expect(firstStore.products[0]?.targetStock).toBe(200);
+		expect(resolved.stores.map((store) => store.products[0]?.stock)).toEqual([84, 36]);
+		expect(resolved.stores.map((store) => store.stockHealth)).toEqual([42, 72]);
 		expect(
 			resolved.stores.every((store) => store.stockHealth === calculateStockHealth(store.products))
 		).toBe(true);
