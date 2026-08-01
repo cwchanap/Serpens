@@ -233,10 +233,7 @@ export const en = {
 			event: 'Catalog event',
 			system: 'System notice'
 		},
-		eventProvenance: 'Source event: {eventTitle} · {eventId} · Instance {instanceId}',
-		creditUnavailableDelinquent: 'Borrowing is unavailable while an obligation is delinquent.',
-		creditUnavailableService: 'Current debt-service capacity cannot cover this loan.',
-		creditUnavailableCapacity: 'Current credit capacity cannot cover this loan.'
+		eventProvenance: 'Source event: {eventTitle} · {eventId} · Instance {instanceId}'
 	},
 	activeModifiers: {
 		title: 'Active modifiers',

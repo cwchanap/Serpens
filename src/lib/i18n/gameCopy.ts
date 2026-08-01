@@ -1,4 +1,5 @@
 import { INDUSTRIAL_BUILDING_TYPES } from '$lib/game/industry';
+import { PRODUCTION_EVENT_CATALOG } from '$lib/game/eventCatalog';
 import { estimateNextLoanPayment, getLoanArrearsAmount, hasLoanArrears } from '$lib/game/finance';
 import { getFinanceMetrics } from '$lib/game/financeMetrics';
 import type { PlacementBlockReason } from '$lib/game/placementPreview';
@@ -421,9 +422,6 @@ function localizeDecisionTitle(decision: DecisionItem, i18n: I18nBundle): string
 	const family = classifyDecision(decision);
 
 	switch (family) {
-		case 'cashPressure':
-		case 'expansionOpportunity':
-		case 'supplierTerms':
 		case 'expansionUnavailable':
 		case 'expansionCashBlocked':
 		case 'locationUnavailable':
@@ -572,13 +570,8 @@ export function localizeAlert(alert: GameAlert, game: GameState, i18n: I18nBundl
 	if (alert.kind === 'decision' && alert.decisionId) {
 		const decision = game.decisions.find((candidate) => candidate.id === alert.decisionId);
 		if (decision) {
-			const title =
-				decision.kind === 'event'
-					? (translateMessage(i18n, `copy.${decision.copy.key}.title`, decision.copy.params) ??
-						decision.copy.key)
-					: localizeDecisionTitle(decision, i18n);
 			return i18n.t('copy.alerts.decision', {
-				title
+				title: localizeDecisionTitle(decision, i18n)
 			});
 		}
 	}
@@ -654,15 +647,10 @@ export function localizeGameAlert(
 	return { ...alert, message: localizeAlert(alert, game, i18n) };
 }
 
-const EVENT_COPY_KEY_BY_ID = {
-	'cash-pressure': 'events.cashPressure',
-	'expansion-opportunity': 'events.expansionOpportunity',
-	'supplier-terms': 'events.supplierTerms'
-} as const satisfies Record<string, string>;
-
 export function localizeEventSourceTitle(eventId: string, i18n: I18nBundle): string {
-	const copyKey = EVENT_COPY_KEY_BY_ID[eventId as keyof typeof EVENT_COPY_KEY_BY_ID];
-	return copyKey ? (translateMessage(i18n, `copy.${copyKey}.title`) ?? eventId) : eventId;
+	const definition = PRODUCTION_EVENT_CATALOG.byId.get(eventId);
+	if (!definition) return eventId;
+	return translateMessage(i18n, `copy.${definition.copy.key}.title`) ?? eventId;
 }
 
 export function localizeStructuredCopy(ref: StructuredCopyRef, i18n: I18nBundle): string {

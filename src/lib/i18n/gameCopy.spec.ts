@@ -2252,9 +2252,9 @@ describe('game copy builders', () => {
 	it('localizeAlert falls back to empty string for unrecognized alerts without a message', () => {
 		const game = createNewGame('grocery', 55);
 		const alert: GameAlert = {
-			id: 'store-stock:store-1',
+			id: 'store-stock:store-nonexistent',
 			kind: 'store-stock',
-			storeId: 'store-1'
+			storeId: 'store-nonexistent'
 		};
 		expect(localizeAlert(alert, game, createI18n('en'))).toBe('');
 	});

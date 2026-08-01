@@ -235,10 +235,7 @@ export const ja = {
 			event: 'カタログイベント',
 			system: 'システム通知'
 		},
-		eventProvenance: '発生イベント: {eventTitle} · {eventId} · インスタンス {instanceId}',
-		creditUnavailableDelinquent: '延滞中の債務があるため、借入は利用できません。',
-		creditUnavailableService: '現在の債務返済余力では、この借入を賄えません。',
-		creditUnavailableCapacity: '現在の与信枠では、この借入を賄えません。'
+		eventProvenance: '発生イベント: {eventTitle} · {eventId} · インスタンス {instanceId}'
 	},
 	activeModifiers: {
 		title: '有効な修正効果',

@@ -12,12 +12,8 @@ import {
 	getOccupiedStoreTileIds,
 	getStoreFootprintPlacementBlockReason
 } from './storeFootprint';
-import type { City, CityTile, DecisionItem, Store, SystemDecisionItem } from './types';
-
-function systemDecision(decision: DecisionItem | undefined): SystemDecisionItem {
-	if (decision?.kind !== 'system') throw new Error('Expected a system decision');
-	return decision;
-}
+import type { City, CityTile, Store } from './types';
+import { systemDecision } from './testHelpers';
 
 describe('tile placement', () => {
 	test('finances a structurally valid store by borrowing its exact shortfall', () => {

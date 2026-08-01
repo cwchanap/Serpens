@@ -1,6 +1,6 @@
 import { PRODUCTION_EVENT_CATALOG } from './eventCatalog';
-import { EVENT_HISTORY_LIMIT, selectEventForDay } from './eventSelection';
-import type { EventHistoryEntry, GameState } from './types';
+import { appendHistory, selectEventForDay } from './eventSelection';
+import type { GameState } from './types';
 
 export function generateDecisions(game: GameState): GameState {
 	return selectEventForDay(game, PRODUCTION_EVENT_CATALOG);
@@ -34,11 +34,4 @@ export function pruneExpiredDecisions(game: GameState, closingDay: number): Game
 		decisions: game.decisions.filter((decision) => decision.expiresOnDay >= game.day),
 		events: history === game.events.history ? game.events : { ...game.events, history }
 	};
-}
-
-function appendHistory(
-	history: readonly EventHistoryEntry[],
-	entry: EventHistoryEntry
-): EventHistoryEntry[] {
-	return [...history, entry].slice(-EVENT_HISTORY_LIMIT);
 }

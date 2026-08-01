@@ -72,16 +72,23 @@ export function isModifierActiveOnDay(modifier: ActiveEventModifier, closingDay:
 	return modifier.startsOnDay <= closingDay && closingDay < modifier.expiresOnDay;
 }
 
+export function hasModifierExpiredAfterDay(
+	modifier: ActiveEventModifier,
+	closingDay: number
+): boolean {
+	return modifier.expiresOnDay <= closingDay + 1;
+}
+
 export function expireModifiersAfterDay(
 	state: EventRuntimeState,
 	closingDay: number
 ): { state: EventRuntimeState; expired: EventModifierSnapshot[] } {
-	const expiringModifiers = state.activeModifiers.filter(
-		(modifier) => modifier.expiresOnDay <= closingDay + 1
+	const expiringModifiers = state.activeModifiers.filter((modifier) =>
+		hasModifierExpiredAfterDay(modifier, closingDay)
 	);
 	const expired = expiringModifiers.map(snapshotModifier);
 	const activeModifiers = state.activeModifiers.filter(
-		(modifier) => modifier.expiresOnDay > closingDay + 1
+		(modifier) => !hasModifierExpiredAfterDay(modifier, closingDay)
 	);
 	const lifecycle: EventModifierLifecycle[] = expiringModifiers.map((modifier) => ({
 		kind: 'modifier-lifecycle',

@@ -57,7 +57,7 @@ describe('event modifier lifecycle', () => {
 		expect(result.lifecycle[0]?.modifier).not.toBe(result.state.activeModifiers[0]);
 
 		template.effect.multiplier = 0.5;
-		template.explanation = { key: 'events.changed', params: { percent: 50 } };
+		(template.explanation.params as Record<string, string | number>).percent = 50;
 		expect(result.state.activeModifiers[0]?.effect.multiplier).toBe(0.9);
 		expect(result.lifecycle[0]?.modifier.explanation.params).toEqual({ percent: 10 });
 	});

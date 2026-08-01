@@ -20,12 +20,8 @@ import {
 	refreshWorldProgress,
 	selectWorldCity
 } from './world';
-import type { DecisionItem, GameState, SystemDecisionItem } from './types';
-
-function systemDecision(decision: DecisionItem | undefined): SystemDecisionItem {
-	if (decision?.kind !== 'system') throw new Error('Expected a system decision');
-	return decision;
-}
+import type { GameState } from './types';
+import { systemDecision } from './testHelpers';
 
 function gameStub(overrides: Partial<GameState> = {}): GameState {
 	return {

@@ -25,6 +25,7 @@ import type { GameState } from '$lib/game/types';
 import { financeWorldCityOpening, openWorldCity, selectWorldCity } from '$lib/game/world';
 import { financeIndustrialBuilding } from '$lib/game/industryPlacement';
 import { deeplyEqual } from '$lib/game/equality';
+import { isDecisionFailureCode } from '$lib/game/eventEffects';
 import { isScenarioCommandAllowed } from './capabilities';
 import { evaluateScenarioConditions } from './metrics';
 import { calculateScenarioScoreProjection, medalForScore } from './scoring';
@@ -399,14 +400,4 @@ export function executeScenarioCommand(
 			result: null
 		}
 	};
-}
-
-function isDecisionFailureCode(code: string): code is ScenarioDecisionFailure['code'] {
-	return (
-		code === 'decision-not-found' ||
-		code === 'option-not-found' ||
-		code === 'decision-expired' ||
-		code === 'finance-unavailable' ||
-		code === 'effect-rejected'
-	);
 }
