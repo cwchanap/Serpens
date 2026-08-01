@@ -175,6 +175,58 @@ function fixtureRun(
 	};
 }
 
+function v11RunRecord(run: ScenarioRun, revision = 0): ReturnType<typeof runRecord> {
+	const record = runRecord(run, revision);
+	const legacyGame = structuredClone(run.game) as unknown as Record<string, unknown>;
+	delete legacyGame.events;
+	legacyGame.decisions = [
+		{
+			id: 'supplier-terms',
+			title: 'Supplier terms',
+			context: { code: 'supplierTerms' },
+			expiresOnDay: run.game.day + 2,
+			options: [
+				{
+					id: 'negotiate-credit',
+					label: 'Negotiate credit',
+					description: 'Ask for short-term supplier credit.',
+					effects: {
+						finance: {
+							kind: 'borrow',
+							purpose: 'supplierCredit',
+							amount: 4_000,
+							termDays: 28
+						},
+						profit: -2
+					}
+				},
+				{
+					id: 'bulk-discount',
+					label: 'Bulk discount',
+					description: 'Commit to a larger order.',
+					effects: { cash: -2_500, profit: 3, stockHealth: 6 }
+				}
+			]
+		}
+	];
+	legacyGame.reports = run.game.reports.map((report) => {
+		const {
+			modifierImpacts: _modifierImpacts,
+			modifierLifecycle: _modifierLifecycle,
+			...legacyReport
+		} = structuredClone(report);
+		void _modifierImpacts;
+		void _modifierLifecycle;
+		return legacyReport;
+	});
+
+	return {
+		...record,
+		gameSchemaVersion: 11,
+		game: legacyGame as unknown as ScenarioRun['game']
+	};
+}
+
 interface Deferred {
 	started: Promise<void>;
 	release(): void;
@@ -290,6 +342,35 @@ describe('scenario repository', { timeout: 30_000 }, () => {
 
 		expect(resumed).toEqual(run);
 		expect(resumed).not.toBe(run);
+	});
+
+	it('loads a v11 active run with its scenario identity and evaluation unchanged', async () => {
+		const active = fixtureRun(undefined, { advanceDays: 1 });
+		const driver = new CountingDriver(snapshot({ 'first-profit': v11RunRecord(active, 7) }));
+		const repository = new ScenarioRepositoryFromDriver(driver, resolveFixtureDefinition);
+
+		const loaded = await repository.loadActiveRunWithRevision('first-profit');
+		const { game: _expectedGame, ...expectedEnvelope } = active;
+		const { game: migratedGame, ...loadedEnvelope } = loaded!.run;
+		void _expectedGame;
+
+		expect(loaded?.revision).toBe(7);
+		expect(loadedEnvelope).toEqual(expectedEnvelope);
+		expect(migratedGame.decisions[0]).toMatchObject({
+			kind: 'event',
+			id: 'event-instance-1',
+			eventId: 'supplier-terms',
+			definitionVersion: 1
+		});
+		expect(migratedGame.events).toMatchObject({
+			selectionSchemaVersion: 1,
+			nextInstanceSequence: 2,
+			nextModifierSequence: 1
+		});
+		expect(migratedGame.reports[0]).toMatchObject({
+			modifierImpacts: [],
+			modifierLifecycle: []
+		});
 	});
 
 	it('removes an abandoned run without changing a prior best result', async () => {

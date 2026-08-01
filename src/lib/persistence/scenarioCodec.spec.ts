@@ -217,6 +217,58 @@ function fixtureRun(
 	};
 }
 
+function v11RunRecord(run: ScenarioRun, revision = 0): ScenarioRunRecord {
+	const record = runRecord(run, revision);
+	const legacyGame = structuredClone(run.game) as unknown as Record<string, unknown>;
+	delete legacyGame.events;
+	legacyGame.decisions = [
+		{
+			id: 'supplier-terms',
+			title: 'Supplier terms',
+			context: { code: 'supplierTerms' },
+			expiresOnDay: run.game.day + 2,
+			options: [
+				{
+					id: 'negotiate-credit',
+					label: 'Negotiate credit',
+					description: 'Ask for short-term supplier credit.',
+					effects: {
+						finance: {
+							kind: 'borrow',
+							purpose: 'supplierCredit',
+							amount: 4_000,
+							termDays: 28
+						},
+						profit: -2
+					}
+				},
+				{
+					id: 'bulk-discount',
+					label: 'Bulk discount',
+					description: 'Commit to a larger order.',
+					effects: { cash: -2_500, profit: 3, stockHealth: 6 }
+				}
+			]
+		}
+	];
+	legacyGame.reports = run.game.reports.map((report) => {
+		const {
+			modifierImpacts: _modifierImpacts,
+			modifierLifecycle: _modifierLifecycle,
+			...legacyReport
+		} = structuredClone(report);
+		void _modifierImpacts;
+		void _modifierLifecycle;
+		return legacyReport;
+	});
+
+	return {
+		...record,
+		gameSchemaVersion: 11,
+		game: legacyGame as unknown as GameState
+	};
+}
+
 describe('scenario codec', () => {
 	it('creates and decodes the empty current snapshot', () => {
 		const empty = createEmptyScenarioStore();
@@ -1452,6 +1504,42 @@ describe('scenario codec', () => {
 		).toBe(true);
 		expect(stale.snapshot.activeRunsByScenarioId).toEqual({});
 		expect(stale.diagnostics.map((diagnostic) => diagnostic.code)).toContain('invalid-game');
+	});
+
+	it('migrates an embedded v11 event game while preserving the scenario envelope', () => {
+		const active = fixtureRun(undefined, { advanceDays: 1 });
+		const legacyRecord = v11RunRecord(active, 7);
+		const originalEnvelope = structuredClone(legacyRecord.run);
+
+		const decoded = decodeScenarioStoreSnapshot(
+			snapshot({ 'first-profit': legacyRecord }),
+			resolveFixtureDefinition
+		);
+		const migrated = decoded.snapshot.activeRunsByScenarioId['first-profit'];
+		const migratedGame = migrated?.game as GameState;
+
+		expect(decoded.diagnostics).toEqual([]);
+		expect(migrated?.gameSchemaVersion).toBe(12);
+		expect(migrated?.revision).toBe(7);
+		expect(migrated?.run).toEqual(originalEnvelope);
+		expect(migratedGame.decisions[0]).toMatchObject({
+			kind: 'event',
+			id: 'event-instance-1',
+			eventId: 'supplier-terms',
+			definitionVersion: 1,
+			generatedOnDay: active.game.day,
+			target: { kind: 'company' }
+		});
+		expect(migratedGame.events).toMatchObject({
+			selectionSchemaVersion: 1,
+			nextInstanceSequence: 2,
+			nextModifierSequence: 1,
+			activeModifiers: []
+		});
+		expect(migratedGame.reports[0]).toMatchObject({
+			modifierImpacts: [],
+			modifierLifecycle: []
+		});
 	});
 });
 

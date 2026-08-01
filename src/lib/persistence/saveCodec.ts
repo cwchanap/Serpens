@@ -38,6 +38,11 @@ import {
 	FINANCE_TRANSACTION_LIMIT,
 	getInstallmentCount
 } from '$lib/game/finance';
+import {
+	createInitialEventRuntime,
+	EVENT_HISTORY_LIMIT,
+	EVENT_SELECTION_SCHEMA_VERSION
+} from '$lib/game/eventSelection';
 import { clampScore } from '$lib/game/reports';
 import { calculateStockHealth } from '$lib/game/stock';
 import type {
@@ -75,7 +80,8 @@ export type SaveDataErrorCode =
 	| 'invariant-stock-health'
 	| 'invariant-warehouse'
 	| 'invariant-inventory'
-	| 'invariant-entity-city-opened';
+	| 'invariant-entity-city-opened'
+	| 'invariant-event-runtime';
 
 export class SaveDataError extends Error {
 	readonly code: SaveDataErrorCode;
@@ -103,7 +109,7 @@ function withSaveDataBoundary<T>(context: string, operation: () => T): T {
  * {@link SAVE_SCHEMA_VERSION}. Keep this in sync with the migration table in
  * {@link migrateSaveStoreSnapshot} and {@link migrateSaveRecord}.
  */
-const MIGRATABLE_SCHEMA_VERSIONS = new Set<number>([4, 5, 6, 7, 8, 9, 10]);
+const MIGRATABLE_SCHEMA_VERSIONS = new Set<number>([4, 5, 6, 7, 8, 9, 10, 11]);
 
 function isMigratableSchemaVersion(version: unknown): version is number {
 	return typeof version === 'number' && MIGRATABLE_SCHEMA_VERSIONS.has(version);
@@ -458,10 +464,69 @@ function migrateV10Game(game: unknown): unknown {
 	const reports = Array.isArray(gameRecord.reports)
 		? gameRecord.reports.map((report) => migrateV10Report(report, debt))
 		: gameRecord.reports;
+	const decisions = Array.isArray(gameRecord.decisions)
+		? gameRecord.decisions.map(migrateV10StrategicDecisionFinanceEffects)
+		: gameRecord.decisions;
 	return {
 		...withoutDebt,
 		finance: createFoundingFinanceState(day, debt),
+		decisions,
 		reports
+	};
+}
+
+/**
+ * Genuine v10 strategic borrowing options credited cash directly. The v11
+ * finance model materialized those same actions as typed borrow requests, so
+ * perform that historical shape change before the exact v11 event migration.
+ * Any non-canonical value is left untouched for v11 validation to reject.
+ */
+function migrateV10StrategicDecisionFinanceEffects(decision: unknown): unknown {
+	if (typeof decision !== 'object' || decision === null) return decision;
+	const value = decision as Record<string, unknown>;
+	if (!Array.isArray(value.options)) return decision;
+
+	if (value.id === 'cash-pressure') {
+		return {
+			...value,
+			options: value.options.map((option) =>
+				migrateV10CashBorrowOption(option, 'short-loan', 12_000, 'emergency', 56)
+			)
+		};
+	}
+	if (value.id === 'supplier-terms') {
+		return {
+			...value,
+			options: value.options.map((option) =>
+				migrateV10CashBorrowOption(option, 'negotiate-credit', 4_000, 'supplierCredit', 28)
+			)
+		};
+	}
+	return decision;
+}
+
+function migrateV10CashBorrowOption(
+	option: unknown,
+	optionId: string,
+	legacyCash: number,
+	purpose: 'emergency' | 'supplierCredit',
+	termDays: 28 | 56
+): unknown {
+	if (typeof option !== 'object' || option === null) return option;
+	const value = option as Record<string, unknown>;
+	if (value.id !== optionId || typeof value.effects !== 'object' || value.effects === null) {
+		return option;
+	}
+	const effects = value.effects as Record<string, unknown>;
+	if (effects.cash !== legacyCash || Object.hasOwn(effects, 'finance')) return option;
+	const { cash: _cash, ...remainingEffects } = effects;
+	void _cash;
+	return {
+		...value,
+		effects: {
+			finance: { kind: 'borrow', purpose, amount: legacyCash, termDays },
+			...remainingEffects
+		}
 	};
 }
 
@@ -503,6 +568,318 @@ function migrateV10SaveRecord(record: unknown): unknown {
 	return { ...(record as Record<string, unknown>), schemaVersion: 11 };
 }
 
+const LEGACY_STRATEGIC_EVENT_SPECS = {
+	'cash-pressure': {
+		expiresAfterDays: 2,
+		copyKey: 'events.cashPressure',
+		contextCode: 'cashPressure',
+		optionIds: ['short-loan', 'cut-costs', 'hold-course']
+	},
+	'expansion-opportunity': {
+		expiresAfterDays: 3,
+		copyKey: 'events.expansionOpportunity',
+		contextCode: 'expansionOpportunity',
+		optionIds: ['prepare', 'pass']
+	},
+	'supplier-terms': {
+		expiresAfterDays: 2,
+		copyKey: 'events.supplierTerms',
+		contextCode: 'supplierTerms',
+		optionIds: ['negotiate-credit', 'bulk-discount']
+	}
+} as const;
+
+type LegacyStrategicEventId = keyof typeof LEGACY_STRATEGIC_EVENT_SPECS;
+
+/**
+ * v11 → v12: broad strategic decisions become materialized event instances,
+ * while command-owned notices become the system arm of the decision union.
+ * The game is unreleased, so unknown non-empty effects are rejected instead
+ * of being guessed into the typed event effect union.
+ */
+function migrateV11Game(game: unknown): unknown {
+	if (typeof game !== 'object' || game === null) return game;
+	return withEventInvariant(() => migrateV11GameInternal(game));
+}
+
+function migrateV11GameInternal(game: object): unknown {
+	const value = requireRecord(game, 'Saved v11 game');
+	const seed = requireNumber(value.seed, 'Saved v11 game seed');
+	const decisions = requireArray(value.decisions, 'Saved v11 decisions');
+	const reports = requireArray(value.reports, 'Saved v11 reports');
+	const initialEvents = createInitialEventRuntime(seed);
+	let nextInstanceSequence = 1;
+	const cooldowns: Array<Record<string, unknown>> = [];
+	const history: Array<Record<string, unknown>> = [];
+
+	const migratedDecisions = decisions.map((decision, index) => {
+		const label = `Saved v11 decisions[${index}]`;
+		const legacy = requireRecord(decision, label);
+		const id = requireString(legacy.id, `${label} id`);
+		if (!isLegacyStrategicEventId(id)) return migrateV11SystemDecision(legacy, label);
+
+		const instanceId = `event-instance-${nextInstanceSequence}`;
+		nextInstanceSequence += 1;
+		const migrated = migrateV11StrategicDecision(legacy, id, instanceId, label);
+		cooldowns.push({
+			eventId: id,
+			target: { kind: 'company' },
+			generatedOnDay: migrated.generatedOnDay,
+			eligibleOnDay: migrated.generatedOnDay + 1
+		});
+		history.push({
+			kind: 'event-generated',
+			day: migrated.generatedOnDay,
+			eventId: id,
+			instanceId,
+			target: { kind: 'company' }
+		});
+		return migrated.decision;
+	});
+
+	const migratedReports = reports.map((report, index) => ({
+		...requireRecord(report, `Saved v11 reports[${index}]`),
+		modifierImpacts: [],
+		modifierLifecycle: []
+	}));
+
+	return {
+		...value,
+		events: {
+			...initialEvents,
+			nextInstanceSequence,
+			cooldowns,
+			history
+		},
+		decisions: migratedDecisions,
+		reports: migratedReports
+	};
+}
+
+function isLegacyStrategicEventId(id: string): id is LegacyStrategicEventId {
+	return Object.hasOwn(LEGACY_STRATEGIC_EVENT_SPECS, id);
+}
+
+function migrateV11StrategicDecision(
+	legacy: Record<string, unknown>,
+	eventId: LegacyStrategicEventId,
+	instanceId: string,
+	label: string
+): { generatedOnDay: number; decision: Record<string, unknown> } {
+	requireExactKeys(legacy, ['id', 'title', 'context', 'expiresOnDay', 'options'], label);
+	requireString(legacy.title, `${label} title`);
+	const spec = LEGACY_STRATEGIC_EVENT_SPECS[eventId];
+	const context = requireRecord(legacy.context, `${label} context`);
+	requireExactKeys(context, ['code'], `${label} context`);
+	if (context.code !== spec.contextCode) {
+		throw new SaveDataError(`${label} context code must be ${spec.contextCode}`);
+	}
+	const expiresOnDay = requireNonNegativeInteger(legacy.expiresOnDay, `${label} expiresOnDay`);
+	const generatedOnDay = expiresOnDay - spec.expiresAfterDays;
+	if (generatedOnDay < 0) {
+		throw new SaveDataError(`${label} expiry does not permit a non-negative generated day`);
+	}
+	const options = requireArray(legacy.options, `${label} options`);
+	if (options.length !== spec.optionIds.length) {
+		throw new SaveDataError(`${label} options must contain exactly: ${spec.optionIds.join(', ')}`);
+	}
+	const migratedOptions = options.map((optionValue, optionIndex) => {
+		const optionLabel = `${label} options[${optionIndex}]`;
+		const option = requireRecord(optionValue, optionLabel);
+		requireExactKeys(option, ['id', 'label', 'description', 'effects'], optionLabel);
+		const expectedId = spec.optionIds[optionIndex];
+		if (option.id !== expectedId) {
+			throw new SaveDataError(`${optionLabel} id must be ${expectedId}`);
+		}
+		requireString(option.label, `${optionLabel} label`);
+		requireString(option.description, `${optionLabel} description`);
+		return {
+			id: expectedId,
+			effects: migrateV11StrategicEffects(
+				eventId,
+				expectedId,
+				requireRecord(option.effects, `${optionLabel} effects`),
+				`${optionLabel} effects`
+			),
+			modifiers: []
+		};
+	});
+
+	return {
+		generatedOnDay,
+		decision: {
+			kind: 'event',
+			id: instanceId,
+			eventId,
+			definitionVersion: 1,
+			generatedOnDay,
+			expiresOnDay,
+			target: { kind: 'company' },
+			copy: { key: spec.copyKey, params: {} },
+			options: migratedOptions
+		}
+	};
+}
+
+function migrateV11SystemDecision(
+	legacy: Record<string, unknown>,
+	label: string
+): Record<string, unknown> {
+	requireExactKeys(legacy, ['id', 'title', 'context', 'expiresOnDay', 'options'], label);
+	const id = requireString(legacy.id, `${label} id`);
+	const title = requireString(legacy.title, `${label} title`);
+	validateSavedDecisionContext(legacy.context, label);
+	const expiresOnDay = requireNonNegativeInteger(legacy.expiresOnDay, `${label} expiresOnDay`);
+	const options = requireArray(legacy.options, `${label} options`).map(
+		(optionValue, optionIndex) => {
+			const optionLabel = `${label} options[${optionIndex}]`;
+			const option = requireRecord(optionValue, optionLabel);
+			requireExactKeys(option, ['id', 'label', 'description', 'effects'], optionLabel);
+			const effects = requireRecord(option.effects, `${optionLabel} effects`);
+			if (Object.keys(effects).length > 0) {
+				throw new SaveDataError(`${optionLabel} effects must be empty for a system decision`);
+			}
+			return {
+				id: requireString(option.id, `${optionLabel} id`),
+				label: requireString(option.label, `${optionLabel} label`),
+				description: requireString(option.description, `${optionLabel} description`)
+			};
+		}
+	);
+	return { kind: 'system', id, title, context: legacy.context, expiresOnDay, options };
+}
+
+function migrateV11StrategicEffects(
+	eventId: LegacyStrategicEventId,
+	optionId: string,
+	effects: Record<string, unknown>,
+	label: string
+): Array<Record<string, unknown>> {
+	if (eventId === 'cash-pressure' && optionId === 'short-loan') {
+		requireExactKeys(effects, ['finance', 'profit', 'marketPosition'], label);
+		const finance = requireRecord(effects.finance, `${label} finance`);
+		requireExactKeys(finance, DECISION_FINANCE_EFFECT_FIELDS, `${label} finance`);
+		if (finance.kind !== 'borrow' || finance.purpose !== 'emergency' || finance.termDays !== 56) {
+			throw new SaveDataError(`${label} finance must be a 56-day emergency borrow`);
+		}
+		const amount = requireNumber(finance.amount, `${label} finance amount`);
+		if (!Number.isInteger(amount) || amount < 4_000 || amount > 12_000 || amount % 1_000 !== 0) {
+			throw new SaveDataError(`${label} finance amount must be a generated emergency principal`);
+		}
+		requireLegacyExactNumber(effects, 'profit', -4, label);
+		requireLegacyExactNumber(effects, 'marketPosition', -1, label);
+		return [
+			{ kind: 'finance-borrow', purpose: 'emergency', amount, termDays: 56 },
+			{ kind: 'score-adjust', score: 'profit', amount: -4 },
+			{ kind: 'score-adjust', score: 'marketPosition', amount: -1 }
+		];
+	}
+	if (eventId === 'cash-pressure' && optionId === 'cut-costs') {
+		requireExactKeys(
+			effects,
+			['cash', 'customerSatisfaction', 'staffMorale', 'stockHealth'],
+			label
+		);
+		requireLegacyExactNumber(effects, 'cash', 5_500, label);
+		requireLegacyExactNumber(effects, 'customerSatisfaction', -4, label);
+		requireLegacyExactNumber(effects, 'staffMorale', -5, label);
+		requireLegacyExactNumber(effects, 'stockHealth', -8, label);
+		return [
+			{ kind: 'cash-adjust', amount: 5_500 },
+			{ kind: 'score-adjust', score: 'customerSatisfaction', amount: -4 },
+			{ kind: 'score-adjust', score: 'staffMorale', amount: -5 },
+			{ kind: 'store-morale-adjust', scope: 'all-stores', amount: -5 },
+			{
+				kind: 'store-stock-adjust-by-target-percent',
+				scope: 'all-stores',
+				percent: -8
+			}
+		];
+	}
+	if (eventId === 'cash-pressure' && optionId === 'hold-course') {
+		requireExactKeys(effects, ['profit', 'staffMorale'], label);
+		requireLegacyExactNumber(effects, 'profit', 1, label);
+		requireLegacyExactNumber(effects, 'staffMorale', -2, label);
+		return [
+			{ kind: 'score-adjust', score: 'profit', amount: 1 },
+			{ kind: 'score-adjust', score: 'staffMorale', amount: -2 },
+			{ kind: 'store-morale-adjust', scope: 'all-stores', amount: -2 }
+		];
+	}
+	if (eventId === 'expansion-opportunity' && optionId === 'prepare') {
+		requireExactKeys(effects, ['cash', 'marketPosition', 'profit'], label);
+		requireLegacyExactNumber(effects, 'cash', -3_500, label);
+		requireLegacyExactNumber(effects, 'marketPosition', 5, label);
+		requireLegacyExactNumber(effects, 'profit', -1, label);
+		return [
+			{ kind: 'cash-adjust', amount: -3_500 },
+			{ kind: 'score-adjust', score: 'marketPosition', amount: 5 },
+			{ kind: 'score-adjust', score: 'profit', amount: -1 }
+		];
+	}
+	if (eventId === 'expansion-opportunity' && optionId === 'pass') {
+		requireExactKeys(effects, ['profit', 'staffMorale'], label);
+		requireLegacyExactNumber(effects, 'profit', 1, label);
+		requireLegacyExactNumber(effects, 'staffMorale', 1, label);
+		return [
+			{ kind: 'score-adjust', score: 'profit', amount: 1 },
+			{ kind: 'score-adjust', score: 'staffMorale', amount: 1 },
+			{ kind: 'store-morale-adjust', scope: 'all-stores', amount: 1 }
+		];
+	}
+	if (eventId === 'supplier-terms' && optionId === 'negotiate-credit') {
+		requireExactKeys(effects, ['finance', 'profit'], label);
+		const finance = requireRecord(effects.finance, `${label} finance`);
+		requireExactKeys(finance, DECISION_FINANCE_EFFECT_FIELDS, `${label} finance`);
+		if (
+			finance.kind !== 'borrow' ||
+			finance.purpose !== 'supplierCredit' ||
+			finance.amount !== 4_000 ||
+			finance.termDays !== 28
+		) {
+			throw new SaveDataError(`${label} finance must be the fixed 28-day supplier credit`);
+		}
+		requireLegacyExactNumber(effects, 'profit', -2, label);
+		return [
+			{ kind: 'finance-borrow', purpose: 'supplierCredit', amount: 4_000, termDays: 28 },
+			{ kind: 'score-adjust', score: 'profit', amount: -2 }
+		];
+	}
+	if (eventId === 'supplier-terms' && optionId === 'bulk-discount') {
+		requireExactKeys(effects, ['cash', 'profit', 'stockHealth'], label);
+		requireLegacyExactNumber(effects, 'cash', -2_500, label);
+		requireLegacyExactNumber(effects, 'profit', 3, label);
+		requireLegacyExactNumber(effects, 'stockHealth', 6, label);
+		return [
+			{ kind: 'cash-adjust', amount: -2_500 },
+			{ kind: 'score-adjust', score: 'profit', amount: 3 },
+			{
+				kind: 'store-stock-adjust-by-target-percent',
+				scope: 'all-stores',
+				percent: 6
+			}
+		];
+	}
+	throw new SaveDataError(`${label} is not a supported v11 strategic option`);
+}
+
+function requireLegacyExactNumber(
+	value: Record<string, unknown>,
+	key: string,
+	expected: number,
+	label: string
+): void {
+	const actual = requireNumber(value[key], `${label} ${key}`);
+	if (actual !== expected) {
+		throw new SaveDataError(`${label} ${key} must be ${expected}`);
+	}
+}
+
+function migrateV11SaveRecord(record: unknown): unknown {
+	if (typeof record !== 'object' || record === null) return record;
+	return { ...(record as Record<string, unknown>), schemaVersion: 12 };
+}
+
 /**
  * Migrates a bare serialized game through every historical game-schema step.
  * Record metadata is deliberately excluded; it remains owned by the sandbox
@@ -531,6 +908,7 @@ function migrateSavedGameInternal(value: unknown, sourceGameSchemaVersion: numbe
 	if (sourceGameSchemaVersion <= 8) migrated = migrateV8Game(migrated);
 	if (sourceGameSchemaVersion <= 9) migrated = migrateV9Game(migrated);
 	if (sourceGameSchemaVersion <= 10) migrated = migrateV10Game(migrated);
+	if (sourceGameSchemaVersion <= 11) migrated = migrateV11Game(migrated);
 
 	return migrated;
 }
@@ -584,6 +962,9 @@ function migrateSaveRecord(value: unknown): unknown {
 	}
 	if (migrated.schemaVersion === 10) {
 		migrated = migrateV10SaveRecord(migrated) as Record<string, unknown>;
+	}
+	if (migrated.schemaVersion === 11) {
+		migrated = migrateV11SaveRecord(migrated) as Record<string, unknown>;
 	}
 
 	return migrated;
@@ -647,16 +1028,8 @@ const WORLD_MILESTONE_IDS = [
 	'reveal-quarry-works',
 	'positive-income-store-cap'
 ] as const;
-const DECISION_EFFECT_NUMBER_FIELDS = [
-	'profit',
-	'customerSatisfaction',
-	'staffMorale',
-	'marketPosition',
-	'cash',
-	'stockHealth',
-	'reputation'
-] as const;
 const DECISION_FINANCE_EFFECT_FIELDS = ['kind', 'purpose', 'amount', 'termDays'] as const;
+const SCORE_KEYS = ['profit', 'customerSatisfaction', 'staffMorale', 'marketPosition'] as const;
 
 export function createEmptySaveStore(): SaveStoreSnapshot {
 	return {
@@ -893,9 +1266,17 @@ function validateCurrentGameStateInternal(value: unknown): GameState {
 	hiringCandidates.forEach((candidate, index) =>
 		validateSavedHiringCandidate(candidate, `Saved game hiringCandidates[${index}]`)
 	);
-	decisions.forEach((decision, index) =>
-		validateSavedDecision(decision, `Saved game decisions[${index}]`)
-	);
+	const decisionIds = new Set<string>();
+	decisions.forEach((decision, index) => {
+		const id = validateSavedDecision(decision, gameDay, `Saved game decisions[${index}]`);
+		if (decisionIds.has(id)) {
+			throw new SaveDataError(
+				`Saved game decisions[${index}] id must be unique: ${id}`,
+				'invariant-event-runtime'
+			);
+		}
+		decisionIds.add(id);
+	});
 	let previousReportDay: number | undefined;
 	reports.forEach((report, index) => {
 		const reportDay = validateSavedReport(report, gameDay, `Saved game reports[${index}]`);
@@ -904,6 +1285,7 @@ function validateCurrentGameStateInternal(value: unknown): GameState {
 		}
 		previousReportDay = reportDay;
 	});
+	validateSavedEventRuntime(game.events, gameDay, decisions, reports, 'Saved game events');
 	const storeCap = requireNumber(game.storeCap, 'Saved game storeCap');
 	if (!Number.isInteger(storeCap)) {
 		throw new SaveDataError('Saved game storeCap must be an integer', 'invariant-store-cap');
@@ -2646,62 +3028,615 @@ function validateSavedDecisionContext(value: unknown, label: string): DecisionCo
 	}
 }
 
-function validateSavedDecision(value: unknown, label: string): void {
-	const decision = requireRecord(value, label);
+function validateSavedDecision(value: unknown, gameDay: number, label: string): string {
+	return withEventInvariant(() => {
+		const decision = requireRecord(value, label);
+		const kind = requireOneOf(decision.kind, `${label} kind`, ['system', 'event'] as const);
+		const id = requireString(decision.id, `${label} id`);
+		const expiresOnDay = requireNonNegativeInteger(decision.expiresOnDay, `${label} expiresOnDay`);
+		if (expiresOnDay < gameDay) {
+			throw new SaveDataError(`${label} expiresOnDay must not be before the game day`);
+		}
 
-	requireString(decision.id, `${label} id`);
-	requireString(decision.title, `${label} title`);
-	validateSavedDecisionContext(decision.context, `${label}`);
-	requireNumber(decision.expiresOnDay, `${label} expiresOnDay`);
-	requireArray(decision.options, `${label} options`).forEach((option, index) =>
-		validateSavedDecisionOption(option, `${label} options[${index}]`)
-	);
+		if (kind === 'system') {
+			requireExactKeys(
+				decision,
+				['kind', 'id', 'title', 'context', 'expiresOnDay', 'options'],
+				label
+			);
+			requireString(decision.title, `${label} title`);
+			validateSavedDecisionContext(decision.context, label);
+			validateUniqueArrayIds(
+				requireArray(decision.options, `${label} options`),
+				`${label} options`,
+				validateSavedSystemDecisionOption
+			);
+			return id;
+		}
+
+		requireExactKeys(
+			decision,
+			[
+				'kind',
+				'id',
+				'eventId',
+				'definitionVersion',
+				'generatedOnDay',
+				'expiresOnDay',
+				'target',
+				'copy',
+				'options'
+			],
+			label
+		);
+		requireGeneratedId(id, 'event-instance-', `${label} id`);
+		requireString(decision.eventId, `${label} eventId`);
+		requirePositiveSafeInteger(decision.definitionVersion, `${label} definitionVersion`);
+		const generatedOnDay = requireNonNegativeInteger(
+			decision.generatedOnDay,
+			`${label} generatedOnDay`
+		);
+		if (generatedOnDay > gameDay) {
+			throw new SaveDataError(`${label} generatedOnDay must not be after the game day`);
+		}
+		if (expiresOnDay <= generatedOnDay) {
+			throw new SaveDataError(`${label} expiresOnDay must be after generatedOnDay`);
+		}
+		validateCompanyTarget(decision.target, `${label} target`);
+		validateStructuredCopyRef(decision.copy, `${label} copy`);
+		validateUniqueArrayIds(
+			requireArray(decision.options, `${label} options`),
+			`${label} options`,
+			validateSavedEventDecisionOption
+		);
+		return id;
+	});
 }
 
-function validateSavedDecisionOption(value: unknown, label: string): void {
+function validateSavedSystemDecisionOption(value: unknown, label: string): string {
 	const option = requireRecord(value, label);
-	const effects = requireRecord(option.effects, `${label} effects`);
-
-	requireString(option.id, `${label} id`);
+	requireExactKeys(option, ['id', 'label', 'description'], label);
+	const id = requireString(option.id, `${label} id`);
 	requireString(option.label, `${label} label`);
 	requireString(option.description, `${label} description`);
-
-	for (const field of DECISION_EFFECT_NUMBER_FIELDS) {
-		if (field in effects) {
-			requireNumber(effects[field], `${label} effects ${field}`);
-		}
-	}
-
-	if ('finance' in effects) {
-		validateSavedDecisionFinanceEffect(effects.finance, `${label} effects finance`);
-	}
+	return id;
 }
 
-function validateSavedDecisionFinanceEffect(value: unknown, label: string): void {
-	const finance = requireRecord(value, label);
-	for (const key of Object.keys(finance)) {
-		if (!(DECISION_FINANCE_EFFECT_FIELDS as readonly string[]).includes(key)) {
-			throw new SaveDataError(`${label} contains an unknown field: ${key}`);
-		}
+function validateSavedEventDecisionOption(value: unknown, label: string): string {
+	const option = requireRecord(value, label);
+	requireExactKeys(option, ['id', 'effects', 'modifiers'], label);
+	const id = requireString(option.id, `${label} id`);
+	const effects = requireArray(option.effects, `${label} effects`);
+	let financeEffectCount = 0;
+	let hasCashAdjustment = false;
+	for (const [index, effect] of effects.entries()) {
+		const effectKind = validateSavedEventImmediateEffect(effect, `${label} effects[${index}]`);
+		if (effectKind === 'finance-borrow') financeEffectCount += 1;
+		if (effectKind === 'cash-adjust') hasCashAdjustment = true;
 	}
-	requireOneOf(finance.kind, `${label} kind`, ['borrow'] as const);
-	const purpose = requireOneOf(finance.purpose, `${label} purpose`, [
+	if (financeEffectCount > 1) {
+		throw new SaveDataError(`${label} effects must contain at most one finance-borrow effect`);
+	}
+	if (financeEffectCount > 0 && hasCashAdjustment) {
+		throw new SaveDataError(`${label} effects must not combine cash-adjust and finance-borrow`);
+	}
+	requireArray(option.modifiers, `${label} modifiers`).forEach((modifier, index) =>
+		validateSavedModifierTemplate(modifier, `${label} modifiers[${index}]`)
+	);
+	return id;
+}
+
+function validateSavedEventImmediateEffect(value: unknown, label: string): string {
+	const effect = requireRecord(value, label);
+	const kind = requireOneOf(effect.kind, `${label} kind`, [
+		'cash-adjust',
+		'score-adjust',
+		'store-morale-adjust',
+		'store-stock-adjust-by-target-percent',
+		'finance-borrow'
+	] as const);
+
+	switch (kind) {
+		case 'cash-adjust':
+			requireExactKeys(effect, ['kind', 'amount'], label);
+			requireNumber(effect.amount, `${label} amount`);
+			break;
+		case 'score-adjust':
+			requireExactKeys(effect, ['kind', 'score', 'amount'], label);
+			requireOneOf(effect.score, `${label} score`, SCORE_KEYS);
+			requireNumber(effect.amount, `${label} amount`);
+			break;
+		case 'store-morale-adjust':
+			requireExactKeys(effect, ['kind', 'scope', 'amount'], label);
+			requireOneOf(effect.scope, `${label} scope`, ['all-stores'] as const);
+			requireNumber(effect.amount, `${label} amount`);
+			break;
+		case 'store-stock-adjust-by-target-percent':
+			requireExactKeys(effect, ['kind', 'scope', 'percent'], label);
+			requireOneOf(effect.scope, `${label} scope`, ['all-stores'] as const);
+			requireNumber(effect.percent, `${label} percent`);
+			break;
+		case 'finance-borrow':
+			requireExactKeys(effect, ['kind', 'purpose', 'amount', 'termDays'], label);
+			validateSavedBorrowTerms(effect, label);
+			break;
+	}
+	return kind;
+}
+
+function validateSavedBorrowTerms(value: Record<string, unknown>, label: string): void {
+	const purpose = requireOneOf(value.purpose, `${label} purpose`, [
 		'emergency',
 		'supplierCredit'
 	] as const);
-	const amount = requireNumber(finance.amount, `${label} amount`);
-	if (!Number.isInteger(amount) || amount <= 0) {
-		throw new SaveDataError(`${label} amount must be a positive whole-dollar amount`);
+	const amount = requireNumber(value.amount, `${label} amount`);
+	if (!Number.isSafeInteger(amount) || amount <= 0) {
+		throw new SaveDataError(`${label} amount must be a positive safe whole-dollar amount`);
 	}
-	const termDays = requireNumber(finance.termDays, `${label} termDays`);
-	if (termDays !== 28 && termDays !== 56) {
-		throw new SaveDataError(`${label} termDays must be 28 or 56`);
-	}
+	const termDays = requireNumber(value.termDays, `${label} termDays`);
 	if (
 		(purpose === 'emergency' && termDays !== 56) ||
 		(purpose === 'supplierCredit' && termDays !== 28)
 	) {
 		throw new SaveDataError(`${label} purpose and termDays must be a supported pair`);
+	}
+}
+
+function validateSavedModifierTemplate(value: unknown, label: string): void {
+	const modifier = requireRecord(value, label);
+	requireExactKeys(
+		modifier,
+		['durationDays', 'stackingKey', 'stackingRule', 'effect', 'explanation', 'importance'],
+		label
+	);
+	requirePositiveSafeInteger(modifier.durationDays, `${label} durationDays`);
+	requireString(modifier.stackingKey, `${label} stackingKey`);
+	requireOneOf(modifier.stackingRule, `${label} stackingRule`, ['replace'] as const);
+	validateSavedTimedEffect(modifier.effect, `${label} effect`);
+	validateStructuredCopyRef(modifier.explanation, `${label} explanation`);
+	requireOneOf(modifier.importance, `${label} importance`, ['normal', 'important'] as const);
+}
+
+function validateSavedTimedEffect(value: unknown, label: string): void {
+	const effect = requireRecord(value, label);
+	requireExactKeys(effect, ['kind', 'scope', 'target', 'multiplier'], label);
+	requireOneOf(effect.kind, `${label} kind`, ['import-cost-multiplier'] as const);
+	requireOneOf(effect.scope, `${label} scope`, ['retail-product'] as const);
+	const target = requireRecord(effect.target, `${label} target`);
+	requireExactKeys(target, ['kind'], `${label} target`);
+	requireOneOf(target.kind, `${label} target kind`, ['all'] as const);
+	const multiplier = requireNumber(effect.multiplier, `${label} multiplier`);
+	if (multiplier <= 0) throw new SaveDataError(`${label} multiplier must be positive`);
+}
+
+function validateStructuredCopyRef(value: unknown, label: string): void {
+	const copy = requireRecord(value, label);
+	requireExactKeys(copy, ['key', 'params'], label);
+	requireString(copy.key, `${label} key`);
+	const params = requireRecord(copy.params, `${label} params`);
+	for (const [key, parameter] of Object.entries(params)) {
+		if (
+			typeof parameter !== 'string' &&
+			(typeof parameter !== 'number' || !Number.isFinite(parameter))
+		) {
+			throw new SaveDataError(`${label} params ${key} must be a string or finite number`);
+		}
+	}
+}
+
+function validateCompanyTarget(value: unknown, label: string): void {
+	const target = requireRecord(value, label);
+	requireExactKeys(target, ['kind'], label);
+	requireOneOf(target.kind, `${label} kind`, ['company'] as const);
+}
+
+function validateSavedEventRuntime(
+	value: unknown,
+	gameDay: number,
+	decisions: unknown[],
+	reports: unknown[],
+	label: string
+): void {
+	withEventInvariant(() => {
+		const events = requireRecord(value, label);
+		requireExactKeys(
+			events,
+			[
+				'selectionSchemaVersion',
+				'rngState',
+				'nextInstanceSequence',
+				'nextModifierSequence',
+				'cooldowns',
+				'activeModifiers',
+				'history'
+			],
+			label
+		);
+		if (events.selectionSchemaVersion !== EVENT_SELECTION_SCHEMA_VERSION) {
+			throw new SaveDataError(
+				`${label} selectionSchemaVersion must be ${EVENT_SELECTION_SCHEMA_VERSION}`
+			);
+		}
+		const rngState = requirePositiveSafeInteger(events.rngState, `${label} rngState`);
+		if (rngState >= 2_147_483_647) {
+			throw new SaveDataError(`${label} rngState must be a normalized event RNG state`);
+		}
+		const nextInstanceSequence = requirePositiveSafeInteger(
+			events.nextInstanceSequence,
+			`${label} nextInstanceSequence`
+		);
+		const nextModifierSequence = requirePositiveSafeInteger(
+			events.nextModifierSequence,
+			`${label} nextModifierSequence`
+		);
+
+		const cooldownKeys = new Set<string>();
+		requireArray(events.cooldowns, `${label} cooldowns`).forEach((cooldownValue, index) => {
+			const cooldownLabel = `${label} cooldowns[${index}]`;
+			const cooldown = requireRecord(cooldownValue, cooldownLabel);
+			requireExactKeys(
+				cooldown,
+				['eventId', 'target', 'generatedOnDay', 'eligibleOnDay'],
+				cooldownLabel
+			);
+			const eventId = requireString(cooldown.eventId, `${cooldownLabel} eventId`);
+			validateCompanyTarget(cooldown.target, `${cooldownLabel} target`);
+			const generatedOnDay = requireNonNegativeInteger(
+				cooldown.generatedOnDay,
+				`${cooldownLabel} generatedOnDay`
+			);
+			const eligibleOnDay = requireNonNegativeInteger(
+				cooldown.eligibleOnDay,
+				`${cooldownLabel} eligibleOnDay`
+			);
+			if (generatedOnDay > gameDay) {
+				throw new SaveDataError(`${cooldownLabel} generatedOnDay must not be after the game day`);
+			}
+			if (eligibleOnDay <= generatedOnDay) {
+				throw new SaveDataError(`${cooldownLabel} eligibleOnDay must be after generatedOnDay`);
+			}
+			const key = `${eventId}:company`;
+			if (cooldownKeys.has(key)) {
+				throw new SaveDataError(`${cooldownLabel} must have a unique event/target key: ${key}`);
+			}
+			cooldownKeys.add(key);
+		});
+
+		let highestInstanceSequence = 0;
+		let highestModifierSequence = 0;
+		for (const decisionValue of decisions) {
+			const decision = requireRecord(decisionValue, `${label} decision sequence evidence`);
+			if (decision.kind === 'event') {
+				highestInstanceSequence = Math.max(
+					highestInstanceSequence,
+					requireGeneratedId(decision.id, 'event-instance-', `${label} decision id`)
+				);
+			}
+		}
+
+		const activeModifierIds = new Set<string>();
+		const activeStackingKeys = new Set<string>();
+		requireArray(events.activeModifiers, `${label} activeModifiers`).forEach(
+			(modifierValue, index) => {
+				const modifierLabel = `${label} activeModifiers[${index}]`;
+				const modifier = validateSavedActiveModifier(modifierValue, gameDay, modifierLabel);
+				if (activeModifierIds.has(modifier.id)) {
+					throw new SaveDataError(`${modifierLabel} id must be unique: ${modifier.id}`);
+				}
+				if (activeStackingKeys.has(modifier.stackingKey)) {
+					throw new SaveDataError(
+						`${modifierLabel} stackingKey must be unique among active modifiers: ${modifier.stackingKey}`
+					);
+				}
+				activeModifierIds.add(modifier.id);
+				activeStackingKeys.add(modifier.stackingKey);
+				highestInstanceSequence = Math.max(
+					highestInstanceSequence,
+					requireGeneratedId(
+						modifier.instanceId,
+						'event-instance-',
+						`${modifierLabel} source instanceId`
+					)
+				);
+				highestModifierSequence = Math.max(
+					highestModifierSequence,
+					requireGeneratedId(modifier.id, 'event-modifier-', `${modifierLabel} id`)
+				);
+			}
+		);
+
+		const history = requireArray(events.history, `${label} history`);
+		if (history.length > EVENT_HISTORY_LIMIT) {
+			throw new SaveDataError(
+				`${label} history must contain at most ${EVENT_HISTORY_LIMIT} entries`
+			);
+		}
+		let previousHistoryDay = -1;
+		for (const [index, entryValue] of history.entries()) {
+			const entryLabel = `${label} history[${index}]`;
+			const evidence = validateSavedEventHistoryEntry(entryValue, gameDay, entryLabel);
+			if (evidence.day < previousHistoryDay) {
+				throw new SaveDataError(`${entryLabel} day must not be before the previous history day`);
+			}
+			previousHistoryDay = evidence.day;
+			highestInstanceSequence = Math.max(highestInstanceSequence, evidence.instanceSequence);
+			highestModifierSequence = Math.max(highestModifierSequence, evidence.modifierSequence);
+		}
+
+		for (const [reportIndex, reportValue] of reports.entries()) {
+			const report = requireRecord(
+				reportValue,
+				`${label} report sequence evidence[${reportIndex}]`
+			);
+			for (const impactValue of requireArray(
+				report.modifierImpacts,
+				`${label} report sequence evidence[${reportIndex}] modifierImpacts`
+			)) {
+				const impact = requireRecord(
+					impactValue,
+					`${label} report modifier impact sequence evidence`
+				);
+				highestModifierSequence = Math.max(
+					highestModifierSequence,
+					requireGeneratedId(impact.modifierId, 'event-modifier-', `${label} report modifierId`)
+				);
+				const source = requireRecord(impact.source, `${label} report modifier source`);
+				highestInstanceSequence = Math.max(
+					highestInstanceSequence,
+					requireGeneratedId(
+						source.instanceId,
+						'event-instance-',
+						`${label} report modifier source instanceId`
+					)
+				);
+			}
+			for (const lifecycleValue of requireArray(
+				report.modifierLifecycle,
+				`${label} report sequence evidence[${reportIndex}] modifierLifecycle`
+			)) {
+				const lifecycle = requireRecord(
+					lifecycleValue,
+					`${label} report modifier lifecycle evidence`
+				);
+				const modifier = requireRecord(
+					lifecycle.modifier,
+					`${label} report modifier lifecycle evidence modifier`
+				);
+				highestModifierSequence = Math.max(
+					highestModifierSequence,
+					requireGeneratedId(
+						modifier.id,
+						'event-modifier-',
+						`${label} report lifecycle modifier id`
+					)
+				);
+				const source = requireRecord(
+					modifier.source,
+					`${label} report modifier lifecycle evidence source`
+				);
+				highestInstanceSequence = Math.max(
+					highestInstanceSequence,
+					requireGeneratedId(
+						source.instanceId,
+						'event-instance-',
+						`${label} report lifecycle source instanceId`
+					)
+				);
+				if (Object.hasOwn(lifecycle, 'replacedByModifierId')) {
+					highestModifierSequence = Math.max(
+						highestModifierSequence,
+						requireGeneratedId(
+							lifecycle.replacedByModifierId,
+							'event-modifier-',
+							`${label} report lifecycle replacedByModifierId`
+						)
+					);
+				}
+			}
+		}
+
+		if (nextInstanceSequence <= highestInstanceSequence) {
+			throw new SaveDataError(
+				`${label} nextInstanceSequence must exceed every persisted event-instance sequence`
+			);
+		}
+		if (nextModifierSequence <= highestModifierSequence) {
+			throw new SaveDataError(
+				`${label} nextModifierSequence must exceed every persisted event-modifier sequence`
+			);
+		}
+	});
+}
+
+function validateSavedActiveModifier(
+	value: unknown,
+	gameDay: number,
+	label: string
+): { id: string; instanceId: string; stackingKey: string } {
+	const modifier = requireRecord(value, label);
+	requireExactKeys(
+		modifier,
+		[
+			'id',
+			'source',
+			'target',
+			'startsOnDay',
+			'expiresOnDay',
+			'stackingKey',
+			'stackingRule',
+			'effect',
+			'explanation',
+			'importance'
+		],
+		label
+	);
+	const base = validateSavedModifierFields(modifier, label);
+	requireOneOf(modifier.stackingRule, `${label} stackingRule`, ['replace'] as const);
+	if (!(base.startsOnDay <= gameDay && gameDay < base.expiresOnDay)) {
+		throw new SaveDataError(`${label} must be active on the current game day ${gameDay}`);
+	}
+	return { id: base.id, instanceId: base.instanceId, stackingKey: base.stackingKey };
+}
+
+function validateSavedModifierSnapshot(
+	value: unknown,
+	label: string
+): { id: string; instanceId: string; startsOnDay: number; expiresOnDay: number } {
+	const modifier = requireRecord(value, label);
+	requireExactKeys(
+		modifier,
+		[
+			'id',
+			'source',
+			'target',
+			'startsOnDay',
+			'expiresOnDay',
+			'stackingKey',
+			'effect',
+			'explanation',
+			'importance'
+		],
+		label
+	);
+	return validateSavedModifierFields(modifier, label);
+}
+
+function validateSavedModifierFields(
+	modifier: Record<string, unknown>,
+	label: string
+): {
+	id: string;
+	instanceId: string;
+	stackingKey: string;
+	startsOnDay: number;
+	expiresOnDay: number;
+} {
+	const id = requireString(modifier.id, `${label} id`);
+	requireGeneratedId(id, 'event-modifier-', `${label} id`);
+	const source = validateSavedModifierSource(modifier.source, `${label} source`);
+	validateCompanyTarget(modifier.target, `${label} target`);
+	const startsOnDay = requireNonNegativeInteger(modifier.startsOnDay, `${label} startsOnDay`);
+	const expiresOnDay = requireNonNegativeInteger(modifier.expiresOnDay, `${label} expiresOnDay`);
+	if (expiresOnDay <= startsOnDay) {
+		throw new SaveDataError(`${label} expiresOnDay must be after startsOnDay`);
+	}
+	const stackingKey = requireString(modifier.stackingKey, `${label} stackingKey`);
+	validateSavedTimedEffect(modifier.effect, `${label} effect`);
+	validateStructuredCopyRef(modifier.explanation, `${label} explanation`);
+	requireOneOf(modifier.importance, `${label} importance`, ['normal', 'important'] as const);
+	return { id, instanceId: source.instanceId, stackingKey, startsOnDay, expiresOnDay };
+}
+
+function validateSavedModifierSource(
+	value: unknown,
+	label: string
+): { eventId: string; instanceId: string; optionId: string } {
+	const source = requireRecord(value, label);
+	requireExactKeys(source, ['eventId', 'instanceId', 'optionId'], label);
+	return {
+		eventId: requireString(source.eventId, `${label} eventId`),
+		instanceId: requireString(source.instanceId, `${label} instanceId`),
+		optionId: requireString(source.optionId, `${label} optionId`)
+	};
+}
+
+function validateSavedEventHistoryEntry(
+	value: unknown,
+	gameDay: number,
+	label: string
+): { day: number; instanceSequence: number; modifierSequence: number } {
+	const entry = requireRecord(value, label);
+	const kind = requireOneOf(entry.kind, `${label} kind`, [
+		'event-generated',
+		'event-resolved',
+		'event-decision-expired',
+		'modifier-lifecycle'
+	] as const);
+	const day = requireNonNegativeInteger(entry.day, `${label} day`);
+	if (day > gameDay) throw new SaveDataError(`${label} day must not be after the game day`);
+
+	if (kind === 'modifier-lifecycle') {
+		requireExactKeys(entry, ['kind', 'day', 'status', 'modifier', 'replacedByModifierId'], label);
+		const lifecycle = validateSavedModifierLifecycle(entry, label, true, day);
+		return {
+			day,
+			instanceSequence: requireGeneratedId(
+				lifecycle.instanceId,
+				'event-instance-',
+				`${label} modifier source instanceId`
+			),
+			modifierSequence: Math.max(lifecycle.modifierSequence, lifecycle.replacedBySequence)
+		};
+	}
+
+	const baseKeys = ['kind', 'day', 'eventId', 'instanceId', 'target'];
+	requireExactKeys(entry, kind === 'event-resolved' ? [...baseKeys, 'optionId'] : baseKeys, label);
+	requireString(entry.eventId, `${label} eventId`);
+	const instanceSequence = requireGeneratedId(
+		entry.instanceId,
+		'event-instance-',
+		`${label} instanceId`
+	);
+	validateCompanyTarget(entry.target, `${label} target`);
+	if (kind === 'event-resolved') requireString(entry.optionId, `${label} optionId`);
+	return { day, instanceSequence, modifierSequence: 0 };
+}
+
+function validateSavedModifierLifecycle(
+	value: Record<string, unknown>,
+	label: string,
+	hasHistoryFields: boolean,
+	lifecycleDay: number
+): { instanceId: string; modifierSequence: number; replacedBySequence: number } {
+	const status = requireOneOf(value.status, `${label} status`, [
+		'activated',
+		'replaced',
+		'expired'
+	] as const);
+	const modifier = validateSavedModifierSnapshot(value.modifier, `${label} modifier`);
+	let replacedBySequence = 0;
+	if (status === 'replaced') {
+		if (!(modifier.startsOnDay <= lifecycleDay && lifecycleDay < modifier.expiresOnDay)) {
+			throw new SaveDataError(`${label} status replaced must occur while the modifier is active`);
+		}
+		replacedBySequence = requireGeneratedId(
+			value.replacedByModifierId,
+			'event-modifier-',
+			`${label} replacedByModifierId`
+		);
+		if (value.replacedByModifierId === modifier.id) {
+			throw new SaveDataError(
+				`${label} replacedByModifierId must differ from the replaced modifier`
+			);
+		}
+	} else if (Object.hasOwn(value, 'replacedByModifierId')) {
+		throw new SaveDataError(`${label} replacedByModifierId is only valid for replaced lifecycle`);
+	}
+	if (status === 'activated' && lifecycleDay !== modifier.startsOnDay) {
+		throw new SaveDataError(`${label} status activated must occur on modifier startsOnDay`);
+	}
+	if (status === 'expired' && lifecycleDay !== modifier.expiresOnDay - 1) {
+		throw new SaveDataError(`${label} status expired must occur on expiresOnDay minus one`);
+	}
+	if (hasHistoryFields && value.kind !== 'modifier-lifecycle') {
+		throw new SaveDataError(`${label} kind must be modifier-lifecycle`);
+	}
+	return {
+		instanceId: modifier.instanceId,
+		modifierSequence: requireGeneratedId(modifier.id, 'event-modifier-', `${label} modifier id`),
+		replacedBySequence
+	};
+}
+
+function withEventInvariant<T>(operation: () => T): T {
+	try {
+		return operation();
+	} catch (error) {
+		if (error instanceof SaveDataError) {
+			if (error.code === 'invariant-event-runtime') throw error;
+			throw new SaveDataError(error.message, 'invariant-event-runtime', error);
+		}
+		throw error;
 	}
 }
 
@@ -2749,8 +3684,106 @@ function validateSavedReport(value: unknown, gameDay: number, label: string): nu
 		}
 		seenStoreIds.add(storeId);
 	});
+	withEventInvariant(() => {
+		validateSavedModifierImpacts(report.modifierImpacts, `${label} modifierImpacts`);
+		validateSavedReportModifierLifecycle(
+			report.modifierLifecycle,
+			`${label} modifierLifecycle`,
+			day
+		);
+	});
 	validateSavedWarningArray(report.warnings, `${label} warnings`, false);
 	return day;
+}
+
+function validateSavedModifierImpacts(value: unknown, label: string): void {
+	const modifierIds = new Set<string>();
+	let previousModifierId: string | undefined;
+	requireArray(value, label).forEach((impactValue, index) => {
+		const impactLabel = `${label}[${index}]`;
+		const impact = requireRecord(impactValue, impactLabel);
+		requireExactKeys(
+			impact,
+			[
+				'modifierId',
+				'source',
+				'target',
+				'effectKind',
+				'explanation',
+				'scope',
+				'affectedIds',
+				'multiplier',
+				'baselineCost',
+				'applicationCount'
+			],
+			impactLabel
+		);
+		const modifierId = requireString(impact.modifierId, `${impactLabel} modifierId`);
+		requireGeneratedId(modifierId, 'event-modifier-', `${impactLabel} modifierId`);
+		if (modifierIds.has(modifierId)) {
+			throw new SaveDataError(`${impactLabel} modifierId must be unique: ${modifierId}`);
+		}
+		if (previousModifierId !== undefined && modifierId <= previousModifierId) {
+			throw new SaveDataError(`${impactLabel} modifierId must be in ascending code-unit order`);
+		}
+		modifierIds.add(modifierId);
+		previousModifierId = modifierId;
+		const source = validateSavedModifierSource(impact.source, `${impactLabel} source`);
+		requireGeneratedId(source.instanceId, 'event-instance-', `${impactLabel} source instanceId`);
+		validateCompanyTarget(impact.target, `${impactLabel} target`);
+		requireOneOf(impact.effectKind, `${impactLabel} effectKind`, [
+			'import-cost-multiplier'
+		] as const);
+		validateStructuredCopyRef(impact.explanation, `${impactLabel} explanation`);
+		requireOneOf(impact.scope, `${impactLabel} scope`, ['retail-product'] as const);
+		const affectedIds = requireArray(impact.affectedIds, `${impactLabel} affectedIds`);
+		if (affectedIds.length === 0) {
+			throw new SaveDataError(`${impactLabel} affectedIds must not be empty`);
+		}
+		const seenAffectedIds = new Set<string>();
+		let previousAffectedId: string | undefined;
+		affectedIds.forEach((affectedId, affectedIndex) => {
+			const id = requireString(affectedId, `${impactLabel} affectedIds[${affectedIndex}]`);
+			if (seenAffectedIds.has(id)) {
+				throw new SaveDataError(
+					`${impactLabel} affectedIds[${affectedIndex}] must be unique: ${id}`
+				);
+			}
+			if (previousAffectedId !== undefined && id <= previousAffectedId) {
+				throw new SaveDataError(
+					`${impactLabel} affectedIds[${affectedIndex}] must be in ascending code-unit order`
+				);
+			}
+			seenAffectedIds.add(id);
+			previousAffectedId = id;
+		});
+		const multiplier = requireNumber(impact.multiplier, `${impactLabel} multiplier`);
+		if (multiplier <= 0) throw new SaveDataError(`${impactLabel} multiplier must be positive`);
+		const baselineCost = requireNumber(impact.baselineCost, `${impactLabel} baselineCost`);
+		if (baselineCost <= 0) {
+			throw new SaveDataError(`${impactLabel} baselineCost must be positive`);
+		}
+		const applicationCount = requirePositiveSafeInteger(
+			impact.applicationCount,
+			`${impactLabel} applicationCount`
+		);
+		if (applicationCount < affectedIds.length) {
+			throw new SaveDataError(`${impactLabel} applicationCount must cover every affectedIds entry`);
+		}
+	});
+}
+
+function validateSavedReportModifierLifecycle(
+	value: unknown,
+	label: string,
+	reportDay: number
+): void {
+	requireArray(value, label).forEach((lifecycleValue, index) => {
+		const lifecycleLabel = `${label}[${index}]`;
+		const lifecycle = requireRecord(lifecycleValue, lifecycleLabel);
+		requireExactKeys(lifecycle, ['status', 'modifier', 'replacedByModifierId'], lifecycleLabel);
+		validateSavedModifierLifecycle(lifecycle, lifecycleLabel, false, reportDay);
+	});
 }
 
 function validateSavedProductionReport(value: unknown, label: string): void {
@@ -3145,6 +4178,39 @@ function requireRecord(value: unknown, label: string): Record<string, unknown> {
 	assertOwnDataContainer(value, label);
 
 	return value as Record<string, unknown>;
+}
+
+function requireExactKeys(
+	value: Record<string, unknown>,
+	allowedKeys: readonly string[],
+	label: string
+): void {
+	const allowed = new Set(allowedKeys);
+	for (const key of Object.keys(value)) {
+		if (!allowed.has(key)) throw new SaveDataError(`${label} contains an unknown field: ${key}`);
+	}
+}
+
+function validateUniqueArrayIds(
+	values: unknown[],
+	label: string,
+	validate: (value: unknown, label: string) => string
+): void {
+	const ids = new Set<string>();
+	for (const [index, value] of values.entries()) {
+		const id = validate(value, `${label}[${index}]`);
+		if (ids.has(id)) throw new SaveDataError(`${label}[${index}] id must be unique: ${id}`);
+		ids.add(id);
+	}
+}
+
+function requireGeneratedId(value: unknown, prefix: string, label: string): number {
+	const id = requireString(value, label);
+	const sequence = generatedIdSequence(id, prefix);
+	if (sequence === 0) {
+		throw new SaveDataError(`${label} must use ${prefix}<positive-safe-integer>`);
+	}
+	return sequence;
 }
 
 function requirePositiveInteger(value: unknown, label: string): number {

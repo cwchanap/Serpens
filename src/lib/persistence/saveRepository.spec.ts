@@ -4,7 +4,6 @@ import { createFoundingFinanceState } from '$lib/game/finance';
 import { createInitialEventRuntime } from '$lib/game/eventSelection';
 import { simulateDay } from '$lib/game/simulateDay';
 import { createNewGame } from '$lib/game/state';
-import { decisionContextLocationGeneric } from '$lib/game/decisionContext';
 import { STARTER_STORE_CAP, createInitialWorldProgress } from '$lib/game/world';
 import type {
 	DailyProductReport,
@@ -268,6 +267,58 @@ function createManualSaveRecord(overrides: SaveRecordOverrides = {}) {
 			...overrides.game
 		}
 	};
+}
+
+function createV11SupplierSnapshot(): SaveStoreSnapshot {
+	const current = createManualSaveRecord({ metadata: { id: 'manual-v11' } });
+	const legacyGame = structuredClone(current.game) as unknown as Record<string, unknown>;
+	delete legacyGame.events;
+	legacyGame.decisions = [
+		{
+			id: 'supplier-terms',
+			title: 'Supplier terms',
+			context: { code: 'supplierTerms' },
+			expiresOnDay: current.game.day + 2,
+			options: [
+				{
+					id: 'negotiate-credit',
+					label: 'Negotiate credit',
+					description: 'Ask for short-term supplier credit.',
+					effects: {
+						finance: {
+							kind: 'borrow',
+							purpose: 'supplierCredit',
+							amount: 4_000,
+							termDays: 28
+						},
+						profit: -2
+					}
+				},
+				{
+					id: 'bulk-discount',
+					label: 'Bulk discount',
+					description: 'Commit to a larger order.',
+					effects: { cash: -2_500, profit: 3, stockHealth: 6 }
+				}
+			]
+		}
+	];
+	legacyGame.reports = current.game.reports.map((report) => {
+		const {
+			modifierImpacts: _modifierImpacts,
+			modifierLifecycle: _modifierLifecycle,
+			...legacyReport
+		} = structuredClone(report);
+		void _modifierImpacts;
+		void _modifierLifecycle;
+		return legacyReport;
+	});
+
+	return {
+		schemaVersion: 11,
+		autoSave: null,
+		manualSlots: [{ ...current, schemaVersion: 11, game: legacyGame }]
+	} as unknown as SaveStoreSnapshot;
 }
 
 function createSnapshotWithGame(game: Partial<GameState>) {
@@ -1499,22 +1550,25 @@ describe('save records', () => {
 
 	test('rejects saved decision options with invalid effect shapes', () => {
 		expect.assertions(2);
+		const game = createGame();
 		const snapshot = createSnapshotWithGame({
-			...createGame(),
+			...game,
+			events: { ...game.events, nextInstanceSequence: 2 },
 			decisions: [
 				{
-					id: 'decision-1',
-					title: 'Staffing choice',
-					context: decisionContextLocationGeneric(),
+					kind: 'event',
+					id: 'event-instance-1',
+					eventId: 'test-event',
+					definitionVersion: 1,
+					generatedOnDay: 2,
 					expiresOnDay: 4,
+					target: { kind: 'company' },
+					copy: { key: 'events.test', params: {} },
 					options: [
 						{
 							id: 'option-1',
-							label: 'Approve',
-							description: 'Cover the shift.',
-							effects: {
-								cash: 'expensive' as unknown as number
-							}
+							effects: [{ kind: 'cash-adjust', amount: 'expensive' as unknown as number }],
+							modifiers: []
 						}
 					]
 				}
@@ -1523,7 +1577,7 @@ describe('save records', () => {
 
 		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
 		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
-			'Saved game decisions[0] options[0] effects cash must be a finite number'
+			'Saved game decisions[0] options[0] effects[0] amount must be a finite number'
 		);
 	});
 
@@ -2112,11 +2166,69 @@ describe('save records', () => {
 	});
 });
 
+describe('schema v11 → v12 repository migration', () => {
+	test('loads and durably upgrades a v11 snapshot through the in-memory driver', async () => {
+		const driver = new MemorySaveStoreDriver(createV11SupplierSnapshot());
+		const repository = new SaveRepositoryFromDriver(
+			driver,
+			() => new Date('2026-05-05T12:00:00.000Z')
+		);
+
+		const loaded = await repository.loadManualSlot('manual-v11');
+		const supplier = loaded?.game.decisions[0];
+
+		expect(loaded?.schemaVersion).toBe(12);
+		expect(supplier).toMatchObject({
+			kind: 'event',
+			id: 'event-instance-1',
+			eventId: 'supplier-terms',
+			definitionVersion: 1
+		});
+		expect(supplier?.kind === 'event' ? supplier.options[1]?.modifiers : null).toEqual([]);
+		expect(loaded?.game.events).toMatchObject({
+			selectionSchemaVersion: 1,
+			nextModifierSequence: 1
+		});
+
+		await repository.saveAuto(createGame());
+		const persisted = await driver.read();
+		expect(persisted.schemaVersion).toBe(12);
+		expect(persisted.manualSlots[0]?.schemaVersion).toBe(12);
+		expect(persisted.manualSlots[0]?.metadata.id).toBe('manual-v11');
+	});
+});
+
 describe('browser save repository', () => {
 	test('uses the current browser storage key', () => {
 		expect.assertions(1);
 
 		expect(BROWSER_SAVE_STORAGE_KEY).toBe('serpens.saves.v2');
+	});
+
+	test('loads and durably upgrades an existing v11 browser snapshot', async () => {
+		const storage = new FakeStorage();
+		storage.setItem(BROWSER_SAVE_STORAGE_KEY, JSON.stringify(createV11SupplierSnapshot()));
+		const repository = createBrowserSaveRepository(
+			storage,
+			() => new Date('2026-05-05T12:00:00.000Z')
+		);
+
+		const loaded = await repository.loadManualSlot('manual-v11');
+		const supplier = loaded?.game.decisions[0];
+		expect(loaded?.schemaVersion).toBe(12);
+		expect(supplier).toMatchObject({
+			kind: 'event',
+			id: 'event-instance-1',
+			eventId: 'supplier-terms',
+			definitionVersion: 1
+		});
+		expect(supplier?.kind === 'event' ? supplier.options[1]?.modifiers : null).toEqual([]);
+
+		await repository.saveAuto(createGame());
+		const persisted = JSON.parse(storage.getItem(BROWSER_SAVE_STORAGE_KEY)!) as SaveStoreSnapshot;
+		expect(persisted.schemaVersion).toBe(12);
+		expect(persisted.manualSlots[0]?.schemaVersion).toBe(12);
+		expect(persisted.manualSlots[0]?.metadata.id).toBe('manual-v11');
 	});
 
 	test('saves and loads auto-save records', async () => {

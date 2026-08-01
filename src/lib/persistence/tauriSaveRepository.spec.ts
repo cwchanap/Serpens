@@ -10,6 +10,8 @@ import { createInitialEventRuntime } from '$lib/game/eventSelection';
 import { createNewGame } from '$lib/game/state';
 import type { GameState } from '$lib/game/types';
 import { STARTER_STORE_CAP, createInitialWorldProgress } from '$lib/game/world';
+import { createSaveRecord } from './saveCodec';
+import { type SaveStoreSnapshot } from './saveTypes';
 import {
 	createTauriSaveRepository,
 	createTauriSaveRepositoryFromStore,
@@ -120,6 +122,54 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 	};
 }
 
+function createV11SupplierSnapshot(): SaveStoreSnapshot {
+	const game = createGame();
+	const current = createSaveRecord(game, {
+		id: 'manual-v11',
+		name: 'V11 desktop run',
+		kind: 'manual',
+		updatedAt: new Date('2026-05-05T12:00:00.000Z')
+	});
+	const legacyGame = structuredClone(game) as unknown as Record<string, unknown>;
+	delete legacyGame.events;
+	legacyGame.decisions = [
+		{
+			id: 'supplier-terms',
+			title: 'Supplier terms',
+			context: { code: 'supplierTerms' },
+			expiresOnDay: game.day + 2,
+			options: [
+				{
+					id: 'negotiate-credit',
+					label: 'Negotiate credit',
+					description: 'Ask for short-term supplier credit.',
+					effects: {
+						finance: {
+							kind: 'borrow',
+							purpose: 'supplierCredit',
+							amount: 4_000,
+							termDays: 28
+						},
+						profit: -2
+					}
+				},
+				{
+					id: 'bulk-discount',
+					label: 'Bulk discount',
+					description: 'Commit to a larger order.',
+					effects: { cash: -2_500, profit: 3, stockHealth: 6 }
+				}
+			]
+		}
+	];
+
+	return {
+		schemaVersion: 11,
+		autoSave: null,
+		manualSlots: [{ ...current, schemaVersion: 11, game: legacyGame }]
+	} as unknown as SaveStoreSnapshot;
+}
+
 describe('Tauri save repository', () => {
 	test('persists save snapshot through the Tauri store key', async () => {
 		expect.assertions(5);
@@ -138,6 +188,37 @@ describe('Tauri save repository', () => {
 		expect(summary.autoSave?.day).toBe(6);
 		expect(summary.manualSlots[0]?.id).toBe(slot.id);
 		expect((await repository.loadManualSlot(slot.id))?.game.day).toBe(7);
+	});
+
+	test('loads and durably upgrades an existing v11 Tauri snapshot', async () => {
+		const store = new FakeStore();
+		store.values.set(SAVE_STORE_KEY, createV11SupplierSnapshot());
+		const repository = createTauriSaveRepositoryFromStore(
+			Promise.resolve(store),
+			() => new Date('2026-05-05T12:00:00.000Z')
+		);
+
+		const loaded = await repository.loadManualSlot('manual-v11');
+		const supplier = loaded?.game.decisions[0];
+		expect(loaded?.schemaVersion).toBe(12);
+		expect(supplier).toMatchObject({
+			kind: 'event',
+			id: 'event-instance-1',
+			eventId: 'supplier-terms',
+			definitionVersion: 1
+		});
+		expect(supplier?.kind === 'event' ? supplier.options[1]?.modifiers : null).toEqual([]);
+		expect(loaded?.game.events).toMatchObject({
+			selectionSchemaVersion: 1,
+			nextModifierSequence: 1
+		});
+
+		await repository.saveAuto(createGame());
+		const persisted = store.values.get(SAVE_STORE_KEY) as SaveStoreSnapshot;
+		expect(persisted.schemaVersion).toBe(12);
+		expect(persisted.manualSlots[0]?.schemaVersion).toBe(12);
+		expect(persisted.manualSlots[0]?.metadata.id).toBe('manual-v11');
+		expect(store.saveCount).toBe(1);
 	});
 
 	test('persists simulated stock and production reports through the Tauri store key', async () => {

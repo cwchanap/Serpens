@@ -1085,16 +1085,21 @@ function decodeActiveRunRecord(
 	// must be a non-negative integer.
 	const revision =
 		record.revision === undefined ? 0 : requireInteger(record.revision, `${path}.revision`, 0);
-	let migrated: unknown;
-	try {
-		migrated = migrateSavedGame(record.game, gameSchemaVersion);
-	} catch (error) {
-		fail(
-			'unsupported-game-schema',
-			`${path}.gameSchemaVersion`,
-			gameSchemaVersion,
-			`Embedded game migration failed: ${safeDescribe(error)}`
-		);
+	const isCurrentGameSchema = gameSchemaVersion === SAVE_SCHEMA_VERSION;
+	let migrated: unknown = record.game;
+	if (!isCurrentGameSchema) {
+		try {
+			// Scenario envelopes stay untouched while every older embedded game
+			// follows the same ordered migration chain as sandbox save records.
+			migrated = migrateSavedGame(record.game, gameSchemaVersion);
+		} catch (error) {
+			fail(
+				'unsupported-game-schema',
+				`${path}.gameSchemaVersion`,
+				gameSchemaVersion,
+				`Embedded game migration failed: ${safeDescribe(error)}`
+			);
+		}
 	}
 	let game: ReturnType<typeof validateCurrentGameState>;
 	try {
@@ -1107,7 +1112,7 @@ function decodeActiveRunRecord(
 			'Embedded game failed strict validation.'
 		);
 	}
-	if (gameSchemaVersion === SAVE_SCHEMA_VERSION && !deeplyEqual(game, record.game)) {
+	if (isCurrentGameSchema && !deeplyEqual(game, record.game)) {
 		fail(
 			'current-game-mismatch',
 			`${path}.game`,

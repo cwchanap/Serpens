@@ -442,6 +442,299 @@ function createValidWarehouseBuildingGame(): GameState {
 	};
 }
 
+function createCompleteEventGame(): GameState {
+	const base = createGame({ day: 3 });
+	const activeModifier: GameState['events']['activeModifiers'][number] = {
+		id: 'event-modifier-1',
+		source: {
+			eventId: 'supplier-terms',
+			instanceId: 'event-instance-1',
+			optionId: 'bulk-discount'
+		},
+		target: { kind: 'company' },
+		startsOnDay: 2,
+		expiresOnDay: 5,
+		stackingKey: 'supplier-bulk-discount:retail-product',
+		stackingRule: 'replace',
+		effect: {
+			kind: 'import-cost-multiplier',
+			scope: 'retail-product',
+			target: { kind: 'all' },
+			multiplier: 0.9
+		},
+		explanation: { key: 'events.supplierTerms.bulkDiscount.modifier', params: {} },
+		importance: 'important'
+	};
+	const modifierSnapshot = {
+		id: activeModifier.id,
+		source: { ...activeModifier.source },
+		target: { ...activeModifier.target },
+		startsOnDay: activeModifier.startsOnDay,
+		expiresOnDay: activeModifier.expiresOnDay,
+		stackingKey: activeModifier.stackingKey,
+		effect: { ...activeModifier.effect, target: { ...activeModifier.effect.target } },
+		explanation: {
+			...activeModifier.explanation,
+			params: { ...activeModifier.explanation.params }
+		},
+		importance: activeModifier.importance
+	};
+
+	return refreshWorldProgress({
+		...base,
+		events: {
+			selectionSchemaVersion: 1,
+			rngState: 987_654_321,
+			nextInstanceSequence: 3,
+			nextModifierSequence: 2,
+			cooldowns: [
+				{
+					eventId: 'cash-pressure',
+					target: { kind: 'company' },
+					generatedOnDay: 3,
+					eligibleOnDay: 4
+				}
+			],
+			activeModifiers: [activeModifier],
+			history: [
+				{
+					kind: 'event-generated',
+					day: 2,
+					eventId: 'supplier-terms',
+					instanceId: 'event-instance-1',
+					target: { kind: 'company' }
+				},
+				{
+					kind: 'event-resolved',
+					day: 2,
+					eventId: 'supplier-terms',
+					instanceId: 'event-instance-1',
+					optionId: 'bulk-discount',
+					target: { kind: 'company' }
+				},
+				{
+					kind: 'modifier-lifecycle',
+					day: 2,
+					status: 'activated',
+					modifier: modifierSnapshot
+				},
+				{
+					kind: 'event-generated',
+					day: 3,
+					eventId: 'cash-pressure',
+					instanceId: 'event-instance-2',
+					target: { kind: 'company' }
+				}
+			]
+		},
+		decisions: [
+			{
+				kind: 'event',
+				id: 'event-instance-2',
+				eventId: 'cash-pressure',
+				definitionVersion: 1,
+				generatedOnDay: 3,
+				expiresOnDay: 5,
+				target: { kind: 'company' },
+				copy: { key: 'events.cashPressure', params: { availableCredit: 8_000 } },
+				options: [
+					{
+						id: 'short-loan',
+						effects: [
+							{
+								kind: 'finance-borrow',
+								purpose: 'emergency',
+								amount: 8_000,
+								termDays: 56
+							},
+							{ kind: 'score-adjust', score: 'profit', amount: -4 }
+						],
+						modifiers: [
+							{
+								durationDays: 3,
+								stackingKey: 'future-revision:retail-product',
+								stackingRule: 'replace',
+								effect: {
+									kind: 'import-cost-multiplier',
+									scope: 'retail-product',
+									target: { kind: 'all' },
+									multiplier: 0.95
+								},
+								explanation: { key: 'events.futureRevision.modifier', params: { percent: 5 } },
+								importance: 'normal'
+							}
+						]
+					}
+				]
+			}
+		],
+		reports: [
+			createDailyReport({
+				day: 2,
+				modifierImpacts: [
+					{
+						modifierId: activeModifier.id,
+						source: { ...activeModifier.source },
+						target: { kind: 'company' },
+						effectKind: 'import-cost-multiplier',
+						explanation: {
+							...activeModifier.explanation,
+							params: { ...activeModifier.explanation.params }
+						},
+						scope: 'retail-product',
+						affectedIds: ['store-1/product:fashion-accessories'],
+						multiplier: 0.9,
+						baselineCost: 400,
+						applicationCount: 1
+					}
+				],
+				modifierLifecycle: [{ status: 'activated', modifier: modifierSnapshot }]
+			})
+		]
+	});
+}
+
+function createV11Record(decisions: unknown[]): SaveRecord {
+	const game = refreshWorldProgress(
+		createGame({
+			day: 12,
+			finance: createFoundingFinanceState(12, 2_000),
+			decisions: decisions as GameState['decisions'],
+			reports: [createDailyReport({ day: 11 })]
+		})
+	);
+	const record = createSaveRecord(game, {
+		id: 'manual-v11',
+		name: 'V11 fixture',
+		kind: 'manual',
+		updatedAt: new Date('2026-07-31T12:00:00.000Z')
+	});
+	const legacyGame = structuredClone(record.game) as unknown as Record<string, unknown>;
+	delete legacyGame.events;
+	legacyGame.reports = (legacyGame.reports as Array<Record<string, unknown>>).map((report) => {
+		const {
+			modifierImpacts: _modifierImpacts,
+			modifierLifecycle: _modifierLifecycle,
+			...legacyReport
+		} = report;
+		void _modifierImpacts;
+		void _modifierLifecycle;
+		return legacyReport;
+	});
+	return {
+		...record,
+		schemaVersion: 11 as unknown as typeof SAVE_SCHEMA_VERSION,
+		game: legacyGame as unknown as GameState
+	};
+}
+
+function legacyV11StrategicDecisions(): unknown[] {
+	return [
+		{
+			id: 'supplier-terms',
+			title: 'Supplier terms',
+			context: { code: 'supplierTerms' },
+			expiresOnDay: 12,
+			options: [
+				{
+					id: 'negotiate-credit',
+					label: 'Negotiate credit',
+					description: 'Stretch payment timing for a small margin penalty.',
+					effects: {
+						finance: {
+							kind: 'borrow',
+							purpose: 'supplierCredit',
+							amount: 4_000,
+							termDays: 28
+						},
+						profit: -2
+					}
+				},
+				{
+					id: 'bulk-discount',
+					label: 'Bulk discount',
+					description: 'Commit to larger orders for better unit economics.',
+					effects: { cash: -2_500, profit: 3, stockHealth: 6 }
+				}
+			]
+		},
+		{
+			id: 'expansion-cash-blocked-10',
+			title: 'Expansion delayed',
+			context: { code: 'expansionCashBlocked', cash: 15_000 },
+			expiresOnDay: 13,
+			options: [
+				{
+					id: 'acknowledge',
+					label: 'Acknowledge',
+					description: 'Return to operations planning.',
+					effects: {}
+				}
+			]
+		},
+		{
+			id: 'cash-pressure',
+			title: 'Cash pressure',
+			context: { code: 'cashPressure' },
+			expiresOnDay: 13,
+			options: [
+				{
+					id: 'short-loan',
+					label: 'Short loan',
+					description: 'Add emergency working capital.',
+					effects: {
+						finance: {
+							kind: 'borrow',
+							purpose: 'emergency',
+							amount: 11_000,
+							termDays: 56
+						},
+						profit: -4,
+						marketPosition: -1
+					}
+				},
+				{
+					id: 'cut-costs',
+					label: 'Cut costs',
+					description: 'Trim discretionary spend.',
+					effects: {
+						cash: 5_500,
+						customerSatisfaction: -4,
+						staffMorale: -5,
+						stockHealth: -8
+					}
+				},
+				{
+					id: 'hold-course',
+					label: 'Hold course',
+					description: 'Avoid reactive changes.',
+					effects: { profit: 1, staffMorale: -2 }
+				}
+			]
+		},
+		{
+			id: 'expansion-opportunity',
+			title: 'Expansion opportunity',
+			context: { code: 'expansionOpportunity' },
+			expiresOnDay: 15,
+			options: [
+				{
+					id: 'prepare',
+					label: 'Prepare',
+					description: 'Start scouting locations.',
+					effects: { cash: -3_500, marketPosition: 5, profit: -1 }
+				},
+				{
+					id: 'pass',
+					label: 'Pass',
+					description: 'Keep capital focused.',
+					effects: { profit: 1, staffMorale: 1 }
+				}
+			]
+		}
+	];
+}
+
 /**
  * Strips the rail-transport fields (v10) from an otherwise-current game so
  * it matches the shape of a genuine v9 payload: `IndustryCity.rails`,
@@ -517,6 +810,397 @@ function createBareMigrationFixture(sourceVersion: number): unknown {
 }
 
 describe('saveCodec', () => {
+	test('round-trips the complete event schema v12 without dropping materialized evidence', () => {
+		expect.assertions(3);
+		const record = createManualSaveRecord({ game: createCompleteEventGame() });
+
+		const validated = validateSaveRecord(structuredClone(record));
+
+		expect(SAVE_SCHEMA_VERSION).toBe(12);
+		expect(validated).toEqual(record);
+		expect(validated).not.toBe(record);
+	});
+
+	test('migrates ordered v11 strategic and system rows directly into the complete v12 runtime', () => {
+		expect.assertions(15);
+		const validated = validateSaveRecord(createV11Record(legacyV11StrategicDecisions()));
+		const [supplier, system, cashPressure, expansion] = validated.game.decisions;
+
+		expect(validated.schemaVersion).toBe(12);
+		expect(validated.game.events).toMatchObject({
+			selectionSchemaVersion: 1,
+			rngState: 1_183_544_557,
+			nextInstanceSequence: 4,
+			nextModifierSequence: 1,
+			activeModifiers: []
+		});
+		expect(validated.game.decisions.map((decision) => decision.id)).toEqual([
+			'event-instance-1',
+			'expansion-cash-blocked-10',
+			'event-instance-2',
+			'event-instance-3'
+		]);
+		expect(system).toEqual({
+			kind: 'system',
+			id: 'expansion-cash-blocked-10',
+			title: 'Expansion delayed',
+			context: { code: 'expansionCashBlocked', cash: 15_000 },
+			expiresOnDay: 13,
+			options: [
+				{
+					id: 'acknowledge',
+					label: 'Acknowledge',
+					description: 'Return to operations planning.'
+				}
+			]
+		});
+		expect(supplier).toMatchObject({
+			kind: 'event',
+			id: 'event-instance-1',
+			eventId: 'supplier-terms',
+			definitionVersion: 1,
+			generatedOnDay: 10,
+			expiresOnDay: 12,
+			target: { kind: 'company' },
+			copy: { key: 'events.supplierTerms', params: {} }
+		});
+		expect(supplier?.kind === 'event' ? supplier.options : []).toEqual([
+			{
+				id: 'negotiate-credit',
+				effects: [
+					{
+						kind: 'finance-borrow',
+						purpose: 'supplierCredit',
+						amount: 4_000,
+						termDays: 28
+					},
+					{ kind: 'score-adjust', score: 'profit', amount: -2 }
+				],
+				modifiers: []
+			},
+			{
+				id: 'bulk-discount',
+				effects: [
+					{ kind: 'cash-adjust', amount: -2_500 },
+					{ kind: 'score-adjust', score: 'profit', amount: 3 },
+					{
+						kind: 'store-stock-adjust-by-target-percent',
+						scope: 'all-stores',
+						percent: 6
+					}
+				],
+				modifiers: []
+			}
+		]);
+		expect(cashPressure).toMatchObject({
+			kind: 'event',
+			id: 'event-instance-2',
+			eventId: 'cash-pressure',
+			definitionVersion: 1,
+			generatedOnDay: 11,
+			copy: { key: 'events.cashPressure', params: {} }
+		});
+		expect(cashPressure?.kind === 'event' ? cashPressure.options[0]?.effects : []).toEqual([
+			{
+				kind: 'finance-borrow',
+				purpose: 'emergency',
+				amount: 11_000,
+				termDays: 56
+			},
+			{ kind: 'score-adjust', score: 'profit', amount: -4 },
+			{ kind: 'score-adjust', score: 'marketPosition', amount: -1 }
+		]);
+		expect(expansion).toMatchObject({
+			kind: 'event',
+			id: 'event-instance-3',
+			eventId: 'expansion-opportunity',
+			definitionVersion: 1,
+			generatedOnDay: 12,
+			copy: { key: 'events.expansionOpportunity', params: {} }
+		});
+		expect(validated.game.events.cooldowns).toEqual([
+			{
+				eventId: 'supplier-terms',
+				target: { kind: 'company' },
+				generatedOnDay: 10,
+				eligibleOnDay: 11
+			},
+			{
+				eventId: 'cash-pressure',
+				target: { kind: 'company' },
+				generatedOnDay: 11,
+				eligibleOnDay: 12
+			},
+			{
+				eventId: 'expansion-opportunity',
+				target: { kind: 'company' },
+				generatedOnDay: 12,
+				eligibleOnDay: 13
+			}
+		]);
+		expect(validated.game.events.history).toEqual([
+			{
+				kind: 'event-generated',
+				day: 10,
+				eventId: 'supplier-terms',
+				instanceId: 'event-instance-1',
+				target: { kind: 'company' }
+			},
+			{
+				kind: 'event-generated',
+				day: 11,
+				eventId: 'cash-pressure',
+				instanceId: 'event-instance-2',
+				target: { kind: 'company' }
+			},
+			{
+				kind: 'event-generated',
+				day: 12,
+				eventId: 'expansion-opportunity',
+				instanceId: 'event-instance-3',
+				target: { kind: 'company' }
+			}
+		]);
+		expect(validated.game.reports[0]?.modifierImpacts).toEqual([]);
+		expect(validated.game.reports[0]?.modifierLifecycle).toEqual([]);
+		expect(validateSaveRecord(structuredClone(validated))).toEqual(validated);
+		expect(() => validateSaveRecord(structuredClone(validated))).not.toThrow();
+	});
+
+	test('rejects an unknown v11 system row that carries non-empty legacy effects', () => {
+		expect.assertions(3);
+		const unsafe = {
+			id: 'unrecognized-command-notice',
+			title: 'Unknown notice',
+			context: { code: 'locationGeneric' },
+			expiresOnDay: 13,
+			options: [
+				{
+					id: 'acknowledge',
+					label: 'Acknowledge',
+					description: 'Continue.',
+					effects: { cash: 1 }
+				}
+			]
+		};
+
+		let caught: unknown;
+		try {
+			validateSaveRecord(createV11Record([unsafe]));
+		} catch (error) {
+			caught = error;
+		}
+
+		expect(caught).toBeInstanceOf(SaveDataError);
+		expect((caught as SaveDataError).code).toBe('invariant-event-runtime');
+		expect(() => validateSaveRecord(createV11Record([unsafe]))).toThrow(
+			'Saved v11 decisions[0] options[0] effects must be empty for a system decision'
+		);
+	});
+
+	test('rejects an unsafe whole-dollar event finance amount', () => {
+		const game = createCompleteEventGame();
+		const decision = game.decisions[0]!;
+		if (decision.kind !== 'event') throw new Error('Expected an event decision fixture.');
+		const malformed = {
+			...game,
+			decisions: [
+				{
+					...decision,
+					options: [
+						{
+							...decision.options[0]!,
+							effects: [
+								{
+									kind: 'finance-borrow' as const,
+									purpose: 'emergency' as const,
+									amount: Number.MAX_SAFE_INTEGER + 1,
+									termDays: 56
+								}
+							]
+						},
+						...decision.options.slice(1)
+					]
+				}
+			]
+		};
+
+		let caught: unknown;
+		try {
+			validateCurrentGameState(malformed);
+		} catch (error) {
+			caught = error;
+		}
+
+		expect(caught).toBeInstanceOf(SaveDataError);
+		expect((caught as SaveDataError).code).toBe('invariant-event-runtime');
+		expect((caught as SaveDataError).message).toContain(
+			'Saved game decisions[0] options[0] effects[0] amount'
+		);
+	});
+
+	test.each([
+		{
+			name: 'empty affected IDs',
+			mutate: (game: GameState) => ({
+				...game,
+				reports: [
+					{
+						...game.reports[0]!,
+						modifierImpacts: [{ ...game.reports[0]!.modifierImpacts[0]!, affectedIds: [] }]
+					}
+				]
+			}),
+			path: 'Saved game reports[0] modifierImpacts[0] affectedIds'
+		},
+		{
+			name: 'unsorted affected IDs',
+			mutate: (game: GameState) => ({
+				...game,
+				reports: [
+					{
+						...game.reports[0]!,
+						modifierImpacts: [
+							{
+								...game.reports[0]!.modifierImpacts[0]!,
+								affectedIds: ['store-z', 'store-a'],
+								applicationCount: 2
+							}
+						]
+					}
+				]
+			}),
+			path: 'Saved game reports[0] modifierImpacts[0] affectedIds[1]'
+		},
+		{
+			name: 'zero baseline evidence',
+			mutate: (game: GameState) => ({
+				...game,
+				reports: [
+					{
+						...game.reports[0]!,
+						modifierImpacts: [{ ...game.reports[0]!.modifierImpacts[0]!, baselineCost: 0 }]
+					}
+				]
+			}),
+			path: 'Saved game reports[0] modifierImpacts[0] baselineCost'
+		},
+		{
+			name: 'application count below affected IDs',
+			mutate: (game: GameState) => ({
+				...game,
+				reports: [
+					{
+						...game.reports[0]!,
+						modifierImpacts: [
+							{
+								...game.reports[0]!.modifierImpacts[0]!,
+								affectedIds: ['store-a', 'store-z'],
+								applicationCount: 1
+							}
+						]
+					}
+				]
+			}),
+			path: 'Saved game reports[0] modifierImpacts[0] applicationCount'
+		},
+		{
+			name: 'unsorted modifier impacts',
+			mutate: (game: GameState) => {
+				const impact = game.reports[0]!.modifierImpacts[0]!;
+				return {
+					...game,
+					events: { ...game.events, nextModifierSequence: 3 },
+					reports: [
+						{
+							...game.reports[0]!,
+							modifierImpacts: [{ ...impact, modifierId: 'event-modifier-2' }, impact]
+						}
+					]
+				};
+			},
+			path: 'Saved game reports[0] modifierImpacts[1] modifierId'
+		}
+	])('rejects $name with a path-specific event-runtime error', ({ mutate, path }) => {
+		let caught: unknown;
+		try {
+			validateCurrentGameState(mutate(createCompleteEventGame()));
+		} catch (error) {
+			caught = error;
+		}
+
+		expect(caught).toBeInstanceOf(SaveDataError);
+		expect((caught as SaveDataError).code).toBe('invariant-event-runtime');
+		expect((caught as SaveDataError).message).toContain(path);
+	});
+
+	test.each([
+		{
+			name: 'activated lifecycle on a day other than its start',
+			lifecycle: (game: GameState) => ({
+				status: 'activated' as const,
+				modifier: { ...game.reports[0]!.modifierLifecycle[0]!.modifier, startsOnDay: 1 }
+			}),
+			path: 'Saved game reports[0] modifierLifecycle[0] status'
+		},
+		{
+			name: 'expired lifecycle before expiresOnDay minus one',
+			lifecycle: (game: GameState) => ({
+				status: 'expired' as const,
+				modifier: { ...game.reports[0]!.modifierLifecycle[0]!.modifier, expiresOnDay: 4 }
+			}),
+			path: 'Saved game reports[0] modifierLifecycle[0] status'
+		},
+		{
+			name: 'modifier replacing itself',
+			lifecycle: (game: GameState) => ({
+				status: 'replaced' as const,
+				modifier: game.reports[0]!.modifierLifecycle[0]!.modifier,
+				replacedByModifierId: 'event-modifier-1'
+			}),
+			path: 'Saved game reports[0] modifierLifecycle[0] replacedByModifierId'
+		}
+	])('rejects $name', ({ lifecycle, path }) => {
+		const game = createCompleteEventGame();
+		const malformed = {
+			...game,
+			reports: [{ ...game.reports[0]!, modifierLifecycle: [lifecycle(game)] }]
+		};
+		let caught: unknown;
+		try {
+			validateCurrentGameState(malformed);
+		} catch (error) {
+			caught = error;
+		}
+
+		expect(caught).toBeInstanceOf(SaveDataError);
+		expect((caught as SaveDataError).code).toBe('invariant-event-runtime');
+		expect((caught as SaveDataError).message).toContain(path);
+	});
+
+	test('requires nextModifierSequence to exceed report replacement evidence', () => {
+		const game = createCompleteEventGame();
+		const replaced = {
+			status: 'replaced' as const,
+			modifier: game.reports[0]!.modifierLifecycle[0]!.modifier,
+			replacedByModifierId: 'event-modifier-2'
+		};
+		const malformed = {
+			...game,
+			reports: [{ ...game.reports[0]!, modifierLifecycle: [replaced] }]
+		};
+		let caught: unknown;
+		try {
+			validateCurrentGameState(malformed);
+		} catch (error) {
+			caught = error;
+		}
+
+		expect(caught).toBeInstanceOf(SaveDataError);
+		expect((caught as SaveDataError).code).toBe('invariant-event-runtime');
+		expect((caught as SaveDataError).message).toContain('nextModifierSequence');
+	});
+
 	test('migrates a literal v10 scalar debt save into a neutral founding loan and report finance fields', () => {
 		expect.assertions(21);
 		const record = createV10Record({ debt: 2_000, day: 12 });
@@ -571,6 +1255,105 @@ describe('saveCodec', () => {
 		expect(report.outstandingPrincipalAfter).toBe(2_000);
 		expect(report.nextLoanPayment).toBeNull();
 	});
+
+	test.each([4, 5, 6, 7, 8, 9, 10])(
+		'chains v%s cash-based strategic loans through the v11 finance shape into v12 events',
+		(sourceVersion) => {
+			const record = {
+				...createV10Record({ debt: 2_000, day: 12 }),
+				schemaVersion: sourceVersion as unknown as typeof SAVE_SCHEMA_VERSION
+			};
+			(record.game as unknown as Record<string, unknown>).decisions = [
+				{
+					id: 'cash-pressure',
+					title: 'Cash pressure',
+					context: { code: 'cashPressure' },
+					expiresOnDay: 14,
+					options: [
+						{
+							id: 'short-loan',
+							label: 'Short loan',
+							description: 'Add emergency working capital.',
+							effects: { cash: 12_000, profit: -4, marketPosition: -1 }
+						},
+						{
+							id: 'cut-costs',
+							label: 'Cut costs',
+							description: 'Trim discretionary spend.',
+							effects: {
+								cash: 5_500,
+								customerSatisfaction: -4,
+								staffMorale: -5,
+								stockHealth: -8
+							}
+						},
+						{
+							id: 'hold-course',
+							label: 'Hold course',
+							description: 'Avoid reactive changes.',
+							effects: { profit: 1, staffMorale: -2 }
+						}
+					]
+				},
+				{
+					id: 'supplier-terms',
+					title: 'Supplier terms',
+					context: { code: 'supplierTerms' },
+					expiresOnDay: 14,
+					options: [
+						{
+							id: 'negotiate-credit',
+							label: 'Negotiate credit',
+							description: 'Stretch payment timing.',
+							effects: { cash: 4_000, profit: -2 }
+						},
+						{
+							id: 'bulk-discount',
+							label: 'Bulk discount',
+							description: 'Commit to larger orders.',
+							effects: { cash: -2_500, profit: 3, stockHealth: 6 }
+						}
+					]
+				}
+			];
+
+			const validated = validateSaveRecord(record);
+			const [cashPressure, supplierTerms] = validated.game.decisions;
+
+			expect(cashPressure).toMatchObject({
+				kind: 'event',
+				id: 'event-instance-1',
+				eventId: 'cash-pressure',
+				definitionVersion: 1
+			});
+			expect(cashPressure?.kind === 'event' ? cashPressure.options[0]?.effects : null).toEqual([
+				{
+					kind: 'finance-borrow',
+					purpose: 'emergency',
+					amount: 12_000,
+					termDays: 56
+				},
+				{ kind: 'score-adjust', score: 'profit', amount: -4 },
+				{ kind: 'score-adjust', score: 'marketPosition', amount: -1 }
+			]);
+			expect(supplierTerms).toMatchObject({
+				kind: 'event',
+				id: 'event-instance-2',
+				eventId: 'supplier-terms',
+				definitionVersion: 1
+			});
+			expect(supplierTerms?.kind === 'event' ? supplierTerms.options[0]?.effects : null).toEqual([
+				{
+					kind: 'finance-borrow',
+					purpose: 'supplierCredit',
+					amount: 4_000,
+					termDays: 28
+				},
+				{ kind: 'score-adjust', score: 'profit', amount: -2 }
+			]);
+			expect(validated.game.events.nextInstanceSequence).toBe(3);
+		}
+	);
 
 	test('migrates a literal v10 zero debt save to empty finance while retaining cash and report history', () => {
 		expect.assertions(6);
@@ -1233,12 +2016,15 @@ describe('saveCodec', () => {
 		}
 	);
 
-	test.each([3, 12])('migrateSavedGame rejects unsupported source schema %s', (schemaVersion) => {
-		expect(() => migrateSavedGame(createGame(), schemaVersion)).toThrow(SaveDataError);
-		expect(() => migrateSavedGame(createGame(), schemaVersion)).toThrow(
-			`Unsupported save schema version: ${schemaVersion}`
-		);
-	});
+	test.each([3, SAVE_SCHEMA_VERSION + 1])(
+		'migrateSavedGame rejects unsupported source schema %s',
+		(schemaVersion) => {
+			expect(() => migrateSavedGame(createGame(), schemaVersion)).toThrow(SaveDataError);
+			expect(() => migrateSavedGame(createGame(), schemaVersion)).toThrow(
+				`Unsupported save schema version: ${schemaVersion}`
+			);
+		}
+	);
 
 	test('migrateSavedGame returns an exact plain clone for a current-schema game', () => {
 		const game = createGame();
@@ -1763,6 +2549,7 @@ describe('saveCodec', () => {
 		const game: GameState = {
 			...simulated,
 			cash: -1,
+			events: { ...simulated.events, nextInstanceSequence: 2 },
 			world: {
 				revealedCityIds: simulated.world.revealedCityIds.filter(
 					(cityId) => cityId !== 'garden-borough'
@@ -1775,7 +2562,7 @@ describe('saveCodec', () => {
 			decisions: [
 				{
 					kind: 'event',
-					id: 'cash-recovery',
+					id: 'event-instance-1',
 					eventId: 'cash-recovery',
 					definitionVersion: 1,
 					generatedOnDay: simulated.day,
@@ -1794,7 +2581,7 @@ describe('saveCodec', () => {
 		};
 		expect(refreshWorldProgress(game)).toBe(game);
 
-		const resolved = resolveDecision(game, 'cash-recovery', 'accept');
+		const resolved = resolveDecision(game, 'event-instance-1', 'accept');
 
 		expect(resolved.ok).toBe(true);
 		if (!resolved.ok) return;
@@ -4127,11 +4914,12 @@ describe('saveCodec', () => {
 			game: {
 				decisions: [
 					{
+						kind: 'system',
 						id: 'unknown-ctx-1',
 						title: 'Unknown',
 						context: { code: 'notARealCode' },
-						expiresOnDay: 2,
-						options: [{ id: 'acknowledge', label: 'Ack', description: '...', effects: {} }]
+						expiresOnDay: 3,
+						options: [{ id: 'acknowledge', label: 'Ack', description: '...' }]
 					} as unknown as GameState['decisions'][number]
 				]
 			}
@@ -4149,11 +4937,12 @@ describe('saveCodec', () => {
 			game: {
 				decisions: [
 					{
+						kind: 'system',
 						id: 'loc-blocked-1',
 						title: 'Location unavailable',
 						context: { code: 'locationBlocked', reason: 'flood' },
-						expiresOnDay: 2,
-						options: [{ id: 'acknowledge', label: 'Ack', description: '...', effects: {} }]
+						expiresOnDay: 3,
+						options: [{ id: 'acknowledge', label: 'Ack', description: '...' }]
 					} as unknown as GameState['decisions'][number]
 				]
 			}
@@ -4169,11 +4958,12 @@ describe('saveCodec', () => {
 			game: {
 				decisions: [
 					{
+						kind: 'system',
 						id: 'world-city-1',
 						title: 'City not available',
 						context: { code: 'worldCityNotAvailableYet', cityId: 'not-a-city' },
-						expiresOnDay: 2,
-						options: [{ id: 'acknowledge', label: 'Ack', description: '...', effects: {} }]
+						expiresOnDay: 3,
+						options: [{ id: 'acknowledge', label: 'Ack', description: '...' }]
 					} as unknown as GameState['decisions'][number]
 				]
 			}
@@ -4191,11 +4981,12 @@ describe('saveCodec', () => {
 			game: {
 				decisions: [
 					{
+						kind: 'system',
 						id: 'ind-res-1',
 						title: 'Industrial delayed',
 						context: { code: 'industrialRequiresResource', resourceId: 'unobtainium' },
-						expiresOnDay: 2,
-						options: [{ id: 'acknowledge', label: 'Ack', description: '...', effects: {} }]
+						expiresOnDay: 3,
+						options: [{ id: 'acknowledge', label: 'Ack', description: '...' }]
 					} as unknown as GameState['decisions'][number]
 				]
 			}
@@ -4213,6 +5004,7 @@ describe('saveCodec', () => {
 			game: {
 				decisions: [
 					{
+						kind: 'system',
 						id: 'ind-cash-1',
 						title: 'Industrial delayed',
 						context: {
@@ -4220,8 +5012,8 @@ describe('saveCodec', () => {
 							buildingTypeId: 'not-a-building',
 							cash: 5000
 						},
-						expiresOnDay: 2,
-						options: [{ id: 'acknowledge', label: 'Ack', description: '...', effects: {} }]
+						expiresOnDay: 3,
+						options: [{ id: 'acknowledge', label: 'Ack', description: '...' }]
 					} as unknown as GameState['decisions'][number]
 				]
 			}
@@ -4279,11 +5071,12 @@ describe('saveCodec', () => {
 		// a variant was added or removed without updating ALL_DECISION_CONTEXTS.
 		expect(contexts).toHaveLength(26);
 		const structuredDecisions = contexts.map((context, index) => ({
+			kind: 'system' as const,
 			id: `d${index + 1}`,
 			title: 'T',
 			context,
-			expiresOnDay: 2,
-			options: [{ id: 'acknowledge', label: 'A', description: 'D', effects: {} }]
+			expiresOnDay: 3,
+			options: [{ id: 'acknowledge', label: 'A', description: 'D' }]
 		})) as unknown as GameState['decisions'];
 		const record = createManualSaveRecord({ game: { decisions: structuredDecisions } });
 
@@ -4453,7 +5246,7 @@ describe('saveCodec', () => {
 			id: 'expansion-cash-blocked-1',
 			title: 'Expansion delayed',
 			context: { code: 'expansionCashBlocked', cash: 15000 },
-			expiresOnDay: 2,
+			expiresOnDay: 3,
 			options: [{ id: 'acknowledge', label: 'Acknowledge', description: '...', effects: {} }]
 		} as unknown as GameState['decisions'][number];
 		const record = createV6Record({ game: { decisions: [structuredDecision] } });
