@@ -1100,6 +1100,12 @@ function replayLaunchCalibration(
 }
 
 describe('launch scenario calibration contracts', { timeout: 30_000 }, () => {
+	it('uses the legacy supplier family decision id during calibration resolution', () => {
+		const run = replayLaunchCalibration('first-profit', FIRST_PROFIT_REFERENCE_OPENING, true);
+
+		expect(run.result).toMatchObject({ outcome: 'completed', completionDay: 4, score: 880 });
+	});
+
 	it.each([
 		['first-profit', [], 'completed', 4, 682],
 		['import-squeeze', [], 'completed', 18, 645],

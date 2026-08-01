@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { getArchetype } from './archetypes';
 import { decisionContextLocationGeneric } from './decisionContext';
+import { generateDecisions } from './events';
 import { createFoundingGameAtTile } from './placement';
 import { isTileInStoreFootprint } from './storeFootprint';
 import { calculateStockHealth, createStoreProduct } from './stock';
@@ -298,6 +299,30 @@ describe('game state', () => {
 		expect(resolved.cash).toBe(game.cash + 500);
 		expect(resolved.decisions).toHaveLength(0);
 		expect(resolved.scorecard.customerSatisfaction).toBe(game.scorecard.customerSatisfaction - 1);
+	});
+
+	test('applies cash-pressure cut-costs effects to the scorecard and every store product target', () => {
+		expect.assertions(7);
+		const base = createNewGame('grocery', 55);
+		const firstStore = base.stores[0]!;
+		const secondStore = { ...firstStore, id: 'store-2', staffMorale: 80 };
+		const game = {
+			...base,
+			cash: -1,
+			stores: [firstStore, secondStore]
+		};
+		const decision = generateDecisions(game)[0]!;
+		const resolved = resolveDecision({ ...game, decisions: [decision] }, decision.id, 'cut-costs');
+
+		expect(resolved.cash).toBe(5_499);
+		expect(resolved.scorecard.customerSatisfaction).toBe(61);
+		expect(resolved.scorecard.staffMorale).toBe(57);
+		expect(resolved.stores.map((store) => store.staffMorale)).toEqual([57, 75]);
+		expect(resolved.stores.map((store) => store.products[0]?.stock)).toEqual([63, 63]);
+		expect(resolved.stores.map((store) => store.stockHealth)).toEqual([70, 70]);
+		expect(
+			resolved.stores.every((store) => store.stockHealth === calculateStockHealth(store.products))
+		).toBe(true);
 	});
 
 	test('funds an eligible decision through the finance ledger before applying its remaining effects', () => {
