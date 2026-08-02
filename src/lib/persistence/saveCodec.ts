@@ -442,7 +442,7 @@ function migrateV9SaveRecord(record: unknown): unknown {
  * opened on the loaded day. Historical reports retain their original cash and
  * income values and gain zero financing activity.
  */
-function migrateV10Game(game: unknown): unknown {
+export function migrateV10Game(game: unknown): unknown {
 	if (typeof game !== 'object' || game === null) return game;
 	const gameRecord = game as Record<string, unknown>;
 	const day = gameRecord.day;
