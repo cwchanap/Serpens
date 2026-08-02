@@ -49,6 +49,7 @@ import {
 	createSaveRecord,
 	createSaveSummary,
 	migrateSavedGame,
+	migrateV10Game,
 	normalizeSandboxSavedGame,
 	parseSaveStoreSnapshot,
 	validateCurrentGameState,
@@ -6352,51 +6353,78 @@ describe('saveCodec', () => {
 	describe('v10 strategic decision finance-effect migration edge cases', () => {
 		test('leaves non-object decisions untouched during v10 finance-effect migration', () => {
 			const record = createV10Record({ debt: 2_000, day: 12 });
-			(record.game as unknown as Record<string, unknown>).decisions = [
+			const decisions = [
 				null,
 				'string-decision',
 				42,
 				{ id: 'unknown-id', options: [] },
 				{ id: 'cash-pressure' }
 			];
-			expect(() => validateSaveRecord(record)).toThrow();
+			(record.game as unknown as Record<string, unknown>).decisions = decisions;
+
+			// The v10 step must return each malformed decision element by reference.
+			// The full migrateSavedGame chain cannot be used here because the v11
+			// step rejects non-object decisions before returning, so the early-return
+			// branch is only observable by running migrateV10Game in isolation.
+			const migrated = migrateV10Game(record.game) as Record<string, unknown>;
+			expect(migrated.decisions).toEqual(decisions);
+
+			expect(() => validateSaveRecord(record)).toThrow(
+				/Saved v11 decisions\[0\] must be an object/
+			);
 		});
 
 		test('leaves cash-pressure options untouched when cash does not match legacy value', () => {
 			const record = createV10Record({ debt: 2_000, day: 12 });
+			const options = [
+				{
+					id: 'short-loan',
+					label: 'Short loan',
+					description: 'Add emergency working capital.',
+					effects: { cash: 99_999, profit: -4, marketPosition: -1 }
+				},
+				{
+					id: 'cut-costs',
+					label: 'Cut costs',
+					description: 'Trim discretionary spend.',
+					effects: { cash: 5_500, customerSatisfaction: -4, staffMorale: -5, stockHealth: -8 }
+				},
+				{
+					id: 'hold-course',
+					label: 'Hold course',
+					description: 'Avoid reactive changes.',
+					effects: { profit: 1, staffMorale: -2 }
+				}
+			];
 			(record.game as unknown as Record<string, unknown>).decisions = [
 				{
 					id: 'cash-pressure',
 					title: 'Cash pressure',
 					context: { code: 'cashPressure' },
 					expiresOnDay: 14,
-					options: [
-						{
-							id: 'short-loan',
-							label: 'Short loan',
-							description: 'Add emergency working capital.',
-							effects: { cash: 99_999, profit: -4, marketPosition: -1 }
-						},
-						{
-							id: 'cut-costs',
-							label: 'Cut costs',
-							description: 'Trim discretionary spend.',
-							effects: { cash: 5_500, customerSatisfaction: -4, staffMorale: -5, stockHealth: -8 }
-						},
-						{
-							id: 'hold-course',
-							label: 'Hold course',
-							description: 'Avoid reactive changes.',
-							effects: { profit: 1, staffMorale: -2 }
-						}
-					]
+					options
 				}
 			];
-			expect(() => validateSaveRecord(record)).toThrow();
+
+			// cash (99_999) does not match the legacy 12_000 value, so the borrow
+			// option must be left untouched rather than rewritten to add a finance field.
+			const migrated = migrateV10Game(record.game) as Record<string, unknown>;
+			const migratedDecisions = migrated.decisions as Array<Record<string, unknown>>;
+			expect(migratedDecisions[0]!.options).toEqual(options);
+
+			expect(() => validateSaveRecord(record)).toThrow(
+				/Saved v11 decisions\[0\] options\[0\] effects contains an unknown field: cash/
+			);
 		});
 
 		test('leaves borrow option untouched when finance field already exists', () => {
 			const record = createV10Record({ debt: 2_000, day: 12 });
+			const shortLoanEffects = {
+				finance: { kind: 'borrow', purpose: 'emergency', amount: 12_000, termDays: 56 },
+				cash: 12_000,
+				profit: -4,
+				marketPosition: -1
+			};
 			(record.game as unknown as Record<string, unknown>).decisions = [
 				{
 					id: 'cash-pressure',
@@ -6408,12 +6436,7 @@ describe('saveCodec', () => {
 							id: 'short-loan',
 							label: 'Short loan',
 							description: 'Add emergency working capital.',
-							effects: {
-								finance: { kind: 'borrow', purpose: 'emergency', amount: 12_000, termDays: 56 },
-								cash: 12_000,
-								profit: -4,
-								marketPosition: -1
-							}
+							effects: shortLoanEffects
 						},
 						{
 							id: 'cut-costs',
@@ -6430,36 +6453,64 @@ describe('saveCodec', () => {
 					]
 				}
 			];
-			expect(() => validateSaveRecord(record)).toThrow();
+
+			// A finance field already exists, so the option must be left untouched
+			// rather than having a second finance field layered on top.
+			const migrated = migrateV10Game(record.game) as Record<string, unknown>;
+			const migratedDecisions = migrated.decisions as Array<Record<string, unknown>>;
+			const migratedOptions = migratedDecisions[0]!.options as Array<Record<string, unknown>>;
+			expect(migratedOptions[0]!.effects).toEqual(shortLoanEffects);
+
+			expect(() => validateSaveRecord(record)).toThrow(
+				/Saved v11 decisions\[0\] options\[0\] effects contains an unknown field: cash/
+			);
 		});
 
 		test('leaves non-object options untouched during v10 cash-borrow migration', () => {
 			const record = createV10Record({ debt: 2_000, day: 12 });
+			const options = [
+				null,
+				'string-option',
+				{
+					id: 'bulk-discount',
+					label: 'Bulk',
+					description: 'd',
+					effects: { cash: -2_500, profit: 3, stockHealth: 6 }
+				}
+			];
 			(record.game as unknown as Record<string, unknown>).decisions = [
 				{
 					id: 'supplier-terms',
 					title: 'Supplier terms',
 					context: { code: 'supplierTerms' },
 					expiresOnDay: 14,
-					options: [
-						null,
-						'string-option',
-						{
-							id: 'bulk-discount',
-							label: 'Bulk',
-							description: 'd',
-							effects: { cash: -2_500, profit: 3, stockHealth: 6 }
-						}
-					]
+					options
 				}
 			];
-			expect(() => validateSaveRecord(record)).toThrow();
+
+			// Non-object options and options whose id is not the borrow option must
+			// be returned untouched by the per-option cash-borrow migration.
+			const migrated = migrateV10Game(record.game) as Record<string, unknown>;
+			const migratedDecisions = migrated.decisions as Array<Record<string, unknown>>;
+			expect(migratedDecisions[0]!.options).toEqual(options);
+
+			expect(() => validateSaveRecord(record)).toThrow(
+				/Saved v11 decisions\[0\] options must contain exactly: negotiate-credit, bulk-discount/
+			);
 		});
 
 		test('leaves non-object reports untouched during v10 report migration', () => {
 			const record = createV10Record({ debt: 2_000, day: 12 });
-			(record.game as unknown as Record<string, unknown>).reports = [null, 'string-report', 42];
-			expect(() => validateSaveRecord(record)).toThrow();
+			const reports = [null, 'string-report', 42];
+			(record.game as unknown as Record<string, unknown>).reports = reports;
+
+			// Non-object reports must be returned untouched by the per-report
+			// v10 report migration; only object reports with numeric finance fields
+			// are rewritten.
+			const migrated = migrateV10Game(record.game) as Record<string, unknown>;
+			expect(migrated.reports).toEqual(reports);
+
+			expect(() => validateSaveRecord(record)).toThrow(/Saved v11 reports\[0\] must be an object/);
 		});
 	});
 
