@@ -2243,6 +2243,72 @@ describe('game copy builders', () => {
 		expect(localizeEventSourceTitle('unknown-event', createI18n('en'))).toBe('unknown-event');
 	});
 
+	it('localizeEventSourceTitle translates the title for known production events', () => {
+		const result = localizeEventSourceTitle('supplier-terms', createI18n('en'));
+		expect(result).not.toBe('supplier-terms');
+		expect(result.length).toBeGreaterThan(0);
+	});
+
+	it('localizeAlert falls back when a decision alert references a missing decision id', () => {
+		const game = createNewGame('grocery', 55);
+		const alert: GameAlert = {
+			id: 'decision:missing',
+			kind: 'decision',
+			message: 'Keep original message',
+			decisionId: 'missing-decision'
+		};
+		expect(localizeAlert(alert, game, createI18n('en'))).toBe('Keep original message');
+	});
+
+	it('localizeAlert localizes an event-modifier alert for a known modifier', () => {
+		const game = createNewGame('grocery', 55);
+		const modifier = {
+			id: 'event-modifier-1',
+			source: {
+				eventId: 'supplier-terms',
+				instanceId: 'event-instance-1',
+				optionId: 'bulk-discount'
+			},
+			target: { kind: 'company' as const },
+			startsOnDay: 5,
+			expiresOnDay: 8,
+			stackingKey: 'supplier-bulk-discount:retail-product',
+			stackingRule: 'replace' as const,
+			effect: {
+				kind: 'import-cost-multiplier' as const,
+				scope: 'retail-product' as const,
+				target: { kind: 'all' as const },
+				multiplier: 0.9
+			},
+			explanation: { key: 'events.supplierTerms.bulkDiscount.modifier', params: {} },
+			importance: 'important' as const
+		};
+		const gameWithModifier = {
+			...game,
+			events: { ...game.events, activeModifiers: [modifier] }
+		};
+		const alert: GameAlert = {
+			id: 'event-modifier:event-modifier-1',
+			kind: 'event-modifier',
+			message: 'stale',
+			modifierId: 'event-modifier-1'
+		};
+		const result = localizeAlert(alert, gameWithModifier, createI18n('en'));
+		expect(result).not.toBe('stale');
+		expect(result.length).toBeGreaterThan(0);
+	});
+
+	it('localizeAlert falls back when an event-modifier alert references a missing modifier', () => {
+		const game = createNewGame('grocery', 55);
+		const alert: GameAlert = {
+			id: 'event-modifier:missing',
+			kind: 'event-modifier',
+			message: 'Keep original message',
+			modifierId: 'missing-modifier'
+		};
+		expect(localizeAlert(alert, game, createI18n('en'))).toBe('Keep original message');
+	});
+
 	it('localizeStructuredCopy falls back to the raw key for untranslated refs', () => {
 		expect(
 			localizeStructuredCopy({ key: 'events.unknown.missing', params: {} }, createI18n('en'))

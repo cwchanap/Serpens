@@ -1695,6 +1695,48 @@ describe('GameRouteController', () => {
 			expect(saveSpy).not.toHaveBeenCalled();
 		});
 
+		it('returns a typed decision rejection with financeFailure for a scenario finance-borrow failure', async () => {
+			const base = firstProfitDefinition();
+			const definition = { ...base, allowedCommands: ['resolveDecision'] as const };
+			const harness = createHarness({ resolveDefinition: () => definition });
+			await harness.controller.initializeScenarios();
+			await startScenario(harness.controller, definition);
+			const run = harness.controller.state.activeScenarioRun!;
+			const decision: EventDecisionItem = {
+				kind: 'event',
+				id: 'event-instance-1',
+				eventId: 'fixture-event',
+				definitionVersion: 1,
+				generatedOnDay: run.game.day,
+				expiresOnDay: run.game.day + 2,
+				target: { kind: 'company' },
+				copy: { key: 'events.fixture', params: {} },
+				options: [
+					{
+						id: 'accept',
+						effects: [
+							{
+								kind: 'finance-borrow',
+								purpose: 'emergency',
+								amount: 200_000,
+								termDays: 56
+							}
+						],
+						modifiers: []
+					}
+				]
+			};
+			(run.game as GameState).decisions = [decision];
+			const saveSpy = vi.spyOn(harness.scenarioRepository, 'saveActiveRun');
+			const result = await harness.controller.resolveDecision(decision.id, 'accept');
+			expect(result).toMatchObject({
+				status: 'decision-rejected',
+				code: 'finance-unavailable',
+				financeFailure: 'insufficientCredit'
+			});
+			expect(saveSpy).not.toHaveBeenCalled();
+		});
+
 		it('returns rejected when the definition can no longer be resolved', async () => {
 			const scenarioRepository = createScenarioMemoryRepository();
 			const harness = createHarness({ scenarioRepository });

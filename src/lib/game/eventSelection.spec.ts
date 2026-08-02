@@ -186,6 +186,39 @@ describe('event selection and materialization', () => {
 		expect(nextDay.decisions.filter((decision) => decision.kind === 'event')).toHaveLength(1);
 	});
 
+	it('preserves cooldowns for other events when replacing a same-event cooldown', () => {
+		const catalog = validateAndNormalizeEventCatalog([
+			definition({ id: 'alpha', selection: { kind: 'forced', priority: 2 }, cooldownDays: 1 }),
+			definition({ id: 'beta', selection: { kind: 'forced', priority: 1 }, cooldownDays: 3 })
+		]);
+		const first = selectEventForDay(game(7), catalog);
+		expect(first.decisions.filter((d) => d.kind === 'event')).toHaveLength(1);
+		const firstEvent = first.decisions.find((d) => d.kind === 'event')!;
+		expect(firstEvent?.eventId).toBe('alpha');
+
+		const withBetaCooldown: typeof first = {
+			...first,
+			events: {
+				...first.events,
+				cooldowns: [
+					...first.events.cooldowns,
+					{
+						eventId: 'beta',
+						target: { kind: 'company' },
+						generatedOnDay: first.day,
+						eligibleOnDay: first.day + 3
+					}
+				]
+			}
+		};
+		const nextDay = selectEventForDay(
+			{ ...withBetaCooldown, day: first.day + 1, decisions: [] },
+			catalog
+		);
+		const betaCooldown = nextDay.events.cooldowns.find((c) => c.eventId === 'beta');
+		expect(betaCooldown).toBeDefined();
+	});
+
 	it('is deeply deterministic for equal input state and normalized catalogs', () => {
 		const input = game(7);
 		const catalog = validateAndNormalizeEventCatalog([
