@@ -9,6 +9,7 @@ import { createNewGame, resolveDecision, updatePolicy } from './state';
 import { getStaffXpForLevel } from './staffLeveling';
 import { DEFAULT_SIMULATION_RULES, type SimulationRules } from './simulationRules';
 import { simulateDay } from './simulateDay';
+import { createOneCityInventoryFixture, projectOneCityParity } from './cityInventory.testUtils';
 import type {
 	ActiveEventModifier,
 	EventDecisionItem,
@@ -85,6 +86,123 @@ function activeImportModifier(id: string, multiplier: number, day: number): Acti
 }
 
 describe('daily simulation', () => {
+	test('preserves one-city production, retail, report, and cash behavior', () => {
+		const after = simulateDay(createOneCityInventoryFixture());
+
+		expect(projectOneCityParity(after)).toMatchInlineSnapshot(`
+			{
+			  "cash": 99762,
+			  "report": {
+			    "importSpend": 10,
+			    "netCashChange": -238,
+			    "production": {
+			      "consumed": [
+			        {
+			          "materialId": "water",
+			          "quantity": 10,
+			          "source": "rail",
+			          "value": 10,
+			        },
+			      ],
+			      "importSpend": 0,
+			      "importedInputs": [],
+			      "operatingCost": 19,
+			      "overflowCost": 10,
+			      "overflowUnits": 5,
+			      "produced": [
+			        {
+			          "materialId": "water",
+			          "quantity": 40,
+			          "source": "local",
+			          "value": 40,
+			        },
+			        {
+			          "materialId": "bottled-water",
+			          "quantity": 10,
+			          "source": "local",
+			          "value": 20,
+			        },
+			      ],
+			      "railShipments": [
+			        {
+			          "fromId": "pump",
+			          "kind": "pull-producer",
+			          "materialId": "water",
+			          "quantity": 10,
+			          "toId": "bottler",
+			          "value": 10,
+			        },
+			        {
+			          "fromId": "bottler",
+			          "kind": "push-warehouse",
+			          "materialId": "bottled-water",
+			          "quantity": 10,
+			          "toId": "warehouse",
+			          "value": 20,
+			        },
+			      ],
+			      "railUsage": {
+			        "industry-city:10,4": 10,
+			        "industry-city:11,4": 10,
+			        "industry-city:12,4": 10,
+			        "industry-city:13,4": 10,
+			        "industry-city:14,4": 10,
+			        "industry-city:15,4": 10,
+			        "industry-city:16,4": 10,
+			        "industry-city:17,4": 10,
+			        "industry-city:18,4": 10,
+			        "industry-city:3,4": 10,
+			        "industry-city:4,4": 10,
+			        "industry-city:5,4": 10,
+			        "industry-city:6,4": 10,
+			        "industry-city:7,4": 10,
+			        "industry-city:8,4": 10,
+			        "industry-city:9,4": 10,
+			      },
+			      "shopImports": [
+			        {
+			          "materialId": "bottled-water",
+			          "quantity": 5,
+			          "source": "import",
+			          "value": 10,
+			        },
+			      ],
+			      "warehouseCapacity": 200,
+			      "warehousePulls": [
+			        {
+			          "materialId": "bottled-water",
+			          "quantity": 15,
+			          "source": "warehouse",
+			          "value": 30,
+			        },
+			      ],
+			      "warehouseUsed": 205,
+			    },
+			  },
+			  "stores": [
+			    {
+			      "id": "store-1",
+			      "products": [
+			        {
+			          "categoryId": "bottled-water",
+			          "stock": 20,
+			        },
+			      ],
+			    },
+			  ],
+			  "warehouse": {
+			    "capacity": 200,
+			    "materials": {
+			      "bottled-water": 0,
+			      "water": 190,
+			    },
+			    "overflowCost": 0,
+			    "overflowUnits": 0,
+			  },
+			}
+		`);
+	});
+
 	test('keeps omitted and explicit defaults deeply equal', () => {
 		const game = createNewGame('electronics', 280_002);
 

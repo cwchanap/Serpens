@@ -720,6 +720,90 @@ describe('rail-fed production', () => {
 		expect(game.warehouse.materials.grain ?? 0).toBeLessThan(50);
 	});
 
+	test('resolves inputs from own buffer, same-city producer, warehouse, then import in order', () => {
+		const fakeTypeId = 'test-grain-cache' as IndustrialBuildingTypeId;
+		const types = INDUSTRIAL_BUILDING_TYPES as Record<string, unknown>;
+		const original = types[fakeTypeId];
+		types[fakeTypeId] = {
+			id: fakeTypeId,
+			name: 'Test Grain Cache',
+			buildCost: 0,
+			dailyOperatingCost: 0,
+			requiredResource: null,
+			requiresIndustrialTile: false,
+			recipeId: 'grain-harvest',
+			warehouseCapacity: 0,
+			bufferCapacity: 3,
+			tier: 1
+		};
+
+		try {
+			const game = {
+				...makeProductionGame(makeIndustryCity(straightRails(4, 2, 19, 10)), [
+					makeIndustryBuilding('source', fakeTypeId, 2, 2, { grain: 3 }),
+					makeIndustryBuilding('mill', 'flour-mill', 10, 2, { grain: 2 }),
+					makeIndustryBuilding('warehouse', 'warehouse', 18, 2)
+				]),
+				warehouse: {
+					capacity: 200,
+					materials: { grain: 3 },
+					overflowUnits: 0,
+					overflowCost: 0
+				}
+			};
+
+			const { report } = simulateIndustryProduction(game);
+
+			expect(
+				report.consumed
+					.filter((movement) => movement.materialId === 'grain')
+					.map((movement) => ({ source: movement.source, quantity: movement.quantity }))
+			).toEqual([
+				{ source: 'local', quantity: 2 },
+				{ source: 'rail', quantity: 3 },
+				{ source: 'warehouse', quantity: 3 },
+				{ source: 'import', quantity: 2 }
+			]);
+			expect(
+				report.railShipments.map((shipment) => ({
+					kind: shipment.kind,
+					fromId: shipment.fromId,
+					toId: shipment.toId,
+					materialId: shipment.materialId,
+					quantity: shipment.quantity
+				}))
+			).toEqual([
+				{
+					kind: 'pull-producer',
+					fromId: 'source',
+					toId: 'mill',
+					materialId: 'grain',
+					quantity: 3
+				},
+				{
+					kind: 'pull-warehouse',
+					fromId: 'warehouse',
+					toId: 'mill',
+					materialId: 'grain',
+					quantity: 3
+				},
+				{
+					kind: 'push-warehouse',
+					fromId: 'mill',
+					toId: 'warehouse',
+					materialId: 'flour',
+					quantity: 7
+				}
+			]);
+		} finally {
+			if (original === undefined) {
+				delete types[fakeTypeId];
+			} else {
+				types[fakeTypeId] = original;
+			}
+		}
+	});
+
 	test('railUsage records per-cell units for the segment inspector', () => {
 		const { report } = simulateIndustryProduction(railGame);
 
