@@ -4,6 +4,8 @@
 
 Approved for written-spec review on 2026-05-30.
 
+**Partially superseded on 2026-08-02 by HPA-292:** the statements below that keep warehouse inventory company-wide no longer govern inventory ownership. HPA-292 makes inventory quantity, warehouse capacity, and overflow city-local. Cash, debt, staff pool, reports, product-chain management, and `storeCap` remain company-wide; individual product-chain views may be scoped by active city/source.
+
 ## Goal
 
 Add a multi-city campaign layer to the retail simulation.
