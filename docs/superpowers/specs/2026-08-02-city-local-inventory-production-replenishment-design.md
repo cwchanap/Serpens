@@ -1,7 +1,7 @@
 # City-Local Inventory, Production, and Replenishment — Design
 
 **Date:** 2026-08-02  
-**Status:** Approved for implementation planning  
+**Status:** Approved for implementation planning; review clarifications incorporated  
 **Linear:** [HPA-292](https://linear.app/cwchanap/issue/HPA-292/implement-city-local-inventory-production-and-replenishment)
 
 ## Summary
@@ -15,12 +15,27 @@ unavailable source falls back to paid imports with visible attribution.
 This is the first playable slice of the inter-city logistics program. It makes
 location meaningful without introducing transfer orders, transit time,
 recurring routes, vehicle capacity, or route operations. Those mechanics remain
-owned by HPA-294 and will build on the city-inventory and retail-assignment
-contracts defined here.
+owned by HPA-294 and build on the city-inventory and retail-assignment contracts
+defined here.
 
 The implementation must preserve existing one-city production, cost, rounding,
-rail, retail, and cash-reconciliation behavior. Supported v12 saves migrate to
-v13 without duplicating or dropping a single material unit.
+rail, retail, processing-order, and cash-reconciliation behavior. Supported v12
+saves migrate to v13 without duplicating or dropping a single material unit.
+
+## Review clarifications
+
+The following implementation details are now explicit:
+
+| Area | Decision |
+| --- | --- |
+| Historical replenishment evidence | Reconstruct from numerical local/import fields **plus** the migrated assignment and source-capability state |
+| Inventory helper ownership | Replace and remove the five global warehouse helpers; do not leave compatibility wrappers in merged code |
+| City-ID typing | Keep existing operational `cityId` fields as `string`; accessors accept `string`, validate against the catalog, and narrow internally |
+| Retail contention | Preserve `GameState.stores` and `Store.products` relative order within each city; do not sort IDs |
+| Capacity synchronization | Every transition that can change warehouse capacity must synchronize the owning city before returning |
+| Scenario validation | Replace `validateWarehouseCapacity` with per-city capacity and assignment validators |
+| E2E setup | Use a deterministic pre-unlocked multi-city fixture so the test targets logistics, not milestone progression |
+| Symbol names | Rename weekly-import APIs to weekly-replenishment APIs and remove the old names |
 
 ## Decisions made during planning
 
@@ -51,10 +66,11 @@ v13 without duplicating or dropping a single material unit.
 - Keep fallback imports visible in product reports, production reports, cash
   flow, and player-facing UI.
 - Preserve deterministic simulation for the same state and action sequence.
-- Preserve all existing production throughput, recipe scaling, rounding,
-  operating-cost, import-cost, rail-budget, and retail target-stock formulas.
+- Preserve existing one-city throughput, recipe scaling, rounding, operating
+  cost, import cost, rail budget, store order, product order, and target-stock
+  formulas.
 - Migrate supported saves and embedded scenario game states with exact material
-  conservation.
+  conservation and deterministic historical attribution.
 - Provide accessible inspection, assignment, empty, and unavailable states.
 - Establish stable ownership and attribution contracts for HPA-294 transfers and
   recurring routes.
@@ -63,18 +79,18 @@ v13 without duplicating or dropping a single material unit.
 
 - Transfer orders or an in-transit inventory ledger.
 - Dispatch dates, arrival dates, transport lead times, or delivery ETAs.
-- Recurring routes, route cadence, route priority, route capacity, reliability,
-  route cost, or route utilization.
+- Recurring routes, route cadence, priority, capacity, reliability, cost, or
+  utilization.
 - Route creation or route visualization on the world map.
 - Automatic source optimization or automatic reassignment.
-- Fair-share allocation across competing retail cities. V1 uses a documented
-  deterministic processing order.
-- A new `logistics` world-city kind. Current industrial cities are the only
-  inventory-capable cities in this release.
+- Fair-share or proportional allocation across competing retail cities.
+- A new `logistics` world-city kind.
 - Supply-planner forecasts, available-to-promise calculations, or recommended
-  transfers. Those remain HPA-297 scope.
+  transfers.
 - Closing cities as a new player command. Runtime and persistence semantics are
-  nevertheless defined for a configured source that is no longer open.
+  still defined for a configured source that is no longer open.
+- Narrowing every existing `string` city field to `WorldCityId`; that broader
+  type cleanup is not required to deliver this feature.
 
 ## Current-system constraints
 
@@ -125,6 +141,37 @@ Arrays are intentional. They let the save codec reject duplicates, validate one
 entry at a time, and require canonical catalog ordering. A record keyed by an
 unvalidated string could silently overwrite a duplicate city during decoding.
 
+### City-ID typing boundary
+
+The new persisted ownership fields use `WorldCityId`, but current operational
+entities retain their existing `string` IDs:
+
+- `GameState.activeCityId`;
+- `GameState.activeIndustryCityId`;
+- `Store.cityId`;
+- `IndustrialBuilding.cityId`;
+- `IndustryTile.cityId`;
+- `IndustryCity.id`;
+- `City.id`.
+
+Do not widen HPA-292 into a repository-wide type migration. Public capability
+and access helpers accept `string`, resolve the ID through the world catalog,
+and narrow to `WorldCityId` only after validation:
+
+```ts
+export function getCityInventory(
+	game: Pick<GameState, 'world' | 'industryCities' | 'cityInventories'>,
+	cityId: string
+): CityInventoryAccessResult;
+```
+
+The same rule applies before using `building.cityId`, `store.cityId`, or an
+active-city field as a key in `Map<WorldCityId, ...>`. An unknown string returns
+a typed failure. Production code must not use unchecked `as WorldCityId` casts.
+
+Persisted `CityInventory.cityId`, `RetailSupplyAssignment.retailCityId`, and
+non-null `supplyCityId` remain strict `WorldCityId` values.
+
 ### Inventory-capable cities
 
 In v1, a city supports inventory when all of the following are true:
@@ -161,13 +208,14 @@ export type CityInventoryAccessFailure =
 	| 'inventory-missing';
 
 export type CityInventoryAccessResult =
-	| { ok: true; inventory: CityInventory; index: number }
+	| { ok: true; cityId: WorldCityId; inventory: CityInventory; index: number }
 	| { ok: false; reason: CityInventoryAccessFailure };
 ```
 
-The module owns these responsibilities:
+The module owns:
 
 - capability and access resolution;
+- catalog-safe string-to-`WorldCityId` narrowing;
 - used-capacity calculation;
 - warehouse capacity derived from same-city buildings;
 - overflow and overflow-cost calculation;
@@ -175,12 +223,45 @@ The module owns these responsibilities:
 - immutable replacement in `GameState`;
 - one-city and all-city capacity synchronization;
 - deterministic default-source selection;
-- inventory and material-conservation assertions shared by the simulation,
-  scenario setup, and save codec.
+- canonical inventory and assignment ordering;
+- inventory and material-conservation assertions shared by simulation, scenario
+  setup, and persistence.
 
 Unknown, closed, unsupported, and missing city IDs return a typed failure. They
 never fall through to an arbitrary inventory and never throw from ordinary
 simulation paths.
+
+### Global helper replacement
+
+The existing global warehouse helpers are replaced rather than retained as
+wrappers:
+
+| Remove from `industryProduction.ts` | Replace in `cityInventory.ts` |
+| --- | --- |
+| `getWarehouseUsed` | `getCityInventoryUsed` |
+| `recalculateWarehousePressure` | `recalculateCityInventoryPressure` |
+| `addWarehouseMaterial` | `addCityInventoryMaterial` |
+| `removeWarehouseMaterial` | `removeCityInventoryMaterial` |
+| `getWarehouseCapacity` | `getCityWarehouseCapacity` |
+| `WAREHOUSE_OVERFLOW_COST_PER_UNIT` | move unchanged to `cityInventory.ts` |
+
+`addCityInventoryMaterial` and `removeCityInventoryMaterial` operate on one
+`CityInventory` value. They do not resolve a city or mutate `GameState`.
+`replaceCityInventory` folds the returned inventory back into the canonical
+array.
+
+All existing callers must move to the city-scoped API:
+
+- rail shipping resolves the producer or consumer city before reading stock;
+- industrial production synchronizes and folds each city's working inventory;
+- retail sourcing moves out of `stock.ts` into `retailSupply.ts`;
+- world progression, product chains, supply advice, scenario setup/metrics, and
+  save validation use explicit city scope.
+
+The merged implementation must have no operational compatibility export named
+`addWarehouseMaterial`, `removeWarehouseMaterial`,
+`recalculateWarehousePressure`, `getWarehouseCapacity`, or `getWarehouseUsed`.
+Leaving wrappers would preserve an attractive path back to global semantics.
 
 ### Quantity semantics
 
@@ -201,12 +282,9 @@ overflowUnits = max(0, used - capacity)
 overflowCost  = overflowUnits * WAREHOUSE_OVERFLOW_COST_PER_UNIT
 ```
 
-Move `WAREHOUSE_OVERFLOW_COST_PER_UNIT` and global warehouse pressure helpers
-out of `industryProduction.ts` into `cityInventory.ts`.
-
 ## State invariants
 
-Every validated current-schema `GameState` satisfies all of these invariants:
+Every validated current-schema `GameState` satisfies these invariants.
 
 ### City inventories
 
@@ -214,7 +292,7 @@ Every validated current-schema `GameState` satisfies all of these invariants:
 - No city inventory is owned by a retail, unknown, unsupported, or closed city.
 - Inventory IDs are unique and canonically ordered.
 - Capacity equals the sum of `warehouseCapacity` for warehouse buildings whose
-  `building.cityId` equals the inventory city.
+  validated `building.cityId` equals the inventory city.
 - Used capacity equals the sum of material quantities.
 - Overflow units and cost equal the documented formula.
 - Material quantities never become negative.
@@ -229,13 +307,34 @@ Every validated current-schema `GameState` satisfies all of these invariants:
 - `supplyCityId: null` means explicit imports-only operation.
 - A non-null source must be a known inventory-capable catalog city.
 - A non-null source may be closed or temporarily lack an inventory record. This
-  is a valid persisted stale assignment so source-closure behavior can remain
+  is a valid persisted stale assignment so source-closure behavior remains
   deterministic and the player's choice is not silently erased.
 - The daily tick never changes an assignment.
 
 Pure operational functions still defend against a missing assignment record,
-even though current-schema save validation requires one. This protects scenario
-fixtures, tests, and future transitions from state corruption.
+even though current-schema save validation requires one.
+
+### Capacity synchronization ownership
+
+Capacity is persisted but derived from buildings. The following operations must
+synchronize capacity before returning or validating state:
+
+- new-game initialization;
+- opening an industrial city;
+- building a warehouse;
+- scenario setup after authored buildings are materialized;
+- v12-to-v13 migration;
+- current-state save and embedded-game validation;
+- daily simulation before production.
+
+Today `buildIndustrialBuilding` is the only player transition that can add
+warehouse capacity. Warehouse buildings remain non-upgradeable and HPA-292 does
+not add demolition. Nevertheless, any future transition that adds, removes,
+moves, upgrades, or changes the type of a warehouse building must call
+`synchronizeCityInventoryCapacity(game, owningCityId)` before returning.
+
+A future capacity-changing transition cannot rely on the next daily tick to
+repair state. The codec and scenario invariant checks reject a capacity mismatch.
 
 ## Initialization and city opening
 
@@ -260,7 +359,7 @@ Append one assignment for the new retail city. Its default source is selected
 from currently opened, accessible inventory cities by:
 
 1. greatest derived warehouse capacity;
-2. then prefer `activeIndustryCityId` on a capacity tie;
+2. then prefer a valid `activeIndustryCityId` on a capacity tie;
 3. then world-catalog order;
 4. then plain ID comparison.
 
@@ -273,15 +372,9 @@ later does not automatically replace existing `null` or explicit assignments.
 building's city before returning the transition. Capacity in city A must never
 change city B's pressure or overflow cost.
 
-Current warehouse buildings cannot be upgraded because they have no recipe.
-Keep that behavior. Add a regression guard so any future warehouse upgrade path
-must synchronize the owning city before it can return a valid state.
-
 ## Retail supply assignment command
 
 Create `src/lib/game/retailSupply.ts` for assignment and replenishment behavior.
-The player-facing command accepts a retail city and either an inventory-capable
-source city or `null`:
 
 ```ts
 export type RetailSupplyAssignmentFailure =
@@ -289,6 +382,7 @@ export type RetailSupplyAssignmentFailure =
 	| 'retail-city-closed'
 	| 'unsupported-retail-city'
 	| 'unknown-supply-city'
+	| 'supply-city-closed'
 	| 'unsupported-supply-city';
 
 export type RetailSupplyAssignmentResult =
@@ -297,11 +391,12 @@ export type RetailSupplyAssignmentResult =
 
 export function setRetailSupplySource(
 	game: GameState,
-	retailCityId: WorldCityId,
-	supplyCityId: WorldCityId | null
+	retailCityId: string,
+	supplyCityId: string | null
 ): RetailSupplyAssignmentResult;
 ```
 
+The function accepts strings at the operational boundary and narrows internally.
 Assigning a known inventory-capable but currently closed source is rejected by
 the command; stale closed references are permitted only so already persisted
 assignments survive source closure. Assigning the existing value succeeds with
@@ -309,12 +404,12 @@ assignments survive source closure. Assigning the existing value succeeds with
 
 Invalid assignment attempts return the original state object. They create no
 system decision, scenario revision, autosave, or success cue. UI options are
-built from valid opened sources, so failures are primarily a stale-command and
-runtime-safety boundary.
+built from valid opened sources, so failures primarily protect stale commands
+and corrupted runtime inputs.
 
-Add `setRetailSupplySource` to the route controller's mutation availability and
-to the scenario command inventory. Each built-in scenario explicitly permits or
-forbids it; there is no implicit scenario bypass.
+Add `setRetailSupplySource` to route-controller mutation availability and to the
+scenario command inventory. Each built-in scenario explicitly permits or
+forbids it.
 
 ## Industrial production and rail shipping
 
@@ -328,7 +423,7 @@ For every recipe input, preserve the existing order:
    warehouse building;
 4. import the exact remaining shortage.
 
-Preserve all current throughput, stage ordering, atomic recipe scaling, buffer
+Preserve current throughput, stage ordering, atomic recipe scaling, buffer
 projection, rounding, operating cost, import cost, and building-status rules.
 
 ### Output flow
@@ -338,13 +433,10 @@ The existing post-production rail push may move surplus output into the pooled
 inventory owned by that building's city. Disconnected output remains in the
 building buffer. It is never deposited into another city's inventory.
 
-This interpretation preserves the current meaningful rail requirement while
-satisfying city ownership: every warehouse deposit and pull is resolved against
-the building's city.
-
 ### Rail tick state
 
-Replace the rail tick's single working warehouse with a map keyed by city ID:
+Replace the rail tick's single working warehouse with a map keyed by validated
+city ID:
 
 ```ts
 interface RailTickState {
@@ -353,23 +445,32 @@ interface RailTickState {
 }
 ```
 
-A consumer or producer can consider only:
+When seeding or accessing this map, validate and narrow any `string` city field
+first. A consumer or producer can consider only:
 
-- buildings whose `building.cityId` equals its own city;
+- buildings whose validated `building.cityId` equals its own validated city;
 - the inventory record with that same city ID;
 - warehouse access buildings in that same rail network.
 
-No candidate enumeration may read stock from another city's inventory, even if
-another city's warehouse building has a lower building ID or shorter unrelated
-path.
-
-Candidate ordering and path tie-break rules remain unchanged inside one city.
+No candidate enumeration may read stock from another city's inventory. Candidate
+ordering and path tie-break rules remain unchanged inside one city.
 
 ## Retail replenishment
 
-Rename the operational concept from weekly imports to weekly replenishment. The
-existing seven-day cadence, reorder threshold, target stock, category import
-cost, and import-cost modifier behavior remain unchanged.
+Rename the operational concept and symbols from weekly imports to weekly
+replenishment. The seven-day cadence, reorder threshold, target stock, category
+import cost, and import-cost modifier behavior remain unchanged.
+
+| Remove old symbol | Introduce |
+| --- | --- |
+| `IMPORT_INTERVAL_DAYS` | `REPLENISHMENT_INTERVAL_DAYS` |
+| `isImportDay` | `isReplenishmentDay` |
+| `WeeklyImportResult` | `WeeklyReplenishmentResult` |
+| `applyWeeklyImports` | `applyWeeklyReplenishment` |
+
+Product creation, sales, stock health, and product-edit helpers remain in
+`stock.ts`. The renamed replenishment implementation lives in
+`retailSupply.ts`. The final code does not retain aliases for the old names.
 
 ### Replenishment evidence
 
@@ -394,56 +495,55 @@ export interface RetailReplenishmentEvidence {
 
 Numerical reconciliation continues to use the existing fields:
 
-- `warehouseUnits` is the number of units taken from the configured city
-  inventory;
-- `warehouseValue` is those units multiplied by material `localValue`;
-- `importedUnits` is the exact shortage bought externally;
-- `importCost` remains the base per-unit category cost;
-- `importSpend` is the modifier-adjusted external spend.
+- `warehouseUnits`: units taken from the configured city inventory;
+- `warehouseValue`: local units multiplied by material `localValue`;
+- `importedUnits`: the exact externally bought shortage;
+- `importCost`: base per-unit category cost;
+- `importSpend`: modifier-adjusted external spend.
 
-The field names remain for save/report compatibility even though the local units
-now come from a named city inventory.
+The field names remain for save/report compatibility even though local units now
+come from a named city inventory.
 
 ### Resolution rules
 
 For a product below its reorder threshold:
 
-1. **Valid source with enough stock** — debit the source inventory, import zero,
-   and report `city-inventory`.
-2. **Valid source with partial stock** — debit every available local unit,
-   import the exact shortage, and report `mixed`.
-3. **Valid source with zero relevant stock** — debit zero, import all required
-   units, and report `import-only`.
-4. **No assignment or explicit `null`** — import all required units and report
-   `unassigned-import`.
-5. **Unknown, closed, unsupported, or missing source inventory** — preserve the
-   configured assignment, mutate no city inventory, import all required units,
-   and report `source-unavailable-import`.
+1. valid source with enough stock: debit the source, import zero, report
+   `city-inventory`;
+2. valid source with partial stock: debit available stock, import the exact
+   shortage, report `mixed`;
+3. valid source with zero relevant stock: import all units, report
+   `import-only`;
+4. no assignment or explicit `null`: import all units, report
+   `unassigned-import`;
+5. unknown, closed, unsupported, or missing source inventory: retain the
+   assignment, mutate no inventory, import all units, report
+   `source-unavailable-import`.
 
 A product category with no supported finished-material mapping cannot consume
-local inventory. With a valid source it follows `import-only`; with no or an
-unavailable source it follows the corresponding fallback outcome.
+local inventory. Import-cost rules apply only to `importedUnits`.
 
-Import-cost rules apply only to `importedUnits`, never to units taken from a city
-inventory.
+### Deterministic contention and parity
 
-### Deterministic contention
-
-Several retail cities may temporarily debit the same source before HPA-294
-introduces explicit route capacity and priority. V1 resolves contention in this
-stable order:
+Several retail cities may debit the same source before HPA-294 adds route
+capacity and priority. Resolve contention in this order:
 
 1. retail cities by world-catalog order, then plain ID;
-2. stores within a retail city by plain store ID;
-3. products within a store by plain category ID.
+2. within a retail city, stores in their original relative order from
+   `GameState.stores`;
+3. within a store, products in their original `Store.products` order.
 
-The function returns stores in original `GameState.stores` order and inventory
-records in canonical city order. There is no fairness or proportional
-allocation algorithm in HPA-292.
+Do not sort store IDs or category IDs. Existing IDs such as `store-10` and
+`store-2` are lexicographically different from creation order, and sorting would
+change which store receives scarce local stock.
+
+The result returns stores in original global `GameState.stores` order and
+inventories in canonical city order. There is no fairness or proportional
+allocation in HPA-292.
 
 ## Daily simulation order and reconciliation
 
-The daily tick remains one pure transition. Its relevant order is:
+The daily tick remains one pure transition:
 
 1. compile active event/scenario import-cost rules;
 2. synchronize all city inventory capacities;
@@ -455,8 +555,8 @@ The daily tick remains one pure transition. Its relevant order is:
 7. build store reports and merge retail-local and import movements into the
    production report;
 8. reconcile operating costs, import spend, operating cash flow, financing, and
-   final cash using the existing formulas;
-9. persist the post-replenishment city inventories in the returned `GameState`.
+   final cash using existing formulas;
+9. persist post-replenishment city inventories in the returned `GameState`.
 
 The existing cash invariant remains mandatory:
 
@@ -465,7 +565,7 @@ cashAfter = cashBefore + operatingCashFlow + financingCashFlow
 ```
 
 One-city golden tests must prove explicit city scoping produces the same
-quantities, costs, and cash as the former global model.
+quantities, allocation order, costs, and cash as the former global model.
 
 ## Reporting contracts
 
@@ -473,19 +573,15 @@ quantities, costs, and cash as the former global model.
 
 Add `cityId` to `DailyMaterialMovement` and `RailShipment`.
 
-The field has operation-specific meaning:
-
 - production output, recipe consumption, and industrial fallback imports use the
   industrial operation city;
 - warehouse pulls use the inventory source city;
 - rail shipments use the city containing the rail network and both endpoints;
 - retail fallback imports use the retail destination city;
-- retail local usage is also explained by `DailyProductReport.replenishment`,
-  which carries the configured and resolved supply city.
+- retail local usage is also explained by replenishment evidence, which carries
+  configured and resolved supply cities.
 
 ### Per-city inventory summaries
-
-Add production-close pressure snapshots:
 
 ```ts
 export interface DailyCityInventorySummary {
@@ -503,62 +599,54 @@ export interface DailyProductionReport {
 ```
 
 `cityInventories` is captured after industrial production and rail pushes but
-before weekly retail replenishment. This matches the timing of the existing
-warehouse pressure and overflow charge. Retail debits that happen afterward are
-shown in product replenishment evidence and local warehouse-pull movements.
+before retail replenishment. This preserves the current overflow-charge timing.
+Current-inventory UI reads post-replenishment `GameState.cityInventories`, not
+the historical production-close snapshot.
 
-Player UI that displays **current** inventory reads `GameState.cityInventories`,
-which is the post-replenishment ending state. It must not present the historical
-production-close report snapshot as current stock.
-
-### Aggregate compatibility fields
-
-Keep these existing `DailyProductionReport` scalars:
+Keep existing aggregate report fields:
 
 - `warehouseCapacity`;
 - `warehouseUsed`;
 - `overflowUnits`;
 - `overflowCost`.
 
-They become explicit sums across all production-close city summaries. Financial
-summaries continue to use these aggregate values, preserving the current daily
-overflow charge and report formulas. Operational city UI and graph builders use
-city records or city summaries, never an aggregate as if it were one warehouse.
+They become sums across production-close city summaries. Financial summaries may
+use these aggregates; operational UI and graphs must use explicit city records.
 
 ### World progression
 
-Any world rule that previously checked the global warehouse now checks all
-city inventories. For example, the finished-material milestone succeeds when a
-supported finished material exists in any opened city inventory or was locally
-produced in the latest attributed production report.
+Rules that previously inspected the global warehouse inspect all city
+inventories. A finished-material milestone succeeds when a supported finished
+material exists in any opened city inventory or was locally produced in the
+latest attributed report.
 
 ## Product chains and supply advice
 
-Global warehouse views would imply stock can be consumed anywhere. Scope them
-explicitly:
+Scope formerly global views:
 
-- the warehouse-flow graph uses `game.activeIndustryCityId`;
-- category-chain views use `game.activeCityId`, its stores, and its configured
-  supply city;
-- supply-advisor availability and built-chain status use only the active
-  industrial city's buildings, buffers, and city inventory;
-- category summaries do not count a producer in city A as local capacity for a
-  retail city assigned to city B;
-- UI headings include the relevant retail or supply city;
-- stale, unassigned, zero-capacity, and empty source states produce explicit
-  empty/bottleneck results rather than falling back to another city.
+- warehouse-flow graph: `game.activeIndustryCityId`;
+- category-chain views: `game.activeCityId`, its stores, and configured source;
+- supply advisor: active industrial city's buildings, buffers, and inventory;
+- category summaries: do not count city A capacity as local for a retail city
+  assigned to city B;
+- stale, unassigned, zero-capacity, and empty sources produce explicit states.
 
-Switching cities through the world map changes the scope. HPA-292 does not add a
+Switching cities through the world map changes scope. HPA-292 does not add a
 second selector inside every graph.
 
 ## Scenario integration
 
-Scenario runs continue to wrap ordinary `GameState`; they do not gain a
-parallel logistics state.
+Scenario runs continue to wrap ordinary `GameState`.
 
 ### Starting blueprint
 
-Replace the global `warehouseMaterials` override with closed, typed city data:
+Replace the global override:
+
+```ts
+warehouseMaterials?: Partial<Record<MaterialId, number>>;
+```
+
+with:
 
 ```ts
 cityInventoryMaterials?: readonly {
@@ -572,14 +660,34 @@ retailSupplyAssignments?: readonly {
 }[];
 ```
 
-Scenario setup first creates/open cities and buildings through existing
-factories, synchronizes city capacities, applies validated material overrides,
-applies explicit/default retail assignments, recalculates pressure, and then
-validates the complete game.
+Scenario setup creates and opens cities/buildings through existing factories,
+synchronizes capacities, applies validated city material overrides, applies
+explicit/default assignments, recalculates pressure, and validates the complete
+game.
+
+### Scenario validators
+
+Replace the existing global `validateWarehouseCapacity` path with:
+
+```ts
+validateCityInventoryCapacities(game, blueprint)
+validateRetailSupplyAssignments(game, blueprint)
+```
+
+`validateCityInventoryCapacities` validates each authored city independently
+against same-city warehouse buildings and rejects duplicates, unknown/closed
+cities, negative quantities, and overflowed authored starts.
+
+`validateRetailSupplyAssignments` validates one assignment per opened retail
+city, owner/source capability, duplicates, and canonical ordering.
+
+The implementation may split these into singular internal helpers, but these
+aggregate responsibilities and names must be visible at the scenario-validation
+boundary so the former global check cannot survive accidentally.
 
 ### Metrics
 
-Replace ambiguous global warehouse metrics with city-scoped queries:
+Replace ambiguous global warehouse metrics with:
 
 ```ts
 {
@@ -589,41 +697,33 @@ Replace ambiguous global warehouse metrics with city-scoped queries:
 }
 ```
 
-Existing built-in definitions and evidence IDs migrate to the city-scoped
-metric. No metric implicitly sums every city unless a future metric explicitly
-requests that aggregation.
+No metric implicitly sums every city unless a future metric explicitly requests
+aggregation.
 
-### Commands and capabilities
+### Commands and persistence
 
-Add `setRetailSupplySource` to `ScenarioCommand` and the route-level command
-inventory. Scenario definitions explicitly decide whether it is allowed. UI
-availability and runtime enforcement use the same capability query.
-
-### Scenario persistence
-
-The independently versioned scenario store keeps its current outer schema when
-possible, but embedded v12 `GameState` values must run the same v12-to-v13 game
-migration and current-state validation as sandbox saves. Scenario setup,
-round-trip, repository, share-code, and result evidence tests must use the new
-state shape.
+Add `setRetailSupplySource` to `ScenarioCommand` and capability checks. Embedded
+v12 `GameState` values run the same v12-to-v13 migration and current validation
+as sandbox saves. The scenario store's outer schema remains unchanged when its
+existing embedded-game-version mechanism can carry v13 safely.
 
 ## Persistence and migration
 
-Bump `SAVE_SCHEMA_VERSION` from `12` to `13`. Add v12 to the migratable version
-set and perform exactly one new warehouse-shape migration before current v13
-validation.
+Bump `SAVE_SCHEMA_VERSION` from `12` to `13`. Add v12 to the migratable set and
+run one warehouse-shape migration before current v13 validation.
 
 ### Eligible destination set
 
-Build eligible city IDs from the intersection of:
+Eligible IDs are the intersection of:
 
 - generated `game.industryCities`;
 - `game.world.openedCityIds`;
 - known catalog industrial cities;
-- cities accepted by the inventory capability rule.
+- cities accepted by the capability rule.
 
-Create one empty city inventory for each eligible ID in canonical order. Derive
-capacity only from warehouse buildings whose `building.cityId` equals that ID.
+Create one empty inventory for each eligible city in canonical order. Derive
+capacity only from warehouse buildings whose validated `building.cityId`
+matches that city.
 
 ### Legacy stock destination
 
@@ -634,150 +734,116 @@ Choose one destination by:
 3. world-catalog order;
 4. plain ID comparison.
 
-A stale or unsupported active city does not participate in the tie-break.
-
-If the legacy material map is empty, no destination is required and all eligible
-inventories remain empty. If it is nonempty and no eligible destination exists,
-throw a dedicated city-inventory invariant error. Do not open a city, invent a
-record, or drop stock.
+A stale active city does not participate. Empty legacy materials require no
+destination. Nonempty materials with no eligible city reject with a dedicated
+city-inventory invariant error.
 
 Copy every material quantity exactly once into the selected destination and
-recalculate each city's pressure independently.
+recalculate pressure independently.
 
 ### Default retail assignments
 
-Create one assignment for every opened known retail city in canonical order.
-Use the selected deterministic eligible source when one exists; otherwise use
-`null`. This migration choice does not imply future automatic reassignment.
+Create one assignment for every opened known retail city. Use the same
+deterministic eligible source selector; use `null` when none exists. This
+migration default does not establish automatic reassignment.
 
 ### Historical report attribution
 
 Migrate historical data without changing numerical totals:
 
-- production movements without recoverable city context use the selected legacy
+- production movements without recoverable context use the selected legacy
   destination;
-- rail shipments use the city resolved from their referenced building IDs and
-  fall back to the selected destination only when necessary;
-- retail city attribution is derived from each `DailyStoreReport.storeId` and
-  the saved store's city;
-- product replenishment outcomes are reconstructed from `warehouseUnits` and
-  `importedUnits`;
+- rail shipments use the city resolved from `fromId`/`toId` building references,
+  falling back to the selected destination only when necessary;
+- retail destination city is derived from each `DailyStoreReport.storeId`;
 - legacy local replenishment uses the migrated default source;
-- retail import movements are rebuilt from migrated product reports so their
-  destination city is unambiguous;
-- if historical local movement requires a source city but no deterministic
-  eligible city exists, reject the save rather than invent attribution.
+- retail import movements are rebuilt from product reports;
+- historical replenishment outcome uses local/import quantities **together
+  with** the migrated assignment and source-capability result.
 
-Historical report values for units, value, revenue, costs, cash, and scores stay
-unchanged.
+Outcome reconstruction is:
+
+| Legacy numeric evidence | Migrated assignment/capability | Outcome |
+| --- | --- | --- |
+| `warehouseUnits > 0`, `importedUnits = 0` | accessible non-null source | `city-inventory` |
+| `warehouseUnits > 0`, `importedUnits > 0` | accessible non-null source | `mixed` |
+| `warehouseUnits = 0`, `importedUnits > 0` | `supplyCityId: null` | `unassigned-import` |
+| `warehouseUnits = 0`, `importedUnits > 0` | accessible non-null source | `import-only` |
+| `warehouseUnits = 0`, `importedUnits > 0` | non-null source unavailable | `source-unavailable-import` |
+
+A row containing local units requires an accessible deterministic source. If it
+cannot be attributed, reject the save rather than invent a source. Reports with
+no replenishment attempt keep `replenishment: null`.
+
+The two numeric fields alone are not sufficient to distinguish all import-only
+outcomes; migration must not claim otherwise.
 
 ### Conservation check
 
-After migration, for every `MaterialId`:
+For every `MaterialId`:
 
 ```text
 sum(v13 city inventory quantity) = v12 global warehouse quantity
 ```
 
-Check each material independently. A mismatch rejects the migrated save before
-it reaches repository state.
+A mismatch rejects the migrated save.
 
 ### Current v13 validation
 
-Reject all of the following:
+Reject:
 
-- duplicate or noncanonical city inventory IDs;
-- missing inventory records for opened eligible cities;
-- inventory records owned by unknown, retail, unsupported, or closed cities;
-- duplicate or noncanonical retail assignment owners;
-- missing assignment records for opened retail cities;
-- unknown retail assignment owners;
-- unknown or non-inventory-capable non-null source IDs;
-- negative, fractional, unsafe, or nonfinite quantities and capacities;
-- capacity that does not match same-city warehouse buildings;
-- incorrect used capacity, overflow units, or overflow cost;
-- historical movement or shipment attribution to unknown cities;
-- replenishment evidence inconsistent with the numerical local/import fields.
+- duplicate or noncanonical inventory IDs;
+- missing records for opened eligible cities;
+- records owned by unknown, retail, unsupported, or closed cities;
+- duplicate/noncanonical assignment owners or missing opened-retail assignments;
+- unknown or unsupported non-null source IDs;
+- negative, fractional, unsafe, or nonfinite quantities/capacities;
+- capacity mismatches with same-city buildings;
+- incorrect overflow units or cost;
+- movement/shipment attribution to unknown cities;
+- replenishment evidence inconsistent with numerical fields, migrated
+  assignment, or source capability.
 
 Use dedicated `SaveDataError` codes for city inventory and retail supply
-invariants so diagnostics do not collapse into the former global warehouse
-error.
+invariants.
 
 ## Player-facing UI
 
 ### Industry inventory inspection
 
-`IndustryTileInspector` resolves the selected warehouse building's `cityId` and
-shows only that city's:
-
-- capacity;
-- used capacity;
-- overflow units and daily pressure cost;
-- material quantities.
-
-A warehouse in city A must never display city B's stock. A city with zero
-capacity shows a zero-capacity state. An empty city shows accessible empty copy.
-A missing or unavailable record shows an explicit unavailable state rather than
-crashing or displaying another city.
+`IndustryTileInspector` resolves the selected warehouse building's city and shows
+only that city's capacity, used capacity, overflow, pressure cost, and materials.
+Empty, zero-capacity, and unavailable records have distinct accessible states.
 
 ### Retail supply sources
 
-Add `RetailSupplySources.svelte` to the Stores management surface alongside
-`StoreOverview`. For each opened retail city it shows:
+Add `RetailSupplySources.svelte` alongside `StoreOverview`. For every opened
+retail city show:
 
-- current configured source or Imports only;
-- source availability state;
-- source used/capacity and overflow status;
-- a select control containing Imports only plus valid opened inventory cities;
-- inline pending, unchanged, and rejected-command behavior.
+- configured source or Imports only;
+- source availability;
+- source used/capacity and overflow;
+- a select with Imports only plus valid opened sources;
+- pending, unchanged, and rejected-command behavior.
 
-Source options are in canonical city order. Changing one retail city's source
-must not change any other city's assignment.
+Keep a stale configured source visible as unavailable even though it is not a
+valid selectable option.
 
-When the configured source is stale or closed, keep it visible as unavailable
-even though it is not a selectable valid destination. The daily simulation
-imports until the player chooses another source.
+### Reports and product chains
 
-### Reports
-
-`ReportsPanel` groups the latest production-close inventory summaries by city
-and labels production, consumption, local retail usage, and fallback imports
-with city context. Existing financial aggregate cards remain.
-
-### Product chains
-
-`ProductChainsPanel` labels the active industrial inventory or the active retail
-city's configured source. Unassigned and unavailable states explain that the
-retail city is using imports rather than implying no demand or no production.
+`ReportsPanel` groups production-close summaries by city and labels production,
+consumption, retail-local usage, and fallback imports with city context.
+`ProductChainsPanel` labels the active industrial inventory or active retail
+city's configured source and explains unassigned/unavailable import operation.
 
 ### Accessibility and localization
 
-- Every city inventory and supply-source section has a stable accessible name.
-- Select controls have visible labels and programmatic descriptions.
-- Empty, zero-capacity, unavailable, mixed-source, and imports-only states use
-  status text, not color alone.
-- Pending scenario writes disable the assignment control through the existing
-  mutation-availability path.
-- All new copy is key-driven in every supported locale.
-- No new image assets are required.
-
-## Error and fallback behavior
-
-| Condition | Domain result | Inventory mutation | Retail result |
-| --- | --- | --- | --- |
-| Unknown inventory city | typed `unknown-city` | none | unavailable-source import when configured |
-| Closed inventory city | typed `city-closed` | none | unavailable-source import; assignment retained |
-| Retail city used as source | typed `unsupported-city` | none | rejected command or unavailable-source import for stale data |
-| Missing inventory record | typed `inventory-missing` | none | unavailable-source import; assignment retained |
-| Valid source, insufficient material | successful removal with shortage | remove available units only | mixed local/import refill |
-| No assignment | no source resolution | none | unassigned import refill |
-| Same assignment selected | successful unchanged command | none | no autosave or success cue |
-| Invalid assignment command | typed failure with original state | none | no save, revision, or success cue |
-| Legacy nonempty stock with no destination | save migration error | none committed | load rejected |
-
-Fallback imports are an intentional operational result, not a hidden repair.
-They remain subject to existing import-cost modifiers and are visible in reports
-and cash.
+- Stable accessible names for inventory/source sections.
+- Visible labels and programmatic descriptions for selects.
+- State conveyed by text, not color alone.
+- Assignment controls disabled through existing mutation availability.
+- All copy key-driven in every supported locale.
+- No new image assets.
 
 ## Module boundaries
 
@@ -785,100 +851,115 @@ and cash.
 
 | Module | Responsibility |
 | --- | --- |
-| `src/lib/game/cityInventory.ts` | capability, access, mutation, capacity synchronization, pressure, ordering, conservation |
+| `src/lib/game/cityInventory.ts` | capability, narrowing, access, mutation, capacity synchronization, pressure, ordering, conservation |
 | `src/lib/game/retailSupply.ts` | assignment command, source resolution, weekly replenishment, fallback evidence |
-| `src/lib/components/game/RetailSupplySources.svelte` | retail-city source management and source status presentation |
+| `src/lib/components/game/RetailSupplySources.svelte` | retail-city source management and source status |
 
 ### Primary existing modules
 
 | Module | Change |
 | --- | --- |
-| `src/lib/game/types.ts` | persisted city inventory, assignments, replenishment evidence, city-attributed reports |
+| `src/lib/game/types.ts` | persisted inventories, assignments, replenishment evidence, attributed reports |
 | `src/lib/game/state.ts` | new-game initialization and fixtures |
-| `src/lib/game/world.ts` | city opening normalization and any-city inventory milestones |
-| `src/lib/game/industryPlacement.ts` | synchronize only the owning city after warehouse construction |
-| `src/lib/game/industryProduction.ts` | city-scoped production state and aggregate report compatibility |
-| `src/lib/game/railShipping.ts` | per-city inventory working map and strict same-city candidates |
-| `src/lib/game/stock.ts` | retain product/sales helpers; weekly sourcing moves to `retailSupply.ts` |
-| `src/lib/game/simulateDay.ts` | production/replenishment order, final inventory fold, cash reconciliation |
-| `src/lib/game/productChainGraph.ts` | active-city and configured-source graph scope |
-| `src/lib/game/productChainTree.ts` | active retail-city/source category scope |
-| `src/lib/game/supplyAdvisor.ts` | active industrial-city inputs, buildings, and stock |
-| `src/lib/game/reports.ts` | preserve aggregate finance and expose city summaries |
-| `src/lib/scenarios/*` | city-scoped setup, metrics, commands, validation, and fixtures |
+| `src/lib/game/world.ts` | city-opening normalization and any-city milestones |
+| `src/lib/game/industryPlacement.ts` | owning-city synchronization after construction |
+| `src/lib/game/industryProduction.ts` | remove global helpers; city-scoped production and aggregate compatibility |
+| `src/lib/game/railShipping.ts` | per-city working inventories and same-city candidates |
+| `src/lib/game/stock.ts` | product/sales helpers only; remove weekly import implementation |
+| `src/lib/game/retailSupply.ts` | renamed replenishment implementation |
+| `src/lib/game/simulateDay.ts` | production/replenishment order, final fold, cash reconciliation |
+| `src/lib/game/productChainGraph.ts` | active-city/configured-source scope |
+| `src/lib/game/productChainTree.ts` | active retail-city/source scope |
+| `src/lib/game/supplyAdvisor.ts` | active industrial-city inputs/buildings/stock |
+| `src/lib/game/reports.ts` | aggregate finance plus city summaries |
+| `src/lib/scenarios/*` | city-scoped setup, validators, metrics, commands, fixtures |
 | `src/lib/persistence/saveTypes.ts` | schema v13 |
-| `src/lib/persistence/saveCodec.ts` | v12-to-v13 migration and strict current validation |
-| `src/lib/persistence/scenarioCodec.ts` | embedded game migration/validation |
-| `src/routes/gameRouteController.ts` | assignment mutation and scenario command commit path |
+| `src/lib/persistence/saveCodec.ts` | v12-to-v13 migration and strict validation |
+| `src/lib/persistence/scenarioCodec.ts` | embedded-game migration/validation |
+| `src/routes/gameRouteController.ts` | assignment mutation and scenario commit path |
 | `src/routes/+page.svelte` | assignment handler and Stores-panel composition |
-| `IndustryTileInspector.svelte` | selected-city inventory inspection |
-| `ReportsPanel.svelte` | per-city inventory and source attribution |
-| `ProductChainsPanel.svelte` | active-city/source context and empty states |
-| i18n modules and locale files | localized inventory, source, outcome, and error copy |
+| UI/i18n files | city inspection, report attribution, source copy |
 
-Game-domain modules must not depend on Svelte, route state, the current scenario,
-or persistence. Persistence may call shared pure invariant helpers but remains
-responsible for strict shape and exact-key validation.
+Game-domain modules do not depend on Svelte, route state, current scenario, or
+persistence. Persistence may call shared pure invariant helpers but owns strict
+shape and exact-key validation.
 
 ## Testing strategy
 
 ### Domain tests
 
-- Access success plus unknown, closed, unsupported, and missing failures.
-- Add/remove receipts, shortages, nonnegative stock, integer normalization, and
-  independent overflow.
-- Two-city capacity where building city A never changes city B.
-- New game and city opening create exactly one canonical record/assignment.
-- Assignment success, null assignment, unchanged result, and every rejection.
-- Same-city producer and warehouse pulls continue to work.
-- Cross-city producer and warehouse stock are invisible without a transfer.
-- Production output deposits only through the producing city's rail network.
-- Multiple retail cities sharing one source resolve in documented order.
+- Access success and every typed failure.
+- String city-ID narrowing without unchecked casts.
+- Add/remove receipts, shortages, integer normalization, and independent
+  overflow.
+- Two-city capacity isolation.
+- New-game and city-opening canonical records.
+- Assignment success, null, unchanged, closed-source, and invalid-source paths.
+- Same-city producer/warehouse pulls and cross-city invisibility.
 - All five replenishment outcomes and exact local/import quantities.
-- Import-cost modifiers affect only imported shortages.
-- One-city golden fixtures preserve current production, overflow, store stock,
-  reports, and cash exactly.
-- Aggregate report totals equal the sum of city summaries.
-- End-of-day inventory plus reported retail local usage reconciles with the
-  production-close snapshot.
+- Import-cost modifiers applied only to imported shortages.
+- Shared-source contention across retail cities.
+- A depleted-source fixture with at least 10 stores proving original array order:
+  a `store-2` entry placed before `store-10` remains earlier despite
+  lexicographic ID ordering.
+- Product order remains the authored `Store.products` order.
+- One-city golden fixtures preserve production, allocation, overflow, reports,
+  and cash exactly.
+- Aggregate report totals equal city-summary sums.
 
 ### Persistence tests
 
-- v13 round trip with multiple industry and retail cities.
-- v12 migration selects the greatest-capacity destination.
-- Active-city, catalog-order, and plain-ID tie-breaks.
-- Empty legacy stock with and without eligible cities.
-- Nonempty stock with no eligible city rejects.
-- Stale active city is ignored.
-- Every material is copied once and conservation is exact.
-- Default retail assignments are deterministic.
-- Historical movement, shipment, product, and replenishment attribution.
-- Duplicate IDs, missing records, malformed numbers, capacity mismatch,
-  pressure mismatch, unknown endpoints, and inconsistent evidence reject.
-- Browser, Tauri, in-memory, and scenario repositories preserve the new shape.
+- v13 multi-city round trip.
+- v12 destination selection and every tie-break.
+- Empty stock with/without eligible cities.
+- Nonempty stock without destination rejects.
+- Stale active city ignored.
+- Per-material conservation.
+- Deterministic default assignments.
+- Historical attribution and all five reconstruction outcomes.
+- Numeric evidence that would be ambiguous without assignment/capability state.
+- Duplicate IDs, missing records, malformed numbers, capacity/pressure mismatch,
+  unknown endpoints, and inconsistent evidence reject.
+- Browser, Tauri, in-memory, and scenario repositories preserve the shape.
+
+### Scenario tests
+
+- `validateCityInventoryCapacities` accepts valid per-city starts and rejects
+  cross-city/global capacity assumptions.
+- `validateRetailSupplyAssignments` rejects duplicates and invalid endpoints.
+- Existing `warehouseMaterials` definitions migrate to explicit city overrides.
+- City-scoped metric evidence remains deterministic.
+- Assignment commands obey scenario capabilities.
 
 ### Component tests
 
-- Industry warehouse inspector shows only the selected city.
-- Empty, zero-capacity, overflow, and unavailable inventory states.
-- Retail supply source options, Imports only, stale-source display, and pending
-  mutation disabling.
-- Reports group city summaries and show local/mixed/import attribution.
-- Product-chain headings and empty states identify the active city/source.
+- Industry inspector shows only selected-city inventory.
+- Empty, zero-capacity, overflow, and unavailable states.
+- Source options, Imports only, stale-source display, and pending disabling.
+- Reports and product chains label cities/sources correctly.
 - Keyboard, focus, labels, and status text remain accessible.
 
 ### End-to-end test
 
-One Playwright flow must:
+Use a deterministic test save/fixture that already has:
 
-1. open a second industrial city and a second retail city;
-2. create warehouse capacity and stock in only one industrial city;
-3. assign the second retail city to that source;
-4. advance to replenishment;
-5. verify local units and fallback imports are reported correctly;
-6. verify the other industrial city's inventory remains unchanged;
-7. save and reload;
-8. verify inventories and assignments persist.
+- a second industrial city opened;
+- a second retail city opened;
+- stable maps/building placements needed for the logistics flow.
+
+Do not make the logistics e2e traverse the `breadbasket-basin` and retail-city
+milestone progression. That progression is tested by world-domain coverage and
+would make this test slow and brittle.
+
+The Playwright flow then:
+
+1. creates capacity and stock in only one industrial city;
+2. assigns the second retail city to that source;
+3. advances to replenishment;
+4. verifies local units and fallback imports;
+5. verifies the other industrial inventory is unchanged;
+6. saves and reloads;
+7. verifies inventories and assignments persist.
 
 ### Required validation
 
@@ -890,75 +971,82 @@ bun run lint
 bun run test
 ```
 
-Every Vitest test must execute at least one `expect`. Every changed Svelte file
-must follow the repository-required Svelte MCP documentation and autofixer
-workflow.
+Every Vitest test executes at least one `expect`. Every changed Svelte file
+follows the repository-required Svelte MCP documentation and autofixer workflow.
 
 ## Alternatives rejected
 
 ### Per-store supply assignments
 
-Rejected because the current simulation already groups stores by retail city,
-per-store configuration would create repetitive micromanagement, and HPA-294
-needs a stable city-to-city relationship for routes.
+Rejected because they create repetitive micromanagement and HPA-294 needs a
+stable city-to-city relationship.
 
-### One inventory record keyed by city ID
+### Narrow all city fields to `WorldCityId`
 
-Rejected because duplicate keys can be overwritten before validation and object
-ordering is a weaker persisted contract than explicit canonical arrays.
+Rejected for HPA-292 because it broadens the feature into a repository-wide type
+migration. Catalog-validating string accessors provide a safe boundary without
+unchecked casts.
+
+### Sort stores or products by ID
+
+Rejected because it changes existing one-city allocation behavior and causes
+`store-10` to precede `store-2`. Persisted array order is already deterministic
+and is the compatibility contract.
+
+### Keep global helper wrappers
+
+Rejected because compatibility wrappers would let old code retain global
+semantics. Callers must migrate to explicit city ownership.
 
 ### Automatic nearest or fullest source
 
-Rejected because it hides operational decisions, changes outcomes without a
-player command, and would compete with the future supply planner and route
-system.
+Rejected because it hides decisions and competes with future planner/route
+systems.
 
-### Introducing transfer orders now
+### Introduce transfer orders now
 
-Rejected because dispatch, transit, arrival, cancellation, route capacity,
-cost, and persistence form one shared lifecycle owned by HPA-294. A partial
-transfer model would be harder to migrate than the temporary direct-debit seam.
+Rejected because dispatch, transit, arrival, cancellation, route capacity, cost,
+and persistence form the shared HPA-294 lifecycle.
 
-### Keeping a compatibility global warehouse
+### Keep a compatibility global warehouse
 
-Rejected because dual truth would let old code silently continue cross-city
-consumption. The operational global field is removed in v13; only aggregate
-report fields remain for historical and financial compatibility.
+Rejected because dual truth would permit silent cross-city consumption. Only
+aggregate historical/financial report fields remain.
 
 ## Delivery boundary and follow-up
 
-HPA-292 ships as one end-to-end implementation PR. Intermediate commits may be
-reviewed independently, but no partial data model is a complete deliverable.
-Production, retail, persistence, reporting, scenarios, and player surfaces must
-all use the city-local contract before merge.
+HPA-292 ships as one end-to-end implementation PR. Production, retail,
+persistence, reporting, scenarios, and player surfaces all use the city-local
+contract before merge.
 
-HPA-294 consumes these stable seams:
+HPA-294 consumes:
 
 - `CityInventory` ownership and mutation helpers;
 - `RetailSupplyAssignment` city relationships;
 - city-attributed material movements and rail shipments;
 - strict conservation and persistence validation.
 
-HPA-294 then replaces the temporary immediate retail debit with explicit
-transfer orders and in-transit stock. It must not move inventory ownership back
-to a global pool or reinterpret a retail assignment as per-store state.
+HPA-294 replaces temporary immediate retail debit with explicit transfer orders
+and in-transit stock. It must not move ownership back to a global pool or
+reinterpret assignments as per-store state.
 
 ## Acceptance criteria
 
 The design is implemented when:
 
 - every opened industrial city has independent inventory and capacity;
-- one city's warehouse buildings never affect another city's pressure;
+- capacity-changing transitions synchronize the owning city before returning;
 - production consumes and deposits only within the producing city;
-- retail replenishment uses its configured source and visibly imports any
-  shortage;
+- retail replenishment uses its configured source and visibly imports shortages;
+- one-city store/product allocation order remains unchanged;
 - missing, closed, unknown, unsupported, and empty sources resolve
   deterministically without corrupting state;
-- no operational code path reads or writes a global warehouse;
-- supported saves migrate without material duplication or loss;
+- no operational global warehouse helper or field remains;
+- supported saves migrate without material duplication, loss, or invented
+  replenishment attribution;
 - cash, production, retail, inventory, and reports reconcile under existing
   formulas;
 - players can inspect stock by city and manage retail-city supply sources;
-- domain, persistence, component, and end-to-end coverage proves the complete
-  multi-city lifecycle;
+- domain, persistence, scenario, component, and pre-unlocked multi-city e2e
+  coverage prove the lifecycle;
 - transfer orders, in-transit inventory, and recurring routes remain absent.
