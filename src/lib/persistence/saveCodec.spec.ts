@@ -6687,8 +6687,11 @@ describe('saveCodec', () => {
 		});
 
 		test('validateSaveStoreSnapshot rejects a non-migratable version snapshot', () => {
-			const snapshot = createSnapshotWithGame(createGame());
-			(snapshot as Record<string, unknown>).schemaVersion = 99;
+			const snapshot = {
+				schemaVersion: 99,
+				autoSave: null,
+				manualSlots: []
+			};
 			expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(/Unsupported save schema version/);
 		});
 
