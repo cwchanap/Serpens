@@ -356,6 +356,32 @@ export interface WarehouseInventory {
 	overflowCost: number;
 }
 
+export interface CityInventory {
+	cityId: WorldCityId;
+	capacity: number;
+	materials: Partial<Record<MaterialId, number>>;
+	overflowUnits: number;
+	overflowCost: number;
+}
+
+export interface RetailSupplyAssignment {
+	retailCityId: WorldCityId;
+	supplyCityId: WorldCityId | null;
+}
+
+export interface RetailReplenishmentContext {
+	retailCityId: WorldCityId;
+	configuredSupplyCityId: WorldCityId | null;
+	resolvedSupplyCityId: WorldCityId | null;
+}
+
+export type RetailReplenishmentOutcome =
+	| 'city-inventory'
+	| 'mixed'
+	| 'import-only'
+	| 'unassigned-import'
+	| 'source-unavailable-import';
+
 export type IndustrialBuildingStatus =
 	| 'idle'
 	| 'produced'
@@ -543,6 +569,7 @@ export interface DailyProductReport {
 	importedUnits: number;
 	importCost: number;
 	importSpend: number;
+	replenishmentOutcome?: RetailReplenishmentOutcome | null;
 }
 
 export type StoreReportWarning =
@@ -573,6 +600,7 @@ export interface DailyStoreReport {
 	marketPosition: number;
 	productReports: DailyProductReport[];
 	warnings: StoreReportWarning[];
+	replenishment?: RetailReplenishmentContext | null;
 }
 
 export interface DailyReport {
@@ -779,6 +807,8 @@ export interface GameState {
 	industryCities: IndustryCity[];
 	activeIndustryCityId: string;
 	industrialBuildings: IndustrialBuilding[];
+	cityInventories?: CityInventory[];
+	retailSupplyAssignments?: RetailSupplyAssignment[];
 	warehouse: WarehouseInventory;
 	stores: Store[];
 	staff: StaffMember[];
