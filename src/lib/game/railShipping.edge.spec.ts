@@ -104,6 +104,31 @@ describe('rail shipping edge cases', () => {
 		expect(state.shipments).toHaveLength(0);
 	});
 
+	it('draws same-city warehouse pulls from the shared global pool', () => {
+		const warehouse = makeBuilding('industry-building-1', 'warehouse', 2, 2);
+		const consumer = makeBuilding('industry-building-2', 'flour-mill', 10, 2);
+		const state = createRailTickState(
+			makeGame([makeCity('rail-city', straightRails(4, 2, 11, 3))], [warehouse, consumer]),
+			makeWarehouse({ grain: 3 })
+		);
+
+		expect(pullViaRail(state, consumer, 'grain', 3)).toEqual({
+			fromProducers: 0,
+			fromWarehouse: 3
+		});
+		expect(state.warehouse.materials.grain).toBe(0);
+		expect(state.shipments).toEqual([
+			{
+				materialId: 'grain',
+				quantity: 3,
+				value: 3,
+				kind: 'pull-warehouse',
+				fromId: 'industry-building-1',
+				toId: 'industry-building-2'
+			}
+		]);
+	});
+
 	it('ignores remote-city sources and local sources with no usable stock', () => {
 		const localFarm = makeBuilding('industry-building-1', 'grain-farm', 2, 2, { grain: -4 });
 		const localWarehouse = makeBuilding('industry-building-2', 'warehouse', 6, 2);

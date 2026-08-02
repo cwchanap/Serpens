@@ -658,6 +658,57 @@ describe('stock rules', () => {
 		expect(result.importSpend).toBe(27);
 	});
 
+	test('allocates depleted warehouse inventory by store array order', () => {
+		const base = createNewGame('convenience', 20260804);
+		const storeIds = [
+			'store-2',
+			'store-10',
+			'store-1',
+			'store-3',
+			'store-4',
+			'store-5',
+			'store-6',
+			'store-7',
+			'store-8',
+			'store-9'
+		];
+		const game = {
+			...base,
+			warehouse: {
+				capacity: 200,
+				materials: { 'bottled-water': 10 },
+				overflowUnits: 0,
+				overflowCost: 0
+			},
+			stores: storeIds.map((id) => ({
+				...base.stores[0]!,
+				id,
+				name: id,
+				tileId: `${id}-tile`,
+				products: [
+					{
+						categoryId: 'bottled-water',
+						stock: 0,
+						reorderThreshold: 1,
+						targetStock: 10,
+						sellingPrice: 3
+					}
+				]
+			}))
+		};
+
+		const result = applyWeeklyImports({ game, storeReports: new Map() });
+		const first = result.productReports.get('store-2')![0]!;
+		const second = result.productReports.get('store-10')![0]!;
+
+		expect(game.stores.slice(0, 2).map((store) => store.id)).toEqual(['store-2', 'store-10']);
+		expect(result.warehouse.materials['bottled-water']).toBe(0);
+		expect(first.warehouseUnits).toBe(10);
+		expect(first.importedUnits).toBe(0);
+		expect(second.warehouseUnits).toBe(0);
+		expect(second.importedUnits).toBe(10);
+	});
+
 	test('store level multiplies product revenue without changing cost of goods', () => {
 		expect.assertions(2);
 		const base = createNewGame('convenience', 20260603);
