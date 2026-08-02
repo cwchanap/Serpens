@@ -66,6 +66,28 @@ function gameStub(overrides: Partial<GameState> = {}): GameState {
 	};
 }
 
+function findWarehouseAnchor(city: GameState['industryCities'][number]) {
+	return city.tiles.find(
+		(tile) =>
+			tile.terrain === 'industrial' &&
+			!tile.locked &&
+			[
+				[1, 0],
+				[0, 1],
+				[1, 1]
+			].every(([dx, dy]) => {
+				const footprintTile = city.tiles.find(
+					(other) => other.x === tile.x + dx && other.y === tile.y + dy
+				);
+				return (
+					footprintTile !== undefined &&
+					footprintTile.terrain === 'industrial' &&
+					!footprintTile.locked
+				);
+			})
+	)!;
+}
+
 describe('world city catalog', () => {
 	test('defines three retail and three industry city nodes with unique ids', () => {
 		expect.assertions(5);
@@ -176,8 +198,8 @@ describe('world progression and city opening', () => {
 		expect(refreshWorldProgress(game).world.revealedCityIds).toContain('campus-junction');
 	});
 
-	test('opens a revealed retail city, deducts cash, appends its city map, and raises store cap', () => {
-		expect.assertions(8);
+	test('opens a revealed retail city, assigns its source, appends its city map, and raises store cap', () => {
+		expect.assertions(9);
 		const game = createNewGame('convenience', 20260530);
 		const revealed: GameState = {
 			...game,
@@ -198,10 +220,14 @@ describe('world progression and city opening', () => {
 		expect(opened.activeCityId).toBe('campus-junction');
 		expect(opened.industryCities).toHaveLength(1);
 		expect(opened.storeCap).toBe(game.storeCap + 1);
+		expect(opened.retailSupplyAssignments).toEqual([
+			{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' },
+			{ retailCityId: 'campus-junction', supplyCityId: 'industry-city' }
+		]);
 	});
 
-	test('opens a revealed industrial city and sets it active without changing store cap', () => {
-		expect.assertions(7);
+	test('opens a revealed industrial city, synchronizes its inventory, and sets it active', () => {
+		expect.assertions(8);
 		const game = createNewGame('convenience', 20260530);
 		const revealed: GameState = {
 			...game,
@@ -221,6 +247,112 @@ describe('world progression and city opening', () => {
 		expect(opened.industryCities.find((city) => city.id === 'breadbasket-basin')?.height).toBe(48);
 		expect(opened.activeIndustryCityId).toBe('breadbasket-basin');
 		expect(opened.storeCap).toBe(game.storeCap);
+		expect(opened.cityInventories).toEqual([
+			{
+				cityId: 'industry-city',
+				capacity: 0,
+				materials: {},
+				overflowUnits: 0,
+				overflowCost: 0
+			},
+			{
+				cityId: 'breadbasket-basin',
+				capacity: 0,
+				materials: {},
+				overflowUnits: 0,
+				overflowCost: 0
+			}
+		]);
+	});
+
+	test('uses the deterministic capacity, active-city, and catalog source rules when opening retail cities', () => {
+		expect.assertions(3);
+		const starter = createNewGame('convenience', 20260802);
+		const openedIndustry = openWorldCity(
+			{
+				...starter,
+				cash: 1_000_000,
+				world: {
+					...starter.world,
+					revealedCityIds: [...starter.world.revealedCityIds, 'breadbasket-basin']
+				}
+			},
+			'breadbasket-basin'
+		);
+		const withBreadbasketWarehouse = buildIndustrialBuilding(openedIndustry, {
+			tileId: findWarehouseAnchor(
+				openedIndustry.industryCities.find((city) => city.id === 'breadbasket-basin')!
+			).id,
+			buildingTypeId: 'warehouse'
+		});
+		const withIndustryWarehouse = buildIndustrialBuilding(
+			selectWorldCity(withBreadbasketWarehouse, 'industry-city'),
+			{
+				tileId: findWarehouseAnchor(
+					withBreadbasketWarehouse.industryCities.find((city) => city.id === 'industry-city')!
+				).id,
+				buildingTypeId: 'warehouse'
+			}
+		);
+		const withCampusRevealed = (game: GameState): GameState => ({
+			...game,
+			world: {
+				...game.world,
+				revealedCityIds: [...game.world.revealedCityIds, 'campus-junction']
+			}
+		});
+
+		const capacityWinner = openWorldCity(
+			withCampusRevealed(selectWorldCity(withBreadbasketWarehouse, 'industry-city')),
+			'campus-junction'
+		);
+		const activeTieWinner = openWorldCity(
+			withCampusRevealed(selectWorldCity(withIndustryWarehouse, 'breadbasket-basin')),
+			'campus-junction'
+		);
+		const catalogTieWinner = openWorldCity(
+			withCampusRevealed({ ...withIndustryWarehouse, activeIndustryCityId: 'stale-industry-city' }),
+			'campus-junction'
+		);
+
+		expect(
+			capacityWinner.retailSupplyAssignments?.find(
+				(assignment) => assignment.retailCityId === 'campus-junction'
+			)
+		).toEqual({ retailCityId: 'campus-junction', supplyCityId: 'breadbasket-basin' });
+		expect(
+			activeTieWinner.retailSupplyAssignments?.find(
+				(assignment) => assignment.retailCityId === 'campus-junction'
+			)
+		).toEqual({ retailCityId: 'campus-junction', supplyCityId: 'breadbasket-basin' });
+		expect(
+			catalogTieWinner.retailSupplyAssignments?.find(
+				(assignment) => assignment.retailCityId === 'campus-junction'
+			)
+		).toEqual({ retailCityId: 'campus-junction', supplyCityId: 'industry-city' });
+	});
+
+	test('assigns imports only when a newly opened retail city has no eligible inventory source', () => {
+		expect.assertions(1);
+		const game = createNewGame('convenience', 20260802);
+		const opened = openWorldCity(
+			{
+				...game,
+				cash: 50_000,
+				cityInventories: [],
+				world: {
+					...game.world,
+					revealedCityIds: [...game.world.revealedCityIds, 'campus-junction']
+				}
+			},
+			'campus-junction'
+		);
+
+		expect(
+			opened.retailSupplyAssignments?.find(
+				(assignment) => assignment.retailCityId === 'campus-junction'
+			)
+		).toEqual({ retailCityId: 'campus-junction', supplyCityId: null });
 	});
 
 	test('blocked city openings append decisions instead of throwing', () => {
@@ -297,8 +429,8 @@ describe('world progression and city opening', () => {
 		});
 	});
 
-	test('re-opening an already-opened city selects it without deducting cash or changing store cap', () => {
-		expect.assertions(4);
+	test('re-opening an already-opened city selects it without duplicating lifecycle records', () => {
+		expect.assertions(5);
 		const game = createNewGame('convenience', 20260530);
 		const revealed: GameState = {
 			...game,
@@ -318,6 +450,7 @@ describe('world progression and city opening', () => {
 		expect(reopened.storeCap).toBe(capAfterOpen);
 		expect(reopened.activeCityId).toBe('campus-junction');
 		expect(reopened.decisions).toHaveLength(opened.decisions.length);
+		expect(reopened.retailSupplyAssignments).toEqual(opened.retailSupplyAssignments);
 	});
 
 	test('does not reveal quarry-works when finished material was imported rather than produced locally', () => {

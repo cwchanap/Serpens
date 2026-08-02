@@ -66,6 +66,24 @@ describe('game state', () => {
 		expect(game.warehouse.overflowUnits).toBe(0);
 	});
 
+	test('initializes canonical city inventory and retail supply lifecycle records', () => {
+		expect.assertions(2);
+		const game = createNewGame('convenience', 20260802);
+
+		expect(game.cityInventories).toEqual([
+			{
+				cityId: 'industry-city',
+				capacity: 0,
+				materials: {},
+				overflowUnits: 0,
+				overflowCost: 0
+			}
+		]);
+		expect(game.retailSupplyAssignments).toEqual([
+			{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' }
+		]);
+	});
+
 	test('new games keep world progress aligned with generated starter maps', () => {
 		expect.assertions(8);
 		const game = createNewGame('convenience', 20260512);

@@ -42,6 +42,7 @@ import {
 import { calculateStockHealth, createStoreProduct, initializeStoreProducts } from './stock';
 import { STARTER_STORE_CAP, createInitialWorldProgress, refreshWorldProgress } from './world';
 import { createFoundingFinanceState } from './finance';
+import { initializeCityInventory, initializeRetailSupplyAssignment } from './cityInventory';
 export {
 	getDecisionOptionAvailability,
 	resolveDecision,
@@ -153,7 +154,7 @@ export function createNewGame(archetypeId: ArchetypeId, seed = Date.now()): Game
 	});
 	const hiringCandidates = generateHiringCandidates({ count: HIRING_CANDIDATE_COUNT, day: 1, rng });
 
-	return {
+	const initialGame: GameState = {
 		seed: normalizedSeed,
 		rngState: rng.getState(),
 		day: 1,
@@ -175,6 +176,8 @@ export function createNewGame(archetypeId: ArchetypeId, seed = Date.now()): Game
 		industryCities: [industryCity],
 		activeIndustryCityId: industryCity.id,
 		industrialBuildings: [],
+		cityInventories: [],
+		retailSupplyAssignments: [],
 		warehouse: {
 			capacity: 0,
 			materials: {},
@@ -188,6 +191,11 @@ export function createNewGame(archetypeId: ArchetypeId, seed = Date.now()): Game
 		decisions: [],
 		reports: []
 	};
+
+	return initializeRetailSupplyAssignment(
+		initializeCityInventory(initialGame, industryCity.id),
+		city.id
+	);
 }
 
 export function updatePolicy(game: GameState, patch: Partial<CompanyPolicy>): GameState {

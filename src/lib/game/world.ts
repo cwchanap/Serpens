@@ -11,6 +11,7 @@ import {
 	type FinancedPurchaseReceipt
 } from './finance';
 import { runExpansionPurchase } from './expansionFinancing';
+import { initializeCityInventory, initializeRetailSupplyAssignment } from './cityInventory';
 import {
 	decisionContextWorldCityNotAvailableYet,
 	decisionContextWorldCityOpeningCost,
@@ -390,7 +391,13 @@ export function openWorldCity(game: GameState, cityId: string): GameState {
 		}
 	};
 
-	return refreshWorldProgress(selectWorldCity(ensureWorldCityMap(openedGame, city), city.id));
+	const mapGame = ensureWorldCityMap(openedGame, city);
+	const lifecycleGame =
+		city.kind === 'industry'
+			? initializeCityInventory(mapGame, city.id)
+			: initializeRetailSupplyAssignment(mapGame, city.id);
+
+	return refreshWorldProgress(selectWorldCity(lifecycleGame, city.id));
 }
 
 export function financeWorldCityOpening(

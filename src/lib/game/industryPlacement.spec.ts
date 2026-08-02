@@ -25,6 +25,29 @@ import { getWarehouseCapacity, recalculateWarehousePressure } from './industryPr
 import { createNewGame } from './state';
 import type { IndustrialBuildingTypeId, IndustryCity, IndustryTile } from './types';
 import { systemDecision } from './testHelpers';
+import { openWorldCity } from './world';
+
+function findWarehouseAnchor(city: IndustryCity): IndustryTile {
+	return city.tiles.find(
+		(tile) =>
+			tile.terrain === 'industrial' &&
+			!tile.locked &&
+			[
+				[1, 0],
+				[0, 1],
+				[1, 1]
+			].every(([dx, dy]) => {
+				const footprintTile = city.tiles.find(
+					(other) => other.x === tile.x + dx && other.y === tile.y + dy
+				);
+				return (
+					footprintTile !== undefined &&
+					footprintTile.terrain === 'industrial' &&
+					!footprintTile.locked
+				);
+			})
+	)!;
+}
 
 describe('industrial placement', () => {
 	test('finances a valid building by borrowing only the exact shortfall', () => {
@@ -177,6 +200,53 @@ describe('industrial placement', () => {
 				materials: { ...withProducer.warehouse.materials }
 			})
 		);
+	});
+
+	test('synchronizes only the warehouse inventory owned by the newly built city', () => {
+		expect.assertions(3);
+		const starter = createNewGame('convenience', 20260802);
+		const opened = openWorldCity(
+			{
+				...starter,
+				cash: 1_000_000,
+				world: {
+					...starter.world,
+					revealedCityIds: [...starter.world.revealedCityIds, 'breadbasket-basin']
+				}
+			},
+			'breadbasket-basin'
+		);
+		const primed = {
+			...opened,
+			cityInventories:
+				opened.cityInventories?.map((inventory) =>
+					inventory.cityId === 'industry-city'
+						? {
+								...inventory,
+								materials: { water: 3 },
+								overflowUnits: 3,
+								overflowCost: 6
+							}
+						: inventory
+				) ?? []
+		};
+		const otherCityBefore = primed.cityInventories.find(
+			(inventory) => inventory.cityId === 'industry-city'
+		);
+		const built = buildIndustrialBuilding(primed, {
+			tileId: findWarehouseAnchor(
+				primed.industryCities.find((city) => city.id === 'breadbasket-basin')!
+			).id,
+			buildingTypeId: 'warehouse'
+		});
+
+		expect(primed.cityInventories).toHaveLength(2);
+		expect(
+			built.cityInventories?.find((inventory) => inventory.cityId === 'industry-city')
+		).toEqual(otherCityBefore);
+		expect(
+			built.cityInventories?.find((inventory) => inventory.cityId === 'breadbasket-basin')
+		).toMatchObject({ capacity: 200, overflowUnits: 0, overflowCost: 0 });
 	});
 
 	test('rejects insufficient cash with a construction decision', () => {
