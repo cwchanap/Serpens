@@ -424,4 +424,33 @@ describe('atomic decision resolution', () => {
 		expect(result).toMatchObject({ ok: false, code: 'effect-rejected' });
 		expect(result.game).toBe(game);
 	});
+
+	it('returns finance-unavailable without credit reasons when borrow fails for a non-credit reason', () => {
+		const base = createNewGame('grocery', 55);
+		const decision = eventDecision({
+			options: [
+				{
+					id: 'accept',
+					effects: [
+						{
+							kind: 'finance-borrow',
+							purpose: 'emergency',
+							amount: 0,
+							termDays: 28
+						}
+					],
+					modifiers: []
+				}
+			]
+		});
+		const game = withDecision(base, decision);
+		const result = resolveDecision(game, decision.id, 'accept');
+		expect(result).toMatchObject({
+			ok: false,
+			code: 'finance-unavailable',
+			financeFailure: 'invalidAmount'
+		});
+		expect(result).not.toHaveProperty('reasons');
+		expect(result.game).toBe(game);
+	});
 });

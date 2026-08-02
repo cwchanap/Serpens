@@ -102,4 +102,26 @@ describe('ActiveModifiers', () => {
 		const region = page.getByRole('region', { name: 'Active modifiers' });
 		await expect.element(region.getByText('1 day remaining', { exact: true })).toBeVisible();
 	});
+
+	it('omits the urgent seal for normal-importance modifiers', async () => {
+		render(ActiveModifiers, {
+			i18n: createI18n('en'),
+			day: 5,
+			modifiers: [modifier({ importance: 'normal' })]
+		});
+
+		const region = page.getByRole('region', { name: 'Active modifiers' });
+		await expect.element(region.getByText('Important')).not.toBeInTheDocument();
+	});
+
+	it('clamps remaining days to zero when the current day exceeds expiry', async () => {
+		render(ActiveModifiers, {
+			i18n: createI18n('en'),
+			day: 10,
+			modifiers: [modifier({ expiresOnDay: 8 })]
+		});
+
+		const region = page.getByRole('region', { name: 'Active modifiers' });
+		await expect.element(region.getByText('0 days remaining', { exact: true })).toBeVisible();
+	});
 });

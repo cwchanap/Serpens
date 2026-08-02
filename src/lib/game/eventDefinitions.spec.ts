@@ -581,4 +581,45 @@ describe('validateAndNormalizeEventCatalog', () => {
 			'empty-key:copy.key'
 		]);
 	});
+
+	it('reports <invalid-id> for a non-string event id', () => {
+		const diagnostics = diagnosticsFor([definition({ id: 42 as never })]);
+		expect(diagnostics.map(({ eventId, path }) => `${eventId}:${path}`)).toEqual([
+			'<invalid-id>:id'
+		]);
+	});
+
+	it('flattens nested all conditions for cash-bounds contradiction checks', () => {
+		const diagnostics = diagnosticsFor([
+			definition({
+				id: 'nested-contradiction',
+				condition: {
+					kind: 'all',
+					conditions: [
+						{ kind: 'all', conditions: [{ kind: 'cash-at-least', amount: 500 }] },
+						{ kind: 'cash-below', amount: 400 }
+					]
+				}
+			})
+		]);
+		expect(diagnostics.map(({ eventId, path }) => `${eventId}:${path}`)).toEqual([
+			'nested-contradiction:condition'
+		]);
+	});
+
+	it('accepts finite number copy params and rejects non-finite number params', () => {
+		const diagnostics = diagnosticsFor([
+			definition({
+				id: 'finite-number-param',
+				copy: { key: 'events.test', params: { count: 42 } }
+			}),
+			definition({
+				id: 'non-finite-number-param',
+				copy: { key: 'events.test', params: { count: Infinity as never } }
+			})
+		]);
+		expect(diagnostics.map(({ eventId, path }) => `${eventId}:${path}`)).toEqual([
+			'non-finite-number-param:copy.params.count'
+		]);
+	});
 });

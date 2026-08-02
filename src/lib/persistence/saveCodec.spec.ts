@@ -6348,4 +6348,353 @@ describe('saveCodec', () => {
 			expect(() => validateSaveRecord(record)).not.toThrow();
 		});
 	});
+
+	describe('v10 strategic decision finance-effect migration edge cases', () => {
+		test('leaves non-object decisions untouched during v10 finance-effect migration', () => {
+			const record = createV10Record({ debt: 2_000, day: 12 });
+			(record.game as unknown as Record<string, unknown>).decisions = [
+				null,
+				'string-decision',
+				42,
+				{ id: 'unknown-id', options: [] },
+				{ id: 'cash-pressure' }
+			];
+			expect(() => validateSaveRecord(record)).toThrow();
+		});
+
+		test('leaves cash-pressure options untouched when cash does not match legacy value', () => {
+			const record = createV10Record({ debt: 2_000, day: 12 });
+			(record.game as unknown as Record<string, unknown>).decisions = [
+				{
+					id: 'cash-pressure',
+					title: 'Cash pressure',
+					context: { code: 'cashPressure' },
+					expiresOnDay: 14,
+					options: [
+						{
+							id: 'short-loan',
+							label: 'Short loan',
+							description: 'Add emergency working capital.',
+							effects: { cash: 99_999, profit: -4, marketPosition: -1 }
+						},
+						{
+							id: 'cut-costs',
+							label: 'Cut costs',
+							description: 'Trim discretionary spend.',
+							effects: { cash: 5_500, customerSatisfaction: -4, staffMorale: -5, stockHealth: -8 }
+						},
+						{
+							id: 'hold-course',
+							label: 'Hold course',
+							description: 'Avoid reactive changes.',
+							effects: { profit: 1, staffMorale: -2 }
+						}
+					]
+				}
+			];
+			expect(() => validateSaveRecord(record)).toThrow();
+		});
+
+		test('leaves borrow option untouched when finance field already exists', () => {
+			const record = createV10Record({ debt: 2_000, day: 12 });
+			(record.game as unknown as Record<string, unknown>).decisions = [
+				{
+					id: 'cash-pressure',
+					title: 'Cash pressure',
+					context: { code: 'cashPressure' },
+					expiresOnDay: 14,
+					options: [
+						{
+							id: 'short-loan',
+							label: 'Short loan',
+							description: 'Add emergency working capital.',
+							effects: {
+								finance: { kind: 'borrow', purpose: 'emergency', amount: 12_000, termDays: 56 },
+								cash: 12_000,
+								profit: -4,
+								marketPosition: -1
+							}
+						},
+						{
+							id: 'cut-costs',
+							label: 'Cut costs',
+							description: 'Trim discretionary spend.',
+							effects: { cash: 5_500, customerSatisfaction: -4, staffMorale: -5, stockHealth: -8 }
+						},
+						{
+							id: 'hold-course',
+							label: 'Hold course',
+							description: 'Avoid reactive changes.',
+							effects: { profit: 1, staffMorale: -2 }
+						}
+					]
+				}
+			];
+			expect(() => validateSaveRecord(record)).toThrow();
+		});
+
+		test('leaves non-object options untouched during v10 cash-borrow migration', () => {
+			const record = createV10Record({ debt: 2_000, day: 12 });
+			(record.game as unknown as Record<string, unknown>).decisions = [
+				{
+					id: 'supplier-terms',
+					title: 'Supplier terms',
+					context: { code: 'supplierTerms' },
+					expiresOnDay: 14,
+					options: [
+						null,
+						'string-option',
+						{
+							id: 'bulk-discount',
+							label: 'Bulk',
+							description: 'd',
+							effects: { cash: -2_500, profit: 3, stockHealth: 6 }
+						}
+					]
+				}
+			];
+			expect(() => validateSaveRecord(record)).toThrow();
+		});
+
+		test('leaves non-object reports untouched during v10 report migration', () => {
+			const record = createV10Record({ debt: 2_000, day: 12 });
+			(record.game as unknown as Record<string, unknown>).reports = [null, 'string-report', 42];
+			expect(() => validateSaveRecord(record)).toThrow();
+		});
+	});
+
+	describe('v11 strategic decision migration validation errors', () => {
+		function v11StrategicDecision(
+			overrides: Record<string, unknown> = {}
+		): Record<string, unknown> {
+			return {
+				id: 'supplier-terms',
+				title: 'Supplier terms',
+				context: { code: 'supplierTerms' },
+				expiresOnDay: 14,
+				options: [
+					{
+						id: 'negotiate-credit',
+						label: 'Negotiate credit',
+						description: 'Stretch payment timing.',
+						effects: {
+							finance: { kind: 'borrow', purpose: 'supplierCredit', amount: 4_000, termDays: 28 },
+							profit: -2
+						}
+					},
+					{
+						id: 'bulk-discount',
+						label: 'Bulk discount',
+						description: 'Commit to larger orders.',
+						effects: { cash: -2_500, profit: 3, stockHealth: 6 }
+					}
+				],
+				...overrides
+			};
+		}
+
+		test('rejects a strategic decision with a mismatched context code', () => {
+			const bad = v11StrategicDecision({ context: { code: 'cashPressure' } });
+			expect(() => validateSaveRecord(createV11Record([bad]))).toThrow(
+				/context code must be supplierTerms/
+			);
+		});
+
+		test('rejects a strategic decision whose expiry implies a negative generated day', () => {
+			const bad = v11StrategicDecision({ expiresOnDay: 1 });
+			expect(() => validateSaveRecord(createV11Record([bad]))).toThrow(
+				/expiry does not permit a non-negative generated day/
+			);
+		});
+
+		test('rejects a strategic decision with the wrong option count', () => {
+			const bad = v11StrategicDecision({
+				options: [
+					{
+						id: 'negotiate-credit',
+						label: 'Negotiate credit',
+						description: 'd',
+						effects: {
+							finance: { kind: 'borrow', purpose: 'supplierCredit', amount: 4_000, termDays: 28 },
+							profit: -2
+						}
+					}
+				]
+			});
+			expect(() => validateSaveRecord(createV11Record([bad]))).toThrow(
+				/options must contain exactly/
+			);
+		});
+
+		test('rejects a strategic decision with a wrong option id at a given position', () => {
+			const bad = v11StrategicDecision({
+				options: [
+					{
+						id: 'wrong-id',
+						label: 'Negotiate credit',
+						description: 'd',
+						effects: {
+							finance: { kind: 'borrow', purpose: 'supplierCredit', amount: 4_000, termDays: 28 },
+							profit: -2
+						}
+					},
+					{
+						id: 'bulk-discount',
+						label: 'Bulk discount',
+						description: 'd',
+						effects: { cash: -2_500, profit: 3, stockHealth: 6 }
+					}
+				]
+			});
+			expect(() => validateSaveRecord(createV11Record([bad]))).toThrow(
+				/id must be negotiate-credit/
+			);
+		});
+
+		test('rejects cash-pressure short-loan with wrong finance shape', () => {
+			const bad: Record<string, unknown> = {
+				id: 'cash-pressure',
+				title: 'Cash pressure',
+				context: { code: 'cashPressure' },
+				expiresOnDay: 14,
+				options: [
+					{
+						id: 'short-loan',
+						label: 'Short loan',
+						description: 'd',
+						effects: {
+							finance: { kind: 'borrow', purpose: 'emergency', amount: 12_000, termDays: 28 },
+							profit: -4,
+							marketPosition: -1
+						}
+					},
+					{
+						id: 'cut-costs',
+						label: 'Cut costs',
+						description: 'd',
+						effects: { cash: 5_500, customerSatisfaction: -4, staffMorale: -5, stockHealth: -8 }
+					},
+					{
+						id: 'hold-course',
+						label: 'Hold course',
+						description: 'd',
+						effects: { profit: 1, staffMorale: -2 }
+					}
+				]
+			};
+			expect(() => validateSaveRecord(createV11Record([bad]))).toThrow(
+				/finance must be a 56-day emergency borrow/
+			);
+		});
+
+		test('rejects cash-pressure short-loan with out-of-range amount', () => {
+			const bad: Record<string, unknown> = {
+				id: 'cash-pressure',
+				title: 'Cash pressure',
+				context: { code: 'cashPressure' },
+				expiresOnDay: 14,
+				options: [
+					{
+						id: 'short-loan',
+						label: 'Short loan',
+						description: 'd',
+						effects: {
+							finance: { kind: 'borrow', purpose: 'emergency', amount: 3_000, termDays: 56 },
+							profit: -4,
+							marketPosition: -1
+						}
+					},
+					{
+						id: 'cut-costs',
+						label: 'Cut costs',
+						description: 'd',
+						effects: { cash: 5_500, customerSatisfaction: -4, staffMorale: -5, stockHealth: -8 }
+					},
+					{
+						id: 'hold-course',
+						label: 'Hold course',
+						description: 'd',
+						effects: { profit: 1, staffMorale: -2 }
+					}
+				]
+			};
+			expect(() => validateSaveRecord(createV11Record([bad]))).toThrow(
+				/finance amount must be a generated emergency principal/
+			);
+		});
+
+		test('rejects supplier-terms negotiate-credit with wrong finance shape', () => {
+			const bad: Record<string, unknown> = {
+				id: 'supplier-terms',
+				title: 'Supplier terms',
+				context: { code: 'supplierTerms' },
+				expiresOnDay: 14,
+				options: [
+					{
+						id: 'negotiate-credit',
+						label: 'Negotiate credit',
+						description: 'd',
+						effects: {
+							finance: { kind: 'borrow', purpose: 'emergency', amount: 4_000, termDays: 28 },
+							profit: -2
+						}
+					},
+					{
+						id: 'bulk-discount',
+						label: 'Bulk discount',
+						description: 'd',
+						effects: { cash: -2_500, profit: 3, stockHealth: 6 }
+					}
+				]
+			};
+			expect(() => validateSaveRecord(createV11Record([bad]))).toThrow(
+				/finance must be the fixed 28-day supplier credit/
+			);
+		});
+
+		test('rejects a strategic decision with wrong effect value', () => {
+			const bad: Record<string, unknown> = {
+				id: 'supplier-terms',
+				title: 'Supplier terms',
+				context: { code: 'supplierTerms' },
+				expiresOnDay: 14,
+				options: [
+					{
+						id: 'negotiate-credit',
+						label: 'Negotiate credit',
+						description: 'd',
+						effects: {
+							finance: { kind: 'borrow', purpose: 'supplierCredit', amount: 4_000, termDays: 28 },
+							profit: -99
+						}
+					},
+					{
+						id: 'bulk-discount',
+						label: 'Bulk discount',
+						description: 'd',
+						effects: { cash: -2_500, profit: 3, stockHealth: 6 }
+					}
+				]
+			};
+			expect(() => validateSaveRecord(createV11Record([bad]))).toThrow(/profit must be -2/);
+		});
+	});
+
+	describe('migration function early-return paths', () => {
+		test('migrateSavedGame passes through non-object game', () => {
+			expect(migrateSavedGame(null, 11)).toBeNull();
+			expect(migrateSavedGame('string', 11)).toBe('string');
+		});
+
+		test('validateSaveStoreSnapshot rejects a non-migratable version snapshot', () => {
+			const snapshot = createSnapshotWithGame(createGame());
+			(snapshot as Record<string, unknown>).schemaVersion = 99;
+			expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(/Unsupported save schema version/);
+		});
+
+		test('validateSaveStoreSnapshot accepts a current-version snapshot', () => {
+			const snapshot = createSnapshotWithGame(createGame());
+			expect(() => validateSaveStoreSnapshot(snapshot)).not.toThrow();
+		});
+	});
 });

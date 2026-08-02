@@ -277,6 +277,24 @@ describe('collectGameAlerts', () => {
 		]);
 	});
 
+	it('sorts important modifiers with equal expiry by ascending id when the smaller id leads', () => {
+		const alerts = collectGameAlerts(
+			baseGame({
+				events: {
+					...createInitialEventRuntime(1),
+					activeModifiers: [
+						modifier({ id: 'event-modifier-a', expiresOnDay: 9 }),
+						modifier({ id: 'event-modifier-b', expiresOnDay: 9 })
+					]
+				}
+			})
+		);
+		expect(alerts.filter((a) => a.kind === 'event-modifier').map((a) => a.modifierId)).toEqual([
+			'event-modifier-a',
+			'event-modifier-b'
+		]);
+	});
+
 	it('flags a blocked factory and deep-links to its tile', () => {
 		expect.assertions(3);
 		const alerts = collectGameAlerts(
