@@ -6,6 +6,8 @@ import {
 	getCityInventory,
 	getCityInventoryUsed,
 	getCityWarehouseCapacity,
+	initializeCityInventory,
+	initializeRetailSupplyAssignment,
 	normalizeCityInventoryDerivedState,
 	recalculateCityInventoryPressure,
 	removeCityInventoryMaterial,
@@ -16,6 +18,7 @@ import {
 } from './cityInventory';
 import { createNewGame } from './state';
 import type { CityInventory, GameState, IndustrialBuilding, WorldCityId } from './types';
+import { openWorldCity } from './world';
 
 function createCityInventory(
 	cityId: WorldCityId,
@@ -64,6 +67,7 @@ describe('city inventory helpers', () => {
 
 	test('returns typed access failures and reads sparse material keys as zero', () => {
 		const base = createNewGame('convenience', 20260802);
+		const withoutInventory = withCityInventories(base, []);
 		const withInventory = withCityInventories(base, [createCityInventory('industry-city')]);
 
 		expect(supportsCityInventory(base, 'industry-city')).toBe(true);
@@ -77,7 +81,7 @@ describe('city inventory helpers', () => {
 			ok: false,
 			reason: 'unsupported-city'
 		});
-		expect(getCityInventory(base, 'industry-city')).toEqual({
+		expect(getCityInventory(withoutInventory, 'industry-city')).toEqual({
 			ok: false,
 			reason: 'inventory-missing'
 		});
@@ -293,5 +297,64 @@ describe('city inventory helpers', () => {
 				reason: 'ungenerated'
 			}
 		]);
+	});
+
+	test('initializes lifecycle records once and keeps both collections in canonical order', () => {
+		expect.assertions(4);
+		const starter = createNewGame('convenience', 20260802);
+		const openedIndustry = openWorldCity(
+			{
+				...starter,
+				cash: 1_000_000,
+				world: {
+					...starter.world,
+					revealedCityIds: [...starter.world.revealedCityIds, 'breadbasket-basin']
+				}
+			},
+			'breadbasket-basin'
+		);
+		const withReverseIndustryInitialization = initializeCityInventory(
+			{ ...openedIndustry, cityInventories: [] },
+			'breadbasket-basin'
+		);
+		const withAllIndustryInventories = initializeCityInventory(
+			withReverseIndustryInitialization,
+			'industry-city'
+		);
+		const repeatedIndustryInitialization = initializeCityInventory(
+			withAllIndustryInventories,
+			'breadbasket-basin'
+		);
+		const openedRetail = openWorldCity(
+			{
+				...openedIndustry,
+				world: {
+					...openedIndustry.world,
+					revealedCityIds: [...openedIndustry.world.revealedCityIds, 'campus-junction']
+				}
+			},
+			'campus-junction'
+		);
+		const withReverseRetailInitialization = initializeRetailSupplyAssignment(
+			{ ...openedRetail, retailSupplyAssignments: [] },
+			'campus-junction'
+		);
+		const withAllRetailAssignments = initializeRetailSupplyAssignment(
+			withReverseRetailInitialization,
+			'harbor-city'
+		);
+		const repeatedRetailInitialization = initializeRetailSupplyAssignment(
+			withAllRetailAssignments,
+			'campus-junction'
+		);
+
+		expect(
+			withAllIndustryInventories.cityInventories?.map((inventory) => inventory.cityId)
+		).toEqual(['industry-city', 'breadbasket-basin']);
+		expect(repeatedIndustryInitialization).toEqual(withAllIndustryInventories);
+		expect(
+			withAllRetailAssignments.retailSupplyAssignments?.map((assignment) => assignment.retailCityId)
+		).toEqual(['harbor-city', 'campus-junction']);
+		expect(repeatedRetailInitialization).toEqual(withAllRetailAssignments);
 	});
 });

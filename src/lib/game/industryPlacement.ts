@@ -21,6 +21,7 @@ import { refreshWorldProgress } from './world';
 import { runExpansionPurchase } from './expansionFinancing';
 import type { FinanceActionResult, FinancedPurchaseReceipt } from './finance';
 import { getWarehouseCapacity, recalculateWarehousePressure } from './industryProduction';
+import { synchronizeCityInventoryCapacity } from './cityInventory';
 import type {
 	DecisionItem,
 	SystemDecisionOption,
@@ -199,13 +200,11 @@ export function buildIndustrialBuilding(
 		);
 	}
 
+	const building = createIndustrialBuilding(game, tile, buildingType);
 	const builtGame: GameState = {
 		...game,
 		cash: game.cash - buildingType.buildCost,
-		industrialBuildings: [
-			...game.industrialBuildings,
-			createIndustrialBuilding(game, tile, buildingType)
-		]
+		industrialBuildings: [...game.industrialBuildings, building]
 	};
 	// Recalculating warehouse capacity/pressure inline and wrapping in
 	// refreshWorldProgress is intentional (commit a6b9e40, "fix: enforce strict
@@ -213,7 +212,7 @@ export function buildIndustrialBuilding(
 	// warehouse capacity, so the post-transition state must be re-normalized to
 	// pass the strict invariants that scenario setup validation enforces. Do not
 	// revert this to returning builtGame directly.
-	return refreshWorldProgress({
+	const nextGame = refreshWorldProgress({
 		...builtGame,
 		warehouse: recalculateWarehousePressure({
 			...builtGame.warehouse,
@@ -221,6 +220,8 @@ export function buildIndustrialBuilding(
 			materials: { ...builtGame.warehouse.materials }
 		})
 	});
+
+	return synchronizeCityInventoryCapacity(nextGame, building.cityId);
 }
 
 export function financeIndustrialBuilding(

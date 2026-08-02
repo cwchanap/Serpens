@@ -4,6 +4,7 @@ import type {
 	CityInventory,
 	GameState,
 	MaterialId,
+	RetailSupplyAssignment,
 	WorldCityDefinition,
 	WorldCityId
 } from './types';
@@ -55,6 +56,92 @@ export function compareWorldCityIds(left: WorldCityId, right: WorldCityId): numb
 	}
 
 	return compareCodeUnits(left, right);
+}
+
+export function createEmptyCityInventory(cityId: WorldCityId): CityInventory {
+	return {
+		cityId,
+		capacity: 0,
+		materials: {},
+		overflowUnits: 0,
+		overflowCost: 0
+	};
+}
+
+export function initializeCityInventory(game: GameState, cityId: string): GameState {
+	const resolvedCityId = resolveWorldCityId(cityId);
+	if (!resolvedCityId || !supportsCityInventory(game, resolvedCityId)) {
+		return game;
+	}
+
+	const cityInventories = game.cityInventories ?? [];
+	const nextGame = cityInventories.some((inventory) => inventory.cityId === resolvedCityId)
+		? game
+		: {
+				...game,
+				cityInventories: [...cityInventories, createEmptyCityInventory(resolvedCityId)].sort(
+					(left, right) => compareWorldCityIds(left.cityId, right.cityId)
+				)
+			};
+
+	return synchronizeCityInventoryCapacity(nextGame, resolvedCityId);
+}
+
+export function selectDefaultRetailSupplyCity(game: GameState): WorldCityId | null {
+	const eligibleInventories = (game.cityInventories ?? []).filter(
+		(inventory) => getCityInventory(game, inventory.cityId).ok
+	);
+
+	if (eligibleInventories.length === 0) {
+		return null;
+	}
+
+	return [...eligibleInventories].sort((left, right) => {
+		const leftCapacity = getCityWarehouseCapacity(game, left.cityId);
+		const rightCapacity = getCityWarehouseCapacity(game, right.cityId);
+
+		if (leftCapacity !== rightCapacity) {
+			return leftCapacity > rightCapacity ? -1 : 1;
+		}
+
+		const leftIsActive = left.cityId === game.activeIndustryCityId;
+		const rightIsActive = right.cityId === game.activeIndustryCityId;
+		if (leftIsActive !== rightIsActive) {
+			return leftIsActive ? -1 : 1;
+		}
+
+		return compareWorldCityIds(left.cityId, right.cityId);
+	})[0]!.cityId;
+}
+
+export function createDefaultRetailSupplyAssignment(
+	game: GameState,
+	retailCityId: WorldCityId
+): RetailSupplyAssignment {
+	return {
+		retailCityId,
+		supplyCityId: selectDefaultRetailSupplyCity(game)
+	};
+}
+
+export function initializeRetailSupplyAssignment(game: GameState, cityId: string): GameState {
+	const resolvedCityId = resolveWorldCityId(cityId);
+	if (!resolvedCityId || !supportsRetailSupplyAssignment(game, resolvedCityId)) {
+		return game;
+	}
+
+	const retailSupplyAssignments = game.retailSupplyAssignments ?? [];
+	if (retailSupplyAssignments.some((assignment) => assignment.retailCityId === resolvedCityId)) {
+		return game;
+	}
+
+	return {
+		...game,
+		retailSupplyAssignments: [
+			...retailSupplyAssignments,
+			createDefaultRetailSupplyAssignment(game, resolvedCityId)
+		].sort((left, right) => compareWorldCityIds(left.retailCityId, right.retailCityId))
+	};
 }
 
 export function supportsCityInventory(game: GameState, cityId: string): boolean {
@@ -258,6 +345,16 @@ export function findEntityCityOwnershipIssues(game: GameState): EntityCityOwners
 
 function getWorldCityDefinition(cityId: string): WorldCityDefinition | undefined {
 	return WORLD_CITY_CATALOG.find((city) => city.id === cityId);
+}
+
+function supportsRetailSupplyAssignment(game: GameState, cityId: WorldCityId): boolean {
+	const city = getWorldCityDefinition(cityId);
+
+	return (
+		city?.kind === 'retail' &&
+		game.world.openedCityIds.includes(city.id) &&
+		game.cities.some((retailCity) => retailCity.id === city.id)
+	);
 }
 
 function worldCityCatalogIndex(cityId: WorldCityId): number {
