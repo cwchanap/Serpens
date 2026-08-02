@@ -1,0 +1,58 @@
+name: Apply approved save fixture fix
+
+on:
+  push:
+    branches:
+      - codex/hpa-278-data-driven-event-framework
+
+permissions:
+  contents: write
+
+jobs:
+  apply-fix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out PR branch
+        uses: actions/checkout@v5
+        with:
+          ref: codex/hpa-278-data-driven-event-framework
+          fetch-depth: 0
+
+      - name: Apply exact approved fixture change
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/lib/persistence/saveCodec.spec.ts')
+          old = """\t\t\tconst snapshot = createSnapshotWithGame(createGame());
+          \t\t\t(snapshot as Record<string, unknown>).schemaVersion = 99;"""
+          new = """\t\t\tconst snapshot = {
+          \t\t\t\tschemaVersion: 99,
+          \t\t\t\tautoSave: null,
+          \t\t\t\tmanualSlots: []
+          \t\t\t};"""
+
+          text = path.read_text(encoding='utf-8')
+          occurrences = text.count(old)
+          if occurrences != 1:
+              raise SystemExit(f'Expected exactly one fixture occurrence, found {occurrences}')
+
+          path.write_text(text.replace(old, new), encoding='utf-8')
+          Path('.github/workflows/apply-savecodec-fixture-fix.yml').unlink()
+          PY
+
+      - name: Verify patch shape
+        shell: bash
+        run: |
+          git diff --check
+          git diff -- src/lib/persistence/saveCodec.spec.ts .github/workflows/apply-savecodec-fixture-fix.yml
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/lib/persistence/saveCodec.spec.ts .github/workflows/apply-savecodec-fixture-fix.yml
+          git commit -m 'fix(tests): construct unsupported snapshot fixture'
+          git push origin HEAD:codex/hpa-278-data-driven-event-framework
