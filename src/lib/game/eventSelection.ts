@@ -1,4 +1,5 @@
 import type { EventDefinition, NormalizedEventCatalog } from './eventDefinitions';
+import { appendHistory } from './eventHistory';
 import { assessCredit } from './finance';
 import { createRngFromState, normalizeSeed } from './rng';
 import type {
@@ -13,7 +14,6 @@ import type {
 
 export const EVENT_SELECTION_SCHEMA_VERSION = 1;
 export const EVENT_DRAW_COUNT_PER_DAY = 3;
-export const EVENT_HISTORY_LIMIT = 200;
 
 const EVENT_RNG_SALT = 0x45564e54;
 const WEIGHTED_EVENT_CADENCE = 0.12;
@@ -206,10 +206,6 @@ function materializeEffect(
 		...effect,
 		amount: Math.min(12_000, Math.max(4_000, roundedAvailableCredit))
 	};
-}
-
-export function appendHistory<T>(history: readonly T[], entry: T): T[] {
-	return [...history, entry].slice(-EVENT_HISTORY_LIMIT);
 }
 
 function cloneTarget(target: EventTarget): EventTarget {

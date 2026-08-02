@@ -1,5 +1,6 @@
 import { PRODUCTION_EVENT_CATALOG } from './eventCatalog';
-import { appendHistory, selectEventForDay } from './eventSelection';
+import { appendHistory } from './eventHistory';
+import { selectEventForDay } from './eventSelection';
 import type { GameState } from './types';
 
 export function generateDecisions(game: GameState): GameState {

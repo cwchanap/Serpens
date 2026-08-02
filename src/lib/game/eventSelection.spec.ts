@@ -215,8 +215,23 @@ describe('event selection and materialization', () => {
 			{ ...withBetaCooldown, day: first.day + 1, decisions: [] },
 			catalog
 		);
-		const betaCooldown = nextDay.events.cooldowns.find((c) => c.eventId === 'beta');
-		expect(betaCooldown).toBeDefined();
+		const alphaCooldowns = nextDay.events.cooldowns.filter((c) => c.eventId === 'alpha');
+		const betaCooldowns = nextDay.events.cooldowns.filter((c) => c.eventId === 'beta');
+
+		expect(nextDay.events.cooldowns).toHaveLength(2);
+
+		expect(betaCooldowns).toHaveLength(1);
+		expect(betaCooldowns[0]).toEqual({
+			eventId: 'beta',
+			target: { kind: 'company' },
+			generatedOnDay: first.day,
+			eligibleOnDay: first.day + 3
+		});
+
+		expect(alphaCooldowns).toHaveLength(1);
+		expect(alphaCooldowns[0].eligibleOnDay).toBe(first.day + 2);
+		expect(alphaCooldowns[0].generatedOnDay).toBe(first.day + 1);
+		expect(alphaCooldowns[0].target).toEqual({ kind: 'company' });
 	});
 
 	it('is deeply deterministic for equal input state and normalized catalogs', () => {
