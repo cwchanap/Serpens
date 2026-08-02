@@ -4,7 +4,7 @@ import {
 	type CreditAssessmentReason,
 	type FinanceFailureCode
 } from './finance';
-import { appendHistory } from './eventSelection';
+import { appendHistory } from './eventHistory';
 import { activateEventModifiers } from './eventModifiers';
 import { clampScore } from './reports';
 import { calculateStockHealth } from './stock';

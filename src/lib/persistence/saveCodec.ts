@@ -40,9 +40,9 @@ import {
 } from '$lib/game/finance';
 import {
 	createInitialEventRuntime,
-	EVENT_HISTORY_LIMIT,
 	EVENT_SELECTION_SCHEMA_VERSION
 } from '$lib/game/eventSelection';
+import { EVENT_HISTORY_LIMIT } from '$lib/game/eventHistory';
 import { clampScore } from '$lib/game/reports';
 import { calculateStockHealth } from '$lib/game/stock';
 import type {

@@ -1,4 +1,4 @@
-import { EVENT_HISTORY_LIMIT } from './eventSelection';
+import { EVENT_HISTORY_LIMIT } from './eventHistory';
 import type {
 	ActiveEventModifier,
 	EventHistoryEntry,

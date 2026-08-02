@@ -6675,16 +6675,12 @@ describe('saveCodec', () => {
 		});
 
 		test('rejects supplier-terms negotiate-credit with wrong finance shape', () => {
-			const bad: Record<string, unknown> = {
-				id: 'supplier-terms',
-				title: 'Supplier terms',
-				context: { code: 'supplierTerms' },
-				expiresOnDay: 14,
+			const bad = v11StrategicDecision({
 				options: [
 					{
 						id: 'negotiate-credit',
 						label: 'Negotiate credit',
-						description: 'd',
+						description: 'Stretch payment timing.',
 						effects: {
 							finance: { kind: 'borrow', purpose: 'emergency', amount: 4_000, termDays: 28 },
 							profit: -2
@@ -6693,27 +6689,23 @@ describe('saveCodec', () => {
 					{
 						id: 'bulk-discount',
 						label: 'Bulk discount',
-						description: 'd',
+						description: 'Commit to larger orders.',
 						effects: { cash: -2_500, profit: 3, stockHealth: 6 }
 					}
 				]
-			};
+			});
 			expect(() => validateSaveRecord(createV11Record([bad]))).toThrow(
 				/finance must be the fixed 28-day supplier credit/
 			);
 		});
 
 		test('rejects a strategic decision with wrong effect value', () => {
-			const bad: Record<string, unknown> = {
-				id: 'supplier-terms',
-				title: 'Supplier terms',
-				context: { code: 'supplierTerms' },
-				expiresOnDay: 14,
+			const bad = v11StrategicDecision({
 				options: [
 					{
 						id: 'negotiate-credit',
 						label: 'Negotiate credit',
-						description: 'd',
+						description: 'Stretch payment timing.',
 						effects: {
 							finance: { kind: 'borrow', purpose: 'supplierCredit', amount: 4_000, termDays: 28 },
 							profit: -99
@@ -6722,11 +6714,11 @@ describe('saveCodec', () => {
 					{
 						id: 'bulk-discount',
 						label: 'Bulk discount',
-						description: 'd',
+						description: 'Commit to larger orders.',
 						effects: { cash: -2_500, profit: 3, stockHealth: 6 }
 					}
 				]
-			};
+			});
 			expect(() => validateSaveRecord(createV11Record([bad]))).toThrow(/profit must be -2/);
 		});
 	});

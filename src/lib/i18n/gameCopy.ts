@@ -650,7 +650,9 @@ export function localizeGameAlert(
 export function localizeEventSourceTitle(eventId: string, i18n: I18nBundle): string {
 	const definition = PRODUCTION_EVENT_CATALOG.byId.get(eventId);
 	if (!definition) return eventId;
-	return translateMessage(i18n, `copy.${definition.copy.key}.title`) ?? eventId;
+	return (
+		translateMessage(i18n, `copy.${definition.copy.key}.title`, definition.copy.params) ?? eventId
+	);
 }
 
 export function localizeStructuredCopy(ref: StructuredCopyRef, i18n: I18nBundle): string {
