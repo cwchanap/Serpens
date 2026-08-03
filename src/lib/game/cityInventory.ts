@@ -125,6 +125,7 @@ export function allocateLegacyWarehouseMaterials(
 	eligible: readonly CityInventory[],
 	legacyMaterials: Partial<Record<MaterialId, number>>
 ): CityInventory[] {
+	assertUniqueLegacyWarehouseEligibleCityIds(eligible);
 	const materialEntries = getValidatedLegacyMaterialEntries(legacyMaterials);
 	const totalLegacyUnits = materialEntries.reduce(
 		(total, [, quantity]) => checkedAdd(total, quantity, 'Legacy warehouse material total'),
@@ -468,6 +469,16 @@ function selectLegacyWarehousePrimaryCity(
 
 		return compareWorldCityIds(left.cityId, right.cityId);
 	})[0]!;
+}
+
+function assertUniqueLegacyWarehouseEligibleCityIds(eligible: readonly CityInventory[]): void {
+	const seenCityIds = new Set<string>();
+	for (const inventory of eligible) {
+		if (seenCityIds.has(inventory.cityId)) {
+			throw new RangeError('Legacy warehouse eligible city inventories must have unique city IDs');
+		}
+		seenCityIds.add(inventory.cityId);
+	}
 }
 
 function getValidatedLegacyMaterialEntries(

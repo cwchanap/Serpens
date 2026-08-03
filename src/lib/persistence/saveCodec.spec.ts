@@ -572,7 +572,7 @@ function createLegacyV12Report(game: GameState): DailyReport {
 			overflowCost: 0,
 			produced: [{ materialId: 'water', quantity: 2, value: 2, source: 'local' }],
 			warehousePulls: [{ materialId: 'water', quantity: 1, value: 1, source: 'warehouse' }],
-			shopImports: [{ materialId: 'water', quantity: 3, value: 6, source: 'import' }],
+			shopImports: [{ materialId: 'bottled-water', quantity: 3, value: 6, source: 'import' }],
 			railShipments: [
 				{
 					materialId: 'water',
@@ -617,6 +617,76 @@ function createLegacyV12Report(game: GameState): DailyReport {
 	delete (storeReport.productReports as Array<Record<string, unknown>>)[0]!.replenishmentOutcome;
 
 	return legacy as unknown as DailyReport;
+}
+
+function createV12RecordWithSwappedEqualShopImports(): SaveRecord {
+	const record = createV12MultiCityRecord({ water: 3 });
+	const campusCity = record.game.cities.find((city) => city.id === 'campus-junction')!;
+	const campusTile = campusCity.tiles.find(isTileBuildable)!;
+	const campusStore = {
+		...record.game.stores[0]!,
+		id: 'store-campus',
+		name: 'Campus Store',
+		cityId: 'campus-junction',
+		tileId: campusTile.id,
+		mapX: campusTile.x,
+		mapY: campusTile.y,
+		location: formatLocation(campusTile)
+	};
+	const game = { ...record.game, stores: [...record.game.stores, campusStore] };
+	const legacyReport = createLegacyV12Report(game) as unknown as Record<string, unknown>;
+	const storeReports = legacyReport.storeReports as Array<Record<string, unknown>>;
+	const harborStoreReport = storeReports[0]!;
+	const product = (harborStoreReport.productReports as Array<Record<string, unknown>>)[0]!;
+	const harborProduct = {
+		...product,
+		categoryId: 'bottled-water',
+		name: 'Harbor Bottled Water',
+		warehouseUnits: 0,
+		warehouseValue: 0,
+		importedUnits: 20,
+		importCost: 2,
+		importSpend: 40
+	};
+	const campusProduct = {
+		...harborProduct,
+		categoryId: 'drinks',
+		name: 'Campus Drinks'
+	};
+	storeReports[0] = {
+		...harborStoreReport,
+		importSpend: 40,
+		productReports: [harborProduct]
+	};
+	storeReports.push({
+		...harborStoreReport,
+		storeId: campusStore.id,
+		importSpend: 40,
+		productReports: [campusProduct]
+	});
+	const productionReport = legacyReport.productionReport as Record<string, unknown>;
+	productionReport.shopImports = [
+		{
+			materialId: 'drinks',
+			quantity: 20,
+			value: 40,
+			source: 'import',
+			legacyTag: 'drinks-row'
+		},
+		{
+			materialId: 'bottled-water',
+			quantity: 20,
+			value: 40,
+			source: 'import',
+			legacyTag: 'water-row'
+		}
+	];
+
+	return {
+		...record,
+		metadata: { ...record.metadata, storeCount: 2 },
+		game: { ...game, reports: [legacyReport as unknown as DailyReport] }
+	};
 }
 
 function createCurrentV13Report(game: GameState): DailyReport {
@@ -1217,7 +1287,102 @@ describe('saveCodec', () => {
 			}
 		]);
 		expect(productionReport.shopImports).toEqual([
-			{ cityId: 'harbor-city', materialId: 'water', quantity: 3, value: 6, source: 'import' }
+			{
+				cityId: 'harbor-city',
+				materialId: 'bottled-water',
+				quantity: 3,
+				value: 6,
+				source: 'import'
+			}
+		]);
+	});
+
+	test('matches swapped equal-value legacy shop imports by material evidence instead of position', () => {
+		const record = createV12RecordWithSwappedEqualShopImports();
+
+		const shopImports = validateSaveRecord(record).game.reports[0]!.productionReport.shopImports;
+
+		expect(shopImports).toEqual([
+			{
+				cityId: 'campus-junction',
+				materialId: 'drinks',
+				quantity: 20,
+				value: 40,
+				source: 'import',
+				legacyTag: 'drinks-row'
+			},
+			{
+				cityId: 'harbor-city',
+				materialId: 'bottled-water',
+				quantity: 20,
+				value: 40,
+				source: 'import',
+				legacyTag: 'water-row'
+			}
+		]);
+	});
+
+	test('rejects unmatched legacy shop-import materials instead of inventing a retail city', () => {
+		const record = createV12RecordWithSwappedEqualShopImports();
+		const productionReport = record.game.reports[0]!.productionReport as unknown as Record<
+			string,
+			unknown
+		>;
+		(productionReport.shopImports as Array<Record<string, unknown>>)[0] = {
+			...(productionReport.shopImports as Array<Record<string, unknown>>)[0]!,
+			materialId: 'snacks'
+		};
+
+		expectSaveRecordErrorCode(record, 'invariant-report-attribution');
+	});
+
+	test('rejects unmatched legacy shop-import quantities and evidence counts', () => {
+		const quantityMismatch = createV12RecordWithSwappedEqualShopImports();
+		const quantityProduction = quantityMismatch.game.reports[0]!
+			.productionReport as unknown as Record<string, unknown>;
+		(quantityProduction.shopImports as Array<Record<string, unknown>>)[0] = {
+			...(quantityProduction.shopImports as Array<Record<string, unknown>>)[0]!,
+			quantity: 19
+		};
+
+		expectSaveRecordErrorCode(quantityMismatch, 'invariant-report-attribution');
+
+		const countMismatch = createV12RecordWithSwappedEqualShopImports();
+		(countMismatch.game.reports[0]!.productionReport.shopImports as unknown as unknown[]).pop();
+
+		expectSaveRecordErrorCode(countMismatch, 'invariant-report-attribution');
+	});
+
+	test('uses canonical retail-city order for indistinguishable duplicate legacy shop imports', () => {
+		const record = createV12RecordWithSwappedEqualShopImports();
+		const report = record.game.reports[0]! as unknown as Record<string, unknown>;
+		const storeReports = report.storeReports as Array<Record<string, unknown>>;
+		const campusProduct = (storeReports[1]!.productReports as Array<Record<string, unknown>>)[0]!;
+		campusProduct.categoryId = 'bottled-water';
+		storeReports.reverse();
+		const productionReport = report.productionReport as Record<string, unknown>;
+		(productionReport.shopImports as Array<Record<string, unknown>>)[0] = {
+			...(productionReport.shopImports as Array<Record<string, unknown>>)[0]!,
+			materialId: 'bottled-water'
+		};
+
+		expect(validateSaveRecord(record).game.reports[0]!.productionReport.shopImports).toEqual([
+			{
+				cityId: 'harbor-city',
+				materialId: 'bottled-water',
+				quantity: 20,
+				value: 40,
+				source: 'import',
+				legacyTag: 'drinks-row'
+			},
+			{
+				cityId: 'campus-junction',
+				materialId: 'bottled-water',
+				quantity: 20,
+				value: 40,
+				source: 'import',
+				legacyTag: 'water-row'
+			}
 		]);
 	});
 

@@ -520,6 +520,16 @@ describe('legacy warehouse material allocation', () => {
 		).toThrow(RangeError);
 	});
 
+	test('rejects duplicate eligible city ids before allocating any legacy stock', () => {
+		const duplicate = createCityInventory('industry-city', { capacity: 200 });
+
+		expect(() =>
+			allocateLegacyWarehouseMaterialsForTest(createAllocationGame(), [duplicate, duplicate], {
+				water: 1
+			})
+		).toThrow('Legacy warehouse eligible city inventories must have unique city IDs');
+	});
+
 	test('rejects unsafe legacy quantities before allocating them', () => {
 		expect(() =>
 			allocateLegacyWarehouseMaterialsForTest(
