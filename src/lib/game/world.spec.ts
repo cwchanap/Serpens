@@ -1,6 +1,5 @@
 import { describe, expect, test } from 'vitest';
 import { buildIndustrialBuilding } from './industryPlacement';
-import { addWarehouseMaterial } from './legacyWarehouse';
 import { DEFAULT_RETAIL_CITY_HEIGHT, DEFAULT_RETAIL_CITY_WIDTH, generateCity } from './city';
 import { generateIndustryCity } from './industry';
 import { createEmptyFinanceState } from './finance';
@@ -509,6 +508,37 @@ describe('world progression and city opening', () => {
 		expect(refreshed.world.revealedCityIds).not.toContain('quarry-works');
 	});
 
+	test('reveals quarry-works when a non-active opened industry city holds a finished material', () => {
+		expect.assertions(2);
+		const base = createNewGame('convenience', 20260802);
+		const opened = openWorldCity(
+			{
+				...base,
+				cash: 100_000,
+				world: {
+					...base.world,
+					revealedCityIds: [...base.world.revealedCityIds, 'breadbasket-basin']
+				}
+			},
+			'breadbasket-basin'
+		);
+		const game: GameState = {
+			...opened,
+			activeIndustryCityId: 'industry-city',
+			warehouse: { ...opened.warehouse, materials: {} },
+			cityInventories: opened.cityInventories!.map((inventory) =>
+				inventory.cityId === 'breadbasket-basin'
+					? { ...inventory, materials: { snacks: 1 } }
+					: inventory
+			)
+		};
+
+		const refreshed = refreshWorldProgress(game);
+
+		expect(game.activeIndustryCityId).toBe('industry-city');
+		expect(refreshed.world.revealedCityIds).toContain('quarry-works');
+	});
+
 	test('reveals garden-borough when the company has four or more stores', () => {
 		expect.assertions(1);
 		const game = gameStub({
@@ -652,7 +682,15 @@ describe('world progression and city opening', () => {
 					nextLoanPayment: null,
 					scorecard: rawGame.scorecard,
 					productionReport: {
-						produced: [{ materialId: 'snacks', quantity: 8, value: 64, source: 'local' }],
+						produced: [
+							{
+								cityId: 'industry-city',
+								materialId: 'snacks',
+								quantity: 8,
+								value: 64,
+								source: 'local'
+							}
+						],
 						consumed: [],
 						importedInputs: [],
 						warehousePulls: [{ materialId: 'snacks', quantity: 8, value: 64, source: 'warehouse' }],
@@ -697,7 +735,11 @@ describe('world progression and city opening', () => {
 		});
 		const finishedGame = refreshWorldProgress({
 			...rawGame,
-			warehouse: addWarehouseMaterial(rawGame.warehouse, 'snacks', 1)
+			cityInventories: rawGame.cityInventories!.map((inventory) =>
+				inventory.cityId === 'industry-city'
+					? { ...inventory, materials: { snacks: 1 } }
+					: inventory
+			)
 		});
 		const reportedGame = refreshWorldProgress({
 			...finishedGame,

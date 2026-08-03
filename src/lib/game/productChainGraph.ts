@@ -1,9 +1,10 @@
 import { getArchetype } from './archetypes';
+import { getCityInventory, getCityInventoryUsed } from './cityInventory';
 import { INDUSTRIAL_BUILDING_TYPES, MATERIALS, PRODUCTION_RECIPES } from './industry';
-import { getWarehouseUsed } from './legacyWarehouse';
 import { getBuildingThroughputMultiplier } from './leveling';
 import type {
 	BuildingTier,
+	CityInventory,
 	DailyMaterialMovement,
 	DailyProductReport,
 	DailyProductionReport,
@@ -15,7 +16,8 @@ import type {
 	ProductCategory,
 	ProductionRecipe,
 	ProductionRecipeId,
-	Store
+	Store,
+	WorldCityId
 } from './types';
 
 export type ProductChainHealth =
@@ -47,6 +49,12 @@ export type EdgeLabelInfo =
 export type GraphWarning =
 	| { code: 'noDailyReport' }
 	| { code: 'noProductionRecipe'; materialId: MaterialId };
+
+export type ProductChainSupplyState =
+	| { code: 'available'; cityId: WorldCityId; capacity: number }
+	| { code: 'imports-only' }
+	| { code: 'unavailable'; cityId: string }
+	| { code: 'zero-capacity'; cityId: WorldCityId };
 
 export interface ProductChainActualMetrics {
 	produced: number;
@@ -106,6 +114,7 @@ export interface ProductChainGraph {
 	edges: ProductChainEdge[];
 	details: Record<string, ProductChainNode>;
 	warnings: GraphWarning[];
+	supplyState?: ProductChainSupplyState;
 	emptyReason: GraphEmptyReason | null;
 }
 
@@ -141,10 +150,15 @@ export function getSupportedStoreChainCategories(store: Store): ProductCategory[
 }
 
 export function buildWarehouseFlowGraph(game: GameState): ProductChainGraph {
-	const report = latestProductionReport(game);
+	const scope = getIndustryInventoryScope(game, game.activeIndustryCityId);
+	if (!scope) {
+		return emptyGraph('warehouse-flow', 'Active industry unavailable', 'noWarehouseData');
+	}
+
+	const { buildings, inventory, report } = scope;
 	const materialIds = new Set<MaterialId>();
 
-	for (const materialId of Object.keys(game.warehouse.materials) as MaterialId[]) {
+	for (const materialId of Object.keys(inventory.materials) as MaterialId[]) {
 		materialIds.add(materialId);
 	}
 
@@ -169,7 +183,7 @@ export function buildWarehouseFlowGraph(game: GameState): ProductChainGraph {
 	}
 
 	const warehouseHealth: ProductChainHealth =
-		game.warehouse.capacity <= 0 || game.warehouse.overflowUnits > 0 ? 'shortage' : 'healthy';
+		inventory.capacity <= 0 || inventory.overflowUnits > 0 ? 'shortage' : 'healthy';
 	const warehouseNode: ProductChainNode = {
 		id: 'warehouse',
 		kind: 'warehouse',
@@ -181,19 +195,18 @@ export function buildWarehouseFlowGraph(game: GameState): ProductChainGraph {
 		row: 0,
 		health: warehouseHealth,
 		healthLabel: healthLabel(warehouseHealth),
-		warehouseStock: getWarehouseUsed(game.warehouse),
+		warehouseStock: getCityInventoryUsed(inventory),
 		capacity: {
-			buildingCount: game.industrialBuildings.filter((building) => building.typeId === 'warehouse')
-				.length,
+			buildingCount: buildings.filter((building) => building.typeId === 'warehouse').length,
 			outputPerDay: 0,
-			inputPerDay: game.warehouse.capacity
+			inputPerDay: inventory.capacity
 		},
 		actual: emptyActualMetrics(),
 		bottleneck:
-			game.warehouse.capacity <= 0
+			inventory.capacity <= 0
 				? { code: 'warehouseNoCapacity' }
-				: game.warehouse.overflowUnits > 0
-					? { code: 'warehouseOverflow', quantity: game.warehouse.overflowUnits }
+				: inventory.overflowUnits > 0
+					? { code: 'warehouseOverflow', quantity: inventory.overflowUnits }
 					: { code: 'warehouseAvailable' }
 	};
 	const nodes: ProductChainNode[] = [warehouseNode];
@@ -205,9 +218,9 @@ export function buildWarehouseFlowGraph(game: GameState): ProductChainGraph {
 		const health = materialHealth({
 			hasReport: report !== null,
 			actual,
-			warehouseStock: game.warehouse.materials[materialId] ?? 0,
+			warehouseStock: inventory.materials[materialId] ?? 0,
 			producerBuildingCount: producerRecipeId
-				? buildingsForRecipe(game.industrialBuildings, producerRecipeId).length
+				? buildingsForRecipe(buildings, producerRecipeId).length
 				: 0,
 			hasProducerRecipe: producerRecipeId !== undefined
 		});
@@ -223,7 +236,7 @@ export function buildWarehouseFlowGraph(game: GameState): ProductChainGraph {
 			row: index,
 			health,
 			healthLabel: healthLabel(health),
-			warehouseStock: game.warehouse.materials[materialId] ?? 0,
+			warehouseStock: inventory.materials[materialId] ?? 0,
 			capacity: {
 				buildingCount: 0,
 				outputPerDay: 0,
@@ -278,6 +291,65 @@ export function buildWarehouseFlowGraph(game: GameState): ProductChainGraph {
 		details,
 		warnings: report ? [] : [{ code: 'noDailyReport' }],
 		emptyReason: null
+	};
+}
+
+export interface IndustryInventoryScope {
+	cityId: WorldCityId;
+	inventory: CityInventory;
+	buildings: IndustrialBuilding[];
+	report: DailyProductionReport | null;
+}
+
+export function getIndustryInventoryScope(
+	game: GameState,
+	cityId: string
+): IndustryInventoryScope | null {
+	const access = getCityInventory(game, cityId);
+	if (!access.ok) {
+		return null;
+	}
+
+	const accessibleInventoryCount = (game.cityInventories ?? []).filter(
+		(inventory) => getCityInventory(game, inventory.cityId).ok
+	).length;
+	const report = filterProductionReportToIndustryCity(
+		latestProductionReport(game),
+		access.inventory.cityId,
+		accessibleInventoryCount === 1
+	);
+
+	return {
+		cityId: access.inventory.cityId,
+		inventory: access.inventory,
+		buildings: game.industrialBuildings.filter(
+			(building) => building.cityId === access.inventory.cityId
+		),
+		report
+	};
+}
+
+function filterProductionReportToIndustryCity(
+	report: DailyProductionReport | null,
+	cityId: WorldCityId,
+	allowUnattributedOneCityRows: boolean
+): DailyProductionReport | null {
+	if (!report) {
+		return null;
+	}
+
+	const belongsToCity = (movement: { cityId?: WorldCityId }) =>
+		movement.cityId === cityId || (allowUnattributedOneCityRows && movement.cityId === undefined);
+
+	return {
+		...report,
+		produced: report.produced.filter(belongsToCity),
+		consumed: report.consumed.filter(belongsToCity),
+		importedInputs: report.importedInputs.filter(belongsToCity),
+		warehousePulls: report.warehousePulls.filter(belongsToCity),
+		shopImports: report.shopImports.filter(belongsToCity),
+		railShipments: report.railShipments.filter(belongsToCity),
+		cityInventories: report.cityInventories?.filter((inventory) => inventory.cityId === cityId)
 	};
 }
 
@@ -377,9 +449,12 @@ export function latestProductionReport(game: GameState): DailyProductionReport |
 export function latestStoreProductReport(
 	game: GameState,
 	store: Store | null,
-	categoryId: string
+	categoryId: string,
+	allowedStoreIds?: ReadonlySet<string>
 ): DailyProductReport | null {
-	const storeReports = game.reports.at(-1)?.storeReports ?? [];
+	const storeReports = (game.reports.at(-1)?.storeReports ?? []).filter(
+		(report) => !allowedStoreIds || allowedStoreIds.has(report.storeId)
+	);
 
 	if (!store) {
 		return aggregateProductReports(
@@ -388,6 +463,9 @@ export function latestStoreProductReport(
 				report.productReports.filter((productReport) => productReport.categoryId === categoryId)
 			)
 		);
+	}
+	if (allowedStoreIds && !allowedStoreIds.has(store.id)) {
+		return null;
 	}
 
 	return (
@@ -442,11 +520,16 @@ function sumProductReports(
 	return productReports.reduce((total, report) => total + getValue(report), 0);
 }
 
-export function latestCategoryUnitsSold(game: GameState, categoryId: string): number {
+export function latestCategoryUnitsSold(
+	game: GameState,
+	categoryId: string,
+	allowedStoreIds?: ReadonlySet<string>
+): number {
 	return (
 		game.reports
 			.at(-1)
-			?.storeReports.flatMap((report) => report.productReports)
+			?.storeReports.filter((report) => !allowedStoreIds || allowedStoreIds.has(report.storeId))
+			.flatMap((report) => report.productReports)
 			.filter((report) => report.categoryId === categoryId)
 			.reduce((total, report) => total + report.unitsSold, 0) ?? 0
 	);

@@ -8,12 +8,12 @@ import {
 	createInputWeightMap,
 	emptyGraph,
 	formatRecipeEdgeLabel,
+	getIndustryInventoryScope,
 	getRecipeThroughputUnits,
 	getSupportedStoreChainCategories,
 	healthLabel,
 	isSupportedFinishedMaterial,
 	latestCategoryUnitsSold,
-	latestProductionReport,
 	latestStoreProductReport,
 	materialActualMetrics,
 	materialHealth,
@@ -21,12 +21,15 @@ import {
 	recipeOutputPerDay,
 	sortEdges,
 	type GraphWarning,
+	type IndustryInventoryScope,
 	type ProductChainCategorySummary,
 	type ProductChainEdge,
 	type ProductChainGraph,
 	type ProductChainHealth,
-	type ProductChainNode
+	type ProductChainNode,
+	type ProductChainSupplyState
 } from './productChainGraph';
+import { getWorldCityDefinition } from './world';
 import type { GameState, MaterialId, ProductionRecipeId, Store } from './types';
 
 /**
@@ -39,6 +42,54 @@ interface TreeEntry {
 	node: ProductChainNode;
 	depth: number;
 	children: TreeEntry[];
+}
+
+interface RetailChainScope {
+	stores: Store[];
+	industry: IndustryInventoryScope | null;
+	supplyState: ProductChainSupplyState;
+}
+
+function getRetailChainScope(game: GameState): RetailChainScope {
+	const activeCity = getWorldCityDefinition(game.activeCityId);
+	if (
+		!activeCity ||
+		activeCity.kind !== 'retail' ||
+		!game.world.openedCityIds.includes(activeCity.id) ||
+		!game.cities.some((city) => city.id === activeCity.id)
+	) {
+		return {
+			stores: [],
+			industry: null,
+			supplyState: { code: 'unavailable', cityId: game.activeCityId }
+		};
+	}
+
+	const stores = game.stores.filter((store) => store.cityId === activeCity.id);
+	const configuredSupplyCityId = game.retailSupplyAssignments?.find(
+		(assignment) => assignment.retailCityId === activeCity.id
+	)?.supplyCityId;
+	if (!configuredSupplyCityId) {
+		return { stores, industry: null, supplyState: { code: 'imports-only' } };
+	}
+
+	const industry = getIndustryInventoryScope(game, configuredSupplyCityId);
+	if (!industry) {
+		return {
+			stores,
+			industry: null,
+			supplyState: { code: 'unavailable', cityId: configuredSupplyCityId }
+		};
+	}
+
+	return {
+		stores,
+		industry,
+		supplyState:
+			industry.inventory.capacity <= 0
+				? { code: 'zero-capacity', cityId: industry.cityId }
+				: { code: 'available', cityId: industry.cityId, capacity: industry.inventory.capacity }
+	};
 }
 
 /**
@@ -67,14 +118,25 @@ export function buildProductChainTree(input: {
 		);
 	}
 
-	const report = latestProductionReport(input.game);
-	const productReport = latestStoreProductReport(input.game, input.store, rootMaterialId);
-	const reachableRecipes = collectReachableRecipeIds(rootRecipeId);
-	const inputWeights = createInputWeightMap(
-		input.game.industrialBuildings,
-		report,
-		reachableRecipes
+	const retailScope = getRetailChainScope(input.game);
+	const activeStoreIds = new Set(retailScope.stores.map((store) => store.id));
+	const selectedStore =
+		input.store &&
+		activeStoreIds.has(input.store.id) &&
+		input.store.cityId === input.game.activeCityId
+			? input.store
+			: null;
+	const report = retailScope.industry?.report ?? null;
+	const productReport = latestStoreProductReport(
+		input.game,
+		selectedStore,
+		rootMaterialId,
+		activeStoreIds
 	);
+	const inventory = retailScope.industry?.inventory;
+	const buildings = retailScope.industry?.buildings ?? [];
+	const reachableRecipes = collectReachableRecipeIds(rootRecipeId);
+	const inputWeights = createInputWeightMap(buildings, report, reachableRecipes);
 	const warnings: GraphWarning[] = [];
 	const edges: ProductChainEdge[] = [];
 	const recipeCopies = new Map<ProductionRecipeId, ProductChainNode[]>();
@@ -93,9 +155,9 @@ export function buildProductChainTree(input: {
 		const health = materialHealth({
 			hasReport: report !== null,
 			actual,
-			warehouseStock: input.game.warehouse.materials[materialId] ?? 0,
+			warehouseStock: inventory?.materials[materialId] ?? 0,
 			producerBuildingCount: producerRecipeId
-				? buildingsForRecipe(input.game.industrialBuildings, producerRecipeId).length
+				? buildingsForRecipe(buildings, producerRecipeId).length
 				: 0,
 			hasProducerRecipe: producerRecipeId !== undefined
 		});
@@ -116,8 +178,8 @@ export function buildProductChainTree(input: {
 		const recipe = PRODUCTION_RECIPES[recipeId];
 		const id = path === '' ? `recipe:${recipeId}` : `recipe:${recipeId}@${path}`;
 		const childPath = path === '' ? recipeId : `${path}/${recipeId}`;
-		const buildingCount = buildingsForRecipe(input.game.industrialBuildings, recipeId).length;
-		const throughputUnits = getRecipeThroughputUnits(input.game.industrialBuildings, recipeId);
+		const buildingCount = buildingsForRecipe(buildings, recipeId).length;
+		const throughputUnits = getRecipeThroughputUnits(buildings, recipeId);
 		const { actual, health: outputHealth } = materialMetrics(outputMaterialId);
 		// Zero placed buildings outranks "no report yet": the player must build
 		// before reports matter.
@@ -135,7 +197,7 @@ export function buildProductChainTree(input: {
 			row: 0,
 			health,
 			healthLabel: healthLabel(health),
-			warehouseStock: input.game.warehouse.materials[outputMaterialId] ?? 0,
+			warehouseStock: inventory?.materials[outputMaterialId] ?? 0,
 			capacity: {
 				buildingCount,
 				outputPerDay: recipeOutputPerDay(recipe, throughputUnits),
@@ -214,7 +276,7 @@ export function buildProductChainTree(input: {
 		row: 0,
 		health: rootHealth,
 		healthLabel: healthLabel(rootHealth),
-		warehouseStock: input.game.warehouse.materials[rootMaterialId] ?? 0,
+		warehouseStock: inventory?.materials[rootMaterialId] ?? 0,
 		capacity: { buildingCount: 0, outputPerDay: 0, inputPerDay: 0 },
 		actual: rootActual,
 		bottleneck: bottleneckText({ kind: 'material', health: rootHealth, label: rootLabel })
@@ -262,14 +324,17 @@ export function buildProductChainTree(input: {
 		edges: sortEdges(edges),
 		details,
 		warnings,
+		supplyState: retailScope.supplyState,
 		emptyReason: null
 	};
 }
 
 export function buildStoreCategoryChainSummaries(game: GameState): ProductChainCategorySummary[] {
 	const summaries = new Map<string, ProductChainCategorySummary>();
+	const retailScope = getRetailChainScope(game);
+	const activeStoreIds = new Set(retailScope.stores.map((store) => store.id));
 
-	for (const store of game.stores) {
+	for (const store of retailScope.stores) {
 		for (const category of getSupportedStoreChainCategories(store)) {
 			if (summaries.has(category.id)) {
 				continue;
@@ -291,7 +356,7 @@ export function buildStoreCategoryChainSummaries(game: GameState): ProductChainC
 				bottleneck: rootNode.bottleneck,
 				warehouseStock: rootNode.warehouseStock,
 				produced: rootNode.actual.produced,
-				consumed: latestCategoryUnitsSold(game, category.id),
+				consumed: latestCategoryUnitsSold(game, category.id, activeStoreIds),
 				imported: rootNode.actual.importedInput + rootNode.actual.shopImported
 			});
 		}
