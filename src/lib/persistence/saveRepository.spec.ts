@@ -1,10 +1,12 @@
 import { describe, expect, test } from 'vitest';
+import { initializeCityInventory, initializeRetailSupplyAssignment } from '$lib/game/cityInventory';
+import { projectCityInventoriesToLegacyWarehouse } from '$lib/game/legacyWarehouse';
 import { initializeStoreProducts } from '$lib/game/stock';
 import { createFoundingFinanceState } from '$lib/game/finance';
 import { createInitialEventRuntime } from '$lib/game/eventSelection';
 import { simulateDay } from '$lib/game/simulateDay';
 import { createNewGame } from '$lib/game/state';
-import { STARTER_STORE_CAP, createInitialWorldProgress } from '$lib/game/world';
+import { STARTER_STORE_CAP, WORLD_CITY_CATALOG, createInitialWorldProgress } from '$lib/game/world';
 import type {
 	DailyProductReport,
 	DailyProductionReport,
@@ -177,9 +179,30 @@ function delay(): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
+function createCanonicalFixtureGame(game: GameState): GameState {
+	let canonical: GameState = {
+		...game,
+		cityInventories: [],
+		retailSupplyAssignments: []
+	};
+
+	for (const city of WORLD_CITY_CATALOG) {
+		if (city.kind === 'industry') {
+			canonical = initializeCityInventory(canonical, city.id);
+		}
+	}
+	for (const city of WORLD_CITY_CATALOG) {
+		if (city.kind === 'retail') {
+			canonical = initializeRetailSupplyAssignment(canonical, city.id);
+		}
+	}
+
+	return canonical;
+}
+
 function createGame(overrides: Partial<GameState> = {}): GameState {
 	const day = overrides.day ?? 3;
-	return {
+	const game: GameState = {
 		seed: 20260505,
 		rngState: 99,
 		day,
@@ -240,6 +263,16 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 		reports: [],
 		...overrides
 	};
+	const canonical = createCanonicalFixtureGame(game);
+	const cityInventories = overrides.cityInventories ?? canonical.cityInventories!;
+
+	return {
+		...game,
+		cityInventories,
+		retailSupplyAssignments:
+			overrides.retailSupplyAssignments ?? canonical.retailSupplyAssignments!,
+		warehouse: overrides.warehouse ?? projectCityInventoriesToLegacyWarehouse(cityInventories)
+	};
 }
 
 type SaveRecordOverrides = Partial<Omit<SaveRecord, 'game' | 'metadata'>> & {
@@ -273,6 +306,12 @@ function createV11SupplierSnapshot(): SaveStoreSnapshot {
 	const current = createManualSaveRecord({ metadata: { id: 'manual-v11' } });
 	const legacyGame = structuredClone(current.game) as unknown as Record<string, unknown>;
 	delete legacyGame.events;
+	legacyGame.warehouse = {
+		capacity: 0,
+		materials: { grain: 7, snacks: 3 },
+		overflowUnits: 10,
+		overflowCost: 20
+	};
 	legacyGame.decisions = [
 		{
 			id: 'supplier-terms',
@@ -318,6 +357,90 @@ function createV11SupplierSnapshot(): SaveStoreSnapshot {
 		schemaVersion: 11,
 		autoSave: null,
 		manualSlots: [{ ...current, schemaVersion: 11, game: legacyGame }]
+	} as unknown as SaveStoreSnapshot;
+}
+
+function createStaleV13Snapshot(): SaveStoreSnapshot {
+	const stale = createManualSaveRecord({
+		metadata: { id: 'manual-stale-city-inventory', name: 'Stale City Inventory' },
+		game: {
+			cityInventories: [
+				{
+					cityId: 'industry-city',
+					capacity: 99,
+					materials: { grain: 4 },
+					overflowUnits: 0,
+					overflowCost: 0
+				}
+			],
+			warehouse: {
+				capacity: 99,
+				materials: { grain: 4 },
+				overflowUnits: 0,
+				overflowCost: 0
+			}
+		}
+	});
+	const retained = createManualSaveRecord({
+		metadata: { id: 'manual-retained-city-inventory', name: 'Retained City Inventory' }
+	});
+
+	return {
+		schemaVersion: SAVE_SCHEMA_VERSION,
+		autoSave: null,
+		manualSlots: [stale, retained]
+	};
+}
+
+function createV12InventorySnapshot(): SaveStoreSnapshot {
+	const current = createManualSaveRecord({
+		metadata: { id: 'manual-v12-city-inventory', name: 'V12 City Inventory' },
+		game: {
+			reports: [
+				createDailyReport({
+					storeReports: [createDailyStoreReport({ productReports: [createDailyProductReport()] })]
+				})
+			]
+		}
+	});
+	const legacyGame = structuredClone(current.game) as unknown as Record<string, unknown>;
+	delete legacyGame.cityInventories;
+	delete legacyGame.retailSupplyAssignments;
+	legacyGame.warehouse = {
+		capacity: 0,
+		materials: { grain: 7, snacks: 3 },
+		overflowUnits: 10,
+		overflowCost: 20
+	};
+	legacyGame.reports = (legacyGame.reports as Array<Record<string, unknown>>).map((report) => ({
+		...report,
+		productionReport: {
+			...(report.productionReport as Record<string, unknown>),
+			cityInventories: undefined
+		},
+		storeReports: (report.storeReports as Array<Record<string, unknown>>).map((storeReport) => ({
+			...storeReport,
+			replenishment: undefined,
+			productReports: (storeReport.productReports as Array<Record<string, unknown>>).map(
+				(productReport) => ({ ...productReport, replenishmentOutcome: undefined })
+			)
+		}))
+	}));
+	const retained = {
+		...current,
+		metadata: {
+			...current.metadata,
+			id: 'manual-v12-city-inventory-retained',
+			name: 'Retained V12 City Inventory'
+		},
+		schemaVersion: 12,
+		game: structuredClone(legacyGame)
+	};
+
+	return {
+		schemaVersion: 12,
+		autoSave: null,
+		manualSlots: [{ ...current, schemaVersion: 12, game: legacyGame }, retained]
 	} as unknown as SaveStoreSnapshot;
 }
 
@@ -378,6 +501,7 @@ function createDailyStoreReport(overrides: Partial<DailyStoreReport> = {}): Dail
 		marketPosition: 50,
 		productReports: [],
 		warnings: [],
+		replenishment: null,
 		...overrides
 	};
 }
@@ -397,6 +521,7 @@ function createDailyProductReport(overrides: Partial<DailyProductReport> = {}): 
 		importedUnits: 0,
 		importCost: 3,
 		importSpend: 0,
+		replenishmentOutcome: null,
 		...overrides
 	};
 }
@@ -418,6 +543,15 @@ function createDailyProductionReport(
 		warehouseUsed: 0,
 		railShipments: [],
 		railUsage: {},
+		cityInventories: [
+			{
+				cityId: 'industry-city',
+				capacity: 0,
+				used: 0,
+				overflowUnits: 0,
+				overflowCost: 0
+			}
+		],
 		...overrides
 	};
 }
@@ -550,6 +684,7 @@ describe('save records', () => {
 		const game = createGame();
 		const gameWithoutIndustry: Partial<GameState> = { ...game };
 		delete gameWithoutIndustry.industryCities;
+		gameWithoutIndustry.cityInventories = [];
 		const snapshot = createSnapshotWithGame(gameWithoutIndustry);
 
 		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
@@ -648,6 +783,10 @@ describe('save records', () => {
 		const oldGame = { ...record.game } as Partial<GameState>;
 		delete oldGame.world;
 		delete oldGame.storeCap;
+		oldGame.retailSupplyAssignments = [
+			{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' },
+			{ retailCityId: 'campus-junction', supplyCityId: 'industry-city' }
+		];
 
 		const validated = validateSaveRecord({ ...record, game: oldGame as GameState });
 
@@ -715,6 +854,26 @@ describe('save records', () => {
 		});
 		const oldGame = { ...record.game } as Partial<GameState>;
 		delete oldGame.world;
+		oldGame.cityInventories = [
+			{
+				cityId: 'industry-city',
+				capacity: 0,
+				materials: {},
+				overflowUnits: 0,
+				overflowCost: 0
+			},
+			{
+				cityId: 'breadbasket-basin',
+				capacity: 0,
+				materials: {},
+				overflowUnits: 0,
+				overflowCost: 0
+			}
+		];
+		oldGame.retailSupplyAssignments = [
+			{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' },
+			{ retailCityId: 'campus-junction', supplyCityId: 'industry-city' }
+		];
 
 		const validated = validateSaveRecord({ ...record, game: oldGame as GameState });
 
@@ -2166,7 +2325,7 @@ describe('save records', () => {
 	});
 });
 
-describe('schema v11 → v12 repository migration', () => {
+describe('repository city-inventory migration and normalization', () => {
 	test('loads and durably upgrades a v11 snapshot through the in-memory driver', async () => {
 		const driver = new MemorySaveStoreDriver(createV11SupplierSnapshot());
 		const repository = new SaveRepositoryFromDriver(
@@ -2177,7 +2336,7 @@ describe('schema v11 → v12 repository migration', () => {
 		const loaded = await repository.loadManualSlot('manual-v11');
 		const supplier = loaded?.game.decisions[0];
 
-		expect(loaded?.schemaVersion).toBe(12);
+		expect(loaded?.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
 		expect(supplier).toMatchObject({
 			kind: 'event',
 			id: 'event-instance-1',
@@ -2189,12 +2348,137 @@ describe('schema v11 → v12 repository migration', () => {
 			selectionSchemaVersion: 1,
 			nextModifierSequence: 1
 		});
+		expect(loaded?.game.cityInventories).toEqual([
+			{
+				cityId: 'industry-city',
+				capacity: 0,
+				materials: { grain: 7, snacks: 3 },
+				overflowUnits: 10,
+				overflowCost: 20
+			}
+		]);
+		expect(loaded?.game.retailSupplyAssignments).toEqual([
+			{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' }
+		]);
 
 		await repository.saveAuto(createGame());
 		const persisted = await driver.read();
-		expect(persisted.schemaVersion).toBe(12);
-		expect(persisted.manualSlots[0]?.schemaVersion).toBe(12);
+		expect(persisted.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
+		expect(persisted.manualSlots[0]?.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
 		expect(persisted.manualSlots[0]?.metadata.id).toBe('manual-v11');
+	});
+
+	test('normalizes stale v13 derived caches before a driver mutation durably resaves retained slots', async () => {
+		expect.assertions(8);
+		const driver = new MemorySaveStoreDriver(createStaleV13Snapshot());
+		const repository = new SaveRepositoryFromDriver(
+			driver,
+			() => new Date('2026-08-02T12:00:00.000Z')
+		);
+
+		const loaded = await repository.loadManualSlot('manual-stale-city-inventory');
+
+		expect(loaded?.game.cityInventories).toEqual([
+			{
+				cityId: 'industry-city',
+				capacity: 0,
+				materials: { grain: 4 },
+				overflowUnits: 4,
+				overflowCost: 8
+			}
+		]);
+		expect(loaded?.game.warehouse).toEqual({
+			capacity: 0,
+			materials: { grain: 4 },
+			overflowUnits: 4,
+			overflowCost: 8
+		});
+
+		await repository.saveAuto(createGame({ day: 4 }));
+		const persisted = await driver.read();
+		const staleSlot = persisted.manualSlots.find(
+			(slot) => slot.metadata.id === 'manual-stale-city-inventory'
+		);
+
+		expect(persisted.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
+		expect(staleSlot?.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
+		expect(staleSlot?.game.cityInventories?.[0]?.capacity).toBe(0);
+		expect(staleSlot?.game.cityInventories?.[0]?.overflowUnits).toBe(4);
+		expect(staleSlot?.game.warehouse).toEqual({
+			capacity: 0,
+			materials: { grain: 4 },
+			overflowUnits: 4,
+			overflowCost: 8
+		});
+		expect(
+			persisted.manualSlots.some((slot) => slot.metadata.id === 'manual-retained-city-inventory')
+		).toBe(true);
+	});
+
+	test('migrates v12 aggregate stock once and durably preserves null historical retail attribution', async () => {
+		expect.assertions(15);
+		const driver = new MemorySaveStoreDriver(createV12InventorySnapshot());
+		const repository = new SaveRepositoryFromDriver(
+			driver,
+			() => new Date('2026-08-02T12:00:00.000Z')
+		);
+
+		const loaded = await repository.loadManualSlot('manual-v12-city-inventory');
+		const report = loaded?.game.reports[0];
+		const product = report?.storeReports[0]?.productReports[0];
+
+		expect(loaded?.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
+		expect(loaded?.game.cityInventories).toEqual([
+			{
+				cityId: 'industry-city',
+				capacity: 0,
+				materials: { grain: 7, snacks: 3 },
+				overflowUnits: 10,
+				overflowCost: 20
+			}
+		]);
+		expect(loaded?.game.retailSupplyAssignments).toEqual([
+			{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' }
+		]);
+		expect(loaded?.game.warehouse.materials).toEqual({ grain: 7, snacks: 3 });
+		expect(
+			loaded?.game.cityInventories?.reduce(
+				(total, inventory) =>
+					total +
+					Object.values(inventory.materials).reduce((sum, quantity) => sum + (quantity ?? 0), 0),
+				0
+			)
+		).toBe(10);
+		expect(report?.storeReports[0]?.replenishment).toBeNull();
+		expect(product?.replenishmentOutcome).toBeNull();
+		expect(product?.warehouseUnits).toBe(2);
+		expect(product?.warehouseValue).toBe(16);
+
+		await repository.saveAuto(createGame({ day: 4 }));
+		const afterFirstSave = await driver.read();
+		const persisted = afterFirstSave.manualSlots.find(
+			(slot) => slot.metadata.id === 'manual-v12-city-inventory'
+		);
+
+		expect(afterFirstSave.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
+		expect(afterFirstSave.manualSlots).toHaveLength(2);
+		expect(
+			afterFirstSave.manualSlots.every((slot) => slot.schemaVersion === SAVE_SCHEMA_VERSION)
+		).toBe(true);
+		expect(persisted?.game.cityInventories?.[0]?.materials).toEqual({ grain: 7, snacks: 3 });
+
+		await repository.overwriteManualSlot(
+			'manual-v12-city-inventory',
+			'V12 City Inventory',
+			loaded!.game
+		);
+		const afterSecondSave = await driver.read();
+		const resaved = afterSecondSave.manualSlots.find(
+			(slot) => slot.metadata.id === 'manual-v12-city-inventory'
+		);
+
+		expect(resaved?.game.cityInventories?.[0]?.materials).toEqual({ grain: 7, snacks: 3 });
+		expect(resaved?.game.warehouse.materials).toEqual({ grain: 7, snacks: 3 });
 	});
 });
 
@@ -2215,7 +2499,7 @@ describe('browser save repository', () => {
 
 		const loaded = await repository.loadManualSlot('manual-v11');
 		const supplier = loaded?.game.decisions[0];
-		expect(loaded?.schemaVersion).toBe(12);
+		expect(loaded?.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
 		expect(supplier).toMatchObject({
 			kind: 'event',
 			id: 'event-instance-1',
@@ -2223,12 +2507,50 @@ describe('browser save repository', () => {
 			definitionVersion: 1
 		});
 		expect(supplier?.kind === 'event' ? supplier.options[1]?.modifiers : null).toEqual([]);
+		expect(loaded?.game.cityInventories?.[0]?.materials).toEqual({ grain: 7, snacks: 3 });
+		expect(loaded?.game.retailSupplyAssignments).toEqual([
+			{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' }
+		]);
 
 		await repository.saveAuto(createGame());
 		const persisted = JSON.parse(storage.getItem(BROWSER_SAVE_STORAGE_KEY)!) as SaveStoreSnapshot;
-		expect(persisted.schemaVersion).toBe(12);
-		expect(persisted.manualSlots[0]?.schemaVersion).toBe(12);
+		expect(persisted.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
+		expect(persisted.manualSlots[0]?.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
 		expect(persisted.manualSlots[0]?.metadata.id).toBe('manual-v11');
+	});
+
+	test('normalizes stale v13 city inventories and writes canonical JSON after a browser mutation', async () => {
+		expect.assertions(6);
+		const storage = new FakeStorage();
+		storage.setItem(BROWSER_SAVE_STORAGE_KEY, JSON.stringify(createStaleV13Snapshot()));
+		const repository = createBrowserSaveRepository(
+			storage,
+			() => new Date('2026-08-02T12:00:00.000Z')
+		);
+
+		const loaded = await repository.loadManualSlot('manual-stale-city-inventory');
+		expect(loaded?.game.cityInventories?.[0]).toMatchObject({
+			capacity: 0,
+			overflowUnits: 4,
+			overflowCost: 8
+		});
+		expect(loaded?.game.warehouse).toEqual({
+			capacity: 0,
+			materials: { grain: 4 },
+			overflowUnits: 4,
+			overflowCost: 8
+		});
+
+		await repository.saveAuto(createGame({ day: 4 }));
+		const persisted = JSON.parse(storage.getItem(BROWSER_SAVE_STORAGE_KEY)!) as SaveStoreSnapshot;
+		const staleSlot = persisted.manualSlots.find(
+			(slot) => slot.metadata.id === 'manual-stale-city-inventory'
+		);
+
+		expect(persisted.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
+		expect(staleSlot?.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
+		expect(staleSlot?.game.cityInventories?.[0]?.overflowUnits).toBe(4);
+		expect(staleSlot?.game.warehouse.materials).toEqual({ grain: 4 });
 	});
 
 	test('saves and loads auto-save records', async () => {
@@ -2486,17 +2808,22 @@ describe('browser save repository', () => {
 	});
 });
 
-describe('pre-tier-1 save compatibility', () => {
-	test('round-trips a save whose warehouse lacks the new material keys', async () => {
-		expect.assertions(2);
+describe('sparse city-inventory save compatibility', () => {
+	test('round-trips a city inventory whose materials omit unrelated catalog keys', async () => {
+		expect.assertions(3);
 		const game = createNewGame('convenience', 20260611);
-		const legacyGame: GameState = {
+		const sparseInventories = game.cityInventories!.map((inventory) =>
+			inventory.cityId === 'industry-city'
+				? {
+						...inventory,
+						materials: { grain: 12, snacks: 3 } satisfies Partial<Record<MaterialId, number>>
+					}
+				: inventory
+		);
+		const sparseGame: GameState = {
 			...game,
-			warehouse: {
-				...game.warehouse,
-				// Simulate an old save: only legacy materials present.
-				materials: { grain: 12, snacks: 3 } satisfies Partial<Record<MaterialId, number>>
-			}
+			cityInventories: sparseInventories,
+			warehouse: projectCityInventoriesToLegacyWarehouse(sparseInventories)
 		};
 
 		const repository = new SaveRepositoryFromDriver(
@@ -2504,9 +2831,10 @@ describe('pre-tier-1 save compatibility', () => {
 			() => new Date('2026-06-11T12:00:00.000Z')
 		);
 
-		await repository.saveAuto(legacyGame);
+		await repository.saveAuto(sparseGame);
 		const loaded = await repository.getAutoSave();
 
+		expect(loaded?.game.cityInventories?.[0]?.materials).toEqual({ grain: 12, snacks: 3 });
 		expect(loaded?.game.warehouse.materials).toEqual({ grain: 12, snacks: 3 });
 		expect(loaded?.game.warehouse.materials['bottled-water']).toBeUndefined();
 	});

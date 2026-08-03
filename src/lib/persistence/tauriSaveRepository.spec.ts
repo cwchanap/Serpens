@@ -5,13 +5,15 @@ const { tauriLoadMock } = vi.hoisted(() => ({ tauriLoadMock: vi.fn() }));
 vi.mock('@tauri-apps/plugin-store', () => ({ load: tauriLoadMock }));
 
 import { simulateDay } from '$lib/game/simulateDay';
+import { initializeCityInventory, initializeRetailSupplyAssignment } from '$lib/game/cityInventory';
 import { createFoundingFinanceState } from '$lib/game/finance';
 import { createInitialEventRuntime } from '$lib/game/eventSelection';
+import { projectCityInventoriesToLegacyWarehouse } from '$lib/game/legacyWarehouse';
 import { createNewGame } from '$lib/game/state';
 import type { GameState } from '$lib/game/types';
-import { STARTER_STORE_CAP, createInitialWorldProgress } from '$lib/game/world';
+import { STARTER_STORE_CAP, WORLD_CITY_CATALOG, createInitialWorldProgress } from '$lib/game/world';
 import { createSaveRecord } from './saveCodec';
-import { type SaveStoreSnapshot } from './saveTypes';
+import { SAVE_SCHEMA_VERSION, type SaveStoreSnapshot } from './saveTypes';
 import {
 	createTauriSaveRepository,
 	createTauriSaveRepositoryFromStore,
@@ -36,9 +38,30 @@ class FakeStore implements StoreLike {
 	}
 }
 
+function createCanonicalFixtureGame(game: GameState): GameState {
+	let canonical: GameState = {
+		...game,
+		cityInventories: [],
+		retailSupplyAssignments: []
+	};
+
+	for (const city of WORLD_CITY_CATALOG) {
+		if (city.kind === 'industry') {
+			canonical = initializeCityInventory(canonical, city.id);
+		}
+	}
+	for (const city of WORLD_CITY_CATALOG) {
+		if (city.kind === 'retail') {
+			canonical = initializeRetailSupplyAssignment(canonical, city.id);
+		}
+	}
+
+	return canonical;
+}
+
 function createGame(overrides: Partial<GameState> = {}): GameState {
 	const day = overrides.day ?? 2;
-	return {
+	const game: GameState = {
 		seed: 20260505,
 		rngState: 99,
 		day,
@@ -120,6 +143,16 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 		reports: [],
 		...overrides
 	};
+	const canonical = createCanonicalFixtureGame(game);
+	const cityInventories = overrides.cityInventories ?? canonical.cityInventories!;
+
+	return {
+		...game,
+		cityInventories,
+		retailSupplyAssignments:
+			overrides.retailSupplyAssignments ?? canonical.retailSupplyAssignments!,
+		warehouse: overrides.warehouse ?? projectCityInventoriesToLegacyWarehouse(cityInventories)
+	};
 }
 
 function createV11SupplierSnapshot(): SaveStoreSnapshot {
@@ -132,6 +165,12 @@ function createV11SupplierSnapshot(): SaveStoreSnapshot {
 	});
 	const legacyGame = structuredClone(game) as unknown as Record<string, unknown>;
 	delete legacyGame.events;
+	legacyGame.warehouse = {
+		capacity: 0,
+		materials: { grain: 7, snacks: 3 },
+		overflowUnits: 10,
+		overflowCost: 20
+	};
 	legacyGame.decisions = [
 		{
 			id: 'supplier-terms',
@@ -170,6 +209,39 @@ function createV11SupplierSnapshot(): SaveStoreSnapshot {
 	} as unknown as SaveStoreSnapshot;
 }
 
+function createStaleV13Snapshot(): SaveStoreSnapshot {
+	const record = createSaveRecord(createGame(), {
+		id: 'manual-stale-city-inventory',
+		name: 'Stale City Inventory',
+		kind: 'manual',
+		updatedAt: new Date('2026-08-02T12:00:00.000Z')
+	});
+	const staleGame = {
+		...record.game,
+		cityInventories: [
+			{
+				cityId: 'industry-city' as const,
+				capacity: 99,
+				materials: { grain: 4 },
+				overflowUnits: 0,
+				overflowCost: 0
+			}
+		],
+		warehouse: {
+			capacity: 99,
+			materials: { grain: 4 },
+			overflowUnits: 0,
+			overflowCost: 0
+		}
+	};
+
+	return {
+		schemaVersion: SAVE_SCHEMA_VERSION,
+		autoSave: null,
+		manualSlots: [{ ...record, game: staleGame }]
+	};
+}
+
 describe('Tauri save repository', () => {
 	test('persists save snapshot through the Tauri store key', async () => {
 		expect.assertions(5);
@@ -200,7 +272,7 @@ describe('Tauri save repository', () => {
 
 		const loaded = await repository.loadManualSlot('manual-v11');
 		const supplier = loaded?.game.decisions[0];
-		expect(loaded?.schemaVersion).toBe(12);
+		expect(loaded?.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
 		expect(supplier).toMatchObject({
 			kind: 'event',
 			id: 'event-instance-1',
@@ -212,13 +284,60 @@ describe('Tauri save repository', () => {
 			selectionSchemaVersion: 1,
 			nextModifierSequence: 1
 		});
+		expect(loaded?.game.cityInventories).toEqual([
+			{
+				cityId: 'industry-city',
+				capacity: 0,
+				materials: { grain: 7, snacks: 3 },
+				overflowUnits: 10,
+				overflowCost: 20
+			}
+		]);
+		expect(loaded?.game.retailSupplyAssignments).toEqual([
+			{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' }
+		]);
 
 		await repository.saveAuto(createGame());
 		const persisted = store.values.get(SAVE_STORE_KEY) as SaveStoreSnapshot;
-		expect(persisted.schemaVersion).toBe(12);
-		expect(persisted.manualSlots[0]?.schemaVersion).toBe(12);
+		expect(persisted.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
+		expect(persisted.manualSlots[0]?.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
 		expect(persisted.manualSlots[0]?.metadata.id).toBe('manual-v11');
 		expect(store.saveCount).toBe(1);
+	});
+
+	test('normalizes stale v13 city inventories and durably writes the canonical Tauri value', async () => {
+		expect.assertions(7);
+		const store = new FakeStore();
+		store.values.set(SAVE_STORE_KEY, createStaleV13Snapshot());
+		const repository = createTauriSaveRepositoryFromStore(
+			Promise.resolve(store),
+			() => new Date('2026-08-02T12:00:00.000Z')
+		);
+
+		const loaded = await repository.loadManualSlot('manual-stale-city-inventory');
+		expect(loaded?.game.cityInventories?.[0]).toMatchObject({
+			capacity: 0,
+			overflowUnits: 4,
+			overflowCost: 8
+		});
+		expect(loaded?.game.warehouse).toEqual({
+			capacity: 0,
+			materials: { grain: 4 },
+			overflowUnits: 4,
+			overflowCost: 8
+		});
+		expect(store.saveCount).toBe(0);
+
+		await repository.saveAuto(createGame({ day: 4 }));
+		const persisted = store.values.get(SAVE_STORE_KEY) as SaveStoreSnapshot;
+		const staleSlot = persisted.manualSlots.find(
+			(slot) => slot.metadata.id === 'manual-stale-city-inventory'
+		);
+
+		expect(persisted.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
+		expect(staleSlot?.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
+		expect(staleSlot?.game.cityInventories?.[0]?.overflowUnits).toBe(4);
+		expect(staleSlot?.game.warehouse.materials).toEqual({ grain: 4 });
 	});
 
 	test('persists simulated stock and production reports through the Tauri store key', async () => {
