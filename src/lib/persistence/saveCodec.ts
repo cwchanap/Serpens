@@ -1208,7 +1208,7 @@ function migrateV12RailShipments(
 
 interface V12RetailImportEvidence {
 	cityId: WorldCityId;
-	categoryId: string;
+	materialId: MaterialId;
 	quantity: number;
 	value: number;
 }
@@ -1216,19 +1216,21 @@ interface V12RetailImportEvidence {
 function migrateV12ShopImports(value: unknown, storeReports: unknown, game: GameState): unknown {
 	if (!Array.isArray(value)) return value;
 	const evidence = getV12RetailImportEvidence(storeReports, game);
-	if (evidence === null) return value;
+	if (evidence === null) {
+		if (value.length > 0) {
+			reportAttributionInvariant(
+				'Saved v12 shop imports cannot be attributed without recoverable store report evidence'
+			);
+		}
+		return value;
+	}
+	const canonicalEvidence = [...evidence].sort(compareV12RetailImportEvidence);
 
 	if (value.length === 0) {
-		return evidence.map((entry) => {
-			const materialId = getFinishedMaterialIdForCategory(entry.categoryId);
-			if (materialId === null) {
-				reportAttributionInvariant(
-					`Saved v12 shop import category ${entry.categoryId} cannot be attributed to a material`
-				);
-			}
+		return canonicalEvidence.map((entry) => {
 			return {
 				cityId: entry.cityId,
-				materialId,
+				materialId: entry.materialId,
 				quantity: entry.quantity,
 				value: entry.value,
 				source: 'import'
@@ -1236,25 +1238,39 @@ function migrateV12ShopImports(value: unknown, storeReports: unknown, game: Game
 		});
 	}
 
-	if (value.length !== evidence.length) {
-		reportAttributionInvariant(
-			'Saved v12 shop imports cannot be reconciled with recoverable store report evidence'
-		);
+	const evidenceByMovementKey = new Map<string, V12RetailImportEvidence[]>();
+	for (const entry of canonicalEvidence) {
+		const key = getV12ShopImportEvidenceKey(entry.materialId, entry.quantity, entry.value)!;
+		const bucket = evidenceByMovementKey.get(key) ?? [];
+		bucket.push(entry);
+		evidenceByMovementKey.set(key, bucket);
 	}
 
-	return value.map((movement, index) => {
+	const migrated = value.map((movement, index) => {
 		if (typeof movement !== 'object' || movement === null || Array.isArray(movement)) {
-			return movement;
+			reportAttributionInvariant(`Saved v12 shop imports[${index}] must be an object`);
 		}
 		const record = movement as Record<string, unknown>;
-		const entry = evidence[index]!;
-		if (record.quantity !== entry.quantity || record.value !== entry.value) {
+		const key = getV12ShopImportEvidenceKey(record.materialId, record.quantity, record.value);
+		if (key === null) {
 			reportAttributionInvariant(
-				'Saved v12 shop imports cannot be reconciled with recoverable store report totals'
+				`Saved v12 shop imports[${index}] cannot be reconciled with recoverable material, quantity, and value evidence`
+			);
+		}
+		const entry = evidenceByMovementKey.get(key)?.shift();
+		if (!entry) {
+			reportAttributionInvariant(
+				`Saved v12 shop imports[${index}] cannot be reconciled with recoverable material, quantity, and value evidence`
 			);
 		}
 		return { ...record, cityId: entry.cityId };
 	});
+	if ([...evidenceByMovementKey.values()].some((entries) => entries.length > 0)) {
+		reportAttributionInvariant(
+			'Saved v12 shop imports cannot be reconciled with recoverable store report evidence counts'
+		);
+	}
+	return migrated;
 }
 
 function getV12RetailImportEvidence(
@@ -1289,15 +1305,49 @@ function getV12RetailImportEvidence(
 			) {
 				return null;
 			}
+			const materialId = getFinishedMaterialIdForCategory(product.categoryId);
+			if (materialId === null) {
+				reportAttributionInvariant(
+					`Saved v12 shop import category ${product.categoryId} cannot be attributed to a finished material`
+				);
+			}
 			evidence.push({
 				cityId: store.cityId as WorldCityId,
-				categoryId: product.categoryId,
+				materialId,
 				quantity: product.importedUnits,
 				value: product.importSpend
 			});
 		}
 	}
 	return evidence;
+}
+
+function compareV12RetailImportEvidence(
+	left: V12RetailImportEvidence,
+	right: V12RetailImportEvidence
+): number {
+	const cityOrder = compareWorldCityIds(left.cityId, right.cityId);
+	if (cityOrder !== 0) return cityOrder;
+	if (left.materialId < right.materialId) return -1;
+	if (left.materialId > right.materialId) return 1;
+	if (left.quantity !== right.quantity) return left.quantity - right.quantity;
+	return left.value - right.value;
+}
+
+function getV12ShopImportEvidenceKey(
+	materialId: unknown,
+	quantity: unknown,
+	value: unknown
+): string | null {
+	if (
+		typeof materialId !== 'string' ||
+		!Object.hasOwn(MATERIALS, materialId) ||
+		!isV12SafeNonnegativeInteger(quantity) ||
+		!isV12SafeNonnegativeInteger(value)
+	) {
+		return null;
+	}
+	return `${materialId}\u0000${quantity}\u0000${value}`;
 }
 
 function createV12ProductionCloseSummaries(
