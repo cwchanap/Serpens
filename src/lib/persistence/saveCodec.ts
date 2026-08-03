@@ -1740,6 +1740,26 @@ export function validateCurrentGameState(value: unknown): GameState {
 	);
 }
 
+/**
+ * Validates the output of `migrateSavedGame` while preserving malformed
+ * historical payloads' field-specific validation order. Successful legacy
+ * migrations already remove their wire-only warehouse; no such property can
+ * escape as a current GameState.
+ */
+export function validateMigratedGameState(
+	value: unknown,
+	sourceGameSchemaVersion: number
+): GameState {
+	return withSaveDataBoundary('Migrated-game validation', () => {
+		const isCurrentSource = sourceGameSchemaVersion === SAVE_SCHEMA_VERSION;
+		const game = validateCurrentGameStateInternal(value, true, isCurrentSource);
+		if (!isCurrentSource) {
+			assertNoResidualGlobalWarehouseData(game as unknown as Record<string, unknown>);
+		}
+		return game;
+	});
+}
+
 function validateCurrentGameStateInternal(
 	value: unknown,
 	requireCurrentCityInventoryDerivedState = true,
