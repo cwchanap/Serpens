@@ -3,11 +3,11 @@ import { INDUSTRIAL_BUILDING_TYPES, getIndustryTilesByResource } from './industr
 import { buildIndustrialBuilding } from './industryPlacement';
 import { quantizeAtomicRecipeRatio, simulateIndustryProduction } from './industryProduction';
 import {
-	addWarehouseMaterial,
-	getWarehouseCapacity,
-	getWarehouseUsed,
-	removeWarehouseMaterial
-} from './legacyWarehouse';
+	addCityInventoryMaterial,
+	getCityInventoryUsed,
+	getCityWarehouseCapacity,
+	removeCityInventoryMaterial
+} from './cityInventory';
 import {
 	DEFAULT_SIMULATION_RULES,
 	type SimulationRuleSource,
@@ -37,45 +37,56 @@ function buildOnResource(
 	return buildIndustrialBuilding(game, { tileId: tile.id, buildingTypeId: typeId });
 }
 
-describe('warehouse operations', () => {
+describe('city inventory operations', () => {
 	test('adds material and reports overflow cost above capacity', () => {
 		expect.assertions(4);
-		const warehouse = addWarehouseMaterial(
-			{ capacity: 5, materials: {}, overflowUnits: 0, overflowCost: 0 },
+		const inventory = addCityInventoryMaterial(
+			{ cityId: 'industry-city', capacity: 5, materials: {}, overflowUnits: 0, overflowCost: 0 },
 			'snacks',
 			8
 		);
 
-		expect(warehouse.materials.snacks).toBe(8);
-		expect(warehouse.capacity).toBe(5);
-		expect(warehouse.overflowUnits).toBe(3);
-		expect(warehouse.overflowCost).toBe(6);
+		expect(inventory.materials.snacks).toBe(8);
+		expect(inventory.capacity).toBe(5);
+		expect(inventory.overflowUnits).toBe(3);
+		expect(inventory.overflowCost).toBe(6);
 	});
 
 	test('removes available stock and returns shortage', () => {
 		expect.assertions(3);
-		const result = removeWarehouseMaterial(
-			{ capacity: 20, materials: { snacks: 6 }, overflowUnits: 0, overflowCost: 0 },
+		const result = removeCityInventoryMaterial(
+			{
+				cityId: 'industry-city',
+				capacity: 20,
+				materials: { snacks: 6 },
+				overflowUnits: 0,
+				overflowCost: 0
+			},
 			'snacks',
 			10
 		);
 
 		expect(result.quantityRemoved).toBe(6);
 		expect(result.shortage).toBe(4);
-		expect(result.warehouse.materials.snacks).toBe(0);
+		expect(result.inventory.materials.snacks).toBe(0);
 	});
 
-	test('clamps negative stored stock before removing material', () => {
-		expect.assertions(3);
-		const result = removeWarehouseMaterial(
-			{ capacity: 20, materials: { snacks: -4 }, overflowUnits: 0, overflowCost: 0 },
-			'snacks',
-			10
-		);
+	test('rejects negative stored stock before removing material', () => {
+		expect.assertions(1);
 
-		expect(result.quantityRemoved).toBe(0);
-		expect(result.shortage).toBe(10);
-		expect(result.warehouse.materials.snacks).toBe(0);
+		expect(() =>
+			removeCityInventoryMaterial(
+				{
+					cityId: 'industry-city',
+					capacity: 20,
+					materials: { snacks: -4 },
+					overflowUnits: 0,
+					overflowCost: 0
+				},
+				'snacks',
+				10
+			)
+		).toThrow(RangeError);
 	});
 });
 
@@ -200,7 +211,7 @@ describe('industry production simulation', () => {
 		expect(simulateIndustryProduction(game, rules)).toEqual(simulateIndustryProduction(game));
 	});
 
-	test('uses placed warehouse buildings as warehouse capacity', () => {
+	test('uses placed warehouse buildings as city-local inventory capacity', () => {
 		expect.assertions(3);
 		let game = { ...createNewGame('convenience', 20260512), cash: 100_000 };
 		const industrialTile = game.industryCities[0]!.tiles.find(
@@ -213,8 +224,11 @@ describe('industry production simulation', () => {
 
 		const result = simulateIndustryProduction(game);
 
-		expect(getWarehouseCapacity(game)).toBe(200);
-		expect(result.game.warehouse.capacity).toBe(200);
+		expect(getCityWarehouseCapacity(game, 'industry-city')).toBe(200);
+		expect(
+			result.game.cityInventories.find((inventory) => inventory.cityId === 'industry-city')
+				?.capacity
+		).toBe(200);
 		expect(result.game.industrialBuildings[0]?.status).toBe('idle');
 	});
 
@@ -265,16 +279,16 @@ describe('industry production simulation', () => {
 				building('city-a-warehouse', 'warehouse', cityA, 10),
 				building('city-b-warehouse', 'warehouse', cityB, 10)
 			],
-			cityInventories: opened.cityInventories?.map((inventory) =>
+			cityInventories: opened.cityInventories.map((inventory) =>
 				inventory.cityId === cityB ? { ...inventory, materials: { water: 3 } } : inventory
 			)
 		});
 
 		expect(
-			result.game.cityInventories?.find((inventory) => inventory.cityId === cityA)?.materials.water
+			result.game.cityInventories.find((inventory) => inventory.cityId === cityA)?.materials.water
 		).toBe(10);
 		expect(
-			result.game.cityInventories?.find((inventory) => inventory.cityId === cityB)?.materials.water
+			result.game.cityInventories.find((inventory) => inventory.cityId === cityB)?.materials.water
 		).toBe(3);
 		expect(result.report.railShipments).toContainEqual({
 			cityId: cityA,
@@ -285,12 +299,24 @@ describe('industry production simulation', () => {
 			toId: 'city-a-warehouse',
 			value: 10
 		});
-		expect(result.game.warehouse).toMatchObject({
-			capacity: 400,
-			materials: { water: 13 },
-			overflowUnits: 0,
-			overflowCost: 0
-		});
+		expect(result.game.cityInventories).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					cityId: cityA,
+					capacity: 200,
+					materials: { water: 10 },
+					overflowUnits: 0,
+					overflowCost: 0
+				}),
+				expect.objectContaining({
+					cityId: cityB,
+					capacity: 200,
+					materials: { water: 3 },
+					overflowUnits: 0,
+					overflowCost: 0
+				})
+			])
+		);
 		expect(result.report.cityInventories).toEqual([
 			{
 				cityId: cityA,
@@ -318,7 +344,10 @@ describe('industry production simulation', () => {
 
 		// Without a rail link to a warehouse, output stays in the farm's own
 		// buffer — the shared warehouse pool is untouched.
-		expect(result.game.warehouse.materials.grain ?? 0).toBe(0);
+		expect(
+			result.game.cityInventories.find((inventory) => inventory.cityId === 'industry-city')
+				?.materials.grain ?? 0
+		).toBe(0);
 		expect(result.game.industrialBuildings[0]?.inventory.grain).toBeGreaterThan(0);
 		expect(result.report.produced.some((item) => item.materialId === 'grain')).toBe(true);
 		expect(result.game.industrialBuildings[0]?.status).toBe('produced');
@@ -350,7 +379,10 @@ describe('industry production simulation', () => {
 				result.report.overflowCost
 		);
 		expect(result.game.industrialBuildings[0]?.inventory.flour).toBe(8);
-		expect(game.warehouse.materials.flour).toBeUndefined();
+		expect(
+			game.cityInventories.find((inventory) => inventory.cityId === 'industry-city')?.materials
+				.flour
+		).toBeUndefined();
 	});
 
 	test('building level scales produced output', () => {
@@ -454,7 +486,10 @@ describe('industry production simulation', () => {
 
 		// Grain and flour both stay trapped in their own producers' buffers —
 		// there is no rail connecting farm, mill, or a warehouse building.
-		expect(result.game.warehouse.materials.grain ?? 0).toBe(0);
+		expect(
+			result.game.cityInventories.find((inventory) => inventory.cityId === 'industry-city')
+				?.materials.grain ?? 0
+		).toBe(0);
 		expect(
 			result.game.industrialBuildings.find((building) => building.typeId === 'grain-farm')
 				?.inventory.grain
@@ -561,16 +596,17 @@ describe('industry production simulation', () => {
 		}
 	});
 
-	test('getWarehouseUsed treats null material quantities as zero', () => {
+	test('getCityInventoryUsed treats null material quantities as zero', () => {
 		expect.assertions(1);
-		const warehouse = {
+		const inventory = {
+			cityId: 'industry-city' as const,
 			capacity: 10,
 			materials: { snacks: null as unknown as number },
 			overflowUnits: 0,
 			overflowCost: 0
 		};
 
-		expect(getWarehouseUsed(warehouse)).toBe(0);
+		expect(getCityInventoryUsed(inventory)).toBe(0);
 	});
 });
 
@@ -622,7 +658,9 @@ function makeProductionGame(city: IndustryCity, buildings: IndustrialBuilding[])
 		industryCities: [city],
 		activeIndustryCityId: city.id,
 		industrialBuildings: buildings,
-		warehouse: { capacity: 0, materials: {}, overflowUnits: 0, overflowCost: 0 }
+		cityInventories: [
+			{ cityId: 'industry-city', capacity: 0, materials: {}, overflowUnits: 0, overflowCost: 0 }
+		]
 	};
 }
 
@@ -660,7 +698,6 @@ const warehousePullGame: GameState = {
 		makeIndustryBuilding('mill', 'flour-mill', 2, 2),
 		makeIndustryBuilding('wh1', 'warehouse', 10, 2)
 	]),
-	warehouse: { capacity: 100, materials: { grain: 50 }, overflowUnits: 0, overflowCost: 0 },
 	cityInventories: [
 		{
 			cityId: 'industry-city',
@@ -818,7 +855,10 @@ describe('rail-fed production', () => {
 		const farm = game.industrialBuildings.find((b) => b.typeId === 'grain-farm')!;
 
 		expect(report.railShipments.some((s) => s.kind === 'push-warehouse')).toBe(true);
-		expect(game.warehouse.materials.grain ?? 0).toBeGreaterThan(0);
+		expect(
+			game.cityInventories.find((inventory) => inventory.cityId === 'industry-city')?.materials
+				.grain ?? 0
+		).toBeGreaterThan(0);
 		// Guard the push-resurrect invariant: the re-read at the end of
 		// simulateIndustryProduction must reflect the push phase draining 1
 		// unit via the level-1 rail. If the re-read regressed to
@@ -841,7 +881,10 @@ describe('rail-fed production', () => {
 		);
 		expect(report.warehousePulls.some((m) => m.materialId === 'grain')).toBe(true);
 		// The pool was drained by the pulled quantity (level-1 line → 1 unit).
-		expect(game.warehouse.materials.grain ?? 0).toBeLessThan(50);
+		expect(
+			game.cityInventories.find((inventory) => inventory.cityId === 'industry-city')?.materials
+				.grain ?? 0
+		).toBeLessThan(50);
 	});
 
 	test('resolves inputs from own buffer, same-city producer, warehouse, then import in order', () => {
@@ -868,12 +911,6 @@ describe('rail-fed production', () => {
 					makeIndustryBuilding('mill', 'flour-mill', 10, 2, { grain: 2 }),
 					makeIndustryBuilding('warehouse', 'warehouse', 18, 2)
 				]),
-				warehouse: {
-					capacity: 200,
-					materials: { grain: 3 },
-					overflowUnits: 0,
-					overflowCost: 0
-				},
 				cityInventories: [
 					{
 						cityId: 'industry-city',
@@ -961,6 +998,6 @@ describe('rail-fed production', () => {
 		const second = simulateIndustryProduction(railGame);
 
 		expect(first.report).toEqual(second.report);
-		expect(first.game.warehouse).toEqual(second.game.warehouse);
+		expect(first.game.cityInventories).toEqual(second.game.cityInventories);
 	});
 });

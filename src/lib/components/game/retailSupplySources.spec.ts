@@ -29,7 +29,7 @@ function supplyFixture(): GameState {
 
 	return {
 		...game,
-		cityInventories: game.cityInventories!.map((inventory) => {
+		cityInventories: game.cityInventories.map((inventory) => {
 			if (inventory.cityId === 'industry-city') {
 				return {
 					...inventory,
@@ -56,13 +56,7 @@ function supplyFixture(): GameState {
 			{ retailCityId: 'garden-borough', supplyCityId: null },
 			{ retailCityId: 'harbor-city', supplyCityId: 'breadbasket-basin' },
 			{ retailCityId: 'campus-junction', supplyCityId: 'industry-city' }
-		],
-		warehouse: {
-			capacity: 999,
-			materials: { snacks: 999 },
-			overflowUnits: 999,
-			overflowCost: 999
-		}
+		]
 	};
 }
 

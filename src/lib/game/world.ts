@@ -457,7 +457,7 @@ function hasWarehouseAndRawProducer(game: GameState): boolean {
 
 function hasFinishedMaterialInCityInventories(game: GameState): boolean {
 	if (
-		(game.cityInventories ?? []).some((inventory) => {
+		game.cityInventories.some((inventory) => {
 			const access = getCityInventory(game, inventory.cityId);
 			return (
 				access.ok &&

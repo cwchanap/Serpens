@@ -92,6 +92,18 @@ describe('daily simulation', () => {
 		expect(projectOneCityParity(after)).toMatchInlineSnapshot(`
 			{
 			  "cash": 99762,
+			  "cityInventories": [
+			    {
+			      "capacity": 200,
+			      "cityId": "industry-city",
+			      "materials": {
+			        "bottled-water": 0,
+			        "water": 190,
+			      },
+			      "overflowCost": 0,
+			      "overflowUnits": 0,
+			    },
+			  ],
 			  "report": {
 			    "importSpend": 10,
 			    "netCashChange": -238,
@@ -206,15 +218,6 @@ describe('daily simulation', () => {
 			      ],
 			    },
 			  ],
-			  "warehouse": {
-			    "capacity": 200,
-			    "materials": {
-			      "bottled-water": 0,
-			      "water": 190,
-			    },
-			    "overflowCost": 0,
-			    "overflowUnits": 0,
-			  },
 			}
 		`);
 	});
@@ -437,7 +440,6 @@ describe('daily simulation', () => {
 			...base,
 			day: closingDay,
 			stores: [store, { ...store, id: 'store-2' }],
-			warehouse: { ...base.warehouse, materials: {} },
 			events: { ...base.events, activeModifiers: [modifier] }
 		});
 
@@ -867,12 +869,6 @@ describe('daily simulation', () => {
 		const result = simulateDay({
 			...createNewGame('convenience', 20260512),
 			cash: startingCash,
-			warehouse: {
-				capacity: 0,
-				materials: { snacks: 12 },
-				overflowUnits: 12,
-				overflowCost: 24
-			},
 			cityInventories: [
 				{
 					cityId: 'industry-city',
@@ -1252,7 +1248,6 @@ describe('daily simulation', () => {
 		const noWarehouse = simulateDay({
 			...baseGame,
 			stores: [store],
-			warehouse: { capacity: 200, materials: {}, overflowUnits: 0, overflowCost: 0 },
 			cityInventories: [
 				{
 					cityId: 'industry-city',
@@ -1266,7 +1261,6 @@ describe('daily simulation', () => {
 		const withWarehouse = simulateDay({
 			...baseGame,
 			stores: [store],
-			warehouse: { capacity: 200, materials: { snacks: 12 }, overflowUnits: 0, overflowCost: 0 },
 			cityInventories: [
 				{
 					cityId: 'industry-city',
@@ -1315,7 +1309,6 @@ describe('daily simulation', () => {
 		const result = simulateDay({
 			...baseGame,
 			stores: [store],
-			warehouse: { capacity: 200, materials: { snacks: 12 }, overflowUnits: 0, overflowCost: 0 },
 			cityInventories: [
 				{
 					cityId: 'industry-city',
@@ -1354,12 +1347,7 @@ describe('daily simulation', () => {
 				overflowCost: 0
 			}
 		]);
-		expect(result.warehouse).toEqual({
-			capacity: 0,
-			materials: { snacks: 0 },
-			overflowUnits: 0,
-			overflowCost: 0
-		});
+		expect(result).not.toHaveProperty('warehouse');
 		expect(snacks).toMatchObject({
 			warehouseUnits: 12,
 			warehouseValue: 96,
@@ -1456,13 +1444,7 @@ describe('daily simulation', () => {
 		const result = simulateDay({
 			...game,
 			cash: startingCash,
-			stores: [store],
-			warehouse: {
-				capacity: 200,
-				materials: {},
-				overflowUnits: 0,
-				overflowCost: 0
-			}
+			stores: [store]
 		});
 		const dailyReport = result.reports[0]!;
 		const productReport = dailyReport.storeReports[0]!.productReports[0]!;
@@ -1491,7 +1473,10 @@ describe('daily simulation', () => {
 		expect(productReport.importedUnits).toBe(20);
 		expect(productReport.importSpend).toBe(60);
 		expect(result.stores[0]!.products[0]!.stock).toBe(20);
-		expect(result.warehouse.materials.snacks).toBe(0);
+		expect(
+			result.cityInventories.find((inventory) => inventory.cityId === 'industry-city')?.materials
+				.snacks ?? 0
+		).toBe(0);
 		expect(dailyReport.productionReport.operatingCost).toBeGreaterThan(0);
 		expect(dailyReport.productionReport.importSpend).toBeGreaterThan(0);
 		expect(dailyReport.operatingCosts).toBe(

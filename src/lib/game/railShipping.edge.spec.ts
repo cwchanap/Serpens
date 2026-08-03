@@ -9,11 +9,11 @@ import { createNewGame } from './state';
 import { openWorldCity } from './world';
 import type {
 	GameState,
+	CityInventory,
 	IndustrialBuilding,
 	IndustryCity,
 	MaterialId,
-	RailCell,
-	WarehouseInventory
+	RailCell
 } from './types';
 
 function makeBuilding(
@@ -51,8 +51,8 @@ function straightRails(y: number, fromX: number, toX: number, level = 1): RailCe
 	return cells;
 }
 
-function makeWarehouse(materials: WarehouseInventory['materials'] = {}): WarehouseInventory {
-	return { capacity: 500, materials, overflowUnits: 0, overflowCost: 0 };
+function makeCityInventory(materials: CityInventory['materials'] = {}): CityInventory {
+	return { cityId: 'industry-city', capacity: 500, materials, overflowUnits: 0, overflowCost: 0 };
 }
 
 function makeGame(cities: IndustryCity[], buildings: IndustrialBuilding[]): GameState {
@@ -63,28 +63,28 @@ function makeGame(cities: IndustryCity[], buildings: IndustrialBuilding[]): Game
 		cash: 100_000,
 		industryCities: cities,
 		industrialBuildings: buildings,
-		warehouse: makeWarehouse()
+		cityInventories: [makeCityInventory()]
 	};
 }
 
 function createRailTickState(
 	game: GameState,
-	warehouse: WarehouseInventory = game.warehouse
-): RailTickState & { readonly warehouse: WarehouseInventory } {
+	cityInventory: CityInventory = game.cityInventories[0]!
+): RailTickState & { readonly cityInventory: CityInventory } {
 	const state = createCityRailTickState({
 		...game,
 		cityInventories: [
 			{
+				...cityInventory,
 				cityId: 'industry-city',
-				...warehouse,
-				materials: { ...warehouse.materials }
+				materials: { ...cityInventory.materials }
 			}
 		]
 	});
 
-	return Object.defineProperty(state, 'warehouse', {
+	return Object.defineProperty(state, 'cityInventory', {
 		get: () => state.cityInventoriesByCityId.get('industry-city')!
-	}) as RailTickState & { readonly warehouse: WarehouseInventory };
+	}) as RailTickState & { readonly cityInventory: CityInventory };
 }
 
 const LINE = straightRails(4, 2, 11);
@@ -95,7 +95,7 @@ describe('rail shipping edge cases', () => {
 		const earlier = makeBuilding('industry-building-1', 'grain-farm', 2, 2);
 		const state = createRailTickState(
 			makeGame([makeCity('industry-city', LINE)], [later, earlier]),
-			makeWarehouse()
+			makeCityInventory()
 		);
 
 		expect(state.sortedBuildings.map(([id]) => id)).toEqual([
@@ -109,7 +109,7 @@ describe('rail shipping edge cases', () => {
 		const mill = makeBuilding('industry-building-2', 'flour-mill', 10, 2);
 		const state = createRailTickState(
 			makeGame([makeCity('industry-city', LINE)], [farm, mill]),
-			makeWarehouse()
+			makeCityInventory()
 		);
 
 		expect(pullViaRail(state, mill, 'grain', -3)).toEqual({
@@ -124,7 +124,7 @@ describe('rail shipping edge cases', () => {
 		const consumer = makeBuilding('industry-building-1', 'flour-mill', 10, 2, {}, 'missing-city');
 		const state = createRailTickState(
 			makeGame([makeCity('industry-city', LINE)], [consumer]),
-			makeWarehouse({ grain: 10 })
+			makeCityInventory({ grain: 10 })
 		);
 
 		expect(pullViaRail(state, consumer, 'grain', 1)).toEqual({
@@ -139,14 +139,14 @@ describe('rail shipping edge cases', () => {
 		const consumer = makeBuilding('industry-building-2', 'flour-mill', 10, 2);
 		const state = createRailTickState(
 			makeGame([makeCity('industry-city', straightRails(4, 2, 11, 3))], [warehouse, consumer]),
-			makeWarehouse({ grain: 3 })
+			makeCityInventory({ grain: 3 })
 		);
 
 		expect(pullViaRail(state, consumer, 'grain', 3)).toEqual({
 			fromProducers: 0,
 			fromWarehouse: 3
 		});
-		expect(state.warehouse.materials.grain).toBe(0);
+		expect(state.cityInventory.materials.grain).toBe(0);
 		expect(state.shipments).toEqual([
 			{
 				cityId: 'industry-city',
@@ -181,7 +181,7 @@ describe('rail shipping edge cases', () => {
 			...opened,
 			industryCities: opened.industryCities.map((city) => ({ ...city, rails })),
 			industrialBuildings: buildings,
-			cityInventories: opened.cityInventories?.map((inventory) =>
+			cityInventories: opened.cityInventories.map((inventory) =>
 				inventory.cityId === cityB
 					? { ...inventory, materials: { grain: 7 } }
 					: { ...inventory, materials: {} }
@@ -249,7 +249,7 @@ describe('rail shipping edge cases', () => {
 				[makeCity('industry-city', LINE), makeCity('other-city', straightRails(4, 2, 3))],
 				[localFarm, localWarehouse, consumer, remoteFarm]
 			),
-			makeWarehouse({ grain: 0 })
+			makeCityInventory({ grain: 0 })
 		);
 
 		expect(pullViaRail(state, consumer, 'grain', 2)).toEqual({
@@ -271,7 +271,7 @@ describe('rail shipping edge cases', () => {
 		);
 		const state = createRailTickState(
 			makeGame([makeCity('industry-city', LINE)], [producer]),
-			makeWarehouse()
+			makeCityInventory()
 		);
 
 		pushSurplusViaRail(state, producer);
@@ -284,7 +284,7 @@ describe('rail shipping edge cases', () => {
 		const warehouse = makeBuilding('industry-building-1', 'warehouse', 2, 2, { grain: 3 });
 		const state = createRailTickState(
 			makeGame([makeCity('industry-city', LINE)], [warehouse]),
-			makeWarehouse()
+			makeCityInventory()
 		);
 
 		pushSurplusViaRail(state, warehouse);
@@ -298,13 +298,13 @@ describe('rail shipping edge cases', () => {
 		const warehouse = makeBuilding('industry-building-2', 'warehouse', 10, 2);
 		const state = createRailTickState(
 			makeGame([makeCity('industry-city', LINE)], [farm, warehouse]),
-			makeWarehouse()
+			makeCityInventory()
 		);
 
 		pushSurplusViaRail(state, farm);
 
 		expect(state.inventories.get(farm.id)?.grain).toBe(0);
-		expect(state.warehouse.materials.grain).toBe(1);
+		expect(state.cityInventory.materials.grain).toBe(1);
 		expect(state.shipments).toHaveLength(1);
 	});
 });

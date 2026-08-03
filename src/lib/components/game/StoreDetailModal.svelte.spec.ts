@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import type { GameState, Store } from '$lib/game/types';
 import { createEmptyFinanceState } from '$lib/game/finance';
-import { createInitialEventRuntime } from '$lib/game/eventSelection';
+import { createNewGame } from '$lib/game/state';
 import { createI18n } from '$lib/i18n';
 import StoreDetailModal from './StoreDetailModal.svelte';
 
@@ -33,28 +33,16 @@ function store(): Store {
 }
 
 function game(): GameState {
+	const base = createNewGame('convenience', 1);
+
 	return {
-		seed: 1,
-		rngState: 0,
+		...base,
 		day: 5,
 		cash: 5000,
 		finance: createEmptyFinanceState(5),
-		policy: {} as GameState['policy'],
-		scorecard: {} as GameState['scorecard'],
-		world: {} as GameState['world'],
-		storeCap: 5,
-		cities: [],
-		activeCityId: 'harbor-city',
-		industryCities: [],
-		activeIndustryCityId: 'industry-city',
-		industrialBuildings: [],
-		warehouse: { capacity: 0, materials: {}, overflowUnits: 0, overflowCost: 0 },
 		stores: [store()],
 		staff: [],
-		hiringCandidates: [],
-		events: createInitialEventRuntime(1),
-		decisions: [],
-		reports: []
+		hiringCandidates: []
 	};
 }
 

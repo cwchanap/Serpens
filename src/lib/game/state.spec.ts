@@ -21,7 +21,11 @@ type OptionalKeys<T> = {
 
 type OptionalIndustryStateKeys = Extract<
 	OptionalKeys<GameState>,
-	'industryCities' | 'activeIndustryCityId' | 'industrialBuildings' | 'warehouse'
+	| 'industryCities'
+	| 'activeIndustryCityId'
+	| 'industrialBuildings'
+	| 'cityInventories'
+	| 'retailSupplyAssignments'
 >;
 
 const industryStateKeysAreRequired: OptionalIndustryStateKeys extends never ? true : false = true;
@@ -61,9 +65,9 @@ describe('game state', () => {
 		expect(game.industryCities).toHaveLength(1);
 		expect(game.activeIndustryCityId).toBe(game.industryCities[0]?.id);
 		expect(game.industrialBuildings).toEqual([]);
-		expect(game.warehouse.capacity).toBe(0);
-		expect(game.warehouse.materials).toEqual({});
-		expect(game.warehouse.overflowUnits).toBe(0);
+		expect(game.cityInventories[0]?.capacity).toBe(0);
+		expect(game.cityInventories[0]?.materials).toEqual({});
+		expect(game.cityInventories[0]?.overflowUnits).toBe(0);
 	});
 
 	test('initializes canonical city inventory and retail supply lifecycle records', () => {

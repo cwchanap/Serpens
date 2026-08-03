@@ -283,12 +283,16 @@
 		industryCities: [starterIndustryCity],
 		activeIndustryCityId: starterIndustryCity.id,
 		industrialBuildings: [],
-		warehouse: {
-			capacity: 0,
-			materials: {},
-			overflowUnits: 0,
-			overflowCost: 0
-		},
+		cityInventories: [
+			{
+				cityId: 'industry-city',
+				capacity: 0,
+				materials: {},
+				overflowUnits: 0,
+				overflowCost: 0
+			}
+		],
+		retailSupplyAssignments: [{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' }],
 		stores: [],
 		staff: [],
 		hiringCandidates: [],

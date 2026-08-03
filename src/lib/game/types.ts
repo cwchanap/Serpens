@@ -359,15 +359,8 @@ export interface DailyProductionReport {
 	warehouseUsed: number;
 	railShipments: RailShipment[];
 	railUsage: Record<string, number>;
-	/** Production-close snapshot. Optional while pre-v13 reports remain readable. */
-	cityInventories?: DailyCityInventorySummary[];
-}
-
-export interface WarehouseInventory {
-	capacity: number;
-	materials: Partial<Record<MaterialId, number>>;
-	overflowUnits: number;
-	overflowCost: number;
+	/** Required production-close snapshot in normalized current state. */
+	cityInventories: DailyCityInventorySummary[];
 }
 
 export interface CityInventory {
@@ -583,8 +576,8 @@ export interface DailyProductReport {
 	importedUnits: number;
 	importCost: number;
 	importSpend: number;
-	/** Runtime reports always populate this; optional while pre-v13 reports remain readable. */
-	replenishmentOutcome?: RetailReplenishmentOutcome | null;
+	/** Explicit evidence for every current-state product report. */
+	replenishmentOutcome: RetailReplenishmentOutcome | null;
 }
 
 export type StoreReportWarning =
@@ -615,8 +608,8 @@ export interface DailyStoreReport {
 	marketPosition: number;
 	productReports: DailyProductReport[];
 	warnings: StoreReportWarning[];
-	/** Runtime reports always populate this; optional while pre-v13 reports remain readable. */
-	replenishment?: RetailReplenishmentContext | null;
+	/** Explicit context when a replenishment attempt occurred, otherwise null. */
+	replenishment: RetailReplenishmentContext | null;
 }
 
 export interface DailyReport {
@@ -823,9 +816,8 @@ export interface GameState {
 	industryCities: IndustryCity[];
 	activeIndustryCityId: string;
 	industrialBuildings: IndustrialBuilding[];
-	cityInventories?: CityInventory[];
-	retailSupplyAssignments?: RetailSupplyAssignment[];
-	warehouse: WarehouseInventory;
+	cityInventories: CityInventory[];
+	retailSupplyAssignments: RetailSupplyAssignment[];
 	stores: Store[];
 	staff: StaffMember[];
 	hiringCandidates: HiringCandidate[];

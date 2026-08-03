@@ -57,9 +57,11 @@ const staleReport: DailyStoreReport = {
 			warehouseValue: 24,
 			importedUnits: 2,
 			importCost: 3,
-			importSpend: 6
+			importSpend: 6,
+			replenishmentOutcome: null
 		}
 	],
+	replenishment: null,
 	warnings: []
 };
 
@@ -79,7 +81,7 @@ describe('StoreOverview', () => {
 		await expect.element(storeRegion.getByText('100%', { exact: true })).not.toBeInTheDocument();
 		await expect.element(storeRegion.getByText('0/1 mgr, 0/2 gen')).toBeVisible();
 		await expect.element(storeRegion.getByText('Stock')).toBeVisible();
-		await expect.element(storeRegion.getByText('External imports')).toBeVisible();
+		await expect.element(storeRegion.getByText(/^External imports$/)).toBeVisible();
 		await expect.element(storeRegion.getByText('90')).toBeVisible();
 		await expect.element(storeRegion.getByText('$125')).toBeVisible();
 	});
@@ -195,7 +197,8 @@ describe('StoreOverview', () => {
 					warehouseValue: 0,
 					importedUnits: 5,
 					importCost: 3,
-					importSpend: 15
+					importSpend: 15,
+					replenishmentOutcome: null
 				}
 			]
 		};

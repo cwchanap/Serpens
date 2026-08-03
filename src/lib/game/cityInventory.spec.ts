@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
-import * as cityInventoryModule from './cityInventory';
 import {
 	addCityInventoryMaterial,
+	allocateLegacyWarehouseMaterials,
 	compareWorldCityIds,
 	findEntityCityOwnershipIssues,
 	getCityInventory,
@@ -81,25 +81,16 @@ function createAllocationGame(activeIndustryCityId: WorldCityId = 'industry-city
 	};
 }
 
-/**
- * The optional lookup keeps RED assertions behavior-shaped while the planned
- * public helper does not exist yet. Once implemented, every assertion invokes
- * the real exported function.
- */
 function allocateLegacyWarehouseMaterialsForTest(
 	game: GameState,
 	eligible: readonly CityInventory[],
 	legacyMaterials: Partial<Record<MaterialId, number>>
-): CityInventory[] | undefined {
-	return (
-		cityInventoryModule as unknown as {
-			allocateLegacyWarehouseMaterials?: (
-				game: GameState,
-				eligible: readonly CityInventory[],
-				legacyMaterials: Partial<Record<MaterialId, number>>
-			) => CityInventory[];
-		}
-	).allocateLegacyWarehouseMaterials?.(game, eligible, legacyMaterials);
+): CityInventory[] {
+	return allocateLegacyWarehouseMaterials({
+		activeIndustryCityId: game.activeIndustryCityId,
+		eligibleCityInventories: eligible,
+		materials: legacyMaterials
+	});
 }
 
 describe('city inventory helpers', () => {
@@ -251,12 +242,12 @@ describe('city inventory helpers', () => {
 		expect(getCityWarehouseCapacity(game, 'harbor-city')).toBe(0);
 
 		const oneCity = synchronizeCityInventoryCapacity(game, 'industry-city');
-		expect(oneCity.cityInventories?.[0]).toMatchObject({
+		expect(oneCity.cityInventories[0]).toMatchObject({
 			capacity: 200,
 			overflowUnits: 5,
 			overflowCost: 10
 		});
-		expect(oneCity.cityInventories?.[1]?.capacity).toBe(0);
+		expect(oneCity.cityInventories[1]?.capacity).toBe(0);
 
 		const allCities = synchronizeAllCityInventoryCapacities(game);
 		expect(allCities.cityInventories).toEqual([
@@ -394,12 +385,12 @@ describe('city inventory helpers', () => {
 			'campus-junction'
 		);
 
-		expect(
-			withAllIndustryInventories.cityInventories?.map((inventory) => inventory.cityId)
-		).toEqual(['industry-city', 'breadbasket-basin']);
+		expect(withAllIndustryInventories.cityInventories.map((inventory) => inventory.cityId)).toEqual(
+			['industry-city', 'breadbasket-basin']
+		);
 		expect(repeatedIndustryInitialization).toEqual(withAllIndustryInventories);
 		expect(
-			withAllRetailAssignments.retailSupplyAssignments?.map((assignment) => assignment.retailCityId)
+			withAllRetailAssignments.retailSupplyAssignments.map((assignment) => assignment.retailCityId)
 		).toEqual(['harbor-city', 'campus-junction']);
 		expect(repeatedRetailInitialization).toEqual(withAllRetailAssignments);
 	});

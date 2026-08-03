@@ -50,7 +50,7 @@ export interface WeeklyReplenishmentInput {
 export interface WeeklyReplenishmentResult {
 	stores: Store[];
 	productReports: Map<string, DailyProductReport[]>;
-	cityInventories: CityInventory[] | undefined;
+	cityInventories: CityInventory[];
 	importSpend: number;
 	importCostApplications: ImportCostApplicationEvidence[];
 	storeReplenishmentContexts: Map<string, RetailReplenishmentContext | null>;
@@ -78,7 +78,7 @@ export function setRetailSupplySource(
 		return { ok: false, game, reason: supplyCity.reason };
 	}
 
-	const assignments = game.retailSupplyAssignments ?? [];
+	const assignments = game.retailSupplyAssignments;
 	const existing = assignments.find((assignment) => assignment.retailCityId === retailCity.cityId);
 	if (existing?.supplyCityId === supplyCity.cityId) {
 		return { ok: true, game, changed: false };
@@ -105,7 +105,7 @@ export function applyWeeklyReplenishment(
 	const rules = input.rules ?? DEFAULT_SIMULATION_RULES;
 	const productReports = cloneProductReports(input.storeReports);
 	const cityInventoriesByCityId = new Map<WorldCityId, CityInventory>(
-		(input.game.cityInventories ?? []).map((inventory) => [inventory.cityId, inventory])
+		input.game.cityInventories.map((inventory) => [inventory.cityId, inventory])
 	);
 	const updatedStores = new Map<string, Store>();
 	const storeReplenishmentContexts = new Map<string, RetailReplenishmentContext | null>();
@@ -178,7 +178,7 @@ export function applyWeeklyReplenishment(
 		}
 	}
 
-	const cityInventories = input.game.cityInventories?.map(
+	const cityInventories = input.game.cityInventories.map(
 		(inventory) => cityInventoriesByCityId.get(inventory.cityId) ?? inventory
 	);
 
@@ -256,7 +256,7 @@ function resolveRetailSupplyContext(
 	retailCityId: WorldCityId
 ): RetailReplenishmentContext {
 	const configuredSupplyCityId =
-		game.retailSupplyAssignments?.find((assignment) => assignment.retailCityId === retailCityId)
+		game.retailSupplyAssignments.find((assignment) => assignment.retailCityId === retailCityId)
 			?.supplyCityId ?? null;
 	const access = configuredSupplyCityId ? getCityInventory(game, configuredSupplyCityId) : null;
 

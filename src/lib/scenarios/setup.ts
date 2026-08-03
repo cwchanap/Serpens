@@ -13,7 +13,6 @@ import {
 	buildIndustrialBuilding,
 	getIndustrialPlacementBlockReason
 } from '$lib/game/industryPlacement';
-import { projectCityInventoriesToLegacyWarehouse } from '$lib/game/legacyWarehouse';
 import {
 	compareWorldCityIds,
 	initializeCityInventory,
@@ -165,7 +164,7 @@ function materializeStartingCities(
 	}
 	next = {
 		...next,
-		cityInventories: next.cityInventories?.filter((inventory) => {
+		cityInventories: next.cityInventories.filter((inventory) => {
 			const city = getWorldCityDefinition(inventory.cityId);
 			return (
 				city?.kind === 'industry' &&
@@ -381,13 +380,6 @@ function initializeDefaultRetailSupplyAssignments(game: GameState): GameState {
 		next = initializeRetailSupplyAssignment(next, cityId);
 	}
 	return next;
-}
-
-function projectCityInventoriesToLegacyCompatibilityWarehouse(game: GameState): GameState {
-	return {
-		...game,
-		warehouse: projectCityInventoriesToLegacyWarehouse(game.cityInventories ?? [])
-	};
 }
 
 function expectedRailsByCity(definition: ScenarioDefinition): ReadonlyMap<string, RailCell[]> {
@@ -783,7 +775,6 @@ export function buildScenarioGame(
 	if (retailSupplyDiagnostics.length > 0) {
 		return { ok: false, diagnostics: retailSupplyDiagnostics };
 	}
-	game = projectCityInventoriesToLegacyCompatibilityWarehouse(game);
 	game = refreshWorldProgress(game);
 
 	const invariantDiagnostics = validateBuiltScenarioInvariants(definition, game, refs);

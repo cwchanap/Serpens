@@ -42,7 +42,8 @@ function productionReport(): DailyProductionReport {
 		warehouseCapacity: 100,
 		warehouseUsed: 0,
 		railShipments: [],
-		railUsage: {}
+		railUsage: {},
+		cityInventories: []
 	};
 }
 
@@ -61,7 +62,8 @@ function product(overrides: Partial<DailyProductReport> = {}): DailyProductRepor
 		importedUnits: 0,
 		importCost: 0,
 		importSpend: 0,
-		...overrides
+		...overrides,
+		replenishmentOutcome: overrides.replenishmentOutcome ?? null
 	};
 }
 
@@ -88,7 +90,8 @@ function storeReport(
 		marketPosition: 100,
 		productReports,
 		warnings: [],
-		...overrides
+		...overrides,
+		replenishment: overrides.replenishment ?? null
 	};
 }
 
@@ -204,7 +207,8 @@ function game(overrides: Partial<GameState> = {}): GameState {
 		industryCities: [],
 		activeIndustryCityId: 'industry-city',
 		industrialBuildings: [],
-		warehouse: { capacity: 100, materials: {}, overflowUnits: 0, overflowCost: 0 },
+		cityInventories: [],
+		retailSupplyAssignments: [],
 		stores: [],
 		staff: [],
 		hiringCandidates: [],
@@ -298,8 +302,7 @@ function metricGame(): GameState {
 				overflowUnits: 0,
 				overflowCost: 0
 			}
-		],
-		warehouse: { capacity: 200, materials: { water: 59 }, overflowUnits: 0, overflowCost: 0 }
+		]
 	});
 }
 

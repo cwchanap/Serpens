@@ -83,13 +83,7 @@ describe('buildSupplyAdvisor', () => {
 		const game: GameState = {
 			...opened,
 			activeIndustryCityId: 'industry-city',
-			warehouse: {
-				capacity: 999,
-				materials: { water: 99, 'bottled-water': 99 },
-				overflowUnits: 0,
-				overflowCost: 0
-			},
-			cityInventories: opened.cityInventories!.map((inventory) =>
+			cityInventories: opened.cityInventories.map((inventory) =>
 				inventory.cityId === 'breadbasket-basin'
 					? { ...inventory, capacity: 200, materials: { water: 12, 'bottled-water': 4 } }
 					: { ...inventory, capacity: 200, materials: {} }

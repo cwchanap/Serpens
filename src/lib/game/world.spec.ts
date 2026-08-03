@@ -47,12 +47,8 @@ function gameStub(overrides: Partial<GameState> = {}): GameState {
 		industryCities: [],
 		activeIndustryCityId: 'industry-city',
 		industrialBuildings: [],
-		warehouse: {
-			capacity: 0,
-			materials: {},
-			overflowUnits: 0,
-			overflowCost: 0
-		},
+		cityInventories: [],
+		retailSupplyAssignments: [],
 		stores: [],
 		staff: [],
 		hiringCandidates: [],
@@ -315,17 +311,17 @@ describe('world progression and city opening', () => {
 		);
 
 		expect(
-			capacityWinner.retailSupplyAssignments?.find(
+			capacityWinner.retailSupplyAssignments.find(
 				(assignment) => assignment.retailCityId === 'campus-junction'
 			)
 		).toEqual({ retailCityId: 'campus-junction', supplyCityId: 'breadbasket-basin' });
 		expect(
-			activeTieWinner.retailSupplyAssignments?.find(
+			activeTieWinner.retailSupplyAssignments.find(
 				(assignment) => assignment.retailCityId === 'campus-junction'
 			)
 		).toEqual({ retailCityId: 'campus-junction', supplyCityId: 'breadbasket-basin' });
 		expect(
-			catalogTieWinner.retailSupplyAssignments?.find(
+			catalogTieWinner.retailSupplyAssignments.find(
 				(assignment) => assignment.retailCityId === 'campus-junction'
 			)
 		).toEqual({ retailCityId: 'campus-junction', supplyCityId: 'industry-city' });
@@ -348,7 +344,7 @@ describe('world progression and city opening', () => {
 		);
 
 		expect(
-			opened.retailSupplyAssignments?.find(
+			opened.retailSupplyAssignments.find(
 				(assignment) => assignment.retailCityId === 'campus-junction'
 			)
 		).toEqual({ retailCityId: 'campus-junction', supplyCityId: null });
@@ -495,7 +491,8 @@ describe('world progression and city opening', () => {
 						warehouseCapacity: 0,
 						warehouseUsed: 0,
 						railShipments: [],
-						railUsage: {}
+						railUsage: {},
+						cityInventories: []
 					},
 					storeReports: [],
 					modifierImpacts: [],
@@ -525,8 +522,7 @@ describe('world progression and city opening', () => {
 		const game: GameState = {
 			...opened,
 			activeIndustryCityId: 'industry-city',
-			warehouse: { ...opened.warehouse, materials: {} },
-			cityInventories: opened.cityInventories!.map((inventory) =>
+			cityInventories: opened.cityInventories.map((inventory) =>
 				inventory.cityId === 'breadbasket-basin'
 					? { ...inventory, materials: { snacks: 1 } }
 					: inventory
@@ -608,7 +604,8 @@ describe('world progression and city opening', () => {
 						warehouseCapacity: 0,
 						warehouseUsed: 0,
 						railShipments: [],
-						railUsage: {}
+						railUsage: {},
+						cityInventories: []
 					},
 					storeReports: [],
 					modifierImpacts: [],
@@ -655,7 +652,6 @@ describe('world progression and city opening', () => {
 		// Warehouse is empty but the latest report records locally produced snacks.
 		const withProducedReport = refreshWorldProgress({
 			...rawGame,
-			warehouse: { ...rawGame.warehouse, materials: {} },
 			reports: [
 				{
 					day: rawGame.day,
@@ -702,7 +698,8 @@ describe('world progression and city opening', () => {
 						warehouseCapacity: 100,
 						warehouseUsed: 0,
 						railShipments: [],
-						railUsage: {}
+						railUsage: {},
+						cityInventories: []
 					},
 					storeReports: [],
 					modifierImpacts: [],
@@ -782,7 +779,8 @@ describe('world progression and city opening', () => {
 						warehouseCapacity: 0,
 						warehouseUsed: 0,
 						railShipments: [],
-						railUsage: {}
+						railUsage: {},
+						cityInventories: []
 					},
 					storeReports: [],
 					modifierImpacts: [],
@@ -852,7 +850,8 @@ describe('world progression and city opening', () => {
 						warehouseCapacity: 0,
 						warehouseUsed: 0,
 						railShipments: [],
-						railUsage: {}
+						railUsage: {},
+						cityInventories: []
 					},
 					storeReports: [],
 					modifierImpacts: [],
@@ -916,7 +915,8 @@ describe('world progression and city opening', () => {
 						warehouseCapacity: 0,
 						warehouseUsed: 0,
 						railShipments: [],
-						railUsage: {}
+						railUsage: {},
+						cityInventories: []
 					},
 					storeReports: [],
 					modifierImpacts: [],

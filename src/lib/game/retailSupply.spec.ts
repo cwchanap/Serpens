@@ -49,7 +49,7 @@ function withIndustryMaterials(
 ): GameState {
 	return {
 		...game,
-		cityInventories: game.cityInventories!.map((inventory) =>
+		cityInventories: game.cityInventories.map((inventory) =>
 			inventory.cityId === 'industry-city'
 				? {
 						...inventory,
@@ -286,7 +286,7 @@ describe('weekly retail replenishment', () => {
 		expect(report.warehouseUnits).toBe(0);
 		expect(report.importedUnits).toBe(21);
 		expect(report.replenishmentOutcome).toBe('unassigned-import');
-		expect(result.cityInventories![0]!.materials.snacks).toBe(21);
+		expect(result.cityInventories[0]!.materials.snacks).toBe(21);
 		expect(result.storeReplenishmentContexts.get(game.stores[0]!.id)).toEqual({
 			retailCityId: 'harbor-city',
 			configuredSupplyCityId: null,
@@ -295,16 +295,12 @@ describe('weekly retail replenishment', () => {
 		expect(result).not.toHaveProperty('warehouse');
 	});
 
-	test('does not use or copy the legacy aggregate warehouse when a source inventory is missing', () => {
-		expect.assertions(6);
+	test('falls back to imports when a configured source inventory is missing', () => {
+		expect.assertions(5);
 		const base = withOneReplenishmentProduct(createNewGame('convenience', 292_514));
 		const game = {
 			...base,
-			cityInventories: [],
-			warehouse: {
-				...base.warehouse,
-				materials: { snacks: 21 }
-			}
+			cityInventories: []
 		};
 
 		const result = applyWeeklyReplenishment({ game, storeReports: new Map() });
@@ -314,31 +310,7 @@ describe('weekly retail replenishment', () => {
 		expect(report.importedUnits).toBe(21);
 		expect(report.replenishmentOutcome).toBe('source-unavailable-import');
 		expect(result.cityInventories).toEqual([]);
-		expect(result).not.toHaveProperty('warehouse');
-		expect(game.warehouse.materials).toEqual({ snacks: 21 });
-	});
-
-	test('preserves an absent-city-inventory legacy aggregate without treating it as a source', () => {
-		expect.assertions(6);
-		const base = withOneReplenishmentProduct(createNewGame('convenience', 292_516));
-		const game = {
-			...base,
-			cityInventories: undefined,
-			warehouse: {
-				...base.warehouse,
-				materials: { snacks: 21 }
-			}
-		};
-
-		const result = applyWeeklyReplenishment({ game, storeReports: new Map() });
-		const report = result.productReports.get(game.stores[0]!.id)![0]!;
-
-		expect(report.warehouseUnits).toBe(0);
-		expect(report.importedUnits).toBe(21);
-		expect(report.replenishmentOutcome).toBe('source-unavailable-import');
-		expect(result.cityInventories).toBeUndefined();
-		expect(result).not.toHaveProperty('warehouse');
-		expect(game.warehouse.materials).toEqual({ snacks: 21 });
+		expect(result.cityInventories).not.toBe(game.cityInventories);
 	});
 
 	test('merges replenishment fields onto the existing daily sales row', () => {
@@ -364,7 +336,8 @@ describe('weekly retail replenishment', () => {
 						warehouseValue: 0,
 						importedUnits: 0,
 						importCost: 99,
-						importSpend: 0
+						importSpend: 0,
+						replenishmentOutcome: null
 					}
 				]
 			]
@@ -553,7 +526,7 @@ describe('weekly retail replenishment', () => {
 
 		expect(game.stores.slice(0, 2).map((store) => store.id)).toEqual(['store-2', 'store-10']);
 		expect(result.stores.map((store) => store.id)).toEqual(storeIds);
-		expect(result.cityInventories![0]!.materials['bottled-water']).toBe(0);
+		expect(result.cityInventories[0]!.materials['bottled-water']).toBe(0);
 		expect(first.warehouseUnits).toBe(10);
 		expect(first.importedUnits).toBe(0);
 		expect(second.importedUnits).toBe(10);
@@ -564,7 +537,7 @@ describe('weekly retail replenishment', () => {
 		const base = createOpenedMultiCityFixture();
 		const game = {
 			...base,
-			cityInventories: base.cityInventories!.map((inventory) =>
+			cityInventories: base.cityInventories.map((inventory) =>
 				inventory.cityId === 'industry-city'
 					? {
 							...inventory,
@@ -668,8 +641,8 @@ describe('weekly retail replenishment', () => {
 		const report = result.productReports.get(game.stores[0]!.id)![0]!;
 
 		expect(result.stores[0]!.products[0]!.stock).toBe(25);
-		expect(result.cityInventories![0]!.materials.snacks).toBe(12);
-		expect('apparel' in result.cityInventories![0]!.materials).toBe(false);
+		expect(result.cityInventories[0]!.materials.snacks).toBe(12);
+		expect('apparel' in result.cityInventories[0]!.materials).toBe(false);
 		expect(report.warehouseUnits).toBe(0);
 		expect(report.importedUnits).toBe(21);
 		expect(report.replenishmentOutcome).toBe('import-only');

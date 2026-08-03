@@ -4,7 +4,6 @@ import {
 	DEFAULT_RETAIL_CITY_WIDTH,
 	generateCity
 } from '$lib/game/city';
-import { projectCityInventoriesToLegacyWarehouse } from '$lib/game/legacyWarehouse';
 import { createFoundingGameAtTile } from '$lib/game/placement';
 import { getTotalDebt } from '$lib/game/finance';
 import { normalizeSeed } from '$lib/game/rng';
@@ -334,9 +333,7 @@ describe('buildScenarioGame', { timeout: 30_000 }, () => {
 			{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' },
 			{ retailCityId: 'campus-junction', supplyCityId: 'industry-city' }
 		]);
-		expect(result.game.warehouse).toEqual(
-			projectCityInventoriesToLegacyWarehouse(result.game.cityInventories!)
-		);
+		expect(result.game).not.toHaveProperty('warehouse');
 		expect(result.game.world.revealedCityIds).toEqual([
 			'harbor-city',
 			'industry-city',
@@ -417,9 +414,7 @@ describe('buildScenarioGame', { timeout: 30_000 }, () => {
 			{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' },
 			{ retailCityId: 'campus-junction', supplyCityId: 'breadbasket-basin' }
 		]);
-		expect(result.game.warehouse).toEqual(
-			projectCityInventoriesToLegacyWarehouse(result.game.cityInventories!)
-		);
+		expect(result.game).not.toHaveProperty('warehouse');
 	});
 
 	it('restores authored finances after transiently funding builds and upgrades', () => {
@@ -957,7 +952,7 @@ describe('launch catalog setup isolation', { timeout: 30_000 }, () => {
 			expect(first.game.industryCities).not.toBe(second.game.industryCities);
 			expect(first.game.stores).not.toBe(second.game.stores);
 			expect(first.game.industrialBuildings).not.toBe(second.game.industrialBuildings);
-			expect(first.game.warehouse).not.toBe(second.game.warehouse);
+			expect(first.game.cityInventories).not.toBe(second.game.cityInventories);
 			expect(first.game.reports).not.toBe(second.game.reports);
 		}
 	});

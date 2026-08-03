@@ -14,7 +14,6 @@ import {
 	serviceFinanceForDay
 } from './finance';
 import { simulateIndustryProduction } from './industryProduction';
-import { projectCityInventoriesToLegacyWarehouse } from './legacyWarehouse';
 import { clampScore } from './reports';
 import { createRngFromState, randomBetween } from './rng';
 import {
@@ -217,11 +216,6 @@ export function simulateDay(
 		scorecard,
 		stores: storeResults.map((result) => result.store),
 		cityInventories: replenishmentResult.cityInventories,
-		// The legacy aggregate remains a one-way projection for deferred readers.
-		// It is never used as replenishment input or copied into a city inventory.
-		warehouse: replenishmentResult.cityInventories
-			? projectCityInventoriesToLegacyWarehouse(replenishmentResult.cityInventories)
-			: productionGame.warehouse,
 		hiringCandidates,
 		staff: staffWithXp
 	};
@@ -766,7 +760,7 @@ function getStoreProductReports(
 		const existing = reports.find((report) => report.categoryId === product.categoryId);
 
 		if (existing) {
-			return { ...existing, replenishmentOutcome: existing.replenishmentOutcome ?? null };
+			return existing;
 		}
 
 		const category = getArchetype(store.archetypeId).startingCategories.find(

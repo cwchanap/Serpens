@@ -11,7 +11,6 @@ import {
 import { recalculateCityInventoryPressure } from '../lib/game/cityInventory';
 import { estimateNextLoanPayment, getScheduledPrincipalForInstallment } from '../lib/game/finance';
 import { buildIndustrialBuilding } from '../lib/game/industryPlacement';
-import { projectCityInventoriesToLegacyWarehouse } from '../lib/game/legacyWarehouse';
 import { openStoreAtTile } from '../lib/game/placement';
 import { createNewGame } from '../lib/game/state';
 import { calculateStockHealth } from '../lib/game/stock';
@@ -317,7 +316,7 @@ function cityLocalInventoryLifecycleGame(): GameState {
 			stockHealth: calculateStockHealth(products)
 		};
 	});
-	const cityInventories = game.cityInventories?.map((inventory) => {
+	const cityInventories = game.cityInventories.map((inventory) => {
 		if (inventory.cityId === 'industry-city') {
 			return recalculateCityInventoryPressure({
 				...inventory,
@@ -333,7 +332,7 @@ function cityLocalInventoryLifecycleGame(): GameState {
 		return inventory;
 	});
 
-	if (!cityInventories || cityInventories.length !== 2) {
+	if (cityInventories.length !== 2) {
 		throw new Error('Expected exactly two initialized city inventories.');
 	}
 
@@ -346,8 +345,7 @@ function cityLocalInventoryLifecycleGame(): GameState {
 		retailSupplyAssignments: [
 			{ retailCityId: 'harbor-city', supplyCityId: null },
 			{ retailCityId: 'campus-junction', supplyCityId: 'breadbasket-basin' }
-		],
-		warehouse: projectCityInventoriesToLegacyWarehouse(cityInventories)
+		]
 	};
 }
 
@@ -455,20 +453,17 @@ interface SavedGame {
 			targetStock: number;
 		}>;
 	}>;
-	cityInventories?: Array<{
+	cityInventories: Array<{
 		cityId: string;
 		capacity: number;
 		materials: Record<string, number | undefined>;
 		overflowUnits: number;
 		overflowCost: number;
 	}>;
-	retailSupplyAssignments?: Array<{
+	retailSupplyAssignments: Array<{
 		retailCityId: string;
 		supplyCityId: string | null;
 	}>;
-	warehouse: {
-		materials: Record<string, number | undefined>;
-	};
 	events: {
 		activeModifiers: Array<{
 			id: string;
@@ -939,7 +934,7 @@ function getSavedStoreInCity(game: SavedGame, cityId: string) {
 }
 
 function getSavedCityInventory(game: SavedGame, cityId: string) {
-	const inventory = game.cityInventories?.find((candidate) => candidate.cityId === cityId);
+	const inventory = game.cityInventories.find((candidate) => candidate.cityId === cityId);
 
 	if (!inventory) {
 		throw new Error(`Missing saved city inventory for ${cityId}.`);

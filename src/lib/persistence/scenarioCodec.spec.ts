@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { recalculateCityInventoryPressure } from '$lib/game/cityInventory';
-import { projectCityInventoriesToLegacyWarehouse } from '$lib/game/legacyWarehouse';
 import { simulateDay } from '$lib/game/simulateDay';
 import { createNewGame } from '$lib/game/state';
 import type { GameState } from '$lib/game/types';
@@ -221,7 +220,7 @@ function fixtureRun(
 
 function v11RunRecord(run: ScenarioRun, revision = 0): ScenarioRunRecord {
 	const record = runRecord(run, revision);
-	const legacyGame = structuredClone(run.game) as unknown as Record<string, unknown>;
+	const legacyGame = toLegacyV12WarehouseWireGame(run.game) as unknown as Record<string, unknown>;
 	delete legacyGame.events;
 	legacyGame.decisions = [
 		{
@@ -271,6 +270,24 @@ function v11RunRecord(run: ScenarioRun, revision = 0): ScenarioRunRecord {
 	};
 }
 
+function toLegacyV12WarehouseWireGame(game: GameState): GameState {
+	const legacyGame = structuredClone(game) as unknown as Record<string, unknown>;
+	const activeInventory =
+		game.cityInventories.find((inventory) => inventory.cityId === game.activeIndustryCityId) ??
+		game.cityInventories[0];
+
+	legacyGame.warehouse = {
+		capacity: activeInventory?.capacity ?? 0,
+		materials: { ...(activeInventory?.materials ?? {}) },
+		overflowUnits: activeInventory?.overflowUnits ?? 0,
+		overflowCost: activeInventory?.overflowCost ?? 0
+	};
+	delete legacyGame.cityInventories;
+	delete legacyGame.retailSupplyAssignments;
+
+	return legacyGame as unknown as GameState;
+}
+
 function cityInventoryMetricDefinition(): ScenarioDefinition {
 	const definition = fixtureDefinition({ scenarioId: 'first-profit', version: 1 });
 	const query = {
@@ -309,7 +326,6 @@ function cityInventoryMetricDefinition(): ScenarioDefinition {
 function createCityInventoryMetricGame(seed: number): GameState {
 	let game = createNewGame('convenience', seed);
 	for (let day = 0; day < 7; day += 1) game = simulateDay(game);
-	if (!game.cityInventories) throw new Error('Current game is missing city inventories.');
 
 	const cityInventories = game.cityInventories.map((inventory) =>
 		inventory.cityId === 'industry-city'
@@ -322,8 +338,7 @@ function createCityInventoryMetricGame(seed: number): GameState {
 
 	return {
 		...game,
-		cityInventories,
-		warehouse: projectCityInventoriesToLegacyWarehouse(cityInventories)
+		cityInventories
 	};
 }
 
@@ -344,6 +359,13 @@ function createCityInventoryMetricRun(definition: ScenarioDefinition): ScenarioR
 function v12CityInventoryMetricRunRecord(run: ScenarioRun, revision: number): ScenarioRunRecord {
 	const record = runRecord(run, revision);
 	const legacyGame = structuredClone(run.game) as unknown as Record<string, unknown>;
+	const sourceInventory = run.game.cityInventories[0]!;
+	legacyGame.warehouse = {
+		capacity: sourceInventory.capacity,
+		materials: { ...sourceInventory.materials },
+		overflowUnits: sourceInventory.overflowUnits,
+		overflowCost: sourceInventory.overflowCost
+	};
 	delete legacyGame.cityInventories;
 	delete legacyGame.retailSupplyAssignments;
 	for (const report of legacyGame.reports as Array<Record<string, unknown>>) {
@@ -1568,7 +1590,7 @@ describe('scenario codec', () => {
 	it('migrates an older embedded game but never applies sandbox normalization', () => {
 		const active = fixtureRun();
 		const legacyRecord = runRecord(active);
-		const legacyGame = structuredClone(active.game) as GameState;
+		const legacyGame = toLegacyV12WarehouseWireGame(active.game);
 		for (const city of legacyGame.industryCities) {
 			delete (city as unknown as Record<string, unknown>).rails;
 		}
@@ -1678,11 +1700,9 @@ describe('scenario codec', () => {
 		expect(migratedGame.retailSupplyAssignments).toEqual([
 			{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' }
 		]);
-		expect(migratedGame.warehouse).toEqual(
-			projectCityInventoriesToLegacyWarehouse(migratedGame.cityInventories!)
-		);
+		expect(migratedGame).not.toHaveProperty('warehouse');
 		expect(
-			migratedGame.cityInventories!.reduce(
+			migratedGame.cityInventories.reduce(
 				(totals, inventory) => ({
 					water: totals.water + (inventory.materials.water ?? 0),
 					grain: totals.grain + (inventory.materials.grain ?? 0)

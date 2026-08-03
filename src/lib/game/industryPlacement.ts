@@ -20,7 +20,6 @@ import type { DecisionContext } from './decisionContext';
 import { refreshWorldProgress } from './world';
 import { runExpansionPurchase } from './expansionFinancing';
 import type { FinanceActionResult, FinancedPurchaseReceipt } from './finance';
-import { getWarehouseCapacity, recalculateWarehousePressure } from './legacyWarehouse';
 import { synchronizeCityInventoryCapacity } from './cityInventory';
 import type {
 	DecisionItem,
@@ -206,20 +205,10 @@ export function buildIndustrialBuilding(
 		cash: game.cash - buildingType.buildCost,
 		industrialBuildings: [...game.industrialBuildings, building]
 	};
-	// Recalculating warehouse capacity/pressure inline and wrapping in
-	// refreshWorldProgress is intentional (commit a6b9e40, "fix: enforce strict
-	// game state invariants"): adding an industrial building changes derived
-	// warehouse capacity, so the post-transition state must be re-normalized to
-	// pass the strict invariants that scenario setup validation enforces. Do not
-	// revert this to returning builtGame directly.
-	const nextGame = refreshWorldProgress({
-		...builtGame,
-		warehouse: recalculateWarehousePressure({
-			...builtGame.warehouse,
-			capacity: getWarehouseCapacity(builtGame),
-			materials: { ...builtGame.warehouse.materials }
-		})
-	});
+	// Adding a warehouse building changes the owning city's derived capacity.
+	// Keep world progress and city-local inventory invariants current before
+	// exposing the transition result to scenario validation.
+	const nextGame = refreshWorldProgress(builtGame);
 
 	return synchronizeCityInventoryCapacity(nextGame, building.cityId);
 }

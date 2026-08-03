@@ -402,12 +402,8 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 		],
 		activeIndustryCityId: 'industry-city',
 		industrialBuildings: [],
-		warehouse: {
-			capacity: 0,
-			materials: {},
-			overflowUnits: 0,
-			overflowCost: 0
-		},
+		cityInventories: [],
+		retailSupplyAssignments: [],
 		stores: [createStore({ id: 'store-1', archetypeId: 'convenience' })],
 		staff: [],
 		hiringCandidates: [],

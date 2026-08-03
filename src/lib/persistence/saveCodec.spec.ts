@@ -11,10 +11,9 @@ import {
 	getIndustrialPlacementBlockReason
 } from '$lib/game/industryPlacement';
 import {
-	getWarehouseCapacity,
-	projectCityInventoriesToLegacyWarehouse,
-	recalculateWarehousePressure
-} from '$lib/game/legacyWarehouse';
+	getCityWarehouseCapacity,
+	recalculateCityInventoryPressure
+} from '$lib/game/cityInventory';
 import { formatLocation } from '$lib/game/placement';
 import type { DecisionContext } from '$lib/game/decisionContext';
 import { simulateDay } from '$lib/game/simulateDay';
@@ -163,12 +162,6 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 			}
 		],
 		retailSupplyAssignments: [{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' }],
-		warehouse: {
-			capacity: 0,
-			materials: {},
-			overflowUnits: 0,
-			overflowCost: 0
-		},
 		stores: [
 			{
 				id: 'store-1',
@@ -200,6 +193,15 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 	};
 }
 
+type V12GameFixture = Omit<GameState, 'cityInventories' | 'retailSupplyAssignments'> & {
+	warehouse: {
+		capacity: number;
+		materials: Partial<Record<MaterialId, number>>;
+		overflowUnits: number;
+		overflowCost: number;
+	};
+};
+
 type SaveRecordOverrides = Partial<Omit<SaveRecord, 'game' | 'metadata'>> & {
 	game?: Partial<GameState>;
 	metadata?: Partial<SaveRecord['metadata']>;
@@ -227,9 +229,34 @@ function createManualSaveRecord(overrides: SaveRecordOverrides = {}): SaveRecord
 	};
 }
 
+function toLegacyV12WarehouseWireGame(game: GameState): GameState {
+	const legacyGame = structuredClone(game) as unknown as Record<string, unknown>;
+	const activeInventory =
+		game.cityInventories.find((inventory) => inventory.cityId === game.activeIndustryCityId) ??
+		game.cityInventories[0];
+
+	legacyGame.warehouse = {
+		capacity: activeInventory?.capacity ?? 0,
+		materials: { ...(activeInventory?.materials ?? {}) },
+		overflowUnits: activeInventory?.overflowUnits ?? 0,
+		overflowCost: activeInventory?.overflowCost ?? 0
+	};
+	delete legacyGame.cityInventories;
+	delete legacyGame.retailSupplyAssignments;
+
+	return legacyGame as unknown as GameState;
+}
+
+function createLegacyV12SaveRecord(overrides: SaveRecordOverrides = {}): SaveRecord {
+	const current = createManualSaveRecord(overrides);
+	return { ...current, game: toLegacyV12WarehouseWireGame(current.game) };
+}
+
 function createV4Record(overrides: SaveRecordOverrides = {}): SaveRecord {
+	const current = createManualSaveRecord(overrides);
 	return {
-		...createManualSaveRecord(overrides),
+		...current,
+		game: toLegacyV12WarehouseWireGame(current.game),
 		schemaVersion: 4 as unknown as typeof SAVE_SCHEMA_VERSION
 	};
 }
@@ -244,15 +271,19 @@ function metadataWithoutActiveCityId(
 }
 
 function createV5Record(overrides: SaveRecordOverrides = {}): SaveRecord {
+	const current = createManualSaveRecord(overrides);
 	return {
-		...createManualSaveRecord(overrides),
+		...current,
+		game: toLegacyV12WarehouseWireGame(current.game),
 		schemaVersion: 5 as unknown as typeof SAVE_SCHEMA_VERSION
 	};
 }
 
 function createV6Record(overrides: SaveRecordOverrides = {}): SaveRecord {
+	const current = createManualSaveRecord(overrides);
 	return {
-		...createManualSaveRecord(overrides),
+		...current,
+		game: toLegacyV12WarehouseWireGame(current.game),
 		schemaVersion: 6 as unknown as typeof SAVE_SCHEMA_VERSION
 	};
 }
@@ -315,7 +346,7 @@ function createV10Record(input: { debt: number; day?: number; reports?: unknown[
 	return {
 		...current,
 		schemaVersion: 10 as unknown as typeof SAVE_SCHEMA_VERSION,
-		game: game as unknown as GameState
+		game: toLegacyV12WarehouseWireGame(game as unknown as GameState)
 	};
 }
 
@@ -351,10 +382,10 @@ function createDailyProductionReport(
 		warehouseUsed: 0,
 		railShipments: [],
 		railUsage: {},
-		cityInventories: [
+		...overrides,
+		cityInventories: overrides.cityInventories ?? [
 			{ cityId: 'industry-city', capacity: 0, used: 0, overflowUnits: 0, overflowCost: 0 }
-		],
-		...overrides
+		]
 	};
 }
 
@@ -416,8 +447,8 @@ function createDailyStoreReport(overrides: Partial<DailyStoreReport> = {}): Dail
 		marketPosition: 50,
 		productReports: [],
 		warnings: [],
-		replenishment: null,
-		...overrides
+		...overrides,
+		replenishment: overrides.replenishment ?? null
 	};
 }
 
@@ -452,14 +483,7 @@ function createValidWarehouseBuildingGame(): GameState {
 		tileId: tile.id,
 		buildingTypeId: 'warehouse'
 	});
-	return {
-		...built,
-		warehouse: recalculateWarehousePressure({
-			...built.warehouse,
-			capacity: getWarehouseCapacity(built),
-			materials: { ...built.warehouse.materials }
-		})
-	};
+	return built;
 }
 
 function createCurrentV13MultiCityGame(): GameState {
@@ -477,7 +501,7 @@ function createCurrentV13MultiCityGame(): GameState {
 
 	return {
 		...game,
-		cityInventories: game.cityInventories!.map((inventory) =>
+		cityInventories: game.cityInventories.map((inventory) =>
 			inventory.cityId === 'industry-city'
 				? {
 						...inventory,
@@ -497,7 +521,9 @@ function createCurrentV13MultiCityGame(): GameState {
 	};
 }
 
-function createV12MultiCityGame(legacyMaterials: Partial<Record<MaterialId, number>>): GameState {
+function createV12MultiCityGame(
+	legacyMaterials: Partial<Record<MaterialId, number>>
+): V12GameFixture {
 	let game = createValidWarehouseBuildingGame();
 	game = {
 		...game,
@@ -519,14 +545,28 @@ function createV12MultiCityGame(legacyMaterials: Partial<Record<MaterialId, numb
 		buildingTypeId: 'warehouse'
 	});
 
+	const {
+		cityInventories: _cityInventories,
+		retailSupplyAssignments: _assignments,
+		...legacyGame
+	} = game;
+	void _cityInventories;
+	void _assignments;
+	const capacity = game.cityInventories.reduce((total, inventory) => total + inventory.capacity, 0);
+	const used = Object.values(legacyMaterials).reduce(
+		(total, quantity) => total + (quantity ?? 0),
+		0
+	);
+	const overflowUnits = Math.max(0, used - capacity);
 	return {
-		...game,
+		...legacyGame,
 		activeIndustryCityId: 'industry-city',
-		warehouse: recalculateWarehousePressure({
-			...game.warehouse,
-			capacity: getWarehouseCapacity(game),
-			materials: { ...legacyMaterials }
-		})
+		warehouse: {
+			capacity,
+			materials: { ...legacyMaterials },
+			overflowUnits,
+			overflowCost: overflowUnits * 2
+		}
 	};
 }
 
@@ -534,13 +574,6 @@ function createV12MultiCityRecord(
 	legacyMaterials: Partial<Record<MaterialId, number>>
 ): SaveRecord {
 	const game = createV12MultiCityGame(legacyMaterials);
-	const {
-		cityInventories: _cityInventories,
-		retailSupplyAssignments: _retailSupplyAssignments,
-		...legacyGame
-	} = game;
-	void _cityInventories;
-	void _retailSupplyAssignments;
 	const template = createManualSaveRecord();
 
 	return {
@@ -548,25 +581,25 @@ function createV12MultiCityRecord(
 		schemaVersion: 12 as unknown as typeof SAVE_SCHEMA_VERSION,
 		metadata: {
 			...template.metadata,
-			day: legacyGame.day,
-			cash: legacyGame.cash,
-			storeCount: legacyGame.stores.length,
-			activeCityId: legacyGame.activeCityId
+			day: game.day,
+			cash: game.cash,
+			storeCount: game.stores.length,
+			activeCityId: game.activeCityId
 		},
-		game: legacyGame as GameState
+		game: game as unknown as GameState
 	};
 }
 
-function createLegacyV12Report(game: GameState): DailyReport {
-	const primaryWarehouseId = game.industrialBuildings.find(
+function createLegacyV12Report(legacyV12Game: V12GameFixture): DailyReport {
+	const primaryWarehouseId = legacyV12Game.industrialBuildings.find(
 		(building) => building.typeId === 'warehouse' && building.cityId === 'industry-city'
 	)!.id;
-	const categoryId = game.stores[0]!.products[0]!.categoryId;
+	const categoryId = legacyV12Game.stores[0]!.products[0]!.categoryId;
 	const report = createDailyReport({
-		day: game.day,
+		day: legacyV12Game.day,
 		importSpend: 6,
 		productionReport: createDailyProductionReport({
-			warehouseCapacity: game.warehouse.capacity,
+			warehouseCapacity: legacyV12Game.warehouse.capacity,
 			warehouseUsed: 3,
 			overflowUnits: 0,
 			overflowCost: 0,
@@ -586,7 +619,7 @@ function createLegacyV12Report(game: GameState): DailyReport {
 		}),
 		storeReports: [
 			createDailyStoreReport({
-				storeId: game.stores[0]!.id,
+				storeId: legacyV12Game.stores[0]!.id,
 				importSpend: 6,
 				productReports: [
 					{
@@ -634,7 +667,9 @@ function createV12RecordWithSwappedEqualShopImports(): SaveRecord {
 		location: formatLocation(campusTile)
 	};
 	const game = { ...record.game, stores: [...record.game.stores, campusStore] };
-	const legacyReport = createLegacyV12Report(game) as unknown as Record<string, unknown>;
+	const legacyReport = createLegacyV12Report(
+		game as unknown as V12GameFixture
+	) as unknown as Record<string, unknown>;
 	const storeReports = legacyReport.storeReports as Array<Record<string, unknown>>;
 	const harborStoreReport = storeReports[0]!;
 	const product = (harborStoreReport.productReports as Array<Record<string, unknown>>)[0]!;
@@ -936,7 +971,10 @@ function createV11Record(decisions: unknown[]): SaveRecord {
 		kind: 'manual',
 		updatedAt: new Date('2026-07-31T12:00:00.000Z')
 	});
-	const legacyGame = structuredClone(record.game) as unknown as Record<string, unknown>;
+	const legacyGame = toLegacyV12WarehouseWireGame(record.game) as unknown as Record<
+		string,
+		unknown
+	>;
 	delete legacyGame.events;
 	legacyGame.reports = (legacyGame.reports as Array<Record<string, unknown>>).map((report) => {
 		const {
@@ -1133,7 +1171,7 @@ function createBareMigrationFixture(sourceVersion: number): unknown {
 		};
 	}
 
-	return game;
+	return toLegacyV12WarehouseWireGame(game as unknown as GameState);
 }
 
 describe('saveCodec', () => {
@@ -1164,17 +1202,12 @@ describe('saveCodec', () => {
 			{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' },
 			{ retailCityId: 'campus-junction', supplyCityId: 'industry-city' }
 		]);
-		expect(migrated.game.warehouse).toEqual({
-			capacity: 400,
-			materials: { water: 300 },
-			overflowUnits: 0,
-			overflowCost: 0
-		});
+		expect(migrated.game).not.toHaveProperty('warehouse');
 	});
 
 	test('migrates pre-v13 refill evidence to explicit unknown attribution without changing its numbers', () => {
 		const record = createV12MultiCityRecord({ water: 3 });
-		record.game.reports = [createLegacyV12Report(record.game)];
+		record.game.reports = [createLegacyV12Report(record.game as unknown as V12GameFixture)];
 
 		expect(() => validateSaveRecord(record)).not.toThrow();
 		const migrated = validateSaveRecord(record);
@@ -1246,7 +1279,7 @@ describe('saveCodec', () => {
 		record.game = {
 			...record.game,
 			activeIndustryCityId: 'breadbasket-basin',
-			reports: [createLegacyV12Report(record.game)]
+			reports: [createLegacyV12Report(record.game as unknown as V12GameFixture)]
 		};
 
 		expect(() => validateSaveRecord(record)).not.toThrow();
@@ -1258,7 +1291,7 @@ describe('saveCodec', () => {
 
 	test('uses recoverable city evidence for rail and shop imports while marking unresolvable production rows as primary provenance', () => {
 		const record = createV12MultiCityRecord({ water: 3 });
-		record.game.reports = [createLegacyV12Report(record.game)];
+		record.game.reports = [createLegacyV12Report(record.game as unknown as V12GameFixture)];
 
 		expect(() => validateSaveRecord(record)).not.toThrow();
 		const productionReport = validateSaveRecord(record).game.reports[0]!.productionReport;
@@ -1742,7 +1775,7 @@ describe('saveCodec', () => {
 			...report,
 			productionReport: {
 				...report.productionReport,
-				cityInventories: report.productionReport.cityInventories!.map((summary, index) =>
+				cityInventories: report.productionReport.cityInventories.map((summary, index) =>
 					index === 0 ? { ...summary, overflowUnits: 1, overflowCost: 2 } : summary
 				),
 				overflowUnits: 3,
@@ -1756,33 +1789,17 @@ describe('saveCodec', () => {
 		);
 	});
 
-	test('controller review: projects canonical city inventories over a contradictory legacy aggregate', () => {
+	test('controller review: retains canonical city inventories without an aggregate field', () => {
 		const game = createCurrentV13MultiCityGame();
-		const validated = validateSaveRecord(
-			createManualSaveRecord({
-				game: {
-					...game,
-					warehouse: {
-						capacity: 9_999,
-						materials: { snacks: 77 },
-						overflowUnits: 55,
-						overflowCost: 110
-					}
-				}
-			})
-		);
+		const validated = validateSaveRecord(createManualSaveRecord({ game }));
 
-		expect(validated.game.warehouse).toEqual({
-			capacity: 200,
-			materials: { water: 5, grain: 2 },
-			overflowUnits: 2,
-			overflowCost: 4
-		});
+		expect(validated.game.cityInventories).toEqual(game.cityInventories);
+		expect(validated.game).not.toHaveProperty('warehouse');
 	});
 
 	test('controller review: classifies a safe-per-material but unsafe city-inventory total', () => {
 		const game = createCurrentV13MultiCityGame();
-		const cityInventories = game.cityInventories!.map((inventory) =>
+		const cityInventories = game.cityInventories.map((inventory) =>
 			inventory.cityId === 'industry-city'
 				? {
 						...inventory,
@@ -2107,7 +2124,7 @@ describe('saveCodec', () => {
 		]
 	])('rejects a current v13 report with %s', (_name, mutateReport) => {
 		const game = createCurrentV13MultiCityGame();
-		const report = mutateReport(createCurrentV13Report(game));
+		const report = mutateReport(createCurrentV13Report(game)) as DailyReport;
 
 		expectSaveRecordErrorCode(
 			createManualSaveRecord({ game: { ...game, reports: [report] } }),
@@ -2201,7 +2218,7 @@ describe('saveCodec', () => {
 		]
 	])('rejects a current v13 store report with %s', (_name, mutateReport) => {
 		const game = createCurrentV13MultiCityGame();
-		const report = mutateReport(createCurrentV13Report(game));
+		const report = mutateReport(createCurrentV13Report(game)) as DailyReport;
 
 		expectSaveRecordErrorCode(
 			createManualSaveRecord({ game: { ...game, reports: [report] } }),
@@ -3907,7 +3924,7 @@ describe('saveCodec', () => {
 		expect(() => migrateSavedGame(game, 4)).toThrow(SaveDataError);
 	});
 
-	test.each(['normalize-cash', 'record-report', 'snapshot-warehouse'] as const)(
+	test.each(['normalize-cash', 'record-report', 'snapshot-city-inventory'] as const)(
 		'$case maps structured-cloneable scalar coercion data to SaveDataError',
 		(testCase) => {
 			const malformed = { valueOf: {}, toString: {} };
@@ -3923,12 +3940,15 @@ describe('saveCodec', () => {
 					return validateSaveRecord(createManualSaveRecord({ game: { reports: [report] } }));
 				}
 				const game = createGame({
-					warehouse: {
-						capacity: 0,
-						materials: { water: malformed as unknown as number },
-						overflowUnits: 0,
-						overflowCost: 0
-					}
+					cityInventories: [
+						{
+							cityId: 'industry-city',
+							capacity: 0,
+							materials: { water: malformed as unknown as number },
+							overflowUnits: 0,
+							overflowCost: 0
+						}
+					]
 				});
 				return validateSaveStoreSnapshot(createSnapshotWithGame(game));
 			};
@@ -4508,11 +4528,14 @@ describe('saveCodec', () => {
 				};
 				return {
 					...withDuplicate,
-					warehouse: recalculateWarehousePressure({
-						...withDuplicate.warehouse,
-						capacity: getWarehouseCapacity(withDuplicate),
-						materials: { ...withDuplicate.warehouse.materials }
-					})
+					cityInventories: withDuplicate.cityInventories.map((inventory) =>
+						inventory.cityId === 'industry-city'
+							? recalculateCityInventoryPressure({
+									...inventory,
+									capacity: getCityWarehouseCapacity(withDuplicate, 'industry-city')
+								})
+							: inventory
+					)
 				};
 			}
 		}
@@ -4578,22 +4601,52 @@ describe('saveCodec', () => {
 	test.each([
 		{
 			name: 'capacity',
-			warehouse: { capacity: 1, materials: {}, overflowUnits: 0, overflowCost: 0 },
-			expected: { capacity: 0, materials: {}, overflowUnits: 0, overflowCost: 0 }
+			cityInventories: [
+				{ cityId: 'industry-city', capacity: 1, materials: {}, overflowUnits: 0, overflowCost: 0 }
+			],
+			expected: {
+				cityId: 'industry-city',
+				capacity: 0,
+				materials: {},
+				overflowUnits: 0,
+				overflowCost: 0
+			}
 		},
 		{
 			name: 'pressure',
-			warehouse: { capacity: 0, materials: { water: 1 }, overflowUnits: 0, overflowCost: 0 },
-			expected: { capacity: 0, materials: {}, overflowUnits: 0, overflowCost: 0 }
+			cityInventories: [
+				{
+					cityId: 'industry-city',
+					capacity: 0,
+					materials: { water: 1 },
+					overflowUnits: 0,
+					overflowCost: 0
+				}
+			],
+			expected: {
+				cityId: 'industry-city',
+				capacity: 0,
+				materials: { water: 1 },
+				overflowUnits: 1,
+				overflowCost: 2
+			}
 		}
 	])(
-		'strict validation rejects warehouse $name inconsistent with derived state while sandbox loading repairs it',
-		({ warehouse, expected }) => {
-			expect(() => validateCurrentGameState(createGame({ warehouse }))).toThrow(
-				'Saved game warehouse must be the one-way projection of authoritative city inventories'
+		'strict validation rejects city inventory $name inconsistent with derived state while sandbox loading repairs it',
+		({ cityInventories, expected }) => {
+			expect(() =>
+				validateCurrentGameState(
+					createGame({ cityInventories: cityInventories as GameState['cityInventories'] })
+				)
+			).toThrow(
+				'Saved game cityInventories[0] derived capacity and pressure must match current buildings and materials'
 			);
 			expect(
-				validateSaveRecord(createManualSaveRecord({ game: { warehouse } })).game.warehouse
+				validateSaveRecord(
+					createManualSaveRecord({
+						game: { cityInventories: cityInventories as GameState['cityInventories'] }
+					})
+				).game.cityInventories[0]
 			).toEqual(expected);
 		}
 	);
@@ -4608,10 +4661,7 @@ describe('saveCodec', () => {
 				overflowCost: 2
 			}
 		];
-		const game = createGame({
-			cityInventories,
-			warehouse: projectCityInventoriesToLegacyWarehouse(cityInventories)
-		});
+		const game = createGame({ cityInventories });
 
 		expect(validateCurrentGameState(game)).toEqual(game);
 	});
@@ -5221,7 +5271,7 @@ describe('saveCodec', () => {
 			})
 		});
 		const record = {
-			...createManualSaveRecord({ game: { reports: [report] } }),
+			...createLegacyV12SaveRecord({ game: { reports: [report] } }),
 			schemaVersion: 9 as unknown as typeof SAVE_SCHEMA_VERSION
 		};
 
@@ -5327,13 +5377,18 @@ describe('saveCodec', () => {
 		expect(() => validateSaveRecord(record)).toThrow('must be one of:');
 	});
 
-	test('validateSaveRecord rejects unknown material id in warehouse', () => {
+	test('validateSaveRecord rejects an unknown material id in city inventory', () => {
 		expect.assertions(2);
 		const game = createGame({
-			warehouse: {
-				...createGame().warehouse,
-				materials: { 'unknown-material': 10 } as Partial<Record<MaterialId, number>>
-			}
+			cityInventories: [
+				{
+					cityId: 'industry-city',
+					capacity: 0,
+					materials: { 'unknown-material': 10 } as Partial<Record<MaterialId, number>>,
+					overflowUnits: 10,
+					overflowCost: 20
+				}
+			]
 		});
 		const record = createManualSaveRecord({ game });
 
@@ -6087,7 +6142,7 @@ describe('saveCodec', () => {
 		// stable activeCityId. The ID is copied from the saved game state's
 		// activeCityId field.
 		expect.assertions(2);
-		const baseRecord = createManualSaveRecord();
+		const baseRecord = createLegacyV12SaveRecord();
 		const metadataWithoutCityId = metadataWithoutActiveCityId(baseRecord);
 		const v7Record = {
 			...baseRecord,
@@ -6108,7 +6163,7 @@ describe('saveCodec', () => {
 		// game.activeCityId is not a string, but validation subsequently
 		// rejects the game state because its activeCityId is missing.
 		expect.assertions(2);
-		const baseRecord = createManualSaveRecord();
+		const baseRecord = createLegacyV12SaveRecord();
 		const metadataWithoutCityId = metadataWithoutActiveCityId(baseRecord);
 		const v7Record = {
 			...baseRecord,
@@ -6133,7 +6188,7 @@ describe('saveCodec', () => {
 		// schemaVersion — validation then rejects the missing activeCityId.
 		expect.assertions(2);
 		const v7Record = {
-			...createManualSaveRecord(),
+			...createLegacyV12SaveRecord(),
 			schemaVersion: 7 as unknown as typeof SAVE_SCHEMA_VERSION,
 			metadata: null as unknown as SaveRecord['metadata']
 		} as unknown as SaveRecord;
@@ -6144,7 +6199,7 @@ describe('saveCodec', () => {
 
 	test('v7 migration bumps schemaVersion without activeCityId when game is not an object', () => {
 		expect.assertions(2);
-		const baseRecord = createManualSaveRecord();
+		const baseRecord = createLegacyV12SaveRecord();
 		const metadataWithoutCityId = metadataWithoutActiveCityId(baseRecord);
 		const v7Record = {
 			...baseRecord,
@@ -6161,7 +6216,7 @@ describe('saveCodec', () => {
 		// Regression: migrateV6SaveRecord must emit schema 7 (not
 		// SAVE_SCHEMA_VERSION) so the v7→v8 step runs and copies activeCityId.
 		expect.assertions(2);
-		const baseRecord = createManualSaveRecord();
+		const baseRecord = createLegacyV12SaveRecord();
 		const metadataWithoutCityId = metadataWithoutActiveCityId(baseRecord);
 		const v6Record = {
 			...baseRecord,
@@ -6179,7 +6234,7 @@ describe('saveCodec', () => {
 
 	test('v7 snapshot migration copies activeCityId into metadata for manual slots', () => {
 		expect.assertions(2);
-		const baseRecord = createManualSaveRecord();
+		const baseRecord = createLegacyV12SaveRecord();
 		const metadataWithoutCityId = metadataWithoutActiveCityId(baseRecord);
 		const v7Record = {
 			...baseRecord,
@@ -6205,7 +6260,7 @@ describe('saveCodec', () => {
 		// structured { neighborhoodId, x, y } object. The neighborhood is
 		// looked up from the saved city tile matching the store's tileId.
 		expect.assertions(3);
-		const baseRecord = createManualSaveRecord();
+		const baseRecord = createLegacyV12SaveRecord();
 		const footprintTiles = createFixtureRetailCity().tiles.map((tile) => ({
 			...tile,
 			demand: 50,
@@ -6248,7 +6303,7 @@ describe('saveCodec', () => {
 		// city was regenerated), the migration falls back to 'downtown' and
 		// copies mapX/mapY from the store record.
 		expect.assertions(1);
-		const baseRecord = createManualSaveRecord();
+		const baseRecord = createLegacyV12SaveRecord();
 		const v8Record = {
 			...baseRecord,
 			schemaVersion: 8 as unknown as typeof SAVE_SCHEMA_VERSION,
@@ -6284,7 +6339,7 @@ describe('saveCodec', () => {
 		// object. Validation subsequently rejects the corrupt store record
 		// (mapX must be finite), but the migration line still runs.
 		expect.assertions(1);
-		const baseRecord = createManualSaveRecord();
+		const baseRecord = createLegacyV12SaveRecord();
 		const v8Record = {
 			...baseRecord,
 			schemaVersion: 8 as unknown as typeof SAVE_SCHEMA_VERSION,
@@ -6309,7 +6364,7 @@ describe('saveCodec', () => {
 		// A store with a non-string location is left untouched — the migration
 		// only transforms string locations.
 		expect.assertions(1);
-		const baseRecord = createManualSaveRecord();
+		const baseRecord = createLegacyV12SaveRecord();
 		const v8Record = {
 			...baseRecord,
 			schemaVersion: 8 as unknown as typeof SAVE_SCHEMA_VERSION,
@@ -6339,7 +6394,7 @@ describe('saveCodec', () => {
 		// Validation subsequently rejects the corrupt city, but the migration
 		// branch still runs.
 		expect.assertions(1);
-		const baseRecord = createManualSaveRecord();
+		const baseRecord = createLegacyV12SaveRecord();
 		const v8Record = {
 			...baseRecord,
 			schemaVersion: 8 as unknown as typeof SAVE_SCHEMA_VERSION,
@@ -6368,7 +6423,7 @@ describe('saveCodec', () => {
 		// loop; the store defaults to 'downtown'. Validation rejects the
 		// corrupt city, but the migration branch still runs.
 		expect.assertions(1);
-		const baseRecord = createManualSaveRecord();
+		const baseRecord = createLegacyV12SaveRecord();
 		const v8Record = {
 			...baseRecord,
 			schemaVersion: 8 as unknown as typeof SAVE_SCHEMA_VERSION,
@@ -6761,9 +6816,9 @@ describe('saveCodec', () => {
 		});
 		const v9Game = stripRailFields(game);
 		const record = {
-			...createManualSaveRecord(),
+			...createLegacyV12SaveRecord(),
 			schemaVersion: 9 as unknown as typeof SAVE_SCHEMA_VERSION,
-			game: v9Game as GameState
+			game: toLegacyV12WarehouseWireGame(v9Game as GameState)
 		};
 
 		const validated = validateSaveRecord(record);
@@ -6803,9 +6858,9 @@ describe('saveCodec', () => {
 		const game = createGame({ reports: [report] });
 		const v9Game = stripRailFields(game);
 		const record = {
-			...createManualSaveRecord(),
+			...createLegacyV12SaveRecord(),
 			schemaVersion: 9 as unknown as typeof SAVE_SCHEMA_VERSION,
-			game: v9Game as GameState
+			game: toLegacyV12WarehouseWireGame(v9Game as GameState)
 		};
 
 		const validated = validateSaveRecord(record);
@@ -7128,19 +7183,26 @@ describe('saveCodec', () => {
 		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow('value must be non-negative');
 	});
 
-	test('normalizeSandboxWarehouseState returns early when warehouse capacity is non-numeric', () => {
+	test('normalization leaves a non-numeric city inventory capacity for strict validation', () => {
 		expect.assertions(2);
 		const record = createManualSaveRecord({
 			game: {
-				warehouse: {
-					...createGame().warehouse,
-					capacity: 'not-a-number' as unknown as number
-				}
+				cityInventories: [
+					{
+						cityId: 'industry-city',
+						capacity: 'not-a-number' as unknown as number,
+						materials: {},
+						overflowUnits: 0,
+						overflowCost: 0
+					}
+				]
 			}
 		});
 
 		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
-		expect(() => validateSaveRecord(record)).toThrow('warehouse capacity must be a finite number');
+		expect(() => validateSaveRecord(record)).toThrow(
+			'cityInventories[0] capacity must be a finite number'
+		);
 	});
 
 	describe('industrial building placement validation', () => {
@@ -7438,10 +7500,12 @@ describe('saveCodec', () => {
 			expect((caught as SaveDataError).code).toBe('invariant-store-cap');
 		});
 
-		test('strict validation rejects warehouse mismatch with invariant-warehouse error code', () => {
+		test('strict validation rejects city inventory mismatch with invariant-city-inventory error code', () => {
 			expect.assertions(2);
 			const game = createGame({
-				warehouse: { capacity: 1, materials: {}, overflowUnits: 0, overflowCost: 0 }
+				cityInventories: [
+					{ cityId: 'industry-city', capacity: 1, materials: {}, overflowUnits: 0, overflowCost: 0 }
+				]
 			});
 
 			let caught: unknown;
@@ -7451,7 +7515,7 @@ describe('saveCodec', () => {
 				caught = error;
 			}
 			expect(caught).toBeInstanceOf(SaveDataError);
-			expect((caught as SaveDataError).code).toBe('invariant-warehouse');
+			expect((caught as SaveDataError).code).toBe('invariant-city-inventory');
 		});
 
 		test('strict validation rejects inventory exceeding buffer capacity with invariant-inventory error code', () => {
@@ -7515,7 +7579,7 @@ describe('saveCodec', () => {
 			const game = createGame();
 			game.stores = [{ ...game.stores[0]!, archetypeId: 'convenience' }];
 
-			expect(() => migrateSavedGame(game, 4)).not.toThrow();
+			expect(() => migrateSavedGame(toLegacyV12WarehouseWireGame(game), 4)).not.toThrow();
 		});
 
 		test('v4 migration is a no-op for a boutique store with non-array products', () => {
@@ -7529,7 +7593,7 @@ describe('saveCodec', () => {
 				}
 			];
 
-			expect(() => migrateSavedGame(game, 4)).not.toThrow();
+			expect(() => migrateSavedGame(toLegacyV12WarehouseWireGame(game), 4)).not.toThrow();
 		});
 
 		test('v5 migration leaves a non-object game untouched then fails validation', () => {
@@ -7572,116 +7636,6 @@ describe('saveCodec', () => {
 			expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
 			expect(() => validateSaveRecord(record)).toThrow(
 				'Saved game stores[0] products must be an array'
-			);
-		});
-
-		test('normalizeSandboxWarehouseState leaves a non-object warehouse for strict validation', () => {
-			expect.assertions(2);
-			const record = createManualSaveRecord({
-				game: {
-					warehouse: 'not-an-object' as unknown as GameState['warehouse']
-				}
-			});
-
-			expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
-			expect(() => validateSaveRecord(record)).toThrow('Saved game warehouse must be an object');
-		});
-
-		test('normalizeSandboxWarehouseState leaves non-finite overflowUnits for strict validation', () => {
-			expect.assertions(2);
-			const record = createManualSaveRecord({
-				game: {
-					warehouse: {
-						...createGame().warehouse,
-						overflowUnits: Number.NaN
-					}
-				}
-			});
-
-			expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
-			expect(() => validateSaveRecord(record)).toThrow(
-				'warehouse overflowUnits must be a finite number'
-			);
-		});
-
-		test('normalizeSandboxWarehouseState leaves non-finite overflowCost for strict validation', () => {
-			expect.assertions(2);
-			const record = createManualSaveRecord({
-				game: {
-					warehouse: {
-						...createGame().warehouse,
-						overflowCost: Number.NaN
-					}
-				}
-			});
-
-			expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
-			expect(() => validateSaveRecord(record)).toThrow(
-				'warehouse overflowCost must be a finite number'
-			);
-		});
-
-		test('normalizeSandboxWarehouseState leaves non-object materials for strict validation', () => {
-			expect.assertions(2);
-			const record = createManualSaveRecord({
-				game: {
-					warehouse: {
-						...createGame().warehouse,
-						materials: 'not-an-object' as unknown as Record<MaterialId, number>
-					}
-				}
-			});
-
-			expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
-			expect(() => validateSaveRecord(record)).toThrow('warehouse materials must be an object');
-		});
-
-		test('normalizeSandboxWarehouseState leaves array materials for strict validation', () => {
-			expect.assertions(2);
-			const record = createManualSaveRecord({
-				game: {
-					warehouse: {
-						...createGame().warehouse,
-						materials: [] as unknown as Record<MaterialId, number>
-					}
-				}
-			});
-
-			expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
-			expect(() => validateSaveRecord(record)).toThrow('warehouse materials must be an object');
-		});
-
-		test('normalizeSandboxWarehouseState leaves non-finite material quantities for strict validation', () => {
-			expect.assertions(2);
-			const record = createManualSaveRecord({
-				game: {
-					warehouse: {
-						...createGame().warehouse,
-						materials: { water: Number.NaN } as Partial<Record<MaterialId, number>>
-					}
-				}
-			});
-
-			expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
-			expect(() => validateSaveRecord(record)).toThrow(
-				'warehouse materials water must be a finite number'
-			);
-		});
-
-		test('normalizeSandboxWarehouseState leaves negative material quantities for strict validation', () => {
-			expect.assertions(2);
-			const record = createManualSaveRecord({
-				game: {
-					warehouse: {
-						...createGame().warehouse,
-						materials: { water: -1 } as Partial<Record<MaterialId, number>>
-					}
-				}
-			});
-
-			expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
-			expect(() => validateSaveRecord(record)).toThrow(
-				'warehouse materials water must be at least 0'
 			);
 		});
 

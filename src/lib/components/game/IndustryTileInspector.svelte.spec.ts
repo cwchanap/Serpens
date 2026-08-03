@@ -890,7 +890,7 @@ describe('IndustryTileInspector', () => {
 		let game = openCity(createNewGame('convenience', 20260512), 'breadbasket-basin');
 		game = {
 			...game,
-			cityInventories: game.cityInventories!.map((inventory) =>
+			cityInventories: game.cityInventories.map((inventory) =>
 				inventory.cityId === 'industry-city'
 					? {
 							...inventory,
@@ -908,13 +908,7 @@ describe('IndustryTileInspector', () => {
 								overflowCost: 0
 							}
 						: inventory
-			),
-			warehouse: {
-				capacity: 777,
-				materials: { snacks: 777 },
-				overflowUnits: 777,
-				overflowCost: 777
-			}
+			)
 		};
 		const tile = game.industryCities
 			.find((city) => city.id === 'breadbasket-basin')!

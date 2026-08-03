@@ -48,7 +48,8 @@ function emptyProductionReport(): DailyProductionReport {
 		warehouseCapacity: 0,
 		warehouseUsed: 0,
 		railShipments: [],
-		railUsage: {}
+		railUsage: {},
+		cityInventories: []
 	};
 }
 
@@ -666,28 +667,5 @@ describe('ReportsPanel', () => {
 		await expect
 			.element(reports.getByText('External imports — Harbor City: 3 units'))
 			.toBeVisible();
-	});
-
-	it('marks absent historical and current city inventory records as unavailable', async () => {
-		expect.assertions(2);
-		const game = { ...currentInventoryGame(), cityInventories: undefined };
-
-		render(ReportsPanel, {
-			i18n: createI18n('en'),
-			game,
-			stores: [],
-			summary: {
-				...summary,
-				latest: {
-					...summary.latest!,
-					productionReport: emptyProductionReport()
-				}
-			}
-		});
-
-		await expect
-			.element(page.getByText('Production-close city inventory is unavailable.'))
-			.toBeVisible();
-		await expect.element(page.getByText('Current city inventory is unavailable.')).toBeVisible();
 	});
 });

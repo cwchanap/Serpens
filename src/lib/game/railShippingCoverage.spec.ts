@@ -8,11 +8,11 @@ import {
 import { createNewGame } from './state';
 import type {
 	GameState,
+	CityInventory,
 	IndustrialBuilding,
 	IndustryCity,
 	MaterialId,
-	RailCell,
-	WarehouseInventory
+	RailCell
 } from './types';
 
 function makeBuilding(
@@ -55,26 +55,23 @@ function makeGame(buildings: IndustrialBuilding[], rails = line()): GameState {
 		cash: 100_000,
 		industryCities: [makeCity(rails)],
 		industrialBuildings: buildings,
-		warehouse: { capacity: 500, materials: {}, overflowUnits: 0, overflowCost: 0 }
+		cityInventories: [
+			{ cityId: 'industry-city', capacity: 500, materials: {}, overflowUnits: 0, overflowCost: 0 }
+		]
 	};
 }
 
-/**
- * This keeps legacy branch-coverage fixtures concise while production rail
- * code operates solely on a city inventory. It intentionally projects the
- * test's supplied pool into the valid owning city, never the reverse.
- */
 function createRailTickState(
 	game: GameState,
-	warehouse: WarehouseInventory = game.warehouse
+	cityInventory: CityInventory = game.cityInventories[0]!
 ): RailTickState {
 	return createCityRailTickState({
 		...game,
 		cityInventories: [
 			{
+				...cityInventory,
 				cityId: 'industry-city',
-				...warehouse,
-				materials: { ...warehouse.materials }
+				materials: { ...cityInventory.materials }
 			}
 		]
 	});
@@ -84,7 +81,7 @@ describe('rail shipping remaining branch coverage', () => {
 	it('keeps equal building ids stable in the pre-sorted tick index', () => {
 		const first = makeBuilding('duplicate', 'grain-farm', 2, 2);
 		const second = makeBuilding('duplicate', 'flour-mill', 10, 2);
-		const state = createRailTickState(makeGame([first, second]), makeGame([]).warehouse);
+		const state = createRailTickState(makeGame([first, second]), makeGame([]).cityInventories[0]!);
 
 		expect(state.sortedBuildings).toHaveLength(2);
 		expect(state.sortedBuildings.map(([, building]) => building.typeId)).toEqual([
@@ -98,7 +95,7 @@ describe('rail shipping remaining branch coverage', () => {
 		unknown.typeId = 'unknown-type' as IndustrialBuilding['typeId'];
 		const mill = makeBuilding('mill', 'flour-mill', 10, 2);
 		const game = makeGame([unknown, mill]);
-		const state = createRailTickState(game, game.warehouse);
+		const state = createRailTickState(game, game.cityInventories[0]!);
 
 		expect(pullViaRail(state, mill, 'grain', 2)).toEqual({
 			fromProducers: 0,
@@ -112,7 +109,7 @@ describe('rail shipping remaining branch coverage', () => {
 		const mill = makeBuilding('mill', 'flour-mill', 10, 2);
 		const game = makeGame([warehouse, mill]);
 		const state = createRailTickState(game, {
-			...game.warehouse,
+			...game.cityInventories[0]!,
 			materials: { grain: -5 }
 		});
 
@@ -127,7 +124,7 @@ describe('rail shipping remaining branch coverage', () => {
 		const farm = makeBuilding('farm', 'grain-farm', 2, 2);
 		const warehouse = makeBuilding('warehouse', 'warehouse', 10, 2);
 		const game = makeGame([farm, warehouse]);
-		const state = createRailTickState(game, game.warehouse);
+		const state = createRailTickState(game, game.cityInventories[0]!);
 
 		pushSurplusViaRail(state, farm);
 
@@ -140,7 +137,7 @@ describe('rail shipping remaining branch coverage', () => {
 		unknown.typeId = 'unknown-type' as IndustrialBuilding['typeId'];
 		const warehouse = makeBuilding('warehouse', 'warehouse', 10, 2);
 		const game = makeGame([unknown, warehouse]);
-		const state = createRailTickState(game, game.warehouse);
+		const state = createRailTickState(game, game.cityInventories[0]!);
 
 		pushSurplusViaRail(state, unknown);
 
