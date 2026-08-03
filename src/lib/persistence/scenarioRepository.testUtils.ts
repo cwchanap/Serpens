@@ -146,6 +146,21 @@ function fixtureGame(): GameState {
 		],
 		activeIndustryCityId: 'industry-city',
 		industrialBuildings: [],
+		cityInventories: [
+			{
+				cityId: 'industry-city',
+				capacity: 0,
+				materials: {},
+				overflowUnits: 0,
+				overflowCost: 0
+			}
+		],
+		retailSupplyAssignments: [
+			{
+				retailCityId: 'harbor-city',
+				supplyCityId: 'industry-city'
+			}
+		],
 		warehouse: {
 			capacity: 0,
 			materials: {},

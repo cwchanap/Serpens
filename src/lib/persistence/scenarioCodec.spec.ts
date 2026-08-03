@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { recalculateCityInventoryPressure } from '$lib/game/cityInventory';
+import { projectCityInventoriesToLegacyWarehouse } from '$lib/game/legacyWarehouse';
 import { simulateDay } from '$lib/game/simulateDay';
 import { createNewGame } from '$lib/game/state';
 import type { GameState } from '$lib/game/types';
@@ -265,6 +267,98 @@ function v11RunRecord(run: ScenarioRun, revision = 0): ScenarioRunRecord {
 	return {
 		...record,
 		gameSchemaVersion: 11,
+		game: legacyGame as unknown as GameState
+	};
+}
+
+function cityInventoryMetricDefinition(): ScenarioDefinition {
+	const definition = fixtureDefinition({ scenarioId: 'first-profit', version: 1 });
+	const query = {
+		metric: 'city-inventory-quantity' as const,
+		cityId: 'industry-city' as const,
+		materialId: 'water' as const
+	};
+
+	return {
+		...definition,
+		requiredObjectives: [
+			{
+				id: 'city-water',
+				labelKey: 'store.defaultName',
+				query,
+				comparator: 'gte',
+				target: 4,
+				window: { kind: 'current' }
+			}
+		],
+		optionalObjectives: [],
+		failures: [],
+		scoreComponents: [
+			{
+				kind: 'metric',
+				query,
+				window: { kind: 'current' },
+				zeroBonusAt: 0,
+				fullBonusAt: 6,
+				points: 500
+			}
+		]
+	};
+}
+
+function createCityInventoryMetricGame(seed: number): GameState {
+	let game = createNewGame('convenience', seed);
+	for (let day = 0; day < 7; day += 1) game = simulateDay(game);
+	if (!game.cityInventories) throw new Error('Current game is missing city inventories.');
+
+	const cityInventories = game.cityInventories.map((inventory) =>
+		inventory.cityId === 'industry-city'
+			? recalculateCityInventoryPressure({
+					...inventory,
+					materials: { ...inventory.materials, water: 3, grain: 2 }
+				})
+			: inventory
+	);
+
+	return {
+		...game,
+		cityInventories,
+		warehouse: projectCityInventoriesToLegacyWarehouse(cityInventories)
+	};
+}
+
+function createCityInventoryMetricRun(definition: ScenarioDefinition): ScenarioRun {
+	const game = createCityInventoryMetricGame(definition.officialSeed);
+	return {
+		runId: crypto.randomUUID(),
+		definition: { scenarioId: definition.id, version: definition.version },
+		seed: definition.officialSeed,
+		eligibility: 'ranked',
+		status: 'active',
+		game,
+		evaluation: evaluateScenario(definition, game, false),
+		result: null
+	};
+}
+
+function v12CityInventoryMetricRunRecord(run: ScenarioRun, revision: number): ScenarioRunRecord {
+	const record = runRecord(run, revision);
+	const legacyGame = structuredClone(run.game) as unknown as Record<string, unknown>;
+	delete legacyGame.cityInventories;
+	delete legacyGame.retailSupplyAssignments;
+	for (const report of legacyGame.reports as Array<Record<string, unknown>>) {
+		delete (report.productionReport as Record<string, unknown>).cityInventories;
+		for (const storeReport of report.storeReports as Array<Record<string, unknown>>) {
+			delete storeReport.replenishment;
+			for (const productReport of storeReport.productReports as Array<Record<string, unknown>>) {
+				delete productReport.replenishmentOutcome;
+			}
+		}
+	}
+
+	return {
+		...record,
+		gameSchemaVersion: 12,
 		game: legacyGame as unknown as GameState
 	};
 }
@@ -758,7 +852,11 @@ describe('scenario codec', () => {
 		(result.evaluation.projection as unknown as Record<string, unknown>).componentEvidence = [
 			{
 				kind: 'metric',
-				query: { metric: 'warehouse-quantity', materialId: 'water' },
+				query: {
+					metric: 'city-inventory-quantity',
+					cityId: 'industry-city',
+					materialId: 'water'
+				},
 				window: { kind: 'current' },
 				actual: 500,
 				day: result.evaluation.day,
@@ -1510,6 +1608,131 @@ describe('scenario codec', () => {
 		expect(stale.diagnostics.map((diagnostic) => diagnostic.code)).toContain('invalid-game');
 	});
 
+	it('accepts city-scoped metric evidence and hard-rejects removed warehouse evidence', () => {
+		const definition = cityInventoryMetricDefinition();
+		const run = createCityInventoryMetricRun(definition);
+		const resolver: ScenarioDefinitionResolver = (ref) =>
+			ref.scenarioId === definition.id && ref.version === definition.version
+				? definition
+				: undefined;
+		const accepted = decodeScenarioStoreSnapshot(
+			snapshot({ 'first-profit': runRecord(run) }),
+			resolver
+		);
+
+		expect(accepted.diagnostics).toEqual([]);
+		expect(
+			accepted.snapshot.activeRunsByScenarioId['first-profit']?.run.evaluation.required[0]?.evidence
+		).toMatchObject({
+			metric: 'city-inventory-quantity',
+			actual: 3,
+			contributingIds: ['city-inventory:industry-city/material:water']
+		});
+
+		const removedMetricRun = structuredClone(run);
+		removedMetricRun.evaluation.required[0]!.evidence.metric = 'warehouse-quantity' as never;
+		const removedMetricSnapshot = snapshot({ 'first-profit': runRecord(removedMetricRun) });
+		const originalSnapshot = structuredClone(removedMetricSnapshot);
+		const rejected = decodeScenarioStoreSnapshot(removedMetricSnapshot, resolver);
+
+		expect(rejected.snapshot.activeRunsByScenarioId).toEqual({});
+		expect(rejected.diagnostics.map((diagnostic) => diagnostic.code)).toContain('invalid-value');
+		expect(removedMetricSnapshot).toEqual(originalSnapshot);
+	});
+
+	it('migrates a v12 embedded game once through the shared city-inventory migration', () => {
+		const definition = cityInventoryMetricDefinition();
+		const run = createCityInventoryMetricRun(definition);
+		const resolver: ScenarioDefinitionResolver = (ref) =>
+			ref.scenarioId === definition.id && ref.version === definition.version
+				? definition
+				: undefined;
+		const legacyRecord = v12CityInventoryMetricRunRecord(run, 17);
+		const originalEnvelope = structuredClone(legacyRecord.run);
+		const legacyProduct = (legacyRecord.game as GameState).reports.at(-1)!.storeReports[0]!
+			.productReports[0]!;
+		const decoded = decodeScenarioStoreSnapshot(
+			snapshot({ 'first-profit': legacyRecord }),
+			resolver
+		);
+
+		expect(decoded.diagnostics).toEqual([]);
+		const migrated = decoded.snapshot.activeRunsByScenarioId['first-profit']!;
+		const migratedGame = migrated.game as GameState;
+		const migratedProduct = migratedGame.reports.at(-1)!.storeReports[0]!.productReports[0]!;
+		expect(legacyProduct.importedUnits).toBeGreaterThan(0);
+		expect(legacyProduct.importSpend).toBeGreaterThan(0);
+		expect(migrated.scenarioSchemaVersion).toBe(SCENARIO_RUN_SCHEMA_VERSION);
+		expect(migrated.gameSchemaVersion).toBe(SAVE_SCHEMA_VERSION);
+		expect(migrated.revision).toBe(17);
+		expect(migrated.run).toEqual(originalEnvelope);
+		expect(migratedGame.cityInventories).toEqual([
+			{
+				cityId: 'industry-city',
+				capacity: 0,
+				materials: { water: 3, grain: 2 },
+				overflowUnits: 5,
+				overflowCost: 10
+			}
+		]);
+		expect(migratedGame.retailSupplyAssignments).toEqual([
+			{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' }
+		]);
+		expect(migratedGame.warehouse).toEqual(
+			projectCityInventoriesToLegacyWarehouse(migratedGame.cityInventories!)
+		);
+		expect(
+			migratedGame.cityInventories!.reduce(
+				(totals, inventory) => ({
+					water: totals.water + (inventory.materials.water ?? 0),
+					grain: totals.grain + (inventory.materials.grain ?? 0)
+				}),
+				{ water: 0, grain: 0 }
+			)
+		).toEqual({ water: 3, grain: 2 });
+		expect(migratedGame.reports.at(-1)!.storeReports[0]!.replenishment).toBeNull();
+		expect(migratedProduct.replenishmentOutcome).toBeNull();
+		expect({
+			warehouseUnits: migratedProduct.warehouseUnits,
+			warehouseValue: migratedProduct.warehouseValue,
+			importedUnits: migratedProduct.importedUnits,
+			importCost: migratedProduct.importCost,
+			importSpend: migratedProduct.importSpend,
+			unitsSold: migratedProduct.unitsSold,
+			demandMissed: migratedProduct.demandMissed,
+			revenue: migratedProduct.revenue,
+			costOfGoods: migratedProduct.costOfGoods,
+			grossMargin: migratedProduct.grossMargin,
+			endingStock: migratedProduct.endingStock
+		}).toEqual({
+			warehouseUnits: legacyProduct.warehouseUnits,
+			warehouseValue: legacyProduct.warehouseValue,
+			importedUnits: legacyProduct.importedUnits,
+			importCost: legacyProduct.importCost,
+			importSpend: legacyProduct.importSpend,
+			unitsSold: legacyProduct.unitsSold,
+			demandMissed: legacyProduct.demandMissed,
+			revenue: legacyProduct.revenue,
+			costOfGoods: legacyProduct.costOfGoods,
+			grossMargin: legacyProduct.grossMargin,
+			endingStock: legacyProduct.endingStock
+		});
+
+		const reencoded = encodeScenarioRunRecord(
+			{ ...migrated.run, game: migratedGame },
+			resolver,
+			migrated.revision
+		);
+		const redecoded = decodeScenarioStoreSnapshot(
+			snapshot({ 'first-profit': reencoded }),
+			resolver
+		);
+
+		expect(redecoded.diagnostics).toEqual([]);
+		expect(reencoded.gameSchemaVersion).toBe(SAVE_SCHEMA_VERSION);
+		expect(redecoded.snapshot.activeRunsByScenarioId['first-profit']).toEqual(reencoded);
+	});
+
 	it('migrates an embedded v11 event game while preserving the scenario envelope', () => {
 		const active = fixtureRun(undefined, { advanceDays: 1 });
 		const legacyRecord = v11RunRecord(active, 7);
@@ -1523,7 +1746,7 @@ describe('scenario codec', () => {
 		const migratedGame = migrated?.game as GameState;
 
 		expect(decoded.diagnostics).toEqual([]);
-		expect(migrated?.gameSchemaVersion).toBe(12);
+		expect(migrated?.gameSchemaVersion).toBe(SAVE_SCHEMA_VERSION);
 		expect(migrated?.revision).toBe(7);
 		expect(migrated?.run).toEqual(originalEnvelope);
 		expect(migratedGame.decisions[0]).toMatchObject({

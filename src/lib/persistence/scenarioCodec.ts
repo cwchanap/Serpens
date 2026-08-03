@@ -45,7 +45,7 @@ const METRICS = [
 	'scorecard',
 	'store-count',
 	'industrial-building-count',
-	'warehouse-quantity'
+	'city-inventory-quantity'
 ] as const;
 const WINDOW_KINDS = ['current', 'run-to-date', 'trailing-reports', 'fixed-report-days'] as const;
 
