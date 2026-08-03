@@ -1857,6 +1857,12 @@
 		}
 	}
 
+	function setRetailSupplySource(retailCityId: string, supplyCityId: string | null): void {
+		void gameRouteController.setRetailSupplySource(retailCityId, supplyCityId);
+	}
+	// Task 14 supplies the visual source selector that invokes this route callback.
+	void setRetailSupplySource;
+
 	function borrowWorkingCapital(
 		amount: number,
 		termDays: LoanTermDays

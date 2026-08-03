@@ -11,6 +11,7 @@ import { openStoreAtTile } from '$lib/game/placement';
 import { financeRetailStoreOpening } from '$lib/game/placement';
 import { buildRail, demolishRailSegment, upgradeRailSegment } from '$lib/game/railPlacement';
 import { normalizeSeed } from '$lib/game/rng';
+import { setRetailSupplySource, type RetailSupplyAssignmentResult } from '$lib/game/retailSupply';
 import { simulateDay } from '$lib/game/simulateDay';
 import type { SimulationRules } from '$lib/game/simulationRules';
 import { assignStaffToStore, hireCandidate, promoteStaff, unassignStaff } from '$lib/game/staffing';
@@ -203,7 +204,11 @@ export function compileSimulationRules(definition: ScenarioDefinition): Simulati
 }
 
 type FinanceActionFailure = Extract<FinanceActionResult<unknown>, { ok: false }>;
-type ScenarioDispatchResult = GameState | FinanceActionFailure | DecisionResolutionResult;
+type ScenarioDispatchResult =
+	| GameState
+	| FinanceActionFailure
+	| DecisionResolutionResult
+	| RetailSupplyAssignmentResult;
 
 function dispatchScenarioCommand(
 	game: GameState,
@@ -221,6 +226,10 @@ function dispatchScenarioCommand(
 			return openWorldCity(game, command.cityId);
 		case 'selectWorldCity':
 			return selectWorldCity(game, command.cityId);
+		case 'setRetailSupplySource': {
+			const result = setRetailSupplySource(game, command.retailCityId, command.supplyCityId);
+			return result.ok ? result.game : result;
+		}
 		case 'openStore':
 			return openStoreAtTile(game, {
 				tileId: command.tileId,
@@ -340,6 +349,8 @@ export function executeScenarioCommand(
 		if ('ok' in dispatched) {
 			if (dispatched.ok) {
 				game = dispatched.game;
+			} else if ('reason' in dispatched) {
+				return { ok: false, code: 'invalid-command' };
 			} else if (isDecisionFailureCode(dispatched.code)) {
 				const decisionFailure = dispatched as Extract<DecisionResolutionResult, { ok: false }>;
 				return {

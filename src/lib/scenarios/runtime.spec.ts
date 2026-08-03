@@ -1237,6 +1237,62 @@ describe('scenario runtime lifecycle order', { timeout: 30_000 }, () => {
 		}
 	});
 
+	it('dispatches retail supply source selections while preserving rejected and unchanged runs', () => {
+		const game = foundingGame();
+		const definition = commandDefinition(['setRetailSupplySource']);
+		const run = activeRun(definition, game);
+		const changed = executeScenarioCommand(run, definition, {
+			kind: 'setRetailSupplySource',
+			retailCityId: 'harbor-city',
+			supplyCityId: null
+		});
+
+		expect(changed).toMatchObject({ ok: true, changed: true });
+		if (!changed.ok || !changed.changed) {
+			throw new Error('Expected the Imports-only selection to change the scenario run.');
+		}
+		expect(changed.run.game.retailSupplyAssignments).toEqual([
+			{ retailCityId: 'harbor-city', supplyCityId: null }
+		]);
+
+		expect(
+			executeScenarioCommand(changed.run, definition, {
+				kind: 'setRetailSupplySource',
+				retailCityId: 'harbor-city',
+				supplyCityId: null
+			})
+		).toEqual({ ok: true, changed: false, run: changed.run });
+
+		const beforeRejected = structuredClone(run);
+		expect(
+			executeScenarioCommand(run, definition, {
+				kind: 'setRetailSupplySource',
+				retailCityId: 'harbor-city',
+				supplyCityId: 'breadbasket-basin'
+			})
+		).toEqual({ ok: false, code: 'invalid-command' });
+		expect(run).toEqual(beforeRejected);
+
+		const forbiddenContent = {
+			...definition,
+			content: { ...definition.content, cityIds: ['harbor-city', 'industry-city'] as const }
+		};
+		expect(
+			executeScenarioCommand(run, forbiddenContent, {
+				kind: 'setRetailSupplySource',
+				retailCityId: 'harbor-city',
+				supplyCityId: 'breadbasket-basin'
+			})
+		).toEqual({ ok: false, code: 'forbidden-content' });
+		expect(
+			executeScenarioCommand(run, commandDefinition([]), {
+				kind: 'setRetailSupplySource',
+				retailCityId: 'harbor-city',
+				supplyCityId: null
+			})
+		).toEqual({ ok: false, code: 'forbidden-command' });
+	});
+
 	it('rejects forbidden commands and content without mutating the run or evaluation', () => {
 		const game = foundingGame();
 		const definition = commandDefinition([]);

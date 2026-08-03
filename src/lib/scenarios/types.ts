@@ -24,6 +24,7 @@ export const SCENARIO_COMMAND_KINDS = [
 	'updatePolicy',
 	'openWorldCity',
 	'selectWorldCity',
+	'setRetailSupplySource',
 	'openStore',
 	'upgradeStore',
 	'hireStaff',
@@ -63,6 +64,7 @@ export type ScenarioCommand =
 	| { kind: 'updatePolicy'; patch: Partial<CompanyPolicy> }
 	| { kind: 'openWorldCity'; cityId: WorldCityId }
 	| { kind: 'selectWorldCity'; cityId: WorldCityId }
+	| { kind: 'setRetailSupplySource'; retailCityId: string; supplyCityId: string | null }
 	| { kind: 'openStore'; tileId: string; archetypeId: ArchetypeId }
 	| { kind: 'upgradeStore'; storeId: string }
 	| { kind: 'hireStaff'; candidateId: string }
