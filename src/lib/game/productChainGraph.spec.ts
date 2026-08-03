@@ -227,13 +227,42 @@ describe('warehouse flow graph', () => {
 		game = withLatestReport(
 			game,
 			emptyProductionReport({
-				produced: [{ materialId: 'snacks', quantity: 8, value: 64, source: 'local' }],
-				consumed: [{ materialId: 'flour', quantity: 6, value: 18, source: 'warehouse' }],
-				importedInputs: [{ materialId: 'packaging', quantity: 2, value: 10, source: 'import' }],
-				warehousePulls: [{ materialId: 'snacks', quantity: 6, value: 48, source: 'warehouse' }],
-				shopImports: [{ materialId: 'snacks', quantity: 4, value: 48, source: 'import' }],
+				produced: [
+					{ cityId: 'industry-city', materialId: 'snacks', quantity: 8, value: 64, source: 'local' }
+				],
+				consumed: [
+					{
+						cityId: 'industry-city',
+						materialId: 'flour',
+						quantity: 6,
+						value: 18,
+						source: 'warehouse'
+					}
+				],
+				importedInputs: [
+					{
+						cityId: 'industry-city',
+						materialId: 'packaging',
+						quantity: 2,
+						value: 10,
+						source: 'import'
+					}
+				],
+				warehousePulls: [
+					{
+						cityId: 'industry-city',
+						materialId: 'snacks',
+						quantity: 6,
+						value: 48,
+						source: 'warehouse'
+					}
+				],
+				shopImports: [
+					{ cityId: 'harbor-city', materialId: 'snacks', quantity: 4, value: 48, source: 'import' }
+				],
 				railShipments: [
 					{
+						cityId: 'industry-city',
 						materialId: 'snacks',
 						quantity: 8,
 						value: 64,
@@ -261,7 +290,7 @@ describe('warehouse flow graph', () => {
 		expect(warehouse?.health).toBe('shortage');
 		expect(snacks?.actual.produced).toBe(8);
 		expect(snacks?.actual.warehousePulled).toBe(6);
-		expect(snacks?.actual.shopImported).toBe(4);
+		expect(snacks?.actual.shopImported).toBe(0);
 		expect(graph.edges.some((edge) => edge.id === 'material:snacks->warehouse')).toBe(true);
 		expect(snacksInEdge?.actualPerDay).toBe(8);
 		expect(snacksInEdge?.label).toEqual({ code: 'in', quantity: 8 });
@@ -275,7 +304,9 @@ describe('warehouse flow graph', () => {
 		game = withLatestReport(
 			game,
 			emptyProductionReport({
-				produced: [{ materialId: 'snacks', quantity: 8, value: 64, source: 'local' }],
+				produced: [
+					{ cityId: 'industry-city', materialId: 'snacks', quantity: 8, value: 64, source: 'local' }
+				],
 				railShipments: []
 			})
 		);
@@ -432,12 +463,15 @@ describe('warehouse flow graph', () => {
 		expect(graph.edges.some((edge) => edge.materialId === 'drinks')).toBe(false);
 	});
 
-	test('accepts unattributed compatibility rows only while one inventory is accessible', () => {
-		const report = emptyProductionReport({
+	test('does not attribute legacy-unscoped rows to an accessible inventory', () => {
+		// A malformed legacy row can only enter this runtime through an unsafe
+		// boundary; current DailyProductionReport rows require cityId.
+		const report = {
+			...emptyProductionReport(),
 			produced: [{ materialId: 'snacks', quantity: 5, value: 40, source: 'local' }],
 			warehousePulls: [{ materialId: 'snacks', quantity: 3, value: 24, source: 'warehouse' }],
 			shopImports: [{ materialId: 'snacks', quantity: 2, value: 24, source: 'import' }]
-		});
+		} as unknown as DailyProductionReport;
 		const oneInventoryGame = withLatestReport(
 			withStarterCityInventory(createNewGame('convenience', 20260802), { snacks: 1 }),
 			report
@@ -471,9 +505,9 @@ describe('warehouse flow graph', () => {
 		const twoInventorySnacks = buildWarehouseFlowGraph(twoInventoryGame).details['material:snacks'];
 
 		expect(oneInventorySnacks?.actual).toMatchObject({
-			produced: 5,
-			warehousePulled: 3,
-			shopImported: 2
+			produced: 0,
+			warehousePulled: 0,
+			shopImported: 0
 		});
 		expect(twoInventorySnacks?.actual).toMatchObject({
 			produced: 0,
@@ -624,7 +658,9 @@ describe('materialActualMetrics rail flows', () => {
 	test('sums source:"rail" consumed movements into railPulled without inflating imports', () => {
 		expect.assertions(3);
 		const report = emptyProductionReport({
-			consumed: [{ materialId: 'grain', quantity: 7, value: 21, source: 'rail' }]
+			consumed: [
+				{ cityId: 'industry-city', materialId: 'grain', quantity: 7, value: 21, source: 'rail' }
+			]
 		});
 
 		const actual = materialActualMetrics(report, 'grain', null);
@@ -637,7 +673,9 @@ describe('materialActualMetrics rail flows', () => {
 	test('does not read rail-sourced supply as a shortage when producers are present', () => {
 		expect.assertions(1);
 		const report = emptyProductionReport({
-			consumed: [{ materialId: 'grain', quantity: 7, value: 21, source: 'rail' }]
+			consumed: [
+				{ cityId: 'industry-city', materialId: 'grain', quantity: 7, value: 21, source: 'rail' }
+			]
 		});
 		const actual = materialActualMetrics(report, 'grain', null);
 
@@ -671,7 +709,9 @@ describe('warehouse flow graph health branches', () => {
 		game = withLatestReport(
 			game,
 			emptyProductionReport({
-				produced: [{ materialId: 'snacks', quantity: 8, value: 64, source: 'local' }],
+				produced: [
+					{ cityId: 'industry-city', materialId: 'snacks', quantity: 8, value: 64, source: 'local' }
+				],
 				warehouseCapacity: 200,
 				warehouseUsed: 5
 			})
@@ -717,8 +757,8 @@ describe('allocateInputMovement branch coverage', () => {
 		expect.assertions(1);
 		const report = emptyProductionReport({
 			produced: [
-				{ materialId: 'grain', quantity: 30, value: 30, source: 'local' },
-				{ materialId: 'flour', quantity: 8, value: 40, source: 'local' }
+				{ cityId: 'industry-city', materialId: 'grain', quantity: 30, value: 30, source: 'local' },
+				{ cityId: 'industry-city', materialId: 'flour', quantity: 8, value: 40, source: 'local' }
 			]
 		});
 		const weights = createInputWeightMap([], report);
@@ -747,6 +787,7 @@ describe('createInputWeightMap branch coverage', () => {
 		const report = emptyProductionReport({
 			produced: [
 				{
+					cityId: 'industry-city',
 					materialId: 'unknown-material' as unknown as MaterialId,
 					quantity: 5,
 					value: 10,

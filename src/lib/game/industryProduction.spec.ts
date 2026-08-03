@@ -528,8 +528,8 @@ describe('industry production simulation', () => {
 		expect(result.game.industrialBuildings[0]?.blockedDays).toBe(1);
 	});
 
-	test('blocks buildings without a valid city inventory before they affect production', () => {
-		expect.assertions(4);
+	test('rejects invalid building ownership before production normalizes capacity', () => {
+		expect.assertions(1);
 		const game = {
 			...makeProductionGame(makeIndustryCity([]), [
 				{
@@ -541,12 +541,7 @@ describe('industry production simulation', () => {
 			cash: 1_000
 		};
 
-		const result = simulateIndustryProduction(game);
-
-		expect(result.game.industrialBuildings[0]?.status).toBe('blocked');
-		expect(result.game.industrialBuildings[0]?.blockedDays).toBe(1);
-		expect(result.report.produced).toEqual([]);
-		expect(result.game.cash).toBe(game.cash);
+		expect(() => simulateIndustryProduction(game)).toThrow(/city ownership/i);
 	});
 
 	test('marks buildings with a dangling recipeId as blocked', () => {

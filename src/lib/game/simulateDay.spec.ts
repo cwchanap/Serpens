@@ -2,7 +2,6 @@ import { describe, expect, test, vi } from 'vitest';
 import { ARCHETYPES } from './archetypes';
 import { EVENT_DRAW_COUNT_PER_DAY } from './eventSelection';
 import { appendFinanceTransaction, getTotalDebt } from './finance';
-import { generateCity } from './city';
 import { buildIndustrialBuilding } from './industryPlacement';
 import { createRngFromState } from './rng';
 import { createNewGame, resolveDecision, updatePolicy } from './state';
@@ -10,6 +9,7 @@ import { getStaffXpForLevel } from './staffLeveling';
 import { DEFAULT_SIMULATION_RULES, type SimulationRules } from './simulationRules';
 import { simulateDay } from './simulateDay';
 import { createOneCityInventoryFixture, projectOneCityParity } from './cityInventory.testUtils';
+import { openWorldCity } from './world';
 import type {
 	ActiveEventModifier,
 	EventDecisionItem,
@@ -86,6 +86,17 @@ function activeImportModifier(id: string, multiplier: number, day: number): Acti
 }
 
 describe('daily simulation', () => {
+	test('rejects invalid entity ownership before starting a daily tick', () => {
+		expect.assertions(1);
+		const base = createNewGame('convenience', 292_524);
+		const game: GameState = {
+			...base,
+			stores: [{ ...base.stores[0]!, cityId: 'industry-city' }]
+		};
+
+		expect(() => simulateDay(game)).toThrow(/city ownership/i);
+	});
+
 	test('preserves one-city production, retail, report, and cash behavior', () => {
 		const after = simulateDay(createOneCityInventoryFixture());
 
@@ -1147,14 +1158,19 @@ describe('daily simulation', () => {
 
 	test('simulates product demand for stores in every city', () => {
 		expect.assertions(6);
-		const game = createNewGame('convenience', 20260508);
-		const secondCity = generateCity({
-			id: 'second-city',
-			name: 'Second City',
-			width: 20,
-			height: 20,
-			seed: 20260509
-		});
+		const initial = createNewGame('convenience', 20260508);
+		const game = openWorldCity(
+			{
+				...initial,
+				cash: 100_000,
+				world: {
+					...initial.world,
+					revealedCityIds: [...initial.world.revealedCityIds, 'campus-junction']
+				}
+			},
+			'campus-junction'
+		);
+		const secondCity = game.cities.find((city) => city.id === 'campus-junction')!;
 		const firstStore = {
 			...game.stores[0]!,
 			products: game.stores[0]!.products.map((product) => ({
@@ -1177,12 +1193,7 @@ describe('daily simulation', () => {
 			mapY: secondTile.y,
 			location: { neighborhoodId: 'downtown' as const, x: 0, y: 0 }
 		};
-		const result = simulateDay({
-			...game,
-			cities: [...game.cities, secondCity],
-			activeCityId: game.cities[0]!.id,
-			stores: [firstStore, secondStore]
-		});
+		const result = simulateDay({ ...game, stores: [firstStore, secondStore] });
 		const firstReport = result.reports[0]!.storeReports.find(
 			(report) => report.storeId === firstStore.id
 		)!;

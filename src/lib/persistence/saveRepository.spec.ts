@@ -4,8 +4,14 @@ import { initializeStoreProducts } from '$lib/game/stock';
 import { createFoundingFinanceState } from '$lib/game/finance';
 import { createInitialEventRuntime } from '$lib/game/eventSelection';
 import { simulateDay } from '$lib/game/simulateDay';
+import { setRetailSupplySource } from '$lib/game/retailSupply';
 import { createNewGame } from '$lib/game/state';
-import { STARTER_STORE_CAP, WORLD_CITY_CATALOG, createInitialWorldProgress } from '$lib/game/world';
+import {
+	STARTER_STORE_CAP,
+	WORLD_CITY_CATALOG,
+	createInitialWorldProgress,
+	openWorldCity
+} from '$lib/game/world';
 import type {
 	DailyProductReport,
 	DailyProductionReport,
@@ -270,6 +276,56 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 		...game,
 		cityInventories,
 		retailSupplyAssignments: overrideRetailSupplyAssignments ?? canonical.retailSupplyAssignments
+	};
+}
+
+function createDaySevenReplenishmentFromIndustryCity(): GameState {
+	const base = createNewGame('convenience', 292_907);
+	const openedBreadbasket = openWorldCity(
+		{
+			...base,
+			cash: 100_000,
+			day: 7,
+			finance: {
+				...base.finance,
+				currentDayActivity: { ...base.finance.currentDayActivity, day: 7 }
+			},
+			world: {
+				...base.world,
+				revealedCityIds: [...base.world.revealedCityIds, 'breadbasket-basin']
+			}
+		},
+		'breadbasket-basin'
+	);
+	const store = openedBreadbasket.stores[0]!;
+
+	return {
+		...openedBreadbasket,
+		cityInventories: openedBreadbasket.cityInventories.map((inventory) =>
+			inventory.cityId === 'industry-city'
+				? {
+						...inventory,
+						capacity: 200,
+						materials: { 'bottled-water': 20 },
+						overflowUnits: 0,
+						overflowCost: 0
+					}
+				: inventory
+		),
+		stores: [
+			{
+				...store,
+				products: [
+					{
+						categoryId: 'bottled-water',
+						stock: 0,
+						reorderThreshold: 1,
+						targetStock: 20,
+						sellingPrice: 3
+					}
+				]
+			}
+		]
 	};
 }
 
@@ -1520,6 +1576,7 @@ describe('save records', () => {
 					status: 'produced',
 					lastProduction: [
 						{
+							cityId: 'industry-city',
 							materialId: 'invalid-material' as MaterialId,
 							quantity: 10,
 							value: 50,
@@ -1547,6 +1604,7 @@ describe('save records', () => {
 			productionReport: createDailyProductionReport({
 				produced: [
 					{
+						cityId: 'industry-city',
 						materialId: 'invalid-material' as MaterialId,
 						quantity: 10,
 						value: 50,
@@ -2345,6 +2403,46 @@ describe('save records', () => {
 });
 
 describe('repository city-inventory migration and normalization', () => {
+	test('durably reloads historical replenishment from its original source after reassignment', async () => {
+		expect.assertions(6);
+		const replenishedFromIndustryCity = simulateDay(createDaySevenReplenishmentFromIndustryCity());
+		const reassigned = setRetailSupplySource(
+			replenishedFromIndustryCity,
+			'harbor-city',
+			'breadbasket-basin'
+		);
+		const repository = new SaveRepositoryFromDriver(
+			new MemorySaveStoreDriver(),
+			() => new Date('2026-08-03T12:00:00.000Z')
+		);
+
+		expect(replenishedFromIndustryCity.reports).toHaveLength(1);
+		expect(replenishedFromIndustryCity.reports[0]?.storeReports[0]?.replenishment).toMatchObject({
+			retailCityId: 'harbor-city',
+			configuredSupplyCityId: 'industry-city',
+			resolvedSupplyCityId: 'industry-city'
+		});
+		expect(reassigned).toMatchObject({ ok: true, changed: true });
+		if (!reassigned.ok) return;
+
+		await repository.saveAuto(reassigned.game);
+		const reloaded = await repository.getAutoSave();
+
+		expect(reloaded?.game.retailSupplyAssignments).toContainEqual({
+			retailCityId: 'harbor-city',
+			supplyCityId: 'breadbasket-basin'
+		});
+		expect(reloaded?.game.reports[0]?.storeReports[0]?.replenishment).toMatchObject({
+			retailCityId: 'harbor-city',
+			configuredSupplyCityId: 'industry-city',
+			resolvedSupplyCityId: 'industry-city'
+		});
+		expect(reloaded?.game.reports[0]?.storeReports[0]?.productReports[0]).toMatchObject({
+			warehouseUnits: 20,
+			replenishmentOutcome: 'city-inventory'
+		});
+	});
+
 	test('loads and durably upgrades a v11 snapshot through the in-memory driver', async () => {
 		const driver = new MemorySaveStoreDriver(createV11SupplierSnapshot());
 		const repository = new SaveRepositoryFromDriver(

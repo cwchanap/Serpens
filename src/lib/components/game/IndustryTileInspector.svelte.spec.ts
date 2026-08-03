@@ -119,6 +119,7 @@ describe('IndustryTileInspector', () => {
 			status: 'idle',
 			lastProduction: [
 				{
+					cityId: 'industry-city',
 					materialId: 'snacks',
 					quantity: 8,
 					value: 120,
@@ -608,6 +609,7 @@ describe('IndustryTileInspector', () => {
 			status: 'idle',
 			lastProduction: [
 				{
+					cityId: 'industry-city',
 					materialId: 'mystery-goods' as never,
 					quantity: 5,
 					value: 30,

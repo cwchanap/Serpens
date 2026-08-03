@@ -550,6 +550,7 @@ describe('ReportsPanel', () => {
 						...emptyProductionReport(),
 						railShipments: [
 							{
+								cityId: 'industry-city',
 								materialId: 'grain',
 								quantity: 12,
 								value: 36,
@@ -558,6 +559,7 @@ describe('ReportsPanel', () => {
 								toId: 'mill-1'
 							},
 							{
+								cityId: 'industry-city',
 								materialId: 'flour',
 								quantity: 8,
 								value: 24,

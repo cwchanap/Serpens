@@ -899,6 +899,22 @@ interface LegacyV12WarehouseWire {
 	materials: unknown;
 }
 
+/** Raw v12-only report rows may omit city attribution. Normalized v13 types never do. */
+interface LegacyV12RawDailyMaterialMovement extends Record<string, unknown> {
+	cityId?: unknown;
+}
+
+interface LegacyV12RawIndustrialBuilding extends Record<string, unknown> {
+	cityId?: unknown;
+	lastProduction?: unknown;
+}
+
+interface LegacyV12RawRailShipment extends Record<string, unknown> {
+	cityId?: unknown;
+	fromId?: unknown;
+	toId?: unknown;
+}
+
 type V12MigrationGame = Omit<GameState, 'cityInventories' | 'retailSupplyAssignments'> & {
 	cityInventories?: unknown;
 	retailSupplyAssignments?: unknown;
@@ -935,6 +951,7 @@ function migrateV12Game(value: unknown): unknown {
 	void _legacyRetailSupplyAssignments;
 	return {
 		...currentGame,
+		industrialBuildings: migrateV12IndustrialBuildingProduction(legacyV12Game.industrialBuildings),
 		cityInventories,
 		retailSupplyAssignments,
 		reports: migrateV12Reports(legacyV12Game.reports, legacyV12Game, primaryCityId)
@@ -1096,6 +1113,28 @@ function assertV12MaterialConservation(
 	}
 }
 
+function migrateV12IndustrialBuildingProduction(value: unknown): unknown {
+	if (!Array.isArray(value)) return value;
+
+	return value.map((buildingValue) => {
+		if (!isLegacyV12RawIndustrialBuilding(buildingValue)) return buildingValue;
+		const definition =
+			typeof buildingValue.cityId === 'string'
+				? getWorldCityDefinition(buildingValue.cityId)
+				: undefined;
+		const cityId = definition?.kind === 'industry' ? definition.id : null;
+
+		return {
+			...buildingValue,
+			lastProduction: migrateV12IndustryMovements(buildingValue.lastProduction, cityId)
+		};
+	});
+}
+
+function isLegacyV12RawIndustrialBuilding(value: unknown): value is LegacyV12RawIndustrialBuilding {
+	return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 function migrateV12Reports(
 	reports: unknown,
 	game: V12MigrationGame,
@@ -1191,12 +1230,17 @@ function migrateV12ProductionReport(
 function migrateV12IndustryMovements(value: unknown, primaryCityId: WorldCityId | null): unknown {
 	if (!Array.isArray(value) || primaryCityId === null) return value;
 	return value.map((movement) => {
-		if (typeof movement !== 'object' || movement === null || Array.isArray(movement)) {
+		if (!isLegacyV12RawDailyMaterialMovement(movement)) {
 			return movement;
 		}
-		const record = movement as Record<string, unknown>;
-		return Object.hasOwn(record, 'cityId') ? record : { ...record, cityId: primaryCityId };
+		return Object.hasOwn(movement, 'cityId') ? movement : { ...movement, cityId: primaryCityId };
 	});
+}
+
+function isLegacyV12RawDailyMaterialMovement(
+	value: unknown
+): value is LegacyV12RawDailyMaterialMovement {
+	return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function migrateV12RailShipments(
@@ -1206,23 +1250,27 @@ function migrateV12RailShipments(
 ): unknown {
 	if (!Array.isArray(value)) return value;
 	return value.map((shipment) => {
-		if (typeof shipment !== 'object' || shipment === null || Array.isArray(shipment)) {
+		if (!isLegacyV12RawRailShipment(shipment)) {
 			return shipment;
 		}
-		const record = shipment as Record<string, unknown>;
 		const fromCityId =
-			typeof record.fromId === 'string' ? buildingCityIds.get(record.fromId) : undefined;
-		const toCityId = typeof record.toId === 'string' ? buildingCityIds.get(record.toId) : undefined;
+			typeof shipment.fromId === 'string' ? buildingCityIds.get(shipment.fromId) : undefined;
+		const toCityId =
+			typeof shipment.toId === 'string' ? buildingCityIds.get(shipment.toId) : undefined;
 		if (fromCityId && toCityId && fromCityId !== toCityId) {
 			reportAttributionInvariant(
 				'Saved v12 rail shipment has conflicting recoverable industrial-city references'
 			);
 		}
 		const recoveredCityId = fromCityId ?? toCityId;
-		if (recoveredCityId) return { ...record, cityId: recoveredCityId };
-		if (Object.hasOwn(record, 'cityId') || primaryCityId === null) return record;
-		return { ...record, cityId: primaryCityId };
+		if (recoveredCityId) return { ...shipment, cityId: recoveredCityId };
+		if (Object.hasOwn(shipment, 'cityId') || primaryCityId === null) return shipment;
+		return { ...shipment, cityId: primaryCityId };
 	});
+}
+
+function isLegacyV12RawRailShipment(value: unknown): value is LegacyV12RawRailShipment {
+	return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 interface V12RetailImportEvidence {
@@ -3196,7 +3244,7 @@ function validateSavedIndustrialBuilding(value: unknown, label: string): void {
 	requireNumber(building.mapY, `${label} mapY`);
 	requireOneOf(building.status, `${label} status`, INDUSTRIAL_BUILDING_STATUSES);
 	requireArray(building.lastProduction, `${label} lastProduction`).forEach((movement, index) =>
-		validateSavedDailyMaterialMovement(movement, `${label} lastProduction[${index}]`)
+		validateSavedDailyMaterialMovement(movement, `${label} lastProduction[${index}]`, true)
 	);
 	requireNumber(building.producedTotal, `${label} producedTotal`);
 	requireNumber(building.importedInputTotal, `${label} importedInputTotal`);
@@ -3215,9 +3263,14 @@ function validateSavedIndustrialBuilding(value: unknown, label: string): void {
 	}
 }
 
-function validateSavedDailyMaterialMovement(value: unknown, label: string): void {
+function validateSavedDailyMaterialMovement(
+	value: unknown,
+	label: string,
+	requireCityAttribution = false
+): void {
 	const movement = requireRecord(value, label);
 
+	if (requireCityAttribution) requireString(movement.cityId, `${label} cityId`);
 	requireKnownId(movement.materialId, `${label} materialId`, MATERIAL_ID_SET, 'material');
 	requireNumber(movement.quantity, `${label} quantity`);
 	requireNumber(movement.value, `${label} value`);
@@ -4917,14 +4970,6 @@ function validateCurrentStoreReplenishment(value: unknown, game: GameState, labe
 					'industry',
 					`${label} replenishment resolvedSupplyCityId`
 				);
-	const assignment = game.retailSupplyAssignments!.find(
-		(candidate) => candidate.retailCityId === retailCityId
-	);
-	if (!assignment || assignment.supplyCityId !== configuredSupplyCityId) {
-		retailSupplyInvariant(
-			`${label} replenishment configuredSupplyCityId must match its city assignment`
-		);
-	}
 	if (configuredSupplyCityId === null && resolvedSupplyCityId !== null) {
 		retailSupplyInvariant(
 			`${label} Imports-only replenishment cannot resolve a city supply source`

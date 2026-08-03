@@ -1,5 +1,6 @@
 import { addInventory, inventoryUsed, removeInventory } from './buildingInventory';
 import {
+	assertValidEntityCityOwnership,
 	compareWorldCityIds,
 	getCityInventory,
 	getCityInventoryUsed,
@@ -42,6 +43,7 @@ export function simulateIndustryProduction(
 	report: DailyProductionReport;
 	importCostApplications: ImportCostApplicationEvidence[];
 } {
+	assertValidEntityCityOwnership(game);
 	const normalizedGame = normalizeCityInventoryDerivedState(game);
 	// One rail budget and working inventory per city for the whole tick:
 	// stage-ordered buildings mutate this in place, so a raw producer's output

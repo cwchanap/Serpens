@@ -1,4 +1,5 @@
 import { getArchetype } from './archetypes';
+import { assertValidEntityCityOwnership } from './cityInventory';
 import { generateDecisions, pruneExpiredDecisions } from './events';
 import {
 	expireModifiersAfterDay,
@@ -110,6 +111,7 @@ export function simulateDay(
 	game: GameState,
 	rules: SimulationRules = DEFAULT_SIMULATION_RULES
 ): GameState {
+	assertValidEntityCityOwnership(game);
 	const closingDay = game.day;
 	const activeEventModifiers = game.events.activeModifiers.filter((modifier) =>
 		isModifierActiveOnDay(modifier, closingDay)
