@@ -119,6 +119,10 @@ function getRetailChainScope(game: GameState): RetailChainScope {
 	};
 }
 
+export function getProductChainSupplyState(game: GameState): ProductChainSupplyState {
+	return getRetailChainScope(game).supplyState;
+}
+
 function buildRetailCategoryReport(
 	game: GameState,
 	retailCityId: WorldCityId | null,

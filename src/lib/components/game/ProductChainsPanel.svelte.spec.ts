@@ -1,6 +1,7 @@
 import { page } from 'vitest/browser';
 import { describe, expect, it } from 'vitest';
 import { render } from 'vitest-browser-svelte';
+import { simulateDay } from '$lib/game/simulateDay';
 import { createNewGame } from '$lib/game/state';
 import { openWorldCity } from '$lib/game/world';
 import { createI18n, type I18nBundle } from '$lib/i18n';
@@ -66,6 +67,32 @@ function withActiveIndustryInventory(game: GameState): GameState {
 				materials: { snacks: 12 },
 				overflowUnits: 0,
 				overflowCost: 0
+			}
+		]
+	};
+}
+
+function withImportedProductChainEdge(game: GameState): GameState {
+	const simulated = simulateDay(game);
+	const baselineReport = simulated.reports.at(-1)!;
+
+	return {
+		...game,
+		reports: [
+			{
+				...baselineReport,
+				productionReport: {
+					...baselineReport.productionReport,
+					importedInputs: [
+						{
+							cityId: 'industry-city',
+							materialId: 'water',
+							quantity: 10,
+							value: 10,
+							source: 'import'
+						}
+					]
+				}
 			}
 		]
 	};
@@ -198,6 +225,15 @@ describe('ProductChainsPanel', () => {
 		await expect.element(page.getByText('Warehouse flow', { exact: true })).not.toBeInTheDocument();
 	});
 
+	it('renders External imports on an imported product-chain edge', async () => {
+		expect.assertions(1);
+		renderProductChainsPanel(withImportedProductChainEdge(cityScopedChainGame()));
+
+		await expect
+			.element(page.getByText('0/day used · 10/cycle · External imports', { exact: true }))
+			.toBeVisible();
+	});
+
 	it.each([
 		[
 			'available local supply',
@@ -210,12 +246,12 @@ describe('ProductChainsPanel', () => {
 				...game,
 				retailSupplyAssignments: [{ retailCityId: 'harbor-city', supplyCityId: null }]
 			}),
-			'Imports only — replenishment uses external imports.'
+			'Harbor City supply: Imports only — replenishment uses External imports.'
 		],
 		[
 			'configuration unavailable',
 			(game: GameState) => ({ ...game, retailSupplyAssignments: [] }),
-			'Supply configuration unavailable.'
+			'Supply configuration for Harbor City is unavailable.'
 		],
 		[
 			'stale source unavailable',
@@ -223,7 +259,7 @@ describe('ProductChainsPanel', () => {
 				...game,
 				retailSupplyAssignments: [{ retailCityId: 'harbor-city', supplyCityId: 'quarry-works' }]
 			}),
-			'Local supply source Quarry Works is unavailable.'
+			'Local supply for Harbor City — source Quarry Works is unavailable.'
 		],
 		[
 			'zero-capacity source',
@@ -241,7 +277,7 @@ describe('ProductChainsPanel', () => {
 						: inventory
 				)
 			}),
-			'Local supply source Industry City has zero city inventory capacity.'
+			'Local supply for Harbor City — source Industry City has zero city inventory capacity.'
 		]
 	] as const)('shows %s as a distinct retail source state', async (_, arrange, expectedCopy) => {
 		expect.assertions(1);
@@ -249,4 +285,59 @@ describe('ProductChainsPanel', () => {
 
 		await expect.element(page.getByText(expectedCopy)).toBeVisible();
 	});
+
+	it.each([
+		[
+			'imports only',
+			(game: GameState) => ({
+				...game,
+				retailSupplyAssignments: [{ retailCityId: 'harbor-city', supplyCityId: null }]
+			}),
+			'Harbor City supply: Imports only — replenishment uses External imports.'
+		],
+		[
+			'configuration unavailable',
+			(game: GameState) => ({ ...game, retailSupplyAssignments: [] }),
+			'Supply configuration for Harbor City is unavailable.'
+		],
+		[
+			'stale source unavailable',
+			(game: GameState) => ({
+				...game,
+				retailSupplyAssignments: [{ retailCityId: 'harbor-city', supplyCityId: 'quarry-works' }]
+			}),
+			'Local supply for Harbor City — source Quarry Works is unavailable.'
+		],
+		[
+			'zero-capacity source',
+			(game: GameState) => ({
+				...game,
+				cityInventories: game.cityInventories!.map((inventory) =>
+					inventory.cityId === 'industry-city'
+						? {
+								...inventory,
+								capacity: 0,
+								materials: {},
+								overflowUnits: 0,
+								overflowCost: 0
+							}
+						: inventory
+				)
+			}),
+			'Local supply for Harbor City — source Industry City has zero city inventory capacity.'
+		]
+	] as const)(
+		'shows %s with retail-city context when no category graph is available',
+		async (_, arrange, expectedCopy) => {
+			expect.assertions(2);
+			const game = arrange({ ...cityScopedChainGame(), stores: [] }) as GameState;
+
+			renderProductChainsPanel(game);
+
+			await expect.element(page.getByText(expectedCopy)).toBeVisible();
+			await expect
+				.element(page.getByText('No chain graph is available.', { exact: true }))
+				.toBeVisible();
+		}
+	);
 });

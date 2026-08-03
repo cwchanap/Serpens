@@ -459,10 +459,11 @@ export const ja = {
 		activeRetailSupply:
 			'{retailCityName} のローカル供給 — {sourceCityName}: 都市在庫を {used} / {capacity} 使用中。',
 		supplyState: {
-			importsOnly: '輸入のみ — 補充は外部輸入で行われます。',
-			configurationUnavailable: '供給設定を利用できません。',
-			unavailable: 'ローカル供給元 {cityName} は利用できません。',
-			zeroCapacity: 'ローカル供給元 {cityName} の都市在庫容量は 0 です。',
+			importsOnly: '{retailCityName} の供給: 輸入のみ — 補充は外部輸入で行われます。',
+			configurationUnavailable: '{retailCityName} の供給設定を利用できません。',
+			unavailable: '{retailCityName} のローカル供給 — 供給元 {sourceCityName} は利用できません。',
+			zeroCapacity:
+				'{retailCityName} のローカル供給 — 供給元 {sourceCityName} の都市在庫容量は 0 です。',
 			emptyInventory: '{cityName} の都市在庫は空です。',
 			inventoryOverflow: '{cityName} の都市在庫の超過: {units} 単位（{cost}）。'
 		},
@@ -1216,13 +1217,13 @@ export const ja = {
 				out: '1日 {quantity} 出庫',
 				produced: '1日 {actual} 生産 ・ 1サイクル {required}',
 				used: '1日 {actual} 使用 ・ 1サイクル {required}',
-				producedImported: '1日 {actual} 生産 ・ 1サイクル {required} ・ 輸入',
-				usedImported: '1日 {actual} 使用 ・ 1サイクル {required} ・ 輸入'
+				producedImported: '1日 {actual} 生産 ・ 1サイクル {required} ・ 外部輸入',
+				usedImported: '1日 {actual} 使用 ・ 1サイクル {required} ・ 外部輸入'
 			},
 			bottlenecks: {
 				healthy: '{label} は現地で流れています。',
 				watch: '{label} の在庫は直近の下流使用量を下回っています。',
-				shortage: '{label} は輸入依存か、本日の現地不足がありました。',
+				shortage: '{label} は外部輸入に依存したか、本日の現地不足がありました。',
 				noLocalCapacity: '{label} を生産する現地施設がありません。',
 				noReport: '{label} の最新フローデータはまだありません。',
 				warehouseNoCapacity: '都市在庫の容量がありません。',

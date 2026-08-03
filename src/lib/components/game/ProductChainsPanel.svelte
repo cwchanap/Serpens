@@ -9,7 +9,8 @@
 	} from '$lib/game/productChainGraph';
 	import {
 		buildProductChainTree,
-		buildStoreCategoryChainSummaries
+		buildStoreCategoryChainSummaries,
+		getProductChainSupplyState
 	} from '$lib/game/productChainTree';
 	import {
 		localizeProductChainCategorySummary,
@@ -66,7 +67,7 @@
 	const warehouseGraph = $derived(localizeProductChainGraph(buildWarehouseFlowGraph(game), i18n));
 	const graph = $derived(mode === 'warehouse-flow' ? warehouseGraph : categoryGraph);
 	const activeIndustryInventory = $derived(getCityInventory(game, game.activeIndustryCityId));
-	const categorySupplyState = $derived(categoryGraph?.supplyState);
+	const categorySupplyState = $derived(getProductChainSupplyState(game));
 	const categorySupplyInventory = $derived.by(() => {
 		const sourceCityId =
 			categorySupplyState?.code === 'available' || categorySupplyState?.code === 'zero-capacity'
@@ -103,9 +104,6 @@
 	function retailSupplyScopeLabel(): string {
 		const retailCityName = cityName(game.activeCityId);
 		const supplyState = categorySupplyState;
-		if (!supplyState) {
-			return i18n.t('productChainsPanel.supplyState.configurationUnavailable');
-		}
 
 		switch (supplyState.code) {
 			case 'available': {
@@ -118,16 +116,20 @@
 				});
 			}
 			case 'imports-only':
-				return i18n.t('productChainsPanel.supplyState.importsOnly');
+				return i18n.t('productChainsPanel.supplyState.importsOnly', { retailCityName });
 			case 'configuration-unavailable':
-				return i18n.t('productChainsPanel.supplyState.configurationUnavailable');
+				return i18n.t('productChainsPanel.supplyState.configurationUnavailable', {
+					retailCityName
+				});
 			case 'unavailable':
 				return i18n.t('productChainsPanel.supplyState.unavailable', {
-					cityName: cityName(supplyState.cityId)
+					retailCityName,
+					sourceCityName: cityName(supplyState.cityId)
 				});
 			case 'zero-capacity':
 				return i18n.t('productChainsPanel.supplyState.zeroCapacity', {
-					cityName: cityName(supplyState.cityId)
+					retailCityName,
+					sourceCityName: cityName(supplyState.cityId)
 				});
 		}
 	}

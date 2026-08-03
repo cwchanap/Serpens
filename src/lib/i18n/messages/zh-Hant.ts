@@ -459,10 +459,10 @@ export const zhHant = {
 		activeRetailSupply:
 			'{retailCityName}的本地供應 — {sourceCityName}：已使用 {used} / {capacity} 城市庫存。',
 		supplyState: {
-			importsOnly: '僅進口 — 補貨使用外部進口。',
-			configurationUnavailable: '供應設定無法使用。',
-			unavailable: '本地供應來源 {cityName} 無法使用。',
-			zeroCapacity: '本地供應來源 {cityName} 的城市庫存容量為 0。',
+			importsOnly: '{retailCityName}供應：僅進口 — 補貨使用外部進口。',
+			configurationUnavailable: '{retailCityName}的供應設定無法使用。',
+			unavailable: '{retailCityName}的本地供應 — 供應來源 {sourceCityName} 無法使用。',
+			zeroCapacity: '{retailCityName}的本地供應 — 供應來源 {sourceCityName} 的城市庫存容量為 0。',
 			emptyInventory: '{cityName}的城市庫存為空。',
 			inventoryOverflow: '{cityName}的城市庫存溢出：{units} 單位（{cost}）。'
 		},
@@ -1204,13 +1204,13 @@ export const zhHant = {
 				out: '每日流出 {quantity}',
 				produced: '每日生產 {actual} · 每循環 {required}',
 				used: '每日使用 {actual} · 每循環 {required}',
-				producedImported: '每日生產 {actual} · 每循環 {required} · 進口',
-				usedImported: '每日使用 {actual} · 每循環 {required} · 進口'
+				producedImported: '每日生產 {actual} · 每循環 {required} · 外部進口',
+				usedImported: '每日使用 {actual} · 每循環 {required} · 外部進口'
 			},
 			bottlenecks: {
 				healthy: '{label} 正在本地順暢流動。',
 				watch: '{label} 庫存低於最新下游用量。',
-				shortage: '{label} 今天依賴進口或出現本地短缺。',
+				shortage: '{label} 今天依賴外部進口或出現本地短缺。',
 				noLocalCapacity: '{label} 沒有已建置的本地生產設施。',
 				noReport: '{label} 尚無最新日流量資料。',
 				warehouseNoCapacity: '沒有可用的城市庫存容量。',
