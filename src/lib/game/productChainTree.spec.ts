@@ -250,6 +250,178 @@ describe('buildProductChainTree', () => {
 		expect(unavailable.supplyState).toEqual({ code: 'unavailable', cityId: 'quarry-works' });
 	});
 
+	it('keeps active-retail fallback imports visible across source states without leaking another retail city', () => {
+		let game = openedRetailAndIndustryCityGame();
+		game = openStoreAtTile(game, {
+			tileId: findAvailableRetailFootprintTile(game).id,
+			archetypeId: 'convenience'
+		});
+		const campusStore = game.stores.find((store) => store.cityId === 'campus-junction')!;
+		game = withLatestReport(
+			{
+				...game,
+				activeCityId: 'campus-junction',
+				cityInventories: game.cityInventories!.map((inventory) =>
+					inventory.cityId === 'breadbasket-basin'
+						? { ...inventory, capacity: 200, materials: { snacks: 7 } }
+						: { ...inventory, capacity: 200, materials: { snacks: 61 } }
+				),
+				retailSupplyAssignments: game.retailSupplyAssignments!.map((assignment) =>
+					assignment.retailCityId === 'campus-junction'
+						? { ...assignment, supplyCityId: 'breadbasket-basin' }
+						: assignment
+				)
+			},
+			emptyProductionReport({
+				produced: [
+					{
+						cityId: 'breadbasket-basin',
+						materialId: 'snacks',
+						quantity: 8,
+						value: 64,
+						source: 'local'
+					},
+					{
+						cityId: 'industry-city',
+						materialId: 'snacks',
+						quantity: 88,
+						value: 704,
+						source: 'local'
+					}
+				],
+				warehousePulls: [
+					{
+						cityId: 'breadbasket-basin',
+						materialId: 'snacks',
+						quantity: 3,
+						value: 24,
+						source: 'warehouse'
+					},
+					{
+						cityId: 'industry-city',
+						materialId: 'snacks',
+						quantity: 33,
+						value: 264,
+						source: 'warehouse'
+					}
+				],
+				shopImports: [
+					{
+						cityId: 'campus-junction',
+						materialId: 'snacks',
+						quantity: 4,
+						value: 48,
+						source: 'import'
+					},
+					{
+						cityId: 'harbor-city',
+						materialId: 'snacks',
+						quantity: 99,
+						value: 1_188,
+						source: 'import'
+					}
+				]
+			})
+		);
+
+		const configured = buildProductChainTree({ game, store: campusStore, categoryId: 'snacks' });
+		const importsOnlyGame: GameState = {
+			...game,
+			retailSupplyAssignments: game.retailSupplyAssignments!.map((assignment) =>
+				assignment.retailCityId === 'campus-junction'
+					? { ...assignment, supplyCityId: null }
+					: assignment
+			)
+		};
+		const importsOnly = buildProductChainTree({
+			game: importsOnlyGame,
+			store: campusStore,
+			categoryId: 'snacks'
+		});
+		const unavailableGame: GameState = {
+			...game,
+			retailSupplyAssignments: game.retailSupplyAssignments!.map((assignment) =>
+				assignment.retailCityId === 'campus-junction'
+					? { ...assignment, supplyCityId: 'quarry-works' }
+					: assignment
+			)
+		};
+		const unavailable = buildProductChainTree({
+			game: unavailableGame,
+			store: campusStore,
+			categoryId: 'snacks'
+		});
+
+		expect(configured.details['product:snacks']?.actual.produced).toBe(8);
+		expect(configured.details['product:snacks']?.actual.warehousePulled).toBe(3);
+		expect(configured.details['product:snacks']?.actual.shopImported).toBe(4);
+		expect(
+			buildStoreCategoryChainSummaries(game).find((summary) => summary.categoryId === 'snacks')
+				?.imported
+		).toBe(4);
+		expect(importsOnly.supplyState).toEqual({ code: 'imports-only' });
+		expect(importsOnly.details['product:snacks']?.actual).toMatchObject({
+			produced: 0,
+			warehousePulled: 0,
+			shopImported: 4
+		});
+		expect(
+			buildStoreCategoryChainSummaries(importsOnlyGame).find(
+				(summary) => summary.categoryId === 'snacks'
+			)?.imported
+		).toBe(4);
+		expect(unavailable.supplyState).toEqual({ code: 'unavailable', cityId: 'quarry-works' });
+		expect(unavailable.details['product:snacks']?.actual).toMatchObject({
+			produced: 0,
+			warehousePulled: 0,
+			shopImported: 4
+		});
+		expect(
+			buildStoreCategoryChainSummaries(unavailableGame).find(
+				(summary) => summary.categoryId === 'snacks'
+			)?.imported
+		).toBe(4);
+	});
+
+	it('distinguishes a missing retail assignment from explicit imports-only configuration', () => {
+		let game = openedRetailAndIndustryCityGame();
+		game = openStoreAtTile(game, {
+			tileId: findAvailableRetailFootprintTile(game).id,
+			archetypeId: 'convenience'
+		});
+		const campusStore = game.stores.find((store) => store.cityId === 'campus-junction')!;
+		game = { ...game, activeCityId: 'campus-junction' };
+		const importsOnlyGame: GameState = {
+			...game,
+			retailSupplyAssignments: game.retailSupplyAssignments!.map((assignment) =>
+				assignment.retailCityId === 'campus-junction'
+					? { ...assignment, supplyCityId: null }
+					: assignment
+			)
+		};
+		const missingAssignmentGame: GameState = {
+			...game,
+			retailSupplyAssignments: game.retailSupplyAssignments!.filter(
+				(assignment) => assignment.retailCityId !== 'campus-junction'
+			)
+		};
+
+		expect(
+			buildProductChainTree({
+				game: importsOnlyGame,
+				store: campusStore,
+				categoryId: 'snacks'
+			}).supplyState
+		).toEqual({ code: 'imports-only' });
+		expect(
+			buildProductChainTree({
+				game: missingAssignmentGame,
+				store: campusStore,
+				categoryId: 'snacks'
+			}).supplyState
+		).toEqual({ code: 'configuration-unavailable' });
+	});
+
 	it('builds the bottled water chain as a three-node spine', () => {
 		const game = convenienceGame();
 		const tree = buildProductChainTree({

@@ -52,6 +52,7 @@ export type GraphWarning =
 
 export type ProductChainSupplyState =
 	| { code: 'available'; cityId: WorldCityId; capacity: number }
+	| { code: 'configuration-unavailable' }
 	| { code: 'imports-only' }
 	| { code: 'unavailable'; cityId: string }
 	| { code: 'zero-capacity'; cityId: WorldCityId };
@@ -310,13 +311,10 @@ export function getIndustryInventoryScope(
 		return null;
 	}
 
-	const accessibleInventoryCount = (game.cityInventories ?? []).filter(
-		(inventory) => getCityInventory(game, inventory.cityId).ok
-	).length;
 	const report = filterProductionReportToIndustryCity(
 		latestProductionReport(game),
 		access.inventory.cityId,
-		accessibleInventoryCount === 1
+		getAccessibleIndustryInventoryCount(game) === 1
 	);
 
 	return {
@@ -327,6 +325,12 @@ export function getIndustryInventoryScope(
 		),
 		report
 	};
+}
+
+export function getAccessibleIndustryInventoryCount(game: GameState): number {
+	return (game.cityInventories ?? []).filter(
+		(inventory) => getCityInventory(game, inventory.cityId).ok
+	).length;
 }
 
 function filterProductionReportToIndustryCity(

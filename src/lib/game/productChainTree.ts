@@ -8,12 +8,14 @@ import {
 	createInputWeightMap,
 	emptyGraph,
 	formatRecipeEdgeLabel,
+	getAccessibleIndustryInventoryCount,
 	getIndustryInventoryScope,
 	getRecipeThroughputUnits,
 	getSupportedStoreChainCategories,
 	healthLabel,
 	isSupportedFinishedMaterial,
 	latestCategoryUnitsSold,
+	latestProductionReport,
 	latestStoreProductReport,
 	materialActualMetrics,
 	materialHealth,
@@ -30,7 +32,14 @@ import {
 	type ProductChainSupplyState
 } from './productChainGraph';
 import { getWorldCityDefinition } from './world';
-import type { GameState, MaterialId, ProductionRecipeId, Store } from './types';
+import type {
+	DailyProductionReport,
+	GameState,
+	MaterialId,
+	ProductionRecipeId,
+	Store,
+	WorldCityId
+} from './types';
 
 /**
  * Safety cap to prevent infinite recursion if a cyclic recipe is ever
@@ -45,6 +54,7 @@ interface TreeEntry {
 }
 
 interface RetailChainScope {
+	retailCityId: WorldCityId | null;
 	stores: Store[];
 	industry: IndustryInventoryScope | null;
 	supplyState: ProductChainSupplyState;
@@ -59,6 +69,7 @@ function getRetailChainScope(game: GameState): RetailChainScope {
 		!game.cities.some((city) => city.id === activeCity.id)
 	) {
 		return {
+			retailCityId: null,
 			stores: [],
 			industry: null,
 			supplyState: { code: 'unavailable', cityId: game.activeCityId }
@@ -66,16 +77,31 @@ function getRetailChainScope(game: GameState): RetailChainScope {
 	}
 
 	const stores = game.stores.filter((store) => store.cityId === activeCity.id);
-	const configuredSupplyCityId = game.retailSupplyAssignments?.find(
+	const assignment = game.retailSupplyAssignments?.find(
 		(assignment) => assignment.retailCityId === activeCity.id
-	)?.supplyCityId;
-	if (!configuredSupplyCityId) {
-		return { stores, industry: null, supplyState: { code: 'imports-only' } };
+	);
+	if (!assignment) {
+		return {
+			retailCityId: activeCity.id,
+			stores,
+			industry: null,
+			supplyState: { code: 'configuration-unavailable' }
+		};
 	}
+	if (assignment.supplyCityId === null) {
+		return {
+			retailCityId: activeCity.id,
+			stores,
+			industry: null,
+			supplyState: { code: 'imports-only' }
+		};
+	}
+	const configuredSupplyCityId = assignment.supplyCityId;
 
 	const industry = getIndustryInventoryScope(game, configuredSupplyCityId);
 	if (!industry) {
 		return {
+			retailCityId: activeCity.id,
 			stores,
 			industry: null,
 			supplyState: { code: 'unavailable', cityId: configuredSupplyCityId }
@@ -83,12 +109,50 @@ function getRetailChainScope(game: GameState): RetailChainScope {
 	}
 
 	return {
+		retailCityId: activeCity.id,
 		stores,
 		industry,
 		supplyState:
 			industry.inventory.capacity <= 0
 				? { code: 'zero-capacity', cityId: industry.cityId }
 				: { code: 'available', cityId: industry.cityId, capacity: industry.inventory.capacity }
+	};
+}
+
+function buildRetailCategoryReport(
+	game: GameState,
+	retailCityId: WorldCityId | null,
+	industry: IndustryInventoryScope | null
+): DailyProductionReport | null {
+	if (!retailCityId) {
+		return industry?.report ?? null;
+	}
+
+	const latestReport = latestProductionReport(game);
+	if (!latestReport) {
+		return null;
+	}
+
+	const allowUnattributedOneCityRows = getAccessibleIndustryInventoryCount(game) === 1;
+	const shopImports = latestReport.shopImports.filter(
+		(movement) =>
+			movement.cityId === retailCityId ||
+			(allowUnattributedOneCityRows && movement.cityId === undefined)
+	);
+
+	if (industry?.report) {
+		return { ...industry.report, shopImports };
+	}
+
+	return {
+		...latestReport,
+		produced: [],
+		consumed: [],
+		importedInputs: [],
+		warehousePulls: [],
+		shopImports,
+		railShipments: [],
+		cityInventories: []
 	};
 }
 
@@ -126,7 +190,11 @@ export function buildProductChainTree(input: {
 		input.store.cityId === input.game.activeCityId
 			? input.store
 			: null;
-	const report = retailScope.industry?.report ?? null;
+	const report = buildRetailCategoryReport(
+		input.game,
+		retailScope.retailCityId,
+		retailScope.industry
+	);
 	const productReport = latestStoreProductReport(
 		input.game,
 		selectedStore,
