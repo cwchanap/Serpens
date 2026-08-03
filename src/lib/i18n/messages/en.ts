@@ -458,10 +458,11 @@ export const en = {
 		activeRetailSupply:
 			'Local supply for {retailCityName} — {sourceCityName}: {used} / {capacity} city inventory used.',
 		supplyState: {
-			importsOnly: 'Imports only — replenishment uses external imports.',
-			configurationUnavailable: 'Supply configuration unavailable.',
-			unavailable: 'Local supply source {cityName} is unavailable.',
-			zeroCapacity: 'Local supply source {cityName} has zero city inventory capacity.',
+			importsOnly: '{retailCityName} supply: Imports only — replenishment uses External imports.',
+			configurationUnavailable: 'Supply configuration for {retailCityName} is unavailable.',
+			unavailable: 'Local supply for {retailCityName} — source {sourceCityName} is unavailable.',
+			zeroCapacity:
+				'Local supply for {retailCityName} — source {sourceCityName} has zero city inventory capacity.',
 			emptyInventory: '{cityName} city inventory is empty.',
 			inventoryOverflow: '{cityName} city inventory overflow: {units} units ({cost}).'
 		},
@@ -1235,13 +1236,13 @@ export const en = {
 				out: '{quantity}/day out',
 				produced: '{actual}/day produced · {required}/cycle',
 				used: '{actual}/day used · {required}/cycle',
-				producedImported: '{actual}/day produced · {required}/cycle · import',
-				usedImported: '{actual}/day used · {required}/cycle · import'
+				producedImported: '{actual}/day produced · {required}/cycle · External imports',
+				usedImported: '{actual}/day used · {required}/cycle · External imports'
 			},
 			bottlenecks: {
 				healthy: '{label} is flowing locally.',
 				watch: '{label} stock is below latest downstream use.',
-				shortage: '{label} relied on imports or had a local shortage today.',
+				shortage: '{label} relied on External imports or had a local shortage today.',
 				noLocalCapacity: '{label} has no placed local producer.',
 				noReport: '{label} has no latest daily flow yet.',
 				warehouseNoCapacity: 'No city inventory capacity is available.',
