@@ -49,6 +49,20 @@ function openedRetailAndIndustryCityGame(): GameState {
 	return openWorldCity(openWorldCity(revealed, 'campus-junction'), 'breadbasket-basin');
 }
 
+function openedRetailCityGame(): GameState {
+	const base = convenienceGame();
+	return openWorldCity(
+		{
+			...base,
+			world: {
+				...base.world,
+				revealedCityIds: [...base.world.revealedCityIds, 'campus-junction']
+			}
+		},
+		'campus-junction'
+	);
+}
+
 function findAvailableRetailFootprintTile(game: GameState): CityTile {
 	const city = game.cities.find((candidate) => candidate.id === game.activeCityId)!;
 	const lookup = createCityTileLookup(city);
@@ -381,6 +395,58 @@ describe('buildProductChainTree', () => {
 				(summary) => summary.categoryId === 'snacks'
 			)?.imported
 		).toBe(4);
+	});
+
+	it('does not invent retail ownership for unattributed historical imports once two retail cities are materialized', () => {
+		const historicalImport = emptyProductionReport({
+			shopImports: [{ materialId: 'snacks', quantity: 4, value: 48, source: 'import' }]
+		});
+		const oneRetailGame = withLatestReport(convenienceGame(), historicalImport);
+		const oneRetailTree = buildProductChainTree({
+			game: oneRetailGame,
+			store: oneRetailGame.stores[0]!,
+			categoryId: 'snacks'
+		});
+
+		let twoRetailGame = openedRetailCityGame();
+		twoRetailGame = openStoreAtTile(twoRetailGame, {
+			tileId: findAvailableRetailFootprintTile(twoRetailGame).id,
+			archetypeId: 'convenience'
+		});
+		const campusStore = twoRetailGame.stores.find((store) => store.cityId === 'campus-junction')!;
+		const harborStore = twoRetailGame.stores.find((store) => store.cityId === 'harbor-city')!;
+		twoRetailGame = withLatestReport(twoRetailGame, historicalImport);
+		const campusGame = { ...twoRetailGame, activeCityId: 'campus-junction' };
+		const harborGame = { ...twoRetailGame, activeCityId: 'harbor-city' };
+		const campusTree = buildProductChainTree({
+			game: campusGame,
+			store: campusStore,
+			categoryId: 'snacks'
+		});
+		const harborTree = buildProductChainTree({
+			game: harborGame,
+			store: harborStore,
+			categoryId: 'snacks'
+		});
+
+		expect(oneRetailTree.details['product:snacks']?.actual.shopImported).toBe(4);
+		expect(
+			buildStoreCategoryChainSummaries(oneRetailGame).find(
+				(summary) => summary.categoryId === 'snacks'
+			)?.imported
+		).toBe(4);
+		expect(campusTree.details['product:snacks']?.actual.shopImported).toBe(0);
+		expect(
+			buildStoreCategoryChainSummaries(campusGame).find(
+				(summary) => summary.categoryId === 'snacks'
+			)?.imported
+		).toBe(0);
+		expect(harborTree.details['product:snacks']?.actual.shopImported).toBe(0);
+		expect(
+			buildStoreCategoryChainSummaries(harborGame).find(
+				(summary) => summary.categoryId === 'snacks'
+			)?.imported
+		).toBe(0);
 	});
 
 	it('distinguishes a missing retail assignment from explicit imports-only configuration', () => {

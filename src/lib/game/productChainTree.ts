@@ -133,7 +133,8 @@ function buildRetailCategoryReport(
 		return null;
 	}
 
-	const allowUnattributedOneCityRows = getAccessibleIndustryInventoryCount(game) === 1;
+	const allowUnattributedOneCityRows =
+		getAccessibleIndustryInventoryCount(game) === 1 && getMaterializedRetailCityCount(game) === 1;
 	const shopImports = latestReport.shopImports.filter(
 		(movement) =>
 			movement.cityId === retailCityId ||
@@ -154,6 +155,13 @@ function buildRetailCategoryReport(
 		railShipments: [],
 		cityInventories: []
 	};
+}
+
+function getMaterializedRetailCityCount(game: GameState): number {
+	return game.cities.filter((city) => {
+		const worldCity = getWorldCityDefinition(city.id);
+		return worldCity?.kind === 'retail' && game.world.openedCityIds.includes(worldCity.id);
+	}).length;
 }
 
 /**
