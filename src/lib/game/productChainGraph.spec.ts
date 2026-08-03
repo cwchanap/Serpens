@@ -433,6 +433,56 @@ describe('warehouse flow graph', () => {
 		expect(graph.nodes.some((node) => node.id === 'material:drinks')).toBe(false);
 		expect(graph.edges.some((edge) => edge.materialId === 'drinks')).toBe(false);
 	});
+
+	test('accepts unattributed compatibility rows only while one inventory is accessible', () => {
+		const report = emptyProductionReport({
+			produced: [{ materialId: 'snacks', quantity: 5, value: 40, source: 'local' }],
+			warehousePulls: [{ materialId: 'snacks', quantity: 3, value: 24, source: 'warehouse' }],
+			shopImports: [{ materialId: 'snacks', quantity: 2, value: 24, source: 'import' }]
+		});
+		const oneInventoryGame = withLatestReport(
+			withStarterCityInventory(createNewGame('convenience', 20260802), { snacks: 1 }),
+			report
+		);
+		const base = createNewGame('convenience', 20260802);
+		const openedSecondInventory = openWorldCity(
+			{
+				...base,
+				cash: 100_000,
+				world: {
+					...base.world,
+					revealedCityIds: [...base.world.revealedCityIds, 'breadbasket-basin']
+				}
+			},
+			'breadbasket-basin'
+		);
+		const twoInventoryGame = withLatestReport(
+			{
+				...openedSecondInventory,
+				activeIndustryCityId: 'industry-city',
+				cityInventories: openedSecondInventory.cityInventories!.map((inventory) =>
+					inventory.cityId === 'industry-city'
+						? { ...inventory, materials: { snacks: 1 } }
+						: inventory
+				)
+			},
+			report
+		);
+
+		const oneInventorySnacks = buildWarehouseFlowGraph(oneInventoryGame).details['material:snacks'];
+		const twoInventorySnacks = buildWarehouseFlowGraph(twoInventoryGame).details['material:snacks'];
+
+		expect(oneInventorySnacks?.actual).toMatchObject({
+			produced: 5,
+			warehousePulled: 3,
+			shopImported: 2
+		});
+		expect(twoInventorySnacks?.actual).toMatchObject({
+			produced: 0,
+			warehousePulled: 0,
+			shopImported: 0
+		});
+	});
 });
 
 describe('healthLabel', () => {
