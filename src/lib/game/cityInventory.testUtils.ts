@@ -58,6 +58,15 @@ export function createOneCityInventoryFixture(): GameState {
 			overflowUnits: 0,
 			overflowCost: 0
 		},
+		cityInventories: [
+			{
+				cityId: 'industry-city',
+				capacity: 200,
+				materials: { water: 190, 'bottled-water': 5 },
+				overflowUnits: 0,
+				overflowCost: 0
+			}
+		],
 		stores: [
 			{
 				...store,

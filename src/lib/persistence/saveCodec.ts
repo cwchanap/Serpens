@@ -14,7 +14,7 @@ import {
 	inventoryUsed
 } from '$lib/game/buildingInventory';
 import { INDUSTRIAL_BUILDING_TYPES, MATERIALS } from '$lib/game/industry';
-import { getWarehouseCapacity, recalculateWarehousePressure } from '$lib/game/industryProduction';
+import { getWarehouseCapacity, recalculateWarehousePressure } from '$lib/game/legacyWarehouse';
 import {
 	createIndustryTileLookup,
 	getIndustryBuildingFootprint

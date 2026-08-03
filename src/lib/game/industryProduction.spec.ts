@@ -1,20 +1,20 @@
 import { describe, expect, test } from 'vitest';
 import { INDUSTRIAL_BUILDING_TYPES, getIndustryTilesByResource } from './industry';
 import { buildIndustrialBuilding } from './industryPlacement';
+import { quantizeAtomicRecipeRatio, simulateIndustryProduction } from './industryProduction';
 import {
 	addWarehouseMaterial,
 	getWarehouseCapacity,
 	getWarehouseUsed,
-	quantizeAtomicRecipeRatio,
-	removeWarehouseMaterial,
-	simulateIndustryProduction
-} from './industryProduction';
+	removeWarehouseMaterial
+} from './legacyWarehouse';
 import {
 	DEFAULT_SIMULATION_RULES,
 	type SimulationRuleSource,
 	type SimulationRules
 } from './simulationRules';
 import { createNewGame } from './state';
+import { openWorldCity } from './world';
 import type {
 	GameState,
 	IndustrialBuilding,
@@ -218,6 +218,97 @@ describe('industry production simulation', () => {
 		expect(result.game.industrialBuildings[0]?.status).toBe('idle');
 	});
 
+	test('scopes rail pushes to the producer city inventory when two industrial cities are open', () => {
+		expect.assertions(5);
+		const starter = createNewGame('convenience', 20260804);
+		const opened = openWorldCity(
+			{
+				...starter,
+				cash: 100_000,
+				world: {
+					...starter.world,
+					revealedCityIds: [...starter.world.revealedCityIds, 'breadbasket-basin']
+				}
+			},
+			'breadbasket-basin'
+		);
+		const cityA = 'industry-city';
+		const cityB = 'breadbasket-basin';
+		const rails = straightRails(4, 2, 11, 10);
+		const building = (
+			id: string,
+			typeId: IndustrialBuilding['typeId'],
+			cityId: string,
+			mapX: number
+		): IndustrialBuilding => ({
+			id,
+			level: 1,
+			typeId,
+			cityId,
+			tileId: `${cityId}-${mapX}-2`,
+			mapX,
+			mapY: 2,
+			status: 'idle',
+			inventory: {},
+			lastProduction: [],
+			producedTotal: 0,
+			importedInputTotal: 0,
+			blockedDays: 0
+		});
+		const result = simulateIndustryProduction({
+			...opened,
+			industryCities: opened.industryCities.map((city) =>
+				city.id === cityA ? { ...city, rails } : city
+			),
+			industrialBuildings: [
+				building('city-a-pump', 'water-pump', cityA, 2),
+				building('city-a-warehouse', 'warehouse', cityA, 10),
+				building('city-b-warehouse', 'warehouse', cityB, 10)
+			],
+			cityInventories: opened.cityInventories?.map((inventory) =>
+				inventory.cityId === cityB ? { ...inventory, materials: { water: 3 } } : inventory
+			)
+		});
+
+		expect(
+			result.game.cityInventories?.find((inventory) => inventory.cityId === cityA)?.materials.water
+		).toBe(10);
+		expect(
+			result.game.cityInventories?.find((inventory) => inventory.cityId === cityB)?.materials.water
+		).toBe(3);
+		expect(result.report.railShipments).toContainEqual({
+			cityId: cityA,
+			fromId: 'city-a-pump',
+			kind: 'push-warehouse',
+			materialId: 'water',
+			quantity: 10,
+			toId: 'city-a-warehouse',
+			value: 10
+		});
+		expect(result.game.warehouse).toMatchObject({
+			capacity: 400,
+			materials: { water: 13 },
+			overflowUnits: 0,
+			overflowCost: 0
+		});
+		expect(result.report.cityInventories).toEqual([
+			{
+				cityId: cityA,
+				capacity: 200,
+				used: 10,
+				overflowUnits: 0,
+				overflowCost: 0
+			},
+			{
+				cityId: cityB,
+				capacity: 200,
+				used: 3,
+				overflowUnits: 0,
+				overflowCost: 0
+			}
+		]);
+	});
+
 	test('raw producers buffer materials locally when they have no rail connection', () => {
 		expect.assertions(4);
 		let game = { ...createNewGame('convenience', 20260512), cash: 100_000 };
@@ -402,6 +493,27 @@ describe('industry production simulation', () => {
 		expect(result.game.industrialBuildings[0]?.blockedDays).toBe(1);
 	});
 
+	test('blocks buildings without a valid city inventory before they affect production', () => {
+		expect.assertions(4);
+		const game = {
+			...makeProductionGame(makeIndustryCity([]), [
+				{
+					...makeIndustryBuilding('orphaned-pump', 'water-pump', 2, 2),
+					cityId: 'missing-city',
+					tileId: 'missing-city-2-2'
+				}
+			]),
+			cash: 1_000
+		};
+
+		const result = simulateIndustryProduction(game);
+
+		expect(result.game.industrialBuildings[0]?.status).toBe('blocked');
+		expect(result.game.industrialBuildings[0]?.blockedDays).toBe(1);
+		expect(result.report.produced).toEqual([]);
+		expect(result.game.cash).toBe(game.cash);
+	});
+
 	test('marks buildings with a dangling recipeId as blocked', () => {
 		// A building type whose recipeId doesn't exist in PRODUCTION_RECIPES
 		// is a data-integrity error — the production tick must mark the
@@ -428,7 +540,7 @@ describe('industry production simulation', () => {
 				'grain-field',
 				'grain-farm'
 			);
-			const game = {
+			const game: GameState = {
 				...built,
 				industrialBuildings: built.industrialBuildings.map((building) => ({
 					...building,
@@ -462,9 +574,9 @@ describe('industry production simulation', () => {
 	});
 });
 
-// Minimal fixtures for the buffer/rail-fed production model: a GameState
-// stub the way railShipping.spec.ts builds one, since simulateIndustryProduction
-// only touches cash, warehouse, industryCities, and industrialBuildings.
+// Minimal fixtures for the buffer/rail-fed production model. They retain a
+// valid world-city lifecycle so production can access the owning city
+// inventory rather than falling back to the temporary legacy projection.
 function makeIndustryBuilding(
 	id: string,
 	typeId: IndustrialBuilding['typeId'],
@@ -477,8 +589,8 @@ function makeIndustryBuilding(
 		id,
 		level,
 		typeId,
-		cityId: 'ind-city',
-		tileId: `ind-city-${mapX}-${mapY}`,
+		cityId: 'industry-city',
+		tileId: `industry-city-${mapX}-${mapY}`,
 		mapX,
 		mapY,
 		status: 'idle',
@@ -491,7 +603,7 @@ function makeIndustryBuilding(
 }
 
 function makeIndustryCity(rails: RailCell[]): IndustryCity {
-	return { id: 'ind-city', name: 'Industry City', width: 30, height: 30, tiles: [], rails };
+	return { id: 'industry-city', name: 'Industry City', width: 30, height: 30, tiles: [], rails };
 }
 
 function straightRails(y: number, fromX: number, toX: number, level = 1): RailCell[] {
@@ -501,14 +613,17 @@ function straightRails(y: number, fromX: number, toX: number, level = 1): RailCe
 }
 
 function makeProductionGame(city: IndustryCity, buildings: IndustrialBuilding[]): GameState {
+	const base = createNewGame('convenience', 20260804);
+
 	return {
+		...base,
 		cash: 10_000,
 		reports: [],
 		industryCities: [city],
 		activeIndustryCityId: city.id,
 		industrialBuildings: buildings,
 		warehouse: { capacity: 0, materials: {}, overflowUnits: 0, overflowCost: 0 }
-	} as unknown as GameState;
+	};
 }
 
 // farm (2,2) footprint (2..3, 2..3); mill (10,2) footprint (10..11, 2..3) —
@@ -538,14 +653,23 @@ const farmWarehouseGame = makeProductionGame(makeIndustryCity(straightRails(4, 2
 ]);
 
 // Mill connected by rail to a warehouse building, with grain pre-stocked in
-// the shared warehouse pool so the mill's input shortage is satisfied by a
-// rail pull from the warehouse (exercising the fromWarehouse report branch).
+// the owning city inventory so the mill's input shortage is satisfied by a
+// rail pull from that city's warehouse (exercising the fromWarehouse report branch).
 const warehousePullGame: GameState = {
 	...makeProductionGame(makeIndustryCity(straightRails(4, 2, 11)), [
 		makeIndustryBuilding('mill', 'flour-mill', 2, 2),
 		makeIndustryBuilding('wh1', 'warehouse', 10, 2)
 	]),
-	warehouse: { capacity: 100, materials: { grain: 50 }, overflowUnits: 0, overflowCost: 0 }
+	warehouse: { capacity: 100, materials: { grain: 50 }, overflowUnits: 0, overflowCost: 0 },
+	cityInventories: [
+		{
+			cityId: 'industry-city',
+			capacity: 100,
+			materials: { grain: 50 },
+			overflowUnits: 0,
+			overflowCost: 0
+		}
+	]
 };
 
 describe('rail-fed production', () => {
@@ -738,7 +862,7 @@ describe('rail-fed production', () => {
 		};
 
 		try {
-			const game = {
+			const game: GameState = {
 				...makeProductionGame(makeIndustryCity(straightRails(4, 2, 19, 10)), [
 					makeIndustryBuilding('source', fakeTypeId, 2, 2, { grain: 3 }),
 					makeIndustryBuilding('mill', 'flour-mill', 10, 2, { grain: 2 }),
@@ -749,7 +873,16 @@ describe('rail-fed production', () => {
 					materials: { grain: 3 },
 					overflowUnits: 0,
 					overflowCost: 0
-				}
+				},
+				cityInventories: [
+					{
+						cityId: 'industry-city',
+						capacity: 200,
+						materials: { grain: 3 },
+						overflowUnits: 0,
+						overflowCost: 0
+					}
+				]
 			};
 
 			const { report } = simulateIndustryProduction(game);
@@ -811,14 +944,14 @@ describe('rail-fed production', () => {
 		// ships 3 grain/day along the attach-connected path; assert the full
 		// deterministic usage map for this fixture.
 		expect(report.railUsage).toEqual({
-			'ind-city:3,4': 3,
-			'ind-city:4,4': 3,
-			'ind-city:5,4': 3,
-			'ind-city:6,4': 3,
-			'ind-city:7,4': 3,
-			'ind-city:8,4': 3,
-			'ind-city:9,4': 3,
-			'ind-city:10,4': 3
+			'industry-city:3,4': 3,
+			'industry-city:4,4': 3,
+			'industry-city:5,4': 3,
+			'industry-city:6,4': 3,
+			'industry-city:7,4': 3,
+			'industry-city:8,4': 3,
+			'industry-city:9,4': 3,
+			'industry-city:10,4': 3
 		});
 	});
 

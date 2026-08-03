@@ -1,6 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { createRailTickState, pullViaRail, pushSurplusViaRail } from './railShipping';
-import type { GameState, IndustrialBuilding, IndustryCity, MaterialId, RailCell } from './types';
+import {
+	createRailTickState as createCityRailTickState,
+	pullViaRail,
+	pushSurplusViaRail,
+	type RailTickState
+} from './railShipping';
+import { createNewGame } from './state';
+import type {
+	GameState,
+	IndustrialBuilding,
+	IndustryCity,
+	MaterialId,
+	RailCell,
+	WarehouseInventory
+} from './types';
 
 function makeBuilding(
 	id: string,
@@ -13,8 +26,8 @@ function makeBuilding(
 		id,
 		level: 1,
 		typeId,
-		cityId: 'rail-city',
-		tileId: `rail-city-${mapX}-${mapY}`,
+		cityId: 'industry-city',
+		tileId: `industry-city-${mapX}-${mapY}`,
 		mapX,
 		mapY,
 		status: 'idle',
@@ -27,7 +40,7 @@ function makeBuilding(
 }
 
 function makeCity(rails: RailCell[]): IndustryCity {
-	return { id: 'rail-city', name: 'Rail City', width: 20, height: 20, tiles: [], rails };
+	return { id: 'industry-city', name: 'Rail City', width: 20, height: 20, tiles: [], rails };
 }
 
 function line(level = 1): RailCell[] {
@@ -35,11 +48,36 @@ function line(level = 1): RailCell[] {
 }
 
 function makeGame(buildings: IndustrialBuilding[], rails = line()): GameState {
+	const base = createNewGame('convenience', 20260804);
+
 	return {
+		...base,
+		cash: 100_000,
 		industryCities: [makeCity(rails)],
 		industrialBuildings: buildings,
 		warehouse: { capacity: 500, materials: {}, overflowUnits: 0, overflowCost: 0 }
-	} as unknown as GameState;
+	};
+}
+
+/**
+ * This keeps legacy branch-coverage fixtures concise while production rail
+ * code operates solely on a city inventory. It intentionally projects the
+ * test's supplied pool into the valid owning city, never the reverse.
+ */
+function createRailTickState(
+	game: GameState,
+	warehouse: WarehouseInventory = game.warehouse
+): RailTickState {
+	return createCityRailTickState({
+		...game,
+		cityInventories: [
+			{
+				cityId: 'industry-city',
+				...warehouse,
+				materials: { ...warehouse.materials }
+			}
+		]
+	});
 }
 
 describe('rail shipping remaining branch coverage', () => {

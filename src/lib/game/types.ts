@@ -270,6 +270,8 @@ export interface RailCell {
 }
 
 export interface RailShipment {
+	/** Present on Task-4-and-later runtime shipments; older persisted reports omit it. */
+	cityId?: WorldCityId;
 	materialId: MaterialId;
 	quantity: number;
 	value: number;
@@ -327,10 +329,20 @@ export interface IndustrialBuildingType {
 }
 
 export interface DailyMaterialMovement {
+	/** Present on Task-4-and-later runtime movements; older persisted reports omit it. */
+	cityId?: WorldCityId;
 	materialId: MaterialId;
 	quantity: number;
 	value: number;
 	source: 'local' | 'import' | 'warehouse' | 'overflow' | 'rail';
+}
+
+export interface DailyCityInventorySummary {
+	cityId: WorldCityId;
+	capacity: number;
+	used: number;
+	overflowUnits: number;
+	overflowCost: number;
 }
 
 export interface DailyProductionReport {
@@ -347,6 +359,8 @@ export interface DailyProductionReport {
 	warehouseUsed: number;
 	railShipments: RailShipment[];
 	railUsage: Record<string, number>;
+	/** Production-close snapshot. Optional while pre-v13 reports remain readable. */
+	cityInventories?: DailyCityInventorySummary[];
 }
 
 export interface WarehouseInventory {

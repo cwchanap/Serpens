@@ -13,7 +13,7 @@ import {
 	buildIndustrialBuilding,
 	getIndustrialPlacementBlockReason
 } from '$lib/game/industryPlacement';
-import { getWarehouseCapacity, recalculateWarehousePressure } from '$lib/game/industryProduction';
+import { getWarehouseCapacity, recalculateWarehousePressure } from '$lib/game/legacyWarehouse';
 import { getStoreUpgradeCost } from '$lib/game/leveling';
 import { createFoundingGameAtTile } from '$lib/game/placement';
 import { getFootprintAdjacentCoords, railCellKey } from '$lib/game/rail';

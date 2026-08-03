@@ -1,5 +1,12 @@
 import { addInventory, inventoryUsed, removeInventory } from './buildingInventory';
+import {
+	compareWorldCityIds,
+	getCityInventory,
+	getCityInventoryUsed,
+	normalizeCityInventoryDerivedState
+} from './cityInventory';
 import { INDUSTRIAL_BUILDING_TYPES, MATERIALS, PRODUCTION_RECIPES } from './industry';
+import { projectCityInventoriesToLegacyWarehouse } from './legacyWarehouse';
 import { getBuildingThroughputMultiplier } from './leveling';
 import { createRailTickState, pullViaRail, pushSurplusViaRail } from './railShipping';
 import {
@@ -10,22 +17,16 @@ import {
 } from './simulationRules';
 import type {
 	DailyMaterialMovement,
+	DailyCityInventorySummary,
 	DailyProductionReport,
+	CityInventory,
 	GameState,
 	IndustrialBuilding,
 	IndustrialBuildingType,
 	MaterialId,
 	MaterialQuantity,
-	WarehouseInventory
+	WorldCityId
 } from './types';
-
-export const WAREHOUSE_OVERFLOW_COST_PER_UNIT = 2;
-
-interface RemoveWarehouseMaterialResult {
-	warehouse: WarehouseInventory;
-	quantityRemoved: number;
-	shortage: number;
-}
 
 const RECIPE_STAGE_ORDER = {
 	raw: 0,
@@ -33,68 +34,6 @@ const RECIPE_STAGE_ORDER = {
 	final: 2,
 	warehouse: 3
 } as const;
-
-export function getWarehouseUsed(warehouse: WarehouseInventory): number {
-	return Object.values(warehouse.materials).reduce((total, quantity) => total + (quantity ?? 0), 0);
-}
-
-export function recalculateWarehousePressure(warehouse: WarehouseInventory): WarehouseInventory {
-	const used = getWarehouseUsed(warehouse);
-	const overflowUnits = Math.max(0, used - warehouse.capacity);
-
-	return {
-		...warehouse,
-		overflowUnits,
-		overflowCost: overflowUnits * WAREHOUSE_OVERFLOW_COST_PER_UNIT
-	};
-}
-
-export function addWarehouseMaterial(
-	warehouse: WarehouseInventory,
-	materialId: MaterialId,
-	quantity: number
-): WarehouseInventory {
-	const currentQuantity = warehouse.materials[materialId] ?? 0;
-	const materials = {
-		...warehouse.materials,
-		[materialId]: currentQuantity + Math.max(0, quantity)
-	};
-
-	return recalculateWarehousePressure({
-		...warehouse,
-		materials
-	});
-}
-
-export function removeWarehouseMaterial(
-	warehouse: WarehouseInventory,
-	materialId: MaterialId,
-	requestedQuantity: number
-): RemoveWarehouseMaterialResult {
-	const requested = Math.max(0, requestedQuantity);
-	const available = Math.max(0, warehouse.materials[materialId] ?? 0);
-	const quantityRemoved = Math.min(available, requested);
-	const materials = {
-		...warehouse.materials,
-		[materialId]: available - quantityRemoved
-	};
-
-	return {
-		warehouse: recalculateWarehousePressure({
-			...warehouse,
-			materials
-		}),
-		quantityRemoved,
-		shortage: requested - quantityRemoved
-	};
-}
-
-export function getWarehouseCapacity(game: GameState): number {
-	return game.industrialBuildings.reduce((capacity, building) => {
-		const buildingType = INDUSTRIAL_BUILDING_TYPES[building.typeId];
-		return capacity + (buildingType?.warehouseCapacity ?? 0);
-	}, 0);
-}
 
 export function simulateIndustryProduction(
 	game: GameState,
@@ -104,21 +43,24 @@ export function simulateIndustryProduction(
 	report: DailyProductionReport;
 	importCostApplications: ImportCostApplicationEvidence[];
 } {
-	let warehouse = recalculateWarehousePressure({
-		...game.warehouse,
-		capacity: getWarehouseCapacity(game),
-		materials: { ...game.warehouse.materials }
-	});
-	// One shared rail budget + working inventories/warehouse for the whole tick:
+	const normalizedGame = normalizeCityInventoryDerivedState(game);
+	// One rail budget and working inventory per city for the whole tick:
 	// stage-ordered buildings mutate this in place, so a raw producer's output
 	// is visible to a same-day rail pull by a downstream processor.
-	const railState = createRailTickState(game, warehouse);
-	const report: DailyProductionReport = createEmptyProductionReport(warehouse);
+	const railState = createRailTickState(normalizedGame);
+	const report: DailyProductionReport = createEmptyProductionReport();
 	const importCostApplications: ImportCostApplicationEvidence[] = [];
 	const buildingUpdates = new Map<string, IndustrialBuilding>();
-	const sorted = [...game.industrialBuildings].sort(compareIndustrialBuildingsByStage);
+	const sorted = [...normalizedGame.industrialBuildings].sort(compareIndustrialBuildingsByStage);
 
 	for (const building of sorted) {
+		const cityInventoryAccess = getCityInventory(normalizedGame, building.cityId);
+		if (!cityInventoryAccess.ok) {
+			buildingUpdates.set(building.id, markBuildingBlocked(building));
+			continue;
+		}
+
+		const cityId = cityInventoryAccess.inventory.cityId;
 		const buildingType = INDUSTRIAL_BUILDING_TYPES[building.typeId];
 
 		if (!buildingType) {
@@ -237,7 +179,8 @@ export function simulateIndustryProduction(
 					input.materialId,
 					own.removed,
 					MATERIALS[input.materialId].localValue,
-					'local'
+					'local',
+					cityId
 				);
 				report.consumed.push(movement);
 			}
@@ -254,7 +197,8 @@ export function simulateIndustryProduction(
 							input.materialId,
 							pulled.fromProducers,
 							MATERIALS[input.materialId].localValue,
-							'rail'
+							'rail',
+							cityId
 						)
 					);
 				}
@@ -264,7 +208,8 @@ export function simulateIndustryProduction(
 						input.materialId,
 						pulled.fromWarehouse,
 						MATERIALS[input.materialId].localValue,
-						'warehouse'
+						'warehouse',
+						cityId
 					);
 					report.consumed.push(movement);
 					report.warehousePulls.push(movement);
@@ -295,7 +240,8 @@ export function simulateIndustryProduction(
 					input.materialId,
 					shortage,
 					importValue,
-					'import'
+					'import',
+					cityId
 				);
 				importSpend += importMovement.value;
 				importedInputQuantity += shortage;
@@ -321,7 +267,8 @@ export function simulateIndustryProduction(
 					output.materialId,
 					addition.added,
 					MATERIALS[output.materialId].localValue,
-					'local'
+					'local',
+					cityId
 				);
 				produced.push(movement);
 				report.produced.push(movement);
@@ -370,20 +317,29 @@ export function simulateIndustryProduction(
 		}
 	}
 
-	warehouse = recalculateWarehousePressure(railState.warehouse);
-	report.overflowUnits = warehouse.overflowUnits;
-	report.overflowCost = warehouse.overflowCost;
-	report.warehouseCapacity = warehouse.capacity;
-	report.warehouseUsed = getWarehouseUsed(warehouse);
+	const cityInventories = foldRailCityInventories(normalizedGame, railState);
+	const cityInventorySummaries = summarizeCityInventories(
+		railState.cityInventoriesByCityId.values()
+	);
+	report.cityInventories = cityInventorySummaries;
+	report.overflowUnits = sumCityInventorySummaries(cityInventorySummaries, 'overflowUnits');
+	report.overflowCost = sumCityInventorySummaries(cityInventorySummaries, 'overflowCost');
+	report.warehouseCapacity = sumCityInventorySummaries(cityInventorySummaries, 'capacity');
+	report.warehouseUsed = sumCityInventorySummaries(cityInventorySummaries, 'used');
 	report.railShipments = railState.shipments;
 	report.railUsage = railState.usage;
 
 	return {
 		game: {
-			...game,
-			cash: game.cash - report.importSpend - report.operatingCost - report.overflowCost,
-			warehouse,
-			industrialBuildings: game.industrialBuildings.map((building) => {
+			...normalizedGame,
+			cash: normalizedGame.cash - report.importSpend - report.operatingCost - report.overflowCost,
+			// Legacy retail callers still read this aggregate during the staged
+			// cutover. It is derived one-way from authoritative city inventories.
+			warehouse: normalizedGame.cityInventories
+				? projectCityInventoriesToLegacyWarehouse(railState.cityInventoriesByCityId.values())
+				: normalizedGame.warehouse,
+			cityInventories,
+			industrialBuildings: normalizedGame.industrialBuildings.map((building) => {
 				// Push phase can drain a building's buffer after buildingUpdates was
 				// written, so re-read railState.inventories here or pushed units
 				// would resurrect in the returned GameState.
@@ -402,7 +358,7 @@ export function simulateIndustryProduction(
 	};
 }
 
-export function createEmptyProductionReport(warehouse: WarehouseInventory): DailyProductionReport {
+export function createEmptyProductionReport(): DailyProductionReport {
 	return {
 		produced: [],
 		consumed: [],
@@ -411,12 +367,13 @@ export function createEmptyProductionReport(warehouse: WarehouseInventory): Dail
 		shopImports: [],
 		importSpend: 0,
 		operatingCost: 0,
-		overflowUnits: warehouse.overflowUnits,
-		overflowCost: warehouse.overflowCost,
-		warehouseCapacity: warehouse.capacity,
-		warehouseUsed: getWarehouseUsed(warehouse),
+		overflowUnits: 0,
+		overflowCost: 0,
+		warehouseCapacity: 0,
+		warehouseUsed: 0,
 		railShipments: [],
-		railUsage: {}
+		railUsage: {},
+		cityInventories: []
 	};
 }
 
@@ -448,9 +405,11 @@ function createMovement(
 	materialId: MaterialId,
 	quantity: number,
 	unitValue: number,
-	source: DailyMaterialMovement['source']
+	source: DailyMaterialMovement['source'],
+	cityId: WorldCityId
 ): DailyMaterialMovement {
 	return {
+		cityId,
 		materialId,
 		quantity,
 		value: quantity * unitValue,
@@ -462,14 +421,50 @@ function createMovementWithValue(
 	materialId: MaterialId,
 	quantity: number,
 	value: number,
-	source: DailyMaterialMovement['source']
+	source: DailyMaterialMovement['source'],
+	cityId: WorldCityId
 ): DailyMaterialMovement {
 	return {
+		cityId,
 		materialId,
 		quantity,
 		value,
 		source
 	};
+}
+
+function foldRailCityInventories(
+	game: GameState,
+	railState: ReturnType<typeof createRailTickState>
+) {
+	if (!game.cityInventories) {
+		return game.cityInventories;
+	}
+
+	return game.cityInventories.map(
+		(inventory) => railState.cityInventoriesByCityId.get(inventory.cityId) ?? inventory
+	);
+}
+
+function summarizeCityInventories(
+	inventories: Iterable<CityInventory>
+): DailyCityInventorySummary[] {
+	return [...inventories]
+		.sort((left, right) => compareWorldCityIds(left.cityId, right.cityId))
+		.map((inventory) => ({
+			cityId: inventory.cityId,
+			capacity: inventory.capacity,
+			used: getCityInventoryUsed(inventory),
+			overflowUnits: inventory.overflowUnits,
+			overflowCost: inventory.overflowCost
+		}));
+}
+
+function sumCityInventorySummaries(
+	summaries: readonly DailyCityInventorySummary[],
+	field: 'capacity' | 'used' | 'overflowUnits' | 'overflowCost'
+): number {
+	return summaries.reduce((total, summary) => total + summary[field], 0);
 }
 
 function markBuildingBlocked(building: IndustrialBuilding): IndustrialBuilding {

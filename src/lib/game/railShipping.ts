@@ -1,6 +1,11 @@
 import { removeInventory } from './buildingInventory';
+import {
+	addCityInventoryMaterial,
+	getCityInventory,
+	removeCityInventoryMaterial,
+	resolveWorldCityId
+} from './cityInventory';
 import { INDUSTRIAL_BUILDING_TYPES, MATERIALS, PRODUCTION_RECIPES } from './industry';
-import { addWarehouseMaterial, removeWarehouseMaterial } from './industryProduction';
 import {
 	buildRailNetwork,
 	consumeRailBudget,
@@ -14,10 +19,11 @@ import {
 import type { RailBudget, RailNetwork } from './rail';
 import type {
 	GameState,
+	CityInventory,
 	IndustrialBuilding,
 	MaterialId,
 	RailShipment,
-	WarehouseInventory
+	WorldCityId
 } from './types';
 
 interface RailTickCity {
@@ -27,11 +33,11 @@ interface RailTickCity {
 }
 
 export interface RailTickState {
-	citiesById: Map<string, RailTickCity>;
+	citiesById: Map<WorldCityId, RailTickCity>;
 	buildingsById: Map<string, IndustrialBuilding>;
 	sortedBuildings: [string, IndustrialBuilding][]; // entries sorted by building id once per tick
 	inventories: Map<string, Partial<Record<MaterialId, number>>>; // working copies
-	warehouse: WarehouseInventory; // working copy, reassigned on change
+	cityInventoriesByCityId: Map<WorldCityId, CityInventory>; // working copies
 	usage: Record<string, number>; // railUsageKey → units
 	shipments: RailShipment[];
 }
@@ -44,28 +50,39 @@ export interface RailPullResult {
 /**
  * Builds the per-tick working state Task 5 mutates over the day: one rail
  * network + fresh budget + attach-cell index per industry city, plus working
- * copies of every building's inventory and the shared warehouse. Nothing here
- * (or in pullViaRail/pushSurplusViaRail) writes back into `game` — the caller
- * owns folding `state.inventories` / `state.warehouse` back into a new
- * GameState once the tick is done.
+ * copies of every building's inventory and its owning city's inventory. Nothing
+ * here (or in pullViaRail/pushSurplusViaRail) writes back into `game` — the
+ * caller owns folding the working maps back into a new GameState once the tick
+ * is done.
  */
-export function createRailTickState(game: GameState, warehouse: WarehouseInventory): RailTickState {
-	const citiesById = new Map<string, RailTickCity>();
+export function createRailTickState(game: GameState): RailTickState {
+	const citiesById = new Map<WorldCityId, RailTickCity>();
+	const cityInventoriesByCityId = new Map<WorldCityId, CityInventory>();
 
 	for (const city of game.industryCities) {
+		const access = getCityInventory(game, city.id);
+		if (!access.ok) {
+			continue;
+		}
+
+		const cityId = access.inventory.cityId;
 		const network = buildRailNetwork(city);
 		const attachCellsByBuildingId = new Map<string, string[]>();
 
 		for (const building of game.industrialBuildings) {
-			if (building.cityId === city.id) {
+			if (building.cityId === cityId) {
 				attachCellsByBuildingId.set(building.id, getBuildingAttachCellKeys(network, building));
 			}
 		}
 
-		citiesById.set(city.id, {
+		citiesById.set(cityId, {
 			network,
 			budget: createRailBudget(network),
 			attachCellsByBuildingId
+		});
+		cityInventoriesByCityId.set(cityId, {
+			...access.inventory,
+			materials: { ...access.inventory.materials }
 		});
 	}
 
@@ -80,10 +97,32 @@ export function createRailTickState(game: GameState, warehouse: WarehouseInvento
 		inventories: new Map(
 			game.industrialBuildings.map((building) => [building.id, { ...building.inventory }])
 		),
-		warehouse,
+		cityInventoriesByCityId,
 		usage: {},
 		shipments: []
 	};
+}
+
+interface RailEntityCity {
+	cityId: WorldCityId;
+	city: RailTickCity;
+	inventory: CityInventory;
+}
+
+function getRailEntityCity(
+	state: RailTickState,
+	entity: IndustrialBuilding
+): RailEntityCity | null {
+	const cityId = resolveWorldCityId(entity.cityId);
+	const stateEntity = state.buildingsById.get(entity.id);
+
+	if (!cityId || !stateEntity || stateEntity.cityId !== entity.cityId) {
+		return null;
+	}
+
+	const city = state.citiesById.get(cityId);
+	const inventory = state.cityInventoriesByCityId.get(cityId);
+	return city && inventory ? { cityId, city, inventory } : null;
 }
 
 interface ShipmentCandidate {
@@ -115,7 +154,7 @@ function compareBuildingIds(a: string, b: string): number {
  * Repeats nearest-source BFS until `requested` is met or no budget-positive
  * path to any stocked source remains. Sources are same-city producer buffers
  * holding the material (excluding the consumer) and warehouse-type buildings
- * (stock = the shared warehouse pool).
+ * (stock = that city's inventory pool).
  *
  * Determinism contract: on every iteration, candidates are sorted by
  * building id (plain string compare, no locale awareness), then exactly one
@@ -136,10 +175,12 @@ export function pullViaRail(
 	requested: number
 ): RailPullResult {
 	const result: RailPullResult = { fromProducers: 0, fromWarehouse: 0 };
-	const city = state.citiesById.get(consumer.cityId);
+	const entityCity = getRailEntityCity(state, consumer);
+	const city = entityCity?.city;
+	const consumerCityId = entityCity?.cityId;
 	const consumerAttach = city?.attachCellsByBuildingId.get(consumer.id) ?? [];
 
-	if (!city || consumerAttach.length === 0) {
+	if (!entityCity || !city || !consumerCityId || consumerAttach.length === 0) {
 		return result;
 	}
 
@@ -155,12 +196,12 @@ export function pullViaRail(
 		const candidates: ShipmentCandidate[] = [];
 
 		for (const [buildingId, building] of sortedEntries) {
-			if (building.cityId !== consumer.cityId || buildingId === consumer.id) {
+			if (resolveWorldCityId(building.cityId) !== consumerCityId || buildingId === consumer.id) {
 				continue;
 			}
 
 			if (building.typeId === 'warehouse') {
-				const stock = Math.max(0, state.warehouse.materials[materialId] ?? 0);
+				const stock = Math.max(0, entityCity.inventory.materials[materialId] ?? 0);
 
 				if (stock > 0) {
 					candidates.push({ buildingId, kind: 'pull-warehouse', stock });
@@ -213,8 +254,10 @@ export function pullViaRail(
 		);
 
 		if (best.candidate.kind === 'pull-warehouse') {
-			state.warehouse = removeWarehouseMaterial(state.warehouse, materialId, quantity).warehouse;
-			result.fromWarehouse += quantity;
+			const removal = removeCityInventoryMaterial(entityCity.inventory, materialId, quantity);
+			state.cityInventoriesByCityId.set(consumerCityId, removal.inventory);
+			entityCity.inventory = removal.inventory;
+			result.fromWarehouse += removal.quantityRemoved;
 		} else {
 			const removal = removeInventory(
 				state.inventories.get(best.candidate.buildingId) ?? {},
@@ -226,8 +269,9 @@ export function pullViaRail(
 		}
 
 		consumeRailBudget(city.budget, best.path, quantity);
-		recordUsage(state, consumer.cityId, best.path, quantity);
+		recordUsage(state, consumerCityId, best.path, quantity);
 		state.shipments.push({
+			cityId: consumerCityId,
 			materialId,
 			quantity,
 			value: quantity * MATERIALS[materialId].localValue,
@@ -243,15 +287,16 @@ export function pullViaRail(
 
 /**
  * Pushes every unit in the producer's buffer to the nearest reachable
- * warehouse building, budget-limited. Warehouse overflow is allowed here —
- * the caller applies the overflow fee via recalculateWarehousePressure
- * (already folded into addWarehouseMaterial's return).
+ * warehouse building, budget-limited. City-inventory overflow is allowed here;
+ * the caller observes the already-normalized city pressure after the push.
  */
 export function pushSurplusViaRail(state: RailTickState, producer: IndustrialBuilding): void {
-	const city = state.citiesById.get(producer.cityId);
+	const entityCity = getRailEntityCity(state, producer);
+	const city = entityCity?.city;
+	const producerCityId = entityCity?.cityId;
 	const producerAttach = city?.attachCellsByBuildingId.get(producer.id) ?? [];
 
-	if (!city || producerAttach.length === 0) {
+	if (!entityCity || !city || !producerCityId || producerAttach.length === 0) {
 		return;
 	}
 
@@ -275,7 +320,10 @@ export function pushSurplusViaRail(state: RailTickState, producer: IndustrialBui
 			let best: { warehouseId: string; path: string[] } | null = null;
 
 			for (const [buildingId, building] of sortedEntries) {
-				if (building.cityId !== producer.cityId || building.typeId !== 'warehouse') {
+				if (
+					resolveWorldCityId(building.cityId) !== producerCityId ||
+					building.typeId !== 'warehouse'
+				) {
 					continue;
 				}
 
@@ -301,10 +349,13 @@ export function pushSurplusViaRail(state: RailTickState, producer: IndustrialBui
 			const removal = removeInventory(inventory, materialId, quantity);
 			inventory = removal.inventory;
 			state.inventories.set(producer.id, inventory);
-			state.warehouse = addWarehouseMaterial(state.warehouse, materialId, quantity);
+			const cityInventory = addCityInventoryMaterial(entityCity.inventory, materialId, quantity);
+			state.cityInventoriesByCityId.set(producerCityId, cityInventory);
+			entityCity.inventory = cityInventory;
 			consumeRailBudget(city.budget, best.path, quantity);
-			recordUsage(state, producer.cityId, best.path, quantity);
+			recordUsage(state, producerCityId, best.path, quantity);
 			state.shipments.push({
+				cityId: producerCityId,
 				materialId,
 				quantity,
 				value: quantity * MATERIALS[materialId].localValue,

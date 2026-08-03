@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { addWarehouseMaterial } from './industryProduction';
+import { addWarehouseMaterial } from './legacyWarehouse';
 import { openStoreAtTile } from './placement';
 import { buildProductChainTree, buildStoreCategoryChainSummaries } from './productChainTree';
 import { createNewGame } from './state';

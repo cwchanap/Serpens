@@ -20,7 +20,7 @@ import type { DecisionContext } from './decisionContext';
 import { refreshWorldProgress } from './world';
 import { runExpansionPurchase } from './expansionFinancing';
 import type { FinanceActionResult, FinancedPurchaseReceipt } from './finance';
-import { getWarehouseCapacity, recalculateWarehousePressure } from './industryProduction';
+import { getWarehouseCapacity, recalculateWarehousePressure } from './legacyWarehouse';
 import { synchronizeCityInventoryCapacity } from './cityInventory';
 import type {
 	DecisionItem,

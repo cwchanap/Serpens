@@ -1,6 +1,6 @@
 import { getArchetype } from './archetypes';
 import { INDUSTRIAL_BUILDING_TYPES, MATERIALS, PRODUCTION_RECIPES } from './industry';
-import { getWarehouseUsed } from './industryProduction';
+import { getWarehouseUsed } from './legacyWarehouse';
 import { getBuildingThroughputMultiplier } from './leveling';
 import type {
 	BuildingTier,

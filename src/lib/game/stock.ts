@@ -1,7 +1,7 @@
 import { getArchetype } from './archetypes';
 import { getTilePlacementBlockReason } from './city';
 import { MATERIALS } from './industry';
-import { removeWarehouseMaterial } from './industryProduction';
+import { removeWarehouseMaterial } from './legacyWarehouse';
 import { getStoreRevenueMultiplier, getUnlockedCategoryCount } from './leveling';
 import { clampScore } from './reports';
 import { randomBetween, type Rng } from './rng';

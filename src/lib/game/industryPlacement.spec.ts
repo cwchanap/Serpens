@@ -21,7 +21,7 @@ import {
 	upgradeBuilding
 } from './industryPlacement';
 import { getBuildingUpgradeCost, MAX_BUILDING_LEVEL } from './leveling';
-import { getWarehouseCapacity, recalculateWarehousePressure } from './industryProduction';
+import { getWarehouseCapacity, recalculateWarehousePressure } from './legacyWarehouse';
 import { createNewGame } from './state';
 import type { IndustrialBuildingTypeId, IndustryCity, IndustryTile } from './types';
 import { systemDecision } from './testHelpers';

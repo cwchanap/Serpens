@@ -16,7 +16,7 @@ import {
 } from './productChainGraph';
 import { MATERIALS, PRODUCTION_RECIPES } from './industry';
 import { buildIndustrialBuilding } from './industryPlacement';
-import { addWarehouseMaterial } from './industryProduction';
+import { addWarehouseMaterial } from './legacyWarehouse';
 import { createNewGame } from './state';
 import type {
 	DailyProductReport,

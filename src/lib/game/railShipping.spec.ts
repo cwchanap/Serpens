@@ -1,9 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { createRailTickState, pullViaRail, pushSurplusViaRail } from './railShipping';
+import {
+	createRailTickState as createCityRailTickState,
+	pullViaRail,
+	pushSurplusViaRail,
+	type RailTickState
+} from './railShipping';
 import { simulateIndustryProduction } from './industryProduction';
 import { demolishRailSegment } from './railPlacement';
 import { buildRailNetwork, deriveRailSegments, railCellKey } from './rail';
-import type { GameState, IndustrialBuilding, IndustryCity, RailCell } from './types';
+import { createNewGame } from './state';
+import type {
+	GameState,
+	IndustrialBuilding,
+	IndustryCity,
+	RailCell,
+	WarehouseInventory
+} from './types';
 
 function makeBuilding(
 	id: string,
@@ -16,8 +28,8 @@ function makeBuilding(
 		id,
 		level: 1,
 		typeId,
-		cityId: 'rail-city',
-		tileId: `rail-city-${mapX}-${mapY}`,
+		cityId: 'industry-city',
+		tileId: `industry-city-${mapX}-${mapY}`,
 		mapX,
 		mapY,
 		status: 'idle',
@@ -30,7 +42,7 @@ function makeBuilding(
 }
 
 function makeCity(rails: RailCell[]): IndustryCity {
-	return { id: 'rail-city', name: 'Rail City', width: 30, height: 30, tiles: [], rails };
+	return { id: 'industry-city', name: 'Rail City', width: 30, height: 30, tiles: [], rails };
 }
 
 function straightRails(y: number, fromX: number, toX: number, level = 1): RailCell[] {
@@ -39,15 +51,36 @@ function straightRails(y: number, fromX: number, toX: number, level = 1): RailCe
 	return cells;
 }
 
-// Minimal GameState stub: railShipping only touches industryCities,
-// industrialBuildings, and warehouse.
 function makeGame(city: IndustryCity, buildings: IndustrialBuilding[]): GameState {
+	const base = createNewGame('convenience', 20260804);
+
 	return {
+		...base,
 		cash: 100_000,
 		industryCities: [city],
 		industrialBuildings: buildings,
 		warehouse: { capacity: 500, materials: {}, overflowUnits: 0, overflowCost: 0 }
-	} as unknown as GameState;
+	};
+}
+
+function createRailTickState(
+	game: GameState,
+	warehouse: WarehouseInventory = game.warehouse
+): RailTickState & { readonly warehouse: WarehouseInventory } {
+	const state = createCityRailTickState({
+		...game,
+		cityInventories: [
+			{
+				cityId: 'industry-city',
+				...warehouse,
+				materials: { ...warehouse.materials }
+			}
+		]
+	});
+
+	return Object.defineProperty(state, 'warehouse', {
+		get: () => state.cityInventoriesByCityId.get('industry-city')!
+	}) as RailTickState & { readonly warehouse: WarehouseInventory };
 }
 
 // Layout used across tests:
@@ -78,7 +111,7 @@ describe('pullViaRail', () => {
 			materialId: 'grain',
 			quantity: 1
 		});
-		expect(state.usage['rail-city:6,4']).toBe(1);
+		expect(state.usage['industry-city:6,4']).toBe(1);
 	});
 
 	it('does not pull consumer input stock from another processor buffer', () => {
@@ -432,7 +465,7 @@ describe('demolish-mid-trunk-then-retick integration', () => {
 		const segments = deriveRailSegments(network, tick1.game.industrialBuildings);
 		const trunk = segments.find((seg) => seg.cellKeys.includes('5,4'))!;
 		expect(trunk).toBeDefined();
-		const afterDemolish = demolishRailSegment(tick1.game, 'rail-city', trunk.id);
+		const afterDemolish = demolishRailSegment(tick1.game, 'industry-city', trunk.id);
 		const remainingKeys = new Set(
 			afterDemolish.industryCities[0]!.rails.map((c) => railCellKey(c.x, c.y))
 		);

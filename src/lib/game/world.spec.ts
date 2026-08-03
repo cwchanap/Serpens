@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { buildIndustrialBuilding } from './industryPlacement';
-import { addWarehouseMaterial } from './industryProduction';
+import { addWarehouseMaterial } from './legacyWarehouse';
 import { DEFAULT_RETAIL_CITY_HEIGHT, DEFAULT_RETAIL_CITY_WIDTH, generateCity } from './city';
 import { generateIndustryCity } from './industry';
 import { createEmptyFinanceState } from './finance';
