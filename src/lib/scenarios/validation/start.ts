@@ -2,10 +2,11 @@ import { ARCHETYPES } from '$lib/game/archetypes';
 import { INDUSTRIAL_BUILDING_TYPES } from '$lib/game/industry';
 import { MAX_STORE_LEVEL, getUnlockedCategoryCount } from '$lib/game/leveling';
 import type { IndustrialBuildingTypeId } from '$lib/game/types';
-import { STARTER_STORE_CAP, getWorldCityDefinition } from '$lib/game/world';
+import { STARTER_STORE_CAP, WORLD_CITY_CATALOG, getWorldCityDefinition } from '$lib/game/world';
 import type { AuthoredBuilding, JsonObject, ValidationContext } from './shared';
 import {
 	BUILDING_INVENTORY_KEYS,
+	CITY_INVENTORY_MATERIALS_KEYS,
 	FOUNDING_STORE_KEYS,
 	INDUSTRIAL_BUILDING_KEYS,
 	KNOWN_CITY_IDS,
@@ -15,6 +16,7 @@ import {
 	POLICY_KEYS,
 	POLICY_VALUES,
 	PRODUCT_OVERRIDE_KEYS,
+	RETAIL_SUPPLY_ASSIGNMENT_KEYS,
 	START_KEYS,
 	STORE_OVERRIDE_KEYS,
 	WORLD_OVERRIDE_KEYS,
@@ -122,16 +124,11 @@ function validateOverrides(
 			nonNegativeInteger(context, overrides[key], `start.overrides.${key}`);
 	}
 	if (Object.hasOwn(overrides, 'policy')) validatePolicy(context, overrides.policy);
+	if (Object.hasOwn(overrides, 'world')) validateWorldOverride(context, overrides.world);
 	const targetLevels = validateStoreOverrides(context, overrides.stores, foundingStore);
 	validateBuildingInventories(context, overrides.buildingInventories, buildings);
-	validateMaterialRecord(
-		context,
-		overrides.warehouseMaterials,
-		'start.overrides.warehouseMaterials',
-		true
-	);
-	validateWarehouseCapacity(context, overrides.warehouseMaterials, buildings);
-	if (Object.hasOwn(overrides, 'world')) validateWorldOverride(context, overrides.world);
+	validateCityInventoryMaterials(context, overrides.cityInventoryMaterials);
+	validateRetailSupplyAssignments(context, overrides.retailSupplyAssignments);
 	validateStoreCap(context, overrides.storeCap, foundingStore);
 	validateAllowlistedProductUnlocks(context, foundingStore, targetLevels);
 }
@@ -377,34 +374,214 @@ function validateMaterialRecord(
 	return result;
 }
 
-function validateWarehouseCapacity(
+function validateCityInventoryMaterials(context: ValidationContext, value: unknown): void {
+	if (value === undefined) return;
+	const overrides = arrayValue(context, value, 'start.overrides.cityInventoryMaterials');
+	if (!overrides) return;
+	const seenCityIds = new Set<string>();
+
+	for (const [index, candidate] of overrides.entries()) {
+		const path = `start.overrides.cityInventoryMaterials[${index}]`;
+		const override = closedObject(context, candidate, path, CITY_INVENTORY_MATERIALS_KEYS);
+		if (!override) continue;
+		const cityId = override.cityId;
+		const cityPath = `${path}.cityId`;
+		const validCity = validateKnownReference(context, cityId, cityPath, KNOWN_CITY_IDS, 'city');
+		if (validCity) {
+			if (seenCityIds.has(cityId)) {
+				diagnostic(
+					context,
+					cityPath,
+					'duplicate-reference',
+					cityId,
+					`Duplicate city inventory override for ${cityId}.`
+				);
+			}
+			seenCityIds.add(cityId);
+			const city = getWorldCityDefinition(cityId);
+			if (city?.kind !== 'industry') {
+				diagnostic(
+					context,
+					cityPath,
+					'invalid-city-inventory-city',
+					cityId,
+					'City inventory overrides require an industry city.'
+				);
+			} else if (!context.openedCityIds.has(cityId)) {
+				diagnostic(
+					context,
+					cityPath,
+					'city-inventory-city-closed',
+					cityId,
+					'City inventory overrides require an opened industry city.'
+				);
+			}
+			validateIncluded(context, cityId, cityPath, context.content.cities);
+		}
+
+		validateCityInventoryMaterialRecord(context, override.materials, `${path}.materials`);
+	}
+}
+
+function validateCityInventoryMaterialRecord(
 	context: ValidationContext,
 	value: unknown,
-	buildings: readonly AuthoredBuilding[]
+	path: string
 ): void {
-	if (value === undefined || !isObject(value)) return;
-	const used = Object.values(value).reduce<number>(
-		(total, quantity) =>
-			total +
-			(typeof quantity === 'number' && Number.isFinite(quantity) && quantity >= 0 ? quantity : 0),
-		0
-	);
-	const capacity = buildings.reduce(
-		(total, building) =>
-			total +
-			(INDUSTRIAL_BUILDING_TYPES[building.typeId as IndustrialBuildingTypeId]?.warehouseCapacity ??
-				0),
-		0
-	);
-	if (used > capacity) {
+	if (!isObject(value)) {
 		diagnostic(
 			context,
-			'start.overrides.warehouseMaterials',
-			'warehouse-capacity-exceeded',
+			path,
+			'invalid-object',
 			value,
-			`Starting warehouse contents use ${used} units but authored capacity is ${capacity}.`
+			`${path} must be a material quantity object.`
+		);
+		return;
+	}
+
+	let total = 0;
+	for (const [materialId, quantity] of Object.entries(value)) {
+		const itemPath = `${path}.${materialId}`;
+		if (!KNOWN_MATERIAL_IDS.has(materialId)) {
+			diagnostic(
+				context,
+				itemPath,
+				'invalid-reference',
+				materialId,
+				`Unknown material reference: ${materialId}.`
+			);
+			continue;
+		}
+		validateIncluded(context, materialId, itemPath, context.content.materials);
+		if (!nonNegativeNumber(context, quantity, itemPath)) continue;
+		if (!Number.isSafeInteger(quantity)) {
+			diagnostic(
+				context,
+				itemPath,
+				'invalid-city-inventory-quantity',
+				quantity,
+				'City inventory quantities must be non-negative safe integers.'
+			);
+			continue;
+		}
+		if (quantity > Number.MAX_SAFE_INTEGER - total) {
+			diagnostic(
+				context,
+				path,
+				'unsafe-city-inventory-total',
+				value,
+				'City inventory material totals must stay within the safe integer range.'
+			);
+			continue;
+		}
+		total += quantity;
+	}
+}
+
+function validateRetailSupplyAssignments(context: ValidationContext, value: unknown): void {
+	if (value === undefined) return;
+	const assignments = arrayValue(context, value, 'start.overrides.retailSupplyAssignments');
+	if (!assignments) return;
+	const expectedRetailCityIds = [...context.openedCityIds]
+		.filter((cityId) => getWorldCityDefinition(cityId)?.kind === 'retail')
+		.sort(compareScenarioWorldCityIds);
+	const seenRetailCityIds = new Set<string>();
+	const orderedRetailCityIds: string[] = [];
+
+	for (const [index, candidate] of assignments.entries()) {
+		const path = `start.overrides.retailSupplyAssignments[${index}]`;
+		const assignment = closedObject(context, candidate, path, RETAIL_SUPPLY_ASSIGNMENT_KEYS);
+		if (!assignment) continue;
+		const ownerPath = `${path}.retailCityId`;
+		const owner = assignment.retailCityId;
+		const validOwner = validateKnownReference(context, owner, ownerPath, KNOWN_CITY_IDS, 'city');
+		if (validOwner) {
+			if (seenRetailCityIds.has(owner)) {
+				diagnostic(
+					context,
+					ownerPath,
+					'duplicate-reference',
+					owner,
+					`Duplicate retail supply assignment for ${owner}.`
+				);
+			}
+			seenRetailCityIds.add(owner);
+			orderedRetailCityIds.push(owner);
+			const city = getWorldCityDefinition(owner);
+			if (city?.kind !== 'retail') {
+				diagnostic(
+					context,
+					ownerPath,
+					'invalid-retail-supply-city',
+					owner,
+					'Retail supply assignments require a retail city owner.'
+				);
+			} else if (!context.openedCityIds.has(owner)) {
+				diagnostic(
+					context,
+					ownerPath,
+					'retail-supply-city-closed',
+					owner,
+					'Retail supply assignments require an opened retail city owner.'
+				);
+			}
+			validateIncluded(context, owner, ownerPath, context.content.cities);
+		}
+
+		const supplyPath = `${path}.supplyCityId`;
+		if (assignment.supplyCityId === null) continue;
+		const source = assignment.supplyCityId;
+		if (!validateKnownReference(context, source, supplyPath, KNOWN_CITY_IDS, 'city')) continue;
+		const city = getWorldCityDefinition(source);
+		if (city?.kind !== 'industry') {
+			diagnostic(
+				context,
+				supplyPath,
+				'invalid-supply-city',
+				source,
+				'Retail supply sources must be industry cities or null.'
+			);
+		} else if (!context.openedCityIds.has(source)) {
+			diagnostic(
+				context,
+				supplyPath,
+				'supply-city-closed',
+				source,
+				'Retail supply sources must be opened industry cities or null.'
+			);
+		}
+		validateIncluded(context, source, supplyPath, context.content.cities);
+	}
+
+	const uniqueOrdered = orderedRetailCityIds.filter(
+		(cityId, index) => orderedRetailCityIds.indexOf(cityId) === index
+	);
+	const hasCanonicalOwners =
+		uniqueOrdered.length === expectedRetailCityIds.length &&
+		uniqueOrdered.every((cityId, index) => cityId === expectedRetailCityIds[index]);
+	if (!hasCanonicalOwners) {
+		const hasExpectedOwners =
+			seenRetailCityIds.size === expectedRetailCityIds.length &&
+			expectedRetailCityIds.every((cityId) => seenRetailCityIds.has(cityId));
+		diagnostic(
+			context,
+			'start.overrides.retailSupplyAssignments',
+			hasExpectedOwners
+				? 'noncanonical-retail-supply-assignment'
+				: 'missing-retail-supply-assignment',
+			value,
+			hasExpectedOwners
+				? 'Retail supply assignments must use canonical retail-city order.'
+				: 'Retail supply assignments must contain one record for every opened retail city.'
 		);
 	}
+}
+
+function compareScenarioWorldCityIds(left: string, right: string): number {
+	const leftIndex = WORLD_CITY_CATALOG.findIndex((city) => city.id === left);
+	const rightIndex = WORLD_CITY_CATALOG.findIndex((city) => city.id === right);
+	if (leftIndex !== rightIndex) return leftIndex - rightIndex;
+	return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function validateWorldOverride(context: ValidationContext, value: unknown): void {

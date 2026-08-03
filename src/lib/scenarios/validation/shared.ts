@@ -50,7 +50,8 @@ const OVERRIDE_KEYS = [
 	'storeCap',
 	'stores',
 	'buildingInventories',
-	'warehouseMaterials',
+	'cityInventoryMaterials',
+	'retailSupplyAssignments',
 	'world'
 ] as const;
 const POLICY_KEYS = ['pricing', 'inventory', 'staffing', 'marketing', 'service'] as const;
@@ -63,6 +64,8 @@ const PRODUCT_OVERRIDE_KEYS = [
 	'sellingPrice'
 ] as const;
 const BUILDING_INVENTORY_KEYS = ['buildingRef', 'materials'] as const;
+const CITY_INVENTORY_MATERIALS_KEYS = ['cityId', 'materials'] as const;
+const RETAIL_SUPPLY_ASSIGNMENT_KEYS = ['retailCityId', 'supplyCityId'] as const;
 const WORLD_OVERRIDE_KEYS = [
 	'revealedCityIds',
 	'openedCityIds',
@@ -127,7 +130,7 @@ const METRIC_WINDOWS: Readonly<Record<string, ReadonlySet<WindowKind>>> = {
 	scorecard: new Set(['current']),
 	'store-count': new Set(['current']),
 	'industrial-building-count': new Set(['current']),
-	'warehouse-quantity': new Set(['current'])
+	'city-inventory-quantity': new Set(['current'])
 };
 
 const CATEGORY_METRICS = new Set([
@@ -472,6 +475,8 @@ export {
 	STORE_OVERRIDE_KEYS,
 	PRODUCT_OVERRIDE_KEYS,
 	BUILDING_INVENTORY_KEYS,
+	CITY_INVENTORY_MATERIALS_KEYS,
+	RETAIL_SUPPLY_ASSIGNMENT_KEYS,
 	WORLD_OVERRIDE_KEYS,
 	CONTENT_KEYS,
 	RETAIL_PLACEMENT_KEYS,

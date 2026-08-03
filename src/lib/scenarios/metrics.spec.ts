@@ -18,6 +18,7 @@ import type {
 	ScenarioMetricWindow
 } from './types';
 import {
+	cityInventoryEvidenceId,
 	encodeEvidenceSegment,
 	evaluateMetric,
 	evaluateScenarioConditions,
@@ -282,7 +283,23 @@ function metricGame(): GameState {
 			building('A/build', 'water-pump'),
 			building('warehouse', 'warehouse')
 		],
-		warehouse: { capacity: 100, materials: { water: 42 }, overflowUnits: 0, overflowCost: 0 }
+		cityInventories: [
+			{
+				cityId: 'industry-city',
+				capacity: 100,
+				materials: { water: 42 },
+				overflowUnits: 0,
+				overflowCost: 0
+			},
+			{
+				cityId: 'breadbasket-basin',
+				capacity: 100,
+				materials: { water: 17 },
+				overflowUnits: 0,
+				overflowCost: 0
+			}
+		],
+		warehouse: { capacity: 200, materials: { water: 59 }, overflowUnits: 0, overflowCost: 0 }
 	});
 }
 
@@ -386,6 +403,12 @@ describe('scenario metric evidence IDs', () => {
 		);
 	});
 
+	it('scopes inventory evidence to the city and material pair', () => {
+		expect(cityInventoryEvidenceId('industry/city', 'water/large')).toBe(
+			'city-inventory:industry%2Fcity/material:water%2Flarge'
+		);
+	});
+
 	it('sorts entity and report evidence IDs by plain code-unit order', () => {
 		const state = metricGame();
 
@@ -469,7 +492,12 @@ describe('registered scenario metrics', () => {
 			{ kind: 'current' },
 			2
 		],
-		[{ metric: 'warehouse-quantity', materialId: 'water' }, { kind: 'current' }, 42, ['water']]
+		[
+			{ metric: 'city-inventory-quantity', cityId: 'industry-city', materialId: 'water' },
+			{ kind: 'current' },
+			42,
+			['city-inventory:industry-city/material:water']
+		]
 	] as const)(
 		'evaluates $0 over $1',
 		(query, window, actual, contributingIds?: readonly string[]) => {
@@ -558,6 +586,29 @@ describe('registered scenario metrics', () => {
 			contributingIds: ['report:14', 'report:7'],
 			windowComplete: true
 		});
+	});
+
+	it('reads only the named city inventory rather than the aggregate projection', () => {
+		const state = metricGame();
+
+		expect(
+			evaluateMetric(
+				state,
+				{ metric: 'city-inventory-quantity', cityId: 'industry-city', materialId: 'water' },
+				{ kind: 'current' }
+			)
+		).toEqual({
+			actual: 42,
+			contributingIds: ['city-inventory:industry-city/material:water'],
+			windowComplete: true
+		});
+		expect(
+			evaluateMetric(
+				state,
+				{ metric: 'city-inventory-quantity', cityId: 'breadbasket-basin', materialId: 'water' },
+				{ kind: 'current' }
+			)
+		).toMatchObject({ actual: 17 });
 	});
 
 	it('uses the current cash after a non-day command instead of stale report cash', () => {

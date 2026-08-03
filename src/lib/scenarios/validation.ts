@@ -16,6 +16,10 @@ import { validateConditions } from './validation/conditions';
 import { validateScores } from './validation/scores';
 
 export { sortScenarioDiagnostics, validateScenarioSetupReserve } from './validation/shared';
+export {
+	validateCityInventoryCapacities,
+	validateRetailSupplyAssignments
+} from './validation/cityInventory';
 
 function validateDefinitionIdentity(context: ValidationContext, definition: JsonObject): void {
 	if (

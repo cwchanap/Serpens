@@ -9,8 +9,11 @@ import {
 } from './types';
 
 type HasStringIndex<T> = string extends keyof T ? true : false;
+type HasRemovedAggregateOverride =
+	`warehouse${'Materials'}` extends keyof ScenarioStartBlueprint['overrides'] ? true : false;
 
 const blueprintHasNoCatchAllIndex: HasStringIndex<ScenarioStartBlueprint> = false;
+const blueprintHasNoRemovedAggregateOverride: HasRemovedAggregateOverride = false;
 
 const definition = {
 	id: 'first-profit',
@@ -64,7 +67,8 @@ const definition = {
 				}
 			],
 			buildingInventories: [{ buildingRef: 'water-pump', materials: { water: 10 } }],
-			warehouseMaterials: { water: 5 },
+			cityInventoryMaterials: [{ cityId: 'industry-city', materials: { water: 5 } }],
+			retailSupplyAssignments: [{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' }],
 			world: {
 				revealedCityIds: ['harbor-city', 'industry-city'],
 				openedCityIds: ['harbor-city', 'industry-city'],
@@ -242,6 +246,7 @@ const run = {
 describe('scenario contracts', () => {
 	it('constructs a closed definition and active run', () => {
 		expect(blueprintHasNoCatchAllIndex).toBe(false);
+		expect(blueprintHasNoRemovedAggregateOverride).toBe(false);
 		expect(definition.start.foundingStore.ref).toBe('founder');
 		expect(run.status).toBe('active');
 	});

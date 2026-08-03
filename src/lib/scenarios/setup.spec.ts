@@ -4,7 +4,7 @@ import {
 	DEFAULT_RETAIL_CITY_WIDTH,
 	generateCity
 } from '$lib/game/city';
-import { getWarehouseCapacity } from '$lib/game/legacyWarehouse';
+import { projectCityInventoriesToLegacyWarehouse } from '$lib/game/legacyWarehouse';
 import { createFoundingGameAtTile } from '$lib/game/placement';
 import { getTotalDebt } from '$lib/game/finance';
 import { normalizeSeed } from '$lib/game/rng';
@@ -148,7 +148,11 @@ function scenarioDefinition(): ScenarioDefinition {
 					}
 				],
 				buildingInventories: [{ buildingRef: 'bottler', materials: { water: 20 } }],
-				warehouseMaterials: { 'bottled-water': 30 },
+				cityInventoryMaterials: [{ cityId: 'industry-city', materials: { 'bottled-water': 30 } }],
+				retailSupplyAssignments: [
+					{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' },
+					{ retailCityId: 'campus-junction', supplyCityId: 'industry-city' }
+				],
 				world: {
 					revealedCityIds: ['harbor-city', 'industry-city', 'campus-junction'],
 					openedCityIds: ['harbor-city', 'industry-city', 'campus-junction'],
@@ -317,12 +321,22 @@ describe('buildScenarioGame', { timeout: 30_000 }, () => {
 		});
 		expect(store.stockHealth).toBe(calculateStockHealth(store.products));
 		expect(result.game.industrialBuildings[0]?.inventory).toEqual({ water: 20 });
-		expect(result.game.warehouse).toEqual({
-			capacity: getWarehouseCapacity(result.game),
-			materials: { 'bottled-water': 30 },
-			overflowUnits: 0,
-			overflowCost: 0
-		});
+		expect(result.game.cityInventories).toEqual([
+			{
+				cityId: 'industry-city',
+				capacity: 200,
+				materials: { 'bottled-water': 30 },
+				overflowUnits: 0,
+				overflowCost: 0
+			}
+		]);
+		expect(result.game.retailSupplyAssignments).toEqual([
+			{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' },
+			{ retailCityId: 'campus-junction', supplyCityId: 'industry-city' }
+		]);
+		expect(result.game.warehouse).toEqual(
+			projectCityInventoriesToLegacyWarehouse(result.game.cityInventories!)
+		);
 		expect(result.game.world.revealedCityIds).toEqual([
 			'harbor-city',
 			'industry-city',
@@ -336,6 +350,76 @@ describe('buildScenarioGame', { timeout: 30_000 }, () => {
 		expect(result.game.activeCityId).toBe('campus-junction');
 		expect(result.game.activeIndustryCityId).toBe('industry-city');
 		expect(result.game.cities.map((city) => city.id)).toContain('campus-junction');
+	});
+
+	it('keeps authored inventory isolated by city after warehouse capacity is materialized', () => {
+		const definition = scenarioDefinition();
+		definition.start.industrialBuildings = [
+			...definition.start.industrialBuildings,
+			{
+				ref: 'breadbasket-warehouse',
+				typeId: 'warehouse',
+				cityId: 'breadbasket-basin',
+				tileId: 'breadbasket-basin-30-6'
+			}
+		];
+		definition.start.overrides.world = {
+			revealedCityIds: ['harbor-city', 'campus-junction', 'industry-city', 'breadbasket-basin'],
+			openedCityIds: ['harbor-city', 'campus-junction', 'industry-city', 'breadbasket-basin'],
+			activeRetailCityId: 'campus-junction',
+			activeIndustryCityId: 'breadbasket-basin'
+		};
+		definition.start.overrides.cityInventoryMaterials = [
+			{ cityId: 'breadbasket-basin', materials: { grain: 7 } },
+			{ cityId: 'industry-city', materials: { 'bottled-water': 30 } }
+		];
+		definition.start.overrides.retailSupplyAssignments = [
+			{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' },
+			{ retailCityId: 'campus-junction', supplyCityId: 'breadbasket-basin' }
+		];
+		definition.content.cityIds = [
+			'harbor-city',
+			'campus-junction',
+			'industry-city',
+			'breadbasket-basin'
+		];
+		definition.content.materialIds = ['water', 'bottled-water', 'grain'];
+		definition.content.industrialPlacements = [
+			...definition.content.industrialPlacements,
+			{
+				cityId: 'breadbasket-basin',
+				tileId: 'breadbasket-basin-30-6',
+				buildingTypeId: 'warehouse'
+			}
+		];
+
+		const result = buildScenarioGame(definition, definition.officialSeed);
+
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		expect(result.game.cityInventories).toEqual([
+			{
+				cityId: 'industry-city',
+				capacity: 200,
+				materials: { 'bottled-water': 30 },
+				overflowUnits: 0,
+				overflowCost: 0
+			},
+			{
+				cityId: 'breadbasket-basin',
+				capacity: 200,
+				materials: { grain: 7 },
+				overflowUnits: 0,
+				overflowCost: 0
+			}
+		]);
+		expect(result.game.retailSupplyAssignments).toEqual([
+			{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' },
+			{ retailCityId: 'campus-junction', supplyCityId: 'breadbasket-basin' }
+		]);
+		expect(result.game.warehouse).toEqual(
+			projectCityInventoriesToLegacyWarehouse(result.game.cityInventories!)
+		);
 	});
 
 	it('restores authored finances after transiently funding builds and upgrades', () => {
@@ -369,6 +453,16 @@ describe('buildScenarioGame', { timeout: 30_000 }, () => {
 		if (!result.ok) return;
 		expect(result.game.cash).toBe(ordinary.cash);
 		expect(result.game.finance).toEqual(ordinary.finance);
+	});
+
+	it('creates deterministic lifecycle supply defaults when no assignment is authored', () => {
+		const result = buildScenarioGame(importSqueezeFixture(), 280_002);
+
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		expect(result.game.retailSupplyAssignments).toEqual([
+			{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' }
+		]);
 	});
 
 	it('materializes a level-4 electronics store through normal upgrades', () => {
@@ -507,7 +601,7 @@ describe('buildScenarioGame', { timeout: 30_000 }, () => {
 		});
 	});
 
-	it('rejects building and warehouse inventories beyond derived capacity', () => {
+	it('rejects building and city inventories beyond their own derived capacity', () => {
 		const buildingOverflow = scenarioDefinition();
 		buildingOverflow.start.overrides.buildingInventories = [
 			{ buildingRef: 'bottler', materials: { water: 101 } }
@@ -519,18 +613,21 @@ describe('buildScenarioGame', { timeout: 30_000 }, () => {
 			code: 'building-inventory-capacity-exceeded'
 		});
 
-		const warehouseOverflow = scenarioDefinition();
-		warehouseOverflow.start.overrides.warehouseMaterials = { 'bottled-water': 201 };
+		const cityInventoryOverflow = scenarioDefinition();
+		cityInventoryOverflow.start.overrides.cityInventoryMaterials = [
+			{ cityId: 'industry-city', materials: { 'bottled-water': 201 } }
+		];
 		expect(
-			diagnosticCodes(buildScenarioGame(warehouseOverflow, warehouseOverflow.officialSeed))
+			diagnosticCodes(buildScenarioGame(cityInventoryOverflow, cityInventoryOverflow.officialSeed))
 		).toContainEqual({
-			path: 'start.overrides.warehouseMaterials',
-			code: 'warehouse-capacity-exceeded'
+			path: 'start.overrides.cityInventoryMaterials[0].materials',
+			code: 'city-inventory-capacity-exceeded'
 		});
 	});
 
 	it('rejects a world override that closes a city containing starting content', () => {
 		const definition = scenarioDefinition();
+		delete definition.start.overrides.retailSupplyAssignments;
 		definition.start.overrides.world = {
 			revealedCityIds: ['industry-city', 'campus-junction'],
 			openedCityIds: ['industry-city', 'campus-junction'],
@@ -548,7 +645,8 @@ describe('buildScenarioGame', { timeout: 30_000 }, () => {
 		const definition = scenarioDefinition();
 		definition.start.industrialBuildings = [];
 		definition.start.overrides.buildingInventories = [];
-		definition.start.overrides.warehouseMaterials = {};
+		delete definition.start.overrides.cityInventoryMaterials;
+		delete definition.start.overrides.retailSupplyAssignments;
 		definition.start.overrides.storeCap = 1;
 		definition.start.overrides.world = {
 			revealedCityIds: ['harbor-city', 'breadbasket-basin'],
@@ -579,9 +677,11 @@ describe('buildScenarioGame', { timeout: 30_000 }, () => {
 		]);
 	});
 
-	it('refreshes world progress after authored warehouse inventory is applied', () => {
+	it('refreshes world progress after authored city inventory is applied', () => {
 		const definition = scenarioDefinition();
-		definition.start.overrides.warehouseMaterials = { snacks: 1 };
+		definition.start.overrides.cityInventoryMaterials = [
+			{ cityId: 'industry-city', materials: { snacks: 1 } }
+		];
 		definition.content.materialIds = [...definition.content.materialIds, 'snacks'];
 
 		const result = buildScenarioGame(definition, definition.officialSeed);
@@ -657,10 +757,10 @@ describe('buildScenarioGame', { timeout: 30_000 }, () => {
 		}
 	});
 
-	it('maps strict warehouse validation failures to setup diagnostics', () => {
+	it('maps strict city inventory validation failures to setup diagnostics', () => {
 		transitionControls.strictValidationThrows = new SaveDataError(
-			'Warehouse overflow',
-			'invariant-warehouse'
+			'City inventory overflow',
+			'invariant-city-inventory'
 		);
 		try {
 			const definition = scenarioDefinition();
@@ -668,10 +768,31 @@ describe('buildScenarioGame', { timeout: 30_000 }, () => {
 			expect(result.ok).toBe(false);
 			if (result.ok) return;
 			expect(result.diagnostics).toContainEqual({
-				path: 'start.overrides.warehouseMaterials',
+				path: 'start.overrides.cityInventoryMaterials',
 				code: 'setup-invariant-failed',
 				value: result.diagnostics[0]?.value,
-				detail: 'The built game warehouse contents or pressure exceed derived capacity.'
+				detail: 'The built game city inventory contents or pressure exceed same-city capacity.'
+			});
+		} finally {
+			transitionControls.strictValidationThrows = null;
+		}
+	});
+
+	it('maps strict retail supply validation failures to setup diagnostics', () => {
+		transitionControls.strictValidationThrows = new SaveDataError(
+			'Retail supply invalid',
+			'invariant-retail-supply'
+		);
+		try {
+			const definition = scenarioDefinition();
+			const result = buildScenarioGame(definition, definition.officialSeed);
+			expect(result.ok).toBe(false);
+			if (result.ok) return;
+			expect(result.diagnostics).toContainEqual({
+				path: 'start.overrides.retailSupplyAssignments',
+				code: 'setup-invariant-failed',
+				value: result.diagnostics[0]?.value,
+				detail: 'The built game retail supply assignments must resolve every opened retail city.'
 			});
 		} finally {
 			transitionControls.strictValidationThrows = null;

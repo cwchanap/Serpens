@@ -13,7 +13,13 @@ import {
 	buildIndustrialBuilding,
 	getIndustrialPlacementBlockReason
 } from '$lib/game/industryPlacement';
-import { getWarehouseCapacity, recalculateWarehousePressure } from '$lib/game/legacyWarehouse';
+import { projectCityInventoriesToLegacyWarehouse } from '$lib/game/legacyWarehouse';
+import {
+	compareWorldCityIds,
+	initializeCityInventory,
+	initializeRetailSupplyAssignment,
+	synchronizeAllCityInventoryCapacities
+} from '$lib/game/cityInventory';
 import { getStoreUpgradeCost } from '$lib/game/leveling';
 import { createFoundingGameAtTile } from '$lib/game/placement';
 import { getFootprintAdjacentCoords, railCellKey } from '$lib/game/rail';
@@ -29,7 +35,9 @@ import type { ScenarioDefinition, ScenarioDiagnostic } from './types';
 import {
 	sortScenarioDiagnostics,
 	validateScenarioDefinition,
-	validateScenarioSetupReserve
+	validateScenarioSetupReserve,
+	validateCityInventoryCapacities,
+	validateRetailSupplyAssignments
 } from './validation';
 
 export type BuildScenarioGameResult =
@@ -96,12 +104,19 @@ function requiredStartingCityIds(definition: ScenarioDefinition, game: GameState
 	ids.add(definition.start.foundingStore.cityId);
 	for (const building of definition.start.industrialBuildings) ids.add(building.cityId);
 	for (const rail of definition.start.rails) ids.add(rail.cityId);
+	for (const override of definition.start.overrides.cityInventoryMaterials ?? []) {
+		ids.add(override.cityId);
+	}
+	for (const assignment of definition.start.overrides.retailSupplyAssignments ?? []) {
+		ids.add(assignment.retailCityId);
+		if (assignment.supplyCityId !== null) ids.add(assignment.supplyCityId);
+	}
 	for (const cityId of definition.start.overrides.world?.openedCityIds ?? []) ids.add(cityId);
 	if (definition.start.overrides.world) {
 		ids.add(definition.start.overrides.world.activeRetailCityId);
 		ids.add(definition.start.overrides.world.activeIndustryCityId);
 	}
-	return [...ids].sort(compareCodeUnits);
+	return [...ids].sort(compareWorldCityIds);
 }
 
 function materializeStartingCities(
@@ -109,6 +124,14 @@ function materializeStartingCities(
 	game: GameState,
 	normalizedSeed: number
 ): GameState {
+	const worldOverride = definition.start.overrides.world;
+	const world = worldOverride
+		? {
+				...game.world,
+				revealedCityIds: [...worldOverride.revealedCityIds],
+				openedCityIds: [...worldOverride.openedCityIds]
+			}
+		: game.world;
 	let cities = [...game.cities];
 	let industryCities = [...game.industryCities];
 
@@ -126,7 +149,45 @@ function materializeStartingCities(
 		}
 	}
 
-	return { ...game, cities, industryCities };
+	let next: GameState = {
+		...game,
+		cities,
+		industryCities,
+		world,
+		activeCityId: worldOverride?.activeRetailCityId ?? game.activeCityId,
+		activeIndustryCityId: worldOverride?.activeIndustryCityId ?? game.activeIndustryCityId,
+		retailSupplyAssignments: []
+	};
+	const openedCityIds = [...new Set(next.world.openedCityIds)].sort(compareWorldCityIds);
+	for (const cityId of openedCityIds) {
+		const city = getWorldCityDefinition(cityId);
+		if (city?.kind === 'industry') next = initializeCityInventory(next, city.id);
+	}
+	for (const cityId of openedCityIds) {
+		const city = getWorldCityDefinition(cityId);
+		if (city?.kind === 'retail') next = initializeRetailSupplyAssignment(next, city.id);
+	}
+	next = {
+		...next,
+		cityInventories: next.cityInventories?.filter((inventory) => {
+			const city = getWorldCityDefinition(inventory.cityId);
+			return (
+				city?.kind === 'industry' &&
+				next.world.openedCityIds.includes(city.id) &&
+				next.industryCities.some((industryCity) => industryCity.id === city.id)
+			);
+		}),
+		retailSupplyAssignments: next.retailSupplyAssignments?.filter((assignment) => {
+			const city = getWorldCityDefinition(assignment.retailCityId);
+			return (
+				city?.kind === 'retail' &&
+				next.world.openedCityIds.includes(city.id) &&
+				next.cities.some((retailCity) => retailCity.id === city.id)
+			);
+		})
+	};
+
+	return next;
 }
 
 function calculateTransientSetupReserve(definition: ScenarioDefinition, game: GameState): number {
@@ -270,31 +331,13 @@ function applyAuthoredOverrides(
 
 	if (diagnostics.length > 0) return { diagnostics: sortScenarioDiagnostics(diagnostics) };
 
-	let next: GameState = {
+	const next: GameState = {
 		...game,
 		stores,
 		industrialBuildings,
-		warehouse: {
-			...game.warehouse,
-			materials: overrides.warehouseMaterials
-				? { ...overrides.warehouseMaterials }
-				: game.warehouse.materials
-		},
 		policy: overrides.policy ? { ...overrides.policy } : game.policy,
 		storeCap: overrides.storeCap ?? game.storeCap
 	};
-	if (overrides.world) {
-		next = {
-			...next,
-			world: {
-				...next.world,
-				revealedCityIds: [...overrides.world.revealedCityIds],
-				openedCityIds: [...overrides.world.openedCityIds]
-			},
-			activeCityId: overrides.world.activeRetailCityId,
-			activeIndustryCityId: overrides.world.activeIndustryCityId
-		};
-	}
 
 	return {
 		game: {
@@ -306,6 +349,42 @@ function applyAuthoredOverrides(
 					: replaceFoundingLoan(baseFinances.finance, game.day, overrides.debt)
 		},
 		diagnostics: []
+	};
+}
+
+function applyCityInventoryMaterials(definition: ScenarioDefinition, game: GameState): GameState {
+	const overrides = definition.start.overrides.cityInventoryMaterials;
+	if (!overrides || overrides.length === 0 || !game.cityInventories) return game;
+	const materialsByCityId = new Map(
+		overrides.map((override) => [override.cityId, { ...override.materials }])
+	);
+	const cityInventories = game.cityInventories.map((inventory) => {
+		const materials = materialsByCityId.get(inventory.cityId);
+		return materials ? { ...inventory, materials } : inventory;
+	});
+
+	return { ...game, cityInventories };
+}
+
+function applyRetailSupplyAssignments(definition: ScenarioDefinition, game: GameState): GameState {
+	const overrides = definition.start.overrides.retailSupplyAssignments;
+	if (!overrides) return game;
+
+	return {
+		...game,
+		retailSupplyAssignments: [...overrides]
+			.map((assignment) => ({
+				retailCityId: assignment.retailCityId,
+				supplyCityId: assignment.supplyCityId
+			}))
+			.sort((left, right) => compareWorldCityIds(left.retailCityId, right.retailCityId))
+	};
+}
+
+function projectCityInventoriesToLegacyCompatibilityWarehouse(game: GameState): GameState {
+	return {
+		...game,
+		warehouse: projectCityInventoriesToLegacyWarehouse(game.cityInventories ?? [])
 	};
 }
 
@@ -540,12 +619,19 @@ function strictSetupFailure(error: SaveDataError, game: GameState): ScenarioDiag
 				value: game.stores.map((store) => store.stockHealth),
 				detail: 'The built game store stock health does not match its products.'
 			};
-		case 'invariant-warehouse':
+		case 'invariant-city-inventory':
 			return {
-				path: 'start.overrides.warehouseMaterials',
+				path: 'start.overrides.cityInventoryMaterials',
 				code: 'setup-invariant-failed',
-				value: game.warehouse,
-				detail: 'The built game warehouse contents or pressure exceed derived capacity.'
+				value: game.cityInventories,
+				detail: 'The built game city inventory contents or pressure exceed same-city capacity.'
+			};
+		case 'invariant-retail-supply':
+			return {
+				path: 'start.overrides.retailSupplyAssignments',
+				code: 'setup-invariant-failed',
+				value: game.retailSupplyAssignments,
+				detail: 'The built game retail supply assignments must resolve every opened retail city.'
 			};
 		case 'invariant-inventory':
 			return {
@@ -680,14 +766,19 @@ export function buildScenarioGame(
 	const overridden = applyAuthoredOverrides(definition, game, refs, baseFinances);
 	if (!overridden.game) return { ok: false, diagnostics: overridden.diagnostics };
 	game = overridden.game;
-	game = {
-		...game,
-		warehouse: recalculateWarehousePressure({
-			...game.warehouse,
-			capacity: getWarehouseCapacity(game),
-			materials: { ...game.warehouse.materials }
-		})
-	};
+	game = synchronizeAllCityInventoryCapacities(game);
+	game = applyCityInventoryMaterials(definition, game);
+	game = synchronizeAllCityInventoryCapacities(game);
+	const cityInventoryDiagnostics = validateCityInventoryCapacities(game, definition.start);
+	if (cityInventoryDiagnostics.length > 0) {
+		return { ok: false, diagnostics: cityInventoryDiagnostics };
+	}
+	game = applyRetailSupplyAssignments(definition, game);
+	const retailSupplyDiagnostics = validateRetailSupplyAssignments(game, definition.start);
+	if (retailSupplyDiagnostics.length > 0) {
+		return { ok: false, diagnostics: retailSupplyDiagnostics };
+	}
+	game = projectCityInventoriesToLegacyCompatibilityWarehouse(game);
 	game = refreshWorldProgress(game);
 
 	const invariantDiagnostics = validateBuiltScenarioInvariants(definition, game, refs);

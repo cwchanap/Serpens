@@ -139,7 +139,14 @@ export interface ScenarioStartBlueprint {
 			buildingRef: string;
 			materials: Partial<Record<MaterialId, number>>;
 		}[];
-		warehouseMaterials?: Partial<Record<MaterialId, number>>;
+		cityInventoryMaterials?: readonly {
+			cityId: WorldCityId;
+			materials: Partial<Record<MaterialId, number>>;
+		}[];
+		retailSupplyAssignments?: readonly {
+			retailCityId: WorldCityId;
+			supplyCityId: WorldCityId | null;
+		}[];
 		world?: {
 			revealedCityIds: readonly WorldCityId[];
 			openedCityIds: readonly WorldCityId[];
@@ -170,7 +177,7 @@ export type ScenarioMetricQuery =
 	| { metric: 'scorecard'; score: ScoreKey }
 	| { metric: 'store-count' }
 	| { metric: 'industrial-building-count'; buildingTypeIds: readonly IndustrialBuildingTypeId[] }
-	| { metric: 'warehouse-quantity'; materialId: MaterialId };
+	| { metric: 'city-inventory-quantity'; cityId: WorldCityId; materialId: MaterialId };
 
 export type ScenarioComparator = 'lt' | 'lte' | 'eq' | 'gte' | 'gt';
 

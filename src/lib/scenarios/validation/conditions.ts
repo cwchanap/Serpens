@@ -1,11 +1,13 @@
 import { MATERIALS, getIndustrialBuildingTypesForProductChain } from '$lib/game/industry';
 import type { MaterialId } from '$lib/game/types';
+import { getWorldCityDefinition } from '$lib/game/world';
 import type { AuthoredBuilding, JsonObject, ValidationContext, WindowKind } from './shared';
 import {
 	CATEGORY_METRICS,
 	COMPARATORS,
 	CONDITION_KEYS,
 	KNOWN_BUILDING_TYPE_IDS,
+	KNOWN_CITY_IDS,
 	KNOWN_MATERIAL_IDS,
 	KNOWN_PRODUCT_IDS,
 	LOCAL_PRODUCTION_METRICS,
@@ -121,7 +123,7 @@ function validateMetricQuery(
 	if (CATEGORY_METRICS.has(metric)) allowedKeys = ['metric', 'categoryIds'];
 	else if (metric === 'scorecard') allowedKeys = ['metric', 'score'];
 	else if (metric === 'industrial-building-count') allowedKeys = ['metric', 'buildingTypeIds'];
-	else if (metric === 'warehouse-quantity') allowedKeys = ['metric', 'materialId'];
+	else if (metric === 'city-inventory-quantity') allowedKeys = ['metric', 'cityId', 'materialId'];
 	const query = closedObject(context, value, path, allowedKeys);
 	if (!query) return metric;
 	if (CATEGORY_METRICS.has(metric)) {
@@ -179,7 +181,28 @@ function validateMetricQuery(
 				`${path}.buildingTypeIds[${(query.buildingTypeIds as readonly unknown[]).indexOf(id)}]`,
 				context.content.buildingTypes
 			);
-	} else if (metric === 'warehouse-quantity') {
+	} else if (metric === 'city-inventory-quantity') {
+		if (validateKnownReference(context, query.cityId, `${path}.cityId`, KNOWN_CITY_IDS, 'city')) {
+			const city = getWorldCityDefinition(query.cityId);
+			if (city?.kind !== 'industry') {
+				diagnostic(
+					context,
+					`${path}.cityId`,
+					'invalid-city-inventory-city',
+					query.cityId,
+					'City inventory metrics require an industry city.'
+				);
+			} else if (!context.openedCityIds.has(query.cityId)) {
+				diagnostic(
+					context,
+					`${path}.cityId`,
+					'city-inventory-city-closed',
+					query.cityId,
+					'City inventory metrics require an opened industry city.'
+				);
+			}
+			validateIncluded(context, query.cityId, `${path}.cityId`, context.content.cities);
+		}
 		if (
 			validateKnownReference(
 				context,
