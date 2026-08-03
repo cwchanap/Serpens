@@ -11,7 +11,11 @@ import {
 	type FinancedPurchaseReceipt
 } from './finance';
 import { runExpansionPurchase } from './expansionFinancing';
-import { initializeCityInventory, initializeRetailSupplyAssignment } from './cityInventory';
+import {
+	getCityInventory,
+	initializeCityInventory,
+	initializeRetailSupplyAssignment
+} from './cityInventory';
 import {
 	decisionContextWorldCityNotAvailableYet,
 	decisionContextWorldCityOpeningCost,
@@ -301,7 +305,7 @@ export function refreshWorldProgress(game: GameState): GameState {
 
 	revealCity('campus-junction', 'reveal-campus-junction', game.stores.length >= 2 || game.day >= 7);
 	revealCity('breadbasket-basin', 'reveal-breadbasket-basin', hasWarehouseAndRawProducer(game));
-	revealCity('quarry-works', 'reveal-quarry-works', hasFinishedMaterialInWarehouse(game));
+	revealCity('quarry-works', 'reveal-quarry-works', hasFinishedMaterialInCityInventories(game));
 	revealCity(
 		'garden-borough',
 		'reveal-garden-borough',
@@ -451,20 +455,38 @@ function hasWarehouseAndRawProducer(game: GameState): boolean {
 	);
 }
 
-function hasFinishedMaterialInWarehouse(game: GameState): boolean {
-	if (FINISHED_MATERIAL_IDS.some((materialId) => (game.warehouse.materials[materialId] ?? 0) > 0)) {
+function hasFinishedMaterialInCityInventories(game: GameState): boolean {
+	if (
+		(game.cityInventories ?? []).some((inventory) => {
+			const access = getCityInventory(game, inventory.cityId);
+			return (
+				access.ok &&
+				FINISHED_MATERIAL_IDS.some(
+					(materialId) => (access.inventory.materials[materialId] ?? 0) > 0
+				)
+			);
+		})
+	) {
 		return true;
 	}
 
-	// Produced materials may have been pulled from the warehouse on the same
-	// day, so also check the latest production report for locally-made
-	// finished materials.
+	// Produced materials may have been pulled from their city inventory on the
+	// same day. Only attributed movement can establish that city-local evidence;
+	// historical global-pool rows intentionally do not unlock this milestone.
 	const latestReport = game.reports.at(-1);
 	if (!latestReport) return false;
 
-	return latestReport.productionReport.produced.some(
-		(movement) => movement.source === 'local' && FINISHED_MATERIAL_IDS.includes(movement.materialId)
-	);
+	return latestReport.productionReport.produced.some((movement) => {
+		if (
+			movement.source !== 'local' ||
+			!movement.cityId ||
+			!FINISHED_MATERIAL_IDS.includes(movement.materialId)
+		) {
+			return false;
+		}
+
+		return getCityInventory(game, movement.cityId).ok;
+	});
 }
 
 function hasPositiveReport(game: GameState): boolean {

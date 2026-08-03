@@ -1,4 +1,5 @@
 import { INDUSTRIAL_BUILDING_TYPES, MATERIALS, PRODUCTION_RECIPES } from './industry';
+import { getCityInventory } from './cityInventory';
 import { getFinishedMaterialIdForCategory } from './stock';
 import type {
 	BuildingTier,
@@ -41,10 +42,33 @@ export function getBuildingTypeProducing(materialId: MaterialId): IndustrialBuil
 	return null;
 }
 
+function getActiveIndustryInputs(game: GameState): {
+	inventory: Partial<Record<MaterialId, number>>;
+	buildings: GameState['industrialBuildings'];
+} {
+	const activeBuildings = game.industrialBuildings.filter(
+		(building) => building.cityId === game.activeIndustryCityId
+	);
+	if (!Array.isArray(game.world?.openedCityIds) || !Array.isArray(game.industryCities)) {
+		return { inventory: {}, buildings: activeBuildings };
+	}
+
+	const access = getCityInventory(game, game.activeIndustryCityId);
+	if (!access.ok) {
+		return { inventory: {}, buildings: [] };
+	}
+
+	return {
+		inventory: access.inventory.materials,
+		buildings: activeBuildings
+	};
+}
+
 export function getAvailableMaterialIds(game: GameState): MaterialId[] {
 	const available = new Set<MaterialId>();
+	const { inventory, buildings } = getActiveIndustryInputs(game);
 
-	for (const [materialId, quantity] of Object.entries(game.warehouse.materials)) {
+	for (const [materialId, quantity] of Object.entries(inventory)) {
 		if ((quantity ?? 0) > 0) {
 			available.add(materialId as MaterialId);
 		}
@@ -56,7 +80,13 @@ export function getAvailableMaterialIds(game: GameState): MaterialId[] {
 	// Advisor (`buildSupplyAdvisor`) is the authoritative view that distinguishes
 	// built / buildable / blocked via `inputsSatisfied`. See lines below in that
 	// function. If tighter accuracy is needed here later, gate on inputsSatisfied.
-	for (const placed of game.industrialBuildings) {
+	for (const placed of buildings) {
+		for (const [materialId, quantity] of Object.entries(placed.inventory)) {
+			if ((quantity ?? 0) > 0) {
+				available.add(materialId as MaterialId);
+			}
+		}
+
 		const type = INDUSTRIAL_BUILDING_TYPES[placed.typeId];
 		if (!type?.recipeId) {
 			continue;
@@ -120,9 +150,8 @@ function getWantedFinishedMaterials(game: GameState): MaterialId[] {
 }
 
 export function buildSupplyAdvisor(game: GameState): AdvisorChain[] {
-	const placed = new Set<IndustrialBuildingTypeId>(
-		game.industrialBuildings.map((building) => building.typeId)
-	);
+	const { buildings } = getActiveIndustryInputs(game);
+	const placed = new Set<IndustrialBuildingTypeId>(buildings.map((building) => building.typeId));
 	const chains: AdvisorChain[] = [];
 
 	for (const finishedMaterialId of getWantedFinishedMaterials(game)) {

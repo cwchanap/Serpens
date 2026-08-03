@@ -16,8 +16,8 @@ import {
 } from './productChainGraph';
 import { MATERIALS, PRODUCTION_RECIPES } from './industry';
 import { buildIndustrialBuilding } from './industryPlacement';
-import { addWarehouseMaterial } from './legacyWarehouse';
 import { createNewGame } from './state';
+import { openWorldCity } from './world';
 import type {
 	DailyProductReport,
 	DailyProductionReport,
@@ -143,6 +143,20 @@ function withLatestReport(game: GameState, productionReport: DailyProductionRepo
 	};
 }
 
+function withStarterCityInventory(
+	game: GameState,
+	materials: Partial<Record<MaterialId, number>>,
+	capacity = game.cityInventories?.find((inventory) => inventory.cityId === 'industry-city')
+		?.capacity ?? 0
+): GameState {
+	return {
+		...game,
+		cityInventories: game.cityInventories!.map((inventory) =>
+			inventory.cityId === 'industry-city' ? { ...inventory, capacity, materials } : inventory
+		)
+	};
+}
+
 describe('product chain graph discovery', () => {
 	test('filters a store to product categories with supported chains', () => {
 		expect.assertions(2);
@@ -205,7 +219,7 @@ describe('warehouse flow graph', () => {
 	test('builds a warehouse-centered graph from stock and latest material movement', () => {
 		expect.assertions(11);
 		let game = createNewGame('convenience', 20260518);
-		game = { ...game, warehouse: addWarehouseMaterial(game.warehouse, 'snacks', 14) };
+		game = withStarterCityInventory(game, { snacks: 14 });
 		game = withLatestReport(
 			game,
 			emptyProductionReport({
@@ -288,13 +302,136 @@ describe('warehouse flow graph', () => {
 			tileId: warehouseTile.id,
 			buildingTypeId: 'warehouse'
 		});
-		game = { ...game, warehouse: addWarehouseMaterial(game.warehouse, 'snacks', 5) };
+		game = withStarterCityInventory(game, { snacks: 5 });
 
 		const graph = buildWarehouseFlowGraph(game);
 		const warehouse = graph.nodes.find((node) => node.id === 'warehouse');
 
 		expect(game.industrialBuildings.some((building) => building.typeId === 'warehouse')).toBe(true);
 		expect(warehouse?.capacity.buildingCount).toBe(1);
+	});
+
+	test('scopes warehouse flow to the active industry city instead of another city inventory, buildings, or movements', () => {
+		expect.assertions(4);
+		const base = createNewGame('convenience', 20260802);
+		const opened = openWorldCity(
+			{
+				...base,
+				cash: 100_000,
+				world: {
+					...base.world,
+					revealedCityIds: [...base.world.revealedCityIds, 'breadbasket-basin']
+				}
+			},
+			'breadbasket-basin'
+		);
+		const game = withLatestReport(
+			{
+				...opened,
+				activeIndustryCityId: 'industry-city',
+				warehouse: {
+					capacity: 999,
+					materials: { drinks: 99 },
+					overflowUnits: 0,
+					overflowCost: 0
+				},
+				cityInventories: opened.cityInventories!.map((inventory) =>
+					inventory.cityId === 'industry-city'
+						? {
+								...inventory,
+								capacity: 200,
+								materials: { snacks: 3 }
+							}
+						: {
+								...inventory,
+								capacity: 200,
+								materials: { drinks: 9 }
+							}
+				),
+				industrialBuildings: [
+					{
+						id: 'warehouse-a',
+						level: 1,
+						typeId: 'warehouse',
+						cityId: 'industry-city',
+						tileId: 'industry-city-1-1',
+						mapX: 1,
+						mapY: 1,
+						status: 'idle',
+						inventory: {},
+						lastProduction: [],
+						producedTotal: 0,
+						importedInputTotal: 0,
+						blockedDays: 0
+					},
+					{
+						id: 'bottler-b',
+						level: 1,
+						typeId: 'water-bottler',
+						cityId: 'breadbasket-basin',
+						tileId: 'breadbasket-basin-1-1',
+						mapX: 1,
+						mapY: 1,
+						status: 'idle',
+						inventory: {},
+						lastProduction: [],
+						producedTotal: 0,
+						importedInputTotal: 0,
+						blockedDays: 0
+					}
+				]
+			},
+			emptyProductionReport({
+				produced: [
+					{
+						cityId: 'industry-city',
+						materialId: 'snacks',
+						quantity: 5,
+						value: 40,
+						source: 'local'
+					},
+					{
+						cityId: 'breadbasket-basin',
+						materialId: 'drinks',
+						quantity: 11,
+						value: 88,
+						source: 'local'
+					}
+				],
+				railShipments: [
+					{
+						cityId: 'industry-city',
+						materialId: 'snacks',
+						quantity: 5,
+						value: 40,
+						kind: 'push-warehouse',
+						fromId: 'bottler-a',
+						toId: 'warehouse-a'
+					},
+					{
+						cityId: 'breadbasket-basin',
+						materialId: 'drinks',
+						quantity: 11,
+						value: 88,
+						kind: 'push-warehouse',
+						fromId: 'bottler-b',
+						toId: 'warehouse-b'
+					}
+				]
+			})
+		);
+
+		const graph = buildWarehouseFlowGraph(game);
+		const warehouse = graph.nodes.find((node) => node.id === 'warehouse');
+		const snacks = graph.nodes.find((node) => node.id === 'material:snacks');
+
+		expect(warehouse).toMatchObject({
+			warehouseStock: 3,
+			capacity: { buildingCount: 1, inputPerDay: 200 }
+		});
+		expect(snacks?.actual.produced).toBe(5);
+		expect(graph.nodes.some((node) => node.id === 'material:drinks')).toBe(false);
+		expect(graph.edges.some((edge) => edge.materialId === 'drinks')).toBe(false);
 	});
 });
 
@@ -482,15 +619,7 @@ describe('warehouse flow graph health branches', () => {
 	test('reports a healthy warehouse when capacity is available and no overflow', () => {
 		expect.assertions(4);
 		let game = createNewGame('convenience', 20260508);
-		game = {
-			...game,
-			warehouse: {
-				capacity: 200,
-				materials: { snacks: 5 },
-				overflowUnits: 0,
-				overflowCost: 0
-			}
-		};
+		game = withStarterCityInventory(game, { snacks: 5 }, 200);
 		game = withLatestReport(
 			game,
 			emptyProductionReport({
@@ -512,15 +641,11 @@ describe('warehouse flow graph health branches', () => {
 	test('handles unknown material ids in warehouse without a producer recipe', () => {
 		expect.assertions(4);
 		let game = createNewGame('convenience', 20260508);
-		game = {
-			...game,
-			warehouse: {
-				capacity: 200,
-				materials: { 'unknown-material': 3 } as unknown as Partial<Record<MaterialId, number>>,
-				overflowUnits: 0,
-				overflowCost: 0
-			}
-		};
+		game = withStarterCityInventory(
+			game,
+			{ 'unknown-material': 3 } as unknown as Partial<Record<MaterialId, number>>,
+			200
+		);
 
 		const graph = buildWarehouseFlowGraph(game);
 		const materialNode = graph.nodes.find((node) => node.id === 'material:unknown-material')!;

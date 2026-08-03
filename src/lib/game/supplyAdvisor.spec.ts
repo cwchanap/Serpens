@@ -4,33 +4,28 @@ import {
 	getAvailableMaterialIds,
 	getBuildingTypeProducing
 } from './supplyAdvisor';
-import { createEmptyFinanceState } from './finance';
-import { createInitialEventRuntime } from './eventSelection';
+import { createNewGame } from './state';
+import { openWorldCity } from './world';
 import type { GameState, IndustrialBuilding, MaterialId, Store } from './types';
 
 function baseGame(overrides: Partial<GameState> = {}): GameState {
+	const game = createNewGame('convenience', 1);
+
 	return {
-		seed: 1,
-		rngState: 0,
+		...game,
 		day: 1,
 		cash: 0,
-		finance: createEmptyFinanceState(1),
-		policy: {} as GameState['policy'],
-		scorecard: {} as GameState['scorecard'],
-		world: {} as GameState['world'],
-		storeCap: 5,
-		cities: [],
-		activeCityId: 'harbor-city',
-		industryCities: [],
-		activeIndustryCityId: 'industry-city',
 		industrialBuildings: [],
-		warehouse: { capacity: 0, materials: {}, overflowUnits: 0, overflowCost: 0 },
 		stores: [],
-		staff: [],
-		hiringCandidates: [],
-		decisions: [],
-		events: createInitialEventRuntime(1),
-		reports: [],
+		cityInventories: [
+			{
+				cityId: 'industry-city',
+				capacity: 0,
+				materials: {},
+				overflowUnits: 0,
+				overflowCost: 0
+			}
+		],
 		...overrides
 	};
 }
@@ -71,6 +66,59 @@ describe('getBuildingTypeProducing', () => {
 });
 
 describe('buildSupplyAdvisor', () => {
+	it('scopes advisor steps and available materials to the active industry city', () => {
+		expect.assertions(4);
+		const base = createNewGame('convenience', 20260802);
+		const opened = openWorldCity(
+			{
+				...base,
+				cash: 100_000,
+				world: {
+					...base.world,
+					revealedCityIds: [...base.world.revealedCityIds, 'breadbasket-basin']
+				}
+			},
+			'breadbasket-basin'
+		);
+		const game: GameState = {
+			...opened,
+			activeIndustryCityId: 'industry-city',
+			warehouse: {
+				capacity: 999,
+				materials: { water: 99, 'bottled-water': 99 },
+				overflowUnits: 0,
+				overflowCost: 0
+			},
+			cityInventories: opened.cityInventories!.map((inventory) =>
+				inventory.cityId === 'breadbasket-basin'
+					? { ...inventory, capacity: 200, materials: { water: 12, 'bottled-water': 4 } }
+					: { ...inventory, capacity: 200, materials: {} }
+			),
+			industrialBuildings: [
+				{
+					...building('water-pump'),
+					id: 'other-city-pump',
+					cityId: 'breadbasket-basin',
+					inventory: { water: 12 }
+				},
+				{
+					...building('water-bottler'),
+					id: 'other-city-bottler',
+					cityId: 'breadbasket-basin',
+					inventory: { 'bottled-water': 4 }
+				}
+			]
+		};
+
+		const chain = bottledWaterChain(game);
+		const available = getAvailableMaterialIds(game);
+
+		expect(chain?.steps.map((step) => step.state)).toEqual(['buildable', 'blocked']);
+		expect(chain?.complete).toBe(false);
+		expect(available).not.toContain('water');
+		expect(available).not.toContain('bottled-water');
+	});
+
 	it('falls back to Tier-1 starter chains when there is no retail demand', () => {
 		expect.assertions(4);
 		const chain = bottledWaterChain(baseGame());
@@ -138,11 +186,19 @@ describe('buildSupplyAdvisor', () => {
 });
 
 describe('getAvailableMaterialIds', () => {
-	it('includes warehouse stock and outputs of placed buildings', () => {
+	it('includes active city inventory stock and outputs of placed buildings', () => {
 		expect.assertions(2);
 		const available = getAvailableMaterialIds(
 			baseGame({
-				warehouse: { capacity: 10, materials: { grain: 4 }, overflowUnits: 0, overflowCost: 0 },
+				cityInventories: [
+					{
+						cityId: 'industry-city',
+						capacity: 10,
+						materials: { grain: 4 },
+						overflowUnits: 0,
+						overflowCost: 0
+					}
+				],
 				industrialBuildings: [building('water-pump')]
 			})
 		);
@@ -150,16 +206,19 @@ describe('getAvailableMaterialIds', () => {
 		expect(available).toContain('water');
 	});
 
-	it('skips recipe-less placed buildings (e.g. warehouses) and null/zero warehouse entries', () => {
+	it('skips recipe-less placed buildings (e.g. warehouses) and null/zero city inventory entries', () => {
 		expect.assertions(2);
 		const available = getAvailableMaterialIds(
 			baseGame({
-				warehouse: {
-					capacity: 10,
-					materials: { grain: null as unknown as number, water: 0 },
-					overflowUnits: 0,
-					overflowCost: 0
-				},
+				cityInventories: [
+					{
+						cityId: 'industry-city',
+						capacity: 10,
+						materials: { grain: null as unknown as number, water: 0 },
+						overflowUnits: 0,
+						overflowCost: 0
+					}
+				],
 				industrialBuildings: [building('warehouse')]
 			})
 		);
@@ -167,16 +226,19 @@ describe('getAvailableMaterialIds', () => {
 		expect(available).not.toContain('water');
 	});
 
-	it('treats undefined warehouse quantities as zero and skips unknown placed type ids', () => {
+	it('treats undefined city inventory quantities as zero and skips unknown placed type ids', () => {
 		expect.assertions(2);
 		const available = getAvailableMaterialIds(
 			baseGame({
-				warehouse: {
-					capacity: 10,
-					materials: { grain: undefined as unknown as number, salt: 3 },
-					overflowUnits: 0,
-					overflowCost: 0
-				},
+				cityInventories: [
+					{
+						cityId: 'industry-city',
+						capacity: 10,
+						materials: { grain: undefined as unknown as number, salt: 3 },
+						overflowUnits: 0,
+						overflowCost: 0
+					}
+				],
 				industrialBuildings: [
 					// An unrecognized typeId must not throw or contribute outputs.
 					building('nonexistent-building' as IndustrialBuilding['typeId'])

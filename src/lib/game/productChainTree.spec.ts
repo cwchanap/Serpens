@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { addWarehouseMaterial } from './legacyWarehouse';
 import { openStoreAtTile } from './placement';
 import { buildProductChainTree, buildStoreCategoryChainSummaries } from './productChainTree';
 import { createNewGame } from './state';
+import { openWorldCity } from './world';
 import {
 	createCityTileLookup,
 	getOccupiedStoreTileIds,
@@ -34,6 +34,19 @@ vi.mock('./productChainGraph', async (importOriginal) => {
 
 function convenienceGame(): GameState {
 	return { ...createNewGame('convenience', 20260611), cash: 1_000_000 };
+}
+
+function openedRetailAndIndustryCityGame(): GameState {
+	const base = convenienceGame();
+	const revealed: GameState = {
+		...base,
+		world: {
+			...base.world,
+			revealedCityIds: [...base.world.revealedCityIds, 'campus-junction', 'breadbasket-basin']
+		}
+	};
+
+	return openWorldCity(openWorldCity(revealed, 'campus-junction'), 'breadbasket-basin');
 }
 
 function findAvailableRetailFootprintTile(game: GameState): CityTile {
@@ -170,6 +183,73 @@ function withLatestReport(game: GameState, productionReport: DailyProductionRepo
 }
 
 describe('buildProductChainTree', () => {
+	it('uses the active retail city configured source and distinguishes imports only from an unavailable source', () => {
+		expect.assertions(6);
+		let game = openedRetailAndIndustryCityGame();
+		game = openStoreAtTile(game, {
+			tileId: findAvailableRetailFootprintTile(game).id,
+			archetypeId: 'convenience'
+		});
+		const campusStore = game.stores.find((store) => store.cityId === 'campus-junction')!;
+		game = {
+			...game,
+			activeCityId: 'campus-junction',
+			warehouse: {
+				capacity: 999,
+				materials: { snacks: 99 },
+				overflowUnits: 0,
+				overflowCost: 0
+			},
+			cityInventories: game.cityInventories!.map((inventory) =>
+				inventory.cityId === 'industry-city'
+					? { ...inventory, capacity: 200, materials: { snacks: 61 } }
+					: { ...inventory, capacity: 200, materials: { snacks: 7 } }
+			),
+			retailSupplyAssignments: game.retailSupplyAssignments!.map((assignment) =>
+				assignment.retailCityId === 'campus-junction'
+					? { ...assignment, supplyCityId: 'breadbasket-basin' }
+					: assignment
+			)
+		};
+
+		const configured = buildProductChainTree({ game, store: campusStore, categoryId: 'snacks' });
+		const importsOnly = buildProductChainTree({
+			game: {
+				...game,
+				retailSupplyAssignments: game.retailSupplyAssignments!.map((assignment) =>
+					assignment.retailCityId === 'campus-junction'
+						? { ...assignment, supplyCityId: null }
+						: assignment
+				)
+			},
+			store: campusStore,
+			categoryId: 'snacks'
+		});
+		const unavailable = buildProductChainTree({
+			game: {
+				...game,
+				retailSupplyAssignments: game.retailSupplyAssignments!.map((assignment) =>
+					assignment.retailCityId === 'campus-junction'
+						? { ...assignment, supplyCityId: 'quarry-works' }
+						: assignment
+				)
+			},
+			store: campusStore,
+			categoryId: 'snacks'
+		});
+
+		expect(configured.details['product:snacks']?.warehouseStock).toBe(7);
+		expect(configured.supplyState).toEqual({
+			code: 'available',
+			cityId: 'breadbasket-basin',
+			capacity: 200
+		});
+		expect(importsOnly.details['product:snacks']?.warehouseStock).toBe(0);
+		expect(importsOnly.supplyState).toEqual({ code: 'imports-only' });
+		expect(unavailable.details['product:snacks']?.warehouseStock).toBe(0);
+		expect(unavailable.supplyState).toEqual({ code: 'unavailable', cityId: 'quarry-works' });
+	});
+
 	it('builds the bottled water chain as a three-node spine', () => {
 		const game = convenienceGame();
 		const tree = buildProductChainTree({
@@ -194,7 +274,14 @@ describe('buildProductChainTree', () => {
 	it('surfaces warehouse stock on a recipe node and labels imported input edges', () => {
 		expect.assertions(3);
 		let game = convenienceGame();
-		game = { ...game, warehouse: addWarehouseMaterial(game.warehouse, 'snacks', 12) };
+		game = {
+			...game,
+			cityInventories: game.cityInventories!.map((inventory) =>
+				inventory.cityId === 'industry-city'
+					? { ...inventory, materials: { snacks: 12 } }
+					: inventory
+			)
+		};
 		game = withLatestReport(
 			game,
 			emptyProductionReport({
@@ -570,6 +657,63 @@ describe('buildProductChainTree', () => {
 });
 
 describe('buildStoreCategoryChainSummaries (tree)', () => {
+	it('uses only active-retail stores and their configured source inventory', () => {
+		expect.assertions(2);
+		let game = openedRetailAndIndustryCityGame();
+		game = openStoreAtTile(game, {
+			tileId: findAvailableRetailFootprintTile(game).id,
+			archetypeId: 'convenience'
+		});
+		const harborStore = game.stores.find((store) => store.cityId === 'harbor-city')!;
+		const campusStore = game.stores.find((store) => store.cityId === 'campus-junction')!;
+		game = withLatestReport(
+			{
+				...game,
+				activeCityId: 'campus-junction',
+				warehouse: {
+					capacity: 999,
+					materials: { snacks: 99 },
+					overflowUnits: 0,
+					overflowCost: 0
+				},
+				cityInventories: game.cityInventories!.map((inventory) =>
+					inventory.cityId === 'industry-city'
+						? { ...inventory, capacity: 200, materials: { snacks: 61 } }
+						: { ...inventory, capacity: 200, materials: { snacks: 7 } }
+				),
+				retailSupplyAssignments: game.retailSupplyAssignments!.map((assignment) =>
+					assignment.retailCityId === 'campus-junction'
+						? { ...assignment, supplyCityId: 'breadbasket-basin' }
+						: assignment
+				)
+			},
+			emptyProductionReport()
+		);
+		game = {
+			...game,
+			reports: game.reports.map((report) => ({
+				...report,
+				storeReports: [
+					latestStoreReport({
+						storeId: harborStore.id,
+						productReports: [snackProductReport({ unitsSold: 100 })]
+					}),
+					latestStoreReport({
+						storeId: campusStore.id,
+						productReports: [snackProductReport({ unitsSold: 2 })]
+					})
+				]
+			}))
+		};
+
+		const snacks = buildStoreCategoryChainSummaries(game).find(
+			(summary) => summary.categoryId === 'snacks'
+		);
+
+		expect(snacks?.warehouseStock).toBe(7);
+		expect(snacks?.consumed).toBe(2);
+	});
+
 	it('lists tier 1 categories first and carries the tier', () => {
 		const game = convenienceGame();
 		const summaries = buildStoreCategoryChainSummaries(game);
