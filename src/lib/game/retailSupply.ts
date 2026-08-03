@@ -349,6 +349,7 @@ function mergeReplenishmentReport(
 		warehouseUnits: refill.warehouseUnits,
 		warehouseValue: refill.warehouseValue,
 		importedUnits: refill.importedUnits,
+		importCost: category.importCost,
 		importSpend: refill.importSpend,
 		replenishmentOutcome: refill.outcome
 	};
@@ -369,7 +370,6 @@ function mergeReplenishmentReport(
 			revenue: 0,
 			costOfGoods: 0,
 			grossMargin: 0,
-			importCost: category.importCost,
 			...replenishedFields
 		}
 	]);
