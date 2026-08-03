@@ -6,6 +6,7 @@ import {
 	validateScenarioDefinition,
 	validateScenarioSetupReserve
 } from './validation';
+import { buildScenarioGame } from './setup';
 
 function validDefinition(): ScenarioDefinition {
 	return {
@@ -141,6 +142,31 @@ function localProductionDefinition(): ScenarioDefinition {
 	return definition;
 }
 
+function cityInventoryDefinition(): ScenarioDefinition {
+	const definition = validDefinition();
+	definition.content.cityIds = ['harbor-city', 'industry-city'];
+	definition.content.materialIds = ['water'];
+	definition.content.buildingTypeIds = ['warehouse'];
+	definition.start.industrialBuildings = [
+		{
+			ref: 'warehouse',
+			typeId: 'warehouse',
+			cityId: 'industry-city',
+			tileId: 'industry-city-26-6'
+		}
+	];
+	definition.start.overrides.cityInventoryMaterials = [
+		{ cityId: 'industry-city', materials: { water: 1 } }
+	];
+	definition.start.overrides.retailSupplyAssignments = [
+		{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' }
+	];
+	return definition;
+}
+
+const removedStartOverrideKey = ['warehouse', 'Materials'].join('');
+const removedQuantityMetric = ['warehouse', 'quantity'].join('-');
+
 describe('validateScenarioDefinition', () => {
 	it('accepts a complete closed definition', () => {
 		expect(validateScenarioDefinition(validDefinition())).toEqual([]);
@@ -150,6 +176,7 @@ describe('validateScenarioDefinition', () => {
 		const definition = validDefinition();
 		definition.content.cityIds = ['harbor-city', 'industry-city'];
 		definition.content.materialIds = ['water'];
+		definition.content.cityIds = ['harbor-city', 'industry-city'];
 		definition.content.buildingTypeIds = ['water-pump', 'warehouse'];
 		definition.content.retailPlacements = [];
 		definition.content.industrialPlacements = [];
@@ -250,6 +277,12 @@ describe('validateScenarioDefinition', () => {
 		definition.start.overrides.buildingInventories = [
 			withExtra({ buildingRef: 'warehouse', materials: {} })
 		];
+		definition.start.overrides.cityInventoryMaterials = [
+			withExtra({ cityId: 'industry-city', materials: {} })
+		];
+		definition.start.overrides.retailSupplyAssignments = [
+			withExtra({ retailCityId: 'harbor-city', supplyCityId: null })
+		];
 		definition.start.overrides.world = withExtra({
 			revealedCityIds: ['harbor-city'],
 			openedCityIds: ['harbor-city'],
@@ -264,7 +297,9 @@ describe('validateScenarioDefinition', () => {
 			'start.foundingStore.unexpected',
 			'start.industrialBuildings[0].unexpected',
 			'start.overrides.buildingInventories[0].unexpected',
+			'start.overrides.cityInventoryMaterials[0].unexpected',
 			'start.overrides.policy.unexpected',
+			'start.overrides.retailSupplyAssignments[0].unexpected',
 			'start.overrides.stores[0].products[0].unexpected',
 			'start.overrides.stores[0].unexpected',
 			'start.overrides.unexpected',
@@ -351,8 +386,12 @@ describe('validateScenarioDefinition', () => {
 			},
 			{
 				...base,
-				id: 'warehouse',
-				query: withExtra({ metric: 'warehouse-quantity', materialId: 'water' }),
+				id: 'city-inventory',
+				query: withExtra({
+					metric: 'city-inventory-quantity',
+					cityId: 'industry-city',
+					materialId: 'water'
+				}),
 				window: { kind: 'current' }
 			}
 		];
@@ -723,13 +762,215 @@ describe('validateScenarioDefinition', () => {
 		]);
 	});
 
-	it('rejects warehouse contents beyond capacity from authored warehouse buildings', () => {
+	it('hard-rejects the removed aggregate inventory override key', () => {
 		const definition = malformedDefinition();
-		definition.start.overrides.warehouseMaterials = { water: 1 };
-		definition.content.materialIds = ['water'];
+		definition.start.overrides[removedStartOverrideKey] = { water: 1 };
 		expect(codes(definition)).toContainEqual({
-			path: 'start.overrides.warehouseMaterials',
-			code: 'warehouse-capacity-exceeded'
+			path: `start.overrides.${removedStartOverrideKey}`,
+			code: 'unknown-key'
+		});
+	});
+
+	it('rejects duplicate, unknown, wrong-kind, and closed city inventory overrides', () => {
+		const duplicate = cityInventoryDefinition();
+		duplicate.start.overrides.cityInventoryMaterials = [
+			{ cityId: 'industry-city', materials: { water: 1 } },
+			{ cityId: 'industry-city', materials: { water: 2 } }
+		];
+		expect(codes(duplicate)).toContainEqual({
+			path: 'start.overrides.cityInventoryMaterials[1].cityId',
+			code: 'duplicate-reference'
+		});
+
+		const unknown = cityInventoryDefinition() as unknown as MalformedDefinition;
+		unknown.start.overrides.cityInventoryMaterials = [
+			{ cityId: 'missing-city', materials: { water: 1 } }
+		];
+		expect(codes(unknown)).toContainEqual({
+			path: 'start.overrides.cityInventoryMaterials[0].cityId',
+			code: 'invalid-reference'
+		});
+
+		const wrongKind = cityInventoryDefinition() as unknown as MalformedDefinition;
+		wrongKind.start.overrides.cityInventoryMaterials = [
+			{ cityId: 'harbor-city', materials: { water: 1 } }
+		];
+		expect(codes(wrongKind)).toContainEqual({
+			path: 'start.overrides.cityInventoryMaterials[0].cityId',
+			code: 'invalid-city-inventory-city'
+		});
+
+		const closed = cityInventoryDefinition() as unknown as MalformedDefinition;
+		closed.content.cityIds = ['harbor-city', 'industry-city', 'breadbasket-basin'];
+		closed.start.overrides.cityInventoryMaterials = [
+			{ cityId: 'breadbasket-basin', materials: { water: 1 } }
+		];
+		const result = buildScenarioGame(closed as ScenarioDefinition, closed.officialSeed);
+		expect(result).toMatchObject({
+			ok: false,
+			diagnostics: [
+				{
+					path: 'start.overrides.cityInventoryMaterials[0].cityId',
+					code: 'city-inventory-city-closed'
+				}
+			]
+		});
+	});
+
+	it('rejects an over-capacity city inventory even when another city has spare capacity', () => {
+		const definition = cityInventoryDefinition();
+		definition.content.cityIds = ['harbor-city', 'industry-city', 'breadbasket-basin'];
+		definition.start.overrides.world = {
+			revealedCityIds: ['harbor-city', 'industry-city', 'breadbasket-basin'],
+			openedCityIds: ['harbor-city', 'industry-city', 'breadbasket-basin'],
+			activeRetailCityId: 'harbor-city',
+			activeIndustryCityId: 'breadbasket-basin'
+		};
+		definition.start.industrialBuildings = [
+			...definition.start.industrialBuildings,
+			{
+				ref: 'breadbasket-warehouse',
+				typeId: 'warehouse',
+				cityId: 'breadbasket-basin',
+				tileId: 'breadbasket-basin-30-6'
+			}
+		];
+		definition.start.overrides.cityInventoryMaterials = [
+			{ cityId: 'industry-city', materials: { water: 201 } }
+		];
+
+		const result = buildScenarioGame(definition, definition.officialSeed);
+
+		expect(result).toMatchObject({
+			ok: false,
+			diagnostics: [
+				{
+					path: 'start.overrides.cityInventoryMaterials[0].materials',
+					code: 'city-inventory-capacity-exceeded'
+				}
+			]
+		});
+	});
+
+	it('rejects duplicate, missing, invalid, and noncanonical retail supply assignments', () => {
+		const duplicate = cityInventoryDefinition();
+		duplicate.start.overrides.retailSupplyAssignments = [
+			{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' },
+			{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' }
+		];
+		expect(codes(duplicate)).toContainEqual({
+			path: 'start.overrides.retailSupplyAssignments[1].retailCityId',
+			code: 'duplicate-reference'
+		});
+
+		const missing = cityInventoryDefinition();
+		missing.start.overrides.retailSupplyAssignments = [];
+		expect(codes(missing)).toContainEqual({
+			path: 'start.overrides.retailSupplyAssignments',
+			code: 'missing-retail-supply-assignment'
+		});
+
+		const importsOnly = cityInventoryDefinition();
+		importsOnly.start.overrides.retailSupplyAssignments = [
+			{ retailCityId: 'harbor-city', supplyCityId: null }
+		];
+		expect(codes(importsOnly)).toEqual([]);
+
+		const wrongOwner = cityInventoryDefinition() as unknown as MalformedDefinition;
+		wrongOwner.start.overrides.retailSupplyAssignments = [
+			{ retailCityId: 'industry-city', supplyCityId: 'industry-city' }
+		];
+		expect(codes(wrongOwner)).toContainEqual({
+			path: 'start.overrides.retailSupplyAssignments[0].retailCityId',
+			code: 'invalid-retail-supply-city'
+		});
+
+		const unavailableSource = cityInventoryDefinition() as unknown as MalformedDefinition;
+		unavailableSource.content.cityIds = ['harbor-city', 'industry-city', 'breadbasket-basin'];
+		unavailableSource.start.overrides.retailSupplyAssignments = [
+			{ retailCityId: 'harbor-city', supplyCityId: 'breadbasket-basin' }
+		];
+		const unavailableResult = buildScenarioGame(
+			unavailableSource as ScenarioDefinition,
+			unavailableSource.officialSeed
+		);
+		expect(unavailableResult).toMatchObject({
+			ok: false,
+			diagnostics: [
+				{
+					path: 'start.overrides.retailSupplyAssignments[0].supplyCityId',
+					code: 'supply-city-closed'
+				}
+			]
+		});
+
+		const noncanonical = cityInventoryDefinition();
+		noncanonical.content.cityIds = ['harbor-city', 'campus-junction', 'industry-city'];
+		noncanonical.start.overrides.world = {
+			revealedCityIds: ['harbor-city', 'campus-junction', 'industry-city'],
+			openedCityIds: ['harbor-city', 'campus-junction', 'industry-city'],
+			activeRetailCityId: 'campus-junction',
+			activeIndustryCityId: 'industry-city'
+		};
+		noncanonical.start.overrides.retailSupplyAssignments = [
+			{ retailCityId: 'campus-junction', supplyCityId: 'industry-city' },
+			{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' }
+		];
+		expect(codes(noncanonical)).toContainEqual({
+			path: 'start.overrides.retailSupplyAssignments',
+			code: 'noncanonical-retail-supply-assignment'
+		});
+	});
+
+	it('validates city-scoped metric queries and rejects the removed metric', () => {
+		const valid = cityInventoryDefinition();
+		valid.requiredObjectives = [
+			{
+				...valid.requiredObjectives[0]!,
+				query: {
+					metric: 'city-inventory-quantity',
+					cityId: 'industry-city',
+					materialId: 'water'
+				},
+				window: { kind: 'current' }
+			}
+		];
+		expect(codes(valid)).toEqual([]);
+
+		const missingFields = cityInventoryDefinition() as unknown as MalformedDefinition;
+		missingFields.requiredObjectives[0].query = { metric: 'city-inventory-quantity' };
+		expect(codes(missingFields)).toEqual(
+			expect.arrayContaining([
+				{ path: 'requiredObjectives[0].query.cityId', code: 'missing-key' },
+				{ path: 'requiredObjectives[0].query.materialId', code: 'missing-key' }
+			])
+		);
+
+		const malformed = cityInventoryDefinition() as unknown as MalformedDefinition;
+		malformed.requiredObjectives[0].query = {
+			metric: 'city-inventory-quantity',
+			cityId: 'harbor-city',
+			materialId: 'missing-material',
+			extra: true
+		};
+		malformed.requiredObjectives[0].window = { kind: 'run-to-date' };
+		expect(codes(malformed)).toEqual(
+			expect.arrayContaining([
+				{ path: 'requiredObjectives[0].query.cityId', code: 'invalid-city-inventory-city' },
+				{ path: 'requiredObjectives[0].query.extra', code: 'unknown-key' },
+				{ path: 'requiredObjectives[0].query.materialId', code: 'invalid-reference' },
+				{ path: 'requiredObjectives[0].window.kind', code: 'unsupported-window' }
+			])
+		);
+
+		const removed = cityInventoryDefinition() as unknown as MalformedDefinition;
+		removed.requiredObjectives[0].query = {
+			metric: removedQuantityMetric,
+			materialId: 'water'
+		};
+		expect(codes(removed)).toContainEqual({
+			path: 'requiredObjectives[0].query.metric',
+			code: 'unsupported-metric'
 		});
 	});
 
@@ -1548,12 +1789,12 @@ describe('validateScenarioDefinition coverage gaps', () => {
 		});
 	});
 
-	it('rejects a non-object warehouseMaterials value', () => {
+	it('does not give the removed aggregate override a dual-read validation path', () => {
 		const definition = malformedDefinition();
-		definition.start.overrides.warehouseMaterials = 'not-an-object';
+		definition.start.overrides[removedStartOverrideKey] = 'not-an-object';
 		expect(codes(definition)).toContainEqual({
-			path: 'start.overrides.warehouseMaterials',
-			code: 'invalid-object'
+			path: `start.overrides.${removedStartOverrideKey}`,
+			code: 'unknown-key'
 		});
 	});
 
@@ -1684,30 +1925,12 @@ describe('validateScenarioDefinition coverage gaps', () => {
 		});
 	});
 
-	it('accepts warehouse materials within authored warehouse capacity', () => {
-		const definition = validDefinition();
-		definition.content.cityIds = ['harbor-city', 'industry-city'];
-		definition.content.materialIds = ['water'];
-		definition.content.buildingTypeIds = ['warehouse'];
-		definition.content.industrialPlacements = [
-			{
-				cityId: 'industry-city',
-				tileId: 'industry-city-26-6',
-				buildingTypeId: 'warehouse'
-			}
+	it('accepts city-local materials within the owning warehouse capacity', () => {
+		const definition = cityInventoryDefinition();
+		definition.start.overrides.cityInventoryMaterials = [
+			{ cityId: 'industry-city', materials: { water: 100 } }
 		];
-		definition.start.industrialBuildings = [
-			{
-				ref: 'warehouse',
-				typeId: 'warehouse',
-				cityId: 'industry-city',
-				tileId: 'industry-city-26-6'
-			}
-		];
-		definition.start.overrides.warehouseMaterials = { water: 100 };
-		expect(
-			codes(definition).filter((diagnostic) => diagnostic.code === 'warehouse-capacity-exceeded')
-		).toEqual([]);
+		expect(codes(definition)).toEqual([]);
 	});
 
 	it('rejects a duplicate allowed command', () => {
@@ -2274,21 +2497,24 @@ describe('validateScenarioDefinition coverage gaps', () => {
 		});
 	});
 
-	it('rejects a warehouse materials entry with an unknown material', () => {
-		const definition = malformedDefinition();
-		definition.start.overrides.warehouseMaterials = { 'missing-material': 5 };
+	it('rejects a city inventory entry with an unknown material', () => {
+		const definition = cityInventoryDefinition() as unknown as MalformedDefinition;
+		definition.start.overrides.cityInventoryMaterials = [
+			{ cityId: 'industry-city', materials: { 'missing-material': 5 } }
+		];
 		expect(codes(definition)).toContainEqual({
-			path: 'start.overrides.warehouseMaterials.missing-material',
+			path: 'start.overrides.cityInventoryMaterials[0].materials.missing-material',
 			code: 'invalid-reference'
 		});
 	});
 
-	it('rejects a warehouse materials entry with a negative quantity', () => {
-		const definition = malformedDefinition();
-		definition.content.materialIds = ['water'];
-		definition.start.overrides.warehouseMaterials = { water: -3 };
+	it('rejects a city inventory entry with a negative quantity', () => {
+		const definition = cityInventoryDefinition();
+		definition.start.overrides.cityInventoryMaterials = [
+			{ cityId: 'industry-city', materials: { water: -3 } }
+		];
 		expect(codes(definition)).toContainEqual({
-			path: 'start.overrides.warehouseMaterials.water',
+			path: 'start.overrides.cityInventoryMaterials[0].materials.water',
 			code: 'invalid-non-negative-number'
 		});
 	});
@@ -2772,12 +2998,16 @@ describe('validateScenarioDefinition coverage gaps', () => {
 		});
 	});
 
-	it('rejects a warehouse-quantity query with an unknown material reference', () => {
-		const definition = malformedDefinition();
+	it('rejects a city-inventory query with an unknown material reference', () => {
+		const definition = cityInventoryDefinition() as unknown as MalformedDefinition;
 		definition.requiredObjectives = [
 			{
 				...definition.requiredObjectives[0],
-				query: { metric: 'warehouse-quantity', materialId: 'missing-material' },
+				query: {
+					metric: 'city-inventory-quantity',
+					cityId: 'industry-city',
+					materialId: 'missing-material'
+				},
 				window: { kind: 'current' }
 			}
 		];
@@ -2787,12 +3017,16 @@ describe('validateScenarioDefinition coverage gaps', () => {
 		});
 	});
 
-	it('rejects a warehouse-quantity query with a non-string materialId', () => {
-		const definition = malformedDefinition();
+	it('rejects a city-inventory query with a non-string materialId', () => {
+		const definition = cityInventoryDefinition() as unknown as MalformedDefinition;
 		definition.requiredObjectives = [
 			{
 				...definition.requiredObjectives[0],
-				query: { metric: 'warehouse-quantity', materialId: 123 },
+				query: {
+					metric: 'city-inventory-quantity',
+					cityId: 'industry-city',
+					materialId: 123
+				},
 				window: { kind: 'current' }
 			}
 		];

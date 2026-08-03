@@ -815,7 +815,11 @@ describe('scenario codec', () => {
 			scoreComponents: [
 				{
 					kind: 'metric',
-					query: { metric: 'warehouse-quantity', materialId: 'water' },
+					query: {
+						metric: 'city-inventory-quantity',
+						cityId: 'industry-city',
+						materialId: 'water'
+					},
 					window: { kind: 'current' },
 					zeroBonusAt: 0,
 					fullBonusAt: 1,

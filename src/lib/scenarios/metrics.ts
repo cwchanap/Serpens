@@ -290,17 +290,20 @@ export const METRIC_REGISTRY = {
 			};
 		}
 	},
-	'warehouse-quantity': {
+	'city-inventory-quantity': {
 		supportedWindows: CURRENT,
 		neutral: 0,
 		isComplete: stateMetricComplete,
 		evaluate: ({ game, query }) => {
-			if (query.metric !== 'warehouse-quantity') {
+			if (query.metric !== 'city-inventory-quantity') {
 				return { actual: 0, contributingIds: [] };
 			}
+			const inventory = game.cityInventories?.find(
+				(candidate) => candidate.cityId === query.cityId
+			);
 			return {
-				actual: game.warehouse.materials[query.materialId] ?? 0,
-				contributingIds: [query.materialId]
+				actual: inventory?.materials[query.materialId] ?? 0,
+				contributingIds: [cityInventoryEvidenceId(query.cityId, query.materialId)]
 			};
 		}
 	}
@@ -340,6 +343,10 @@ export function storeReportEvidenceId(day: number, storeId: string): string {
 
 export function productEvidenceId(day: number, storeId: string, categoryId: string): string {
 	return `${storeReportEvidenceId(day, storeId)}/product:${encodeEvidenceSegment(categoryId)}`;
+}
+
+export function cityInventoryEvidenceId(cityId: string, materialId: string): string {
+	return `city-inventory:${encodeEvidenceSegment(cityId)}/material:${encodeEvidenceSegment(materialId)}`;
 }
 
 export function evaluateMetric(
