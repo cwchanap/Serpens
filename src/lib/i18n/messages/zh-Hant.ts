@@ -368,6 +368,19 @@ export const zhHant = {
 		importedUnits: '進口 {count}',
 		noWarnings: '目前沒有警告。'
 	},
+	retailSupplySources: {
+		title: '零售供應來源',
+		citySection: '{cityName}供應來源',
+		controlLabel: '{cityName}的本地供應來源',
+		controlDescription: '選擇{cityName}接收本地供應的方式。',
+		importsOnly: '僅進口',
+		importsOnlySummary: '僅進口。所有補貨皆由外部進口支應。',
+		inventorySummary: '已使用 {used} / {capacity} 城市庫存。',
+		overflow: '溢出：{units} 單位（{cost}）。',
+		noOverflow: '沒有溢出。',
+		unavailableSource: '{cityName}不可用。',
+		missingConfiguration: '供應設定不可用。'
+	},
 	storeStockTable: {
 		title: '{storeName}庫存',
 		headings: {
