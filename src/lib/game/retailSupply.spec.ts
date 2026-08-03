@@ -363,7 +363,7 @@ describe('weekly retail replenishment', () => {
 						warehouseUnits: 0,
 						warehouseValue: 0,
 						importedUnits: 0,
-						importCost: 3,
+						importCost: 99,
 						importSpend: 0
 					}
 				]
