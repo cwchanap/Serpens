@@ -1108,6 +1108,29 @@ describe('saveCodec', () => {
 			'unchanged'
 		],
 		[
+			'local units with a mismatched warehouse value',
+			(product: Record<string, unknown>) => ({
+				...product,
+				warehouseUnits: 2,
+				warehouseValue: 1,
+				importedUnits: 0,
+				replenishmentOutcome: 'city-inventory'
+			}),
+			'unchanged'
+		],
+		[
+			'warehouse value without local units',
+			(product: Record<string, unknown>) => ({
+				...product,
+				warehouseUnits: 0,
+				warehouseValue: 4,
+				importedUnits: 2,
+				importSpend: 6,
+				replenishmentOutcome: 'import-only'
+			}),
+			'unchanged'
+		],
+		[
 			'negative import spend',
 			(product: Record<string, unknown>) => ({ ...product, importSpend: -1 }),
 			'unchanged'
@@ -1205,6 +1228,72 @@ describe('saveCodec', () => {
 		const updatedReport = {
 			...report,
 			productionReport: mutateProductionReport(report.productionReport)
+		};
+
+		expectSaveRecordErrorCode(
+			createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }),
+			'invariant-report-attribution'
+		);
+	});
+
+	test('controller review: accepts a starter-only production-close report after another industry city opens', () => {
+		const game = createCurrentV13MultiCityGame();
+		const report = createCurrentV13Report(game);
+		const starterSummary = report.productionReport.cityInventories![0]!;
+		const historicalReport: DailyReport = {
+			...report,
+			day: 1,
+			productionReport: {
+				...report.productionReport,
+				cityInventories: [starterSummary],
+				warehouseCapacity: starterSummary.capacity,
+				warehouseUsed: starterSummary.used,
+				overflowUnits: starterSummary.overflowUnits,
+				overflowCost: starterSummary.overflowCost
+			}
+		};
+
+		const validated = validateSaveRecord(
+			createManualSaveRecord({ game: { ...game, reports: [historicalReport] } })
+		);
+
+		expect(validated.game.reports[0]!.productionReport.cityInventories).toEqual([starterSummary]);
+	});
+
+	test('controller review: rejects an empty production-close summary even when aggregates are zero', () => {
+		const game = createCurrentV13MultiCityGame();
+		const report = createCurrentV13Report(game);
+		const updatedReport: DailyReport = {
+			...report,
+			productionReport: {
+				...report.productionReport,
+				cityInventories: [],
+				warehouseCapacity: 0,
+				warehouseUsed: 0,
+				overflowUnits: 0,
+				overflowCost: 0
+			}
+		};
+
+		expectSaveRecordErrorCode(
+			createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }),
+			'invariant-report-attribution'
+		);
+	});
+
+	test('controller review: rejects an impossible production-close pressure equation', () => {
+		const game = createCurrentV13MultiCityGame();
+		const report = createCurrentV13Report(game);
+		const updatedReport: DailyReport = {
+			...report,
+			productionReport: {
+				...report.productionReport,
+				cityInventories: report.productionReport.cityInventories!.map((summary, index) =>
+					index === 0 ? { ...summary, overflowUnits: 1, overflowCost: 2 } : summary
+				),
+				overflowUnits: 3,
+				overflowCost: 6
+			}
 		};
 
 		expectSaveRecordErrorCode(
