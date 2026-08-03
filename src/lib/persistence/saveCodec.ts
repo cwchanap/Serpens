@@ -40,7 +40,8 @@ import {
 	compareWorldCityIds,
 	findEntityCityOwnershipIssues,
 	getCityInventory,
-	normalizeCityInventoryDerivedState
+	normalizeCityInventoryDerivedState,
+	WAREHOUSE_OVERFLOW_COST_PER_UNIT
 } from '$lib/game/cityInventory';
 import { MAX_STAFF_LEVEL } from '$lib/game/staffLeveling';
 import {
@@ -54,7 +55,7 @@ import {
 } from '$lib/game/eventSelection';
 import { EVENT_HISTORY_LIMIT } from '$lib/game/eventHistory';
 import { clampScore } from '$lib/game/reports';
-import { calculateStockHealth } from '$lib/game/stock';
+import { calculateStockHealth, getFinishedMaterialIdForCategory } from '$lib/game/stock';
 import type {
 	City,
 	CityTile,
@@ -4153,6 +4154,13 @@ function addCurrentReportSafeInteger(total: number, value: number, label: string
 	return total + value;
 }
 
+function multiplyCurrentReportSafeInteger(left: number, right: number, label: string): number {
+	if (left !== 0 && right > Math.floor(Number.MAX_SAFE_INTEGER / left)) {
+		return reportAttributionInvariant(`${label} must not exceed the safe-integer range`);
+	}
+	return left * right;
+}
+
 function validateCurrentAttributedMovementArray(
 	value: unknown,
 	game: GameState,
@@ -4175,11 +4183,8 @@ function validateCurrentProductionCloseInventories(
 		reportAttributionInvariant(`${label} must be an array`);
 	}
 	const summaries = value;
-	const expectedCityIds = game.cityInventories!.map((inventory) => inventory.cityId);
-	if (summaries.length !== expectedCityIds.length) {
-		reportAttributionInvariant(
-			`${label} must contain one summary for every canonical city inventory`
-		);
+	if (summaries.length === 0) {
+		reportAttributionInvariant(`${label} must contain at least the starter-city summary`);
 	}
 	const seenCityIds = new Set<WorldCityId>();
 	const totals = { capacity: 0, used: 0, overflowUnits: 0, overflowCost: 0 };
@@ -4201,11 +4206,6 @@ function validateCurrentProductionCloseInventories(
 		}
 		seenCityIds.add(cityId);
 		previousCityId = cityId;
-		if (cityId !== expectedCityIds[index]) {
-			reportAttributionInvariant(
-				`${summaryLabel} cityId must match canonical city-inventory order`
-			);
-		}
 		const capacity = requireCurrentReportSafeInteger(summary.capacity, `${summaryLabel} capacity`);
 		const used = requireCurrentReportSafeInteger(summary.used, `${summaryLabel} used`);
 		const overflowUnits = requireCurrentReportSafeInteger(
@@ -4216,6 +4216,18 @@ function validateCurrentProductionCloseInventories(
 			summary.overflowCost,
 			`${summaryLabel} overflowCost`
 		);
+		const expectedOverflowUnits = Math.max(0, used - capacity);
+		if (overflowUnits !== expectedOverflowUnits) {
+			reportAttributionInvariant(`${summaryLabel} overflowUnits must reconcile with used capacity`);
+		}
+		const expectedOverflowCost = multiplyCurrentReportSafeInteger(
+			expectedOverflowUnits,
+			WAREHOUSE_OVERFLOW_COST_PER_UNIT,
+			`${summaryLabel} overflowCost`
+		);
+		if (overflowCost !== expectedOverflowCost) {
+			reportAttributionInvariant(`${summaryLabel} overflowCost must reconcile with overflow units`);
+		}
 		totals.capacity = addCurrentReportSafeInteger(
 			totals.capacity,
 			capacity,
@@ -4232,6 +4244,9 @@ function validateCurrentProductionCloseInventories(
 			overflowCost,
 			`${label} overflowCost aggregate`
 		);
+	}
+	if (!seenCityIds.has('industry-city')) {
+		reportAttributionInvariant(`${label} must include the starter industry-city summary`);
 	}
 
 	return totals;
@@ -4309,6 +4324,29 @@ function requireCurrentReplenishmentAmount(value: unknown, label: string): numbe
 	return value;
 }
 
+function expectedCurrentLocalReplenishmentValue(
+	categoryId: unknown,
+	warehouseUnits: number,
+	label: string
+): number {
+	if (warehouseUnits === 0) return 0;
+	if (typeof categoryId !== 'string') {
+		return retailSupplyInvariant(`${label} categoryId must map to a finished material`);
+	}
+	const materialId = getFinishedMaterialIdForCategory(categoryId);
+	if (materialId === null) {
+		return retailSupplyInvariant(`${label} categoryId must map to a finished material`);
+	}
+	const localValue = MATERIALS[materialId].localValue;
+	if (!Number.isSafeInteger(localValue) || localValue <= 0) {
+		return retailSupplyInvariant(`${label} local material value must be a positive safe integer`);
+	}
+	if (warehouseUnits > Math.floor(Number.MAX_SAFE_INTEGER / localValue)) {
+		return retailSupplyInvariant(`${label} warehouseValue must not exceed the safe-integer range`);
+	}
+	return warehouseUnits * localValue;
+}
+
 function validateCurrentStoreReplenishment(value: unknown, game: GameState, label: string): void {
 	const storeReport = requireRecord(value, label);
 	const storeId = requireString(storeReport.storeId, `${label} storeId`);
@@ -4368,9 +4406,14 @@ function validateCurrentStoreReplenishment(value: unknown, game: GameState, labe
 				product.importSpend,
 				`${productLabel} importSpend`
 			);
-			if (warehouseUnits > 0 && warehouseValue <= 0) {
+			const expectedWarehouseValue = expectedCurrentLocalReplenishmentValue(
+				product.categoryId,
+				warehouseUnits,
+				productLabel
+			);
+			if (warehouseValue !== expectedWarehouseValue) {
 				retailSupplyInvariant(
-					`${productLabel} warehouseValue must be positive when warehouseUnits are positive`
+					`${productLabel} warehouseValue must exactly reconcile with local replenishment units`
 				);
 			}
 			return {
