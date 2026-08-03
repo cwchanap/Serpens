@@ -14,7 +14,11 @@ import {
 	inventoryUsed
 } from '$lib/game/buildingInventory';
 import { INDUSTRIAL_BUILDING_TYPES, MATERIALS } from '$lib/game/industry';
-import { getWarehouseCapacity, recalculateWarehousePressure } from '$lib/game/legacyWarehouse';
+import {
+	getWarehouseCapacity,
+	projectCityInventoriesToLegacyWarehouse,
+	recalculateWarehousePressure
+} from '$lib/game/legacyWarehouse';
 import {
 	createIndustryTileLookup,
 	getIndustryBuildingFootprint
@@ -1172,7 +1176,10 @@ function validateSaveRecordInternal(value: unknown): SaveRecord {
 	const normalizedSandboxGame = normalizeSandboxSavedGame(migratedGame);
 	const structurallyValidatedGame = validateCurrentGameStateInternal(normalizedSandboxGame, false);
 	const normalizedCityInventoryGame = normalizeCityInventoryDerivedState(structurallyValidatedGame);
-	const game = validateCurrentGameStateInternal(normalizedCityInventoryGame, true);
+	const projectedWarehouseGame = projectCanonicalCityInventoriesToLegacyWarehouse(
+		normalizedCityInventoryGame
+	);
+	const game = validateCurrentGameStateInternal(projectedWarehouseGame, true);
 	const kind = requireString(metadata.kind, 'Save metadata kind');
 
 	if (kind !== 'auto' && kind !== 'manual') {
@@ -1191,6 +1198,15 @@ function validateSaveRecordInternal(value: unknown): SaveRecord {
 		...(migrated as SaveRecord),
 		schemaVersion: SAVE_SCHEMA_VERSION,
 		game
+	};
+}
+
+function projectCanonicalCityInventoriesToLegacyWarehouse(game: GameState): GameState {
+	if (!game.cityInventories) return game;
+
+	return {
+		...game,
+		warehouse: projectCityInventoriesToLegacyWarehouse(game.cityInventories)
 	};
 }
 
@@ -1321,20 +1337,26 @@ function validateCurrentGameStateInternal(
 		);
 	}
 
-	const expectedWarehouse = recalculateWarehousePressure({
-		...currentGame.warehouse,
-		capacity: getWarehouseCapacity(currentGame),
-		materials: { ...currentGame.warehouse.materials }
-	});
-	if (
-		currentGame.warehouse.capacity !== expectedWarehouse.capacity ||
-		currentGame.warehouse.overflowUnits !== expectedWarehouse.overflowUnits ||
-		currentGame.warehouse.overflowCost !== expectedWarehouse.overflowCost
-	) {
-		throw new SaveDataError(
-			'Saved game warehouse capacity and pressure must match current buildings and materials',
-			'invariant-warehouse'
-		);
+	if (requireCurrentCityInventoryDerivedState) {
+		const expectedWarehouse = projectCityInventoriesToLegacyWarehouse(currentGame.cityInventories!);
+		const expectedMaterials = expectedWarehouse.materials as Record<string, number | undefined>;
+		const warehouseMaterialsMatch =
+			Object.keys(currentGame.warehouse.materials).length ===
+				Object.keys(expectedMaterials).length &&
+			Object.entries(currentGame.warehouse.materials).every(
+				([materialId, quantity]) => expectedMaterials[materialId] === quantity
+			);
+		if (
+			currentGame.warehouse.capacity !== expectedWarehouse.capacity ||
+			currentGame.warehouse.overflowUnits !== expectedWarehouse.overflowUnits ||
+			currentGame.warehouse.overflowCost !== expectedWarehouse.overflowCost ||
+			!warehouseMaterialsMatch
+		) {
+			throw new SaveDataError(
+				'Saved game warehouse must be the one-way projection of authoritative city inventories',
+				'invariant-warehouse'
+			);
+		}
 	}
 	// Reference-stability contract: refreshWorldProgress returns the SAME game
 	// reference when no milestone/city reveal applies (see world.ts: `if (!changed
@@ -2320,6 +2342,13 @@ function requireCityInventorySafeInteger(value: unknown, label: string): number 
 	return value;
 }
 
+function addCityInventorySafeInteger(total: number, value: number, label: string): number {
+	if (value > Number.MAX_SAFE_INTEGER - total) {
+		return cityInventoryInvariant(`${label} must not exceed the safe-integer range`);
+	}
+	return total + value;
+}
+
 function resolveCurrentInventoryCityId(
 	game: GameState,
 	value: unknown,
@@ -2348,6 +2377,7 @@ function validateCurrentCityInventories(game: GameState, requireDerivedState: bo
 
 	const inventories = game.cityInventories;
 	const seenCityIds = new Set<WorldCityId>();
+	const projectedMaterialTotals = new Map<string, number>();
 	let previousCityId: WorldCityId | undefined;
 	for (const [index, value] of inventories.entries()) {
 		const label = `Saved game cityInventories[${index}]`;
@@ -2366,11 +2396,24 @@ function validateCurrentCityInventories(game: GameState, requireDerivedState: bo
 		requireCityInventorySafeInteger(inventory.overflowUnits, `${label} overflowUnits`);
 		requireCityInventorySafeInteger(inventory.overflowCost, `${label} overflowCost`);
 		const materials = requireCityInventoryRecord(inventory.materials, `${label} materials`);
+		let used = 0;
 		for (const [materialId, quantity] of Object.entries(materials)) {
 			if (!MATERIAL_ID_SET.has(materialId)) {
 				cityInventoryInvariant(`${label} materials ${materialId} must be a known material`);
 			}
-			requireCityInventorySafeInteger(quantity, `${label} materials ${materialId}`);
+			const materialQuantity = requireCityInventorySafeInteger(
+				quantity,
+				`${label} materials ${materialId}`
+			);
+			used = addCityInventorySafeInteger(used, materialQuantity, `${label} used capacity`);
+			projectedMaterialTotals.set(
+				materialId,
+				addCityInventorySafeInteger(
+					projectedMaterialTotals.get(materialId) ?? 0,
+					materialQuantity,
+					`Saved game cityInventories projected materials ${materialId}`
+				)
+			);
 		}
 	}
 
@@ -4103,6 +4146,13 @@ function requireCurrentReportSafeInteger(value: unknown, label: string): number 
 	return value;
 }
 
+function addCurrentReportSafeInteger(total: number, value: number, label: string): number {
+	if (value > Number.MAX_SAFE_INTEGER - total) {
+		return reportAttributionInvariant(`${label} must not exceed the safe-integer range`);
+	}
+	return total + value;
+}
+
 function validateCurrentAttributedMovementArray(
 	value: unknown,
 	game: GameState,
@@ -4120,12 +4170,19 @@ function validateCurrentProductionCloseInventories(
 	value: unknown,
 	game: GameState,
 	label: string
-): void {
+): { capacity: number; used: number; overflowUnits: number; overflowCost: number } {
 	if (!Array.isArray(value)) {
 		reportAttributionInvariant(`${label} must be an array`);
 	}
 	const summaries = value;
+	const expectedCityIds = game.cityInventories!.map((inventory) => inventory.cityId);
+	if (summaries.length !== expectedCityIds.length) {
+		reportAttributionInvariant(
+			`${label} must contain one summary for every canonical city inventory`
+		);
+	}
 	const seenCityIds = new Set<WorldCityId>();
+	const totals = { capacity: 0, used: 0, overflowUnits: 0, overflowCost: 0 };
 	let previousCityId: WorldCityId | undefined;
 	for (const [index, summaryValue] of summaries.entries()) {
 		const summaryLabel = `${label}[${index}]`;
@@ -4144,10 +4201,58 @@ function validateCurrentProductionCloseInventories(
 		}
 		seenCityIds.add(cityId);
 		previousCityId = cityId;
-		requireCurrentReportSafeInteger(summary.capacity, `${summaryLabel} capacity`);
-		requireCurrentReportSafeInteger(summary.used, `${summaryLabel} used`);
-		requireCurrentReportSafeInteger(summary.overflowUnits, `${summaryLabel} overflowUnits`);
-		requireCurrentReportSafeInteger(summary.overflowCost, `${summaryLabel} overflowCost`);
+		if (cityId !== expectedCityIds[index]) {
+			reportAttributionInvariant(
+				`${summaryLabel} cityId must match canonical city-inventory order`
+			);
+		}
+		const capacity = requireCurrentReportSafeInteger(summary.capacity, `${summaryLabel} capacity`);
+		const used = requireCurrentReportSafeInteger(summary.used, `${summaryLabel} used`);
+		const overflowUnits = requireCurrentReportSafeInteger(
+			summary.overflowUnits,
+			`${summaryLabel} overflowUnits`
+		);
+		const overflowCost = requireCurrentReportSafeInteger(
+			summary.overflowCost,
+			`${summaryLabel} overflowCost`
+		);
+		totals.capacity = addCurrentReportSafeInteger(
+			totals.capacity,
+			capacity,
+			`${label} capacity aggregate`
+		);
+		totals.used = addCurrentReportSafeInteger(totals.used, used, `${label} used aggregate`);
+		totals.overflowUnits = addCurrentReportSafeInteger(
+			totals.overflowUnits,
+			overflowUnits,
+			`${label} overflowUnits aggregate`
+		);
+		totals.overflowCost = addCurrentReportSafeInteger(
+			totals.overflowCost,
+			overflowCost,
+			`${label} overflowCost aggregate`
+		);
+	}
+
+	return totals;
+}
+
+function validateCurrentProductionCloseAggregate(
+	productionReport: Record<string, unknown>,
+	totals: { capacity: number; used: number; overflowUnits: number; overflowCost: number },
+	label: string
+): void {
+	const aggregateFields = [
+		['warehouseCapacity', totals.capacity],
+		['warehouseUsed', totals.used],
+		['overflowUnits', totals.overflowUnits],
+		['overflowCost', totals.overflowCost]
+	] as const;
+	for (const [field, expected] of aggregateFields) {
+		const actual = requireCurrentReportSafeInteger(productionReport[field], `${label} ${field}`);
+		if (actual !== expected) {
+			reportAttributionInvariant(`${label} ${field} must reconcile with city-inventory summaries`);
+		}
 	}
 }
 
@@ -4182,6 +4287,26 @@ function expectedReplenishmentOutcome(
 	}
 	if (configuredSupplyCityId === null) return 'unassigned-import';
 	return resolvedSupplyCityId === null ? 'source-unavailable-import' : 'import-only';
+}
+
+function requireCurrentReplenishmentUnits(value: unknown, label: string): number {
+	if (typeof value !== 'number' || !Number.isFinite(value)) {
+		return retailSupplyInvariant(`${label} must be a finite number`);
+	}
+	if (!Number.isSafeInteger(value) || value < 0) {
+		return retailSupplyInvariant(`${label} must be a non-negative safe integer`);
+	}
+	return value;
+}
+
+function requireCurrentReplenishmentAmount(value: unknown, label: string): number {
+	if (typeof value !== 'number' || !Number.isFinite(value)) {
+		return retailSupplyInvariant(`${label} must be a finite number`);
+	}
+	if (value < 0) {
+		return retailSupplyInvariant(`${label} must be non-negative`);
+	}
+	return value;
 }
 
 function validateCurrentStoreReplenishment(value: unknown, game: GameState, label: string): void {
@@ -4227,10 +4352,32 @@ function validateCurrentStoreReplenishment(value: unknown, game: GameState, labe
 					`${productLabel} replenishmentOutcome must be a supported outcome or null`
 				);
 			}
+			const warehouseUnits = requireCurrentReplenishmentUnits(
+				product.warehouseUnits,
+				`${productLabel} warehouseUnits`
+			);
+			const warehouseValue = requireCurrentReplenishmentAmount(
+				product.warehouseValue,
+				`${productLabel} warehouseValue`
+			);
+			const importedUnits = requireCurrentReplenishmentUnits(
+				product.importedUnits,
+				`${productLabel} importedUnits`
+			);
+			const importSpend = requireCurrentReplenishmentAmount(
+				product.importSpend,
+				`${productLabel} importSpend`
+			);
+			if (warehouseUnits > 0 && warehouseValue <= 0) {
+				retailSupplyInvariant(
+					`${productLabel} warehouseValue must be positive when warehouseUnits are positive`
+				);
+			}
 			return {
 				outcome,
-				warehouseUnits: requireNumber(product.warehouseUnits, `${productLabel} warehouseUnits`),
-				importedUnits: requireNumber(product.importedUnits, `${productLabel} importedUnits`)
+				warehouseUnits,
+				importedUnits,
+				importSpend
 			};
 		}
 	);
@@ -4302,6 +4449,17 @@ function validateCurrentStoreReplenishment(value: unknown, game: GameState, labe
 			`${label} replenishment resolvedSupplyCityId must match its configured source`
 		);
 	}
+	const configuredSupplyAccess =
+		configuredSupplyCityId === null ? null : getCityInventory(game, configuredSupplyCityId);
+	if (
+		configuredSupplyCityId !== null &&
+		configuredSupplyAccess?.ok &&
+		resolvedSupplyCityId !== configuredSupplyCityId
+	) {
+		retailSupplyInvariant(
+			`${label} replenishment must resolve an accessible configured supply city`
+		);
+	}
 	if (resolvedSupplyCityId !== null && !getCityInventory(game, resolvedSupplyCityId).ok) {
 		retailSupplyInvariant(
 			`${label} replenishment resolvedSupplyCityId must have a current city inventory`
@@ -4336,10 +4494,15 @@ function validateCurrentReportCityAttribution(
 ): void {
 	const report = requireRecord(value, label);
 	const productionReport = requireRecord(report.productionReport, `${label} productionReport`);
-	validateCurrentProductionCloseInventories(
+	const productionCloseTotals = validateCurrentProductionCloseInventories(
 		productionReport.cityInventories,
 		game,
 		`${label} productionReport cityInventories`
+	);
+	validateCurrentProductionCloseAggregate(
+		productionReport,
+		productionCloseTotals,
+		`${label} productionReport`
 	);
 	validateCurrentAttributedMovementArray(
 		productionReport.produced,

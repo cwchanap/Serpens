@@ -347,7 +347,9 @@ function createDailyProductionReport(
 		warehouseUsed: 0,
 		railShipments: [],
 		railUsage: {},
-		cityInventories: [],
+		cityInventories: [
+			{ cityId: 'industry-city', capacity: 0, used: 0, overflowUnits: 0, overflowCost: 0 }
+		],
 		...overrides
 	};
 }
@@ -498,6 +500,10 @@ function createCurrentV13Report(game: GameState): DailyReport {
 	return createDailyReport({
 		day: game.day,
 		productionReport: createDailyProductionReport({
+			warehouseCapacity: 200,
+			warehouseUsed: 7,
+			overflowUnits: 2,
+			overflowCost: 4,
 			produced: [
 				{ cityId: 'industry-city', materialId: 'water', quantity: 2, value: 2, source: 'local' }
 			],
@@ -539,7 +545,7 @@ function createCurrentV13Report(game: GameState): DailyReport {
 						grossMargin: 4,
 						endingStock: 5,
 						warehouseUnits: 2,
-						warehouseValue: 6,
+						warehouseValue: 4,
 						importedUnits: 0,
 						importCost: 3,
 						importSpend: 0,
@@ -1023,6 +1029,231 @@ describe('saveCodec', () => {
 				updatedAt: new Date('2026-08-02T00:00:00.000Z')
 			}).game.cityInventories
 		).toEqual(validated.game.cityInventories);
+	});
+
+	test.each([
+		[
+			'negative warehouse units hidden by a null no-attempt context',
+			(product: Record<string, unknown>) => ({
+				...product,
+				warehouseUnits: -1,
+				warehouseValue: 0,
+				importedUnits: 0,
+				importSpend: 0,
+				replenishmentOutcome: null
+			}),
+			null
+		],
+		[
+			'fractional warehouse units',
+			(product: Record<string, unknown>) => ({
+				...product,
+				warehouseUnits: 0.5,
+				warehouseValue: 1,
+				importedUnits: 0,
+				replenishmentOutcome: 'city-inventory'
+			}),
+			'unchanged'
+		],
+		[
+			'unsafe warehouse units',
+			(product: Record<string, unknown>) => ({
+				...product,
+				warehouseUnits: Number.MAX_SAFE_INTEGER + 1,
+				warehouseValue: 1,
+				importedUnits: 0,
+				replenishmentOutcome: 'city-inventory'
+			}),
+			'unchanged'
+		],
+		[
+			'negative imported units hidden by a null no-attempt context',
+			(product: Record<string, unknown>) => ({
+				...product,
+				warehouseUnits: 0,
+				warehouseValue: 0,
+				importedUnits: -1,
+				importSpend: 0,
+				replenishmentOutcome: null
+			}),
+			null
+		],
+		[
+			'fractional imported units',
+			(product: Record<string, unknown>) => ({
+				...product,
+				warehouseUnits: 0,
+				warehouseValue: 0,
+				importedUnits: 0.5,
+				importSpend: 1,
+				replenishmentOutcome: 'import-only'
+			}),
+			'unchanged'
+		],
+		[
+			'unsafe imported units',
+			(product: Record<string, unknown>) => ({
+				...product,
+				warehouseUnits: 0,
+				warehouseValue: 0,
+				importedUnits: Number.MAX_SAFE_INTEGER + 1,
+				importSpend: 1,
+				replenishmentOutcome: 'import-only'
+			}),
+			'unchanged'
+		],
+		[
+			'nonzero local units with an impossible warehouse value',
+			(product: Record<string, unknown>) => ({ ...product, warehouseValue: 0 }),
+			'unchanged'
+		],
+		[
+			'negative import spend',
+			(product: Record<string, unknown>) => ({ ...product, importSpend: -1 }),
+			'unchanged'
+		]
+	])(
+		'controller review: rejects current-v13 replenishment evidence with %s',
+		(_name, mutateProduct, replenishment) => {
+			const game = createCurrentV13MultiCityGame();
+			const report = createCurrentV13Report(game);
+			const storeReport = report.storeReports[0]!;
+			const productReport = mutateProduct(
+				storeReport.productReports[0]! as unknown as Record<string, unknown>
+			);
+			const updatedReport: DailyReport = {
+				...report,
+				storeReports: [
+					{
+						...storeReport,
+						replenishment: replenishment === null ? null : storeReport.replenishment,
+						productReports: [productReport as DailyStoreReport['productReports'][number]]
+					}
+				]
+			};
+
+			expectSaveRecordErrorCode(
+				createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }),
+				'invariant-retail-supply'
+			);
+		}
+	);
+
+	test('controller review: rejects an accessible configured source reported as unavailable', () => {
+		const game = createCurrentV13MultiCityGame();
+		const report = createCurrentV13Report(game);
+		const storeReport = report.storeReports[0]!;
+		const updatedReport: DailyReport = {
+			...report,
+			storeReports: [
+				{
+					...storeReport,
+					replenishment: {
+						...storeReport.replenishment!,
+						resolvedSupplyCityId: null
+					},
+					productReports: [
+						{
+							...storeReport.productReports[0]!,
+							warehouseUnits: 0,
+							warehouseValue: 0,
+							importedUnits: 2,
+							importSpend: 6,
+							replenishmentOutcome: 'source-unavailable-import'
+						}
+					]
+				}
+			]
+		};
+
+		expectSaveRecordErrorCode(
+			createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }),
+			'invariant-retail-supply'
+		);
+	});
+
+	test.each([
+		[
+			'a missing current city summary',
+			(productionReport: DailyProductionReport) => ({
+				...productionReport,
+				cityInventories: [productionReport.cityInventories![0]!]
+			})
+		],
+		[
+			'an impossible current city summary',
+			(productionReport: DailyProductionReport) => ({
+				...productionReport,
+				cityInventories: productionReport.cityInventories!.map((summary, index) =>
+					index === 0 ? { ...summary, used: 6 } : summary
+				)
+			})
+		],
+		[
+			'aggregate totals that do not reconcile to summaries',
+			(productionReport: DailyProductionReport) => ({
+				...productionReport,
+				warehouseCapacity: 0,
+				warehouseUsed: 0,
+				overflowUnits: 0,
+				overflowCost: 0
+			})
+		]
+	])('controller review: rejects a current-v13 report with %s', (_name, mutateProductionReport) => {
+		const game = createCurrentV13MultiCityGame();
+		const report = createCurrentV13Report(game);
+		const updatedReport = {
+			...report,
+			productionReport: mutateProductionReport(report.productionReport)
+		};
+
+		expectSaveRecordErrorCode(
+			createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }),
+			'invariant-report-attribution'
+		);
+	});
+
+	test('controller review: projects canonical city inventories over a contradictory legacy aggregate', () => {
+		const game = createCurrentV13MultiCityGame();
+		const validated = validateSaveRecord(
+			createManualSaveRecord({
+				game: {
+					...game,
+					warehouse: {
+						capacity: 9_999,
+						materials: { snacks: 77 },
+						overflowUnits: 55,
+						overflowCost: 110
+					}
+				}
+			})
+		);
+
+		expect(validated.game.warehouse).toEqual({
+			capacity: 200,
+			materials: { water: 5, grain: 2 },
+			overflowUnits: 2,
+			overflowCost: 4
+		});
+	});
+
+	test('controller review: classifies a safe-per-material but unsafe city-inventory total', () => {
+		const game = createCurrentV13MultiCityGame();
+		const cityInventories = game.cityInventories!.map((inventory) =>
+			inventory.cityId === 'industry-city'
+				? {
+						...inventory,
+						materials: { water: Number.MAX_SAFE_INTEGER, grain: 1 }
+					}
+				: inventory
+		);
+
+		expectSaveRecordErrorCode(
+			createManualSaveRecord({
+				game: { ...game, cityInventories: cityInventories as GameState['cityInventories'] }
+			}),
+			'invariant-city-inventory'
+		);
 	});
 
 	test.each([
