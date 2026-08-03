@@ -19,6 +19,7 @@ import {
 	openStoreAtTile
 } from '$lib/game/placement';
 import { buildRail, demolishRailSegment, upgradeRailSegment } from '$lib/game/railPlacement';
+import { setRetailSupplySource as setRetailSupplySourceTransition } from '$lib/game/retailSupply';
 import { simulateDay } from '$lib/game/simulateDay';
 import { assignStaffToStore, hireCandidate, promoteStaff, unassignStaff } from '$lib/game/staffing';
 import {
@@ -104,6 +105,7 @@ export interface MutationAvailability {
 	resolveDecision: boolean;
 	updatePolicy: boolean;
 	openWorldCity: boolean;
+	setRetailSupplySource: boolean;
 	openStore: boolean;
 	upgradeStore: boolean;
 	hireStaff: boolean;
@@ -142,6 +144,7 @@ export function createMutationAvailability(input: {
 		resolveDecision: available('resolveDecision'),
 		updatePolicy: available('updatePolicy'),
 		openWorldCity: available('openWorldCity'),
+		setRetailSupplySource: available('setRetailSupplySource'),
 		openStore: available('openStore'),
 		upgradeStore: available('upgradeStore'),
 		hireStaff: available('hireStaff'),
@@ -1196,6 +1199,27 @@ export class GameRouteController {
 		return this.commitMutation({
 			transition: (game) => selectWorldCityTransition(game!, cityId),
 			scenarioCommand: { kind: 'selectWorldCity', cityId }
+		});
+	}
+
+	setRetailSupplySource(
+		retailCityId: string,
+		supplyCityId: string | null
+	): Promise<GameRouteCommitResult> {
+		if (this.currentState.playMode === 'sandbox') {
+			const game = this.currentState.sandboxGame;
+			if (!game) return Promise.resolve({ status: 'unavailable' });
+
+			const result = setRetailSupplySourceTransition(game, retailCityId, supplyCityId);
+			if (!result.ok) return Promise.resolve({ status: 'rejected' });
+			if (!result.changed) return Promise.resolve({ status: 'unchanged' });
+
+			return this.commitMutation({ transition: () => result.game });
+		}
+
+		return this.commitMutation({
+			transition: (game) => game!,
+			scenarioCommand: { kind: 'setRetailSupplySource', retailCityId, supplyCityId }
 		});
 	}
 

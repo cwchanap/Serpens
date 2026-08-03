@@ -149,6 +149,11 @@ const commands = [
 	{ kind: 'updatePolicy', patch: { pricing: 'premium' } },
 	{ kind: 'openWorldCity', cityId: 'campus-junction' },
 	{ kind: 'selectWorldCity', cityId: 'harbor-city' },
+	{
+		kind: 'setRetailSupplySource',
+		retailCityId: 'harbor-city',
+		supplyCityId: null
+	},
 	{ kind: 'openStore', tileId: 'harbor-1-2', archetypeId: 'boutique' },
 	{ kind: 'upgradeStore', storeId: 'store-1' },
 	{ kind: 'hireStaff', candidateId: 'candidate-1' },
@@ -258,6 +263,7 @@ describe('scenario contracts', () => {
 			'updatePolicy',
 			'openWorldCity',
 			'selectWorldCity',
+			'setRetailSupplySource',
 			'openStore',
 			'upgradeStore',
 			'hireStaff',

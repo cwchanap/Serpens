@@ -109,6 +109,24 @@ export function isScenarioCommandAllowed(
 				run.game.world.openedCityIds.includes(command.cityId)
 				? { allowed: true }
 				: forbiddenContent('command.selectWorldCity.cityId');
+		case 'setRetailSupplySource': {
+			if (typeof command.retailCityId !== 'string' || !isWorldCityId(command.retailCityId)) {
+				return invalidCommand('command.setRetailSupplySource.retailCityId');
+			}
+			if (!isScenarioContentAllowed(definition, { kind: 'city', cityId: command.retailCityId })) {
+				return forbiddenContent('command.setRetailSupplySource.retailCityId');
+			}
+			if (command.supplyCityId === null) return { allowed: true };
+			if (typeof command.supplyCityId !== 'string' || !isWorldCityId(command.supplyCityId)) {
+				return invalidCommand('command.setRetailSupplySource.supplyCityId');
+			}
+			return isScenarioContentAllowed(definition, {
+				kind: 'city',
+				cityId: command.supplyCityId
+			})
+				? { allowed: true }
+				: forbiddenContent('command.setRetailSupplySource.supplyCityId');
+		}
 		case 'openStore': {
 			if (
 				!isScenarioContentAllowed(definition, {

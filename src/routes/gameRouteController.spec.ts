@@ -222,6 +222,7 @@ describe('createMutationAvailability', () => {
 			resolveDecision: true,
 			updatePolicy: true,
 			openWorldCity: true,
+			setRetailSupplySource: true,
 			openStore: true,
 			upgradeStore: true,
 			hireStaff: true,
@@ -248,6 +249,7 @@ describe('createMutationAvailability', () => {
 		expect(availability.pending).toBe(false);
 		expect(availability.advanceDay).toBe(true);
 		expect(availability.updatePolicy).toBe(true);
+		expect(availability.setRetailSupplySource).toBe(false);
 		expect(availability.openStore).toBe(false);
 		expect(availability.financeRetailStore).toBe(false);
 		expect(availability.financeIndustrialBuilding).toBe(false);
@@ -279,6 +281,22 @@ describe('createMutationAvailability', () => {
 			definition
 		});
 		expect(availability.pending).toBe(true);
+		expect(availability.advanceDay).toBe(false);
+		expect(availability.setRetailSupplySource).toBe(false);
+	});
+
+	it('exposes retail supply selection only when a scenario definition permits it', () => {
+		const definition = {
+			...firstProfitDefinition(),
+			allowedCommands: ['setRetailSupplySource'] as const
+		};
+		const availability = createMutationAvailability({
+			playMode: 'scenario',
+			pending: false,
+			definition
+		});
+
+		expect(availability.setRetailSupplySource).toBe(true);
 		expect(availability.advanceDay).toBe(false);
 	});
 
@@ -1481,6 +1499,57 @@ describe('GameRouteController', () => {
 			expect(result).toEqual({ status: 'sandbox-committed', changed: false });
 		});
 
+		it('preflights retail supply selections so only a changed sandbox selection publishes and autosaves', async () => {
+			const missingGame = createHarness();
+			expect(
+				await missingGame.controller.setRetailSupplySource('harbor-city', 'industry-city')
+			).toEqual({ status: 'unavailable' });
+
+			const harness = createHarness();
+			await harness.controller.initializeSaves();
+			harness.controller.loadSandboxGame(createNewGame('convenience', 3));
+			harness.onStateChange.mockClear();
+			harness.onAutoSave.mockClear();
+			harness.sfx.mockClear();
+
+			expect(await harness.controller.setRetailSupplySource('harbor-city', null)).toEqual({
+				status: 'sandbox-committed',
+				changed: true
+			});
+			expect(harness.controller.state.sandboxGame?.retailSupplyAssignments).toEqual([
+				{ retailCityId: 'harbor-city', supplyCityId: null }
+			]);
+			expect(harness.onStateChange).toHaveBeenCalledTimes(1);
+			await flushMicrotasks();
+			expect(harness.onAutoSave).toHaveBeenCalledTimes(1);
+			expect(harness.sfx).not.toHaveBeenCalled();
+
+			const unchanged = harness.controller.state.sandboxGame;
+			harness.onStateChange.mockClear();
+			harness.onAutoSave.mockClear();
+			harness.sfx.mockClear();
+			expect(await harness.controller.setRetailSupplySource('harbor-city', null)).toEqual({
+				status: 'unchanged'
+			});
+			expect(harness.controller.state.sandboxGame).toBe(unchanged);
+			expect(harness.onStateChange).not.toHaveBeenCalled();
+			await flushMicrotasks();
+			expect(harness.onAutoSave).not.toHaveBeenCalled();
+			expect(harness.sfx).not.toHaveBeenCalled();
+
+			harness.onStateChange.mockClear();
+			harness.onAutoSave.mockClear();
+			harness.sfx.mockClear();
+			expect(
+				await harness.controller.setRetailSupplySource('harbor-city', 'breadbasket-basin')
+			).toEqual({ status: 'rejected' });
+			expect(harness.controller.state.sandboxGame).toBe(unchanged);
+			expect(harness.onStateChange).not.toHaveBeenCalled();
+			await flushMicrotasks();
+			expect(harness.onAutoSave).not.toHaveBeenCalled();
+			expect(harness.sfx).not.toHaveBeenCalled();
+		});
+
 		it('commits a successful event decision resolution in sandbox mode', async () => {
 			const harness = createHarness();
 			await harness.controller.initializeSaves();
@@ -1832,6 +1901,114 @@ describe('GameRouteController', () => {
 			// updatePolicy with the same values is a no-op (deeplyEqual detects it).
 			const result = await harness.controller.updatePolicy(run.game.policy);
 			expect(result).toEqual({ status: 'unchanged' });
+		});
+
+		it('commits a changed allowed retail supply selection and does not persist an unchanged selection', async () => {
+			const base = firstProfitDefinition();
+			const definition = { ...base, allowedCommands: ['setRetailSupplySource'] as const };
+			const harness = createHarness({ resolveDefinition: () => definition });
+			await harness.controller.initializeScenarios();
+			const run = await startScenario(harness.controller, definition);
+			const saveSpy = vi.spyOn(harness.scenarioRepository, 'saveActiveRun');
+
+			expect(
+				await harness.controller.setRetailSupplySource('harbor-city', 'industry-city')
+			).toEqual({ status: 'unchanged' });
+			expect(harness.controller.state.activeScenarioRun).toBe(run);
+			expect(saveSpy).not.toHaveBeenCalled();
+			expect(harness.controller.state.retryScenarioOperation).toBeNull();
+
+			expect(await harness.controller.setRetailSupplySource('harbor-city', null)).toEqual({
+				status: 'committed'
+			});
+			expect(saveSpy).toHaveBeenCalledTimes(1);
+			expect(harness.controller.state.activeScenarioRun?.game.retailSupplyAssignments).toEqual([
+				{ retailCityId: 'harbor-city', supplyCityId: null }
+			]);
+		});
+
+		it('rejects invalid, forbidden-content, and disallowed retail supply commands without persistence retries', async () => {
+			const allowedBase = firstProfitDefinition();
+			const invalidDefinition = {
+				...allowedBase,
+				content: {
+					...allowedBase.content,
+					cityIds: [...allowedBase.content.cityIds, 'breadbasket-basin' as const]
+				},
+				allowedCommands: ['setRetailSupplySource'] as const
+			};
+			const invalidHarness = createHarness({ resolveDefinition: () => invalidDefinition });
+			await invalidHarness.controller.initializeScenarios();
+			const invalidRun = await startScenario(invalidHarness.controller, invalidDefinition);
+			const invalidSave = vi.spyOn(invalidHarness.scenarioRepository, 'saveActiveRun');
+
+			expect(
+				await invalidHarness.controller.setRetailSupplySource('harbor-city', 'breadbasket-basin')
+			).toEqual({ status: 'rejected' });
+			expect(invalidHarness.controller.state.activeScenarioRun).toBe(invalidRun);
+			expect(invalidHarness.controller.state.scenarioOperationError?.code).toBe('invalid-command');
+			expect(invalidHarness.controller.state.retryScenarioOperation).toBeNull();
+			expect(invalidSave).not.toHaveBeenCalled();
+
+			const forbiddenDefinition = {
+				...allowedBase,
+				allowedCommands: ['setRetailSupplySource'] as const
+			};
+			const forbiddenHarness = createHarness({ resolveDefinition: () => forbiddenDefinition });
+			await forbiddenHarness.controller.initializeScenarios();
+			await startScenario(forbiddenHarness.controller, forbiddenDefinition);
+			const forbiddenSave = vi.spyOn(forbiddenHarness.scenarioRepository, 'saveActiveRun');
+
+			expect(
+				await forbiddenHarness.controller.setRetailSupplySource('harbor-city', 'breadbasket-basin')
+			).toEqual({ status: 'rejected' });
+			expect(forbiddenHarness.controller.state.scenarioOperationError?.code).toBe(
+				'forbidden-content'
+			);
+			expect(forbiddenHarness.controller.state.retryScenarioOperation).toBeNull();
+			expect(forbiddenSave).not.toHaveBeenCalled();
+
+			const disallowedHarness = createHarness();
+			await disallowedHarness.controller.initializeScenarios();
+			await startScenario(disallowedHarness.controller);
+			const disallowedSave = vi.spyOn(disallowedHarness.scenarioRepository, 'saveActiveRun');
+
+			expect(await disallowedHarness.controller.setRetailSupplySource('harbor-city', null)).toEqual(
+				{ status: 'rejected' }
+			);
+			expect(disallowedHarness.controller.state.scenarioOperationError?.code).toBe(
+				'forbidden-command'
+			);
+			expect(disallowedHarness.controller.state.retryScenarioOperation).toBeNull();
+			expect(disallowedSave).not.toHaveBeenCalled();
+		});
+
+		it('returns busy while an allowed retail supply selection is awaiting its scenario write', async () => {
+			const base = firstProfitDefinition();
+			const definition = { ...base, allowedCommands: ['setRetailSupplySource'] as const };
+			const harness = createHarness({ resolveDefinition: () => definition });
+			await harness.controller.initializeScenarios();
+			await startScenario(harness.controller, definition);
+			const saveOriginal = harness.scenarioRepository.saveActiveRun.bind(
+				harness.scenarioRepository
+			);
+			let releaseSave: (() => void) | undefined;
+			vi.spyOn(harness.scenarioRepository, 'saveActiveRun').mockImplementation(async (...args) => {
+				await new Promise<void>((resolve) => {
+					releaseSave = resolve;
+				});
+				return saveOriginal(...args);
+			});
+
+			const first = harness.controller.setRetailSupplySource('harbor-city', null);
+			await Promise.resolve();
+			await Promise.resolve();
+			expect(harness.controller.state.scenarioCommandPending).toBe(true);
+			expect(await harness.controller.setRetailSupplySource('harbor-city', null)).toEqual({
+				status: 'busy'
+			});
+			releaseSave?.();
+			expect(await first).toEqual({ status: 'committed' });
 		});
 	});
 

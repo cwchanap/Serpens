@@ -95,6 +95,11 @@ const commands = [
 	{ kind: 'updatePolicy', patch: { pricing: 'premium' } },
 	{ kind: 'openWorldCity', cityId: 'campus-junction' },
 	{ kind: 'selectWorldCity', cityId: 'harbor-city' },
+	{
+		kind: 'setRetailSupplySource',
+		retailCityId: 'harbor-city',
+		supplyCityId: null
+	},
 	{ kind: 'openStore', tileId: 'harbor-tile', archetypeId: 'convenience' },
 	{ kind: 'upgradeStore', storeId: 'missing-store' },
 	{ kind: 'hireStaff', candidateId: 'missing-candidate' },
@@ -159,6 +164,56 @@ describe('scenario command capabilities', () => {
 			allowed: false,
 			code: 'forbidden-command',
 			path: 'allowedCommands.openStore'
+		});
+	});
+
+	it('requires allowed, known, and content-permitted retail supply endpoints', () => {
+		const command = {
+			kind: 'setRetailSupplySource',
+			retailCityId: 'harbor-city',
+			supplyCityId: null
+		} as const;
+
+		expect(isScenarioCommandAllowed(definition({ allowedCommands: [] }), run(), command)).toEqual({
+			allowed: false,
+			code: 'forbidden-command',
+			path: 'allowedCommands.setRetailSupplySource'
+		});
+
+		const permitted = definition({ allowedCommands: ['setRetailSupplySource'] });
+		expect(isScenarioCommandAllowed(permitted, run(), command)).toEqual({ allowed: true });
+		expect(
+			isScenarioCommandAllowed(permitted, run(), {
+				kind: 'setRetailSupplySource',
+				retailCityId: 'garden-borough',
+				supplyCityId: null
+			})
+		).toEqual({
+			allowed: false,
+			code: 'forbidden-content',
+			path: 'command.setRetailSupplySource.retailCityId'
+		});
+		expect(
+			isScenarioCommandAllowed(permitted, run(), {
+				kind: 'setRetailSupplySource',
+				retailCityId: 'harbor-city',
+				supplyCityId: 'garden-borough'
+			})
+		).toEqual({
+			allowed: false,
+			code: 'forbidden-content',
+			path: 'command.setRetailSupplySource.supplyCityId'
+		});
+		expect(
+			isScenarioCommandAllowed(permitted, run(), {
+				kind: 'setRetailSupplySource',
+				retailCityId: 'unknown-city',
+				supplyCityId: null
+			} as unknown as ScenarioCommand)
+		).toEqual({
+			allowed: false,
+			code: 'invalid-command',
+			path: 'command.setRetailSupplySource.retailCityId'
 		});
 	});
 

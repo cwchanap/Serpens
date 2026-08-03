@@ -988,12 +988,22 @@ describe('validateScenarioDefinition', () => {
 		];
 		expect(codes(definition)).toEqual(
 			expect.arrayContaining([
-				{ path: 'allowedCommands[25]', code: 'unsupported-command' },
+				{ path: 'allowedCommands[26]', code: 'unsupported-command' },
 				{ path: 'modifiers[0].multiplier', code: 'invalid-modifier' },
 				{ path: 'modifiers[0].target.ids[0]', code: 'invalid-reference' },
 				{ path: 'modifiers[1].kind', code: 'unsupported-modifier' }
 			])
 		);
+	});
+
+	it('recognizes retail supply source selection as a supported command', () => {
+		const definition = malformedDefinition();
+		definition.allowedCommands = ['setRetailSupplySource'];
+
+		expect(codes(definition)).not.toContainEqual({
+			path: 'allowedCommands[0]',
+			code: 'unsupported-command'
+		});
 	});
 
 	it('rejects overlapping import-cost-multiplier targets within the same scope', () => {
