@@ -37,10 +37,13 @@ import {
 	type CityTileLookup
 } from '$lib/game/storeFootprint';
 import {
+	allocateLegacyWarehouseMaterials,
 	compareWorldCityIds,
+	createEmptyCityInventory,
 	findEntityCityOwnershipIssues,
 	getCityInventory,
 	normalizeCityInventoryDerivedState,
+	supportsCityInventory,
 	WAREHOUSE_OVERFLOW_COST_PER_UNIT
 } from '$lib/game/cityInventory';
 import { MAX_STAFF_LEVEL } from '$lib/game/staffLeveling';
@@ -63,6 +66,7 @@ import type {
 	IndustrialBuilding,
 	IndustrialBuildingTypeId,
 	IndustryCity,
+	MaterialId,
 	StoreProduct,
 	WorldCityId
 } from '$lib/game/types';
@@ -895,6 +899,440 @@ function migrateV11SaveRecord(record: unknown): unknown {
 	return { ...(record as Record<string, unknown>), schemaVersion: 12 };
 }
 
+function migrateV12Game(value: unknown): unknown {
+	if (!isV12MigrationGameShape(value)) return value;
+
+	const game = value as GameState;
+	assertV12EntityCityOwnership(game);
+	const legacyMaterials = readV12WarehouseMaterials(game.warehouse);
+	const eligible = getV12EligibleCityInventories(game);
+	const cityInventories = allocateLegacyWarehouseMaterials(game, eligible, legacyMaterials);
+	const primaryCityId = selectV12PrimaryCity(game, cityInventories);
+	const retailSupplyAssignments = getV12DefaultRetailSupplyAssignments(game, primaryCityId);
+
+	assertV12MaterialConservation(legacyMaterials, cityInventories);
+	const migratedGame = {
+		...game,
+		cityInventories,
+		retailSupplyAssignments,
+		// The staged global field is a projection after this point, never a
+		// second source of stock truth.
+		warehouse: projectCityInventoriesToLegacyWarehouse(cityInventories)
+	};
+	return {
+		...migratedGame,
+		reports: migrateV12Reports(game.reports, migratedGame, primaryCityId)
+	};
+}
+
+function migrateV12SaveRecord(record: unknown): unknown {
+	if (typeof record !== 'object' || record === null) return record;
+	return { ...(record as Record<string, unknown>), schemaVersion: 13 };
+}
+
+function isV12MigrationGameShape(value: unknown): value is GameState {
+	if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+	const game = value as Record<string, unknown>;
+	if (
+		typeof game.world !== 'object' ||
+		game.world === null ||
+		Array.isArray(game.world) ||
+		!Array.isArray((game.world as Record<string, unknown>).openedCityIds) ||
+		!Array.isArray(game.cities) ||
+		!Array.isArray(game.industryCities) ||
+		!Array.isArray(game.stores) ||
+		!Array.isArray(game.industrialBuildings)
+	) {
+		return false;
+	}
+
+	return [game.cities, game.industryCities, game.stores, game.industrialBuildings].every(
+		(entries) =>
+			entries.every((entry) => typeof entry === 'object' && entry !== null && !Array.isArray(entry))
+	);
+}
+
+function assertV12EntityCityOwnership(game: GameState): void {
+	const issue = findEntityCityOwnershipIssues(game)[0];
+	if (!issue) return;
+
+	const collection = issue.kind === 'store' ? 'stores' : 'industrialBuildings';
+	const entities = issue.kind === 'store' ? game.stores : game.industrialBuildings;
+	const index = entities.findIndex((entity) => entity.id === issue.entityId);
+	throw new SaveDataError(
+		`Saved v12 game ${collection}[${Math.max(index, 0)}] must belong to an opened city (found ${issue.cityId})`,
+		'invariant-entity-city-ownership'
+	);
+}
+
+function readV12WarehouseMaterials(
+	warehouse: GameState['warehouse']
+): Partial<Record<MaterialId, number>> {
+	if (
+		typeof warehouse !== 'object' ||
+		warehouse === null ||
+		Array.isArray(warehouse) ||
+		typeof warehouse.materials !== 'object' ||
+		warehouse.materials === null ||
+		Array.isArray(warehouse.materials)
+	) {
+		cityInventoryInvariant('Saved v12 game warehouse materials must be an object');
+	}
+
+	return { ...(warehouse.materials as Partial<Record<MaterialId, number>>) };
+}
+
+function getV12EligibleCityInventories(game: GameState) {
+	const openedCityIds = new Set(
+		game.world.openedCityIds.filter(
+			(cityId): cityId is WorldCityId =>
+				typeof cityId === 'string' && getWorldCityDefinition(cityId)?.kind === 'industry'
+		)
+	);
+	const materializedIndustryCityIds = new Set(
+		game.industryCities
+			.filter((city) => typeof city.id === 'string')
+			.map((city) => city.id as WorldCityId)
+	);
+	const eligibleCityIds = [...openedCityIds]
+		.filter(
+			(cityId) => materializedIndustryCityIds.has(cityId) && supportsCityInventory(game, cityId)
+		)
+		.sort(compareWorldCityIds);
+
+	return eligibleCityIds.map((cityId) => ({
+		...createEmptyCityInventory(cityId),
+		capacity: getV12CityWarehouseCapacity(game, cityId)
+	}));
+}
+
+function getV12CityWarehouseCapacity(game: GameState, cityId: WorldCityId): number {
+	return game.industrialBuildings.reduce((capacity, building) => {
+		if (building.cityId !== cityId) return capacity;
+		const buildingCapacity = INDUSTRIAL_BUILDING_TYPES[building.typeId]?.warehouseCapacity ?? 0;
+		if (!Number.isSafeInteger(buildingCapacity) || buildingCapacity < 0) {
+			cityInventoryInvariant(`Saved v12 game ${building.id} warehouse capacity must be safe`);
+		}
+		return addCityInventorySafeInteger(
+			capacity,
+			buildingCapacity,
+			`Saved v12 game ${cityId} warehouse capacity`
+		);
+	}, 0);
+}
+
+function selectV12PrimaryCity(
+	game: GameState,
+	eligible: readonly { cityId: WorldCityId; capacity: number }[]
+): WorldCityId | null {
+	if (eligible.length === 0) return null;
+
+	return [...eligible].sort((left, right) => {
+		if (left.capacity !== right.capacity) return left.capacity > right.capacity ? -1 : 1;
+		const leftIsActive = left.cityId === game.activeIndustryCityId;
+		const rightIsActive = right.cityId === game.activeIndustryCityId;
+		if (leftIsActive !== rightIsActive) return leftIsActive ? -1 : 1;
+		return compareWorldCityIds(left.cityId, right.cityId);
+	})[0]!.cityId;
+}
+
+function getV12DefaultRetailSupplyAssignments(game: GameState, primaryCityId: WorldCityId | null) {
+	const materializedRetailCityIds = new Set(
+		game.cities.filter((city) => typeof city.id === 'string').map((city) => city.id as WorldCityId)
+	);
+
+	return game.world.openedCityIds
+		.filter(
+			(cityId): cityId is WorldCityId =>
+				typeof cityId === 'string' &&
+				getWorldCityDefinition(cityId)?.kind === 'retail' &&
+				materializedRetailCityIds.has(cityId)
+		)
+		.sort(compareWorldCityIds)
+		.map((retailCityId) => ({ retailCityId, supplyCityId: primaryCityId }));
+}
+
+function assertV12MaterialConservation(
+	legacyMaterials: Partial<Record<MaterialId, number>>,
+	cityInventories: readonly { materials: Partial<Record<MaterialId, number>> }[]
+): void {
+	for (const [materialId, quantity] of Object.entries(legacyMaterials)) {
+		if (typeof quantity !== 'number' || !Number.isSafeInteger(quantity) || quantity < 0) {
+			cityInventoryInvariant(`Saved v12 game warehouse materials ${materialId} must be safe`);
+		}
+		const allocated = cityInventories.reduce(
+			(total, inventory) =>
+				addCityInventorySafeInteger(
+					total,
+					inventory.materials[materialId as MaterialId] ?? 0,
+					`Saved v12 game warehouse materials ${materialId} allocation`
+				),
+			0
+		);
+		if (allocated !== quantity) {
+			cityInventoryInvariant(
+				`Saved v12 game warehouse materials ${materialId} must be conserved during migration`
+			);
+		}
+	}
+}
+
+function migrateV12Reports(
+	reports: unknown,
+	game: GameState,
+	primaryCityId: WorldCityId | null
+): unknown {
+	if (!Array.isArray(reports)) return reports;
+	return reports.map((report) => migrateV12Report(report, game, primaryCityId));
+}
+
+function migrateV12Report(
+	value: unknown,
+	game: GameState,
+	primaryCityId: WorldCityId | null
+): unknown {
+	if (typeof value !== 'object' || value === null || Array.isArray(value)) return value;
+	const report = value as Record<string, unknown>;
+	const storeReports = migrateV12StoreReports(report.storeReports);
+
+	return {
+		...report,
+		storeReports,
+		productionReport: migrateV12ProductionReport(
+			report.productionReport,
+			storeReports,
+			game,
+			primaryCityId
+		)
+	};
+}
+
+function migrateV12StoreReports(value: unknown): unknown {
+	if (!Array.isArray(value)) return value;
+	return value.map((storeReport) => {
+		if (typeof storeReport !== 'object' || storeReport === null || Array.isArray(storeReport)) {
+			return storeReport;
+		}
+		const report = storeReport as Record<string, unknown>;
+		const productReports = Array.isArray(report.productReports)
+			? report.productReports.map((productReport) => {
+					if (
+						typeof productReport !== 'object' ||
+						productReport === null ||
+						Array.isArray(productReport)
+					) {
+						return productReport;
+					}
+					return {
+						...(productReport as Record<string, unknown>),
+						replenishmentOutcome: null
+					};
+				})
+			: report.productReports;
+
+		return {
+			...report,
+			productReports,
+			// A v12 report has no supply-assignment history. The migration must
+			// preserve that absence even when its legacy numeric refill fields are
+			// nonzero.
+			replenishment: null
+		};
+	});
+}
+
+function migrateV12ProductionReport(
+	value: unknown,
+	storeReports: unknown,
+	game: GameState,
+	primaryCityId: WorldCityId | null
+): unknown {
+	if (typeof value !== 'object' || value === null || Array.isArray(value)) return value;
+	const productionReport = value as Record<string, unknown>;
+	const buildingCityIds = new Map(
+		game.industrialBuildings.map((building) => [building.id, building.cityId as WorldCityId])
+	);
+
+	return {
+		...productionReport,
+		produced: migrateV12IndustryMovements(productionReport.produced, primaryCityId),
+		consumed: migrateV12IndustryMovements(productionReport.consumed, primaryCityId),
+		importedInputs: migrateV12IndustryMovements(productionReport.importedInputs, primaryCityId),
+		warehousePulls: migrateV12IndustryMovements(productionReport.warehousePulls, primaryCityId),
+		shopImports: migrateV12ShopImports(productionReport.shopImports, storeReports, game),
+		railShipments: migrateV12RailShipments(
+			productionReport.railShipments,
+			buildingCityIds,
+			primaryCityId
+		),
+		cityInventories: createV12ProductionCloseSummaries(productionReport, game, primaryCityId)
+	};
+}
+
+function migrateV12IndustryMovements(value: unknown, primaryCityId: WorldCityId | null): unknown {
+	if (!Array.isArray(value) || primaryCityId === null) return value;
+	return value.map((movement) => {
+		if (typeof movement !== 'object' || movement === null || Array.isArray(movement)) {
+			return movement;
+		}
+		const record = movement as Record<string, unknown>;
+		return Object.hasOwn(record, 'cityId') ? record : { ...record, cityId: primaryCityId };
+	});
+}
+
+function migrateV12RailShipments(
+	value: unknown,
+	buildingCityIds: ReadonlyMap<string, WorldCityId>,
+	primaryCityId: WorldCityId | null
+): unknown {
+	if (!Array.isArray(value)) return value;
+	return value.map((shipment) => {
+		if (typeof shipment !== 'object' || shipment === null || Array.isArray(shipment)) {
+			return shipment;
+		}
+		const record = shipment as Record<string, unknown>;
+		const fromCityId =
+			typeof record.fromId === 'string' ? buildingCityIds.get(record.fromId) : undefined;
+		const toCityId = typeof record.toId === 'string' ? buildingCityIds.get(record.toId) : undefined;
+		if (fromCityId && toCityId && fromCityId !== toCityId) {
+			reportAttributionInvariant(
+				'Saved v12 rail shipment has conflicting recoverable industrial-city references'
+			);
+		}
+		const recoveredCityId = fromCityId ?? toCityId;
+		if (recoveredCityId) return { ...record, cityId: recoveredCityId };
+		if (Object.hasOwn(record, 'cityId') || primaryCityId === null) return record;
+		return { ...record, cityId: primaryCityId };
+	});
+}
+
+interface V12RetailImportEvidence {
+	cityId: WorldCityId;
+	categoryId: string;
+	quantity: number;
+	value: number;
+}
+
+function migrateV12ShopImports(value: unknown, storeReports: unknown, game: GameState): unknown {
+	if (!Array.isArray(value)) return value;
+	const evidence = getV12RetailImportEvidence(storeReports, game);
+	if (evidence === null) return value;
+
+	if (value.length === 0) {
+		return evidence.map((entry) => {
+			const materialId = getFinishedMaterialIdForCategory(entry.categoryId);
+			if (materialId === null) {
+				reportAttributionInvariant(
+					`Saved v12 shop import category ${entry.categoryId} cannot be attributed to a material`
+				);
+			}
+			return {
+				cityId: entry.cityId,
+				materialId,
+				quantity: entry.quantity,
+				value: entry.value,
+				source: 'import'
+			};
+		});
+	}
+
+	if (value.length !== evidence.length) {
+		reportAttributionInvariant(
+			'Saved v12 shop imports cannot be reconciled with recoverable store report evidence'
+		);
+	}
+
+	return value.map((movement, index) => {
+		if (typeof movement !== 'object' || movement === null || Array.isArray(movement)) {
+			return movement;
+		}
+		const record = movement as Record<string, unknown>;
+		const entry = evidence[index]!;
+		if (record.quantity !== entry.quantity || record.value !== entry.value) {
+			reportAttributionInvariant(
+				'Saved v12 shop imports cannot be reconciled with recoverable store report totals'
+			);
+		}
+		return { ...record, cityId: entry.cityId };
+	});
+}
+
+function getV12RetailImportEvidence(
+	storeReports: unknown,
+	game: GameState
+): V12RetailImportEvidence[] | null {
+	if (!Array.isArray(storeReports)) return null;
+	const evidence: V12RetailImportEvidence[] = [];
+	for (const storeReport of storeReports) {
+		if (typeof storeReport !== 'object' || storeReport === null || Array.isArray(storeReport)) {
+			return null;
+		}
+		const report = storeReport as Record<string, unknown>;
+		const storeId = typeof report.storeId === 'string' ? report.storeId : null;
+		const store =
+			storeId === null ? undefined : game.stores.find((candidate) => candidate.id === storeId);
+		if (!store || !Array.isArray(report.productReports)) return null;
+		for (const productReport of report.productReports) {
+			if (
+				typeof productReport !== 'object' ||
+				productReport === null ||
+				Array.isArray(productReport)
+			) {
+				return null;
+			}
+			const product = productReport as Record<string, unknown>;
+			if (!isV12SafeNonnegativeInteger(product.importedUnits)) return null;
+			if (product.importedUnits === 0) continue;
+			if (
+				typeof product.categoryId !== 'string' ||
+				!isV12SafeNonnegativeInteger(product.importSpend)
+			) {
+				return null;
+			}
+			evidence.push({
+				cityId: store.cityId as WorldCityId,
+				categoryId: product.categoryId,
+				quantity: product.importedUnits,
+				value: product.importSpend
+			});
+		}
+	}
+	return evidence;
+}
+
+function createV12ProductionCloseSummaries(
+	productionReport: Record<string, unknown>,
+	game: GameState,
+	primaryCityId: WorldCityId | null
+): unknown {
+	if (primaryCityId === null) return productionReport.cityInventories;
+	const fields = ['warehouseCapacity', 'warehouseUsed', 'overflowUnits', 'overflowCost'] as const;
+	if (!fields.every((field) => isV12SafeNonnegativeInteger(productionReport[field]))) {
+		return productionReport.cityInventories;
+	}
+	const primarySummary = {
+		cityId: primaryCityId,
+		capacity: productionReport.warehouseCapacity,
+		used: productionReport.warehouseUsed,
+		overflowUnits: productionReport.overflowUnits,
+		overflowCost: productionReport.overflowCost
+	};
+	if (primaryCityId === 'industry-city') return [primarySummary];
+	if (!supportsCityInventory(game, 'industry-city')) {
+		reportAttributionInvariant(
+			'Saved v12 production close cannot reconcile a nonstarter primary without the starter industry city'
+		);
+	}
+	return [
+		{ cityId: 'industry-city', capacity: 0, used: 0, overflowUnits: 0, overflowCost: 0 },
+		primarySummary
+	];
+}
+
+function isV12SafeNonnegativeInteger(value: unknown): value is number {
+	return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+
 /**
  * Migrates a bare serialized game through every historical game-schema step.
  * Record metadata is deliberately excluded; it remains owned by the sandbox
@@ -924,6 +1362,7 @@ function migrateSavedGameInternal(value: unknown, sourceGameSchemaVersion: numbe
 	if (sourceGameSchemaVersion <= 9) migrated = migrateV9Game(migrated);
 	if (sourceGameSchemaVersion <= 10) migrated = migrateV10Game(migrated);
 	if (sourceGameSchemaVersion <= 11) migrated = migrateV11Game(migrated);
+	if (sourceGameSchemaVersion <= 12) migrated = migrateV12Game(migrated);
 
 	return migrated;
 }
@@ -980,6 +1419,9 @@ function migrateSaveRecord(value: unknown): unknown {
 	}
 	if (migrated.schemaVersion === 11) {
 		migrated = migrateV11SaveRecord(migrated) as Record<string, unknown>;
+	}
+	if (migrated.schemaVersion === 12) {
+		migrated = migrateV12SaveRecord(migrated) as Record<string, unknown>;
 	}
 
 	return migrated;
@@ -4429,9 +4871,9 @@ function validateCurrentStoreReplenishment(value: unknown, game: GameState, labe
 	);
 
 	if (storeReport.replenishment === null) {
-		if (attemptedReplenishment || products.some((product) => product.outcome !== null)) {
+		if (products.some((product) => product.outcome !== null)) {
 			retailSupplyInvariant(
-				`${label} null replenishment is only valid when no product attempted a refill`
+				`${label} null replenishment requires every product outcome to be null`
 			);
 		}
 		return;

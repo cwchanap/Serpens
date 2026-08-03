@@ -10,7 +10,11 @@ import {
 	buildIndustrialBuilding,
 	getIndustrialPlacementBlockReason
 } from '$lib/game/industryPlacement';
-import { getWarehouseCapacity, recalculateWarehousePressure } from '$lib/game/legacyWarehouse';
+import {
+	getWarehouseCapacity,
+	projectCityInventoriesToLegacyWarehouse,
+	recalculateWarehousePressure
+} from '$lib/game/legacyWarehouse';
 import { formatLocation } from '$lib/game/placement';
 import type { DecisionContext } from '$lib/game/decisionContext';
 import { simulateDay } from '$lib/game/simulateDay';
@@ -493,6 +497,128 @@ function createCurrentV13MultiCityGame(): GameState {
 	};
 }
 
+function createV12MultiCityGame(legacyMaterials: Partial<Record<MaterialId, number>>): GameState {
+	let game = createValidWarehouseBuildingGame();
+	game = {
+		...game,
+		cash: 1_000_000,
+		world: {
+			...game.world,
+			revealedCityIds: [...game.world.revealedCityIds, 'campus-junction', 'breadbasket-basin']
+		}
+	};
+	game = openWorldCity(game, 'campus-junction');
+	game = openWorldCity(game, 'breadbasket-basin');
+
+	const breadbasket = game.industryCities.find((city) => city.id === 'breadbasket-basin')!;
+	const warehouseTile = breadbasket.tiles.find(
+		(candidate) => getIndustrialPlacementBlockReason(game, candidate.id, 'warehouse') === null
+	)!;
+	game = buildIndustrialBuilding(game, {
+		tileId: warehouseTile.id,
+		buildingTypeId: 'warehouse'
+	});
+
+	return {
+		...game,
+		activeIndustryCityId: 'industry-city',
+		warehouse: recalculateWarehousePressure({
+			...game.warehouse,
+			capacity: getWarehouseCapacity(game),
+			materials: { ...legacyMaterials }
+		})
+	};
+}
+
+function createV12MultiCityRecord(
+	legacyMaterials: Partial<Record<MaterialId, number>>
+): SaveRecord {
+	const game = createV12MultiCityGame(legacyMaterials);
+	const {
+		cityInventories: _cityInventories,
+		retailSupplyAssignments: _retailSupplyAssignments,
+		...legacyGame
+	} = game;
+	void _cityInventories;
+	void _retailSupplyAssignments;
+	const template = createManualSaveRecord();
+
+	return {
+		...template,
+		schemaVersion: 12 as unknown as typeof SAVE_SCHEMA_VERSION,
+		metadata: {
+			...template.metadata,
+			day: legacyGame.day,
+			cash: legacyGame.cash,
+			storeCount: legacyGame.stores.length,
+			activeCityId: legacyGame.activeCityId
+		},
+		game: legacyGame as GameState
+	};
+}
+
+function createLegacyV12Report(game: GameState): DailyReport {
+	const primaryWarehouseId = game.industrialBuildings.find(
+		(building) => building.typeId === 'warehouse' && building.cityId === 'industry-city'
+	)!.id;
+	const categoryId = game.stores[0]!.products[0]!.categoryId;
+	const report = createDailyReport({
+		day: game.day,
+		importSpend: 6,
+		productionReport: createDailyProductionReport({
+			warehouseCapacity: game.warehouse.capacity,
+			warehouseUsed: 3,
+			overflowUnits: 0,
+			overflowCost: 0,
+			produced: [{ materialId: 'water', quantity: 2, value: 2, source: 'local' }],
+			warehousePulls: [{ materialId: 'water', quantity: 1, value: 1, source: 'warehouse' }],
+			shopImports: [{ materialId: 'water', quantity: 3, value: 6, source: 'import' }],
+			railShipments: [
+				{
+					materialId: 'water',
+					quantity: 1,
+					value: 1,
+					kind: 'push-warehouse',
+					fromId: primaryWarehouseId,
+					toId: primaryWarehouseId
+				}
+			]
+		}),
+		storeReports: [
+			createDailyStoreReport({
+				storeId: game.stores[0]!.id,
+				importSpend: 6,
+				productReports: [
+					{
+						categoryId,
+						name: 'Legacy replenishment row',
+						unitsSold: 7,
+						demandMissed: 1,
+						revenue: 35,
+						costOfGoods: 17,
+						grossMargin: 18,
+						endingStock: 4,
+						warehouseUnits: 2,
+						warehouseValue: 4,
+						importedUnits: 3,
+						importCost: 2,
+						importSpend: 6,
+						replenishmentOutcome: null
+					}
+				]
+			})
+		]
+	});
+	const legacy = structuredClone(report) as unknown as Record<string, unknown>;
+	const productionReport = legacy.productionReport as Record<string, unknown>;
+	delete productionReport.cityInventories;
+	const storeReport = (legacy.storeReports as Array<Record<string, unknown>>)[0]!;
+	delete storeReport.replenishment;
+	delete (storeReport.productReports as Array<Record<string, unknown>>)[0]!.replenishmentOutcome;
+
+	return legacy as unknown as DailyReport;
+}
+
 function createCurrentV13Report(game: GameState): DailyReport {
 	const warehouseId = game.industrialBuildings[0]!.id;
 	const categoryId = game.stores[0]!.products[0]!.categoryId;
@@ -941,6 +1067,169 @@ function createBareMigrationFixture(sourceVersion: number): unknown {
 }
 
 describe('saveCodec', () => {
+	test('migrates v12 global stock across eligible city capacity and creates canonical default assignments', () => {
+		const record = createV12MultiCityRecord({ water: 300 });
+
+		expect(() => validateSaveRecord(record)).not.toThrow();
+		const migrated = validateSaveRecord(record);
+
+		expect(migrated.schemaVersion).toBe(13);
+		expect(migrated.game.cityInventories).toEqual([
+			{
+				cityId: 'industry-city',
+				capacity: 200,
+				materials: { water: 200 },
+				overflowUnits: 0,
+				overflowCost: 0
+			},
+			{
+				cityId: 'breadbasket-basin',
+				capacity: 200,
+				materials: { water: 100 },
+				overflowUnits: 0,
+				overflowCost: 0
+			}
+		]);
+		expect(migrated.game.retailSupplyAssignments).toEqual([
+			{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' },
+			{ retailCityId: 'campus-junction', supplyCityId: 'industry-city' }
+		]);
+		expect(migrated.game.warehouse).toEqual({
+			capacity: 400,
+			materials: { water: 300 },
+			overflowUnits: 0,
+			overflowCost: 0
+		});
+	});
+
+	test('migrates pre-v13 refill evidence to explicit unknown attribution without changing its numbers', () => {
+		const record = createV12MultiCityRecord({ water: 3 });
+		record.game.reports = [createLegacyV12Report(record.game)];
+
+		expect(() => validateSaveRecord(record)).not.toThrow();
+		const migrated = validateSaveRecord(record);
+		const report = migrated.game.reports[0]!;
+		const storeReport = report.storeReports[0]!;
+		const productReport = storeReport.productReports[0]!;
+
+		expect(storeReport.replenishment).toBeNull();
+		expect(productReport.replenishmentOutcome).toBeNull();
+		expect({
+			warehouseUnits: productReport.warehouseUnits,
+			warehouseValue: productReport.warehouseValue,
+			importedUnits: productReport.importedUnits,
+			importCost: productReport.importCost,
+			importSpend: productReport.importSpend,
+			unitsSold: productReport.unitsSold,
+			demandMissed: productReport.demandMissed,
+			revenue: productReport.revenue,
+			costOfGoods: productReport.costOfGoods,
+			grossMargin: productReport.grossMargin,
+			endingStock: productReport.endingStock
+		}).toEqual({
+			warehouseUnits: 2,
+			warehouseValue: 4,
+			importedUnits: 3,
+			importCost: 2,
+			importSpend: 6,
+			unitsSold: 7,
+			demandMissed: 1,
+			revenue: 35,
+			costOfGoods: 17,
+			grossMargin: 18,
+			endingStock: 4
+		});
+		expect({
+			revenue: storeReport.revenue,
+			costOfGoods: storeReport.costOfGoods,
+			grossMargin: storeReport.grossMargin,
+			operatingCosts: storeReport.operatingCosts,
+			importSpend: storeReport.importSpend,
+			netIncome: storeReport.netIncome,
+			day: report.day,
+			reportRevenue: report.revenue,
+			reportCostOfGoods: report.costOfGoods,
+			reportGrossMargin: report.grossMargin,
+			reportImportSpend: report.importSpend,
+			cashAfter: report.cashAfter
+		}).toEqual({
+			revenue: 1000,
+			costOfGoods: 350,
+			grossMargin: 650,
+			operatingCosts: 250,
+			importSpend: 6,
+			netIncome: 400,
+			day: 1,
+			reportRevenue: 1000,
+			reportCostOfGoods: 350,
+			reportGrossMargin: 650,
+			reportImportSpend: 6,
+			cashAfter: 12900
+		});
+		expect(report.productionReport.cityInventories).toEqual([
+			{ cityId: 'industry-city', capacity: 400, used: 3, overflowUnits: 0, overflowCost: 0 }
+		]);
+	});
+
+	test('keeps the required starter summary when a nonstarter primary owns historical close totals', () => {
+		const record = createV12MultiCityRecord({ water: 3 });
+		record.game = {
+			...record.game,
+			activeIndustryCityId: 'breadbasket-basin',
+			reports: [createLegacyV12Report(record.game)]
+		};
+
+		expect(() => validateSaveRecord(record)).not.toThrow();
+		expect(validateSaveRecord(record).game.reports[0]!.productionReport.cityInventories).toEqual([
+			{ cityId: 'industry-city', capacity: 0, used: 0, overflowUnits: 0, overflowCost: 0 },
+			{ cityId: 'breadbasket-basin', capacity: 400, used: 3, overflowUnits: 0, overflowCost: 0 }
+		]);
+	});
+
+	test('uses recoverable city evidence for rail and shop imports while marking unresolvable production rows as primary provenance', () => {
+		const record = createV12MultiCityRecord({ water: 3 });
+		record.game.reports = [createLegacyV12Report(record.game)];
+
+		expect(() => validateSaveRecord(record)).not.toThrow();
+		const productionReport = validateSaveRecord(record).game.reports[0]!.productionReport;
+
+		expect(productionReport.produced).toEqual([
+			{ cityId: 'industry-city', materialId: 'water', quantity: 2, value: 2, source: 'local' }
+		]);
+		expect(productionReport.warehousePulls).toEqual([
+			{
+				cityId: 'industry-city',
+				materialId: 'water',
+				quantity: 1,
+				value: 1,
+				source: 'warehouse'
+			}
+		]);
+		expect(productionReport.railShipments).toEqual([
+			{
+				cityId: 'industry-city',
+				materialId: 'water',
+				quantity: 1,
+				value: 1,
+				kind: 'push-warehouse',
+				fromId: expect.any(String),
+				toId: expect.any(String)
+			}
+		]);
+		expect(productionReport.shopImports).toEqual([
+			{ cityId: 'harbor-city', materialId: 'water', quantity: 3, value: 6, source: 'import' }
+		]);
+	});
+
+	test('rejects v12 entity ownership before using an invalid building for capacity allocation', () => {
+		const record = createV12MultiCityRecord({ water: 1 });
+		record.game.industrialBuildings = [
+			{ ...record.game.industrialBuildings[0]!, cityId: 'harbor-city' }
+		];
+
+		expectSaveRecordErrorCode(record, 'invariant-entity-city-ownership');
+	});
+
 	test('round-trips a current v13 multi-city save with city-scoped inventory and replenishment evidence', () => {
 		expect.assertions(8);
 		const game = createCurrentV13MultiCityGame();
@@ -1808,7 +2097,7 @@ describe('saveCodec', () => {
 		const validated = validateSaveRecord(createV11Record(legacyV11StrategicDecisions()));
 		const [supplier, system, cashPressure, expansion] = validated.game.decisions;
 
-		expect(validated.schemaVersion).toBe(12);
+		expect(validated.schemaVersion).toBe(13);
 		expect(validated.game.events).toMatchObject({
 			selectionSchemaVersion: 1,
 			rngState: 1_183_544_557,
@@ -4130,13 +4419,13 @@ describe('saveCodec', () => {
 		{
 			name: 'pressure',
 			warehouse: { capacity: 0, materials: { water: 1 }, overflowUnits: 0, overflowCost: 0 },
-			expected: { capacity: 0, materials: { water: 1 }, overflowUnits: 1, overflowCost: 2 }
+			expected: { capacity: 0, materials: {}, overflowUnits: 0, overflowCost: 0 }
 		}
 	])(
 		'strict validation rejects warehouse $name inconsistent with derived state while sandbox loading repairs it',
 		({ warehouse, expected }) => {
 			expect(() => validateCurrentGameState(createGame({ warehouse }))).toThrow(
-				'Saved game warehouse capacity and pressure must match current buildings and materials'
+				'Saved game warehouse must be the one-way projection of authoritative city inventories'
 			);
 			expect(
 				validateSaveRecord(createManualSaveRecord({ game: { warehouse } })).game.warehouse
@@ -4144,9 +4433,19 @@ describe('saveCodec', () => {
 		}
 	);
 
-	test('strict validation accepts correctly derived nonzero warehouse overflow', () => {
+	test('strict validation accepts a projected nonzero canonical city-inventory overflow', () => {
+		const cityInventories = [
+			{
+				cityId: 'industry-city' as const,
+				capacity: 0,
+				materials: { water: 1 },
+				overflowUnits: 1,
+				overflowCost: 2
+			}
+		];
 		const game = createGame({
-			warehouse: { capacity: 0, materials: { water: 1 }, overflowUnits: 1, overflowCost: 2 }
+			cityInventories,
+			warehouse: projectCityInventoriesToLegacyWarehouse(cityInventories)
 		});
 
 		expect(validateCurrentGameState(game)).toEqual(game);

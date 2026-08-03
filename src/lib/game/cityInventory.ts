@@ -1,4 +1,4 @@
-import { INDUSTRIAL_BUILDING_TYPES } from './industry';
+import { INDUSTRIAL_BUILDING_TYPES, MATERIALS } from './industry';
 import { WORLD_CITY_CATALOG } from './world';
 import type {
 	CityInventory,
@@ -112,6 +112,94 @@ export function selectDefaultRetailSupplyCity(game: GameState): WorldCityId | nu
 
 		return compareWorldCityIds(left.cityId, right.cityId);
 	})[0]!.cityId;
+}
+
+/**
+ * Distributes the former global warehouse pool across the supplied eligible
+ * industrial-city inventories. Allocation priority is intentionally separate
+ * from the canonical return order: the primary city receives capacity first,
+ * but callers always receive catalog-ordered inventory records.
+ */
+export function allocateLegacyWarehouseMaterials(
+	game: GameState,
+	eligible: readonly CityInventory[],
+	legacyMaterials: Partial<Record<MaterialId, number>>
+): CityInventory[] {
+	const materialEntries = getValidatedLegacyMaterialEntries(legacyMaterials);
+	const totalLegacyUnits = materialEntries.reduce(
+		(total, [, quantity]) => checkedAdd(total, quantity, 'Legacy warehouse material total'),
+		0
+	);
+	if (eligible.length === 0) {
+		if (totalLegacyUnits === 0) return [];
+		throw new RangeError('Legacy warehouse stock requires an eligible city inventory');
+	}
+
+	const canonicalEligible = [...eligible]
+		.map((inventory) => ({
+			...inventory,
+			capacity: requireSafeNonnegativeInteger(
+				inventory.capacity,
+				`Legacy city inventory ${inventory.cityId} capacity`
+			),
+			materials: {}
+		}))
+		.sort((left, right) => compareWorldCityIds(left.cityId, right.cityId));
+	const primary = selectLegacyWarehousePrimaryCity(game, canonicalEligible);
+	const destinations = [
+		primary,
+		...canonicalEligible.filter((inventory) => inventory.cityId !== primary.cityId)
+	];
+	const remainingCapacity = destinations.map((inventory) => inventory.capacity);
+	const allocatedMaterials = destinations.map((): Partial<Record<MaterialId, number>> => ({}));
+	const materialOrder = materialEntries
+		.map(([materialId]) => materialId)
+		.sort(compareLegacyMaterialIds);
+
+	for (const materialId of materialOrder) {
+		const originalQuantity = legacyMaterials[materialId]!;
+		let remaining = originalQuantity;
+		for (let index = 0; index < destinations.length; index += 1) {
+			const quantity = Math.min(remaining, remainingCapacity[index]!);
+			if (quantity === 0) continue;
+
+			allocatedMaterials[index]![materialId] = quantity;
+			remaining -= quantity;
+			remainingCapacity[index] -= quantity;
+		}
+
+		if (remaining > 0) {
+			const current = allocatedMaterials[0]![materialId] ?? 0;
+			allocatedMaterials[0]![materialId] = checkedAdd(
+				current,
+				remaining,
+				`Legacy warehouse ${materialId} primary allocation`
+			);
+		}
+	}
+
+	const allocatedByCityId = new Map(
+		destinations.map((inventory, index) => [
+			inventory.cityId,
+			recalculateCityInventoryPressure({
+				...inventory,
+				materials: allocatedMaterials[index]!
+			})
+		])
+	);
+	const allocation = canonicalEligible.map((inventory) => allocatedByCityId.get(inventory.cityId)!);
+
+	assertLegacyWarehouseAllocationConservation(
+		allocation,
+		materialEntries,
+		totalLegacyUnits,
+		canonicalEligible.reduce(
+			(total, inventory) =>
+				checkedAdd(total, inventory.capacity, 'Legacy warehouse aggregate capacity'),
+			0
+		)
+	);
+	return allocation;
 }
 
 export function createDefaultRetailSupplyAssignment(
@@ -359,6 +447,83 @@ function supportsRetailSupplyAssignment(game: GameState, cityId: WorldCityId): b
 
 function worldCityCatalogIndex(cityId: WorldCityId): number {
 	return WORLD_CITY_CATALOG.findIndex((city) => city.id === cityId);
+}
+
+function selectLegacyWarehousePrimaryCity(
+	game: GameState,
+	eligible: readonly CityInventory[]
+): CityInventory {
+	return [...eligible].sort((left, right) => {
+		if (left.capacity !== right.capacity) {
+			return left.capacity > right.capacity ? -1 : 1;
+		}
+
+		const leftIsActive =
+			left.cityId === game.activeIndustryCityId && supportsCityInventory(game, left.cityId);
+		const rightIsActive =
+			right.cityId === game.activeIndustryCityId && supportsCityInventory(game, right.cityId);
+		if (leftIsActive !== rightIsActive) {
+			return leftIsActive ? -1 : 1;
+		}
+
+		return compareWorldCityIds(left.cityId, right.cityId);
+	})[0]!;
+}
+
+function getValidatedLegacyMaterialEntries(
+	legacyMaterials: Partial<Record<MaterialId, number>>
+): [MaterialId, number][] {
+	const entries: [MaterialId, number][] = [];
+	for (const [materialId, quantity] of Object.entries(legacyMaterials)) {
+		if (!Object.hasOwn(MATERIALS, materialId)) {
+			throw new RangeError(`Legacy warehouse material ${materialId} must be known`);
+		}
+		entries.push([
+			materialId as MaterialId,
+			requireSafeNonnegativeInteger(quantity, `Legacy warehouse material ${materialId}`)
+		]);
+	}
+	return entries;
+}
+
+function compareLegacyMaterialIds(left: MaterialId, right: MaterialId): number {
+	const materialIds = Object.keys(MATERIALS) as MaterialId[];
+	const leftIndex = materialIds.indexOf(left);
+	const rightIndex = materialIds.indexOf(right);
+	if (leftIndex !== rightIndex) return leftIndex - rightIndex;
+	return compareCodeUnits(left, right);
+}
+
+function assertLegacyWarehouseAllocationConservation(
+	allocation: readonly CityInventory[],
+	legacyMaterials: readonly [MaterialId, number][],
+	totalLegacyUnits: number,
+	aggregateCapacity: number
+): void {
+	for (const [materialId, expected] of legacyMaterials) {
+		const actual = allocation.reduce(
+			(total, inventory) =>
+				checkedAdd(
+					total,
+					inventory.materials[materialId] ?? 0,
+					`Legacy warehouse ${materialId} conservation`
+				),
+			0
+		);
+		if (actual !== expected) {
+			throw new RangeError(`Legacy warehouse ${materialId} allocation must conserve materials`);
+		}
+	}
+
+	const actualOverflow = allocation.reduce(
+		(total, inventory) =>
+			checkedAdd(total, inventory.overflowUnits, 'Legacy warehouse allocation overflow'),
+		0
+	);
+	const expectedOverflow = Math.max(0, totalLegacyUnits - aggregateCapacity);
+	if (actualOverflow !== expectedOverflow) {
+		throw new RangeError('Legacy warehouse allocation must create only unavoidable overflow');
+	}
 }
 
 function compareCodeUnits(left: string, right: string): number {

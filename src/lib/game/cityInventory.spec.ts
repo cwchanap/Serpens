@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest';
+import * as cityInventoryModule from './cityInventory';
 import {
 	addCityInventoryMaterial,
 	compareWorldCityIds,
@@ -17,7 +18,13 @@ import {
 	synchronizeCityInventoryCapacity
 } from './cityInventory';
 import { createNewGame } from './state';
-import type { CityInventory, GameState, IndustrialBuilding, WorldCityId } from './types';
+import type {
+	CityInventory,
+	GameState,
+	IndustrialBuilding,
+	MaterialId,
+	WorldCityId
+} from './types';
 import { openWorldCity } from './world';
 
 function createCityInventory(
@@ -54,6 +61,45 @@ function createWarehouseBuilding(id: string, cityId: string): IndustrialBuilding
 
 function withCityInventories(game: GameState, cityInventories: CityInventory[]) {
 	return { ...game, cityInventories };
+}
+
+function createAllocationGame(activeIndustryCityId: WorldCityId = 'industry-city'): GameState {
+	const base = createNewGame('convenience', 20260802);
+
+	return {
+		...base,
+		world: {
+			...base.world,
+			revealedCityIds: [...base.world.revealedCityIds, 'breadbasket-basin'],
+			openedCityIds: [...base.world.openedCityIds, 'breadbasket-basin']
+		},
+		industryCities: [
+			...base.industryCities,
+			{ ...base.industryCities[0]!, id: 'breadbasket-basin', name: 'Breadbasket Basin' }
+		],
+		activeIndustryCityId
+	};
+}
+
+/**
+ * The optional lookup keeps RED assertions behavior-shaped while the planned
+ * public helper does not exist yet. Once implemented, every assertion invokes
+ * the real exported function.
+ */
+function allocateLegacyWarehouseMaterialsForTest(
+	game: GameState,
+	eligible: readonly CityInventory[],
+	legacyMaterials: Partial<Record<MaterialId, number>>
+): CityInventory[] | undefined {
+	return (
+		cityInventoryModule as unknown as {
+			allocateLegacyWarehouseMaterials?: (
+				game: GameState,
+				eligible: readonly CityInventory[],
+				legacyMaterials: Partial<Record<MaterialId, number>>
+			) => CityInventory[];
+		}
+	).allocateLegacyWarehouseMaterials?.(game, eligible, legacyMaterials);
 }
 
 describe('city inventory helpers', () => {
@@ -356,5 +402,131 @@ describe('city inventory helpers', () => {
 			withAllRetailAssignments.retailSupplyAssignments?.map((assignment) => assignment.retailCityId)
 		).toEqual(['harbor-city', 'campus-junction']);
 		expect(repeatedRetailInitialization).toEqual(withAllRetailAssignments);
+	});
+});
+
+describe('legacy warehouse material allocation', () => {
+	test('spreads 300 legacy units across two 200-capacity cities without avoidable overflow', () => {
+		const allocation = allocateLegacyWarehouseMaterialsForTest(
+			createAllocationGame(),
+			[
+				createCityInventory('industry-city', { capacity: 200 }),
+				createCityInventory('breadbasket-basin', { capacity: 200 })
+			],
+			{ water: 300 }
+		);
+
+		expect(allocation).toEqual([
+			{
+				cityId: 'industry-city',
+				capacity: 200,
+				materials: { water: 200 },
+				overflowUnits: 0,
+				overflowCost: 0
+			},
+			{
+				cityId: 'breadbasket-basin',
+				capacity: 200,
+				materials: { water: 100 },
+				overflowUnits: 0,
+				overflowCost: 0
+			}
+		]);
+	});
+
+	test('conserves each catalog material and puts only aggregate excess in the primary city', () => {
+		const allocation = allocateLegacyWarehouseMaterialsForTest(
+			createAllocationGame(),
+			[
+				createCityInventory('industry-city', { capacity: 100 }),
+				createCityInventory('breadbasket-basin', { capacity: 100 })
+			],
+			{ water: 150, grain: 130 }
+		);
+
+		expect(allocation).toEqual([
+			{
+				cityId: 'industry-city',
+				capacity: 100,
+				materials: { grain: 100, water: 80 },
+				overflowUnits: 80,
+				overflowCost: 160
+			},
+			{
+				cityId: 'breadbasket-basin',
+				capacity: 100,
+				materials: { grain: 30, water: 70 },
+				overflowUnits: 0,
+				overflowCost: 0
+			}
+		]);
+	});
+
+	test('uses a valid active city on a capacity tie and falls back to catalog order for a stale active city', () => {
+		const eligible = [
+			createCityInventory('industry-city', { capacity: 50 }),
+			createCityInventory('breadbasket-basin', { capacity: 50 })
+		];
+
+		expect(
+			allocateLegacyWarehouseMaterialsForTest(createAllocationGame('breadbasket-basin'), eligible, {
+				water: 75
+			})
+		).toEqual([
+			{
+				cityId: 'industry-city',
+				capacity: 50,
+				materials: { water: 25 },
+				overflowUnits: 0,
+				overflowCost: 0
+			},
+			{
+				cityId: 'breadbasket-basin',
+				capacity: 50,
+				materials: { water: 50 },
+				overflowUnits: 0,
+				overflowCost: 0
+			}
+		]);
+		expect(
+			allocateLegacyWarehouseMaterialsForTest(createAllocationGame('quarry-works'), eligible, {
+				water: 75
+			})
+		).toEqual([
+			{
+				cityId: 'industry-city',
+				capacity: 50,
+				materials: { water: 50 },
+				overflowUnits: 0,
+				overflowCost: 0
+			},
+			{
+				cityId: 'breadbasket-basin',
+				capacity: 50,
+				materials: { water: 25 },
+				overflowUnits: 0,
+				overflowCost: 0
+			}
+		]);
+	});
+
+	test('accepts an empty legacy pool without a destination', () => {
+		expect(allocateLegacyWarehouseMaterialsForTest(createAllocationGame(), [], {})).toEqual([]);
+	});
+
+	test('rejects nonempty legacy stock when no city is eligible', () => {
+		expect(() =>
+			allocateLegacyWarehouseMaterialsForTest(createAllocationGame(), [], { water: 1 })
+		).toThrow(RangeError);
+	});
+
+	test('rejects unsafe legacy quantities before allocating them', () => {
+		expect(() =>
+			allocateLegacyWarehouseMaterialsForTest(
+				createAllocationGame(),
+				[createCityInventory('industry-city', { capacity: 200 })],
+				{ water: Number.MAX_SAFE_INTEGER + 1 }
+			)
+		).toThrow(RangeError);
 	});
 });
