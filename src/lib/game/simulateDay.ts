@@ -22,6 +22,7 @@ import {
 	type ImportCostApplicationEvidence,
 	type SimulationRules
 } from './simulationRules';
+import { applyWeeklyReplenishment, isReplenishmentDay } from './retailSupply';
 import {
 	calculateMonthlyPayroll,
 	generateHiringCandidates,
@@ -32,10 +33,8 @@ import {
 } from './staffing';
 import { getStaffDailyXp, getStaffXpForLevel, MAX_STAFF_LEVEL } from './staffLeveling';
 import {
-	applyWeeklyImports,
 	calculateStockHealth,
 	getFinishedMaterialIdForCategory,
-	isImportDay,
 	simulateProductSalesForCity
 } from './stock';
 import { refreshWorldProgress } from './world';
@@ -155,8 +154,8 @@ export function simulateDay(
 		...productionGame,
 		stores: restoreProductSettings(citySales.stores, productionGame.stores)
 	};
-	const importResult = isImportDay(productionGame.day)
-		? applyWeeklyImports({
+	const importResult = isReplenishmentDay(productionGame.day)
+		? applyWeeklyReplenishment({
 				game: stockGame,
 				storeReports: citySales.productReports,
 				rules: mergedRules
@@ -164,6 +163,7 @@ export function simulateDay(
 		: {
 				stores: stockGame.stores,
 				productReports: citySales.productReports,
+				cityInventories: stockGame.cityInventories,
 				warehouse: stockGame.warehouse,
 				importSpend: 0,
 				importCostApplications: []
@@ -205,6 +205,9 @@ export function simulateDay(
 		cash: game.cash + operatingCashFlow,
 		scorecard,
 		stores: storeResults.map((result) => result.store),
+		// Task 5 bridge: replenishment has already debited canonical city inventory.
+		// Task 6 will consume the full replenishment result for report context/timing.
+		cityInventories: importResult.cityInventories,
 		warehouse: importResult.warehouse,
 		hiringCandidates,
 		staff: staffWithXp

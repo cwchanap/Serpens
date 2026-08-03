@@ -1,16 +1,9 @@
 import { getArchetype } from './archetypes';
 import { getTilePlacementBlockReason } from './city';
 import { MATERIALS } from './industry';
-import { removeWarehouseMaterial } from './legacyWarehouse';
 import { getStoreRevenueMultiplier, getUnlockedCategoryCount } from './leveling';
 import { clampScore } from './reports';
 import { randomBetween, type Rng } from './rng';
-import {
-	DEFAULT_SIMULATION_RULES,
-	resolveImportCostMultiplier,
-	type ImportCostApplicationEvidence,
-	type SimulationRules
-} from './simulationRules';
 import { getRetailCityDemandMultiplier } from './world';
 import type {
 	ArchetypeId,
@@ -22,27 +15,16 @@ import type {
 	ProductCategory,
 	Store,
 	StoreProduct,
-	StoreProductPatch,
-	WarehouseInventory
+	StoreProductPatch
 } from './types';
 
 export type StoreProductStatus = 'Out of stock' | 'Needs import' | 'Healthy';
-
-export const IMPORT_INTERVAL_DAYS = 7;
 
 export interface ProductSalesResult {
 	stores: Store[];
 	productReports: Map<string, DailyProductReport[]>;
 	initialDemand: Record<string, number>;
 	remainingDemand: Record<string, number>;
-}
-
-export interface WeeklyImportResult {
-	stores: Store[];
-	productReports: Map<string, DailyProductReport[]>;
-	warehouse: WarehouseInventory;
-	importSpend: number;
-	importCostApplications: ImportCostApplicationEvidence[];
 }
 
 export function createStoreProduct(category: ProductCategory): StoreProduct {
@@ -171,10 +153,6 @@ export function calculateStockHealth(products: StoreProduct[]): number {
 		products.reduce((total, product) => total + getStockTargetRatio(product), 0) / products.length;
 
 	return clampScore(averageRatio * 100);
-}
-
-export function isImportDay(day: number): boolean {
-	return day > 0 && day % IMPORT_INTERVAL_DAYS === 0;
 }
 
 export function getFinishedMaterialIdForCategory(categoryId: string): MaterialId | null {
@@ -319,74 +297,6 @@ export function simulateProductSalesForCity(input: {
 	return { stores, productReports, initialDemand, remainingDemand };
 }
 
-export function applyWeeklyImports(input: {
-	game: GameState;
-	storeReports: Map<string, DailyProductReport[]>;
-	rules?: SimulationRules;
-}): WeeklyImportResult {
-	const rules = input.rules ?? DEFAULT_SIMULATION_RULES;
-	let importSpend = 0;
-	let warehouse = input.game.warehouse;
-	const importCostApplications: ImportCostApplicationEvidence[] = [];
-	const productReports = cloneProductReports(input.storeReports);
-	const stores = input.game.stores.map((store) => {
-		const categories = getArchetype(store.archetypeId).startingCategories;
-		const products = store.products.map((product) => {
-			if (product.stock >= product.reorderThreshold) {
-				return product;
-			}
-
-			const category = categories.find((candidate) => candidate.id === product.categoryId);
-			const neededUnits = Math.max(0, product.targetStock - product.stock);
-
-			if (!category || neededUnits === 0) {
-				return product;
-			}
-
-			const materialId = getFinishedMaterialIdForCategory(product.categoryId);
-			const removal = materialId
-				? removeWarehouseMaterial(warehouse, materialId, neededUnits)
-				: null;
-			const importedUnits = removal?.shortage ?? neededUnits;
-			const baselineCost = importedUnits * category.importCost;
-			const resolution = resolveImportCostMultiplier(rules, 'retail-product', category.id);
-			const spend = Math.round(baselineCost * resolution.multiplier);
-			if (importedUnits > 0 && baselineCost > 0 && resolution.contributions.length > 0) {
-				importCostApplications.push({
-					scope: 'retail-product',
-					targetId: category.id,
-					baselineCost,
-					resolvedMultiplier: resolution.multiplier,
-					actualCost: spend,
-					contributions: resolution.contributions
-				});
-			}
-			const warehouseUnits = removal?.quantityRemoved ?? 0;
-			const warehouseValue =
-				warehouseUnits * (materialId ? MATERIALS[materialId].localValue : category.importCost);
-			warehouse = removal?.warehouse ?? warehouse;
-			importSpend += spend;
-			mergeImportReport(productReports, store.id, category, {
-				endingStock: product.targetStock,
-				warehouseUnits,
-				warehouseValue,
-				importedUnits,
-				importSpend: spend
-			});
-
-			return { ...product, stock: product.targetStock };
-		});
-
-		return {
-			...store,
-			products,
-			stockHealth: calculateStockHealth(products)
-		};
-	});
-
-	return { stores, productReports, warehouse, importSpend, importCostApplications };
-}
-
 function roundedFiniteOrFallback(value: number | undefined, fallback: number): number {
 	if (typeof value !== 'number' || !Number.isFinite(value)) {
 		return fallback;
@@ -456,17 +366,6 @@ function cloneStoreForStock(store: Store): Store {
 	};
 }
 
-function cloneProductReports(
-	reports: Map<string, DailyProductReport[]>
-): Map<string, DailyProductReport[]> {
-	return new Map(
-		[...reports.entries()].map(([storeId, storeReports]) => [
-			storeId,
-			storeReports.map((report) => ({ ...report }))
-		])
-	);
-}
-
 function findStoreCategory(
 	store: Store | undefined,
 	categoryId: string
@@ -506,49 +405,4 @@ function appendProductReport(
 	report: DailyProductReport
 ): void {
 	reports.set(storeId, [...(reports.get(storeId) ?? []), report]);
-}
-
-function mergeImportReport(
-	reports: Map<string, DailyProductReport[]>,
-	storeId: string,
-	category: ProductCategory,
-	refill: {
-		endingStock: number;
-		warehouseUnits: number;
-		warehouseValue: number;
-		importedUnits: number;
-		importSpend: number;
-	}
-): void {
-	const storeReports = reports.get(storeId) ?? [];
-	const existingIndex = storeReports.findIndex((report) => report.categoryId === category.id);
-
-	if (existingIndex >= 0) {
-		storeReports[existingIndex] = {
-			...storeReports[existingIndex]!,
-			endingStock: refill.endingStock,
-			warehouseUnits: refill.warehouseUnits,
-			warehouseValue: refill.warehouseValue,
-			importedUnits: refill.importedUnits,
-			importSpend: refill.importSpend
-		};
-		reports.set(storeId, storeReports);
-		return;
-	}
-
-	appendProductReport(reports, storeId, {
-		categoryId: category.id,
-		name: category.name,
-		unitsSold: 0,
-		demandMissed: 0,
-		revenue: 0,
-		costOfGoods: 0,
-		grossMargin: 0,
-		endingStock: refill.endingStock,
-		warehouseUnits: refill.warehouseUnits,
-		warehouseValue: refill.warehouseValue,
-		importedUnits: refill.importedUnits,
-		importCost: category.importCost,
-		importSpend: refill.importSpend
-	});
 }

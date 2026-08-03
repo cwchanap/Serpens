@@ -1,4 +1,4 @@
-import { isImportDay } from '$lib/game/stock';
+import { isReplenishmentDay } from '$lib/game/retailSupply';
 import type { DailyReport, GameState } from '$lib/game/types';
 import type {
 	ObjectiveEvidence,
@@ -200,7 +200,7 @@ export const METRIC_REGISTRY = {
 		neutral: 0,
 		isComplete: reportMetricComplete,
 		evaluate: ({ reports }) => {
-			const importReports = reports.filter((report) => isImportDay(report.day));
+			const importReports = reports.filter((report) => isReplenishmentDay(report.day));
 			return { actual: importReports.length, contributingIds: reportIds(importReports) };
 		}
 	},
