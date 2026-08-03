@@ -17,7 +17,12 @@ import {
 	type ScenarioStoreSnapshot
 } from '$lib/scenarios/types';
 import { deeplyEqual } from '$lib/game/equality';
-import { createPlainSnapshot, migrateSavedGame, validateCurrentGameState } from './saveCodec';
+import {
+	createPlainSnapshot,
+	migrateSavedGame,
+	validateCurrentGameState,
+	validateMigratedGameState
+} from './saveCodec';
 import { SAVE_SCHEMA_VERSION } from './saveTypes';
 
 export const SCENARIO_STORE_SCHEMA_VERSION = 1;
@@ -1103,7 +1108,9 @@ function decodeActiveRunRecord(
 	}
 	let game: ReturnType<typeof validateCurrentGameState>;
 	try {
-		game = validateCurrentGameState(migrated);
+		game = isCurrentGameSchema
+			? validateCurrentGameState(migrated)
+			: validateMigratedGameState(migrated, gameSchemaVersion);
 	} catch (error) {
 		fail(
 			'invalid-game',

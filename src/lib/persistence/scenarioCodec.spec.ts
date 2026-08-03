@@ -34,6 +34,7 @@ import {
 } from './scenarioCodec';
 import { ScenarioMemoryRepository } from './scenarioMemoryRepository';
 import { runRecord, snapshot } from './scenarioRepository.testUtils';
+import { migrateSavedGame, validateMigratedGameState } from './saveCodec';
 
 const OFFICIAL_SEEDS: Record<ScenarioId, number> = {
 	'first-profit': 280_001,
@@ -1628,6 +1629,47 @@ describe('scenario codec', () => {
 		).toBe(true);
 		expect(stale.snapshot.activeRunsByScenarioId).toEqual({});
 		expect(stale.diagnostics.map((diagnostic) => diagnostic.code)).toContain('invalid-game');
+	});
+
+	it('keeps malformed v4 scenario games ordered behind legacy store validation', () => {
+		const active = fixtureRun();
+		const record = runRecord(active);
+		const legacyGame = toLegacyV12WarehouseWireGame(active.game) as unknown as Record<
+			string,
+			unknown
+		>;
+		legacyGame.stores = ['not-a-store'];
+		record.gameSchemaVersion = 4;
+		record.game = legacyGame as unknown as GameState;
+
+		const migrated = migrateSavedGame(record.game, record.gameSchemaVersion);
+
+		expect(() => validateMigratedGameState(migrated, record.gameSchemaVersion)).toThrow(
+			'Saved game stores[0] must be an object'
+		);
+
+		const decoded = decodeScenarioStoreSnapshot(
+			snapshot({ 'first-profit': record }),
+			resolveFixtureDefinition
+		);
+		expect(decoded.snapshot.activeRunsByScenarioId).toEqual({});
+		expect(decoded.diagnostics.map((diagnostic) => diagnostic.code)).toContain('invalid-game');
+	});
+
+	it('rejects residual global warehouse data in current-v13 scenario games', () => {
+		const active = fixtureRun();
+		const run = {
+			...active,
+			game: Object.assign(structuredClone(active.game), { warehouse: { materials: {} } })
+		};
+
+		const decoded = decodeScenarioStoreSnapshot(
+			snapshot({ 'first-profit': runRecord(run) }),
+			resolveFixtureDefinition
+		);
+
+		expect(decoded.snapshot.activeRunsByScenarioId).toEqual({});
+		expect(decoded.diagnostics.map((diagnostic) => diagnostic.code)).toContain('invalid-game');
 	});
 
 	it('accepts city-scoped metric evidence and hard-rejects removed warehouse evidence', () => {
