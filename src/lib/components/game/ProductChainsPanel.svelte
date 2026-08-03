@@ -2,6 +2,7 @@
 	import CategoryStampIndex from '$lib/components/game/atlas/CategoryStampIndex.svelte';
 	import NodeBroadside from '$lib/components/game/atlas/NodeBroadside.svelte';
 	import ProductChainAtlas from '$lib/components/game/atlas/ProductChainAtlas.svelte';
+	import { getCityInventory, getCityInventoryUsed } from '$lib/game/cityInventory';
 	import {
 		buildWarehouseFlowGraph,
 		getSupportedStoreChainCategories
@@ -64,17 +65,100 @@
 	);
 	const warehouseGraph = $derived(localizeProductChainGraph(buildWarehouseFlowGraph(game), i18n));
 	const graph = $derived(mode === 'warehouse-flow' ? warehouseGraph : categoryGraph);
+	const activeIndustryInventory = $derived(getCityInventory(game, game.activeIndustryCityId));
+	const categorySupplyState = $derived(categoryGraph?.supplyState);
+	const categorySupplyInventory = $derived.by(() => {
+		const sourceCityId =
+			categorySupplyState?.code === 'available' || categorySupplyState?.code === 'zero-capacity'
+				? categorySupplyState.cityId
+				: null;
+		return sourceCityId ? getCityInventory(game, sourceCityId) : null;
+	});
 	const activeNodeId = $derived(
 		graph && nodeSelection.graphId === graph.id ? nodeSelection.nodeId : null
 	);
 	const selectedNode = $derived(graph && activeNodeId ? graph.details[activeNodeId] : null);
 	const headingText = $derived(
 		mode === 'warehouse-flow'
-			? i18n.t('productChainsPanel.warehouseFlow')
+			? i18n.t('productChainsPanel.cityInventoryFlow')
 			: activeCategory
 				? i18n.labels.productCategory(activeCategory.categoryId)
 				: i18n.t('productChainsPanel.ariaLabel')
 	);
+
+	function cityName(cityId: string): string {
+		return i18n.labels.worldCity(cityId).name;
+	}
+
+	function activeIndustryScopeLabel(): string {
+		return activeIndustryInventory.ok
+			? i18n.t('productChainsPanel.activeIndustryInventory', {
+					cityName: cityName(activeIndustryInventory.inventory.cityId)
+				})
+			: i18n.t('productChainsPanel.activeIndustryUnavailable', {
+					cityName: cityName(game.activeIndustryCityId)
+				});
+	}
+
+	function retailSupplyScopeLabel(): string {
+		const retailCityName = cityName(game.activeCityId);
+		const supplyState = categorySupplyState;
+		if (!supplyState) {
+			return i18n.t('productChainsPanel.supplyState.configurationUnavailable');
+		}
+
+		switch (supplyState.code) {
+			case 'available': {
+				const inventory = categorySupplyInventory?.ok ? categorySupplyInventory.inventory : null;
+				return i18n.t('productChainsPanel.activeRetailSupply', {
+					retailCityName,
+					sourceCityName: cityName(supplyState.cityId),
+					used: i18n.format.integer(inventory ? getCityInventoryUsed(inventory) : 0),
+					capacity: i18n.format.integer(supplyState.capacity)
+				});
+			}
+			case 'imports-only':
+				return i18n.t('productChainsPanel.supplyState.importsOnly');
+			case 'configuration-unavailable':
+				return i18n.t('productChainsPanel.supplyState.configurationUnavailable');
+			case 'unavailable':
+				return i18n.t('productChainsPanel.supplyState.unavailable', {
+					cityName: cityName(supplyState.cityId)
+				});
+			case 'zero-capacity':
+				return i18n.t('productChainsPanel.supplyState.zeroCapacity', {
+					cityName: cityName(supplyState.cityId)
+				});
+		}
+	}
+
+	function selectedInventoryStateLabels(): string[] {
+		const inventoryAccess =
+			mode === 'warehouse-flow' ? activeIndustryInventory : categorySupplyInventory;
+		if (!inventoryAccess?.ok) {
+			return [];
+		}
+
+		const inventory = inventoryAccess.inventory;
+		const labels: string[] = [];
+		if (getCityInventoryUsed(inventory) === 0) {
+			labels.push(
+				i18n.t('productChainsPanel.supplyState.emptyInventory', {
+					cityName: cityName(inventory.cityId)
+				})
+			);
+		}
+		if (inventory.overflowUnits > 0) {
+			labels.push(
+				i18n.t('productChainsPanel.supplyState.inventoryOverflow', {
+					cityName: cityName(inventory.cityId),
+					units: i18n.format.integer(inventory.overflowUnits),
+					cost: i18n.format.currency(inventory.overflowCost)
+				})
+			);
+		}
+		return labels;
+	}
 
 	function selectCategory(categoryId: string): void {
 		mode = 'store-categories';
@@ -119,10 +203,17 @@
 				aria-pressed={mode === 'warehouse-flow'}
 				onclick={() => selectMode('warehouse-flow')}
 			>
-				{i18n.t('productChainsPanel.warehouseFlow')}
+				{i18n.t('productChainsPanel.cityInventoryFlow')}
 			</button>
 		</div>
 	</div>
+
+	<section class="scope" aria-label={i18n.t('productChainsPanel.scopeAria')}>
+		<p>{mode === 'warehouse-flow' ? activeIndustryScopeLabel() : retailSupplyScopeLabel()}</p>
+		{#each selectedInventoryStateLabels() as stateLabel (stateLabel)}
+			<p>{stateLabel}</p>
+		{/each}
+	</section>
 
 	<div class="sheet-rule" aria-hidden="true"></div>
 
@@ -192,6 +283,22 @@
 		font-size: 0.85rem;
 		font-style: italic;
 		color: var(--ink-500);
+	}
+
+	.scope {
+		display: grid;
+		gap: 0.3rem;
+		border: 1px solid var(--paper-edge);
+		border-radius: 2px;
+		background: var(--paper-50);
+		padding: 0.6rem 0.7rem;
+	}
+
+	.scope p {
+		font-family: var(--font-body);
+		font-size: 0.85rem;
+		line-height: 1.4;
+		color: var(--ink-700);
 	}
 
 	.eyebrow {

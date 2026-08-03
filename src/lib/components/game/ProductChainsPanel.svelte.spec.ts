@@ -1,14 +1,74 @@
 import { page } from 'vitest/browser';
 import { describe, expect, it } from 'vitest';
 import { render } from 'vitest-browser-svelte';
-import { addWarehouseMaterial } from '$lib/game/legacyWarehouse';
 import { createNewGame } from '$lib/game/state';
+import { openWorldCity } from '$lib/game/world';
 import { createI18n, type I18nBundle } from '$lib/i18n';
-import type { GameState } from '$lib/game/types';
+import type { GameState, WorldCityId } from '$lib/game/types';
 import ProductChainsPanel from './ProductChainsPanel.svelte';
 
 function renderProductChainsPanel(game: GameState, i18n: I18nBundle = createI18n('en')) {
 	return render(ProductChainsPanel, { game, i18n });
+}
+
+function openCity(game: GameState, cityId: WorldCityId): GameState {
+	return openWorldCity(
+		{
+			...game,
+			cash: 1_000_000,
+			world: {
+				...game.world,
+				revealedCityIds: game.world.revealedCityIds.includes(cityId)
+					? game.world.revealedCityIds
+					: [...game.world.revealedCityIds, cityId]
+			}
+		},
+		cityId
+	);
+}
+
+function cityScopedChainGame(): GameState {
+	const game = openCity(createNewGame('convenience', 20260803), 'breadbasket-basin');
+	return {
+		...game,
+		activeCityId: 'harbor-city',
+		activeIndustryCityId: 'breadbasket-basin',
+		cityInventories: game.cityInventories!.map((inventory) =>
+			inventory.cityId === 'industry-city'
+				? {
+						...inventory,
+						capacity: 80,
+						materials: { snacks: 8 },
+						overflowUnits: 0,
+						overflowCost: 0
+					}
+				: {
+						...inventory,
+						capacity: 40,
+						materials: { snacks: 12 },
+						overflowUnits: 0,
+						overflowCost: 0
+					}
+		),
+		retailSupplyAssignments: [{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' }]
+	};
+}
+
+function withActiveIndustryInventory(game: GameState): GameState {
+	const cityId = game.activeIndustryCityId as WorldCityId;
+	return {
+		...game,
+		cityInventories: [
+			...(game.cityInventories ?? []).filter((inventory) => inventory.cityId !== cityId),
+			{
+				cityId,
+				capacity: 200,
+				materials: { snacks: 12 },
+				overflowUnits: 0,
+				overflowCost: 0
+			}
+		]
+	};
 }
 
 describe('ProductChainsPanel', () => {
@@ -20,26 +80,22 @@ describe('ProductChainsPanel', () => {
 
 		await expect.element(page.getByRole('region', { name: 'Product Chains' })).toBeVisible();
 		await expect.element(page.getByTestId('category-stamp-bottled-water')).toBeVisible();
-		await expect.element(page.getByRole('button', { name: 'Warehouse flow' })).toBeVisible();
+		await expect.element(page.getByRole('button', { name: 'City inventory flow' })).toBeVisible();
 		await expect.element(page.getByTestId('product-chain-graph-chain:bottled-water')).toBeVisible();
 		expect(document.querySelector('.chain-title')?.textContent).toBe('Bottled Water chain');
 	});
 
-	it('toggles from store category chains to warehouse flow', async () => {
+	it('toggles from store category chains to city inventory flow', async () => {
 		expect.assertions(3);
-		const baseGame = createNewGame('convenience', 20260518);
-		const game = {
-			...baseGame,
-			warehouse: addWarehouseMaterial(baseGame.warehouse, 'snacks', 12)
-		};
+		const game = withActiveIndustryInventory(createNewGame('convenience', 20260518));
 
 		renderProductChainsPanel(game);
 
-		await page.getByRole('button', { name: 'Warehouse flow' }).click();
+		await page.getByRole('button', { name: 'City inventory flow' }).click();
 
 		await expect.element(page.getByTestId('product-chain-graph-warehouse-flow')).toBeVisible();
 		await expect.element(page.getByRole('button', { name: 'Store category chains' })).toBeVisible();
-		await expect.element(page.getByRole('heading', { name: 'Warehouse flow' })).toBeVisible();
+		await expect.element(page.getByRole('heading', { name: 'City inventory flow' })).toBeVisible();
 	});
 
 	it('renders Japanese mode buttons', async () => {
@@ -48,7 +104,7 @@ describe('ProductChainsPanel', () => {
 
 		renderProductChainsPanel(game, createI18n('ja'));
 
-		await expect.element(page.getByRole('button', { name: '倉庫フロー' })).toBeVisible();
+		await expect.element(page.getByRole('button', { name: '都市在庫フロー' })).toBeVisible();
 	});
 
 	it('shows empty-state messages and the fallback heading when no stores have chain categories', async () => {
@@ -66,16 +122,18 @@ describe('ProductChainsPanel', () => {
 		await expect.element(page.getByTestId('category-stamp-bottled-water')).not.toBeInTheDocument();
 	});
 
-	it('shows the fallback heading in warehouse-flow mode when no warehouse stock or report exists', async () => {
+	it('shows the fallback heading in city inventory flow mode when no city inventory stock or report exists', async () => {
 		expect.assertions(2);
 		const game = createNewGame('convenience', 20260518);
 
 		renderProductChainsPanel(game);
 
-		await page.getByRole('button', { name: 'Warehouse flow' }).click();
+		await page.getByRole('button', { name: 'City inventory flow' }).click();
 
-		await expect.element(page.getByText('No warehouse stock or daily report yet.')).toBeVisible();
-		await expect.element(page.getByRole('heading', { name: 'Warehouse flow' })).toBeVisible();
+		await expect
+			.element(page.getByText('No city inventory stock or daily report yet.'))
+			.toBeVisible();
+		await expect.element(page.getByRole('heading', { name: 'City inventory flow' })).toBeVisible();
 	});
 
 	it('selects a chain node and shows the inspected node broadside', async () => {
@@ -114,22 +172,81 @@ describe('ProductChainsPanel', () => {
 		await expect.element(page.getByTestId('product-chain-graph-chain:snacks')).toBeVisible();
 	});
 
-	it('toggles back to store category chains from warehouse flow mode', async () => {
+	it('toggles back to store category chains from city inventory flow mode', async () => {
 		expect.assertions(2);
-		const baseGame = createNewGame('convenience', 20260518);
-		const game = {
-			...baseGame,
-			warehouse: addWarehouseMaterial(baseGame.warehouse, 'snacks', 12)
-		};
+		const game = withActiveIndustryInventory(createNewGame('convenience', 20260518));
 
 		renderProductChainsPanel(game);
 
-		// Switch to warehouse flow first.
-		await page.getByRole('button', { name: 'Warehouse flow' }).click();
+		// Switch to the city inventory flow first.
+		await page.getByRole('button', { name: 'City inventory flow' }).click();
 		await expect.element(page.getByTestId('product-chain-graph-warehouse-flow')).toBeVisible();
 
 		// Switch back to store category chains (exercises selectMode('store-categories')).
 		await page.getByRole('button', { name: 'Store category chains' }).click();
 		await expect.element(page.getByTestId('product-chain-graph-chain:bottled-water')).toBeVisible();
+	});
+
+	it('labels the active industrial city inventory instead of a global warehouse flow', async () => {
+		expect.assertions(2);
+		renderProductChainsPanel(cityScopedChainGame());
+
+		await page.getByRole('button', { name: 'City inventory flow' }).click();
+		await expect
+			.element(page.getByText('City inventory — Breadbasket Basin', { exact: true }))
+			.toBeVisible();
+		await expect.element(page.getByText('Warehouse flow', { exact: true })).not.toBeInTheDocument();
+	});
+
+	it.each([
+		[
+			'available local supply',
+			(game: GameState) => game,
+			'Local supply for Harbor City — Industry City: 8 / 80 city inventory used.'
+		],
+		[
+			'imports only',
+			(game: GameState) => ({
+				...game,
+				retailSupplyAssignments: [{ retailCityId: 'harbor-city', supplyCityId: null }]
+			}),
+			'Imports only — replenishment uses external imports.'
+		],
+		[
+			'configuration unavailable',
+			(game: GameState) => ({ ...game, retailSupplyAssignments: [] }),
+			'Supply configuration unavailable.'
+		],
+		[
+			'stale source unavailable',
+			(game: GameState) => ({
+				...game,
+				retailSupplyAssignments: [{ retailCityId: 'harbor-city', supplyCityId: 'quarry-works' }]
+			}),
+			'Local supply source Quarry Works is unavailable.'
+		],
+		[
+			'zero-capacity source',
+			(game: GameState) => ({
+				...game,
+				cityInventories: game.cityInventories!.map((inventory) =>
+					inventory.cityId === 'industry-city'
+						? {
+								...inventory,
+								capacity: 0,
+								materials: {},
+								overflowUnits: 0,
+								overflowCost: 0
+							}
+						: inventory
+				)
+			}),
+			'Local supply source Industry City has zero city inventory capacity.'
+		]
+	] as const)('shows %s as a distinct retail source state', async (_, arrange, expectedCopy) => {
+		expect.assertions(1);
+		renderProductChainsPanel(arrange(cityScopedChainGame()) as GameState);
+
+		await expect.element(page.getByText(expectedCopy)).toBeVisible();
 	});
 });

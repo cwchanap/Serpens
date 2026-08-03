@@ -149,14 +149,18 @@ export const ja = {
 		noOutputYet: 'まだ生産実績がありません',
 		buffer: 'バッファ',
 		noBufferMaterials: 'バッファに資材はありません',
-		warehouseSummary: '倉庫概要',
-		warehouse: '倉庫',
-		warehouseMaterials: '倉庫内資材',
+		warehouseBuilding: '倉庫建築',
+		cityInventorySummary: '{cityName} の都市在庫',
+		currentCityInventory: '現在の都市在庫（直近の補充後）',
+		cityInventoryMaterials: '都市在庫の資材',
+		cityInventoryUnavailable: '{cityName} の都市在庫は利用できません。',
+		cityInventoryZeroCapacity: '都市在庫の容量は 0 です。',
+		cityInventoryEmpty: '都市在庫は空です。',
+		cityInventoryOverflow: '都市在庫の超過: {units} 単位。',
 		capacity: '容量',
 		used: '使用量',
 		overflowUnits: 'あふれた数量',
 		overflowCost: 'あふれコスト',
-		noMaterialsStored: '保管中の資材はありません',
 		unknownBuildingType: '不明な工業施設タイプ',
 		status: {
 			idle: '待機中',
@@ -285,14 +289,38 @@ export const ja = {
 			refinancedPrincipal: '借換元本',
 			endingPrincipal: '期末元本',
 			payroll: '給与',
-			imports: '輸入',
-			productionImports: '生産輸入',
-			warehouseOverflow: '倉庫あふれ',
+			imports: '外部輸入',
+			productionImports: '生産の外部輸入',
+			warehouseOverflow: '都市在庫の超過',
 			railShipments: '鉄路出荷',
 			sevenDayNet: '7日純益',
 			thirtyDayNet: '30日純益',
 			sevenDayOperatingCashFlow: '7日営業キャッシュフロー',
 			thirtyDayOperatingCashFlow: '30日営業キャッシュフロー'
+		},
+		inventory: {
+			productionCloseTitle: '生産終了時の在庫（小売補充前）',
+			reportDay: 'レポート日 {day}',
+			productionCloseUnavailable: '生産終了時の都市在庫は利用できません。',
+			productionCloseEmpty: '生産終了時の都市在庫記録はありません。',
+			currentTitle: '現在の都市在庫（直近の補充後）',
+			currentUnavailable: '現在の都市在庫は利用できません。',
+			currentEmpty: '現在の都市在庫記録はありません。',
+			citySummary: '{cityName}: 都市在庫を {used} / {capacity} 使用中。',
+			cityOverflow: '都市在庫の超過: {units} 単位（{cost}）。'
+		},
+		attribution: {
+			title: '都市別の移動',
+			empty: '都市別の移動はありません。',
+			unknownCity: '不明な都市',
+			production: '生産 — {cityName}: {units} 単位',
+			productionUnavailable: '生産の帰属先は不明です: {units} 単位',
+			consumption: '消費 — {cityName}: {units} 単位',
+			consumptionUnavailable: '消費の帰属先は不明です: {units} 単位',
+			localSupply: 'ローカル供給 — {sourceCityName} → {retailCityName}: {units} 単位',
+			localSupplyUnavailable: 'ローカル供給の帰属先は不明です — {retailCityName}: {units} 単位',
+			externalImports: '外部輸入 — {retailCityName}: {units} 単位',
+			externalImportsUnavailable: '外部輸入の帰属先は不明です: {units} 単位'
 		},
 		dailyWarnings: '日次警告',
 		empty: 'まだレポートがありません。最初の日を進めると結果が生成されます。'
@@ -358,14 +386,14 @@ export const ja = {
 			revenue: '売上',
 			grossMargin: '粗利',
 			stock: '在庫',
-			imports: '輸入',
+			imports: '外部輸入',
 			staff: 'スタッフ',
 			coverage: '充足'
 		},
 		productSources: '{storeName}の商品供給内訳',
 		warnings: '{storeName}の警告',
-		warehouseUnits: '倉庫 {count}',
-		importedUnits: '輸入 {count}',
+		warehouseUnits: 'ローカル供給 {count}',
+		importedUnits: '外部輸入 {count}',
 		noWarnings: '現在の警告はありません。'
 	},
 	retailSupplySources: {
@@ -424,7 +452,20 @@ export const ja = {
 		eyebrow: 'Folio II · 生産チェーン',
 		modeGroup: '商品チェーン表示',
 		storeCategoryChains: '店舗カテゴリチェーン',
-		warehouseFlow: '倉庫フロー',
+		cityInventoryFlow: '都市在庫フロー',
+		scopeAria: '都市在庫の範囲',
+		activeIndustryInventory: '都市在庫 — {cityName}',
+		activeIndustryUnavailable: '{cityName} の都市在庫は利用できません。',
+		activeRetailSupply:
+			'{retailCityName} のローカル供給 — {sourceCityName}: 都市在庫を {used} / {capacity} 使用中。',
+		supplyState: {
+			importsOnly: '輸入のみ — 補充は外部輸入で行われます。',
+			configurationUnavailable: '供給設定を利用できません。',
+			unavailable: 'ローカル供給元 {cityName} は利用できません。',
+			zeroCapacity: 'ローカル供給元 {cityName} の都市在庫容量は 0 です。',
+			emptyInventory: '{cityName} の都市在庫は空です。',
+			inventoryOverflow: '{cityName} の都市在庫の超過: {units} 単位（{cost}）。'
+		},
 		emptyCategories: 'ローカル生産チェーンを持つ店舗カテゴリはまだありません。',
 		emptyGraph: '利用できるチェーングラフがありません。'
 	},
@@ -1147,10 +1188,10 @@ export const ja = {
 		},
 		productChainGraph: {
 			title: {
-				warehouseFlow: '倉庫フロー',
+				warehouseFlow: '都市在庫フロー',
 				productChain: '{label}チェーン'
 			},
-			warehouseNode: '倉庫',
+			warehouseNode: '都市在庫',
 			nodeStats: {
 				recipe: '{buildings} 棟 · 1日 {output}',
 				stock: '在庫 {stock}'
@@ -1163,7 +1204,7 @@ export const ja = {
 				'no-report': '最新報告なし'
 			},
 			emptyReason: {
-				noWarehouseData: '倉庫在庫も日次レポートもまだありません。',
+				noWarehouseData: '都市在庫も日次レポートもまだありません。',
 				noLocalChain: 'このカテゴリにはまだ現地生産チェーンがありません。'
 			},
 			warnings: {
@@ -1184,9 +1225,9 @@ export const ja = {
 				shortage: '{label} は輸入依存か、本日の現地不足がありました。',
 				noLocalCapacity: '{label} を生産する現地施設がありません。',
 				noReport: '{label} の最新フローデータはまだありません。',
-				warehouseNoCapacity: '倉庫容量がありません。',
-				warehouseOverflow: '{quantity} ユニットが溢れています。',
-				warehouseAvailable: '倉庫容量に余裕があります。'
+				warehouseNoCapacity: '都市在庫の容量がありません。',
+				warehouseOverflow: '{quantity} 単位が都市在庫から超過しています。',
+				warehouseAvailable: '都市在庫の容量に余裕があります。'
 			}
 		}
 	},

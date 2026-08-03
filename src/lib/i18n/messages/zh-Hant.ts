@@ -149,14 +149,18 @@ export const zhHant = {
 		noOutputYet: '尚未有產出',
 		buffer: '緩衝庫存',
 		noBufferMaterials: '緩衝庫存中沒有物料',
-		warehouseSummary: '倉庫摘要',
-		warehouse: '倉庫',
-		warehouseMaterials: '倉庫物料',
+		warehouseBuilding: '倉庫建築',
+		cityInventorySummary: '{cityName}城市庫存',
+		currentCityInventory: '目前城市庫存（最近一次補貨後）',
+		cityInventoryMaterials: '城市庫存物料',
+		cityInventoryUnavailable: '{cityName}的城市庫存無法使用。',
+		cityInventoryZeroCapacity: '城市庫存容量為 0。',
+		cityInventoryEmpty: '城市庫存為空。',
+		cityInventoryOverflow: '城市庫存溢出：{units} 單位。',
 		capacity: '容量',
 		used: '已使用',
 		overflowUnits: '溢出單位',
 		overflowCost: '溢出成本',
-		noMaterialsStored: '沒有已儲存的物料',
 		unknownBuildingType: '未知的工業建築類型',
 		status: {
 			idle: '閒置',
@@ -285,14 +289,38 @@ export const zhHant = {
 			refinancedPrincipal: '再融資本金',
 			endingPrincipal: '期末本金',
 			payroll: '薪資',
-			imports: '進口',
-			productionImports: '生產進口',
-			warehouseOverflow: '倉庫溢出',
+			imports: '外部進口',
+			productionImports: '生產外部進口',
+			warehouseOverflow: '城市庫存溢出',
 			railShipments: '鐵路出貨',
 			sevenDayNet: '7 日淨利',
 			thirtyDayNet: '30 日淨利',
 			sevenDayOperatingCashFlow: '7 日營業現金流',
 			thirtyDayOperatingCashFlow: '30 日營業現金流'
+		},
+		inventory: {
+			productionCloseTitle: '生產結束時庫存（零售補貨前）',
+			reportDay: '報表日 {day}',
+			productionCloseUnavailable: '生產結束時的城市庫存無法使用。',
+			productionCloseEmpty: '沒有生產結束時的城市庫存記錄。',
+			currentTitle: '目前城市庫存（最近一次補貨後）',
+			currentUnavailable: '目前城市庫存無法使用。',
+			currentEmpty: '沒有目前城市庫存記錄。',
+			citySummary: '{cityName}：已使用 {used} / {capacity} 城市庫存。',
+			cityOverflow: '城市庫存溢出：{units} 單位（{cost}）。'
+		},
+		attribution: {
+			title: '按城市歸屬的流動',
+			empty: '沒有可用的按城市歸屬流動。',
+			unknownCity: '未知城市',
+			production: '生產 — {cityName}：{units} 單位',
+			productionUnavailable: '生產歸屬無法使用：{units} 單位',
+			consumption: '消耗 — {cityName}：{units} 單位',
+			consumptionUnavailable: '消耗歸屬無法使用：{units} 單位',
+			localSupply: '本地供應 — {sourceCityName} → {retailCityName}：{units} 單位',
+			localSupplyUnavailable: '本地供應歸屬無法使用 — {retailCityName}：{units} 單位',
+			externalImports: '外部進口 — {retailCityName}：{units} 單位',
+			externalImportsUnavailable: '外部進口歸屬無法使用：{units} 單位'
 		},
 		dailyWarnings: '每日警告',
 		empty: '尚未有報表。推進第一天後會產生結果。'
@@ -358,14 +386,14 @@ export const zhHant = {
 			revenue: '營收',
 			grossMargin: '毛利',
 			stock: '庫存',
-			imports: '進口',
+			imports: '外部進口',
 			staff: '員工',
 			coverage: '覆蓋'
 		},
 		productSources: '{storeName}商品來源分布',
 		warnings: '{storeName}警告',
-		warehouseUnits: '倉庫 {count}',
-		importedUnits: '進口 {count}',
+		warehouseUnits: '本地供應 {count}',
+		importedUnits: '外部進口 {count}',
 		noWarnings: '目前沒有警告。'
 	},
 	retailSupplySources: {
@@ -424,7 +452,20 @@ export const zhHant = {
 		eyebrow: 'Folio II · 生產鏈',
 		modeGroup: '商品鏈檢視',
 		storeCategoryChains: '店鋪類別鏈',
-		warehouseFlow: '倉庫流向',
+		cityInventoryFlow: '城市庫存流向',
+		scopeAria: '城市庫存範圍',
+		activeIndustryInventory: '城市庫存 — {cityName}',
+		activeIndustryUnavailable: '{cityName}的城市庫存無法使用。',
+		activeRetailSupply:
+			'{retailCityName}的本地供應 — {sourceCityName}：已使用 {used} / {capacity} 城市庫存。',
+		supplyState: {
+			importsOnly: '僅進口 — 補貨使用外部進口。',
+			configurationUnavailable: '供應設定無法使用。',
+			unavailable: '本地供應來源 {cityName} 無法使用。',
+			zeroCapacity: '本地供應來源 {cityName} 的城市庫存容量為 0。',
+			emptyInventory: '{cityName}的城市庫存為空。',
+			inventoryOverflow: '{cityName}的城市庫存溢出：{units} 單位（{cost}）。'
+		},
 		emptyCategories: '尚無具備本地生產鏈的店鋪類別。',
 		emptyGraph: '沒有可用的鏈條圖。'
 	},
@@ -1135,10 +1176,10 @@ export const zhHant = {
 		},
 		productChainGraph: {
 			title: {
-				warehouseFlow: '倉庫流向',
+				warehouseFlow: '城市庫存流向',
 				productChain: '{label}鏈'
 			},
-			warehouseNode: '倉庫',
+			warehouseNode: '城市庫存',
 			nodeStats: {
 				recipe: '{buildings} 棟 · 每日 {output}',
 				stock: '庫存 {stock}'
@@ -1151,7 +1192,7 @@ export const zhHant = {
 				'no-report': '尚無報表'
 			},
 			emptyReason: {
-				noWarehouseData: '目前還沒有倉庫存量或每日報表。',
+				noWarehouseData: '目前還沒有城市庫存或每日報表。',
 				noLocalChain: '此商品類別目前還沒有本地生產鏈。'
 			},
 			warnings: {
@@ -1172,9 +1213,9 @@ export const zhHant = {
 				shortage: '{label} 今天依賴進口或出現本地短缺。',
 				noLocalCapacity: '{label} 沒有已建置的本地生產設施。',
 				noReport: '{label} 尚無最新日流量資料。',
-				warehouseNoCapacity: '沒有可用的倉庫容量。',
-				warehouseOverflow: '{quantity} 單位正在溢出存放。',
-				warehouseAvailable: '倉庫容量仍有空間。'
+				warehouseNoCapacity: '沒有可用的城市庫存容量。',
+				warehouseOverflow: '{quantity} 單位正在城市庫存溢出。',
+				warehouseAvailable: '城市庫存容量仍有空間。'
 			}
 		}
 	},

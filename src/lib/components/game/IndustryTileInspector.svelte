@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { asset } from '$app/paths';
 	import { getIndustrialBuildingArt, getIndustryMaterialArt } from '$lib/assets/gameArt';
+	import { getCityInventory, getCityInventoryUsed } from '$lib/game/cityInventory';
 	import { INDUSTRIAL_BUILDING_TYPES } from '$lib/game/industry';
-	import { getWarehouseUsed } from '$lib/game/legacyWarehouse';
 	import {
 		MAX_BUILDING_LEVEL,
 		canUpgradeBuilding,
@@ -33,7 +33,7 @@
 		disabledReason?: string | null;
 	}
 
-	interface WarehouseMaterialRow {
+	interface CityInventoryMaterialRow {
 		id: MaterialId;
 		name: string;
 		quantity: number;
@@ -59,8 +59,15 @@
 			? i18n.labels.industryResource(tile.resource)
 			: i18n.t('industryTileInspector.none')
 	);
-	const warehouseUsed = $derived(getWarehouseUsed(game.warehouse));
-	const warehouseMaterials = $derived.by(() => getWarehouseMaterialRows());
+	const cityInventoryAccess = $derived(
+		building?.typeId === 'warehouse' ? getCityInventory(game, building.cityId) : null
+	);
+	const cityInventory = $derived(cityInventoryAccess?.ok ? cityInventoryAccess.inventory : null);
+	const cityInventoryUsed = $derived(cityInventory ? getCityInventoryUsed(cityInventory) : 0);
+	const cityInventoryMaterials = $derived.by(() => getCityInventoryMaterialRows());
+	const cityInventoryCityName = $derived(
+		building ? i18n.labels.worldCity(building.cityId).name : i18n.t('industryTileInspector.unknown')
+	);
 	const bufferMaterials = $derived.by(() => getBufferMaterialRows());
 	const buildingUpgradeCost = $derived(building ? getBuildingUpgradeCost(building.level) : 0);
 	const buildingCanUpgrade = $derived(
@@ -69,8 +76,12 @@
 	const canAffordBuildingUpgrade = $derived(building ? game.cash >= buildingUpgradeCost : false);
 	const throughput = $derived(building ? getBuildingThroughputMultiplier(building.level) : 1);
 
-	function getWarehouseMaterialRows(): WarehouseMaterialRow[] {
-		return Object.entries(game.warehouse.materials)
+	function getCityInventoryMaterialRows(): CityInventoryMaterialRow[] {
+		if (!cityInventory) {
+			return [];
+		}
+
+		return Object.entries(cityInventory.materials)
 			.map(([materialId, quantity]) => ({
 				id: materialId as MaterialId,
 				name: i18n.labels.material(materialId),
@@ -80,10 +91,10 @@
 			.sort((first, second) => first.name.localeCompare(second.name));
 	}
 
-	// The building's own production buffer (as opposed to the shared
-	// warehouse). Sorted by material id (plain string comparison — not
+	// The building's own production buffer (as opposed to the shared city
+	// inventory). Sorted by material id (plain string comparison — not
 	// localeCompare) to keep row order deterministic across locales.
-	function getBufferMaterialRows(): WarehouseMaterialRow[] {
+	function getBufferMaterialRows(): CityInventoryMaterialRow[] {
 		if (!building) {
 			return [];
 		}
@@ -318,50 +329,75 @@
 			</section>
 
 			{#if building.typeId === 'warehouse'}
-				<section aria-label={i18n.t('industryTileInspector.warehouseSummary')}>
-					<h3>{i18n.t('industryTileInspector.warehouse')}</h3>
-					<dl>
-						<div>
-							<dt>{i18n.t('industryTileInspector.capacity')}</dt>
-							<dd>{i18n.format.integer(game.warehouse.capacity)}</dd>
-						</div>
-						<div>
-							<dt>{i18n.t('industryTileInspector.used')}</dt>
-							<dd>{i18n.format.integer(warehouseUsed)}</dd>
-						</div>
-						<div>
-							<dt>{i18n.t('industryTileInspector.overflowUnits')}</dt>
-							<dd>{i18n.format.integer(game.warehouse.overflowUnits)}</dd>
-						</div>
-						<div>
-							<dt>{i18n.t('industryTileInspector.overflowCost')}</dt>
-							<dd>{i18n.format.currency(game.warehouse.overflowCost)}</dd>
-						</div>
-					</dl>
-					{#if warehouseMaterials.length > 0}
-						<ul
-							class="warehouse-materials"
-							aria-label={i18n.t('industryTileInspector.warehouseMaterials')}
-						>
-							{#each warehouseMaterials as material (material.id)}
-								<li>
-									<span class="material-line">
-										<img
-											src={materialArtSrc(material.id)}
-											alt=""
-											data-testid={`industry-warehouse-material-${material.id}`}
-											width="24"
-											height="24"
-											loading="lazy"
-											decoding="async"
-										/>
-										<span>{material.name}: {i18n.format.integer(material.quantity)}</span>
-									</span>
-								</li>
-							{/each}
-						</ul>
+				<section
+					aria-label={i18n.t('industryTileInspector.cityInventorySummary', {
+						cityName: cityInventoryCityName
+					})}
+				>
+					<h3>{i18n.t('industryTileInspector.warehouseBuilding')}</h3>
+					<p class="inventory-timing">{i18n.t('industryTileInspector.currentCityInventory')}</p>
+					{#if cityInventory}
+						<dl>
+							<div>
+								<dt>{i18n.t('industryTileInspector.capacity')}</dt>
+								<dd>{i18n.format.integer(cityInventory.capacity)}</dd>
+							</div>
+							<div>
+								<dt>{i18n.t('industryTileInspector.used')}</dt>
+								<dd>{i18n.format.integer(cityInventoryUsed)}</dd>
+							</div>
+							<div>
+								<dt>{i18n.t('industryTileInspector.overflowUnits')}</dt>
+								<dd>{i18n.format.integer(cityInventory.overflowUnits)}</dd>
+							</div>
+							<div>
+								<dt>{i18n.t('industryTileInspector.overflowCost')}</dt>
+								<dd>{i18n.format.currency(cityInventory.overflowCost)}</dd>
+							</div>
+						</dl>
+						{#if cityInventory.capacity === 0}
+							<p class="inventory-state">
+								{i18n.t('industryTileInspector.cityInventoryZeroCapacity')}
+							</p>
+						{/if}
+						{#if cityInventory.overflowUnits > 0}
+							<p class="inventory-state">
+								{i18n.t('industryTileInspector.cityInventoryOverflow', {
+									units: i18n.format.integer(cityInventory.overflowUnits)
+								})}
+							</p>
+						{/if}
+						{#if cityInventoryMaterials.length > 0}
+							<ul
+								class="warehouse-materials"
+								aria-label={i18n.t('industryTileInspector.cityInventoryMaterials')}
+							>
+								{#each cityInventoryMaterials as material (material.id)}
+									<li>
+										<span class="material-line">
+											<img
+												src={materialArtSrc(material.id)}
+												alt=""
+												data-testid={`industry-city-inventory-material-${material.id}`}
+												width="24"
+												height="24"
+												loading="lazy"
+												decoding="async"
+											/>
+											<span>{material.name}: {i18n.format.integer(material.quantity)}</span>
+										</span>
+									</li>
+								{/each}
+							</ul>
+						{:else}
+							<p class="muted">{i18n.t('industryTileInspector.cityInventoryEmpty')}</p>
+						{/if}
 					{:else}
-						<p class="muted">{i18n.t('industryTileInspector.noMaterialsStored')}</p>
+						<p class="muted">
+							{i18n.t('industryTileInspector.cityInventoryUnavailable', {
+								cityName: cityInventoryCityName
+							})}
+						</p>
 					{/if}
 				</section>
 			{/if}
@@ -522,6 +558,19 @@
 		color: var(--ink-500);
 		font-family: var(--font-body);
 		font-size: 0.82rem;
+	}
+
+	.inventory-timing,
+	.inventory-state {
+		margin: 0;
+		color: var(--ink-500);
+		font-family: var(--font-body);
+		font-size: 0.82rem;
+	}
+
+	.inventory-state {
+		color: var(--brass-700);
+		font-weight: 600;
 	}
 
 	section,

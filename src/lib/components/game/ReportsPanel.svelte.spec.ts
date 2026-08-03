@@ -2,8 +2,15 @@ import { page } from 'vitest/browser';
 import { describe, expect, it } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import type { ReportSummary } from '$lib/game/reports';
-import type { DailyProductionReport, EventModifierSnapshot, Store } from '$lib/game/types';
+import type {
+	DailyProductionReport,
+	DailyStoreReport,
+	EventModifierSnapshot,
+	GameState,
+	Store
+} from '$lib/game/types';
 import { createI18n } from '$lib/i18n';
+import { createNewGame } from '$lib/game/state';
 import ReportsPanel from './ReportsPanel.svelte';
 
 const store: Store = {
@@ -160,6 +167,66 @@ function modifierSnapshot(overrides: Partial<EventModifierSnapshot> = {}): Event
 		explanation: { key: 'events.supplierTerms.bulkDiscount.modifier', params: {} },
 		importance: 'important',
 		...overrides
+	};
+}
+
+function replenishedStoreReport(): DailyStoreReport {
+	return {
+		storeId: store.id,
+		revenue: 0,
+		costOfGoods: 0,
+		grossMargin: 0,
+		operatingCosts: 0,
+		importSpend: 15,
+		netIncome: 0,
+		customersServed: 0,
+		demandMissed: 0,
+		staffingCoverage: 100,
+		staffingShortage: { manager: 0, general: 0 },
+		stockHealth: 100,
+		staffMorale: 100,
+		reputation: 50,
+		marketPosition: 50,
+		productReports: [
+			{
+				categoryId: 'snacks',
+				name: 'Snacks',
+				unitsSold: 0,
+				demandMissed: 0,
+				revenue: 0,
+				costOfGoods: 0,
+				grossMargin: 0,
+				endingStock: 10,
+				warehouseUnits: 4,
+				warehouseValue: 8,
+				importedUnits: 3,
+				importCost: 5,
+				importSpend: 15,
+				replenishmentOutcome: 'mixed'
+			}
+		],
+		warnings: [],
+		replenishment: {
+			retailCityId: 'harbor-city',
+			configuredSupplyCityId: 'industry-city',
+			resolvedSupplyCityId: 'industry-city'
+		}
+	};
+}
+
+function currentInventoryGame(): GameState {
+	const game = createNewGame('convenience', 20260803);
+	return {
+		...game,
+		cityInventories: [
+			{
+				cityId: 'industry-city',
+				capacity: 100,
+				materials: { snacks: 17 },
+				overflowUnits: 0,
+				overflowCost: 0
+			}
+		]
 	};
 }
 
@@ -326,7 +393,7 @@ describe('ReportsPanel', () => {
 		await expect.element(lifecycle.getByText('Replaced by')).not.toBeInTheDocument();
 	});
 
-	it('shows production import and warehouse overflow metrics with daily imports', async () => {
+	it('shows production external imports and city inventory overflow metrics with daily imports', async () => {
 		expect.assertions(6);
 
 		render(ReportsPanel, {
@@ -348,11 +415,13 @@ describe('ReportsPanel', () => {
 
 		const reportsRegion = page.getByRole('region', { name: 'Reports' });
 
-		await expect.element(reportsRegion.getByText('Imports', { exact: true })).toBeVisible();
+		await expect
+			.element(reportsRegion.getByText('External imports', { exact: true }))
+			.toBeVisible();
 		await expect.element(reportsRegion.getByText('$456')).toBeVisible();
-		await expect.element(reportsRegion.getByText('Production imports')).toBeVisible();
+		await expect.element(reportsRegion.getByText('Production external imports')).toBeVisible();
 		await expect.element(reportsRegion.getByText('$222')).toBeVisible();
-		await expect.element(reportsRegion.getByText('Warehouse overflow')).toBeVisible();
+		await expect.element(reportsRegion.getByText('City inventory overflow')).toBeVisible();
 		await expect.element(reportsRegion.getByText('$44')).toBeVisible();
 	});
 
@@ -363,7 +432,9 @@ describe('ReportsPanel', () => {
 
 		const reportsRegion = page.getByRole('region', { name: 'Reports' });
 
-		await expect.element(reportsRegion.getByText('Imports', { exact: true })).toBeVisible();
+		await expect
+			.element(reportsRegion.getByText('External imports', { exact: true }))
+			.toBeVisible();
 		await expect.element(reportsRegion.getByText('$456')).toBeVisible();
 	});
 
@@ -517,5 +588,106 @@ describe('ReportsPanel', () => {
 		await expect
 			.element(page.getByText('No reports yet. Advance the first day to generate results.'))
 			.toBeVisible();
+	});
+
+	it('keeps production-close and current city inventory timing separate with city-attributed movements', async () => {
+		expect.assertions(8);
+		const game = currentInventoryGame();
+
+		render(ReportsPanel, {
+			i18n: createI18n('en'),
+			game,
+			stores: [store],
+			summary: {
+				...summary,
+				latest: {
+					...summary.latest!,
+					productionReport: {
+						...emptyProductionReport(),
+						cityInventories: [
+							{
+								cityId: 'industry-city',
+								capacity: 100,
+								used: 42,
+								overflowUnits: 2,
+								overflowCost: 4
+							}
+						],
+						produced: [
+							{
+								cityId: 'industry-city',
+								materialId: 'snacks',
+								quantity: 12,
+								value: 24,
+								source: 'local'
+							}
+						],
+						consumed: [
+							{
+								cityId: 'industry-city',
+								materialId: 'grain',
+								quantity: 5,
+								value: 10,
+								source: 'local'
+							}
+						]
+					},
+					storeReports: [replenishedStoreReport()]
+				}
+			}
+		});
+
+		const reports = page.getByRole('region', { name: 'Reports' });
+		await expect
+			.element(
+				reports.getByRole('heading', {
+					name: 'Production-close inventory (before retail replenishment)'
+				})
+			)
+			.toBeVisible();
+		await expect
+			.element(
+				reports.getByRole('heading', {
+					name: 'Current city inventory (after the latest replenishment)'
+				})
+			)
+			.toBeVisible();
+		await expect
+			.element(reports.getByText('Industry City: 42 / 100 city inventory used.'))
+			.toBeVisible();
+		await expect
+			.element(reports.getByText('Industry City: 17 / 100 city inventory used.'))
+			.toBeVisible();
+		await expect.element(reports.getByText('Production — Industry City: 12 units')).toBeVisible();
+		await expect.element(reports.getByText('Consumption — Industry City: 5 units')).toBeVisible();
+		await expect
+			.element(reports.getByText('Local supply — Industry City → Harbor City: 4 units'))
+			.toBeVisible();
+		await expect
+			.element(reports.getByText('External imports — Harbor City: 3 units'))
+			.toBeVisible();
+	});
+
+	it('marks absent historical and current city inventory records as unavailable', async () => {
+		expect.assertions(2);
+		const game = { ...currentInventoryGame(), cityInventories: undefined };
+
+		render(ReportsPanel, {
+			i18n: createI18n('en'),
+			game,
+			stores: [],
+			summary: {
+				...summary,
+				latest: {
+					...summary.latest!,
+					productionReport: emptyProductionReport()
+				}
+			}
+		});
+
+		await expect
+			.element(page.getByText('Production-close city inventory is unavailable.'))
+			.toBeVisible();
+		await expect.element(page.getByText('Current city inventory is unavailable.')).toBeVisible();
 	});
 });
