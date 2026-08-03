@@ -1689,10 +1689,26 @@ function validateSaveRecordInternal(value: unknown): SaveRecord {
 	}
 
 	const metadata = requireRecord(record.metadata, 'Save metadata');
-	const normalizedSandboxGame = normalizeSandboxSavedGame(migratedGame);
-	const structurallyValidatedGame = validateCurrentGameStateInternal(normalizedSandboxGame, false);
+	// Valid v12 migrations strip their wire-only warehouse before reaching this
+	// point. Invalid historical payloads retain their malformed shape long enough
+	// to report the precise legacy validation error instead of a misleading
+	// current-state residual-field error.
+	const rejectResidualGlobalWarehouseData = sourceSchemaVersion === SAVE_SCHEMA_VERSION;
+	const normalizedSandboxGame = normalizeSandboxSavedGameInternal(
+		migratedGame,
+		rejectResidualGlobalWarehouseData
+	);
+	const structurallyValidatedGame = validateCurrentGameStateInternal(
+		normalizedSandboxGame,
+		false,
+		rejectResidualGlobalWarehouseData
+	);
 	const normalizedCityInventoryGame = normalizeCityInventoryDerivedState(structurallyValidatedGame);
-	const game = validateCurrentGameStateInternal(normalizedCityInventoryGame, true);
+	const game = validateCurrentGameStateInternal(
+		normalizedCityInventoryGame,
+		true,
+		rejectResidualGlobalWarehouseData
+	);
 	const kind = requireString(metadata.kind, 'Save metadata kind');
 
 	if (kind !== 'auto' && kind !== 'manual') {
@@ -1726,10 +1742,12 @@ export function validateCurrentGameState(value: unknown): GameState {
 
 function validateCurrentGameStateInternal(
 	value: unknown,
-	requireCurrentCityInventoryDerivedState = true
+	requireCurrentCityInventoryDerivedState = true,
+	rejectResidualGlobalWarehouseData = true
 ): GameState {
 	const sourceGame = createPlainSnapshot(value, 'Saved game');
 	const game = requireRecord(sourceGame, 'Saved game');
+	if (rejectResidualGlobalWarehouseData) assertNoResidualGlobalWarehouseData(game);
 	const policy = requireRecord(game.policy, 'Saved game policy');
 	const scorecard = requireRecord(game.scorecard, 'Saved game scorecard');
 	const cities = requireArray(game.cities, 'Saved game cities');
@@ -1991,13 +2009,17 @@ function normalizeSavedStaffLevel(member: unknown): unknown {
 
 export function normalizeSandboxSavedGame(value: unknown): unknown {
 	return withSaveDataBoundary('Sandbox save normalization', () =>
-		normalizeSandboxSavedGameInternal(value)
+		normalizeSandboxSavedGameInternal(value, true)
 	);
 }
 
-function normalizeSandboxSavedGameInternal(value: unknown): unknown {
+function normalizeSandboxSavedGameInternal(
+	value: unknown,
+	rejectResidualGlobalWarehouseData: boolean
+): unknown {
 	const sourceGame = createPlainSnapshot(value, 'Saved game');
 	const game = requireRecord(sourceGame, 'Saved game');
+	if (rejectResidualGlobalWarehouseData) assertNoResidualGlobalWarehouseData(game);
 	requireNumber(game.cash, 'Saved game cash');
 	const normalizedWorld =
 		game.world === undefined
@@ -2946,6 +2968,12 @@ function validateCurrentRetailSupplyAssignments(game: GameState): void {
 		retailSupplyInvariant(
 			'Saved game retailSupplyAssignments must contain one record for every opened retail city'
 		);
+	}
+}
+
+function assertNoResidualGlobalWarehouseData(game: Record<string, unknown>): void {
+	if (Object.hasOwn(game, 'warehouse')) {
+		cityInventoryInvariant('Saved game must not contain residual global warehouse data');
 	}
 }
 
