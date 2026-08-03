@@ -175,6 +175,7 @@ describe('daily simulation', () => {
 			      },
 			      "shopImports": [
 			        {
+			          "cityId": "harbor-city",
 			          "materialId": "bottled-water",
 			          "quantity": 5,
 			          "source": "import",
@@ -184,6 +185,7 @@ describe('daily simulation', () => {
 			      "warehouseCapacity": 200,
 			      "warehousePulls": [
 			        {
+			          "cityId": "industry-city",
 			          "materialId": "bottled-water",
 			          "quantity": 15,
 			          "source": "warehouse",
@@ -1281,6 +1283,143 @@ describe('daily simulation', () => {
 		expect(warehouseReport.warehouseUnits).toBe(12);
 		expect(warehouseReport.importedUnits).toBe(8);
 		expect(withWarehouse.reports[0]!.importSpend).toBeLessThan(noWarehouse.reports[0]!.importSpend);
+	});
+
+	test('keeps production-close pressure separate from post-replenishment inventory and report attribution', () => {
+		expect.assertions(14);
+		const startingCash = 50_000;
+		const baseGame = {
+			...createNewGame('convenience', 292_606),
+			day: 7,
+			cash: startingCash
+		};
+		const store = {
+			...baseGame.stores[0]!,
+			products: [
+				{
+					categoryId: 'snacks',
+					stock: 0,
+					reorderThreshold: 5,
+					targetStock: 20,
+					sellingPrice: 5
+				},
+				{
+					categoryId: 'bottled-water',
+					stock: 100,
+					reorderThreshold: 5,
+					targetStock: 100,
+					sellingPrice: 3
+				}
+			]
+		};
+		const result = simulateDay({
+			...baseGame,
+			stores: [store],
+			warehouse: { capacity: 200, materials: { snacks: 12 }, overflowUnits: 0, overflowCost: 0 },
+			cityInventories: [
+				{
+					cityId: 'industry-city',
+					capacity: 200,
+					materials: { snacks: 12 },
+					overflowUnits: 0,
+					overflowCost: 0
+				}
+			]
+		});
+		const report = result.reports[0]!;
+		const storeReport = report.storeReports[0]!;
+		const snacks = storeReport.productReports.find((product) => product.categoryId === 'snacks')!;
+		const bottledWater = storeReport.productReports.find(
+			(product) => product.categoryId === 'bottled-water'
+		)!;
+
+		expect(report.productionReport.cityInventories).toEqual([
+			{
+				cityId: 'industry-city',
+				capacity: 0,
+				used: 12,
+				overflowUnits: 12,
+				overflowCost: 24
+			}
+		]);
+		expect(report.productionReport.warehouseUsed).toBe(12);
+		expect(report.productionReport.overflowUnits).toBe(12);
+		expect(report.productionReport.overflowCost).toBe(24);
+		expect(result.cityInventories).toEqual([
+			{
+				cityId: 'industry-city',
+				capacity: 0,
+				materials: { snacks: 0 },
+				overflowUnits: 0,
+				overflowCost: 0
+			}
+		]);
+		expect(result.warehouse).toEqual({
+			capacity: 0,
+			materials: { snacks: 0 },
+			overflowUnits: 0,
+			overflowCost: 0
+		});
+		expect(snacks).toMatchObject({
+			warehouseUnits: 12,
+			warehouseValue: 96,
+			importedUnits: 8,
+			importSpend: 24,
+			replenishmentOutcome: 'mixed'
+		});
+		expect(bottledWater.replenishmentOutcome).toBeNull();
+		expect(storeReport.replenishment).toEqual({
+			retailCityId: 'harbor-city',
+			configuredSupplyCityId: 'industry-city',
+			resolvedSupplyCityId: 'industry-city'
+		});
+		expect(report.productionReport.warehousePulls).toContainEqual({
+			cityId: 'industry-city',
+			materialId: 'snacks',
+			quantity: 12,
+			value: 96,
+			source: 'warehouse'
+		});
+		expect(report.productionReport.shopImports).toContainEqual({
+			cityId: 'harbor-city',
+			materialId: 'snacks',
+			quantity: 8,
+			value: 24,
+			source: 'import'
+		});
+		expect(report.importSpend).toBe(24);
+		expect(report.importSpend).toBe(snacks.importSpend);
+		expect(report.cashAfter).toBe(startingCash + report.netCashChange);
+	});
+
+	test('writes null replenishment attribution outside the replenishment cadence', () => {
+		expect.assertions(3);
+		const baseGame = createNewGame('convenience', 292_607);
+		const result = simulateDay({
+			...baseGame,
+			day: 6,
+			stores: [
+				{
+					...baseGame.stores[0]!,
+					products: [
+						{
+							categoryId: 'snacks',
+							stock: 0,
+							reorderThreshold: 1,
+							targetStock: 20,
+							sellingPrice: 5
+						}
+					]
+				}
+			]
+		});
+		const storeReport = result.reports[0]!.storeReports[0]!;
+
+		expect(storeReport.replenishment).toBeNull();
+		expect(storeReport.productReports).not.toHaveLength(0);
+		expect(
+			storeReport.productReports.every((product) => product.replenishmentOutcome === null)
+		).toBe(true);
 	});
 
 	test('without a rail link, same-day production stays in the factory buffer and the weekly refill fully imports', () => {

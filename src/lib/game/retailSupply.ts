@@ -7,7 +7,6 @@ import {
 } from './cityInventory';
 import { getArchetype } from './archetypes';
 import { MATERIALS } from './industry';
-import { projectCityInventoriesToLegacyWarehouse } from './legacyWarehouse';
 import {
 	DEFAULT_SIMULATION_RULES,
 	resolveImportCostMultiplier,
@@ -25,7 +24,6 @@ import type {
 	RetailReplenishmentOutcome,
 	RetailSupplyAssignment,
 	Store,
-	WarehouseInventory,
 	WorldCityId
 } from './types';
 
@@ -53,8 +51,6 @@ export interface WeeklyReplenishmentResult {
 	stores: Store[];
 	productReports: Map<string, DailyProductReport[]>;
 	cityInventories: CityInventory[] | undefined;
-	/** Temporary aggregate projection for Task 6's legacy daily-tick consumer. */
-	warehouse: WarehouseInventory;
 	importSpend: number;
 	importCostApplications: ImportCostApplicationEvidence[];
 	storeReplenishmentContexts: Map<string, RetailReplenishmentContext | null>;
@@ -190,9 +186,6 @@ export function applyWeeklyReplenishment(
 		stores: input.game.stores.map((store) => updatedStores.get(store.id) ?? store),
 		productReports,
 		cityInventories,
-		warehouse: cityInventories
-			? projectCityInventoriesToLegacyWarehouse(cityInventories)
-			: input.game.warehouse,
 		importSpend,
 		importCostApplications,
 		storeReplenishmentContexts

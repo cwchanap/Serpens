@@ -292,7 +292,7 @@ describe('weekly retail replenishment', () => {
 			configuredSupplyCityId: null,
 			resolvedSupplyCityId: null
 		});
-		expect(result.warehouse.materials.snacks).toBe(21);
+		expect(result).not.toHaveProperty('warehouse');
 	});
 
 	test('does not use or copy the legacy aggregate warehouse when a source inventory is missing', () => {
@@ -314,7 +314,7 @@ describe('weekly retail replenishment', () => {
 		expect(report.importedUnits).toBe(21);
 		expect(report.replenishmentOutcome).toBe('source-unavailable-import');
 		expect(result.cityInventories).toEqual([]);
-		expect(result.warehouse.materials).toEqual({});
+		expect(result).not.toHaveProperty('warehouse');
 		expect(game.warehouse.materials).toEqual({ snacks: 21 });
 	});
 
@@ -337,8 +337,8 @@ describe('weekly retail replenishment', () => {
 		expect(report.importedUnits).toBe(21);
 		expect(report.replenishmentOutcome).toBe('source-unavailable-import');
 		expect(result.cityInventories).toBeUndefined();
-		expect(result.warehouse).toBe(game.warehouse);
-		expect(result.warehouse.materials).toEqual({ snacks: 21 });
+		expect(result).not.toHaveProperty('warehouse');
+		expect(game.warehouse.materials).toEqual({ snacks: 21 });
 	});
 
 	test('merges replenishment fields onto the existing daily sales row', () => {
