@@ -14,6 +14,7 @@ import {
 	serviceFinanceForDay
 } from './finance';
 import { simulateIndustryProduction } from './industryProduction';
+import { projectCityInventoriesToLegacyWarehouse } from './legacyWarehouse';
 import { clampScore } from './reports';
 import { createRngFromState, randomBetween } from './rng';
 import {
@@ -50,10 +51,12 @@ import type {
 	EventModifierImpact,
 	EventModifierLifecycle,
 	GameState,
+	RetailReplenishmentContext,
 	Scorecard,
 	StaffingRequirement,
 	Store,
-	StoreReportWarning
+	StoreReportWarning,
+	WorldCityId
 } from './types';
 
 const PRICING = {
@@ -154,7 +157,7 @@ export function simulateDay(
 		...productionGame,
 		stores: restoreProductSettings(citySales.stores, productionGame.stores)
 	};
-	const importResult = isReplenishmentDay(productionGame.day)
+	const replenishmentResult = isReplenishmentDay(productionGame.day)
 		? applyWeeklyReplenishment({
 				game: stockGame,
 				storeReports: citySales.productReports,
@@ -164,14 +167,17 @@ export function simulateDay(
 				stores: stockGame.stores,
 				productReports: citySales.productReports,
 				cityInventories: stockGame.cityInventories,
-				warehouse: stockGame.warehouse,
 				importSpend: 0,
-				importCostApplications: []
+				importCostApplications: [],
+				storeReplenishmentContexts: new Map(
+					stockGame.stores.map((store) => [store.id, null] as const)
+				)
 			};
-	const storeResults = importResult.stores.map((store) =>
+	const storeResults = replenishmentResult.stores.map((store) =>
 		buildDailyStoreReport(
 			{ ...profileByStoreId.get(store.id)!, store },
-			getStoreProductReports(store, importResult.productReports)
+			getStoreProductReports(store, replenishmentResult.productReports),
+			replenishmentResult.storeReplenishmentContexts.get(store.id) ?? null
 		)
 	);
 	const storeReports = storeResults.map((result) => result.report);
@@ -183,16 +189,21 @@ export function simulateDay(
 	const payrollCost = isPayrollDay(productionGame.day)
 		? calculateMonthlyPayroll(productionGame.staff)
 		: 0;
-	const productionReport = mergeProductionRefillReport(
+	const productionReport = mergeProductionReplenishmentReport(
 		industryResult.report,
-		importResult.productReports
+		replenishmentResult.productReports,
+		replenishmentResult.storeReplenishmentContexts
 	);
 	const operatingCosts =
 		sum(storeReports, 'operatingCosts') +
 		payrollCost +
 		productionReport.operatingCost +
 		productionReport.overflowCost;
-	const importSpend = sum(storeReports, 'importSpend') + productionReport.importSpend;
+	const retailImportSpend = sum(storeReports, 'importSpend');
+	if (retailImportSpend !== replenishmentResult.importSpend) {
+		throw new Error('Retail replenishment import reconciliation failed');
+	}
+	const importSpend = retailImportSpend + productionReport.importSpend;
 	const operatingIncome = Math.round(grossMargin - operatingCosts);
 	const operatingCashFlow = Math.round(revenue - operatingCosts - importSpend);
 	const scorecard = buildScorecard(game.scorecard, storeReports, operatingCashFlow);
@@ -205,10 +216,12 @@ export function simulateDay(
 		cash: game.cash + operatingCashFlow,
 		scorecard,
 		stores: storeResults.map((result) => result.store),
-		// Task 5 bridge: replenishment has already debited canonical city inventory.
-		// Task 6 will consume the full replenishment result for report context/timing.
-		cityInventories: importResult.cityInventories,
-		warehouse: importResult.warehouse,
+		cityInventories: replenishmentResult.cityInventories,
+		// The legacy aggregate remains a one-way projection for deferred readers.
+		// It is never used as replenishment input or copied into a city inventory.
+		warehouse: replenishmentResult.cityInventories
+			? projectCityInventoriesToLegacyWarehouse(replenishmentResult.cityInventories)
+			: productionGame.warehouse,
 		hiringCandidates,
 		staff: staffWithXp
 	};
@@ -241,7 +254,7 @@ export function simulateDay(
 	const activity = serviced.finance.currentDayActivity;
 	const modifierImpacts = buildEventModifierImpacts(activeEventModifiers, [
 		...industryResult.importCostApplications,
-		...importResult.importCostApplications
+		...replenishmentResult.importCostApplications
 	]);
 	const modifierLifecycle = collectModifierLifecycle(expiry.state.history, closingDay);
 	const report: DailyReport = {
@@ -532,7 +545,8 @@ function accrueStaffXp(
 
 function buildDailyStoreReport(
 	profile: StoreOperationProfile,
-	productReports: DailyProductReport[]
+	productReports: DailyProductReport[],
+	replenishment: RetailReplenishmentContext | null
 ): { store: Store; report: DailyStoreReport } {
 	const revenue = productReports.reduce((total, report) => total + report.revenue, 0);
 	const costOfGoods = productReports.reduce((total, report) => total + report.costOfGoods, 0);
@@ -578,7 +592,8 @@ function buildDailyStoreReport(
 			reputation: profile.reputation,
 			marketPosition: profile.marketPosition,
 			productReports,
-			warnings
+			warnings,
+			replenishment
 		}
 	};
 }
@@ -751,7 +766,7 @@ function getStoreProductReports(
 		const existing = reports.find((report) => report.categoryId === product.categoryId);
 
 		if (existing) {
-			return existing;
+			return { ...existing, replenishmentOutcome: existing.replenishmentOutcome ?? null };
 		}
 
 		const category = getArchetype(store.archetypeId).startingCategories.find(
@@ -771,24 +786,32 @@ function getStoreProductReports(
 			warehouseValue: 0,
 			importedUnits: 0,
 			importCost: category?.importCost ?? 0,
-			importSpend: 0
+			importSpend: 0,
+			replenishmentOutcome: null
 		};
 	});
 }
 
-function mergeProductionRefillReport(
+function mergeProductionReplenishmentReport(
 	productionReport: DailyProductionReport,
-	productReports: Map<string, DailyProductReport[]>
+	productReports: Map<string, DailyProductReport[]>,
+	storeReplenishmentContexts: ReadonlyMap<string, RetailReplenishmentContext | null>
 ): DailyProductionReport {
-	const reports = [...productReports.values()].flat();
+	const reports = [...productReports.entries()].flatMap(([storeId, storeReports]) =>
+		storeReports.map((report) => ({
+			report,
+			replenishment: storeReplenishmentContexts.get(storeId) ?? null
+		}))
+	);
 	const warehousePulls = reports
-		.filter((report) => report.warehouseUnits > 0)
-		.flatMap((report): DailyMaterialMovement[] => {
+		.filter(({ report }) => report.warehouseUnits > 0)
+		.flatMap(({ report, replenishment }): DailyMaterialMovement[] => {
 			const materialId = getFinishedMaterialIdForCategory(report.categoryId);
 
 			return materialId
 				? [
 						{
+							cityId: getRetailReplenishmentMovementCityId(replenishment, 'warehouse pull'),
 							materialId,
 							quantity: report.warehouseUnits,
 							value: report.warehouseValue,
@@ -798,13 +821,14 @@ function mergeProductionRefillReport(
 				: [];
 		});
 	const shopImports = reports
-		.filter((report) => report.importedUnits > 0)
-		.flatMap((report): DailyMaterialMovement[] => {
+		.filter(({ report }) => report.importedUnits > 0)
+		.flatMap(({ report, replenishment }): DailyMaterialMovement[] => {
 			const materialId = getFinishedMaterialIdForCategory(report.categoryId);
 
 			return materialId
 				? [
 						{
+							cityId: getRetailReplenishmentMovementCityId(replenishment, 'shop import'),
 							materialId,
 							quantity: report.importedUnits,
 							value: report.importSpend,
@@ -819,4 +843,21 @@ function mergeProductionRefillReport(
 		warehousePulls: [...productionReport.warehousePulls, ...warehousePulls],
 		shopImports
 	};
+}
+
+function getRetailReplenishmentMovementCityId(
+	context: RetailReplenishmentContext | null,
+	movement: 'warehouse pull' | 'shop import'
+): WorldCityId {
+	if (!context) {
+		throw new Error(`Retail ${movement} is missing replenishment context`);
+	}
+
+	const cityId =
+		movement === 'warehouse pull' ? context.resolvedSupplyCityId : context.retailCityId;
+	if (!cityId) {
+		throw new Error(`Retail ${movement} is missing its required city attribution`);
+	}
+
+	return cityId;
 }

@@ -583,6 +583,7 @@ export interface DailyProductReport {
 	importedUnits: number;
 	importCost: number;
 	importSpend: number;
+	/** Runtime reports always populate this; optional while pre-v13 reports remain readable. */
 	replenishmentOutcome?: RetailReplenishmentOutcome | null;
 }
 
@@ -614,6 +615,7 @@ export interface DailyStoreReport {
 	marketPosition: number;
 	productReports: DailyProductReport[];
 	warnings: StoreReportWarning[];
+	/** Runtime reports always populate this; optional while pre-v13 reports remain readable. */
 	replenishment?: RetailReplenishmentContext | null;
 }
 
