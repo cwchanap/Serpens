@@ -6,10 +6,28 @@
 		localizeReportWarning,
 		localizeStructuredCopy
 	} from '$lib/i18n/gameCopy';
-	import type { EventModifierLifecycle, Store } from '$lib/game/types';
+	import type {
+		DailyMaterialMovement,
+		DailyProductionReport,
+		DailyStoreReport,
+		EventModifierLifecycle,
+		GameState,
+		Store
+	} from '$lib/game/types';
 
-	let { i18n, summary, stores }: { i18n: I18nBundle; summary: ReportSummary; stores: Store[] } =
-		$props();
+	interface Props {
+		i18n: I18nBundle;
+		summary: ReportSummary;
+		stores: Store[];
+		game?: GameState;
+	}
+
+	interface AttributionRow {
+		id: string;
+		text: string;
+	}
+
+	let { i18n, summary, stores, game }: Props = $props();
 
 	const railShipmentUnits = $derived(
 		(summary.latest?.productionReport.railShipments ?? []).reduce(
@@ -17,6 +35,135 @@
 			0
 		)
 	);
+	const productionCloseCityInventories = $derived(summary.latest?.productionReport.cityInventories);
+	const currentCityInventories = $derived(game?.cityInventories);
+	const attributionRows = $derived.by(() =>
+		buildAttributionRows(summary.latest?.productionReport, summary.latest?.storeReports ?? [])
+	);
+
+	function cityName(cityId: string): string {
+		return i18n.labels.worldCity(cityId).name;
+	}
+
+	function buildAttributionRows(
+		productionReport: DailyProductionReport | undefined,
+		storeReports: DailyStoreReport[]
+	): AttributionRow[] {
+		if (!productionReport) {
+			return [];
+		}
+
+		return [
+			...movementAttributionRows('production', productionReport.produced),
+			...movementAttributionRows('consumption', productionReport.consumed),
+			...retailReplenishmentAttributionRows(storeReports)
+		];
+	}
+
+	function movementAttributionRows(
+		kind: 'production' | 'consumption',
+		movements: DailyMaterialMovement[]
+	): AttributionRow[] {
+		const quantitiesByCityId = movements.reduce<
+			Array<{ cityId: string | undefined; quantity: number }>
+		>((grouped, movement) => {
+			const existing = grouped.find((group) => group.cityId === movement.cityId);
+			if (existing) {
+				existing.quantity += movement.quantity;
+			} else {
+				grouped.push({ cityId: movement.cityId, quantity: movement.quantity });
+			}
+			return grouped;
+		}, []);
+
+		return quantitiesByCityId.map(({ cityId, quantity }, index) => {
+			const units = i18n.format.integer(quantity);
+			if (!cityId) {
+				return {
+					id: `${kind}-unavailable-${index}`,
+					text:
+						kind === 'production'
+							? i18n.t('reportsPanel.attribution.productionUnavailable', { units })
+							: i18n.t('reportsPanel.attribution.consumptionUnavailable', { units })
+				};
+			}
+
+			return {
+				id: `${kind}-${cityId}`,
+				text:
+					kind === 'production'
+						? i18n.t('reportsPanel.attribution.production', {
+								cityName: cityName(cityId),
+								units
+							})
+						: i18n.t('reportsPanel.attribution.consumption', {
+								cityName: cityName(cityId),
+								units
+							})
+			};
+		});
+	}
+
+	function retailReplenishmentAttributionRows(storeReports: DailyStoreReport[]): AttributionRow[] {
+		const rows: AttributionRow[] = [];
+
+		for (const report of storeReports) {
+			const store = stores.find((candidate) => candidate.id === report.storeId);
+			const retailCityId = report.replenishment?.retailCityId ?? store?.cityId;
+			const retailCityName = retailCityId ? cityName(retailCityId) : null;
+			const localUnits = report.productReports.reduce(
+				(total, product) => total + product.warehouseUnits,
+				0
+			);
+			const importedUnits = report.productReports.reduce(
+				(total, product) => total + product.importedUnits,
+				0
+			);
+
+			if (localUnits > 0) {
+				const sourceCityId = report.replenishment?.resolvedSupplyCityId;
+				rows.push(
+					sourceCityId && retailCityName
+						? {
+								id: `local-${report.storeId}`,
+								text: i18n.t('reportsPanel.attribution.localSupply', {
+									sourceCityName: cityName(sourceCityId),
+									retailCityName,
+									units: i18n.format.integer(localUnits)
+								})
+							}
+						: {
+								id: `local-unavailable-${report.storeId}`,
+								text: i18n.t('reportsPanel.attribution.localSupplyUnavailable', {
+									retailCityName: retailCityName ?? i18n.t('reportsPanel.attribution.unknownCity'),
+									units: i18n.format.integer(localUnits)
+								})
+							}
+				);
+			}
+
+			if (importedUnits > 0) {
+				rows.push(
+					retailCityName
+						? {
+								id: `imports-${report.storeId}`,
+								text: i18n.t('reportsPanel.attribution.externalImports', {
+									retailCityName,
+									units: i18n.format.integer(importedUnits)
+								})
+							}
+						: {
+								id: `imports-unavailable-${report.storeId}`,
+								text: i18n.t('reportsPanel.attribution.externalImportsUnavailable', {
+									units: i18n.format.integer(importedUnits)
+								})
+							}
+				);
+			}
+		}
+
+		return rows;
+	}
 
 	function localizeLifecycleStatus(status: EventModifierLifecycle['status']): string {
 		switch (status) {
@@ -112,6 +259,96 @@
 				<strong>{i18n.format.currency(summary.thirtyDay.operatingCashFlow)}</strong>
 			</div>
 		</div>
+
+		<section class="inventory-evidence" aria-labelledby="production-close-inventory-heading">
+			<h3 id="production-close-inventory-heading">
+				{i18n.t('reportsPanel.inventory.productionCloseTitle')}
+			</h3>
+			<p>
+				{i18n.t('reportsPanel.inventory.reportDay', {
+					day: i18n.format.integer(summary.latest.day)
+				})}
+			</p>
+			{#if productionCloseCityInventories}
+				{#if productionCloseCityInventories.length > 0}
+					<ul class="inventory-list">
+						{#each productionCloseCityInventories as inventory (inventory.cityId)}
+							<li>
+								<strong>
+									{i18n.t('reportsPanel.inventory.citySummary', {
+										cityName: cityName(inventory.cityId),
+										used: i18n.format.integer(inventory.used),
+										capacity: i18n.format.integer(inventory.capacity)
+									})}
+								</strong>
+								{#if inventory.overflowUnits > 0}
+									<span>
+										{i18n.t('reportsPanel.inventory.cityOverflow', {
+											units: i18n.format.integer(inventory.overflowUnits),
+											cost: i18n.format.currency(inventory.overflowCost)
+										})}
+									</span>
+								{/if}
+							</li>
+						{/each}
+					</ul>
+				{:else}
+					<p>{i18n.t('reportsPanel.inventory.productionCloseEmpty')}</p>
+				{/if}
+			{:else}
+				<p>{i18n.t('reportsPanel.inventory.productionCloseUnavailable')}</p>
+			{/if}
+		</section>
+
+		<section class="inventory-evidence" aria-labelledby="current-inventory-heading">
+			<h3 id="current-inventory-heading">{i18n.t('reportsPanel.inventory.currentTitle')}</h3>
+			{#if currentCityInventories}
+				{#if currentCityInventories.length > 0}
+					<ul class="inventory-list">
+						{#each currentCityInventories as inventory (inventory.cityId)}
+							{@const used = Object.values(inventory.materials).reduce(
+								(total, quantity) => total + (quantity ?? 0),
+								0
+							)}
+							<li>
+								<strong>
+									{i18n.t('reportsPanel.inventory.citySummary', {
+										cityName: cityName(inventory.cityId),
+										used: i18n.format.integer(used),
+										capacity: i18n.format.integer(inventory.capacity)
+									})}
+								</strong>
+								{#if inventory.overflowUnits > 0}
+									<span>
+										{i18n.t('reportsPanel.inventory.cityOverflow', {
+											units: i18n.format.integer(inventory.overflowUnits),
+											cost: i18n.format.currency(inventory.overflowCost)
+										})}
+									</span>
+								{/if}
+							</li>
+						{/each}
+					</ul>
+				{:else}
+					<p>{i18n.t('reportsPanel.inventory.currentEmpty')}</p>
+				{/if}
+			{:else}
+				<p>{i18n.t('reportsPanel.inventory.currentUnavailable')}</p>
+			{/if}
+		</section>
+
+		<section class="inventory-evidence" aria-labelledby="city-attribution-heading">
+			<h3 id="city-attribution-heading">{i18n.t('reportsPanel.attribution.title')}</h3>
+			{#if attributionRows.length > 0}
+				<ul class="attribution-list">
+					{#each attributionRows as row (row.id)}
+						<li>{row.text}</li>
+					{/each}
+				</ul>
+			{:else}
+				<p>{i18n.t('reportsPanel.attribution.empty')}</p>
+			{/if}
+		</section>
 
 		{#if summary.latest.modifierImpacts.length > 0}
 			<section class="modifier-evidence" aria-labelledby="modifier-impacts-heading">
@@ -285,14 +522,46 @@
 	}
 
 	.modifier-evidence,
+	.inventory-evidence,
 	.evidence-list,
 	.evidence-list article {
 		display: grid;
 		gap: 0.65rem;
 	}
 
-	.modifier-evidence {
+	.modifier-evidence,
+	.inventory-evidence {
 		margin-top: 1rem;
+	}
+
+	.inventory-list,
+	.attribution-list {
+		display: grid;
+		gap: 0.45rem;
+		margin: 0;
+		padding: 0;
+		list-style: none;
+	}
+
+	.inventory-list li,
+	.attribution-list li {
+		display: grid;
+		gap: 0.25rem;
+		border: 1px solid var(--paper-edge);
+		border-radius: 2px;
+		background: var(--paper-50);
+		padding: 0.6rem 0.7rem;
+		color: var(--ink-500);
+		font-family: var(--font-body);
+		font-size: 0.85rem;
+	}
+
+	.inventory-list strong {
+		font-family: var(--font-mono);
+		font-size: 0.85rem;
+		font-weight: 700;
+		letter-spacing: 0;
+		text-transform: none;
 	}
 
 	.evidence-list article {

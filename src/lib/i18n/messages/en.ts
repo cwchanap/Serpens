@@ -147,14 +147,18 @@ export const en = {
 		noOutputYet: 'No output yet',
 		buffer: 'Buffer',
 		noBufferMaterials: 'No materials buffered',
-		warehouseSummary: 'Warehouse summary',
-		warehouse: 'Warehouse',
-		warehouseMaterials: 'Warehouse materials',
+		warehouseBuilding: 'Warehouse building',
+		cityInventorySummary: '{cityName} city inventory',
+		currentCityInventory: 'Current city inventory (after the latest replenishment)',
+		cityInventoryMaterials: 'City inventory materials',
+		cityInventoryUnavailable: 'City inventory unavailable for {cityName}.',
+		cityInventoryZeroCapacity: 'City inventory has zero capacity.',
+		cityInventoryEmpty: 'City inventory is empty.',
+		cityInventoryOverflow: 'City inventory overflow: {units} units.',
 		capacity: 'Capacity',
 		used: 'Used',
 		overflowUnits: 'Overflow units',
 		overflowCost: 'Overflow cost',
-		noMaterialsStored: 'No materials stored',
 		unknownBuildingType: 'Unknown building type',
 		status: {
 			idle: 'Idle',
@@ -283,14 +287,39 @@ export const en = {
 			refinancedPrincipal: 'Refinanced principal',
 			endingPrincipal: 'Ending principal',
 			payroll: 'Payroll',
-			imports: 'Imports',
-			productionImports: 'Production imports',
-			warehouseOverflow: 'Warehouse overflow',
+			imports: 'External imports',
+			productionImports: 'Production external imports',
+			warehouseOverflow: 'City inventory overflow',
 			railShipments: 'Rail shipments',
 			sevenDayNet: '7-day net',
 			thirtyDayNet: '30-day net',
 			sevenDayOperatingCashFlow: '7-day operating cash flow',
 			thirtyDayOperatingCashFlow: '30-day operating cash flow'
+		},
+		inventory: {
+			productionCloseTitle: 'Production-close inventory (before retail replenishment)',
+			reportDay: 'Report day {day}',
+			productionCloseUnavailable: 'Production-close city inventory is unavailable.',
+			productionCloseEmpty: 'No production-close city inventory records.',
+			currentTitle: 'Current city inventory (after the latest replenishment)',
+			currentUnavailable: 'Current city inventory is unavailable.',
+			currentEmpty: 'No current city inventory records.',
+			citySummary: '{cityName}: {used} / {capacity} city inventory used.',
+			cityOverflow: 'City inventory overflow: {units} units ({cost}).'
+		},
+		attribution: {
+			title: 'City-attributed movements',
+			empty: 'No city-attributed movements are available.',
+			unknownCity: 'Unknown city',
+			production: 'Production — {cityName}: {units} units',
+			productionUnavailable: 'Production attribution unavailable: {units} units',
+			consumption: 'Consumption — {cityName}: {units} units',
+			consumptionUnavailable: 'Consumption attribution unavailable: {units} units',
+			localSupply: 'Local supply — {sourceCityName} → {retailCityName}: {units} units',
+			localSupplyUnavailable:
+				'Local supply attribution unavailable — {retailCityName}: {units} units',
+			externalImports: 'External imports — {retailCityName}: {units} units',
+			externalImportsUnavailable: 'External import attribution unavailable: {units} units'
 		},
 		dailyWarnings: 'Daily warnings',
 		empty: 'No reports yet. Advance the first day to generate results.'
@@ -356,14 +385,14 @@ export const en = {
 			revenue: 'Revenue',
 			grossMargin: 'Gross margin',
 			stock: 'Stock',
-			imports: 'Imports',
+			imports: 'External imports',
 			staff: 'Staff',
 			coverage: 'Coverage'
 		},
 		productSources: '{storeName} product source split',
 		warnings: '{storeName} warnings',
-		warehouseUnits: '{count} warehouse',
-		importedUnits: '{count} imported',
+		warehouseUnits: '{count} local supply',
+		importedUnits: '{count} external imports',
 		noWarnings: 'No current warnings.'
 	},
 	retailSupplySources: {
@@ -422,7 +451,20 @@ export const en = {
 		eyebrow: 'Folio II · Production Chain',
 		modeGroup: 'Product chain view',
 		storeCategoryChains: 'Store category chains',
-		warehouseFlow: 'Warehouse flow',
+		cityInventoryFlow: 'City inventory flow',
+		scopeAria: 'City inventory scope',
+		activeIndustryInventory: 'City inventory — {cityName}',
+		activeIndustryUnavailable: 'City inventory for {cityName} is unavailable.',
+		activeRetailSupply:
+			'Local supply for {retailCityName} — {sourceCityName}: {used} / {capacity} city inventory used.',
+		supplyState: {
+			importsOnly: 'Imports only — replenishment uses external imports.',
+			configurationUnavailable: 'Supply configuration unavailable.',
+			unavailable: 'Local supply source {cityName} is unavailable.',
+			zeroCapacity: 'Local supply source {cityName} has zero city inventory capacity.',
+			emptyInventory: '{cityName} city inventory is empty.',
+			inventoryOverflow: '{cityName} city inventory overflow: {units} units ({cost}).'
+		},
 		emptyCategories: 'No store categories have local production chains yet.',
 		emptyGraph: 'No chain graph is available.'
 	},
@@ -1165,10 +1207,10 @@ export const en = {
 		},
 		productChainGraph: {
 			title: {
-				warehouseFlow: 'Warehouse flow',
+				warehouseFlow: 'City inventory flow',
 				productChain: '{label} chain'
 			},
-			warehouseNode: 'Warehouse',
+			warehouseNode: 'City inventory',
 			nodeStats: {
 				recipe: '{buildings} bldg · {output}/d',
 				stock: 'stock {stock}'
@@ -1181,7 +1223,7 @@ export const en = {
 				'no-report': 'No report yet'
 			},
 			emptyReason: {
-				noWarehouseData: 'No warehouse stock or daily report yet.',
+				noWarehouseData: 'No city inventory stock or daily report yet.',
 				noLocalChain: 'No local production chain available for this category yet.'
 			},
 			warnings: {
@@ -1202,9 +1244,9 @@ export const en = {
 				shortage: '{label} relied on imports or had a local shortage today.',
 				noLocalCapacity: '{label} has no placed local producer.',
 				noReport: '{label} has no latest daily flow yet.',
-				warehouseNoCapacity: 'No warehouse capacity is available.',
-				warehouseOverflow: '{quantity} units are in overflow storage.',
-				warehouseAvailable: 'Warehouse capacity is available.'
+				warehouseNoCapacity: 'No city inventory capacity is available.',
+				warehouseOverflow: '{quantity} units are in city inventory overflow.',
+				warehouseAvailable: 'City inventory capacity is available.'
 			}
 		}
 	},

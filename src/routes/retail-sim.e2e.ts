@@ -626,11 +626,14 @@ async function closeIndustryInspectorIfOpen(page: Page): Promise<void> {
 	await expect(industryInspector).toHaveCount(0);
 }
 
-async function readWarehouseMaterialQuantity(page: Page, materialName: string): Promise<number> {
-	const warehouseSummary = page.getByRole('region', { name: /warehouse summary/i });
-	await expect(warehouseSummary).toBeVisible();
-	const material = warehouseSummary
-		.getByRole('list', { name: /warehouse materials/i })
+async function readCityInventoryMaterialQuantity(
+	page: Page,
+	materialName: string
+): Promise<number> {
+	const cityInventory = page.getByRole('region', { name: /city inventory$/i });
+	await expect(cityInventory).toBeVisible();
+	const material = cityInventory
+		.getByRole('list', { name: /city inventory materials/i })
 		.getByText(new RegExp(`^${escapeRegExp(materialName)}:\\s+\\d+$`, 'i'));
 	await expect(material).toBeVisible();
 
@@ -638,7 +641,7 @@ async function readWarehouseMaterialQuantity(page: Page, materialName: string): 
 	const quantity = Number(text.match(/\d+/)?.[0] ?? Number.NaN);
 
 	if (!Number.isFinite(quantity)) {
-		throw new Error(`Could not read ${materialName} warehouse quantity from "${text}"`);
+		throw new Error(`Could not read ${materialName} city inventory quantity from "${text}"`);
 	}
 
 	return quantity;
@@ -1703,11 +1706,11 @@ test('industry build menu shows construction status before founding a store', as
 	);
 });
 
-test('player builds convenience production and refills from warehouse', async ({ page }) => {
+test('player builds convenience production and refills from city inventory', async ({ page }) => {
 	// This is the longest e2e test: it founds a retail store, switches to the
 	// industry city, advances 5 days, builds 3 industrial buildings, advances
 	// to the weekly import cycle, returns to retail, tunes stock settings, and
-	// verifies the full warehouse→store flow across 3 management panels. On CI
+	// verifies the full city-inventory-to-store flow across 3 management panels. On CI
 	// runners the cumulative wait exceeds the default 60s timeout, so allow
 	// extra time.
 	test.setTimeout(120_000);
@@ -1724,7 +1727,7 @@ test('player builds convenience production and refills from warehouse', async ({
 		expectedStoreCount: 1
 	});
 	await waitForAutoSaveDay(page, 1);
-	// The warehouse + water-pump + water-bottler plus a rail link exceed starter
+	// The warehouse building, water pump, water bottler, and rail link exceed starter
 	// cash; grant funds up front like the other industrial-build tests.
 	await injectCashAndReload(page, 1_000_000);
 
@@ -1757,10 +1760,10 @@ test('player builds convenience production and refills from warehouse', async ({
 	});
 	await expect(industryCanvas).toHaveAttribute('data-industry-building-count', '3');
 
-	// Rail-gated warehouse flow: a producer's output only reaches the shared
-	// warehouse across a rail link. Connect the water-bottler (origin) to the
-	// warehouse (destination) — both industrial-district tiles on the same side
-	// of the internal separator — so bottled water accumulates in the warehouse
+	// Rail-gated city inventory flow: a producer's output only reaches the shared
+	// city inventory across a rail link. Connect the water-bottler (origin) to the
+	// warehouse building (destination) — both industrial-district tiles on the same
+	// side of the internal separator — so bottled water accumulates in city inventory
 	// for the retail store to draw on. Destination selection is two-step
 	// (select target → re-click same building to confirm; see handleRailBuildTileClick).
 	await page.getByRole('button', { name: /build rail/i }).click();
@@ -1799,8 +1802,11 @@ test('player builds convenience production and refills from warehouse', async ({
 		INDUSTRIAL_BUILD_TILES[0]!.x,
 		INDUSTRIAL_BUILD_TILES[0]!.y
 	);
-	const visibleWarehouseBottledWater = await readWarehouseMaterialQuantity(page, 'Bottled Water');
-	expect(visibleWarehouseBottledWater).toBeGreaterThan(0);
+	const visibleCityInventoryBottledWater = await readCityInventoryMaterialQuantity(
+		page,
+		'Bottled Water'
+	);
+	expect(visibleCityInventoryBottledWater).toBeGreaterThan(0);
 
 	await openMapMenuItem(page, /retail city map/i);
 	await expect(page.getByRole('heading', { name: /harbor city/i })).toBeVisible();
@@ -1841,7 +1847,7 @@ test('player builds convenience production and refills from warehouse', async ({
 
 	expect(neededUnits).toBeGreaterThan(0);
 	expect(bottledWaterReport.endingStock).toBe(preWeeklyBottledWater.targetStock);
-	// The rail-fed warehouse supplies part of the weekly refill and imports
+	// The rail-fed city inventory supplies part of the weekly refill and external imports
 	// cover the rest. A level-1 rail moves ~1 unit/day, far below the store's
 	// weekly need, so both sources are exercised and together they exactly meet
 	// the refill quantity (the store always refills to target).
@@ -1881,15 +1887,15 @@ test('player builds convenience production and refills from warehouse', async ({
 	});
 	await expect(productSources.getByText('Bottled Water')).toBeVisible();
 	await expect(
-		productSources.getByText(`${bottledWaterReport.warehouseUnits} warehouse`)
+		productSources.getByText(`${bottledWaterReport.warehouseUnits} local supply`)
 	).toBeVisible();
 	await expect(
-		productSources.getByText(`${bottledWaterReport.importedUnits} imported`)
+		productSources.getByText(`${bottledWaterReport.importedUnits} external imports`)
 	).toBeVisible();
 	await expect(
 		storesPanel.locator('article').filter({
 			hasText: new RegExp(
-				`^Store #1[\\s\\S]*Imports\\s+\\$${escapeRegExp(
+				`^Store #1[\\s\\S]*External imports\\s+\\$${escapeRegExp(
 					bottledWaterReport.importSpend.toLocaleString('en-US')
 				)}`
 			)
@@ -1906,9 +1912,9 @@ test('player builds convenience production and refills from warehouse', async ({
 	await expect(productChains.getByTestId('product-chain-graph-chain:bottled-water')).toBeVisible();
 	await productChains.getByTestId('category-stamp-snacks').click();
 	await expect(productChains.getByTestId('product-chain-graph-chain:snacks')).toBeVisible();
-	await productChains.getByRole('button', { name: 'Warehouse flow' }).click();
+	await productChains.getByRole('button', { name: 'City inventory flow' }).click();
 	await expect(productChains.getByTestId('product-chain-graph-warehouse-flow')).toBeVisible();
-	await expect(productChains.getByRole('heading', { name: 'Warehouse flow' })).toBeVisible();
+	await expect(productChains.getByRole('heading', { name: 'City inventory flow' })).toBeVisible();
 });
 
 test('hire and assign named staff from the staff menu', async ({ page }) => {
@@ -2446,7 +2452,7 @@ test('manage selected store stock and see weekly imports', async ({ page }) => {
 	const importsMetric = reports
 		.getByLabel('Reports')
 		.locator('.metrics > div')
-		.filter({ hasText: /^Imports\s+\$[1-9][\d,]*$/ });
+		.filter({ hasText: /^External imports\s+\$[1-9][\d,]*$/ });
 	await expect(importsMetric).toBeVisible();
 });
 
@@ -2813,7 +2819,7 @@ test('rail-fed production connects two industrial buildings and records a rail s
 	});
 
 	// Day 1 production: pantry-works has no local flour, no rail connection,
-	// and nothing in the shared warehouse, so its whole flour need (6
+	// and nothing in the shared city inventory, so its whole flour need (6
 	// units/day) is imported.
 	await page.getByRole('button', { name: /^advance day$/i }).click();
 	let game = await waitForAutoSaveDay(page, 2);

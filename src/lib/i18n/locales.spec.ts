@@ -19,6 +19,70 @@ function storageMock(initial: Record<string, string> = {}) {
 }
 
 describe('locale resolution', () => {
+	it('provides the identical city inventory attribution key set in every supported locale', () => {
+		const keys = [
+			'industryTileInspector.warehouseBuilding',
+			'industryTileInspector.cityInventorySummary',
+			'industryTileInspector.currentCityInventory',
+			'industryTileInspector.cityInventoryMaterials',
+			'industryTileInspector.cityInventoryUnavailable',
+			'industryTileInspector.cityInventoryZeroCapacity',
+			'industryTileInspector.cityInventoryEmpty',
+			'industryTileInspector.cityInventoryOverflow',
+			'reportsPanel.inventory.productionCloseTitle',
+			'reportsPanel.inventory.reportDay',
+			'reportsPanel.inventory.currentTitle',
+			'reportsPanel.inventory.productionCloseUnavailable',
+			'reportsPanel.inventory.productionCloseEmpty',
+			'reportsPanel.inventory.currentUnavailable',
+			'reportsPanel.inventory.currentEmpty',
+			'reportsPanel.inventory.citySummary',
+			'reportsPanel.inventory.cityOverflow',
+			'reportsPanel.attribution.title',
+			'reportsPanel.attribution.empty',
+			'reportsPanel.attribution.production',
+			'reportsPanel.attribution.productionUnavailable',
+			'reportsPanel.attribution.consumption',
+			'reportsPanel.attribution.consumptionUnavailable',
+			'reportsPanel.attribution.localSupply',
+			'reportsPanel.attribution.localSupplyUnavailable',
+			'reportsPanel.attribution.externalImports',
+			'reportsPanel.attribution.externalImportsUnavailable',
+			'storeOverview.metrics.imports',
+			'storeOverview.warehouseUnits',
+			'storeOverview.importedUnits',
+			'productChainsPanel.cityInventoryFlow',
+			'productChainsPanel.scopeAria',
+			'productChainsPanel.activeIndustryInventory',
+			'productChainsPanel.activeIndustryUnavailable',
+			'productChainsPanel.activeRetailSupply',
+			'productChainsPanel.supplyState.importsOnly',
+			'productChainsPanel.supplyState.configurationUnavailable',
+			'productChainsPanel.supplyState.unavailable',
+			'productChainsPanel.supplyState.zeroCapacity',
+			'productChainsPanel.supplyState.emptyInventory',
+			'productChainsPanel.supplyState.inventoryOverflow'
+		];
+
+		const resolveCatalogValue = (catalog: unknown, key: string): unknown =>
+			key
+				.split('.')
+				.reduce<unknown>(
+					(acc, part) =>
+						acc && typeof acc === 'object' ? (acc as Record<string, unknown>)[part] : undefined,
+					catalog
+				);
+
+		for (const locale of Object.keys(messagesByLocale) as (keyof typeof messagesByLocale)[]) {
+			const catalog = messagesByLocale[locale];
+			for (const key of keys) {
+				const value = resolveCatalogValue(catalog, key);
+				expect(value, `${locale} missing ${key}`).toBeDefined();
+				expect(typeof value, `${locale} ${key} is not a string`).toBe('string');
+			}
+		}
+	});
+
 	it('provides the identical retail supply source control key set in every supported locale', () => {
 		const keys = [
 			'retailSupplySources.title',

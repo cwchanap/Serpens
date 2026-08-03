@@ -65,7 +65,7 @@ const staleReport: DailyStoreReport = {
 
 describe('StoreOverview', () => {
 	it('shows current staff coverage while preserving stock and import metrics', async () => {
-		expect.assertions(5);
+		expect.assertions(6);
 
 		render(StoreOverview, {
 			i18n: createI18n('en'),
@@ -79,11 +79,12 @@ describe('StoreOverview', () => {
 		await expect.element(storeRegion.getByText('100%', { exact: true })).not.toBeInTheDocument();
 		await expect.element(storeRegion.getByText('0/1 mgr, 0/2 gen')).toBeVisible();
 		await expect.element(storeRegion.getByText('Stock')).toBeVisible();
+		await expect.element(storeRegion.getByText('External imports')).toBeVisible();
 		await expect.element(storeRegion.getByText('90')).toBeVisible();
 		await expect.element(storeRegion.getByText('$125')).toBeVisible();
 	});
 
-	it('shows latest product warehouse and import source split', async () => {
+	it('shows latest product local supply and external import source split', async () => {
 		expect.assertions(3);
 
 		render(StoreOverview, {
@@ -99,8 +100,8 @@ describe('StoreOverview', () => {
 		});
 
 		await expect.element(productSources.getByText('Snacks')).toBeVisible();
-		await expect.element(productSources.getByText('3 warehouse')).toBeVisible();
-		await expect.element(productSources.getByText('2 imported')).toBeVisible();
+		await expect.element(productSources.getByText('3 local supply')).toBeVisible();
+		await expect.element(productSources.getByText('2 external imports')).toBeVisible();
 	});
 
 	it('lists store warnings when the latest report includes them', async () => {
@@ -211,7 +212,7 @@ describe('StoreOverview', () => {
 		});
 
 		await expect.element(productSources.getByText('Snacks')).toBeVisible();
-		await expect.element(productSources.getByText('0 warehouse')).toBeVisible();
-		await expect.element(productSources.getByText('5 imported')).toBeVisible();
+		await expect.element(productSources.getByText('0 local supply')).toBeVisible();
+		await expect.element(productSources.getByText('5 external imports')).toBeVisible();
 	});
 });

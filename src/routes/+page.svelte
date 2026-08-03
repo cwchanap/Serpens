@@ -2814,7 +2814,7 @@
 							/>
 						</div>
 					{:else if activeManagementPanel.id === 'reports'}
-						<ReportsPanel {i18n} {summary} stores={panelGame.stores} />
+						<ReportsPanel {i18n} {summary} game={panelGame} stores={panelGame.stores} />
 					{:else if activeManagementPanel.id === 'productChains'}
 						<ProductChainsPanel {i18n} game={panelGame} />
 					{:else if activeManagementPanel.id === 'finance'}
