@@ -24,6 +24,7 @@ import {
 	createEmptySaveStore,
 	validateSaveStoreSnapshot
 } from '../lib/persistence/saveCodec';
+import type { SaveStoreSnapshot } from '../lib/persistence/saveTypes';
 import {
 	createEmptyScenarioStore,
 	encodeScenarioBestResultRecord,
@@ -478,12 +479,6 @@ interface SavedGame {
 	reports: SavedDailyReport[];
 }
 
-interface SavedSnapshot {
-	autoSave: {
-		game: SavedGame;
-	} | null;
-}
-
 // The industry city the app generates for the starter "industry-city" world
 // entry. Resource anchors and district bounds scale with city size (see
 // RESOURCE_ANCHOR_SPECS in industry.ts), so e2e clicks must derive tile
@@ -806,21 +801,38 @@ async function setStoreProductNumber(
 	await expect(input).toHaveValue(String(value));
 }
 
-async function readAutoSaveGame(page: Page): Promise<SavedGame> {
-	return page.evaluate(() => {
-		const serialized = window.localStorage.getItem('serpens.saves.v2');
+async function readBrowserSaveSnapshot(page: Page): Promise<SaveStoreSnapshot> {
+	return page.evaluate((key) => {
+		const serialized = window.localStorage.getItem(key);
 
 		if (!serialized) {
-			throw new Error('Auto-save storage is empty');
+			throw new Error('Save storage is empty');
 		}
 
-		const snapshot = JSON.parse(serialized) as SavedSnapshot;
+		return JSON.parse(serialized) as SaveStoreSnapshot;
+	}, BROWSER_SAVE_STORAGE_KEY);
+}
 
-		if (!snapshot.autoSave) {
-			throw new Error('Auto-save record is missing');
-		}
+async function readAutoSaveGame(page: Page): Promise<SavedGame> {
+	const snapshot = await readBrowserSaveSnapshot(page);
 
-		return snapshot.autoSave.game;
+	if (!snapshot.autoSave) {
+		throw new Error('Auto-save record is missing');
+	}
+
+	return snapshot.autoSave.game;
+}
+
+async function replaceBrowserAutoSave(page: Page, game: GameState): Promise<void> {
+	const existing = await readBrowserSaveSnapshot(page);
+	const replacement = validateSaveStoreSnapshot({
+		...existing,
+		autoSave: createAutoSaveRecord(game, new Date('2026-08-03T12:00:00.000Z'))
+	});
+
+	await page.evaluate(({ key, serialized }) => window.localStorage.setItem(key, serialized), {
+		key: BROWSER_SAVE_STORAGE_KEY,
+		serialized: JSON.stringify(replacement)
 	});
 }
 
@@ -3197,6 +3209,46 @@ test('city-local inventory keeps multi-city supply, replenishment, reporting, an
 	await savePanel.getByRole('textbox', { name: /slot name/i }).fill('City local lifecycle');
 	await savePanel.getByRole('button', { name: /save slot/i }).click();
 	await expect(page.getByText('Saved City local lifecycle', { exact: true })).toBeVisible();
+
+	const savedSnapshot = await readBrowserSaveSnapshot(page);
+	const savedManualSlot = savedSnapshot.manualSlots.find(
+		(slot) => slot.metadata.name === 'City local lifecycle'
+	);
+	if (!savedManualSlot) {
+		throw new Error('Missing saved City local lifecycle manual slot.');
+	}
+	expect(savedManualSlot.game.retailSupplyAssignments).toEqual([
+		{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' },
+		{ retailCityId: 'campus-junction', supplyCityId: 'breadbasket-basin' }
+	]);
+	expect(getSavedCityInventory(savedManualSlot.game, 'industry-city')).toEqual({
+		cityId: 'industry-city',
+		capacity: 400,
+		materials: { 'bottled-water': 0 },
+		overflowUnits: 0,
+		overflowCost: 0
+	});
+	expect(getSavedCityInventory(savedManualSlot.game, 'breadbasket-basin')).toEqual({
+		cityId: 'breadbasket-basin',
+		capacity: 200,
+		materials: { 'bottled-water': 37 },
+		overflowUnits: 0,
+		overflowCost: 0
+	});
+
+	await replaceBrowserAutoSave(page, cityLocalInventoryLifecycleGame());
+	const divergentAutoSave = await readAutoSaveGame(page);
+	expect(divergentAutoSave.retailSupplyAssignments).toEqual([
+		{ retailCityId: 'harbor-city', supplyCityId: null },
+		{ retailCityId: 'campus-junction', supplyCityId: 'breadbasket-basin' }
+	]);
+	expect(getSavedCityInventory(divergentAutoSave, 'industry-city')).toEqual({
+		cityId: 'industry-city',
+		capacity: 400,
+		materials: { 'bottled-water': 6 },
+		overflowUnits: 0,
+		overflowCost: 0
+	});
 	await savePanel.getByRole('button', { name: /^close$/i }).click();
 
 	await page.reload();
@@ -3207,26 +3259,8 @@ test('city-local inventory keeps multi-city supply, replenishment, reporting, an
 	await savePanel.getByRole('button', { name: /^close$/i }).click();
 	await expectRetailMapReady(page);
 
-	const reloaded = await readAutoSaveGame(page);
-	expect(reloaded.retailSupplyAssignments).toEqual([
-		{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' },
-		{ retailCityId: 'campus-junction', supplyCityId: 'breadbasket-basin' }
-	]);
-	expect(getSavedCityInventory(reloaded, 'industry-city')).toEqual({
-		cityId: 'industry-city',
-		capacity: 400,
-		materials: { 'bottled-water': 0 },
-		overflowUnits: 0,
-		overflowCost: 0
-	});
-	expect(getSavedCityInventory(reloaded, 'breadbasket-basin')).toEqual({
-		cityId: 'breadbasket-basin',
-		capacity: 200,
-		materials: { 'bottled-water': 37 },
-		overflowUnits: 0,
-		overflowCost: 0
-	});
-
+	// Manual Load replaces the live game but intentionally does not rewrite the
+	// divergent auto-save. Verify the rendered game, not the stale auto-save record.
 	const reloadedStores = await openManagementPanel(page, /stores/i);
 	await expect(
 		reloadedStores.getByRole('combobox', { name: 'Local supply source for Harbor City' })
@@ -3239,6 +3273,11 @@ test('city-local inventory keeps multi-city supply, replenishment, reporting, an
 			.getByRole('status')
 			.filter({ hasText: 'Industry City 0 / 400 city inventory used.' })
 	).toBeVisible();
+	await expect(
+		reloadedStores
+			.getByRole('status')
+			.filter({ hasText: 'Breadbasket Basin 37 / 200 city inventory used.' })
+	).toBeVisible();
 	await reloadedStores.getByRole('button', { name: 'Close Stores' }).click();
 
 	const reloadedReports = await openManagementPanel(page, /reports/i);
@@ -3250,6 +3289,16 @@ test('city-local inventory keeps multi-city supply, replenishment, reporting, an
 	});
 	await expect(
 		reloadedCurrentInventory.getByText('Current city inventory (after the latest replenishment)', {
+			exact: true
+		})
+	).toBeVisible();
+	await expect(
+		reloadedCurrentInventory.getByText('Industry City: 0 / 400 city inventory used.', {
+			exact: true
+		})
+	).toBeVisible();
+	await expect(
+		reloadedCurrentInventory.getByText('Breadbasket Basin: 37 / 200 city inventory used.', {
 			exact: true
 		})
 	).toBeVisible();
