@@ -34,7 +34,8 @@
 			.join(' — ');
 	}
 
-	function changeSource(city: RetailCitySupplyView, value: string): void {
+	function changeSource(city: RetailCitySupplyView, select: HTMLSelectElement): void {
+		const value = select.value;
 		if (value === RETAIL_SUPPLY_MISSING_CONFIGURATION_VALUE) {
 			return;
 		}
@@ -44,7 +45,11 @@
 			return;
 		}
 
-		onChange(city.retailCityId, nextSelection);
+		try {
+			onChange(city.retailCityId, nextSelection);
+		} finally {
+			select.value = selectValue(city.currentSelection);
+		}
 	}
 </script>
 
@@ -70,7 +75,7 @@
 						aria-describedby={city.descriptionId}
 						{disabled}
 						value={selectValue(city.currentSelection)}
-						onchange={(event) => changeSource(city, event.currentTarget.value)}
+						onchange={(event) => changeSource(city, event.currentTarget)}
 					>
 						<option value={RETAIL_SUPPLY_IMPORTS_ONLY_VALUE}>{city.importsOnlyLabel}</option>
 						{#if city.currentSelection === 'missing'}

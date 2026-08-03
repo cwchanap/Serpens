@@ -2787,7 +2787,7 @@
 						<div class="stores-surfaces">
 							<RetailSupplySources
 								retailCities={buildRetailCitySupplyViews(panelGame, i18n)}
-								disabled={!mutationAvailability.setRetailSupplySource}
+								disabled={game === null || !mutationAvailability.setRetailSupplySource}
 								onChange={setRetailSupplySource}
 							/>
 							<StoreOverview
