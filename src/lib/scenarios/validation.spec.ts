@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import type { GameState } from '$lib/game/types';
 import { SCENARIO_COMMAND_KINDS, type ScenarioDefinition } from './types';
 import {
 	assertValidScenarioDefinition,
 	sortScenarioDiagnostics,
+	validateRetailSupplyAssignments,
 	validateScenarioDefinition,
 	validateScenarioSetupReserve
 } from './validation';
@@ -920,6 +922,20 @@ describe('validateScenarioDefinition', () => {
 			path: 'start.overrides.retailSupplyAssignments',
 			code: 'noncanonical-retail-supply-assignment'
 		});
+	});
+
+	it('requires canonical retail supply assignments after raw state validation', () => {
+		const definition = cityInventoryDefinition();
+		const result = buildScenarioGame(definition, definition.officialSeed);
+
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		const malformed = { ...result.game } as Partial<GameState>;
+		delete malformed.retailSupplyAssignments;
+
+		expect(() =>
+			validateRetailSupplyAssignments(malformed as GameState, definition.start)
+		).toThrow();
 	});
 
 	it('validates city-scoped metric queries and rejects the removed metric', () => {

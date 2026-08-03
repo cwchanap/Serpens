@@ -331,7 +331,7 @@ export function validateRetailSupplyAssignments(
 	blueprint: ScenarioStartBlueprint
 ): ScenarioDiagnostic[] {
 	const diagnostics: ScenarioDiagnostic[] = [];
-	const assignments = game.retailSupplyAssignments ?? [];
+	const assignments = game.retailSupplyAssignments;
 	const expectedCityIds = expectedRetailCityIds(game);
 	const seenRetailCityIds = new Set<WorldCityId>();
 	let previousRetailCityId: WorldCityId | undefined;

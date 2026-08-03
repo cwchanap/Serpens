@@ -1797,6 +1797,34 @@ describe('saveCodec', () => {
 		expect(validated.game).not.toHaveProperty('warehouse');
 	});
 
+	test('controller review: rejects residual global warehouse data on a current v13 save', () => {
+		const game = Object.assign(createCurrentV13MultiCityGame(), {
+			warehouse: { materials: {} }
+		});
+
+		expectSaveRecordErrorCode(createManualSaveRecord({ game }), 'invariant-city-inventory');
+	});
+
+	test('strict validation rejects residual global warehouse data on a current v13 game', () => {
+		const game = Object.assign(createCurrentV13MultiCityGame(), {
+			warehouse: { materials: {} }
+		});
+
+		expect(() => validateCurrentGameState(game)).toThrow(
+			'Saved game must not contain residual global warehouse data'
+		);
+	});
+
+	test('sandbox normalization rejects residual global warehouse data on a current v13 game', () => {
+		const game = Object.assign(createCurrentV13MultiCityGame(), {
+			warehouse: { materials: {} }
+		});
+
+		expect(() => normalizeSandboxSavedGame(game)).toThrow(
+			'Saved game must not contain residual global warehouse data'
+		);
+	});
+
 	test('controller review: classifies a safe-per-material but unsafe city-inventory total', () => {
 		const game = createCurrentV13MultiCityGame();
 		const cityInventories = game.cityInventories.map((inventory) =>
