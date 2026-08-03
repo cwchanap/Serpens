@@ -465,6 +465,58 @@ describe('buildScenarioGame', { timeout: 30_000 }, () => {
 		]);
 	});
 
+	it('chooses the capacity-leading industry city for a delayed lifecycle supply default', () => {
+		const definition = scenarioDefinition();
+		definition.start.industrialBuildings = [
+			{
+				ref: 'bottler',
+				typeId: 'water-bottler',
+				cityId: 'industry-city',
+				tileId: 'industry-city-26-6'
+			},
+			{
+				ref: 'breadbasket-warehouse',
+				typeId: 'warehouse',
+				cityId: 'breadbasket-basin',
+				tileId: 'breadbasket-basin-30-6'
+			}
+		];
+		definition.start.rails = [];
+		definition.start.overrides.world = {
+			revealedCityIds: ['harbor-city', 'industry-city', 'breadbasket-basin'],
+			openedCityIds: ['harbor-city', 'industry-city', 'breadbasket-basin'],
+			activeRetailCityId: 'harbor-city',
+			activeIndustryCityId: 'industry-city'
+		};
+		delete definition.start.overrides.cityInventoryMaterials;
+		delete definition.start.overrides.retailSupplyAssignments;
+		definition.content.cityIds = ['harbor-city', 'industry-city', 'breadbasket-basin'];
+		definition.content.industrialPlacements = [
+			{
+				cityId: 'industry-city',
+				tileId: 'industry-city-26-6',
+				buildingTypeId: 'water-bottler'
+			},
+			{
+				cityId: 'breadbasket-basin',
+				tileId: 'breadbasket-basin-30-6',
+				buildingTypeId: 'warehouse'
+			}
+		];
+
+		const result = buildScenarioGame(definition, definition.officialSeed);
+
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		expect(result.game.cityInventories).toEqual([
+			expect.objectContaining({ cityId: 'industry-city', capacity: 0 }),
+			expect.objectContaining({ cityId: 'breadbasket-basin', capacity: 200 })
+		]);
+		expect(result.game.retailSupplyAssignments).toEqual([
+			{ retailCityId: 'harbor-city', supplyCityId: 'breadbasket-basin' }
+		]);
+	});
+
 	it('materializes a level-4 electronics store through normal upgrades', () => {
 		const result = buildScenarioGame(importSqueezeFixture(), 280_002);
 		expect(result.ok).toBe(true);

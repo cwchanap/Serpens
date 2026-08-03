@@ -163,10 +163,6 @@ function materializeStartingCities(
 		const city = getWorldCityDefinition(cityId);
 		if (city?.kind === 'industry') next = initializeCityInventory(next, city.id);
 	}
-	for (const cityId of openedCityIds) {
-		const city = getWorldCityDefinition(cityId);
-		if (city?.kind === 'retail') next = initializeRetailSupplyAssignment(next, city.id);
-	}
 	next = {
 		...next,
 		cityInventories: next.cityInventories?.filter((inventory) => {
@@ -175,14 +171,6 @@ function materializeStartingCities(
 				city?.kind === 'industry' &&
 				next.world.openedCityIds.includes(city.id) &&
 				next.industryCities.some((industryCity) => industryCity.id === city.id)
-			);
-		}),
-		retailSupplyAssignments: next.retailSupplyAssignments?.filter((assignment) => {
-			const city = getWorldCityDefinition(assignment.retailCityId);
-			return (
-				city?.kind === 'retail' &&
-				next.world.openedCityIds.includes(city.id) &&
-				next.cities.some((retailCity) => retailCity.id === city.id)
 			);
 		})
 	};
@@ -379,6 +367,20 @@ function applyRetailSupplyAssignments(definition: ScenarioDefinition, game: Game
 			}))
 			.sort((left, right) => compareWorldCityIds(left.retailCityId, right.retailCityId))
 	};
+}
+
+function initializeDefaultRetailSupplyAssignments(game: GameState): GameState {
+	let next = game;
+	const openedRetailCityIds = [...new Set(next.world.openedCityIds)]
+		.filter((cityId) => {
+			const city = getWorldCityDefinition(cityId);
+			return city?.kind === 'retail' && next.cities.some((candidate) => candidate.id === city.id);
+		})
+		.sort(compareWorldCityIds);
+	for (const cityId of openedRetailCityIds) {
+		next = initializeRetailSupplyAssignment(next, cityId);
+	}
+	return next;
 }
 
 function projectCityInventoriesToLegacyCompatibilityWarehouse(game: GameState): GameState {
@@ -772,6 +774,9 @@ export function buildScenarioGame(
 	const cityInventoryDiagnostics = validateCityInventoryCapacities(game, definition.start);
 	if (cityInventoryDiagnostics.length > 0) {
 		return { ok: false, diagnostics: cityInventoryDiagnostics };
+	}
+	if (!definition.start.overrides.retailSupplyAssignments) {
+		game = initializeDefaultRetailSupplyAssignments(game);
 	}
 	game = applyRetailSupplyAssignments(definition, game);
 	const retailSupplyDiagnostics = validateRetailSupplyAssignments(game, definition.start);
