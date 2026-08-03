@@ -328,9 +328,8 @@ export function getIndustryInventoryScope(
 }
 
 export function getAccessibleIndustryInventoryCount(game: GameState): number {
-	return (game.cityInventories ?? []).filter(
-		(inventory) => getCityInventory(game, inventory.cityId).ok
-	).length;
+	return game.cityInventories.filter((inventory) => getCityInventory(game, inventory.cityId).ok)
+		.length;
 }
 
 function filterProductionReportToIndustryCity(
@@ -353,7 +352,7 @@ function filterProductionReportToIndustryCity(
 		warehousePulls: report.warehousePulls.filter(belongsToCity),
 		shopImports: report.shopImports.filter(belongsToCity),
 		railShipments: report.railShipments.filter(belongsToCity),
-		cityInventories: report.cityInventories?.filter((inventory) => inventory.cityId === cityId)
+		cityInventories: report.cityInventories.filter((inventory) => inventory.cityId === cityId)
 	};
 }
 
@@ -502,7 +501,8 @@ export function aggregateProductReports(
 		warehouseValue: sumProductReports(productReports, (report) => report.warehouseValue),
 		importedUnits: sumProductReports(productReports, (report) => report.importedUnits),
 		importCost: aggregateImportCost(productReports),
-		importSpend: sumProductReports(productReports, (report) => report.importSpend)
+		importSpend: sumProductReports(productReports, (report) => report.importSpend),
+		replenishmentOutcome: null
 	};
 }
 

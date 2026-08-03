@@ -74,7 +74,7 @@ export function initializeCityInventory(game: GameState, cityId: string): GameSt
 		return game;
 	}
 
-	const cityInventories = game.cityInventories ?? [];
+	const cityInventories = game.cityInventories;
 	const nextGame = cityInventories.some((inventory) => inventory.cityId === resolvedCityId)
 		? game
 		: {
@@ -88,7 +88,7 @@ export function initializeCityInventory(game: GameState, cityId: string): GameSt
 }
 
 export function selectDefaultRetailSupplyCity(game: GameState): WorldCityId | null {
-	const eligibleInventories = (game.cityInventories ?? []).filter(
+	const eligibleInventories = game.cityInventories.filter(
 		(inventory) => getCityInventory(game, inventory.cityId).ok
 	);
 
@@ -115,28 +115,36 @@ export function selectDefaultRetailSupplyCity(game: GameState): WorldCityId | nu
 }
 
 /**
- * Distributes the former global warehouse pool across the supplied eligible
- * industrial-city inventories. Allocation priority is intentionally separate
- * from the canonical return order: the primary city receives capacity first,
- * but callers always receive catalog-ordered inventory records.
+ * Pure migration input: the old pool is represented only by its material map;
+ * capacity remains attached to the eligible city-local inventories.
+ */
+export interface LegacyMaterialAllocationInput {
+	activeIndustryCityId: string;
+	eligibleCityInventories: readonly CityInventory[];
+	materials: Partial<Record<MaterialId, number>>;
+}
+
+/**
+ * Deterministically distributes a pre-v13 material pool across eligible
+ * city-local inventories. The caller owns raw-wire decoding; this helper owns
+ * allocation order, duplicate detection, pressure, and conservation.
  */
 export function allocateLegacyWarehouseMaterials(
-	game: GameState,
-	eligible: readonly CityInventory[],
-	legacyMaterials: Partial<Record<MaterialId, number>>
+	input: LegacyMaterialAllocationInput
 ): CityInventory[] {
-	assertUniqueLegacyWarehouseEligibleCityIds(eligible);
-	const materialEntries = getValidatedLegacyMaterialEntries(legacyMaterials);
+	const { activeIndustryCityId, eligibleCityInventories, materials } = input;
+	assertUniqueLegacyWarehouseEligibleCityIds(eligibleCityInventories);
+	const materialEntries = getValidatedLegacyMaterialEntries(materials);
 	const totalLegacyUnits = materialEntries.reduce(
 		(total, [, quantity]) => checkedAdd(total, quantity, 'Legacy warehouse material total'),
 		0
 	);
-	if (eligible.length === 0) {
+	if (eligibleCityInventories.length === 0) {
 		if (totalLegacyUnits === 0) return [];
 		throw new RangeError('Legacy warehouse stock requires an eligible city inventory');
 	}
 
-	const canonicalEligible = [...eligible]
+	const canonicalEligible = [...eligibleCityInventories]
 		.map((inventory) => ({
 			...inventory,
 			capacity: requireSafeNonnegativeInteger(
@@ -146,7 +154,7 @@ export function allocateLegacyWarehouseMaterials(
 			materials: {}
 		}))
 		.sort((left, right) => compareWorldCityIds(left.cityId, right.cityId));
-	const primary = selectLegacyWarehousePrimaryCity(game, canonicalEligible);
+	const primary = selectLegacyWarehousePrimaryCity(activeIndustryCityId, canonicalEligible);
 	const destinations = [
 		primary,
 		...canonicalEligible.filter((inventory) => inventory.cityId !== primary.cityId)
@@ -158,7 +166,7 @@ export function allocateLegacyWarehouseMaterials(
 		.sort(compareLegacyMaterialIds);
 
 	for (const materialId of materialOrder) {
-		const originalQuantity = legacyMaterials[materialId]!;
+		const originalQuantity = materials[materialId]!;
 		let remaining = originalQuantity;
 		for (let index = 0; index < destinations.length; index += 1) {
 			const quantity = Math.min(remaining, remainingCapacity[index]!);
@@ -219,7 +227,7 @@ export function initializeRetailSupplyAssignment(game: GameState, cityId: string
 		return game;
 	}
 
-	const retailSupplyAssignments = game.retailSupplyAssignments ?? [];
+	const retailSupplyAssignments = game.retailSupplyAssignments;
 	if (retailSupplyAssignments.some((assignment) => assignment.retailCityId === resolvedCityId)) {
 		return game;
 	}
@@ -233,7 +241,10 @@ export function initializeRetailSupplyAssignment(game: GameState, cityId: string
 	};
 }
 
-export function supportsCityInventory(game: GameState, cityId: string): boolean {
+export function supportsCityInventory(
+	game: Pick<GameState, 'world' | 'industryCities'>,
+	cityId: string
+): boolean {
 	const city = getWorldCityDefinition(cityId);
 
 	return (
@@ -257,13 +268,12 @@ export function getCityInventory(game: GameState, cityId: string): CityInventory
 		return { ok: false, reason: 'unsupported-city' };
 	}
 
-	const index =
-		game.cityInventories?.findIndex((inventory) => inventory.cityId === resolvedCityId) ?? -1;
+	const index = game.cityInventories.findIndex((inventory) => inventory.cityId === resolvedCityId);
 	if (index < 0) {
 		return { ok: false, reason: 'inventory-missing' };
 	}
 
-	return { ok: true, inventory: game.cityInventories![index]!, index };
+	return { ok: true, inventory: game.cityInventories[index]!, index };
 }
 
 export function getCityInventoryUsed(inventory: CityInventory): number {
@@ -375,14 +385,14 @@ export function synchronizeCityInventoryCapacity(game: GameState, cityId: string
 		return game;
 	}
 
-	const cityInventories = [...game.cityInventories!];
+	const cityInventories = [...game.cityInventories];
 	cityInventories[access.index] = synchronized;
 
 	return { ...game, cityInventories };
 }
 
 export function synchronizeAllCityInventoryCapacities(game: GameState): GameState {
-	if (!game.cityInventories || game.cityInventories.length === 0) {
+	if (game.cityInventories.length === 0) {
 		return game;
 	}
 
@@ -407,7 +417,9 @@ export function normalizeCityInventoryDerivedState(game: GameState): GameState {
 	return synchronizeAllCityInventoryCapacities(game);
 }
 
-export function findEntityCityOwnershipIssues(game: GameState): EntityCityOwnershipIssue[] {
+export function findEntityCityOwnershipIssues(
+	game: Pick<GameState, 'world' | 'cities' | 'industryCities' | 'stores' | 'industrialBuildings'>
+): EntityCityOwnershipIssue[] {
 	const issues: EntityCityOwnershipIssue[] = [];
 
 	for (const store of game.stores) {
@@ -451,7 +463,7 @@ function worldCityCatalogIndex(cityId: WorldCityId): number {
 }
 
 function selectLegacyWarehousePrimaryCity(
-	game: GameState,
+	activeIndustryCityId: string,
 	eligible: readonly CityInventory[]
 ): CityInventory {
 	return [...eligible].sort((left, right) => {
@@ -459,10 +471,8 @@ function selectLegacyWarehousePrimaryCity(
 			return left.capacity > right.capacity ? -1 : 1;
 		}
 
-		const leftIsActive =
-			left.cityId === game.activeIndustryCityId && supportsCityInventory(game, left.cityId);
-		const rightIsActive =
-			right.cityId === game.activeIndustryCityId && supportsCityInventory(game, right.cityId);
+		const leftIsActive = left.cityId === activeIndustryCityId;
+		const rightIsActive = right.cityId === activeIndustryCityId;
 		if (leftIsActive !== rightIsActive) {
 			return leftIsActive ? -1 : 1;
 		}
@@ -587,7 +597,7 @@ function hasSameDerivedState(left: CityInventory, right: CityInventory): boolean
 }
 
 function getEntityCityOwnershipReason(
-	game: GameState,
+	game: Pick<GameState, 'world' | 'cities' | 'industryCities'>,
 	cityId: string,
 	expectedKind: 'retail' | 'industry'
 ): EntityCityOwnershipReason | null {

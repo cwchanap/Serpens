@@ -8,7 +8,6 @@ import { simulateDay } from '$lib/game/simulateDay';
 import { initializeCityInventory, initializeRetailSupplyAssignment } from '$lib/game/cityInventory';
 import { createFoundingFinanceState } from '$lib/game/finance';
 import { createInitialEventRuntime } from '$lib/game/eventSelection';
-import { projectCityInventoriesToLegacyWarehouse } from '$lib/game/legacyWarehouse';
 import { createNewGame } from '$lib/game/state';
 import type { GameState } from '$lib/game/types';
 import { STARTER_STORE_CAP, WORLD_CITY_CATALOG, createInitialWorldProgress } from '$lib/game/world';
@@ -61,6 +60,11 @@ function createCanonicalFixtureGame(game: GameState): GameState {
 
 function createGame(overrides: Partial<GameState> = {}): GameState {
 	const day = overrides.day ?? 2;
+	const {
+		cityInventories: overrideCityInventories,
+		retailSupplyAssignments: overrideRetailSupplyAssignments,
+		...otherOverrides
+	} = overrides;
 	const game: GameState = {
 		seed: 20260505,
 		rngState: 99,
@@ -129,29 +133,23 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 		],
 		activeIndustryCityId: 'industry-city',
 		industrialBuildings: [],
-		warehouse: {
-			capacity: 0,
-			materials: {},
-			overflowUnits: 0,
-			overflowCost: 0
-		},
+		cityInventories: [],
+		retailSupplyAssignments: [],
 		stores: [],
 		staff: [],
 		hiringCandidates: [],
 		events: overrides.events ?? createInitialEventRuntime(20260505),
 		decisions: [],
 		reports: [],
-		...overrides
+		...otherOverrides
 	};
 	const canonical = createCanonicalFixtureGame(game);
-	const cityInventories = overrides.cityInventories ?? canonical.cityInventories!;
+	const cityInventories = overrideCityInventories ?? canonical.cityInventories;
 
 	return {
 		...game,
 		cityInventories,
-		retailSupplyAssignments:
-			overrides.retailSupplyAssignments ?? canonical.retailSupplyAssignments!,
-		warehouse: overrides.warehouse ?? projectCityInventoriesToLegacyWarehouse(cityInventories)
+		retailSupplyAssignments: overrideRetailSupplyAssignments ?? canonical.retailSupplyAssignments
 	};
 }
 
@@ -226,13 +224,7 @@ function createStaleV13Snapshot(): SaveStoreSnapshot {
 				overflowUnits: 0,
 				overflowCost: 0
 			}
-		],
-		warehouse: {
-			capacity: 99,
-			materials: { grain: 4 },
-			overflowUnits: 0,
-			overflowCost: 0
-		}
+		]
 	};
 
 	return {
@@ -315,17 +307,12 @@ describe('Tauri save repository', () => {
 		);
 
 		const loaded = await repository.loadManualSlot('manual-stale-city-inventory');
-		expect(loaded?.game.cityInventories?.[0]).toMatchObject({
+		expect(loaded?.game.cityInventories[0]).toMatchObject({
 			capacity: 0,
 			overflowUnits: 4,
 			overflowCost: 8
 		});
-		expect(loaded?.game.warehouse).toEqual({
-			capacity: 0,
-			materials: { grain: 4 },
-			overflowUnits: 4,
-			overflowCost: 8
-		});
+		expect(loaded?.game).not.toHaveProperty('warehouse');
 		expect(store.saveCount).toBe(0);
 
 		await repository.saveAuto(createGame({ day: 4 }));
@@ -336,8 +323,8 @@ describe('Tauri save repository', () => {
 
 		expect(persisted.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
 		expect(staleSlot?.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
-		expect(staleSlot?.game.cityInventories?.[0]?.overflowUnits).toBe(4);
-		expect(staleSlot?.game.warehouse.materials).toEqual({ grain: 4 });
+		expect(staleSlot?.game.cityInventories[0]?.overflowUnits).toBe(4);
+		expect(staleSlot?.game).not.toHaveProperty('warehouse');
 	});
 
 	test('persists simulated stock and production reports through the Tauri store key', async () => {

@@ -177,7 +177,7 @@ function fixtureRun(
 
 function v11RunRecord(run: ScenarioRun, revision = 0): ReturnType<typeof runRecord> {
 	const record = runRecord(run, revision);
-	const legacyGame = structuredClone(run.game) as unknown as Record<string, unknown>;
+	const legacyGame = toLegacyV12WarehouseWireGame(run.game) as unknown as Record<string, unknown>;
 	delete legacyGame.events;
 	legacyGame.decisions = [
 		{
@@ -225,6 +225,24 @@ function v11RunRecord(run: ScenarioRun, revision = 0): ReturnType<typeof runReco
 		gameSchemaVersion: 11,
 		game: legacyGame as unknown as ScenarioRun['game']
 	};
+}
+
+function toLegacyV12WarehouseWireGame(game: ScenarioRun['game']): ScenarioRun['game'] {
+	const legacyGame = structuredClone(game) as unknown as Record<string, unknown>;
+	const activeInventory =
+		game.cityInventories.find((inventory) => inventory.cityId === game.activeIndustryCityId) ??
+		game.cityInventories[0];
+
+	legacyGame.warehouse = {
+		capacity: activeInventory?.capacity ?? 0,
+		materials: { ...(activeInventory?.materials ?? {}) },
+		overflowUnits: activeInventory?.overflowUnits ?? 0,
+		overflowCost: activeInventory?.overflowCost ?? 0
+	};
+	delete legacyGame.cityInventories;
+	delete legacyGame.retailSupplyAssignments;
+
+	return legacyGame as unknown as ScenarioRun['game'];
 }
 
 interface Deferred {

@@ -1,6 +1,5 @@
 import { describe, expect, test } from 'vitest';
 import { initializeCityInventory, initializeRetailSupplyAssignment } from '$lib/game/cityInventory';
-import { projectCityInventoriesToLegacyWarehouse } from '$lib/game/legacyWarehouse';
 import { initializeStoreProducts } from '$lib/game/stock';
 import { createFoundingFinanceState } from '$lib/game/finance';
 import { createInitialEventRuntime } from '$lib/game/eventSelection';
@@ -202,6 +201,11 @@ function createCanonicalFixtureGame(game: GameState): GameState {
 
 function createGame(overrides: Partial<GameState> = {}): GameState {
 	const day = overrides.day ?? 3;
+	const {
+		cityInventories: overrideCityInventories,
+		retailSupplyAssignments: overrideRetailSupplyAssignments,
+		...otherOverrides
+	} = overrides;
 	const game: GameState = {
 		seed: 20260505,
 		rngState: 99,
@@ -228,12 +232,8 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 		industryCities: [createFixtureIndustryCity()],
 		activeIndustryCityId: 'industry-city',
 		industrialBuildings: [],
-		warehouse: {
-			capacity: 0,
-			materials: {},
-			overflowUnits: 0,
-			overflowCost: 0
-		},
+		cityInventories: [],
+		retailSupplyAssignments: [],
 		stores: [
 			{
 				id: 'store-1',
@@ -261,17 +261,15 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 		events: overrides.events ?? createInitialEventRuntime(20260505),
 		decisions: [],
 		reports: [],
-		...overrides
+		...otherOverrides
 	};
 	const canonical = createCanonicalFixtureGame(game);
-	const cityInventories = overrides.cityInventories ?? canonical.cityInventories!;
+	const cityInventories = overrideCityInventories ?? canonical.cityInventories;
 
 	return {
 		...game,
 		cityInventories,
-		retailSupplyAssignments:
-			overrides.retailSupplyAssignments ?? canonical.retailSupplyAssignments!,
-		warehouse: overrides.warehouse ?? projectCityInventoriesToLegacyWarehouse(cityInventories)
+		retailSupplyAssignments: overrideRetailSupplyAssignments ?? canonical.retailSupplyAssignments
 	};
 }
 
@@ -300,6 +298,24 @@ function createManualSaveRecord(overrides: SaveRecordOverrides = {}) {
 			...overrides.game
 		}
 	};
+}
+
+function toLegacyV12WarehouseWireGame(game: GameState): GameState {
+	const legacyGame = structuredClone(game) as unknown as Record<string, unknown>;
+	const activeInventory =
+		game.cityInventories.find((inventory) => inventory.cityId === game.activeIndustryCityId) ??
+		game.cityInventories[0];
+
+	legacyGame.warehouse = {
+		capacity: activeInventory?.capacity ?? 0,
+		materials: { ...(activeInventory?.materials ?? {}) },
+		overflowUnits: activeInventory?.overflowUnits ?? 0,
+		overflowCost: activeInventory?.overflowCost ?? 0
+	};
+	delete legacyGame.cityInventories;
+	delete legacyGame.retailSupplyAssignments;
+
+	return legacyGame as unknown as GameState;
 }
 
 function createV11SupplierSnapshot(): SaveStoreSnapshot {
@@ -372,13 +388,7 @@ function createStaleV13Snapshot(): SaveStoreSnapshot {
 					overflowUnits: 0,
 					overflowCost: 0
 				}
-			],
-			warehouse: {
-				capacity: 99,
-				materials: { grain: 4 },
-				overflowUnits: 0,
-				overflowCost: 0
-			}
+			]
 		}
 	});
 	const retained = createManualSaveRecord({
@@ -982,39 +992,45 @@ describe('save records', () => {
 		expect(validated.game.world.claimedMilestoneIds).toEqual(['reveal-campus-junction']);
 	});
 
-	test('rejects warehouse materials with unknown ids', () => {
+	test('rejects city-inventory materials with unknown ids', () => {
 		expect.assertions(2);
 		const game = createGame({
-			warehouse: {
-				capacity: 20,
-				materials: { snacks: 5, 'bad-material': 1 } as Record<string, number>,
-				overflowUnits: 0,
-				overflowCost: 0
-			}
+			cityInventories: [
+				{
+					cityId: 'industry-city',
+					capacity: 20,
+					materials: { snacks: 5, 'bad-material': 1 } as Record<string, number>,
+					overflowUnits: 0,
+					overflowCost: 0
+				}
+			]
 		});
 		const snapshot = createSnapshotWithGame(game);
 
 		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
 		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
-			'Saved game warehouse materials bad-material must be a known material'
+			'Saved game cityInventories[0] materials bad-material must be a known material'
 		);
 	});
 
-	test('rejects negative warehouse material quantities', () => {
+	test('rejects negative city-inventory material quantities', () => {
 		expect.assertions(2);
 		const game = createGame({
-			warehouse: {
-				capacity: 20,
-				materials: { snacks: -1 },
-				overflowUnits: 0,
-				overflowCost: 0
-			}
+			cityInventories: [
+				{
+					cityId: 'industry-city',
+					capacity: 20,
+					materials: { snacks: -1 },
+					overflowUnits: 0,
+					overflowCost: 0
+				}
+			]
 		});
 		const snapshot = createSnapshotWithGame(game);
 
 		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
 		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
-			'Saved game warehouse materials snacks must be at least 0'
+			'Saved game cityInventories[0] materials snacks must be a non-negative safe integer'
 		);
 	});
 
@@ -2171,7 +2187,7 @@ describe('save records', () => {
 				)
 			};
 			const record = createSaveRecord(
-				{ ...game, stores: [fullBoutiqueStore] },
+				toLegacyV12WarehouseWireGame({ ...game, stores: [fullBoutiqueStore] }),
 				{
 					id: 'manual-v4-boutique',
 					name: 'V4 Boutique Save',
@@ -2232,7 +2248,7 @@ describe('save records', () => {
 				products: initializeStoreProducts('electronics', 10)
 			};
 			const record = createSaveRecord(
-				{ ...game, stores: [electronicsStore] },
+				toLegacyV12WarehouseWireGame({ ...game, stores: [electronicsStore] }),
 				{
 					id: 'manual-v4-electronics',
 					name: 'V4 Electronics Save',
@@ -2299,7 +2315,10 @@ describe('save records', () => {
 			// eslint-disable-next-line @typescript-eslint/no-unused-vars
 			const { level: _omit, ...legacyWithoutLevel } = fullBoutiqueStore;
 			const record = createSaveRecord(
-				{ ...game, stores: [legacyWithoutLevel as unknown as (typeof game.stores)[number]] },
+				toLegacyV12WarehouseWireGame({
+					...game,
+					stores: [legacyWithoutLevel as unknown as (typeof game.stores)[number]]
+				}),
 				{
 					id: 'manual-v4-boutique-legacy',
 					name: 'V4 Boutique Save (no level)',
@@ -2387,12 +2406,7 @@ describe('repository city-inventory migration and normalization', () => {
 				overflowCost: 8
 			}
 		]);
-		expect(loaded?.game.warehouse).toEqual({
-			capacity: 0,
-			materials: { grain: 4 },
-			overflowUnits: 4,
-			overflowCost: 8
-		});
+		expect(loaded?.game).not.toHaveProperty('warehouse');
 
 		await repository.saveAuto(createGame({ day: 4 }));
 		const persisted = await driver.read();
@@ -2402,21 +2416,16 @@ describe('repository city-inventory migration and normalization', () => {
 
 		expect(persisted.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
 		expect(staleSlot?.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
-		expect(staleSlot?.game.cityInventories?.[0]?.capacity).toBe(0);
-		expect(staleSlot?.game.cityInventories?.[0]?.overflowUnits).toBe(4);
-		expect(staleSlot?.game.warehouse).toEqual({
-			capacity: 0,
-			materials: { grain: 4 },
-			overflowUnits: 4,
-			overflowCost: 8
-		});
+		expect(staleSlot?.game.cityInventories[0]?.capacity).toBe(0);
+		expect(staleSlot?.game.cityInventories[0]?.overflowUnits).toBe(4);
+		expect(staleSlot?.game).not.toHaveProperty('warehouse');
 		expect(
 			persisted.manualSlots.some((slot) => slot.metadata.id === 'manual-retained-city-inventory')
 		).toBe(true);
 	});
 
 	test('migrates v12 aggregate stock once and durably preserves null historical retail attribution', async () => {
-		expect.assertions(15);
+		expect.assertions(14);
 		const driver = new MemorySaveStoreDriver(createV12InventorySnapshot());
 		const repository = new SaveRepositoryFromDriver(
 			driver,
@@ -2440,9 +2449,8 @@ describe('repository city-inventory migration and normalization', () => {
 		expect(loaded?.game.retailSupplyAssignments).toEqual([
 			{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' }
 		]);
-		expect(loaded?.game.warehouse.materials).toEqual({ grain: 7, snacks: 3 });
 		expect(
-			loaded?.game.cityInventories?.reduce(
+			loaded?.game.cityInventories.reduce(
 				(total, inventory) =>
 					total +
 					Object.values(inventory.materials).reduce((sum, quantity) => sum + (quantity ?? 0), 0),
@@ -2465,7 +2473,7 @@ describe('repository city-inventory migration and normalization', () => {
 		expect(
 			afterFirstSave.manualSlots.every((slot) => slot.schemaVersion === SAVE_SCHEMA_VERSION)
 		).toBe(true);
-		expect(persisted?.game.cityInventories?.[0]?.materials).toEqual({ grain: 7, snacks: 3 });
+		expect(persisted?.game.cityInventories[0]?.materials).toEqual({ grain: 7, snacks: 3 });
 
 		await repository.overwriteManualSlot(
 			'manual-v12-city-inventory',
@@ -2477,8 +2485,8 @@ describe('repository city-inventory migration and normalization', () => {
 			(slot) => slot.metadata.id === 'manual-v12-city-inventory'
 		);
 
-		expect(resaved?.game.cityInventories?.[0]?.materials).toEqual({ grain: 7, snacks: 3 });
-		expect(resaved?.game.warehouse.materials).toEqual({ grain: 7, snacks: 3 });
+		expect(resaved?.game.cityInventories[0]?.materials).toEqual({ grain: 7, snacks: 3 });
+		expect(resaved?.game).not.toHaveProperty('warehouse');
 	});
 });
 
@@ -2507,7 +2515,7 @@ describe('browser save repository', () => {
 			definitionVersion: 1
 		});
 		expect(supplier?.kind === 'event' ? supplier.options[1]?.modifiers : null).toEqual([]);
-		expect(loaded?.game.cityInventories?.[0]?.materials).toEqual({ grain: 7, snacks: 3 });
+		expect(loaded?.game.cityInventories[0]?.materials).toEqual({ grain: 7, snacks: 3 });
 		expect(loaded?.game.retailSupplyAssignments).toEqual([
 			{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' }
 		]);
@@ -2529,17 +2537,12 @@ describe('browser save repository', () => {
 		);
 
 		const loaded = await repository.loadManualSlot('manual-stale-city-inventory');
-		expect(loaded?.game.cityInventories?.[0]).toMatchObject({
+		expect(loaded?.game.cityInventories[0]).toMatchObject({
 			capacity: 0,
 			overflowUnits: 4,
 			overflowCost: 8
 		});
-		expect(loaded?.game.warehouse).toEqual({
-			capacity: 0,
-			materials: { grain: 4 },
-			overflowUnits: 4,
-			overflowCost: 8
-		});
+		expect(loaded?.game).not.toHaveProperty('warehouse');
 
 		await repository.saveAuto(createGame({ day: 4 }));
 		const persisted = JSON.parse(storage.getItem(BROWSER_SAVE_STORAGE_KEY)!) as SaveStoreSnapshot;
@@ -2549,8 +2552,8 @@ describe('browser save repository', () => {
 
 		expect(persisted.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
 		expect(staleSlot?.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
-		expect(staleSlot?.game.cityInventories?.[0]?.overflowUnits).toBe(4);
-		expect(staleSlot?.game.warehouse.materials).toEqual({ grain: 4 });
+		expect(staleSlot?.game.cityInventories[0]?.overflowUnits).toBe(4);
+		expect(staleSlot?.game).not.toHaveProperty('warehouse');
 	});
 
 	test('saves and loads auto-save records', async () => {
@@ -2812,7 +2815,7 @@ describe('sparse city-inventory save compatibility', () => {
 	test('round-trips a city inventory whose materials omit unrelated catalog keys', async () => {
 		expect.assertions(3);
 		const game = createNewGame('convenience', 20260611);
-		const sparseInventories = game.cityInventories!.map((inventory) =>
+		const sparseInventories = game.cityInventories.map((inventory) =>
 			inventory.cityId === 'industry-city'
 				? {
 						...inventory,
@@ -2822,8 +2825,7 @@ describe('sparse city-inventory save compatibility', () => {
 		);
 		const sparseGame: GameState = {
 			...game,
-			cityInventories: sparseInventories,
-			warehouse: projectCityInventoriesToLegacyWarehouse(sparseInventories)
+			cityInventories: sparseInventories
 		};
 
 		const repository = new SaveRepositoryFromDriver(
@@ -2834,8 +2836,8 @@ describe('sparse city-inventory save compatibility', () => {
 		await repository.saveAuto(sparseGame);
 		const loaded = await repository.getAutoSave();
 
-		expect(loaded?.game.cityInventories?.[0]?.materials).toEqual({ grain: 12, snacks: 3 });
-		expect(loaded?.game.warehouse.materials).toEqual({ grain: 12, snacks: 3 });
-		expect(loaded?.game.warehouse.materials['bottled-water']).toBeUndefined();
+		expect(loaded?.game.cityInventories[0]?.materials).toEqual({ grain: 12, snacks: 3 });
+		expect(loaded?.game).not.toHaveProperty('warehouse');
+		expect(loaded?.game.cityInventories[0]?.materials['bottled-water']).toBeUndefined();
 	});
 });

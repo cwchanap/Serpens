@@ -178,12 +178,6 @@ export function createNewGame(archetypeId: ArchetypeId, seed = Date.now()): Game
 		industrialBuildings: [],
 		cityInventories: [],
 		retailSupplyAssignments: [],
-		warehouse: {
-			capacity: 0,
-			materials: {},
-			overflowUnits: 0,
-			overflowCost: 0
-		},
 		stores: [placedOpeningStore],
 		staff,
 		hiringCandidates,

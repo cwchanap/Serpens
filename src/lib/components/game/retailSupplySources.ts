@@ -54,7 +54,7 @@ export function buildRetailCitySupplyViews(
 			game.world.openedCityIds.includes(city.id) &&
 			game.cities.some((retailCity) => retailCity.id === city.id)
 	).map((retailCity) => {
-		const assignment = game.retailSupplyAssignments?.find(
+		const assignment = game.retailSupplyAssignments.find(
 			(candidate) => candidate.retailCityId === retailCity.id
 		);
 		const currentSelection: RetailSupplySelection = assignment

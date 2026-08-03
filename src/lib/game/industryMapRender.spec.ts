@@ -21,7 +21,8 @@ function emptyProductionReport(): DailyProductionReport {
 		warehouseCapacity: 0,
 		warehouseUsed: 0,
 		railShipments: [],
-		railUsage: {}
+		railUsage: {},
+		cityInventories: []
 	};
 }
 

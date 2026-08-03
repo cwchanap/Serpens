@@ -21,7 +21,6 @@ import {
 	upgradeBuilding
 } from './industryPlacement';
 import { getBuildingUpgradeCost, MAX_BUILDING_LEVEL } from './leveling';
-import { getWarehouseCapacity, recalculateWarehousePressure } from './legacyWarehouse';
 import { createNewGame } from './state';
 import type { IndustrialBuildingTypeId, IndustryCity, IndustryTile } from './types';
 import { systemDecision } from './testHelpers';
@@ -139,12 +138,9 @@ describe('industrial placement', () => {
 		expect(game.industrialBuildings).toHaveLength(0);
 	});
 
-	test('recalculates warehouse capacity and pressure inline after building (sandbox normalization)', () => {
-		// Sandbox regression guard (see commit a6b9e40): buildIndustrialBuilding
-		// wraps the result in recalculateWarehousePressure + refreshWorldProgress so
-		// the post-transition state passes the strict invariants that scenario
-		// setup validation enforces. This locks the sandbox-observable warehouse
-		// normalization so a future refactor cannot silently drop it.
+	test('synchronizes city-local inventory capacity and pressure after building', () => {
+		// The placement transition keeps the owning city inventory valid after
+		// capacity-changing construction, including a subsequent producer build.
 		expect.assertions(6);
 		const base = { ...createNewGame('convenience', 20260512), cash: 1_000_000 };
 		const city = base.industryCities[0]!;
@@ -175,30 +171,18 @@ describe('industrial placement', () => {
 
 		expect(built.industrialBuildings).toHaveLength(1);
 		expect(built.industrialBuildings[0]?.typeId).toBe('warehouse');
-		// Capacity must reflect the newly-built warehouse.
-		expect(built.warehouse.capacity).toBe(getWarehouseCapacity(built));
-		// Pressure must match a fresh recalculation over the resulting warehouse.
-		const expected = recalculateWarehousePressure({
-			...built.warehouse,
-			capacity: getWarehouseCapacity(built),
-			materials: { ...built.warehouse.materials }
-		});
-		expect(built.warehouse.overflowUnits).toBe(expected.overflowUnits);
-		expect(built.warehouse.overflowCost).toBe(expected.overflowCost);
-		// Building a non-warehouse producer must still leave the warehouse normalized.
-		// Derive from `built` so the warehouse already has non-zero capacity/overflow
-		// and the normalization assertion exercises the non-trivial path.
+		const inventory = built.cityInventories.find((entry) => entry.cityId === 'industry-city')!;
+		expect(inventory.capacity).toBe(200);
+		expect(inventory.overflowUnits).toBe(0);
+		expect(inventory.overflowCost).toBe(0);
+		// A non-capacity building retains the synchronized local inventory.
 		const grainTile = getIndustryTilesByResource(city, 'grain-field')[0]!;
 		const withProducer = buildIndustrialBuilding(built, {
 			tileId: grainTile.id,
 			buildingTypeId: 'grain-farm'
 		});
-		expect(withProducer.warehouse).toEqual(
-			recalculateWarehousePressure({
-				...withProducer.warehouse,
-				capacity: getWarehouseCapacity(withProducer),
-				materials: { ...withProducer.warehouse.materials }
-			})
+		expect(withProducer.cityInventories.find((entry) => entry.cityId === 'industry-city')).toEqual(
+			inventory
 		);
 	});
 
@@ -218,17 +202,16 @@ describe('industrial placement', () => {
 		);
 		const primed = {
 			...opened,
-			cityInventories:
-				opened.cityInventories?.map((inventory) =>
-					inventory.cityId === 'industry-city'
-						? {
-								...inventory,
-								materials: { water: 3 },
-								overflowUnits: 3,
-								overflowCost: 6
-							}
-						: inventory
-				) ?? []
+			cityInventories: opened.cityInventories.map((inventory) =>
+				inventory.cityId === 'industry-city'
+					? {
+							...inventory,
+							materials: { water: 3 },
+							overflowUnits: 3,
+							overflowCost: 6
+						}
+					: inventory
+			)
 		};
 		const otherCityBefore = primed.cityInventories.find(
 			(inventory) => inventory.cityId === 'industry-city'
@@ -241,11 +224,11 @@ describe('industrial placement', () => {
 		});
 
 		expect(primed.cityInventories).toHaveLength(2);
+		expect(built.cityInventories.find((inventory) => inventory.cityId === 'industry-city')).toEqual(
+			otherCityBefore
+		);
 		expect(
-			built.cityInventories?.find((inventory) => inventory.cityId === 'industry-city')
-		).toEqual(otherCityBefore);
-		expect(
-			built.cityInventories?.find((inventory) => inventory.cityId === 'breadbasket-basin')
+			built.cityInventories.find((inventory) => inventory.cityId === 'breadbasket-basin')
 		).toMatchObject({ capacity: 200, overflowUnits: 0, overflowCost: 0 });
 	});
 

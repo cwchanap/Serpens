@@ -9,13 +9,7 @@ import { simulateIndustryProduction } from './industryProduction';
 import { demolishRailSegment } from './railPlacement';
 import { buildRailNetwork, deriveRailSegments, railCellKey } from './rail';
 import { createNewGame } from './state';
-import type {
-	GameState,
-	IndustrialBuilding,
-	IndustryCity,
-	RailCell,
-	WarehouseInventory
-} from './types';
+import type { GameState, CityInventory, IndustrialBuilding, IndustryCity, RailCell } from './types';
 
 function makeBuilding(
 	id: string,
@@ -59,28 +53,30 @@ function makeGame(city: IndustryCity, buildings: IndustrialBuilding[]): GameStat
 		cash: 100_000,
 		industryCities: [city],
 		industrialBuildings: buildings,
-		warehouse: { capacity: 500, materials: {}, overflowUnits: 0, overflowCost: 0 }
+		cityInventories: [
+			{ cityId: 'industry-city', capacity: 500, materials: {}, overflowUnits: 0, overflowCost: 0 }
+		]
 	};
 }
 
 function createRailTickState(
 	game: GameState,
-	warehouse: WarehouseInventory = game.warehouse
-): RailTickState & { readonly warehouse: WarehouseInventory } {
+	cityInventory: Omit<CityInventory, 'cityId'> = game.cityInventories[0]!
+): RailTickState & { readonly cityInventory: CityInventory } {
 	const state = createCityRailTickState({
 		...game,
 		cityInventories: [
 			{
+				...cityInventory,
 				cityId: 'industry-city',
-				...warehouse,
-				materials: { ...warehouse.materials }
+				materials: { ...cityInventory.materials }
 			}
 		]
 	});
 
-	return Object.defineProperty(state, 'warehouse', {
+	return Object.defineProperty(state, 'cityInventory', {
 		get: () => state.cityInventoriesByCityId.get('industry-city')!
-	}) as RailTickState & { readonly warehouse: WarehouseInventory };
+	}) as RailTickState & { readonly cityInventory: CityInventory };
 }
 
 // Layout used across tests:
@@ -181,7 +177,7 @@ describe('pullViaRail', () => {
 		});
 		const result = pullViaRail(state, mill, 'grain', 10);
 		expect(result.fromWarehouse).toBe(1);
-		expect(state.warehouse.materials.grain).toBe(49);
+		expect(state.cityInventory.materials.grain).toBe(49);
 		expect(state.shipments[0]!.kind).toBe('pull-warehouse');
 	});
 
@@ -338,7 +334,7 @@ describe('pushSurplusViaRail', () => {
 			overflowCost: 0
 		});
 		pushSurplusViaRail(state, farm);
-		expect(state.warehouse.materials.grain).toBe(1); // bottlenecked at 1/day
+		expect(state.cityInventory.materials.grain).toBe(1); // bottlenecked at 1/day
 		expect(state.inventories.get('industry-building-1')!.grain).toBe(4);
 		expect(state.shipments[0]!.kind).toBe('push-warehouse');
 	});
@@ -356,8 +352,8 @@ describe('pushSurplusViaRail', () => {
 			overflowCost: 0
 		});
 		pushSurplusViaRail(state, mill);
-		expect(state.warehouse.materials.flour).toBe(1);
-		expect(state.warehouse.materials.grain).toBeUndefined();
+		expect(state.cityInventory.materials.flour).toBe(1);
+		expect(state.cityInventory.materials.grain).toBeUndefined();
 		expect(state.inventories.get('industry-building-1')).toEqual({ grain: 12, flour: 4 });
 		expect(state.shipments[0]).toMatchObject({
 			kind: 'push-warehouse',
@@ -390,7 +386,7 @@ describe('pushSurplusViaRail', () => {
 			{ capacity: 500, materials: {}, overflowUnits: 0, overflowCost: 0 }
 		);
 		pushSurplusViaRail(state, farm);
-		expect(state.warehouse.materials.grain).toBe(1);
+		expect(state.cityInventory.materials.grain).toBe(1);
 		expect(state.shipments).toHaveLength(1);
 		expect(state.shipments[0]!.toId).toBe('industry-building-2');
 	});
@@ -429,7 +425,7 @@ describe('pushSurplusViaRail', () => {
 			overflowCost: 0
 		});
 		pushSurplusViaRail(state, farm);
-		expect(state.warehouse.materials.grain).toBe(6);
+		expect(state.cityInventory.materials.grain).toBe(6);
 		expect(state.inventories.get('industry-building-1')!.grain).toBe(4);
 		expect(state.shipments).toHaveLength(2);
 		// Nearer warehouse B (shorter path) is served first.

@@ -43,7 +43,8 @@ function emptyProductionReport(
 		warehouseUsed: 0,
 		railShipments: [],
 		railUsage: {},
-		...overrides
+		...overrides,
+		cityInventories: overrides.cityInventories ?? []
 	};
 }
 
@@ -78,11 +79,13 @@ function latestStoreReport(overrides: Partial<DailyStoreReport> = {}): DailyStor
 				warehouseValue: 48,
 				importedUnits: 4,
 				importCost: 12,
-				importSpend: 48
+				importSpend: 48,
+				replenishmentOutcome: null
 			}
 		],
 		warnings: [],
-		...overrides
+		...overrides,
+		replenishment: overrides.replenishment ?? null
 	};
 }
 
@@ -101,7 +104,8 @@ function snackProductReport(overrides: Partial<DailyProductReport> = {}): DailyP
 		importedUnits: 4,
 		importCost: 12,
 		importSpend: 48,
-		...overrides
+		...overrides,
+		replenishmentOutcome: overrides.replenishmentOutcome ?? null
 	};
 }
 
@@ -146,12 +150,12 @@ function withLatestReport(game: GameState, productionReport: DailyProductionRepo
 function withStarterCityInventory(
 	game: GameState,
 	materials: Partial<Record<MaterialId, number>>,
-	capacity = game.cityInventories?.find((inventory) => inventory.cityId === 'industry-city')
+	capacity = game.cityInventories.find((inventory) => inventory.cityId === 'industry-city')
 		?.capacity ?? 0
 ): GameState {
 	return {
 		...game,
-		cityInventories: game.cityInventories!.map((inventory) =>
+		cityInventories: game.cityInventories.map((inventory) =>
 			inventory.cityId === 'industry-city' ? { ...inventory, capacity, materials } : inventory
 		)
 	};
@@ -329,13 +333,7 @@ describe('warehouse flow graph', () => {
 			{
 				...opened,
 				activeIndustryCityId: 'industry-city',
-				warehouse: {
-					capacity: 999,
-					materials: { drinks: 99 },
-					overflowUnits: 0,
-					overflowCost: 0
-				},
-				cityInventories: opened.cityInventories!.map((inventory) =>
+				cityInventories: opened.cityInventories.map((inventory) =>
 					inventory.cityId === 'industry-city'
 						? {
 								...inventory,

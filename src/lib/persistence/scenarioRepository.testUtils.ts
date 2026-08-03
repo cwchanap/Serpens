@@ -161,12 +161,6 @@ function fixtureGame(): GameState {
 				supplyCityId: 'industry-city'
 			}
 		],
-		warehouse: {
-			capacity: 0,
-			materials: {},
-			overflowUnits: 0,
-			overflowCost: 0
-		},
 		stores: [],
 		staff: [],
 		hiringCandidates: [],

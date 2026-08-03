@@ -298,9 +298,7 @@ export const METRIC_REGISTRY = {
 			if (query.metric !== 'city-inventory-quantity') {
 				return { actual: 0, contributingIds: [] };
 			}
-			const inventory = game.cityInventories?.find(
-				(candidate) => candidate.cityId === query.cityId
-			);
+			const inventory = game.cityInventories.find((candidate) => candidate.cityId === query.cityId);
 			return {
 				actual: inventory?.materials[query.materialId] ?? 0,
 				contributingIds: [cityInventoryEvidenceId(query.cityId, query.materialId)]

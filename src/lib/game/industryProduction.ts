@@ -6,7 +6,6 @@ import {
 	normalizeCityInventoryDerivedState
 } from './cityInventory';
 import { INDUSTRIAL_BUILDING_TYPES, MATERIALS, PRODUCTION_RECIPES } from './industry';
-import { projectCityInventoriesToLegacyWarehouse } from './legacyWarehouse';
 import { getBuildingThroughputMultiplier } from './leveling';
 import { createRailTickState, pullViaRail, pushSurplusViaRail } from './railShipping';
 import {
@@ -333,11 +332,6 @@ export function simulateIndustryProduction(
 		game: {
 			...normalizedGame,
 			cash: normalizedGame.cash - report.importSpend - report.operatingCost - report.overflowCost,
-			// Legacy retail callers still read this aggregate during the staged
-			// cutover. It is derived one-way from authoritative city inventories.
-			warehouse: normalizedGame.cityInventories
-				? projectCityInventoriesToLegacyWarehouse(railState.cityInventoriesByCityId.values())
-				: normalizedGame.warehouse,
 			cityInventories,
 			industrialBuildings: normalizedGame.industrialBuildings.map((building) => {
 				// Push phase can drain a building's buffer after buildingUpdates was
@@ -437,10 +431,6 @@ function foldRailCityInventories(
 	game: GameState,
 	railState: ReturnType<typeof createRailTickState>
 ) {
-	if (!game.cityInventories) {
-		return game.cityInventories;
-	}
-
 	return game.cityInventories.map(
 		(inventory) => railState.cityInventoriesByCityId.get(inventory.cityId) ?? inventory
 	);

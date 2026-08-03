@@ -77,7 +77,7 @@ function getRetailChainScope(game: GameState): RetailChainScope {
 	}
 
 	const stores = game.stores.filter((store) => store.cityId === activeCity.id);
-	const assignment = game.retailSupplyAssignments?.find(
+	const assignment = game.retailSupplyAssignments.find(
 		(assignment) => assignment.retailCityId === activeCity.id
 	);
 	if (!assignment) {

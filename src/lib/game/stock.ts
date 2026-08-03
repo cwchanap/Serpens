@@ -284,7 +284,8 @@ export function simulateProductSalesForCity(input: {
 				warehouseValue: 0,
 				importedUnits: 0,
 				importCost: category.importCost,
-				importSpend: 0
+				importSpend: 0,
+				replenishmentOutcome: null
 			});
 		}
 	}

@@ -16,7 +16,8 @@ function emptyProductionReport(): DailyProductionReport {
 		warehouseCapacity: 0,
 		warehouseUsed: 0,
 		railShipments: [],
-		railUsage: {}
+		railUsage: {},
+		cityInventories: []
 	};
 }
 
@@ -87,6 +88,7 @@ function storeReport(importSpend: number): DailyStoreReport {
 		reputation: 100,
 		marketPosition: 100,
 		productReports: [],
+		replenishment: null,
 		warnings: []
 	};
 }

@@ -15,11 +15,6 @@ import {
 } from '$lib/game/buildingInventory';
 import { INDUSTRIAL_BUILDING_TYPES, MATERIALS } from '$lib/game/industry';
 import {
-	getWarehouseCapacity,
-	projectCityInventoriesToLegacyWarehouse,
-	recalculateWarehousePressure
-} from '$lib/game/legacyWarehouse';
-import {
 	createIndustryTileLookup,
 	getIndustryBuildingFootprint
 } from '$lib/game/industryFootprint';
@@ -61,6 +56,7 @@ import { clampScore } from '$lib/game/reports';
 import { calculateStockHealth, getFinishedMaterialIdForCategory } from '$lib/game/stock';
 import type {
 	City,
+	CityInventory,
 	CityTile,
 	GameState,
 	IndustrialBuilding,
@@ -93,7 +89,6 @@ export type SaveDataErrorCode =
 	| 'invariant-store-cap'
 	| 'invariant-products'
 	| 'invariant-stock-health'
-	| 'invariant-warehouse'
 	| 'invariant-inventory'
 	| 'invariant-entity-city-opened'
 	| 'invariant-entity-city-ownership'
@@ -899,29 +894,50 @@ function migrateV11SaveRecord(record: unknown): unknown {
 	return { ...(record as Record<string, unknown>), schemaVersion: 12 };
 }
 
+/** The pre-v13 wire-only global pool; never part of normalized GameState. */
+interface LegacyV12WarehouseWire {
+	materials: unknown;
+}
+
+type V12MigrationGame = Omit<GameState, 'cityInventories' | 'retailSupplyAssignments'> & {
+	cityInventories?: unknown;
+	retailSupplyAssignments?: unknown;
+	warehouse: LegacyV12WarehouseWire;
+};
+
 function migrateV12Game(value: unknown): unknown {
 	if (!isV12MigrationGameShape(value)) return value;
 
-	const game = value as GameState;
-	assertV12EntityCityOwnership(game);
-	const legacyMaterials = readV12WarehouseMaterials(game.warehouse);
-	const eligible = getV12EligibleCityInventories(game);
-	const cityInventories = allocateLegacyWarehouseMaterials(game, eligible, legacyMaterials);
-	const primaryCityId = selectV12PrimaryCity(game, cityInventories);
-	const retailSupplyAssignments = getV12DefaultRetailSupplyAssignments(game, primaryCityId);
+	const legacyV12Game = value;
+	assertV12EntityCityOwnership(legacyV12Game);
+	const legacyMaterials = readV12WarehouseMaterials(legacyV12Game.warehouse);
+	const eligible = getV12EligibleCityInventories(legacyV12Game);
+	const cityInventories = allocateLegacyWarehouseMaterials({
+		activeIndustryCityId: legacyV12Game.activeIndustryCityId,
+		eligibleCityInventories: eligible,
+		materials: legacyMaterials
+	});
+	const primaryCityId = selectV12PrimaryCity(legacyV12Game, cityInventories);
+	const retailSupplyAssignments = getV12DefaultRetailSupplyAssignments(
+		legacyV12Game,
+		primaryCityId
+	);
 
 	assertV12MaterialConservation(legacyMaterials, cityInventories);
-	const migratedGame = {
-		...game,
+	const {
+		warehouse: _legacyWarehouse,
+		cityInventories: _legacyCityInventories,
+		retailSupplyAssignments: _legacyRetailSupplyAssignments,
+		...currentGame
+	} = legacyV12Game;
+	void _legacyWarehouse;
+	void _legacyCityInventories;
+	void _legacyRetailSupplyAssignments;
+	return {
+		...currentGame,
 		cityInventories,
 		retailSupplyAssignments,
-		// The staged global field is a projection after this point, never a
-		// second source of stock truth.
-		warehouse: projectCityInventoriesToLegacyWarehouse(cityInventories)
-	};
-	return {
-		...migratedGame,
-		reports: migrateV12Reports(game.reports, migratedGame, primaryCityId)
+		reports: migrateV12Reports(legacyV12Game.reports, legacyV12Game, primaryCityId)
 	};
 }
 
@@ -930,7 +946,7 @@ function migrateV12SaveRecord(record: unknown): unknown {
 	return { ...(record as Record<string, unknown>), schemaVersion: 13 };
 }
 
-function isV12MigrationGameShape(value: unknown): value is GameState {
+function isV12MigrationGameShape(value: unknown): value is V12MigrationGame {
 	if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
 	const game = value as Record<string, unknown>;
 	if (
@@ -952,7 +968,7 @@ function isV12MigrationGameShape(value: unknown): value is GameState {
 	);
 }
 
-function assertV12EntityCityOwnership(game: GameState): void {
+function assertV12EntityCityOwnership(game: V12MigrationGame): void {
 	const issue = findEntityCityOwnershipIssues(game)[0];
 	if (!issue) return;
 
@@ -966,7 +982,7 @@ function assertV12EntityCityOwnership(game: GameState): void {
 }
 
 function readV12WarehouseMaterials(
-	warehouse: GameState['warehouse']
+	warehouse: LegacyV12WarehouseWire
 ): Partial<Record<MaterialId, number>> {
 	if (
 		typeof warehouse !== 'object' ||
@@ -982,7 +998,7 @@ function readV12WarehouseMaterials(
 	return { ...(warehouse.materials as Partial<Record<MaterialId, number>>) };
 }
 
-function getV12EligibleCityInventories(game: GameState) {
+function getV12EligibleCityInventories(game: V12MigrationGame): CityInventory[] {
 	const openedCityIds = new Set(
 		game.world.openedCityIds.filter(
 			(cityId): cityId is WorldCityId =>
@@ -1006,7 +1022,7 @@ function getV12EligibleCityInventories(game: GameState) {
 	}));
 }
 
-function getV12CityWarehouseCapacity(game: GameState, cityId: WorldCityId): number {
+function getV12CityWarehouseCapacity(game: V12MigrationGame, cityId: WorldCityId): number {
 	return game.industrialBuildings.reduce((capacity, building) => {
 		if (building.cityId !== cityId) return capacity;
 		const buildingCapacity = INDUSTRIAL_BUILDING_TYPES[building.typeId]?.warehouseCapacity ?? 0;
@@ -1022,7 +1038,7 @@ function getV12CityWarehouseCapacity(game: GameState, cityId: WorldCityId): numb
 }
 
 function selectV12PrimaryCity(
-	game: GameState,
+	game: V12MigrationGame,
 	eligible: readonly { cityId: WorldCityId; capacity: number }[]
 ): WorldCityId | null {
 	if (eligible.length === 0) return null;
@@ -1036,7 +1052,10 @@ function selectV12PrimaryCity(
 	})[0]!.cityId;
 }
 
-function getV12DefaultRetailSupplyAssignments(game: GameState, primaryCityId: WorldCityId | null) {
+function getV12DefaultRetailSupplyAssignments(
+	game: V12MigrationGame,
+	primaryCityId: WorldCityId | null
+) {
 	const materializedRetailCityIds = new Set(
 		game.cities.filter((city) => typeof city.id === 'string').map((city) => city.id as WorldCityId)
 	);
@@ -1079,7 +1098,7 @@ function assertV12MaterialConservation(
 
 function migrateV12Reports(
 	reports: unknown,
-	game: GameState,
+	game: V12MigrationGame,
 	primaryCityId: WorldCityId | null
 ): unknown {
 	if (!Array.isArray(reports)) return reports;
@@ -1088,7 +1107,7 @@ function migrateV12Reports(
 
 function migrateV12Report(
 	value: unknown,
-	game: GameState,
+	game: V12MigrationGame,
 	primaryCityId: WorldCityId | null
 ): unknown {
 	if (typeof value !== 'object' || value === null || Array.isArray(value)) return value;
@@ -1144,7 +1163,7 @@ function migrateV12StoreReports(value: unknown): unknown {
 function migrateV12ProductionReport(
 	value: unknown,
 	storeReports: unknown,
-	game: GameState,
+	game: V12MigrationGame,
 	primaryCityId: WorldCityId | null
 ): unknown {
 	if (typeof value !== 'object' || value === null || Array.isArray(value)) return value;
@@ -1213,7 +1232,11 @@ interface V12RetailImportEvidence {
 	value: number;
 }
 
-function migrateV12ShopImports(value: unknown, storeReports: unknown, game: GameState): unknown {
+function migrateV12ShopImports(
+	value: unknown,
+	storeReports: unknown,
+	game: V12MigrationGame
+): unknown {
 	if (!Array.isArray(value)) return value;
 	const evidence = getV12RetailImportEvidence(storeReports, game);
 	if (evidence === null) {
@@ -1275,7 +1298,7 @@ function migrateV12ShopImports(value: unknown, storeReports: unknown, game: Game
 
 function getV12RetailImportEvidence(
 	storeReports: unknown,
-	game: GameState
+	game: V12MigrationGame
 ): V12RetailImportEvidence[] | null {
 	if (!Array.isArray(storeReports)) return null;
 	const evidence: V12RetailImportEvidence[] = [];
@@ -1352,7 +1375,7 @@ function getV12ShopImportEvidenceKey(
 
 function createV12ProductionCloseSummaries(
 	productionReport: Record<string, unknown>,
-	game: GameState,
+	game: V12MigrationGame,
 	primaryCityId: WorldCityId | null
 ): unknown {
 	if (primaryCityId === null) return productionReport.cityInventories;
@@ -1669,10 +1692,7 @@ function validateSaveRecordInternal(value: unknown): SaveRecord {
 	const normalizedSandboxGame = normalizeSandboxSavedGame(migratedGame);
 	const structurallyValidatedGame = validateCurrentGameStateInternal(normalizedSandboxGame, false);
 	const normalizedCityInventoryGame = normalizeCityInventoryDerivedState(structurallyValidatedGame);
-	const projectedWarehouseGame = projectCanonicalCityInventoriesToLegacyWarehouse(
-		normalizedCityInventoryGame
-	);
-	const game = validateCurrentGameStateInternal(projectedWarehouseGame, true);
+	const game = validateCurrentGameStateInternal(normalizedCityInventoryGame, true);
 	const kind = requireString(metadata.kind, 'Save metadata kind');
 
 	if (kind !== 'auto' && kind !== 'manual') {
@@ -1691,15 +1711,6 @@ function validateSaveRecordInternal(value: unknown): SaveRecord {
 		...(migrated as SaveRecord),
 		schemaVersion: SAVE_SCHEMA_VERSION,
 		game
-	};
-}
-
-function projectCanonicalCityInventoriesToLegacyWarehouse(game: GameState): GameState {
-	if (!game.cityInventories) return game;
-
-	return {
-		...game,
-		warehouse: projectCityInventoriesToLegacyWarehouse(game.cityInventories)
 	};
 }
 
@@ -1788,7 +1799,6 @@ function validateCurrentGameStateInternal(
 	validateCurrentCityInventories(currentGame, false);
 	validateCurrentRetailSupplyAssignments(currentGame);
 	validateCurrentIndustrialBuildingPlacements(industrialBuildings, industryCities);
-	validateSavedWarehouse(game.warehouse, 'Saved game warehouse');
 	validateCurrentRetailStorePlacements(stores, cities);
 	if (requireCurrentCityInventoryDerivedState) {
 		validateCurrentCityInventories(currentGame, true);
@@ -1830,27 +1840,6 @@ function validateCurrentGameStateInternal(
 		);
 	}
 
-	if (requireCurrentCityInventoryDerivedState) {
-		const expectedWarehouse = projectCityInventoriesToLegacyWarehouse(currentGame.cityInventories!);
-		const expectedMaterials = expectedWarehouse.materials as Record<string, number | undefined>;
-		const warehouseMaterialsMatch =
-			Object.keys(currentGame.warehouse.materials).length ===
-				Object.keys(expectedMaterials).length &&
-			Object.entries(currentGame.warehouse.materials).every(
-				([materialId, quantity]) => expectedMaterials[materialId] === quantity
-			);
-		if (
-			currentGame.warehouse.capacity !== expectedWarehouse.capacity ||
-			currentGame.warehouse.overflowUnits !== expectedWarehouse.overflowUnits ||
-			currentGame.warehouse.overflowCost !== expectedWarehouse.overflowCost ||
-			!warehouseMaterialsMatch
-		) {
-			throw new SaveDataError(
-				'Saved game warehouse must be the one-way projection of authoritative city inventories',
-				'invariant-warehouse'
-			);
-		}
-	}
 	// Reference-stability contract: refreshWorldProgress returns the SAME game
 	// reference when no milestone/city reveal applies (see world.ts: `if (!changed
 	// && !normalized && storeCap === game.storeCap) return game;`). This check
@@ -2046,7 +2035,6 @@ function normalizeSandboxSavedGameInternal(value: unknown): unknown {
 		world: normalizedWorld,
 		storeCap: normalizedStoreCap
 	} as GameState;
-	normalizedGame = normalizeSandboxWarehouseState(normalizedGame);
 
 	if (canRefreshSandboxWorldProgress(normalizedGame)) {
 		normalizedGame = refreshWorldProgress(normalizedGame);
@@ -2058,59 +2046,6 @@ function normalizeSandboxSavedGameInternal(value: unknown): unknown {
 			? normalizedGame.industrialBuildings.map(normalizeSandboxBuildingInventory)
 			: normalizedGame.industrialBuildings
 	};
-}
-
-function normalizeSandboxWarehouseState(game: GameState): GameState {
-	if (
-		typeof game.warehouse !== 'object' ||
-		game.warehouse === null ||
-		Array.isArray(game.warehouse) ||
-		!Array.isArray(game.industrialBuildings) ||
-		!game.industrialBuildings.every(
-			(building) =>
-				typeof building === 'object' && building !== null && typeof building.typeId === 'string'
-		)
-	) {
-		return game;
-	}
-
-	const warehouse = game.warehouse as unknown as Record<string, unknown>;
-	if (
-		typeof warehouse.capacity !== 'number' ||
-		!Number.isFinite(warehouse.capacity) ||
-		typeof warehouse.overflowUnits !== 'number' ||
-		!Number.isFinite(warehouse.overflowUnits) ||
-		typeof warehouse.overflowCost !== 'number' ||
-		!Number.isFinite(warehouse.overflowCost) ||
-		typeof warehouse.materials !== 'object' ||
-		warehouse.materials === null ||
-		Array.isArray(warehouse.materials)
-	) {
-		return game;
-	}
-	const materials = warehouse.materials as Record<string, unknown>;
-	if (
-		Object.values(materials).some(
-			(quantity) => typeof quantity !== 'number' || !Number.isFinite(quantity) || quantity < 0
-		)
-	) {
-		return game;
-	}
-
-	const normalizedWarehouse = recalculateWarehousePressure({
-		...(game.warehouse as GameState['warehouse']),
-		capacity: getWarehouseCapacity(game),
-		materials: { ...game.warehouse.materials }
-	});
-	if (
-		game.warehouse.capacity === normalizedWarehouse.capacity &&
-		game.warehouse.overflowUnits === normalizedWarehouse.overflowUnits &&
-		game.warehouse.overflowCost === normalizedWarehouse.overflowCost
-	) {
-		return game;
-	}
-
-	return { ...game, warehouse: normalizedWarehouse };
 }
 
 function normalizeSavedCityTileFeatures(cities: unknown): unknown {
@@ -2145,22 +2080,13 @@ function canRefreshSandboxWorldProgress(game: GameState): boolean {
 		) ||
 		!Array.isArray(game.reports) ||
 		!game.reports.every((report) => typeof report === 'object' && report !== null) ||
-		(game.cityInventories !== undefined &&
-			(!Array.isArray(game.cityInventories) ||
-				!game.cityInventories.every(
-					(inventory) => typeof inventory === 'object' && inventory !== null
-				))) ||
-		(game.retailSupplyAssignments !== undefined &&
-			(!Array.isArray(game.retailSupplyAssignments) ||
-				!game.retailSupplyAssignments.every(
-					(assignment) => typeof assignment === 'object' && assignment !== null
-				))) ||
-		typeof game.warehouse !== 'object' ||
-		game.warehouse === null ||
-		typeof game.warehouse.materials !== 'object' ||
-		game.warehouse.materials === null ||
-		Object.values(game.warehouse.materials).some(
-			(quantity) => typeof quantity !== 'number' || !Number.isFinite(quantity)
+		!Array.isArray(game.cityInventories) ||
+		!game.cityInventories.every(
+			(inventory) => typeof inventory === 'object' && inventory !== null
+		) ||
+		!Array.isArray(game.retailSupplyAssignments) ||
+		!game.retailSupplyAssignments.every(
+			(assignment) => typeof assignment === 'object' && assignment !== null
 		) ||
 		game.reports.some(
 			(report) => typeof report.netIncome !== 'number' || !Number.isFinite(report.netIncome)
@@ -3248,25 +3174,6 @@ function validateSavedDailyMaterialMovement(value: unknown, label: string): void
 	requireNumber(movement.quantity, `${label} quantity`);
 	requireNumber(movement.value, `${label} value`);
 	requireOneOf(movement.source, `${label} source`, MATERIAL_MOVEMENT_SOURCES);
-}
-
-function validateSavedWarehouse(value: unknown, label: string): void {
-	const warehouse = requireRecord(value, label);
-	const materials = requireRecord(warehouse.materials, `${label} materials`);
-
-	requireNumber(warehouse.capacity, `${label} capacity`);
-	for (const [materialId, quantity] of Object.entries(materials)) {
-		if (!MATERIAL_ID_SET.has(materialId)) {
-			throw new SaveDataError(`${label} materials ${materialId} must be a known material`);
-		}
-
-		const materialQuantity = requireNumber(quantity, `${label} materials ${materialId}`);
-		if (materialQuantity < 0) {
-			throw new SaveDataError(`${label} materials ${materialId} must be at least 0`);
-		}
-	}
-	requireNumber(warehouse.overflowUnits, `${label} overflowUnits`);
-	requireNumber(warehouse.overflowCost, `${label} overflowCost`);
 }
 
 function validateSavedFinance(value: unknown, gameDay: number, label: string): void {
