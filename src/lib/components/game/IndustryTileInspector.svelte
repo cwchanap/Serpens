@@ -2,7 +2,7 @@
 	import { asset } from '$app/paths';
 	import { getIndustrialBuildingArt, getIndustryMaterialArt } from '$lib/assets/gameArt';
 	import { INDUSTRIAL_BUILDING_TYPES } from '$lib/game/industry';
-	import { getWarehouseUsed } from '$lib/game/industryProduction';
+	import { getWarehouseUsed } from '$lib/game/legacyWarehouse';
 	import {
 		MAX_BUILDING_LEVEL,
 		canUpgradeBuilding,

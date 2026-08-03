@@ -10,7 +10,7 @@ import {
 	buildIndustrialBuilding,
 	getIndustrialPlacementBlockReason
 } from '$lib/game/industryPlacement';
-import { getWarehouseCapacity, recalculateWarehousePressure } from '$lib/game/industryProduction';
+import { getWarehouseCapacity, recalculateWarehousePressure } from '$lib/game/legacyWarehouse';
 import { formatLocation } from '$lib/game/placement';
 import type { DecisionContext } from '$lib/game/decisionContext';
 import { simulateDay } from '$lib/game/simulateDay';

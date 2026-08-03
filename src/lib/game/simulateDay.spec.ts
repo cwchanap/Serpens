@@ -96,8 +96,18 @@ describe('daily simulation', () => {
 			    "importSpend": 10,
 			    "netCashChange": -238,
 			    "production": {
+			      "cityInventories": [
+			        {
+			          "capacity": 200,
+			          "cityId": "industry-city",
+			          "overflowCost": 10,
+			          "overflowUnits": 5,
+			          "used": 205,
+			        },
+			      ],
 			      "consumed": [
 			        {
+			          "cityId": "industry-city",
 			          "materialId": "water",
 			          "quantity": 10,
 			          "source": "rail",
@@ -111,12 +121,14 @@ describe('daily simulation', () => {
 			      "overflowUnits": 5,
 			      "produced": [
 			        {
+			          "cityId": "industry-city",
 			          "materialId": "water",
 			          "quantity": 40,
 			          "source": "local",
 			          "value": 40,
 			        },
 			        {
+			          "cityId": "industry-city",
 			          "materialId": "bottled-water",
 			          "quantity": 10,
 			          "source": "local",
@@ -125,6 +137,7 @@ describe('daily simulation', () => {
 			      ],
 			      "railShipments": [
 			        {
+			          "cityId": "industry-city",
 			          "fromId": "pump",
 			          "kind": "pull-producer",
 			          "materialId": "water",
@@ -133,6 +146,7 @@ describe('daily simulation', () => {
 			          "value": 10,
 			        },
 			        {
+			          "cityId": "industry-city",
 			          "fromId": "bottler",
 			          "kind": "push-warehouse",
 			          "materialId": "bottled-water",
@@ -820,6 +834,15 @@ describe('daily simulation', () => {
 		const result = simulateDay(createNewGame('convenience', 20260512));
 
 		expect(result.reports[0]?.productionReport).toEqual({
+			cityInventories: [
+				{
+					cityId: 'industry-city',
+					capacity: 0,
+					used: 0,
+					overflowUnits: 0,
+					overflowCost: 0
+				}
+			],
 			produced: [],
 			consumed: [],
 			importedInputs: [],
@@ -847,7 +870,16 @@ describe('daily simulation', () => {
 				materials: { snacks: 12 },
 				overflowUnits: 12,
 				overflowCost: 24
-			}
+			},
+			cityInventories: [
+				{
+					cityId: 'industry-city',
+					capacity: 0,
+					materials: { snacks: 12 },
+					overflowUnits: 12,
+					overflowCost: 24
+				}
+			]
 		});
 		const report = result.reports[0]!;
 		const storeOperatingCosts = report.storeReports.reduce(
@@ -1218,12 +1250,30 @@ describe('daily simulation', () => {
 		const noWarehouse = simulateDay({
 			...baseGame,
 			stores: [store],
-			warehouse: { capacity: 200, materials: {}, overflowUnits: 0, overflowCost: 0 }
+			warehouse: { capacity: 200, materials: {}, overflowUnits: 0, overflowCost: 0 },
+			cityInventories: [
+				{
+					cityId: 'industry-city',
+					capacity: 200,
+					materials: {},
+					overflowUnits: 0,
+					overflowCost: 0
+				}
+			]
 		});
 		const withWarehouse = simulateDay({
 			...baseGame,
 			stores: [store],
-			warehouse: { capacity: 200, materials: { snacks: 12 }, overflowUnits: 0, overflowCost: 0 }
+			warehouse: { capacity: 200, materials: { snacks: 12 }, overflowUnits: 0, overflowCost: 0 },
+			cityInventories: [
+				{
+					cityId: 'industry-city',
+					capacity: 200,
+					materials: { snacks: 12 },
+					overflowUnits: 0,
+					overflowCost: 0
+				}
+			]
 		});
 		const warehouseReport = withWarehouse.reports[0]!.storeReports[0]!.productReports[0]!;
 
@@ -1291,6 +1341,7 @@ describe('daily simulation', () => {
 		// never reaches the shared warehouse pool — the store's weekly refill
 		// finds nothing there and imports the full target stock instead.
 		expect(dailyReport.productionReport.produced).toContainEqual({
+			cityId: 'industry-city',
 			materialId: 'snacks',
 			quantity: 8,
 			value: 64,

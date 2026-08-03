@@ -4,7 +4,7 @@ import {
 	DEFAULT_RETAIL_CITY_WIDTH,
 	generateCity
 } from '$lib/game/city';
-import { getWarehouseCapacity } from '$lib/game/industryProduction';
+import { getWarehouseCapacity } from '$lib/game/legacyWarehouse';
 import { createFoundingGameAtTile } from '$lib/game/placement';
 import { getTotalDebt } from '$lib/game/finance';
 import { normalizeSeed } from '$lib/game/rng';

@@ -1,7 +1,7 @@
 import { page } from 'vitest/browser';
 import { describe, expect, it } from 'vitest';
 import { render } from 'vitest-browser-svelte';
-import { addWarehouseMaterial } from '$lib/game/industryProduction';
+import { addWarehouseMaterial } from '$lib/game/legacyWarehouse';
 import { createNewGame } from '$lib/game/state';
 import { createI18n, type I18nBundle } from '$lib/i18n';
 import type { GameState } from '$lib/game/types';
