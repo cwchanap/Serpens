@@ -189,6 +189,40 @@ describe('RetailSupplySources', () => {
 		expect(onChange).toHaveBeenLastCalledWith('harbor-city', null);
 	});
 
+	it('reconciles an uncommitted changed source to the prop-derived selection', async () => {
+		expect.assertions(3);
+		const onChange = vi.fn();
+		renderSources({ onChange });
+		const select = page.getByLabelText('Local supply source for Harbor City');
+
+		await select.selectOptions('industry-city');
+
+		expect(onChange).toHaveBeenCalledTimes(1);
+		expect(onChange).toHaveBeenLastCalledWith('harbor-city', 'industry-city');
+		await expect.element(select).toHaveValue('breadbasket-basin');
+	});
+
+	it('reconciles an uncommitted Imports-only choice back to a missing assignment', async () => {
+		expect.assertions(3);
+		const onChange = vi.fn();
+		renderSources({
+			onChange,
+			retailCities: [
+				cityView({
+					currentSelection: 'missing',
+					currentSummary: 'Supply configuration unavailable.'
+				})
+			]
+		});
+		const select = page.getByLabelText('Local supply source for Harbor City');
+
+		await select.selectOptions(RETAIL_SUPPLY_IMPORTS_ONLY_VALUE);
+
+		expect(onChange).toHaveBeenCalledTimes(1);
+		expect(onChange).toHaveBeenLastCalledWith('harbor-city', null);
+		await expect.element(select).toHaveValue(RETAIL_SUPPLY_MISSING_CONFIGURATION_VALUE);
+	});
+
 	it('allows a missing assignment to recover by choosing an available source', async () => {
 		expect.assertions(1);
 		const onChange = vi.fn();
