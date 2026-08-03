@@ -603,11 +603,24 @@ function createLegacyV12Report(legacyV12Game: V12GameFixture): DailyReport {
 			warehouseUsed: 3,
 			overflowUnits: 0,
 			overflowCost: 0,
-			produced: [{ materialId: 'water', quantity: 2, value: 2, source: 'local' }],
-			warehousePulls: [{ materialId: 'water', quantity: 1, value: 1, source: 'warehouse' }],
-			shopImports: [{ materialId: 'bottled-water', quantity: 3, value: 6, source: 'import' }],
+			produced: [
+				{ cityId: 'industry-city', materialId: 'water', quantity: 2, value: 2, source: 'local' }
+			],
+			warehousePulls: [
+				{ cityId: 'industry-city', materialId: 'water', quantity: 1, value: 1, source: 'warehouse' }
+			],
+			shopImports: [
+				{
+					cityId: 'harbor-city',
+					materialId: 'bottled-water',
+					quantity: 3,
+					value: 6,
+					source: 'import'
+				}
+			],
 			railShipments: [
 				{
+					cityId: 'industry-city',
 					materialId: 'water',
 					quantity: 1,
 					value: 1,
@@ -644,6 +657,22 @@ function createLegacyV12Report(legacyV12Game: V12GameFixture): DailyReport {
 	});
 	const legacy = structuredClone(report) as unknown as Record<string, unknown>;
 	const productionReport = legacy.productionReport as Record<string, unknown>;
+	for (const field of [
+		'produced',
+		'consumed',
+		'importedInputs',
+		'warehousePulls',
+		'shopImports',
+		'railShipments'
+	] as const) {
+		const rows = productionReport[field];
+		if (!Array.isArray(rows)) continue;
+		for (const row of rows) {
+			if (typeof row === 'object' && row !== null && !Array.isArray(row)) {
+				delete (row as Record<string, unknown>).cityId;
+			}
+		}
+	}
 	delete productionReport.cityInventories;
 	const storeReport = (legacy.storeReports as Array<Record<string, unknown>>)[0]!;
 	delete storeReport.replenishment;
@@ -1271,6 +1300,23 @@ describe('saveCodec', () => {
 		});
 		expect(report.productionReport.cityInventories).toEqual([
 			{ cityId: 'industry-city', capacity: 400, used: 3, overflowUnits: 0, overflowCost: 0 }
+		]);
+	});
+
+	test('migrates raw v12 building production rows to the owning industry city', () => {
+		expect.assertions(1);
+		const rawRecord = structuredClone(createV12MultiCityRecord({ water: 3 })) as unknown as Record<
+			string,
+			unknown
+		>;
+		const rawGame = rawRecord.game as Record<string, unknown>;
+		const rawBuilding = (rawGame.industrialBuildings as Array<Record<string, unknown>>)[0]!;
+		rawBuilding.lastProduction = [{ materialId: 'water', quantity: 2, value: 2, source: 'local' }];
+
+		const migrated = validateSaveRecord(rawRecord);
+
+		expect(migrated.game.industrialBuildings[0]?.lastProduction).toEqual([
+			{ cityId: 'industry-city', materialId: 'water', quantity: 2, value: 2, source: 'local' }
 		]);
 	});
 
@@ -6878,8 +6924,8 @@ describe('saveCodec', () => {
 		const report = createDailyReport({
 			productionReport: createDailyProductionReport({
 				produced: [
-					{ materialId: 'grain', quantity: 5, value: 15, source: 'local' },
-					{ materialId: 'flour', quantity: 3, value: 9, source: 'local' }
+					{ cityId: 'industry-city', materialId: 'grain', quantity: 5, value: 15, source: 'local' },
+					{ cityId: 'industry-city', materialId: 'flour', quantity: 3, value: 9, source: 'local' }
 				]
 			})
 		});

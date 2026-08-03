@@ -146,6 +146,19 @@ describe('retail supply assignment', () => {
 });
 
 describe('weekly retail replenishment', () => {
+	test('rejects invalid store ownership before grouping stores for replenishment', () => {
+		expect.assertions(1);
+		const base = withOneReplenishmentProduct(createNewGame('convenience', 292_523));
+		const game: GameState = {
+			...base,
+			stores: [{ ...base.stores[0]!, cityId: 'industry-city' }]
+		};
+
+		expect(() => applyWeeklyReplenishment({ game, storeReports: new Map() })).toThrow(
+			/city ownership/i
+		);
+	});
+
 	test.each([
 		{
 			name: 'debits a fully stocked source city',

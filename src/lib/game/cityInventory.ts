@@ -1,11 +1,13 @@
 import { INDUSTRIAL_BUILDING_TYPES, MATERIALS } from './industry';
-import { WORLD_CITY_CATALOG } from './world';
+import {
+	compareWorldCityIds as compareCatalogWorldCityIds,
+	getWorldCityDefinition
+} from './worldCatalog';
 import type {
 	CityInventory,
 	GameState,
 	MaterialId,
 	RetailSupplyAssignment,
-	WorldCityDefinition,
 	WorldCityId
 } from './types';
 
@@ -48,14 +50,7 @@ export function resolveWorldCityId(cityId: string): WorldCityId | undefined {
 }
 
 export function compareWorldCityIds(left: WorldCityId, right: WorldCityId): number {
-	const leftIndex = worldCityCatalogIndex(left);
-	const rightIndex = worldCityCatalogIndex(right);
-
-	if (leftIndex !== rightIndex) {
-		return leftIndex - rightIndex;
-	}
-
-	return compareCodeUnits(left, right);
+	return compareCatalogWorldCityIds(left, right);
 }
 
 export function createEmptyCityInventory(cityId: WorldCityId): CityInventory {
@@ -444,8 +439,21 @@ export function findEntityCityOwnershipIssues(
 	return issues;
 }
 
-function getWorldCityDefinition(cityId: string): WorldCityDefinition | undefined {
-	return WORLD_CITY_CATALOG.find((city) => city.id === cityId);
+/**
+ * Runtime transition boundary for any path that can mutate entity-scoped
+ * inventory. Persistence uses the non-throwing discovery helper above so it
+ * can preserve SaveDataError codes; simulation must fail before it can skip or
+ * normalize an entity with invalid ownership.
+ */
+export function assertValidEntityCityOwnership(
+	game: Pick<GameState, 'world' | 'cities' | 'industryCities' | 'stores' | 'industrialBuildings'>
+): void {
+	const issue = findEntityCityOwnershipIssues(game)[0];
+	if (!issue) return;
+
+	throw new Error(
+		`Invalid ${issue.kind} city ownership for ${issue.entityId}: ${issue.reason} city ${issue.cityId}`
+	);
 }
 
 function supportsRetailSupplyAssignment(game: GameState, cityId: WorldCityId): boolean {
@@ -456,10 +464,6 @@ function supportsRetailSupplyAssignment(game: GameState, cityId: WorldCityId): b
 		game.world.openedCityIds.includes(city.id) &&
 		game.cities.some((retailCity) => retailCity.id === city.id)
 	);
-}
-
-function worldCityCatalogIndex(cityId: WorldCityId): number {
-	return WORLD_CITY_CATALOG.findIndex((city) => city.id === cityId);
 }
 
 function selectLegacyWarehousePrimaryCity(

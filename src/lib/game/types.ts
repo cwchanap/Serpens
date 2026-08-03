@@ -270,8 +270,7 @@ export interface RailCell {
 }
 
 export interface RailShipment {
-	/** Present on Task-4-and-later runtime shipments; older persisted reports omit it. */
-	cityId?: WorldCityId;
+	cityId: WorldCityId;
 	materialId: MaterialId;
 	quantity: number;
 	value: number;
@@ -329,8 +328,7 @@ export interface IndustrialBuildingType {
 }
 
 export interface DailyMaterialMovement {
-	/** Present on Task-4-and-later runtime movements; older persisted reports omit it. */
-	cityId?: WorldCityId;
+	cityId: WorldCityId;
 	materialId: MaterialId;
 	quantity: number;
 	value: number;

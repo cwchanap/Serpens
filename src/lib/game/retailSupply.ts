@@ -1,4 +1,5 @@
 import {
+	assertValidEntityCityOwnership,
 	compareWorldCityIds,
 	getCityInventory,
 	removeCityInventoryMaterial,
@@ -102,6 +103,7 @@ export function setRetailSupplySource(
 export function applyWeeklyReplenishment(
 	input: WeeklyReplenishmentInput
 ): WeeklyReplenishmentResult {
+	assertValidEntityCityOwnership(input.game);
 	const rules = input.rules ?? DEFAULT_SIMULATION_RULES;
 	const productReports = cloneProductReports(input.storeReports);
 	const cityInventoriesByCityId = new Map<WorldCityId, CityInventory>(

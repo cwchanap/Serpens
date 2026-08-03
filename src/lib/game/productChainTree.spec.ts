@@ -395,10 +395,13 @@ describe('buildProductChainTree', () => {
 		).toBe(4);
 	});
 
-	it('does not invent retail ownership for unattributed historical imports once two retail cities are materialized', () => {
-		const historicalImport = emptyProductionReport({
+	it('does not invent retail ownership for unscoped historical imports', () => {
+		// Current report types require attribution; this models an unsafe legacy
+		// row so the tree remains defensive at its display boundary.
+		const historicalImport = {
+			...emptyProductionReport(),
 			shopImports: [{ materialId: 'snacks', quantity: 4, value: 48, source: 'import' }]
-		});
+		} as unknown as DailyProductionReport;
 		const oneRetailGame = withLatestReport(convenienceGame(), historicalImport);
 		const oneRetailTree = buildProductChainTree({
 			game: oneRetailGame,
@@ -427,12 +430,12 @@ describe('buildProductChainTree', () => {
 			categoryId: 'snacks'
 		});
 
-		expect(oneRetailTree.details['product:snacks']?.actual.shopImported).toBe(4);
+		expect(oneRetailTree.details['product:snacks']?.actual.shopImported).toBe(0);
 		expect(
 			buildStoreCategoryChainSummaries(oneRetailGame).find(
 				(summary) => summary.categoryId === 'snacks'
 			)?.imported
-		).toBe(4);
+		).toBe(0);
 		expect(campusTree.details['product:snacks']?.actual.shopImported).toBe(0);
 		expect(
 			buildStoreCategoryChainSummaries(campusGame).find(
@@ -521,8 +524,24 @@ describe('buildProductChainTree', () => {
 		game = withLatestReport(
 			game,
 			emptyProductionReport({
-				consumed: [{ materialId: 'packaging', quantity: 2, value: 6, source: 'import' }],
-				importedInputs: [{ materialId: 'packaging', quantity: 2, value: 10, source: 'import' }]
+				consumed: [
+					{
+						cityId: 'industry-city',
+						materialId: 'packaging',
+						quantity: 2,
+						value: 6,
+						source: 'import'
+					}
+				],
+				importedInputs: [
+					{
+						cityId: 'industry-city',
+						materialId: 'packaging',
+						quantity: 2,
+						value: 10,
+						source: 'import'
+					}
+				]
 			})
 		);
 
@@ -672,7 +691,15 @@ describe('buildProductChainTree', () => {
 		game = withLatestReport(
 			game,
 			emptyProductionReport({
-				produced: [{ materialId: 'snacks', quantity: 16, value: 128, source: 'local' }]
+				produced: [
+					{
+						cityId: 'industry-city',
+						materialId: 'snacks',
+						quantity: 16,
+						value: 128,
+						source: 'local'
+					}
+				]
 			})
 		);
 		game = {
@@ -774,8 +801,24 @@ describe('buildProductChainTree', () => {
 		const game = withLatestReport(
 			createNewGame('convenience', 20260518),
 			emptyProductionReport({
-				consumed: [{ materialId: 'water', quantity: 16, value: 16, source: 'warehouse' }],
-				warehousePulls: [{ materialId: 'water', quantity: 16, value: 16, source: 'warehouse' }]
+				consumed: [
+					{
+						cityId: 'industry-city',
+						materialId: 'water',
+						quantity: 16,
+						value: 16,
+						source: 'warehouse'
+					}
+				],
+				warehousePulls: [
+					{
+						cityId: 'industry-city',
+						materialId: 'water',
+						quantity: 16,
+						value: 16,
+						source: 'warehouse'
+					}
+				]
 			})
 		);
 
@@ -811,12 +854,40 @@ describe('buildProductChainTree', () => {
 			createNewGame('convenience', 20260518),
 			emptyProductionReport({
 				produced: [
-					{ materialId: 'filtered-water', quantity: 10, value: 20, source: 'local' },
-					{ materialId: 'syrup', quantity: 8, value: 40, source: 'local' },
-					{ materialId: 'bottled-water', quantity: 10, value: 50, source: 'local' }
+					{
+						cityId: 'industry-city',
+						materialId: 'filtered-water',
+						quantity: 10,
+						value: 20,
+						source: 'local'
+					},
+					{ cityId: 'industry-city', materialId: 'syrup', quantity: 8, value: 40, source: 'local' },
+					{
+						cityId: 'industry-city',
+						materialId: 'bottled-water',
+						quantity: 10,
+						value: 50,
+						source: 'local'
+					}
 				],
-				consumed: [{ materialId: 'water', quantity: 26, value: 26, source: 'warehouse' }],
-				warehousePulls: [{ materialId: 'water', quantity: 26, value: 26, source: 'warehouse' }]
+				consumed: [
+					{
+						cityId: 'industry-city',
+						materialId: 'water',
+						quantity: 26,
+						value: 26,
+						source: 'warehouse'
+					}
+				],
+				warehousePulls: [
+					{
+						cityId: 'industry-city',
+						materialId: 'water',
+						quantity: 26,
+						value: 26,
+						source: 'warehouse'
+					}
+				]
 			})
 		);
 
@@ -848,11 +919,39 @@ describe('buildProductChainTree', () => {
 			createNewGame('convenience', 20260518),
 			emptyProductionReport({
 				produced: [
-					{ materialId: 'snacks', quantity: 8, value: 64, source: 'local' },
-					{ materialId: 'drinks', quantity: 10, value: 70, source: 'local' }
+					{
+						cityId: 'industry-city',
+						materialId: 'snacks',
+						quantity: 8,
+						value: 64,
+						source: 'local'
+					},
+					{
+						cityId: 'industry-city',
+						materialId: 'drinks',
+						quantity: 10,
+						value: 70,
+						source: 'local'
+					}
 				],
-				consumed: [{ materialId: 'packaging', quantity: 4, value: 12, source: 'warehouse' }],
-				warehousePulls: [{ materialId: 'packaging', quantity: 4, value: 12, source: 'warehouse' }]
+				consumed: [
+					{
+						cityId: 'industry-city',
+						materialId: 'packaging',
+						quantity: 4,
+						value: 12,
+						source: 'warehouse'
+					}
+				],
+				warehousePulls: [
+					{
+						cityId: 'industry-city',
+						materialId: 'packaging',
+						quantity: 4,
+						value: 12,
+						source: 'warehouse'
+					}
+				]
 			})
 		);
 
@@ -963,10 +1062,30 @@ describe('buildStoreCategoryChainSummaries (tree)', () => {
 		game = withLatestReport(
 			game,
 			emptyProductionReport({
-				produced: [{ materialId: 'snacks', quantity: 8, value: 64, source: 'local' }],
-				consumed: [{ materialId: 'flour', quantity: 6, value: 18, source: 'warehouse' }],
-				warehousePulls: [{ materialId: 'snacks', quantity: 6, value: 48, source: 'warehouse' }],
-				shopImports: [{ materialId: 'snacks', quantity: 4, value: 48, source: 'import' }]
+				produced: [
+					{ cityId: 'industry-city', materialId: 'snacks', quantity: 8, value: 64, source: 'local' }
+				],
+				consumed: [
+					{
+						cityId: 'industry-city',
+						materialId: 'flour',
+						quantity: 6,
+						value: 18,
+						source: 'warehouse'
+					}
+				],
+				warehousePulls: [
+					{
+						cityId: 'industry-city',
+						materialId: 'snacks',
+						quantity: 6,
+						value: 48,
+						source: 'warehouse'
+					}
+				],
+				shopImports: [
+					{ cityId: 'harbor-city', materialId: 'snacks', quantity: 4, value: 48, source: 'import' }
+				]
 			})
 		);
 
@@ -999,11 +1118,33 @@ describe('buildStoreCategoryChainSummaries (tree)', () => {
 					cashAfter: game.cash + 40,
 					scorecard: game.scorecard,
 					productionReport: emptyProductionReport({
-						produced: [{ materialId: 'snacks', quantity: 18, value: 144, source: 'local' }],
-						warehousePulls: [
-							{ materialId: 'snacks', quantity: 11, value: 88, source: 'warehouse' }
+						produced: [
+							{
+								cityId: 'industry-city',
+								materialId: 'snacks',
+								quantity: 18,
+								value: 144,
+								source: 'local'
+							}
 						],
-						shopImports: [{ materialId: 'snacks', quantity: 2, value: 24, source: 'import' }]
+						warehousePulls: [
+							{
+								cityId: 'industry-city',
+								materialId: 'snacks',
+								quantity: 11,
+								value: 88,
+								source: 'warehouse'
+							}
+						],
+						shopImports: [
+							{
+								cityId: 'harbor-city',
+								materialId: 'snacks',
+								quantity: 2,
+								value: 24,
+								source: 'import'
+							}
+						]
 					}),
 					storeReports: [
 						latestStoreReport({
@@ -1059,7 +1200,15 @@ describe('buildStoreCategoryChainSummaries (tree)', () => {
 					cashAfter: game.cash + 40,
 					scorecard: game.scorecard,
 					productionReport: emptyProductionReport({
-						produced: [{ materialId: 'snacks', quantity: 8, value: 64, source: 'local' }]
+						produced: [
+							{
+								cityId: 'industry-city',
+								materialId: 'snacks',
+								quantity: 8,
+								value: 64,
+								source: 'local'
+							}
+						]
 					}),
 					storeReports: [
 						latestStoreReport({

@@ -313,8 +313,7 @@ export function getIndustryInventoryScope(
 
 	const report = filterProductionReportToIndustryCity(
 		latestProductionReport(game),
-		access.inventory.cityId,
-		getAccessibleIndustryInventoryCount(game) === 1
+		access.inventory.cityId
 	);
 
 	return {
@@ -327,22 +326,15 @@ export function getIndustryInventoryScope(
 	};
 }
 
-export function getAccessibleIndustryInventoryCount(game: GameState): number {
-	return game.cityInventories.filter((inventory) => getCityInventory(game, inventory.cityId).ok)
-		.length;
-}
-
 function filterProductionReportToIndustryCity(
 	report: DailyProductionReport | null,
-	cityId: WorldCityId,
-	allowUnattributedOneCityRows: boolean
+	cityId: WorldCityId
 ): DailyProductionReport | null {
 	if (!report) {
 		return null;
 	}
 
-	const belongsToCity = (movement: { cityId?: WorldCityId }) =>
-		movement.cityId === cityId || (allowUnattributedOneCityRows && movement.cityId === undefined);
+	const belongsToCity = (movement: { cityId: WorldCityId }) => movement.cityId === cityId;
 
 	return {
 		...report,

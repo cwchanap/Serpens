@@ -479,7 +479,15 @@ describe('world progression and city opening', () => {
 					nextLoanPayment: null,
 					scorecard: game.scorecard,
 					productionReport: {
-						produced: [{ materialId: 'snacks', quantity: 8, value: 64, source: 'import' }],
+						produced: [
+							{
+								cityId: 'industry-city',
+								materialId: 'snacks',
+								quantity: 8,
+								value: 64,
+								source: 'import'
+							}
+						],
 						consumed: [],
 						importedInputs: [],
 						warehousePulls: [],
@@ -689,7 +697,15 @@ describe('world progression and city opening', () => {
 						],
 						consumed: [],
 						importedInputs: [],
-						warehousePulls: [{ materialId: 'snacks', quantity: 8, value: 64, source: 'warehouse' }],
+						warehousePulls: [
+							{
+								cityId: 'industry-city',
+								materialId: 'snacks',
+								quantity: 8,
+								value: 64,
+								source: 'warehouse'
+							}
+						],
 						shopImports: [],
 						importSpend: 0,
 						operatingCost: 0,
