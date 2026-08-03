@@ -8,8 +8,14 @@ import {
 	generateIndustryCity,
 	getIndustryTilesByResource
 } from '../lib/game/industry';
+import { recalculateCityInventoryPressure } from '../lib/game/cityInventory';
 import { estimateNextLoanPayment, getScheduledPrincipalForInstallment } from '../lib/game/finance';
+import { buildIndustrialBuilding } from '../lib/game/industryPlacement';
+import { projectCityInventoriesToLegacyWarehouse } from '../lib/game/legacyWarehouse';
+import { openStoreAtTile } from '../lib/game/placement';
 import { createNewGame } from '../lib/game/state';
+import { calculateStockHealth } from '../lib/game/stock';
+import { openWorldCity } from '../lib/game/world';
 import type { GameState, LoanInstrument } from '../lib/game/types';
 import { BROWSER_SAVE_STORAGE_KEY } from '../lib/persistence/browserSaveRepository';
 import { BROWSER_SCENARIO_STORAGE_KEY } from '../lib/persistence/browserScenarioRepository';
@@ -214,6 +220,136 @@ function productionSupplierLifecycleGame(): GameState {
 	return selectProductionSupplierEvent(prepared, 3);
 }
 
+function buildWarehouseInCity(game: GameState, cityId: string): GameState {
+	const city = game.industryCities.find((candidate) => candidate.id === cityId);
+
+	if (!city) {
+		throw new Error(`Missing generated industry city ${cityId}.`);
+	}
+
+	const activeCityGame = { ...game, activeIndustryCityId: city.id };
+	for (const tile of city.tiles) {
+		const built = buildIndustrialBuilding(activeCityGame, {
+			tileId: tile.id,
+			buildingTypeId: 'warehouse'
+		});
+
+		if (built.industrialBuildings.length === activeCityGame.industrialBuildings.length + 1) {
+			return built;
+		}
+	}
+
+	throw new Error(`Could not place a warehouse in ${cityId}.`);
+}
+
+function openConvenienceStoreInCity(game: GameState, cityId: string): GameState {
+	const city = game.cities.find((candidate) => candidate.id === cityId);
+
+	if (!city) {
+		throw new Error(`Missing generated retail city ${cityId}.`);
+	}
+
+	const activeCityGame = { ...game, activeCityId: city.id };
+	for (const tile of city.tiles) {
+		const opened = openStoreAtTile(activeCityGame, {
+			tileId: tile.id,
+			archetypeId: 'convenience'
+		});
+
+		if (opened.stores.length === activeCityGame.stores.length + 1) {
+			return opened;
+		}
+	}
+
+	throw new Error(`Could not place a convenience store in ${cityId}.`);
+}
+
+function cityLocalInventoryLifecycleGame(): GameState {
+	const base = createNewGame('convenience', 20260803);
+	let game: GameState = {
+		...base,
+		day: 7,
+		cash: 1_000_000,
+		finance: {
+			...base.finance,
+			currentDayActivity: { ...base.finance.currentDayActivity, day: 7 }
+		},
+		world: {
+			...base.world,
+			revealedCityIds: [...base.world.revealedCityIds, 'campus-junction', 'breadbasket-basin']
+		},
+		decisions: []
+	};
+
+	game = openWorldCity(game, 'campus-junction');
+	game = openWorldCity(game, 'breadbasket-basin');
+	game = openConvenienceStoreInCity(game, 'campus-junction');
+	game = buildWarehouseInCity(game, 'industry-city');
+	game = buildWarehouseInCity(game, 'industry-city');
+	game = buildWarehouseInCity(game, 'breadbasket-basin');
+
+	const stores = game.stores.map((store) => {
+		const products = store.products.map((product) => {
+			if (store.cityId === 'harbor-city') {
+				return {
+					...product,
+					stock: 0,
+					reorderThreshold: 1,
+					targetStock: 10
+				};
+			}
+
+			return {
+				...product,
+				stock: 50,
+				reorderThreshold: 1,
+				targetStock: 50
+			};
+		});
+
+		return {
+			...store,
+			// The second city has a visible, materially different stock position but
+			// no sales capacity, making its planned no-replenishment outcome exact.
+			...(store.cityId === 'campus-junction' ? { staffCapacity: 0 } : {}),
+			products,
+			stockHealth: calculateStockHealth(products)
+		};
+	});
+	const cityInventories = game.cityInventories?.map((inventory) => {
+		if (inventory.cityId === 'industry-city') {
+			return recalculateCityInventoryPressure({
+				...inventory,
+				materials: { 'bottled-water': 6 }
+			});
+		}
+		if (inventory.cityId === 'breadbasket-basin') {
+			return recalculateCityInventoryPressure({
+				...inventory,
+				materials: { 'bottled-water': 37 }
+			});
+		}
+		return inventory;
+	});
+
+	if (!cityInventories || cityInventories.length !== 2) {
+		throw new Error('Expected exactly two initialized city inventories.');
+	}
+
+	return {
+		...game,
+		activeCityId: 'harbor-city',
+		activeIndustryCityId: 'industry-city',
+		stores,
+		cityInventories,
+		retailSupplyAssignments: [
+			{ retailCityId: 'harbor-city', supplyCityId: null },
+			{ retailCityId: 'campus-junction', supplyCityId: 'breadbasket-basin' }
+		],
+		warehouse: projectCityInventoriesToLegacyWarehouse(cityInventories)
+	};
+}
+
 interface SavedMaterialMovement {
 	materialId: string;
 	quantity: number;
@@ -310,12 +446,24 @@ interface SavedGame {
 	};
 	stores: Array<{
 		id: string;
+		cityId: string;
 		products: Array<{
 			categoryId: string;
 			stock: number;
 			reorderThreshold: number;
 			targetStock: number;
 		}>;
+	}>;
+	cityInventories?: Array<{
+		cityId: string;
+		capacity: number;
+		materials: Record<string, number | undefined>;
+		overflowUnits: number;
+		overflowCost: number;
+	}>;
+	retailSupplyAssignments?: Array<{
+		retailCityId: string;
+		supplyCityId: string | null;
 	}>;
 	warehouse: {
 		materials: Record<string, number | undefined>;
@@ -766,6 +914,26 @@ function getSavedProduct(game: SavedGame, categoryId: string) {
 	}
 
 	return product;
+}
+
+function getSavedStoreInCity(game: SavedGame, cityId: string) {
+	const store = game.stores.find((candidate) => candidate.cityId === cityId);
+
+	if (!store) {
+		throw new Error(`Missing saved store in ${cityId}.`);
+	}
+
+	return store;
+}
+
+function getSavedCityInventory(game: SavedGame, cityId: string) {
+	const inventory = game.cityInventories?.find((candidate) => candidate.cityId === cityId);
+
+	if (!inventory) {
+		throw new Error(`Missing saved city inventory for ${cityId}.`);
+	}
+
+	return inventory;
 }
 
 function getLatestReport(game: SavedGame): SavedDailyReport {
@@ -2902,5 +3070,195 @@ test('rail-fed production connects two industrial buildings and records a rail s
 			.getByRole('region', { name: /industrial building details/i })
 			.getByRole('definition')
 			.filter({ hasText: /^Imported inputs$/i })
+	).toBeVisible();
+});
+
+test('city-local inventory keeps multi-city supply, replenishment, reporting, and saves isolated', async ({
+	page
+}) => {
+	test.setTimeout(90_000);
+	await installSandboxAutoSave(page, cityLocalInventoryLifecycleGame());
+
+	const stores = await openManagementPanel(page, /stores/i);
+	const harborSource = stores.getByRole('combobox', {
+		name: 'Local supply source for Harbor City'
+	});
+	const campusSource = stores.getByRole('combobox', {
+		name: 'Local supply source for Campus Junction'
+	});
+	await expect(harborSource).toHaveValue('__retail_supply_imports_only__');
+	await expect(
+		stores
+			.getByRole('status')
+			.filter({ hasText: 'Breadbasket Basin 37 / 200 city inventory used.' })
+	).toBeVisible();
+	await expect(campusSource).toHaveValue('breadbasket-basin');
+
+	await harborSource.selectOption('industry-city');
+	await expect(harborSource).toHaveValue('industry-city');
+	await expect
+		.poll(async () => (await readAutoSaveGame(page)).retailSupplyAssignments)
+		.toEqual([
+			{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' },
+			{ retailCityId: 'campus-junction', supplyCityId: 'breadbasket-basin' }
+		]);
+	await expect(campusSource).toHaveValue('breadbasket-basin');
+	await stores.getByRole('button', { name: 'Close Stores' }).click();
+
+	// Day 7 is the weekly cadence. Harbor's 0/10 bottled-water position pulls
+	// the 6 local units from Industry City, then imports the 4-unit shortfall.
+	await page.getByRole('button', { name: /^advance day$/i }).click();
+	const postCycle = await waitForAutoSaveDay(page, 8);
+	const harborStore = getSavedStoreInCity(postCycle, 'harbor-city');
+	const campusStore = getSavedStoreInCity(postCycle, 'campus-junction');
+	const harborProductReport = getLatestReport(postCycle)
+		.storeReports.find((report) => report.storeId === harborStore.id)
+		?.productReports.find((report) => report.categoryId === 'bottled-water');
+
+	if (!harborProductReport) {
+		throw new Error('Missing Harbor City bottled-water replenishment report.');
+	}
+
+	expect(harborProductReport).toMatchObject({
+		warehouseUnits: 6,
+		warehouseValue: 12,
+		importedUnits: 4,
+		importCost: 2,
+		importSpend: 8
+	});
+	expect(harborStore.products).toMatchObject([
+		{ categoryId: 'bottled-water', stock: 10, reorderThreshold: 1, targetStock: 10 }
+	]);
+	expect(campusStore.products).toMatchObject([
+		{ categoryId: 'bottled-water', stock: 50, reorderThreshold: 1, targetStock: 50 }
+	]);
+	expect(getSavedCityInventory(postCycle, 'industry-city')).toEqual({
+		cityId: 'industry-city',
+		capacity: 400,
+		materials: { 'bottled-water': 0 },
+		overflowUnits: 0,
+		overflowCost: 0
+	});
+	expect(getSavedCityInventory(postCycle, 'breadbasket-basin')).toEqual({
+		cityId: 'breadbasket-basin',
+		capacity: 200,
+		materials: { 'bottled-water': 37 },
+		overflowUnits: 0,
+		overflowCost: 0
+	});
+	expect(postCycle.retailSupplyAssignments).toEqual([
+		{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' },
+		{ retailCityId: 'campus-junction', supplyCityId: 'breadbasket-basin' }
+	]);
+
+	const reports = await openManagementPanel(page, /reports/i);
+	const productionCloseInventory = reports.getByRole('region', {
+		name: 'Production-close inventory (before retail replenishment)'
+	});
+	const currentInventory = reports.getByRole('region', {
+		name: 'Current city inventory (after the latest replenishment)'
+	});
+	const cityAttributedMovements = reports.getByRole('region', {
+		name: 'City-attributed movements'
+	});
+	await expect(productionCloseInventory).toBeVisible();
+	await expect(
+		productionCloseInventory.getByText('Industry City: 6 / 400 city inventory used.', {
+			exact: true
+		})
+	).toBeVisible();
+	await expect(
+		productionCloseInventory.getByText('Breadbasket Basin: 37 / 200 city inventory used.', {
+			exact: true
+		})
+	).toBeVisible();
+	await expect(currentInventory).toBeVisible();
+	await expect(
+		currentInventory.getByText('Industry City: 0 / 400 city inventory used.', { exact: true })
+	).toBeVisible();
+	await expect(
+		currentInventory.getByText('Breadbasket Basin: 37 / 200 city inventory used.', {
+			exact: true
+		})
+	).toBeVisible();
+	await expect(
+		cityAttributedMovements.getByText('Local supply — Industry City → Harbor City: 6 units', {
+			exact: true
+		})
+	).toBeVisible();
+	await expect(
+		cityAttributedMovements.getByText('External imports — Harbor City: 4 units', { exact: true })
+	).toBeVisible();
+	await expect(reports.getByText('$8', { exact: true })).toBeVisible();
+	await reports.getByRole('button', { name: 'Close Reports' }).click();
+
+	await openSaves(page);
+	const savePanel = page.getByRole('dialog', { name: /saves/i });
+	await savePanel.getByRole('textbox', { name: /slot name/i }).fill('City local lifecycle');
+	await savePanel.getByRole('button', { name: /save slot/i }).click();
+	await expect(page.getByText('Saved City local lifecycle', { exact: true })).toBeVisible();
+	await savePanel.getByRole('button', { name: /^close$/i }).click();
+
+	await page.reload();
+	await openSaves(page);
+	await expect(savePanel.getByRole('heading', { name: 'City local lifecycle' })).toBeVisible();
+	await savePanel.getByRole('button', { name: /^load$/i }).click();
+	await expect(page.getByText('Loaded City local lifecycle', { exact: true })).toBeVisible();
+	await savePanel.getByRole('button', { name: /^close$/i }).click();
+	await expectRetailMapReady(page);
+
+	const reloaded = await readAutoSaveGame(page);
+	expect(reloaded.retailSupplyAssignments).toEqual([
+		{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' },
+		{ retailCityId: 'campus-junction', supplyCityId: 'breadbasket-basin' }
+	]);
+	expect(getSavedCityInventory(reloaded, 'industry-city')).toEqual({
+		cityId: 'industry-city',
+		capacity: 400,
+		materials: { 'bottled-water': 0 },
+		overflowUnits: 0,
+		overflowCost: 0
+	});
+	expect(getSavedCityInventory(reloaded, 'breadbasket-basin')).toEqual({
+		cityId: 'breadbasket-basin',
+		capacity: 200,
+		materials: { 'bottled-water': 37 },
+		overflowUnits: 0,
+		overflowCost: 0
+	});
+
+	const reloadedStores = await openManagementPanel(page, /stores/i);
+	await expect(
+		reloadedStores.getByRole('combobox', { name: 'Local supply source for Harbor City' })
+	).toHaveValue('industry-city');
+	await expect(
+		reloadedStores.getByRole('combobox', { name: 'Local supply source for Campus Junction' })
+	).toHaveValue('breadbasket-basin');
+	await expect(
+		reloadedStores
+			.getByRole('status')
+			.filter({ hasText: 'Industry City 0 / 400 city inventory used.' })
+	).toBeVisible();
+	await reloadedStores.getByRole('button', { name: 'Close Stores' }).click();
+
+	const reloadedReports = await openManagementPanel(page, /reports/i);
+	const reloadedCurrentInventory = reloadedReports.getByRole('region', {
+		name: 'Current city inventory (after the latest replenishment)'
+	});
+	const reloadedCityAttributedMovements = reloadedReports.getByRole('region', {
+		name: 'City-attributed movements'
+	});
+	await expect(
+		reloadedCurrentInventory.getByText('Current city inventory (after the latest replenishment)', {
+			exact: true
+		})
+	).toBeVisible();
+	await expect(
+		reloadedCityAttributedMovements.getByText(
+			'Local supply — Industry City → Harbor City: 6 units',
+			{
+				exact: true
+			}
+		)
 	).toBeVisible();
 });
