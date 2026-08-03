@@ -368,6 +368,19 @@ export const ja = {
 		importedUnits: '輸入 {count}',
 		noWarnings: '現在の警告はありません。'
 	},
+	retailSupplySources: {
+		title: '小売供給元',
+		citySection: '{cityName}の供給元',
+		controlLabel: '{cityName}のローカル供給元',
+		controlDescription: '{cityName}がローカル供給を受け取る方法を選択します。',
+		importsOnly: '輸入のみ',
+		importsOnlySummary: '輸入のみです。補充はすべて外部輸入でまかなわれます。',
+		inventorySummary: '都市在庫を {used} / {capacity} 使用中。',
+		overflow: '超過: {units} 単位（{cost}）。',
+		noOverflow: '超過なし。',
+		unavailableSource: '{cityName}は利用できません。',
+		missingConfiguration: '供給設定を利用できません。'
+	},
 	storeStockTable: {
 		title: '{storeName}の在庫',
 		headings: {

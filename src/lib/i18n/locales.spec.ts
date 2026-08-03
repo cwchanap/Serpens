@@ -19,6 +19,40 @@ function storageMock(initial: Record<string, string> = {}) {
 }
 
 describe('locale resolution', () => {
+	it('provides the identical retail supply source control key set in every supported locale', () => {
+		const keys = [
+			'retailSupplySources.title',
+			'retailSupplySources.citySection',
+			'retailSupplySources.controlLabel',
+			'retailSupplySources.controlDescription',
+			'retailSupplySources.importsOnly',
+			'retailSupplySources.importsOnlySummary',
+			'retailSupplySources.inventorySummary',
+			'retailSupplySources.overflow',
+			'retailSupplySources.noOverflow',
+			'retailSupplySources.unavailableSource',
+			'retailSupplySources.missingConfiguration'
+		];
+
+		const resolveCatalogValue = (catalog: unknown, key: string): unknown =>
+			key
+				.split('.')
+				.reduce<unknown>(
+					(acc, part) =>
+						acc && typeof acc === 'object' ? (acc as Record<string, unknown>)[part] : undefined,
+					catalog
+				);
+
+		for (const locale of Object.keys(messagesByLocale) as (keyof typeof messagesByLocale)[]) {
+			const catalog = messagesByLocale[locale];
+			for (const key of keys) {
+				const value = resolveCatalogValue(catalog, key);
+				expect(value, `${locale} missing ${key}`).toBeDefined();
+				expect(typeof value, `${locale} ${key} is not a string`).toBe('string');
+			}
+		}
+	});
+
 	it('provides every finance localization surface in every supported locale', () => {
 		const keys: TranslationKey[] = [
 			'game.managementPanels.finance',

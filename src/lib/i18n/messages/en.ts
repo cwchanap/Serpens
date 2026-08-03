@@ -366,6 +366,19 @@ export const en = {
 		importedUnits: '{count} imported',
 		noWarnings: 'No current warnings.'
 	},
+	retailSupplySources: {
+		title: 'Retail supply sources',
+		citySection: '{cityName} supply source',
+		controlLabel: 'Local supply source for {cityName}',
+		controlDescription: 'Choose how {cityName} receives local supply.',
+		importsOnly: 'Imports only',
+		importsOnlySummary: 'Imports only. All replenishment is covered by external imports.',
+		inventorySummary: '{used} / {capacity} city inventory used.',
+		overflow: 'Overflow: {units} units ({cost}).',
+		noOverflow: 'No overflow.',
+		unavailableSource: '{cityName} is unavailable.',
+		missingConfiguration: 'Supply configuration unavailable.'
+	},
 	storeStockTable: {
 		title: '{storeName} stock',
 		headings: {

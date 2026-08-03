@@ -25,6 +25,7 @@
 	import StaffPanel from '$lib/components/game/StaffPanel.svelte';
 	import StoreDetailModal from '$lib/components/game/StoreDetailModal.svelte';
 	import StoreOverview from '$lib/components/game/StoreOverview.svelte';
+	import RetailSupplySources from '$lib/components/game/RetailSupplySources.svelte';
 	import SupplyAdvisor from '$lib/components/game/SupplyAdvisor.svelte';
 	import TileInspector from '$lib/components/game/TileInspector.svelte';
 	import TopBar from '$lib/components/game/TopBar.svelte';
@@ -122,6 +123,7 @@
 	import type { AdvisorChain } from '$lib/game/supplyAdvisor';
 	import { isTileInStoreFootprint } from '$lib/game/storeFootprint';
 	import { isTileInIndustryBuildingFootprint } from '$lib/game/industryFootprint';
+	import { buildRetailCitySupplyViews } from '$lib/components/game/retailSupplySources';
 	import {
 		STARTER_STORE_CAP,
 		WORLD_CITY_CATALOG,
@@ -1860,8 +1862,6 @@
 	function setRetailSupplySource(retailCityId: string, supplyCityId: string | null): void {
 		void gameRouteController.setRetailSupplySource(retailCityId, supplyCityId);
 	}
-	// Task 14 supplies the visual source selector that invokes this route callback.
-	void setRetailSupplySource;
 
 	function borrowWorkingCapital(
 		amount: number,
@@ -2784,12 +2784,19 @@
 							disabledReason={mutationDisabledReason}
 						/>
 					{:else if activeManagementPanel.id === 'stores'}
-						<StoreOverview
-							{i18n}
-							stores={panelGame.stores}
-							staff={panelGame.staff}
-							latestReports={summary.latest?.storeReports ?? []}
-						/>
+						<div class="stores-surfaces">
+							<RetailSupplySources
+								retailCities={buildRetailCitySupplyViews(panelGame, i18n)}
+								disabled={!mutationAvailability.setRetailSupplySource}
+								onChange={setRetailSupplySource}
+							/>
+							<StoreOverview
+								{i18n}
+								stores={panelGame.stores}
+								staff={panelGame.staff}
+								latestReports={summary.latest?.storeReports ?? []}
+							/>
+						</div>
 					{:else if activeManagementPanel.id === 'decisions'}
 						<div class="decisions-surfaces">
 							<DecisionQueue
@@ -3013,6 +3020,13 @@
 		gap: 1rem;
 	}
 
+	.stores-surfaces {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		align-items: start;
+		gap: 1rem;
+	}
+
 	.tower-header {
 		display: flex;
 		align-items: center;
@@ -3109,6 +3123,10 @@
 		}
 
 		.decisions-surfaces {
+			grid-template-columns: 1fr;
+		}
+
+		.stores-surfaces {
 			grid-template-columns: 1fr;
 		}
 
