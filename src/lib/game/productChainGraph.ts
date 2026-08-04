@@ -620,7 +620,8 @@ export function emptyActualMetrics(): ProductChainActualMetrics {
 export function materialActualMetrics(
 	report: DailyProductionReport | null,
 	materialId: MaterialId,
-	productReport: DailyProductReport | null
+	productReport: DailyProductReport | null,
+	isRetailRoot = false
 ): ProductChainActualMetrics {
 	return {
 		produced: sumMovements(report?.produced, materialId, 'local'),
@@ -634,15 +635,32 @@ export function materialActualMetrics(
 		// scoped to the active retail city's stores — use it directly.
 		// Intermediate materials pass productReport = null and fall back to
 		// the movement sum, which is correct for industrial warehouse pulls
-		// attributed to the industry city itself.
-		warehousePulled: productReport
-			? productReport.warehouseUnits
-			: sumMovements(report?.warehousePulls, materialId, 'warehouse'),
+		// attributed to the industry city itself. A retail root with no
+		// product report (active city opened after the latest daily tick)
+		// must NOT fall back: null there means "no report yet", and the
+		// movement array would leak another retail city's pull. Resolve it
+		// to 0 instead.
+		warehousePulled: resolveWarehousePulled(report, materialId, productReport, isRetailRoot),
 		railPulled: sumMovements(report?.consumed, materialId, 'rail'),
 		shopImported: sumMovements(report?.shopImports, materialId, 'import'),
 		unitsSold: productReport?.unitsSold ?? 0,
 		demandMissed: productReport?.demandMissed ?? 0
 	};
+}
+
+function resolveWarehousePulled(
+	report: DailyProductionReport | null,
+	materialId: MaterialId,
+	productReport: DailyProductReport | null,
+	isRetailRoot: boolean
+): number {
+	if (productReport) {
+		return productReport.warehouseUnits;
+	}
+	if (isRetailRoot) {
+		return 0;
+	}
+	return sumMovements(report?.warehousePulls, materialId, 'warehouse');
 }
 
 export function allocateInputMovement(

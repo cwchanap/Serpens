@@ -365,7 +365,11 @@ describe('buildProductChainTree', () => {
 		});
 
 		expect(configured.details['product:snacks']?.actual.produced).toBe(8);
-		expect(configured.details['product:snacks']?.actual.warehousePulled).toBe(3);
+		// Campus has no product report in this latest report (its store has no
+		// matching storeReport row), so the root retail material reads 0
+		// rather than falling back to the supply-city-tagged warehouse-pull
+		// movement, which cannot be attributed to a specific retail city.
+		expect(configured.details['product:snacks']?.actual.warehousePulled).toBe(0);
 		expect(configured.details['product:snacks']?.actual.shopImported).toBe(4);
 		expect(
 			buildStoreCategoryChainSummaries(game).find((summary) => summary.categoryId === 'snacks')
@@ -518,6 +522,107 @@ describe('buildProductChainTree', () => {
 			activeCityId: 'harbor-city'
 		});
 		expect(harborSummaries.find((summary) => summary.categoryId === 'snacks')?.produced).toBe(0);
+	});
+
+	it('does not fall back to shared-source warehouse pulls when the active retail city has no product report yet', () => {
+		// Regression: Harbor City replenishes snacks from Industry City, so the
+		// latest production report carries a warehouse-pull movement tagged with
+		// the supply city (industry-city). Campus Junction is then opened and
+		// assigned to the same supply city, but its store has no product report
+		// in that latest report (opened after the daily tick). The root retail
+		// material's warehousePulled must read 0 — not Harbor's pull — because
+		// null productReport for a retail root means "no report yet", not
+		// "intermediate material". Falling back to the industry movement array
+		// leaks Harbor's pull into Campus and can flip health to 'watch'.
+		expect.assertions(3);
+		let game = openedRetailAndIndustryCityGame();
+		game = openStoreAtTile(game, {
+			tileId: findAvailableRetailFootprintTile(game).id,
+			archetypeId: 'convenience'
+		});
+		const harborStore = game.stores.find((store) => store.cityId === 'harbor-city')!;
+
+		game = {
+			...game,
+			cityInventories: game.cityInventories.map((inventory) =>
+				inventory.cityId === 'industry-city'
+					? { ...inventory, capacity: 200, materials: { snacks: 5 } }
+					: inventory
+			),
+			retailSupplyAssignments: game.retailSupplyAssignments.map((assignment) =>
+				assignment.retailCityId === 'campus-junction' || assignment.retailCityId === 'harbor-city'
+					? { ...assignment, supplyCityId: 'industry-city' }
+					: assignment
+			),
+			reports: [
+				{
+					day: game.day,
+					...financeReportFields(),
+					importSpend: 0,
+					cashAfter: game.cash + 40,
+					scorecard: game.scorecard,
+					productionReport: emptyProductionReport({
+						warehousePulls: [
+							{
+								cityId: 'industry-city',
+								materialId: 'snacks',
+								quantity: 3,
+								value: 24,
+								source: 'warehouse'
+							}
+						],
+						cityInventories: [
+							{
+								cityId: 'industry-city',
+								capacity: 200,
+								used: 5,
+								overflowUnits: 0,
+								overflowCost: 0
+							}
+						]
+					}),
+					// Only Harbor's store has a snacks product report; Campus's
+					// store was opened after this report and has no row yet.
+					storeReports: [
+						latestStoreReport({
+							storeId: harborStore.id,
+							productReports: [
+								snackProductReport({
+									unitsSold: 3,
+									demandMissed: 0,
+									warehouseUnits: 3,
+									warehouseValue: 24,
+									importedUnits: 0,
+									importCost: 0,
+									importSpend: 0
+								})
+							]
+						})
+					],
+					modifierImpacts: [],
+					modifierLifecycle: [],
+					warnings: []
+				}
+			]
+		};
+
+		const campusTree = buildProductChainTree({
+			game: { ...game, activeCityId: 'campus-junction' },
+			store: null,
+			categoryId: 'snacks'
+		});
+
+		expect(campusTree.details['product:snacks']?.actual.warehousePulled).toBe(0);
+		expect(campusTree.details['product:snacks']?.health).not.toBe('watch');
+
+		// Harbor still resolves from its own product report — the fix must not
+		// regress the working shared-source case.
+		const harborTree = buildProductChainTree({
+			game: { ...game, activeCityId: 'harbor-city' },
+			store: null,
+			categoryId: 'snacks'
+		});
+		expect(harborTree.details['product:snacks']?.actual.warehousePulled).toBe(3);
 	});
 
 	it('does not invent retail ownership for unscoped historical imports', () => {
