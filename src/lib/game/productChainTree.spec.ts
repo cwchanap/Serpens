@@ -395,6 +395,131 @@ describe('buildProductChainTree', () => {
 		).toBe(4);
 	});
 
+	it('scopes retail warehouse pulls to the active retail city when several retail cities share one supply city', () => {
+		// Both warehouse-pull movements are tagged with the supply city
+		// (industry-city), not the destination retail city. Without
+		// active-city scoping the root material's warehousePulled sums
+		// every retail city pulling from the same supply, inflating the
+		// metric and potentially flipping health to 'watch'.
+		expect.assertions(4);
+		let game = openedRetailAndIndustryCityGame();
+		game = openStoreAtTile(game, {
+			tileId: findAvailableRetailFootprintTile(game).id,
+			archetypeId: 'convenience'
+		});
+		const harborStore = game.stores.find((store) => store.cityId === 'harbor-city')!;
+		const campusStore = game.stores.find((store) => store.cityId === 'campus-junction')!;
+
+		game = {
+			...game,
+			cityInventories: game.cityInventories.map((inventory) =>
+				inventory.cityId === 'industry-city'
+					? { ...inventory, capacity: 200, materials: { snacks: 5 } }
+					: inventory
+			),
+			retailSupplyAssignments: game.retailSupplyAssignments.map((assignment) =>
+				assignment.retailCityId === 'campus-junction' || assignment.retailCityId === 'harbor-city'
+					? { ...assignment, supplyCityId: 'industry-city' }
+					: assignment
+			),
+			reports: [
+				{
+					day: game.day,
+					...financeReportFields(),
+					importSpend: 0,
+					cashAfter: game.cash + 40,
+					scorecard: game.scorecard,
+					productionReport: emptyProductionReport({
+						warehousePulls: [
+							{
+								cityId: 'industry-city',
+								materialId: 'snacks',
+								quantity: 3,
+								value: 24,
+								source: 'warehouse'
+							},
+							{
+								cityId: 'industry-city',
+								materialId: 'snacks',
+								quantity: 5,
+								value: 40,
+								source: 'warehouse'
+							}
+						],
+						cityInventories: [
+							{
+								cityId: 'industry-city',
+								capacity: 200,
+								used: 5,
+								overflowUnits: 0,
+								overflowCost: 0
+							}
+						]
+					}),
+					storeReports: [
+						latestStoreReport({
+							storeId: harborStore.id,
+							productReports: [
+								snackProductReport({
+									unitsSold: 3,
+									demandMissed: 0,
+									warehouseUnits: 3,
+									warehouseValue: 24,
+									importedUnits: 0,
+									importCost: 0,
+									importSpend: 0
+								})
+							]
+						}),
+						latestStoreReport({
+							storeId: campusStore.id,
+							productReports: [
+								snackProductReport({
+									unitsSold: 5,
+									demandMissed: 0,
+									warehouseUnits: 5,
+									warehouseValue: 40,
+									importedUnits: 0,
+									importCost: 0,
+									importSpend: 0
+								})
+							]
+						})
+					],
+					modifierImpacts: [],
+					modifierLifecycle: [],
+					warnings: []
+				}
+			]
+		};
+
+		const campusTree = buildProductChainTree({
+			game: { ...game, activeCityId: 'campus-junction' },
+			store: null,
+			categoryId: 'snacks'
+		});
+		expect(campusTree.details['product:snacks']?.actual.warehousePulled).toBe(5);
+
+		const harborTree = buildProductChainTree({
+			game: { ...game, activeCityId: 'harbor-city' },
+			store: null,
+			categoryId: 'snacks'
+		});
+		expect(harborTree.details['product:snacks']?.actual.warehousePulled).toBe(3);
+
+		const campusSummaries = buildStoreCategoryChainSummaries({
+			...game,
+			activeCityId: 'campus-junction'
+		});
+		expect(campusSummaries.find((summary) => summary.categoryId === 'snacks')?.produced).toBe(0);
+
+		const harborSummaries = buildStoreCategoryChainSummaries({
+			...game,
+			activeCityId: 'harbor-city'
+		});
+		expect(harborSummaries.find((summary) => summary.categoryId === 'snacks')?.produced).toBe(0);
+	});
+
 	it('does not invent retail ownership for unscoped historical imports', () => {
 		// Current report types require attribution; this models an unsafe legacy
 		// row so the tree remains defensive at its display boundary.
