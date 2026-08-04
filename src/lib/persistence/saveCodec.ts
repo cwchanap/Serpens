@@ -4684,7 +4684,7 @@ function validateCurrentProductionCloseInventories(
 	}
 	const summaries = value;
 	if (summaries.length === 0) {
-		reportAttributionInvariant(`${label} must contain at least the starter-city summary`);
+		reportAttributionInvariant(`${label} must contain at least one industry-city summary`);
 	}
 	const seenCityIds = new Set<WorldCityId>();
 	const totals = { capacity: 0, used: 0, overflowUnits: 0, overflowCost: 0 };
@@ -4745,10 +4745,14 @@ function validateCurrentProductionCloseInventories(
 			`${label} overflowCost aggregate`
 		);
 	}
-	if (!seenCityIds.has('industry-city')) {
-		reportAttributionInvariant(`${label} must include the starter industry-city summary`);
-	}
-
+	// The production-close snapshot must contain one summary per opened
+	// industry city that materialized an inventory for the report day. The
+	// starter `industry-city` is only guaranteed for the default world
+	// progression; scenarios may designate any opened industry city as the
+	// sole supply source and prune the starter inventory during setup. The
+	// nonempty, uniqueness, canonical-order, and per-city opened/materialized
+	// checks above already establish the canonical report-day set, so no
+	// single city is hard-required here.
 	return totals;
 }
 
