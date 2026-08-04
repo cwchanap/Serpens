@@ -515,6 +515,50 @@ describe('warehouse flow graph', () => {
 			shopImported: 0
 		});
 	});
+
+	test('treats a newly opened industry city with no report-day evidence as no report yet', () => {
+		expect.assertions(3);
+		const base = createNewGame('convenience', 20260802);
+		const opened = openWorldCity(
+			{
+				...base,
+				cash: 100_000,
+				world: {
+					...base.world,
+					revealedCityIds: [...base.world.revealedCityIds, 'breadbasket-basin']
+				}
+			},
+			'breadbasket-basin'
+		);
+		// The latest report predates breadbasket-basin: it references only
+		// industry-city, so breadbasket-basin has no report-day evidence.
+		const game = withLatestReport(
+			{
+				...opened,
+				activeIndustryCityId: 'breadbasket-basin',
+				cityInventories: opened.cityInventories.map((inventory) =>
+					inventory.cityId === 'breadbasket-basin'
+						? { ...inventory, capacity: 200, materials: { snacks: 3 } }
+						: inventory
+				)
+			},
+			emptyProductionReport({
+				cityInventories: [
+					{ cityId: 'industry-city', capacity: 200, used: 0, overflowUnits: 0, overflowCost: 0 }
+				],
+				produced: [
+					{ cityId: 'industry-city', materialId: 'snacks', quantity: 5, value: 40, source: 'local' }
+				]
+			})
+		);
+
+		const graph = buildWarehouseFlowGraph(game);
+		const snacks = graph.details['material:snacks'];
+
+		expect(graph.warnings).toEqual([{ code: 'noDailyReport' }]);
+		expect(snacks?.health).toBe('no-report');
+		expect(snacks?.actual.produced).toBe(0);
+	});
 });
 
 describe('healthLabel', () => {

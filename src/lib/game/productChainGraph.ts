@@ -330,7 +330,14 @@ function filterProductionReportToIndustryCity(
 	report: DailyProductionReport | null,
 	cityId: WorldCityId
 ): DailyProductionReport | null {
-	if (!report) {
+	// A city opened after this report was generated has neither a
+	// production-close `cityInventories` summary nor any attributed movement
+	// here. Resolve that case to "no report yet" so downstream health logic
+	// does not treat an empty-but-non-null report as a completed zero-activity
+	// day. Either signal establishes report-day membership: the close snapshot
+	// for real simulateDay output, or an attributed movement for synthetic
+	// reports that omit the close snapshot.
+	if (!report || !reportReferencesCity(report, cityId)) {
 		return null;
 	}
 
@@ -346,6 +353,25 @@ function filterProductionReportToIndustryCity(
 		railShipments: report.railShipments.filter(belongsToCity),
 		cityInventories: report.cityInventories.filter((inventory) => inventory.cityId === cityId)
 	};
+}
+
+function reportReferencesCity(report: DailyProductionReport, cityId: WorldCityId): boolean {
+	if (report.cityInventories.some((summary) => summary.cityId === cityId)) {
+		return true;
+	}
+	const movementArrays: readonly DailyMaterialMovement[][] = [
+		report.produced,
+		report.consumed,
+		report.importedInputs,
+		report.warehousePulls,
+		report.shopImports
+	];
+	for (const movements of movementArrays) {
+		if (movements.some((movement) => movement.cityId === cityId)) {
+			return true;
+		}
+	}
+	return report.railShipments.some((shipment) => shipment.cityId === cityId);
 }
 
 function createMaterialProducerRecipeMap(): ReadonlyMap<MaterialId, ProductionRecipeId> {

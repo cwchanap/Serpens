@@ -817,6 +817,120 @@ function createCurrentV13Report(game: GameState): DailyReport {
 	});
 }
 
+/**
+ * A current-v13 game where a scenario has designated breadbasket-basin as the
+ * sole opened industry city and pruned the starter `industry-city` inventory
+ * during setup. Mirrors `createCurrentV13MultiCityGame` but substitutes
+ * breadbasket-basin for industry-city so the production-close report contains
+ * no `industry-city` summary.
+ */
+function createCurrentV13BreadbasketOnlyGame(): GameState {
+	let game = { ...createNewGame('convenience', 20260722), cash: 1_000_000 };
+	game = {
+		...game,
+		world: {
+			...game.world,
+			revealedCityIds: [...game.world.revealedCityIds, 'breadbasket-basin']
+		}
+	};
+	game = openWorldCity(game, 'breadbasket-basin');
+	const breadbasket = game.industryCities.find((city) => city.id === 'breadbasket-basin')!;
+	const warehouseTile = breadbasket.tiles.find(
+		(candidate) => getIndustrialPlacementBlockReason(game, candidate.id, 'warehouse') === null
+	)!;
+	game = buildIndustrialBuilding(game, {
+		tileId: warehouseTile.id,
+		buildingTypeId: 'warehouse'
+	});
+
+	return {
+		...game,
+		activeIndustryCityId: 'breadbasket-basin',
+		world: {
+			...game.world,
+			revealedCityIds: game.world.revealedCityIds.filter((id) => id !== 'industry-city'),
+			openedCityIds: game.world.openedCityIds.filter((id) => id !== 'industry-city')
+		},
+		industryCities: game.industryCities.filter((city) => city.id !== 'industry-city'),
+		industrialBuildings: game.industrialBuildings.filter(
+			(building) => building.cityId !== 'industry-city'
+		),
+		cityInventories: [
+			{
+				cityId: 'breadbasket-basin',
+				capacity: 200,
+				materials: { water: 5 },
+				overflowUnits: 0,
+				overflowCost: 0
+			}
+		],
+		retailSupplyAssignments: [{ retailCityId: 'harbor-city', supplyCityId: 'breadbasket-basin' }]
+	};
+}
+
+function createCurrentV13BreadbasketOnlyReport(game: GameState): DailyReport {
+	const warehouseId = game.industrialBuildings[0]!.id;
+	const categoryId = game.stores[0]!.products[0]!.categoryId;
+
+	return createDailyReport({
+		day: game.day,
+		productionReport: createDailyProductionReport({
+			warehouseCapacity: 200,
+			warehouseUsed: 5,
+			overflowUnits: 0,
+			overflowCost: 0,
+			produced: [
+				{ cityId: 'breadbasket-basin', materialId: 'water', quantity: 2, value: 2, source: 'local' }
+			],
+			shopImports: [
+				{ cityId: 'harbor-city', materialId: 'water', quantity: 1, value: 3, source: 'import' }
+			],
+			railShipments: [
+				{
+					cityId: 'breadbasket-basin',
+					materialId: 'water',
+					quantity: 1,
+					value: 1,
+					kind: 'push-warehouse',
+					fromId: warehouseId,
+					toId: warehouseId
+				}
+			],
+			cityInventories: [
+				{ cityId: 'breadbasket-basin', capacity: 200, used: 5, overflowUnits: 0, overflowCost: 0 }
+			]
+		}),
+		storeReports: [
+			createDailyStoreReport({
+				storeId: game.stores[0]!.id,
+				replenishment: {
+					retailCityId: 'harbor-city',
+					configuredSupplyCityId: 'breadbasket-basin',
+					resolvedSupplyCityId: 'breadbasket-basin'
+				},
+				productReports: [
+					{
+						categoryId,
+						name: 'Starter product',
+						unitsSold: 1,
+						demandMissed: 0,
+						revenue: 10,
+						costOfGoods: 6,
+						grossMargin: 4,
+						endingStock: 5,
+						warehouseUnits: 2,
+						warehouseValue: 4,
+						importedUnits: 0,
+						importCost: 3,
+						importSpend: 0,
+						replenishmentOutcome: 'city-inventory'
+					}
+				]
+			})
+		]
+	});
+}
+
 function expectSaveRecordErrorCode(record: unknown, expectedCode: SaveDataError['code']): void {
 	let caught: unknown;
 	try {
@@ -1791,6 +1905,24 @@ describe('saveCodec', () => {
 		);
 
 		expect(validated.game.reports[0]!.productionReport.cityInventories).toEqual([starterSummary]);
+	});
+
+	test('controller review: accepts a production-close report with no starter industry-city summary', () => {
+		// A scenario may designate any opened industry city as the active
+		// supply source and prune the starter `industry-city` inventory during
+		// setup. Its first report's production-close snapshot then contains
+		// only the non-starter industry city and must round-trip.
+		const game = createCurrentV13BreadbasketOnlyGame();
+		const report = createCurrentV13BreadbasketOnlyReport(game);
+
+		const validated = validateSaveRecord(
+			createManualSaveRecord({ game: { ...game, reports: [report] } })
+		);
+
+		expect(validated.game.reports[0]!.productionReport.cityInventories).toEqual([
+			{ cityId: 'breadbasket-basin', capacity: 200, used: 5, overflowUnits: 0, overflowCost: 0 }
+		]);
+		expect(validated.game.world.openedCityIds).not.toContain('industry-city');
 	});
 
 	test('controller review: rejects an empty production-close summary even when aggregates are zero', () => {
