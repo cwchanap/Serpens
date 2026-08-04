@@ -626,7 +626,18 @@ export function materialActualMetrics(
 		produced: sumMovements(report?.produced, materialId, 'local'),
 		consumed: sumMovements(report?.consumed, materialId),
 		importedInput: sumMovements(report?.importedInputs, materialId, 'import'),
-		warehousePulled: sumMovements(report?.warehousePulls, materialId, 'warehouse'),
+		// Retail warehouse-pull movements are tagged with the supply city,
+		// not the destination retail city, so summing warehousePulls for a
+		// finished product inflates the metric when several retail cities
+		// share one supply city. When a store product report is available
+		// (root finished material only), its warehouseUnits is already
+		// scoped to the active retail city's stores — use it directly.
+		// Intermediate materials pass productReport = null and fall back to
+		// the movement sum, which is correct for industrial warehouse pulls
+		// attributed to the industry city itself.
+		warehousePulled: productReport
+			? productReport.warehouseUnits
+			: sumMovements(report?.warehousePulls, materialId, 'warehouse'),
 		railPulled: sumMovements(report?.consumed, materialId, 'rail'),
 		shopImported: sumMovements(report?.shopImports, materialId, 'import'),
 		unitsSold: productReport?.unitsSold ?? 0,
