@@ -215,10 +215,12 @@ export function buildProductChainTree(input: {
 
 	const materialMetrics = (materialId: MaterialId) => {
 		const producerRecipeId = MATERIAL_PRODUCER_RECIPES.get(materialId);
+		const isRetailRoot = materialId === rootMaterialId;
 		const actual = materialActualMetrics(
 			report,
 			materialId,
-			materialId === rootMaterialId ? productReport : null
+			isRetailRoot ? productReport : null,
+			isRetailRoot
 		);
 		const health = materialHealth({
 			hasReport: report !== null,
