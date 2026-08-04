@@ -995,4 +995,23 @@ describe('rail-fed production', () => {
 		expect(first.report).toEqual(second.report);
 		expect(first.game.cityInventories).toEqual(second.game.cityInventories);
 	});
+
+	test('marks a building as blocked when its city inventory is missing', () => {
+		expect.assertions(2);
+		let game = { ...createNewGame('convenience', 280_010), cash: 100_000 };
+		const industrialTile = game.industryCities[0]!.tiles.find(
+			(tile) => tile.terrain === 'industrial' && !tile.locked
+		)!;
+		game = buildIndustrialBuilding(game, {
+			tileId: industrialTile.id,
+			buildingTypeId: 'snack-factory'
+		});
+		const gameWithoutInventory = { ...game, cityInventories: [] };
+
+		const result = simulateIndustryProduction(gameWithoutInventory);
+		const building = result.game.industrialBuildings.find((b) => b.typeId === 'snack-factory')!;
+
+		expect(building.status).toBe('blocked');
+		expect(building.blockedDays).toBeGreaterThan(0);
+	});
 });

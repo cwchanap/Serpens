@@ -530,4 +530,55 @@ describe('legacy warehouse material allocation', () => {
 			)
 		).toThrow(RangeError);
 	});
+
+	test('rejects an unknown legacy material id before allocating', () => {
+		expect(() =>
+			allocateLegacyWarehouseMaterialsForTest(
+				createAllocationGame(),
+				[createCityInventory('industry-city', { capacity: 200 })],
+				{ 'unknown-material': 1 } as Partial<Record<MaterialId, number>>
+			)
+		).toThrow(RangeError);
+	});
+
+	test('selects the higher-capacity city as the primary destination on a capacity mismatch', () => {
+		expect.assertions(2);
+		const allocation = allocateLegacyWarehouseMaterialsForTest(
+			createAllocationGame(),
+			[
+				createCityInventory('industry-city', { capacity: 100 }),
+				createCityInventory('breadbasket-basin', { capacity: 200 })
+			],
+			{ water: 250 }
+		);
+
+		const industryCity = allocation.find((a) => a.cityId === 'industry-city')!;
+		const breadbasket = allocation.find((a) => a.cityId === 'breadbasket-basin')!;
+
+		expect(industryCity.materials.water).toBe(50);
+		expect(breadbasket.materials.water).toBe(200);
+	});
+});
+
+describe('capacity synchronization edge cases', () => {
+	test('returns the game unchanged when synchronizing an unsupported city', () => {
+		expect.assertions(2);
+		const base = createNewGame('convenience', 20260803);
+
+		const result = synchronizeCityInventoryCapacity(base, 'harbor-city');
+
+		expect(result).toBe(base);
+		expect(result.cityInventories).toBe(base.cityInventories);
+	});
+
+	test('returns the game unchanged when there are no city inventories', () => {
+		expect.assertions(2);
+		const base = createNewGame('convenience', 20260804);
+		const game = withCityInventories(base, []);
+
+		const result = synchronizeAllCityInventoryCapacities(game);
+
+		expect(result).toBe(game);
+		expect(result.cityInventories).toBe(game.cityInventories);
+	});
 });

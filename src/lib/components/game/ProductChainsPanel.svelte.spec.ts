@@ -340,4 +340,42 @@ describe('ProductChainsPanel', () => {
 				.toBeVisible();
 		}
 	);
+
+	it('shows city inventory overflow state in warehouse-flow mode', async () => {
+		expect.assertions(1);
+		const baseGame = withActiveIndustryInventory(createNewGame('convenience', 20260518));
+		const cityId = baseGame.activeIndustryCityId as WorldCityId;
+		const game: GameState = {
+			...baseGame,
+			cityInventories: baseGame.cityInventories!.map((inventory) =>
+				inventory.cityId === cityId
+					? { ...inventory, overflowUnits: 5, overflowCost: 10 }
+					: inventory
+			)
+		};
+
+		renderProductChainsPanel(game);
+
+		await page.getByRole('button', { name: 'City inventory flow' }).click();
+		await expect
+			.element(page.getByText('Industry City city inventory overflow: 5 units ($10).'))
+			.toBeVisible();
+	});
+
+	it('shows active industry city inventory unavailable in warehouse-flow mode', async () => {
+		expect.assertions(1);
+		const baseGame = createNewGame('convenience', 20260518);
+		const cityId = baseGame.activeIndustryCityId as WorldCityId;
+		const game: GameState = {
+			...baseGame,
+			cityInventories: baseGame.cityInventories!.filter((inventory) => inventory.cityId !== cityId)
+		};
+
+		renderProductChainsPanel(game);
+
+		await page.getByRole('button', { name: 'City inventory flow' }).click();
+		await expect
+			.element(page.getByText('City inventory for Industry City is unavailable.'))
+			.toBeVisible();
+	});
 });

@@ -984,4 +984,114 @@ describe('IndustryTileInspector', () => {
 		await expect.element(page.getByText('City inventory overflow: 3 units.')).toBeVisible();
 		await expect.element(page.getByText('$6')).toBeVisible();
 	});
+
+	it('treats an undefined buffer material quantity as zero', async () => {
+		expect.assertions(1);
+		const game = createNewGame('convenience', 20260512);
+		const tile = getIndustryTilesByResource(game.industryCities[0]!, 'grain-field')[0]!;
+		const building: IndustrialBuilding = {
+			id: 'industry-building-buffer-undefined',
+			level: 1,
+			typeId: 'flour-mill',
+			cityId: tile.cityId,
+			tileId: tile.id,
+			mapX: tile.x,
+			mapY: tile.y,
+			status: 'idle',
+			lastProduction: [],
+			producedTotal: 0,
+			importedInputTotal: 0,
+			blockedDays: 0,
+			inventory: { grain: undefined } as unknown as IndustrialBuilding['inventory']
+		};
+
+		render(IndustryTileInspector, {
+			game,
+			tile,
+			building,
+			i18n: createI18n('en'),
+			onClose: vi.fn()
+		});
+
+		await expect.element(page.getByText('No materials buffered')).toBeVisible();
+	});
+
+	it('sorts buffer materials by material id with three or more entries', async () => {
+		expect.assertions(3);
+		const game = createNewGame('convenience', 20260512);
+		const tile = getIndustryTilesByResource(game.industryCities[0]!, 'grain-field')[0]!;
+		const building: IndustrialBuilding = {
+			id: 'industry-building-buffer-sort',
+			level: 1,
+			typeId: 'flour-mill',
+			cityId: tile.cityId,
+			tileId: tile.id,
+			mapX: tile.x,
+			mapY: tile.y,
+			status: 'idle',
+			lastProduction: [],
+			producedTotal: 0,
+			importedInputTotal: 0,
+			blockedDays: 0,
+			inventory: { grain: 12, flour: 8, drinks: 5 }
+		};
+
+		render(IndustryTileInspector, {
+			game,
+			tile,
+			building,
+			i18n: createI18n('en'),
+			onClose: vi.fn()
+		});
+
+		const bufferList = page.getByRole('list', { name: 'Buffer' });
+		const rows = bufferList.getByRole('listitem');
+		await expect.element(rows.nth(0)).toHaveTextContent(/Drinks: 5/);
+		await expect.element(rows.nth(1)).toHaveTextContent(/Flour: 8/);
+		await expect.element(rows.nth(2)).toHaveTextContent(/Grain: 12/);
+	});
+
+	it('renders city inventory material icons with asset sources', async () => {
+		expect.assertions(2);
+		const baseGame = createNewGame('convenience', 20260512);
+		const tile = baseGame.industryCities[0]!.tiles.find(
+			(candidate) => candidate.terrain === 'industrial' && !candidate.locked
+		)!;
+		const game = withCityInventory(baseGame, tile.cityId, {
+			capacity: 200,
+			materials: { snacks: 42, drinks: 18 },
+			overflowUnits: 0,
+			overflowCost: 0
+		});
+		const building: IndustrialBuilding = {
+			id: 'industry-building-warehouse-icons',
+			level: 1,
+			typeId: 'warehouse',
+			cityId: tile.cityId,
+			tileId: tile.id,
+			mapX: tile.x,
+			mapY: tile.y,
+			status: 'idle',
+			lastProduction: [],
+			producedTotal: 0,
+			importedInputTotal: 0,
+			blockedDays: 0,
+			inventory: {}
+		};
+
+		render(IndustryTileInspector, {
+			game,
+			tile,
+			building,
+			i18n: createI18n('en'),
+			onClose: vi.fn()
+		});
+
+		await expect
+			.element(page.getByTestId('industry-city-inventory-material-snacks'))
+			.toHaveAttribute('src', '/assets/game/industry/materials/snacks.png');
+		await expect
+			.element(page.getByTestId('industry-city-inventory-material-drinks'))
+			.toHaveAttribute('src', '/assets/game/industry/materials/drinks.png');
+	});
 });

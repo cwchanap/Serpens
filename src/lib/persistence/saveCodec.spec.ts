@@ -36,7 +36,8 @@ import type {
 	DailyStoreReport,
 	GameState,
 	IndustryTile,
-	MaterialId
+	MaterialId,
+	WorldCityId
 } from '$lib/game/types';
 import {
 	AUTO_SAVE_SLOT_ID,
@@ -8341,6 +8342,830 @@ describe('saveCodec', () => {
 				]
 			});
 			expect(() => validateSaveRecord(createV11Record([bad]))).toThrow(/profit must be -2/);
+		});
+	});
+
+	describe('v12 migration defensive paths', () => {
+		test('rejects a v12 game whose warehouse materials is not an object', () => {
+			const record = createV12MultiCityRecord({ water: 3 });
+			(record.game as unknown as Record<string, unknown>).warehouse = {
+				materials: 'not-an-object'
+			};
+
+			expectSaveRecordErrorCode(record, 'invariant-city-inventory');
+		});
+
+		test('rejects a v12 game whose warehouse is null', () => {
+			const record = createV12MultiCityRecord({ water: 3 });
+			(record.game as unknown as Record<string, unknown>).warehouse = null;
+
+			expectSaveRecordErrorCode(record, 'invariant-city-inventory');
+		});
+
+		test('uses canonical world-city order tie-breaker when no eligible city is the active industry city', () => {
+			const record = createV12MultiCityRecord({ water: 3 });
+			const rawGame = record.game as unknown as Record<string, unknown>;
+			rawGame.activeIndustryCityId = 'quarry-works';
+
+			expectSaveRecordErrorCode(record, 'corrupt');
+		});
+
+		test('passes through a non-object store report during v12 store-report migration', () => {
+			const record = createV12MultiCityRecord({ water: 3 });
+			record.game.reports = [createLegacyV12Report(record.game as unknown as V12GameFixture)];
+			const rawReport = record.game.reports[0] as unknown as Record<string, unknown>;
+			rawReport.storeReports = ['not-an-object', { storeId: 'store-1', productReports: [] }];
+
+			expectSaveRecordErrorCode(record, 'invariant-report-attribution');
+		});
+
+		test('passes through a non-object product report during v12 store-report migration', () => {
+			const record = createV12MultiCityRecord({ water: 3 });
+			record.game.reports = [createLegacyV12Report(record.game as unknown as V12GameFixture)];
+			const rawReport = record.game.reports[0] as unknown as Record<string, unknown>;
+			const storeReports = rawReport.storeReports as Array<Record<string, unknown>>;
+			storeReports[0] = {
+				...storeReports[0],
+				productReports: ['not-an-object']
+			};
+
+			expectSaveRecordErrorCode(record, 'invariant-report-attribution');
+		});
+
+		test('passes through a non-object rail shipment during v12 rail-shipment migration', () => {
+			const record = createV12MultiCityRecord({ water: 3 });
+			record.game.reports = [createLegacyV12Report(record.game as unknown as V12GameFixture)];
+			const rawReport = record.game.reports[0] as unknown as Record<string, unknown>;
+			const productionReport = rawReport.productionReport as Record<string, unknown>;
+			(productionReport.railShipments as unknown[])[0] = 'not-an-object';
+
+			expectSaveRecordErrorCode(record, 'corrupt');
+		});
+
+		test('rejects a v12 rail shipment with conflicting recoverable industrial-city references', () => {
+			const record = createV12MultiCityRecord({ water: 3 });
+			record.game.reports = [createLegacyV12Report(record.game as unknown as V12GameFixture)];
+			const rawReport = record.game.reports[0] as unknown as Record<string, unknown>;
+			const productionReport = rawReport.productionReport as Record<string, unknown>;
+			const buildings = record.game.industrialBuildings;
+			const industryBuilding = buildings.find((b) => b.cityId === 'industry-city')!;
+			const breadbasketBuilding = buildings.find((b) => b.cityId === 'breadbasket-basin')!;
+			(productionReport.railShipments as Array<Record<string, unknown>>)[0] = {
+				materialId: 'water',
+				quantity: 1,
+				value: 1,
+				kind: 'push-warehouse',
+				fromId: industryBuilding.id,
+				toId: breadbasketBuilding.id
+			};
+
+			expectSaveRecordErrorCode(record, 'invariant-report-attribution');
+		});
+
+		test('rejects v12 shop imports that cannot be attributed without recoverable store report evidence', () => {
+			const record = createV12MultiCityRecord({ water: 3 });
+			record.game.reports = [createLegacyV12Report(record.game as unknown as V12GameFixture)];
+			const rawReport = record.game.reports[0] as unknown as Record<string, unknown>;
+			const storeReports = rawReport.storeReports as unknown[];
+			storeReports[0] = 'not-an-object';
+
+			expectSaveRecordErrorCode(record, 'invariant-report-attribution');
+		});
+
+		test('passes through empty v12 shop imports when no recoverable store report evidence exists', () => {
+			const record = createV12MultiCityRecord({ water: 3 });
+			record.game.reports = [createLegacyV12Report(record.game as unknown as V12GameFixture)];
+			const rawReport = record.game.reports[0] as unknown as Record<string, unknown>;
+			const storeReports = rawReport.storeReports as unknown[];
+			storeReports[0] = 'not-an-object';
+			const productionReport = rawReport.productionReport as Record<string, unknown>;
+			productionReport.shopImports = [];
+
+			expectSaveRecordErrorCode(record, 'corrupt');
+		});
+
+		test('synthesizes shop imports from canonical evidence when legacy shop imports are empty', () => {
+			const record = createV12RecordWithSwappedEqualShopImports();
+			const rawReport = record.game.reports[0] as unknown as Record<string, unknown>;
+			const productionReport = rawReport.productionReport as Record<string, unknown>;
+			productionReport.shopImports = [];
+
+			const shopImports = validateSaveRecord(record).game.reports[0]!.productionReport.shopImports;
+
+			expect(shopImports).toHaveLength(2);
+			expect(shopImports.every((entry) => typeof entry.cityId === 'string')).toBe(true);
+		});
+
+		test('rejects a non-object v12 shop import movement', () => {
+			const record = createV12RecordWithSwappedEqualShopImports();
+			const rawReport = record.game.reports[0] as unknown as Record<string, unknown>;
+			const productionReport = rawReport.productionReport as Record<string, unknown>;
+			(productionReport.shopImports as Array<unknown>)[0] = 'not-an-object';
+
+			expectSaveRecordErrorCode(record, 'invariant-report-attribution');
+		});
+
+		test('rejects a v12 shop import with an unknown material that cannot be reconciled', () => {
+			const record = createV12RecordWithSwappedEqualShopImports();
+			const rawReport = record.game.reports[0] as unknown as Record<string, unknown>;
+			const productionReport = rawReport.productionReport as Record<string, unknown>;
+			(productionReport.shopImports as Array<Record<string, unknown>>)[0] = {
+				...(productionReport.shopImports as Array<Record<string, unknown>>)[0]!,
+				materialId: 'unknown-material'
+			};
+
+			expectSaveRecordErrorCode(record, 'invariant-report-attribution');
+		});
+
+		test('rejects v12 retail import evidence with a non-object product report', () => {
+			const record = createV12RecordWithSwappedEqualShopImports();
+			const rawReport = record.game.reports[0] as unknown as Record<string, unknown>;
+			const storeReports = rawReport.storeReports as Array<Record<string, unknown>>;
+			(storeReports[0]!.productReports as Array<unknown>)[0] = 'not-an-object';
+
+			expectSaveRecordErrorCode(record, 'invariant-report-attribution');
+		});
+
+		test('rejects v12 retail import evidence with a non-string categoryId', () => {
+			const record = createV12RecordWithSwappedEqualShopImports();
+			const rawReport = record.game.reports[0] as unknown as Record<string, unknown>;
+			const storeReports = rawReport.storeReports as Array<Record<string, unknown>>;
+			const product = (storeReports[0]!.productReports as Array<Record<string, unknown>>)[0]!;
+			product.categoryId = 123;
+
+			expectSaveRecordErrorCode(record, 'invariant-report-attribution');
+		});
+
+		test('rejects v12 retail import evidence with a raw material categoryId', () => {
+			const record = createV12RecordWithSwappedEqualShopImports();
+			const rawReport = record.game.reports[0] as unknown as Record<string, unknown>;
+			const storeReports = rawReport.storeReports as Array<Record<string, unknown>>;
+			const product = (storeReports[0]!.productReports as Array<Record<string, unknown>>)[0]!;
+			product.categoryId = 'grain';
+
+			expectSaveRecordErrorCode(record, 'invariant-report-attribution');
+		});
+
+		test('retains legacy production-close city inventories when aggregate fields are not safe integers', () => {
+			const record = createV12MultiCityRecord({ water: 3 });
+			record.game.reports = [createLegacyV12Report(record.game as unknown as V12GameFixture)];
+			const rawReport = record.game.reports[0] as unknown as Record<string, unknown>;
+			const productionReport = rawReport.productionReport as Record<string, unknown>;
+			productionReport.warehouseCapacity = 'not-a-number';
+
+			expectSaveRecordErrorCode(record, 'corrupt');
+		});
+
+		test('rejects a nonstarter primary city when the starter industry city does not support city inventory', () => {
+			const record = createV12MultiCityRecord({ water: 3 });
+			const legacyReport = createLegacyV12Report(record.game as unknown as V12GameFixture);
+			const rawGame = record.game as unknown as Record<string, unknown>;
+			rawGame.activeIndustryCityId = 'breadbasket-basin';
+			rawGame.industryCities = (rawGame.industryCities as Array<Record<string, unknown>>).filter(
+				(city) => city.id !== 'industry-city'
+			);
+			rawGame.industrialBuildings = (
+				rawGame.industrialBuildings as Array<Record<string, unknown>>
+			).filter((building) => building.cityId !== 'industry-city');
+			const rawWorld = rawGame.world as Record<string, unknown>;
+			rawWorld.openedCityIds = (rawWorld.openedCityIds as unknown[]).filter(
+				(id) => id !== 'industry-city'
+			);
+			rawGame.reports = [legacyReport];
+
+			expectSaveRecordErrorCode(record, 'invariant-report-attribution');
+		});
+	});
+
+	describe('current city inventory validation defensive paths', () => {
+		test('rejects a non-object city inventory entry', () => {
+			const game = createCurrentV13MultiCityGame();
+
+			expectSaveRecordErrorCode(
+				createManualSaveRecord({
+					game: {
+						...game,
+						cityInventories: ['not-an-object'] as unknown as GameState['cityInventories']
+					}
+				}),
+				'invariant-city-inventory'
+			);
+		});
+
+		test('rejects an empty-string city inventory cityId', () => {
+			const game = createCurrentV13MultiCityGame();
+			const cityInventories = game.cityInventories.map((inventory) =>
+				inventory.cityId === 'industry-city'
+					? { ...inventory, cityId: '' as WorldCityId }
+					: inventory
+			);
+
+			expectSaveRecordErrorCode(
+				createManualSaveRecord({
+					game: { ...game, cityInventories } as unknown as GameState
+				}),
+				'invariant-city-inventory'
+			);
+		});
+
+		test('rejects a non-array cityInventories field', () => {
+			const game = createCurrentV13MultiCityGame();
+
+			expectSaveRecordErrorCode(
+				createManualSaveRecord({
+					game: {
+						...game,
+						cityInventories: 'not-an-array' as unknown as GameState['cityInventories']
+					}
+				}),
+				'invariant-city-inventory'
+			);
+		});
+
+		test('rejects an empty-string retail assignment retailCityId', () => {
+			const game = createCurrentV13MultiCityGame();
+			const assignments = game.retailSupplyAssignments.map((assignment) =>
+				assignment.retailCityId === 'harbor-city'
+					? { ...assignment, retailCityId: '' as WorldCityId }
+					: assignment
+			);
+
+			expectSaveRecordErrorCode(
+				createManualSaveRecord({
+					game: { ...game, retailSupplyAssignments: assignments } as unknown as GameState
+				}),
+				'invariant-retail-supply'
+			);
+		});
+
+		test('rejects a non-array retailSupplyAssignments field', () => {
+			const game = createCurrentV13MultiCityGame();
+
+			expectSaveRecordErrorCode(
+				createManualSaveRecord({
+					game: {
+						...game,
+						retailSupplyAssignments:
+							'not-an-array' as unknown as GameState['retailSupplyAssignments']
+					}
+				}),
+				'invariant-retail-supply'
+			);
+		});
+
+		test('rejects a non-object retail supply assignment entry', () => {
+			const game = createCurrentV13MultiCityGame();
+
+			expectSaveRecordErrorCode(
+				createManualSaveRecord({
+					game: {
+						...game,
+						retailSupplyAssignments: [
+							'not-an-object',
+							...game.retailSupplyAssignments.slice(1)
+						] as unknown as GameState['retailSupplyAssignments']
+					}
+				}),
+				'invariant-retail-supply'
+			);
+		});
+
+		test('rejects a non-string non-null supplyCityId', () => {
+			const game = createCurrentV13MultiCityGame();
+			const assignments = game.retailSupplyAssignments.map((assignment) =>
+				assignment.retailCityId === 'harbor-city'
+					? { ...assignment, supplyCityId: 123 as unknown as WorldCityId | null }
+					: assignment
+			);
+
+			expectSaveRecordErrorCode(
+				createManualSaveRecord({
+					game: { ...game, retailSupplyAssignments: assignments } as unknown as GameState
+				}),
+				'invariant-retail-supply'
+			);
+		});
+	});
+
+	describe('current report validation defensive paths', () => {
+		test('rejects a production movement cityId referencing a known but closed industry city', () => {
+			const game = createCurrentV13MultiCityGame();
+			const report = createCurrentV13Report(game);
+			const updatedReport = {
+				...report,
+				productionReport: {
+					...report.productionReport,
+					produced: report.productionReport.produced.map((movement) => ({
+						...movement,
+						cityId: 'quarry-works' as const
+					}))
+				}
+			};
+
+			expectSaveRecordErrorCode(
+				createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }),
+				'invariant-report-attribution'
+			);
+		});
+
+		test('rejects a production-close summary with a non-finite capacity', () => {
+			const game = createCurrentV13MultiCityGame();
+			const report = createCurrentV13Report(game);
+			const updatedReport = {
+				...report,
+				productionReport: {
+					...report.productionReport,
+					cityInventories: report.productionReport.cityInventories.map((summary, index) =>
+						index === 0 ? { ...summary, capacity: Number.NaN } : summary
+					)
+				}
+			};
+
+			expectSaveRecordErrorCode(
+				createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }),
+				'invariant-report-attribution'
+			);
+		});
+
+		test('rejects a production-close summary with a negative used value', () => {
+			const game = createCurrentV13MultiCityGame();
+			const report = createCurrentV13Report(game);
+			const updatedReport = {
+				...report,
+				productionReport: {
+					...report.productionReport,
+					cityInventories: report.productionReport.cityInventories.map((summary, index) =>
+						index === 0 ? { ...summary, used: -1 } : summary
+					)
+				}
+			};
+
+			expectSaveRecordErrorCode(
+				createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }),
+				'invariant-report-attribution'
+			);
+		});
+
+		test('rejects a production-close summary with an unsafe aggregate capacity', () => {
+			const game = createCurrentV13MultiCityGame();
+			const report = createCurrentV13Report(game);
+			const updatedReport = {
+				...report,
+				productionReport: {
+					...report.productionReport,
+					cityInventories: report.productionReport.cityInventories.map((summary) => ({
+						...summary,
+						capacity: Number.MAX_SAFE_INTEGER,
+						used: 0,
+						overflowUnits: 0,
+						overflowCost: 0
+					})),
+					warehouseCapacity: Number.MAX_SAFE_INTEGER,
+					warehouseUsed: 0,
+					overflowUnits: 0,
+					overflowCost: 0
+				}
+			};
+
+			expectSaveRecordErrorCode(
+				createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }),
+				'invariant-report-attribution'
+			);
+		});
+
+		test('rejects a production-close summary with an overflow cost that does not reconcile', () => {
+			const game = createCurrentV13MultiCityGame();
+			const report = createCurrentV13Report(game);
+			const updatedReport = {
+				...report,
+				productionReport: {
+					...report.productionReport,
+					cityInventories: report.productionReport.cityInventories.map((summary, index) =>
+						index === 1 ? { ...summary, overflowUnits: 2, overflowCost: 999 } : summary
+					),
+					overflowUnits: 2,
+					overflowCost: 999
+				}
+			};
+
+			expectSaveRecordErrorCode(
+				createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }),
+				'invariant-report-attribution'
+			);
+		});
+
+		test('rejects a production-close summary whose overflow cost multiplication overflows the safe-integer range', () => {
+			const game = createCurrentV13MultiCityGame();
+			const report = createCurrentV13Report(game);
+			const updatedReport: DailyReport = {
+				...report,
+				productionReport: {
+					...report.productionReport,
+					cityInventories: [
+						{
+							cityId: 'industry-city',
+							capacity: 0,
+							used: Number.MAX_SAFE_INTEGER,
+							overflowUnits: Number.MAX_SAFE_INTEGER,
+							overflowCost: 0
+						}
+					],
+					warehouseCapacity: 0,
+					warehouseUsed: Number.MAX_SAFE_INTEGER,
+					overflowUnits: Number.MAX_SAFE_INTEGER,
+					overflowCost: 0
+				}
+			};
+
+			expectSaveRecordErrorCode(
+				createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }),
+				'invariant-report-attribution'
+			);
+		});
+
+		test('rejects duplicate city IDs in production-close summaries', () => {
+			const game = createCurrentV13MultiCityGame();
+			const report = createCurrentV13Report(game);
+			const updatedReport = {
+				...report,
+				productionReport: {
+					...report.productionReport,
+					cityInventories: [
+						report.productionReport.cityInventories[0]!,
+						{ ...report.productionReport.cityInventories[0]! }
+					],
+					warehouseCapacity: report.productionReport.cityInventories[0]!.capacity * 2,
+					warehouseUsed: report.productionReport.cityInventories[0]!.used * 2,
+					overflowUnits: 0,
+					overflowCost: 0
+				}
+			};
+
+			expectSaveRecordErrorCode(
+				createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }),
+				'invariant-report-attribution'
+			);
+		});
+
+		test('rejects noncanonical ordering in production-close summaries', () => {
+			const game = createCurrentV13MultiCityGame();
+			const report = createCurrentV13Report(game);
+			const updatedReport = {
+				...report,
+				productionReport: {
+					...report.productionReport,
+					cityInventories: [...report.productionReport.cityInventories].reverse()
+				}
+			};
+
+			expectSaveRecordErrorCode(
+				createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }),
+				'invariant-report-attribution'
+			);
+		});
+
+		test('rejects a store replenishment context with an empty-string retailCityId', () => {
+			const game = createCurrentV13MultiCityGame();
+			const report = createCurrentV13Report(game);
+			const storeReport = report.storeReports[0]!;
+			const updatedReport: DailyReport = {
+				...report,
+				storeReports: [
+					{
+						...storeReport,
+						replenishment: {
+							...storeReport.replenishment!,
+							retailCityId: '' as WorldCityId
+						}
+					}
+				]
+			};
+
+			expectSaveRecordErrorCode(
+				createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }),
+				'invariant-retail-supply'
+			);
+		});
+
+		test('rejects a store replenishment context with a mismatched retail city kind', () => {
+			const game = createCurrentV13MultiCityGame();
+			const report = createCurrentV13Report(game);
+			const storeReport = report.storeReports[0]!;
+			const updatedReport: DailyReport = {
+				...report,
+				storeReports: [
+					{
+						...storeReport,
+						replenishment: {
+							...storeReport.replenishment!,
+							retailCityId: 'industry-city'
+						}
+					}
+				]
+			};
+
+			expectSaveRecordErrorCode(
+				createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }),
+				'invariant-retail-supply'
+			);
+		});
+
+		test('rejects local replenishment with warehouse units but no resolved supply city', () => {
+			const game = createCurrentV13MultiCityGame();
+			const report = createCurrentV13Report(game);
+			const storeReport = report.storeReports[0]!;
+			const updatedReport: DailyReport = {
+				...report,
+				storeReports: [
+					{
+						...storeReport,
+						replenishment: {
+							...storeReport.replenishment!,
+							resolvedSupplyCityId: null
+						},
+						productReports: [
+							{
+								...storeReport.productReports[0]!,
+								warehouseUnits: 2,
+								warehouseValue: 4,
+								importedUnits: 0,
+								importSpend: 0,
+								replenishmentOutcome: 'city-inventory'
+							}
+						]
+					}
+				]
+			};
+
+			expectSaveRecordErrorCode(
+				createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }),
+				'invariant-retail-supply'
+			);
+		});
+
+		test('rejects a raw-material categoryId with nonzero warehouse units', () => {
+			const game = createCurrentV13MultiCityGame();
+			const report = createCurrentV13Report(game);
+			const storeReport = report.storeReports[0]!;
+			const updatedReport: DailyReport = {
+				...report,
+				storeReports: [
+					{
+						...storeReport,
+						productReports: [
+							{
+								...storeReport.productReports[0]!,
+								categoryId: 'grain',
+								warehouseUnits: 2,
+								warehouseValue: 4,
+								importedUnits: 0,
+								importSpend: 0,
+								replenishmentOutcome: 'city-inventory'
+							}
+						]
+					}
+				]
+			};
+
+			expectSaveRecordErrorCode(
+				createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }),
+				'invariant-retail-supply'
+			);
+		});
+
+		test('rejects a store report referencing an unknown storeId', () => {
+			const game = createCurrentV13MultiCityGame();
+			const report = createCurrentV13Report(game);
+			const storeReport = report.storeReports[0]!;
+			const updatedReport = {
+				...report,
+				storeReports: [
+					{
+						...storeReport,
+						storeId: 'nonexistent-store'
+					}
+				]
+			};
+
+			expectSaveRecordErrorCode(
+				createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }),
+				'invariant-retail-supply'
+			);
+		});
+
+		test('rejects an unsupported replenishmentOutcome value', () => {
+			const game = createCurrentV13MultiCityGame();
+			const report = createCurrentV13Report(game);
+			const storeReport = report.storeReports[0]!;
+			const updatedReport = {
+				...report,
+				storeReports: [
+					{
+						...storeReport,
+						productReports: [
+							{
+								...storeReport.productReports[0]!,
+								replenishmentOutcome: 'invalid-outcome' as unknown as null
+							}
+						]
+					}
+				]
+			};
+
+			expectSaveRecordErrorCode(
+				createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }),
+				'invariant-retail-supply'
+			);
+		});
+
+		test('rejects a null replenishment context with a non-null product outcome', () => {
+			const game = createCurrentV13MultiCityGame();
+			const report = createCurrentV13Report(game);
+			const storeReport = report.storeReports[0]!;
+			const updatedReport: DailyReport = {
+				...report,
+				storeReports: [
+					{
+						...storeReport,
+						replenishment: null,
+						productReports: [
+							{
+								...storeReport.productReports[0]!,
+								warehouseUnits: 0,
+								warehouseValue: 0,
+								importedUnits: 0,
+								importSpend: 0,
+								replenishmentOutcome: 'city-inventory'
+							}
+						]
+					}
+				]
+			};
+
+			expectSaveRecordErrorCode(
+				createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }),
+				'invariant-retail-supply'
+			);
+		});
+
+		test('rejects a warehouseValue that overflows the safe-integer range for its material localValue', () => {
+			const game = createCurrentV13MultiCityGame();
+			const report = createCurrentV13Report(game);
+			const storeReport = report.storeReports[0]!;
+			const updatedReport: DailyReport = {
+				...report,
+				storeReports: [
+					{
+						...storeReport,
+						productReports: [
+							{
+								...storeReport.productReports[0]!,
+								categoryId: 'bottled-water',
+								warehouseUnits: Number.MAX_SAFE_INTEGER,
+								warehouseValue: 0,
+								importedUnits: 0,
+								importSpend: 0,
+								replenishmentOutcome: 'city-inventory'
+							}
+						]
+					}
+				]
+			};
+
+			expectSaveRecordErrorCode(
+				createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }),
+				'invariant-retail-supply'
+			);
+		});
+
+		test('rejects a non-object non-null replenishment context', () => {
+			const game = createCurrentV13MultiCityGame();
+			const report = createCurrentV13Report(game);
+			const storeReport = report.storeReports[0]!;
+			const updatedReport = {
+				...report,
+				storeReports: [
+					{
+						...storeReport,
+						replenishment: 'not-an-object' as unknown as null
+					}
+				]
+			};
+
+			expectSaveRecordErrorCode(
+				createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }),
+				'invariant-retail-supply'
+			);
+		});
+
+		test('rejects a replenishment retailCityId that does not match its store city', () => {
+			const game = createCurrentV13MultiCityGame();
+			const report = createCurrentV13Report(game);
+			const storeReport = report.storeReports[0]!;
+			const updatedReport: DailyReport = {
+				...report,
+				storeReports: [
+					{
+						...storeReport,
+						replenishment: {
+							...storeReport.replenishment!,
+							retailCityId: 'campus-junction'
+						}
+					}
+				]
+			};
+
+			expectSaveRecordErrorCode(
+				createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }),
+				'invariant-retail-supply'
+			);
+		});
+
+		test('rejects a replenishment context where resolved and configured supply city IDs differ', () => {
+			const game = createCurrentV13MultiCityGame();
+			const report = createCurrentV13Report(game);
+			const storeReport = report.storeReports[0]!;
+			const updatedReport: DailyReport = {
+				...report,
+				storeReports: [
+					{
+						...storeReport,
+						replenishment: {
+							...storeReport.replenishment!,
+							configuredSupplyCityId: 'industry-city',
+							resolvedSupplyCityId: 'breadbasket-basin'
+						}
+					}
+				]
+			};
+
+			expectSaveRecordErrorCode(
+				createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }),
+				'invariant-retail-supply'
+			);
+		});
+
+		test('rejects a replenishment context with a resolved supply city that has no current inventory', () => {
+			const game = createCurrentV13MultiCityGame();
+			const report = createCurrentV13Report(game);
+			const storeReport = report.storeReports[0]!;
+			const updatedReport: DailyReport = {
+				...report,
+				storeReports: [
+					{
+						...storeReport,
+						replenishment: {
+							...storeReport.replenishment!,
+							configuredSupplyCityId: null,
+							resolvedSupplyCityId: 'industry-city'
+						},
+						productReports: [
+							{
+								...storeReport.productReports[0]!,
+								warehouseUnits: 0,
+								warehouseValue: 0,
+								importedUnits: 2,
+								importSpend: 6,
+								replenishmentOutcome: 'import-only'
+							}
+						]
+					}
+				]
+			};
+
+			expectSaveRecordErrorCode(
+				createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }),
+				'invariant-retail-supply'
+			);
+		});
+
+		test('rejects a replenishment context with no attempted product refill', () => {
+			const game = createCurrentV13MultiCityGame();
+			const report = createCurrentV13Report(game);
+			const storeReport = report.storeReports[0]!;
+			const updatedReport = {
+				...report,
+				storeReports: [
+					{
+						...storeReport,
+						productReports: [
+							{
+								...storeReport.productReports[0]!,
+								warehouseUnits: 0,
+								warehouseValue: 0,
+								importedUnits: 0,
+								importSpend: 0,
+								replenishmentOutcome: null
+							}
+						]
+					}
+				]
+			};
+
+			expectSaveRecordErrorCode(
+				createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }),
+				'invariant-retail-supply'
+			);
 		});
 	});
 
