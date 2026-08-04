@@ -93,6 +93,7 @@ describe('locale resolution', () => {
 			'retailSupplySources.importsOnlySummary',
 			'retailSupplySources.inventorySummary',
 			'retailSupplySources.overflow',
+			'retailSupplySources.overflowSingular',
 			'retailSupplySources.noOverflow',
 			'retailSupplySources.unavailableSource',
 			'retailSupplySources.missingConfiguration'

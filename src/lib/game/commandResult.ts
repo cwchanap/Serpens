@@ -1,5 +1,6 @@
 import type { FinanceFailureCode } from './finance';
 import type { DecisionResolutionFailureCode } from './eventEffects';
+import type { RetailSupplyAssignmentFailure } from './retailSupply';
 
 /**
  * Result of a route-layer commit attempt. Shared between the route controller
@@ -22,6 +23,7 @@ export type GameRouteCommitResult =
 			context: Record<string, string | number>;
 			financeFailure?: FinanceFailureCode;
 	  }
+	| { status: 'retail-supply-rejected'; reason: RetailSupplyAssignmentFailure }
 	| { status: 'unchanged' }
 	| {
 			status: 'confirmation-required';

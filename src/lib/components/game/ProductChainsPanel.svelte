@@ -70,7 +70,7 @@
 	const categorySupplyState = $derived(getProductChainSupplyState(game));
 	const categorySupplyInventory = $derived.by(() => {
 		const sourceCityId =
-			categorySupplyState?.code === 'available' || categorySupplyState?.code === 'zero-capacity'
+			categorySupplyState.code === 'available' || categorySupplyState.code === 'zero-capacity'
 				? categorySupplyState.cityId
 				: null;
 		return sourceCityId ? getCityInventory(game, sourceCityId) : null;

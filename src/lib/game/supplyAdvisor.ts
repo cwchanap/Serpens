@@ -55,7 +55,7 @@ function getActiveIndustryInputs(game: GameState): {
 
 	const access = getCityInventory(game, game.activeIndustryCityId);
 	if (!access.ok) {
-		return { inventory: {}, buildings: [] };
+		return { inventory: {}, buildings: activeBuildings };
 	}
 
 	return {

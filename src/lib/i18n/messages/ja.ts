@@ -405,6 +405,7 @@ export const ja = {
 		importsOnlySummary: '輸入のみです。補充はすべて外部輸入でまかなわれます。',
 		inventorySummary: '都市在庫を {used} / {capacity} 使用中。',
 		overflow: '超過: {units} 単位（{cost}）。',
+		overflowSingular: '超過: {units} 単位（{cost}）。',
 		noOverflow: '超過なし。',
 		unavailableSource: '{cityName}は利用できません。',
 		missingConfiguration: '供給設定を利用できません。'

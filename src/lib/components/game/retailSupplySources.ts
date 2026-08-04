@@ -111,10 +111,15 @@ function buildValidSourceOptions(game: GameState, i18n: I18nBundle): RetailSuppl
 		});
 		const overflowSummary =
 			access.inventory.overflowUnits > 0
-				? i18n.t('retailSupplySources.overflow', {
-						units: i18n.format.integer(access.inventory.overflowUnits),
-						cost: i18n.format.currency(access.inventory.overflowCost)
-					})
+				? i18n.t(
+						access.inventory.overflowUnits === 1
+							? 'retailSupplySources.overflowSingular'
+							: 'retailSupplySources.overflow',
+						{
+							units: i18n.format.integer(access.inventory.overflowUnits),
+							cost: i18n.format.currency(access.inventory.overflowCost)
+						}
+					)
 				: i18n.t('retailSupplySources.noOverflow');
 
 		return [

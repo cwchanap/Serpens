@@ -931,7 +931,7 @@ describe('IndustryTileInspector', () => {
 		await expect.element(inventory.getByText('50')).toBeVisible();
 		await expect.element(inventory.getByText('35')).toBeVisible();
 		await expect.element(inventory.getByText('Snacks: 33')).toBeVisible();
-		await expect.element(inventory.getByText('777')).not.toBeInTheDocument();
+		await expect.element(inventory.getByText('999')).not.toBeInTheDocument();
 	});
 
 	it('keeps unavailable, zero-capacity, empty, and overflow city inventory states distinct', async () => {

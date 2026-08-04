@@ -253,11 +253,13 @@ export function pullViaRail(
 			best.candidate.stock
 		);
 
+		let removed: number;
 		if (best.candidate.kind === 'pull-warehouse') {
 			const removal = removeCityInventoryMaterial(entityCity.inventory, materialId, quantity);
 			state.cityInventoriesByCityId.set(consumerCityId, removal.inventory);
 			entityCity.inventory = removal.inventory;
 			result.fromWarehouse += removal.quantityRemoved;
+			removed = removal.quantityRemoved;
 		} else {
 			const removal = removeInventory(
 				state.inventories.get(best.candidate.buildingId) ?? {},
@@ -265,21 +267,22 @@ export function pullViaRail(
 				quantity
 			);
 			state.inventories.set(best.candidate.buildingId, removal.inventory);
-			result.fromProducers += quantity;
+			result.fromProducers += removal.removed;
+			removed = removal.removed;
 		}
 
-		consumeRailBudget(city.budget, best.path, quantity);
-		recordUsage(state, consumerCityId, best.path, quantity);
+		consumeRailBudget(city.budget, best.path, removed);
+		recordUsage(state, consumerCityId, best.path, removed);
 		state.shipments.push({
 			cityId: consumerCityId,
 			materialId,
-			quantity,
-			value: quantity * MATERIALS[materialId].localValue,
+			quantity: removed,
+			value: removed * MATERIALS[materialId].localValue,
 			kind: best.candidate.kind,
 			fromId: best.candidate.buildingId,
 			toId: consumer.id
 		});
-		remaining -= quantity;
+		remaining -= removed;
 	}
 
 	return result;

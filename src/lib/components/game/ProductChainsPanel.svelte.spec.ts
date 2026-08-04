@@ -246,7 +246,7 @@ describe('ProductChainsPanel', () => {
 				...game,
 				retailSupplyAssignments: [{ retailCityId: 'harbor-city', supplyCityId: null }]
 			}),
-			'Harbor City supply: Imports only — replenishment uses External imports.'
+			'Harbor City supply: Imports only — replenishment uses external imports.'
 		],
 		[
 			'configuration unavailable',
@@ -293,7 +293,7 @@ describe('ProductChainsPanel', () => {
 				...game,
 				retailSupplyAssignments: [{ retailCityId: 'harbor-city', supplyCityId: null }]
 			}),
-			'Harbor City supply: Imports only — replenishment uses External imports.'
+			'Harbor City supply: Imports only — replenishment uses external imports.'
 		],
 		[
 			'configuration unavailable',

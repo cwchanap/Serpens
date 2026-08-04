@@ -405,6 +405,7 @@ export const zhHant = {
 		importsOnlySummary: '僅進口。所有補貨皆由外部進口支應。',
 		inventorySummary: '已使用 {used} / {capacity} 城市庫存。',
 		overflow: '溢出：{units} 單位（{cost}）。',
+		overflowSingular: '溢出：{units} 單位（{cost}）。',
 		noOverflow: '沒有溢出。',
 		unavailableSource: '{cityName}不可用。',
 		missingConfiguration: '供應設定不可用。'

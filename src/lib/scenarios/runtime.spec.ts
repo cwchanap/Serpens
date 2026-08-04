@@ -1270,7 +1270,11 @@ describe('scenario runtime lifecycle order', { timeout: 30_000 }, () => {
 				retailCityId: 'harbor-city',
 				supplyCityId: 'breadbasket-basin'
 			})
-		).toEqual({ ok: false, code: 'invalid-command' });
+		).toEqual({
+			ok: false,
+			code: 'invalid-command',
+			retailSupplyFailure: { reason: 'supply-city-closed' }
+		});
 		expect(run).toEqual(beforeRejected);
 
 		const forbiddenContent = {

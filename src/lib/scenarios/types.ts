@@ -64,7 +64,13 @@ export type ScenarioCommand =
 	| { kind: 'updatePolicy'; patch: Partial<CompanyPolicy> }
 	| { kind: 'openWorldCity'; cityId: WorldCityId }
 	| { kind: 'selectWorldCity'; cityId: WorldCityId }
-	| { kind: 'setRetailSupplySource'; retailCityId: string; supplyCityId: string | null }
+	| {
+			kind: 'setRetailSupplySource';
+			// Deliberately untyped string: these arrive from the DOM select value
+			// and are validated by the transition before any state change.
+			retailCityId: string;
+			supplyCityId: string | null;
+	  }
 	| { kind: 'openStore'; tileId: string; archetypeId: ArchetypeId }
 	| { kind: 'upgradeStore'; storeId: string }
 	| { kind: 'hireStaff'; candidateId: string }

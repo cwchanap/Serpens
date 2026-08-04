@@ -89,7 +89,7 @@ describe('buildRetailCitySupplyViews', () => {
 		expect(industryCity.overflowSummary).toBe('Overflow: 7 units ($14).');
 		expect(breadbasket.inventorySummary).toBe('3 / 40 city inventory used.');
 		expect(breadbasket.overflowSummary).toBe('No overflow.');
-		expect(`${industryCity.inventorySummary} ${industryCity.overflowSummary}`).not.toContain('999');
+		expect(`${industryCity.inventorySummary} ${industryCity.overflowSummary}`).not.toContain('40');
 	});
 
 	it('keeps zero capacity, empty stock, and overflow text-distinguishable', () => {
@@ -126,7 +126,7 @@ describe('buildRetailCitySupplyViews', () => {
 		)!;
 
 		expect(industryCity.inventorySummary).toBe('0 / 0 city inventory used.');
-		expect(industryCity.overflowSummary).toBe('Overflow: 1 units ($2).');
+		expect(industryCity.overflowSummary).toBe('Overflow: 1 unit ($2).');
 		expect(breadbasket.inventorySummary).toBe('0 / 40 city inventory used.');
 	});
 
