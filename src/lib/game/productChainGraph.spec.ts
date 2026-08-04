@@ -9,6 +9,7 @@ import {
 	formatQuantity,
 	getSupportedStoreChainCategories,
 	healthLabel,
+	latestStoreProductReport,
 	materialActualMetrics,
 	materialHealth,
 	sortEdges,
@@ -915,5 +916,31 @@ describe('sortEdges', () => {
 
 		expect(sorted[0]!.id).toBe('a');
 		expect(sorted[1]!.id).toBe('z');
+	});
+});
+
+describe('warehouse flow graph scope fallback', () => {
+	test('returns an empty graph when the active industry city has no city inventory', () => {
+		expect.assertions(3);
+		const game = { ...createNewGame('convenience', 20260601), cityInventories: [] };
+
+		const graph = buildWarehouseFlowGraph(game);
+
+		expect(graph.nodes).toEqual([]);
+		expect(graph.edges).toEqual([]);
+		expect(graph.emptyReason).toBe('noWarehouseData');
+	});
+});
+
+describe('latestStoreProductReport filtering', () => {
+	test('returns null when the store is excluded by allowedStoreIds', () => {
+		expect.assertions(1);
+		const game = createNewGame('convenience', 20260602);
+		const store = game.stores[0]!;
+		const allowedStoreIds = new Set<string>(['other-store']);
+
+		const result = latestStoreProductReport(game, store, 'snacks', allowedStoreIds);
+
+		expect(result).toBeNull();
 	});
 });

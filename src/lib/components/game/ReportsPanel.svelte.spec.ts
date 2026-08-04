@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import type { ReportSummary } from '$lib/game/reports';
 import type {
+	CityInventory,
 	DailyProductionReport,
 	DailyStoreReport,
 	EventModifierSnapshot,
@@ -669,5 +670,275 @@ describe('ReportsPanel', () => {
 		await expect
 			.element(reports.getByText('External imports — Harbor City: 3 units'))
 			.toBeVisible();
+	});
+
+	it('aggregates produced movements with duplicate city ids and shows unavailable city attribution', async () => {
+		expect.assertions(4);
+		const game = currentInventoryGame();
+
+		render(ReportsPanel, {
+			i18n: createI18n('en'),
+			game,
+			stores: [store],
+			summary: {
+				...summary,
+				latest: {
+					...summary.latest!,
+					productionReport: {
+						...emptyProductionReport(),
+						cityInventories: [
+							{
+								cityId: 'industry-city',
+								capacity: 100,
+								used: 42,
+								overflowUnits: 0,
+								overflowCost: 0
+							}
+						],
+						produced: [
+							{
+								cityId: 'industry-city',
+								materialId: 'snacks',
+								quantity: 12,
+								value: 24,
+								source: 'local'
+							},
+							{
+								cityId: 'industry-city',
+								materialId: 'drinks',
+								quantity: 8,
+								value: 16,
+								source: 'local'
+							},
+							{
+								cityId: undefined as never,
+								materialId: 'grain',
+								quantity: 7,
+								value: 14,
+								source: 'local'
+							}
+						],
+						consumed: [
+							{
+								cityId: undefined as never,
+								materialId: 'water',
+								quantity: 3,
+								value: 6,
+								source: 'local'
+							}
+						]
+					}
+				}
+			}
+		});
+
+		const reports = page.getByRole('region', { name: 'Reports' });
+		await expect.element(reports.getByText('Production — Industry City: 20 units')).toBeVisible();
+		await expect
+			.element(reports.getByText('Production attribution unavailable: 7 units'))
+			.toBeVisible();
+		await expect
+			.element(reports.getByText('Consumption attribution unavailable: 3 units'))
+			.toBeVisible();
+		await expect
+			.element(reports.getByText('City inventory overflow: 2 units ($4).'))
+			.not.toBeInTheDocument();
+	});
+
+	it('shows production-close unavailable and current city inventory overflow states', async () => {
+		expect.assertions(3);
+		const game: GameState = {
+			...currentInventoryGame(),
+			cityInventories: [
+				{
+					cityId: 'industry-city',
+					capacity: 100,
+					materials: { snacks: 17 },
+					overflowUnits: 5,
+					overflowCost: 10
+				}
+			]
+		};
+
+		render(ReportsPanel, {
+			i18n: createI18n('en'),
+			game,
+			stores: [store],
+			summary: {
+				...summary,
+				latest: {
+					...summary.latest!,
+					productionReport: {
+						...emptyProductionReport(),
+						cityInventories: undefined as never
+					} as DailyProductionReport
+				}
+			}
+		});
+
+		const reports = page.getByRole('region', { name: 'Reports' });
+		await expect
+			.element(reports.getByText('Production-close city inventory is unavailable.'))
+			.toBeVisible();
+		await expect
+			.element(reports.getByText('Industry City: 17 / 100 city inventory used.'))
+			.toBeVisible();
+		await expect
+			.element(reports.getByText('City inventory overflow: 5 units ($10).'))
+			.toBeVisible();
+	});
+
+	it('shows the current city inventory empty state when game has no city inventory stock', async () => {
+		expect.assertions(1);
+		const game: GameState = { ...currentInventoryGame(), cityInventories: [] };
+
+		render(ReportsPanel, {
+			i18n: createI18n('en'),
+			game,
+			stores: [store],
+			summary
+		});
+
+		const reports = page.getByRole('region', { name: 'Reports' });
+		await expect.element(reports.getByText('No current city inventory records.')).toBeVisible();
+	});
+
+	it('shows local supply unavailable and unknown city attribution for stores without replenishment context', async () => {
+		expect.assertions(3);
+		const storeWithoutCity: Store = { ...store, id: 'store-no-city', cityId: undefined as never };
+
+		render(ReportsPanel, {
+			i18n: createI18n('en'),
+			stores: [store, storeWithoutCity],
+			summary: {
+				...summary,
+				latest: {
+					...summary.latest!,
+					storeReports: [
+						{
+							...replenishedStoreReport(),
+							storeId: store.id,
+							replenishment: null,
+							productReports: [
+								{
+									...replenishedStoreReport().productReports[0]!,
+									warehouseUnits: 4,
+									importedUnits: 0
+								}
+							]
+						},
+						{
+							...replenishedStoreReport(),
+							storeId: storeWithoutCity.id,
+							replenishment: null,
+							productReports: [
+								{
+									...replenishedStoreReport().productReports[0]!,
+									warehouseUnits: 5,
+									importedUnits: 3
+								}
+							]
+						}
+					]
+				}
+			}
+		});
+
+		const reports = page.getByRole('region', { name: 'Reports' });
+		await expect
+			.element(reports.getByText('Local supply attribution unavailable — Harbor City: 4 units'))
+			.toBeVisible();
+		await expect
+			.element(reports.getByText('Local supply attribution unavailable — Unknown city: 5 units'))
+			.toBeVisible();
+		await expect
+			.element(reports.getByText('External import attribution unavailable: 3 units'))
+			.toBeVisible();
+	});
+
+	it('skips local supply attribution when warehouse units are zero but shows external imports', async () => {
+		expect.assertions(2);
+		render(ReportsPanel, {
+			i18n: createI18n('en'),
+			stores: [store],
+			summary: {
+				...summary,
+				latest: {
+					...summary.latest!,
+					storeReports: [
+						{
+							...replenishedStoreReport(),
+							replenishment: null,
+							productReports: [
+								{
+									...replenishedStoreReport().productReports[0]!,
+									warehouseUnits: 0,
+									importedUnits: 3
+								}
+							]
+						}
+					]
+				}
+			}
+		});
+
+		const reports = page.getByRole('region', { name: 'Reports' });
+		await expect
+			.element(reports.getByText('External imports — Harbor City: 3 units'))
+			.toBeVisible();
+		await expect
+			.element(reports.getByText('Local supply attribution unavailable'))
+			.not.toBeInTheDocument();
+	});
+
+	it('treats undefined current city inventory material quantities as zero', async () => {
+		expect.assertions(1);
+		const game: GameState = {
+			...currentInventoryGame(),
+			cityInventories: [
+				{
+					cityId: 'industry-city',
+					capacity: 100,
+					materials: { snacks: undefined } as unknown as CityInventory['materials'],
+					overflowUnits: 0,
+					overflowCost: 0
+				}
+			]
+		};
+
+		render(ReportsPanel, {
+			i18n: createI18n('en'),
+			game,
+			stores: [store],
+			summary
+		});
+
+		const reports = page.getByRole('region', { name: 'Reports' });
+		await expect
+			.element(reports.getByText('Industry City: 0 / 100 city inventory used.'))
+			.toBeVisible();
+	});
+
+	it('handles undefined rail shipments and store reports gracefully', async () => {
+		expect.assertions(2);
+		render(ReportsPanel, {
+			i18n: createI18n('en'),
+			stores: [],
+			summary: {
+				...summary,
+				latest: {
+					...summary.latest!,
+					productionReport: {
+						...emptyProductionReport(),
+						railShipments: undefined as never
+					} as DailyProductionReport,
+					storeReports: undefined as never
+				} as typeof summary.latest
+			}
+		});
+
+		const reports = page.getByRole('region', { name: 'Reports' });
+		await expect.element(reports.getByText('Rail shipments')).toBeVisible();
+		await expect.element(reports.getByText('0', { exact: true })).toBeVisible();
 	});
 });

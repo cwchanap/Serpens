@@ -252,4 +252,66 @@ describe('RetailSupplySources', () => {
 
 		expect(onChange).not.toHaveBeenCalled();
 	});
+
+	it('renders nothing when there are no retail cities', async () => {
+		expect.assertions(1);
+		renderSources({ retailCities: [] });
+
+		await expect
+			.element(page.getByRole('region', { name: 'Retail supply sources' }))
+			.not.toBeInTheDocument();
+	});
+
+	it('suppresses onChange when the missing configuration value is re-selected', async () => {
+		expect.assertions(1);
+		const onChange = vi.fn();
+		renderSources({
+			onChange,
+			retailCities: [
+				cityView({
+					currentSelection: 'missing',
+					currentSummary: 'Supply configuration unavailable.'
+				})
+			]
+		});
+		const select = page
+			.getByLabelText('Local supply source for Harbor City')
+			.element() as HTMLSelectElement;
+
+		// The missing-configuration option is disabled, so selectOptions cannot
+		// pick it. Dispatch a change event with the value set directly to
+		// exercise the early-return guard in changeSource.
+		select.value = RETAIL_SUPPLY_MISSING_CONFIGURATION_VALUE;
+		select.dispatchEvent(new Event('change', { bubbles: true }));
+
+		expect(onChange).not.toHaveBeenCalled();
+	});
+
+	it('renders source options with empty inventory and overflow summaries', async () => {
+		expect.assertions(2);
+		renderSources({
+			retailCities: [
+				cityView({
+					currentSelection: 'empty-source',
+					currentSummary: '',
+					sourceOptions: [
+						{
+							supplyCityId: 'empty-source',
+							label: 'Empty Source',
+							available: true,
+							disabled: false,
+							inventorySummary: '',
+							overflowSummary: ''
+						}
+					]
+				})
+			]
+		});
+
+		const select = page.getByLabelText('Local supply source for Harbor City');
+		const options = Array.from(select.element().querySelectorAll('option'));
+		const emptyOption = options.find((o) => o.value === 'empty-source');
+		expect(emptyOption?.textContent).toBe('Empty Source');
+		expect(emptyOption?.disabled).toBe(false);
+	});
 });

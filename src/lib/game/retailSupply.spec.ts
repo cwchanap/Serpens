@@ -9,6 +9,7 @@ import { DEFAULT_SIMULATION_RULES } from './simulationRules';
 import type { SimulationRuleSource, SimulationRules } from './simulationRules';
 import type { GameState, MaterialId, StoreProduct } from './types';
 import { createOpenedMultiCityFixture } from './cityInventory.testUtils';
+import { openWorldCity } from './world';
 
 const scenarioSource: SimulationRuleSource = {
 	kind: 'scenario',
@@ -143,6 +144,46 @@ describe('retail supply assignment', () => {
 			expect(result.game.retailSupplyAssignments).toBe(game.retailSupplyAssignments);
 		}
 	);
+
+	test('inserts a new assignment in catalog order when no existing entry matches', () => {
+		expect.assertions(3);
+		const base = createNewGame('convenience', 292_509);
+		const game = { ...base, retailSupplyAssignments: [] };
+
+		const result = setRetailSupplySource(game, 'harbor-city', 'industry-city');
+
+		expect(result).toMatchObject({ ok: true, changed: true });
+		expect(result.game).not.toBe(game);
+		expect(result.game.retailSupplyAssignments).toEqual([
+			{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' }
+		]);
+	});
+
+	test('sorts multiple new assignments by catalog order', () => {
+		expect.assertions(2);
+		const base = createNewGame('convenience', 292_512);
+		const opened = openWorldCity(
+			{
+				...base,
+				cash: 1_000_000,
+				world: {
+					...base.world,
+					revealedCityIds: [...base.world.revealedCityIds, 'campus-junction']
+				}
+			},
+			'campus-junction'
+		);
+		const game = { ...opened, retailSupplyAssignments: [] };
+
+		const withCampus = setRetailSupplySource(game, 'campus-junction', 'industry-city');
+		const withHarbor = setRetailSupplySource(withCampus.game, 'harbor-city', 'industry-city');
+
+		expect(withHarbor).toMatchObject({ ok: true, changed: true });
+		expect(withHarbor.game.retailSupplyAssignments).toEqual([
+			{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' },
+			{ retailCityId: 'campus-junction', supplyCityId: 'industry-city' }
+		]);
+	});
 });
 
 describe('weekly retail replenishment', () => {
@@ -688,5 +729,61 @@ describe('weekly retail replenishment', () => {
 		expect(result.importSpend).toBe(0);
 		expect(result.productReports.size).toBe(0);
 		expect(result.storeReplenishmentContexts.get(game.stores[0]!.id)).toBeNull();
+	});
+
+	test('skips replenishment for a product whose category is not in the archetype starting categories', () => {
+		expect.assertions(3);
+		const base = createNewGame('convenience', 292_510);
+		const game = {
+			...base,
+			stores: [
+				{
+					...base.stores[0]!,
+					products: [
+						{
+							categoryId: 'nonexistent-category',
+							stock: 4,
+							reorderThreshold: 10,
+							targetStock: 25,
+							sellingPrice: 5
+						}
+					]
+				}
+			]
+		};
+
+		const result = applyWeeklyReplenishment({ game, storeReports: new Map() });
+
+		expect(result.stores[0]!.products[0]!.stock).toBe(4);
+		expect(result.importSpend).toBe(0);
+		expect(result.productReports.size).toBe(0);
+	});
+
+	test('skips replenishment when needed units is zero despite stock below reorder threshold', () => {
+		expect.assertions(3);
+		const base = createNewGame('convenience', 292_511);
+		const game = {
+			...base,
+			stores: [
+				{
+					...base.stores[0]!,
+					products: [
+						{
+							categoryId: 'snacks',
+							stock: 5,
+							reorderThreshold: 10,
+							targetStock: 5,
+							sellingPrice: 5
+						}
+					]
+				}
+			]
+		};
+
+		const result = applyWeeklyReplenishment({ game, storeReports: new Map() });
+
+		expect(result.stores[0]!.products[0]!.stock).toBe(5);
+		expect(result.importSpend).toBe(0);
+		expect(result.productReports.size).toBe(0);
 	});
 });
