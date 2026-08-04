@@ -255,6 +255,9 @@ export function getCityInventory(game: GameState, cityId: string): CityInventory
 		return { ok: false, reason: 'unknown-city' };
 	}
 
+	// Duplicate of the opened-city check inside supportsCityInventory, kept so a
+	// closed city resolves to 'city-closed' rather than falling through to the
+	// 'unsupported-city' result.
 	if (!game.world.openedCityIds.includes(resolvedCityId)) {
 		return { ok: false, reason: 'city-closed' };
 	}

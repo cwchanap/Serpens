@@ -404,6 +404,7 @@ export const en = {
 		importsOnlySummary: 'Imports only. All replenishment is covered by external imports.',
 		inventorySummary: '{used} / {capacity} city inventory used.',
 		overflow: 'Overflow: {units} units ({cost}).',
+		overflowSingular: 'Overflow: {units} unit ({cost}).',
 		noOverflow: 'No overflow.',
 		unavailableSource: '{cityName} is unavailable.',
 		missingConfiguration: 'Supply configuration unavailable.'
@@ -458,7 +459,7 @@ export const en = {
 		activeRetailSupply:
 			'Local supply for {retailCityName} — {sourceCityName}: {used} / {capacity} city inventory used.',
 		supplyState: {
-			importsOnly: '{retailCityName} supply: Imports only — replenishment uses External imports.',
+			importsOnly: '{retailCityName} supply: Imports only — replenishment uses external imports.',
 			configurationUnavailable: 'Supply configuration for {retailCityName} is unavailable.',
 			unavailable: 'Local supply for {retailCityName} — source {sourceCityName} is unavailable.',
 			zeroCapacity:
@@ -1242,7 +1243,7 @@ export const en = {
 			bottlenecks: {
 				healthy: '{label} is flowing locally.',
 				watch: '{label} stock is below latest downstream use.',
-				shortage: '{label} relied on External imports or had a local shortage today.',
+				shortage: '{label} relied on external imports or had a local shortage today.',
 				noLocalCapacity: '{label} has no placed local producer.',
 				noReport: '{label} has no latest daily flow yet.',
 				warehouseNoCapacity: 'No city inventory capacity is available.',

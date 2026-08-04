@@ -319,9 +319,7 @@ export function simulateIndustryProduction(
 	}
 
 	const cityInventories = foldRailCityInventories(normalizedGame, railState);
-	const cityInventorySummaries = summarizeCityInventories(
-		railState.cityInventoriesByCityId.values()
-	);
+	const cityInventorySummaries = summarizeCityInventories(cityInventories);
 	report.cityInventories = cityInventorySummaries;
 	report.overflowUnits = sumCityInventorySummaries(cityInventorySummaries, 'overflowUnits');
 	report.overflowCost = sumCityInventorySummaries(cityInventorySummaries, 'overflowCost');
@@ -404,13 +402,7 @@ function createMovement(
 	source: DailyMaterialMovement['source'],
 	cityId: WorldCityId
 ): DailyMaterialMovement {
-	return {
-		cityId,
-		materialId,
-		quantity,
-		value: quantity * unitValue,
-		source
-	};
+	return createMovementWithValue(materialId, quantity, quantity * unitValue, source, cityId);
 }
 
 function createMovementWithValue(

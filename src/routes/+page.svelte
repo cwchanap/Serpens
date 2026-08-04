@@ -1864,7 +1864,9 @@
 	}
 
 	function setRetailSupplySource(retailCityId: string, supplyCityId: string | null): void {
-		void gameRouteController.setRetailSupplySource(retailCityId, supplyCityId);
+		if (game && mutationAvailability.setRetailSupplySource) {
+			void gameRouteController.setRetailSupplySource(retailCityId, supplyCityId);
+		}
 	}
 
 	function borrowWorkingCapital(

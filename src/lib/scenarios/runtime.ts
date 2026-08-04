@@ -11,7 +11,11 @@ import { openStoreAtTile } from '$lib/game/placement';
 import { financeRetailStoreOpening } from '$lib/game/placement';
 import { buildRail, demolishRailSegment, upgradeRailSegment } from '$lib/game/railPlacement';
 import { normalizeSeed } from '$lib/game/rng';
-import { setRetailSupplySource, type RetailSupplyAssignmentResult } from '$lib/game/retailSupply';
+import {
+	setRetailSupplySource,
+	type RetailSupplyAssignmentResult,
+	type RetailSupplyAssignmentFailure
+} from '$lib/game/retailSupply';
 import { simulateDay } from '$lib/game/simulateDay';
 import type { SimulationRules } from '$lib/game/simulationRules';
 import { assignStaffToStore, hireCandidate, promoteStaff, unassignStaff } from '$lib/game/staffing';
@@ -58,6 +62,7 @@ export type ExecuteScenarioCommandResult =
 				context: Record<string, string | number>;
 			};
 			decisionFailure?: ScenarioDecisionFailure;
+			retailSupplyFailure?: { reason: RetailSupplyAssignmentFailure };
 	  };
 
 export type ScenarioStartResult = ScenarioOperationResult<ScenarioRun>;
@@ -350,7 +355,11 @@ export function executeScenarioCommand(
 			if (dispatched.ok) {
 				game = dispatched.game;
 			} else if ('reason' in dispatched) {
-				return { ok: false, code: 'invalid-command' };
+				return {
+					ok: false,
+					code: 'invalid-command',
+					retailSupplyFailure: { reason: dispatched.reason }
+				};
 			} else if (isDecisionFailureCode(dispatched.code)) {
 				const decisionFailure = dispatched as Extract<DecisionResolutionResult, { ok: false }>;
 				return {

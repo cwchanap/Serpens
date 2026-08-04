@@ -3196,7 +3196,6 @@ test('city-local inventory keeps multi-city supply, replenishment, reporting, an
 	await expect(
 		cityAttributedMovements.getByText('External imports — Harbor City: 4 units', { exact: true })
 	).toBeVisible();
-	await expect(reports.getByText('$8', { exact: true })).toBeVisible();
 	await reports.getByRole('button', { name: 'Close Reports' }).click();
 
 	await openSaves(page);

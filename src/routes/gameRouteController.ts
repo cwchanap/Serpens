@@ -19,7 +19,10 @@ import {
 	openStoreAtTile
 } from '$lib/game/placement';
 import { buildRail, demolishRailSegment, upgradeRailSegment } from '$lib/game/railPlacement';
-import { setRetailSupplySource as setRetailSupplySourceTransition } from '$lib/game/retailSupply';
+import {
+	setRetailSupplySource as setRetailSupplySourceTransition,
+	type RetailSupplyAssignmentFailure
+} from '$lib/game/retailSupply';
 import { simulateDay } from '$lib/game/simulateDay';
 import { assignStaffToStore, hireCandidate, promoteStaff, unassignStaff } from '$lib/game/staffing';
 import {
@@ -1207,6 +1210,11 @@ export class GameRouteController {
 		supplyCityId: string | null
 	): Promise<GameRouteCommitResult> {
 		if (this.currentState.playMode === 'sandbox') {
+			// setRetailSupplySourceTransition returns ok/changed/game, which
+			// normalizeRouteTransition cannot classify — so this method uniquely
+			// preflights the sandbox transition before delegating to
+			// commitMutation. Without this, unchanged results would be reported
+			// as sandbox-committed and failures as domain-rejected with no code.
 			const game = this.currentState.sandboxGame;
 			if (!game) return Promise.resolve({ status: 'unavailable' });
 
@@ -1453,6 +1461,7 @@ export class GameRouteController {
 		const decisionRejection: {
 			value: Extract<DecisionResolutionResult, { ok: false }> | null;
 		} = { value: null };
+		const retailSupplyRejection: { value: RetailSupplyAssignmentFailure | null } = { value: null };
 		let attemptedRun: ScenarioRun | null = null;
 		let preparedRun: ScenarioRun | null = null;
 		let terminalScenarioId: ScenarioId | null = null;
@@ -1504,6 +1513,9 @@ export class GameRouteController {
 										? {}
 										: { financeFailure: execution.decisionFailure.financeFailure })
 								};
+							}
+							if (execution.retailSupplyFailure) {
+								retailSupplyRejection.value = execution.retailSupplyFailure.reason;
 							}
 							rejectedCode = execution.code;
 							return { status: 'rejected' as const };
@@ -1703,6 +1715,12 @@ export class GameRouteController {
 					...(decisionRejection.value.financeFailure === undefined
 						? {}
 						: { financeFailure: decisionRejection.value.financeFailure })
+				};
+			}
+			if (result.status === 'rejected' && retailSupplyRejection.value) {
+				return {
+					status: 'retail-supply-rejected',
+					reason: retailSupplyRejection.value
 				};
 			}
 			if (result.status === 'rejected' && rejectedCode) {
