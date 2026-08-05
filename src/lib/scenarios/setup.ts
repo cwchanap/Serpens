@@ -9,33 +9,30 @@ import {
 	INDUSTRIAL_BUILDING_TYPES,
 	generateIndustryCity
 } from '$lib/game/industry';
-import {
-	buildIndustrialBuilding,
-	getIndustrialPlacementBlockReason
-} from '$lib/game/industryPlacement';
+import { buildIndustrialBuilding } from '$lib/game/industryPlacement';
 import {
 	compareWorldCityIds,
+	getCityInventory,
+	getCityInventoryStats,
 	initializeCityInventory,
 	initializeRetailSupplyAssignment
 } from '$lib/game/cityInventory';
 import { getStoreUpgradeCost } from '$lib/game/leveling';
 import { createFoundingGameAtTile } from '$lib/game/placement';
-import { getFootprintAdjacentCoords, railCellKey } from '$lib/game/rail';
+import { railCellKey } from '$lib/game/rail';
 import { isRailWaypointTarget } from '$lib/game/railPlacement';
 import { normalizeSeed } from '$lib/game/rng';
 import { getExpansionSetupCost, upgradeStore } from '$lib/game/state';
 import { calculateStockHealth } from '$lib/game/stock';
 import { replaceFoundingLoan } from '$lib/game/finance';
-import type { City, GameState, IndustryCity, RailCell, WorldCityId } from '$lib/game/types';
+import type { City, GameState, IndustryCity, WorldCityId } from '$lib/game/types';
 import { getWorldCityDefinition, refreshWorldProgress } from '$lib/game/world';
 import { SaveDataError, validateCurrentGameState } from '$lib/persistence/saveCodec';
 import type { ScenarioDefinition, ScenarioDiagnostic } from './types';
 import {
 	sortScenarioDiagnostics,
 	validateScenarioDefinition,
-	validateScenarioSetupReserve,
-	validateCityInventoryCapacities,
-	validateRetailSupplyAssignments
+	validateScenarioSetupReserve
 } from './validation';
 
 export type BuildScenarioGameResult =
@@ -50,13 +47,6 @@ export interface ScenarioSetupRefs {
 interface IndexedRail {
 	index: number;
 	cell: ScenarioDefinition['start']['rails'][number];
-}
-
-interface RailEndpoint {
-	key: string;
-	cityId: string;
-	mapX: number;
-	mapY: number;
 }
 
 function compareCodeUnits(first: string, second: string): number {
@@ -257,9 +247,46 @@ function applyAuthoredOverrides(
 	baseFinances: Pick<GameState, 'cash' | 'finance'>
 ): { game?: GameState; diagnostics: ScenarioDiagnostic[] } {
 	const diagnostics: ScenarioDiagnostic[] = [];
-	let stores = game.stores;
-	let industrialBuildings = game.industrialBuildings;
 	const overrides = definition.start.overrides;
+	let upgradedGame = game;
+
+	for (const [overrideIndex, override] of (overrides.stores ?? []).entries()) {
+		const storeId = refs.storeIdsByRef[override.storeRef];
+		if (!storeId) {
+			return {
+				diagnostics: [
+					{
+						path: `start.overrides.stores[${overrideIndex}].storeRef`,
+						code: 'setup-transition-failed',
+						value: override.storeRef,
+						detail: 'The store upgrade ref did not resolve to a materialized store.'
+					}
+				]
+			};
+		}
+		const targetLevel = override.targetLevel ?? 1;
+		while ((upgradedGame.stores.find((store) => store.id === storeId)?.level ?? 0) < targetLevel) {
+			const before = upgradedGame.stores.find((store) => store.id === storeId);
+			const next = upgradeStore(upgradedGame, storeId);
+			const after = next.stores.find((store) => store.id === storeId);
+			if (!before || !after || after.level !== before.level + 1) {
+				return {
+					diagnostics: [
+						{
+							path: `start.overrides.stores[${overrideIndex}].targetLevel`,
+							code: 'setup-transition-failed',
+							value: targetLevel,
+							detail: 'The normal store-upgrade transition did not reach the authored target level.'
+						}
+					]
+				};
+			}
+			upgradedGame = next;
+		}
+	}
+
+	let stores = upgradedGame.stores;
+	let industrialBuildings = upgradedGame.industrialBuildings;
 
 	for (const [overrideIndex, override] of (overrides.stores ?? []).entries()) {
 		const storeId = refs.storeIdsByRef[override.storeRef];
@@ -317,30 +344,33 @@ function applyAuthoredOverrides(
 
 	if (diagnostics.length > 0) return { diagnostics: sortScenarioDiagnostics(diagnostics) };
 
-	const next: GameState = {
-		...game,
+	const overriddenGame: GameState = {
+		...upgradedGame,
 		stores,
 		industrialBuildings,
-		policy: overrides.policy ? { ...overrides.policy } : game.policy,
-		storeCap: overrides.storeCap ?? game.storeCap
+		policy: overrides.policy ? { ...overrides.policy } : upgradedGame.policy,
+		storeCap: overrides.storeCap ?? upgradedGame.storeCap
 	};
 
 	return {
 		game: {
-			...next,
+			...overriddenGame,
 			cash: overrides.cash ?? baseFinances.cash,
 			finance:
 				overrides.debt === undefined
 					? baseFinances.finance
-					: replaceFoundingLoan(baseFinances.finance, game.day, overrides.debt)
+					: replaceFoundingLoan(baseFinances.finance, upgradedGame.day, overrides.debt)
 		},
 		diagnostics: []
 	};
 }
 
-function applyCityInventoryMaterials(definition: ScenarioDefinition, game: GameState): GameState {
+function applyCityInventoryMaterials(
+	definition: ScenarioDefinition,
+	game: GameState
+): { game?: GameState; diagnostics: ScenarioDiagnostic[] } {
 	const overrides = definition.start.overrides.cityInventoryMaterials;
-	if (!overrides || overrides.length === 0 || !game.cityInventories) return game;
+	if (!overrides || overrides.length === 0) return { game, diagnostics: [] };
 	const materialsByCityId = new Map(
 		overrides.map((override) => [override.cityId, { ...override.materials }])
 	);
@@ -348,22 +378,84 @@ function applyCityInventoryMaterials(definition: ScenarioDefinition, game: GameS
 		const materials = materialsByCityId.get(inventory.cityId);
 		return materials ? { ...inventory, materials } : inventory;
 	});
+	const next = { ...game, cityInventories };
+	const diagnostics: ScenarioDiagnostic[] = [];
 
-	return { ...game, cityInventories };
+	for (const [index, override] of overrides.entries()) {
+		const cityPath = `start.overrides.cityInventoryMaterials[${index}].cityId`;
+		const materialsPath = `start.overrides.cityInventoryMaterials[${index}].materials`;
+		const access = getCityInventory(next, override.cityId);
+		if (!access.ok) {
+			diagnostics.push({
+				path: cityPath,
+				code:
+					access.reason === 'city-closed'
+						? 'city-inventory-city-closed'
+						: access.reason === 'inventory-missing'
+							? 'city-inventory-unavailable'
+							: 'city-inventory-city-unavailable',
+				value: override.cityId,
+				detail: 'City inventory overrides require an opened, materialized industry inventory.'
+			});
+			continue;
+		}
+
+		const { capacity, used } = getCityInventoryStats(next, access.inventory.cityId);
+		if (used > capacity) {
+			diagnostics.push({
+				path: materialsPath,
+				code: 'city-inventory-capacity-exceeded',
+				value: override.materials,
+				detail: `Starting city inventory uses ${used} units but ${access.inventory.cityId} has capacity ${capacity}.`
+			});
+		}
+	}
+
+	if (diagnostics.length > 0) return { diagnostics: sortScenarioDiagnostics(diagnostics) };
+
+	return { game: next, diagnostics: [] };
 }
 
-function applyRetailSupplyAssignments(definition: ScenarioDefinition, game: GameState): GameState {
+function applyRetailSupplyAssignments(
+	definition: ScenarioDefinition,
+	game: GameState
+): { game?: GameState; diagnostics: ScenarioDiagnostic[] } {
 	const overrides = definition.start.overrides.retailSupplyAssignments;
-	if (!overrides) return game;
+	if (!overrides) return { game, diagnostics: [] };
+	const diagnostics: ScenarioDiagnostic[] = [];
+
+	for (const [index, assignment] of overrides.entries()) {
+		if (assignment.supplyCityId === null) continue;
+		const access = getCityInventory(game, assignment.supplyCityId);
+		if (access.ok) continue;
+		diagnostics.push({
+			path: `start.overrides.retailSupplyAssignments[${index}].supplyCityId`,
+			code:
+				access.reason === 'city-closed'
+					? 'supply-city-closed'
+					: access.reason === 'inventory-missing'
+						? 'supply-city-unavailable'
+						: access.reason === 'unsupported-city'
+							? 'supply-city-unmaterialized'
+							: 'supply-city-unavailable',
+			value: assignment.supplyCityId,
+			detail: 'Retail supply sources must resolve to an opened, materialized city inventory.'
+		});
+	}
+
+	if (diagnostics.length > 0) return { diagnostics: sortScenarioDiagnostics(diagnostics) };
 
 	return {
-		...game,
-		retailSupplyAssignments: [...overrides]
-			.map((assignment) => ({
-				retailCityId: assignment.retailCityId,
-				supplyCityId: assignment.supplyCityId
-			}))
-			.sort((left, right) => compareWorldCityIds(left.retailCityId, right.retailCityId))
+		game: {
+			...game,
+			retailSupplyAssignments: [...overrides]
+				.map((assignment) => ({
+					retailCityId: assignment.retailCityId,
+					supplyCityId: assignment.supplyCityId
+				}))
+				.sort((left, right) => compareWorldCityIds(left.retailCityId, right.retailCityId))
+		},
+		diagnostics: []
 	};
 }
 
@@ -379,210 +471,6 @@ function initializeDefaultRetailSupplyAssignments(game: GameState): GameState {
 		next = initializeRetailSupplyAssignment(next, cityId);
 	}
 	return next;
-}
-
-function expectedRailsByCity(definition: ScenarioDefinition): ReadonlyMap<string, RailCell[]> {
-	const result = new Map<string, RailCell[]>();
-	for (const rail of [...definition.start.rails].sort(
-		(first, second) =>
-			compareCodeUnits(first.cityId, second.cityId) || first.y - second.y || first.x - second.x
-	)) {
-		const cells = result.get(rail.cityId) ?? [];
-		cells.push({ x: rail.x, y: rail.y, level: rail.level });
-		result.set(rail.cityId, cells);
-	}
-	return result;
-}
-
-function railEndpoints(definition: ScenarioDefinition, game: GameState): RailEndpoint[] {
-	const endpoints = new Map<string, RailEndpoint>();
-	for (const building of game.industrialBuildings) {
-		const key = `${building.cityId}:${building.mapX},${building.mapY}`;
-		endpoints.set(key, {
-			key,
-			cityId: building.cityId,
-			mapX: building.mapX,
-			mapY: building.mapY
-		});
-	}
-	if (!definition.allowedCommands.includes('buildIndustrialBuilding')) {
-		return [...endpoints.values()];
-	}
-	for (const placement of definition.content.industrialPlacements) {
-		const city = game.industryCities.find((candidate) => candidate.id === placement.cityId);
-		const tile = city?.tiles.find((candidate) => candidate.id === placement.tileId);
-		if (!tile) continue;
-		const key = `${placement.cityId}:${tile.x},${tile.y}`;
-		if (endpoints.has(key)) continue;
-		if (
-			getIndustrialPlacementBlockReason(
-				{ ...game, activeIndustryCityId: placement.cityId },
-				placement.tileId,
-				placement.buildingTypeId
-			) !== null
-		)
-			continue;
-		endpoints.set(key, {
-			key,
-			cityId: placement.cityId,
-			mapX: tile.x,
-			mapY: tile.y
-		});
-	}
-	return [...endpoints.values()];
-}
-
-function railComponentsReachEndpoints(definition: ScenarioDefinition, game: GameState): boolean {
-	const endpoints = railEndpoints(definition, game);
-	for (const city of game.industryCities) {
-		const cells = new Set(city.rails.map((cell) => railCellKey(cell.x, cell.y)));
-		const visited = new Set<string>();
-		for (const start of cells) {
-			if (visited.has(start)) continue;
-			const component = new Set<string>();
-			const queue = [start];
-			visited.add(start);
-			while (queue.length > 0) {
-				const current = queue.shift()!;
-				component.add(current);
-				const [x = 0, y = 0] = current.split(',').map(Number);
-				for (const [dx, dy] of [
-					[0, -1],
-					[1, 0],
-					[0, 1],
-					[-1, 0]
-				] as const) {
-					const neighbor = railCellKey(x + dx, y + dy);
-					if (cells.has(neighbor) && !visited.has(neighbor)) {
-						visited.add(neighbor);
-						queue.push(neighbor);
-					}
-				}
-			}
-			const attached = endpoints.filter(
-				(endpoint) =>
-					endpoint.cityId === city.id &&
-					getFootprintAdjacentCoords(endpoint).some((coordinate) =>
-						component.has(railCellKey(coordinate.x, coordinate.y))
-					)
-			);
-			if (attached.length < 2) return false;
-		}
-	}
-	return true;
-}
-
-function validateBuiltScenarioInvariants(
-	definition: ScenarioDefinition,
-	game: GameState,
-	refs: ScenarioSetupRefs
-): ScenarioDiagnostic[] {
-	const diagnostics: ScenarioDiagnostic[] = [];
-	const founding = definition.start.foundingStore;
-	const foundingStoreId = refs.storeIdsByRef[founding.ref];
-	const foundingStore = game.stores.find((store) => store.id === foundingStoreId);
-	if (!foundingStore) {
-		diagnostics.push({
-			path: 'start.foundingStore.ref',
-			code: 'setup-invariant-failed',
-			value: founding.ref,
-			detail: 'The founding store ref does not resolve in the built game.'
-		});
-	} else {
-		const invalidPlacement =
-			foundingStore.cityId !== founding.cityId || foundingStore.tileId !== founding.tileId;
-		if (invalidPlacement) {
-			diagnostics.push({
-				path: 'start.foundingStore.tileId',
-				code: 'setup-invariant-failed',
-				value: founding.tileId,
-				detail: 'The founding store placement is invalid in the built game.'
-			});
-		}
-	}
-
-	for (const [index, authored] of definition.start.industrialBuildings.entries()) {
-		const buildingId = refs.buildingIdsByRef[authored.ref];
-		const building = game.industrialBuildings.find((candidate) => candidate.id === buildingId);
-		if (!building) {
-			diagnostics.push({
-				path: `start.industrialBuildings[${index}].ref`,
-				code: 'setup-invariant-failed',
-				value: authored.ref,
-				detail: 'The industrial building ref does not resolve in the built game.'
-			});
-			continue;
-		}
-		if (
-			building.cityId !== authored.cityId ||
-			building.tileId !== authored.tileId ||
-			building.typeId !== authored.typeId
-		) {
-			diagnostics.push({
-				path: `start.industrialBuildings[${index}].tileId`,
-				code: 'setup-invariant-failed',
-				value: authored.tileId,
-				detail: 'The industrial building placement is invalid in the built game.'
-			});
-		}
-	}
-
-	const expectedRails = expectedRailsByCity(definition);
-	for (const [cityId, cells] of expectedRails) {
-		const actual = game.industryCities.find((city) => city.id === cityId)?.rails ?? [];
-		if (
-			actual.length !== cells.length ||
-			actual.some(
-				(cell, index) =>
-					cell.x !== cells[index]?.x ||
-					cell.y !== cells[index]?.y ||
-					cell.level !== cells[index]?.level
-			)
-		) {
-			diagnostics.push({
-				path: 'start.rails',
-				code: 'setup-invariant-failed',
-				value: actual,
-				detail: 'The built game rails do not match the sorted authored rail cells.'
-			});
-		}
-	}
-	if (!railComponentsReachEndpoints(definition, game)) {
-		diagnostics.push({
-			path: 'start.rails',
-			code: 'setup-invariant-failed',
-			value: definition.start.rails,
-			detail: 'An authored rail component cannot reach two valid building footprints.'
-		});
-	}
-
-	const opened = new Set<string>(game.world.openedCityIds);
-	const everyStartingContentCityIsOpened =
-		game.stores.every((store) => opened.has(store.cityId)) &&
-		game.industrialBuildings.every((building) => opened.has(building.cityId)) &&
-		definition.start.rails.every((rail) => opened.has(rail.cityId));
-	if (!everyStartingContentCityIsOpened) {
-		diagnostics.push({
-			path: 'start.overrides.world',
-			code: 'setup-invariant-failed',
-			value: {
-				activeRetailCityId: game.activeCityId,
-				activeIndustryCityId: game.activeIndustryCityId
-			},
-			detail: 'The built game starting-content cities must be opened.'
-		});
-	}
-
-	if (game.day !== 1 || game.reports.length !== 0) {
-		diagnostics.push({
-			path: 'start',
-			code: 'setup-invariant-failed',
-			value: { day: game.day, reportCount: game.reports.length },
-			detail: 'Scenario setup must leave initial evaluation input at day 1 with no reports.'
-		});
-	}
-
-	return sortScenarioDiagnostics(diagnostics);
 }
 
 function strictSetupFailure(error: SaveDataError, game: GameState): ScenarioDiagnostic {
@@ -723,30 +611,6 @@ export function buildScenarioGame(
 		buildingIdsByRef.set(authored.ref, appended.id);
 	}
 
-	for (const [index, override] of (definition.start.overrides.stores ?? []).entries()) {
-		const storeId = storeIdsByRef.get(override.storeRef);
-		if (!storeId) {
-			return transitionFailure(
-				`start.overrides.stores[${index}].storeRef`,
-				override.storeRef,
-				'The store upgrade ref did not resolve to a materialized store.'
-			);
-		}
-		const targetLevel = override.targetLevel ?? 1;
-		while ((game.stores.find((store) => store.id === storeId)?.level ?? 0) < targetLevel) {
-			const before = game.stores.find((store) => store.id === storeId);
-			const next = upgradeStore(game, storeId);
-			const after = next.stores.find((store) => store.id === storeId);
-			if (!before || !after || after.level !== before.level + 1) {
-				return transitionFailure(
-					`start.overrides.stores[${index}].targetLevel`,
-					targetLevel,
-					'The normal store-upgrade transition did not reach the authored target level.'
-				);
-			}
-			game = next;
-		}
-	}
 	const refs: ScenarioSetupRefs = {
 		storeIdsByRef: Object.fromEntries(storeIdsByRef),
 		buildingIdsByRef: Object.fromEntries(buildingIdsByRef)
@@ -759,28 +623,19 @@ export function buildScenarioGame(
 	const overridden = applyAuthoredOverrides(definition, game, refs, baseFinances);
 	if (!overridden.game) return { ok: false, diagnostics: overridden.diagnostics };
 	game = overridden.game;
-	game = applyCityInventoryMaterials(definition, game);
-	const cityInventoryDiagnostics = validateCityInventoryCapacities(game, definition.start);
-	if (cityInventoryDiagnostics.length > 0) {
-		return { ok: false, diagnostics: cityInventoryDiagnostics };
-	}
+	const cityInventory = applyCityInventoryMaterials(definition, game);
+	if (!cityInventory.game) return { ok: false, diagnostics: cityInventory.diagnostics };
+	game = cityInventory.game;
 	if (!definition.start.overrides.retailSupplyAssignments) {
 		game = initializeDefaultRetailSupplyAssignments(game);
 	}
-	game = applyRetailSupplyAssignments(definition, game);
-	const retailSupplyDiagnostics = validateRetailSupplyAssignments(game, definition.start);
-	if (retailSupplyDiagnostics.length > 0) {
-		return { ok: false, diagnostics: retailSupplyDiagnostics };
-	}
+	const retailSupply = applyRetailSupplyAssignments(definition, game);
+	if (!retailSupply.game) return { ok: false, diagnostics: retailSupply.diagnostics };
+	game = retailSupply.game;
 	game = refreshWorldProgress(game);
 
-	const invariantDiagnostics = validateBuiltScenarioInvariants(definition, game, refs);
-	if (invariantDiagnostics.length > 0) {
-		return { ok: false, diagnostics: invariantDiagnostics };
-	}
-
 	try {
-		validateCurrentGameState(game);
+		game = validateCurrentGameState(game);
 	} catch (error) {
 		if (error instanceof SaveDataError) {
 			return { ok: false, diagnostics: [strictSetupFailure(error, game)] };
