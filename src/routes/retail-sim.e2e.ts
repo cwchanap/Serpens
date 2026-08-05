@@ -8,7 +8,6 @@ import {
 	generateIndustryCity,
 	getIndustryTilesByResource
 } from '../lib/game/industry';
-import { recalculateCityInventoryPressure } from '../lib/game/cityInventory';
 import { estimateNextLoanPayment, getScheduledPrincipalForInstallment } from '../lib/game/finance';
 import { buildIndustrialBuilding } from '../lib/game/industryPlacement';
 import { openStoreAtTile } from '../lib/game/placement';
@@ -318,16 +317,10 @@ function cityLocalInventoryLifecycleGame(): GameState {
 	});
 	const cityInventories = game.cityInventories.map((inventory) => {
 		if (inventory.cityId === 'industry-city') {
-			return recalculateCityInventoryPressure({
-				...inventory,
-				materials: { 'bottled-water': 6 }
-			});
+			return { cityId: inventory.cityId, materials: { 'bottled-water': 6 } };
 		}
 		if (inventory.cityId === 'breadbasket-basin') {
-			return recalculateCityInventoryPressure({
-				...inventory,
-				materials: { 'bottled-water': 37 }
-			});
+			return { cityId: inventory.cityId, materials: { 'bottled-water': 37 } };
 		}
 		return inventory;
 	});
@@ -455,10 +448,7 @@ interface SavedGame {
 	}>;
 	cityInventories: Array<{
 		cityId: string;
-		capacity: number;
 		materials: Record<string, number | undefined>;
-		overflowUnits: number;
-		overflowCost: number;
 	}>;
 	retailSupplyAssignments: Array<{
 		retailCityId: string;
@@ -3141,17 +3131,11 @@ test('city-local inventory keeps multi-city supply, replenishment, reporting, an
 	]);
 	expect(getSavedCityInventory(postCycle, 'industry-city')).toEqual({
 		cityId: 'industry-city',
-		capacity: 400,
-		materials: { 'bottled-water': 0 },
-		overflowUnits: 0,
-		overflowCost: 0
+		materials: { 'bottled-water': 0 }
 	});
 	expect(getSavedCityInventory(postCycle, 'breadbasket-basin')).toEqual({
 		cityId: 'breadbasket-basin',
-		capacity: 200,
-		materials: { 'bottled-water': 37 },
-		overflowUnits: 0,
-		overflowCost: 0
+		materials: { 'bottled-water': 37 }
 	});
 	expect(postCycle.retailSupplyAssignments).toEqual([
 		{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' },
@@ -3217,17 +3201,11 @@ test('city-local inventory keeps multi-city supply, replenishment, reporting, an
 	]);
 	expect(getSavedCityInventory(savedManualSlot.game, 'industry-city')).toEqual({
 		cityId: 'industry-city',
-		capacity: 400,
-		materials: { 'bottled-water': 0 },
-		overflowUnits: 0,
-		overflowCost: 0
+		materials: { 'bottled-water': 0 }
 	});
 	expect(getSavedCityInventory(savedManualSlot.game, 'breadbasket-basin')).toEqual({
 		cityId: 'breadbasket-basin',
-		capacity: 200,
-		materials: { 'bottled-water': 37 },
-		overflowUnits: 0,
-		overflowCost: 0
+		materials: { 'bottled-water': 37 }
 	});
 
 	await replaceBrowserAutoSave(page, cityLocalInventoryLifecycleGame());
@@ -3238,10 +3216,7 @@ test('city-local inventory keeps multi-city supply, replenishment, reporting, an
 	]);
 	expect(getSavedCityInventory(divergentAutoSave, 'industry-city')).toEqual({
 		cityId: 'industry-city',
-		capacity: 400,
-		materials: { 'bottled-water': 6 },
-		overflowUnits: 0,
-		overflowCost: 0
+		materials: { 'bottled-water': 6 }
 	});
 	await savePanel.getByRole('button', { name: /^close$/i }).click();
 

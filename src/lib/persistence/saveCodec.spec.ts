@@ -10,10 +10,6 @@ import {
 	buildIndustrialBuilding,
 	getIndustrialPlacementBlockReason
 } from '$lib/game/industryPlacement';
-import {
-	getCityWarehouseCapacity,
-	recalculateCityInventoryPressure
-} from '$lib/game/cityInventory';
 import { formatLocation } from '$lib/game/placement';
 import type { DecisionContext } from '$lib/game/decisionContext';
 import { simulateDay } from '$lib/game/simulateDay';
@@ -154,10 +150,7 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 		cityInventories: [
 			{
 				cityId: 'industry-city',
-				capacity: 0,
-				materials: {},
-				overflowUnits: 0,
-				overflowCost: 0
+				materials: {}
 			}
 		],
 		retailSupplyAssignments: [{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' }],
@@ -374,17 +367,11 @@ function createCurrentMultiCityGame(): GameState {
 			inventory.cityId === 'industry-city'
 				? {
 						...inventory,
-						capacity: 200,
-						materials: { water: 5 },
-						overflowUnits: 0,
-						overflowCost: 0
+						materials: { water: 5 }
 					}
 				: {
 						...inventory,
-						capacity: 0,
-						materials: { grain: 2 },
-						overflowUnits: 2,
-						overflowCost: 4
+						materials: { grain: 2 }
 					}
 		)
 	};
@@ -495,10 +482,7 @@ function createCurrentBreadbasketOnlyGame(): GameState {
 		cityInventories: [
 			{
 				cityId: 'breadbasket-basin',
-				capacity: 200,
-				materials: { water: 5 },
-				overflowUnits: 0,
-				overflowCost: 0
+				materials: { water: 5 }
 			}
 		],
 		retailSupplyAssignments: [{ retailCityId: 'harbor-city', supplyCityId: 'breadbasket-basin' }]
@@ -737,7 +721,7 @@ function createCompleteEventGame(): GameState {
 }
 
 describe('saveCodec', () => {
-	test('round-trips a current v13 multi-city save with city-scoped inventory and replenishment evidence', () => {
+	test('round-trips a current v14 multi-city save with city-scoped inventory and replenishment evidence', () => {
 		expect.assertions(8);
 		const game = createCurrentMultiCityGame();
 		const record = createManualSaveRecord({
@@ -747,22 +731,16 @@ describe('saveCodec', () => {
 		const validated = validateSaveRecord(structuredClone(record));
 		const report = validated.game.reports[0]!;
 
-		expect(SAVE_SCHEMA_VERSION).toBe(13);
-		expect(validated.schemaVersion).toBe(13);
+		expect(SAVE_SCHEMA_VERSION).toBe(14);
+		expect(validated.schemaVersion).toBe(14);
 		expect(validated.game.cityInventories).toEqual([
 			{
 				cityId: 'industry-city',
-				capacity: 200,
-				materials: { water: 5 },
-				overflowUnits: 0,
-				overflowCost: 0
+				materials: { water: 5 }
 			},
 			{
 				cityId: 'breadbasket-basin',
-				capacity: 0,
-				materials: { grain: 2 },
-				overflowUnits: 2,
-				overflowCost: 4
+				materials: { grain: 2 }
 			}
 		]);
 		expect(validated.game.retailSupplyAssignments).toEqual([
@@ -784,47 +762,12 @@ describe('saveCodec', () => {
 		});
 	});
 
-	test('normalizes stale finite v13 city-inventory capacity and pressure before reserializing', () => {
+	test('rejects unsupported schema 13 records without inventory migration', () => {
 		expect.assertions(2);
-		const game = createCurrentMultiCityGame();
-		const record = createManualSaveRecord({
-			game: {
-				...game,
-				cityInventories: game.cityInventories!.map((inventory) => ({
-					...inventory,
-					capacity: 1,
-					overflowUnits: 999,
-					overflowCost: 1_998
-				}))
-			}
-		});
+		const record = { ...createManualSaveRecord(), schemaVersion: 13 };
 
-		const validated = validateSaveRecord(record);
-
-		expect(validated.game.cityInventories).toEqual([
-			{
-				cityId: 'industry-city',
-				capacity: 200,
-				materials: { water: 5 },
-				overflowUnits: 0,
-				overflowCost: 0
-			},
-			{
-				cityId: 'breadbasket-basin',
-				capacity: 0,
-				materials: { grain: 2 },
-				overflowUnits: 2,
-				overflowCost: 4
-			}
-		]);
-		expect(
-			createSaveRecord(validated.game, {
-				id: 'v13-normalized',
-				name: 'V13 normalized',
-				kind: 'manual',
-				updatedAt: new Date('2026-08-02T00:00:00.000Z')
-			}).game.cityInventories
-		).toEqual(validated.game.cityInventories);
+		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+		expect(() => validateSaveRecord(record)).toThrow('Unsupported save schema version: 13');
 	});
 
 	test.each([
@@ -1124,7 +1067,7 @@ describe('saveCodec', () => {
 		expect(validated.game).not.toHaveProperty('warehouse');
 	});
 
-	test('controller review: rejects residual global warehouse data on a current v13 save', () => {
+	test('controller review: rejects residual global warehouse data on a current v14 save', () => {
 		const game = Object.assign(createCurrentMultiCityGame(), {
 			warehouse: { materials: {} }
 		});
@@ -1132,7 +1075,7 @@ describe('saveCodec', () => {
 		expectSaveRecordErrorCode(createManualSaveRecord({ game }), 'invariant-city-inventory');
 	});
 
-	test('strict validation rejects residual global warehouse data on a current v13 game', () => {
+	test('strict validation rejects residual global warehouse data on a current v14 game', () => {
 		const game = Object.assign(createCurrentMultiCityGame(), {
 			warehouse: { materials: {} }
 		});
@@ -1142,7 +1085,7 @@ describe('saveCodec', () => {
 		);
 	});
 
-	test('sandbox normalization rejects residual global warehouse data on a current v13 game', () => {
+	test('sandbox normalization rejects residual global warehouse data on a current v14 game', () => {
 		const game = Object.assign(createCurrentMultiCityGame(), {
 			warehouse: { materials: {} }
 		});
@@ -1212,7 +1155,7 @@ describe('saveCodec', () => {
 				materials: { water: Number.POSITIVE_INFINITY }
 			})
 		]
-	])('rejects a current v13 city inventory with %s', (_name, mutateInventory) => {
+	])('rejects a current v14 city inventory with %s', (_name, mutateInventory) => {
 		const game = createCurrentMultiCityGame();
 		const cityInventories = [
 			mutateInventory({ ...game.cityInventories![0]! }),
@@ -1248,7 +1191,7 @@ describe('saveCodec', () => {
 				game.cityInventories![1]!
 			]
 		]
-	])('rejects a current v13 state with %s', (_name, cityInventoriesFor) => {
+	])('rejects a current v14 state with %s', (_name, cityInventoriesFor) => {
 		const game = createCurrentMultiCityGame();
 
 		expectSaveRecordErrorCode(
@@ -1306,7 +1249,7 @@ describe('saveCodec', () => {
 				game.retailSupplyAssignments![1]!
 			]
 		]
-	])('rejects a current v13 state with %s', (_name, assignmentsFor) => {
+	])('rejects a current v14 state with %s', (_name, assignmentsFor) => {
 		const game = createCurrentMultiCityGame();
 
 		expectSaveRecordErrorCode(
@@ -1381,7 +1324,7 @@ describe('saveCodec', () => {
 				industrialBuildings: [{ ...game.industrialBuildings[0]!, cityId: 'breadbasket-basin' }]
 			})
 		]
-	])('rejects a current v13 state with %s before derived capacity logic', (_name, mutateGame) => {
+	])('rejects a current v14 state with %s before derived capacity logic', (_name, mutateGame) => {
 		expectSaveRecordErrorCode(
 			createManualSaveRecord({ game: mutateGame(createCurrentMultiCityGame()) }),
 			'invariant-entity-city-ownership'
@@ -1477,7 +1420,7 @@ describe('saveCodec', () => {
 				return { ...report, productionReport };
 			}
 		]
-	])('rejects a current v13 report with %s', (_name, mutateReport) => {
+	])('rejects a current v14 report with %s', (_name, mutateReport) => {
 		const game = createCurrentMultiCityGame();
 		const report = mutateReport(createCurrentReport(game)) as DailyReport;
 
@@ -1571,7 +1514,7 @@ describe('saveCodec', () => {
 				};
 			}
 		]
-	])('rejects a current v13 store report with %s', (_name, mutateReport) => {
+	])('rejects a current v14 store report with %s', (_name, mutateReport) => {
 		const game = createCurrentMultiCityGame();
 		const report = mutateReport(createCurrentReport(game)) as DailyReport;
 
@@ -1581,7 +1524,7 @@ describe('saveCodec', () => {
 		);
 	});
 
-	test('accepts explicit null v13 replenishment fields when no product attempted a refill', () => {
+	test('accepts explicit null v14 replenishment fields when no product attempted a refill', () => {
 		expect.assertions(2);
 		const game = createCurrentMultiCityGame();
 		const report = createCurrentReport(game);
@@ -1611,20 +1554,20 @@ describe('saveCodec', () => {
 			createManualSaveRecord({ game: { ...game, reports: [noAttemptReport] } })
 		);
 
-		expect(SAVE_SCHEMA_VERSION).toBe(13);
+		expect(SAVE_SCHEMA_VERSION).toBe(14);
 		expect(validated.game.reports[0]!.storeReports[0]).toMatchObject({
 			replenishment: null,
 			productReports: [{ replenishmentOutcome: null }]
 		});
 	});
 
-	test('round-trips the complete event schema v13 without dropping materialized evidence', () => {
+	test('round-trips the complete event schema v14 without dropping materialized evidence', () => {
 		expect.assertions(3);
 		const record = createManualSaveRecord({ game: createCompleteEventGame() });
 
 		const validated = validateSaveRecord(structuredClone(record));
 
-		expect(SAVE_SCHEMA_VERSION).toBe(13);
+		expect(SAVE_SCHEMA_VERSION).toBe(14);
 		expect(validated).toEqual(record);
 		expect(validated).not.toBe(record);
 	});
@@ -2853,10 +2796,7 @@ describe('saveCodec', () => {
 					cityInventories: [
 						{
 							cityId: 'industry-city',
-							capacity: 0,
-							materials: { water: malformed as unknown as number },
-							overflowUnits: 0,
-							overflowCost: 0
+							materials: { water: malformed as unknown as number }
 						}
 					]
 				});
@@ -3437,15 +3377,7 @@ describe('saveCodec', () => {
 					industrialBuildings: [...game.industrialBuildings, duplicate]
 				};
 				return {
-					...withDuplicate,
-					cityInventories: withDuplicate.cityInventories.map((inventory) =>
-						inventory.cityId === 'industry-city'
-							? recalculateCityInventoryPressure({
-									...inventory,
-									capacity: getCityWarehouseCapacity(withDuplicate, 'industry-city')
-								})
-							: inventory
-					)
+					...withDuplicate
 				};
 			}
 		}
@@ -3508,72 +3440,15 @@ describe('saveCodec', () => {
 		);
 	});
 
-	test.each([
-		{
-			name: 'capacity',
-			cityInventories: [
-				{ cityId: 'industry-city', capacity: 1, materials: {}, overflowUnits: 0, overflowCost: 0 }
-			],
-			expected: {
-				cityId: 'industry-city',
-				capacity: 0,
-				materials: {},
-				overflowUnits: 0,
-				overflowCost: 0
-			}
-		},
-		{
-			name: 'pressure',
-			cityInventories: [
-				{
-					cityId: 'industry-city',
-					capacity: 0,
-					materials: { water: 1 },
-					overflowUnits: 0,
-					overflowCost: 0
-				}
-			],
-			expected: {
-				cityId: 'industry-city',
-				capacity: 0,
-				materials: { water: 1 },
-				overflowUnits: 1,
-				overflowCost: 2
-			}
-		}
-	])(
-		'strict validation rejects city inventory $name inconsistent with derived state while sandbox loading repairs it',
-		({ cityInventories, expected }) => {
-			expect(() =>
-				validateCurrentGameState(
-					createGame({ cityInventories: cityInventories as GameState['cityInventories'] })
-				)
-			).toThrow(
-				'Saved game cityInventories[0] derived capacity and pressure must match current buildings and materials'
-			);
-			expect(
-				validateSaveRecord(
-					createManualSaveRecord({
-						game: { cityInventories: cityInventories as GameState['cityInventories'] }
-					})
-				).game.cityInventories[0]
-			).toEqual(expected);
-		}
-	);
-
-	test('strict validation accepts a projected nonzero canonical city-inventory overflow', () => {
-		const cityInventories = [
-			{
-				cityId: 'industry-city' as const,
-				capacity: 0,
-				materials: { water: 1 },
-				overflowUnits: 1,
-				overflowCost: 2
-			}
-		];
+	test('strict validation accepts authority-only city inventory records', () => {
+		expect.assertions(2);
+		const cityInventories = [{ cityId: 'industry-city' as const, materials: { water: 1 } }];
 		const game = createGame({ cityInventories });
 
 		expect(validateCurrentGameState(game)).toEqual(game);
+		expect(
+			validateSaveRecord(createManualSaveRecord({ game: { cityInventories } })).game.cityInventories
+		).toEqual(cityInventories);
 	});
 
 	test('strict current-game cloning preserves -0 and enumerable cloneable extras', () => {
@@ -4276,10 +4151,7 @@ describe('saveCodec', () => {
 			cityInventories: [
 				{
 					cityId: 'industry-city',
-					capacity: 0,
-					materials: { 'unknown-material': 10 } as Partial<Record<MaterialId, number>>,
-					overflowUnits: 10,
-					overflowCost: 20
+					materials: { 'unknown-material': 10 } as Partial<Record<MaterialId, number>>
 				}
 			]
 		});
@@ -5348,7 +5220,7 @@ describe('saveCodec', () => {
 		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow('value must be non-negative');
 	});
 
-	test('normalization leaves a non-numeric city inventory capacity for strict validation', () => {
+	test('rejects a legacy city inventory capacity field', () => {
 		expect.assertions(2);
 		const record = createManualSaveRecord({
 			game: {
@@ -5356,17 +5228,15 @@ describe('saveCodec', () => {
 					{
 						cityId: 'industry-city',
 						capacity: 'not-a-number' as unknown as number,
-						materials: {},
-						overflowUnits: 0,
-						overflowCost: 0
+						materials: {}
 					}
-				]
+				] as unknown as GameState['cityInventories']
 			}
 		});
 
 		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
 		expect(() => validateSaveRecord(record)).toThrow(
-			'cityInventories[0] capacity must be a finite number'
+			'Saved game cityInventories[0] contains an unknown field: capacity'
 		);
 	});
 
@@ -5640,22 +5510,13 @@ describe('saveCodec', () => {
 			expect((caught as SaveDataError).code).toBe('invariant-store-cap');
 		});
 
-		test('strict validation rejects city inventory mismatch with invariant-city-inventory error code', () => {
-			expect.assertions(2);
+		test('strict validation accepts material-only city inventory records', () => {
+			expect.assertions(1);
 			const game = createGame({
-				cityInventories: [
-					{ cityId: 'industry-city', capacity: 1, materials: {}, overflowUnits: 0, overflowCost: 0 }
-				]
+				cityInventories: [{ cityId: 'industry-city', materials: {} }]
 			});
 
-			let caught: unknown;
-			try {
-				validateCurrentGameState(game);
-			} catch (error) {
-				caught = error;
-			}
-			expect(caught).toBeInstanceOf(SaveDataError);
-			expect((caught as SaveDataError).code).toBe('invariant-city-inventory');
+			expect(validateCurrentGameState(game)).toEqual(game);
 		});
 
 		test('strict validation rejects inventory exceeding buffer capacity with invariant-inventory error code', () => {

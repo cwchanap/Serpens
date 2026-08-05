@@ -149,10 +149,7 @@ function fixtureGame(): GameState {
 		cityInventories: [
 			{
 				cityId: 'industry-city',
-				capacity: 0,
-				materials: {},
-				overflowUnits: 0,
-				overflowCost: 0
+				materials: {}
 			}
 		],
 		retailSupplyAssignments: [

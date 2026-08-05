@@ -6,6 +6,7 @@
 		localizeReportWarning,
 		localizeStructuredCopy
 	} from '$lib/i18n/gameCopy';
+	import { getCityInventoryStats } from '$lib/game/cityInventory';
 	import type {
 		DailyMaterialMovement,
 		DailyProductionReport,
@@ -43,6 +44,10 @@
 
 	function cityName(cityId: string): string {
 		return i18n.labels.worldCity(cityId).name;
+	}
+
+	function currentCityInventoryStats(cityId: string) {
+		return game ? getCityInventoryStats(game, cityId) : null;
 	}
 
 	function buildAttributionRows(
@@ -306,23 +311,20 @@
 				{#if currentCityInventories.length > 0}
 					<ul class="inventory-list">
 						{#each currentCityInventories as inventory (inventory.cityId)}
-							{@const used = Object.values(inventory.materials).reduce(
-								(total, quantity) => total + (quantity ?? 0),
-								0
-							)}
+							{@const stats = currentCityInventoryStats(inventory.cityId)}
 							<li>
 								<strong>
 									{i18n.t('reportsPanel.inventory.citySummary', {
 										cityName: cityName(inventory.cityId),
-										used: i18n.format.integer(used),
-										capacity: i18n.format.integer(inventory.capacity)
+										used: i18n.format.integer(stats?.used ?? 0),
+										capacity: i18n.format.integer(stats?.capacity ?? 0)
 									})}
 								</strong>
-								{#if inventory.overflowUnits > 0}
+								{#if (stats?.overflowUnits ?? 0) > 0}
 									<span>
 										{i18n.t('reportsPanel.inventory.cityOverflow', {
-											units: i18n.format.integer(inventory.overflowUnits),
-											cost: i18n.format.currency(inventory.overflowCost)
+											units: i18n.format.integer(stats?.overflowUnits ?? 0),
+											cost: i18n.format.currency(stats?.overflowCost ?? 0)
 										})}
 									</span>
 								{/if}

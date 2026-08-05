@@ -305,10 +305,7 @@ function createDaySevenReplenishmentFromIndustryCity(): GameState {
 			inventory.cityId === 'industry-city'
 				? {
 						...inventory,
-						capacity: 200,
-						materials: { 'bottled-water': 20 },
-						overflowUnits: 0,
-						overflowCost: 0
+						materials: { 'bottled-water': 20 }
 					}
 				: inventory
 		),
@@ -353,32 +350,6 @@ function createManualSaveRecord(overrides: SaveRecordOverrides = {}) {
 			...record.game,
 			...overrides.game
 		}
-	};
-}
-
-function createStaleV13Snapshot(): SaveStoreSnapshot {
-	const stale = createManualSaveRecord({
-		metadata: { id: 'manual-stale-city-inventory', name: 'Stale City Inventory' },
-		game: {
-			cityInventories: [
-				{
-					cityId: 'industry-city',
-					capacity: 99,
-					materials: { grain: 4 },
-					overflowUnits: 0,
-					overflowCost: 0
-				}
-			]
-		}
-	});
-	const retained = createManualSaveRecord({
-		metadata: { id: 'manual-retained-city-inventory', name: 'Retained City Inventory' }
-	});
-
-	return {
-		schemaVersion: SAVE_SCHEMA_VERSION,
-		autoSave: null,
-		manualSlots: [stale, retained]
 	};
 }
 
@@ -815,17 +786,11 @@ describe('save records', () => {
 		oldGame.cityInventories = [
 			{
 				cityId: 'industry-city',
-				capacity: 0,
-				materials: {},
-				overflowUnits: 0,
-				overflowCost: 0
+				materials: {}
 			},
 			{
 				cityId: 'breadbasket-basin',
-				capacity: 0,
-				materials: {},
-				overflowUnits: 0,
-				overflowCost: 0
+				materials: {}
 			}
 		];
 		oldGame.retailSupplyAssignments = [
@@ -946,10 +911,7 @@ describe('save records', () => {
 			cityInventories: [
 				{
 					cityId: 'industry-city',
-					capacity: 20,
-					materials: { snacks: 5, 'bad-material': 1 } as Record<string, number>,
-					overflowUnits: 0,
-					overflowCost: 0
+					materials: { snacks: 5, 'bad-material': 1 } as Record<string, number>
 				}
 			]
 		});
@@ -967,10 +929,7 @@ describe('save records', () => {
 			cityInventories: [
 				{
 					cityId: 'industry-city',
-					capacity: 20,
-					materials: { snacks: -1 },
-					overflowUnits: 0,
-					overflowCost: 0
+					materials: { snacks: -1 }
 				}
 			]
 		});
@@ -2163,43 +2122,6 @@ describe('repository city-inventory normalization', () => {
 			replenishmentOutcome: 'city-inventory'
 		});
 	});
-
-	test('normalizes stale v13 derived caches before a driver mutation durably resaves retained slots', async () => {
-		expect.assertions(8);
-		const driver = new MemorySaveStoreDriver(createStaleV13Snapshot());
-		const repository = new SaveRepositoryFromDriver(
-			driver,
-			() => new Date('2026-08-02T12:00:00.000Z')
-		);
-
-		const loaded = await repository.loadManualSlot('manual-stale-city-inventory');
-
-		expect(loaded?.game.cityInventories).toEqual([
-			{
-				cityId: 'industry-city',
-				capacity: 0,
-				materials: { grain: 4 },
-				overflowUnits: 4,
-				overflowCost: 8
-			}
-		]);
-		expect(loaded?.game).not.toHaveProperty('warehouse');
-
-		await repository.saveAuto(createGame({ day: 4 }));
-		const persisted = await driver.read();
-		const staleSlot = persisted.manualSlots.find(
-			(slot) => slot.metadata.id === 'manual-stale-city-inventory'
-		);
-
-		expect(persisted.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
-		expect(staleSlot?.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
-		expect(staleSlot?.game.cityInventories[0]?.capacity).toBe(0);
-		expect(staleSlot?.game.cityInventories[0]?.overflowUnits).toBe(4);
-		expect(staleSlot?.game).not.toHaveProperty('warehouse');
-		expect(
-			persisted.manualSlots.some((slot) => slot.metadata.id === 'manual-retained-city-inventory')
-		).toBe(true);
-	});
 });
 
 describe('browser save repository', () => {
@@ -2207,35 +2129,6 @@ describe('browser save repository', () => {
 		expect.assertions(1);
 
 		expect(BROWSER_SAVE_STORAGE_KEY).toBe('serpens.saves.v2');
-	});
-
-	test('normalizes stale v13 city inventories and writes canonical JSON after a browser mutation', async () => {
-		expect.assertions(6);
-		const storage = new FakeStorage();
-		storage.setItem(BROWSER_SAVE_STORAGE_KEY, JSON.stringify(createStaleV13Snapshot()));
-		const repository = createBrowserSaveRepository(
-			storage,
-			() => new Date('2026-08-02T12:00:00.000Z')
-		);
-
-		const loaded = await repository.loadManualSlot('manual-stale-city-inventory');
-		expect(loaded?.game.cityInventories[0]).toMatchObject({
-			capacity: 0,
-			overflowUnits: 4,
-			overflowCost: 8
-		});
-		expect(loaded?.game).not.toHaveProperty('warehouse');
-
-		await repository.saveAuto(createGame({ day: 4 }));
-		const persisted = JSON.parse(storage.getItem(BROWSER_SAVE_STORAGE_KEY)!) as SaveStoreSnapshot;
-		const staleSlot = persisted.manualSlots.find(
-			(slot) => slot.metadata.id === 'manual-stale-city-inventory'
-		);
-
-		expect(persisted.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
-		expect(staleSlot?.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
-		expect(staleSlot?.game.cityInventories[0]?.overflowUnits).toBe(4);
-		expect(staleSlot?.game).not.toHaveProperty('warehouse');
 	});
 
 	test('saves and loads auto-save records', async () => {

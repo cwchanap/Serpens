@@ -55,9 +55,7 @@ function makeGame(buildings: IndustrialBuilding[], rails = line()): GameState {
 		cash: 100_000,
 		industryCities: [makeCity(rails)],
 		industrialBuildings: buildings,
-		cityInventories: [
-			{ cityId: 'industry-city', capacity: 500, materials: {}, overflowUnits: 0, overflowCost: 0 }
-		]
+		cityInventories: [{ cityId: 'industry-city', materials: {} }]
 	};
 }
 

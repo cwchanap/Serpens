@@ -20,7 +20,6 @@ import type { DecisionContext } from './decisionContext';
 import { refreshWorldProgress } from './world';
 import { runExpansionPurchase } from './expansionFinancing';
 import type { FinanceActionResult, FinancedPurchaseReceipt } from './finance';
-import { synchronizeCityInventoryCapacity } from './cityInventory';
 import type {
 	DecisionItem,
 	SystemDecisionOption,
@@ -205,12 +204,7 @@ export function buildIndustrialBuilding(
 		cash: game.cash - buildingType.buildCost,
 		industrialBuildings: [...game.industrialBuildings, building]
 	};
-	// Adding a warehouse building changes the owning city's derived capacity.
-	// Keep world progress and city-local inventory invariants current before
-	// exposing the transition result to scenario validation.
-	const nextGame = refreshWorldProgress(builtGame);
-
-	return synchronizeCityInventoryCapacity(nextGame, building.cityId);
+	return refreshWorldProgress(builtGame);
 }
 
 export function financeIndustrialBuilding(

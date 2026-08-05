@@ -105,14 +105,11 @@ describe('daily simulation', () => {
 			  "cash": 99762,
 			  "cityInventories": [
 			    {
-			      "capacity": 200,
 			      "cityId": "industry-city",
 			      "materials": {
 			        "bottled-water": 0,
 			        "water": 190,
 			      },
-			      "overflowCost": 0,
-			      "overflowUnits": 0,
 			    },
 			  ],
 			  "report": {
@@ -883,10 +880,7 @@ describe('daily simulation', () => {
 			cityInventories: [
 				{
 					cityId: 'industry-city',
-					capacity: 0,
-					materials: { snacks: 12 },
-					overflowUnits: 12,
-					overflowCost: 24
+					materials: { snacks: 12 }
 				}
 			]
 		});
@@ -1262,10 +1256,7 @@ describe('daily simulation', () => {
 			cityInventories: [
 				{
 					cityId: 'industry-city',
-					capacity: 200,
-					materials: {},
-					overflowUnits: 0,
-					overflowCost: 0
+					materials: {}
 				}
 			]
 		});
@@ -1275,10 +1266,7 @@ describe('daily simulation', () => {
 			cityInventories: [
 				{
 					cityId: 'industry-city',
-					capacity: 200,
-					materials: { snacks: 12 },
-					overflowUnits: 0,
-					overflowCost: 0
+					materials: { snacks: 12 }
 				}
 			]
 		});
@@ -1323,10 +1311,7 @@ describe('daily simulation', () => {
 			cityInventories: [
 				{
 					cityId: 'industry-city',
-					capacity: 200,
-					materials: { snacks: 12 },
-					overflowUnits: 0,
-					overflowCost: 0
+					materials: { snacks: 12 }
 				}
 			]
 		});
@@ -1352,10 +1337,7 @@ describe('daily simulation', () => {
 		expect(result.cityInventories).toEqual([
 			{
 				cityId: 'industry-city',
-				capacity: 0,
-				materials: { snacks: 0 },
-				overflowUnits: 0,
-				overflowCost: 0
+				materials: { snacks: 0 }
 			}
 		]);
 		expect(result).not.toHaveProperty('warehouse');

@@ -103,10 +103,7 @@ describe('IndustryTileInspector', () => {
 			(candidate) => candidate.terrain === 'industrial' && !candidate.locked
 		)!;
 		const game = withCityInventory(baseGame, warehouseTile.cityId, {
-			capacity: 200,
-			materials: { snacks: 42 },
-			overflowUnits: 0,
-			overflowCost: 0
+			materials: { snacks: 42 }
 		});
 		const warehouseBuilding: IndustrialBuilding = {
 			id: 'industry-building-warehouse',
@@ -421,10 +418,7 @@ describe('IndustryTileInspector', () => {
 			(candidate) => candidate.terrain === 'industrial' && !candidate.locked
 		)!;
 		const game = withCityInventory(baseGame, tile.cityId, {
-			capacity: 200,
-			materials: { snacks: 42, drinks: 18 },
-			overflowUnits: 3,
-			overflowCost: 15
+			materials: { snacks: 42, drinks: 18 }
 		});
 		const building: IndustrialBuilding = {
 			id: 'industry-building-warehouse',
@@ -443,7 +437,7 @@ describe('IndustryTileInspector', () => {
 		};
 
 		render(IndustryTileInspector, {
-			game,
+			game: { ...game, industrialBuildings: [building] },
 			tile,
 			building,
 			i18n: createI18n('en'),
@@ -523,10 +517,7 @@ describe('IndustryTileInspector', () => {
 			(candidate) => candidate.terrain === 'industrial' && !candidate.locked
 		)!;
 		const game = withCityInventory(baseGame, tile.cityId, {
-			capacity: 200,
-			materials: {},
-			overflowUnits: 0,
-			overflowCost: 0
+			materials: {}
 		});
 		const building: IndustrialBuilding = {
 			id: 'industry-building-warehouse-empty',
@@ -562,10 +553,7 @@ describe('IndustryTileInspector', () => {
 			(candidate) => candidate.terrain === 'industrial' && !candidate.locked
 		)!;
 		const game = withCityInventory(baseGame, tile.cityId, {
-			capacity: 200,
-			materials: { 'mystery-goods': 7 } as unknown as CityInventory['materials'],
-			overflowUnits: 0,
-			overflowCost: 0
+			materials: { 'mystery-goods': 7 } as unknown as CityInventory['materials']
 		});
 		const building: IndustrialBuilding = {
 			id: 'industry-building-warehouse-mystery',
@@ -701,10 +689,7 @@ describe('IndustryTileInspector', () => {
 			(candidate) => candidate.terrain === 'industrial' && !candidate.locked
 		)!;
 		const game = withCityInventory(baseGame, tile.cityId, {
-			capacity: 200,
-			materials: { snacks: 10 },
-			overflowUnits: 0,
-			overflowCost: 0
+			materials: { snacks: 10 }
 		});
 		const building: IndustrialBuilding = {
 			id: 'industry-building-warehouse-rerender',
@@ -755,10 +740,7 @@ describe('IndustryTileInspector', () => {
 			(candidate) => candidate.terrain === 'industrial' && !candidate.locked
 		)!;
 		const game = withCityInventory(baseGame, tile.cityId, {
-			capacity: 200,
-			materials: { snacks: undefined } as unknown as CityInventory['materials'],
-			overflowUnits: 0,
-			overflowCost: 0
+			materials: { snacks: undefined } as unknown as CityInventory['materials']
 		});
 		const building: IndustrialBuilding = {
 			id: 'industry-building-warehouse-undefined',
@@ -896,18 +878,12 @@ describe('IndustryTileInspector', () => {
 				inventory.cityId === 'industry-city'
 					? {
 							...inventory,
-							capacity: 999,
-							materials: { snacks: 999 },
-							overflowUnits: 999,
-							overflowCost: 999
+							materials: { snacks: 999 }
 						}
 					: inventory.cityId === 'breadbasket-basin'
 						? {
 								...inventory,
-								capacity: 50,
-								materials: { snacks: 33, drinks: 2 },
-								overflowUnits: 0,
-								overflowCost: 0
+								materials: { snacks: 33, drinks: 2 }
 							}
 						: inventory
 			)
@@ -916,10 +892,11 @@ describe('IndustryTileInspector', () => {
 			.find((city) => city.id === 'breadbasket-basin')!
 			.tiles.find((candidate) => candidate.terrain === 'industrial' && !candidate.locked)!;
 
+		const building = warehouseBuilding(tile);
 		render(IndustryTileInspector, {
-			game,
+			game: { ...game, industrialBuildings: [building] },
 			tile,
-			building: warehouseBuilding(tile),
+			building,
 			i18n: createI18n('en'),
 			onClose: vi.fn()
 		});
@@ -928,7 +905,7 @@ describe('IndustryTileInspector', () => {
 		await expect
 			.element(inventory.getByRole('heading', { name: 'Warehouse building' }))
 			.toBeVisible();
-		await expect.element(inventory.getByText('50')).toBeVisible();
+		await expect.element(inventory.getByText('200')).toBeVisible();
 		await expect.element(inventory.getByText('35')).toBeVisible();
 		await expect.element(inventory.getByText('Snacks: 33')).toBeVisible();
 		await expect.element(inventory.getByText('999')).not.toBeInTheDocument();
@@ -963,10 +940,7 @@ describe('IndustryTileInspector', () => {
 				inventory.cityId === 'breadbasket-basin'
 					? {
 							...inventory,
-							capacity: 0,
-							materials: {},
-							overflowUnits: 3,
-							overflowCost: 6
+							materials: { snacks: 3 }
 						}
 					: inventory
 			)
@@ -980,7 +954,7 @@ describe('IndustryTileInspector', () => {
 			onClose: vi.fn()
 		});
 		await expect.element(page.getByText('City inventory has zero capacity.')).toBeVisible();
-		await expect.element(page.getByText('City inventory is empty.')).toBeVisible();
+		await expect.element(page.getByText('Snacks: 3')).toBeVisible();
 		await expect.element(page.getByText('City inventory overflow: 3 units.')).toBeVisible();
 		await expect.element(page.getByText('$6')).toBeVisible();
 	});
@@ -1058,10 +1032,7 @@ describe('IndustryTileInspector', () => {
 			(candidate) => candidate.terrain === 'industrial' && !candidate.locked
 		)!;
 		const game = withCityInventory(baseGame, tile.cityId, {
-			capacity: 200,
-			materials: { snacks: 42, drinks: 18 },
-			overflowUnits: 0,
-			overflowCost: 0
+			materials: { snacks: 42, drinks: 18 }
 		});
 		const building: IndustrialBuilding = {
 			id: 'industry-building-warehouse-icons',

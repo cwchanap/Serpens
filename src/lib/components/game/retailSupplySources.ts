@@ -1,5 +1,6 @@
 import {
 	getCityInventory,
+	getCityInventoryStats,
 	getCityInventoryUsed,
 	supportsCityInventory
 } from '$lib/game/cityInventory';
@@ -105,19 +106,20 @@ function buildValidSourceOptions(game: GameState, i18n: I18nBundle): RetailSuppl
 		}
 
 		const used = getCityInventoryUsed(access.inventory);
+		const stats = getCityInventoryStats(game, access.inventory.cityId);
 		const inventorySummary = i18n.t('retailSupplySources.inventorySummary', {
 			used: i18n.format.integer(used),
-			capacity: i18n.format.integer(access.inventory.capacity)
+			capacity: i18n.format.integer(stats.capacity)
 		});
 		const overflowSummary =
-			access.inventory.overflowUnits > 0
+			stats.overflowUnits > 0
 				? i18n.t(
-						access.inventory.overflowUnits === 1
+						stats.overflowUnits === 1
 							? 'retailSupplySources.overflowSingular'
 							: 'retailSupplySources.overflow',
 						{
-							units: i18n.format.integer(access.inventory.overflowUnits),
-							cost: i18n.format.currency(access.inventory.overflowCost)
+							units: i18n.format.integer(stats.overflowUnits),
+							cost: i18n.format.currency(stats.overflowCost)
 						}
 					)
 				: i18n.t('retailSupplySources.noOverflow');

@@ -5,7 +5,7 @@ import { simulateDay } from '$lib/game/simulateDay';
 import { createNewGame } from '$lib/game/state';
 import { openWorldCity } from '$lib/game/world';
 import { createI18n, type I18nBundle } from '$lib/i18n';
-import type { GameState, WorldCityId } from '$lib/game/types';
+import type { GameState, IndustrialBuilding, WorldCityId } from '$lib/game/types';
 import ProductChainsPanel from './ProductChainsPanel.svelte';
 
 function renderProductChainsPanel(game: GameState, i18n: I18nBundle = createI18n('en')) {
@@ -28,27 +28,43 @@ function openCity(game: GameState, cityId: WorldCityId): GameState {
 	);
 }
 
+function warehouseBuilding(cityId: WorldCityId, id: string): IndustrialBuilding {
+	return {
+		id,
+		level: 1,
+		typeId: 'warehouse',
+		cityId,
+		tileId: `${cityId}-warehouse`,
+		mapX: 0,
+		mapY: 0,
+		status: 'idle',
+		inventory: {},
+		lastProduction: [],
+		producedTotal: 0,
+		importedInputTotal: 0,
+		blockedDays: 0
+	};
+}
+
 function cityScopedChainGame(): GameState {
 	const game = openCity(createNewGame('convenience', 20260803), 'breadbasket-basin');
 	return {
 		...game,
 		activeCityId: 'harbor-city',
 		activeIndustryCityId: 'breadbasket-basin',
+		industrialBuildings: [
+			warehouseBuilding('industry-city', 'industry-warehouse'),
+			warehouseBuilding('breadbasket-basin', 'breadbasket-warehouse')
+		],
 		cityInventories: game.cityInventories!.map((inventory) =>
 			inventory.cityId === 'industry-city'
 				? {
 						...inventory,
-						capacity: 80,
-						materials: { snacks: 8 },
-						overflowUnits: 0,
-						overflowCost: 0
+						materials: { snacks: 8 }
 					}
 				: {
 						...inventory,
-						capacity: 40,
-						materials: { snacks: 12 },
-						overflowUnits: 0,
-						overflowCost: 0
+						materials: { snacks: 12 }
 					}
 		),
 		retailSupplyAssignments: [{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' }]
@@ -59,14 +75,15 @@ function withActiveIndustryInventory(game: GameState): GameState {
 	const cityId = game.activeIndustryCityId as WorldCityId;
 	return {
 		...game,
+		industrialBuildings: [
+			...game.industrialBuildings,
+			warehouseBuilding(cityId, `${cityId}-warehouse`)
+		],
 		cityInventories: [
 			...(game.cityInventories ?? []).filter((inventory) => inventory.cityId !== cityId),
 			{
 				cityId,
-				capacity: 200,
-				materials: { snacks: 12 },
-				overflowUnits: 0,
-				overflowCost: 0
+				materials: { snacks: 12 }
 			}
 		]
 	};
@@ -238,7 +255,7 @@ describe('ProductChainsPanel', () => {
 		[
 			'available local supply',
 			(game: GameState) => game,
-			'Local supply for Harbor City — Industry City: 8 / 80 city inventory used.'
+			'Local supply for Harbor City — Industry City: 8 / 200 city inventory used.'
 		],
 		[
 			'imports only',
@@ -265,14 +282,14 @@ describe('ProductChainsPanel', () => {
 			'zero-capacity source',
 			(game: GameState) => ({
 				...game,
+				industrialBuildings: game.industrialBuildings.filter(
+					(building) => building.cityId !== 'industry-city'
+				),
 				cityInventories: game.cityInventories!.map((inventory) =>
 					inventory.cityId === 'industry-city'
 						? {
 								...inventory,
-								capacity: 0,
-								materials: {},
-								overflowUnits: 0,
-								overflowCost: 0
+								materials: {}
 							}
 						: inventory
 				)
@@ -312,14 +329,14 @@ describe('ProductChainsPanel', () => {
 			'zero-capacity source',
 			(game: GameState) => ({
 				...game,
+				industrialBuildings: game.industrialBuildings.filter(
+					(building) => building.cityId !== 'industry-city'
+				),
 				cityInventories: game.cityInventories!.map((inventory) =>
 					inventory.cityId === 'industry-city'
 						? {
 								...inventory,
-								capacity: 0,
-								materials: {},
-								overflowUnits: 0,
-								overflowCost: 0
+								materials: {}
 							}
 						: inventory
 				)
@@ -349,9 +366,7 @@ describe('ProductChainsPanel', () => {
 		const game: GameState = {
 			...baseGame,
 			cityInventories: baseGame.cityInventories!.map((inventory) =>
-				inventory.cityId === cityId
-					? { ...inventory, overflowUnits: 5, overflowCost: 10 }
-					: inventory
+				inventory.cityId === cityId ? { ...inventory, materials: { snacks: 205 } } : inventory
 			)
 		};
 

@@ -3,7 +3,7 @@ import { createNewGame } from '$lib/game/state';
 import { openWorldCity } from '$lib/game/world';
 import { createI18n } from '$lib/i18n';
 import { buildRetailCitySupplyViews } from './retailSupplySources';
-import type { GameState, WorldCityId } from '$lib/game/types';
+import type { GameState, IndustrialBuilding, WorldCityId } from '$lib/game/types';
 
 function openCity(game: GameState, cityId: WorldCityId): GameState {
 	return openWorldCity(
@@ -21,6 +21,24 @@ function openCity(game: GameState, cityId: WorldCityId): GameState {
 	);
 }
 
+function warehouseBuilding(cityId: WorldCityId, id: string): IndustrialBuilding {
+	return {
+		id,
+		level: 1,
+		typeId: 'warehouse',
+		cityId,
+		tileId: `${cityId}-warehouse`,
+		mapX: 0,
+		mapY: 0,
+		status: 'idle',
+		inventory: {},
+		lastProduction: [],
+		producedTotal: 0,
+		importedInputTotal: 0,
+		blockedDays: 0
+	};
+}
+
 function supplyFixture(): GameState {
 	let game = createNewGame('convenience', 292_014);
 	game = openCity(game, 'breadbasket-basin');
@@ -29,24 +47,22 @@ function supplyFixture(): GameState {
 
 	return {
 		...game,
+		industrialBuildings: [
+			warehouseBuilding('industry-city', 'industry-city-warehouse'),
+			warehouseBuilding('breadbasket-basin', 'breadbasket-basin-warehouse')
+		],
 		cityInventories: game.cityInventories.map((inventory) => {
 			if (inventory.cityId === 'industry-city') {
 				return {
 					...inventory,
-					capacity: 20,
-					materials: { snacks: 27 },
-					overflowUnits: 7,
-					overflowCost: 14
+					materials: { snacks: 207 }
 				};
 			}
 
 			if (inventory.cityId === 'breadbasket-basin') {
 				return {
 					...inventory,
-					capacity: 40,
-					materials: { drinks: 3 },
-					overflowUnits: 0,
-					overflowCost: 0
+					materials: { drinks: 3 }
 				};
 			}
 
@@ -85,9 +101,9 @@ describe('buildRetailCitySupplyViews', () => {
 			(option) => option.supplyCityId === 'breadbasket-basin'
 		)!;
 
-		expect(industryCity.inventorySummary).toBe('27 / 20 city inventory used.');
+		expect(industryCity.inventorySummary).toBe('207 / 200 city inventory used.');
 		expect(industryCity.overflowSummary).toBe('Overflow: 7 units ($14).');
-		expect(breadbasket.inventorySummary).toBe('3 / 40 city inventory used.');
+		expect(breadbasket.inventorySummary).toBe('3 / 200 city inventory used.');
 		expect(breadbasket.overflowSummary).toBe('No overflow.');
 		expect(`${industryCity.inventorySummary} ${industryCity.overflowSummary}`).not.toContain('40');
 	});
@@ -97,14 +113,14 @@ describe('buildRetailCitySupplyViews', () => {
 		const views = buildRetailCitySupplyViews(
 			{
 				...game,
+				industrialBuildings: game.industrialBuildings.filter(
+					(building) => building.cityId !== 'industry-city'
+				),
 				cityInventories: game.cityInventories!.map((inventory) => {
 					if (inventory.cityId === 'industry-city') {
 						return {
 							...inventory,
-							capacity: 0,
-							materials: {},
-							overflowUnits: 1,
-							overflowCost: 2
+							materials: { snacks: 1 }
 						};
 					}
 
@@ -125,9 +141,9 @@ describe('buildRetailCitySupplyViews', () => {
 			(option) => option.supplyCityId === 'breadbasket-basin'
 		)!;
 
-		expect(industryCity.inventorySummary).toBe('0 / 0 city inventory used.');
+		expect(industryCity.inventorySummary).toBe('1 / 0 city inventory used.');
 		expect(industryCity.overflowSummary).toBe('Overflow: 1 unit ($2).');
-		expect(breadbasket.inventorySummary).toBe('0 / 40 city inventory used.');
+		expect(breadbasket.inventorySummary).toBe('0 / 200 city inventory used.');
 	});
 
 	it('keeps explicit Imports only separate from a missing assignment', () => {

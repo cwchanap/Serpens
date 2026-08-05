@@ -16,8 +16,7 @@ import {
 import {
 	compareWorldCityIds,
 	initializeCityInventory,
-	initializeRetailSupplyAssignment,
-	synchronizeAllCityInventoryCapacities
+	initializeRetailSupplyAssignment
 } from '$lib/game/cityInventory';
 import { getStoreUpgradeCost } from '$lib/game/leveling';
 import { createFoundingGameAtTile } from '$lib/game/placement';
@@ -760,9 +759,7 @@ export function buildScenarioGame(
 	const overridden = applyAuthoredOverrides(definition, game, refs, baseFinances);
 	if (!overridden.game) return { ok: false, diagnostics: overridden.diagnostics };
 	game = overridden.game;
-	game = synchronizeAllCityInventoryCapacities(game);
 	game = applyCityInventoryMaterials(definition, game);
-	game = synchronizeAllCityInventoryCapacities(game);
 	const cityInventoryDiagnostics = validateCityInventoryCapacities(game, definition.start);
 	if (cityInventoryDiagnostics.length > 0) {
 		return { ok: false, diagnostics: cityInventoryDiagnostics };

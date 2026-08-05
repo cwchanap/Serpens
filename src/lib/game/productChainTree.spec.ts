@@ -15,8 +15,10 @@ import type {
 	DailyProductionReport,
 	DailyStoreReport,
 	GameState,
+	IndustrialBuilding,
 	MaterialId,
-	Store
+	Store,
+	WorldCityId
 } from './types';
 
 // Patch isSupportedFinishedMaterial to admit a synthetic 'fake-finished' category
@@ -50,7 +52,33 @@ function openedRetailAndIndustryCityGame(): GameState {
 		}
 	};
 
-	return openWorldCity(openWorldCity(revealed, 'campus-junction'), 'breadbasket-basin');
+	const game = openWorldCity(openWorldCity(revealed, 'campus-junction'), 'breadbasket-basin');
+	return {
+		...game,
+		industrialBuildings: [
+			...game.industrialBuildings,
+			warehouseBuilding('industry-city', 'industry-city-warehouse'),
+			warehouseBuilding('breadbasket-basin', 'breadbasket-basin-warehouse')
+		]
+	};
+}
+
+function warehouseBuilding(cityId: WorldCityId, id: string): IndustrialBuilding {
+	return {
+		id,
+		level: 1,
+		typeId: 'warehouse',
+		cityId,
+		tileId: `${cityId}-warehouse`,
+		mapX: 0,
+		mapY: 0,
+		status: 'idle',
+		inventory: {},
+		lastProduction: [],
+		producedTotal: 0,
+		importedInputTotal: 0,
+		blockedDays: 0
+	};
 }
 
 function openedRetailCityGame(): GameState {
@@ -218,8 +246,8 @@ describe('buildProductChainTree', () => {
 			activeCityId: 'campus-junction',
 			cityInventories: game.cityInventories.map((inventory) =>
 				inventory.cityId === 'industry-city'
-					? { ...inventory, capacity: 200, materials: { snacks: 61 } }
-					: { ...inventory, capacity: 200, materials: { snacks: 7 } }
+					? { ...inventory, materials: { snacks: 61 } }
+					: { ...inventory, materials: { snacks: 7 } }
 			),
 			retailSupplyAssignments: game.retailSupplyAssignments.map((assignment) =>
 				assignment.retailCityId === 'campus-junction'
@@ -279,8 +307,8 @@ describe('buildProductChainTree', () => {
 				activeCityId: 'campus-junction',
 				cityInventories: game.cityInventories!.map((inventory) =>
 					inventory.cityId === 'breadbasket-basin'
-						? { ...inventory, capacity: 200, materials: { snacks: 7 } }
-						: { ...inventory, capacity: 200, materials: { snacks: 61 } }
+						? { ...inventory, materials: { snacks: 7 } }
+						: { ...inventory, materials: { snacks: 61 } }
 				),
 				retailSupplyAssignments: game.retailSupplyAssignments!.map((assignment) =>
 					assignment.retailCityId === 'campus-junction'
@@ -422,7 +450,7 @@ describe('buildProductChainTree', () => {
 			...game,
 			cityInventories: game.cityInventories.map((inventory) =>
 				inventory.cityId === 'industry-city'
-					? { ...inventory, capacity: 200, materials: { snacks: 5 } }
+					? { ...inventory, materials: { snacks: 5 } }
 					: inventory
 			),
 			retailSupplyAssignments: game.retailSupplyAssignments.map((assignment) =>
@@ -550,7 +578,7 @@ describe('buildProductChainTree', () => {
 			...game,
 			cityInventories: game.cityInventories.map((inventory) =>
 				inventory.cityId === 'industry-city'
-					? { ...inventory, capacity: 200, materials: { snacks: 5 } }
+					? { ...inventory, materials: { snacks: 5 } }
 					: inventory
 			),
 			retailSupplyAssignments: game.retailSupplyAssignments.map((assignment) =>
@@ -1241,8 +1269,8 @@ describe('buildStoreCategoryChainSummaries (tree)', () => {
 				activeCityId: 'campus-junction',
 				cityInventories: game.cityInventories.map((inventory) =>
 					inventory.cityId === 'industry-city'
-						? { ...inventory, capacity: 200, materials: { snacks: 61 } }
-						: { ...inventory, capacity: 200, materials: { snacks: 7 } }
+						? { ...inventory, materials: { snacks: 61 } }
+						: { ...inventory, materials: { snacks: 7 } }
 				),
 				retailSupplyAssignments: game.retailSupplyAssignments.map((assignment) =>
 					assignment.retailCityId === 'campus-junction'

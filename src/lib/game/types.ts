@@ -363,8 +363,12 @@ export interface DailyProductionReport {
 
 export interface CityInventory {
 	cityId: WorldCityId;
-	capacity: number;
 	materials: Partial<Record<MaterialId, number>>;
+}
+
+export interface CityInventoryStats {
+	capacity: number;
+	used: number;
 	overflowUnits: number;
 	overflowCost: number;
 }

@@ -53,9 +53,7 @@ function makeGame(city: IndustryCity, buildings: IndustrialBuilding[]): GameStat
 		cash: 100_000,
 		industryCities: [city],
 		industrialBuildings: buildings,
-		cityInventories: [
-			{ cityId: 'industry-city', capacity: 500, materials: {}, overflowUnits: 0, overflowCost: 0 }
-		]
+		cityInventories: [{ cityId: 'industry-city', materials: {} }]
 	};
 }
 
@@ -90,10 +88,7 @@ describe('pullViaRail', () => {
 		const farm = makeBuilding('industry-building-1', 'grain-farm', 2, 2, { grain: 30 });
 		const mill = makeBuilding('industry-building-2', 'flour-mill', 10, 2);
 		const state = createRailTickState(makeGame(makeCity(LINE), [farm, mill]), {
-			capacity: 500,
-			materials: {},
-			overflowUnits: 0,
-			overflowCost: 0
+			materials: {}
 		});
 		const result = pullViaRail(state, mill, 'grain', 10);
 		expect(result.fromProducers).toBe(1); // 8-cell level-1 path → min budget 1
@@ -117,10 +112,7 @@ describe('pullViaRail', () => {
 		const millA = makeBuilding('industry-building-1', 'flour-mill', 2, 2, { grain: 30 });
 		const millB = makeBuilding('industry-building-2', 'flour-mill', 10, 2);
 		const state = createRailTickState(makeGame(makeCity(LINE), [millA, millB]), {
-			capacity: 500,
-			materials: {},
-			overflowUnits: 0,
-			overflowCost: 0
+			materials: {}
 		});
 		const result = pullViaRail(state, millB, 'grain', 10);
 		expect(result.fromProducers).toBe(0);
@@ -137,10 +129,7 @@ describe('pullViaRail', () => {
 		const mill = makeBuilding('industry-building-1', 'flour-mill', 2, 2, { flour: 30 });
 		const snackFactory = makeBuilding('industry-building-2', 'snack-factory', 10, 2);
 		const state = createRailTickState(makeGame(makeCity(LINE), [mill, snackFactory]), {
-			capacity: 500,
-			materials: {},
-			overflowUnits: 0,
-			overflowCost: 0
+			materials: {}
 		});
 		const result = pullViaRail(state, snackFactory, 'flour', 10);
 		expect(result.fromProducers).toBe(1); // level-1 line → 1/day bottleneck
@@ -161,7 +150,7 @@ describe('pullViaRail', () => {
 		const mill = makeBuilding('industry-building-2', 'flour-mill', 10, 2);
 		const state = createRailTickState(
 			makeGame(makeCity(straightRails(4, 2, 11, 3)), [farm, mill]),
-			{ capacity: 500, materials: {}, overflowUnits: 0, overflowCost: 0 }
+			{ materials: {} }
 		);
 		expect(pullViaRail(state, mill, 'grain', 10).fromProducers).toBe(3);
 	});
@@ -170,10 +159,7 @@ describe('pullViaRail', () => {
 		const warehouse = makeBuilding('industry-building-1', 'warehouse', 2, 2);
 		const mill = makeBuilding('industry-building-2', 'flour-mill', 10, 2);
 		const state = createRailTickState(makeGame(makeCity(LINE), [warehouse, mill]), {
-			capacity: 500,
-			materials: { grain: 50 },
-			overflowUnits: 0,
-			overflowCost: 0
+			materials: { grain: 50 }
 		});
 		const result = pullViaRail(state, mill, 'grain', 10);
 		expect(result.fromWarehouse).toBe(1);
@@ -185,10 +171,7 @@ describe('pullViaRail', () => {
 		const farm = makeBuilding('industry-building-1', 'grain-farm', 2, 2, { grain: 30 });
 		const mill = makeBuilding('industry-building-2', 'flour-mill', 20, 20);
 		const state = createRailTickState(makeGame(makeCity(LINE), [farm, mill]), {
-			capacity: 500,
-			materials: {},
-			overflowUnits: 0,
-			overflowCost: 0
+			materials: {}
 		});
 		const result = pullViaRail(state, mill, 'grain', 10);
 		expect(result.fromProducers + result.fromWarehouse).toBe(0);
@@ -205,10 +188,7 @@ describe('pullViaRail', () => {
 		const millA = makeBuilding('industry-building-2', 'flour-mill', 8, 2);
 		const millB = makeBuilding('industry-building-3', 'flour-mill', 8, 6);
 		const state = createRailTickState(makeGame(makeCity(rails), [farm, millA, millB]), {
-			capacity: 500,
-			materials: {},
-			overflowUnits: 0,
-			overflowCost: 0
+			materials: {}
 		});
 		const pullA = pullViaRail(state, millA, 'grain', 5);
 		const pullB = pullViaRail(state, millB, 'grain', 5);
@@ -226,10 +206,7 @@ describe('pullViaRail', () => {
 			const millA = makeBuilding('industry-building-2', 'flour-mill', 8, 2);
 			const millB = makeBuilding('industry-building-3', 'flour-mill', 8, 6);
 			const state = createRailTickState(makeGame(makeCity(rails), [farm, millA, millB]), {
-				capacity: 500,
-				materials: {},
-				overflowUnits: 0,
-				overflowCost: 0
+				materials: {}
 			});
 			pullViaRail(state, millA, 'grain', 5);
 			pullViaRail(state, millB, 'grain', 5);
@@ -243,10 +220,7 @@ describe('pullViaRail', () => {
 			const farm = makeBuilding('industry-building-1', 'grain-farm', 2, 2, { grain: 30 });
 			const mill = makeBuilding('industry-building-2', 'flour-mill', 10, 2);
 			const state = createRailTickState(makeGame(makeCity(LINE), [farm, mill]), {
-				capacity: 500,
-				materials: {},
-				overflowUnits: 0,
-				overflowCost: 0
+				materials: {}
 			});
 			pullViaRail(state, mill, 'grain', 10);
 			return state.shipments;
@@ -264,7 +238,7 @@ describe('pullViaRail', () => {
 		const mill = makeBuilding('industry-building-2', 'flour-mill', 10, 2);
 		const state = createRailTickState(
 			makeGame(makeCity(LINE), [connectedFarm, disconnectedFarm, mill]),
-			{ capacity: 500, materials: {}, overflowUnits: 0, overflowCost: 0 }
+			{ materials: {} }
 		);
 		const result = pullViaRail(state, mill, 'grain', 10);
 		// Only the connected farm ships (1/day bottleneck); the disconnected
@@ -280,10 +254,7 @@ describe('pullViaRail', () => {
 		const farm = makeBuilding('industry-building-1', 'grain-farm', 2, 2, { grain: 30 });
 		const mill = makeBuilding('industry-building-2', 'flour-mill', 10, 2);
 		const state = createRailTickState(makeGame(makeCity(LINE), [farm, mill]), {
-			capacity: 500,
-			materials: {},
-			overflowUnits: 0,
-			overflowCost: 0
+			materials: {}
 		});
 		const result = pullViaRail(state, mill, 'grain', 1);
 		expect(result.fromProducers).toBe(1);
@@ -301,10 +272,7 @@ describe('pullViaRail', () => {
 		const mill = makeBuilding('industry-building-3', 'flour-mill', 8, 2);
 		const rails = straightRails(4, 2, 16, 3);
 		const state = createRailTickState(makeGame(makeCity(rails), [farmA, farmB, mill]), {
-			capacity: 500,
-			materials: {},
-			overflowUnits: 0,
-			overflowCost: 0
+			materials: {}
 		});
 		const result = pullViaRail(state, mill, 'grain', 5);
 		expect(result.fromProducers).toBe(4);
@@ -328,10 +296,7 @@ describe('pushSurplusViaRail', () => {
 		const farm = makeBuilding('industry-building-1', 'grain-farm', 2, 2, { grain: 5 });
 		const warehouse = makeBuilding('industry-building-2', 'warehouse', 10, 2);
 		const state = createRailTickState(makeGame(makeCity(LINE), [farm, warehouse]), {
-			capacity: 500,
-			materials: {},
-			overflowUnits: 0,
-			overflowCost: 0
+			materials: {}
 		});
 		pushSurplusViaRail(state, farm);
 		expect(state.cityInventory.materials.grain).toBe(1); // bottlenecked at 1/day
@@ -346,10 +311,7 @@ describe('pushSurplusViaRail', () => {
 		});
 		const warehouse = makeBuilding('industry-building-2', 'warehouse', 10, 2);
 		const state = createRailTickState(makeGame(makeCity(LINE), [mill, warehouse]), {
-			capacity: 500,
-			materials: {},
-			overflowUnits: 0,
-			overflowCost: 0
+			materials: {}
 		});
 		pushSurplusViaRail(state, mill);
 		expect(state.cityInventory.materials.flour).toBe(1);
@@ -365,10 +327,7 @@ describe('pushSurplusViaRail', () => {
 	it('does nothing without a reachable warehouse', () => {
 		const farm = makeBuilding('industry-building-1', 'grain-farm', 2, 2, { grain: 5 });
 		const state = createRailTickState(makeGame(makeCity(LINE), [farm]), {
-			capacity: 500,
-			materials: {},
-			overflowUnits: 0,
-			overflowCost: 0
+			materials: {}
 		});
 		pushSurplusViaRail(state, farm);
 		expect(state.shipments).toHaveLength(0);
@@ -383,7 +342,7 @@ describe('pushSurplusViaRail', () => {
 		const disconnectedWarehouse = makeBuilding('industry-building-3', 'warehouse', 20, 20);
 		const state = createRailTickState(
 			makeGame(makeCity(LINE), [farm, connectedWarehouse, disconnectedWarehouse]),
-			{ capacity: 500, materials: {}, overflowUnits: 0, overflowCost: 0 }
+			{ materials: {} }
 		);
 		pushSurplusViaRail(state, farm);
 		expect(state.cityInventory.materials.grain).toBe(1);
@@ -419,10 +378,7 @@ describe('pushSurplusViaRail', () => {
 			{ x: 2, y: 9, level: 3 }
 		];
 		const state = createRailTickState(makeGame(makeCity(rails), [farm, warehouseA, warehouseB]), {
-			capacity: 500,
-			materials: {},
-			overflowUnits: 0,
-			overflowCost: 0
+			materials: {}
 		});
 		pushSurplusViaRail(state, farm);
 		expect(state.cityInventory.materials.grain).toBe(6);

@@ -30,6 +30,7 @@ import {
 	type ProductChainNode,
 	type ProductChainSupplyState
 } from './productChainGraph';
+import { getCityInventoryStats } from './cityInventory';
 import { getWorldCityDefinition } from './world';
 import type {
 	DailyProductionReport,
@@ -107,14 +108,16 @@ function getRetailChainScope(game: GameState): RetailChainScope {
 		};
 	}
 
+	const inventoryStats = getCityInventoryStats(game, industry.cityId);
+
 	return {
 		retailCityId: activeCity.id,
 		stores,
 		industry,
 		supplyState:
-			industry.inventory.capacity <= 0
+			inventoryStats.capacity <= 0
 				? { code: 'zero-capacity', cityId: industry.cityId }
-				: { code: 'available', cityId: industry.cityId, capacity: industry.inventory.capacity }
+				: { code: 'available', cityId: industry.cityId, capacity: inventoryStats.capacity }
 	};
 }
 
