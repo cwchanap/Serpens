@@ -473,6 +473,28 @@ function initializeDefaultRetailSupplyAssignments(game: GameState): GameState {
 	return next;
 }
 
+function validateStartingContentCitiesAreOpened(
+	definition: ScenarioDefinition,
+	game: GameState
+): ScenarioDiagnostic | undefined {
+	const opened = new Set<string>(game.world.openedCityIds);
+	const everyStartingContentCityIsOpened =
+		game.stores.every((store) => opened.has(store.cityId)) &&
+		game.industrialBuildings.every((building) => opened.has(building.cityId)) &&
+		definition.start.rails.every((rail) => opened.has(rail.cityId));
+	if (everyStartingContentCityIsOpened) return undefined;
+
+	return {
+		path: 'start.overrides.world',
+		code: 'setup-invariant-failed',
+		value: {
+			activeRetailCityId: game.activeCityId,
+			activeIndustryCityId: game.activeIndustryCityId
+		},
+		detail: 'The built game starting-content cities must be opened.'
+	};
+}
+
 function strictSetupFailure(error: SaveDataError, game: GameState): ScenarioDiagnostic {
 	// Map structured SaveDataError invariant codes to scenario setup diagnostics.
 	// The codes are set at the throw sites in saveCodec.ts validateCurrentGameState
@@ -633,6 +655,8 @@ export function buildScenarioGame(
 	if (!retailSupply.game) return { ok: false, diagnostics: retailSupply.diagnostics };
 	game = retailSupply.game;
 	game = refreshWorldProgress(game);
+	const startingContentDiagnostic = validateStartingContentCitiesAreOpened(definition, game);
+	if (startingContentDiagnostic) return { ok: false, diagnostics: [startingContentDiagnostic] };
 
 	try {
 		game = validateCurrentGameState(game);

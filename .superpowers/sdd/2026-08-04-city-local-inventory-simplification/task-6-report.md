@@ -88,3 +88,81 @@ Additional verification:
   scenario setup/validation files and this report; no Task 7 or HPA-294 behavior changed.
 
 The checkpoint commit SHA is captured in the implementation handoff after this report is committed.
+
+## Follow-up repair — scoped review findings
+
+### Restored starting-content open-city invariant
+
+The Task 6 deletion accidentally removed the guard that requires every city containing authored
+starting content to be opened. `requiredStartingCityIds` still materializes a rail-only city, while
+the final current-state validator only requires the inverse relationship (opened cities must be
+materialized). A world override could therefore leave an authored rail-only `industry-city`
+closed.
+
+`setup.ts` now has one narrow `validateStartingContentCitiesAreOpened` guard after setup has
+applied rails, general overrides, city inventory, supply assignments, and world refresh, but before
+the existing single `validateCurrentGameState(game)` call. It checks the same scenario content
+classes as the former invariant—starting stores, authored industrial buildings, and authored rail
+cells—and returns the established `start.overrides.world` / `setup-invariant-failed` diagnostic.
+It does not reintroduce a post-setup inventory validator, alter city materialization, or change the
+documented setup application order.
+
+### Strict-validator diagnostic adapter coverage
+
+Added a compact parameterized test over all six tagged `strictSetupFailure` branches plus the
+generic fallback. The test runs real scenario setup, injects only a structured final-validator
+failure at the existing boundary, and verifies the resulting scenario diagnostic's path, code, and
+value against the constructed game state. This restores coverage for the remaining adapter without
+reviving the deleted malformed-state matrix or creating a new compatibility layer.
+
+### RED → GREEN and verification evidence
+
+Focused RED on `231d07f` (the final fixture retains valid authored rail endpoints while making
+`industry-city` rail-only and closed):
+
+```text
+rtk bun run test:unit -- --run src/lib/scenarios/setup.spec.ts -t "rejects a rail-only starting city that is not opened" --maxWorkers=1
+```
+
+Observed failure: the setup result had `[]` diagnostics where the test expected
+`[{ path: 'start.overrides.world', code: 'setup-invariant-failed' }]`.
+
+Focused GREEN after the narrow invariant:
+
+```text
+1 passed, 21 skipped
+```
+
+Focused adapter coverage:
+
+```text
+rtk bun run test:unit -- --run src/lib/scenarios/setup.spec.ts -t "maps strict" --maxWorkers=1
+```
+
+Result: 7 passed, 22 skipped.
+
+Additional focused setup verification: `src/lib/scenarios/setup.spec.ts` passed 29/29.
+
+Final required verification after the repair (exit 0):
+
+```text
+rtk bun run test:unit -- --run \
+  src/lib/scenarios/setup.spec.ts \
+  src/lib/scenarios/validation.spec.ts \
+  src/lib/persistence/scenarioCodec.spec.ts \
+  --maxWorkers=1
+```
+
+Result: 3 files and 344 tests passed.
+
+- `rtk bun run check` — passed with 0 errors and 0 warnings.
+- `rtk bun run lint` — passed (Prettier and ESLint).
+- `rtk git diff --check 231d07f` — passed.
+
+### Follow-up self-review
+
+- The restored invariant is limited to authored store/building/rail ownership and has no inventory
+  capacity or source validation logic.
+- `setup.ts` still contains exactly one `validateCurrentGameState(game)` invocation, with its
+  normalized return value assigned to `game`.
+- No Task 4, Task 5, Task 7, or HPA-294 behavior changed.
