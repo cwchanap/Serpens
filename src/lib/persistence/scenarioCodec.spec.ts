@@ -327,6 +327,21 @@ describe('scenario codec', () => {
 		);
 	});
 
+	it('keeps an embedded game playable when a historical report is malformed', () => {
+		const active = fixtureRun();
+		const run = {
+			...active,
+			game: {
+				...active.game,
+				reports: [{ day: -1 } as GameState['reports'][number]]
+			}
+		};
+
+		const validated = validateScenarioRun(run, resolveFixtureDefinition);
+
+		expect(validated.game.reports).toEqual([]);
+	});
+
 	it.each(['completed', 'failed', 'abandoned'] as const)(
 		'isolates a %s run incorrectly stored as active',
 		(status) => {

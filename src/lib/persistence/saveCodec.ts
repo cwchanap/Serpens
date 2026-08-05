@@ -34,15 +34,14 @@ import {
 import {
 	compareWorldCityIds,
 	findEntityCityOwnershipIssues,
-	getCityInventory,
-	WAREHOUSE_OVERFLOW_COST_PER_UNIT
+	getCityInventory
 } from '$lib/game/cityInventory';
 import { MAX_STAFF_LEVEL } from '$lib/game/staffLeveling';
 import { FINANCE_TRANSACTION_LIMIT, getInstallmentCount } from '$lib/game/finance';
 import { EVENT_SELECTION_SCHEMA_VERSION } from '$lib/game/eventSelection';
 import { EVENT_HISTORY_LIMIT } from '$lib/game/eventHistory';
 import { clampScore } from '$lib/game/reports';
-import { calculateStockHealth, getFinishedMaterialIdForCategory } from '$lib/game/stock';
+import { calculateStockHealth } from '$lib/game/stock';
 import type {
 	City,
 	CityTile,
@@ -407,17 +406,9 @@ function validateCurrentGameStateInternal(value: unknown): GameState {
 		}
 		decisionIds.add(id);
 	});
-	let previousReportDay: number | undefined;
-	reports.forEach((report, index) => {
-		const label = `Saved game reports[${index}]`;
-		const reportDay = validateSavedReport(report, gameDay, label);
-		validateCurrentReportCityAttribution(report, currentGame, label);
-		if (previousReportDay !== undefined && reportDay <= previousReportDay) {
-			throw new SaveDataError('Saved game report days must be strictly increasing and unique');
-		}
-		previousReportDay = reportDay;
-	});
-	validateSavedEventRuntime(game.events, gameDay, decisions, reports, 'Saved game events');
+	const decodedReports = decodeHistoricalReports(reports);
+	currentGame.reports = decodedReports;
+	validateSavedEventRuntime(game.events, gameDay, decisions, decodedReports, 'Saved game events');
 	const storeCap = requireNumber(game.storeCap, 'Saved game storeCap');
 	if (!Number.isInteger(storeCap)) {
 		throw new SaveDataError('Saved game storeCap must be an integer', 'invariant-store-cap');
@@ -1330,10 +1321,6 @@ function retailSupplyInvariant(message: string): never {
 	throw new SaveDataError(message, 'invariant-retail-supply');
 }
 
-function reportAttributionInvariant(message: string): never {
-	throw new SaveDataError(message, 'invariant-report-attribution');
-}
-
 function requireCityInventoryRecord(value: unknown, label: string): Record<string, unknown> {
 	if (typeof value !== 'object' || value === null || Array.isArray(value)) {
 		return cityInventoryInvariant(`${label} must be an object`);
@@ -1386,7 +1373,6 @@ function validateCurrentCityInventories(game: GameState): void {
 
 	const inventories = game.cityInventories;
 	const seenCityIds = new Set<WorldCityId>();
-	let previousCityId: WorldCityId | undefined;
 	for (const [index, value] of inventories.entries()) {
 		const label = `Saved game cityInventories[${index}]`;
 		const inventory = requireCityInventoryRecord(value, label);
@@ -1402,11 +1388,7 @@ function validateCurrentCityInventories(game: GameState): void {
 		if (seenCityIds.has(cityId)) {
 			cityInventoryInvariant(`${label} cityId must be unique: ${cityId}`);
 		}
-		if (previousCityId !== undefined && compareWorldCityIds(previousCityId, cityId) >= 0) {
-			cityInventoryInvariant(`${label} cityId must be in canonical world-city order`);
-		}
 		seenCityIds.add(cityId);
-		previousCityId = cityId;
 
 		const materials = requireCityInventoryRecord(inventory.materials, `${label} materials`);
 		let used = 0;
@@ -1439,6 +1421,9 @@ function validateCurrentCityInventories(game: GameState): void {
 			'Saved game cityInventories must contain one record for every opened industry city'
 		);
 	}
+	game.cityInventories = [...inventories].sort((left, right) =>
+		compareWorldCityIds(left.cityId, right.cityId)
+	);
 }
 
 function resolveCurrentRetailAssignmentOwner(
@@ -1469,7 +1454,6 @@ function validateCurrentRetailSupplyAssignments(game: GameState): void {
 
 	const assignments = game.retailSupplyAssignments;
 	const seenRetailCityIds = new Set<WorldCityId>();
-	let previousRetailCityId: WorldCityId | undefined;
 	for (const [index, value] of assignments.entries()) {
 		const label = `Saved game retailSupplyAssignments[${index}]`;
 		if (typeof value !== 'object' || value === null || Array.isArray(value)) {
@@ -1484,14 +1468,7 @@ function validateCurrentRetailSupplyAssignments(game: GameState): void {
 		if (seenRetailCityIds.has(retailCityId)) {
 			retailSupplyInvariant(`${label} retailCityId must be unique: ${retailCityId}`);
 		}
-		if (
-			previousRetailCityId !== undefined &&
-			compareWorldCityIds(previousRetailCityId, retailCityId) >= 0
-		) {
-			retailSupplyInvariant(`${label} retailCityId must be in canonical world-city order`);
-		}
 		seenRetailCityIds.add(retailCityId);
-		previousRetailCityId = retailCityId;
 
 		if (assignment.supplyCityId !== null) {
 			if (typeof assignment.supplyCityId !== 'string' || assignment.supplyCityId.length === 0) {
@@ -1500,6 +1477,9 @@ function validateCurrentRetailSupplyAssignments(game: GameState): void {
 			const supply = getWorldCityDefinition(assignment.supplyCityId);
 			if (!supply || supply.kind !== 'industry') {
 				retailSupplyInvariant(`${label} supplyCityId must reference a known industry city`);
+			}
+			if (!getCityInventory(game, supply.id).ok) {
+				retailSupplyInvariant(`${label} supplyCityId must reference a current industry inventory`);
 			}
 		}
 	}
@@ -1518,6 +1498,9 @@ function validateCurrentRetailSupplyAssignments(game: GameState): void {
 			'Saved game retailSupplyAssignments must contain one record for every opened retail city'
 		);
 	}
+	game.retailSupplyAssignments = [...assignments].sort((left, right) =>
+		compareWorldCityIds(left.retailCityId, right.retailCityId)
+	);
 }
 
 function assertNoResidualGlobalWarehouseData(game: Record<string, unknown>): void {
@@ -2881,11 +2864,25 @@ function withEventInvariant<T>(operation: () => T): T {
 	}
 }
 
-function validateSavedReport(value: unknown, gameDay: number, label: string): number {
+function decodeHistoricalReports(reports: unknown[]): GameState['reports'] {
+	const decoded: GameState['reports'] = [];
+
+	for (const [index, report] of reports.entries()) {
+		try {
+			validateSavedReport(report, `Saved game reports[${index}]`);
+			decoded.push(report as GameState['reports'][number]);
+		} catch (error) {
+			console.warn('Dropping malformed historical report', { index, error });
+		}
+	}
+
+	return decoded;
+}
+
+function validateSavedReport(value: unknown, label: string): void {
 	const report = requireRecord(value, label);
 
 	const day = requireNonNegativeInteger(report.day, `${label} day`);
-	if (day > gameDay) throw new SaveDataError(`${label} day must not be after the game day`);
 	requireNumber(report.revenue, `${label} revenue`);
 	requireNumber(report.costOfGoods, `${label} costOfGoods`);
 	requireNumber(report.grossMargin, `${label} grossMargin`);
@@ -2934,7 +2931,6 @@ function validateSavedReport(value: unknown, gameDay: number, label: string): nu
 		);
 	});
 	validateSavedWarningArray(report.warnings, `${label} warnings`, false);
-	return day;
 }
 
 function validateSavedModifierImpacts(value: unknown, label: string): void {
@@ -3044,26 +3040,37 @@ function validateSavedProductionReport(value: unknown, label: string): void {
 	const report = requireRecord(value, label);
 
 	requireArray(report.produced, `${label} produced`).forEach((movement, index) =>
-		validateSavedDailyMaterialMovement(movement, `${label} produced[${index}]`)
+		validateSavedHistoricalMaterialMovement(movement, 'industry', `${label} produced[${index}]`)
 	);
 	requireArray(report.consumed, `${label} consumed`).forEach((movement, index) =>
-		validateSavedDailyMaterialMovement(movement, `${label} consumed[${index}]`)
+		validateSavedHistoricalMaterialMovement(movement, 'industry', `${label} consumed[${index}]`)
 	);
 	requireArray(report.importedInputs, `${label} importedInputs`).forEach((movement, index) =>
-		validateSavedDailyMaterialMovement(movement, `${label} importedInputs[${index}]`)
+		validateSavedHistoricalMaterialMovement(
+			movement,
+			'industry',
+			`${label} importedInputs[${index}]`
+		)
 	);
 	requireArray(report.warehousePulls, `${label} warehousePulls`).forEach((movement, index) =>
-		validateSavedDailyMaterialMovement(movement, `${label} warehousePulls[${index}]`)
+		validateSavedHistoricalMaterialMovement(
+			movement,
+			'industry',
+			`${label} warehousePulls[${index}]`
+		)
 	);
 	requireArray(report.shopImports, `${label} shopImports`).forEach((movement, index) =>
-		validateSavedDailyMaterialMovement(movement, `${label} shopImports[${index}]`)
+		validateSavedHistoricalMaterialMovement(movement, 'retail', `${label} shopImports[${index}]`)
 	);
 	requireNumber(report.importSpend, `${label} importSpend`);
 	requireNumber(report.operatingCost, `${label} operatingCost`);
-	requireNumber(report.overflowUnits, `${label} overflowUnits`);
-	requireNumber(report.overflowCost, `${label} overflowCost`);
-	requireNumber(report.warehouseCapacity, `${label} warehouseCapacity`);
-	requireNumber(report.warehouseUsed, `${label} warehouseUsed`);
+	requireNonNegativeInteger(report.overflowUnits, `${label} overflowUnits`);
+	requireNonNegativeInteger(report.overflowCost, `${label} overflowCost`);
+	requireNonNegativeInteger(report.warehouseCapacity, `${label} warehouseCapacity`);
+	requireNonNegativeInteger(report.warehouseUsed, `${label} warehouseUsed`);
+	requireArray(report.cityInventories, `${label} cityInventories`).forEach((summary, index) =>
+		validateSavedDailyCityInventorySummary(summary, `${label} cityInventories[${index}]`)
+	);
 	requireArray(report.railShipments, `${label} railShipments`).forEach((shipment, index) =>
 		validateSavedRailShipment(shipment, `${label} railShipments[${index}]`)
 	);
@@ -3074,8 +3081,28 @@ function validateSavedProductionReport(value: unknown, label: string): void {
 	}
 }
 
+function validateSavedHistoricalMaterialMovement(
+	value: unknown,
+	expectedCityKind: 'retail' | 'industry',
+	label: string
+): void {
+	validateSavedDailyMaterialMovement(value, label, true);
+	const movement = requireRecord(value, label);
+	requireHistoricalReportCityId(movement.cityId, expectedCityKind, `${label} cityId`);
+}
+
+function validateSavedDailyCityInventorySummary(value: unknown, label: string): void {
+	const summary = requireRecord(value, label);
+	requireHistoricalReportCityId(summary.cityId, 'industry', `${label} cityId`);
+	requireNonNegativeInteger(summary.capacity, `${label} capacity`);
+	requireNonNegativeInteger(summary.used, `${label} used`);
+	requireNonNegativeInteger(summary.overflowUnits, `${label} overflowUnits`);
+	requireNonNegativeInteger(summary.overflowCost, `${label} overflowCost`);
+}
+
 function validateSavedRailShipment(value: unknown, label: string): void {
 	const shipment = requireRecord(value, label);
+	requireHistoricalReportCityId(shipment.cityId, 'industry', `${label} cityId`);
 	requireKnownId(shipment.materialId, `${label} materialId`, MATERIAL_ID_SET, 'material');
 	const quantity = requireNumber(shipment.quantity, `${label} quantity`);
 	if (quantity < 0) {
@@ -3088,436 +3115,6 @@ function validateSavedRailShipment(value: unknown, label: string): void {
 	requireOneOf(shipment.kind, `${label} kind`, RAIL_SHIPMENT_KINDS);
 	requireString(shipment.fromId, `${label} fromId`);
 	requireString(shipment.toId, `${label} toId`);
-}
-
-function resolveCurrentReportCityId(
-	game: GameState,
-	value: unknown,
-	expectedKind: 'retail' | 'industry',
-	label: string
-): WorldCityId {
-	if (typeof value !== 'string' || value.length === 0) {
-		return reportAttributionInvariant(`${label} must reference a ${expectedKind} city`);
-	}
-	const definition = getWorldCityDefinition(value);
-	if (!definition || definition.kind !== expectedKind) {
-		return reportAttributionInvariant(`${label} must reference a known ${expectedKind} city`);
-	}
-	if (!game.world.openedCityIds.includes(definition.id)) {
-		return reportAttributionInvariant(`${label} must reference an opened ${expectedKind} city`);
-	}
-	const materialized =
-		expectedKind === 'retail'
-			? game.cities.some((city) => city.id === definition.id)
-			: game.industryCities.some((city) => city.id === definition.id);
-	if (!materialized) {
-		return reportAttributionInvariant(
-			`${label} must reference a materialized ${expectedKind} city`
-		);
-	}
-	return definition.id;
-}
-
-function requireCurrentReportSafeInteger(value: unknown, label: string): number {
-	if (typeof value !== 'number' || !Number.isFinite(value)) {
-		return reportAttributionInvariant(`${label} must be a finite number`);
-	}
-	if (!Number.isSafeInteger(value) || value < 0) {
-		return reportAttributionInvariant(`${label} must be a non-negative safe integer`);
-	}
-	return value;
-}
-
-function addCurrentReportSafeInteger(total: number, value: number, label: string): number {
-	if (value > Number.MAX_SAFE_INTEGER - total) {
-		return reportAttributionInvariant(`${label} must not exceed the safe-integer range`);
-	}
-	return total + value;
-}
-
-function multiplyCurrentReportSafeInteger(left: number, right: number, label: string): number {
-	if (left !== 0 && right > Math.floor(Number.MAX_SAFE_INTEGER / left)) {
-		return reportAttributionInvariant(`${label} must not exceed the safe-integer range`);
-	}
-	return left * right;
-}
-
-function validateCurrentAttributedMovementArray(
-	value: unknown,
-	game: GameState,
-	expectedKind: 'retail' | 'industry',
-	label: string
-): void {
-	const movements = requireArray(value, label);
-	for (const [index, movementValue] of movements.entries()) {
-		const movement = requireRecord(movementValue, `${label}[${index}]`);
-		resolveCurrentReportCityId(game, movement.cityId, expectedKind, `${label}[${index}] cityId`);
-	}
-}
-
-function validateCurrentProductionCloseInventories(
-	value: unknown,
-	game: GameState,
-	label: string
-): { capacity: number; used: number; overflowUnits: number; overflowCost: number } {
-	if (!Array.isArray(value)) {
-		reportAttributionInvariant(`${label} must be an array`);
-	}
-	const summaries = value;
-	if (summaries.length === 0) {
-		reportAttributionInvariant(`${label} must contain at least one industry-city summary`);
-	}
-	const seenCityIds = new Set<WorldCityId>();
-	const totals = { capacity: 0, used: 0, overflowUnits: 0, overflowCost: 0 };
-	let previousCityId: WorldCityId | undefined;
-	for (const [index, summaryValue] of summaries.entries()) {
-		const summaryLabel = `${label}[${index}]`;
-		const summary = requireRecord(summaryValue, summaryLabel);
-		const cityId = resolveCurrentReportCityId(
-			game,
-			summary.cityId,
-			'industry',
-			`${summaryLabel} cityId`
-		);
-		if (seenCityIds.has(cityId)) {
-			reportAttributionInvariant(`${summaryLabel} cityId must be unique: ${cityId}`);
-		}
-		if (previousCityId !== undefined && compareWorldCityIds(previousCityId, cityId) >= 0) {
-			reportAttributionInvariant(`${summaryLabel} cityId must be in canonical world-city order`);
-		}
-		seenCityIds.add(cityId);
-		previousCityId = cityId;
-		const capacity = requireCurrentReportSafeInteger(summary.capacity, `${summaryLabel} capacity`);
-		const used = requireCurrentReportSafeInteger(summary.used, `${summaryLabel} used`);
-		const overflowUnits = requireCurrentReportSafeInteger(
-			summary.overflowUnits,
-			`${summaryLabel} overflowUnits`
-		);
-		const overflowCost = requireCurrentReportSafeInteger(
-			summary.overflowCost,
-			`${summaryLabel} overflowCost`
-		);
-		const expectedOverflowUnits = Math.max(0, used - capacity);
-		if (overflowUnits !== expectedOverflowUnits) {
-			reportAttributionInvariant(`${summaryLabel} overflowUnits must reconcile with used capacity`);
-		}
-		const expectedOverflowCost = multiplyCurrentReportSafeInteger(
-			expectedOverflowUnits,
-			WAREHOUSE_OVERFLOW_COST_PER_UNIT,
-			`${summaryLabel} overflowCost`
-		);
-		if (overflowCost !== expectedOverflowCost) {
-			reportAttributionInvariant(`${summaryLabel} overflowCost must reconcile with overflow units`);
-		}
-		totals.capacity = addCurrentReportSafeInteger(
-			totals.capacity,
-			capacity,
-			`${label} capacity aggregate`
-		);
-		totals.used = addCurrentReportSafeInteger(totals.used, used, `${label} used aggregate`);
-		totals.overflowUnits = addCurrentReportSafeInteger(
-			totals.overflowUnits,
-			overflowUnits,
-			`${label} overflowUnits aggregate`
-		);
-		totals.overflowCost = addCurrentReportSafeInteger(
-			totals.overflowCost,
-			overflowCost,
-			`${label} overflowCost aggregate`
-		);
-	}
-	// The production-close snapshot must contain one summary per opened
-	// industry city that materialized an inventory for the report day. The
-	// starter `industry-city` is only guaranteed for the default world
-	// progression; scenarios may designate any opened industry city as the
-	// sole supply source and prune the starter inventory during setup. The
-	// nonempty, uniqueness, canonical-order, and per-city opened/materialized
-	// checks above already establish the canonical report-day set, so no
-	// single city is hard-required here.
-	return totals;
-}
-
-function validateCurrentProductionCloseAggregate(
-	productionReport: Record<string, unknown>,
-	totals: { capacity: number; used: number; overflowUnits: number; overflowCost: number },
-	label: string
-): void {
-	const aggregateFields = [
-		['warehouseCapacity', totals.capacity],
-		['warehouseUsed', totals.used],
-		['overflowUnits', totals.overflowUnits],
-		['overflowCost', totals.overflowCost]
-	] as const;
-	for (const [field, expected] of aggregateFields) {
-		const actual = requireCurrentReportSafeInteger(productionReport[field], `${label} ${field}`);
-		if (actual !== expected) {
-			reportAttributionInvariant(`${label} ${field} must reconcile with city-inventory summaries`);
-		}
-	}
-}
-
-function validateCurrentReplenishmentCityId(
-	value: unknown,
-	expectedKind: 'retail' | 'industry',
-	label: string
-): WorldCityId {
-	if (typeof value !== 'string' || value.length === 0) {
-		return retailSupplyInvariant(`${label} must reference a ${expectedKind} city`);
-	}
-	const definition = getWorldCityDefinition(value);
-	if (!definition || definition.kind !== expectedKind) {
-		return retailSupplyInvariant(`${label} must reference a known ${expectedKind} city`);
-	}
-	return definition.id;
-}
-
-function requireCurrentReplenishmentUnits(value: unknown, label: string): number {
-	if (typeof value !== 'number' || !Number.isFinite(value)) {
-		return retailSupplyInvariant(`${label} must be a finite number`);
-	}
-	if (!Number.isSafeInteger(value) || value < 0) {
-		return retailSupplyInvariant(`${label} must be a non-negative safe integer`);
-	}
-	return value;
-}
-
-function requireCurrentReplenishmentAmount(value: unknown, label: string): number {
-	if (typeof value !== 'number' || !Number.isFinite(value)) {
-		return retailSupplyInvariant(`${label} must be a finite number`);
-	}
-	if (value < 0) {
-		return retailSupplyInvariant(`${label} must be non-negative`);
-	}
-	return value;
-}
-
-function expectedCurrentLocalReplenishmentValue(
-	categoryId: unknown,
-	warehouseUnits: number,
-	label: string
-): number {
-	if (warehouseUnits === 0) return 0;
-	if (typeof categoryId !== 'string') {
-		return retailSupplyInvariant(`${label} categoryId must map to a finished material`);
-	}
-	const materialId = getFinishedMaterialIdForCategory(categoryId);
-	if (materialId === null) {
-		return retailSupplyInvariant(`${label} categoryId must map to a finished material`);
-	}
-	const localValue = MATERIALS[materialId].localValue;
-	if (!Number.isSafeInteger(localValue) || localValue <= 0) {
-		return retailSupplyInvariant(`${label} local material value must be a positive safe integer`);
-	}
-	if (warehouseUnits > Math.floor(Number.MAX_SAFE_INTEGER / localValue)) {
-		return retailSupplyInvariant(`${label} warehouseValue must not exceed the safe-integer range`);
-	}
-	return warehouseUnits * localValue;
-}
-
-function validateCurrentStoreReplenishment(value: unknown, game: GameState, label: string): void {
-	const storeReport = requireRecord(value, label);
-	const storeId = requireString(storeReport.storeId, `${label} storeId`);
-	const store = game.stores.find((candidate) => candidate.id === storeId);
-	if (!store) {
-		retailSupplyInvariant(`${label} storeId must reference a current store`);
-	}
-	if (!Object.hasOwn(storeReport, 'replenishment')) {
-		retailSupplyInvariant(`${label} replenishment must be present`);
-	}
-
-	const products = requireArray(storeReport.productReports, `${label} productReports`).map(
-		(productValue, index) => {
-			const productLabel = `${label} productReports[${index}]`;
-			const product = requireRecord(productValue, productLabel);
-			const duplicatedCityContextKey = [
-				'cityId',
-				'retailCityId',
-				'supplyCityId',
-				'configuredSupplyCityId',
-				'resolvedSupplyCityId'
-			].find((key) => Object.hasOwn(product, key));
-			if (duplicatedCityContextKey) {
-				retailSupplyInvariant(
-					`${productLabel} must not duplicate the store-level replenishment ${duplicatedCityContextKey}`
-				);
-			}
-			const warehouseUnits = requireCurrentReplenishmentUnits(
-				product.warehouseUnits,
-				`${productLabel} warehouseUnits`
-			);
-			const warehouseValue = requireCurrentReplenishmentAmount(
-				product.warehouseValue,
-				`${productLabel} warehouseValue`
-			);
-			const importedUnits = requireCurrentReplenishmentUnits(
-				product.importedUnits,
-				`${productLabel} importedUnits`
-			);
-			const importSpend = requireCurrentReplenishmentAmount(
-				product.importSpend,
-				`${productLabel} importSpend`
-			);
-			const expectedWarehouseValue = expectedCurrentLocalReplenishmentValue(
-				product.categoryId,
-				warehouseUnits,
-				productLabel
-			);
-			if (warehouseValue !== expectedWarehouseValue) {
-				retailSupplyInvariant(
-					`${productLabel} warehouseValue must exactly reconcile with local replenishment units`
-				);
-			}
-			return {
-				warehouseUnits,
-				importedUnits,
-				importSpend
-			};
-		}
-	);
-	const attemptedReplenishment = products.some(
-		(product) => product.warehouseUnits > 0 || product.importedUnits > 0
-	);
-
-	if (storeReport.replenishment === null) {
-		return;
-	}
-	if (
-		typeof storeReport.replenishment !== 'object' ||
-		storeReport.replenishment === null ||
-		Array.isArray(storeReport.replenishment)
-	) {
-		retailSupplyInvariant(`${label} replenishment must be an object or null`);
-	}
-
-	const context = storeReport.replenishment as Record<string, unknown>;
-	const retailCityId = validateCurrentReplenishmentCityId(
-		context.retailCityId,
-		'retail',
-		`${label} replenishment retailCityId`
-	);
-	if (retailCityId !== store.cityId) {
-		retailSupplyInvariant(`${label} replenishment retailCityId must match its store city`);
-	}
-
-	const configuredSupplyCityId =
-		context.configuredSupplyCityId === null
-			? null
-			: validateCurrentReplenishmentCityId(
-					context.configuredSupplyCityId,
-					'industry',
-					`${label} replenishment configuredSupplyCityId`
-				);
-	const resolvedSupplyCityId =
-		context.resolvedSupplyCityId === null
-			? null
-			: validateCurrentReplenishmentCityId(
-					context.resolvedSupplyCityId,
-					'industry',
-					`${label} replenishment resolvedSupplyCityId`
-				);
-	if (configuredSupplyCityId === null && resolvedSupplyCityId !== null) {
-		retailSupplyInvariant(
-			`${label} Imports-only replenishment cannot resolve a city supply source`
-		);
-	}
-	if (
-		configuredSupplyCityId !== null &&
-		resolvedSupplyCityId !== null &&
-		configuredSupplyCityId !== resolvedSupplyCityId
-	) {
-		retailSupplyInvariant(
-			`${label} replenishment resolvedSupplyCityId must match its configured source`
-		);
-	}
-	const configuredSupplyAccess =
-		configuredSupplyCityId === null ? null : getCityInventory(game, configuredSupplyCityId);
-	if (
-		configuredSupplyCityId !== null &&
-		configuredSupplyAccess?.ok &&
-		resolvedSupplyCityId !== configuredSupplyCityId
-	) {
-		retailSupplyInvariant(
-			`${label} replenishment must resolve an accessible configured supply city`
-		);
-	}
-	if (resolvedSupplyCityId !== null && !getCityInventory(game, resolvedSupplyCityId).ok) {
-		retailSupplyInvariant(
-			`${label} replenishment resolvedSupplyCityId must have a current city inventory`
-		);
-	}
-	if (!attemptedReplenishment) {
-		retailSupplyInvariant(
-			`${label} replenishment context requires at least one attempted product refill`
-		);
-	}
-}
-
-function validateCurrentReportCityAttribution(
-	value: unknown,
-	game: GameState,
-	label: string
-): void {
-	const report = requireRecord(value, label);
-	const productionReport = requireRecord(report.productionReport, `${label} productionReport`);
-	const productionCloseTotals = validateCurrentProductionCloseInventories(
-		productionReport.cityInventories,
-		game,
-		`${label} productionReport cityInventories`
-	);
-	validateCurrentProductionCloseAggregate(
-		productionReport,
-		productionCloseTotals,
-		`${label} productionReport`
-	);
-	validateCurrentAttributedMovementArray(
-		productionReport.produced,
-		game,
-		'industry',
-		`${label} productionReport produced`
-	);
-	validateCurrentAttributedMovementArray(
-		productionReport.consumed,
-		game,
-		'industry',
-		`${label} productionReport consumed`
-	);
-	validateCurrentAttributedMovementArray(
-		productionReport.importedInputs,
-		game,
-		'industry',
-		`${label} productionReport importedInputs`
-	);
-	validateCurrentAttributedMovementArray(
-		productionReport.warehousePulls,
-		game,
-		'industry',
-		`${label} productionReport warehousePulls`
-	);
-	validateCurrentAttributedMovementArray(
-		productionReport.shopImports,
-		game,
-		'retail',
-		`${label} productionReport shopImports`
-	);
-	const railShipments = requireArray(
-		productionReport.railShipments,
-		`${label} productionReport railShipments`
-	);
-	for (const [index, shipmentValue] of railShipments.entries()) {
-		const shipment = requireRecord(
-			shipmentValue,
-			`${label} productionReport railShipments[${index}]`
-		);
-		resolveCurrentReportCityId(
-			game,
-			shipment.cityId,
-			'industry',
-			`${label} productionReport railShipments[${index}] cityId`
-		);
-	}
-	requireArray(report.storeReports, `${label} storeReports`).forEach((storeReport, index) =>
-		validateCurrentStoreReplenishment(storeReport, game, `${label} storeReports[${index}]`)
-	);
 }
 
 function validateSavedStoreReport(value: unknown, label: string): string {
@@ -3539,18 +3136,22 @@ function validateSavedStoreReport(value: unknown, label: string): string {
 	requireNumber(report.reputation, `${label} reputation`);
 	requireNumber(report.marketPosition, `${label} marketPosition`);
 	const seenCategoryIds = new Set<string>();
+	let attemptedReplenishment = false;
 	requireArray(report.productReports, `${label} productReports`).forEach((productReport, index) => {
-		const categoryId = validateSavedProductReport(
-			productReport,
-			`${label} productReports[${index}]`
-		);
-		if (seenCategoryIds.has(categoryId)) {
+		const product = validateSavedProductReport(productReport, `${label} productReports[${index}]`);
+		if (seenCategoryIds.has(product.categoryId)) {
 			throw new SaveDataError(
 				`${label} productReports[${index}] categoryId must be unique within its store report`
 			);
 		}
-		seenCategoryIds.add(categoryId);
+		seenCategoryIds.add(product.categoryId);
+		attemptedReplenishment ||= product.warehouseUnits > 0 || product.importedUnits > 0;
 	});
+	validateSavedHistoricalReplenishment(
+		report.replenishment,
+		attemptedReplenishment,
+		`${label} replenishment`
+	);
 	validateSavedWarningArray(report.warnings, `${label} warnings`, true);
 	return storeId;
 }
@@ -3645,7 +3246,10 @@ function validateSavedStoreProduct(value: unknown, label: string): StoreProduct 
 	return { categoryId, stock, reorderThreshold, targetStock, sellingPrice };
 }
 
-function validateSavedProductReport(value: unknown, label: string): string {
+function validateSavedProductReport(
+	value: unknown,
+	label: string
+): { categoryId: string; warehouseUnits: number; importedUnits: number } {
 	const report = requireRecord(value, label);
 
 	const categoryId = requireString(report.categoryId, `${label} categoryId`);
@@ -3656,12 +3260,67 @@ function validateSavedProductReport(value: unknown, label: string): string {
 	requireNumber(report.costOfGoods, `${label} costOfGoods`);
 	requireNumber(report.grossMargin, `${label} grossMargin`);
 	requireNumber(report.endingStock, `${label} endingStock`);
-	requireNumber(report.warehouseUnits, `${label} warehouseUnits`);
-	requireNumber(report.warehouseValue, `${label} warehouseValue`);
-	requireNumber(report.importedUnits, `${label} importedUnits`);
-	requireNumber(report.importCost, `${label} importCost`);
-	requireNumber(report.importSpend, `${label} importSpend`);
-	return categoryId;
+	const warehouseUnits = requireNonNegativeInteger(
+		report.warehouseUnits,
+		`${label} warehouseUnits`
+	);
+	const warehouseValue = requireNumber(report.warehouseValue, `${label} warehouseValue`);
+	if (warehouseValue < 0) {
+		throw new SaveDataError(`${label} warehouseValue must be non-negative`);
+	}
+	const importedUnits = requireNonNegativeInteger(report.importedUnits, `${label} importedUnits`);
+	const importCost = requireNumber(report.importCost, `${label} importCost`);
+	if (importCost < 0) {
+		throw new SaveDataError(`${label} importCost must be non-negative`);
+	}
+	const importSpend = requireNumber(report.importSpend, `${label} importSpend`);
+	if (importSpend < 0) {
+		throw new SaveDataError(`${label} importSpend must be non-negative`);
+	}
+	return { categoryId, warehouseUnits, importedUnits };
+}
+
+function validateSavedHistoricalReplenishment(
+	value: unknown,
+	attemptedReplenishment: boolean,
+	label: string
+): void {
+	if (value === null) {
+		if (attemptedReplenishment) {
+			throw new SaveDataError(`${label} must be present for a product refill`);
+		}
+		return;
+	}
+
+	const context = requireRecord(value, label);
+	requireHistoricalReportCityId(context.retailCityId, 'retail', `${label} retailCityId`);
+	if (context.configuredSupplyCityId !== null) {
+		requireHistoricalReportCityId(
+			context.configuredSupplyCityId,
+			'industry',
+			`${label} configuredSupplyCityId`
+		);
+	}
+	if (context.resolvedSupplyCityId !== null) {
+		requireHistoricalReportCityId(
+			context.resolvedSupplyCityId,
+			'industry',
+			`${label} resolvedSupplyCityId`
+		);
+	}
+}
+
+function requireHistoricalReportCityId(
+	value: unknown,
+	expectedKind: 'retail' | 'industry',
+	label: string
+): WorldCityId {
+	const cityId = requireString(value, label);
+	const definition = getWorldCityDefinition(cityId);
+	if (!definition || definition.kind !== expectedKind) {
+		throw new SaveDataError(`${label} must reference a known ${expectedKind} city`);
+	}
+	return definition.id;
 }
 
 function validateSavedStaffingShortage(value: unknown, label: string): void {
