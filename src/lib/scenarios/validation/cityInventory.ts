@@ -89,8 +89,8 @@ function validateCityInventoryEndpoint(
 }
 
 /**
- * Validates each authored city independently after setup has synchronized its
- * same-city warehouse capacity. The scenario definition validator owns schema
+ * Validates each authored city independently against its derived same-city
+ * warehouse capacity. The scenario definition validator owns schema
  * and content allowlists; this boundary verifies the finished game state.
  */
 export function validateCityInventoryCapacities(
