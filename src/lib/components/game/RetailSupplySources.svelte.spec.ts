@@ -263,7 +263,7 @@ describe('RetailSupplySources', () => {
 	});
 
 	it('suppresses onChange when the missing configuration value is re-selected', async () => {
-		expect.assertions(1);
+		expect.assertions(2);
 		const onChange = vi.fn();
 		renderSources({
 			onChange,
@@ -282,6 +282,7 @@ describe('RetailSupplySources', () => {
 		// pick it. Dispatch a change event with the value set directly to
 		// exercise the early-return guard in changeSource.
 		select.value = RETAIL_SUPPLY_MISSING_CONFIGURATION_VALUE;
+		expect(select.value).toBe(RETAIL_SUPPLY_MISSING_CONFIGURATION_VALUE);
 		select.dispatchEvent(new Event('change', { bubbles: true }));
 
 		expect(onChange).not.toHaveBeenCalled();

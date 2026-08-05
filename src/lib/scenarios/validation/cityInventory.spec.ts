@@ -99,13 +99,17 @@ interface BaseFixture {
 	blueprint: ScenarioStartBlueprint;
 }
 
+let baseFixture: BaseFixture | undefined;
+
 function buildBaseFixture(): BaseFixture {
+	if (baseFixture) return baseFixture;
 	const definition = cityInventoryDefinition();
 	const result = buildScenarioGame(definition, definition.officialSeed);
 	if (!result.ok) {
 		throw new Error(`Base fixture failed to build: ${JSON.stringify(result.diagnostics)}`);
 	}
-	return { game: result.game, blueprint: definition.start };
+	baseFixture = { game: result.game, blueprint: definition.start };
+	return baseFixture;
 }
 
 function codesFrom(
@@ -602,7 +606,7 @@ describe('validateRetailSupplyAssignments', () => {
 		};
 		expect(codesFrom(validateRetailSupplyAssignments(ungeneratedGame, blueprint))).toContainEqual({
 			path: 'start.overrides.retailSupplyAssignments[0].supplyCityId',
-			code: 'supply-city-unavailable'
+			code: 'supply-city-unmaterialized'
 		});
 	});
 

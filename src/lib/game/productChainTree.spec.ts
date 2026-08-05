@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { openStoreAtTile } from './placement';
 import { buildProductChainTree, buildStoreCategoryChainSummaries } from './productChainTree';
 import { createNewGame } from './state';
@@ -1472,6 +1472,15 @@ describe('buildStoreCategoryChainSummaries (tree)', () => {
 });
 
 describe('buildProductChainTree defensive branches', () => {
+	const producerMap = MATERIAL_PRODUCER_RECIPES as Map<string, string>;
+	const originalWaterRecipe = producerMap.get('water');
+
+	afterEach(() => {
+		if (originalWaterRecipe !== undefined) {
+			producerMap.set('water', originalWaterRecipe);
+		}
+	});
+
 	it('returns an empty graph when a supported finished material has no producer recipe', () => {
 		expect.assertions(3);
 		const game = convenienceGame();
@@ -1487,15 +1496,9 @@ describe('buildProductChainTree defensive branches', () => {
 		// Temporarily remove the 'water' producer entry so the water-bottler
 		// recipe's 'water' input has no producer, triggering the
 		// noProductionRecipe warning branch.
-		const producerMap = MATERIAL_PRODUCER_RECIPES as Map<string, string>;
-		const saved = producerMap.get('water');
 		producerMap.delete('water');
-		try {
-			const game = convenienceGame();
-			const tree = buildProductChainTree({ game, store: null, categoryId: 'bottled-water' });
-			expect(tree.warnings).toContainEqual({ code: 'noProductionRecipe', materialId: 'water' });
-		} finally {
-			if (saved !== undefined) producerMap.set('water', saved);
-		}
+		const game = convenienceGame();
+		const tree = buildProductChainTree({ game, store: null, categoryId: 'bottled-water' });
+		expect(tree.warnings).toContainEqual({ code: 'noProductionRecipe', materialId: 'water' });
 	});
 });
