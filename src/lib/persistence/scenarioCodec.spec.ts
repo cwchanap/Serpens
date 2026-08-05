@@ -34,7 +34,6 @@ import {
 } from './scenarioCodec';
 import { ScenarioMemoryRepository } from './scenarioMemoryRepository';
 import { runRecord, snapshot } from './scenarioRepository.testUtils';
-import { migrateSavedGame, validateMigratedGameState } from './saveCodec';
 
 const OFFICIAL_SEEDS: Record<ScenarioId, number> = {
 	'first-profit': 280_001,
@@ -219,76 +218,6 @@ function fixtureRun(
 	};
 }
 
-function v11RunRecord(run: ScenarioRun, revision = 0): ScenarioRunRecord {
-	const record = runRecord(run, revision);
-	const legacyGame = toLegacyV12WarehouseWireGame(run.game) as unknown as Record<string, unknown>;
-	delete legacyGame.events;
-	legacyGame.decisions = [
-		{
-			id: 'supplier-terms',
-			title: 'Supplier terms',
-			context: { code: 'supplierTerms' },
-			expiresOnDay: run.game.day + 2,
-			options: [
-				{
-					id: 'negotiate-credit',
-					label: 'Negotiate credit',
-					description: 'Ask for short-term supplier credit.',
-					effects: {
-						finance: {
-							kind: 'borrow',
-							purpose: 'supplierCredit',
-							amount: 4_000,
-							termDays: 28
-						},
-						profit: -2
-					}
-				},
-				{
-					id: 'bulk-discount',
-					label: 'Bulk discount',
-					description: 'Commit to a larger order.',
-					effects: { cash: -2_500, profit: 3, stockHealth: 6 }
-				}
-			]
-		}
-	];
-	legacyGame.reports = run.game.reports.map((report) => {
-		const {
-			modifierImpacts: _modifierImpacts,
-			modifierLifecycle: _modifierLifecycle,
-			...legacyReport
-		} = structuredClone(report);
-		void _modifierImpacts;
-		void _modifierLifecycle;
-		return legacyReport;
-	});
-
-	return {
-		...record,
-		gameSchemaVersion: 11,
-		game: legacyGame as unknown as GameState
-	};
-}
-
-function toLegacyV12WarehouseWireGame(game: GameState): GameState {
-	const legacyGame = structuredClone(game) as unknown as Record<string, unknown>;
-	const activeInventory =
-		game.cityInventories.find((inventory) => inventory.cityId === game.activeIndustryCityId) ??
-		game.cityInventories[0];
-
-	legacyGame.warehouse = {
-		capacity: activeInventory?.capacity ?? 0,
-		materials: { ...(activeInventory?.materials ?? {}) },
-		overflowUnits: activeInventory?.overflowUnits ?? 0,
-		overflowCost: activeInventory?.overflowCost ?? 0
-	};
-	delete legacyGame.cityInventories;
-	delete legacyGame.retailSupplyAssignments;
-
-	return legacyGame as unknown as GameState;
-}
-
 function cityInventoryMetricDefinition(): ScenarioDefinition {
 	const definition = fixtureDefinition({ scenarioId: 'first-profit', version: 1 });
 	const query = {
@@ -354,35 +283,6 @@ function createCityInventoryMetricRun(definition: ScenarioDefinition): ScenarioR
 		game,
 		evaluation: evaluateScenario(definition, game, false),
 		result: null
-	};
-}
-
-function v12CityInventoryMetricRunRecord(run: ScenarioRun, revision: number): ScenarioRunRecord {
-	const record = runRecord(run, revision);
-	const legacyGame = structuredClone(run.game) as unknown as Record<string, unknown>;
-	const sourceInventory = run.game.cityInventories[0]!;
-	legacyGame.warehouse = {
-		capacity: sourceInventory.capacity,
-		materials: { ...sourceInventory.materials },
-		overflowUnits: sourceInventory.overflowUnits,
-		overflowCost: sourceInventory.overflowCost
-	};
-	delete legacyGame.cityInventories;
-	delete legacyGame.retailSupplyAssignments;
-	for (const report of legacyGame.reports as Array<Record<string, unknown>>) {
-		delete (report.productionReport as Record<string, unknown>).cityInventories;
-		for (const storeReport of report.storeReports as Array<Record<string, unknown>>) {
-			delete storeReport.replenishment;
-			for (const productReport of storeReport.productReports as Array<Record<string, unknown>>) {
-				delete productReport.replenishmentOutcome;
-			}
-		}
-	}
-
-	return {
-		...record,
-		gameSchemaVersion: 12,
-		game: legacyGame as unknown as GameState
 	};
 }
 
@@ -473,20 +373,21 @@ describe('scenario codec', () => {
 		);
 	});
 
-	it('isolates unsupported embedded-game schema versions', () => {
-		const active = fixtureRun();
-		const decoded = decodeScenarioStoreSnapshot(
-			snapshot({
-				'first-profit': { ...runRecord(active), gameSchemaVersion: SAVE_SCHEMA_VERSION + 1 }
-			}),
-			resolveFixtureDefinition
-		);
+	it.each([SAVE_SCHEMA_VERSION - 1, SAVE_SCHEMA_VERSION + 1])(
+		'isolates an embedded game with non-current schema version %s',
+		(gameSchemaVersion) => {
+			const active = fixtureRun();
+			const decoded = decodeScenarioStoreSnapshot(
+				snapshot({
+					'first-profit': { ...runRecord(active), gameSchemaVersion }
+				}),
+				resolveFixtureDefinition
+			);
 
-		expect(decoded.snapshot.activeRunsByScenarioId).toEqual({});
-		expect(decoded.diagnostics.map((diagnostic) => diagnostic.code)).toContain(
-			'unsupported-game-schema'
-		);
-	});
+			expect(decoded.snapshot.activeRunsByScenarioId).toEqual({});
+			expect(decoded.diagnostics.map((diagnostic) => diagnostic.code)).toContain('invalid-game');
+		}
+	);
 
 	it('rejects best-result keys that do not match their embedded definition', () => {
 		const completed = fixtureRun(undefined, { status: 'completed', score: 800 });
@@ -1588,74 +1489,6 @@ describe('scenario codec', () => {
 		expect(stale.diagnostics.map((diagnostic) => diagnostic.code)).toContain('invalid-game');
 	});
 
-	it('migrates an older embedded game but never applies sandbox normalization', () => {
-		const active = fixtureRun();
-		const legacyRecord = runRecord(active);
-		const legacyGame = toLegacyV12WarehouseWireGame(active.game);
-		for (const city of legacyGame.industryCities) {
-			delete (city as unknown as Record<string, unknown>).rails;
-		}
-		legacyRecord.gameSchemaVersion = 9;
-		legacyRecord.game = legacyGame;
-		const migrated = decodeScenarioStoreSnapshot(
-			snapshot({ 'first-profit': legacyRecord }),
-			resolveFixtureDefinition
-		);
-
-		const staleLegacyRecord = structuredClone(legacyRecord);
-		const staleLegacyGame = { ...(staleLegacyRecord.game as GameState), day: 7 };
-		staleLegacyRecord.game = staleLegacyGame;
-		staleLegacyRecord.run = {
-			...staleLegacyRecord.run,
-			evaluation: evaluateScenario(
-				fixtureDefinition(staleLegacyRecord.run.definition),
-				staleLegacyGame,
-				false
-			)
-		};
-		const stale = decodeScenarioStoreSnapshot(
-			snapshot({ 'first-profit': staleLegacyRecord }),
-			resolveFixtureDefinition
-		);
-
-		expect(migrated.diagnostics).toEqual([]);
-		expect(migrated.snapshot.activeRunsByScenarioId['first-profit']?.gameSchemaVersion).toBe(
-			SAVE_SCHEMA_VERSION
-		);
-		expect(
-			(
-				migrated.snapshot.activeRunsByScenarioId['first-profit']?.game as GameState
-			).industryCities.every((city) => Array.isArray(city.rails))
-		).toBe(true);
-		expect(stale.snapshot.activeRunsByScenarioId).toEqual({});
-		expect(stale.diagnostics.map((diagnostic) => diagnostic.code)).toContain('invalid-game');
-	});
-
-	it('keeps malformed v4 scenario games ordered behind legacy store validation', () => {
-		const active = fixtureRun();
-		const record = runRecord(active);
-		const legacyGame = toLegacyV12WarehouseWireGame(active.game) as unknown as Record<
-			string,
-			unknown
-		>;
-		legacyGame.stores = ['not-a-store'];
-		record.gameSchemaVersion = 4;
-		record.game = legacyGame as unknown as GameState;
-
-		const migrated = migrateSavedGame(record.game, record.gameSchemaVersion);
-
-		expect(() => validateMigratedGameState(migrated, record.gameSchemaVersion)).toThrow(
-			'Saved game stores[0] must be an object'
-		);
-
-		const decoded = decodeScenarioStoreSnapshot(
-			snapshot({ 'first-profit': record }),
-			resolveFixtureDefinition
-		);
-		expect(decoded.snapshot.activeRunsByScenarioId).toEqual({});
-		expect(decoded.diagnostics.map((diagnostic) => diagnostic.code)).toContain('invalid-game');
-	});
-
 	it('rejects residual global warehouse data in current-v13 scenario games', () => {
 		const active = fixtureRun();
 		const run = {
@@ -1702,133 +1535,6 @@ describe('scenario codec', () => {
 		expect(rejected.snapshot.activeRunsByScenarioId).toEqual({});
 		expect(rejected.diagnostics.map((diagnostic) => diagnostic.code)).toContain('invalid-value');
 		expect(removedMetricSnapshot).toEqual(originalSnapshot);
-	});
-
-	it('migrates a v12 embedded game once through the shared city-inventory migration', () => {
-		const definition = cityInventoryMetricDefinition();
-		const run = createCityInventoryMetricRun(definition);
-		const resolver: ScenarioDefinitionResolver = (ref) =>
-			ref.scenarioId === definition.id && ref.version === definition.version
-				? definition
-				: undefined;
-		const legacyRecord = v12CityInventoryMetricRunRecord(run, 17);
-		const originalEnvelope = structuredClone(legacyRecord.run);
-		const legacyProduct = (legacyRecord.game as GameState).reports.at(-1)!.storeReports[0]!
-			.productReports[0]!;
-		const decoded = decodeScenarioStoreSnapshot(
-			snapshot({ 'first-profit': legacyRecord }),
-			resolver
-		);
-
-		expect(decoded.diagnostics).toEqual([]);
-		const migrated = decoded.snapshot.activeRunsByScenarioId['first-profit']!;
-		const migratedGame = migrated.game as GameState;
-		const migratedProduct = migratedGame.reports.at(-1)!.storeReports[0]!.productReports[0]!;
-		expect(legacyProduct.importedUnits).toBeGreaterThan(0);
-		expect(legacyProduct.importSpend).toBeGreaterThan(0);
-		expect(migrated.scenarioSchemaVersion).toBe(SCENARIO_RUN_SCHEMA_VERSION);
-		expect(migrated.gameSchemaVersion).toBe(SAVE_SCHEMA_VERSION);
-		expect(migrated.revision).toBe(17);
-		expect(migrated.run).toEqual(originalEnvelope);
-		expect(migratedGame.cityInventories).toEqual([
-			{
-				cityId: 'industry-city',
-				capacity: 0,
-				materials: { water: 3, grain: 2 },
-				overflowUnits: 5,
-				overflowCost: 10
-			}
-		]);
-		expect(migratedGame.retailSupplyAssignments).toEqual([
-			{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' }
-		]);
-		expect(migratedGame).not.toHaveProperty('warehouse');
-		expect(
-			migratedGame.cityInventories.reduce(
-				(totals, inventory) => ({
-					water: totals.water + (inventory.materials.water ?? 0),
-					grain: totals.grain + (inventory.materials.grain ?? 0)
-				}),
-				{ water: 0, grain: 0 }
-			)
-		).toEqual({ water: 3, grain: 2 });
-		expect(migratedGame.reports.at(-1)!.storeReports[0]!.replenishment).toBeNull();
-		expect(migratedProduct.replenishmentOutcome).toBeNull();
-		expect({
-			warehouseUnits: migratedProduct.warehouseUnits,
-			warehouseValue: migratedProduct.warehouseValue,
-			importedUnits: migratedProduct.importedUnits,
-			importCost: migratedProduct.importCost,
-			importSpend: migratedProduct.importSpend,
-			unitsSold: migratedProduct.unitsSold,
-			demandMissed: migratedProduct.demandMissed,
-			revenue: migratedProduct.revenue,
-			costOfGoods: migratedProduct.costOfGoods,
-			grossMargin: migratedProduct.grossMargin,
-			endingStock: migratedProduct.endingStock
-		}).toEqual({
-			warehouseUnits: legacyProduct.warehouseUnits,
-			warehouseValue: legacyProduct.warehouseValue,
-			importedUnits: legacyProduct.importedUnits,
-			importCost: legacyProduct.importCost,
-			importSpend: legacyProduct.importSpend,
-			unitsSold: legacyProduct.unitsSold,
-			demandMissed: legacyProduct.demandMissed,
-			revenue: legacyProduct.revenue,
-			costOfGoods: legacyProduct.costOfGoods,
-			grossMargin: legacyProduct.grossMargin,
-			endingStock: legacyProduct.endingStock
-		});
-
-		const reencoded = encodeScenarioRunRecord(
-			{ ...migrated.run, game: migratedGame },
-			resolver,
-			migrated.revision
-		);
-		const redecoded = decodeScenarioStoreSnapshot(
-			snapshot({ 'first-profit': reencoded }),
-			resolver
-		);
-
-		expect(redecoded.diagnostics).toEqual([]);
-		expect(reencoded.gameSchemaVersion).toBe(SAVE_SCHEMA_VERSION);
-		expect(redecoded.snapshot.activeRunsByScenarioId['first-profit']).toEqual(reencoded);
-	});
-
-	it('migrates an embedded v11 event game while preserving the scenario envelope', () => {
-		const active = fixtureRun(undefined, { advanceDays: 1 });
-		const legacyRecord = v11RunRecord(active, 7);
-		const originalEnvelope = structuredClone(legacyRecord.run);
-
-		const decoded = decodeScenarioStoreSnapshot(
-			snapshot({ 'first-profit': legacyRecord }),
-			resolveFixtureDefinition
-		);
-		const migrated = decoded.snapshot.activeRunsByScenarioId['first-profit'];
-		const migratedGame = migrated?.game as GameState;
-
-		expect(decoded.diagnostics).toEqual([]);
-		expect(migrated?.gameSchemaVersion).toBe(SAVE_SCHEMA_VERSION);
-		expect(migrated?.revision).toBe(7);
-		expect(migrated?.run).toEqual(originalEnvelope);
-		expect(migratedGame.decisions[0]).toMatchObject({
-			kind: 'event',
-			id: 'event-instance-1',
-			eventId: 'supplier-terms',
-			definitionVersion: 1,
-			generatedOnDay: active.game.day,
-			target: { kind: 'company' }
-		});
-		expect(migratedGame.events).toMatchObject({
-			selectionSchemaVersion: 1,
-			nextInstanceSequence: 2,
-			nextModifierSequence: 1,
-			activeModifiers: []
-		});
-		expect(migratedGame.reports[0]).toMatchObject({
-			modifierImpacts: [],
-			modifierLifecycle: []
-		});
 	});
 });
 

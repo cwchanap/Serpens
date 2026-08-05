@@ -17,12 +17,7 @@ import {
 	type ScenarioStoreSnapshot
 } from '$lib/scenarios/types';
 import { deeplyEqual } from '$lib/game/equality';
-import {
-	createPlainSnapshot,
-	migrateSavedGame,
-	validateCurrentGameState,
-	validateMigratedGameState
-} from './saveCodec';
+import { createPlainSnapshot, validateCurrentGameState } from './saveCodec';
 import { SAVE_SCHEMA_VERSION } from './saveTypes';
 
 export const SCENARIO_STORE_SCHEMA_VERSION = 1;
@@ -1083,6 +1078,14 @@ function decodeActiveRunRecord(
 		);
 	}
 	const gameSchemaVersion = requireInteger(record.gameSchemaVersion, `${path}.gameSchemaVersion`);
+	if (gameSchemaVersion !== SAVE_SCHEMA_VERSION) {
+		fail(
+			'invalid-game',
+			`${path}.gameSchemaVersion`,
+			gameSchemaVersion,
+			'Embedded game must use the current save schema.'
+		);
+	}
 	// `revision` is optional on the stored payload so in-development saves
 	// written before the revision CAS shipped decode without a diagnostic.
 	// A missing revision defaults to 0; the next successful write sets it to
@@ -1090,27 +1093,9 @@ function decodeActiveRunRecord(
 	// must be a non-negative integer.
 	const revision =
 		record.revision === undefined ? 0 : requireInteger(record.revision, `${path}.revision`, 0);
-	const isCurrentGameSchema = gameSchemaVersion === SAVE_SCHEMA_VERSION;
-	let migrated: unknown = record.game;
-	if (!isCurrentGameSchema) {
-		try {
-			// Scenario envelopes stay untouched while every older embedded game
-			// follows the same ordered migration chain as sandbox save records.
-			migrated = migrateSavedGame(record.game, gameSchemaVersion);
-		} catch (error) {
-			fail(
-				'unsupported-game-schema',
-				`${path}.gameSchemaVersion`,
-				gameSchemaVersion,
-				`Embedded game migration failed: ${safeDescribe(error)}`
-			);
-		}
-	}
 	let game: ReturnType<typeof validateCurrentGameState>;
 	try {
-		game = isCurrentGameSchema
-			? validateCurrentGameState(migrated)
-			: validateMigratedGameState(migrated, gameSchemaVersion);
+		game = validateCurrentGameState(record.game);
 	} catch (error) {
 		fail(
 			'invalid-game',
@@ -1119,7 +1104,7 @@ function decodeActiveRunRecord(
 			'Embedded game failed strict validation.'
 		);
 	}
-	if (isCurrentGameSchema && !deeplyEqual(game, record.game)) {
+	if (!deeplyEqual(game, record.game)) {
 		fail(
 			'current-game-mismatch',
 			`${path}.game`,

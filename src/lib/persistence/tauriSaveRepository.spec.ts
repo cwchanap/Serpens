@@ -153,60 +153,6 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 	};
 }
 
-function createV11SupplierSnapshot(): SaveStoreSnapshot {
-	const game = createGame();
-	const current = createSaveRecord(game, {
-		id: 'manual-v11',
-		name: 'V11 desktop run',
-		kind: 'manual',
-		updatedAt: new Date('2026-05-05T12:00:00.000Z')
-	});
-	const legacyGame = structuredClone(game) as unknown as Record<string, unknown>;
-	delete legacyGame.events;
-	legacyGame.warehouse = {
-		capacity: 0,
-		materials: { grain: 7, snacks: 3 },
-		overflowUnits: 10,
-		overflowCost: 20
-	};
-	legacyGame.decisions = [
-		{
-			id: 'supplier-terms',
-			title: 'Supplier terms',
-			context: { code: 'supplierTerms' },
-			expiresOnDay: game.day + 2,
-			options: [
-				{
-					id: 'negotiate-credit',
-					label: 'Negotiate credit',
-					description: 'Ask for short-term supplier credit.',
-					effects: {
-						finance: {
-							kind: 'borrow',
-							purpose: 'supplierCredit',
-							amount: 4_000,
-							termDays: 28
-						},
-						profit: -2
-					}
-				},
-				{
-					id: 'bulk-discount',
-					label: 'Bulk discount',
-					description: 'Commit to a larger order.',
-					effects: { cash: -2_500, profit: 3, stockHealth: 6 }
-				}
-			]
-		}
-	];
-
-	return {
-		schemaVersion: 11,
-		autoSave: null,
-		manualSlots: [{ ...current, schemaVersion: 11, game: legacyGame }]
-	} as unknown as SaveStoreSnapshot;
-}
-
 function createStaleV13Snapshot(): SaveStoreSnapshot {
 	const record = createSaveRecord(createGame(), {
 		id: 'manual-stale-city-inventory',
@@ -252,49 +198,6 @@ describe('Tauri save repository', () => {
 		expect(summary.autoSave?.day).toBe(6);
 		expect(summary.manualSlots[0]?.id).toBe(slot.id);
 		expect((await repository.loadManualSlot(slot.id))?.game.day).toBe(7);
-	});
-
-	test('loads and durably upgrades an existing v11 Tauri snapshot', async () => {
-		const store = new FakeStore();
-		store.values.set(SAVE_STORE_KEY, createV11SupplierSnapshot());
-		const repository = createTauriSaveRepositoryFromStore(
-			Promise.resolve(store),
-			() => new Date('2026-05-05T12:00:00.000Z')
-		);
-
-		const loaded = await repository.loadManualSlot('manual-v11');
-		const supplier = loaded?.game.decisions[0];
-		expect(loaded?.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
-		expect(supplier).toMatchObject({
-			kind: 'event',
-			id: 'event-instance-1',
-			eventId: 'supplier-terms',
-			definitionVersion: 1
-		});
-		expect(supplier?.kind === 'event' ? supplier.options[1]?.modifiers : null).toEqual([]);
-		expect(loaded?.game.events).toMatchObject({
-			selectionSchemaVersion: 1,
-			nextModifierSequence: 1
-		});
-		expect(loaded?.game.cityInventories).toEqual([
-			{
-				cityId: 'industry-city',
-				capacity: 0,
-				materials: { grain: 7, snacks: 3 },
-				overflowUnits: 10,
-				overflowCost: 20
-			}
-		]);
-		expect(loaded?.game.retailSupplyAssignments).toEqual([
-			{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' }
-		]);
-
-		await repository.saveAuto(createGame());
-		const persisted = store.values.get(SAVE_STORE_KEY) as SaveStoreSnapshot;
-		expect(persisted.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
-		expect(persisted.manualSlots[0]?.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
-		expect(persisted.manualSlots[0]?.metadata.id).toBe('manual-v11');
-		expect(store.saveCount).toBe(1);
 	});
 
 	test('normalizes stale v13 city inventories and durably writes the canonical Tauri value', async () => {

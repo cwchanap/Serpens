@@ -53,8 +53,6 @@ import {
 	createPlainSnapshot,
 	createSaveRecord,
 	createSaveSummary,
-	migrateSavedGame,
-	migrateV10Game,
 	normalizeSandboxSavedGame,
 	parseSaveStoreSnapshot,
 	validateCurrentGameState,
@@ -194,15 +192,6 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 	};
 }
 
-type V12GameFixture = Omit<GameState, 'cityInventories' | 'retailSupplyAssignments'> & {
-	warehouse: {
-		capacity: number;
-		materials: Partial<Record<MaterialId, number>>;
-		overflowUnits: number;
-		overflowCost: number;
-	};
-};
-
 type SaveRecordOverrides = Partial<Omit<SaveRecord, 'game' | 'metadata'>> & {
 	game?: Partial<GameState>;
 	metadata?: Partial<SaveRecord['metadata']>;
@@ -227,127 +216,6 @@ function createManualSaveRecord(overrides: SaveRecordOverrides = {}): SaveRecord
 			...record.game,
 			...overrides.game
 		}
-	};
-}
-
-function toLegacyV12WarehouseWireGame(game: GameState): GameState {
-	const legacyGame = structuredClone(game) as unknown as Record<string, unknown>;
-	const activeInventory =
-		game.cityInventories.find((inventory) => inventory.cityId === game.activeIndustryCityId) ??
-		game.cityInventories[0];
-
-	legacyGame.warehouse = {
-		capacity: activeInventory?.capacity ?? 0,
-		materials: { ...(activeInventory?.materials ?? {}) },
-		overflowUnits: activeInventory?.overflowUnits ?? 0,
-		overflowCost: activeInventory?.overflowCost ?? 0
-	};
-	delete legacyGame.cityInventories;
-	delete legacyGame.retailSupplyAssignments;
-
-	return legacyGame as unknown as GameState;
-}
-
-function createLegacyV12SaveRecord(overrides: SaveRecordOverrides = {}): SaveRecord {
-	const current = createManualSaveRecord(overrides);
-	return { ...current, game: toLegacyV12WarehouseWireGame(current.game) };
-}
-
-function createV4Record(overrides: SaveRecordOverrides = {}): SaveRecord {
-	const current = createManualSaveRecord(overrides);
-	return {
-		...current,
-		game: toLegacyV12WarehouseWireGame(current.game),
-		schemaVersion: 4 as unknown as typeof SAVE_SCHEMA_VERSION
-	};
-}
-
-/** Strips activeCityId so a record can be used as a pre-v8 base. */
-function metadataWithoutActiveCityId(
-	record: SaveRecord
-): Omit<SaveRecord['metadata'], 'activeCityId'> {
-	const { activeCityId: _omit, ...rest } = record.metadata;
-	void _omit;
-	return rest;
-}
-
-function createV5Record(overrides: SaveRecordOverrides = {}): SaveRecord {
-	const current = createManualSaveRecord(overrides);
-	return {
-		...current,
-		game: toLegacyV12WarehouseWireGame(current.game),
-		schemaVersion: 5 as unknown as typeof SAVE_SCHEMA_VERSION
-	};
-}
-
-function createV6Record(overrides: SaveRecordOverrides = {}): SaveRecord {
-	const current = createManualSaveRecord(overrides);
-	return {
-		...current,
-		game: toLegacyV12WarehouseWireGame(current.game),
-		schemaVersion: 6 as unknown as typeof SAVE_SCHEMA_VERSION
-	};
-}
-
-/**
- * Builds a literal v10 payload. Finance and the new report cash-flow fields
- * did not exist in that schema; it instead persisted scalar `debt`.
- */
-function createV10Record(input: { debt: number; day?: number; reports?: unknown[] }): SaveRecord {
-	const current = createManualSaveRecord({
-		game: {
-			day: input.day ?? 12,
-			cash: 12_345,
-			reports: (input.reports ?? [
-				createDailyReport({
-					day: 11,
-					netIncome: 321,
-					grossMargin: 700,
-					operatingCosts: 250,
-					cashAfter: 12_345
-				})
-			]) as GameState['reports']
-		}
-	});
-	const game = structuredClone(current.game) as unknown as Record<string, unknown>;
-	delete game.finance;
-	game.debt = input.debt;
-	game.reports = (game.reports as Array<Record<string, unknown>>).map((report) => {
-		const {
-			cashBefore: _cashBefore,
-			operatingIncome: _operatingIncome,
-			operatingCashFlow: _operatingCashFlow,
-			interestAccrued: _interestAccrued,
-			interestPaid: _interestPaid,
-			interestCapitalized: _interestCapitalized,
-			principalBorrowed: _principalBorrowed,
-			principalRepaid: _principalRepaid,
-			refinancedPrincipal: _refinancedPrincipal,
-			financingCashFlow: _financingCashFlow,
-			netCashChange: _netCashChange,
-			outstandingPrincipalAfter: _outstandingPrincipalAfter,
-			nextLoanPayment: _nextLoanPayment,
-			...legacy
-		} = report;
-		void _cashBefore;
-		void _operatingIncome;
-		void _operatingCashFlow;
-		void _interestAccrued;
-		void _interestPaid;
-		void _interestCapitalized;
-		void _principalBorrowed;
-		void _principalRepaid;
-		void _refinancedPrincipal;
-		void _financingCashFlow;
-		void _netCashChange;
-		void _outstandingPrincipalAfter;
-		void _nextLoanPayment;
-		return legacy;
-	});
-	return {
-		...current,
-		schemaVersion: 10 as unknown as typeof SAVE_SCHEMA_VERSION,
-		game: toLegacyV12WarehouseWireGame(game as unknown as GameState)
 	};
 }
 
@@ -487,7 +355,7 @@ function createValidWarehouseBuildingGame(): GameState {
 	return built;
 }
 
-function createCurrentV13MultiCityGame(): GameState {
+function createCurrentMultiCityGame(): GameState {
 	let game = createValidWarehouseBuildingGame();
 	game = {
 		...game,
@@ -522,239 +390,7 @@ function createCurrentV13MultiCityGame(): GameState {
 	};
 }
 
-function createV12MultiCityGame(
-	legacyMaterials: Partial<Record<MaterialId, number>>
-): V12GameFixture {
-	let game = createValidWarehouseBuildingGame();
-	game = {
-		...game,
-		cash: 1_000_000,
-		world: {
-			...game.world,
-			revealedCityIds: [...game.world.revealedCityIds, 'campus-junction', 'breadbasket-basin']
-		}
-	};
-	game = openWorldCity(game, 'campus-junction');
-	game = openWorldCity(game, 'breadbasket-basin');
-
-	const breadbasket = game.industryCities.find((city) => city.id === 'breadbasket-basin')!;
-	const warehouseTile = breadbasket.tiles.find(
-		(candidate) => getIndustrialPlacementBlockReason(game, candidate.id, 'warehouse') === null
-	)!;
-	game = buildIndustrialBuilding(game, {
-		tileId: warehouseTile.id,
-		buildingTypeId: 'warehouse'
-	});
-
-	const {
-		cityInventories: _cityInventories,
-		retailSupplyAssignments: _assignments,
-		...legacyGame
-	} = game;
-	void _cityInventories;
-	void _assignments;
-	const capacity = game.cityInventories.reduce((total, inventory) => total + inventory.capacity, 0);
-	const used = Object.values(legacyMaterials).reduce(
-		(total, quantity) => total + (quantity ?? 0),
-		0
-	);
-	const overflowUnits = Math.max(0, used - capacity);
-	return {
-		...legacyGame,
-		activeIndustryCityId: 'industry-city',
-		warehouse: {
-			capacity,
-			materials: { ...legacyMaterials },
-			overflowUnits,
-			overflowCost: overflowUnits * 2
-		}
-	};
-}
-
-function createV12MultiCityRecord(
-	legacyMaterials: Partial<Record<MaterialId, number>>
-): SaveRecord {
-	const game = createV12MultiCityGame(legacyMaterials);
-	const template = createManualSaveRecord();
-
-	return {
-		...template,
-		schemaVersion: 12 as unknown as typeof SAVE_SCHEMA_VERSION,
-		metadata: {
-			...template.metadata,
-			day: game.day,
-			cash: game.cash,
-			storeCount: game.stores.length,
-			activeCityId: game.activeCityId
-		},
-		game: game as unknown as GameState
-	};
-}
-
-function createLegacyV12Report(legacyV12Game: V12GameFixture): DailyReport {
-	const primaryWarehouseId = legacyV12Game.industrialBuildings.find(
-		(building) => building.typeId === 'warehouse' && building.cityId === 'industry-city'
-	)!.id;
-	const categoryId = legacyV12Game.stores[0]!.products[0]!.categoryId;
-	const report = createDailyReport({
-		day: legacyV12Game.day,
-		importSpend: 6,
-		productionReport: createDailyProductionReport({
-			warehouseCapacity: legacyV12Game.warehouse.capacity,
-			warehouseUsed: 3,
-			overflowUnits: 0,
-			overflowCost: 0,
-			produced: [
-				{ cityId: 'industry-city', materialId: 'water', quantity: 2, value: 2, source: 'local' }
-			],
-			warehousePulls: [
-				{ cityId: 'industry-city', materialId: 'water', quantity: 1, value: 1, source: 'warehouse' }
-			],
-			shopImports: [
-				{
-					cityId: 'harbor-city',
-					materialId: 'bottled-water',
-					quantity: 3,
-					value: 6,
-					source: 'import'
-				}
-			],
-			railShipments: [
-				{
-					cityId: 'industry-city',
-					materialId: 'water',
-					quantity: 1,
-					value: 1,
-					kind: 'push-warehouse',
-					fromId: primaryWarehouseId,
-					toId: primaryWarehouseId
-				}
-			]
-		}),
-		storeReports: [
-			createDailyStoreReport({
-				storeId: legacyV12Game.stores[0]!.id,
-				importSpend: 6,
-				productReports: [
-					{
-						categoryId,
-						name: 'Legacy replenishment row',
-						unitsSold: 7,
-						demandMissed: 1,
-						revenue: 35,
-						costOfGoods: 17,
-						grossMargin: 18,
-						endingStock: 4,
-						warehouseUnits: 2,
-						warehouseValue: 4,
-						importedUnits: 3,
-						importCost: 2,
-						importSpend: 6,
-						replenishmentOutcome: null
-					}
-				]
-			})
-		]
-	});
-	const legacy = structuredClone(report) as unknown as Record<string, unknown>;
-	const productionReport = legacy.productionReport as Record<string, unknown>;
-	for (const field of [
-		'produced',
-		'consumed',
-		'importedInputs',
-		'warehousePulls',
-		'shopImports',
-		'railShipments'
-	] as const) {
-		const rows = productionReport[field];
-		if (!Array.isArray(rows)) continue;
-		for (const row of rows) {
-			if (typeof row === 'object' && row !== null && !Array.isArray(row)) {
-				delete (row as Record<string, unknown>).cityId;
-			}
-		}
-	}
-	delete productionReport.cityInventories;
-	const storeReport = (legacy.storeReports as Array<Record<string, unknown>>)[0]!;
-	delete storeReport.replenishment;
-	delete (storeReport.productReports as Array<Record<string, unknown>>)[0]!.replenishmentOutcome;
-
-	return legacy as unknown as DailyReport;
-}
-
-function createV12RecordWithSwappedEqualShopImports(): SaveRecord {
-	const record = createV12MultiCityRecord({ water: 3 });
-	const campusCity = record.game.cities.find((city) => city.id === 'campus-junction')!;
-	const campusTile = campusCity.tiles.find(isTileBuildable)!;
-	const campusStore = {
-		...record.game.stores[0]!,
-		id: 'store-campus',
-		name: 'Campus Store',
-		cityId: 'campus-junction',
-		tileId: campusTile.id,
-		mapX: campusTile.x,
-		mapY: campusTile.y,
-		location: formatLocation(campusTile)
-	};
-	const game = { ...record.game, stores: [...record.game.stores, campusStore] };
-	const legacyReport = createLegacyV12Report(
-		game as unknown as V12GameFixture
-	) as unknown as Record<string, unknown>;
-	const storeReports = legacyReport.storeReports as Array<Record<string, unknown>>;
-	const harborStoreReport = storeReports[0]!;
-	const product = (harborStoreReport.productReports as Array<Record<string, unknown>>)[0]!;
-	const harborProduct = {
-		...product,
-		categoryId: 'bottled-water',
-		name: 'Harbor Bottled Water',
-		warehouseUnits: 0,
-		warehouseValue: 0,
-		importedUnits: 20,
-		importCost: 2,
-		importSpend: 40
-	};
-	const campusProduct = {
-		...harborProduct,
-		categoryId: 'drinks',
-		name: 'Campus Drinks'
-	};
-	storeReports[0] = {
-		...harborStoreReport,
-		importSpend: 40,
-		productReports: [harborProduct]
-	};
-	storeReports.push({
-		...harborStoreReport,
-		storeId: campusStore.id,
-		importSpend: 40,
-		productReports: [campusProduct]
-	});
-	const productionReport = legacyReport.productionReport as Record<string, unknown>;
-	productionReport.shopImports = [
-		{
-			materialId: 'drinks',
-			quantity: 20,
-			value: 40,
-			source: 'import',
-			legacyTag: 'drinks-row'
-		},
-		{
-			materialId: 'bottled-water',
-			quantity: 20,
-			value: 40,
-			source: 'import',
-			legacyTag: 'water-row'
-		}
-	];
-
-	return {
-		...record,
-		metadata: { ...record.metadata, storeCount: 2 },
-		game: { ...game, reports: [legacyReport as unknown as DailyReport] }
-	};
-}
-
-function createCurrentV13Report(game: GameState): DailyReport {
+function createCurrentReport(game: GameState): DailyReport {
 	const warehouseId = game.industrialBuildings[0]!.id;
 	const categoryId = game.stores[0]!.products[0]!.categoryId;
 
@@ -821,11 +457,11 @@ function createCurrentV13Report(game: GameState): DailyReport {
 /**
  * A current-v13 game where a scenario has designated breadbasket-basin as the
  * sole opened industry city and pruned the starter `industry-city` inventory
- * during setup. Mirrors `createCurrentV13MultiCityGame` but substitutes
+ * during setup. Mirrors `createCurrentMultiCityGame` but substitutes
  * breadbasket-basin for industry-city so the production-close report contains
  * no `industry-city` summary.
  */
-function createCurrentV13BreadbasketOnlyGame(): GameState {
+function createCurrentBreadbasketOnlyGame(): GameState {
 	let game = { ...createNewGame('convenience', 20260722), cash: 1_000_000 };
 	game = {
 		...game,
@@ -869,7 +505,7 @@ function createCurrentV13BreadbasketOnlyGame(): GameState {
 	};
 }
 
-function createCurrentV13BreadbasketOnlyReport(game: GameState): DailyReport {
+function createCurrentBreadbasketOnlyReport(game: GameState): DailyReport {
 	const warehouseId = game.industrialBuildings[0]!.id;
 	const categoryId = game.stores[0]!.products[0]!.categoryId;
 
@@ -1100,500 +736,12 @@ function createCompleteEventGame(): GameState {
 	});
 }
 
-function createV11Record(decisions: unknown[]): SaveRecord {
-	const game = refreshWorldProgress(
-		createGame({
-			day: 12,
-			finance: createFoundingFinanceState(12, 2_000),
-			decisions: decisions as GameState['decisions'],
-			reports: [createDailyReport({ day: 11 })]
-		})
-	);
-	const record = createSaveRecord(game, {
-		id: 'manual-v11',
-		name: 'V11 fixture',
-		kind: 'manual',
-		updatedAt: new Date('2026-07-31T12:00:00.000Z')
-	});
-	const legacyGame = toLegacyV12WarehouseWireGame(record.game) as unknown as Record<
-		string,
-		unknown
-	>;
-	delete legacyGame.events;
-	legacyGame.reports = (legacyGame.reports as Array<Record<string, unknown>>).map((report) => {
-		const {
-			modifierImpacts: _modifierImpacts,
-			modifierLifecycle: _modifierLifecycle,
-			...legacyReport
-		} = report;
-		void _modifierImpacts;
-		void _modifierLifecycle;
-		return legacyReport;
-	});
-	return {
-		...record,
-		schemaVersion: 11 as unknown as typeof SAVE_SCHEMA_VERSION,
-		game: legacyGame as unknown as GameState
-	};
-}
-
-function legacyV11StrategicDecisions(): unknown[] {
-	return [
-		{
-			id: 'supplier-terms',
-			title: 'Supplier terms',
-			context: { code: 'supplierTerms' },
-			expiresOnDay: 12,
-			options: [
-				{
-					id: 'negotiate-credit',
-					label: 'Negotiate credit',
-					description: 'Stretch payment timing for a small margin penalty.',
-					effects: {
-						finance: {
-							kind: 'borrow',
-							purpose: 'supplierCredit',
-							amount: 4_000,
-							termDays: 28
-						},
-						profit: -2
-					}
-				},
-				{
-					id: 'bulk-discount',
-					label: 'Bulk discount',
-					description: 'Commit to larger orders for better unit economics.',
-					effects: { cash: -2_500, profit: 3, stockHealth: 6 }
-				}
-			]
-		},
-		{
-			id: 'expansion-cash-blocked-10',
-			title: 'Expansion delayed',
-			context: { code: 'expansionCashBlocked', cash: 15_000 },
-			expiresOnDay: 13,
-			options: [
-				{
-					id: 'acknowledge',
-					label: 'Acknowledge',
-					description: 'Return to operations planning.',
-					effects: {}
-				}
-			]
-		},
-		{
-			id: 'cash-pressure',
-			title: 'Cash pressure',
-			context: { code: 'cashPressure' },
-			expiresOnDay: 13,
-			options: [
-				{
-					id: 'short-loan',
-					label: 'Short loan',
-					description: 'Add emergency working capital.',
-					effects: {
-						finance: {
-							kind: 'borrow',
-							purpose: 'emergency',
-							amount: 11_000,
-							termDays: 56
-						},
-						profit: -4,
-						marketPosition: -1
-					}
-				},
-				{
-					id: 'cut-costs',
-					label: 'Cut costs',
-					description: 'Trim discretionary spend.',
-					effects: {
-						cash: 5_500,
-						customerSatisfaction: -4,
-						staffMorale: -5,
-						stockHealth: -8
-					}
-				},
-				{
-					id: 'hold-course',
-					label: 'Hold course',
-					description: 'Avoid reactive changes.',
-					effects: { profit: 1, staffMorale: -2 }
-				}
-			]
-		},
-		{
-			id: 'expansion-opportunity',
-			title: 'Expansion opportunity',
-			context: { code: 'expansionOpportunity' },
-			expiresOnDay: 15,
-			options: [
-				{
-					id: 'prepare',
-					label: 'Prepare',
-					description: 'Start scouting locations.',
-					effects: { cash: -3_500, marketPosition: 5, profit: -1 }
-				},
-				{
-					id: 'pass',
-					label: 'Pass',
-					description: 'Keep capital focused.',
-					effects: { profit: 1, staffMorale: 1 }
-				}
-			]
-		}
-	];
-}
-
-/**
- * Strips the rail-transport fields (v10) from an otherwise-current game so
- * it matches the shape of a genuine v9 payload: `IndustryCity.rails`,
- * `IndustrialBuilding.inventory`, and `DailyProductionReport.railShipments`
- * / `railUsage` are all absent, not merely empty.
- */
-function stripRailFields(game: GameState): unknown {
-	const industryCities = game.industryCities.map((city) => {
-		const { rails: _rails, ...rest } = city;
-		void _rails;
-		return rest;
-	});
-	const industrialBuildings = game.industrialBuildings.map((building) => {
-		const { inventory: _inventory, ...rest } = building;
-		void _inventory;
-		return rest;
-	});
-	const reports = game.reports.map((report) => {
-		const {
-			railShipments: _railShipments,
-			railUsage: _railUsage,
-			...restProduction
-		} = report.productionReport;
-		void _railShipments;
-		void _railUsage;
-		return { ...report, productionReport: restProduction };
-	});
-
-	return { ...game, industryCities, industrialBuildings, reports };
-}
-
-function createBareMigrationFixture(sourceVersion: number): unknown {
-	const base = createGame({
-		industrialBuildings: [createIndustrialBuilding()],
-		reports: [createDailyReport({ storeReports: [createDailyStoreReport()] })]
-	});
-	const game = structuredClone(stripRailFields(base)) as Record<string, unknown>;
-	const stores = game.stores as Array<Record<string, unknown>>;
-	const reports = game.reports as Array<Record<string, unknown>>;
-
-	if (sourceVersion <= 8) {
-		stores[0] = { ...stores[0], location: 'Downtown (1, 1)' };
-	}
-	if (sourceVersion <= 6) {
-		game.decisions = [
-			{
-				id: 'legacy-decision',
-				title: 'Legacy decision',
-				context: 'Old free-form context',
-				expiresOnDay: 4,
-				options: []
-			}
-		];
-	}
-	if (sourceVersion <= 5) {
-		const report = reports[0]!;
-		const storeReports = report.storeReports as Array<Record<string, unknown>>;
-		reports[0] = {
-			...report,
-			warnings: ['Old daily warning'],
-			storeReports: [{ ...storeReports[0], warnings: ['Old store warning'] }]
-		};
-	}
-	if (sourceVersion <= 4) {
-		const products = stores[0]!.products as Array<Record<string, unknown>>;
-		stores[0] = {
-			...stores[0],
-			products: [{ ...products[0], categoryId: 'accessories' }]
-		};
-	}
-
-	return toLegacyV12WarehouseWireGame(game as unknown as GameState);
-}
-
 describe('saveCodec', () => {
-	test('migrates v12 global stock across eligible city capacity and creates canonical default assignments', () => {
-		const record = createV12MultiCityRecord({ water: 300 });
-
-		expect(() => validateSaveRecord(record)).not.toThrow();
-		const migrated = validateSaveRecord(record);
-
-		expect(migrated.schemaVersion).toBe(13);
-		expect(migrated.game.cityInventories).toEqual([
-			{
-				cityId: 'industry-city',
-				capacity: 200,
-				materials: { water: 200 },
-				overflowUnits: 0,
-				overflowCost: 0
-			},
-			{
-				cityId: 'breadbasket-basin',
-				capacity: 200,
-				materials: { water: 100 },
-				overflowUnits: 0,
-				overflowCost: 0
-			}
-		]);
-		expect(migrated.game.retailSupplyAssignments).toEqual([
-			{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' },
-			{ retailCityId: 'campus-junction', supplyCityId: 'industry-city' }
-		]);
-		expect(migrated.game).not.toHaveProperty('warehouse');
-	});
-
-	test('migrates pre-v13 refill evidence to explicit unknown attribution without changing its numbers', () => {
-		const record = createV12MultiCityRecord({ water: 3 });
-		record.game.reports = [createLegacyV12Report(record.game as unknown as V12GameFixture)];
-
-		expect(() => validateSaveRecord(record)).not.toThrow();
-		const migrated = validateSaveRecord(record);
-		const report = migrated.game.reports[0]!;
-		const storeReport = report.storeReports[0]!;
-		const productReport = storeReport.productReports[0]!;
-
-		expect(storeReport.replenishment).toBeNull();
-		expect(productReport.replenishmentOutcome).toBeNull();
-		expect({
-			warehouseUnits: productReport.warehouseUnits,
-			warehouseValue: productReport.warehouseValue,
-			importedUnits: productReport.importedUnits,
-			importCost: productReport.importCost,
-			importSpend: productReport.importSpend,
-			unitsSold: productReport.unitsSold,
-			demandMissed: productReport.demandMissed,
-			revenue: productReport.revenue,
-			costOfGoods: productReport.costOfGoods,
-			grossMargin: productReport.grossMargin,
-			endingStock: productReport.endingStock
-		}).toEqual({
-			warehouseUnits: 2,
-			warehouseValue: 4,
-			importedUnits: 3,
-			importCost: 2,
-			importSpend: 6,
-			unitsSold: 7,
-			demandMissed: 1,
-			revenue: 35,
-			costOfGoods: 17,
-			grossMargin: 18,
-			endingStock: 4
-		});
-		expect({
-			revenue: storeReport.revenue,
-			costOfGoods: storeReport.costOfGoods,
-			grossMargin: storeReport.grossMargin,
-			operatingCosts: storeReport.operatingCosts,
-			importSpend: storeReport.importSpend,
-			netIncome: storeReport.netIncome,
-			day: report.day,
-			reportRevenue: report.revenue,
-			reportCostOfGoods: report.costOfGoods,
-			reportGrossMargin: report.grossMargin,
-			reportImportSpend: report.importSpend,
-			cashAfter: report.cashAfter
-		}).toEqual({
-			revenue: 1000,
-			costOfGoods: 350,
-			grossMargin: 650,
-			operatingCosts: 250,
-			importSpend: 6,
-			netIncome: 400,
-			day: 1,
-			reportRevenue: 1000,
-			reportCostOfGoods: 350,
-			reportGrossMargin: 650,
-			reportImportSpend: 6,
-			cashAfter: 12900
-		});
-		expect(report.productionReport.cityInventories).toEqual([
-			{ cityId: 'industry-city', capacity: 400, used: 3, overflowUnits: 0, overflowCost: 0 }
-		]);
-	});
-
-	test('migrates raw v12 building production rows to the owning industry city', () => {
-		expect.assertions(1);
-		const rawRecord = structuredClone(createV12MultiCityRecord({ water: 3 })) as unknown as Record<
-			string,
-			unknown
-		>;
-		const rawGame = rawRecord.game as Record<string, unknown>;
-		const rawBuilding = (rawGame.industrialBuildings as Array<Record<string, unknown>>)[0]!;
-		rawBuilding.lastProduction = [{ materialId: 'water', quantity: 2, value: 2, source: 'local' }];
-
-		const migrated = validateSaveRecord(rawRecord);
-
-		expect(migrated.game.industrialBuildings[0]?.lastProduction).toEqual([
-			{ cityId: 'industry-city', materialId: 'water', quantity: 2, value: 2, source: 'local' }
-		]);
-	});
-
-	test('keeps the required starter summary when a nonstarter primary owns historical close totals', () => {
-		const record = createV12MultiCityRecord({ water: 3 });
-		record.game = {
-			...record.game,
-			activeIndustryCityId: 'breadbasket-basin',
-			reports: [createLegacyV12Report(record.game as unknown as V12GameFixture)]
-		};
-
-		expect(() => validateSaveRecord(record)).not.toThrow();
-		expect(validateSaveRecord(record).game.reports[0]!.productionReport.cityInventories).toEqual([
-			{ cityId: 'industry-city', capacity: 0, used: 0, overflowUnits: 0, overflowCost: 0 },
-			{ cityId: 'breadbasket-basin', capacity: 400, used: 3, overflowUnits: 0, overflowCost: 0 }
-		]);
-	});
-
-	test('uses recoverable city evidence for rail and shop imports while marking unresolvable production rows as primary provenance', () => {
-		const record = createV12MultiCityRecord({ water: 3 });
-		record.game.reports = [createLegacyV12Report(record.game as unknown as V12GameFixture)];
-
-		expect(() => validateSaveRecord(record)).not.toThrow();
-		const productionReport = validateSaveRecord(record).game.reports[0]!.productionReport;
-
-		expect(productionReport.produced).toEqual([
-			{ cityId: 'industry-city', materialId: 'water', quantity: 2, value: 2, source: 'local' }
-		]);
-		expect(productionReport.warehousePulls).toEqual([
-			{
-				cityId: 'industry-city',
-				materialId: 'water',
-				quantity: 1,
-				value: 1,
-				source: 'warehouse'
-			}
-		]);
-		expect(productionReport.railShipments).toEqual([
-			{
-				cityId: 'industry-city',
-				materialId: 'water',
-				quantity: 1,
-				value: 1,
-				kind: 'push-warehouse',
-				fromId: expect.any(String),
-				toId: expect.any(String)
-			}
-		]);
-		expect(productionReport.shopImports).toEqual([
-			{
-				cityId: 'harbor-city',
-				materialId: 'bottled-water',
-				quantity: 3,
-				value: 6,
-				source: 'import'
-			}
-		]);
-	});
-
-	test('matches swapped equal-value legacy shop imports by material evidence instead of position', () => {
-		const record = createV12RecordWithSwappedEqualShopImports();
-
-		const shopImports = validateSaveRecord(record).game.reports[0]!.productionReport.shopImports;
-
-		expect(shopImports).toEqual([
-			{
-				cityId: 'campus-junction',
-				materialId: 'drinks',
-				quantity: 20,
-				value: 40,
-				source: 'import',
-				legacyTag: 'drinks-row'
-			},
-			{
-				cityId: 'harbor-city',
-				materialId: 'bottled-water',
-				quantity: 20,
-				value: 40,
-				source: 'import',
-				legacyTag: 'water-row'
-			}
-		]);
-	});
-
-	test('rejects unmatched legacy shop-import materials instead of inventing a retail city', () => {
-		const record = createV12RecordWithSwappedEqualShopImports();
-		const productionReport = record.game.reports[0]!.productionReport as unknown as Record<
-			string,
-			unknown
-		>;
-		(productionReport.shopImports as Array<Record<string, unknown>>)[0] = {
-			...(productionReport.shopImports as Array<Record<string, unknown>>)[0]!,
-			materialId: 'snacks'
-		};
-
-		expectSaveRecordErrorCode(record, 'invariant-report-attribution');
-	});
-
-	test('rejects unmatched legacy shop-import quantities and evidence counts', () => {
-		const quantityMismatch = createV12RecordWithSwappedEqualShopImports();
-		const quantityProduction = quantityMismatch.game.reports[0]!
-			.productionReport as unknown as Record<string, unknown>;
-		(quantityProduction.shopImports as Array<Record<string, unknown>>)[0] = {
-			...(quantityProduction.shopImports as Array<Record<string, unknown>>)[0]!,
-			quantity: 19
-		};
-
-		expectSaveRecordErrorCode(quantityMismatch, 'invariant-report-attribution');
-
-		const countMismatch = createV12RecordWithSwappedEqualShopImports();
-		(countMismatch.game.reports[0]!.productionReport.shopImports as unknown as unknown[]).pop();
-
-		expectSaveRecordErrorCode(countMismatch, 'invariant-report-attribution');
-	});
-
-	test('uses canonical retail-city order for indistinguishable duplicate legacy shop imports', () => {
-		const record = createV12RecordWithSwappedEqualShopImports();
-		const report = record.game.reports[0]! as unknown as Record<string, unknown>;
-		const storeReports = report.storeReports as Array<Record<string, unknown>>;
-		const campusProduct = (storeReports[1]!.productReports as Array<Record<string, unknown>>)[0]!;
-		campusProduct.categoryId = 'bottled-water';
-		storeReports.reverse();
-		const productionReport = report.productionReport as Record<string, unknown>;
-		(productionReport.shopImports as Array<Record<string, unknown>>)[0] = {
-			...(productionReport.shopImports as Array<Record<string, unknown>>)[0]!,
-			materialId: 'bottled-water'
-		};
-
-		expect(validateSaveRecord(record).game.reports[0]!.productionReport.shopImports).toEqual([
-			{
-				cityId: 'harbor-city',
-				materialId: 'bottled-water',
-				quantity: 20,
-				value: 40,
-				source: 'import',
-				legacyTag: 'drinks-row'
-			},
-			{
-				cityId: 'campus-junction',
-				materialId: 'bottled-water',
-				quantity: 20,
-				value: 40,
-				source: 'import',
-				legacyTag: 'water-row'
-			}
-		]);
-	});
-
-	test('rejects v12 entity ownership before using an invalid building for capacity allocation', () => {
-		const record = createV12MultiCityRecord({ water: 1 });
-		record.game.industrialBuildings = [
-			{ ...record.game.industrialBuildings[0]!, cityId: 'harbor-city' }
-		];
-
-		expectSaveRecordErrorCode(record, 'invariant-entity-city-ownership');
-	});
-
 	test('round-trips a current v13 multi-city save with city-scoped inventory and replenishment evidence', () => {
 		expect.assertions(8);
-		const game = createCurrentV13MultiCityGame();
+		const game = createCurrentMultiCityGame();
 		const record = createManualSaveRecord({
-			game: { ...game, reports: [createCurrentV13Report(game)] }
+			game: { ...game, reports: [createCurrentReport(game)] }
 		});
 
 		const validated = validateSaveRecord(structuredClone(record));
@@ -1638,7 +786,7 @@ describe('saveCodec', () => {
 
 	test('normalizes stale finite v13 city-inventory capacity and pressure before reserializing', () => {
 		expect.assertions(2);
-		const game = createCurrentV13MultiCityGame();
+		const game = createCurrentMultiCityGame();
 		const record = createManualSaveRecord({
 			game: {
 				...game,
@@ -1786,8 +934,8 @@ describe('saveCodec', () => {
 	])(
 		'controller review: rejects current-v13 replenishment evidence with %s',
 		(_name, mutateProduct, replenishment) => {
-			const game = createCurrentV13MultiCityGame();
-			const report = createCurrentV13Report(game);
+			const game = createCurrentMultiCityGame();
+			const report = createCurrentReport(game);
 			const storeReport = report.storeReports[0]!;
 			const productReport = mutateProduct(
 				storeReport.productReports[0]! as unknown as Record<string, unknown>
@@ -1811,8 +959,8 @@ describe('saveCodec', () => {
 	);
 
 	test('controller review: rejects an accessible configured source reported as unavailable', () => {
-		const game = createCurrentV13MultiCityGame();
-		const report = createCurrentV13Report(game);
+		const game = createCurrentMultiCityGame();
+		const report = createCurrentReport(game);
 		const storeReport = report.storeReports[0]!;
 		const updatedReport: DailyReport = {
 			...report,
@@ -1871,8 +1019,8 @@ describe('saveCodec', () => {
 			})
 		]
 	])('controller review: rejects a current-v13 report with %s', (_name, mutateProductionReport) => {
-		const game = createCurrentV13MultiCityGame();
-		const report = createCurrentV13Report(game);
+		const game = createCurrentMultiCityGame();
+		const report = createCurrentReport(game);
 		const updatedReport = {
 			...report,
 			productionReport: mutateProductionReport(report.productionReport)
@@ -1885,8 +1033,8 @@ describe('saveCodec', () => {
 	});
 
 	test('controller review: accepts a starter-only production-close report after another industry city opens', () => {
-		const game = createCurrentV13MultiCityGame();
-		const report = createCurrentV13Report(game);
+		const game = createCurrentMultiCityGame();
+		const report = createCurrentReport(game);
 		const starterSummary = report.productionReport.cityInventories![0]!;
 		const historicalReport: DailyReport = {
 			...report,
@@ -1913,8 +1061,8 @@ describe('saveCodec', () => {
 		// supply source and prune the starter `industry-city` inventory during
 		// setup. Its first report's production-close snapshot then contains
 		// only the non-starter industry city and must round-trip.
-		const game = createCurrentV13BreadbasketOnlyGame();
-		const report = createCurrentV13BreadbasketOnlyReport(game);
+		const game = createCurrentBreadbasketOnlyGame();
+		const report = createCurrentBreadbasketOnlyReport(game);
 
 		const validated = validateSaveRecord(
 			createManualSaveRecord({ game: { ...game, reports: [report] } })
@@ -1927,8 +1075,8 @@ describe('saveCodec', () => {
 	});
 
 	test('controller review: rejects an empty production-close summary even when aggregates are zero', () => {
-		const game = createCurrentV13MultiCityGame();
-		const report = createCurrentV13Report(game);
+		const game = createCurrentMultiCityGame();
+		const report = createCurrentReport(game);
 		const updatedReport: DailyReport = {
 			...report,
 			productionReport: {
@@ -1948,8 +1096,8 @@ describe('saveCodec', () => {
 	});
 
 	test('controller review: rejects an impossible production-close pressure equation', () => {
-		const game = createCurrentV13MultiCityGame();
-		const report = createCurrentV13Report(game);
+		const game = createCurrentMultiCityGame();
+		const report = createCurrentReport(game);
 		const updatedReport: DailyReport = {
 			...report,
 			productionReport: {
@@ -1969,7 +1117,7 @@ describe('saveCodec', () => {
 	});
 
 	test('controller review: retains canonical city inventories without an aggregate field', () => {
-		const game = createCurrentV13MultiCityGame();
+		const game = createCurrentMultiCityGame();
 		const validated = validateSaveRecord(createManualSaveRecord({ game }));
 
 		expect(validated.game.cityInventories).toEqual(game.cityInventories);
@@ -1977,7 +1125,7 @@ describe('saveCodec', () => {
 	});
 
 	test('controller review: rejects residual global warehouse data on a current v13 save', () => {
-		const game = Object.assign(createCurrentV13MultiCityGame(), {
+		const game = Object.assign(createCurrentMultiCityGame(), {
 			warehouse: { materials: {} }
 		});
 
@@ -1985,7 +1133,7 @@ describe('saveCodec', () => {
 	});
 
 	test('strict validation rejects residual global warehouse data on a current v13 game', () => {
-		const game = Object.assign(createCurrentV13MultiCityGame(), {
+		const game = Object.assign(createCurrentMultiCityGame(), {
 			warehouse: { materials: {} }
 		});
 
@@ -1995,7 +1143,7 @@ describe('saveCodec', () => {
 	});
 
 	test('sandbox normalization rejects residual global warehouse data on a current v13 game', () => {
-		const game = Object.assign(createCurrentV13MultiCityGame(), {
+		const game = Object.assign(createCurrentMultiCityGame(), {
 			warehouse: { materials: {} }
 		});
 
@@ -2005,7 +1153,7 @@ describe('saveCodec', () => {
 	});
 
 	test('controller review: classifies a safe-per-material but unsafe city-inventory total', () => {
-		const game = createCurrentV13MultiCityGame();
+		const game = createCurrentMultiCityGame();
 		const cityInventories = game.cityInventories.map((inventory) =>
 			inventory.cityId === 'industry-city'
 				? {
@@ -2065,7 +1213,7 @@ describe('saveCodec', () => {
 			})
 		]
 	])('rejects a current v13 city inventory with %s', (_name, mutateInventory) => {
-		const game = createCurrentV13MultiCityGame();
+		const game = createCurrentMultiCityGame();
 		const cityInventories = [
 			mutateInventory({ ...game.cityInventories![0]! }),
 			...game.cityInventories!.slice(1)
@@ -2101,7 +1249,7 @@ describe('saveCodec', () => {
 			]
 		]
 	])('rejects a current v13 state with %s', (_name, cityInventoriesFor) => {
-		const game = createCurrentV13MultiCityGame();
+		const game = createCurrentMultiCityGame();
 
 		expectSaveRecordErrorCode(
 			createManualSaveRecord({
@@ -2159,7 +1307,7 @@ describe('saveCodec', () => {
 			]
 		]
 	])('rejects a current v13 state with %s', (_name, assignmentsFor) => {
-		const game = createCurrentV13MultiCityGame();
+		const game = createCurrentMultiCityGame();
 
 		expectSaveRecordErrorCode(
 			createManualSaveRecord({
@@ -2235,7 +1383,7 @@ describe('saveCodec', () => {
 		]
 	])('rejects a current v13 state with %s before derived capacity logic', (_name, mutateGame) => {
 		expectSaveRecordErrorCode(
-			createManualSaveRecord({ game: mutateGame(createCurrentV13MultiCityGame()) }),
+			createManualSaveRecord({ game: mutateGame(createCurrentMultiCityGame()) }),
 			'invariant-entity-city-ownership'
 		);
 	});
@@ -2330,8 +1478,8 @@ describe('saveCodec', () => {
 			}
 		]
 	])('rejects a current v13 report with %s', (_name, mutateReport) => {
-		const game = createCurrentV13MultiCityGame();
-		const report = mutateReport(createCurrentV13Report(game)) as DailyReport;
+		const game = createCurrentMultiCityGame();
+		const report = mutateReport(createCurrentReport(game)) as DailyReport;
 
 		expectSaveRecordErrorCode(
 			createManualSaveRecord({ game: { ...game, reports: [report] } }),
@@ -2424,8 +1572,8 @@ describe('saveCodec', () => {
 			}
 		]
 	])('rejects a current v13 store report with %s', (_name, mutateReport) => {
-		const game = createCurrentV13MultiCityGame();
-		const report = mutateReport(createCurrentV13Report(game)) as DailyReport;
+		const game = createCurrentMultiCityGame();
+		const report = mutateReport(createCurrentReport(game)) as DailyReport;
 
 		expectSaveRecordErrorCode(
 			createManualSaveRecord({ game: { ...game, reports: [report] } }),
@@ -2435,8 +1583,8 @@ describe('saveCodec', () => {
 
 	test('accepts explicit null v13 replenishment fields when no product attempted a refill', () => {
 		expect.assertions(2);
-		const game = createCurrentV13MultiCityGame();
-		const report = createCurrentV13Report(game);
+		const game = createCurrentMultiCityGame();
+		const report = createCurrentReport(game);
 		const storeReport = report.storeReports[0]!;
 		const noAttemptReport: DailyReport = {
 			...report,
@@ -2479,183 +1627,6 @@ describe('saveCodec', () => {
 		expect(SAVE_SCHEMA_VERSION).toBe(13);
 		expect(validated).toEqual(record);
 		expect(validated).not.toBe(record);
-	});
-
-	test('migrates ordered v11 strategic and system rows directly into the complete v12 runtime', () => {
-		expect.assertions(15);
-		const validated = validateSaveRecord(createV11Record(legacyV11StrategicDecisions()));
-		const [supplier, system, cashPressure, expansion] = validated.game.decisions;
-
-		expect(validated.schemaVersion).toBe(13);
-		expect(validated.game.events).toMatchObject({
-			selectionSchemaVersion: 1,
-			rngState: 1_183_544_557,
-			nextInstanceSequence: 4,
-			nextModifierSequence: 1,
-			activeModifiers: []
-		});
-		expect(validated.game.decisions.map((decision) => decision.id)).toEqual([
-			'event-instance-1',
-			'expansion-cash-blocked-10',
-			'event-instance-2',
-			'event-instance-3'
-		]);
-		expect(system).toEqual({
-			kind: 'system',
-			id: 'expansion-cash-blocked-10',
-			title: 'Expansion delayed',
-			context: { code: 'expansionCashBlocked', cash: 15_000 },
-			expiresOnDay: 13,
-			options: [
-				{
-					id: 'acknowledge',
-					label: 'Acknowledge',
-					description: 'Return to operations planning.'
-				}
-			]
-		});
-		expect(supplier).toMatchObject({
-			kind: 'event',
-			id: 'event-instance-1',
-			eventId: 'supplier-terms',
-			definitionVersion: 1,
-			generatedOnDay: 10,
-			expiresOnDay: 12,
-			target: { kind: 'company' },
-			copy: { key: 'events.supplierTerms', params: {} }
-		});
-		expect(supplier?.kind === 'event' ? supplier.options : []).toEqual([
-			{
-				id: 'negotiate-credit',
-				effects: [
-					{
-						kind: 'finance-borrow',
-						purpose: 'supplierCredit',
-						amount: 4_000,
-						termDays: 28
-					},
-					{ kind: 'score-adjust', score: 'profit', amount: -2 }
-				],
-				modifiers: []
-			},
-			{
-				id: 'bulk-discount',
-				effects: [
-					{ kind: 'cash-adjust', amount: -2_500 },
-					{ kind: 'score-adjust', score: 'profit', amount: 3 },
-					{
-						kind: 'store-stock-adjust-by-target-percent',
-						scope: 'all-stores',
-						percent: 6
-					}
-				],
-				modifiers: []
-			}
-		]);
-		expect(cashPressure).toMatchObject({
-			kind: 'event',
-			id: 'event-instance-2',
-			eventId: 'cash-pressure',
-			definitionVersion: 1,
-			generatedOnDay: 11,
-			copy: { key: 'events.cashPressure', params: {} }
-		});
-		expect(cashPressure?.kind === 'event' ? cashPressure.options[0]?.effects : []).toEqual([
-			{
-				kind: 'finance-borrow',
-				purpose: 'emergency',
-				amount: 11_000,
-				termDays: 56
-			},
-			{ kind: 'score-adjust', score: 'profit', amount: -4 },
-			{ kind: 'score-adjust', score: 'marketPosition', amount: -1 }
-		]);
-		expect(expansion).toMatchObject({
-			kind: 'event',
-			id: 'event-instance-3',
-			eventId: 'expansion-opportunity',
-			definitionVersion: 1,
-			generatedOnDay: 12,
-			copy: { key: 'events.expansionOpportunity', params: {} }
-		});
-		expect(validated.game.events.cooldowns).toEqual([
-			{
-				eventId: 'supplier-terms',
-				target: { kind: 'company' },
-				generatedOnDay: 10,
-				eligibleOnDay: 11
-			},
-			{
-				eventId: 'cash-pressure',
-				target: { kind: 'company' },
-				generatedOnDay: 11,
-				eligibleOnDay: 12
-			},
-			{
-				eventId: 'expansion-opportunity',
-				target: { kind: 'company' },
-				generatedOnDay: 12,
-				eligibleOnDay: 13
-			}
-		]);
-		expect(validated.game.events.history).toEqual([
-			{
-				kind: 'event-generated',
-				day: 10,
-				eventId: 'supplier-terms',
-				instanceId: 'event-instance-1',
-				target: { kind: 'company' }
-			},
-			{
-				kind: 'event-generated',
-				day: 11,
-				eventId: 'cash-pressure',
-				instanceId: 'event-instance-2',
-				target: { kind: 'company' }
-			},
-			{
-				kind: 'event-generated',
-				day: 12,
-				eventId: 'expansion-opportunity',
-				instanceId: 'event-instance-3',
-				target: { kind: 'company' }
-			}
-		]);
-		expect(validated.game.reports[0]?.modifierImpacts).toEqual([]);
-		expect(validated.game.reports[0]?.modifierLifecycle).toEqual([]);
-		expect(validateSaveRecord(structuredClone(validated))).toEqual(validated);
-		expect(() => validateSaveRecord(structuredClone(validated))).not.toThrow();
-	});
-
-	test('rejects an unknown v11 system row that carries non-empty legacy effects', () => {
-		expect.assertions(3);
-		const unsafe = {
-			id: 'unrecognized-command-notice',
-			title: 'Unknown notice',
-			context: { code: 'locationGeneric' },
-			expiresOnDay: 13,
-			options: [
-				{
-					id: 'acknowledge',
-					label: 'Acknowledge',
-					description: 'Continue.',
-					effects: { cash: 1 }
-				}
-			]
-		};
-
-		let caught: unknown;
-		try {
-			validateSaveRecord(createV11Record([unsafe]));
-		} catch (error) {
-			caught = error;
-		}
-
-		expect(caught).toBeInstanceOf(SaveDataError);
-		expect((caught as SaveDataError).code).toBe('invariant-event-runtime');
-		expect(() => validateSaveRecord(createV11Record([unsafe]))).toThrow(
-			'Saved v11 decisions[0] options[0] effects must be empty for a system decision'
-		);
 	});
 
 	test('rejects an unsafe whole-dollar event finance amount', () => {
@@ -2887,172 +1858,6 @@ describe('saveCodec', () => {
 		expect((caught as SaveDataError).message).toContain('nextModifierSequence');
 	});
 
-	test('migrates a literal v10 scalar debt save into a neutral founding loan and report finance fields', () => {
-		expect.assertions(21);
-		const record = createV10Record({ debt: 2_000, day: 12 });
-
-		const validated = validateSaveRecord(record);
-		const loan = validated.game.finance.loans[0]!;
-		const report = validated.game.reports[0]!;
-		expect(validated.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
-		expect(validated.game.cash).toBe(12_345);
-		expect(validated.game.finance.loans).toHaveLength(1);
-		expect(loan).toMatchObject({
-			id: 'loan-1',
-			purpose: 'founding',
-			status: 'active',
-			openedOnDay: 12,
-			originalPrincipal: 2_000,
-			remainingPrincipal: 2_000,
-			nextPaymentDay: 19,
-			lastInterestAccrualDay: 12,
-			accruedInterestMicros: 0,
-			overdueInterest: 0,
-			overduePrincipal: 0,
-			arrearsSinceDay: null,
-			installmentsProcessed: 0,
-			scheduledPaymentCount: 0,
-			onTimePaymentCount: 0,
-			missedPaymentCount: 0
-		});
-		expect(validated.game.finance.transactions).toEqual([]);
-		expect(validated.game.finance.nextLoanSequence).toBe(2);
-		expect(validated.game.finance.nextTransactionSequence).toBe(1);
-		expect(validated.game.finance.currentDayActivity).toEqual({
-			day: 12,
-			principalBorrowed: 0,
-			principalRepaid: 0,
-			interestPaid: 0,
-			interestCapitalized: 0,
-			refinancedPrincipal: 0,
-			financingCashFlow: 0
-		});
-		expect(report.cashBefore).toBe(12_024);
-		expect(report.operatingIncome).toBe(450);
-		expect(report.operatingCashFlow).toBe(321);
-		expect(report.interestAccrued).toBe(0);
-		expect(report.interestPaid).toBe(0);
-		expect(report.interestCapitalized).toBe(0);
-		expect(report.principalBorrowed).toBe(0);
-		expect(report.principalRepaid).toBe(0);
-		expect(report.refinancedPrincipal).toBe(0);
-		expect(report.financingCashFlow).toBe(0);
-		expect(report.netCashChange).toBe(321);
-		expect(report.outstandingPrincipalAfter).toBe(2_000);
-		expect(report.nextLoanPayment).toBeNull();
-	});
-
-	test.each([4, 5, 6, 7, 8, 9, 10])(
-		'chains v%s cash-based strategic loans through the v11 finance shape into v12 events',
-		(sourceVersion) => {
-			const record = {
-				...createV10Record({ debt: 2_000, day: 12 }),
-				schemaVersion: sourceVersion as unknown as typeof SAVE_SCHEMA_VERSION
-			};
-			(record.game as unknown as Record<string, unknown>).decisions = [
-				{
-					id: 'cash-pressure',
-					title: 'Cash pressure',
-					context: { code: 'cashPressure' },
-					expiresOnDay: 14,
-					options: [
-						{
-							id: 'short-loan',
-							label: 'Short loan',
-							description: 'Add emergency working capital.',
-							effects: { cash: 12_000, profit: -4, marketPosition: -1 }
-						},
-						{
-							id: 'cut-costs',
-							label: 'Cut costs',
-							description: 'Trim discretionary spend.',
-							effects: {
-								cash: 5_500,
-								customerSatisfaction: -4,
-								staffMorale: -5,
-								stockHealth: -8
-							}
-						},
-						{
-							id: 'hold-course',
-							label: 'Hold course',
-							description: 'Avoid reactive changes.',
-							effects: { profit: 1, staffMorale: -2 }
-						}
-					]
-				},
-				{
-					id: 'supplier-terms',
-					title: 'Supplier terms',
-					context: { code: 'supplierTerms' },
-					expiresOnDay: 14,
-					options: [
-						{
-							id: 'negotiate-credit',
-							label: 'Negotiate credit',
-							description: 'Stretch payment timing.',
-							effects: { cash: 4_000, profit: -2 }
-						},
-						{
-							id: 'bulk-discount',
-							label: 'Bulk discount',
-							description: 'Commit to larger orders.',
-							effects: { cash: -2_500, profit: 3, stockHealth: 6 }
-						}
-					]
-				}
-			];
-
-			const validated = validateSaveRecord(record);
-			const [cashPressure, supplierTerms] = validated.game.decisions;
-
-			expect(cashPressure).toMatchObject({
-				kind: 'event',
-				id: 'event-instance-1',
-				eventId: 'cash-pressure',
-				definitionVersion: 1
-			});
-			expect(cashPressure?.kind === 'event' ? cashPressure.options[0]?.effects : null).toEqual([
-				{
-					kind: 'finance-borrow',
-					purpose: 'emergency',
-					amount: 12_000,
-					termDays: 56
-				},
-				{ kind: 'score-adjust', score: 'profit', amount: -4 },
-				{ kind: 'score-adjust', score: 'marketPosition', amount: -1 }
-			]);
-			expect(supplierTerms).toMatchObject({
-				kind: 'event',
-				id: 'event-instance-2',
-				eventId: 'supplier-terms',
-				definitionVersion: 1
-			});
-			expect(supplierTerms?.kind === 'event' ? supplierTerms.options[0]?.effects : null).toEqual([
-				{
-					kind: 'finance-borrow',
-					purpose: 'supplierCredit',
-					amount: 4_000,
-					termDays: 28
-				},
-				{ kind: 'score-adjust', score: 'profit', amount: -2 }
-			]);
-			expect(validated.game.events.nextInstanceSequence).toBe(3);
-		}
-	);
-
-	test('migrates a literal v10 zero debt save to empty finance while retaining cash and report history', () => {
-		expect.assertions(6);
-		const validated = validateSaveRecord(createV10Record({ debt: 0, day: 12 }));
-		const report = validated.game.reports[0]!;
-		expect(validated.game.cash).toBe(12_345);
-		expect(validated.game.finance.loans).toEqual([]);
-		expect(validated.game.finance.nextLoanSequence).toBe(1);
-		expect(validated.game.finance.currentDayActivity.day).toBe(12);
-		expect(report.outstandingPrincipalAfter).toBe(0);
-		expect(report.nextLoanPayment).toBeNull();
-	});
-
 	test('rejects an outstanding loan whose scheduled payment is already in the past', () => {
 		expect.assertions(1);
 		const game = createGame();
@@ -3089,21 +1894,6 @@ describe('saveCodec', () => {
 		expect(validated.game.finance.loans[0]?.nextPaymentDay).toBe(10);
 		expect(validateSaveRecord(structuredClone(validated))).toEqual(validated);
 	});
-
-	test.each([4, 5, 6, 7, 8, 9])(
-		'v%s record migration continues through rail and finance schema steps',
-		(sourceVersion) => {
-			const base = createV10Record({ debt: 500, day: 12 });
-			const record = {
-				...base,
-				schemaVersion: sourceVersion as unknown as typeof SAVE_SCHEMA_VERSION
-			};
-			const validated = validateSaveRecord(record);
-			expect(validated.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
-			expect(validated.game.finance.loans[0]?.remainingPrincipal).toBe(500);
-			expect(validated.game.industryCities[0]?.rails).toEqual([]);
-		}
-	);
 
 	test.each([
 		['negative sequence', (game: GameState) => ({ ...game.finance, nextLoanSequence: -1 })],
@@ -3523,24 +2313,6 @@ describe('saveCodec', () => {
 		expect(call).toThrow('Saved game finance transactions[0] cashDelta must be an integer');
 	});
 
-	test('rejects a v10 record whose legacy report lacks numeric cash fields', () => {
-		expect.assertions(1);
-		const record = createV10Record({
-			debt: 500,
-			day: 12,
-			reports: [
-				{
-					day: 11,
-					cashAfter: 'not-a-number',
-					netIncome: 321,
-					grossMargin: 700,
-					operatingCosts: 250
-				}
-			] as unknown as GameState['reports']
-		});
-		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
-	});
-
 	test('rejects two-node and three-node refinance cycles while accepting a linear chain', () => {
 		expect.assertions(3);
 		const game = createGame();
@@ -3670,56 +2442,6 @@ describe('saveCodec', () => {
 			)
 		).toThrow(SaveDataError);
 	});
-	test.each([4, 5, 6, 7, 8, 9])(
-		'migrateSavedGame runs the complete v%s-to-v10 game chain without skipping a step',
-		(sourceVersion) => {
-			const migrated = migrateSavedGame(
-				createBareMigrationFixture(sourceVersion),
-				sourceVersion
-			) as GameState;
-
-			expect(migrated.industryCities[0]?.rails).toEqual([]);
-			expect(migrated.industrialBuildings[0]?.inventory).toEqual({});
-			expect(migrated.reports[0]?.productionReport.railShipments).toEqual([]);
-			expect(migrated.reports[0]?.productionReport.railUsage).toEqual({});
-			if (sourceVersion <= 8) {
-				expect(migrated.stores[0]?.location).toEqual({
-					neighborhoodId: 'downtown',
-					x: 1,
-					y: 1
-				});
-			}
-			if (sourceVersion <= 6) {
-				expect(migrated.decisions).toEqual([]);
-			}
-			if (sourceVersion <= 5) {
-				expect(migrated.reports[0]?.warnings).toEqual([]);
-				expect(migrated.reports[0]?.storeReports[0]?.warnings).toEqual([]);
-			}
-			if (sourceVersion <= 4) {
-				expect(migrated.stores[0]?.products[0]?.categoryId).toBe('fashion-accessories');
-			}
-		}
-	);
-
-	test.each([3, SAVE_SCHEMA_VERSION + 1])(
-		'migrateSavedGame rejects unsupported source schema %s',
-		(schemaVersion) => {
-			expect(() => migrateSavedGame(createGame(), schemaVersion)).toThrow(SaveDataError);
-			expect(() => migrateSavedGame(createGame(), schemaVersion)).toThrow(
-				`Unsupported save schema version: ${schemaVersion}`
-			);
-		}
-	);
-
-	test('migrateSavedGame returns an exact plain clone for a current-schema game', () => {
-		const game = createGame();
-		const migrated = migrateSavedGame(game, SAVE_SCHEMA_VERSION);
-
-		expect(migrated).toStrictEqual(game);
-		expect(migrated).not.toBe(game);
-	});
-
 	test('strict current-game validation returns an exact deep clone without mutating its input', () => {
 		const game = createGame();
 		const before = structuredClone(game);
@@ -4091,7 +2813,7 @@ describe('saveCodec', () => {
 		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(/dense array/);
 	});
 
-	test.each(['strict', 'record', 'migration'] as const)(
+	test.each(['strict', 'record'] as const)(
 		'$boundary boundary maps a proxy get trap to SaveDataError without invoking it',
 		(boundary) => {
 			const target = boundary === 'record' ? createManualSaveRecord() : (createGame() as unknown);
@@ -4105,31 +2827,12 @@ describe('saveCodec', () => {
 
 			const validate = () => {
 				if (boundary === 'strict') return validateCurrentGameState(proxy);
-				if (boundary === 'record') return validateSaveRecord(proxy);
-				return migrateSavedGame(proxy, SAVE_SCHEMA_VERSION);
+				return validateSaveRecord(proxy);
 			};
 			expect(validate).toThrow(SaveDataError);
 			expect(invoked).toBe(false);
 		}
 	);
-
-	test('v4 migration maps malformed category coercion to SaveDataError', () => {
-		const game = createGame();
-		const malformedCategory = { valueOf: {}, toString: {} };
-		game.stores = [
-			{
-				...game.stores[0]!,
-				products: [
-					{
-						...game.stores[0]!.products[0]!,
-						categoryId: malformedCategory as unknown as string
-					}
-				]
-			}
-		];
-
-		expect(() => migrateSavedGame(game, 4)).toThrow(SaveDataError);
-	});
 
 	test.each(['normalize-cash', 'record-report', 'snapshot-city-inventory'] as const)(
 		'$case maps structured-cloneable scalar coercion data to SaveDataError',
@@ -5061,7 +3764,7 @@ describe('saveCodec', () => {
 		expect(storeTile).toBeDefined();
 		expect(storeTile?.feature).toBeNull();
 		// Relocation must refresh tile-derived fields so the store does not
-		// carry stale coordinates/demand from the pre-migration tile.
+		// carry stale coordinates/demand from the pre-regeneration tile.
 		expect(store.location).toEqual(formatLocation(storeTile!));
 		expect(store.location).not.toBe('Stale Location (28, 8)');
 		expect(store.localDemand).toBe(computeStoreLocalDemand(storeTile!));
@@ -5138,7 +3841,7 @@ describe('saveCodec', () => {
 		expect.assertions(3);
 		// Regenerate the same 56x48 harbor-city the codec produces (seed comes
 		// from game.seed for harbor-city) so we can pick a buildable tile that
-		// exists in the migrated city deterministically.
+		// exists in the regenerated city deterministically.
 		const referenceCity = generateCity({
 			id: 'harbor-city',
 			name: 'Harbor City',
@@ -5151,7 +3854,7 @@ describe('saveCodec', () => {
 
 		const baseStore = createGame().stores[0]!;
 		// Invalid store is intentionally FIRST in the array. Its stale tileId
-		// ('harbor-city-28-8' is non-buildable post-migration) forces the
+		// ('harbor-city-28-8' is non-buildable after regeneration) forces the
 		// fallback closest-tile search, whose origin sits exactly on the valid
 		// store's tile. Under the old single-pass this would steal that tile.
 		const invalidStore = {
@@ -5471,23 +4174,6 @@ describe('saveCodec', () => {
 		);
 	});
 
-	test('v9 migration leaves malformed production movements for strict SaveDataError validation', () => {
-		const report = createDailyReport({
-			productionReport: createDailyProductionReport({
-				produced: [null as unknown as DailyMaterialMovement]
-			})
-		});
-		const record = {
-			...createLegacyV12SaveRecord({ game: { reports: [report] } }),
-			schemaVersion: 9 as unknown as typeof SAVE_SCHEMA_VERSION
-		};
-
-		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
-		expect(() => validateSaveRecord(record)).toThrow(
-			'Saved game reports[0] productionReport produced[0] must be an object'
-		);
-	});
-
 	test('sandbox normalization defers malformed city tiles to strict SaveDataError validation', () => {
 		const record = createManualSaveRecord({
 			game: {
@@ -5687,7 +4373,7 @@ describe('saveCodec', () => {
 		expect(city.tiles).toEqual(reference.tiles);
 	});
 
-	test('uses the definition name when a migrated 28x24 city has a non-string name', () => {
+	test('uses the definition name when a regenerated 28x24 city has a non-string name', () => {
 		expect.assertions(1);
 		const record = createManualSaveRecord({
 			game: {
@@ -5941,290 +4627,6 @@ describe('saveCodec', () => {
 		expect(id).toContain('slot');
 	});
 
-	test('migrateSaveRecord returns non-object values untouched before validating', () => {
-		expect.assertions(2);
-
-		expect(() => validateSaveRecord('not-an-object')).toThrow(SaveDataError);
-		// The specific message proves migration left the non-object untouched: a
-		// mutated value would surface a different validation error.
-		expect(() => validateSaveRecord('not-an-object')).toThrow('Save record must be an object');
-	});
-
-	test('v4 migration leaves a non-object store untouched then fails validation', () => {
-		expect.assertions(2);
-		const record = createV4Record({
-			game: {
-				stores: ['not-a-store' as unknown as GameState['stores'][number]]
-			}
-		});
-
-		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
-		// Asserting the store-level (not product-level) "must be an object" message
-		// proves migration did not wrap or coerce the non-object store entry.
-		expect(() => validateSaveRecord(record)).toThrow('Saved game stores[0] must be an object');
-	});
-
-	test('v4 migration leaves a non-object boutique product untouched then fails validation', () => {
-		expect.assertions(2);
-		const baseStore = createGame().stores[0]!;
-		const record = createV4Record({
-			game: {
-				stores: [
-					{
-						...baseStore,
-						archetypeId: 'boutique',
-						products: [
-							'not-a-product' as unknown as GameState['stores'][number]['products'][number]
-						]
-					}
-				]
-			}
-		});
-
-		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
-		// The product-level "must be an object" message proves migration left the
-		// non-object product entry intact rather than dropping or wrapping it.
-		expect(() => validateSaveRecord(record)).toThrow(
-			'Saved game stores[0] products[0] must be an object'
-		);
-	});
-
-	test('v4 migration renames a legacy boutique accessories category to fashion-accessories', () => {
-		expect.assertions(2);
-		const baseStore = createGame().stores[0]!;
-		const products = initializeStoreProducts('boutique', 10).map((product) =>
-			product.categoryId === 'fashion-accessories'
-				? { ...product, categoryId: 'accessories' }
-				: product
-		);
-		const record = createV4Record({
-			game: {
-				stores: [
-					{
-						...baseStore,
-						level: 10,
-						archetypeId: 'boutique',
-						products,
-						stockHealth: calculateStockHealth(products)
-					}
-				]
-			}
-		});
-
-		const validated = validateSaveRecord(record);
-		expect(validated.game.stores[0]?.products[3]?.categoryId).toBe('fashion-accessories');
-		expect(validated.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
-	});
-
-	test('v4 migration is a no-op for a boutique store with no legacy category names', () => {
-		expect.assertions(1);
-		const record = createV4Record({
-			game: { stores: [{ ...createGame().stores[0]!, archetypeId: 'boutique' }] }
-		});
-
-		expect(() => validateSaveRecord(record)).not.toThrow();
-	});
-
-	test('v4 migration leaves a non-object game untouched then fails validation', () => {
-		expect.assertions(2);
-		const record: SaveRecord = {
-			...createManualSaveRecord(),
-			schemaVersion: 4 as unknown as typeof SAVE_SCHEMA_VERSION,
-			game: null as unknown as GameState
-		};
-
-		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
-		// The "Saved game must be an object" message proves migration returned the
-		// null game verbatim instead of substituting a default object.
-		expect(() => validateSaveRecord(record)).toThrow('Saved game must be an object');
-	});
-
-	test('v4 migration leaves a non-array stores field untouched then fails validation', () => {
-		expect.assertions(2);
-		const record: SaveRecord = {
-			...createManualSaveRecord(),
-			schemaVersion: 4 as unknown as typeof SAVE_SCHEMA_VERSION,
-			game: {
-				...createGame(),
-				stores: 'not-an-array' as unknown as GameState['stores']
-			}
-		};
-
-		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
-		// The stores-level array message proves migration short-circuited on the
-		// non-array field and forwarded it to validation unchanged.
-		expect(() => validateSaveRecord(record)).toThrow('Saved game stores must be an array');
-	});
-
-	test('v4 snapshot migration leaves a non-object autoSave untouched then fails validation', () => {
-		expect.assertions(2);
-		const snapshot = {
-			schemaVersion: 4,
-			autoSave: 'not-an-object',
-			manualSlots: []
-		};
-
-		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
-		// The record-level "must be an object" message proves the snapshot migration
-		// forwarded the non-object autoSave to validateSaveRecord unmodified.
-		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow('Save record must be an object');
-	});
-
-	test('v4 snapshot migration skips mapping when manualSlots is not an array', () => {
-		expect.assertions(2);
-		const snapshot = {
-			schemaVersion: 4,
-			autoSave: null,
-			manualSlots: 'not-an-array'
-		};
-
-		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
-		// The manualSlots array message proves the migration skipped .map() and let
-		// validation reject the non-array field directly.
-		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow('manualSlots must be an array');
-	});
-
-	test('v5 migration drops old string warnings from daily and store reports', () => {
-		// Report warnings changed from free-form English strings to structured
-		// `{ code, ... }` objects in v6. Per the legacy save policy (game is
-		// unreleased), old string warnings are dropped rather than reverse-parsed.
-		expect.assertions(4);
-		const storeReport = {
-			...createDailyStoreReport(),
-			warnings: ['Low inventory', 'Understaffed']
-		} as unknown as DailyStoreReport;
-		const report = {
-			...createDailyReport(),
-			storeReports: [storeReport],
-			warnings: ['Healthy day', 'Cash low']
-		} as unknown as DailyReport;
-		const record = createV5Record({
-			game: { reports: [report] }
-		});
-
-		const validated = validateSaveRecord(record);
-		expect(validated.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
-		expect(validated.game.reports[0]?.warnings).toEqual([]);
-		expect(validated.game.reports[0]?.storeReports[0]?.warnings).toEqual([]);
-		expect(() => validateSaveRecord(record)).not.toThrow();
-	});
-
-	test('v4 migration chains into v5 step and drops legacy string warnings', () => {
-		// Regression: each migrateV*SaveRecord step must advance schemaVersion by
-		// one, not jump straight to SAVE_SCHEMA_VERSION. A v4 record carrying
-		// legacy string warnings must flow through the v4 step (boutique rename)
-		// AND the v5 step (drops string warnings) before validation.
-		expect.assertions(3);
-		const storeReport = {
-			...createDailyStoreReport(),
-			warnings: ['Low inventory', 'Understaffed']
-		} as unknown as DailyStoreReport;
-		const report = {
-			...createDailyReport(),
-			storeReports: [storeReport],
-			warnings: ['Healthy day', 'Cash low']
-		} as unknown as DailyReport;
-		const record = createV4Record({
-			game: { reports: [report] }
-		});
-
-		const validated = validateSaveRecord(record);
-		expect(validated.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
-		expect(validated.game.reports[0]?.warnings).toEqual([]);
-		expect(validated.game.reports[0]?.storeReports[0]?.warnings).toEqual([]);
-	});
-
-	test('v6 migration drops old string decision contexts', () => {
-		// Decision contexts changed from free-form English strings to structured
-		// `{ code, ... }` objects in v7. Per the legacy save policy (game is
-		// unreleased), old string contexts are DROPPED — not reverse-parsed and
-		// not stubbed with a sentinel code that the DecisionContext union does
-		// not define.
-		expect.assertions(3);
-		const record = createV6Record({
-			game: {
-				decisions: [
-					{
-						id: 'expansion-cash-blocked-1',
-						title: 'Expansion delayed',
-						context: 'Opening another store requires 15,000 cash.',
-						expiresOnDay: 2,
-						options: [{ id: 'acknowledge', label: 'Acknowledge', description: '...', effects: {} }]
-					} as unknown as GameState['decisions'][number]
-				]
-			}
-		});
-
-		const validated = validateSaveRecord(record);
-		expect(validated.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
-		// The string-context decision is DROPPED, not stubbed — it does not
-		// survive as a zombie { code: 'legacyStringDropped' } that the switch
-		// cannot handle.
-		expect(validated.game.decisions).toHaveLength(0);
-		expect(() => validateSaveRecord(record)).not.toThrow();
-	});
-
-	test.each([
-		{ finance: { kind: 'borrow', purpose: 'emergency', amount: 4_000, termDays: 56, extra: true } },
-		{ finance: { kind: 'grant', purpose: 'emergency', amount: 4_000, termDays: 56 } },
-		{ finance: { kind: 'borrow', purpose: 'workingCapital', amount: 4_000, termDays: 56 } },
-		{ finance: { kind: 'borrow', purpose: 'emergency', amount: 4_000, termDays: 28 } },
-		{ finance: { kind: 'borrow', purpose: 'supplierCredit', amount: 4_000.5, termDays: 28 } },
-		{ finance: { kind: 'borrow', purpose: 'supplierCredit', amount: 0, termDays: 28 } },
-		{ finance: { kind: 'borrow', purpose: 'supplierCredit', amount: -1, termDays: 28 } },
-		{ finance: { kind: 'borrow', purpose: 'emergency', amount: 4_000, termDays: 84 } }
-	])('rejects a malformed persisted decision finance effect: %o', ({ finance }) => {
-		const record = createManualSaveRecord({
-			game: {
-				decisions: [
-					{
-						id: 'cash-pressure',
-						title: 'Cash pressure',
-						context: { code: 'cashPressure' },
-						expiresOnDay: 3,
-						options: [
-							{
-								id: 'short-loan',
-								label: 'Short loan',
-								description: 'Borrow.',
-								effects: { finance }
-							}
-						]
-					} as unknown as GameState['decisions'][number]
-				]
-			}
-		});
-
-		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
-	});
-
-	test('v5 migration chains into v6 step and drops legacy string decision contexts', () => {
-		// Regression: migrateV5SaveRecord must emit schema 6 (not
-		// SAVE_SCHEMA_VERSION) so the v6→v7 step runs and drops string
-		// decision contexts. A v5 record carrying a string-context decision
-		// must flow through both the v5 step (drops string warnings) AND the
-		// v6 step (drops string decision contexts) before validation.
-		expect.assertions(3);
-		const record = createV5Record({
-			game: {
-				decisions: [
-					{
-						id: 'expansion-cash-blocked-1',
-						title: 'Expansion delayed',
-						context: 'Opening another store requires 15,000 cash.',
-						expiresOnDay: 2,
-						options: [{ id: 'acknowledge', label: 'Acknowledge', description: '...', effects: {} }]
-					} as unknown as GameState['decisions'][number]
-				]
-			}
-		});
-
-		const validated = validateSaveRecord(record);
-		expect(validated.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
-		expect(validated.game.decisions).toHaveLength(0);
-		expect(() => validateSaveRecord(record)).not.toThrow();
-	});
-
 	test('normalizeSavedStoreLevel defaults to level 1 when products is not an array', () => {
 		expect.assertions(1);
 		const baseStore = createGame().stores[0]!;
@@ -6342,311 +4744,6 @@ describe('saveCodec', () => {
 		});
 
 		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
-	});
-
-	test('v7 migration copies activeCityId from game state into metadata', () => {
-		// v7→v8: save metadata replaced the English activeCityName string with a
-		// stable activeCityId. The ID is copied from the saved game state's
-		// activeCityId field.
-		expect.assertions(2);
-		const baseRecord = createLegacyV12SaveRecord();
-		const metadataWithoutCityId = metadataWithoutActiveCityId(baseRecord);
-		const v7Record = {
-			...baseRecord,
-			schemaVersion: 7 as unknown as typeof SAVE_SCHEMA_VERSION,
-			metadata: {
-				...metadataWithoutCityId,
-				activeCityName: 'Harbor City'
-			}
-		} as unknown as SaveRecord;
-
-		const validated = validateSaveRecord(v7Record);
-		expect(validated.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
-		expect(validated.metadata.activeCityId).toBe('harbor-city');
-	});
-
-	test('v7 migration defaults to harbor-city in metadata when game.activeCityId is not a string', () => {
-		// The migration copies 'harbor-city' into metadata when
-		// game.activeCityId is not a string, but validation subsequently
-		// rejects the game state because its activeCityId is missing.
-		expect.assertions(2);
-		const baseRecord = createLegacyV12SaveRecord();
-		const metadataWithoutCityId = metadataWithoutActiveCityId(baseRecord);
-		const v7Record = {
-			...baseRecord,
-			schemaVersion: 7 as unknown as typeof SAVE_SCHEMA_VERSION,
-			metadata: {
-				...metadataWithoutCityId,
-				activeCityName: 'Harbor City'
-			},
-			game: { ...baseRecord.game, activeCityId: undefined } as unknown as GameState
-		} as unknown as SaveRecord;
-
-		// The migration's fallback is observable via the metadata error message
-		// (it sets activeCityId in metadata), but game validation fails first.
-		expect(() => validateSaveRecord(v7Record)).toThrow(SaveDataError);
-		expect(() => validateSaveRecord(v7Record)).toThrow(
-			'Saved game activeCityId must be a non-empty string'
-		);
-	});
-
-	test('v7 migration bumps schemaVersion without activeCityId when metadata is not an object', () => {
-		// When metadata or game is not an object, the migration only advances
-		// schemaVersion — validation then rejects the missing activeCityId.
-		expect.assertions(2);
-		const v7Record = {
-			...createLegacyV12SaveRecord(),
-			schemaVersion: 7 as unknown as typeof SAVE_SCHEMA_VERSION,
-			metadata: null as unknown as SaveRecord['metadata']
-		} as unknown as SaveRecord;
-
-		expect(() => validateSaveRecord(v7Record)).toThrow(SaveDataError);
-		expect(() => validateSaveRecord(v7Record)).toThrow('Save metadata must be an object');
-	});
-
-	test('v7 migration bumps schemaVersion without activeCityId when game is not an object', () => {
-		expect.assertions(2);
-		const baseRecord = createLegacyV12SaveRecord();
-		const metadataWithoutCityId = metadataWithoutActiveCityId(baseRecord);
-		const v7Record = {
-			...baseRecord,
-			schemaVersion: 7 as unknown as typeof SAVE_SCHEMA_VERSION,
-			metadata: { ...metadataWithoutCityId, activeCityName: 'Harbor City' },
-			game: null as unknown as GameState
-		} as unknown as SaveRecord;
-
-		expect(() => validateSaveRecord(v7Record)).toThrow(SaveDataError);
-		expect(() => validateSaveRecord(v7Record)).toThrow('Saved game must be an object');
-	});
-
-	test('v6 migration chains into v7 step and copies activeCityId into metadata', () => {
-		// Regression: migrateV6SaveRecord must emit schema 7 (not
-		// SAVE_SCHEMA_VERSION) so the v7→v8 step runs and copies activeCityId.
-		expect.assertions(2);
-		const baseRecord = createLegacyV12SaveRecord();
-		const metadataWithoutCityId = metadataWithoutActiveCityId(baseRecord);
-		const v6Record = {
-			...baseRecord,
-			schemaVersion: 6 as unknown as typeof SAVE_SCHEMA_VERSION,
-			metadata: {
-				...metadataWithoutCityId,
-				activeCityName: 'Harbor City'
-			}
-		} as unknown as SaveRecord;
-
-		const validated = validateSaveRecord(v6Record);
-		expect(validated.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
-		expect(validated.metadata.activeCityId).toBe('harbor-city');
-	});
-
-	test('v7 snapshot migration copies activeCityId into metadata for manual slots', () => {
-		expect.assertions(2);
-		const baseRecord = createLegacyV12SaveRecord();
-		const metadataWithoutCityId = metadataWithoutActiveCityId(baseRecord);
-		const v7Record = {
-			...baseRecord,
-			schemaVersion: 7 as unknown as typeof SAVE_SCHEMA_VERSION,
-			metadata: {
-				...metadataWithoutCityId,
-				activeCityName: 'Harbor City'
-			}
-		} as unknown as SaveRecord;
-		const snapshot = {
-			schemaVersion: 7,
-			autoSave: null,
-			manualSlots: [v7Record]
-		};
-
-		const validated = validateSaveStoreSnapshot(snapshot);
-		expect(validated.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
-		expect(validated.manualSlots[0]?.metadata.activeCityId).toBe('harbor-city');
-	});
-
-	test('v8 migration converts a string store location into a structured StoreLocation', () => {
-		// v8→v9: Store.location changed from a free-form English string to a
-		// structured { neighborhoodId, x, y } object. The neighborhood is
-		// looked up from the saved city tile matching the store's tileId.
-		expect.assertions(3);
-		const baseRecord = createLegacyV12SaveRecord();
-		const footprintTiles = createFixtureRetailCity().tiles.map((tile) => ({
-			...tile,
-			demand: 50,
-			rent: 40,
-			footTraffic: 60,
-			customerFit: 70,
-			locked: false
-		}));
-		const v8Record = {
-			...baseRecord,
-			schemaVersion: 8 as unknown as typeof SAVE_SCHEMA_VERSION,
-			game: {
-				...baseRecord.game,
-				cities: [
-					{
-						...baseRecord.game.cities[0]!,
-						width: 3,
-						height: 3,
-						tiles: footprintTiles
-					}
-				],
-				stores: [
-					{
-						...baseRecord.game.stores[0]!,
-						location: 'Downtown (1, 1)' as unknown as GameState['stores'][number]['location']
-					}
-				]
-			}
-		} as unknown as SaveRecord;
-
-		const validated = validateSaveRecord(v8Record);
-		expect(validated.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
-		const store = validated.game.stores[0]!;
-		expect(store.location).toEqual({ neighborhoodId: 'downtown', x: 1, y: 1 });
-		expect(typeof store.location).toBe('object');
-	});
-
-	test('v8 migration defaults to downtown when the saved tile is missing from the city', () => {
-		// When the store's tileId doesn't match any tile in the city (e.g. the
-		// city was regenerated), the migration falls back to 'downtown' and
-		// copies mapX/mapY from the store record.
-		expect.assertions(1);
-		const baseRecord = createLegacyV12SaveRecord();
-		const v8Record = {
-			...baseRecord,
-			schemaVersion: 8 as unknown as typeof SAVE_SCHEMA_VERSION,
-			game: {
-				...baseRecord.game,
-				cities: [
-					{
-						...baseRecord.game.cities[0]!,
-						tiles: []
-					}
-				],
-				stores: [
-					{
-						...baseRecord.game.stores[0]!,
-						location: 'Old Town (3, 4)' as unknown as GameState['stores'][number]['location'],
-						mapX: 3,
-						mapY: 4
-					}
-				]
-			}
-		} as unknown as SaveRecord;
-
-		const migrated = migrateSavedGame(v8Record.game, 8) as GameState;
-		expect(migrated.stores[0]!.location).toEqual({
-			neighborhoodId: 'downtown',
-			x: 3,
-			y: 4
-		});
-	});
-
-	test('v8 migration defaults coordinates to 0 when mapX/mapY are not numbers', () => {
-		// The migration defaults non-number mapX/mapY to 0 in the location
-		// object. Validation subsequently rejects the corrupt store record
-		// (mapX must be finite), but the migration line still runs.
-		expect.assertions(1);
-		const baseRecord = createLegacyV12SaveRecord();
-		const v8Record = {
-			...baseRecord,
-			schemaVersion: 8 as unknown as typeof SAVE_SCHEMA_VERSION,
-			game: {
-				...baseRecord.game,
-				cities: [{ ...baseRecord.game.cities[0]!, tiles: [] }],
-				stores: [
-					{
-						...baseRecord.game.stores[0]!,
-						location: 'Downtown' as unknown as GameState['stores'][number]['location'],
-						mapX: 'bad' as unknown as number,
-						mapY: 'bad' as unknown as number
-					}
-				]
-			}
-		} as unknown as SaveRecord;
-
-		expect(() => validateSaveRecord(v8Record)).toThrow(SaveDataError);
-	});
-
-	test('v8 migration skips a store whose location is already structured', () => {
-		// A store with a non-string location is left untouched — the migration
-		// only transforms string locations.
-		expect.assertions(1);
-		const baseRecord = createLegacyV12SaveRecord();
-		const v8Record = {
-			...baseRecord,
-			schemaVersion: 8 as unknown as typeof SAVE_SCHEMA_VERSION,
-			game: {
-				...baseRecord.game,
-				cities: [{ ...baseRecord.game.cities[0]!, tiles: [] }],
-				stores: [
-					{
-						...baseRecord.game.stores[0]!,
-						location: { neighborhoodId: 'mall', x: 5, y: 6 }
-					}
-				]
-			}
-		} as unknown as SaveRecord;
-
-		const migrated = migrateSavedGame(v8Record.game, 8) as GameState;
-		expect(migrated.stores[0]!.location).toEqual({
-			neighborhoodId: 'mall',
-			x: 5,
-			y: 6
-		});
-	});
-
-	test('v8 migration handles a city with non-array tiles by defaulting to downtown', () => {
-		// When the matching city's tiles field is not an array, the migration
-		// breaks out of the loop and defaults neighborhoodId to 'downtown'.
-		// Validation subsequently rejects the corrupt city, but the migration
-		// branch still runs.
-		expect.assertions(1);
-		const baseRecord = createLegacyV12SaveRecord();
-		const v8Record = {
-			...baseRecord,
-			schemaVersion: 8 as unknown as typeof SAVE_SCHEMA_VERSION,
-			game: {
-				...baseRecord.game,
-				cities: [
-					{
-						...baseRecord.game.cities[0]!,
-						tiles: null as unknown as GameState['cities'][number]['tiles']
-					}
-				],
-				stores: [
-					{
-						...baseRecord.game.stores[0]!,
-						location: 'Downtown (1, 1)' as unknown as GameState['stores'][number]['location']
-					}
-				]
-			}
-		} as unknown as SaveRecord;
-
-		expect(() => validateSaveRecord(v8Record)).toThrow(SaveDataError);
-	});
-
-	test('v8 migration skips non-object cities in the cities array', () => {
-		// A non-object city entry is skipped via `continue` in the migration
-		// loop; the store defaults to 'downtown'. Validation rejects the
-		// corrupt city, but the migration branch still runs.
-		expect.assertions(1);
-		const baseRecord = createLegacyV12SaveRecord();
-		const v8Record = {
-			...baseRecord,
-			schemaVersion: 8 as unknown as typeof SAVE_SCHEMA_VERSION,
-			game: {
-				...baseRecord.game,
-				cities: [null as unknown as GameState['cities'][number]],
-				stores: [
-					{
-						...baseRecord.game.stores[0]!,
-						location: 'Downtown (1, 1)' as unknown as GameState['stores'][number]['location']
-					}
-				]
-			}
-		} as unknown as SaveRecord;
-
-		expect(() => validateSaveRecord(v8Record)).toThrow(SaveDataError);
 	});
 
 	test('validateSavedDecisionContext rejects an unknown context code', () => {
@@ -6943,145 +5040,6 @@ describe('saveCodec', () => {
 		expect(() => validateSaveRecord(record)).not.toThrow();
 	});
 
-	test('v5 migration is a no-op when the reports field is not an array', () => {
-		expect.assertions(1);
-		const record = createV5Record({
-			game: { reports: 'not-an-array' as unknown as GameState['reports'] }
-		});
-
-		// The migration should leave the non-array reports untouched so validation
-		// rejects it, rather than crashing or coercing.
-		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
-	});
-
-	test('v5 migration is a no-op when a report has no warnings array', () => {
-		// migrateV5StoreReport returns the report untouched when warnings is not
-		// an array — it only clears array-valued warnings.
-		expect.assertions(1);
-		const storeReport = {
-			...createDailyStoreReport(),
-			warnings: 'not-an-array'
-		} as unknown as DailyStoreReport;
-		const report = createDailyReport({ storeReports: [storeReport] });
-		const record = createV5Record({ game: { reports: [report] } });
-
-		// Validation will reject the non-array warnings, proving the migration
-		// did not coerce it.
-		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
-	});
-
-	test('v6 migration is a no-op when the decisions field is not an array', () => {
-		expect.assertions(1);
-		const record = createV6Record({
-			game: { decisions: 'not-an-array' as unknown as GameState['decisions'] }
-		});
-
-		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
-	});
-
-	test('v6 migration is a no-op when no string-valued decision contexts exist', () => {
-		// When all decision contexts are already structured objects, the v6
-		// filter removes nothing and the game is returned untouched.
-		expect.assertions(1);
-		const structuredDecision = {
-			id: 'expansion-cash-blocked-1',
-			title: 'Expansion delayed',
-			context: { code: 'expansionCashBlocked', cash: 15000 },
-			expiresOnDay: 3,
-			options: [{ id: 'acknowledge', label: 'Acknowledge', description: '...', effects: {} }]
-		} as unknown as GameState['decisions'][number];
-		const record = createV6Record({ game: { decisions: [structuredDecision] } });
-
-		// The no-op path returns the game unchanged; validation succeeds.
-		expect(() => validateSaveRecord(record)).not.toThrow();
-	});
-
-	test('v6 migration is a no-op when all decisions are non-objects', () => {
-		// Non-object decisions are kept (return true in the filter) so the
-		// filter removes nothing and the game is returned untouched.
-		expect.assertions(1);
-		const record = createV6Record({
-			game: {
-				decisions: ['not-a-decision'] as unknown as GameState['decisions']
-			}
-		});
-
-		// Validation will reject the non-object decision, proving the migration
-		// did not drop or transform it.
-		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
-	});
-
-	test('v9 migration adds rails, inventories, and report rail fields', () => {
-		// v9→v10: rail transport. A genuine v9 payload predates
-		// IndustryCity.rails, IndustrialBuilding.inventory, and
-		// DailyProductionReport.railShipments/railUsage entirely — the
-		// migration must add them rather than assume they already exist.
-		expect.assertions(5);
-		const game = createGame({
-			industrialBuildings: [createIndustrialBuilding()],
-			reports: [createDailyReport()]
-		});
-		const v9Game = stripRailFields(game);
-		const record = {
-			...createLegacyV12SaveRecord(),
-			schemaVersion: 9 as unknown as typeof SAVE_SCHEMA_VERSION,
-			game: toLegacyV12WarehouseWireGame(v9Game as GameState)
-		};
-
-		const validated = validateSaveRecord(record);
-		expect(validated.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
-		expect(validated.game.industryCities[0]!.rails).toEqual([]);
-		expect(
-			validated.game.industrialBuildings.every((building) => typeof building.inventory === 'object')
-		).toBe(true);
-		expect(
-			validated.game.reports.every((report) => Array.isArray(report.productionReport.railShipments))
-		).toBe(true);
-		expect(
-			validated.game.reports.every(
-				(report) =>
-					typeof report.productionReport.railUsage === 'object' &&
-					report.productionReport.railUsage !== null &&
-					Object.keys(report.productionReport.railUsage).length === 0
-			)
-		).toBe(true);
-	});
-
-	test('v9 migration synthesizes push-warehouse shipments from produced movements', () => {
-		// Pre-rail, every produced movement flowed directly into the
-		// warehouse. The post-rail product-chain graph derives the
-		// warehouse in-edge from push-warehouse rail shipments, so the
-		// migration must synthesize one per produced movement or
-		// historical reports lose their warehouse delivery edges.
-		expect.assertions(3);
-		const report = createDailyReport({
-			productionReport: createDailyProductionReport({
-				produced: [
-					{ cityId: 'industry-city', materialId: 'grain', quantity: 5, value: 15, source: 'local' },
-					{ cityId: 'industry-city', materialId: 'flour', quantity: 3, value: 9, source: 'local' }
-				]
-			})
-		});
-		const game = createGame({ reports: [report] });
-		const v9Game = stripRailFields(game);
-		const record = {
-			...createLegacyV12SaveRecord(),
-			schemaVersion: 9 as unknown as typeof SAVE_SCHEMA_VERSION,
-			game: toLegacyV12WarehouseWireGame(v9Game as GameState)
-		};
-
-		const validated = validateSaveRecord(record);
-		const migrated = validated.game.reports[0]!.productionReport;
-		expect(migrated.railShipments).toHaveLength(2);
-		expect(migrated.railShipments.every((shipment) => shipment.kind === 'push-warehouse')).toBe(
-			true
-		);
-		expect(migrated.railShipments.map((shipment) => shipment.materialId)).toEqual([
-			'grain',
-			'flour'
-		]);
-	});
-
 	test('accepts stalled status and rail movement source at v10', () => {
 		expect.assertions(2);
 		const building = createIndustrialBuilding({ status: 'stalled' });
@@ -7264,7 +5222,7 @@ describe('saveCodec', () => {
 	});
 
 	test('round-trips a populated rails array at the maximum rail level', () => {
-		// Positive round-trip: the v9 migration test only checks rails: [], and
+		// Positive round-trip: the default fixture only checks rails: [], and
 		// the rejection tests cover invalid cells. This pins that a populated
 		// rails array with cells at RAIL_MAX_LEVEL (5) survives a full
 		// clone → validate → decode cycle intact.
@@ -7632,31 +5590,6 @@ describe('saveCodec', () => {
 	});
 
 	describe('saveCodec coverage gap fills', () => {
-		test('v4 migration throws SaveDataError when a boutique product categoryId is a number', () => {
-			expect.assertions(2);
-			const baseStore = createGame().stores[0]!;
-			const game = {
-				...createGame(),
-				stores: [
-					{
-						...baseStore,
-						archetypeId: 'boutique',
-						products: [
-							{
-								...baseStore.products[0]!,
-								categoryId: 123 as unknown as string
-							}
-						]
-					}
-				]
-			};
-
-			expect(() => migrateSavedGame(game, 4)).toThrow(SaveDataError);
-			expect(() => migrateSavedGame(game, 4)).toThrow(
-				'Saved v4 product categoryId must be a string'
-			);
-		});
-
 		test('strict validation rejects save data exceeding MAX_OWN_DATA_DEPTH with a 513-deep extra', () => {
 			expect.assertions(2);
 			const deepExtra = createDeepEnumerableExtra(513);
@@ -7779,52 +5712,6 @@ describe('saveCodec', () => {
 			expect(() => validateCurrentGameState(game)).toThrow(
 				'uses the legacy 28x24 sandbox city size'
 			);
-		});
-
-		test('v4 migration is a no-op for a non-boutique store archetype', () => {
-			expect.assertions(1);
-			const game = createGame();
-			game.stores = [{ ...game.stores[0]!, archetypeId: 'convenience' }];
-
-			expect(() => migrateSavedGame(toLegacyV12WarehouseWireGame(game), 4)).not.toThrow();
-		});
-
-		test('v4 migration is a no-op for a boutique store with non-array products', () => {
-			expect.assertions(1);
-			const game = createGame();
-			game.stores = [
-				{
-					...game.stores[0]!,
-					archetypeId: 'boutique',
-					products: 'not-an-array' as unknown as GameState['stores'][number]['products']
-				}
-			];
-
-			expect(() => migrateSavedGame(toLegacyV12WarehouseWireGame(game), 4)).not.toThrow();
-		});
-
-		test('v5 migration leaves a non-object game untouched then fails validation', () => {
-			expect.assertions(2);
-			const record: SaveRecord = {
-				...createManualSaveRecord(),
-				schemaVersion: 5 as unknown as typeof SAVE_SCHEMA_VERSION,
-				game: null as unknown as GameState
-			};
-
-			expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
-			expect(() => validateSaveRecord(record)).toThrow('Saved game must be an object');
-		});
-
-		test('v6 migration leaves a non-object game untouched then fails validation', () => {
-			expect.assertions(2);
-			const record: SaveRecord = {
-				...createManualSaveRecord(),
-				schemaVersion: 6 as unknown as typeof SAVE_SCHEMA_VERSION,
-				game: null as unknown as GameState
-			};
-
-			expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
-			expect(() => validateSaveRecord(record)).toThrow('Saved game must be an object');
 		});
 
 		test('normalizeSandboxStoreStockHealth leaves a store with non-array products for strict validation', () => {
@@ -7972,580 +5859,9 @@ describe('saveCodec', () => {
 		});
 	});
 
-	describe('v10 strategic decision finance-effect migration edge cases', () => {
-		test('leaves non-object decisions untouched during v10 finance-effect migration', () => {
-			const record = createV10Record({ debt: 2_000, day: 12 });
-			const decisions = [
-				null,
-				'string-decision',
-				42,
-				{ id: 'unknown-id', options: [] },
-				{ id: 'cash-pressure' }
-			];
-			(record.game as unknown as Record<string, unknown>).decisions = decisions;
-
-			// The v10 step must return each malformed decision element by reference.
-			// The full migrateSavedGame chain cannot be used here because the v11
-			// step rejects non-object decisions before returning, so the early-return
-			// branch is only observable by running migrateV10Game in isolation.
-			const migrated = migrateV10Game(record.game) as Record<string, unknown>;
-			expect(migrated.decisions).toEqual(decisions);
-
-			expect(() => validateSaveRecord(record)).toThrow(
-				/Saved v11 decisions\[0\] must be an object/
-			);
-		});
-
-		test('leaves cash-pressure options untouched when cash does not match legacy value', () => {
-			const record = createV10Record({ debt: 2_000, day: 12 });
-			const options = [
-				{
-					id: 'short-loan',
-					label: 'Short loan',
-					description: 'Add emergency working capital.',
-					effects: { cash: 99_999, profit: -4, marketPosition: -1 }
-				},
-				{
-					id: 'cut-costs',
-					label: 'Cut costs',
-					description: 'Trim discretionary spend.',
-					effects: { cash: 5_500, customerSatisfaction: -4, staffMorale: -5, stockHealth: -8 }
-				},
-				{
-					id: 'hold-course',
-					label: 'Hold course',
-					description: 'Avoid reactive changes.',
-					effects: { profit: 1, staffMorale: -2 }
-				}
-			];
-			(record.game as unknown as Record<string, unknown>).decisions = [
-				{
-					id: 'cash-pressure',
-					title: 'Cash pressure',
-					context: { code: 'cashPressure' },
-					expiresOnDay: 14,
-					options
-				}
-			];
-
-			// cash (99_999) does not match the legacy 12_000 value, so the borrow
-			// option must be left untouched rather than rewritten to add a finance field.
-			const migrated = migrateV10Game(record.game) as Record<string, unknown>;
-			const migratedDecisions = migrated.decisions as Array<Record<string, unknown>>;
-			expect(migratedDecisions[0]!.options).toEqual(options);
-
-			expect(() => validateSaveRecord(record)).toThrow(
-				/Saved v11 decisions\[0\] options\[0\] effects contains an unknown field: cash/
-			);
-		});
-
-		test('leaves borrow option untouched when finance field already exists', () => {
-			const record = createV10Record({ debt: 2_000, day: 12 });
-			const shortLoanEffects = {
-				finance: { kind: 'borrow', purpose: 'emergency', amount: 12_000, termDays: 56 },
-				cash: 12_000,
-				profit: -4,
-				marketPosition: -1
-			};
-			(record.game as unknown as Record<string, unknown>).decisions = [
-				{
-					id: 'cash-pressure',
-					title: 'Cash pressure',
-					context: { code: 'cashPressure' },
-					expiresOnDay: 14,
-					options: [
-						{
-							id: 'short-loan',
-							label: 'Short loan',
-							description: 'Add emergency working capital.',
-							effects: shortLoanEffects
-						},
-						{
-							id: 'cut-costs',
-							label: 'Cut costs',
-							description: 'Trim discretionary spend.',
-							effects: { cash: 5_500, customerSatisfaction: -4, staffMorale: -5, stockHealth: -8 }
-						},
-						{
-							id: 'hold-course',
-							label: 'Hold course',
-							description: 'Avoid reactive changes.',
-							effects: { profit: 1, staffMorale: -2 }
-						}
-					]
-				}
-			];
-
-			// A finance field already exists, so the option must be left untouched
-			// rather than having a second finance field layered on top.
-			const migrated = migrateV10Game(record.game) as Record<string, unknown>;
-			const migratedDecisions = migrated.decisions as Array<Record<string, unknown>>;
-			const migratedOptions = migratedDecisions[0]!.options as Array<Record<string, unknown>>;
-			expect(migratedOptions[0]!.effects).toEqual(shortLoanEffects);
-
-			expect(() => validateSaveRecord(record)).toThrow(
-				/Saved v11 decisions\[0\] options\[0\] effects contains an unknown field: cash/
-			);
-		});
-
-		test('leaves non-object options untouched during v10 cash-borrow migration', () => {
-			const record = createV10Record({ debt: 2_000, day: 12 });
-			const options = [
-				null,
-				'string-option',
-				{
-					id: 'bulk-discount',
-					label: 'Bulk',
-					description: 'd',
-					effects: { cash: -2_500, profit: 3, stockHealth: 6 }
-				}
-			];
-			(record.game as unknown as Record<string, unknown>).decisions = [
-				{
-					id: 'supplier-terms',
-					title: 'Supplier terms',
-					context: { code: 'supplierTerms' },
-					expiresOnDay: 14,
-					options
-				}
-			];
-
-			// Non-object options and options whose id is not the borrow option must
-			// be returned untouched by the per-option cash-borrow migration.
-			const migrated = migrateV10Game(record.game) as Record<string, unknown>;
-			const migratedDecisions = migrated.decisions as Array<Record<string, unknown>>;
-			expect(migratedDecisions[0]!.options).toEqual(options);
-
-			expect(() => validateSaveRecord(record)).toThrow(
-				/Saved v11 decisions\[0\] options must contain exactly: negotiate-credit, bulk-discount/
-			);
-		});
-
-		test('leaves non-object reports untouched during v10 report migration', () => {
-			const record = createV10Record({ debt: 2_000, day: 12 });
-			const reports = [null, 'string-report', 42];
-			(record.game as unknown as Record<string, unknown>).reports = reports;
-
-			// Non-object reports must be returned untouched by the per-report
-			// v10 report migration; only object reports with numeric finance fields
-			// are rewritten.
-			const migrated = migrateV10Game(record.game) as Record<string, unknown>;
-			expect(migrated.reports).toEqual(reports);
-
-			expect(() => validateSaveRecord(record)).toThrow(/Saved v11 reports\[0\] must be an object/);
-		});
-	});
-
-	describe('v11 strategic decision migration validation errors', () => {
-		function v11StrategicDecision(
-			overrides: Record<string, unknown> = {}
-		): Record<string, unknown> {
-			return {
-				id: 'supplier-terms',
-				title: 'Supplier terms',
-				context: { code: 'supplierTerms' },
-				expiresOnDay: 14,
-				options: [
-					{
-						id: 'negotiate-credit',
-						label: 'Negotiate credit',
-						description: 'Stretch payment timing.',
-						effects: {
-							finance: { kind: 'borrow', purpose: 'supplierCredit', amount: 4_000, termDays: 28 },
-							profit: -2
-						}
-					},
-					{
-						id: 'bulk-discount',
-						label: 'Bulk discount',
-						description: 'Commit to larger orders.',
-						effects: { cash: -2_500, profit: 3, stockHealth: 6 }
-					}
-				],
-				...overrides
-			};
-		}
-
-		test('rejects a strategic decision with a mismatched context code', () => {
-			const bad = v11StrategicDecision({ context: { code: 'cashPressure' } });
-			expect(() => validateSaveRecord(createV11Record([bad]))).toThrow(
-				/context code must be supplierTerms/
-			);
-		});
-
-		test('rejects a strategic decision whose expiry implies a negative generated day', () => {
-			const bad = v11StrategicDecision({ expiresOnDay: 1 });
-			expect(() => validateSaveRecord(createV11Record([bad]))).toThrow(
-				/expiry does not permit a non-negative generated day/
-			);
-		});
-
-		test('rejects a strategic decision with the wrong option count', () => {
-			const bad = v11StrategicDecision({
-				options: [
-					{
-						id: 'negotiate-credit',
-						label: 'Negotiate credit',
-						description: 'd',
-						effects: {
-							finance: { kind: 'borrow', purpose: 'supplierCredit', amount: 4_000, termDays: 28 },
-							profit: -2
-						}
-					}
-				]
-			});
-			expect(() => validateSaveRecord(createV11Record([bad]))).toThrow(
-				/options must contain exactly/
-			);
-		});
-
-		test('rejects a strategic decision with a wrong option id at a given position', () => {
-			const bad = v11StrategicDecision({
-				options: [
-					{
-						id: 'wrong-id',
-						label: 'Negotiate credit',
-						description: 'd',
-						effects: {
-							finance: { kind: 'borrow', purpose: 'supplierCredit', amount: 4_000, termDays: 28 },
-							profit: -2
-						}
-					},
-					{
-						id: 'bulk-discount',
-						label: 'Bulk discount',
-						description: 'd',
-						effects: { cash: -2_500, profit: 3, stockHealth: 6 }
-					}
-				]
-			});
-			expect(() => validateSaveRecord(createV11Record([bad]))).toThrow(
-				/id must be negotiate-credit/
-			);
-		});
-
-		test('rejects cash-pressure short-loan with wrong finance shape', () => {
-			const bad: Record<string, unknown> = {
-				id: 'cash-pressure',
-				title: 'Cash pressure',
-				context: { code: 'cashPressure' },
-				expiresOnDay: 14,
-				options: [
-					{
-						id: 'short-loan',
-						label: 'Short loan',
-						description: 'd',
-						effects: {
-							finance: { kind: 'borrow', purpose: 'emergency', amount: 12_000, termDays: 28 },
-							profit: -4,
-							marketPosition: -1
-						}
-					},
-					{
-						id: 'cut-costs',
-						label: 'Cut costs',
-						description: 'd',
-						effects: { cash: 5_500, customerSatisfaction: -4, staffMorale: -5, stockHealth: -8 }
-					},
-					{
-						id: 'hold-course',
-						label: 'Hold course',
-						description: 'd',
-						effects: { profit: 1, staffMorale: -2 }
-					}
-				]
-			};
-			expect(() => validateSaveRecord(createV11Record([bad]))).toThrow(
-				/finance must be a 56-day emergency borrow/
-			);
-		});
-
-		test('rejects cash-pressure short-loan with out-of-range amount', () => {
-			const bad: Record<string, unknown> = {
-				id: 'cash-pressure',
-				title: 'Cash pressure',
-				context: { code: 'cashPressure' },
-				expiresOnDay: 14,
-				options: [
-					{
-						id: 'short-loan',
-						label: 'Short loan',
-						description: 'd',
-						effects: {
-							finance: { kind: 'borrow', purpose: 'emergency', amount: 3_000, termDays: 56 },
-							profit: -4,
-							marketPosition: -1
-						}
-					},
-					{
-						id: 'cut-costs',
-						label: 'Cut costs',
-						description: 'd',
-						effects: { cash: 5_500, customerSatisfaction: -4, staffMorale: -5, stockHealth: -8 }
-					},
-					{
-						id: 'hold-course',
-						label: 'Hold course',
-						description: 'd',
-						effects: { profit: 1, staffMorale: -2 }
-					}
-				]
-			};
-			expect(() => validateSaveRecord(createV11Record([bad]))).toThrow(
-				/finance amount must be a generated emergency principal/
-			);
-		});
-
-		test('rejects supplier-terms negotiate-credit with wrong finance shape', () => {
-			const bad = v11StrategicDecision({
-				options: [
-					{
-						id: 'negotiate-credit',
-						label: 'Negotiate credit',
-						description: 'Stretch payment timing.',
-						effects: {
-							finance: { kind: 'borrow', purpose: 'emergency', amount: 4_000, termDays: 28 },
-							profit: -2
-						}
-					},
-					{
-						id: 'bulk-discount',
-						label: 'Bulk discount',
-						description: 'Commit to larger orders.',
-						effects: { cash: -2_500, profit: 3, stockHealth: 6 }
-					}
-				]
-			});
-			expect(() => validateSaveRecord(createV11Record([bad]))).toThrow(
-				/finance must be the fixed 28-day supplier credit/
-			);
-		});
-
-		test('rejects a strategic decision with wrong effect value', () => {
-			const bad = v11StrategicDecision({
-				options: [
-					{
-						id: 'negotiate-credit',
-						label: 'Negotiate credit',
-						description: 'Stretch payment timing.',
-						effects: {
-							finance: { kind: 'borrow', purpose: 'supplierCredit', amount: 4_000, termDays: 28 },
-							profit: -99
-						}
-					},
-					{
-						id: 'bulk-discount',
-						label: 'Bulk discount',
-						description: 'Commit to larger orders.',
-						effects: { cash: -2_500, profit: 3, stockHealth: 6 }
-					}
-				]
-			});
-			expect(() => validateSaveRecord(createV11Record([bad]))).toThrow(/profit must be -2/);
-		});
-	});
-
-	describe('v12 migration defensive paths', () => {
-		test('rejects a v12 game whose warehouse materials is not an object', () => {
-			const record = createV12MultiCityRecord({ water: 3 });
-			(record.game as unknown as Record<string, unknown>).warehouse = {
-				materials: 'not-an-object'
-			};
-
-			expectSaveRecordErrorCode(record, 'invariant-city-inventory');
-		});
-
-		test('rejects a v12 game whose warehouse is null', () => {
-			const record = createV12MultiCityRecord({ water: 3 });
-			(record.game as unknown as Record<string, unknown>).warehouse = null;
-
-			expectSaveRecordErrorCode(record, 'invariant-city-inventory');
-		});
-
-		test('rejects as corrupt when the canonical world-city tie-breaker finds no eligible active industry city', () => {
-			// Branch: canonical world-city order tie-breaker when no eligible city is the active industry city.
-			const record = createV12MultiCityRecord({ water: 3 });
-			const rawGame = record.game as unknown as Record<string, unknown>;
-			rawGame.activeIndustryCityId = 'quarry-works';
-
-			expectSaveRecordErrorCode(record, 'corrupt');
-		});
-
-		test('rejects as invariant-report-attribution when a v12 store report is non-object', () => {
-			// Branch: non-object store report during v12 store-report migration.
-			const record = createV12MultiCityRecord({ water: 3 });
-			record.game.reports = [createLegacyV12Report(record.game as unknown as V12GameFixture)];
-			const rawReport = record.game.reports[0] as unknown as Record<string, unknown>;
-			rawReport.storeReports = ['not-an-object', { storeId: 'store-1', productReports: [] }];
-
-			expectSaveRecordErrorCode(record, 'invariant-report-attribution');
-		});
-
-		test('rejects as invariant-report-attribution when a v12 product report is non-object', () => {
-			// Branch: non-object product report during v12 store-report migration.
-			const record = createV12MultiCityRecord({ water: 3 });
-			record.game.reports = [createLegacyV12Report(record.game as unknown as V12GameFixture)];
-			const rawReport = record.game.reports[0] as unknown as Record<string, unknown>;
-			const storeReports = rawReport.storeReports as Array<Record<string, unknown>>;
-			storeReports[0] = {
-				...storeReports[0],
-				productReports: ['not-an-object']
-			};
-
-			expectSaveRecordErrorCode(record, 'invariant-report-attribution');
-		});
-
-		test('rejects as corrupt when a v12 rail shipment is non-object', () => {
-			// Branch: non-object rail shipment during v12 rail-shipment migration.
-			const record = createV12MultiCityRecord({ water: 3 });
-			record.game.reports = [createLegacyV12Report(record.game as unknown as V12GameFixture)];
-			const rawReport = record.game.reports[0] as unknown as Record<string, unknown>;
-			const productionReport = rawReport.productionReport as Record<string, unknown>;
-			(productionReport.railShipments as unknown[])[0] = 'not-an-object';
-
-			expectSaveRecordErrorCode(record, 'corrupt');
-		});
-
-		test('rejects a v12 rail shipment with conflicting recoverable industrial-city references', () => {
-			const record = createV12MultiCityRecord({ water: 3 });
-			record.game.reports = [createLegacyV12Report(record.game as unknown as V12GameFixture)];
-			const rawReport = record.game.reports[0] as unknown as Record<string, unknown>;
-			const productionReport = rawReport.productionReport as Record<string, unknown>;
-			const buildings = record.game.industrialBuildings;
-			const industryBuilding = buildings.find((b) => b.cityId === 'industry-city')!;
-			const breadbasketBuilding = buildings.find((b) => b.cityId === 'breadbasket-basin')!;
-			(productionReport.railShipments as Array<Record<string, unknown>>)[0] = {
-				materialId: 'water',
-				quantity: 1,
-				value: 1,
-				kind: 'push-warehouse',
-				fromId: industryBuilding.id,
-				toId: breadbasketBuilding.id
-			};
-
-			expectSaveRecordErrorCode(record, 'invariant-report-attribution');
-		});
-
-		test('rejects v12 shop imports that cannot be attributed without recoverable store report evidence', () => {
-			const record = createV12MultiCityRecord({ water: 3 });
-			record.game.reports = [createLegacyV12Report(record.game as unknown as V12GameFixture)];
-			const rawReport = record.game.reports[0] as unknown as Record<string, unknown>;
-			const storeReports = rawReport.storeReports as unknown[];
-			storeReports[0] = 'not-an-object';
-
-			expectSaveRecordErrorCode(record, 'invariant-report-attribution');
-		});
-
-		test('rejects as corrupt when v12 shop imports are empty with no recoverable store report evidence', () => {
-			// Branch: empty v12 shop imports when no recoverable store report evidence exists.
-			const record = createV12MultiCityRecord({ water: 3 });
-			record.game.reports = [createLegacyV12Report(record.game as unknown as V12GameFixture)];
-			const rawReport = record.game.reports[0] as unknown as Record<string, unknown>;
-			const storeReports = rawReport.storeReports as unknown[];
-			storeReports[0] = 'not-an-object';
-			const productionReport = rawReport.productionReport as Record<string, unknown>;
-			productionReport.shopImports = [];
-
-			expectSaveRecordErrorCode(record, 'corrupt');
-		});
-
-		test('synthesizes shop imports from canonical evidence when legacy shop imports are empty', () => {
-			const record = createV12RecordWithSwappedEqualShopImports();
-			const rawReport = record.game.reports[0] as unknown as Record<string, unknown>;
-			const productionReport = rawReport.productionReport as Record<string, unknown>;
-			productionReport.shopImports = [];
-
-			const shopImports = validateSaveRecord(record).game.reports[0]!.productionReport.shopImports;
-
-			expect(shopImports).toHaveLength(2);
-			expect(shopImports.every((entry) => typeof entry.cityId === 'string')).toBe(true);
-		});
-
-		test('rejects a non-object v12 shop import movement', () => {
-			const record = createV12RecordWithSwappedEqualShopImports();
-			const rawReport = record.game.reports[0] as unknown as Record<string, unknown>;
-			const productionReport = rawReport.productionReport as Record<string, unknown>;
-			(productionReport.shopImports as Array<unknown>)[0] = 'not-an-object';
-
-			expectSaveRecordErrorCode(record, 'invariant-report-attribution');
-		});
-
-		test('rejects a v12 shop import with an unknown material that cannot be reconciled', () => {
-			const record = createV12RecordWithSwappedEqualShopImports();
-			const rawReport = record.game.reports[0] as unknown as Record<string, unknown>;
-			const productionReport = rawReport.productionReport as Record<string, unknown>;
-			(productionReport.shopImports as Array<Record<string, unknown>>)[0] = {
-				...(productionReport.shopImports as Array<Record<string, unknown>>)[0]!,
-				materialId: 'unknown-material'
-			};
-
-			expectSaveRecordErrorCode(record, 'invariant-report-attribution');
-		});
-
-		test('rejects v12 retail import evidence with a non-object product report', () => {
-			const record = createV12RecordWithSwappedEqualShopImports();
-			const rawReport = record.game.reports[0] as unknown as Record<string, unknown>;
-			const storeReports = rawReport.storeReports as Array<Record<string, unknown>>;
-			(storeReports[0]!.productReports as Array<unknown>)[0] = 'not-an-object';
-
-			expectSaveRecordErrorCode(record, 'invariant-report-attribution');
-		});
-
-		test('rejects v12 retail import evidence with a non-string categoryId', () => {
-			const record = createV12RecordWithSwappedEqualShopImports();
-			const rawReport = record.game.reports[0] as unknown as Record<string, unknown>;
-			const storeReports = rawReport.storeReports as Array<Record<string, unknown>>;
-			const product = (storeReports[0]!.productReports as Array<Record<string, unknown>>)[0]!;
-			product.categoryId = 123;
-
-			expectSaveRecordErrorCode(record, 'invariant-report-attribution');
-		});
-
-		test('rejects v12 retail import evidence with a raw material categoryId', () => {
-			const record = createV12RecordWithSwappedEqualShopImports();
-			const rawReport = record.game.reports[0] as unknown as Record<string, unknown>;
-			const storeReports = rawReport.storeReports as Array<Record<string, unknown>>;
-			const product = (storeReports[0]!.productReports as Array<Record<string, unknown>>)[0]!;
-			product.categoryId = 'grain';
-
-			expectSaveRecordErrorCode(record, 'invariant-report-attribution');
-		});
-
-		test('rejects as corrupt when legacy production-close city inventories have non-safe-integer aggregate fields', () => {
-			// Branch: legacy production-close city inventories when aggregate fields are not safe integers.
-			const record = createV12MultiCityRecord({ water: 3 });
-			record.game.reports = [createLegacyV12Report(record.game as unknown as V12GameFixture)];
-			const rawReport = record.game.reports[0] as unknown as Record<string, unknown>;
-			const productionReport = rawReport.productionReport as Record<string, unknown>;
-			productionReport.warehouseCapacity = 'not-a-number';
-
-			expectSaveRecordErrorCode(record, 'corrupt');
-		});
-
-		test('rejects a nonstarter primary city when the starter industry city does not support city inventory', () => {
-			const record = createV12MultiCityRecord({ water: 3 });
-			const legacyReport = createLegacyV12Report(record.game as unknown as V12GameFixture);
-			const rawGame = record.game as unknown as Record<string, unknown>;
-			rawGame.activeIndustryCityId = 'breadbasket-basin';
-			rawGame.industryCities = (rawGame.industryCities as Array<Record<string, unknown>>).filter(
-				(city) => city.id !== 'industry-city'
-			);
-			rawGame.industrialBuildings = (
-				rawGame.industrialBuildings as Array<Record<string, unknown>>
-			).filter((building) => building.cityId !== 'industry-city');
-			const rawWorld = rawGame.world as Record<string, unknown>;
-			rawWorld.openedCityIds = (rawWorld.openedCityIds as unknown[]).filter(
-				(id) => id !== 'industry-city'
-			);
-			rawGame.reports = [legacyReport];
-
-			expectSaveRecordErrorCode(record, 'invariant-report-attribution');
-		});
-	});
-
 	describe('current city inventory validation defensive paths', () => {
 		test('rejects a non-object city inventory entry', () => {
-			const game = createCurrentV13MultiCityGame();
+			const game = createCurrentMultiCityGame();
 
 			expectSaveRecordErrorCode(
 				createManualSaveRecord({
@@ -8559,7 +5875,7 @@ describe('saveCodec', () => {
 		});
 
 		test('rejects an empty-string city inventory cityId', () => {
-			const game = createCurrentV13MultiCityGame();
+			const game = createCurrentMultiCityGame();
 			const cityInventories = game.cityInventories.map((inventory) =>
 				inventory.cityId === 'industry-city'
 					? { ...inventory, cityId: '' as WorldCityId }
@@ -8575,7 +5891,7 @@ describe('saveCodec', () => {
 		});
 
 		test('rejects a non-array cityInventories field', () => {
-			const game = createCurrentV13MultiCityGame();
+			const game = createCurrentMultiCityGame();
 
 			expectSaveRecordErrorCode(
 				createManualSaveRecord({
@@ -8589,7 +5905,7 @@ describe('saveCodec', () => {
 		});
 
 		test('rejects an empty-string retail assignment retailCityId', () => {
-			const game = createCurrentV13MultiCityGame();
+			const game = createCurrentMultiCityGame();
 			const assignments = game.retailSupplyAssignments.map((assignment) =>
 				assignment.retailCityId === 'harbor-city'
 					? { ...assignment, retailCityId: '' as WorldCityId }
@@ -8605,7 +5921,7 @@ describe('saveCodec', () => {
 		});
 
 		test('rejects a non-array retailSupplyAssignments field', () => {
-			const game = createCurrentV13MultiCityGame();
+			const game = createCurrentMultiCityGame();
 
 			expectSaveRecordErrorCode(
 				createManualSaveRecord({
@@ -8620,7 +5936,7 @@ describe('saveCodec', () => {
 		});
 
 		test('rejects a non-object retail supply assignment entry', () => {
-			const game = createCurrentV13MultiCityGame();
+			const game = createCurrentMultiCityGame();
 
 			expectSaveRecordErrorCode(
 				createManualSaveRecord({
@@ -8637,7 +5953,7 @@ describe('saveCodec', () => {
 		});
 
 		test('rejects a non-string non-null supplyCityId', () => {
-			const game = createCurrentV13MultiCityGame();
+			const game = createCurrentMultiCityGame();
 			const assignments = game.retailSupplyAssignments.map((assignment) =>
 				assignment.retailCityId === 'harbor-city'
 					? { ...assignment, supplyCityId: 123 as unknown as WorldCityId | null }
@@ -8655,8 +5971,8 @@ describe('saveCodec', () => {
 
 	describe('current report validation defensive paths', () => {
 		test('rejects a production movement cityId referencing a known but closed industry city', () => {
-			const game = createCurrentV13MultiCityGame();
-			const report = createCurrentV13Report(game);
+			const game = createCurrentMultiCityGame();
+			const report = createCurrentReport(game);
 			const updatedReport = {
 				...report,
 				productionReport: {
@@ -8675,8 +5991,8 @@ describe('saveCodec', () => {
 		});
 
 		test('rejects a production-close summary with a non-finite capacity', () => {
-			const game = createCurrentV13MultiCityGame();
-			const report = createCurrentV13Report(game);
+			const game = createCurrentMultiCityGame();
+			const report = createCurrentReport(game);
 			const updatedReport = {
 				...report,
 				productionReport: {
@@ -8694,8 +6010,8 @@ describe('saveCodec', () => {
 		});
 
 		test('rejects a production-close summary with a negative used value', () => {
-			const game = createCurrentV13MultiCityGame();
-			const report = createCurrentV13Report(game);
+			const game = createCurrentMultiCityGame();
+			const report = createCurrentReport(game);
 			const updatedReport = {
 				...report,
 				productionReport: {
@@ -8713,8 +6029,8 @@ describe('saveCodec', () => {
 		});
 
 		test('rejects a production-close summary with an unsafe aggregate capacity', () => {
-			const game = createCurrentV13MultiCityGame();
-			const report = createCurrentV13Report(game);
+			const game = createCurrentMultiCityGame();
+			const report = createCurrentReport(game);
 			const updatedReport = {
 				...report,
 				productionReport: {
@@ -8740,8 +6056,8 @@ describe('saveCodec', () => {
 		});
 
 		test('rejects a production-close summary with an overflow cost that does not reconcile', () => {
-			const game = createCurrentV13MultiCityGame();
-			const report = createCurrentV13Report(game);
+			const game = createCurrentMultiCityGame();
+			const report = createCurrentReport(game);
 			const updatedReport = {
 				...report,
 				productionReport: {
@@ -8761,8 +6077,8 @@ describe('saveCodec', () => {
 		});
 
 		test('rejects a production-close summary whose overflow cost multiplication overflows the safe-integer range', () => {
-			const game = createCurrentV13MultiCityGame();
-			const report = createCurrentV13Report(game);
+			const game = createCurrentMultiCityGame();
+			const report = createCurrentReport(game);
 			const updatedReport: DailyReport = {
 				...report,
 				productionReport: {
@@ -8788,8 +6104,8 @@ describe('saveCodec', () => {
 		});
 
 		test('rejects duplicate city IDs in production-close summaries', () => {
-			const game = createCurrentV13MultiCityGame();
-			const report = createCurrentV13Report(game);
+			const game = createCurrentMultiCityGame();
+			const report = createCurrentReport(game);
 			const updatedReport = {
 				...report,
 				productionReport: {
@@ -8812,8 +6128,8 @@ describe('saveCodec', () => {
 		});
 
 		test('rejects noncanonical ordering in production-close summaries', () => {
-			const game = createCurrentV13MultiCityGame();
-			const report = createCurrentV13Report(game);
+			const game = createCurrentMultiCityGame();
+			const report = createCurrentReport(game);
 			const updatedReport = {
 				...report,
 				productionReport: {
@@ -8829,8 +6145,8 @@ describe('saveCodec', () => {
 		});
 
 		test('rejects a store replenishment context with an empty-string retailCityId', () => {
-			const game = createCurrentV13MultiCityGame();
-			const report = createCurrentV13Report(game);
+			const game = createCurrentMultiCityGame();
+			const report = createCurrentReport(game);
 			const storeReport = report.storeReports[0]!;
 			const updatedReport: DailyReport = {
 				...report,
@@ -8852,8 +6168,8 @@ describe('saveCodec', () => {
 		});
 
 		test('rejects a store replenishment context with a mismatched retail city kind', () => {
-			const game = createCurrentV13MultiCityGame();
-			const report = createCurrentV13Report(game);
+			const game = createCurrentMultiCityGame();
+			const report = createCurrentReport(game);
 			const storeReport = report.storeReports[0]!;
 			const updatedReport: DailyReport = {
 				...report,
@@ -8875,8 +6191,8 @@ describe('saveCodec', () => {
 		});
 
 		test('rejects local replenishment with warehouse units but no resolved supply city', () => {
-			const game = createCurrentV13MultiCityGame();
-			const report = createCurrentV13Report(game);
+			const game = createCurrentMultiCityGame();
+			const report = createCurrentReport(game);
 			const storeReport = report.storeReports[0]!;
 			const updatedReport: DailyReport = {
 				...report,
@@ -8908,8 +6224,8 @@ describe('saveCodec', () => {
 		});
 
 		test('rejects a raw-material categoryId with nonzero warehouse units', () => {
-			const game = createCurrentV13MultiCityGame();
-			const report = createCurrentV13Report(game);
+			const game = createCurrentMultiCityGame();
+			const report = createCurrentReport(game);
 			const storeReport = report.storeReports[0]!;
 			const updatedReport: DailyReport = {
 				...report,
@@ -8938,8 +6254,8 @@ describe('saveCodec', () => {
 		});
 
 		test('rejects a store report referencing an unknown storeId', () => {
-			const game = createCurrentV13MultiCityGame();
-			const report = createCurrentV13Report(game);
+			const game = createCurrentMultiCityGame();
+			const report = createCurrentReport(game);
 			const storeReport = report.storeReports[0]!;
 			const updatedReport = {
 				...report,
@@ -8958,8 +6274,8 @@ describe('saveCodec', () => {
 		});
 
 		test('rejects an unsupported replenishmentOutcome value', () => {
-			const game = createCurrentV13MultiCityGame();
-			const report = createCurrentV13Report(game);
+			const game = createCurrentMultiCityGame();
+			const report = createCurrentReport(game);
 			const storeReport = report.storeReports[0]!;
 			const updatedReport = {
 				...report,
@@ -8983,8 +6299,8 @@ describe('saveCodec', () => {
 		});
 
 		test('rejects a null replenishment context with a non-null product outcome', () => {
-			const game = createCurrentV13MultiCityGame();
-			const report = createCurrentV13Report(game);
+			const game = createCurrentMultiCityGame();
+			const report = createCurrentReport(game);
 			const storeReport = report.storeReports[0]!;
 			const updatedReport: DailyReport = {
 				...report,
@@ -9013,8 +6329,8 @@ describe('saveCodec', () => {
 		});
 
 		test('rejects a warehouseValue that overflows the safe-integer range for its material localValue', () => {
-			const game = createCurrentV13MultiCityGame();
-			const report = createCurrentV13Report(game);
+			const game = createCurrentMultiCityGame();
+			const report = createCurrentReport(game);
 			const storeReport = report.storeReports[0]!;
 			const updatedReport: DailyReport = {
 				...report,
@@ -9043,8 +6359,8 @@ describe('saveCodec', () => {
 		});
 
 		test('rejects a non-object non-null replenishment context', () => {
-			const game = createCurrentV13MultiCityGame();
-			const report = createCurrentV13Report(game);
+			const game = createCurrentMultiCityGame();
+			const report = createCurrentReport(game);
 			const storeReport = report.storeReports[0]!;
 			const updatedReport = {
 				...report,
@@ -9063,8 +6379,8 @@ describe('saveCodec', () => {
 		});
 
 		test('rejects a replenishment retailCityId that does not match its store city', () => {
-			const game = createCurrentV13MultiCityGame();
-			const report = createCurrentV13Report(game);
+			const game = createCurrentMultiCityGame();
+			const report = createCurrentReport(game);
 			const storeReport = report.storeReports[0]!;
 			const updatedReport: DailyReport = {
 				...report,
@@ -9086,8 +6402,8 @@ describe('saveCodec', () => {
 		});
 
 		test('rejects a replenishment context where resolved and configured supply city IDs differ', () => {
-			const game = createCurrentV13MultiCityGame();
-			const report = createCurrentV13Report(game);
+			const game = createCurrentMultiCityGame();
+			const report = createCurrentReport(game);
 			const storeReport = report.storeReports[0]!;
 			const updatedReport: DailyReport = {
 				...report,
@@ -9110,8 +6426,8 @@ describe('saveCodec', () => {
 		});
 
 		test('rejects a replenishment context with a resolved supply city that has no current inventory', () => {
-			const game = createCurrentV13MultiCityGame();
-			const report = createCurrentV13Report(game);
+			const game = createCurrentMultiCityGame();
+			const report = createCurrentReport(game);
 			const storeReport = report.storeReports[0]!;
 			const updatedReport: DailyReport = {
 				...report,
@@ -9144,8 +6460,8 @@ describe('saveCodec', () => {
 		});
 
 		test('rejects a replenishment context with no attempted product refill', () => {
-			const game = createCurrentV13MultiCityGame();
-			const report = createCurrentV13Report(game);
+			const game = createCurrentMultiCityGame();
+			const report = createCurrentReport(game);
 			const storeReport = report.storeReports[0]!;
 			const updatedReport = {
 				...report,
@@ -9173,13 +6489,8 @@ describe('saveCodec', () => {
 		});
 	});
 
-	describe('migration function early-return paths', () => {
-		test('migrateSavedGame passes through non-object game', () => {
-			expect(migrateSavedGame(null, 11)).toBeNull();
-			expect(migrateSavedGame('string', 11)).toBe('string');
-		});
-
-		test('validateSaveStoreSnapshot rejects a non-migratable version snapshot', () => {
+	describe('save schema version validation', () => {
+		test('validateSaveStoreSnapshot rejects a non-current version snapshot', () => {
 			const snapshot = {
 				schemaVersion: 99,
 				autoSave: null,
