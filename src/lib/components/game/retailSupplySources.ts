@@ -1,23 +1,15 @@
-import {
-	getCityInventory,
-	getCityInventoryStats,
-	getCityInventoryUsed,
-	supportsCityInventory
-} from '$lib/game/cityInventory';
+import { getCityInventoryStats, supportsCityInventory } from '$lib/game/cityInventory';
 import { WORLD_CITY_CATALOG } from '$lib/game/world';
-import type { GameState } from '$lib/game/types';
+import type { GameState, WorldCityId } from '$lib/game/types';
 import type { I18nBundle } from '$lib/i18n';
 
 export const RETAIL_SUPPLY_IMPORTS_ONLY_VALUE = '__retail_supply_imports_only__';
-export const RETAIL_SUPPLY_MISSING_CONFIGURATION_VALUE = '__retail_supply_configuration_missing__';
 
-export type RetailSupplySelection = string | null | 'missing';
+export type RetailSupplySelection = WorldCityId | null;
 
 export interface RetailSupplySourceOption {
-	supplyCityId: string;
+	supplyCityId: WorldCityId;
 	label: string;
-	available: boolean;
-	disabled: boolean;
 	inventorySummary: string;
 	overflowSummary: string;
 }
@@ -33,15 +25,12 @@ export interface RetailCitySupplyView {
 	currentSelection: RetailSupplySelection;
 	currentSummary: string;
 	importsOnlyLabel: string;
-	missingConfigurationLabel: string;
 	sourceOptions: readonly RetailSupplySourceOption[];
 }
 
 /**
- * Produces the render-only retail-source model in world-catalog order. It does
- * not repair malformed state: a missing assignment remains distinct from a
- * deliberate Imports-only (`null`) configuration, while a stale non-null
- * source is preserved as a disabled recovery option.
+ * Produces the render-only retail-source model in world-catalog order from a
+ * validated current game state.
  */
 export function buildRetailCitySupplyViews(
 	game: GameState,
@@ -58,18 +47,20 @@ export function buildRetailCitySupplyViews(
 		const assignment = game.retailSupplyAssignments.find(
 			(candidate) => candidate.retailCityId === retailCity.id
 		);
-		const currentSelection: RetailSupplySelection = assignment
-			? assignment.supplyCityId
-			: 'missing';
+		if (!assignment) {
+			throw new Error(`Retail supply invariant: missing assignment for ${retailCity.id}`);
+		}
+
+		const currentSelection = assignment.supplyCityId;
+		if (currentSelection !== null) {
+			getCityInventoryStats(game, currentSelection);
+		}
+
 		const sourceOptions = validSourceOptions.map((option) => ({ ...option }));
 		const selectedSource =
-			typeof currentSelection === 'string'
+			currentSelection !== null
 				? sourceOptions.find((option) => option.supplyCityId === currentSelection)
 				: undefined;
-
-		if (typeof currentSelection === 'string' && !selectedSource) {
-			sourceOptions.push(createUnavailableSourceOption(currentSelection, i18n));
-		}
 
 		return {
 			panelTitle: i18n.t('retailSupplySources.title'),
@@ -88,7 +79,6 @@ export function buildRetailCitySupplyViews(
 			currentSelection,
 			currentSummary: currentSourceSummary(currentSelection, selectedSource, i18n),
 			importsOnlyLabel: i18n.t('retailSupplySources.importsOnly'),
-			missingConfigurationLabel: i18n.t('retailSupplySources.missingConfiguration'),
 			sourceOptions
 		};
 	});
@@ -100,15 +90,9 @@ function buildValidSourceOptions(game: GameState, i18n: I18nBundle): RetailSuppl
 			return [];
 		}
 
-		const access = getCityInventory(game, city.id);
-		if (!access.ok) {
-			return [];
-		}
-
-		const used = getCityInventoryUsed(access.inventory);
-		const stats = getCityInventoryStats(game, access.inventory.cityId);
+		const stats = getCityInventoryStats(game, city.id);
 		const inventorySummary = i18n.t('retailSupplySources.inventorySummary', {
-			used: i18n.format.integer(used),
+			used: i18n.format.integer(stats.used),
 			capacity: i18n.format.integer(stats.capacity)
 		});
 		const overflowSummary =
@@ -128,28 +112,11 @@ function buildValidSourceOptions(game: GameState, i18n: I18nBundle): RetailSuppl
 			{
 				supplyCityId: city.id,
 				label: i18n.labels.worldCity(city.id).name,
-				available: true,
-				disabled: false,
 				inventorySummary,
 				overflowSummary
 			}
 		];
 	});
-}
-
-function createUnavailableSourceOption(
-	supplyCityId: string,
-	i18n: I18nBundle
-): RetailSupplySourceOption {
-	const cityName = i18n.labels.worldCity(supplyCityId).name;
-	return {
-		supplyCityId,
-		label: cityName,
-		available: false,
-		disabled: true,
-		inventorySummary: i18n.t('retailSupplySources.unavailableSource', { cityName }),
-		overflowSummary: ''
-	};
 }
 
 function currentSourceSummary(
@@ -161,12 +128,8 @@ function currentSourceSummary(
 		return i18n.t('retailSupplySources.importsOnlySummary');
 	}
 
-	if (selection === 'missing') {
-		return i18n.t('retailSupplySources.missingConfiguration');
-	}
-
 	if (!selectedSource) {
-		return createUnavailableSourceOption(selection, i18n).inventorySummary;
+		throw new Error(`Retail supply invariant: unavailable source ${selection}`);
 	}
 
 	return [selectedSource.label, selectedSource.inventorySummary, selectedSource.overflowSummary]

@@ -68,12 +68,7 @@ function getRetailChainScope(game: GameState): RetailChainScope {
 		!game.world.openedCityIds.includes(activeCity.id) ||
 		!game.cities.some((city) => city.id === activeCity.id)
 	) {
-		return {
-			retailCityId: null,
-			stores: [],
-			industry: null,
-			supplyState: { code: 'unavailable', cityId: game.activeCityId }
-		};
+		throw new Error(`Retail supply invariant: invalid retail city ${game.activeCityId}`);
 	}
 
 	const stores = game.stores.filter((store) => store.cityId === activeCity.id);
@@ -81,12 +76,7 @@ function getRetailChainScope(game: GameState): RetailChainScope {
 		(assignment) => assignment.retailCityId === activeCity.id
 	);
 	if (!assignment) {
-		return {
-			retailCityId: activeCity.id,
-			stores,
-			industry: null,
-			supplyState: { code: 'configuration-unavailable' }
-		};
+		throw new Error(`Retail supply invariant: missing assignment for ${activeCity.id}`);
 	}
 	if (assignment.supplyCityId === null) {
 		return {
@@ -97,18 +87,11 @@ function getRetailChainScope(game: GameState): RetailChainScope {
 		};
 	}
 	const configuredSupplyCityId = assignment.supplyCityId;
-
+	const inventoryStats = getCityInventoryStats(game, configuredSupplyCityId);
 	const industry = getIndustryInventoryScope(game, configuredSupplyCityId);
 	if (!industry) {
-		return {
-			retailCityId: activeCity.id,
-			stores,
-			industry: null,
-			supplyState: { code: 'unavailable', cityId: configuredSupplyCityId }
-		};
+		throw new Error(`Retail supply invariant: unavailable source ${configuredSupplyCityId}`);
 	}
-
-	const inventoryStats = getCityInventoryStats(game, industry.cityId);
 
 	return {
 		retailCityId: activeCity.id,

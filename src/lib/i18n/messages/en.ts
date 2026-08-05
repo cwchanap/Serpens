@@ -151,7 +151,6 @@ export const en = {
 		cityInventorySummary: '{cityName} city inventory',
 		currentCityInventory: 'Current city inventory (after the latest replenishment)',
 		cityInventoryMaterials: 'City inventory materials',
-		cityInventoryUnavailable: 'City inventory unavailable for {cityName}.',
 		cityInventoryZeroCapacity: 'City inventory has zero capacity.',
 		cityInventoryEmpty: 'City inventory is empty.',
 		cityInventoryOverflow: 'City inventory overflow: {units} units.',
@@ -405,9 +404,7 @@ export const en = {
 		inventorySummary: '{used} / {capacity} city inventory used.',
 		overflow: 'Overflow: {units} units ({cost}).',
 		overflowSingular: 'Overflow: {units} unit ({cost}).',
-		noOverflow: 'No overflow.',
-		unavailableSource: '{cityName} is unavailable.',
-		missingConfiguration: 'Supply configuration unavailable.'
+		noOverflow: 'No overflow.'
 	},
 	storeStockTable: {
 		title: '{storeName} stock',
@@ -455,13 +452,10 @@ export const en = {
 		cityInventoryFlow: 'City inventory flow',
 		scopeAria: 'City inventory scope',
 		activeIndustryInventory: 'City inventory — {cityName}',
-		activeIndustryUnavailable: 'City inventory for {cityName} is unavailable.',
 		activeRetailSupply:
 			'Local supply for {retailCityName} — {sourceCityName}: {used} / {capacity} city inventory used.',
 		supplyState: {
 			importsOnly: '{retailCityName} supply: Imports only — replenishment uses external imports.',
-			configurationUnavailable: 'Supply configuration for {retailCityName} is unavailable.',
-			unavailable: 'Local supply for {retailCityName} — source {sourceCityName} is unavailable.',
 			zeroCapacity:
 				'Local supply for {retailCityName} — source {sourceCityName} has zero city inventory capacity.',
 			emptyInventory: '{cityName} city inventory is empty.',

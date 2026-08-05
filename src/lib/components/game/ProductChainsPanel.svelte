@@ -2,7 +2,7 @@
 	import CategoryStampIndex from '$lib/components/game/atlas/CategoryStampIndex.svelte';
 	import NodeBroadside from '$lib/components/game/atlas/NodeBroadside.svelte';
 	import ProductChainAtlas from '$lib/components/game/atlas/ProductChainAtlas.svelte';
-	import { getCityInventory, getCityInventoryStats } from '$lib/game/cityInventory';
+	import { getCityInventoryStats } from '$lib/game/cityInventory';
 	import {
 		buildWarehouseFlowGraph,
 		getSupportedStoreChainCategories
@@ -66,15 +66,7 @@
 	);
 	const warehouseGraph = $derived(localizeProductChainGraph(buildWarehouseFlowGraph(game), i18n));
 	const graph = $derived(mode === 'warehouse-flow' ? warehouseGraph : categoryGraph);
-	const activeIndustryInventory = $derived(getCityInventory(game, game.activeIndustryCityId));
 	const categorySupplyState = $derived(getProductChainSupplyState(game));
-	const categorySupplyInventory = $derived.by(() => {
-		const sourceCityId =
-			categorySupplyState.code === 'available' || categorySupplyState.code === 'zero-capacity'
-				? categorySupplyState.cityId
-				: null;
-		return sourceCityId ? getCityInventory(game, sourceCityId) : null;
-	});
 	const activeNodeId = $derived(
 		graph && nodeSelection.graphId === graph.id ? nodeSelection.nodeId : null
 	);
@@ -92,13 +84,9 @@
 	}
 
 	function activeIndustryScopeLabel(): string {
-		return activeIndustryInventory.ok
-			? i18n.t('productChainsPanel.activeIndustryInventory', {
-					cityName: cityName(activeIndustryInventory.inventory.cityId)
-				})
-			: i18n.t('productChainsPanel.activeIndustryUnavailable', {
-					cityName: cityName(game.activeIndustryCityId)
-				});
+		return i18n.t('productChainsPanel.activeIndustryInventory', {
+			cityName: cityName(game.activeIndustryCityId)
+		});
 	}
 
 	function retailSupplyScopeLabel(): string {
@@ -107,26 +95,16 @@
 
 		switch (supplyState.code) {
 			case 'available': {
-				const inventory = categorySupplyInventory?.ok ? categorySupplyInventory.inventory : null;
-				const stats = inventory ? getCityInventoryStats(game, inventory.cityId) : null;
+				const stats = getCityInventoryStats(game, supplyState.cityId);
 				return i18n.t('productChainsPanel.activeRetailSupply', {
 					retailCityName,
 					sourceCityName: cityName(supplyState.cityId),
-					used: i18n.format.integer(stats?.used ?? 0),
-					capacity: i18n.format.integer(supplyState.capacity)
+					used: i18n.format.integer(stats.used),
+					capacity: i18n.format.integer(stats.capacity)
 				});
 			}
 			case 'imports-only':
 				return i18n.t('productChainsPanel.supplyState.importsOnly', { retailCityName });
-			case 'configuration-unavailable':
-				return i18n.t('productChainsPanel.supplyState.configurationUnavailable', {
-					retailCityName
-				});
-			case 'unavailable':
-				return i18n.t('productChainsPanel.supplyState.unavailable', {
-					retailCityName,
-					sourceCityName: cityName(supplyState.cityId)
-				});
 			case 'zero-capacity':
 				return i18n.t('productChainsPanel.supplyState.zeroCapacity', {
 					retailCityName,
@@ -136,26 +114,29 @@
 	}
 
 	function selectedInventoryStateLabels(): string[] {
-		const inventoryAccess =
-			mode === 'warehouse-flow' ? activeIndustryInventory : categorySupplyInventory;
-		if (!inventoryAccess?.ok) {
+		const cityId =
+			mode === 'warehouse-flow'
+				? game.activeIndustryCityId
+				: categorySupplyState.code === 'available' || categorySupplyState.code === 'zero-capacity'
+					? categorySupplyState.cityId
+					: null;
+		if (!cityId) {
 			return [];
 		}
 
-		const inventory = inventoryAccess.inventory;
-		const stats = getCityInventoryStats(game, inventory.cityId);
+		const stats = getCityInventoryStats(game, cityId);
 		const labels: string[] = [];
 		if (stats.used === 0) {
 			labels.push(
 				i18n.t('productChainsPanel.supplyState.emptyInventory', {
-					cityName: cityName(inventory.cityId)
+					cityName: cityName(cityId)
 				})
 			);
 		}
 		if (stats.overflowUnits > 0) {
 			labels.push(
 				i18n.t('productChainsPanel.supplyState.inventoryOverflow', {
-					cityName: cityName(inventory.cityId),
+					cityName: cityName(cityId),
 					units: i18n.format.integer(stats.overflowUnits),
 					cost: i18n.format.currency(stats.overflowCost)
 				})

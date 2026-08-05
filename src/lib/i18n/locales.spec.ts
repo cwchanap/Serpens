@@ -25,7 +25,6 @@ describe('locale resolution', () => {
 			'industryTileInspector.cityInventorySummary',
 			'industryTileInspector.currentCityInventory',
 			'industryTileInspector.cityInventoryMaterials',
-			'industryTileInspector.cityInventoryUnavailable',
 			'industryTileInspector.cityInventoryZeroCapacity',
 			'industryTileInspector.cityInventoryEmpty',
 			'industryTileInspector.cityInventoryOverflow',
@@ -54,11 +53,8 @@ describe('locale resolution', () => {
 			'productChainsPanel.cityInventoryFlow',
 			'productChainsPanel.scopeAria',
 			'productChainsPanel.activeIndustryInventory',
-			'productChainsPanel.activeIndustryUnavailable',
 			'productChainsPanel.activeRetailSupply',
 			'productChainsPanel.supplyState.importsOnly',
-			'productChainsPanel.supplyState.configurationUnavailable',
-			'productChainsPanel.supplyState.unavailable',
 			'productChainsPanel.supplyState.zeroCapacity',
 			'productChainsPanel.supplyState.emptyInventory',
 			'productChainsPanel.supplyState.inventoryOverflow'
@@ -94,9 +90,7 @@ describe('locale resolution', () => {
 			'retailSupplySources.inventorySummary',
 			'retailSupplySources.overflow',
 			'retailSupplySources.overflowSingular',
-			'retailSupplySources.noOverflow',
-			'retailSupplySources.unavailableSource',
-			'retailSupplySources.missingConfiguration'
+			'retailSupplySources.noOverflow'
 		];
 
 		const resolveCatalogValue = (catalog: unknown, key: string): unknown =>

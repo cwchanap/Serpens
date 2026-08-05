@@ -52,9 +52,7 @@ export type GraphWarning =
 
 export type ProductChainSupplyState =
 	| { code: 'available'; cityId: WorldCityId; capacity: number }
-	| { code: 'configuration-unavailable' }
 	| { code: 'imports-only' }
-	| { code: 'unavailable'; cityId: string }
 	| { code: 'zero-capacity'; cityId: WorldCityId };
 
 export interface ProductChainActualMetrics {

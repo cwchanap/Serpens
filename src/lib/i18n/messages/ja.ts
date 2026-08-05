@@ -153,7 +153,6 @@ export const ja = {
 		cityInventorySummary: '{cityName} の都市在庫',
 		currentCityInventory: '現在の都市在庫（直近の補充後）',
 		cityInventoryMaterials: '都市在庫の資材',
-		cityInventoryUnavailable: '{cityName} の都市在庫は利用できません。',
 		cityInventoryZeroCapacity: '都市在庫の容量は 0 です。',
 		cityInventoryEmpty: '都市在庫は空です。',
 		cityInventoryOverflow: '都市在庫の超過: {units} 単位。',
@@ -406,9 +405,7 @@ export const ja = {
 		inventorySummary: '都市在庫を {used} / {capacity} 使用中。',
 		overflow: '超過: {units} 単位（{cost}）。',
 		overflowSingular: '超過: {units} 単位（{cost}）。',
-		noOverflow: '超過なし。',
-		unavailableSource: '{cityName}は利用できません。',
-		missingConfiguration: '供給設定を利用できません。'
+		noOverflow: '超過なし。'
 	},
 	storeStockTable: {
 		title: '{storeName}の在庫',
@@ -456,13 +453,10 @@ export const ja = {
 		cityInventoryFlow: '都市在庫フロー',
 		scopeAria: '都市在庫の範囲',
 		activeIndustryInventory: '都市在庫 — {cityName}',
-		activeIndustryUnavailable: '{cityName} の都市在庫は利用できません。',
 		activeRetailSupply:
 			'{retailCityName} のローカル供給 — {sourceCityName}: 都市在庫を {used} / {capacity} 使用中。',
 		supplyState: {
 			importsOnly: '{retailCityName} の供給: 輸入のみ — 補充は外部輸入で行われます。',
-			configurationUnavailable: '{retailCityName} の供給設定を利用できません。',
-			unavailable: '{retailCityName} のローカル供給 — 供給元 {sourceCityName} は利用できません。',
 			zeroCapacity:
 				'{retailCityName} のローカル供給 — 供給元 {sourceCityName} の都市在庫容量は 0 です。',
 			emptyInventory: '{cityName} の都市在庫は空です。',

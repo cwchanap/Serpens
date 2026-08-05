@@ -231,8 +231,8 @@ function withLatestReport(game: GameState, productionReport: DailyProductionRepo
 }
 
 describe('buildProductChainTree', () => {
-	it('uses the active retail city configured source and distinguishes imports only from an unavailable source', () => {
-		expect.assertions(6);
+	it('uses the active retail city configured source and rejects an invalid configured source', () => {
+		expect.assertions(5);
 		let game = openedRetailAndIndustryCityGame();
 		game = openStoreAtTile(game, {
 			tileId: findAvailableRetailFootprintTile(game).id,
@@ -267,19 +267,6 @@ describe('buildProductChainTree', () => {
 			store: campusStore,
 			categoryId: 'snacks'
 		});
-		const unavailable = buildProductChainTree({
-			game: {
-				...game,
-				retailSupplyAssignments: game.retailSupplyAssignments.map((assignment) =>
-					assignment.retailCityId === 'campus-junction'
-						? { ...assignment, supplyCityId: 'quarry-works' }
-						: assignment
-				)
-			},
-			store: campusStore,
-			categoryId: 'snacks'
-		});
-
 		expect(configured.details['product:snacks']?.warehouseStock).toBe(7);
 		expect(configured.supplyState).toEqual({
 			code: 'available',
@@ -288,11 +275,23 @@ describe('buildProductChainTree', () => {
 		});
 		expect(importsOnly.details['product:snacks']?.warehouseStock).toBe(0);
 		expect(importsOnly.supplyState).toEqual({ code: 'imports-only' });
-		expect(unavailable.details['product:snacks']?.warehouseStock).toBe(0);
-		expect(unavailable.supplyState).toEqual({ code: 'unavailable', cityId: 'quarry-works' });
+		expect(() =>
+			buildProductChainTree({
+				game: {
+					...game,
+					retailSupplyAssignments: game.retailSupplyAssignments.map((assignment) =>
+						assignment.retailCityId === 'campus-junction'
+							? { ...assignment, supplyCityId: 'quarry-works' }
+							: assignment
+					)
+				},
+				store: campusStore,
+				categoryId: 'snacks'
+			})
+		).toThrow('City inventory invariant: city-closed for quarry-works');
 	});
 
-	it('keeps active-retail fallback imports visible across source states without leaking another retail city', () => {
+	it('keeps active-retail fallback imports visible across valid source states without leaking another retail city', () => {
 		let game = openedRetailAndIndustryCityGame();
 		game = openStoreAtTile(game, {
 			tileId: findAvailableRetailFootprintTile(game).id,
@@ -380,20 +379,6 @@ describe('buildProductChainTree', () => {
 			store: campusStore,
 			categoryId: 'snacks'
 		});
-		const unavailableGame: GameState = {
-			...game,
-			retailSupplyAssignments: game.retailSupplyAssignments!.map((assignment) =>
-				assignment.retailCityId === 'campus-junction'
-					? { ...assignment, supplyCityId: 'quarry-works' }
-					: assignment
-			)
-		};
-		const unavailable = buildProductChainTree({
-			game: unavailableGame,
-			store: campusStore,
-			categoryId: 'snacks'
-		});
-
 		expect(configured.details['product:snacks']?.actual.produced).toBe(8);
 		// Campus has no product report in this latest report (its store has no
 		// matching storeReport row), so the root retail material reads 0
@@ -413,17 +398,6 @@ describe('buildProductChainTree', () => {
 		});
 		expect(
 			buildStoreCategoryChainSummaries(importsOnlyGame).find(
-				(summary) => summary.categoryId === 'snacks'
-			)?.imported
-		).toBe(4);
-		expect(unavailable.supplyState).toEqual({ code: 'unavailable', cityId: 'quarry-works' });
-		expect(unavailable.details['product:snacks']?.actual).toMatchObject({
-			produced: 0,
-			warehousePulled: 0,
-			shopImported: 4
-		});
-		expect(
-			buildStoreCategoryChainSummaries(unavailableGame).find(
 				(summary) => summary.categoryId === 'snacks'
 			)?.imported
 		).toBe(4);
@@ -710,7 +684,7 @@ describe('buildProductChainTree', () => {
 		).toBe(0);
 	});
 
-	it('distinguishes a missing retail assignment from explicit imports-only configuration', () => {
+	it('keeps explicit imports-only configuration but rejects a missing retail assignment', () => {
 		let game = openedRetailAndIndustryCityGame();
 		game = openStoreAtTile(game, {
 			tileId: findAvailableRetailFootprintTile(game).id,
@@ -740,13 +714,13 @@ describe('buildProductChainTree', () => {
 				categoryId: 'snacks'
 			}).supplyState
 		).toEqual({ code: 'imports-only' });
-		expect(
+		expect(() =>
 			buildProductChainTree({
 				game: missingAssignmentGame,
 				store: campusStore,
 				categoryId: 'snacks'
-			}).supplyState
-		).toEqual({ code: 'configuration-unavailable' });
+			})
+		).toThrow('Retail supply invariant: missing assignment for campus-junction');
 	});
 
 	it('builds the bottled water chain as a three-node spine', () => {

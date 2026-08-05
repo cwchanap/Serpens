@@ -266,19 +266,6 @@ describe('ProductChainsPanel', () => {
 			'Harbor City supply: Imports only — replenishment uses external imports.'
 		],
 		[
-			'configuration unavailable',
-			(game: GameState) => ({ ...game, retailSupplyAssignments: [] }),
-			'Supply configuration for Harbor City is unavailable.'
-		],
-		[
-			'stale source unavailable',
-			(game: GameState) => ({
-				...game,
-				retailSupplyAssignments: [{ retailCityId: 'harbor-city', supplyCityId: 'quarry-works' }]
-			}),
-			'Local supply for Harbor City — source Quarry Works is unavailable.'
-		],
-		[
 			'zero-capacity source',
 			(game: GameState) => ({
 				...game,
@@ -311,19 +298,6 @@ describe('ProductChainsPanel', () => {
 				retailSupplyAssignments: [{ retailCityId: 'harbor-city', supplyCityId: null }]
 			}),
 			'Harbor City supply: Imports only — replenishment uses external imports.'
-		],
-		[
-			'configuration unavailable',
-			(game: GameState) => ({ ...game, retailSupplyAssignments: [] }),
-			'Supply configuration for Harbor City is unavailable.'
-		],
-		[
-			'stale source unavailable',
-			(game: GameState) => ({
-				...game,
-				retailSupplyAssignments: [{ retailCityId: 'harbor-city', supplyCityId: 'quarry-works' }]
-			}),
-			'Local supply for Harbor City — source Quarry Works is unavailable.'
 		],
 		[
 			'zero-capacity source',
@@ -375,24 +349,6 @@ describe('ProductChainsPanel', () => {
 		await page.getByRole('button', { name: 'City inventory flow' }).click();
 		await expect
 			.element(page.getByText('Industry City city inventory overflow: 5 units ($10).'))
-			.toBeVisible();
-	});
-
-	it('shows active industry city inventory unavailable in City inventory flow', async () => {
-		expect.assertions(2);
-		const baseGame = createNewGame('convenience', 20260518);
-		expect(baseGame.activeIndustryCityId).toBeDefined();
-		const cityId = baseGame.activeIndustryCityId as WorldCityId;
-		const game: GameState = {
-			...baseGame,
-			cityInventories: baseGame.cityInventories!.filter((inventory) => inventory.cityId !== cityId)
-		};
-
-		renderProductChainsPanel(game);
-
-		await page.getByRole('button', { name: 'City inventory flow' }).click();
-		await expect
-			.element(page.getByText('City inventory for Industry City is unavailable.'))
 			.toBeVisible();
 	});
 });
