@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { initializeCityInventory, initializeRetailSupplyAssignment } from '$lib/game/cityInventory';
 import { initializeStoreProducts } from '$lib/game/stock';
 import { createFoundingFinanceState } from '$lib/game/finance';
@@ -366,6 +366,17 @@ function createSnapshotWithGame(game: Partial<GameState>) {
 		autoSave: null,
 		manualSlots: [{ ...record, game: game as GameState }]
 	};
+}
+
+function expectSnapshotHistoricalReportDropped(snapshot: unknown): void {
+	const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+	try {
+		const validated = validateSaveStoreSnapshot(snapshot);
+		expect(validated.manualSlots[0]!.game.reports).toEqual([]);
+		expect(warn).toHaveBeenCalledTimes(1);
+	} finally {
+		warn.mockRestore();
+	}
 }
 
 function createSaveRecordWithProducts(products: StoreProduct[]): SaveRecord {
@@ -1447,8 +1458,7 @@ describe('save records', () => {
 		);
 	});
 
-	test('rejects saved production report with invalid material movement', () => {
-		expect.assertions(2);
+	test('drops a saved production report with an invalid material movement', () => {
 		const game = createGame();
 		const report = createDailyReport({
 			productionReport: createDailyProductionReport({
@@ -1465,10 +1475,7 @@ describe('save records', () => {
 		});
 		const snapshot = createSnapshotWithGame({ ...game, reports: [report] });
 
-		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
-		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
-			'Saved game reports[0] productionReport produced[0] materialId invalid-material must be a known material'
-		);
+		expectSnapshotHistoricalReportDropped(snapshot);
 	});
 
 	test('rejects saved hiring candidates with invalid salaries', () => {
@@ -1664,8 +1671,7 @@ describe('save records', () => {
 		);
 	});
 
-	test('rejects saved reports with invalid warning arrays', () => {
-		expect.assertions(2);
+	test('drops saved reports with invalid warning arrays', () => {
 		const snapshot = createSnapshotWithGame({
 			...createGame(),
 			reports: [
@@ -1678,27 +1684,19 @@ describe('save records', () => {
 			]
 		});
 
-		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
-		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
-			'Saved game reports[0] warnings[1] code must be a valid warning code'
-		);
+		expectSnapshotHistoricalReportDropped(snapshot);
 	});
 
-	test('rejects saved reports with invalid payroll cost', () => {
-		expect.assertions(2);
+	test('drops saved reports with invalid payroll cost', () => {
 		const snapshot = createSnapshotWithGame({
 			...createGame(),
 			reports: [createDailyReport({ payrollCost: 'missing' as unknown as number })]
 		});
 
-		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
-		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
-			'Saved game reports[0] payrollCost must be a finite number'
-		);
+		expectSnapshotHistoricalReportDropped(snapshot);
 	});
 
-	test('rejects saved reports with invalid production report totals', () => {
-		expect.assertions(2);
+	test('drops saved reports with invalid production report totals', () => {
 		const snapshot = createSnapshotWithGame({
 			...createGame(),
 			reports: [
@@ -1710,14 +1708,10 @@ describe('save records', () => {
 			]
 		});
 
-		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
-		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
-			'Saved game reports[0] productionReport importSpend must be a finite number'
-		);
+		expectSnapshotHistoricalReportDropped(snapshot);
 	});
 
-	test('rejects saved product reports missing warehouse unit totals', () => {
-		expect.assertions(2);
+	test('drops saved product reports missing warehouse unit totals', () => {
 		const invalidProductReport = {
 			...createDailyProductReport(),
 			warehouseUnits: undefined
@@ -1735,14 +1729,10 @@ describe('save records', () => {
 			]
 		});
 
-		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
-		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
-			'Saved game reports[0] storeReports[0] productReports[0] warehouseUnits must be a finite number'
-		);
+		expectSnapshotHistoricalReportDropped(snapshot);
 	});
 
-	test('rejects saved product reports with invalid warehouse value totals', () => {
-		expect.assertions(2);
+	test('drops saved product reports with invalid warehouse value totals', () => {
 		const snapshot = createSnapshotWithGame({
 			...createGame(),
 			reports: [
@@ -1760,14 +1750,10 @@ describe('save records', () => {
 			]
 		});
 
-		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
-		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
-			'Saved game reports[0] storeReports[0] productReports[0] warehouseValue must be a finite number'
-		);
+		expectSnapshotHistoricalReportDropped(snapshot);
 	});
 
-	test('rejects saved store reports with invalid staffing coverage', () => {
-		expect.assertions(2);
+	test('drops saved store reports with invalid staffing coverage', () => {
 		const snapshot = createSnapshotWithGame({
 			...createGame(),
 			reports: [
@@ -1777,14 +1763,10 @@ describe('save records', () => {
 			]
 		});
 
-		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
-		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
-			'Saved game reports[0] storeReports[0] staffingCoverage must be a finite number'
-		);
+		expectSnapshotHistoricalReportDropped(snapshot);
 	});
 
-	test('rejects saved store reports with invalid general staffing shortage', () => {
-		expect.assertions(2);
+	test('drops saved store reports with invalid general staffing shortage', () => {
 		const snapshot = createSnapshotWithGame({
 			...createGame(),
 			reports: [
@@ -1798,10 +1780,7 @@ describe('save records', () => {
 			]
 		});
 
-		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
-		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
-			'Saved game reports[0] storeReports[0] staffingShortage general must be a finite number'
-		);
+		expectSnapshotHistoricalReportDropped(snapshot);
 	});
 
 	test('rejects manual slots using the reserved autosave id', () => {

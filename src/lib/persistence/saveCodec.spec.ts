@@ -564,6 +564,32 @@ function expectSaveRecordErrorCode(record: unknown, expectedCode: SaveDataError[
 	}
 }
 
+function expectHistoricalReportDropped(decode: () => GameState): void {
+	const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+	try {
+		expect(decode().reports).toEqual([]);
+		expect(warn).toHaveBeenCalledTimes(1);
+	} finally {
+		warn.mockRestore();
+	}
+}
+
+function expectHistoricalReportPreserved(decode: () => GameState): GameState {
+	const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+	try {
+		const game = decode();
+		expect(game.reports).toHaveLength(1);
+		expect(warn).not.toHaveBeenCalled();
+		return game;
+	} finally {
+		warn.mockRestore();
+	}
+}
+
+function decodeHistoricalReport(game: GameState, report: DailyReport): GameState {
+	return validateSaveRecord(createManualSaveRecord({ game: { ...game, reports: [report] } })).game;
+}
+
 function createCompleteEventGame(): GameState {
 	const base = createGame({ day: 3 });
 	const activeModifier: GameState['events']['activeModifiers'][number] = {
@@ -760,6 +786,105 @@ describe('saveCodec', () => {
 		});
 	});
 
+	test('normalizes authoritative inventory and supply assignments to world-catalog order', () => {
+		const game = createCurrentMultiCityGame();
+		const validated = validateSaveRecord(
+			createManualSaveRecord({
+				game: {
+					...game,
+					cityInventories: [...game.cityInventories].reverse(),
+					retailSupplyAssignments: [...game.retailSupplyAssignments].reverse()
+				}
+			})
+		);
+
+		expect(validated.game.cityInventories).toEqual(game.cityInventories);
+		expect(validated.game.retailSupplyAssignments).toEqual(game.retailSupplyAssignments);
+	});
+
+	test('rejects an assignment whose supply source is not a current industry inventory', () => {
+		const game = createGame({
+			retailSupplyAssignments: [{ retailCityId: 'harbor-city', supplyCityId: 'quarry-works' }]
+		});
+
+		expectSaveRecordErrorCode(createManualSaveRecord({ game }), 'invariant-retail-supply');
+	});
+
+	test('drops malformed historical reports independently and preserves the surviving order', () => {
+		const game = createGame();
+		const goodReport = createDailyReport({ day: 2 });
+		const malformedFirstReport = { ...goodReport, cashAfter: Number.NaN };
+		const malformedLastReport = {
+			...goodReport,
+			day: 3,
+			productionReport: {
+				...goodReport.productionReport,
+				railUsage: { 'industry-city': -1 }
+			}
+		};
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+		try {
+			const validated = validateSaveRecord(
+				createManualSaveRecord({
+					game: {
+						...game,
+						reports: [malformedFirstReport, goodReport, malformedLastReport]
+					}
+				})
+			);
+
+			expect(validated.game.reports).toEqual([goodReport]);
+			expect(warn).toHaveBeenCalledTimes(2);
+			expect(warn).toHaveBeenNthCalledWith(1, 'Dropping malformed historical report', {
+				index: 0,
+				error: expect.any(SaveDataError)
+			});
+			expect(warn).toHaveBeenNthCalledWith(2, 'Dropping malformed historical report', {
+				index: 2,
+				error: expect.any(SaveDataError)
+			});
+		} finally {
+			warn.mockRestore();
+		}
+	});
+
+	test('drops every malformed historical report while leaving the game playable', () => {
+		const game = createGame();
+		const malformedRevenue = { ...createDailyReport({ day: 1 }), revenue: Number.NaN };
+		const malformedProduction = {
+			...createDailyReport({ day: 2 }),
+			productionReport: {
+				...createDailyProductionReport(),
+				railUsage: { 'industry-city': -1 }
+			}
+		};
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+		try {
+			const validated = validateSaveRecord(
+				createManualSaveRecord({
+					game: { ...game, reports: [malformedRevenue, malformedProduction] }
+				})
+			);
+
+			expect(validated.game.reports).toEqual([]);
+			expect(simulateDay(validated.game).day).toBe(game.day + 1);
+			expect(warn).toHaveBeenCalledTimes(2);
+		} finally {
+			warn.mockRestore();
+		}
+	});
+
+	test('still rejects malformed authoritative inventory while filtering historical reports', () => {
+		const game = createGame({
+			cityInventories: [{ cityId: 'industry-city', materials: { water: -1 } }],
+			reports: [{ ...createDailyReport(), revenue: Number.NaN }]
+		});
+
+		expectSaveRecordErrorCode(createManualSaveRecord({ game }), 'invariant-city-inventory');
+	});
+
 	test('rejects unsupported schema 13 records without inventory migration', () => {
 		expect.assertions(2);
 		const record = { ...createManualSaveRecord(), schemaVersion: 13 };
@@ -778,7 +903,8 @@ describe('saveCodec', () => {
 				importedUnits: 0,
 				importSpend: 0
 			}),
-			null
+			null,
+			'drop'
 		],
 		[
 			'fractional warehouse units',
@@ -788,7 +914,8 @@ describe('saveCodec', () => {
 				warehouseValue: 1,
 				importedUnits: 0
 			}),
-			'unchanged'
+			'unchanged',
+			'drop'
 		],
 		[
 			'unsafe warehouse units',
@@ -798,7 +925,8 @@ describe('saveCodec', () => {
 				warehouseValue: 1,
 				importedUnits: 0
 			}),
-			'unchanged'
+			'unchanged',
+			'preserve'
 		],
 		[
 			'negative imported units hidden by a null no-attempt context',
@@ -809,7 +937,8 @@ describe('saveCodec', () => {
 				importedUnits: -1,
 				importSpend: 0
 			}),
-			null
+			null,
+			'drop'
 		],
 		[
 			'fractional imported units',
@@ -820,7 +949,8 @@ describe('saveCodec', () => {
 				importedUnits: 0.5,
 				importSpend: 1
 			}),
-			'unchanged'
+			'unchanged',
+			'drop'
 		],
 		[
 			'unsafe imported units',
@@ -831,12 +961,14 @@ describe('saveCodec', () => {
 				importedUnits: Number.MAX_SAFE_INTEGER + 1,
 				importSpend: 1
 			}),
-			'unchanged'
+			'unchanged',
+			'preserve'
 		],
 		[
 			'nonzero local units with an impossible warehouse value',
 			(product: Record<string, unknown>) => ({ ...product, warehouseValue: 0 }),
-			'unchanged'
+			'unchanged',
+			'preserve'
 		],
 		[
 			'local units with a mismatched warehouse value',
@@ -846,7 +978,8 @@ describe('saveCodec', () => {
 				warehouseValue: 1,
 				importedUnits: 0
 			}),
-			'unchanged'
+			'unchanged',
+			'preserve'
 		],
 		[
 			'warehouse value without local units',
@@ -857,16 +990,18 @@ describe('saveCodec', () => {
 				importedUnits: 2,
 				importSpend: 6
 			}),
-			'unchanged'
+			'unchanged',
+			'preserve'
 		],
 		[
 			'negative import spend',
 			(product: Record<string, unknown>) => ({ ...product, importSpend: -1 }),
-			'unchanged'
+			'unchanged',
+			'drop'
 		]
 	])(
-		'controller review: rejects current-v13 replenishment evidence with %s',
-		(_name, mutateProduct, replenishment) => {
+		'controller review: decodes current-v13 replenishment evidence with %s',
+		(_name, mutateProduct, replenishment, expectedResult) => {
 			const game = createCurrentMultiCityGame();
 			const report = createCurrentReport(game);
 			const storeReport = report.storeReports[0]!;
@@ -884,14 +1019,18 @@ describe('saveCodec', () => {
 				]
 			};
 
-			expectSaveRecordErrorCode(
-				createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }),
-				'invariant-retail-supply'
-			);
+			const decode = () =>
+				validateSaveRecord(createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }))
+					.game;
+			if (expectedResult === 'drop') {
+				expectHistoricalReportDropped(decode);
+			} else {
+				expect(expectHistoricalReportPreserved(decode).reports[0]).toEqual(updatedReport);
+			}
 		}
 	);
 
-	test('controller review: rejects an accessible configured source reported as unavailable', () => {
+	test('controller review: preserves an accessible configured source reported as unavailable', () => {
 		const game = createCurrentMultiCityGame();
 		const report = createCurrentReport(game);
 		const storeReport = report.storeReports[0]!;
@@ -917,10 +1056,14 @@ describe('saveCodec', () => {
 			]
 		};
 
-		expectSaveRecordErrorCode(
-			createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }),
-			'invariant-retail-supply'
-		);
+		expect(
+			expectHistoricalReportPreserved(
+				() =>
+					validateSaveRecord(
+						createManualSaveRecord({ game: { ...game, reports: [updatedReport] } })
+					).game
+			).reports[0]
+		).toEqual(updatedReport);
 	});
 
 	test.each([
@@ -950,19 +1093,26 @@ describe('saveCodec', () => {
 				overflowCost: 0
 			})
 		]
-	])('controller review: rejects a current-v13 report with %s', (_name, mutateProductionReport) => {
-		const game = createCurrentMultiCityGame();
-		const report = createCurrentReport(game);
-		const updatedReport = {
-			...report,
-			productionReport: mutateProductionReport(report.productionReport)
-		};
+	])(
+		'controller review: preserves a historical report with %s',
+		(_name, mutateProductionReport) => {
+			const game = createCurrentMultiCityGame();
+			const report = createCurrentReport(game);
+			const updatedReport = {
+				...report,
+				productionReport: mutateProductionReport(report.productionReport)
+			};
 
-		expectSaveRecordErrorCode(
-			createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }),
-			'invariant-report-attribution'
-		);
-	});
+			expect(
+				expectHistoricalReportPreserved(
+					() =>
+						validateSaveRecord(
+							createManualSaveRecord({ game: { ...game, reports: [updatedReport] } })
+						).game
+				).reports[0]
+			).toEqual(updatedReport);
+		}
+	);
 
 	test('controller review: accepts a starter-only production-close report after another industry city opens', () => {
 		const game = createCurrentMultiCityGame();
@@ -1006,7 +1156,7 @@ describe('saveCodec', () => {
 		expect(validated.game.world.openedCityIds).not.toContain('industry-city');
 	});
 
-	test('controller review: rejects an empty production-close summary even when aggregates are zero', () => {
+	test('controller review: preserves an empty production-close summary with zero aggregates', () => {
 		const game = createCurrentMultiCityGame();
 		const report = createCurrentReport(game);
 		const updatedReport: DailyReport = {
@@ -1021,13 +1171,17 @@ describe('saveCodec', () => {
 			}
 		};
 
-		expectSaveRecordErrorCode(
-			createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }),
-			'invariant-report-attribution'
-		);
+		expect(
+			expectHistoricalReportPreserved(
+				() =>
+					validateSaveRecord(
+						createManualSaveRecord({ game: { ...game, reports: [updatedReport] } })
+					).game
+			).reports[0]
+		).toEqual(updatedReport);
 	});
 
-	test('controller review: rejects an impossible production-close pressure equation', () => {
+	test('controller review: preserves an unreconciled production-close pressure snapshot', () => {
 		const game = createCurrentMultiCityGame();
 		const report = createCurrentReport(game);
 		const updatedReport: DailyReport = {
@@ -1042,10 +1196,14 @@ describe('saveCodec', () => {
 			}
 		};
 
-		expectSaveRecordErrorCode(
-			createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }),
-			'invariant-report-attribution'
-		);
+		expect(
+			expectHistoricalReportPreserved(
+				() =>
+					validateSaveRecord(
+						createManualSaveRecord({ game: { ...game, reports: [updatedReport] } })
+					).game
+			).reports[0]
+		).toEqual(updatedReport);
 	});
 
 	test('controller review: retains canonical city inventories without an aggregate field', () => {
@@ -1164,7 +1322,6 @@ describe('saveCodec', () => {
 			'duplicate inventory owners',
 			(game: GameState) => [...game.cityInventories!, structuredClone(game.cityInventories![0]!)]
 		],
-		['noncanonical inventory owners', (game: GameState) => [...game.cityInventories!].reverse()],
 		['a missing opened industry inventory', (game: GameState) => [game.cityInventories![0]!]],
 		[
 			'a retail inventory owner',
@@ -1201,10 +1358,6 @@ describe('saveCodec', () => {
 				...game.retailSupplyAssignments!,
 				structuredClone(game.retailSupplyAssignments![0]!)
 			]
-		],
-		[
-			'noncanonical retail assignment owners',
-			(game: GameState) => [...game.retailSupplyAssignments!].reverse()
 		],
 		[
 			'a missing opened retail assignment',
@@ -1409,13 +1562,13 @@ describe('saveCodec', () => {
 				return { ...report, productionReport };
 			}
 		]
-	])('rejects a current v14 report with %s', (_name, mutateReport) => {
+	])('drops a structurally malformed historical report with %s', (_name, mutateReport) => {
 		const game = createCurrentMultiCityGame();
 		const report = mutateReport(createCurrentReport(game)) as DailyReport;
 
-		expectSaveRecordErrorCode(
-			createManualSaveRecord({ game: { ...game, reports: [report] } }),
-			'invariant-report-attribution'
+		expectHistoricalReportDropped(
+			() =>
+				validateSaveRecord(createManualSaveRecord({ game: { ...game, reports: [report] } })).game
 		);
 	});
 
@@ -1426,7 +1579,8 @@ describe('saveCodec', () => {
 				const { replenishment: _replenishment, ...storeReport } = report.storeReports[0]!;
 				void _replenishment;
 				return { ...report, storeReports: [storeReport] };
-			}
+			},
+			'drop'
 		],
 		[
 			'a source context that conflicts with its configured source',
@@ -1445,7 +1599,8 @@ describe('saveCodec', () => {
 						}
 					]
 				};
-			}
+			},
+			'preserve'
 		],
 		[
 			'a product row that duplicates its store-level city context',
@@ -1465,16 +1620,20 @@ describe('saveCodec', () => {
 						}
 					]
 				};
-			}
+			},
+			'preserve'
 		]
-	])('rejects a current v14 store report with %s', (_name, mutateReport) => {
+	])('decodes a current v14 store report with %s', (_name, mutateReport, expectedResult) => {
 		const game = createCurrentMultiCityGame();
 		const report = mutateReport(createCurrentReport(game)) as DailyReport;
 
-		expectSaveRecordErrorCode(
-			createManualSaveRecord({ game: { ...game, reports: [report] } }),
-			'invariant-retail-supply'
-		);
+		const decode = () =>
+			validateSaveRecord(createManualSaveRecord({ game: { ...game, reports: [report] } })).game;
+		if (expectedResult === 'drop') {
+			expectHistoricalReportDropped(decode);
+		} else {
+			expect(expectHistoricalReportPreserved(decode).reports[0]).toEqual(report);
+		}
 	});
 
 	test('accepts a current v14 report without a persisted product outcome label', () => {
@@ -1684,17 +1843,10 @@ describe('saveCodec', () => {
 			},
 			path: 'Saved game reports[0] modifierImpacts[1] modifierId'
 		}
-	])('rejects $name with a path-specific event-runtime error', ({ mutate, path }) => {
-		let caught: unknown;
-		try {
-			validateCurrentGameState(mutate(createCompleteEventGame()));
-		} catch (error) {
-			caught = error;
-		}
-
-		expect(caught).toBeInstanceOf(SaveDataError);
-		expect((caught as SaveDataError).code).toBe('invariant-event-runtime');
-		expect((caught as SaveDataError).message).toContain(path);
+	])('drops a historical report with malformed $name', ({ mutate }) => {
+		expectHistoricalReportDropped(() =>
+			validateCurrentGameState(mutate(createCompleteEventGame()))
+		);
 	});
 
 	test.each([
@@ -1723,22 +1875,14 @@ describe('saveCodec', () => {
 			}),
 			path: 'Saved game reports[0] modifierLifecycle[0] replacedByModifierId'
 		}
-	])('rejects $name', ({ lifecycle, path }) => {
+	])('drops a historical report with malformed $name', ({ lifecycle }) => {
 		const game = createCompleteEventGame();
 		const malformed = {
 			...game,
 			reports: [{ ...game.reports[0]!, modifierLifecycle: [lifecycle(game)] }]
 		};
-		let caught: unknown;
-		try {
-			validateCurrentGameState(malformed);
-		} catch (error) {
-			caught = error;
-		}
 
-		expect(caught).toBeInstanceOf(SaveDataError);
-		expect((caught as SaveDataError).code).toBe('invariant-event-runtime');
-		expect((caught as SaveDataError).message).toContain(path);
+		expectHistoricalReportDropped(() => validateCurrentGameState(malformed));
 	});
 
 	test('requires nextModifierSequence to exceed report replacement evidence', () => {
@@ -1901,8 +2045,7 @@ describe('saveCodec', () => {
 		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
 	});
 
-	test('rejects finance transaction links, ordering, and report finance corruption', () => {
-		expect.assertions(5);
+	test('rejects authoritative finance corruption while decoding report finance facts independently', () => {
 		const game = createGame();
 		const transaction = {
 			id: 'finance-transaction-1',
@@ -1938,27 +2081,27 @@ describe('saveCodec', () => {
 				})
 			)
 		).toThrow(SaveDataError);
-		expect(() =>
-			validateSaveRecord(
-				createManualSaveRecord({
-					game: { reports: [{ ...createDailyReport(), interestAccrued: -0.1 }] }
-				})
-			)
-		).toThrow(SaveDataError);
-		expect(() =>
-			validateSaveRecord(
-				createManualSaveRecord({
-					game: { reports: [{ ...createDailyReport(), operatingCashFlow: Number.NaN }] }
-				})
-			)
-		).toThrow(SaveDataError);
-		expect(() =>
-			validateSaveRecord(
-				createManualSaveRecord({
-					game: { reports: [{ ...createDailyReport(), interestAccrued: 0.125 }] }
-				})
-			)
-		).not.toThrow();
+		const negativeInterest = { ...createDailyReport(), interestAccrued: -0.1 };
+		expectHistoricalReportDropped(
+			() =>
+				validateSaveRecord(createManualSaveRecord({ game: { reports: [negativeInterest] } })).game
+		);
+		expectHistoricalReportDropped(
+			() =>
+				validateSaveRecord(
+					createManualSaveRecord({
+						game: { reports: [{ ...createDailyReport(), operatingCashFlow: Number.NaN }] }
+					})
+				).game
+		);
+		const fractionalInterest = { ...createDailyReport(), interestAccrued: 0.125 };
+		expect(
+			expectHistoricalReportPreserved(
+				() =>
+					validateSaveRecord(createManualSaveRecord({ game: { reports: [fractionalInterest] } }))
+						.game
+			).reports[0]
+		).toEqual(fractionalInterest);
 	});
 
 	test('rejects closed/refinance relationship corruption and out-of-order transaction history', () => {
@@ -2318,12 +2461,23 @@ describe('saveCodec', () => {
 		).toThrow(SaveDataError);
 	});
 
-	test.each([-1, 1.5, 4])('rejects a report day outside the loaded game timeline: %s', (day) => {
-		const record = createManualSaveRecord({
-			game: { reports: [createDailyReport({ day })] }
-		});
-		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
-	});
+	test.each([
+		[-1, 'drop'],
+		[1.5, 'drop'],
+		[4, 'preserve']
+	] as const)(
+		'decodes a report day outside the current game timeline: %s',
+		(day, expectedResult) => {
+			const report = createDailyReport({ day });
+			const decode = () =>
+				validateSaveRecord(createManualSaveRecord({ game: { reports: [report] } })).game;
+			if (expectedResult === 'drop') {
+				expectHistoricalReportDropped(decode);
+			} else {
+				expect(expectHistoricalReportPreserved(decode).reports[0]).toEqual(report);
+			}
+		}
+	);
 
 	test.each([
 		'cashBefore',
@@ -2339,14 +2493,15 @@ describe('saveCodec', () => {
 		'netCashChange',
 		'outstandingPrincipalAfter',
 		'nextLoanPayment'
-	] as const)('rejects a current report missing %s', (field) => {
+	] as const)('drops a historical report missing %s', (field) => {
 		const report = { ...createDailyReport() } as Record<string, unknown>;
 		delete report[field];
-		expect(() =>
-			validateSaveRecord(
-				createManualSaveRecord({ game: { reports: [report as unknown as DailyReport] } })
-			)
-		).toThrow(SaveDataError);
+		expectHistoricalReportDropped(
+			() =>
+				validateSaveRecord(
+					createManualSaveRecord({ game: { reports: [report as unknown as DailyReport] } })
+				).game
+		);
 	});
 	test('strict current-game validation returns an exact deep clone without mutating its input', () => {
 		const game = createGame();
@@ -2740,20 +2895,13 @@ describe('saveCodec', () => {
 		}
 	);
 
-	test.each(['normalize-cash', 'record-report', 'snapshot-city-inventory'] as const)(
+	test.each(['normalize-cash', 'snapshot-city-inventory'] as const)(
 		'$case maps structured-cloneable scalar coercion data to SaveDataError',
 		(testCase) => {
 			const malformed = { valueOf: {}, toString: {} };
 			const validate = () => {
 				if (testCase === 'normalize-cash') {
 					return normalizeSandboxSavedGame({ ...createGame(), cash: malformed });
-				}
-				if (testCase === 'record-report') {
-					const report = {
-						...createDailyReport(),
-						netIncome: malformed as unknown as number
-					};
-					return validateSaveRecord(createManualSaveRecord({ game: { reports: [report] } }));
 				}
 				const game = createGame({
 					cityInventories: [
@@ -2769,6 +2917,15 @@ describe('saveCodec', () => {
 			expect(validate).toThrow(SaveDataError);
 		}
 	);
+
+	test('drops a historical report with structured-cloneable scalar coercion data', () => {
+		const malformed = { valueOf: {}, toString: {} };
+		const report = { ...createDailyReport(), netIncome: malformed as unknown as number };
+
+		expectHistoricalReportDropped(
+			() => validateSaveRecord(createManualSaveRecord({ game: { reports: [report] } })).game
+		);
+	});
 
 	test.each(['strict', 'snapshot'] as const)(
 		'$boundary boundary rejects a 20,000-deep enumerable extra as SaveDataError',
@@ -3998,7 +4155,7 @@ describe('saveCodec', () => {
 		expect(() => validateSaveStoreSnapshot(snapshot)).not.toThrow();
 	});
 
-	test('sandbox normalization leaves malformed production movements for strict SaveDataError validation', () => {
+	test('sandbox normalization drops a report with a malformed production movement', () => {
 		const report = createDailyReport({
 			productionReport: createDailyProductionReport({
 				produced: [null as unknown as DailyMaterialMovement]
@@ -4006,10 +4163,7 @@ describe('saveCodec', () => {
 		});
 		const record = createManualSaveRecord({ game: { reports: [report] } });
 
-		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
-		expect(() => validateSaveRecord(record)).toThrow(
-			'Saved game reports[0] productionReport produced[0] must be an object'
-		);
+		expectHistoricalReportDropped(() => validateSaveRecord(record).game);
 	});
 
 	test('sandbox normalization defers malformed city tiles to strict SaveDataError validation', () => {
@@ -4756,9 +4910,8 @@ describe('saveCodec', () => {
 		expect(() => validateSaveRecord(record)).not.toThrow();
 	});
 
-	test('validateSavedWarningArray rejects cashReservesLow in store-only warnings', () => {
+	test('drops a report with cashReservesLow in store-only warnings', () => {
 		// cashReservesLow is a daily-level warning; store reports must not carry it.
-		expect.assertions(2);
 		const storeReport = {
 			...createDailyStoreReport(),
 			warnings: [{ code: 'cashReservesLow' }]
@@ -4766,19 +4919,16 @@ describe('saveCodec', () => {
 		const report = createDailyReport({ storeReports: [storeReport] });
 		const snapshot = createSnapshotWithGame({ ...createGame(), reports: [report] });
 
-		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
-		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow('code must be a store warning code');
+		expectHistoricalReportDropped(() => validateSaveStoreSnapshot(snapshot).manualSlots[0]!.game);
 	});
 
-	test('validateSavedWarningArray rejects an unknown warning code in daily report warnings', () => {
-		expect.assertions(2);
+	test('drops a report with an unknown warning code in daily report warnings', () => {
 		const report = createDailyReport({
 			warnings: [{ code: 'notARealWarning' } as unknown as DailyReportWarning]
 		});
 		const snapshot = createSnapshotWithGame({ ...createGame(), reports: [report] });
 
-		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
-		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow('code must be a valid warning code');
+		expectHistoricalReportDropped(() => validateSaveStoreSnapshot(snapshot).manualSlots[0]!.game);
 	});
 
 	test('validateSavedWarningArray validates cashReservesLow without a storeId', () => {
@@ -4792,8 +4942,7 @@ describe('saveCodec', () => {
 		expect(() => validateSaveStoreSnapshot(snapshot)).not.toThrow();
 	});
 
-	test('validateSavedWarningArray rejects shortManager with a non-positive count', () => {
-		expect.assertions(2);
+	test('drops a report with shortManager at a non-positive count', () => {
 		const storeReport = {
 			...createDailyStoreReport(),
 			warnings: [{ code: 'shortManager', storeId: 'store-1', count: 0 }]
@@ -4801,12 +4950,10 @@ describe('saveCodec', () => {
 		const report = createDailyReport({ storeReports: [storeReport] });
 		const snapshot = createSnapshotWithGame({ ...createGame(), reports: [report] });
 
-		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
-		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow('count must be a positive integer');
+		expectHistoricalReportDropped(() => validateSaveStoreSnapshot(snapshot).manualSlots[0]!.game);
 	});
 
-	test('validateSavedWarningArray rejects a store warning without a storeId', () => {
-		expect.assertions(2);
+	test('drops a report with a store warning missing its storeId', () => {
 		const storeReport = {
 			...createDailyStoreReport(),
 			warnings: [{ code: 'stockPressure' } as unknown as DailyStoreReport['warnings'][number]]
@@ -4814,8 +4961,7 @@ describe('saveCodec', () => {
 		const report = createDailyReport({ storeReports: [storeReport] });
 		const snapshot = createSnapshotWithGame({ ...createGame(), reports: [report] });
 
-		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
-		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow('storeId must be a non-empty string');
+		expectHistoricalReportDropped(() => validateSaveStoreSnapshot(snapshot).manualSlots[0]!.game);
 	});
 
 	test('validateSavedWarningArray validates structured store and daily warnings together', () => {
@@ -5129,18 +5275,15 @@ describe('saveCodec', () => {
 		expect(decoded.railUsage).toEqual({ 'industry-city:1,1': 3 });
 	});
 
-	test('rejects a production report with negative rail usage units', () => {
-		expect.assertions(2);
+	test('drops a production report with negative rail usage units', () => {
 		const report = createDailyReport({
 			productionReport: createDailyProductionReport({ railUsage: { 'industry-city:1,1': -1 } })
 		});
 		const snapshot = createSnapshotWithGame({ ...createGame(), reports: [report] });
-		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
-		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow('railUsage');
+		expectHistoricalReportDropped(() => validateSaveStoreSnapshot(snapshot).manualSlots[0]!.game);
 	});
 
-	test('rejects a rail shipment with a negative quantity', () => {
-		expect.assertions(2);
+	test('drops a rail shipment with a negative quantity', () => {
 		const report = createDailyReport({
 			productionReport: createDailyProductionReport({
 				railShipments: [
@@ -5157,12 +5300,10 @@ describe('saveCodec', () => {
 			})
 		});
 		const snapshot = createSnapshotWithGame({ ...createGame(), reports: [report] });
-		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
-		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow('quantity must be non-negative');
+		expectHistoricalReportDropped(() => validateSaveStoreSnapshot(snapshot).manualSlots[0]!.game);
 	});
 
-	test('rejects a rail shipment with a negative value', () => {
-		expect.assertions(2);
+	test('drops a rail shipment with a negative value', () => {
 		const report = createDailyReport({
 			productionReport: createDailyProductionReport({
 				railShipments: [
@@ -5179,8 +5320,7 @@ describe('saveCodec', () => {
 			})
 		});
 		const snapshot = createSnapshotWithGame({ ...createGame(), reports: [report] });
-		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
-		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow('value must be non-negative');
+		expectHistoricalReportDropped(() => validateSaveStoreSnapshot(snapshot).manualSlots[0]!.game);
 	});
 
 	test('rejects a legacy city inventory capacity field', () => {
@@ -5793,8 +5933,8 @@ describe('saveCodec', () => {
 		});
 	});
 
-	describe('current report validation defensive paths', () => {
-		test('rejects a production movement cityId referencing a known but closed industry city', () => {
+	describe('historical report decoding defensive paths', () => {
+		test('preserves a production movement cityId referencing a known but closed industry city', () => {
 			const game = createCurrentMultiCityGame();
 			const report = createCurrentReport(game);
 			const updatedReport = {
@@ -5808,13 +5948,13 @@ describe('saveCodec', () => {
 				}
 			};
 
-			expectSaveRecordErrorCode(
-				createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }),
-				'invariant-report-attribution'
-			);
+			expect(
+				expectHistoricalReportPreserved(() => decodeHistoricalReport(game, updatedReport))
+					.reports[0]
+			).toEqual(updatedReport);
 		});
 
-		test('rejects a production-close summary with a non-finite capacity', () => {
+		test('drops a production-close summary with a non-finite capacity', () => {
 			const game = createCurrentMultiCityGame();
 			const report = createCurrentReport(game);
 			const updatedReport = {
@@ -5827,13 +5967,10 @@ describe('saveCodec', () => {
 				}
 			};
 
-			expectSaveRecordErrorCode(
-				createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }),
-				'invariant-report-attribution'
-			);
+			expectHistoricalReportDropped(() => decodeHistoricalReport(game, updatedReport));
 		});
 
-		test('rejects a production-close summary with a negative used value', () => {
+		test('drops a production-close summary with a negative used value', () => {
 			const game = createCurrentMultiCityGame();
 			const report = createCurrentReport(game);
 			const updatedReport = {
@@ -5846,13 +5983,10 @@ describe('saveCodec', () => {
 				}
 			};
 
-			expectSaveRecordErrorCode(
-				createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }),
-				'invariant-report-attribution'
-			);
+			expectHistoricalReportDropped(() => decodeHistoricalReport(game, updatedReport));
 		});
 
-		test('rejects a production-close summary with an unsafe aggregate capacity', () => {
+		test('preserves a production-close summary with a safe maximum aggregate capacity', () => {
 			const game = createCurrentMultiCityGame();
 			const report = createCurrentReport(game);
 			const updatedReport = {
@@ -5873,13 +6007,13 @@ describe('saveCodec', () => {
 				}
 			};
 
-			expectSaveRecordErrorCode(
-				createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }),
-				'invariant-report-attribution'
-			);
+			expect(
+				expectHistoricalReportPreserved(() => decodeHistoricalReport(game, updatedReport))
+					.reports[0]
+			).toEqual(updatedReport);
 		});
 
-		test('rejects a production-close summary with an overflow cost that does not reconcile', () => {
+		test('preserves a production-close summary with an unreconciled overflow cost', () => {
 			const game = createCurrentMultiCityGame();
 			const report = createCurrentReport(game);
 			const updatedReport = {
@@ -5894,13 +6028,13 @@ describe('saveCodec', () => {
 				}
 			};
 
-			expectSaveRecordErrorCode(
-				createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }),
-				'invariant-report-attribution'
-			);
+			expect(
+				expectHistoricalReportPreserved(() => decodeHistoricalReport(game, updatedReport))
+					.reports[0]
+			).toEqual(updatedReport);
 		});
 
-		test('rejects a production-close summary whose overflow cost multiplication overflows the safe-integer range', () => {
+		test('preserves a production-close summary whose historical pressure multiplication overflows', () => {
 			const game = createCurrentMultiCityGame();
 			const report = createCurrentReport(game);
 			const updatedReport: DailyReport = {
@@ -5921,13 +6055,13 @@ describe('saveCodec', () => {
 				}
 			};
 
-			expectSaveRecordErrorCode(
-				createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }),
-				'invariant-report-attribution'
-			);
+			expect(
+				expectHistoricalReportPreserved(() => decodeHistoricalReport(game, updatedReport))
+					.reports[0]
+			).toEqual(updatedReport);
 		});
 
-		test('rejects duplicate city IDs in production-close summaries', () => {
+		test('preserves duplicate city IDs in historical production-close summaries', () => {
 			const game = createCurrentMultiCityGame();
 			const report = createCurrentReport(game);
 			const updatedReport = {
@@ -5945,13 +6079,13 @@ describe('saveCodec', () => {
 				}
 			};
 
-			expectSaveRecordErrorCode(
-				createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }),
-				'invariant-report-attribution'
-			);
+			expect(
+				expectHistoricalReportPreserved(() => decodeHistoricalReport(game, updatedReport))
+					.reports[0]
+			).toEqual(updatedReport);
 		});
 
-		test('rejects noncanonical ordering in production-close summaries', () => {
+		test('preserves noncanonical ordering in historical production-close summaries', () => {
 			const game = createCurrentMultiCityGame();
 			const report = createCurrentReport(game);
 			const updatedReport = {
@@ -5962,13 +6096,13 @@ describe('saveCodec', () => {
 				}
 			};
 
-			expectSaveRecordErrorCode(
-				createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }),
-				'invariant-report-attribution'
-			);
+			expect(
+				expectHistoricalReportPreserved(() => decodeHistoricalReport(game, updatedReport))
+					.reports[0]
+			).toEqual(updatedReport);
 		});
 
-		test('rejects a store replenishment context with an empty-string retailCityId', () => {
+		test('drops a store replenishment context with an empty-string retailCityId', () => {
 			const game = createCurrentMultiCityGame();
 			const report = createCurrentReport(game);
 			const storeReport = report.storeReports[0]!;
@@ -5985,13 +6119,10 @@ describe('saveCodec', () => {
 				]
 			};
 
-			expectSaveRecordErrorCode(
-				createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }),
-				'invariant-retail-supply'
-			);
+			expectHistoricalReportDropped(() => decodeHistoricalReport(game, updatedReport));
 		});
 
-		test('rejects a store replenishment context with a mismatched retail city kind', () => {
+		test('drops a store replenishment context with a mismatched retail city kind', () => {
 			const game = createCurrentMultiCityGame();
 			const report = createCurrentReport(game);
 			const storeReport = report.storeReports[0]!;
@@ -6008,13 +6139,10 @@ describe('saveCodec', () => {
 				]
 			};
 
-			expectSaveRecordErrorCode(
-				createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }),
-				'invariant-retail-supply'
-			);
+			expectHistoricalReportDropped(() => decodeHistoricalReport(game, updatedReport));
 		});
 
-		test('rejects local replenishment with warehouse units but no resolved supply city', () => {
+		test('preserves local replenishment with warehouse units but no resolved supply city', () => {
 			const game = createCurrentMultiCityGame();
 			const report = createCurrentReport(game);
 			const storeReport = report.storeReports[0]!;
@@ -6040,13 +6168,13 @@ describe('saveCodec', () => {
 				]
 			};
 
-			expectSaveRecordErrorCode(
-				createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }),
-				'invariant-retail-supply'
-			);
+			expect(
+				expectHistoricalReportPreserved(() => decodeHistoricalReport(game, updatedReport))
+					.reports[0]
+			).toEqual(updatedReport);
 		});
 
-		test('rejects a raw-material categoryId with nonzero warehouse units', () => {
+		test('preserves a raw-material categoryId with nonzero warehouse units', () => {
 			const game = createCurrentMultiCityGame();
 			const report = createCurrentReport(game);
 			const storeReport = report.storeReports[0]!;
@@ -6069,13 +6197,13 @@ describe('saveCodec', () => {
 				]
 			};
 
-			expectSaveRecordErrorCode(
-				createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }),
-				'invariant-retail-supply'
-			);
+			expect(
+				expectHistoricalReportPreserved(() => decodeHistoricalReport(game, updatedReport))
+					.reports[0]
+			).toEqual(updatedReport);
 		});
 
-		test('rejects a store report referencing an unknown storeId', () => {
+		test('preserves a store report referencing an unknown current storeId', () => {
 			const game = createCurrentMultiCityGame();
 			const report = createCurrentReport(game);
 			const storeReport = report.storeReports[0]!;
@@ -6089,13 +6217,13 @@ describe('saveCodec', () => {
 				]
 			};
 
-			expectSaveRecordErrorCode(
-				createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }),
-				'invariant-retail-supply'
-			);
+			expect(
+				expectHistoricalReportPreserved(() => decodeHistoricalReport(game, updatedReport))
+					.reports[0]
+			).toEqual(updatedReport);
 		});
 
-		test('rejects a warehouseValue that overflows the safe-integer range for its material localValue', () => {
+		test('preserves a warehouseValue beyond its current material-local-value equation', () => {
 			const game = createCurrentMultiCityGame();
 			const report = createCurrentReport(game);
 			const storeReport = report.storeReports[0]!;
@@ -6118,13 +6246,13 @@ describe('saveCodec', () => {
 				]
 			};
 
-			expectSaveRecordErrorCode(
-				createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }),
-				'invariant-retail-supply'
-			);
+			expect(
+				expectHistoricalReportPreserved(() => decodeHistoricalReport(game, updatedReport))
+					.reports[0]
+			).toEqual(updatedReport);
 		});
 
-		test('rejects a non-object non-null replenishment context', () => {
+		test('drops a non-object non-null replenishment context', () => {
 			const game = createCurrentMultiCityGame();
 			const report = createCurrentReport(game);
 			const storeReport = report.storeReports[0]!;
@@ -6138,13 +6266,10 @@ describe('saveCodec', () => {
 				]
 			};
 
-			expectSaveRecordErrorCode(
-				createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }),
-				'invariant-retail-supply'
-			);
+			expectHistoricalReportDropped(() => decodeHistoricalReport(game, updatedReport));
 		});
 
-		test('rejects a replenishment retailCityId that does not match its store city', () => {
+		test('preserves a replenishment retailCityId that does not match its current store city', () => {
 			const game = createCurrentMultiCityGame();
 			const report = createCurrentReport(game);
 			const storeReport = report.storeReports[0]!;
@@ -6161,13 +6286,13 @@ describe('saveCodec', () => {
 				]
 			};
 
-			expectSaveRecordErrorCode(
-				createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }),
-				'invariant-retail-supply'
-			);
+			expect(
+				expectHistoricalReportPreserved(() => decodeHistoricalReport(game, updatedReport))
+					.reports[0]
+			).toEqual(updatedReport);
 		});
 
-		test('rejects a replenishment context where resolved and configured supply city IDs differ', () => {
+		test('preserves a replenishment context where resolved and configured supply city IDs differ', () => {
 			const game = createCurrentMultiCityGame();
 			const report = createCurrentReport(game);
 			const storeReport = report.storeReports[0]!;
@@ -6185,13 +6310,13 @@ describe('saveCodec', () => {
 				]
 			};
 
-			expectSaveRecordErrorCode(
-				createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }),
-				'invariant-retail-supply'
-			);
+			expect(
+				expectHistoricalReportPreserved(() => decodeHistoricalReport(game, updatedReport))
+					.reports[0]
+			).toEqual(updatedReport);
 		});
 
-		test('rejects a replenishment context with a resolved supply city that has no current inventory', () => {
+		test('preserves a replenishment context with a resolved supply city that has no current inventory', () => {
 			const game = createCurrentMultiCityGame();
 			const report = createCurrentReport(game);
 			const storeReport = report.storeReports[0]!;
@@ -6218,13 +6343,13 @@ describe('saveCodec', () => {
 				]
 			};
 
-			expectSaveRecordErrorCode(
-				createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }),
-				'invariant-retail-supply'
-			);
+			expect(
+				expectHistoricalReportPreserved(() => decodeHistoricalReport(game, updatedReport))
+					.reports[0]
+			).toEqual(updatedReport);
 		});
 
-		test('rejects a replenishment context with no attempted product refill', () => {
+		test('preserves a replenishment context with no attempted product refill', () => {
 			const game = createCurrentMultiCityGame();
 			const report = createCurrentReport(game);
 			const storeReport = report.storeReports[0]!;
@@ -6246,10 +6371,10 @@ describe('saveCodec', () => {
 				]
 			};
 
-			expectSaveRecordErrorCode(
-				createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }),
-				'invariant-retail-supply'
-			);
+			expect(
+				expectHistoricalReportPreserved(() => decodeHistoricalReport(game, updatedReport))
+					.reports[0]
+			).toEqual(updatedReport);
 		});
 	});
 

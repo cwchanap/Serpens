@@ -1005,14 +1005,6 @@ export function validateScenarioRun(
 			'Run game failed strict current validation.'
 		);
 	}
-	if (!deeplyEqual(game, run.game)) {
-		fail(
-			'current-game-mismatch',
-			'run.game',
-			undefined,
-			'Current-schema validation must not transform a scenario game.'
-		);
-	}
 	return validateRunWithGame(
 		scenarioRunEnvelope(run as unknown as ScenarioRun),
 		game,
@@ -1102,14 +1094,6 @@ function decodeActiveRunRecord(
 			`${path}.game`,
 			safeDescribe(error),
 			'Embedded game failed strict validation.'
-		);
-	}
-	if (!deeplyEqual(game, record.game)) {
-		fail(
-			'current-game-mismatch',
-			`${path}.game`,
-			undefined,
-			'Current-schema validation must not transform a scenario game.'
 		);
 	}
 	const runEnvelope = requireRecord(record.run, `${path}.run`);
