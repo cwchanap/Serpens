@@ -242,4 +242,53 @@ describe('getAvailableMaterialIds', () => {
 		expect(available).not.toContain('grain');
 		expect(available).toContain('salt');
 	});
+
+	it('falls back to an empty inventory when the active industry city has no materialized inventory', () => {
+		expect.assertions(2);
+		// industry-city is opened and in industryCities (from createNewGame), but
+		// its city inventory entry is missing, so getCityInventory fails and
+		// getActiveIndustryInputs returns an empty inventory without throwing.
+		const available = getAvailableMaterialIds(
+			baseGame({
+				cityInventories: [],
+				industrialBuildings: [building('water-pump')]
+			})
+		);
+		// The placed water-pump output still counts as available even though the
+		// city inventory itself is unavailable.
+		expect(available).toContain('water');
+		expect(available).not.toContain('grain');
+	});
+
+	it('counts positive building inventory quantities as available materials', () => {
+		expect.assertions(1);
+		const available = getAvailableMaterialIds(
+			baseGame({
+				industrialBuildings: [
+					{
+						...building('water-pump'),
+						inventory: { water: 5 }
+					}
+				]
+			})
+		);
+		expect(available).toContain('water');
+	});
+
+	it('skips zero-quantity building inventory entries', () => {
+		expect.assertions(1);
+		const available = getAvailableMaterialIds(
+			baseGame({
+				industrialBuildings: [
+					{
+						...building('water-pump'),
+						inventory: { water: 0 }
+					}
+				]
+			})
+		);
+		// The pump's recipe output still counts, but its zero-quantity inventory
+		// entry must not be double-counted (and must not throw).
+		expect(available).toContain('water');
+	});
 });

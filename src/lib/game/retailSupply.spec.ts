@@ -184,6 +184,40 @@ describe('retail supply assignment', () => {
 			{ retailCityId: 'campus-junction', supplyCityId: 'industry-city' }
 		]);
 	});
+
+	test('updates only the matching assignment and leaves siblings untouched', () => {
+		expect.assertions(3);
+		const base = createNewGame('convenience', 292_520);
+		const opened = openWorldCity(
+			{
+				...base,
+				cash: 1_000_000,
+				world: {
+					...base.world,
+					revealedCityIds: [...base.world.revealedCityIds, 'campus-junction']
+				}
+			},
+			'campus-junction'
+		);
+		// Start with two assignments both sourcing from industry-city.
+		const game: GameState = {
+			...opened,
+			retailSupplyAssignments: [
+				{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' },
+				{ retailCityId: 'campus-junction', supplyCityId: 'industry-city' }
+			]
+		};
+
+		// Switch only harbor-city to imports-only; campus-junction must stay.
+		const result = setRetailSupplySource(game, 'harbor-city', null);
+
+		expect(result).toMatchObject({ ok: true, changed: true });
+		expect(result.game.retailSupplyAssignments).toEqual([
+			{ retailCityId: 'harbor-city', supplyCityId: null },
+			{ retailCityId: 'campus-junction', supplyCityId: 'industry-city' }
+		]);
+		expect(result.game).not.toBe(game);
+	});
 });
 
 describe('weekly retail replenishment', () => {
