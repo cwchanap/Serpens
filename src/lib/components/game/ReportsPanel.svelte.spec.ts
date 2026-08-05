@@ -741,7 +741,7 @@ describe('ReportsPanel', () => {
 			.element(reports.getByText('Consumption attribution unavailable: 3 units'))
 			.toBeVisible();
 		await expect
-			.element(reports.getByText('City inventory overflow: 2 units ($4).'))
+			.element(reports.getByText(/City inventory overflow: \d+ units/))
 			.not.toBeInTheDocument();
 	});
 
@@ -939,6 +939,7 @@ describe('ReportsPanel', () => {
 
 		const reports = page.getByRole('region', { name: 'Reports' });
 		await expect.element(reports.getByText('Rail shipments')).toBeVisible();
-		await expect.element(reports.getByText('0', { exact: true })).toBeVisible();
+		const railShipmentsRow = reports.getByText('Rail shipments').element().parentElement;
+		expect(railShipmentsRow?.querySelector('strong')?.textContent).toBe('0');
 	});
 });

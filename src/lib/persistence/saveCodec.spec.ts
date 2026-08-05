@@ -8362,7 +8362,8 @@ describe('saveCodec', () => {
 			expectSaveRecordErrorCode(record, 'invariant-city-inventory');
 		});
 
-		test('uses canonical world-city order tie-breaker when no eligible city is the active industry city', () => {
+		test('rejects as corrupt when the canonical world-city tie-breaker finds no eligible active industry city', () => {
+			// Branch: canonical world-city order tie-breaker when no eligible city is the active industry city.
 			const record = createV12MultiCityRecord({ water: 3 });
 			const rawGame = record.game as unknown as Record<string, unknown>;
 			rawGame.activeIndustryCityId = 'quarry-works';
@@ -8370,7 +8371,8 @@ describe('saveCodec', () => {
 			expectSaveRecordErrorCode(record, 'corrupt');
 		});
 
-		test('passes through a non-object store report during v12 store-report migration', () => {
+		test('rejects as invariant-report-attribution when a v12 store report is non-object', () => {
+			// Branch: non-object store report during v12 store-report migration.
 			const record = createV12MultiCityRecord({ water: 3 });
 			record.game.reports = [createLegacyV12Report(record.game as unknown as V12GameFixture)];
 			const rawReport = record.game.reports[0] as unknown as Record<string, unknown>;
@@ -8379,7 +8381,8 @@ describe('saveCodec', () => {
 			expectSaveRecordErrorCode(record, 'invariant-report-attribution');
 		});
 
-		test('passes through a non-object product report during v12 store-report migration', () => {
+		test('rejects as invariant-report-attribution when a v12 product report is non-object', () => {
+			// Branch: non-object product report during v12 store-report migration.
 			const record = createV12MultiCityRecord({ water: 3 });
 			record.game.reports = [createLegacyV12Report(record.game as unknown as V12GameFixture)];
 			const rawReport = record.game.reports[0] as unknown as Record<string, unknown>;
@@ -8392,7 +8395,8 @@ describe('saveCodec', () => {
 			expectSaveRecordErrorCode(record, 'invariant-report-attribution');
 		});
 
-		test('passes through a non-object rail shipment during v12 rail-shipment migration', () => {
+		test('rejects as corrupt when a v12 rail shipment is non-object', () => {
+			// Branch: non-object rail shipment during v12 rail-shipment migration.
 			const record = createV12MultiCityRecord({ water: 3 });
 			record.game.reports = [createLegacyV12Report(record.game as unknown as V12GameFixture)];
 			const rawReport = record.game.reports[0] as unknown as Record<string, unknown>;
@@ -8432,7 +8436,8 @@ describe('saveCodec', () => {
 			expectSaveRecordErrorCode(record, 'invariant-report-attribution');
 		});
 
-		test('passes through empty v12 shop imports when no recoverable store report evidence exists', () => {
+		test('rejects as corrupt when v12 shop imports are empty with no recoverable store report evidence', () => {
+			// Branch: empty v12 shop imports when no recoverable store report evidence exists.
 			const record = createV12MultiCityRecord({ water: 3 });
 			record.game.reports = [createLegacyV12Report(record.game as unknown as V12GameFixture)];
 			const rawReport = record.game.reports[0] as unknown as Record<string, unknown>;
@@ -8506,7 +8511,8 @@ describe('saveCodec', () => {
 			expectSaveRecordErrorCode(record, 'invariant-report-attribution');
 		});
 
-		test('retains legacy production-close city inventories when aggregate fields are not safe integers', () => {
+		test('rejects as corrupt when legacy production-close city inventories have non-safe-integer aggregate fields', () => {
+			// Branch: legacy production-close city inventories when aggregate fields are not safe integers.
 			const record = createV12MultiCityRecord({ water: 3 });
 			record.game.reports = [createLegacyV12Report(record.game as unknown as V12GameFixture)];
 			const rawReport = record.game.reports[0] as unknown as Record<string, unknown>;
@@ -8761,19 +8767,17 @@ describe('saveCodec', () => {
 				...report,
 				productionReport: {
 					...report.productionReport,
-					cityInventories: [
-						{
-							cityId: 'industry-city',
-							capacity: 0,
-							used: Number.MAX_SAFE_INTEGER,
-							overflowUnits: Number.MAX_SAFE_INTEGER,
-							overflowCost: 0
-						}
-					],
-					warehouseCapacity: 0,
-					warehouseUsed: Number.MAX_SAFE_INTEGER,
-					overflowUnits: Number.MAX_SAFE_INTEGER,
-					overflowCost: 0
+					cityInventories: report.productionReport.cityInventories.map((summary) =>
+						summary.cityId === 'industry-city'
+							? {
+									...summary,
+									capacity: 0,
+									used: Number.MAX_SAFE_INTEGER,
+									overflowUnits: Number.MAX_SAFE_INTEGER,
+									overflowCost: 0
+								}
+							: summary
+					)
 				}
 			};
 

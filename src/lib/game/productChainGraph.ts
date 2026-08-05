@@ -620,9 +620,9 @@ export function emptyActualMetrics(): ProductChainActualMetrics {
 export function materialActualMetrics(
 	report: DailyProductionReport | null,
 	materialId: MaterialId,
-	productReport: DailyProductReport | null,
-	isRetailRoot = false
+	retailRoot: { productReport: DailyProductReport | null } | null = null
 ): ProductChainActualMetrics {
+	const productReport = retailRoot?.productReport ?? null;
 	return {
 		produced: sumMovements(report?.produced, materialId, 'local'),
 		consumed: sumMovements(report?.consumed, materialId),
@@ -633,14 +633,14 @@ export function materialActualMetrics(
 		// share one supply city. When a store product report is available
 		// (root finished material only), its warehouseUnits is already
 		// scoped to the active retail city's stores — use it directly.
-		// Intermediate materials pass productReport = null and fall back to
+		// Intermediate materials pass retailRoot = null and fall back to
 		// the movement sum, which is correct for industrial warehouse pulls
 		// attributed to the industry city itself. A retail root with no
 		// product report (active city opened after the latest daily tick)
 		// must NOT fall back: null there means "no report yet", and the
 		// movement array would leak another retail city's pull. Resolve it
 		// to 0 instead.
-		warehousePulled: resolveWarehousePulled(report, materialId, productReport, isRetailRoot),
+		warehousePulled: resolveWarehousePulled(report, materialId, retailRoot),
 		railPulled: sumMovements(report?.consumed, materialId, 'rail'),
 		shopImported: sumMovements(report?.shopImports, materialId, 'import'),
 		unitsSold: productReport?.unitsSold ?? 0,
@@ -651,13 +651,12 @@ export function materialActualMetrics(
 function resolveWarehousePulled(
 	report: DailyProductionReport | null,
 	materialId: MaterialId,
-	productReport: DailyProductReport | null,
-	isRetailRoot: boolean
+	retailRoot: { productReport: DailyProductReport | null } | null
 ): number {
-	if (productReport) {
-		return productReport.warehouseUnits;
+	if (retailRoot?.productReport) {
+		return retailRoot.productReport.warehouseUnits;
 	}
-	if (isRetailRoot) {
+	if (retailRoot) {
 		return 0;
 	}
 	return sumMovements(report?.warehousePulls, materialId, 'warehouse');

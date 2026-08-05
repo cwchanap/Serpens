@@ -341,9 +341,10 @@ describe('ProductChainsPanel', () => {
 		}
 	);
 
-	it('shows city inventory overflow state in warehouse-flow mode', async () => {
-		expect.assertions(1);
+	it('shows city inventory overflow state in City inventory flow', async () => {
+		expect.assertions(2);
 		const baseGame = withActiveIndustryInventory(createNewGame('convenience', 20260518));
+		expect(baseGame.activeIndustryCityId).toBeDefined();
 		const cityId = baseGame.activeIndustryCityId as WorldCityId;
 		const game: GameState = {
 			...baseGame,
@@ -362,9 +363,10 @@ describe('ProductChainsPanel', () => {
 			.toBeVisible();
 	});
 
-	it('shows active industry city inventory unavailable in warehouse-flow mode', async () => {
-		expect.assertions(1);
+	it('shows active industry city inventory unavailable in City inventory flow', async () => {
+		expect.assertions(2);
 		const baseGame = createNewGame('convenience', 20260518);
+		expect(baseGame.activeIndustryCityId).toBeDefined();
 		const cityId = baseGame.activeIndustryCityId as WorldCityId;
 		const game: GameState = {
 			...baseGame,

@@ -219,8 +219,7 @@ export function buildProductChainTree(input: {
 		const actual = materialActualMetrics(
 			report,
 			materialId,
-			isRetailRoot ? productReport : null,
-			isRetailRoot
+			isRetailRoot ? { productReport } : null
 		);
 		const health = materialHealth({
 			hasReport: report !== null,

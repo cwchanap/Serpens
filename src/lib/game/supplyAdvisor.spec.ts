@@ -267,12 +267,15 @@ describe('getAvailableMaterialIds', () => {
 				industrialBuildings: [
 					{
 						...building('water-pump'),
-						inventory: { water: 5 }
+						// 'grain' is not a water-pump recipe output, so its
+						// presence is attributable solely to the inventory
+						// quantity guard.
+						inventory: { grain: 5 }
 					}
 				]
 			})
 		);
-		expect(available).toContain('water');
+		expect(available).toContain('grain');
 	});
 
 	it('skips zero-quantity building inventory entries', () => {
@@ -282,13 +285,13 @@ describe('getAvailableMaterialIds', () => {
 				industrialBuildings: [
 					{
 						...building('water-pump'),
-						inventory: { water: 0 }
+						inventory: { grain: 0 }
 					}
 				]
 			})
 		);
-		// The pump's recipe output still counts, but its zero-quantity inventory
-		// entry must not be double-counted (and must not throw).
-		expect(available).toContain('water');
+		// 'grain' is not a water-pump recipe output, so its absence confirms
+		// the zero-quantity inventory entry is skipped (and does not throw).
+		expect(available).not.toContain('grain');
 	});
 });

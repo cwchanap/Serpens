@@ -309,7 +309,9 @@ function validateSupplyEndpoint(
 				? 'supply-city-closed'
 				: access.reason === 'inventory-missing'
 					? 'supply-city-unavailable'
-					: 'supply-city-unavailable';
+					: access.reason === 'unsupported-city'
+						? 'supply-city-unmaterialized'
+						: 'supply-city-unavailable';
 		diagnostics.push(
 			scenarioDiagnostic(
 				path,
