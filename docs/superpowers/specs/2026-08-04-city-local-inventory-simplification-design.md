@@ -11,7 +11,7 @@ HPA-292 correctly introduced city-owned inventory and retail supply assignments,
 
 HPA-554 simplifies those contracts before inter-city transfers and routes build on them. The cleanup intentionally breaks old development saves, removes compatibility and recovery code, keeps only authoritative mutable state, derives cheap values on demand, and retains a small set of gameplay-focused tests.
 
-The implementation is delivered in one PR with ordered commits. It must produce a meaningful net reduction in production and durable test code. Deleting complexity is the feature; replacing it with a generic framework is out of scope.
+The implementation is delivered in one PR with eight ordered review checkpoints. It must produce a meaningful net reduction in production and durable test code. Deleting complexity is the feature; replacing it with a generic framework is out of scope.
 
 ## Priorities
 
@@ -110,6 +110,8 @@ export function getCityInventoryStats(
 ): CityInventoryStats | null;
 ```
 
+The `string` parameter intentionally matches the existing `getCityInventory` boundary; HPA-554 does not churn callers merely to narrow the parameter type.
+
 Behavior:
 
 1. Resolve a known opened industry city with a materialized `IndustryCity` and `CityInventory`.
@@ -155,22 +157,22 @@ export interface DailyCityInventorySummary {
 }
 ```
 
-This is not mutable game state. It records the production-close values for a report day. `industryProduction.ts` creates summaries by calling `getCityInventoryStats` against the production-close game state.
+This is not mutable game state. It records production-close values for a report day. `industryProduction.ts` creates summaries by calling `getCityInventoryStats` against the production-close game state.
 
-The existing aggregate report fields remain for now because finance and report UI already use them:
+The existing aggregate report fields remain unchanged because finance and report UI already use them:
 
 - `warehouseCapacity`
 - `warehouseUsed`
 - `overflowUnits`
 - `overflowCost`
 
-They are calculated from the daily city summaries once. Removing those compatibility field names is not required by HPA-554.
+HPA-554 will not rename or remove these aggregate report fields.
 
 ## Persistence
 
 ### Schema policy
 
-Bump `SAVE_SCHEMA_VERSION` from 13 to 14 because the current `CityInventory` and report shapes change.
+Bump `SAVE_SCHEMA_VERSION` from 13 to 14 because the final implementation changes the current `CityInventory` and report wire shapes.
 
 A record is accepted only when:
 
@@ -178,7 +180,7 @@ A record is accepted only when:
 record.schemaVersion === SAVE_SCHEMA_VERSION
 ```
 
-Any other version throws one dedicated error such as:
+Any other version throws:
 
 ```ts
 new SaveDataError(
@@ -198,6 +200,34 @@ Remove:
 - exports used only to test individual migration stages
 
 Repositories continue calling one current-schema decode/validate entry point. Do not retain deprecated migration wrappers.
+
+### Schema lifecycle inside the implementation PR
+
+Schema 14 is the only accepted version for the entire implementation branch. The first implementation commit may temporarily advertise schema 14 while the in-memory and encoded shapes still match former schema 13; later commits change those shapes under schema 14.
+
+This temporary state is acceptable because:
+
+- the implementation is one unreleased PR;
+- every commit rejects schema 13;
+- no 13-to-14 migration exists at any point;
+- no intermediate commit is shipped as a release.
+
+Fixtures and helper names must switch to neutral or schema-14 naming as soon as Task 1 establishes schema 14. Do not retain names such as `createCurrentV13MultiCityGame` after the bump.
+
+### Unsupported-version presentation
+
+`unsupported-version` is a real save API result, not just a codec test code.
+
+Current `SaveRepositoryFromDriver.readSnapshot` turns ordinary malformed save data into an empty store. HPA-554 keeps that cheap recovery for `corrupt`, but it must rethrow `unsupported-version` so the route can explain why an old development save was not loaded.
+
+The existing page-level save error mapping handles the surfaced error:
+
+- add `route.save.errorUnsupportedVersion` in English, Japanese, and Traditional Chinese;
+- map `SaveDataError.code === 'unsupported-version'` in `describeSaveErrorKey`;
+- keep generic current-schema corruption mapped to `route.save.errorCorrupt`;
+- add repository and page/controller tests proving the unsupported-version code is not silently collapsed to an empty save store.
+
+No new save-error framework or controller result union is introduced.
 
 ### Current-state validation
 
@@ -228,7 +258,13 @@ Keep structural decoding for fields the UI reads. Remove current-state semantic 
 - comparing historical aggregate fields to current game inventory
 - requiring historical city membership to match the current opened-city set
 
-Decode report entries independently. A structurally invalid report entry is omitted from `game.reports`; valid entries remain in original chronological order. The decoder does not attempt to repair malformed report details.
+Decode report entries independently with these exact rules:
+
+1. Valid surviving rows preserve their original chronological order.
+2. If every row is malformed, `game.reports` becomes an empty array and the save remains playable.
+3. The decoder never fills, rewrites, or soft-repairs malformed report fields.
+
+A structurally invalid report entry is omitted from `game.reports`; valid siblings remain.
 
 ## Replenishment reports
 
@@ -272,14 +308,17 @@ export function getRetailReplenishmentOutcome(
 ): RetailReplenishmentOutcome | null;
 ```
 
-Rules:
+Apply the rules in this order:
 
-- no local or imported units: `null`
-- local units and no imported units: `city-inventory`
-- local and imported units: `mixed`
-- imported units with `configuredSupplyCityId === null`: `unassigned-import`
-- imported units with a configured source and `resolvedSupplyCityId === null`: `source-unavailable-import`
-- imported units with a resolved source: `import-only`
+1. If both quantities are zero, return `null`.
+2. If `context === null`, return `null` even when a malformed historical row contains nonzero quantities; presentation must not invent missing source evidence.
+3. If both local and imported quantities are positive, return `mixed`.
+4. If only local quantity is positive, return `city-inventory`.
+5. If only imported quantity is positive and `configuredSupplyCityId === null`, return `unassigned-import`.
+6. If only imported quantity is positive and `resolvedSupplyCityId === null`, return `source-unavailable-import`.
+7. Otherwise return `import-only`.
+
+Quantity evidence wins before source classification once context exists. Therefore local plus imported units are `mixed` even if a malformed context has `configuredSupplyCityId === null`.
 
 The helper belongs with report presentation or retail report helpers, not persistence validation.
 
@@ -292,17 +331,24 @@ Remove the duplicated post-setup module:
 - `src/lib/scenarios/validation/cityInventory.ts`
 - `src/lib/scenarios/validation/cityInventory.spec.ts`
 
-`buildScenarioGame` follows this sequence:
+`buildScenarioGame` follows this exact sequence:
 
 1. Validate the authored definition with the existing schema/content validator.
-2. Materialize cities, stores, buildings, and rails through normal transitions.
-3. Apply inventory material and supply assignment overrides.
-4. Sort inventories and assignments by catalog order.
-5. Check meaningful setup rules directly while applying overrides:
-   - target city exists and is open
-   - inventory total does not exceed derived city capacity
-   - supply source is an opened inventory-capable industry city or `null`
-6. Run one final `validateCurrentGameState(game)`.
+2. Materialize cities, stores, all authored industrial buildings, and rails through normal transitions.
+3. Apply general overrides.
+4. Apply city-inventory material overrides after warehouse buildings already exist.
+5. Check inventory totals against capacity derived from those materialized buildings.
+6. Apply and normalize retail supply assignments.
+7. Sort inventories and assignments by catalog order.
+8. Run one final `validateCurrentGameState(game)`.
+
+A scenario cannot add another starting warehouse after the capacity gate; the gate runs only after all authored starting buildings have been materialized.
+
+Meaningful setup failures remain path- and value-specific:
+
+- target city exists and is open
+- inventory total does not exceed derived city capacity
+- supply source is an opened inventory-capable industry city or `null`
 
 Do not maintain a second diagnostic matrix for malformed post-setup `GameState` values.
 
@@ -316,7 +362,7 @@ The detailed four-reason taxonomy may remain internally only where it materially
 
 ### Retail assignment command
 
-Simplify assignment failure to the minimum useful result:
+Simplify live assignment failure to the minimum useful result:
 
 ```ts
 export type RetailSupplyAssignmentFailure =
@@ -324,7 +370,9 @@ export type RetailSupplyAssignmentFailure =
   | 'invalid-supply-city';
 ```
 
-The command still returns `changed: false` for selecting the existing value. The UI displays one generic rejected-selection message. It does not distinguish unknown, closed, unsupported, and unmaterialized variants.
+The command still returns `changed: false` for selecting the existing value. The live UI displays one generic rejected-selection message. It does not distinguish unknown, closed, unsupported, and unmaterialized variants.
+
+This collapse applies only to live command plumbing. Scenario setup diagnostics remain path-scoped and include the invalid city value so authored scenario failures are actionable.
 
 ## UI simplification
 
@@ -347,9 +395,10 @@ Product-chain and inspector panels read `getCityInventoryStats` rather than pers
 
 1. Production and rail mutate city material records.
 2. `industryProduction.ts` builds a temporary game with the resulting inventories.
-3. It derives city stats for each current inventory.
-4. It stores those stats in `DailyProductionReport.cityInventories`.
-5. It charges aggregate overflow cost from those summaries.
+3. For every inventory row, it requests derived stats.
+4. If a row cannot produce stats, throw a clear current-state invariant error; do not use a non-null assertion or silently skip the row.
+5. Store the derived stats in `DailyProductionReport.cityInventories`.
+6. Charge aggregate overflow cost from those summaries.
 
 ### Weekly replenishment
 
@@ -379,6 +428,8 @@ Product-chain and inspector panels read `getCityInventoryStats` rather than pers
 - derived overflow and charged overflow cost are correct
 - report timing remains production-close before replenishment
 - current-schema save and repository round trips
+- unsupported schema produces the dedicated user-facing save error
+- historical report filtering preserves valid siblings and permits an empty result
 - scenario setup with one inventory override and one assignment override
 - one browser E2E covering source selection, daily advancement, report attribution, and save/load
 
@@ -398,17 +449,20 @@ Tests must assert player behavior or an authoritative state invariant. Branch co
 
 Primary production files expected to change:
 
+- `CLAUDE.md`
 - `src/lib/game/types.ts`
 - `src/lib/game/cityInventory.ts`
 - `src/lib/game/industryProduction.ts`
 - `src/lib/game/railShipping.ts`
 - `src/lib/game/retailSupply.ts`
+- `src/lib/game/stock.ts`
 - `src/lib/game/simulateDay.ts`
 - `src/lib/game/productChainGraph.ts`
 - `src/lib/game/productChainTree.ts`
 - `src/lib/game/supplyAdvisor.ts`
 - `src/lib/persistence/saveTypes.ts`
 - `src/lib/persistence/saveCodec.ts`
+- `src/lib/persistence/saveStoreRepository.ts`
 - `src/lib/persistence/scenarioCodec.ts`
 - `src/lib/scenarios/setup.ts`
 - `src/lib/scenarios/validation/start.ts`
@@ -417,36 +471,47 @@ Primary production files expected to change:
 - `src/lib/components/game/ReportsPanel.svelte`
 - `src/lib/components/game/RetailSupplySources.svelte`
 - `src/lib/components/game/retailSupplySources.ts`
+- `src/routes/+page.svelte`
 - `src/routes/gameRouteController.ts`
+- `src/routes/retail-sim.e2e.ts`
 
 The implementation may touch associated tests and localization keys. It must not introduce a broad repository, validation, or state-management refactor.
 
 ## Single-PR delivery
 
-The cleanup is one implementation PR with these internal review checkpoints:
+The cleanup is one implementation PR with eight internal review checkpoints matching the implementation plan:
 
-1. Current-schema-only persistence and migration deletion.
-2. Authoritative-only inventory state and derived statistics.
-3. Facts-only replenishment reports and simplified save validation.
-4. Scenario, command, and UI recovery-path deletion.
-5. Durable test reduction, full verification, and diff audit.
+1. Current-schema-only persistence, unsupported-version presentation, and migration deletion.
+2. Authoritative-only city inventory state and derived statistics.
+3. Simulation, E2E fixtures, and domain readers cut over to derived statistics.
+4. Facts-only replenishment reports and derived outcome presentation.
+5. Current-state-only save validation and independent historical report filtering.
+6. Scenario validation consolidation and normalized setup.
+7. Live command and UI recovery-path deletion.
+8. Durable test reduction, full verification, and implementation-only net-deletion audit.
 
-Each checkpoint should be a coherent commit or small commit group. The branch must remain buildable at each checkpoint where practical, but no checkpoint is a separately mergeable feature PR.
+Each checkpoint is a coherent green commit or small green commit group. Domain migration helpers that are still referenced remain until checkpoint 2; checkpoint 1 deletes persistence migration code only. No checkpoint is a separately mergeable feature PR.
+
+The implementation branch must start from `main` after this documentation PR is merged. Therefore `git diff main...HEAD` in checkpoint 8 measures the implementation cleanup only, not these specification documents.
 
 ## Acceptance criteria
 
 - `SAVE_SCHEMA_VERSION` is 14 and schemas below 14 are rejected without migration.
+- `unsupported-version` is surfaced through repository and page save-error handling with localized copy.
+- `CLAUDE.md` describes the current-only pre-release save policy and no longer documents retained migration safety nets.
 - No `migrateV*`, `LegacyV*`, migration allocation, or historical attribution reconstruction remains in production code.
 - Mutable `CityInventory` stores only `cityId` and `materials`.
 - One selector derives capacity, used units, overflow units, and overflow cost.
 - No capacity/pressure synchronization helper or transition obligation remains.
-- Daily production reports retain accurate immutable city summaries.
+- Daily production reports retain accurate immutable city summaries without unsafe non-null assertions.
 - `DailyProductReport` no longer persists `replenishmentOutcome`.
-- Outcome copy is derived from quantities and store source context.
+- Outcome copy is derived from quantities and store source context using the defined precedence rules.
 - Save loading validates authoritative state but does not replay historical report equations.
-- Malformed historical report rows are dropped without invalidating playable current state.
+- Malformed historical report rows are dropped, surviving order is preserved, and total drop yields an empty history.
 - Duplicated post-setup scenario inventory/supply validation is removed.
+- Scenario capacity checks run after all authored warehouse buildings are materialized.
+- Live retail-source failures are collapsed while scenario diagnostics remain path-specific.
 - Retail source UI has no missing-assignment or stale-source synthetic state.
 - Core HPA-292 behavior tests and the logistics E2E pass.
-- The implementation has a meaningful net deletion in production code and durable tests.
+- The implementation has a meaningful net deletion in production code and durable tests, measured independently of this docs PR.
 - No new migration, generic validation, cache, compatibility, or recovery framework is introduced.
