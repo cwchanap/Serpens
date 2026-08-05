@@ -85,11 +85,10 @@ describe('buildRetailCitySupplyViews', () => {
 			'campus-junction',
 			'garden-borough'
 		]);
-		expect(
-			views[0]!.sourceOptions
-				.filter((option) => !option.disabled)
-				.map((option) => option.supplyCityId)
-		).toEqual(['industry-city', 'breadbasket-basin']);
+		expect(views[0]!.sourceOptions.map((option) => option.supplyCityId)).toEqual([
+			'industry-city',
+			'breadbasket-basin'
+		]);
 	});
 
 	it('reads availability, used capacity, and overflow from each named city inventory', () => {
@@ -146,48 +145,49 @@ describe('buildRetailCitySupplyViews', () => {
 		expect(breadbasket.inventorySummary).toBe('0 / 200 city inventory used.');
 	});
 
-	it('keeps explicit Imports only separate from a missing assignment', () => {
+	it('keeps explicit Imports only distinct from local supply', () => {
 		const game = supplyFixture();
-		const views = buildRetailCitySupplyViews(
-			{
-				...game,
-				retailSupplyAssignments: game.retailSupplyAssignments!.filter(
-					(assignment) => assignment.retailCityId !== 'campus-junction'
-				)
-			},
-			createI18n('en')
-		);
+		const views = buildRetailCitySupplyViews(game, createI18n('en'));
 
 		const importsOnly = views.find((view) => view.retailCityId === 'garden-borough')!;
-		const missing = views.find((view) => view.retailCityId === 'campus-junction')!;
 
 		expect(importsOnly.currentSelection).toBeNull();
 		expect(importsOnly.currentSummary).toBe(
 			'Imports only. All replenishment is covered by external imports.'
 		);
-		expect(missing.currentSelection).toBe('missing');
-		expect(missing.currentSummary).toBe('Supply configuration unavailable.');
 	});
 
-	it('keeps a stale configured source visible and disabled without treating it as a valid option', () => {
+	it('requires an assignment for each opened retail city instead of fabricating a missing configuration', () => {
 		const game = supplyFixture();
-		const views = buildRetailCitySupplyViews(
-			{
-				...game,
-				retailSupplyAssignments: game.retailSupplyAssignments!.map((assignment) =>
-					assignment.retailCityId === 'harbor-city'
-						? { ...assignment, supplyCityId: 'quarry-works' }
-						: assignment
-				)
-			},
-			createI18n('en')
-		);
-		const harbor = views.find((view) => view.retailCityId === 'harbor-city')!;
-		const stale = harbor.sourceOptions.find((option) => option.supplyCityId === 'quarry-works')!;
 
-		expect(harbor.currentSelection).toBe('quarry-works');
-		expect(harbor.currentSummary).toBe('Quarry Works is unavailable.');
-		expect(stale).toMatchObject({ disabled: true, available: false });
-		expect(harbor.sourceOptions.filter((option) => !option.disabled)).not.toContainEqual(stale);
+		expect(() =>
+			buildRetailCitySupplyViews(
+				{
+					...game,
+					retailSupplyAssignments: game.retailSupplyAssignments.filter(
+						(assignment) => assignment.retailCityId !== 'campus-junction'
+					)
+				},
+				createI18n('en')
+			)
+		).toThrow('Retail supply invariant: missing assignment for campus-junction');
+	});
+
+	it('requires a configured source to resolve instead of adding a stale synthetic option', () => {
+		const game = supplyFixture();
+
+		expect(() =>
+			buildRetailCitySupplyViews(
+				{
+					...game,
+					retailSupplyAssignments: game.retailSupplyAssignments.map((assignment) =>
+						assignment.retailCityId === 'harbor-city'
+							? { ...assignment, supplyCityId: 'quarry-works' }
+							: assignment
+					)
+				},
+				createI18n('en')
+			)
+		).toThrow('City inventory invariant: city-closed for quarry-works');
 	});
 });

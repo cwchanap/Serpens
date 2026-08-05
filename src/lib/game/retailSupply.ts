@@ -30,13 +30,7 @@ import type {
 
 export const REPLENISHMENT_INTERVAL_DAYS = 7;
 
-export type RetailSupplyAssignmentFailure =
-	| 'unknown-retail-city'
-	| 'retail-city-closed'
-	| 'unsupported-retail-city'
-	| 'unknown-supply-city'
-	| 'supply-city-closed'
-	| 'unsupported-supply-city';
+export type RetailSupplyAssignmentFailure = 'invalid-retail-city' | 'invalid-supply-city';
 
 export type RetailSupplyAssignmentResult =
 	| { ok: true; game: GameState; changed: boolean }
@@ -218,21 +212,15 @@ export function applyWeeklyReplenishment(
 function resolveRetailCityForAssignment(
 	game: GameState,
 	cityId: string
-):
-	| { ok: true; cityId: WorldCityId }
-	| {
-			ok: false;
-			reason: 'unknown-retail-city' | 'retail-city-closed' | 'unsupported-retail-city';
-	  } {
+): { ok: true; cityId: WorldCityId } | { ok: false; reason: 'invalid-retail-city' } {
 	const definition = getWorldCityDefinition(cityId);
-	if (!definition) {
-		return { ok: false, reason: 'unknown-retail-city' };
-	}
-	if (!game.world.openedCityIds.includes(definition.id)) {
-		return { ok: false, reason: 'retail-city-closed' };
-	}
-	if (definition.kind !== 'retail' || !game.cities.some((city) => city.id === definition.id)) {
-		return { ok: false, reason: 'unsupported-retail-city' };
+	if (
+		!definition ||
+		!game.world.openedCityIds.includes(definition.id) ||
+		definition.kind !== 'retail' ||
+		!game.cities.some((city) => city.id === definition.id)
+	) {
+		return { ok: false, reason: 'invalid-retail-city' };
 	}
 
 	return { ok: true, cityId: definition.id };
@@ -241,21 +229,14 @@ function resolveRetailCityForAssignment(
 function resolveSupplyCity(
 	game: GameState,
 	cityId: string
-):
-	| { ok: true; cityId: WorldCityId }
-	| {
-			ok: false;
-			reason: 'unknown-supply-city' | 'supply-city-closed' | 'unsupported-supply-city';
-	  } {
+): { ok: true; cityId: WorldCityId } | { ok: false; reason: 'invalid-supply-city' } {
 	const resolvedCityId = resolveWorldCityId(cityId);
-	if (!resolvedCityId) {
-		return { ok: false, reason: 'unknown-supply-city' };
-	}
-	if (!game.world.openedCityIds.includes(resolvedCityId)) {
-		return { ok: false, reason: 'supply-city-closed' };
-	}
-	if (!supportsCityInventory(game, resolvedCityId)) {
-		return { ok: false, reason: 'unsupported-supply-city' };
+	if (
+		!resolvedCityId ||
+		!game.world.openedCityIds.includes(resolvedCityId) ||
+		!supportsCityInventory(game, resolvedCityId)
+	) {
+		return { ok: false, reason: 'invalid-supply-city' };
 	}
 
 	return { ok: true, cityId: resolvedCityId };

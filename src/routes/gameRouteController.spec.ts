@@ -1944,7 +1944,7 @@ describe('GameRouteController', () => {
 
 			expect(
 				await invalidHarness.controller.setRetailSupplySource('harbor-city', 'breadbasket-basin')
-			).toEqual({ status: 'retail-supply-rejected', reason: 'supply-city-closed' });
+			).toEqual({ status: 'retail-supply-rejected', reason: 'invalid-supply-city' });
 			expect(invalidHarness.controller.state.activeScenarioRun).toBe(invalidRun);
 			expect(invalidHarness.controller.state.retryScenarioOperation).toBeNull();
 			expect(invalidSave).not.toHaveBeenCalled();

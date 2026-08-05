@@ -1273,7 +1273,7 @@ describe('scenario runtime lifecycle order', { timeout: 30_000 }, () => {
 		).toEqual({
 			ok: false,
 			code: 'invalid-command',
-			retailSupplyFailure: { reason: 'supply-city-closed' }
+			retailSupplyFailure: { reason: 'invalid-supply-city' }
 		});
 		expect(run).toEqual(beforeRejected);
 

@@ -911,28 +911,12 @@ describe('IndustryTileInspector', () => {
 		await expect.element(inventory.getByText('999')).not.toBeInTheDocument();
 	});
 
-	it('keeps unavailable, zero-capacity, empty, and overflow city inventory states distinct', async () => {
-		expect.assertions(5);
+	it('keeps zero-capacity and overflow city inventory states distinct', async () => {
+		expect.assertions(4);
 		let game = openCity(createNewGame('convenience', 20260512), 'breadbasket-basin');
-		const unavailableTile = game.industryCities
+		const warehouseTile = game.industryCities
 			.find((city) => city.id === 'breadbasket-basin')!
 			.tiles.find((candidate) => candidate.terrain === 'industrial' && !candidate.locked)!;
-
-		render(IndustryTileInspector, {
-			game: {
-				...game,
-				cityInventories: game.cityInventories!.filter(
-					(inventory) => inventory.cityId !== 'breadbasket-basin'
-				)
-			},
-			tile: unavailableTile,
-			building: warehouseBuilding(unavailableTile, 'warehouse-unavailable'),
-			i18n: createI18n('en'),
-			onClose: vi.fn()
-		});
-		await expect
-			.element(page.getByText('City inventory unavailable for Breadbasket Basin.'))
-			.toBeVisible();
 
 		game = {
 			...game,
@@ -948,8 +932,8 @@ describe('IndustryTileInspector', () => {
 
 		render(IndustryTileInspector, {
 			game,
-			tile: unavailableTile,
-			building: warehouseBuilding(unavailableTile, 'warehouse-zero-capacity'),
+			tile: warehouseTile,
+			building: warehouseBuilding(warehouseTile, 'warehouse-zero-capacity'),
 			i18n: createI18n('en'),
 			onClose: vi.fn()
 		});

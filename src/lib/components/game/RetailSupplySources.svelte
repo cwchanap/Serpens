@@ -1,7 +1,6 @@
 <script lang="ts">
 	import {
 		RETAIL_SUPPLY_IMPORTS_ONLY_VALUE,
-		RETAIL_SUPPLY_MISSING_CONFIGURATION_VALUE,
 		type RetailCitySupplyView,
 		type RetailSupplySelection,
 		type RetailSupplySourceOption
@@ -21,7 +20,6 @@
 
 	function selectValue(selection: RetailSupplySelection): string {
 		if (selection === null) return RETAIL_SUPPLY_IMPORTS_ONLY_VALUE;
-		if (selection === 'missing') return RETAIL_SUPPLY_MISSING_CONFIGURATION_VALUE;
 		return selection;
 	}
 
@@ -36,10 +34,6 @@
 
 	function changeSource(city: RetailCitySupplyView, select: HTMLSelectElement): void {
 		const value = select.value;
-		if (value === RETAIL_SUPPLY_MISSING_CONFIGURATION_VALUE) {
-			return;
-		}
-
 		const nextSelection = value === RETAIL_SUPPLY_IMPORTS_ONLY_VALUE ? null : value;
 		if (city.currentSelection === nextSelection) {
 			return;
@@ -78,13 +72,8 @@
 						onchange={(event) => changeSource(city, event.currentTarget)}
 					>
 						<option value={RETAIL_SUPPLY_IMPORTS_ONLY_VALUE}>{city.importsOnlyLabel}</option>
-						{#if city.currentSelection === 'missing'}
-							<option value={RETAIL_SUPPLY_MISSING_CONFIGURATION_VALUE} disabled>
-								{city.missingConfigurationLabel}
-							</option>
-						{/if}
 						{#each city.sourceOptions as source (source.supplyCityId)}
-							<option value={source.supplyCityId} disabled={source.disabled}>
+							<option value={source.supplyCityId}>
 								{optionText(source)}
 							</option>
 						{/each}

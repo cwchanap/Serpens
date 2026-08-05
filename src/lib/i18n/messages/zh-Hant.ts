@@ -153,7 +153,6 @@ export const zhHant = {
 		cityInventorySummary: '{cityName}城市庫存',
 		currentCityInventory: '目前城市庫存（最近一次補貨後）',
 		cityInventoryMaterials: '城市庫存物料',
-		cityInventoryUnavailable: '{cityName}的城市庫存無法使用。',
 		cityInventoryZeroCapacity: '城市庫存容量為 0。',
 		cityInventoryEmpty: '城市庫存為空。',
 		cityInventoryOverflow: '城市庫存溢出：{units} 單位。',
@@ -406,9 +405,7 @@ export const zhHant = {
 		inventorySummary: '已使用 {used} / {capacity} 城市庫存。',
 		overflow: '溢出：{units} 單位（{cost}）。',
 		overflowSingular: '溢出：{units} 單位（{cost}）。',
-		noOverflow: '沒有溢出。',
-		unavailableSource: '{cityName}不可用。',
-		missingConfiguration: '供應設定不可用。'
+		noOverflow: '沒有溢出。'
 	},
 	storeStockTable: {
 		title: '{storeName}庫存',
@@ -456,13 +453,10 @@ export const zhHant = {
 		cityInventoryFlow: '城市庫存流向',
 		scopeAria: '城市庫存範圍',
 		activeIndustryInventory: '城市庫存 — {cityName}',
-		activeIndustryUnavailable: '{cityName}的城市庫存無法使用。',
 		activeRetailSupply:
 			'{retailCityName}的本地供應 — {sourceCityName}：已使用 {used} / {capacity} 城市庫存。',
 		supplyState: {
 			importsOnly: '{retailCityName}供應：僅進口 — 補貨使用外部進口。',
-			configurationUnavailable: '{retailCityName}的供應設定無法使用。',
-			unavailable: '{retailCityName}的本地供應 — 供應來源 {sourceCityName} 無法使用。',
 			zeroCapacity: '{retailCityName}的本地供應 — 供應來源 {sourceCityName} 的城市庫存容量為 0。',
 			emptyInventory: '{cityName}的城市庫存為空。',
 			inventoryOverflow: '{cityName}的城市庫存溢出：{units} 單位（{cost}）。'

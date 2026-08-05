@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { asset } from '$app/paths';
 	import { getIndustrialBuildingArt, getIndustryMaterialArt } from '$lib/assets/gameArt';
-	import { getCityInventory, getCityInventoryStats } from '$lib/game/cityInventory';
+	import { getCityInventoryStats } from '$lib/game/cityInventory';
 	import { INDUSTRIAL_BUILDING_TYPES } from '$lib/game/industry';
 	import {
 		MAX_BUILDING_LEVEL,
@@ -59,12 +59,8 @@
 			? i18n.labels.industryResource(tile.resource)
 			: i18n.t('industryTileInspector.none')
 	);
-	const cityInventoryAccess = $derived(
-		building?.typeId === 'warehouse' ? getCityInventory(game, building.cityId) : null
-	);
-	const cityInventory = $derived(cityInventoryAccess?.ok ? cityInventoryAccess.inventory : null);
 	const cityInventoryStats = $derived(
-		cityInventory ? getCityInventoryStats(game, cityInventory.cityId) : null
+		building?.typeId === 'warehouse' ? getCityInventoryStats(game, building.cityId) : null
 	);
 	const cityInventoryMaterials = $derived.by(() => getCityInventoryMaterialRows());
 	const cityInventoryCityName = $derived(
@@ -79,9 +75,12 @@
 	const throughput = $derived(building ? getBuildingThroughputMultiplier(building.level) : 1);
 
 	function getCityInventoryMaterialRows(): CityInventoryMaterialRow[] {
-		if (!cityInventory) {
+		if (!building || building.typeId !== 'warehouse') {
 			return [];
 		}
+		const cityInventory = game.cityInventories.find(
+			(inventory) => inventory.cityId === building.cityId
+		)!;
 
 		return Object.entries(cityInventory.materials)
 			.map(([materialId, quantity]) => ({
@@ -338,7 +337,7 @@
 				>
 					<h3>{i18n.t('industryTileInspector.warehouseBuilding')}</h3>
 					<p class="inventory-timing">{i18n.t('industryTileInspector.currentCityInventory')}</p>
-					{#if cityInventory && cityInventoryStats}
+					{#if cityInventoryStats}
 						<dl>
 							<div>
 								<dt>{i18n.t('industryTileInspector.capacity')}</dt>
@@ -394,12 +393,6 @@
 						{:else}
 							<p class="muted">{i18n.t('industryTileInspector.cityInventoryEmpty')}</p>
 						{/if}
-					{:else}
-						<p class="muted">
-							{i18n.t('industryTileInspector.cityInventoryUnavailable', {
-								cityName: cityInventoryCityName
-							})}
-						</p>
 					{/if}
 				</section>
 			{/if}

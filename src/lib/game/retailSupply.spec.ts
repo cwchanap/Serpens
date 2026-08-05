@@ -124,12 +124,12 @@ describe('retail supply assignment', () => {
 	});
 
 	test.each([
-		['unknown retail city', 'missing-city', null, 'unknown-retail-city'],
-		['closed retail city', 'campus-junction', null, 'retail-city-closed'],
-		['unsupported retail city', 'industry-city', null, 'unsupported-retail-city'],
-		['unknown supply city', 'harbor-city', 'missing-city', 'unknown-supply-city'],
-		['closed supply city', 'harbor-city', 'breadbasket-basin', 'supply-city-closed'],
-		['unsupported supply city', 'harbor-city', 'harbor-city', 'unsupported-supply-city']
+		['unknown retail city', 'missing-city', null, 'invalid-retail-city'],
+		['closed retail city', 'campus-junction', null, 'invalid-retail-city'],
+		['unsupported retail city', 'industry-city', null, 'invalid-retail-city'],
+		['unknown supply city', 'harbor-city', 'missing-city', 'invalid-supply-city'],
+		['closed supply city', 'harbor-city', 'breadbasket-basin', 'invalid-supply-city'],
+		['unsupported supply city', 'harbor-city', 'harbor-city', 'invalid-supply-city']
 	] as const)(
 		'rejects an %s without mutating the game',
 		(_label, retailCityId, supplyCityId, reason) => {
