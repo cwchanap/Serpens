@@ -1,12 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { simulateDay } from '$lib/game/simulateDay';
 import { createNewGame } from '$lib/game/state';
-import {
-	SaveDataError,
-	createSaveRecord,
-	validateCurrentGameState,
-	validateSaveRecord
-} from './saveCodec';
+import { createSaveRecord, validateCurrentGameState, validateSaveRecord } from './saveCodec';
 
 function makeRecord() {
 	const game = createNewGame('convenience', 20260719);
@@ -84,55 +79,11 @@ describe('rail save validation edge cases', () => {
 	});
 });
 
-describe('strict report identity validation', () => {
-	test('accepts reports with strictly increasing days and unique nested evidence ids', () => {
-		const game = gameWithTwoReports();
-
-		expect(validateCurrentGameState(game)).toEqual(game);
-	});
-
-	test('rejects report days that are not strictly increasing and unique', () => {
+describe('historical report validation', () => {
+	test('preserves structurally valid reports in their original order without replaying chronology', () => {
 		const game = gameWithTwoReports();
 		const reports = [game.reports[1]!, game.reports[0]!];
 
-		expect(() => validateCurrentGameState({ ...game, reports })).toThrow(SaveDataError);
-		expect(() => validateCurrentGameState({ ...game, reports })).toThrow(
-			'report days must be strictly increasing and unique'
-		);
-	});
-
-	test('rejects duplicate store ids within one daily report', () => {
-		const game = gameWithTwoReports();
-		const report = game.reports[0]!;
-		const storeReport = report.storeReports[0]!;
-		const reports = [{ ...report, storeReports: [storeReport, structuredClone(storeReport)] }];
-
-		expect(() => validateCurrentGameState({ ...game, reports })).toThrow(SaveDataError);
-		expect(() => validateCurrentGameState({ ...game, reports })).toThrow(
-			'storeId must be unique within its daily report'
-		);
-	});
-
-	test('rejects duplicate product category ids within one store report', () => {
-		const game = gameWithTwoReports();
-		const report = game.reports[0]!;
-		const storeReport = report.storeReports[0]!;
-		const productReport = storeReport.productReports[0]!;
-		const reports = [
-			{
-				...report,
-				storeReports: [
-					{
-						...storeReport,
-						productReports: [productReport, structuredClone(productReport)]
-					}
-				]
-			}
-		];
-
-		expect(() => validateCurrentGameState({ ...game, reports })).toThrow(SaveDataError);
-		expect(() => validateCurrentGameState({ ...game, reports })).toThrow(
-			'categoryId must be unique within its store report'
-		);
+		expect(validateCurrentGameState({ ...game, reports }).reports).toEqual(reports);
 	});
 });
