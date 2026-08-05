@@ -2,7 +2,7 @@ import { ARCHETYPES } from '$lib/game/archetypes';
 import { INDUSTRIAL_BUILDING_TYPES } from '$lib/game/industry';
 import { MAX_STORE_LEVEL, getUnlockedCategoryCount } from '$lib/game/leveling';
 import type { IndustrialBuildingTypeId } from '$lib/game/types';
-import { STARTER_STORE_CAP, WORLD_CITY_CATALOG, getWorldCityDefinition } from '$lib/game/world';
+import { STARTER_STORE_CAP, getWorldCityDefinition } from '$lib/game/world';
 import type { AuthoredBuilding, JsonObject, ValidationContext } from './shared';
 import {
 	BUILDING_INVENTORY_KEYS,
@@ -482,11 +482,10 @@ function validateRetailSupplyAssignments(context: ValidationContext, value: unkn
 	if (value === undefined) return;
 	const assignments = arrayValue(context, value, 'start.overrides.retailSupplyAssignments');
 	if (!assignments) return;
-	const expectedRetailCityIds = [...context.openedCityIds]
-		.filter((cityId) => getWorldCityDefinition(cityId)?.kind === 'retail')
-		.sort(compareScenarioWorldCityIds);
+	const expectedRetailCityIds = [...context.openedCityIds].filter(
+		(cityId) => getWorldCityDefinition(cityId)?.kind === 'retail'
+	);
 	const seenRetailCityIds = new Set<string>();
-	const orderedRetailCityIds: string[] = [];
 
 	for (const [index, candidate] of assignments.entries()) {
 		const path = `start.overrides.retailSupplyAssignments[${index}]`;
@@ -506,7 +505,6 @@ function validateRetailSupplyAssignments(context: ValidationContext, value: unkn
 				);
 			}
 			seenRetailCityIds.add(owner);
-			orderedRetailCityIds.push(owner);
 			const city = getWorldCityDefinition(owner);
 			if (city?.kind !== 'retail') {
 				diagnostic(
@@ -553,35 +551,18 @@ function validateRetailSupplyAssignments(context: ValidationContext, value: unkn
 		validateIncluded(context, source, supplyPath, context.content.cities);
 	}
 
-	const uniqueOrdered = orderedRetailCityIds.filter(
-		(cityId, index) => orderedRetailCityIds.indexOf(cityId) === index
-	);
-	const hasCanonicalOwners =
-		uniqueOrdered.length === expectedRetailCityIds.length &&
-		uniqueOrdered.every((cityId, index) => cityId === expectedRetailCityIds[index]);
-	if (!hasCanonicalOwners) {
-		const hasExpectedOwners =
-			seenRetailCityIds.size === expectedRetailCityIds.length &&
-			expectedRetailCityIds.every((cityId) => seenRetailCityIds.has(cityId));
+	const hasExpectedOwners =
+		seenRetailCityIds.size === expectedRetailCityIds.length &&
+		expectedRetailCityIds.every((cityId) => seenRetailCityIds.has(cityId));
+	if (!hasExpectedOwners) {
 		diagnostic(
 			context,
 			'start.overrides.retailSupplyAssignments',
-			hasExpectedOwners
-				? 'noncanonical-retail-supply-assignment'
-				: 'missing-retail-supply-assignment',
+			'missing-retail-supply-assignment',
 			value,
-			hasExpectedOwners
-				? 'Retail supply assignments must use canonical retail-city order.'
-				: 'Retail supply assignments must contain one record for every opened retail city.'
+			'Retail supply assignments must contain one record for every opened retail city.'
 		);
 	}
-}
-
-function compareScenarioWorldCityIds(left: string, right: string): number {
-	const leftIndex = WORLD_CITY_CATALOG.findIndex((city) => city.id === left);
-	const rightIndex = WORLD_CITY_CATALOG.findIndex((city) => city.id === right);
-	if (leftIndex !== rightIndex) return leftIndex - rightIndex;
-	return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function validateWorldOverride(context: ValidationContext, value: unknown): void {

@@ -1,10 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { GameState } from '$lib/game/types';
 import { SCENARIO_COMMAND_KINDS, type ScenarioDefinition } from './types';
 import {
 	assertValidScenarioDefinition,
 	sortScenarioDiagnostics,
-	validateRetailSupplyAssignments,
 	validateScenarioDefinition,
 	validateScenarioSetupReserve
 } from './validation';
@@ -848,13 +846,14 @@ describe('validateScenarioDefinition', () => {
 			diagnostics: [
 				{
 					path: 'start.overrides.cityInventoryMaterials[0].materials',
-					code: 'city-inventory-capacity-exceeded'
+					code: 'city-inventory-capacity-exceeded',
+					value: { water: 201 }
 				}
 			]
 		});
 	});
 
-	it('rejects duplicate, missing, invalid, and noncanonical retail supply assignments', () => {
+	it('rejects duplicate, missing, and invalid retail supply assignments', () => {
 		const duplicate = cityInventoryDefinition();
 		duplicate.start.overrides.retailSupplyAssignments = [
 			{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' },
@@ -901,41 +900,11 @@ describe('validateScenarioDefinition', () => {
 			diagnostics: [
 				{
 					path: 'start.overrides.retailSupplyAssignments[0].supplyCityId',
-					code: 'supply-city-closed'
+					code: 'supply-city-closed',
+					value: 'breadbasket-basin'
 				}
 			]
 		});
-
-		const noncanonical = cityInventoryDefinition();
-		noncanonical.content.cityIds = ['harbor-city', 'campus-junction', 'industry-city'];
-		noncanonical.start.overrides.world = {
-			revealedCityIds: ['harbor-city', 'campus-junction', 'industry-city'],
-			openedCityIds: ['harbor-city', 'campus-junction', 'industry-city'],
-			activeRetailCityId: 'campus-junction',
-			activeIndustryCityId: 'industry-city'
-		};
-		noncanonical.start.overrides.retailSupplyAssignments = [
-			{ retailCityId: 'campus-junction', supplyCityId: 'industry-city' },
-			{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' }
-		];
-		expect(codes(noncanonical)).toContainEqual({
-			path: 'start.overrides.retailSupplyAssignments',
-			code: 'noncanonical-retail-supply-assignment'
-		});
-	});
-
-	it('requires canonical retail supply assignments after raw state validation', () => {
-		const definition = cityInventoryDefinition();
-		const result = buildScenarioGame(definition, definition.officialSeed);
-
-		expect(result.ok).toBe(true);
-		if (!result.ok) return;
-		const malformed = { ...result.game } as Partial<GameState>;
-		delete malformed.retailSupplyAssignments;
-
-		expect(() =>
-			validateRetailSupplyAssignments(malformed as GameState, definition.start)
-		).toThrow();
 	});
 
 	it('validates city-scoped metric queries and rejects the removed metric', () => {

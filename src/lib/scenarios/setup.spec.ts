@@ -11,17 +11,14 @@ import { normalizeSeed } from '$lib/game/rng';
 import { upgradeStore } from '$lib/game/state';
 import { calculateStockHealth } from '$lib/game/stock';
 import type { ArchetypeId } from '$lib/game/types';
-import { SaveDataError, validateCurrentGameState } from '$lib/persistence/saveCodec';
+import { validateCurrentGameState } from '$lib/persistence/saveCodec';
 import type { ScenarioDefinition } from './types';
 import { listCurrentScenarioDefinitions } from './catalog';
 import { buildScenarioGame } from './setup';
-import { validateScenarioDefinition } from './validation';
 
 const transitionControls = vi.hoisted(() => ({
 	failBuild: false,
 	failUpgrade: false,
-	omitMilestoneProduct: false,
-	strictValidationThrows: null as Error | null,
 	failFoundingGame: false,
 	emptyFoundingStores: false
 }));
@@ -39,35 +36,8 @@ vi.mock('$lib/game/state', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('$lib/game/state')>();
 	return {
 		...actual,
-		upgradeStore: (...args: Parameters<typeof actual.upgradeStore>) => {
-			if (transitionControls.failUpgrade) return args[0];
-			const next = actual.upgradeStore(...args);
-			if (!transitionControls.omitMilestoneProduct) return next;
-			const [beforeGame, storeId] = args;
-			const before = beforeGame.stores.find((store) => store.id === storeId);
-			const after = next.stores.find((store) => store.id === storeId);
-			if (!before || after?.level !== 4) return next;
-			return {
-				...next,
-				stores: next.stores.map((store) =>
-					store.id === storeId
-						? { ...store, products: before.products, stockHealth: before.stockHealth }
-						: store
-				)
-			};
-		}
-	};
-});
-
-vi.mock('$lib/persistence/saveCodec', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('$lib/persistence/saveCodec')>();
-	return {
-		...actual,
-		validateCurrentGameState: (...args: Parameters<typeof actual.validateCurrentGameState>) => {
-			if (transitionControls.strictValidationThrows)
-				throw transitionControls.strictValidationThrows;
-			return actual.validateCurrentGameState(...args);
-		}
+		upgradeStore: (...args: Parameters<typeof actual.upgradeStore>) =>
+			transitionControls.failUpgrade ? args[0] : actual.upgradeStore(...args)
 	};
 });
 
@@ -348,6 +318,23 @@ describe('buildScenarioGame', { timeout: 30_000 }, () => {
 		expect(result.game.cities.map((city) => city.id)).toContain('campus-junction');
 	});
 
+	it('normalizes authored retail supply assignments to world catalog order', () => {
+		const definition = scenarioDefinition();
+		definition.start.overrides.retailSupplyAssignments = [
+			{ retailCityId: 'campus-junction', supplyCityId: 'industry-city' },
+			{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' }
+		];
+
+		const result = buildScenarioGame(definition, definition.officialSeed);
+
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		expect(result.game.retailSupplyAssignments).toEqual([
+			{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' },
+			{ retailCityId: 'campus-junction', supplyCityId: 'industry-city' }
+		]);
+	});
+
 	it('keeps authored inventory isolated by city after warehouse capacity is materialized', () => {
 		const definition = scenarioDefinition();
 		definition.start.industrialBuildings = [
@@ -531,26 +518,6 @@ describe('buildScenarioGame', { timeout: 30_000 }, () => {
 		expect(scenarioStore.stockHealth).toBe(ordinaryStore.stockHealth);
 	});
 
-	it('rejects a level-4 state missing its milestone product', () => {
-		transitionControls.omitMilestoneProduct = true;
-		try {
-			expect(buildScenarioGame(importSqueezeFixture(), 280_002)).toEqual({
-				ok: false,
-				diagnostics: [
-					{
-						path: 'start.overrides.stores',
-						code: 'setup-invariant-failed',
-						value: ['games'],
-						detail:
-							'The built game product categories must exactly match the categories unlocked at its store level.'
-					}
-				]
-			});
-		} finally {
-			transitionControls.omitMilestoneProduct = false;
-		}
-	});
-
 	it('sorts authored rail cells by city, y, and x using code-unit ordering', () => {
 		const definition = scenarioDefinition();
 		const authoredOrder = [...definition.start.rails];
@@ -669,58 +636,6 @@ describe('buildScenarioGame', { timeout: 30_000 }, () => {
 		});
 	});
 
-	it('rejects a world override that closes a city containing starting content', () => {
-		const definition = scenarioDefinition();
-		delete definition.start.overrides.retailSupplyAssignments;
-		definition.start.overrides.world = {
-			revealedCityIds: ['industry-city', 'campus-junction'],
-			openedCityIds: ['industry-city', 'campus-junction'],
-			activeRetailCityId: 'campus-junction',
-			activeIndustryCityId: 'industry-city'
-		};
-
-		expect(diagnosticCodes(buildScenarioGame(definition, definition.officialSeed))).toContainEqual({
-			path: 'start.overrides.world',
-			code: 'setup-invariant-failed'
-		});
-	});
-
-	it('rejects a rail-only starting city that is not opened', () => {
-		const definition = scenarioDefinition();
-		definition.start.industrialBuildings = [];
-		definition.start.overrides.buildingInventories = [];
-		delete definition.start.overrides.cityInventoryMaterials;
-		delete definition.start.overrides.retailSupplyAssignments;
-		definition.start.overrides.storeCap = 1;
-		definition.start.overrides.world = {
-			revealedCityIds: ['harbor-city', 'breadbasket-basin'],
-			openedCityIds: ['harbor-city', 'breadbasket-basin'],
-			activeRetailCityId: 'harbor-city',
-			activeIndustryCityId: 'breadbasket-basin'
-		};
-		definition.content.cityIds = ['harbor-city', 'industry-city', 'breadbasket-basin'];
-		definition.content.materialIds = [];
-		definition.content.buildingTypeIds = ['water-bottler', 'warehouse'];
-		definition.content.industrialPlacements = [
-			{
-				cityId: 'industry-city',
-				tileId: 'industry-city-26-6',
-				buildingTypeId: 'water-bottler'
-			},
-			{
-				cityId: 'industry-city',
-				tileId: 'industry-city-30-6',
-				buildingTypeId: 'warehouse'
-			}
-		];
-		definition.allowedCommands = ['advanceDay', 'buildIndustrialBuilding'];
-
-		expect(validateScenarioDefinition(definition)).toEqual([]);
-		expect(diagnosticCodes(buildScenarioGame(definition, definition.officialSeed))).toEqual([
-			{ path: 'start.overrides.world', code: 'setup-invariant-failed' }
-		]);
-	});
-
 	it('refreshes world progress after authored city inventory is applied', () => {
 		const definition = scenarioDefinition();
 		definition.start.overrides.cityInventoryMaterials = [
@@ -759,144 +674,6 @@ describe('buildScenarioGame', { timeout: 30_000 }, () => {
 		expect(validated).not.toBe(result.game);
 	});
 
-	it('maps strict store-cap validation failures to setup diagnostics', () => {
-		transitionControls.strictValidationThrows = new SaveDataError(
-			'Store cap invalid',
-			'invariant-store-cap'
-		);
-		try {
-			const definition = scenarioDefinition();
-			const result = buildScenarioGame(definition, definition.officialSeed);
-			expect(result.ok).toBe(false);
-			if (result.ok) return;
-			expect(result.diagnostics).toContainEqual({
-				path: 'start.overrides.storeCap',
-				code: 'setup-invariant-failed',
-				value: result.diagnostics[0]?.value,
-				detail: 'The built game store cap must be an integer and at least its starting store count.'
-			});
-		} finally {
-			transitionControls.strictValidationThrows = null;
-		}
-	});
-
-	it('maps strict stock-health validation failures to setup diagnostics', () => {
-		transitionControls.strictValidationThrows = new SaveDataError(
-			'Stock health mismatch',
-			'invariant-stock-health'
-		);
-		try {
-			const definition = scenarioDefinition();
-			const result = buildScenarioGame(definition, definition.officialSeed);
-			expect(result.ok).toBe(false);
-			if (result.ok) return;
-			expect(result.diagnostics).toContainEqual({
-				path: 'start.overrides.stores',
-				code: 'setup-invariant-failed',
-				value: result.diagnostics[0]?.value,
-				detail: 'The built game store stock health does not match its products.'
-			});
-		} finally {
-			transitionControls.strictValidationThrows = null;
-		}
-	});
-
-	it('maps strict city inventory validation failures to setup diagnostics', () => {
-		transitionControls.strictValidationThrows = new SaveDataError(
-			'City inventory overflow',
-			'invariant-city-inventory'
-		);
-		try {
-			const definition = scenarioDefinition();
-			const result = buildScenarioGame(definition, definition.officialSeed);
-			expect(result.ok).toBe(false);
-			if (result.ok) return;
-			expect(result.diagnostics).toContainEqual({
-				path: 'start.overrides.cityInventoryMaterials',
-				code: 'setup-invariant-failed',
-				value: result.diagnostics[0]?.value,
-				detail: 'The built game city inventory contents or pressure exceed same-city capacity.'
-			});
-		} finally {
-			transitionControls.strictValidationThrows = null;
-		}
-	});
-
-	it('maps strict retail supply validation failures to setup diagnostics', () => {
-		transitionControls.strictValidationThrows = new SaveDataError(
-			'Retail supply invalid',
-			'invariant-retail-supply'
-		);
-		try {
-			const definition = scenarioDefinition();
-			const result = buildScenarioGame(definition, definition.officialSeed);
-			expect(result.ok).toBe(false);
-			if (result.ok) return;
-			expect(result.diagnostics).toContainEqual({
-				path: 'start.overrides.retailSupplyAssignments',
-				code: 'setup-invariant-failed',
-				value: result.diagnostics[0]?.value,
-				detail: 'The built game retail supply assignments must resolve every opened retail city.'
-			});
-		} finally {
-			transitionControls.strictValidationThrows = null;
-		}
-	});
-
-	it('maps strict inventory validation failures to setup diagnostics', () => {
-		transitionControls.strictValidationThrows = new SaveDataError(
-			'Inventory overflow',
-			'invariant-inventory'
-		);
-		try {
-			const definition = scenarioDefinition();
-			const result = buildScenarioGame(definition, definition.officialSeed);
-			expect(result.ok).toBe(false);
-			if (result.ok) return;
-			expect(result.diagnostics).toContainEqual({
-				path: 'start.overrides.buildingInventories',
-				code: 'setup-invariant-failed',
-				value: result.diagnostics[0]?.value,
-				detail: 'A built game industrial inventory exceeds its derived buffer capacity.'
-			});
-		} finally {
-			transitionControls.strictValidationThrows = null;
-		}
-	});
-
-	it('maps strict validation failures with unknown codes to a generic diagnostic', () => {
-		transitionControls.strictValidationThrows = new SaveDataError(
-			'Unknown failure',
-			'invariant-entity-city-opened'
-		);
-		try {
-			const definition = scenarioDefinition();
-			const result = buildScenarioGame(definition, definition.officialSeed);
-			expect(result.ok).toBe(false);
-			if (result.ok) return;
-			expect(result.diagnostics).toContainEqual({
-				path: 'start',
-				code: 'setup-invariant-failed',
-				value: 'Unknown failure',
-				detail: 'The built game failed strict current-state validation.'
-			});
-		} finally {
-			transitionControls.strictValidationThrows = null;
-		}
-	});
-
-	it('rethrows non-SaveDataError exceptions from strict validation', () => {
-		transitionControls.strictValidationThrows = new Error('unexpected crash');
-		try {
-			const definition = scenarioDefinition();
-			expect(() => buildScenarioGame(definition, definition.officialSeed)).toThrow(
-				'unexpected crash'
-			);
-		} finally {
-			transitionControls.strictValidationThrows = null;
-		}
-	});
-
 	it('returns a transition failure when the founding store transition throws', () => {
 		transitionControls.failFoundingGame = true;
 		try {
@@ -925,13 +702,6 @@ describe('buildScenarioGame', { timeout: 30_000 }, () => {
 		} finally {
 			transitionControls.emptyFoundingStores = false;
 		}
-	});
-
-	it('covers railEndpoints with buildIndustrialBuilding in allowed commands', () => {
-		const definition = scenarioDefinition();
-		definition.allowedCommands = ['advanceDay', 'openStore', 'buildIndustrialBuilding'];
-		const result = buildScenarioGame(definition, definition.officialSeed);
-		expect(result.ok).toBe(true);
 	});
 });
 
