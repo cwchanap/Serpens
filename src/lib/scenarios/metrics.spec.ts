@@ -62,8 +62,7 @@ function product(overrides: Partial<DailyProductReport> = {}): DailyProductRepor
 		importedUnits: 0,
 		importCost: 0,
 		importSpend: 0,
-		...overrides,
-		replenishmentOutcome: overrides.replenishmentOutcome ?? null
+		...overrides
 	};
 }
 

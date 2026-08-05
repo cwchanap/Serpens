@@ -2,12 +2,13 @@ import { describe, expect, test } from 'vitest';
 import { createNewGame } from './state';
 import {
 	applyWeeklyReplenishment,
+	getRetailReplenishmentOutcome,
 	isReplenishmentDay,
 	setRetailSupplySource
 } from './retailSupply';
 import { DEFAULT_SIMULATION_RULES } from './simulationRules';
 import type { SimulationRuleSource, SimulationRules } from './simulationRules';
-import type { GameState, MaterialId, StoreProduct } from './types';
+import type { GameState, MaterialId, RetailReplenishmentContext, StoreProduct } from './types';
 import { createOpenedMultiCityFixture } from './cityInventory.testUtils';
 import { openWorldCity } from './world';
 
@@ -217,6 +218,53 @@ describe('retail supply assignment', () => {
 	});
 });
 
+describe('retail replenishment outcomes', () => {
+	const availableSupply: RetailReplenishmentContext = {
+		retailCityId: 'harbor-city',
+		configuredSupplyCityId: 'industry-city',
+		resolvedSupplyCityId: 'industry-city'
+	};
+
+	test.each([
+		['zero replenishment', availableSupply, { warehouseUnits: 0, importedUnits: 0 }, null],
+		[
+			'local replenishment',
+			availableSupply,
+			{ warehouseUnits: 7, importedUnits: 0 },
+			'city-inventory'
+		],
+		['mixed replenishment', availableSupply, { warehouseUnits: 4, importedUnits: 3 }, 'mixed'],
+		[
+			'import-only replenishment',
+			availableSupply,
+			{ warehouseUnits: 0, importedUnits: 6 },
+			'import-only'
+		],
+		[
+			'imports-only configuration',
+			{
+				retailCityId: 'harbor-city',
+				configuredSupplyCityId: null,
+				resolvedSupplyCityId: null
+			},
+			{ warehouseUnits: 0, importedUnits: 6 },
+			'unassigned-import'
+		],
+		[
+			'unavailable configured source',
+			{
+				retailCityId: 'harbor-city',
+				configuredSupplyCityId: 'industry-city',
+				resolvedSupplyCityId: null
+			},
+			{ warehouseUnits: 0, importedUnits: 6 },
+			'source-unavailable-import'
+		]
+	] as const)('derives %s from replenishment facts', (_name, context, report, expected) => {
+		expect(getRetailReplenishmentOutcome(context, report)).toBe(expected);
+	});
+});
+
 describe('weekly retail replenishment', () => {
 	test('rejects invalid store ownership before grouping stores for replenishment', () => {
 		expect.assertions(1);
@@ -242,7 +290,6 @@ describe('weekly retail replenishment', () => {
 				importedUnits: 0,
 				importCost: 3,
 				importSpend: 0,
-				outcome: 'city-inventory',
 				remainingSnacks: 0,
 				context: {
 					retailCityId: 'harbor-city',
@@ -261,7 +308,6 @@ describe('weekly retail replenishment', () => {
 				importedUnits: 9,
 				importCost: 3,
 				importSpend: 27,
-				outcome: 'mixed',
 				remainingSnacks: 0,
 				context: {
 					retailCityId: 'harbor-city',
@@ -280,7 +326,6 @@ describe('weekly retail replenishment', () => {
 				importedUnits: 21,
 				importCost: 3,
 				importSpend: 63,
-				outcome: 'import-only',
 				remainingSnacks: 0,
 				context: {
 					retailCityId: 'harbor-city',
@@ -299,7 +344,6 @@ describe('weekly retail replenishment', () => {
 				importedUnits: 21,
 				importCost: 3,
 				importSpend: 63,
-				outcome: 'unassigned-import',
 				remainingSnacks: 21,
 				context: {
 					retailCityId: 'harbor-city',
@@ -318,7 +362,6 @@ describe('weekly retail replenishment', () => {
 				importedUnits: 21,
 				importCost: 3,
 				importSpend: 63,
-				outcome: 'source-unavailable-import',
 				remainingSnacks: 21,
 				context: {
 					retailCityId: 'harbor-city',
@@ -352,7 +395,7 @@ describe('weekly retail replenishment', () => {
 		expect(report.importedUnits).toBe(expected.importedUnits);
 		expect(report.importCost).toBe(expected.importCost);
 		expect(report.importSpend).toBe(expected.importSpend);
-		expect(report.replenishmentOutcome).toBe(expected.outcome);
+		expect(report).not.toHaveProperty('replenishmentOutcome');
 		expect(result.importSpend).toBe(expected.importSpend);
 		expect(result.storeReplenishmentContexts.get(store.id)).toEqual(expected.context);
 		expect(inventory.materials.snacks).toBe(expected.remainingSnacks);
@@ -370,7 +413,7 @@ describe('weekly retail replenishment', () => {
 
 		expect(report.warehouseUnits).toBe(0);
 		expect(report.importedUnits).toBe(21);
-		expect(report.replenishmentOutcome).toBe('unassigned-import');
+		expect(report).not.toHaveProperty('replenishmentOutcome');
 		expect(result.cityInventories[0]!.materials.snacks).toBe(21);
 		expect(result.storeReplenishmentContexts.get(game.stores[0]!.id)).toEqual({
 			retailCityId: 'harbor-city',
@@ -393,7 +436,7 @@ describe('weekly retail replenishment', () => {
 
 		expect(report.warehouseUnits).toBe(0);
 		expect(report.importedUnits).toBe(21);
-		expect(report.replenishmentOutcome).toBe('source-unavailable-import');
+		expect(report).not.toHaveProperty('replenishmentOutcome');
 		expect(result.cityInventories).toEqual([]);
 		expect(result.cityInventories).not.toBe(game.cityInventories);
 	});
@@ -421,8 +464,7 @@ describe('weekly retail replenishment', () => {
 						warehouseValue: 0,
 						importedUnits: 0,
 						importCost: 99,
-						importSpend: 0,
-						replenishmentOutcome: null
+						importSpend: 0
 					}
 				]
 			]
@@ -442,7 +484,7 @@ describe('weekly retail replenishment', () => {
 		expect(report.importedUnits).toBe(9);
 		expect(report.importCost).toBe(3);
 		expect(report.importSpend).toBe(27);
-		expect(report.replenishmentOutcome).toBe('mixed');
+		expect(report).not.toHaveProperty('replenishmentOutcome');
 	});
 
 	test('applies import modifiers only to the paid shortage and preserves local valuation', () => {
@@ -729,7 +771,7 @@ describe('weekly retail replenishment', () => {
 		expect('apparel' in result.cityInventories[0]!.materials).toBe(false);
 		expect(report.warehouseUnits).toBe(0);
 		expect(report.importedUnits).toBe(21);
-		expect(report.replenishmentOutcome).toBe('import-only');
+		expect(report).not.toHaveProperty('replenishmentOutcome');
 	});
 
 	test('leaves non-attempted products and their store context untouched', () => {

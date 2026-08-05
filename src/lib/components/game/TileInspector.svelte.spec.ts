@@ -79,8 +79,7 @@ const latestStoreReport: DailyStoreReport = {
 			warehouseValue: 0,
 			importedUnits: 0,
 			importCost: 2,
-			importSpend: 0,
-			replenishmentOutcome: null
+			importSpend: 0
 		}
 	],
 	replenishment: null,

@@ -80,8 +80,7 @@ function latestStoreReport(overrides: Partial<DailyStoreReport> = {}): DailyStor
 				warehouseValue: 48,
 				importedUnits: 4,
 				importCost: 12,
-				importSpend: 48,
-				replenishmentOutcome: null
+				importSpend: 48
 			}
 		],
 		warnings: [],
@@ -105,8 +104,7 @@ function snackProductReport(overrides: Partial<DailyProductReport> = {}): DailyP
 		importedUnits: 4,
 		importCost: 12,
 		importSpend: 48,
-		...overrides,
-		replenishmentOutcome: overrides.replenishmentOutcome ?? null
+		...overrides
 	};
 }
 

@@ -57,8 +57,7 @@ const staleReport: DailyStoreReport = {
 			warehouseValue: 24,
 			importedUnits: 2,
 			importCost: 3,
-			importSpend: 6,
-			replenishmentOutcome: null
+			importSpend: 6
 		}
 	],
 	replenishment: null,
@@ -197,8 +196,7 @@ describe('StoreOverview', () => {
 					warehouseValue: 0,
 					importedUnits: 5,
 					importCost: 3,
-					importSpend: 15,
-					replenishmentOutcome: null
+					importSpend: 15
 				}
 			]
 		};

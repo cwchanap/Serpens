@@ -3271,24 +3271,6 @@ function validateCurrentReplenishmentCityId(
 	return definition.id;
 }
 
-function expectedReplenishmentOutcome(
-	configuredSupplyCityId: WorldCityId | null,
-	resolvedSupplyCityId: WorldCityId | null,
-	warehouseUnits: number,
-	importedUnits: number,
-	label: string
-): string | null {
-	if (warehouseUnits <= 0 && importedUnits <= 0) return null;
-	if (warehouseUnits > 0) {
-		if (resolvedSupplyCityId === null) {
-			retailSupplyInvariant(`${label} local replenishment requires a resolved supply city`);
-		}
-		return importedUnits > 0 ? 'mixed' : 'city-inventory';
-	}
-	if (configuredSupplyCityId === null) return 'unassigned-import';
-	return resolvedSupplyCityId === null ? 'source-unavailable-import' : 'import-only';
-}
-
 function requireCurrentReplenishmentUnits(value: unknown, label: string): number {
 	if (typeof value !== 'number' || !Number.isFinite(value)) {
 		return retailSupplyInvariant(`${label} must be a finite number`);
@@ -3359,22 +3341,6 @@ function validateCurrentStoreReplenishment(value: unknown, game: GameState, labe
 					`${productLabel} must not duplicate the store-level replenishment ${duplicatedCityContextKey}`
 				);
 			}
-			if (!Object.hasOwn(product, 'replenishmentOutcome')) {
-				retailSupplyInvariant(`${productLabel} replenishmentOutcome must be present`);
-			}
-			const outcome = product.replenishmentOutcome;
-			if (
-				outcome !== null &&
-				outcome !== 'city-inventory' &&
-				outcome !== 'mixed' &&
-				outcome !== 'import-only' &&
-				outcome !== 'unassigned-import' &&
-				outcome !== 'source-unavailable-import'
-			) {
-				retailSupplyInvariant(
-					`${productLabel} replenishmentOutcome must be a supported outcome or null`
-				);
-			}
 			const warehouseUnits = requireCurrentReplenishmentUnits(
 				product.warehouseUnits,
 				`${productLabel} warehouseUnits`
@@ -3402,7 +3368,6 @@ function validateCurrentStoreReplenishment(value: unknown, game: GameState, labe
 				);
 			}
 			return {
-				outcome,
 				warehouseUnits,
 				importedUnits,
 				importSpend
@@ -3414,11 +3379,6 @@ function validateCurrentStoreReplenishment(value: unknown, game: GameState, labe
 	);
 
 	if (storeReport.replenishment === null) {
-		if (products.some((product) => product.outcome !== null)) {
-			retailSupplyInvariant(
-				`${label} null replenishment requires every product outcome to be null`
-			);
-		}
 		return;
 	}
 	if (
@@ -3489,21 +3449,6 @@ function validateCurrentStoreReplenishment(value: unknown, game: GameState, labe
 		retailSupplyInvariant(
 			`${label} replenishment context requires at least one attempted product refill`
 		);
-	}
-
-	for (const [index, product] of products.entries()) {
-		const expected = expectedReplenishmentOutcome(
-			configuredSupplyCityId,
-			resolvedSupplyCityId,
-			product.warehouseUnits,
-			product.importedUnits,
-			`${label} productReports[${index}]`
-		);
-		if (product.outcome !== expected) {
-			retailSupplyInvariant(
-				`${label} productReports[${index}] replenishmentOutcome must reconcile with refill quantities and source context`
-			);
-		}
 	}
 }
 

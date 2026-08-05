@@ -782,8 +782,7 @@ function getStoreProductReports(
 			warehouseValue: 0,
 			importedUnits: 0,
 			importCost: category?.importCost ?? 0,
-			importSpend: 0,
-			replenishmentOutcome: null
+			importSpend: 0
 		};
 	});
 }

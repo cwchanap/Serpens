@@ -520,8 +520,7 @@ export function aggregateProductReports(
 		warehouseValue: sumProductReports(productReports, (report) => report.warehouseValue),
 		importedUnits: sumProductReports(productReports, (report) => report.importedUnits),
 		importCost: aggregateImportCost(productReports),
-		importSpend: sumProductReports(productReports, (report) => report.importSpend),
-		replenishmentOutcome: null
+		importSpend: sumProductReports(productReports, (report) => report.importSpend)
 	};
 }
 
