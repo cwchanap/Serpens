@@ -3,6 +3,7 @@ import { openStoreAtTile } from './placement';
 import { buildProductChainTree, buildStoreCategoryChainSummaries } from './productChainTree';
 import { createNewGame } from './state';
 import { openWorldCity } from './world';
+import { MATERIAL_PRODUCER_RECIPES } from './productChainGraph';
 import {
 	createCityTileLookup,
 	getOccupiedStoreTileIds,
@@ -21,10 +22,13 @@ import type {
 // Patch isSupportedFinishedMaterial to admit a synthetic 'fake-finished' category
 // so the defensive-branch test (buildProductChainTree with no producer recipe) can
 // exercise the "supported but no chain" path without adding a real recipe.
+// MATERIAL_PRODUCER_RECIPES is copied into a mutable Map so the
+// noProductionRecipe defensive test can temporarily remove an entry.
 vi.mock('./productChainGraph', async (importOriginal) => {
 	const actual = (await importOriginal()) as Record<string, unknown>;
 	return {
 		...actual,
+		MATERIAL_PRODUCER_RECIPES: new Map(actual.MATERIAL_PRODUCER_RECIPES as Map<string, string>),
 		isSupportedFinishedMaterial: (categoryId: string): categoryId is MaterialId => {
 			if (categoryId === 'fake-finished') return true;
 			return (actual.isSupportedFinishedMaterial as (id: string) => boolean)(categoryId);
@@ -1476,5 +1480,22 @@ describe('buildProductChainTree defensive branches', () => {
 		expect(tree.nodes).toEqual([]);
 		expect(tree.emptyReason).toBe('noLocalChain');
 		expect(tree.title).toBe('fake-finished');
+	});
+
+	it('warns when a recipe input material has no producer recipe', () => {
+		expect.assertions(1);
+		// Temporarily remove the 'water' producer entry so the water-bottler
+		// recipe's 'water' input has no producer, triggering the
+		// noProductionRecipe warning branch.
+		const producerMap = MATERIAL_PRODUCER_RECIPES as Map<string, string>;
+		const saved = producerMap.get('water');
+		producerMap.delete('water');
+		try {
+			const game = convenienceGame();
+			const tree = buildProductChainTree({ game, store: null, categoryId: 'bottled-water' });
+			expect(tree.warnings).toContainEqual({ code: 'noProductionRecipe', materialId: 'water' });
+		} finally {
+			if (saved !== undefined) producerMap.set('water', saved);
+		}
 	});
 });

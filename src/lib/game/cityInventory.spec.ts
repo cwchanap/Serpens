@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import {
 	addCityInventoryMaterial,
 	allocateLegacyWarehouseMaterials,
+	assertValidEntityCityOwnership,
 	compareWorldCityIds,
 	findEntityCityOwnershipIssues,
 	getCityInventory,
@@ -13,6 +14,7 @@ import {
 	recalculateCityInventoryPressure,
 	removeCityInventoryMaterial,
 	resolveWorldCityId,
+	selectDefaultRetailSupplyCity,
 	supportsCityInventory,
 	synchronizeAllCityInventoryCapacities,
 	synchronizeCityInventoryCapacity
@@ -580,5 +582,159 @@ describe('capacity synchronization edge cases', () => {
 
 		expect(result).toBe(game);
 		expect(result.cityInventories).toBe(game.cityInventories);
+	});
+});
+
+describe('lifecycle initialization edge cases', () => {
+	test('initializeCityInventory returns the game unchanged for an unsupported city', () => {
+		expect.assertions(2);
+		const base = createNewGame('convenience', 20260805);
+
+		const result = initializeCityInventory(base, 'harbor-city');
+
+		expect(result).toBe(base);
+		expect(result.cityInventories).toBe(base.cityInventories);
+	});
+
+	test('initializeRetailSupplyAssignment returns the game unchanged for an unsupported city', () => {
+		expect.assertions(2);
+		const base = createNewGame('convenience', 20260806);
+
+		const result = initializeRetailSupplyAssignment(base, 'industry-city');
+
+		expect(result).toBe(base);
+		expect(result.retailSupplyAssignments).toBe(base.retailSupplyAssignments);
+	});
+});
+
+describe('selectDefaultRetailSupplyCity', () => {
+	test('returns null when no eligible industry city inventory exists', () => {
+		expect.assertions(1);
+		const base = createNewGame('convenience', 20260807);
+		const game = withCityInventories(base, []);
+
+		expect(selectDefaultRetailSupplyCity(game)).toBeNull();
+	});
+
+	test('selects the active industry city when it has an eligible inventory', () => {
+		expect.assertions(1);
+		const base = createNewGame('convenience', 20260808);
+		expect(selectDefaultRetailSupplyCity(base)).toBe('industry-city');
+	});
+
+	test('prefers the higher-capacity city over the active city on a capacity mismatch', () => {
+		expect.assertions(1);
+		const base = createNewGame('convenience', 20260814);
+		const opened = openWorldCity(
+			{
+				...base,
+				cash: 1_000_000,
+				world: {
+					...base.world,
+					revealedCityIds: [...base.world.revealedCityIds, 'breadbasket-basin']
+				}
+			},
+			'breadbasket-basin'
+		);
+		// industry-city has two warehouses (capacity 400) while breadbasket-basin
+		// has one (capacity 200), so industry-city must win even though
+		// breadbasket-basin is the active industry city.
+		const game: GameState = {
+			...opened,
+			activeIndustryCityId: 'breadbasket-basin',
+			industrialBuildings: [
+				createWarehouseBuilding('w1', 'industry-city'),
+				createWarehouseBuilding('w2', 'industry-city'),
+				createWarehouseBuilding('w3', 'breadbasket-basin')
+			],
+			cityInventories: [
+				createCityInventory('industry-city'),
+				createCityInventory('breadbasket-basin')
+			]
+		};
+
+		expect(selectDefaultRetailSupplyCity(game)).toBe('industry-city');
+	});
+
+	test('breaks a capacity tie by preferring the active industry city', () => {
+		expect.assertions(1);
+		const base = createNewGame('convenience', 20260809);
+		const opened = openWorldCity(
+			{
+				...base,
+				cash: 1_000_000,
+				world: {
+					...base.world,
+					revealedCityIds: [...base.world.revealedCityIds, 'breadbasket-basin']
+				}
+			},
+			'breadbasket-basin'
+		);
+		// Both industry cities have one warehouse (equal capacity); the active one
+		// (breadbasket-basin) must win over the catalog-earlier industry-city.
+		const game: GameState = {
+			...opened,
+			activeIndustryCityId: 'breadbasket-basin',
+			industrialBuildings: [
+				createWarehouseBuilding('w1', 'industry-city'),
+				createWarehouseBuilding('w2', 'breadbasket-basin')
+			],
+			cityInventories: [
+				createCityInventory('industry-city'),
+				createCityInventory('breadbasket-basin')
+			]
+		};
+
+		expect(selectDefaultRetailSupplyCity(game)).toBe('breadbasket-basin');
+	});
+
+	test('breaks a capacity tie by catalog order when no active city matches', () => {
+		expect.assertions(1);
+		const base = createNewGame('convenience', 20260810);
+		const opened = openWorldCity(
+			{
+				...base,
+				cash: 1_000_000,
+				world: {
+					...base.world,
+					revealedCityIds: [...base.world.revealedCityIds, 'breadbasket-basin']
+				}
+			},
+			'breadbasket-basin'
+		);
+		// Active industry city is a stale/unknown id, so the tie falls back to
+		// catalog order: industry-city precedes breadbasket-basin.
+		const game: GameState = {
+			...opened,
+			activeIndustryCityId: 'quarry-works' as WorldCityId,
+			industrialBuildings: [
+				createWarehouseBuilding('w1', 'industry-city'),
+				createWarehouseBuilding('w2', 'breadbasket-basin')
+			],
+			cityInventories: [
+				createCityInventory('industry-city'),
+				createCityInventory('breadbasket-basin')
+			]
+		};
+
+		expect(selectDefaultRetailSupplyCity(game)).toBe('industry-city');
+	});
+});
+
+describe('assertValidEntityCityOwnership', () => {
+	test('passes silently when all entities are in valid cities', () => {
+		expect.assertions(1);
+		const base = createNewGame('convenience', 20260811);
+		expect(() => assertValidEntityCityOwnership(base)).not.toThrow();
+	});
+
+	test('throws when a store is in an unknown city', () => {
+		expect.assertions(1);
+		const base = createNewGame('convenience', 20260812);
+		const game: GameState = {
+			...base,
+			stores: [{ ...base.stores[0]!, id: 'store-bad', cityId: 'unknown-city' }]
+		};
+		expect(() => assertValidEntityCityOwnership(game)).toThrow(/store-bad/);
 	});
 });
