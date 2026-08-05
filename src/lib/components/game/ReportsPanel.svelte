@@ -6,7 +6,7 @@
 		localizeReportWarning,
 		localizeStructuredCopy
 	} from '$lib/i18n/gameCopy';
-	import { getCityInventoryStats } from '$lib/game/cityInventory';
+	import { getCityInventory, getCityInventoryStats } from '$lib/game/cityInventory';
 	import type {
 		DailyMaterialMovement,
 		DailyProductionReport,
@@ -47,7 +47,10 @@
 	}
 
 	function currentCityInventoryStats(cityId: string) {
-		return game ? getCityInventoryStats(game, cityId) : null;
+		if (!game) return null;
+
+		const access = getCityInventory(game, cityId);
+		return access.ok ? getCityInventoryStats(game, cityId) : null;
 	}
 
 	function buildAttributionRows(

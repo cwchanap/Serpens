@@ -814,6 +814,31 @@ describe('ReportsPanel', () => {
 		await expect.element(reports.getByText('No current city inventory records.')).toBeVisible();
 	});
 
+	it('keeps a stale current inventory row visible with its raw city-label fallback', async () => {
+		expect.assertions(1);
+		const game: GameState = {
+			...currentInventoryGame(),
+			cityInventories: [
+				{
+					cityId: 'legacy-industry' as unknown as CityInventory['cityId'],
+					materials: { snacks: 17 }
+				}
+			]
+		};
+
+		render(ReportsPanel, {
+			i18n: createI18n('en'),
+			game,
+			stores: [store],
+			summary
+		});
+
+		const reports = page.getByRole('region', { name: 'Reports' });
+		await expect
+			.element(reports.getByText('Legacy Industry: 0 / 0 city inventory used.'))
+			.toBeVisible();
+	});
+
 	it('shows local supply unavailable and unknown city attribution for stores without replenishment context', async () => {
 		expect.assertions(3);
 		const storeWithoutCity: Store = { ...store, id: 'store-no-city', cityId: undefined as never };
