@@ -356,82 +356,6 @@ function createManualSaveRecord(overrides: SaveRecordOverrides = {}) {
 	};
 }
 
-function toLegacyV12WarehouseWireGame(game: GameState): GameState {
-	const legacyGame = structuredClone(game) as unknown as Record<string, unknown>;
-	const activeInventory =
-		game.cityInventories.find((inventory) => inventory.cityId === game.activeIndustryCityId) ??
-		game.cityInventories[0];
-
-	legacyGame.warehouse = {
-		capacity: activeInventory?.capacity ?? 0,
-		materials: { ...(activeInventory?.materials ?? {}) },
-		overflowUnits: activeInventory?.overflowUnits ?? 0,
-		overflowCost: activeInventory?.overflowCost ?? 0
-	};
-	delete legacyGame.cityInventories;
-	delete legacyGame.retailSupplyAssignments;
-
-	return legacyGame as unknown as GameState;
-}
-
-function createV11SupplierSnapshot(): SaveStoreSnapshot {
-	const current = createManualSaveRecord({ metadata: { id: 'manual-v11' } });
-	const legacyGame = structuredClone(current.game) as unknown as Record<string, unknown>;
-	delete legacyGame.events;
-	legacyGame.warehouse = {
-		capacity: 0,
-		materials: { grain: 7, snacks: 3 },
-		overflowUnits: 10,
-		overflowCost: 20
-	};
-	legacyGame.decisions = [
-		{
-			id: 'supplier-terms',
-			title: 'Supplier terms',
-			context: { code: 'supplierTerms' },
-			expiresOnDay: current.game.day + 2,
-			options: [
-				{
-					id: 'negotiate-credit',
-					label: 'Negotiate credit',
-					description: 'Ask for short-term supplier credit.',
-					effects: {
-						finance: {
-							kind: 'borrow',
-							purpose: 'supplierCredit',
-							amount: 4_000,
-							termDays: 28
-						},
-						profit: -2
-					}
-				},
-				{
-					id: 'bulk-discount',
-					label: 'Bulk discount',
-					description: 'Commit to a larger order.',
-					effects: { cash: -2_500, profit: 3, stockHealth: 6 }
-				}
-			]
-		}
-	];
-	legacyGame.reports = current.game.reports.map((report) => {
-		const {
-			modifierImpacts: _modifierImpacts,
-			modifierLifecycle: _modifierLifecycle,
-			...legacyReport
-		} = structuredClone(report);
-		void _modifierImpacts;
-		void _modifierLifecycle;
-		return legacyReport;
-	});
-
-	return {
-		schemaVersion: 11,
-		autoSave: null,
-		manualSlots: [{ ...current, schemaVersion: 11, game: legacyGame }]
-	} as unknown as SaveStoreSnapshot;
-}
-
 function createStaleV13Snapshot(): SaveStoreSnapshot {
 	const stale = createManualSaveRecord({
 		metadata: { id: 'manual-stale-city-inventory', name: 'Stale City Inventory' },
@@ -456,58 +380,6 @@ function createStaleV13Snapshot(): SaveStoreSnapshot {
 		autoSave: null,
 		manualSlots: [stale, retained]
 	};
-}
-
-function createV12InventorySnapshot(): SaveStoreSnapshot {
-	const current = createManualSaveRecord({
-		metadata: { id: 'manual-v12-city-inventory', name: 'V12 City Inventory' },
-		game: {
-			reports: [
-				createDailyReport({
-					storeReports: [createDailyStoreReport({ productReports: [createDailyProductReport()] })]
-				})
-			]
-		}
-	});
-	const legacyGame = structuredClone(current.game) as unknown as Record<string, unknown>;
-	delete legacyGame.cityInventories;
-	delete legacyGame.retailSupplyAssignments;
-	legacyGame.warehouse = {
-		capacity: 0,
-		materials: { grain: 7, snacks: 3 },
-		overflowUnits: 10,
-		overflowCost: 20
-	};
-	legacyGame.reports = (legacyGame.reports as Array<Record<string, unknown>>).map((report) => ({
-		...report,
-		productionReport: {
-			...(report.productionReport as Record<string, unknown>),
-			cityInventories: undefined
-		},
-		storeReports: (report.storeReports as Array<Record<string, unknown>>).map((storeReport) => ({
-			...storeReport,
-			replenishment: undefined,
-			productReports: (storeReport.productReports as Array<Record<string, unknown>>).map(
-				(productReport) => ({ ...productReport, replenishmentOutcome: undefined })
-			)
-		}))
-	}));
-	const retained = {
-		...current,
-		metadata: {
-			...current.metadata,
-			id: 'manual-v12-city-inventory-retained',
-			name: 'Retained V12 City Inventory'
-		},
-		schemaVersion: 12,
-		game: structuredClone(legacyGame)
-	};
-
-	return {
-		schemaVersion: 12,
-		autoSave: null,
-		manualSlots: [{ ...current, schemaVersion: 12, game: legacyGame }, retained]
-	} as unknown as SaveStoreSnapshot;
 }
 
 function createSnapshotWithGame(game: Partial<GameState>) {
@@ -701,6 +573,26 @@ describe('save records', () => {
 		).toThrow('Unsupported save schema version: 99');
 	});
 
+	test('rejects a pre-release snapshot schema', () => {
+		expect.assertions(2);
+
+		expect(() =>
+			validateSaveStoreSnapshot({
+				schemaVersion: 12,
+				autoSave: null,
+				manualSlots: []
+			})
+		).toThrow(SaveDataError);
+
+		expect(() =>
+			validateSaveStoreSnapshot({
+				schemaVersion: 12,
+				autoSave: null,
+				manualSlots: []
+			})
+		).toThrow('Unsupported save schema version: 12');
+	});
+
 	test('rejects saved games missing current game state fields', () => {
 		expect.assertions(2);
 		const game = createGame();
@@ -882,7 +774,7 @@ describe('save records', () => {
 		expect(validated.game.storeCap).toBe(4);
 	});
 
-	test('refreshes world progress for migrated saves that already satisfy reveal conditions', () => {
+	test('normalizes world progress that already satisfies reveal conditions', () => {
 		expect.assertions(2);
 		const game = createGame({ day: 8 });
 		const record = createSaveRecord(game, {
@@ -1479,7 +1371,7 @@ describe('save records', () => {
 		);
 	});
 
-	test('migrates legacy staff without level/xp to level 1 and xp 0', () => {
+	test('normalizes staff without level/xp to level 1 and xp 0', () => {
 		expect.assertions(2);
 		const game = createNewGame('convenience', 20260615);
 		const legacyStaff = {
@@ -2005,7 +1897,7 @@ describe('save records', () => {
 		expect(() => validateSaveStoreSnapshot(snapshot)).not.toThrow();
 	});
 
-	test('migrates a legacy three-product store to level 7', () => {
+	test('normalizes a three-product store to level 7', () => {
 		expect.assertions(1);
 		const game = createNewGame('convenience', 20260603);
 		const legacyStore = {
@@ -2108,7 +2000,7 @@ describe('save records', () => {
 		{ productLevel: 4, productCount: 2, expectedLevel: 4 },
 		{ productLevel: 10, productCount: 4, expectedLevel: 10 }
 	])(
-		'migrates a legacy $productCount-product store to level $expectedLevel',
+		'normalizes a $productCount-product store to level $expectedLevel',
 		({ productLevel, expectedLevel }) => {
 			expect.assertions(1);
 			const game = createNewGame('convenience', 20260603);
@@ -2127,11 +2019,11 @@ describe('save records', () => {
 		}
 	);
 
-	test('a legacy store with an unknown product count falls back to level 1 (legacy migration contract)', () => {
+	test('a store with an unknown product count falls back to level 1 (normalization contract)', () => {
 		expect.assertions(2);
 		const game = createNewGame('convenience', 20260603);
 		const baseStore = game.stores[0]!;
-		// The migration maps known product counts {1,2,3,4} → levels {1,4,7,10};
+		// Normalization maps known product counts {1,2,3,4} → levels {1,4,7,10};
 		// an unknown count is intentionally mapped to 1 to avoid rejecting
 		// legacy saves outright. The level-1 fallback is therefore the
 		// characterization contract we pin here.
@@ -2146,7 +2038,7 @@ describe('save records', () => {
 
 		const validated = validateSaveStoreSnapshot(snapshot);
 		expect(validated.manualSlots[0]!.game.stores[0]!.level).toBe(1);
-		// The ?? 1 fallback path is therefore a deliberate legacy-migration
+		// The ?? 1 fallback path is therefore a deliberate normalization
 		// shortcut: it always produces a (level=1, products.length=1) save,
 		// which the level↔products coupling check accepts.
 		expect(validated.manualSlots[0]!.game.stores[0]!.products).toHaveLength(1);
@@ -2173,7 +2065,7 @@ describe('save records', () => {
 		);
 	});
 
-	test('migrates a legacy industrial building without a level field to level 1', () => {
+	test('normalizes an industrial building without a level field to level 1', () => {
 		expect.assertions(1);
 		const fullBuilding = {
 			id: 'building-1',
@@ -2229,180 +2121,9 @@ describe('save records', () => {
 		const validated = validateSaveStoreSnapshot(snapshot);
 		expect(validated.manualSlots[0]!.game.industrialBuildings[0]!.level).toBe(5);
 	});
-
-	describe('schema v4 → v5 migration', () => {
-		function createBoutiqueV4Snapshot() {
-			const game = createNewGame('boutique', 20260604);
-			// Force all four boutique categories onto the founding store so we
-			// exercise the renamed `accessories` category from schema v4.
-			const fullBoutiqueStore = {
-				...game.stores[0]!,
-				level: 10,
-				products: initializeStoreProducts('boutique', 10).map((product) =>
-					product.categoryId === 'fashion-accessories'
-						? { ...product, categoryId: 'accessories' as const }
-						: product
-				)
-			};
-			const record = createSaveRecord(
-				toLegacyV12WarehouseWireGame({ ...game, stores: [fullBoutiqueStore] }),
-				{
-					id: 'manual-v4-boutique',
-					name: 'V4 Boutique Save',
-					kind: 'manual',
-					updatedAt: new Date('2026-06-04T12:00:00.000Z')
-				}
-			);
-			const v4Record = { ...record, schemaVersion: 4 } as unknown as SaveRecord;
-			return {
-				schemaVersion: 4,
-				autoSave: null,
-				manualSlots: [v4Record]
-			};
-		}
-
-		test('migrates schema v4 boutique accessories to fashion-accessories and bumps schemaVersion', () => {
-			expect.assertions(4);
-			const v4Snapshot = createBoutiqueV4Snapshot();
-
-			const validated = validateSaveStoreSnapshot(v4Snapshot);
-
-			expect(validated.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
-			expect(validated.manualSlots[0]!.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
-			const productCategoryIds = validated.manualSlots[0]!.game.stores[0]!.products.map(
-				(product) => product.categoryId
-			);
-			expect(productCategoryIds).toContain('fashion-accessories');
-			expect(productCategoryIds).not.toContain('accessories');
-		});
-
-		test('migrates an auto-save marked as schema v4', () => {
-			expect.assertions(2);
-			const boutiqueSnapshot = createBoutiqueV4Snapshot();
-			const autoSaveRecord = createSaveRecord(boutiqueSnapshot.manualSlots[0]!.game, {
-				id: 'autosave',
-				name: 'Auto-save',
-				kind: 'auto',
-				updatedAt: new Date('2026-06-04T12:00:00.000Z')
-			});
-			const v4Snapshot = {
-				schemaVersion: 4,
-				autoSave: { ...autoSaveRecord, schemaVersion: 4 },
-				manualSlots: []
-			};
-
-			const validated = validateSaveStoreSnapshot(v4Snapshot);
-
-			expect(validated.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
-			expect(validated.autoSave?.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
-		});
-
-		test('preserves electronics accessories when migrating a schema v4 snapshot', () => {
-			expect.assertions(2);
-			const game = createNewGame('electronics', 20260604);
-			const electronicsStore = {
-				...game.stores[0]!,
-				level: 10,
-				products: initializeStoreProducts('electronics', 10)
-			};
-			const record = createSaveRecord(
-				toLegacyV12WarehouseWireGame({ ...game, stores: [electronicsStore] }),
-				{
-					id: 'manual-v4-electronics',
-					name: 'V4 Electronics Save',
-					kind: 'manual',
-					updatedAt: new Date('2026-06-04T12:00:00.000Z')
-				}
-			);
-			const v4Snapshot = {
-				schemaVersion: 4,
-				autoSave: null,
-				manualSlots: [{ ...record, schemaVersion: 4 }]
-			};
-
-			const validated = validateSaveStoreSnapshot(v4Snapshot);
-
-			const productCategoryIds = validated.manualSlots[0]!.game.stores[0]!.products.map(
-				(product) => product.categoryId
-			);
-			expect(productCategoryIds).toContain('accessories');
-			expect(validated.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
-		});
-
-		test('migrates a v4 record passed directly to validateSaveRecord', () => {
-			expect.assertions(2);
-			const boutiqueSnapshot = createBoutiqueV4Snapshot();
-			const v4Record = boutiqueSnapshot.manualSlots[0]!;
-
-			const validated = validateSaveRecord(v4Record);
-
-			expect(validated.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
-			expect(
-				validated.game.stores[0]!.products.some(
-					(product) => product.categoryId === 'fashion-accessories'
-				)
-			).toBe(true);
-		});
-
-		test('still rejects schema versions older than the migration floor', () => {
-			expect.assertions(2);
-			const snapshot = createBoutiqueV4Snapshot();
-			const v3Snapshot = {
-				...snapshot,
-				schemaVersion: 3,
-				manualSlots: snapshot.manualSlots.map((slot) => ({ ...slot, schemaVersion: 3 }))
-			};
-
-			expect(() => validateSaveStoreSnapshot(v3Snapshot)).toThrow(SaveDataError);
-			expect(() => validateSaveStoreSnapshot(v3Snapshot)).toThrow(
-				'Unsupported save schema version: 3'
-			);
-		});
-
-		test('migrates a v4 boutique save without a level field: renames category and infers level from product count', () => {
-			expect.assertions(4);
-			const game = createNewGame('boutique', 20260604);
-			const fullBoutiqueStore = {
-				...game.stores[0]!,
-				products: initializeStoreProducts('boutique', 10).map((product) =>
-					product.categoryId === 'fashion-accessories'
-						? { ...product, categoryId: 'accessories' as const }
-						: product
-				)
-			};
-			// eslint-disable-next-line @typescript-eslint/no-unused-vars
-			const { level: _omit, ...legacyWithoutLevel } = fullBoutiqueStore;
-			const record = createSaveRecord(
-				toLegacyV12WarehouseWireGame({
-					...game,
-					stores: [legacyWithoutLevel as unknown as (typeof game.stores)[number]]
-				}),
-				{
-					id: 'manual-v4-boutique-legacy',
-					name: 'V4 Boutique Save (no level)',
-					kind: 'manual',
-					updatedAt: new Date('2026-06-04T12:00:00.000Z')
-				}
-			);
-			const v4Snapshot = {
-				schemaVersion: 4,
-				autoSave: null,
-				manualSlots: [{ ...record, schemaVersion: 4 } as unknown as SaveRecord]
-			};
-
-			const validated = validateSaveStoreSnapshot(v4Snapshot);
-
-			expect(validated.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
-			const migratedStore = validated.manualSlots[0]!.game.stores[0]!;
-			expect(migratedStore.level).toBe(10);
-			const productCategoryIds = migratedStore.products.map((product) => product.categoryId);
-			expect(productCategoryIds).toContain('fashion-accessories');
-			expect(productCategoryIds).not.toContain('accessories');
-		});
-	});
 });
 
-describe('repository city-inventory migration and normalization', () => {
+describe('repository city-inventory normalization', () => {
 	test('durably reloads historical replenishment from its original source after reassignment', async () => {
 		expect.assertions(6);
 		const replenishedFromIndustryCity = simulateDay(createDaySevenReplenishmentFromIndustryCity());
@@ -2443,48 +2164,6 @@ describe('repository city-inventory migration and normalization', () => {
 		});
 	});
 
-	test('loads and durably upgrades a v11 snapshot through the in-memory driver', async () => {
-		const driver = new MemorySaveStoreDriver(createV11SupplierSnapshot());
-		const repository = new SaveRepositoryFromDriver(
-			driver,
-			() => new Date('2026-05-05T12:00:00.000Z')
-		);
-
-		const loaded = await repository.loadManualSlot('manual-v11');
-		const supplier = loaded?.game.decisions[0];
-
-		expect(loaded?.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
-		expect(supplier).toMatchObject({
-			kind: 'event',
-			id: 'event-instance-1',
-			eventId: 'supplier-terms',
-			definitionVersion: 1
-		});
-		expect(supplier?.kind === 'event' ? supplier.options[1]?.modifiers : null).toEqual([]);
-		expect(loaded?.game.events).toMatchObject({
-			selectionSchemaVersion: 1,
-			nextModifierSequence: 1
-		});
-		expect(loaded?.game.cityInventories).toEqual([
-			{
-				cityId: 'industry-city',
-				capacity: 0,
-				materials: { grain: 7, snacks: 3 },
-				overflowUnits: 10,
-				overflowCost: 20
-			}
-		]);
-		expect(loaded?.game.retailSupplyAssignments).toEqual([
-			{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' }
-		]);
-
-		await repository.saveAuto(createGame());
-		const persisted = await driver.read();
-		expect(persisted.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
-		expect(persisted.manualSlots[0]?.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
-		expect(persisted.manualSlots[0]?.metadata.id).toBe('manual-v11');
-	});
-
 	test('normalizes stale v13 derived caches before a driver mutation durably resaves retained slots', async () => {
 		expect.assertions(8);
 		const driver = new MemorySaveStoreDriver(createStaleV13Snapshot());
@@ -2521,71 +2200,6 @@ describe('repository city-inventory migration and normalization', () => {
 			persisted.manualSlots.some((slot) => slot.metadata.id === 'manual-retained-city-inventory')
 		).toBe(true);
 	});
-
-	test('migrates v12 aggregate stock once and durably preserves null historical retail attribution', async () => {
-		expect.assertions(14);
-		const driver = new MemorySaveStoreDriver(createV12InventorySnapshot());
-		const repository = new SaveRepositoryFromDriver(
-			driver,
-			() => new Date('2026-08-02T12:00:00.000Z')
-		);
-
-		const loaded = await repository.loadManualSlot('manual-v12-city-inventory');
-		const report = loaded?.game.reports[0];
-		const product = report?.storeReports[0]?.productReports[0];
-
-		expect(loaded?.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
-		expect(loaded?.game.cityInventories).toEqual([
-			{
-				cityId: 'industry-city',
-				capacity: 0,
-				materials: { grain: 7, snacks: 3 },
-				overflowUnits: 10,
-				overflowCost: 20
-			}
-		]);
-		expect(loaded?.game.retailSupplyAssignments).toEqual([
-			{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' }
-		]);
-		expect(
-			loaded?.game.cityInventories.reduce(
-				(total, inventory) =>
-					total +
-					Object.values(inventory.materials).reduce((sum, quantity) => sum + (quantity ?? 0), 0),
-				0
-			)
-		).toBe(10);
-		expect(report?.storeReports[0]?.replenishment).toBeNull();
-		expect(product?.replenishmentOutcome).toBeNull();
-		expect(product?.warehouseUnits).toBe(2);
-		expect(product?.warehouseValue).toBe(16);
-
-		await repository.saveAuto(createGame({ day: 4 }));
-		const afterFirstSave = await driver.read();
-		const persisted = afterFirstSave.manualSlots.find(
-			(slot) => slot.metadata.id === 'manual-v12-city-inventory'
-		);
-
-		expect(afterFirstSave.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
-		expect(afterFirstSave.manualSlots).toHaveLength(2);
-		expect(
-			afterFirstSave.manualSlots.every((slot) => slot.schemaVersion === SAVE_SCHEMA_VERSION)
-		).toBe(true);
-		expect(persisted?.game.cityInventories[0]?.materials).toEqual({ grain: 7, snacks: 3 });
-
-		await repository.overwriteManualSlot(
-			'manual-v12-city-inventory',
-			'V12 City Inventory',
-			loaded!.game
-		);
-		const afterSecondSave = await driver.read();
-		const resaved = afterSecondSave.manualSlots.find(
-			(slot) => slot.metadata.id === 'manual-v12-city-inventory'
-		);
-
-		expect(resaved?.game.cityInventories[0]?.materials).toEqual({ grain: 7, snacks: 3 });
-		expect(resaved?.game).not.toHaveProperty('warehouse');
-	});
 });
 
 describe('browser save repository', () => {
@@ -2593,36 +2207,6 @@ describe('browser save repository', () => {
 		expect.assertions(1);
 
 		expect(BROWSER_SAVE_STORAGE_KEY).toBe('serpens.saves.v2');
-	});
-
-	test('loads and durably upgrades an existing v11 browser snapshot', async () => {
-		const storage = new FakeStorage();
-		storage.setItem(BROWSER_SAVE_STORAGE_KEY, JSON.stringify(createV11SupplierSnapshot()));
-		const repository = createBrowserSaveRepository(
-			storage,
-			() => new Date('2026-05-05T12:00:00.000Z')
-		);
-
-		const loaded = await repository.loadManualSlot('manual-v11');
-		const supplier = loaded?.game.decisions[0];
-		expect(loaded?.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
-		expect(supplier).toMatchObject({
-			kind: 'event',
-			id: 'event-instance-1',
-			eventId: 'supplier-terms',
-			definitionVersion: 1
-		});
-		expect(supplier?.kind === 'event' ? supplier.options[1]?.modifiers : null).toEqual([]);
-		expect(loaded?.game.cityInventories[0]?.materials).toEqual({ grain: 7, snacks: 3 });
-		expect(loaded?.game.retailSupplyAssignments).toEqual([
-			{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' }
-		]);
-
-		await repository.saveAuto(createGame());
-		const persisted = JSON.parse(storage.getItem(BROWSER_SAVE_STORAGE_KEY)!) as SaveStoreSnapshot;
-		expect(persisted.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
-		expect(persisted.manualSlots[0]?.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
-		expect(persisted.manualSlots[0]?.metadata.id).toBe('manual-v11');
 	});
 
 	test('normalizes stale v13 city inventories and writes canonical JSON after a browser mutation', async () => {

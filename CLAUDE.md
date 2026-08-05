@@ -86,7 +86,7 @@ Each scene is **snapshot-driven**: it never reaches into game state, only render
 
 When introducing a new persisted field, update `saveCodec.ts` and the repository tests together.
 
-**Legacy save policy:** The game has not been released, so in-development autosaves are not treated as legacy data that must be migrated. `saveCodec.ts` retains a 28x24 retail-city regeneration path as a no-op safety net for in-development autosaves from that intermediate size, but no other non-default sizes (e.g. the earlier 20x20 world-progression cities) are migrated. Do not add new legacy-size migration paths until a release actually ships a size that needs preserving.
+**Pre-release save policy:** Pre-release saves are unsupported. Do not add persistence migration paths before a released save schema needs preserving. `saveCodec.ts` retains the 28x24 retail-city regeneration as a current-schema normalization safety net, not a schema migration.
 
 ### Tauri shell
 
