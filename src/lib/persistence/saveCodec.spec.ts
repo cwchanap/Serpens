@@ -432,8 +432,7 @@ function createCurrentReport(game: GameState): DailyReport {
 						warehouseValue: 4,
 						importedUnits: 0,
 						importCost: 3,
-						importSpend: 0,
-						replenishmentOutcome: 'city-inventory'
+						importSpend: 0
 					}
 				]
 			})
@@ -543,8 +542,7 @@ function createCurrentBreadbasketOnlyReport(game: GameState): DailyReport {
 						warehouseValue: 4,
 						importedUnits: 0,
 						importCost: 3,
-						importSpend: 0,
-						replenishmentOutcome: 'city-inventory'
+						importSpend: 0
 					}
 				]
 			})
@@ -778,8 +776,7 @@ describe('saveCodec', () => {
 				warehouseUnits: -1,
 				warehouseValue: 0,
 				importedUnits: 0,
-				importSpend: 0,
-				replenishmentOutcome: null
+				importSpend: 0
 			}),
 			null
 		],
@@ -789,8 +786,7 @@ describe('saveCodec', () => {
 				...product,
 				warehouseUnits: 0.5,
 				warehouseValue: 1,
-				importedUnits: 0,
-				replenishmentOutcome: 'city-inventory'
+				importedUnits: 0
 			}),
 			'unchanged'
 		],
@@ -800,8 +796,7 @@ describe('saveCodec', () => {
 				...product,
 				warehouseUnits: Number.MAX_SAFE_INTEGER + 1,
 				warehouseValue: 1,
-				importedUnits: 0,
-				replenishmentOutcome: 'city-inventory'
+				importedUnits: 0
 			}),
 			'unchanged'
 		],
@@ -812,8 +807,7 @@ describe('saveCodec', () => {
 				warehouseUnits: 0,
 				warehouseValue: 0,
 				importedUnits: -1,
-				importSpend: 0,
-				replenishmentOutcome: null
+				importSpend: 0
 			}),
 			null
 		],
@@ -824,8 +818,7 @@ describe('saveCodec', () => {
 				warehouseUnits: 0,
 				warehouseValue: 0,
 				importedUnits: 0.5,
-				importSpend: 1,
-				replenishmentOutcome: 'import-only'
+				importSpend: 1
 			}),
 			'unchanged'
 		],
@@ -836,8 +829,7 @@ describe('saveCodec', () => {
 				warehouseUnits: 0,
 				warehouseValue: 0,
 				importedUnits: Number.MAX_SAFE_INTEGER + 1,
-				importSpend: 1,
-				replenishmentOutcome: 'import-only'
+				importSpend: 1
 			}),
 			'unchanged'
 		],
@@ -852,8 +844,7 @@ describe('saveCodec', () => {
 				...product,
 				warehouseUnits: 2,
 				warehouseValue: 1,
-				importedUnits: 0,
-				replenishmentOutcome: 'city-inventory'
+				importedUnits: 0
 			}),
 			'unchanged'
 		],
@@ -864,8 +855,7 @@ describe('saveCodec', () => {
 				warehouseUnits: 0,
 				warehouseValue: 4,
 				importedUnits: 2,
-				importSpend: 6,
-				replenishmentOutcome: 'import-only'
+				importSpend: 6
 			}),
 			'unchanged'
 		],
@@ -920,8 +910,7 @@ describe('saveCodec', () => {
 							warehouseUnits: 0,
 							warehouseValue: 0,
 							importedUnits: 2,
-							importSpend: 6,
-							replenishmentOutcome: 'source-unavailable-import'
+							importSpend: 6
 						}
 					]
 				}
@@ -1440,42 +1429,6 @@ describe('saveCodec', () => {
 			}
 		],
 		[
-			'a missing product replenishment outcome',
-			(report: DailyReport) => {
-				const storeReport = report.storeReports[0]!;
-				const { replenishmentOutcome: _outcome, ...productReport } = storeReport.productReports[0]!;
-				void _outcome;
-				return {
-					...report,
-					storeReports: [{ ...storeReport, productReports: [productReport] }]
-				};
-			}
-		],
-		[
-			'an outcome that conflicts with import-only numeric evidence',
-			(report: DailyReport) => {
-				const storeReport = report.storeReports[0]!;
-				return {
-					...report,
-					storeReports: [
-						{
-							...storeReport,
-							productReports: [
-								{
-									...storeReport.productReports[0]!,
-									warehouseUnits: 0,
-									warehouseValue: 0,
-									importedUnits: 2,
-									importSpend: 6,
-									replenishmentOutcome: 'city-inventory'
-								}
-							]
-						}
-					]
-				};
-			}
-		],
-		[
 			'a source context that conflicts with its configured source',
 			(report: DailyReport) => {
 				const storeReport = report.storeReports[0]!;
@@ -1524,6 +1477,20 @@ describe('saveCodec', () => {
 		);
 	});
 
+	test('accepts a current v14 report without a persisted product outcome label', () => {
+		expect.assertions(1);
+		const game = createCurrentMultiCityGame();
+		const report = createCurrentReport(game);
+
+		const validated = validateSaveRecord(
+			createManualSaveRecord({ game: { ...game, reports: [report] } })
+		);
+
+		expect(validated.game.reports[0]!.storeReports[0]!.productReports[0]).not.toHaveProperty(
+			'replenishmentOutcome'
+		);
+	});
+
 	test('accepts explicit null v14 replenishment fields when no product attempted a refill', () => {
 		expect.assertions(2);
 		const game = createCurrentMultiCityGame();
@@ -1542,8 +1509,7 @@ describe('saveCodec', () => {
 							warehouseUnits: 0,
 							warehouseValue: 0,
 							importedUnits: 0,
-							importSpend: 0,
-							replenishmentOutcome: null
+							importSpend: 0
 						}
 					]
 				}
@@ -1555,10 +1521,7 @@ describe('saveCodec', () => {
 		);
 
 		expect(SAVE_SCHEMA_VERSION).toBe(14);
-		expect(validated.game.reports[0]!.storeReports[0]).toMatchObject({
-			replenishment: null,
-			productReports: [{ replenishmentOutcome: null }]
-		});
+		expect(validated.game.reports[0]!.storeReports[0]!.replenishment).toBeNull();
 	});
 
 	test('round-trips the complete event schema v14 without dropping materialized evidence', () => {
@@ -6070,8 +6033,7 @@ describe('saveCodec', () => {
 								warehouseUnits: 2,
 								warehouseValue: 4,
 								importedUnits: 0,
-								importSpend: 0,
-								replenishmentOutcome: 'city-inventory'
+								importSpend: 0
 							}
 						]
 					}
@@ -6100,8 +6062,7 @@ describe('saveCodec', () => {
 								warehouseUnits: 2,
 								warehouseValue: 4,
 								importedUnits: 0,
-								importSpend: 0,
-								replenishmentOutcome: 'city-inventory'
+								importSpend: 0
 							}
 						]
 					}
@@ -6134,61 +6095,6 @@ describe('saveCodec', () => {
 			);
 		});
 
-		test('rejects an unsupported replenishmentOutcome value', () => {
-			const game = createCurrentMultiCityGame();
-			const report = createCurrentReport(game);
-			const storeReport = report.storeReports[0]!;
-			const updatedReport = {
-				...report,
-				storeReports: [
-					{
-						...storeReport,
-						productReports: [
-							{
-								...storeReport.productReports[0]!,
-								replenishmentOutcome: 'invalid-outcome' as unknown as null
-							}
-						]
-					}
-				]
-			};
-
-			expectSaveRecordErrorCode(
-				createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }),
-				'invariant-retail-supply'
-			);
-		});
-
-		test('rejects a null replenishment context with a non-null product outcome', () => {
-			const game = createCurrentMultiCityGame();
-			const report = createCurrentReport(game);
-			const storeReport = report.storeReports[0]!;
-			const updatedReport: DailyReport = {
-				...report,
-				storeReports: [
-					{
-						...storeReport,
-						replenishment: null,
-						productReports: [
-							{
-								...storeReport.productReports[0]!,
-								warehouseUnits: 0,
-								warehouseValue: 0,
-								importedUnits: 0,
-								importSpend: 0,
-								replenishmentOutcome: 'city-inventory'
-							}
-						]
-					}
-				]
-			};
-
-			expectSaveRecordErrorCode(
-				createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }),
-				'invariant-retail-supply'
-			);
-		});
-
 		test('rejects a warehouseValue that overflows the safe-integer range for its material localValue', () => {
 			const game = createCurrentMultiCityGame();
 			const report = createCurrentReport(game);
@@ -6205,8 +6111,7 @@ describe('saveCodec', () => {
 								warehouseUnits: Number.MAX_SAFE_INTEGER,
 								warehouseValue: 0,
 								importedUnits: 0,
-								importSpend: 0,
-								replenishmentOutcome: 'city-inventory'
+								importSpend: 0
 							}
 						]
 					}
@@ -6306,8 +6211,7 @@ describe('saveCodec', () => {
 								warehouseUnits: 0,
 								warehouseValue: 0,
 								importedUnits: 2,
-								importSpend: 6,
-								replenishmentOutcome: 'import-only'
+								importSpend: 6
 							}
 						]
 					}
@@ -6335,8 +6239,7 @@ describe('saveCodec', () => {
 								warehouseUnits: 0,
 								warehouseValue: 0,
 								importedUnits: 0,
-								importSpend: 0,
-								replenishmentOutcome: null
+								importSpend: 0
 							}
 						]
 					}

@@ -61,6 +61,28 @@ export function isReplenishmentDay(day: number): boolean {
 	return day > 0 && day % REPLENISHMENT_INTERVAL_DAYS === 0;
 }
 
+export function getRetailReplenishmentOutcome(
+	context: RetailReplenishmentContext,
+	report: Pick<DailyProductReport, 'warehouseUnits' | 'importedUnits'>
+): RetailReplenishmentOutcome | null {
+	if (report.warehouseUnits === 0 && report.importedUnits === 0) {
+		return null;
+	}
+	if (report.warehouseUnits > 0 && report.importedUnits > 0) {
+		return 'mixed';
+	}
+	if (report.warehouseUnits > 0) {
+		return 'city-inventory';
+	}
+	if (context.configuredSupplyCityId === null) {
+		return 'unassigned-import';
+	}
+	if (context.resolvedSupplyCityId === null) {
+		return 'source-unavailable-import';
+	}
+	return 'import-only';
+}
+
 export function setRetailSupplySource(
 	game: GameState,
 	retailCityId: string,
@@ -164,8 +186,7 @@ export function applyWeeklyReplenishment(
 					warehouseUnits: replenishment.warehouseUnits,
 					warehouseValue: replenishment.warehouseValue,
 					importedUnits: replenishment.importedUnits,
-					importSpend: spend,
-					outcome: replenishment.outcome
+					importSpend: spend
 				});
 
 				return { ...product, stock: product.targetStock };
@@ -278,7 +299,6 @@ function replenishProduct(input: {
 	warehouseUnits: number;
 	warehouseValue: number;
 	importedUnits: number;
-	outcome: RetailReplenishmentOutcome;
 } {
 	const materialId = getFinishedMaterialIdForCategory(input.category.id);
 	const sourceCityId = input.context.resolvedSupplyCityId;
@@ -290,26 +310,14 @@ function replenishProduct(input: {
 		return {
 			warehouseUnits: removal.quantityRemoved,
 			warehouseValue: removal.quantityRemoved * MATERIALS[materialId].localValue,
-			importedUnits: removal.shortage,
-			outcome:
-				removal.quantityRemoved === input.neededUnits
-					? 'city-inventory'
-					: removal.quantityRemoved > 0
-						? 'mixed'
-						: 'import-only'
+			importedUnits: removal.shortage
 		};
 	}
 
 	return {
 		warehouseUnits: 0,
 		warehouseValue: 0,
-		importedUnits: input.neededUnits,
-		outcome:
-			input.context.configuredSupplyCityId === null
-				? 'unassigned-import'
-				: sourceCityId === null
-					? 'source-unavailable-import'
-					: 'import-only'
+		importedUnits: input.neededUnits
 	};
 }
 
@@ -334,7 +342,6 @@ function mergeReplenishmentReport(
 		warehouseValue: number;
 		importedUnits: number;
 		importSpend: number;
-		outcome: RetailReplenishmentOutcome;
 	}
 ): void {
 	const storeReports = reports.get(storeId) ?? [];
@@ -345,8 +352,7 @@ function mergeReplenishmentReport(
 		warehouseValue: refill.warehouseValue,
 		importedUnits: refill.importedUnits,
 		importCost: category.importCost,
-		importSpend: refill.importSpend,
-		replenishmentOutcome: refill.outcome
+		importSpend: refill.importSpend
 	};
 
 	if (existingIndex >= 0) {

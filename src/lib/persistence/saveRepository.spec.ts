@@ -430,7 +430,6 @@ function createDailyProductReport(overrides: Partial<DailyProductReport> = {}): 
 		importedUnits: 0,
 		importCost: 3,
 		importSpend: 0,
-		replenishmentOutcome: null,
 		...overrides
 	};
 }
@@ -2118,8 +2117,7 @@ describe('repository city-inventory normalization', () => {
 			resolvedSupplyCityId: 'industry-city'
 		});
 		expect(reloaded?.game.reports[0]?.storeReports[0]?.productReports[0]).toMatchObject({
-			warehouseUnits: 20,
-			replenishmentOutcome: 'city-inventory'
+			warehouseUnits: 20
 		});
 	});
 });

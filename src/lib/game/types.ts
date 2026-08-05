@@ -578,8 +578,6 @@ export interface DailyProductReport {
 	importedUnits: number;
 	importCost: number;
 	importSpend: number;
-	/** Explicit evidence for every current-state product report. */
-	replenishmentOutcome: RetailReplenishmentOutcome | null;
 }
 
 export type StoreReportWarning =

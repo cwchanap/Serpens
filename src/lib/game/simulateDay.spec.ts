@@ -1279,7 +1279,7 @@ describe('daily simulation', () => {
 	});
 
 	test('keeps production-close pressure separate from post-replenishment inventory and report attribution', () => {
-		expect.assertions(14);
+		expect.assertions(15);
 		const startingCash = 50_000;
 		const baseGame = {
 			...createNewGame('convenience', 292_606),
@@ -1345,10 +1345,10 @@ describe('daily simulation', () => {
 			warehouseUnits: 12,
 			warehouseValue: 96,
 			importedUnits: 8,
-			importSpend: 24,
-			replenishmentOutcome: 'mixed'
+			importSpend: 24
 		});
-		expect(bottledWater.replenishmentOutcome).toBeNull();
+		expect(snacks).not.toHaveProperty('replenishmentOutcome');
+		expect(bottledWater).not.toHaveProperty('replenishmentOutcome');
 		expect(storeReport.replenishment).toEqual({
 			retailCityId: 'harbor-city',
 			configuredSupplyCityId: 'industry-city',
@@ -1399,7 +1399,7 @@ describe('daily simulation', () => {
 		expect(storeReport.replenishment).toBeNull();
 		expect(storeReport.productReports).not.toHaveLength(0);
 		expect(
-			storeReport.productReports.every((product) => product.replenishmentOutcome === null)
+			storeReport.productReports.every((product) => !Object.hasOwn(product, 'replenishmentOutcome'))
 		).toBe(true);
 	});
 

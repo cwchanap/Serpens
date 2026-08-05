@@ -7,6 +7,7 @@
 		localizeStructuredCopy
 	} from '$lib/i18n/gameCopy';
 	import { getCityInventory, getCityInventoryStats } from '$lib/game/cityInventory';
+	import { getRetailReplenishmentOutcome } from '$lib/game/retailSupply';
 	import type {
 		DailyMaterialMovement,
 		DailyProductionReport,
@@ -117,19 +118,39 @@
 
 		for (const report of storeReports) {
 			const store = stores.find((candidate) => candidate.id === report.storeId);
-			const retailCityId = report.replenishment?.retailCityId ?? store?.cityId;
+			const context = report.replenishment;
+			const retailCityId = context?.retailCityId ?? store?.cityId;
 			const retailCityName = retailCityId ? cityName(retailCityId) : null;
-			const localUnits = report.productReports.reduce(
-				(total, product) => total + product.warehouseUnits,
-				0
-			);
-			const importedUnits = report.productReports.reduce(
-				(total, product) => total + product.importedUnits,
-				0
-			);
+			const outcomes = context
+				? report.productReports.map((product) => ({
+						product,
+						outcome: getRetailReplenishmentOutcome(context, product)
+					}))
+				: null;
+			const localUnits = outcomes
+				? outcomes.reduce(
+						(total, { product, outcome }) =>
+							outcome === 'city-inventory' || outcome === 'mixed'
+								? total + product.warehouseUnits
+								: total,
+						0
+					)
+				: report.productReports.reduce((total, product) => total + product.warehouseUnits, 0);
+			const importedUnits = outcomes
+				? outcomes.reduce(
+						(total, { product, outcome }) =>
+							outcome === 'mixed' ||
+							outcome === 'import-only' ||
+							outcome === 'unassigned-import' ||
+							outcome === 'source-unavailable-import'
+								? total + product.importedUnits
+								: total,
+						0
+					)
+				: report.productReports.reduce((total, product) => total + product.importedUnits, 0);
 
 			if (localUnits > 0) {
-				const sourceCityId = report.replenishment?.resolvedSupplyCityId;
+				const sourceCityId = context?.resolvedSupplyCityId;
 				rows.push(
 					sourceCityId && retailCityName
 						? {

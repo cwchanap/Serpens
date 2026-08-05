@@ -204,8 +204,7 @@ function replenishedStoreReport(): DailyStoreReport {
 				warehouseValue: 8,
 				importedUnits: 3,
 				importCost: 5,
-				importSpend: 15,
-				replenishmentOutcome: 'mixed'
+				importSpend: 15
 			}
 		],
 		warnings: [],
