@@ -318,6 +318,90 @@ describe('industry production simulation', () => {
 		]);
 	});
 
+	test('charges only the overflowing city at production close after rail pushes', () => {
+		expect.assertions(4);
+		const starter = createNewGame('convenience', 20260805);
+		const opened = openWorldCity(
+			{
+				...starter,
+				cash: 100_000,
+				world: {
+					...starter.world,
+					revealedCityIds: [...starter.world.revealedCityIds, 'breadbasket-basin']
+				}
+			},
+			'breadbasket-basin'
+		);
+		const cityA = 'industry-city';
+		const cityB = 'breadbasket-basin';
+		const rails = straightRails(4, 2, 11, 10);
+		const building = (
+			id: string,
+			typeId: IndustrialBuilding['typeId'],
+			cityId: string,
+			mapX: number
+		): IndustrialBuilding => ({
+			id,
+			level: 1,
+			typeId,
+			cityId,
+			tileId: `${cityId}-${mapX}-2`,
+			mapX,
+			mapY: 2,
+			status: 'idle',
+			inventory: {},
+			lastProduction: [],
+			producedTotal: 0,
+			importedInputTotal: 0,
+			blockedDays: 0
+		});
+		const baseGame: GameState = {
+			...opened,
+			industryCities: opened.industryCities.map((city) =>
+				city.id === cityA ? { ...city, rails } : city
+			),
+			industrialBuildings: [
+				building('city-a-pump', 'water-pump', cityA, 2),
+				building('city-a-warehouse', 'warehouse', cityA, 10),
+				building('city-b-warehouse', 'warehouse', cityB, 10)
+			],
+			cityInventories: opened.cityInventories.map((inventory) =>
+				inventory.cityId === cityA
+					? { ...inventory, materials: { water: 200 } }
+					: inventory.cityId === cityB
+						? { ...inventory, materials: { water: 3 } }
+						: inventory
+			)
+		};
+		const withinCapacity = simulateIndustryProduction({
+			...baseGame,
+			cityInventories: baseGame.cityInventories.map((inventory) =>
+				inventory.cityId === cityA ? { ...inventory, materials: { water: 190 } } : inventory
+			)
+		});
+		const overflowing = simulateIndustryProduction(baseGame);
+
+		expect(overflowing.report.cityInventories).toEqual([
+			{
+				cityId: cityA,
+				capacity: 200,
+				used: 210,
+				overflowUnits: 10,
+				overflowCost: 20
+			},
+			{
+				cityId: cityB,
+				capacity: 200,
+				used: 3,
+				overflowUnits: 0,
+				overflowCost: 0
+			}
+		]);
+		expect(overflowing.report.overflowUnits).toBe(10);
+		expect(overflowing.report.overflowCost).toBe(20);
+		expect(overflowing.game.cash).toBe(withinCapacity.game.cash - 20);
+	});
+
 	test('raw producers buffer materials locally when they have no rail connection', () => {
 		expect.assertions(4);
 		let game = { ...createNewGame('convenience', 20260512), cash: 100_000 };

@@ -291,7 +291,7 @@ export function pullViaRail(
 /**
  * Pushes every unit in the producer's buffer to the nearest reachable
  * warehouse building, budget-limited. City-inventory overflow is allowed here;
- * the caller observes the already-normalized city pressure after the push.
+ * production close derives any resulting pressure from the final material state.
  */
 export function pushSurplusViaRail(state: RailTickState, producer: IndustrialBuilding): void {
 	const entityCity = getRailEntityCity(state, producer);
