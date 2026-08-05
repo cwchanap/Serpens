@@ -1561,6 +1561,32 @@ describe('saveCodec', () => {
 				void _cityInventories;
 				return { ...report, productionReport };
 			}
+		],
+		[
+			'duplicate store-report IDs',
+			(report: DailyReport) => {
+				const storeReport = report.storeReports[0]!;
+				return {
+					...report,
+					storeReports: [storeReport, structuredClone(storeReport)]
+				};
+			}
+		],
+		[
+			'duplicate product category IDs within one store report',
+			(report: DailyReport) => {
+				const storeReport = report.storeReports[0]!;
+				const productReport = storeReport.productReports[0]!;
+				return {
+					...report,
+					storeReports: [
+						{
+							...storeReport,
+							productReports: [productReport, structuredClone(productReport)]
+						}
+					]
+				};
+			}
 		]
 	])('drops a structurally malformed historical report with %s', (_name, mutateReport) => {
 		const game = createCurrentMultiCityGame();

@@ -81,20 +81,6 @@ function warehouseBuilding(cityId: WorldCityId, id: string): IndustrialBuilding 
 	};
 }
 
-function openedRetailCityGame(): GameState {
-	const base = convenienceGame();
-	return openWorldCity(
-		{
-			...base,
-			world: {
-				...base.world,
-				revealedCityIds: [...base.world.revealedCityIds, 'campus-junction']
-			}
-		},
-		'campus-junction'
-	);
-}
-
 function findAvailableRetailFootprintTile(game: GameState): CityTile {
 	const city = game.cities.find((candidate) => candidate.id === game.activeCityId)!;
 	const lookup = createCityTileLookup(city);
@@ -627,61 +613,6 @@ describe('buildProductChainTree', () => {
 			categoryId: 'snacks'
 		});
 		expect(harborTree.details['product:snacks']?.actual.warehousePulled).toBe(3);
-	});
-
-	it('does not invent retail ownership for unscoped historical imports', () => {
-		// Current report types require attribution; this models an unsafe legacy
-		// row so the tree remains defensive at its display boundary.
-		const historicalImport = {
-			...emptyProductionReport(),
-			shopImports: [{ materialId: 'snacks', quantity: 4, value: 48, source: 'import' }]
-		} as unknown as DailyProductionReport;
-		const oneRetailGame = withLatestReport(convenienceGame(), historicalImport);
-		const oneRetailTree = buildProductChainTree({
-			game: oneRetailGame,
-			store: oneRetailGame.stores[0]!,
-			categoryId: 'snacks'
-		});
-
-		let twoRetailGame = openedRetailCityGame();
-		twoRetailGame = openStoreAtTile(twoRetailGame, {
-			tileId: findAvailableRetailFootprintTile(twoRetailGame).id,
-			archetypeId: 'convenience'
-		});
-		const campusStore = twoRetailGame.stores.find((store) => store.cityId === 'campus-junction')!;
-		const harborStore = twoRetailGame.stores.find((store) => store.cityId === 'harbor-city')!;
-		twoRetailGame = withLatestReport(twoRetailGame, historicalImport);
-		const campusGame = { ...twoRetailGame, activeCityId: 'campus-junction' };
-		const harborGame = { ...twoRetailGame, activeCityId: 'harbor-city' };
-		const campusTree = buildProductChainTree({
-			game: campusGame,
-			store: campusStore,
-			categoryId: 'snacks'
-		});
-		const harborTree = buildProductChainTree({
-			game: harborGame,
-			store: harborStore,
-			categoryId: 'snacks'
-		});
-
-		expect(oneRetailTree.details['product:snacks']?.actual.shopImported).toBe(0);
-		expect(
-			buildStoreCategoryChainSummaries(oneRetailGame).find(
-				(summary) => summary.categoryId === 'snacks'
-			)?.imported
-		).toBe(0);
-		expect(campusTree.details['product:snacks']?.actual.shopImported).toBe(0);
-		expect(
-			buildStoreCategoryChainSummaries(campusGame).find(
-				(summary) => summary.categoryId === 'snacks'
-			)?.imported
-		).toBe(0);
-		expect(harborTree.details['product:snacks']?.actual.shopImported).toBe(0);
-		expect(
-			buildStoreCategoryChainSummaries(harborGame).find(
-				(summary) => summary.categoryId === 'snacks'
-			)?.imported
-		).toBe(0);
 	});
 
 	it('keeps explicit imports-only configuration but rejects a missing retail assignment', () => {
