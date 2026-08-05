@@ -150,7 +150,9 @@ it('rethrows unsupported development versions instead of replacing them with an 
 In `page.svelte.spec.ts`, assert that `describeSaveErrorKey` behavior reaches the dedicated copy through save initialization or panel refresh:
 
 ```ts
-expect(screen.getByText('This save was created by an unsupported development version.')).toBeVisible();
+expect(
+  screen.getByText('This save was created by an unsupported development version.')
+).toBeVisible();
 ```
 
 - [ ] **Step 3: Run focused tests and confirm failure**
