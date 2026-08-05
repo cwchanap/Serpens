@@ -1,5 +1,5 @@
 import { getArchetype } from './archetypes';
-import { getCityInventory, getCityInventoryUsed } from './cityInventory';
+import { getCityInventory, getCityInventoryStats, getCityInventoryUsed } from './cityInventory';
 import { INDUSTRIAL_BUILDING_TYPES, MATERIALS, PRODUCTION_RECIPES } from './industry';
 import { getBuildingThroughputMultiplier } from './leveling';
 import type {
@@ -157,6 +157,7 @@ export function buildWarehouseFlowGraph(game: GameState): ProductChainGraph {
 	}
 
 	const { buildings, inventory, report } = scope;
+	const inventoryStats = getCityInventoryStats(game, inventory.cityId);
 	const materialIds = new Set<MaterialId>();
 
 	for (const materialId of Object.keys(inventory.materials) as MaterialId[]) {
@@ -184,7 +185,7 @@ export function buildWarehouseFlowGraph(game: GameState): ProductChainGraph {
 	}
 
 	const warehouseHealth: ProductChainHealth =
-		inventory.capacity <= 0 || inventory.overflowUnits > 0 ? 'shortage' : 'healthy';
+		inventoryStats.capacity <= 0 || inventoryStats.overflowUnits > 0 ? 'shortage' : 'healthy';
 	const warehouseNode: ProductChainNode = {
 		id: 'warehouse',
 		kind: 'warehouse',
@@ -200,14 +201,14 @@ export function buildWarehouseFlowGraph(game: GameState): ProductChainGraph {
 		capacity: {
 			buildingCount: buildings.filter((building) => building.typeId === 'warehouse').length,
 			outputPerDay: 0,
-			inputPerDay: inventory.capacity
+			inputPerDay: inventoryStats.capacity
 		},
 		actual: emptyActualMetrics(),
 		bottleneck:
-			inventory.capacity <= 0
+			inventoryStats.capacity <= 0
 				? { code: 'warehouseNoCapacity' }
-				: inventory.overflowUnits > 0
-					? { code: 'warehouseOverflow', quantity: inventory.overflowUnits }
+				: inventoryStats.overflowUnits > 0
+					? { code: 'warehouseOverflow', quantity: inventoryStats.overflowUnits }
 					: { code: 'warehouseAvailable' }
 	};
 	const nodes: ProductChainNode[] = [warehouseNode];

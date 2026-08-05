@@ -4,6 +4,7 @@ import {
 	DEFAULT_RETAIL_CITY_WIDTH,
 	generateCity
 } from '$lib/game/city';
+import { getCityInventoryStats } from '$lib/game/cityInventory';
 import { createFoundingGameAtTile } from '$lib/game/placement';
 import { getTotalDebt } from '$lib/game/finance';
 import { normalizeSeed } from '$lib/game/rng';
@@ -323,12 +324,10 @@ describe('buildScenarioGame', { timeout: 30_000 }, () => {
 		expect(result.game.cityInventories).toEqual([
 			{
 				cityId: 'industry-city',
-				capacity: 200,
-				materials: { 'bottled-water': 30 },
-				overflowUnits: 0,
-				overflowCost: 0
+				materials: { 'bottled-water': 30 }
 			}
 		]);
+		expect(getCityInventoryStats(result.game, 'industry-city').capacity).toBe(200);
 		expect(result.game.retailSupplyAssignments).toEqual([
 			{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' },
 			{ retailCityId: 'campus-junction', supplyCityId: 'industry-city' }
@@ -397,19 +396,15 @@ describe('buildScenarioGame', { timeout: 30_000 }, () => {
 		expect(result.game.cityInventories).toEqual([
 			{
 				cityId: 'industry-city',
-				capacity: 200,
-				materials: { 'bottled-water': 30 },
-				overflowUnits: 0,
-				overflowCost: 0
+				materials: { 'bottled-water': 30 }
 			},
 			{
 				cityId: 'breadbasket-basin',
-				capacity: 200,
-				materials: { grain: 7 },
-				overflowUnits: 0,
-				overflowCost: 0
+				materials: { grain: 7 }
 			}
 		]);
+		expect(getCityInventoryStats(result.game, 'industry-city').capacity).toBe(200);
+		expect(getCityInventoryStats(result.game, 'breadbasket-basin').capacity).toBe(200);
 		expect(result.game.retailSupplyAssignments).toEqual([
 			{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' },
 			{ retailCityId: 'campus-junction', supplyCityId: 'breadbasket-basin' }
@@ -504,9 +499,11 @@ describe('buildScenarioGame', { timeout: 30_000 }, () => {
 		expect(result.ok).toBe(true);
 		if (!result.ok) return;
 		expect(result.game.cityInventories).toEqual([
-			expect.objectContaining({ cityId: 'industry-city', capacity: 0 }),
-			expect.objectContaining({ cityId: 'breadbasket-basin', capacity: 200 })
+			{ cityId: 'industry-city', materials: {} },
+			{ cityId: 'breadbasket-basin', materials: {} }
 		]);
+		expect(getCityInventoryStats(result.game, 'industry-city').capacity).toBe(0);
+		expect(getCityInventoryStats(result.game, 'breadbasket-basin').capacity).toBe(200);
 		expect(result.game.retailSupplyAssignments).toEqual([
 			{ retailCityId: 'harbor-city', supplyCityId: 'breadbasket-basin' }
 		]);

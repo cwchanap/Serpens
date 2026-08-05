@@ -11,6 +11,7 @@ import {
 	decisionContextIndustrialUnknownTile
 } from './decisionContext';
 import { createIndustryTileLookup } from './industryFootprint';
+import { getCityInventoryStats } from './cityInventory';
 import {
 	buildIndustrialBuilding,
 	financeIndustrialBuilding,
@@ -138,10 +139,8 @@ describe('industrial placement', () => {
 		expect(game.industrialBuildings).toHaveLength(0);
 	});
 
-	test('synchronizes city-local inventory capacity and pressure after building', () => {
-		// The placement transition keeps the owning city inventory valid after
-		// capacity-changing construction, including a subsequent producer build.
-		expect.assertions(6);
+	test('derives warehouse stats without mutating the city inventory record after building', () => {
+		expect.assertions(5);
 		const base = { ...createNewGame('convenience', 20260512), cash: 1_000_000 };
 		const city = base.industryCities[0]!;
 		const anchor = city.tiles.find(
@@ -172,10 +171,14 @@ describe('industrial placement', () => {
 		expect(built.industrialBuildings).toHaveLength(1);
 		expect(built.industrialBuildings[0]?.typeId).toBe('warehouse');
 		const inventory = built.cityInventories.find((entry) => entry.cityId === 'industry-city')!;
-		expect(inventory.capacity).toBe(200);
-		expect(inventory.overflowUnits).toBe(0);
-		expect(inventory.overflowCost).toBe(0);
-		// A non-capacity building retains the synchronized local inventory.
+		expect(inventory).toEqual({ cityId: 'industry-city', materials: {} });
+		expect(getCityInventoryStats(built, 'industry-city')).toEqual({
+			capacity: 200,
+			used: 0,
+			overflowUnits: 0,
+			overflowCost: 0
+		});
+		// A non-warehouse building retains the material-only local inventory.
 		const grainTile = getIndustryTilesByResource(city, 'grain-field')[0]!;
 		const withProducer = buildIndustrialBuilding(built, {
 			tileId: grainTile.id,
@@ -186,7 +189,7 @@ describe('industrial placement', () => {
 		);
 	});
 
-	test('synchronizes only the warehouse inventory owned by the newly built city', () => {
+	test('keeps other city inventory material-only when building a warehouse', () => {
 		expect.assertions(3);
 		const starter = createNewGame('convenience', 20260802);
 		const opened = openWorldCity(
@@ -206,9 +209,7 @@ describe('industrial placement', () => {
 				inventory.cityId === 'industry-city'
 					? {
 							...inventory,
-							materials: { water: 3 },
-							overflowUnits: 3,
-							overflowCost: 6
+							materials: { water: 3 }
 						}
 					: inventory
 			)
@@ -229,7 +230,7 @@ describe('industrial placement', () => {
 		);
 		expect(
 			built.cityInventories.find((inventory) => inventory.cityId === 'breadbasket-basin')
-		).toMatchObject({ capacity: 200, overflowUnits: 0, overflowCost: 0 });
+		).toEqual({ cityId: 'breadbasket-basin', materials: {} });
 	});
 
 	test('rejects insufficient cash with a construction decision', () => {

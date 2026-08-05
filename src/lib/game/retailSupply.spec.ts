@@ -54,10 +54,7 @@ function withIndustryMaterials(
 			inventory.cityId === 'industry-city'
 				? {
 						...inventory,
-						capacity: 200,
-						materials,
-						overflowUnits: 0,
-						overflowCost: 0
+						materials
 					}
 				: inventory
 		)
@@ -629,7 +626,6 @@ describe('weekly retail replenishment', () => {
 				inventory.cityId === 'industry-city'
 					? {
 							...inventory,
-							capacity: 100,
 							materials: { 'bottled-water': 20 }
 						}
 					: inventory

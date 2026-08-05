@@ -1,10 +1,11 @@
-import { INDUSTRIAL_BUILDING_TYPES, MATERIALS } from './industry';
+import { INDUSTRIAL_BUILDING_TYPES } from './industry';
 import {
 	compareWorldCityIds as compareCatalogWorldCityIds,
 	getWorldCityDefinition
 } from './worldCatalog';
 import type {
 	CityInventory,
+	CityInventoryStats,
 	GameState,
 	MaterialId,
 	RetailSupplyAssignment,
@@ -56,10 +57,7 @@ export function compareWorldCityIds(left: WorldCityId, right: WorldCityId): numb
 export function createEmptyCityInventory(cityId: WorldCityId): CityInventory {
 	return {
 		cityId,
-		capacity: 0,
-		materials: {},
-		overflowUnits: 0,
-		overflowCost: 0
+		materials: {}
 	};
 }
 
@@ -79,7 +77,7 @@ export function initializeCityInventory(game: GameState, cityId: string): GameSt
 				)
 			};
 
-	return synchronizeCityInventoryCapacity(nextGame, resolvedCityId);
+	return nextGame;
 }
 
 export function selectDefaultRetailSupplyCity(game: GameState): WorldCityId | null {
@@ -92,8 +90,8 @@ export function selectDefaultRetailSupplyCity(game: GameState): WorldCityId | nu
 	}
 
 	return [...eligibleInventories].sort((left, right) => {
-		const leftCapacity = getCityWarehouseCapacity(game, left.cityId);
-		const rightCapacity = getCityWarehouseCapacity(game, right.cityId);
+		const leftCapacity = getCityInventoryStats(game, left.cityId).capacity;
+		const rightCapacity = getCityInventoryStats(game, right.cityId).capacity;
 
 		if (leftCapacity !== rightCapacity) {
 			return leftCapacity > rightCapacity ? -1 : 1;
@@ -107,103 +105,6 @@ export function selectDefaultRetailSupplyCity(game: GameState): WorldCityId | nu
 
 		return compareWorldCityIds(left.cityId, right.cityId);
 	})[0]!.cityId;
-}
-
-/**
- * Pure migration input: the old pool is represented only by its material map;
- * capacity remains attached to the eligible city-local inventories.
- */
-export interface LegacyMaterialAllocationInput {
-	activeIndustryCityId: string;
-	eligibleCityInventories: readonly CityInventory[];
-	materials: Partial<Record<MaterialId, number>>;
-}
-
-/**
- * Deterministically distributes a pre-v13 material pool across eligible
- * city-local inventories. The caller owns raw-wire decoding; this helper owns
- * allocation order, duplicate detection, pressure, and conservation.
- */
-export function allocateLegacyWarehouseMaterials(
-	input: LegacyMaterialAllocationInput
-): CityInventory[] {
-	const { activeIndustryCityId, eligibleCityInventories, materials } = input;
-	assertUniqueLegacyWarehouseEligibleCityIds(eligibleCityInventories);
-	const materialEntries = getValidatedLegacyMaterialEntries(materials);
-	const totalLegacyUnits = materialEntries.reduce(
-		(total, [, quantity]) => checkedAdd(total, quantity, 'Legacy warehouse material total'),
-		0
-	);
-	if (eligibleCityInventories.length === 0) {
-		if (totalLegacyUnits === 0) return [];
-		throw new RangeError('Legacy warehouse stock requires an eligible city inventory');
-	}
-
-	const canonicalEligible = [...eligibleCityInventories]
-		.map((inventory) => ({
-			...inventory,
-			capacity: requireSafeNonnegativeInteger(
-				inventory.capacity,
-				`Legacy city inventory ${inventory.cityId} capacity`
-			),
-			materials: {}
-		}))
-		.sort((left, right) => compareWorldCityIds(left.cityId, right.cityId));
-	const primary = selectLegacyWarehousePrimaryCity(activeIndustryCityId, canonicalEligible);
-	const destinations = [
-		primary,
-		...canonicalEligible.filter((inventory) => inventory.cityId !== primary.cityId)
-	];
-	const remainingCapacity = destinations.map((inventory) => inventory.capacity);
-	const allocatedMaterials = destinations.map((): Partial<Record<MaterialId, number>> => ({}));
-	const materialOrder = materialEntries
-		.map(([materialId]) => materialId)
-		.sort(compareLegacyMaterialIds);
-
-	for (const materialId of materialOrder) {
-		const originalQuantity = materials[materialId]!;
-		let remaining = originalQuantity;
-		for (let index = 0; index < destinations.length; index += 1) {
-			const quantity = Math.min(remaining, remainingCapacity[index]!);
-			if (quantity === 0) continue;
-
-			allocatedMaterials[index]![materialId] = quantity;
-			remaining -= quantity;
-			remainingCapacity[index] -= quantity;
-		}
-
-		if (remaining > 0) {
-			const current = allocatedMaterials[0]![materialId] ?? 0;
-			allocatedMaterials[0]![materialId] = checkedAdd(
-				current,
-				remaining,
-				`Legacy warehouse ${materialId} primary allocation`
-			);
-		}
-	}
-
-	const allocatedByCityId = new Map(
-		destinations.map((inventory, index) => [
-			inventory.cityId,
-			recalculateCityInventoryPressure({
-				...inventory,
-				materials: allocatedMaterials[index]!
-			})
-		])
-	);
-	const allocation = canonicalEligible.map((inventory) => allocatedByCityId.get(inventory.cityId)!);
-
-	assertLegacyWarehouseAllocationConservation(
-		allocation,
-		materialEntries,
-		totalLegacyUnits,
-		canonicalEligible.reduce(
-			(total, inventory) =>
-				checkedAdd(total, inventory.capacity, 'Legacy warehouse aggregate capacity'),
-			0
-		)
-	);
-	return allocation;
 }
 
 export function createDefaultRetailSupplyAssignment(
@@ -304,7 +205,7 @@ export function addCityInventoryMaterial(
 		)
 	};
 
-	return recalculateCityInventoryPressure({ ...inventory, materials });
+	return { cityId: inventory.cityId, materials };
 }
 
 export function removeCityInventoryMaterial(
@@ -324,19 +225,33 @@ export function removeCityInventoryMaterial(
 	};
 
 	return {
-		inventory: recalculateCityInventoryPressure({ ...inventory, materials }),
+		inventory: { cityId: inventory.cityId, materials },
 		quantityRemoved,
 		shortage: requested - quantityRemoved
 	};
 }
 
-export function recalculateCityInventoryPressure(inventory: CityInventory): CityInventory {
-	const capacity = requireSafeNonnegativeInteger(inventory.capacity, 'City inventory capacity');
-	const overflowUnits = Math.max(0, getCityInventoryUsed(inventory) - capacity);
+export function getCityInventoryStats(game: GameState, cityId: string): CityInventoryStats {
+	const access = getCityInventory(game, cityId);
+	if (!access.ok) {
+		throw new Error(`City inventory invariant: ${access.reason} for ${cityId}`);
+	}
+
+	const capacity = getCityWarehouseCapacity(game, access.inventory.cityId);
+	let used: number;
+	try {
+		used = getCityInventoryUsed(access.inventory);
+	} catch (error) {
+		const detail = error instanceof Error ? error.message : 'material quantities are invalid';
+		throw new Error(`City inventory invariant: invalid inventory for ${cityId}: ${detail}`, {
+			cause: error
+		});
+	}
+	const overflowUnits = Math.max(0, used - capacity);
 
 	return {
-		...inventory,
 		capacity,
+		used,
 		overflowUnits,
 		overflowCost: checkedMultiply(
 			overflowUnits,
@@ -346,15 +261,10 @@ export function recalculateCityInventoryPressure(inventory: CityInventory): City
 	};
 }
 
-export function getCityWarehouseCapacity(game: GameState, cityId: string): number {
-	const resolvedCityId = resolveWorldCityId(cityId);
-	if (!resolvedCityId || !supportsCityInventory(game, resolvedCityId)) {
-		return 0;
-	}
-
+function getCityWarehouseCapacity(game: GameState, cityId: WorldCityId): number {
 	return game.industrialBuildings.reduce((capacity, building) => {
 		if (
-			building.cityId !== resolvedCityId ||
+			building.cityId !== cityId ||
 			getEntityCityOwnershipReason(game, building.cityId, 'industry') !== null
 		) {
 			return capacity;
@@ -366,53 +276,6 @@ export function getCityWarehouseCapacity(game: GameState, cityId: string): numbe
 			'City warehouse capacity'
 		);
 	}, 0);
-}
-
-export function synchronizeCityInventoryCapacity(game: GameState, cityId: string): GameState {
-	const access = getCityInventory(game, cityId);
-	if (!access.ok) {
-		return game;
-	}
-
-	const synchronized = recalculateCityInventoryPressure({
-		...access.inventory,
-		capacity: getCityWarehouseCapacity(game, access.inventory.cityId)
-	});
-
-	if (hasSameDerivedState(access.inventory, synchronized)) {
-		return game;
-	}
-
-	const cityInventories = [...game.cityInventories];
-	cityInventories[access.index] = synchronized;
-
-	return { ...game, cityInventories };
-}
-
-export function synchronizeAllCityInventoryCapacities(game: GameState): GameState {
-	if (game.cityInventories.length === 0) {
-		return game;
-	}
-
-	let changed = false;
-	const cityInventories = game.cityInventories.map((inventory) => {
-		const synchronized = recalculateCityInventoryPressure({
-			...inventory,
-			capacity: getCityWarehouseCapacity(game, inventory.cityId)
-		});
-
-		if (!hasSameDerivedState(inventory, synchronized)) {
-			changed = true;
-		}
-
-		return synchronized;
-	});
-
-	return changed ? { ...game, cityInventories } : game;
-}
-
-export function normalizeCityInventoryDerivedState(game: GameState): GameState {
-	return synchronizeAllCityInventoryCapacities(game);
 }
 
 export function findEntityCityOwnershipIssues(
@@ -469,97 +332,6 @@ function supportsRetailSupplyAssignment(game: GameState, cityId: WorldCityId): b
 	);
 }
 
-function selectLegacyWarehousePrimaryCity(
-	activeIndustryCityId: string,
-	eligible: readonly CityInventory[]
-): CityInventory {
-	return [...eligible].sort((left, right) => {
-		if (left.capacity !== right.capacity) {
-			return left.capacity > right.capacity ? -1 : 1;
-		}
-
-		const leftIsActive = left.cityId === activeIndustryCityId;
-		const rightIsActive = right.cityId === activeIndustryCityId;
-		if (leftIsActive !== rightIsActive) {
-			return leftIsActive ? -1 : 1;
-		}
-
-		return compareWorldCityIds(left.cityId, right.cityId);
-	})[0]!;
-}
-
-function assertUniqueLegacyWarehouseEligibleCityIds(eligible: readonly CityInventory[]): void {
-	const seenCityIds = new Set<string>();
-	for (const inventory of eligible) {
-		if (seenCityIds.has(inventory.cityId)) {
-			throw new RangeError('Legacy warehouse eligible city inventories must have unique city IDs');
-		}
-		seenCityIds.add(inventory.cityId);
-	}
-}
-
-function getValidatedLegacyMaterialEntries(
-	legacyMaterials: Partial<Record<MaterialId, number>>
-): [MaterialId, number][] {
-	const entries: [MaterialId, number][] = [];
-	for (const [materialId, quantity] of Object.entries(legacyMaterials)) {
-		if (!Object.hasOwn(MATERIALS, materialId)) {
-			throw new RangeError(`Legacy warehouse material ${materialId} must be known`);
-		}
-		entries.push([
-			materialId as MaterialId,
-			requireSafeNonnegativeInteger(quantity, `Legacy warehouse material ${materialId}`)
-		]);
-	}
-	return entries;
-}
-
-function compareLegacyMaterialIds(left: MaterialId, right: MaterialId): number {
-	const materialIds = Object.keys(MATERIALS) as MaterialId[];
-	const leftIndex = materialIds.indexOf(left);
-	const rightIndex = materialIds.indexOf(right);
-	if (leftIndex !== rightIndex) return leftIndex - rightIndex;
-	return compareCodeUnits(left, right);
-}
-
-function assertLegacyWarehouseAllocationConservation(
-	allocation: readonly CityInventory[],
-	legacyMaterials: readonly [MaterialId, number][],
-	totalLegacyUnits: number,
-	aggregateCapacity: number
-): void {
-	for (const [materialId, expected] of legacyMaterials) {
-		const actual = allocation.reduce(
-			(total, inventory) =>
-				checkedAdd(
-					total,
-					inventory.materials[materialId] ?? 0,
-					`Legacy warehouse ${materialId} conservation`
-				),
-			0
-		);
-		if (actual !== expected) {
-			throw new RangeError(`Legacy warehouse ${materialId} allocation must conserve materials`);
-		}
-	}
-
-	const actualOverflow = allocation.reduce(
-		(total, inventory) =>
-			checkedAdd(total, inventory.overflowUnits, 'Legacy warehouse allocation overflow'),
-		0
-	);
-	const expectedOverflow = Math.max(0, totalLegacyUnits - aggregateCapacity);
-	if (actualOverflow !== expectedOverflow) {
-		throw new RangeError('Legacy warehouse allocation must create only unavoidable overflow');
-	}
-}
-
-function compareCodeUnits(left: string, right: string): number {
-	if (left < right) return -1;
-	if (left > right) return 1;
-	return 0;
-}
-
 function canonicalQuantity(quantity: number): number {
 	if (!Number.isFinite(quantity)) {
 		return 0;
@@ -593,14 +365,6 @@ function checkedMultiply(left: number, right: number, label: string): number {
 	}
 
 	return product;
-}
-
-function hasSameDerivedState(left: CityInventory, right: CityInventory): boolean {
-	return (
-		left.capacity === right.capacity &&
-		left.overflowUnits === right.overflowUnits &&
-		left.overflowCost === right.overflowCost
-	);
 }
 
 function getEntityCityOwnershipReason(

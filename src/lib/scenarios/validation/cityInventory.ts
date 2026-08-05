@@ -1,4 +1,8 @@
-import { getCityInventory, compareWorldCityIds } from '$lib/game/cityInventory';
+import {
+	compareWorldCityIds,
+	getCityInventory,
+	getCityInventoryStats
+} from '$lib/game/cityInventory';
 import { MATERIALS } from '$lib/game/industry';
 import type { GameState, MaterialId, WorldCityId } from '$lib/game/types';
 import { getWorldCityDefinition } from '$lib/game/world';
@@ -182,13 +186,14 @@ export function validateCityInventoryCapacities(
 			used += quantity;
 		}
 
-		if (used > access.inventory.capacity) {
+		const { capacity } = getCityInventoryStats(game, cityId);
+		if (used > capacity) {
 			diagnostics.push(
 				scenarioDiagnostic(
 					materialsPath,
 					'city-inventory-capacity-exceeded',
 					override.materials,
-					`Starting city inventory uses ${used} units but ${cityId} has capacity ${access.inventory.capacity}.`
+					`Starting city inventory uses ${used} units but ${cityId} has capacity ${capacity}.`
 				)
 			);
 		}

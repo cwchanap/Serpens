@@ -52,7 +52,7 @@ function straightRails(y: number, fromX: number, toX: number, level = 1): RailCe
 }
 
 function makeCityInventory(materials: CityInventory['materials'] = {}): CityInventory {
-	return { cityId: 'industry-city', capacity: 500, materials, overflowUnits: 0, overflowCost: 0 };
+	return { cityId: 'industry-city', materials };
 }
 
 function makeGame(cities: IndustryCity[], buildings: IndustrialBuilding[]): GameState {

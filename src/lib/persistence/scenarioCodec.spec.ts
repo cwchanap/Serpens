@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { recalculateCityInventoryPressure } from '$lib/game/cityInventory';
 import { simulateDay } from '$lib/game/simulateDay';
 import { createNewGame } from '$lib/game/state';
 import type { GameState } from '$lib/game/types';
@@ -259,10 +258,7 @@ function createCityInventoryMetricGame(seed: number): GameState {
 
 	const cityInventories = game.cityInventories.map((inventory) =>
 		inventory.cityId === 'industry-city'
-			? recalculateCityInventoryPressure({
-					...inventory,
-					materials: { ...inventory.materials, water: 3, grain: 2 }
-				})
+			? { cityId: inventory.cityId, materials: { ...inventory.materials, water: 3, grain: 2 } }
 			: inventory
 	);
 

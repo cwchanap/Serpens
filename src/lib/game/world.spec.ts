@@ -221,7 +221,7 @@ describe('world progression and city opening', () => {
 		]);
 	});
 
-	test('opens a revealed industrial city, synchronizes its inventory, and sets it active', () => {
+	test('opens a revealed industrial city with material-only inventory and sets it active', () => {
 		expect.assertions(8);
 		const game = createNewGame('convenience', 20260530);
 		const revealed: GameState = {
@@ -245,17 +245,11 @@ describe('world progression and city opening', () => {
 		expect(opened.cityInventories).toEqual([
 			{
 				cityId: 'industry-city',
-				capacity: 0,
-				materials: {},
-				overflowUnits: 0,
-				overflowCost: 0
+				materials: {}
 			},
 			{
 				cityId: 'breadbasket-basin',
-				capacity: 0,
-				materials: {},
-				overflowUnits: 0,
-				overflowCost: 0
+				materials: {}
 			}
 		]);
 	});

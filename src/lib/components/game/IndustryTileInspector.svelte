@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { asset } from '$app/paths';
 	import { getIndustrialBuildingArt, getIndustryMaterialArt } from '$lib/assets/gameArt';
-	import { getCityInventory, getCityInventoryUsed } from '$lib/game/cityInventory';
+	import { getCityInventory, getCityInventoryStats } from '$lib/game/cityInventory';
 	import { INDUSTRIAL_BUILDING_TYPES } from '$lib/game/industry';
 	import {
 		MAX_BUILDING_LEVEL,
@@ -63,7 +63,9 @@
 		building?.typeId === 'warehouse' ? getCityInventory(game, building.cityId) : null
 	);
 	const cityInventory = $derived(cityInventoryAccess?.ok ? cityInventoryAccess.inventory : null);
-	const cityInventoryUsed = $derived(cityInventory ? getCityInventoryUsed(cityInventory) : 0);
+	const cityInventoryStats = $derived(
+		cityInventory ? getCityInventoryStats(game, cityInventory.cityId) : null
+	);
 	const cityInventoryMaterials = $derived.by(() => getCityInventoryMaterialRows());
 	const cityInventoryCityName = $derived(
 		building ? i18n.labels.worldCity(building.cityId).name : i18n.t('industryTileInspector.unknown')
@@ -336,34 +338,34 @@
 				>
 					<h3>{i18n.t('industryTileInspector.warehouseBuilding')}</h3>
 					<p class="inventory-timing">{i18n.t('industryTileInspector.currentCityInventory')}</p>
-					{#if cityInventory}
+					{#if cityInventory && cityInventoryStats}
 						<dl>
 							<div>
 								<dt>{i18n.t('industryTileInspector.capacity')}</dt>
-								<dd>{i18n.format.integer(cityInventory.capacity)}</dd>
+								<dd>{i18n.format.integer(cityInventoryStats.capacity)}</dd>
 							</div>
 							<div>
 								<dt>{i18n.t('industryTileInspector.used')}</dt>
-								<dd>{i18n.format.integer(cityInventoryUsed)}</dd>
+								<dd>{i18n.format.integer(cityInventoryStats.used)}</dd>
 							</div>
 							<div>
 								<dt>{i18n.t('industryTileInspector.overflowUnits')}</dt>
-								<dd>{i18n.format.integer(cityInventory.overflowUnits)}</dd>
+								<dd>{i18n.format.integer(cityInventoryStats.overflowUnits)}</dd>
 							</div>
 							<div>
 								<dt>{i18n.t('industryTileInspector.overflowCost')}</dt>
-								<dd>{i18n.format.currency(cityInventory.overflowCost)}</dd>
+								<dd>{i18n.format.currency(cityInventoryStats.overflowCost)}</dd>
 							</div>
 						</dl>
-						{#if cityInventory.capacity === 0}
+						{#if cityInventoryStats.capacity === 0}
 							<p class="inventory-state">
 								{i18n.t('industryTileInspector.cityInventoryZeroCapacity')}
 							</p>
 						{/if}
-						{#if cityInventory.overflowUnits > 0}
+						{#if cityInventoryStats.overflowUnits > 0}
 							<p class="inventory-state">
 								{i18n.t('industryTileInspector.cityInventoryOverflow', {
-									units: i18n.format.integer(cityInventory.overflowUnits)
+									units: i18n.format.integer(cityInventoryStats.overflowUnits)
 								})}
 							</p>
 						{/if}

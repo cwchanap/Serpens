@@ -8,6 +8,7 @@ import type {
 	DailyStoreReport,
 	EventModifierSnapshot,
 	GameState,
+	IndustrialBuilding,
 	Store
 } from '$lib/game/types';
 import { createI18n } from '$lib/i18n';
@@ -218,15 +219,28 @@ function replenishedStoreReport(): DailyStoreReport {
 
 function currentInventoryGame(): GameState {
 	const game = createNewGame('convenience', 20260803);
+	const warehouse: IndustrialBuilding = {
+		id: 'industry-city-warehouse',
+		level: 1,
+		typeId: 'warehouse',
+		cityId: 'industry-city',
+		tileId: 'industry-city-warehouse',
+		mapX: 0,
+		mapY: 0,
+		status: 'idle',
+		inventory: {},
+		lastProduction: [],
+		producedTotal: 0,
+		importedInputTotal: 0,
+		blockedDays: 0
+	};
 	return {
 		...game,
+		industrialBuildings: [warehouse],
 		cityInventories: [
 			{
 				cityId: 'industry-city',
-				capacity: 100,
-				materials: { snacks: 17 },
-				overflowUnits: 0,
-				overflowCost: 0
+				materials: { snacks: 17 }
 			}
 		]
 	};
@@ -660,7 +674,7 @@ describe('ReportsPanel', () => {
 			.element(reports.getByText('Industry City: 42 / 100 city inventory used.'))
 			.toBeVisible();
 		await expect
-			.element(reports.getByText('Industry City: 17 / 100 city inventory used.'))
+			.element(reports.getByText('Industry City: 17 / 200 city inventory used.'))
 			.toBeVisible();
 		await expect.element(reports.getByText('Production — Industry City: 12 units')).toBeVisible();
 		await expect.element(reports.getByText('Consumption — Industry City: 5 units')).toBeVisible();
@@ -752,10 +766,7 @@ describe('ReportsPanel', () => {
 			cityInventories: [
 				{
 					cityId: 'industry-city',
-					capacity: 100,
-					materials: { snacks: 17 },
-					overflowUnits: 5,
-					overflowCost: 10
+					materials: { snacks: 205 }
 				}
 			]
 		};
@@ -781,7 +792,7 @@ describe('ReportsPanel', () => {
 			.element(reports.getByText('Production-close city inventory is unavailable.'))
 			.toBeVisible();
 		await expect
-			.element(reports.getByText('Industry City: 17 / 100 city inventory used.'))
+			.element(reports.getByText('Industry City: 205 / 200 city inventory used.'))
 			.toBeVisible();
 		await expect
 			.element(reports.getByText('City inventory overflow: 5 units ($10).'))
@@ -898,10 +909,7 @@ describe('ReportsPanel', () => {
 			cityInventories: [
 				{
 					cityId: 'industry-city',
-					capacity: 100,
-					materials: { snacks: undefined } as unknown as CityInventory['materials'],
-					overflowUnits: 0,
-					overflowCost: 0
+					materials: { snacks: undefined } as unknown as CityInventory['materials']
 				}
 			]
 		};
@@ -915,7 +923,7 @@ describe('ReportsPanel', () => {
 
 		const reports = page.getByRole('region', { name: 'Reports' });
 		await expect
-			.element(reports.getByText('Industry City: 0 / 100 city inventory used.'))
+			.element(reports.getByText('Industry City: 0 / 200 city inventory used.'))
 			.toBeVisible();
 	});
 

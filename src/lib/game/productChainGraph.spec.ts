@@ -150,16 +150,25 @@ function withLatestReport(game: GameState, productionReport: DailyProductionRepo
 
 function withStarterCityInventory(
 	game: GameState,
-	materials: Partial<Record<MaterialId, number>>,
-	capacity = game.cityInventories.find((inventory) => inventory.cityId === 'industry-city')
-		?.capacity ?? 0
+	materials: Partial<Record<MaterialId, number>>
 ): GameState {
 	return {
 		...game,
 		cityInventories: game.cityInventories.map((inventory) =>
-			inventory.cityId === 'industry-city' ? { ...inventory, capacity, materials } : inventory
+			inventory.cityId === 'industry-city' ? { ...inventory, materials } : inventory
 		)
 	};
+}
+
+function withStarterWarehouse(game: GameState): GameState {
+	const warehouseTile = game.industryCities[0]!.tiles.find(
+		(tile) => tile.terrain === 'industrial' && !tile.locked
+	)!;
+
+	return buildIndustrialBuilding(
+		{ ...game, cash: Math.max(game.cash, 100_000) },
+		{ tileId: warehouseTile.id, buildingTypeId: 'warehouse' }
+	);
 }
 
 describe('product chain graph discovery', () => {
@@ -369,12 +378,10 @@ describe('warehouse flow graph', () => {
 					inventory.cityId === 'industry-city'
 						? {
 								...inventory,
-								capacity: 200,
 								materials: { snacks: 3 }
 							}
 						: {
 								...inventory,
-								capacity: 200,
 								materials: { drinks: 9 }
 							}
 				),
@@ -539,7 +546,7 @@ describe('warehouse flow graph', () => {
 				activeIndustryCityId: 'breadbasket-basin',
 				cityInventories: opened.cityInventories.map((inventory) =>
 					inventory.cityId === 'breadbasket-basin'
-						? { ...inventory, capacity: 200, materials: { snacks: 3 } }
+						? { ...inventory, materials: { snacks: 3 } }
 						: inventory
 				)
 			},
@@ -749,8 +756,8 @@ describe('allocateInputMovement', () => {
 describe('warehouse flow graph health branches', () => {
 	test('reports a healthy warehouse when capacity is available and no overflow', () => {
 		expect.assertions(4);
-		let game = createNewGame('convenience', 20260508);
-		game = withStarterCityInventory(game, { snacks: 5 }, 200);
+		let game = withStarterWarehouse(createNewGame('convenience', 20260508));
+		game = withStarterCityInventory(game, { snacks: 5 });
 		game = withLatestReport(
 			game,
 			emptyProductionReport({
@@ -774,11 +781,9 @@ describe('warehouse flow graph health branches', () => {
 	test('handles unknown material ids in warehouse without a producer recipe', () => {
 		expect.assertions(4);
 		let game = createNewGame('convenience', 20260508);
-		game = withStarterCityInventory(
-			game,
-			{ 'unknown-material': 3 } as unknown as Partial<Record<MaterialId, number>>,
-			200
-		);
+		game = withStarterCityInventory(game, { 'unknown-material': 3 } as unknown as Partial<
+			Record<MaterialId, number>
+		>);
 
 		const graph = buildWarehouseFlowGraph(game);
 		const materialNode = graph.nodes.find((node) => node.id === 'material:unknown-material')!;

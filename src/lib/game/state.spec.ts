@@ -59,15 +59,13 @@ describe('game state', () => {
 	});
 
 	test('creates industry state for a new game', () => {
-		expect.assertions(6);
+		expect.assertions(4);
 		const game = createNewGame('convenience', 20260512);
 
 		expect(game.industryCities).toHaveLength(1);
 		expect(game.activeIndustryCityId).toBe(game.industryCities[0]?.id);
 		expect(game.industrialBuildings).toEqual([]);
-		expect(game.cityInventories[0]?.capacity).toBe(0);
-		expect(game.cityInventories[0]?.materials).toEqual({});
-		expect(game.cityInventories[0]?.overflowUnits).toBe(0);
+		expect(game.cityInventories).toEqual([{ cityId: 'industry-city', materials: {} }]);
 	});
 
 	test('initializes canonical city inventory and retail supply lifecycle records', () => {
@@ -77,10 +75,7 @@ describe('game state', () => {
 		expect(game.cityInventories).toEqual([
 			{
 				cityId: 'industry-city',
-				capacity: 0,
-				materials: {},
-				overflowUnits: 0,
-				overflowCost: 0
+				materials: {}
 			}
 		]);
 		expect(game.retailSupplyAssignments).toEqual([

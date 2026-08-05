@@ -1,32 +1,21 @@
 import { describe, expect, test } from 'vitest';
 import {
 	addCityInventoryMaterial,
-	allocateLegacyWarehouseMaterials,
 	assertValidEntityCityOwnership,
 	compareWorldCityIds,
 	findEntityCityOwnershipIssues,
 	getCityInventory,
+	getCityInventoryStats,
 	getCityInventoryUsed,
-	getCityWarehouseCapacity,
 	initializeCityInventory,
 	initializeRetailSupplyAssignment,
-	normalizeCityInventoryDerivedState,
-	recalculateCityInventoryPressure,
 	removeCityInventoryMaterial,
 	resolveWorldCityId,
 	selectDefaultRetailSupplyCity,
-	supportsCityInventory,
-	synchronizeAllCityInventoryCapacities,
-	synchronizeCityInventoryCapacity
+	supportsCityInventory
 } from './cityInventory';
 import { createNewGame } from './state';
-import type {
-	CityInventory,
-	GameState,
-	IndustrialBuilding,
-	MaterialId,
-	WorldCityId
-} from './types';
+import type { CityInventory, GameState, IndustrialBuilding, WorldCityId } from './types';
 import { openWorldCity } from './world';
 
 function createCityInventory(
@@ -35,10 +24,7 @@ function createCityInventory(
 ): CityInventory {
 	return {
 		cityId,
-		capacity: 0,
 		materials: {},
-		overflowUnits: 0,
-		overflowCost: 0,
 		...overrides
 	};
 }
@@ -83,18 +69,6 @@ function createAllocationGame(activeIndustryCityId: WorldCityId = 'industry-city
 	};
 }
 
-function allocateLegacyWarehouseMaterialsForTest(
-	game: GameState,
-	eligible: readonly CityInventory[],
-	legacyMaterials: Partial<Record<MaterialId, number>>
-): CityInventory[] {
-	return allocateLegacyWarehouseMaterials({
-		activeIndustryCityId: game.activeIndustryCityId,
-		eligibleCityInventories: eligible,
-		materials: legacyMaterials
-	});
-}
-
 describe('city inventory helpers', () => {
 	test('narrows catalog ids and compares them by catalog order', () => {
 		expect(resolveWorldCityId('industry-city')).toBe('industry-city');
@@ -136,44 +110,67 @@ describe('city inventory helpers', () => {
 		expect(result.inventory.materials.water ?? 0).toBe(0);
 	});
 
-	test('updates materials immutably and derives overflow pressure from used capacity', () => {
-		const initial = createCityInventory('industry-city', {
-			capacity: 3,
-			materials: { water: 1 }
-		});
+	test('updates materials immutably without persisting derived pressure fields', () => {
+		const initial = createCityInventory('industry-city', { materials: { water: 1 } });
 		const added = addCityInventoryMaterial(initial, 'water', 3);
 		const removed = removeCityInventoryMaterial(added, 'water', 10);
 
 		expect(initial).toEqual({
 			cityId: 'industry-city',
-			capacity: 3,
-			materials: { water: 1 },
-			overflowUnits: 0,
-			overflowCost: 0
+			materials: { water: 1 }
 		});
-		expect(added.materials).toEqual({ water: 4 });
+		expect(added).toEqual({ cityId: 'industry-city', materials: { water: 4 } });
 		expect(getCityInventoryUsed(added)).toBe(4);
-		expect(added.overflowUnits).toBe(1);
-		expect(added.overflowCost).toBe(2);
 		expect(removed).toEqual({
 			inventory: {
 				cityId: 'industry-city',
-				capacity: 3,
-				materials: { water: 0 },
-				overflowUnits: 0,
-				overflowCost: 0
+				materials: { water: 0 }
 			},
 			quantityRemoved: 4,
 			shortage: 6
 		});
-		expect(
-			recalculateCityInventoryPressure(
-				createCityInventory('industry-city', {
-					capacity: 1,
-					materials: { water: 3 }
-				})
-			)
-		).toMatchObject({ overflowUnits: 2, overflowCost: 4 });
+	});
+
+	test('derives 400 capacity and 20 overflow cost from only same-city warehouses', () => {
+		const base = createAllocationGame();
+		const game = withCityInventories(
+			{
+				...base,
+				industrialBuildings: [
+					createWarehouseBuilding('industry-warehouse-a', 'industry-city'),
+					createWarehouseBuilding('industry-warehouse-b', 'industry-city'),
+					createWarehouseBuilding('breadbasket-warehouse', 'breadbasket-basin')
+				]
+			},
+			[
+				createCityInventory('industry-city', { materials: { water: 410 } }),
+				createCityInventory('breadbasket-basin')
+			]
+		);
+		expect(getCityInventoryStats(game, 'industry-city')).toEqual({
+			capacity: 400,
+			used: 410,
+			overflowUnits: 10,
+			overflowCost: 20
+		});
+	});
+
+	test('throws an invariant error when the current city inventory is missing', () => {
+		const game = withCityInventories(createNewGame('convenience', 20260802), []);
+
+		expect(() => getCityInventoryStats(game, 'industry-city')).toThrow(
+			'City inventory invariant: inventory-missing'
+		);
+	});
+
+	test('throws an invariant error when the current city inventory has invalid materials', () => {
+		const game = withCityInventories(createNewGame('convenience', 20260802), [
+			createCityInventory('industry-city', { materials: { water: -1 } })
+		]);
+
+		expect(() => getCityInventoryStats(game, 'industry-city')).toThrow(
+			'City inventory invariant: invalid inventory for industry-city'
+		);
 	});
 
 	test('canonicalizes mutation requests to safe nonnegative whole units', () => {
@@ -205,70 +202,6 @@ describe('city inventory helpers', () => {
 				})
 			)
 		).toThrow(RangeError);
-		expect(() =>
-			recalculateCityInventoryPressure(
-				createCityInventory('industry-city', {
-					capacity: 0,
-					materials: { water: Math.floor(Number.MAX_SAFE_INTEGER / 2) + 1 }
-				})
-			)
-		).toThrow(RangeError);
-	});
-
-	test('derives and synchronizes each inventory capacity from only its valid city warehouses', () => {
-		const base = createNewGame('convenience', 20260802);
-		const secondIndustryCity = { ...base.industryCities[0]!, id: 'breadbasket-basin' };
-		const game = withCityInventories(
-			{
-				...base,
-				world: {
-					...base.world,
-					revealedCityIds: [...base.world.revealedCityIds, 'breadbasket-basin'],
-					openedCityIds: [...base.world.openedCityIds, 'breadbasket-basin']
-				},
-				industryCities: [...base.industryCities, secondIndustryCity],
-				industrialBuildings: [
-					createWarehouseBuilding('harbor-warehouse', 'industry-city'),
-					createWarehouseBuilding('breadbasket-warehouse', 'breadbasket-basin'),
-					createWarehouseBuilding('invalid-warehouse', 'unknown-city')
-				]
-			},
-			[
-				createCityInventory('industry-city', { materials: { water: 205 } }),
-				createCityInventory('breadbasket-basin', { materials: { grain: 2 } })
-			]
-		);
-
-		expect(getCityWarehouseCapacity(game, 'industry-city')).toBe(200);
-		expect(getCityWarehouseCapacity(game, 'breadbasket-basin')).toBe(200);
-		expect(getCityWarehouseCapacity(game, 'harbor-city')).toBe(0);
-
-		const oneCity = synchronizeCityInventoryCapacity(game, 'industry-city');
-		expect(oneCity.cityInventories[0]).toMatchObject({
-			capacity: 200,
-			overflowUnits: 5,
-			overflowCost: 10
-		});
-		expect(oneCity.cityInventories[1]?.capacity).toBe(0);
-
-		const allCities = synchronizeAllCityInventoryCapacities(game);
-		expect(allCities.cityInventories).toEqual([
-			{
-				cityId: 'industry-city',
-				capacity: 200,
-				materials: { water: 205 },
-				overflowUnits: 5,
-				overflowCost: 10
-			},
-			{
-				cityId: 'breadbasket-basin',
-				capacity: 200,
-				materials: { grain: 2 },
-				overflowUnits: 0,
-				overflowCost: 0
-			}
-		]);
-		expect(normalizeCityInventoryDerivedState(allCities)).toEqual(allCities);
 	});
 
 	test('discovers invalid store and industrial-building city ownership without dropping entities', () => {
@@ -395,193 +328,6 @@ describe('city inventory helpers', () => {
 			withAllRetailAssignments.retailSupplyAssignments.map((assignment) => assignment.retailCityId)
 		).toEqual(['harbor-city', 'campus-junction']);
 		expect(repeatedRetailInitialization).toEqual(withAllRetailAssignments);
-	});
-});
-
-describe('legacy warehouse material allocation', () => {
-	test('spreads 300 legacy units across two 200-capacity cities without avoidable overflow', () => {
-		const allocation = allocateLegacyWarehouseMaterialsForTest(
-			createAllocationGame(),
-			[
-				createCityInventory('industry-city', { capacity: 200 }),
-				createCityInventory('breadbasket-basin', { capacity: 200 })
-			],
-			{ water: 300 }
-		);
-
-		expect(allocation).toEqual([
-			{
-				cityId: 'industry-city',
-				capacity: 200,
-				materials: { water: 200 },
-				overflowUnits: 0,
-				overflowCost: 0
-			},
-			{
-				cityId: 'breadbasket-basin',
-				capacity: 200,
-				materials: { water: 100 },
-				overflowUnits: 0,
-				overflowCost: 0
-			}
-		]);
-	});
-
-	test('conserves each catalog material and puts only aggregate excess in the primary city', () => {
-		const allocation = allocateLegacyWarehouseMaterialsForTest(
-			createAllocationGame(),
-			[
-				createCityInventory('industry-city', { capacity: 100 }),
-				createCityInventory('breadbasket-basin', { capacity: 100 })
-			],
-			{ water: 150, grain: 130 }
-		);
-
-		expect(allocation).toEqual([
-			{
-				cityId: 'industry-city',
-				capacity: 100,
-				materials: { grain: 100, water: 80 },
-				overflowUnits: 80,
-				overflowCost: 160
-			},
-			{
-				cityId: 'breadbasket-basin',
-				capacity: 100,
-				materials: { grain: 30, water: 70 },
-				overflowUnits: 0,
-				overflowCost: 0
-			}
-		]);
-	});
-
-	test('uses a valid active city on a capacity tie and falls back to catalog order for a stale active city', () => {
-		const eligible = [
-			createCityInventory('industry-city', { capacity: 50 }),
-			createCityInventory('breadbasket-basin', { capacity: 50 })
-		];
-
-		expect(
-			allocateLegacyWarehouseMaterialsForTest(createAllocationGame('breadbasket-basin'), eligible, {
-				water: 75
-			})
-		).toEqual([
-			{
-				cityId: 'industry-city',
-				capacity: 50,
-				materials: { water: 25 },
-				overflowUnits: 0,
-				overflowCost: 0
-			},
-			{
-				cityId: 'breadbasket-basin',
-				capacity: 50,
-				materials: { water: 50 },
-				overflowUnits: 0,
-				overflowCost: 0
-			}
-		]);
-		expect(
-			allocateLegacyWarehouseMaterialsForTest(createAllocationGame('quarry-works'), eligible, {
-				water: 75
-			})
-		).toEqual([
-			{
-				cityId: 'industry-city',
-				capacity: 50,
-				materials: { water: 50 },
-				overflowUnits: 0,
-				overflowCost: 0
-			},
-			{
-				cityId: 'breadbasket-basin',
-				capacity: 50,
-				materials: { water: 25 },
-				overflowUnits: 0,
-				overflowCost: 0
-			}
-		]);
-	});
-
-	test('accepts an empty legacy pool without a destination', () => {
-		expect(allocateLegacyWarehouseMaterialsForTest(createAllocationGame(), [], {})).toEqual([]);
-	});
-
-	test('rejects nonempty legacy stock when no city is eligible', () => {
-		expect(() =>
-			allocateLegacyWarehouseMaterialsForTest(createAllocationGame(), [], { water: 1 })
-		).toThrow(RangeError);
-	});
-
-	test('rejects duplicate eligible city ids before allocating any legacy stock', () => {
-		const duplicate = createCityInventory('industry-city', { capacity: 200 });
-
-		expect(() =>
-			allocateLegacyWarehouseMaterialsForTest(createAllocationGame(), [duplicate, duplicate], {
-				water: 1
-			})
-		).toThrow('Legacy warehouse eligible city inventories must have unique city IDs');
-	});
-
-	test('rejects unsafe legacy quantities before allocating them', () => {
-		expect(() =>
-			allocateLegacyWarehouseMaterialsForTest(
-				createAllocationGame(),
-				[createCityInventory('industry-city', { capacity: 200 })],
-				{ water: Number.MAX_SAFE_INTEGER + 1 }
-			)
-		).toThrow(RangeError);
-	});
-
-	test('rejects an unknown legacy material id before allocating', () => {
-		expect(() =>
-			allocateLegacyWarehouseMaterialsForTest(
-				createAllocationGame(),
-				[createCityInventory('industry-city', { capacity: 200 })],
-				{ 'unknown-material': 1 } as Partial<Record<MaterialId, number>>
-			)
-		).toThrow(RangeError);
-	});
-
-	test('selects the higher-capacity city as the primary destination on a capacity mismatch', () => {
-		expect.assertions(2);
-		const allocation = allocateLegacyWarehouseMaterialsForTest(
-			createAllocationGame(),
-			[
-				createCityInventory('industry-city', { capacity: 100 }),
-				createCityInventory('breadbasket-basin', { capacity: 200 })
-			],
-			{ water: 250 }
-		);
-
-		const industryCity = allocation.find((a) => a.cityId === 'industry-city')!;
-		const breadbasket = allocation.find((a) => a.cityId === 'breadbasket-basin')!;
-
-		expect(industryCity.materials.water).toBe(50);
-		expect(breadbasket.materials.water).toBe(200);
-	});
-});
-
-describe('capacity synchronization edge cases', () => {
-	test('returns the game unchanged when synchronizing an unsupported city', () => {
-		expect.assertions(2);
-		const base = createNewGame('convenience', 20260803);
-
-		const result = synchronizeCityInventoryCapacity(base, 'harbor-city');
-
-		expect(result).toBe(base);
-		expect(result.cityInventories).toBe(base.cityInventories);
-	});
-
-	test('returns the game unchanged when there are no city inventories', () => {
-		expect.assertions(2);
-		const base = createNewGame('convenience', 20260804);
-		const game = withCityInventories(base, []);
-
-		const result = synchronizeAllCityInventoryCapacities(game);
-
-		expect(result).toBe(game);
-		expect(result.cityInventories).toBe(game.cityInventories);
 	});
 });
 

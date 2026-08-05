@@ -55,10 +55,7 @@ export function createOneCityInventoryFixture(): GameState {
 		cityInventories: [
 			{
 				cityId: 'industry-city',
-				capacity: 200,
-				materials: { water: 190, 'bottled-water': 5 },
-				overflowUnits: 0,
-				overflowCost: 0
+				materials: { water: 190, 'bottled-water': 5 }
 			}
 		],
 		stores: [
@@ -100,10 +97,7 @@ export function projectOneCityParity(game: GameState) {
 		cash: game.cash,
 		cityInventories: game.cityInventories.map((inventory) => ({
 			cityId: inventory.cityId,
-			capacity: inventory.capacity,
-			materials: { ...inventory.materials },
-			overflowUnits: inventory.overflowUnits,
-			overflowCost: inventory.overflowCost
+			materials: { ...inventory.materials }
 		})),
 		stores: game.stores.map((store) => ({
 			id: store.id,

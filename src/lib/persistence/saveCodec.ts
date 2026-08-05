@@ -35,7 +35,6 @@ import {
 	compareWorldCityIds,
 	findEntityCityOwnershipIssues,
 	getCityInventory,
-	normalizeCityInventoryDerivedState,
 	WAREHOUSE_OVERFLOW_COST_PER_UNIT
 } from '$lib/game/cityInventory';
 import { MAX_STAFF_LEVEL } from '$lib/game/staffLeveling';
@@ -287,9 +286,7 @@ function validateSaveRecordInternal(value: unknown): SaveRecord {
 
 	const metadata = requireRecord(record.metadata, 'Save metadata');
 	const normalizedSandboxGame = normalizeSandboxSavedGameInternal(record.game);
-	const structurallyValidatedGame = validateCurrentGameStateInternal(normalizedSandboxGame, false);
-	const normalizedCityInventoryGame = normalizeCityInventoryDerivedState(structurallyValidatedGame);
-	const game = validateCurrentGameStateInternal(normalizedCityInventoryGame, true);
+	const game = validateCurrentGameStateInternal(normalizedSandboxGame);
 	const kind = requireString(metadata.kind, 'Save metadata kind');
 
 	if (kind !== 'auto' && kind !== 'manual') {
@@ -321,10 +318,7 @@ export function validateCurrentGameState(value: unknown): GameState {
 	);
 }
 
-function validateCurrentGameStateInternal(
-	value: unknown,
-	requireCurrentCityInventoryDerivedState = true
-): GameState {
+function validateCurrentGameStateInternal(value: unknown): GameState {
 	const sourceGame = createPlainSnapshot(value, 'Saved game');
 	const game = requireRecord(sourceGame, 'Saved game');
 	assertNoResidualGlobalWarehouseData(game);
@@ -394,13 +388,10 @@ function validateCurrentGameStateInternal(
 		activeCityId,
 		activeIndustryCityId
 	);
-	validateCurrentCityInventories(currentGame, false);
+	validateCurrentCityInventories(currentGame);
 	validateCurrentRetailSupplyAssignments(currentGame);
 	validateCurrentIndustrialBuildingPlacements(industrialBuildings, industryCities);
 	validateCurrentRetailStorePlacements(stores, cities);
-	if (requireCurrentCityInventoryDerivedState) {
-		validateCurrentCityInventories(currentGame, true);
-	}
 	staff.forEach((member, index) => validateSavedStaffMember(member, `Saved game staff[${index}]`));
 	hiringCandidates.forEach((candidate, index) =>
 		validateSavedHiringCandidate(candidate, `Saved game hiringCandidates[${index}]`)
@@ -1388,18 +1379,25 @@ function resolveCurrentInventoryCityId(
 	return definition.id;
 }
 
-function validateCurrentCityInventories(game: GameState, requireDerivedState: boolean): void {
+function validateCurrentCityInventories(game: GameState): void {
 	if (!Array.isArray(game.cityInventories)) {
 		cityInventoryInvariant('Saved game cityInventories must be an array');
 	}
 
 	const inventories = game.cityInventories;
 	const seenCityIds = new Set<WorldCityId>();
-	const projectedMaterialTotals = new Map<string, number>();
 	let previousCityId: WorldCityId | undefined;
 	for (const [index, value] of inventories.entries()) {
 		const label = `Saved game cityInventories[${index}]`;
 		const inventory = requireCityInventoryRecord(value, label);
+		try {
+			requireExactKeys(inventory, ['cityId', 'materials'], label);
+		} catch (error) {
+			if (error instanceof SaveDataError) {
+				cityInventoryInvariant(error.message);
+			}
+			throw error;
+		}
 		const cityId = resolveCurrentInventoryCityId(game, inventory.cityId, `${label} cityId`);
 		if (seenCityIds.has(cityId)) {
 			cityInventoryInvariant(`${label} cityId must be unique: ${cityId}`);
@@ -1410,9 +1408,6 @@ function validateCurrentCityInventories(game: GameState, requireDerivedState: bo
 		seenCityIds.add(cityId);
 		previousCityId = cityId;
 
-		requireCityInventorySafeInteger(inventory.capacity, `${label} capacity`);
-		requireCityInventorySafeInteger(inventory.overflowUnits, `${label} overflowUnits`);
-		requireCityInventorySafeInteger(inventory.overflowCost, `${label} overflowCost`);
 		const materials = requireCityInventoryRecord(inventory.materials, `${label} materials`);
 		let used = 0;
 		for (const [materialId, quantity] of Object.entries(materials)) {
@@ -1424,14 +1419,6 @@ function validateCurrentCityInventories(game: GameState, requireDerivedState: bo
 				`${label} materials ${materialId}`
 			);
 			used = addCityInventorySafeInteger(used, materialQuantity, `${label} used capacity`);
-			projectedMaterialTotals.set(
-				materialId,
-				addCityInventorySafeInteger(
-					projectedMaterialTotals.get(materialId) ?? 0,
-					materialQuantity,
-					`Saved game cityInventories projected materials ${materialId}`
-				)
-			);
 		}
 	}
 
@@ -1451,21 +1438,6 @@ function validateCurrentCityInventories(game: GameState, requireDerivedState: bo
 		cityInventoryInvariant(
 			'Saved game cityInventories must contain one record for every opened industry city'
 		);
-	}
-
-	if (!requireDerivedState) return;
-	const normalized = normalizeCityInventoryDerivedState(game).cityInventories!;
-	for (const [index, inventory] of inventories.entries()) {
-		const expected = normalized[index]!;
-		if (
-			inventory.capacity !== expected.capacity ||
-			inventory.overflowUnits !== expected.overflowUnits ||
-			inventory.overflowCost !== expected.overflowCost
-		) {
-			cityInventoryInvariant(
-				`Saved game cityInventories[${index}] derived capacity and pressure must match current buildings and materials`
-			);
-		}
 	}
 }
 

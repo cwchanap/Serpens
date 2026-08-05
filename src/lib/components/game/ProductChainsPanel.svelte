@@ -2,7 +2,7 @@
 	import CategoryStampIndex from '$lib/components/game/atlas/CategoryStampIndex.svelte';
 	import NodeBroadside from '$lib/components/game/atlas/NodeBroadside.svelte';
 	import ProductChainAtlas from '$lib/components/game/atlas/ProductChainAtlas.svelte';
-	import { getCityInventory, getCityInventoryUsed } from '$lib/game/cityInventory';
+	import { getCityInventory, getCityInventoryStats } from '$lib/game/cityInventory';
 	import {
 		buildWarehouseFlowGraph,
 		getSupportedStoreChainCategories
@@ -108,10 +108,11 @@
 		switch (supplyState.code) {
 			case 'available': {
 				const inventory = categorySupplyInventory?.ok ? categorySupplyInventory.inventory : null;
+				const stats = inventory ? getCityInventoryStats(game, inventory.cityId) : null;
 				return i18n.t('productChainsPanel.activeRetailSupply', {
 					retailCityName,
 					sourceCityName: cityName(supplyState.cityId),
-					used: i18n.format.integer(inventory ? getCityInventoryUsed(inventory) : 0),
+					used: i18n.format.integer(stats?.used ?? 0),
 					capacity: i18n.format.integer(supplyState.capacity)
 				});
 			}
@@ -142,20 +143,21 @@
 		}
 
 		const inventory = inventoryAccess.inventory;
+		const stats = getCityInventoryStats(game, inventory.cityId);
 		const labels: string[] = [];
-		if (getCityInventoryUsed(inventory) === 0) {
+		if (stats.used === 0) {
 			labels.push(
 				i18n.t('productChainsPanel.supplyState.emptyInventory', {
 					cityName: cityName(inventory.cityId)
 				})
 			);
 		}
-		if (inventory.overflowUnits > 0) {
+		if (stats.overflowUnits > 0) {
 			labels.push(
 				i18n.t('productChainsPanel.supplyState.inventoryOverflow', {
 					cityName: cityName(inventory.cityId),
-					units: i18n.format.integer(inventory.overflowUnits),
-					cost: i18n.format.currency(inventory.overflowCost)
+					units: i18n.format.integer(stats.overflowUnits),
+					cost: i18n.format.currency(stats.overflowCost)
 				})
 			);
 		}

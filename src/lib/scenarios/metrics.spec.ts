@@ -290,17 +290,11 @@ function metricGame(): GameState {
 		cityInventories: [
 			{
 				cityId: 'industry-city',
-				capacity: 100,
-				materials: { water: 42 },
-				overflowUnits: 0,
-				overflowCost: 0
+				materials: { water: 42 }
 			},
 			{
 				cityId: 'breadbasket-basin',
-				capacity: 100,
-				materials: { water: 17 },
-				overflowUnits: 0,
-				overflowCost: 0
+				materials: { water: 17 }
 			}
 		]
 	});

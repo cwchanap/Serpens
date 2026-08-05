@@ -4,8 +4,8 @@ import { buildIndustrialBuilding } from './industryPlacement';
 import { quantizeAtomicRecipeRatio, simulateIndustryProduction } from './industryProduction';
 import {
 	addCityInventoryMaterial,
+	getCityInventoryStats,
 	getCityInventoryUsed,
-	getCityWarehouseCapacity,
 	removeCityInventoryMaterial
 } from './cityInventory';
 import {
@@ -38,18 +38,16 @@ function buildOnResource(
 }
 
 describe('city inventory operations', () => {
-	test('adds material and reports overflow cost above capacity', () => {
-		expect.assertions(4);
+	test('adds material without persisting derived inventory pressure', () => {
+		expect.assertions(2);
 		const inventory = addCityInventoryMaterial(
-			{ cityId: 'industry-city', capacity: 5, materials: {}, overflowUnits: 0, overflowCost: 0 },
+			{ cityId: 'industry-city', materials: {} },
 			'snacks',
 			8
 		);
 
 		expect(inventory.materials.snacks).toBe(8);
-		expect(inventory.capacity).toBe(5);
-		expect(inventory.overflowUnits).toBe(3);
-		expect(inventory.overflowCost).toBe(6);
+		expect(inventory).toEqual({ cityId: 'industry-city', materials: { snacks: 8 } });
 	});
 
 	test('removes available stock and returns shortage', () => {
@@ -57,10 +55,7 @@ describe('city inventory operations', () => {
 		const result = removeCityInventoryMaterial(
 			{
 				cityId: 'industry-city',
-				capacity: 20,
-				materials: { snacks: 6 },
-				overflowUnits: 0,
-				overflowCost: 0
+				materials: { snacks: 6 }
 			},
 			'snacks',
 			10
@@ -78,10 +73,7 @@ describe('city inventory operations', () => {
 			removeCityInventoryMaterial(
 				{
 					cityId: 'industry-city',
-					capacity: 20,
-					materials: { snacks: -4 },
-					overflowUnits: 0,
-					overflowCost: 0
+					materials: { snacks: -4 }
 				},
 				'snacks',
 				10
@@ -224,11 +216,8 @@ describe('industry production simulation', () => {
 
 		const result = simulateIndustryProduction(game);
 
-		expect(getCityWarehouseCapacity(game, 'industry-city')).toBe(200);
-		expect(
-			result.game.cityInventories.find((inventory) => inventory.cityId === 'industry-city')
-				?.capacity
-		).toBe(200);
+		expect(getCityInventoryStats(game, 'industry-city').capacity).toBe(200);
+		expect(getCityInventoryStats(result.game, 'industry-city').capacity).toBe(200);
 		expect(result.game.industrialBuildings[0]?.status).toBe('idle');
 	});
 
@@ -303,17 +292,11 @@ describe('industry production simulation', () => {
 			expect.arrayContaining([
 				expect.objectContaining({
 					cityId: cityA,
-					capacity: 200,
-					materials: { water: 10 },
-					overflowUnits: 0,
-					overflowCost: 0
+					materials: { water: 10 }
 				}),
 				expect.objectContaining({
 					cityId: cityB,
-					capacity: 200,
-					materials: { water: 3 },
-					overflowUnits: 0,
-					overflowCost: 0
+					materials: { water: 3 }
 				})
 			])
 		);
@@ -595,10 +578,7 @@ describe('industry production simulation', () => {
 		expect.assertions(1);
 		const inventory = {
 			cityId: 'industry-city' as const,
-			capacity: 10,
-			materials: { snacks: null as unknown as number },
-			overflowUnits: 0,
-			overflowCost: 0
+			materials: { snacks: null as unknown as number }
 		};
 
 		expect(getCityInventoryUsed(inventory)).toBe(0);
@@ -653,9 +633,7 @@ function makeProductionGame(city: IndustryCity, buildings: IndustrialBuilding[])
 		industryCities: [city],
 		activeIndustryCityId: city.id,
 		industrialBuildings: buildings,
-		cityInventories: [
-			{ cityId: 'industry-city', capacity: 0, materials: {}, overflowUnits: 0, overflowCost: 0 }
-		]
+		cityInventories: [{ cityId: 'industry-city', materials: {} }]
 	};
 }
 
@@ -696,10 +674,7 @@ const warehousePullGame: GameState = {
 	cityInventories: [
 		{
 			cityId: 'industry-city',
-			capacity: 100,
-			materials: { grain: 50 },
-			overflowUnits: 0,
-			overflowCost: 0
+			materials: { grain: 50 }
 		}
 	]
 };
@@ -909,10 +884,7 @@ describe('rail-fed production', () => {
 				cityInventories: [
 					{
 						cityId: 'industry-city',
-						capacity: 200,
-						materials: { grain: 3 },
-						overflowUnits: 0,
-						overflowCost: 0
+						materials: { grain: 3 }
 					}
 				]
 			};

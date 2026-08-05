@@ -20,10 +20,7 @@ function baseGame(overrides: Partial<GameState> = {}): GameState {
 		cityInventories: [
 			{
 				cityId: 'industry-city',
-				capacity: 0,
-				materials: {},
-				overflowUnits: 0,
-				overflowCost: 0
+				materials: {}
 			}
 		],
 		...overrides
@@ -85,8 +82,8 @@ describe('buildSupplyAdvisor', () => {
 			activeIndustryCityId: 'industry-city',
 			cityInventories: opened.cityInventories.map((inventory) =>
 				inventory.cityId === 'breadbasket-basin'
-					? { ...inventory, capacity: 200, materials: { water: 12, 'bottled-water': 4 } }
-					: { ...inventory, capacity: 200, materials: {} }
+					? { ...inventory, materials: { water: 12, 'bottled-water': 4 } }
+					: { ...inventory, materials: {} }
 			),
 			industrialBuildings: [
 				{
@@ -187,10 +184,7 @@ describe('getAvailableMaterialIds', () => {
 				cityInventories: [
 					{
 						cityId: 'industry-city',
-						capacity: 10,
-						materials: { grain: 4 },
-						overflowUnits: 0,
-						overflowCost: 0
+						materials: { grain: 4 }
 					}
 				],
 				industrialBuildings: [building('water-pump')]
@@ -207,10 +201,7 @@ describe('getAvailableMaterialIds', () => {
 				cityInventories: [
 					{
 						cityId: 'industry-city',
-						capacity: 10,
-						materials: { grain: null as unknown as number, water: 0 },
-						overflowUnits: 0,
-						overflowCost: 0
+						materials: { grain: null as unknown as number, water: 0 }
 					}
 				],
 				industrialBuildings: [building('warehouse')]
@@ -227,10 +218,7 @@ describe('getAvailableMaterialIds', () => {
 				cityInventories: [
 					{
 						cityId: 'industry-city',
-						capacity: 10,
-						materials: { grain: undefined as unknown as number, salt: 3 },
-						overflowUnits: 0,
-						overflowCost: 0
+						materials: { grain: undefined as unknown as number, salt: 3 }
 					}
 				],
 				industrialBuildings: [

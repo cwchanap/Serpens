@@ -3,8 +3,7 @@ import {
 	assertValidEntityCityOwnership,
 	compareWorldCityIds,
 	getCityInventory,
-	getCityInventoryUsed,
-	normalizeCityInventoryDerivedState
+	getCityInventoryStats
 } from './cityInventory';
 import { INDUSTRIAL_BUILDING_TYPES, MATERIALS, PRODUCTION_RECIPES } from './industry';
 import { getBuildingThroughputMultiplier } from './leveling';
@@ -19,7 +18,6 @@ import type {
 	DailyMaterialMovement,
 	DailyCityInventorySummary,
 	DailyProductionReport,
-	CityInventory,
 	GameState,
 	IndustrialBuilding,
 	IndustrialBuildingType,
@@ -44,18 +42,18 @@ export function simulateIndustryProduction(
 	importCostApplications: ImportCostApplicationEvidence[];
 } {
 	assertValidEntityCityOwnership(game);
-	const normalizedGame = normalizeCityInventoryDerivedState(game);
+	const currentGame = game;
 	// One rail budget and working inventory per city for the whole tick:
 	// stage-ordered buildings mutate this in place, so a raw producer's output
 	// is visible to a same-day rail pull by a downstream processor.
-	const railState = createRailTickState(normalizedGame);
+	const railState = createRailTickState(currentGame);
 	const report: DailyProductionReport = createEmptyProductionReport();
 	const importCostApplications: ImportCostApplicationEvidence[] = [];
 	const buildingUpdates = new Map<string, IndustrialBuilding>();
-	const sorted = [...normalizedGame.industrialBuildings].sort(compareIndustrialBuildingsByStage);
+	const sorted = [...currentGame.industrialBuildings].sort(compareIndustrialBuildingsByStage);
 
 	for (const building of sorted) {
-		const cityInventoryAccess = getCityInventory(normalizedGame, building.cityId);
+		const cityInventoryAccess = getCityInventory(currentGame, building.cityId);
 		if (!cityInventoryAccess.ok) {
 			buildingUpdates.set(building.id, markBuildingBlocked(building));
 			continue;
@@ -318,8 +316,9 @@ export function simulateIndustryProduction(
 		}
 	}
 
-	const cityInventories = foldRailCityInventories(normalizedGame, railState);
-	const cityInventorySummaries = summarizeCityInventories(cityInventories);
+	const cityInventories = foldRailCityInventories(currentGame, railState);
+	const productionGame = { ...currentGame, cityInventories };
+	const cityInventorySummaries = summarizeCityInventories(productionGame);
 	report.cityInventories = cityInventorySummaries;
 	report.overflowUnits = sumCityInventorySummaries(cityInventorySummaries, 'overflowUnits');
 	report.overflowCost = sumCityInventorySummaries(cityInventorySummaries, 'overflowCost');
@@ -330,10 +329,9 @@ export function simulateIndustryProduction(
 
 	return {
 		game: {
-			...normalizedGame,
-			cash: normalizedGame.cash - report.importSpend - report.operatingCost - report.overflowCost,
-			cityInventories,
-			industrialBuildings: normalizedGame.industrialBuildings.map((building) => {
+			...productionGame,
+			cash: productionGame.cash - report.importSpend - report.operatingCost - report.overflowCost,
+			industrialBuildings: productionGame.industrialBuildings.map((building) => {
 				// Push phase can drain a building's buffer after buildingUpdates was
 				// written, so re-read railState.inventories here or pushed units
 				// would resurrect in the returned GameState.
@@ -430,17 +428,12 @@ function foldRailCityInventories(
 	);
 }
 
-function summarizeCityInventories(
-	inventories: Iterable<CityInventory>
-): DailyCityInventorySummary[] {
-	return [...inventories]
+function summarizeCityInventories(game: GameState): DailyCityInventorySummary[] {
+	return [...game.cityInventories]
 		.sort((left, right) => compareWorldCityIds(left.cityId, right.cityId))
 		.map((inventory) => ({
 			cityId: inventory.cityId,
-			capacity: inventory.capacity,
-			used: getCityInventoryUsed(inventory),
-			overflowUnits: inventory.overflowUnits,
-			overflowCost: inventory.overflowCost
+			...getCityInventoryStats(game, inventory.cityId)
 		}));
 }
 
