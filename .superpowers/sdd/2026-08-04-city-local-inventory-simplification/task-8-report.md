@@ -11,7 +11,7 @@ suite.
 
 | Area | Audit result |
 | --- | --- |
-| `ReportsPanel.svelte.spec.ts` | Removed unsafe schema-invalid display fixtures: missing city attribution, a missing production-close inventory list, a stale current inventory owner, a null replenishment context paired with a refill, and omitted required report fields. Retained valid duplicate-city aggregation, valid current-inventory overflow, and valid empty-inventory coverage. |
+| `ReportsPanel.svelte.spec.ts` | Removed unsafe schema-invalid display fixtures: missing city attribution, a missing production-close inventory list, a stale current inventory owner, a null replenishment context paired with a refill, and omitted required report fields. Retained valid duplicate-city aggregation, valid current-inventory overflow, and a canonical zero-stock inventory record. |
 | `productChainGraph.spec.ts` | Removed the unsafe-cast legacy production rows without a `cityId`; current historical movement validation requires a typed known city. |
 | `productChainTree.spec.ts` | Removed the unsafe-cast unscoped historical import fixture and its now-unused opened-retail helper. |
 | `saveCodec.railValidation.spec.ts` | Replaced obsolete whole-save rejection expectations with a supported structurally-valid history ordering regression. |
@@ -72,8 +72,8 @@ Playwright run still exited 0.
 
 ## PR scope and statistics
 
-At final review, `main...HEAD` contains 69 changed files with 3,016 insertions and 10,353
-deletions. The implementation is therefore deletion-heavy by 7,337 lines. Its remaining source
+At final review, `main...HEAD` contains 69 changed files with 3,042 insertions and 10,351
+deletions. The implementation is therefore deletion-heavy by 7,309 lines. Its remaining source
 changes are the planned removal of pre-release compatibility, duplicated derived state, and
 invalid-state recovery paths; this audit found no replacement framework or new HPA-294 work.
 
@@ -95,3 +95,26 @@ invalid-state recovery paths; this audit found no replacement framework or new H
 The audit changes are committed as the narrow
 `test(logistics): retain simplification behavior gates` checkpoint. The exact SHA and final
 `main...HEAD` status are captured in the implementation handoff after this report is committed.
+
+## Follow-up fixture correction
+
+Independent Task 8 review found that the retained ReportsPanel "empty state" fixture used
+`cityInventories: []`. That is not a supported schema-14 state: current validation requires one
+inventory record for every opened, materialized industry city. The fixture therefore exercised the
+component's defensive fallback rather than a valid zero-stock inventory state.
+
+The test now supplies the canonical valid record
+`{ cityId: 'industry-city', materials: {} }` and asserts the normal
+`Industry City: 0 / 200 city inventory used.` display. No ReportsPanel, active-city, or other
+production source changed; the defensive fallback remains unchanged.
+
+### Follow-up verification
+
+- The initial sandbox-focused command was blocked before tests ran by the known loopback
+  `EPERM` restriction on `::1:63315`; this was environmental, not a product failure.
+- The identical elevated focused command passed: `ReportsPanel.svelte.spec.ts`, 18/18 tests.
+- `rtk bun run check` — passed with 0 errors and 0 warnings.
+- `rtk bun run lint` — passed (Prettier and ESLint).
+- `rtk bun run test:unit -- --run --maxWorkers=1` — passed serially: 139 files, 3,029 tests,
+  exit 0.
+- Existing serial E2E evidence remains valid because no application source changed.

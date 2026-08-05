@@ -763,9 +763,12 @@ describe('ReportsPanel', () => {
 			.toBeVisible();
 	});
 
-	it('shows the current city inventory empty state when game has no city inventory stock', async () => {
+	it('shows the current city inventory zero-stock state', async () => {
 		expect.assertions(1);
-		const game: GameState = { ...currentInventoryGame(), cityInventories: [] };
+		const game: GameState = {
+			...currentInventoryGame(),
+			cityInventories: [{ cityId: 'industry-city', materials: {} }]
+		};
 
 		render(ReportsPanel, {
 			i18n: createI18n('en'),
@@ -775,6 +778,8 @@ describe('ReportsPanel', () => {
 		});
 
 		const reports = page.getByRole('region', { name: 'Reports' });
-		await expect.element(reports.getByText('No current city inventory records.')).toBeVisible();
+		await expect
+			.element(reports.getByText('Industry City: 0 / 200 city inventory used.'))
+			.toBeVisible();
 	});
 });
