@@ -6,7 +6,7 @@
 		localizeReportWarning,
 		localizeStructuredCopy
 	} from '$lib/i18n/gameCopy';
-	import { getCityInventory, getCityInventoryStats } from '$lib/game/cityInventory';
+	import { getCityInventoryStats } from '$lib/game/cityInventory';
 	import { getRetailReplenishmentOutcome } from '$lib/game/retailSupply';
 	import type {
 		DailyMaterialMovement,
@@ -48,10 +48,11 @@
 	}
 
 	function currentCityInventoryStats(cityId: string) {
-		if (!game) return null;
+		if (!game) {
+			throw new Error('Current inventory requires game state');
+		}
 
-		const access = getCityInventory(game, cityId);
-		return access.ok ? getCityInventoryStats(game, cityId) : null;
+		return getCityInventoryStats(game, cityId);
 	}
 
 	function buildAttributionRows(
@@ -117,42 +118,36 @@
 		const rows: AttributionRow[] = [];
 
 		for (const report of storeReports) {
-			const store = stores.find((candidate) => candidate.id === report.storeId);
 			const context = report.replenishment;
-			const retailCityId = context?.retailCityId ?? store?.cityId;
-			const retailCityName = retailCityId ? cityName(retailCityId) : null;
-			const outcomes = context
-				? report.productReports.map((product) => ({
-						product,
-						outcome: getRetailReplenishmentOutcome(context, product)
-					}))
-				: null;
-			const localUnits = outcomes
-				? outcomes.reduce(
-						(total, { product, outcome }) =>
-							outcome === 'city-inventory' || outcome === 'mixed'
-								? total + product.warehouseUnits
-								: total,
-						0
-					)
-				: report.productReports.reduce((total, product) => total + product.warehouseUnits, 0);
-			const importedUnits = outcomes
-				? outcomes.reduce(
-						(total, { product, outcome }) =>
-							outcome === 'mixed' ||
-							outcome === 'import-only' ||
-							outcome === 'unassigned-import' ||
-							outcome === 'source-unavailable-import'
-								? total + product.importedUnits
-								: total,
-						0
-					)
-				: report.productReports.reduce((total, product) => total + product.importedUnits, 0);
+			if (!context) continue;
+
+			const retailCityName = cityName(context.retailCityId);
+			const outcomes = report.productReports.map((product) => ({
+				product,
+				outcome: getRetailReplenishmentOutcome(context, product)
+			}));
+			const localUnits = outcomes.reduce(
+				(total, { product, outcome }) =>
+					outcome === 'city-inventory' || outcome === 'mixed'
+						? total + product.warehouseUnits
+						: total,
+				0
+			);
+			const importedUnits = outcomes.reduce(
+				(total, { product, outcome }) =>
+					outcome === 'mixed' ||
+					outcome === 'import-only' ||
+					outcome === 'unassigned-import' ||
+					outcome === 'source-unavailable-import'
+						? total + product.importedUnits
+						: total,
+				0
+			);
 
 			if (localUnits > 0) {
-				const sourceCityId = context?.resolvedSupplyCityId;
+				const sourceCityId = context.resolvedSupplyCityId;
 				rows.push(
-					sourceCityId && retailCityName
+					sourceCityId
 						? {
 								id: `local-${report.storeId}`,
 								text: i18n.t('reportsPanel.attribution.localSupply', {
@@ -164,7 +159,7 @@
 						: {
 								id: `local-unavailable-${report.storeId}`,
 								text: i18n.t('reportsPanel.attribution.localSupplyUnavailable', {
-									retailCityName: retailCityName ?? i18n.t('reportsPanel.attribution.unknownCity'),
+									retailCityName,
 									units: i18n.format.integer(localUnits)
 								})
 							}
@@ -172,22 +167,13 @@
 			}
 
 			if (importedUnits > 0) {
-				rows.push(
-					retailCityName
-						? {
-								id: `imports-${report.storeId}`,
-								text: i18n.t('reportsPanel.attribution.externalImports', {
-									retailCityName,
-									units: i18n.format.integer(importedUnits)
-								})
-							}
-						: {
-								id: `imports-unavailable-${report.storeId}`,
-								text: i18n.t('reportsPanel.attribution.externalImportsUnavailable', {
-									units: i18n.format.integer(importedUnits)
-								})
-							}
-				);
+				rows.push({
+					id: `imports-${report.storeId}`,
+					text: i18n.t('reportsPanel.attribution.externalImports', {
+						retailCityName,
+						units: i18n.format.integer(importedUnits)
+					})
+				});
 			}
 		}
 
@@ -340,15 +326,15 @@
 								<strong>
 									{i18n.t('reportsPanel.inventory.citySummary', {
 										cityName: cityName(inventory.cityId),
-										used: i18n.format.integer(stats?.used ?? 0),
-										capacity: i18n.format.integer(stats?.capacity ?? 0)
+										used: i18n.format.integer(stats.used),
+										capacity: i18n.format.integer(stats.capacity)
 									})}
 								</strong>
-								{#if (stats?.overflowUnits ?? 0) > 0}
+								{#if stats.overflowUnits > 0}
 									<span>
 										{i18n.t('reportsPanel.inventory.cityOverflow', {
-											units: i18n.format.integer(stats?.overflowUnits ?? 0),
-											cost: i18n.format.currency(stats?.overflowCost ?? 0)
+											units: i18n.format.integer(stats.overflowUnits),
+											cost: i18n.format.currency(stats.overflowCost)
 										})}
 									</span>
 								{/if}
