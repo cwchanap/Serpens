@@ -56,30 +56,29 @@ import {
 } from './saveCodec';
 
 function createFixtureRetailCity(): GameState['cities'][number] {
-	return {
+	return generateCity({
 		id: 'harbor-city',
 		name: 'Harbor City',
-		width: 3,
-		height: 3,
-		tiles: Array.from({ length: 9 }, (_, index) => {
-			const x = index % 3;
-			const y = Math.floor(index / 3);
-			return {
-				id: `harbor-city-${x}-${y}`,
-				cityId: 'harbor-city',
-				x,
-				y,
-				neighborhood: 'downtown',
-				terrain: 'commercial',
-				feature: null,
-				demand: 72,
-				rent: 180,
-				footTraffic: 66,
-				customerFit: 70,
-				locked: false
-			};
-		})
-	};
+		width: DEFAULT_RETAIL_CITY_WIDTH,
+		height: DEFAULT_RETAIL_CITY_HEIGHT,
+		seed: 20260505
+	});
+}
+
+function findFixtureStoreTile(city: GameState['cities'][number]) {
+	const tile = city.tiles.find((candidate) => {
+		if (!isTileBuildable(candidate)) return false;
+		const footprint = city.tiles.filter(
+			(other) =>
+				other.x >= candidate.x &&
+				other.x < candidate.x + 2 &&
+				other.y >= candidate.y &&
+				other.y < candidate.y + 2
+		);
+		return footprint.length === 4 && footprint.every(isTileBuildable);
+	});
+	if (!tile) throw new Error(`Expected a buildable fixture tile in ${city.id}.`);
+	return tile;
 }
 
 function createFixtureIndustryCity(): GameState['industryCities'][number] {
@@ -120,6 +119,9 @@ function createWideEnumerableExtra(nodeCount: number): Record<string, unknown> {
 }
 
 function createGame(overrides: Partial<GameState> = {}): GameState {
+	const city = createFixtureRetailCity();
+	const storeTile = findFixtureStoreTile(city);
+
 	return {
 		seed: 20260505,
 		rngState: 99,
@@ -141,7 +143,7 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 		},
 		world: createInitialWorldProgress(),
 		storeCap: STARTER_STORE_CAP,
-		cities: [createFixtureRetailCity()],
+		cities: [city],
 		activeCityId: 'harbor-city',
 		industryCities: [createFixtureIndustryCity()],
 		activeIndustryCityId: 'industry-city',
@@ -159,18 +161,18 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 				level: 1,
 				name: 'Founding Store',
 				archetypeId: 'boutique',
-				location: { neighborhoodId: 'downtown', x: 1, y: 1 },
+				location: formatLocation(storeTile),
 				cityId: 'harbor-city',
-				tileId: 'harbor-city-1-1',
-				mapX: 1,
-				mapY: 1,
+				tileId: storeTile.id,
+				mapX: storeTile.x,
+				mapY: storeTile.y,
 				daysOpen: 2,
 				reputation: 60,
 				stockHealth: calculateStockHealth(initializeStoreProducts('boutique')),
 				products: initializeStoreProducts('boutique'),
 				staffMorale: 65,
 				staffCapacity: 66,
-				localDemand: 72,
+				localDemand: computeStoreLocalDemand(storeTile),
 				competition: 40,
 				managerQuality: 58
 			}
@@ -3096,7 +3098,7 @@ describe('saveCodec', () => {
 	);
 
 	test.each([
-		{ field: 'x', value: 3, error: 'coordinates (3,0) must be within city bounds' },
+		{ field: 'x', value: 999, error: 'coordinates (999,0) must be within city bounds' },
 		{ field: 'x', value: 0.5, error: 'x must be an integer' },
 		{ field: 'cityId', value: 'ghost-city', error: 'cityId must match containing city harbor-city' }
 	] as const)(
@@ -3208,7 +3210,7 @@ describe('saveCodec', () => {
 		);
 	});
 
-	test('strict validation rejects a tiny city whose store footprint cannot fit', () => {
+	test('strict validation rejects an unsupported tiny catalog retail city before placement validation', () => {
 		const game = createGame();
 		const tile = { ...game.cities[0]!.tiles[0]!, id: 'tiny-0-0', x: 0, y: 0 };
 		const store = {
@@ -3225,7 +3227,7 @@ describe('saveCodec', () => {
 				cities: [{ ...game.cities[0]!, width: 1, height: 1, tiles: [tile] }],
 				stores: [store]
 			})
-		).toThrow('placement must already match a buildable, non-overlapping city footprint');
+		).toThrow('must use the default 56x48 retail city size');
 	});
 
 	test.each([
@@ -3882,6 +3884,40 @@ describe('saveCodec', () => {
 		// But tile-derived fields must match the regenerated (residential) tile.
 		expect(store.location).toEqual(formatLocation(newTile));
 		expect(store.localDemand).toBe(computeStoreLocalDemand(newTile));
+	});
+
+	test('current schema saves reject an unsupported 20x20 retail city after strict decoding', () => {
+		expect.assertions(2);
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 20,
+			height: 20,
+			seed: 20260505
+		});
+		const tile = findFixtureStoreTile(city);
+
+		const record = createManualSaveRecord({
+			game: {
+				cities: [city],
+				stores: [
+					{
+						...createGame().stores[0]!,
+						cityId: city.id,
+						tileId: tile.id,
+						mapX: tile.x,
+						mapY: tile.y,
+						location: formatLocation(tile),
+						localDemand: computeStoreLocalDemand(tile)
+					}
+				]
+			}
+		});
+
+		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+		expect(() => validateSaveRecord(record)).toThrow(
+			'Saved game cities[0] must use the default 56x48 retail city size'
+		);
 	});
 
 	test('does not relocate a valid store when an earlier invalid store targets its tile', () => {

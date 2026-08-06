@@ -1,7 +1,5 @@
 import type { GameState } from '$lib/game/types';
-import { createFoundingFinanceState } from '$lib/game/finance';
-import { createInitialEventRuntime } from '$lib/game/eventSelection';
-import { STARTER_STORE_CAP, createInitialWorldProgress } from '$lib/game/world';
+import { createNewGame } from '$lib/game/state';
 import { evaluateScenario } from '$lib/scenarios/runtime';
 import type {
 	ScenarioDefinition,
@@ -79,91 +77,8 @@ export function resolveFixtureDefinition(
 
 function fixtureGame(): GameState {
 	return {
-		seed: FIXTURE_DEFINITION.officialSeed,
-		rngState: 99,
-		day: 2,
-		cash: 11_000,
-		finance: createFoundingFinanceState(2, 1_000),
-		policy: {
-			pricing: 'standard',
-			inventory: 'balanced',
-			staffing: 'efficient',
-			marketing: 'awareness',
-			service: 'balanced'
-		},
-		scorecard: {
-			profit: 55,
-			customerSatisfaction: 60,
-			staffMorale: 65,
-			marketPosition: 50
-		},
-		world: createInitialWorldProgress(),
-		storeCap: STARTER_STORE_CAP,
-		cities: [
-			{
-				id: 'harbor-city',
-				name: 'Harbor City',
-				width: 1,
-				height: 1,
-				tiles: [
-					{
-						id: 'harbor-city-0-0',
-						cityId: 'harbor-city',
-						x: 0,
-						y: 0,
-						neighborhood: 'downtown',
-						terrain: 'commercial',
-						feature: null,
-						demand: 50,
-						rent: 50,
-						footTraffic: 50,
-						customerFit: 50,
-						locked: false
-					}
-				]
-			}
-		],
-		activeCityId: 'harbor-city',
-		industryCities: [
-			{
-				id: 'industry-city',
-				name: 'Industry City',
-				width: 1,
-				height: 1,
-				tiles: [
-					{
-						id: 'industry-city-0-0',
-						cityId: 'industry-city',
-						x: 0,
-						y: 0,
-						terrain: 'industrial',
-						resource: null,
-						locked: false
-					}
-				],
-				rails: []
-			}
-		],
-		activeIndustryCityId: 'industry-city',
-		industrialBuildings: [],
-		cityInventories: [
-			{
-				cityId: 'industry-city',
-				materials: {}
-			}
-		],
-		retailSupplyAssignments: [
-			{
-				retailCityId: 'harbor-city',
-				supplyCityId: 'industry-city'
-			}
-		],
-		stores: [],
-		staff: [],
-		hiringCandidates: [],
-		events: createInitialEventRuntime(FIXTURE_DEFINITION.officialSeed),
-		decisions: [],
-		reports: []
+		...createNewGame('convenience', FIXTURE_DEFINITION.officialSeed),
+		cash: 11_000
 	};
 }
 

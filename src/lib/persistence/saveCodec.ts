@@ -1234,9 +1234,16 @@ function validateCurrentRetailCitySize(value: unknown, label: string): void {
 	const city = value as Record<string, unknown>;
 	if (typeof city.id !== 'string') return;
 	const definition = getWorldCityDefinition(city.id);
-	if (definition?.kind === 'retail' && city.width === 28 && city.height === 24) {
+	if (definition?.kind !== 'retail') return;
+	if (city.width === DEFAULT_RETAIL_CITY_WIDTH && city.height === DEFAULT_RETAIL_CITY_HEIGHT) {
+		return;
+	}
+	if (city.width === 28 && city.height === 24) {
 		throw new SaveDataError(`${label} uses the legacy 28x24 sandbox city size`);
 	}
+	throw new SaveDataError(
+		`${label} must use the default ${DEFAULT_RETAIL_CITY_WIDTH}x${DEFAULT_RETAIL_CITY_HEIGHT} retail city size`
+	);
 }
 
 interface ValidatedTileIdentity {

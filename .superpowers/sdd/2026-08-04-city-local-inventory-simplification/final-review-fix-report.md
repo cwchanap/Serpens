@@ -77,3 +77,57 @@ contract, report filtering, gameplay, or UI production code.
 
 The fix is intentionally deletion-heavy: it replaces a broad normalizer with a narrow,
 named 28x24 exception and preserves strict errors for all other current-schema corruption.
+
+## Scoped re-review follow-up — unsupported retail city sizes
+
+### Finding and focused RED proof
+
+The retained size guard only rejected a 28x24 catalog retail city. A complete, otherwise valid
+current-schema save containing a generated 20x20 Harbor City and a valid store footprint could
+therefore pass the public `validateSaveRecord` path.
+
+Before the fix, this focused public-save regression failed exactly as expected:
+
+```text
+rtk bun run test:unit -- --run src/lib/persistence/saveCodec.spec.ts --maxWorkers=1 -t 'unsupported 20x20'
+```
+
+Vitest reported one failure (349 skipped): the assertion expected `validateSaveRecord` to throw,
+but it did not.
+
+### Narrow decoder change
+
+- `validateCurrentRetailCitySize` now accepts catalog retail cities only at the default 56x48
+  dimensions.
+- A direct 28x24 value retains its explicit legacy error. On the public-save path, the existing
+  `regenerateLegacyRetailCitiesForStrictValidation` pre-validation exception runs first, so the
+  documented 28x24 regression continues to pass after regeneration.
+- Every other non-default catalog retail size, including 20x20, now throws `SaveDataError` before
+  later placement checks. Industry cities and non-catalog cities remain outside this helper.
+
+The targeted regression became green after that change: one test passed (349 skipped).
+
+### Test-fixture alignment
+
+The new current-save contract made several intentionally tiny persistence fixtures invalid before
+they reached their intended assertions. Those test-only fixtures now generate a deterministic
+default-size Harbor City with a valid store tile. The shared scenario fixture now derives its
+valid game from `createNewGame` while retaining the official scenario seed and cash setup. No
+production normalizer, inventory behavior, or Task 5 logic changed in this follow-up.
+
+### Follow-up verification
+
+| Command / suite | Result |
+| --- | --- |
+| `saveCodec.spec.ts`, serial | 350 / 350 passed, including the documented 28x24 regeneration regression. |
+| Four focused persistence files, serial | 552 / 552 passed. |
+| Scenario fixture/browser/Tauri repository suites, serial | 42 / 42 passed. |
+| `rtk bun run check` | Passed: 0 errors, 0 warnings. |
+| `rtk bun run lint` | Passed: Prettier and ESLint clean. |
+| `rtk bun run test:unit -- --run --maxWorkers=1` | Passed serially outside the sandbox: 139 files, 3,016 tests, exit 0. |
+| `rtk bun run test:e2e -- --workers=1` | Passed serially: 47 / 47 tests, 4.7 minutes. |
+| `rtk git diff --check` | Passed. |
+
+The first sandboxed full-unit attempt passed 94 files and 2,532 tests but exited solely because
+Vitest could not bind its loopback test server (`listen EPERM ::1:63315`). The required rerun
+outside that sandbox produced the clean full-suite result above.
