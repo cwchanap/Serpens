@@ -3,7 +3,7 @@ import { openStoreAtTile } from './placement';
 import { buildProductChainTree, buildStoreCategoryChainSummaries } from './productChainTree';
 import { createNewGame } from './state';
 import { openWorldCity } from './world';
-import { MATERIAL_PRODUCER_RECIPES } from './productChainGraph';
+import { MATERIAL_PRODUCER_RECIPES, getIndustryInventoryScope } from './productChainGraph';
 import {
 	createCityTileLookup,
 	getOccupiedStoreTileIds,
@@ -34,7 +34,10 @@ vi.mock('./productChainGraph', async (importOriginal) => {
 		isSupportedFinishedMaterial: (categoryId: string): categoryId is MaterialId => {
 			if (categoryId === 'fake-finished') return true;
 			return (actual.isSupportedFinishedMaterial as (id: string) => boolean)(categoryId);
-		}
+		},
+		getIndustryInventoryScope: vi.fn(
+			actual.getIndustryInventoryScope as (...args: never[]) => unknown
+		)
 	};
 });
 
@@ -652,6 +655,61 @@ describe('buildProductChainTree', () => {
 				categoryId: 'snacks'
 			})
 		).toThrow('Retail supply invariant: missing assignment for campus-junction');
+	});
+
+	it('rejects an invalid active retail city with an invariant error', () => {
+		expect.assertions(2);
+		const game = convenienceGame();
+
+		expect(() =>
+			buildProductChainTree({
+				game: { ...game, activeCityId: 'industry-city' },
+				store: game.stores[0]!,
+				categoryId: 'snacks'
+			})
+		).toThrow('Retail supply invariant: invalid retail city industry-city');
+
+		expect(() =>
+			buildProductChainTree({
+				game: { ...game, activeCityId: 'breadbasket-basin' },
+				store: game.stores[0]!,
+				categoryId: 'snacks'
+			})
+		).toThrow('Retail supply invariant: invalid retail city breadbasket-basin');
+	});
+
+	it('rejects a configured source whose industry scope is unavailable', () => {
+		expect.assertions(1);
+		let game = openedRetailAndIndustryCityGame();
+		game = openStoreAtTile(game, {
+			tileId: findAvailableRetailFootprintTile(game).id,
+			archetypeId: 'convenience'
+		});
+		const campusStore = game.stores.find((store) => store.cityId === 'campus-junction')!;
+		game = {
+			...game,
+			activeCityId: 'campus-junction',
+			retailSupplyAssignments: game.retailSupplyAssignments.map((assignment) =>
+				assignment.retailCityId === 'campus-junction'
+					? { ...assignment, supplyCityId: 'breadbasket-basin' }
+					: assignment
+			)
+		};
+
+		const scopeMock = vi.mocked(getIndustryInventoryScope);
+		scopeMock.mockReturnValue(null);
+
+		try {
+			expect(() =>
+				buildProductChainTree({
+					game,
+					store: campusStore,
+					categoryId: 'snacks'
+				})
+			).toThrow('Retail supply invariant: unavailable source breadbasket-basin');
+		} finally {
+			scopeMock.mockRestore();
+		}
 	});
 
 	it('builds the bottled water chain as a three-node spine', () => {
