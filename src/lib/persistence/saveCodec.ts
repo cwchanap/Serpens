@@ -8,22 +8,13 @@ import {
 	getTileById,
 	isTileBuildable
 } from '$lib/game/city';
-import {
-	clampInventoryToRecipe,
-	getRecipeMaterialIds,
-	inventoryUsed
-} from '$lib/game/buildingInventory';
+import { getRecipeMaterialIds, inventoryUsed } from '$lib/game/buildingInventory';
 import { INDUSTRIAL_BUILDING_TYPES, MATERIALS } from '$lib/game/industry';
 import {
 	createIndustryTileLookup,
 	getIndustryBuildingFootprint
 } from '$lib/game/industryFootprint';
-import {
-	getStoreStaffCapacityBonus,
-	getUnlockedCategoryCount,
-	MAX_STORE_LEVEL,
-	MAX_BUILDING_LEVEL
-} from '$lib/game/leveling';
+import { getUnlockedCategoryCount, MAX_STORE_LEVEL, MAX_BUILDING_LEVEL } from '$lib/game/leveling';
 import { formatLocation } from '$lib/game/placement';
 import { RAIL_MAX_LEVEL } from '$lib/game/rail';
 import {
@@ -40,7 +31,6 @@ import { MAX_STAFF_LEVEL } from '$lib/game/staffLeveling';
 import { FINANCE_TRANSACTION_LIMIT, getInstallmentCount } from '$lib/game/finance';
 import { EVENT_SELECTION_SCHEMA_VERSION } from '$lib/game/eventSelection';
 import { EVENT_HISTORY_LIMIT } from '$lib/game/eventHistory';
-import { clampScore } from '$lib/game/reports';
 import { calculateStockHealth } from '$lib/game/stock';
 import type {
 	City,
@@ -52,13 +42,7 @@ import type {
 	StoreProduct,
 	WorldCityId
 } from '$lib/game/types';
-import {
-	STARTER_STORE_CAP,
-	createInitialWorldProgress,
-	getWorldCityDefinition,
-	isWorldCityId,
-	refreshWorldProgress
-} from '$lib/game/world';
+import { getWorldCityDefinition, isWorldCityId, refreshWorldProgress } from '$lib/game/world';
 import {
 	AUTO_SAVE_SLOT_ID,
 	SAVE_SCHEMA_VERSION,
@@ -284,8 +268,9 @@ function validateSaveRecordInternal(value: unknown): SaveRecord {
 	}
 
 	const metadata = requireRecord(record.metadata, 'Save metadata');
-	const normalizedSandboxGame = normalizeSandboxSavedGameInternal(record.game);
-	const game = validateCurrentGameStateInternal(normalizedSandboxGame);
+	const game = validateCurrentGameStateInternal(
+		regenerateLegacyRetailCitiesForStrictValidation(record.game)
+	);
 	const kind = requireString(metadata.kind, 'Save metadata kind');
 
 	if (kind !== 'auto' && kind !== 'manual') {
@@ -487,245 +472,27 @@ function validateSlotInvariants(autoSave: SaveRecord | null, manualSlots: SaveRe
 	}
 }
 
-const LEGACY_LEVEL_BY_PRODUCT_COUNT: Record<number, number> = { 1: 1, 2: 4, 3: 7, 4: 10 };
-
-function normalizeSavedStoreLevel(store: unknown): unknown {
-	if (typeof store !== 'object' || store === null) {
-		return store;
-	}
-
-	const record = store as Record<string, unknown>;
-	if (record.level !== undefined) {
-		return record;
-	}
-
-	const productCount = Array.isArray(record.products) ? record.products.length : 1;
-	const level = LEGACY_LEVEL_BY_PRODUCT_COUNT[productCount] ?? 1;
-	const staffCapacity =
-		typeof record.staffCapacity === 'number'
-			? clampScore(record.staffCapacity + getStoreStaffCapacityBonus(level))
-			: record.staffCapacity;
-	return { ...record, level, staffCapacity };
-}
-
-function normalizeSandboxStoreStockHealth(store: unknown): unknown {
-	if (typeof store !== 'object' || store === null) return store;
-	const record = store as Record<string, unknown>;
-	if (
-		!Array.isArray(record.products) ||
-		typeof record.stockHealth !== 'number' ||
-		!Number.isFinite(record.stockHealth)
-	) {
-		return store;
-	}
-
-	const products: StoreProduct[] = [];
-	for (const value of record.products) {
-		if (typeof value !== 'object' || value === null) return store;
-		const product = value as Record<string, unknown>;
-		if (
-			typeof product.categoryId !== 'string' ||
-			typeof product.stock !== 'number' ||
-			!Number.isFinite(product.stock) ||
-			typeof product.reorderThreshold !== 'number' ||
-			!Number.isFinite(product.reorderThreshold) ||
-			typeof product.targetStock !== 'number' ||
-			!Number.isFinite(product.targetStock) ||
-			typeof product.sellingPrice !== 'number' ||
-			!Number.isFinite(product.sellingPrice)
-		) {
-			return store;
-		}
-		products.push({
-			categoryId: product.categoryId,
-			stock: product.stock,
-			reorderThreshold: product.reorderThreshold,
-			targetStock: product.targetStock,
-			sellingPrice: product.sellingPrice
-		});
-	}
-
-	const stockHealth = calculateStockHealth(products);
-	return record.stockHealth === stockHealth ? store : { ...record, stockHealth };
-}
-
-function normalizeSavedBuildingLevel(building: unknown): unknown {
-	if (typeof building !== 'object' || building === null) {
-		return building;
-	}
-
-	const record = building as Record<string, unknown>;
-	return record.level === undefined ? { ...record, level: 1 } : record;
-}
-
-function normalizeSavedStaffLevel(member: unknown): unknown {
-	if (typeof member !== 'object' || member === null) {
-		return member;
-	}
-
-	const record = member as Record<string, unknown>;
-	const level = record.level === undefined ? 1 : record.level;
-	const xp = record.xp === undefined ? 0 : record.xp;
-	return { ...record, level, xp };
-}
-
-export function normalizeSandboxSavedGame(value: unknown): unknown {
-	return withSaveDataBoundary('Sandbox save normalization', () =>
-		normalizeSandboxSavedGameInternal(value)
-	);
-}
-
-function normalizeSandboxSavedGameInternal(value: unknown): unknown {
+function regenerateLegacyRetailCitiesForStrictValidation(value: unknown): unknown {
 	const sourceGame = createPlainSnapshot(value, 'Saved game');
 	const game = requireRecord(sourceGame, 'Saved game');
-	assertNoResidualGlobalWarehouseData(game);
-	requireNumber(game.cash, 'Saved game cash');
-	const normalizedWorld =
-		game.world === undefined
-			? inferWorldProgress(game)
-			: validateSavedWorld(game.world, 'Saved game world');
-	const normalizedStoreCap =
-		game.storeCap === undefined
-			? inferStoreCap(normalizedWorld, Array.isArray(game.stores) ? game.stores.length : 0)
-			: game.storeCap;
+	const regenerated = regenerateLegacyRetailCities(game);
 
-	const normalizedStores = Array.isArray(game.stores)
-		? game.stores
-				.map((store) => normalizeSavedStoreLevel(store))
-				.map((store) => normalizeSandboxStoreStockHealth(store))
-		: game.stores;
-	const normalizedBuildings = Array.isArray(game.industrialBuildings)
-		? game.industrialBuildings.map((building) => normalizeSavedBuildingLevel(building))
-		: game.industrialBuildings;
-	const normalizedStaff = Array.isArray(game.staff)
-		? game.staff.map((member) => normalizeSavedStaffLevel(member))
-		: game.staff;
-	const normalizedCities = normalizeSavedRetailCities(game);
-	const normalizedRetailStores = normalizeSavedRetailStorePlacements(
-		normalizedStores,
-		normalizedCities.cities,
-		normalizedCities.regeneratedCityIds
-	);
+	if (regenerated.regeneratedCityIds.size === 0) {
+		return game;
+	}
 
-	let normalizedGame = {
+	return {
 		...game,
-		cities: normalizeSavedCityTileFeatures(normalizedCities.cities),
-		stores: normalizedRetailStores,
-		staff: normalizedStaff,
-		industrialBuildings: normalizedBuildings,
-		world: normalizedWorld,
-		storeCap: normalizedStoreCap
-	} as GameState;
-
-	if (canRefreshSandboxWorldProgress(normalizedGame)) {
-		normalizedGame = refreshWorldProgress(normalizedGame);
-	}
-
-	return {
-		...normalizedGame,
-		industrialBuildings: Array.isArray(normalizedGame.industrialBuildings)
-			? normalizedGame.industrialBuildings.map(normalizeSandboxBuildingInventory)
-			: normalizedGame.industrialBuildings
-	};
-}
-
-function normalizeSavedCityTileFeatures(cities: unknown): unknown {
-	if (!Array.isArray(cities)) return cities;
-
-	return cities.map((city) => {
-		if (typeof city !== 'object' || city === null) return city;
-		const cityRecord = city as Record<string, unknown>;
-		if (!Array.isArray(cityRecord.tiles)) return city;
-		let changed = false;
-		const tiles = cityRecord.tiles.map((tile) => {
-			if (typeof tile !== 'object' || tile === null) return tile;
-			const tileRecord = tile as Record<string, unknown>;
-			if (tileRecord.feature !== undefined) return tile;
-			changed = true;
-			return { ...tileRecord, feature: null };
-		});
-		return changed ? { ...cityRecord, tiles } : city;
-	});
-}
-
-function canRefreshSandboxWorldProgress(game: GameState): boolean {
-	if (
-		typeof game.cash !== 'number' ||
-		!Number.isFinite(game.cash) ||
-		typeof game.day !== 'number' ||
-		!Number.isFinite(game.day) ||
-		!Array.isArray(game.stores) ||
-		!Array.isArray(game.industrialBuildings) ||
-		!game.industrialBuildings.every(
-			(building) => typeof building === 'object' && building !== null
-		) ||
-		!Array.isArray(game.reports) ||
-		!game.reports.every((report) => typeof report === 'object' && report !== null) ||
-		!Array.isArray(game.cityInventories) ||
-		!game.cityInventories.every(
-			(inventory) => typeof inventory === 'object' && inventory !== null
-		) ||
-		!Array.isArray(game.retailSupplyAssignments) ||
-		!game.retailSupplyAssignments.every(
-			(assignment) => typeof assignment === 'object' && assignment !== null
-		) ||
-		game.reports.some(
-			(report) => typeof report.netIncome !== 'number' || !Number.isFinite(report.netIncome)
-		)
-	) {
-		return false;
-	}
-
-	const latestReport = game.reports.at(-1);
-	return (
-		latestReport === undefined ||
-		(typeof latestReport.productionReport === 'object' &&
-			latestReport.productionReport !== null &&
-			Array.isArray(latestReport.productionReport.produced) &&
-			latestReport.productionReport.produced.every(
-				(movement) => typeof movement === 'object' && movement !== null
-			))
-	);
-}
-
-function normalizeSandboxBuildingInventory(building: unknown): unknown {
-	if (typeof building !== 'object' || building === null) return building;
-	const record = building as Record<string, unknown>;
-	const buildingType =
-		typeof record.typeId === 'string'
-			? INDUSTRIAL_BUILDING_TYPES[record.typeId as IndustrialBuildingTypeId]
-			: undefined;
-	if (
-		!buildingType ||
-		typeof record.inventory !== 'object' ||
-		record.inventory === null ||
-		Array.isArray(record.inventory)
-	) {
-		return building;
-	}
-	const inventory = record.inventory as Record<string, unknown>;
-	if (
-		Object.entries(inventory).some(
-			([materialId, quantity]) =>
-				!MATERIAL_ID_SET.has(materialId) ||
-				typeof quantity !== 'number' ||
-				!Number.isFinite(quantity) ||
-				quantity < 0
-		)
-	) {
-		return building;
-	}
-
-	return {
-		...record,
-		inventory: clampInventoryToRecipe(
-			inventory as GameState['industrialBuildings'][number]['inventory'],
-			buildingType
+		cities: regenerated.cities,
+		stores: reconcileRetailStorePlacements(
+			game.stores,
+			regenerated.cities,
+			regenerated.regeneratedCityIds
 		)
 	};
 }
 
-function normalizeSavedRetailCities(game: Record<string, unknown>): {
+function regenerateLegacyRetailCities(game: Record<string, unknown>): {
 	cities: unknown;
 	regeneratedCityIds: Set<string>;
 } {
@@ -735,21 +502,21 @@ function normalizeSavedRetailCities(game: Record<string, unknown>): {
 
 	const regeneratedCityIds = new Set<string>();
 	const cities = game.cities.map((city) => {
-		const normalized = normalizeSavedRetailCity(game, city);
+		const regenerated = regenerateLegacyRetailCity(game, city);
 		if (
 			typeof city === 'object' &&
 			city !== null &&
 			typeof (city as Record<string, unknown>).id === 'string' &&
-			normalized !== city
+			regenerated !== city
 		) {
 			regeneratedCityIds.add((city as Record<string, unknown>).id as string);
 		}
-		return normalized;
+		return regenerated;
 	});
 	return { cities, regeneratedCityIds };
 }
 
-function normalizeSavedRetailCity(game: Record<string, unknown>, city: unknown): unknown {
+function regenerateLegacyRetailCity(game: Record<string, unknown>, city: unknown): unknown {
 	if (typeof city !== 'object' || city === null) {
 		return city;
 	}
@@ -792,7 +559,10 @@ function normalizeSavedRetailCity(game: Record<string, unknown>, city: unknown):
 	});
 }
 
-function normalizeSavedRetailStorePlacements(
+// This only mutates stores in `regeneratedCityIds`, which is populated solely
+// by the documented 28x24 retail-city regeneration path. With an empty set it
+// is used as a placement validator for current-schema saves.
+function reconcileRetailStorePlacements(
 	stores: unknown,
 	cities: unknown,
 	regeneratedCityIds: Set<string>,
@@ -923,6 +693,10 @@ function normalizeSavedRetailStorePlacements(
 			onInvalidPlacement?.(index);
 			return store;
 		}
+		if (!regeneratedCityIds.has(city.id)) {
+			onInvalidPlacement?.(index);
+			return store;
+		}
 		onInvalidPlacement?.(index);
 
 		const occupiedTileIds = getOccupiedTileIds(occupiedTileIdsByCity, city.id);
@@ -971,7 +745,7 @@ function normalizeSavedRetailStorePlacements(
 
 function validateCurrentRetailStorePlacements(stores: unknown[], cities: unknown[]): void {
 	let invalidIndex = -1;
-	normalizeSavedRetailStorePlacements(stores, cities, new Set(), false, (index) => {
+	reconcileRetailStorePlacements(stores, cities, new Set(), false, (index) => {
 		if (invalidIndex < 0) invalidIndex = index;
 	});
 	if (invalidIndex >= 0) {
@@ -1129,72 +903,6 @@ function findSavedStoreTile(
 
 function getTileDistance(tile: CityTile, x: number, y: number): number {
 	return Math.abs(tile.x - x) + Math.abs(tile.y - y);
-}
-
-function inferStoreCap(world: GameState['world'], storeCount: number): number {
-	const starterIds = new Set<string>(createInitialWorldProgress().openedCityIds);
-	let cap = STARTER_STORE_CAP;
-
-	for (const cityId of world.openedCityIds) {
-		if (starterIds.has(cityId)) continue;
-		const city = getWorldCityDefinition(cityId);
-		if (city) {
-			cap += city.storeCapBonus;
-		}
-	}
-
-	if (world.claimedMilestoneIds.includes('positive-income-store-cap')) {
-		cap += 1;
-	}
-
-	if (storeCount > cap) {
-		throw new SaveDataError(
-			`Legacy save has ${storeCount} stores but inferred store cap is ${cap}`
-		);
-	}
-
-	return cap;
-}
-
-/**
- * When loading a save that predates the `world` field, infer which cities
- * were already opened by inspecting the saved `cities` and `industryCities`
- * arrays. Cities present in those arrays but not in the starter set are
- * marked as both revealed and opened so the world map reflects reality.
- */
-function inferWorldProgress(game: Record<string, unknown>): GameState['world'] {
-	const progress = createInitialWorldProgress();
-	const starterSet = new Set<string>(progress.openedCityIds);
-	const worldCityIdSet = new Set<string>(WORLD_CITY_IDS);
-
-	const savedCityIds = extractCityIds(game.cities);
-	const savedIndustryCityIds = extractCityIds(game.industryCities);
-	const allSavedCityIds = [...savedCityIds, ...savedIndustryCityIds];
-
-	for (const cityId of allSavedCityIds) {
-		if (starterSet.has(cityId)) continue;
-
-		if (!worldCityIdSet.has(cityId)) {
-			console.warn(`inferWorldProgress: skipping unknown city id "${cityId}" not in catalog`);
-			continue;
-		}
-
-		progress.revealedCityIds.push(cityId as WorldCityId);
-		progress.openedCityIds.push(cityId as WorldCityId);
-	}
-
-	return progress;
-}
-
-function extractCityIds(value: unknown): string[] {
-	if (!Array.isArray(value)) return [];
-	return value
-		.filter(
-			(item): item is Record<string, unknown> =>
-				typeof item === 'object' && item !== null && 'id' in item
-		)
-		.map((item) => item.id)
-		.filter((id): id is string => typeof id === 'string');
 }
 
 function validateSavedWorld(value: unknown, label: string): GameState['world'] {

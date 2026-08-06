@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from 'vitest';
 import { initializeCityInventory, initializeRetailSupplyAssignment } from '$lib/game/cityInventory';
-import { initializeStoreProducts } from '$lib/game/stock';
+import { calculateStockHealth, initializeStoreProducts } from '$lib/game/stock';
 import { createFoundingFinanceState } from '$lib/game/finance';
 import { createInitialEventRuntime } from '$lib/game/eventSelection';
 import { simulateDay } from '$lib/game/simulateDay';
@@ -10,7 +10,8 @@ import {
 	STARTER_STORE_CAP,
 	WORLD_CITY_CATALOG,
 	createInitialWorldProgress,
-	openWorldCity
+	openWorldCity,
+	refreshWorldProgress
 } from '$lib/game/world';
 import type {
 	DailyProductReport,
@@ -149,37 +150,6 @@ function createFixtureIndustryCity(): GameState['industryCities'][number] {
 	};
 }
 
-function createOneTileRetailCity(id: string, name: string): GameState['cities'][number] {
-	return {
-		id,
-		name,
-		width: 1,
-		height: 1,
-		tiles: [{ ...createFixtureRetailCity().tiles[0]!, id: `${id}-0-0`, cityId: id, x: 0, y: 0 }]
-	};
-}
-
-function createOneTileIndustryCity(id: string, name: string): GameState['industryCities'][number] {
-	return {
-		id,
-		name,
-		width: 1,
-		height: 1,
-		tiles: [
-			{
-				id: `${id}-0-0`,
-				cityId: id,
-				x: 0,
-				y: 0,
-				terrain: 'industrial',
-				resource: null,
-				locked: false
-			}
-		],
-		rails: []
-	};
-}
-
 function delay(): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, 0));
 }
@@ -253,7 +223,7 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 				mapY: 1,
 				daysOpen: 2,
 				reputation: 60,
-				stockHealth: 70,
+				stockHealth: calculateStockHealth(initializeStoreProducts('boutique')),
 				products: initializeStoreProducts('boutique'),
 				staffMorale: 65,
 				staffCapacity: 66,
@@ -277,6 +247,10 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 		cityInventories,
 		retailSupplyAssignments: overrideRetailSupplyAssignments ?? canonical.retailSupplyAssignments
 	};
+}
+
+function createCurrentGame(overrides: Partial<GameState> = {}): GameState {
+	return refreshWorldProgress(createGame(overrides));
 }
 
 function createDaySevenReplenishmentFromIndustryCity(): GameState {
@@ -656,168 +630,6 @@ describe('save records', () => {
 		expect(validated.game.storeCap).toBe(4);
 	});
 
-	test('normalizes old save records that do not have world progress or store cap', () => {
-		expect.assertions(3);
-		const record = createSaveRecord(createGame(), {
-			id: 'manual-old-world',
-			name: 'Old World Save',
-			kind: 'manual',
-			updatedAt: new Date('2026-05-30T12:00:00.000Z')
-		});
-		const oldGame = { ...record.game } as Partial<GameState>;
-		delete oldGame.world;
-		delete oldGame.storeCap;
-
-		const validated = validateSaveRecord({ ...record, game: oldGame as GameState });
-
-		expect(validated.game.world.openedCityIds).toEqual(['harbor-city', 'industry-city']);
-		expect(validated.game.world.revealedCityIds).toEqual(['harbor-city', 'industry-city']);
-		expect(validated.game.storeCap).toBe(3);
-	});
-
-	test('infers legacy store level and applies milestone staff capacity bonus', () => {
-		expect.assertions(4);
-		const game = createNewGame('convenience', 20260603);
-		const store = game.stores[0]!;
-		const legacyStore = {
-			...store,
-			products: initializeStoreProducts('convenience', 4),
-			staffCapacity: 64
-		};
-		delete (legacyStore as Partial<typeof legacyStore>).level;
-
-		const record = createSaveRecord(
-			{ ...game, stores: [legacyStore as GameState['stores'][number]] },
-			{
-				id: 'manual-legacy-store',
-				name: 'Legacy Store Save',
-				kind: 'manual',
-				updatedAt: new Date('2026-06-03T12:00:00.000Z')
-			}
-		);
-
-		const validated = validateSaveRecord(record);
-		const migrated = validated.game.stores[0]!;
-
-		expect(migrated.level).toBe(4);
-		expect(migrated.products).toHaveLength(2);
-		expect(migrated.staffCapacity).toBe(72); // 64 + 8 milestone bonus for level 4
-		expect(migrated.staffCapacity).toBeGreaterThan(store.staffCapacity);
-	});
-
-	test('infers store cap from opened city bonuses when store cap is missing', () => {
-		expect.assertions(1);
-		const game = createGame({
-			cities: [
-				createFixtureRetailCity(),
-				createOneTileRetailCity('campus-junction', 'Campus Junction')
-			]
-		});
-		const record = createSaveRecord(game, {
-			id: 'manual-infer-cap',
-			name: 'Infer Cap Save',
-			kind: 'manual',
-			updatedAt: new Date('2026-05-31T12:00:00.000Z')
-		});
-		const oldGame = { ...record.game } as Partial<GameState>;
-		delete oldGame.world;
-		delete oldGame.storeCap;
-		oldGame.retailSupplyAssignments = [
-			{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' },
-			{ retailCityId: 'campus-junction', supplyCityId: 'industry-city' }
-		];
-
-		const validated = validateSaveRecord({ ...record, game: oldGame as GameState });
-
-		expect(validated.game.storeCap).toBe(4);
-	});
-
-	test('infers store cap from claimed milestones when store cap is missing', () => {
-		expect.assertions(1);
-		const game = createGame({
-			world: {
-				revealedCityIds: ['harbor-city', 'industry-city'],
-				openedCityIds: ['harbor-city', 'industry-city'],
-				claimedMilestoneIds: ['positive-income-store-cap']
-			}
-		});
-		const record = createSaveRecord(game, {
-			id: 'manual-infer-cap-milestone',
-			name: 'Infer Cap Milestone Save',
-			kind: 'manual',
-			updatedAt: new Date('2026-05-31T12:00:00.000Z')
-		});
-		const oldGame = { ...record.game } as Partial<GameState>;
-		delete oldGame.storeCap;
-
-		const validated = validateSaveRecord({ ...record, game: oldGame as GameState });
-
-		expect(validated.game.storeCap).toBe(4);
-	});
-
-	test('normalizes world progress that already satisfies reveal conditions', () => {
-		expect.assertions(2);
-		const game = createGame({ day: 8 });
-		const record = createSaveRecord(game, {
-			id: 'manual-old-world-refresh',
-			name: 'Old World Save Day 8',
-			kind: 'manual',
-			updatedAt: new Date('2026-05-30T12:00:00.000Z')
-		});
-		const oldGame = { ...record.game } as Partial<GameState>;
-		delete oldGame.world;
-
-		const validated = validateSaveRecord({ ...record, game: oldGame as GameState });
-
-		expect(validated.game.world.revealedCityIds).toContain('campus-junction');
-		expect(validated.game.world.claimedMilestoneIds).toContain('reveal-campus-junction');
-	});
-
-	test('infers opened cities from saved city arrays when world progress is missing', () => {
-		expect.assertions(6);
-		const game = createGame({
-			cities: [
-				createFixtureRetailCity(),
-				createOneTileRetailCity('campus-junction', 'Campus Junction')
-			],
-			industryCities: [
-				createFixtureIndustryCity(),
-				createOneTileIndustryCity('breadbasket-basin', 'Breadbasket Basin')
-			]
-		});
-		const record = createSaveRecord(game, {
-			id: 'manual-infer-cities',
-			name: 'Infer Cities Save',
-			kind: 'manual',
-			updatedAt: new Date('2026-05-31T12:00:00.000Z')
-		});
-		const oldGame = { ...record.game } as Partial<GameState>;
-		delete oldGame.world;
-		oldGame.cityInventories = [
-			{
-				cityId: 'industry-city',
-				materials: {}
-			},
-			{
-				cityId: 'breadbasket-basin',
-				materials: {}
-			}
-		];
-		oldGame.retailSupplyAssignments = [
-			{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' },
-			{ retailCityId: 'campus-junction', supplyCityId: 'industry-city' }
-		];
-
-		const validated = validateSaveRecord({ ...record, game: oldGame as GameState });
-
-		expect(validated.game.world.openedCityIds).toContain('harbor-city');
-		expect(validated.game.world.openedCityIds).toContain('industry-city');
-		expect(validated.game.world.openedCityIds).toContain('campus-junction');
-		expect(validated.game.world.openedCityIds).toContain('breadbasket-basin');
-		expect(validated.game.world.revealedCityIds).toContain('campus-junction');
-		expect(validated.game.world.revealedCityIds).toContain('breadbasket-basin');
-	});
-
 	test.each([
 		{
 			name: 'invalid revealed city id',
@@ -858,10 +670,20 @@ describe('save records', () => {
 			message: 'Saved game world opened city must also be revealed: campus-junction'
 		},
 		{
+			name: 'missing world progress',
+			game: { world: undefined as unknown as GameState['world'] },
+			message: 'Saved game world must be an object'
+		},
+		{
 			name: 'non-number store cap',
 			game: {
 				storeCap: 'three' as unknown as number
 			},
+			message: 'Saved game storeCap must be a finite number'
+		},
+		{
+			name: 'missing store cap',
+			game: { storeCap: undefined as unknown as number },
 			message: 'Saved game storeCap must be a finite number'
 		},
 		{
@@ -882,19 +704,13 @@ describe('save records', () => {
 		}
 	);
 
-	test('deduplicates repeated city and milestone ids in saved world progress', () => {
-		expect.assertions(3);
+	test('rejects repeated city and milestone ids instead of deduplicating them', () => {
+		expect.assertions(2);
 		const game = createGame({
 			world: {
-				revealedCityIds: [
-					'harbor-city',
-					'industry-city',
-					'harbor-city',
-					'campus-junction',
-					'industry-city'
-				],
+				revealedCityIds: ['harbor-city', 'industry-city', 'harbor-city', 'industry-city'],
 				openedCityIds: ['harbor-city', 'industry-city', 'harbor-city'],
-				claimedMilestoneIds: ['reveal-campus-junction', 'reveal-campus-junction']
+				claimedMilestoneIds: []
 			}
 		});
 		const record = createSaveRecord(game, {
@@ -904,15 +720,10 @@ describe('save records', () => {
 			updatedAt: new Date('2026-05-30T12:00:00.000Z')
 		});
 
-		const validated = validateSaveRecord(record);
-
-		expect(validated.game.world.revealedCityIds).toEqual([
-			'harbor-city',
-			'industry-city',
-			'campus-junction'
-		]);
-		expect(validated.game.world.openedCityIds).toEqual(['harbor-city', 'industry-city']);
-		expect(validated.game.world.claimedMilestoneIds).toEqual(['reveal-campus-junction']);
+		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+		expect(() => validateSaveRecord(record)).toThrow(
+			'Saved game retailSupplyAssignments must contain one record for every opened retail city'
+		);
 	});
 
 	test('rejects city-inventory materials with unknown ids', () => {
@@ -1340,35 +1151,6 @@ describe('save records', () => {
 		);
 	});
 
-	test('normalizes staff without level/xp to level 1 and xp 0', () => {
-		expect.assertions(2);
-		const game = createNewGame('convenience', 20260615);
-		const legacyStaff = {
-			id: 'staff-legacy',
-			name: 'Avery Chen',
-			role: 'general' as const,
-			monthlySalary: 2_800,
-			skill: 60,
-			morale: 65,
-			assignedStoreId: null,
-			hiredOnDay: 1
-		};
-		const record = createSaveRecord(
-			{ ...game, staff: [legacyStaff as GameState['staff'][number]] },
-			{
-				id: 'manual-legacy-staff',
-				name: 'Legacy Staff Save',
-				kind: 'manual',
-				updatedAt: new Date('2026-06-15T12:00:00.000Z')
-			}
-		);
-
-		const migrated = validateSaveRecord(record).game.staff[0]!;
-
-		expect(migrated.level).toBe(1);
-		expect(migrated.xp).toBe(0);
-	});
-
 	test('rejects saved staff with an out-of-range level', () => {
 		expect.assertions(2);
 		const snapshot = createSnapshotWithGame({
@@ -1581,8 +1363,8 @@ describe('save records', () => {
 		);
 	});
 
-	test('accepts saved city tiles without feature for old-save compatibility', () => {
-		expect.assertions(1);
+	test('rejects saved city tiles without feature in the current schema', () => {
+		expect.assertions(2);
 		const game = createGame();
 		const snapshot = createSnapshotWithGame({
 			...game,
@@ -1599,9 +1381,10 @@ describe('save records', () => {
 			]
 		});
 
-		expect(
-			validateSaveStoreSnapshot(snapshot).manualSlots[0]?.game.cities[0]?.tiles[0]?.feature
-		).toBeNull();
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
+		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
+			'Saved game cities[0] tiles[0] feature must be null, road, or river'
+		);
 	});
 
 	test('rejects saved city tiles with invalid feature values', () => {
@@ -1834,24 +1617,6 @@ describe('save records', () => {
 		expect(() => validateSaveStoreSnapshot(snapshot)).not.toThrow();
 	});
 
-	test('normalizes a three-product store to level 7', () => {
-		expect.assertions(1);
-		const game = createNewGame('convenience', 20260603);
-		const legacyStore = {
-			...game.stores[0]!,
-			products: initializeStoreProducts('convenience', 7) // 3 products
-		};
-		// strip the level field to simulate a pre-leveling save
-		// eslint-disable-next-line @typescript-eslint/no-unused-vars
-		const { level: _omit, ...legacyWithoutLevel } = legacyStore;
-		const snapshot = createSnapshotWithGame({
-			...game,
-			stores: [legacyWithoutLevel as unknown as (typeof game.stores)[number]]
-		});
-		const validated = validateSaveStoreSnapshot(snapshot);
-		expect(validated.manualSlots[0]!.game.stores[0]!.level).toBe(7);
-	});
-
 	test('rejects a store level outside 1..10', () => {
 		expect.assertions(1);
 		const game = createNewGame('convenience', 20260603);
@@ -1933,60 +1698,10 @@ describe('save records', () => {
 		);
 	});
 
-	test.each([
-		{ productLevel: 4, productCount: 2, expectedLevel: 4 },
-		{ productLevel: 10, productCount: 4, expectedLevel: 10 }
-	])(
-		'normalizes a $productCount-product store to level $expectedLevel',
-		({ productLevel, expectedLevel }) => {
-			expect.assertions(1);
-			const game = createNewGame('convenience', 20260603);
-			const legacyStore = {
-				...game.stores[0]!,
-				products: initializeStoreProducts('convenience', productLevel)
-			};
-			// eslint-disable-next-line @typescript-eslint/no-unused-vars
-			const { level: _omit, ...legacyWithoutLevel } = legacyStore;
-			const snapshot = createSnapshotWithGame({
-				...game,
-				stores: [legacyWithoutLevel as unknown as (typeof game.stores)[number]]
-			});
-			const validated = validateSaveStoreSnapshot(snapshot);
-			expect(validated.manualSlots[0]!.game.stores[0]!.level).toBe(expectedLevel);
-		}
-	);
-
-	test('a store with an unknown product count falls back to level 1 (normalization contract)', () => {
-		expect.assertions(2);
-		const game = createNewGame('convenience', 20260603);
-		const baseStore = game.stores[0]!;
-		// Normalization maps known product counts {1,2,3,4} → levels {1,4,7,10};
-		// an unknown count is intentionally mapped to 1 to avoid rejecting
-		// legacy saves outright. The level-1 fallback is therefore the
-		// characterization contract we pin here.
-		const products: StoreProduct[] = initializeStoreProducts('convenience', 1);
-		const legacyStore = { ...baseStore, products };
-		// eslint-disable-next-line @typescript-eslint/no-unused-vars
-		const { level: _omit, ...legacyWithoutLevel } = legacyStore;
-		const snapshot = createSnapshotWithGame({
-			...game,
-			stores: [legacyWithoutLevel as unknown as (typeof game.stores)[number]]
-		});
-
-		const validated = validateSaveStoreSnapshot(snapshot);
-		expect(validated.manualSlots[0]!.game.stores[0]!.level).toBe(1);
-		// The ?? 1 fallback path is therefore a deliberate normalization
-		// shortcut: it always produces a (level=1, products.length=1) save,
-		// which the level↔products coupling check accepts.
-		expect(validated.manualSlots[0]!.game.stores[0]!.products).toHaveLength(1);
-	});
-
 	test('rejects a save whose level disagrees with its product count (level↔products coupling check)', () => {
 		expect.assertions(2);
 		// A store claiming level 1 but carrying 4 products is not a valid shape
-		// in this codebase. The coupling check is the safety net behind the
-		// `?? 1` legacy fallback — any path that produces a mismatched
-		// (level, products) pair must be rejected on load.
+		// in this codebase, so the current save must be rejected on load.
 		const game = createNewGame('convenience', 20260603);
 		const baseStore = game.stores[0]!;
 		const products: StoreProduct[] = initializeStoreProducts('convenience', 10);
@@ -2000,36 +1715,6 @@ describe('save records', () => {
 		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
 			'products length (4) must equal unlocked category count (1) for level 1'
 		);
-	});
-
-	test('normalizes an industrial building without a level field to level 1', () => {
-		expect.assertions(1);
-		const fullBuilding = {
-			id: 'building-1',
-			level: 1,
-			typeId: 'grain-farm' as IndustrialBuildingTypeId,
-			cityId: 'industry-city',
-			tileId: 'industry-city-0-0',
-			mapX: 0,
-			mapY: 0,
-			status: 'idle' as const,
-			lastProduction: [],
-			producedTotal: 0,
-			importedInputTotal: 0,
-			blockedDays: 0,
-			inventory: {}
-		};
-		// eslint-disable-next-line @typescript-eslint/no-unused-vars
-		const { level: _omit, ...legacyWithoutLevel } = fullBuilding;
-		const game = createGame({
-			industrialBuildings: [
-				legacyWithoutLevel as unknown as GameState['industrialBuildings'][number]
-			]
-		});
-		const snapshot = createSnapshotWithGame(game);
-
-		const validated = validateSaveStoreSnapshot(snapshot);
-		expect(validated.manualSlots[0]!.game.industrialBuildings[0]!.level).toBe(1);
 	});
 
 	test('preserves an explicit industrial building level during validation', () => {
@@ -2133,7 +1818,7 @@ describe('browser save repository', () => {
 			() => new Date('2026-05-05T12:00:00.000Z')
 		);
 		const firstGame = createGame({ day: 4, cash: 15000 });
-		const secondGame = createGame({ day: 8, cash: 22000 });
+		const secondGame = createCurrentGame({ day: 8, cash: 22000 });
 
 		const created = await repository.createManualSlot('Harbor Run', firstGame);
 		let loaded = await repository.loadManualSlot(created.id);
@@ -2247,7 +1932,7 @@ describe('browser save repository', () => {
 			driver,
 			() => new Date('2026-05-05T12:00:00.000Z')
 		);
-		const game = createGame({ day: 9 });
+		const game = createCurrentGame({ day: 9 });
 
 		const metadata = await repository.saveAuto(game);
 		const snapshot = await driver.read();
@@ -2257,6 +1942,38 @@ describe('browser save repository', () => {
 		expect(snapshot.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
 		expect(snapshot.autoSave?.game.staff).toEqual([]);
 		expect(snapshot.autoSave?.game.hiringCandidates).toEqual([]);
+	});
+
+	test('resets a corrupt current-schema snapshot instead of repairing it', async () => {
+		expect.assertions(4);
+		const record = createManualSaveRecord();
+		const { level: _level, ...storeWithoutLevel } = record.game.stores[0]!;
+		void _level;
+		const driver = new MemorySaveStoreDriver({
+			schemaVersion: SAVE_SCHEMA_VERSION,
+			autoSave: null,
+			manualSlots: [
+				{
+					...record,
+					game: {
+						...record.game,
+						stores: [storeWithoutLevel as GameState['stores'][number]]
+					}
+				}
+			]
+		} as SaveStoreSnapshot);
+		const repository = new SaveRepositoryFromDriver(
+			driver,
+			() => new Date('2026-05-05T12:00:00.000Z')
+		);
+
+		expect(await repository.getSummary()).toEqual({ autoSave: null, manualSlots: [] });
+		const metadata = await repository.saveAuto(createGame());
+		const persisted = await driver.read();
+
+		expect(metadata.kind).toBe('auto');
+		expect(persisted.manualSlots).toEqual([]);
+		expect(persisted.autoSave?.game.stores[0]?.level).toBe(1);
 	});
 
 	test('does not reset non-save data driver read errors', async () => {
@@ -2322,7 +2039,7 @@ describe('browser save repository', () => {
 		const overwritten = await repository.overwriteManualSlot(
 			first.id,
 			'Harbor Run',
-			createGame({ day: 9 })
+			createCurrentGame({ day: 9 })
 		);
 		const summary = await repository.getSummary();
 
@@ -2375,10 +2092,10 @@ describe('sparse city-inventory save compatibility', () => {
 					}
 				: inventory
 		);
-		const sparseGame: GameState = {
+		const sparseGame = refreshWorldProgress({
 			...game,
 			cityInventories: sparseInventories
-		};
+		});
 
 		const repository = new SaveRepositoryFromDriver(
 			new MemorySaveStoreDriver(),

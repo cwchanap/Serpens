@@ -204,15 +204,16 @@ function productionSupplierLifecycleGame(): GameState {
 			...base.finance,
 			currentDayActivity: { ...base.finance.currentDayActivity, day: closingDay }
 		},
-		stores: base.stores.map((store) => ({
-			...store,
-			products: store.products.map((product) => ({
+		stores: base.stores.map((store) => {
+			const products = store.products.map((product) => ({
 				...product,
 				stock: 0,
 				reorderThreshold: 1,
 				targetStock: 10
-			}))
-		})),
+			}));
+
+			return { ...store, products, stockHealth: calculateStockHealth(products) };
+		}),
 		decisions: []
 	};
 
@@ -2491,6 +2492,7 @@ test('cross-city stock alert deep-links to the origin city and tile', async ({ p
 		for (const product of campusStore.products) {
 			product.stock = 0;
 		}
+		campusStore.stockHealth = 0;
 		window.localStorage.setItem('serpens.saves.v2', JSON.stringify(saveStore));
 	});
 	await page.reload();
