@@ -41,18 +41,29 @@ all-bad codec regressions still cover survivor ordering, warning emission, and p
 
 ## Required symbol audits
 
-Both exact audits were run against `src` at the beginning of this task. Each returned ripgrep exit
-status 1 with no output, which means no matches:
+Both exact audits were run against `src` at the beginning of this task. The forbidden-symbol audit
+returned ripgrep exit status 1 with no output, which means no matches:
 
 ```text
 rtk rg -n "MIGRATABLE_SCHEMA_VERSIONS|migrateV[0-9]|LegacyV|allocateLegacyWarehouseMaterials|recalculateCityInventoryPressure|synchronizeCityInventoryCapacity|synchronizeAllCityInventoryCapacities|normalizeCityInventoryDerivedState|RETAIL_SUPPLY_MISSING_CONFIGURATION_VALUE|configuration-unavailable" src
+```
 
+This confirms no forbidden migration, legacy allocation, pressure synchronization, or missing-
+configuration recovery symbols remain in production source.
+
+The narrow persisted-reference audit below also returned ripgrep exit status 1 with no output:
+
+```text
 rtk rg -n "replenishmentOutcome\s*:|\.replenishmentOutcome" src
 ```
 
-This confirms no forbidden migration, legacy allocation, pressure synchronization, missing-
-configuration recovery, or persisted replenishment-outcome symbols remain in production source.
-The permitted `RetailReplenishmentOutcome` type and derived helper remain outside these matches.
+That pattern only matches property-access and typed-declaration forms, so it does not cover every
+persisted reference. A broader search for `replenishmentOutcome` across `src` found only test
+safeguards asserting the field is absent (`expect(...).not.toHaveProperty('replenishmentOutcome')`
+in `retailSupply.spec.ts`, `simulateDay.spec.ts`, and `saveCodec.spec.ts`). Those test matches are
+classified separately from production persisted references; no production source persists or reads
+the field. The permitted `RetailReplenishmentOutcome` type and derived helper remain outside these
+matches.
 
 ## Verification
 

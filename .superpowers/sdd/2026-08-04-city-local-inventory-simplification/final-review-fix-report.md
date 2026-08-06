@@ -129,7 +129,7 @@ production normalizer, inventory behavior, or Task 5 logic changed in this follo
 | `rtk git diff --check` | Passed. |
 
 The first sandboxed full-unit attempt passed 94 files and 2,532 tests but exited solely because
-Vitest could not bind its loopback test server (`listen EPERM ::1:63315`). The required rerun
+Vitest could not bind its loopback test server (`listen EPERM ::1:63315`). The rerun
 outside that sandbox produced the clean full-suite result above.
 
 ## Documentation hygiene follow-up
