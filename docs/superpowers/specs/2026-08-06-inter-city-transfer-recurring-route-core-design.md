@@ -9,44 +9,54 @@
 
 HPA-294 adds one deterministic inter-city logistics core on top of the simplified city-local inventory model.
 
-Manual transfers and recurring routes use the same dispatch and arrival lifecycle. Mutable state contains only transfer orders, route definitions, and monotonic identity counters. In-transit totals, history, utilization, unmet demand, delivered units, costs, and alerts are derived from transfer orders, route definitions, and immutable daily report evidence.
+Manual transfers and recurring routes use the same transfer-order lifecycle. Mutable logistics state contains only transfer orders, recurring-route definitions, and monotonic identity counters. In-transit totals, history, utilization, unmet demand, delivered units, costs, and normal-operation alert evidence are derived from orders, routes, and immutable daily reports.
 
-The design prioritizes:
+Priorities are:
 
-1. One authoritative state path for all inter-city material movement.
-2. Deterministic daily behavior and accounting.
-3. Small, explicit domain APIs that HPA-574, HPA-296, and HPA-297 can consume.
-4. KISS and YAGNI over generic scheduling, recovery, or simulation infrastructure.
+1. One authoritative state path for inter-city material movement.
+2. Deterministic daily timing and accounting.
+3. Small domain APIs that HPA-574, HPA-296, and HPA-297 can consume.
+4. KISS and YAGNI over generic scheduling, recovery, retention, or simulation infrastructure.
 
-There is no compatibility path from schema 14, no route reliability model, no separate in-transit ledger, no cached route metrics, and no UI work.
+There is no compatibility path from schema 14, no reliability model, no second transit ledger, no cached route metrics, and no player-facing UI work.
+
+## Scope boundary
+
+HPA-294 moves material **between opened, materialized industry-city inventories**.
+
+It does not replace weekly retail replenishment with transfer orders. `applyWeeklyReplenishment` continues to debit the configured industry-city inventory immediately and import any shortage. Converting industry-to-retail replenishment into timed transit is deferred until a separate ticket explicitly owns that gameplay change.
+
+This boundary resolves the older HPA-292 narrative that mentioned HPA-294 replacing immediate retail debit. The first logistics slice establishes industry-to-industry routes only.
 
 ## Current architecture fit
 
-The merged HPA-554 state gives HPA-294 stable boundaries:
+The merged HPA-554 state provides stable boundaries:
 
 - `CityInventory` stores only `cityId` and material quantities.
 - `getCityInventory` validates opened, materialized industry cities.
 - `getCityInventoryStats` derives shared warehouse capacity, used units, overflow, and overflow cost.
 - production closes before weekly retail replenishment;
-- current-schema save validation is strict and historical reports are non-authoritative;
-- `simulateDay` owns the explicit daily order and cash reconciliation.
+- current-schema persistence is strict;
+- historical reports are non-authoritative evidence;
+- `simulateDay` owns daily ordering and cash reconciliation.
 
-HPA-294 extends those boundaries rather than creating a second inventory or simulation model.
+HPA-294 extends these contracts rather than creating another inventory model.
 
-## Chosen structure
+## Module structure
 
 Use two focused modules:
 
-- `src/lib/game/interCityLogistics.ts` — identity, validation, commands, manual quotes, dispatch, arrivals, route scheduling, and reusable ordering/quantity helpers.
-- `src/lib/game/logisticsReadModels.ts` — in-transit/history selectors, route operational summaries, totals, and actionable normal-operation alerts.
+- `src/lib/game/interCityLogistics.ts` — identity, validation, quotes, commands, transfer creation, arrivals, route cadence, and reusable ordering/quantity helpers.
+- `src/lib/game/logisticsReadModels.ts` — transit/history selectors, route operational summaries, totals, and pure normal-operation alert evidence.
 
-Persisted and report wire types remain in `src/lib/game/types.ts`, matching the existing repository convention.
+Persisted and report wire types remain in `src/lib/game/types.ts`, matching existing repository conventions.
 
 Rejected alternatives:
 
-- **Separate manual and scheduled shipment systems:** duplicates validation, inventory mutation, cost accounting, persistence, and future event integration.
-- **Generic scheduler or workflow queue:** HPA-294 needs one integer-day cadence and deterministic route ordering only.
-- **One large cross-feature logistics service:** would mix authoritative transitions, presentation metrics, alerts, planner rules, and future disruption semantics.
+- separate manual and recurring shipment systems;
+- a generic scheduler, queue, or workflow engine;
+- a route-policy or demand DSL;
+- one cross-feature service mixing domain transitions, UI alerts, planner rules, and future disruptions.
 
 ## Authoritative state
 
@@ -61,14 +71,14 @@ export interface LogisticsState {
 }
 ```
 
-The counters are identity metadata, not a second ledger. They follow the existing finance/event pattern and prevent route-ID reuse after a route is removed.
+The counters are identity metadata, not accounting state. They follow the existing finance/event pattern and prevent ID reuse after route removal.
 
 IDs are deterministic:
 
 - `transfer-${nextTransferSequence}`
 - `route-${nextRouteSequence}`
 
-A successful creation increments the corresponding counter. Rejected commands and zero-quantity scheduled attempts do not consume a sequence.
+Successful creation increments the matching sequence. Rejected commands and zero-quantity scheduled attempts consume no sequence.
 
 ### Transfer orders
 
@@ -97,19 +107,17 @@ export interface TransferOrder {
 
 Rules:
 
-- An order is appended only when a positive quantity is dispatched.
-- `createdOnDay` and `dispatchedOnDay` are equal in this first slice because there is no queued/pending order state.
+- Append an order only for a positive dispatch.
+- `createdOnDay === dispatchedOnDay` in this first slice; there is no pending state.
 - Manual orders have `requestedQuantity === dispatchedQuantity`.
-- Scheduled orders preserve destination need in `requestedQuantity` and the actual capped amount in `dispatchedQuantity`.
-- Identity, source, endpoints, material, quantities, days, and cost never change after dispatch.
+- Scheduled orders retain destination need in `requestedQuantity` and actual shipment size in `dispatchedQuantity`.
+- ID, source, endpoints, material, quantities, days, and cost are immutable after dispatch.
 - Arrival changes only `status` from `in-transit` to `delivered`.
-- Removing or editing a source route cannot rewrite an order.
+- Route edit or removal cannot rewrite an order.
 
 ### Recurring routes
 
 ```ts
-export type RecurringRouteState = 'active' | 'paused';
-
 export interface RecurringRoute {
   id: string;
   originCityId: WorldCityId;
@@ -120,34 +128,38 @@ export interface RecurringRoute {
   leadTimeDays: number;
   transportCostPerUnit: number;
   priority: number;
-  state: RecurringRouteState;
+  state: 'active' | 'paused';
   nextDispatchOnDay: number;
 }
 ```
 
 Validation requires:
 
-- distinct opened, materialized industry cities with valid city inventories;
+- distinct opened, materialized industry cities with inventories;
 - a catalog `MaterialId`;
 - positive safe integers for capacity, frequency, lead time, and per-unit cost;
 - a nonnegative safe integer priority.
 
-All industry-city inventories may hold every existing material. HPA-294 does not invent a city/material compatibility matrix from resource specialties.
+Every industry-city inventory may hold every current material. Resource specialties do not become a material-compatibility matrix.
 
-Lower numeric priority dispatches first. Equal priorities use plain stable route-ID ordering.
+Lower numeric priority dispatches first. Equal priority uses the numeric sequence embedded in `route-N`, so `route-2` precedes `route-10`.
 
-## Transport terms
+## Transport quote
 
-Manual transfer forms under HPA-574 provide only origin, destination, material, and quantity, so HPA-294 owns a deterministic quote helper.
+Manual transfer UI under HPA-574 supplies origin, destination, material, and quantity. HPA-294 owns a deterministic quote helper.
 
-Use straight-line world-map distance only; this is not pathfinding:
+Use straight-line world coordinates only; this is not pathfinding:
 
 ```ts
-const INTER_CITY_DISTANCE_PER_BAND = 25;
+export const INTER_CITY_DISTANCE_PER_BAND = 25;
 
-distanceBand = Math.max(
+const distance = Math.hypot(
+  destination.worldX - origin.worldX,
+  destination.worldY - origin.worldY
+);
+const distanceBand = Math.max(
   1,
-  Math.ceil(Math.hypot(destination.worldX - origin.worldX, destination.worldY - origin.worldY) / 25)
+  Math.ceil(distance / INTER_CITY_DISTANCE_PER_BAND)
 );
 
 leadTimeDays = distanceBand;
@@ -155,9 +167,9 @@ transportCostPerUnit = distanceBand;
 transportCost = quantity * transportCostPerUnit;
 ```
 
-The constants are exported for focused balance tests. Already-dispatched orders persist their concrete arrival day and total cost, so later tuning does not rewrite history.
+Dispatched orders persist concrete arrival day and total cost, so future tuning cannot rewrite history.
 
-Recurring routes persist explicit positive `leadTimeDays` and `transportCostPerUnit` values. HPA-574 may seed route forms from the same quote helper, but the domain command accepts the values supplied by the route form.
+Recurring routes persist explicit positive `leadTimeDays` and `transportCostPerUnit`. HPA-574 may seed forms from the quote helper, but route commands accept the supplied values.
 
 ## Command contracts
 
@@ -183,25 +195,21 @@ export type ManualTransferFailure =
 export type ManualTransferResult =
   | { ok: true; game: GameState; order: TransferOrder }
   | { ok: false; reason: ManualTransferFailure };
-
-export function dispatchManualTransfer(
-  game: GameState,
-  input: ManualTransferInput
-): ManualTransferResult;
 ```
 
-The command validates the complete request before mutation. It never partially dispatches. On success it atomically:
+The command validates the complete request before mutation and never dispatches partially.
 
-1. removes the requested material from the origin inventory;
-2. subtracts the quoted total cost from cash;
-3. appends one in-transit order;
-4. advances `nextTransferSequence`.
+On success it atomically:
 
-A rejection returns a typed reason and preserves object state, collections, counters, inventory, and cash.
+1. creates the dispatched transfer through the shared internal path;
+2. subtracts the quoted total cost from cash exactly once;
+3. returns the updated game and order.
+
+Rejection preserves inventories, cash, collections, and identity counters.
 
 ### Route lifecycle
 
-Expose focused commands rather than one generic patch dispatcher:
+Expose focused commands:
 
 ```ts
 createRecurringRoute(game, input)
@@ -212,40 +220,38 @@ reprioritizeRecurringRoute(game, routeId, priority)
 removeRecurringRoute(game, routeId)
 ```
 
-Creation sets:
+Creation sets `state: 'active'` and `nextDispatchOnDay: game.day`.
 
-- `state: 'active'`;
-- `nextDispatchOnDay: game.day`.
+Update may change endpoints, material, capacity, frequency, lead time, and per-unit cost after validating the complete candidate. It preserves ID, state, priority, and next scheduled day. Reprioritization remains separate so contention changes are explicit.
 
-Update may change endpoints, material, capacity, frequency, lead time, and per-unit cost after validating the full candidate. It preserves ID, state, priority, and next scheduled day. Reprioritization is separate so list ordering changes are explicit.
+Pause preserves `nextDispatchOnDay`. Resume keeps a future day or moves an overdue day to `game.day`. Paused time is not replayed as catch-up dispatches.
 
-Pause preserves `nextDispatchOnDay`. Resume keeps a future scheduled day, or moves an overdue day to `game.day`. Paused time is never replayed as multiple catch-up dispatches.
+Removal deletes only the route definition. Existing orders and historical report evidence remain.
 
-Removal deletes only the route definition. Existing transfer orders and historical report evidence remain.
+## Shared transfer-creation path
 
-Route command failures are typed and include `route-not-found` plus the same endpoint/material/numeric validation reasons where applicable.
+Manual and scheduled movement call one internal transfer-creation primitive.
 
-## Shared dispatch path
+The primitive receives validated source, endpoints, material, requested/dispatched quantities, dispatch day, lead time, and per-unit cost. It is the only production path that:
 
-Both manual and scheduled movement call one internal dispatch primitive.
+- removes origin stock;
+- creates and appends the immutable transfer order;
+- increments `nextTransferSequence`;
+- returns the concrete `transportCost`.
 
-The primitive receives already-validated terms:
+It **does not mutate cash**.
 
-- source;
-- requested quantity;
-- dispatched quantity;
-- dispatch day;
-- lead time;
-- per-unit cost;
-- whether insufficient cash must reject.
+Cash ownership is intentionally split by transaction boundary:
 
-It performs the only origin-stock removal, cost subtraction, order creation, and transfer-sequence increment in production code.
+- `dispatchManualTransfer` checks affordability and applies the returned cost immediately once.
+- `processRecurringRouteDispatches` records orders and returns `scheduledTransportCost` without changing cash.
+- `simulateDay` is the only writer that applies scheduled transport cost to daily cash and reports.
 
-Manual dispatch requires full stock and affordable cash. Scheduled dispatch passes its already-capped quantity and does not add cash as a fourth quantity cap. Like production operating costs, an automated route may push cash negative. This preserves the ticket’s exact scheduled quantity rule and leaves cash planning to existing finance alerts and HPA-297.
+This preserves one order lifecycle without two competing scheduled-cash writers.
 
 ## Destination need
 
-HPA-294 has no per-material destination target or forecast policy. The first-slice recurring-route need is therefore warehouse receiving capacity, not speculative retail or production demand.
+HPA-294 has no per-material destination target or forecast policy. Recurring-route need is warehouse receiving capacity, not speculative retail or production demand.
 
 ```ts
 export function getDestinationTransferNeed(
@@ -259,18 +265,18 @@ It returns:
 ```text
 max(0, destination warehouse capacity
        - current used units
-       - all in-transit units already reserved for that destination)
+       - all in-transit units reserved for that destination)
 ```
 
-Reservations include every material because warehouse capacity is shared across materials.
+Reservations include every material because warehouse capacity is shared.
 
 Consequences:
 
-- recurring automation does not knowingly dispatch beyond currently available destination capacity;
+- recurring automation does not knowingly overfill current receiving capacity;
 - manual transfers may intentionally overflow;
-- arrivals may still overflow because local production, warehouse removal, or other state changes can occur before arrival;
-- competing routes consume destination need sequentially in priority/ID order;
-- HPA-297 can reuse this pure helper for the live-rule baseline without introducing planner demand policy into HPA-294.
+- local production or consumption before arrival can still change final overflow;
+- competing routes consume need sequentially in priority/numeric-ID order;
+- HPA-297 can reuse the pure quantity/order helpers without importing planner demand into live logistics.
 
 ## Scheduled route attempt
 
@@ -278,47 +284,67 @@ For each active route due on the closing day:
 
 ```text
 destinationNeed = getDestinationTransferNeed(...)
-availableOriginStock = current origin quantity
-dispatchedQuantity = min(destinationNeed, capacity, availableOriginStock)
+availableOriginStock = current origin material quantity
+dispatchedQuantity = min(destinationNeed, route capacity, availableOriginStock)
 ```
 
-If the quantity is positive, dispatch through the shared primitive.
+Positive quantity uses the shared transfer-creation path.
 
-If the quantity is zero, append no transfer order and consume no transfer sequence. The attempt still produces immutable daily report evidence.
+Zero quantity appends no transfer order and consumes no transfer sequence, but still records immutable daily attempt evidence.
 
-After one attempt, successful or zero-quantity:
+After one positive or zero attempt:
 
 ```ts
 nextDispatchOnDay = closingDay + frequencyDays;
 ```
 
-The scheduler processes a due route at most once per simulated day. It does not replay missed intervals.
+A due route attempts at most once per simulated day. Missed intervals are not replayed.
 
-## Daily simulation order
+Scheduled cost is not an affordability cap. Like other daily operating costs, it may make cash negative when `simulateDay` settles the day.
 
-HPA-294 makes the order explicit in `simulateDay`:
+## Daily simulation order and cash ownership
+
+`simulateDay` uses this explicit order:
 
 1. Validate current ownership invariants.
-2. Deliver in-transit orders whose `arrivalOnDay === closingDay`, sorted by transfer ID.
-3. Run industry production and production-close inventory/overflow accounting.
+2. Deliver orders with `arrivalOnDay === closingDay`, sorted by numeric transfer sequence.
+3. Run industry production and production-close overflow accounting.
 4. Run retail sales.
 5. Run weekly retail replenishment.
-6. Build the normal post-operation game state.
-7. Attempt active recurring routes with `nextDispatchOnDay <= closingDay`, sorted by priority then route ID.
-8. Include scheduled transport cost in daily operating cost and cash flow.
-9. Service finance, write the daily report, increment the day, and continue existing event/world transitions.
+6. Build the post-local-operation game state and base operating cash flow.
+7. Attempt due active routes, sorted by priority then numeric route sequence. The scheduler changes inventory/orders/routes but not cash.
+8. Sum `scheduledTransportCost` from attempt evidence.
+9. Calculate final `operatingCosts`, `operatingCashFlow`, and game cash exactly once in `simulateDay`.
+10. Service finance, write the daily report, increment the day, and continue existing event/world transitions.
 
-Arrivals precede production so delivered material is available on its documented day. Scheduled exports follow local production and retail replenishment so normal city-local operations receive first access to same-day stock.
+The required invariant is:
 
-A day may contain arrivals and new dispatches. Arrival ordering is stable by transfer ID; dispatch ordering is stable by priority and route ID. Lead time is at least one day, so a newly dispatched order never re-enters the arrival phase on the same tick.
+```ts
+finalOperatingCashFlow = baseOperatingCashFlow - scheduledTransportCost;
+preFinanceCash = startingCash + finalOperatingCashFlow;
+```
+
+`simulateDay` writes `preFinanceCash` once. The scheduler must not subtract transport cost, and no later formula may subtract it again.
+
+Tests must assert:
+
+```ts
+report.logistics.scheduledTransportCost === sum(attempt.transportCost)
+report.operatingCosts === baseOperatingCosts + scheduledTransportCost
+report.operatingCashFlow === baseOperatingCashFlow - scheduledTransportCost
+preFinanceCash === startingCash + report.operatingCashFlow
+cashAfter === cashBefore + netCashChange
+```
+
+Manual command costs happen outside the tick and are never inserted into a later daily report.
+
+Arrivals precede production so day-N delivery is usable on day N. Scheduled exports follow production and retail replenishment so local operations receive first access to same-day stock.
 
 ## Arrival and overflow
 
-Arrival uses `addCityInventoryMaterial` without a capacity clamp, then marks the order delivered.
+Arrival uses `addCityInventoryMaterial` without a capacity clamp and changes the order status to delivered.
 
-No logistics-specific overflow ledger or charge is added. The existing production-close `getCityInventoryStats` summary remains the single overflow calculation and charge path. An arrival can therefore create overflow, and same-day production can consume material before the production-close overflow snapshot.
-
-This preserves current overflow semantics rather than charging a second arrival fee.
+There is no logistics overflow ledger or arrival fee. Existing production-close `getCityInventoryStats` remains the only overflow calculation and charge path. An arrival may create overflow, while same-day production may consume delivered material before that snapshot.
 
 ## Daily logistics report evidence
 
@@ -356,59 +382,84 @@ export interface DailyLogisticsReport {
 }
 ```
 
-Report rows are facts captured during the daily transition. They are not mutable route state and are not used to reconstruct inventories.
+Report rows are immutable facts, not mutable route state and not a source for rebuilding inventory.
 
-For an attempt:
+For every attempt:
 
 - `unusedCapacity = capacity - dispatchedQuantity`;
 - `unmetDemand = destinationNeed - dispatchedQuantity`;
-- `transportCost = 0` and `transferOrderId = null` when nothing dispatched.
-
-Manual transfer costs are immediate player-command cash changes, like other purchases between daily reports. They remain fully explainable through transfer orders and aggregate cost selectors; they are not retroactively inserted into a later daily operating report.
-
-Scheduled route cost is part of that day’s `operatingCosts`, `operatingCashFlow`, and `netCashChange`, and must reconcile with `DailyLogisticsReport.scheduledTransportCost`.
+- zero dispatch uses `transportCost: 0` and `transferOrderId: null`.
 
 ## Read models
 
-`logisticsReadModels.ts` derives normal-operation views without caches.
+`logisticsReadModels.ts` derives views without caches.
 
 ### In-transit inventory
 
-Group in-transit orders by destination city and material. Return quantity, order IDs, and earliest arrival day. Sort by world-city catalog order, material ID, then order ID.
+Group in-transit orders by destination city and material. Return quantity, order IDs, and earliest arrival day. Sort by world-city catalog order, material ID, then numeric transfer sequence.
 
 ### Recent transfers
 
-Return transfer orders sorted by dispatch day descending and transfer ID descending, with a caller-supplied limit defaulting to 20.
+Sort by dispatch day descending and numeric transfer sequence descending. Default limit: 20.
 
 ### Route operations
 
-For each current route, expose:
+For each current route expose:
 
 - route definition;
-- in-transit quantity sourced from the route;
+- route-sourced in-transit quantity;
 - latest dispatch attempt;
 - latest utilization ratio;
 - unused capacity;
 - unmet demand;
-- all-time delivered units;
-- all-time transport cost.
+- delivered units;
+- transport cost.
 
-Current route ordering is priority then route ID. Removed routes remain visible only through transfer history and historical reports.
+Sort current routes by priority then numeric route sequence. Removed routes remain visible through order history and historical reports only.
 
-### Aggregate totals
+### Aggregate totals and retention decision
 
-Derive delivered units and transport cost from transfer orders. Do not persist totals.
+Derive exact delivered units and transport cost from transfer orders. Do not persist duplicate counters.
 
-## Normal-operation alerts
+Transfer orders are intentionally unbounded in this pre-release slice. This is a deliberate KISS choice because:
 
-Extend the existing alert contract with route identity but no UI behavior:
+- current reports are already unbounded and materially larger;
+- expected route/order volume is small;
+- adding counters plus a retained window creates duplicate accounting state;
+- pruning now would weaken the authoritative-history contract before save growth is measured.
 
-- `route-origin-stock` — the latest due attempt had positive destination need and origin stock below `min(destinationNeed, capacity)`.
-- `route-capacity-shortfall` — the latest three due attempts all had `destinationNeed > capacity` and enough origin stock to fill capacity.
+HPA-294 does not promise transparent future compaction. Any retention change requires a separate measured design/schema change that explicitly redefines historical selectors and totals.
 
-Three attempts is the only persistence threshold. Export it as a constant for tests.
+## Normal-operation alert evidence
 
-Alerts are derived from current routes plus daily attempt evidence, sorted by route priority/ID. They contain `routeId` and relevant city IDs. HPA-574 owns navigation and presentation. HPA-294 does not add planner recommendations, auto-resizing, or event attribution.
+Expose a pure logistics alert collector from `logisticsReadModels.ts`:
+
+```ts
+export type LogisticsAlert =
+  | {
+      kind: 'route-origin-stock';
+      routeId: string;
+      originCityId: WorldCityId;
+      destinationCityId: WorldCityId;
+    }
+  | {
+      kind: 'route-capacity-shortfall';
+      routeId: string;
+      originCityId: WorldCityId;
+      destinationCityId: WorldCityId;
+    };
+
+export function collectLogisticsAlerts(game: GameState): LogisticsAlert[];
+```
+
+Rules:
+
+- origin-stock: latest due attempt had positive destination need and origin stock below `min(destinationNeed, capacity)`;
+- capacity-shortfall: latest three due attempts all had `destinationNeed > capacity` with enough origin stock to fill capacity.
+
+Export the threshold constant for tests. Sort alerts by current route priority then numeric route sequence.
+
+HPA-294 **does not add these kinds to `collectGameAlerts`** and does not change localization. HPA-574 maps the pure evidence into live `GameAlert`, copy, navigation, and presentation together, preventing blank HUD alerts.
 
 ## Persistence and validation
 
@@ -417,28 +468,30 @@ Set `SAVE_SCHEMA_VERSION = 15`. Schema 14 is unsupported; add no migration.
 Current-state validation requires:
 
 - a plain structured-cloneable `logistics` object;
-- safe positive next sequences;
-- unique, canonical `transfer-N` and `route-N` IDs below their next sequence;
+- positive safe next sequences;
+- unique canonical `transfer-N` and `route-N` IDs below their next sequence;
 - valid transfer source payloads;
-- valid current logistics endpoints and material IDs;
+- valid distinct industry endpoints and material IDs;
 - positive safe quantities with `dispatchedQuantity <= requestedQuantity`;
-- manual equality between requested and dispatched quantity;
+- manual equality between requested and dispatched quantities;
 - `createdOnDay <= dispatchedOnDay < arrivalOnDay`;
 - nonnegative safe total cost;
-- status/day coherence: in-transit arrival is on or after `game.day`, delivered arrival is before `game.day`;
+- in-transit arrival on or after `game.day`;
+- delivered arrival before `game.day`;
 - unique valid current route definitions;
-- active routes scheduled on or after `game.day`; paused routes may retain an overdue day;
-- route-source orders may reference removed routes.
+- active routes scheduled on or after `game.day`;
+- paused routes may retain an overdue day;
+- route-sourced orders may reference removed routes.
 
-Normalize transfer orders by numeric transfer sequence and routes by numeric route sequence. Runtime scheduling still sorts current routes by priority/ID.
+Normalize stored orders/routes by numeric sequence. Runtime scheduling uses priority then numeric route sequence.
 
-Historical `DailyLogisticsReport` rows are structurally validated as part of their parent daily report. Do not replay them against current routes, transfer orders, inventories, or cash. A removed route and an edited route must not invalidate historical evidence.
+Historical `DailyLogisticsReport` rows receive structural validation only. Do not replay them against current routes, orders, inventories, or cash. Removed or edited routes cannot invalidate historical evidence.
 
 ## Scenario boundary
 
-Do not add scenario logistics authoring fields in HPA-294. Existing scenarios initialize empty logistics state through `createNewGame` and may exercise logistics in tests by calling domain commands after setup.
+Do not add logistics authoring fields to scenarios in HPA-294. Existing scenarios initialize empty logistics state through `createNewGame`. Tests may call domain commands after setup.
 
-Add scenario schema only when a real authored scenario requires seeded transfers or routes.
+Add scenario logistics schema only when an actual authored scenario requires seeded orders or routes.
 
 ## Main implementation files
 
@@ -449,7 +502,6 @@ Core:
 - `src/lib/game/interCityLogistics.ts` (new)
 - `src/lib/game/logisticsReadModels.ts` (new)
 - `src/lib/game/simulateDay.ts`
-- `src/lib/game/alerts.ts`
 
 Persistence:
 
@@ -462,58 +514,53 @@ Focused tests:
 - `src/lib/game/logisticsReadModels.spec.ts` (new)
 - `src/lib/game/interCityLogistics.integration.spec.ts` (new)
 - `src/lib/game/simulateDay.spec.ts`
-- `src/lib/game/alerts.spec.ts`
 - `src/lib/persistence/saveCodec.spec.ts`
 - fixtures that construct `GameState` or `DailyReport` directly
 
-No Svelte, Phaser, route-controller, localization, or Playwright file belongs in this implementation.
+No logistics UI, Phaser/map, route-controller, localization, or Playwright behavior belongs in this implementation. Strict schema-fixture edits are allowed where schema 15 requires them.
 
 ## Verification matrix
 
-Focused domain tests cover:
+Focused tests cover:
 
-- manual quote, dispatch, exact stock removal, cost, and arrival day;
+- manual quote, dispatch, stock removal, cost, and arrival day;
 - invalid endpoints/material/quantity, insufficient stock, and insufficient cash with no mutation;
-- arrival on the documented day and existing overflow behavior;
-- route cadence, capacity, destination need, inbound reservations, and origin constraint;
-- deterministic contention by priority and ID;
-- pause, resume, edit, reprioritize, and removal affecting only future attempts;
+- arrival timing and existing overflow semantics;
+- cadence, destination need, inbound reservations, capacity, and origin constraints;
+- deterministic contention by priority and numeric ID;
+- pause/resume/edit/reprioritize/removal affecting future attempts only;
 - route deletion while an order is in transit;
-- zero-quantity attempt evidence without an empty order or sequence gap;
-- inventory and scheduled cash reconciliation;
-- schema-15 round-trip and strict stale-schema rejection;
-- in-transit, history, utilization, unused capacity, unmet demand, delivered-unit, cost, and alert selectors.
+- zero-quantity evidence without an empty order or sequence gap;
+- single-owner scheduled cash reconciliation;
+- schema-15 round-trip and stale-schema rejection;
+- transit, recent history, route operations, exact totals, retention contract, and pure logistics alerts.
 
-One headless multi-day integration test uses the real `simulateDay` flow to:
-
-1. dispatch a manual transfer;
-2. deliver it on its quoted day;
-3. create a recurring route;
-4. run multiple route attempts;
-5. observe a scheduled arrival;
-6. reconcile origin, transit, destination, transfer costs, reports, and route cadence.
+One headless multi-day integration test uses the real `simulateDay` flow for a manual transfer plus recurring route through dispatch, arrival, route edit/removal, inventory reconciliation, reports, and cash.
 
 ## Non-goals
 
-- mutable in-transit totals or transfer-history storage;
+- timed industry-to-retail replenishment transit;
+- mutable transit totals or a second history store;
+- transfer retention windows or lifetime counters;
 - pending, rejected, recalled, rerouted, delayed, failed, or cancelled orders;
-- random reliability or route suspension from events;
-- route target DSLs, queue abstractions, generic schedulers, or workflow engines;
-- city closure, customs, taxation, vehicles, pathfinding, or map animation;
-- material-demand forecasting or route recommendations;
-- player-facing forms, panels, inspectors, navigation, or world-map visuals;
+- random reliability or event disruption semantics;
+- route target DSLs, queues, generic schedulers, or workflow engines;
+- city closure, customs, taxation, vehicles, pathfinding, or animation;
+- planner forecasts, recommendations, or automatic route changes;
+- live alert copy/navigation or any player-facing UI;
 - pre-release save migration or stale-reference repair.
 
 ## Acceptance criteria
 
-- Manual and scheduled movement share one dispatch primitive.
-- Transfer orders are the only authoritative transit/history record.
-- Manual commands reject invalid, insufficient-stock, or unaffordable requests without mutation.
-- Arrivals become available before production on their documented day.
-- Recurring routes dispatch after local production/replenishment and respect destination capacity need, inbound reservations, route capacity, origin stock, frequency, priority, and stable IDs.
-- Route lifecycle commands cannot mutate existing transfer orders.
-- Existing overflow calculation remains the only overflow charge path.
-- Scheduled route costs reconcile through the daily report and cash flow; all logistics costs derive from orders.
+- Manual and scheduled movement share one transfer-creation path.
+- Manual commands atomically apply stock, order, sequence, and immediate cost or reject without mutation.
+- Scheduled transport cost is applied exactly once by `simulateDay` and reconciles with report evidence.
+- Transfer orders are the only transit/history record.
+- Arrivals are available before production on their documented day.
+- Routes respect destination capacity need, inbound reservations, capacity, stock, frequency, priority, and numeric stable ordering.
+- Route lifecycle commands cannot mutate dispatched orders.
+- Existing production-close overflow remains the only overflow charge.
 - Schema 15 round-trips strictly with no schema-14 migration.
-- Read models and alerts are derived, focused, and UI-agnostic.
-- Production code introduces no duplicate ledger, cached metrics, generic scheduler, reliability framework, repair path, or UI layer.
+- Read models and alert evidence are pure, exact, uncached, and UI-agnostic.
+- Weekly retail replenishment remains unchanged and outside this slice.
+- Production code introduces no duplicate ledger, cached metric, generic scheduler, reliability framework, repair path, blank live alert, planner rule, or UI layer.
