@@ -712,6 +712,45 @@ describe('buildScenarioGame', { timeout: 30_000 }, () => {
 		]);
 	});
 
+	it('rejects an industrial building starting city that is not opened', () => {
+		const definition = scenarioDefinition();
+		definition.start.rails = [];
+		definition.start.overrides.buildingInventories = [];
+		delete definition.start.overrides.cityInventoryMaterials;
+		delete definition.start.overrides.retailSupplyAssignments;
+		definition.start.overrides.storeCap = 1;
+		definition.start.overrides.world = {
+			revealedCityIds: ['harbor-city', 'industry-city', 'breadbasket-basin'],
+			openedCityIds: ['harbor-city', 'breadbasket-basin'],
+			activeRetailCityId: 'harbor-city',
+			activeIndustryCityId: 'breadbasket-basin'
+		};
+		definition.content.cityIds = ['harbor-city', 'industry-city', 'breadbasket-basin'];
+		definition.content.materialIds = [];
+		definition.content.buildingTypeIds = ['water-bottler', 'warehouse'];
+		definition.allowedCommands = ['advanceDay', 'buildIndustrialBuilding'];
+
+		expect(diagnosticCodes(buildScenarioGame(definition, definition.officialSeed))).toEqual([
+			{ path: 'start.overrides.world', code: 'setup-invariant-failed' }
+		]);
+	});
+
+	it('accepts a retail supply assignment with imports-only (null supply city)', () => {
+		const definition = scenarioDefinition();
+		definition.start.overrides.retailSupplyAssignments = [
+			{ retailCityId: 'harbor-city', supplyCityId: null },
+			{ retailCityId: 'campus-junction', supplyCityId: 'industry-city' }
+		];
+
+		const result = buildScenarioGame(definition, definition.officialSeed);
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		const harborAssignment = result.game.retailSupplyAssignments.find(
+			(assignment) => assignment.retailCityId === 'harbor-city'
+		);
+		expect(harborAssignment?.supplyCityId).toBeNull();
+	});
+
 	it('rejects building and city inventories beyond their own derived capacity', () => {
 		const buildingOverflow = scenarioDefinition();
 		buildingOverflow.start.overrides.buildingInventories = [
