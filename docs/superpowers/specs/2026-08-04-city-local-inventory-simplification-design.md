@@ -1,8 +1,8 @@
 # City-Local Inventory Simplification Design
 
-**Date:** 2026-08-04  
-**Status:** Proposed for HPA-554  
-**Prerequisite:** HPA-292 / PR #31 is merged  
+**Date:** 2026-08-04
+**Status:** Proposed for HPA-554
+**Prerequisite:** HPA-292 / PR #31 is merged
 **Delivery:** One deletion-focused implementation PR
 
 ## Summary

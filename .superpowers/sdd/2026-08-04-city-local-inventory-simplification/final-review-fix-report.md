@@ -131,3 +131,13 @@ production normalizer, inventory behavior, or Task 5 logic changed in this follo
 The first sandboxed full-unit attempt passed 94 files and 2,532 tests but exited solely because
 Vitest could not bind its loopback test server (`listen EPERM ::1:63315`). The required rerun
 outside that sandbox produced the clean full-suite result above.
+
+## Documentation hygiene follow-up
+
+Final re-review found only Markdown trailing whitespace in the HPA-554 design document: the
+intentional hard-break spaces on lines 3–5 (`Date`, `Status`, and `Prerequisite`). This follow-up
+removes those spaces only; it does not alter document text, plan semantics, source, or tests.
+
+`rtk proxy git diff --check main...HEAD` identified exactly those three lines before the cleanup.
+After the separate documentation commit, `rtk git diff --check main...HEAD` and
+`rtk git diff --check HEAD^..HEAD` both complete cleanly.
