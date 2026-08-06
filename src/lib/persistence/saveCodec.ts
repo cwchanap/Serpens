@@ -2587,6 +2587,7 @@ function decodeHistoricalReports(reports: unknown[]): GameState['reports'] {
 			validateSavedReport(report, `Saved game reports[${index}]`);
 			decoded.push(report as GameState['reports'][number]);
 		} catch (error) {
+			if (!(error instanceof SaveDataError)) throw error;
 			console.warn('Dropping malformed historical report', { index, error });
 		}
 	}
