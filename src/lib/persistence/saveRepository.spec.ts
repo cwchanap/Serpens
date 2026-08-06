@@ -1,8 +1,16 @@
 import { describe, expect, test, vi } from 'vitest';
 import { initializeCityInventory, initializeRetailSupplyAssignment } from '$lib/game/cityInventory';
+import {
+	computeStoreLocalDemand,
+	DEFAULT_RETAIL_CITY_HEIGHT,
+	DEFAULT_RETAIL_CITY_WIDTH,
+	generateCity,
+	isTileBuildable
+} from '$lib/game/city';
 import { calculateStockHealth, initializeStoreProducts } from '$lib/game/stock';
 import { createFoundingFinanceState } from '$lib/game/finance';
 import { createInitialEventRuntime } from '$lib/game/eventSelection';
+import { formatLocation } from '$lib/game/placement';
 import { simulateDay } from '$lib/game/simulateDay';
 import { setRetailSupplySource } from '$lib/game/retailSupply';
 import { createNewGame } from '$lib/game/state';
@@ -100,30 +108,29 @@ class NonSaveDataErrorDriver extends MemorySaveStoreDriver {
 }
 
 function createFixtureRetailCity(): GameState['cities'][number] {
-	return {
+	return generateCity({
 		id: 'harbor-city',
 		name: 'Harbor City',
-		width: 3,
-		height: 3,
-		tiles: Array.from({ length: 9 }, (_, index) => {
-			const x = index % 3;
-			const y = Math.floor(index / 3);
-			return {
-				id: `harbor-city-${x}-${y}`,
-				cityId: 'harbor-city',
-				x,
-				y,
-				neighborhood: 'downtown',
-				terrain: 'commercial',
-				feature: null,
-				demand: 72,
-				rent: 180,
-				footTraffic: 66,
-				customerFit: 70,
-				locked: false
-			};
-		})
-	};
+		width: DEFAULT_RETAIL_CITY_WIDTH,
+		height: DEFAULT_RETAIL_CITY_HEIGHT,
+		seed: 20260505
+	});
+}
+
+function findFixtureStoreTile(city: GameState['cities'][number]) {
+	const tile = city.tiles.find((candidate) => {
+		if (!isTileBuildable(candidate)) return false;
+		const footprint = city.tiles.filter(
+			(other) =>
+				other.x >= candidate.x &&
+				other.x < candidate.x + 2 &&
+				other.y >= candidate.y &&
+				other.y < candidate.y + 2
+		);
+		return footprint.length === 4 && footprint.every(isTileBuildable);
+	});
+	if (!tile) throw new Error(`Expected a buildable fixture tile in ${city.id}.`);
+	return tile;
 }
 
 function createFixtureIndustryCity(): GameState['industryCities'][number] {
@@ -176,6 +183,8 @@ function createCanonicalFixtureGame(game: GameState): GameState {
 }
 
 function createGame(overrides: Partial<GameState> = {}): GameState {
+	const city = createFixtureRetailCity();
+	const storeTile = findFixtureStoreTile(city);
 	const day = overrides.day ?? 3;
 	const {
 		cityInventories: overrideCityInventories,
@@ -203,7 +212,7 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 		},
 		world: createInitialWorldProgress(),
 		storeCap: STARTER_STORE_CAP,
-		cities: [createFixtureRetailCity()],
+		cities: [city],
 		activeCityId: 'harbor-city',
 		industryCities: [createFixtureIndustryCity()],
 		activeIndustryCityId: 'industry-city',
@@ -216,18 +225,18 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 				level: 1,
 				name: 'Founding Store',
 				archetypeId: 'boutique',
-				location: { neighborhoodId: 'downtown', x: 1, y: 1 },
+				location: formatLocation(storeTile),
 				cityId: 'harbor-city',
-				tileId: 'harbor-city-1-1',
-				mapX: 1,
-				mapY: 1,
+				tileId: storeTile.id,
+				mapX: storeTile.x,
+				mapY: storeTile.y,
 				daysOpen: 2,
 				reputation: 60,
 				stockHealth: calculateStockHealth(initializeStoreProducts('boutique')),
 				products: initializeStoreProducts('boutique'),
 				staffMorale: 65,
 				staffCapacity: 66,
-				localDemand: 72,
+				localDemand: computeStoreLocalDemand(storeTile),
 				competition: 40,
 				managerQuality: 58
 			}

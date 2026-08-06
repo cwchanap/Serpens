@@ -6,6 +6,11 @@ vi.mock('@tauri-apps/plugin-store', () => ({ load: tauriLoadMock }));
 
 import { simulateDay } from '$lib/game/simulateDay';
 import { initializeCityInventory, initializeRetailSupplyAssignment } from '$lib/game/cityInventory';
+import {
+	DEFAULT_RETAIL_CITY_HEIGHT,
+	DEFAULT_RETAIL_CITY_WIDTH,
+	generateCity
+} from '$lib/game/city';
 import { createFoundingFinanceState } from '$lib/game/finance';
 import { createInitialEventRuntime } from '$lib/game/eventSelection';
 import { createNewGame } from '$lib/game/state';
@@ -61,6 +66,16 @@ function createCanonicalFixtureGame(game: GameState): GameState {
 	return canonical;
 }
 
+function createFixtureRetailCity(): GameState['cities'][number] {
+	return generateCity({
+		id: 'harbor-city',
+		name: 'Harbor City',
+		width: DEFAULT_RETAIL_CITY_WIDTH,
+		height: DEFAULT_RETAIL_CITY_HEIGHT,
+		seed: 20260505
+	});
+}
+
 function createGame(overrides: Partial<GameState> = {}): GameState {
 	const day = overrides.day ?? 2;
 	const {
@@ -89,30 +104,7 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 		},
 		world: createInitialWorldProgress(),
 		storeCap: STARTER_STORE_CAP,
-		cities: [
-			{
-				id: 'harbor-city',
-				name: 'Harbor City',
-				width: 1,
-				height: 1,
-				tiles: [
-					{
-						id: 'harbor-city-0-0',
-						cityId: 'harbor-city',
-						x: 0,
-						y: 0,
-						neighborhood: 'downtown',
-						terrain: 'commercial',
-						feature: null,
-						demand: 50,
-						rent: 50,
-						footTraffic: 50,
-						customerFit: 50,
-						locked: false
-					}
-				]
-			}
-		],
+		cities: [createFixtureRetailCity()],
 		activeCityId: 'harbor-city',
 		industryCities: [
 			{
