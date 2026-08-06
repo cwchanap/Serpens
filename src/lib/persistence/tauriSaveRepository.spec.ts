@@ -10,7 +10,12 @@ import { createFoundingFinanceState } from '$lib/game/finance';
 import { createInitialEventRuntime } from '$lib/game/eventSelection';
 import { createNewGame } from '$lib/game/state';
 import type { GameState } from '$lib/game/types';
-import { STARTER_STORE_CAP, WORLD_CITY_CATALOG, createInitialWorldProgress } from '$lib/game/world';
+import {
+	STARTER_STORE_CAP,
+	WORLD_CITY_CATALOG,
+	createInitialWorldProgress,
+	refreshWorldProgress
+} from '$lib/game/world';
 import {
 	createTauriSaveRepository,
 	createTauriSaveRepositoryFromStore,
@@ -151,6 +156,10 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 	};
 }
 
+function createCurrentGame(overrides: Partial<GameState> = {}): GameState {
+	return refreshWorldProgress(createGame(overrides));
+}
+
 describe('Tauri save repository', () => {
 	test('persists save snapshot through the Tauri store key', async () => {
 		expect.assertions(5);
@@ -161,7 +170,7 @@ describe('Tauri save repository', () => {
 		);
 
 		await repository.saveAuto(createGame({ day: 6 }));
-		const slot = await repository.createManualSlot('Desktop Run', createGame({ day: 7 }));
+		const slot = await repository.createManualSlot('Desktop Run', createCurrentGame({ day: 7 }));
 		const summary = await repository.getSummary();
 
 		expect(store.saveCount).toBe(2);

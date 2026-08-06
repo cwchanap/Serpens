@@ -49,7 +49,6 @@ import {
 	createPlainSnapshot,
 	createSaveRecord,
 	createSaveSummary,
-	normalizeSandboxSavedGame,
 	parseSaveStoreSnapshot,
 	validateCurrentGameState,
 	validateSaveRecord,
@@ -361,7 +360,7 @@ function createCurrentMultiCityGame(): GameState {
 	game = openWorldCity(game, 'campus-junction');
 	game = openWorldCity(game, 'breadbasket-basin');
 
-	return {
+	return refreshWorldProgress({
 		...game,
 		cityInventories: game.cityInventories.map((inventory) =>
 			inventory.cityId === 'industry-city'
@@ -374,7 +373,7 @@ function createCurrentMultiCityGame(): GameState {
 						materials: { grain: 2 }
 					}
 		)
-	};
+	});
 }
 
 function createCurrentReport(game: GameState): DailyReport {
@@ -586,8 +585,13 @@ function expectHistoricalReportPreserved(decode: () => GameState): GameState {
 	}
 }
 
+function withCurrentReports(game: GameState, reports: DailyReport[]): GameState {
+	return refreshWorldProgress({ ...game, reports });
+}
+
 function decodeHistoricalReport(game: GameState, report: DailyReport): GameState {
-	return validateSaveRecord(createManualSaveRecord({ game: { ...game, reports: [report] } })).game;
+	return validateSaveRecord(createManualSaveRecord({ game: withCurrentReports(game, [report]) }))
+		.game;
 }
 
 function createCompleteEventGame(): GameState {
@@ -747,9 +751,10 @@ function createCompleteEventGame(): GameState {
 describe('saveCodec', () => {
 	test('round-trips a current v14 multi-city save with city-scoped inventory and replenishment evidence', () => {
 		expect.assertions(8);
-		const game = createCurrentMultiCityGame();
+		const baseGame = createCurrentMultiCityGame();
+		const game = withCurrentReports(baseGame, [createCurrentReport(baseGame)]);
 		const record = createManualSaveRecord({
-			game: { ...game, reports: [createCurrentReport(game)] }
+			game
 		});
 
 		const validated = validateSaveRecord(structuredClone(record));
@@ -811,8 +816,8 @@ describe('saveCodec', () => {
 	});
 
 	test('drops malformed historical reports independently and preserves the surviving order', () => {
-		const game = createGame();
 		const goodReport = createDailyReport({ day: 2 });
+		const game = withCurrentReports(createGame(), [goodReport]);
 		const malformedFirstReport = { ...goodReport, cashAfter: Number.NaN };
 		const malformedLastReport = {
 			...goodReport,
@@ -1019,9 +1024,11 @@ describe('saveCodec', () => {
 				]
 			};
 
-			const decode = () =>
-				validateSaveRecord(createManualSaveRecord({ game: { ...game, reports: [updatedReport] } }))
-					.game;
+			const savedGame =
+				expectedResult === 'preserve'
+					? withCurrentReports(game, [updatedReport])
+					: { ...game, reports: [updatedReport] };
+			const decode = () => validateSaveRecord(createManualSaveRecord({ game: savedGame })).game;
 			if (expectedResult === 'drop') {
 				expectHistoricalReportDropped(decode);
 			} else {
@@ -1057,12 +1064,7 @@ describe('saveCodec', () => {
 		};
 
 		expect(
-			expectHistoricalReportPreserved(
-				() =>
-					validateSaveRecord(
-						createManualSaveRecord({ game: { ...game, reports: [updatedReport] } })
-					).game
-			).reports[0]
+			expectHistoricalReportPreserved(() => decodeHistoricalReport(game, updatedReport)).reports[0]
 		).toEqual(updatedReport);
 	});
 
@@ -1104,12 +1106,8 @@ describe('saveCodec', () => {
 			};
 
 			expect(
-				expectHistoricalReportPreserved(
-					() =>
-						validateSaveRecord(
-							createManualSaveRecord({ game: { ...game, reports: [updatedReport] } })
-						).game
-				).reports[0]
+				expectHistoricalReportPreserved(() => decodeHistoricalReport(game, updatedReport))
+					.reports[0]
 			).toEqual(updatedReport);
 		}
 	);
@@ -1132,7 +1130,7 @@ describe('saveCodec', () => {
 		};
 
 		const validated = validateSaveRecord(
-			createManualSaveRecord({ game: { ...game, reports: [historicalReport] } })
+			createManualSaveRecord({ game: withCurrentReports(game, [historicalReport]) })
 		);
 
 		expect(validated.game.reports[0]!.productionReport.cityInventories).toEqual([starterSummary]);
@@ -1147,7 +1145,7 @@ describe('saveCodec', () => {
 		const report = createCurrentBreadbasketOnlyReport(game);
 
 		const validated = validateSaveRecord(
-			createManualSaveRecord({ game: { ...game, reports: [report] } })
+			createManualSaveRecord({ game: withCurrentReports(game, [report]) })
 		);
 
 		expect(validated.game.reports[0]!.productionReport.cityInventories).toEqual([
@@ -1172,12 +1170,7 @@ describe('saveCodec', () => {
 		};
 
 		expect(
-			expectHistoricalReportPreserved(
-				() =>
-					validateSaveRecord(
-						createManualSaveRecord({ game: { ...game, reports: [updatedReport] } })
-					).game
-			).reports[0]
+			expectHistoricalReportPreserved(() => decodeHistoricalReport(game, updatedReport)).reports[0]
 		).toEqual(updatedReport);
 	});
 
@@ -1197,12 +1190,7 @@ describe('saveCodec', () => {
 		};
 
 		expect(
-			expectHistoricalReportPreserved(
-				() =>
-					validateSaveRecord(
-						createManualSaveRecord({ game: { ...game, reports: [updatedReport] } })
-					).game
-			).reports[0]
+			expectHistoricalReportPreserved(() => decodeHistoricalReport(game, updatedReport)).reports[0]
 		).toEqual(updatedReport);
 	});
 
@@ -1232,12 +1220,12 @@ describe('saveCodec', () => {
 		);
 	});
 
-	test('sandbox normalization rejects residual global warehouse data on a current v14 game', () => {
+	test('current schema save records reject residual global warehouse data', () => {
 		const game = Object.assign(createCurrentMultiCityGame(), {
 			warehouse: { materials: {} }
 		});
 
-		expect(() => normalizeSandboxSavedGame(game)).toThrow(
+		expect(() => validateSaveRecord(createManualSaveRecord({ game }))).toThrow(
 			'Saved game must not contain residual global warehouse data'
 		);
 	});
@@ -1653,8 +1641,11 @@ describe('saveCodec', () => {
 		const game = createCurrentMultiCityGame();
 		const report = mutateReport(createCurrentReport(game)) as DailyReport;
 
-		const decode = () =>
-			validateSaveRecord(createManualSaveRecord({ game: { ...game, reports: [report] } })).game;
+		const savedGame =
+			expectedResult === 'preserve'
+				? withCurrentReports(game, [report])
+				: { ...game, reports: [report] };
+		const decode = () => validateSaveRecord(createManualSaveRecord({ game: savedGame })).game;
 		if (expectedResult === 'drop') {
 			expectHistoricalReportDropped(decode);
 		} else {
@@ -1668,7 +1659,7 @@ describe('saveCodec', () => {
 		const report = createCurrentReport(game);
 
 		const validated = validateSaveRecord(
-			createManualSaveRecord({ game: { ...game, reports: [report] } })
+			createManualSaveRecord({ game: withCurrentReports(game, [report]) })
 		);
 
 		expect(validated.game.reports[0]!.storeReports[0]!.productReports[0]).not.toHaveProperty(
@@ -1702,7 +1693,7 @@ describe('saveCodec', () => {
 		};
 
 		const validated = validateSaveRecord(
-			createManualSaveRecord({ game: { ...game, reports: [noAttemptReport] } })
+			createManualSaveRecord({ game: withCurrentReports(game, [noAttemptReport]) })
 		);
 
 		expect(SAVE_SCHEMA_VERSION).toBe(14);
@@ -1953,16 +1944,18 @@ describe('saveCodec', () => {
 
 	test('round-trips an outstanding loan whose scheduled payment is due today', () => {
 		expect.assertions(2);
-		const game = createGame();
+		const baseGame = createGame();
+		const game = refreshWorldProgress({
+			...baseGame,
+			day: 10,
+			finance: {
+				...baseGame.finance,
+				currentDayActivity: { ...baseGame.finance.currentDayActivity, day: 10 }
+			}
+		});
 		const record = createManualSaveRecord({
 			metadata: { day: 10 },
-			game: {
-				day: 10,
-				finance: {
-					...game.finance,
-					currentDayActivity: { ...game.finance.currentDayActivity, day: 10 }
-				}
-			}
+			game
 		});
 
 		const validated = validateSaveRecord(record);
@@ -2124,8 +2117,11 @@ describe('saveCodec', () => {
 		expect(
 			expectHistoricalReportPreserved(
 				() =>
-					validateSaveRecord(createManualSaveRecord({ game: { reports: [fractionalInterest] } }))
-						.game
+					validateSaveRecord(
+						createManualSaveRecord({
+							game: withCurrentReports(createGame(), [fractionalInterest])
+						})
+					).game
 			).reports[0]
 		).toEqual(fractionalInterest);
 	});
@@ -2495,8 +2491,11 @@ describe('saveCodec', () => {
 		'decodes a report day outside the current game timeline: %s',
 		(day, expectedResult) => {
 			const report = createDailyReport({ day });
-			const decode = () =>
-				validateSaveRecord(createManualSaveRecord({ game: { reports: [report] } })).game;
+			const game =
+				expectedResult === 'preserve'
+					? withCurrentReports(createGame(), [report])
+					: { ...createGame(), reports: [report] };
+			const decode = () => validateSaveRecord(createManualSaveRecord({ game })).game;
 			if (expectedResult === 'drop') {
 				expectHistoricalReportDropped(decode);
 			} else {
@@ -2542,7 +2541,8 @@ describe('saveCodec', () => {
 	});
 
 	test('round-trips a zero-dollar checkpoint while rejecting counters beyond processed installments', () => {
-		const game = createGame({
+		const game = refreshWorldProgress({
+			...createGame(),
 			day: 10,
 			finance: {
 				...createFoundingFinanceState(3, 1),
@@ -2921,13 +2921,15 @@ describe('saveCodec', () => {
 		}
 	);
 
-	test.each(['normalize-cash', 'snapshot-city-inventory'] as const)(
+	test.each(['record-cash', 'snapshot-city-inventory'] as const)(
 		'$case maps structured-cloneable scalar coercion data to SaveDataError',
 		(testCase) => {
 			const malformed = { valueOf: {}, toString: {} };
 			const validate = () => {
-				if (testCase === 'normalize-cash') {
-					return normalizeSandboxSavedGame({ ...createGame(), cash: malformed });
+				if (testCase === 'record-cash') {
+					return validateSaveRecord(
+						createManualSaveRecord({ game: { cash: malformed as unknown as number } })
+					);
 				}
 				const game = createGame({
 					cityInventories: [
@@ -3230,18 +3232,15 @@ describe('saveCodec', () => {
 		{ field: 'tileId', value: null, error: 'tileId must be a non-empty string' },
 		{ field: 'mapX', value: '1', error: 'mapX must be a finite number' },
 		{ field: 'mapY', value: Number.NaN, error: 'mapY must be a finite number' }
-	])(
-		'sandbox normalization leaves malformed store $field for strict validation',
-		({ field, value, error }) => {
-			const store = { ...createGame().stores[0]!, [field]: value };
-			const record = createManualSaveRecord({
-				game: { stores: [store as unknown as GameState['stores'][number]] }
-			});
+	])('current schema saves reject malformed store $field', ({ field, value, error }) => {
+		const store = { ...createGame().stores[0]!, [field]: value };
+		const record = createManualSaveRecord({
+			game: { stores: [store as unknown as GameState['stores'][number]] }
+		});
 
-			expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
-			expect(() => validateSaveRecord(record)).toThrow(error);
-		}
-	);
+		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+		expect(() => validateSaveRecord(record)).toThrow(error);
+	});
 
 	test.each([
 		{ field: 'activeCityId', openedId: 'harbor-city' },
@@ -3562,20 +3561,110 @@ describe('saveCodec', () => {
 		).toThrow('products[1] categoryId must be unlocked at level 4');
 	});
 
-	test('strict validation rejects stock health that is inconsistent with products', () => {
+	test('current schema save record rejects stale stock health rather than recalculating it', () => {
 		const store = createGame().stores[0]!;
 		const staleStore = { ...store, stockHealth: store.stockHealth + 1 };
+		const record = createManualSaveRecord({ game: { stores: [staleStore] } });
 
 		expect(() => validateCurrentGameState(createGame({ stores: [staleStore] }))).toThrow(
 			'stockHealth must match its products'
 		);
-		expect(
-			validateSaveRecord(createManualSaveRecord({ game: { stores: [staleStore] } })).game.stores[0]
-				?.stockHealth
-		).toBe(calculateStockHealth(staleStore.products));
+		expect(() => validateSaveRecord(record)).toThrow(
+			'Saved game stores[0] stockHealth must match its products'
+		);
 	});
 
-	test('sandbox normalization leaves non-finite stock health for strict validation', () => {
+	test.each([
+		{
+			name: 'store level',
+			createRecord: () => {
+				const { level: _level, ...withoutLevel } = createGame().stores[0]!;
+				void _level;
+				return createManualSaveRecord({
+					game: { stores: [withoutLevel as GameState['stores'][number]] }
+				});
+			},
+			message: 'Saved game stores[0] level must be a finite number'
+		},
+		{
+			name: 'industrial building level',
+			createRecord: () => {
+				const { level: _level, ...withoutLevel } = createIndustrialBuilding();
+				void _level;
+				return createManualSaveRecord({
+					game: {
+						industrialBuildings: [withoutLevel as GameState['industrialBuildings'][number]]
+					}
+				});
+			},
+			message: 'Saved game industrialBuildings[0] level must be a finite number'
+		},
+		{
+			name: 'staff level',
+			createRecord: () => {
+				const member: GameState['staff'][number] = {
+					id: 'staff-1',
+					name: 'Alex',
+					role: 'manager',
+					monthlySalary: 2_000,
+					skill: 60,
+					morale: 60,
+					assignedStoreId: 'store-1',
+					hiredOnDay: 1,
+					level: 1,
+					xp: 0
+				};
+				const { level: _level, ...withoutLevel } = member;
+				void _level;
+				return createManualSaveRecord({
+					game: { staff: [withoutLevel as GameState['staff'][number]] }
+				});
+			},
+			message: 'Saved game staff[0] level must be a finite number'
+		},
+		{
+			name: 'staff xp',
+			createRecord: () => {
+				const member: GameState['staff'][number] = {
+					id: 'staff-1',
+					name: 'Alex',
+					role: 'manager',
+					monthlySalary: 2_000,
+					skill: 60,
+					morale: 60,
+					assignedStoreId: 'store-1',
+					hiredOnDay: 1,
+					level: 1,
+					xp: 0
+				};
+				const { xp: _xp, ...withoutXp } = member;
+				void _xp;
+				return createManualSaveRecord({
+					game: { staff: [withoutXp as GameState['staff'][number]] }
+				});
+			},
+			message: 'Saved game staff[0] xp must be a finite number'
+		}
+	])(
+		'current schema save record rejects missing $name rather than reconstructing it',
+		({ createRecord, message }) => {
+			expect(() => validateSaveRecord(createRecord())).toThrow(message);
+		}
+	);
+
+	test('current schema save record rejects an over-capacity building buffer rather than clamping it', () => {
+		const mill = createIndustrialBuilding({
+			typeId: 'flour-mill',
+			inventory: { grain: 80, flour: 80 }
+		});
+		const record = createManualSaveRecord({ game: { industrialBuildings: [mill] } });
+
+		expect(() => validateSaveRecord(record)).toThrow(
+			'Saved game industrialBuildings[0] inventory must fit its recipe buffer'
+		);
+	});
+
+	test('current schema saves reject non-finite stock health', () => {
 		const store = createGame().stores[0]!;
 		const record = createManualSaveRecord({
 			game: { stores: [{ ...store, stockHealth: Number.NaN }] }
@@ -3616,13 +3705,16 @@ describe('saveCodec', () => {
 		);
 	});
 
-	test('strict validation rejects stale world progress while sandbox loading refreshes it', () => {
-		const stale = createGame({ day: 7, finance: createFoundingFinanceState(7, 2_000) });
-		const expected = refreshWorldProgress(stale);
+	test('current schema save record rejects stale world progress rather than refreshing it', () => {
+		const stale = {
+			...createGame(),
+			day: 7,
+			finance: createFoundingFinanceState(7, 2_000)
+		};
 
 		expect(() => validateCurrentGameState(stale)).toThrow(SaveDataError);
-		expect(validateSaveRecord(createManualSaveRecord({ game: stale })).game.world).toEqual(
-			expected.world
+		expect(() => validateSaveRecord(createManualSaveRecord({ game: stale }))).toThrow(
+			'Saved game world progress must already be current'
 		);
 	});
 
@@ -3726,73 +3818,7 @@ describe('saveCodec', () => {
 		);
 	});
 
-	test('rejects a legacy save whose store count exceeds the inferred store cap', () => {
-		expect.assertions(2);
-		const legacyGame = createGame() as Partial<GameState>;
-		delete legacyGame.world;
-		delete legacyGame.storeCap;
-		legacyGame.stores = [{}, {}, {}, {}] as unknown as GameState['stores'];
-		const record = createSaveRecord(legacyGame as GameState, {
-			id: 'manual-legacy-cap',
-			name: 'Legacy Cap Save',
-			kind: 'manual',
-			updatedAt: new Date('2026-05-05T12:00:00.000Z')
-		});
-
-		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
-		expect(() => validateSaveRecord(record)).toThrow(
-			'Legacy save has 4 stores but inferred store cap is 3'
-		);
-	});
-
-	test('expands saved retail city maps to the current default size', () => {
-		expect.assertions(12);
-		const record = createManualSaveRecord({
-			game: {
-				cities: [
-					{
-						id: 'harbor-city',
-						name: 'Harbor City',
-						width: 28,
-						height: 24,
-						tiles: []
-					}
-				],
-				stores: [
-					{
-						...createGame().stores[0]!,
-						tileId: 'harbor-city-28-8',
-						mapX: 28,
-						mapY: 8,
-						location: { neighborhoodId: 'downtown', x: 28, y: 8 },
-						localDemand: 1
-					}
-				]
-			}
-		});
-
-		expect(() => validateCurrentGameState(record.game)).toThrow(SaveDataError);
-		const validated = validateSaveRecord(record);
-		const city = validated.game.cities[0]!;
-		const store = validated.game.stores[0]!;
-		const storeTile = city.tiles.find((tile) => tile.id === store.tileId);
-
-		expect(city.width).toBe(DEFAULT_RETAIL_CITY_WIDTH);
-		expect(city.height).toBe(DEFAULT_RETAIL_CITY_HEIGHT);
-		expect(city.tiles).toHaveLength(DEFAULT_RETAIL_CITY_WIDTH * DEFAULT_RETAIL_CITY_HEIGHT);
-		expect(store.tileId).not.toBe('harbor-city-28-8');
-		expect(store.mapX).not.toBe(28);
-		expect(storeTile).toBeDefined();
-		expect(storeTile?.feature).toBeNull();
-		// Relocation must refresh tile-derived fields so the store does not
-		// carry stale coordinates/demand from the pre-regeneration tile.
-		expect(store.location).toEqual(formatLocation(storeTile!));
-		expect(store.location).not.toBe('Stale Location (28, 8)');
-		expect(store.localDemand).toBe(computeStoreLocalDemand(storeTile!));
-		expect(store.localDemand).not.toBe(1);
-	});
-
-	test('refreshes tile-derived fields for stores that keep their coordinates across city regeneration', () => {
+	test('regenerates the documented 28x24 retail-city exception before strict validation', () => {
 		expect.assertions(8);
 		// harbor-city-19-1 is campus in the old 28x24 city but residential in
 		// the regenerated 56x48 city (getNeighborhood is size-dependent). The
@@ -3895,11 +3921,13 @@ describe('saveCodec', () => {
 			mapY: validTile!.y
 		};
 
+		const game = refreshWorldProgress({
+			...createGame(),
+			cities: [{ id: 'harbor-city', name: 'Harbor City', width: 28, height: 24, tiles: [] }],
+			stores: [invalidStore, validStore]
+		});
 		const record = createManualSaveRecord({
-			game: {
-				cities: [{ id: 'harbor-city', name: 'Harbor City', width: 28, height: 24, tiles: [] }],
-				stores: [invalidStore, validStore]
-			}
+			game
 		});
 
 		const validated = validateSaveRecord(record);
@@ -3951,12 +3979,14 @@ describe('saveCodec', () => {
 			mapY: anchorB.y
 		};
 
+		const game = refreshWorldProgress({
+			...createGame(),
+			seed: 20260505,
+			cities: [{ id: 'harbor-city', name: 'Harbor City', width: 28, height: 24, tiles: [] }],
+			stores: [validStore, invalidStore]
+		});
 		const record = createManualSaveRecord({
-			game: {
-				seed: 20260505,
-				cities: [{ id: 'harbor-city', name: 'Harbor City', width: 28, height: 24, tiles: [] }],
-				stores: [validStore, invalidStore]
-			}
+			game
 		});
 
 		const validated = validateSaveRecord(record);
@@ -3992,15 +4022,8 @@ describe('saveCodec', () => {
 		}
 	});
 
-	test('pass 1 relocates a valid-anchor store whose footprint now includes a non-buildable tile', () => {
-		// Regression guard for pass 1's footprint validation: the anchor is
-		// buildable and unreserved, so without the full-footprint check the
-		// store would be kept verbatim — sitting on a river tile inside its own
-		// footprint. Pass 1 must validate every footprint tile (mirroring
-		// findSavedStoreTile's isAnchorAvailable in pass 2) and bail to
-		// relocation, which logs and fixes the placement.
+	test('current schema saves reject a non-buildable store footprint without relocating it', () => {
 		expect.assertions(3);
-		const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 		const city = generateCity({
 			id: 'harbor-city',
 			name: 'Harbor City',
@@ -4038,21 +4061,15 @@ describe('saveCodec', () => {
 			} as unknown as Partial<GameState>
 		});
 
-		const validated = validateSaveRecord(record);
-		const store = validated.game.stores.find((s) => s.id === 'store-footprint')!;
-		// Not kept on the poisoned anchor; relocated to a fully-buildable
-		// footprint with a relocation warning logged.
-		expect(store.tileId).not.toBe(anchor.id);
-		expect(warnSpy).toHaveBeenCalledWith(
-			expect.stringContaining('relocated store "store-footprint"')
+		expect(() => validateCurrentGameState(record.game)).toThrow(SaveDataError);
+		expect(() => validateSaveRecord(record)).toThrow(
+			'Saved game stores[0] placement must already match a buildable, non-overlapping city footprint'
 		);
 	});
 
-	test('rejects a stale store after warning when no buildable tile remains', () => {
-		expect.assertions(3);
-		const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-		// A 2x2 city whose only tile is locked — no buildable tile exists, so
-		// findSavedStoreTile returns null and the store is left unchanged.
+	test('current schema saves reject a stale store when no buildable tile remains', () => {
+		expect.assertions(2);
+		// A 2x2 city whose only tile is locked has no valid store footprint.
 		const lockedTile = {
 			id: 'harbor-city-0-0',
 			cityId: 'harbor-city',
@@ -4094,9 +4111,6 @@ describe('saveCodec', () => {
 
 		expect(() => validateCurrentGameState(record.game)).toThrow(SaveDataError);
 		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
-		expect(warnSpy).toHaveBeenCalledWith(
-			expect.stringContaining('store "store-stale" in city "harbor-city" has no buildable tile')
-		);
 	});
 
 	test('strict validation rejects a store whose city is not materialized', () => {
@@ -4120,40 +4134,12 @@ describe('saveCodec', () => {
 		);
 	});
 
-	test('inferWorldProgress warns about unknown saved city ids', () => {
-		expect.assertions(1);
-		const legacyGame = createGame({
-			cities: [
-				createFixtureRetailCity(),
-				{
-					id: 'not-a-real-city',
-					name: 'Unknown',
-					width: 1,
-					height: 1,
-					tiles: [
-						{
-							...createFixtureRetailCity().tiles[0]!,
-							id: 'not-a-real-city-0-0',
-							cityId: 'not-a-real-city',
-							x: 0,
-							y: 0
-						}
-					]
-				}
-			]
-		}) as Partial<GameState>;
-		delete legacyGame.world;
-		const record = createSaveRecord(legacyGame as GameState, {
-			id: 'manual-unknown-city',
-			name: 'Unknown City Save',
-			kind: 'manual',
-			updatedAt: new Date('2026-05-05T12:00:00.000Z')
-		});
+	test('current schema saves reject missing world progress instead of inferring it', () => {
+		const game = { world: undefined } as unknown as Partial<GameState>;
 
-		const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-		validateSaveRecord(record);
-
-		expect(spy).toHaveBeenCalledWith(expect.stringContaining('inferWorldProgress'));
+		expect(() => validateSaveRecord(createManualSaveRecord({ game }))).toThrow(
+			'Saved game world must be an object'
+		);
 	});
 
 	test('validates production reports with populated material movement arrays', () => {
@@ -4176,12 +4162,12 @@ describe('saveCodec', () => {
 				shopImports: [movement('bottled-water', 'overflow')]
 			})
 		});
-		const snapshot = createSnapshotWithGame({ ...createGame(), reports: [report] });
+		const snapshot = createSnapshotWithGame(withCurrentReports(createGame(), [report]));
 
 		expect(() => validateSaveStoreSnapshot(snapshot)).not.toThrow();
 	});
 
-	test('sandbox normalization drops a report with a malformed production movement', () => {
+	test('historical report decoding drops a malformed production movement', () => {
 		const report = createDailyReport({
 			productionReport: createDailyProductionReport({
 				produced: [null as unknown as DailyMaterialMovement]
@@ -4192,7 +4178,7 @@ describe('saveCodec', () => {
 		expectHistoricalReportDropped(() => validateSaveRecord(record).game);
 	});
 
-	test('sandbox normalization defers malformed city tiles to strict SaveDataError validation', () => {
+	test('current schema saves reject malformed city tiles', () => {
 		const record = createManualSaveRecord({
 			game: {
 				cities: [
@@ -4409,11 +4395,8 @@ describe('saveCodec', () => {
 		expect(validated.game.cities[0]!.name).toBe('Harbor City');
 	});
 
-	test('relocates a store whose tileId is buildable but whose coordinates are stale', () => {
-		expect.assertions(7);
-		const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-		// A default-size city is not regenerated, so the store is only relocated
-		// because its saved mapX/mapY disagree with the tile it names.
+	test('current schema saves reject stale store coordinates without relocating them', () => {
+		expect.assertions(2);
 		const city = generateCity({
 			id: 'harbor-city',
 			name: 'Harbor City',
@@ -4438,22 +4421,14 @@ describe('saveCodec', () => {
 				]
 			} as unknown as Partial<GameState>
 		});
-		const before = structuredClone(record.game);
-
 		expect(() => validateCurrentGameState(record.game)).toThrow(SaveDataError);
-		expect(record.game).toEqual(before);
-		expect(warnSpy).not.toHaveBeenCalled();
-		const validated = validateSaveRecord(record);
-		const store = validated.game.stores[0]!;
-
-		expect(store.tileId).toBe(tile.id);
-		expect(store.mapX).toBe(tile.x);
-		expect(store.mapY).toBe(tile.y);
-		expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('relocated store "store-1"'));
+		expect(() => validateSaveRecord(record)).toThrow(
+			'Saved game stores[0] placement must already match a buildable, non-overlapping city footprint'
+		);
 	});
 
-	test('does not double-assign a tile reserved by an earlier valid store', () => {
-		expect.assertions(2);
+	test('current schema saves reject overlapping store footprints without reassigning a tile', () => {
+		expect.assertions(1);
 		const city = generateCity({
 			id: 'harbor-city',
 			name: 'Harbor City',
@@ -4487,12 +4462,9 @@ describe('saveCodec', () => {
 			} as unknown as Partial<GameState>
 		});
 
-		const validated = validateSaveRecord(record);
-		const storeA = validated.game.stores.find((s) => s.id === 'store-a')!;
-		const storeB = validated.game.stores.find((s) => s.id === 'store-b')!;
-
-		expect(storeA.tileId).toBe(tile.id);
-		expect(storeB.tileId).not.toBe(tile.id);
+		expect(() => validateSaveRecord(record)).toThrow(
+			'Saved game stores[1] placement must already match a buildable, non-overlapping city footprint'
+		);
 	});
 
 	test('rejects a store whose saved cityId is not in the city list', () => {
@@ -4642,123 +4614,12 @@ describe('saveCodec', () => {
 		expect(id).toContain('slot');
 	});
 
-	test('normalizeSavedStoreLevel defaults to level 1 when products is not an array', () => {
-		expect.assertions(1);
-		const baseStore = createGame().stores[0]!;
-		const storeWithoutLevel = { ...baseStore } as Record<string, unknown>;
-		delete storeWithoutLevel.level;
-		const record = createManualSaveRecord({
-			game: {
-				stores: [
-					{
-						...(storeWithoutLevel as unknown as GameState['stores'][number]),
-						products: 'not-an-array' as unknown as GameState['stores'][number]['products']
-					}
-				]
-			}
-		});
+	test('current schema saves reject a missing store cap instead of inferring it', () => {
+		const game = { storeCap: undefined } as unknown as Partial<GameState>;
 
-		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
-	});
-
-	test('normalizeSavedStoreLevel falls back to level 1 for an unknown product count', () => {
-		expect.assertions(1);
-		const baseStore = createGame().stores[0]!;
-		const storeWithoutLevel = { ...baseStore } as Record<string, unknown>;
-		delete storeWithoutLevel.level;
-		const record = createManualSaveRecord({
-			game: {
-				stores: [
-					{
-						...(storeWithoutLevel as unknown as GameState['stores'][number]),
-						products: []
-					}
-				]
-			}
-		});
-
-		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
-	});
-
-	test('normalizeSavedStoreLevel keeps a non-number staffCapacity untouched', () => {
-		expect.assertions(1);
-		const baseStore = createGame().stores[0]!;
-		const storeWithoutLevel = { ...baseStore } as Record<string, unknown>;
-		delete storeWithoutLevel.level;
-		const record = createManualSaveRecord({
-			game: {
-				stores: [
-					{
-						...(storeWithoutLevel as unknown as GameState['stores'][number]),
-						staffCapacity: 'not-a-number' as unknown as number
-					}
-				]
-			}
-		});
-
-		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
-	});
-
-	test('normalizeSavedStoreLevel infers level 1 for an otherwise-valid store missing the level field', () => {
-		// The three cases above only prove validation rejects the intentionally
-		// invalid sibling field; they never observe the inferred level. This case
-		// round-trips a valid boutique store (1 starting product) with `level`
-		// removed through validateSaveRecord so the normalization result — level
-		// 1 derived from the single-product count — is observable on the output.
-		expect.assertions(1);
-		const baseStore = createGame().stores[0]!;
-		const storeWithoutLevel = { ...baseStore } as Record<string, unknown>;
-		delete storeWithoutLevel.level;
-		const record = createManualSaveRecord({
-			game: {
-				stores: [storeWithoutLevel as unknown as GameState['stores'][number]]
-			}
-		});
-
-		const validated = validateSaveRecord(record);
-		expect(validated.game.stores[0]?.level).toBe(1);
-	});
-
-	test('normalizeSavedGame infers store cap with a non-array stores field in a legacy save', () => {
-		expect.assertions(1);
-		const legacyGame = createGame() as Partial<GameState>;
-		delete legacyGame.storeCap;
-		delete legacyGame.world;
-		legacyGame.stores = 'not-an-array' as unknown as GameState['stores'];
-		const record = createSaveRecord(legacyGame as GameState, {
-			id: 'manual-legacy-stores',
-			name: 'Legacy Stores',
-			kind: 'manual',
-			updatedAt: new Date('2026-05-05T12:00:00.000Z')
-		});
-
-		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
-	});
-
-	test('normalizeSavedGame leaves a non-array industrialBuildings field untouched', () => {
-		expect.assertions(1);
-		const record = createManualSaveRecord({
-			game: {
-				industrialBuildings: 'not-an-array' as unknown as GameState['industrialBuildings']
-			}
-		});
-
-		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
-	});
-
-	test('inferWorldProgress handles a non-array industryCities field in a legacy save', () => {
-		expect.assertions(1);
-		const legacyGame = createGame() as Partial<GameState>;
-		delete legacyGame.world;
-		legacyGame.industryCities = 'not-an-array' as unknown as GameState['industryCities'];
-		const record = createSaveRecord(legacyGame as GameState, {
-			id: 'manual-legacy-industry',
-			name: 'Legacy Industry',
-			kind: 'manual',
-			updatedAt: new Date('2026-05-05T12:00:00.000Z')
-		});
-
-		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+		expect(() => validateSaveRecord(createManualSaveRecord({ game }))).toThrow(
+			'Saved game storeCap must be a finite number'
+		);
 	});
 
 	test('validateSavedDecisionContext rejects an unknown context code', () => {
@@ -4963,7 +4824,7 @@ describe('saveCodec', () => {
 		const report = createDailyReport({
 			warnings: [{ code: 'cashReservesLow' } as unknown as DailyReportWarning]
 		});
-		const snapshot = createSnapshotWithGame({ ...createGame(), reports: [report] });
+		const snapshot = createSnapshotWithGame(withCurrentReports(createGame(), [report]));
 
 		expect(() => validateSaveStoreSnapshot(snapshot)).not.toThrow();
 	});
@@ -5012,7 +4873,7 @@ describe('saveCodec', () => {
 				{ code: 'stockPressure', storeId: 'store-1' } as unknown as DailyReportWarning
 			]
 		});
-		const snapshot = createSnapshotWithGame({ ...createGame(), reports: [report] });
+		const snapshot = createSnapshotWithGame(withCurrentReports(createGame(), [report]));
 
 		expect(() => validateSaveStoreSnapshot(snapshot)).not.toThrow();
 	});
@@ -5064,7 +4925,7 @@ describe('saveCodec', () => {
 			})
 		});
 		const record = createManualSaveRecord({
-			game: { industrialBuildings: [building], reports: [report] }
+			game: withCurrentReports(createGame({ industrialBuildings: [building] }), [report])
 		});
 
 		const validated = validateSaveRecord(record);
@@ -5088,41 +4949,6 @@ describe('saveCodec', () => {
 
 		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
 		expect(() => validateSaveRecord(record)).toThrow(/level/);
-	});
-
-	test('clamps loaded building inventory to recipe materials', () => {
-		// flour-mill's recipe (flour-milling) only touches grain (input) and
-		// flour (output); snacks belongs to no part of that recipe and must be
-		// dropped on load rather than persisted as dead buffer weight.
-		expect.assertions(3);
-		const mill = createIndustrialBuilding({
-			typeId: 'flour-mill',
-			inventory: { grain: 5, snacks: 5 }
-		});
-		const record = createManualSaveRecord({
-			game: { industrialBuildings: [mill] }
-		});
-
-		expect(() => validateCurrentGameState(record.game)).toThrow(SaveDataError);
-		const validated = validateSaveRecord(record);
-		const decodedMill = validated.game.industrialBuildings.find((b) => b.typeId === 'flour-mill')!;
-		expect(decodedMill.inventory.snacks).toBeUndefined();
-		expect(decodedMill.inventory.grain).toBe(5);
-	});
-
-	test('strict validation rejects over-capacity building inventory while sandbox loading clamps it', () => {
-		const mill = createIndustrialBuilding({
-			typeId: 'flour-mill',
-			inventory: { grain: 80, flour: 80 }
-		});
-		const game = createGame({ industrialBuildings: [mill] });
-		const record = createManualSaveRecord({ game });
-
-		expect(() => validateCurrentGameState(game)).toThrow(SaveDataError);
-		expect(validateSaveRecord(record).game.industrialBuildings[0]?.inventory).toEqual({
-			grain: 80,
-			flour: 10
-		});
 	});
 
 	test('strict validation accepts runtime inventory with a consumed input retained at zero', () => {
@@ -5293,7 +5119,7 @@ describe('saveCodec', () => {
 				railUsage: { 'industry-city:1,1': 3 }
 			})
 		});
-		const snapshot = createSnapshotWithGame({ ...createGame(), reports: [report] });
+		const snapshot = createSnapshotWithGame(withCurrentReports(createGame(), [report]));
 		const validated = validateSaveStoreSnapshot(snapshot);
 		const decoded = validated.manualSlots[0]!.game.reports[0]!.productionReport;
 		expect(decoded.railShipments).toHaveLength(1);
@@ -5704,7 +5530,7 @@ describe('saveCodec', () => {
 			);
 		});
 
-		test('normalizeSandboxStoreStockHealth leaves a store with non-array products for strict validation', () => {
+		test('current schema saves reject a store with non-array products', () => {
 			expect.assertions(2);
 			const record = createManualSaveRecord({
 				game: {
@@ -5723,7 +5549,7 @@ describe('saveCodec', () => {
 			);
 		});
 
-		test('normalizeSavedRetailStorePlacements leaves a store with an empty cityId for strict validation', () => {
+		test('current schema saves reject a store with an empty cityId', () => {
 			expect.assertions(2);
 			const record = createManualSaveRecord({
 				game: {
@@ -5743,7 +5569,7 @@ describe('saveCodec', () => {
 			);
 		});
 
-		test('normalizeSavedRetailStorePlacements leaves a store with non-finite mapX for strict validation', () => {
+		test('current schema saves reject a store with non-finite mapX', () => {
 			expect.assertions(2);
 			const record = createManualSaveRecord({
 				game: {
@@ -5760,7 +5586,7 @@ describe('saveCodec', () => {
 			expect(() => validateSaveRecord(record)).toThrow('mapX must be a finite number');
 		});
 
-		test('normalizeSavedRetailStorePlacements leaves a store with non-string mapY for strict validation', () => {
+		test('current schema saves reject a store with non-string mapY', () => {
 			expect.assertions(2);
 			const record = createManualSaveRecord({
 				game: {
@@ -5777,7 +5603,7 @@ describe('saveCodec', () => {
 			expect(() => validateSaveRecord(record)).toThrow('mapY must be a finite number');
 		});
 
-		test('normalizeSavedRetailCity leaves a non-retail city id in the cities array for validation', () => {
+		test('legacy retail regeneration leaves a non-retail city id for strict validation', () => {
 			expect.assertions(2);
 			const record = createManualSaveRecord({
 				game: {
@@ -5818,7 +5644,7 @@ describe('saveCodec', () => {
 			);
 		});
 
-		test('normalizeSavedRetailCity leaves a current-size retail city untouched', () => {
+		test('legacy retail regeneration leaves a current-size retail city untouched', () => {
 			expect.assertions(1);
 			const city = generateCity({
 				id: 'harbor-city',
