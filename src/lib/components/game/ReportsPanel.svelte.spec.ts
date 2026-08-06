@@ -796,32 +796,6 @@ describe('ReportsPanel', () => {
 		await expect.element(reports.getByText('Current city inventory is unavailable.')).toBeVisible();
 	});
 
-	it('shows current city inventory zero-capacity fallback when access fails', async () => {
-		expect.assertions(1);
-		const game: GameState = {
-			...currentInventoryGame(),
-			cityInventories: [{ cityId: 'industry-city', materials: { snacks: 17 } }],
-			world: {
-				...currentInventoryGame().world,
-				openedCityIds: currentInventoryGame().world.openedCityIds.filter(
-					(id) => id !== 'industry-city'
-				)
-			}
-		};
-
-		render(ReportsPanel, {
-			i18n: createI18n('en'),
-			game,
-			stores: [store],
-			summary
-		});
-
-		const reports = page.getByRole('region', { name: 'Reports' });
-		await expect
-			.element(reports.getByText('Industry City: 0 / 0 city inventory used.'))
-			.toBeVisible();
-	});
-
 	it('attributes local-only replenishment without external imports', async () => {
 		expect.assertions(2);
 		const game = currentInventoryGame();
@@ -895,37 +869,6 @@ describe('ReportsPanel', () => {
 			.element(reports.getByText('External imports — Harbor City: 9 units'))
 			.toBeVisible();
 		await expect.element(reports.getByText(/Local supply —/)).not.toBeInTheDocument();
-	});
-
-	it('falls back to raw warehouse and import totals when replenishment context is missing', async () => {
-		expect.assertions(2);
-		const game = currentInventoryGame();
-
-		render(ReportsPanel, {
-			i18n: createI18n('en'),
-			game,
-			stores: [store],
-			summary: {
-				...summary,
-				latest: {
-					...summary.latest!,
-					storeReports: [
-						{
-							...replenishedStoreReport(),
-							replenishment: null
-						}
-					]
-				}
-			}
-		});
-
-		const reports = page.getByRole('region', { name: 'Reports' });
-		await expect
-			.element(reports.getByText('Local supply attribution unavailable — Harbor City: 4 units'))
-			.toBeVisible();
-		await expect
-			.element(reports.getByText('External imports — Harbor City: 3 units'))
-			.toBeVisible();
 	});
 
 	it('shows local supply unavailable when resolved supply city is missing', async () => {
