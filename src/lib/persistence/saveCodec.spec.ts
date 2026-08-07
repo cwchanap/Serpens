@@ -6870,7 +6870,7 @@ describe('saveCodec', () => {
 			expect(logisticsError(() => validateCurrentGameState(game)).code).toBe('invariant-logistics');
 		});
 
-		test('allows a route-sourced order after its route is removed', () => {
+		test('round-trips a route-sourced order after its route is removed', () => {
 			expect.assertions(1);
 			const baseGame = createLogisticsGame();
 			const logistics = createLogisticsState(baseGame);
@@ -6878,19 +6878,30 @@ describe('saveCodec', () => {
 				...baseGame,
 				logistics: {
 					...logistics,
-					transferOrders: [
-						logistics.transferOrders[0]!,
-						{
-							...logistics.transferOrders[1]!,
-							source: { kind: 'recurring-route', routeId: 'route-removed' }
-						}
-					],
 					recurringRoutes: [],
-					nextRouteSequence: 1
+					nextRouteSequence: 2
 				}
 			};
+			const record = createManualSaveRecord({ game });
 
-			expect(validateCurrentGameState(game)).toEqual(game);
+			expect(validateSaveRecord(structuredClone(record))).toEqual(record);
+		});
+
+		test('rejects removed route provenance that would collide with the next generated route ID', () => {
+			const baseGame = createLogisticsGame();
+			const logistics = createLogisticsState(baseGame);
+			const record = createManualSaveRecord({
+				game: {
+					...baseGame,
+					logistics: {
+						...logistics,
+						recurringRoutes: [],
+						nextRouteSequence: 1
+					}
+				}
+			});
+
+			expect(() => validateSaveRecord(structuredClone(record))).toThrow(SaveDataError);
 		});
 	});
 
