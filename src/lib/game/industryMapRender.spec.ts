@@ -26,6 +26,15 @@ function emptyProductionReport(): DailyProductionReport {
 	};
 }
 
+function emptyLogisticsReport(): DailyReport['logistics'] {
+	return {
+		arrivals: [],
+		routeDispatchAttempts: [],
+		deliveredUnits: 0,
+		scheduledTransportCost: 0
+	};
+}
+
 function makeReport(railUsage: Record<string, number>): DailyReport {
 	return {
 		day: 1,
@@ -52,6 +61,7 @@ function makeReport(railUsage: Record<string, number>): DailyReport {
 		nextLoanPayment: null,
 		scorecard: { profit: 0, customerSatisfaction: 0, staffMorale: 0, marketPosition: 0 },
 		productionReport: { ...emptyProductionReport(), railUsage },
+		logistics: emptyLogisticsReport(),
 		storeReports: [],
 		modifierImpacts: [],
 		modifierLifecycle: [],

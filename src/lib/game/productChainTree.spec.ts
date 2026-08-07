@@ -11,6 +11,7 @@ import {
 } from './storeFootprint';
 import type {
 	CityTile,
+	DailyLogisticsReport,
 	DailyProductReport,
 	DailyProductionReport,
 	DailyStoreReport,
@@ -116,6 +117,15 @@ function emptyProductionReport(
 	};
 }
 
+function emptyLogisticsReport(): DailyLogisticsReport {
+	return {
+		arrivals: [],
+		routeDispatchAttempts: [],
+		deliveredUnits: 0,
+		scheduledTransportCost: 0
+	};
+}
+
 function snackProductReport(overrides: Partial<DailyProductReport> = {}): DailyProductReport {
 	return {
 		categoryId: 'snacks',
@@ -210,6 +220,7 @@ function withLatestReport(game: GameState, productionReport: DailyProductionRepo
 				cashAfter: game.cash + 40,
 				scorecard: game.scorecard,
 				productionReport,
+				logistics: emptyLogisticsReport(),
 				storeReports: [latestStoreReport()],
 				modifierImpacts: [],
 				modifierLifecycle: [],
@@ -453,6 +464,7 @@ describe('buildProductChainTree', () => {
 							}
 						]
 					}),
+					logistics: emptyLogisticsReport(),
 					storeReports: [
 						latestStoreReport({
 							storeId: harborStore.id,
@@ -574,6 +586,7 @@ describe('buildProductChainTree', () => {
 							}
 						]
 					}),
+					logistics: emptyLogisticsReport(),
 					// Only Harbor's store has a snacks product report; Campus's
 					// store was opened after this report and has no row yet.
 					storeReports: [
@@ -1369,6 +1382,7 @@ describe('buildStoreCategoryChainSummaries (tree)', () => {
 							}
 						]
 					}),
+					logistics: emptyLogisticsReport(),
 					storeReports: [
 						latestStoreReport({
 							storeId: firstStore.id,
@@ -1433,6 +1447,7 @@ describe('buildStoreCategoryChainSummaries (tree)', () => {
 							}
 						]
 					}),
+					logistics: emptyLogisticsReport(),
 					storeReports: [
 						latestStoreReport({
 							storeId: firstStore.id,

@@ -417,6 +417,13 @@ export interface DailyRouteDispatchAttempt {
 	transferOrderId: string | null;
 }
 
+export interface DailyLogisticsReport {
+	arrivals: DailyTransferArrival[];
+	routeDispatchAttempts: DailyRouteDispatchAttempt[];
+	deliveredUnits: number;
+	scheduledTransportCost: number;
+}
+
 export interface RecurringRoute {
 	id: string;
 	originCityId: WorldCityId;
@@ -697,6 +704,7 @@ export interface DailyReport {
 	nextLoanPayment: LoanPaymentSnapshot | null;
 	scorecard: Scorecard;
 	productionReport: DailyProductionReport;
+	logistics: DailyLogisticsReport;
 	storeReports: DailyStoreReport[];
 	modifierImpacts: EventModifierImpact[];
 	modifierLifecycle: EventModifierLifecycle[];

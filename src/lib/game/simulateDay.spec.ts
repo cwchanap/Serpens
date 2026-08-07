@@ -3,6 +3,7 @@ import { ARCHETYPES } from './archetypes';
 import { EVENT_DRAW_COUNT_PER_DAY } from './eventSelection';
 import { appendFinanceTransaction, getTotalDebt } from './finance';
 import { buildIndustrialBuilding } from './industryPlacement';
+import { dispatchManualTransfer, processRecurringRouteDispatches } from './interCityLogistics';
 import { createRngFromState } from './rng';
 import { createNewGame, resolveDecision, updatePolicy } from './state';
 import { getStaffXpForLevel } from './staffLeveling';
@@ -14,8 +15,13 @@ import type {
 	ActiveEventModifier,
 	EventDecisionItem,
 	GameState,
+	IndustrialBuilding,
+	MaterialId,
+	RecurringRoute,
 	StaffMember,
-	SystemDecisionItem
+	SystemDecisionItem,
+	TransferOrder,
+	WorldCityId
 } from './types';
 
 function advanceEventRngState(state: number): number {
@@ -82,6 +88,114 @@ function activeImportModifier(id: string, multiplier: number, day: number): Acti
 		},
 		explanation: { key: `events.${id}`, params: {} },
 		importance: 'normal'
+	};
+}
+
+function openTwoIndustryCityLogisticsGame(day = 7): GameState {
+	const base = createNewGame('convenience', 292_940);
+	const opened = openWorldCity(
+		{
+			...base,
+			cash: 100_000,
+			world: {
+				...base.world,
+				revealedCityIds: [...base.world.revealedCityIds, 'breadbasket-basin']
+			}
+		},
+		'breadbasket-basin'
+	);
+
+	return { ...opened, day, cash: 100_000 };
+}
+
+function withCityMaterials(
+	game: GameState,
+	cityId: WorldCityId,
+	materials: Partial<Record<MaterialId, number>>
+): GameState {
+	return {
+		...game,
+		cityInventories: game.cityInventories.map((inventory) =>
+			inventory.cityId === cityId ? { ...inventory, materials } : inventory
+		)
+	};
+}
+
+function createLogisticsBuilding(
+	id: string,
+	typeId: IndustrialBuilding['typeId'],
+	cityId: WorldCityId,
+	mapX: number,
+	mapY = 2
+): IndustrialBuilding {
+	return {
+		id,
+		level: 1,
+		typeId,
+		cityId,
+		tileId: `${cityId}-${mapX}-${mapY}`,
+		mapX,
+		mapY,
+		status: 'idle',
+		lastProduction: [],
+		producedTotal: 0,
+		importedInputTotal: 0,
+		blockedDays: 0,
+		inventory: {}
+	};
+}
+
+function withWarehouses(game: GameState, cityIds: readonly WorldCityId[]): GameState {
+	return {
+		...game,
+		industrialBuildings: [
+			...game.industrialBuildings,
+			...cityIds.map((cityId, index) =>
+				createLogisticsBuilding(`warehouse-${cityId}`, 'warehouse', cityId, index + 10)
+			)
+		]
+	};
+}
+
+function straightRails(y: number, fromX: number, toX: number) {
+	return Array.from({ length: toX - fromX + 1 }, (_, index) => ({
+		x: fromX + index,
+		y,
+		level: 1
+	}));
+}
+
+function createTransferOrder(overrides: Partial<TransferOrder> = {}): TransferOrder {
+	return {
+		id: 'transfer-1',
+		source: { kind: 'manual' },
+		originCityId: 'industry-city',
+		destinationCityId: 'breadbasket-basin',
+		materialId: 'water',
+		quantity: 4,
+		createdOnDay: 6,
+		dispatchedOnDay: 6,
+		arrivalOnDay: 7,
+		transportCost: 8,
+		status: 'in-transit',
+		...overrides
+	};
+}
+
+function createDueRoute(overrides: Partial<RecurringRoute> = {}): RecurringRoute {
+	return {
+		id: 'route-1',
+		originCityId: 'industry-city',
+		destinationCityId: 'breadbasket-basin',
+		materialId: 'water',
+		capacity: 5,
+		frequencyDays: 3,
+		leadTimeDays: 2,
+		transportCostPerUnit: 7,
+		priority: 0,
+		state: 'active',
+		nextDispatchOnDay: 7,
+		...overrides
 	};
 }
 
@@ -228,6 +342,234 @@ describe('daily simulation', () => {
 			  ],
 			}
 		`);
+	});
+
+	test('makes due transfer arrivals available to same-day industry production', () => {
+		const closingDay = 7;
+		const base = openTwoIndustryCityLogisticsGame(closingDay);
+		const game: GameState = {
+			...base,
+			industryCities: base.industryCities.map((city) =>
+				city.id === 'industry-city' ? { ...city, rails: straightRails(2, 2, 10) } : city
+			),
+			industrialBuildings: [
+				createLogisticsBuilding('mill', 'flour-mill', 'industry-city', 2),
+				createLogisticsBuilding('warehouse-industry-city', 'warehouse', 'industry-city', 10)
+			],
+			logistics: {
+				...base.logistics,
+				transferOrders: [
+					createTransferOrder({
+						originCityId: 'breadbasket-basin',
+						destinationCityId: 'industry-city',
+						materialId: 'grain',
+						quantity: 10,
+						arrivalOnDay: closingDay
+					})
+				]
+			}
+		};
+
+		const result = simulateDay(game);
+		const report = result.reports.at(-1)!;
+
+		expect(report.logistics.arrivals).toEqual([
+			{
+				transferOrderId: 'transfer-1',
+				originCityId: 'breadbasket-basin',
+				destinationCityId: 'industry-city',
+				materialId: 'grain',
+				quantity: 10
+			}
+		]);
+		expect(report.logistics.deliveredUnits).toBe(10);
+		expect(report.productionReport.warehousePulls).toContainEqual({
+			cityId: 'industry-city',
+			materialId: 'grain',
+			quantity: 1,
+			value: 1,
+			source: 'warehouse'
+		});
+		expect(report.productionReport.importedInputs).toContainEqual({
+			cityId: 'industry-city',
+			materialId: 'grain',
+			quantity: 9,
+			value: 18,
+			source: 'import'
+		});
+		expect(result.logistics.transferOrders[0]?.status).toBe('delivered');
+	});
+
+	test('lets weekly replenishment consume origin stock before a due route dispatch', () => {
+		const base = withCityMaterials(
+			withWarehouses(openTwoIndustryCityLogisticsGame(), ['industry-city', 'breadbasket-basin']),
+			'industry-city',
+			{ 'bottled-water': 10 }
+		);
+		const game: GameState = {
+			...base,
+			stores: [
+				{
+					...base.stores[0]!,
+					products: [
+						{
+							categoryId: 'bottled-water',
+							stock: 0,
+							reorderThreshold: 1,
+							targetStock: 10,
+							sellingPrice: 3
+						}
+					]
+				}
+			],
+			logistics: {
+				...base.logistics,
+				recurringRoutes: [
+					createDueRoute({ materialId: 'bottled-water', capacity: 10, transportCostPerUnit: 3 })
+				]
+			}
+		};
+
+		const result = simulateDay(game);
+		const report = result.reports.at(-1)!;
+		const attempt = report.logistics.routeDispatchAttempts[0]!;
+
+		expect(report.storeReports[0]?.productReports[0]).toMatchObject({
+			warehouseUnits: 10,
+			importedUnits: 0
+		});
+		expect(attempt).toMatchObject({
+			destinationNeed: 200,
+			availableOriginStock: 0,
+			dispatchedQuantity: 0,
+			unusedCapacity: 10,
+			unmetDestinationNeed: 200,
+			transportCost: 0,
+			transferOrderId: null
+		});
+		expect(
+			result.cityInventories.find((inventory) => inventory.cityId === 'industry-city')?.materials[
+				'bottled-water'
+			]
+		).toBe(0);
+	});
+
+	test('reports an empty logistics day explicitly', () => {
+		const report = simulateDay(createNewGame('convenience', 292_941)).reports.at(-1)!;
+
+		expect(report.logistics).toEqual({
+			arrivals: [],
+			routeDispatchAttempts: [],
+			deliveredUnits: 0,
+			scheduledTransportCost: 0
+		});
+	});
+
+	test('reports a full route destination as an explicit no-need zero attempt', () => {
+		const base = withCityMaterials(
+			withWarehouses(openTwoIndustryCityLogisticsGame(), ['industry-city', 'breadbasket-basin']),
+			'breadbasket-basin',
+			{ water: 200 }
+		);
+		const result = simulateDay({
+			...withCityMaterials(base, 'industry-city', { water: 5 }),
+			logistics: { ...base.logistics, recurringRoutes: [createDueRoute()] }
+		});
+		const attempt = result.reports.at(-1)!.logistics.routeDispatchAttempts[0]!;
+
+		expect(attempt).toMatchObject({
+			destinationNeed: 0,
+			dispatchedQuantity: 0,
+			unmetDestinationNeed: 0,
+			transportCost: 0,
+			transferOrderId: null
+		});
+		expect(attempt.destinationNeed === 0 ? 'full/no-need' : 'unmet demand').toBe('full/no-need');
+	});
+
+	test('keeps route scheduling cash-free until daily accounting applies its cost exactly once', () => {
+		const base = withCityMaterials(
+			withCityMaterials(
+				withWarehouses(openTwoIndustryCityLogisticsGame(), ['industry-city', 'breadbasket-basin']),
+				'industry-city',
+				{ water: 5 }
+			),
+			'breadbasket-basin',
+			{ grain: 1 }
+		);
+		const withRoute = {
+			...base,
+			logistics: { ...base.logistics, recurringRoutes: [createDueRoute()] }
+		};
+		const manual = dispatchManualTransfer(withRoute, {
+			originCityId: 'breadbasket-basin',
+			destinationCityId: 'industry-city',
+			materialId: 'grain',
+			quantity: 1
+		});
+		if (!manual.ok) throw new Error(`Expected manual transfer, received ${manual.reason}`);
+
+		const scheduled = processRecurringRouteDispatches(manual.game, manual.game.day);
+		const result = simulateDay(manual.game);
+		const report = result.reports.at(-1)!;
+		const sumAttemptCosts = report.logistics.routeDispatchAttempts.reduce(
+			(total, attempt) => total + attempt.transportCost,
+			0
+		);
+		const baseOperatingCosts =
+			report.storeReports.reduce((total, storeReport) => total + storeReport.operatingCosts, 0) +
+			report.payrollCost +
+			report.productionReport.operatingCost +
+			report.productionReport.overflowCost;
+		const baseOperatingCashFlow = Math.round(
+			report.revenue - baseOperatingCosts - report.importSpend
+		);
+		const preFinanceCash = report.cashAfter - report.financingCashFlow;
+
+		expect(scheduled.game.cash).toBe(manual.game.cash);
+		expect(report.logistics.scheduledTransportCost).toBe(sumAttemptCosts);
+		expect(report.logistics.scheduledTransportCost).toBe(35);
+		expect(report.logistics.scheduledTransportCost).not.toBe(35 + manual.order.transportCost);
+		expect(report.logistics.routeDispatchAttempts).toContainEqual(
+			expect.objectContaining({
+				destinationNeed: 200,
+				dispatchedQuantity: 5,
+				unmetDestinationNeed: 195
+			})
+		);
+		expect(report.operatingCosts).toBe(baseOperatingCosts + sumAttemptCosts);
+		expect(report.operatingCashFlow).toBe(baseOperatingCashFlow - sumAttemptCosts);
+		expect(preFinanceCash).toBe(manual.game.cash + report.operatingCashFlow);
+		expect(report.cashAfter).toBe(report.cashBefore + report.netCashChange);
+	});
+
+	test('charges only production-close overflow after a transfer arrival', () => {
+		const startingCash = 50_000;
+		const base = openTwoIndustryCityLogisticsGame();
+		const result = simulateDay({
+			...base,
+			cash: startingCash,
+			logistics: {
+				...base.logistics,
+				transferOrders: [
+					createTransferOrder({ quantity: 10, transportCost: 99, arrivalOnDay: base.day })
+				]
+			}
+		});
+		const report = result.reports.at(-1)!;
+		const localOperatingCosts =
+			report.storeReports.reduce((total, storeReport) => total + storeReport.operatingCosts, 0) +
+			report.payrollCost +
+			report.productionReport.operatingCost;
+
+		expect(report.logistics).toMatchObject({ deliveredUnits: 10, scheduledTransportCost: 0 });
+		expect(report.productionReport.overflowUnits).toBe(10);
+		expect(report.productionReport.overflowCost).toBe(20);
+		expect(report.operatingCosts).toBe(localOperatingCosts + report.productionReport.overflowCost);
+		expect(report.operatingCashFlow).toBe(
+			Math.round(report.revenue - report.operatingCosts - report.importSpend)
+		);
+		expect(report.cashAfter).toBe(startingCash + report.operatingCashFlow);
 	});
 
 	test('keeps omitted and explicit defaults deeply equal', () => {

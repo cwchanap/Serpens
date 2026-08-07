@@ -14,6 +14,7 @@ import {
 	resetFinanceDayActivity,
 	serviceFinanceForDay
 } from './finance';
+import { processRecurringRouteDispatches, processTransferArrivals } from './interCityLogistics';
 import { simulateIndustryProduction } from './industryProduction';
 import { clampScore } from './reports';
 import { createRngFromState, randomBetween } from './rng';
@@ -113,12 +114,14 @@ export function simulateDay(
 ): GameState {
 	assertValidEntityCityOwnership(game);
 	const closingDay = game.day;
-	const activeEventModifiers = game.events.activeModifiers.filter((modifier) =>
+	const arrivalResult = processTransferArrivals(game, closingDay);
+	const arrivalGame = arrivalResult.game;
+	const activeEventModifiers = arrivalGame.events.activeModifiers.filter((modifier) =>
 		isModifierActiveOnDay(modifier, closingDay)
 	);
 	const mergedRules = mergeSimulationRules(rules, compileEventModifierRules(activeEventModifiers));
 	const cashBefore = game.cash - game.finance.currentDayActivity.financingCashFlow;
-	const industryResult = simulateIndustryProduction(game, mergedRules);
+	const industryResult = simulateIndustryProduction(arrivalGame, mergedRules);
 	const productionGame = industryResult.game;
 	const rng = createRngFromState(productionGame.rngState);
 	const profiles = productionGame.stores.map((store) =>
@@ -195,7 +198,7 @@ export function simulateDay(
 		replenishmentResult.productReports,
 		replenishmentResult.storeReplenishmentContexts
 	);
-	const operatingCosts =
+	const baseOperatingCosts =
 		sum(storeReports, 'operatingCosts') +
 		payrollCost +
 		productionReport.operatingCost +
@@ -205,25 +208,34 @@ export function simulateDay(
 		throw new Error('Retail replenishment import reconciliation failed');
 	}
 	const importSpend = retailImportSpend + productionReport.importSpend;
-	const operatingIncome = Math.round(grossMargin - operatingCosts);
-	const operatingCashFlow = Math.round(revenue - operatingCosts - importSpend);
-	const scorecard = buildScorecard(game.scorecard, storeReports, operatingCashFlow);
+	const baseOperatingCashFlow = Math.round(revenue - baseOperatingCosts - importSpend);
 	const hiringCandidates = shouldRefreshHiringMarket(nextDay)
 		? generateHiringCandidates({ count: HIRING_CANDIDATE_COUNT, day: nextDay, rng })
 		: productionGame.hiringCandidates;
-	const afterOperations = {
+	const afterLocalOperations = {
 		...productionGame,
 		rngState: rng.getState(),
-		cash: game.cash + operatingCashFlow,
-		scorecard,
 		stores: storeResults.map((result) => result.store),
 		cityInventories: replenishmentResult.cityInventories,
 		hiringCandidates,
 		staff: staffWithXp
 	};
+	const routeResult = processRecurringRouteDispatches(afterLocalOperations, closingDay);
+	if (routeResult.game.cash !== afterLocalOperations.cash) {
+		throw new Error('Recurring route dispatch cash reconciliation failed');
+	}
+	const operatingCosts = baseOperatingCosts + routeResult.scheduledTransportCost;
+	const operatingCashFlow = baseOperatingCashFlow - routeResult.scheduledTransportCost;
+	const operatingIncome = Math.round(grossMargin - operatingCosts);
+	const scorecard = buildScorecard(game.scorecard, storeReports, operatingCashFlow);
+	const preFinanceGame = {
+		...routeResult.game,
+		cash: game.cash + operatingCashFlow,
+		scorecard
+	};
 	const serviced = serviceFinanceForDay({
-		finance: afterOperations.finance,
-		cash: afterOperations.cash,
+		finance: preFinanceGame.finance,
+		cash: preFinanceGame.cash,
 		day: closingDay
 	});
 	const financingCashFlow = serviced.finance.currentDayActivity.financingCashFlow;
@@ -235,7 +247,7 @@ export function simulateDay(
 	}
 
 	const postServiceGame = {
-		...afterOperations,
+		...preFinanceGame,
 		cash: cashAfter,
 		finance: serviced.finance
 	};
@@ -278,6 +290,12 @@ export function simulateDay(
 		nextLoanPayment,
 		scorecard,
 		productionReport,
+		logistics: {
+			arrivals: arrivalResult.arrivals,
+			routeDispatchAttempts: routeResult.attempts,
+			deliveredUnits: arrivalResult.deliveredUnits,
+			scheduledTransportCost: routeResult.scheduledTransportCost
+		},
 		storeReports,
 		modifierImpacts,
 		modifierLifecycle,

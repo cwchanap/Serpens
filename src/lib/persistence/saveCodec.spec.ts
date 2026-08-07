@@ -289,11 +289,63 @@ function createDailyReport(overrides: Partial<DailyReport> = {}): DailyReport {
 			marketPosition: 50
 		},
 		productionReport: createDailyProductionReport(),
+		logistics: {
+			arrivals: [],
+			routeDispatchAttempts: [],
+			deliveredUnits: 0,
+			scheduledTransportCost: 0
+		},
 		storeReports: [],
 		modifierImpacts: [],
 		modifierLifecycle: [],
 		warnings: [],
 		...overrides
+	};
+}
+
+function createHistoricalLogisticsReport(): DailyReport['logistics'] {
+	return {
+		arrivals: [
+			{
+				transferOrderId: 'transfer-retired',
+				originCityId: 'industry-city',
+				destinationCityId: 'breadbasket-basin',
+				materialId: 'water',
+				quantity: 4
+			}
+		],
+		routeDispatchAttempts: [
+			{
+				routeId: 'route-retired',
+				originCityId: 'industry-city',
+				destinationCityId: 'breadbasket-basin',
+				materialId: 'water',
+				destinationNeed: 10,
+				capacity: 10,
+				availableOriginStock: 7,
+				dispatchedQuantity: 7,
+				unusedCapacity: 3,
+				unmetDestinationNeed: 3,
+				transportCost: 21,
+				transferOrderId: 'transfer-retired'
+			},
+			{
+				routeId: 'route-removed',
+				originCityId: 'breadbasket-basin',
+				destinationCityId: 'industry-city',
+				materialId: 'grain',
+				destinationNeed: 0,
+				capacity: 5,
+				availableOriginStock: 9,
+				dispatchedQuantity: 0,
+				unusedCapacity: 5,
+				unmetDestinationNeed: 0,
+				transportCost: 0,
+				transferOrderId: null
+			}
+		],
+		deliveredUnits: 4,
+		scheduledTransportCost: 21
 	};
 }
 
@@ -862,6 +914,158 @@ describe('saveCodec', () => {
 				resolvedSupplyCityId: 'industry-city'
 			}
 		});
+	});
+
+	test('round-trips immutable logistics evidence without replaying removed routes or orders', () => {
+		const game = createCurrentMultiCityGame();
+		const report = createDailyReport({ logistics: createHistoricalLogisticsReport() });
+
+		const decoded = decodeHistoricalReport(game, report);
+
+		expect(decoded.reports[0]).toEqual(report);
+		expect(decoded.logistics.transferOrders).toEqual([]);
+		expect(decoded.logistics.recurringRoutes).toEqual([]);
+	});
+
+	test.each([
+		[
+			'a nonpositive arrival quantity',
+			(report: DailyReport) => ({
+				...report,
+				logistics: {
+					...report.logistics,
+					arrivals: [{ ...report.logistics.arrivals[0]!, quantity: 0 }],
+					deliveredUnits: 0
+				}
+			})
+		],
+		[
+			'an empty arrival transfer ID',
+			(report: DailyReport) => ({
+				...report,
+				logistics: {
+					...report.logistics,
+					arrivals: [{ ...report.logistics.arrivals[0]!, transferOrderId: '' }]
+				}
+			})
+		],
+		[
+			'a matching attempt endpoint',
+			(report: DailyReport) => ({
+				...report,
+				logistics: {
+					...report.logistics,
+					routeDispatchAttempts: [
+						{
+							...report.logistics.routeDispatchAttempts[0]!,
+							destinationCityId: 'industry-city'
+						},
+						report.logistics.routeDispatchAttempts[1]!
+					]
+				}
+			})
+		],
+		[
+			'an unknown attempt material',
+			(report: DailyReport) => ({
+				...report,
+				logistics: {
+					...report.logistics,
+					routeDispatchAttempts: [
+						{
+							...report.logistics.routeDispatchAttempts[0]!,
+							materialId: 'unknown-material'
+						},
+						report.logistics.routeDispatchAttempts[1]!
+					]
+				}
+			})
+		],
+		[
+			'an attempt with an incorrect unused capacity',
+			(report: DailyReport) => ({
+				...report,
+				logistics: {
+					...report.logistics,
+					routeDispatchAttempts: [
+						{
+							...report.logistics.routeDispatchAttempts[0]!,
+							unusedCapacity: 4
+						},
+						report.logistics.routeDispatchAttempts[1]!
+					]
+				}
+			})
+		],
+		[
+			'an attempt with an incorrect unmet destination need',
+			(report: DailyReport) => ({
+				...report,
+				logistics: {
+					...report.logistics,
+					routeDispatchAttempts: [
+						{
+							...report.logistics.routeDispatchAttempts[0]!,
+							unmetDestinationNeed: 4
+						},
+						report.logistics.routeDispatchAttempts[1]!
+					]
+				}
+			})
+		],
+		[
+			'a positive dispatch with a null transfer order',
+			(report: DailyReport) => ({
+				...report,
+				logistics: {
+					...report.logistics,
+					routeDispatchAttempts: [
+						{
+							...report.logistics.routeDispatchAttempts[0]!,
+							transferOrderId: null
+						},
+						report.logistics.routeDispatchAttempts[1]!
+					]
+				}
+			})
+		],
+		[
+			'a zero dispatch with a transport cost',
+			(report: DailyReport) => ({
+				...report,
+				logistics: {
+					...report.logistics,
+					routeDispatchAttempts: [
+						report.logistics.routeDispatchAttempts[0]!,
+						{
+							...report.logistics.routeDispatchAttempts[1]!,
+							transportCost: 1
+						}
+					]
+				}
+			})
+		],
+		[
+			'a delivered-unit total that does not match arrivals',
+			(report: DailyReport) => ({
+				...report,
+				logistics: { ...report.logistics, deliveredUnits: 5 }
+			})
+		],
+		[
+			'a scheduled-cost total that does not match attempts',
+			(report: DailyReport) => ({
+				...report,
+				logistics: { ...report.logistics, scheduledTransportCost: 22 }
+			})
+		]
+	] as const)('drops a historical report with %s logistics evidence', (_name, mutateReport) => {
+		const game = createCurrentMultiCityGame();
+		const report = mutateReport(
+			createDailyReport({ logistics: createHistoricalLogisticsReport() })
+		) as DailyReport;
+
+		expectHistoricalReportDropped(() => decodeHistoricalReport(game, report));
 	});
 
 	test('normalizes authoritative inventory and supply assignments to world-catalog order', () => {
