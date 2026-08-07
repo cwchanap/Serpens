@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import type { ReportSummary } from '$lib/game/reports';
 import type {
+	DailyLogisticsReport,
 	DailyProductionReport,
 	DailyStoreReport,
 	EventModifierSnapshot,
@@ -54,6 +55,15 @@ function emptyProductionReport(): DailyProductionReport {
 	};
 }
 
+function emptyLogisticsReport(): DailyLogisticsReport {
+	return {
+		arrivals: [],
+		routeDispatchAttempts: [],
+		deliveredUnits: 0,
+		scheduledTransportCost: 0
+	};
+}
+
 const summary: ReportSummary = {
 	latest: {
 		day: 4,
@@ -85,6 +95,7 @@ const summary: ReportSummary = {
 			marketPosition: 50
 		},
 		productionReport: emptyProductionReport(),
+		logistics: emptyLogisticsReport(),
 		storeReports: [],
 		modifierImpacts: [],
 		modifierLifecycle: [],

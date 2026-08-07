@@ -19,7 +19,7 @@ import {
 	refreshWorldProgress,
 	selectWorldCity
 } from './world';
-import type { GameState } from './types';
+import type { DailyLogisticsReport, GameState } from './types';
 import { systemDecision } from './testHelpers';
 
 function gameStub(overrides: Partial<GameState> = {}): GameState {
@@ -64,6 +64,15 @@ function gameStub(overrides: Partial<GameState> = {}): GameState {
 		world: createInitialWorldProgress(),
 		storeCap: STARTER_STORE_CAP,
 		...overrides
+	};
+}
+
+function emptyLogisticsReport(): DailyLogisticsReport {
+	return {
+		arrivals: [],
+		routeDispatchAttempts: [],
+		deliveredUnits: 0,
+		scheduledTransportCost: 0
 	};
 }
 
@@ -502,6 +511,7 @@ describe('world progression and city opening', () => {
 						railUsage: {},
 						cityInventories: []
 					},
+					logistics: emptyLogisticsReport(),
 					storeReports: [],
 					modifierImpacts: [],
 					modifierLifecycle: [],
@@ -615,6 +625,7 @@ describe('world progression and city opening', () => {
 						railUsage: {},
 						cityInventories: []
 					},
+					logistics: emptyLogisticsReport(),
 					storeReports: [],
 					modifierImpacts: [],
 					modifierLifecycle: [],
@@ -717,6 +728,7 @@ describe('world progression and city opening', () => {
 						railUsage: {},
 						cityInventories: []
 					},
+					logistics: emptyLogisticsReport(),
 					storeReports: [],
 					modifierImpacts: [],
 					modifierLifecycle: [],
@@ -798,6 +810,7 @@ describe('world progression and city opening', () => {
 						railUsage: {},
 						cityInventories: []
 					},
+					logistics: emptyLogisticsReport(),
 					storeReports: [],
 					modifierImpacts: [],
 					modifierLifecycle: [],
@@ -869,6 +882,7 @@ describe('world progression and city opening', () => {
 						railUsage: {},
 						cityInventories: []
 					},
+					logistics: emptyLogisticsReport(),
 					storeReports: [],
 					modifierImpacts: [],
 					modifierLifecycle: [],
@@ -934,6 +948,7 @@ describe('world progression and city opening', () => {
 						railUsage: {},
 						cityInventories: []
 					},
+					logistics: emptyLogisticsReport(),
 					storeReports: [],
 					modifierImpacts: [],
 					modifierLifecycle: [],

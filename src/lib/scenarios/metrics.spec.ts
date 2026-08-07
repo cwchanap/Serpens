@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type {
+	DailyLogisticsReport,
 	DailyProductReport,
 	DailyProductionReport,
 	DailyReport,
@@ -44,6 +45,15 @@ function productionReport(): DailyProductionReport {
 		railShipments: [],
 		railUsage: {},
 		cityInventories: []
+	};
+}
+
+function emptyLogisticsReport(): DailyLogisticsReport {
+	return {
+		arrivals: [],
+		routeDispatchAttempts: [],
+		deliveredUnits: 0,
+		scheduledTransportCost: 0
 	};
 }
 
@@ -134,7 +144,8 @@ function report(
 		modifierImpacts: [],
 		modifierLifecycle: [],
 		warnings: [],
-		...overrides
+		...overrides,
+		logistics: overrides.logistics ?? emptyLogisticsReport()
 	};
 }
 

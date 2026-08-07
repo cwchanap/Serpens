@@ -20,6 +20,7 @@ import { buildIndustrialBuilding } from './industryPlacement';
 import { createNewGame } from './state';
 import { openWorldCity } from './world';
 import type {
+	DailyLogisticsReport,
 	DailyProductReport,
 	DailyProductionReport,
 	DailyStoreReport,
@@ -46,6 +47,15 @@ function emptyProductionReport(
 		railUsage: {},
 		...overrides,
 		cityInventories: overrides.cityInventories ?? []
+	};
+}
+
+function emptyLogisticsReport(): DailyLogisticsReport {
+	return {
+		arrivals: [],
+		routeDispatchAttempts: [],
+		deliveredUnits: 0,
+		scheduledTransportCost: 0
 	};
 }
 
@@ -137,6 +147,7 @@ function withLatestReport(game: GameState, productionReport: DailyProductionRepo
 				nextLoanPayment: null,
 				scorecard: game.scorecard,
 				productionReport,
+				logistics: emptyLogisticsReport(),
 				storeReports: [latestStoreReport()],
 				modifierImpacts: [],
 				modifierLifecycle: [],

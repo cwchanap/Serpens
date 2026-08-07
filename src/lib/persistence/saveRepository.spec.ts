@@ -22,6 +22,7 @@ import {
 	refreshWorldProgress
 } from '$lib/game/world';
 import type {
+	DailyLogisticsReport,
 	DailyProductReport,
 	DailyProductionReport,
 	DailyReport,
@@ -464,6 +465,15 @@ function createDailyProductionReport(
 	};
 }
 
+function emptyLogisticsReport(): DailyLogisticsReport {
+	return {
+		arrivals: [],
+		routeDispatchAttempts: [],
+		deliveredUnits: 0,
+		scheduledTransportCost: 0
+	};
+}
+
 function createDailyReport(overrides: Partial<DailyReport> = {}): DailyReport {
 	return {
 		day: 3,
@@ -499,7 +509,8 @@ function createDailyReport(overrides: Partial<DailyReport> = {}): DailyReport {
 		modifierImpacts: [],
 		modifierLifecycle: [],
 		warnings: [],
-		...overrides
+		...overrides,
+		logistics: overrides.logistics ?? emptyLogisticsReport()
 	};
 }
 

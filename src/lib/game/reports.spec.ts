@@ -1,6 +1,11 @@
 import { describe, expect, test } from 'vitest';
 import { clampScore, summarizeReports } from './reports';
-import type { DailyProductionReport, DailyReport, DailyStoreReport } from './types';
+import type {
+	DailyLogisticsReport,
+	DailyProductionReport,
+	DailyReport,
+	DailyStoreReport
+} from './types';
 
 function emptyProductionReport(): DailyProductionReport {
 	return {
@@ -18,6 +23,15 @@ function emptyProductionReport(): DailyProductionReport {
 		railShipments: [],
 		railUsage: {},
 		cityInventories: []
+	};
+}
+
+function emptyLogisticsReport(): DailyLogisticsReport {
+	return {
+		arrivals: [],
+		routeDispatchAttempts: [],
+		deliveredUnits: 0,
+		scheduledTransportCost: 0
 	};
 }
 
@@ -63,6 +77,7 @@ function report(
 			marketPosition: 20
 		},
 		productionReport,
+		logistics: emptyLogisticsReport(),
 		storeReports,
 		modifierImpacts: [],
 		modifierLifecycle: [],

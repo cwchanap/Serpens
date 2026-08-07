@@ -2902,6 +2902,7 @@ function validateSavedReport(value: unknown, label: string): void {
 	requireNumber(report.cashAfter, `${label} cashAfter`);
 	validateSavedScorecard(report.scorecard, `${label} scorecard`);
 	validateSavedProductionReport(report.productionReport, `${label} productionReport`);
+	validateSavedDailyLogisticsReport(report.logistics, `${label} logistics`);
 	const seenStoreIds = new Set<string>();
 	requireArray(report.storeReports, `${label} storeReports`).forEach((storeReport, index) => {
 		const storeId = validateSavedStoreReport(storeReport, `${label} storeReports[${index}]`);
@@ -3024,6 +3025,243 @@ function validateSavedReportModifierLifecycle(
 		requireExactKeys(lifecycle, ['status', 'modifier', 'replacedByModifierId'], lifecycleLabel);
 		validateSavedModifierLifecycle(lifecycle, lifecycleLabel, false, reportDay);
 	});
+}
+
+function validateSavedDailyLogisticsReport(value: unknown, label: string): void {
+	const report = requireRecord(value, label);
+	requireExactKeys(
+		report,
+		['arrivals', 'routeDispatchAttempts', 'deliveredUnits', 'scheduledTransportCost'],
+		label
+	);
+
+	const seenArrivalOrderIds = new Set<string>();
+	let deliveredUnits = 0;
+	requireArray(report.arrivals, `${label} arrivals`).forEach((arrivalValue, index) => {
+		const { transferOrderId, quantity } = validateSavedDailyTransferArrival(
+			arrivalValue,
+			`${label} arrivals[${index}]`
+		);
+		if (seenArrivalOrderIds.has(transferOrderId)) {
+			throw new SaveDataError(`${label} arrivals[${index}] transferOrderId must be unique`);
+		}
+		seenArrivalOrderIds.add(transferOrderId);
+		deliveredUnits = addHistoricalLogisticsTotal(
+			deliveredUnits,
+			quantity,
+			`${label} deliveredUnits`
+		);
+	});
+	if (
+		requireHistoricalLogisticsNonNegativeSafeInteger(
+			report.deliveredUnits,
+			`${label} deliveredUnits`
+		) !== deliveredUnits
+	) {
+		throw new SaveDataError(`${label} deliveredUnits must equal the sum of arrival quantities`);
+	}
+
+	const seenRouteIds = new Set<string>();
+	const seenDispatchOrderIds = new Set<string>();
+	let scheduledTransportCost = 0;
+	requireArray(report.routeDispatchAttempts, `${label} routeDispatchAttempts`).forEach(
+		(attemptValue, index) => {
+			const { routeId, transferOrderId, transportCost } = validateSavedDailyRouteDispatchAttempt(
+				attemptValue,
+				`${label} routeDispatchAttempts[${index}]`
+			);
+			if (seenRouteIds.has(routeId)) {
+				throw new SaveDataError(`${label} routeDispatchAttempts[${index}] routeId must be unique`);
+			}
+			seenRouteIds.add(routeId);
+			if (transferOrderId !== null) {
+				if (seenDispatchOrderIds.has(transferOrderId)) {
+					throw new SaveDataError(
+						`${label} routeDispatchAttempts[${index}] transferOrderId must be unique`
+					);
+				}
+				seenDispatchOrderIds.add(transferOrderId);
+			}
+			scheduledTransportCost = addHistoricalLogisticsTotal(
+				scheduledTransportCost,
+				transportCost,
+				`${label} scheduledTransportCost`
+			);
+		}
+	);
+	if (
+		requireHistoricalLogisticsNonNegativeSafeInteger(
+			report.scheduledTransportCost,
+			`${label} scheduledTransportCost`
+		) !== scheduledTransportCost
+	) {
+		throw new SaveDataError(
+			`${label} scheduledTransportCost must equal the sum of route dispatch costs`
+		);
+	}
+}
+
+function validateSavedDailyTransferArrival(
+	value: unknown,
+	label: string
+): { transferOrderId: string; quantity: number } {
+	const arrival = requireRecord(value, label);
+	requireExactKeys(
+		arrival,
+		['transferOrderId', 'originCityId', 'destinationCityId', 'materialId', 'quantity'],
+		label
+	);
+	const transferOrderId = requireString(arrival.transferOrderId, `${label} transferOrderId`);
+	const originCityId = requireHistoricalReportCityId(
+		arrival.originCityId,
+		'industry',
+		`${label} originCityId`
+	);
+	const destinationCityId = requireHistoricalReportCityId(
+		arrival.destinationCityId,
+		'industry',
+		`${label} destinationCityId`
+	);
+	if (originCityId === destinationCityId) {
+		throw new SaveDataError(`${label} endpoints must differ`);
+	}
+	requireKnownId(arrival.materialId, `${label} materialId`, MATERIAL_ID_SET, 'material');
+	const quantity = requireHistoricalLogisticsPositiveSafeInteger(
+		arrival.quantity,
+		`${label} quantity`
+	);
+
+	return { transferOrderId, quantity };
+}
+
+function validateSavedDailyRouteDispatchAttempt(
+	value: unknown,
+	label: string
+): { routeId: string; transferOrderId: string | null; transportCost: number } {
+	const attempt = requireRecord(value, label);
+	requireExactKeys(
+		attempt,
+		[
+			'routeId',
+			'originCityId',
+			'destinationCityId',
+			'materialId',
+			'destinationNeed',
+			'capacity',
+			'availableOriginStock',
+			'dispatchedQuantity',
+			'unusedCapacity',
+			'unmetDestinationNeed',
+			'transportCost',
+			'transferOrderId'
+		],
+		label
+	);
+	const routeId = requireString(attempt.routeId, `${label} routeId`);
+	const originCityId = requireHistoricalReportCityId(
+		attempt.originCityId,
+		'industry',
+		`${label} originCityId`
+	);
+	const destinationCityId = requireHistoricalReportCityId(
+		attempt.destinationCityId,
+		'industry',
+		`${label} destinationCityId`
+	);
+	if (originCityId === destinationCityId) {
+		throw new SaveDataError(`${label} endpoints must differ`);
+	}
+	requireKnownId(attempt.materialId, `${label} materialId`, MATERIAL_ID_SET, 'material');
+	const destinationNeed = requireHistoricalLogisticsNonNegativeSafeInteger(
+		attempt.destinationNeed,
+		`${label} destinationNeed`
+	);
+	const capacity = requireHistoricalLogisticsPositiveSafeInteger(
+		attempt.capacity,
+		`${label} capacity`
+	);
+	const availableOriginStock = requireHistoricalLogisticsNonNegativeSafeInteger(
+		attempt.availableOriginStock,
+		`${label} availableOriginStock`
+	);
+	const dispatchedQuantity = requireHistoricalLogisticsNonNegativeSafeInteger(
+		attempt.dispatchedQuantity,
+		`${label} dispatchedQuantity`
+	);
+	const unusedCapacity = requireHistoricalLogisticsNonNegativeSafeInteger(
+		attempt.unusedCapacity,
+		`${label} unusedCapacity`
+	);
+	const unmetDestinationNeed = requireHistoricalLogisticsNonNegativeSafeInteger(
+		attempt.unmetDestinationNeed,
+		`${label} unmetDestinationNeed`
+	);
+	const transportCost = requireHistoricalLogisticsNonNegativeSafeInteger(
+		attempt.transportCost,
+		`${label} transportCost`
+	);
+
+	if (dispatchedQuantity > destinationNeed) {
+		throw new SaveDataError(`${label} dispatchedQuantity must not exceed destinationNeed`);
+	}
+	if (dispatchedQuantity > capacity) {
+		throw new SaveDataError(`${label} dispatchedQuantity must not exceed capacity`);
+	}
+	if (dispatchedQuantity > availableOriginStock) {
+		throw new SaveDataError(`${label} dispatchedQuantity must not exceed availableOriginStock`);
+	}
+	if (unusedCapacity !== capacity - dispatchedQuantity) {
+		throw new SaveDataError(`${label} unusedCapacity must equal capacity minus dispatchedQuantity`);
+	}
+	const expectedUnmetDestinationNeed =
+		destinationNeed === 0 ? 0 : destinationNeed - dispatchedQuantity;
+	if (unmetDestinationNeed !== expectedUnmetDestinationNeed) {
+		throw new SaveDataError(
+			`${label} unmetDestinationNeed must equal destinationNeed minus dispatchedQuantity`
+		);
+	}
+
+	if (dispatchedQuantity === 0) {
+		if (transportCost !== 0 || attempt.transferOrderId !== null) {
+			throw new SaveDataError(
+				`${label} zero dispatch must have zero transportCost and null transferOrderId`
+			);
+		}
+		return { routeId, transferOrderId: null, transportCost };
+	}
+
+	if (transportCost === 0) {
+		throw new SaveDataError(`${label} positive dispatch must have positive transportCost`);
+	}
+	return {
+		routeId,
+		transferOrderId: requireString(attempt.transferOrderId, `${label} transferOrderId`),
+		transportCost
+	};
+}
+
+function requireHistoricalLogisticsPositiveSafeInteger(value: unknown, label: string): number {
+	const number = requireNumber(value, label);
+	if (!Number.isSafeInteger(number) || number <= 0) {
+		throw new SaveDataError(`${label} must be a positive safe integer`);
+	}
+	return number;
+}
+
+function requireHistoricalLogisticsNonNegativeSafeInteger(value: unknown, label: string): number {
+	const number = requireNumber(value, label);
+	if (!Number.isSafeInteger(number) || number < 0) {
+		throw new SaveDataError(`${label} must be a non-negative safe integer`);
+	}
+	return number;
+}
+
+function addHistoricalLogisticsTotal(total: number, value: number, label: string): number {
+	const next = total + value;
+	if (!Number.isSafeInteger(next)) {
+		throw new SaveDataError(`${label} must not exceed the safe integer range`);
+	}
+	return next;
 }
 
 function validateSavedProductionReport(value: unknown, label: string): void {
