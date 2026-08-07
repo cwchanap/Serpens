@@ -393,4 +393,98 @@ describe('logistics read models', () => {
 		).toBe(true);
 		expect(selectLogisticsTotals(game)).toEqual({ deliveredUnits: 26, transportCost: 290 });
 	});
+
+	test('skips route dispatch attempts for removed routes and older report days', () => {
+		const latestAttempt = routeAttempt({
+			routeId: 'route-1',
+			capacity: 20,
+			dispatchedQuantity: 5,
+			unusedCapacity: 15,
+			unmetDestinationNeed: 5,
+			transportCost: 10,
+			transferOrderId: 'transfer-latest'
+		});
+		const olderAttempt = routeAttempt({
+			routeId: 'route-1',
+			capacity: 30,
+			dispatchedQuantity: 30,
+			unusedCapacity: 0,
+			unmetDestinationNeed: 0,
+			transportCost: 60,
+			transferOrderId: 'transfer-older'
+		});
+		const removedRouteAttempt = routeAttempt({
+			routeId: 'route-removed',
+			capacity: 10,
+			dispatchedQuantity: 10,
+			unusedCapacity: 0,
+			unmetDestinationNeed: 0,
+			transportCost: 20,
+			transferOrderId: 'transfer-removed'
+		});
+		const game = gameWithLogistics({
+			recurringRoutes: [recurringRoute({ id: 'route-1' })],
+			reports: [
+				report(9, [latestAttempt]),
+				report(7, [olderAttempt]),
+				report(8, [removedRouteAttempt])
+			]
+		});
+
+		const summaries = selectRouteOperations(game);
+		const routeOne = summaries.find((summary) => summary.route.id === 'route-1');
+
+		expect(routeOne?.latestAttempt).toEqual(latestAttempt);
+		expect(routeOne?.latestAttempt).not.toEqual(olderAttempt);
+		expect(summaries.some((summary) => summary.route.id === 'route-removed')).toBe(false);
+	});
+
+	test('compareCurrentRoutes and compareRawIds return zero for equal IDs', () => {
+		const route = recurringRoute({ id: 'route-1', priority: 1 });
+		const game = gameWithLogistics({
+			recurringRoutes: [route, { ...route }],
+			transferOrders: [
+				transferOrder({
+					id: 'transfer-1',
+					destinationCityId: 'industry-city',
+					materialId: 'water'
+				}),
+				transferOrder({
+					id: 'transfer-1',
+					destinationCityId: 'industry-city',
+					materialId: 'water',
+					quantity: 2,
+					arrivalOnDay: 6
+				})
+			]
+		});
+
+		// Duplicate IDs force the comparator's equal-ID branch (returns 0)
+		// for both route sorting and order-ID sorting.
+		expect(selectRouteOperations(game)).toHaveLength(2);
+		expect(selectInTransitInventory(game)).toEqual([
+			{
+				destinationCityId: 'industry-city',
+				materialId: 'water',
+				quantity: 6,
+				orderIds: ['transfer-1', 'transfer-1'],
+				earliestArrivalOnDay: 6
+			}
+		]);
+	});
+
+	test('compareCurrentRoutes sorts equal-priority routes by ascending raw ID', () => {
+		const routeTen = recurringRoute({ id: 'route-10', priority: 1 });
+		const routeTwo = recurringRoute({ id: 'route-2', priority: 1 });
+		const game = gameWithLogistics({
+			// Inserted in ascending ID order ('route-10' < 'route-2' lexicographically).
+			// Insertion sort calls compare(arr[i], arr[j]) with i > j, so this
+			// forces compare(route-2, route-10) where left.id > right.id, hitting
+			// the comparator's positive-return branch (returns 1, no swap).
+			recurringRoutes: [routeTen, routeTwo]
+		});
+
+		const summaries = selectRouteOperations(game);
+		expect(summaries.map((summary) => summary.route.id)).toEqual(['route-10', 'route-2']);
+	});
 });
