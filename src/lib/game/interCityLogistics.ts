@@ -1,14 +1,17 @@
 import {
 	addCityInventoryMaterial,
 	getCityInventory,
+	getCityInventoryStats,
 	removeCityInventoryMaterial
 } from './cityInventory';
 import { MATERIALS } from './industry';
 import { getWorldCityDefinition } from './worldCatalog';
 import type {
+	DailyRouteDispatchAttempt,
 	DailyTransferArrival,
 	GameState,
 	MaterialId,
+	RecurringRoute,
 	TransferOrder,
 	TransferOrderSource,
 	WorldCityId
@@ -46,12 +49,55 @@ export type ManualTransferResult =
 	| { ok: true; game: GameState; order: TransferOrder }
 	| { ok: false; reason: ManualTransferFailure };
 
+export interface RecurringRouteInput {
+	originCityId: string;
+	destinationCityId: string;
+	materialId: string;
+	capacity: number;
+	frequencyDays: number;
+	leadTimeDays: number;
+	transportCostPerUnit: number;
+	priority: number;
+}
+
+export type RecurringRouteUpdateInput = Omit<RecurringRouteInput, 'priority'>;
+
+export type RecurringRouteFailure =
+	| 'invalid-origin'
+	| 'invalid-destination'
+	| 'same-city'
+	| 'invalid-material'
+	| 'invalid-capacity'
+	| 'invalid-frequency-days'
+	| 'invalid-lead-time-days'
+	| 'invalid-transport-cost-per-unit'
+	| 'invalid-priority'
+	| 'route-not-found';
+
+export type RecurringRouteResult =
+	| { ok: true; game: GameState; route: RecurringRoute }
+	| { ok: false; reason: RecurringRouteFailure };
+
+export type RouteRemovalResult =
+	| { ok: true; game: GameState; route: RecurringRoute }
+	| { ok: false; reason: 'route-not-found' };
+
 interface ValidManualTransfer {
 	originCityId: WorldCityId;
 	destinationCityId: WorldCityId;
 	materialId: MaterialId;
 	quantity: number;
 	quote: InterCityTransferQuote;
+}
+
+interface ValidRecurringRouteFields {
+	originCityId: WorldCityId;
+	destinationCityId: WorldCityId;
+	materialId: MaterialId;
+	capacity: number;
+	frequencyDays: number;
+	leadTimeDays: number;
+	transportCostPerUnit: number;
 }
 
 interface CreateDispatchedTransferInput {
@@ -115,6 +161,269 @@ export function dispatchManualTransfer(
 		game: { ...created.game, cash: created.game.cash - created.transportCost },
 		order: created.order
 	};
+}
+
+export function createRecurringRoute(
+	game: GameState,
+	input: RecurringRouteInput
+): RecurringRouteResult {
+	const validation = validateRecurringRouteFields(game, input);
+	if (!validation.ok) {
+		return validation;
+	}
+
+	if (!isSafeNonnegativeInteger(input.priority)) {
+		return { ok: false, reason: 'invalid-priority' };
+	}
+
+	const route: RecurringRoute = {
+		id: `route-${game.logistics.nextRouteSequence}`,
+		...validation.route,
+		priority: input.priority,
+		state: 'active',
+		nextDispatchOnDay: game.day
+	};
+	const nextRouteSequence = checkedAdd(
+		game.logistics.nextRouteSequence,
+		1,
+		'Next recurring route sequence'
+	);
+
+	return {
+		ok: true,
+		game: {
+			...game,
+			logistics: {
+				...game.logistics,
+				recurringRoutes: [...game.logistics.recurringRoutes, route],
+				nextRouteSequence
+			}
+		},
+		route
+	};
+}
+
+export function updateRecurringRoute(
+	game: GameState,
+	routeId: string,
+	input: RecurringRouteUpdateInput
+): RecurringRouteResult {
+	const route = findRecurringRoute(game, routeId);
+	if (!route) {
+		return { ok: false, reason: 'route-not-found' };
+	}
+
+	const validation = validateRecurringRouteFields(game, input);
+	if (!validation.ok) {
+		return validation;
+	}
+
+	const updatedRoute: RecurringRoute = {
+		id: route.id,
+		...validation.route,
+		priority: route.priority,
+		state: route.state,
+		nextDispatchOnDay: route.nextDispatchOnDay
+	};
+
+	return {
+		ok: true,
+		game: replaceRecurringRoute(game, updatedRoute),
+		route: updatedRoute
+	};
+}
+
+export function pauseRecurringRoute(game: GameState, routeId: string): RecurringRouteResult {
+	const route = findRecurringRoute(game, routeId);
+	if (!route) {
+		return { ok: false, reason: 'route-not-found' };
+	}
+
+	if (route.state === 'paused') {
+		return { ok: true, game, route };
+	}
+
+	const pausedRoute: RecurringRoute = { ...route, state: 'paused' };
+	return {
+		ok: true,
+		game: replaceRecurringRoute(game, pausedRoute),
+		route: pausedRoute
+	};
+}
+
+export function resumeRecurringRoute(game: GameState, routeId: string): RecurringRouteResult {
+	const route = findRecurringRoute(game, routeId);
+	if (!route) {
+		return { ok: false, reason: 'route-not-found' };
+	}
+
+	if (route.state === 'active') {
+		return { ok: true, game, route };
+	}
+
+	const resumedRoute: RecurringRoute = {
+		...route,
+		state: 'active',
+		nextDispatchOnDay: Math.max(route.nextDispatchOnDay, game.day)
+	};
+	return {
+		ok: true,
+		game: replaceRecurringRoute(game, resumedRoute),
+		route: resumedRoute
+	};
+}
+
+export function reprioritizeRecurringRoute(
+	game: GameState,
+	routeId: string,
+	priority: number
+): RecurringRouteResult {
+	const route = findRecurringRoute(game, routeId);
+	if (!route) {
+		return { ok: false, reason: 'route-not-found' };
+	}
+
+	if (!isSafeNonnegativeInteger(priority)) {
+		return { ok: false, reason: 'invalid-priority' };
+	}
+
+	if (route.priority === priority) {
+		return { ok: true, game, route };
+	}
+
+	const reprioritizedRoute: RecurringRoute = { ...route, priority };
+	return {
+		ok: true,
+		game: replaceRecurringRoute(game, reprioritizedRoute),
+		route: reprioritizedRoute
+	};
+}
+
+export function removeRecurringRoute(game: GameState, routeId: string): RouteRemovalResult {
+	const route = findRecurringRoute(game, routeId);
+	if (!route) {
+		return { ok: false, reason: 'route-not-found' };
+	}
+
+	return {
+		ok: true,
+		game: {
+			...game,
+			logistics: {
+				...game.logistics,
+				recurringRoutes: game.logistics.recurringRoutes.filter(
+					(candidate) => candidate.id !== routeId
+				)
+			}
+		},
+		route
+	};
+}
+
+export function compareRecurringRoutes(left: RecurringRoute, right: RecurringRoute): number {
+	if (left.priority !== right.priority) {
+		return left.priority < right.priority ? -1 : 1;
+	}
+
+	return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
+}
+
+export function getDestinationTransferNeed(
+	game: GameState,
+	destinationCityId: WorldCityId
+): number {
+	const destinationStats = getCityInventoryStats(game, destinationCityId);
+	const reservedInTransitUnits = game.logistics.transferOrders.reduce((reserved, order) => {
+		if (order.status !== 'in-transit' || order.destinationCityId !== destinationCityId) {
+			return reserved;
+		}
+
+		return checkedAdd(reserved, order.quantity, 'Reserved destination transfer units');
+	}, 0);
+	const freeWarehouseCapacity = Math.max(0, destinationStats.capacity - destinationStats.used);
+
+	return Math.max(0, freeWarehouseCapacity - reservedInTransitUnits);
+}
+
+export function processRecurringRouteDispatches(
+	game: GameState,
+	closingDay: number
+): { game: GameState; attempts: DailyRouteDispatchAttempt[]; scheduledTransportCost: number } {
+	const dueRoutes = game.logistics.recurringRoutes
+		.filter((route) => route.state === 'active' && route.nextDispatchOnDay <= closingDay)
+		.sort(compareRecurringRoutes);
+
+	if (dueRoutes.length === 0) {
+		return { game, attempts: [], scheduledTransportCost: 0 };
+	}
+
+	let nextGame = game;
+	let scheduledTransportCost = 0;
+	const attempts: DailyRouteDispatchAttempt[] = [];
+
+	for (const route of dueRoutes) {
+		const origin = getCityInventory(nextGame, route.originCityId);
+		if (!origin.ok) {
+			throw new Error(`Recurring route origin is invalid: ${origin.reason}`);
+		}
+
+		const destinationNeed = getDestinationTransferNeed(nextGame, route.destinationCityId);
+		const availableOriginStock = origin.inventory.materials[route.materialId] ?? 0;
+		const dispatchedQuantity = Math.min(destinationNeed, route.capacity, availableOriginStock);
+		let transportCost = 0;
+		let transferOrderId: string | null = null;
+
+		if (dispatchedQuantity > 0) {
+			const calculatedTransportCost = checkedMultiply(
+				route.transportCostPerUnit,
+				dispatchedQuantity
+			);
+			if (calculatedTransportCost === null) {
+				throw new RangeError('Recurring route transport cost exceeds the safe integer range');
+			}
+
+			const created = createDispatchedTransfer(nextGame, {
+				source: { kind: 'recurring-route', routeId: route.id },
+				originCityId: route.originCityId,
+				destinationCityId: route.destinationCityId,
+				materialId: route.materialId,
+				quantity: dispatchedQuantity,
+				leadTimeDays: route.leadTimeDays,
+				transportCost: calculatedTransportCost
+			});
+			nextGame = created.game;
+			transportCost = created.transportCost;
+			transferOrderId = created.order.id;
+		}
+
+		const nextDispatchOnDay = checkedAdd(
+			closingDay,
+			route.frequencyDays,
+			'Recurring route next dispatch day'
+		);
+		nextGame = replaceRecurringRoute(nextGame, { ...route, nextDispatchOnDay });
+		scheduledTransportCost = checkedAdd(
+			scheduledTransportCost,
+			transportCost,
+			'Scheduled transport cost'
+		);
+		attempts.push({
+			routeId: route.id,
+			originCityId: route.originCityId,
+			destinationCityId: route.destinationCityId,
+			materialId: route.materialId,
+			destinationNeed,
+			capacity: route.capacity,
+			availableOriginStock,
+			dispatchedQuantity,
+			unusedCapacity: route.capacity - dispatchedQuantity,
+			unmetDestinationNeed: destinationNeed === 0 ? 0 : destinationNeed - dispatchedQuantity,
+			transportCost,
+			transferOrderId
+		});
+	}
+
+	return { game: nextGame, attempts, scheduledTransportCost };
 }
 
 export function processTransferArrivals(
@@ -236,6 +545,74 @@ function validateManualTransfer(
 	};
 }
 
+function validateRecurringRouteFields(
+	game: GameState,
+	input: RecurringRouteUpdateInput
+): { ok: true; route: ValidRecurringRouteFields } | { ok: false; reason: RecurringRouteFailure } {
+	const origin = getCityInventory(game, input.originCityId);
+	if (!origin.ok) {
+		return { ok: false, reason: 'invalid-origin' };
+	}
+
+	const destination = getCityInventory(game, input.destinationCityId);
+	if (!destination.ok) {
+		return { ok: false, reason: 'invalid-destination' };
+	}
+
+	if (origin.inventory.cityId === destination.inventory.cityId) {
+		return { ok: false, reason: 'same-city' };
+	}
+
+	if (!Object.hasOwn(MATERIALS, input.materialId)) {
+		return { ok: false, reason: 'invalid-material' };
+	}
+
+	if (!isPositiveSafeInteger(input.capacity)) {
+		return { ok: false, reason: 'invalid-capacity' };
+	}
+
+	if (!isPositiveSafeInteger(input.frequencyDays)) {
+		return { ok: false, reason: 'invalid-frequency-days' };
+	}
+
+	if (!isPositiveSafeInteger(input.leadTimeDays)) {
+		return { ok: false, reason: 'invalid-lead-time-days' };
+	}
+
+	if (!isPositiveSafeInteger(input.transportCostPerUnit)) {
+		return { ok: false, reason: 'invalid-transport-cost-per-unit' };
+	}
+
+	return {
+		ok: true,
+		route: {
+			originCityId: origin.inventory.cityId,
+			destinationCityId: destination.inventory.cityId,
+			materialId: input.materialId as MaterialId,
+			capacity: input.capacity,
+			frequencyDays: input.frequencyDays,
+			leadTimeDays: input.leadTimeDays,
+			transportCostPerUnit: input.transportCostPerUnit
+		}
+	};
+}
+
+function findRecurringRoute(game: GameState, routeId: string): RecurringRoute | undefined {
+	return game.logistics.recurringRoutes.find((route) => route.id === routeId);
+}
+
+function replaceRecurringRoute(game: GameState, nextRoute: RecurringRoute): GameState {
+	return {
+		...game,
+		logistics: {
+			...game.logistics,
+			recurringRoutes: game.logistics.recurringRoutes.map((route) =>
+				route.id === nextRoute.id ? nextRoute : route
+			)
+		}
+	};
+}
+
 function createDispatchedTransfer(
 	game: GameState,
 	input: CreateDispatchedTransferInput
@@ -289,6 +666,14 @@ function createDispatchedTransfer(
 
 function compareTransferOrderIds(left: TransferOrder, right: TransferOrder): number {
 	return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
+}
+
+function isPositiveSafeInteger(value: number): boolean {
+	return Number.isSafeInteger(value) && value > 0;
+}
+
+function isSafeNonnegativeInteger(value: number): boolean {
+	return Number.isSafeInteger(value) && value >= 0;
 }
 
 function checkedAdd(left: number, right: number, label: string): number {

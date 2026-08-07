@@ -2,14 +2,33 @@ import { describe, expect, test, vi } from 'vitest';
 import { getCityInventoryStats } from './cityInventory';
 import {
 	INTER_CITY_DISTANCE_PER_BAND,
+	compareRecurringRoutes,
+	createRecurringRoute,
 	dispatchManualTransfer,
+	getDestinationTransferNeed,
+	pauseRecurringRoute,
 	processTransferArrivals,
+	processRecurringRouteDispatches,
 	quoteInterCityTransfer,
+	removeRecurringRoute,
+	reprioritizeRecurringRoute,
+	resumeRecurringRoute,
+	updateRecurringRoute,
 	type ManualTransferFailure,
-	type ManualTransferInput
+	type ManualTransferInput,
+	type RecurringRouteFailure,
+	type RecurringRouteInput,
+	type RecurringRouteUpdateInput
 } from './interCityLogistics';
 import { createNewGame } from './state';
-import type { GameState, MaterialId, TransferOrder, WorldCityId } from './types';
+import type {
+	GameState,
+	IndustrialBuilding,
+	MaterialId,
+	RecurringRoute,
+	TransferOrder,
+	WorldCityId
+} from './types';
 import { openWorldCity } from './world';
 
 function withCityMaterials(
@@ -104,6 +123,83 @@ function withTransferOrders(game: GameState, transferOrders: TransferOrder[]): G
 			...game.logistics,
 			transferOrders
 		}
+	};
+}
+
+function createWarehouseBuilding(
+	id: string,
+	cityId: WorldCityId,
+	mapX: number
+): IndustrialBuilding {
+	return {
+		id,
+		level: 1,
+		typeId: 'warehouse',
+		cityId,
+		tileId: `${cityId}-warehouse-${mapX}`,
+		mapX,
+		mapY: 1,
+		status: 'idle',
+		lastProduction: [],
+		producedTotal: 0,
+		importedInputTotal: 0,
+		blockedDays: 0,
+		inventory: {}
+	};
+}
+
+function withWarehouses(game: GameState, cityIds: readonly WorldCityId[]): GameState {
+	return {
+		...game,
+		industrialBuildings: [
+			...game.industrialBuildings,
+			...cityIds.map((cityId, index) =>
+				createWarehouseBuilding(`warehouse-${cityId}`, cityId, index + 1)
+			)
+		]
+	};
+}
+
+function withRecurringRoutes(game: GameState, recurringRoutes: RecurringRoute[]): GameState {
+	return {
+		...game,
+		logistics: {
+			...game.logistics,
+			recurringRoutes
+		}
+	};
+}
+
+function validRecurringRouteInput(
+	overrides: Partial<RecurringRouteInput> = {}
+): RecurringRouteInput {
+	return {
+		originCityId: 'industry-city',
+		destinationCityId: 'breadbasket-basin',
+		materialId: 'water',
+		capacity: 30,
+		frequencyDays: 3,
+		leadTimeDays: 2,
+		transportCostPerUnit: 2,
+		priority: 1,
+		...overrides
+	};
+}
+
+function createRecurringRouteDefinition(overrides: Partial<RecurringRoute> = {}): RecurringRoute {
+	return {
+		id: 'route-1',
+		originCityId: 'industry-city',
+		destinationCityId: 'breadbasket-basin',
+		materialId: 'water',
+		capacity: 30,
+		frequencyDays: 3,
+		leadTimeDays: 2,
+		transportCostPerUnit: 2,
+		priority: 1,
+		state: 'active',
+		nextDispatchOnDay: 7,
+		...overrides
 	};
 }
 
@@ -333,5 +429,496 @@ describe('inter-city manual logistics', () => {
 				quantity: 10
 			}
 		]);
+	});
+});
+
+type RecurringRouteFailureCase = {
+	name: string;
+	reason: RecurringRouteFailure;
+	input: RecurringRouteInput;
+};
+
+const recurringRouteFailureCases: readonly RecurringRouteFailureCase[] = [
+	{
+		name: 'an invalid origin',
+		reason: 'invalid-origin',
+		input: validRecurringRouteInput({ originCityId: 'unknown-city' })
+	},
+	{
+		name: 'an invalid destination',
+		reason: 'invalid-destination',
+		input: validRecurringRouteInput({ destinationCityId: 'harbor-city' })
+	},
+	{
+		name: 'matching endpoints',
+		reason: 'same-city',
+		input: validRecurringRouteInput({ destinationCityId: 'industry-city' })
+	},
+	{
+		name: 'an unknown material',
+		reason: 'invalid-material',
+		input: validRecurringRouteInput({ materialId: 'unknown-material' })
+	},
+	{
+		name: 'a nonpositive capacity',
+		reason: 'invalid-capacity',
+		input: validRecurringRouteInput({ capacity: 0 })
+	},
+	{
+		name: 'a nonpositive frequency',
+		reason: 'invalid-frequency-days',
+		input: validRecurringRouteInput({ frequencyDays: 0 })
+	},
+	{
+		name: 'a nonpositive lead time',
+		reason: 'invalid-lead-time-days',
+		input: validRecurringRouteInput({ leadTimeDays: 0 })
+	},
+	{
+		name: 'a nonpositive per-unit transport cost',
+		reason: 'invalid-transport-cost-per-unit',
+		input: validRecurringRouteInput({ transportCostPerUnit: 0 })
+	},
+	{
+		name: 'a negative priority',
+		reason: 'invalid-priority',
+		input: validRecurringRouteInput({ priority: -1 })
+	}
+];
+
+describe('inter-city recurring routes', () => {
+	test.each(recurringRouteFailureCases)(
+		'rejects $name without consuming a route sequence',
+		({ reason, input }) => {
+			const game = createTwoIndustryCityGame();
+			const before = structuredClone(game);
+
+			expect(createRecurringRoute(game, input)).toEqual({ ok: false, reason });
+			expect(game).toEqual(before);
+		}
+	);
+
+	test('creates route-1 as an immediately due active route', () => {
+		const game = createTwoIndustryCityGame();
+		const before = structuredClone(game);
+
+		const result = createRecurringRoute(game, validRecurringRouteInput());
+		expect(result.ok).toBe(true);
+		if (!result.ok) {
+			throw new Error(`Expected a route, received ${result.reason}`);
+		}
+
+		const expectedRoute = createRecurringRouteDefinition();
+		expect(result.route).toEqual(expectedRoute);
+		expect(result.game.logistics).toEqual({
+			transferOrders: [],
+			recurringRoutes: [expectedRoute],
+			nextTransferSequence: 1,
+			nextRouteSequence: 2
+		});
+		expect(game).toEqual(before);
+	});
+
+	test('updates a complete route input without rewriting its lifecycle or existing orders', () => {
+		const created = createRecurringRoute(createTwoIndustryCityGame(), validRecurringRouteInput());
+		if (!created.ok) {
+			throw new Error(`Expected a route, received ${created.reason}`);
+		}
+
+		const existingOrder = createTransferOrder({
+			source: { kind: 'recurring-route', routeId: 'route-1' }
+		});
+		const game = withRecurringRoutes(withTransferOrders(created.game, [existingOrder]), [
+			{
+				...created.route,
+				state: 'paused',
+				priority: 4,
+				nextDispatchOnDay: 12
+			}
+		]);
+		const before = structuredClone(game);
+		const input: RecurringRouteUpdateInput = {
+			originCityId: 'breadbasket-basin',
+			destinationCityId: 'industry-city',
+			materialId: 'grain',
+			capacity: 17,
+			frequencyDays: 5,
+			leadTimeDays: 4,
+			transportCostPerUnit: 3
+		};
+
+		const result = updateRecurringRoute(game, 'route-1', input);
+		expect(result.ok).toBe(true);
+		if (!result.ok) {
+			throw new Error(`Expected an updated route, received ${result.reason}`);
+		}
+
+		expect(result.route).toEqual({
+			id: 'route-1',
+			...input,
+			state: 'paused',
+			priority: 4,
+			nextDispatchOnDay: 12
+		});
+		expect(result.game.logistics.transferOrders).toEqual([existingOrder]);
+		expect(result.game.logistics.nextRouteSequence).toBe(2);
+		expect(game).toEqual(before);
+	});
+
+	test('pauses and resumes idempotently without replaying an overdue schedule', () => {
+		const game = withRecurringRoutes(createTwoIndustryCityGame(), [
+			createRecurringRouteDefinition({ nextDispatchOnDay: 4 })
+		]);
+
+		const paused = pauseRecurringRoute(game, 'route-1');
+		expect(paused.ok).toBe(true);
+		if (!paused.ok) {
+			throw new Error(`Expected a paused route, received ${paused.reason}`);
+		}
+		expect(paused.route).toEqual(
+			createRecurringRouteDefinition({ state: 'paused', nextDispatchOnDay: 4 })
+		);
+
+		const pausedAgain = pauseRecurringRoute(paused.game, 'route-1');
+		expect(pausedAgain.ok).toBe(true);
+		if (!pausedAgain.ok) {
+			throw new Error(`Expected an idempotent pause, received ${pausedAgain.reason}`);
+		}
+		expect(pausedAgain.game).toEqual(paused.game);
+
+		const resumed = resumeRecurringRoute(pausedAgain.game, 'route-1');
+		expect(resumed.ok).toBe(true);
+		if (!resumed.ok) {
+			throw new Error(`Expected a resumed route, received ${resumed.reason}`);
+		}
+		expect(resumed.route).toEqual(createRecurringRouteDefinition({ nextDispatchOnDay: 7 }));
+
+		const resumedAgain = resumeRecurringRoute(resumed.game, 'route-1');
+		expect(resumedAgain.ok).toBe(true);
+		if (!resumedAgain.ok) {
+			throw new Error(`Expected an idempotent resume, received ${resumedAgain.reason}`);
+		}
+		expect(resumedAgain.game).toEqual(resumed.game);
+
+		const futurePaused = withRecurringRoutes(createTwoIndustryCityGame(), [
+			createRecurringRouteDefinition({ state: 'paused', nextDispatchOnDay: 12 })
+		]);
+		const futureResumed = resumeRecurringRoute(futurePaused, 'route-1');
+		expect(futureResumed.ok).toBe(true);
+		if (!futureResumed.ok) {
+			throw new Error(`Expected a future route to resume, received ${futureResumed.reason}`);
+		}
+		expect(futureResumed.route.nextDispatchOnDay).toBe(12);
+	});
+
+	test('reprioritizes only the selected route priority', () => {
+		const route = createRecurringRouteDefinition();
+		const game = withRecurringRoutes(createTwoIndustryCityGame(), [route]);
+
+		const result = reprioritizeRecurringRoute(game, 'route-1', 0);
+		expect(result.ok).toBe(true);
+		if (!result.ok) {
+			throw new Error(`Expected a reprioritized route, received ${result.reason}`);
+		}
+		expect(result.game).toEqual({
+			...game,
+			logistics: {
+				...game.logistics,
+				recurringRoutes: [{ ...route, priority: 0 }]
+			}
+		});
+
+		expect(reprioritizeRecurringRoute(game, 'route-1', -1)).toEqual({
+			ok: false,
+			reason: 'invalid-priority'
+		});
+	});
+
+	test('removes only the route definition and never rewrites its orders', () => {
+		const created = createRecurringRoute(createTwoIndustryCityGame(), validRecurringRouteInput());
+		if (!created.ok) {
+			throw new Error(`Expected a route, received ${created.reason}`);
+		}
+		const route = created.route;
+		const order = createTransferOrder({
+			source: { kind: 'recurring-route', routeId: route.id }
+		});
+		const game = withTransferOrders(created.game, [order]);
+
+		const result = removeRecurringRoute(game, route.id);
+		expect(result.ok).toBe(true);
+		if (!result.ok) {
+			throw new Error(`Expected a route removal, received ${result.reason}`);
+		}
+		expect(result.game.logistics).toEqual({
+			transferOrders: [order],
+			recurringRoutes: [],
+			nextTransferSequence: 1,
+			nextRouteSequence: 2
+		});
+
+		const recreated = createRecurringRoute(result.game, validRecurringRouteInput());
+		expect(recreated.ok).toBe(true);
+		if (!recreated.ok) {
+			throw new Error(`Expected a replacement route, received ${recreated.reason}`);
+		}
+		expect(recreated.route.id).toBe('route-2');
+		expect(removeRecurringRoute(game, 'route-missing')).toEqual({
+			ok: false,
+			reason: 'route-not-found'
+		});
+	});
+
+	test('derives destination transfer need from free warehouse space and all in-transit reservations', () => {
+		const game = withTransferOrders(
+			withWarehouses(createTwoIndustryCityGame(), ['breadbasket-basin']),
+			[
+				createTransferOrder({
+					id: 'transfer-1',
+					destinationCityId: 'breadbasket-basin',
+					materialId: 'water',
+					quantity: 11,
+					status: 'in-transit'
+				}),
+				createTransferOrder({
+					id: 'transfer-2',
+					destinationCityId: 'breadbasket-basin',
+					materialId: 'grain',
+					quantity: 50,
+					status: 'delivered'
+				}),
+				createTransferOrder({
+					id: 'transfer-3',
+					originCityId: 'breadbasket-basin',
+					destinationCityId: 'industry-city',
+					materialId: 'grain',
+					quantity: 60,
+					status: 'in-transit'
+				})
+			]
+		);
+
+		expect(getDestinationTransferNeed(game, 'breadbasket-basin')).toBe(186);
+	});
+
+	test('dispatches competing due routes by priority then raw route ID with accumulated stock and need', () => {
+		const routeTwo = createRecurringRouteDefinition({ id: 'route-2' });
+		const routeTen = createRecurringRouteDefinition({ id: 'route-10' });
+		const routeThree = createRecurringRouteDefinition({
+			id: 'route-3',
+			capacity: 10,
+			transportCostPerUnit: 3,
+			priority: 0
+		});
+		const game = withRecurringRoutes(
+			withCityMaterials(
+				withCityMaterials(
+					withWarehouses(createTwoIndustryCityGame(), ['breadbasket-basin']),
+					'industry-city',
+					{ water: 100 }
+				),
+				'breadbasket-basin',
+				{ water: 140 }
+			),
+			[routeTwo, routeTen, routeThree]
+		);
+		const before = structuredClone(game);
+		const localeCompare = vi.spyOn(String.prototype, 'localeCompare').mockImplementation(() => {
+			throw new Error('recurring route ordering must not depend on locale');
+		});
+
+		try {
+			expect(compareRecurringRoutes(routeThree, routeTwo)).toBeLessThan(0);
+			expect(compareRecurringRoutes(routeTen, routeTwo)).toBeLessThan(0);
+
+			const result = processRecurringRouteDispatches(game, 7);
+
+			expect(result.attempts).toEqual([
+				{
+					routeId: 'route-3',
+					originCityId: 'industry-city',
+					destinationCityId: 'breadbasket-basin',
+					materialId: 'water',
+					destinationNeed: 60,
+					capacity: 10,
+					availableOriginStock: 100,
+					dispatchedQuantity: 10,
+					unusedCapacity: 0,
+					unmetDestinationNeed: 50,
+					transportCost: 30,
+					transferOrderId: 'transfer-1'
+				},
+				{
+					routeId: 'route-10',
+					originCityId: 'industry-city',
+					destinationCityId: 'breadbasket-basin',
+					materialId: 'water',
+					destinationNeed: 50,
+					capacity: 30,
+					availableOriginStock: 90,
+					dispatchedQuantity: 30,
+					unusedCapacity: 0,
+					unmetDestinationNeed: 20,
+					transportCost: 60,
+					transferOrderId: 'transfer-2'
+				},
+				{
+					routeId: 'route-2',
+					originCityId: 'industry-city',
+					destinationCityId: 'breadbasket-basin',
+					materialId: 'water',
+					destinationNeed: 20,
+					capacity: 30,
+					availableOriginStock: 60,
+					dispatchedQuantity: 20,
+					unusedCapacity: 10,
+					unmetDestinationNeed: 0,
+					transportCost: 40,
+					transferOrderId: 'transfer-3'
+				}
+			]);
+			expect(result.scheduledTransportCost).toBe(130);
+			expect(result.game.cash).toBe(game.cash);
+			expect(
+				result.game.cityInventories.find((inventory) => inventory.cityId === 'industry-city')
+			).toEqual({ cityId: 'industry-city', materials: { water: 40 } });
+			expect(result.game.logistics.transferOrders).toEqual([
+				createTransferOrder({
+					id: 'transfer-1',
+					source: { kind: 'recurring-route', routeId: 'route-3' },
+					quantity: 10,
+					transportCost: 30
+				}),
+				createTransferOrder({
+					id: 'transfer-2',
+					source: { kind: 'recurring-route', routeId: 'route-10' },
+					quantity: 30,
+					transportCost: 60
+				}),
+				createTransferOrder({
+					id: 'transfer-3',
+					source: { kind: 'recurring-route', routeId: 'route-2' },
+					quantity: 20,
+					transportCost: 40
+				})
+			]);
+			expect(result.game.logistics.recurringRoutes).toEqual([
+				{ ...routeTwo, nextDispatchOnDay: 10 },
+				{ ...routeTen, nextDispatchOnDay: 10 },
+				{ ...routeThree, nextDispatchOnDay: 10 }
+			]);
+			expect(result.game.logistics.nextTransferSequence).toBe(4);
+			expect(game).toEqual(before);
+		} finally {
+			localeCompare.mockRestore();
+		}
+	});
+
+	test('records zero attempts once while preserving future and paused routes', () => {
+		const routeOne = createRecurringRouteDefinition({
+			id: 'route-1',
+			capacity: 50,
+			nextDispatchOnDay: 4
+		});
+		const routeTwo = createRecurringRouteDefinition({ id: 'route-2', capacity: 20, priority: 2 });
+		const routeThree = createRecurringRouteDefinition({
+			id: 'route-3',
+			destinationCityId: 'quarry-works',
+			capacity: 20,
+			priority: 3
+		});
+		const pausedRoute = createRecurringRouteDefinition({
+			id: 'route-4',
+			state: 'paused',
+			priority: 4
+		});
+		const futureRoute = createRecurringRouteDefinition({
+			id: 'route-5',
+			nextDispatchOnDay: 8,
+			priority: 5
+		});
+		const game = withRecurringRoutes(
+			withCityMaterials(
+				withCityMaterials(
+					withCityMaterials(
+						withWarehouses(createThreeIndustryCityGame(), ['breadbasket-basin', 'quarry-works']),
+						'industry-city',
+						{ water: 7 }
+					),
+					'breadbasket-basin',
+					{}
+				),
+				'quarry-works',
+				{ water: 200 }
+			),
+			[routeOne, routeTwo, routeThree, pausedRoute, futureRoute]
+		);
+		const before = structuredClone(game);
+
+		const result = processRecurringRouteDispatches(game, 7);
+
+		expect(result.attempts).toEqual([
+			{
+				routeId: 'route-1',
+				originCityId: 'industry-city',
+				destinationCityId: 'breadbasket-basin',
+				materialId: 'water',
+				destinationNeed: 200,
+				capacity: 50,
+				availableOriginStock: 7,
+				dispatchedQuantity: 7,
+				unusedCapacity: 43,
+				unmetDestinationNeed: 193,
+				transportCost: 14,
+				transferOrderId: 'transfer-1'
+			},
+			{
+				routeId: 'route-2',
+				originCityId: 'industry-city',
+				destinationCityId: 'breadbasket-basin',
+				materialId: 'water',
+				destinationNeed: 193,
+				capacity: 20,
+				availableOriginStock: 0,
+				dispatchedQuantity: 0,
+				unusedCapacity: 20,
+				unmetDestinationNeed: 193,
+				transportCost: 0,
+				transferOrderId: null
+			},
+			{
+				routeId: 'route-3',
+				originCityId: 'industry-city',
+				destinationCityId: 'quarry-works',
+				materialId: 'water',
+				destinationNeed: 0,
+				capacity: 20,
+				availableOriginStock: 0,
+				dispatchedQuantity: 0,
+				unusedCapacity: 20,
+				unmetDestinationNeed: 0,
+				transportCost: 0,
+				transferOrderId: null
+			}
+		]);
+		expect(result.scheduledTransportCost).toBe(14);
+		expect(result.game.cash).toBe(game.cash);
+		expect(result.game.logistics.transferOrders).toEqual([
+			createTransferOrder({
+				id: 'transfer-1',
+				source: { kind: 'recurring-route', routeId: 'route-1' },
+				quantity: 7,
+				transportCost: 14
+			})
+		]);
+		expect(result.game.logistics.nextTransferSequence).toBe(2);
+		expect(result.game.logistics.recurringRoutes).toEqual([
+			{ ...routeOne, nextDispatchOnDay: 10 },
+			{ ...routeTwo, nextDispatchOnDay: 10 },
+			{ ...routeThree, nextDispatchOnDay: 10 },
+			pausedRoute,
+			futureRoute
+		]);
+		expect(game).toEqual(before);
 	});
 });

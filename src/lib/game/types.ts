@@ -402,6 +402,21 @@ export interface DailyTransferArrival {
 	quantity: number;
 }
 
+export interface DailyRouteDispatchAttempt {
+	routeId: string;
+	originCityId: WorldCityId;
+	destinationCityId: WorldCityId;
+	materialId: MaterialId;
+	destinationNeed: number;
+	capacity: number;
+	availableOriginStock: number;
+	dispatchedQuantity: number;
+	unusedCapacity: number;
+	unmetDestinationNeed: number;
+	transportCost: number;
+	transferOrderId: string | null;
+}
+
 export interface RecurringRoute {
 	id: string;
 	originCityId: WorldCityId;
