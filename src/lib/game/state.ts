@@ -178,6 +178,12 @@ export function createNewGame(archetypeId: ArchetypeId, seed = Date.now()): Game
 		industrialBuildings: [],
 		cityInventories: [],
 		retailSupplyAssignments: [],
+		logistics: {
+			transferOrders: [],
+			recurringRoutes: [],
+			nextTransferSequence: 1,
+			nextRouteSequence: 1
+		},
 		stores: [placedOpeningStore],
 		staff,
 		hiringCandidates,

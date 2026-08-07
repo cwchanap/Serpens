@@ -64,6 +64,7 @@ export type SaveDataErrorCode =
 	| 'invariant-entity-city-ownership'
 	| 'invariant-city-inventory'
 	| 'invariant-retail-supply'
+	| 'invariant-logistics'
 	| 'invariant-report-attribution'
 	| 'invariant-event-runtime';
 
@@ -374,6 +375,7 @@ function validateCurrentGameStateInternal(value: unknown): GameState {
 	);
 	validateCurrentCityInventories(currentGame);
 	validateCurrentRetailSupplyAssignments(currentGame);
+	validateCurrentLogisticsState(currentGame);
 	validateCurrentIndustrialBuildingPlacements(industrialBuildings, industryCities);
 	validateCurrentRetailStorePlacements(stores, cities);
 	staff.forEach((member, index) => validateSavedStaffMember(member, `Saved game staff[${index}]`));
@@ -1209,6 +1211,278 @@ function validateCurrentRetailSupplyAssignments(game: GameState): void {
 	game.retailSupplyAssignments = [...assignments].sort((left, right) =>
 		compareWorldCityIds(left.retailCityId, right.retailCityId)
 	);
+}
+
+function logisticsInvariant(message: string): never {
+	throw new SaveDataError(message, 'invariant-logistics');
+}
+
+function requireLogisticsRecord(value: unknown, label: string): Record<string, unknown> {
+	if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+		return logisticsInvariant(`${label} must be an object`);
+	}
+	return value as Record<string, unknown>;
+}
+
+function requireLogisticsArray(value: unknown, label: string): unknown[] {
+	if (!Array.isArray(value)) return logisticsInvariant(`${label} must be an array`);
+	return value;
+}
+
+function requireLogisticsExactKeys(
+	value: Record<string, unknown>,
+	allowedKeys: readonly string[],
+	label: string
+): void {
+	const allowed = new Set(allowedKeys);
+	for (const key of Object.keys(value)) {
+		if (!allowed.has(key)) logisticsInvariant(`${label} contains an unknown field: ${key}`);
+	}
+}
+
+function requireLogisticsString(value: unknown, label: string): string {
+	if (typeof value !== 'string' || value.length === 0) {
+		return logisticsInvariant(`${label} must be a non-empty string`);
+	}
+	return value;
+}
+
+function requireLogisticsPositiveSafeInteger(value: unknown, label: string): number {
+	if (typeof value !== 'number' || !Number.isSafeInteger(value) || value <= 0) {
+		return logisticsInvariant(`${label} must be a positive safe integer`);
+	}
+	return value;
+}
+
+function requireLogisticsNonNegativeSafeInteger(value: unknown, label: string): number {
+	if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) {
+		return logisticsInvariant(`${label} must be a non-negative safe integer`);
+	}
+	return value;
+}
+
+function requireLogisticsOneOf<T extends readonly string[]>(
+	value: unknown,
+	label: string,
+	allowed: T
+): T[number] {
+	const text = requireLogisticsString(value, label);
+	if (!(allowed as readonly string[]).includes(text)) {
+		return logisticsInvariant(`${label} must be one of: ${allowed.join(', ')}`);
+	}
+	return text as T[number];
+}
+
+function requireCanonicalLogisticsId(
+	value: unknown,
+	prefix: string,
+	label: string
+): { id: string; sequence: number } {
+	const id = requireLogisticsString(value, label);
+	// `generatedIdSequence` is the sole canonical numeric-suffix parser. Its
+	// result is used only to prove that the next generated ID cannot collide.
+	const sequence = generatedIdSequence(id, prefix);
+	if (sequence === 0) {
+		return logisticsInvariant(`${label} must use ${prefix}<positive-safe-integer>`);
+	}
+	return { id, sequence };
+}
+
+function resolveLogisticsEndpoint(game: GameState, value: unknown, label: string): WorldCityId {
+	const cityId = requireLogisticsString(value, label);
+	const definition = getWorldCityDefinition(cityId);
+	if (!definition || definition.kind !== 'industry') {
+		return logisticsInvariant(`${label} must reference a known industry city`);
+	}
+	if (!game.world.openedCityIds.includes(definition.id)) {
+		return logisticsInvariant(`${label} must reference an opened industry city`);
+	}
+	if (!game.industryCities.some((city) => city.id === definition.id)) {
+		return logisticsInvariant(`${label} must reference a materialized industry city`);
+	}
+	if (!getCityInventory(game, definition.id).ok) {
+		return logisticsInvariant(`${label} must reference a current industry inventory`);
+	}
+	return definition.id;
+}
+
+function validateCurrentTransferOrderSource(value: unknown, label: string): void {
+	const source = requireLogisticsRecord(value, label);
+	const kind = requireLogisticsString(source.kind, `${label} kind`);
+	if (kind === 'manual') {
+		requireLogisticsExactKeys(source, ['kind'], label);
+		return;
+	}
+	if (kind === 'recurring-route') {
+		requireLogisticsExactKeys(source, ['kind', 'routeId'], label);
+		requireLogisticsString(source.routeId, `${label} routeId`);
+		return;
+	}
+	logisticsInvariant(`${label} kind must be one of: manual, recurring-route`);
+}
+
+function validateCurrentLogisticsState(game: GameState): void {
+	const label = 'Saved game logistics';
+	const logistics = requireLogisticsRecord(game.logistics, label);
+	requireLogisticsExactKeys(
+		logistics,
+		['transferOrders', 'recurringRoutes', 'nextTransferSequence', 'nextRouteSequence'],
+		label
+	);
+	const transferOrders = requireLogisticsArray(logistics.transferOrders, `${label} transferOrders`);
+	const recurringRoutes = requireLogisticsArray(
+		logistics.recurringRoutes,
+		`${label} recurringRoutes`
+	);
+	const nextTransferSequence = requireLogisticsPositiveSafeInteger(
+		logistics.nextTransferSequence,
+		`${label} nextTransferSequence`
+	);
+	const nextRouteSequence = requireLogisticsPositiveSafeInteger(
+		logistics.nextRouteSequence,
+		`${label} nextRouteSequence`
+	);
+
+	const transferIds = new Set<string>();
+	for (const [index, value] of transferOrders.entries()) {
+		const orderLabel = `${label} transferOrders[${index}]`;
+		const order = requireLogisticsRecord(value, orderLabel);
+		requireLogisticsExactKeys(
+			order,
+			[
+				'id',
+				'source',
+				'originCityId',
+				'destinationCityId',
+				'materialId',
+				'quantity',
+				'createdOnDay',
+				'dispatchedOnDay',
+				'arrivalOnDay',
+				'transportCost',
+				'status'
+			],
+			orderLabel
+		);
+		const { id, sequence } = requireCanonicalLogisticsId(order.id, 'transfer-', `${orderLabel} id`);
+		if (transferIds.has(id)) logisticsInvariant(`${label} transferOrders must have unique IDs`);
+		if (sequence >= nextTransferSequence) {
+			logisticsInvariant(`${label} nextTransferSequence must exceed generated transfer IDs`);
+		}
+		transferIds.add(id);
+		validateCurrentTransferOrderSource(order.source, `${orderLabel} source`);
+		const originCityId = resolveLogisticsEndpoint(
+			game,
+			order.originCityId,
+			`${orderLabel} originCityId`
+		);
+		const destinationCityId = resolveLogisticsEndpoint(
+			game,
+			order.destinationCityId,
+			`${orderLabel} destinationCityId`
+		);
+		if (originCityId === destinationCityId) {
+			logisticsInvariant(`${orderLabel} endpoints must be distinct`);
+		}
+		const materialId = requireLogisticsString(order.materialId, `${orderLabel} materialId`);
+		if (!MATERIAL_ID_SET.has(materialId)) {
+			logisticsInvariant(`${orderLabel} materialId must be a known material`);
+		}
+		requireLogisticsPositiveSafeInteger(order.quantity, `${orderLabel} quantity`);
+		const createdOnDay = requireLogisticsNonNegativeSafeInteger(
+			order.createdOnDay,
+			`${orderLabel} createdOnDay`
+		);
+		const dispatchedOnDay = requireLogisticsNonNegativeSafeInteger(
+			order.dispatchedOnDay,
+			`${orderLabel} dispatchedOnDay`
+		);
+		const arrivalOnDay = requireLogisticsNonNegativeSafeInteger(
+			order.arrivalOnDay,
+			`${orderLabel} arrivalOnDay`
+		);
+		requireLogisticsNonNegativeSafeInteger(order.transportCost, `${orderLabel} transportCost`);
+		if (createdOnDay > dispatchedOnDay || dispatchedOnDay >= arrivalOnDay) {
+			logisticsInvariant(
+				`${orderLabel} days must satisfy createdOnDay <= dispatchedOnDay < arrivalOnDay`
+			);
+		}
+		const status = requireLogisticsOneOf(order.status, `${orderLabel} status`, [
+			'in-transit',
+			'delivered'
+		] as const);
+		if (status === 'in-transit' && arrivalOnDay < game.day) {
+			logisticsInvariant(`${orderLabel} in-transit arrivalOnDay must not be before the game day`);
+		}
+		if (status === 'delivered' && arrivalOnDay >= game.day) {
+			logisticsInvariant(`${orderLabel} delivered arrivalOnDay must be before the game day`);
+		}
+	}
+
+	const routeIds = new Set<string>();
+	for (const [index, value] of recurringRoutes.entries()) {
+		const routeLabel = `${label} recurringRoutes[${index}]`;
+		const route = requireLogisticsRecord(value, routeLabel);
+		requireLogisticsExactKeys(
+			route,
+			[
+				'id',
+				'originCityId',
+				'destinationCityId',
+				'materialId',
+				'capacity',
+				'frequencyDays',
+				'leadTimeDays',
+				'transportCostPerUnit',
+				'priority',
+				'state',
+				'nextDispatchOnDay'
+			],
+			routeLabel
+		);
+		const { id, sequence } = requireCanonicalLogisticsId(route.id, 'route-', `${routeLabel} id`);
+		if (routeIds.has(id)) logisticsInvariant(`${label} recurringRoutes must have unique IDs`);
+		if (sequence >= nextRouteSequence) {
+			logisticsInvariant(`${label} nextRouteSequence must exceed generated route IDs`);
+		}
+		routeIds.add(id);
+		const originCityId = resolveLogisticsEndpoint(
+			game,
+			route.originCityId,
+			`${routeLabel} originCityId`
+		);
+		const destinationCityId = resolveLogisticsEndpoint(
+			game,
+			route.destinationCityId,
+			`${routeLabel} destinationCityId`
+		);
+		if (originCityId === destinationCityId) {
+			logisticsInvariant(`${routeLabel} endpoints must be distinct`);
+		}
+		const materialId = requireLogisticsString(route.materialId, `${routeLabel} materialId`);
+		if (!MATERIAL_ID_SET.has(materialId)) {
+			logisticsInvariant(`${routeLabel} materialId must be a known material`);
+		}
+		requireLogisticsPositiveSafeInteger(route.capacity, `${routeLabel} capacity`);
+		requireLogisticsPositiveSafeInteger(route.frequencyDays, `${routeLabel} frequencyDays`);
+		requireLogisticsPositiveSafeInteger(route.leadTimeDays, `${routeLabel} leadTimeDays`);
+		requireLogisticsPositiveSafeInteger(
+			route.transportCostPerUnit,
+			`${routeLabel} transportCostPerUnit`
+		);
+		requireLogisticsNonNegativeSafeInteger(route.priority, `${routeLabel} priority`);
+		const state = requireLogisticsOneOf(route.state, `${routeLabel} state`, [
+			'active',
+			'paused'
+		] as const);
+		const nextDispatchOnDay = requireLogisticsNonNegativeSafeInteger(
+			route.nextDispatchOnDay,
+			`${routeLabel} nextDispatchOnDay`
+		);
+		if (state === 'active' && nextDispatchOnDay < game.day) {
+			logisticsInvariant(`${routeLabel} active nextDispatchOnDay must not be before the game day`);
+		}
+	}
 }
 
 function assertNoResidualGlobalWarehouseData(game: Record<string, unknown>): void {

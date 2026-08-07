@@ -378,6 +378,43 @@ export interface RetailSupplyAssignment {
 	supplyCityId: WorldCityId | null;
 }
 
+export type TransferOrderSource = { kind: 'manual' } | { kind: 'recurring-route'; routeId: string };
+
+export interface TransferOrder {
+	id: string;
+	source: TransferOrderSource;
+	originCityId: WorldCityId;
+	destinationCityId: WorldCityId;
+	materialId: MaterialId;
+	quantity: number;
+	createdOnDay: number;
+	dispatchedOnDay: number;
+	arrivalOnDay: number;
+	transportCost: number;
+	status: 'in-transit' | 'delivered';
+}
+
+export interface RecurringRoute {
+	id: string;
+	originCityId: WorldCityId;
+	destinationCityId: WorldCityId;
+	materialId: MaterialId;
+	capacity: number;
+	frequencyDays: number;
+	leadTimeDays: number;
+	transportCostPerUnit: number;
+	priority: number;
+	state: 'active' | 'paused';
+	nextDispatchOnDay: number;
+}
+
+export interface LogisticsState {
+	transferOrders: TransferOrder[];
+	recurringRoutes: RecurringRoute[];
+	nextTransferSequence: number;
+	nextRouteSequence: number;
+}
+
 export interface RetailReplenishmentContext {
 	retailCityId: WorldCityId;
 	configuredSupplyCityId: WorldCityId | null;
@@ -818,6 +855,7 @@ export interface GameState {
 	industrialBuildings: IndustrialBuilding[];
 	cityInventories: CityInventory[];
 	retailSupplyAssignments: RetailSupplyAssignment[];
+	logistics: LogisticsState;
 	stores: Store[];
 	staff: StaffMember[];
 	hiringCandidates: HiringCandidate[];

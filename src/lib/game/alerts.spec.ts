@@ -142,6 +142,12 @@ function baseGame(overrides: Partial<GameState> = {}): GameState {
 		industrialBuildings: [],
 		cityInventories: [],
 		retailSupplyAssignments: [],
+		logistics: {
+			transferOrders: [],
+			recurringRoutes: [],
+			nextTransferSequence: 1,
+			nextRouteSequence: 1
+		},
 		stores: [],
 		staff: [],
 		hiringCandidates: [],

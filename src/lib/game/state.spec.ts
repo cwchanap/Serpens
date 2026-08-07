@@ -83,6 +83,17 @@ describe('game state', () => {
 		]);
 	});
 
+	test('initializes empty authoritative logistics state', () => {
+		expect.assertions(1);
+
+		expect(createNewGame('convenience', 20260806).logistics).toEqual({
+			transferOrders: [],
+			recurringRoutes: [],
+			nextTransferSequence: 1,
+			nextRouteSequence: 1
+		});
+	});
+
 	test('new games keep world progress aligned with generated starter maps', () => {
 		expect.assertions(8);
 		const game = createNewGame('convenience', 20260512);
