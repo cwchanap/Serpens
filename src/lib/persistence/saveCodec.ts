@@ -1288,6 +1288,18 @@ function requireCanonicalLogisticsId(
 	return { id, sequence };
 }
 
+function requireCanonicalRouteIdBeforeNextSequence(
+	value: unknown,
+	label: string,
+	nextRouteSequence: number
+): string {
+	const { id, sequence } = requireCanonicalLogisticsId(value, 'route-', label);
+	if (sequence >= nextRouteSequence) {
+		logisticsInvariant('Saved game logistics nextRouteSequence must exceed generated route IDs');
+	}
+	return id;
+}
+
 function resolveLogisticsEndpoint(game: GameState, value: unknown, label: string): WorldCityId {
 	const cityId = requireLogisticsString(value, label);
 	const definition = getWorldCityDefinition(cityId);
@@ -1306,7 +1318,11 @@ function resolveLogisticsEndpoint(game: GameState, value: unknown, label: string
 	return definition.id;
 }
 
-function validateCurrentTransferOrderSource(value: unknown, label: string): void {
+function validateCurrentTransferOrderSource(
+	value: unknown,
+	label: string,
+	nextRouteSequence: number
+): void {
 	const source = requireLogisticsRecord(value, label);
 	const kind = requireLogisticsString(source.kind, `${label} kind`);
 	if (kind === 'manual') {
@@ -1315,7 +1331,11 @@ function validateCurrentTransferOrderSource(value: unknown, label: string): void
 	}
 	if (kind === 'recurring-route') {
 		requireLogisticsExactKeys(source, ['kind', 'routeId'], label);
-		requireLogisticsString(source.routeId, `${label} routeId`);
+		requireCanonicalRouteIdBeforeNextSequence(
+			source.routeId,
+			`${label} routeId`,
+			nextRouteSequence
+		);
 		return;
 	}
 	logisticsInvariant(`${label} kind must be one of: manual, recurring-route`);
@@ -1370,7 +1390,7 @@ function validateCurrentLogisticsState(game: GameState): void {
 			logisticsInvariant(`${label} nextTransferSequence must exceed generated transfer IDs`);
 		}
 		transferIds.add(id);
-		validateCurrentTransferOrderSource(order.source, `${orderLabel} source`);
+		validateCurrentTransferOrderSource(order.source, `${orderLabel} source`, nextRouteSequence);
 		const originCityId = resolveLogisticsEndpoint(
 			game,
 			order.originCityId,
@@ -1440,11 +1460,12 @@ function validateCurrentLogisticsState(game: GameState): void {
 			],
 			routeLabel
 		);
-		const { id, sequence } = requireCanonicalLogisticsId(route.id, 'route-', `${routeLabel} id`);
+		const id = requireCanonicalRouteIdBeforeNextSequence(
+			route.id,
+			`${routeLabel} id`,
+			nextRouteSequence
+		);
 		if (routeIds.has(id)) logisticsInvariant(`${label} recurringRoutes must have unique IDs`);
-		if (sequence >= nextRouteSequence) {
-			logisticsInvariant(`${label} nextRouteSequence must exceed generated route IDs`);
-		}
 		routeIds.add(id);
 		const originCityId = resolveLogisticsEndpoint(
 			game,
