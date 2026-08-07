@@ -394,6 +394,14 @@ export interface TransferOrder {
 	status: 'in-transit' | 'delivered';
 }
 
+export interface DailyTransferArrival {
+	transferOrderId: string;
+	originCityId: WorldCityId;
+	destinationCityId: WorldCityId;
+	materialId: MaterialId;
+	quantity: number;
+}
+
 export interface RecurringRoute {
 	id: string;
 	originCityId: WorldCityId;
