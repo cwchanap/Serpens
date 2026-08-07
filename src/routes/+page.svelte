@@ -290,6 +290,12 @@
 			}
 		],
 		retailSupplyAssignments: [{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' }],
+		logistics: {
+			transferOrders: [],
+			recurringRoutes: [],
+			nextTransferSequence: 1,
+			nextRouteSequence: 1
+		},
 		stores: [],
 		staff: [],
 		hiringCandidates: [],

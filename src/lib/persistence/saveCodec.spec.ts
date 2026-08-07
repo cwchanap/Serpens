@@ -155,6 +155,12 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 			}
 		],
 		retailSupplyAssignments: [{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' }],
+		logistics: {
+			transferOrders: [],
+			recurringRoutes: [],
+			nextTransferSequence: 1,
+			nextRouteSequence: 1
+		},
 		stores: [
 			{
 				id: 'store-1',
@@ -376,6 +382,71 @@ function createCurrentMultiCityGame(): GameState {
 					}
 		)
 	});
+}
+
+function createLogisticsGame(): GameState {
+	return simulateDay(simulateDay(createCurrentMultiCityGame()));
+}
+
+function createLogisticsState(game: GameState): GameState['logistics'] {
+	return {
+		transferOrders: [
+			{
+				id: 'transfer-1',
+				source: { kind: 'manual' },
+				originCityId: 'industry-city',
+				destinationCityId: 'breadbasket-basin',
+				materialId: 'water',
+				quantity: 4,
+				createdOnDay: 1,
+				dispatchedOnDay: 1,
+				arrivalOnDay: 2,
+				transportCost: 12,
+				status: 'delivered'
+			},
+			{
+				id: 'transfer-2',
+				source: { kind: 'recurring-route', routeId: 'route-1' },
+				originCityId: 'breadbasket-basin',
+				destinationCityId: 'industry-city',
+				materialId: 'grain',
+				quantity: 3,
+				createdOnDay: game.day - 1,
+				dispatchedOnDay: game.day - 1,
+				arrivalOnDay: game.day,
+				transportCost: 9,
+				status: 'in-transit'
+			}
+		],
+		recurringRoutes: [
+			{
+				id: 'route-1',
+				originCityId: 'industry-city',
+				destinationCityId: 'breadbasket-basin',
+				materialId: 'water',
+				capacity: 8,
+				frequencyDays: 3,
+				leadTimeDays: 2,
+				transportCostPerUnit: 3,
+				priority: 0,
+				state: 'paused',
+				nextDispatchOnDay: game.day - 1
+			}
+		],
+		nextTransferSequence: 3,
+		nextRouteSequence: 2
+	};
+}
+
+function logisticsError(operation: () => unknown): SaveDataError {
+	try {
+		operation();
+	} catch (error) {
+		if (error instanceof SaveDataError) return error;
+		throw error;
+	}
+
+	throw new Error('Expected logistics validation to reject the saved game.');
 }
 
 function createCurrentReport(game: GameState): DailyReport {
@@ -751,7 +822,7 @@ function createCompleteEventGame(): GameState {
 }
 
 describe('saveCodec', () => {
-	test('round-trips a current v14 multi-city save with city-scoped inventory and replenishment evidence', () => {
+	test('round-trips a current v15 multi-city save with city-scoped inventory and replenishment evidence', () => {
 		expect.assertions(8);
 		const baseGame = createCurrentMultiCityGame();
 		const game = withCurrentReports(baseGame, [createCurrentReport(baseGame)]);
@@ -762,8 +833,8 @@ describe('saveCodec', () => {
 		const validated = validateSaveRecord(structuredClone(record));
 		const report = validated.game.reports[0]!;
 
-		expect(SAVE_SCHEMA_VERSION).toBe(14);
-		expect(validated.schemaVersion).toBe(14);
+		expect(SAVE_SCHEMA_VERSION).toBe(15);
+		expect(validated.schemaVersion).toBe(15);
 		expect(validated.game.cityInventories).toEqual([
 			{
 				cityId: 'industry-city',
@@ -1204,7 +1275,7 @@ describe('saveCodec', () => {
 		expect(validated.game).not.toHaveProperty('warehouse');
 	});
 
-	test('controller review: rejects residual global warehouse data on a current v14 save', () => {
+	test('controller review: rejects residual global warehouse data on a current v15 save', () => {
 		const game = Object.assign(createCurrentMultiCityGame(), {
 			warehouse: { materials: {} }
 		});
@@ -1212,7 +1283,7 @@ describe('saveCodec', () => {
 		expectSaveRecordErrorCode(createManualSaveRecord({ game }), 'invariant-city-inventory');
 	});
 
-	test('strict validation rejects residual global warehouse data on a current v14 game', () => {
+	test('strict validation rejects residual global warehouse data on a current v15 game', () => {
 		const game = Object.assign(createCurrentMultiCityGame(), {
 			warehouse: { materials: {} }
 		});
@@ -1292,7 +1363,7 @@ describe('saveCodec', () => {
 				materials: { water: Number.POSITIVE_INFINITY }
 			})
 		]
-	])('rejects a current v14 city inventory with %s', (_name, mutateInventory) => {
+	])('rejects a current v15 city inventory with %s', (_name, mutateInventory) => {
 		const game = createCurrentMultiCityGame();
 		const cityInventories = [
 			mutateInventory({ ...game.cityInventories![0]! }),
@@ -1327,7 +1398,7 @@ describe('saveCodec', () => {
 				game.cityInventories![1]!
 			]
 		]
-	])('rejects a current v14 state with %s', (_name, cityInventoriesFor) => {
+	])('rejects a current v15 state with %s', (_name, cityInventoriesFor) => {
 		const game = createCurrentMultiCityGame();
 
 		expectSaveRecordErrorCode(
@@ -1381,7 +1452,7 @@ describe('saveCodec', () => {
 				game.retailSupplyAssignments![1]!
 			]
 		]
-	])('rejects a current v14 state with %s', (_name, assignmentsFor) => {
+	])('rejects a current v15 state with %s', (_name, assignmentsFor) => {
 		const game = createCurrentMultiCityGame();
 
 		expectSaveRecordErrorCode(
@@ -1456,7 +1527,7 @@ describe('saveCodec', () => {
 				industrialBuildings: [{ ...game.industrialBuildings[0]!, cityId: 'breadbasket-basin' }]
 			})
 		]
-	])('rejects a current v14 state with %s before derived capacity logic', (_name, mutateGame) => {
+	])('rejects a current v15 state with %s before derived capacity logic', (_name, mutateGame) => {
 		expectSaveRecordErrorCode(
 			createManualSaveRecord({ game: mutateGame(createCurrentMultiCityGame()) }),
 			'invariant-entity-city-ownership'
@@ -1639,7 +1710,7 @@ describe('saveCodec', () => {
 			},
 			'preserve'
 		]
-	])('decodes a current v14 store report with %s', (_name, mutateReport, expectedResult) => {
+	])('decodes a current v15 store report with %s', (_name, mutateReport, expectedResult) => {
 		const game = createCurrentMultiCityGame();
 		const report = mutateReport(createCurrentReport(game)) as DailyReport;
 
@@ -1655,7 +1726,7 @@ describe('saveCodec', () => {
 		}
 	});
 
-	test('accepts a current v14 report without a persisted product outcome label', () => {
+	test('accepts a current v15 report without a persisted product outcome label', () => {
 		expect.assertions(1);
 		const game = createCurrentMultiCityGame();
 		const report = createCurrentReport(game);
@@ -1669,7 +1740,7 @@ describe('saveCodec', () => {
 		);
 	});
 
-	test('accepts explicit null v14 replenishment fields when no product attempted a refill', () => {
+	test('accepts explicit null v15 replenishment fields when no product attempted a refill', () => {
 		expect.assertions(2);
 		const game = createCurrentMultiCityGame();
 		const report = createCurrentReport(game);
@@ -1698,17 +1769,17 @@ describe('saveCodec', () => {
 			createManualSaveRecord({ game: withCurrentReports(game, [noAttemptReport]) })
 		);
 
-		expect(SAVE_SCHEMA_VERSION).toBe(14);
+		expect(SAVE_SCHEMA_VERSION).toBe(15);
 		expect(validated.game.reports[0]!.storeReports[0]!.replenishment).toBeNull();
 	});
 
-	test('round-trips the complete event schema v14 without dropping materialized evidence', () => {
+	test('round-trips the complete event schema v15 without dropping materialized evidence', () => {
 		expect.assertions(3);
 		const record = createManualSaveRecord({ game: createCompleteEventGame() });
 
 		const validated = validateSaveRecord(structuredClone(record));
 
-		expect(SAVE_SCHEMA_VERSION).toBe(14);
+		expect(SAVE_SCHEMA_VERSION).toBe(15);
 		expect(validated).toEqual(record);
 		expect(validated).not.toBe(record);
 	});
@@ -6266,7 +6337,366 @@ describe('saveCodec', () => {
 		});
 	});
 
+	describe('current logistics validation', () => {
+		test('round-trips delivered manual and in-transit route orders with a paused route', () => {
+			expect.assertions(5);
+			const baseGame = createLogisticsGame();
+			const game = { ...baseGame, logistics: createLogisticsState(baseGame) };
+			const record = createManualSaveRecord({ game });
+
+			const validated = validateSaveRecord(structuredClone(record));
+
+			expect(validated).toEqual(record);
+			expect(validated.game.logistics.transferOrders[0]).toMatchObject({
+				id: 'transfer-1',
+				source: { kind: 'manual' },
+				status: 'delivered'
+			});
+			expect(validated.game.logistics.transferOrders[1]).toMatchObject({
+				id: 'transfer-2',
+				source: { kind: 'recurring-route', routeId: 'route-1' },
+				status: 'in-transit'
+			});
+			expect(validated.game.logistics.recurringRoutes).toEqual([
+				expect.objectContaining({ id: 'route-1', state: 'paused' })
+			]);
+			expect(validated.game.logistics.nextTransferSequence).toBe(3);
+		});
+
+		test('preserves persisted transfer order without normalizing it', () => {
+			expect.assertions(1);
+			const baseGame = createLogisticsGame();
+			const logistics = createLogisticsState(baseGame);
+			const game = {
+				...baseGame,
+				logistics: {
+					...logistics,
+					transferOrders: [...logistics.transferOrders].reverse()
+				}
+			};
+
+			expect(
+				validateCurrentGameState(game).logistics.transferOrders.map((order) => order.id)
+			).toEqual(['transfer-2', 'transfer-1']);
+		});
+
+		test('requires the authoritative logistics state', () => {
+			const game = structuredClone(createGame()) as unknown as Record<string, unknown>;
+			delete game.logistics;
+
+			expect(logisticsError(() => validateCurrentGameState(game)).code).toBe('invariant-logistics');
+		});
+
+		test.each([
+			[
+				'duplicate transfer IDs',
+				(logistics: GameState['logistics']) => ({
+					...logistics,
+					transferOrders: [logistics.transferOrders[0]!, { ...logistics.transferOrders[0]! }]
+				})
+			],
+			[
+				'duplicate route IDs',
+				(logistics: GameState['logistics']) => ({
+					...logistics,
+					recurringRoutes: [logistics.recurringRoutes[0]!, { ...logistics.recurringRoutes[0]! }]
+				})
+			],
+			[
+				'a malformed transfer ID',
+				(logistics: GameState['logistics']) => ({
+					...logistics,
+					transferOrders: [
+						{ ...logistics.transferOrders[0]!, id: 'transfer-01' },
+						logistics.transferOrders[1]!
+					]
+				})
+			],
+			[
+				'a malformed route ID',
+				(logistics: GameState['logistics']) => ({
+					...logistics,
+					recurringRoutes: [{ ...logistics.recurringRoutes[0]!, id: 'route-01' }]
+				})
+			]
+		] as const)('rejects %s', (_name, mutate) => {
+			const baseGame = createLogisticsGame();
+			const game = { ...baseGame, logistics: mutate(createLogisticsState(baseGame)) };
+
+			expect(logisticsError(() => validateCurrentGameState(game)).code).toBe('invariant-logistics');
+		});
+
+		test.each([
+			[
+				'a nonpositive transfer sequence',
+				(logistics: GameState['logistics']) => ({ ...logistics, nextTransferSequence: 0 })
+			],
+			[
+				'a fractional route sequence',
+				(logistics: GameState['logistics']) => ({ ...logistics, nextRouteSequence: 1.5 })
+			],
+			[
+				'an unsafe transfer sequence',
+				(logistics: GameState['logistics']) => ({
+					...logistics,
+					nextTransferSequence: Number.MAX_SAFE_INTEGER + 1
+				})
+			],
+			[
+				'the next transfer sequence does not exceed an existing transfer ID',
+				(logistics: GameState['logistics']) => ({ ...logistics, nextTransferSequence: 2 })
+			],
+			[
+				'the next route sequence does not exceed an existing route ID',
+				(logistics: GameState['logistics']) => ({ ...logistics, nextRouteSequence: 1 })
+			]
+		] as const)('rejects when %s', (_name, mutate) => {
+			const baseGame = createLogisticsGame();
+			const game = { ...baseGame, logistics: mutate(createLogisticsState(baseGame)) };
+
+			expect(logisticsError(() => validateCurrentGameState(game)).code).toBe('invariant-logistics');
+		});
+
+		test.each([
+			[
+				'matching endpoints',
+				(logistics: GameState['logistics']) => ({
+					...logistics,
+					transferOrders: [
+						{
+							...logistics.transferOrders[0]!,
+							destinationCityId: 'industry-city'
+						},
+						logistics.transferOrders[1]!
+					]
+				})
+			],
+			[
+				'a retail endpoint',
+				(logistics: GameState['logistics']) => ({
+					...logistics,
+					transferOrders: [
+						{
+							...logistics.transferOrders[0]!,
+							destinationCityId: 'harbor-city'
+						},
+						logistics.transferOrders[1]!
+					]
+				})
+			],
+			[
+				'an unopened industry endpoint',
+				(logistics: GameState['logistics']) => ({
+					...logistics,
+					transferOrders: [
+						{
+							...logistics.transferOrders[0]!,
+							destinationCityId: 'quarry-works'
+						},
+						logistics.transferOrders[1]!
+					]
+				})
+			],
+			[
+				'an unknown material',
+				(logistics: GameState['logistics']) => ({
+					...logistics,
+					transferOrders: [
+						{ ...logistics.transferOrders[0]!, materialId: 'unknown-material' as MaterialId },
+						logistics.transferOrders[1]!
+					]
+				})
+			],
+			[
+				'a nonpositive order quantity',
+				(logistics: GameState['logistics']) => ({
+					...logistics,
+					transferOrders: [
+						{ ...logistics.transferOrders[0]!, quantity: 0 },
+						logistics.transferOrders[1]!
+					]
+				})
+			],
+			[
+				'a negative order transport cost',
+				(logistics: GameState['logistics']) => ({
+					...logistics,
+					transferOrders: [
+						{ ...logistics.transferOrders[0]!, transportCost: -1 },
+						logistics.transferOrders[1]!
+					]
+				})
+			],
+			[
+				'a nonpositive route capacity',
+				(logistics: GameState['logistics']) => ({
+					...logistics,
+					recurringRoutes: [{ ...logistics.recurringRoutes[0]!, capacity: 0 }]
+				})
+			],
+			[
+				'a nonpositive route frequency',
+				(logistics: GameState['logistics']) => ({
+					...logistics,
+					recurringRoutes: [{ ...logistics.recurringRoutes[0]!, frequencyDays: 0 }]
+				})
+			],
+			[
+				'a nonpositive route lead time',
+				(logistics: GameState['logistics']) => ({
+					...logistics,
+					recurringRoutes: [{ ...logistics.recurringRoutes[0]!, leadTimeDays: 0 }]
+				})
+			],
+			[
+				'a nonpositive route transport cost per unit',
+				(logistics: GameState['logistics']) => ({
+					...logistics,
+					recurringRoutes: [{ ...logistics.recurringRoutes[0]!, transportCostPerUnit: 0 }]
+				})
+			],
+			[
+				'a negative route priority',
+				(logistics: GameState['logistics']) => ({
+					...logistics,
+					recurringRoutes: [{ ...logistics.recurringRoutes[0]!, priority: -1 }]
+				})
+			],
+			[
+				'a negative creation day',
+				(logistics: GameState['logistics']) => ({
+					...logistics,
+					transferOrders: [
+						{ ...logistics.transferOrders[0]!, createdOnDay: -1 },
+						logistics.transferOrders[1]!
+					]
+				})
+			],
+			[
+				'a dispatch day before its creation day',
+				(logistics: GameState['logistics']) => ({
+					...logistics,
+					transferOrders: [
+						{ ...logistics.transferOrders[0]!, dispatchedOnDay: 0 },
+						logistics.transferOrders[1]!
+					]
+				})
+			],
+			[
+				'an arrival day not after dispatch',
+				(logistics: GameState['logistics']) => ({
+					...logistics,
+					transferOrders: [
+						{ ...logistics.transferOrders[0]!, arrivalOnDay: 1 },
+						logistics.transferOrders[1]!
+					]
+				})
+			],
+			[
+				'an in-transit order that already arrived',
+				(logistics: GameState['logistics']) => ({
+					...logistics,
+					transferOrders: [
+						logistics.transferOrders[0]!,
+						{
+							...logistics.transferOrders[1]!,
+							arrivalOnDay: logistics.transferOrders[1]!.arrivalOnDay - 1
+						}
+					]
+				})
+			],
+			[
+				'a delivered order that arrives on the current day',
+				(logistics: GameState['logistics']) => ({
+					...logistics,
+					transferOrders: [
+						{
+							...logistics.transferOrders[0]!,
+							dispatchedOnDay: logistics.transferOrders[1]!.arrivalOnDay - 1,
+							arrivalOnDay: logistics.transferOrders[1]!.arrivalOnDay
+						},
+						logistics.transferOrders[1]!
+					]
+				})
+			],
+			[
+				'an unknown transfer status',
+				(logistics: GameState['logistics']) => ({
+					...logistics,
+					transferOrders: [
+						{ ...logistics.transferOrders[0]!, status: 'queued' as never },
+						logistics.transferOrders[1]!
+					]
+				})
+			],
+			[
+				'an unknown recurring-route state',
+				(logistics: GameState['logistics']) => ({
+					...logistics,
+					recurringRoutes: [{ ...logistics.recurringRoutes[0]!, state: 'scheduled' as never }]
+				})
+			]
+		] as const)('rejects %s', (_name, mutate) => {
+			const baseGame = createLogisticsGame();
+			const game = {
+				...baseGame,
+				logistics: mutate(createLogisticsState(baseGame))
+			};
+
+			expect(logisticsError(() => validateCurrentGameState(game)).code).toBe('invariant-logistics');
+		});
+
+		test('rejects an active route scheduled before the current game day', () => {
+			const baseGame = createLogisticsGame();
+			const logistics = createLogisticsState(baseGame);
+			const game = {
+				...baseGame,
+				logistics: {
+					...logistics,
+					recurringRoutes: [
+						{
+							...logistics.recurringRoutes[0]!,
+							state: 'active',
+							nextDispatchOnDay: baseGame.day - 1
+						}
+					]
+				}
+			};
+
+			expect(logisticsError(() => validateCurrentGameState(game)).code).toBe('invariant-logistics');
+		});
+
+		test('allows a route-sourced order after its route is removed', () => {
+			expect.assertions(1);
+			const baseGame = createLogisticsGame();
+			const logistics = createLogisticsState(baseGame);
+			const game = {
+				...baseGame,
+				logistics: {
+					...logistics,
+					transferOrders: [
+						logistics.transferOrders[0]!,
+						{
+							...logistics.transferOrders[1]!,
+							source: { kind: 'recurring-route', routeId: 'route-removed' }
+						}
+					],
+					recurringRoutes: [],
+					nextRouteSequence: 1
+				}
+			};
+
+			expect(validateCurrentGameState(game)).toEqual(game);
+		});
+	});
+
 	describe('save schema version validation', () => {
+		test('rejects schema 14 rather than migrating it', () => {
+			const snapshot = { ...createSnapshotWithGame(createGame()), schemaVersion: 14 };
+
+			expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(/Unsupported save schema version/);
+		});
+
 		test('validateSaveStoreSnapshot rejects a non-current version snapshot', () => {
 			const snapshot = {
 				schemaVersion: 99,
