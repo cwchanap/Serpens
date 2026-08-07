@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -12,6 +13,7 @@ concurrency:
 
 jobs:
   build-and-lint:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     name: Build & Lint
     runs-on: ubuntu-latest
     permissions:
@@ -42,6 +44,7 @@ jobs:
         run: bun run build
 
   unit-tests:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     name: Unit Tests
     runs-on: ubuntu-latest
     permissions:
@@ -110,6 +113,7 @@ jobs:
           retention-days: 7
 
   e2e-tests:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     name: E2E Tests
     runs-on: ubuntu-latest
     permissions:
@@ -159,6 +163,7 @@ jobs:
           retention-days: 7
 
   rust-tests:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     name: Rust Tests
     runs-on: ubuntu-latest
     permissions:
