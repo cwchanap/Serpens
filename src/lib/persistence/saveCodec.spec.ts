@@ -1058,6 +1058,166 @@ describe('saveCodec', () => {
 				...report,
 				logistics: { ...report.logistics, scheduledTransportCost: 22 }
 			})
+		],
+		[
+			'a duplicate arrival transferOrderId',
+			(report: DailyReport) => ({
+				...report,
+				logistics: {
+					...report.logistics,
+					arrivals: [
+						report.logistics.arrivals[0]!,
+						{
+							transferOrderId: report.logistics.arrivals[0]!.transferOrderId,
+							originCityId: 'breadbasket-basin',
+							destinationCityId: 'industry-city',
+							materialId: 'grain',
+							quantity: 2
+						}
+					],
+					deliveredUnits: report.logistics.deliveredUnits + 2
+				}
+			})
+		],
+		[
+			'a duplicate route dispatch routeId',
+			(report: DailyReport) => ({
+				...report,
+				logistics: {
+					...report.logistics,
+					routeDispatchAttempts: [
+						report.logistics.routeDispatchAttempts[0]!,
+						{
+							...report.logistics.routeDispatchAttempts[0]!,
+							dispatchedQuantity: 0,
+							unusedCapacity: 10,
+							unmetDestinationNeed: 10,
+							transportCost: 0,
+							transferOrderId: null
+						}
+					]
+				}
+			})
+		],
+		[
+			'a duplicate route dispatch transferOrderId',
+			(report: DailyReport) => ({
+				...report,
+				logistics: {
+					...report.logistics,
+					routeDispatchAttempts: [
+						report.logistics.routeDispatchAttempts[0]!,
+						{
+							...report.logistics.routeDispatchAttempts[0]!,
+							routeId: 'route-other',
+							dispatchedQuantity: 5,
+							unusedCapacity: 5,
+							unmetDestinationNeed: 5,
+							transportCost: 10
+						}
+					],
+					scheduledTransportCost: report.logistics.scheduledTransportCost + 10
+				}
+			})
+		],
+		[
+			'a matching arrival endpoint',
+			(report: DailyReport) => ({
+				...report,
+				logistics: {
+					...report.logistics,
+					arrivals: [{ ...report.logistics.arrivals[0]!, originCityId: 'breadbasket-basin' }]
+				}
+			})
+		],
+		[
+			'a dispatch quantity exceeding destination need',
+			(report: DailyReport) => ({
+				...report,
+				logistics: {
+					...report.logistics,
+					routeDispatchAttempts: [
+						{ ...report.logistics.routeDispatchAttempts[0]!, destinationNeed: 5 },
+						report.logistics.routeDispatchAttempts[1]!
+					]
+				}
+			})
+		],
+		[
+			'a dispatch quantity exceeding capacity',
+			(report: DailyReport) => ({
+				...report,
+				logistics: {
+					...report.logistics,
+					routeDispatchAttempts: [
+						{ ...report.logistics.routeDispatchAttempts[0]!, capacity: 5, unusedCapacity: 0 },
+						report.logistics.routeDispatchAttempts[1]!
+					]
+				}
+			})
+		],
+		[
+			'a dispatch quantity exceeding available origin stock',
+			(report: DailyReport) => ({
+				...report,
+				logistics: {
+					...report.logistics,
+					routeDispatchAttempts: [
+						{
+							...report.logistics.routeDispatchAttempts[0]!,
+							availableOriginStock: 5
+						},
+						report.logistics.routeDispatchAttempts[1]!
+					]
+				}
+			})
+		],
+		[
+			'a positive dispatch with zero transport cost',
+			(report: DailyReport) => ({
+				...report,
+				logistics: {
+					...report.logistics,
+					routeDispatchAttempts: [
+						{ ...report.logistics.routeDispatchAttempts[0]!, transportCost: 0 },
+						report.logistics.routeDispatchAttempts[1]!
+					],
+					scheduledTransportCost: 0
+				}
+			})
+		],
+		[
+			'a negative attempt destination need',
+			(report: DailyReport) => ({
+				...report,
+				logistics: {
+					...report.logistics,
+					routeDispatchAttempts: [
+						{ ...report.logistics.routeDispatchAttempts[0]!, destinationNeed: -1 },
+						report.logistics.routeDispatchAttempts[1]!
+					]
+				}
+			})
+		],
+		[
+			'arrival quantities that exceed the safe integer range',
+			(report: DailyReport) => ({
+				...report,
+				logistics: {
+					...report.logistics,
+					arrivals: [
+						{ ...report.logistics.arrivals[0]!, quantity: Number.MAX_SAFE_INTEGER },
+						{
+							transferOrderId: 'transfer-overflow',
+							originCityId: 'breadbasket-basin',
+							destinationCityId: 'industry-city',
+							materialId: 'grain',
+							quantity: Number.MAX_SAFE_INTEGER
+						}
+					],
+					deliveredUnits: Number.MAX_SAFE_INTEGER
+				}
+			})
 		]
 	] as const)('drops a historical report with %s logistics evidence', (_name, mutateReport) => {
 		const game = createCurrentMultiCityGame();
@@ -6902,6 +7062,76 @@ describe('saveCodec', () => {
 			});
 
 			expect(() => validateSaveRecord(structuredClone(record))).toThrow(SaveDataError);
+		});
+
+		test.each([
+			[
+				'a non-array transferOrders field',
+				(logistics: GameState['logistics']) => ({ ...logistics, transferOrders: 'not-an-array' })
+			],
+			[
+				'an unknown logistics field',
+				(logistics: GameState['logistics']) => ({ ...logistics, extra: true })
+			],
+			[
+				'an empty transfer order materialId',
+				(logistics: GameState['logistics']) => ({
+					...logistics,
+					transferOrders: [
+						{ ...logistics.transferOrders[0]!, materialId: '' },
+						logistics.transferOrders[1]!
+					]
+				})
+			],
+			[
+				'an unknown transfer order source kind',
+				(logistics: GameState['logistics']) => ({
+					...logistics,
+					transferOrders: [
+						{ ...logistics.transferOrders[0]!, source: { kind: 'unknown' } },
+						logistics.transferOrders[1]!
+					]
+				})
+			],
+			[
+				'an in-transit order that arrived before the current day',
+				(logistics: GameState['logistics']) => ({
+					...logistics,
+					transferOrders: [
+						{
+							...logistics.transferOrders[0]!,
+							createdOnDay: 0,
+							dispatchedOnDay: 0,
+							arrivalOnDay: 1,
+							status: 'in-transit'
+						},
+						logistics.transferOrders[1]!
+					]
+				})
+			],
+			[
+				'matching route endpoints',
+				(logistics: GameState['logistics']) => ({
+					...logistics,
+					recurringRoutes: [
+						{ ...logistics.recurringRoutes[0]!, destinationCityId: 'industry-city' }
+					]
+				})
+			],
+			[
+				'an unknown route materialId',
+				(logistics: GameState['logistics']) => ({
+					...logistics,
+					recurringRoutes: [
+						{ ...logistics.recurringRoutes[0]!, materialId: 'unknown-material' as MaterialId }
+					]
+				})
+			]
+		] as const)('rejects %s', (_name, mutate) => {
+			const baseGame = createLogisticsGame();
+			const game = { ...baseGame, logistics: mutate(createLogisticsState(baseGame)) };
+
+			expect(logisticsError(() => validateCurrentGameState(game)).code).toBe('invariant-logistics');
 		});
 	});
 
