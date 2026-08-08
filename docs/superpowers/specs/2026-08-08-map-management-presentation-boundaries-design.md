@@ -206,11 +206,23 @@ interface Props {
   focusedFinanceLoanId: string | null;
   i18n: I18nBundle;
   disabledReason: string | null;
-  // existing command callbacks
+
+  onClose: () => void;
+  onChangePolicy: (patch: Partial<CompanyPolicy>) => void;
+  onHireStaff: (candidateId: string) => void;
+  onAssignStaff: (staffId: string, storeId: string) => void;
+  onUnassignStaff: (staffId: string) => void;
+  onPromoteStaff: (staffId: string) => void;
+  onSetRetailSupplySource: (retailCityId: string, supplyCityId: string | null) => void;
+  onChooseDecision: (decisionId: string, optionId: string) => void;
+  onBorrow: (amount: number, termDays: LoanTermDays) => Promise<GameRouteCommitResult>;
+  onRepay: (loanId: string, amount: number) => Promise<GameRouteCommitResult>;
+  onPayoff: (loanId: string) => Promise<GameRouteCommitResult>;
+  onRefinance: (loanId: string, termDays: LoanTermDays) => Promise<GameRouteCommitResult>;
 }
 ```
 
-`GameRouteCommitResult` for finance callbacks is imported directly from `$lib/game/commandResult`, not through `gameRouteController.ts`.
+`MutationAvailability` is imported as a route-local type from `./gameRouteController`. `GameRouteCommitResult` is imported directly from `$lib/game/commandResult`, not through the route-controller re-export.
 
 For `panelId === 'finance'`, non-null finance metrics are a programmer invariant checked locally in the finance branch. The host does not calculate metrics itself.
 
