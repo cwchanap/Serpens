@@ -53,7 +53,7 @@ describe('inter-city logistics defensive invariants', () => {
 			.mockImplementationOnce(realImpl)
 			.mockImplementationOnce(() => ({ ok: false, reason: 'inventory-missing' }));
 
-		expect(() => processRecurringRouteDispatches(game, 7)).toThrow(/Transfer origin is invalid/);
+		expect(() => processRecurringRouteDispatches(game)).toThrow(/Transfer origin is invalid/);
 	});
 
 	test('throws when the transfer origin stock changes before dispatch', () => {

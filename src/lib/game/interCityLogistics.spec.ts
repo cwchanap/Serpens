@@ -651,7 +651,7 @@ describe('inter-city recurring routes', () => {
 			expect(compareRecurringRoutes(routeThree, routeTwo)).toBeLessThan(0);
 			expect(compareRecurringRoutes(routeTen, routeTwo)).toBeLessThan(0);
 
-			const result = processRecurringRouteDispatches(game, 7);
+			const result = processRecurringRouteDispatches(game);
 
 			expect(result.attempts).toEqual([
 				{
@@ -775,7 +775,7 @@ describe('inter-city recurring routes', () => {
 		);
 		const before = structuredClone(game);
 
-		const result = processRecurringRouteDispatches(game, 7);
+		const result = processRecurringRouteDispatches(game);
 
 		expect(result.attempts).toEqual([
 			{
@@ -943,7 +943,7 @@ describe('inter-city recurring routes', () => {
 			[createRecurringRouteDefinition({ materialId: 'grain' })]
 		);
 
-		const result = processRecurringRouteDispatches(game, 7);
+		const result = processRecurringRouteDispatches(game);
 
 		expect(result.attempts).toEqual([
 			expect.objectContaining({
@@ -969,7 +969,7 @@ describe('inter-city recurring routes', () => {
 			createRecurringRouteDefinition({ originCityId: 'nonexistent' as WorldCityId })
 		]);
 
-		expect(() => processRecurringRouteDispatches(game, 7)).toThrow(
+		expect(() => processRecurringRouteDispatches(game)).toThrow(
 			/Recurring route origin is invalid/
 		);
 	});
@@ -989,7 +989,7 @@ describe('inter-city recurring routes', () => {
 			]
 		);
 
-		expect(() => processRecurringRouteDispatches(game, 7)).toThrow(RangeError);
+		expect(() => processRecurringRouteDispatches(game)).toThrow(RangeError);
 	});
 
 	test('throws when a transfer arrival references an invalid destination city', () => {

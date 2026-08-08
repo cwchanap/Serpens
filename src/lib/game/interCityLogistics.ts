@@ -345,10 +345,12 @@ export function getDestinationTransferNeed(
 	return Math.max(0, freeWarehouseCapacity - reservedInTransitUnits);
 }
 
-export function processRecurringRouteDispatches(
-	game: GameState,
-	closingDay: number
-): { game: GameState; attempts: DailyRouteDispatchAttempt[]; scheduledTransportCost: number } {
+export function processRecurringRouteDispatches(game: GameState): {
+	game: GameState;
+	attempts: DailyRouteDispatchAttempt[];
+	scheduledTransportCost: number;
+} {
+	const closingDay = game.day;
 	const dueRoutes = game.logistics.recurringRoutes
 		.filter((route) => route.state === 'active' && route.nextDispatchOnDay <= closingDay)
 		.sort(compareRecurringRoutes);

@@ -114,7 +114,7 @@ logistics: {
   - materials are catalog IDs;
   - order quantity, route capacity, frequency, lead time, and per-unit cost are positive safe integers;
   - route priority and total order cost are nonnegative safe integers;
-  - `createdOnDay <= dispatchedOnDay < arrivalOnDay`;
+  - `createdOnDay === dispatchedOnDay < arrivalOnDay`;
   - in-transit arrival is `>= game.day`; delivered arrival is `< game.day`;
   - active route schedule is `>= game.day`; paused routes may retain an overdue day.
 - [ ] Use one save-codec validation helper that parses a canonical numeric suffix only to prove the next generated sequence cannot collide with an existing ID. Do not normalize collections with it; every runtime ID tie-break uses `left.id < right.id ? -1 : left.id > right.id ? 1 : 0`.
