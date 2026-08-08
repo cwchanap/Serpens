@@ -269,9 +269,9 @@ describe('inter-city manual logistics', () => {
 	});
 
 	test('leaves in-transit orders and inventories untouched before their arrival day', () => {
-		const game = withTransferOrders(createTwoIndustryCityGame(), [createTransferOrder()]);
+		const game = withTransferOrders(createTwoIndustryCityGame({ day: 8 }), [createTransferOrder()]);
 
-		const result = processTransferArrivals(game, 8);
+		const result = processTransferArrivals(game);
 
 		expect(result.arrivals).toEqual([]);
 		expect(result.deliveredUnits).toBe(0);
@@ -288,7 +288,7 @@ describe('inter-city manual logistics', () => {
 		});
 		const notYetDue = createTransferOrder({ id: 'transfer-1', arrivalOnDay: 9 });
 		const transferTen = createTransferOrder({ id: 'transfer-10', quantity: 4, arrivalOnDay: 8 });
-		const game = withTransferOrders(createTwoIndustryCityGame(), [
+		const game = withTransferOrders(createTwoIndustryCityGame({ day: 8 }), [
 			transferTwo,
 			notYetDue,
 			transferTen
@@ -298,7 +298,7 @@ describe('inter-city manual logistics', () => {
 		});
 
 		try {
-			const result = processTransferArrivals(game, 8);
+			const result = processTransferArrivals(game);
 
 			expect(result.arrivals).toEqual([
 				{
@@ -331,11 +331,11 @@ describe('inter-city manual logistics', () => {
 	});
 
 	test('allows a due delivery to exceed destination capacity without a cash charge', () => {
-		const game = withTransferOrders(createTwoIndustryCityGame(), [
+		const game = withTransferOrders(createTwoIndustryCityGame({ day: 8 }), [
 			createTransferOrder({ arrivalOnDay: 8, quantity: 10, transportCost: 20 })
 		]);
 
-		const result = processTransferArrivals(game, 8);
+		const result = processTransferArrivals(game);
 		const destinationStats = getCityInventoryStats(result.game, 'breadbasket-basin');
 
 		expect(result.game.cash).toBe(game.cash);
@@ -906,12 +906,12 @@ describe('inter-city recurring routes', () => {
 	test('sorts due transfers with ascending IDs stably via the raw-ID comparator', () => {
 		// Insertion sort calls compare(arr[i], arr[j]) with i > j, so an
 		// ascending-order array forces the left.id > right.id branch (returns 1).
-		const game = withTransferOrders(createTwoIndustryCityGame(), [
+		const game = withTransferOrders(createTwoIndustryCityGame({ day: 8 }), [
 			createTransferOrder({ id: 'transfer-1', arrivalOnDay: 8, quantity: 5 }),
 			createTransferOrder({ id: 'transfer-2', arrivalOnDay: 8, quantity: 3 })
 		]);
 
-		const result = processTransferArrivals(game, 8);
+		const result = processTransferArrivals(game);
 
 		expect(result.deliveredUnits).toBe(8);
 		expect(result.arrivals.map((arrival) => arrival.transferOrderId)).toEqual([
@@ -922,12 +922,12 @@ describe('inter-city recurring routes', () => {
 
 	test('sorts due transfers with equal IDs stably via the raw-ID comparator', () => {
 		const duplicate = createTransferOrder({ id: 'transfer-1', arrivalOnDay: 8, quantity: 3 });
-		const game = withTransferOrders(createTwoIndustryCityGame(), [
+		const game = withTransferOrders(createTwoIndustryCityGame({ day: 8 }), [
 			createTransferOrder({ id: 'transfer-1', arrivalOnDay: 8, quantity: 5 }),
 			duplicate
 		]);
 
-		const result = processTransferArrivals(game, 8);
+		const result = processTransferArrivals(game);
 
 		expect(result.deliveredUnits).toBe(8);
 		expect(result.arrivals).toHaveLength(2);
@@ -997,9 +997,7 @@ describe('inter-city recurring routes', () => {
 			createTransferOrder({ destinationCityId: 'nonexistent' as WorldCityId, arrivalOnDay: 7 })
 		]);
 
-		expect(() => processTransferArrivals(game, 7)).toThrow(
-			/Transfer arrival destination is invalid/
-		);
+		expect(() => processTransferArrivals(game)).toThrow(/Transfer arrival destination is invalid/);
 	});
 
 	test('throws when the next route sequence exceeds the safe integer range', () => {

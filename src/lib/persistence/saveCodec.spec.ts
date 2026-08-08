@@ -6981,6 +6981,21 @@ describe('saveCodec', () => {
 				})
 			],
 			[
+				'an order dispatched after the current game day',
+				(logistics: GameState['logistics']) => ({
+					...logistics,
+					transferOrders: [
+						logistics.transferOrders[0]!,
+						{
+							...logistics.transferOrders[1]!,
+							createdOnDay: logistics.transferOrders[1]!.dispatchedOnDay + 2,
+							dispatchedOnDay: logistics.transferOrders[1]!.dispatchedOnDay + 2,
+							arrivalOnDay: logistics.transferOrders[1]!.dispatchedOnDay + 3
+						}
+					]
+				})
+			],
+			[
 				'an in-transit order that already arrived',
 				(logistics: GameState['logistics']) => ({
 					...logistics,

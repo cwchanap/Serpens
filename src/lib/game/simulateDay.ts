@@ -114,7 +114,7 @@ export function simulateDay(
 ): GameState {
 	assertValidEntityCityOwnership(game);
 	const closingDay = game.day;
-	const arrivalResult = processTransferArrivals(game, closingDay);
+	const arrivalResult = processTransferArrivals(game);
 	const arrivalGame = arrivalResult.game;
 	const activeEventModifiers = arrivalGame.events.activeModifiers.filter((modifier) =>
 		isModifierActiveOnDay(modifier, closingDay)
