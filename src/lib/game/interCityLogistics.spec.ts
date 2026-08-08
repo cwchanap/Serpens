@@ -481,7 +481,7 @@ describe('inter-city recurring routes', () => {
 			nextDispatchOnDay: 12
 		});
 		expect(result.game.logistics.transferOrders).toEqual([existingOrder]);
-		expect(result.game.logistics.nextRouteSequence).toBe(3);
+		expect(result.game.logistics.nextRouteSequence).toBe(2);
 		expect(game).toEqual(before);
 	});
 

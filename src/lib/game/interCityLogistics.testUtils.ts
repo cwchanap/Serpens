@@ -22,7 +22,18 @@ export function withCityMaterials(
 }
 
 export function withRecurringRoutes(game: GameState, recurringRoutes: RecurringRoute[]): GameState {
-	const nextRouteSequence = game.logistics.nextRouteSequence + recurringRoutes.length;
+	// Derive nextRouteSequence from the highest injected canonical route ID, not
+	// the array length. Tests deliberately inject non-contiguous IDs (e.g.
+	// route-2/route-10/route-3), and production `createRecurringRoute` allocates
+	// `route-${nextRouteSequence}` directly from this counter, so a length-based
+	// bump both violates the codec invariant (every route sequence must be <
+	// nextRouteSequence) and can hand `createRecurringRoute` an ID that already
+	// exists. Mirrors `saveCodec.ts`'s loan-sequence Math.max pattern.
+	let highestInjectedSequence = 0;
+	for (const route of recurringRoutes) {
+		highestInjectedSequence = Math.max(highestInjectedSequence, routeIdSequence(route.id));
+	}
+	const nextRouteSequence = Math.max(game.logistics.nextRouteSequence, highestInjectedSequence + 1);
 	if (!Number.isSafeInteger(nextRouteSequence)) {
 		throw new RangeError('withRecurringRoutes nextRouteSequence exceeds the safe integer range');
 	}
@@ -35,6 +46,14 @@ export function withRecurringRoutes(game: GameState, recurringRoutes: RecurringR
 			nextRouteSequence
 		}
 	};
+}
+
+function routeIdSequence(id: string): number {
+	if (!id.startsWith('route-')) return 0;
+	const text = id.slice('route-'.length);
+	if (!/^[1-9]\d*$/.test(text)) return 0;
+	const sequence = Number(text);
+	return Number.isSafeInteger(sequence) ? sequence : 0;
 }
 
 export function createLogisticsBuilding(
