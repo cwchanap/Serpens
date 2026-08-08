@@ -1,162 +1,159 @@
 # Map and Management Presentation Boundaries Design
 
 **Date:** 2026-08-08  
-**Status:** Approved for implementation planning  
+**Status:** Revised after design review  
 **Linear:** HPA-568 — Extract map and management presentation boundaries from the Serpens route  
-**Dependency:** HPA-554 is complete; this ticket unblocks HPA-574.
+**Dependency:** HPA-554 is complete; HPA-568 unblocks HPA-574.
 
 ## Summary
 
-HPA-568 reduces change collisions in `src/routes/+page.svelte` before the inter-city logistics UI expands the map, inspectors, and management surfaces.
+HPA-568 reduces change collisions in `src/routes/+page.svelte` before inter-city logistics UI adds route drawing, route inspection, management actions, and navigation.
 
-The route remains the explicit cross-feature composition root. It continues to own `GameRouteController`, canonical route state, cross-feature derivations, command handlers, overlay ordering, keyboard shortcuts, save/scenario orchestration, and navigation decisions.
+The route remains the explicit cross-feature composition root. It still owns `GameRouteController`, route state, selections, cross-feature derivations, domain command handlers, global shortcut/Escape ordering, saves, scenarios, and navigation decisions.
 
-This ticket extracts exactly three concrete presentation components:
+The ticket extracts exactly three concrete presentation hosts:
 
-- `MapSurfaceHost.svelte` for the retail, industry, and world map surface stack;
-- `MapInspectorHost.svelte` for retail, industry-building, and rail inspectors;
-- `ManagementPanelHost.svelte` for the control-tower shell and existing panel switch.
+- `MapSurfaceHost.svelte` — world, retail, and industry map surface composition;
+- `MapInspectorHost.svelte` — retail, rail, and industry-building inspector composition;
+- `ManagementPanelHost.svelte` — the existing control-tower shell and concrete management-panel switch.
 
-The extraction is intentionally mechanical. No domain behavior, persistence shape, simulation rule, controller contract, shortcut behavior, or player-visible flow changes.
+One existing pure capability helper is also relocated out of `gameRouteController.ts`: `MutationAvailability` and `createMutationAvailability` move to `$lib/scenarios/mutationAvailability.ts`. This is not a new abstraction; it corrects an existing dependency-placement accident so `$lib` presentation code can consume the established capability bag without importing route code or duplicating a second boolean shape.
 
-## Why now
+No simulation, persistence, save-schema, scenario semantics, finance rules, localization copy, map behavior, or player-visible workflow changes.
 
-HPA-294 has established the domain contracts that HPA-574 will expose. HPA-574 will add a logistics management panel, route inspector, world-map route presentation, alert navigation, and report navigation. Adding those directly to the current route would increase collisions in the same large markup and CSS regions.
+## Decisions
 
-The current route already coordinates:
+1. Keep exactly three concrete hosts. No `MapWorkspace`, generic inspector/panel registry, context store, event bus, or second controller.
+2. Keep `+page.svelte` as the owner of selections, snapshots, active panel ID, route commands, global shortcuts, Escape priority, and top-level overlay decisions.
+3. Preserve the world-city inspector inside `WorldMap.svelte`.
+4. Preserve the route-owned `{#key activeManagementPanel.id}` remount boundary.
+5. Move scoped CSS with the markup it controls.
+6. Relocate the existing `MutationAvailability` type/factory into `$lib/scenarios`; do not create compatibility re-exports from `gameRouteController.ts`.
+7. Pass the existing mutation capability bag to `ManagementPanelHost`; child panels keep their current explicit boolean/callback APIs.
+8. Model `financeMetrics` as `FinanceMetrics | null` at the host boundary. Only the finance branch requires it; no route-side non-null assertion is allowed.
+9. Move inspector conditionals verbatim rather than translating them into new boolean algebra.
+10. HPA-574 extends the concrete hosts but still has route-owned touch points; HPA-568 does not pretend to eliminate all future route edits.
 
-- all three map renderers and their keep-alive visibility;
-- world-city selection/opening/financing presentation;
-- retail, industry-building, and rail inspector overlays;
-- the complete control-tower modal shell and eight-panel switch;
-- global shortcuts and Escape precedence;
-- build/advisor/save/scenario/finance overlays;
-- route command orchestration and persistence.
+## Current and target mount topology
 
-The useful maintenance boundary is therefore presentation composition, not another controller or state abstraction.
+The mount topology is a behavioral contract because inspector positioning uses an absolute overlay inside the relatively positioned `.map-layout` container.
 
-## Goals
+Current shape:
 
-1. Give map-surface changes one concrete home.
-2. Give map-attached inspector changes one concrete home.
-3. Give management-dialog and panel-composition changes one concrete home.
-4. Keep `+page.svelte` as the single route orchestration and cross-feature state owner.
-5. Prepare stable presentation extension points for HPA-574 without designing a generic extension framework.
-6. Preserve behavior and visuals exactly.
+```text
+main.app
+├─ section.map-layout (position: relative)
+│  ├─ div.map-surfaces
+│  │  ├─ WorldMap
+│  │  ├─ CityMap
+│  │  └─ IndustryMap
+│  ├─ TopBar
+│  ├─ scenario status
+│  ├─ ControlDesk
+│  ├─ placement / finance-review / build / advisor overlays
+│  └─ retail / rail / industry inspector overlays (position: absolute)
+├─ StoreDetailModal
+├─ control-tower management backdrop (position: fixed)
+├─ SavePanel
+├─ ScenarioCatalog / results
+└─ ShortcutCheatSheet
+```
 
-## Non-goals
+After HPA-568:
 
-- Making `+page.svelte` meet a target line count.
-- Replacing `GameRouteController` or changing its mutation/persistence responsibilities.
-- Adding a route-level view model, Svelte context, store, event bus, dependency injection, modal registry, inspector registry, panel registry, or generic workspace abstraction.
-- Moving `TopBar`, `ControlDesk`, `BuildMenu`, `SupplyAdvisor`, scenario surfaces, save surfaces, finance purchase review, or global shortcut handling.
-- Reworking map snapshots, placement, rail routing, world-city rules, finance, scenarios, alerts, or localization.
-- Adding logistics UI itself; HPA-574 consumes these boundaries later.
-- Adding compatibility, migration, recovery, or defensive-state work.
+```text
+main.app
+├─ section.map-layout (position: relative)
+│  ├─ MapSurfaceHost
+│  ├─ TopBar
+│  ├─ scenario status
+│  ├─ ControlDesk
+│  ├─ placement / finance-review / build / advisor overlays
+│  └─ MapInspectorHost
+├─ StoreDetailModal
+├─ ManagementPanelHost (fixed backdrop)
+├─ SavePanel
+├─ ScenarioCatalog / results
+└─ ShortcutCheatSheet
+```
+
+Non-negotiable placement rules:
+
+- `MapSurfaceHost` replaces only the existing `.map-surfaces` element inside `.map-layout`.
+- `MapInspectorHost` remains inside `.map-layout`, after the route-level map controls/overlays, so `.inspector-overlay { position: absolute; ... }` retains the same containing block.
+- `ManagementPanelHost` remains outside `.map-layout`, exactly where the current fixed control-tower backdrop is mounted.
 
 ## Ownership after the change
 
 ### `src/routes/+page.svelte`
 
-The route keeps ownership of:
+Keeps:
 
-- constructing and synchronizing `GameRouteController`;
-- `sandboxGame`, `activeScenarioRun`, play mode, scenario persistence state, and save state;
-- all cross-feature derived state and map snapshots;
-- selected tile/building/rail/world-city IDs and active map view;
-- build, placement, rail-build, and finance-review state;
+- `GameRouteController` construction and synchronization;
+- sandbox/scenario/save state;
+- `activeMapView` and visited-map mutation;
+- selected world-city/tile/building/rail IDs and all selected-object lookups;
+- city/industry map snapshots;
+- report summaries and finance-metric derivation;
+- build, placement, rail, finance-review, and store-detail state;
 - all domain command handlers;
-- active management-panel ID and menu configuration;
+- active management-panel ID/menu configuration;
 - global keyboard shortcuts and Escape priority;
-- top-level overlay composition and navigation;
-- `TopBar`, `ControlDesk`, `BuildMenu`, `SupplyAdvisor`, store detail, saves, scenarios, shortcut sheet, and finance purchase review.
+- `TopBar`, `ControlDesk`, `BuildMenu`, `SupplyAdvisor`, store detail, saves, scenarios, shortcut sheet, and finance purchase review;
+- alert/report navigation and cross-feature route selection.
 
-The route passes already-derived values and callbacks into the new hosts. The hosts do not reach back into route state.
+### `$lib/scenarios/mutationAvailability.ts`
 
-### `src/lib/components/game/MapSurfaceHost.svelte`
-
-Own only the mounted map surface stack and its layout CSS.
-
-Responsibilities:
-
-- render `WorldMap`, `CityMap`, and `IndustryMap` according to `VisitedMapViews`;
-- preserve the keep-alive contract: a visited surface remains mounted, while only the active surface is visible and pointer-interactive;
-- pass snapshots, paused/active state, keyboard enablement, mutation availability, world-city selection, and callbacks through to existing map components;
-- own `.map-surfaces`, `.map-surface`, and active-surface positioning/visibility CSS.
-
-It does **not** own:
-
-- `activeMapView` transitions;
-- visited-map mutation;
-- selection state;
-- map snapshots;
-- world-city eligibility or command handling;
-- rail-build state;
-- any route/domain command.
-
-The host may import domain/view types such as `MapViewId`, `VisitedMapViews`, `CityMapSnapshot`, `IndustryMapSnapshot`, `WorldCityStatus`, and `I18nBundle`. It must not import anything from `src/routes`.
-
-The world-city inspector stays inside `WorldMap`; HPA-568 does not split that existing component.
-
-### `src/lib/components/game/MapInspectorHost.svelte`
-
-Own the map-attached inspector overlay markup and responsive overlay CSS.
-
-Responsibilities:
-
-- render the existing retail `TileInspector` when the route says the retail inspector should be visible;
-- render `RailSegmentInspector` before `IndustryTileInspector` when rail segments are selected, preserving the current precedence;
-- pass already-resolved tile, store, building, report, rail-segment, mutation-availability, and callback values into the existing inspector components;
-- own `.inspector-overlay` desktop and compact-breakpoint CSS.
-
-It does **not** own:
-
-- selected IDs;
-- tile/building/store lookup;
-- latest-report lookup;
-- determining the active map;
-- upgrade/demolish/open-detail commands;
-- store-detail modal state;
-- world-city inspection.
-
-The route remains responsible for deriving concrete selected objects. This avoids turning the host into a second selector/view-model layer.
-
-### `src/lib/components/game/ManagementPanelHost.svelte`
-
-Own the existing control-tower shell and concrete eight-panel switch.
-
-Responsibilities:
-
-- render the backdrop, focus trap, dialog shell, header, day/cash status, and close controls;
-- switch among the existing `Scorecard`, `PolicyPanel`, `StaffPanel`, `RetailSupplySources`, `StoreOverview`, `DecisionQueue`, `ActiveModifiers`, `ReportsPanel`, `ProductChainsPanel`, and `FinancePanel` content;
-- preserve the existing two-column stores/decisions layouts and responsive collapse;
-- preserve `data-focused-finance-loan` on the dialog;
-- own control-tower, stores/decisions composition, header/action, and responsive CSS.
-
-It does **not** own:
-
-- which management panel is active;
-- opening/closing decisions beyond invoking the supplied `onClose` callback;
-- finance-loan focus state;
-- report summarization, finance metric calculation, retail supply view derivation, or any other cross-feature selector;
-- domain commands or mutation gating;
-- keyboard shortcut handling.
-
-`MutationAvailability` currently belongs to the route layer. The `$lib` host must not import it from `src/routes/gameRouteController.ts`. Instead the route passes the explicit booleans and callbacks the child panels already consume. This preserves dependency direction without creating a new shared availability abstraction solely for this extraction.
-
-## Component contract shape
-
-The contracts should remain explicit rather than introducing prop-bag view models solely to make signatures look smaller.
-
-### Map surface contract
-
-Conceptually:
+Owns the existing pure capability contract currently colocated in `gameRouteController.ts`:
 
 ```ts
-interface MapSurfaceHostProps {
+export interface MutationAvailability {
+  pending: boolean;
+  advanceDay: boolean;
+  resolveDecision: boolean;
+  updatePolicy: boolean;
+  openWorldCity: boolean;
+  setRetailSupplySource: boolean;
+  openStore: boolean;
+  upgradeStore: boolean;
+  hireStaff: boolean;
+  assignStaff: boolean;
+  unassignStaff: boolean;
+  promoteStaff: boolean;
+  updateStoreSellingPrice: boolean;
+  updateStoreInventoryTargets: boolean;
+  buildIndustrialBuilding: boolean;
+  upgradeIndustrialBuilding: boolean;
+  buildRail: boolean;
+  upgradeRail: boolean;
+  demolishRail: boolean;
+  borrow: boolean;
+  repayLoan: boolean;
+  payOffLoan: boolean;
+  refinanceLoan: boolean;
+  financeWorldCity: boolean;
+  financeRetailStore: boolean;
+  financeIndustrialBuilding: boolean;
+}
+```
+
+`createMutationAvailability` moves with the interface unchanged. It remains a pure mapping from sandbox/scenario state plus `ScenarioDefinition.allowedCommands` to booleans.
+
+No re-export remains in `gameRouteController.ts`; call sites update to the new library import because this is a pre-release internal refactor and backward compatibility is not required.
+
+### `MapSurfaceHost.svelte`
+
+Owns only the mounted map surface stack and its layout CSS.
+
+It receives the route's existing identifiers directly, including `mapSnapshot` and `industryMapSnapshot`, rather than introducing rename-only view models.
+
+Conceptual contract:
+
+```ts
+interface Props {
   activeMapView: MapViewId;
   visitedMapViews: VisitedMapViews;
-  paused: boolean;
+  isMapPaused: boolean;
   i18n: I18nBundle;
 
   worldCityStatuses: WorldCityStatus[];
@@ -170,214 +167,278 @@ interface MapSurfaceHostProps {
   allowedWorldCityIds: string[];
   mutationDisabledReason: string | null;
 
-  retailSnapshot: CityMapSnapshot;
+  mapSnapshot: CityMapSnapshot;
   onSelectRetailTile: (tileId: string) => void;
 
-  industrySnapshot: IndustryMapSnapshot;
+  industryMapSnapshot: IndustryMapSnapshot;
   onSelectIndustryTile: (tileId: string) => void;
   onCancelRailBuild: () => void;
   railKeyboardEnabled: boolean;
 }
 ```
 
-Names may follow the implementation's local conventions, but ownership must remain as above.
+The host may call `shouldRenderMapView`, but it does not mutate visited state or derive snapshots/capabilities.
 
-### Inspector contract
+### `MapInspectorHost.svelte`
 
-The route passes concrete `GameState`, `CityTile`, `Store`, `DailyStoreReport`, `IndustryTile`, `IndustrialBuilding`, and `RailSegment` values plus explicit visibility flags and mutation callbacks. The host does not accept selected IDs and then re-resolve them.
+Owns the existing inspector overlay markup and responsive overlay CSS.
 
-### Management contract
-
-The route mounts the host only when a panel is active and retains the existing keyed reset boundary:
+The route continues to derive concrete selected objects and the existing visibility flags. The host moves the current template branches structurally unchanged:
 
 ```svelte
-{#if activeManagementPanel}
-  {#key activeManagementPanel.id}
-    <ManagementPanelHost
-      panelId={activeManagementPanel.id}
-      panelLabel={activeManagementPanel.label}
-      ...
-    />
-  {/key}
+{#if selectedRetailTile && showRetailInspector}
+  <!-- TileInspector -->
+{/if}
+
+{#if selectedRailSegments && showIndustryInspector}
+  <!-- RailSegmentInspector -->
+{:else if selectedIndustryTile && showIndustryInspector}
+  <!-- IndustryTileInspector -->
 {/if}
 ```
 
-The host receives `panelGame`, `summary`, `financeMetrics`, already-derived retail-supply views, current mutation booleans, and the existing callbacks. It may import `GameRouteCommitResult` from `$lib/game/commandResult` because that is already a library-level command result contract; it must not import route controller state.
+There are no new `showRail` / `showIndustryBuilding` helper booleans. The route-owned visibility flags continue to encode placement-mode rules; the host keeps the same null/truthiness checks the route template has today.
 
-## Data and command flow
+The host does not resolve IDs, query reports, choose active maps, or own `StoreDetailModal`.
 
-The direction remains one-way:
+### `ManagementPanelHost.svelte`
 
-```text
-GameRouteController / route state
-        |
-        v
-+page.svelte derivations and handlers
-        |
-        +-------------------+------------------------+
-        |                   |                        |
-        v                   v                        v
-MapSurfaceHost       MapInspectorHost       ManagementPanelHost
-        |                   |                        |
-        v                   v                        v
-existing map          existing inspector       existing panel
-components             components               components
-        |                   |                        |
-        +--------- callbacks to +page.svelte -------+
-                            |
-                            v
-                  GameRouteController/domain
+Owns:
+
+- fixed backdrop and focus-trapped dialog shell;
+- localized header, day/cash ticker, close actions;
+- existing concrete switch for dashboard, policies, staff, stores, decisions, reports, product chains, and finance;
+- stores/decisions two-column composition;
+- control-tower responsive CSS.
+
+It receives the existing `MutationAvailability` bag instead of a new set of duplicate availability props:
+
+```ts
+interface CoreProps {
+  panelId: ManagementPanelId;
+  panelLabel: string;
+  panelGame: GameState;
+  summary: ReportSummary;
+  financeMetrics: FinanceMetrics | null;
+  retailSupplyViews: RetailCitySupplyView[];
+  mutations: MutationAvailability;
+  retailSupplyDisabled: boolean;
+  focusedFinanceLoanId: string | null;
+  i18n: I18nBundle;
+  disabledReason: string | null;
+  // existing command callbacks
+}
 ```
 
-No host writes canonical state. No host calls `GameRouteController` directly.
+The host maps `mutations.updatePolicy`, `mutations.hireStaff`, `mutations.resolveDecision`, and related fields to the child components' existing explicit APIs. This does not trigger a drive-by child-panel refactor.
 
-## Styling and responsive behavior
+For `panelId === 'finance'`, `financeMetrics` is a required programmer invariant. The prop remains nullable because the route intentionally derives metrics only while the finance panel is active. The finance branch asserts that invariant locally; the route call site must not use `financeMetrics!`.
 
-Move styles with the markup they control so Svelte's scoped CSS remains effective after extraction.
+The host does not calculate finance metrics, report summaries, or retail supply views.
 
-`MapSurfaceHost.svelte` owns:
+## Data flow
+
+```text
+GameRouteController / GameState
+          |
+          v
+      +page.svelte
+  derivations + handlers
+          |
+          +--------------------+----------------------+----------------------+
+          |                    |                      |                      |
+          v                    v                      v                      v
+ MutationAvailability   MapSurfaceHost        MapInspectorHost      ManagementPanelHost
+ ($lib/scenarios)              |                      |                      |
+                               v                      v                      v
+                         existing maps          existing inspectors      existing panels
+                               |                      |                      |
+                               +---------- callbacks to +page.svelte ------+
+                                                   |
+                                                   v
+                                      GameRouteController / domain
+```
+
+No host writes canonical state or calls `GameRouteController` directly.
+
+## Styling
+
+Move styles with their markup so Svelte scoped CSS remains effective.
+
+`MapSurfaceHost` owns:
 
 - `.map-surfaces`;
 - `.map-surface`;
 - `.active-map-surface`.
 
-`MapInspectorHost.svelte` owns:
+`MapInspectorHost` owns:
 
 - `.inspector-overlay`;
-- the `981px–1023px` inspector bottom offset;
-- the `max-width: 980px` fixed inspector layout.
+- the existing 981–1023px bottom offset;
+- the existing compact fixed-overlay rule at max-width 980px.
 
-`ManagementPanelHost.svelte` owns:
+`ManagementPanelHost` owns:
 
 - `.tower-backdrop` and backdrop button;
 - `.control-tower-overlay`;
-- `.tower-header`, `.tower-actions`, and close button;
-- `.decisions-surfaces` and `.stores-surfaces`;
-- management dialog heading/ticker styling used only by the extracted shell;
-- compact control-tower/stores/decisions responsive rules.
+- `.tower-header`, `.tower-actions`, `.close-tower`;
+- `.stores-surfaces` and `.decisions-surfaces`;
+- the control-tower `h2` and `.ticker` styles;
+- the existing compact control-tower/stores/decisions responsive rules.
 
-`+page.svelte` retains styles for the route shell, scenario progress, placement status, menu content, TopBar/ControlDesk-adjacent composition, and other unmoved overlays.
+Before deleting `.ticker` from `+page.svelte`, verify there are no remaining route-local `.ticker` elements. `TopBar.svelte` has its own scoped ticker styling and is unaffected.
 
-Do not create a shared CSS module or generic overlay stylesheet for these three one-use boundaries.
+No shared overlay stylesheet is introduced.
 
 ## Accessibility and keyboard behavior
 
-Behavior must remain unchanged:
+Behavior remains unchanged:
 
-- the management dialog remains `aria-modal="true"` and uses the existing `focusTrap` attachment;
-- inspector dialogs remain non-modal and retain their current accessible names;
-- backdrop and close controls retain accessible labels from existing localization keys;
+- management dialog remains modal and uses the existing `focusTrap` attachment;
+- map inspectors remain non-modal dialogs with the same localized accessible names;
+- backdrop/close labels use the same translation keys;
 - `+page.svelte` remains the only global shortcut and Escape-priority owner;
-- `IndustryMap.keyboardEnabled` is still derived by the route and passed through the surface host so page-level overlays do not double-handle Escape;
-- no host installs global keyboard listeners.
+- `isMapPaused` and `railKeyboardEnabled` remain route derivations;
+- `MapSurfaceHost` only passes those values through to the existing maps;
+- no host installs a global keyboard listener.
 
 ## Testing strategy
 
-Add tests only for behavior that moves behind a new boundary.
+### Map surface host
 
-### `MapSurfaceHost.svelte.spec.ts`
-
-Cover:
-
-- unvisited maps are not mounted;
-- visited maps remain mounted when inactive;
-- exactly the active surface is visible/pointer-active through the existing class/`aria-hidden` contract;
-- world/retail/industry callbacks remain wired;
-- paused and industry keyboard-enabled values are passed through without re-derivation.
-
-Reuse the small Phaser mocks already used by `CityMap.svelte.spec.ts` and `IndustryMap.svelte.spec.ts`; do not extract a new generic test framework for three host tests.
-
-### `MapInspectorHost.svelte.spec.ts`
+Use real `WorldMap`, `CityMap`, and `IndustryMap` children with the same local Phaser/scene mocks already used in the child component specs.
 
 Cover:
 
-- retail inspector visibility and close/detail callback forwarding;
-- rail inspector wins over industry-building inspector when both rail and industry tile data are present;
-- industry-building inspector renders when no rail segment selection is present;
-- mutation availability and disabled reason reach the existing inspector controls.
+- unvisited surfaces are not mounted;
+- visited surfaces remain mounted while inactive;
+- exactly one surface receives the active class;
+- world-city selection callback wiring;
+- `isMapPaused` pass-through by observing the mocked Phaser `pause` call on the active real map child;
+- `railKeyboardEnabled` pass-through by observing `mockSetKeyboardEnabled(false)` in the mocked industry scene.
 
-Use concrete lightweight game fixtures. Do not add a generic inspector test registry.
+No generic child-component mock framework is needed.
 
-### `ManagementPanelHost.svelte.spec.ts`
+### Map inspector host
+
+Component tests cover:
+
+- retail close/detail callback forwarding;
+- rail inspector precedence over the industry-building inspector;
+- industry-building fallback when there is no rail selection;
+- mutation availability/disabled reason reaching existing controls.
+
+A targeted assertion is added to the existing `retail-sim.e2e.ts` route smoke when a map inspector is open: the inspector must be a descendant of `.map-layout`. That locks the containing-block topology which a host-only test cannot prove.
+
+### Management panel host
 
 Cover:
 
-- the dialog shell, label, day/cash status, focus-trap shell, backdrop, and close callback;
-- representative panel switching, including the two-surface `stores` and `decisions` compositions;
-- finance focus metadata is preserved;
-- explicit mutation booleans/callbacks reach interactive child panels.
+- fixed modal shell, localized label, day/cash status, backdrop/close callback;
+- representative `stores` and `decisions` multi-surface composition;
+- finance `data-focused-finance-loan` metadata;
+- finance branch with non-null metrics;
+- existing mutation bag fields reach child panel controls.
 
-Existing child-panel specs remain authoritative for their internal behavior; the host spec verifies composition, not every child feature again.
+Existing child-panel tests remain authoritative for internal child behavior.
 
-### Route-level smoke
+### Commands
 
-Retain `src/routes/retail-sim.e2e.ts` as the cross-feature smoke for map navigation, panel toggles, inspector flows, and route-level keyboard/overlay behavior. No new E2E suite is required unless the existing smoke exposes a genuine missing route behavior during implementation.
+Follow repository guidance:
 
-Run:
+```bash
+bun run test:unit -- <component-spec> --run
+bun run check
+bun run lint
+bun run test:e2e -- src/routes/retail-sim.e2e.ts
+bun run test
+```
 
-- focused new browser component specs;
-- `bun run check`;
-- `bun run lint`;
-- `bun run test:e2e -- src/routes/retail-sim.e2e.ts` where Playwright forwarding supports the path, otherwise the repository's configured targeted Playwright invocation;
-- final `bun run test` after focused gates are green.
+Do not replace the package-script E2E path with an ad-hoc Playwright invocation; the repository script owns the normal build/preview setup.
+
+The initial RED step for each extracted component is only a TDD wiring scaffold: the test fails because the host does not exist yet. Behavioral confidence comes from characterization assertions before and after the mechanical cutover, not from pretending this is greenfield behavior.
 
 ## Coverage configuration
 
-`vite.config.ts` currently explains the exclusion of `+page.svelte` using a stale line-count description. Update the comment so it describes the testing boundary instead:
+`vite.config.ts` keeps the existing `+page.svelte` coverage exclusion but replaces the stale route line-count comment with a testing-boundary explanation:
 
-- `+page.svelte` is the route-level orchestration/composition root and remains covered by `retail-sim.e2e.ts`;
-- extracted `$lib/components/game` hosts are covered by browser component specs and remain inside normal component coverage;
-- do not replace the old number with a new line-count target.
+- `+page.svelte` is the route orchestration/composition root exercised by route E2E;
+- extracted `$lib/components/game` hosts have browser component specs;
+- route line count is not an architecture target.
 
-The coverage exclude list itself does not change.
+No coverage provider/threshold/include/exclude behavior changes.
 
-## Implementation sequence
+## Risks and controls
 
-1. Extract and cut over `MapSurfaceHost` with focused component coverage.
-2. Extract and cut over `MapInspectorHost` with focused component coverage.
-3. Extract and cut over `ManagementPanelHost` with focused component coverage.
-4. Update the stale coverage-boundary comment and run route/full regression gates.
+### Inspector containing block
 
-Each extraction is independently reviewable and should preserve behavior before proceeding to the next.
+**Risk:** moving `MapInspectorHost` outside `.map-layout` changes absolute positioning and can cover HUD/Desk controls without obvious logical failures.  
+**Control:** explicit mount topology plus route E2E descendant assertion.
 
-## Scope audit
+### Capability dependency direction
 
-The implementation is out of scope if it introduces any of the following:
+**Risk:** `$lib` host imports route-layer `MutationAvailability`, or the host duplicates it as a second shape.  
+**Control:** relocate the existing pure type/factory to `$lib/scenarios/mutationAvailability.ts`; update imports directly; no compatibility re-export.
 
-- a second controller or canonical state owner;
-- new global Svelte state/context;
-- a generic `MapWorkspace` or broad shell wrapper;
-- generic panel/inspector registries;
-- domain/read-model calculations moved into Svelte hosts;
-- route commands called directly from `$lib` components;
-- changes to `src/lib/game` simulation or persistence contracts;
-- redesigns of map, panel, inspector, scenario, save, finance, or shortcut behavior;
-- speculative logistics components for HPA-574.
+### Finance metric nullability
 
-## Acceptance criteria
+**Risk:** forcing `financeMetrics!` through a non-finance host call hides a real nullable contract.  
+**Control:** nullable host prop and finance-branch invariant assertion.
 
-- Map surfaces have one clear home in `MapSurfaceHost.svelte`.
-- Retail, industry, and rail inspector presentation has one clear home in `MapInspectorHost.svelte`.
-- Control-tower shell and existing panel composition have one clear home in `ManagementPanelHost.svelte`.
-- `+page.svelte` remains the explicit cross-feature composition/command root.
-- `GameRouteController` remains the only route command/persistence coordinator.
-- Global shortcut and Escape ordering remains in `+page.svelte` and behaves exactly as before.
-- No new generic presentation/state framework is introduced.
-- No domain or persistence behavior changes.
-- Existing visuals and player flows remain unchanged.
-- Focused component tests cover only the newly moved boundary behavior.
-- Existing `retail-sim.e2e.ts` remains the route-level cross-feature smoke.
-- `vite.config.ts` describes the testing boundary without a route line-count claim.
-- `bun run check`, `bun run lint`, focused browser component tests, targeted E2E, and final full tests pass.
+### Mechanical extraction drift
+
+**Risk:** rewriting inspector conditions or renaming unrelated props changes behavior during a refactor-only ticket.  
+**Control:** preserve current route identifiers and move conditionals verbatim.
+
+### Svelte scoped CSS drift
+
+**Risk:** moving markup without matching CSS makes selectors stop applying.  
+**Control:** each host owns exactly the CSS that styles its moved markup; final diff audit checks no orphan selectors remain.
 
 ## HPA-574 handoff
 
-After HPA-568 lands, HPA-574 can extend these concrete boundaries without reopening route architecture:
+HPA-568 reduces three high-change presentation regions but intentionally leaves cross-feature orchestration in the route.
 
-- add logistics route rendering to `MapSurfaceHost`/the world-map surface;
-- add a concrete route inspector to `MapInspectorHost`;
-- add a concrete logistics management panel to `ManagementPanelHost`;
-- keep logistics state, validation, scheduling, quotes, and utilization in HPA-294 domain/read-model APIs;
-- keep route selection/navigation commands and global shortcut/overlay ownership in `+page.svelte`.
+| HPA-574 change | Expected owner after HPA-568 |
+| --- | --- |
+| World-map logistics route drawing | `MapSurfaceHost` / `WorldMap` |
+| Route inspector chrome/content composition | `MapInspectorHost` |
+| Logistics management panel body/shell branch | `ManagementPanelHost` |
+| New management panel ID and shortcut mnemonic | `keyboardShortcuts.ts` plus route menu configuration |
+| Route selection state, open/close, Escape rank | `+page.svelte` |
+| Map pause / rail-keyboard overlay participation | `+page.svelte` |
+| Alert/report → route selection and map navigation | `+page.svelte` handlers/navigation helpers |
+| Quote, dispatch, scheduling, utilization | HPA-294 domain/read-model APIs |
 
-No generic extension mechanism is needed in advance. HPA-574 should add the concrete props and composition only when its UI exists.
+No additional extraction is required in HPA-568 merely to remove these remaining route-owned touch points.
+
+## Scope audit
+
+Out of scope:
+
+- a second controller or state owner;
+- generic panel/inspector/workspace registries;
+- Svelte context/global stores;
+- changes to simulation or persistence;
+- logistics components for HPA-574;
+- route/vehicle animation or pathfinding;
+- unrelated UI redesign;
+- compatibility layers for the relocated internal availability helper.
+
+## Acceptance criteria
+
+- [ ] `MapSurfaceHost.svelte` owns the three map surfaces and their scoped layout CSS.
+- [ ] `MapInspectorHost.svelte` owns retail/rail/industry inspector composition and stays inside `.map-layout`.
+- [ ] `ManagementPanelHost.svelte` owns the control-tower shell/switch and stays outside `.map-layout`.
+- [ ] `+page.svelte` remains the cross-feature state/command/navigation/shortcut root.
+- [ ] `MutationAvailability` and `createMutationAvailability` live in `$lib/scenarios`, with existing call sites updated and no route-layer re-export.
+- [ ] Management UI reuses the existing mutation bag; no duplicate availability shape is created.
+- [ ] `financeMetrics` is nullable at the host boundary and no route call-site non-null assertion hides that contract.
+- [ ] Inspector template branches preserve current truthiness and `if`/`else-if` precedence.
+- [ ] World-city inspection remains inside `WorldMap`.
+- [ ] The route still owns `{#key activeManagementPanel.id}`, global `handleKeydown`, and Escape ordering.
+- [ ] Existing visuals/player flows remain unchanged.
+- [ ] Existing `retail-sim.e2e.ts` includes a minimal inspector-within-map-layout topology assertion.
+- [ ] Focused browser specs, `bun run check`, `bun run lint`, targeted route E2E, and `bun run test` pass.
+- [ ] `vite.config.ts` describes the testing boundary without a route line-count claim.
+- [ ] The implementation PR lists what moved, what stayed route-owned, and confirms no new framework or canonical state owner was added.
