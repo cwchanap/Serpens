@@ -17,10 +17,10 @@ import {
 } from './productChainGraph';
 import { MATERIALS, PRODUCTION_RECIPES } from './industry';
 import { buildIndustrialBuilding } from './industryPlacement';
+import { emptyLogisticsReport } from './logisticsReport.testUtils';
 import { createNewGame } from './state';
 import { openWorldCity } from './world';
 import type {
-	DailyLogisticsReport,
 	DailyProductReport,
 	DailyProductionReport,
 	DailyStoreReport,
@@ -47,15 +47,6 @@ function emptyProductionReport(
 		railUsage: {},
 		...overrides,
 		cityInventories: overrides.cityInventories ?? []
-	};
-}
-
-function emptyLogisticsReport(): DailyLogisticsReport {
-	return {
-		arrivals: [],
-		routeDispatchAttempts: [],
-		deliveredUnits: 0,
-		scheduledTransportCost: 0
 	};
 }
 

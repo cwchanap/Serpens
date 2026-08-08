@@ -7,40 +7,12 @@ import {
 	removeRecurringRoute,
 	updateRecurringRoute
 } from './interCityLogistics';
+import { createLogisticsBuilding } from './interCityLogistics.testUtils';
 import { selectLogisticsTotals, selectRecentTransfers } from './logisticsReadModels';
 import { simulateDay } from './simulateDay';
 import { createNewGame } from './state';
-import type {
-	DailyReport,
-	GameState,
-	IndustrialBuilding,
-	TransferOrder,
-	WorldCityId
-} from './types';
+import type { DailyReport, GameState, TransferOrder, WorldCityId } from './types';
 import { openWorldCity, refreshWorldProgress } from './world';
-
-function createFixtureBuilding(
-	id: string,
-	cityId: WorldCityId,
-	typeId: IndustrialBuilding['typeId'],
-	mapX: number
-): IndustrialBuilding {
-	return {
-		id,
-		level: 1,
-		typeId,
-		cityId,
-		tileId: `${cityId}-fixture-${mapX}`,
-		mapX,
-		mapY: 1,
-		status: 'idle',
-		lastProduction: [],
-		producedTotal: 0,
-		importedInputTotal: 0,
-		blockedDays: 0,
-		inventory: {}
-	};
-}
 
 function getWater(game: GameState, cityId: WorldCityId): number {
 	const inventory = game.cityInventories.find((candidate) => candidate.cityId === cityId);
@@ -86,8 +58,8 @@ describe('inter-city logistics lifecycle', () => {
 			...base,
 			cash: 100_000,
 			industrialBuildings: [
-				createFixtureBuilding('fixture-origin-warehouse', 'industry-city', 'warehouse', 1),
-				createFixtureBuilding('fixture-origin-water-pump', 'industry-city', 'water-pump', 2)
+				createLogisticsBuilding('fixture-origin-warehouse', 'warehouse', 'industry-city', 1, 1),
+				createLogisticsBuilding('fixture-origin-water-pump', 'water-pump', 'industry-city', 2, 1)
 			]
 		};
 		const revealed = refreshWorldProgress(revealPrerequisite);
@@ -101,8 +73,14 @@ describe('inter-city logistics lifecycle', () => {
 			day: 7,
 			cash: 100_000,
 			industrialBuildings: [
-				createFixtureBuilding('fixture-origin-warehouse', 'industry-city', 'warehouse', 1),
-				createFixtureBuilding('fixture-destination-warehouse', 'breadbasket-basin', 'warehouse', 1)
+				createLogisticsBuilding('fixture-origin-warehouse', 'warehouse', 'industry-city', 1, 1),
+				createLogisticsBuilding(
+					'fixture-destination-warehouse',
+					'warehouse',
+					'breadbasket-basin',
+					1,
+					1
+				)
 			],
 			cityInventories: opened.cityInventories.map((inventory) =>
 				inventory.cityId === 'industry-city'

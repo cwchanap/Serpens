@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import type {
-	DailyLogisticsReport,
 	DailyProductReport,
 	DailyProductionReport,
 	DailyReport,
@@ -10,6 +9,7 @@ import type {
 	Store
 } from '$lib/game/types';
 import { createEmptyFinanceState } from '$lib/game/finance';
+import { emptyLogisticsReport } from '$lib/game/logisticsReport.testUtils';
 import { createInitialEventRuntime } from '$lib/game/eventSelection';
 import type {
 	ScenarioComparator,
@@ -45,15 +45,6 @@ function productionReport(): DailyProductionReport {
 		railShipments: [],
 		railUsage: {},
 		cityInventories: []
-	};
-}
-
-function emptyLogisticsReport(): DailyLogisticsReport {
-	return {
-		arrivals: [],
-		routeDispatchAttempts: [],
-		deliveredUnits: 0,
-		scheduledTransportCost: 0
 	};
 }
 

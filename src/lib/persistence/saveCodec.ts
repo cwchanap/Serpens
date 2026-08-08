@@ -1422,9 +1422,9 @@ function validateCurrentLogisticsState(game: GameState): void {
 			`${orderLabel} arrivalOnDay`
 		);
 		requireLogisticsNonNegativeSafeInteger(order.transportCost, `${orderLabel} transportCost`);
-		if (createdOnDay > dispatchedOnDay || dispatchedOnDay >= arrivalOnDay) {
+		if (createdOnDay !== dispatchedOnDay || dispatchedOnDay >= arrivalOnDay) {
 			logisticsInvariant(
-				`${orderLabel} days must satisfy createdOnDay <= dispatchedOnDay < arrivalOnDay`
+				`${orderLabel} days must satisfy createdOnDay === dispatchedOnDay < arrivalOnDay`
 			);
 		}
 		const status = requireLogisticsOneOf(order.status, `${orderLabel} status`, [

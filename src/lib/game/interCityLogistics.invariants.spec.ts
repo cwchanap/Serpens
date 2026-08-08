@@ -11,77 +11,12 @@ vi.mock('./cityInventory', async (importOriginal) => {
 
 import { getCityInventory, removeCityInventoryMaterial } from './cityInventory';
 import { dispatchManualTransfer, processRecurringRouteDispatches } from './interCityLogistics';
-import { createNewGame } from './state';
-import type { GameState, MaterialId, RecurringRoute, WorldCityId } from './types';
-import { openWorldCity } from './world';
-
-function withCityMaterials(
-	game: GameState,
-	cityId: WorldCityId,
-	materials: Partial<Record<MaterialId, number>>
-): GameState {
-	return {
-		...game,
-		cityInventories: game.cityInventories.map((inventory) =>
-			inventory.cityId === cityId ? { ...inventory, materials } : inventory
-		)
-	};
-}
-
-function createTwoIndustryCityGame(): GameState {
-	const base = createNewGame('convenience', 20260806);
-	const opened = openWorldCity(
-		{
-			...base,
-			cash: 100_000,
-			world: {
-				...base.world,
-				revealedCityIds: [...base.world.revealedCityIds, 'breadbasket-basin']
-			}
-		},
-		'breadbasket-basin'
-	);
-
-	return withCityMaterials(
-		withCityMaterials({ ...opened, day: 7, cash: 100_000 }, 'industry-city', { water: 50 }),
-		'breadbasket-basin',
-		{ water: 1, grain: 2 }
-	);
-}
-
-function withRecurringRoutes(game: GameState, recurringRoutes: RecurringRoute[]): GameState {
-	return {
-		...game,
-		logistics: {
-			...game.logistics,
-			recurringRoutes
-		}
-	};
-}
-
-function withWarehouses(game: GameState, cityIds: readonly WorldCityId[]): GameState {
-	return {
-		...game,
-		industrialBuildings: [
-			...game.industrialBuildings,
-			...cityIds.map((cityId, index) => ({
-				id: `warehouse-${cityId}`,
-				level: 1,
-				typeId: 'warehouse' as const,
-				cityId,
-				tileId: `${cityId}-warehouse-${index}`,
-				mapX: index + 1,
-				mapY: 1,
-				status: 'idle' as const,
-				lastProduction: [],
-				producedTotal: 0,
-				importedInputTotal: 0,
-				blockedDays: 0,
-				inventory: {}
-			}))
-		]
-	};
-}
+import {
+	createTwoIndustryCityGame,
+	withCityMaterials,
+	withRecurringRoutes,
+	withWarehouses
+} from './interCityLogistics.testUtils';
 
 afterEach(() => {
 	vi.mocked(getCityInventory).mockReset();

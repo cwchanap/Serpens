@@ -3,6 +3,7 @@ import { DEFAULT_RETAIL_CITY_HEIGHT, DEFAULT_RETAIL_CITY_WIDTH } from './city';
 import { getIndustryTilesByResource } from './industry';
 import { buildIndustrialBuilding } from './industryPlacement';
 import { createIndustryMapSnapshot } from './industryMapRender';
+import { emptyLogisticsReport } from './logisticsReport.testUtils';
 import { railUsageKey } from './rail';
 import { createNewGame } from './state';
 import type { DailyProductionReport, DailyReport, IndustryCity, RailCell } from './types';
@@ -23,15 +24,6 @@ function emptyProductionReport(): DailyProductionReport {
 		railShipments: [],
 		railUsage: {},
 		cityInventories: []
-	};
-}
-
-function emptyLogisticsReport(): DailyReport['logistics'] {
-	return {
-		arrivals: [],
-		routeDispatchAttempts: [],
-		deliveredUnits: 0,
-		scheduledTransportCost: 0
 	};
 }
 
