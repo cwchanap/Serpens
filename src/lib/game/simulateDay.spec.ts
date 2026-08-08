@@ -4,6 +4,12 @@ import { EVENT_DRAW_COUNT_PER_DAY } from './eventSelection';
 import { appendFinanceTransaction, getTotalDebt } from './finance';
 import { buildIndustrialBuilding } from './industryPlacement';
 import { dispatchManualTransfer, processRecurringRouteDispatches } from './interCityLogistics';
+import {
+	createLogisticsBuilding,
+	createTwoIndustryCityGame,
+	withCityMaterials,
+	withWarehouses
+} from './interCityLogistics.testUtils';
 import { createRngFromState } from './rng';
 import { createNewGame, resolveDecision, updatePolicy } from './state';
 import { getStaffXpForLevel } from './staffLeveling';
@@ -15,13 +21,10 @@ import type {
 	ActiveEventModifier,
 	EventDecisionItem,
 	GameState,
-	IndustrialBuilding,
-	MaterialId,
 	RecurringRoute,
 	StaffMember,
 	SystemDecisionItem,
-	TransferOrder,
-	WorldCityId
+	TransferOrder
 } from './types';
 
 function advanceEventRngState(state: number): number {
@@ -92,69 +95,7 @@ function activeImportModifier(id: string, multiplier: number, day: number): Acti
 }
 
 function openTwoIndustryCityLogisticsGame(day = 7): GameState {
-	const base = createNewGame('convenience', 292_940);
-	const opened = openWorldCity(
-		{
-			...base,
-			cash: 100_000,
-			world: {
-				...base.world,
-				revealedCityIds: [...base.world.revealedCityIds, 'breadbasket-basin']
-			}
-		},
-		'breadbasket-basin'
-	);
-
-	return { ...opened, day, cash: 100_000 };
-}
-
-function withCityMaterials(
-	game: GameState,
-	cityId: WorldCityId,
-	materials: Partial<Record<MaterialId, number>>
-): GameState {
-	return {
-		...game,
-		cityInventories: game.cityInventories.map((inventory) =>
-			inventory.cityId === cityId ? { ...inventory, materials } : inventory
-		)
-	};
-}
-
-function createLogisticsBuilding(
-	id: string,
-	typeId: IndustrialBuilding['typeId'],
-	cityId: WorldCityId,
-	mapX: number,
-	mapY = 2
-): IndustrialBuilding {
-	return {
-		id,
-		level: 1,
-		typeId,
-		cityId,
-		tileId: `${cityId}-${mapX}-${mapY}`,
-		mapX,
-		mapY,
-		status: 'idle',
-		lastProduction: [],
-		producedTotal: 0,
-		importedInputTotal: 0,
-		blockedDays: 0,
-		inventory: {}
-	};
-}
-
-function withWarehouses(game: GameState, cityIds: readonly WorldCityId[]): GameState {
-	return {
-		...game,
-		industrialBuildings: [
-			...game.industrialBuildings,
-			...cityIds.map((cityId, index) =>
-				createLogisticsBuilding(`warehouse-${cityId}`, 'warehouse', cityId, index + 10)
-			)
-		]
-	};
+	return createTwoIndustryCityGame({ seed: 292_940, day, materials: false });
 }
 
 function straightRails(y: number, fromX: number, toX: number) {
@@ -402,7 +343,10 @@ describe('daily simulation', () => {
 
 	test('lets weekly replenishment consume origin stock before a due route dispatch', () => {
 		const base = withCityMaterials(
-			withWarehouses(openTwoIndustryCityLogisticsGame(), ['industry-city', 'breadbasket-basin']),
+			withWarehouses(openTwoIndustryCityLogisticsGame(), ['industry-city', 'breadbasket-basin'], {
+				mapXOffset: 10,
+				mapY: 2
+			}),
 			'industry-city',
 			{ 'bottled-water': 10 }
 		);
@@ -467,7 +411,10 @@ describe('daily simulation', () => {
 
 	test('reports a full route destination as an explicit no-need zero attempt', () => {
 		const base = withCityMaterials(
-			withWarehouses(openTwoIndustryCityLogisticsGame(), ['industry-city', 'breadbasket-basin']),
+			withWarehouses(openTwoIndustryCityLogisticsGame(), ['industry-city', 'breadbasket-basin'], {
+				mapXOffset: 10,
+				mapY: 2
+			}),
 			'breadbasket-basin',
 			{ water: 200 }
 		);
@@ -484,13 +431,15 @@ describe('daily simulation', () => {
 			transportCost: 0,
 			transferOrderId: null
 		});
-		expect(attempt.destinationNeed === 0 ? 'full/no-need' : 'unmet demand').toBe('full/no-need');
 	});
 
 	test('keeps route scheduling cash-free until daily accounting applies its cost exactly once', () => {
 		const base = withCityMaterials(
 			withCityMaterials(
-				withWarehouses(openTwoIndustryCityLogisticsGame(), ['industry-city', 'breadbasket-basin']),
+				withWarehouses(openTwoIndustryCityLogisticsGame(), ['industry-city', 'breadbasket-basin'], {
+					mapXOffset: 10,
+					mapY: 2
+				}),
 				'industry-city',
 				{ water: 5 }
 			),

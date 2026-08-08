@@ -6937,6 +6937,16 @@ describe('saveCodec', () => {
 				})
 			],
 			[
+				'a creation day before its dispatch day',
+				(logistics: GameState['logistics']) => ({
+					...logistics,
+					transferOrders: [
+						{ ...logistics.transferOrders[0]!, createdOnDay: 0, dispatchedOnDay: 1 },
+						logistics.transferOrders[1]!
+					]
+				})
+			],
+			[
 				'a dispatch day before its creation day',
 				(logistics: GameState['logistics']) => ({
 					...logistics,

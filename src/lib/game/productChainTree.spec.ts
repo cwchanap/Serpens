@@ -9,9 +9,9 @@ import {
 	getOccupiedStoreTileIds,
 	getStoreFootprintPlacementBlockReason
 } from './storeFootprint';
+import { emptyLogisticsReport } from './logisticsReport.testUtils';
 import type {
 	CityTile,
-	DailyLogisticsReport,
 	DailyProductReport,
 	DailyProductionReport,
 	DailyStoreReport,
@@ -114,15 +114,6 @@ function emptyProductionReport(
 		railUsage: {},
 		...overrides,
 		cityInventories: overrides.cityInventories ?? []
-	};
-}
-
-function emptyLogisticsReport(): DailyLogisticsReport {
-	return {
-		arrivals: [],
-		routeDispatchAttempts: [],
-		deliveredUnits: 0,
-		scheduledTransportCost: 0
 	};
 }
 

@@ -2,8 +2,8 @@ import { page } from 'vitest/browser';
 import { describe, expect, it } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import type { ReportSummary } from '$lib/game/reports';
+import { emptyLogisticsReport } from '$lib/game/logisticsReport.testUtils';
 import type {
-	DailyLogisticsReport,
 	DailyProductionReport,
 	DailyStoreReport,
 	EventModifierSnapshot,
@@ -52,15 +52,6 @@ function emptyProductionReport(): DailyProductionReport {
 		railShipments: [],
 		railUsage: {},
 		cityInventories: []
-	};
-}
-
-function emptyLogisticsReport(): DailyLogisticsReport {
-	return {
-		arrivals: [],
-		routeDispatchAttempts: [],
-		deliveredUnits: 0,
-		scheduledTransportCost: 0
 	};
 }
 

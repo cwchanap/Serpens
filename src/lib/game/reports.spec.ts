@@ -1,11 +1,7 @@
 import { describe, expect, test } from 'vitest';
+import { emptyLogisticsReport } from './logisticsReport.testUtils';
 import { clampScore, summarizeReports } from './reports';
-import type {
-	DailyLogisticsReport,
-	DailyProductionReport,
-	DailyReport,
-	DailyStoreReport
-} from './types';
+import type { DailyProductionReport, DailyReport, DailyStoreReport } from './types';
 
 function emptyProductionReport(): DailyProductionReport {
 	return {
@@ -23,15 +19,6 @@ function emptyProductionReport(): DailyProductionReport {
 		railShipments: [],
 		railUsage: {},
 		cityInventories: []
-	};
-}
-
-function emptyLogisticsReport(): DailyLogisticsReport {
-	return {
-		arrivals: [],
-		routeDispatchAttempts: [],
-		deliveredUnits: 0,
-		scheduledTransportCost: 0
 	};
 }
 

@@ -15,7 +15,9 @@ import type {
 	TransferOrder
 } from './types';
 
-const reportTemplate = simulateDay(createNewGame('convenience', 20260806)).reports[0]!;
+function reportTemplate(): DailyReport {
+	return simulateDay(createNewGame('convenience', 20260806)).reports[0]!;
+}
 
 function transferOrder(overrides: Partial<TransferOrder> = {}): TransferOrder {
 	return {
@@ -72,11 +74,13 @@ function routeAttempt(
 }
 
 function report(day: number, routeDispatchAttempts: DailyRouteDispatchAttempt[]): DailyReport {
+	const template = reportTemplate();
 	return {
-		...reportTemplate,
+		...template,
 		day,
 		logistics: {
-			...reportTemplate.logistics,
+			...template.logistics,
+			arrivals: [...template.logistics.arrivals],
 			routeDispatchAttempts,
 			scheduledTransportCost: routeDispatchAttempts.reduce(
 				(total, attempt) => total + attempt.transportCost,
