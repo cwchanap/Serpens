@@ -426,12 +426,13 @@ export function processRecurringRouteDispatches(
 	return { game: nextGame, attempts, scheduledTransportCost };
 }
 
-export function processTransferArrivals(
-	game: GameState,
-	day: number
-): { game: GameState; arrivals: DailyTransferArrival[]; deliveredUnits: number } {
+export function processTransferArrivals(game: GameState): {
+	game: GameState;
+	arrivals: DailyTransferArrival[];
+	deliveredUnits: number;
+} {
 	const dueOrders = game.logistics.transferOrders
-		.filter((order) => order.status === 'in-transit' && order.arrivalOnDay <= day)
+		.filter((order) => order.status === 'in-transit' && order.arrivalOnDay <= game.day)
 		.sort(compareTransferOrderIds);
 
 	if (dueOrders.length === 0) {

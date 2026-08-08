@@ -1439,6 +1439,9 @@ function validateCurrentLogisticsState(game: GameState): void {
 				`${orderLabel} days must satisfy createdOnDay === dispatchedOnDay < arrivalOnDay`
 			);
 		}
+		if (dispatchedOnDay > game.day) {
+			logisticsInvariant(`${orderLabel} dispatchedOnDay must not be after the game day`);
+		}
 		const status = requireLogisticsOneOf(order.status, `${orderLabel} status`, [
 			'in-transit',
 			'delivered'
