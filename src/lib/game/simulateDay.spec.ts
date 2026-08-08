@@ -458,7 +458,7 @@ describe('daily simulation', () => {
 		});
 		if (!manual.ok) throw new Error(`Expected manual transfer, received ${manual.reason}`);
 
-		const scheduled = processRecurringRouteDispatches(manual.game, manual.game.day);
+		const scheduled = processRecurringRouteDispatches(manual.game);
 		const result = simulateDay(manual.game);
 		const report = result.reports.at(-1)!;
 		const sumAttemptCosts = report.logistics.routeDispatchAttempts.reduce(

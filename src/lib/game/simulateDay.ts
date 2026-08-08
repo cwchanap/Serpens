@@ -220,7 +220,7 @@ export function simulateDay(
 		hiringCandidates,
 		staff: staffWithXp
 	};
-	const routeResult = processRecurringRouteDispatches(afterLocalOperations, closingDay);
+	const routeResult = processRecurringRouteDispatches(afterLocalOperations);
 	if (routeResult.game.cash !== afterLocalOperations.cash) {
 		throw new Error('Recurring route dispatch cash reconciliation failed');
 	}

@@ -46,7 +46,11 @@ export function selectInTransitInventory(game: GameState): InTransitInventorySum
 		const key = `${order.destinationCityId}:${order.materialId}`;
 		const existing = summaries.get(key);
 		if (existing) {
-			existing.quantity += order.quantity;
+			existing.quantity = checkedAdd(
+				existing.quantity,
+				order.quantity,
+				'In-transit inventory quantity'
+			);
 			existing.orderIds.push(order.id);
 			existing.earliestArrivalOnDay = Math.min(existing.earliestArrivalOnDay, order.arrivalOnDay);
 			continue;
@@ -102,11 +106,23 @@ export function selectRouteOperations(game: GameState): RouteOperationalSummary[
 			continue;
 		}
 
-		totals.transportCost += order.transportCost;
+		totals.transportCost = checkedAdd(
+			totals.transportCost,
+			order.transportCost,
+			'Route transport cost'
+		);
 		if (order.status === 'in-transit') {
-			totals.inTransitQuantity += order.quantity;
+			totals.inTransitQuantity = checkedAdd(
+				totals.inTransitQuantity,
+				order.quantity,
+				'Route in-transit quantity'
+			);
 		} else {
-			totals.deliveredUnits += order.quantity;
+			totals.deliveredUnits = checkedAdd(
+				totals.deliveredUnits,
+				order.quantity,
+				'Route delivered units'
+			);
 		}
 	}
 
@@ -148,9 +164,9 @@ export function selectLogisticsTotals(game: GameState): {
 	let transportCost = 0;
 
 	for (const order of game.logistics.transferOrders) {
-		transportCost += order.transportCost;
+		transportCost = checkedAdd(transportCost, order.transportCost, 'Logistics transport cost');
 		if (order.status === 'delivered') {
-			deliveredUnits += order.quantity;
+			deliveredUnits = checkedAdd(deliveredUnits, order.quantity, 'Logistics delivered units');
 		}
 	}
 
@@ -167,4 +183,13 @@ function compareCurrentRoutes(left: RecurringRoute, right: RecurringRoute): numb
 
 function compareRawIds(left: string, right: string): number {
 	return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function checkedAdd(left: number, right: number, label: string): number {
+	const sum = left + right;
+	if (!Number.isSafeInteger(sum)) {
+		throw new RangeError(`${label} exceeds the safe integer range`);
+	}
+
+	return sum;
 }

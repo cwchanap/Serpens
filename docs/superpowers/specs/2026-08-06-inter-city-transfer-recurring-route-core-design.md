@@ -470,7 +470,7 @@ Current-state validation requires:
 - valid transfer source payloads;
 - valid distinct industry endpoints and material IDs;
 - positive safe order `quantity`;
-- `createdOnDay <= dispatchedOnDay < arrivalOnDay`;
+- `createdOnDay === dispatchedOnDay < arrivalOnDay`;
 - nonnegative safe total cost;
 - in-transit arrival on or after `game.day`;
 - delivered arrival before `game.day`;

@@ -491,4 +491,33 @@ describe('logistics read models', () => {
 		const summaries = selectRouteOperations(game);
 		expect(summaries.map((summary) => summary.route.id)).toEqual(['route-10', 'route-2']);
 	});
+
+	test('throws when aggregate totals exceed the safe integer range over the unbounded order history', () => {
+		// Each order is individually a safe integer (as the persisted contract validates),
+		// but the unchecked aggregate would silently lose precision. Two orders at
+		// Number.MAX_SAFE_INTEGER push the sum past the safe-integer range.
+		const overflowingOrders = [
+			transferOrder({
+				id: 'transfer-overflow-a',
+				source: { kind: 'recurring-route', routeId: 'route-1' },
+				quantity: Number.MAX_SAFE_INTEGER,
+				transportCost: Number.MAX_SAFE_INTEGER,
+				status: 'delivered'
+			}),
+			transferOrder({
+				id: 'transfer-overflow-b',
+				source: { kind: 'recurring-route', routeId: 'route-1' },
+				quantity: Number.MAX_SAFE_INTEGER,
+				transportCost: Number.MAX_SAFE_INTEGER,
+				status: 'delivered'
+			})
+		];
+		const game = gameWithLogistics({
+			transferOrders: overflowingOrders,
+			recurringRoutes: [recurringRoute({ id: 'route-1' })]
+		});
+
+		expect(() => selectLogisticsTotals(game)).toThrow(RangeError);
+		expect(() => selectRouteOperations(game)).toThrow(RangeError);
+	});
 });
