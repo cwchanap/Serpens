@@ -22,11 +22,17 @@ export function withCityMaterials(
 }
 
 export function withRecurringRoutes(game: GameState, recurringRoutes: RecurringRoute[]): GameState {
+	const nextRouteSequence = game.logistics.nextRouteSequence + recurringRoutes.length;
+	if (!Number.isSafeInteger(nextRouteSequence)) {
+		throw new RangeError('withRecurringRoutes nextRouteSequence exceeds the safe integer range');
+	}
+
 	return {
 		...game,
 		logistics: {
 			...game.logistics,
-			recurringRoutes
+			recurringRoutes,
+			nextRouteSequence
 		}
 	};
 }
