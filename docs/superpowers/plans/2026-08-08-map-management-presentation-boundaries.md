@@ -4,61 +4,63 @@
 
 **Goal:** Extract the existing map surfaces, map inspectors, and control-tower panel composition from `src/routes/+page.svelte` into three concrete presentation hosts without changing game behavior or introducing another state/controller abstraction.
 
-**Architecture:** `+page.svelte` remains the cross-feature composition root and the sole owner of route state, derivations, command handlers, global shortcuts, and overlay ordering. Each new `$lib/components/game` host receives already-derived values plus explicit callbacks and only composes existing child components. No host imports `src/routes` code or calls `GameRouteController` directly.
+**Architecture:** `+page.svelte` remains the cross-feature composition root and sole owner of route state, derivations, command handlers, global shortcuts, and overlay ordering. Each new `$lib/components/game` host receives already-derived values plus explicit callbacks and composes existing child components only. No host imports route code or calls `GameRouteController` directly.
 
 **Tech Stack:** Svelte 5 runes, TypeScript, Vitest browser mode with `vitest-browser-svelte`, Playwright, Phaser 4, existing Serpens game/i18n contracts.
 
 ## Global Constraints
 
 - Follow `docs/superpowers/specs/2026-08-08-map-management-presentation-boundaries-design.md` exactly.
-- Extract exactly `MapSurfaceHost.svelte`, `MapInspectorHost.svelte`, and `ManagementPanelHost.svelte`; do not create `MapWorkspace`, a generic registry, a new controller, or a Svelte store/context layer.
-- `src/routes/+page.svelte` remains the owner of `GameRouteController`, route state, selected IDs, derived snapshots/read models, domain command handlers, active panel state, global shortcuts, and Escape ordering.
+- Extract exactly `MapSurfaceHost.svelte`, `MapInspectorHost.svelte`, and `ManagementPanelHost.svelte`.
+- Do not create `MapWorkspace`, a generic registry, a new controller, a Svelte store/context layer, or another canonical state owner.
+- `src/routes/+page.svelte` keeps `GameRouteController`, selected IDs, derived snapshots/read models, domain command handlers, active panel state, global shortcuts, and Escape ordering.
 - `$lib/components/game` must not import `src/routes/gameRouteController.ts` or any other route file.
 - Do not modify simulation, persistence, save schema, scenarios, finance rules, map rules, logistics domain contracts, or localization copy.
-- Preserve the current world-city inspector inside `WorldMap.svelte`.
-- Preserve the current `{#key activeManagementPanel.id}` remount boundary in `+page.svelte`.
+- Preserve the world-city inspector inside `WorldMap.svelte`.
+- Preserve the `{#key activeManagementPanel.id}` remount boundary in `+page.svelte`.
 - Move scoped CSS with the markup it controls; do not introduce a shared overlay stylesheet.
-- Add component tests only for behavior that moves behind a host boundary; keep existing child-component tests authoritative for child behavior.
-- Retain `src/routes/retail-sim.e2e.ts` as the cross-feature route smoke; do not create a new E2E suite unless a real uncovered regression is found during implementation.
-- No backward-compatibility, hostile-state, multi-tab, recovery, or speculative HPA-574 logistics work.
+- Add component tests only for behavior that moves behind a new boundary.
+- Retain `src/routes/retail-sim.e2e.ts` as the cross-feature route smoke.
+- No compatibility, recovery, multi-tab, hostile-state, or speculative HPA-574 work.
 
 ---
 
-## File Structure
+## File Map
 
 ### Create
 
-- `src/lib/components/game/MapSurfaceHost.svelte` — mounted/visible world, retail, and industry map composition only.
-- `src/lib/components/game/MapSurfaceHost.svelte.spec.ts` — keep-alive/active-surface and callback wiring coverage.
-- `src/lib/components/game/MapInspectorHost.svelte` — retail, rail, and industry inspector overlay composition only.
-- `src/lib/components/game/MapInspectorHost.svelte.spec.ts` — inspector visibility, precedence, and callback forwarding coverage.
-- `src/lib/components/game/ManagementPanelHost.svelte` — control-tower shell, focus trap, and existing eight-panel switch.
-- `src/lib/components/game/ManagementPanelHost.svelte.spec.ts` — shell, panel composition, close, and finance-focus metadata coverage.
+- `src/lib/components/game/MapSurfaceHost.svelte`
+- `src/lib/components/game/MapSurfaceHost.svelte.spec.ts`
+- `src/lib/components/game/MapInspectorHost.svelte`
+- `src/lib/components/game/MapInspectorHost.svelte.spec.ts`
+- `src/lib/components/game/ManagementPanelHost.svelte`
+- `src/lib/components/game/ManagementPanelHost.svelte.spec.ts`
 
 ### Modify
 
-- `src/routes/+page.svelte` — replace moved markup with the three hosts; retain all orchestration/state/handlers; remove only imports and CSS now owned by hosts.
-- `vite.config.ts` — replace the stale `+page.svelte` line-count comment with a testing-boundary explanation; keep the coverage exclude list unchanged.
+- `src/routes/+page.svelte`
+- `vite.config.ts`
 
-### Verify without planned edits
+### Must remain unchanged unless a demonstrated test gap requires otherwise
 
-- `src/routes/gameRouteController.ts` — must remain unchanged.
-- `src/routes/retail-sim.e2e.ts` — run as the cross-feature smoke; edit only if execution proves the existing test misses a behavior required by HPA-568.
+- `src/routes/gameRouteController.ts`
+- `src/routes/retail-sim.e2e.ts`
+- `src/lib/game/**` simulation and persistence contracts
 
 ---
 
-### Task 1: Extract the map surface host
+### Task 1: Extract `MapSurfaceHost`
 
 **Files:**
 - Create: `src/lib/components/game/MapSurfaceHost.svelte`
 - Create: `src/lib/components/game/MapSurfaceHost.svelte.spec.ts`
-- Modify: `src/routes/+page.svelte` — the `.map-surfaces` block and its three map children; remove the map-surface CSS that moves with it.
+- Modify: `src/routes/+page.svelte` at the current `.map-surfaces` block and its scoped CSS.
 
 **Interfaces:**
-- Consumes: `MapViewId`, `VisitedMapViews`, `CityMapSnapshot`, `IndustryMapSnapshot`, `WorldCityStatus[]`, `I18nBundle`, explicit route callbacks/availability booleans.
-- Produces: one presentation component that preserves the current map keep-alive, active visibility, Phaser pause, industry keyboard, and world-map callback contracts.
+- Consumes: `MapViewId`, `VisitedMapViews`, `CityMapSnapshot`, `IndustryMapSnapshot`, `WorldCityStatus[]`, `I18nBundle`, existing route callbacks, and current mutation booleans.
+- Produces: the same three mounted map surfaces with unchanged keep-alive, active, pause, keyboard, and callback behavior.
 
-Use this explicit prop direction; do not replace it with a route view-model object:
+The host prop contract should be explicit:
 
 ```ts
 interface Props {
@@ -88,24 +90,24 @@ interface Props {
 }
 ```
 
-- [ ] **Step 1: Write the failing map-host component spec**
+- [ ] **Step 1: Write the failing component spec**
 
-Create `MapSurfaceHost.svelte.spec.ts`. Reuse the same minimal `phaser`, `$lib/phaser/cityMapScene`, and `$lib/phaser/industryMapScene` mocks already used by `CityMap.svelte.spec.ts` and `IndustryMap.svelte.spec.ts`; keep those mocks local to this spec.
+Create `MapSurfaceHost.svelte.spec.ts`. Copy the minimal `phaser`, `$lib/phaser/cityMapScene`, and `$lib/phaser/industryMapScene` mocks used by the existing map component specs; keep them local to this file.
 
-The first characterization test should prove the keep-alive boundary rather than retesting Phaser internals:
+Add a keep-alive test:
 
 ```ts
-it('mounts visited surfaces and exposes only the active surface', async () => {
-  const { rerender } = render(MapSurfaceHost, props({
+it('keeps visited map surfaces mounted and exposes only the active surface', async () => {
+  const result = render(MapSurfaceHost, props({
     activeMapView: 'world',
     visitedMapViews: { world: true, retail: true, industry: false }
   }));
 
   expect(document.querySelectorAll('.map-surface')).toHaveLength(2);
-  expect(document.querySelector('.map-surface[aria-hidden="false"]')).toBeTruthy();
+  expect(document.querySelectorAll('.active-map-surface')).toHaveLength(1);
   await expect.element(page.getByRole('region', { name: /world map/i })).toBeVisible();
 
-  await rerender(props({
+  await result.rerender(props({
     activeMapView: 'retail',
     visitedMapViews: { world: true, retail: true, industry: true }
   }));
@@ -115,11 +117,9 @@ it('mounts visited surfaces and exposes only the active surface', async () => {
 });
 ```
 
-Add one callback test that clicks a world-city button and verifies `onSelectWorldCity`, plus one pass-through assertion for `isMapPaused`/`railKeyboardEnabled` using the same mock call signals already used by the child map specs. Do not duplicate all `WorldMap`, `CityMap`, or `IndustryMap` behavior.
+Add one world-city selection callback assertion and one pass-through assertion proving `isMapPaused` and `railKeyboardEnabled` reach the child map mocks. Do not duplicate child-map behavior already covered by `WorldMap.svelte.spec.ts`, `CityMap.svelte.spec.ts`, or `IndustryMap.svelte.spec.ts`.
 
-- [ ] **Step 2: Run the new spec and verify it fails because the host does not exist**
-
-Run:
+- [ ] **Step 2: Run the new test and confirm the expected red state**
 
 ```bash
 bun run test:unit -- --run src/lib/components/game/MapSurfaceHost.svelte.spec.ts
@@ -127,11 +127,11 @@ bun run test:unit -- --run src/lib/components/game/MapSurfaceHost.svelte.spec.ts
 
 Expected: FAIL resolving `./MapSurfaceHost.svelte`.
 
-- [ ] **Step 3: Implement the minimal map host**
+- [ ] **Step 3: Implement the host by moving the current map block**
 
-Create `MapSurfaceHost.svelte` by moving the current map-surface markup nearly verbatim. Keep `shouldRenderMapView` as the only host-side helper; the parent still mutates `visitedMapViews`.
+Create `MapSurfaceHost.svelte` with the explicit props above. Import `shouldRenderMapView`, `WorldMap`, `CityMap`, and `IndustryMap`.
 
-Core structure:
+Use the existing map composition unchanged:
 
 ```svelte
 <div class="map-surfaces">
@@ -190,7 +190,7 @@ Core structure:
 </div>
 ```
 
-Move exactly these route styles into the host:
+Move these styles from `+page.svelte` into the host:
 
 ```css
 .map-surfaces,
@@ -212,13 +212,9 @@ Move exactly these route styles into the host:
 }
 ```
 
-Do not move `TopBar`, scenario status, `ControlDesk`, placement status, inspectors, or any route handler.
+- [ ] **Step 4: Cut `+page.svelte` over to the host**
 
-- [ ] **Step 4: Replace only the map-surface block in `+page.svelte`**
-
-Import `MapSurfaceHost` and replace the current `<div class="map-surfaces">...</div>` with one host invocation that passes the existing route variables and handlers directly.
-
-The route must still own:
+Replace only the current map-surface block. Keep all of these route-owned values and handlers in place and pass them to the host:
 
 ```ts
 activeMapView
@@ -238,42 +234,33 @@ selectIndustryTile
 cancelRailBuildStep
 ```
 
-Delete only the now-unused `WorldMap`, `CityMap`, and `IndustryMap` imports from `+page.svelte`.
+Remove the direct `WorldMap`, `CityMap`, and `IndustryMap` imports from `+page.svelte`. Do not move `TopBar`, `ControlDesk`, placement state, inspectors, or route handlers.
 
-- [ ] **Step 5: Run the focused host spec and Svelte type check**
-
-Run:
+- [ ] **Step 5: Verify and commit**
 
 ```bash
 bun run test:unit -- --run src/lib/components/game/MapSurfaceHost.svelte.spec.ts
 bun run check
-```
-
-Expected: both PASS.
-
-- [ ] **Step 6: Commit the map-surface extraction**
-
-```bash
-git add src/lib/components/game/MapSurfaceHost.svelte \
-  src/lib/components/game/MapSurfaceHost.svelte.spec.ts \
-  src/routes/+page.svelte
+git add src/lib/components/game/MapSurfaceHost.svelte src/lib/components/game/MapSurfaceHost.svelte.spec.ts src/routes/+page.svelte
 git commit -m "refactor(ui): extract map surface host"
 ```
 
+Expected: tests and `bun run check` PASS before the commit.
+
 ---
 
-### Task 2: Extract the map inspector host
+### Task 2: Extract `MapInspectorHost`
 
 **Files:**
 - Create: `src/lib/components/game/MapInspectorHost.svelte`
 - Create: `src/lib/components/game/MapInspectorHost.svelte.spec.ts`
-- Modify: `src/routes/+page.svelte` — retail/rail/industry inspector blocks and `.inspector-overlay` responsive CSS only.
+- Modify: `src/routes/+page.svelte` at the current retail/rail/industry inspector blocks and `.inspector-overlay` CSS.
 
 **Interfaces:**
-- Consumes: concrete selected objects from the route, `GameState`, `CityTile`, `Store`, `DailyStoreReport`, `IndustryTile`, `IndustrialBuilding`, `RailSegment[]`, `I18nBundle`, explicit mutation booleans, explicit callbacks.
-- Produces: one presentational inspector host; selected IDs/lookups remain in `+page.svelte`.
+- Consumes: concrete selected objects already derived by the route, `GameState`, `I18nBundle`, explicit mutation booleans, and existing callbacks.
+- Produces: the same inspector overlays with rail-before-industry-building precedence.
 
-Use a concrete interface like:
+Use this contract:
 
 ```ts
 interface Props {
@@ -309,12 +296,12 @@ interface Props {
 
 - [ ] **Step 1: Write failing inspector-host characterization tests**
 
-Use `createNewGame` plus minimal concrete tile/building/rail fixtures rather than building a generic inspector fixture library.
+Use `createNewGame` plus lightweight concrete tile/building/rail fixtures. Do not create a generic inspector registry or shared fixture framework.
 
-Cover the moved conditional behavior explicitly:
+Lock the precedence contract:
 
 ```ts
-it('prefers the rail inspector over the industry building inspector', async () => {
+it('shows rail details instead of building details when a rail segment is selected', async () => {
   render(MapInspectorHost, inspectorProps({
     showIndustryInspector: true,
     selectedIndustryTile: industryTile,
@@ -329,9 +316,13 @@ it('prefers the rail inspector over the industry building inspector', async () =
 });
 ```
 
-Also cover a retail inspector close/detail callback and the industry-building fallback when `selectedRailSegments` is `null`.
+Also add:
 
-- [ ] **Step 2: Run the new spec and verify it fails because the host does not exist**
+- a retail inspector test that exercises the existing close and open-details callbacks;
+- an industry-building test with `selectedRailSegments: null`;
+- one disabled mutation assertion to prove the existing `disabledReason`/availability reaches the child control.
+
+- [ ] **Step 2: Run the test and confirm the expected red state**
 
 ```bash
 bun run test:unit -- --run src/lib/components/game/MapInspectorHost.svelte.spec.ts
@@ -339,35 +330,32 @@ bun run test:unit -- --run src/lib/components/game/MapInspectorHost.svelte.spec.
 
 Expected: FAIL resolving `./MapInspectorHost.svelte`.
 
-- [ ] **Step 3: Implement the inspector host by moving existing markup**
+- [ ] **Step 3: Implement the host by moving the three current inspector branches verbatim**
 
-Preserve the exact current branch structure:
+The implementation must preserve these exact conditions:
 
-```svelte
-{#if selectedRetailTile && showRetailInspector}
-  <div class="inspector-overlay paper" role="dialog" aria-modal="false" aria-label={...}>
-    <TileInspector ... />
-  </div>
-{/if}
-
-{#if selectedRailSegments && showIndustryInspector}
-  <div class="inspector-overlay paper" role="dialog" aria-modal="false" aria-label={...}>
-    <RailSegmentInspector ... />
-  </div>
-{:else if selectedIndustryTile && showIndustryInspector}
-  <div class="inspector-overlay paper" role="dialog" aria-modal="false" aria-label={...}>
-    <IndustryTileInspector ... />
-  </div>
-{/if}
+```ts
+const showRetail = selectedRetailTile !== null && showRetailInspector;
+const showRail = selectedRailSegments !== null && showIndustryInspector;
+const showIndustryBuilding =
+  selectedRailSegments === null && selectedIndustryTile !== null && showIndustryInspector;
 ```
 
-Move the current `.inspector-overlay` base rule and both existing responsive rules into the host unchanged except for formatting required by Prettier.
+Render the same existing child components under those conditions:
 
-Do not move `StoreDetailModal`; it is a separate route-level overlay and remains in `+page.svelte`.
+```text
+showRetail -> TileInspector
+showRail -> RailSegmentInspector
+showIndustryBuilding -> IndustryTileInspector
+```
 
-- [ ] **Step 4: Replace only the inspector blocks in `+page.svelte`**
+Keep the existing dialog roles, `aria-modal="false"`, localized labels, child props, and callbacks unchanged. Move the current `.inspector-overlay` base rule, the `981px–1023px` rule, and the `max-width: 980px` rule into `MapInspectorHost.svelte`.
 
-The route continues to derive:
+`StoreDetailModal` remains in `+page.svelte`.
+
+- [ ] **Step 4: Cut `+page.svelte` over to the host**
+
+The route must continue to derive and own:
 
 ```ts
 selectedTile
@@ -381,42 +369,33 @@ shouldShowRetailInspector
 shouldShowIndustryInspector
 ```
 
-Pass `game ?? starterMapState` as the concrete `game` prop exactly as the existing inspectors currently receive it. Remove only the three inspector component imports now owned by the host.
+Pass `game ?? starterMapState` exactly as the existing inspectors receive it today. Remove the direct `TileInspector`, `IndustryTileInspector`, and `RailSegmentInspector` imports from the route.
 
-- [ ] **Step 5: Run focused inspector tests and type check**
+- [ ] **Step 5: Verify and commit**
 
 ```bash
 bun run test:unit -- --run src/lib/components/game/MapInspectorHost.svelte.spec.ts
 bun run check
-```
-
-Expected: both PASS.
-
-- [ ] **Step 6: Commit the inspector extraction**
-
-```bash
-git add src/lib/components/game/MapInspectorHost.svelte \
-  src/lib/components/game/MapInspectorHost.svelte.spec.ts \
-  src/routes/+page.svelte
+git add src/lib/components/game/MapInspectorHost.svelte src/lib/components/game/MapInspectorHost.svelte.spec.ts src/routes/+page.svelte
 git commit -m "refactor(ui): extract map inspector host"
 ```
 
+Expected: tests and `bun run check` PASS before the commit.
+
 ---
 
-### Task 3: Extract the management panel host
+### Task 3: Extract `ManagementPanelHost`
 
 **Files:**
 - Create: `src/lib/components/game/ManagementPanelHost.svelte`
 - Create: `src/lib/components/game/ManagementPanelHost.svelte.spec.ts`
-- Modify: `src/routes/+page.svelte` — active-management-panel dialog block and its owned CSS only.
+- Modify: `src/routes/+page.svelte` at the active-management-panel block and control-tower CSS.
 
 **Interfaces:**
-- Consumes: `ManagementPanelId`, panel label, concrete fallback/live `GameState`, `ReportSummary`, `FinanceMetrics`, `RetailCitySupplyView[]`, i18n, current finance focus, explicit mutation booleans, and existing callbacks.
-- Produces: the same control-tower dialog shell and panel switch; active-panel state and keyboard behavior stay in `+page.svelte`.
+- Consumes: `ManagementPanelId`, panel label, concrete `GameState`, `ReportSummary`, `FinanceMetrics`, `RetailCitySupplyView[]`, i18n, explicit mutation booleans, finance focus, and existing callbacks.
+- Produces: the same control-tower shell and concrete eight-panel switch.
 
-Do **not** import `MutationAvailability` from `src/routes/gameRouteController.ts`. Define explicit booleans corresponding to current child props.
-
-A representative prop contract is:
+Do not import route-layer `MutationAvailability`. Use explicit booleans:
 
 ```ts
 interface Props {
@@ -454,9 +433,11 @@ interface Props {
 }
 ```
 
-- [ ] **Step 1: Write the failing management-host component spec**
+`GameRouteCommitResult` is imported from `$lib/game/commandResult`, not from the route controller.
 
-Build the fixture with existing helpers:
+- [ ] **Step 1: Write the failing management-host spec**
+
+Build the fixture from existing helpers:
 
 ```ts
 const game = createNewGame('convenience', 20260808);
@@ -464,10 +445,10 @@ const summary = summarizeReports(game.reports);
 const financeMetrics = getFinanceMetrics(game);
 ```
 
-Cover the shell and moved panel switch rather than re-testing each child component's internals:
+Test the shell and close behavior:
 
 ```ts
-it('renders the selected panel in the existing control-tower shell and closes from the backdrop', async () => {
+it('renders the selected panel in the control tower and closes from the backdrop', async () => {
   const onClose = vi.fn();
   render(ManagementPanelHost, managementProps({
     panelId: 'dashboard',
@@ -476,22 +457,20 @@ it('renders the selected panel in the existing control-tower shell and closes fr
   }));
 
   await expect.element(page.getByRole('dialog', { name: 'Dashboard' })).toBeVisible();
-  await expect.element(page.getByText(/day/i)).toBeVisible();
-
   await page.getByRole('button', { name: /dismiss dashboard/i }).click();
   expect(onClose).toHaveBeenCalledTimes(1);
 });
 ```
 
-Add focused composition tests for:
+Add focused composition coverage for:
 
-- `stores`: both retail supply sources and store overview are mounted;
-- `decisions`: both decision queue and active modifiers are mounted;
-- `finance`: dialog keeps `data-focused-finance-loan` for the supplied loan ID.
+- `stores`: both `RetailSupplySources` and `StoreOverview` content are present;
+- `decisions`: both `DecisionQueue` and `ActiveModifiers` content are present;
+- `finance`: the dialog carries the supplied `data-focused-finance-loan` value.
 
-Do not add eight copies of child component tests if an existing child spec already covers the internal UI.
+Do not duplicate all internal tests of the existing child panels.
 
-- [ ] **Step 2: Run the new spec and verify it fails because the host does not exist**
+- [ ] **Step 2: Run the test and confirm the expected red state**
 
 ```bash
 bun run test:unit -- --run src/lib/components/game/ManagementPanelHost.svelte.spec.ts
@@ -499,11 +478,9 @@ bun run test:unit -- --run src/lib/components/game/ManagementPanelHost.svelte.sp
 
 Expected: FAIL resolving `./ManagementPanelHost.svelte`.
 
-- [ ] **Step 3: Implement the control-tower host**
+- [ ] **Step 3: Implement the control-tower shell and concrete panel switch**
 
-Move the existing backdrop/dialog/header and panel switch into `ManagementPanelHost.svelte`.
-
-Preserve the shell behavior:
+Move the existing focus-trapped dialog shell verbatim. The critical shell remains:
 
 ```svelte
 <div class="tower-backdrop">
@@ -521,88 +498,105 @@ Preserve the shell behavior:
     data-focused-finance-loan={panelId === 'finance' ? (focusedFinanceLoanId ?? undefined) : undefined}
     {@attach focusTrap}
   >
-    <!-- existing header and concrete panel switch -->
+    <div class="tower-header">
+      <div>
+        <p class="eyebrow">{i18n.t('route.controlTower.eyebrow')}</p>
+        <h2>{panelLabel}</h2>
+      </div>
+      <div
+        class="tower-actions"
+        role="group"
+        aria-label={i18n.t('route.controlTower.panelStatus', { panel: panelLabel })}
+      >
+        <span class="ticker">{i18n.t('topBar.day', { day: i18n.format.integer(panelGame.day) })}</span>
+        <strong class="ticker">{i18n.format.currency(panelGame.cash)}</strong>
+        <button
+          type="button"
+          class="close-tower btn-danger"
+          aria-label={i18n.t('route.controlTower.closePanel', { panel: panelLabel })}
+          onclick={onClose}
+        >
+          {i18n.t('route.controlTower.close')}
+        </button>
+      </div>
+    </div>
   </div>
 </div>
 ```
 
-The switch stays concrete:
+Inside the existing `.control-tower-overlay`, move the current route switch unchanged:
 
-```svelte
-{#if panelId === 'dashboard'}
-  <Scorecard ... />
-{:else if panelId === 'policies'}
-  <PolicyPanel ... />
-{:else if panelId === 'staff'}
-  <StaffPanel ... />
-{:else if panelId === 'stores'}
-  <div class="stores-surfaces">...</div>
-{:else if panelId === 'decisions'}
-  <div class="decisions-surfaces">...</div>
-{:else if panelId === 'reports'}
-  <ReportsPanel ... />
-{:else if panelId === 'productChains'}
-  <ProductChainsPanel ... />
-{:else if panelId === 'finance'}
-  <FinancePanel ... />
-{/if}
+```text
+dashboard -> Scorecard
+policies -> PolicyPanel
+staff -> StaffPanel
+stores -> RetailSupplySources + StoreOverview in .stores-surfaces
+decisions -> DecisionQueue + ActiveModifiers in .decisions-surfaces
+reports -> ReportsPanel
+productChains -> ProductChainsPanel
+finance -> FinancePanel
 ```
 
-Do not replace this with a dynamic component registry or callback map.
+Keep every child prop/callback exactly as currently wired in `+page.svelte`, replacing only route-local variable names with host props. Do not convert the switch to a component registry.
 
-Move the existing control-tower/stores/decisions CSS and the management-only `h2`/ticker styles into this host. Scope the heading style to the host shell rather than introducing a global style.
+Move the current `.tower-backdrop`, `.tower-backdrop-button`, `.control-tower-overlay`, `.stores-surfaces`, `.decisions-surfaces`, `.tower-header`, `.tower-actions`, `.close-tower`, management heading/ticker styles, and their current compact responsive rules into the host.
 
-- [ ] **Step 4: Keep the active panel and keyed reset in `+page.svelte`**
+- [ ] **Step 4: Keep active-panel state and keyed remount in `+page.svelte`**
 
-Replace the existing block with:
+The route keeps this boundary:
 
 ```svelte
 {#if activeManagementPanel}
   {#key activeManagementPanel.id}
+    {@const panelGame = game ?? starterMapState}
+    {@const retailSupplyViews = buildRetailCitySupplyViews(panelGame, i18n)}
     <ManagementPanelHost
       panelId={activeManagementPanel.id}
       panelLabel={activeManagementPanel.label}
-      panelGame={game ?? starterMapState}
-      ...
+      {panelGame}
+      {summary}
+      financeMetrics={financeMetrics!}
+      {retailSupplyViews}
+      {i18n}
+      disabledReason={mutationDisabledReason}
+      {focusedFinanceLoanId}
+      mutationPending={scenarioCommandPending}
+      retailSupplyDisabled={game === null || !mutationAvailability.setRetailSupplySource}
+      canUpdatePolicy={mutationAvailability.updatePolicy}
+      canHireStaff={mutationAvailability.hireStaff}
+      canAssignStaff={mutationAvailability.assignStaff}
+      canUnassignStaff={mutationAvailability.unassignStaff}
+      canPromoteStaff={mutationAvailability.promoteStaff}
+      canResolveDecision={mutationAvailability.resolveDecision}
       onClose={closeManagementPanel}
+      onChangePolicy={changePolicy}
+      onHireStaff={hireStaff}
+      onAssignStaff={assignStaff}
+      onUnassignStaff={unassignStoreStaff}
+      onPromoteStaff={promoteStaffMember}
+      onSetRetailSupplySource={setRetailSupplySource}
+      onChooseDecision={chooseDecision}
+      onBorrow={borrowWorkingCapital}
+      onRepay={repayFinanceLoan}
+      onPayoff={payOffFinanceLoan}
+      onRefinance={refinanceFinanceLoan}
     />
   {/key}
 {/if}
 ```
 
-Keep `activeManagementPanelId`, `openManagementPanel`, `closeManagementPanel`, keyboard toggles, and Escape handling in `+page.svelte`.
+Keep `activeManagementPanelId`, `openManagementPanel`, `closeManagementPanel`, `handleKeydown`, and the Escape priority chain in the route. Remove only child panel imports now owned solely by `ManagementPanelHost`.
 
-Keep these derivations in the route and pass their results:
-
-```ts
-summary
-financeMetrics
-focusedFinanceLoanId
-mutationDisabledReason
-scenarioCommandPending
-```
-
-Compute `retailSupplyViews` in the route from the same `panelGame` and `i18n` immediately before/through the host boundary; do not move a new state owner into the host.
-
-Remove only the management child imports now owned solely by `ManagementPanelHost`.
-
-- [ ] **Step 5: Run focused management tests and type check**
+- [ ] **Step 5: Verify and commit**
 
 ```bash
 bun run test:unit -- --run src/lib/components/game/ManagementPanelHost.svelte.spec.ts
 bun run check
-```
-
-Expected: both PASS.
-
-- [ ] **Step 6: Commit the management extraction**
-
-```bash
-git add src/lib/components/game/ManagementPanelHost.svelte \
-  src/lib/components/game/ManagementPanelHost.svelte.spec.ts \
-  src/routes/+page.svelte
+git add src/lib/components/game/ManagementPanelHost.svelte src/lib/components/game/ManagementPanelHost.svelte.spec.ts src/routes/+page.svelte
 git commit -m "refactor(ui): extract management panel host"
 ```
+
+Expected: tests and `bun run check` PASS before the commit.
 
 ---
 
@@ -610,17 +604,16 @@ git commit -m "refactor(ui): extract management panel host"
 
 **Files:**
 - Modify: `vite.config.ts`
-- Verify: `src/routes/+page.svelte`
-- Verify: `src/routes/gameRouteController.ts`
-- Verify: `src/routes/retail-sim.e2e.ts`
+- Verify: all files changed in Tasks 1–3
+- Verify unchanged: `src/routes/gameRouteController.ts`, `src/routes/retail-sim.e2e.ts`, simulation/persistence files.
 
 **Interfaces:**
 - Consumes: the three completed host boundaries.
-- Produces: accurate coverage documentation and evidence that the extraction did not alter route behavior.
+- Produces: accurate coverage documentation plus regression evidence.
 
 - [ ] **Step 1: Replace the stale route-size coverage comment**
 
-Keep the existing coverage exclusion entry for `src/routes/+page.svelte`, but replace the line-count wording with a boundary explanation such as:
+Keep the coverage exclusion itself unchanged and replace only its explanatory comment with:
 
 ```ts
 // +page.svelte is the route-level orchestration/composition root and is
@@ -630,9 +623,9 @@ Keep the existing coverage exclusion entry for `src/routes/+page.svelte`, but re
 'src/routes/+page.svelte',
 ```
 
-Do not change coverage thresholds, provider, include patterns, or other exclusions.
+Do not modify the coverage provider, include pattern, thresholds, or other exclusions.
 
-- [ ] **Step 2: Run all three new browser component specs together**
+- [ ] **Step 2: Run all new component specs together**
 
 ```bash
 bun run test:unit -- --run \
@@ -650,27 +643,26 @@ bun run check
 bun run lint
 ```
 
-Expected: `svelte-check` reports 0 errors/0 warnings; lint exits 0.
+Expected: `svelte-check` reports 0 errors and 0 warnings; lint exits 0.
 
-- [ ] **Step 4: Run the route-level Playwright smoke**
-
-Use Playwright directly so the file selection is unambiguous and does not depend on npm argument forwarding:
+- [ ] **Step 4: Run the existing route-level Playwright smoke**
 
 ```bash
-bunx playwright test src/routes/retail-sim.e2e.ts --workers=1
+bun x playwright test src/routes/retail-sim.e2e.ts --workers=1
 ```
 
-Expected: all tests in `retail-sim.e2e.ts` PASS.
+Expected: all tests in `src/routes/retail-sim.e2e.ts` PASS.
 
-If the environment requires the repository script to install browser binaries first, run:
+If browser binaries are absent, install them with the repository's existing Playwright dependency and rerun the same selected file:
 
 ```bash
-bun run test:e2e -- src/routes/retail-sim.e2e.ts --workers=1
+bun x playwright install
+bun x playwright test src/routes/retail-sim.e2e.ts --workers=1
 ```
 
-Use the first command that matches the local environment; do not add a new package script solely for HPA-568.
+Do not add a package script solely for HPA-568.
 
-- [ ] **Step 5: Run the complete regression suite**
+- [ ] **Step 5: Run the full regression suite**
 
 ```bash
 bun run test
@@ -678,49 +670,47 @@ bun run test
 
 Expected: all unit/component and Playwright tests PASS.
 
-- [ ] **Step 6: Perform the architecture/scope audit**
+- [ ] **Step 6: Perform the scope/dependency audit**
 
-Inspect the branch diff and confirm all of the following before committing:
+Confirm:
 
 ```text
 src/routes/gameRouteController.ts is unchanged
 src/lib/game simulation/persistence files are unchanged
-no $lib component imports from src/routes
+no new host imports src/routes or gameRouteController
 no new Svelte store/context/event bus/registry exists
-no new MapWorkspace or generic host framework exists
+no MapWorkspace or generic presentation framework exists
 +page.svelte still owns handleKeydown and the Escape priority chain
-+page.svelte still owns activeManagementPanelId and the keyed panel remount
-WorldMap still owns its existing world-city inspector
-retail-sim.e2e.ts is unchanged unless a demonstrated missing smoke assertion required a minimal addition
++page.svelte still owns activeManagementPanelId and the keyed remount
+WorldMap still owns the world-city inspector
+retail-sim.e2e.ts is unchanged unless a demonstrated missing assertion required a minimal addition
 ```
 
-Run the mechanical dependency-direction check:
+Run:
 
 ```bash
-rg "\$routes|src/routes|gameRouteController" src/lib/components/game/MapSurfaceHost.svelte \
+rg "\$routes|src/routes|gameRouteController" \
+  src/lib/components/game/MapSurfaceHost.svelte \
   src/lib/components/game/MapInspectorHost.svelte \
   src/lib/components/game/ManagementPanelHost.svelte
 ```
 
 Expected: no matches.
 
-- [ ] **Step 7: Commit the coverage-comment correction and final cleanup**
+- [ ] **Step 7: Commit the coverage comment and any final formatting-only cleanup**
+
+If only `vite.config.ts` changed during this task:
 
 ```bash
-git add vite.config.ts src/routes/+page.svelte \
-  src/lib/components/game/MapSurfaceHost.svelte \
-  src/lib/components/game/MapInspectorHost.svelte \
-  src/lib/components/game/ManagementPanelHost.svelte
+git add vite.config.ts
 git commit -m "chore(ui): document route presentation test boundary"
 ```
 
-If the final audit required no cleanup to the component/route files, stage only `vite.config.ts`.
+If Prettier required formatting changes in the three host files or `+page.svelte`, stage those exact formatting-only files together with `vite.config.ts` before using the same commit message.
 
 ---
 
 ## Final Review Checklist
-
-Before marking HPA-568 ready for review:
 
 - [ ] `MapSurfaceHost.svelte` owns only map surface composition and layout CSS.
 - [ ] `MapInspectorHost.svelte` owns only retail/rail/industry inspector composition and overlay CSS.
@@ -735,4 +725,4 @@ Before marking HPA-568 ready for review:
 - [ ] `bun run lint` passes.
 - [ ] `src/routes/retail-sim.e2e.ts` passes.
 - [ ] `bun run test` passes.
-- [ ] The PR description lists what moved, what deliberately stayed in the route, and that no new canonical state owner/framework was added.
+- [ ] The implementation PR description lists what moved, what deliberately stayed in the route, and confirms no new canonical state owner/framework was added.
