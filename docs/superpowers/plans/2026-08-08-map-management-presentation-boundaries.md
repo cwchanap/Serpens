@@ -2,26 +2,30 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Extract the existing map surfaces, map inspectors, and control-tower panel composition from `src/routes/+page.svelte` into three concrete presentation hosts without changing game behavior or introducing another state/controller abstraction.
+**Goal:** Extract the existing map surfaces, map inspectors, and control-tower panel composition from `src/routes/+page.svelte` into three concrete presentation hosts while preserving layout, command ownership, keyboard behavior, and player-visible flows.
 
-**Architecture:** `+page.svelte` remains the cross-feature composition root and sole owner of route state, derivations, command handlers, global shortcuts, and overlay ordering. Each new `$lib/components/game` host receives already-derived values plus explicit callbacks and composes existing child components only. No host imports route code or calls `GameRouteController` directly.
+**Architecture:** `+page.svelte` remains the cross-feature composition root and sole owner of route state, selected IDs, derived snapshots/read models, command handlers, global shortcuts, Escape ordering, and navigation. `MapSurfaceHost`, `MapInspectorHost`, and `ManagementPanelHost` compose existing children only. The already-existing pure `MutationAvailability` type/factory moves from `gameRouteController.ts` to `$lib/scenarios/mutationAvailability.ts` so the management host can reuse the canonical capability bag without importing route code or inventing a duplicate shape.
 
-**Tech Stack:** Svelte 5 runes, TypeScript, Vitest browser mode with `vitest-browser-svelte`, Playwright, Phaser 4, existing Serpens game/i18n contracts.
+**Tech Stack:** Svelte 5 runes, TypeScript, Vitest browser mode with `vitest-browser-svelte`, Playwright, Phaser 4, existing Serpens game/i18n/scenario contracts.
 
 ## Global Constraints
 
 - Follow `docs/superpowers/specs/2026-08-08-map-management-presentation-boundaries-design.md` exactly.
 - Extract exactly `MapSurfaceHost.svelte`, `MapInspectorHost.svelte`, and `ManagementPanelHost.svelte`.
-- Do not create `MapWorkspace`, a generic registry, a new controller, a Svelte store/context layer, or another canonical state owner.
-- `src/routes/+page.svelte` keeps `GameRouteController`, selected IDs, derived snapshots/read models, domain command handlers, active panel state, global shortcuts, and Escape ordering.
-- `$lib/components/game` must not import `src/routes/gameRouteController.ts` or any other route file.
-- Do not modify simulation, persistence, save schema, scenarios, finance rules, map rules, logistics domain contracts, or localization copy.
+- Do not create `MapWorkspace`, a generic panel/inspector registry, a new controller, a Svelte context/store layer, event bus, or second canonical state owner.
+- `src/routes/+page.svelte` keeps selections, map snapshots, report/finance derivations, domain command handlers, active management-panel ID, global shortcuts, Escape ordering, and navigation.
+- `MapSurfaceHost` replaces only the existing `.map-surfaces` block inside `.map-layout`.
+- `MapInspectorHost` must stay inside `.map-layout`; its absolute-positioned overlays depend on that containing block.
+- `ManagementPanelHost` must stay outside `.map-layout` where the current fixed control-tower backdrop is mounted.
 - Preserve the world-city inspector inside `WorldMap.svelte`.
-- Preserve the `{#key activeManagementPanel.id}` remount boundary in `+page.svelte`.
-- Move scoped CSS with the markup it controls; do not introduce a shared overlay stylesheet.
-- Add component tests only for behavior that moves behind a new boundary.
-- Retain `src/routes/retail-sim.e2e.ts` as the cross-feature route smoke.
-- No compatibility, recovery, multi-tab, hostile-state, or speculative HPA-574 work.
+- Preserve `{#key activeManagementPanel.id}` in `+page.svelte`.
+- Move scoped CSS with its moved markup; do not create a shared overlay stylesheet.
+- Move inspector `if` / `else if` branches structurally unchanged; do not introduce parallel boolean helpers for rail/building precedence.
+- Move `MutationAvailability` and `createMutationAvailability` to `$lib/scenarios/mutationAvailability.ts` unchanged in behavior. Do not leave a compatibility re-export in `gameRouteController.ts`.
+- `ManagementPanelHost` accepts the existing `MutationAvailability` bag and maps it to current child props; do not refactor child panel APIs in this ticket.
+- `financeMetrics` is `FinanceMetrics | null` at the host boundary. The route call site must not use `financeMetrics!`.
+- Do not modify simulation, persistence, save schema, balance, localization copy, or HPA-294 logistics domain behavior.
+- Retain `src/routes/retail-sim.e2e.ts` as the route smoke and add only the minimal inspector-topology assertion required by this extraction.
 
 ---
 
@@ -35,32 +39,37 @@
 - `src/lib/components/game/MapInspectorHost.svelte.spec.ts`
 - `src/lib/components/game/ManagementPanelHost.svelte`
 - `src/lib/components/game/ManagementPanelHost.svelte.spec.ts`
+- `src/lib/scenarios/mutationAvailability.ts`
 
 ### Modify
 
 - `src/routes/+page.svelte`
-- `vite.config.ts`
+- `src/routes/gameRouteController.ts` — delete only the relocated availability interface/factory.
+- `src/routes/gameRouteController.spec.ts` — import `createMutationAvailability` from the new library module.
+- `src/routes/page.svelte.spec.ts` — import `createMutationAvailability` from the new library module.
+- `src/routes/retail-sim.e2e.ts` — add one map-inspector-within-map-layout structural assertion.
+- `vite.config.ts` — replace only the stale route-size coverage comment.
 
-### Must remain unchanged unless a demonstrated test gap requires otherwise
+### Must remain behaviorally unchanged
 
-- `src/routes/gameRouteController.ts`
-- `src/routes/retail-sim.e2e.ts`
-- `src/lib/game/**` simulation and persistence contracts
+- `GameRouteController` class and command/persistence behavior.
+- `src/lib/game/**` simulation/persistence/domain contracts.
+- existing child map, inspector, panel, scenario, save, and finance behavior.
 
 ---
 
-### Task 1: Extract `MapSurfaceHost`
+## Task 1: Extract `MapSurfaceHost`
 
 **Files:**
 - Create: `src/lib/components/game/MapSurfaceHost.svelte`
 - Create: `src/lib/components/game/MapSurfaceHost.svelte.spec.ts`
-- Modify: `src/routes/+page.svelte` at the current `.map-surfaces` block and its scoped CSS.
+- Modify: `src/routes/+page.svelte`
 
 **Interfaces:**
-- Consumes: `MapViewId`, `VisitedMapViews`, `CityMapSnapshot`, `IndustryMapSnapshot`, `WorldCityStatus[]`, `I18nBundle`, existing route callbacks, and current mutation booleans.
-- Produces: the same three mounted map surfaces with unchanged keep-alive, active, pause, keyboard, and callback behavior.
+- Consumes: current route identifiers `activeMapView`, `visitedMapViews`, `mapSnapshot`, `industryMapSnapshot`, world status/selection values, pause/keyboard booleans, and existing callbacks.
+- Produces: the same three mounted map children with unchanged keep-alive, active visibility, pause, keyboard, and callback behavior.
 
-The host prop contract should be explicit:
+Use this prop contract:
 
 ```ts
 interface Props {
@@ -90,15 +99,44 @@ interface Props {
 }
 ```
 
-- [ ] **Step 1: Write the failing component spec**
+- [ ] **Step 1: Create the characterization spec with real child components and local scene mocks**
 
-Create `MapSurfaceHost.svelte.spec.ts`. Copy the minimal `phaser`, `$lib/phaser/cityMapScene`, and `$lib/phaser/industryMapScene` mocks used by the existing map component specs; keep them local to this file.
+In `MapSurfaceHost.svelte.spec.ts`, define the same observable scene signals used by the existing child specs:
 
-Add a keep-alive test:
+```ts
+const mockCityPause = vi.fn();
+const mockIndustryPause = vi.fn();
+const mockSetKeyboardEnabled = vi.fn();
+const mockCitySetEventHandler = vi.fn();
+const mockIndustrySetEventHandler = vi.fn();
+
+vi.mock('$lib/phaser/cityMapScene', () => ({
+  CityMapScene: vi.fn().mockImplementation(function () {
+    return {
+      setEventHandler: mockCitySetEventHandler,
+      updateSnapshot: vi.fn()
+    };
+  })
+}));
+
+vi.mock('$lib/phaser/industryMapScene', () => ({
+  IndustryMapScene: vi.fn().mockImplementation(function () {
+    return {
+      setEventHandler: mockIndustrySetEventHandler,
+      setKeyboardEnabled: mockSetKeyboardEnabled,
+      updateSnapshot: vi.fn()
+    };
+  })
+}));
+```
+
+Mock Phaser so the first created game uses `mockCityPause` and the industry game uses `mockIndustryPause`; expose `pause`, `resume`, `destroy`, and `canvas.dataset` exactly as the child specs require. Use actual `WorldMap`, `CityMap`, and `IndustryMap` Svelte components rather than mocking those components.
+
+Add these assertions:
 
 ```ts
 it('keeps visited map surfaces mounted and exposes only the active surface', async () => {
-  const result = render(MapSurfaceHost, props({
+  const result = render(MapSurfaceHost, surfaceProps({
     activeMapView: 'world',
     visitedMapViews: { world: true, retail: true, industry: false }
   }));
@@ -107,7 +145,7 @@ it('keeps visited map surfaces mounted and exposes only the active surface', asy
   expect(document.querySelectorAll('.active-map-surface')).toHaveLength(1);
   await expect.element(page.getByRole('region', { name: /world map/i })).toBeVisible();
 
-  await result.rerender(props({
+  await result.rerender(surfaceProps({
     activeMapView: 'retail',
     visitedMapViews: { world: true, retail: true, industry: true }
   }));
@@ -117,21 +155,47 @@ it('keeps visited map surfaces mounted and exposes only the active surface', asy
 });
 ```
 
-Add one world-city selection callback assertion and one pass-through assertion proving `isMapPaused` and `railKeyboardEnabled` reach the child map mocks. Do not duplicate child-map behavior already covered by `WorldMap.svelte.spec.ts`, `CityMap.svelte.spec.ts`, or `IndustryMap.svelte.spec.ts`.
+Add a world-city click test that verifies the supplied `onSelectWorldCity` callback.
 
-- [ ] **Step 2: Run the new test and confirm the expected red state**
+Add two explicit pass-through tests using the real child side effects:
 
-```bash
-bun run test:unit -- --run src/lib/components/game/MapSurfaceHost.svelte.spec.ts
+```ts
+it('passes map pause state to the active retail child', async () => {
+  render(MapSurfaceHost, surfaceProps({
+    activeMapView: 'retail',
+    visitedMapViews: { world: false, retail: true, industry: false },
+    isMapPaused: true
+  }));
+
+  await waitForMock(mockCityPause);
+  expect(mockCityPause).toHaveBeenCalled();
+});
+
+it('passes rail keyboard availability to the industry child', async () => {
+  render(MapSurfaceHost, surfaceProps({
+    activeMapView: 'industry',
+    visitedMapViews: { world: false, retail: false, industry: true },
+    railKeyboardEnabled: false
+  }));
+
+  await waitForMock(mockSetKeyboardEnabled);
+  expect(mockSetKeyboardEnabled).toHaveBeenLastCalledWith(false);
+});
 ```
 
-Expected: FAIL resolving `./MapSurfaceHost.svelte`.
+`surfaceProps` must return complete real props with small `CityMapSnapshot` / `IndustryMapSnapshot` fixtures, `createI18n('en')`, one valid `WorldCityStatus`, and `vi.fn()` callbacks. Do not introduce shared test infrastructure outside this spec.
 
-- [ ] **Step 3: Implement the host by moving the current map block**
+- [ ] **Step 2: Run the new spec in its initial RED state**
 
-Create `MapSurfaceHost.svelte` with the explicit props above. Import `shouldRenderMapView`, `WorldMap`, `CityMap`, and `IndustryMap`.
+```bash
+bun run test:unit -- src/lib/components/game/MapSurfaceHost.svelte.spec.ts --run
+```
 
-Use the existing map composition unchanged:
+Expected: the host module does not exist yet. This RED step is only the extraction wiring scaffold; the characterization assertions are the regression contract.
+
+- [ ] **Step 3: Implement `MapSurfaceHost.svelte` by moving the current map block**
+
+Import `shouldRenderMapView`, `WorldMap`, `CityMap`, and `IndustryMap`. Preserve current route identifiers and child props:
 
 ```svelte
 <div class="map-surfaces">
@@ -190,7 +254,7 @@ Use the existing map composition unchanged:
 </div>
 ```
 
-Move these styles from `+page.svelte` into the host:
+Move exactly these scoped styles from the route:
 
 ```css
 .map-surfaces,
@@ -212,55 +276,38 @@ Move these styles from `+page.svelte` into the host:
 }
 ```
 
-- [ ] **Step 4: Cut `+page.svelte` over to the host**
+- [ ] **Step 4: Cut over only the map surface mount site**
 
-Replace only the current map-surface block. Keep all of these route-owned values and handlers in place and pass them to the host:
+Inside the existing `<section class="map-layout">`, replace only `<div class="map-surfaces">...</div>` with `<MapSurfaceHost ... />`. Keep `TopBar`, scenario status, `ControlDesk`, placement/finance/build/advisor overlays, and inspectors in their existing route positions.
 
-```ts
-activeMapView
-visitedMapViews
-worldCityStatuses
-selectedWorldCityId
-mapSnapshot
-industryMapSnapshot
-isMapPaused
-railKeyboardEnabled
-selectWorldCityNode
-openSelectedWorldCity
-reviewSelectedWorldCityFinancing
-closeWorldInspector
-selectTile
-selectIndustryTile
-cancelRailBuildStep
-```
+Remove direct `WorldMap`, `CityMap`, and `IndustryMap` imports from the route.
 
-Remove the direct `WorldMap`, `CityMap`, and `IndustryMap` imports from `+page.svelte`. Do not move `TopBar`, `ControlDesk`, placement state, inspectors, or route handlers.
-
-- [ ] **Step 5: Verify and commit**
+- [ ] **Step 5: Verify and commit Task 1**
 
 ```bash
-bun run test:unit -- --run src/lib/components/game/MapSurfaceHost.svelte.spec.ts
+bun run test:unit -- src/lib/components/game/MapSurfaceHost.svelte.spec.ts --run
 bun run check
 git add src/lib/components/game/MapSurfaceHost.svelte src/lib/components/game/MapSurfaceHost.svelte.spec.ts src/routes/+page.svelte
 git commit -m "refactor(ui): extract map surface host"
 ```
 
-Expected: tests and `bun run check` PASS before the commit.
+Expected: focused component spec and `bun run check` pass.
 
 ---
 
-### Task 2: Extract `MapInspectorHost`
+## Task 2: Extract `MapInspectorHost` without changing its containing block
 
 **Files:**
 - Create: `src/lib/components/game/MapInspectorHost.svelte`
 - Create: `src/lib/components/game/MapInspectorHost.svelte.spec.ts`
-- Modify: `src/routes/+page.svelte` at the current retail/rail/industry inspector blocks and `.inspector-overlay` CSS.
+- Modify: `src/routes/+page.svelte`
+- Modify: `src/routes/retail-sim.e2e.ts`
 
 **Interfaces:**
-- Consumes: concrete selected objects already derived by the route, `GameState`, `I18nBundle`, explicit mutation booleans, and existing callbacks.
-- Produces: the same inspector overlays with rail-before-industry-building precedence.
+- Consumes: concrete selected objects already derived by the route, existing visibility flags, mutation booleans, and existing callbacks.
+- Produces: the same three inspector branches with the same truthiness and rail-before-building precedence.
 
-Use this contract:
+Use this prop contract:
 
 ```ts
 interface Props {
@@ -294,14 +341,14 @@ interface Props {
 }
 ```
 
-- [ ] **Step 1: Write failing inspector-host characterization tests**
+- [ ] **Step 1: Write inspector characterization tests**
 
-Use `createNewGame` plus lightweight concrete tile/building/rail fixtures. Do not create a generic inspector registry or shared fixture framework.
+Create `MapInspectorHost.svelte.spec.ts` with `createNewGame('convenience', 20260808)` and small concrete tile/building/rail fixtures.
 
-Lock the precedence contract:
+Lock the current branch precedence directly:
 
 ```ts
-it('shows rail details instead of building details when a rail segment is selected', async () => {
+it('renders rail details instead of industry building details when rail segments are selected', async () => {
   render(MapInspectorHost, inspectorProps({
     showIndustryInspector: true,
     selectedIndustryTile: industryTile,
@@ -316,86 +363,317 @@ it('shows rail details instead of building details when a rail segment is select
 });
 ```
 
-Also add:
-
-- a retail inspector test that exercises the existing close and open-details callbacks;
-- an industry-building test with `selectedRailSegments: null`;
-- one disabled mutation assertion to prove the existing `disabledReason`/availability reaches the child control.
-
-- [ ] **Step 2: Run the test and confirm the expected red state**
-
-```bash
-bun run test:unit -- --run src/lib/components/game/MapInspectorHost.svelte.spec.ts
-```
-
-Expected: FAIL resolving `./MapInspectorHost.svelte`.
-
-- [ ] **Step 3: Implement the host by moving the three current inspector branches verbatim**
-
-The implementation must preserve these exact conditions:
-
-```ts
-const showRetail = selectedRetailTile !== null && showRetailInspector;
-const showRail = selectedRailSegments !== null && showIndustryInspector;
-const showIndustryBuilding =
-  selectedRailSegments === null && selectedIndustryTile !== null && showIndustryInspector;
-```
-
-Render the same existing child components under those conditions:
+Also cover:
 
 ```text
-showRetail -> TileInspector
-showRail -> RailSegmentInspector
-showIndustryBuilding -> IndustryTileInspector
+retail selected + visible -> TileInspector is present
+retail Open Details -> onOpenStoreDetails called once
+retail Close -> onCloseRetailInspector called once
+industry selected + no rail selection -> IndustryTileInspector is present
+disabled upgrade capability -> existing child upgrade control stays disabled
 ```
 
-Keep the existing dialog roles, `aria-modal="false"`, localized labels, child props, and callbacks unchanged. Move the current `.inspector-overlay` base rule, the `981px–1023px` rule, and the `max-width: 980px` rule into `MapInspectorHost.svelte`.
+- [ ] **Step 2: Run the initial RED state**
 
-`StoreDetailModal` remains in `+page.svelte`.
+```bash
+bun run test:unit -- src/lib/components/game/MapInspectorHost.svelte.spec.ts --run
+```
 
-- [ ] **Step 4: Cut `+page.svelte` over to the host**
+Expected: host module does not exist yet.
 
-The route must continue to derive and own:
+- [ ] **Step 3: Implement the host by moving the route branches verbatim**
 
-```ts
-selectedTile
+Do not create intermediate `showRail` or `showIndustryBuilding` variables. Preserve the current template structure:
+
+```svelte
+{#if selectedRetailTile && showRetailInspector}
+  <div
+    class="inspector-overlay paper"
+    role="dialog"
+    aria-modal="false"
+    aria-label={i18n.t('route.inspectors.retailDetails')}
+  >
+    <TileInspector
+      {game}
+      tile={selectedRetailTile}
+      store={selectedStore}
+      latestStoreReport={latestStoreReport}
+      {i18n}
+      onUpgradeStore={onUpgradeStore}
+      {canUpgradeStore}
+      {disabledReason}
+      onOpenDetails={onOpenStoreDetails}
+      onClickFeedback={onRetailClickFeedback}
+      onClose={onCloseRetailInspector}
+    />
+  </div>
+{/if}
+
+{#if selectedRailSegments && showIndustryInspector}
+  <div
+    class="inspector-overlay paper"
+    role="dialog"
+    aria-modal="false"
+    aria-label={i18n.t('railSegmentInspector.title')}
+  >
+    <RailSegmentInspector
+      {game}
+      cityId={industryCityId}
+      segments={selectedRailSegments}
+      allSegments={allIndustryRailSegments}
+      {i18n}
+      onClose={onCloseIndustryInspector}
+      onUpgradeSegment={onUpgradeRailSegment}
+      onDemolishSegment={onDemolishRailSegment}
+      {canUpgradeRail}
+      {canDemolishRail}
+      {disabledReason}
+    />
+  </div>
+{:else if selectedIndustryTile && showIndustryInspector}
+  <div
+    class="inspector-overlay paper"
+    role="dialog"
+    aria-modal="false"
+    aria-label={i18n.t('route.inspectors.industryDetails')}
+  >
+    <IndustryTileInspector
+      {game}
+      tile={selectedIndustryTile}
+      building={selectedIndustryBuilding}
+      {i18n}
+      onUpgradeBuilding={onUpgradeIndustryBuilding}
+      canUpgradeBuilding={canUpgradeIndustryBuilding}
+      {disabledReason}
+      onClose={onCloseIndustryInspector}
+    />
+  </div>
+{/if}
+```
+
+Move the existing `.inspector-overlay` base style plus both existing responsive rules into the host without changing dimensions or breakpoints.
+
+- [ ] **Step 4: Mount `MapInspectorHost` in the exact current layout position**
+
+Inside `<section class="map-layout">`, keep the order:
+
+```text
+MapSurfaceHost
+TopBar
+scenario status
+ControlDesk
+placement status
+FinancePurchaseReviewHost
+BuildMenu
+SupplyAdvisor
+MapInspectorHost
+```
+
+`MapInspectorHost` must be the last presentation child before `</section>` and must remain inside `.map-layout`.
+
+Pass current route values directly:
+
+```text
+selectedTile -> selectedRetailTile
+shouldShowRetailInspector -> showRetailInspector
 selectedStore
-latestSelectedStoreReport
+latestSelectedStoreReport -> latestStoreReport
 selectedIndustryTile
 selectedIndustryBuilding
 selectedRailSegments
-industryRailSegments
-shouldShowRetailInspector
-shouldShowIndustryInspector
+industryRailSegments -> allIndustryRailSegments
+industryCity.id -> industryCityId
 ```
 
-Pass `game ?? starterMapState` exactly as the existing inspectors receive it today. Remove the direct `TileInspector`, `IndustryTileInspector`, and `RailSegmentInspector` imports from the route.
+Keep `StoreDetailModal` outside `.map-layout` as it is today.
 
-- [ ] **Step 5: Verify and commit**
+- [ ] **Step 5: Add one route E2E topology assertion**
+
+In the existing retail inspector flow in `src/routes/retail-sim.e2e.ts`, after the inspector becomes visible, add:
+
+```ts
+const mapLayout = page.locator('.map-layout');
+const inspector = mapLayout.locator('.inspector-overlay');
+await expect(inspector).toBeVisible();
+await expect(inspector).toHaveCount(1);
+```
+
+This asserts the inspector is still a descendant of `.map-layout`; do not create a separate E2E test file.
+
+- [ ] **Step 6: Verify and commit Task 2**
 
 ```bash
-bun run test:unit -- --run src/lib/components/game/MapInspectorHost.svelte.spec.ts
+bun run test:unit -- src/lib/components/game/MapInspectorHost.svelte.spec.ts --run
 bun run check
-git add src/lib/components/game/MapInspectorHost.svelte src/lib/components/game/MapInspectorHost.svelte.spec.ts src/routes/+page.svelte
+bun run test:e2e -- src/routes/retail-sim.e2e.ts
+git add src/lib/components/game/MapInspectorHost.svelte src/lib/components/game/MapInspectorHost.svelte.spec.ts src/routes/+page.svelte src/routes/retail-sim.e2e.ts
 git commit -m "refactor(ui): extract map inspector host"
 ```
 
-Expected: tests and `bun run check` PASS before the commit.
+Expected: focused component spec, type check, and selected route E2E pass.
 
 ---
 
-### Task 3: Extract `ManagementPanelHost`
+## Task 3: Relocate mutation availability and extract `ManagementPanelHost`
 
 **Files:**
+- Create: `src/lib/scenarios/mutationAvailability.ts`
 - Create: `src/lib/components/game/ManagementPanelHost.svelte`
 - Create: `src/lib/components/game/ManagementPanelHost.svelte.spec.ts`
-- Modify: `src/routes/+page.svelte` at the active-management-panel block and control-tower CSS.
+- Modify: `src/routes/gameRouteController.ts`
+- Modify: `src/routes/gameRouteController.spec.ts`
+- Modify: `src/routes/page.svelte.spec.ts`
+- Modify: `src/routes/+page.svelte`
 
 **Interfaces:**
-- Consumes: `ManagementPanelId`, panel label, concrete `GameState`, `ReportSummary`, `FinanceMetrics`, `RetailCitySupplyView[]`, i18n, explicit mutation booleans, finance focus, and existing callbacks.
-- Produces: the same control-tower shell and concrete eight-panel switch.
+- Produces one canonical `MutationAvailability` library type/factory reused by route and management presentation.
+- `ManagementPanelHost` consumes that bag plus current panel data/callbacks.
+- `financeMetrics` is explicitly nullable and is required only in the finance branch.
 
-Do not import route-layer `MutationAvailability`. Use explicit booleans:
+- [ ] **Step 1: Move the existing availability contract unchanged**
+
+Create `src/lib/scenarios/mutationAvailability.ts` with the existing interface and factory:
+
+```ts
+import type { ScenarioCommand, ScenarioDefinition } from './types';
+
+export interface MutationAvailability {
+  pending: boolean;
+  advanceDay: boolean;
+  resolveDecision: boolean;
+  updatePolicy: boolean;
+  openWorldCity: boolean;
+  setRetailSupplySource: boolean;
+  openStore: boolean;
+  upgradeStore: boolean;
+  hireStaff: boolean;
+  assignStaff: boolean;
+  unassignStaff: boolean;
+  promoteStaff: boolean;
+  updateStoreSellingPrice: boolean;
+  updateStoreInventoryTargets: boolean;
+  buildIndustrialBuilding: boolean;
+  upgradeIndustrialBuilding: boolean;
+  buildRail: boolean;
+  upgradeRail: boolean;
+  demolishRail: boolean;
+  borrow: boolean;
+  repayLoan: boolean;
+  payOffLoan: boolean;
+  refinanceLoan: boolean;
+  financeWorldCity: boolean;
+  financeRetailStore: boolean;
+  financeIndustrialBuilding: boolean;
+}
+
+export function createMutationAvailability(input: {
+  playMode: 'sandbox' | 'scenario';
+  pending: boolean;
+  definition: ScenarioDefinition | null;
+}): MutationAvailability {
+  const available = (kind: ScenarioCommand['kind']) =>
+    input.playMode === 'sandbox' ||
+    (!input.pending &&
+      input.definition !== null &&
+      input.definition.allowedCommands.includes(kind));
+
+  return {
+    pending: input.playMode === 'scenario' && input.pending,
+    advanceDay: available('advanceDay'),
+    resolveDecision: available('resolveDecision'),
+    updatePolicy: available('updatePolicy'),
+    openWorldCity: available('openWorldCity'),
+    setRetailSupplySource: available('setRetailSupplySource'),
+    openStore: available('openStore'),
+    upgradeStore: available('upgradeStore'),
+    hireStaff: available('hireStaff'),
+    assignStaff: available('assignStaff'),
+    unassignStaff: available('unassignStaff'),
+    promoteStaff: available('promoteStaff'),
+    updateStoreSellingPrice: available('updateStoreSellingPrice'),
+    updateStoreInventoryTargets: available('updateStoreInventoryTargets'),
+    buildIndustrialBuilding: available('buildIndustrialBuilding'),
+    upgradeIndustrialBuilding: available('upgradeIndustrialBuilding'),
+    buildRail: available('buildRail'),
+    upgradeRail: available('upgradeRail'),
+    demolishRail: available('demolishRail'),
+    borrow: available('borrow'),
+    repayLoan: available('repayLoan'),
+    payOffLoan: available('payOffLoan'),
+    refinanceLoan: available('refinanceLoan'),
+    financeWorldCity: available('financeWorldCity'),
+    financeRetailStore: available('financeRetailStore'),
+    financeIndustrialBuilding: available('financeIndustrialBuilding')
+  };
+}
+```
+
+Delete only the interface/factory from `gameRouteController.ts`. Do not re-export them there.
+
+Update imports in `+page.svelte`, `page.svelte.spec.ts`, and `gameRouteController.spec.ts` to `$lib/scenarios/mutationAvailability`.
+
+- [ ] **Step 2: Run existing availability/controller tests immediately after the move**
+
+```bash
+bun run test:unit -- src/routes/page.svelte.spec.ts src/routes/gameRouteController.spec.ts --run
+bun run check
+```
+
+Expected: PASS with unchanged assertions and no behavioral changes.
+
+- [ ] **Step 3: Write the failing `ManagementPanelHost` spec**
+
+Use:
+
+```ts
+const panelGame = createNewGame('convenience', 20260808);
+const summary = summarizeReports(panelGame.reports);
+const financeMetrics = getFinanceMetrics(panelGame);
+const mutations = createMutationAvailability({
+  playMode: 'sandbox',
+  pending: false,
+  definition: null
+});
+```
+
+Add these composition tests:
+
+```ts
+it('renders the selected panel in the control-tower shell and closes from the backdrop', async () => {
+  const onClose = vi.fn();
+  render(ManagementPanelHost, managementProps({
+    panelId: 'dashboard',
+    panelLabel: 'Dashboard',
+    onClose
+  }));
+
+  await expect.element(page.getByRole('dialog', { name: 'Dashboard' })).toBeVisible();
+  await page.getByRole('button', { name: /dismiss dashboard/i }).click();
+  expect(onClose).toHaveBeenCalledTimes(1);
+});
+```
+
+Also assert:
+
+```text
+stores panel -> RetailSupplySources and StoreOverview both render
+decisions panel -> DecisionQueue and ActiveModifiers both render
+finance panel + focusedFinanceLoanId -> dialog data-focused-finance-loan matches
+finance panel + financeMetrics -> FinancePanel renders
+policy/staff/decision controls receive the corresponding fields from mutations
+```
+
+- [ ] **Step 4: Run the host spec in its initial RED state**
+
+```bash
+bun run test:unit -- src/lib/components/game/ManagementPanelHost.svelte.spec.ts --run
+```
+
+Expected: host module does not exist yet.
+
+- [ ] **Step 5: Implement `ManagementPanelHost.svelte` using the canonical mutation bag**
+
+Use this core prop shape:
 
 ```ts
 interface Props {
@@ -403,20 +681,13 @@ interface Props {
   panelLabel: string;
   panelGame: GameState;
   summary: ReportSummary;
-  financeMetrics: FinanceMetrics;
+  financeMetrics: FinanceMetrics | null;
   retailSupplyViews: RetailCitySupplyView[];
+  mutations: MutationAvailability;
+  retailSupplyDisabled: boolean;
+  focusedFinanceLoanId: string | null;
   i18n: I18nBundle;
   disabledReason: string | null;
-  focusedFinanceLoanId: string | null;
-  mutationPending: boolean;
-  retailSupplyDisabled: boolean;
-
-  canUpdatePolicy: boolean;
-  canHireStaff: boolean;
-  canAssignStaff: boolean;
-  canUnassignStaff: boolean;
-  canPromoteStaff: boolean;
-  canResolveDecision: boolean;
 
   onClose: () => void;
   onChangePolicy: (patch: Partial<CompanyPolicy>) => void;
@@ -433,117 +704,55 @@ interface Props {
 }
 ```
 
-`GameRouteCommitResult` is imported from `$lib/game/commandResult`, not from the route controller.
-
-- [ ] **Step 1: Write the failing management-host spec**
-
-Build the fixture from existing helpers:
-
-```ts
-const game = createNewGame('convenience', 20260808);
-const summary = summarizeReports(game.reports);
-const financeMetrics = getFinanceMetrics(game);
-```
-
-Test the shell and close behavior:
-
-```ts
-it('renders the selected panel in the control tower and closes from the backdrop', async () => {
-  const onClose = vi.fn();
-  render(ManagementPanelHost, managementProps({
-    panelId: 'dashboard',
-    panelLabel: 'Dashboard',
-    onClose
-  }));
-
-  await expect.element(page.getByRole('dialog', { name: 'Dashboard' })).toBeVisible();
-  await page.getByRole('button', { name: /dismiss dashboard/i }).click();
-  expect(onClose).toHaveBeenCalledTimes(1);
-});
-```
-
-Add focused composition coverage for:
-
-- `stores`: both `RetailSupplySources` and `StoreOverview` content are present;
-- `decisions`: both `DecisionQueue` and `ActiveModifiers` content are present;
-- `finance`: the dialog carries the supplied `data-focused-finance-loan` value.
-
-Do not duplicate all internal tests of the existing child panels.
-
-- [ ] **Step 2: Run the test and confirm the expected red state**
-
-```bash
-bun run test:unit -- --run src/lib/components/game/ManagementPanelHost.svelte.spec.ts
-```
-
-Expected: FAIL resolving `./ManagementPanelHost.svelte`.
-
-- [ ] **Step 3: Implement the control-tower shell and concrete panel switch**
-
-Move the existing focus-trapped dialog shell verbatim. The critical shell remains:
-
-```svelte
-<div class="tower-backdrop">
-  <button
-    type="button"
-    class="tower-backdrop-button"
-    aria-label={i18n.t('route.controlTower.dismiss', { panel: panelLabel })}
-    onclick={onClose}
-  ></button>
-  <div
-    class="control-tower-overlay paper"
-    role="dialog"
-    aria-modal="true"
-    aria-label={panelLabel}
-    data-focused-finance-loan={panelId === 'finance' ? (focusedFinanceLoanId ?? undefined) : undefined}
-    {@attach focusTrap}
-  >
-    <div class="tower-header">
-      <div>
-        <p class="eyebrow">{i18n.t('route.controlTower.eyebrow')}</p>
-        <h2>{panelLabel}</h2>
-      </div>
-      <div
-        class="tower-actions"
-        role="group"
-        aria-label={i18n.t('route.controlTower.panelStatus', { panel: panelLabel })}
-      >
-        <span class="ticker">{i18n.t('topBar.day', { day: i18n.format.integer(panelGame.day) })}</span>
-        <strong class="ticker">{i18n.format.currency(panelGame.cash)}</strong>
-        <button
-          type="button"
-          class="close-tower btn-danger"
-          aria-label={i18n.t('route.controlTower.closePanel', { panel: panelLabel })}
-          onclick={onClose}
-        >
-          {i18n.t('route.controlTower.close')}
-        </button>
-      </div>
-    </div>
-  </div>
-</div>
-```
-
-Inside the existing `.control-tower-overlay`, move the current route switch unchanged:
+Keep child APIs unchanged. Examples:
 
 ```text
-dashboard -> Scorecard
-policies -> PolicyPanel
-staff -> StaffPanel
-stores -> RetailSupplySources + StoreOverview in .stores-surfaces
-decisions -> DecisionQueue + ActiveModifiers in .decisions-surfaces
-reports -> ReportsPanel
-productChains -> ProductChainsPanel
-finance -> FinancePanel
+PolicyPanel.canUpdate <- mutations.updatePolicy
+StaffPanel.canHire <- mutations.hireStaff
+StaffPanel.canAssign <- mutations.assignStaff
+StaffPanel.canUnassign <- mutations.unassignStaff
+StaffPanel.canPromote <- mutations.promoteStaff
+DecisionQueue.canResolve <- mutations.resolveDecision
+FinancePanel.mutationPending <- mutations.pending
+RetailSupplySources.disabled <- retailSupplyDisabled
 ```
 
-Keep every child prop/callback exactly as currently wired in `+page.svelte`, replacing only route-local variable names with host props. Do not convert the switch to a component registry.
+For finance metrics, add a programmer invariant helper:
 
-Move the current `.tower-backdrop`, `.tower-backdrop-button`, `.control-tower-overlay`, `.stores-surfaces`, `.decisions-surfaces`, `.tower-header`, `.tower-actions`, `.close-tower`, management heading/ticker styles, and their current compact responsive rules into the host.
+```ts
+function requireFinanceMetrics(): FinanceMetrics {
+  if (financeMetrics === null) {
+    throw new Error('ManagementPanelHost invariant: financeMetrics required for finance panel');
+  }
+  return financeMetrics;
+}
+```
 
-- [ ] **Step 4: Keep active-panel state and keyed remount in `+page.svelte`**
+Use `metrics={requireFinanceMetrics()}` only inside the `panelId === 'finance'` branch. Do not compute finance metrics inside the host.
 
-The route keeps this boundary:
+Move the current control-tower shell and concrete panel switch, not a dynamic registry. Preserve `aria-modal="true"`, `focusTrap`, localized labels, `data-focused-finance-loan`, and all current child callbacks.
+
+Move these scoped styles from the route:
+
+```text
+.tower-backdrop
+.tower-backdrop-button
+.control-tower-overlay
+.stores-surfaces
+.decisions-surfaces
+.tower-header
+.tower-actions
+.close-tower
+control-tower h2 styling
+.ticker
+management-specific compact responsive rules
+```
+
+Before deleting route `.ticker`, search the route and confirm no route-local `.ticker` elements remain.
+
+- [ ] **Step 6: Cut over the route while keeping the keyed remount and nullable finance contract**
+
+Keep the route block:
 
 ```svelte
 {#if activeManagementPanel}
@@ -555,19 +764,13 @@ The route keeps this boundary:
       panelLabel={activeManagementPanel.label}
       {panelGame}
       {summary}
-      financeMetrics={financeMetrics!}
+      {financeMetrics}
       {retailSupplyViews}
+      mutations={mutationAvailability}
+      retailSupplyDisabled={game === null || !mutationAvailability.setRetailSupplySource}
+      {focusedFinanceLoanId}
       {i18n}
       disabledReason={mutationDisabledReason}
-      {focusedFinanceLoanId}
-      mutationPending={scenarioCommandPending}
-      retailSupplyDisabled={game === null || !mutationAvailability.setRetailSupplySource}
-      canUpdatePolicy={mutationAvailability.updatePolicy}
-      canHireStaff={mutationAvailability.hireStaff}
-      canAssignStaff={mutationAvailability.assignStaff}
-      canUnassignStaff={mutationAvailability.unassignStaff}
-      canPromoteStaff={mutationAvailability.promoteStaff}
-      canResolveDecision={mutationAvailability.resolveDecision}
       onClose={closeManagementPanel}
       onChangePolicy={changePolicy}
       onHireStaff={hireStaff}
@@ -585,35 +788,35 @@ The route keeps this boundary:
 {/if}
 ```
 
-Keep `activeManagementPanelId`, `openManagementPanel`, `closeManagementPanel`, `handleKeydown`, and the Escape priority chain in the route. Remove only child panel imports now owned solely by `ManagementPanelHost`.
+Do not use `financeMetrics!`.
 
-- [ ] **Step 5: Verify and commit**
+Keep `activeManagementPanelId`, menu configuration, `openManagementPanel`, `closeManagementPanel`, `handleKeydown`, Escape ordering, `isMapPaused`, and `railKeyboardEnabled` in `+page.svelte`.
+
+- [ ] **Step 7: Verify and commit Task 3**
 
 ```bash
-bun run test:unit -- --run src/lib/components/game/ManagementPanelHost.svelte.spec.ts
+bun run test:unit -- src/lib/components/game/ManagementPanelHost.svelte.spec.ts src/routes/page.svelte.spec.ts src/routes/gameRouteController.spec.ts --run
 bun run check
-git add src/lib/components/game/ManagementPanelHost.svelte src/lib/components/game/ManagementPanelHost.svelte.spec.ts src/routes/+page.svelte
+git add src/lib/scenarios/mutationAvailability.ts src/lib/components/game/ManagementPanelHost.svelte src/lib/components/game/ManagementPanelHost.svelte.spec.ts src/routes/gameRouteController.ts src/routes/gameRouteController.spec.ts src/routes/page.svelte.spec.ts src/routes/+page.svelte
 git commit -m "refactor(ui): extract management panel host"
 ```
 
-Expected: tests and `bun run check` PASS before the commit.
+Expected: focused host plus existing route/controller specs and `bun run check` pass.
 
 ---
 
-### Task 4: Correct the coverage boundary and run regression gates
+## Task 4: Correct coverage documentation and run full regression/audit gates
 
 **Files:**
 - Modify: `vite.config.ts`
-- Verify: all files changed in Tasks 1–3
-- Verify unchanged: `src/routes/gameRouteController.ts`, `src/routes/retail-sim.e2e.ts`, simulation/persistence files.
+- Verify: every file changed in Tasks 1–3
 
 **Interfaces:**
-- Consumes: the three completed host boundaries.
-- Produces: accurate coverage documentation plus regression evidence.
+- Produces: accurate coverage documentation and evidence that HPA-568 remained a presentation-boundary refactor.
 
-- [ ] **Step 1: Replace the stale route-size coverage comment**
+- [ ] **Step 1: Replace only the stale route-size comment in `vite.config.ts`**
 
-Keep the coverage exclusion itself unchanged and replace only its explanatory comment with:
+Use:
 
 ```ts
 // +page.svelte is the route-level orchestration/composition root and is
@@ -623,15 +826,12 @@ Keep the coverage exclusion itself unchanged and replace only its explanatory co
 'src/routes/+page.svelte',
 ```
 
-Do not modify the coverage provider, include pattern, thresholds, or other exclusions.
+Do not change provider, include/exclude behavior, thresholds, or other config.
 
-- [ ] **Step 2: Run all new component specs together**
+- [ ] **Step 2: Run all new browser component specs together**
 
 ```bash
-bun run test:unit -- --run \
-  src/lib/components/game/MapSurfaceHost.svelte.spec.ts \
-  src/lib/components/game/MapInspectorHost.svelte.spec.ts \
-  src/lib/components/game/ManagementPanelHost.svelte.spec.ts
+bun run test:unit -- src/lib/components/game/MapSurfaceHost.svelte.spec.ts src/lib/components/game/MapInspectorHost.svelte.spec.ts src/lib/components/game/ManagementPanelHost.svelte.spec.ts --run
 ```
 
 Expected: PASS.
@@ -645,84 +845,91 @@ bun run lint
 
 Expected: `svelte-check` reports 0 errors and 0 warnings; lint exits 0.
 
-- [ ] **Step 4: Run the existing route-level Playwright smoke**
+- [ ] **Step 4: Run the repository-supported selected route smoke**
 
 ```bash
-bun x playwright test src/routes/retail-sim.e2e.ts --workers=1
+bun run test:e2e -- src/routes/retail-sim.e2e.ts
 ```
 
-Expected: all tests in `src/routes/retail-sim.e2e.ts` PASS.
+Expected: all selected route tests pass using the configured build/preview web server.
 
-If browser binaries are absent, install them with the repository's existing Playwright dependency and rerun the same selected file:
-
-```bash
-bun x playwright install
-bun x playwright test src/routes/retail-sim.e2e.ts --workers=1
-```
-
-Do not add a package script solely for HPA-568.
-
-- [ ] **Step 5: Run the full regression suite**
+- [ ] **Step 5: Run the full suite**
 
 ```bash
 bun run test
 ```
 
-Expected: all unit/component and Playwright tests PASS.
+Expected: all unit/component and Playwright tests pass.
 
-- [ ] **Step 6: Perform the scope/dependency audit**
+- [ ] **Step 6: Run the architecture and mount-topology audit**
 
-Confirm:
+Check the branch diff and confirm:
 
 ```text
-src/routes/gameRouteController.ts is unchanged
-src/lib/game simulation/persistence files are unchanged
-no new host imports src/routes or gameRouteController
-no new Svelte store/context/event bus/registry exists
-no MapWorkspace or generic presentation framework exists
-+page.svelte still owns handleKeydown and the Escape priority chain
-+page.svelte still owns activeManagementPanelId and the keyed remount
+MapSurfaceHost is inside .map-layout and replaces only .map-surfaces
+MapInspectorHost is inside .map-layout after route-level map overlays
+ManagementPanelHost is outside .map-layout
 WorldMap still owns the world-city inspector
-retail-sim.e2e.ts is unchanged unless a demonstrated missing assertion required a minimal addition
++page.svelte still owns handleKeydown, Escape ordering, activeManagementPanelId, isMapPaused, and railKeyboardEnabled
+MutationAvailability has exactly one production definition in $lib/scenarios/mutationAvailability.ts
+gameRouteController.ts contains no MutationAvailability definition or compatibility re-export
+no $lib component imports src/routes or gameRouteController
+financeMetrics is passed without a route-side non-null assertion
+inspector branches retain selectedRetailTile truthiness and selectedRailSegments if/else-if precedence
+no generic MapWorkspace/registry/context/store/event-bus abstraction was introduced
+src/lib/game simulation/persistence files are unchanged
 ```
 
-Run:
+Run mechanical checks:
 
 ```bash
-rg "\$routes|src/routes|gameRouteController" \
-  src/lib/components/game/MapSurfaceHost.svelte \
-  src/lib/components/game/MapInspectorHost.svelte \
-  src/lib/components/game/ManagementPanelHost.svelte
+rg "src/routes|gameRouteController" src/lib/components/game/MapSurfaceHost.svelte src/lib/components/game/MapInspectorHost.svelte src/lib/components/game/ManagementPanelHost.svelte
+rg "interface MutationAvailability|function createMutationAvailability" src
+rg "financeMetrics!" src/routes/+page.svelte
+rg "class=\"ticker\"" src/routes/+page.svelte
 ```
 
-Expected: no matches.
+Expected:
 
-- [ ] **Step 7: Commit the coverage comment and any final formatting-only cleanup**
+```text
+first command: no matches
+second command: matches only src/lib/scenarios/mutationAvailability.ts
+third command: no matches
+fourth command: no route-local ticker markup after management extraction
+```
 
-If only `vite.config.ts` changed during this task:
+- [ ] **Step 7: Commit the coverage-comment correction and formatting-only cleanup**
+
+If only `vite.config.ts` changed during Task 4:
 
 ```bash
 git add vite.config.ts
 git commit -m "chore(ui): document route presentation test boundary"
 ```
 
-If Prettier required formatting changes in the three host files or `+page.svelte`, stage those exact formatting-only files together with `vite.config.ts` before using the same commit message.
+If Prettier changed one of the already-touched host/route files, stage only those formatting changes with `vite.config.ts` under the same commit.
 
 ---
 
 ## Final Review Checklist
 
-- [ ] `MapSurfaceHost.svelte` owns only map surface composition and layout CSS.
-- [ ] `MapInspectorHost.svelte` owns only retail/rail/industry inspector composition and overlay CSS.
-- [ ] `ManagementPanelHost.svelte` owns only the control-tower shell and current panel switch.
-- [ ] `+page.svelte` still owns route/controller state, handlers, global shortcuts, Escape order, and top-level overlay decisions.
-- [ ] No host imports route code or calls `GameRouteController`.
-- [ ] No generic registry/workspace/store/context abstraction was introduced.
-- [ ] The world-city inspector remains inside `WorldMap.svelte`.
-- [ ] `vite.config.ts` no longer describes the route by a line-count target.
-- [ ] New component specs pass.
+- [ ] Exactly three presentation hosts were added.
+- [ ] `MapSurfaceHost` owns only map composition/layout CSS.
+- [ ] `MapInspectorHost` owns only retail/rail/industry inspector composition/overlay CSS and remains inside `.map-layout`.
+- [ ] `ManagementPanelHost` owns only the control-tower shell/current panel switch and remains outside `.map-layout`.
+- [ ] `+page.svelte` still owns route/controller state, selections, handlers, navigation, shortcuts, Escape order, map pause, and rail-keyboard derivations.
+- [ ] `MutationAvailability` and `createMutationAvailability` moved to `$lib/scenarios` with no compatibility re-export or duplicate shape.
+- [ ] Child panels still receive their existing explicit booleans/callbacks from the management host.
+- [ ] `financeMetrics` is nullable at the host boundary and no `financeMetrics!` remains at the route call site.
+- [ ] Inspector branches were moved structurally unchanged.
+- [ ] World-city inspection remains inside `WorldMap`.
+- [ ] Route E2E proves `.inspector-overlay` remains under `.map-layout`.
+- [ ] No generic registry/workspace/context/store abstraction was added.
+- [ ] `vite.config.ts` describes the testing boundary without a line-count target.
+- [ ] Focused component specs pass.
+- [ ] Existing availability/controller specs pass after the module move.
 - [ ] `bun run check` passes.
 - [ ] `bun run lint` passes.
-- [ ] `src/routes/retail-sim.e2e.ts` passes.
+- [ ] `bun run test:e2e -- src/routes/retail-sim.e2e.ts` passes.
 - [ ] `bun run test` passes.
-- [ ] The implementation PR description lists what moved, what deliberately stayed in the route, and confirms no new canonical state owner/framework was added.
+- [ ] The implementation PR description states what moved, what remains route-owned for HPA-574, and that no new framework or canonical state owner was introduced.
