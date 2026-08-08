@@ -6807,6 +6807,20 @@ describe('saveCodec', () => {
 				})
 			],
 			[
+				'a transfer sequence that cannot advance safely',
+				(logistics: GameState['logistics']) => ({
+					...logistics,
+					nextTransferSequence: Number.MAX_SAFE_INTEGER
+				})
+			],
+			[
+				'a route sequence that cannot advance safely',
+				(logistics: GameState['logistics']) => ({
+					...logistics,
+					nextRouteSequence: Number.MAX_SAFE_INTEGER
+				})
+			],
+			[
 				'the next transfer sequence does not exceed an existing transfer ID',
 				(logistics: GameState['logistics']) => ({ ...logistics, nextTransferSequence: 2 })
 			],

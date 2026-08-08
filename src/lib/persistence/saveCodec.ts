@@ -1254,6 +1254,18 @@ function requireLogisticsPositiveSafeInteger(value: unknown, label: string): num
 	return value;
 }
 
+function requireLogisticsAdvanceableSequence(value: unknown, label: string): number {
+	const sequence = requireLogisticsPositiveSafeInteger(value, label);
+	// `nextTransferSequence`/`nextRouteSequence` are incremented with checkedAdd(..., 1)
+	// when a transfer or route is created, so a save at exactly MAX_SAFE_INTEGER would
+	// pass validation but throw on the next creation. Reject it up front, mirroring the
+	// generic requirePositiveSafeInteger "can advance safely" invariant.
+	if (sequence >= Number.MAX_SAFE_INTEGER) {
+		return logisticsInvariant(`${label} must be a positive safe integer that can advance safely`);
+	}
+	return sequence;
+}
+
 function requireLogisticsNonNegativeSafeInteger(value: unknown, label: string): number {
 	if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) {
 		return logisticsInvariant(`${label} must be a non-negative safe integer`);
@@ -1354,11 +1366,11 @@ function validateCurrentLogisticsState(game: GameState): void {
 		logistics.recurringRoutes,
 		`${label} recurringRoutes`
 	);
-	const nextTransferSequence = requireLogisticsPositiveSafeInteger(
+	const nextTransferSequence = requireLogisticsAdvanceableSequence(
 		logistics.nextTransferSequence,
 		`${label} nextTransferSequence`
 	);
-	const nextRouteSequence = requireLogisticsPositiveSafeInteger(
+	const nextRouteSequence = requireLogisticsAdvanceableSequence(
 		logistics.nextRouteSequence,
 		`${label} nextRouteSequence`
 	);
