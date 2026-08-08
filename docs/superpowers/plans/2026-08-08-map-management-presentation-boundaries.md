@@ -51,7 +51,7 @@
 
 - `src/routes/gameRouteController.ts`
 - `src/routes/gameRouteController.spec.ts`
-- `src/routes/page.svelte.spec.ts` unless implementation uncovers an unrelated compile-only import cleanup (not expected).
+- `src/routes/page.svelte.spec.ts`
 - `src/lib/game/**` simulation/persistence/domain contracts.
 
 ---
