@@ -80,7 +80,7 @@ main.app
 Non-negotiable placement rules:
 
 - `MapSurfaceHost` replaces only the existing `.map-surfaces` element inside `.map-layout`.
-- `MapInspectorHost` remains inside `.map-layout`, after the route-level map controls/overlays, so `.inspector-overlay { position: absolute; ... }` retains the same containing block.
+- `MapInspectorHost` remains inside `.map-layout`, after the route-level map controls/overlays. Its `.inspector-overlay` keeps the current absolute positioning and offsets, so `.map-layout` remains the containing block.
 - `ManagementPanelHost` remains outside `.map-layout`, exactly where the current fixed control-tower backdrop is mounted.
 
 ## Ownership after the change
@@ -187,13 +187,13 @@ The route continues to derive concrete selected objects and the existing visibil
 
 ```svelte
 {#if selectedRetailTile && showRetailInspector}
-  <!-- TileInspector -->
+  <!-- TileInspector branch -->
 {/if}
 
 {#if selectedRailSegments && showIndustryInspector}
-  <!-- RailSegmentInspector -->
+  <!-- RailSegmentInspector branch -->
 {:else if selectedIndustryTile && showIndustryInspector}
-  <!-- IndustryTileInspector -->
+  <!-- IndustryTileInspector branch -->
 {/if}
 ```
 
@@ -214,7 +214,7 @@ Owns:
 It receives the existing `MutationAvailability` bag instead of a new set of duplicate availability props:
 
 ```ts
-interface CoreProps {
+interface CorePresentationProps {
   panelId: ManagementPanelId;
   panelLabel: string;
   panelGame: GameState;
@@ -226,9 +226,10 @@ interface CoreProps {
   focusedFinanceLoanId: string | null;
   i18n: I18nBundle;
   disabledReason: string | null;
-  // existing command callbacks
 }
 ```
+
+The implementation plan defines the existing command callbacks individually; there is no generic callback bag.
 
 The host maps `mutations.updatePolicy`, `mutations.hireStaff`, `mutations.resolveDecision`, and related fields to the child components' existing explicit APIs. This does not trigger a drive-by child-panel refactor.
 
@@ -344,10 +345,12 @@ Existing child-panel tests remain authoritative for internal child behavior.
 
 ### Commands
 
-Follow repository guidance:
+Follow repository guidance with these concrete checks:
 
 ```bash
-bun run test:unit -- <component-spec> --run
+bun run test:unit -- src/lib/components/game/MapSurfaceHost.svelte.spec.ts --run
+bun run test:unit -- src/lib/components/game/MapInspectorHost.svelte.spec.ts --run
+bun run test:unit -- src/lib/components/game/ManagementPanelHost.svelte.spec.ts --run
 bun run check
 bun run lint
 bun run test:e2e -- src/routes/retail-sim.e2e.ts
