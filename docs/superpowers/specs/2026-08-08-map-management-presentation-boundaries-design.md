@@ -168,8 +168,6 @@ interface MapSurfaceHostProps {
   canOpenWorldCity: boolean;
   canFinanceWorldCity: boolean;
   allowedWorldCityIds: string[];
-  worldCitySelectionDisabled: boolean;
-  worldCitySelectionDisabledReason: string | null;
   mutationDisabledReason: string | null;
 
   retailSnapshot: CityMapSnapshot;
