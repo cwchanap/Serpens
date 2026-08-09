@@ -465,6 +465,8 @@ interface SavedGame {
 	stores: Array<{
 		id: string;
 		cityId: string;
+		mapX: number;
+		mapY: number;
 		products: Array<{
 			categoryId: string;
 			stock: number;
@@ -707,6 +709,18 @@ async function openStoreDetail(page: Page): Promise<Locator> {
 	const modal = page.locator('[role="dialog"][aria-modal="true"]');
 	await expect(modal).toBeVisible();
 	return modal;
+}
+
+async function expectActionAboveControlDesk(page: Page, action: Locator): Promise<void> {
+	await action.scrollIntoViewIfNeeded();
+	const [actionBox, controlDeskBox] = await Promise.all([
+		action.boundingBox(),
+		page.getByLabel('Control desk').boundingBox()
+	]);
+	if (!actionBox || !controlDeskBox) {
+		throw new Error('Inspector action or control desk has no bounding box');
+	}
+	expect(actionBox.y + actionBox.height).toBeLessThanOrEqual(controlDeskBox.y);
 }
 
 async function getStoreDetailPanelLayout(page: Page) {
@@ -3308,6 +3322,256 @@ test('city-local inventory keeps multi-city supply, replenishment, reporting, an
 			}
 		)
 	).toBeVisible();
+});
+
+test('logistics manual inter-city transfer completes with inline validation and report evidence', async ({
+	page
+}) => {
+	test.setTimeout(90_000);
+	await installSandboxAutoSave(page, cityLocalInventoryLifecycleGame());
+
+	const logistics = await openManagementPanel(page, /logistics/i);
+	await logistics.locator('#logistics-manual-origin').selectOption('industry-city');
+	await logistics.locator('#logistics-manual-destination').selectOption('breadbasket-basin');
+	await logistics.locator('#logistics-manual-material').selectOption('bottled-water');
+	await logistics.locator('#logistics-manual-quantity').fill('2');
+	await logistics.getByRole('button', { name: /dispatch transfer/i }).click();
+
+	await expect(logistics.getByRole('status')).toContainText(
+		/Quoted lead time: 2 days · transport cost: \$4\. Transfer dispatched\./i
+	);
+	await expect(
+		logistics.getByText('Bottled Water → Breadbasket Basin: 2 · Arrives 9', { exact: true })
+	).toBeVisible();
+	await expect(
+		logistics.getByText(
+			'transfer-1 · Industry City → Breadbasket Basin · Bottled Water · 2 · In transit',
+			{ exact: true }
+		)
+	).toBeVisible();
+	await expect(
+		logistics.getByText('Delivered: 0 · Transport cost: $4', { exact: true })
+	).toBeVisible();
+
+	// The dispatched two units leave four at the origin. A second request for
+	// five must be rejected inline and must not create another transfer row.
+	await logistics.locator('#logistics-manual-quantity').fill('5');
+	await logistics.getByRole('button', { name: /dispatch transfer/i }).click();
+	await expect(logistics.getByRole('status')).toContainText(
+		/Not enough origin stock for this transfer\./i
+	);
+	await expect(logistics.locator('ol li')).toHaveCount(1);
+	await expect(logistics.getByText(/transfer-2/i)).toHaveCount(0);
+
+	await logistics.getByRole('button', { name: 'Close Logistics' }).click();
+	for (let day = 0; day < 3; day += 1) {
+		await page.getByRole('button', { name: /^advance day$/i }).click();
+	}
+	const deliveredGame = await waitForAutoSaveDay(page, 10);
+	await expect(getSavedCityInventory(deliveredGame, 'industry-city')).toEqual({
+		cityId: 'industry-city',
+		materials: { 'bottled-water': 4 }
+	});
+	await expect(getSavedCityInventory(deliveredGame, 'breadbasket-basin')).toEqual({
+		cityId: 'breadbasket-basin',
+		materials: { 'bottled-water': 39 }
+	});
+
+	const deliveredLogistics = await openManagementPanel(page, /logistics/i);
+	await expect(
+		deliveredLogistics.getByText(/No materials are currently in transit/i)
+	).toBeVisible();
+	await expect(
+		deliveredLogistics.getByText(
+			'transfer-1 · Industry City → Breadbasket Basin · Bottled Water · 2 · Delivered',
+			{ exact: true }
+		)
+	).toBeVisible();
+	await expect(
+		deliveredLogistics.getByText('Delivered: 2 · Transport cost: $4', { exact: true })
+	).toBeVisible();
+	await expect(
+		deliveredLogistics.locator('#logistics-manual-origin option[value="breadbasket-basin"]')
+	).toHaveText('Breadbasket Basin — 39 / 200 inventory used.');
+	await deliveredLogistics.getByRole('button', { name: 'Close Logistics' }).click();
+
+	const reports = await openManagementPanel(page, /reports/i);
+	const latestLogistics = reports.getByRole('region', { name: 'Latest-day logistics' });
+	await expect(latestLogistics).toBeVisible();
+	await expect(latestLogistics.getByText('Delivered units: 2', { exact: true })).toBeVisible();
+	await expect(
+		latestLogistics.getByText(
+			'transfer-1 · Industry City → Breadbasket Basin · Bottled Water · 2 units',
+			{
+				exact: true
+			}
+		)
+	).toBeVisible();
+	await expect(
+		latestLogistics.getByText('Scheduled transport cost: $0', { exact: true })
+	).toBeVisible();
+});
+
+test('logistics recurring route dispatches, delivers, and exposes active/paused operations', async ({
+	page
+}) => {
+	test.setTimeout(90_000);
+	await installSandboxAutoSave(page, cityLocalInventoryLifecycleGame());
+
+	const logistics = await openManagementPanel(page, /logistics/i);
+	await logistics.locator('#logistics-route-origin').selectOption('industry-city');
+	await logistics.locator('#logistics-route-destination').selectOption('breadbasket-basin');
+	await logistics.locator('#logistics-route-material').selectOption('bottled-water');
+	await expect(logistics.locator('#logistics-route-lead-time')).toHaveValue('2');
+	await expect(logistics.locator('#logistics-route-cost')).toHaveValue('2');
+	await logistics.locator('#logistics-route-capacity').fill('2');
+	await logistics.locator('#logistics-route-frequency').fill('7');
+	await logistics.getByRole('button', { name: /create route/i }).click();
+	await expect(logistics.getByRole('status')).toContainText(/Recurring route created\./i);
+
+	const routeRow = logistics.locator('#logistics-route-route-1');
+	await expect(routeRow).toContainText(/Industry City → Breadbasket Basin/i);
+	await expect(routeRow).toContainText(/Active/i);
+	await expect(routeRow).toContainText(/Awaiting dispatch/i);
+	await logistics.getByRole('button', { name: 'Close Logistics' }).click();
+
+	// The route is due on day 7. Its first dispatch is visible in transit on day 8;
+	// day 9 closes without a second dispatch because the route frequency is 7 days.
+	await page.getByRole('button', { name: /^advance day$/i }).click();
+	await waitForAutoSaveDay(page, 8);
+	const afterDispatch = await openManagementPanel(page, /logistics/i);
+	const dispatchedRow = afterDispatch.locator('#logistics-route-route-1');
+	await expect(dispatchedRow).toContainText(/Active/i);
+	await expect(dispatchedRow).toContainText(/In transit 2/i);
+	await expect(dispatchedRow).toContainText(/Transport cost\s+\$4/i);
+	await afterDispatch.getByRole('button', { name: 'Close Logistics' }).click();
+
+	for (let day = 0; day < 2; day += 1) {
+		await page.getByRole('button', { name: /^advance day$/i }).click();
+	}
+	const afterDelivery = await waitForAutoSaveDay(page, 10);
+	await expect(getSavedCityInventory(afterDelivery, 'industry-city')).toEqual({
+		cityId: 'industry-city',
+		materials: { 'bottled-water': 4 }
+	});
+	await expect(getSavedCityInventory(afterDelivery, 'breadbasket-basin')).toEqual({
+		cityId: 'breadbasket-basin',
+		materials: { 'bottled-water': 39 }
+	});
+
+	const deliveredLogistics = await openManagementPanel(page, /logistics/i);
+	const deliveredRow = deliveredLogistics.locator('#logistics-route-route-1');
+	await expect(deliveredRow).toContainText(/Active/i);
+	await expect(deliveredRow).toContainText(/In transit 0/i);
+	await expect(deliveredRow).toContainText(/Delivered\s+2/i);
+	await expect(deliveredRow).toContainText(/Transport cost\s+\$4/i);
+	await deliveredLogistics.getByRole('button', { name: 'Close Logistics' }).click();
+
+	await openMapMenuItem(page, /world map/i);
+	const worldMap = page.getByRole('region', { name: /world map/i });
+	await expect(worldMap).toBeVisible();
+	const routeButton = worldMap.getByRole('button', {
+		name: /industry city to breadbasket basin/i
+	});
+	await routeButton.focus();
+	await routeButton.press('Enter');
+	const routeInspector = page.getByRole('dialog', { name: /logistics route inspector/i });
+	await expect(routeInspector).toBeVisible();
+	await expect(routeInspector).toContainText(/Industry City → Breadbasket Basin/i);
+	await expect(routeInspector).toContainText(/Bottled Water/i);
+	await expect(routeInspector.getByText('Active', { exact: true })).toBeVisible();
+	await expect(
+		routeInspector.getByText('Route capacity constrained', { exact: true })
+	).toBeVisible();
+	await expect(routeInspector.getByText('Every 7 days', { exact: true })).toBeVisible();
+	await expect(routeInspector.getByText('2 days', { exact: true }).first()).toBeVisible();
+	await expect(routeInspector.getByText('Day 14', { exact: true })).toBeVisible();
+	await expect(routeInspector.getByTestId('route-delivered-total')).toHaveText('2');
+	await expect(routeInspector.getByTestId('route-in-transit-total')).toHaveText('0');
+
+	await routeInspector.getByRole('button', { name: /manage route/i }).click();
+	const managedLogistics = page.getByRole('dialog', { name: /^logistics$/i });
+	await expect(managedLogistics).toBeVisible();
+	const managedRouteRow = managedLogistics.locator('#logistics-route-route-1');
+	await expect(managedRouteRow).toBeFocused();
+
+	await managedRouteRow.getByRole('button', { name: /pause route/i }).click();
+	await expect(managedLogistics.getByRole('status')).toContainText(/Recurring route paused\./i);
+	await expect(managedRouteRow).toContainText(/Paused/i);
+	await expect(managedRouteRow.getByRole('button', { name: /resume route/i })).toBeVisible();
+	await managedRouteRow.getByRole('button', { name: /resume route/i }).click();
+	await expect(managedLogistics.getByRole('status')).toContainText(/Recurring route resumed\./i);
+	await expect(managedRouteRow).toContainText(/Active/i);
+	await expect(managedRouteRow.getByRole('button', { name: /pause route/i })).toBeVisible();
+
+	await managedLogistics.getByRole('button', { name: 'Close Logistics' }).click();
+	const worldRoute = worldMap.getByTestId('world-logistics-route-route-1');
+	await expect(worldRoute).toHaveAttribute('data-state', 'active');
+	await expect(worldRoute.locator('line')).not.toHaveAttribute('stroke-dasharray', '6 4');
+});
+
+test('inspector clearance keeps route, retail, and industry actions above the ninth-launcher desk', async ({
+	page
+}) => {
+	test.setTimeout(90_000);
+	await page.setViewportSize({ width: 1000, height: 800 });
+	await installSandboxAutoSave(page, logisticsRouteNavigationGame());
+
+	const desk = page.getByLabel('Control desk');
+	const managementLaunchers = desk.getByRole('group', { name: /management/i });
+	await expect(managementLaunchers.getByRole('button')).toHaveCount(9);
+
+	await openMapMenuItem(page, /world map/i);
+	const worldMap = page.getByRole('region', { name: /world map/i });
+	await expect(worldMap).toBeVisible();
+	const routeButton = worldMap.getByRole('button', {
+		name: /industry city to breadbasket basin/i
+	});
+	await routeButton.focus();
+	await routeButton.press('Enter');
+	const routeInspector = page.getByRole('dialog', { name: /logistics route inspector/i });
+	await expect(routeInspector).toBeVisible();
+	const manageRoute = routeInspector.getByRole('button', { name: /manage route/i });
+	await expectActionAboveControlDesk(page, manageRoute);
+	await manageRoute.click();
+	await expect(page.getByRole('dialog', { name: /^logistics$/i })).toBeVisible();
+	await page
+		.getByRole('dialog', { name: /^logistics$/i })
+		.getByRole('button', { name: 'Close Logistics' })
+		.click();
+
+	await page.keyboard.press('1');
+	await expect(page.getByRole('heading', { name: /harbor city/i })).toBeVisible();
+	const retailCanvas = await expectRetailMapReady(page);
+	const starterStore = (await readAutoSaveGame(page)).stores[0];
+	if (!starterStore) {
+		throw new Error('Missing starter store for inspector clearance');
+	}
+	await clickCanvasTile(page, retailCanvas, starterStore.mapX, starterStore.mapY);
+	const retailInspector = page.getByRole('dialog', { name: /tile details/i });
+	await expect(retailInspector).toBeVisible();
+	const openDetails = retailInspector.getByRole('button', { name: /open details/i });
+	await expectActionAboveControlDesk(page, openDetails);
+	await openDetails.click();
+	await expect(page.locator('[role="dialog"][aria-modal="true"]')).toBeVisible();
+	await page.keyboard.press('Escape');
+
+	await page.keyboard.press('2');
+	await expect(page.getByRole('heading', { name: /industry city/i })).toBeVisible();
+	const industryCanvas = await expectIndustryMapReady(page);
+	const inspectorBuildingTile = INDUSTRIAL_BUILD_TILES[0]!;
+	await clickCanvasTile(page, industryCanvas, inspectorBuildingTile.x, inspectorBuildingTile.y);
+	const industryInspector = page.getByRole('dialog', { name: /industry tile details/i });
+	await expect(industryInspector).toBeVisible();
+	await expect(
+		industryInspector.getByRole('region', { name: /industrial building details/i })
+	).toBeVisible();
+	const closeIndustry = industryInspector.getByRole('button', {
+		name: /close industry tile inspector/i
+	});
+	await expectActionAboveControlDesk(page, closeIndustry);
+	await closeIndustry.click();
+	await expect(industryInspector).toHaveCount(0);
 });
 
 test('logistics route navigation', async ({ page }) => {
