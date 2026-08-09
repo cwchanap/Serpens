@@ -14,22 +14,8 @@ vi.mock('phaser', () => ({
 		Game: class {
 			destroy(): void {}
 		},
+		Scene: class {},
 		Scale: { RESIZE: 0, CENTER_BOTH: 0 }
-	}
-}));
-
-vi.mock('$lib/phaser/cityMapScene', () => ({
-	CityMapScene: class {
-		setEventHandler(): void {}
-		updateSnapshot(): void {}
-	}
-}));
-
-vi.mock('$lib/phaser/industryMapScene', () => ({
-	IndustryMapScene: class {
-		setEventHandler(): void {}
-		setKeyboardEnabled(): void {}
-		updateSnapshot(): void {}
 	}
 }));
 
