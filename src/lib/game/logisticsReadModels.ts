@@ -16,6 +16,13 @@ export interface InTransitInventorySummary {
 	earliestArrivalOnDay: number;
 }
 
+export type RouteOperationalCondition =
+	| 'awaiting-dispatch'
+	| 'destination-full'
+	| 'origin-stock-constrained'
+	| 'route-capacity-constrained'
+	| 'normal';
+
 export interface RouteOperationalSummary {
 	route: RecurringRoute;
 	inTransitQuantity: number;
@@ -25,6 +32,7 @@ export interface RouteOperationalSummary {
 	unmetDestinationNeed: number;
 	deliveredUnits: number;
 	transportCost: number;
+	condition: RouteOperationalCondition;
 }
 
 interface RouteOperationalTotals {
@@ -81,6 +89,34 @@ export function selectRecentTransfers(game: GameState, limit = 20): TransferOrde
 				right.dispatchedOnDay - left.dispatchedOnDay || -compareRawIds(left.id, right.id)
 		)
 		.slice(0, limit);
+}
+
+export function selectRecentRouteDispatchAttempts(
+	game: GameState,
+	limit = 2
+): ReadonlyMap<string, readonly DailyRouteDispatchAttempt[]> {
+	const attemptsByRoute = new Map<string, DailyRouteDispatchAttempt[]>();
+	if (limit <= 0) {
+		return attemptsByRoute;
+	}
+
+	for (let reportIndex = game.reports.length - 1; reportIndex >= 0; reportIndex -= 1) {
+		const report = game.reports[reportIndex]!;
+		for (const attempt of report.logistics.routeDispatchAttempts) {
+			const attempts = attemptsByRoute.get(attempt.routeId);
+			if (attempts && attempts.length >= limit) {
+				continue;
+			}
+
+			if (attempts) {
+				attempts.push(attempt);
+			} else {
+				attemptsByRoute.set(attempt.routeId, [attempt]);
+			}
+		}
+	}
+
+	return attemptsByRoute;
 }
 
 export function selectRouteOperations(game: GameState): RouteOperationalSummary[] {
@@ -150,9 +186,28 @@ export function selectRouteOperations(game: GameState): RouteOperationalSummary[
 			unusedCapacity: latestAttempt?.unusedCapacity ?? 0,
 			unmetDestinationNeed: latestAttempt?.unmetDestinationNeed ?? 0,
 			deliveredUnits: totals.deliveredUnits,
-			transportCost: totals.transportCost
+			transportCost: totals.transportCost,
+			condition: classifyRouteOperationalCondition(latestAttempt)
 		};
 	});
+}
+
+function classifyRouteOperationalCondition(
+	attempt: DailyRouteDispatchAttempt | null
+): RouteOperationalCondition {
+	if (!attempt) {
+		return 'awaiting-dispatch';
+	}
+	if (attempt.destinationNeed === 0) {
+		return 'destination-full';
+	}
+	if (attempt.availableOriginStock < Math.min(attempt.destinationNeed, attempt.capacity)) {
+		return 'origin-stock-constrained';
+	}
+	if (attempt.unmetDestinationNeed > 0 && attempt.dispatchedQuantity === attempt.capacity) {
+		return 'route-capacity-constrained';
+	}
+	return 'normal';
 }
 
 export function selectLogisticsTotals(game: GameState): {

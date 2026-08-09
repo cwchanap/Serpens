@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from 'vitest';
 import {
 	selectInTransitInventory,
 	selectLogisticsTotals,
+	selectRecentRouteDispatchAttempts,
 	selectRecentTransfers,
 	selectRouteOperations
 } from './logisticsReadModels';
@@ -277,6 +278,7 @@ describe('logistics read models', () => {
 				route: routeTwo,
 				inTransitQuantity: 4,
 				latestAttempt,
+				condition: 'normal',
 				utilization: 0.25,
 				unusedCapacity: 15,
 				unmetDestinationNeed: 3,
@@ -287,6 +289,7 @@ describe('logistics read models', () => {
 				route: routeTen,
 				inTransitQuantity: 6,
 				latestAttempt: null,
+				condition: 'awaiting-dispatch',
 				utilization: null,
 				unusedCapacity: 0,
 				unmetDestinationNeed: 0,
@@ -331,6 +334,7 @@ describe('logistics read models', () => {
 
 		expect(summaries.find((summary) => summary.route.id === 'route-full')).toMatchObject({
 			latestAttempt: { destinationNeed: 0, unmetDestinationNeed: 0 },
+			condition: 'destination-full',
 			utilization: 0,
 			unusedCapacity: 20,
 			unmetDestinationNeed: 0
@@ -341,6 +345,69 @@ describe('logistics read models', () => {
 			unusedCapacity: 8,
 			unmetDestinationNeed: 0
 		});
+	});
+
+	test('classifies origin stock and route capacity constraints from the latest attempt', () => {
+		const originConstrainedAttempt = routeAttempt({
+			routeId: 'route-stock',
+			destinationNeed: 10,
+			capacity: 5,
+			availableOriginStock: 0,
+			dispatchedQuantity: 0,
+			unusedCapacity: 5,
+			unmetDestinationNeed: 10,
+			transportCost: 0,
+			transferOrderId: null
+		});
+		const capacityConstrainedAttempt = routeAttempt({
+			routeId: 'route-capacity',
+			destinationNeed: 30,
+			capacity: 20,
+			availableOriginStock: 20,
+			dispatchedQuantity: 20,
+			unusedCapacity: 0,
+			unmetDestinationNeed: 10,
+			transportCost: 40,
+			transferOrderId: 'transfer-capacity'
+		});
+		const game = gameWithLogistics({
+			recurringRoutes: [
+				recurringRoute({ id: 'route-stock', priority: 0 }),
+				recurringRoute({ id: 'route-capacity', priority: 1 })
+			],
+			reports: [report(9, [originConstrainedAttempt, capacityConstrainedAttempt])]
+		});
+
+		const summaries = selectRouteOperations(game);
+
+		expect(summaries.find((summary) => summary.route.id === 'route-stock')).toMatchObject({
+			condition: 'origin-stock-constrained'
+		});
+		expect(summaries.find((summary) => summary.route.id === 'route-capacity')).toMatchObject({
+			condition: 'route-capacity-constrained'
+		});
+	});
+
+	test('groups recent route attempts newest-first with a per-route limit', () => {
+		const routeOneDaySeven = routeAttempt({ routeId: 'route-1', transferOrderId: 'transfer-7' });
+		const routeTwoDaySeven = routeAttempt({ routeId: 'route-2', transferOrderId: 'transfer-2-7' });
+		const routeOneDayEight = routeAttempt({ routeId: 'route-1', transferOrderId: 'transfer-8' });
+		const routeOneDayNine = routeAttempt({ routeId: 'route-1', transferOrderId: 'transfer-9' });
+		const routeTwoDayNine = routeAttempt({ routeId: 'route-2', transferOrderId: 'transfer-2-9' });
+		const game = gameWithLogistics({
+			reports: [
+				report(7, [routeOneDaySeven, routeTwoDaySeven]),
+				report(8, [routeOneDayEight]),
+				report(9, [routeOneDayNine, routeTwoDayNine])
+			]
+		});
+
+		const recent = selectRecentRouteDispatchAttempts(game, 2);
+
+		expect([...recent.entries()]).toEqual([
+			['route-1', [routeOneDayNine, routeOneDayEight]],
+			['route-2', [routeTwoDayNine, routeTwoDaySeven]]
+		]);
 	});
 
 	test('keeps removed-route history and totals exact over the authoritative full order collection', () => {

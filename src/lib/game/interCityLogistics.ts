@@ -19,6 +19,11 @@ import type {
 
 export const INTER_CITY_DISTANCE_PER_BAND = 25;
 
+export interface InterCityRates {
+	leadTimeDays: number;
+	transportCostPerUnit: number;
+}
+
 export interface InterCityTransferQuote {
 	leadTimeDays: number;
 	transportCostPerUnit: number;
@@ -81,6 +86,30 @@ export type RecurringRouteResult =
 export type RouteRemovalResult =
 	| { ok: true; game: GameState; route: RecurringRoute }
 	| { ok: false; reason: 'route-not-found' };
+
+export function quoteInterCityRates(
+	originCityId: string,
+	destinationCityId: string
+): InterCityRates | null {
+	const originCity = getWorldCityDefinition(originCityId);
+	const destinationCity = getWorldCityDefinition(destinationCityId);
+	if (
+		!originCity ||
+		!destinationCity ||
+		originCity.kind !== 'industry' ||
+		destinationCity.kind !== 'industry' ||
+		originCity.id === destinationCity.id
+	) {
+		return null;
+	}
+
+	const distance = Math.hypot(
+		destinationCity.worldX - originCity.worldX,
+		destinationCity.worldY - originCity.worldY
+	);
+	const band = Math.max(1, Math.ceil(distance / INTER_CITY_DISTANCE_PER_BAND));
+	return { leadTimeDays: band, transportCostPerUnit: band };
+}
 
 interface ValidManualTransfer {
 	originCityId: WorldCityId;
@@ -520,14 +549,12 @@ function validateManualTransfer(
 		return { ok: false, reason: 'insufficient-origin-stock' };
 	}
 
-	const originCity = getWorldCityDefinition(origin.inventory.cityId)!;
-	const destinationCity = getWorldCityDefinition(destination.inventory.cityId)!;
-	const distance = Math.hypot(
-		destinationCity.worldX - originCity.worldX,
-		destinationCity.worldY - originCity.worldY
-	);
-	const band = Math.max(1, Math.ceil(distance / INTER_CITY_DISTANCE_PER_BAND));
-	const transportCost = checkedMultiply(band, input.quantity);
+	const rates = quoteInterCityRates(origin.inventory.cityId, destination.inventory.cityId);
+	if (!rates) {
+		return { ok: false, reason: 'invalid-quantity' };
+	}
+
+	const transportCost = checkedMultiply(rates.transportCostPerUnit, input.quantity);
 	if (transportCost === null) {
 		return { ok: false, reason: 'invalid-quantity' };
 	}
@@ -540,8 +567,8 @@ function validateManualTransfer(
 			materialId,
 			quantity: input.quantity,
 			quote: {
-				leadTimeDays: band,
-				transportCostPerUnit: band,
+				leadTimeDays: rates.leadTimeDays,
+				transportCostPerUnit: rates.transportCostPerUnit,
 				transportCost
 			}
 		}
