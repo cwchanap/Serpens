@@ -5,7 +5,11 @@ import * as finance from './finance';
 import * as financeMetrics from './financeMetrics';
 import { createInitialEventRuntime } from './eventSelection';
 import { decisionContextLocationGeneric } from './decisionContext';
+import { simulateDay } from './simulateDay';
+import { createNewGame } from './state';
 import type {
+	DailyReport,
+	DailyRouteDispatchAttempt,
 	GameState,
 	Store,
 	IndustrialBuilding,
@@ -13,7 +17,9 @@ import type {
 	DecisionItem,
 	StoreProduct,
 	LoanInstrument,
-	ActiveEventModifier
+	ActiveEventModifier,
+	MaterialId,
+	RecurringRoute
 } from './types';
 
 function modifier(overrides: Partial<ActiveEventModifier> = {}): ActiveEventModifier {
@@ -156,6 +162,82 @@ function baseGame(overrides: Partial<GameState> = {}): GameState {
 		reports: [],
 		...overrides
 	};
+}
+
+function recurringRoute(overrides: Partial<RecurringRoute> = {}): RecurringRoute {
+	return {
+		id: 'route-1',
+		originCityId: 'industry-city',
+		destinationCityId: 'breadbasket-basin',
+		materialId: 'water',
+		capacity: 5,
+		frequencyDays: 3,
+		leadTimeDays: 2,
+		transportCostPerUnit: 2,
+		priority: 1,
+		state: 'active',
+		nextDispatchOnDay: 10,
+		...overrides
+	};
+}
+
+function routeAttempt(
+	overrides: Partial<DailyRouteDispatchAttempt> = {}
+): DailyRouteDispatchAttempt {
+	return {
+		routeId: 'route-1',
+		originCityId: 'industry-city',
+		destinationCityId: 'breadbasket-basin',
+		materialId: 'water',
+		destinationNeed: 10,
+		capacity: 5,
+		availableOriginStock: 0,
+		dispatchedQuantity: 0,
+		unusedCapacity: 5,
+		unmetDestinationNeed: 10,
+		transportCost: 0,
+		transferOrderId: null,
+		...overrides
+	};
+}
+
+function logisticsReport(day: number, attempts: DailyRouteDispatchAttempt[]): DailyReport {
+	const template = simulateDay(createNewGame('convenience', 1)).reports[0]!;
+	return {
+		...template,
+		day,
+		logistics: {
+			...template.logistics,
+			arrivals: [],
+			routeDispatchAttempts: attempts,
+			scheduledTransportCost: attempts.reduce((total, attempt) => total + attempt.transportCost, 0)
+		}
+	};
+}
+
+function logisticsGame(input: {
+	route?: Partial<RecurringRoute>;
+	stock?: number;
+	attempts?: Array<{ day: number; attempt: Partial<DailyRouteDispatchAttempt> }>;
+}): GameState {
+	const route = recurringRoute(input.route);
+	return baseGame({
+		cityInventories: [
+			{
+				cityId: route.originCityId,
+				materials: { [route.materialId]: input.stock ?? 0 } as Partial<Record<MaterialId, number>>
+			}
+		],
+		logistics: {
+			transferOrders: [],
+			recurringRoutes: [route],
+			nextTransferSequence: 1,
+			nextRouteSequence: 2
+		},
+		reports: (input.attempts ?? []).map(({ day, attempt }) =>
+			logisticsReport(day, [routeAttempt({ ...attempt, routeId: route.id })])
+		)
+	});
 }
 
 describe('collectGameAlerts', () => {
@@ -605,5 +687,131 @@ describe('collectGameAlerts', () => {
 		expect(assessCreditSpy).not.toHaveBeenCalled();
 		expect(alerts.map((alert) => alert.kind)).toContain('covenantRisk');
 		expect(alerts.map((alert) => alert.kind)).toContain('lowCashRunway');
+	});
+
+	it('fires an origin-stock alert only while current stock is below the latest dispatch threshold', () => {
+		const game = logisticsGame({
+			stock: 4,
+			attempts: [
+				{
+					day: 9,
+					attempt: {
+						destinationNeed: 10,
+						capacity: 5,
+						availableOriginStock: 0,
+						dispatchedQuantity: 0,
+						unusedCapacity: 5,
+						unmetDestinationNeed: 10
+					}
+				}
+			]
+		});
+
+		expect(collectGameAlerts(game)).toContainEqual({
+			id: 'logistics-origin-stock:route-1',
+			kind: 'logistics-origin-stock',
+			routeId: 'route-1'
+		});
+
+		const refilledGame = {
+			...game,
+			cityInventories: [{ cityId: 'industry-city' as const, materials: { water: 5 } }]
+		};
+		expect(refilledGame.reports).toBe(game.reports);
+		expect(
+			collectGameAlerts(refilledGame).some((alert) => alert.kind === 'logistics-origin-stock')
+		).toBe(false);
+	});
+
+	it('requires two newest capacity-constrained attempts and clears after a later normal attempt', () => {
+		const constrainedAttempt = {
+			destinationNeed: 10,
+			capacity: 5,
+			availableOriginStock: 10,
+			dispatchedQuantity: 5,
+			unusedCapacity: 0,
+			unmetDestinationNeed: 5
+		};
+		const game = logisticsGame({
+			stock: 10,
+			attempts: [
+				{ day: 8, attempt: constrainedAttempt },
+				{ day: 9, attempt: constrainedAttempt }
+			]
+		});
+
+		const oneAttempt = {
+			...game,
+			reports: game.reports.slice(1)
+		};
+		expect(
+			collectGameAlerts(oneAttempt).some((alert) => alert.kind === 'logistics-route-capacity')
+		).toBe(false);
+		expect(collectGameAlerts(game)).toContainEqual({
+			id: 'logistics-route-capacity:route-1',
+			kind: 'logistics-route-capacity',
+			routeId: 'route-1'
+		});
+
+		const normalAttempt = {
+			...constrainedAttempt,
+			dispatchedQuantity: 5,
+			unusedCapacity: 0,
+			unmetDestinationNeed: 0,
+			destinationNeed: 5
+		};
+		const recoveredGame = {
+			...game,
+			reports: [...game.reports, logisticsReport(10, [routeAttempt(normalAttempt)])]
+		};
+		expect(
+			collectGameAlerts(recoveredGame).some((alert) => alert.kind === 'logistics-route-capacity')
+		).toBe(false);
+	});
+
+	it('does not alert for destination-full, paused, or deleted routes', () => {
+		const destinationFull = logisticsGame({
+			stock: 0,
+			attempts: [
+				{
+					day: 9,
+					attempt: {
+						destinationNeed: 0,
+						capacity: 5,
+						availableOriginStock: 0,
+						dispatchedQuantity: 0,
+						unusedCapacity: 5,
+						unmetDestinationNeed: 0
+					}
+				}
+			]
+		});
+		expect(
+			collectGameAlerts(destinationFull).filter((alert) => alert.routeId === 'route-1')
+		).toEqual([]);
+
+		const paused = logisticsGame({
+			route: { state: 'paused' },
+			stock: 0,
+			attempts: [
+				{ day: 8, attempt: { availableOriginStock: 0 } },
+				{
+					day: 9,
+					attempt: {
+						availableOriginStock: 10,
+						dispatchedQuantity: 5,
+						unusedCapacity: 0,
+						unmetDestinationNeed: 5
+					}
+				}
+			]
+		});
+		expect(collectGameAlerts(paused).filter((alert) => alert.routeId === 'route-1')).toEqual([]);
+
+		const deleted = {
+			...destinationFull,
+			logistics: { ...destinationFull.logistics, recurringRoutes: [] }
+		};
+		expect(collectGameAlerts(deleted).filter((alert) => alert.routeId === 'route-1')).toEqual([]);
 	});
 });

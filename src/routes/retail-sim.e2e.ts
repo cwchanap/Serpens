@@ -12,6 +12,7 @@ import { estimateNextLoanPayment, getScheduledPrincipalForInstallment } from '..
 import { buildIndustrialBuilding } from '../lib/game/industryPlacement';
 import { createRecurringRoute } from '../lib/game/interCityLogistics';
 import { openStoreAtTile } from '../lib/game/placement';
+import { simulateDay } from '../lib/game/simulateDay';
 import { createNewGame } from '../lib/game/state';
 import { calculateStockHealth } from '../lib/game/stock';
 import { openWorldCity } from '../lib/game/world';
@@ -357,7 +358,14 @@ function logisticsRouteNavigationGame(): GameState {
 		priority: 0
 	});
 	if (!created.ok) throw new Error(`Could not create route fixture: ${created.reason}`);
-	return created.game;
+	let game = created.game;
+	// The route is due on the fixture's current day. Advance through two due
+	// dispatches so the alert is evidence-derived from the newest constrained
+	// attempts instead of being injected into the saved state.
+	game = simulateDay(game); // day 7: capacity-constrained attempt
+	game = simulateDay(game); // day 8: no attempt
+	game = simulateDay(game); // day 9: second capacity-constrained attempt
+	return game;
 }
 
 interface SavedMaterialMovement {
@@ -3317,6 +3325,19 @@ test('logistics route navigation', async ({ page }) => {
 		.click();
 	const worldMap = page.getByRole('region', { name: /world map/i });
 	await expect(worldMap).toBeVisible();
+
+	await page.getByRole('button', { name: /^\d+ alerts?$/i }).click();
+	const alertsList = page.getByRole('group', { name: /alerts list/i });
+	await expect(alertsList).toBeVisible();
+	const routeCapacityAlert = alertsList.getByRole('button', { name: /route capacity/i });
+	await expect(routeCapacityAlert).toBeVisible();
+	await routeCapacityAlert.click();
+	const alertRouteInspector = page.getByRole('dialog', { name: /logistics route inspector/i });
+	await expect(alertRouteInspector).toBeVisible();
+	await expect(alertRouteInspector).toContainText(/industry city/i);
+	await expect(alertRouteInspector).toContainText(/breadbasket basin/i);
+	await alertRouteInspector.getByRole('button', { name: /close/i }).click();
+	await expect(alertRouteInspector).toHaveCount(0);
 
 	const cityGroup = worldMap.locator('.world-city-group');
 	await cityGroup.getByRole('button', { name: /garden borough/i }).click();

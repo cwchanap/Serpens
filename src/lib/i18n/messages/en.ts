@@ -1200,6 +1200,9 @@ export const en = {
 			decision: 'Decision: {title}',
 			eventModifier: 'Active modifier: {title}',
 			factoryBlocked: '{buildingName} starved of inputs',
+			logisticsOriginStock: '{origin} has less {material} stock than this route needs.',
+			logisticsRouteCapacity:
+				'{origin} to {destination} is at route capacity while {material} demand remains.',
 			upcomingLoanPayment: '{purpose} payment of {amount} is due on day {day}.',
 			missedLoanPayment: '{purpose} has a missed payment of {amount}.',
 			covenantRisk: 'Debt-service coverage is {coverage}, below {threshold}.',

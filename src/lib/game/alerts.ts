@@ -1,11 +1,18 @@
 import { hasLoanArrears, isOutstandingLoan } from './finance';
 import { getAlertFinanceSnapshot } from './financeMetrics';
+import {
+	selectRecentRouteDispatchAttempts,
+	selectRouteOperations,
+	type RouteOperationalSummary
+} from './logisticsReadModels';
 import type { GameState, LoanInstrument } from './types';
 
 /** Debt-service coverage ratio below which a covenant-risk alert fires. */
 export const COVENANT_THRESHOLD = 1.25;
 /** Cash runway (in days) at or below which a low-cash-runway alert fires. */
 export const LOW_CASH_RUNWAY_DAYS = 7;
+/** Number of newest route attempts required before capacity pressure alerts. */
+export const LOGISTICS_CAPACITY_PRESSURE_ATTEMPTS = 2;
 
 export type GameAlertKind =
 	| 'store-stock'
@@ -15,7 +22,9 @@ export type GameAlertKind =
 	| 'upcomingLoanPayment'
 	| 'missedLoanPayment'
 	| 'covenantRisk'
-	| 'lowCashRunway';
+	| 'lowCashRunway'
+	| 'logistics-origin-stock'
+	| 'logistics-route-capacity';
 
 export interface GameAlert {
 	id: string;
@@ -28,6 +37,7 @@ export interface GameAlert {
 	decisionId?: string;
 	modifierId?: string;
 	loanId?: string;
+	routeId?: string;
 	managementPanelId?: 'finance' | 'decisions';
 }
 
@@ -115,6 +125,66 @@ function collectFinanceAlerts(game: GameState): GameAlert[] {
 	return alerts;
 }
 
+function collectLogisticsAlerts(game: GameState): GameAlert[] {
+	const alerts: GameAlert[] = [];
+	const routeOperations = selectRouteOperations(game);
+	// Read the recent evidence once for the whole route group. A route's
+	// capacity alert is historical, so the newest recorded attempts—not a
+	// re-simulated current day—determine whether pressure persists.
+	const recentAttemptsByRoute = selectRecentRouteDispatchAttempts(
+		game,
+		LOGISTICS_CAPACITY_PRESSURE_ATTEMPTS
+	);
+
+	for (const summary of routeOperations) {
+		if (summary.route.state !== 'active' || !summary.latestAttempt) {
+			continue;
+		}
+
+		if (summary.condition === 'origin-stock-constrained') {
+			const threshold = Math.min(summary.latestAttempt.destinationNeed, summary.route.capacity);
+			const currentOriginStock =
+				game.cityInventories.find((inventory) => inventory.cityId === summary.route.originCityId)
+					?.materials[summary.route.materialId] ?? 0;
+
+			if (currentOriginStock < threshold) {
+				alerts.push({
+					id: `logistics-origin-stock:${summary.route.id}`,
+					kind: 'logistics-origin-stock',
+					routeId: summary.route.id
+				});
+			}
+		}
+
+		const recentAttempts = recentAttemptsByRoute.get(summary.route.id) ?? [];
+		if (
+			summary.condition === 'route-capacity-constrained' &&
+			recentAttempts.length >= LOGISTICS_CAPACITY_PRESSURE_ATTEMPTS &&
+			recentAttempts
+				.slice(0, LOGISTICS_CAPACITY_PRESSURE_ATTEMPTS)
+				.every(isRouteCapacityConstrainedAttempt)
+		) {
+			alerts.push({
+				id: `logistics-route-capacity:${summary.route.id}`,
+				kind: 'logistics-route-capacity',
+				routeId: summary.route.id
+			});
+		}
+	}
+
+	return alerts;
+}
+
+function isRouteCapacityConstrainedAttempt(
+	attempt: NonNullable<RouteOperationalSummary['latestAttempt']>
+): boolean {
+	return (
+		attempt.availableOriginStock >= Math.min(attempt.destinationNeed, attempt.capacity) &&
+		attempt.unmetDestinationNeed > 0 &&
+		attempt.dispatchedQuantity === attempt.capacity
+	);
+}
+
 export function collectGameAlerts(game: GameState): GameAlert[] {
 	const alerts: GameAlert[] = [];
 
@@ -174,6 +244,7 @@ export function collectGameAlerts(game: GameState): GameAlert[] {
 		});
 	}
 
+	alerts.push(...collectLogisticsAlerts(game));
 	alerts.push(...collectFinanceAlerts(game));
 
 	return alerts;

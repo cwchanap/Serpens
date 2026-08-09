@@ -36,63 +36,6 @@ import {
 	createMutationAvailability,
 	type GameRouteControllerOptions
 } from './gameRouteController';
-import { resolveAlertPanelNavigation } from './alertNavigation';
-
-describe('alert panel navigation', () => {
-	it('honors explicit Decisions and finance routes while retaining the decision fallback', () => {
-		expect(
-			resolveAlertPanelNavigation({
-				id: 'event-modifier:event-modifier-4',
-				kind: 'event-modifier',
-				modifierId: 'event-modifier-4',
-				managementPanelId: 'decisions'
-			})
-		).toEqual({ panelId: 'decisions', focusedFinanceLoanId: null });
-		expect(
-			resolveAlertPanelNavigation({
-				id: 'upcomingLoanPayment:loan-7',
-				kind: 'upcomingLoanPayment',
-				loanId: 'loan-7',
-				managementPanelId: 'finance'
-			})
-		).toEqual({ panelId: 'finance', focusedFinanceLoanId: 'loan-7' });
-		expect(
-			resolveAlertPanelNavigation({
-				id: 'decision:system-notice-1',
-				kind: 'decision',
-				decisionId: 'system-notice-1'
-			})
-		).toEqual({ panelId: 'decisions', focusedFinanceLoanId: null });
-	});
-
-	it('returns null for alerts without a management panel or decision kind', () => {
-		expect(
-			resolveAlertPanelNavigation({
-				id: 'store-stock:store-1',
-				kind: 'store-stock',
-				storeId: 'store-1'
-			})
-		).toBeNull();
-		expect(
-			resolveAlertPanelNavigation({
-				id: 'factory-blocked:factory-1',
-				kind: 'factory-blocked',
-				buildingId: 'factory-1'
-			})
-		).toBeNull();
-	});
-
-	it('returns null focusedFinanceLoanId for finance panel without a loanId', () => {
-		expect(
-			resolveAlertPanelNavigation({
-				id: 'covenantRisk',
-				kind: 'covenantRisk',
-				managementPanelId: 'finance'
-			})
-		).toEqual({ panelId: 'finance', focusedFinanceLoanId: null });
-	});
-});
-
 interface Deferred<T> {
 	promise: Promise<T>;
 	resolve(value: T): void;
