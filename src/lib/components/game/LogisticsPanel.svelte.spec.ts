@@ -2,7 +2,7 @@ import { page } from 'vitest/browser';
 import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { createI18n } from '$lib/i18n';
-import { createRecurringRoute } from '$lib/game/interCityLogistics';
+import { createRecurringRoute, quoteInterCityRates } from '$lib/game/interCityLogistics';
 import { createTwoIndustryCityGame } from '$lib/game/interCityLogistics.testUtils';
 import type { GameRouteCommitResult } from '$lib/game/commandResult';
 import { buildLogisticsPanelView } from './logisticsPanel';
@@ -107,6 +107,37 @@ describe('LogisticsPanel', () => {
 		await expect.element(cost).toHaveValue(7);
 	});
 
+	it('reseeds both recurring quote fields when an endpoint changes', async () => {
+		expect.assertions(4);
+		renderPanel();
+		const quote = quoteInterCityRates('breadbasket-basin', 'industry-city');
+		if (!quote) throw new Error('expected a quote for the test endpoints');
+
+		const leadTime = page.getByLabelText(/lead time/i);
+		const cost = page.getByLabelText(/cost per unit/i);
+		await leadTime.fill('5');
+		await cost.fill('7');
+		await page.getByLabelText('Origin city').nth(1).selectOptions('breadbasket-basin');
+		await page.getByLabelText('Destination city').nth(1).selectOptions('industry-city');
+
+		await expect.element(leadTime).toHaveValue(quote.leadTimeDays);
+		await expect.element(cost).toHaveValue(quote.transportCostPerUnit);
+		await expect.element(leadTime).not.toHaveValue(5);
+		await expect.element(cost).not.toHaveValue(7);
+	});
+
+	it('reports same-city before validating cleared quote fields', async () => {
+		expect.assertions(1);
+		renderPanel();
+
+		await page.getByLabelText('Origin city').nth(1).selectOptions('breadbasket-basin');
+		await page.getByRole('button', { name: /create route/i }).click();
+
+		await expect
+			.element(page.getByRole('status'))
+			.toHaveTextContent(/origin and destination must be different cities/i);
+	});
+
 	it('invokes create route callback', async () => {
 		expect.assertions(1);
 		const props = renderPanel();
@@ -120,9 +151,23 @@ describe('LogisticsPanel', () => {
 		renderPanel({ game: fixture.game, view: fixture.view });
 
 		await page.getByRole('button', { name: /edit route/i }).click();
+		expect(document.querySelector('#logistics-route-priority')).toBeNull();
+	});
+
+	it('uses the localized associated label for route priority controls', async () => {
+		expect.assertions(1);
+		const fixture = routePanelFixture();
+		const i18n = createI18n('ja');
+		renderPanel({
+			game: fixture.game,
+			view: buildLogisticsPanelView(fixture.game, i18n),
+			i18n
+		});
+		await page.getByRole('button', { name: /航路を編集/ }).click();
+
 		await expect
-			.element(page.getByRole('spinbutton', { name: 'Priority', exact: true }))
-			.not.toBeInTheDocument();
+			.element(page.getByRole('spinbutton', { name: '優先度', exact: true }))
+			.toBeInTheDocument();
 	});
 
 	it('invokes edit, reprioritize, pause, resume, and remove route callbacks', async () => {
@@ -157,7 +202,7 @@ describe('LogisticsPanel', () => {
 			expect.objectContaining({ capacity: 14 })
 		);
 
-		await page.getByLabelText(`Priority for ${fixture.route.id}`).fill('3');
+		await page.getByLabelText('Priority').nth(1).fill('3');
 		await page.getByRole('button', { name: /save priority/i }).click();
 		expect(onReprioritizeRecurringRoute).toHaveBeenCalledWith(fixture.route.id, 3);
 		await page.getByRole('button', { name: /pause route/i }).click();

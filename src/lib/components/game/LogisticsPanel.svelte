@@ -192,6 +192,11 @@
 	}
 
 	function routeInput(): RecurringRouteInput | null {
+		if (routeOriginCityId && routeOriginCityId === routeDestinationCityId) {
+			setFailure('same-city');
+			return null;
+		}
+
 		const capacity = parsePositiveInteger(routeCapacity);
 		const frequencyDays = parsePositiveInteger(routeFrequencyDays);
 		const leadTimeDays = parsePositiveInteger(routeLeadTimeDays);
@@ -535,7 +540,6 @@
 								>{i18n.t('logisticsPanel.fields.priority')}</label
 							>
 							<input
-								aria-label={`Priority for ${route.routeId}`}
 								id={`logistics-priority-${route.routeId}`}
 								type="number"
 								min="0"
