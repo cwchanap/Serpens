@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import { resolveScenarioDefinition } from '$lib/scenarios/catalog';
+import type {
+	ManualTransferInput,
+	RecurringRouteInput,
+	RecurringRouteUpdateInput
+} from '$lib/game/interCityLogistics';
+import { createTwoIndustryCityGame } from '$lib/game/interCityLogistics.testUtils';
 import { createNewGame } from '$lib/game/state';
 import type { EventDecisionItem, GameState, WorldCityId } from '$lib/game/types';
 import { createEmptySaveStore } from '$lib/persistence/saveCodec';
@@ -97,6 +103,38 @@ function failingDefinition(): ScenarioDefinition {
 
 function flushMicrotasks(): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+function validManualTransferInput(
+	overrides: Partial<ManualTransferInput> = {}
+): ManualTransferInput {
+	return {
+		originCityId: 'industry-city',
+		destinationCityId: 'breadbasket-basin',
+		materialId: 'water',
+		quantity: 5,
+		...overrides
+	};
+}
+
+function validRecurringRouteInput(
+	overrides: Partial<RecurringRouteInput> = {}
+): RecurringRouteInput {
+	return {
+		originCityId: 'industry-city',
+		destinationCityId: 'breadbasket-basin',
+		materialId: 'water',
+		capacity: 30,
+		frequencyDays: 3,
+		leadTimeDays: 2,
+		transportCostPerUnit: 2,
+		priority: 1,
+		...overrides
+	};
+}
+
+function createControllerLogisticsGame(): GameState {
+	return createTwoIndustryCityGame({ day: 1 });
 }
 
 interface ControllerHarness {
@@ -235,7 +273,8 @@ describe('createMutationAvailability', () => {
 			upgradeIndustrialBuilding: true,
 			buildRail: true,
 			upgradeRail: true,
-			demolishRail: true
+			demolishRail: true,
+			manageLogistics: true
 		});
 	});
 
@@ -250,6 +289,7 @@ describe('createMutationAvailability', () => {
 		expect(availability.advanceDay).toBe(true);
 		expect(availability.updatePolicy).toBe(true);
 		expect(availability.setRetailSupplySource).toBe(false);
+		expect(availability.manageLogistics).toBe(false);
 		expect(availability.openStore).toBe(false);
 		expect(availability.financeRetailStore).toBe(false);
 		expect(availability.financeIndustrialBuilding).toBe(false);
@@ -283,6 +323,7 @@ describe('createMutationAvailability', () => {
 		expect(availability.pending).toBe(true);
 		expect(availability.advanceDay).toBe(false);
 		expect(availability.setRetailSupplySource).toBe(false);
+		expect(availability.manageLogistics).toBe(false);
 	});
 
 	it('exposes retail supply selection only when a scenario definition permits it', () => {
@@ -307,6 +348,7 @@ describe('createMutationAvailability', () => {
 			definition: null
 		});
 		expect(availability.pending).toBe(false);
+		expect(availability.manageLogistics).toBe(false);
 		const values = Object.entries(availability).filter(([key]) => key !== 'pending');
 		expect(values.every(([, value]) => value === false)).toBe(true);
 	});
@@ -1420,6 +1462,98 @@ describe('GameRouteController', () => {
 			expect(harness.onAutoSave).not.toHaveBeenCalled();
 		});
 
+		it('commits a manual transfer through one publish and autosave', async () => {
+			const harness = createHarness();
+			await harness.controller.initializeSaves();
+			const game = createControllerLogisticsGame();
+			harness.controller.loadSandboxGame(game);
+			harness.onStateChange.mockClear();
+			harness.onAutoSave.mockClear();
+
+			const result = await harness.controller.dispatchManualTransfer(validManualTransferInput());
+
+			expect(result).toEqual({ status: 'sandbox-committed', changed: true });
+			expect(harness.controller.state.sandboxGame?.logistics.transferOrders).toHaveLength(1);
+			expect(harness.onStateChange).toHaveBeenCalledTimes(1);
+			await flushMicrotasks();
+			expect(harness.onAutoSave).toHaveBeenCalledTimes(1);
+			const saved = await harness.saveRepository.getAutoSave();
+			expect(saved?.game.logistics.transferOrders).toHaveLength(1);
+		});
+
+		it('returns the exact logistics failure without publishing or autosaving', async () => {
+			const harness = createHarness();
+			await harness.controller.initializeSaves();
+			const game = createControllerLogisticsGame();
+			harness.controller.loadSandboxGame(game);
+			harness.onStateChange.mockClear();
+			harness.onAutoSave.mockClear();
+
+			const result = await harness.controller.dispatchManualTransfer(
+				validManualTransferInput({ quantity: 0 })
+			);
+
+			expect(result).toEqual({ status: 'logistics-rejected', reason: 'invalid-quantity' });
+			expect(harness.controller.state.sandboxGame).toBe(game);
+			expect(harness.onStateChange).not.toHaveBeenCalled();
+			await flushMicrotasks();
+			expect(harness.onAutoSave).not.toHaveBeenCalled();
+		});
+
+		it('routes recurring route create/edit/pause/resume/reprioritize/remove through the boundary', async () => {
+			const harness = createHarness();
+			await harness.controller.initializeSaves();
+			harness.controller.loadSandboxGame(createControllerLogisticsGame());
+			harness.onAutoSave.mockClear();
+
+			const created = await harness.controller.createRecurringRoute(validRecurringRouteInput());
+			expect(created).toEqual({ status: 'sandbox-committed', changed: true });
+			expect(harness.controller.state.sandboxGame?.logistics.recurringRoutes[0]?.id).toBe(
+				'route-1'
+			);
+
+			const update: RecurringRouteUpdateInput = {
+				originCityId: 'breadbasket-basin',
+				destinationCityId: 'industry-city',
+				materialId: 'grain',
+				capacity: 17,
+				frequencyDays: 5,
+				leadTimeDays: 4,
+				transportCostPerUnit: 3
+			};
+			expect(await harness.controller.updateRecurringRoute('route-1', update)).toEqual({
+				status: 'sandbox-committed',
+				changed: true
+			});
+			expect(await harness.controller.pauseRecurringRoute('route-1')).toEqual({
+				status: 'sandbox-committed',
+				changed: true
+			});
+			expect(await harness.controller.resumeRecurringRoute('route-1')).toEqual({
+				status: 'sandbox-committed',
+				changed: true
+			});
+			expect(await harness.controller.reprioritizeRecurringRoute('route-1', 0)).toEqual({
+				status: 'sandbox-committed',
+				changed: true
+			});
+			expect(await harness.controller.removeRecurringRoute('route-1')).toEqual({
+				status: 'sandbox-committed',
+				changed: true
+			});
+			expect(harness.controller.state.sandboxGame?.logistics.recurringRoutes).toEqual([]);
+		});
+
+		it('returns route-not-found as a typed logistics rejection', async () => {
+			const harness = createHarness();
+			harness.controller.loadSandboxGame(createControllerLogisticsGame());
+
+			expect(await harness.controller.pauseRecurringRoute('route-missing')).toEqual({
+				status: 'logistics-rejected',
+				reason: 'route-not-found'
+			});
+		});
+
 		it('commits a successful finance action exactly once in sandbox mode', async () => {
 			const harness = createHarness();
 			await harness.controller.initializeSaves();
@@ -1640,6 +1774,45 @@ describe('GameRouteController', () => {
 	});
 
 	describe('commitMutation scenario paths', () => {
+		it('keeps all logistics writes unavailable in scenario mode without a ScenarioCommand', async () => {
+			const harness = createHarness();
+			await harness.controller.initializeScenarios();
+			await startScenario(harness.controller);
+			const saveSpy = vi.spyOn(harness.scenarioRepository, 'saveActiveRun');
+
+			expect(await harness.controller.dispatchManualTransfer(validManualTransferInput())).toEqual({
+				status: 'unavailable'
+			});
+			expect(await harness.controller.createRecurringRoute(validRecurringRouteInput())).toEqual({
+				status: 'unavailable'
+			});
+			const update: RecurringRouteUpdateInput = {
+				originCityId: 'industry-city',
+				destinationCityId: 'breadbasket-basin',
+				materialId: 'water',
+				capacity: 30,
+				frequencyDays: 3,
+				leadTimeDays: 2,
+				transportCostPerUnit: 2
+			};
+			expect(await harness.controller.updateRecurringRoute('route-1', update)).toEqual({
+				status: 'unavailable'
+			});
+			expect(await harness.controller.pauseRecurringRoute('route-1')).toEqual({
+				status: 'unavailable'
+			});
+			expect(await harness.controller.resumeRecurringRoute('route-1')).toEqual({
+				status: 'unavailable'
+			});
+			expect(await harness.controller.reprioritizeRecurringRoute('route-1', 0)).toEqual({
+				status: 'unavailable'
+			});
+			expect(await harness.controller.removeRecurringRoute('route-1')).toEqual({
+				status: 'unavailable'
+			});
+			expect(saveSpy).not.toHaveBeenCalled();
+		});
+
 		it('maps a scenario finance domain rejection without persisting or advancing the run', async () => {
 			const base = firstProfitDefinition();
 			const definition = { ...base, allowedCommands: ['repayLoan'] as const };

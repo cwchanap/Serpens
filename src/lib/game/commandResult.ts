@@ -1,6 +1,9 @@
 import type { FinanceFailureCode } from './finance';
 import type { DecisionResolutionFailureCode } from './eventEffects';
+import type { ManualTransferFailure, RecurringRouteFailure } from './interCityLogistics';
 import type { RetailSupplyAssignmentFailure } from './retailSupply';
+
+export type LogisticsFailureCode = ManualTransferFailure | RecurringRouteFailure;
 
 /**
  * Result of a route-layer commit attempt. Shared between the route controller
@@ -24,6 +27,7 @@ export type GameRouteCommitResult =
 			financeFailure?: FinanceFailureCode;
 	  }
 	| { status: 'retail-supply-rejected'; reason: RetailSupplyAssignmentFailure }
+	| { status: 'logistics-rejected'; reason: LogisticsFailureCode }
 	| { status: 'unchanged' }
 	| {
 			status: 'confirmation-required';
