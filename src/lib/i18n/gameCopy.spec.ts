@@ -280,6 +280,43 @@ describe('game copy builders', () => {
 		).toBe('Keep original message');
 	});
 
+	it('localizes logistics alert copy in every supported locale', () => {
+		const base = createNewGame('convenience', 20260708);
+		const game = {
+			...base,
+			logistics: {
+				...base.logistics,
+				recurringRoutes: [
+					{
+						id: 'route-1',
+						originCityId: 'industry-city' as const,
+						destinationCityId: 'breadbasket-basin' as const,
+						materialId: 'water' as const,
+						capacity: 5,
+						frequencyDays: 3,
+						leadTimeDays: 2,
+						transportCostPerUnit: 2,
+						priority: 1,
+						state: 'active' as const,
+						nextDispatchOnDay: 10
+					}
+				]
+			}
+		};
+
+		for (const locale of Object.keys(messagesByLocale) as Array<keyof typeof messagesByLocale>) {
+			for (const kind of ['logistics-origin-stock', 'logistics-route-capacity'] as const) {
+				const localized = localizeGameAlert(
+					game,
+					{ id: `${kind}:route-1`, kind, routeId: 'route-1' },
+					createI18n(locale)
+				);
+				expect(localized.message, `${locale} ${kind}`).toEqual(expect.any(String));
+				expect(localized.message, `${locale} ${kind}`).not.toBe('');
+			}
+		}
+	});
+
 	it('returns typed localized alerts and narrows event copy away from system titles', () => {
 		const eventDecision = {
 			kind: 'event' as const,

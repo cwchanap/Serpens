@@ -1182,6 +1182,9 @@ export const ja = {
 			decision: '決定事項: {title}',
 			eventModifier: '有効な修正効果: {title}',
 			factoryBlocked: '{buildingName} は原料不足です',
+			logisticsOriginStock: '{origin} の {material} 在庫はこのルートの必要量を下回っています。',
+			logisticsRouteCapacity:
+				'{origin} から {destination} への {material} ルートは容量上限で、需要が残っています。',
 			upcomingLoanPayment: '{purpose}の支払額 {amount} は{day}日目が期限です。',
 			missedLoanPayment: '{purpose}に未払い {amount} があります。',
 			covenantRisk: '債務返済カバレッジは {coverage} で、{threshold}を下回っています。',

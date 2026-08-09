@@ -599,6 +599,24 @@ export function localizeAlert(alert: GameAlert, game: GameState, i18n: I18nBundl
 		}
 	}
 
+	if (
+		(alert.kind === 'logistics-origin-stock' || alert.kind === 'logistics-route-capacity') &&
+		alert.routeId
+	) {
+		const route = game.logistics.recurringRoutes.find(
+			(candidate) => candidate.id === alert.routeId
+		);
+		if (route) {
+			const origin = i18n.labels.worldCity(route.originCityId).name;
+			const destination = i18n.labels.worldCity(route.destinationCityId).name;
+			const material = i18n.labels.material(route.materialId);
+			if (alert.kind === 'logistics-origin-stock') {
+				return i18n.t('copy.alerts.logisticsOriginStock', { origin, material });
+			}
+			return i18n.t('copy.alerts.logisticsRouteCapacity', { origin, destination, material });
+		}
+	}
+
 	if (alert.kind === 'upcomingLoanPayment' && alert.loanId) {
 		const loan = game.finance.loans.find((candidate) => candidate.id === alert.loanId);
 		if (loan && loan.nextPaymentDay !== null) {

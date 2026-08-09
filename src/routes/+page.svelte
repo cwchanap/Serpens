@@ -19,7 +19,7 @@
 	import { collectGameAlerts, type GameAlert } from '$lib/game/alerts';
 	import { localizeGameAlert } from '$lib/i18n/gameCopy';
 	import type { LocalizedGameAlert } from '$lib/i18n/localizedTypes';
-	import { resolveAlertPanelNavigation } from './alertNavigation';
+	import { resolveAlertNavigation } from './alertNavigation';
 	import { createInitialEventRuntime } from '$lib/game/eventSelection';
 	import {
 		MANAGEMENT_PANEL_SHORTCUT_KEY,
@@ -2351,10 +2351,15 @@
 	}
 
 	async function handleSelectAlert(alert: GameAlert): Promise<void> {
-		const panelNavigation = resolveAlertPanelNavigation(alert);
-		if (panelNavigation) {
-			focusedFinanceLoanId = panelNavigation.focusedFinanceLoanId;
-			openManagementPanel(panelNavigation.panelId);
+		const navigation = resolveAlertNavigation(alert);
+		if (navigation) {
+			if ('kind' in navigation) {
+				selectLogisticsRoute(navigation.routeId);
+				return;
+			}
+
+			focusedFinanceLoanId = navigation.focusedFinanceLoanId;
+			openManagementPanel(navigation.panelId);
 			return;
 		}
 		if (alert.kind === 'store-stock' && alert.tileId) {
