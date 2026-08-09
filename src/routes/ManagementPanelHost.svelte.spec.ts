@@ -3,6 +3,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { buildRetailCitySupplyViews } from '$lib/components/game/retailSupplySources';
 import type { RetailCitySupplyView } from '$lib/components/game/retailSupplySources';
+import {
+	buildLogisticsPanelView,
+	type LogisticsPanelView
+} from '$lib/components/game/logisticsPanel';
 import { decisionContextCashPressure } from '$lib/game/decisionContext';
 import { getFinanceMetrics, type FinanceMetrics } from '$lib/game/financeMetrics';
 import { getStaffXpForLevel } from '$lib/game/staffLeveling';
@@ -10,6 +14,11 @@ import { summarizeReports, type ReportSummary } from '$lib/game/reports';
 import { createNewGame } from '$lib/game/state';
 import type { DecisionItem, GameState, LoanTermDays } from '$lib/game/types';
 import type { GameRouteCommitResult } from '$lib/game/commandResult';
+import type {
+	ManualTransferInput,
+	RecurringRouteInput,
+	RecurringRouteUpdateInput
+} from '$lib/game/interCityLogistics';
 import type { I18nBundle } from '$lib/i18n';
 import { createI18n } from '$lib/i18n';
 import type { ManagementPanelId } from '$lib/game/keyboardShortcuts';
@@ -26,6 +35,9 @@ interface ManagementPanelHostProps {
 	mutations: MutationAvailability;
 	retailSupplyDisabled: boolean;
 	focusedFinanceLoanId: string | null;
+	logisticsView: LogisticsPanelView;
+	manageLogistics: boolean;
+	focusedLogisticsRouteId: string | null;
 	i18n: I18nBundle;
 	disabledReason: string | null;
 
@@ -41,6 +53,19 @@ interface ManagementPanelHostProps {
 	onRepay: (loanId: string, amount: number) => Promise<GameRouteCommitResult>;
 	onPayoff: (loanId: string) => Promise<GameRouteCommitResult>;
 	onRefinance: (loanId: string, termDays: LoanTermDays) => Promise<GameRouteCommitResult>;
+	onDispatchManualTransfer: (input: ManualTransferInput) => Promise<GameRouteCommitResult>;
+	onCreateRecurringRoute: (input: RecurringRouteInput) => Promise<GameRouteCommitResult>;
+	onUpdateRecurringRoute: (
+		routeId: string,
+		input: RecurringRouteUpdateInput
+	) => Promise<GameRouteCommitResult>;
+	onPauseRecurringRoute: (routeId: string) => Promise<GameRouteCommitResult>;
+	onResumeRecurringRoute: (routeId: string) => Promise<GameRouteCommitResult>;
+	onReprioritizeRecurringRoute: (
+		routeId: string,
+		priority: number
+	) => Promise<GameRouteCommitResult>;
+	onRemoveRecurringRoute: (routeId: string) => Promise<GameRouteCommitResult>;
 }
 
 function compositionGame(): GameState {
@@ -112,6 +137,9 @@ function hostProps(overrides: Partial<ManagementPanelHostProps> = {}): Managemen
 		focusedFinanceLoanId: null,
 		i18n,
 		disabledReason: 'Unavailable in this challenge.',
+		logisticsView: buildLogisticsPanelView(panelGame, i18n),
+		manageLogistics: true,
+		focusedLogisticsRouteId: null,
 		onClose: vi.fn(),
 		onChangePolicy: vi.fn(),
 		onHireStaff: vi.fn(),
@@ -124,6 +152,13 @@ function hostProps(overrides: Partial<ManagementPanelHostProps> = {}): Managemen
 		onRepay: vi.fn(async () => ({ status: 'unavailable' }) as const),
 		onPayoff: vi.fn(async () => ({ status: 'unavailable' }) as const),
 		onRefinance: vi.fn(async () => ({ status: 'unavailable' }) as const),
+		onDispatchManualTransfer: vi.fn(async () => ({ status: 'unavailable' }) as const),
+		onCreateRecurringRoute: vi.fn(async () => ({ status: 'unavailable' }) as const),
+		onUpdateRecurringRoute: vi.fn(async () => ({ status: 'unavailable' }) as const),
+		onPauseRecurringRoute: vi.fn(async () => ({ status: 'unavailable' }) as const),
+		onResumeRecurringRoute: vi.fn(async () => ({ status: 'unavailable' }) as const),
+		onReprioritizeRecurringRoute: vi.fn(async () => ({ status: 'unavailable' }) as const),
+		onRemoveRecurringRoute: vi.fn(async () => ({ status: 'unavailable' }) as const),
 		...overrides
 	};
 }
@@ -286,5 +321,30 @@ describe('ManagementPanelHost', () => {
 		render(ManagementPanelHost, props);
 
 		await expect.element(page.getByRole('button', { name: /Continue/ })).toBeDisabled();
+	});
+
+	it('renders the logistics operations branch with explicit callbacks', async () => {
+		expect.assertions(4);
+		const props = hostProps({ panelId: 'logistics', panelLabel: 'Logistics' });
+		render(ManagementPanelHost, props);
+
+		await expect
+			.element(page.getByRole('heading', { name: props.i18n.t('logisticsPanel.title') }))
+			.toBeVisible();
+		await expect
+			.element(
+				page.getByRole('heading', { name: props.i18n.t('logisticsPanel.sections.manualTransfer') })
+			)
+			.toBeVisible();
+		await expect
+			.element(
+				page.getByRole('button', { name: props.i18n.t('logisticsPanel.actions.dispatchTransfer') })
+			)
+			.toBeEnabled();
+		await expect
+			.element(
+				page.getByRole('heading', { name: props.i18n.t('logisticsPanel.sections.recentTransfers') })
+			)
+			.toBeVisible();
 	});
 });

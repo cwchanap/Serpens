@@ -59,6 +59,7 @@ import {
 	localizeGameAlert,
 	localizeDecision,
 	localizeDecisionFailure,
+	localizeLogisticsFailure,
 	localizeProductChainCategorySummary,
 	localizeProductChainGraph,
 	localizeReportWarning,
@@ -78,6 +79,33 @@ function readMessage(messages: unknown, key: string): unknown {
 }
 
 describe('game copy builders', () => {
+	it('localizes every logistics failure in every supported locale', () => {
+		const reasons = [
+			'invalid-origin',
+			'invalid-destination',
+			'same-city',
+			'invalid-material',
+			'invalid-quantity',
+			'insufficient-origin-stock',
+			'insufficient-cash',
+			'invalid-capacity',
+			'invalid-frequency-days',
+			'invalid-lead-time-days',
+			'invalid-transport-cost-per-unit',
+			'invalid-priority',
+			'route-not-found'
+		] as const;
+
+		for (const locale of Object.keys(messagesByLocale) as Array<keyof typeof messagesByLocale>) {
+			for (const reason of reasons) {
+				const message = localizeLogisticsFailure(reason, createI18n(locale));
+				expect(message, `${locale} ${reason}`).toEqual(expect.any(String));
+				expect(message, `${locale} ${reason}`).not.toBe('');
+				expect(message, `${locale} ${reason}`).not.toContain('logisticsPanel.failures');
+			}
+		}
+	});
+
 	it('provides complete localized copy for every production catalog event', () => {
 		const keys = PRODUCTION_EVENT_CATALOG.definitions.flatMap((definition) => [
 			`${definition.copy.key}.title`,

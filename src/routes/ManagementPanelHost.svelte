@@ -3,6 +3,11 @@
 	import ActiveModifiers from '$lib/components/game/ActiveModifiers.svelte';
 	import DecisionQueue from '$lib/components/game/DecisionQueue.svelte';
 	import FinancePanel from '$lib/components/game/FinancePanel.svelte';
+	import LogisticsPanel from '$lib/components/game/LogisticsPanel.svelte';
+	import {
+		buildLogisticsPanelView,
+		type LogisticsPanelView
+	} from '$lib/components/game/logisticsPanel';
 	import PolicyPanel from '$lib/components/game/PolicyPanel.svelte';
 	import ProductChainsPanel from '$lib/components/game/ProductChainsPanel.svelte';
 	import ReportsPanel from '$lib/components/game/ReportsPanel.svelte';
@@ -12,6 +17,11 @@
 	import StoreOverview from '$lib/components/game/StoreOverview.svelte';
 	import type { RetailCitySupplyView } from '$lib/components/game/retailSupplySources';
 	import type { GameRouteCommitResult } from '$lib/game/commandResult';
+	import type {
+		ManualTransferInput,
+		RecurringRouteInput,
+		RecurringRouteUpdateInput
+	} from '$lib/game/interCityLogistics';
 	import type { FinanceMetrics } from '$lib/game/financeMetrics';
 	import type { ManagementPanelId } from '$lib/game/keyboardShortcuts';
 	import type { ReportSummary } from '$lib/game/reports';
@@ -29,6 +39,9 @@
 		mutations: MutationAvailability;
 		retailSupplyDisabled: boolean;
 		focusedFinanceLoanId: string | null;
+		logisticsView?: LogisticsPanelView;
+		manageLogistics?: boolean;
+		focusedLogisticsRouteId?: string | null;
 		i18n: I18nBundle;
 		disabledReason: string | null;
 
@@ -44,6 +57,19 @@
 		onRepay: (loanId: string, amount: number) => Promise<GameRouteCommitResult>;
 		onPayoff: (loanId: string) => Promise<GameRouteCommitResult>;
 		onRefinance: (loanId: string, termDays: LoanTermDays) => Promise<GameRouteCommitResult>;
+		onDispatchManualTransfer?: (input: ManualTransferInput) => Promise<GameRouteCommitResult>;
+		onCreateRecurringRoute?: (input: RecurringRouteInput) => Promise<GameRouteCommitResult>;
+		onUpdateRecurringRoute?: (
+			routeId: string,
+			input: RecurringRouteUpdateInput
+		) => Promise<GameRouteCommitResult>;
+		onPauseRecurringRoute?: (routeId: string) => Promise<GameRouteCommitResult>;
+		onResumeRecurringRoute?: (routeId: string) => Promise<GameRouteCommitResult>;
+		onReprioritizeRecurringRoute?: (
+			routeId: string,
+			priority: number
+		) => Promise<GameRouteCommitResult>;
+		onRemoveRecurringRoute?: (routeId: string) => Promise<GameRouteCommitResult>;
 	}
 
 	let {
@@ -56,6 +82,9 @@
 		mutations,
 		retailSupplyDisabled,
 		focusedFinanceLoanId,
+		logisticsView,
+		manageLogistics = false,
+		focusedLogisticsRouteId = null,
 		i18n,
 		disabledReason,
 		onClose,
@@ -69,8 +98,19 @@
 		onBorrow,
 		onRepay,
 		onPayoff,
-		onRefinance
+		onRefinance,
+		onDispatchManualTransfer = async () => ({ status: 'unavailable' }),
+		onCreateRecurringRoute = async () => ({ status: 'unavailable' }),
+		onUpdateRecurringRoute = async () => ({ status: 'unavailable' }),
+		onPauseRecurringRoute = async () => ({ status: 'unavailable' }),
+		onResumeRecurringRoute = async () => ({ status: 'unavailable' }),
+		onReprioritizeRecurringRoute = async () => ({ status: 'unavailable' }),
+		onRemoveRecurringRoute = async () => ({ status: 'unavailable' })
 	}: Props = $props();
+
+	const effectiveLogisticsView = $derived(
+		logisticsView ?? buildLogisticsPanelView(panelGame, i18n)
+	);
 
 	function requireFinanceMetrics(): FinanceMetrics {
 		if (financeMetrics === null) {
@@ -179,6 +219,22 @@
 			<ReportsPanel {i18n} {summary} game={panelGame} stores={panelGame.stores} />
 		{:else if panelId === 'productChains'}
 			<ProductChainsPanel {i18n} game={panelGame} />
+		{:else if panelId === 'logistics'}
+			<LogisticsPanel
+				game={panelGame}
+				view={effectiveLogisticsView}
+				canMutate={manageLogistics}
+				focusedRouteId={focusedLogisticsRouteId}
+				{disabledReason}
+				{i18n}
+				{onDispatchManualTransfer}
+				{onCreateRecurringRoute}
+				{onUpdateRecurringRoute}
+				{onPauseRecurringRoute}
+				{onResumeRecurringRoute}
+				{onReprioritizeRecurringRoute}
+				{onRemoveRecurringRoute}
+			/>
 		{:else if panelId === 'finance'}
 			<FinancePanel
 				game={panelGame}
