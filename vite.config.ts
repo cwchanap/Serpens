@@ -12,6 +12,11 @@ export default defineConfig({
 	test: {
 		expect: { requireAssertions: true },
 		restoreMocks: true,
+		// The client browser and server projects share one full-suite run. Vitest's
+		// CPU-based default overwhelms the browser under load and causes unrelated
+		// specs to hit the intentional 10s timeout, so keep file isolation but run
+		// one worker at a time.
+		maxWorkers: 1,
 		// Heavy specs (scenarioRepository, setup, runtime, ScenarioMenuSection) run
 		// full encode -> deep-validate cycles over large game states and set their
 		// own per-describe timeout: 30_000 (observed ~6.2s on the slowest
