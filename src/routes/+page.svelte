@@ -99,6 +99,15 @@
 		type FinanceFailureCode
 	} from '$lib/game/finance';
 	import { forecastOpening } from '$lib/game/placement';
+	import type {
+		ManualTransferInput,
+		RecurringRouteInput,
+		RecurringRouteUpdateInput
+	} from '$lib/game/interCityLogistics';
+	import {
+		selectRouteOperations,
+		type RouteOperationalSummary
+	} from '$lib/game/logisticsReadModels';
 	import { getFinanceMetrics } from '$lib/game/financeMetrics';
 	import { DEFAULT_POLICY } from '$lib/game/state';
 	import { buildSupplyAdvisor, getAvailableMaterialIds } from '$lib/game/supplyAdvisor';
@@ -106,6 +115,7 @@
 	import { isTileInStoreFootprint } from '$lib/game/storeFootprint';
 	import { isTileInIndustryBuildingFootprint } from '$lib/game/industryFootprint';
 	import { buildRetailCitySupplyViews } from '$lib/components/game/retailSupplySources';
+	import { buildLogisticsPanelView } from '$lib/components/game/logisticsPanel';
 	import {
 		STARTER_STORE_CAP,
 		WORLD_CITY_CATALOG,
@@ -230,7 +240,8 @@
 		{ id: 'decisions', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.decisions },
 		{ id: 'reports', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.reports },
 		{ id: 'productChains', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.productChains },
-		{ id: 'finance', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.finance }
+		{ id: 'finance', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.finance },
+		{ id: 'logistics', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.logistics }
 	];
 
 	const starterCity = generateCity({
@@ -348,6 +359,8 @@
 	let selectedWorldCityId = $state<string | null>(null);
 	let selectedTileId = $state<string | null>(null);
 	let selectedIndustryTileId = $state<string | null>(null);
+	let selectedLogisticsRouteId = $state<string | null>(null);
+	let focusedLogisticsRouteId = $state<string | null>(null);
 	let isCheatSheetOpen = $state(false);
 	let isStoreDetailOpen = $state(false);
 	let isGameMenuOpen = $state(false);
@@ -616,6 +629,16 @@
 					}
 		).filter((status): status is WorldCityStatus => status !== null);
 	});
+	let logisticsRouteSummaries = $derived.by<RouteOperationalSummary[]>(() =>
+		game ? selectRouteOperations(game) : []
+	);
+	let selectedLogisticsRoute = $derived.by<RouteOperationalSummary | null>(() =>
+		selectedLogisticsRouteId
+			? (logisticsRouteSummaries.find((summary) => summary.route.id === selectedLogisticsRouteId) ??
+				null)
+			: null
+	);
+	let logisticsPanelView = $derived(buildLogisticsPanelView(game ?? starterMapState, i18n));
 	let selectedTile = $derived(
 		selectedTileId ? (getTileById(activeCity, selectedTileId) ?? null) : null
 	);
@@ -723,6 +746,9 @@
 	);
 	let shouldShowIndustryInspector = $derived(
 		selectedIndustryTile !== null && (!isPlacementModeActive || placementFeedback !== null)
+	);
+	let showLogisticsRouteInspector = $derived(
+		activeMapView === 'world' && selectedLogisticsRoute !== null
 	);
 	let retailBuildOptions = $derived(
 		getRetailBuildMenuOptions({
@@ -977,7 +1003,23 @@
 		activeLocale = saveLocalePreference(locale, safeLocalStorage());
 	}
 
+	function clearLogisticsRouteSelection(): void {
+		selectedLogisticsRouteId = null;
+		focusedLogisticsRouteId = null;
+	}
+
+	function selectLogisticsRoute(routeId: string): void {
+		if (!logisticsRouteSummaries.some((summary) => summary.route.id === routeId)) return;
+		setActiveMapView('world');
+		selectedWorldCityId = null;
+		selectedTileId = null;
+		selectedIndustryTileId = null;
+		cancelPlacement();
+		selectedLogisticsRouteId = routeId;
+	}
+
 	function selectTile(tileId: string) {
+		clearLogisticsRouteSelection();
 		if (retailPlacementArchetypeId) {
 			// Placement previews only mark valid 2x2 anchors. If the user clicks a
 			// non-anchor cell that sits inside a valid footprint, resolve to that
@@ -1002,6 +1044,7 @@
 	}
 
 	function selectIndustryTile(tileId: string) {
+		clearLogisticsRouteSelection();
 		if (railBuildMode.step !== 'idle') {
 			handleRailBuildTileClick(tileId);
 			return;
@@ -1493,6 +1536,7 @@
 		setActiveMapView('retail');
 		selectedIndustryTileId = null;
 		selectedWorldCityId = null;
+		clearLogisticsRouteSelection();
 		cancelPlacement();
 	}
 
@@ -1500,6 +1544,7 @@
 		setActiveMapView('industry');
 		selectedTileId = null;
 		selectedWorldCityId = null;
+		clearLogisticsRouteSelection();
 		cancelPlacement();
 	}
 
@@ -1517,6 +1562,7 @@
 	}
 
 	async function selectWorldCityNode(cityId: string): Promise<void> {
+		clearLogisticsRouteSelection();
 		if (!isWorldCityId(cityId) || !allowedWorldCityIds.includes(cityId)) {
 			return;
 		}
@@ -1604,13 +1650,22 @@
 		isGameMenuOpen = false;
 		isSavePanelOpen = false;
 		isBuildMenuOpen = false;
+		if (panelId !== 'logistics') {
+			focusedLogisticsRouteId = null;
+		}
 		// Panels open even before a store is founded; they fall back to an empty
 		// starter state and their action handlers no-op until a game exists.
 		activeManagementPanelId = panelId;
 	}
 
+	function openLogisticsManagement(routeId?: string): void {
+		openManagementPanel('logistics');
+		focusedLogisticsRouteId = routeId ?? null;
+	}
+
 	function closeManagementPanel(): void {
 		activeManagementPanelId = null;
+		focusedLogisticsRouteId = null;
 	}
 
 	function unlockAudio(): void {
@@ -1640,6 +1695,7 @@
 		selectedTileId = null;
 		selectedIndustryTileId = null;
 		selectedWorldCityId = null;
+		clearLogisticsRouteSelection();
 		isStoreDetailOpen = false;
 		isBuildMenuOpen = false;
 		isSupplyAdvisorOpen = false;
@@ -1697,6 +1753,7 @@
 			selectedTileId = null;
 			selectedIndustryTileId = null;
 			selectedWorldCityId = null;
+			clearLogisticsRouteSelection();
 			cancelPlacement();
 			saveFeedback = { kind: 'status', messageKey: 'route.save.loadedAutoSave' };
 			await refreshSaveSummary();
@@ -1745,6 +1802,7 @@
 			selectedTileId = null;
 			selectedIndustryTileId = null;
 			selectedWorldCityId = null;
+			clearLogisticsRouteSelection();
 			cancelPlacement();
 			saveFeedback = {
 				kind: 'status',
@@ -1855,6 +1913,72 @@
 		if (game && mutationAvailability.setRetailSupplySource) {
 			void gameRouteController.setRetailSupplySource(retailCityId, supplyCityId);
 		}
+	}
+
+	function dispatchManualTransfer(input: ManualTransferInput): Promise<GameRouteCommitResult> {
+		if (!game || !mutationAvailability.manageLogistics) {
+			return Promise.resolve({ status: 'unavailable' });
+		}
+		return gameRouteController.dispatchManualTransfer(input);
+	}
+
+	function createRecurringRoute(input: RecurringRouteInput): Promise<GameRouteCommitResult> {
+		if (!game || !mutationAvailability.manageLogistics) {
+			return Promise.resolve({ status: 'unavailable' });
+		}
+		return gameRouteController.createRecurringRoute(input);
+	}
+
+	function updateRecurringRoute(
+		routeId: string,
+		input: RecurringRouteUpdateInput
+	): Promise<GameRouteCommitResult> {
+		if (!game || !mutationAvailability.manageLogistics) {
+			return Promise.resolve({ status: 'unavailable' });
+		}
+		return gameRouteController.updateRecurringRoute(routeId, input);
+	}
+
+	function pauseRecurringRoute(routeId: string): Promise<GameRouteCommitResult> {
+		if (!game || !mutationAvailability.manageLogistics) {
+			return Promise.resolve({ status: 'unavailable' });
+		}
+		return gameRouteController.pauseRecurringRoute(routeId);
+	}
+
+	function resumeRecurringRoute(routeId: string): Promise<GameRouteCommitResult> {
+		if (!game || !mutationAvailability.manageLogistics) {
+			return Promise.resolve({ status: 'unavailable' });
+		}
+		return gameRouteController.resumeRecurringRoute(routeId);
+	}
+
+	function reprioritizeRecurringRoute(
+		routeId: string,
+		priority: number
+	): Promise<GameRouteCommitResult> {
+		if (!game || !mutationAvailability.manageLogistics) {
+			return Promise.resolve({ status: 'unavailable' });
+		}
+		return gameRouteController.reprioritizeRecurringRoute(routeId, priority);
+	}
+
+	function isCommittedMutation(result: GameRouteCommitResult): boolean {
+		return (
+			result.status === 'committed' || (result.status === 'sandbox-committed' && result.changed)
+		);
+	}
+
+	async function removeRecurringRoute(routeId: string): Promise<GameRouteCommitResult> {
+		if (!game || !mutationAvailability.manageLogistics) {
+			return { status: 'unavailable' };
+		}
+		const result = await gameRouteController.removeRecurringRoute(routeId);
+		if (isCommittedMutation(result)) {
+			if (selectedLogisticsRouteId === routeId) selectedLogisticsRouteId = null;
+			if (focusedLogisticsRouteId === routeId) focusedLogisticsRouteId = null;
+		}
+		return result;
 	}
 
 	function borrowWorkingCapital(
@@ -2334,18 +2458,26 @@
 			}
 			if (activeManagementPanelId !== null) {
 				activeManagementPanelId = null;
+				clearLogisticsRouteSelection();
 				return;
 			}
 			if (selectedWorldCityId !== null) {
 				selectedWorldCityId = null;
+				clearLogisticsRouteSelection();
 				return;
 			}
 			if (selectedTileId !== null) {
 				selectedTileId = null;
+				clearLogisticsRouteSelection();
 				return;
 			}
 			if (selectedIndustryTileId !== null) {
 				selectedIndustryTileId = null;
+				clearLogisticsRouteSelection();
+				return;
+			}
+			if (selectedLogisticsRouteId !== null) {
+				clearLogisticsRouteSelection();
 				return;
 			}
 			// Nothing else was open or selected — Escape toggles the hamburger menu open.
@@ -2382,7 +2514,8 @@
 			if (activeManagementPanelId === action.panel) {
 				closeManagementPanel();
 			} else {
-				openManagementPanel(action.panel);
+				if (action.panel === 'logistics') openLogisticsManagement();
+				else openManagementPanel(action.panel);
 			}
 		} else if (action.type === 'advance-day') {
 			advanceDay();
@@ -2430,6 +2563,9 @@
 			canFinanceWorldCity={mutationAvailability.financeWorldCity}
 			{allowedWorldCityIds}
 			{mutationDisabledReason}
+			{logisticsRouteSummaries}
+			{selectedLogisticsRouteId}
+			onSelectLogisticsRoute={selectLogisticsRoute}
 			{mapSnapshot}
 			onSelectRetailTile={selectTile}
 			{industryMapSnapshot}
@@ -2465,7 +2601,13 @@
 						aria-label={i18n.t('route.menu.managementPanels')}
 					>
 						{#each managementPanelMenuItems as item (item.id)}
-							<button type="button" onclick={() => openManagementPanel(item.id)}>
+							<button
+								type="button"
+								onclick={() =>
+									item.id === 'logistics'
+										? openLogisticsManagement()
+										: openManagementPanel(item.id)}
+							>
 								{item.label}
 							</button>
 						{/each}
@@ -2520,7 +2662,8 @@
 			disabledReason={mutationDisabledReason}
 			{i18n}
 			onBuild={openBuildMenu}
-			onOpenManagement={(id) => openManagementPanel(id)}
+			onOpenManagement={(id) =>
+				id === 'logistics' ? openLogisticsManagement() : openManagementPanel(id)}
 			onAdvanceDay={advanceDay}
 			onOpenShortcuts={() => (isCheatSheetOpen = true)}
 			showRailBuild={activeMapView === 'industry' && game !== null}
@@ -2607,6 +2750,10 @@
 			onUpgradeRailSegment={upgradeRailSegmentHandler}
 			onDemolishRailSegment={demolishRailSegmentHandler}
 			onCloseIndustryInspector={closeIndustryInspector}
+			{showLogisticsRouteInspector}
+			{selectedLogisticsRoute}
+			onManageLogisticsRoute={openLogisticsManagement}
+			onCloseLogisticsRouteInspector={clearLogisticsRouteSelection}
 		/>
 	</section>
 
@@ -2648,6 +2795,9 @@
 				mutations={mutationAvailability}
 				retailSupplyDisabled={game === null || !mutationAvailability.setRetailSupplySource}
 				{focusedFinanceLoanId}
+				logisticsView={logisticsPanelView}
+				manageLogistics={mutationAvailability.manageLogistics}
+				{focusedLogisticsRouteId}
 				{i18n}
 				disabledReason={mutationDisabledReason}
 				onClose={closeManagementPanel}
@@ -2662,6 +2812,13 @@
 				onRepay={repayFinanceLoan}
 				onPayoff={payOffFinanceLoan}
 				onRefinance={refinanceFinanceLoan}
+				onDispatchManualTransfer={dispatchManualTransfer}
+				onCreateRecurringRoute={createRecurringRoute}
+				onUpdateRecurringRoute={updateRecurringRoute}
+				onPauseRecurringRoute={pauseRecurringRoute}
+				onResumeRecurringRoute={resumeRecurringRoute}
+				onReprioritizeRecurringRoute={reprioritizeRecurringRoute}
+				onRemoveRecurringRoute={removeRecurringRoute}
 			/>
 		{/key}
 	{/if}
