@@ -31,12 +31,9 @@ export default defineConfig({
 				'src/app.d.ts',
 				'src/lib/vitest-examples/**',
 				'src/routes/demo/**',
-				// +page.svelte is the 1300+ line Svelte 5 runes UI shell. It is exercised
-				// end-to-end by retail-sim.e2e.ts (canvas data-* attributes, tile clicks,
-				// panel toggles) rather than by unit specs. Excluding it from the unit
-				// coverage denominator keeps the metric interpretable as a pure-logic
-				// coverage signal for src/lib/game; the e2e suite is the coverage gate for
-				// the UI layer. +layout.svelte/+layout.ts are trivial wrappers.
+				// +page.svelte is the route-level state/orchestration/composition root and is
+				// exercised end-to-end by retail-sim.e2e.ts. Route-local presentation hosts
+				// have focused browser component specs, so route line count is not a coverage target.
 				'src/routes/+page.svelte',
 				'src/routes/+layout.svelte',
 				'src/routes/+layout.ts'
