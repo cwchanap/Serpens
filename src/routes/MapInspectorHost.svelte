@@ -1,8 +1,10 @@
 <script lang="ts">
 	import IndustryTileInspector from '$lib/components/game/IndustryTileInspector.svelte';
+	import LogisticsRouteInspector from '$lib/components/game/LogisticsRouteInspector.svelte';
 	import RailSegmentInspector from '$lib/components/game/RailSegmentInspector.svelte';
 	import TileInspector from '$lib/components/game/TileInspector.svelte';
 	import type { RailSegment } from '$lib/game/rail';
+	import type { RouteOperationalSummary } from '$lib/game/logisticsReadModels';
 	import type {
 		CityTile,
 		DailyStoreReport,
@@ -41,6 +43,11 @@
 		onUpgradeRailSegment: (segmentId: string) => void;
 		onDemolishRailSegment: (segmentId: string) => void;
 		onCloseIndustryInspector: () => void;
+
+		showLogisticsRouteInspector?: boolean;
+		selectedLogisticsRoute?: RouteOperationalSummary | null;
+		onManageLogisticsRoute?: (routeId: string) => void;
+		onCloseLogisticsRouteInspector?: () => void;
 	}
 
 	let {
@@ -68,7 +75,11 @@
 		onUpgradeIndustryBuilding,
 		onUpgradeRailSegment,
 		onDemolishRailSegment,
-		onCloseIndustryInspector
+		onCloseIndustryInspector,
+		showLogisticsRouteInspector = false,
+		selectedLogisticsRoute = null,
+		onManageLogisticsRoute = () => {},
+		onCloseLogisticsRouteInspector = () => {}
 	}: Props = $props();
 </script>
 
@@ -91,6 +102,21 @@
 			onOpenDetails={onOpenStoreDetails}
 			onClickFeedback={onRetailClickFeedback}
 			onClose={onCloseRetailInspector}
+		/>
+	</div>
+{/if}
+{#if showLogisticsRouteInspector && selectedLogisticsRoute}
+	<div
+		class="inspector-overlay paper"
+		role="dialog"
+		aria-modal="false"
+		aria-label={i18n.t('logisticsRouteInspector.ariaLabel')}
+	>
+		<LogisticsRouteInspector
+			route={selectedLogisticsRoute}
+			{i18n}
+			onManageRoute={onManageLogisticsRoute}
+			onClose={onCloseLogisticsRouteInspector}
 		/>
 	</div>
 {/if}

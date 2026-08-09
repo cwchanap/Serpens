@@ -2,6 +2,7 @@ import { page } from 'vitest/browser';
 import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { getIndustryTilesByResource } from '$lib/game/industry';
+import type { RouteOperationalSummary } from '$lib/game/logisticsReadModels';
 import type { RailSegment } from '$lib/game/rail';
 import { createNewGame } from '$lib/game/state';
 import type {
@@ -43,6 +44,11 @@ interface InspectorProps {
 	onUpgradeRailSegment: (segmentId: string) => void;
 	onDemolishRailSegment: (segmentId: string) => void;
 	onCloseIndustryInspector: () => void;
+
+	showLogisticsRouteInspector: boolean;
+	selectedLogisticsRoute: RouteOperationalSummary | null;
+	onManageLogisticsRoute: (routeId: string) => void;
+	onCloseLogisticsRouteInspector: () => void;
 }
 
 function inspectorProps(overrides: Partial<InspectorProps> = {}): InspectorProps {
@@ -78,6 +84,29 @@ function inspectorProps(overrides: Partial<InspectorProps> = {}): InspectorProps
 		cellKeys: ['1,1', '2,1'],
 		minLevel: 1
 	};
+	const selectedLogisticsRoute: RouteOperationalSummary = {
+		route: {
+			id: 'route-1',
+			originCityId: 'industry-city',
+			destinationCityId: 'breadbasket-basin',
+			materialId: 'water',
+			capacity: 30,
+			frequencyDays: 3,
+			leadTimeDays: 2,
+			transportCostPerUnit: 2,
+			priority: 1,
+			state: 'active',
+			nextDispatchOnDay: 11
+		},
+		inTransitQuantity: 8,
+		latestAttempt: null,
+		utilization: null,
+		unusedCapacity: 0,
+		unmetDestinationNeed: 0,
+		deliveredUnits: 42,
+		transportCost: 84,
+		condition: 'awaiting-dispatch'
+	};
 
 	return {
 		game,
@@ -105,6 +134,10 @@ function inspectorProps(overrides: Partial<InspectorProps> = {}): InspectorProps
 		onUpgradeRailSegment: vi.fn(),
 		onDemolishRailSegment: vi.fn(),
 		onCloseIndustryInspector: vi.fn(),
+		showLogisticsRouteInspector: false,
+		selectedLogisticsRoute,
+		onManageLogisticsRoute: vi.fn(),
+		onCloseLogisticsRouteInspector: vi.fn(),
 		...overrides
 	};
 }
@@ -171,5 +204,55 @@ describe('MapInspectorHost', () => {
 		render(MapInspectorHost, inspectorProps({ showRetailInspector: true, canUpgradeStore: false }));
 
 		await expect.element(page.getByRole('button', { name: /upgrade/i })).toBeDisabled();
+	});
+
+	it('renders the route inspector only when the explicit boolean-and-summary gate passes', async () => {
+		expect.assertions(2);
+		const props = inspectorProps({ showLogisticsRouteInspector: true });
+		render(MapInspectorHost, props);
+
+		await expect
+			.element(page.getByRole('dialog', { name: /logistics route inspector/i }))
+			.toBeVisible();
+		await expect.element(page.getByRole('heading', { name: /industry city/i })).toBeVisible();
+	});
+
+	it('does not render the route inspector when the explicit boolean gate is false', async () => {
+		expect.assertions(1);
+		render(MapInspectorHost, inspectorProps({ showLogisticsRouteInspector: false }));
+		await expect
+			.element(page.getByRole('dialog', { name: /logistics route inspector/i }))
+			.not.toBeInTheDocument();
+	});
+
+	it('does not render a route inspector when the current summary is null', async () => {
+		expect.assertions(1);
+		render(
+			MapInspectorHost,
+			inspectorProps({ showLogisticsRouteInspector: true, selectedLogisticsRoute: null })
+		);
+
+		await expect
+			.element(page.getByRole('dialog', { name: /logistics route inspector/i }))
+			.not.toBeInTheDocument();
+	});
+
+	it('forwards route Manage and Close callbacks through the host', async () => {
+		expect.assertions(2);
+		const onManageLogisticsRoute = vi.fn();
+		const onCloseLogisticsRouteInspector = vi.fn();
+		render(
+			MapInspectorHost,
+			inspectorProps({
+				showLogisticsRouteInspector: true,
+				onManageLogisticsRoute,
+				onCloseLogisticsRouteInspector
+			})
+		);
+
+		await page.getByRole('button', { name: 'Manage route' }).click();
+		expect(onManageLogisticsRoute).toHaveBeenCalledWith('route-1');
+		await page.getByRole('button', { name: /close logistics route inspector/i }).click();
+		expect(onCloseLogisticsRouteInspector).toHaveBeenCalledTimes(1);
 	});
 });
