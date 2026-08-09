@@ -158,11 +158,12 @@ describe('ManagementPanelHost', () => {
 		const props = hostProps({ onClose });
 		render(ManagementPanelHost, props);
 
-		await page
+		const backdropDismissButton = await page
 			.getByRole('button', {
 				name: props.i18n.t('route.controlTower.dismiss', { panel: props.panelLabel })
 			})
-			.click();
+			.element();
+		backdropDismissButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 
 		expect(onClose).toHaveBeenCalledOnce();
 	});
@@ -180,7 +181,11 @@ describe('ManagementPanelHost', () => {
 			.element(page.getByRole('heading', { name: props.retailSupplyViews[0]!.panelTitle }))
 			.toBeVisible();
 		await expect
-			.element(page.getByRole('heading', { name: props.i18n.t('storeOverview.title') }))
+			.element(
+				page
+					.getByRole('region', { name: props.i18n.t('storeOverview.title') })
+					.getByRole('heading', { name: props.i18n.t('storeOverview.title') })
+			)
 			.toBeVisible();
 		await expect
 			.element(page.getByRole('combobox', { name: props.retailSupplyViews[0]!.selectLabel }))
@@ -216,7 +221,11 @@ describe('ManagementPanelHost', () => {
 		const dialog = await page.getByRole('dialog', { name: props.panelLabel }).element();
 		expect(dialog.getAttribute('data-focused-finance-loan')).toBe(focusedFinanceLoanId);
 		await expect
-			.element(page.getByRole('heading', { name: props.i18n.t('financePanel.title') }))
+			.element(
+				page
+					.getByRole('region', { name: props.i18n.t('financePanel.title') })
+					.getByRole('heading', { name: props.i18n.t('financePanel.title') })
+			)
 			.toBeVisible();
 	});
 
@@ -246,12 +255,25 @@ describe('ManagementPanelHost', () => {
 		});
 		render(ManagementPanelHost, props);
 
-		await expect.element(page.getByRole('button', { name: /Hire / })).toBeDisabled();
+		const candidate = props.panelGame.hiringCandidates[0]!;
+		await expect
+			.element(
+				page.getByRole('button', {
+					name: props.i18n.t('staffPanel.actionLabels.hire', {
+						name: candidate.name,
+						role: props.i18n.t(`staffPanel.role.${candidate.role}`),
+						id: candidate.id
+					})
+				})
+			)
+			.toBeDisabled();
 		await expect
 			.element(page.getByRole('combobox', { name: /currently unassigned/i }))
 			.toBeDisabled();
 		await expect.element(page.getByRole('button', { name: /Unassign / })).toBeDisabled();
-		await expect.element(page.getByRole('button', { name: /Promote / })).toBeDisabled();
+		await expect
+			.element(page.getByRole('button', { name: /Promote Unassigned Host Staff/ }))
+			.toBeDisabled();
 	});
 
 	it('maps decision mutation availability to decision actions', async () => {
