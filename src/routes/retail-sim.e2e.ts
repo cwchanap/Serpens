@@ -10,6 +10,7 @@ import {
 } from '../lib/game/industry';
 import { estimateNextLoanPayment, getScheduledPrincipalForInstallment } from '../lib/game/finance';
 import { buildIndustrialBuilding } from '../lib/game/industryPlacement';
+import { createRecurringRoute } from '../lib/game/interCityLogistics';
 import { openStoreAtTile } from '../lib/game/placement';
 import { createNewGame } from '../lib/game/state';
 import { calculateStockHealth } from '../lib/game/stock';
@@ -341,6 +342,22 @@ function cityLocalInventoryLifecycleGame(): GameState {
 			{ retailCityId: 'campus-junction', supplyCityId: 'breadbasket-basin' }
 		]
 	};
+}
+
+function logisticsRouteNavigationGame(): GameState {
+	const base = cityLocalInventoryLifecycleGame();
+	const created = createRecurringRoute(base, {
+		originCityId: 'industry-city',
+		destinationCityId: 'breadbasket-basin',
+		materialId: 'bottled-water',
+		capacity: 2,
+		frequencyDays: 2,
+		leadTimeDays: 2,
+		transportCostPerUnit: 2,
+		priority: 0
+	});
+	if (!created.ok) throw new Error(`Could not create route fixture: ${created.reason}`);
+	return created.game;
 }
 
 interface SavedMaterialMovement {
@@ -3283,4 +3300,57 @@ test('city-local inventory keeps multi-city supply, replenishment, reporting, an
 			}
 		)
 	).toBeVisible();
+});
+
+test('logistics route navigation', async ({ page }) => {
+	test.setTimeout(90_000);
+	await installSandboxAutoSave(page, logisticsRouteNavigationGame());
+	// The exact route fixture opens both industry endpoints. Reveal a separate
+	// retail city so the first click stays on the world map and shows its city
+	// inspector before the route selection replaces it.
+	await revealCityAndGrantFunds(page, 'garden-borough');
+
+	await page.getByRole('button', { name: /^menu$/i }).click();
+	await page
+		.getByRole('dialog', { name: /^menu$/i })
+		.getByRole('button', { name: /world map/i })
+		.click();
+	const worldMap = page.getByRole('region', { name: /world map/i });
+	await expect(worldMap).toBeVisible();
+
+	const cityGroup = worldMap.locator('.world-city-group');
+	await cityGroup.getByRole('button', { name: /garden borough/i }).click();
+	const cityInspector = worldMap.getByRole('dialog', { name: /city details/i });
+	await expect(cityInspector).toBeVisible();
+
+	const routeButton = worldMap.getByRole('button', {
+		name: /industry city to breadbasket basin/i
+	});
+	await routeButton.focus();
+	await routeButton.press('Enter');
+	const routeInspector = page.getByRole('dialog', { name: /logistics route inspector/i });
+	await expect(routeInspector).toBeVisible();
+	await expect(cityInspector).toHaveCount(0);
+
+	await page.keyboard.press('1');
+	await expect(routeInspector).toHaveCount(0);
+
+	await page.keyboard.press('3');
+	await expect(worldMap).toBeVisible();
+	const returningRouteButton = worldMap.getByRole('button', {
+		name: /industry city to breadbasket basin/i
+	});
+	await returningRouteButton.focus();
+	await returningRouteButton.press('Enter');
+	await expect(routeInspector).toBeVisible();
+	await routeInspector.getByRole('button', { name: /manage route/i }).click();
+
+	const logisticsPanel = page.getByRole('dialog', { name: /^logistics$/i });
+	await expect(logisticsPanel).toBeVisible();
+	await expect(page.locator('#logistics-route-route-1')).toBeFocused();
+
+	await logisticsPanel.getByRole('button', { name: /remove route/i }).click();
+	await expect(logisticsPanel.getByText(/recurring route removed/i)).toBeVisible();
+	await expect(page.getByRole('dialog', { name: /logistics route inspector/i })).toHaveCount(0);
+	await expect(page.locator('#logistics-route-route-1')).toHaveCount(0);
 });
