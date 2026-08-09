@@ -2,26 +2,28 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make HPA-294 inter-city logistics fully playable and inspectable through one management surface, simple selectable world-map route visuals, route/report navigation, and evidence-derived alerts without duplicating logistics rules or persisted state.
+**Goal:** Make HPA-294 inter-city logistics playable and inspectable through one management surface, simple selectable world-map route visuals, route/report navigation, and evidence-derived alerts without duplicating logistics rules or persisted state.
 
-**Architecture:** Keep `GameRouteController` as the only mutation/persistence coordinator and `+page.svelte` as the transient navigation/selection root. Extend the three HPA-568 route hosts with three logistics-specific components. Consume HPA-294 commands and read models directly; add only small pure evidence-classification helpers where multiple presentation surfaces need the same interpretation.
+**Architecture:** Keep `GameRouteController` as the only mutation/persistence coordinator and `+page.svelte` as the transient navigation/selection root. Extend the three HPA-568 route hosts with three logistics-specific components. Consume HPA-294 commands/read models directly; add only small pure evidence-classification helpers shared by presentation and alerts.
 
 **Tech Stack:** TypeScript 6, Svelte 5/SvelteKit, existing DOM world map plus SVG, Vitest browser/unit tests, Playwright E2E, existing i18n catalogs, existing sandbox autosave pipeline.
 
 ## Global constraints
 
 - HPA-294 / PR #35 and HPA-568 / PR #38 are the implementation baseline.
-- Do not change transfer dispatch math, route scheduling, inventory conservation, transport accounting, or persistence.
+- Do not change transfer dispatch math, route scheduling, destination reservations, inventory conservation, transport accounting, or persistence.
 - Do not add a save-schema bump, migration, cached logistics projection, rejected-order record, alert-history store, or persisted alert counter.
 - Do not add scenario logistics commands or scenario authoring. Logistics mutations remain sandbox-only in HPA-574.
-- Do not add a new route controller, store/context layer, event bus, generic command bus, form engine, modal registry, graph framework, Phaser world scene, route animation layer, vehicle simulation, or pathfinding.
+- Do not add a new route controller, state store/context layer, event bus, command bus, form engine, modal registry, graph framework, Phaser world scene, route animation layer, vehicle simulation, or pathfinding.
 - Manual quote failures and command rejections are inline panel feedback, not HUD alerts.
 - HUD logistics alerts derive only from persisted route-attempt evidence.
 - Route-capacity pressure requires two consecutive capacity-constrained attempts; the threshold is a constant, not state.
 - Paused routes do not emit normal-operation logistics alerts.
 - `destinationNeed === 0` is a destination-full state, never an origin/capacity shortage.
 - Route historical utilization continues to use attempt-recorded capacity from HPA-294.
-- World-route state must not rely on color alone; preserve direction, solid/dashed active state, labels, and keyboard discovery.
+- Endpoint selects may filter obviously invalid cities, but HPA-294 remains the final validator.
+- Do not hide valid materials merely because current origin stock is zero.
+- Recurring-route quote assistance is optional presentation defaulting only. A manual-quote stock/cash failure must not invalidate a recurring route.
 - Existing retail replenishment, finance, events, scenarios, map keep-alive, save, report, and shortcut flows must remain unchanged.
 
 ## File map
@@ -71,9 +73,21 @@
 - `src/routes/page.svelte.spec.ts`
 - `src/routes/retail-sim.e2e.ts`
 
+### Existing test utilities to reuse
+
+- `src/lib/game/interCityLogistics.testUtils.ts`
+  - `createTwoIndustryCityGame()`
+  - `withCityMaterials(...)`
+  - `withWarehouses(...)`
+- `src/routes/retail-sim.e2e.ts`
+  - `cityLocalInventoryLifecycleGame()`
+  - `installSandboxAutoSave(page, game)`
+  - `openManagementPanel(page, panelName)`
+  - existing map-menu helpers
+
 ---
 
-## Task 1: Add the route-level logistics command and shortcut contracts
+## Task 1: Add the route-level logistics command/rejection contract and `L` shortcut
 
 **Files**
 
@@ -82,25 +96,38 @@
 - Modify: `src/lib/game/keyboardShortcuts.spec.ts`
 - Modify: `src/routes/gameRouteController.ts`
 - Modify: `src/routes/gameRouteController.spec.ts`
+- Test imports only: `src/lib/game/interCityLogistics.testUtils.ts`
 
 **Interfaces**
 
-Add one typed route rejection without widening finance failure codes:
+In `commandResult.ts`:
 
 ```ts
 import type {
   ManualTransferFailure,
-  RecurringRouteFailure,
-  ManualTransferInput,
-  RecurringRouteInput,
-  RecurringRouteUpdateInput
-} from '$lib/game/interCityLogistics';
+  RecurringRouteFailure
+} from './interCityLogistics';
 
-export type LogisticsFailureCode = ManualTransferFailure | RecurringRouteFailure;
+export type LogisticsFailureCode =
+  | ManualTransferFailure
+  | RecurringRouteFailure;
 
 export type GameRouteCommitResult =
   | existing variants
   | { status: 'logistics-rejected'; reason: LogisticsFailureCode };
+```
+
+In `gameRouteController.ts`, widen the internal transition union explicitly:
+
+```ts
+type RouteTransitionResult<TReceipt = undefined> =
+  | { ok: true; game: GameState; receipt: TReceipt }
+  | { ok: false; code: FinanceFailureCode; context: Record<string, string | number> }
+  | {
+      ok: false;
+      decisionFailure: Extract<DecisionResolutionResult, { ok: false }>;
+    }
+  | { ok: false; logisticsFailure: LogisticsFailureCode };
 ```
 
 Add controller methods:
@@ -118,7 +145,7 @@ reprioritizeRecurringRoute(routeId: string, priority: number): Promise<GameRoute
 removeRecurringRoute(routeId: string): Promise<GameRouteCommitResult>;
 ```
 
-Add one capability flag because all seven writes share the same HPA-574 boundary:
+Add one availability flag:
 
 ```ts
 interface MutationAvailability {
@@ -127,26 +154,58 @@ interface MutationAvailability {
 }
 ```
 
-`manageLogistics` is true only for sandbox mode when route mutations are not pending. Do not add seven identical capability booleans.
+Its exact implementation is:
+
+```ts
+manageLogistics: input.playMode === 'sandbox'
+```
+
+Do not add a sandbox pending gate. `MutationAvailability.pending` remains scenario-only.
 
 ### Tests first
 
-- [ ] Add shortcut tests proving `L`/`l` toggles the `logistics` management panel, still respects typing/modifier/blocking-overlay rules, and remains a panel-toggle key while another soft panel is open.
-- [ ] Add controller tests for successful manual dispatch through the route controller: state publishes once and sandbox autosave receives the committed game.
-- [ ] Add a typed manual-transfer rejection test proving no state publish/autosave occurs and the exact HPA-294 reason is returned as `logistics-rejected`.
-- [ ] Add route lifecycle controller coverage for create, edit, pause, resume, reprioritize, and remove using a compact table where behavior is identical.
-- [ ] Add one missing-route rejection assertion.
-- [ ] Add one scenario-mode test proving logistics mutations return unavailable and do not widen `ScenarioCommand`.
+- [ ] Use `createTwoIndustryCityGame()` plus `withWarehouses(...)` / `withCityMaterials(...)` as needed to create a deterministic controller fixture with two valid industry endpoints.
+- [ ] Add shortcut tests proving `L`/`l` toggles `logistics`, respects typing/modifier/blocking-overlay rules, and remains a panel-toggle key while another soft panel is open.
+- [ ] Add `createMutationAvailability` assertions: sandbox → `manageLogistics === true`; scenario → `false` regardless of scenario allowed-command contents; scenario pending semantics remain unchanged.
+- [ ] Add successful manual-dispatch controller coverage: one state publish, one sandbox autosave of the committed game, and no second persistence path.
+- [ ] Add a manual-transfer typed rejection (`insufficient-origin-stock` or another HPA-294 reason) and assert `{ status: 'logistics-rejected', reason }`, no state publish, and no autosave.
+- [ ] Add compact route lifecycle controller coverage for create, edit, pause, resume, reprioritize, and remove.
+- [ ] Add `route-not-found` coverage for a current-route action.
+- [ ] Add scenario-mode coverage proving all seven methods return `unavailable` and no `ScenarioCommand` variant is added.
 
 ### Implementation
 
 - [ ] Add `'logistics'` to `ManagementPanelId` and `l: 'logistics'` to `MANAGEMENT_PANEL_SHORTCUTS`.
-- [ ] Add `manageLogistics` to `createMutationAvailability`; do not touch scenario allowed-command definitions.
-- [ ] Import HPA-294 transitions into `gameRouteController.ts` with `...Transition` aliases to avoid method-name collisions.
-- [ ] Extend the internal route-transition result with a dedicated logistics-failure branch. Normalize HPA-294 `{ ok: false; reason }` results into that branch.
-- [ ] In the sandbox rejection path return `{ status: 'logistics-rejected', reason }` before publish/autosave.
-- [ ] Implement the seven public methods by reusing `commitMutation`; omit `scenarioCommand` so scenario mode remains unavailable.
-- [ ] Do not add a second sandbox mutation/persistence helper.
+- [ ] Add `manageLogistics: input.playMode === 'sandbox'` to `createMutationAvailability`.
+- [ ] Import HPA-294 transitions with aliases such as `dispatchManualTransferTransition` to avoid class-method name collisions.
+- [ ] Extend `RouteTransitionResult` with `{ ok: false; logisticsFailure: LogisticsFailureCode }`.
+- [ ] Keep `normalizeRouteTransition` as the single normalization entry point; widen its accepted union so a pre-adapted logistics-failure arm passes through unchanged.
+- [ ] At **each public logistics method**, adapt the HPA-294 result before returning it from the `commitMutation` transition callback. Example:
+
+```ts
+transition: (game) => {
+  const result = dispatchManualTransferTransition(game!, input);
+  return result.ok
+    ? { ok: true, game: result.game, receipt: result.order }
+    : { ok: false, logisticsFailure: result.reason };
+}
+```
+
+- [ ] In the sandbox rejection branch of `commitMutation`, check logistics before the finance fallback:
+
+```ts
+if ('logisticsFailure' in transition) {
+  return {
+    status: 'logistics-rejected',
+    reason: transition.logisticsFailure
+  };
+}
+```
+
+- [ ] Leave finance `domain-rejected` and decision rejection unchanged.
+- [ ] Omit `scenarioCommand` from all logistics wrappers. Scenario mode returns `unavailable` before a logistics transition runs; do not add a scenario logistics failure arm or duplicate scenario rejection plumbing.
+- [ ] Do not mirror the retail-supply sandbox preflight that returns bare `rejected`.
+- [ ] Do not add another sandbox mutation/autosave helper.
 
 **Verify**
 
@@ -172,7 +231,7 @@ git commit -m "feat(logistics): expose route command boundary"
 
 ---
 
-## Task 2: Build the Logistics management panel with typed feedback
+## Task 2: Build the Logistics management panel with filtered endpoints and best-effort quote defaults
 
 **Files**
 
@@ -186,10 +245,11 @@ git commit -m "feat(logistics): expose route command boundary"
 - Modify: `src/lib/components/game/ShortcutCheatSheet.svelte`
 - Modify: `src/routes/ManagementPanelHost.svelte`
 - Modify: `src/routes/ManagementPanelHost.svelte.spec.ts`
+- Test imports only: `src/lib/game/interCityLogistics.testUtils.ts`
 
 **Panel contract**
 
-Keep callbacks explicit; do not introduce a generic command bus:
+Keep callbacks explicit:
 
 ```ts
 interface Props {
@@ -220,31 +280,56 @@ interface Props {
 }
 ```
 
+No generic form/command abstraction is introduced.
+
+### Endpoint option contract
+
+The component derives selectable endpoints by intersecting current state:
+
+```ts
+opened industry world city
+&& materialized game.industryCities entry
+&& game.cityInventories entry
+```
+
+HPA-294 remains the final validator.
+
+Do **not** filter materials by `inventory.materials[materialId] > 0`; zero stock is meaningful for recurring-route planning and manual-transfer failure feedback.
+
 ### Tests first
 
-- [ ] Render the panel with two opened industry inventories and prove origin/destination/material/quantity fields submit the exact `ManualTransferInput`.
-- [ ] Add a successful quote test showing HPA-294 lead time, per-unit cost, and total cost.
-- [ ] Parameterize manual quote failure rendering for the HPA-294 reason family; assert the localized message is non-empty.
-- [ ] Add a dispatch-time `logistics-rejected` test proving the same typed reason replaces the inline status and no fake transfer row appears.
-- [ ] Add empty-state coverage for no in-transit inventory, no transfer history, and no routes.
-- [ ] Add route creation coverage for all HPA-294 fields.
-- [ ] Add one focused route test covering edit, reprioritize, pause/resume, and remove callbacks with current route values.
-- [ ] Add focused transfer coverage proving the requested transfer is marked/current in history.
-- [ ] Add disabled-state coverage proving scenario/no-game mode leaves inspection available but prevents mutation callbacks.
+- [ ] Render with `createTwoIndustryCityGame()` and prove only opened/materialized industry endpoints appear.
+- [ ] Inject/reuse a revealed-but-unopened city and prove it is absent.
+- [ ] Prove retail city IDs are absent from origin/destination selects.
+- [ ] Prove a valid material with zero origin stock remains in the material selector.
+- [ ] Submit manual origin/destination/material/quantity and assert the exact `ManualTransferInput` callback payload.
+- [ ] Add successful manual quote coverage showing HPA-294 lead time, per-unit cost, and total cost.
+- [ ] Parameterize manual quote failures and assert localized non-empty copy.
+- [ ] Add dispatch-time `logistics-rejected` coverage; the same typed reason replaces inline status and no fake transfer row appears.
+- [ ] Add empty-state coverage for no in-transit inventory/history/routes.
+- [ ] Add recurring-route creation coverage for all HPA-294 fields.
+- [ ] Add **Use quote** coverage: with a successful `quoteInterCityTransfer(game, { originCityId, destinationCityId, materialId, quantity: 1 })`, clicking the action fills exactly `quote.leadTimeDays` and `quote.transportCostPerUnit`.
+- [ ] Add a zero-stock or insufficient-cash quote-assist case: quote assistance is unavailable/diagnostic, but manually entered lead time/cost can still submit `onCreateRecurringRoute`.
+- [ ] Add focused-route coverage for edit, reprioritize, pause/resume, and remove callbacks.
+- [ ] Add focused-transfer coverage proving the requested transfer is marked/current in history.
+- [ ] Add disabled-state coverage: inspection remains usable when `canMutate === false`, but mutation callbacks cannot fire.
 
 ### Implementation
 
-- [ ] Add `localizeLogisticsFailure(reason, i18n)` in `gameCopy.ts` with an exhaustive switch over the combined typed failure union.
-- [ ] Add all corresponding copy in English, Japanese, and Traditional Chinese in the same commit.
-- [ ] Build one `LogisticsPanel` with four responsive sections: Manual transfer, Recurring routes, In transit, Recent transfers/totals.
-- [ ] Use `quoteInterCityTransfer` directly for quote evidence; never reconstruct lead time/cost in Svelte.
-- [ ] Use `selectInTransitInventory`, `selectRecentTransfers`, `selectRouteOperations`, and `selectLogisticsTotals` for displayed operational facts.
-- [ ] Build industry-city options from existing current game/world/inventory identities; leave final validity to HPA-294.
-- [ ] Use native number/select controls with visible labels. Browser `min`/`step` values are convenience only.
-- [ ] Keep route edit UI in the same panel; do not create a nested modal/router or generic CRUD form.
-- [ ] Preserve priority as a separate reprioritize action; route edit submits `RecurringRouteUpdateInput` without priority.
-- [ ] Add `logistics` to `ShortcutCheatSheet` with key `L`.
-- [ ] Add one `panelId === 'logistics'` branch in `ManagementPanelHost` and pass explicit callbacks/focus IDs/capability.
+- [ ] Add `localizeLogisticsFailure(reason, i18n)` with an exhaustive switch over the combined HPA-294 failure union.
+- [ ] Add all matching copy in English, Japanese, and Traditional Chinese in the same commit.
+- [ ] Build four sections: Manual transfer, Recurring routes, In transit, Recent transfers/totals.
+- [ ] Use `quoteInterCityTransfer` directly for manual quote evidence; never reconstruct distance/cost in Svelte.
+- [ ] Use HPA-294 selectors directly for transit/history/route/totals display.
+- [ ] Build endpoint options from opened materialized industry cities with inventories. Keep HPA-294 validation on submit.
+- [ ] Keep the full material catalog visible; do not hide zero-stock materials.
+- [ ] For recurring-route **Use quote**, call the existing quote helper with `quantity: 1` only after origin/destination/material are selected.
+- [ ] On successful quote, copy only `leadTimeDays` and `transportCostPerUnit` into the form.
+- [ ] On `insufficient-origin-stock` or `insufficient-cash`, do not mark recurring-route input invalid; leave explicit fields editable and explain only that the optional quote default is unavailable for current state.
+- [ ] Do not import/use `INTER_CITY_DISTANCE_PER_BAND` or duplicate its arithmetic in the component.
+- [ ] Keep priority separate from route edit (`RecurringRouteUpdateInput`).
+- [ ] Add `logistics` / `L` to `ShortcutCheatSheet`.
+- [ ] Add one `panelId === 'logistics'` branch in `ManagementPanelHost` and pass explicit props/callbacks.
 
 **Verify**
 
@@ -276,7 +361,7 @@ git commit -m "feat(logistics): add operations management panel"
 
 ---
 
-## Task 3: Add shared route-evidence classification, world route visuals, and the inspector
+## Task 3: Add shared attempt classification, world-route visuals, and explicitly gated route inspector
 
 **Files**
 
@@ -293,7 +378,7 @@ git commit -m "feat(logistics): add operations management panel"
 - Modify: `src/routes/MapInspectorHost.svelte`
 - Modify: `src/routes/MapInspectorHost.svelte.spec.ts`
 
-**Pure evidence helpers**
+**Pure helpers**
 
 ```ts
 export type RouteOperationalCondition =
@@ -314,7 +399,7 @@ export function selectRecentRouteDispatchAttempts(
 ): DailyRouteDispatchAttempt[];
 ```
 
-Classification order is normative:
+Normative classification order:
 
 1. `null` → awaiting dispatch;
 2. `destinationNeed === 0` → destination full;
@@ -322,40 +407,72 @@ Classification order is normative:
 4. `unmetDestinationNeed > 0 && dispatchedQuantity === capacity` → route capacity constrained;
 5. normal.
 
+**MapInspectorHost logistics props**
+
+```ts
+showLogisticsRouteInspector: boolean;
+selectedLogisticsRoute: RouteOperationalSummary | null;
+onManageLogisticsRoute: (routeId: string) => void;
+onCloseLogisticsRouteInspector: () => void;
+```
+
+The page later computes:
+
+```ts
+showLogisticsRouteInspector =
+  activeMapView === 'world' && selectedLogisticsRoute !== null;
+```
+
 ### Tests first: read models
 
-- [ ] Add one test for every condition.
-- [ ] Add the overlap boundary where `availableOriginStock === capacity < destinationNeed`; assert capacity-constrained, not origin-constrained.
+- [ ] Add one fixture for each condition.
+- [ ] Add the overlap `availableOriginStock === capacity < destinationNeed`; assert capacity-constrained.
 - [ ] Add `destinationNeed === 0` with unused capacity and no stock; assert destination-full wins.
-- [ ] Add recent-attempt ordering across multiple reports and routes; prove the helper returns newest matching evidence only.
+- [ ] Add the named zero-dispatch origin-empty case:
+
+```ts
+availableOriginStock: 0,
+destinationNeed: 10,
+capacity: 5,
+dispatchedQuantity: 0,
+unmetDestinationNeed: 10
+```
+
+Assert `origin-stock-constrained`.
+
+- [ ] Add recent-attempt ordering across multiple reports/routes; return newest matching evidence only.
 
 ### Tests first: world routes
 
-- [ ] Render one active and one paused route; assert two SVG connections exist and paused state has a non-color dashed semantic/class.
-- [ ] Assert direction is present through the arrow marker/visual contract.
-- [ ] Assert each route also has a native keyboard-focusable selector with origin, destination, material, state, and condition in accessible text.
-- [ ] Select a route and assert `onSelectRoute(routeId)` fires and selected semantics move to that route.
-- [ ] Add a no-route empty rendering test with no orphan layer/list chrome.
+- [ ] Render one active and one paused route; assert two SVG connections and a dashed paused semantic/class.
+- [ ] Assert direction through arrow marker/visual contract.
+- [ ] Assert a native keyboard-focusable route selector includes origin, destination, material, state, and condition text.
+- [ ] Select a route and assert `onSelectRoute(routeId)` plus selected semantics.
+- [ ] No routes → no orphan route layer/list chrome.
 
-### Tests first: inspector
+### Tests first: inspector/host
 
-- [ ] Render latest-attempt evidence and assert historical utilization comes from `RouteOperationalSummary.utilization` rather than current capacity math.
-- [ ] Assert destination-full, origin-stock, capacity, normal, and awaiting states use localized condition copy.
-- [ ] Assert active/paused state is textual.
-- [ ] Assert Manage route calls the supplied callback with the route ID.
+- [ ] Inspector renders latest attempt facts and uses `RouteOperationalSummary.utilization` directly.
+- [ ] Condition/state copy is textual/localized.
+- [ ] Manage route calls the supplied route ID.
+- [ ] `MapInspectorHost` with `showLogisticsRouteInspector === false` and a non-null summary renders no logistics overlay.
+- [ ] `showLogisticsRouteInspector === true` plus a current summary renders exactly one route inspector.
+- [ ] A null selected summary never renders empty inspector chrome.
+- [ ] Existing retail/industry/rail branches retain current behavior.
 
 ### Implementation
 
-- [ ] Add the two small helpers to `logisticsReadModels.ts`; no state/cache changes.
-- [ ] Build `WorldLogisticsRoutes` as a domain-specific component: plain SVG straight lines over percentage coordinates plus a native route selector list.
-- [ ] Resolve coordinates only from `WorldCityStatus.city.worldX/worldY`; do not use HPA-294 distance bands or add route geometry to game state.
-- [ ] Use solid versus dashed visuals plus text; color may reinforce but never be the sole active/paused distinction.
-- [ ] Compose `WorldLogisticsRoutes` inside the existing `WorldMap` viewport/list surface.
-- [ ] Extend `WorldMap` props with route summaries, selected route ID, and `onSelectRoute`.
-- [ ] Extend `MapSurfaceHost` only to forward those world-route props.
-- [ ] Build `LogisticsRouteInspector` from one `RouteOperationalSummary` plus i18n and `onManageRoute`.
-- [ ] Extend `MapInspectorHost` with a world-route inspector branch. Keep it inside `.map-layout` so HPA-568 overlay positioning remains authoritative.
-- [ ] Do not move the existing world-city inspector out of `WorldMap` in this ticket.
+- [ ] Add the two pure helpers to `logisticsReadModels.ts`; no state/cache.
+- [ ] Build `WorldLogisticsRoutes` as plain SVG straight lines plus native route selector list.
+- [ ] Resolve coordinates only from existing world city definitions/statuses; no HPA-294 distance arithmetic in UI.
+- [ ] Use solid/dashed and text semantics; color may reinforce only.
+- [ ] Compose routes inside existing `WorldMap` viewport/list surface.
+- [ ] Extend `WorldMap` and `MapSurfaceHost` with summaries/selection callback only.
+- [ ] Build `LogisticsRouteInspector` from one `RouteOperationalSummary`.
+- [ ] Extend `MapInspectorHost` with the explicit four logistics props above.
+- [ ] Guard render on `showLogisticsRouteInspector && selectedLogisticsRoute`.
+- [ ] Reuse `.inspector-overlay` for the logistics inspector so HPA-568 clearance remains the route-inspector chrome.
+- [ ] Keep the existing `.world-inspector` city inspector in `WorldMap`; do not port it in HPA-574.
 
 **Verify**
 
@@ -392,7 +509,7 @@ git commit -m "feat(logistics): show selectable world routes"
 
 ---
 
-## Task 4: Derive actionable logistics alerts and route them to the world inspector
+## Task 4: Derive actionable logistics alerts and move alert-navigation unit ownership
 
 **Files**
 
@@ -405,6 +522,7 @@ git commit -m "feat(logistics): show selectable world routes"
 - Modify: `src/lib/i18n/messages/zh-Hant.ts`
 - Modify: `src/routes/alertNavigation.ts`
 - Create: `src/routes/alertNavigation.spec.ts`
+- Modify: `src/routes/page.svelte.spec.ts`
 
 **Alert contracts**
 
@@ -422,7 +540,7 @@ export interface GameAlert {
 }
 ```
 
-Replace the panel-only navigation return with one narrow union:
+Replace the panel-only return with:
 
 ```ts
 export type AlertNavigation =
@@ -434,31 +552,31 @@ export type AlertNavigation =
   | { kind: 'world-route'; routeId: string };
 ```
 
-Store/factory alerts continue through the existing tile navigation path when `resolveAlertNavigation` returns null.
-
 ### Tests first
 
-- [ ] Latest active-route attempt is origin-stock-constrained → one origin-stock alert with route ID.
-- [ ] Latest attempt is destination-full → no origin/capacity alert.
+- [ ] Latest active-route attempt origin-stock-constrained → one origin-stock alert with route ID.
+- [ ] Destination-full latest attempt → no logistics constraint alert.
 - [ ] One capacity-constrained attempt → no repeated-capacity alert.
-- [ ] Two most recent attempts both capacity-constrained → one capacity alert.
-- [ ] A normal attempt after a constrained attempt breaks the two-attempt condition.
-- [ ] Paused route suppresses both logistics alert kinds without changing history.
-- [ ] Deleted route history does not emit an alert because there is no current operational object to act on.
-- [ ] Localized logistics alert messages are non-empty and include the relevant route/city/material context.
-- [ ] `resolveAlertNavigation` preserves finance/decision behavior and returns `world-route` for both logistics alert kinds.
+- [ ] Two newest attempts capacity-constrained → one capacity alert.
+- [ ] A normal newest attempt breaks the two-attempt streak.
+- [ ] Paused route suppresses both types without modifying history.
+- [ ] Removed route history emits no alert because no current route is actionable.
+- [ ] Localized logistics alert messages are non-empty and include route/city/material context.
+- [ ] `resolveAlertNavigation` preserves finance/decision behavior and returns `world-route` for both logistics kinds.
+- [ ] Move the current direct `resolveAlertPanelNavigation` tests out of `page.svelte.spec.ts` into `alertNavigation.spec.ts`; remove the old import/duplicate assertions from `page.svelte.spec.ts`.
 
 ### Implementation
 
-- [ ] Add `collectLogisticsAlerts(game)` inside `alerts.ts`; keep it derived and small rather than creating persisted alert state.
-- [ ] Iterate current routes, use `selectRecentRouteDispatchAttempts` plus `classifyRouteDispatchAttempt`, and skip paused routes.
-- [ ] Emit origin-stock immediately from the latest classified attempt.
-- [ ] Emit capacity pressure only when the newest two attempts are both capacity-constrained.
-- [ ] Add logistics alerts to `collectGameAlerts` after current domain alert groups; preserve deterministic current-route ordering.
-- [ ] Extend `localizeGameAlert` exhaustively so logistics alerts cannot fall through to `''`.
+- [ ] Add small derived `collectLogisticsAlerts(game)` in `alerts.ts`.
+- [ ] Iterate current routes; skip paused; use `selectRecentRouteDispatchAttempts` and `classifyRouteDispatchAttempt`.
+- [ ] Emit origin-stock immediately from latest classification.
+- [ ] Emit capacity pressure only when newest two classifications are capacity-constrained.
+- [ ] Preserve deterministic current-route ordering.
+- [ ] Extend `localizeGameAlert` exhaustively; no empty fallthrough for logistics.
 - [ ] Add all three locales in the same commit.
-- [ ] Rename `resolveAlertPanelNavigation` to `resolveAlertNavigation` and return the narrow union above.
-- [ ] Do not turn inline command rejection into a `GameAlert`.
+- [ ] Rename `resolveAlertPanelNavigation` → `resolveAlertNavigation` and return the narrow union.
+- [ ] Update all direct imports/tests, including `page.svelte.spec.ts`, in this same task.
+- [ ] Do not turn command rejection into `GameAlert`.
 
 **Verify**
 
@@ -467,6 +585,7 @@ bun run test:unit -- --run \
   src/lib/game/alerts.spec.ts \
   src/lib/i18n/gameCopy.spec.ts \
   src/routes/alertNavigation.spec.ts \
+  src/routes/page.svelte.spec.ts \
   --maxWorkers=1
 bun run check
 ```
@@ -483,13 +602,14 @@ git add \
   src/lib/i18n/messages/ja.ts \
   src/lib/i18n/messages/zh-Hant.ts \
   src/routes/alertNavigation.ts \
-  src/routes/alertNavigation.spec.ts
+  src/routes/alertNavigation.spec.ts \
+  src/routes/page.svelte.spec.ts
 git commit -m "feat(logistics): derive actionable route alerts"
 ```
 
 ---
 
-## Task 5: Render daily logistics evidence in Reports and add focused navigation
+## Task 5: Render latest-day logistics evidence in Reports with focused navigation
 
 **Files**
 
@@ -503,8 +623,6 @@ git commit -m "feat(logistics): derive actionable route alerts"
 
 **Callbacks**
 
-Use two explicit callbacks rather than a generic report navigation protocol:
-
 ```ts
 onOpenLogisticsRoute?: (routeId: string) => void;
 onOpenLogisticsTransfer?: (transferOrderId: string) => void;
@@ -512,21 +630,22 @@ onOpenLogisticsTransfer?: (transferOrderId: string) => void;
 
 ### Tests first
 
-- [ ] Latest report with no logistics activity shows a compact empty logistics state or zero totals without inventing rows.
-- [ ] Arrival rows show transfer ID, endpoints, material, and quantity from `DailyTransferArrival`.
-- [ ] Attempt rows show route ID, destination need, attempt capacity, dispatched quantity, unused capacity, unmet destination need, and transport cost.
-- [ ] A `destinationNeed === 0` attempt renders destination-full copy rather than shortage copy.
-- [ ] Clicking an attempt invokes `onOpenLogisticsRoute(routeId)`.
-- [ ] Clicking an arrival invokes `onOpenLogisticsTransfer(transferOrderId)`.
-- [ ] Existing finance/inventory/event report sections retain their current assertions.
+- [ ] No logistics activity → compact zero/empty state with no invented rows.
+- [ ] Arrival row renders transfer ID, endpoints, material, quantity from `DailyTransferArrival`.
+- [ ] Attempt row renders route ID, destination need, attempt capacity, dispatched quantity, unused capacity, unmet destination need, and transport cost.
+- [ ] `destinationNeed === 0` renders destination-full copy rather than shortage copy.
+- [ ] Any utilization text uses attempt-recorded capacity, not current route capacity.
+- [ ] Attempt click invokes `onOpenLogisticsRoute(routeId)`.
+- [ ] Arrival click invokes `onOpenLogisticsTransfer(transferOrderId)`.
+- [ ] Existing finance/inventory/event report assertions remain green.
 
 ### Implementation
 
-- [ ] Add one Logistics section to the latest-day Reports panel; consume only `summary.latest.logistics` evidence.
-- [ ] Use attempt-recorded `capacity` for any utilization text in report rows; do not look up the current route capacity.
-- [ ] Pass the two callbacks through `ManagementPanelHost` only for the Reports branch.
+- [ ] Add one latest-day Logistics section consuming only `summary.latest.logistics` evidence.
+- [ ] Reuse classification copy where useful; do not derive new simulation facts.
+- [ ] Pass the two explicit callbacks through `ManagementPanelHost` only for Reports.
 - [ ] Add report copy in all three locales.
-- [ ] Do not create a generic report-link object or URL scheme.
+- [ ] Do not create a generic report-link object/URL scheme.
 
 **Verify**
 
@@ -554,15 +673,16 @@ git commit -m "feat(logistics): expose daily logistics reports"
 
 ---
 
-## Task 6: Compose route selection, focus/navigation, management actions, and real UI flows
+## Task 6: Compose route state/navigation and run an early focused navigation smoke
 
 **Files**
 
 - Modify: `src/routes/+page.svelte`
-- Modify: `src/routes/page.svelte.spec.ts`
+- Modify: `src/routes/page.svelte.spec.ts` only for existing pure/controller ownership affected by new imports/availability
 - Modify: `src/routes/retail-sim.e2e.ts`
-- Modify if the new ninth launcher demonstrably changes inspector clearance: `src/routes/MapInspectorHost.svelte`
-- Modify only with a regression test if needed: `src/routes/MapInspectorHost.svelte.spec.ts`
+- Re-run: `src/routes/MapSurfaceHost.svelte.spec.ts`
+- Re-run: `src/routes/MapInspectorHost.svelte.spec.ts`
+- Re-run: `src/routes/ManagementPanelHost.svelte.spec.ts`
 
 **Transient route state**
 
@@ -577,59 +697,77 @@ let selectedLogisticsRoute = $derived(
     ? routeOperations.find((summary) => summary.route.id === selectedLogisticsRouteId) ?? null
     : null
 );
+let showLogisticsRouteInspector = $derived(
+  activeMapView === 'world' && selectedLogisticsRoute !== null
+);
 ```
 
-### Route behavior tests first
+### Why this task uses a small E2E smoke
 
-- [ ] Add `logistics` with shortcut `L` to `managementPanelMenuConfig`; assert menu/control-desk composition receives it.
-- [ ] Selecting a world route clears world-city selection and opens the route inspector.
+`page.svelte.spec.ts` currently does not mount `+page.svelte`; it owns controller/availability and route-local pure helper behavior. Do not extract a generic navigation reducer/store solely to manufacture unit coverage for transient page state.
+
+Instead, keep this integration checkpoint small and prove the page-owned exclusivity/navigation with one focused Playwright smoke before the full logistics lifecycle tests in Task 7.
+
+### Test-local E2E fixture
+
+Reuse current `retail-sim.e2e.ts` helpers. Add only this test-local helper if a pre-existing route is needed:
+
+```ts
+function logisticsOperationsGame(): GameState {
+  const base = cityLocalInventoryLifecycleGame();
+  const created = createRecurringRoute(base, {
+    originCityId: 'breadbasket-basin',
+    destinationCityId: 'industry-city',
+    materialId: 'bottled-water',
+    capacity: 5,
+    frequencyDays: 2,
+    leadTimeDays: 2,
+    transportCostPerUnit: 2,
+    priority: 0
+  });
+  if (!created.ok) {
+    throw new Error(`Could not create logistics E2E route: ${created.reason}`);
+  }
+  return created.game;
+}
+```
+
+Load it using:
+
+```ts
+await installSandboxAutoSave(page, logisticsOperationsGame());
+```
+
+Do not add production fixture code.
+
+### Composition checks
+
+- [ ] Add `logistics` / `L` to `managementPanelMenuConfig` and prove existing shortcut/menu tests remain green.
+- [ ] Wire `routeOperations`, selected route ID, and route-selection callback through `MapSurfaceHost`.
+- [ ] Wire `showLogisticsRouteInspector`, selected summary, close/manage callbacks through `MapInspectorHost`.
+- [ ] Wire Logistics panel data/callbacks/focus IDs through `ManagementPanelHost`.
+- [ ] Wire all seven controller callbacks directly; no route command wrapper object.
+- [ ] Add `selectLogisticsRoute(routeId)` that switches to world view as needed and clears world-city/retail/industry selections.
 - [ ] Selecting a world city clears route selection.
-- [ ] Retail/industry selection, transient reset, save load, scenario transition, and Escape clear route selection wherever they already clear sibling selections.
-- [ ] Manage route from the inspector opens the Logistics management panel with `focusedLogisticsRouteId`.
-- [ ] Report transfer navigation opens Logistics and focuses the transfer ID.
-- [ ] Report route navigation closes/switches the management surface, opens world view, and selects the route.
-- [ ] Logistics alert navigation opens world view and selects the route through the new alert-navigation union.
-- [ ] Removing the currently selected route leaves no stale inspector; the derived selection becomes null and the focus ID is cleared after successful removal.
-- [ ] Logistics mutations are disabled with the existing route disabled reason outside sandbox/no-game state.
+- [ ] Add `openLogisticsManagement({ routeId?, transferOrderId? })` as a concrete helper; do not generalize management navigation.
+- [ ] Report route navigation closes/switches management surface, selects world view, and focuses route.
+- [ ] Report transfer navigation opens Logistics focused on transfer.
+- [ ] `handleSelectAlert` switches on the new `AlertNavigation` union before preserving existing store/factory navigation.
+- [ ] Reset/load/scenario-transition/Escape paths clear logistics route/focus state alongside sibling transient selections where the current behavior requires a clean map state.
+- [ ] Successful removal of a focused/selected route clears matching focus state; derived selected summary becomes null even if an ID were briefly stale.
 
-### Implementation
+### Focused navigation Playwright smoke
 
-- [ ] Import `selectRouteOperations` and wire the three transient IDs/derived selected summary.
-- [ ] Add a small `selectLogisticsRoute(routeId)` route handler that clears world-city/tile selections and switches to world view when needed.
-- [ ] Add `openLogisticsManagement({ routeId?, transferOrderId? })` as a concrete route helper; do not generalize management navigation.
-- [ ] Wire all seven panel callbacks directly to `GameRouteController` methods.
-- [ ] Pass `routeOperations`, selected route ID, and route-selection callback through `MapSurfaceHost`.
-- [ ] Pass selected route summary and Manage callback through `MapInspectorHost`.
-- [ ] Pass Logistics panel data/callbacks/focus IDs through `ManagementPanelHost`.
-- [ ] Update `handleSelectAlert` to switch on the `AlertNavigation` union before preserving existing store/factory tile navigation.
-- [ ] Update transient reset and Escape logic alongside existing selected world/retail/industry IDs.
-- [ ] Keep the existing world-city inspector inside `WorldMap`; mutual exclusion is route-owned.
+Using `logisticsOperationsGame()`:
 
-### Playwright: manual transfer lifecycle
+- [ ] switch to world map and select the pre-seeded route through the accessible route control;
+- [ ] assert exactly one logistics route inspector is visible;
+- [ ] assert no world-city inspector remains open after route selection;
+- [ ] use **Manage route** and assert Logistics opens focused on that route;
+- [ ] close Logistics, select a world city, and assert the route inspector is gone;
+- [ ] reopen/select route, remove it through Logistics, return to world view, and assert no stale route inspector remains.
 
-- [ ] Create/load deterministic sandbox state with two opened industry cities, source stock, destination capacity, and enough cash through existing test setup.
-- [ ] Open Logistics with `L` or the management launcher.
-- [ ] Fill origin, destination, material, quantity and assert the rendered quote.
-- [ ] Dispatch and assert the transfer appears in transit with the expected arrival day/cost.
-- [ ] Advance days to arrival and assert the transfer is delivered and current destination inventory/report evidence updates.
-- [ ] Verify no rejected transfer is created by one invalid/insufficient input path.
-
-### Playwright: recurring route and world inspector
-
-- [ ] Create one recurring route through the real panel.
-- [ ] Advance through one scheduled attempt and delivery.
-- [ ] Switch to world map and discover/select the route through the accessible route control.
-- [ ] Assert the route inspector shows schedule, in-transit/delivery totals, and latest attempt facts.
-- [ ] Use Manage route and assert the Logistics panel opens focused on that route.
-- [ ] Exercise pause/resume or reprioritize through the real focused route UI.
-- [ ] Verify active/paused route UI is distinguishable without relying on color.
-
-### Layout regression
-
-- [ ] At the existing desktop/laptop E2E viewport that previously required HPA-568 inspector clearance, assert the ninth management launcher does not cover the world/retail/industry inspector action area.
-- [ ] Change `MapInspectorHost` bottom spacing only if this test demonstrates an overlap. Do not preemptively redesign the control desk.
-
-**Verify**
+### Verification
 
 ```bash
 bun run test:unit -- --run \
@@ -638,9 +776,11 @@ bun run test:unit -- --run \
   src/routes/MapInspectorHost.svelte.spec.ts \
   src/routes/ManagementPanelHost.svelte.spec.ts \
   --maxWorkers=1
-bun run test:e2e -- --workers=1 src/routes/retail-sim.e2e.ts
 bun run check
+bun run test:e2e -- --workers=1 src/routes/retail-sim.e2e.ts --grep "logistics route navigation"
 ```
+
+Use the exact final test title/grep text chosen in the test file; keep this smoke separate from the longer lifecycle tests below.
 
 **Commit**
 
@@ -648,21 +788,98 @@ bun run check
 git add \
   src/routes/+page.svelte \
   src/routes/page.svelte.spec.ts \
-  src/routes/retail-sim.e2e.ts \
-  src/routes/MapInspectorHost.svelte \
-  src/routes/MapInspectorHost.svelte.spec.ts
-git commit -m "feat(logistics): integrate operations UI navigation"
+  src/routes/retail-sim.e2e.ts
+git commit -m "feat(logistics): wire route navigation"
 ```
-
-If `MapInspectorHost` files did not need a layout fix, omit them from the commit instead of touching them gratuitously.
 
 ---
 
-## Task 7: Full verification and scope audit
+## Task 7: Add real manual/recurring lifecycle E2E and ninth-launcher clearance
 
 **Files**
 
-- No intended production behavior changes beyond fixes required by the verification findings.
+- Modify: `src/routes/retail-sim.e2e.ts`
+- Modify only if a failing clearance test proves it necessary: `src/routes/MapInspectorHost.svelte`
+- Modify only with the matching regression assertion if needed: `src/routes/MapInspectorHost.svelte.spec.ts`
+
+### Deterministic fixture path
+
+For both flows start from:
+
+```ts
+const game = cityLocalInventoryLifecycleGame();
+await installSandboxAutoSave(page, game);
+```
+
+That existing helper already creates two opened/materialized industry cities (`industry-city`, `breadbasket-basin`), warehouses, city inventories, deterministic bottled-water stock, and ample cash.
+
+Use a fresh fixture per test. Do not make the two lifecycle tests depend on each other's localStorage state.
+
+### Manual transfer lifecycle
+
+- [ ] Load `cityLocalInventoryLifecycleGame()` with `installSandboxAutoSave`.
+- [ ] Open Logistics with `L` or `openManagementPanel(page, /logistics/i)`.
+- [ ] Choose `breadbasket-basin` → `industry-city`, `bottled-water`, and a quantity that is <= the fixture's origin stock (for example `5`).
+- [ ] Assert the rendered HPA-294 quote (lead time, per-unit cost, total cost).
+- [ ] Dispatch and assert an in-transit transfer row with expected origin/destination/material/quantity.
+- [ ] Advance days until arrival using the real UI.
+- [ ] Assert delivered history and latest-day report evidence; verify destination inventory increased by the transferred quantity.
+- [ ] Exercise one invalid/insufficient manual input and prove no extra transfer row is created.
+
+### Recurring route lifecycle
+
+- [ ] Freshly load `cityLocalInventoryLifecycleGame()`.
+- [ ] Open Logistics and create one route `breadbasket-basin` → `industry-city` for `bottled-water`.
+- [ ] Use **Use quote** if available; otherwise enter the explicit known route fields and prove form validity is independent of quote-assist stock/cash.
+- [ ] Advance through one scheduled attempt and eventual delivery.
+- [ ] Switch to world map and discover/select the route through its native accessible route control.
+- [ ] Assert inspector schedule, in-transit/delivered totals, latest attempt facts, and condition.
+- [ ] Use Manage route and assert focus lands on the route in Logistics.
+- [ ] Exercise pause/resume or reprioritize through the focused real UI.
+- [ ] Verify active/paused state is distinguishable by text/solid-vs-dashed semantics, not color only.
+
+### Ninth-launcher layout regression
+
+At the existing HPA-568 laptop/desktop width coverage:
+
+- [ ] with a logistics route inspector open, assert its action area sits above the fixed control desk and is clickable;
+- [ ] retain existing retail/industry inspector clearance assertions;
+- [ ] assert selecting a route has closed any world-city inspector, rather than assuming the two world inspector types share chrome;
+- [ ] change `MapInspectorHost` bottom spacing only if the E2E demonstrates overlap after adding the ninth management launcher;
+- [ ] do not move/rewrite `WorldMap` city inspector or redesign ControlDesk preemptively.
+
+**Verify**
+
+```bash
+bun run test:e2e -- --workers=1 src/routes/retail-sim.e2e.ts
+bun run check
+```
+
+**Commit**
+
+```bash
+git add src/routes/retail-sim.e2e.ts
+```
+
+If and only if clearance required a real fix, also add:
+
+```bash
+git add src/routes/MapInspectorHost.svelte src/routes/MapInspectorHost.svelte.spec.ts
+```
+
+Then:
+
+```bash
+git commit -m "test(logistics): cover operations UI lifecycle"
+```
+
+---
+
+## Task 8: Full verification and scope audit
+
+**Files**
+
+- No intended production behavior changes beyond fixes required by verification findings.
 
 ### Focused regression gate
 
@@ -701,7 +918,7 @@ bun run lint
 bun run test:e2e -- --workers=1 src/routes/retail-sim.e2e.ts
 ```
 
-- [ ] Run the repository regression gate:
+- [ ] Run repository regression:
 
 ```bash
 bun run test
@@ -709,24 +926,42 @@ bun run test
 
 ### Scope audits
 
-- [ ] Prove no save schema or migration was added:
+- [ ] No save/scenario feature changes:
 
 ```bash
 git diff main...HEAD -- src/lib/persistence src/lib/scenarios
 ```
 
-Expected: no HPA-574 persistence/scenario feature change. Existing fixture-only changes should not be needed.
+Expected: no HPA-574 persistence/scenario feature diff.
 
-- [ ] Prove UI did not duplicate the HPA-294 scheduling/quantity formula:
+- [ ] No copied HPA-294 logistics arithmetic in UI:
 
 ```bash
-rg "Math\.min\(|destinationNeed|transportCostPerUnit.*quantity|INTER_CITY_DISTANCE_PER_BAND" \
+rg "INTER_CITY_DISTANCE_PER_BAND|Math\.min\(|destinationNeed|transportCostPerUnit.*quantity" \
   src/lib/components src/routes
 ```
 
-Review every hit. Presentation of evidence/inputs is allowed; copied dispatch/distance arithmetic is not.
+Review every hit. Evidence display/input binding is allowed; copied dispatch/distance arithmetic is not.
 
-- [ ] Prove no forbidden generic infrastructure appeared:
+- [ ] Quote assistance still delegates to HPA-294:
+
+```bash
+rg "quoteInterCityTransfer|INTER_CITY_DISTANCE_PER_BAND" \
+  src/lib/components/game/LogisticsPanel.svelte src/routes
+```
+
+Expected: quote helper use is present; distance-band constant/arithmetic is absent from UI.
+
+- [ ] No material-by-stock filtering introduced:
+
+```bash
+rg "materials\[.*\].*>\s*0|stock.*material.*filter|material.*stock.*filter" \
+  src/lib/components/game/LogisticsPanel.svelte
+```
+
+Review any hit; zero-stock materials must remain selectable.
+
+- [ ] No forbidden generic infrastructure:
 
 ```bash
 rg "Logistics(Store|Controller|Router|Registry|EventBus)|GraphEngine|RouteAnimation|Vehicle" src
@@ -734,19 +969,44 @@ rg "Logistics(Store|Controller|Router|Registry|EventBus)|GraphEngine|RouteAnimat
 
 Expected: no new generic runtime abstraction matching these concepts.
 
-- [ ] Check diff hygiene:
+- [ ] No orphan old alert helper references:
+
+```bash
+rg "resolveAlertPanelNavigation" src
+```
+
+Expected: zero matches after rename.
+
+- [ ] Inspector gating audit:
+
+```bash
+rg "showLogisticsRouteInspector|selectedLogisticsRoute" src/routes src/lib/components/game
+```
+
+Confirm the host branch is explicitly gated and the existing `WorldMap` city inspector was not moved.
+
+- [ ] Diff hygiene:
 
 ```bash
 git diff --check main...HEAD
 git status --short
 ```
 
-- [ ] Perform one whole-branch review specifically for:
+- [ ] Whole-branch review for:
+  - logistics failures accidentally routed as finance `domain-rejected`;
+  - duplicate sandbox mutation/autosave path;
+  - invented sandbox pending semantics;
+  - recurring-route creation incorrectly blocked by quote-assist stock/cash;
+  - invalid endpoint options shown despite easy presentation filtering;
+  - zero-stock materials hidden from otherwise-valid route planning;
   - duplicate logistics state/calculation;
   - scenario capability drift;
   - stale route selection after removal/load;
+  - route inspector visible off the world map or with null current route;
+  - simultaneous world-city and route inspectors after route selection;
   - empty localized alert/failure copy;
   - destination-full misclassification;
+  - zero-dispatch origin-empty misclassification;
   - historical utilization recomputed from current route settings;
   - inaccessible SVG-only route selection;
   - inspector/control-desk overlap after the ninth management launcher.
@@ -766,13 +1026,24 @@ HPA-574 is complete when:
 
 - a valid manual transfer can be quoted, dispatched, observed in transit, delivered, and found in reports/history;
 - typed quote/command failures are localized inline and create no rejected persistent record;
+- controller logistics rejection uses a first-class `RouteTransitionResult.logisticsFailure` arm and returns `logistics-rejected` with the exact HPA-294 reason;
+- logistics mutations reuse `commitMutation`; no second sandbox pipeline exists;
+- `manageLogistics` is exactly sandbox availability, without an invented sandbox pending gate;
 - recurring routes can be created, edited, reprioritized, paused/resumed, removed, and inspected;
-- all route operational facts come from HPA-294 orders/attempts/read models;
+- optional **Use quote** fills lead time/cost from HPA-294 when a minimal quote succeeds, but quote-assist stock/cash failure does not block route creation;
+- endpoint selects omit unopened/non-industry/unmaterialized cities while HPA-294 remains authoritative;
+- zero-stock materials remain selectable;
+- all operational facts come from HPA-294 orders/attempts/read models;
 - historical utilization remains stable after route edits;
-- destination-full is distinct from origin-stock and route-capacity constraints;
-- active/paused routes are visible, directional, selectable, and keyboard discoverable on the world map;
-- route inspector navigation reaches the focused management actions;
-- logistics alerts are derived from persisted evidence with no counter/history state;
-- report rows navigate to the correct current route or transfer;
+- destination-full is distinct from origin-stock/capacity, including the zero-dispatch origin-empty fixture;
+- active/paused routes are visible, directional, selectable, and keyboard discoverable;
+- route inspector is explicitly gated to world view + current selected summary;
+- world-city inspector remains in `WorldMap` and route/city selection is mutually exclusive;
+- logistics alerts are evidence-derived with no persisted counter/history;
+- alert helper unit ownership lives in `alertNavigation.spec.ts` after rename;
+- report rows navigate to the correct current route/transfer;
+- route composition gets an early focused navigation E2E before the longer lifecycle flows;
+- the two full lifecycle E2E tests reuse `cityLocalInventoryLifecycleGame()` + `installSandboxAutoSave(...)` rather than production-only fixtures;
+- ninth-launcher clearance protects route/retail/industry inspector actions without preemptive UI redesign;
 - existing scenarios and retail replenishment behavior are unchanged;
 - focused tests, `bun run check`, `bun run lint`, targeted E2E, and full `bun run test` pass.
