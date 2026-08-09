@@ -190,6 +190,8 @@ export const en = {
 	worldMap: {
 		ariaLabel: 'World map',
 		cities: 'Cities',
+		routes: 'Logistics routes',
+		routeSummary: '{origin} to {destination} · {material} · {state} · {condition}',
 		cityDetails: 'City details',
 		closeCityDetails: 'Close city details',
 		cityEyebrow: {

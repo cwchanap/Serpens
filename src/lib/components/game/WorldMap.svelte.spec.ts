@@ -1,7 +1,9 @@
-import { page } from 'vitest/browser';
+import { page, userEvent } from 'vitest/browser';
 import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { createI18n } from '$lib/i18n';
+import type { RouteOperationalSummary } from '$lib/game/logisticsReadModels';
+import type { RecurringRoute } from '$lib/game/types';
 import { WORLD_CITY_CATALOG, type WorldCityStatus } from '$lib/game/world';
 import {
 	decisionContextWorldCityNotAvailableYet,
@@ -19,6 +21,33 @@ function status(cityId: string, state: WorldCityStatus['state']): WorldCityStatu
 		storeCount: city.kind === 'retail' && state === 'opened' ? 1 : 0,
 		buildingCount: city.kind === 'industry' && state === 'opened' ? 2 : 0,
 		financeOffer: null
+	};
+}
+
+function routeSummary(overrides: Partial<RecurringRoute> = {}): RouteOperationalSummary {
+	return {
+		route: {
+			id: 'route-1',
+			originCityId: 'industry-city',
+			destinationCityId: 'breadbasket-basin',
+			materialId: 'water',
+			capacity: 30,
+			frequencyDays: 3,
+			leadTimeDays: 2,
+			transportCostPerUnit: 2,
+			priority: 1,
+			state: 'active',
+			nextDispatchOnDay: 7,
+			...overrides
+		},
+		inTransitQuantity: 8,
+		latestAttempt: null,
+		utilization: null,
+		unusedCapacity: 0,
+		unmetDestinationNeed: 0,
+		deliveredUnits: 12,
+		transportCost: 24,
+		condition: 'normal'
 	};
 }
 
@@ -375,5 +404,34 @@ describe('WorldMap', () => {
 		const inspector = page.getByRole('dialog', { name: /city details/i });
 		await expect.element(inspector).toBeVisible();
 		await expect.element(inspector.getByText('No new cities in this challenge.')).toBeVisible();
+	});
+
+	it('mounts a labelled route group and selects a route from the keyboard', async () => {
+		expect.assertions(7);
+		const onSelectLogisticsRoute = vi.fn();
+		render(WorldMap, {
+			statuses: [status('industry-city', 'opened'), status('breadbasket-basin', 'opened')],
+			i18n: createI18n('en'),
+			selectedCityId: null,
+			onSelectCity: vi.fn(),
+			onOpenCity: vi.fn(),
+			onCloseInspector: vi.fn(),
+			logisticsRouteSummaries: [routeSummary()],
+			selectedLogisticsRouteId: 'route-1',
+			onSelectLogisticsRoute
+		});
+
+		await expect.element(page.getByRole('group', { name: 'Cities' })).toBeVisible();
+		await expect.element(page.getByRole('group', { name: 'Logistics routes' })).toBeVisible();
+		const routeButton = page.getByRole('button', {
+			name: /Industry City to Breadbasket Basin.*Water.*Active.*Normal/i
+		});
+		await expect.element(routeButton).toBeVisible();
+		await expect.element(routeButton).toHaveAttribute('aria-current', 'true');
+		expect(routeButton.element().textContent).toContain('Industry City → Breadbasket Basin');
+		expect(routeButton.element().textContent).toContain('Water');
+		(await routeButton.element()).focus();
+		await userEvent.keyboard('{Enter}');
+		expect(onSelectLogisticsRoute).toHaveBeenCalledWith('route-1');
 	});
 });

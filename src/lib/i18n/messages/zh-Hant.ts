@@ -192,6 +192,8 @@ export const zhHant = {
 	worldMap: {
 		ariaLabel: '世界地圖',
 		cities: '城市列表',
+		routes: '物流航線',
+		routeSummary: '{origin} → {destination} · {material} · {state} · {condition}',
 		cityDetails: '城市詳情',
 		closeCityDetails: '關閉城市詳情',
 		cityEyebrow: {
