@@ -12,11 +12,6 @@ export default defineConfig({
 	test: {
 		expect: { requireAssertions: true },
 		restoreMocks: true,
-		// The client browser and server projects share one full-suite run. Vitest's
-		// CPU-based default overwhelms the browser under load and causes unrelated
-		// specs to hit the intentional 10s timeout, so keep file isolation but run
-		// one worker at a time.
-		maxWorkers: 1,
 		// Heavy specs (scenarioRepository, setup, runtime, ScenarioMenuSection) run
 		// full encode -> deep-validate cycles over large game states and set their
 		// own per-describe timeout: 30_000 (observed ~6.2s on the slowest
@@ -55,7 +50,12 @@ export default defineConfig({
 						instances: [{ browser: 'chromium', headless: true }]
 					},
 					include: ['src/**/*.svelte.{test,spec}.{js,ts}'],
-					exclude: ['src/lib/server/**']
+					exclude: ['src/lib/server/**'],
+					// Browser specs hit the 10s test timeout when multiple Chromium test
+					// files run in parallel (measured: 4–12 failures per run without this).
+					// Serializing only the client project eliminates the flakiness while
+					// letting the 99 server specs run in parallel (~110s vs ~242s global).
+					maxWorkers: 1
 				}
 			},
 
