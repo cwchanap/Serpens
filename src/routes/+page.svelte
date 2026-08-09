@@ -1,27 +1,16 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
-	import { focusTrap } from '$lib/a11y/focusTrap';
 	import BuildMenu from '$lib/components/game/BuildMenu.svelte';
-	import ActiveModifiers from '$lib/components/game/ActiveModifiers.svelte';
-	import DecisionQueue from '$lib/components/game/DecisionQueue.svelte';
-	import FinancePanel from '$lib/components/game/FinancePanel.svelte';
 	import AudioSettings from '$lib/components/game/AudioSettings.svelte';
 	import ControlDesk from '$lib/components/game/ControlDesk.svelte';
-	import PolicyPanel from '$lib/components/game/PolicyPanel.svelte';
-	import ProductChainsPanel from '$lib/components/game/ProductChainsPanel.svelte';
-	import ReportsPanel from '$lib/components/game/ReportsPanel.svelte';
 	import SavePanel from '$lib/components/game/SavePanel.svelte';
 	import ScenarioCatalog from '$lib/components/game/ScenarioCatalog.svelte';
 	import ScenarioMenuSection from '$lib/components/game/ScenarioMenuSection.svelte';
 	import ScenarioObjectivePanel from '$lib/components/game/ScenarioObjectivePanel.svelte';
 	import ScenarioResultsDialog from '$lib/components/game/ScenarioResultsDialog.svelte';
 	import ScenarioStatusStrip from '$lib/components/game/ScenarioStatusStrip.svelte';
-	import Scorecard from '$lib/components/game/Scorecard.svelte';
 	import ShortcutCheatSheet from '$lib/components/game/ShortcutCheatSheet.svelte';
-	import StaffPanel from '$lib/components/game/StaffPanel.svelte';
 	import StoreDetailModal from '$lib/components/game/StoreDetailModal.svelte';
-	import StoreOverview from '$lib/components/game/StoreOverview.svelte';
-	import RetailSupplySources from '$lib/components/game/RetailSupplySources.svelte';
 	import SupplyAdvisor from '$lib/components/game/SupplyAdvisor.svelte';
 	import TopBar from '$lib/components/game/TopBar.svelte';
 	import { createGameAudioController, type GameAudioController } from '$lib/audio/audioController';
@@ -175,6 +164,7 @@
 		shouldRefreshFinancedPurchase
 	} from './financePurchaseReview';
 	import FinancePurchaseReviewHost from './FinancePurchaseReviewHost.svelte';
+	import ManagementPanelHost from './ManagementPanelHost.svelte';
 	import MapInspectorHost from './MapInspectorHost.svelte';
 	import MapSurfaceHost from './MapSurfaceHost.svelte';
 
@@ -2647,130 +2637,32 @@
 	{#if activeManagementPanel}
 		{#key activeManagementPanel.id}
 			{@const panelGame = game ?? starterMapState}
-			<div class="tower-backdrop">
-				<button
-					type="button"
-					class="tower-backdrop-button"
-					aria-label={i18n.t('route.controlTower.dismiss', {
-						panel: activeManagementPanel.label
-					})}
-					onclick={closeManagementPanel}
-				></button>
-				<div
-					class="control-tower-overlay paper"
-					role="dialog"
-					aria-modal="true"
-					aria-label={activeManagementPanel.label}
-					data-focused-finance-loan={activeManagementPanel.id === 'finance'
-						? (focusedFinanceLoanId ?? undefined)
-						: undefined}
-					{@attach focusTrap}
-				>
-					<div class="tower-header">
-						<div>
-							<p class="eyebrow">{i18n.t('route.controlTower.eyebrow')}</p>
-							<h2>{activeManagementPanel.label}</h2>
-						</div>
-						<div
-							class="tower-actions"
-							role="group"
-							aria-label={i18n.t('route.controlTower.panelStatus', {
-								panel: activeManagementPanel.label
-							})}
-						>
-							<span class="ticker"
-								>{i18n.t('topBar.day', { day: i18n.format.integer(panelGame.day) })}</span
-							>
-							<strong class="ticker">{i18n.format.currency(panelGame.cash)}</strong>
-							<button
-								type="button"
-								class="close-tower btn-danger"
-								aria-label={i18n.t('route.controlTower.closePanel', {
-									panel: activeManagementPanel.label
-								})}
-								onclick={closeManagementPanel}
-							>
-								{i18n.t('route.controlTower.close')}
-							</button>
-						</div>
-					</div>
-
-					{#if activeManagementPanel.id === 'dashboard'}
-						<Scorecard {i18n} scorecard={panelGame.scorecard} />
-					{:else if activeManagementPanel.id === 'policies'}
-						<PolicyPanel
-							{i18n}
-							policy={panelGame.policy}
-							onChange={changePolicy}
-							canUpdate={mutationAvailability.updatePolicy}
-							disabledReason={mutationDisabledReason}
-						/>
-					{:else if activeManagementPanel.id === 'staff'}
-						<StaffPanel
-							{i18n}
-							stores={panelGame.stores}
-							staff={panelGame.staff}
-							hiringCandidates={panelGame.hiringCandidates}
-							cash={panelGame.cash}
-							onHire={hireStaff}
-							onAssign={assignStaff}
-							onUnassign={unassignStoreStaff}
-							onPromote={promoteStaffMember}
-							canHire={mutationAvailability.hireStaff}
-							canAssign={mutationAvailability.assignStaff}
-							canUnassign={mutationAvailability.unassignStaff}
-							canPromote={mutationAvailability.promoteStaff}
-							disabledReason={mutationDisabledReason}
-						/>
-					{:else if activeManagementPanel.id === 'stores'}
-						<div class="stores-surfaces">
-							<RetailSupplySources
-								retailCities={buildRetailCitySupplyViews(panelGame, i18n)}
-								disabled={game === null || !mutationAvailability.setRetailSupplySource}
-								onChange={setRetailSupplySource}
-							/>
-							<StoreOverview
-								{i18n}
-								stores={panelGame.stores}
-								staff={panelGame.staff}
-								latestReports={summary.latest?.storeReports ?? []}
-							/>
-						</div>
-					{:else if activeManagementPanel.id === 'decisions'}
-						<div class="decisions-surfaces">
-							<DecisionQueue
-								{i18n}
-								game={panelGame}
-								decisions={panelGame.decisions}
-								onResolve={chooseDecision}
-								canResolve={mutationAvailability.resolveDecision}
-								disabledReason={mutationDisabledReason}
-							/>
-							<ActiveModifiers
-								{i18n}
-								day={panelGame.day}
-								modifiers={panelGame.events.activeModifiers}
-							/>
-						</div>
-					{:else if activeManagementPanel.id === 'reports'}
-						<ReportsPanel {i18n} {summary} game={panelGame} stores={panelGame.stores} />
-					{:else if activeManagementPanel.id === 'productChains'}
-						<ProductChainsPanel {i18n} game={panelGame} />
-					{:else if activeManagementPanel.id === 'finance'}
-						<FinancePanel
-							game={panelGame}
-							metrics={financeMetrics!}
-							{i18n}
-							focusedLoanId={focusedFinanceLoanId}
-							mutationPending={scenarioCommandPending}
-							onBorrow={borrowWorkingCapital}
-							onRepay={repayFinanceLoan}
-							onPayoff={payOffFinanceLoan}
-							onRefinance={refinanceFinanceLoan}
-						/>
-					{/if}
-				</div>
-			</div>
+			{@const retailSupplyViews = buildRetailCitySupplyViews(panelGame, i18n)}
+			<ManagementPanelHost
+				panelId={activeManagementPanel.id}
+				panelLabel={activeManagementPanel.label}
+				{panelGame}
+				{summary}
+				{financeMetrics}
+				{retailSupplyViews}
+				mutations={mutationAvailability}
+				retailSupplyDisabled={game === null || !mutationAvailability.setRetailSupplySource}
+				{focusedFinanceLoanId}
+				{i18n}
+				disabledReason={mutationDisabledReason}
+				onClose={closeManagementPanel}
+				onChangePolicy={changePolicy}
+				onHireStaff={hireStaff}
+				onAssignStaff={assignStaff}
+				onUnassignStaff={unassignStoreStaff}
+				onPromoteStaff={promoteStaffMember}
+				onSetRetailSupplySource={setRetailSupplySource}
+				onChooseDecision={chooseDecision}
+				onBorrow={borrowWorkingCapital}
+				onRepay={repayFinanceLoan}
+				onPayoff={payOffFinanceLoan}
+				onRefinance={refinanceFinanceLoan}
+			/>
 		{/key}
 	{/if}
 
@@ -2837,15 +2729,6 @@
 		display: block;
 	}
 
-	h2 {
-		margin: 0;
-		font-family: var(--font-display);
-		font-size: 1.35rem;
-		font-weight: 400;
-		line-height: 1.1;
-		color: var(--ink-700);
-	}
-
 	.map-layout {
 		position: relative;
 		width: 100%;
@@ -2862,12 +2745,6 @@
 		z-index: 29;
 		max-height: calc(100vh - 10rem);
 		overflow: auto;
-	}
-
-	.ticker {
-		font-family: var(--font-mono);
-		font-variant-numeric: tabular-nums lining-nums;
-		color: var(--ink-700);
 	}
 
 	.placement-status {
@@ -2887,82 +2764,6 @@
 		font-family: var(--font-body);
 		font-size: 0.9rem;
 		font-style: italic;
-	}
-
-	.tower-backdrop {
-		position: fixed;
-		inset: 0;
-		z-index: 40;
-		display: grid;
-		place-items: center;
-		padding: 1rem;
-		background: rgba(20, 16, 10, 0.74);
-		backdrop-filter: blur(4px);
-	}
-
-	.tower-backdrop-button {
-		position: absolute;
-		inset: 0;
-		padding: 0;
-		border: 0;
-		background: transparent;
-	}
-
-	.control-tower-overlay {
-		position: relative;
-		z-index: 1;
-		width: min(1180px, 100%);
-		max-height: calc(100vh - 2rem);
-		overflow: auto;
-		display: grid;
-		gap: 1rem;
-		padding: 1.25rem;
-		animation-delay: 160ms;
-	}
-
-	.decisions-surfaces {
-		display: grid;
-		grid-template-columns: repeat(2, minmax(0, 1fr));
-		align-items: start;
-		gap: 1rem;
-	}
-
-	.stores-surfaces {
-		display: grid;
-		grid-template-columns: repeat(2, minmax(0, 1fr));
-		align-items: start;
-		gap: 1rem;
-	}
-
-	.tower-header {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 1rem;
-		padding-bottom: 0.75rem;
-		border-bottom: 1px solid var(--brass-500);
-	}
-
-	.tower-actions {
-		display: flex;
-		align-items: center;
-		gap: 0.65rem;
-	}
-
-	.tower-actions span,
-	.tower-actions strong {
-		color: var(--ink-700);
-		font-family: var(--font-mono);
-		font-variant-numeric: tabular-nums lining-nums;
-		white-space: nowrap;
-	}
-
-	.tower-actions strong {
-		font-weight: 700;
-	}
-
-	.close-tower {
-		white-space: nowrap;
 	}
 
 	/* Management launchers surfaced inside the hamburger menu so they remain
@@ -3004,30 +2805,5 @@
 	.menu-management button:focus-visible {
 		background: var(--paper-200);
 		border-color: var(--brass-500);
-	}
-
-	@media (max-width: 980px) {
-		.control-tower-overlay {
-			max-height: calc(100vh - 1rem);
-			padding: 0.85rem;
-		}
-
-		.decisions-surfaces {
-			grid-template-columns: 1fr;
-		}
-
-		.stores-surfaces {
-			grid-template-columns: 1fr;
-		}
-
-		.tower-header {
-			align-items: stretch;
-			flex-direction: column;
-		}
-
-		.tower-actions {
-			align-items: stretch;
-			flex-direction: column;
-		}
 	}
 </style>
