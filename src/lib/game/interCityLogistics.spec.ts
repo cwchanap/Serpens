@@ -8,6 +8,7 @@ import {
 	getDestinationTransferNeed,
 	pauseRecurringRoute,
 	processTransferArrivals,
+	quoteInterCityRates,
 	processRecurringRouteDispatches,
 	quoteInterCityTransfer,
 	removeRecurringRoute,
@@ -196,6 +197,26 @@ const manualFailureCases: readonly ManualFailureCase[] = [
 ];
 
 describe('inter-city manual logistics', () => {
+	test('quotes geometry-derived rates for every valid industry pair and rejects non-industry endpoints', () => {
+		expect(quoteInterCityRates('industry-city', 'breadbasket-basin')).toEqual({
+			leadTimeDays: 2,
+			transportCostPerUnit: 2
+		});
+		expect(quoteInterCityRates('breadbasket-basin', 'quarry-works')).toEqual({
+			leadTimeDays: 2,
+			transportCostPerUnit: 2
+		});
+		expect(quoteInterCityRates('industry-city', 'quarry-works')).toEqual({
+			leadTimeDays: 3,
+			transportCostPerUnit: 3
+		});
+		expect(quoteInterCityRates('unknown-city', 'industry-city')).toBeNull();
+		expect(quoteInterCityRates('industry-city', 'unknown-city')).toBeNull();
+		expect(quoteInterCityRates('industry-city', 'industry-city')).toBeNull();
+		expect(quoteInterCityRates('harbor-city', 'industry-city')).toBeNull();
+		expect(quoteInterCityRates('industry-city', 'harbor-city')).toBeNull();
+	});
+
 	test('quotes the current industry-city pairs with the pinned distance bands', () => {
 		const game = createThreeIndustryCityGame();
 
