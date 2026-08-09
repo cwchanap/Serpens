@@ -114,6 +114,17 @@ describe('LogisticsPanel', () => {
 		expect(props.onCreateRecurringRoute).toHaveBeenCalledOnce();
 	});
 
+	it('hides the create-only priority field while editing a route', async () => {
+		expect.assertions(1);
+		const fixture = routePanelFixture();
+		renderPanel({ game: fixture.game, view: fixture.view });
+
+		await page.getByRole('button', { name: /edit route/i }).click();
+		await expect
+			.element(page.getByRole('spinbutton', { name: 'Priority', exact: true }))
+			.not.toBeInTheDocument();
+	});
+
 	it('invokes edit, reprioritize, pause, resume, and remove route callbacks', async () => {
 		expect.assertions(5);
 		const fixture = routePanelFixture();

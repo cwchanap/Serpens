@@ -472,15 +472,17 @@
 				bind:value={routeTransportCostPerUnit}
 				disabled={!canMutate || submitting}
 			/>
-			<label for="logistics-route-priority">{i18n.t('logisticsPanel.fields.priority')}</label>
-			<input
-				id="logistics-route-priority"
-				type="number"
-				min="0"
-				step="1"
-				bind:value={routePriority}
-				disabled={!canMutate || submitting}
-			/>
+			{#if !editingRouteId}
+				<label for="logistics-route-priority">{i18n.t('logisticsPanel.fields.priority')}</label>
+				<input
+					id="logistics-route-priority"
+					type="number"
+					min="0"
+					step="1"
+					bind:value={routePriority}
+					disabled={!canMutate || submitting}
+				/>
+			{/if}
 			<div class="form-actions">
 				<button type="submit" disabled={!canMutate || submitting}
 					>{i18n.t(
