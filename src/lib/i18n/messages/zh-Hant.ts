@@ -321,6 +321,26 @@ export const zhHant = {
 			externalImports: '外部進口 — {retailCityName}：{units} 單位',
 			externalImportsUnavailable: '外部進口歸屬無法使用：{units} 單位'
 		},
+		logistics: {
+			title: '最近一天的物流',
+			arrivalsTitle: '到達',
+			attemptsTitle: '定期航線運輸嘗試',
+			noArrivals: '今天沒有到達記錄。',
+			noAttempts: '今天沒有定期航線運輸嘗試記錄。',
+			deliveredUnits: '已交付單位：{units}',
+			scheduledTransportCost: '排定運輸費：{cost}',
+			arrival:
+				'{transferId} · {originCityName} → {destinationCityName} · {materialName} · {units} 單位',
+			attemptRoute: '{routeId} · {originCityName} → {destinationCityName} · {materialName}',
+			destinationNeed: '目的地需求：{units}',
+			attemptCapacity: '嘗試容量：{units}',
+			dispatchedQuantity: '派出數量：{units}',
+			unusedCapacity: '未使用容量：{units}',
+			unmetDestinationNeed: '未滿足目的地需求：{units}',
+			utilization: '使用率：{value}',
+			transportCost: '運輸費：{cost}',
+			destinationFull: '目的地已滿'
+		},
 		dailyWarnings: '每日警告',
 		empty: '尚未有報表。推進第一天後會產生結果。'
 	},

@@ -5,7 +5,9 @@ import type { ReportSummary } from '$lib/game/reports';
 import { emptyLogisticsReport } from '$lib/game/logisticsReport.testUtils';
 import type {
 	DailyProductionReport,
+	DailyRouteDispatchAttempt,
 	DailyStoreReport,
+	DailyTransferArrival,
 	EventModifierSnapshot,
 	GameState,
 	IndustrialBuilding,
@@ -357,6 +359,111 @@ describe('ReportsPanel', () => {
 		await expect.element(lifecycle.getByText('Replaced by: event-modifier-5')).toBeVisible();
 		await expect.element(lifecycle.getByText('Expires after day 7')).toBeVisible();
 		await expect.element(lifecycle.getByText('Modifier expired.')).not.toBeInTheDocument();
+	});
+
+	it('renders empty latest-day logistics evidence as read-only sections', async () => {
+		expect.assertions(8);
+
+		render(ReportsPanel, {
+			i18n: createI18n('en'),
+			stores: [],
+			summary: {
+				...summary,
+				latest: { ...summary.latest!, logistics: emptyLogisticsReport() }
+			}
+		});
+
+		const logistics = page.getByRole('region', { name: 'Latest-day logistics' });
+		await expect.element(logistics.getByRole('heading', { name: 'Arrivals' })).toBeVisible();
+		await expect.element(logistics.getByText('No arrivals recorded for this day.')).toBeVisible();
+		await expect
+			.element(logistics.getByRole('heading', { name: 'Route dispatch attempts' }))
+			.toBeVisible();
+		await expect
+			.element(logistics.getByText('No route dispatch attempts recorded for this day.'))
+			.toBeVisible();
+		await expect.element(logistics.getByText('Delivered units: 0')).toBeVisible();
+		await expect.element(logistics.getByText('Scheduled transport cost: $0')).toBeVisible();
+		await expect.element(logistics.getByRole('button')).not.toBeInTheDocument();
+		await expect.element(logistics.getByRole('link')).not.toBeInTheDocument();
+	});
+
+	it('renders latest-day logistics arrivals and dispatch attempts from persisted evidence', async () => {
+		expect.assertions(16);
+
+		const arrival: DailyTransferArrival = {
+			transferOrderId: 'transfer-8',
+			originCityId: 'industry-city',
+			destinationCityId: 'breadbasket-basin',
+			materialId: 'water',
+			quantity: 12
+		};
+		const attempt: DailyRouteDispatchAttempt = {
+			routeId: 'route-1',
+			originCityId: 'industry-city',
+			destinationCityId: 'breadbasket-basin',
+			materialId: 'water',
+			destinationNeed: 10,
+			capacity: 20,
+			availableOriginStock: 50,
+			dispatchedQuantity: 10,
+			unusedCapacity: 10,
+			unmetDestinationNeed: 0,
+			transportCost: 20,
+			transferOrderId: 'transfer-9'
+		};
+		const fullAttempt: DailyRouteDispatchAttempt = {
+			...attempt,
+			routeId: 'route-2',
+			destinationNeed: 0,
+			capacity: 40,
+			dispatchedQuantity: 0,
+			unusedCapacity: 40,
+			transferOrderId: null
+		};
+
+		render(ReportsPanel, {
+			i18n: createI18n('en'),
+			stores: [],
+			summary: {
+				...summary,
+				latest: {
+					...summary.latest!,
+					logistics: {
+						arrivals: [arrival],
+						routeDispatchAttempts: [attempt, fullAttempt],
+						deliveredUnits: 12,
+						scheduledTransportCost: 20
+					}
+				}
+			}
+		});
+
+		const logistics = page.getByRole('region', { name: 'Latest-day logistics' });
+		await expect
+			.element(
+				logistics.getByText('transfer-8 · Industry City → Breadbasket Basin · Water · 12 units')
+			)
+			.toBeVisible();
+		await expect
+			.element(logistics.getByText('route-1 · Industry City → Breadbasket Basin · Water'))
+			.toBeVisible();
+		await expect.element(logistics.getByText('Destination need: 10')).toBeVisible();
+		await expect.element(logistics.getByText('Attempt capacity: 20')).toBeVisible();
+		await expect.element(logistics.getByText('Dispatched quantity: 10')).toBeVisible();
+		await expect.element(logistics.getByText('Unused capacity: 10')).toBeVisible();
+		await expect.element(logistics.getByText('Unmet destination need: 0').first()).toBeVisible();
+		await expect.element(logistics.getByText('Utilization: 50%')).toBeVisible();
+		await expect.element(logistics.getByText('Transport cost: $20').nth(1)).toBeVisible();
+		await expect
+			.element(logistics.getByText('route-2 · Industry City → Breadbasket Basin · Water'))
+			.toBeVisible();
+		await expect.element(logistics.getByText('Destination need: 0', { exact: true })).toBeVisible();
+		await expect.element(logistics.getByText('Destination full')).toBeVisible();
+		await expect.element(logistics.getByText('Attempt capacity: 40')).toBeVisible();
+		await expect.element(logistics.getByText('Utilization: 0%')).toBeVisible();
+		await expect.element(logistics.getByText('Delivered units: 12')).toBeVisible();
+		await expect.element(logistics.getByText('Scheduled transport cost: $20')).toBeVisible();
 	});
 
 	it('shows activated lifecycle status without a replaced-by line', async () => {

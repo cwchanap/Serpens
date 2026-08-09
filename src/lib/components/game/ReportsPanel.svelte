@@ -39,6 +39,7 @@
 	);
 	const productionCloseCityInventories = $derived(summary.latest?.productionReport.cityInventories);
 	const currentCityInventories = $derived(game?.cityInventories);
+	const latestLogisticsReport = $derived(summary.latest?.logistics);
 	const attributionRows = $derived.by(() =>
 		buildAttributionRows(summary.latest?.productionReport, summary.latest?.storeReports ?? [])
 	);
@@ -362,6 +363,107 @@
 			{/if}
 		</section>
 
+		{#if latestLogisticsReport}
+			<section class="logistics-evidence" aria-labelledby="latest-logistics-heading">
+				<h3 id="latest-logistics-heading">{i18n.t('reportsPanel.logistics.title')}</h3>
+				<div class="logistics-metrics">
+					<span>
+						{i18n.t('reportsPanel.logistics.deliveredUnits', {
+							units: i18n.format.integer(latestLogisticsReport.deliveredUnits)
+						})}
+					</span>
+					<span>
+						{i18n.t('reportsPanel.logistics.scheduledTransportCost', {
+							cost: i18n.format.currency(latestLogisticsReport.scheduledTransportCost)
+						})}
+					</span>
+				</div>
+
+				<div class="logistics-subsection">
+					<h4>{i18n.t('reportsPanel.logistics.arrivalsTitle')}</h4>
+					{#if latestLogisticsReport.arrivals.length > 0}
+						<ul class="logistics-list">
+							{#each latestLogisticsReport.arrivals as arrival (arrival.transferOrderId)}
+								<li>
+									{i18n.t('reportsPanel.logistics.arrival', {
+										transferId: arrival.transferOrderId,
+										originCityName: cityName(arrival.originCityId),
+										destinationCityName: cityName(arrival.destinationCityId),
+										materialName: i18n.labels.material(arrival.materialId),
+										units: i18n.format.integer(arrival.quantity)
+									})}
+								</li>
+							{/each}
+						</ul>
+					{:else}
+						<p>{i18n.t('reportsPanel.logistics.noArrivals')}</p>
+					{/if}
+				</div>
+
+				<div class="logistics-subsection">
+					<h4>{i18n.t('reportsPanel.logistics.attemptsTitle')}</h4>
+					{#if latestLogisticsReport.routeDispatchAttempts.length > 0}
+						<ul class="logistics-list">
+							{#each latestLogisticsReport.routeDispatchAttempts as attempt (`${attempt.routeId}-${attempt.transferOrderId ?? 'none'}`)}
+								{@const utilization =
+									attempt.capacity > 0 ? attempt.dispatchedQuantity / attempt.capacity : 0}
+								<li>
+									<strong>
+										{i18n.t('reportsPanel.logistics.attemptRoute', {
+											routeId: attempt.routeId,
+											originCityName: cityName(attempt.originCityId),
+											destinationCityName: cityName(attempt.destinationCityId),
+											materialName: i18n.labels.material(attempt.materialId)
+										})}
+									</strong>
+									<span>
+										{i18n.t('reportsPanel.logistics.destinationNeed', {
+											units: i18n.format.integer(attempt.destinationNeed)
+										})}
+									</span>
+									{#if attempt.destinationNeed === 0}
+										<span>{i18n.t('reportsPanel.logistics.destinationFull')}</span>
+									{/if}
+									<span>
+										{i18n.t('reportsPanel.logistics.attemptCapacity', {
+											units: i18n.format.integer(attempt.capacity)
+										})}
+									</span>
+									<span>
+										{i18n.t('reportsPanel.logistics.dispatchedQuantity', {
+											units: i18n.format.integer(attempt.dispatchedQuantity)
+										})}
+									</span>
+									<span>
+										{i18n.t('reportsPanel.logistics.unusedCapacity', {
+											units: i18n.format.integer(attempt.unusedCapacity)
+										})}
+									</span>
+									<span>
+										{i18n.t('reportsPanel.logistics.unmetDestinationNeed', {
+											units: i18n.format.integer(attempt.unmetDestinationNeed)
+										})}
+									</span>
+									<span>
+										{i18n.t('reportsPanel.logistics.utilization', {
+											value: i18n.format.percent(utilization)
+										})}
+									</span>
+									<span>
+										{i18n.t('reportsPanel.logistics.transportCost', {
+											cost: i18n.format.currency(attempt.transportCost)
+										})}
+									</span>
+								</li>
+							{/each}
+						</ul>
+					{:else}
+						<p>{i18n.t('reportsPanel.logistics.noAttempts')}</p>
+					{/if}
+				</div>
+			</section>
+		{/if}
+
 		{#if summary.latest.modifierImpacts.length > 0}
 			<section class="modifier-evidence" aria-labelledby="modifier-impacts-heading">
 				<h3 id="modifier-impacts-heading">{i18n.t('reportsPanel.modifierImpacts.title')}</h3>
@@ -466,6 +568,7 @@
 
 	h2,
 	h3,
+	h4,
 	p {
 		margin: 0;
 	}
@@ -482,6 +585,14 @@
 		margin: 0;
 		font-family: var(--font-display);
 		font-size: 1rem;
+		font-weight: 400;
+		color: var(--ink-700);
+	}
+
+	h4 {
+		margin: 0;
+		font-family: var(--font-display);
+		font-size: 0.95rem;
 		font-weight: 400;
 		color: var(--ink-700);
 	}
@@ -535,6 +646,8 @@
 
 	.modifier-evidence,
 	.inventory-evidence,
+	.logistics-evidence,
+	.logistics-subsection,
 	.evidence-list,
 	.evidence-list article {
 		display: grid;
@@ -542,12 +655,14 @@
 	}
 
 	.modifier-evidence,
-	.inventory-evidence {
+	.inventory-evidence,
+	.logistics-evidence {
 		margin-top: 1rem;
 	}
 
 	.inventory-list,
-	.attribution-list {
+	.attribution-list,
+	.logistics-list {
 		display: grid;
 		gap: 0.45rem;
 		margin: 0;
@@ -556,7 +671,8 @@
 	}
 
 	.inventory-list li,
-	.attribution-list li {
+	.attribution-list li,
+	.logistics-list li {
 		display: grid;
 		gap: 0.25rem;
 		border: 1px solid var(--paper-edge);
@@ -566,6 +682,20 @@
 		color: var(--ink-500);
 		font-family: var(--font-body);
 		font-size: 0.85rem;
+	}
+
+	.logistics-metrics {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.65rem 1rem;
+	}
+
+	.logistics-list strong {
+		font-family: var(--font-body);
+		font-size: 0.9rem;
+		font-weight: 700;
+		letter-spacing: 0;
+		text-transform: none;
 	}
 
 	.inventory-list strong {

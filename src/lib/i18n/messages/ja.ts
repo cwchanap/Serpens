@@ -321,6 +321,26 @@ export const ja = {
 			externalImports: '外部輸入 — {retailCityName}: {units} 単位',
 			externalImportsUnavailable: '外部輸入の帰属先は不明です: {units} 単位'
 		},
+		logistics: {
+			title: '直近日の物流',
+			arrivalsTitle: '到着',
+			attemptsTitle: '定期航路の輸送試行',
+			noArrivals: 'この日の到着記録はありません。',
+			noAttempts: 'この日の定期航路の輸送試行記録はありません。',
+			deliveredUnits: '納入済み: {units} ユニット',
+			scheduledTransportCost: '予定輸送費: {cost}',
+			arrival:
+				'{transferId} · {originCityName} → {destinationCityName} · {materialName} · {units} ユニット',
+			attemptRoute: '{routeId} · {originCityName} → {destinationCityName} · {materialName}',
+			destinationNeed: '到着先需要: {units}',
+			attemptCapacity: '試行容量: {units}',
+			dispatchedQuantity: '輸送量: {units}',
+			unusedCapacity: '未使用容量: {units}',
+			unmetDestinationNeed: '未充足の到着先需要: {units}',
+			utilization: '稼働率: {value}',
+			transportCost: '輸送費: {cost}',
+			destinationFull: '到着先が満杯'
+		},
 		dailyWarnings: '日次警告',
 		empty: 'まだレポートがありません。最初の日を進めると結果が生成されます。'
 	},

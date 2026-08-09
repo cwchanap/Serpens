@@ -320,6 +320,26 @@ export const en = {
 			externalImports: 'External imports — {retailCityName}: {units} units',
 			externalImportsUnavailable: 'External import attribution unavailable: {units} units'
 		},
+		logistics: {
+			title: 'Latest-day logistics',
+			arrivalsTitle: 'Arrivals',
+			attemptsTitle: 'Route dispatch attempts',
+			noArrivals: 'No arrivals recorded for this day.',
+			noAttempts: 'No route dispatch attempts recorded for this day.',
+			deliveredUnits: 'Delivered units: {units}',
+			scheduledTransportCost: 'Scheduled transport cost: {cost}',
+			arrival:
+				'{transferId} · {originCityName} → {destinationCityName} · {materialName} · {units} units',
+			attemptRoute: '{routeId} · {originCityName} → {destinationCityName} · {materialName}',
+			destinationNeed: 'Destination need: {units}',
+			attemptCapacity: 'Attempt capacity: {units}',
+			dispatchedQuantity: 'Dispatched quantity: {units}',
+			unusedCapacity: 'Unused capacity: {units}',
+			unmetDestinationNeed: 'Unmet destination need: {units}',
+			utilization: 'Utilization: {value}',
+			transportCost: 'Transport cost: {cost}',
+			destinationFull: 'Destination full'
+		},
 		dailyWarnings: 'Daily warnings',
 		empty: 'No reports yet. Advance the first day to generate results.'
 	},
