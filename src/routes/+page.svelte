@@ -6,9 +6,7 @@
 	import DecisionQueue from '$lib/components/game/DecisionQueue.svelte';
 	import FinancePanel from '$lib/components/game/FinancePanel.svelte';
 	import AudioSettings from '$lib/components/game/AudioSettings.svelte';
-	import CityMap from '$lib/components/game/CityMap.svelte';
 	import ControlDesk from '$lib/components/game/ControlDesk.svelte';
-	import IndustryMap from '$lib/components/game/IndustryMap.svelte';
 	import IndustryTileInspector from '$lib/components/game/IndustryTileInspector.svelte';
 	import RailSegmentInspector from '$lib/components/game/RailSegmentInspector.svelte';
 	import PolicyPanel from '$lib/components/game/PolicyPanel.svelte';
@@ -29,7 +27,6 @@
 	import SupplyAdvisor from '$lib/components/game/SupplyAdvisor.svelte';
 	import TileInspector from '$lib/components/game/TileInspector.svelte';
 	import TopBar from '$lib/components/game/TopBar.svelte';
-	import WorldMap from '$lib/components/game/WorldMap.svelte';
 	import { createGameAudioController, type GameAudioController } from '$lib/audio/audioController';
 	import { DEFAULT_AUDIO_PREFERENCES, type AudioPreferences } from '$lib/audio/audioPreferences';
 	import type { BgmCueId, SfxCueId } from '$lib/audio/audioCatalog';
@@ -76,7 +73,6 @@
 	import {
 		createInitialVisitedMapViews,
 		markMapViewVisited,
-		shouldRenderMapView,
 		type MapViewId
 	} from '$lib/game/mapViewKeepAlive';
 	import {
@@ -182,6 +178,7 @@
 		shouldRefreshFinancedPurchase
 	} from './financePurchaseReview';
 	import FinancePurchaseReviewHost from './FinancePurchaseReviewHost.svelte';
+	import MapSurfaceHost from './MapSurfaceHost.svelte';
 
 	interface ManagementPanelMenuItem {
 		id: ManagementPanelId;
@@ -2430,58 +2427,28 @@
 	onpointerdown={unlockAudio}
 >
 	<section class="map-layout" aria-label={i18n.t('route.cityPlanning')}>
-		<div class="map-surfaces">
-			{#if shouldRenderMapView(visitedMapViews, 'world')}
-				<div
-					class={{ 'map-surface': true, 'active-map-surface': activeMapView === 'world' }}
-					aria-hidden={activeMapView !== 'world'}
-				>
-					<WorldMap
-						statuses={worldCityStatuses}
-						{i18n}
-						selectedCityId={selectedWorldCityId}
-						onSelectCity={selectWorldCityNode}
-						onOpenCity={openSelectedWorldCity}
-						onFinanceCity={reviewSelectedWorldCityFinancing}
-						onCloseInspector={closeWorldInspector}
-						canOpenWorldCity={mutationAvailability.openWorldCity}
-						canFinanceWorldCity={mutationAvailability.financeWorldCity}
-						allowedCityIds={allowedWorldCityIds}
-						disabledReason={mutationDisabledReason}
-					/>
-				</div>
-			{/if}
-			{#if shouldRenderMapView(visitedMapViews, 'retail')}
-				<div
-					class={{ 'map-surface': true, 'active-map-surface': activeMapView === 'retail' }}
-					aria-hidden={activeMapView !== 'retail'}
-				>
-					<CityMap
-						snapshot={mapSnapshot}
-						onTileSelected={selectTile}
-						active={activeMapView === 'retail'}
-						paused={isMapPaused}
-						{i18n}
-					/>
-				</div>
-			{/if}
-			{#if shouldRenderMapView(visitedMapViews, 'industry')}
-				<div
-					class={{ 'map-surface': true, 'active-map-surface': activeMapView === 'industry' }}
-					aria-hidden={activeMapView !== 'industry'}
-				>
-					<IndustryMap
-						snapshot={industryMapSnapshot}
-						onTileSelected={selectIndustryTile}
-						onBuildCancelled={cancelRailBuildStep}
-						active={activeMapView === 'industry'}
-						paused={isMapPaused}
-						keyboardEnabled={railKeyboardEnabled}
-						{i18n}
-					/>
-				</div>
-			{/if}
-		</div>
+		<MapSurfaceHost
+			{activeMapView}
+			{visitedMapViews}
+			{isMapPaused}
+			{i18n}
+			{worldCityStatuses}
+			{selectedWorldCityId}
+			onSelectWorldCity={selectWorldCityNode}
+			onOpenWorldCity={openSelectedWorldCity}
+			onFinanceWorldCity={reviewSelectedWorldCityFinancing}
+			onCloseWorldInspector={closeWorldInspector}
+			canOpenWorldCity={mutationAvailability.openWorldCity}
+			canFinanceWorldCity={mutationAvailability.financeWorldCity}
+			{allowedWorldCityIds}
+			{mutationDisabledReason}
+			{mapSnapshot}
+			onSelectRetailTile={selectTile}
+			{industryMapSnapshot}
+			onSelectIndustryTile={selectIndustryTile}
+			onCancelRailBuild={cancelRailBuildStep}
+			{railKeyboardEnabled}
+		/>
 		<TopBar
 			eyebrow={mapEyebrow}
 			title={mapTitle}
@@ -2932,24 +2899,6 @@
 		z-index: 29;
 		max-height: calc(100vh - 10rem);
 		overflow: auto;
-	}
-
-	.map-surfaces,
-	.map-surface {
-		position: absolute;
-		inset: 0;
-		min-width: 0;
-		min-height: 0;
-	}
-
-	.map-surface {
-		pointer-events: none;
-		visibility: hidden;
-	}
-
-	.active-map-surface {
-		pointer-events: auto;
-		visibility: visible;
 	}
 
 	.ticker {
