@@ -493,6 +493,7 @@ export const en = {
 			reports: 'Toggle Reports',
 			productChains: 'Toggle Product Chains',
 			finance: 'Toggle Finance',
+			logistics: 'Toggle Logistics',
 			advanceDay: 'Advance day',
 			escape: 'Open menu, or close / cancel',
 			cheatSheet: 'Toggle this cheat sheet'
@@ -578,6 +579,101 @@ export const en = {
 			manualSlotNotFound: 'Manual save slot not found',
 			loadedManualSlot: 'Loaded {name}',
 			deletedManualSlot: 'Deleted save slot'
+		}
+	},
+	logisticsPanel: {
+		title: 'Logistics Operations',
+		subtitle: 'Move materials between industry cities and keep recurring routes on schedule.',
+		inventorySummary: '{used} / {capacity} inventory used.',
+		sections: {
+			manualTransfer: 'Manual transfer',
+			recurringRoutes: 'Recurring routes',
+			inTransit: 'In transit',
+			recentTransfers: 'Recent transfers',
+			totals: 'All-time logistics totals'
+		},
+		fields: {
+			origin: 'Origin city',
+			destination: 'Destination city',
+			material: 'Material',
+			quantity: 'Quantity',
+			capacity: 'Capacity per dispatch',
+			frequencyDays: 'Frequency (days)',
+			leadTimeDays: 'Lead time (days)',
+			transportCostPerUnit: 'Transport cost per unit',
+			priority: 'Priority'
+		},
+		actions: {
+			dispatchTransfer: 'Dispatch transfer',
+			createRoute: 'Create route',
+			updateRoute: 'Save route changes',
+			cancelEdit: 'Cancel edit',
+			editRoute: 'Edit route',
+			pauseRoute: 'Pause route',
+			resumeRoute: 'Resume route',
+			reprioritizeRoute: 'Save priority',
+			removeRoute: 'Remove route'
+		},
+		ui: {
+			quote: 'Quoted lead time: {leadTime} days · transport cost: {cost}.',
+			transferSubmitted: 'Transfer dispatched.',
+			routeCreated: 'Recurring route created.',
+			routeUpdated: 'Recurring route updated.',
+			routePaused: 'Recurring route paused.',
+			routeResumed: 'Recurring route resumed.',
+			routeReprioritized: 'Recurring route priority updated.',
+			routeRemoved: 'Recurring route removed.',
+			busy: 'A logistics action is already in progress.',
+			unavailable: 'Logistics actions are unavailable in this mode.',
+			failed: 'The logistics action failed.',
+			unchanged: 'No logistics changes were made.',
+			noRoutes: 'No recurring routes yet.',
+			noInTransit: 'No materials are currently in transit.',
+			noTransfers: 'No transfers have been dispatched yet.',
+			noLatestAttempt: 'No dispatch attempt recorded yet.',
+			day: 'Day {day}',
+			arrives: 'Arrives {day}',
+			stock: 'Stock {stock}',
+			inTransit: 'In transit {quantity}',
+			utilization: 'Utilization {value}',
+			latestAttempt: 'Latest dispatch attempt',
+			transferCost: 'Transport cost',
+			delivered: 'Delivered',
+			transported: 'Transported'
+		},
+		conditions: {
+			'awaiting-dispatch': 'Awaiting dispatch',
+			'destination-full': 'Destination full',
+			'origin-stock-constrained': 'Origin stock constrained',
+			'route-capacity-constrained': 'Route capacity constrained',
+			normal: 'Normal'
+		},
+		states: {
+			active: 'Active',
+			paused: 'Paused'
+		},
+		statuses: {
+			'in-transit': 'In transit',
+			delivered: 'Delivered'
+		},
+		sources: {
+			manual: 'Manual transfer',
+			recurringRoute: 'Recurring route'
+		},
+		failures: {
+			invalidOrigin: 'Choose a valid origin city.',
+			invalidDestination: 'Choose a valid destination city.',
+			sameCity: 'Origin and destination must be different cities.',
+			invalidMaterial: 'Choose a valid material.',
+			invalidQuantity: 'Enter a positive whole-number quantity.',
+			insufficientOriginStock: 'Not enough origin stock for this transfer.',
+			insufficientCash: 'Insufficient cash for this transport cost.',
+			invalidCapacity: 'Enter a positive whole-number capacity.',
+			invalidFrequencyDays: 'Enter a positive whole-number frequency.',
+			invalidLeadTimeDays: 'Enter a positive whole-number lead time.',
+			invalidTransportCostPerUnit: 'Enter a positive whole-number transport cost.',
+			invalidPriority: 'Enter a non-negative whole-number priority.',
+			routeNotFound: 'The recurring route no longer exists.'
 		}
 	},
 	financePanel: {

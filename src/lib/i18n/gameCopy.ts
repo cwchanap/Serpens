@@ -14,6 +14,7 @@ import type {
 	ProductChainNode
 } from '$lib/game/productChainGraph';
 import { COVENANT_THRESHOLD, type GameAlert } from '$lib/game/alerts';
+import type { LogisticsFailureCode } from '$lib/game/commandResult';
 import type {
 	DailyReportWarning,
 	GameState,
@@ -696,6 +697,37 @@ export function localizeDecisionFailure(
 				return i18n.t('copy.decisionFailures.financeDebtService');
 			}
 			return i18n.t('copy.decisionFailures.financeCapacity');
+	}
+}
+
+export function localizeLogisticsFailure(reason: LogisticsFailureCode, i18n: I18nBundle): string {
+	switch (reason) {
+		case 'invalid-origin':
+			return i18n.t('logisticsPanel.failures.invalidOrigin');
+		case 'invalid-destination':
+			return i18n.t('logisticsPanel.failures.invalidDestination');
+		case 'same-city':
+			return i18n.t('logisticsPanel.failures.sameCity');
+		case 'invalid-material':
+			return i18n.t('logisticsPanel.failures.invalidMaterial');
+		case 'invalid-quantity':
+			return i18n.t('logisticsPanel.failures.invalidQuantity');
+		case 'insufficient-origin-stock':
+			return i18n.t('logisticsPanel.failures.insufficientOriginStock');
+		case 'insufficient-cash':
+			return i18n.t('logisticsPanel.failures.insufficientCash');
+		case 'invalid-capacity':
+			return i18n.t('logisticsPanel.failures.invalidCapacity');
+		case 'invalid-frequency-days':
+			return i18n.t('logisticsPanel.failures.invalidFrequencyDays');
+		case 'invalid-lead-time-days':
+			return i18n.t('logisticsPanel.failures.invalidLeadTimeDays');
+		case 'invalid-transport-cost-per-unit':
+			return i18n.t('logisticsPanel.failures.invalidTransportCostPerUnit');
+		case 'invalid-priority':
+			return i18n.t('logisticsPanel.failures.invalidPriority');
+		case 'route-not-found':
+			return i18n.t('logisticsPanel.failures.routeNotFound');
 	}
 }
 

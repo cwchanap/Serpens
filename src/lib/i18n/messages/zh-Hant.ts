@@ -493,6 +493,7 @@ export const zhHant = {
 			reports: '切換報表',
 			productChains: '切換商品鏈',
 			finance: '切換財務',
+			logistics: '切換物流',
 			advanceDay: '推進一天',
 			escape: '開啟選單，或關閉 / 取消',
 			cheatSheet: '切換此快捷鍵表'
@@ -578,6 +579,101 @@ export const zhHant = {
 			manualSlotNotFound: '找不到手動存檔槽',
 			loadedManualSlot: '已載入 {name}',
 			deletedManualSlot: '已刪除存檔槽'
+		}
+	},
+	logisticsPanel: {
+		title: '物流營運',
+		subtitle: '在工業城市間運送材料，讓定期航線準時運作。',
+		inventorySummary: '庫存使用 {used} / {capacity}。',
+		sections: {
+			manualTransfer: '手動運輸',
+			recurringRoutes: '定期航線',
+			inTransit: '運輸中',
+			recentTransfers: '最近運輸',
+			totals: '物流累計'
+		},
+		fields: {
+			origin: '起點城市',
+			destination: '目的地城市',
+			material: '材料',
+			quantity: '數量',
+			capacity: '每次運輸容量',
+			frequencyDays: '頻率（天）',
+			leadTimeDays: '運輸天數',
+			transportCostPerUnit: '每單位運輸費',
+			priority: '優先順序'
+		},
+		actions: {
+			dispatchTransfer: '派出運輸',
+			createRoute: '建立航線',
+			updateRoute: '儲存航線變更',
+			cancelEdit: '取消編輯',
+			editRoute: '編輯航線',
+			pauseRoute: '暫停航線',
+			resumeRoute: '恢復航線',
+			reprioritizeRoute: '儲存優先順序',
+			removeRoute: '移除航線'
+		},
+		ui: {
+			quote: '運輸天數：{leadTime} 天 · 運輸費：{cost}。',
+			transferSubmitted: '已派出運輸。',
+			routeCreated: '已建立定期航線。',
+			routeUpdated: '已更新定期航線。',
+			routePaused: '已暫停定期航線。',
+			routeResumed: '已恢復定期航線。',
+			routeReprioritized: '已更新定期航線優先順序。',
+			routeRemoved: '已移除定期航線。',
+			busy: '物流操作正在進行中。',
+			unavailable: '此模式無法使用物流操作。',
+			failed: '物流操作失敗。',
+			unchanged: '物流沒有變更。',
+			noRoutes: '尚未建立定期航線。',
+			noInTransit: '目前沒有運輸中的材料。',
+			noTransfers: '尚未派出任何運輸。',
+			noLatestAttempt: '尚無運輸嘗試記錄。',
+			day: '第 {day} 天',
+			arrives: '第 {day} 天抵達',
+			stock: '庫存 {stock}',
+			inTransit: '運輸中 {quantity}',
+			utilization: '使用率 {value}',
+			latestAttempt: '最近運輸嘗試',
+			transferCost: '運輸費',
+			delivered: '已交付',
+			transported: '運輸量'
+		},
+		conditions: {
+			'awaiting-dispatch': '等待派出',
+			'destination-full': '目的地已滿',
+			'origin-stock-constrained': '起點庫存受限',
+			'route-capacity-constrained': '航線容量受限',
+			normal: '正常'
+		},
+		states: {
+			active: '運作中',
+			paused: '已暫停'
+		},
+		statuses: {
+			'in-transit': '運輸中',
+			delivered: '已交付'
+		},
+		sources: {
+			manual: '手動運輸',
+			recurringRoute: '定期航線'
+		},
+		failures: {
+			invalidOrigin: '請選擇有效的起點城市。',
+			invalidDestination: '請選擇有效的目的地城市。',
+			sameCity: '起點與目的地必須是不同城市。',
+			invalidMaterial: '請選擇有效的材料。',
+			invalidQuantity: '請輸入正整數數量。',
+			insufficientOriginStock: '起點庫存不足。',
+			insufficientCash: '現金不足以支付運輸費。',
+			invalidCapacity: '請輸入正整數容量。',
+			invalidFrequencyDays: '請輸入正整數頻率。',
+			invalidLeadTimeDays: '請輸入正整數運輸天數。',
+			invalidTransportCostPerUnit: '請輸入正整數每單位運輸費。',
+			invalidPriority: '請輸入不小於零的整數優先順序。',
+			routeNotFound: '找不到定期航線。'
 		}
 	},
 	financePanel: {

@@ -494,6 +494,7 @@ export const ja = {
 			reports: 'レポートを切り替え',
 			productChains: '商品チェーンを切り替え',
 			finance: '財務を切り替え',
+			logistics: '物流を切り替え',
 			advanceDay: '日を進める',
 			escape: 'メニューを開く、または閉じる / キャンセル',
 			cheatSheet: 'このチートシートを切り替え'
@@ -579,6 +580,101 @@ export const ja = {
 			manualSlotNotFound: '手動セーブスロットが見つかりません',
 			loadedManualSlot: '{name} を読み込みました',
 			deletedManualSlot: 'セーブスロットを削除しました'
+		}
+	},
+	logisticsPanel: {
+		title: '物流オペレーション',
+		subtitle: '工業都市間で資材を移動し、定期航路を予定どおり運用します。',
+		inventorySummary: '在庫 {used} / {capacity} を使用。',
+		sections: {
+			manualTransfer: '手動輸送',
+			recurringRoutes: '定期航路',
+			inTransit: '輸送中',
+			recentTransfers: '最近の輸送',
+			totals: '物流累計'
+		},
+		fields: {
+			origin: '出発都市',
+			destination: '到着都市',
+			material: '資材',
+			quantity: '数量',
+			capacity: '1回の輸送量',
+			frequencyDays: '頻度（日）',
+			leadTimeDays: '所要日数',
+			transportCostPerUnit: '単位輸送費',
+			priority: '優先度'
+		},
+		actions: {
+			dispatchTransfer: '輸送を開始',
+			createRoute: '航路を作成',
+			updateRoute: '航路の変更を保存',
+			cancelEdit: '編集をキャンセル',
+			editRoute: '航路を編集',
+			pauseRoute: '航路を一時停止',
+			resumeRoute: '航路を再開',
+			reprioritizeRoute: '優先度を保存',
+			removeRoute: '航路を削除'
+		},
+		ui: {
+			quote: '所要日数: {leadTime} 日 · 輸送費: {cost}。',
+			transferSubmitted: '輸送を開始しました。',
+			routeCreated: '定期航路を作成しました。',
+			routeUpdated: '定期航路を更新しました。',
+			routePaused: '定期航路を一時停止しました。',
+			routeResumed: '定期航路を再開しました。',
+			routeReprioritized: '定期航路の優先度を更新しました。',
+			routeRemoved: '定期航路を削除しました。',
+			busy: '物流操作を実行中です。',
+			unavailable: 'このモードでは物流操作を利用できません。',
+			failed: '物流操作に失敗しました。',
+			unchanged: '物流に変更はありません。',
+			noRoutes: '定期航路はまだありません。',
+			noInTransit: '現在輸送中の資材はありません。',
+			noTransfers: '輸送履歴はまだありません。',
+			noLatestAttempt: '輸送試行の記録はまだありません。',
+			day: '{day}日目',
+			arrives: '到着 {day}日目',
+			stock: '在庫 {stock}',
+			inTransit: '輸送中 {quantity}',
+			utilization: '稼働率 {value}',
+			latestAttempt: '最新の輸送試行',
+			transferCost: '輸送費',
+			delivered: '納入済み',
+			transported: '輸送量'
+		},
+		conditions: {
+			'awaiting-dispatch': '輸送待ち',
+			'destination-full': '到着先が満杯',
+			'origin-stock-constrained': '出発元在庫が制約',
+			'route-capacity-constrained': '航路容量が制約',
+			normal: '正常'
+		},
+		states: {
+			active: '稼働中',
+			paused: '停止中'
+		},
+		statuses: {
+			'in-transit': '輸送中',
+			delivered: '納入済み'
+		},
+		sources: {
+			manual: '手動輸送',
+			recurringRoute: '定期航路'
+		},
+		failures: {
+			invalidOrigin: '有効な出発都市を選択してください。',
+			invalidDestination: '有効な到着都市を選択してください。',
+			sameCity: '出発都市と到着都市は別にしてください。',
+			invalidMaterial: '有効な資材を選択してください。',
+			invalidQuantity: '正の整数の数量を入力してください。',
+			insufficientOriginStock: '出発元の在庫が不足しています。',
+			insufficientCash: '輸送費を支払う現金が不足しています。',
+			invalidCapacity: '正の整数の容量を入力してください。',
+			invalidFrequencyDays: '正の整数の頻度を入力してください。',
+			invalidLeadTimeDays: '正の整数の所要日数を入力してください。',
+			invalidTransportCostPerUnit: '正の整数の単位輸送費を入力してください。',
+			invalidPriority: '0以上の整数の優先度を入力してください。',
+			routeNotFound: '定期航路が見つかりません。'
 		}
 	},
 	financePanel: {
