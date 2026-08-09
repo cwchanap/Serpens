@@ -14,6 +14,18 @@ import {
 	upgradeBuilding
 } from '$lib/game/industryPlacement';
 import {
+	dispatchManualTransfer as dispatchManualTransferTransition,
+	createRecurringRoute as createRecurringRouteTransition,
+	updateRecurringRoute as updateRecurringRouteTransition,
+	pauseRecurringRoute as pauseRecurringRouteTransition,
+	resumeRecurringRoute as resumeRecurringRouteTransition,
+	reprioritizeRecurringRoute as reprioritizeRecurringRouteTransition,
+	removeRecurringRoute as removeRecurringRouteTransition,
+	type ManualTransferInput,
+	type RecurringRouteInput,
+	type RecurringRouteUpdateInput
+} from '$lib/game/interCityLogistics';
+import {
 	createFoundingGameAtTile,
 	financeRetailStoreOpening,
 	openStoreAtTile
@@ -109,6 +121,7 @@ export interface MutationAvailability {
 	updatePolicy: boolean;
 	openWorldCity: boolean;
 	setRetailSupplySource: boolean;
+	manageLogistics: boolean;
 	openStore: boolean;
 	upgradeStore: boolean;
 	hireStaff: boolean;
@@ -148,6 +161,7 @@ export function createMutationAvailability(input: {
 		updatePolicy: available('updatePolicy'),
 		openWorldCity: available('openWorldCity'),
 		setRetailSupplySource: available('setRetailSupplySource'),
+		manageLogistics: input.playMode === 'sandbox',
 		openStore: available('openStore'),
 		upgradeStore: available('upgradeStore'),
 		hireStaff: available('hireStaff'),
@@ -171,8 +185,8 @@ export function createMutationAvailability(input: {
 	};
 }
 
+import type { GameRouteCommitResult, LogisticsFailureCode } from '$lib/game/commandResult';
 export type { GameRouteCommitResult } from '$lib/game/commandResult';
-import type { GameRouteCommitResult } from '$lib/game/commandResult';
 
 export type SandboxLoadResult = 'loaded' | 'missing' | 'unavailable';
 
@@ -193,6 +207,7 @@ export interface GameRouteControllerOptions {
 
 type RouteTransitionResult<TReceipt = undefined> =
 	| { ok: true; game: GameState; receipt: TReceipt }
+	| { ok: false; logisticsFailure: LogisticsFailureCode }
 	| { ok: false; code: FinanceFailureCode; context: Record<string, string | number> }
 	| {
 			ok: false;
@@ -1231,6 +1246,72 @@ export class GameRouteController {
 		});
 	}
 
+	dispatchManualTransfer(input: ManualTransferInput): Promise<GameRouteCommitResult> {
+		return this.commitMutation({
+			transition: (game) => {
+				const result = dispatchManualTransferTransition(game!, input);
+				return result.ok ? result.game : { ok: false, logisticsFailure: result.reason };
+			}
+		});
+	}
+
+	createRecurringRoute(input: RecurringRouteInput): Promise<GameRouteCommitResult> {
+		return this.commitMutation({
+			transition: (game) => {
+				const result = createRecurringRouteTransition(game!, input);
+				return result.ok ? result.game : { ok: false, logisticsFailure: result.reason };
+			}
+		});
+	}
+
+	updateRecurringRoute(
+		routeId: string,
+		input: RecurringRouteUpdateInput
+	): Promise<GameRouteCommitResult> {
+		return this.commitMutation({
+			transition: (game) => {
+				const result = updateRecurringRouteTransition(game!, routeId, input);
+				return result.ok ? result.game : { ok: false, logisticsFailure: result.reason };
+			}
+		});
+	}
+
+	pauseRecurringRoute(routeId: string): Promise<GameRouteCommitResult> {
+		return this.commitMutation({
+			transition: (game) => {
+				const result = pauseRecurringRouteTransition(game!, routeId);
+				return result.ok ? result.game : { ok: false, logisticsFailure: result.reason };
+			}
+		});
+	}
+
+	resumeRecurringRoute(routeId: string): Promise<GameRouteCommitResult> {
+		return this.commitMutation({
+			transition: (game) => {
+				const result = resumeRecurringRouteTransition(game!, routeId);
+				return result.ok ? result.game : { ok: false, logisticsFailure: result.reason };
+			}
+		});
+	}
+
+	reprioritizeRecurringRoute(routeId: string, priority: number): Promise<GameRouteCommitResult> {
+		return this.commitMutation({
+			transition: (game) => {
+				const result = reprioritizeRecurringRouteTransition(game!, routeId, priority);
+				return result.ok ? result.game : { ok: false, logisticsFailure: result.reason };
+			}
+		});
+	}
+
+	removeRecurringRoute(routeId: string): Promise<GameRouteCommitResult> {
+		return this.commitMutation({
+			transition: (game) => {
+				const result = removeRecurringRouteTransition(game!, routeId);
+				return result.ok ? result.game : { ok: false, logisticsFailure: result.reason };
+			}
+		});
+	}
+
 	borrowWorkingCapital(amount: number, termDays: LoanTermDays): Promise<GameRouteCommitResult> {
 		return this.commitMutation({
 			transition: (game) => borrow(game!, { purpose: 'workingCapital', amount, termDays }),
@@ -1410,6 +1491,12 @@ export class GameRouteController {
 				request.transition(this.currentState.sandboxGame)
 			);
 			if (!transition.ok) {
+				if ('logisticsFailure' in transition) {
+					return {
+						status: 'logistics-rejected',
+						reason: transition.logisticsFailure
+					};
+				}
 				if ('decisionFailure' in transition) {
 					return {
 						status: 'decision-rejected',

@@ -35,7 +35,7 @@ describe('resolveShortcutAction', () => {
 	});
 
 	it('toggles each management panel by its mnemonic key', () => {
-		expect.assertions(8);
+		expect.assertions(9);
 		expect(resolveShortcutAction(context({ key: 'd' }))).toEqual({
 			type: 'toggle-panel',
 			panel: 'dashboard'
@@ -67,6 +67,22 @@ describe('resolveShortcutAction', () => {
 		expect(resolveShortcutAction(context({ key: 'f' }))).toEqual({
 			type: 'toggle-panel',
 			panel: 'finance'
+		});
+		expect(resolveShortcutAction(context({ key: 'l' }))).toEqual({
+			type: 'toggle-panel',
+			panel: 'logistics'
+		});
+	});
+
+	it('opens logistics case-insensitively and switches from another soft panel', () => {
+		expect.assertions(2);
+		expect(resolveShortcutAction(context({ key: 'L', isMenuOpen: true }))).toEqual({
+			type: 'toggle-panel',
+			panel: 'logistics'
+		});
+		expect(resolveShortcutAction(context({ key: 'l', isMenuOpen: true }))).toEqual({
+			type: 'toggle-panel',
+			panel: 'logistics'
 		});
 	});
 
@@ -113,10 +129,12 @@ describe('resolveShortcutAction', () => {
 	});
 
 	it('ignores every shortcut while typing or when a modal overlay is open', () => {
-		expect.assertions(3);
+		expect.assertions(5);
 		expect(resolveShortcutAction(context({ key: 'b', isTypingTarget: true }))).toBeNull();
 		expect(resolveShortcutAction(context({ key: 'b', hasBlockingOverlay: true }))).toBeNull();
 		expect(resolveShortcutAction(context({ key: 'd', hasBlockingOverlay: true }))).toBeNull();
+		expect(resolveShortcutAction(context({ key: 'l', isTypingTarget: true }))).toBeNull();
+		expect(resolveShortcutAction(context({ key: 'L', hasModifier: true }))).toBeNull();
 	});
 
 	it('suppresses only activation keys when a focused interactive control owns the keypress', () => {
