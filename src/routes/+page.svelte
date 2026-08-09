@@ -7,8 +7,6 @@
 	import FinancePanel from '$lib/components/game/FinancePanel.svelte';
 	import AudioSettings from '$lib/components/game/AudioSettings.svelte';
 	import ControlDesk from '$lib/components/game/ControlDesk.svelte';
-	import IndustryTileInspector from '$lib/components/game/IndustryTileInspector.svelte';
-	import RailSegmentInspector from '$lib/components/game/RailSegmentInspector.svelte';
 	import PolicyPanel from '$lib/components/game/PolicyPanel.svelte';
 	import ProductChainsPanel from '$lib/components/game/ProductChainsPanel.svelte';
 	import ReportsPanel from '$lib/components/game/ReportsPanel.svelte';
@@ -25,7 +23,6 @@
 	import StoreOverview from '$lib/components/game/StoreOverview.svelte';
 	import RetailSupplySources from '$lib/components/game/RetailSupplySources.svelte';
 	import SupplyAdvisor from '$lib/components/game/SupplyAdvisor.svelte';
-	import TileInspector from '$lib/components/game/TileInspector.svelte';
 	import TopBar from '$lib/components/game/TopBar.svelte';
 	import { createGameAudioController, type GameAudioController } from '$lib/audio/audioController';
 	import { DEFAULT_AUDIO_PREFERENCES, type AudioPreferences } from '$lib/audio/audioPreferences';
@@ -178,6 +175,7 @@
 		shouldRefreshFinancedPurchase
 	} from './financePurchaseReview';
 	import FinancePurchaseReviewHost from './FinancePurchaseReviewHost.svelte';
+	import MapInspectorHost from './MapInspectorHost.svelte';
 	import MapSurfaceHost from './MapSurfaceHost.svelte';
 
 	interface ManagementPanelMenuItem {
@@ -2593,68 +2591,33 @@
 				onClose={closeSupplyAdvisor}
 			/>
 		{/if}
-		{#if selectedTile && shouldShowRetailInspector}
-			<div
-				class="inspector-overlay paper"
-				role="dialog"
-				aria-modal="false"
-				aria-label={i18n.t('route.inspectors.retailDetails')}
-			>
-				<TileInspector
-					game={game ?? starterMapState}
-					tile={selectedTile}
-					store={selectedStore}
-					latestStoreReport={latestSelectedStoreReport}
-					{i18n}
-					onUpgradeStore={upgradeStoreHandler}
-					canUpgradeStore={mutationAvailability.upgradeStore}
-					disabledReason={mutationDisabledReason}
-					onOpenDetails={openStoreDetail}
-					onClickFeedback={() => playSfx('sfx.ui.click')}
-					onClose={closeInspector}
-				/>
-			</div>
-		{/if}
-		{#if selectedRailSegments && shouldShowIndustryInspector}
-			<div
-				class="inspector-overlay paper"
-				role="dialog"
-				aria-modal="false"
-				aria-label={i18n.t('railSegmentInspector.title')}
-			>
-				<RailSegmentInspector
-					game={game ?? starterMapState}
-					cityId={industryCity.id}
-					segments={selectedRailSegments}
-					allSegments={industryRailSegments}
-					{i18n}
-					onClose={closeIndustryInspector}
-					onUpgradeSegment={upgradeRailSegmentHandler}
-					onDemolishSegment={demolishRailSegmentHandler}
-					canUpgradeRail={mutationAvailability.upgradeRail}
-					canDemolishRail={mutationAvailability.demolishRail}
-					disabledReason={mutationDisabledReason}
-				/>
-			</div>
-		{:else if selectedIndustryTile && shouldShowIndustryInspector}
-			<div
-				class="inspector-overlay paper"
-				role="dialog"
-				aria-modal="false"
-				aria-label={i18n.t('route.inspectors.industryDetails')}
-			>
-				<IndustryTileInspector
-					game={game ?? starterMapState}
-					tile={selectedIndustryTile}
-					building={selectedIndustryBuilding}
-					{i18n}
-					onUpgradeBuilding={upgradeBuildingHandler}
-					canUpgradeBuilding={mutationAvailability.upgradeIndustrialBuilding}
-					disabledReason={mutationDisabledReason}
-					onClose={closeIndustryInspector}
-				/>
-			</div>
-		{/if}
+		<MapInspectorHost
+			game={game ?? starterMapState}
+			{i18n}
+			disabledReason={mutationDisabledReason}
+			showRetailInspector={shouldShowRetailInspector}
+			selectedRetailTile={selectedTile}
+			{selectedStore}
+			latestStoreReport={latestSelectedStoreReport}
+			canUpgradeStore={mutationAvailability.upgradeStore}
+			onUpgradeStore={upgradeStoreHandler}
+			onOpenStoreDetails={openStoreDetail}
+			onRetailClickFeedback={() => playSfx('sfx.ui.click')}
+			onCloseRetailInspector={closeInspector}
+			showIndustryInspector={shouldShowIndustryInspector}
+			{selectedIndustryTile}
+			{selectedIndustryBuilding}
+			{selectedRailSegments}
+			allIndustryRailSegments={industryRailSegments}
+			industryCityId={industryCity.id}
+			canUpgradeIndustryBuilding={mutationAvailability.upgradeIndustrialBuilding}
+			canUpgradeRail={mutationAvailability.upgradeRail}
+			canDemolishRail={mutationAvailability.demolishRail}
+			onUpgradeIndustryBuilding={upgradeBuildingHandler}
+			onUpgradeRailSegment={upgradeRailSegmentHandler}
+			onDemolishRailSegment={demolishRailSegmentHandler}
+			onCloseIndustryInspector={closeIndustryInspector}
+		/>
 	</section>
 
 	{#if isStoreDetailOpen && selectedStore}
@@ -2926,20 +2889,6 @@
 		font-style: italic;
 	}
 
-	.inspector-overlay {
-		position: absolute;
-		top: 5.9rem;
-		right: 1rem;
-		bottom: 8.5rem;
-		z-index: 10;
-		width: min(360px, calc(100% - 2rem));
-		/* The eight management launchers wrap the desktop control desk to two
-		   rows at common laptop widths. Pin the inspector above that measured
-		   footprint so its upgrade/detail actions remain ordinary pointer targets. */
-		overflow: auto;
-		padding: 0;
-	}
-
 	.tower-backdrop {
 		position: fixed;
 		inset: 0;
@@ -3057,24 +3006,7 @@
 		border-color: var(--brass-500);
 	}
 
-	@media (min-width: 981px) and (max-width: 1023px) {
-		.inspector-overlay {
-			/* Just above the compact breakpoint the desktop launcher cluster
-			   wraps to three rows before .manage is hidden at 980px. */
-			bottom: 11.5rem;
-		}
-	}
-
 	@media (max-width: 980px) {
-		.inspector-overlay {
-			position: fixed;
-			/* Sit above the fixed control desk (compact here — .manage is hidden)
-			   so the store card's Open Details button is never covered. */
-			inset: auto 0 5rem 0;
-			width: auto;
-			max-height: 60dvh;
-		}
-
 		.control-tower-overlay {
 			max-height: calc(100vh - 1rem);
 			padding: 0.85rem;

@@ -2533,8 +2533,10 @@ test('manage selected store stock and see weekly imports', async ({ page }) => {
 	await expect(mapCanvas).toHaveAttribute('data-store-sprite-count', '1');
 
 	await clickMapTile(page, 1, 6);
-	const inspector = page.getByRole('dialog', { name: /tile details/i });
+	const inspector = page.locator('.map-layout .inspector-overlay');
+	await expect(inspector).toHaveCount(1);
 	await expect(inspector).toBeVisible();
+	await expect(page.getByRole('dialog', { name: /tile details/i })).toBeVisible();
 	// The basic card carries no in-line tabs or stock table — those moved to the detail modal.
 	await expect(inspector.getByRole('tab', { name: /stock/i })).toHaveCount(0);
 	await expect(inspector.getByRole('table', { name: /Store #1 stock/i })).toHaveCount(0);
