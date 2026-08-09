@@ -192,6 +192,8 @@ export const ja = {
 	worldMap: {
 		ariaLabel: 'ワールドマップ',
 		cities: '都市一覧',
+		routes: '物流航路',
+		routeSummary: '{origin} → {destination} · {material} · {state} · {condition}',
 		cityDetails: '都市詳細',
 		closeCityDetails: '都市詳細を閉じる',
 		cityEyebrow: {

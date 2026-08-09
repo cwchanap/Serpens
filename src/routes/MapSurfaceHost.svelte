@@ -9,6 +9,7 @@
 		type VisitedMapViews
 	} from '$lib/game/mapViewKeepAlive';
 	import type { IndustryMapSnapshot } from '$lib/game/industryMapRender';
+	import type { RouteOperationalSummary } from '$lib/game/logisticsReadModels';
 	import type { WorldCityStatus } from '$lib/game/world';
 	import type { I18nBundle } from '$lib/i18n';
 
@@ -28,6 +29,9 @@
 		canFinanceWorldCity: boolean;
 		allowedWorldCityIds: string[];
 		mutationDisabledReason: string | null;
+		logisticsRouteSummaries?: readonly RouteOperationalSummary[];
+		selectedLogisticsRouteId?: string | null;
+		onSelectLogisticsRoute?: (routeId: string) => void;
 
 		mapSnapshot: CityMapSnapshot;
 		onSelectRetailTile: (tileId: string) => void;
@@ -53,6 +57,9 @@
 		canFinanceWorldCity,
 		allowedWorldCityIds,
 		mutationDisabledReason,
+		logisticsRouteSummaries = [],
+		selectedLogisticsRouteId = null,
+		onSelectLogisticsRoute = () => {},
 		mapSnapshot,
 		onSelectRetailTile,
 		industryMapSnapshot,
@@ -80,6 +87,9 @@
 				{canFinanceWorldCity}
 				allowedCityIds={allowedWorldCityIds}
 				disabledReason={mutationDisabledReason}
+				{logisticsRouteSummaries}
+				{selectedLogisticsRouteId}
+				{onSelectLogisticsRoute}
 			/>
 		</div>
 	{/if}

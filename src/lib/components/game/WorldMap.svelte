@@ -1,9 +1,11 @@
 <script lang="ts">
 	import { asset } from '$app/paths';
 	import { WORLD_MAP_ART } from '$lib/assets/gameArt';
+	import WorldLogisticsRoutes from '$lib/components/game/WorldLogisticsRoutes.svelte';
 	import { localizeWorldCityStatus } from '$lib/i18n/gameCopy';
 	import type { LocalizedWorldCityStatus } from '$lib/i18n/localizedTypes';
 	import type { I18nBundle } from '$lib/i18n';
+	import type { RouteOperationalSummary } from '$lib/game/logisticsReadModels';
 	import type { WorldCityStatus } from '$lib/game/world';
 
 	interface Props {
@@ -20,6 +22,9 @@
 		selectionDisabled?: boolean;
 		selectionDisabledReason?: string | null;
 		disabledReason?: string | null;
+		logisticsRouteSummaries?: readonly RouteOperationalSummary[];
+		selectedLogisticsRouteId?: string | null;
+		onSelectLogisticsRoute?: (routeId: string) => void;
 	}
 
 	let {
@@ -35,7 +40,10 @@
 		allowedCityIds = statuses.map((status) => status.city.id),
 		selectionDisabled = false,
 		selectionDisabledReason = null,
-		disabledReason = null
+		disabledReason = null,
+		logisticsRouteSummaries = [],
+		selectedLogisticsRouteId = null,
+		onSelectLogisticsRoute = () => {}
 	}: Props = $props();
 	const allowedCitySet = $derived(new Set(allowedCityIds));
 
@@ -84,6 +92,28 @@
 	function inspectorId(status: LocalizedWorldCityStatus): string {
 		return `world-city-${status.city.id}-inspector`;
 	}
+
+	function routeCityName(cityId: string): string {
+		return i18n.labels.worldCity(cityId).name;
+	}
+
+	function routeStateLabel(summary: RouteOperationalSummary): string {
+		return i18n.t(`logisticsPanel.states.${summary.route.state}` as never);
+	}
+
+	function routeConditionLabel(summary: RouteOperationalSummary): string {
+		return i18n.t(`logisticsPanel.conditions.${summary.condition}` as never);
+	}
+
+	function routeButtonLabel(summary: RouteOperationalSummary): string {
+		return i18n.t('worldMap.routeSummary' as never, {
+			origin: routeCityName(summary.route.originCityId),
+			destination: routeCityName(summary.route.destinationCityId),
+			material: i18n.labels.material(summary.route.materialId),
+			state: routeStateLabel(summary),
+			condition: routeConditionLabel(summary)
+		});
+	}
 </script>
 
 <section class="world-map" aria-label={i18n.t('worldMap.ariaLabel')}>
@@ -98,6 +128,12 @@
 			height="1024"
 			decoding="async"
 			fetchpriority="high"
+		/>
+		<WorldLogisticsRoutes
+			routes={logisticsRouteSummaries}
+			cities={localizedStatuses.map((status) => status.city)}
+			selectedRouteId={selectedLogisticsRouteId}
+			onSelectRoute={onSelectLogisticsRoute}
 		/>
 		<div class="world-marker-layer" aria-hidden="true">
 			{#each localizedStatuses as status (status.city.id)}
@@ -123,40 +159,69 @@
 	</div>
 
 	<div class="world-node-list" aria-label={i18n.t('worldMap.cities')}>
-		{#each localizedStatuses as status (status.city.id)}
-			<button
-				type="button"
-				class={{
-					'world-node-card': true,
-					retail: status.city.kind === 'retail',
-					industry: status.city.kind === 'industry',
-					opened: status.state === 'opened',
-					revealed: status.state === 'revealed',
-					locked: status.state === 'locked'
-				}}
-				aria-labelledby={cityTitleId(status)}
-				aria-describedby={cityDescriptionIds(status)}
-				aria-current={selectedCityId === status.city.id ? 'true' : undefined}
-				aria-expanded={selectedCityId === status.city.id}
-				aria-controls={selectedCityId === status.city.id ? inspectorId(status) : undefined}
-				disabled={selectionDisabled || !allowedCitySet.has(status.city.id)}
-				onclick={() => {
-					if (!selectionDisabled && allowedCitySet.has(status.city.id))
-						onSelectCity(status.city.id);
-				}}
-			>
-				<strong id={cityTitleId(status)}>{status.city.name}</strong>
-				<span id={cityDescriptionId(status)}>
-					{status.kindLabel} - {status.stateLabel}. {status.city.specialtySummary}
-				</span>
-				{#if status.state === 'locked' && status.blockedReason}
-					<small id={cityRequirementId(status)}>{status.blockedReason}</small>
-				{/if}
-				{#if !allowedCitySet.has(status.city.id) && disabledReason}
-					<small>{disabledReason}</small>
-				{/if}
-			</button>
-		{/each}
+		<div class="world-city-group" role="group" aria-label={i18n.t('worldMap.cities')}>
+			{#each localizedStatuses as status (status.city.id)}
+				<button
+					type="button"
+					class={{
+						'world-node-card': true,
+						retail: status.city.kind === 'retail',
+						industry: status.city.kind === 'industry',
+						opened: status.state === 'opened',
+						revealed: status.state === 'revealed',
+						locked: status.state === 'locked'
+					}}
+					aria-labelledby={cityTitleId(status)}
+					aria-describedby={cityDescriptionIds(status)}
+					aria-current={selectedCityId === status.city.id ? 'true' : undefined}
+					aria-expanded={selectedCityId === status.city.id}
+					aria-controls={selectedCityId === status.city.id ? inspectorId(status) : undefined}
+					disabled={selectionDisabled || !allowedCitySet.has(status.city.id)}
+					onclick={() => {
+						if (!selectionDisabled && allowedCitySet.has(status.city.id))
+							onSelectCity(status.city.id);
+					}}
+				>
+					<strong id={cityTitleId(status)}>{status.city.name}</strong>
+					<span id={cityDescriptionId(status)}>
+						{status.kindLabel} - {status.stateLabel}. {status.city.specialtySummary}
+					</span>
+					{#if status.state === 'locked' && status.blockedReason}
+						<small id={cityRequirementId(status)}>{status.blockedReason}</small>
+					{/if}
+					{#if !allowedCitySet.has(status.city.id) && disabledReason}
+						<small>{disabledReason}</small>
+					{/if}
+				</button>
+			{/each}
+		</div>
+		{#if logisticsRouteSummaries.length > 0}
+			<div class="world-route-group" role="group" aria-label={i18n.t('worldMap.routes')}>
+				{#each logisticsRouteSummaries as summary (summary.route.id)}
+					<button
+						type="button"
+						class={{
+							'world-node-card': true,
+							'world-route-card': true,
+							active: summary.route.state === 'active',
+							paused: summary.route.state === 'paused',
+							selected: selectedLogisticsRouteId === summary.route.id
+						}}
+						aria-label={routeButtonLabel(summary)}
+						aria-current={selectedLogisticsRouteId === summary.route.id ? 'true' : undefined}
+						onclick={() => onSelectLogisticsRoute(summary.route.id)}
+					>
+						<strong>
+							{routeCityName(summary.route.originCityId)} → {routeCityName(
+								summary.route.destinationCityId
+							)}
+						</strong>
+						<span>{i18n.labels.material(summary.route.materialId)}</span>
+						<small>{routeStateLabel(summary)} · {routeConditionLabel(summary)}</small>
+					</button>
+				{/each}
+			</div>
+		{/if}
 	</div>
 	{#if selectionDisabled && selectionDisabledReason}
 		<p class="blocked-reason" role="status">{selectionDisabledReason}</p>
@@ -309,6 +374,17 @@
 		overflow: auto;
 	}
 
+	.world-city-group,
+	.world-route-group {
+		display: grid;
+		gap: 0.5rem;
+	}
+
+	.world-route-group {
+		border-top: 1px solid color-mix(in srgb, var(--brass-500) 52%, transparent);
+		padding-top: 0.5rem;
+	}
+
 	.world-node-card {
 		display: grid;
 		gap: 0.2rem;
@@ -336,6 +412,21 @@
 
 	.world-node-card.retail {
 		border-left: 0.35rem solid var(--brass-500);
+	}
+
+	.world-route-card {
+		border-left: 0.35rem solid var(--moss);
+	}
+
+	.world-route-card.paused {
+		border-left-style: dashed;
+		background: var(--paper-200);
+	}
+
+	.world-route-card.selected {
+		border-color: var(--wax-red);
+		outline: 2px solid var(--wax-red);
+		outline-offset: 1px;
 	}
 
 	.world-node-card.locked {
