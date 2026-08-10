@@ -894,4 +894,122 @@ describe('collectGameAlerts', () => {
 			)
 		).toBe(true);
 	});
+
+	it('sorts missed loans with null arrearsSinceDay after loans with a known arrears day', () => {
+		// hasLoanArrears can be true when overdueInterest > 0 even if
+		// arrearsSinceDay is null. compareByNumberThenId must fall back to
+		// Number.MAX_SAFE_INTEGER for the null side so those loans sort last.
+		const finance = createEmptyFinanceState(5);
+		const alerts = collectGameAlerts(
+			baseGame({
+				finance: {
+					...finance,
+					loans: [
+						loan({
+							id: 'loan-null-arrears',
+							status: 'delinquent',
+							overdueInterest: 3,
+							arrearsSinceDay: null
+						}),
+						loan({
+							id: 'loan-known-arrears',
+							status: 'delinquent',
+							overduePrincipal: 2,
+							arrearsSinceDay: 2
+						})
+					]
+				}
+			})
+		);
+
+		expect(alerts.slice(0, 2).map((alert) => alert.id)).toEqual([
+			'missedLoanPayment:loan-known-arrears',
+			'missedLoanPayment:loan-null-arrears'
+		]);
+	});
+
+	it('uses the loan id tiebreaker when arrears days are equal and the larger id leads', () => {
+		const finance = createEmptyFinanceState(5);
+		const alerts = collectGameAlerts(
+			baseGame({
+				finance: {
+					...finance,
+					loans: [
+						loan({
+							id: 'loan-b',
+							status: 'delinquent',
+							overduePrincipal: 2,
+							arrearsSinceDay: 2
+						}),
+						loan({
+							id: 'loan-a',
+							status: 'delinquent',
+							overduePrincipal: 2,
+							arrearsSinceDay: 2
+						})
+					]
+				}
+			})
+		);
+
+		expect(alerts.slice(0, 2).map((alert) => alert.id)).toEqual([
+			'missedLoanPayment:loan-a',
+			'missedLoanPayment:loan-b'
+		]);
+	});
+
+	it('fires an origin-stock alert when the origin city inventory lacks the route material entirely', () => {
+		// The ?? 0 fallback in the origin-stock check must fire when the
+		// material key is absent from the origin city inventory, not just when
+		// it is present with a zero value.
+		const game = logisticsGame({
+			stock: 0,
+			attempts: [
+				{
+					day: 9,
+					attempt: {
+						destinationNeed: 10,
+						capacity: 5,
+						availableOriginStock: 0,
+						dispatchedQuantity: 0,
+						unusedCapacity: 5,
+						unmetDestinationNeed: 10
+					}
+				}
+			]
+		});
+		const gameWithoutMaterial = {
+			...game,
+			cityInventories: [
+				{
+					cityId: 'industry-city' as const,
+					materials: { grain: 5 } as Partial<Record<MaterialId, number>>
+				}
+			]
+		};
+
+		expect(collectGameAlerts(gameWithoutMaterial)).toContainEqual({
+			id: 'logistics-origin-stock:route-1',
+			kind: 'logistics-origin-stock',
+			routeId: 'route-1'
+		});
+	});
+
+	it('sorts important modifiers with equal expiry by ascending id when the larger id leads', () => {
+		const alerts = collectGameAlerts(
+			baseGame({
+				events: {
+					...createInitialEventRuntime(1),
+					activeModifiers: [
+						modifier({ id: 'event-modifier-b', expiresOnDay: 9 }),
+						modifier({ id: 'event-modifier-a', expiresOnDay: 9 })
+					]
+				}
+			})
+		);
+		expect(alerts.filter((a) => a.kind === 'event-modifier').map((a) => a.modifierId)).toEqual([
+			'event-modifier-a',
+			'event-modifier-b'
+		]);
+	});
 });

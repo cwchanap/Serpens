@@ -1011,4 +1011,109 @@ describe('ReportsPanel', () => {
 			.element(reports.getByText('Local supply attribution unavailable — Harbor City: 4 units'))
 			.toBeVisible();
 	});
+
+	it('renders the top-level empty state when summary.latest is null', async () => {
+		expect.assertions(1);
+		render(ReportsPanel, {
+			i18n: createI18n('en'),
+			stores: [],
+			summary: {
+				...summary,
+				latest: null
+			}
+		});
+
+		const reports = page.getByRole('region', { name: 'Reports' });
+		await expect
+			.element(reports.getByText('No reports yet. Advance the first day to generate results.'))
+			.toBeVisible();
+	});
+
+	it('renders the production-close inventory unavailable state when cityInventories is missing', async () => {
+		expect.assertions(1);
+		render(ReportsPanel, {
+			i18n: createI18n('en'),
+			stores: [],
+			summary: {
+				...summary,
+				latest: {
+					...summary.latest!,
+					productionReport: {
+						...emptyProductionReport(),
+						cityInventories: undefined as unknown as DailyProductionReport['cityInventories']
+					}
+				}
+			}
+		});
+
+		const reports = page.getByRole('region', { name: 'Reports' });
+		await expect
+			.element(reports.getByText('Production-close city inventory is unavailable.'))
+			.toBeVisible();
+	});
+
+	it('skips store reports without a replenishment context', async () => {
+		expect.assertions(1);
+		const game = currentInventoryGame();
+
+		render(ReportsPanel, {
+			i18n: createI18n('en'),
+			game,
+			stores: [store],
+			summary: {
+				...summary,
+				latest: {
+					...summary.latest!,
+					storeReports: [
+						{
+							...replenishedStoreReport(),
+							replenishment: undefined as unknown as DailyStoreReport['replenishment']
+						}
+					]
+				}
+			}
+		});
+
+		const reports = page.getByRole('region', { name: 'Reports' });
+		await expect.element(reports.getByText(/Local supply —/)).not.toBeInTheDocument();
+	});
+
+	it('renders zero utilization for a dispatch attempt with zero capacity', async () => {
+		expect.assertions(1);
+
+		const zeroCapacityAttempt: DailyRouteDispatchAttempt = {
+			routeId: 'route-zero',
+			originCityId: 'industry-city',
+			destinationCityId: 'breadbasket-basin',
+			materialId: 'water',
+			destinationNeed: 10,
+			capacity: 0,
+			availableOriginStock: 0,
+			dispatchedQuantity: 0,
+			unusedCapacity: 0,
+			unmetDestinationNeed: 10,
+			transportCost: 0,
+			transferOrderId: null
+		};
+
+		render(ReportsPanel, {
+			i18n: createI18n('en'),
+			stores: [],
+			summary: {
+				...summary,
+				latest: {
+					...summary.latest!,
+					logistics: {
+						arrivals: [],
+						routeDispatchAttempts: [zeroCapacityAttempt],
+						deliveredUnits: 0,
+						scheduledTransportCost: 0
+					}
+				}
+			}
+		});
+
+		const logistics = page.getByRole('region', { name: 'Latest-day logistics' });
+		await expect.element(logistics.getByText('Utilization: 0%')).toBeVisible();
+	});
 });

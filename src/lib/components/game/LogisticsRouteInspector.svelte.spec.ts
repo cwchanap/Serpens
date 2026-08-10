@@ -118,4 +118,18 @@ describe('LogisticsRouteInspector', () => {
 		await expect.element(page.getByTestId('route-utilization')).toHaveTextContent('—');
 		await expect.element(page.getByText('Awaiting dispatch', { exact: true })).toBeVisible();
 	});
+
+	it('forwards Close with the close button', async () => {
+		expect.assertions(1);
+		const onClose = vi.fn();
+		render(LogisticsRouteInspector, {
+			route: summary(),
+			i18n: createI18n('en'),
+			onManageRoute: vi.fn(),
+			onClose
+		});
+
+		await page.getByRole('button', { name: /close/i }).click();
+		expect(onClose).toHaveBeenCalledTimes(1);
+	});
 });

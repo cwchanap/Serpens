@@ -41,20 +41,24 @@ import {
 	decisionContextWorldCityOpeningCost,
 	decisionContextWorldCityUnknown,
 	decisionContextCashPressure,
+	decisionContextExpansionOpportunity,
 	decisionContextIndustrialTileHasRail,
 	decisionContextRailAlreadyConnected,
 	decisionContextRailNoValidPath,
 	decisionContextRailRequiresCash,
+	decisionContextRailSelfConnected,
 	decisionContextRailSegmentAtMaxLevel,
 	decisionContextRailCrossCity,
 	decisionContextRailUnknownBuilding,
-	decisionContextRailUnknownSegment
+	decisionContextRailUnknownSegment,
+	decisionContextSupplierTerms
 } from '$lib/game/decisionContext';
 import { describe, expect, it } from 'vitest';
 import { createI18n } from './index';
 import { messagesByLocale } from './messages';
 import {
 	formatPlacementBlockReason,
+	formatStoreLocation,
 	localizeAlert,
 	localizeEventSourceTitle,
 	localizeGameAlert,
@@ -2413,5 +2417,165 @@ describe('game copy builders', () => {
 		};
 		const result = localizeAlert(alert, gameWithDecision, createI18n('en'));
 		expect(result).toContain('events.unknown');
+	});
+
+	it('formatStoreLocation localizes the neighborhood name and coordinates', () => {
+		const en = createI18n('en');
+		const result = formatStoreLocation({ neighborhoodId: 'downtown', x: 3, y: 7 }, en);
+		expect(result).toContain(en.labels.neighborhood('downtown'));
+		expect(result).toContain('3');
+		expect(result).toContain('7');
+	});
+
+	it('localizeStockStatus translates Out of stock and Needs import', () => {
+		const en = createI18n('en');
+		expect(localizeStockStatus('Out of stock', en)).toBe(en.t('copy.stockStatus.outOfStock'));
+		expect(localizeStockStatus('Needs import', en)).toBe(en.t('copy.stockStatus.needsImport'));
+	});
+
+	it('localizeDecisionContextValue covers cashPressure, expansionOpportunity, supplierTerms, and railSelfConnected contexts', () => {
+		const en = createI18n('en');
+		const contexts = [
+			decisionContextCashPressure(),
+			decisionContextExpansionOpportunity(),
+			decisionContextSupplierTerms(),
+			decisionContextRailSelfConnected()
+		];
+		for (const ctx of contexts) {
+			const decision: DecisionItem = {
+				kind: 'system',
+				id: `test-${ctx.code}`,
+				title: 'Test decision',
+				context: ctx,
+				expiresOnDay: 3,
+				options: [{ id: 'acknowledge', label: 'Acknowledge', description: 'Done.' }]
+			};
+			const localized = localizeDecision(decision, en);
+			expect(localized.context).not.toBe('');
+			expect(localized.context).not.toBe(decision.context);
+		}
+	});
+
+	it('localizeProductChainGraph falls back to the raw label for unknown recipe IDs', () => {
+		const en = createI18n('en');
+		const unknownRecipeNode: ProductChainNode = {
+			id: 'recipe:unknown-recipe',
+			kind: 'recipe',
+			label: 'Mystery Building',
+			materialId: null,
+			recipeId: 'unknown-recipe',
+			subLabel: undefined,
+			stage: 'intermediate',
+			layer: 0,
+			row: 0,
+			health: 'healthy',
+			healthLabel: 'Healthy',
+			warehouseStock: 0,
+			capacity: { buildingCount: 1, outputPerDay: 10, inputPerDay: 5 },
+			actual: {
+				produced: 0,
+				consumed: 0,
+				importedInput: 0,
+				warehousePulled: 0,
+				railPulled: 0,
+				shopImported: 0,
+				unitsSold: 0,
+				demandMissed: 0
+			},
+			bottleneck: { code: 'healthStatus', health: 'healthy', label: 'Mystery Building' }
+		};
+		const graph: ProductChainGraph = {
+			id: 'warehouse-flow',
+			title: 'Warehouse flow',
+			nodes: [unknownRecipeNode],
+			edges: [],
+			details: {},
+			warnings: [],
+			emptyReason: null
+		};
+		const localized = localizeProductChainGraph(graph, en);
+		expect(localized.nodes[0]?.label).toBe('Mystery Building');
+	});
+
+	it('localizeProductChainGraph uses the raw label for nodes without recipe or material IDs', () => {
+		const en = createI18n('en');
+		const plainNode: ProductChainNode = {
+			id: 'plain-node',
+			kind: 'recipe',
+			label: 'Plain Node',
+			materialId: null,
+			recipeId: null,
+			subLabel: undefined,
+			stage: 'intermediate',
+			layer: 0,
+			row: 0,
+			health: 'healthy',
+			healthLabel: 'Healthy',
+			warehouseStock: 0,
+			capacity: { buildingCount: 0, outputPerDay: 0, inputPerDay: 0 },
+			actual: {
+				produced: 0,
+				consumed: 0,
+				importedInput: 0,
+				warehousePulled: 0,
+				railPulled: 0,
+				shopImported: 0,
+				unitsSold: 0,
+				demandMissed: 0
+			},
+			bottleneck: { code: 'healthStatus', health: 'healthy', label: 'Plain Node' }
+		};
+		const graph: ProductChainGraph = {
+			id: 'warehouse-flow',
+			title: 'Warehouse flow',
+			nodes: [plainNode],
+			edges: [],
+			details: {},
+			warnings: [],
+			emptyReason: null
+		};
+		const localized = localizeProductChainGraph(graph, en);
+		expect(localized.nodes[0]?.label).toBe('Plain Node');
+	});
+
+	it('localizeProductChainGraph formats non-integer quantities with the decimal formatter', () => {
+		const en = createI18n('en');
+		const recipeNode: ProductChainNode = {
+			id: 'recipe:flour-milling',
+			kind: 'recipe',
+			label: 'Flour Mill',
+			materialId: 'flour',
+			recipeId: 'flour-milling',
+			subLabel: 'Flour',
+			stage: 'intermediate',
+			layer: 0,
+			row: 0,
+			health: 'healthy',
+			healthLabel: 'Healthy',
+			warehouseStock: 0,
+			capacity: { buildingCount: 1, outputPerDay: 10.5, inputPerDay: 5.5 },
+			actual: {
+				produced: 0,
+				consumed: 0,
+				importedInput: 0,
+				warehousePulled: 0,
+				railPulled: 0,
+				shopImported: 0,
+				unitsSold: 0,
+				demandMissed: 0
+			},
+			bottleneck: { code: 'healthStatus', health: 'healthy', label: 'Flour Mill' }
+		};
+		const graph: ProductChainGraph = {
+			id: 'warehouse-flow',
+			title: 'Warehouse flow',
+			nodes: [recipeNode],
+			edges: [],
+			details: {},
+			warnings: [],
+			emptyReason: null
+		};
+		const localized = localizeProductChainGraph(graph, en);
+		expect(localized.nodes[0]?.statLine).toContain(en.format.decimal(10.5));
 	});
 });
