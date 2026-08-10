@@ -105,11 +105,16 @@
 	$effect(() => {
 		const routeId = focusedRouteId;
 		if (!routeId) return;
+		let cancelled = false;
 		void tick().then(() => {
+			if (cancelled) return;
 			const row = document.getElementById(`logistics-route-${routeId}`);
 			row?.scrollIntoView({ block: 'nearest' });
 			row?.focus();
 		});
+		return () => {
+			cancelled = true;
+		};
 	});
 
 	function parsePositiveInteger(value: string | number): number | null {
@@ -332,9 +337,19 @@
 		submitting = true;
 		try {
 			const result = await onRemoveRecurringRoute(route.routeId);
-			statusMessage = isCommitted(result)
-				? i18n.t('logisticsPanel.ui.routeRemoved')
-				: describeResult(result);
+			if (!isCommitted(result)) {
+				statusMessage = describeResult(result);
+				return;
+			}
+			statusMessage = i18n.t('logisticsPanel.ui.routeRemoved');
+			if (editingRouteId === route.routeId) {
+				editingRouteId = null;
+			}
+			if (priorityValues[route.routeId] !== undefined) {
+				const nextPriorityValues = { ...priorityValues };
+				delete nextPriorityValues[route.routeId];
+				priorityValues = nextPriorityValues;
+			}
 		} finally {
 			submitting = false;
 		}
@@ -348,7 +363,7 @@
 <section class="panel logistics-panel paper" aria-labelledby="logistics-heading">
 	<h2 id="logistics-heading">{i18n.t('logisticsPanel.title')}</h2>
 	<p>{i18n.t('logisticsPanel.subtitle')}</p>
-	{#if disabledReason && !canMutate}<p class="disabled-copy" role="status">{disabledReason}</p>{/if}
+	{#if disabledReason && !canMutate}<p class="disabled-copy">{disabledReason}</p>{/if}
 	<p class="live-status" aria-live="polite" role="status">{statusMessage}</p>
 
 	<section class="surface" aria-labelledby="manual-transfer-heading">
@@ -595,7 +610,7 @@
 		{#if view.recentTransfers.length === 0}
 			<p>{i18n.t('logisticsPanel.ui.noTransfers')}</p>
 		{:else}
-			<ol>
+			<ol aria-labelledby="recent-transfers-heading">
 				{#each view.recentTransfers as transfer (transfer.id)}
 					<li>
 						{transfer.id} · {transfer.originLabel} → {transfer.destinationLabel} · {transfer.materialLabel}

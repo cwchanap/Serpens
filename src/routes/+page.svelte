@@ -638,7 +638,11 @@
 				null)
 			: null
 	);
-	let logisticsPanelView = $derived(buildLogisticsPanelView(game ?? starterMapState, i18n));
+	let logisticsPanelView = $derived(
+		activeManagementPanelId === 'logistics'
+			? buildLogisticsPanelView(game ?? starterMapState, i18n)
+			: null
+	);
 	let selectedTile = $derived(
 		selectedTileId ? (getTileById(activeCity, selectedTileId) ?? null) : null
 	);
@@ -1015,6 +1019,7 @@
 		selectedTileId = null;
 		selectedIndustryTileId = null;
 		cancelPlacement();
+		focusedLogisticsRouteId = null;
 		selectedLogisticsRouteId = routeId;
 	}
 
@@ -1963,7 +1968,7 @@
 		return gameRouteController.reprioritizeRecurringRoute(routeId, priority);
 	}
 
-	function isCommittedMutation(result: GameRouteCommitResult): boolean {
+	function isCommittedResult(result: GameRouteCommitResult): boolean {
 		return (
 			result.status === 'committed' || (result.status === 'sandbox-committed' && result.changed)
 		);
@@ -1974,7 +1979,7 @@
 			return { status: 'unavailable' };
 		}
 		const result = await gameRouteController.removeRecurringRoute(routeId);
-		if (isCommittedMutation(result)) {
+		if (isCommittedResult(result)) {
 			if (selectedLogisticsRouteId === routeId) selectedLogisticsRouteId = null;
 			if (focusedLogisticsRouteId === routeId) focusedLogisticsRouteId = null;
 		}
@@ -2250,12 +2255,6 @@
 		return { ...purchase, expectedCost, offer };
 	}
 
-	function isCommittedFinancePurchase(result: GameRouteCommitResult): boolean {
-		return (
-			result.status === 'committed' || (result.status === 'sandbox-committed' && result.changed)
-		);
-	}
-
 	async function confirmFinancedPurchase(): Promise<void> {
 		if (!game) return;
 		const gameSnapshot = game;
@@ -2273,7 +2272,7 @@
 			result = await gameRouteController.financeIndustrialBuilding(...request.command.args);
 		}
 
-		if (isCommittedFinancePurchase(result)) {
+		if (isCommittedResult(result)) {
 			if (financePurchaseReview.generation !== request.generation) return;
 			selectedTileId = null;
 			selectedIndustryTileId = null;
@@ -2462,8 +2461,7 @@
 				return;
 			}
 			if (activeManagementPanelId !== null) {
-				activeManagementPanelId = null;
-				clearLogisticsRouteSelection();
+				closeManagementPanel();
 				return;
 			}
 			if (selectedWorldCityId !== null) {

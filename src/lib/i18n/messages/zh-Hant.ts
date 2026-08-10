@@ -1170,9 +1170,9 @@ export const zhHant = {
 			decision: '決策: {title}',
 			eventModifier: '生效中的修正效果: {title}',
 			factoryBlocked: '{buildingName} 缺少投入原料',
-			logisticsOriginStock: '{origin} 的 {material} 庫存低於此路線所需數量。',
+			logisticsOriginStock: '{origin} 的 {material} 庫存低於此航線所需數量。',
 			logisticsRouteCapacity:
-				'{origin} 至 {destination} 的 {material} 路線已達容量，仍有需求未滿足。',
+				'{origin} 至 {destination} 的 {material} 航線已達容量，仍有需求未滿足。',
 			upcomingLoanPayment: '{purpose}的 {amount} 付款將於第 {day} 天到期。',
 			missedLoanPayment: '{purpose}有 {amount} 的逾期付款。',
 			covenantRisk: '債務償付覆蓋率為 {coverage}，低於 {threshold}。',

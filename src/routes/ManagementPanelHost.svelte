@@ -4,10 +4,7 @@
 	import DecisionQueue from '$lib/components/game/DecisionQueue.svelte';
 	import FinancePanel from '$lib/components/game/FinancePanel.svelte';
 	import LogisticsPanel from '$lib/components/game/LogisticsPanel.svelte';
-	import {
-		buildLogisticsPanelView,
-		type LogisticsPanelView
-	} from '$lib/components/game/logisticsPanel';
+	import type { LogisticsPanelView } from '$lib/components/game/logisticsPanel';
 	import PolicyPanel from '$lib/components/game/PolicyPanel.svelte';
 	import ProductChainsPanel from '$lib/components/game/ProductChainsPanel.svelte';
 	import ReportsPanel from '$lib/components/game/ReportsPanel.svelte';
@@ -39,7 +36,7 @@
 		mutations: MutationAvailability;
 		retailSupplyDisabled: boolean;
 		focusedFinanceLoanId: string | null;
-		logisticsView?: LogisticsPanelView;
+		logisticsView: LogisticsPanelView | null;
 		manageLogistics?: boolean;
 		focusedLogisticsRouteId?: string | null;
 		i18n: I18nBundle;
@@ -57,19 +54,19 @@
 		onRepay: (loanId: string, amount: number) => Promise<GameRouteCommitResult>;
 		onPayoff: (loanId: string) => Promise<GameRouteCommitResult>;
 		onRefinance: (loanId: string, termDays: LoanTermDays) => Promise<GameRouteCommitResult>;
-		onDispatchManualTransfer?: (input: ManualTransferInput) => Promise<GameRouteCommitResult>;
-		onCreateRecurringRoute?: (input: RecurringRouteInput) => Promise<GameRouteCommitResult>;
-		onUpdateRecurringRoute?: (
+		onDispatchManualTransfer: (input: ManualTransferInput) => Promise<GameRouteCommitResult>;
+		onCreateRecurringRoute: (input: RecurringRouteInput) => Promise<GameRouteCommitResult>;
+		onUpdateRecurringRoute: (
 			routeId: string,
 			input: RecurringRouteUpdateInput
 		) => Promise<GameRouteCommitResult>;
-		onPauseRecurringRoute?: (routeId: string) => Promise<GameRouteCommitResult>;
-		onResumeRecurringRoute?: (routeId: string) => Promise<GameRouteCommitResult>;
-		onReprioritizeRecurringRoute?: (
+		onPauseRecurringRoute: (routeId: string) => Promise<GameRouteCommitResult>;
+		onResumeRecurringRoute: (routeId: string) => Promise<GameRouteCommitResult>;
+		onReprioritizeRecurringRoute: (
 			routeId: string,
 			priority: number
 		) => Promise<GameRouteCommitResult>;
-		onRemoveRecurringRoute?: (routeId: string) => Promise<GameRouteCommitResult>;
+		onRemoveRecurringRoute: (routeId: string) => Promise<GameRouteCommitResult>;
 	}
 
 	let {
@@ -99,24 +96,27 @@
 		onRepay,
 		onPayoff,
 		onRefinance,
-		onDispatchManualTransfer = async () => ({ status: 'unavailable' }),
-		onCreateRecurringRoute = async () => ({ status: 'unavailable' }),
-		onUpdateRecurringRoute = async () => ({ status: 'unavailable' }),
-		onPauseRecurringRoute = async () => ({ status: 'unavailable' }),
-		onResumeRecurringRoute = async () => ({ status: 'unavailable' }),
-		onReprioritizeRecurringRoute = async () => ({ status: 'unavailable' }),
-		onRemoveRecurringRoute = async () => ({ status: 'unavailable' })
+		onDispatchManualTransfer,
+		onCreateRecurringRoute,
+		onUpdateRecurringRoute,
+		onPauseRecurringRoute,
+		onResumeRecurringRoute,
+		onReprioritizeRecurringRoute,
+		onRemoveRecurringRoute
 	}: Props = $props();
-
-	const effectiveLogisticsView = $derived(
-		logisticsView ?? buildLogisticsPanelView(panelGame, i18n)
-	);
 
 	function requireFinanceMetrics(): FinanceMetrics {
 		if (financeMetrics === null) {
 			throw new Error('ManagementPanelHost invariant: financeMetrics required for finance panel');
 		}
 		return financeMetrics;
+	}
+
+	function requireLogisticsView(): LogisticsPanelView {
+		if (logisticsView === null) {
+			throw new Error('ManagementPanelHost invariant: logisticsView required for logistics panel');
+		}
+		return logisticsView;
 	}
 </script>
 
@@ -222,7 +222,7 @@
 		{:else if panelId === 'logistics'}
 			<LogisticsPanel
 				game={panelGame}
-				view={effectiveLogisticsView}
+				view={requireLogisticsView()}
 				canMutate={manageLogistics}
 				focusedRouteId={focusedLogisticsRouteId}
 				{disabledReason}
