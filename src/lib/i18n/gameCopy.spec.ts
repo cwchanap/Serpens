@@ -2218,7 +2218,7 @@ describe('game copy builders', () => {
 					health: 'no-report',
 					bottleneck: { code: 'healthStatus', health: 'no-report', label: 'Water' }
 				}
-			],
+			]
 		};
 		expect(localizeProductChainGraph(graphWithNoReport, en).nodes[0]?.bottleneck).not.toBe('');
 	});
