@@ -1019,7 +1019,7 @@ describe('ReportsPanel', () => {
 			stores: [],
 			summary: {
 				...summary,
-				latest: null
+				latest: null as unknown as ReportSummary['latest']
 			}
 		});
 
