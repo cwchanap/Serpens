@@ -2218,7 +2218,7 @@ describe('game copy builders', () => {
 					health: 'no-report',
 					bottleneck: { code: 'healthStatus', health: 'no-report', label: 'Water' }
 				}
-			]
+			],
 		};
 		expect(localizeProductChainGraph(graphWithNoReport, en).nodes[0]?.bottleneck).not.toBe('');
 	});
@@ -2463,7 +2463,7 @@ describe('game copy builders', () => {
 			kind: 'recipe',
 			label: 'Mystery Building',
 			materialId: null,
-			recipeId: 'unknown-recipe',
+			recipeId: 'unknown-recipe' as unknown as ProductChainNode['recipeId'],
 			subLabel: undefined,
 			stage: 'intermediate',
 			layer: 0,
