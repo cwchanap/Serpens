@@ -1,6 +1,7 @@
 import { hasLoanArrears, isOutstandingLoan } from './finance';
 import { getAlertFinanceSnapshot } from './financeMetrics';
 import {
+	attemptMatchesRoute,
 	selectRecentRouteDispatchAttempts,
 	selectRouteOperations,
 	type RouteOperationalSummary
@@ -156,7 +157,9 @@ function collectLogisticsAlerts(game: GameState): GameAlert[] {
 			}
 		}
 
-		const recentAttempts = recentAttemptsByRoute.get(summary.route.id) ?? [];
+		const recentAttempts = (recentAttemptsByRoute.get(summary.route.id) ?? []).filter((attempt) =>
+			attemptMatchesRoute(attempt, summary.route)
+		);
 		if (
 			summary.condition === 'route-capacity-constrained' &&
 			recentAttempts.length >= LOGISTICS_CAPACITY_PRESSURE_ATTEMPTS &&

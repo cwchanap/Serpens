@@ -211,12 +211,12 @@ describe('logistics read models', () => {
 	test('derives current route operations from route orders and the latest recorded attempt capacity', () => {
 		const routeThree = recurringRoute({ id: 'route-3', priority: 0 });
 		const routeTen = recurringRoute({ id: 'route-10', priority: 1, capacity: 50 });
-		const routeTwo = recurringRoute({ id: 'route-2', priority: 1, capacity: 100 });
+		const routeTwo = recurringRoute({ id: 'route-2', priority: 1, capacity: 20 });
 		const earlierAttempt = routeAttempt({
 			routeId: 'route-2',
-			capacity: 50,
+			capacity: 20,
 			dispatchedQuantity: 20,
-			unusedCapacity: 30,
+			unusedCapacity: 0,
 			unmetDestinationNeed: 10,
 			transportCost: 40,
 			transferOrderId: 'transfer-earlier'
@@ -305,9 +305,9 @@ describe('logistics read models', () => {
 		const fullAttempt = routeAttempt({
 			routeId: 'route-full',
 			destinationNeed: 0,
-			capacity: 20,
+			capacity: 30,
 			dispatchedQuantity: 0,
-			unusedCapacity: 20,
+			unusedCapacity: 30,
 			unmetDestinationNeed: 0,
 			transportCost: 0,
 			transferOrderId: null
@@ -315,9 +315,9 @@ describe('logistics read models', () => {
 		const metAttempt = routeAttempt({
 			routeId: 'route-met',
 			destinationNeed: 12,
-			capacity: 20,
+			capacity: 30,
 			dispatchedQuantity: 12,
-			unusedCapacity: 8,
+			unusedCapacity: 18,
 			unmetDestinationNeed: 0,
 			transportCost: 24,
 			transferOrderId: 'transfer-met'
@@ -336,13 +336,13 @@ describe('logistics read models', () => {
 			latestAttempt: { destinationNeed: 0, unmetDestinationNeed: 0 },
 			condition: 'destination-full',
 			utilization: 0,
-			unusedCapacity: 20,
+			unusedCapacity: 30,
 			unmetDestinationNeed: 0
 		});
 		expect(summaries.find((summary) => summary.route.id === 'route-met')).toMatchObject({
 			latestAttempt: { destinationNeed: 12, unmetDestinationNeed: 0 },
-			utilization: 0.6,
-			unusedCapacity: 8,
+			utilization: 0.4,
+			unusedCapacity: 18,
 			unmetDestinationNeed: 0
 		});
 	});
@@ -351,23 +351,23 @@ describe('logistics read models', () => {
 		const originConstrainedAttempt = routeAttempt({
 			routeId: 'route-stock',
 			destinationNeed: 10,
-			capacity: 5,
+			capacity: 30,
 			availableOriginStock: 0,
 			dispatchedQuantity: 0,
-			unusedCapacity: 5,
+			unusedCapacity: 30,
 			unmetDestinationNeed: 10,
 			transportCost: 0,
 			transferOrderId: null
 		});
 		const capacityConstrainedAttempt = routeAttempt({
 			routeId: 'route-capacity',
-			destinationNeed: 30,
-			capacity: 20,
-			availableOriginStock: 20,
-			dispatchedQuantity: 20,
+			destinationNeed: 40,
+			capacity: 30,
+			availableOriginStock: 30,
+			dispatchedQuantity: 30,
 			unusedCapacity: 0,
 			unmetDestinationNeed: 10,
-			transportCost: 40,
+			transportCost: 60,
 			transferOrderId: 'transfer-capacity'
 		});
 		const game = gameWithLogistics({
@@ -468,9 +468,9 @@ describe('logistics read models', () => {
 	test('skips route dispatch attempts for removed routes and older report days', () => {
 		const latestAttempt = routeAttempt({
 			routeId: 'route-1',
-			capacity: 20,
+			capacity: 30,
 			dispatchedQuantity: 5,
-			unusedCapacity: 15,
+			unusedCapacity: 25,
 			unmetDestinationNeed: 5,
 			transportCost: 10,
 			transferOrderId: 'transfer-latest'
@@ -508,6 +508,74 @@ describe('logistics read models', () => {
 		expect(routeOne?.latestAttempt).toEqual(latestAttempt);
 		expect(routeOne?.latestAttempt).not.toEqual(olderAttempt);
 		expect(summaries.some((summary) => summary.route.id === 'route-removed')).toBe(false);
+	});
+
+	test('ignores stale attempts after a recurring route edit until a matching dispatch occurs', () => {
+		// updateRecurringRoute preserves the route ID while allowing origin,
+		// destination, material, and capacity to change. A routeId-only match
+		// would let the prior configuration's capacity-constrained attempts
+		// surface as the edited route's latest dispatch and drive its condition.
+		const originalRoute = recurringRoute({ id: 'route-1', capacity: 20 });
+		const editedRoute: RecurringRoute = {
+			...originalRoute,
+			originCityId: 'quarry-works',
+			destinationCityId: 'industry-city',
+			materialId: 'grain',
+			capacity: 30
+		};
+		const staleConstrainedAttempt = routeAttempt({
+			routeId: 'route-1',
+			originCityId: 'industry-city',
+			destinationCityId: 'breadbasket-basin',
+			materialId: 'water',
+			capacity: 20,
+			destinationNeed: 30,
+			availableOriginStock: 20,
+			dispatchedQuantity: 20,
+			unusedCapacity: 0,
+			unmetDestinationNeed: 10,
+			transportCost: 40,
+			transferOrderId: 'transfer-stale'
+		});
+		const game = gameWithLogistics({
+			recurringRoutes: [editedRoute],
+			reports: [report(7, [staleConstrainedAttempt]), report(8, [staleConstrainedAttempt])]
+		});
+
+		const summaries = selectRouteOperations(game);
+		const routeOne = summaries.find((summary) => summary.route.id === 'route-1');
+
+		expect(routeOne?.latestAttempt).toBeNull();
+		expect(routeOne?.condition).toBe('awaiting-dispatch');
+		expect(routeOne?.utilization).toBeNull();
+		expect(routeOne?.unusedCapacity).toBe(0);
+		expect(routeOne?.unmetDestinationNeed).toBe(0);
+
+		const matchingAttempt = routeAttempt({
+			routeId: 'route-1',
+			originCityId: 'quarry-works',
+			destinationCityId: 'industry-city',
+			materialId: 'grain',
+			capacity: 30,
+			destinationNeed: 40,
+			availableOriginStock: 30,
+			dispatchedQuantity: 30,
+			unusedCapacity: 0,
+			unmetDestinationNeed: 10,
+			transportCost: 30,
+			transferOrderId: 'transfer-matching'
+		});
+		const recoveredGame = {
+			...game,
+			reports: [...game.reports, report(9, [matchingAttempt])]
+		};
+
+		const recoveredSummary = selectRouteOperations(recoveredGame).find(
+			(summary) => summary.route.id === 'route-1'
+		);
+		expect(recoveredSummary?.latestAttempt).toEqual(matchingAttempt);
+		expect(recoveredSummary?.condition).toBe('route-capacity-constrained');
+		expect(recoveredSummary?.utilization).toBe(1);
 	});
 
 	test('compareCurrentRoutes and compareRawIds return zero for equal IDs', () => {
