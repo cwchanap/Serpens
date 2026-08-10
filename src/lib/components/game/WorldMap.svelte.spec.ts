@@ -434,4 +434,34 @@ describe('WorldMap', () => {
 		await userEvent.keyboard('{Enter}');
 		expect(onSelectLogisticsRoute).toHaveBeenCalledWith('route-1');
 	});
+
+	it('uses the default onFinanceCity and onSelectLogisticsRoute callbacks without throwing', async () => {
+		expect.assertions(1);
+		render(WorldMap, {
+			statuses: [
+				{
+					...status('campus-junction', 'revealed'),
+					canOpen: false,
+					financeOffer: {
+						principal: 2_400,
+						termDays: 84,
+						annualInterestRateBps: 1_200,
+						estimatedPeakPayment: 240
+					}
+				},
+				status('industry-city', 'opened'),
+				status('breadbasket-basin', 'opened')
+			],
+			i18n: createI18n('en'),
+			selectedCityId: 'campus-junction',
+			onSelectCity: vi.fn(),
+			onOpenCity: vi.fn(),
+			onCloseInspector: vi.fn(),
+			logisticsRouteSummaries: [routeSummary()]
+		});
+
+		const financeButton = page.getByRole('button', { name: /finance opening/i });
+		await expect.element(financeButton).toBeVisible();
+		await financeButton.click();
+	});
 });

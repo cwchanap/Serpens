@@ -2,7 +2,11 @@ import { page } from 'vitest/browser';
 import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { createI18n } from '$lib/i18n';
-import { createRecurringRoute, quoteInterCityRates } from '$lib/game/interCityLogistics';
+import {
+	createRecurringRoute,
+	dispatchManualTransfer,
+	quoteInterCityRates
+} from '$lib/game/interCityLogistics';
 import { createTwoIndustryCityGame } from '$lib/game/interCityLogistics.testUtils';
 import type { GameRouteCommitResult } from '$lib/game/commandResult';
 import { buildLogisticsPanelView } from './logisticsPanel';
@@ -481,5 +485,61 @@ describe('LogisticsPanel', () => {
 			expect(row).not.toBeNull();
 			expect(row).toBe(document.activeElement);
 		});
+	});
+
+	it('maps a failed result status to the generic failure copy', async () => {
+		expect.assertions(1);
+		const failedFn = vi.fn(async () => ({ status: 'failed' }) as const);
+		renderPanel({ onCreateRecurringRoute: failedFn });
+		await page.getByRole('button', { name: /create route/i }).click();
+		await expect.element(page.getByRole('status')).toHaveTextContent(/failed/i);
+	});
+
+	it('surfaces a non-committed removeRoute result as status copy', async () => {
+		expect.assertions(2);
+		const fixture = routePanelFixture();
+		const onRemoveRecurringRoute = vi.fn(
+			async (): Promise<GameRouteCommitResult> => ({
+				status: 'logistics-rejected',
+				reason: 'invalid-quantity'
+			})
+		);
+		renderPanel({
+			game: fixture.game,
+			view: fixture.view,
+			onRemoveRecurringRoute
+		});
+
+		await page.getByRole('button', { name: /remove route/i }).click();
+		expect(onRemoveRecurringRoute).toHaveBeenCalledWith(fixture.route.id);
+		await expect
+			.element(page.getByRole('status'))
+			.toHaveTextContent(/positive whole-number quantity/i);
+	});
+
+	it('renders in-transit shipments and recent transfers when present', async () => {
+		expect.assertions(2);
+		const baseGame = createTwoIndustryCityGame();
+		const dispatch = dispatchManualTransfer(baseGame, {
+			originCityId: 'industry-city',
+			destinationCityId: 'breadbasket-basin',
+			materialId: 'water',
+			quantity: 5
+		});
+		if (!dispatch.ok) throw new Error(`fixture dispatch failed: ${dispatch.reason}`);
+		const i18n = createI18n('en');
+		renderPanel({
+			game: dispatch.game,
+			view: buildLogisticsPanelView(dispatch.game, i18n),
+			i18n
+		});
+
+		const inTransitHeading = page.getByRole('heading', { name: /in transit/i }).element();
+		const inTransitSection = inTransitHeading.closest('section');
+		expect(inTransitSection?.textContent).not.toMatch(/no in-transit/i);
+
+		const recentHeading = page.getByRole('heading', { name: /recent transfers/i }).element();
+		const recentSection = recentHeading.closest('section');
+		expect(recentSection?.textContent).not.toMatch(/no recent transfers/i);
 	});
 });

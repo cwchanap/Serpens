@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { createI18n } from '$lib/i18n';
 import { MATERIALS } from '$lib/game/industry';
-import type { RecurringRoute, TransferOrder } from '$lib/game/types';
+import { simulateDay } from '$lib/game/simulateDay';
+import { createNewGame } from '$lib/game/state';
+import type {
+	DailyReport,
+	DailyRouteDispatchAttempt,
+	RecurringRoute,
+	TransferOrder
+} from '$lib/game/types';
 import { createTwoIndustryCityGame } from '$lib/game/interCityLogistics.testUtils';
 import { buildLogisticsPanelView } from './logisticsPanel';
 
@@ -138,6 +145,85 @@ describe('buildLogisticsPanelView', () => {
 		const view = buildLogisticsPanelView(gameWithMissingInventory, createI18n('en'));
 
 		expect(view.cityOptions.map((option) => option.cityId)).toEqual(['industry-city']);
+		expect(view.materialOptions.find((option) => option.materialId === 'water')?.stock).toBe(0);
+	});
+
+	it('localizes the latest dispatch attempt when a route has matching report evidence', () => {
+		const base = createTwoIndustryCityGame();
+		const activeRoute = route({ nextDispatchOnDay: 10 });
+		const attempt: DailyRouteDispatchAttempt = {
+			routeId: 'route-1',
+			originCityId: 'industry-city',
+			destinationCityId: 'breadbasket-basin',
+			materialId: 'water',
+			destinationNeed: 20,
+			capacity: 30,
+			availableOriginStock: 50,
+			dispatchedQuantity: 20,
+			unusedCapacity: 10,
+			unmetDestinationNeed: 0,
+			transportCost: 40,
+			transferOrderId: 'transfer-dispatch-1'
+		};
+		let reportTemplate: DailyReport | null = null;
+		function reportWithAttempt(day: number, attempts: DailyRouteDispatchAttempt[]): DailyReport {
+			if (!reportTemplate) {
+				reportTemplate = simulateDay(createNewGame('convenience', 20260806)).reports[0]!;
+			}
+			return {
+				...reportTemplate,
+				day,
+				logistics: {
+					...reportTemplate.logistics,
+					arrivals: [],
+					routeDispatchAttempts: attempts,
+					scheduledTransportCost: attempts.reduce((total, a) => total + a.transportCost, 0)
+				}
+			};
+		}
+		const game = {
+			...base,
+			logistics: {
+				...base.logistics,
+				recurringRoutes: [activeRoute]
+			},
+			reports: [reportWithAttempt(9, [attempt])]
+		};
+
+		const view = buildLogisticsPanelView(game, createI18n('en'));
+
+		expect(view.routes).toHaveLength(1);
+		expect(view.routes[0]).toMatchObject({
+			routeId: 'route-1',
+			condition: 'normal',
+			latestAttempt: {
+				originLabel: 'Industry City',
+				destinationLabel: 'Breadbasket Basin',
+				materialLabel: 'Water',
+				dispatchedQuantity: 20,
+				transferOrderId: 'transfer-dispatch-1'
+			}
+		});
+	});
+
+	it('treats null material quantities in city inventory as zero stock', () => {
+		const base = createTwoIndustryCityGame({ materials: false });
+		const game = {
+			...base,
+			cityInventories: [
+				{
+					cityId: 'industry-city' as const,
+					materials: { water: null as unknown as number }
+				},
+				{
+					cityId: 'breadbasket-basin' as const,
+					materials: {}
+				}
+			]
+		};
+
+		const view = buildLogisticsPanelView(game, createI18n('en'));
+
 		expect(view.materialOptions.find((option) => option.materialId === 'water')?.stock).toBe(0);
 	});
 });

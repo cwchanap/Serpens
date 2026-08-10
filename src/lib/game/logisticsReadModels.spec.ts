@@ -627,6 +627,15 @@ describe('logistics read models', () => {
 		expect(summaries.map((summary) => summary.route.id)).toEqual(['route-10', 'route-2']);
 	});
 
+	test('returns an empty map when the per-route limit is zero or negative', () => {
+		const game = gameWithLogistics({
+			reports: [report(9, [routeAttempt({ routeId: 'route-1' })])]
+		});
+
+		expect([...selectRecentRouteDispatchAttempts(game, 0).entries()]).toEqual([]);
+		expect([...selectRecentRouteDispatchAttempts(game, -1).entries()]).toEqual([]);
+	});
+
 	test('throws when aggregate totals exceed the safe integer range over the unbounded order history', () => {
 		// Each order is individually a safe integer (as the persisted contract validates),
 		// but the unchecked aggregate would silently lose precision. Two orders at
