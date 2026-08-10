@@ -347,4 +347,44 @@ describe('ManagementPanelHost', () => {
 			)
 			.toBeVisible();
 	});
+
+	it('renders the reports panel branch', async () => {
+		expect.assertions(1);
+		const props = hostProps({ panelId: 'reports', panelLabel: 'Reports' });
+		render(ManagementPanelHost, props);
+
+		await expect
+			.element(page.getByRole('region', { name: props.i18n.t('reportsPanel.title') }))
+			.toBeVisible();
+	});
+
+	it('renders the product chains panel branch', async () => {
+		expect.assertions(1);
+		const props = hostProps({ panelId: 'productChains', panelLabel: 'Product Chains' });
+		render(ManagementPanelHost, props);
+
+		await expect
+			.element(page.getByRole('region', { name: props.i18n.t('productChainsPanel.ariaLabel') }))
+			.toBeVisible();
+	});
+
+	it('throws when the finance panel is opened without finance metrics', () => {
+		expect.assertions(1);
+		const props = hostProps({ panelId: 'finance', panelLabel: 'Finance', financeMetrics: null });
+		expect(() => render(ManagementPanelHost, props)).toThrow(
+			'financeMetrics required for finance panel'
+		);
+	});
+
+	it('throws when the logistics panel is opened without a logistics view', () => {
+		expect.assertions(1);
+		const props = hostProps({
+			panelId: 'logistics',
+			panelLabel: 'Logistics',
+			logisticsView: null as unknown as LogisticsPanelView
+		});
+		expect(() => render(ManagementPanelHost, props)).toThrow(
+			'logisticsView required for logistics panel'
+		);
+	});
 });

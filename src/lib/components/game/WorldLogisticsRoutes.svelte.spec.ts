@@ -95,4 +95,63 @@ describe('WorldLogisticsRoutes', () => {
 		expect(onSelectRoute).toHaveBeenCalledWith('route-2');
 		expect(onSelectRoute).toHaveBeenCalledTimes(1);
 	});
+
+	it('forwards Enter and Space keydown events to the selection callback', () => {
+		expect.assertions(2);
+		const onSelectRoute = vi.fn();
+		render(WorldLogisticsRoutes, {
+			routes: [route()],
+			cities: WORLD_CITY_CATALOG,
+			selectedRouteId: null,
+			onSelectRoute
+		});
+
+		const group = page.getByTestId('world-logistics-route-route-1').element();
+		group.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+		expect(onSelectRoute).toHaveBeenCalledWith('route-1');
+
+		group.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+		expect(onSelectRoute).toHaveBeenCalledTimes(2);
+	});
+
+	it('ignores keydown events for other keys', () => {
+		expect.assertions(1);
+		const onSelectRoute = vi.fn();
+		render(WorldLogisticsRoutes, {
+			routes: [route()],
+			cities: WORLD_CITY_CATALOG,
+			selectedRouteId: null,
+			onSelectRoute
+		});
+
+		const group = page.getByTestId('world-logistics-route-route-1').element();
+		group.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+		expect(onSelectRoute).not.toHaveBeenCalled();
+	});
+
+	it('does not invoke a missing onSelectRoute callback on pointer or keyboard events', () => {
+		expect.assertions(1);
+		render(WorldLogisticsRoutes, {
+			routes: [route()],
+			cities: WORLD_CITY_CATALOG,
+			selectedRouteId: null
+		});
+
+		const group = page.getByTestId('world-logistics-route-route-1').element();
+		expect(() => {
+			group.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+			group.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+		}).not.toThrow();
+	});
+
+	it('skips routes whose origin or destination city is not in the catalog', () => {
+		expect.assertions(1);
+		render(WorldLogisticsRoutes, {
+			routes: [route({ originCityId: 'harbor-city', destinationCityId: 'breadbasket-basin' })],
+			cities: WORLD_CITY_CATALOG.filter((city) => city.id !== 'breadbasket-basin'),
+			selectedRouteId: null
+		});
+
+		expect(document.querySelector('[data-testid="world-logistics-route-route-1"]')).toBeNull();
+	});
 });
