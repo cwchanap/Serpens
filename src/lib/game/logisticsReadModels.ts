@@ -119,8 +119,29 @@ export function selectRecentRouteDispatchAttempts(
 	return attemptsByRoute;
 }
 
+/**
+ * A dispatch attempt is only valid evidence for a route's current configuration
+ * when its origin, destination, material, and capacity still match. Editing a
+ * recurring route via {@link updateRecurringRoute} preserves the route ID while
+ * allowing any of these fields to change, so a routeId-only match would let a
+ * prior configuration's attempts bleed into the route inspector's latest
+ * attempt, utilization, condition, and capacity-streak alerts.
+ */
+export function attemptMatchesRoute(
+	attempt: DailyRouteDispatchAttempt,
+	route: RecurringRoute
+): boolean {
+	return (
+		attempt.originCityId === route.originCityId &&
+		attempt.destinationCityId === route.destinationCityId &&
+		attempt.materialId === route.materialId &&
+		attempt.capacity === route.capacity
+	);
+}
+
 export function selectRouteOperations(game: GameState): RouteOperationalSummary[] {
 	const totalsByRouteId = new Map<string, RouteOperationalTotals>();
+	const routeById = new Map<string, RecurringRoute>();
 
 	for (const route of game.logistics.recurringRoutes) {
 		totalsByRouteId.set(route.id, {
@@ -130,6 +151,7 @@ export function selectRouteOperations(game: GameState): RouteOperationalSummary[
 			deliveredUnits: 0,
 			transportCost: 0
 		});
+		routeById.set(route.id, route);
 	}
 
 	for (const order of game.logistics.transferOrders) {
@@ -166,6 +188,15 @@ export function selectRouteOperations(game: GameState): RouteOperationalSummary[
 		for (const attempt of report.logistics.routeDispatchAttempts) {
 			const totals = totalsByRouteId.get(attempt.routeId);
 			if (!totals || (totals.latestAttemptDay !== null && report.day <= totals.latestAttemptDay)) {
+				continue;
+			}
+
+			// Skip attempts recorded under a prior route configuration. The route
+			// ID is preserved across edits, so without this guard a stale attempt
+			// would surface as the route's latest dispatch and drive its
+			// utilization/condition plus capacity-streak alerts.
+			const route = routeById.get(attempt.routeId);
+			if (route && !attemptMatchesRoute(attempt, route)) {
 				continue;
 			}
 

@@ -823,4 +823,75 @@ describe('collectGameAlerts', () => {
 		const game = logisticsGame({ stock: 0, attempts: [] });
 		expect(collectGameAlerts(game).filter((alert) => alert.routeId === 'route-1')).toEqual([]);
 	});
+
+	it('ignores stale attempts after a recurring route edit until matching dispatches occur', () => {
+		// updateRecurringRoute preserves the route ID across config changes. Two
+		// capacity-constrained attempts recorded under the prior configuration
+		// must not surface as the edited route's latest attempt or drive a
+		// capacity-streak alert before the new configuration has dispatched.
+		const staleConstrainedAttempt = {
+			originCityId: 'industry-city' as const,
+			destinationCityId: 'breadbasket-basin' as const,
+			materialId: 'water' as MaterialId,
+			capacity: 5,
+			destinationNeed: 10,
+			availableOriginStock: 10,
+			dispatchedQuantity: 5,
+			unusedCapacity: 0,
+			unmetDestinationNeed: 5
+		};
+		const editedGame = logisticsGame({
+			route: {
+				originCityId: 'quarry-works',
+				destinationCityId: 'industry-city',
+				materialId: 'grain',
+				capacity: 30
+			},
+			stock: 30,
+			attempts: [
+				{ day: 7, attempt: staleConstrainedAttempt },
+				{ day: 8, attempt: staleConstrainedAttempt }
+			]
+		});
+
+		const editedAlerts = collectGameAlerts(editedGame).filter(
+			(alert) => alert.routeId === 'route-1'
+		);
+		expect(editedAlerts).toEqual([]);
+
+		const matchingConstrainedAttempt = {
+			originCityId: 'quarry-works' as const,
+			destinationCityId: 'industry-city' as const,
+			materialId: 'grain' as MaterialId,
+			capacity: 30,
+			destinationNeed: 40,
+			availableOriginStock: 30,
+			dispatchedQuantity: 30,
+			unusedCapacity: 0,
+			unmetDestinationNeed: 10
+		};
+		const oneMatchingGame = {
+			...editedGame,
+			reports: [
+				...editedGame.reports,
+				logisticsReport(9, [routeAttempt(matchingConstrainedAttempt)])
+			]
+		};
+		expect(
+			collectGameAlerts(oneMatchingGame).some((alert) => alert.kind === 'logistics-route-capacity')
+		).toBe(false);
+
+		const twoMatchingGame = {
+			...oneMatchingGame,
+			reports: [
+				...oneMatchingGame.reports,
+				logisticsReport(10, [routeAttempt(matchingConstrainedAttempt)])
+			]
+		};
+		expect(
+			collectGameAlerts(twoMatchingGame).some(
+				(alert) => alert.kind === 'logistics-route-capacity' && alert.routeId === 'route-1'
+			)
+		).toBe(true);
+	});
 });
