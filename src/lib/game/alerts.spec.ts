@@ -818,4 +818,9 @@ describe('collectGameAlerts', () => {
 		};
 		expect(collectGameAlerts(deleted).filter((alert) => alert.routeId === 'route-1')).toEqual([]);
 	});
+
+	it('does not alert for an active route with no dispatch attempts yet', () => {
+		const game = logisticsGame({ stock: 0, attempts: [] });
+		expect(collectGameAlerts(game).filter((alert) => alert.routeId === 'route-1')).toEqual([]);
+	});
 });

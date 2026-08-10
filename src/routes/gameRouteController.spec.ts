@@ -1554,6 +1554,58 @@ describe('GameRouteController', () => {
 			});
 		});
 
+		it('returns route-not-found from update, resume, reprioritize, and remove as typed logistics rejections', async () => {
+			const harness = createHarness();
+			harness.controller.loadSandboxGame(createControllerLogisticsGame());
+			const update: RecurringRouteUpdateInput = {
+				originCityId: 'industry-city',
+				destinationCityId: 'breadbasket-basin',
+				materialId: 'water',
+				capacity: 30,
+				frequencyDays: 3,
+				leadTimeDays: 2,
+				transportCostPerUnit: 2
+			};
+
+			expect(await harness.controller.updateRecurringRoute('route-missing', update)).toEqual({
+				status: 'logistics-rejected',
+				reason: 'route-not-found'
+			});
+			expect(await harness.controller.resumeRecurringRoute('route-missing')).toEqual({
+				status: 'logistics-rejected',
+				reason: 'route-not-found'
+			});
+			expect(await harness.controller.reprioritizeRecurringRoute('route-missing', 0)).toEqual({
+				status: 'logistics-rejected',
+				reason: 'route-not-found'
+			});
+			expect(await harness.controller.removeRecurringRoute('route-missing')).toEqual({
+				status: 'logistics-rejected',
+				reason: 'route-not-found'
+			});
+		});
+
+		it('returns invalid-capacity as a typed logistics rejection from createRecurringRoute', async () => {
+			const harness = createHarness();
+			harness.controller.loadSandboxGame(createControllerLogisticsGame());
+
+			expect(
+				await harness.controller.createRecurringRoute(validRecurringRouteInput({ capacity: 0 }))
+			).toEqual({ status: 'logistics-rejected', reason: 'invalid-capacity' });
+		});
+
+		it('returns insufficient-origin-stock as a typed logistics rejection from dispatchManualTransfer', async () => {
+			const harness = createHarness();
+			harness.controller.loadSandboxGame(createControllerLogisticsGame());
+
+			expect(
+				await harness.controller.dispatchManualTransfer(validManualTransferInput({ quantity: 999 }))
+			).toEqual({
+				status: 'logistics-rejected',
+				reason: 'insufficient-origin-stock'
+			});
+		});
+
 		it('commits a successful finance action exactly once in sandbox mode', async () => {
 			const harness = createHarness();
 			await harness.controller.initializeSaves();

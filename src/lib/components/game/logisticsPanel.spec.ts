@@ -125,4 +125,19 @@ describe('buildLogisticsPanelView', () => {
 		expect(view.recentTransfers).toEqual([]);
 		expect(view.totals).toEqual({ deliveredUnits: 0, transportCost: 0 });
 	});
+
+	it('skips an opened industry city whose city inventory entry is missing', () => {
+		const game = createTwoIndustryCityGame({ materials: false });
+		const gameWithMissingInventory = {
+			...game,
+			cityInventories: game.cityInventories.filter(
+				(inventory) => inventory.cityId !== 'breadbasket-basin'
+			)
+		};
+
+		const view = buildLogisticsPanelView(gameWithMissingInventory, createI18n('en'));
+
+		expect(view.cityOptions.map((option) => option.cityId)).toEqual(['industry-city']);
+		expect(view.materialOptions.find((option) => option.materialId === 'water')?.stock).toBe(0);
+	});
 });

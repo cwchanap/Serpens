@@ -229,4 +229,257 @@ describe('LogisticsPanel', () => {
 		await page.getByRole('button', { name: /resume route/i }).click();
 		expect(onResumeRecurringRoute).toHaveBeenCalledWith(fixture.route.id);
 	});
+
+	it('rejects a manual transfer with an empty quantity before dispatching', async () => {
+		expect.assertions(2);
+		const onDispatchManualTransfer = vi.fn(
+			async () => ({ status: 'sandbox-committed', changed: true }) as const
+		);
+		renderPanel({ onDispatchManualTransfer });
+
+		await page.getByLabelText('Quantity').fill('');
+		await page.getByRole('button', { name: /dispatch transfer/i }).click();
+		await expect
+			.element(page.getByRole('status'))
+			.toHaveTextContent(/positive whole-number quantity/i);
+		expect(onDispatchManualTransfer).not.toHaveBeenCalled();
+	});
+
+	it('surfaces an insufficient-cash quote rejection without dispatching', async () => {
+		expect.assertions(2);
+		const onDispatchManualTransfer = vi.fn(
+			async () => ({ status: 'sandbox-committed', changed: true }) as const
+		);
+		const game = { ...createTwoIndustryCityGame(), cash: 1 };
+		const i18n = createI18n('en');
+		renderPanel({
+			game,
+			view: buildLogisticsPanelView(game, i18n),
+			i18n,
+			onDispatchManualTransfer
+		});
+
+		await page.getByLabelText('Material').nth(0).selectOptions('water');
+		await page.getByRole('button', { name: /dispatch transfer/i }).click();
+		await expect
+			.element(page.getByRole('status'))
+			.toHaveTextContent(/insufficient cash for this transport cost/i);
+		expect(onDispatchManualTransfer).not.toHaveBeenCalled();
+	});
+
+	it('reports a capacity validation failure', async () => {
+		expect.assertions(1);
+		renderPanel();
+
+		await page.getByLabelText('Capacity per dispatch').fill('');
+		await page.getByRole('button', { name: /create route/i }).click();
+		await expect
+			.element(page.getByRole('status'))
+			.toHaveTextContent(/positive whole-number capacity/i);
+	});
+
+	it('reports a frequency validation failure', async () => {
+		expect.assertions(1);
+		renderPanel();
+
+		await page.getByLabelText('Frequency (days)').fill('');
+		await page.getByRole('button', { name: /create route/i }).click();
+		await expect
+			.element(page.getByRole('status'))
+			.toHaveTextContent(/positive whole-number frequency/i);
+	});
+
+	it('reports a lead-time validation failure', async () => {
+		expect.assertions(1);
+		renderPanel();
+
+		await page.getByLabelText(/lead time/i).fill('');
+		await page.getByRole('button', { name: /create route/i }).click();
+		await expect
+			.element(page.getByRole('status'))
+			.toHaveTextContent(/positive whole-number lead time/i);
+	});
+
+	it('reports a transport-cost validation failure', async () => {
+		expect.assertions(1);
+		renderPanel();
+
+		await page.getByLabelText(/cost per unit/i).fill('');
+		await page.getByRole('button', { name: /create route/i }).click();
+		await expect
+			.element(page.getByRole('status'))
+			.toHaveTextContent(/positive whole-number transport cost/i);
+	});
+
+	it('reports a priority validation failure', async () => {
+		expect.assertions(1);
+		renderPanel();
+
+		await page.getByLabelText('Priority').nth(0).fill('');
+		await page.getByRole('button', { name: /create route/i }).click();
+		await expect
+			.element(page.getByRole('status'))
+			.toHaveTextContent(/non-negative whole-number priority/i);
+	});
+
+	it('maps a busy result status to status copy', async () => {
+		expect.assertions(1);
+		const busyFn = vi.fn(async () => ({ status: 'busy' }) as const);
+		renderPanel({ onCreateRecurringRoute: busyFn });
+		await page.getByRole('button', { name: /create route/i }).click();
+		await expect.element(page.getByRole('status')).toHaveTextContent(/already in progress/i);
+	});
+
+	it('maps an unavailable result status to status copy', async () => {
+		expect.assertions(1);
+		const unavailableFn = vi.fn(async () => ({ status: 'unavailable' }) as const);
+		renderPanel({ onCreateRecurringRoute: unavailableFn });
+		await page.getByRole('button', { name: /create route/i }).click();
+		await expect.element(page.getByRole('status')).toHaveTextContent(/unavailable in this mode/i);
+	});
+
+	it('maps an unchanged result status to status copy', async () => {
+		expect.assertions(1);
+		const unchangedFn = vi.fn(async () => ({ status: 'unchanged' }) as const);
+		renderPanel({ onCreateRecurringRoute: unchangedFn });
+		await page.getByRole('button', { name: /create route/i }).click();
+		await expect
+			.element(page.getByRole('status'))
+			.toHaveTextContent(/no logistics changes were made/i);
+	});
+
+	it('maps a committed result status to the route-created copy', async () => {
+		expect.assertions(1);
+		const committedFn = vi.fn(async () => ({ status: 'committed' }) as const);
+		renderPanel({ onCreateRecurringRoute: committedFn });
+		await page.getByRole('button', { name: /create route/i }).click();
+		await expect.element(page.getByRole('status')).toHaveTextContent(/recurring route created/i);
+	});
+
+	it('treats a sandbox-committed result with no changes as unchanged', async () => {
+		expect.assertions(1);
+		const noChangeFn = vi.fn(
+			async () => ({ status: 'sandbox-committed', changed: false }) as const
+		);
+		renderPanel({ onCreateRecurringRoute: noChangeFn });
+		await page.getByRole('button', { name: /create route/i }).click();
+		await expect
+			.element(page.getByRole('status'))
+			.toHaveTextContent(/no logistics changes were made/i);
+	});
+
+	it('cancels an edit and restores the create-route button label', async () => {
+		expect.assertions(2);
+		const fixture = routePanelFixture();
+		renderPanel({ game: fixture.game, view: fixture.view });
+
+		await page.getByRole('button', { name: /edit route/i }).click();
+		await expect.element(page.getByRole('button', { name: /save route changes/i })).toBeVisible();
+		await page.getByRole('button', { name: /cancel edit/i }).click();
+		await expect.element(page.getByRole('button', { name: /create route/i })).toBeVisible();
+	});
+
+	it('clears the editing session and priority buffer when the edited route is removed', async () => {
+		expect.assertions(2);
+		const fixture = routePanelFixture();
+		const onRemoveRecurringRoute = vi.fn(
+			async () => ({ status: 'sandbox-committed', changed: true }) as const
+		);
+		renderPanel({
+			game: fixture.game,
+			view: fixture.view,
+			onRemoveRecurringRoute
+		});
+
+		await page.getByRole('button', { name: /edit route/i }).click();
+		await page.getByRole('button', { name: /remove route/i }).click();
+		expect(onRemoveRecurringRoute).toHaveBeenCalledWith(fixture.route.id);
+		await expect.element(page.getByRole('button', { name: /create route/i })).toBeVisible();
+	});
+
+	it('rejects reprioritization with a non-numeric priority value', async () => {
+		expect.assertions(2);
+		const fixture = routePanelFixture();
+		const onReprioritizeRecurringRoute = vi.fn(
+			async () => ({ status: 'sandbox-committed', changed: true }) as const
+		);
+		renderPanel({
+			game: fixture.game,
+			view: fixture.view,
+			onReprioritizeRecurringRoute
+		});
+
+		await page.getByLabelText('Priority').nth(1).fill('');
+		await page.getByRole('button', { name: /save priority/i }).click();
+		await expect
+			.element(page.getByRole('status'))
+			.toHaveTextContent(/non-negative whole-number priority/i);
+		expect(onReprioritizeRecurringRoute).not.toHaveBeenCalled();
+	});
+
+	it('surfaces a busy result from changeRouteState as status copy', async () => {
+		expect.assertions(1);
+		const fixture = routePanelFixture();
+		const onPauseRecurringRoute = vi.fn(async () => ({ status: 'busy' }) as const);
+		renderPanel({ game: fixture.game, view: fixture.view, onPauseRecurringRoute });
+
+		await page.getByRole('button', { name: /pause route/i }).click();
+		await expect.element(page.getByRole('status')).toHaveTextContent(/already in progress/i);
+	});
+
+	it('renders the disabled reason copy when mutations are not allowed', async () => {
+		expect.assertions(2);
+		const game = createTwoIndustryCityGame();
+		const i18n = createI18n('en');
+		renderPanel({
+			game,
+			view: buildLogisticsPanelView(game, i18n),
+			i18n,
+			canMutate: false,
+			disabledReason: 'Logistics are locked in this challenge.'
+		});
+
+		await expect.element(page.getByText('Logistics are locked in this challenge.')).toBeVisible();
+		await expect.element(page.getByRole('button', { name: /dispatch transfer/i })).toBeDisabled();
+	});
+
+	it('does not dispatch when canMutate is false even if the form is submitted', async () => {
+		expect.assertions(1);
+		const onDispatchManualTransfer = vi.fn(
+			async () => ({ status: 'sandbox-committed', changed: true }) as const
+		);
+		const game = createTwoIndustryCityGame();
+		const i18n = createI18n('en');
+		renderPanel({
+			game,
+			view: buildLogisticsPanelView(game, i18n),
+			i18n,
+			canMutate: false,
+			disabledReason: 'Locked.',
+			onDispatchManualTransfer
+		});
+
+		const dispatchButton = page.getByRole('button', { name: /dispatch transfer/i }).element();
+		(dispatchButton as HTMLButtonElement).dispatchEvent(
+			new SubmitEvent('submit', { bubbles: true, cancelable: true })
+		);
+		expect(onDispatchManualTransfer).not.toHaveBeenCalled();
+	});
+
+	it('focuses and scrolls the route row into view when focusedRouteId is set', async () => {
+		const fixture = routePanelFixture();
+		const i18n = createI18n('en');
+		renderPanel({
+			game: fixture.game,
+			view: buildLogisticsPanelView(fixture.game, i18n),
+			i18n,
+			focusedRouteId: fixture.route.id
+		});
+
+		await vi.waitFor(() => {
+			const row = document.getElementById(`logistics-route-${fixture.route.id}`);
+			expect(row).not.toBeNull();
+			expect(row).toBe(document.activeElement);
+		});
+	});
 });
