@@ -2,25 +2,29 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace the building-presence Supply Advisor with a deterministic 7/30-day capacity planner that diagnoses shortages, compares one hypothetical investment at a time, recommends an explainable build/upgrade/no-op action, and hands the player back to existing build/inspector flows without mutating game state.
+**Goal:** Replace the building-presence Supply Advisor with a deterministic 7/30-day capacity planner that diagnoses one primary bottleneck, recommends one explainable build/upgrade/warehouse/no-op action, and hands the player to existing build/inspector flows without mutating game state.
 
-**Architecture:** Add a pure `supplyPlanner.ts` snapshot/projection boundary and a small `supplyPlannerActions.ts` candidate/ranking layer. Reuse deterministic demand (`buildCityDemandPools`), recipes, building throughput/cost helpers, city inventory, and existing placement/inspector navigation. Keep the current `SupplyAdvisor.svelte` modal as the player-facing shell, add a Product Chains entry point, and retain planner selection/horizon as route-local UI context in `+page.svelte`.
+**Architecture:** Add a pure `supplyPlanner.ts` snapshot/projection boundary and a small `supplyPlannerActions.ts` primary-bottleneck candidate/ranking layer. Reuse deterministic demand, Product Chains' producer/throughput helpers, city inventory, warehouse stats, placement geometry, and existing route navigation. Keep the current `SupplyAdvisor.svelte` modal as the player-facing shell and planner category/horizon state route-local in `+page.svelte`.
 
-**Tech Stack:** SvelteKit + Svelte 5 runes, TypeScript, Vitest (`server` + browser/client projects), Playwright, existing i18n bundle and game-domain helpers.
+**Tech Stack:** SvelteKit + Svelte 5 runes, TypeScript, Vitest (`server` + client/browser projects), Playwright, existing i18n/game-domain helpers.
 
 ## Global Constraints
 
 - Follow `docs/superpowers/specs/2026-08-09-capacity-aware-supply-planner-design.md`.
 - Forecasting is derived state only: no save schema, persistence, autosave, command, or RNG changes.
 - Use `buildCityDemandPools`; never call stochastic product-sales simulation from the planner.
-- Reuse `MATERIALS`, `PRODUCTION_RECIPES`, `INDUSTRIAL_BUILDING_TYPES`, `getBuildingThroughputMultiplier`, `getBuildingUpgradeCost`, `canUpgradeBuilding`, `getCityInventory`, and `getCityInventoryStats`.
-- HPA-281 plans one retail destination and its configured supply city. Do not model transfer orders, recurring routes, route events, or in-transit inventory; HPA-296/HPA-297 own those extensions.
-- Recommendation actions never commit mutations. Build/warehouse recommendations arm existing placement; upgrade recommendations navigate to the existing building inspector.
+- Reuse `MATERIAL_PRODUCER_RECIPES` and minimally generalize Product Chains' throughput helpers instead of reimplementing the level-throughput reduction.
+- HPA-281 plans one retail destination and its configured supply city. Do not model transfers, recurring routes, route events, or in-transit inventory; HPA-296/HPA-297 own those extensions.
+- Candidate generation targets only the **primary bottleneck**. Do not sweep every constrained material in HPA-281.
+- Warehouse relief is a real recommendation axis through `warehouseFreeGain`; it does not pretend to reduce import/shortage totals.
+- A supported category with zero expected demand is `ready` + no-op, never an empty result.
+- Gate normal assignment/inventory access before `getCityInventoryStats`; do not catch authoritative inventory invariant exceptions and present them as normal UX states.
+- Recommendation actions never commit mutations. Build/warehouse recommendations arm existing placement; upgrade recommendations navigate to the existing inspector.
 - Keep planner state in `+page.svelte`; do not add a Svelte store, router, event bus, worker, cache, optimizer, or rule DSL.
 - No charting dependency. Use existing paper/tokens/frames styles and localized text/metrics.
 - English, Japanese, and Traditional Chinese planner copy must land together.
-- No backward-compatibility shim for obsolete `AdvisorChain` behavior after the new UI is wired. Keep `getAvailableMaterialIds` because Build Menu still uses it; remove dead chain-only exports/tests.
-- Every Vitest test must contain explicit assertions and follow the repo's existing server/client project conventions.
+- No compatibility shim for obsolete `AdvisorChain` behavior after cutover. Keep `getAvailableMaterialIds`; remove dead chain-only exports/tests.
+- Every Vitest test contains explicit assertions and follows the repo's existing server/client project conventions.
 
 ---
 
@@ -28,31 +32,27 @@
 
 ### New files
 
-- `src/lib/game/supplyPlanner.ts` — public request/result contracts, snapshot construction, requirement propagation, baseline projections, bottleneck evidence.
-- `src/lib/game/supplyPlanner.spec.ts` — deterministic forecast, validation, immutability, and horizon coverage.
-- `src/lib/game/supplyPlannerActions.ts` — build/upgrade/warehouse/no-op candidates, hypothetical snapshot application, comparisons, deterministic ranking.
-- `src/lib/game/supplyPlannerActions.spec.ts` — candidate feasibility, affordability, comparison, tie, and no-op coverage.
+- `src/lib/game/supplyPlanner.ts` — request/result contracts, snapshot construction, upstream requirements, baseline projections, warehouse evidence, primary bottleneck.
+- `src/lib/game/supplyPlanner.spec.ts` — demand, access gating, throughput parity, forecast, bottleneck, zero-demand, and immutability coverage.
+- `src/lib/game/supplyPlannerActions.ts` — primary-bottleneck candidates, hypothetical snapshots, comparisons, deterministic recommendation.
+- `src/lib/game/supplyPlannerActions.spec.ts` — build/upgrade/warehouse/no-op, feasibility, affordability, ranking, warehouse-selection coverage.
 
 ### Existing files to modify
 
-- `src/lib/game/supplyAdvisor.ts` — retain Build Menu availability helper; remove obsolete presence-chain planner after UI cutover.
-- `src/lib/game/supplyAdvisor.spec.ts` and `src/lib/game/supplyAdvisor.defensive.spec.ts` — retain availability tests that still matter; delete/move old chain-planner assertions.
-- `src/lib/components/game/SupplyAdvisor.svelte` — render planner results instead of `AdvisorChain[]`.
-- `src/lib/components/game/SupplyAdvisor.svelte.spec.ts` — planner-state and interaction coverage.
-- `src/lib/components/game/ProductChainsPanel.svelte` — add one `Plan this chain` callback for the active category.
-- `src/lib/components/game/ProductChainsPanel.svelte.spec.ts` — callback coverage without graph regressions.
-- `src/routes/ManagementPanelHost.svelte` — forward the Product Chains planner callback.
-- `src/routes/+page.svelte` — planner context/result derivation and action navigation.
-- `src/routes/page.svelte.spec.ts` — route composition/context/navigation coverage.
-- `src/lib/i18n/messages/en.ts`
-- `src/lib/i18n/messages/ja.ts`
-- `src/lib/i18n/messages/zh-Hant.ts`
-- `src/lib/i18n/locales.spec.ts` — planner-key parity where needed.
-- `src/routes/retail-sim.e2e.ts` — one targeted planner-to-action lifecycle.
+- `src/lib/game/productChainGraph.ts` — broaden existing recipe throughput helpers to lightweight `{ typeId, level }` rows and add material-scoped output capacity helper.
+- `src/lib/game/productChainGraph.spec.ts` — lock helper parity for real/lightweight rows and material-specific output.
+- `src/lib/game/supplyAdvisor.ts` — retain Build Menu availability helper; remove obsolete presence planner after UI cutover.
+- `src/lib/game/supplyAdvisor.spec.ts` / `supplyAdvisor.defensive.spec.ts` — retain availability coverage only.
+- `src/lib/components/game/SupplyAdvisor.svelte` / `.spec.ts` — planner UI and interactions.
+- `src/lib/components/game/ProductChainsPanel.svelte` / `.spec.ts` — one `Plan this chain` callback.
+- `src/routes/ManagementPanelHost.svelte` — forward Product Chains planner callback.
+- `src/routes/+page.svelte` / `page.svelte.spec.ts` — planner context/result and non-mutating navigation.
+- `src/lib/i18n/messages/en.ts`, `ja.ts`, `zh-Hant.ts`, `src/lib/i18n/locales.spec.ts` — planner copy/parity.
+- `src/routes/retail-sim.e2e.ts` — one warehouse-bottleneck planner lifecycle.
 
 ---
 
-### Task 1: Lock Planner Contracts, Snapshot Construction, and Requirement Propagation
+### Task 1: Lock Planner Contracts, Supply Scope, and Requirement Propagation
 
 **Files:**
 - Create: `src/lib/game/supplyPlanner.ts`
@@ -60,8 +60,6 @@
 - Read/reuse: `src/lib/game/stock.ts`, `src/lib/game/productChainGraph.ts`, `src/lib/game/cityInventory.ts`, `src/lib/game/industry.ts`
 
 **Interfaces:**
-
-The first task produces the contracts all later tasks use:
 
 ```ts
 export type SupplyPlannerHorizonDays = 7 | 30;
@@ -80,7 +78,7 @@ export interface SupplyPlannerBuildingSnapshot {
 
 export interface SupplyPlannerSnapshot {
 	retailCityId: WorldCityId;
-	supplyCityId: WorldCityId | null;
+	supplyCityId: WorldCityId;
 	finishedMaterialId: MaterialId;
 	cash: number;
 	demandPerDay: number;
@@ -92,10 +90,10 @@ export interface SupplyPlannerSnapshot {
 
 export type SupplyPlannerSnapshotResult =
 	| { status: 'ready'; snapshot: SupplyPlannerSnapshot }
-	| { status: 'empty'; reason: 'no-demand' | 'no-supported-products' }
+	| { status: 'empty'; reason: 'no-supported-products' }
 	| { status: 'unavailable'; reason: 'retail-city-unavailable' | 'supply-city-unavailable' }
-	| { status: 'unsupported'; reason: 'unsupported-category' | 'missing-producer' }
-	| { status: 'invalid'; reason: 'invalid-state' };
+	| { status: 'unsupported'; reason: 'unsupported-category' | 'missing-producer-recipe' }
+	| { status: 'invalid'; reason: 'invalid-request' };
 
 export interface SupplyMaterialRequirement {
 	materialId: MaterialId;
@@ -119,19 +117,12 @@ export function listSupplyPlannerCategories(
 ): readonly string[];
 ```
 
-- [ ] **Step 1: Write snapshot/result tests before implementation**
+- [ ] **Step 1: Write city-scope, zero-demand, and access-state tests**
 
-Add focused fixtures to `supplyPlanner.spec.ts`. Use the repo's existing game test utilities where they already provide valid world/city-inventory state; do not build malformed half-`GameState` objects with casts when a fixture exists.
+Use existing valid game test utilities where available. Add a planner fixture that has a generated/open retail city, assigned open industry city, inventory, and at least one supported product.
 
 ```ts
-import { describe, expect, it } from 'vitest';
-import {
-	buildSupplyPlannerSnapshot,
-	collectSupplyRequirements,
-	listSupplyPlannerCategories
-} from './supplyPlanner';
-
-it('builds a city-scoped deterministic snapshot without changing RNG or state', () => {
+it('builds a city-scoped snapshot without changing game or RNG', () => {
 	const game = createPlannerGame();
 	const before = structuredClone(game);
 	const rngBefore = game.rngState;
@@ -146,12 +137,23 @@ it('builds a city-scoped deterministic snapshot without changing RNG or state', 
 	expect(result.snapshot.retailCityId).toBe('harbor-city');
 	expect(result.snapshot.supplyCityId).toBe('industry-city');
 	expect(result.snapshot.finishedMaterialId).toBe('bottled-water');
-	expect(result.snapshot.demandPerDay).toBeGreaterThanOrEqual(0);
 	expect(game.rngState).toBe(rngBefore);
 	expect(game).toEqual(before);
 });
 
-it('returns unavailable when the configured supply city cannot supply inventory', () => {
+it('keeps a sold zero-demand category as a ready snapshot', () => {
+	const game = createPlannerGameWithZeroDemand();
+	const result = buildSupplyPlannerSnapshot(game, {
+		retailCityId: 'harbor-city',
+		categoryId: 'bottled-water'
+	});
+
+	expect(result.status).toBe('ready');
+	if (result.status !== 'ready') return;
+	expect(result.snapshot.demandPerDay).toBe(0);
+});
+
+it('returns unavailable before reading stats when the assignment has no supply city', () => {
 	const game = createPlannerGame({
 		retailSupplyAssignments: [{ retailCityId: 'harbor-city', supplyCityId: null }]
 	});
@@ -164,18 +166,29 @@ it('returns unavailable when the configured supply city cannot supply inventory'
 	).toEqual({ status: 'unavailable', reason: 'supply-city-unavailable' });
 });
 
-it('lists only supported categories sold in the selected retail city', () => {
-	const game = createPlannerGame();
-	expect(listSupplyPlannerCategories(game, 'harbor-city')).toContain('bottled-water');
+it('does not disguise authoritative inventory corruption as unavailable planner UX', () => {
+	const game = createPlannerGameWithInvalidInventoryQuantity();
+
+	expect(() =>
+		buildSupplyPlannerSnapshot(game, {
+			retailCityId: 'harbor-city',
+			categoryId: 'bottled-water'
+		})
+	).toThrow(/City inventory invariant/);
 });
 ```
 
-- [ ] **Step 2: Add requirement-propagation tests, including shared inputs**
+The corruption fixture must pass normal `getCityInventory` access but contain an invalid authoritative quantity so `getCityInventoryStats` demonstrates the intended invariant boundary.
 
-Use catalog recipes so the test locks real balance ratios. For Pantry, `6 flour -> 8 pantry` and `10 grain -> 8 flour`, so one pantry/day requires `0.75 flour/day` and `0.9375 grain/day` before scaling by requested demand.
+- [ ] **Step 2: Write category-list and requirement-propagation tests**
 
 ```ts
-it('propagates finished demand through upstream recipe ratios', () => {
+it('lists supported categories sold in the selected retail city only', () => {
+	const game = createPlannerGame();
+	expect(listSupplyPlannerCategories(game, 'harbor-city')).toContain('bottled-water');
+});
+
+it('propagates pantry demand through flour and grain ratios', () => {
 	const rows = collectSupplyRequirements('pantry', 8);
 	const byMaterial = new Map(rows.map((row) => [row.materialId, row]));
 
@@ -184,20 +197,16 @@ it('propagates finished demand through upstream recipe ratios', () => {
 	expect(byMaterial.get('grain')?.requiredPerDay).toBeCloseTo(7.5);
 });
 
-it('aggregates a shared upstream material across branches exactly once', () => {
+it('aggregates shared water demand into one requirement row', () => {
 	const rows = collectSupplyRequirements('drinks', 10);
-	const water = rows.find((row) => row.materialId === 'water');
+	const waterRows = rows.filter((row) => row.materialId === 'water');
 
-	// Drink bottling requires filtered water and syrup, both of which consume water.
-	expect(water).toBeDefined();
-	expect(water!.requiredPerDay).toBeGreaterThan(0);
-	expect(rows.filter((row) => row.materialId === 'water')).toHaveLength(1);
+	expect(waterRows).toHaveLength(1);
+	expect(waterRows[0]!.requiredPerDay).toBeGreaterThan(0);
 });
 ```
 
-- [ ] **Step 3: Run the new tests and verify the module is missing**
-
-Run:
+- [ ] **Step 3: Run tests and verify the planner module is missing**
 
 ```bash
 bun run test:unit -- src/lib/game/supplyPlanner.spec.ts --run --project server
@@ -205,11 +214,9 @@ bun run test:unit -- src/lib/game/supplyPlanner.spec.ts --run --project server
 
 Expected: FAIL because `supplyPlanner.ts` does not exist.
 
-- [ ] **Step 4: Implement catalog-safe requirement propagation**
+- [ ] **Step 4: Implement requirement propagation with the existing producer map**
 
-Use Product Chains' `MATERIAL_PRODUCER_RECIPES` map instead of constructing a second producer registry. Calculate a per-finished-unit requirement vector recursively, memoize by material, then multiply once by `demandPerDay`. This makes shared inputs additive without recursively re-expanding the same subtree for each consumer.
-
-Core implementation shape:
+Use `MATERIAL_PRODUCER_RECIPES` from Product Chains. Do not add a second producer registry.
 
 ```ts
 function requirementsPerUnit(
@@ -246,51 +253,74 @@ function requirementsPerUnit(
 }
 ```
 
-`collectSupplyRequirements` turns that map into a stable material-ID-sorted array and attaches `MATERIAL_PRODUCER_RECIPES.get(materialId) ?? null`.
+`collectSupplyRequirements` multiplies the per-unit vector once by `demandPerDay`, emits one row per material, and stable-sorts by material ID.
 
-- [ ] **Step 5: Implement snapshot construction using existing city/demand helpers**
+- [ ] **Step 5: Implement snapshot construction with explicit access gating**
 
-`buildSupplyPlannerSnapshot` must:
+`buildSupplyPlannerSnapshot` performs this exact order:
 
-1. resolve the retail city from `game.cities`;
-2. map the requested category with `getFinishedMaterialIdForCategory`;
-3. reject unsupported/missing-producer categories;
-4. compute expected city demand with `buildCityDemandPools(game, retailCity)`;
-5. resolve `retailSupplyAssignments` for that retail city;
-6. access the assigned inventory through `getCityInventory`;
-7. get warehouse stats through `getCityInventoryStats`;
-8. copy only assigned-city buildings into lightweight snapshot rows;
-9. copy inventory materials with `{ ...inventory.materials }`;
-10. never mutate or retain mutable nested collections from `game`.
+1. resolve requested retail city from `game.cities` and opened world state;
+2. map category through `getFinishedMaterialIdForCategory`;
+3. ensure its producer recipe exists in `MATERIAL_PRODUCER_RECIPES`;
+4. calculate demand using `buildCityDemandPools(game, retailCity)` — demand `0` remains valid;
+5. resolve the retail city's existing supply assignment;
+6. if assignment missing/null, return `supply-city-unavailable`;
+7. call `getCityInventory(game, supplyCityId)`;
+8. if `!access.ok`, return `supply-city-unavailable`;
+9. only now call `getCityInventoryStats(game, access.inventory.cityId)`; do not wrap it in a catch-to-result adapter;
+10. copy assigned-city buildings and inventory quantities into lightweight snapshot rows.
 
-- [ ] **Step 6: Run the focused tests**
+- [ ] **Step 6: Run focused tests and commit**
 
 ```bash
 bun run test:unit -- src/lib/game/supplyPlanner.spec.ts --run --project server
-```
-
-Expected: PASS.
-
-- [ ] **Step 7: Commit**
-
-```bash
 git add src/lib/game/supplyPlanner.ts src/lib/game/supplyPlanner.spec.ts
 git commit -m "feat(supply): add deterministic planner snapshot"
 ```
 
 ---
 
-### Task 2: Implement 7/30-Day Material Projections and Bottleneck Evidence
+### Task 2: Reuse Product Chains Throughput and Implement 7/30-Day Projections
 
 **Files:**
+- Modify: `src/lib/game/productChainGraph.ts`
+- Modify: `src/lib/game/productChainGraph.spec.ts`
 - Modify: `src/lib/game/supplyPlanner.ts`
 - Modify: `src/lib/game/supplyPlanner.spec.ts`
 
 **Interfaces:**
 
-Extend Task 1 with:
+Generalize the existing helper without changing its result for current callers:
 
 ```ts
+export type RecipeThroughputBuilding = Pick<IndustrialBuilding, 'typeId' | 'level'>;
+
+export function buildingsForRecipe<T extends Pick<IndustrialBuilding, 'typeId'>>(
+	buildings: readonly T[],
+	recipeId: ProductionRecipeId
+): T[];
+
+export function getRecipeThroughputUnits(
+	buildings: readonly RecipeThroughputBuilding[],
+	recipeId: ProductionRecipeId
+): number;
+
+export function getMaterialOutputCapacityPerDay(
+	buildings: readonly RecipeThroughputBuilding[],
+	materialId: MaterialId
+): number;
+```
+
+Planner projection contracts:
+
+```ts
+export interface SupplyHorizonMaterialForecast {
+	horizonDays: SupplyPlannerHorizonDays;
+	requiredUnits: number;
+	localAvailableUnits: number;
+	importRequiredUnits: number;
+}
+
 export interface SupplyMaterialForecast {
 	materialId: MaterialId;
 	requiredPerDay: number;
@@ -303,18 +333,11 @@ export interface SupplyMaterialForecast {
 	thirtyDay: SupplyHorizonMaterialForecast;
 }
 
-export interface SupplyHorizonMaterialForecast {
-	horizonDays: SupplyPlannerHorizonDays;
-	requiredUnits: number;
-	localAvailableUnits: number;
-	importRequiredUnits: number;
-}
-
 export type SupplyBottleneck =
 	| { kind: 'missing-producer'; materialId: MaterialId }
 	| { kind: 'production-capacity'; materialId: MaterialId; deficitPerDay: number }
 	| { kind: 'inventory-cover'; materialId: MaterialId; stockoutDay: number }
-	| { kind: 'warehouse-capacity'; requiredCapacity: number; availableCapacity: number }
+	| { kind: 'warehouse-capacity'; overflowUnits: number; freeCapacity: number }
 	| { kind: 'import-reliance'; materialId: MaterialId; importedUnits30: number }
 	| { kind: 'none' };
 
@@ -327,6 +350,7 @@ export interface SupplyProjection {
 		used: number;
 		capacity: number;
 		free: number;
+		overflow: number;
 	};
 	totals: {
 		shortageUnits7: number;
@@ -339,16 +363,50 @@ export interface SupplyProjection {
 export function projectSupplySnapshot(snapshot: SupplyPlannerSnapshot): SupplyProjection;
 ```
 
-- [ ] **Step 1: Add failing capacity/level/horizon tests**
+- [ ] **Step 1: Add Product Chains helper parity tests**
 
 ```ts
-it('building count and level materially change installed capacity', () => {
-	const level1 = plannerSnapshot({
-		buildings: [plannerBuilding('water-bottler', 1)]
-	});
-	const level2 = plannerSnapshot({
-		buildings: [plannerBuilding('water-bottler', 2)]
-	});
+it('computes identical throughput from real and lightweight building rows', () => {
+	const real = [industrialBuilding('water-bottler', 2)];
+	const light = real.map(({ typeId, level }) => ({ typeId, level }));
+
+	expect(getRecipeThroughputUnits(light, 'water-bottling')).toBe(
+		getRecipeThroughputUnits(real, 'water-bottling')
+	);
+});
+
+it('computes output for the requested material instead of summing recipe outputs', () => {
+	const buildings = [{ typeId: 'water-bottler' as const, level: 1 }];
+	expect(getMaterialOutputCapacityPerDay(buildings, 'bottled-water')).toBe(10);
+});
+```
+
+- [ ] **Step 2: Generalize existing throughput helpers minimally**
+
+`buildingsForRecipe` only needs `typeId`; `getRecipeThroughputUnits` only needs `typeId` + `level`. Keep current Product Chains callers source-compatible.
+
+```ts
+export function getMaterialOutputCapacityPerDay(
+	buildings: readonly RecipeThroughputBuilding[],
+	materialId: MaterialId
+): number {
+	const recipeId = MATERIAL_PRODUCER_RECIPES.get(materialId);
+	if (!recipeId) return 0;
+	const recipe = PRODUCTION_RECIPES[recipeId];
+	const output = recipe.outputs.find((candidate) => candidate.materialId === materialId);
+	if (!output) return 0;
+	return output.quantity * getRecipeThroughputUnits(buildings, recipeId);
+}
+```
+
+Do not call `recipeOutputPerDay` here because it sums all output lines.
+
+- [ ] **Step 3: Add planner capacity/horizon/warehouse tests**
+
+```ts
+it('uses the shared throughput helper for building level capacity', () => {
+	const level1 = plannerSnapshot({ buildings: [plannerBuilding('water-bottler', 1)] });
+	const level2 = plannerSnapshot({ buildings: [plannerBuilding('water-bottler', 2)] });
 
 	const capacity1 = material(projectSupplySnapshot(level1), 'bottled-water').localCapacityPerDay;
 	const capacity2 = material(projectSupplySnapshot(level2), 'bottled-water').localCapacityPerDay;
@@ -357,7 +415,7 @@ it('building count and level materially change installed capacity', () => {
 	expect(capacity2 / capacity1).toBeCloseTo(getBuildingThroughputMultiplier(2));
 });
 
-it('produces consistent 7 and 30 day shortage totals', () => {
+it('produces both 7 and 30 day projections', () => {
 	const projection = projectSupplySnapshot(plannerSnapshot({ demandPerDay: 20 }));
 	const finished = material(projection, 'bottled-water');
 
@@ -365,72 +423,23 @@ it('produces consistent 7 and 30 day shortage totals', () => {
 	expect(finished.thirtyDay.horizonDays).toBe(30);
 	expect(finished.thirtyDay.requiredUnits).toBeGreaterThan(finished.sevenDay.requiredUnits);
 });
-```
 
-- [ ] **Step 2: Add stock-cover, import, warehouse, and bottleneck tests**
-
-```ts
-it('uses inventory to delay stockout when local capacity is below demand', () => {
+it('reports current warehouse free space and overflow', () => {
 	const projection = projectSupplySnapshot(
-		plannerSnapshot({ demandPerDay: 10, inventory: { 'bottled-water': 25 } })
+		plannerSnapshot({ warehouseCapacity: 10, warehouseUsed: 14 })
 	);
-	const finished = material(projection, 'bottled-water');
 
-	expect(finished.daysOfCover).toBeCloseTo(2.5);
-	expect(finished.projectedStockoutDay).not.toBeNull();
-});
-
-it('selects a production capacity bottleneck deterministically', () => {
-	const projection = projectSupplySnapshot(plannerSnapshot({ demandPerDay: 30 }));
-	expect(['missing-producer', 'production-capacity', 'inventory-cover', 'import-reliance']).toContain(
-		projection.bottleneck.kind
-	);
-});
-
-it('surfaces warehouse pressure separately from recipe capacity', () => {
-	const projection = projectSupplySnapshot(
-		plannerSnapshot({ warehouseCapacity: 10, warehouseUsed: 10 })
-	);
 	expect(projection.warehouse.free).toBe(0);
+	expect(projection.warehouse.overflow).toBe(4);
 });
 ```
 
-- [ ] **Step 3: Run the tests and verify new exports fail**
-
-```bash
-bun run test:unit -- src/lib/game/supplyPlanner.spec.ts --run --project server
-```
-
-Expected: FAIL because projection exports are missing.
-
-- [ ] **Step 4: Implement installed output capacity from the same leveling formula**
-
-Do not invent a new level curve. For each material's producer recipe, sum matching snapshot building throughput:
-
-```ts
-function localCapacityPerDay(
-	snapshot: SupplyPlannerSnapshot,
-	materialId: MaterialId
-): number {
-	const recipeId = MATERIAL_PRODUCER_RECIPES.get(materialId);
-	if (!recipeId) return 0;
-	const recipe = PRODUCTION_RECIPES[recipeId];
-	const output = recipe.outputs.find((candidate) => candidate.materialId === materialId);
-	if (!output) return 0;
-
-	const throughput = snapshot.buildings
-		.filter((building) => INDUSTRIAL_BUILDING_TYPES[building.typeId]?.recipeId === recipeId)
-		.reduce((total, building) => total + getBuildingThroughputMultiplier(building.level), 0);
-
-	return output.quantity * throughput;
-}
-```
-
-- [ ] **Step 5: Implement the aggregate horizon formulas**
+- [ ] **Step 4: Implement material projections with the shared capacity helper**
 
 For each requirement row:
 
 ```ts
+const localCapacityPerDay = getMaterialOutputCapacityPerDay(snapshot.buildings, materialId);
 const requiredUnits = requiredPerDay * horizonDays;
 const localAvailableUnits = inventoryUnits + localCapacityPerDay * horizonDays;
 const importRequiredUnits = Math.max(0, requiredUnits - localAvailableUnits);
@@ -442,34 +451,59 @@ const projectedStockoutDay =
 		: null;
 ```
 
-Round only display/cash-facing values later. Keep planner math as finite numbers so recommendation comparisons do not drift because of repeated UI rounding.
+Keep finite planner math unrounded; presentation/cash formatting belongs later.
 
-- [ ] **Step 6: Implement deterministic bottleneck selection**
+- [ ] **Step 5: Implement warehouse evidence and primary-bottleneck selection**
 
-Build evidence rows first, then choose the primary bottleneck in the design's priority order. For capacity ties, compare normalized deficit (`deficit / requiredPerDay`) descending, then `materialId` by code-unit order. For stockout ties, earliest day then material ID. For import ties, largest 30-day imports then material ID.
+Warehouse evidence:
 
-Do not use a weighted numeric score.
+```ts
+const free = Math.max(0, snapshot.warehouseCapacity - snapshot.warehouseUsed);
+const overflow = Math.max(0, snapshot.warehouseUsed - snapshot.warehouseCapacity);
+const hasPositiveChainFlow = materials.some(
+	(row) => row.inventoryUnits > 0 || row.localCapacityPerDay > 0
+);
+const warehouseBinding = overflow > 0 || (free === 0 && hasPositiveChainFlow);
+```
 
-- [ ] **Step 7: Add immutability regression after projection**
+Primary bottleneck priority:
 
-Extend the Task 1 immutability test so `projectSupplySnapshot(result.snapshot)` also leaves the original game and snapshot deeply equal to their pre-call copies.
+1. missing installed producer for a positive requirement;
+2. binding warehouse capacity;
+3. largest normalized production deficit;
+4. earliest stockout;
+5. largest 30-day import reliance;
+6. none.
 
-- [ ] **Step 8: Run the focused suite and commit**
+For ties use stable code-unit material ordering. Do not add a weighted score.
+
+- [ ] **Step 6: Lock zero-demand projection and immutability**
+
+```ts
+it('returns no bottleneck for zero demand', () => {
+	const projection = projectSupplySnapshot(plannerSnapshot({ demandPerDay: 0 }));
+	expect(projection.bottleneck).toEqual({ kind: 'none' });
+});
+```
+
+Extend the Task 1 clone assertions through `projectSupplySnapshot`.
+
+- [ ] **Step 7: Run focused server suites and commit**
 
 ```bash
-bun run test:unit -- src/lib/game/supplyPlanner.spec.ts --run --project server
-git add src/lib/game/supplyPlanner.ts src/lib/game/supplyPlanner.spec.ts
-git commit -m "feat(supply): project capacity and shortages"
+bun run test:unit -- src/lib/game/productChainGraph.spec.ts src/lib/game/supplyPlanner.spec.ts --run --project server
+git add src/lib/game/productChainGraph.ts src/lib/game/productChainGraph.spec.ts src/lib/game/supplyPlanner.ts src/lib/game/supplyPlanner.spec.ts
+git commit -m "feat(supply): project shared capacity and bottlenecks"
 ```
 
 ---
 
-### Task 3: Add Candidate Actions, Hypothetical Comparison, and Stable Recommendation Ranking
+### Task 3: Add Primary-Bottleneck Actions, Warehouse Relief, and Stable Ranking
 
 **Files:**
 - Create: `src/lib/game/supplyPlannerActions.ts`
 - Create: `src/lib/game/supplyPlannerActions.spec.ts`
-- Modify: `src/lib/game/supplyPlanner.ts` only if a small public comparison type is needed
+- Modify: `src/lib/game/supplyPlanner.ts` only for small exported plan/comparison types if needed
 
 **Interfaces:**
 
@@ -495,19 +529,30 @@ export type SupplyPlannerAction =
 			buildingTypeId: 'warehouse';
 			cost: number;
 	  }
-	| { kind: 'none'; reason: 'surplus' | 'unaffordable' | 'ineffective' | 'no-feasible-action' };
+	| {
+			kind: 'none';
+			reason:
+				| 'no-demand'
+				| 'surplus'
+				| 'unaffordable'
+				| 'ineffective'
+				| 'no-feasible-action';
+	  };
+
+export interface SupplyPlannerComparison {
+	shortageReduction7: number;
+	shortageReduction30: number;
+	importReduction30: number;
+	stockoutImprovementDays: number;
+	warehouseFreeGain: number;
+}
 
 export interface SupplyPlannerCandidate {
 	action: SupplyPlannerAction;
 	affordable: boolean;
 	feasible: boolean;
 	projection: SupplyProjection;
-	comparison: {
-		shortageReduction7: number;
-		shortageReduction30: number;
-		importReduction30: number;
-		stockoutImprovementDays: number;
-	};
+	comparison: SupplyPlannerComparison;
 }
 
 export interface SupplyPlan {
@@ -517,63 +562,83 @@ export interface SupplyPlan {
 	alternatives: readonly SupplyPlannerCandidate[];
 }
 
+export type SupplyPlannerResult =
+	| { status: 'ready'; plan: SupplyPlan }
+	| { status: 'empty'; reason: 'no-supported-products' }
+	| { status: 'unavailable'; reason: 'retail-city-unavailable' | 'supply-city-unavailable' }
+	| { status: 'unsupported'; reason: 'unsupported-category' | 'missing-producer-recipe' }
+	| { status: 'invalid'; reason: 'invalid-request' };
+
 export function buildSupplyPlan(game: GameState, request: SupplyPlannerRequest): SupplyPlannerResult;
 ```
 
-`SupplyPlannerResult` should now expose `{ status: 'ready'; plan: SupplyPlan }` while preserving Task 1's normal error states.
-
-- [ ] **Step 1: Write failing candidate-generation tests**
-
-Cover the exact supported action set:
+- [ ] **Step 1: Write tests proving candidates follow the primary bottleneck only**
 
 ```ts
-it('offers a producer build for a missing constrained producer', () => {
-	const plan = readyPlan(gameMissingWaterBottler());
-	expect(plan.alternatives.some((candidate) => candidate.action.kind === 'build-producer')).toBe(true);
-});
+it('generates producer actions only for the primary material bottleneck', () => {
+	const plan = readyPlan(gameWithUpstreamAndDownstreamDeficits());
+	const bottleneck = plan.baseline.bottleneck;
+	expect('materialId' in bottleneck).toBe(true);
+	if (!('materialId' in bottleneck)) return;
 
-it('chooses the lowest-cost useful upgrade candidate deterministically', () => {
-	const plan = readyPlan(gameWithWaterBottlersAtLevels(1, 3));
-	const upgrades = plan.alternatives.filter(
-		(candidate) => candidate.action.kind === 'upgrade-building'
+	const materialActions = plan.alternatives.filter(
+		(candidate) =>
+			candidate.action.kind === 'build-producer' ||
+			candidate.action.kind === 'upgrade-building'
 	);
-	expect(upgrades.length).toBeGreaterThan(0);
-	const firstUpgrade = upgrades[0]!.action;
-	expect(firstUpgrade.kind).toBe('upgrade-building');
-	if (firstUpgrade.kind !== 'upgrade-building') return;
-	expect(firstUpgrade.fromLevel).toBe(1);
-});
 
-it('offers a warehouse build only when warehouse capacity is useful and binding', () => {
-	const plan = readyPlan(gameWithWarehousePressure());
-	expect(plan.alternatives.some((candidate) => candidate.action.kind === 'build-warehouse')).toBe(true);
+	expect(materialActions.length).toBeGreaterThan(0);
+	for (const candidate of materialActions) {
+		if (candidate.action.kind === 'build-producer' || candidate.action.kind === 'upgrade-building') {
+			expect(candidate.action.materialId).toBe(bottleneck.materialId);
+		}
+	}
 });
 ```
 
-- [ ] **Step 2: Write failing hypothetical/affordability/no-op tests**
+This test prevents the old every-constrained-material fan-out from returning.
+
+- [ ] **Step 2: Write the warehouse recommendation regression**
 
 ```ts
-it('re-runs the same projection against a copied hypothetical snapshot', () => {
-	const plan = readyPlan(gameWithBottleneck());
-	const action = plan.alternatives.find((candidate) => candidate.action.kind !== 'none');
-	expect(action).toBeDefined();
-	expect(action!.projection.totals.shortageUnits30).toBeLessThanOrEqual(
-		plan.baseline.totals.shortageUnits30
-	);
-});
+it('recommends a warehouse when warehouse capacity is the binding bottleneck', () => {
+	const plan = readyPlan(gameWithWarehousePressure({ cash: 10_000 }));
 
-it('does not select an unaffordable investment as the recommendation', () => {
-	const plan = readyPlan(gameWithBottleneck({ cash: 0 }));
+	expect(plan.baseline.bottleneck.kind).toBe('warehouse-capacity');
+	expect(plan.recommendation.action.kind).toBe('build-warehouse');
+	expect(plan.recommendation.comparison.warehouseFreeGain).toBeGreaterThan(0);
+});
+```
+
+This is a recommendation assertion, not merely an alternatives assertion.
+
+- [ ] **Step 3: Add affordability/no-demand/no-op tests**
+
+```ts
+it('does not select an unaffordable investment', () => {
+	const plan = readyPlan(gameWithMaterialBottleneck({ cash: 0 }));
 	expect(plan.recommendation.action.kind).toBe('none');
 });
 
-it('selects no-op for a chain with no meaningful forecast improvement', () => {
+it('returns ready no-demand with a no-op recommendation', () => {
+	const result = buildSupplyPlan(gameWithZeroDemand(), {
+		retailCityId: 'harbor-city',
+		categoryId: 'bottled-water'
+	});
+
+	expect(result.status).toBe('ready');
+	if (result.status !== 'ready') return;
+	expect(result.plan.baseline.bottleneck).toEqual({ kind: 'none' });
+	expect(result.plan.recommendation.action).toEqual({ kind: 'none', reason: 'no-demand' });
+});
+
+it('selects no-op for surplus capacity', () => {
 	const plan = readyPlan(gameWithSurplusCapacity());
 	expect(plan.recommendation.action).toEqual({ kind: 'none', reason: 'surplus' });
 });
 ```
 
-- [ ] **Step 3: Run tests and verify the action module is missing**
+- [ ] **Step 4: Run tests and verify the action module is missing**
 
 ```bash
 bun run test:unit -- src/lib/game/supplyPlannerActions.spec.ts --run --project server
@@ -581,9 +646,7 @@ bun run test:unit -- src/lib/game/supplyPlannerActions.spec.ts --run --project s
 
 Expected: FAIL because `supplyPlannerActions.ts` does not exist.
 
-- [ ] **Step 4: Implement pure hypothetical snapshot application**
-
-Never edit the input snapshot array/object:
+- [ ] **Step 5: Implement pure hypothetical snapshot application**
 
 ```ts
 function applyCandidate(
@@ -599,14 +662,13 @@ function applyCandidate(
 		};
 	}
 
-	const typeId = action.buildingTypeId;
-	const buildingType = INDUSTRIAL_BUILDING_TYPES[typeId];
+	const buildingType = INDUSTRIAL_BUILDING_TYPES[action.buildingTypeId];
 	const buildings = [
 		...snapshot.buildings,
 		{
 			id: `planner:${stableActionKey(action)}`,
-			cityId: snapshot.supplyCityId!,
-			typeId,
+			cityId: snapshot.supplyCityId,
+			typeId: action.buildingTypeId,
 			level: 1
 		}
 	];
@@ -622,9 +684,9 @@ function applyCandidate(
 }
 ```
 
-- [ ] **Step 5: Implement feasibility without mixing affordability into geometry**
+Never mutate the input snapshot.
 
-Use the existing industry placement geometry helper rather than `createIndustryPlacementPreview`, because the latter also evaluates funding. Construct a shallow game copy scoped to the planner supply city only for the pure placement check:
+- [ ] **Step 6: Implement geometry feasibility independently from cash**
 
 ```ts
 function hasValidPlacement(
@@ -641,61 +703,88 @@ function hasValidPlacement(
 }
 ```
 
-Import `getIndustrialPlacementBlockReason` from `industryPlacement.ts`. Affordability remains `cost <= snapshot.cash` and is evaluated separately.
+Import from `industryPlacement.ts`. Do not use `createIndustryPlacementPreview` here because it mixes funding into the geometry result.
 
-- [ ] **Step 6: Generate only useful candidates**
-
-For each constrained material with a producer recipe:
-
-- if there is no matching supply-city building, generate one build candidate for the recipe's building type;
-- for existing matching buildings, generate an upgrade candidate only when `canUpgradeBuilding(level)`;
-- use `getBuildingUpgradeCost(level)`;
-- for equal producer types, stable-sort upgrades by cost then building ID;
-- add `build-warehouse` only when the baseline bottleneck is warehouse capacity and a `warehouse` placement is feasible;
-- always include a no-op fallback.
-
-Do not generate actions unrelated to a current forecast deficit.
-
-- [ ] **Step 7: Implement comparison + lexicographic ranking**
-
-Comparison is arithmetic against the baseline projection. Recommendation sort order:
+- [ ] **Step 7: Implement primary-bottleneck candidate generation**
 
 ```ts
-function compareCandidates(left: SupplyPlannerCandidate, right: SupplyPlannerCandidate): number {
-	if (left.affordable !== right.affordable) return left.affordable ? -1 : 1;
-	if (left.feasible !== right.feasible) return left.feasible ? -1 : 1;
-	if (left.comparison.shortageReduction30 !== right.comparison.shortageReduction30)
-		return right.comparison.shortageReduction30 - left.comparison.shortageReduction30;
-	if (left.comparison.shortageReduction7 !== right.comparison.shortageReduction7)
-		return right.comparison.shortageReduction7 - left.comparison.shortageReduction7;
-	if (left.comparison.importReduction30 !== right.comparison.importReduction30)
-		return right.comparison.importReduction30 - left.comparison.importReduction30;
-	if (left.comparison.stockoutImprovementDays !== right.comparison.stockoutImprovementDays)
-		return right.comparison.stockoutImprovementDays - left.comparison.stockoutImprovementDays;
-	const leftCost = actionCost(left.action);
-	const rightCost = actionCost(right.action);
-	if (leftCost !== rightCost) return leftCost - rightCost;
-	return stableActionKey(left.action).localeCompare(stableActionKey(right.action));
+function targetMaterial(bottleneck: SupplyBottleneck): MaterialId | null {
+	switch (bottleneck.kind) {
+		case 'missing-producer':
+		case 'production-capacity':
+		case 'inventory-cover':
+		case 'import-reliance':
+			return bottleneck.materialId;
+		case 'warehouse-capacity':
+		case 'none':
+			return null;
+	}
 }
 ```
 
-After sorting, force no-op when the best feasible+affordable investment has no positive shortage/import/stockout improvement. Choose the no-op reason from baseline/supply facts (`surplus`, `unaffordable`, `ineffective`, `no-feasible-action`) instead of deriving prose in UI.
+Generation rules:
 
-- [ ] **Step 8: Verify candidate snapshots and live game remain immutable**
+- `warehouse-capacity`: if warehouse placement is feasible, add exactly one `build-warehouse` candidate plus no-op;
+- material bottleneck: resolve producer recipe/building type for **that material only**;
+  - no matching installed building → one build-producer candidate;
+  - matching buildings → one upgrade candidate per upgradeable building, stable-sorted by cost then building ID;
+- `none`: no investment candidates;
+- always include no-op.
 
-Add a test that deep-clones both `game` and `plan.snapshot`, calls candidate generation/ranking, then compares both inputs to their clones.
+Do not generate actions for non-primary material deficits.
 
-- [ ] **Step 9: Run focused server suites and commit**
+- [ ] **Step 8: Implement comparison and bottleneck-aware ranking**
+
+```ts
+function compareProjection(
+	baseline: SupplyProjection,
+	candidate: SupplyProjection
+): SupplyPlannerComparison {
+	return {
+		shortageReduction7:
+			baseline.totals.shortageUnits7 - candidate.totals.shortageUnits7,
+		shortageReduction30:
+			baseline.totals.shortageUnits30 - candidate.totals.shortageUnits30,
+		importReduction30: baseline.totals.importUnits30 - candidate.totals.importUnits30,
+		stockoutImprovementDays: compareStockoutDays(baseline, candidate),
+		warehouseFreeGain: candidate.warehouse.free - baseline.warehouse.free
+	};
+}
+```
+
+Warehouse baseline comparator:
+
+```ts
+if (baseline.bottleneck.kind === 'warehouse-capacity') {
+	return (
+		Number(right.affordable && right.feasible) - Number(left.affordable && left.feasible) ||
+		right.comparison.warehouseFreeGain - left.comparison.warehouseFreeGain ||
+		actionCost(left.action) - actionCost(right.action) ||
+		compareCodeUnitStrings(stableActionKey(left.action), stableActionKey(right.action))
+	);
+}
+```
+
+Material baseline comparator uses affordability/feasibility, 30-day shortage reduction, 7-day shortage reduction, import reduction, stockout improvement, cost, then stable action key.
+
+Meaningful-action rule:
+
+- warehouse bottleneck: `warehouseFreeGain > 0` is sufficient;
+- material bottleneck: positive shortage/import/stockout improvement required;
+- no demand: direct no-op `no-demand`;
+- none/surplus: direct no-op `surplus`.
+
+- [ ] **Step 9: Verify game/snapshot immutability and run focused suites**
 
 ```bash
 bun run test:unit -- src/lib/game/supplyPlanner.spec.ts src/lib/game/supplyPlannerActions.spec.ts --run --project server
 git add src/lib/game/supplyPlanner.ts src/lib/game/supplyPlannerActions.ts src/lib/game/supplyPlanner.spec.ts src/lib/game/supplyPlannerActions.spec.ts
-git commit -m "feat(supply): recommend forecast improvements"
+git commit -m "feat(supply): recommend primary bottleneck actions"
 ```
 
 ---
 
-### Task 4: Replace the Presence Checklist with the Planner UI and Localized Evidence
+### Task 4: Replace the Presence Checklist with Planner UI and Localized Evidence
 
 **Files:**
 - Modify: `src/lib/components/game/SupplyAdvisor.svelte`
@@ -706,8 +795,6 @@ git commit -m "feat(supply): recommend forecast improvements"
 - Modify: `src/lib/i18n/locales.spec.ts`
 
 **Interfaces:**
-
-`SupplyAdvisor.svelte` props become:
 
 ```ts
 interface Props {
@@ -723,19 +810,15 @@ interface Props {
 }
 ```
 
-- [ ] **Step 1: Rewrite component tests around planner states first**
+- [ ] **Step 1: Rewrite component tests around planner states before implementation**
 
-Cover ready, empty, unavailable, unsupported, invalid, no-op, build recommendation, upgrade recommendation, and horizon/category callbacks. Retain existing focus-trap/dialog/Escape-facing accessibility assertions that still apply.
-
-Example ready-state test:
+Cover ready material bottleneck, ready warehouse bottleneck, ready zero-demand no-op, empty no-products, unavailable supply, unsupported category, invalid request, horizon/category callbacks, action callback, dialog/focus behavior.
 
 ```ts
-it('shows baseline and recommendation evidence and emits the chosen action', async () => {
+it('renders a warehouse recommendation and emits its action', async () => {
 	const onAction = vi.fn();
-	const result = readyPlannerResult({ recommendation: buildProducerRecommendation() });
-
 	render(SupplyAdvisor, {
-		result,
+		result: readyPlannerResult({ recommendation: warehouseRecommendation() }),
 		categoryIds: ['bottled-water'],
 		selectedCategoryId: 'bottled-water',
 		horizonDays: 30,
@@ -747,98 +830,72 @@ it('shows baseline and recommendation evidence and emits the chosen action', asy
 	});
 
 	await expect.element(page.getByRole('dialog')).toBeVisible();
-	await expect.element(page.getByText(/30/)).toBeVisible();
-	await page.getByRole('button', { name: /build/i }).click();
-	expect(onAction).toHaveBeenCalledTimes(1);
+	await page.getByRole('button', { name: /warehouse/i }).click();
+	expect(onAction).toHaveBeenCalledWith(expect.objectContaining({ kind: 'build-warehouse' }));
+});
+
+it('keeps zero demand visible as a ready no-investment state', async () => {
+	render(SupplyAdvisor, zeroDemandProps());
+	await expect.element(page.getByText(/no investment/i)).toBeVisible();
 });
 ```
 
-- [ ] **Step 2: Run client test and verify the old props fail**
+- [ ] **Step 2: Run client test and verify old props fail**
 
 ```bash
 bun run test:unit -- src/lib/components/game/SupplyAdvisor.svelte.spec.ts --run --project client
 ```
 
-Expected: FAIL because the component still accepts `chains`/`onBuild`.
+Expected: FAIL until component props/content are replaced.
 
-- [ ] **Step 3: Replace chain-list rendering with compact planner sections**
+- [ ] **Step 3: Replace checklist rendering with typed planner states**
 
-Keep the existing dialog shell, backdrop close button, `focusTrap`, paper styling, and close control. Inside the dialog render:
+Keep the existing dialog/backdrop/focus trap shell. Render:
 
-```svelte
-<select
-	aria-label={i18n.t('supplyPlanner.categoryLabel')}
-	value={selectedCategoryId ?? ''}
-	onchange={(event) => onSelectCategory(event.currentTarget.value)}
->
-	{#each categoryIds as categoryId (categoryId)}
-		<option value={categoryId}>{i18n.labels.productCategory(categoryId)}</option>
-	{/each}
-</select>
+- category selector;
+- retail → supply scope;
+- demand/day and horizon tabs;
+- stock/capacity/import metrics;
+- primary bottleneck evidence;
+- recommendation card;
+- baseline-vs-action evidence;
+- per-material details;
+- state-specific copy for no-demand/empty/unavailable/unsupported/invalid request.
 
-<div class="horizon-tabs" role="group" aria-label={i18n.t('supplyPlanner.horizonLabel')}>
-	{#each [7, 30] as days (days)}
-		<button
-			type="button"
-			aria-pressed={horizonDays === days}
-			onclick={() => onSelectHorizon(days as SupplyPlannerHorizonDays)}
-		>
-			{i18n.t('supplyPlanner.days', { days })}
-		</button>
-	{/each}
-</div>
+For warehouse comparisons show capacity/headroom change, not fabricated shortage/import improvement.
+
+- [ ] **Step 4: Add localization keys in all three catalogs**
+
+Use structured keys under the existing `supplyAdvisor` namespace. Required semantic groups:
+
+```text
+supplyAdvisor.scope.*
+supplyAdvisor.horizon.*
+supplyAdvisor.metrics.*
+supplyAdvisor.bottleneck.*
+supplyAdvisor.action.*
+supplyAdvisor.comparison.*
+supplyAdvisor.state.noDemand
+supplyAdvisor.state.noSupportedProducts
+supplyAdvisor.state.supplyUnavailable
+supplyAdvisor.state.unsupported
+supplyAdvisor.state.invalidRequest
 ```
 
-For `status === 'ready'`, render metric rows from the selected horizon, bottleneck evidence, recommendation comparison, and an expandable `<details>` list of material-stage evidence. Do not add a chart library.
+Use existing label helpers for material/building/city names. Add locale parity coverage.
 
-For non-ready results, map typed reason codes to dedicated i18n keys. Do not display raw enum strings.
-
-- [ ] **Step 4: Add action copy by discriminated union**
-
-Keep domain reasoning outside presentation. UI only maps action/reason data to copy:
-
-- `build-producer` → building label + cost + shortage/import improvement;
-- `upgrade-building` → building label + level transition + cost;
-- `build-warehouse` → warehouse label + cost;
-- `none` → localized reason and no action button.
-
-The action button passes the exact `SupplyPlannerAction` object to `onAction`.
-
-- [ ] **Step 5: Add translation keys in all three catalogs**
-
-Add one `supplyPlanner` namespace with matching keys for:
-
-- title/eyebrow/scope/category/horizon;
-- demand/capacity/inventory/days-of-cover/imports/stockout;
-- 7/30-day labels;
-- baseline/comparison/recommendation/evidence headings;
-- each bottleneck kind;
-- each result-state reason;
-- each action kind and no-op reason;
-- action button labels;
-- “actual production may be lower while factories are blocked/stalled” warning.
-
-Use existing material/building/city label helpers instead of duplicating names in messages.
-
-- [ ] **Step 6: Verify locale-key parity and component behavior**
+- [ ] **Step 5: Run component/i18n/check and commit**
 
 ```bash
 bun run test:unit -- src/lib/components/game/SupplyAdvisor.svelte.spec.ts src/lib/i18n/locales.spec.ts --run --project client
 bun run check
-```
-
-Expected: PASS.
-
-- [ ] **Step 7: Commit**
-
-```bash
 git add src/lib/components/game/SupplyAdvisor.svelte src/lib/components/game/SupplyAdvisor.svelte.spec.ts src/lib/i18n/messages/en.ts src/lib/i18n/messages/ja.ts src/lib/i18n/messages/zh-Hant.ts src/lib/i18n/locales.spec.ts
-git commit -m "feat(supply): present planner forecast and evidence"
+git commit -m "feat(supply): render forecast planner"
 ```
 
 ---
 
-### Task 5: Wire Product Chains, Route-Local Planner Context, and Existing Action Navigation
+### Task 5: Wire Product Chains, Route-Local Context, and Non-Mutating Action Navigation
 
 **Files:**
 - Modify: `src/lib/components/game/ProductChainsPanel.svelte`
@@ -849,7 +906,7 @@ git commit -m "feat(supply): present planner forecast and evidence"
 
 **Interfaces:**
 
-Product Chains gets:
+`ProductChainsPanel` adds:
 
 ```ts
 interface Props {
@@ -876,57 +933,49 @@ let supplyPlannerContext = $state<SupplyPlannerUiContext>({
 - [ ] **Step 1: Add Product Chains callback test**
 
 ```ts
-it('opens planning for the active product chain without changing graph selection semantics', async () => {
+it('opens planning for the active category without changing graph selection', async () => {
 	const onPlanCategory = vi.fn();
 	render(ProductChainsPanel, { game, i18n, onPlanCategory });
 
-	await page.getByRole('button', { name: i18n.t('supplyPlanner.planThisChain') }).click();
-	expect(onPlanCategory).toHaveBeenCalledTimes(1);
-	expect(onPlanCategory.mock.calls[0]![0]).toBeTruthy();
+	await page.getByRole('button', { name: /plan this chain/i }).click();
+	expect(onPlanCategory).toHaveBeenCalledWith(expect.any(String));
 });
 ```
 
-- [ ] **Step 2: Add route tests for planner context and navigation intent**
+- [ ] **Step 2: Add route tests for context and all action navigation kinds**
 
-Cover:
+Route/component tests must prove:
 
-- Build Menu opens planner with a valid category;
-- Product Chains callback closes management panel and opens planner focused on that category;
-- changing horizon/category persists in route state across close/reopen;
-- build/warehouse action closes planner and arms industry placement for the requested type;
-- upgrade action closes planner and selects the target building tile rather than directly upgrading it.
+- open planner from Build Menu without category override;
+- open planner from Product Chains with active category;
+- horizon/category survive close/reopen;
+- build-producer arms the recommended building type;
+- build-warehouse arms `warehouse` placement;
+- upgrade selects the exact building tile/inspector;
+- no-op does not navigate;
+- none of these handlers invokes build/upgrade controller mutations directly.
 
-Use existing route test helpers/data attributes; do not expose new production-only DOM hooks if current role/text queries suffice.
+Use existing controller spies in `page.svelte.spec.ts`; assert mutation methods remain uncalled when planner actions are clicked.
 
-- [ ] **Step 3: Run targeted client/route tests and verify integration fails**
+- [ ] **Step 3: Add Product Chains `Plan this chain` button**
 
-```bash
-bun run test:unit -- src/lib/components/game/ProductChainsPanel.svelte.spec.ts src/routes/page.svelte.spec.ts --run --project client
-```
-
-Expected: FAIL because callbacks/context are not wired.
-
-- [ ] **Step 4: Add the Product Chains `Plan this chain` control**
-
-Place it beside the active category heading/actions, not inside graph nodes. Only render it when `activeCategory` and `onPlanCategory` exist:
+Render the action only when an active category exists. Keep forecast calculations out of Product Chains.
 
 ```svelte
 {#if activeCategory && onPlanCategory}
-	<button type="button" class="plan-chain" onclick={() => onPlanCategory(activeCategory.categoryId)}>
-		{i18n.t('supplyPlanner.planThisChain')}
+	<button type="button" onclick={() => onPlanCategory?.(activeCategory.categoryId)}>
+		{i18n.t('supplyAdvisor.planThisChain')}
 	</button>
 {/if}
 ```
 
-Forward the callback through `ManagementPanelHost.svelte` only for the Product Chains branch.
+- [ ] **Step 4: Derive planner categories/request/result in `+page.svelte`**
 
-- [ ] **Step 5: Derive planner categories/result in `+page.svelte`**
-
-Replace `supplyAdvisorChains` with pure planner derivations:
+Use selected retail city and route-local context:
 
 ```ts
-let supplyPlannerCategoryIds = $derived.by(() =>
-	game ? listSupplyPlannerCategories(game, activeCity.id as WorldCityId) : []
+let supplyPlannerCategoryIds = $derived(
+	game && isWorldCityId(activeCity.id) ? listSupplyPlannerCategories(game, activeCity.id) : []
 );
 
 let selectedSupplyPlannerCategoryId = $derived(
@@ -936,7 +985,7 @@ let selectedSupplyPlannerCategoryId = $derived(
 );
 
 let supplyPlannerResult = $derived.by(() => {
-	if (!game || !selectedSupplyPlannerCategoryId || !isWorldCityId(activeCity.id)) {
+	if (!game || !isWorldCityId(activeCity.id) || !selectedSupplyPlannerCategoryId) {
 		return { status: 'empty', reason: 'no-supported-products' } as const;
 	}
 	return buildSupplyPlan(game, {
@@ -946,9 +995,9 @@ let supplyPlannerResult = $derived.by(() => {
 });
 ```
 
-Use the existing world-city type guard rather than new casts in the final implementation.
+Do not put planner state in a store/context module.
 
-- [ ] **Step 6: Add open/select handlers that preserve context**
+- [ ] **Step 5: Preserve context in open/select handlers**
 
 ```ts
 function openSupplyPlanner(categoryId?: string): void {
@@ -963,34 +1012,35 @@ function setSupplyPlannerHorizon(horizonDays: SupplyPlannerHorizonDays): void {
 }
 ```
 
-When the current category becomes invalid, derive a fallback without clearing the stored category until the user selects another valid one; this preserves context when switching away and back.
+When a stored category is temporarily invalid, derive a fallback but do not erase the stored value until the user selects another category.
 
-- [ ] **Step 7: Implement recommendation navigation without commands**
+- [ ] **Step 6: Implement recommendation navigation through existing paths only**
 
-Build/warehouse:
+For build-producer/build-warehouse:
 
-1. ensure `game` and `plan.snapshot.supplyCityId` exist;
-2. select/switch the industry map to the supply city using the existing city-selection route/controller path if needed;
-3. close overlays;
-4. call the existing `armIndustryPlacement(buildingTypeId)` path.
+1. resolve the ready plan's `snapshot.supplyCityId`;
+2. switch/select that industry city through the route's existing city-selection path when needed;
+3. close planner/management/build overlays;
+4. call existing `armIndustryPlacement(action.buildingTypeId)`;
+5. never call `gameRouteController.buildIndustrialBuilding`.
 
-Upgrade:
+For upgrade:
 
-1. find the target building by `action.buildingId`;
-2. switch to its industry city through existing navigation;
-3. close overlays and placement;
+1. find `game.industrialBuildings` entry by `action.buildingId`;
+2. switch/select its city through existing navigation;
+3. close planner/placement;
 4. set `selectedIndustryTileId = building.tileId`;
-5. do **not** call `gameRouteController.upgradeIndustrialBuilding`.
+5. never call `gameRouteController.upgradeIndustrialBuilding`.
 
-If the recommendation has become stale before click (building removed, city closed, category changed), close nothing and recompute/leave the planner visible rather than guessing a target.
+If an action is stale at click time (removed building, closed/unavailable city), keep planner open and let reactive derivation refresh instead of guessing.
 
-- [ ] **Step 8: Pass new props into `SupplyAdvisor` and Product Chains host**
+- [ ] **Step 7: Replace old SupplyAdvisor wiring and forward Product Chains callback**
 
-Replace the existing `chains={supplyAdvisorChains}` / `onBuild={buildFromAdvisor}` wiring with `result`, `categoryIds`, selected category, selected horizon, `onSelectCategory`, `onSelectHorizon`, and `onAction`.
+Pass `result`, categories, selected category, horizon, selection callbacks, action callback, and close callback to `SupplyAdvisor`.
 
-Retain existing overlay pausing, focus behavior, and Escape ordering.
+Keep existing map pause, focus trap, and Escape ordering unchanged.
 
-- [ ] **Step 9: Run route/component suites and commit**
+- [ ] **Step 8: Run route/component suites and commit**
 
 ```bash
 bun run test:unit -- src/lib/components/game/ProductChainsPanel.svelte.spec.ts src/lib/components/game/SupplyAdvisor.svelte.spec.ts src/routes/page.svelte.spec.ts --run --project client
@@ -1001,66 +1051,77 @@ git commit -m "feat(supply): navigate planner recommendations"
 
 ---
 
-### Task 6: Remove Obsolete Presence-Only Advisor Logic and Add End-to-End Planner Verification
+### Task 6: Remove Presence-Only Advisor Logic and Verify Warehouse Planner Lifecycle
 
 **Files:**
 - Modify: `src/lib/game/supplyAdvisor.ts`
 - Modify: `src/lib/game/supplyAdvisor.spec.ts`
 - Modify/Delete as appropriate: `src/lib/game/supplyAdvisor.defensive.spec.ts`
 - Modify: `src/routes/retail-sim.e2e.ts`
-- Modify: any imports revealed by the removal, but no unrelated refactors
+- Modify: imports revealed by cleanup only
 
-- [ ] **Step 1: Prove the new planner no longer imports `AdvisorChain`/`buildSupplyAdvisor`**
-
-Search:
+- [ ] **Step 1: Prove application code no longer imports presence planner types**
 
 ```bash
 rg "AdvisorChain|buildSupplyAdvisor|getBuildingTypeProducing" src
 ```
 
-Expected before cleanup: only old advisor tests/module and any deliberately retained helper references remain. If application code still depends on the old chain model, fix that dependency before deleting exports.
+Expected before cleanup: matches only in old advisor module/tests. If application code still imports them, finish the Task 5 cutover first.
 
 - [ ] **Step 2: Reduce `supplyAdvisor.ts` to Build Menu availability responsibility**
 
-Keep `getAvailableMaterialIds(game)` and its active-industry/city-inventory behavior. Remove `AdvisorStepState`, `AdvisorChainStep`, `AdvisorChain`, `buildSupplyAdvisor`, `collectChain`, `getWantedFinishedMaterials`, and chain-only producer lookup if no other consumer remains.
+Keep `getAvailableMaterialIds(game)` and its current active-industry/city-inventory behavior. Remove:
 
-Do not preserve compatibility re-exports.
+```text
+AdvisorStepState
+AdvisorChainStep
+AdvisorChain
+buildSupplyAdvisor
+collectChain
+getWantedFinishedMaterials
+chain-only producer lookup (if no remaining consumer)
+```
 
-- [ ] **Step 3: Rewrite advisor node tests around the retained helper**
+Do not add compatibility re-exports.
 
-Retain tests that protect:
+- [ ] **Step 3: Keep only availability tests in old advisor specs**
 
-- current active industry city's city inventory;
+Retain coverage for:
+
+- active industry city's city inventory;
 - positive building-buffer inventory;
-- optimistic outputs of placed buildings used for Build Menu recipe hints;
-- malformed/missing active inventory returning a safe empty set rather than crashing the Build Menu.
+- optimistic outputs of placed buildings for Build Menu recipe hints;
+- missing active inventory returning a safe empty set.
 
-Move any forecast expectations into `supplyPlanner.spec.ts` instead of keeping two planning models.
+Forecast expectations belong in `supplyPlanner*.spec.ts`.
 
-- [ ] **Step 4: Add one targeted Playwright lifecycle**
+- [ ] **Step 4: Add a targeted warehouse-bottleneck Playwright lifecycle**
 
-In `src/routes/retail-sim.e2e.ts`, add a single scenario named clearly enough for `-g "supply planner"` that:
+Add one test matching `-g "supply planner warehouse"` that establishes deterministic warehouse pressure and then:
 
-1. reaches a stable game state with a supported retail category and a constrained supply chain;
-2. opens the Supply Planner;
-3. confirms demand and both horizon controls are visible;
-4. inspects a concrete recommendation and baseline-vs-action evidence;
-5. activates a build recommendation and verifies industry placement becomes active **or** activates an upgrade recommendation and verifies the correct building inspector is selected;
-6. cancels/returns, reopens the planner, and verifies category/horizon context survives.
+1. opens the planner for a supported category;
+2. verifies the primary bottleneck is warehouse capacity;
+3. verifies the recommended action is **Build Warehouse**;
+4. verifies both 7-day and 30-day controls/evidence are visible;
+5. activates Build Warehouse;
+6. verifies the industry map is active and warehouse placement mode is armed;
+7. cancels placement;
+8. reopens the planner;
+9. verifies category and selected horizon context survive.
 
-Do not assert exact pixel layout or duplicate every calculation case in E2E.
+Do not duplicate projection arithmetic in E2E. Upgrade navigation is already locked by `page.svelte.spec.ts`.
 
-- [ ] **Step 5: Run the focused cleanup + E2E suites**
+- [ ] **Step 5: Run focused cleanup and warehouse lifecycle suites**
 
 ```bash
-bun run test:unit -- src/lib/game/supplyAdvisor.spec.ts src/lib/game/supplyPlanner.spec.ts src/lib/game/supplyPlannerActions.spec.ts --run --project server
+bun run test:unit -- src/lib/game/productChainGraph.spec.ts src/lib/game/supplyAdvisor.spec.ts src/lib/game/supplyPlanner.spec.ts src/lib/game/supplyPlannerActions.spec.ts --run --project server
 bun run test:unit -- src/lib/components/game/SupplyAdvisor.svelte.spec.ts src/lib/components/game/ProductChainsPanel.svelte.spec.ts src/routes/page.svelte.spec.ts --run --project client
-bunx playwright test src/routes/retail-sim.e2e.ts -g "supply planner"
+bunx playwright test src/routes/retail-sim.e2e.ts -g "supply planner warehouse"
 ```
 
 Expected: PASS.
 
-- [ ] **Step 6: Run the full project verification**
+- [ ] **Step 6: Run full project verification**
 
 ```bash
 bun run check
@@ -1070,22 +1131,27 @@ bunx playwright test src/routes/retail-sim.e2e.ts
 bun run build
 ```
 
-Fix only HPA-281 regressions found by these commands. Do not opportunistically refactor unrelated logistics, scenario, finance, or map code.
+Fix only HPA-281 regressions. Do not opportunistically refactor logistics, scenario, finance, or map code.
 
-- [ ] **Step 7: Final acceptance check against HPA-281**
+- [ ] **Step 7: Final acceptance audit**
 
-Before the implementation PR is marked ready, verify explicitly:
+Verify explicitly:
 
-- same state/request gives the same forecast/recommendation;
+- same state/request gives same forecast/recommendation;
 - no state/RNG/autosave mutation;
+- Product Chains and planner share recipe throughput math;
 - count/level change capacity;
-- shared inputs reconcile;
+- shared input requirements reconcile;
+- zero demand is ready + no-op;
 - 7/30 metrics exist;
-- empty/missing/unsupported/surplus states explain themselves;
+- normal supply access failures soft-return before stats;
+- authoritative inventory invariant failures are not disguised;
+- candidate actions target only the primary bottleneck;
+- warehouse pressure can select warehouse as the primary recommendation;
 - affordability changes recommendation;
-- hypothetical action uses the same projection path;
-- planner action navigates but does not commit;
-- Product Chains can open planning for its selected category;
+- hypothetical actions use the same projection path;
+- planner actions navigate but never commit;
+- Product Chains opens planning for its active category;
 - route-local context survives handoff/reopen;
 - no logistics/event forecasting leaked into HPA-281.
 
@@ -1094,26 +1160,33 @@ Before the implementation PR is marked ready, verify explicitly:
 ```bash
 git add src/lib/game/supplyAdvisor.ts src/lib/game/supplyAdvisor.spec.ts src/lib/game/supplyAdvisor.defensive.spec.ts src/routes/retail-sim.e2e.ts
 git add -u
-git commit -m "test(supply): cover planner action lifecycle"
+git commit -m "test(supply): cover warehouse planner lifecycle"
 ```
 
 ---
 
 ## Implementation Order Rationale
 
-1. **Snapshot/requirements first** locks deterministic inputs and city scope before recommendation code exists.
-2. **Projection second** creates one tested baseline engine shared by all hypothetical actions.
-3. **Actions third** prevents the UI from becoming the place where recommendations are calculated.
-4. **UI fourth** consumes stable result unions and can be tested without route wiring.
-5. **Route/Product Chains fifth** adds navigation only after planner actions are typed and tested.
-6. **Cleanup/E2E last** removes the old model only after the replacement is fully wired and verifies the complete player handoff.
+1. **Snapshot/requirements first** locks explicit retail/supply scope, zero-demand semantics, and safe inventory access.
+2. **Shared capacity/projection second** prevents Product Chains/planner formula drift before recommendations exist.
+3. **Primary-bottleneck actions third** keeps diagnosis and recommendation aligned and gives warehouse relief a real comparison path.
+4. **UI fourth** consumes stable typed results without owning calculations.
+5. **Route/Product Chains fifth** adds navigation only after actions are typed/tested.
+6. **Cleanup/E2E last** removes the old model after cutover and forces the warehouse recommendation path through the real UI.
 
-This sequence keeps each commit reviewable and avoids carrying two independent forecast implementations.
+## Review Adjustments Incorporated
+
+- Warehouse recommendations now compare `warehouseFreeGain` and can beat no-op when storage is the primary bottleneck.
+- Candidate generation is primary-bottleneck-only rather than every constrained material.
+- `no-demand` was removed from empty result states; zero demand returns ready + no-op.
+- Inventory access is gated through `getCityInventory` before `getCityInventoryStats`; invariant exceptions remain invariant exceptions.
+- Task 2 generalizes/reuses Product Chains throughput helpers instead of duplicating the level sum.
+- Task 3 has a mandatory warehouse recommendation assertion and Task 6 drives warehouse recommendation → placement in Playwright.
 
 ## Self-Review Checklist
 
 - Spec coverage: every HPA-281 calculation, recommendation, UI, navigation, immutability, and verification requirement maps to Tasks 1–6.
 - Scope: HPA-297 route/in-transit concerns are extension points only; HPA-296 event semantics are excluded.
-- Type consistency: `SupplyPlannerRequest`, `SupplyPlannerSnapshot`, `SupplyProjection`, `SupplyPlannerAction`, `SupplyPlannerCandidate`, `SupplyPlan`, and `SupplyPlannerResult` are defined before use.
-- No placeholders: every task names concrete files, interfaces, test cases, commands, and algorithms.
-- KISS/YAGNI: two domain modules, one existing modal, one route-local context object, no new infrastructure.
+- Type consistency: snapshot supply city is non-null only for ready snapshots; no-demand is a no-op reason; comparison contains `warehouseFreeGain`.
+- No placeholders: tasks name concrete files, interfaces, tests, commands, and algorithms.
+- KISS/YAGNI: two planner modules, one minimally generalized existing throughput helper, one existing modal, one route-local context object, no new infrastructure.
