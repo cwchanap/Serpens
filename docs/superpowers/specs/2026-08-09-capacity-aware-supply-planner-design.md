@@ -4,16 +4,16 @@
 
 ## Outcome
 
-Replace the current building-presence Supply Advisor with a deterministic local-network planner that answers four questions for a selected finished product:
+Replace the building-presence Supply Advisor with a deterministic local-network planner that answers four questions for a selected finished product:
 
 1. How much supply can the current retail configuration actually draw?
 2. What is the primary local bottleneck?
 3. What happens over 7 and 30 days if nothing changes?
-4. What is the best currently actionable build, upgrade, rail, warehouse, or no-op response, and what is the economic tradeoff?
+4. What is the best currently actionable build, upgrade, rail, warehouse, or no-op response, and what is the economic tradeoff where that tradeoff is knowable?
 
 The planner is advisory only. It never mutates live game state, advances RNG, autosaves, builds, upgrades, or lays rail. Existing placement, rail-build, and inspector flows remain the mutation boundary.
 
-## Architecture stays the same
+## Architecture
 
 Keep the approved shape:
 
@@ -36,96 +36,66 @@ Use two planner modules only:
 - `supplyPlanner.ts` — request/result contracts, demand contributors, upstream requirements, local reachability, projection, limitations, primary bottleneck.
 - `supplyPlannerActions.ts` — current action availability, candidates, hypothetical comparison, economic estimate, ranking.
 
-Do not add a replay engine, optimizer framework, planner store, event bus, worker, save state, or route scheduler.
+No replay engine, optimizer framework, planner store, event bus, worker, save state, or route scheduler.
 
-## Why the model needs the follow-up corrections
+## Correctness corrections from review
 
-The expected-value approach remains preferable to cloning `simulateDay`, but four existing simulation facts must be reflected or the headline numbers become misleading:
+The expected-value approach remains preferable to cloning `simulateDay`, but current simulation facts must be reflected:
 
-1. **Intra-city rail is part of local production delivery.** Producers and processors exchange material through the current rail network; finished output reaches retail supply through warehouse delivery.
-2. **One industry inventory can serve several retail cities.** The selected retail city is UI context, not the full demand boundary.
-3. **Warehouse draw is bounded by retail replenishment cadence/targets.** `buildCityDemandPools` is potential demand, not automatic daily inventory draw.
-4. **Units alone cannot rank investments.** Import value, build/upgrade cost, recipe operating cost, flat building operating cost, and imported-input exposure matter.
+- intra-city rail controls whether local output can move through the required chain;
+- one industry inventory can serve several retail cities;
+- potential city demand is not the same as weekly warehouse draw;
+- retail finished-product import prices are not necessarily equal to material import prices;
+- units alone cannot rank operational investments;
+- current scenario/pending/content gates can make an otherwise valid action unavailable.
 
-These corrections fit inside the same modules and do not require simulation replay.
+These fit inside the same modules.
 
-## Scope boundary with HPA-297
+## HPA-297 boundary
 
-HPA-281 models current **local** production/inventory/retail facts. It does not predict:
+HPA-281 does not predict recurring-route dispatch quantities, route contention, in-transit arrivals, or event-modified route state.
 
-- future recurring-route dispatch quantities;
-- route priority/contention;
-- in-transit arrivals;
-- event-modified route capacity/lead time/cost;
-- inter-city action candidates.
-
-If an active outbound recurring route originates at the modeled supply city and touches a required material, HPA-281 shows `active-logistics-not-modeled` and suppresses capital recommendations. HPA-297 later replaces that conservative guard with route-aware projection.
+If an active outbound recurring route originates at the modeled supply city and touches a required material, HPA-281 adds `active-logistics-not-modeled`, shows the retail-only baseline evidence, and suppresses capital recommendations. HPA-297 later replaces this conservative guard with route-aware projection.
 
 ---
 
 ## Reuse map
 
-### Retail demand and category identity
+### Demand/category
 
 From `stock.ts`:
 
-- `buildCityDemandPools(game, city)` — deterministic potential demand;
-- `getFinishedMaterialIdForCategory(categoryId)` — category → finished material.
+- `buildCityDemandPools(game, city)`;
+- `getFinishedMaterialIdForCategory(categoryId)`.
 
 From `retailSupply.ts`:
 
-- `REPLENISHMENT_INTERVAL_DAYS` — authoritative weekly cadence.
+- `REPLENISHMENT_INTERVAL_DAYS`.
 
 From Product Chains:
 
-- `getSupportedStoreChainCategories(store)` — supported carried categories;
-- `MATERIAL_PRODUCER_RECIPES` — one-producer-recipe mapping;
-- `getIndustryInventoryScope(game, cityId)` — city-scoped inventory/buildings/report;
-- `buildingsForRecipe` / `getRecipeThroughputUnits` — throughput formula owner.
+- `getSupportedStoreChainCategories(store)`;
+- `MATERIAL_PRODUCER_RECIPES`;
+- `getIndustryInventoryScope(game, cityId)`;
+- `buildingsForRecipe` / `getRecipeThroughputUnits`.
 
 ### Inventory
 
-From `cityInventory.ts`:
-
-- `getCityInventoryStats` for capacity/used/overflow after successful scope resolution;
-- invariant failures remain exceptions rather than becoming normal planner UX.
+Use `getCityInventoryStats` only after supply scope resolves. Authoritative inventory invariant failures remain exceptions, not normal planner result states.
 
 ### Rail
 
-From `rail.ts` / `railShipping.ts`:
+Reuse `buildRailNetwork`, `createRailBudget`, `getBuildingAttachCellKeys`, and `findShippingPath` with the same attachment semantics as `pullViaRail`/`pushSurplusViaRail`.
 
-- `buildRailNetwork`;
-- `createRailBudget`;
-- `getBuildingAttachCellKeys`;
-- `findShippingPath`;
-- the same building/warehouse attachment semantics used by `pullViaRail` and `pushSurplusViaRail`.
+Add one required-chain connectivity selector; do not add another pathfinder or flow solver.
 
-HPA-281 adds one small pure required-chain reachability selector. It does not add another pathfinder or shared-capacity flow solver.
+### Actions
 
-### Costs/actions
-
-From `industry.ts` / `leveling.ts`:
-
-- industrial material import costs;
-- recipe operating cost;
-- building build cost and daily flat operating cost;
-- throughput multiplier, upgrade cost, upgrade eligibility.
-
-From `industryPlacement.ts`:
-
-- `createIndustrialPlacementContext` once per candidate scan;
-- `getIndustrialPlacementBlockReasonWithContext` per tile.
-
-From the route:
-
-- `canStartIndustryExpansion`;
-- `mutationAvailability.upgradeIndustrialBuilding`;
-- `mutationAvailability.buildRail`;
-- `allowedIndustryBuildingTypeIds`.
+Reuse industry/material/recipe definitions, leveling cost/throughput helpers, `createIndustrialPlacementContext`, `getIndustrialPlacementBlockReasonWithContext`, and route-level action availability.
 
 ---
 
-## Public planner contracts
+## Public contracts
 
 ```ts
 export type SupplyPlannerHorizonDays = 7 | 30;
@@ -169,8 +139,6 @@ export interface SupplyPlannerSnapshot {
 }
 ```
 
-A ready snapshot always has a usable supply city. Missing/null/unavailable supply resolves before snapshot construction.
-
 ### Result union
 
 ```ts
@@ -182,63 +150,51 @@ export type SupplyPlannerResult =
 	| { status: 'invalid'; reason: 'invalid-request' };
 ```
 
-A supported category with effective demand `0` remains `ready`; it produces bottleneck `none` and no-op `no-demand`.
+A supported category with effective demand `0` remains `ready` with bottleneck `none` and no-op `no-demand`.
 
 ---
 
 ## Demand model
 
-### Selected-city context vs supply-city requirement
+### Supply-city claimants
 
-The selected retail city determines which product the player is examining. The supply city determines the shared inventory/capacity boundary.
+The selected retail city supplies UI context. The configured industry city is the actual inventory/capacity boundary.
 
-After resolving the selected retail city's supply assignment, include every opened/generated retail city whose assignment points to that same supply city and which sells the requested category.
+Include every opened/generated retail city whose current assignment points to the same supply city and which sells the requested category. Preserve one contributor row per city.
 
-Keep one contributor row per retail city so the UI can explain total supply-city demand.
-
-### Potential demand
-
-For each contributor:
+### Potential demand and replenishment ceiling
 
 ```text
 potentialDemandPerDay = buildCityDemandPools(game, retailCity)[categoryId] ?? 0
-```
 
-No RNG is consumed.
-
-### Replenishment ceiling
-
-For stores in the contributor city that sell the category:
-
-```text
 replenishmentCeilingPerDay =
-  sum(product.targetStock)
+  sum(product.targetStock for stores selling category)
   / REPLENISHMENT_INTERVAL_DAYS
 
 effectiveDemandPerDay =
   min(potentialDemandPerDay, replenishmentCeilingPerDay)
 ```
 
-This is an upper bound on average warehouse draw under the current target/cadence contract, not a claim that each week always consumes the full target.
+This is an upper bound on average warehouse draw under current targets/cadence, not a promise that every replenishment consumes the full target.
 
-A sold category whose total target stock is `0` is still a valid contributor with ceiling/effective demand `0`; do not drop it from the selected planner context.
+A sold category whose total target stock is `0` stays a valid zero-draw contributor.
 
-### Retail import cost basis
+### Finished retail import cost
 
-Do **not** use `MATERIALS[finishedMaterialId].importCost` for finished-product retail fallback. Retail categories own their own `ProductCategory.importCost`, and current values are not guaranteed to equal material import cost.
+Do not substitute `MATERIALS[finishedMaterialId].importCost` for retail fallback imports.
 
-For each contributor:
+Per contributor:
 
-- when total target stock is positive, weight category import cost by each store product's target-stock share;
-- when total target stock is zero, use a deterministic arithmetic average of the carried category definitions (code-unit store order) because the price is evidence only and no units are currently drawable.
+- if target stock total > 0, weight carried `ProductCategory.importCost` by target-stock share;
+- if target stock total = 0, use a deterministic arithmetic average of the carried category definitions because no units are currently drawable.
 
-The snapshot's `finishedImportCostPerUnit` is effective-demand-weighted across contributors. When total effective demand is zero, use the selected contributor's deterministic `retailImportCostPerUnit`.
+`finishedImportCostPerUnit` is effective-demand-weighted across contributors. If total effective demand is zero, use the selected contributor's deterministic retail import cost.
 
-Industrial upstream imports continue to use `MATERIALS[materialId].importCost`.
+Raw/intermediate industrial input imports continue to use `MATERIALS[materialId].importCost`.
 
-### Store sales capacity limitation
+### Store sales-capacity limitation
 
-The real sales pass also shares store sales capacity across categories. Allocating that capacity per category would require another retail optimization model. HPA-281 exposes `store-sales-capacity-not-modeled` instead of inventing an allocation rule.
+The sales pass also shares store sales capacity across categories. HPA-281 does not invent a per-category allocator; surface `store-sales-capacity-not-modeled`.
 
 ---
 
@@ -253,49 +209,24 @@ export interface SupplyMaterialRequirement {
 }
 ```
 
-- finished material depth = `0`;
-- depth increases moving upstream;
-- shared upstream material quantities are accumulated into one row;
-- if reached through several branches, retain maximum depth.
+Finished depth is `0`; depth increases upstream. Shared upstream units are accumulated once; maximum depth is retained.
 
-Use `MATERIAL_PRODUCER_RECIPES`; do not retain `AdvisorChain` just for ordering.
-
-### Missing producer ordering
-
-When several required materials have no installed producer:
-
-1. greatest `chainDepth` first (upstream-first);
-2. code-unit material ID tie-break.
-
-This preserves the useful topological intent of the old advisor without preserving its obsolete API.
+Missing-producer ties use greatest depth first, then code-unit material ID. This preserves the useful topological intent of the old advisor without preserving `AdvisorChain`.
 
 ---
 
-## Installed vs usable local capacity
+## Installed vs usable capacity
 
-Product Chains remains the throughput formula owner.
+Product Chains remains the throughput formula owner. Generalize its helper to readonly `{ typeId, level }` rows and add material-specific output capacity.
 
-Generalize existing helpers to accept readonly `{ typeId, level }` rows and add material-specific output capacity:
+### Required-chain reachability
 
-```ts
-export function getMaterialOutputCapacityPerDay(
-	buildings: readonly RecipeThroughputBuilding[],
-	materialId: MaterialId
-): number;
-```
+“Every producer must reach a warehouse” is too broad because live processors can pull directly from producer buffers.
 
-### Required-chain rail reachability
-
-The literal rule “every producer must reach a warehouse” is too broad. Live processors can pull directly from producer buffers.
-
-HPA-281 evaluates **path existence along the required product chain**:
-
-- a finished-material producer is usable when it has a current rail path to at least one same-city warehouse;
-- a raw/intermediate producer is usable when it has a current rail path to at least one **usable downstream processor** that consumes that material;
-- downstream usability recursively terminates at a finished producer that can reach a warehouse;
-- if a downstream producer does not exist, higher-priority `missing-producer` handles the structural gap before rail-disconnection is considered.
-
-Implementation uses the current network, fresh positive budget, attach cells, and `findShippingPath`. It never consumes that budget because this selector answers connectivity only.
+- finished producer → must reach a same-city warehouse;
+- raw/intermediate producer → must reach at least one **usable downstream processor** consuming that material;
+- downstream usability recursively terminates at a finished producer that reaches a warehouse;
+- missing downstream producers are handled by higher-priority `missing-producer` before rail disconnection.
 
 ```ts
 export interface RequiredChainReachability {
@@ -303,35 +234,23 @@ export interface RequiredChainReachability {
 	disconnectedBuildingIds: readonly string[];
 	usableSinkBuildingIdsByMaterial: Partial<Record<MaterialId, readonly string[]>>;
 }
-
-export function getRequiredChainReachability(input: {
-	game: GameState;
-	cityId: WorldCityId;
-	finishedMaterialId: MaterialId;
-	requirements: readonly SupplyMaterialRequirement[];
-}): RequiredChainReachability;
 ```
 
-`usableSinkBuildingIdsByMaterial` is retained in the snapshot because Task 3 needs the same downstream-sink set to determine whether a prospective building placement is already rail-ready. Do not recompute a second reachability model in the action module.
+Use the existing rail network, a fresh positive budget, attach cells, and `findShippingPath`. Never consume the budget: this is connectivity only.
 
-### Capacity fields
+Store `usableSinkBuildingIdsByMaterial` in the snapshot so candidate placement can reuse the same sink definition rather than recomputing another reachability model.
 
-Each material forecast exposes:
+### Capacity evidence
 
-- `installedCapacityPerDay` — all matching producer buildings;
-- `usableCapacityPerDay` — only required-chain-reachable producer buildings.
+Per material expose installed and usable capacity. Stockout/import calculations use **usable** capacity.
 
-Headline stockout/import calculations use `usableCapacityPerDay`.
-
-### Explicit rail-capacity limitation
-
-Path existence is not path throughput. Rail cell levels are shared daily budgets consumed by pulls/pushes. HPA-281 does not solve multi-commodity rail flow/max-flow; include `rail-capacity-not-modeled`.
+Path existence is not path throughput. Shared rail cell budgets are explicitly `rail-capacity-not-modeled`; no max-flow/multi-commodity solver.
 
 ---
 
 ## Projection
 
-For each requirement and horizon:
+For each material/horizon:
 
 ```text
 requiredUnits = requiredPerDay × horizon
@@ -339,9 +258,9 @@ localAvailableUnits = startingInventory + usableCapacityPerDay × horizon
 importRequiredUnits = max(0, requiredUnits - localAvailableUnits)
 ```
 
-Expose 7/30 rows, days of cover, projected stockout, installed/usable capacity, and current inventory.
+Expose 7/30 rows, days of cover, projected stockout, installed/usable capacity, and inventory.
 
-Warehouse evidence stays current-state only: capacity, used, free, overflow. No projected occupancy engine.
+Warehouse evidence is current capacity/used/free/overflow only. No projected occupancy engine.
 
 ---
 
@@ -361,22 +280,16 @@ export type SupplyBottleneck =
 Order:
 
 1. upstream-most missing producer;
-2. binding warehouse capacity;
-3. required producer disconnected from its usable downstream sink;
+2. binding warehouse;
+3. deepest required disconnected producer;
 4. largest normalized usable-capacity deficit;
 5. earliest stockout;
 6. largest 30-day import reliance;
 7. none.
 
-Rail ties prefer deepest material then code-unit building ID.
-
 ---
 
-## Logistics limitation
-
-Do not add recurring-route outflow to `requiredPerDay`. Accurate route projection needs cadence, destination need, route priority, origin stock, in-transit reservations, and later effective event state.
-
-Detect active recurring routes whose state is active, origin is the modeled supply city, and material is in the required set.
+## Limitations
 
 ```ts
 export type SupplyPlannerLimitation =
@@ -385,7 +298,7 @@ export type SupplyPlannerLimitation =
 	| { kind: 'store-sales-capacity-not-modeled' };
 ```
 
-When relevant active logistics exists, show retail-only evidence but suppress capital recommendation with no-op `logistics-contention-not-modeled`.
+Relevant active outbound logistics suppresses capital recommendation rather than being silently ignored or forecast with duplicate route logic.
 
 ---
 
@@ -425,47 +338,13 @@ export type SupplyPlannerAction =
 	  };
 ```
 
-Generate candidates only for the primary bottleneck:
+Generate only for the primary bottleneck.
 
-- material bottleneck → producer build/upgrade for that material;
-- warehouse → warehouse build;
-- rail disconnected → connect that existing building;
-- none → no investment.
+### Availability and placement
 
-### Current-action availability
+A currently restricted route/scenario action cannot become the primary recommendation.
 
-Scenario/pending/content restrictions are part of feasibility. An action the route would currently refuse cannot become the primary recommendation.
-
-### Placement scan
-
-For each build candidate:
-
-1. scope game to supply industry city;
-2. create `IndustrialPlacementContext` once;
-3. scan tiles with `getIndustrialPlacementBlockReasonWithContext`;
-4. record whether at least one valid placement is already rail-ready to a sink in `usableSinkBuildingIdsByMaterial[materialId]`.
-
-Do not rebuild placement context per tile.
-
----
-
-## Hypothetical action behavior
-
-### Existing producer upgrade
-
-Increment level in a copied snapshot. Existing disconnected buildings are classified as `rail-disconnected` first, so capacity upgrades compare only usable producer capacity.
-
-### Warehouse build
-
-Add authoritative warehouse capacity in the copied snapshot. Do not invent warehouse topology or projected occupancy.
-
-### Connect rail
-
-Do not create a hypothetical path. Handoff to existing rail routing, where real path and cost are chosen.
-
-### New producer build: prerequisite + rail uncertainty
-
-A new producer has no coordinates yet, so future rail delivery may be incomplete.
+For build candidates, create one `IndustrialPlacementContext`, scan with `getIndustrialPlacementBlockReasonWithContext`, and record:
 
 ```ts
 export interface SupplyBuildFeasibility {
@@ -474,13 +353,49 @@ export interface SupplyBuildFeasibility {
 }
 ```
 
-- if a valid placement is already rail-ready to the required sink, the hypothetical build can count new capacity as usable;
-- otherwise the normal hypothetical projection must not invent usable delivered capacity;
-- a missing producer is still a real prerequisite because rail cannot be connected to a building that does not yet exist.
+A valid tile is rail-ready when its hypothetical building footprint can reach a sink from `usableSinkBuildingIdsByMaterial[materialId]` using the current rail network.
 
-For a missing-producer bottleneck with no rail-ready placement, use conservative **pre-rail economics**: if known economics are already non-positive before any rail cost, recommend no-op; if positive, the build may be recommended as the next prerequisite with `requiresRailConnection` and no final ROI claim. After placement, `rail-disconnected` can become the next bottleneck.
+---
 
-For non-missing capacity bottlenecks, complete/rail-ready comparisons rank ahead of unresolved future-rail builds.
+## Hypothetical behavior
+
+### Existing usable producer upgrade
+
+Increment level in a copied snapshot and rerun projection.
+
+### Warehouse
+
+Add authoritative warehouse capacity only. Do not invent topology/occupancy.
+
+### Connect rail
+
+Do not invent a path or cost. Handoff to existing rail routing.
+
+### New producer
+
+A new producer has no coordinates until placement.
+
+- rail-ready valid placement exists → hypothetical can count the new capacity as usable;
+- no rail-ready placement → normal hypothetical cannot invent usable capacity; a separate potential-after-rail projection may be used for explicitly incomplete evidence.
+
+### Structural-chain incompleteness
+
+Upstream-first ordering can intentionally select a producer while one or more downstream required producers are also missing. In that state, the upstream building has **no standalone avoided-import ROI yet** because the consuming stage does not exist.
+
+Candidate evidence therefore records:
+
+```ts
+requiresAdditionalProducerBuilds: boolean;
+```
+
+If true:
+
+- `preRailNetCashBenefit30 = null`;
+- `netCashBenefit30 = null`;
+- do not fabricate import savings from theoretical upstream requirement rows;
+- if the action is allowed, geometrically feasible, and affordable, it may still be recommended as the upstream **structural prerequisite**, with explicit “chain incomplete; ROI not yet available” evidence.
+
+Once the structural chain exists, normal operational economics apply.
 
 ---
 
@@ -494,31 +409,23 @@ export interface SupplyPlannerComparison {
 	importSpendReduction30: number;
 	incrementalOperatingCost30: number;
 	incrementalInputImportSpend30: number;
-	preRailNetCashBenefit30: number;
+	preRailNetCashBenefit30: number | null;
 	netCashBenefit30: number | null;
 	requiresRailConnection: boolean;
+	requiresAdditionalProducerBuilds: boolean;
 	stockoutImprovementDays: number;
 	warehouseFreeGain: number;
 }
 ```
 
-### Import-spend basis
+### Avoided import value
 
-Finished target:
+- finished target → `snapshot.finishedImportCostPerUnit`;
+- raw/intermediate target → `MATERIALS[materialId].importCost`.
 
-```text
-avoided import unit value = snapshot.finishedImportCostPerUnit
-```
+### Known producer economics
 
-Upstream raw/intermediate target:
-
-```text
-avoided import unit value = MATERIALS[materialId].importCost
-```
-
-### Incremental production costs
-
-For producer build/upgrade:
+Only when `requiresAdditionalProducerBuilds === false`:
 
 ```text
 importSpendReduction30 =
@@ -541,11 +448,10 @@ preRailNetCashBenefit30 =
   - incrementalInputImportSpend30
 ```
 
-If the candidate is rail-ready/existing usable capacity, `netCashBenefit30 = preRailNetCashBenefit30`.
+- rail-ready/existing usable → `netCashBenefit30 = preRailNetCashBenefit30`;
+- future rail required → `netCashBenefit30 = null` and pre-rail value is labeled **before rail cost**.
 
-If a new producer needs future rail, `netCashBenefit30 = null`; show pre-rail benefit explicitly **before rail cost**.
-
-Timed event multipliers, logistics costs, shared rail capacity, and full-company cash flow are excluded and labeled as such.
+Timed event multipliers, logistics costs, shared rail capacity, and full-company cash flow remain explicit exclusions.
 
 ---
 
@@ -553,33 +459,34 @@ Timed event multipliers, logistics costs, shared rail capacity, and full-company
 
 Relevant active logistics suppresses capital ranking first.
 
+### Missing producer
+
+The primary material is already upstream-first.
+
+- action unavailable / invalid placement / unaffordable → corresponding no-op;
+- if additional producer stages are also missing → recommend the affordable upstream build as the next structural prerequisite, but show no ROI;
+- if it is the only missing producer → apply complete/pre-rail economic rules below; known non-positive economics can select no-op.
+
 ### Rail
 
 - rail available → `connect-rail`;
-- rail unavailable → `none/action-unavailable`.
+- unavailable → `action-unavailable`.
 
 ### Warehouse
 
 Affordable + feasible positive-headroom warehouse wins; tie by lower cost then stable key.
 
-### Material
+### Operational material bottleneck
 
 1. current action allowed;
-2. valid placement/action target;
-3. affordable from current cash;
+2. valid target/placement;
+3. affordable;
 4. complete positive-net candidates before unresolved rail-cost candidates;
 5. complete: larger `netCashBenefit30`;
-6. incomplete: larger positive `preRailNetCashBenefit30`;
-7. shortage30;
-8. shortage7;
-9. import reduction;
-10. stockout improvement;
-11. lower known action cost;
-12. stable key.
+6. rail-incomplete: larger positive `preRailNetCashBenefit30`;
+7. shortage30, shortage7, import reduction, stockout improvement, lower known cost, stable key.
 
-If all complete net and incomplete pre-rail benefits are non-positive, recommend no-op `ineffective`.
-
-A missing producer with positive pre-rail economics but unknown rail cost is a **next prerequisite**, not a completed ROI claim.
+If all known complete/pre-rail economics are non-positive, recommend no-op `ineffective`.
 
 ---
 
@@ -587,18 +494,17 @@ A missing producer with positive pre-rail economics but unknown rail cost is a *
 
 Keep `SupplyAdvisor.svelte` and show:
 
-- selected retail city/category;
-- configured supply city;
+- selected retail city/category and supply city;
 - potential / replenishment ceiling / effective demand;
-- other retail claimant rows;
+- other claimant rows;
 - finished retail fallback import price;
 - installed vs usable local capacity;
 - 7/30 stock/import evidence;
 - primary bottleneck;
 - rail/warehouse evidence;
-- import savings and incremental producer costs;
-- final net estimate when complete or pre-rail estimate + warning when incomplete;
-- active logistics / rail-capacity / store-capacity limitations;
+- known producer import savings/costs;
+- final net estimate, pre-rail estimate, or structural-prerequisite “ROI unavailable” state;
+- limitations;
 - baseline-vs-action evidence;
 - empty/unavailable/no-demand/no-op states.
 
@@ -610,20 +516,20 @@ No chart dependency.
 
 Recommendations navigate without committing:
 
-- producer/warehouse build → existing industry placement;
-- upgrade → existing building inspector;
-- connect rail → existing rail routing with the disconnected building as origin;
+- producer/warehouse → industry placement;
+- upgrade → building inspector;
+- connect rail → rail routing with disconnected building as origin;
 - no-op → nothing.
 
-Rail connection is not free: real path cost remains `RAIL_BUILD_COST_PER_CELL × new cells` through existing rail preview/commit.
+Rail is not free; real path cost stays in existing rail preview/commit.
 
-Re-check action availability immediately before handoff. Stale/restricted actions remain visible as unavailable rather than silently doing nothing.
+Re-check action availability immediately before handoff.
 
 ---
 
 ## Derivation lifetime
 
-Preserve the existing advisor gate:
+Preserve the existing gate:
 
 ```ts
 let supplyPlannerResult = $derived.by(() => {
@@ -632,7 +538,7 @@ let supplyPlannerResult = $derived.by(() => {
 });
 ```
 
-Do not rebuild demand contributors, reachability, or placement candidates while the modal is closed.
+Do not rebuild planner work while the modal is closed.
 
 ---
 
@@ -642,45 +548,42 @@ Do not rebuild demand contributors, reachability, or placement candidates while 
 
 Cover:
 
-- zero demand remains ready;
-- zero target-stock sold category remains a zero-draw contributor;
+- zero demand and zero-target sold category remain valid;
 - target/cadence clamp;
-- multiple retail cities sharing one supply inventory;
-- correct finished retail import-cost basis;
+- shared retail claimants;
+- retail finished import price differs correctly from material import price;
 - city scope via `getIndustryInventoryScope`;
 - upstream requirement aggregation/depth;
-- upstream-first missing-producer choice;
+- upstream-first missing producer;
+- multiple missing stages → structural prerequisite with null ROI;
 - Product Chains throughput parity;
-- direct producer→processor path counts for upstream capacity;
-- finished producer requires warehouse path;
-- sink map is reused for prospective rail-ready placement checks;
-- disconnected required chain → `rail-disconnected`;
-- path capacity remains a limitation;
+- upstream producer→processor rail connectivity;
+- finished producer→warehouse requirement;
+- sink map reused for prospective placement;
+- disconnected chain → rail bottleneck;
+- rail capacity limitation;
 - 7/30 / stockout / imports / warehouse evidence;
-- active outbound logistics limitation without route prediction;
-- current action availability/scenario restrictions;
+- active outbound logistics limitation without route forecast;
+- route/scenario action availability;
 - hoisted placement context;
-- warehouse and connect-rail recommendations;
-- complete vs pre-rail economic estimates;
-- retail finished import price vs industrial input price;
-- no-op when known economics are non-positive;
-- immutability and code-unit deterministic ties.
+- warehouse / connect-rail recommendations;
+- complete vs pre-rail vs structurally-incomplete economic evidence;
+- no-op for known non-positive economics;
+- immutability and code-unit ties.
 
 ### Component/route
 
-Cover demand clamp/contributors, installed-vs-usable capacity, rail states, complete/incomplete economics, limitations, Product Chains callback, closed-modal calculation gate, and non-mutating handoffs.
+Cover demand evidence, installed/usable capacity, rail states, all three economic-completeness states, limitations, Product Chains callback, closed-modal gating, and non-mutating handoffs.
 
 ### E2E
 
-Use the existing deterministic current-schema browser-save injection helper in `retail-sim.e2e.ts`; do not advance arbitrary days hoping to create a fixture.
+Use existing deterministic current-schema browser-save injection. Required flow: injected warehouse-pressure state → planner → Build Warehouse → placement → cancel → reopen → retained context.
 
-Required flow: injected warehouse-pressure state → planner → Build Warehouse → industry placement → cancel → reopen → retained category/horizon context.
-
-A rail-disconnected handoff can stay route/component coverage if adding it to E2E would turn the test into a broad rail test.
+Keep rail connection handoff in route/component tests unless a tiny E2E fixture remains focused.
 
 ---
 
-## KISS / YAGNI guardrails
+## KISS / YAGNI
 
 - no `simulateDay` replay;
 - no rail max-flow/shared-budget optimizer;
@@ -693,14 +596,14 @@ A rail-disconnected handoff can stay route/component coverage if adding it to E2
 - no save schema;
 - no `AdvisorChain` compatibility shim;
 - one required-chain connectivity selector using existing rail primitives;
-- future rail cost is labeled unknown instead of guessed.
+- unknown rail cost / incomplete structural ROI is labeled unknown instead of guessed.
 
 ## Review resolution
 
-The latest review is accepted where it describes current HPA-281 facts: shared retail claimants, target/cadence clamp, rail-dependent local usefulness, cash-sensitive ranking, upstream-first missing producer, route/scenario action gates, hoisted placement context, Product Chains/scope reuse, closed-modal gating, deterministic save injection, and earlier focused lint.
+Accepted: shared retail claimants, target/cadence clamp, rail-dependent usefulness, cash-sensitive operational ranking, upstream-first missing producer, route/scenario gates, hoisted placement context, Product Chains/scope reuse, closed-modal gating, deterministic save injection, earlier focused lint.
 
-Three details are deliberately refined:
+Refined:
 
-1. **Rail:** upstream producers do not always need a warehouse path because processors can pull directly from producer buffers. Reachability follows the required chain to a final warehouse; no max-flow model is added.
-2. **Inter-city outflow:** HPA-281 detects relevant active routes and suppresses recommendation rather than duplicating HPA-297's future scheduler.
-3. **Economics:** finished retail imports use retail category import cost; producer economics also include recipe + flat operating cost + expected imported-input cost. New producers with unresolved rail cost expose pre-rail economics rather than false final ROI.
+1. upstream producers may feed processors directly, so reachability follows the required chain rather than requiring every stage to reach a warehouse;
+2. active inter-city routes suppress recommendation instead of being forecast before HPA-297;
+3. finished imports use retail category price, producer economics include recipe/flat/input-import costs, and missing structural stages or future rail costs produce explicitly incomplete economics rather than fabricated ROI.
