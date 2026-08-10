@@ -93,7 +93,7 @@ describe('LogisticsPanel', () => {
 		expect(props.view.recentTransfers).toHaveLength(0);
 	});
 
-	it('keeps recurring endpoint quote fields editable and invokes route actions', async () => {
+	it('keeps recurring endpoint quote fields editable and retains updated values', async () => {
 		expect.assertions(4);
 		renderPanel();
 
@@ -170,8 +170,8 @@ describe('LogisticsPanel', () => {
 			.toBeInTheDocument();
 	});
 
-	it('invokes edit, reprioritize, pause, resume, and remove route callbacks', async () => {
-		expect.assertions(5);
+	it('invokes edit, reprioritize, pause, and remove route callbacks', async () => {
+		expect.assertions(4);
 		const fixture = routePanelFixture();
 		const onUpdateRecurringRoute = vi.fn(
 			async () => ({ status: 'sandbox-committed', changed: true }) as const
@@ -209,7 +209,11 @@ describe('LogisticsPanel', () => {
 		expect(onPauseRecurringRoute).toHaveBeenCalledWith(fixture.route.id);
 		await page.getByRole('button', { name: /remove route/i }).click();
 		expect(onRemoveRecurringRoute).toHaveBeenCalledWith(fixture.route.id);
+	});
 
+	it('invokes resume route callback from the paused view', async () => {
+		expect.assertions(1);
+		const fixture = routePanelFixture();
 		const pausedView = {
 			...fixture.view,
 			routes: fixture.view.routes.map((route) => ({

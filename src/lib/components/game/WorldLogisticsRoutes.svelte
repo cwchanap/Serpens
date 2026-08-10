@@ -58,7 +58,13 @@
 			markerHeight="5"
 			orient="auto-start-reverse"
 		>
-			<path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor" />
+			<!-- `context-stroke` makes each arrowhead inherit the stroke color of the
+				line that references this marker, so arrows match per-route state colors
+				(active/paused/selected). `currentColor` would resolve in the marker's
+				own `<defs>` context and paint every arrowhead the same. Support:
+				Firefox, Chrome 109+, Safari 17.4+; older WebKit falls back to the
+				default fill, acceptable for this pre-release build. -->
+			<path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke" />
 		</marker>
 	</defs>
 

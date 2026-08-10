@@ -201,13 +201,17 @@ function routeAttempt(
 	};
 }
 
+let logisticsReportTemplate: DailyReport | null = null;
+
 function logisticsReport(day: number, attempts: DailyRouteDispatchAttempt[]): DailyReport {
-	const template = simulateDay(createNewGame('convenience', 1)).reports[0]!;
+	if (!logisticsReportTemplate) {
+		logisticsReportTemplate = simulateDay(createNewGame('convenience', 1)).reports[0]!;
+	}
 	return {
-		...template,
+		...logisticsReportTemplate,
 		day,
 		logistics: {
-			...template.logistics,
+			...logisticsReportTemplate.logistics,
 			arrivals: [],
 			routeDispatchAttempts: attempts,
 			scheduledTransportCost: attempts.reduce((total, attempt) => total + attempt.transportCost, 0)

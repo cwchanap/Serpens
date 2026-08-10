@@ -3360,7 +3360,9 @@ test('logistics manual inter-city transfer completes with inline validation and 
 	await expect(logistics.getByRole('status')).toContainText(
 		/Not enough origin stock for this transfer\./i
 	);
-	await expect(logistics.locator('ol li')).toHaveCount(1);
+	await expect(
+		logistics.getByRole('list', { name: /recent transfers/i }).getByRole('listitem')
+	).toHaveCount(1);
 	await expect(logistics.getByText(/transfer-2/i)).toHaveCount(0);
 
 	await logistics.getByRole('button', { name: 'Close Logistics' }).click();
@@ -3368,11 +3370,11 @@ test('logistics manual inter-city transfer completes with inline validation and 
 		await page.getByRole('button', { name: /^advance day$/i }).click();
 	}
 	const deliveredGame = await waitForAutoSaveDay(page, 10);
-	await expect(getSavedCityInventory(deliveredGame, 'industry-city')).toEqual({
+	expect(getSavedCityInventory(deliveredGame, 'industry-city')).toEqual({
 		cityId: 'industry-city',
 		materials: { 'bottled-water': 4 }
 	});
-	await expect(getSavedCityInventory(deliveredGame, 'breadbasket-basin')).toEqual({
+	expect(getSavedCityInventory(deliveredGame, 'breadbasket-basin')).toEqual({
 		cityId: 'breadbasket-basin',
 		materials: { 'bottled-water': 39 }
 	});
@@ -3450,11 +3452,11 @@ test('logistics recurring route dispatches, delivers, and exposes active/paused 
 		await page.getByRole('button', { name: /^advance day$/i }).click();
 	}
 	const afterDelivery = await waitForAutoSaveDay(page, 10);
-	await expect(getSavedCityInventory(afterDelivery, 'industry-city')).toEqual({
+	expect(getSavedCityInventory(afterDelivery, 'industry-city')).toEqual({
 		cityId: 'industry-city',
 		materials: { 'bottled-water': 4 }
 	});
-	await expect(getSavedCityInventory(afterDelivery, 'breadbasket-basin')).toEqual({
+	expect(getSavedCityInventory(afterDelivery, 'breadbasket-basin')).toEqual({
 		cityId: 'breadbasket-basin',
 		materials: { 'bottled-water': 39 }
 	});

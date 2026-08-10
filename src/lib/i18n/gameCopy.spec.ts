@@ -15,6 +15,7 @@ import { INDUSTRIAL_BUILDING_TYPES } from '$lib/game/industry';
 import { generateDecisions } from '$lib/game/events';
 import { PRODUCTION_EVENT_CATALOG } from '$lib/game/eventCatalog';
 import type { DecisionOptionAvailability } from '$lib/game/eventEffects';
+import type { LogisticsFailureCode } from '$lib/game/commandResult';
 import { getWorldCityDefinition, getWorldCityStatus, openWorldCity } from '$lib/game/world';
 import type { GameAlert } from '$lib/game/alerts';
 import type { DecisionItem, EventDecisionItem, Store, MaterialId } from '$lib/game/types';
@@ -80,21 +81,22 @@ function readMessage(messages: unknown, key: string): unknown {
 
 describe('game copy builders', () => {
 	it('localizes every logistics failure in every supported locale', () => {
-		const reasons = [
-			'invalid-origin',
-			'invalid-destination',
-			'same-city',
-			'invalid-material',
-			'invalid-quantity',
-			'insufficient-origin-stock',
-			'insufficient-cash',
-			'invalid-capacity',
-			'invalid-frequency-days',
-			'invalid-lead-time-days',
-			'invalid-transport-cost-per-unit',
-			'invalid-priority',
-			'route-not-found'
-		] as const;
+		const reasonsByKey: Record<LogisticsFailureCode, null> = {
+			'invalid-origin': null,
+			'invalid-destination': null,
+			'same-city': null,
+			'invalid-material': null,
+			'invalid-quantity': null,
+			'insufficient-origin-stock': null,
+			'insufficient-cash': null,
+			'invalid-capacity': null,
+			'invalid-frequency-days': null,
+			'invalid-lead-time-days': null,
+			'invalid-transport-cost-per-unit': null,
+			'invalid-priority': null,
+			'route-not-found': null
+		};
+		const reasons = Object.keys(reasonsByKey) as LogisticsFailureCode[];
 
 		for (const locale of Object.keys(messagesByLocale) as Array<keyof typeof messagesByLocale>) {
 			for (const reason of reasons) {
