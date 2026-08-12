@@ -665,4 +665,61 @@ describe('BuildMenu industry recipe cards', () => {
 		await waterBottler.click();
 		expect(onChooseIndustry).toHaveBeenCalledWith('water-bottler');
 	});
+
+	it('renders the disabledReason string for an industry.commandUnavailable option', async () => {
+		// Covers the true branch of formatIndustryDisabledReason's
+		// reason?.code === 'industry.commandUnavailable' check (line 157):
+		// when an industry option has disabledReason code 'industry.commandUnavailable',
+		// the component renders the top-level disabledReason string instead of
+		// calling formatPlacementReason.
+		expect.assertions(2);
+		render(
+			BuildMenu,
+			buildMenuProps({
+				activeMapView: 'industry',
+				retailOptions: [],
+				disabledReason: 'Commands are not available in this challenge.',
+				industryOptions: [
+					{
+						buildingTypeId: 'warehouse',
+						disabledReason: {
+							code: 'industry.commandUnavailable',
+							buildingTypeId: 'warehouse'
+						},
+						financeOffer: null
+					}
+				]
+			})
+		);
+		const warehouse = page.getByRole('button', { name: /build warehouse/i });
+		await expect.element(warehouse).toBeDisabled();
+		await expect
+			.element(page.getByText('Commands are not available in this challenge.'))
+			.toBeVisible();
+	});
+});
+
+describe('BuildMenu branch coverage', () => {
+	it('renders industry view with no selected product filter', async () => {
+		// Covers the false branch of `selectedProductFilterId ? ... : null`
+		// at L84: when selectedProductFilterId is null/empty, the derived
+		// selectedProductFilter is null.
+		expect.assertions(1);
+		render(
+			BuildMenu,
+			buildMenuProps({
+				activeMapView: 'industry',
+				retailOptions: [],
+				selectedProductFilterId: null,
+				industryOptions: [
+					{
+						buildingTypeId: 'water-bottler',
+						disabledReason: null,
+						financeOffer: null
+					}
+				]
+			})
+		);
+		await expect.element(page.getByRole('button', { name: /build water bottler/i })).toBeVisible();
+	});
 });

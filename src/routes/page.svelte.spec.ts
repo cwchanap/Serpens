@@ -31,6 +31,21 @@ import type {
 	ScenarioPersistenceSummary,
 	ScenarioRun
 } from '$lib/scenarios/types';
+import type { SupplyPlannerSnapshot } from '$lib/game/supplyPlanner';
+import {
+	buildSupplyPlan,
+	type SupplyPlannerAction,
+	type SupplyPlannerActionAvailability,
+	type SupplyPlannerResult
+} from '$lib/game/supplyPlannerActions';
+import {
+	handoffSupplyPlannerAction,
+	resolveSupplyPlannerCategory,
+	deriveSupplyPlannerResult,
+	getSupplyPlannerCategoryIds,
+	type SupplyPlannerHandoffHost,
+	type SupplyPlannerUiContext
+} from './supplyPlannerRoute';
 import {
 	GameRouteController,
 	createMutationAvailability,
@@ -254,6 +269,292 @@ function controllerOptions(input: {
 		onScenarioSummary: input.onScenarioSummary
 	};
 }
+
+function plannerSnapshot(overrides: Partial<SupplyPlannerSnapshot> = {}): SupplyPlannerSnapshot {
+	return {
+		retailCityId: 'harbor-city',
+		supplyCityId: 'industry-city',
+		finishedMaterialId: 'bottled-water',
+		cash: 10_000,
+		demandContributors: [],
+		demandPerDay: 1,
+		finishedImportCostPerUnit: 1,
+		inventory: {},
+		warehouseCapacity: 100,
+		warehouseUsed: 0,
+		buildings: [],
+		usableBuildingIds: [],
+		disconnectedBuildingIds: [],
+		usableSinkBuildingIdsByMaterial: {},
+		activeOutboundRouteIds: [],
+		reachableDemandByMaterial: {},
+		...overrides
+	};
+}
+
+function plannerResult(
+	action: SupplyPlannerAction,
+	snapshotOverrides: Partial<SupplyPlannerSnapshot> = {}
+): SupplyPlannerResult {
+	const snapshot = plannerSnapshot(snapshotOverrides);
+	return {
+		status: 'ready',
+		plan: {
+			snapshot,
+			baseline: {} as never,
+			recommendation: { action } as never,
+			alternatives: []
+		}
+	};
+}
+
+function handoffHost(game = createNewGame('convenience', 20260810)): SupplyPlannerHandoffHost {
+	return {
+		getGame: () => game,
+		closeOverlays: vi.fn(),
+		switchToSupplyCity: vi.fn(async () => true),
+		armIndustryPlacement: vi.fn(),
+		selectIndustryTile: vi.fn(),
+		enterRailBuildMode: vi.fn(),
+		canBuildRail: true
+	};
+}
+
+describe('supply planner route composition', () => {
+	it('limits planner categories to products carried by the active retail city', () => {
+		const base = createNewGame('convenience', 20260810);
+		const harbor = base.cities[0]!;
+		const campus = {
+			...harbor,
+			id: 'campus-junction',
+			name: 'Campus Junction',
+			tiles: harbor.tiles.map((tile) => ({
+				...tile,
+				id: tile.id.replace('harbor-city', 'campus-junction'),
+				cityId: 'campus-junction'
+			}))
+		};
+		const bottledWater = base.stores[0]!.products.find(
+			(product) => product.categoryId === 'bottled-water'
+		)!;
+		const snacks = base.stores[0]!.products.find((product) => product.categoryId === 'snacks')!;
+		const game: GameState = {
+			...base,
+			cities: [harbor, campus],
+			stores: [
+				{ ...base.stores[0]!, products: [bottledWater] },
+				{
+					...base.stores[0]!,
+					id: 'store-campus',
+					cityId: 'campus-junction',
+					tileId: campus.tiles[0]!.id,
+					products: [snacks]
+				}
+			],
+			world: {
+				...base.world,
+				revealedCityIds: [...base.world.revealedCityIds, 'campus-junction'],
+				openedCityIds: [...base.world.openedCityIds, 'campus-junction']
+			},
+			retailSupplyAssignments: [
+				{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' },
+				{ retailCityId: 'campus-junction', supplyCityId: 'industry-city' }
+			]
+		};
+
+		const plannerCategoryIds = getSupplyPlannerCategoryIds(game, 'harbor-city', [
+			'bottled-water',
+			'snacks'
+		]);
+		expect(plannerCategoryIds).toEqual(['bottled-water']);
+		expect(
+			resolveSupplyPlannerCategory({ categoryId: 'snacks', horizonDays: 7 }, plannerCategoryIds)
+		).toBe('bottled-water');
+	});
+
+	it('plans from reactive route state without structured-clone errors', () => {
+		const game = new Proxy(boostedGame(20260811), {});
+		const snapshot = boostedGame(20260811);
+		const snapshotGame = vi.fn(() => snapshot);
+		const availability: SupplyPlannerActionAvailability = {
+			canBuildIndustry: true,
+			canUpgradeIndustry: true,
+			canBuildRail: true,
+			allowedIndustryBuildingTypeIds: [
+				'water-pump',
+				'water-filtration-plant',
+				'drink-bottling-plant',
+				'warehouse'
+			]
+		};
+
+		expect(() =>
+			deriveSupplyPlannerResult(
+				{
+					isOpen: true,
+					game,
+					retailCityId: 'harbor-city',
+					categoryId: 'bottled-water',
+					availability
+				},
+				buildSupplyPlan,
+				snapshotGame
+			)
+		).not.toThrow();
+		expect(snapshotGame).toHaveBeenCalledWith(game);
+	});
+
+	it('gates planner derivation while closed and preserves category/horizon context', () => {
+		expect.assertions(6);
+		const buildPlan = vi.fn(() => plannerResult({ kind: 'none', reason: 'surplus' }));
+		const availability = {
+			canBuildIndustry: true,
+			canUpgradeIndustry: true,
+			canBuildRail: true,
+			allowedIndustryBuildingTypeIds: []
+		};
+		const game = createNewGame('convenience', 20260810);
+
+		expect(
+			deriveSupplyPlannerResult(
+				{
+					isOpen: false,
+					game,
+					retailCityId: 'harbor-city',
+					categoryId: 'bottled-water',
+					availability
+				},
+				buildPlan
+			)
+		).toBeNull();
+		expect(buildPlan).not.toHaveBeenCalled();
+		expect(
+			deriveSupplyPlannerResult(
+				{
+					isOpen: true,
+					game,
+					retailCityId: 'harbor-city',
+					categoryId: 'bottled-water',
+					availability
+				},
+				buildPlan
+			)
+		).not.toBeNull();
+		expect(buildPlan).toHaveBeenCalledOnce();
+		const context: SupplyPlannerUiContext = { categoryId: 'snacks', horizonDays: 7 };
+		expect(resolveSupplyPlannerCategory(context, ['bottled-water', 'snacks'])).toBe('snacks');
+		expect(resolveSupplyPlannerCategory(context, ['bottled-water'])).toBe('bottled-water');
+	});
+
+	it.each([
+		[
+			'producer',
+			{
+				kind: 'build-producer',
+				materialId: 'bottled-water',
+				buildingTypeId: 'water-pump',
+				cost: 500
+			}
+		],
+		['warehouse', { kind: 'build-warehouse', buildingTypeId: 'warehouse', cost: 500 }]
+	] as const)('hands off %s builds through placement only', async (_label, action) => {
+		expect.assertions(4);
+		const host = handoffHost();
+		await handoffSupplyPlannerAction(action, plannerResult(action), host);
+		expect(host.closeOverlays).toHaveBeenCalledOnce();
+		expect(host.switchToSupplyCity).toHaveBeenCalledWith('industry-city');
+		expect(host.armIndustryPlacement).toHaveBeenCalledWith(action.buildingTypeId);
+		expect(host.selectIndustryTile).not.toHaveBeenCalled();
+	});
+
+	it('hands off upgrades to the current inspector tile without upgrading directly', async () => {
+		expect.assertions(4);
+		const game = createNewGame('convenience', 20260810);
+		const building = {
+			id: 'water-pump-1',
+			cityId: 'industry-city',
+			tileId: 'industry-city-1',
+			typeId: 'water-pump'
+		} as never;
+		const host = handoffHost({ ...game, industrialBuildings: [building] });
+		const action = {
+			kind: 'upgrade-building',
+			materialId: 'bottled-water',
+			buildingId: 'water-pump-1',
+			buildingTypeId: 'water-pump',
+			fromLevel: 1,
+			toLevel: 2,
+			cost: 500
+		} as const;
+
+		await handoffSupplyPlannerAction(
+			action,
+			plannerResult(action, { buildings: [building] }),
+			host
+		);
+		expect(host.closeOverlays).toHaveBeenCalledOnce();
+		expect(host.switchToSupplyCity).toHaveBeenCalledWith('industry-city');
+		expect(host.selectIndustryTile).toHaveBeenCalledWith('industry-city-1');
+		expect(host.armIndustryPlacement).not.toHaveBeenCalled();
+	});
+
+	it('hands off rail routing for a disconnected building without building rail', async () => {
+		expect.assertions(4);
+		const game = createNewGame('convenience', 20260810);
+		const building = {
+			id: 'water-pump-1',
+			cityId: 'industry-city',
+			tileId: 'industry-city-1',
+			typeId: 'water-pump'
+		} as never;
+		const host = handoffHost({ ...game, industrialBuildings: [building] });
+		const action = {
+			kind: 'connect-rail',
+			buildingId: 'water-pump-1',
+			materialId: 'bottled-water'
+		} as const;
+
+		await handoffSupplyPlannerAction(
+			action,
+			plannerResult(action, {
+				buildings: [building],
+				disconnectedBuildingIds: ['water-pump-1']
+			}),
+			host
+		);
+		expect(host.closeOverlays).toHaveBeenCalledOnce();
+		expect(host.switchToSupplyCity).toHaveBeenCalledWith('industry-city');
+		expect(host.enterRailBuildMode).toHaveBeenCalledWith({
+			step: 'routing',
+			originBuildingId: 'water-pump-1',
+			waypoints: []
+		});
+		expect(host.armIndustryPlacement).not.toHaveBeenCalled();
+	});
+
+	it('does not mutate for stale or no-op recommendations', async () => {
+		expect.assertions(7);
+		const host = handoffHost();
+		const action = { kind: 'build-warehouse', buildingTypeId: 'warehouse', cost: 500 } as const;
+		await handoffSupplyPlannerAction(
+			action,
+			plannerResult({ kind: 'none', reason: 'surplus' }),
+			host
+		);
+		await handoffSupplyPlannerAction(
+			{ kind: 'none', reason: 'surplus' },
+			plannerResult({ kind: 'none', reason: 'surplus' }),
+			host
+		);
+		expect(host.closeOverlays).not.toHaveBeenCalled();
+		expect(host.switchToSupplyCity).not.toHaveBeenCalled();
+		expect(host.armIndustryPlacement).not.toHaveBeenCalled();
+		expect(host.selectIndustryTile).not.toHaveBeenCalled();
+		expect(host.enterRailBuildMode).not.toHaveBeenCalled();
+		expect(host.canBuildRail).toBe(true);
+		expect(action.kind).toBe('build-warehouse');
+	});
+});
 
 describe('GameRouteController sandbox handlers', () => {
 	it('derives sandbox, challenge, and pending mutation availability independently', () => {

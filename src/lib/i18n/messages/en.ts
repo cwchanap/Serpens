@@ -527,10 +527,119 @@ export const en = {
 		close: 'Close',
 		closeLabel: 'Close supply advisor',
 		empty: 'Nothing to plan — build a retail store to create demand.',
-		chainLabel: '{categoryName} supply chain',
-		starter: 'Starter',
-		supplied: 'Supplied ✓',
-		build: 'Build {buildingName}'
+		build: 'Build {buildingName}',
+		category: 'Category',
+		horizon: 'Forecast horizon',
+		horizonDays: '{days} days',
+		forecastHorizon: '{days}-day evidence',
+		evidenceLabel: 'Supply planner evidence',
+		evidenceKicker: 'Planner evidence',
+		capacityLabel: 'Production capacity evidence',
+		capacityKicker: 'Capacity',
+		capacityTitle: 'Installed versus usable capacity',
+		limitationsLabel: 'Planner limitations',
+		limitationsTitle: 'Known limitations',
+		recommendationLabel: 'Supply planner recommendation',
+		recommendationKicker: 'Actionable plan',
+		recommendationTitle: 'Recommended next action',
+		alternativesLabel: 'Supply planner alternatives',
+		alternativesTitle: 'Other feasible candidates',
+		noOp: 'No-op',
+		metrics: {
+			demand: 'Effective demand',
+			retailImportPrice: 'Retail import price',
+			perDay: '{value} / day',
+			perUnit: '{value} / unit',
+			warehouse: 'Warehouse used / capacity',
+			buildings: 'Buildings',
+			installedCapacity: 'Installed capacity',
+			usableCapacity: 'Usable capacity',
+			forecastImports: 'Forecast imports',
+			startingInventory: 'Starting inventory',
+			endingInventory: 'Ending inventory',
+			daysOfCover: 'Days of cover',
+			projectedStockout: 'Projected stockout',
+			notAvailable: '—'
+		},
+		cities: {
+			label: 'Planner city context',
+			retail: 'Retail city: {cityName}',
+			supply: 'Supply city: {cityName}'
+		},
+		demand: {
+			sharedClaimants: 'Shared claimants:',
+			contributor:
+				'Potential {potential}/day · replenishment ceiling {ceiling}/day · effective {effective}/day',
+			clamp: 'Replenishment ceiling limits target demand to {ceiling}/day.'
+		},
+		warehouse: {
+			title: 'Warehouse evidence',
+			capacity: '{used} used of {capacity}; {freeCapacity} free capacity.'
+		},
+		bottlenecks: {
+			missingProducer: 'Missing producer for {materialName}.',
+			warehouseCapacity:
+				'Warehouse capacity bottleneck: {overflow} overflow units; {freeCapacity} free capacity.',
+			railDisconnected: 'Rail connection required for {buildingName} to move {materialName}.',
+			productionCapacity: 'Production capacity bottleneck for {materialName}: {deficit}/day short.',
+			inventoryCover:
+				'Inventory cover reaches stockout around day {stockoutDay} for {materialName}.',
+			importReliance: 'Import reliance: {units} units of {materialName} over 30 days.',
+			none: 'No binding bottleneck.'
+		},
+		limitations: {
+			activeLogistics: 'Active logistics are not modeled for routes {routes}.',
+			railCapacity: 'Rail capacity contention is not modeled.',
+			storeSalesCapacity: 'Store-sales capacity is not modeled.'
+		},
+		noOpReasons: {
+			noDemand: 'No demand to plan.',
+			surplus: 'Supply is already in surplus.',
+			unaffordable: 'No affordable action is available.',
+			ineffective: 'No action is projected to improve the plan.',
+			noFeasibleAction: 'No feasible action is available.',
+			actionUnavailable: 'No action is recommended because the required action is unavailable.',
+			logisticsContention:
+				'No action is recommended while active logistics contention is not modeled.'
+		},
+		economics: {
+			structuralPrerequisite:
+				'Structural prerequisite — ROI unavailable until remaining producer stages exist',
+			netEstimate: 'Net 30-day estimate: {value}',
+			beforeRail: 'Before rail cost: {value}',
+			unavailable: 'ROI estimate unavailable for this action.',
+			actionCost: 'Action cost: {cost}.',
+			railCostPending: 'Rail cost will be calculated when track is placed.',
+			railRequired: 'Rail connection required before this producer can be used.',
+			importSavings: '30-day import spend avoided: {value}.',
+			operatingCost: '30-day operating cost: {value}.',
+			inputImportCost: '30-day input import cost: {value}.',
+			forecastOutcome:
+				'Forecast outcome ({horizon} days), baseline → action: imports {baselineImports} → {actionImports}; cover {baselineCover} → {actionCover}; stockout {baselineStockout} → {actionStockout}.',
+			shortageReduction:
+				'30-day shortage reduction: {units} units; stockout improvement: {stockoutDays} days.',
+			afterRailProjection: 'Potential projection shown only after rail connection.'
+		},
+		candidate: {
+			available: 'Feasible and affordable',
+			unaffordable: 'Unaffordable at current cash',
+			infeasible: 'No feasible placement'
+		},
+		actions: {
+			buildProducer: 'Build {buildingName} for {materialName}',
+			upgradeBuilding: 'Upgrade {buildingName} to level {level}',
+			buildWarehouse: 'Build warehouse',
+			connectRail: 'Connect rail for {materialName}',
+			noAction: 'No action is recommended'
+		},
+		states: {
+			noSupportedProducts: 'No supported products are available for planning.',
+			retailCityUnavailable: 'Retail city is unavailable.',
+			supplyCityUnavailable: 'Supply city is unavailable.',
+			unsupportedCategory: 'Category is unsupported.',
+			missingProducerRecipe: 'No producer recipe is available for this category.',
+			invalidRequest: 'The planner request is invalid.'
+		}
 	},
 	shortcutCheatSheet: {
 		dismiss: 'Dismiss keyboard shortcuts',

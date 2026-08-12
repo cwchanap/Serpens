@@ -12,9 +12,10 @@ import { estimateNextLoanPayment, getScheduledPrincipalForInstallment } from '..
 import { buildIndustrialBuilding } from '../lib/game/industryPlacement';
 import { createRecurringRoute } from '../lib/game/interCityLogistics';
 import { openStoreAtTile } from '../lib/game/placement';
+import { buildRail, buildRailPreview } from '../lib/game/railPlacement';
 import { simulateDay } from '../lib/game/simulateDay';
 import { createNewGame } from '../lib/game/state';
-import { calculateStockHealth } from '../lib/game/stock';
+import { calculateStockHealth, initializeStoreProducts } from '../lib/game/stock';
 import { openWorldCity } from '../lib/game/world';
 import type { GameState, LoanInstrument } from '../lib/game/types';
 import { BROWSER_SAVE_STORAGE_KEY } from '../lib/persistence/browserSaveRepository';
@@ -242,6 +243,91 @@ function buildWarehouseInCity(game: GameState, cityId: string): GameState {
 	}
 
 	throw new Error(`Could not place a warehouse in ${cityId}.`);
+}
+
+function warehousePressurePlannerGame(): GameState {
+	let game: GameState = {
+		...createNewGame('convenience', 20260503),
+		cash: 1_000_000,
+		decisions: []
+	};
+
+	game = buildIndustrialBuilding(game, {
+		tileId: `${game.activeIndustryCityId}-${WATER_SOURCE_TILE.x}-${WATER_SOURCE_TILE.y}`,
+		buildingTypeId: 'water-pump'
+	});
+	game = buildIndustrialBuilding(game, {
+		tileId: `${game.activeIndustryCityId}-${INDUSTRIAL_BUILD_TILES[1]!.x}-${INDUSTRIAL_BUILD_TILES[1]!.y}`,
+		buildingTypeId: 'water-bottler'
+	});
+	game = buildIndustrialBuilding(game, {
+		tileId: `${game.activeIndustryCityId}-${INDUSTRIAL_BUILD_TILES[0]!.x}-${INDUSTRIAL_BUILD_TILES[0]!.y}`,
+		buildingTypeId: 'warehouse'
+	});
+
+	const pump = game.industrialBuildings.find((building) => building.typeId === 'water-pump');
+	const bottler = game.industrialBuildings.find((building) => building.typeId === 'water-bottler');
+	const warehouse = game.industrialBuildings.find((building) => building.typeId === 'warehouse');
+	if (!pump || !bottler || !warehouse) {
+		throw new Error('Could not build the planner warehouse-pressure chain.');
+	}
+
+	const pumpLink = {
+		originBuildingId: pump.id,
+		waypoints: [],
+		destinationBuildingId: bottler.id
+	};
+	const pumpLinkPreview = buildRailPreview(game, pumpLink);
+	if (pumpLinkPreview.pathKeys.length === 0 || pumpLinkPreview.blockReason) {
+		throw new Error('Could not connect the pump to the bottler for the planner fixture.');
+	}
+	game = buildRail(game, {
+		...pumpLink
+	});
+
+	const warehouseLink = {
+		originBuildingId: bottler.id,
+		waypoints: [],
+		destinationBuildingId: warehouse.id
+	};
+	const warehouseLinkPreview = buildRailPreview(game, warehouseLink);
+	if (
+		warehouseLinkPreview.pathKeys.length === 0 ||
+		(warehouseLinkPreview.blockReason &&
+			warehouseLinkPreview.blockReason.code !== 'railAlreadyConnected')
+	) {
+		throw new Error('Could not connect the bottler to the warehouse for the planner fixture.');
+	}
+	game = buildRail(game, {
+		...warehouseLink
+	});
+
+	const stores = game.stores.map((store) => {
+		const products = initializeStoreProducts(store.archetypeId, 4)
+			.map((product) =>
+				product.categoryId === 'bottled-water'
+					? { ...product, stock: 0, reorderThreshold: 1, targetStock: 70 }
+					: product
+			)
+			.sort((left, right) =>
+				left.categoryId === 'snacks' ? -1 : right.categoryId === 'snacks' ? 1 : 0
+			);
+		return { ...store, level: 4, products, stockHealth: calculateStockHealth(products) };
+	});
+	const cityInventories = game.cityInventories.map((inventory) =>
+		inventory.cityId === 'industry-city'
+			? { ...inventory, materials: { 'bottled-water': 201 } }
+			: inventory
+	);
+
+	return {
+		...game,
+		cash: 1_000_000,
+		stores,
+		cityInventories,
+		retailSupplyAssignments: [{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' }],
+		decisions: []
+	};
 }
 
 function openConvenienceStoreInCity(game: GameState, cityId: string): GameState {
@@ -2969,6 +3055,76 @@ test('supply advisor recommends and arms a starter build', async ({ page }) => {
 		.click();
 	await expect(advisor).toHaveCount(0);
 	await expect(page.getByText(/choose a highlighted tile to build/i)).toBeVisible();
+});
+
+test('supply planner warehouse', async ({ page }) => {
+	test.setTimeout(90_000);
+	await page.setViewportSize({ width: 1200, height: 1000 });
+	await installSandboxAutoSave(page, warehousePressurePlannerGame());
+
+	await openMapMenuItem(page, /industry city map/i);
+	await expect(page.getByRole('heading', { name: /industry city/i })).toBeVisible();
+	const industryCanvas = await expectIndustryMapReady(page);
+
+	await page.getByRole('button', { name: /^build$/i }).click();
+	const buildMenu = page.getByRole('dialog', { name: /build menu/i });
+	await expect(buildMenu).toBeVisible();
+	await buildMenu.getByRole('button', { name: /supply advisor|what should i build/i }).click();
+
+	const advisor = page.getByRole('dialog', { name: /supply advisor/i });
+	await expect(advisor).toBeVisible();
+	await expect(advisor.getByText(/Retail city: Harbor City/i)).toBeVisible();
+	await expect(advisor.getByText(/Supply city: Industry City/i)).toBeVisible();
+	const categorySelect = advisor.getByRole('combobox', { name: 'Category' });
+	await expect(categorySelect).toHaveValue('bottled-water');
+	await categorySelect.selectOption('bottled-water');
+	await expect(categorySelect).toHaveValue('bottled-water');
+	await expect(advisor.getByRole('button', { name: '7 days', exact: true })).toHaveAttribute(
+		'aria-pressed',
+		'false'
+	);
+	await expect(advisor.getByRole('button', { name: '30 days', exact: true })).toHaveAttribute(
+		'aria-pressed',
+		'true'
+	);
+	await advisor.getByRole('button', { name: '7 days', exact: true }).click();
+	await expect(advisor.getByRole('button', { name: '7 days', exact: true })).toHaveAttribute(
+		'aria-pressed',
+		'true'
+	);
+	await expect(advisor.getByText(/7-day evidence/i)).toBeVisible();
+
+	await expect(
+		advisor.getByText(/Warehouse capacity bottleneck: 1 overflow units; 0 free capacity\./i)
+	).toBeVisible();
+	const recommendation = advisor.getByRole('region', {
+		name: /supply planner recommendation/i
+	});
+	await expect(recommendation.getByRole('heading', { name: /Build warehouse/i })).toBeVisible();
+	await recommendation.getByRole('button', { name: /Build warehouse/i }).click();
+
+	await expect(advisor).toHaveCount(0);
+	await expect(page.getByRole('heading', { name: /industry city/i })).toBeVisible();
+	const placementStatus = page.getByRole('status', { name: /placement status/i });
+	await expect(placementStatus).toContainText(/choose a highlighted tile to build/i);
+	await expect(industryCanvas).toHaveAttribute('data-placement-preview-mode', 'active');
+	await placementStatus.getByRole('button', { name: /^cancel$/i }).click();
+	await expect(industryCanvas).toHaveAttribute('data-placement-preview-mode', 'inactive');
+
+	await page.getByRole('button', { name: /^build$/i }).click();
+	const reopenedBuildMenu = page.getByRole('dialog', { name: /build menu/i });
+	await expect(reopenedBuildMenu).toBeVisible();
+	await reopenedBuildMenu
+		.getByRole('button', { name: /supply advisor|what should i build/i })
+		.click();
+	const reopenedAdvisor = page.getByRole('dialog', { name: /supply advisor/i });
+	await expect(reopenedAdvisor).toBeVisible();
+	await expect(reopenedAdvisor.getByRole('combobox', { name: 'Category' })).toHaveValue(
+		'bottled-water'
+	);
+	await expect(
+		reopenedAdvisor.getByRole('button', { name: '7 days', exact: true })
+	).toHaveAttribute('aria-pressed', 'true');
 });
 
 test('rail-fed production connects two industrial buildings and records a rail shipment', async ({

@@ -527,10 +527,113 @@ export const zhHant = {
 		close: '關閉',
 		closeLabel: '關閉供應顧問',
 		empty: '沒有可規劃項目。建設零售店以創造需求。',
-		chainLabel: '{categoryName}供應鏈',
-		starter: '起步',
-		supplied: '已供應 ✓',
-		build: '建設{buildingName}'
+		build: '建設{buildingName}',
+		category: '類別',
+		horizon: '預測期間',
+		horizonDays: '{days} 天',
+		forecastHorizon: '{days} 天證據',
+		evidenceLabel: '供應規劃證據',
+		evidenceKicker: '規劃證據',
+		capacityLabel: '生產能力證據',
+		capacityKicker: '能力',
+		capacityTitle: '已安裝與可用產能',
+		limitationsLabel: '規劃限制',
+		limitationsTitle: '已知限制',
+		recommendationLabel: '供應規劃建議',
+		recommendationKicker: '可執行計畫',
+		recommendationTitle: '建議的下一個行動',
+		alternativesLabel: '供應規劃候選項目',
+		alternativesTitle: '其他可行候選項目',
+		noOp: '不操作',
+		metrics: {
+			demand: '有效需求',
+			retailImportPrice: '零售進口價格',
+			perDay: '{value} / 日',
+			perUnit: '{value} / 單位',
+			warehouse: '倉庫使用量 / 容量',
+			buildings: '建築',
+			installedCapacity: '已安裝產能',
+			usableCapacity: '可用產能',
+			forecastImports: '預測進口量',
+			startingInventory: '起始庫存',
+			endingInventory: '結束庫存',
+			daysOfCover: '庫存覆蓋天數',
+			projectedStockout: '預測庫存耗盡',
+			notAvailable: '—'
+		},
+		cities: {
+			label: '規劃城市脈絡',
+			retail: '零售城市：{cityName}',
+			supply: '供應城市：{cityName}'
+		},
+		demand: {
+			sharedClaimants: '共享需求城市：',
+			contributor: '潛在 {potential}/日 · 補貨上限 {ceiling}/日 · 有效 {effective}/日',
+			clamp: '補貨上限將目標需求限制為 {ceiling}/日。'
+		},
+		warehouse: {
+			title: '倉庫證據',
+			capacity: '已使用 {used} / {capacity}；剩餘容量 {freeCapacity}。'
+		},
+		bottlenecks: {
+			missingProducer: '缺少 {materialName} 的生產者。',
+			warehouseCapacity: '倉庫容量瓶頸：溢出 {overflow} 單位；剩餘容量 {freeCapacity}。',
+			railDisconnected: '{buildingName} 需要鐵路連接才能運送 {materialName}。',
+			productionCapacity: '{materialName} 的生產能力瓶頸：每天短缺 {deficit}。',
+			inventoryCover: '{materialName} 的庫存約在第 {stockoutDay} 天耗盡。',
+			importReliance: '進口依賴：30 天內需要 {materialName} {units} 單位。',
+			none: '沒有綁定中的瓶頸。'
+		},
+		limitations: {
+			activeLogistics: '路線 {routes} 的啟用物流尚未建模。',
+			railCapacity: '鐵路容量競爭尚未建模。',
+			storeSalesCapacity: '店鋪銷售能力尚未建模。'
+		},
+		noOpReasons: {
+			noDemand: '沒有可規劃的需求。',
+			surplus: '供應已經過剩。',
+			unaffordable: '沒有負擔得起的行動。',
+			ineffective: '預測沒有行動能改善計畫。',
+			noFeasibleAction: '沒有可行的行動。',
+			actionUnavailable: '必要行動無法使用，因此沒有建議。',
+			logisticsContention: '啟用物流競爭尚未建模，因此沒有建議。'
+		},
+		economics: {
+			structuralPrerequisite: '結構性前置條件 — 剩餘生產階段完成前無法提供 ROI',
+			netEstimate: '30 天淨額估計：{value}',
+			beforeRail: '扣除鐵路成本前：{value}',
+			unavailable: '此行動無法提供 ROI 估計。',
+			actionCost: '行動成本：{cost}。',
+			railCostPending: '鐵路成本將在鋪設軌道時計算。',
+			railRequired: '此生產者必須先連接鐵路才能使用。',
+			importSavings: '30 天避免的進口支出：{value}。',
+			operatingCost: '30 天營運成本：{value}。',
+			inputImportCost: '30 天投入進口成本：{value}。',
+			forecastOutcome:
+				'預測結果（{horizon} 天），基線 → 行動：進口 {baselineImports} → {actionImports}；覆蓋 {baselineCover} → {actionCover}；庫存耗盡 {baselineStockout} → {actionStockout}。',
+			shortageReduction: '30 天短缺減少：{units} 單位；庫存耗盡改善：{stockoutDays} 天。',
+			afterRailProjection: '此預測僅在新生產者連接鐵路後才有效。'
+		},
+		candidate: {
+			available: '可行且負擔得起',
+			unaffordable: '目前資金無法負擔',
+			infeasible: '沒有可行的放置位置'
+		},
+		actions: {
+			buildProducer: '建設 {buildingName} 以供應 {materialName}',
+			upgradeBuilding: '將 {buildingName} 升級至第 {level} 級',
+			buildWarehouse: '建設倉庫',
+			connectRail: '為 {materialName} 連接鐵路',
+			noAction: '沒有建議的行動'
+		},
+		states: {
+			noSupportedProducts: '沒有可供規劃的支援商品。',
+			retailCityUnavailable: '零售城市無法使用。',
+			supplyCityUnavailable: '供應城市無法使用。',
+			unsupportedCategory: '此類別不受支援。',
+			missingProducerRecipe: '此類別沒有生產配方。',
+			invalidRequest: '規劃請求無效。'
+		}
 	},
 	shortcutCheatSheet: {
 		dismiss: '關閉鍵盤快捷鍵',

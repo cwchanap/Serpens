@@ -1,5 +1,5 @@
 import { page } from 'vitest/browser';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { simulateDay } from '$lib/game/simulateDay';
 import { createNewGame } from '$lib/game/state';
@@ -10,6 +10,14 @@ import ProductChainsPanel from './ProductChainsPanel.svelte';
 
 function renderProductChainsPanel(game: GameState, i18n: I18nBundle = createI18n('en')) {
 	return render(ProductChainsPanel, { game, i18n });
+}
+
+function renderProductChainsPanelWithPlannerCategories(
+	game: GameState,
+	plannerCategoryIds: readonly string[],
+	i18n: I18nBundle = createI18n('en')
+) {
+	return render(ProductChainsPanel, { game, i18n, plannerCategoryIds });
 }
 
 function openCity(game: GameState, cityId: WorldCityId): GameState {
@@ -116,6 +124,51 @@ function withImportedProductChainEdge(game: GameState): GameState {
 }
 
 describe('ProductChainsPanel', () => {
+	it('emits the selected category when the Supply Advisor entry is activated', async () => {
+		expect.assertions(1);
+		const onPlanCategory = vi.fn();
+		const game = createNewGame('convenience', 20260518);
+
+		render(ProductChainsPanel, {
+			game,
+			i18n: createI18n('en'),
+			onPlanCategory,
+			plannerCategoryIds: ['bottled-water']
+		});
+
+		await page.getByRole('button', { name: 'Supply advisor' }).click();
+		expect(onPlanCategory).toHaveBeenCalledWith('bottled-water');
+	});
+
+	it('disables the Supply Advisor button for categories not in plannerCategoryIds', async () => {
+		expect.assertions(2);
+		const game = createNewGame('convenience', 20260518);
+
+		// Snacks is a supported convenience-store archetype category but is
+		// not in the planner category IDs (e.g. not carried/unlocked).
+		renderProductChainsPanelWithPlannerCategories(game, ['bottled-water']);
+
+		// Select the non-plannable category (snacks).
+		await page.getByTestId('category-stamp-snacks').click();
+		await expect.element(page.getByRole('heading', { name: 'Snacks' })).toBeVisible();
+
+		// The Supply Advisor button must be disabled for snacks.
+		const advisorButton = page.getByRole('button', { name: 'Supply advisor' });
+		await expect.element(advisorButton).toBeDisabled();
+	});
+
+	it('enables the Supply Advisor button for categories in plannerCategoryIds', async () => {
+		expect.assertions(1);
+		const game = createNewGame('convenience', 20260518);
+
+		renderProductChainsPanelWithPlannerCategories(game, ['bottled-water', 'snacks']);
+
+		// Select snacks (which is in the planner category IDs).
+		await page.getByTestId('category-stamp-snacks').click();
+		const advisorButton = page.getByRole('button', { name: 'Supply advisor' });
+		await expect.element(advisorButton).toBeEnabled();
+	});
+
 	it('shows store category chains and the default bottled water graph', async () => {
 		expect.assertions(5);
 		const game = createNewGame('convenience', 20260518);

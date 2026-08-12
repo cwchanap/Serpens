@@ -528,10 +528,113 @@ export const ja = {
 		close: '閉じる',
 		closeLabel: '供給アドバイザーを閉じる',
 		empty: '計画できるものはありません。需要を作るには小売店を建設してください。',
-		chainLabel: '{categoryName}の供給チェーン',
-		starter: '初期向け',
-		supplied: '供給済み ✓',
-		build: '{buildingName}を建設'
+		build: '{buildingName}を建設',
+		category: 'カテゴリ',
+		horizon: '予測期間',
+		horizonDays: '{days}日',
+		forecastHorizon: '{days}日間の根拠',
+		evidenceLabel: '供給プランナーの根拠',
+		evidenceKicker: 'プランナーの根拠',
+		capacityLabel: '生産能力の根拠',
+		capacityKicker: '能力',
+		capacityTitle: '設置済み能力と利用可能能力',
+		limitationsLabel: 'プランナーの制限',
+		limitationsTitle: '既知の制限',
+		recommendationLabel: '供給プランナーの推奨',
+		recommendationKicker: '実行可能な計画',
+		recommendationTitle: '次の推奨アクション',
+		alternativesLabel: '供給プランナーの候補',
+		alternativesTitle: 'その他の実行可能な候補',
+		noOp: '操作なし',
+		metrics: {
+			demand: '実効需要',
+			retailImportPrice: '小売輸入価格',
+			perDay: '{value} / 日',
+			perUnit: '{value} / 個',
+			warehouse: '倉庫使用量 / 容量',
+			buildings: '建物',
+			installedCapacity: '設置済み能力',
+			usableCapacity: '利用可能能力',
+			forecastImports: '予測輸入量',
+			startingInventory: '開始時在庫',
+			endingInventory: '終了時在庫',
+			daysOfCover: '在庫カバー日数',
+			projectedStockout: '予測在庫切れ',
+			notAvailable: '—'
+		},
+		cities: {
+			label: 'プランナー都市コンテキスト',
+			retail: '小売都市: {cityName}',
+			supply: '供給都市: {cityName}'
+		},
+		demand: {
+			sharedClaimants: '共有する需要都市:',
+			contributor: '潜在 {potential}/日 · 補充上限 {ceiling}/日 · 実効 {effective}/日',
+			clamp: '補充上限により目標需要は {ceiling}/日に制限されています。'
+		},
+		warehouse: {
+			title: '倉庫の根拠',
+			capacity: '{used} 使用 / {capacity}; 空き容量 {freeCapacity}。'
+		},
+		bottlenecks: {
+			missingProducer: '{materialName} の生産者が不足しています。',
+			warehouseCapacity: '倉庫容量のボトルネック: {overflow} 単位超過、空き容量 {freeCapacity}。',
+			railDisconnected: '{materialName} を移動するには {buildingName} の鉄道接続が必要です。',
+			productionCapacity: '{materialName} の生産能力ボトルネック: {deficit}/日不足。',
+			inventoryCover: '{materialName} の在庫は約 {stockoutDay} 日目に枯渇します。',
+			importReliance: '輸入依存: 30日間で {materialName} を {units} 単位。',
+			none: '拘束となるボトルネックはありません。'
+		},
+		limitations: {
+			activeLogistics: 'ルート {routes} のアクティブな物流はモデル化されていません。',
+			railCapacity: '鉄道容量の競合はモデル化されていません。',
+			storeSalesCapacity: '店舗販売能力はモデル化されていません。'
+		},
+		noOpReasons: {
+			noDemand: '計画する需要がありません。',
+			surplus: '供給はすでに余剰です。',
+			unaffordable: '購入可能なアクションがありません。',
+			ineffective: '計画を改善するアクションは予測されません。',
+			noFeasibleAction: '実行可能なアクションがありません。',
+			actionUnavailable: '必要なアクションが利用できないため、推奨はありません。',
+			logisticsContention: 'アクティブな物流競合をモデル化していないため、推奨はありません。'
+		},
+		economics: {
+			structuralPrerequisite: '構造上の前提 — 残りの生産段階が完成するまでROIは利用できません',
+			netEstimate: '30日間の純額見込み: {value}',
+			beforeRail: '鉄道費用前: {value}',
+			unavailable: 'このアクションのROI見込みは利用できません。',
+			actionCost: 'アクション費用: {cost}。',
+			railCostPending: '線路を配置したときに鉄道費用が計算されます。',
+			railRequired: 'この生産者を利用するには鉄道接続が必要です。',
+			importSavings: '30日間の輸入支出削減: {value}。',
+			operatingCost: '30日間の運営費: {value}。',
+			inputImportCost: '30日間の投入輸入費: {value}。',
+			forecastOutcome:
+				'予測結果（{horizon}日間）、ベースライン → アクション: 輸入 {baselineImports} → {actionImports}; カバー {baselineCover} → {actionCover}; 在庫切れ {baselineStockout} → {actionStockout}。',
+			shortageReduction: '30日間の不足削減: {units} 単位; 在庫切れ改善: {stockoutDays} 日。',
+			afterRailProjection: '鉄道接続後のみ利用できる予測です。'
+		},
+		candidate: {
+			available: '実行可能かつ購入可能',
+			unaffordable: '現在の資金では購入できません',
+			infeasible: '実行可能な配置がありません'
+		},
+		actions: {
+			buildProducer: '{materialName} のために {buildingName}を建設',
+			upgradeBuilding: '{buildingName}をレベル{level}へアップグレード',
+			buildWarehouse: '倉庫を建設',
+			connectRail: '{materialName} の鉄道を接続',
+			noAction: '推奨アクションはありません'
+		},
+		states: {
+			noSupportedProducts: '計画できる対応商品がありません。',
+			retailCityUnavailable: '小売都市を利用できません。',
+			supplyCityUnavailable: '供給都市を利用できません。',
+			unsupportedCategory: 'カテゴリに対応していません。',
+			missingProducerRecipe: 'このカテゴリに生産レシピがありません。',
+			invalidRequest: 'プランナーのリクエストが無効です。'
+		}
 	},
 	shortcutCheatSheet: {
 		dismiss: 'キーボードショートカットを閉じる',

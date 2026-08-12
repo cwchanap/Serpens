@@ -11,7 +11,7 @@
 		PRODUCTION_RECIPES,
 		getIndustrialBuildingTypesForProductChain
 	} from '$lib/game/industry';
-	import { getBuildingTypeProducing } from '$lib/game/supplyAdvisor';
+	import { MATERIAL_PRODUCER_RECIPES } from '$lib/game/productChainGraph';
 	import { focusTrap } from '$lib/a11y/focusTrap';
 	import { formatPlacementBlockReason } from '$lib/i18n/gameCopy';
 	import type { I18nBundle } from '$lib/i18n/index';
@@ -183,7 +183,12 @@
 	}
 
 	function neededProducerName(materialId: MaterialId): string {
-		const producer = getBuildingTypeProducing(materialId);
+		const producerRecipeId = MATERIAL_PRODUCER_RECIPES.get(materialId);
+		const producer = producerRecipeId
+			? Object.values(INDUSTRIAL_BUILDING_TYPES).find(
+					(buildingType) => buildingType.recipeId === producerRecipeId
+				)
+			: null;
 		return producer ? i18n.labels.industrialBuilding(producer.id) : materialName(materialId);
 	}
 
