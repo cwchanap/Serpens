@@ -280,6 +280,45 @@ describe('supply planner actions', () => {
 		expect(candidate.projection.totals.importUnits30).toBe(candidate.baseline.totals.importUnits30);
 	});
 
+	it('unlocks finished-material demand in the potential projection when a rail-connected warehouse exists', () => {
+		// The water-pump and warehouse are rail-connected, but there is no
+		// rail-ready placement for the water-bottler (industrial terrain is
+		// far from the rail). The candidate is a future-rail build-producer
+		// for bottled-water (a finished material). Since the warehouse is
+		// rail-connected, the potential snapshot should unlock the candidate's
+		// reachable demand to full demand, making preRailNetCashBenefit30
+		// non-null (it may be negative due to costs, but it should not be
+		// null/unknown).
+		const base = baseGame('bottled-water');
+		const game = {
+			...base,
+			cash: 1_000_000,
+			industrialBuildings: [
+				building('water-pump', 'water-pump-1', 1, 2, 2),
+				building('warehouse', 'warehouse-1', 1, 10, 2)
+			],
+			industryCities: base.industryCities.map((city) =>
+				city.id === 'industry-city' ? { ...city, rails: horizontalRails(2, 10) } : city
+			)
+		};
+		const plan = readyPlan(game);
+		const candidate = plan.alternatives.find(
+			(row) => row.action.kind === 'build-producer' && row.action.materialId === 'bottled-water'
+		);
+
+		expect(candidate).toBeDefined();
+		if (!candidate || candidate.action.kind !== 'build-producer') return;
+		expect(candidate.comparison.requiresRailConnection).toBe(true);
+		expect(candidate.comparison.netCashBenefit30).toBeNull();
+		// preRailNetCashBenefit30 must be a number (not null) — the finished
+		// material's demand is unlocked in the potential projection.
+		expect(candidate.comparison.preRailNetCashBenefit30).not.toBeNull();
+		expect(candidate.potentialProjectionAfterRail).toBeDefined();
+		// The potential projection should show some import reduction for
+		// bottled-water (the candidate's target material).
+		expect(candidate.comparison.importReduction30).toBeGreaterThan(0);
+	});
+
 	it('uses the retail import price for Bottled Water economics', () => {
 		expect.assertions(5);
 		// Rail at y=8 connects the warehouse (bottom attach at y=8) to valid

@@ -88,6 +88,7 @@ function projectionSnapshot(overrides: Partial<SupplyPlannerSnapshot> = {}): Sup
 		usableSinkBuildingIdsByMaterial: {},
 		activeOutboundRouteIds: [],
 		reachableDemandByMaterial: {},
+		reachableDemandByBuildingAndMaterial: {},
 		...overrides
 	};
 }
@@ -409,10 +410,12 @@ describe('supply planner snapshot', () => {
 		expect(result.status).toBe('ready');
 		if (result.status !== 'ready') return;
 		expect(result.snapshot.usableBuildingIds).toContain('grain-farm-1');
-		expect(result.snapshot.usableSinkBuildingIdsByMaterial.grain).toEqual([
-			'flour-mill-1',
-			'warehouse-1'
-		]);
+		// The warehouse is only a valid sink for grain if a usable downstream
+		// consumer (flour-mill) can also reach it via rail. The segmented rails
+		// leave flour-mill and warehouse on disconnected rail segments, so the
+		// warehouse is not a valid hub sink for grain here — only the direct
+		// flour-mill consumer is.
+		expect(result.snapshot.usableSinkBuildingIdsByMaterial.grain).toEqual(['flour-mill-1']);
 		expect(result.snapshot.usableSinkBuildingIdsByMaterial.flour).toContain('pantry-works-1');
 	});
 
@@ -518,6 +521,109 @@ describe('supply planner snapshot', () => {
 		// The projection must show a shortage for water because the syrup
 		// branch's demand cannot be served by the pump.
 		expect(waterRow.thirtyDay.importRequiredUnits).toBeGreaterThan(0);
+	});
+
+	it('does not treat a raw producer as usable when it only reaches a warehouse with no downstream hub consumer', () => {
+		// Grain Farm → warehouse is connected by rail. Flour Mill → Pantry Works
+		// is connected by a separate rail segment. But the Flour Mill cannot
+		// reach the warehouse (no rail path). The Grain Farm should be
+		// classified as disconnected because no usable downstream consumer of
+		// grain can reach the warehouse hub.
+		const base = plannerGame(undefined, {
+			stores: [{ ...baseGame('grocery').stores[0]!, products: [product('pantry')] }],
+			industrialBuildings: [
+				building('grain-farm', 'grain-farm-1', 'industry-city', 1, 2, 2),
+				building('warehouse', 'warehouse-1', 'industry-city', 1, 2, 6),
+				building('flour-mill', 'flour-mill-1', 'industry-city', 1, 10, 10),
+				building('pantry-works', 'pantry-works-1', 'industry-city', 1, 10, 14)
+			]
+		});
+		const game = {
+			...base,
+			industryCities: base.industryCities.map((city) =>
+				city.id === 'industry-city'
+					? {
+							...city,
+							rails: [...verticalRails(1, 9, 2), ...verticalRails(9, 17, 10)]
+						}
+					: city
+			)
+		};
+		const result = buildSupplyPlannerSnapshot(game, {
+			retailCityId: 'harbor-city',
+			categoryId: 'pantry'
+		});
+
+		expect(result.status).toBe('ready');
+		if (result.status !== 'ready') return;
+		// The grain farm can reach the warehouse, but the flour mill cannot
+		// reach the warehouse. The warehouse is not a valid grain sink, so the
+		// grain farm has no usable sink and should be disconnected.
+		expect(result.snapshot.disconnectedBuildingIds).toContain('grain-farm-1');
+		expect(result.snapshot.usableBuildingIds).not.toContain('grain-farm-1');
+	});
+
+	it('does not transfer capacity between producers serving disjoint branches', () => {
+		// Two water pumps on separate rail islands, each serving a different
+		// Drinks consumer branch (filtration vs syrup). The drink-bottling
+		// plant's 2x2 footprint bridges the two rail islands: its top attach
+		// cells are on island A (x=2) and its right attach cells are on island
+		// B (x=4). Pump A can reach the filtration plant but not the syrup
+		// plant. Pump B can reach the syrup plant but not the filtration plant.
+		// Each pump's usable capacity must be capped at only the demand of the
+		// branch it can reach, not the aggregate water demand across both.
+		const base = plannerGame([product('drinks', { targetStock: 90, sellingPrice: 4 })], {
+			industrialBuildings: [
+				building('water-pump', 'water-pump-a', 'industry-city', 1, 2, 2),
+				building('water-filtration-plant', 'water-filtration-1', 'industry-city', 1, 2, 5),
+				building('drink-bottling-plant', 'drink-bottling-1', 'industry-city', 1, 2, 8),
+				building('warehouse', 'warehouse-1', 'industry-city', 1, 4, 11),
+				building('syrup-plant', 'syrup-plant-1', 'industry-city', 1, 4, 14),
+				building('water-pump', 'water-pump-b', 'industry-city', 1, 4, 17)
+			]
+		});
+		const game = {
+			...base,
+			industryCities: base.industryCities.map((city) =>
+				city.id === 'industry-city'
+					? {
+							...city,
+							rails: [...verticalRails(1, 9, 2), ...verticalRails(8, 22, 4)]
+						}
+					: city
+			)
+		};
+		const result = buildSupplyPlannerSnapshot(game, {
+			retailCityId: 'harbor-city',
+			categoryId: 'drinks'
+		});
+
+		expect(result.status).toBe('ready');
+		if (result.status !== 'ready') return;
+		expect(result.snapshot.usableBuildingIds).toContain('water-pump-a');
+		expect(result.snapshot.usableBuildingIds).toContain('water-pump-b');
+
+		const projection = projectSupplySnapshot(result.snapshot);
+		const waterRow = projection.materials.find((m) => m.materialId === 'water')!;
+
+		// Each pump produces 40 units/day at level 1, so installed is 80.
+		expect(waterRow.installedCapacityPerDay).toBe(80);
+		// Usable capacity must be less than 80 — each pump is capped at only
+		// the demand of the branch it can reach, not the aggregate.
+		expect(waterRow.usableCapacityPerDay).toBeLessThan(80);
+		// Per-producer caps: pump-a's cap should be the filtration branch
+		// demand only, and pump-b's cap should be the syrup branch demand only.
+		const pumpAKey = `water-pump-a\u0000water`;
+		const pumpBKey = `water-pump-b\u0000water`;
+		const pumpACap = result.snapshot.reachableDemandByBuildingAndMaterial[pumpAKey]!;
+		const pumpBCap = result.snapshot.reachableDemandByBuildingAndMaterial[pumpBKey]!;
+		expect(pumpACap).toBeGreaterThan(0);
+		expect(pumpBCap).toBeGreaterThan(0);
+		// Neither pump's cap should equal the aggregate water demand (which
+		// would mean it's credited for both branches).
+		const aggregateCap = result.snapshot.reachableDemandByMaterial.water!;
+		expect(pumpACap).toBeLessThan(aggregateCap);
+		expect(pumpBCap).toBeLessThan(aggregateCap);
 	});
 
 	it('does not treat disconnected installed output as usable local supply', () => {
