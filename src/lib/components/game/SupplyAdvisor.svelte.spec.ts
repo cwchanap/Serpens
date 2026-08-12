@@ -935,4 +935,43 @@ describe('SupplyAdvisor branch coverage', () => {
 		await button.click();
 		expect(onAction).toHaveBeenCalledOnce();
 	});
+
+	it('calls onSelectCategory when the category select changes', async () => {
+		// Exercises selectCategory (L247-249): changing the select value
+		// calls onSelectCategory with the new value.
+		expect.assertions(1);
+		const onSelectCategory = vi.fn();
+		renderPlanner(readyResult(), {
+			categoryIds: ['bottled-water', 'produce'],
+			selectedCategoryId: 'bottled-water',
+			onSelectCategory
+		});
+		const select = page.getByRole('combobox', { name: /category/i });
+		await select.selectOptions('produce');
+		expect(onSelectCategory).toHaveBeenCalledWith('produce');
+	});
+
+	it('renders a build-warehouse action label without calling actionBuildingName', async () => {
+		// Exercises the build-warehouse branch of actionLabel (L96-97):
+		// actionBuildingName is not called for build-warehouse, so the
+		// label is the simple buildWarehouse translation.
+		expect.assertions(1);
+		const result = readyResult();
+		if (result.status !== 'ready') throw new Error('Expected ready planner result');
+		const warehouseCandidate: SupplyPlannerCandidate = {
+			...result.plan.recommendation,
+			action: { kind: 'build-warehouse', buildingTypeId: 'warehouse', cost: 500 },
+			affordable: true,
+			feasible: true
+		};
+		renderPlanner({
+			status: 'ready',
+			plan: {
+				...result.plan,
+				recommendation: warehouseCandidate,
+				alternatives: [warehouseCandidate]
+			}
+		});
+		await expect.element(page.getByRole('heading', { name: /build warehouse/i })).toBeVisible();
+	});
 });
