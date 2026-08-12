@@ -80,7 +80,8 @@ const baseSnapshot: SupplyPlannerSnapshot = {
 	disconnectedBuildingIds: [],
 	usableSinkBuildingIdsByMaterial: {},
 	activeOutboundRouteIds: [],
-	reachableDemandByMaterial: {}
+	reachableDemandByMaterial: {},
+	reachableDemandByBuildingAndMaterial: {}
 };
 
 function readyResult(

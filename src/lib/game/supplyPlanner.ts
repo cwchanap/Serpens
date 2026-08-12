@@ -66,6 +66,14 @@ export interface SupplyPlannerSnapshot {
 	usableSinkBuildingIdsByMaterial: Partial<Record<MaterialId, readonly string[]>>;
 	activeOutboundRouteIds: readonly string[];
 	reachableDemandByMaterial: Partial<Record<MaterialId, number>>;
+	/**
+	 * Per-producer reachable demand caps, keyed by
+	 * `${buildingId}\u0000${materialId}`. Each value is the demand that
+	 * specific producer can actually serve (directly or via the city-inventory
+	 * hub). This prevents crediting one producer's excess capacity toward a
+	 * branch only another producer can reach.
+	 */
+	reachableDemandByBuildingAndMaterial: Partial<Record<string, number>>;
 }
 
 export interface RequiredChainReachability {
@@ -73,6 +81,7 @@ export interface RequiredChainReachability {
 	disconnectedBuildingIds: readonly string[];
 	usableSinkBuildingIdsByMaterial: Partial<Record<MaterialId, readonly string[]>>;
 	reachableDemandByMaterial: Partial<Record<MaterialId, number>>;
+	reachableDemandByBuildingAndMaterial: Partial<Record<string, number>>;
 }
 
 export interface SupplyMaterialRequirement {
@@ -277,7 +286,8 @@ export function buildSupplyPlannerSnapshot(
 			)
 			.map((route) => route.id)
 			.sort(compareCodeUnitStrings),
-		reachableDemandByMaterial: reachability.reachableDemandByMaterial
+		reachableDemandByMaterial: reachability.reachableDemandByMaterial,
+		reachableDemandByBuildingAndMaterial: reachability.reachableDemandByBuildingAndMaterial
 	};
 
 	return { status: 'ready', snapshot };
@@ -428,13 +438,14 @@ export function buildRequiredChainReachability(
 		);
 	}
 
-	const reachableDemandByMaterial = computeReachableDemandByMaterial(context, requirements);
+	const reachableDemand = computeReachableDemandByMaterial(context, requirements);
 
 	return {
 		usableBuildingIds,
 		disconnectedBuildingIds: [...disconnectedBuildingIds].sort(compareCodeUnitStrings),
 		usableSinkBuildingIdsByMaterial,
-		reachableDemandByMaterial
+		reachableDemandByMaterial: reachableDemand.byMaterial,
+		reachableDemandByBuildingAndMaterial: reachableDemand.byBuildingAndMaterial
 	};
 }
 
@@ -520,7 +531,14 @@ function getUsableSinksForMaterial(
 		return warehouses;
 	}
 
-	const sinks: ReachabilityOutput[] = [...warehouses];
+	// For non-finished materials, a warehouse is a valid sink only when at
+	// least one usable downstream consumer can also reach the warehouse hub.
+	// The city-inventory hub bridges producer → warehouse → consumer, so both
+	// sides need rail access to a warehouse; a producer that can only push to
+	// a warehouse with no accessible consumer does not actually have a usable
+	// sink.
+	const sinks: ReachabilityOutput[] = [];
+	let hasUsableDownstreamHubConsumer = false;
 	for (const downstreamMaterial of context.requiredMaterialIds) {
 		if (downstreamMaterial === materialId) continue;
 		const recipeId = MATERIAL_PRODUCER_RECIPES.get(downstreamMaterial);
@@ -528,8 +546,16 @@ function getUsableSinksForMaterial(
 		const recipe = PRODUCTION_RECIPES[recipeId];
 		if (!recipe.inputs.some((input) => input.materialId === materialId)) continue;
 		for (const candidate of context.outputsByMaterial.get(downstreamMaterial) ?? []) {
-			if (isReachableProducer(context, candidate)) sinks.push(candidate);
+			if (isReachableProducer(context, candidate)) {
+				sinks.push(candidate);
+				if (canReachAnyWarehouse(context, candidate.building)) {
+					hasUsableDownstreamHubConsumer = true;
+				}
+			}
 		}
+	}
+	if (hasUsableDownstreamHubConsumer) {
+		sinks.push(...warehouses);
 	}
 
 	const unique = uniqueOutputs(sinks);
@@ -592,58 +618,65 @@ function canBuildingReachBuilding(
 }
 
 /**
- * Computes the reachable demand per material. A producer's usable capacity is
- * capped at the reachable demand — the portion of total demand from downstream
- * consumer branches that at least one producer can actually deliver to
- * (directly or via the city-inventory hub).
+ * Computes the reachable demand per material and per producer. A producer's
+ * usable capacity is capped at its own reachable demand — the portion of
+ * total demand from downstream consumer branches that this specific producer
+ * can actually deliver to (directly or via the city-inventory hub).
  *
- * For finished materials, the full demand is reachable if any producer can
+ * For finished materials, the full demand is reachable if the producer can
  * reach a warehouse.
  *
- * For non-finished materials, each downstream branch is reachable if at least
- * one producer can reach the branch's processor directly, or both the producer
- * and the processor can reach a warehouse (hub bridge).
+ * For non-finished materials, each downstream branch is reachable by a
+ * producer if that producer can reach the branch's processor directly, or
+ * both the producer and the processor can reach a warehouse (hub bridge).
+ * Per-producer caps prevent crediting one producer's excess capacity toward
+ * a branch only another producer can reach.
  */
 function computeReachableDemandByMaterial(
 	context: ReachabilityContext,
 	requirements: readonly SupplyMaterialRequirement[]
-): Partial<Record<MaterialId, number>> {
-	const result: Partial<Record<MaterialId, number>> = {};
+): {
+	byMaterial: Partial<Record<MaterialId, number>>;
+	byBuildingAndMaterial: Partial<Record<string, number>>;
+} {
+	const byMaterial: Partial<Record<MaterialId, number>> = {};
+	const byBuildingAndMaterial: Partial<Record<string, number>> = {};
 	const requirementByMaterial = new Map(requirements.map((r) => [r.materialId, r]));
 
 	for (const requirement of requirements) {
 		if (requirement.requiredPerDay <= 0) {
-			result[requirement.materialId] = 0;
+			byMaterial[requirement.materialId] = 0;
 			continue;
 		}
 
 		const producers = context.outputsByMaterial.get(requirement.materialId) ?? [];
 		if (producers.length === 0) {
-			result[requirement.materialId] = 0;
+			byMaterial[requirement.materialId] = 0;
 			continue;
 		}
 
 		const material = MATERIALS[requirement.materialId];
+		const producerKey = (buildingId: string) => `${buildingId}\u0000${requirement.materialId}`;
 
-		// Finished materials: the sink is the warehouse (retail demand).
-		// If any usable producer can reach a warehouse, the full demand is
-		// reachable.
 		if (material?.kind === 'finished') {
-			const anyUsableProducerCanHub = producers.some(
-				(output) =>
-					context.memo.get(`${output.building.id}\u0000${output.materialId}`) === true &&
-					canReachAnyWarehouse(context, output.building)
-			);
-			result[requirement.materialId] = anyUsableProducerCanHub ? requirement.requiredPerDay : 0;
+			let anyUsableProducerCanHub = false;
+			for (const output of producers) {
+				const usable = context.memo.get(producerKey(output.building.id)) === true;
+				const canHub = canReachAnyWarehouse(context, output.building);
+				if (usable && canHub) {
+					anyUsableProducerCanHub = true;
+					byBuildingAndMaterial[producerKey(output.building.id)] = requirement.requiredPerDay;
+				} else {
+					byBuildingAndMaterial[producerKey(output.building.id)] = 0;
+				}
+			}
+			byMaterial[requirement.materialId] = anyUsableProducerCanHub ? requirement.requiredPerDay : 0;
 			continue;
 		}
 
-		// Non-finished materials: check which downstream branches are reachable.
-		const anyProducerCanHub = producers.some((output) =>
-			canReachAnyWarehouse(context, output.building)
-		);
-
-		let reachableDemand = 0;
+		// Non-finished materials: compute per-producer reachable demand by
+		// checking which branches each specific producer can reach.
+		let aggregateReachableDemand = 0;
 		for (const downstreamMaterial of context.requiredMaterialIds) {
 			if (downstreamMaterial === requirement.materialId) continue;
 			const recipeId = MATERIAL_PRODUCER_RECIPES.get(downstreamMaterial);
@@ -660,30 +693,42 @@ function computeReachableDemandByMaterial(
 
 			const demandFromBranch = (downstreamReq.requiredPerDay * input.quantity) / output.quantity;
 
-			// A branch is reachable if at least one processor of the downstream
-			// material is usable AND at least one producer of this material can
-			// deliver to it (directly or via the city-inventory hub).
 			const branchProcessors = context.outputsByMaterial.get(downstreamMaterial) ?? [];
-			const branchReachable = branchProcessors.some((processor) => {
-				const processorUsable =
-					context.memo.get(`${processor.building.id}\u0000${processor.materialId}`) === true;
-				if (!processorUsable) return false;
-				return producers.some(
-					(producer) =>
+			let branchReachableByAny = false;
+			for (const producer of producers) {
+				const producerCanReachBranch = branchProcessors.some((processor) => {
+					const processorUsable =
+						context.memo.get(`${processor.building.id}\u0000${processor.materialId}`) === true;
+					if (!processorUsable) return false;
+					return (
 						canBuildingReachBuilding(context, producer.building, processor.building) ||
-						(anyProducerCanHub && canReachAnyWarehouse(context, processor.building))
-				);
-			});
-
-			if (branchReachable) {
-				reachableDemand += demandFromBranch;
+						(canReachAnyWarehouse(context, producer.building) &&
+							canReachAnyWarehouse(context, processor.building))
+					);
+				});
+				if (producerCanReachBranch) {
+					branchReachableByAny = true;
+					const key = producerKey(producer.building.id);
+					byBuildingAndMaterial[key] = (byBuildingAndMaterial[key] ?? 0) + demandFromBranch;
+				}
+			}
+			if (branchReachableByAny) {
+				aggregateReachableDemand += demandFromBranch;
 			}
 		}
 
-		result[requirement.materialId] = reachableDemand;
+		// Ensure all producers have an entry (default 0 if no branches reached).
+		for (const producer of producers) {
+			const key = producerKey(producer.building.id);
+			if (byBuildingAndMaterial[key] === undefined) {
+				byBuildingAndMaterial[key] = 0;
+			}
+		}
+
+		byMaterial[requirement.materialId] = aggregateReachableDemand;
 	}
 
-	return result;
+	return { byMaterial, byBuildingAndMaterial };
 }
 
 function disconnectedReachability(
@@ -706,7 +751,8 @@ function disconnectedReachability(
 		usableBuildingIds: new Set(),
 		disconnectedBuildingIds: [...disconnected].sort(compareCodeUnitStrings),
 		usableSinkBuildingIdsByMaterial: {},
-		reachableDemandByMaterial: {}
+		reachableDemandByMaterial: {},
+		reachableDemandByBuildingAndMaterial: {}
 	};
 }
 
@@ -727,12 +773,19 @@ export function projectSupplySnapshot(snapshot: SupplyPlannerSnapshot): SupplyPl
 			installed,
 			requirement.materialId
 		);
-		const rawUsableCapacityPerDay = getMaterialOutputCapacityPerDay(usable, requirement.materialId);
-		const reachableDemand = snapshot.reachableDemandByMaterial?.[requirement.materialId];
-		const usableCapacityPerDay =
-			reachableDemand !== undefined
-				? Math.min(rawUsableCapacityPerDay, reachableDemand)
-				: rawUsableCapacityPerDay;
+		// Cap each producer's capacity by its own reachable demand, then sum.
+		// This prevents crediting one producer's excess capacity toward a
+		// branch only another producer can reach.
+		let usableCapacityPerDay = 0;
+		for (const building of usable) {
+			const buildingCapacity = getMaterialOutputCapacityPerDay([building], requirement.materialId);
+			const cap =
+				snapshot.reachableDemandByBuildingAndMaterial?.[
+					`${building.id}\u0000${requirement.materialId}`
+				];
+			usableCapacityPerDay +=
+				cap !== undefined ? Math.min(buildingCapacity, cap) : buildingCapacity;
+		}
 		const stockoutDay = projectedStockoutDay(
 			requirement.requiredPerDay,
 			usableCapacityPerDay,

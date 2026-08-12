@@ -143,6 +143,13 @@ interface PlacementChoice {
 	feasibility: SupplyBuildFeasibility;
 	validTile: { id: string; x: number; y: number } | null;
 	railReadyTile: { id: string; x: number; y: number } | null;
+	/**
+	 * Whether at least one usable sink building for the target material has
+	 * rail attach cells. For finished materials, this means a warehouse is
+	 * rail-connected, so a future rail connection from the candidate could
+	 * actually deliver to it.
+	 */
+	hasRailConnectedSink: boolean;
 }
 
 const ZERO_COMPARISON: SupplyPlannerComparison = {
@@ -349,14 +356,29 @@ function producerCandidates(
 			(id) => id !== context.candidateId
 		);
 		// The potential snapshot simulates the state where the new producer's
-		// rail connection is built, so the producer is marked usable. However,
-		// we cannot prove which sinks the future rail will reach, so the
-		// downstream reachability cap (reachableDemandByMaterial) from the real
-		// reachability computation is preserved. This prevents fabricating
-		// positive ROI when a downstream stage is itself rail-disconnected —
-		// connecting this producer alone does not make disconnected consumers
-		// reachable. The candidate's capacity is credited only up to demand
-		// already proven reachable by other producers.
+		// rail connection is built, so the producer is marked usable. For
+		// finished materials, connecting the producer to a warehouse would
+		// make the full demand reachable, so the candidate's reachable demand
+		// cap is unlocked to the full demand. For non-finished materials, the
+		// downstream branches the future rail would reach are ambiguous, so
+		// the reachability caps from the real computation are preserved (the
+		// candidate's cap stays at 0) and the pre-rail ROI is left unknown
+		// rather than forced to zero.
+		const isFinished = MATERIALS[materialId]?.kind === 'finished';
+		if (isFinished && placement.hasRailConnectedSink) {
+			const key = `${context.candidateId}\u0000${materialId}`;
+			potentialSnapshot.reachableDemandByBuildingAndMaterial = {
+				...potentialSnapshot.reachableDemandByBuildingAndMaterial,
+				[key]: snapshot.demandPerDay
+			};
+			potentialSnapshot.reachableDemandByMaterial = {
+				...potentialSnapshot.reachableDemandByMaterial,
+				[materialId]: Math.max(
+					potentialSnapshot.reachableDemandByMaterial[materialId] ?? 0,
+					snapshot.demandPerDay
+				)
+			};
+		}
 		const potentialProjection = withTotals(projectSupplySnapshot(potentialSnapshot));
 		const requiresRailConnection = placement.railReadyTile === null;
 		const additional = hasAdditionalMissingProducers(normalProjection);
@@ -367,6 +389,7 @@ function producerCandidates(
 			buildingTypeId: buildingType.id,
 			cost: buildingType.buildCost
 		};
+		const preRailRoiUnknown = requiresRailConnection && !isFinished;
 		const comparison = compareCandidate(
 			snapshot,
 			baseline,
@@ -374,7 +397,8 @@ function producerCandidates(
 			requiresRailConnection ? potentialProjection : normalProjection,
 			action,
 			requiresRailConnection,
-			additional
+			additional,
+			preRailRoiUnknown
 		);
 		candidates.push({
 			action,
@@ -529,7 +553,8 @@ function compareCandidate(
 	economicsProjection: SupplyPlanProjection,
 	action: SupplyPlannerAction,
 	requiresRailConnection: boolean,
-	requiresAdditionalProducerBuilds: boolean
+	requiresAdditionalProducerBuilds: boolean,
+	preRailRoiUnknown: boolean = false
 ): SupplyPlannerComparison {
 	const shortageReduction7 = Math.max(
 		0,
@@ -597,12 +622,13 @@ function compareCandidate(
 		: 0;
 	const incrementalOperatingCost30 =
 		incrementalRecipeOperatingCost30 + incrementalFlatOperatingCost30;
-	const preRailNetCashBenefit30 = requiresAdditionalProducerBuilds
-		? null
-		: importSpendReduction30 -
-			action.cost -
-			incrementalOperatingCost30 -
-			incrementalInputImportSpend30;
+	const preRailNetCashBenefit30 =
+		requiresAdditionalProducerBuilds || preRailRoiUnknown
+			? null
+			: importSpendReduction30 -
+				action.cost -
+				incrementalOperatingCost30 -
+				incrementalInputImportSpend30;
 	const stockoutImprovementDays = improvementDays(
 		baselineTarget.thirtyDay.projectedStockoutDay,
 		candidateTarget.thirtyDay.projectedStockoutDay
@@ -654,6 +680,8 @@ function addSyntheticProducer(
 	candidateSnapshot.disconnectedBuildingIds = reachability.disconnectedBuildingIds;
 	candidateSnapshot.usableSinkBuildingIdsByMaterial = reachability.usableSinkBuildingIdsByMaterial;
 	candidateSnapshot.reachableDemandByMaterial = reachability.reachableDemandByMaterial;
+	candidateSnapshot.reachableDemandByBuildingAndMaterial =
+		reachability.reachableDemandByBuildingAndMaterial;
 	if (!preferRailReady) {
 		candidateSnapshot.usableBuildingIds = candidateSnapshot.usableBuildingIds.filter(
 			(id) => id !== candidateId
@@ -676,7 +704,8 @@ function findPlacementChoice(
 	const noPlacement: PlacementChoice = {
 		feasibility: { hasValidPlacement: false, hasRailReadyPlacement: false },
 		validTile: null,
-		railReadyTile: null
+		railReadyTile: null,
+		hasRailConnectedSink: false
 	};
 	const scopedGame = { ...clone(game), activeIndustryCityId: snapshot.supplyCityId };
 	const city = scopedGame.industryCities.find((row) => row.id === snapshot.supplyCityId);
@@ -715,7 +744,8 @@ function findPlacementChoice(
 			hasRailReadyPlacement: railReadyTile !== null
 		},
 		validTile,
-		railReadyTile
+		railReadyTile,
+		hasRailConnectedSink: sinkAttach.length > 0
 	};
 }
 
