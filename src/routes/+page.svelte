@@ -110,8 +110,22 @@
 	} from '$lib/game/logisticsReadModels';
 	import { getFinanceMetrics } from '$lib/game/financeMetrics';
 	import { DEFAULT_POLICY } from '$lib/game/state';
-	import { buildSupplyAdvisor, getAvailableMaterialIds } from '$lib/game/supplyAdvisor';
-	import type { AdvisorChain } from '$lib/game/supplyAdvisor';
+	import { getAvailableMaterialIds } from '$lib/game/supplyAdvisor';
+	import type { SupplyPlannerHorizonDays } from '$lib/game/supplyPlanner';
+	import {
+		deriveSupplyPlannerResult,
+		getSupplyPlannerCategoryIds,
+		handoffSupplyPlannerAction,
+		resolveSupplyPlannerCategory,
+		type SupplyPlannerHandoffHost,
+		type SupplyPlannerUiContext
+	} from './supplyPlannerRoute';
+	import {
+		buildSupplyPlan,
+		encodeIndustrialPlacementKey,
+		type SupplyPlannerAction,
+		type SupplyPlannerActionAvailability
+	} from '$lib/game/supplyPlannerActions';
 	import { isTileInStoreFootprint } from '$lib/game/storeFootprint';
 	import { isTileInIndustryBuildingFootprint } from '$lib/game/industryFootprint';
 	import { buildRetailCitySupplyViews } from '$lib/components/game/retailSupplySources';
@@ -134,7 +148,8 @@
 		IndustrialBuildingTypeId,
 		LoanTermDays,
 		MaterialId,
-		StoreProductPatch
+		StoreProductPatch,
+		WorldCityId
 	} from '$lib/game/types';
 	import type { WorldCityStatus } from '$lib/game/world';
 	import type { SaveRepository } from '$lib/persistence/saveRepository';
@@ -367,6 +382,10 @@
 	let isAlertsMenuOpen = $state(false);
 	let isBuildMenuOpen = $state(false);
 	let isSupplyAdvisorOpen = $state(false);
+	let supplyPlannerUiContext = $state<SupplyPlannerUiContext>({
+		categoryId: null,
+		horizonDays: 30
+	});
 	let activeManagementPanelId = $state<ManagementPanelId | null>(null);
 	let focusedFinanceLoanId = $state<string | null>(null);
 	let retailPlacementArchetypeId = $state<ArchetypeId | null>(null);
@@ -496,6 +515,14 @@
 					isScenarioContentAllowed(activeScenarioDefinition, { kind: 'city', cityId }))
 		)
 	);
+	let allowedIndustrialPlacements = $derived.by<ReadonlySet<string> | null>(() => {
+		if (playMode === 'sandbox' || !activeScenarioDefinition) return null;
+		return new Set(
+			activeScenarioDefinition.content.industrialPlacements.map((placement) =>
+				encodeIndustrialPlacementKey(placement.cityId, placement.tileId, placement.buildingTypeId)
+			)
+		);
+	});
 	let allowedProductCategoryIds = $derived.by(() => {
 		const categoryIds = [
 			...new Set(
@@ -511,6 +538,23 @@
 						categoryId
 					}))
 		);
+	});
+	let plannerCategoryIds = $derived.by(() =>
+		getSupplyPlannerCategoryIds(game, activeCity.id as WorldCityId, allowedProductCategoryIds)
+	);
+	let effectivePlannerCategoryId = $derived(
+		resolveSupplyPlannerCategory(supplyPlannerUiContext, plannerCategoryIds)
+	);
+	let plannerActionAvailability = $derived<SupplyPlannerActionAvailability>({
+		// Planner candidate affordability is cash-only (game.cash >= buildCost),
+		// so the planner must not advertise build actions when only the finance
+		// command is available. The build-menu UI still uses
+		// canStartIndustryExpansion to support both cash and finance paths.
+		canBuildIndustry: mutationAvailability.buildIndustrialBuilding,
+		canUpgradeIndustry: mutationAvailability.upgradeIndustrialBuilding,
+		canBuildRail: mutationAvailability.buildRail,
+		allowedIndustryBuildingTypeIds,
+		allowedIndustrialPlacements
 	});
 	let placementFeedback = $state<PlacementBlockReason | null>(null);
 	let financePurchaseReview = $state(createFinancePurchaseReviewState());
@@ -897,11 +941,17 @@
 			isGameMenuOpen ||
 			isPlacementModeActive
 	);
-	// Advisor/availability work is gated on the overlay that consumes it, so the
-	// chain walk only runs while the Supply Advisor or Build Menu is actually open.
-	let supplyAdvisorChains = $derived<AdvisorChain[]>(
-		isSupplyAdvisorOpen ? buildSupplyAdvisor(game ?? starterMapState) : []
-	);
+	// Keep the planner calculation behind the advisor's open gate. This avoids
+	// doing a full supply projection for a modal that is not mounted while the
+	// route-local category/horizon context remains available for reopen.
+	let supplyPlannerResult = $derived.by(() => {
+		if (!isSupplyAdvisorOpen || !game || !effectivePlannerCategoryId) return null;
+		return buildSupplyPlan(
+			snapshotPlannerGame(game),
+			{ retailCityId: activeCity.id as WorldCityId, categoryId: effectivePlannerCategoryId },
+			plannerActionAvailability
+		);
+	});
 	let availableMaterialIds = $derived<MaterialId[]>(
 		isBuildMenuOpen && activeMapView === 'industry'
 			? getAvailableMaterialIds(game ?? starterMapState)
@@ -1876,7 +1926,10 @@
 		clearPendingFinancedPurchase();
 	}
 
-	function openSupplyAdvisor(): void {
+	function openSupplyAdvisor(categoryId?: string): void {
+		if (categoryId && plannerCategoryIds.includes(categoryId)) {
+			supplyPlannerUiContext = { ...supplyPlannerUiContext, categoryId };
+		}
 		isBuildMenuOpen = false;
 		isSupplyAdvisorOpen = true;
 	}
@@ -1885,15 +1938,94 @@
 		isSupplyAdvisorOpen = false;
 	}
 
-	function buildFromAdvisor(buildingTypeId: IndustrialBuildingTypeId): void {
+	function selectSupplyPlannerCategory(categoryId: string): void {
+		if (!plannerCategoryIds.includes(categoryId)) return;
+		supplyPlannerUiContext = { ...supplyPlannerUiContext, categoryId };
+	}
+
+	function selectSupplyPlannerHorizon(horizonDays: SupplyPlannerHorizonDays): void {
+		supplyPlannerUiContext = { ...supplyPlannerUiContext, horizonDays };
+	}
+
+	function planSupplyCategory(categoryId: string): void {
+		if (!plannerCategoryIds.includes(categoryId)) return;
+		activeManagementPanelId = null;
+		focusedLogisticsRouteId = null;
+		openSupplyAdvisor(categoryId);
+	}
+
+	function closePlannerOverlays(): void {
 		isSupplyAdvisorOpen = false;
 		isBuildMenuOpen = false;
-		// The advisor is reachable from the industry Build Menu, but the user can
-		// switch map views while the advisor stays open. Ensure the industry map
-		// is active before arming industry placement so the preview renders on
-		// the correct map.
+		isGameMenuOpen = false;
+		isStoreDetailOpen = false;
+		isCheatSheetOpen = false;
+		isAlertsMenuOpen = false;
+		isSavePanelOpen = false;
+		isScenarioCatalogOpen = false;
+		activeManagementPanelId = null;
+		focusedLogisticsRouteId = null;
+		selectedTileId = null;
+		selectedIndustryTileId = null;
+		selectedWorldCityId = null;
+		clearLogisticsRouteSelection();
+		cancelPlacement();
+	}
+
+	async function switchToPlannerSupplyCity(cityId: WorldCityId): Promise<boolean> {
+		if (!game) return false;
+		await selectWorldCityNode(cityId);
+		const currentGame = game;
+		if (!currentGame || currentGame.activeIndustryCityId !== cityId) return false;
 		setActiveMapView('industry');
-		armIndustryPlacement(buildingTypeId);
+		selectedTileId = null;
+		selectedWorldCityId = null;
+		clearLogisticsRouteSelection();
+		return true;
+	}
+
+	function plannerHandoffHost(): SupplyPlannerHandoffHost {
+		return {
+			getGame: () => game,
+			closeOverlays: closePlannerOverlays,
+			switchToSupplyCity: switchToPlannerSupplyCity,
+			armIndustryPlacement,
+			selectIndustryTile,
+			enterRailBuildMode: (mode) => {
+				isSupplyAdvisorOpen = false;
+				isBuildMenuOpen = false;
+				retailPlacementArchetypeId = null;
+				industryPlacementBuildingTypeId = null;
+				railBuildMode = mode;
+				railPreviewTargetBuildingId = null;
+				placementFeedback = null;
+			},
+			canBuildRail: mutationAvailability.buildRail
+		};
+	}
+
+	function snapshotPlannerGame(state: GameState): GameState {
+		return $state.snapshot(state);
+	}
+
+	function currentSupplyPlannerResult(): ReturnType<typeof deriveSupplyPlannerResult> {
+		return deriveSupplyPlannerResult(
+			{
+				isOpen: true,
+				game,
+				retailCityId: activeCity.id as WorldCityId,
+				categoryId: effectivePlannerCategoryId,
+				availability: plannerActionAvailability
+			},
+			buildSupplyPlan,
+			snapshotPlannerGame
+		);
+	}
+
+	function handleSupplyPlannerAction(action: SupplyPlannerAction): void {
+		const currentResult = currentSupplyPlannerResult();
+		if (!currentResult) return;
+		void handoffSupplyPlannerAction(action, currentResult, plannerHandoffHost());
 	}
 
 	function advanceDay() {
@@ -2721,9 +2853,14 @@
 		{/if}
 		{#if isSupplyAdvisorOpen}
 			<SupplyAdvisor
-				chains={supplyAdvisorChains}
+				result={supplyPlannerResult}
+				categoryIds={plannerCategoryIds}
+				selectedCategoryId={effectivePlannerCategoryId}
+				horizonDays={supplyPlannerUiContext.horizonDays}
 				{i18n}
-				onBuild={buildFromAdvisor}
+				onSelectCategory={selectSupplyPlannerCategory}
+				onSelectHorizon={selectSupplyPlannerHorizon}
+				onAction={handleSupplyPlannerAction}
 				onClose={closeSupplyAdvisor}
 			/>
 		{/if}
@@ -2815,6 +2952,8 @@
 				onRepay={repayFinanceLoan}
 				onPayoff={payOffFinanceLoan}
 				onRefinance={refinanceFinanceLoan}
+				onPlanCategory={planSupplyCategory}
+				{plannerCategoryIds}
 				onDispatchManualTransfer={dispatchManualTransfer}
 				onCreateRecurringRoute={createRecurringRoute}
 				onUpdateRecurringRoute={updateRecurringRoute}

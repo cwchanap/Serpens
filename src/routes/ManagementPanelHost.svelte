@@ -54,6 +54,8 @@
 		onRepay: (loanId: string, amount: number) => Promise<GameRouteCommitResult>;
 		onPayoff: (loanId: string) => Promise<GameRouteCommitResult>;
 		onRefinance: (loanId: string, termDays: LoanTermDays) => Promise<GameRouteCommitResult>;
+		onPlanCategory?: (categoryId: string) => void;
+		plannerCategoryIds?: readonly string[];
 		onDispatchManualTransfer: (input: ManualTransferInput) => Promise<GameRouteCommitResult>;
 		onCreateRecurringRoute: (input: RecurringRouteInput) => Promise<GameRouteCommitResult>;
 		onUpdateRecurringRoute: (
@@ -96,6 +98,8 @@
 		onRepay,
 		onPayoff,
 		onRefinance,
+		onPlanCategory = () => {},
+		plannerCategoryIds = [],
 		onDispatchManualTransfer,
 		onCreateRecurringRoute,
 		onUpdateRecurringRoute,
@@ -218,7 +222,7 @@
 		{:else if panelId === 'reports'}
 			<ReportsPanel {i18n} {summary} game={panelGame} stores={panelGame.stores} />
 		{:else if panelId === 'productChains'}
-			<ProductChainsPanel {i18n} game={panelGame} />
+			<ProductChainsPanel {i18n} game={panelGame} {onPlanCategory} {plannerCategoryIds} />
 		{:else if panelId === 'logistics'}
 			<LogisticsPanel
 				game={panelGame}

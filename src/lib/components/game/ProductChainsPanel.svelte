@@ -22,6 +22,8 @@
 	interface Props {
 		game: GameState;
 		i18n: I18nBundle;
+		onPlanCategory?: (categoryId: string) => void;
+		plannerCategoryIds?: readonly string[];
 	}
 
 	type ChainMode = 'store-categories' | 'warehouse-flow';
@@ -31,7 +33,7 @@
 		nodeId: string | null;
 	}
 
-	let { game, i18n }: Props = $props();
+	let { game, i18n, onPlanCategory = () => {}, plannerCategoryIds = [] }: Props = $props();
 
 	let mode = $state<ChainMode>('store-categories');
 	let selectedCategoryId = $state<string | null>(null);
@@ -77,6 +79,9 @@
 			: activeCategory
 				? i18n.labels.productCategory(activeCategory.categoryId)
 				: i18n.t('productChainsPanel.ariaLabel')
+	);
+	const canPlanActiveCategory = $derived(
+		activeCategory ? plannerCategoryIds.includes(activeCategory.categoryId) : false
 	);
 
 	function cityName(cityId: string): string {
@@ -173,6 +178,17 @@
 				<p class="chain-title">{graph.title}</p>
 			{/if}
 		</div>
+		{#if activeCategory}
+			<button
+				type="button"
+				class="plan-category"
+				aria-label={i18n.t('supplyAdvisor.dialog')}
+				disabled={!canPlanActiveCategory}
+				onclick={() => onPlanCategory(activeCategory.categoryId)}
+			>
+				{i18n.t('supplyAdvisor.title')}
+			</button>
+		{/if}
 		<div class="mode-toggle" role="group" aria-label={i18n.t('productChainsPanel.modeGroup')}>
 			<button
 				type="button"
@@ -313,6 +329,34 @@
 		border-radius: 2px;
 		color: var(--ink-700);
 		cursor: pointer;
+	}
+
+	.plan-category {
+		min-height: 2rem;
+		padding: 0.35rem 0.6rem;
+		font-family: var(--font-ui);
+		font-size: 0.72rem;
+		font-weight: 700;
+		background: var(--moss);
+		border: 1px solid var(--ink-900);
+		border-radius: 2px;
+		color: var(--paper-50);
+		cursor: pointer;
+	}
+
+	.plan-category:hover,
+	.plan-category:focus-visible {
+		background: var(--moss-2);
+	}
+
+	.plan-category:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	.plan-category:disabled:hover,
+	.plan-category:disabled:focus-visible {
+		background: var(--moss);
 	}
 
 	.mode-toggle button.active {

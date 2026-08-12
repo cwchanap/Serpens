@@ -20,6 +20,9 @@ import type {
 	WorldCityId
 } from './types';
 
+/** Narrow rows consumed by read-model throughput projections. */
+export type RecipeThroughputBuilding = Pick<IndustrialBuilding, 'typeId' | 'level'>;
+
 export type ProductChainHealth =
 	| 'healthy'
 	| 'watch'
@@ -570,17 +573,17 @@ export function buildingTypesForRecipe(recipeId: ProductionRecipeId): Industrial
 	return Object.values(INDUSTRIAL_BUILDING_TYPES).filter((type) => type.recipeId === recipeId);
 }
 
-export function buildingsForRecipe(
-	buildings: IndustrialBuilding[],
+export function buildingsForRecipe<T extends Pick<IndustrialBuilding, 'typeId'>>(
+	buildings: readonly T[],
 	recipeId: ProductionRecipeId
-): IndustrialBuilding[] {
+): T[] {
 	const typeIds = new Set(buildingTypesForRecipe(recipeId).map((type) => type.id));
 
 	return buildings.filter((building) => typeIds.has(building.typeId));
 }
 
 export function getRecipeThroughputUnits(
-	buildings: IndustrialBuilding[],
+	buildings: readonly RecipeThroughputBuilding[],
 	recipeId: ProductionRecipeId
 ): number {
 	// Recipe throughput is the sum of per-building throughput multipliers.
@@ -592,6 +595,21 @@ export function getRecipeThroughputUnits(
 		(total, building) => total + getBuildingThroughputMultiplier(building.level),
 		0
 	);
+}
+
+/** Daily capacity for the requested material output line only. */
+export function getMaterialOutputCapacityPerDay(
+	buildings: readonly RecipeThroughputBuilding[],
+	materialId: MaterialId
+): number {
+	const recipeId = MATERIAL_PRODUCER_RECIPES.get(materialId);
+	if (!recipeId) return 0;
+
+	const recipe = PRODUCTION_RECIPES[recipeId];
+	const output = recipe?.outputs.find((candidate) => candidate.materialId === materialId);
+	return output && output.quantity > 0
+		? output.quantity * getRecipeThroughputUnits(buildings, recipeId)
+		: 0;
 }
 
 export function recipeOutputPerDay(recipe: ProductionRecipe, throughputUnits: number): number {
