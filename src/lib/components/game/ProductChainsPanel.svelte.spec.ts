@@ -404,4 +404,26 @@ describe('ProductChainsPanel', () => {
 			.element(page.getByText('Industry City city inventory overflow: 5 units ($10).'))
 			.toBeVisible();
 	});
+
+	it('uses the default onPlanCategory no-op when not provided', async () => {
+		// Exercises the default `onPlanCategory = () => {}` prop (L36)
+		// and the canPlanActiveCategory true branch (L84) by rendering
+		// with plannerCategoryIds that include the active category and
+		// clicking the Supply Advisor button without providing onPlanCategory.
+		expect.assertions(2);
+		const game = createNewGame('convenience', 20260518);
+
+		render(ProductChainsPanel, {
+			game,
+			i18n: createI18n('en'),
+			plannerCategoryIds: ['bottled-water']
+		});
+
+		const advisorButton = page.getByRole('button', { name: 'Supply advisor' });
+		await expect.element(advisorButton).toBeEnabled();
+		await advisorButton.click();
+		// No assertion on a callback — the default no-op just must not throw.
+		// Verify the button is still in the document after the click.
+		await expect.element(advisorButton).toBeInTheDocument();
+	});
 });

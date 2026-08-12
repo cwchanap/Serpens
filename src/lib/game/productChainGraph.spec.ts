@@ -961,4 +961,17 @@ describe('productChainGraph branch coverage', () => {
 		// can't happen with normal data. Instead we verify the normal path.
 		expect(getMaterialOutputCapacityPerDay([{ typeId: 'water-pump', level: 1 }], 'water')).toBe(40);
 	});
+
+	test('getMaterialOutputCapacityPerDay returns 0 for a material with no producer recipe', () => {
+		// Exercises the `if (!recipeId) return 0` guard in
+		// getMaterialOutputCapacityPerDay: a material ID that is not an
+		// output of any production recipe has no producer recipe, so the
+		// function returns 0 regardless of the buildings passed.
+		expect(
+			getMaterialOutputCapacityPerDay(
+				[{ typeId: 'water-pump', level: 1 }],
+				'nonexistent' as MaterialId
+			)
+		).toBe(0);
+	});
 });
