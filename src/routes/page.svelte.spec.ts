@@ -289,6 +289,7 @@ function plannerSnapshot(overrides: Partial<SupplyPlannerSnapshot> = {}): Supply
 		activeOutboundRouteIds: [],
 		reachableDemandByMaterial: {},
 		reachableDemandByBuildingAndMaterial: {},
+		reachableBranchesByBuildingAndMaterial: {},
 		...overrides
 	};
 }

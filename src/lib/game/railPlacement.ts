@@ -106,6 +106,35 @@ export function isRailWaypointTarget(
 }
 
 /**
+ * Checks whether a future rail path can be built from one set of
+ * footprint-adjacent coordinates to another, routing through existing
+ * rail (cost 0) and rail-legal empty tiles (cost 1). Unlike
+ * `findShippingPath` (which only traverses existing rail cells), this
+ * mirrors the real rail builder (`buildRailPreview`) and does NOT
+ * require either endpoint to already have adjacent rail.
+ *
+ * Used by the supply planner to determine whether a future rail
+ * connection from a candidate producer tile to a sink building is
+ * possible, even when no rail currently touches either building.
+ */
+export function canRouteRailBetween(
+	game: GameState,
+	cityId: string,
+	fromAdjacent: ReadonlyArray<{ x: number; y: number }>,
+	toAdjacent: ReadonlyArray<{ x: number; y: number }>
+): boolean {
+	const city = findCity(game, cityId);
+	if (!city) return false;
+	const lookup = createIndustryTileLookup(city);
+	const occupiedTileIds = getOccupiedIndustryTileIds(city, game.industrialBuildings, lookup);
+	const railKeys = new Set(city.rails.map((cell) => railCellKey(cell.x, cell.y)));
+	const ctx: RailPathContext = { lookup, occupiedTileIds, railKeys: new Set(railKeys) };
+	const sourceKeys = fromAdjacent.map((coord) => railCellKey(coord.x, coord.y));
+	const targetKeys = new Set(toAdjacent.map((coord) => railCellKey(coord.x, coord.y)));
+	return findLegPath(ctx, sourceKeys, targetKeys) !== null;
+}
+
+/**
  * Cost of moving onto (x, y): 0 for an existing rail cell, 1 for a rail-legal
  * empty tile, `null` for an impassable coordinate.
  */
@@ -188,6 +217,68 @@ function findLegPath(
 	}
 
 	return null;
+}
+
+/**
+ * 0/1-cost BFS that explores ALL reachable cells from the given source
+ * coordinates (through existing rail at cost 0 and rail-legal empty tiles
+ * at cost 1). Returns the set of all reachable cell keys. This is the
+ * multi-target variant of `findLegPath` — instead of stopping at the
+ * first target, it exhausts the reachable frontier.
+ *
+ * Used by the supply planner to do one BFS per sink building (instead of
+ * one per (tile, sink) pair) when computing per-tile reachable-sink sets.
+ */
+export function findReachableRailCells(
+	game: GameState,
+	cityId: string,
+	sourceCoords: ReadonlyArray<{ x: number; y: number }>
+): Set<string> {
+	const city = findCity(game, cityId);
+	if (!city) return new Set();
+	const lookup = createIndustryTileLookup(city);
+	const occupiedTileIds = getOccupiedIndustryTileIds(city, game.industrialBuildings, lookup);
+	const railKeys = new Set(city.rails.map((cell) => railCellKey(cell.x, cell.y)));
+	const ctx: RailPathContext = { lookup, occupiedTileIds, railKeys: new Set(railKeys) };
+
+	const distance = new Map<string, number>();
+	const deque: DequeEntry[] = [];
+	const zeroCostSeeds: DequeEntry[] = [];
+	for (const coord of sourceCoords) {
+		const key = railCellKey(coord.x, coord.y);
+		const { x, y } = coord;
+		const seed = cellCost(ctx, x, y);
+		if (seed === null) continue;
+		if (seed < (distance.get(key) ?? Number.POSITIVE_INFINITY)) {
+			distance.set(key, seed);
+			if (seed === 0) zeroCostSeeds.push({ key, distance: seed });
+			else deque.push({ key, distance: seed });
+		}
+	}
+	deque.unshift(...zeroCostSeeds);
+
+	while (deque.length > 0) {
+		const { key, distance: popped } = deque.shift()!;
+		if (popped > (distance.get(key) ?? Number.POSITIVE_INFINITY)) continue;
+		const { x, y } = parseRailCellKey(key);
+		const zeroCostNeighbors: DequeEntry[] = [];
+		for (const offset of NEIGHBOR_OFFSETS) {
+			const nx = x + offset.dx;
+			const ny = y + offset.dy;
+			const step = cellCost(ctx, nx, ny);
+			if (step === null) continue;
+			const neighborKey = railCellKey(nx, ny);
+			const next = popped + step;
+			if (next < (distance.get(neighborKey) ?? Number.POSITIVE_INFINITY)) {
+				distance.set(neighborKey, next);
+				if (step === 0) zeroCostNeighbors.push({ key: neighborKey, distance: next });
+				else deque.push({ key: neighborKey, distance: next });
+			}
+		}
+		deque.unshift(...zeroCostNeighbors);
+	}
+
+	return distance.size > 0 ? new Set(distance.keys()) : new Set();
 }
 
 /**

@@ -91,6 +91,7 @@ function projectionSnapshot(overrides: Partial<SupplyPlannerSnapshot> = {}): Sup
 		activeOutboundRouteIds: [],
 		reachableDemandByMaterial: {},
 		reachableDemandByBuildingAndMaterial: {},
+		reachableBranchesByBuildingAndMaterial: {},
 		...overrides
 	};
 }
@@ -671,6 +672,66 @@ describe('supply planner snapshot', () => {
 		expect(aggregateReachable).toBeGreaterThan(0);
 		expect(aggregateReachable).toBeLessThan(waterRow.requiredPerDay);
 		expect(waterRow.usableCapacityPerDay).toBeLessThanOrEqual(aggregateReachable);
+	});
+
+	it('does not overstate usable capacity when producers overlap on one branch and another branch is under-capacity', () => {
+		// Three water pumps: A and B both reach the filtration branch, C
+		// reaches only the syrup branch. Each pump has capacity 40/day.
+		// Filtration demands 50 water/day, syrup demands 50 water/day.
+		// The old per-producer cap + aggregate clamp would compute
+		// min(40,50)+min(40,50)+min(40,50) = 120, clamped to aggregate 100.
+		// But filtration can only consume 50 (A:40 + B:10) and syrup can
+		// only get 40 (C:40, short by 10), so the real usable supply is 90.
+		// The greedy per-branch allocation must report 90, not 100.
+		const snapshot = projectionSnapshot({
+			finishedMaterialId: 'drinks',
+			demandPerDay: 100,
+			buildings: [
+				{ id: 'pump-a', cityId: 'industry-city', typeId: 'water-pump', level: 1 },
+				{ id: 'pump-b', cityId: 'industry-city', typeId: 'water-pump', level: 1 },
+				{ id: 'pump-c', cityId: 'industry-city', typeId: 'water-pump', level: 1 },
+				{
+					id: 'filtration-1',
+					cityId: 'industry-city',
+					typeId: 'water-filtration-plant',
+					level: 1
+				},
+				{ id: 'syrup-1', cityId: 'industry-city', typeId: 'syrup-plant', level: 1 },
+				{
+					id: 'bottling-1',
+					cityId: 'industry-city',
+					typeId: 'drink-bottling-plant',
+					level: 1
+				},
+				{ id: 'warehouse-1', cityId: 'industry-city', typeId: 'warehouse', level: 1 }
+			],
+			usableBuildingIds: [
+				'pump-a',
+				'pump-b',
+				'pump-c',
+				'filtration-1',
+				'syrup-1',
+				'bottling-1',
+				'warehouse-1'
+			],
+			reachableDemandByMaterial: { water: 100 },
+			reachableDemandByBuildingAndMaterial: {
+				'pump-a\u0000water': 50,
+				'pump-b\u0000water': 50,
+				'pump-c\u0000water': 50
+			},
+			reachableBranchesByBuildingAndMaterial: {
+				'pump-a\u0000water': new Map([['filtered-water', 50]]),
+				'pump-b\u0000water': new Map([['filtered-water', 50]]),
+				'pump-c\u0000water': new Map([['syrup', 50]])
+			}
+		});
+		const projection = projectSupplySnapshot(snapshot);
+		const waterRow = projection.materials.find((m) => m.materialId === 'water')!;
+
+		// Greedy allocation: filtration gets 50 (A:40 + B:10), syrup gets
+		// 40 (C:40). Total = 90, not 100 (the aggregate clamp value).
+		expect(waterRow.usableCapacityPerDay).toBe(90);
 	});
 
 	it('does not treat disconnected installed output as usable local supply', () => {

@@ -74,6 +74,15 @@ export interface SupplyPlannerSnapshot {
 	 * branch only another producer can reach.
 	 */
 	reachableDemandByBuildingAndMaterial: Partial<Record<string, number>>;
+	/**
+	 * Per-producer reachable branch breakdown, keyed by
+	 * `${buildingId}\u0000${materialId}`. Each value maps a downstream
+	 * branch materialId to the demand this specific producer can serve for
+	 * that branch. Used for greedy per-branch capacity allocation so that
+	 * multiple producers overlapping on one branch don't collectively
+	 * exceed that branch's demand.
+	 */
+	reachableBranchesByBuildingAndMaterial: Partial<Record<string, ReadonlyMap<MaterialId, number>>>;
 }
 
 export interface RequiredChainReachability {
@@ -82,6 +91,7 @@ export interface RequiredChainReachability {
 	usableSinkBuildingIdsByMaterial: Partial<Record<MaterialId, readonly string[]>>;
 	reachableDemandByMaterial: Partial<Record<MaterialId, number>>;
 	reachableDemandByBuildingAndMaterial: Partial<Record<string, number>>;
+	reachableBranchesByBuildingAndMaterial: Partial<Record<string, ReadonlyMap<MaterialId, number>>>;
 }
 
 export interface SupplyMaterialRequirement {
@@ -287,7 +297,8 @@ export function buildSupplyPlannerSnapshot(
 			.map((route) => route.id)
 			.sort(compareCodeUnitStrings),
 		reachableDemandByMaterial: reachability.reachableDemandByMaterial,
-		reachableDemandByBuildingAndMaterial: reachability.reachableDemandByBuildingAndMaterial
+		reachableDemandByBuildingAndMaterial: reachability.reachableDemandByBuildingAndMaterial,
+		reachableBranchesByBuildingAndMaterial: reachability.reachableBranchesByBuildingAndMaterial
 	};
 
 	return { status: 'ready', snapshot };
@@ -445,7 +456,8 @@ export function buildRequiredChainReachability(
 		disconnectedBuildingIds: [...disconnectedBuildingIds].sort(compareCodeUnitStrings),
 		usableSinkBuildingIdsByMaterial,
 		reachableDemandByMaterial: reachableDemand.byMaterial,
-		reachableDemandByBuildingAndMaterial: reachableDemand.byBuildingAndMaterial
+		reachableDemandByBuildingAndMaterial: reachableDemand.byBuildingAndMaterial,
+		reachableBranchesByBuildingAndMaterial: reachableDemand.byBranchesByBuildingAndMaterial
 	};
 }
 
@@ -638,9 +650,11 @@ function computeReachableDemandByMaterial(
 ): {
 	byMaterial: Partial<Record<MaterialId, number>>;
 	byBuildingAndMaterial: Partial<Record<string, number>>;
+	byBranchesByBuildingAndMaterial: Partial<Record<string, ReadonlyMap<MaterialId, number>>>;
 } {
 	const byMaterial: Partial<Record<MaterialId, number>> = {};
 	const byBuildingAndMaterial: Partial<Record<string, number>> = {};
+	const byBranchesByBuildingAndMaterial: Partial<Record<string, Map<MaterialId, number>>> = {};
 	const requirementByMaterial = new Map(requirements.map((r) => [r.materialId, r]));
 
 	for (const requirement of requirements) {
@@ -710,6 +724,13 @@ function computeReachableDemandByMaterial(
 					branchReachableByAny = true;
 					const key = producerKey(producer.building.id);
 					byBuildingAndMaterial[key] = (byBuildingAndMaterial[key] ?? 0) + demandFromBranch;
+					// Track per-branch breakdown for greedy allocation.
+					let branches = byBranchesByBuildingAndMaterial[key];
+					if (!branches) {
+						branches = new Map<MaterialId, number>();
+						byBranchesByBuildingAndMaterial[key] = branches;
+					}
+					branches.set(downstreamMaterial, demandFromBranch);
 				}
 			}
 			if (branchReachableByAny) {
@@ -728,7 +749,7 @@ function computeReachableDemandByMaterial(
 		byMaterial[requirement.materialId] = aggregateReachableDemand;
 	}
 
-	return { byMaterial, byBuildingAndMaterial };
+	return { byMaterial, byBuildingAndMaterial, byBranchesByBuildingAndMaterial };
 }
 
 function disconnectedReachability(
@@ -752,8 +773,92 @@ function disconnectedReachability(
 		disconnectedBuildingIds: [...disconnected].sort(compareCodeUnitStrings),
 		usableSinkBuildingIdsByMaterial: {},
 		reachableDemandByMaterial: {},
-		reachableDemandByBuildingAndMaterial: {}
+		reachableDemandByBuildingAndMaterial: {},
+		reachableBranchesByBuildingAndMaterial: {}
 	};
+}
+
+/**
+ * Per-producer cap + aggregate clamp. This is the original capacity model:
+ * each producer's capacity is capped at its own reachable demand, the
+ * capped values are summed, and the result is clamped to the aggregate
+ * reachable demand. Correct for finished materials (single warehouse sink)
+ * and used as a fallback when per-branch reachability data is unavailable.
+ */
+function perProducerCappedCapacity(
+	usable: readonly SupplyPlannerBuildingSnapshot[],
+	materialId: MaterialId,
+	snapshot: SupplyPlannerSnapshot
+): number {
+	let total = 0;
+	for (const building of usable) {
+		const buildingCapacity = getMaterialOutputCapacityPerDay([building], materialId);
+		const cap =
+			snapshot.reachableDemandByBuildingAndMaterial?.[`${building.id}\u0000${materialId}`];
+		total += cap !== undefined ? Math.min(buildingCapacity, cap) : buildingCapacity;
+	}
+	const aggregateReachable = snapshot.reachableDemandByMaterial[materialId];
+	if (aggregateReachable !== undefined) {
+		total = Math.min(total, aggregateReachable);
+	}
+	return total;
+}
+
+/**
+ * Greedy per-branch capacity allocation for non-finished materials.
+ * Each branch's total allocation is capped at its demand, and each
+ * producer's total allocation is capped at its capacity. Branches are
+ * processed most-constrained-first (fewest reachable producers) so that
+ * branches with limited producer options get priority before shared
+ * producers are exhausted. This prevents the overstatement that occurs
+ * when multiple producers overlap on one branch and each is credited
+ * with that branch's full demand.
+ */
+function allocateCapacityByBranch(
+	usable: readonly SupplyPlannerBuildingSnapshot[],
+	materialId: MaterialId,
+	snapshot: SupplyPlannerSnapshot
+): number {
+	const producerRemaining = new Map<string, number>();
+	for (const building of usable) {
+		producerRemaining.set(building.id, getMaterialOutputCapacityPerDay([building], materialId));
+	}
+
+	const branchDemand = new Map<MaterialId, number>();
+	const branchProducers = new Map<MaterialId, string[]>();
+	for (const building of usable) {
+		const branches =
+			snapshot.reachableBranchesByBuildingAndMaterial?.[`${building.id}\u0000${materialId}`];
+		if (!branches) continue;
+		for (const [branchId, demand] of branches) {
+			branchDemand.set(branchId, demand);
+			const producers = branchProducers.get(branchId) ?? [];
+			producers.push(building.id);
+			branchProducers.set(branchId, producers);
+		}
+	}
+
+	const sortedBranches = [...branchDemand.entries()].sort((a, b) => {
+		const aCount = branchProducers.get(a[0])!.length;
+		const bCount = branchProducers.get(b[0])!.length;
+		return aCount - bCount || compareCodeUnitStrings(a[0], b[0]);
+	});
+
+	let total = 0;
+	for (const [branchId, demand] of sortedBranches) {
+		let branchRemaining = demand;
+		const producers = (branchProducers.get(branchId) ?? []).sort(compareCodeUnitStrings);
+		for (const producerId of producers) {
+			if (branchRemaining <= 0) break;
+			const remaining = producerRemaining.get(producerId) ?? 0;
+			if (remaining <= 0) continue;
+			const allocated = Math.min(remaining, branchRemaining);
+			total += allocated;
+			producerRemaining.set(producerId, remaining - allocated);
+			branchRemaining -= allocated;
+		}
+	}
+	return total;
 }
 
 /** Project a ready snapshot using only rail-usable local production capacity. */
@@ -774,21 +879,27 @@ export function projectSupplySnapshot(snapshot: SupplyPlannerSnapshot): SupplyPl
 			requirement.materialId
 		);
 		// Cap each producer's capacity by its own reachable demand, then sum.
-		// This prevents crediting one producer's excess capacity toward a
-		// branch only another producer can reach.
-		let usableCapacityPerDay = 0;
-		for (const building of usable) {
-			const buildingCapacity = getMaterialOutputCapacityPerDay([building], requirement.materialId);
-			const cap =
-				snapshot.reachableDemandByBuildingAndMaterial?.[
-					`${building.id}\u0000${requirement.materialId}`
-				];
-			usableCapacityPerDay +=
-				cap !== undefined ? Math.min(buildingCapacity, cap) : buildingCapacity;
-		}
-		const aggregateReachable = snapshot.reachableDemandByMaterial[requirement.materialId];
-		if (aggregateReachable !== undefined) {
-			usableCapacityPerDay = Math.min(usableCapacityPerDay, aggregateReachable);
+		// For non-finished materials with per-branch reachability data, use
+		// greedy per-branch allocation so that multiple producers overlapping
+		// on one branch don't collectively exceed that branch's demand.
+		// For finished materials (single warehouse sink), per-producer cap +
+		// aggregate clamp is correct. When per-branch data is unavailable
+		// (e.g. manually constructed test snapshots), fall back to the
+		// per-producer cap + aggregate clamp model.
+		const materialKind = MATERIALS[requirement.materialId]?.kind;
+		let usableCapacityPerDay: number;
+		if (materialKind !== 'finished' && snapshot.reachableBranchesByBuildingAndMaterial) {
+			const hasBranchData = usable.some(
+				(building) =>
+					snapshot.reachableBranchesByBuildingAndMaterial?.[
+						`${building.id}\u0000${requirement.materialId}`
+					]
+			);
+			usableCapacityPerDay = hasBranchData
+				? allocateCapacityByBranch(usable, requirement.materialId, snapshot)
+				: perProducerCappedCapacity(usable, requirement.materialId, snapshot);
+		} else {
+			usableCapacityPerDay = perProducerCappedCapacity(usable, requirement.materialId, snapshot);
 		}
 		const stockoutDay = projectedStockoutDay(
 			requirement.requiredPerDay,
