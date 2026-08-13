@@ -321,6 +321,48 @@ describe('supply planner actions', () => {
 		expect(candidate.comparison.importReduction30).toBeGreaterThan(0);
 	});
 
+	it('unlocks finished-material demand when no existing rail touches either endpoint but a future rail path is routeable', () => {
+		// Neither the warehouse nor any valid water-bottler placement tile
+		// has adjacent existing rail. However, the empty legal tiles
+		// between them form a routeable corridor, so the real rail builder
+		// could connect them. The supply planner must not classify the
+		// candidate as ineffective solely because neither endpoint
+		// currently touches rail — it should still unlock the finished
+		// material's demand in the potential projection, yielding a
+		// non-null preRailNetCashBenefit30.
+		const base = baseGame('bottled-water');
+		const game = {
+			...base,
+			cash: 1_000_000,
+			industrialBuildings: [
+				building('water-pump', 'water-pump-1', 1, 2, 6),
+				building('warehouse', 'warehouse-1', 1, 18, 6)
+			],
+			// No rails at all — the future rail path must route through
+			// empty legal industrial tiles.
+			industryCities: base.industryCities.map((city) =>
+				city.id === 'industry-city' ? { ...city, rails: [] } : city
+			)
+		};
+		const plan = readyPlan(game);
+		const candidate = plan.alternatives.find(
+			(row) => row.action.kind === 'build-producer' && row.action.materialId === 'bottled-water'
+		);
+
+		expect(candidate).toBeDefined();
+		if (!candidate || candidate.action.kind !== 'build-producer') return;
+		// The candidate requires a future rail connection (no existing
+		// rail-ready placement), but the future route exists.
+		expect(candidate.comparison.requiresRailConnection).toBe(true);
+		expect(candidate.comparison.netCashBenefit30).toBeNull();
+		// preRailNetCashBenefit30 must be a number (not null) — the
+		// finished material's demand is unlocked because a future rail
+		// path can be built, even though no rail currently touches either
+		// building.
+		expect(candidate.comparison.preRailNetCashBenefit30).not.toBeNull();
+		expect(candidate.comparison.importReduction30).toBeGreaterThan(0);
+	});
+
 	it('uses the retail import price for Bottled Water economics', () => {
 		expect.assertions(5);
 		// Rail at y=8 connects the warehouse (bottom attach at y=8) to valid
@@ -1274,5 +1316,46 @@ describe('supply planner actions patch coverage additions', () => {
 			availability({ allowedIndustryBuildingTypeIds: ['grain-farm', 'flour-mill', 'pantry-works'] })
 		);
 		expect(result.status).toBe('ready');
+	});
+
+	it('evaluates multiple representative placement tiles and picks the strongest projection', () => {
+		// Issue 3 regression: the planner must evaluate one representative
+		// tile per distinct reachable-sink set, not just the first rail-ready
+		// tile. This test sets up a bottled-water chain where multiple valid
+		// placement tiles exist for the water-bottler. The planner should
+		// evaluate all representative tiles and pick the one with the
+		// strongest projection.
+		//
+		// The industry city has rail at y=8 connecting the warehouse and
+		// water-pump. Multiple valid industrial-terrain tiles exist for the
+		// water-bottler at y=6 (bottom attach at y=8, rail-ready). The
+		// planner should evaluate them and the best candidate should be
+		// rail-ready with complete economics.
+		const base = baseGame('bottled-water');
+		const game = {
+			...base,
+			industrialBuildings: [
+				building('water-pump', 'water-pump-1', 1, 2, 6),
+				building('warehouse', 'warehouse-1', 1, 10, 6)
+			],
+			industryCities: base.industryCities.map((city) =>
+				city.id === 'industry-city' ? { ...city, rails: horizontalRails(0, 55, 8) } : city
+			)
+		};
+		const plan = readyPlan(game);
+		// Find the water-bottler build-producer candidate.
+		const candidate = plan.alternatives.find(
+			(row) => row.action.kind === 'build-producer' && row.action.materialId === 'bottled-water'
+		);
+		expect(candidate).toBeDefined();
+		if (!candidate || candidate.action.kind !== 'build-producer') return;
+		// The candidate should be rail-ready (the best placement class
+		// includes tiles adjacent to the rail at y=8).
+		expect(candidate.comparison.requiresRailConnection).toBe(false);
+		// Rail-ready candidates have complete economics.
+		expect(candidate.comparison.netCashBenefit30).not.toBeNull();
+		// The candidate should show some import reduction (the water-bottler
+		// would produce bottled-water, reducing imports).
+		expect(candidate.comparison.importReduction30).toBeGreaterThan(0);
 	});
 });

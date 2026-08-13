@@ -13,8 +13,11 @@ import {
 	buildRailNetwork,
 	createRailBudget,
 	findShippingPath,
-	getBuildingAttachCellKeys
+	getBuildingAttachCellKeys,
+	getFootprintAdjacentCoords,
+	railCellKey
 } from './rail';
+import { findReachableRailCells } from './railPlacement';
 import { canUpgradeBuilding, getBuildingUpgradeCost } from './leveling';
 import {
 	buildRequiredChainReachability,
@@ -139,17 +142,36 @@ export type SupplyPlannerResult =
 	| { status: 'ready'; plan: SupplyPlan }
 	| Exclude<SupplyPlannerSnapshotResult, { status: 'ready' }>;
 
+interface PlacementTile {
+	tile: { id: string; x: number; y: number };
+	railReady: boolean;
+	canFutureConnectToSink: boolean;
+	/** Sorted sink building IDs reachable from this tile via future rail. */
+	reachableSinkIds: readonly string[];
+}
+
 interface PlacementChoice {
 	feasibility: SupplyBuildFeasibility;
 	validTile: { id: string; x: number; y: number } | null;
 	railReadyTile: { id: string; x: number; y: number } | null;
 	/**
-	 * Whether at least one usable sink building for the target material has
-	 * rail attach cells. For finished materials, this means a warehouse is
-	 * rail-connected, so a future rail connection from the candidate could
-	 * actually deliver to it.
+	 * Whether a future rail path can be built from the valid placement tile
+	 * to at least one usable sink building for the target material. Unlike
+	 * the old `hasRailConnectedSink` check (which required the sink to
+	 * already have adjacent rail), this mirrors the real rail builder and
+	 * routes through empty legal tiles, so it correctly identifies
+	 * connectability even when no rail currently touches either building.
 	 */
-	hasRailConnectedSink: boolean;
+	canFutureConnectToSink: boolean;
+	/**
+	 * One representative tile per distinct reachable-sink set. Each entry
+	 * describes a placement class — tiles that can reach the same set of
+	 * sink buildings via future rail. The planner evaluates each class and
+	 * selects the one with the strongest projection, rather than stopping
+	 * at the first rail-ready tile. When this list is non-empty, it
+	 * supersedes the single `validTile`/`railReadyTile` fields.
+	 */
+	representativeTiles: readonly PlacementTile[];
 }
 
 const ZERO_COMPARISON: SupplyPlannerComparison = {
@@ -340,6 +362,7 @@ function producerCandidates(
 	const candidates: SupplyPlannerCandidate[] = [];
 	let hasAdditionalProducerBuilds = false;
 	const allowedPlacements = availability.allowedIndustrialPlacements ?? null;
+	const isFinished = MATERIALS[materialId]?.kind === 'finished';
 	for (const buildingType of allowedTypes) {
 		const placement = findPlacementChoice(
 			game,
@@ -349,77 +372,99 @@ function producerCandidates(
 			allowedPlacements
 		);
 		if (!placement.validTile) continue;
-		const chosenTile = placement.railReadyTile ?? placement.validTile;
-		const context = addSyntheticProducer(
-			game,
-			snapshot,
-			buildingType,
-			chosenTile!,
-			placement.railReadyTile !== null
-		);
-		const normalProjection = withTotals(projectSupplySnapshot(context.candidateSnapshot));
-		const potentialSnapshot = clone(context.candidateSnapshot);
-		potentialSnapshot.usableBuildingIds = uniqueSorted([
-			...potentialSnapshot.usableBuildingIds,
-			context.candidateId
-		]);
-		potentialSnapshot.disconnectedBuildingIds = potentialSnapshot.disconnectedBuildingIds.filter(
-			(id) => id !== context.candidateId
-		);
-		// The potential snapshot simulates the state where the new producer's
-		// rail connection is built, so the producer is marked usable. For
-		// finished materials, connecting the producer to a warehouse would
-		// make the full demand reachable, so the candidate's reachable demand
-		// cap is unlocked to the full demand. For non-finished materials, the
-		// downstream branches the future rail would reach are ambiguous, so
-		// the reachability caps from the real computation are preserved (the
-		// candidate's cap stays at 0) and the pre-rail ROI is left unknown
-		// rather than forced to zero.
-		const isFinished = MATERIALS[materialId]?.kind === 'finished';
-		if (isFinished && placement.hasRailConnectedSink) {
-			const key = `${context.candidateId}\u0000${materialId}`;
-			potentialSnapshot.reachableDemandByBuildingAndMaterial = {
-				...potentialSnapshot.reachableDemandByBuildingAndMaterial,
-				[key]: snapshot.demandPerDay
+
+		// Evaluate one representative tile per distinct reachable-sink set
+		// and pick the candidate with the strongest projection. This
+		// prevents the planner from stopping at the first rail-ready tile
+		// when a different placement class reaches an under-served branch.
+		const tilesToEvaluate =
+			placement.representativeTiles.length > 0
+				? placement.representativeTiles
+				: [
+						{
+							tile: placement.railReadyTile ?? placement.validTile!,
+							railReady: placement.railReadyTile !== null,
+							canFutureConnectToSink: placement.canFutureConnectToSink,
+							reachableSinkIds: []
+						}
+					];
+
+		let bestCandidate: SupplyPlannerCandidate | null = null;
+		for (const placementTile of tilesToEvaluate) {
+			const context = addSyntheticProducer(
+				game,
+				snapshot,
+				buildingType,
+				placementTile.tile,
+				placementTile.railReady
+			);
+			const normalProjection = withTotals(projectSupplySnapshot(context.candidateSnapshot));
+			const potentialSnapshot = clone(context.candidateSnapshot);
+			potentialSnapshot.usableBuildingIds = uniqueSorted([
+				...potentialSnapshot.usableBuildingIds,
+				context.candidateId
+			]);
+			potentialSnapshot.disconnectedBuildingIds = potentialSnapshot.disconnectedBuildingIds.filter(
+				(id) => id !== context.candidateId
+			);
+			// The potential snapshot simulates the state where the new producer's
+			// rail connection is built, so the producer is marked usable. For
+			// finished materials, connecting the producer to a warehouse would
+			// make the full demand reachable, so the candidate's reachable demand
+			// cap is unlocked to the full demand. For non-finished materials, the
+			// downstream branches the future rail would reach are ambiguous, so
+			// the reachability caps from the real computation are preserved (the
+			// candidate's cap stays at 0) and the pre-rail ROI is left unknown
+			// rather than forced to zero.
+			if (isFinished && placementTile.canFutureConnectToSink) {
+				const key = `${context.candidateId}\u0000${materialId}`;
+				potentialSnapshot.reachableDemandByBuildingAndMaterial = {
+					...potentialSnapshot.reachableDemandByBuildingAndMaterial,
+					[key]: snapshot.demandPerDay
+				};
+				potentialSnapshot.reachableDemandByMaterial = {
+					...potentialSnapshot.reachableDemandByMaterial,
+					[materialId]: Math.max(
+						potentialSnapshot.reachableDemandByMaterial[materialId] ?? 0,
+						snapshot.demandPerDay
+					)
+				};
+			}
+			const potentialProjection = withTotals(projectSupplySnapshot(potentialSnapshot));
+			const requiresRailConnection = !placementTile.railReady;
+			const additional = hasAdditionalMissingProducers(normalProjection);
+			hasAdditionalProducerBuilds ||= additional;
+			const action: SupplyPlannerAction = {
+				kind: 'build-producer',
+				materialId,
+				buildingTypeId: buildingType.id,
+				cost: buildingType.buildCost
 			};
-			potentialSnapshot.reachableDemandByMaterial = {
-				...potentialSnapshot.reachableDemandByMaterial,
-				[materialId]: Math.max(
-					potentialSnapshot.reachableDemandByMaterial[materialId] ?? 0,
-					snapshot.demandPerDay
-				)
+			const preRailRoiUnknown = requiresRailConnection && !isFinished;
+			const comparison = compareCandidate(
+				snapshot,
+				baseline,
+				normalProjection,
+				requiresRailConnection ? potentialProjection : normalProjection,
+				action,
+				requiresRailConnection,
+				additional,
+				preRailRoiUnknown
+			);
+			const candidate: SupplyPlannerCandidate = {
+				action,
+				baseline,
+				projection: normalProjection,
+				potentialProjectionAfterRail: requiresRailConnection ? potentialProjection : undefined,
+				comparison,
+				affordable: game.cash >= buildingType.buildCost,
+				feasible: true
 			};
+			if (bestCandidate === null || compareCandidates(candidate, bestCandidate) < 0) {
+				bestCandidate = candidate;
+			}
 		}
-		const potentialProjection = withTotals(projectSupplySnapshot(potentialSnapshot));
-		const requiresRailConnection = placement.railReadyTile === null;
-		const additional = hasAdditionalMissingProducers(normalProjection);
-		hasAdditionalProducerBuilds ||= additional;
-		const action: SupplyPlannerAction = {
-			kind: 'build-producer',
-			materialId,
-			buildingTypeId: buildingType.id,
-			cost: buildingType.buildCost
-		};
-		const preRailRoiUnknown = requiresRailConnection && !isFinished;
-		const comparison = compareCandidate(
-			snapshot,
-			baseline,
-			normalProjection,
-			requiresRailConnection ? potentialProjection : normalProjection,
-			action,
-			requiresRailConnection,
-			additional,
-			preRailRoiUnknown
-		);
-		candidates.push({
-			action,
-			baseline,
-			projection: normalProjection,
-			potentialProjectionAfterRail: requiresRailConnection ? potentialProjection : undefined,
-			comparison,
-			affordable: game.cash >= buildingType.buildCost,
-			feasible: true
-		});
+		if (bestCandidate) candidates.push(bestCandidate);
 	}
 	return {
 		candidates,
@@ -693,6 +738,8 @@ function addSyntheticProducer(
 	candidateSnapshot.reachableDemandByMaterial = reachability.reachableDemandByMaterial;
 	candidateSnapshot.reachableDemandByBuildingAndMaterial =
 		reachability.reachableDemandByBuildingAndMaterial;
+	candidateSnapshot.reachableBranchesByBuildingAndMaterial =
+		reachability.reachableBranchesByBuildingAndMaterial;
 	if (!preferRailReady) {
 		candidateSnapshot.usableBuildingIds = candidateSnapshot.usableBuildingIds.filter(
 			(id) => id !== candidateId
@@ -716,7 +763,8 @@ function findPlacementChoice(
 		feasibility: { hasValidPlacement: false, hasRailReadyPlacement: false },
 		validTile: null,
 		railReadyTile: null,
-		hasRailConnectedSink: false
+		canFutureConnectToSink: false,
+		representativeTiles: []
 	};
 	const scopedGame = { ...clone(game), activeIndustryCityId: snapshot.supplyCityId };
 	const city = scopedGame.industryCities.find((row) => row.id === snapshot.supplyCityId);
@@ -730,8 +778,38 @@ function findPlacementChoice(
 		const sink = scopedGame.industrialBuildings.find((building) => building.id === id);
 		return sink ? getBuildingAttachCellKeys(network, sink) : [];
 	});
+	// Pre-compute per-sink footprint-adjacent coords (unfiltered — includes
+	// cells that don't currently have rail) for the future rail path check.
+	const sinkAdjacentById = new Map<string, { x: number; y: number }[]>();
+	for (const id of sinkIds) {
+		const sink = scopedGame.industrialBuildings.find((building) => building.id === id);
+		if (sink) sinkAdjacentById.set(id, getFootprintAdjacentCoords(sink));
+	}
+
+	// Do one BFS per sink to find all cells reachable via future rail from
+	// that sink's footprint-adjacent coords. This avoids O(tiles * sinks)
+	// pathfinding calls — each BFS explores the grid once, and we look up
+	// per-tile reachability by checking if any of the tile's adjacent cells
+	// are in the sink's reachable set.
+	const sinkReachableKeys = new Map<string, Set<string>>();
+	for (const sinkId of sinkIds) {
+		const sinkAdjacent = sinkAdjacentById.get(sinkId);
+		if (!sinkAdjacent || sinkAdjacent.length === 0) continue;
+		sinkReachableKeys.set(sinkId, findReachableRailCells(scopedGame, city.id, sinkAdjacent));
+	}
+
 	let validTile: PlacementChoice['validTile'] = null;
 	let railReadyTile: PlacementChoice['railReadyTile'] = null;
+
+	// Collect all valid placement tiles with their rail-ready status and
+	// reachable-sink set, then group by reachable-sink set to pick one
+	// representative per distinct placement class.
+	const tileEntries: {
+		coordinate: { id: string; x: number; y: number; mapX: number; mapY: number };
+		railReady: boolean;
+		reachableSinkIds: string[];
+	}[] = [];
+
 	for (const tile of city.tiles) {
 		if (getIndustrialPlacementBlockReasonWithContext(placement, tile.id, buildingTypeId)) continue;
 		if (
@@ -743,12 +821,89 @@ function findPlacementChoice(
 			continue;
 		const coordinate = { id: tile.id, x: tile.x, y: tile.y, mapX: tile.x, mapY: tile.y };
 		validTile ??= coordinate;
-		if (!railReadyTile && sinkAttach.length > 0) {
+
+		let railReady = false;
+		if (sinkAttach.length > 0) {
 			const attach = getBuildingAttachCellKeys(network, coordinate);
-			if (findShippingPath(network, budget, attach, sinkAttach)) railReadyTile = coordinate;
+			if (findShippingPath(network, budget, attach, sinkAttach)) {
+				railReady = true;
+				railReadyTile ??= coordinate;
+			}
 		}
-		if (validTile && railReadyTile) break;
+
+		// Compute the reachable-sink set for this tile by checking which
+		// sinks' reachable cell sets include any of this tile's adjacent
+		// cells. This uses the pre-computed per-sink BFS results.
+		const reachableSinkIds: string[] = [];
+		if (sinkIds.length > 0) {
+			const tileAdjacent = getFootprintAdjacentCoords({
+				mapX: coordinate.x,
+				mapY: coordinate.y
+			});
+			const tileAdjacentKeys = new Set(tileAdjacent.map((c) => railCellKey(c.x, c.y)));
+			for (const sinkId of sinkIds) {
+				const reachable = sinkReachableKeys.get(sinkId);
+				if (!reachable) continue;
+				for (const key of tileAdjacentKeys) {
+					if (reachable.has(key)) {
+						reachableSinkIds.push(sinkId);
+						break;
+					}
+				}
+			}
+		}
+		reachableSinkIds.sort(compareCodeUnits);
+
+		tileEntries.push({ coordinate, railReady, reachableSinkIds });
 	}
+
+	if (tileEntries.length === 0) {
+		return {
+			feasibility: {
+				hasValidPlacement: false,
+				hasRailReadyPlacement: false
+			},
+			validTile: null,
+			railReadyTile: null,
+			canFutureConnectToSink: false,
+			representativeTiles: []
+		};
+	}
+
+	// Group by reachable-sink set and pick one representative per group.
+	// Prefer rail-ready tiles, then first by tile ID for determinism.
+	const groups = new Map<string, typeof tileEntries>();
+	for (const entry of tileEntries) {
+		const key = entry.reachableSinkIds.join(',');
+		const group = groups.get(key) ?? [];
+		group.push(entry);
+		groups.set(key, group);
+	}
+
+	const representativeTiles: PlacementTile[] = [];
+	for (const [, group] of [...groups.entries()].sort((a, b) => compareCodeUnits(a[0], b[0]))) {
+		// Prefer rail-ready, then first by tile ID.
+		const best = group.sort((a, b) => {
+			if (a.railReady !== b.railReady) return a.railReady ? -1 : 1;
+			return compareCodeUnits(a.coordinate.id, b.coordinate.id);
+		})[0]!;
+		representativeTiles.push({
+			tile: {
+				id: best.coordinate.id,
+				x: best.coordinate.x,
+				y: best.coordinate.y
+			},
+			railReady: best.railReady,
+			canFutureConnectToSink: best.reachableSinkIds.length > 0,
+			reachableSinkIds: best.reachableSinkIds
+		});
+	}
+
+	// Compute canFutureConnectToSink for the first valid tile (backward
+	// compatibility for the field on PlacementChoice).
+	const firstEntry = tileEntries[0]!;
+	const canFutureConnectToSink = firstEntry.reachableSinkIds.length > 0;
+
 	return {
 		feasibility: {
 			hasValidPlacement: validTile !== null,
@@ -756,7 +911,8 @@ function findPlacementChoice(
 		},
 		validTile,
 		railReadyTile,
-		hasRailConnectedSink: sinkAttach.length > 0
+		canFutureConnectToSink,
+		representativeTiles
 	};
 }
 
@@ -839,24 +995,32 @@ function unchangedCandidate(
 }
 
 function sortCandidates(candidates: readonly SupplyPlannerCandidate[]): SupplyPlannerCandidate[] {
-	return [...candidates].sort((left, right) => {
-		const leftComplete = left.comparison.netCashBenefit30 !== null ? 1 : 0;
-		const rightComplete = right.comparison.netCashBenefit30 !== null ? 1 : 0;
-		const leftBenefit =
-			left.comparison.netCashBenefit30 ?? left.comparison.preRailNetCashBenefit30 ?? -Infinity;
-		const rightBenefit =
-			right.comparison.netCashBenefit30 ?? right.comparison.preRailNetCashBenefit30 ?? -Infinity;
-		return (
-			rightComplete - leftComplete ||
-			rightBenefit - leftBenefit ||
-			right.comparison.shortageReduction30 - left.comparison.shortageReduction30 ||
-			right.comparison.shortageReduction7 - left.comparison.shortageReduction7 ||
-			right.comparison.importReduction30 - left.comparison.importReduction30 ||
-			right.comparison.stockoutImprovementDays - left.comparison.stockoutImprovementDays ||
-			actionCost(left.action) - actionCost(right.action) ||
-			compareCodeUnits(actionKey(left.action), actionKey(right.action))
-		);
-	});
+	return [...candidates].sort((left, right) => compareCandidates(left, right));
+}
+
+/**
+ * Returns negative if `left` ranks higher than `right`, positive if `right`
+ * ranks higher, and 0 if they are tied. Used by `sortCandidates` for the
+ * final ranking and by `producerCandidates` to pick the best placement
+ * tile for a given building type.
+ */
+function compareCandidates(left: SupplyPlannerCandidate, right: SupplyPlannerCandidate): number {
+	const leftComplete = left.comparison.netCashBenefit30 !== null ? 1 : 0;
+	const rightComplete = right.comparison.netCashBenefit30 !== null ? 1 : 0;
+	const leftBenefit =
+		left.comparison.netCashBenefit30 ?? left.comparison.preRailNetCashBenefit30 ?? -Infinity;
+	const rightBenefit =
+		right.comparison.netCashBenefit30 ?? right.comparison.preRailNetCashBenefit30 ?? -Infinity;
+	return (
+		rightComplete - leftComplete ||
+		rightBenefit - leftBenefit ||
+		right.comparison.shortageReduction30 - left.comparison.shortageReduction30 ||
+		right.comparison.shortageReduction7 - left.comparison.shortageReduction7 ||
+		right.comparison.importReduction30 - left.comparison.importReduction30 ||
+		right.comparison.stockoutImprovementDays - left.comparison.stockoutImprovementDays ||
+		actionCost(left.action) - actionCost(right.action) ||
+		compareCodeUnits(actionKey(left.action), actionKey(right.action))
+	);
 }
 
 function actionCost(action: SupplyPlannerAction): number {

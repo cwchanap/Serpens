@@ -4,6 +4,7 @@ import {
 	buildRailPreview,
 	buildRailWaypointPreview,
 	demolishRailSegment,
+	findReachableRailCells,
 	getDemolishRemovableCellKeys,
 	getSegmentDemolishRefund,
 	getSegmentUpgradeCost,
@@ -621,3 +622,69 @@ describe('isRailWaypointTarget', () => {
 		expect(isRailWaypointTarget(game, 'missing-city', 6, 6)).toBe(false);
 	});
 });
+
+describe('findReachableRailCells', () => {
+	it('returns all cells reachable via existing rail and legal empty tiles', () => {
+		expect.assertions(3);
+		// Rail at y=4 from x=2 to x=8. Source at (2, 4) (existing rail).
+		// The BFS should follow existing rail (cost 0) and expand into
+		// adjacent legal empty tiles (cost 1).
+		const city = makeCity(horizontalRails(2, 8, 4));
+		const game = makeGame(city, []);
+		const reachable = findReachableRailCells(game, CITY_ID, [{ x: 2, y: 4 }]);
+		// Existing rail cells are reachable.
+		expect(reachable.has(railCellKey(5, 4))).toBe(true);
+		// Adjacent legal empty tiles are reachable.
+		expect(reachable.has(railCellKey(5, 3))).toBe(true);
+		// Tiles blocked by a building footprint are NOT reachable.
+		const gameWithBuilding = makeGame(city, [ORIGIN()]);
+		const reachableWithBuilding = findReachableRailCells(gameWithBuilding, CITY_ID, [
+			{ x: 10, y: 10 }
+		]);
+		expect(reachableWithBuilding.has(railCellKey(2, 2))).toBe(false);
+	});
+
+	it('routes through empty legal tiles even with no existing rail', () => {
+		expect.assertions(2);
+		// No existing rail. Source at (5, 5). All tiles are industrial
+		// (legal for rail). The BFS should expand through empty tiles.
+		const city = makeCity([]);
+		const game = makeGame(city, []);
+		const reachable = findReachableRailCells(game, CITY_ID, [{ x: 5, y: 5 }]);
+		// Nearby tiles are reachable via future rail.
+		expect(reachable.has(railCellKey(6, 5))).toBe(true);
+		expect(reachable.has(railCellKey(10, 10))).toBe(true);
+	});
+
+	it('does not route through blocked terrain', () => {
+		expect.assertions(2);
+		// Create a wall of blocked tiles at x=10 from y=0 to y=19.
+		const blocked = new Set<string>();
+		for (let y = 0; y < SIZE; y += 1) {
+			blocked.add(railCellKey(10, y));
+		}
+		const city = makeCity([], blocked);
+		const game = makeGame(city, []);
+		// Source at (5, 5) (left of the wall).
+		const reachable = findReachableRailCells(game, CITY_ID, [{ x: 5, y: 5 }]);
+		// Tiles on the left side are reachable.
+		expect(reachable.has(railCellKey(8, 5))).toBe(true);
+		// Tiles on the right side are NOT reachable (wall blocks the path).
+		expect(reachable.has(railCellKey(12, 5))).toBe(false);
+	});
+
+	it('returns empty set when the city does not exist', () => {
+		expect.assertions(1);
+		const game = makeGame(makeCity([]), []);
+		const reachable = findReachableRailCells(game, 'missing-city', [{ x: 5, y: 5 }]);
+		expect(reachable.size).toBe(0);
+	});
+});
+
+function horizontalRails(fromX: number, toX: number, y = 4): RailCell[] {
+	return Array.from({ length: toX - fromX + 1 }, (_, index) => ({
+		x: fromX + index,
+		y,
+		level: 1
+	}));
+}

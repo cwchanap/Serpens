@@ -84,7 +84,8 @@ const baseSnapshot: SupplyPlannerSnapshot = {
 	usableSinkBuildingIdsByMaterial: { 'bottled-water': ['warehouse-1'] },
 	activeOutboundRouteIds: [],
 	reachableDemandByMaterial: {},
-	reachableDemandByBuildingAndMaterial: {}
+	reachableDemandByBuildingAndMaterial: {},
+	reachableBranchesByBuildingAndMaterial: {}
 };
 
 const baseComparison: SupplyPlannerComparison = {
