@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import {
+	MATERIAL_PRODUCER_RECIPES,
 	aggregateProductReports,
 	allocateInputMovement,
 	bottleneckText,
@@ -28,7 +29,8 @@ import type {
 	DailyStoreReport,
 	GameState,
 	IndustrialBuilding,
-	MaterialId
+	MaterialId,
+	ProductionRecipeId
 } from './types';
 
 function emptyProductionReport(
@@ -973,5 +975,20 @@ describe('productChainGraph branch coverage', () => {
 				'nonexistent' as MaterialId
 			)
 		).toBe(0);
+	});
+
+	test('getMaterialOutputCapacityPerDay ignores a stale producer mapping with no matching output', () => {
+		const materialId = 'stale-output' as MaterialId;
+		const producerRecipes = MATERIAL_PRODUCER_RECIPES as Map<MaterialId, ProductionRecipeId>;
+
+		try {
+			producerRecipes.set(materialId, 'water-pumping');
+
+			expect(
+				getMaterialOutputCapacityPerDay([{ typeId: 'water-pump', level: 1 }], materialId)
+			).toBe(0);
+		} finally {
+			producerRecipes.delete(materialId);
+		}
 	});
 });

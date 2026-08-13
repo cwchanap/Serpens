@@ -2,7 +2,9 @@ import { page } from 'vitest/browser';
 import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import type { RetailBuildMenuOption } from '$lib/game/placementPreview';
+import { MATERIAL_PRODUCER_RECIPES } from '$lib/game/productChainGraph';
 import { createI18n } from '$lib/i18n';
+import type { MaterialId, ProductionRecipeId } from '$lib/game/types';
 import BuildMenu from './BuildMenu.svelte';
 
 const retailOptions: RetailBuildMenuOption[] = [
@@ -582,6 +584,28 @@ describe('BuildMenu industry recipe cards', () => {
 		// availableMaterialIds is empty, so its missing-input chip should surface
 		// the building that produces water (the Water Pump).
 		await expect.element(page.getByText(/needs water pump/i).first()).toBeVisible();
+	});
+
+	it('falls back to the missing material name when its producer mapping is unavailable', async () => {
+		expect.assertions(1);
+		const producerRecipes = MATERIAL_PRODUCER_RECIPES as Map<MaterialId, ProductionRecipeId>;
+		const originalRecipeId = producerRecipes.get('water');
+
+		try {
+			producerRecipes.delete('water');
+			render(
+				BuildMenu,
+				buildMenuProps({
+					activeMapView: 'industry',
+					retailOptions: [],
+					availableMaterialIds: []
+				})
+			);
+
+			await expect.element(page.getByText(/^needs water$/i).first()).toBeVisible();
+		} finally {
+			if (originalRecipeId) producerRecipes.set('water', originalRecipeId);
+		}
 	});
 
 	it('surfaces the resource-tile requirement for a Starter extraction building', async () => {

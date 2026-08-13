@@ -5,10 +5,12 @@ import {
 	encodeIndustrialPlacementKey,
 	getBuildFeasibility
 } from './supplyPlannerActions';
+import { INDUSTRIAL_BUILDING_TYPES } from './industry';
 import { createNewGame } from './state';
 import type {
 	GameState,
 	IndustrialBuilding,
+	IndustrialBuildingType,
 	IndustrialBuildingTypeId,
 	RecurringRoute,
 	StoreProduct,
@@ -999,6 +1001,199 @@ describe('supply planner actions branch coverage', () => {
 });
 
 describe('supply planner actions patch coverage additions', () => {
+	it('ranks a positive complete producer candidate for an installed capacity bottleneck', () => {
+		const bottler = INDUSTRIAL_BUILDING_TYPES['water-bottler'];
+		const originalCosts = {
+			buildCost: bottler.buildCost,
+			dailyOperatingCost: bottler.dailyOperatingCost
+		};
+
+		try {
+			bottler.buildCost = 1;
+			bottler.dailyOperatingCost = 0;
+			const base = baseGame('bottled-water');
+			const game = {
+				...base,
+				industrialBuildings: [
+					building('water-pump', 'water-pump-1', 10, 2, 6),
+					building('water-bottler', 'water-bottler-1', 1, 6, 6),
+					building('warehouse', 'warehouse-1', 1, 10, 6)
+				],
+				industryCities: base.industryCities.map((city) =>
+					city.id === 'industry-city' ? { ...city, rails: horizontalRails(0, 55, 8) } : city
+				),
+				stores: [
+					{
+						...base.stores[0]!,
+						products: [product('bottled-water', { targetStock: 700 })]
+					}
+				]
+			};
+			const plan = readyPlan(game);
+
+			expect(plan.baseline.bottleneck.kind).toBe('production-capacity');
+			expect(plan.recommendation.action).toMatchObject({
+				kind: 'build-producer',
+				buildingTypeId: 'water-bottler'
+			});
+			expect(plan.recommendation.comparison.netCashBenefit30).toBeGreaterThan(0);
+		} finally {
+			bottler.buildCost = originalCosts.buildCost;
+			bottler.dailyOperatingCost = originalCosts.dailyOperatingCost;
+		}
+	});
+
+	it('ranks a positive pre-rail producer candidate for an installed capacity bottleneck', () => {
+		const bottler = INDUSTRIAL_BUILDING_TYPES['water-bottler'];
+		const originalCosts = {
+			buildCost: bottler.buildCost,
+			dailyOperatingCost: bottler.dailyOperatingCost
+		};
+
+		try {
+			bottler.buildCost = 1;
+			bottler.dailyOperatingCost = 0;
+			const base = baseGame('bottled-water');
+			const game = {
+				...base,
+				industrialBuildings: [
+					building('water-pump', 'water-pump-1', 10, 2, 2),
+					building('water-bottler', 'water-bottler-1', 1, 6, 2),
+					building('warehouse', 'warehouse-1', 1, 10, 2)
+				],
+				industryCities: base.industryCities.map((city) =>
+					city.id === 'industry-city' ? { ...city, rails: horizontalRails(2, 10) } : city
+				),
+				stores: [
+					{
+						...base.stores[0]!,
+						products: [product('bottled-water', { targetStock: 700 })]
+					}
+				]
+			};
+			const plan = readyPlan(game);
+
+			expect(plan.baseline.bottleneck.kind).toBe('production-capacity');
+			expect(plan.recommendation.action).toMatchObject({
+				kind: 'build-producer',
+				buildingTypeId: 'water-bottler'
+			});
+			expect(plan.recommendation.comparison.requiresRailConnection).toBe(true);
+			expect(plan.recommendation.comparison.preRailNetCashBenefit30).toBeGreaterThan(0);
+		} finally {
+			bottler.buildCost = originalCosts.buildCost;
+			bottler.dailyOperatingCost = originalCosts.dailyOperatingCost;
+		}
+	});
+
+	it('recommends a rail-ready producer when its configured import savings exceed construction cost', () => {
+		const bottler = INDUSTRIAL_BUILDING_TYPES['water-bottler'];
+		const originalCosts = {
+			buildCost: bottler.buildCost,
+			dailyOperatingCost: bottler.dailyOperatingCost
+		};
+
+		try {
+			bottler.buildCost = 1;
+			bottler.dailyOperatingCost = 0;
+			const base = baseGame('bottled-water');
+			const game = {
+				...base,
+				industrialBuildings: [
+					building('water-pump', 'water-pump-1', 1, 2, 6),
+					building('warehouse', 'warehouse-1', 1, 10, 6)
+				],
+				industryCities: base.industryCities.map((city) =>
+					city.id === 'industry-city' ? { ...city, rails: horizontalRails(0, 55, 8) } : city
+				)
+			};
+			const plan = readyPlan(game);
+
+			expect(plan.recommendation.action).toMatchObject({
+				kind: 'build-producer',
+				buildingTypeId: 'water-bottler'
+			});
+			expect(plan.recommendation.comparison.netCashBenefit30).toBeGreaterThan(0);
+		} finally {
+			bottler.buildCost = originalCosts.buildCost;
+			bottler.dailyOperatingCost = originalCosts.dailyOperatingCost;
+		}
+	});
+
+	it('recommends a future-rail producer when its pre-rail economics are positive', () => {
+		const bottler = INDUSTRIAL_BUILDING_TYPES['water-bottler'];
+		const originalCosts = {
+			buildCost: bottler.buildCost,
+			dailyOperatingCost: bottler.dailyOperatingCost
+		};
+
+		try {
+			bottler.buildCost = 1;
+			bottler.dailyOperatingCost = 0;
+			const base = baseGame('bottled-water');
+			const game = {
+				...base,
+				industrialBuildings: [
+					building('water-pump', 'water-pump-1', 1, 2, 2),
+					building('warehouse', 'warehouse-1', 1, 10, 2)
+				],
+				industryCities: base.industryCities.map((city) =>
+					city.id === 'industry-city' ? { ...city, rails: horizontalRails(2, 10) } : city
+				)
+			};
+			const plan = readyPlan(game);
+
+			expect(plan.recommendation.action).toMatchObject({
+				kind: 'build-producer',
+				buildingTypeId: 'water-bottler'
+			});
+			expect(plan.recommendation.comparison.requiresRailConnection).toBe(true);
+			expect(plan.recommendation.comparison.preRailNetCashBenefit30).toBeGreaterThan(0);
+		} finally {
+			bottler.buildCost = originalCosts.buildCost;
+			bottler.dailyOperatingCost = originalCosts.dailyOperatingCost;
+		}
+	});
+
+	it('sorts multiple compatible producer types by their stable building type id', () => {
+		const buildingTypes = INDUSTRIAL_BUILDING_TYPES as Record<string, IndustrialBuildingType>;
+		const variantId = 'water-bottler-variant';
+		buildingTypes[variantId] = {
+			...INDUSTRIAL_BUILDING_TYPES['water-bottler'],
+			id: variantId as IndustrialBuildingTypeId
+		};
+
+		try {
+			const base = baseGame('bottled-water');
+			const game = {
+				...base,
+				industrialBuildings: [
+					building('water-pump', 'water-pump-1', 1, 2, 6),
+					building('warehouse', 'warehouse-1', 1, 10, 6)
+				],
+				industryCities: base.industryCities.map((city) =>
+					city.id === 'industry-city' ? { ...city, rails: horizontalRails(0, 55, 8) } : city
+				)
+			};
+			const plan = readyPlan(
+				game,
+				availability({
+					allowedIndustryBuildingTypeIds: ['water-bottler', variantId as IndustrialBuildingTypeId]
+				})
+			);
+
+			expect(
+				plan.alternatives
+					.filter((candidate) => candidate.action.kind === 'build-producer')
+					.map((candidate) =>
+						candidate.action.kind === 'build-producer' ? candidate.action.buildingTypeId : null
+					)
+			).toEqual(['water-bottler', variantId]);
+		} finally {
+			delete buildingTypes[variantId];
+		}
+	});
+
 	it('encodeIndustrialPlacementKey produces a null-delimited composite key', () => {
 		expect(encodeIndustrialPlacementKey('industry-city', 'tile-3-4', 'water-bottler')).toBe(
 			'industry-city\u0000tile-3-4\u0000water-bottler'
@@ -1025,6 +1220,44 @@ describe('supply planner actions patch coverage additions', () => {
 			new Set()
 		);
 		expect(feasibility.hasValidPlacement).toBe(false);
+	});
+
+	it('keeps feasibility available when a stale snapshot has no known sinks for a material', () => {
+		const game = baseGame('bottled-water');
+		const result = buildSupplyPlan(
+			game,
+			{ retailCityId: 'harbor-city', categoryId: 'bottled-water' },
+			availability()
+		);
+		if (result.status !== 'ready') throw new Error('Expected ready plan');
+		const snapshot = {
+			...result.plan.snapshot,
+			usableSinkBuildingIdsByMaterial: {}
+		};
+
+		expect(getBuildFeasibility(game, snapshot, 'bottled-water', 'water-bottler')).toMatchObject({
+			hasValidPlacement: true,
+			hasRailReadyPlacement: false
+		});
+	});
+
+	it('ignores a stale sink id while calculating build feasibility', () => {
+		const game = baseGame('bottled-water');
+		const result = buildSupplyPlan(
+			game,
+			{ retailCityId: 'harbor-city', categoryId: 'bottled-water' },
+			availability()
+		);
+		if (result.status !== 'ready') throw new Error('Expected ready plan');
+		const snapshot = {
+			...result.plan.snapshot,
+			usableSinkBuildingIdsByMaterial: { 'bottled-water': ['removed-warehouse'] }
+		};
+
+		expect(getBuildFeasibility(game, snapshot, 'bottled-water', 'water-bottler')).toMatchObject({
+			hasValidPlacement: true,
+			hasRailReadyPlacement: false
+		});
 	});
 
 	it('compareCodeUnits sorts building types for a recipe with multiple producers', () => {

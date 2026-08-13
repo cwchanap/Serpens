@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { MATERIALS } from './industry';
+import { MATERIALS, PRODUCTION_RECIPES } from './industry';
+import { MATERIAL_PRODUCER_RECIPES } from './productChainGraph';
 import { REPLENISHMENT_INTERVAL_DAYS } from './retailSupply';
 import { createNewGame } from './state';
 import {
@@ -14,6 +15,7 @@ import type {
 	GameState,
 	IndustrialBuilding,
 	MaterialId,
+	ProductionRecipeId,
 	RecurringRoute,
 	StoreProduct,
 	WorldCityId
@@ -1293,6 +1295,304 @@ describe('supply planner snapshot additional coverage', () => {
 });
 
 describe('supply planner reachability branch coverage', () => {
+	it('keeps an independently supported category guarded when its material is no longer finished', () => {
+		const material = MATERIALS['bottled-water'] as { kind: 'finished' | 'intermediate' };
+		const originalKind = material.kind;
+
+		try {
+			material.kind = 'intermediate';
+
+			expect(
+				buildSupplyPlannerSnapshot(plannerGame(), {
+					retailCityId: 'harbor-city',
+					categoryId: 'bottled-water'
+				})
+			).toEqual({ status: 'unsupported', reason: 'unsupported-category' });
+		} finally {
+			material.kind = originalKind;
+		}
+	});
+
+	it('returns an empty result when a volatile store loses its supported category during derivation', () => {
+		const game = plannerGame([product('bottled-water')]);
+		const store = { ...game.stores[0]! };
+		let productReads = 0;
+		Object.defineProperty(store, 'products', {
+			configurable: true,
+			get: () => {
+				productReads += 1;
+				return productReads === 1 ? [product('bottled-water')] : [];
+			}
+		});
+
+		expect(
+			buildSupplyPlannerSnapshot(
+				{ ...game, stores: [store] },
+				{ retailCityId: 'harbor-city', categoryId: 'bottled-water' }
+			)
+		).toEqual({ status: 'empty', reason: 'no-supported-products' });
+	});
+
+	it('preserves requirement traversal when a producer map entry points at no recipe', () => {
+		const producerRecipes = MATERIAL_PRODUCER_RECIPES as Map<MaterialId, ProductionRecipeId>;
+		const originalRecipeId = producerRecipes.get('water');
+
+		try {
+			producerRecipes.set('water', 'missing-recipe' as ProductionRecipeId);
+
+			expect(
+				buildSupplyMaterialRequirements({
+					finishedMaterialId: 'bottled-water',
+					demandPerDay: 10
+				})
+			).toContainEqual(
+				expect.objectContaining({ materialId: 'water', producerRecipeId: 'missing-recipe' })
+			);
+		} finally {
+			if (originalRecipeId) producerRecipes.set('water', originalRecipeId);
+		}
+	});
+
+	it('stops traversal when a mapped recipe does not emit the requested material', () => {
+		const waterPumping = PRODUCTION_RECIPES['water-pumping'];
+		const originalOutputs = waterPumping.outputs;
+
+		try {
+			waterPumping.outputs = [];
+
+			expect(
+				buildSupplyMaterialRequirements({
+					finishedMaterialId: 'bottled-water',
+					demandPerDay: 10
+				})
+			).toContainEqual(expect.objectContaining({ materialId: 'water' }));
+		} finally {
+			waterPumping.outputs = originalOutputs;
+		}
+	});
+
+	it('retains a requirement with no mapped producer while traversing its parent recipe', () => {
+		const producerRecipes = MATERIAL_PRODUCER_RECIPES as Map<MaterialId, ProductionRecipeId>;
+		const originalRecipeId = producerRecipes.get('water');
+
+		try {
+			producerRecipes.delete('water');
+
+			const requirements = buildSupplyMaterialRequirements({
+				finishedMaterialId: 'bottled-water',
+				demandPerDay: 10
+			});
+
+			expect(requirements).toContainEqual(
+				expect.objectContaining({ materialId: 'water', producerRecipeId: null })
+			);
+		} finally {
+			if (originalRecipeId) producerRecipes.set('water', originalRecipeId);
+		}
+	});
+
+	it('uses the game buildings when reachability callers omit the optional override', () => {
+		const game = plannerGame([product('bottled-water')]);
+		const reachability = buildRequiredChainReachability(game, {
+			supplyCityId: 'industry-city',
+			finishedMaterialId: 'bottled-water',
+			demandPerDay: 10,
+			buildings: []
+		});
+
+		expect(reachability.disconnectedBuildingIds).toEqual([]);
+	});
+
+	it('projects usable producer capacity without an explicit per-building reachability cap', () => {
+		const projection = projectSupplySnapshot(
+			projectionSnapshot({
+				finishedMaterialId: 'bottled-water',
+				buildings: [
+					{ id: 'water-pump-1', cityId: 'industry-city', typeId: 'water-pump', level: 1 },
+					{ id: 'water-bottler-1', cityId: 'industry-city', typeId: 'water-bottler', level: 1 }
+				],
+				usableBuildingIds: ['water-pump-1', 'water-bottler-1']
+			})
+		);
+
+		expect(
+			projection.materials.find((material) => material.materialId === 'bottled-water')
+				?.usableCapacityPerDay
+		).toBeGreaterThan(0);
+	});
+
+	it('keeps zero-demand horizon evidence finite without a stockout date', () => {
+		const projection = projectSupplySnapshot(
+			projectionSnapshot({ finishedMaterialId: 'bottled-water', demandPerDay: 0 })
+		);
+
+		expect(projection.materials.every((material) => material.daysOfCover === null)).toBe(true);
+		expect(projection.materials.every((material) => material.sevenDay.daysOfCover === null)).toBe(
+			true
+		);
+	});
+
+	it('reports inventory cover before import reliance for an unmapped material', () => {
+		const projection = projectSupplySnapshot(
+			projectionSnapshot({
+				finishedMaterialId: 'unmapped-finished' as MaterialId,
+				inventory: { 'unmapped-finished': 0 } as Partial<Record<MaterialId, number>>
+			})
+		);
+
+		expect(projection.bottleneck).toEqual({
+			kind: 'inventory-cover',
+			materialId: 'unmapped-finished',
+			stockoutDay: 0
+		});
+	});
+
+	it('sorts simultaneous unmapped stockouts by material id', () => {
+		const drinkBottling = PRODUCTION_RECIPES['drink-bottling'];
+		const originalInputs = drinkBottling.inputs;
+
+		try {
+			drinkBottling.inputs = [
+				{ materialId: 'unmapped-z' as MaterialId, quantity: 1 },
+				{ materialId: 'unmapped-a' as MaterialId, quantity: 1 }
+			];
+			const projection = projectSupplySnapshot(
+				projectionSnapshot({
+					finishedMaterialId: 'drinks',
+					buildings: [
+						{
+							id: 'drink-bottling-plant-1',
+							cityId: 'industry-city',
+							typeId: 'drink-bottling-plant',
+							level: 10
+						}
+					],
+					usableBuildingIds: ['drink-bottling-plant-1']
+				})
+			);
+
+			expect(projection.bottleneck).toEqual({
+				kind: 'inventory-cover',
+				materialId: 'unmapped-a',
+				stockoutDay: 0
+			});
+		} finally {
+			drinkBottling.inputs = originalInputs;
+		}
+	});
+
+	it('rejects a cycle introduced after static chain validation during reachability', () => {
+		const waterPumping = PRODUCTION_RECIPES['water-pumping'];
+		const inputsDescriptor = Object.getOwnPropertyDescriptor(waterPumping, 'inputs');
+		if (!inputsDescriptor) throw new Error('Expected water-pumping inputs descriptor');
+		const originalInputs = waterPumping.inputs;
+		let reads = 0;
+
+		try {
+			Object.defineProperty(waterPumping, 'inputs', {
+				configurable: true,
+				get: () => {
+					reads += 1;
+					return reads <= 2 ? originalInputs : [{ materialId: 'filtered-water', quantity: 1 }];
+				}
+			});
+			const game = plannerGame([product('bottled-water')]);
+
+			expect(() =>
+				buildRequiredChainReachability(
+					game,
+					{
+						supplyCityId: 'industry-city',
+						finishedMaterialId: 'filtered-water',
+						demandPerDay: 10,
+						buildings: []
+					},
+					[
+						building('water-filtration-plant', 'water-filtration-plant-1', 'industry-city'),
+						building('water-pump', 'water-pump-1', 'industry-city'),
+						building('warehouse', 'warehouse-1', 'industry-city')
+					]
+				)
+			).toThrow('Cycle detected in required chain reachability');
+		} finally {
+			Object.defineProperty(waterPumping, 'inputs', inputsDescriptor);
+		}
+	});
+
+	it('rejects a non-object planner request at the public boundary', () => {
+		expect(
+			buildSupplyPlannerSnapshot(
+				null as unknown as GameState,
+				null as unknown as SupplyPlannerRequest
+			)
+		).toEqual({ status: 'invalid', reason: 'invalid-request' });
+	});
+
+	it('rejects a configured recipe cycle before reachability traversal', () => {
+		const waterPumping = PRODUCTION_RECIPES['water-pumping'];
+		const originalInputs = waterPumping.inputs;
+
+		try {
+			waterPumping.inputs = [{ materialId: 'water', quantity: 1 }];
+
+			expect(() =>
+				buildRequiredChainReachability(
+					plannerGame(),
+					{
+						supplyCityId: 'industry-city',
+						finishedMaterialId: 'water',
+						demandPerDay: 10,
+						buildings: []
+					},
+					[]
+				)
+			).toThrow('Cycle detected in required chain reachability at water');
+		} finally {
+			waterPumping.inputs = originalInputs;
+		}
+	});
+
+	it('keeps a partial reachability bottleneck deterministic across tied materials and producers', () => {
+		const projection = projectSupplySnapshot(
+			projectionSnapshot({
+				finishedMaterialId: 'pantry',
+				demandPerDay: 10,
+				buildings: [
+					{ id: 'grain-farm-z', cityId: 'industry-city', typeId: 'grain-farm', level: 1 },
+					{ id: 'grain-farm-a', cityId: 'industry-city', typeId: 'grain-farm', level: 1 },
+					{ id: 'flour-mill-1', cityId: 'industry-city', typeId: 'flour-mill', level: 1 },
+					{ id: 'pantry-works-1', cityId: 'industry-city', typeId: 'pantry-works', level: 1 }
+				],
+				usableBuildingIds: ['grain-farm-z', 'grain-farm-a', 'flour-mill-1', 'pantry-works-1'],
+				reachableDemandByMaterial: { grain: 5, flour: 5 }
+			})
+		);
+
+		expect(projection.bottleneck).toEqual({
+			kind: 'rail-disconnected',
+			buildingId: 'grain-farm-a',
+			materialId: 'grain'
+		});
+	});
+
+	it('reports a missing producer recipe when the catalog loses a supported finished material', () => {
+		const producerRecipes = MATERIAL_PRODUCER_RECIPES as Map<MaterialId, ProductionRecipeId>;
+		const originalRecipeId = producerRecipes.get('bottled-water');
+
+		try {
+			producerRecipes.delete('bottled-water');
+
+			expect(
+				buildSupplyPlannerSnapshot(plannerGame(), {
+					retailCityId: 'harbor-city',
+					categoryId: 'bottled-water'
+				})
+			).toEqual({ status: 'unsupported', reason: 'missing-producer-recipe' });
+		} finally {
+			if (originalRecipeId) producerRecipes.set('bottled-water', originalRecipeId);
+		}
+	});
+
 	it('ignores outputs from buildings producing materials outside the required chain', () => {
 		// A water-pump in the pantry chain produces 'water', which is not
 		// in the pantry required materials (pantry → flour → grain).
