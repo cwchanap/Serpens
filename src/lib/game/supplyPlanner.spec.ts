@@ -734,6 +734,69 @@ describe('supply planner snapshot', () => {
 		expect(waterRow.usableCapacityPerDay).toBe(90);
 	});
 
+	it('allocates shared producer capacity optimally across branches via max-flow', () => {
+		// A shared pump (A) reaches both filtration and syrup branches,
+		// while specialists B (filtration only) and C (syrup only) each
+		// reach a single branch. Each pump produces 40/day; each branch
+		// demands 50/day. The old greedy heuristic sorted branches
+		// alphabetically and consumed A's capacity on filtration first,
+		// giving 90 (filtration 50, syrup 40). The max-flow allocator
+		// routes B→filtration and splits A across both, achieving 100.
+		const snapshot = projectionSnapshot({
+			finishedMaterialId: 'drinks',
+			demandPerDay: 100,
+			buildings: [
+				{ id: 'pump-a', cityId: 'industry-city', typeId: 'water-pump', level: 1 },
+				{ id: 'pump-b', cityId: 'industry-city', typeId: 'water-pump', level: 1 },
+				{ id: 'pump-c', cityId: 'industry-city', typeId: 'water-pump', level: 1 },
+				{
+					id: 'filtration-1',
+					cityId: 'industry-city',
+					typeId: 'water-filtration-plant',
+					level: 1
+				},
+				{ id: 'syrup-1', cityId: 'industry-city', typeId: 'syrup-plant', level: 1 },
+				{
+					id: 'bottling-1',
+					cityId: 'industry-city',
+					typeId: 'drink-bottling-plant',
+					level: 1
+				},
+				{ id: 'warehouse-1', cityId: 'industry-city', typeId: 'warehouse', level: 1 }
+			],
+			usableBuildingIds: [
+				'pump-a',
+				'pump-b',
+				'pump-c',
+				'filtration-1',
+				'syrup-1',
+				'bottling-1',
+				'warehouse-1'
+			],
+			reachableDemandByMaterial: { water: 100 },
+			reachableDemandByBuildingAndMaterial: {
+				'pump-a\u0000water': 100,
+				'pump-b\u0000water': 50,
+				'pump-c\u0000water': 50
+			},
+			reachableBranchesByBuildingAndMaterial: {
+				'pump-a\u0000water': new Map([
+					['filtered-water', 50],
+					['syrup', 50]
+				]),
+				'pump-b\u0000water': new Map([['filtered-water', 50]]),
+				'pump-c\u0000water': new Map([['syrup', 50]])
+			}
+		});
+		const projection = projectSupplySnapshot(snapshot);
+		const waterRow = projection.materials.find((m) => m.materialId === 'water')!;
+
+		// Max-flow: B→filtration(40)+A→filtration(10)=50,
+		// A→syrup(30)+C→syrup(20)=50. Total 100.
+		// Old greedy gave 90 (A wasted on filtration).
+		expect(waterRow.usableCapacityPerDay).toBe(100);
+	});
+
 	it('does not treat disconnected installed output as usable local supply', () => {
 		const snapshot = projectionSnapshot({
 			finishedMaterialId: 'bottled-water',

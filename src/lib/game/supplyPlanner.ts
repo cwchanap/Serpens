@@ -814,60 +814,144 @@ function perProducerCappedCapacity(
 }
 
 /**
- * Greedy per-branch capacity allocation for non-finished materials.
- * Each branch's total allocation is capped at its demand, and each
- * producer's total allocation is capped at its capacity. Branches are
- * processed most-constrained-first (fewest reachable producers) so that
- * branches with limited producer options get priority before shared
- * producers are exhausted. This prevents the overstatement that occurs
- * when multiple producers overlap on one branch and each is credited
- * with that branch's full demand.
+ * Bipartite max-flow capacity allocation for non-finished materials.
+ *
+ * Producer→branch allocation is modelled as a max-flow problem: source →
+ * producers (capacity = daily output), producers → branches (∞ if the
+ * producer can reach the branch), branches → sink (capacity = branch
+ * demand). The max flow is the maximum total usable capacity given
+ * reachability constraints and is optimal — unlike a greedy heuristic
+ * which can undercount when a shared producer is consumed by the
+ * first-sorted branch before a branch-specialist gets priority.
+ *
+ * This producer→branch allocation is separate from the explicitly
+ * excluded rail-cell throughput max-flow (shared-cell rail capacity
+ * remains a planner limitation).
  */
 function allocateCapacityByBranch(
 	usable: readonly SupplyPlannerBuildingSnapshot[],
 	materialId: MaterialId,
 	snapshot: SupplyPlannerSnapshot
 ): number {
-	const producerRemaining = new Map<string, number>();
-	for (const building of usable) {
-		producerRemaining.set(building.id, getMaterialOutputCapacityPerDay([building], materialId));
-	}
+	const producerCaps: number[] = [];
+	const reachableBranchesByProducer: number[][] = [];
+	const branchIds: MaterialId[] = [];
+	const branchDemands: number[] = [];
+	const branchIndex = new Map<MaterialId, number>();
 
-	const branchDemand = new Map<MaterialId, number>();
-	const branchProducers = new Map<MaterialId, string[]>();
 	for (const building of usable) {
+		producerCaps.push(getMaterialOutputCapacityPerDay([building], materialId));
 		const branches =
 			snapshot.reachableBranchesByBuildingAndMaterial?.[`${building.id}\u0000${materialId}`];
-		if (!branches) continue;
-		for (const [branchId, demand] of branches) {
-			branchDemand.set(branchId, demand);
-			const producers = branchProducers.get(branchId) ?? [];
-			producers.push(building.id);
-			branchProducers.set(branchId, producers);
+		const reachable: number[] = [];
+		if (branches) {
+			for (const [branchId, demand] of branches) {
+				let bi = branchIndex.get(branchId);
+				if (bi === undefined) {
+					bi = branchIds.length;
+					branchIds.push(branchId);
+					branchDemands.push(demand);
+					branchIndex.set(branchId, bi);
+				}
+				reachable.push(bi);
+			}
 		}
+		reachableBranchesByProducer.push(reachable);
 	}
 
-	const sortedBranches = [...branchDemand.entries()].sort((a, b) => {
-		const aCount = branchProducers.get(a[0])!.length;
-		const bCount = branchProducers.get(b[0])!.length;
-		return aCount - bCount || compareCodeUnitStrings(a[0], b[0]);
-	});
+	const producerCount = producerCaps.length;
+	const branchCount = branchIds.length;
+	if (producerCount === 0 || branchCount === 0) return 0;
 
-	let total = 0;
-	for (const [branchId, demand] of sortedBranches) {
-		let branchRemaining = demand;
-		const producers = (branchProducers.get(branchId) ?? []).sort(compareCodeUnitStrings);
-		for (const producerId of producers) {
-			if (branchRemaining <= 0) break;
-			const remaining = producerRemaining.get(producerId) ?? 0;
-			if (remaining <= 0) continue;
-			const allocated = Math.min(remaining, branchRemaining);
-			total += allocated;
-			producerRemaining.set(producerId, remaining - allocated);
-			branchRemaining -= allocated;
+	return bipartiteMaxFlow(producerCaps, reachableBranchesByProducer, branchDemands);
+}
+
+interface FlowEdge {
+	to: number;
+	cap: number;
+	rev: FlowEdge;
+}
+
+/**
+ * Edmonds-Karp max-flow over a bipartite producer→branch network.
+ * Source feeds producers (capped by daily output), producers feed the
+ * branches they can reach (uncapped), and branches feed the sink (capped
+ * by demand). Returns the optimal total allocation.
+ */
+function bipartiteMaxFlow(
+	producerCaps: readonly number[],
+	reachableBranchesByProducer: readonly (readonly number[])[],
+	branchDemands: readonly number[]
+): number {
+	const producerCount = producerCaps.length;
+	const branchCount = branchDemands.length;
+	const SOURCE = 0;
+	const SINK = producerCount + branchCount + 1;
+	const nodeCount = producerCount + branchCount + 2;
+	const graph: FlowEdge[][] = Array.from({ length: nodeCount }, () => []);
+
+	const addEdge = (from: number, to: number, cap: number): void => {
+		const fwd: FlowEdge = { to, cap, rev: null! };
+		const bwd: FlowEdge = { to: from, cap: 0, rev: fwd };
+		fwd.rev = bwd;
+		graph[from]!.push(fwd);
+		graph[to]!.push(bwd);
+	};
+
+	for (let i = 0; i < producerCount; i++) {
+		addEdge(SOURCE, i + 1, producerCaps[i]!);
+	}
+	for (let i = 0; i < producerCount; i++) {
+		for (const j of reachableBranchesByProducer[i]!) {
+			addEdge(i + 1, producerCount + 1 + j, Infinity);
 		}
 	}
-	return total;
+	for (let j = 0; j < branchCount; j++) {
+		addEdge(producerCount + 1 + j, SINK, branchDemands[j]!);
+	}
+
+	const EPSILON = 1e-9;
+	let totalFlow = 0;
+
+	for (;;) {
+		const parent: Array<{ node: number; edge: FlowEdge } | null> = new Array(nodeCount).fill(null);
+		const visited = new Array<boolean>(nodeCount).fill(false);
+		visited[SOURCE] = true;
+		const queue: number[] = [SOURCE];
+		let foundSink = false;
+
+		while (queue.length > 0 && !foundSink) {
+			const node = queue.shift()!;
+			for (const edge of graph[node]!) {
+				if (!visited[edge.to] && edge.cap > EPSILON) {
+					visited[edge.to] = true;
+					parent[edge.to] = { node, edge };
+					if (edge.to === SINK) {
+						foundSink = true;
+						break;
+					}
+					queue.push(edge.to);
+				}
+			}
+		}
+		if (!foundSink) break;
+
+		let bottleneck = Infinity;
+		for (let curr = SINK; curr !== SOURCE; ) {
+			const pe = parent[curr]!;
+			bottleneck = Math.min(bottleneck, pe.edge.cap);
+			curr = pe.node;
+		}
+		for (let curr = SINK; curr !== SOURCE; ) {
+			const pe = parent[curr]!;
+			pe.edge.cap -= bottleneck;
+			pe.edge.rev.cap += bottleneck;
+			curr = pe.node;
+		}
+		totalFlow += bottleneck;
+	}
+
+	return totalFlow;
 }
 
 /** Project a ready snapshot using only rail-usable local production capacity. */
