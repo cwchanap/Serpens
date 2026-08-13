@@ -80,10 +80,6 @@
 				? i18n.labels.productCategory(activeCategory.categoryId)
 				: i18n.t('productChainsPanel.ariaLabel')
 	);
-	const canPlanActiveCategory = $derived(
-		activeCategory ? plannerCategoryIds.includes(activeCategory.categoryId) : false
-	);
-
 	function cityName(cityId: string): string {
 		return i18n.labels.worldCity(cityId).name;
 	}
@@ -183,7 +179,7 @@
 				type="button"
 				class="plan-category"
 				aria-label={i18n.t('supplyAdvisor.dialog')}
-				disabled={!canPlanActiveCategory}
+				disabled={!plannerCategoryIds.includes(activeCategory.categoryId)}
 				onclick={() => onPlanCategory(activeCategory.categoryId)}
 			>
 				{i18n.t('supplyAdvisor.title')}

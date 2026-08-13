@@ -69,16 +69,13 @@
 	}
 
 	function actionBuildingName(
-		action: SupplyPlannerAction,
+		action: Exclude<SupplyPlannerAction, { kind: 'none' }>,
 		snapshot: SupplyPlannerSnapshot
 	): string {
 		if (action.kind === 'upgrade-building' || action.kind === 'connect-rail') {
 			return buildingName(snapshot, action.buildingId);
 		}
-		if (action.kind === 'build-producer' || action.kind === 'build-warehouse') {
-			return i18n.labels.industrialBuilding(action.buildingTypeId);
-		}
-		return '';
+		return i18n.labels.industrialBuilding(action.buildingTypeId);
 	}
 
 	function actionLabel(action: SupplyPlannerAction, snapshot: SupplyPlannerSnapshot): string {
