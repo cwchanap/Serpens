@@ -375,8 +375,10 @@ function producerCandidates(
 	}
 	const candidates: SupplyPlannerCandidate[] = [];
 	let hasAdditionalProducerBuilds = false;
+	let railBlocked = false;
 	const allowedPlacements = availability.allowedIndustrialPlacements ?? null;
 	const isFinished = MATERIALS[materialId]?.kind === 'finished';
+	const canBuildRail = availability.canBuildRail;
 	for (const buildingType of allowedTypes) {
 		const placement = findPlacementChoice(
 			game,
@@ -391,7 +393,7 @@ function producerCandidates(
 		// and pick the candidate with the strongest projection. This
 		// prevents the planner from stopping at the first rail-ready tile
 		// when a different placement class reaches an under-served branch.
-		const tilesToEvaluate =
+		const allTiles =
 			placement.representativeTiles.length > 0
 				? placement.representativeTiles
 				: [
@@ -402,6 +404,19 @@ function producerCandidates(
 							reachableSinkIds: []
 						}
 					];
+		// Exclude rail-required placements when rail construction is
+		// restricted — a producer that cannot be connected is not an
+		// actionable recommendation. Rail-ready tiles are unaffected.
+		const tilesToEvaluate = canBuildRail
+			? allTiles
+			: allTiles.filter((tile) => {
+					if (!tile.railReady) {
+						railBlocked = true;
+						return false;
+					}
+					return true;
+				});
+		if (tilesToEvaluate.length === 0) continue;
 
 		let bestCandidate: SupplyPlannerCandidate | null = null;
 		for (const placementTile of tilesToEvaluate) {
@@ -482,7 +497,7 @@ function producerCandidates(
 	}
 	return {
 		candidates,
-		reason: 'no-feasible-action',
+		reason: candidates.length === 0 && railBlocked ? 'action-unavailable' : 'no-feasible-action',
 		hasAdditionalProducerBuilds
 	};
 }
@@ -794,10 +809,15 @@ function findPlacementChoice(
 	const network = buildRailNetwork(city);
 	const budget = createRailBudget(network);
 	const sinkIds = snapshot.usableSinkBuildingIdsByMaterial[materialId] ?? [];
-	const sinkAttach = sinkIds.flatMap((id) => {
+	const sinkAttachById = new Map<string, string[]>();
+	for (const id of sinkIds) {
 		const sink = scopedGame.industrialBuildings.find((building) => building.id === id);
-		return sink ? getBuildingAttachCellKeys(network, sink) : [];
-	});
+		if (sink) {
+			const cells = getBuildingAttachCellKeys(network, sink);
+			if (cells.length > 0) sinkAttachById.set(id, cells);
+		}
+	}
+	const sinkAttach = sinkIds.flatMap((id) => sinkAttachById.get(id) ?? []);
 	// Pre-compute per-sink footprint-adjacent coords (unfiltered — includes
 	// cells that don't currently have rail) for the future rail path check.
 	const sinkAdjacentById = new Map<string, { x: number; y: number }[]>();
@@ -821,12 +841,16 @@ function findPlacementChoice(
 	let validTile: PlacementChoice['validTile'] = null;
 	let railReadyTile: PlacementChoice['railReadyTile'] = null;
 
-	// Collect all valid placement tiles with their rail-ready status and
-	// reachable-sink set, then group by reachable-sink set to pick one
-	// representative per distinct placement class.
+	// Collect all valid placement tiles with their rail-ready status,
+	// current reachable sinks, and future reachable-sink set, then group
+	// by both current and future sink sets to pick one representative per
+	// distinct placement class. Including current sink identity prevents
+	// tiles that currently connect to different sinks from collapsing
+	// into one group when they share the same future reachability.
 	const tileEntries: {
 		coordinate: { id: string; x: number; y: number; mapX: number; mapY: number };
 		railReady: boolean;
+		currentSinkIds: string[];
 		reachableSinkIds: string[];
 	}[] = [];
 
@@ -842,14 +866,21 @@ function findPlacementChoice(
 		const coordinate = { id: tile.id, x: tile.x, y: tile.y, mapX: tile.x, mapY: tile.y };
 		validTile ??= coordinate;
 
+		const currentSinkIds: string[] = [];
 		let railReady = false;
 		if (sinkAttach.length > 0) {
 			const attach = getBuildingAttachCellKeys(network, coordinate);
-			if (findShippingPath(network, budget, attach, sinkAttach)) {
+			if (attach.length > 0 && findShippingPath(network, budget, attach, sinkAttach)) {
 				railReady = true;
 				railReadyTile ??= coordinate;
+				for (const [sinkId, sinkCells] of sinkAttachById) {
+					if (findShippingPath(network, budget, attach, sinkCells)) {
+						currentSinkIds.push(sinkId);
+					}
+				}
 			}
 		}
+		currentSinkIds.sort(compareCodeUnits);
 
 		// Compute the reachable-sink set for this tile by checking which
 		// sinks' reachable cell sets include any of this tile's adjacent
@@ -874,7 +905,7 @@ function findPlacementChoice(
 		}
 		reachableSinkIds.sort(compareCodeUnits);
 
-		tileEntries.push({ coordinate, railReady, reachableSinkIds });
+		tileEntries.push({ coordinate, railReady, currentSinkIds, reachableSinkIds });
 	}
 
 	if (tileEntries.length === 0) {
@@ -890,11 +921,12 @@ function findPlacementChoice(
 		};
 	}
 
-	// Group by reachable-sink set and pick one representative per group.
-	// Prefer rail-ready tiles, then first by tile ID for determinism.
+	// Group by current + future reachable-sink set and pick one
+	// representative per group. Prefer rail-ready tiles, then first by
+	// tile ID for determinism.
 	const groups = new Map<string, typeof tileEntries>();
 	for (const entry of tileEntries) {
-		const key = entry.reachableSinkIds.join(',');
+		const key = `${entry.currentSinkIds.join(',')}|${entry.reachableSinkIds.join(',')}`;
 		const group = groups.get(key) ?? [];
 		group.push(entry);
 		groups.set(key, group);

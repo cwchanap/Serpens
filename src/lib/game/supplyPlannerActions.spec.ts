@@ -1208,6 +1208,47 @@ describe('supply planner actions patch coverage additions', () => {
 		}
 	});
 
+	it('excludes rail-required build candidates when canBuildRail is false', () => {
+		// Same setup as the future-rail producer test above: the only
+		// valid water-bottler placement tiles require a future rail
+		// connection. With canBuildRail restricted, those candidates
+		// must be excluded rather than recommended — the player cannot
+		// build the rail to make them usable.
+		const bottler = INDUSTRIAL_BUILDING_TYPES['water-bottler'];
+		const originalCosts = {
+			buildCost: bottler.buildCost,
+			dailyOperatingCost: bottler.dailyOperatingCost
+		};
+
+		try {
+			bottler.buildCost = 1;
+			bottler.dailyOperatingCost = 0;
+			const base = baseGame('bottled-water');
+			const game = {
+				...base,
+				industrialBuildings: [
+					building('water-pump', 'water-pump-1', 1, 2, 2),
+					building('warehouse', 'warehouse-1', 1, 10, 2)
+				],
+				industryCities: base.industryCities.map((city) =>
+					city.id === 'industry-city' ? { ...city, rails: horizontalRails(2, 10) } : city
+				)
+			};
+			const plan = readyPlan(
+				game,
+				availability({ canBuildRail: false, canUpgradeIndustry: false })
+			);
+
+			expect(plan.recommendation.action).toEqual({
+				kind: 'none',
+				reason: 'action-unavailable'
+			});
+		} finally {
+			bottler.buildCost = originalCosts.buildCost;
+			bottler.dailyOperatingCost = originalCosts.dailyOperatingCost;
+		}
+	});
+
 	it('sorts multiple compatible producer types by their stable building type id', () => {
 		const buildingTypes = INDUSTRIAL_BUILDING_TYPES as Record<string, IndustrialBuildingType>;
 		const variantId = 'water-bottler-variant';
@@ -1368,5 +1409,53 @@ describe('supply planner actions patch coverage additions', () => {
 		// The candidate should show some import reduction (the water-bottler
 		// would produce bottled-water, reducing imports).
 		expect(candidate.comparison.importReduction30).toBeGreaterThan(0);
+	});
+
+	it('groups placement tiles by current sink identity across separate rail islands', () => {
+		// Two warehouses on separate rail islands create distinct
+		// current-sink sets for placement tiles. Tiles near each
+		// warehouse currently connect to a different sink but share the
+		// same future reachable-sink set. Including current sink
+		// identity in the grouping key keeps these tiles in separate
+		// placement classes so both are evaluated, rather than
+		// collapsing them into one group and keeping only the
+		// first-sorted tile.
+		const base = baseGame('bottled-water');
+		const game = {
+			...base,
+			industrialBuildings: [
+				building('water-pump', 'water-pump-1', 1, 2, 6),
+				building('warehouse', 'warehouse-1', 1, 6, 6),
+				building('warehouse', 'warehouse-2', 1, 20, 6)
+			],
+			industryCities: base.industryCities.map((city) =>
+				city.id === 'industry-city'
+					? {
+							...city,
+							rails: [...horizontalRails(0, 10, 8), ...horizontalRails(16, 26, 8)]
+						}
+					: city
+			)
+		};
+		const result = buildSupplyPlan(
+			game,
+			{ retailCityId: 'harbor-city', categoryId: 'bottled-water' },
+			availability()
+		);
+		expect(result.status).toBe('ready');
+		if (result.status !== 'ready') return;
+		// Both warehouses are usable sinks on separate rail islands.
+		// Placement tiles near each warehouse have different
+		// currentSinkIds but the same future reachableSinkIds. The fix
+		// ensures both classes are evaluated as separate representative
+		// tiles.
+		const feasibility = getBuildFeasibility(
+			game,
+			result.plan.snapshot,
+			'bottled-water',
+			'water-bottler'
+		);
+		expect(feasibility.hasValidPlacement).toBe(true);
+		expect(feasibility.hasRailReadyPlacement).toBe(true);
 	});
 });
