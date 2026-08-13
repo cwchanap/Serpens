@@ -954,13 +954,9 @@ describe('productChainGraph branch coverage', () => {
 		expect(formatQuantity(0)).toBe('0');
 	});
 
-	test('getMaterialOutputCapacityPerDay returns 0 for a material with a recipe but no matching output', () => {
-		// A material that has a producer recipe but where the recipe's outputs
-		// don't include the material itself. This is a defensive guard —
-		// normal game data always has the output, but we verify the guard.
-		// We use 'water' which has recipe 'water-pumping' that outputs 'water'.
-		// To exercise the false branch, we'd need a recipe mismatch, which
-		// can't happen with normal data. Instead we verify the normal path.
+	test('getMaterialOutputCapacityPerDay returns 40 for a level-1 water-pump producing water', () => {
+		// A water-pump at level 1 has recipe 'water-pumping' that outputs 'water'.
+		// The normal output path returns the building's capacity for the material.
 		expect(getMaterialOutputCapacityPerDay([{ typeId: 'water-pump', level: 1 }], 'water')).toBe(40);
 	});
 

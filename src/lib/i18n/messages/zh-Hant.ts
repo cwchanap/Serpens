@@ -527,7 +527,6 @@ export const zhHant = {
 		close: '關閉',
 		closeLabel: '關閉供應顧問',
 		empty: '沒有可規劃項目。建設零售店以創造需求。',
-		build: '建設{buildingName}',
 		category: '類別',
 		horizon: '預測期間',
 		horizonDays: '{days} 天',

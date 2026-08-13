@@ -235,10 +235,12 @@ function makePlan(
 	}
 	if (snapshot.demandPerDay <= 0) return planWithNoop(snapshot, baseline, 'no-demand');
 
+	const scopedGame: GameState = { ...clone(game), activeIndustryCityId: snapshot.supplyCityId };
+
 	const missing = missingProducerMaterials(snapshot);
 	if (missing.length > 0) {
 		const generated = producerCandidates(
-			game,
+			scopedGame,
 			snapshot,
 			baseline,
 			availability,
@@ -261,7 +263,7 @@ function makePlan(
 	}
 
 	if (baseline.bottleneck.kind === 'warehouse-capacity') {
-		const generated = warehouseCandidates(game, snapshot, baseline, availability);
+		const generated = warehouseCandidates(scopedGame, snapshot, baseline, availability);
 		if (generated.candidates.length === 0)
 			return planWithNoop(snapshot, baseline, generated.reason);
 		const affordable = generated.candidates.filter((candidate) => candidate.affordable);
@@ -273,8 +275,20 @@ function makePlan(
 	if (baseline.bottleneck.kind === 'none') return planWithNoop(snapshot, baseline, 'surplus');
 	const targetMaterialId = bottleneckMaterialId(baseline.bottleneck);
 	if (!targetMaterialId) return planWithNoop(snapshot, baseline, 'surplus');
-	const generated = producerCandidates(game, snapshot, baseline, availability, targetMaterialId);
-	const upgrades = upgradeCandidates(game, snapshot, baseline, availability, targetMaterialId);
+	const generated = producerCandidates(
+		scopedGame,
+		snapshot,
+		baseline,
+		availability,
+		targetMaterialId
+	);
+	const upgrades = upgradeCandidates(
+		scopedGame,
+		snapshot,
+		baseline,
+		availability,
+		targetMaterialId
+	);
 	generated.candidates.push(...upgrades.candidates);
 	if (generated.candidates.length === 0) {
 		const reason =
@@ -382,7 +396,7 @@ function producerCandidates(
 				? placement.representativeTiles
 				: [
 						{
-							tile: placement.railReadyTile ?? placement.validTile!,
+							tile: placement.railReadyTile ?? placement.validTile,
 							railReady: placement.railReadyTile !== null,
 							canFutureConnectToSink: placement.canFutureConnectToSink,
 							reachableSinkIds: []
@@ -721,12 +735,13 @@ function addSyntheticProducer(
 		level: 1
 	};
 	candidateSnapshot.buildings = [...candidateSnapshot.buildings, synthetic];
-	const candidateGame = clone(game);
-	candidateGame.activeIndustryCityId = snapshot.supplyCityId;
-	candidateGame.industrialBuildings = [
-		...candidateGame.industrialBuildings,
-		createSyntheticBuilding(candidateId, buildingType.id, tile, snapshot.supplyCityId)
-	];
+	const candidateGame: GameState = {
+		...game,
+		industrialBuildings: [
+			...game.industrialBuildings,
+			createSyntheticBuilding(candidateId, buildingType.id, tile, snapshot.supplyCityId)
+		]
+	};
 	const reachability = buildRequiredChainReachability(
 		candidateGame,
 		candidateSnapshot,
@@ -766,7 +781,12 @@ function findPlacementChoice(
 		canFutureConnectToSink: false,
 		representativeTiles: []
 	};
-	const scopedGame = { ...clone(game), activeIndustryCityId: snapshot.supplyCityId };
+	// The game is already scoped by makePlan; for external callers
+	// (getBuildFeasibility), a shallow copy ensures the right city is active.
+	const scopedGame =
+		game.activeIndustryCityId === snapshot.supplyCityId
+			? game
+			: { ...game, activeIndustryCityId: snapshot.supplyCityId };
 	const city = scopedGame.industryCities.find((row) => row.id === snapshot.supplyCityId);
 	if (!city) return noPlacement;
 	const placement = createIndustrialPlacementContext(scopedGame);

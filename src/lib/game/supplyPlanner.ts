@@ -372,6 +372,7 @@ interface ReachabilityContext {
 	sinksByMaterial: Map<MaterialId, readonly ReachabilityOutput[]>;
 	memo: Map<string, boolean>;
 	visiting: Set<string>;
+	canReachWarehouseCache: Map<string, boolean>;
 }
 
 /**
@@ -431,7 +432,8 @@ export function buildRequiredChainReachability(
 		outputsByMaterial,
 		sinksByMaterial: new Map(),
 		memo: new Map(),
-		visiting: new Set()
+		visiting: new Set(),
+		canReachWarehouseCache: new Map()
 	};
 	const usableBuildingIds = new Set<string>();
 	const disconnectedBuildingIds = new Set<string>();
@@ -601,16 +603,23 @@ function uniqueBuildingIds(outputs: readonly ReachabilityOutput[]): readonly str
  * consumer on separate rail islands.
  */
 function canReachAnyWarehouse(context: ReachabilityContext, building: IndustrialBuilding): boolean {
+	const cached = context.canReachWarehouseCache.get(building.id);
+	if (cached !== undefined) return cached;
 	const fromKeys = context.attachCellsByBuildingId.get(building.id) ?? [];
-	if (fromKeys.length === 0) return false;
+	if (fromKeys.length === 0) {
+		context.canReachWarehouseCache.set(building.id, false);
+		return false;
+	}
 	for (const candidate of context.buildings) {
 		if (candidate.typeId !== 'warehouse' || candidate.id === building.id) continue;
 		const toKeys = context.attachCellsByBuildingId.get(candidate.id) ?? [];
 		if (toKeys.length === 0) continue;
 		if (findShippingPath(context.network, context.budget, fromKeys, toKeys)) {
+			context.canReachWarehouseCache.set(building.id, true);
 			return true;
 		}
 	}
+	context.canReachWarehouseCache.set(building.id, false);
 	return false;
 }
 
