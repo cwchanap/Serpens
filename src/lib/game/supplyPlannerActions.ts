@@ -297,6 +297,17 @@ function chooseProducerPlan(
 		const ranked = sortCandidates(positivePreRail);
 		return { snapshot, baseline, recommendation: ranked[0]!, alternatives };
 	}
+	const unresolvedUnknownRoi = alternatives.filter(
+		(candidate) =>
+			candidate.comparison.requiresRailConnection &&
+			!candidate.comparison.requiresAdditionalProducerBuilds &&
+			candidate.comparison.netCashBenefit30 === null &&
+			candidate.comparison.preRailNetCashBenefit30 === null
+	);
+	if (unresolvedUnknownRoi.length > 0) {
+		const ranked = sortCandidates(unresolvedUnknownRoi);
+		return { snapshot, baseline, recommendation: ranked[0]!, alternatives };
+	}
 	return planWithNoop(snapshot, baseline, 'ineffective', alternatives);
 }
 

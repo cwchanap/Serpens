@@ -490,6 +490,34 @@ describe('supply planner action noop branches', () => {
 			expect(plan.recommendation.action.reason).toBe('ineffective');
 		}
 	});
+
+	it('recommends a non-finished producer with unknown pre-rail ROI instead of labeling it ineffective', () => {
+		// The water-bottler is installed and rail-connected to the warehouse.
+		// The water-pump is missing. The only valid water-pump placement is
+		// on the water-source resource tile, which is far from the rail — so
+		// the candidate requires a future rail connection. Since water is a
+		// non-finished material, preRailRoiUnknown=true and both ROI fields
+		// are null. The candidate should be recommended rather than falling
+		// through to the ineffective noop.
+		const base = baseGame('bottled-water');
+		const game = {
+			...base,
+			cash: 1_000_000,
+			industrialBuildings: [
+				building('water-bottler', 'water-bottler-1', 1, 2, 2),
+				building('warehouse', 'warehouse-1', 1, 6, 2)
+			],
+			industryCities: base.industryCities.map((city) =>
+				city.id === 'industry-city' ? { ...city, rails: horizontalRails(2, 8) } : city
+			)
+		};
+		const plan = readyPlan(game, availability({ canUpgradeIndustry: false }));
+
+		expect(plan.recommendation.action.kind).toBe('build-producer');
+		expect(plan.recommendation.comparison.requiresRailConnection).toBe(true);
+		expect(plan.recommendation.comparison.netCashBenefit30).toBeNull();
+		expect(plan.recommendation.comparison.preRailNetCashBenefit30).toBeNull();
+	});
 });
 
 describe('supply planner action helper coverage', () => {
