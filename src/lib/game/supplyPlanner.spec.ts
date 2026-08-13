@@ -845,6 +845,109 @@ describe('supply planner snapshot', () => {
 		}
 	});
 
+	it('classifies a max-flow topology deficit as rail-disconnected, not production-capacity', () => {
+		// Concrete Drinks case: filtration needs 48 water/day, syrup needs
+		// 7.5 water/day (total 55.5). Pump A (40/day) reaches filtration
+		// only; Pump B (40/day) reaches syrup only. Total installed capacity
+		// is 80 > 55.5, and both branches are individually reachable, but
+		// max-flow usable capacity is only 47.5 (A→filtration 40, B→syrup
+		// 7.5). The missing 8 units are not a production shortage — Pump B
+		// has 32.5 unused capacity that cannot reach filtration. The
+		// bottleneck must be rail-disconnected (connect B to filtration),
+		// not production-capacity (building another pump wastes capital).
+		const snapshot = projectionSnapshot({
+			finishedMaterialId: 'drinks',
+			demandPerDay: 50,
+			buildings: [
+				{ id: 'pump-a', cityId: 'industry-city', typeId: 'water-pump', level: 1 },
+				{ id: 'pump-b', cityId: 'industry-city', typeId: 'water-pump', level: 1 },
+				{
+					id: 'filtration-1',
+					cityId: 'industry-city',
+					typeId: 'water-filtration-plant',
+					level: 1
+				},
+				{ id: 'syrup-1', cityId: 'industry-city', typeId: 'syrup-plant', level: 1 },
+				{
+					id: 'bottling-1',
+					cityId: 'industry-city',
+					typeId: 'drink-bottling-plant',
+					level: 1
+				},
+				{ id: 'warehouse-1', cityId: 'industry-city', typeId: 'warehouse', level: 1 },
+				{ id: 'fruit-farm-1', cityId: 'industry-city', typeId: 'fruit-farm', level: 1 },
+				{ id: 'sugar-farm-1', cityId: 'industry-city', typeId: 'sugar-farm', level: 1 },
+				{
+					id: 'packaging-plant-1',
+					cityId: 'industry-city',
+					typeId: 'packaging-plant',
+					level: 1
+				},
+				{ id: 'pulp-mill-1', cityId: 'industry-city', typeId: 'pulp-mill', level: 1 },
+				{
+					id: 'plastic-plant-1',
+					cityId: 'industry-city',
+					typeId: 'plastic-plant',
+					level: 1
+				},
+				{
+					id: 'pulpwood-grove-1',
+					cityId: 'industry-city',
+					typeId: 'pulpwood-grove',
+					level: 1
+				},
+				{
+					id: 'chemical-feedstock-well-1',
+					cityId: 'industry-city',
+					typeId: 'chemical-feedstock-well',
+					level: 1
+				}
+			],
+			usableBuildingIds: [
+				'pump-a',
+				'pump-b',
+				'filtration-1',
+				'syrup-1',
+				'bottling-1',
+				'warehouse-1',
+				'fruit-farm-1',
+				'sugar-farm-1',
+				'packaging-plant-1',
+				'pulp-mill-1',
+				'plastic-plant-1',
+				'pulpwood-grove-1',
+				'chemical-feedstock-well-1'
+			],
+			reachableDemandByMaterial: {
+				water: 55.5
+			},
+			reachableDemandByBuildingAndMaterial: {
+				'pump-a\u0000water': 48,
+				'pump-b\u0000water': 7.5
+			},
+			reachableBranchesByBuildingAndMaterial: {
+				'pump-a\u0000water': new Map([['filtered-water', 48]]),
+				'pump-b\u0000water': new Map([['syrup', 7.5]])
+			}
+		});
+		const projection = projectSupplySnapshot(snapshot);
+		const waterRow = projection.materials.find((m) => m.materialId === 'water')!;
+
+		// Each pump produces 40/day at level 1, so installed is 80.
+		expect(waterRow.installedCapacityPerDay).toBe(80);
+		// Max-flow: A→filtration 40 (capped by pump capacity) + B→syrup
+		// 7.5 (capped by syrup demand) = 47.5. Pump B's 32.5 residual
+		// cannot reach the filtration branch.
+		expect(waterRow.usableCapacityPerDay).toBe(47.5);
+		// The deficit is connectivity-caused, not a production shortage.
+		expect(projection.bottleneck.kind).toBe('rail-disconnected');
+		if (projection.bottleneck.kind === 'rail-disconnected') {
+			expect(projection.bottleneck.materialId).toBe('water');
+			// Pump B has residual capacity stranded by rail topology.
+			expect(projection.bottleneck.buildingId).toBe('pump-b');
+		}
+	});
+
 	it('prioritizes a missing producer over warehouse and disconnection conditions', () => {
 		const projection = projectSupplySnapshot(
 			projectionSnapshot({

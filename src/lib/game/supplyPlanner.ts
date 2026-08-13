@@ -828,11 +828,29 @@ function perProducerCappedCapacity(
  * excluded rail-cell throughput max-flow (shared-cell rail capacity
  * remains a planner limitation).
  */
+/**
+ * Detailed result of the per-branch capacity allocation. Exposes
+ * per-producer and per-branch flow so the bottleneck classifier can
+ * distinguish a connectivity-caused deficit (a producer has residual
+ * capacity but cannot reach an unsatisfied branch) from a genuine
+ * installed-capacity shortage.
+ */
+interface BranchAllocationResult {
+	totalFlow: number;
+	producerIds: string[];
+	producerCaps: number[];
+	producerFlows: number[];
+	branchIds: MaterialId[];
+	branchDemands: number[];
+	branchFlows: number[];
+}
+
 function allocateCapacityByBranch(
 	usable: readonly SupplyPlannerBuildingSnapshot[],
 	materialId: MaterialId,
 	snapshot: SupplyPlannerSnapshot
-): number {
+): BranchAllocationResult {
+	const producerIds: string[] = [];
 	const producerCaps: number[] = [];
 	const reachableBranchesByProducer: number[][] = [];
 	const branchIds: MaterialId[] = [];
@@ -840,6 +858,7 @@ function allocateCapacityByBranch(
 	const branchIndex = new Map<MaterialId, number>();
 
 	for (const building of usable) {
+		producerIds.push(building.id);
 		producerCaps.push(getMaterialOutputCapacityPerDay([building], materialId));
 		const branches =
 			snapshot.reachableBranchesByBuildingAndMaterial?.[`${building.id}\u0000${materialId}`];
@@ -861,9 +880,28 @@ function allocateCapacityByBranch(
 
 	const producerCount = producerCaps.length;
 	const branchCount = branchIds.length;
-	if (producerCount === 0 || branchCount === 0) return 0;
+	if (producerCount === 0 || branchCount === 0) {
+		return {
+			totalFlow: 0,
+			producerIds,
+			producerCaps,
+			producerFlows: new Array(producerCount).fill(0),
+			branchIds,
+			branchDemands,
+			branchFlows: new Array(branchCount).fill(0)
+		};
+	}
 
-	return bipartiteMaxFlow(producerCaps, reachableBranchesByProducer, branchDemands);
+	const result = bipartiteMaxFlow(producerCaps, reachableBranchesByProducer, branchDemands);
+	return {
+		totalFlow: result.totalFlow,
+		producerIds,
+		producerCaps,
+		producerFlows: result.producerFlows,
+		branchIds,
+		branchDemands,
+		branchFlows: result.branchFlows
+	};
 }
 
 interface FlowEdge {
@@ -873,16 +911,31 @@ interface FlowEdge {
 }
 
 /**
+ * Result of the bipartite max-flow allocation. `producerFlows[i]` is the
+ * actual flow assigned to producer `i` (≤ `producerCaps[i]`), and
+ * `branchFlows[j]` is the actual flow received by branch `j` (≤
+ * `branchDemands[j]`). Used to distinguish connectivity-caused deficits
+ * (a producer has residual capacity but cannot reach an unsatisfied
+ * branch) from genuine production-capacity shortages.
+ */
+interface MaxFlowResult {
+	totalFlow: number;
+	producerFlows: number[];
+	branchFlows: number[];
+}
+
+/**
  * Edmonds-Karp max-flow over a bipartite producer→branch network.
  * Source feeds producers (capped by daily output), producers feed the
  * branches they can reach (uncapped), and branches feed the sink (capped
- * by demand). Returns the optimal total allocation.
+ * by demand). Returns the optimal total allocation plus per-producer and
+ * per-branch flow breakdowns.
  */
 function bipartiteMaxFlow(
 	producerCaps: readonly number[],
 	reachableBranchesByProducer: readonly (readonly number[])[],
 	branchDemands: readonly number[]
-): number {
+): MaxFlowResult {
 	const producerCount = producerCaps.length;
 	const branchCount = branchDemands.length;
 	const SOURCE = 0;
@@ -951,7 +1004,29 @@ function bipartiteMaxFlow(
 		totalFlow += bottleneck;
 	}
 
-	return totalFlow;
+	// Extract per-producer and per-branch flows from residual capacities.
+	// After max-flow, each forward edge's cap = originalCap - flow, so
+	// flow = originalCap - cap.
+	const producerFlows = new Array<number>(producerCount).fill(0);
+	for (let i = 0; i < producerCount; i++) {
+		for (const edge of graph[SOURCE]!) {
+			if (edge.to === i + 1) {
+				producerFlows[i] = producerCaps[i]! - edge.cap;
+				break;
+			}
+		}
+	}
+	const branchFlows = new Array<number>(branchCount).fill(0);
+	for (let j = 0; j < branchCount; j++) {
+		for (const edge of graph[producerCount + 1 + j]!) {
+			if (edge.to === SINK) {
+				branchFlows[j] = branchDemands[j]! - edge.cap;
+				break;
+			}
+		}
+	}
+
+	return { totalFlow, producerFlows, branchFlows };
 }
 
 /** Project a ready snapshot using only rail-usable local production capacity. */
@@ -989,7 +1064,7 @@ export function projectSupplySnapshot(snapshot: SupplyPlannerSnapshot): SupplyPl
 					]
 			);
 			usableCapacityPerDay = hasBranchData
-				? allocateCapacityByBranch(usable, requirement.materialId, snapshot)
+				? allocateCapacityByBranch(usable, requirement.materialId, snapshot).totalFlow
 				: perProducerCappedCapacity(usable, requirement.materialId, snapshot);
 		} else {
 			usableCapacityPerDay = perProducerCappedCapacity(usable, requirement.materialId, snapshot);
@@ -1090,6 +1165,104 @@ function warehouseEvidence(snapshot: SupplyPlannerSnapshot): SupplyWarehouseEvid
 	};
 }
 
+const CONNECTIVITY_EPSILON = 1e-9;
+
+/**
+ * Detects a capacity deficit caused by producer→branch connectivity
+ * rather than a genuine installed-capacity shortage. When total installed
+ * capacity is sufficient (≥ required) but max-flow usable capacity is
+ * below required, the deficit may be caused by an existing producer that
+ * has residual capacity but cannot reach an unsatisfied branch. In that
+ * case the bottleneck is rail-disconnected (connect the producer to the
+ * unsatisfied branch), not production-capacity (build/upgrade a producer).
+ *
+ * Only applies to non-finished materials with per-branch reachability
+ * data, where aggregate reachable demand ≥ required (otherwise the
+ * reachabilityGap check already classifies it).
+ */
+function findConnectivityDeficit(
+	snapshot: SupplyPlannerSnapshot,
+	materials: readonly SupplyMaterialProjection[]
+): { buildingId: string; materialId: MaterialId } | null {
+	const usableIds = new Set(snapshot.usableBuildingIds);
+
+	const candidates = materials
+		.filter((material) => {
+			if (material.requiredPerDay <= 0) return false;
+			if (material.producerRecipeId === null) return false;
+			if (material.buildingCount === 0) return false;
+			// Only applies when installed capacity is sufficient but
+			// usable is not — a genuine production shortage falls through
+			// to the production-capacity classification.
+			if (material.installedCapacityPerDay < material.requiredPerDay - CONNECTIVITY_EPSILON)
+				return false;
+			if (material.usableCapacityPerDay >= material.requiredPerDay - CONNECTIVITY_EPSILON)
+				return false;
+			// Only applies to non-finished materials with branch data
+			// (finished materials use per-producer cap, not branch allocation).
+			const materialKind = MATERIALS[material.materialId]?.kind;
+			if (materialKind === 'finished') return false;
+			const reachable = snapshot.reachableDemandByMaterial[material.materialId];
+			if (reachable === undefined) return false;
+			// If aggregate reachable demand is below required, the
+			// reachabilityGap check already handles it.
+			if (reachable < material.requiredPerDay - CONNECTIVITY_EPSILON) return false;
+			// Check that branch data is available for at least one usable producer.
+			const installed = material.producerRecipeId
+				? buildingsForRecipe(snapshot.buildings, material.producerRecipeId)
+				: [];
+			const usable = installed.filter((building) => usableIds.has(building.id));
+			return usable.some(
+				(building) =>
+					snapshot.reachableBranchesByBuildingAndMaterial?.[
+						`${building.id}\u0000${material.materialId}`
+					]
+			);
+		})
+		.sort(
+			(left, right) =>
+				right.chainDepth - left.chainDepth ||
+				compareCodeUnitStrings(left.materialId, right.materialId)
+		);
+
+	for (const material of candidates) {
+		const installed = material.producerRecipeId
+			? buildingsForRecipe(snapshot.buildings, material.producerRecipeId)
+			: [];
+		const usable = installed.filter((building) => usableIds.has(building.id));
+		const allocation = allocateCapacityByBranch(usable, material.materialId, snapshot);
+
+		// Find a branch with unsatisfied demand, then look for a producer
+		// with residual capacity that cannot reach that branch. That
+		// producer's excess capacity is stranded by rail topology, not by
+		// a production shortage — connecting it to the unsatisfied branch
+		// would close the gap without wasting capital on a new producer.
+		for (let bi = 0; bi < allocation.branchIds.length; bi++) {
+			const unsatisfied = allocation.branchDemands[bi]! - allocation.branchFlows[bi]!;
+			if (unsatisfied <= CONNECTIVITY_EPSILON) continue;
+
+			for (let pi = 0; pi < allocation.producerIds.length; pi++) {
+				const residual = allocation.producerCaps[pi]! - allocation.producerFlows[pi]!;
+				if (residual <= CONNECTIVITY_EPSILON) continue;
+
+				const branches =
+					snapshot.reachableBranchesByBuildingAndMaterial?.[
+						`${allocation.producerIds[pi]}\u0000${material.materialId}`
+					];
+				const canReachBranch = branches?.has(allocation.branchIds[bi]!);
+				if (!canReachBranch) {
+					return {
+						buildingId: allocation.producerIds[pi]!,
+						materialId: material.materialId
+					};
+				}
+			}
+		}
+	}
+
+	return null;
+}
+
 function primaryBottleneck(
 	snapshot: SupplyPlannerSnapshot,
 	materials: readonly SupplyMaterialProjection[],
@@ -1175,6 +1348,20 @@ function primaryBottleneck(
 				materialId: reachabilityGap.materialId
 			};
 		}
+	}
+
+	// After max-flow, distinguish a connectivity-caused deficit (installed
+	// capacity ≥ required but usable < required because an existing producer
+	// with residual capacity cannot reach an unsatisfied branch) from a
+	// genuine production-capacity shortage. Building/upgrading a producer
+	// wastes capital when connecting the stranded producer would close the gap.
+	const connectivityDeficit = findConnectivityDeficit(snapshot, materials);
+	if (connectivityDeficit) {
+		return {
+			kind: 'rail-disconnected',
+			buildingId: connectivityDeficit.buildingId,
+			materialId: connectivityDeficit.materialId
+		};
 	}
 
 	const capacityDeficit = [...materials]

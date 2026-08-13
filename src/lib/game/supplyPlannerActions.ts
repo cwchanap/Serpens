@@ -244,7 +244,8 @@ function makePlan(
 			snapshot,
 			baseline,
 			availability,
-			missing[0]!.materialId
+			missing[0]!.materialId,
+			missing.length > 1
 		);
 		return chooseProducerPlan(snapshot, baseline, generated, true);
 	}
@@ -358,7 +359,8 @@ function producerCandidates(
 	snapshot: SupplyPlannerSnapshot,
 	baseline: SupplyPlanProjection,
 	availability: SupplyPlannerActionAvailability,
-	materialId: MaterialId
+	materialId: MaterialId,
+	structuralChainIncomplete = false
 ): GeneratedCandidates {
 	const recipeId = getProducerRecipeId(materialId);
 	if (!recipeId || !availability.canBuildIndustry) {
@@ -407,15 +409,24 @@ function producerCandidates(
 		// Exclude rail-required placements when rail construction is
 		// restricted — a producer that cannot be connected is not an
 		// actionable recommendation. Rail-ready tiles are unaffected.
-		const tilesToEvaluate = canBuildRail
-			? allTiles
-			: allTiles.filter((tile) => {
-					if (!tile.railReady) {
-						railBlocked = true;
-						return false;
-					}
-					return true;
-				});
+		//
+		// Exception: when the chain is structurally incomplete (downstream
+		// producers are also missing), no placement can be rail-ready yet
+		// because there is no usable downstream sink. The upstream build is
+		// still a valid structural prerequisite — whether new rail will
+		// eventually be needed cannot be determined until the downstream
+		// building exists. Skip the filter in that case so the planner can
+		// still recommend the next prerequisite build.
+		const tilesToEvaluate =
+			canBuildRail || structuralChainIncomplete
+				? allTiles
+				: allTiles.filter((tile) => {
+						if (!tile.railReady) {
+							railBlocked = true;
+							return false;
+						}
+						return true;
+					});
 		if (tilesToEvaluate.length === 0) continue;
 
 		let bestCandidate: SupplyPlannerCandidate | null = null;
@@ -1051,20 +1062,59 @@ function sortCandidates(candidates: readonly SupplyPlannerCandidate[]): SupplyPl
 }
 
 /**
+ * Viability tier for a candidate, matching the priority order used by
+ * `chooseProducerPlan`'s final ranking. Higher tier = higher priority.
+ *
+ * 4 — positive complete: netCashBenefit30 > 0 (rail-ready, profitable)
+ * 3 — positive pre-rail: preRailNetCashBenefit30 > 0 (future-rail, profitable pre-rail)
+ * 2 — unresolved unknown: requires rail, no additional builds, ROI unknown
+ * 1 — known non-positive / structural: everything else
+ *
+ * Using these tiers in `compareCandidates` (instead of completeness-first)
+ * ensures the per-building-type placement selection doesn't discard a
+ * viable unknown-ROI rail candidate in favor of a known-negative
+ * rail-ready candidate.
+ */
+function viabilityTier(candidate: SupplyPlannerCandidate): number {
+	const {
+		netCashBenefit30,
+		preRailNetCashBenefit30,
+		requiresRailConnection,
+		requiresAdditionalProducerBuilds
+	} = candidate.comparison;
+	if (netCashBenefit30 !== null && netCashBenefit30 > 0) return 4;
+	if (netCashBenefit30 === null && preRailNetCashBenefit30 !== null && preRailNetCashBenefit30 > 0)
+		return 3;
+	if (
+		netCashBenefit30 === null &&
+		preRailNetCashBenefit30 === null &&
+		requiresRailConnection &&
+		!requiresAdditionalProducerBuilds
+	)
+		return 2;
+	return 1;
+}
+
+/**
  * Returns negative if `left` ranks higher than `right`, positive if `right`
  * ranks higher, and 0 if they are tied. Used by `sortCandidates` for the
  * final ranking and by `producerCandidates` to pick the best placement
  * tile for a given building type.
+ *
+ * Ranks by viability tier first (positive complete → positive pre-rail →
+ * unresolved unknown → known non-positive), then by benefit within tier,
+ * then by secondary criteria. This keeps the per-type selection
+ * consistent with `chooseProducerPlan`'s final ranking.
  */
 function compareCandidates(left: SupplyPlannerCandidate, right: SupplyPlannerCandidate): number {
-	const leftComplete = left.comparison.netCashBenefit30 !== null ? 1 : 0;
-	const rightComplete = right.comparison.netCashBenefit30 !== null ? 1 : 0;
+	const leftTier = viabilityTier(left);
+	const rightTier = viabilityTier(right);
 	const leftBenefit =
 		left.comparison.netCashBenefit30 ?? left.comparison.preRailNetCashBenefit30 ?? -Infinity;
 	const rightBenefit =
 		right.comparison.netCashBenefit30 ?? right.comparison.preRailNetCashBenefit30 ?? -Infinity;
 	return (
-		rightComplete - leftComplete ||
+		rightTier - leftTier ||
 		rightBenefit - leftBenefit ||
 		right.comparison.shortageReduction30 - left.comparison.shortageReduction30 ||
 		right.comparison.shortageReduction7 - left.comparison.shortageReduction7 ||

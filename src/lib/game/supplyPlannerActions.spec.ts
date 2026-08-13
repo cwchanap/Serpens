@@ -84,6 +84,14 @@ function horizontalRails(fromX: number, toX: number, y = 4) {
 	}));
 }
 
+function verticalRails(fromY: number, toY: number, x = 2, level = 1) {
+	return Array.from({ length: toY - fromY + 1 }, (_, index) => ({
+		x,
+		y: fromY + index,
+		level
+	}));
+}
+
 function route(overrides: Partial<RecurringRoute> = {}): RecurringRoute {
 	return {
 		id: 'route-water',
@@ -199,6 +207,27 @@ describe('supply planner actions', () => {
 		expect(plan.recommendation.comparison.requiresAdditionalProducerBuilds).toBe(true);
 		expect(plan.recommendation.comparison.preRailNetCashBenefit30).toBeNull();
 		expect(plan.recommendation.comparison.netCashBenefit30).toBeNull();
+	});
+
+	it('recommends a structural prerequisite build even when canBuildRail is false', () => {
+		// With the default empty Pantry chain, Grain is selected first while
+		// Flour Mill and Pantry Works are still missing. There is no usable
+		// downstream Grain sink yet, so by definition no Grain Farm placement
+		// can be railReady. With canBuildRail: false, the planner must still
+		// recommend Grain Farm as the next structural prerequisite — whether
+		// new rail will eventually be needed cannot be determined until the
+		// downstream building exists.
+		const plan = readyPlan(pantryGame(), availability({ canBuildRail: false }));
+
+		expect(plan.baseline.bottleneck).toMatchObject({
+			kind: 'missing-producer',
+			materialId: 'grain'
+		});
+		expect(plan.recommendation.action).toMatchObject({
+			kind: 'build-producer',
+			materialId: 'grain'
+		});
+		expect(plan.recommendation.comparison.requiresAdditionalProducerBuilds).toBe(true);
 	});
 
 	it('does not recommend a scenario-disallowed building type', () => {
@@ -561,6 +590,70 @@ describe('supply planner action noop branches', () => {
 		expect(plan.recommendation.comparison.requiresRailConnection).toBe(true);
 		expect(plan.recommendation.comparison.netCashBenefit30).toBeNull();
 		expect(plan.recommendation.comparison.preRailNetCashBenefit30).toBeNull();
+	});
+
+	it('preserves a future-rail unknown-ROI placement class over a rail-ready known-negative one', () => {
+		// Issue 3 regression: when the same building type has two placement
+		// classes — one rail-ready with known-negative netCashBenefit30 and
+		// one future-rail with unknown preRailNetCashBenefit30 (null) — the
+		// per-building-type selection must not discard the unknown-ROI
+		// candidate in favor of the known-negative one. The viability tier
+		// (unresolved unknown > known non-positive) must drive selection,
+		// not completeness (complete > incomplete).
+		//
+		// Setup: pantry chain with grain-farm and pantry-works connected to
+		// a warehouse via rail, but NO flour-mill. Flour is an intermediate
+		// material, so a future-rail flour-mill placement has
+		// preRailNetCashBenefit30 = null (preRailRoiUnknown = true). A
+		// rail-ready flour-mill placement has netCashBenefit30 computed and
+		// negative (high buildCost + operating costs exceed import savings).
+		// The planner must recommend the future-rail candidate (unresolved
+		// unknown ROI) rather than falling through to ineffective.
+		const base = baseGame('pantry', 'grocery');
+		const game = {
+			...base,
+			cash: 100_000,
+			industrialBuildings: [
+				building('grain-farm', 'grain-farm-1', 1, 2, 2),
+				building('pantry-works', 'pantry-works-1', 1, 32, 20),
+				building('warehouse', 'warehouse-1', 1, 40, 20)
+			],
+			industryCities: base.industryCities.map((city) =>
+				city.id === 'industry-city'
+					? {
+							...city,
+							rails: [...verticalRails(4, 22, 2), ...horizontalRails(2, 42, 22)]
+						}
+					: city
+			)
+		};
+		const plan = readyPlan(
+			game,
+			availability({
+				allowedIndustryBuildingTypeIds: ['grain-farm', 'flour-mill', 'pantry-works', 'warehouse'],
+				canUpgradeIndustry: false
+			})
+		);
+
+		// The bottleneck is the missing flour-mill (intermediate, depth 1).
+		expect(plan.baseline.bottleneck).toMatchObject({
+			kind: 'missing-producer',
+			materialId: 'flour'
+		});
+
+		// The recommendation must be a build-producer for flour, not an
+		// ineffective noop. The future-rail placement class (unknown ROI,
+		// tier 2) must be selected over the rail-ready placement class
+		// (known negative ROI, tier 1).
+		expect(plan.recommendation.action).toMatchObject({
+			kind: 'build-producer',
+			materialId: 'flour',
+			buildingTypeId: 'flour-mill'
+		});
+		expect(plan.recommendation.comparison.requiresRailConnection).toBe(true);
+		expect(plan.recommendation.comparison.netCashBenefit30).toBeNull();
+		expect(plan.recommendation.comparison.preRailNetCashBenefit30).toBeNull();
+		expect(plan.recommendation.comparison.requiresAdditionalProducerBuilds).toBe(false);
 	});
 });
 
