@@ -626,6 +626,51 @@ describe('supply planner snapshot', () => {
 		expect(pumpBCap).toBeLessThan(aggregateCap);
 	});
 
+	it('does not credit aggregate capacity beyond reachable branch demand when producers overlap', () => {
+		// Two water pumps on the SAME rail island, both reaching the
+		// filtration branch. Neither can reach the syrup branch (which is
+		// alone on a separate island). Each pump individually is capped at
+		// the filtration branch demand, but without an aggregate clamp the
+		// projection sums both caps — crediting 2× the filtration demand
+		// even though only 1× can be consumed there.
+		const base = plannerGame([product('drinks', { targetStock: 90, sellingPrice: 4 })], {
+			industrialBuildings: [
+				building('water-pump', 'water-pump-a', 'industry-city', 1, 2, 2),
+				building('water-pump', 'water-pump-b', 'industry-city', 1, 2, 3),
+				building('water-filtration-plant', 'water-filtration-1', 'industry-city', 1, 2, 5),
+				building('drink-bottling-plant', 'drink-bottling-1', 'industry-city', 1, 2, 8),
+				building('warehouse', 'warehouse-1', 'industry-city', 1, 2, 11),
+				building('syrup-plant', 'syrup-plant-1', 'industry-city', 1, 2, 17)
+			]
+		});
+		const game = {
+			...base,
+			industryCities: base.industryCities.map((city) =>
+				city.id === 'industry-city'
+					? { ...city, rails: [...verticalRails(1, 12), ...verticalRails(16, 22)] }
+					: city
+			)
+		};
+		const result = buildSupplyPlannerSnapshot(game, {
+			retailCityId: 'harbor-city',
+			categoryId: 'drinks'
+		});
+
+		expect(result.status).toBe('ready');
+		if (result.status !== 'ready') return;
+		expect(result.snapshot.usableBuildingIds).toContain('water-pump-a');
+		expect(result.snapshot.usableBuildingIds).toContain('water-pump-b');
+
+		const projection = projectSupplySnapshot(result.snapshot);
+		const waterRow = projection.materials.find((m) => m.materialId === 'water')!;
+
+		expect(waterRow.installedCapacityPerDay).toBe(80);
+		const aggregateReachable = result.snapshot.reachableDemandByMaterial.water!;
+		expect(aggregateReachable).toBeGreaterThan(0);
+		expect(aggregateReachable).toBeLessThan(waterRow.requiredPerDay);
+		expect(waterRow.usableCapacityPerDay).toBeLessThanOrEqual(aggregateReachable);
+	});
+
 	it('does not treat disconnected installed output as usable local supply', () => {
 		const snapshot = projectionSnapshot({
 			finishedMaterialId: 'bottled-water',
@@ -643,6 +688,35 @@ describe('supply planner snapshot', () => {
 		expect(row.usableCapacityPerDay).toBe(0);
 		expect(row.thirtyDay.importRequiredUnits).toBeGreaterThan(0);
 		expect(projection.bottleneck.kind).toBe('rail-disconnected');
+	});
+
+	it('classifies a partial reachability gap as rail topology before production capacity', () => {
+		// Simulates a state where an installed material (water) has usable
+		// producers (so none appear in the disconnected set) but the
+		// aggregate reachable demand is below the required daily amount.
+		// The bottleneck must be rail-disconnected — recommending a rail
+		// connection from an existing producer — not production-capacity,
+		// because adding more capacity would not close the gap.
+		const snapshot = projectionSnapshot({
+			finishedMaterialId: 'bottled-water',
+			demandPerDay: 10,
+			buildings: [
+				{ id: 'water-pump-1', cityId: 'industry-city', typeId: 'water-pump', level: 1 },
+				{ id: 'water-bottler-1', cityId: 'industry-city', typeId: 'water-bottler', level: 1 }
+			],
+			usableBuildingIds: ['water-pump-1', 'water-bottler-1'],
+			disconnectedBuildingIds: [],
+			reachableDemandByMaterial: { water: 5 },
+			reachableDemandByBuildingAndMaterial: { 'water-pump-1\u0000water': 5 }
+		});
+		const projection = projectSupplySnapshot(snapshot);
+		const waterRow = projection.materials.find((m) => m.materialId === 'water')!;
+		expect(waterRow.usableCapacityPerDay).toBeLessThan(waterRow.requiredPerDay);
+		expect(projection.bottleneck.kind).toBe('rail-disconnected');
+		if (projection.bottleneck.kind === 'rail-disconnected') {
+			expect(projection.bottleneck.materialId).toBe('water');
+			expect(projection.bottleneck.buildingId).toBe('water-pump-1');
+		}
 	});
 
 	it('prioritizes a missing producer over warehouse and disconnection conditions', () => {

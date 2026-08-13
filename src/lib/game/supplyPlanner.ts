@@ -786,6 +786,10 @@ export function projectSupplySnapshot(snapshot: SupplyPlannerSnapshot): SupplyPl
 			usableCapacityPerDay +=
 				cap !== undefined ? Math.min(buildingCapacity, cap) : buildingCapacity;
 		}
+		const aggregateReachable = snapshot.reachableDemandByMaterial[requirement.materialId];
+		if (aggregateReachable !== undefined) {
+			usableCapacityPerDay = Math.min(usableCapacityPerDay, aggregateReachable);
+		}
 		const stockoutDay = projectedStockoutDay(
 			requirement.requiredPerDay,
 			usableCapacityPerDay,
@@ -940,6 +944,33 @@ function primaryBottleneck(
 			buildingId: disconnectedCandidate.buildingId,
 			materialId: disconnectedCandidate.material.materialId
 		};
+	}
+
+	const reachabilityGap = [...materials]
+		.filter((material) => {
+			if (material.requiredPerDay <= 0) return false;
+			if (material.producerRecipeId === null) return false;
+			if (material.buildingCount === 0) return false;
+			const reachable = snapshot.reachableDemandByMaterial[material.materialId];
+			if (reachable === undefined) return false;
+			return reachable < material.requiredPerDay;
+		})
+		.sort(
+			(left, right) =>
+				right.chainDepth - left.chainDepth ||
+				compareCodeUnitStrings(left.materialId, right.materialId)
+		)[0];
+	if (reachabilityGap) {
+		const origin = buildingsForMaterial(snapshot, reachabilityGap.materialId)
+			.filter((building) => snapshot.usableBuildingIds.includes(building.id))
+			.sort((left, right) => compareCodeUnitStrings(left.id, right.id))[0];
+		if (origin) {
+			return {
+				kind: 'rail-disconnected',
+				buildingId: origin.id,
+				materialId: reachabilityGap.materialId
+			};
+		}
 	}
 
 	const capacityDeficit = [...materials]
