@@ -920,7 +920,7 @@ describe('SupplyAdvisor branch coverage', () => {
 	});
 });
 
-describe('SupplyAdvisor branch coverage', () => {
+describe('SupplyAdvisor selection and action dispatch', () => {
 	it('renders with null selectedCategoryId to exercise the nullish coalescing branch', async () => {
 		expect.assertions(1);
 		renderPlanner(readyResult(), { selectedCategoryId: null });

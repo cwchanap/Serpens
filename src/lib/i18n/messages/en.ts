@@ -527,7 +527,6 @@ export const en = {
 		close: 'Close',
 		closeLabel: 'Close supply advisor',
 		empty: 'Nothing to plan — build a retail store to create demand.',
-		build: 'Build {buildingName}',
 		category: 'Category',
 		horizon: 'Forecast horizon',
 		horizonDays: '{days} days',

@@ -28,6 +28,20 @@ function resolveCatalogValue(catalog: unknown, key: string): unknown {
 		);
 }
 
+function collectLeafPaths(obj: unknown, prefix = ''): string[] {
+	if (obj === null || typeof obj !== 'object') return [];
+	const paths: string[] = [];
+	for (const [key, value] of Object.entries(obj)) {
+		const path = prefix ? `${prefix}.${key}` : key;
+		if (value !== null && typeof value === 'object') {
+			paths.push(...collectLeafPaths(value, path));
+		} else {
+			paths.push(path);
+		}
+	}
+	return paths;
+}
+
 describe('locale resolution', () => {
 	it('provides the identical city inventory attribution key set in every supported locale', () => {
 		const keys = [
@@ -105,91 +119,7 @@ describe('locale resolution', () => {
 	});
 
 	it('provides the identical supply planner evidence key set in every supported locale', () => {
-		const keys = [
-			'supplyAdvisor.category',
-			'supplyAdvisor.horizon',
-			'supplyAdvisor.horizonDays',
-			'supplyAdvisor.forecastHorizon',
-			'supplyAdvisor.evidenceLabel',
-			'supplyAdvisor.evidenceKicker',
-			'supplyAdvisor.capacityLabel',
-			'supplyAdvisor.capacityKicker',
-			'supplyAdvisor.capacityTitle',
-			'supplyAdvisor.limitationsLabel',
-			'supplyAdvisor.limitationsTitle',
-			'supplyAdvisor.recommendationLabel',
-			'supplyAdvisor.recommendationKicker',
-			'supplyAdvisor.recommendationTitle',
-			'supplyAdvisor.alternativesLabel',
-			'supplyAdvisor.alternativesTitle',
-			'supplyAdvisor.noOp',
-			'supplyAdvisor.metrics.demand',
-			'supplyAdvisor.metrics.retailImportPrice',
-			'supplyAdvisor.metrics.perDay',
-			'supplyAdvisor.metrics.perUnit',
-			'supplyAdvisor.metrics.warehouse',
-			'supplyAdvisor.metrics.buildings',
-			'supplyAdvisor.metrics.installedCapacity',
-			'supplyAdvisor.metrics.usableCapacity',
-			'supplyAdvisor.metrics.forecastImports',
-			'supplyAdvisor.metrics.startingInventory',
-			'supplyAdvisor.metrics.endingInventory',
-			'supplyAdvisor.metrics.daysOfCover',
-			'supplyAdvisor.metrics.projectedStockout',
-			'supplyAdvisor.metrics.notAvailable',
-			'supplyAdvisor.cities.label',
-			'supplyAdvisor.cities.retail',
-			'supplyAdvisor.cities.supply',
-			'supplyAdvisor.demand.sharedClaimants',
-			'supplyAdvisor.demand.contributor',
-			'supplyAdvisor.demand.clamp',
-			'supplyAdvisor.warehouse.title',
-			'supplyAdvisor.warehouse.capacity',
-			'supplyAdvisor.bottlenecks.missingProducer',
-			'supplyAdvisor.bottlenecks.warehouseCapacity',
-			'supplyAdvisor.bottlenecks.railDisconnected',
-			'supplyAdvisor.bottlenecks.productionCapacity',
-			'supplyAdvisor.bottlenecks.inventoryCover',
-			'supplyAdvisor.bottlenecks.importReliance',
-			'supplyAdvisor.bottlenecks.none',
-			'supplyAdvisor.limitations.activeLogistics',
-			'supplyAdvisor.limitations.railCapacity',
-			'supplyAdvisor.limitations.storeSalesCapacity',
-			'supplyAdvisor.noOpReasons.noDemand',
-			'supplyAdvisor.noOpReasons.surplus',
-			'supplyAdvisor.noOpReasons.unaffordable',
-			'supplyAdvisor.noOpReasons.ineffective',
-			'supplyAdvisor.noOpReasons.noFeasibleAction',
-			'supplyAdvisor.noOpReasons.actionUnavailable',
-			'supplyAdvisor.noOpReasons.logisticsContention',
-			'supplyAdvisor.economics.structuralPrerequisite',
-			'supplyAdvisor.economics.netEstimate',
-			'supplyAdvisor.economics.beforeRail',
-			'supplyAdvisor.economics.unavailable',
-			'supplyAdvisor.economics.actionCost',
-			'supplyAdvisor.economics.railCostPending',
-			'supplyAdvisor.economics.railRequired',
-			'supplyAdvisor.economics.importSavings',
-			'supplyAdvisor.economics.operatingCost',
-			'supplyAdvisor.economics.inputImportCost',
-			'supplyAdvisor.economics.forecastOutcome',
-			'supplyAdvisor.economics.shortageReduction',
-			'supplyAdvisor.economics.afterRailProjection',
-			'supplyAdvisor.candidate.available',
-			'supplyAdvisor.candidate.unaffordable',
-			'supplyAdvisor.candidate.infeasible',
-			'supplyAdvisor.actions.buildProducer',
-			'supplyAdvisor.actions.upgradeBuilding',
-			'supplyAdvisor.actions.buildWarehouse',
-			'supplyAdvisor.actions.connectRail',
-			'supplyAdvisor.actions.noAction',
-			'supplyAdvisor.states.noSupportedProducts',
-			'supplyAdvisor.states.retailCityUnavailable',
-			'supplyAdvisor.states.supplyCityUnavailable',
-			'supplyAdvisor.states.unsupportedCategory',
-			'supplyAdvisor.states.missingProducerRecipe',
-			'supplyAdvisor.states.invalidRequest'
-		];
+		const keys = collectLeafPaths(messagesByLocale.en.supplyAdvisor, 'supplyAdvisor');
 
 		for (const locale of Object.keys(messagesByLocale) as (keyof typeof messagesByLocale)[]) {
 			const catalog = messagesByLocale[locale];

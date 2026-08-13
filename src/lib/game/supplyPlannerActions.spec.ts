@@ -614,6 +614,24 @@ describe('supply planner action helper coverage', () => {
 		expect(feasibility.hasValidPlacement).toBe(true);
 	});
 
+	it('does not mutate the game while checking build feasibility', () => {
+		const game = baseGame('bottled-water');
+		const result = buildSupplyPlan(
+			game,
+			{
+				retailCityId: 'harbor-city',
+				categoryId: 'bottled-water'
+			},
+			availability()
+		);
+		if (result.status !== 'ready') throw new Error('Expected ready plan');
+		const before = structuredClone(game);
+
+		getBuildFeasibility(game, result.plan.snapshot, 'bottled-water', 'water-bottler');
+
+		expect(game).toEqual(before);
+	});
+
 	it('getBuildFeasibility reports no placement when the supply city is missing', () => {
 		const game = baseGame('bottled-water');
 		const result = buildSupplyPlan(
@@ -675,24 +693,22 @@ describe('supply planner action candidate selection branches', () => {
 
 	it('returns no-feasible-action noop when build finds no placement and upgrade is unavailable', () => {
 		// Production-capacity bottleneck with canBuildIndustry=true,
-		// allowedTypes includes the right type, but no valid placement tile
-		// exists. canUpgradeIndustry=false → upgrades.reason='action-unavailable'.
-		// generated.reason='no-feasible-action' → merged='no-feasible-action'.
+		// allowedTypes includes the right type, but allowedIndustrialPlacements
+		// is an empty set so no tile passes the placement filter.
+		// canUpgradeIndustry=false → upgrades.reason='action-unavailable'.
+		// producerCandidates finds zero candidates → generated.reason='no-feasible-action'.
+		// Merged reason: 'no-feasible-action'.
+		expect.assertions(2);
 		const base = baseGame('bottled-water');
-		// Fill many tiles to block placement. The industry city is 28x24.
-		const blockerBuildings = Array.from({ length: 20 }, (_, i) =>
-			building('warehouse', `block-warehouse-${i}`, 1, 2 + i, 4)
-		);
 		const game = {
 			...base,
 			industrialBuildings: [
 				building('water-pump', 'water-pump-1', 1, 2, 2),
 				building('water-bottler', 'water-bottler-1', 1, 6, 2),
-				building('warehouse', 'warehouse-1', 1, 10, 2),
-				...blockerBuildings
+				building('warehouse', 'warehouse-1', 1, 10, 2)
 			],
 			industryCities: base.industryCities.map((city) =>
-				city.id === 'industry-city' ? { ...city, rails: horizontalRails(2, 22) } : city
+				city.id === 'industry-city' ? { ...city, rails: horizontalRails(2, 12) } : city
 			),
 			stores: [
 				{
@@ -705,16 +721,11 @@ describe('supply planner action candidate selection branches', () => {
 			game,
 			availability({
 				canUpgradeIndustry: false,
-				allowedIndustryBuildingTypeIds: ['water-pump', 'water-bottler', 'warehouse']
+				allowedIndustryBuildingTypeIds: ['water-pump', 'water-bottler', 'warehouse'],
+				allowedIndustrialPlacements: new Set()
 			})
 		);
-		// If no valid placement exists, generated.reason='no-feasible-action',
-		// upgrades.reason='action-unavailable' → merged='no-feasible-action'.
-		if (plan.recommendation.action.kind === 'none') {
-			expect(['no-feasible-action', 'action-unavailable', 'ineffective']).toContain(
-				plan.recommendation.action.reason
-			);
-		}
+		expect(plan.recommendation.action).toEqual({ kind: 'none', reason: 'no-feasible-action' });
 	});
 
 	it('generates unique candidate IDs when existing buildings collide with the pattern', () => {

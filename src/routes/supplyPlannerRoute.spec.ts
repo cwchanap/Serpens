@@ -442,12 +442,19 @@ describe('handoffSupplyPlannerAction', () => {
 
 	it('aborts an upgrade action when the building disappears after the city switch', async () => {
 		const game = baseGame();
+		const gameWithBuilding = {
+			...game,
+			industrialBuildings: [
+				...game.industrialBuildings,
+				building('water-pump', 'missing-after-switch')
+			]
+		};
+		let callCount = 0;
 		const host = mockHost({
-			getGame: () => game,
-			switchToSupplyCity: vi.fn(async () => {
-				// Simulate building disappearing after switch by returning a game without the building
-				return true;
-			})
+			getGame: () => {
+				callCount++;
+				return callCount === 1 ? gameWithBuilding : game;
+			}
 		});
 		const action: SupplyPlannerAction = {
 			kind: 'upgrade-building',
@@ -457,19 +464,6 @@ describe('handoffSupplyPlannerAction', () => {
 			fromLevel: 1,
 			toLevel: 2,
 			cost: 500
-		};
-		// The initial getGame finds the building, but after switch it's gone
-		const gameWithBuilding = {
-			...game,
-			industrialBuildings: [
-				...game.industrialBuildings,
-				building('water-pump', 'missing-after-switch')
-			]
-		};
-		let callCount = 0;
-		host.getGame = () => {
-			callCount++;
-			return callCount === 1 ? gameWithBuilding : game;
 		};
 		const result = readyResult(
 			{

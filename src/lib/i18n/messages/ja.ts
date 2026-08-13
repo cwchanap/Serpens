@@ -528,7 +528,6 @@ export const ja = {
 		close: '閉じる',
 		closeLabel: '供給アドバイザーを閉じる',
 		empty: '計画できるものはありません。需要を作るには小売店を建設してください。',
-		build: '{buildingName}を建設',
 		category: 'カテゴリ',
 		horizon: '予測期間',
 		horizonDays: '{days}日',

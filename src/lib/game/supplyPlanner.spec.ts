@@ -1075,12 +1075,11 @@ describe('supply planner bottleneck coverage', () => {
 		}
 	});
 
-	it('classifies import-reliance when capacity covers demand but starting inventory is low', () => {
-		// When usableCapacityPerDay >= requiredPerDay, projectedStockoutDay is null
-		// and importRequiredUnits is 0.  To reach import-reliance we need a material
-		// with no producer recipe (excluded from production-capacity), no stockout
-		// (zero demand), but importRequiredUnits > 0 from a different material.
-		// This is a defensive branch — verify it does not misfire on normal data.
+	it('returns no bottleneck when sufficient capacity covers demand with empty inventory', () => {
+		// With ample producer capacity (level-10 buildings) and demandPerDay=5,
+		// usableCapacityPerDay >= requiredPerDay for every material, so
+		// projectedStockoutDay is null and importRequiredUnits is 0.
+		// The bottleneck classifier must reach the final fallback and return none.
 		const projection = projectSupplySnapshot(
 			projectionSnapshot({
 				finishedMaterialId: 'bottled-water',
@@ -1093,7 +1092,6 @@ describe('supply planner bottleneck coverage', () => {
 				inventory: {}
 			})
 		);
-		// With sufficient capacity, there should be no bottleneck
 		expect(projection.bottleneck).toEqual({ kind: 'none' });
 	});
 });
@@ -1237,10 +1235,10 @@ describe('supply planner snapshot additional coverage', () => {
 		expect(result.snapshot.demandContributors.map((c) => c.retailCityId)).toEqual(['harbor-city']);
 	});
 
-	it('classifies import-reliance bottleneck when capacity exceeds demand but imports remain', () => {
-		// Exercises the import-reliance bottleneck code path (lines 788, 792).
-		// With high capacity and high inventory, the bottleneck should be
-		// 'none' since importRequiredUnits is 0 when capacity >= demand.
+	it('returns no bottleneck when capacity exceeds demand with ample starting inventory', () => {
+		// With high-capacity buildings (level 10) and bottled-water inventory of
+		// 100 against demandPerDay=1, there is no capacity deficit, no projected
+		// stockout, and importRequiredUnits is 0. The bottleneck is none.
 		const projection = projectSupplySnapshot(
 			projectionSnapshot({
 				finishedMaterialId: 'bottled-water',
@@ -1253,7 +1251,7 @@ describe('supply planner snapshot additional coverage', () => {
 				usableBuildingIds: ['water-pump-1', 'water-bottler-1']
 			})
 		);
-		expect(projection.bottleneck).toBeDefined();
+		expect(projection.bottleneck).toEqual({ kind: 'none' });
 	});
 
 	it('sorts claimant cities with non-catalog ids deterministically', () => {
@@ -1547,17 +1545,27 @@ describe('supply planner reachability branch coverage', () => {
 		const inputsDescriptor = Object.getOwnPropertyDescriptor(waterPumping, 'inputs');
 		if (!inputsDescriptor) throw new Error('Expected water-pumping inputs descriptor');
 		const originalInputs = waterPumping.inputs;
-		let reads = 0;
+		const game = plannerGame([product('bottled-water')]);
+		const industryCitiesDescriptor = Object.getOwnPropertyDescriptor(game, 'industryCities');
+		if (!industryCitiesDescriptor) throw new Error('Expected industryCities descriptor');
+		const originalIndustryCities = game.industryCities;
+		let reachabilityStarted = false;
 
 		try {
 			Object.defineProperty(waterPumping, 'inputs', {
 				configurable: true,
+				get: () =>
+					reachabilityStarted ? [{ materialId: 'filtered-water', quantity: 1 }] : originalInputs
+			});
+			Object.defineProperty(game, 'industryCities', {
+				configurable: true,
 				get: () => {
-					reads += 1;
-					return reads <= 2 ? originalInputs : [{ materialId: 'filtered-water', quantity: 1 }];
+					// buildRequiredChainReachability accesses industryCities only after
+					// buildSupplyMaterialRequirements and assertNoRequiredChainCycle.
+					reachabilityStarted = true;
+					return originalIndustryCities;
 				}
 			});
-			const game = plannerGame([product('bottled-water')]);
 
 			expect(() =>
 				buildRequiredChainReachability(
@@ -1574,9 +1582,12 @@ describe('supply planner reachability branch coverage', () => {
 						building('warehouse', 'warehouse-1', 'industry-city')
 					]
 				)
-			).toThrow('Cycle detected in required chain reachability');
+			).toThrow(
+				'Cycle detected in required chain reachability at water-filtration-plant-1\u0000filtered-water'
+			);
 		} finally {
 			Object.defineProperty(waterPumping, 'inputs', inputsDescriptor);
+			Object.defineProperty(game, 'industryCities', industryCitiesDescriptor);
 		}
 	});
 
@@ -1912,13 +1923,13 @@ describe('supply planner reachability branch coverage', () => {
 		expect(materialIds).toContain('grain');
 	});
 
-	it('exercises stockout sort with multiple materials having stockout', () => {
-		// When multiple materials have projectedStockoutDay !== null,
-		// the stockout sort comparator at L915-918 fires. We create a
-		// pantry chain projection with no buildings and no inventory,
-		// so all three materials (pantry, flour, grain) have stockout
-		// day = 0. The sort comparator then orders them by stockout day
-		// and material ID.
+	it('reports missing-producer grain and orders stockout materials by materialId when no buildings exist', () => {
+		// With no buildings and no inventory, every material in the pantry chain
+		// (pantry, flour, grain) has a projected stockout day of 0. The
+		// stockout sort comparator orders them by (stockoutDay ASC, materialId
+		// ASC): flour, grain, pantry. However, the primary bottleneck is
+		// missing-producer for grain (highest chainDepth with a recipe and no
+		// buildings), which takes priority over inventory-cover.
 		const projection = projectSupplySnapshot(
 			projectionSnapshot({
 				demandPerDay: 10,
@@ -1928,17 +1939,21 @@ describe('supply planner reachability branch coverage', () => {
 				usableBuildingIds: []
 			})
 		);
-		// With no capacity and no inventory, the bottleneck should be
-		// 'inventory-cover' (stockout is the first bottleneck after
-		// capacity deficit and rail-disconnected).
-		// Actually, with no buildings, the bottleneck is 'missing-producer'
-		// because there's no producer for any material.
-		// Let's check what the actual bottleneck is.
-		expect(projection.bottleneck).toBeDefined();
-		// Verify multiple materials have stockout projections.
-		const stockoutMaterials = projection.materials.filter(
-			(m) => m.thirtyDay.projectedStockoutDay !== null
-		);
-		expect(stockoutMaterials.length).toBeGreaterThan(1);
+		expect(projection.bottleneck).toEqual({
+			kind: 'missing-producer',
+			materialId: 'grain',
+			chainDepth: 2
+		});
+		// Verify the comparator's ordered materialId values among stockout materials.
+		const stockoutSortedMaterialIds = projection.materials
+			.filter((m) => m.thirtyDay.projectedStockoutDay !== null)
+			.sort(
+				(left, right) =>
+					(left.thirtyDay.projectedStockoutDay ?? Number.POSITIVE_INFINITY) -
+						(right.thirtyDay.projectedStockoutDay ?? Number.POSITIVE_INFINITY) ||
+					left.materialId.localeCompare(right.materialId)
+			)
+			.map((m) => m.materialId);
+		expect(stockoutSortedMaterialIds).toEqual(['flour', 'grain', 'pantry']);
 	});
 });
