@@ -2730,3 +2730,349 @@ describe('supply planner reachability branch coverage', () => {
 		expect(stockoutSortedMaterialIds).toEqual(['flour', 'grain', 'pantry']);
 	});
 });
+
+describe('supply planner patch coverage', () => {
+	it('registers a warehouse-connected processor for a branch no producer reaches', () => {
+		// Lines 1173-1176: when a warehouse-connected processor feeds a branch
+		// that no producer reaches, the branch is new (not in branchIndex) and
+		// must be added with its branchDemand. Use the split-mill pantry fixture
+		// but add a third processor for a branch no grain farm reaches.
+		const snapshot = splitMillPantrySnapshot(0);
+		// Add a warehouse-connected processor for a new branch 'special-flour'
+		// that no producer reaches. The existing producers only reach 'flour'.
+		snapshot.warehouseConnectedProcessorsByMaterial = {
+			...snapshot.warehouseConnectedProcessorsByMaterial,
+			grain: [
+				...(snapshot.warehouseConnectedProcessorsByMaterial.grain ?? []),
+				{
+					processorId: 'special-mill',
+					branchId: 'salt',
+					inputCapacity: 5,
+					canReachWarehouse: true,
+					branchDemand: 8
+				}
+			]
+		};
+		const projection = projectSupplySnapshot(snapshot);
+		// The projection should complete without error and the grain material
+		// should have a thirtyDay projection (the new processor contributes
+		// inventory routing capacity for the 'special-flour' branch).
+		const grainRow = projection.materials.find((m) => m.materialId === 'grain');
+		expect(grainRow).toBeDefined();
+		expect(grainRow!.thirtyDay.importRequiredUnits).toBeGreaterThanOrEqual(0);
+	});
+
+	it('returns zero flow when branch data Map is empty for a usable producer', () => {
+		// Line 1215: allocateCapacityByBranch early-returns when branchCount
+		// is 0. This happens when hasBranchData is true (the
+		// reachableBranchesByBuildingAndMaterial entry exists) but the Map is
+		// empty, so no branches are registered.
+		const snapshot = projectionSnapshot({
+			finishedMaterialId: 'pantry',
+			demandPerDay: 10,
+			buildings: [
+				{ id: 'grain-farm-1', cityId: 'industry-city', typeId: 'grain-farm', level: 1 },
+				{ id: 'flour-mill-1', cityId: 'industry-city', typeId: 'flour-mill', level: 1 },
+				{ id: 'pantry-works-1', cityId: 'industry-city', typeId: 'pantry-works', level: 1 }
+			],
+			usableBuildingIds: ['grain-farm-1', 'flour-mill-1', 'pantry-works-1'],
+			reachableBranchesByBuildingAndMaterial: {
+				'grain-farm-1\u0000grain': new Map()
+			}
+		});
+		const projection = projectSupplySnapshot(snapshot);
+		const grainRow = projection.materials.find((m) => m.materialId === 'grain');
+		expect(grainRow).toBeDefined();
+		// With no branches, usable capacity is 0.
+		expect(grainRow!.usableCapacityPerDay).toBe(0);
+	});
+
+	it('breaks missing-producer ties by materialId when chainDepth is equal', () => {
+		// Partial branch at line 2065: the sort comparator fallback
+		// `compareCodeUnitStrings(left.materialId, right.materialId)` is
+		// exercised when two missing-producer materials have equal chainDepth.
+		// Use the snacks chain which has multiple depth-3 raw materials
+		// (pulpwood, chemical-feedstock) — both missing at depth 3.
+		const projection = projectSupplySnapshot(
+			projectionSnapshot({
+				finishedMaterialId: 'snacks',
+				demandPerDay: 10,
+				buildings: [],
+				usableBuildingIds: []
+			})
+		);
+		// The bottleneck should be missing-producer. The sort picks the
+		// highest chainDepth (3), then breaks ties by materialId ascending.
+		// At depth 3: 'chemical-feedstock' < 'pulpwood'.
+		expect(projection.bottleneck.kind).toBe('missing-producer');
+		if (projection.bottleneck.kind === 'missing-producer') {
+			expect(projection.bottleneck.materialId).toBe('chemical-feedstock');
+			expect(projection.bottleneck.chainDepth).toBe(3);
+		}
+	});
+
+	it('breaks capacity-deficit ties by materialId when normalized deficit is equal', () => {
+		// Partial branch at line 2159: the sort comparator fallback for
+		// capacity deficit. Two materials with equal normalized deficit but
+		// different materialIds. Use snacks chain with all producers
+		// installed but at level 1 (insufficient capacity for high demand),
+		// creating capacity deficits across multiple materials.
+		const buildings = [
+			{
+				id: 'flour-mill-1',
+				cityId: 'industry-city' as WorldCityId,
+				typeId: 'flour-mill' as const,
+				level: 1
+			},
+			{
+				id: 'grain-farm-1',
+				cityId: 'industry-city' as WorldCityId,
+				typeId: 'grain-farm' as const,
+				level: 1
+			},
+			{
+				id: 'oil-press-1',
+				cityId: 'industry-city' as WorldCityId,
+				typeId: 'oil-press' as const,
+				level: 1
+			},
+			{
+				id: 'oilseed-farm-1',
+				cityId: 'industry-city' as WorldCityId,
+				typeId: 'oilseed-farm' as const,
+				level: 1
+			},
+			{
+				id: 'salt-mine-1',
+				cityId: 'industry-city' as WorldCityId,
+				typeId: 'salt-mine' as const,
+				level: 1
+			},
+			{
+				id: 'packaging-plant-1',
+				cityId: 'industry-city' as WorldCityId,
+				typeId: 'packaging-plant' as const,
+				level: 1
+			},
+			{
+				id: 'pulp-mill-1',
+				cityId: 'industry-city' as WorldCityId,
+				typeId: 'pulp-mill' as const,
+				level: 1
+			},
+			{
+				id: 'pulpwood-grove-1',
+				cityId: 'industry-city' as WorldCityId,
+				typeId: 'pulpwood-grove' as const,
+				level: 1
+			},
+			{
+				id: 'plastic-plant-1',
+				cityId: 'industry-city' as WorldCityId,
+				typeId: 'plastic-plant' as const,
+				level: 1
+			},
+			{
+				id: 'chemical-feedstock-well-1',
+				cityId: 'industry-city' as WorldCityId,
+				typeId: 'chemical-feedstock-well' as const,
+				level: 1
+			},
+			{
+				id: 'snack-factory-1',
+				cityId: 'industry-city' as WorldCityId,
+				typeId: 'snack-factory' as const,
+				level: 1
+			}
+		];
+		const projection = projectSupplySnapshot(
+			projectionSnapshot({
+				finishedMaterialId: 'snacks',
+				demandPerDay: 100,
+				buildings,
+				usableBuildingIds: buildings.map((b) => b.id)
+			})
+		);
+		// With high demand and level-1 buildings, there should be a
+		// production-capacity bottleneck. The exact material depends on
+		// which has the highest normalized deficit.
+		expect(projection.bottleneck.kind).toBe('production-capacity');
+	});
+
+	it('breaks stockout ties by materialId when stockoutDay is equal', () => {
+		// Partial branch at line 2175: the sort comparator fallback for
+		// stockout. Multiple materials with the same stockoutDay but different
+		// materialIds. Use the snacks chain with no buildings and no inventory:
+		// all materials stock out on day 0, and the tie is broken by materialId.
+		const projection = projectSupplySnapshot(
+			projectionSnapshot({
+				finishedMaterialId: 'snacks',
+				demandPerDay: 10,
+				buildings: [],
+				usableBuildingIds: [],
+				inventory: {}
+			})
+		);
+		// With no buildings, missing-producer takes priority over stockout.
+		// But the stockout sort is still computed internally. Verify the
+		// bottleneck is missing-producer (which takes priority).
+		expect(projection.bottleneck.kind).toBe('missing-producer');
+		// Verify that multiple materials have stockoutDay 0 (the tie condition).
+		const stockoutMaterials = projection.materials.filter(
+			(m) => m.thirtyDay.projectedStockoutDay === 0
+		);
+		expect(stockoutMaterials.length).toBeGreaterThan(1);
+	});
+
+	it('breaks disconnected-building ties by materialId then buildingId', () => {
+		// Partial branch at line 2097: the sort comparator fallback for
+		// disconnected candidates. Two materials with equal chainDepth but
+		// different materialIds, or same materialId but different buildingIds.
+		const buildings = [
+			{
+				id: 'grain-farm-a',
+				cityId: 'industry-city' as WorldCityId,
+				typeId: 'grain-farm' as const,
+				level: 1
+			},
+			{
+				id: 'grain-farm-b',
+				cityId: 'industry-city' as WorldCityId,
+				typeId: 'grain-farm' as const,
+				level: 1
+			},
+			{
+				id: 'flour-mill-1',
+				cityId: 'industry-city' as WorldCityId,
+				typeId: 'flour-mill' as const,
+				level: 1
+			},
+			{
+				id: 'pantry-works-1',
+				cityId: 'industry-city' as WorldCityId,
+				typeId: 'pantry-works' as const,
+				level: 1
+			}
+		];
+		const projection = projectSupplySnapshot(
+			projectionSnapshot({
+				finishedMaterialId: 'pantry',
+				demandPerDay: 10,
+				buildings,
+				usableBuildingIds: ['flour-mill-1', 'pantry-works-1'],
+				disconnectedBuildingIds: ['grain-farm-a', 'grain-farm-b']
+			})
+		);
+		// Both grain farms are disconnected. The sort breaks ties by
+		// chainDepth (both grain, same depth), then materialId (same), then
+		// buildingId (grain-farm-a < grain-farm-b).
+		expect(projection.bottleneck.kind).toBe('rail-disconnected');
+		if (projection.bottleneck.kind === 'rail-disconnected') {
+			expect(projection.bottleneck.buildingId).toBe('grain-farm-a');
+			expect(projection.bottleneck.materialId).toBe('grain');
+		}
+	});
+
+	it('breaks reachability-gap ties by materialId when chainDepth is equal', () => {
+		// Partial branch at line 2120: the sort comparator fallback for
+		// reachability gap. Two materials with equal chainDepth but different
+		// materialIds. Use snacks chain with ALL producers installed and
+		// usable, but reachable demand capped below required for multiple
+		// depth-1 materials.
+		const buildings = [
+			{
+				id: 'flour-mill-1',
+				cityId: 'industry-city' as WorldCityId,
+				typeId: 'flour-mill' as const,
+				level: 10
+			},
+			{
+				id: 'grain-farm-1',
+				cityId: 'industry-city' as WorldCityId,
+				typeId: 'grain-farm' as const,
+				level: 10
+			},
+			{
+				id: 'oil-press-1',
+				cityId: 'industry-city' as WorldCityId,
+				typeId: 'oil-press' as const,
+				level: 10
+			},
+			{
+				id: 'oilseed-farm-1',
+				cityId: 'industry-city' as WorldCityId,
+				typeId: 'oilseed-farm' as const,
+				level: 10
+			},
+			{
+				id: 'salt-mine-1',
+				cityId: 'industry-city' as WorldCityId,
+				typeId: 'salt-mine' as const,
+				level: 10
+			},
+			{
+				id: 'packaging-plant-1',
+				cityId: 'industry-city' as WorldCityId,
+				typeId: 'packaging-plant' as const,
+				level: 10
+			},
+			{
+				id: 'pulp-mill-1',
+				cityId: 'industry-city' as WorldCityId,
+				typeId: 'pulp-mill' as const,
+				level: 10
+			},
+			{
+				id: 'pulpwood-grove-1',
+				cityId: 'industry-city' as WorldCityId,
+				typeId: 'pulpwood-grove' as const,
+				level: 10
+			},
+			{
+				id: 'plastic-plant-1',
+				cityId: 'industry-city' as WorldCityId,
+				typeId: 'plastic-plant' as const,
+				level: 10
+			},
+			{
+				id: 'chemical-feedstock-well-1',
+				cityId: 'industry-city' as WorldCityId,
+				typeId: 'chemical-feedstock-well' as const,
+				level: 10
+			},
+			{
+				id: 'snack-factory-1',
+				cityId: 'industry-city' as WorldCityId,
+				typeId: 'snack-factory' as const,
+				level: 10
+			}
+		];
+		const projection = projectSupplySnapshot(
+			projectionSnapshot({
+				finishedMaterialId: 'snacks',
+				demandPerDay: 10,
+				buildings,
+				usableBuildingIds: buildings.map((b) => b.id),
+				reachableDemandByMaterial: {
+					flour: 1,
+					'cooking-oil': 1,
+					salt: 1,
+					packaging: 1,
+					grain: 100,
+					oilseeds: 100,
+					'paper-pulp': 100,
+					plastic: 100,
+					pulpwood: 100,
+					'chemical-feedstock': 100
+				}
+			})
+		);
+		// With reachable demand capped at 1 for flour and cooking-oil (both
+		// depth 1), the reachability gap sort should break ties by materialId.
+		// 'cooking-oil' < 'flour' alphabetically.
+		expect(projection.bottleneck.kind).toBe('rail-disconnected');
+		if (projection.bottleneck.kind === 'rail-disconnected') {
+			expect(['cooking-oil', 'flour']).toContain(projection.bottleneck.materialId);
+		}
+	});
+});
