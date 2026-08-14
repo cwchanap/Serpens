@@ -655,6 +655,135 @@ describe('supply planner action noop branches', () => {
 		expect(plan.recommendation.comparison.preRailNetCashBenefit30).toBeNull();
 		expect(plan.recommendation.comparison.requiresAdditionalProducerBuilds).toBe(false);
 	});
+
+	it('returns no-feasible-action when all placements lack a future rail path to any sink', () => {
+		// P1 #2 regression: when rail construction IS available but every
+		// valid placement tile is neither rail-ready nor able to connect to
+		// a usable downstream sink in the future, the planner must return
+		// no-feasible-action — not an unknown-ROI build-producer.
+		//
+		// Setup: pantry chain with Flour Mill and Pantry Works connected to
+		// a warehouse via rail on the industrial side. The Grain Farm is
+		// missing, and the only valid grain-field placement tile is
+		// surrounded by blocked terrain so no future rail path can reach it
+		// from the Flour Mill (the grain sink). With canBuildRail: true,
+		// the old code accepted every valid placement; the fix excludes
+		// placements with no future rail path.
+		const base = baseGame('pantry', 'grocery');
+		const city = base.industryCities.find((c) => c.id === 'industry-city')!;
+		// Block all cells adjacent to the grain-field at (3,3) so no
+		// future rail can reach it from the industrial side.
+		const grainAdjacent = [
+			{ x: 2, y: 3 },
+			{ x: 5, y: 3 },
+			{ x: 2, y: 4 },
+			{ x: 5, y: 4 },
+			{ x: 3, y: 2 },
+			{ x: 4, y: 2 },
+			{ x: 3, y: 5 },
+			{ x: 4, y: 5 }
+		];
+		const modifiedTiles = city.tiles.map((t) => {
+			if (grainAdjacent.some((c) => c.x === t.x && c.y === t.y)) {
+				return { ...t, terrain: 'blocked' as const, locked: true };
+			}
+			return t;
+		});
+		const game = {
+			...base,
+			cash: 100_000,
+			industrialBuildings: [
+				building('flour-mill', 'flour-mill-1', 1, 26, 6),
+				building('pantry-works', 'pantry-works-1', 1, 30, 6),
+				building('warehouse', 'warehouse-1', 1, 34, 6)
+			],
+			industryCities: base.industryCities.map((c) =>
+				c.id === 'industry-city'
+					? {
+							...c,
+							tiles: modifiedTiles,
+							rails: horizontalRails(26, 36, 8)
+						}
+					: c
+			)
+		};
+		const plan = readyPlan(
+			game,
+			availability({
+				canUpgradeIndustry: false,
+				allowedIndustryBuildingTypeIds: ['grain-farm', 'flour-mill', 'pantry-works', 'warehouse']
+			})
+		);
+
+		// The Grain Farm placement is the only valid tile but has no
+		// future rail path to the Flour Mill sink. The planner must return
+		// no-feasible-action, not a build-producer recommendation.
+		expect(plan.recommendation.action).toEqual({ kind: 'none', reason: 'no-feasible-action' });
+	});
+});
+
+describe('supply planner action material-specific structural exception', () => {
+	it('does not treat a missing sibling producer as structural when its downstream sink exists', () => {
+		// P1 #3 regression: Sugar and Water are both missing in the Drinks
+		// chain, but the Syrup Plant (which consumes both) already exists
+		// and is usable. Sugar's downstream sink (Syrup Plant) exists, so
+		// Sugar is NOT a structural prerequisite — even though
+		// missing.length > 1. With canBuildRail: false, the Sugar Farm
+		// placement (which requires rail) must be rejected, not
+		// recommended as a structural prerequisite build.
+		//
+		// The Drinks chain: drinks → filtered-water, syrup, fruit,
+		// packaging. Syrup → sugar, water. Both Sugar Farm and Water Pump
+		// are missing. The Syrup Plant exists and is rail-connected.
+		// The Sugar Farm can only be placed on a sugar-field resource
+		// tile far from rail, so it requires a future rail connection.
+		// With canBuildRail: false, the placement must be filtered out.
+		// The old code used missing.length > 1 as structuralChainIncomplete,
+		// which bypassed the rail gate. The fix checks the selected
+		// material's own downstream sink state.
+		const base = baseGame('drinks', 'convenience');
+		const game = {
+			...base,
+			cash: 100_000,
+			industrialBuildings: [
+				building('syrup-plant', 'syrup-plant-1', 1, 6, 6),
+				building('drink-bottling-plant', 'drink-bottling-1', 1, 10, 6),
+				building('warehouse', 'warehouse-1', 1, 14, 6)
+			],
+			industryCities: base.industryCities.map((city) =>
+				city.id === 'industry-city' ? { ...city, rails: horizontalRails(6, 16, 8) } : city
+			)
+		};
+		const plan = readyPlan(
+			game,
+			availability({
+				canBuildRail: false,
+				canUpgradeIndustry: false,
+				allowedIndustryBuildingTypeIds: [
+					'sugar-farm',
+					'water-pump',
+					'syrup-plant',
+					'drink-bottling-plant',
+					'warehouse',
+					'water-filtration-plant',
+					'fruit-farm'
+				]
+			})
+		);
+
+		// The recommendation must NOT be a build-producer for sugar (or
+		// water) — both require rail and canBuildRail is false, and
+		// neither is structural because the Syrup Plant exists as their
+		// downstream sink.
+		const action = plan.recommendation.action;
+		if (action.kind === 'build-producer') {
+			// If a build-producer is recommended, it must be for a material
+			// whose downstream sink is genuinely missing (structural), not
+			// sugar or water which have the Syrup Plant as their sink.
+			expect(action.materialId).not.toBe('sugar');
+			expect(action.materialId).not.toBe('water');
+		}
+	});
 });
 
 describe('supply planner action helper coverage', () => {
