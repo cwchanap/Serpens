@@ -21,6 +21,7 @@ import { findReachableRailCells } from './railPlacement';
 import { canUpgradeBuilding, getBuildingUpgradeCost } from './leveling';
 import {
 	buildRequiredChainReachability,
+	buildSupplyMaterialRequirements,
 	buildSupplyPlannerSnapshot,
 	projectSupplySnapshot
 } from './supplyPlanner';
@@ -241,12 +242,17 @@ function makePlan(
 	if (missing.length > 0) {
 		const selectedMaterial = missing[0]!.materialId;
 		// Structural-chain exception: bypass rail gating only when the
-		// selected material has no usable downstream sink because its
-		// downstream processing stage is missing. A missing sibling
-		// producer must not make the selected material structural — each
-		// material is evaluated against its own downstream sink state.
-		const sinkIds = snapshot.usableSinkBuildingIdsByMaterial[selectedMaterial] ?? [];
-		const structuralChainIncomplete = sinkIds.length === 0;
+		// selected material's downstream processing stage is genuinely
+		// absent (no installed building consumes it). An installed-but-
+		// rail-disconnected downstream processor must NOT trigger the
+		// exception — the chain is not structurally incomplete, the
+		// producer is merely disconnected, and building the upstream
+		// producer cannot become useful while rail construction is
+		// unavailable. `usableSinkBuildingIdsByMaterial` cannot be used
+		// here: it omits installed processors that are rail-disconnected,
+		// so an empty sink list conflates "stage missing" with "stage
+		// installed but disconnected".
+		const structuralChainIncomplete = isStructuralChainIncomplete(snapshot, selectedMaterial);
 		const generated = producerCandidates(
 			scopedGame,
 			snapshot,
@@ -804,6 +810,8 @@ function addSyntheticProducer(
 		reachability.reachableBranchesByBuildingAndMaterial;
 	candidateSnapshot.reachableProcessorsByBuildingAndMaterial =
 		reachability.reachableProcessorsByBuildingAndMaterial;
+	candidateSnapshot.warehouseConnectedConsumerCapacityByMaterial =
+		reachability.warehouseConnectedConsumerCapacityByMaterial;
 	if (!preferRailReady) {
 		candidateSnapshot.usableBuildingIds = candidateSnapshot.usableBuildingIds.filter(
 			(id) => id !== candidateId
@@ -1165,6 +1173,55 @@ export function actionKey(action: SupplyPlannerAction): string {
 		case 'none':
 			return `none:${action.reason}`;
 	}
+}
+
+/**
+ * Whether the structural-chain rail-gating bypass applies to a missing
+ * producer material.
+ *
+ * For raw/intermediate materials, the bypass applies only when no
+ * installed building produces a downstream material whose recipe consumes
+ * this material — i.e. the downstream stage is genuinely absent, so no
+ * placement can be rail-ready yet and whether future rail is needed cannot
+ * be determined. Presence is measured by installed buildings, NOT usable
+ * sinks: an installed-but-disconnected downstream processor still makes a
+ * new upstream producer useless until rail exists, so it must not trigger
+ * the bypass (especially when rail construction is unavailable).
+ *
+ * Finished materials sink to warehouses; the bypass applies only when no
+ * warehouse exists at all.
+ */
+function isStructuralChainIncomplete(
+	snapshot: SupplyPlannerSnapshot,
+	materialId: MaterialId
+): boolean {
+	if (MATERIALS[materialId]?.kind === 'finished') {
+		return (snapshot.usableSinkBuildingIdsByMaterial[materialId] ?? []).length === 0;
+	}
+	return !hasInstalledDownstreamProducer(snapshot, materialId);
+}
+
+/**
+ * Whether any building installed in the supply city produces a downstream
+ * material (within the required chain) whose recipe consumes `materialId`.
+ */
+function hasInstalledDownstreamProducer(
+	snapshot: SupplyPlannerSnapshot,
+	materialId: MaterialId
+): boolean {
+	const requirements = buildSupplyMaterialRequirements(snapshot);
+	const downstreamTypeIds = new Set<IndustrialBuildingTypeId>();
+	for (const requirement of requirements) {
+		if (requirement.materialId === materialId) continue;
+		const recipeId = requirement.producerRecipeId;
+		if (!recipeId) continue;
+		const recipe = PRODUCTION_RECIPES[recipeId];
+		if (!recipe?.inputs.some((input) => input.materialId === materialId)) continue;
+		for (const type of buildingTypesForRecipe(recipeId)) {
+			downstreamTypeIds.add(type.id);
+		}
+	}
+	return snapshot.buildings.some((building) => downstreamTypeIds.has(building.typeId));
 }
 
 function missingProducerMaterials(snapshot: SupplyPlannerSnapshot): SupplyMaterialProjection[] {

@@ -86,7 +86,8 @@ const baseSnapshot: SupplyPlannerSnapshot = {
 	reachableDemandByMaterial: {},
 	reachableDemandByBuildingAndMaterial: {},
 	reachableBranchesByBuildingAndMaterial: {},
-	reachableProcessorsByBuildingAndMaterial: {}
+	reachableProcessorsByBuildingAndMaterial: {},
+	warehouseConnectedConsumerCapacityByMaterial: {}
 };
 
 const baseComparison: SupplyPlannerComparison = {
