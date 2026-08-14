@@ -239,13 +239,21 @@ function makePlan(
 
 	const missing = missingProducerMaterials(snapshot);
 	if (missing.length > 0) {
+		const selectedMaterial = missing[0]!.materialId;
+		// Structural-chain exception: bypass rail gating only when the
+		// selected material has no usable downstream sink because its
+		// downstream processing stage is missing. A missing sibling
+		// producer must not make the selected material structural — each
+		// material is evaluated against its own downstream sink state.
+		const sinkIds = snapshot.usableSinkBuildingIdsByMaterial[selectedMaterial] ?? [];
+		const structuralChainIncomplete = sinkIds.length === 0;
 		const generated = producerCandidates(
 			scopedGame,
 			snapshot,
 			baseline,
 			availability,
-			missing[0]!.materialId,
-			missing.length > 1
+			selectedMaterial,
+			structuralChainIncomplete
 		);
 		return chooseProducerPlan(snapshot, baseline, generated, true);
 	}
@@ -406,27 +414,40 @@ function producerCandidates(
 							reachableSinkIds: []
 						}
 					];
-		// Exclude rail-required placements when rail construction is
-		// restricted — a producer that cannot be connected is not an
-		// actionable recommendation. Rail-ready tiles are unaffected.
+		// Exclude placements that are neither rail-ready nor able to
+		// connect to a usable downstream sink in the future. A producer
+		// that can never be connected is not an actionable recommendation
+		// — even when rail construction is available, building a producer
+		// on a tile with no future rail route to any sink wastes capital.
 		//
-		// Exception: when the chain is structurally incomplete (downstream
-		// producers are also missing), no placement can be rail-ready yet
-		// because there is no usable downstream sink. The upstream build is
-		// still a valid structural prerequisite — whether new rail will
-		// eventually be needed cannot be determined until the downstream
-		// building exists. Skip the filter in that case so the planner can
-		// still recommend the next prerequisite build.
-		const tilesToEvaluate =
-			canBuildRail || structuralChainIncomplete
-				? allTiles
-				: allTiles.filter((tile) => {
-						if (!tile.railReady) {
-							railBlocked = true;
-							return false;
-						}
-						return true;
-					});
+		// Exception: when the chain is structurally incomplete (the
+		// selected material has no usable downstream sink because its
+		// downstream processing stage is missing), no placement can be
+		// rail-ready yet because there is no sink to connect to. The
+		// upstream build is still a valid structural prerequisite —
+		// whether new rail will eventually be needed cannot be determined
+		// until the downstream building exists. Skip the filter in that
+		// case so the planner can still recommend the next prerequisite
+		// build.
+		const tilesToEvaluate = allTiles.filter((tile) => {
+			if (tile.railReady) return true;
+			if (structuralChainIncomplete) return true;
+			// Not rail-ready, not structural
+			if (!tile.canFutureConnectToSink) {
+				// No feasible rail path to any sink — this placement is
+				// impossible regardless of rail availability. Don't set
+				// railBlocked (which would yield 'action-unavailable');
+				// the caller should see 'no-feasible-action' instead.
+				return false;
+			}
+			// Can future-connect but not rail-ready — only actionable if
+			// rail construction is available.
+			if (!canBuildRail) {
+				railBlocked = true;
+				return false;
+			}
+			return true;
+		});
 		if (tilesToEvaluate.length === 0) continue;
 
 		let bestCandidate: SupplyPlannerCandidate | null = null;
@@ -781,6 +802,8 @@ function addSyntheticProducer(
 		reachability.reachableDemandByBuildingAndMaterial;
 	candidateSnapshot.reachableBranchesByBuildingAndMaterial =
 		reachability.reachableBranchesByBuildingAndMaterial;
+	candidateSnapshot.reachableProcessorsByBuildingAndMaterial =
+		reachability.reachableProcessorsByBuildingAndMaterial;
 	if (!preferRailReady) {
 		candidateSnapshot.usableBuildingIds = candidateSnapshot.usableBuildingIds.filter(
 			(id) => id !== candidateId

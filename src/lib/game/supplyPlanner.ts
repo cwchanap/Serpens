@@ -4,6 +4,7 @@ import {
 	buildingTypesForRecipe,
 	buildingsForRecipe,
 	getMaterialOutputCapacityPerDay,
+	getRecipeThroughputUnits,
 	getIndustryInventoryScope,
 	MATERIAL_PRODUCER_RECIPES,
 	getSupportedStoreChainCategories
@@ -83,6 +84,32 @@ export interface SupplyPlannerSnapshot {
 	 * exceed that branch's demand.
 	 */
 	reachableBranchesByBuildingAndMaterial: Partial<Record<string, ReadonlyMap<MaterialId, number>>>;
+	/**
+	 * Per-producer reachable processor instances, keyed by
+	 * `${buildingId}\u0000${materialId}`. Each entry describes a specific
+	 * downstream processor building the producer can reach via rail (direct
+	 * or warehouse-hub), the branch (downstream material) it feeds, and the
+	 * processor's per-day input capacity for this upstream material. This
+	 * extends the flow graph one layer beyond the branch-level model so
+	 * that multiple processor instances producing the same downstream
+	 * material are distinguished — a producer that can only reach one of
+	 * two flour mills is capped by that mill's input capacity, not the full
+	 * branch demand.
+	 */
+	reachableProcessorsByBuildingAndMaterial: Partial<
+		Record<string, readonly ReachableProcessorEntry[]>
+	>;
+}
+
+export interface ReachableProcessorEntry {
+	processorId: string;
+	branchId: MaterialId;
+	/**
+	 * Per-day input capacity of this processor for the upstream material
+	 * (how much of the upstream material the processor can consume per
+	 * day, derived from its throughput and recipe input ratio).
+	 */
+	inputCapacity: number;
 }
 
 export interface RequiredChainReachability {
@@ -92,6 +119,9 @@ export interface RequiredChainReachability {
 	reachableDemandByMaterial: Partial<Record<MaterialId, number>>;
 	reachableDemandByBuildingAndMaterial: Partial<Record<string, number>>;
 	reachableBranchesByBuildingAndMaterial: Partial<Record<string, ReadonlyMap<MaterialId, number>>>;
+	reachableProcessorsByBuildingAndMaterial: Partial<
+		Record<string, readonly ReachableProcessorEntry[]>
+	>;
 }
 
 export interface SupplyMaterialRequirement {
@@ -298,7 +328,8 @@ export function buildSupplyPlannerSnapshot(
 			.sort(compareCodeUnitStrings),
 		reachableDemandByMaterial: reachability.reachableDemandByMaterial,
 		reachableDemandByBuildingAndMaterial: reachability.reachableDemandByBuildingAndMaterial,
-		reachableBranchesByBuildingAndMaterial: reachability.reachableBranchesByBuildingAndMaterial
+		reachableBranchesByBuildingAndMaterial: reachability.reachableBranchesByBuildingAndMaterial,
+		reachableProcessorsByBuildingAndMaterial: reachability.reachableProcessorsByBuildingAndMaterial
 	};
 
 	return { status: 'ready', snapshot };
@@ -459,7 +490,8 @@ export function buildRequiredChainReachability(
 		usableSinkBuildingIdsByMaterial,
 		reachableDemandByMaterial: reachableDemand.byMaterial,
 		reachableDemandByBuildingAndMaterial: reachableDemand.byBuildingAndMaterial,
-		reachableBranchesByBuildingAndMaterial: reachableDemand.byBranchesByBuildingAndMaterial
+		reachableBranchesByBuildingAndMaterial: reachableDemand.byBranchesByBuildingAndMaterial,
+		reachableProcessorsByBuildingAndMaterial: reachableDemand.byProcessorsByBuildingAndMaterial
 	};
 }
 
@@ -652,6 +684,12 @@ function canBuildingReachBuilding(
  * both the producer and the processor can reach a warehouse (hub bridge).
  * Per-producer caps prevent crediting one producer's excess capacity toward
  * a branch only another producer can reach.
+ *
+ * Processor-instance awareness: when multiple processor instances produce
+ * the same downstream material (branch), each producer's reachable demand
+ * for that branch is capped by the input capacity of the specific processor
+ * instances it can reach — not the full branch demand. A producer that can
+ * only reach one of two flour mills is capped by that mill's input capacity.
  */
 function computeReachableDemandByMaterial(
 	context: ReachabilityContext,
@@ -660,10 +698,12 @@ function computeReachableDemandByMaterial(
 	byMaterial: Partial<Record<MaterialId, number>>;
 	byBuildingAndMaterial: Partial<Record<string, number>>;
 	byBranchesByBuildingAndMaterial: Partial<Record<string, ReadonlyMap<MaterialId, number>>>;
+	byProcessorsByBuildingAndMaterial: Partial<Record<string, ReachableProcessorEntry[]>>;
 } {
 	const byMaterial: Partial<Record<MaterialId, number>> = {};
 	const byBuildingAndMaterial: Partial<Record<string, number>> = {};
 	const byBranchesByBuildingAndMaterial: Partial<Record<string, Map<MaterialId, number>>> = {};
+	const byProcessorsByBuildingAndMaterial: Partial<Record<string, ReachableProcessorEntry[]>> = {};
 	const requirementByMaterial = new Map(requirements.map((r) => [r.materialId, r]));
 
 	for (const requirement of requirements) {
@@ -698,7 +738,15 @@ function computeReachableDemandByMaterial(
 		}
 
 		// Non-finished materials: compute per-producer reachable demand by
-		// checking which branches each specific producer can reach.
+		// checking which processor instances each specific producer can
+		// reach. The branch-level fields (reachableDemandByMaterial,
+		// reachableDemandByBuildingAndMaterial,
+		// reachableBranchesByBuildingAndMaterial) capture rail reachability
+		// only — they are NOT capped by processor input capacity, so the
+		// reachabilityGap bottleneck check can distinguish a rail topology
+		// deficit from a production-capacity shortage. The per-processor
+		// data (reachableProcessorsByBuildingAndMaterial) feeds the 3-layer
+		// max-flow which does cap by processor input capacity.
 		let aggregateReachableDemand = 0;
 		for (const downstreamMaterial of context.requiredMaterialIds) {
 			if (downstreamMaterial === requirement.materialId) continue;
@@ -717,9 +765,18 @@ function computeReachableDemandByMaterial(
 			const demandFromBranch = (downstreamReq.requiredPerDay * input.quantity) / output.quantity;
 
 			const branchProcessors = context.outputsByMaterial.get(downstreamMaterial) ?? [];
+
+			// For each processor, compute its input capacity for this
+			// upstream material (how much it can consume per day).
+			const processorInputCap = (processor: ReachabilityOutput): number => {
+				const throughput = getRecipeThroughputUnits([processor.building], recipeId);
+				return input.quantity * throughput;
+			};
+
 			let branchReachableByAny = false;
 			for (const producer of producers) {
-				const producerCanReachBranch = branchProcessors.some((processor) => {
+				// Find the specific processors this producer can reach.
+				const reachableProcessors = branchProcessors.filter((processor) => {
 					const processorUsable =
 						context.memo.get(`${processor.building.id}\u0000${processor.materialId}`) === true;
 					if (!processorUsable) return false;
@@ -729,17 +786,29 @@ function computeReachableDemandByMaterial(
 							canReachAnyWarehouse(context, processor.building))
 					);
 				});
-				if (producerCanReachBranch) {
-					branchReachableByAny = true;
-					const key = producerKey(producer.building.id);
-					byBuildingAndMaterial[key] = (byBuildingAndMaterial[key] ?? 0) + demandFromBranch;
-					// Track per-branch breakdown for greedy allocation.
-					let branches = byBranchesByBuildingAndMaterial[key];
-					if (!branches) {
-						branches = new Map<MaterialId, number>();
-						byBranchesByBuildingAndMaterial[key] = branches;
-					}
-					branches.set(downstreamMaterial, demandFromBranch);
+				if (reachableProcessors.length === 0) continue;
+
+				branchReachableByAny = true;
+				const key = producerKey(producer.building.id);
+				byBuildingAndMaterial[key] = (byBuildingAndMaterial[key] ?? 0) + demandFromBranch;
+				let branches = byBranchesByBuildingAndMaterial[key];
+				if (!branches) {
+					branches = new Map<MaterialId, number>();
+					byBranchesByBuildingAndMaterial[key] = branches;
+				}
+				branches.set(downstreamMaterial, demandFromBranch);
+
+				let processors = byProcessorsByBuildingAndMaterial[key];
+				if (!processors) {
+					processors = [];
+					byProcessorsByBuildingAndMaterial[key] = processors;
+				}
+				for (const p of reachableProcessors) {
+					processors.push({
+						processorId: p.building.id,
+						branchId: downstreamMaterial,
+						inputCapacity: processorInputCap(p)
+					});
 				}
 			}
 			if (branchReachableByAny) {
@@ -758,7 +827,12 @@ function computeReachableDemandByMaterial(
 		byMaterial[requirement.materialId] = aggregateReachableDemand;
 	}
 
-	return { byMaterial, byBuildingAndMaterial, byBranchesByBuildingAndMaterial };
+	return {
+		byMaterial,
+		byBuildingAndMaterial,
+		byBranchesByBuildingAndMaterial,
+		byProcessorsByBuildingAndMaterial
+	};
 }
 
 function disconnectedReachability(
@@ -783,7 +857,8 @@ function disconnectedReachability(
 		usableSinkBuildingIdsByMaterial: {},
 		reachableDemandByMaterial: {},
 		reachableDemandByBuildingAndMaterial: {},
-		reachableBranchesByBuildingAndMaterial: {}
+		reachableBranchesByBuildingAndMaterial: {},
+		reachableProcessorsByBuildingAndMaterial: {}
 	};
 }
 
@@ -857,25 +932,90 @@ function allocateCapacityByBranch(
 	const branchDemands: number[] = [];
 	const branchIndex = new Map<MaterialId, number>();
 
+	// Check whether processor-instance data is available for at least one
+	// usable producer. When present, use the 3-layer max-flow
+	// (producer→processor→branch) which correctly caps each producer's
+	// flow by the input capacity of the specific processor instances it
+	// can reach. Without it, fall back to the 2-layer (producer→branch)
+	// model using reachableBranchesByBuildingAndMaterial.
+	const processorData = snapshot.reachableProcessorsByBuildingAndMaterial;
+	const hasProcessorData =
+		processorData !== undefined &&
+		usable.some((building) => processorData[`${building.id}\u0000${materialId}`]);
+
+	const reachableProcessorsByProducer: { processorIdx: number; cap: number }[][] = [];
+	const processorIds: string[] = [];
+	const processorCaps: number[] = [];
+	const processorBranchIdx: number[] = [];
+	const processorIndexById = new Map<string, number>();
+
 	for (const building of usable) {
 		producerIds.push(building.id);
 		producerCaps.push(getMaterialOutputCapacityPerDay([building], materialId));
-		const branches =
-			snapshot.reachableBranchesByBuildingAndMaterial?.[`${building.id}\u0000${materialId}`];
-		const reachable: number[] = [];
-		if (branches) {
-			for (const [branchId, demand] of branches) {
-				let bi = branchIndex.get(branchId);
-				if (bi === undefined) {
-					bi = branchIds.length;
-					branchIds.push(branchId);
-					branchDemands.push(demand);
-					branchIndex.set(branchId, bi);
+
+		if (hasProcessorData) {
+			const entries = processorData[`${building.id}\u0000${materialId}`];
+			const reachableProcessors: { processorIdx: number; cap: number }[] = [];
+			if (entries) {
+				for (const entry of entries) {
+					let bi = branchIndex.get(entry.branchId);
+					if (bi === undefined) {
+						bi = branchIds.length;
+						branchIds.push(entry.branchId);
+						branchDemands.push(0);
+						branchIndex.set(entry.branchId, bi);
+					}
+					let pi = processorIndexById.get(entry.processorId);
+					if (pi === undefined) {
+						pi = processorIds.length;
+						processorIds.push(entry.processorId);
+						processorCaps.push(entry.inputCapacity);
+						processorBranchIdx.push(bi);
+						processorIndexById.set(entry.processorId, pi);
+					}
+					reachableProcessors.push({ processorIdx: pi, cap: entry.inputCapacity });
 				}
-				reachable.push(bi);
+			}
+			reachableProcessorsByProducer.push(reachableProcessors);
+		} else {
+			const branches =
+				snapshot.reachableBranchesByBuildingAndMaterial?.[`${building.id}\u0000${materialId}`];
+			const reachable: number[] = [];
+			if (branches) {
+				for (const [branchId, demand] of branches) {
+					let bi = branchIndex.get(branchId);
+					if (bi === undefined) {
+						bi = branchIds.length;
+						branchIds.push(branchId);
+						branchDemands.push(demand);
+						branchIndex.set(branchId, bi);
+					} else {
+						branchDemands[bi] = Math.max(branchDemands[bi]!, demand);
+					}
+					reachable.push(bi);
+				}
+			}
+			reachableBranchesByProducer.push(reachable);
+		}
+	}
+
+	// When using processor data, branch demands come from the branch-level
+	// reachable demand (already capped by processor input capacity in
+	// computeReachableDemandByMaterial). Derive them from the per-producer
+	// branch caps.
+	if (hasProcessorData) {
+		for (const building of usable) {
+			const branches =
+				snapshot.reachableBranchesByBuildingAndMaterial?.[`${building.id}\u0000${materialId}`];
+			if (branches) {
+				for (const [branchId, demand] of branches) {
+					const bi = branchIndex.get(branchId);
+					if (bi !== undefined) {
+						branchDemands[bi] = Math.max(branchDemands[bi]!, demand);
+					}
+				}
 			}
 		}
-		reachableBranchesByProducer.push(reachable);
 	}
 
 	const producerCount = producerCaps.length;
@@ -892,7 +1032,15 @@ function allocateCapacityByBranch(
 		};
 	}
 
-	const result = bipartiteMaxFlow(producerCaps, reachableBranchesByProducer, branchDemands);
+	const result = hasProcessorData
+		? tripartiteMaxFlow(
+				producerCaps,
+				reachableProcessorsByProducer,
+				processorCaps,
+				processorBranchIdx,
+				branchDemands
+			)
+		: bipartiteMaxFlow(producerCaps, reachableBranchesByProducer, branchDemands);
 	return {
 		totalFlow: result.totalFlow,
 		producerIds,
@@ -1019,6 +1167,123 @@ function bipartiteMaxFlow(
 	const branchFlows = new Array<number>(branchCount).fill(0);
 	for (let j = 0; j < branchCount; j++) {
 		for (const edge of graph[producerCount + 1 + j]!) {
+			if (edge.to === SINK) {
+				branchFlows[j] = branchDemands[j]! - edge.cap;
+				break;
+			}
+		}
+	}
+
+	return { totalFlow, producerFlows, branchFlows };
+}
+
+/**
+ * Edmonds-Karp max-flow over a 3-layer producer→processor→branch network.
+ *
+ * Source feeds producers (capped by daily output), producers feed the
+ * processor instances they can reach (capped by each processor's input
+ * capacity for this upstream material), processors feed their branch
+ * (uncapped, 1:1 mapping), and branches feed the sink (capped by branch
+ * demand). This distinguishes multiple processor instances producing the
+ * same downstream material — a producer that can only reach one of two
+ * flour mills is capped by that mill's input capacity, not the full branch
+ * demand.
+ */
+function tripartiteMaxFlow(
+	producerCaps: readonly number[],
+	reachableProcessorsByProducer: readonly { processorIdx: number; cap: number }[][],
+	processorCaps: readonly number[],
+	processorBranchIdx: readonly number[],
+	branchDemands: readonly number[]
+): MaxFlowResult {
+	const producerCount = producerCaps.length;
+	const processorCount = processorCaps.length;
+	const branchCount = branchDemands.length;
+	const SOURCE = 0;
+	const SINK = producerCount + processorCount + branchCount + 1;
+	const nodeCount = producerCount + processorCount + branchCount + 2;
+	const graph: FlowEdge[][] = Array.from({ length: nodeCount }, () => []);
+
+	const addEdge = (from: number, to: number, cap: number): void => {
+		const fwd: FlowEdge = { to, cap, rev: null! };
+		const bwd: FlowEdge = { to: from, cap: 0, rev: fwd };
+		fwd.rev = bwd;
+		graph[from]!.push(fwd);
+		graph[to]!.push(bwd);
+	};
+
+	const producerNode = (i: number) => i + 1;
+	const processorNode = (k: number) => producerCount + 1 + k;
+	const branchNode = (j: number) => producerCount + processorCount + 1 + j;
+
+	for (let i = 0; i < producerCount; i++) {
+		addEdge(SOURCE, producerNode(i), producerCaps[i]!);
+	}
+	for (let i = 0; i < producerCount; i++) {
+		for (const { processorIdx, cap } of reachableProcessorsByProducer[i]!) {
+			addEdge(producerNode(i), processorNode(processorIdx), cap);
+		}
+	}
+	for (let k = 0; k < processorCount; k++) {
+		addEdge(processorNode(k), branchNode(processorBranchIdx[k]!), Infinity);
+	}
+	for (let j = 0; j < branchCount; j++) {
+		addEdge(branchNode(j), SINK, branchDemands[j]!);
+	}
+
+	const EPSILON = 1e-9;
+	let totalFlow = 0;
+
+	for (;;) {
+		const parent: Array<{ node: number; edge: FlowEdge } | null> = new Array(nodeCount).fill(null);
+		const visited = new Array<boolean>(nodeCount).fill(false);
+		visited[SOURCE] = true;
+		const queue: number[] = [SOURCE];
+		let foundSink = false;
+
+		while (queue.length > 0 && !foundSink) {
+			const node = queue.shift()!;
+			for (const edge of graph[node]!) {
+				if (!visited[edge.to] && edge.cap > EPSILON) {
+					visited[edge.to] = true;
+					parent[edge.to] = { node, edge };
+					if (edge.to === SINK) {
+						foundSink = true;
+						break;
+					}
+					queue.push(edge.to);
+				}
+			}
+		}
+		if (!foundSink) break;
+
+		let bottleneck = Infinity;
+		for (let curr = SINK; curr !== SOURCE; ) {
+			const pe = parent[curr]!;
+			bottleneck = Math.min(bottleneck, pe.edge.cap);
+			curr = pe.node;
+		}
+		for (let curr = SINK; curr !== SOURCE; ) {
+			const pe = parent[curr]!;
+			pe.edge.cap -= bottleneck;
+			pe.edge.rev.cap += bottleneck;
+			curr = pe.node;
+		}
+		totalFlow += bottleneck;
+	}
+
+	const producerFlows = new Array<number>(producerCount).fill(0);
+	for (let i = 0; i < producerCount; i++) {
+		for (const edge of graph[SOURCE]!) {
+			if (edge.to === producerNode(i)) {
+				producerFlows[i] = producerCaps[i]! - edge.cap;
+				break;
+			}
+		}
+	}
+	const branchFlows = new Array<number>(branchCount).fill(0);
+	for (let j = 0; j < branchCount; j++) {
+		for (const edge of graph[branchNode(j)]!) {
 			if (edge.to === SINK) {
 				branchFlows[j] = branchDemands[j]! - edge.cap;
 				break;
@@ -1233,34 +1498,90 @@ function findConnectivityDeficit(
 		const allocation = allocateCapacityByBranch(usable, material.materialId, snapshot);
 
 		// Find a branch with unsatisfied demand, then look for a producer
-		// with residual capacity that cannot reach that branch. That
-		// producer's excess capacity is stranded by rail topology, not by
-		// a production shortage — connecting it to the unsatisfied branch
-		// would close the gap without wasting capital on a new producer.
+		// with residual capacity that cannot reach that branch (or cannot
+		// reach all processor instances in that branch). That producer's
+		// excess capacity is stranded by rail topology, not by a production
+		// shortage — connecting it to the unsatisfied branch (or to the
+		// unreachable processor instances) would close the gap without
+		// wasting capital on a new producer.
+		const processorData = snapshot.reachableProcessorsByBuildingAndMaterial;
+		const hasProcessorData = usable.some(
+			(building) => processorData[`${building.id}\u0000${material.materialId}`]
+		);
 		for (let bi = 0; bi < allocation.branchIds.length; bi++) {
 			const unsatisfied = allocation.branchDemands[bi]! - allocation.branchFlows[bi]!;
 			if (unsatisfied <= CONNECTIVITY_EPSILON) continue;
+
+			const branchId = allocation.branchIds[bi]!;
+
+			// When processor-instance data is available, find all usable
+			// processor buildings for this branch. A producer that can
+			// reach the branch but not all processor instances is stranded
+			// by rail — connecting it to the unreachable processors could
+			// close the gap. A producer that can reach all processors but
+			// the branch is still unsatisfied has a processor-capacity
+			// issue (production-capacity, not rail).
+			const branchProcessorIds = hasProcessorData
+				? computeBranchProcessorIds(snapshot, branchId, usableIds)
+				: null;
 
 			for (let pi = 0; pi < allocation.producerIds.length; pi++) {
 				const residual = allocation.producerCaps[pi]! - allocation.producerFlows[pi]!;
 				if (residual <= CONNECTIVITY_EPSILON) continue;
 
-				const branches =
-					snapshot.reachableBranchesByBuildingAndMaterial?.[
-						`${allocation.producerIds[pi]}\u0000${material.materialId}`
-					];
-				const canReachBranch = branches?.has(allocation.branchIds[bi]!);
-				if (!canReachBranch) {
-					return {
-						buildingId: allocation.producerIds[pi]!,
-						materialId: material.materialId
-					};
+				if (branchProcessorIds) {
+					// Processor-instance-aware check.
+					const producerEntries =
+						processorData[`${allocation.producerIds[pi]}\u0000${material.materialId}`] ?? [];
+					const reachableForBranch = new Set(
+						producerEntries.filter((e) => e.branchId === branchId).map((e) => e.processorId)
+					);
+					// If the producer can't reach all usable processors for
+					// this branch, it's stranded by rail topology.
+					if (![...branchProcessorIds].every((id) => reachableForBranch.has(id))) {
+						return {
+							buildingId: allocation.producerIds[pi]!,
+							materialId: material.materialId
+						};
+					}
+				} else {
+					// Fallback: branch-level check (no processor data).
+					const branches =
+						snapshot.reachableBranchesByBuildingAndMaterial?.[
+							`${allocation.producerIds[pi]}\u0000${material.materialId}`
+						];
+					const canReachBranch = branches?.has(branchId);
+					if (!canReachBranch) {
+						return {
+							buildingId: allocation.producerIds[pi]!,
+							materialId: material.materialId
+						};
+					}
 				}
 			}
 		}
 	}
 
 	return null;
+}
+
+/**
+ * Returns the set of usable processor building IDs that produce the given
+ * downstream material (branch). Used by findConnectivityDeficit to check
+ * whether a producer can reach all processor instances in an unsatisfied
+ * branch.
+ */
+function computeBranchProcessorIds(
+	snapshot: SupplyPlannerSnapshot,
+	branchId: MaterialId,
+	usableIds: Set<string>
+): Set<string> {
+	const recipeId = MATERIAL_PRODUCER_RECIPES.get(branchId);
+	if (!recipeId) return new Set();
+	const processors = buildingsForRecipe(snapshot.buildings, recipeId).filter((b) =>
+		usableIds.has(b.id)
+	);
+	return new Set(processors.map((b) => b.id));
 }
 
 function primaryBottleneck(

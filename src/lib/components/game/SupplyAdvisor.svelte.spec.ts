@@ -85,7 +85,8 @@ const baseSnapshot: SupplyPlannerSnapshot = {
 	activeOutboundRouteIds: [],
 	reachableDemandByMaterial: {},
 	reachableDemandByBuildingAndMaterial: {},
-	reachableBranchesByBuildingAndMaterial: {}
+	reachableBranchesByBuildingAndMaterial: {},
+	reachableProcessorsByBuildingAndMaterial: {}
 };
 
 const baseComparison: SupplyPlannerComparison = {

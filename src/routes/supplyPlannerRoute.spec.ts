@@ -82,7 +82,8 @@ const baseSnapshot: SupplyPlannerSnapshot = {
 	activeOutboundRouteIds: [],
 	reachableDemandByMaterial: {},
 	reachableDemandByBuildingAndMaterial: {},
-	reachableBranchesByBuildingAndMaterial: {}
+	reachableBranchesByBuildingAndMaterial: {},
+	reachableProcessorsByBuildingAndMaterial: {}
 };
 
 function readyResult(
