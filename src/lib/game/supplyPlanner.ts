@@ -1082,15 +1082,26 @@ function allocateCapacityByBranch(
 	const branchIndex = new Map<MaterialId, number>();
 
 	// Check whether processor-instance data is available for at least one
-	// usable producer. When present, use the 3-layer max-flow
+	// usable producer OR warehouse-connected processors exist independently
+	// of producer reachability. When present, use the 3-layer max-flow
 	// (producer→processor→branch) which correctly caps each producer's
 	// flow by the input capacity of the specific processor instances it
 	// can reach. Without it, fall back to the 2-layer (producer→branch)
 	// model using reachableBranchesByBuildingAndMaterial.
+	//
+	// The warehouse-connected-processor condition allows the processor
+	// graph to exist with zero usable producers: a missing producer does
+	// not strand warehouse-accessible inventory, since a warehouse-connected
+	// downstream processor can still pull it via rail. Without this, the
+	// fallback would credit warehouse inventory against all branches using
+	// aggregate capacity with no branch topology — over-crediting branches
+	// whose processors cannot reach the warehouse.
 	const processorData = snapshot.reachableProcessorsByBuildingAndMaterial;
+	const whProcessorsForMaterial = snapshot.warehouseConnectedProcessorsByMaterial[materialId] ?? [];
 	const hasProcessorData =
 		processorData !== undefined &&
-		usable.some((building) => processorData[`${building.id}\u0000${materialId}`]);
+		(usable.some((building) => processorData[`${building.id}\u0000${materialId}`]) ||
+			whProcessorsForMaterial.length > 0);
 
 	const reachableProcessorsByProducer: number[][] = [];
 	const processorIds: string[] = [];
@@ -1165,8 +1176,7 @@ function allocateCapacityByBranch(
 	// reaches them, while the shared processor→branch capacity still caps
 	// total consumption.
 	if (hasProcessorData) {
-		const whProcessors = snapshot.warehouseConnectedProcessorsByMaterial[materialId] ?? [];
-		for (const entry of whProcessors) {
+		for (const entry of whProcessorsForMaterial) {
 			if (processorIndexById.has(entry.processorId)) continue;
 			let bi = branchIndex.get(entry.branchId);
 			if (bi === undefined) {
@@ -1210,8 +1220,17 @@ function allocateCapacityByBranch(
 	}
 
 	const producerCount = producerCaps.length;
+	const processorCount = processorIds.length;
 	const branchCount = branchIds.length;
-	if (producerCount === 0 || branchCount === 0) {
+	// Allow the processor graph to exist with zero producers when
+	// warehouse-connected processors are present: the 3-layer max-flow
+	// returns totalFlow 0 (no producer source edges), but the allocation
+	// carries the processor/branch topology so localSupplyOverHorizon can
+	// route inventory through warehouse-connected processors with branch
+	// scoping — instead of the aggregate-capacity fallback that ignores
+	// branch topology and over-credits branches whose processors cannot
+	// reach the warehouse.
+	if (branchCount === 0 || (producerCount === 0 && processorCount === 0)) {
 		return {
 			totalFlow: 0,
 			producerIds,
@@ -1518,6 +1537,27 @@ function tripartiteMaxFlow(
  * (the production-only daily flow already respects that cap; adding
  * inventory on top without sharing the cap would double-count).
  *
+ * Production is prioritized over inventory via a two-phase max-flow rather
+ * than edge insertion order. Edmonds–Karp chooses the shortest augmenting
+ * path; adjacency order is only a tie-breaker, so adding producer source
+ * edges before the inventory edge does NOT guarantee production is
+ * consumed first. A generalist producer can be saturated on one branch by
+ * the first augmentation, stranding a specialist producer (which can only
+ * reach the now-saturated branch) and forcing the remaining branch to be
+ * served by inventory — even when a different assignment would achieve the
+ * same total flow with zero inventory. The two-phase approach avoids this:
+ *
+ *   Phase 1 — maximize production-only flow (no INVENTORY node/edges).
+ *   Phase 2 — add inventory edges and continue augmenting from the
+ *             production-only residual graph.
+ *
+ * The phase-2 increment is the minimum inventory consumption needed to
+ * reach the overall max flow. This is optimal: the max production-only
+ * flow F_prod is ≥ the production component P* of any combined max-flow
+ * solution (F_prod is the maximum flow through producer paths alone), so
+ * the minimum inventory I* = F_total − P* ≥ F_total − F_prod, and the
+ * two-phase approach achieves exactly F_total − F_prod.
+ *
  * Returns the total local supply over the horizon and how much of the
  * inventory was consumed (for ending-inventory derivation).
  */
@@ -1551,20 +1591,13 @@ function localSupplyOverHorizon(
 		graph[to]!.push(bwd);
 	};
 
+	// Phase 1 edges: production-only (no INVENTORY node/edges).
 	for (let i = 0; i < producerCount; i++) {
 		addEdge(SOURCE, producerNode(i), allocation.producerCaps[i]! * horizonDays);
-	}
-	if (inventoryCap > 0) {
-		addEdge(SOURCE, INVENTORY, inventoryCap);
 	}
 	for (let i = 0; i < producerCount; i++) {
 		for (const processorIdx of allocation.reachableProcessorsByProducer[i]!) {
 			addEdge(producerNode(i), processorNode(processorIdx), Infinity);
-		}
-	}
-	for (let k = 0; k < processorCount; k++) {
-		if (allocation.processorCanReachWarehouse[k]) {
-			addEdge(INVENTORY, processorNode(k), Infinity);
 		}
 	}
 	for (let k = 0; k < processorCount; k++) {
@@ -1579,71 +1612,90 @@ function localSupplyOverHorizon(
 	}
 
 	const EPSILON = 1e-9;
-	let totalFlow = 0;
-	for (;;) {
-		const parent: Array<{ node: number; edge: FlowEdge } | null> = new Array(nodeCount).fill(null);
-		const visited = new Array<boolean>(nodeCount).fill(false);
-		visited[SOURCE] = true;
-		const queue: number[] = [SOURCE];
-		let foundSink = false;
-		while (queue.length > 0 && !foundSink) {
-			const node = queue.shift()!;
-			for (const edge of graph[node]!) {
-				if (!visited[edge.to] && edge.cap > EPSILON) {
-					visited[edge.to] = true;
-					parent[edge.to] = { node, edge };
-					if (edge.to === SINK) {
-						foundSink = true;
-						break;
+	const augment = (): number => {
+		let flow = 0;
+		for (;;) {
+			const parent: Array<{ node: number; edge: FlowEdge } | null> = new Array(nodeCount).fill(
+				null
+			);
+			const visited = new Array<boolean>(nodeCount).fill(false);
+			visited[SOURCE] = true;
+			const queue: number[] = [SOURCE];
+			let foundSink = false;
+			while (queue.length > 0 && !foundSink) {
+				const node = queue.shift()!;
+				for (const edge of graph[node]!) {
+					if (!visited[edge.to] && edge.cap > EPSILON) {
+						visited[edge.to] = true;
+						parent[edge.to] = { node, edge };
+						if (edge.to === SINK) {
+							foundSink = true;
+							break;
+						}
+						queue.push(edge.to);
 					}
-					queue.push(edge.to);
 				}
 			}
+			if (!foundSink) break;
+			let bottleneck = Infinity;
+			for (let curr = SINK; curr !== SOURCE; ) {
+				const pe = parent[curr]!;
+				bottleneck = Math.min(bottleneck, pe.edge.cap);
+				curr = pe.node;
+			}
+			for (let curr = SINK; curr !== SOURCE; ) {
+				const pe = parent[curr]!;
+				pe.edge.cap -= bottleneck;
+				pe.edge.rev.cap += bottleneck;
+				curr = pe.node;
+			}
+			flow += bottleneck;
 		}
-		if (!foundSink) break;
-		let bottleneck = Infinity;
-		for (let curr = SINK; curr !== SOURCE; ) {
-			const pe = parent[curr]!;
-			bottleneck = Math.min(bottleneck, pe.edge.cap);
-			curr = pe.node;
-		}
-		for (let curr = SINK; curr !== SOURCE; ) {
-			const pe = parent[curr]!;
-			pe.edge.cap -= bottleneck;
-			pe.edge.rev.cap += bottleneck;
-			curr = pe.node;
-		}
-		totalFlow += bottleneck;
-	}
+		return flow;
+	};
 
+	// Phase 1: maximize production-only flow.
+	const productionOnlyFlow = augment();
+
+	// Phase 2: add inventory edges and continue augmenting from the
+	// production-only residual graph. Any additional flow must route
+	// through inventory (production-only augmenting paths are exhausted),
+	// so the increment is the minimum inventory consumption.
 	let inventoryConsumed = 0;
 	if (inventoryCap > 0) {
-		for (const edge of graph[SOURCE]!) {
-			if (edge.to === INVENTORY) {
-				inventoryConsumed = inventoryCap - edge.cap;
-				break;
+		addEdge(SOURCE, INVENTORY, inventoryCap);
+		for (let k = 0; k < processorCount; k++) {
+			if (allocation.processorCanReachWarehouse[k]) {
+				addEdge(INVENTORY, processorNode(k), Infinity);
 			}
 		}
+		const additionalFlow = augment();
+		inventoryConsumed = Math.max(0, additionalFlow);
 	}
-	return { totalLocalSupply: totalFlow, inventoryConsumed };
+
+	return {
+		totalLocalSupply: productionOnlyFlow + inventoryConsumed,
+		inventoryConsumed
+	};
 }
 
 /**
  * Daily rate at which city inventory is consumed by the topology, derived
- * from the same 4-layer flow as `localSupplyOverHorizon` but with abundant
- * inventory and a one-day horizon. The rate is the max inventory flow per
+ * from the same two-phase flow as `localSupplyOverHorizon` but with abundant
+ * inventory and a one-day horizon. The rate is the min inventory flow per
  * day when inventory is not the bottleneck, so `inventory / rate` gives the
  * true stockout day even when inventory is exhausted within a horizon (the
  * finite-horizon `inventoryConsumed` is capped at the inventory amount and
  * cannot recover the rate in that case).
  *
- * Production is prioritized over inventory because producers are connected
- * to SOURCE before the INVENTORY node, so when production saturates a
- * processor the inventory flow — and thus the rate — is zero (no stockout:
- * inventory is never drawn down). The abundant inventory is chosen larger
- * than any possible daily inventory flow (total processor input capacity +
- * total branch demand + 1) so it never binds, while staying small enough
- * for exact floating-point subtraction in `localSupplyOverHorizon`.
+ * Production is prioritized over inventory via the two-phase max-flow (see
+ * `localSupplyOverHorizon`): phase 1 maximizes production-only flow, phase 2
+ * adds inventory. When production saturates all reachable demand the phase-2
+ * increment — and thus the rate — is zero (no stockout: inventory is never
+ * drawn down). The abundant inventory is chosen larger than any possible
+ * daily inventory flow (total processor input capacity + total branch demand
+ * + 1) so it never binds, while staying small enough for exact floating-point
+ * subtraction in `localSupplyOverHorizon`.
  */
 function inventoryFlowRatePerDay(allocation: BranchAllocationResult): number {
 	const totalProcessorCap = allocation.processorCaps.reduce((sum, cap) => sum + cap, 0);
@@ -1691,7 +1743,27 @@ export function projectSupplySnapshot(snapshot: SupplyPlannerSnapshot): SupplyPl
 				allocation = allocateCapacityByBranch(usable, requirement.materialId, snapshot);
 				usableCapacityPerDay = allocation.totalFlow;
 			} else {
-				usableCapacityPerDay = perProducerCappedCapacity(usable, requirement.materialId, snapshot);
+				// Use the 3-layer flow when warehouse-connected processors
+				// are recorded for this material, even with zero usable
+				// producers (e.g. the producer is missing). This lets
+				// localSupplyOverHorizon route inventory through
+				// warehouse-connected processors with branch scoping
+				// instead of the aggregate-capacity fallback that ignores
+				// branch topology and over-credits branches whose
+				// processors cannot reach the warehouse.
+				const hasWarehouseProcessors =
+					(snapshot.warehouseConnectedProcessorsByMaterial[requirement.materialId]?.length ?? 0) >
+					0;
+				if (hasWarehouseProcessors) {
+					allocation = allocateCapacityByBranch(usable, requirement.materialId, snapshot);
+					usableCapacityPerDay = allocation.totalFlow;
+				} else {
+					usableCapacityPerDay = perProducerCappedCapacity(
+						usable,
+						requirement.materialId,
+						snapshot
+					);
+				}
 			}
 		} else {
 			usableCapacityPerDay = perProducerCappedCapacity(usable, requirement.materialId, snapshot);
