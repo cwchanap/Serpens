@@ -979,4 +979,39 @@ describe('SupplyAdvisor selection and action dispatch', () => {
 		});
 		await expect.element(page.getByRole('heading', { name: /build warehouse/i })).toBeVisible();
 	});
+
+	it('renders not-available text for null daysOfCover and projectedStockoutDay', async () => {
+		// Exercises formatNullableNumber(null) (L50-52): when a forecast
+		// metric is null, the localized "not available" text is rendered
+		// instead of a formatted number.
+		expect.assertions(2);
+		const nullHorizon = horizon(30, {
+			daysOfCover: null,
+			projectedStockoutDay: null
+		});
+		renderPlanner(
+			readyResult({
+				baseline: {
+					materials: [
+						material({
+							daysOfCover: null,
+							projectedStockoutDay: null,
+							sevenDay: horizon(7, {
+								daysOfCover: null,
+								projectedStockoutDay: null
+							}),
+							thirtyDay: nullHorizon
+						})
+					]
+				}
+			}),
+			{ horizonDays: 30 }
+		);
+		const notAvailable = i18n.t('supplyAdvisor.metrics.notAvailable');
+		// Both daysOfCover and projectedStockoutDay should render the
+		// not-available text. They appear in the baseline forecast section.
+		const ddElements = page.getByText(notAvailable, { exact: true });
+		await expect.element(ddElements.first()).toBeVisible();
+		await expect.element(ddElements.nth(1)).toBeVisible();
+	});
 });

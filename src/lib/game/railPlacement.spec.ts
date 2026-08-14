@@ -3,6 +3,7 @@ import {
 	buildRail,
 	buildRailPreview,
 	buildRailWaypointPreview,
+	canRouteRailBetween,
 	demolishRailSegment,
 	findReachableRailCells,
 	getDemolishRemovableCellKeys,
@@ -678,6 +679,110 @@ describe('findReachableRailCells', () => {
 		const game = makeGame(makeCity([]), []);
 		const reachable = findReachableRailCells(game, 'missing-city', [{ x: 5, y: 5 }]);
 		expect(reachable.size).toBe(0);
+	});
+});
+
+describe('canRouteRailBetween', () => {
+	it('returns true when a future rail path exists through empty legal tiles', () => {
+		expect.assertions(1);
+		// No existing rail. Two buildings on opposite sides of the grid.
+		// canRouteRailBetween should find a path through empty industrial tiles.
+		const game = makeGame(makeCity([]), [ORIGIN(), DEST()]);
+		const result = canRouteRailBetween(
+			game,
+			CITY_ID,
+			[
+				{ x: 1, y: 2 },
+				{ x: 1, y: 3 }
+			],
+			[
+				{ x: 9, y: 2 },
+				{ x: 9, y: 3 }
+			]
+		);
+		expect(result).toBe(true);
+	});
+
+	it('returns true when routing through existing rail cells', () => {
+		expect.assertions(1);
+		// Existing rail connects the two buildings' adjacent cells.
+		const game = makeGame(makeCity(straightRails(2, 4, 9)), [ORIGIN(), DEST()]);
+		const result = canRouteRailBetween(
+			game,
+			CITY_ID,
+			[
+				{ x: 4, y: 2 },
+				{ x: 4, y: 3 }
+			],
+			[
+				{ x: 9, y: 2 },
+				{ x: 9, y: 3 }
+			]
+		);
+		expect(result).toBe(true);
+	});
+
+	it('returns false when a blocked terrain wall separates the endpoints', () => {
+		expect.assertions(1);
+		// Block the entire column x=5 so no path can cross.
+		const blocked = new Set(Array.from({ length: SIZE }, (_, y) => `5,${y}`));
+		const game = makeGame(makeCity([], blocked), [ORIGIN(), DEST()]);
+		const result = canRouteRailBetween(
+			game,
+			CITY_ID,
+			[
+				{ x: 4, y: 2 },
+				{ x: 4, y: 3 }
+			],
+			[
+				{ x: 6, y: 2 },
+				{ x: 6, y: 3 }
+			]
+		);
+		expect(result).toBe(false);
+	});
+
+	it('returns false when the city does not exist', () => {
+		expect.assertions(1);
+		const game = makeGame(makeCity([]), []);
+		const result = canRouteRailBetween(game, 'missing-city', [{ x: 0, y: 0 }], [{ x: 1, y: 0 }]);
+		expect(result).toBe(false);
+	});
+
+	it('returns false when no source cell is rail-legal', () => {
+		expect.assertions(1);
+		// All source cells are blocked.
+		const blocked = new Set(['0,0', '0,1']);
+		const game = makeGame(makeCity([], blocked), []);
+		const result = canRouteRailBetween(
+			game,
+			CITY_ID,
+			[
+				{ x: 0, y: 0 },
+				{ x: 0, y: 1 }
+			],
+			[{ x: 5, y: 5 }]
+		);
+		expect(result).toBe(false);
+	});
+
+	it('returns true when source and target share a rail-legal cell', () => {
+		expect.assertions(1);
+		// Source and target overlap on the same legal tile.
+		const game = makeGame(makeCity([]), []);
+		const result = canRouteRailBetween(game, CITY_ID, [{ x: 5, y: 5 }], [{ x: 5, y: 5 }]);
+		expect(result).toBe(true);
+	});
+
+	it('returns false for an out-of-bounds waypoint target', () => {
+		// Exercises isRailLegalTile line 79: when the tile lookup returns
+		// undefined for an out-of-bounds coordinate, the function returns
+		// false. isRailWaypointTarget delegates to isRailLegalTile for
+		// non-rail coordinates.
+		expect.assertions(1);
+		const game = makeGame(makeCity([]), []);
+		const result = isRailWaypointTarget(game, CITY_ID, -1, -1);
+		expect(result).toBe(false);
 	});
 });
 
