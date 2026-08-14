@@ -83,7 +83,8 @@ const baseSnapshot: SupplyPlannerSnapshot = {
 	reachableDemandByMaterial: {},
 	reachableDemandByBuildingAndMaterial: {},
 	reachableBranchesByBuildingAndMaterial: {},
-	reachableProcessorsByBuildingAndMaterial: {}
+	reachableProcessorsByBuildingAndMaterial: {},
+	warehouseConnectedConsumerCapacityByMaterial: {}
 };
 
 function readyResult(

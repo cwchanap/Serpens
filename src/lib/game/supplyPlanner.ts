@@ -99,6 +99,18 @@ export interface SupplyPlannerSnapshot {
 	reachableProcessorsByBuildingAndMaterial: Partial<
 		Record<string, readonly ReachableProcessorEntry[]>
 	>;
+	/**
+	 * Total per-day input capacity of usable downstream processors that can
+	 * reach a warehouse, keyed by the upstream raw/intermediate material they
+	 * consume. City inventory is a warehouse source: a processor can only
+	 * draw it via `pullViaRail` when it has a rail path to a warehouse. This
+	 * caps how much of a material's city inventory is actually accessible,
+	 * and is zero (key absent or 0) when no usable warehouse-connected
+	 * consumer exists — so stranded inventory is not credited as local
+	 * supply. Finished materials are excluded (they keep their existing
+	 * warehouse-sink inventory treatment).
+	 */
+	warehouseConnectedConsumerCapacityByMaterial: Partial<Record<MaterialId, number>>;
 }
 
 export interface ReachableProcessorEntry {
@@ -110,6 +122,14 @@ export interface ReachableProcessorEntry {
 	 * day, derived from its throughput and recipe input ratio).
 	 */
 	inputCapacity: number;
+	/**
+	 * Whether this processor building can reach a warehouse via rail.
+	 * City inventory lives in warehouses and a processor can only draw it
+	 * through `pullViaRail` when a rail path exists from the processor to a
+	 * warehouse, so inventory allocation in the projection is gated on this
+	 * flag.
+	 */
+	canReachWarehouse: boolean;
 }
 
 export interface RequiredChainReachability {
@@ -122,6 +142,7 @@ export interface RequiredChainReachability {
 	reachableProcessorsByBuildingAndMaterial: Partial<
 		Record<string, readonly ReachableProcessorEntry[]>
 	>;
+	warehouseConnectedConsumerCapacityByMaterial: Partial<Record<MaterialId, number>>;
 }
 
 export interface SupplyMaterialRequirement {
@@ -329,7 +350,9 @@ export function buildSupplyPlannerSnapshot(
 		reachableDemandByMaterial: reachability.reachableDemandByMaterial,
 		reachableDemandByBuildingAndMaterial: reachability.reachableDemandByBuildingAndMaterial,
 		reachableBranchesByBuildingAndMaterial: reachability.reachableBranchesByBuildingAndMaterial,
-		reachableProcessorsByBuildingAndMaterial: reachability.reachableProcessorsByBuildingAndMaterial
+		reachableProcessorsByBuildingAndMaterial: reachability.reachableProcessorsByBuildingAndMaterial,
+		warehouseConnectedConsumerCapacityByMaterial:
+			reachability.warehouseConnectedConsumerCapacityByMaterial
 	};
 
 	return { status: 'ready', snapshot };
@@ -491,7 +514,9 @@ export function buildRequiredChainReachability(
 		reachableDemandByMaterial: reachableDemand.byMaterial,
 		reachableDemandByBuildingAndMaterial: reachableDemand.byBuildingAndMaterial,
 		reachableBranchesByBuildingAndMaterial: reachableDemand.byBranchesByBuildingAndMaterial,
-		reachableProcessorsByBuildingAndMaterial: reachableDemand.byProcessorsByBuildingAndMaterial
+		reachableProcessorsByBuildingAndMaterial: reachableDemand.byProcessorsByBuildingAndMaterial,
+		warehouseConnectedConsumerCapacityByMaterial:
+			reachableDemand.byWarehouseConnectedConsumerCapacity
 	};
 }
 
@@ -699,11 +724,13 @@ function computeReachableDemandByMaterial(
 	byBuildingAndMaterial: Partial<Record<string, number>>;
 	byBranchesByBuildingAndMaterial: Partial<Record<string, ReadonlyMap<MaterialId, number>>>;
 	byProcessorsByBuildingAndMaterial: Partial<Record<string, ReachableProcessorEntry[]>>;
+	byWarehouseConnectedConsumerCapacity: Partial<Record<MaterialId, number>>;
 } {
 	const byMaterial: Partial<Record<MaterialId, number>> = {};
 	const byBuildingAndMaterial: Partial<Record<string, number>> = {};
 	const byBranchesByBuildingAndMaterial: Partial<Record<string, Map<MaterialId, number>>> = {};
 	const byProcessorsByBuildingAndMaterial: Partial<Record<string, ReachableProcessorEntry[]>> = {};
+	const byWarehouseConnectedConsumerCapacity: Partial<Record<MaterialId, number>> = {};
 	const requirementByMaterial = new Map(requirements.map((r) => [r.materialId, r]));
 
 	for (const requirement of requirements) {
@@ -807,7 +834,8 @@ function computeReachableDemandByMaterial(
 					processors.push({
 						processorId: p.building.id,
 						branchId: downstreamMaterial,
-						inputCapacity: processorInputCap(p)
+						inputCapacity: processorInputCap(p),
+						canReachWarehouse: canReachAnyWarehouse(context, p.building)
 					});
 				}
 			}
@@ -815,6 +843,35 @@ function computeReachableDemandByMaterial(
 				aggregateReachableDemand += demandFromBranch;
 			}
 		}
+
+		// Sum the per-day input capacity of usable warehouse-connected
+		// consumers of this material. City inventory lives in warehouses, so a
+		// processor can only draw it when it can reach a warehouse; this caps
+		// how much of the material's starting inventory the projection may
+		// credit as accessible local supply.
+		const whConsumerSeen = new Set<string>();
+		let whConsumerCapacity = 0;
+		for (const downstreamMaterial of context.requiredMaterialIds) {
+			if (downstreamMaterial === requirement.materialId) continue;
+			const downstreamRecipeId = MATERIAL_PRODUCER_RECIPES.get(downstreamMaterial);
+			if (!downstreamRecipeId) continue;
+			const downstreamRecipe = PRODUCTION_RECIPES[downstreamRecipeId];
+			const downstreamInput = downstreamRecipe.inputs.find(
+				(i) => i.materialId === requirement.materialId
+			);
+			if (!downstreamInput) continue;
+			for (const processor of context.outputsByMaterial.get(downstreamMaterial) ?? []) {
+				const processorUsable =
+					context.memo.get(`${processor.building.id}\u0000${processor.materialId}`) === true;
+				if (!processorUsable) continue;
+				if (!canReachAnyWarehouse(context, processor.building)) continue;
+				if (whConsumerSeen.has(processor.building.id)) continue;
+				whConsumerSeen.add(processor.building.id);
+				const throughput = getRecipeThroughputUnits([processor.building], downstreamRecipeId);
+				whConsumerCapacity += downstreamInput.quantity * throughput;
+			}
+		}
+		byWarehouseConnectedConsumerCapacity[requirement.materialId] = whConsumerCapacity;
 
 		// Ensure all producers have an entry (default 0 if no branches reached).
 		for (const producer of producers) {
@@ -831,7 +888,8 @@ function computeReachableDemandByMaterial(
 		byMaterial,
 		byBuildingAndMaterial,
 		byBranchesByBuildingAndMaterial,
-		byProcessorsByBuildingAndMaterial
+		byProcessorsByBuildingAndMaterial,
+		byWarehouseConnectedConsumerCapacity
 	};
 }
 
@@ -858,7 +916,8 @@ function disconnectedReachability(
 		reachableDemandByMaterial: {},
 		reachableDemandByBuildingAndMaterial: {},
 		reachableBranchesByBuildingAndMaterial: {},
-		reachableProcessorsByBuildingAndMaterial: {}
+		reachableProcessorsByBuildingAndMaterial: {},
+		warehouseConnectedConsumerCapacityByMaterial: {}
 	};
 }
 
@@ -918,6 +977,12 @@ interface BranchAllocationResult {
 	branchIds: MaterialId[];
 	branchDemands: number[];
 	branchFlows: number[];
+	hasProcessorData: boolean;
+	processorIds: string[];
+	processorCaps: number[];
+	processorBranchIdx: number[];
+	processorCanReachWarehouse: boolean[];
+	reachableProcessorsByProducer: number[][];
 }
 
 function allocateCapacityByBranch(
@@ -943,10 +1008,11 @@ function allocateCapacityByBranch(
 		processorData !== undefined &&
 		usable.some((building) => processorData[`${building.id}\u0000${materialId}`]);
 
-	const reachableProcessorsByProducer: { processorIdx: number; cap: number }[][] = [];
+	const reachableProcessorsByProducer: number[][] = [];
 	const processorIds: string[] = [];
 	const processorCaps: number[] = [];
 	const processorBranchIdx: number[] = [];
+	const processorCanReachWarehouse: boolean[] = [];
 	const processorIndexById = new Map<string, number>();
 
 	for (const building of usable) {
@@ -955,7 +1021,7 @@ function allocateCapacityByBranch(
 
 		if (hasProcessorData) {
 			const entries = processorData[`${building.id}\u0000${materialId}`];
-			const reachableProcessors: { processorIdx: number; cap: number }[] = [];
+			const reachableProcessors: number[] = [];
 			if (entries) {
 				for (const entry of entries) {
 					let bi = branchIndex.get(entry.branchId);
@@ -971,9 +1037,10 @@ function allocateCapacityByBranch(
 						processorIds.push(entry.processorId);
 						processorCaps.push(entry.inputCapacity);
 						processorBranchIdx.push(bi);
+						processorCanReachWarehouse.push(entry.canReachWarehouse);
 						processorIndexById.set(entry.processorId, pi);
 					}
-					reachableProcessors.push({ processorIdx: pi, cap: entry.inputCapacity });
+					reachableProcessors.push(pi);
 				}
 			}
 			reachableProcessorsByProducer.push(reachableProcessors);
@@ -1028,7 +1095,13 @@ function allocateCapacityByBranch(
 			producerFlows: new Array(producerCount).fill(0),
 			branchIds,
 			branchDemands,
-			branchFlows: new Array(branchCount).fill(0)
+			branchFlows: new Array(branchCount).fill(0),
+			hasProcessorData,
+			processorIds,
+			processorCaps,
+			processorBranchIdx,
+			processorCanReachWarehouse,
+			reachableProcessorsByProducer
 		};
 	}
 
@@ -1048,7 +1121,13 @@ function allocateCapacityByBranch(
 		producerFlows: result.producerFlows,
 		branchIds,
 		branchDemands,
-		branchFlows: result.branchFlows
+		branchFlows: result.branchFlows,
+		hasProcessorData,
+		processorIds,
+		processorCaps,
+		processorBranchIdx,
+		processorCanReachWarehouse,
+		reachableProcessorsByProducer
 	};
 }
 
@@ -1181,17 +1260,24 @@ function bipartiteMaxFlow(
  * Edmonds-Karp max-flow over a 3-layer producer→processor→branch network.
  *
  * Source feeds producers (capped by daily output), producers feed the
- * processor instances they can reach (capped by each processor's input
- * capacity for this upstream material), processors feed their branch
- * (uncapped, 1:1 mapping), and branches feed the sink (capped by branch
- * demand). This distinguishes multiple processor instances producing the
+ * processor instances they can reach (uncapped), processors feed their
+ * branch (capped by the processor's input capacity, 1:1 mapping), and
+ * branches feed the sink (capped by branch demand).
+ *
+ * The processor's input capacity lives on the shared processor-to-branch
+ * edge, not each producer-to-processor edge. Putting it on the per-producer
+ * edge duplicates the capacity: with N producers reaching one processor,
+ * each edge would carry the full input capacity, so total inflow could
+ * reach N times inputCapacity. The runtime bounds the processor's total
+ * consumption, so the capacity must constrain the single processor-to-
+ * branch outflow, which also distinguishes multiple processor instances producing the
  * same downstream material — a producer that can only reach one of two
  * flour mills is capped by that mill's input capacity, not the full branch
  * demand.
  */
 function tripartiteMaxFlow(
 	producerCaps: readonly number[],
-	reachableProcessorsByProducer: readonly { processorIdx: number; cap: number }[][],
+	reachableProcessorsByProducer: readonly (readonly number[])[],
 	processorCaps: readonly number[],
 	processorBranchIdx: readonly number[],
 	branchDemands: readonly number[]
@@ -1220,12 +1306,12 @@ function tripartiteMaxFlow(
 		addEdge(SOURCE, producerNode(i), producerCaps[i]!);
 	}
 	for (let i = 0; i < producerCount; i++) {
-		for (const { processorIdx, cap } of reachableProcessorsByProducer[i]!) {
-			addEdge(producerNode(i), processorNode(processorIdx), cap);
+		for (const processorIdx of reachableProcessorsByProducer[i]!) {
+			addEdge(producerNode(i), processorNode(processorIdx), Infinity);
 		}
 	}
 	for (let k = 0; k < processorCount; k++) {
-		addEdge(processorNode(k), branchNode(processorBranchIdx[k]!), Infinity);
+		addEdge(processorNode(k), branchNode(processorBranchIdx[k]!), processorCaps[k]!);
 	}
 	for (let j = 0; j < branchCount; j++) {
 		addEdge(branchNode(j), SINK, branchDemands[j]!);
@@ -1294,6 +1380,130 @@ function tripartiteMaxFlow(
 	return { totalFlow, producerFlows, branchFlows };
 }
 
+/**
+ * Horizon-total local supply (production + accessible city inventory) for a
+ * raw/intermediate material, via a 4-layer max-flow:
+ * source -> [producers, inventory] -> processors -> branches -> sink.
+ *
+ * Producer/processor capacities and branch demands are scaled by the
+ * horizon. City inventory is a stock (not scaled) and routes ONLY to
+ * processors that can reach a warehouse, mirroring `pullViaRail`: a
+ * processor with no rail path to a warehouse cannot draw inventory, so it
+ * is stranded. Co-locating production and inventory in one flow also
+ * prevents them from collectively exceeding a processor's input capacity
+ * (the production-only daily flow already respects that cap; adding
+ * inventory on top without sharing the cap would double-count).
+ *
+ * Returns the total local supply over the horizon and how much of the
+ * inventory was consumed (for ending-inventory derivation).
+ */
+function localSupplyOverHorizon(
+	allocation: BranchAllocationResult,
+	horizonDays: number,
+	inventoryUnits: number
+): { totalLocalSupply: number; inventoryConsumed: number } {
+	const producerCount = allocation.producerCaps.length;
+	const processorCount = allocation.processorCaps.length;
+	const branchCount = allocation.branchDemands.length;
+	const inventoryCap = Math.max(0, inventoryUnits);
+	if (branchCount === 0 || (producerCount === 0 && inventoryCap <= 0)) {
+		return { totalLocalSupply: 0, inventoryConsumed: 0 };
+	}
+
+	const SOURCE = 0;
+	const producerNode = (i: number) => i + 1;
+	const INVENTORY = producerCount + 1;
+	const processorNode = (k: number) => producerCount + 2 + k;
+	const branchNode = (j: number) => producerCount + 2 + processorCount + j;
+	const SINK = producerCount + 2 + processorCount + branchCount + 1;
+	const nodeCount = SINK + 1;
+	const graph: FlowEdge[][] = Array.from({ length: nodeCount }, () => []);
+
+	const addEdge = (from: number, to: number, cap: number): void => {
+		const fwd: FlowEdge = { to, cap, rev: null! };
+		const bwd: FlowEdge = { to: from, cap: 0, rev: fwd };
+		fwd.rev = bwd;
+		graph[from]!.push(fwd);
+		graph[to]!.push(bwd);
+	};
+
+	for (let i = 0; i < producerCount; i++) {
+		addEdge(SOURCE, producerNode(i), allocation.producerCaps[i]! * horizonDays);
+	}
+	if (inventoryCap > 0) {
+		addEdge(SOURCE, INVENTORY, inventoryCap);
+	}
+	for (let i = 0; i < producerCount; i++) {
+		for (const processorIdx of allocation.reachableProcessorsByProducer[i]!) {
+			addEdge(producerNode(i), processorNode(processorIdx), Infinity);
+		}
+	}
+	for (let k = 0; k < processorCount; k++) {
+		if (allocation.processorCanReachWarehouse[k]) {
+			addEdge(INVENTORY, processorNode(k), Infinity);
+		}
+	}
+	for (let k = 0; k < processorCount; k++) {
+		addEdge(
+			processorNode(k),
+			branchNode(allocation.processorBranchIdx[k]!),
+			allocation.processorCaps[k]! * horizonDays
+		);
+	}
+	for (let j = 0; j < branchCount; j++) {
+		addEdge(branchNode(j), SINK, allocation.branchDemands[j]! * horizonDays);
+	}
+
+	const EPSILON = 1e-9;
+	let totalFlow = 0;
+	for (;;) {
+		const parent: Array<{ node: number; edge: FlowEdge } | null> = new Array(nodeCount).fill(null);
+		const visited = new Array<boolean>(nodeCount).fill(false);
+		visited[SOURCE] = true;
+		const queue: number[] = [SOURCE];
+		let foundSink = false;
+		while (queue.length > 0 && !foundSink) {
+			const node = queue.shift()!;
+			for (const edge of graph[node]!) {
+				if (!visited[edge.to] && edge.cap > EPSILON) {
+					visited[edge.to] = true;
+					parent[edge.to] = { node, edge };
+					if (edge.to === SINK) {
+						foundSink = true;
+						break;
+					}
+					queue.push(edge.to);
+				}
+			}
+		}
+		if (!foundSink) break;
+		let bottleneck = Infinity;
+		for (let curr = SINK; curr !== SOURCE; ) {
+			const pe = parent[curr]!;
+			bottleneck = Math.min(bottleneck, pe.edge.cap);
+			curr = pe.node;
+		}
+		for (let curr = SINK; curr !== SOURCE; ) {
+			const pe = parent[curr]!;
+			pe.edge.cap -= bottleneck;
+			pe.edge.rev.cap += bottleneck;
+			curr = pe.node;
+		}
+		totalFlow += bottleneck;
+	}
+
+	let inventoryConsumed = 0;
+	if (inventoryCap > 0) {
+		for (const edge of graph[SOURCE]!) {
+			if (edge.to === INVENTORY) {
+				inventoryConsumed = inventoryCap - edge.cap;
+				break;
+			}
+		}
+	}
+	return { totalLocalSupply: totalFlow, inventoryConsumed };
+}
+
 /** Project a ready snapshot using only rail-usable local production capacity. */
 export function projectSupplySnapshot(snapshot: SupplyPlannerSnapshot): SupplyPlannerProjection {
 	const requirements = buildSupplyMaterialRequirements(snapshot);
@@ -1311,15 +1521,16 @@ export function projectSupplySnapshot(snapshot: SupplyPlannerSnapshot): SupplyPl
 			installed,
 			requirement.materialId
 		);
-		// Cap each producer's capacity by its own reachable demand, then sum.
-		// For non-finished materials with per-branch reachability data, use
-		// greedy per-branch allocation so that multiple producers overlapping
-		// on one branch don't collectively exceed that branch's demand.
-		// For finished materials (single warehouse sink), per-producer cap +
-		// aggregate clamp is correct. When per-branch data is unavailable
-		// (e.g. manually constructed test snapshots), fall back to the
-		// per-producer cap + aggregate clamp model.
 		const materialKind = MATERIALS[requirement.materialId]?.kind;
+		// Cap each producer's capacity by its own reachable demand, then sum.
+		// For non-finished materials with per-branch reachability data, the
+		// 3-layer max-flow (producer->processor->branch) caps each producer by
+		// the input capacity of the processor instances it can reach. For
+		// finished materials (single warehouse sink), per-producer cap +
+		// aggregate clamp is correct. When per-branch data is unavailable
+		// (e.g. manually constructed test snapshots), fall back to per-producer
+		// cap + aggregate clamp.
+		let allocation: BranchAllocationResult | null = null;
 		let usableCapacityPerDay: number;
 		if (materialKind !== 'finished' && snapshot.reachableBranchesByBuildingAndMaterial) {
 			const hasBranchData = usable.some(
@@ -1328,17 +1539,77 @@ export function projectSupplySnapshot(snapshot: SupplyPlannerSnapshot): SupplyPl
 						`${building.id}\u0000${requirement.materialId}`
 					]
 			);
-			usableCapacityPerDay = hasBranchData
-				? allocateCapacityByBranch(usable, requirement.materialId, snapshot).totalFlow
-				: perProducerCappedCapacity(usable, requirement.materialId, snapshot);
+			if (hasBranchData) {
+				allocation = allocateCapacityByBranch(usable, requirement.materialId, snapshot);
+				usableCapacityPerDay = allocation.totalFlow;
+			} else {
+				usableCapacityPerDay = perProducerCappedCapacity(usable, requirement.materialId, snapshot);
+			}
 		} else {
 			usableCapacityPerDay = perProducerCappedCapacity(usable, requirement.materialId, snapshot);
 		}
+
+		// City inventory is a warehouse source: a processor can only draw it
+		// via pullViaRail when it can reach a warehouse. For raw/intermediate
+		// materials, inventory with no warehouse-connected consumer is stranded
+		// and must not be credited as local supply. The horizon projection
+		// models local supply as a 4-layer flow (producers + inventory ->
+		// processors -> branches) so production and inventory share processor
+		// input capacity and inventory routes only to warehouse-connected
+		// processors. Finished materials keep their existing full-inventory
+		// warehouse-sink treatment.
+		const isRawOrIntermediate =
+			materialKind !== 'finished' && requirement.producerRecipeId !== null;
+		const warehouseConnectedConsumerCapacity = isRawOrIntermediate
+			? (snapshot.warehouseConnectedConsumerCapacityByMaterial[requirement.materialId] ?? 0)
+			: 0;
+		const inventoryAccessible = !isRawOrIntermediate || warehouseConnectedConsumerCapacity > 0;
+		const accessibleInventory = inventoryAccessible ? inventoryUnits : 0;
+		const useInventoryFlow =
+			isRawOrIntermediate &&
+			allocation !== null &&
+			allocation.hasProcessorData &&
+			allocation.processorCaps.length > 0;
+
 		const stockoutDay = projectedStockoutDay(
 			requirement.requiredPerDay,
 			usableCapacityPerDay,
-			inventoryUnits
+			accessibleInventory
 		);
+
+		// Horizon local-supply model. When a processor graph is available
+		// (usable producers reaching processors), a 4-layer max-flow shares
+		// processor input capacity between production and inventory and routes
+		// inventory only to warehouse-connected processors. When no graph is
+		// available (e.g. the producer is missing), inventory is still gated on
+		// warehouse connectivity and capped by the aggregate
+		// warehouse-connected consumer pull capacity, so it only fills the
+		// demand gap production leaves and never over-credits. Finished
+		// materials keep their existing full-inventory warehouse-sink model
+		// (undefined → default horizon formula).
+		const computeHorizonFlow = (
+			horizonDays: number
+		): { totalLocalSupply: number; inventoryConsumed: number } | undefined => {
+			if (useInventoryFlow && allocation) {
+				return localSupplyOverHorizon(allocation, horizonDays, inventoryUnits);
+			}
+			if (!isRawOrIntermediate) return undefined;
+			const requiredUnits = requirement.requiredPerDay * horizonDays;
+			const productionUnits = usableCapacityPerDay * horizonDays;
+			const inventoryConsumed = inventoryAccessible
+				? Math.min(
+						inventoryUnits,
+						warehouseConnectedConsumerCapacity * horizonDays,
+						Math.max(0, requiredUnits - productionUnits)
+					)
+				: 0;
+			return {
+				totalLocalSupply: Math.min(productionUnits + inventoryConsumed, requiredUnits),
+				inventoryConsumed
+			};
+		};
+		const sevenDayFlow = computeHorizonFlow(7);
+		const thirtyDayFlow = computeHorizonFlow(30);
 
 		return {
 			...requirement,
@@ -1347,23 +1618,25 @@ export function projectSupplySnapshot(snapshot: SupplyPlannerSnapshot): SupplyPl
 			buildingLevels,
 			inventoryUnits,
 			daysOfCover:
-				requirement.requiredPerDay > 0 ? inventoryUnits / requirement.requiredPerDay : null,
+				requirement.requiredPerDay > 0 ? accessibleInventory / requirement.requiredPerDay : null,
 			projectedStockoutDay: stockoutDay,
 			installedCapacityPerDay,
 			usableCapacityPerDay,
 			sevenDay: horizonProjection(
 				7,
 				requirement.requiredPerDay,
-				inventoryUnits,
+				accessibleInventory,
 				usableCapacityPerDay,
-				stockoutDay
+				stockoutDay,
+				sevenDayFlow
 			),
 			thirtyDay: horizonProjection(
 				30,
 				requirement.requiredPerDay,
-				inventoryUnits,
+				accessibleInventory,
 				usableCapacityPerDay,
-				stockoutDay
+				stockoutDay,
+				thirtyDayFlow
 			)
 		};
 	});
@@ -1396,17 +1669,23 @@ function horizonProjection(
 	requiredPerDay: number,
 	startingInventoryUnits: number,
 	usableCapacityPerDay: number,
-	stockoutDay: number | null
+	stockoutDay: number | null,
+	flowResult?: { totalLocalSupply: number; inventoryConsumed: number }
 ): SupplyMaterialHorizonProjection {
 	const requiredUnits = requiredPerDay * horizonDays;
-	const localAvailableUnits = startingInventoryUnits + usableCapacityPerDay * horizonDays;
+	const localAvailableUnits = flowResult
+		? flowResult.totalLocalSupply
+		: startingInventoryUnits + usableCapacityPerDay * horizonDays;
+	const endingInventoryUnits = flowResult
+		? Math.max(0, startingInventoryUnits - flowResult.inventoryConsumed)
+		: Math.max(0, localAvailableUnits - requiredUnits);
 	return {
 		horizonDays,
 		requiredUnits,
 		startingInventoryUnits,
 		localAvailableUnits,
 		importRequiredUnits: Math.max(0, requiredUnits - localAvailableUnits),
-		endingInventoryUnits: Math.max(0, localAvailableUnits - requiredUnits),
+		endingInventoryUnits,
 		daysOfCover: requiredPerDay > 0 ? startingInventoryUnits / requiredPerDay : null,
 		projectedStockoutDay: stockoutDay
 	};

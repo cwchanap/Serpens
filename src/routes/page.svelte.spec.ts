@@ -291,6 +291,7 @@ function plannerSnapshot(overrides: Partial<SupplyPlannerSnapshot> = {}): Supply
 		reachableDemandByBuildingAndMaterial: {},
 		reachableBranchesByBuildingAndMaterial: {},
 		reachableProcessorsByBuildingAndMaterial: {},
+		warehouseConnectedConsumerCapacityByMaterial: {},
 		...overrides
 	};
 }

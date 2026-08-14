@@ -93,6 +93,7 @@ function projectionSnapshot(overrides: Partial<SupplyPlannerSnapshot> = {}): Sup
 		reachableDemandByBuildingAndMaterial: {},
 		reachableBranchesByBuildingAndMaterial: {},
 		reachableProcessorsByBuildingAndMaterial: {},
+		warehouseConnectedConsumerCapacityByMaterial: {},
 		...overrides
 	};
 }
@@ -841,7 +842,12 @@ describe('supply planner snapshot', () => {
 			},
 			reachableProcessorsByBuildingAndMaterial: {
 				'grain-farm-1\u0000grain': [
-					{ processorId: 'flour-mill-a', branchId: 'flour', inputCapacity: 10 }
+					{
+						processorId: 'flour-mill-a',
+						branchId: 'flour',
+						inputCapacity: 10,
+						canReachWarehouse: true
+					}
 				]
 			}
 		});
@@ -894,8 +900,18 @@ describe('supply planner snapshot', () => {
 			},
 			reachableProcessorsByBuildingAndMaterial: {
 				'grain-farm-1\u0000grain': [
-					{ processorId: 'flour-mill-a', branchId: 'flour', inputCapacity: 10 },
-					{ processorId: 'flour-mill-b', branchId: 'flour', inputCapacity: 10 }
+					{
+						processorId: 'flour-mill-a',
+						branchId: 'flour',
+						inputCapacity: 10,
+						canReachWarehouse: true
+					},
+					{
+						processorId: 'flour-mill-b',
+						branchId: 'flour',
+						inputCapacity: 10,
+						canReachWarehouse: true
+					}
 				]
 			}
 		});
@@ -905,6 +921,232 @@ describe('supply planner snapshot', () => {
 		// Grain Farm can reach both mills (total input capacity 20). Branch
 		// demand is 15. Producer capacity is 30. Usable = min(30, 20, 15) = 15.
 		expect(grainRow.usableCapacityPerDay).toBe(15);
+	});
+
+	it('caps a shared processor input capacity across multiple producers', () => {
+		// Regression: two Grain Farms both reach a single Flour Mill (input
+		// capacity 10 grain/day at level 1). The full grain branch demand is
+		// 15/day (from 12 flour/day x 10/8 ratio). The 3-layer max-flow must
+		// cap total usable grain at the mill's shared input capacity (10), not
+		// allow each producer its own 10-unit edge into the mill (which would
+		// let 15+ flow through one mill that can consume only 10).
+		const snapshot = projectionSnapshot({
+			finishedMaterialId: 'pantry',
+			demandPerDay: 16,
+			buildings: [
+				{ id: 'grain-farm-1', cityId: 'industry-city', typeId: 'grain-farm', level: 1 },
+				{ id: 'grain-farm-2', cityId: 'industry-city', typeId: 'grain-farm', level: 1 },
+				{ id: 'flour-mill-a', cityId: 'industry-city', typeId: 'flour-mill', level: 1 },
+				{ id: 'pantry-works-1', cityId: 'industry-city', typeId: 'pantry-works', level: 1 },
+				{ id: 'warehouse-1', cityId: 'industry-city', typeId: 'warehouse', level: 1 }
+			],
+			usableBuildingIds: [
+				'grain-farm-1',
+				'grain-farm-2',
+				'flour-mill-a',
+				'pantry-works-1',
+				'warehouse-1'
+			],
+			usableSinkBuildingIdsByMaterial: {
+				grain: ['flour-mill-a'],
+				flour: ['pantry-works-1'],
+				pantry: ['warehouse-1']
+			},
+			reachableDemandByMaterial: { grain: 15, flour: 12 },
+			reachableDemandByBuildingAndMaterial: {
+				'grain-farm-1\u0000grain': 15,
+				'grain-farm-2\u0000grain': 15,
+				'flour-mill-a\u0000flour': 12
+			},
+			reachableBranchesByBuildingAndMaterial: {
+				'grain-farm-1\u0000grain': new Map([['flour', 15]]),
+				'grain-farm-2\u0000grain': new Map([['flour', 15]]),
+				'flour-mill-a\u0000flour': new Map([['pantry', 12]])
+			},
+			reachableProcessorsByBuildingAndMaterial: {
+				'grain-farm-1\u0000grain': [
+					{
+						processorId: 'flour-mill-a',
+						branchId: 'flour',
+						inputCapacity: 10,
+						canReachWarehouse: true
+					}
+				],
+				'grain-farm-2\u0000grain': [
+					{
+						processorId: 'flour-mill-a',
+						branchId: 'flour',
+						inputCapacity: 10,
+						canReachWarehouse: true
+					}
+				]
+			}
+		});
+		const projection = projectSupplySnapshot(snapshot);
+		const grainRow = projection.materials.find((m) => m.materialId === 'grain')!;
+
+		// Each Grain Farm produces 30 grain/day, but both can only deliver to
+		// the single Flour Mill which consumes 10 grain/day. Total usable grain
+		// must be 10, not 15 (branch demand) or 20 (two 10-unit edges summed).
+		expect(grainRow.installedCapacityPerDay).toBe(60);
+		expect(grainRow.usableCapacityPerDay).toBe(10);
+	});
+
+	it('does not credit raw inventory when no consumer can reach a warehouse', () => {
+		// P1 regression: city inventory is a warehouse source — a processor
+		// can only draw it via pullViaRail when it has a rail path to a
+		// warehouse. Here the Grain Farm is missing, the Flour Mill is usable
+		// (it reaches Pantry Works directly) but cannot reach any warehouse,
+		// so the 100 Grain in city inventory is stranded. The projection must
+		// NOT credit it as local supply: the full 450-unit 30-day grain
+		// demand must import, with zero starting inventory, rather than the
+		// 350 the old unconditional credit produced.
+		const snapshot = projectionSnapshot({
+			finishedMaterialId: 'pantry',
+			demandPerDay: 16,
+			inventory: { grain: 100 },
+			buildings: [
+				{ id: 'flour-mill-a', cityId: 'industry-city', typeId: 'flour-mill', level: 1 },
+				{ id: 'pantry-works-1', cityId: 'industry-city', typeId: 'pantry-works', level: 1 },
+				{ id: 'warehouse-1', cityId: 'industry-city', typeId: 'warehouse', level: 1 }
+			],
+			usableBuildingIds: ['flour-mill-a', 'pantry-works-1', 'warehouse-1'],
+			usableSinkBuildingIdsByMaterial: {
+				grain: ['flour-mill-a'],
+				flour: ['pantry-works-1'],
+				pantry: ['warehouse-1']
+			},
+			reachableDemandByMaterial: { grain: 15, flour: 12 },
+			warehouseConnectedConsumerCapacityByMaterial: { grain: 0 }
+		});
+		const projection = projectSupplySnapshot(snapshot);
+		const grainRow = projection.materials.find((m) => m.materialId === 'grain')!;
+
+		// No Grain Farm installed, so no usable grain capacity.
+		expect(grainRow.usableCapacityPerDay).toBe(0);
+		// Stranded inventory is not credited: full 450 units (15/day * 30)
+		// must import, with zero accessible starting inventory.
+		expect(grainRow.thirtyDay.importRequiredUnits).toBe(450);
+		expect(grainRow.thirtyDay.startingInventoryUnits).toBe(0);
+	});
+
+	it('credits raw inventory when a consumer can reach a warehouse', () => {
+		// Contrast to the stranded-inventory case: same chain, but the Flour
+		// Mill CAN reach a warehouse, so the 100 Grain in city inventory is
+		// accessible and reduces the 30-day import by 100.
+		const snapshot = projectionSnapshot({
+			finishedMaterialId: 'pantry',
+			demandPerDay: 16,
+			inventory: { grain: 100 },
+			buildings: [
+				{ id: 'flour-mill-a', cityId: 'industry-city', typeId: 'flour-mill', level: 1 },
+				{ id: 'pantry-works-1', cityId: 'industry-city', typeId: 'pantry-works', level: 1 },
+				{ id: 'warehouse-1', cityId: 'industry-city', typeId: 'warehouse', level: 1 }
+			],
+			usableBuildingIds: ['flour-mill-a', 'pantry-works-1', 'warehouse-1'],
+			usableSinkBuildingIdsByMaterial: {
+				grain: ['flour-mill-a'],
+				flour: ['pantry-works-1'],
+				pantry: ['warehouse-1']
+			},
+			reachableDemandByMaterial: { grain: 15, flour: 12 },
+			warehouseConnectedConsumerCapacityByMaterial: { grain: 10 }
+		});
+		const projection = projectSupplySnapshot(snapshot);
+		const grainRow = projection.materials.find((m) => m.materialId === 'grain')!;
+
+		expect(grainRow.thirtyDay.startingInventoryUnits).toBe(100);
+		expect(grainRow.thirtyDay.importRequiredUnits).toBe(350);
+	});
+
+	it('caps raw inventory by the warehouse-connected consumer pull capacity', () => {
+		// No Grain Farm, but the Flour Mill can reach a warehouse (pull
+		// capacity 10 grain/day). Even with 1000 Grain in inventory, only
+		// 10/day * 30 = 300 can be drawn over the horizon, so imports must
+		// reflect a 300-unit local contribution, not 1000.
+		const snapshot = projectionSnapshot({
+			finishedMaterialId: 'pantry',
+			demandPerDay: 16,
+			inventory: { grain: 1000 },
+			buildings: [
+				{ id: 'flour-mill-a', cityId: 'industry-city', typeId: 'flour-mill', level: 1 },
+				{ id: 'pantry-works-1', cityId: 'industry-city', typeId: 'pantry-works', level: 1 },
+				{ id: 'warehouse-1', cityId: 'industry-city', typeId: 'warehouse', level: 1 }
+			],
+			usableBuildingIds: ['flour-mill-a', 'pantry-works-1', 'warehouse-1'],
+			usableSinkBuildingIdsByMaterial: {
+				grain: ['flour-mill-a'],
+				flour: ['pantry-works-1'],
+				pantry: ['warehouse-1']
+			},
+			reachableDemandByMaterial: { grain: 15, flour: 12 },
+			warehouseConnectedConsumerCapacityByMaterial: { grain: 10 }
+		});
+		const projection = projectSupplySnapshot(snapshot);
+		const grainRow = projection.materials.find((m) => m.materialId === 'grain')!;
+
+		// 300 units drawn (10/day * 30), 150 still imported (450 - 300).
+		expect(grainRow.thirtyDay.importRequiredUnits).toBe(150);
+		expect(grainRow.thirtyDay.endingInventoryUnits).toBe(700);
+	});
+
+	it('does not let raw inventory double-count against processor capacity', () => {
+		// The 4-layer horizon flow shares processor input capacity between
+		// production and inventory. A Grain Farm (30/day) already saturates
+		// the single Flour Mill (10 grain/day input capacity); even though the
+		// mill is warehouse-connected and 100 Grain sits in inventory, the
+		// inventory must NOT stack on top of production to over-state local
+		// supply. Old code: localAvailable = 100 + 10*30 = 400 → import 50.
+		// Flow: total local supply capped at the mill's 10/day → import 150.
+		const snapshot = projectionSnapshot({
+			finishedMaterialId: 'pantry',
+			demandPerDay: 16,
+			inventory: { grain: 100 },
+			buildings: [
+				{ id: 'grain-farm-1', cityId: 'industry-city', typeId: 'grain-farm', level: 1 },
+				{ id: 'flour-mill-a', cityId: 'industry-city', typeId: 'flour-mill', level: 1 },
+				{ id: 'pantry-works-1', cityId: 'industry-city', typeId: 'pantry-works', level: 1 },
+				{ id: 'warehouse-1', cityId: 'industry-city', typeId: 'warehouse', level: 1 }
+			],
+			usableBuildingIds: ['grain-farm-1', 'flour-mill-a', 'pantry-works-1', 'warehouse-1'],
+			usableSinkBuildingIdsByMaterial: {
+				grain: ['flour-mill-a'],
+				flour: ['pantry-works-1'],
+				pantry: ['warehouse-1']
+			},
+			reachableDemandByMaterial: { grain: 15, flour: 12 },
+			reachableDemandByBuildingAndMaterial: {
+				'grain-farm-1\u0000grain': 15,
+				'flour-mill-a\u0000flour': 12
+			},
+			reachableBranchesByBuildingAndMaterial: {
+				'grain-farm-1\u0000grain': new Map([['flour', 15]]),
+				'flour-mill-a\u0000flour': new Map([['pantry', 12]])
+			},
+			reachableProcessorsByBuildingAndMaterial: {
+				'grain-farm-1\u0000grain': [
+					{
+						processorId: 'flour-mill-a',
+						branchId: 'flour',
+						inputCapacity: 10,
+						canReachWarehouse: true
+					}
+				]
+			},
+			warehouseConnectedConsumerCapacityByMaterial: { grain: 10 }
+		});
+		const projection = projectSupplySnapshot(snapshot);
+		const grainRow = projection.materials.find((m) => m.materialId === 'grain')!;
+
+		// Production saturates the mill (10/day); inventory cannot stack on
+		// top. 30-day import is 450 - 300 = 150, not 50.
+		expect(grainRow.usableCapacityPerDay).toBe(10);
+		expect(grainRow.thirtyDay.importRequiredUnits).toBe(150);
+		// Inventory is accessible (mill is warehouse-connected) but, since
+		// production already saturates the mill, none is consumed: the full
+		// 100 remains as ending inventory.
+		expect(grainRow.thirtyDay.startingInventoryUnits).toBe(100);
+		expect(grainRow.thirtyDay.endingInventoryUnits).toBe(100);
 	});
 
 	it('does not treat disconnected installed output as usable local supply', () => {

@@ -723,6 +723,46 @@ describe('supply planner action noop branches', () => {
 });
 
 describe('supply planner action material-specific structural exception', () => {
+	it('does not treat an installed-but-disconnected downstream stage as structurally missing', () => {
+		// P1 regression: Grain Farm is missing, but Flour Mill and Pantry
+		// Works are both installed — just rail-disconnected from each other
+		// (and from any warehouse). Grain therefore has zero USABLE sinks,
+		// yet the downstream stage is NOT missing. The old code derived
+		// structuralChainIncomplete from usableSinkBuildingIdsByMaterial
+		// (which omits the disconnected Flour Mill), so it bypassed rail
+		// gating and recommended a useless Grain Farm even with
+		// canBuildRail: false. The fix derives the exception from installed
+		// downstream producer presence, so rail gating applies and no
+		// useless build is recommended.
+		const base = baseGame('pantry', 'grocery');
+		const game = {
+			...base,
+			industrialBuildings: [
+				building('warehouse', 'warehouse-1', 1, 2, 6),
+				building('flour-mill', 'flour-mill-1', 1, 20, 20),
+				building('pantry-works', 'pantry-works-1', 1, 28, 20)
+			],
+			industryCities: base.industryCities.map((city) =>
+				city.id === 'industry-city' ? { ...city, rails: [] } : city
+			)
+		};
+		const plan = readyPlan(game, availability({ canBuildRail: false, canUpgradeIndustry: false }));
+
+		// Grain is the missing producer (deepest), but the Flour Mill is
+		// installed, so the chain is not structurally incomplete.
+		expect(plan.baseline.bottleneck).toMatchObject({
+			kind: 'missing-producer',
+			materialId: 'grain'
+		});
+		// With canBuildRail disabled and no rail-ready / future-connectable
+		// Grain Farm placement (no usable grain sink to connect to), the
+		// planner must NOT recommend a Grain Farm build. The old code did.
+		expect(plan.recommendation.action.kind).toBe('none');
+		if (plan.recommendation.action.kind === 'build-producer') {
+			expect(plan.recommendation.action.materialId).not.toBe('grain');
+		}
+	});
+
 	it('does not treat a missing sibling producer as structural when its downstream sink exists', () => {
 		// P1 #3 regression: Sugar and Water are both missing in the Drinks
 		// chain, but the Syrup Plant (which consumes both) already exists
