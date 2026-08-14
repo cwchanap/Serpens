@@ -1378,6 +1378,11 @@ describe('supply planner snapshot', () => {
 		// a warehouse-connected Flour Mill pulling 10 grain/day, 100 Grain in
 		// inventory, and 15/day required, cover is 100/10 = 10 days — not the
 		// old 100/15 ≈ 6.67.
+		//
+		// This test exercises the zero-producer flow path
+		// (warehouseConnectedProcessorsByMaterial drives the processor graph
+		// with producerCount = 0) rather than the aggregate-capacity
+		// fallback, so the branch-scoped rate is verified end-to-end.
 		const snapshot = projectionSnapshot({
 			finishedMaterialId: 'pantry',
 			demandPerDay: 16,
@@ -1394,6 +1399,17 @@ describe('supply planner snapshot', () => {
 				pantry: ['warehouse-1']
 			},
 			reachableDemandByMaterial: { grain: 15, flour: 12 },
+			warehouseConnectedProcessorsByMaterial: {
+				grain: [
+					{
+						processorId: 'flour-mill-a',
+						branchId: 'flour',
+						inputCapacity: 10,
+						canReachWarehouse: true,
+						branchDemand: 15
+					}
+				]
+			},
 			warehouseConnectedConsumerCapacityByMaterial: { grain: 10 }
 		});
 		const projection = projectSupplySnapshot(snapshot);
@@ -1402,6 +1418,181 @@ describe('supply planner snapshot', () => {
 		expect(grainRow.usableCapacityPerDay).toBe(0);
 		expect(grainRow.projectedStockoutDay).toBe(10);
 		expect(grainRow.daysOfCover).toBe(10);
+	});
+
+	it('prioritizes production over inventory via two-phase max-flow when a generalist producer could strand a specialist', () => {
+		// P1: producer-first edge insertion does not make Edmonds–Karp
+		// prefer production over inventory — adjacency order is only a
+		// tie-breaker among equal-length BFS paths. A generalist producer
+		// (Pump A, reaches both filtration and syrup) can be saturated on
+		// the filtration branch by the first augmentation, stranding the
+		// specialist (Pump B, filtration only) and forcing the syrup branch
+		// to be served by inventory — even though the production-only
+		// max-flow proves production can cover all demand (A→syrup 7.5,
+		// A→filtration 32.5, B→filtration 15.5 = 55.5 total).
+		//
+		// The two-phase fix (phase 1: production-only max-flow, phase 2:
+		// add inventory) consumes zero inventory when production suffices.
+		const snapshot = projectionSnapshot({
+			finishedMaterialId: 'drinks',
+			demandPerDay: 50,
+			inventory: { water: 100 },
+			buildings: [
+				{ id: 'pump-a', cityId: 'industry-city', typeId: 'water-pump', level: 1 },
+				{ id: 'pump-b', cityId: 'industry-city', typeId: 'water-pump', level: 1 },
+				{
+					id: 'filtration-1',
+					cityId: 'industry-city',
+					typeId: 'water-filtration-plant',
+					level: 1
+				},
+				{ id: 'syrup-1', cityId: 'industry-city', typeId: 'syrup-plant', level: 1 },
+				{ id: 'warehouse-1', cityId: 'industry-city', typeId: 'warehouse', level: 1 }
+			],
+			usableBuildingIds: ['pump-a', 'pump-b', 'filtration-1', 'syrup-1', 'warehouse-1'],
+			usableSinkBuildingIdsByMaterial: {
+				water: ['filtration-1', 'syrup-1'],
+				'filtered-water': ['warehouse-1'],
+				syrup: ['warehouse-1']
+			},
+			reachableDemandByMaterial: { water: 55.5 },
+			reachableDemandByBuildingAndMaterial: {
+				'pump-a\u0000water': 55.5,
+				'pump-b\u0000water': 48
+			},
+			reachableBranchesByBuildingAndMaterial: {
+				'pump-a\u0000water': new Map([
+					['filtered-water', 48],
+					['syrup', 7.5]
+				]),
+				'pump-b\u0000water': new Map([['filtered-water', 48]])
+			},
+			reachableProcessorsByBuildingAndMaterial: {
+				'pump-a\u0000water': [
+					{
+						processorId: 'filtration-1',
+						branchId: 'filtered-water',
+						inputCapacity: 48,
+						canReachWarehouse: true
+					},
+					{
+						processorId: 'syrup-1',
+						branchId: 'syrup',
+						inputCapacity: 7.5,
+						canReachWarehouse: true
+					}
+				],
+				'pump-b\u0000water': [
+					{
+						processorId: 'filtration-1',
+						branchId: 'filtered-water',
+						inputCapacity: 48,
+						canReachWarehouse: true
+					}
+				]
+			},
+			warehouseConnectedProcessorsByMaterial: {
+				water: [
+					{
+						processorId: 'filtration-1',
+						branchId: 'filtered-water',
+						inputCapacity: 48,
+						canReachWarehouse: true,
+						branchDemand: 48
+					},
+					{
+						processorId: 'syrup-1',
+						branchId: 'syrup',
+						inputCapacity: 7.5,
+						canReachWarehouse: true,
+						branchDemand: 7.5
+					}
+				]
+			},
+			warehouseConnectedConsumerCapacityByMaterial: { water: 55.5 }
+		});
+		const projection = projectSupplySnapshot(snapshot);
+		const waterRow = projection.materials.find((m) => m.materialId === 'water')!;
+
+		// Production-only max-flow covers all 55.5 water/day demand.
+		expect(waterRow.usableCapacityPerDay).toBe(55.5);
+		// Two-phase flow: zero inventory consumed → no imports needed.
+		expect(waterRow.sevenDay.importRequiredUnits).toBe(0);
+		expect(waterRow.sevenDay.endingInventoryUnits).toBe(100);
+		expect(waterRow.thirtyDay.importRequiredUnits).toBe(0);
+		expect(waterRow.thirtyDay.endingInventoryUnits).toBe(100);
+		// No stockout: production covers demand, inventory never drawn down.
+		expect(waterRow.projectedStockoutDay).toBeNull();
+		expect(waterRow.daysOfCover).toBeNull();
+	});
+
+	it('does not credit warehouse inventory against branches whose processors cannot reach the warehouse when no producer exists', () => {
+		// P1: the no-local-producer path must not collapse warehouse
+		// inventory access across branches. With no Water Pump, the
+		// Water Filtration Plant is warehouse-connected (can pull water via
+		// rail), but the Syrup Plant is usable yet NOT warehouse-connected
+		// (cannot pull water from the warehouse at runtime). The fallback
+		// uses aggregate warehouseConnectedConsumerCapacity with no branch
+		// topology, crediting inventory against all branches — including
+		// syrup's. The fix routes inventory through the 4-layer flow with
+		// producerCount = 0, so only the filtration branch receives
+		// inventory; the syrup branch must import.
+		//
+		// 400 Water in inventory (> filtration's 7-day demand of 336 but
+		// < total 7-day demand of 388.5) exposes the difference: the
+		// fallback would credit 388.5 (all demand), the fix credits only
+		// 336 (filtration branch demand), leaving 52.5 to import.
+		const snapshot = projectionSnapshot({
+			finishedMaterialId: 'drinks',
+			demandPerDay: 50,
+			inventory: { water: 400 },
+			buildings: [
+				{
+					id: 'filtration-1',
+					cityId: 'industry-city',
+					typeId: 'water-filtration-plant',
+					level: 1
+				},
+				{ id: 'syrup-1', cityId: 'industry-city', typeId: 'syrup-plant', level: 1 },
+				{ id: 'warehouse-1', cityId: 'industry-city', typeId: 'warehouse', level: 1 }
+			],
+			usableBuildingIds: ['filtration-1', 'syrup-1', 'warehouse-1'],
+			usableSinkBuildingIdsByMaterial: {
+				water: ['filtration-1', 'syrup-1'],
+				'filtered-water': ['warehouse-1'],
+				syrup: ['warehouse-1']
+			},
+			reachableDemandByMaterial: { water: 55.5 },
+			warehouseConnectedProcessorsByMaterial: {
+				// Only filtration is warehouse-connected; syrup is NOT
+				// (absent from this list).
+				water: [
+					{
+						processorId: 'filtration-1',
+						branchId: 'filtered-water',
+						inputCapacity: 60,
+						canReachWarehouse: true,
+						branchDemand: 48
+					}
+				]
+			},
+			// Aggregate capacity (60) exceeds total water demand (55.5),
+			// so the fallback would credit inventory against all demand.
+			warehouseConnectedConsumerCapacityByMaterial: { water: 60 }
+		});
+		const projection = projectSupplySnapshot(snapshot);
+		const waterRow = projection.materials.find((m) => m.materialId === 'water')!;
+
+		// No producer → usable capacity is 0.
+		expect(waterRow.usableCapacityPerDay).toBe(0);
+		// 7-day: inventory routes only through filtration (336 = 48*7).
+		// Syrup's 52.5 (= 7.5*7) must be imported.
+		expect(waterRow.sevenDay.endingInventoryUnits).toBe(64);
+		expect(waterRow.sevenDay.importRequiredUnits).toBe(52.5);
+		// Inventory depletes at 48/day (filtration branch demand), not
+		// 55.5/day (total demand) or 60/day (aggregate capacity).
+		expect(waterRow.projectedStockoutDay).toBeCloseTo(400 / 48, 10);
+		expect(waterRow.daysOfCover).toBeCloseTo(400 / 48, 10);
 	});
 
 	it('does not treat disconnected installed output as usable local supply', () => {
