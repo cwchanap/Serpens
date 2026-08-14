@@ -812,6 +812,8 @@ function addSyntheticProducer(
 		reachability.reachableProcessorsByBuildingAndMaterial;
 	candidateSnapshot.warehouseConnectedConsumerCapacityByMaterial =
 		reachability.warehouseConnectedConsumerCapacityByMaterial;
+	candidateSnapshot.warehouseConnectedProcessorsByMaterial =
+		reachability.warehouseConnectedProcessorsByMaterial;
 	if (!preferRailReady) {
 		candidateSnapshot.usableBuildingIds = candidateSnapshot.usableBuildingIds.filter(
 			(id) => id !== candidateId
