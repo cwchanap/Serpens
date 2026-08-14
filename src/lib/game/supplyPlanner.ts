@@ -716,6 +716,44 @@ function canBuildingReachBuilding(
  * instances it can reach — not the full branch demand. A producer that can
  * only reach one of two flour mills is capped by that mill's input capacity.
  */
+/**
+ * Sums the per-day input capacity of usable warehouse-connected consumers of
+ * a material. City inventory lives in warehouses, so a processor can only
+ * draw it when it can reach a warehouse; this caps how much of the material's
+ * starting inventory the projection may credit as accessible local supply.
+ *
+ * This is computed independently of whether a local producer for the
+ * material exists — a missing producer does not strand warehouse-accessible
+ * inventory, since a warehouse-connected downstream processor can still pull
+ * it via rail.
+ */
+function computeWarehouseConnectedConsumerCapacity(
+	context: ReachabilityContext,
+	materialId: MaterialId
+): number {
+	const whConsumerSeen = new Set<string>();
+	let whConsumerCapacity = 0;
+	for (const downstreamMaterial of context.requiredMaterialIds) {
+		if (downstreamMaterial === materialId) continue;
+		const downstreamRecipeId = MATERIAL_PRODUCER_RECIPES.get(downstreamMaterial);
+		if (!downstreamRecipeId) continue;
+		const downstreamRecipe = PRODUCTION_RECIPES[downstreamRecipeId];
+		const downstreamInput = downstreamRecipe.inputs.find((i) => i.materialId === materialId);
+		if (!downstreamInput) continue;
+		for (const processor of context.outputsByMaterial.get(downstreamMaterial) ?? []) {
+			const processorUsable =
+				context.memo.get(`${processor.building.id}\u0000${processor.materialId}`) === true;
+			if (!processorUsable) continue;
+			if (!canReachAnyWarehouse(context, processor.building)) continue;
+			if (whConsumerSeen.has(processor.building.id)) continue;
+			whConsumerSeen.add(processor.building.id);
+			const throughput = getRecipeThroughputUnits([processor.building], downstreamRecipeId);
+			whConsumerCapacity += downstreamInput.quantity * throughput;
+		}
+	}
+	return whConsumerCapacity;
+}
+
 function computeReachableDemandByMaterial(
 	context: ReachabilityContext,
 	requirements: readonly SupplyMaterialRequirement[]
@@ -739,13 +777,24 @@ function computeReachableDemandByMaterial(
 			continue;
 		}
 
+		const material = MATERIALS[requirement.materialId];
+		// Warehouse-connected consumer capacity must be derived independently
+		// of producer presence. A missing producer does not strand
+		// warehouse-accessible inventory — a warehouse-connected downstream
+		// processor can still pull it via rail. Computing this before the
+		// producers.length === 0 early return ensures the projection credits
+		// accessible inventory even when the local producer is absent.
+		if (material?.kind !== 'finished' && requirement.producerRecipeId !== null) {
+			byWarehouseConnectedConsumerCapacity[requirement.materialId] =
+				computeWarehouseConnectedConsumerCapacity(context, requirement.materialId);
+		}
+
 		const producers = context.outputsByMaterial.get(requirement.materialId) ?? [];
 		if (producers.length === 0) {
 			byMaterial[requirement.materialId] = 0;
 			continue;
 		}
 
-		const material = MATERIALS[requirement.materialId];
 		const producerKey = (buildingId: string) => `${buildingId}\u0000${requirement.materialId}`;
 
 		if (material?.kind === 'finished') {
@@ -843,35 +892,6 @@ function computeReachableDemandByMaterial(
 				aggregateReachableDemand += demandFromBranch;
 			}
 		}
-
-		// Sum the per-day input capacity of usable warehouse-connected
-		// consumers of this material. City inventory lives in warehouses, so a
-		// processor can only draw it when it can reach a warehouse; this caps
-		// how much of the material's starting inventory the projection may
-		// credit as accessible local supply.
-		const whConsumerSeen = new Set<string>();
-		let whConsumerCapacity = 0;
-		for (const downstreamMaterial of context.requiredMaterialIds) {
-			if (downstreamMaterial === requirement.materialId) continue;
-			const downstreamRecipeId = MATERIAL_PRODUCER_RECIPES.get(downstreamMaterial);
-			if (!downstreamRecipeId) continue;
-			const downstreamRecipe = PRODUCTION_RECIPES[downstreamRecipeId];
-			const downstreamInput = downstreamRecipe.inputs.find(
-				(i) => i.materialId === requirement.materialId
-			);
-			if (!downstreamInput) continue;
-			for (const processor of context.outputsByMaterial.get(downstreamMaterial) ?? []) {
-				const processorUsable =
-					context.memo.get(`${processor.building.id}\u0000${processor.materialId}`) === true;
-				if (!processorUsable) continue;
-				if (!canReachAnyWarehouse(context, processor.building)) continue;
-				if (whConsumerSeen.has(processor.building.id)) continue;
-				whConsumerSeen.add(processor.building.id);
-				const throughput = getRecipeThroughputUnits([processor.building], downstreamRecipeId);
-				whConsumerCapacity += downstreamInput.quantity * throughput;
-			}
-		}
-		byWarehouseConnectedConsumerCapacity[requirement.materialId] = whConsumerCapacity;
 
 		// Ensure all producers have an entry (default 0 if no branches reached).
 		for (const producer of producers) {
@@ -1571,12 +1591,6 @@ export function projectSupplySnapshot(snapshot: SupplyPlannerSnapshot): SupplyPl
 			allocation.hasProcessorData &&
 			allocation.processorCaps.length > 0;
 
-		const stockoutDay = projectedStockoutDay(
-			requirement.requiredPerDay,
-			usableCapacityPerDay,
-			accessibleInventory
-		);
-
 		// Horizon local-supply model. When a processor graph is available
 		// (usable producers reaching processors), a 4-layer max-flow shares
 		// processor input capacity between production and inventory and routes
@@ -1611,14 +1625,37 @@ export function projectSupplySnapshot(snapshot: SupplyPlannerSnapshot): SupplyPl
 		const sevenDayFlow = computeHorizonFlow(7);
 		const thirtyDayFlow = computeHorizonFlow(30);
 
+		// Derive stockout/cover from the flow when the 4-layer model is
+		// active. The simple projectedStockoutDay formula
+		// (inventory / (demand - production)) assumes inventory fills the
+		// demand-production gap, but the flow model shares processor capacity
+		// between production and inventory — when production saturates the
+		// processor, inventory is not consumed at all. Deriving stockout/cover
+		// from the flow's inventoryConsumed keeps them coherent with the
+		// horizon ending-inventory projection.
+		let stockoutDay: number | null;
+		let daysOfCover: number | null;
+		if (useInventoryFlow) {
+			const derived = flowDerivedStockoutAndCover(accessibleInventory, sevenDayFlow, thirtyDayFlow);
+			stockoutDay = derived.stockoutDay;
+			daysOfCover = derived.daysOfCover;
+		} else {
+			stockoutDay = projectedStockoutDay(
+				requirement.requiredPerDay,
+				usableCapacityPerDay,
+				accessibleInventory
+			);
+			daysOfCover =
+				requirement.requiredPerDay > 0 ? accessibleInventory / requirement.requiredPerDay : null;
+		}
+
 		return {
 			...requirement,
 			buildingCount: installed.length,
 			maxBuildingLevel: buildingLevels.at(-1) ?? 0,
 			buildingLevels,
 			inventoryUnits,
-			daysOfCover:
-				requirement.requiredPerDay > 0 ? accessibleInventory / requirement.requiredPerDay : null,
+			daysOfCover,
 			projectedStockoutDay: stockoutDay,
 			installedCapacityPerDay,
 			usableCapacityPerDay,
@@ -1628,7 +1665,8 @@ export function projectSupplySnapshot(snapshot: SupplyPlannerSnapshot): SupplyPl
 				accessibleInventory,
 				usableCapacityPerDay,
 				stockoutDay,
-				sevenDayFlow
+				sevenDayFlow,
+				daysOfCover
 			),
 			thirtyDay: horizonProjection(
 				30,
@@ -1636,7 +1674,8 @@ export function projectSupplySnapshot(snapshot: SupplyPlannerSnapshot): SupplyPl
 				accessibleInventory,
 				usableCapacityPerDay,
 				stockoutDay,
-				thirtyDayFlow
+				thirtyDayFlow,
+				daysOfCover
 			)
 		};
 	});
@@ -1670,7 +1709,8 @@ function horizonProjection(
 	startingInventoryUnits: number,
 	usableCapacityPerDay: number,
 	stockoutDay: number | null,
-	flowResult?: { totalLocalSupply: number; inventoryConsumed: number }
+	flowResult?: { totalLocalSupply: number; inventoryConsumed: number },
+	daysOfCoverOverride?: number | null
 ): SupplyMaterialHorizonProjection {
 	const requiredUnits = requiredPerDay * horizonDays;
 	const localAvailableUnits = flowResult
@@ -1686,7 +1726,12 @@ function horizonProjection(
 		localAvailableUnits,
 		importRequiredUnits: Math.max(0, requiredUnits - localAvailableUnits),
 		endingInventoryUnits,
-		daysOfCover: requiredPerDay > 0 ? startingInventoryUnits / requiredPerDay : null,
+		daysOfCover:
+			daysOfCoverOverride !== undefined
+				? daysOfCoverOverride
+				: requiredPerDay > 0
+					? startingInventoryUnits / requiredPerDay
+					: null,
 		projectedStockoutDay: stockoutDay
 	};
 }
@@ -1698,6 +1743,51 @@ function projectedStockoutDay(
 ): number | null {
 	const netDailyDraw = requiredPerDay - usableCapacityPerDay;
 	return requiredPerDay > 0 && netDailyDraw > 0 ? startingInventoryUnits / netDailyDraw : null;
+}
+
+/**
+ * Derives stockout day and days of cover from the 4-layer horizon flow's
+ * inventory consumption. The flow model shares processor input capacity
+ * between production and inventory, so the effective inventory consumption
+ * rate may differ from the simple `requiredPerDay - usableCapacityPerDay`
+ * formula — when production saturates the processor, inventory is not
+ * consumed at all (rate = 0, stockout = null).
+ *
+ * Uses the shortest horizon where inventory is not fully consumed to get
+ * the most accurate daily rate. When all horizons fully consume the
+ * inventory, the shortest horizon serves as an upper bound on the stockout
+ * day.
+ */
+function flowDerivedStockoutAndCover(
+	inventory: number,
+	sevenDayFlow: { inventoryConsumed: number } | undefined,
+	thirtyDayFlow: { inventoryConsumed: number } | undefined
+): { stockoutDay: number | null; daysOfCover: number | null } {
+	if (inventory <= 0) return { stockoutDay: null, daysOfCover: null };
+
+	const flows = [
+		{ horizon: 7, consumed: sevenDayFlow?.inventoryConsumed ?? 0 },
+		{ horizon: 30, consumed: thirtyDayFlow?.inventoryConsumed ?? 0 }
+	];
+
+	for (const { horizon, consumed } of flows) {
+		if (consumed > 0 && consumed < inventory) {
+			const rate = consumed / horizon;
+			return {
+				stockoutDay: inventory / rate,
+				daysOfCover: inventory / rate
+			};
+		}
+	}
+
+	const anyConsumed = flows.some((f) => f.consumed > 0);
+	if (!anyConsumed) return { stockoutDay: null, daysOfCover: null };
+
+	const shortest = flows.find((f) => f.consumed >= inventory);
+	return {
+		stockoutDay: shortest ? shortest.horizon : null,
+		daysOfCover: shortest ? shortest.horizon : null
+	};
 }
 
 function warehouseEvidence(snapshot: SupplyPlannerSnapshot): SupplyWarehouseEvidence {
