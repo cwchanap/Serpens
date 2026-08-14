@@ -424,6 +424,49 @@ describe('supply planner snapshot', () => {
 		expect(result.snapshot.usableSinkBuildingIdsByMaterial.flour).toContain('pantry-works-1');
 	});
 
+	it('preserves warehouse-accessible grain inventory when the Grain Farm is missing', () => {
+		// Regression: when the Grain Farm is absent, the Flour Mill is
+		// installed and rail-connected to a warehouse, Pantry Works is
+		// usable, and 100 Grain sits in city inventory, the Flour Mill can
+		// pull those 100 Grain from the warehouse at runtime. The planner
+		// must credit that accessible inventory — not strand it as if no
+		// warehouse-connected consumer exists.
+		const base = plannerGame(undefined, {
+			stores: [{ ...baseGame('grocery').stores[0]!, products: [product('pantry')] }],
+			industrialBuildings: [
+				building('flour-mill', 'flour-mill-1', 'industry-city', 1, 2, 6),
+				building('pantry-works', 'pantry-works-1', 'industry-city', 1, 2, 10),
+				building('warehouse', 'warehouse-1', 'industry-city', 1, 2, 14)
+			],
+			cityInventories: [{ cityId: 'industry-city', materials: { grain: 100 } }]
+		});
+		const game = {
+			...base,
+			industryCities: base.industryCities.map((city) =>
+				city.id === 'industry-city' ? { ...city, rails: verticalRails(1, 17) } : city
+			)
+		};
+		const result = buildSupplyPlannerSnapshot(game, {
+			retailCityId: 'harbor-city',
+			categoryId: 'pantry'
+		});
+
+		expect(result.status).toBe('ready');
+		if (result.status !== 'ready') return;
+		// The Flour Mill is usable and warehouse-connected, so the
+		// warehouse-connected consumer capacity for grain must be > 0 even
+		// though no Grain Farm is installed.
+		expect(result.snapshot.warehouseConnectedConsumerCapacityByMaterial.grain).toBeGreaterThan(0);
+
+		const projection = projectSupplySnapshot(result.snapshot);
+		const grainRow = projection.materials.find((m) => m.materialId === 'grain')!;
+		// No Grain Farm installed → no usable production capacity.
+		expect(grainRow.usableCapacityPerDay).toBe(0);
+		// The 100 Grain is accessible (Flour Mill can reach the warehouse)
+		// and must be credited as starting inventory.
+		expect(grainRow.thirtyDay.startingInventoryUnits).toBe(100);
+	});
+
 	it('rejects a finished producer with no warehouse path', () => {
 		const base = plannerGame([product('bottled-water')], {
 			industrialBuildings: [
@@ -1147,6 +1190,14 @@ describe('supply planner snapshot', () => {
 		// 100 remains as ending inventory.
 		expect(grainRow.thirtyDay.startingInventoryUnits).toBe(100);
 		expect(grainRow.thirtyDay.endingInventoryUnits).toBe(100);
+		// Coherence: since inventory is never consumed (ending = 100), the
+		// stockout day and days of cover must reflect that — not the old
+		// formula (stockout = 20, cover ≈ 6.7) which assumed inventory fills
+		// the demand-production gap.
+		expect(grainRow.projectedStockoutDay).toBeNull();
+		expect(grainRow.daysOfCover).toBeNull();
+		expect(grainRow.thirtyDay.projectedStockoutDay).toBeNull();
+		expect(grainRow.thirtyDay.daysOfCover).toBeNull();
 	});
 
 	it('does not treat disconnected installed output as usable local supply', () => {
