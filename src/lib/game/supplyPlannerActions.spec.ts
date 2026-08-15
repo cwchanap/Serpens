@@ -637,7 +637,9 @@ describe('supply planner action noop branches', () => {
 			kind: 'destination-full',
 			cityId: 'industry-city',
 			routeId: 'route-water',
-			materialId: 'bottled-water'
+			materialId: 'bottled-water',
+			blockedUnits: 10,
+			amount: 10
 		});
 	});
 

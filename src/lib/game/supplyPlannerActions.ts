@@ -505,10 +505,7 @@ function diagnoseLogistics(
 	});
 	if (destinationFullRoute) {
 		const forecast = forecasts.get(destinationFullRoute.id);
-		const blockedUnits = Math.max(
-			1,
-			forecast?.peakUnmetDestinationNeed ?? destinationFullRoute.capacity
-		);
+		const blockedUnits = destinationFullRoute.capacity;
 		return {
 			kind: 'destination-full',
 			routeId: destinationFullRoute.id,
