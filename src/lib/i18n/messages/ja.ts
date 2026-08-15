@@ -551,6 +551,7 @@ export const ja = {
 			perDay: '{value} / 日',
 			perUnit: '{value} / 個',
 			warehouse: '倉庫使用量 / 容量',
+			logisticsWarehouse: '現在の物流で可視な倉庫在庫',
 			buildings: '建物',
 			installedCapacity: '設置済み能力',
 			usableCapacity: '利用可能能力',
@@ -585,7 +586,7 @@ export const ja = {
 			none: '拘束となるボトルネックはありません。'
 		},
 		limitations: {
-			activeLogistics: 'ルート {routes} のアクティブな物流はモデル化されていません。',
+			remoteOriginProduction: 'ルート {routes} の遠隔出発地の生産はモデル化されていません。',
 			railCapacity: '鉄道容量の競合はモデル化されていません。',
 			storeSalesCapacity: '店舗販売能力はモデル化されていません。'
 		},
@@ -595,8 +596,7 @@ export const ja = {
 			unaffordable: '購入可能なアクションがありません。',
 			ineffective: '計画を改善するアクションは予測されません。',
 			noFeasibleAction: '実行可能なアクションがありません。',
-			actionUnavailable: '必要なアクションが利用できないため、推奨はありません。',
-			logisticsContention: 'アクティブな物流競合をモデル化していないため、推奨はありません。'
+			actionUnavailable: '必要なアクションが利用できないため、推奨はありません。'
 		},
 		economics: {
 			structuralPrerequisite: '構造上の前提 — 残りの生産段階が完成するまでROIは利用できません',
@@ -612,6 +612,8 @@ export const ja = {
 			forecastOutcome:
 				'予測結果（{horizon}日間）、ベースライン → アクション: 輸入 {baselineImports} → {actionImports}; カバー {baselineCover} → {actionCover}; 在庫切れ {baselineStockout} → {actionStockout}。',
 			shortageReduction: '30日間の不足削減: {units} 単位; 在庫切れ改善: {stockoutDays} 日。',
+			logisticsOutcome:
+				'物流予測、ベースライン → アクション: 7日間の配送 {baselineDelivered7} → {actionDelivered7}; 30日間の配送 {baselineDelivered30} → {actionDelivered30}; 30日間の輸送費 {baselineTransportCost} → {actionTransportCost}。',
 			afterRailProjection: '鉄道接続後のみ利用できる予測です。'
 		},
 		candidate: {
@@ -622,9 +624,59 @@ export const ja = {
 		actions: {
 			buildProducer: '{materialName} のために {buildingName}を建設',
 			upgradeBuilding: '{buildingName}をレベル{level}へアップグレード',
-			buildWarehouse: '倉庫を建設',
+			buildWarehouse: '{cityName} に倉庫を建設',
 			connectRail: '{materialName} の鉄道を接続',
+			createRoute: '{materialName} のルートを作成: {originName} → {destinationName}',
+			editRoute: 'ルート {routeId} を編集: {fieldName} {from} → {to}',
+			resumeRoute: 'ルート {routeId} を再開',
+			changeSupplySource: '{retailCityName} の供給元を {supplyCityName} に変更',
+			fields: {
+				capacity: '容量',
+				frequencyDays: '頻度',
+				priority: '優先度'
+			},
 			noAction: '推奨アクションはありません'
+		},
+		logistics: {
+			label: '物流予測の根拠',
+			kicker: '物流',
+			title: 'ルートと到着',
+			currentWarehouse: '現在の物流で可視な倉庫在庫',
+			warehouseValue: '{used} / {capacity}',
+			inTransitTitle: '現在輸送中の在庫',
+			inTransitRow:
+				'{quantity} {materialName} を {cityName} へ輸送中。最短到着日は {day} 日目です。',
+			noInTransit: 'この供給都市に向かう輸送中の在庫はありません。',
+			routesTitle: 'ルート予測',
+			noRoutes: 'この供給都市に影響するルート予測はありません。',
+			routeTitle: '{originName} → {destinationName} · {materialName}',
+			nextDispatch: '次の出荷: {day} 日目。',
+			forecast:
+				'7日間の配送: {delivered7}; 30日間の配送: {delivered30}; 30日間の輸送費: {transportCost}。',
+			condition: '状態: {condition}。',
+			conditions: {
+				awaitingDispatch: '出荷待ち',
+				normal: '正常',
+				destinationFull: '配送先が満杯',
+				originStockConstrained: '出発地在庫の制約',
+				routeCapacityConstrained: 'ルート容量の制約',
+				routePriorityConstrained: 'ルート優先度の制約',
+				routeFrequency: 'ルート頻度の制約',
+				routeLeadTime: 'ルート所要時間の制約',
+				routePaused: 'ルートは一時停止中'
+			},
+			causes: {
+				destinationFull: '{cityName} には {units} 単位分の物流で可視な倉庫容量がありません。',
+				originStockConstrained: 'ルート {routeId} は出発地在庫が {units} 単位不足しています。',
+				routeCapacityConstrained: 'ルート {routeId} は容量を {units} 単位超えています。',
+				routePriorityConstrained:
+					'ルート {routeId} はルート {blockingRouteId} の後順位で制約されています。',
+				routeFrequency: 'ルート {routeId} は {nextArrivalDay} 日目より前に到着できません。',
+				routeLeadTime: 'ルート {routeId} の初回到着は {firstArrivalDay} 日目です。',
+				routePaused: 'ルート {routeId} は一時停止中です。',
+				destinationConfiguration:
+					'{retailCityName} は {supplyCityName} を供給元に設定しています。より良い供給元を選ぶか、到着ルートを追加してください。'
+			}
 		},
 		states: {
 			noSupportedProducts: '計画できる対応商品がありません。',

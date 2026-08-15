@@ -12,6 +12,7 @@ import {
 	getRecurringDispatchQuantity,
 	sumReservedInTransitUnits
 } from './interCityLogistics';
+import { selectInTransitInventory, type InTransitInventorySummary } from './logisticsReadModels';
 import type {
 	CityInventory,
 	DailyRouteDispatchAttempt,
@@ -31,6 +32,8 @@ export interface SupplyPlannerLogisticsSnapshot {
 	currentDay: number;
 	remoteCities: readonly SupplyPlannerRemoteLogisticsCitySnapshot[];
 	inTransitOrders: readonly Readonly<TransferOrder>[];
+	/** Existing day-zero logistics read model for planner presentation only. */
+	inTransitInventory?: readonly InTransitInventorySummary[];
 	routes: readonly Readonly<RecurringRoute>[];
 	nextRouteSequence: number;
 	nextTransferSequence: number;
@@ -95,6 +98,7 @@ export function buildSupplyPlannerLogisticsSnapshot(
 		inTransitOrders: structuredClone(
 			game.logistics.transferOrders.filter((order) => order.status === 'in-transit')
 		),
+		inTransitInventory: selectInTransitInventory(game),
 		routes: structuredClone(game.logistics.recurringRoutes),
 		nextRouteSequence: game.logistics.nextRouteSequence,
 		nextTransferSequence: game.logistics.nextTransferSequence

@@ -131,6 +131,14 @@ describe('locale resolution', () => {
 		}
 	});
 
+	it('does not retain retired active-logistics omission copy', () => {
+		for (const locale of Object.keys(messagesByLocale) as (keyof typeof messagesByLocale)[]) {
+			const catalog = messagesByLocale[locale];
+			expect(catalog.supplyAdvisor.limitations).not.toHaveProperty('activeLogistics');
+			expect(catalog.supplyAdvisor.noOpReasons).not.toHaveProperty('logisticsContention');
+		}
+	});
+
 	it('provides every finance localization surface in every supported locale', () => {
 		const keys: TranslationKey[] = [
 			'game.managementPanels.finance',

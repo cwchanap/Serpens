@@ -42,6 +42,7 @@ import type {
 	SupplyPlannerRequest,
 	SupplyPlannerSnapshot,
 	SupplyPlannerSnapshotResult,
+	SupplyPlannerTraceLimitation,
 	SupplyBottleneck
 } from './supplyPlanner';
 import type {
@@ -156,7 +157,7 @@ export interface SupplyPlannerProjectionTotals {
 	importSpend30: number;
 }
 
-export type SupplyPlanProjection = SupplyPlannerProjection & {
+export type SupplyPlanProjection = SupplyPlannerProjection<SupplyPlannerTraceLimitation> & {
 	totals: SupplyPlannerProjectionTotals;
 };
 
@@ -1610,11 +1611,15 @@ function createSyntheticBuilding(
 	};
 }
 
-function withTotals(projection: SupplyPlannerProjection): SupplyPlanProjection {
+function withTotals<Limitation extends { kind: string }>(
+	projection: SupplyPlannerProjection<Limitation>
+): SupplyPlannerProjection<Limitation> & { totals: SupplyPlannerProjectionTotals } {
 	return { ...projection, totals: projectionTotals(projection) };
 }
 
-function projectionTotals(projection: SupplyPlannerProjection): SupplyPlannerProjectionTotals {
+function projectionTotals<Limitation extends { kind: string }>(
+	projection: SupplyPlannerProjection<Limitation>
+): SupplyPlannerProjectionTotals {
 	const shortageUnits7 = projection.materials.reduce(
 		(total, row) => total + row.sevenDay.importRequiredUnits,
 		0
