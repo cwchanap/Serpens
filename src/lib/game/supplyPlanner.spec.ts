@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { MATERIALS, PRODUCTION_RECIPES } from './industry';
+import { buildSupplyPlan } from './supplyPlannerActions';
+import {
+	createTwoIndustryCityGame,
+	withCityMaterials,
+	withWarehouses
+} from './interCityLogistics.testUtils';
 import { MATERIAL_PRODUCER_RECIPES } from './productChainGraph';
 import { REPLENISHMENT_INTERVAL_DAYS } from './retailSupply';
 import { createNewGame } from './state';
@@ -18,6 +24,7 @@ import type {
 	ProductionRecipeId,
 	RecurringRoute,
 	StoreProduct,
+	TransferOrder,
 	WorldCityId
 } from './types';
 
@@ -463,6 +470,140 @@ describe('supply planner snapshot', () => {
 			{ kind: 'rail-capacity-not-modeled' },
 			{ kind: 'store-sales-capacity-not-modeled' }
 		]);
+	});
+
+	it('preserves the no-logistics projection public output', () => {
+		const snapshot = splitMillPantrySnapshot(100);
+		snapshot.logistics = {
+			currentDay: 5,
+			remoteCities: [],
+			inTransitOrders: [],
+			routes: [],
+			nextRouteSequence: 1
+		};
+		const projection = projectSupplySnapshot(snapshot);
+		expect({
+			materials: projection.materials,
+			warehouse: projection.warehouse,
+			bottleneck: projection.bottleneck,
+			limitations: projection.limitations
+		}).toEqual({
+			materials: [
+				{
+					materialId: 'pantry',
+					requiredPerDay: 16,
+					producerRecipeId: 'pantry-goods-production',
+					chainDepth: 0,
+					buildingCount: 1,
+					maxBuildingLevel: 1,
+					buildingLevels: [1],
+					inventoryUnits: 0,
+					daysOfCover: 0,
+					projectedStockoutDay: 0,
+					installedCapacityPerDay: 8,
+					usableCapacityPerDay: 8,
+					sevenDay: {
+						horizonDays: 7,
+						requiredUnits: 112,
+						startingInventoryUnits: 0,
+						localAvailableUnits: 56,
+						importRequiredUnits: 56,
+						endingInventoryUnits: 0,
+						daysOfCover: 0,
+						projectedStockoutDay: 0
+					},
+					thirtyDay: {
+						horizonDays: 30,
+						requiredUnits: 480,
+						startingInventoryUnits: 0,
+						localAvailableUnits: 240,
+						importRequiredUnits: 240,
+						endingInventoryUnits: 0,
+						daysOfCover: 0,
+						projectedStockoutDay: 0
+					}
+				},
+				{
+					materialId: 'flour',
+					requiredPerDay: 12,
+					producerRecipeId: 'flour-milling',
+					chainDepth: 1,
+					buildingCount: 2,
+					maxBuildingLevel: 1,
+					buildingLevels: [1, 1],
+					inventoryUnits: 0,
+					daysOfCover: null,
+					projectedStockoutDay: null,
+					installedCapacityPerDay: 16,
+					usableCapacityPerDay: 12,
+					sevenDay: {
+						horizonDays: 7,
+						requiredUnits: 84,
+						startingInventoryUnits: 0,
+						localAvailableUnits: 84,
+						importRequiredUnits: 0,
+						endingInventoryUnits: 0,
+						daysOfCover: null,
+						projectedStockoutDay: null
+					},
+					thirtyDay: {
+						horizonDays: 30,
+						requiredUnits: 360,
+						startingInventoryUnits: 0,
+						localAvailableUnits: 360,
+						importRequiredUnits: 0,
+						endingInventoryUnits: 0,
+						daysOfCover: null,
+						projectedStockoutDay: null
+					}
+				},
+				{
+					materialId: 'grain',
+					requiredPerDay: 15,
+					producerRecipeId: 'grain-harvest',
+					chainDepth: 2,
+					buildingCount: 1,
+					maxBuildingLevel: 1,
+					buildingLevels: [1],
+					inventoryUnits: 100,
+					daysOfCover: 20,
+					projectedStockoutDay: 20,
+					installedCapacityPerDay: 30,
+					usableCapacityPerDay: 10,
+					sevenDay: {
+						horizonDays: 7,
+						requiredUnits: 105,
+						startingInventoryUnits: 100,
+						localAvailableUnits: 105,
+						importRequiredUnits: 0,
+						endingInventoryUnits: 65,
+						daysOfCover: 20,
+						projectedStockoutDay: 20
+					},
+					thirtyDay: {
+						horizonDays: 30,
+						requiredUnits: 450,
+						startingInventoryUnits: 100,
+						localAvailableUnits: 400,
+						importRequiredUnits: 50,
+						endingInventoryUnits: 0,
+						daysOfCover: 20,
+						projectedStockoutDay: 20
+					}
+				}
+			],
+			warehouse: {
+				capacity: 100,
+				used: 0,
+				freeCapacity: 100,
+				overflowUnits: 0
+			},
+			bottleneck: { kind: 'rail-disconnected', buildingId: 'grain-farm-1', materialId: 'grain' },
+			limitations: [
+				{ kind: 'rail-capacity-not-modeled' },
+				{ kind: 'store-sales-capacity-not-modeled' }
+			]
+		});
 	});
 
 	it('counts an upstream producer connected directly to a usable downstream processor', () => {
@@ -3265,5 +3406,75 @@ describe('supply planner patch coverage', () => {
 		if (projection.bottleneck.kind === 'rail-disconnected') {
 			expect(['cooking-oil', 'flour']).toContain(projection.bottleneck.materialId);
 		}
+	});
+
+	it('keeps a warmed representative logistics plan under two seconds', () => {
+		let game = createTwoIndustryCityGame({ day: 7 });
+		game = withWarehouses(game, ['industry-city', 'breadbasket-basin']);
+		game = withCityMaterials(
+			withCityMaterials(game, 'industry-city', { grain: 20, flour: 10 }),
+			'breadbasket-basin',
+			{ grain: 50, flour: 20 }
+		);
+		game = {
+			...game,
+			stores: [{ ...game.stores[0]!, archetypeId: 'grocery', products: [product('pantry')] }],
+			industrialBuildings: [
+				building('grain-farm', 'grain-farm-1'),
+				building('flour-mill', 'flour-mill-1'),
+				building('pantry-works', 'pantry-works-1'),
+				...game.industrialBuildings
+			],
+			logistics: {
+				...game.logistics,
+				recurringRoutes: [
+					route({
+						id: 'route-grain',
+						originCityId: 'breadbasket-basin',
+						destinationCityId: 'industry-city',
+						materialId: 'grain',
+						capacity: 10,
+						nextDispatchOnDay: 7
+					}),
+					route({
+						id: 'route-flour',
+						originCityId: 'breadbasket-basin',
+						destinationCityId: 'industry-city',
+						materialId: 'flour',
+						capacity: 10,
+						nextDispatchOnDay: 7
+					})
+				],
+				transferOrders: [
+					{
+						id: 'transfer-1',
+						source: { kind: 'manual' },
+						originCityId: 'breadbasket-basin',
+						destinationCityId: 'industry-city',
+						materialId: 'grain',
+						quantity: 3,
+						createdOnDay: 6,
+						dispatchedOnDay: 6,
+						arrivalOnDay: 8,
+						transportCost: 3,
+						status: 'in-transit'
+					} satisfies TransferOrder
+				],
+				nextTransferSequence: 2
+			}
+		};
+		const request = { retailCityId: 'harbor-city' as const, categoryId: 'pantry' };
+		const availability = {
+			canBuildIndustry: false,
+			canUpgradeIndustry: false,
+			canBuildRail: false,
+			allowedIndustryBuildingTypeIds: [] as const
+		};
+
+		buildSupplyPlan(game, request, availability);
+		const started = performance.now();
+		const result = buildSupplyPlan(game, request, availability);
+		expect(performance.now() - started).toBeLessThan(2_000);
+		expect(result.status).toBe('ready');
 	});
 });
