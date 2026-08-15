@@ -622,6 +622,15 @@ describe('isRailWaypointTarget', () => {
 		const game = makeGame(makeCity([]), []);
 		expect(isRailWaypointTarget(game, 'missing-city', 6, 6)).toBe(false);
 	});
+
+	it('returns false for an out-of-bounds waypoint target', () => {
+		// Out-of-bounds coordinates are not part of the city, so they are
+		// rejected — including non-rail waypoint targets.
+		expect.assertions(1);
+		const game = makeGame(makeCity([]), []);
+		const result = isRailWaypointTarget(game, CITY_ID, -1, -1);
+		expect(result).toBe(false);
+	});
 });
 
 describe('findReachableRailCells', () => {
@@ -772,17 +781,6 @@ describe('canRouteRailBetween', () => {
 		const game = makeGame(makeCity([]), []);
 		const result = canRouteRailBetween(game, CITY_ID, [{ x: 5, y: 5 }], [{ x: 5, y: 5 }]);
 		expect(result).toBe(true);
-	});
-
-	it('returns false for an out-of-bounds waypoint target', () => {
-		// Exercises isRailLegalTile line 79: when the tile lookup returns
-		// undefined for an out-of-bounds coordinate, the function returns
-		// false. isRailWaypointTarget delegates to isRailLegalTile for
-		// non-rail coordinates.
-		expect.assertions(1);
-		const game = makeGame(makeCity([]), []);
-		const result = isRailWaypointTarget(game, CITY_ID, -1, -1);
-		expect(result).toBe(false);
 	});
 });
 

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
 	actionKey,
 	buildSupplyPlan,
@@ -1477,14 +1477,12 @@ describe('supply planner actions patch coverage additions', () => {
 		// must be excluded rather than recommended — the player cannot
 		// build the rail to make them usable.
 		const bottler = INDUSTRIAL_BUILDING_TYPES['water-bottler'];
-		const originalCosts = {
-			buildCost: bottler.buildCost,
-			dailyOperatingCost: bottler.dailyOperatingCost
-		};
+		// Scoped getter spies keep the shared catalog entry untouched once
+		// restored — no direct mutation of INDUSTRIAL_BUILDING_TYPES.
+		const buildCostSpy = vi.spyOn(bottler, 'buildCost', 'get').mockReturnValue(1);
+		const operatingCostSpy = vi.spyOn(bottler, 'dailyOperatingCost', 'get').mockReturnValue(0);
 
 		try {
-			bottler.buildCost = 1;
-			bottler.dailyOperatingCost = 0;
 			const base = baseGame('bottled-water');
 			const game = {
 				...base,
@@ -1506,8 +1504,8 @@ describe('supply planner actions patch coverage additions', () => {
 				reason: 'action-unavailable'
 			});
 		} finally {
-			bottler.buildCost = originalCosts.buildCost;
-			bottler.dailyOperatingCost = originalCosts.dailyOperatingCost;
+			buildCostSpy.mockRestore();
+			operatingCostSpy.mockRestore();
 		}
 	});
 

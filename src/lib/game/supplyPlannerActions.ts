@@ -20,10 +20,13 @@ import {
 import { findReachableRailCells } from './railPlacement';
 import { canUpgradeBuilding, getBuildingUpgradeCost } from './leveling';
 import {
+	buildRailReachabilityBase,
 	buildRequiredChainReachability,
 	buildSupplyMaterialRequirements,
 	buildSupplyPlannerSnapshot,
-	projectSupplySnapshot
+	projectSupplySnapshot,
+	type RailReachabilityBase,
+	type RequiredChainReachability
 } from './supplyPlanner';
 import type {
 	SupplyMaterialProjection,
@@ -395,6 +398,10 @@ function producerCandidates(
 	const allowedPlacements = availability.allowedIndustrialPlacements ?? null;
 	const isFinished = MATERIALS[materialId]?.kind === 'finished';
 	const canBuildRail = availability.canBuildRail;
+	// Placement-independent rail reachability scaffold (network + attach-cell
+	// map for existing buildings), shared across every synthetic-producer
+	// placement below — only the synthetic building's entry varies per tile.
+	const reachabilityBase = buildRailReachabilityBase(game, snapshot.supplyCityId);
 	for (const buildingType of allowedTypes) {
 		const placement = findPlacementChoice(
 			game,
@@ -463,7 +470,8 @@ function producerCandidates(
 				snapshot,
 				buildingType,
 				placementTile.tile,
-				placementTile.railReady
+				placementTile.railReady,
+				reachabilityBase
 			);
 			const normalProjection = withTotals(projectSupplySnapshot(context.candidateSnapshot));
 			const potentialSnapshot = clone(context.candidateSnapshot);
@@ -774,7 +782,8 @@ function addSyntheticProducer(
 	snapshot: SupplyPlannerSnapshot,
 	buildingType: IndustrialBuildingType,
 	tile: { id: string; x: number; y: number },
-	preferRailReady: boolean
+	preferRailReady: boolean,
+	base?: RailReachabilityBase | null
 ): {
 	candidateSnapshot: SupplyPlannerSnapshot;
 	candidateId: string;
@@ -798,22 +807,18 @@ function addSyntheticProducer(
 	const reachability = buildRequiredChainReachability(
 		candidateGame,
 		candidateSnapshot,
-		candidateGame.industrialBuildings
+		candidateGame.industrialBuildings,
+		base
 	);
+	// Copy the shared reachability fields in one object-level assignment.
+	// The explicit Omit<RequiredChainReachability, ...> annotation keeps the
+	// copied field set derived from the interface, so a newly added
+	// RequiredChainReachability field cannot be silently dropped here.
+	// usableBuildingIds is excluded: the snapshot stores a sorted id array,
+	// not the reachability set.
+	const reachabilityFields: Omit<RequiredChainReachability, 'usableBuildingIds'> = reachability;
+	Object.assign(candidateSnapshot, reachabilityFields);
 	candidateSnapshot.usableBuildingIds = uniqueSorted([...reachability.usableBuildingIds]);
-	candidateSnapshot.disconnectedBuildingIds = reachability.disconnectedBuildingIds;
-	candidateSnapshot.usableSinkBuildingIdsByMaterial = reachability.usableSinkBuildingIdsByMaterial;
-	candidateSnapshot.reachableDemandByMaterial = reachability.reachableDemandByMaterial;
-	candidateSnapshot.reachableDemandByBuildingAndMaterial =
-		reachability.reachableDemandByBuildingAndMaterial;
-	candidateSnapshot.reachableBranchesByBuildingAndMaterial =
-		reachability.reachableBranchesByBuildingAndMaterial;
-	candidateSnapshot.reachableProcessorsByBuildingAndMaterial =
-		reachability.reachableProcessorsByBuildingAndMaterial;
-	candidateSnapshot.warehouseConnectedConsumerCapacityByMaterial =
-		reachability.warehouseConnectedConsumerCapacityByMaterial;
-	candidateSnapshot.warehouseConnectedProcessorsByMaterial =
-		reachability.warehouseConnectedProcessorsByMaterial;
 	if (!preferRailReady) {
 		candidateSnapshot.usableBuildingIds = candidateSnapshot.usableBuildingIds.filter(
 			(id) => id !== candidateId
@@ -1143,12 +1148,22 @@ function compareCandidates(left: SupplyPlannerCandidate, right: SupplyPlannerCan
 	const leftTier = viabilityTier(left);
 	const rightTier = viabilityTier(right);
 	const leftBenefit =
-		left.comparison.netCashBenefit30 ?? left.comparison.preRailNetCashBenefit30 ?? -Infinity;
+		left.comparison.netCashBenefit30 ?? left.comparison.preRailNetCashBenefit30 ?? null;
 	const rightBenefit =
-		right.comparison.netCashBenefit30 ?? right.comparison.preRailNetCashBenefit30 ?? -Infinity;
+		right.comparison.netCashBenefit30 ?? right.comparison.preRailNetCashBenefit30 ?? null;
+	// Compare missing benefits explicitly instead of sentinel arithmetic:
+	// both missing ties (0), one missing ranks below the present one.
+	const compareBenefit =
+		leftBenefit === null && rightBenefit === null
+			? 0
+			: leftBenefit === null
+				? 1
+				: rightBenefit === null
+					? -1
+					: rightBenefit - leftBenefit;
 	return (
 		rightTier - leftTier ||
-		rightBenefit - leftBenefit ||
+		compareBenefit ||
 		right.comparison.shortageReduction30 - left.comparison.shortageReduction30 ||
 		right.comparison.shortageReduction7 - left.comparison.shortageReduction7 ||
 		right.comparison.importReduction30 - left.comparison.importReduction30 ||

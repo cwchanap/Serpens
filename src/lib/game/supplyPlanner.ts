@@ -460,6 +460,38 @@ interface ReachabilityContext {
 }
 
 /**
+ * Placement-independent reachability scaffold: the supply city's rail
+ * network plus each existing building's attach-cell keys. Synthetic-producer
+ * evaluation reuses one scaffold across candidate tiles so
+ * `buildRequiredChainReachability` does not rebuild the network and
+ * per-building attach map for every placement — only the synthetic
+ * building's entry is recomputed per placement. Attach cells depend solely
+ * on the network and building coordinates, so they are identical for every
+ * placement of the same game state.
+ */
+export interface RailReachabilityBase {
+	network: ReturnType<typeof buildRailNetwork>;
+	attachCellsByBuildingId: ReadonlyMap<string, readonly string[]>;
+}
+
+export function buildRailReachabilityBase(
+	game: GameState,
+	supplyCityId: WorldCityId,
+	actualBuildings: readonly IndustrialBuilding[] = game.industrialBuildings
+): RailReachabilityBase | null {
+	const city = game.industryCities.find((candidate) => candidate.id === supplyCityId);
+	if (!city) return null;
+	const network = buildRailNetwork(city);
+	const attachCellsByBuildingId = new Map<string, readonly string[]>();
+	for (const building of actualBuildings
+		.filter((building) => building.cityId === supplyCityId)
+		.sort((left, right) => compareCodeUnitStrings(left.id, right.id))) {
+		attachCellsByBuildingId.set(building.id, getBuildingAttachCellKeys(network, building));
+	}
+	return { network, attachCellsByBuildingId };
+}
+
+/**
  * Required-chain connectivity is intentionally path-only. Every search uses a
  * fresh positive rail budget, but no search consumes it; shared-cell rail
  * throughput remains an explicit planner limitation.
@@ -470,7 +502,8 @@ export function buildRequiredChainReachability(
 		SupplyPlannerSnapshot,
 		'supplyCityId' | 'finishedMaterialId' | 'demandPerDay' | 'buildings'
 	>,
-	actualBuildings: readonly IndustrialBuilding[] = game.industrialBuildings
+	actualBuildings: readonly IndustrialBuilding[] = game.industrialBuildings,
+	base?: RailReachabilityBase | null
 ): RequiredChainReachability {
 	const requirements = buildSupplyMaterialRequirements(snapshot);
 	const requiredMaterialIds = new Set(requirements.map((requirement) => requirement.materialId));
@@ -481,11 +514,17 @@ export function buildRequiredChainReachability(
 	const city = game.industryCities.find((candidate) => candidate.id === snapshot.supplyCityId);
 	if (!city) return disconnectedReachability(scopedBuildings, requiredMaterialIds);
 
-	const network = buildRailNetwork(city);
+	const network = base?.network ?? buildRailNetwork(city);
 	const budget = createRailBudget(network);
-	const attachCellsByBuildingId = new Map<string, readonly string[]>();
+	// Start from the shared attach-cell map when provided; only buildings
+	// missing from it (the synthetic producer) are recomputed.
+	const attachCellsByBuildingId = base
+		? new Map(base.attachCellsByBuildingId)
+		: new Map<string, readonly string[]>();
 	for (const building of scopedBuildings) {
-		attachCellsByBuildingId.set(building.id, getBuildingAttachCellKeys(network, building));
+		if (!attachCellsByBuildingId.has(building.id)) {
+			attachCellsByBuildingId.set(building.id, getBuildingAttachCellKeys(network, building));
+		}
 	}
 
 	const outputsByMaterial = new Map<MaterialId, ReachabilityOutput[]>();
@@ -727,27 +766,6 @@ function canBuildingReachBuilding(
 }
 
 /**
- * Computes the reachable demand per material and per producer. A producer's
- * usable capacity is capped at its own reachable demand — the portion of
- * total demand from downstream consumer branches that this specific producer
- * can actually deliver to (directly or via the city-inventory hub).
- *
- * For finished materials, the full demand is reachable if the producer can
- * reach a warehouse.
- *
- * For non-finished materials, each downstream branch is reachable by a
- * producer if that producer can reach the branch's processor directly, or
- * both the producer and the processor can reach a warehouse (hub bridge).
- * Per-producer caps prevent crediting one producer's excess capacity toward
- * a branch only another producer can reach.
- *
- * Processor-instance awareness: when multiple processor instances produce
- * the same downstream material (branch), each producer's reachable demand
- * for that branch is capped by the input capacity of the specific processor
- * instances it can reach — not the full branch demand. A producer that can
- * only reach one of two flour mills is capped by that mill's input capacity.
- */
-/**
  * Sums the per-day input capacity of usable warehouse-connected consumers of
  * a material, and records each such processor as an entry. City inventory
  * lives in warehouses, so a processor can only draw it when it can reach a
@@ -806,6 +824,27 @@ function computeWarehouseConnectedConsumerCapacity(
 	return { totalCapacity: whConsumerCapacity, entries };
 }
 
+/**
+ * Computes the reachable demand per material and per producer. A producer's
+ * usable capacity is capped at its own reachable demand — the portion of
+ * total demand from downstream consumer branches that this specific producer
+ * can actually deliver to (directly or via the city-inventory hub).
+ *
+ * For finished materials, the full demand is reachable if the producer can
+ * reach a warehouse.
+ *
+ * For non-finished materials, each downstream branch is reachable by a
+ * producer if that producer can reach the branch's processor directly, or
+ * both the producer and the processor can reach a warehouse (hub bridge).
+ * Per-producer caps prevent crediting one producer's excess capacity toward
+ * a branch only another producer can reach.
+ *
+ * Processor-instance awareness: when multiple processor instances produce
+ * the same downstream material (branch), each producer's reachable demand
+ * for that branch is capped by the input capacity of the specific processor
+ * instances it can reach — not the full branch demand. A producer that can
+ * only reach one of two flour mills is capped by that mill's input capacity.
+ */
 function computeReachableDemandByMaterial(
 	context: ReachabilityContext,
 	requirements: readonly SupplyMaterialRequirement[]
@@ -1280,6 +1319,85 @@ interface FlowEdge {
 	rev: FlowEdge;
 }
 
+const FLOW_EPSILON = 1e-9;
+
+/**
+ * Shared Edmonds-Karp max-flow engine over a residual graph of `FlowEdge`s.
+ * Callers lay out their own node numbering and capacities via `addEdge`;
+ * `maxFlow` runs EPSILON-gated BFS augmenting-path iterations to completion
+ * and returns the total flow, updating residual capacities in place. A
+ * second `maxFlow` call on the same network continues augmenting from the
+ * existing residual state (the two-phase flow in `localSupplyOverHorizon`
+ * relies on this). Per-node flows are recovered afterwards via `flowOn`:
+ * after max-flow, each forward edge's cap = originalCap - flow.
+ */
+interface FlowNetwork {
+	addEdge(from: number, to: number, cap: number): void;
+	/** Flow on the forward edge `from`→`to`, derived from its residual cap. */
+	flowOn(from: number, to: number, originalCap: number): number;
+	maxFlow(source: number, sink: number): number;
+}
+
+function createFlowNetwork(nodeCount: number): FlowNetwork {
+	const graph: FlowEdge[][] = Array.from({ length: nodeCount }, () => []);
+	return {
+		addEdge(from, to, cap) {
+			const fwd: FlowEdge = { to, cap, rev: null! };
+			const bwd: FlowEdge = { to: from, cap: 0, rev: fwd };
+			fwd.rev = bwd;
+			graph[from]!.push(fwd);
+			graph[to]!.push(bwd);
+		},
+		flowOn(from, to, originalCap) {
+			const edge = graph[from]!.find((candidate) => candidate.to === to);
+			return edge ? originalCap - edge.cap : 0;
+		},
+		maxFlow(source, sink) {
+			let totalFlow = 0;
+			for (;;) {
+				const parent: Array<{ node: number; edge: FlowEdge } | null> = new Array(nodeCount).fill(
+					null
+				);
+				const visited = new Array<boolean>(nodeCount).fill(false);
+				visited[source] = true;
+				const queue: number[] = [source];
+				let foundSink = false;
+
+				while (queue.length > 0 && !foundSink) {
+					const node = queue.shift()!;
+					for (const edge of graph[node]!) {
+						if (!visited[edge.to] && edge.cap > FLOW_EPSILON) {
+							visited[edge.to] = true;
+							parent[edge.to] = { node, edge };
+							if (edge.to === sink) {
+								foundSink = true;
+								break;
+							}
+							queue.push(edge.to);
+						}
+					}
+				}
+				if (!foundSink) break;
+
+				let bottleneck = Infinity;
+				for (let curr = sink; curr !== source; ) {
+					const pe = parent[curr]!;
+					bottleneck = Math.min(bottleneck, pe.edge.cap);
+					curr = pe.node;
+				}
+				for (let curr = sink; curr !== source; ) {
+					const pe = parent[curr]!;
+					pe.edge.cap -= bottleneck;
+					pe.edge.rev.cap += bottleneck;
+					curr = pe.node;
+				}
+				totalFlow += bottleneck;
+			}
+			return totalFlow;
+		}
+	};
+}
+
 /**
  * Result of the bipartite max-flow allocation. `producerFlows[i]` is the
  * actual flow assigned to producer `i` (≤ `producerCaps[i]`), and
@@ -1295,11 +1413,11 @@ interface MaxFlowResult {
 }
 
 /**
- * Edmonds-Karp max-flow over a bipartite producer→branch network.
- * Source feeds producers (capped by daily output), producers feed the
- * branches they can reach (uncapped), and branches feed the sink (capped
- * by demand). Returns the optimal total allocation plus per-producer and
- * per-branch flow breakdowns.
+ * Edmonds-Karp max-flow over a bipartite producer→branch network, built on
+ * `createFlowNetwork`. Source feeds producers (capped by daily output),
+ * producers feed the branches they can reach (uncapped), and branches feed
+ * the sink (capped by demand). Returns the optimal total allocation plus
+ * per-producer and per-branch flow breakdowns.
  */
 function bipartiteMaxFlow(
 	producerCaps: readonly number[],
@@ -1310,97 +1428,38 @@ function bipartiteMaxFlow(
 	const branchCount = branchDemands.length;
 	const SOURCE = 0;
 	const SINK = producerCount + branchCount + 1;
-	const nodeCount = producerCount + branchCount + 2;
-	const graph: FlowEdge[][] = Array.from({ length: nodeCount }, () => []);
-
-	const addEdge = (from: number, to: number, cap: number): void => {
-		const fwd: FlowEdge = { to, cap, rev: null! };
-		const bwd: FlowEdge = { to: from, cap: 0, rev: fwd };
-		fwd.rev = bwd;
-		graph[from]!.push(fwd);
-		graph[to]!.push(bwd);
-	};
+	const network = createFlowNetwork(producerCount + branchCount + 2);
 
 	for (let i = 0; i < producerCount; i++) {
-		addEdge(SOURCE, i + 1, producerCaps[i]!);
+		network.addEdge(SOURCE, i + 1, producerCaps[i]!);
 	}
 	for (let i = 0; i < producerCount; i++) {
 		for (const j of reachableBranchesByProducer[i]!) {
-			addEdge(i + 1, producerCount + 1 + j, Infinity);
+			network.addEdge(i + 1, producerCount + 1 + j, Infinity);
 		}
 	}
 	for (let j = 0; j < branchCount; j++) {
-		addEdge(producerCount + 1 + j, SINK, branchDemands[j]!);
+		network.addEdge(producerCount + 1 + j, SINK, branchDemands[j]!);
 	}
 
-	const EPSILON = 1e-9;
-	let totalFlow = 0;
-
-	for (;;) {
-		const parent: Array<{ node: number; edge: FlowEdge } | null> = new Array(nodeCount).fill(null);
-		const visited = new Array<boolean>(nodeCount).fill(false);
-		visited[SOURCE] = true;
-		const queue: number[] = [SOURCE];
-		let foundSink = false;
-
-		while (queue.length > 0 && !foundSink) {
-			const node = queue.shift()!;
-			for (const edge of graph[node]!) {
-				if (!visited[edge.to] && edge.cap > EPSILON) {
-					visited[edge.to] = true;
-					parent[edge.to] = { node, edge };
-					if (edge.to === SINK) {
-						foundSink = true;
-						break;
-					}
-					queue.push(edge.to);
-				}
-			}
-		}
-		if (!foundSink) break;
-
-		let bottleneck = Infinity;
-		for (let curr = SINK; curr !== SOURCE; ) {
-			const pe = parent[curr]!;
-			bottleneck = Math.min(bottleneck, pe.edge.cap);
-			curr = pe.node;
-		}
-		for (let curr = SINK; curr !== SOURCE; ) {
-			const pe = parent[curr]!;
-			pe.edge.cap -= bottleneck;
-			pe.edge.rev.cap += bottleneck;
-			curr = pe.node;
-		}
-		totalFlow += bottleneck;
-	}
+	const totalFlow = network.maxFlow(SOURCE, SINK);
 
 	// Extract per-producer and per-branch flows from residual capacities.
-	// After max-flow, each forward edge's cap = originalCap - flow, so
-	// flow = originalCap - cap.
 	const producerFlows = new Array<number>(producerCount).fill(0);
 	for (let i = 0; i < producerCount; i++) {
-		for (const edge of graph[SOURCE]!) {
-			if (edge.to === i + 1) {
-				producerFlows[i] = producerCaps[i]! - edge.cap;
-				break;
-			}
-		}
+		producerFlows[i] = network.flowOn(SOURCE, i + 1, producerCaps[i]!);
 	}
 	const branchFlows = new Array<number>(branchCount).fill(0);
 	for (let j = 0; j < branchCount; j++) {
-		for (const edge of graph[producerCount + 1 + j]!) {
-			if (edge.to === SINK) {
-				branchFlows[j] = branchDemands[j]! - edge.cap;
-				break;
-			}
-		}
+		branchFlows[j] = network.flowOn(producerCount + 1 + j, SINK, branchDemands[j]!);
 	}
 
 	return { totalFlow, producerFlows, branchFlows };
 }
 
 /**
- * Edmonds-Karp max-flow over a 3-layer producer→processor→branch network.
+ * Edmonds-Karp max-flow over a 3-layer producer→processor→branch network,
+ * built on `createFlowNetwork`.
  *
  * Source feeds producers (capped by daily output), producers feed the
  * processor instances they can reach (uncapped), processors feed their
@@ -1413,10 +1472,10 @@ function bipartiteMaxFlow(
  * each edge would carry the full input capacity, so total inflow could
  * reach N times inputCapacity. The runtime bounds the processor's total
  * consumption, so the capacity must constrain the single processor-to-
- * branch outflow, which also distinguishes multiple processor instances producing the
- * same downstream material — a producer that can only reach one of two
- * flour mills is capped by that mill's input capacity, not the full branch
- * demand.
+ * branch outflow, which also distinguishes multiple processor instances
+ * producing the same downstream material — a producer that can only reach
+ * one of two flour mills is capped by that mill's input capacity, not the
+ * full branch demand.
  */
 function tripartiteMaxFlow(
 	producerCaps: readonly number[],
@@ -1430,94 +1489,36 @@ function tripartiteMaxFlow(
 	const branchCount = branchDemands.length;
 	const SOURCE = 0;
 	const SINK = producerCount + processorCount + branchCount + 1;
-	const nodeCount = producerCount + processorCount + branchCount + 2;
-	const graph: FlowEdge[][] = Array.from({ length: nodeCount }, () => []);
-
-	const addEdge = (from: number, to: number, cap: number): void => {
-		const fwd: FlowEdge = { to, cap, rev: null! };
-		const bwd: FlowEdge = { to: from, cap: 0, rev: fwd };
-		fwd.rev = bwd;
-		graph[from]!.push(fwd);
-		graph[to]!.push(bwd);
-	};
+	const network = createFlowNetwork(producerCount + processorCount + branchCount + 2);
 
 	const producerNode = (i: number) => i + 1;
 	const processorNode = (k: number) => producerCount + 1 + k;
 	const branchNode = (j: number) => producerCount + processorCount + 1 + j;
 
 	for (let i = 0; i < producerCount; i++) {
-		addEdge(SOURCE, producerNode(i), producerCaps[i]!);
+		network.addEdge(SOURCE, producerNode(i), producerCaps[i]!);
 	}
 	for (let i = 0; i < producerCount; i++) {
 		for (const processorIdx of reachableProcessorsByProducer[i]!) {
-			addEdge(producerNode(i), processorNode(processorIdx), Infinity);
+			network.addEdge(producerNode(i), processorNode(processorIdx), Infinity);
 		}
 	}
 	for (let k = 0; k < processorCount; k++) {
-		addEdge(processorNode(k), branchNode(processorBranchIdx[k]!), processorCaps[k]!);
+		network.addEdge(processorNode(k), branchNode(processorBranchIdx[k]!), processorCaps[k]!);
 	}
 	for (let j = 0; j < branchCount; j++) {
-		addEdge(branchNode(j), SINK, branchDemands[j]!);
+		network.addEdge(branchNode(j), SINK, branchDemands[j]!);
 	}
 
-	const EPSILON = 1e-9;
-	let totalFlow = 0;
-
-	for (;;) {
-		const parent: Array<{ node: number; edge: FlowEdge } | null> = new Array(nodeCount).fill(null);
-		const visited = new Array<boolean>(nodeCount).fill(false);
-		visited[SOURCE] = true;
-		const queue: number[] = [SOURCE];
-		let foundSink = false;
-
-		while (queue.length > 0 && !foundSink) {
-			const node = queue.shift()!;
-			for (const edge of graph[node]!) {
-				if (!visited[edge.to] && edge.cap > EPSILON) {
-					visited[edge.to] = true;
-					parent[edge.to] = { node, edge };
-					if (edge.to === SINK) {
-						foundSink = true;
-						break;
-					}
-					queue.push(edge.to);
-				}
-			}
-		}
-		if (!foundSink) break;
-
-		let bottleneck = Infinity;
-		for (let curr = SINK; curr !== SOURCE; ) {
-			const pe = parent[curr]!;
-			bottleneck = Math.min(bottleneck, pe.edge.cap);
-			curr = pe.node;
-		}
-		for (let curr = SINK; curr !== SOURCE; ) {
-			const pe = parent[curr]!;
-			pe.edge.cap -= bottleneck;
-			pe.edge.rev.cap += bottleneck;
-			curr = pe.node;
-		}
-		totalFlow += bottleneck;
-	}
+	const totalFlow = network.maxFlow(SOURCE, SINK);
 
 	const producerFlows = new Array<number>(producerCount).fill(0);
 	for (let i = 0; i < producerCount; i++) {
-		for (const edge of graph[SOURCE]!) {
-			if (edge.to === producerNode(i)) {
-				producerFlows[i] = producerCaps[i]! - edge.cap;
-				break;
-			}
-		}
+		producerFlows[i] = network.flowOn(SOURCE, producerNode(i), producerCaps[i]!);
 	}
 	const branchFlows = new Array<number>(branchCount).fill(0);
 	for (let j = 0; j < branchCount; j++) {
-		for (const edge of graph[branchNode(j)]!) {
-			if (edge.to === SINK) {
-				branchFlows[j] = branchDemands[j]! - edge.cap;
-				break;
-			}
-		}
+		branchFlows[j] = network.flowOn(branchNode(j), SINK, branchDemands[j]!);
 	}
 
 	return { totalFlow, producerFlows, branchFlows };
@@ -1580,82 +1581,30 @@ function localSupplyOverHorizon(
 	const processorNode = (k: number) => producerCount + 2 + k;
 	const branchNode = (j: number) => producerCount + 2 + processorCount + j;
 	const SINK = producerCount + 2 + processorCount + branchCount + 1;
-	const nodeCount = SINK + 1;
-	const graph: FlowEdge[][] = Array.from({ length: nodeCount }, () => []);
-
-	const addEdge = (from: number, to: number, cap: number): void => {
-		const fwd: FlowEdge = { to, cap, rev: null! };
-		const bwd: FlowEdge = { to: from, cap: 0, rev: fwd };
-		fwd.rev = bwd;
-		graph[from]!.push(fwd);
-		graph[to]!.push(bwd);
-	};
+	const network = createFlowNetwork(SINK + 1);
 
 	// Phase 1 edges: production-only (no INVENTORY node/edges).
 	for (let i = 0; i < producerCount; i++) {
-		addEdge(SOURCE, producerNode(i), allocation.producerCaps[i]! * horizonDays);
+		network.addEdge(SOURCE, producerNode(i), allocation.producerCaps[i]! * horizonDays);
 	}
 	for (let i = 0; i < producerCount; i++) {
 		for (const processorIdx of allocation.reachableProcessorsByProducer[i]!) {
-			addEdge(producerNode(i), processorNode(processorIdx), Infinity);
+			network.addEdge(producerNode(i), processorNode(processorIdx), Infinity);
 		}
 	}
 	for (let k = 0; k < processorCount; k++) {
-		addEdge(
+		network.addEdge(
 			processorNode(k),
 			branchNode(allocation.processorBranchIdx[k]!),
 			allocation.processorCaps[k]! * horizonDays
 		);
 	}
 	for (let j = 0; j < branchCount; j++) {
-		addEdge(branchNode(j), SINK, allocation.branchDemands[j]! * horizonDays);
+		network.addEdge(branchNode(j), SINK, allocation.branchDemands[j]! * horizonDays);
 	}
 
-	const EPSILON = 1e-9;
-	const augment = (): number => {
-		let flow = 0;
-		for (;;) {
-			const parent: Array<{ node: number; edge: FlowEdge } | null> = new Array(nodeCount).fill(
-				null
-			);
-			const visited = new Array<boolean>(nodeCount).fill(false);
-			visited[SOURCE] = true;
-			const queue: number[] = [SOURCE];
-			let foundSink = false;
-			while (queue.length > 0 && !foundSink) {
-				const node = queue.shift()!;
-				for (const edge of graph[node]!) {
-					if (!visited[edge.to] && edge.cap > EPSILON) {
-						visited[edge.to] = true;
-						parent[edge.to] = { node, edge };
-						if (edge.to === SINK) {
-							foundSink = true;
-							break;
-						}
-						queue.push(edge.to);
-					}
-				}
-			}
-			if (!foundSink) break;
-			let bottleneck = Infinity;
-			for (let curr = SINK; curr !== SOURCE; ) {
-				const pe = parent[curr]!;
-				bottleneck = Math.min(bottleneck, pe.edge.cap);
-				curr = pe.node;
-			}
-			for (let curr = SINK; curr !== SOURCE; ) {
-				const pe = parent[curr]!;
-				pe.edge.cap -= bottleneck;
-				pe.edge.rev.cap += bottleneck;
-				curr = pe.node;
-			}
-			flow += bottleneck;
-		}
-		return flow;
-	};
-
 	// Phase 1: maximize production-only flow.
-	const productionOnlyFlow = augment();
+	const productionOnlyFlow = network.maxFlow(SOURCE, SINK);
 
 	// Phase 2: add inventory edges and continue augmenting from the
 	// production-only residual graph. Any additional flow must route
@@ -1663,14 +1612,15 @@ function localSupplyOverHorizon(
 	// so the increment is the minimum inventory consumption.
 	let inventoryConsumed = 0;
 	if (inventoryCap > 0) {
-		addEdge(SOURCE, INVENTORY, inventoryCap);
+		network.addEdge(SOURCE, INVENTORY, inventoryCap);
 		for (let k = 0; k < processorCount; k++) {
 			if (allocation.processorCanReachWarehouse[k]) {
-				addEdge(INVENTORY, processorNode(k), Infinity);
+				network.addEdge(INVENTORY, processorNode(k), Infinity);
 			}
 		}
-		const additionalFlow = augment();
-		inventoryConsumed = Math.max(0, additionalFlow);
+		// Continue augmenting the same network: production-only paths are
+		// exhausted, so any additional flow routes through inventory.
+		inventoryConsumed = Math.max(0, network.maxFlow(SOURCE, SINK));
 	}
 
 	return {
@@ -1708,6 +1658,10 @@ function inventoryFlowRatePerDay(allocation: BranchAllocationResult): number {
 export function projectSupplySnapshot(snapshot: SupplyPlannerSnapshot): SupplyPlannerProjection {
 	const requirements = buildSupplyMaterialRequirements(snapshot);
 	const usableIds = new Set(snapshot.usableBuildingIds);
+	// Branch allocations computed while projecting each material, threaded
+	// through primaryBottleneck so findConnectivityDeficit can reuse them
+	// instead of re-running allocateCapacityByBranch.
+	const allocations: Partial<Record<MaterialId, BranchAllocationResult>> = {};
 	const materials: SupplyMaterialProjection[] = requirements.map((requirement) => {
 		const installed = requirement.producerRecipeId
 			? buildingsForRecipe(snapshot.buildings, requirement.producerRecipeId)
@@ -1768,6 +1722,7 @@ export function projectSupplySnapshot(snapshot: SupplyPlannerSnapshot): SupplyPl
 		} else {
 			usableCapacityPerDay = perProducerCappedCapacity(usable, requirement.materialId, snapshot);
 		}
+		if (allocation !== null) allocations[requirement.materialId] = allocation;
 
 		// City inventory is a warehouse source: a processor can only draw it
 		// via pullViaRail when it can reach a warehouse. For raw/intermediate
@@ -1915,7 +1870,7 @@ export function projectSupplySnapshot(snapshot: SupplyPlannerSnapshot): SupplyPl
 		snapshot,
 		materials,
 		warehouse,
-		bottleneck: primaryBottleneck(snapshot, materials, warehouse),
+		bottleneck: primaryBottleneck(snapshot, materials, warehouse, allocations),
 		limitations
 	};
 }
@@ -1981,12 +1936,22 @@ const CONNECTIVITY_EPSILON = 1e-9;
  */
 function findConnectivityDeficit(
 	snapshot: SupplyPlannerSnapshot,
-	materials: readonly SupplyMaterialProjection[]
+	materials: readonly SupplyMaterialProjection[],
+	allocations: Partial<Record<MaterialId, BranchAllocationResult>>
 ): { buildingId: string; materialId: MaterialId } | null {
 	const usableIds = new Set(snapshot.usableBuildingIds);
 
+	// Compute the buildingsForRecipe/usable pair once per material — both
+	// the candidate filter and the deficit scan below need it.
 	const candidates = materials
-		.filter((material) => {
+		.map((material) => ({
+			material,
+			usable: (material.producerRecipeId
+				? buildingsForRecipe(snapshot.buildings, material.producerRecipeId)
+				: []
+			).filter((building) => usableIds.has(building.id))
+		}))
+		.filter(({ material, usable }) => {
 			if (material.requiredPerDay <= 0) return false;
 			if (material.producerRecipeId === null) return false;
 			if (material.buildingCount === 0) return false;
@@ -2007,10 +1972,6 @@ function findConnectivityDeficit(
 			// reachabilityGap check already handles it.
 			if (reachable < material.requiredPerDay - CONNECTIVITY_EPSILON) return false;
 			// Check that branch data is available for at least one usable producer.
-			const installed = material.producerRecipeId
-				? buildingsForRecipe(snapshot.buildings, material.producerRecipeId)
-				: [];
-			const usable = installed.filter((building) => usableIds.has(building.id));
 			return usable.some(
 				(building) =>
 					snapshot.reachableBranchesByBuildingAndMaterial?.[
@@ -2020,16 +1981,17 @@ function findConnectivityDeficit(
 		})
 		.sort(
 			(left, right) =>
-				right.chainDepth - left.chainDepth ||
-				compareCodeUnitStrings(left.materialId, right.materialId)
+				right.material.chainDepth - left.material.chainDepth ||
+				compareCodeUnitStrings(left.material.materialId, right.material.materialId)
 		);
 
-	for (const material of candidates) {
-		const installed = material.producerRecipeId
-			? buildingsForRecipe(snapshot.buildings, material.producerRecipeId)
-			: [];
-		const usable = installed.filter((building) => usableIds.has(building.id));
-		const allocation = allocateCapacityByBranch(usable, material.materialId, snapshot);
+	for (const { material, usable } of candidates) {
+		// Reuse the allocation projectSupplySnapshot already computed for this
+		// material; recompute defensively when it was not provided (e.g. a
+		// manually constructed projection).
+		const allocation =
+			allocations[material.materialId] ??
+			allocateCapacityByBranch(usable, material.materialId, snapshot);
 
 		// Find a branch with unsatisfied demand, then look for a producer
 		// with residual capacity that cannot reach that branch (or cannot
@@ -2121,7 +2083,8 @@ function computeBranchProcessorIds(
 function primaryBottleneck(
 	snapshot: SupplyPlannerSnapshot,
 	materials: readonly SupplyMaterialProjection[],
-	warehouse: SupplyWarehouseEvidence
+	warehouse: SupplyWarehouseEvidence,
+	allocations: Partial<Record<MaterialId, BranchAllocationResult>>
 ): SupplyBottleneck {
 	if (snapshot.demandPerDay <= 0) return { kind: 'none' };
 
@@ -2210,7 +2173,7 @@ function primaryBottleneck(
 	// with residual capacity cannot reach an unsatisfied branch) from a
 	// genuine production-capacity shortage. Building/upgrading a producer
 	// wastes capital when connecting the stranded producer would close the gap.
-	const connectivityDeficit = findConnectivityDeficit(snapshot, materials);
+	const connectivityDeficit = findConnectivityDeficit(snapshot, materials, allocations);
 	if (connectivityDeficit) {
 		return {
 			kind: 'rail-disconnected',
