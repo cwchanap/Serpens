@@ -674,7 +674,7 @@ describe('supply planner action noop branches', () => {
 			cityInventories: base.cityInventories.map((inventory) =>
 				inventory.cityId === 'industry-city'
 					? { ...inventory, materials: {} }
-					: { ...inventory, materials: { water: 800, 'bottled-water': 200 } }
+					: { ...inventory, materials: { grain: 800, 'bottled-water': 200 } }
 			),
 			logistics: {
 				...base.logistics,
@@ -682,7 +682,7 @@ describe('supply planner action noop branches', () => {
 					{
 						...base.logistics.recurringRoutes[0]!,
 						id: 'route-blocker',
-						materialId: 'water',
+						materialId: 'grain',
 						capacity: 800,
 						priority: 1
 					},
