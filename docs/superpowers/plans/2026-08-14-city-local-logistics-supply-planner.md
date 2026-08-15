@@ -2,159 +2,196 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Extend the HPA-281 Supply Planner with deterministic city-inventory, in-transit, recurring-route, logistics bottleneck, and player-confirmed logistics action planning for HPA-297.
+**Goal:** Extend the HPA-281 Supply Planner with deterministic dated logistics while preserving the existing no-logistics projection, recommendation architecture, and player-confirmed mutation boundaries.
 
-**Architecture:** Keep `buildSupplyPlan` as the single planner entry point. HPA-281 continues to own local category/production projection. Add one pure `supplyPlannerLogistics.ts` overlay that snapshots HPA-294 logistics state, runs one 30-day immutable route ledger, and feeds dated inventory deltas/evidence back into the existing planner. Share only the two HPA-294 arithmetic helpers that must remain identical. All recommendations mutate cloned planner state and hand off to existing HPA-574/HPA-292 UI; no planner action mutates live game state.
+**Architecture:** `buildSupplyPlan` remains the only public planner entry point. No-logistics snapshots continue through today's `projectSupplySnapshot`. When logistics matters, `supplyPlanner.ts` runs one 30-day trace that interleaves HPA-294-compatible arrivals/route dispatch with a one-day HPA-281 expected-value step for the selected supply city; `supplyPlannerLogistics.ts` owns copied logistics state and pure route-day mechanics, not an independent horizon planner. Logistics diagnosis generates one bounded candidate family and falls through to the existing HPA-281 local path only when that family has no viable candidate.
 
-**Tech Stack:** TypeScript 6, Svelte 5, Vitest 4 server/client projects, Playwright, existing Serpens HPA-281/HPA-294/HPA-574 domain and route composition.
+**Tech Stack:** TypeScript 6, Svelte 5, Vitest 4 server/client projects, Playwright, existing HPA-281/HPA-294/HPA-574 contracts.
 
 ## Global Constraints
 
 - No `simulateDay` replay, RNG, reports, save writes, or autosave in planner code.
-- No generic scheduler/optimizer/DSL/causal graph/planner store.
-- No remote production planner recursion. Remote route origins use current inventory plus projected arrivals; surface/gate `remote-origin-production-not-modeled` when stock exhaustion matters.
-- No event/disruption integration in HPA-297. HPA-296 can later change snapshot inputs without changing the ledger architecture.
-- No persistence or save-schema change.
-- No compatibility alias for `activeOutboundRouteIds` or `logistics-contention-not-modeled`; delete the temporary HPA-281 guard when the route-aware projection lands.
-- Preserve HPA-281 no-logistics behavior exactly.
-- Preserve HPA-294 priority/raw-ID ordering, destination reservation, dispatch quantity, timing, and cost behavior.
-- Keep every planner action non-mutating until the player confirms in the existing UI.
+- No generic scheduler, optimizer, DSL, causal graph, event bus, or planner store.
+- No remote production recursion. Remote origins use copied inventory + projected arrivals/dispatches only.
+- Selected supply city runs its HPA-281 one-day expected-value step before due-route dispatch.
+- No HPA-296 event/disruption implementation; later effective route values enter at the snapshot boundary.
+- No persistence/save-schema change.
+- No compatibility alias for `activeOutboundRouteIds` or `logistics-contention-not-modeled`.
+- Preserve the current no-logistics public `projectSupplySnapshot` behavior exactly.
+- Preserve HPA-294 priority/raw-ID order, arrival reservation, zero-attempt cadence advancement, dispatch quantity, lead time, and cost behavior.
+- Reuse `CityInventory`, `TransferOrder`, `RecurringRoute`, and `RecurringRouteInput`; do not add parallel payload types.
+- Preserve `viabilityTier` as the first ranking dimension.
+- Every recommendation remains non-mutating until explicit player confirmation in existing UI.
 - New/changed branches must remain covered by the repository's 95% Codecov policy.
+
+## File Structure
+
+- `src/lib/game/interCityLogistics.ts` — live HPA-294 owner; expose only destination-need and dispatch-quantity arithmetic.
+- `src/lib/game/supplyPlannerLogistics.ts` — new planner-only copied logistics state plus pure arrive/dispatch-one-day helpers and route/city evidence.
+- `src/lib/game/supplyPlanner.ts` — selected-category local material model, no-logistics closed-form path, integrated 30-day logistics path, bottleneck evidence.
+- `src/lib/game/supplyPlannerActions.ts` — bounded candidate generation, one local fallback, economics, existing ranking extension.
+- `src/routes/supplyPlannerRoute.ts` — recommendation handoff only; never mutation commands.
+- Existing `SupplyAdvisor`, `LogisticsPanel`, `RetailSupplySources`, `ManagementPanelHost`, and `+page.svelte` remain the concrete UI/composition owners.
+
+## Risks to keep visible while implementing
+
+- **Future-arrival backward credit:** never pass day-N arrivals into a lumped horizon as starting inventory.
+- **Selected-city outbound false uncertainty:** selected-city local step must happen before route dispatch so its own projected stock is not treated as remote unknown production.
+- **Live/planner route drift:** due selection, zero attempts, reservation release, schedule advancement, and safe arithmetic are pinned by one-day parity before candidate work.
+- **Stale warehouse used:** recompute from copied material quantities after arrivals, selected-city local step, and dispatches.
+- **Preset overwrite:** route form proposal is applied once per stable preset key; rerenders cannot reset player edits.
 
 ---
 
-## Task 1: Extract the two shared HPA-294 arithmetic seams
+### Task 1: Share HPA-294 arithmetic and pin one-day route parity
 
 **Files:**
 - Modify: `src/lib/game/interCityLogistics.ts`
 - Modify: `src/lib/game/interCityLogistics.spec.ts`
+- Create: `src/lib/game/supplyPlannerLogistics.ts`
+- Create: `src/lib/game/supplyPlannerLogistics.spec.ts`
 
-### RED
+**Interfaces:**
+- Produces:
 
-- [ ] Add focused tests for a pure destination-need helper:
-  - capacity minus used minus all in-transit reservations;
-  - never below zero;
-  - overflowed destination remains zero need.
-- [ ] Add focused tests for a pure dispatch-quantity helper:
-  - destination need binds;
-  - route capacity binds;
-  - origin stock binds;
-  - zero in any input yields zero.
-- [ ] Add one parity test proving `processRecurringRouteDispatches` still produces the same dispatched quantity after the extraction.
-- [ ] Run and observe the new helper tests fail because the exports do not exist:
+```ts
+export function getDestinationTransferNeedFromCapacity(input: {
+	warehouseCapacity: number;
+	warehouseUsed: number;
+	reservedInTransitUnits: number;
+}): number;
+
+export function getRecurringDispatchQuantity(input: {
+	destinationNeed: number;
+	routeCapacity: number;
+	availableOriginStock: number;
+}): number;
+
+export interface SupplyPlannerLogisticsCitySnapshot {
+	inventory: Readonly<CityInventory>;
+	warehouseCapacity: number;
+}
+
+export interface SupplyPlannerLogisticsSnapshot {
+	currentDay: number;
+	cities: readonly SupplyPlannerLogisticsCitySnapshot[];
+	inTransitOrders: readonly Readonly<TransferOrder>[];
+	routes: readonly Readonly<RecurringRoute>[];
+	nextRouteSequence: number;
+}
+```
+
+- `supplyPlannerLogistics.ts` may expose pure one-day arrive/dispatch helpers for Task 2, but no 30-day public planner entry point.
+
+- [ ] **Step 1: Write failing helper extraction tests**
+
+In `interCityLogistics.spec.ts`, add cases that pin:
+
+```ts
+expect(
+	getDestinationTransferNeedFromCapacity({
+		warehouseCapacity: 100,
+		warehouseUsed: 60,
+		reservedInTransitUnits: 25
+	})
+).toBe(15);
+
+expect(
+	getRecurringDispatchQuantity({
+		destinationNeed: 30,
+		routeCapacity: 20,
+		availableOriginStock: 12
+	})
+).toBe(12);
+```
+
+Also cover zero/overflow boundaries.
+
+- [ ] **Step 2: Run RED helper tests**
 
 ```bash
 bun run test:unit -- src/lib/game/interCityLogistics.spec.ts --run --project server
 ```
 
-### GREEN
+Expected: FAIL because the helper exports do not exist.
 
-- [ ] Add:
+- [ ] **Step 3: Extract exactly the two helpers**
+
+Make `getDestinationTransferNeed(game, cityId)` delegate to the first helper and replace the live route `Math.min(...)` with `getRecurringDispatchQuantity`. Leave `compareRecurringRoutes`, due-route filtering, order creation, zero-attempt evidence, schedule advancement, and cost handling structurally unchanged.
+
+- [ ] **Step 4: Add planner one-day route mechanics and the parity fixture**
+
+In `supplyPlannerLogistics.spec.ts`, build one fixture with:
+
+- one due in-transit order;
+- two active due routes contending for the same destination headroom or origin stock;
+- one route that yields a zero-quantity attempt;
+- no selected-city local-flow change during the compared phase.
+
+The live side runs:
 
 ```ts
-getDestinationTransferNeedFromCapacity({ warehouseCapacity, warehouseUsed, reservedInTransitUnits })
-getRecurringDispatchQuantity({ destinationNeed, routeCapacity, availableOriginStock })
+const arrived = processTransferArrivals(game);
+const live = processRecurringRouteDispatches(arrived.game);
 ```
 
-- [ ] Make `getDestinationTransferNeed(game, cityId)` delegate to the capacity helper.
-- [ ] Make `processRecurringRouteDispatches` delegate to the dispatch-quantity helper.
-- [ ] Keep `compareRecurringRoutes`, due-route selection, transfer creation, cost application, and schedule advancement otherwise unchanged.
-- [ ] Re-run the focused test file.
-- [ ] Run:
+The planner side starts from copied `CityInventory[]`, in-transit `TransferOrder[]`, and `RecurringRoute[]`, then applies its pure arrive + dispatch-one-day helpers.
+
+Assert equality/parity for:
+
+```ts
+{
+	inventories,
+	reservedInTransitByDestination,
+	attemptOrderAndQuantities,
+	zeroAttemptCount,
+	nextDispatchOnDayByRoute,
+	newOrderArrivalDays,
+	scheduledTransportCost
+}
+```
+
+- [ ] **Step 5: Run RED parity test**
 
 ```bash
+bun run test:unit -- src/lib/game/supplyPlannerLogistics.spec.ts --run --project server
+```
+
+Expected: FAIL until the planner helpers exist.
+
+- [ ] **Step 6: Implement the minimal pure route-day helpers**
+
+Planner helpers must:
+
+```text
+arrivals: add quantity → mark/remove reservation
+routes: filter active+due → compareRecurringRoutes → destination need → whole-unit quantity
+non-zero: remove origin + append projected TransferOrder
+zero: evidence only
+all due attempts: nextDispatchOnDay = day + frequencyDays
+```
+
+Use the two shared arithmetic helpers. Match HPA-294 safe-integer cost behavior; do not create a generic scheduler abstraction.
+
+- [ ] **Step 7: Run GREEN tests and static check**
+
+```bash
+bun run test:unit -- src/lib/game/interCityLogistics.spec.ts src/lib/game/supplyPlannerLogistics.spec.ts --run --project server
 bun run check
 ```
 
-### Commit
+Expected: PASS.
 
-- [ ] Commit:
+- [ ] **Step 8: Commit**
 
-```text
-refactor(logistics): share route planning arithmetic
+```bash
+git add src/lib/game/interCityLogistics.ts src/lib/game/interCityLogistics.spec.ts src/lib/game/supplyPlannerLogistics.ts src/lib/game/supplyPlannerLogistics.spec.ts
+git commit -m "refactor(logistics): share planner route arithmetic"
 ```
 
 ---
 
-## Task 2: Add the immutable logistics snapshot and 30-day ledger
-
-**Files:**
-- Create: `src/lib/game/supplyPlannerLogistics.ts`
-- Create: `src/lib/game/supplyPlannerLogistics.spec.ts`
-- Modify: `src/lib/game/supplyPlanner.ts`
-- Modify: `src/lib/game/supplyPlanner.spec.ts`
-
-### RED — snapshot contract
-
-- [ ] Add tests that `buildSupplyPlannerSnapshot` captures a nested logistics snapshot containing:
-  - current day;
-  - all opened industry-city inventory/capacity rows;
-  - all current in-transit orders, including unrelated materials for warehouse reservation;
-  - all recurring routes;
-  - `nextRouteSequence`.
-- [ ] Assert snapshot arrays/records are copied: later mutation of the source game does not change the snapshot.
-- [ ] Replace test fixture uses of `activeOutboundRouteIds` with the new logistics snapshot; do not add a compatibility field.
-
-### RED — ledger behavior
-
-- [ ] In `supplyPlannerLogistics.spec.ts`, add a minimal factory for logistics snapshots and test:
-  - an in-transit order is not in destination inventory before `arrivalOnDay`;
-  - it arrives on the correct day and stops reserving capacity;
-  - a due route dispatch removes origin stock immediately;
-  - projected arrival is dispatch day + lead time;
-  - next dispatch is projected day + frequency;
-  - paused routes do not dispatch;
-  - zero-quantity attempts create evidence but no projected order;
-  - due routes use `compareRecurringRoutes` priority/raw-ID order;
-  - two routes contend for the same destination capacity deterministically;
-  - two routes contend for the same origin material deterministically;
-  - an arrival into an intermediate city can feed a later existing route without route-path search;
-  - transport cost accumulates from dispatched whole units only.
-- [ ] Add a test that route quantities remain whole units even when the selected planner's expected demand is fractional.
-- [ ] Add a relevant-route stock-exhaustion test that records the `remote-origin-production-not-modeled` limitation instead of inventing new stock.
-- [ ] Run and observe failure:
-
-```bash
-bun run test:unit -- src/lib/game/supplyPlannerLogistics.spec.ts src/lib/game/supplyPlanner.spec.ts --run --project server
-```
-
-### GREEN
-
-- [ ] Implement the contracts from the design:
-  - `SupplyPlannerLogisticsCitySnapshot`;
-  - `SupplyPlannerTransferSnapshot`;
-  - `SupplyPlannerRouteSnapshot`;
-  - `SupplyPlannerLogisticsSnapshot`;
-  - route/city forecast evidence types.
-- [ ] Implement `buildSupplyPlannerLogisticsSnapshot(game)` using `getCityInventoryStats` only for valid opened industry cities.
-- [ ] Implement one pure `projectSupplyPlannerLogistics(snapshot, requiredMaterialIds)` that runs at most 30 projected days once and returns:
-  - per-day selected-material inventory deltas by city/material;
-  - route dispatch/arrival/cost evidence;
-  - city/in-transit evidence;
-  - precise remote-origin limitation evidence.
-- [ ] Use the shared HPA-294 helpers from Task 1 for destination need and dispatch quantity.
-- [ ] Do not construct or mutate `GameState` inside the ledger.
-- [ ] Add `logistics` to `SupplyPlannerSnapshot`.
-- [ ] Delete `activeOutboundRouteIds` from snapshot construction and fixtures.
-- [ ] Re-run focused tests.
-- [ ] Run:
-
-```bash
-bun run check
-bun run lint
-```
-
-### Commit
-
-- [ ] Commit:
-
-```text
-feat(supply): project city logistics state
-```
-
----
-
-## Task 3: Feed dated logistics inventory into the HPA-281 material projection
+### Task 2: Build the integrated selected-city 30-day trace
 
 **Files:**
 - Modify: `src/lib/game/supplyPlanner.ts`
@@ -162,47 +199,135 @@ feat(supply): project city logistics state
 - Modify: `src/lib/game/supplyPlannerLogistics.ts`
 - Modify: `src/lib/game/supplyPlannerLogistics.spec.ts`
 
-### RED — preserve local behavior
+**Interfaces:**
+- Consumes Task 1 logistics snapshot and one-day route helpers.
+- Produces one integrated projection path used by `buildSupplyPlan` when logistics is relevant.
+- No-logistics inputs continue to call today's `projectSupplySnapshot` behavior.
 
-- [ ] Add a fixture with no routes/in-transit orders and pin the existing HPA-281 material 7/30 outputs, bottleneck, and limitations.
-- [ ] Add an inbound-order case where:
-  - stockout occurs before arrival;
-  - the arrival removes only later imports/stockout pressure;
-  - no retroactive supply is credited.
-- [ ] Add an outbound-route case where selected-supply-city inventory decreases on the projected dispatch day.
-- [ ] Add a route-arrival case for a raw/intermediate material that still respects HPA-281 warehouse-connected inventory-consumer limits.
-- [ ] Run focused tests and observe the arrival/outbound expectations fail:
+- [ ] **Step 1: Pin current no-logistics output before refactoring**
+
+Add a fixture with no routes/in-transit orders and assert the public projection's existing:
+
+```ts
+{
+	materials: projection.materials,
+	warehouse: projection.warehouse,
+	bottleneck: projection.bottleneck,
+	limitations: projection.limitations
+}
+```
+
+Do not update expected values after implementation except for removal of the intentionally obsolete active-logistics-only contract from logistics cases.
+
+- [ ] **Step 2: Add RED dated-arrival and selected-outbound tests**
+
+Add cases proving:
+
+```text
+inbound arrivalOnDay=20 cannot prevent a day-5 shortage/import
+inbound arrival can reduce shortage/import after day 20
+selected supply city local expected-value step runs before its outbound due route
+selected-city outbound uses the post-local-step stock rather than day-zero stock
+selected-city outbound does not emit remote-origin-production-not-modeled solely because day-zero stock is exhausted
+```
+
+Also add raw/intermediate arrival coverage that preserves the current warehouse-connected processor caps.
+
+- [ ] **Step 3: Run RED projection tests**
 
 ```bash
 bun run test:unit -- src/lib/game/supplyPlanner.spec.ts src/lib/game/supplyPlannerLogistics.spec.ts --run --project server
 ```
 
-### GREEN — extend, do not replace, the allocator
+Expected: new logistics cases FAIL with the current closed-form-only implementation.
 
-- [ ] Add a private per-day inventory-delta input to the existing local-supply horizon calculation.
-- [ ] Thread the 30-day logistics delta series into the existing branch/reachability allocator; do not add another material flow algorithm.
-- [ ] Derive 7-day output from the same 30-day trace/schedule.
-- [ ] Ensure:
-  - in-transit stock is unavailable until arrival;
-  - outbound dispatch is removed on dispatch day;
-  - inventory additions still pass through existing warehouse-connected consumer caps;
-  - no-logistics output is byte-for-byte/equality-equivalent at the public projection level except for the intentional new logistics evidence field.
-- [ ] Replace the old `active-logistics-not-modeled` limitation with route/city forecast evidence.
-- [ ] Keep `rail-capacity-not-modeled` and `store-sales-capacity-not-modeled` unchanged.
-- [ ] Add `remote-origin-production-not-modeled` only when a required-material route is actually stock-constrained in the projection.
-- [ ] Re-run focused tests.
+- [ ] **Step 4: Refactor the existing material math to expose a one-day step without adding a second allocator**
 
-### Commit
+Keep current branch/reachability allocation ownership. Add a private one-day result shape:
 
-- [ ] Commit:
+```ts
+interface SupplyMaterialDayStep {
+	materialId: MaterialId;
+	startingInventoryUnits: number;
+	localAvailableUnits: number;
+	importRequiredUnits: number;
+	endingInventoryUnits: number;
+}
+```
+
+For raw/intermediate flow with processor data, reuse:
+
+```ts
+localSupplyOverHorizon(allocation, 1, currentInventory)
+```
+
+For finished/fallback cases, reuse/refactor the same formulas currently used by `horizonProjection` so one-day and 7/30 semantics cannot diverge.
+
+- [ ] **Step 5: Build `SupplyPlannerSnapshot.logistics` from existing domain types**
+
+Snapshot:
+
+```ts
+{
+	currentDay: game.day,
+	cities: openedIndustryCities.map((city) => ({
+		inventory: structuredClone(authoritativeCityInventory),
+		warehouseCapacity: getCityInventoryStats(game, city.id).capacity
+	})),
+	inTransitOrders: structuredClone(game.logistics.transferOrders.filter((order) => order.status === 'in-transit')),
+	routes: structuredClone(game.logistics.recurringRoutes),
+	nextRouteSequence: game.logistics.nextRouteSequence
+}
+```
+
+Delete `activeOutboundRouteIds`; do not add `SupplyPlannerTransferSnapshot` or `SupplyPlannerRouteSnapshot`.
+
+- [ ] **Step 6: Implement the integrated 30-day loop in `supplyPlanner.ts`**
+
+For each day:
 
 ```text
-feat(supply): integrate route arrivals into forecasts
+1. apply due copied TransferOrder arrivals
+2. project one HPA-281 day for selected-city required materials using current copied inventory
+3. write each required material's endingInventoryUnits back to selected copied CityInventory
+4. recompute selected warehouse used from copied material quantities
+5. dispatch due copied RecurringRoute values with Task 1 helpers/order
+6. recompute affected city used/reservations as needed
+7. record day evidence
+```
+
+Remote cities skip step 2 and change only through arrivals/dispatches.
+
+7-day metrics are derived from the first seven trace days; 30-day metrics from all thirty. Do not run an independent seven-day schedule.
+
+- [ ] **Step 7: Preserve the old fast path**
+
+If the selected plan has no logistics facts that can affect the required-material projection, call the existing closed-form `projectSupplySnapshot` path. The no-logistics regression from Step 1 must pass without changing expected values.
+
+- [ ] **Step 8: Add precise remote-origin limitation**
+
+Emit `remote-origin-production-not-modeled` only when a required-material route from a non-selected origin becomes stock-constrained and a throughput recommendation would need unmodeled replenishment. Do not emit it for selected-city origins.
+
+- [ ] **Step 9: Run GREEN tests**
+
+```bash
+bun run test:unit -- src/lib/game/supplyPlannerLogistics.spec.ts src/lib/game/supplyPlanner.spec.ts --run --project server
+bun run check
+bun run lint
+```
+
+Expected: PASS.
+
+- [ ] **Step 10: Commit**
+
+```bash
+git add src/lib/game/supplyPlanner.ts src/lib/game/supplyPlanner.spec.ts src/lib/game/supplyPlannerLogistics.ts src/lib/game/supplyPlannerLogistics.spec.ts
+git commit -m "feat(supply): interleave logistics with daily forecasts"
 ```
 
 ---
 
-## Task 4: Diagnose logistics bottlenecks and generate bounded candidates
+### Task 3: Add logistics diagnosis, bounded candidates, and local fallback
 
 **Files:**
 - Modify: `src/lib/game/supplyPlanner.ts`
@@ -210,93 +335,170 @@ feat(supply): integrate route arrivals into forecasts
 - Modify: `src/lib/game/supplyPlannerActions.ts`
 - Modify: `src/lib/game/supplyPlannerActions.spec.ts`
 
-### RED — bottleneck evidence
-
-- [ ] Add projection tests for:
-  - paused matching route → `route-paused`;
-  - full destination/reserved capacity blocks a dispatch → `route-destination-capacity`;
-  - origin stock binds → `origin-inventory`;
-  - dispatch at route capacity with unmet destination need → `route-capacity`;
-  - first useful arrival after first stockout → `route-lead-time`;
-  - later stockout between successful deliveries → `route-frequency`;
-  - no useful route plus alternate opened city stock → `destination-configuration`;
-  - no logistics cause → existing HPA-281 local bottleneck.
-- [ ] Assert each logistics bottleneck carries route/city/material/day/amount evidence where applicable.
-
-### RED — action family
-
-- [ ] Update action fixtures to require `build-warehouse.cityId`; confirm old no-city fixtures fail and then remove them.
-- [ ] Add candidate tests:
-  - paused route → one `resume-route` candidate using `max(nextDispatchOnDay, currentDay)`;
-  - capacity bottleneck → one `edit-route` capacity candidate with `current + ceil(peakUnmet)`;
-  - cadence bottleneck → one `edit-route` frequency candidate with exactly one-day tightening;
-  - priority contention → one priority candidate only when the blocker can be beaten numerically;
-  - missing useful route → at most one create candidate per stocked open origin;
-  - create route uses `quoteInterCityRates`, frequency `1`, priority `0`, bounded capacity, and hypothetical `route-${nextRouteSequence}` identity;
-  - alternate supply source evaluates a cloned assignment and does not recursively generate nested candidates;
-  - warehouse bottleneck targets the correct city;
-  - remote-origin unknown production prevents a larger/faster route candidate that requires stock not present in the ledger.
-- [ ] Add availability tests for `canManageLogistics` and `canSetRetailSupplySource`.
-
-### RED — comparison/ranking
-
-- [ ] Add tests pinning:
-  - projected delivered units 7/30;
-  - incremental transport cost 30;
-  - first-shortage improvement;
-  - import-spend reduction from the integrated projection;
-  - logistics net benefit = avoided import spend - incremental transport cost - known upfront cost;
-  - no-op when a route change moves stock but does not reduce shortage/import;
-  - no-op when added transport cost exceeds the avoided import value;
-  - stable action-key tie break.
-- [ ] Add deep-equality immutability checks for the input game, route arrays, orders, sequences, reports, and RNG before/after every candidate family.
-- [ ] Run and observe failures:
-
-```bash
-bun run test:unit -- src/lib/game/supplyPlanner.spec.ts src/lib/game/supplyPlannerActions.spec.ts --run --project server
-```
-
-### GREEN
-
-- [ ] Add logistics bottleneck union members and evidence-first diagnosis after integrated projection.
-- [ ] Extend `SupplyPlannerActionAvailability` with:
+**Interfaces:**
+- Extends `SupplyBottleneck`/planner evidence with logistics causes.
+- Extends `SupplyPlannerActionAvailability` with:
 
 ```ts
 canManageLogistics: boolean;
 canSetRetailSupplySource: boolean;
 ```
 
-- [ ] Extend `SupplyPlannerAction` with:
-  - city-scoped `build-warehouse`;
-  - `create-route`;
-  - field-scoped `edit-route`;
-  - `resume-route`;
-  - `change-supply-source`.
-- [ ] Remove `logistics-contention-not-modeled` from no-op reasons.
-- [ ] Implement exactly the bounded candidate recipes in the design; do not loop over arbitrary capacities/frequencies/priorities.
-- [ ] Apply route candidates only to cloned logistics snapshot state.
-- [ ] Implement supply-source comparison through a cloned game assignment and a projection-only path that has logistics candidate generation disabled.
-- [ ] Extend `SupplyPlannerComparison` with delivery/transport/shortage-timing evidence and fold transport cost into existing net-benefit ranking.
-- [ ] Preserve existing local producer/upgrade/rail economics unchanged.
-- [ ] Re-run focused tests.
-- [ ] Run:
+- Extends `SupplyPlannerAction` with existing-domain payloads:
+
+```ts
+| { kind: 'build-warehouse'; cityId: WorldCityId; buildingTypeId: 'warehouse'; cost: number }
+| { kind: 'create-route'; input: RecurringRouteInput }
+| { kind: 'edit-route'; routeId: string; field: 'capacity' | 'frequencyDays' | 'priority'; from: number; to: number }
+| { kind: 'resume-route'; routeId: string }
+| { kind: 'change-supply-source'; retailCityId: WorldCityId; fromSupplyCityId: WorldCityId; toSupplyCityId: WorldCityId }
+```
+
+- Extends `SupplyPlannerComparison` with:
+
+```ts
+projectedDeliveredUnits7: number;
+projectedDeliveredUnits30: number;
+incrementalTransportCost30: number;
+firstShortageImprovementDays: number;
+```
+
+- [ ] **Step 1: Write RED bottleneck tests**
+
+Cover exactly:
+
+```text
+paused matching route -> route-paused
+full/reserved destination -> route-destination-capacity
+origin stock binds -> origin-inventory
+capacity with unmet destination need -> route-capacity
+post-first-arrival gap -> route-frequency
+first arrival after initial shortage -> route-lead-time
+no useful inbound route + stocked opened origin -> destination-configuration
+no logistics explanation -> current HPA-281 local bottleneck
+```
+
+Assert city/route/material/day/amount evidence where applicable.
+
+- [ ] **Step 2: Write RED bounded candidate tests**
+
+Pin:
+
+```text
+resume -> max(nextDispatchOnDay, currentDay)
+capacity -> current + ceil(peakUnmet), one candidate only
+frequency -> max(1, current - 1), one candidate only
+priority -> blockerPriority - 1 only when >= 0 and actually precedes blocker
+create -> one per stocked open origin, quoteInterCityRates, frequency=1, priority=0
+create input type -> RecurringRouteInput
+hypothetical ID -> route-${nextRouteSequence}
+source -> cloned assignment only, nested candidate generation disabled
+warehouse -> action.cityId is bottleneck city
+remote unknown -> larger/faster route requiring absent remote stock is rejected
+```
+
+- [ ] **Step 3: Write RED local-fallback tests**
+
+Create at least two cases:
+
+```text
+logistics bottleneck diagnosed + route management unavailable + feasible existing local producer/upgrade action -> local action returned
+logistics bottleneck diagnosed + route candidate blocked by remote-origin-production-not-modeled + useful local action -> local action returned
+```
+
+Assert the planner does not merge logistics and local candidates into one global pool.
+
+- [ ] **Step 4: Write RED ranking regression tests**
+
+Pin current `viabilityTier` behavior before adding logistics fields:
+
+```text
+unknown-ROI rail candidate still outranks known-negative rail-ready candidate
+positive complete still outranks lower tiers
+```
+
+Then add logistics comparison expectations:
+
+```text
+netCashBenefit30 = avoidedImportSpend - incrementalTransportCost - knownUpfrontCost
+new delivery fields default to 0 for old local candidates
+new logistics tie-breaks do not replace viabilityTier
+moving stock without reducing shortage/import can select no-op
+transport cost greater than avoided import value can select no-op
+```
+
+- [ ] **Step 5: Run RED domain/action tests**
 
 ```bash
+bun run test:unit -- src/lib/game/supplyPlanner.spec.ts src/lib/game/supplyPlannerActions.spec.ts --run --project server
+```
+
+Expected: new unions/actions/fallbacks are missing.
+
+- [ ] **Step 6: Implement evidence-first logistics diagnosis**
+
+Use the design order and keep `remote-origin-production-not-modeled` as a limitation, not a bottleneck.
+
+- [ ] **Step 7: Implement one-family logistics generation plus one local fallback**
+
+Control flow in `makePlan` should remain explicit:
+
+```ts
+const logisticsCause = diagnoseLogistics(...);
+if (logisticsCause) {
+	const logistics = generateBoundedLogisticsCandidates(...);
+	const viable = logistics.candidates.filter(candidateIsViable);
+	if (viable.length > 0) return chooseWithinFamily(viable);
+}
+return makeExistingLocalPlan(...);
+```
+
+Do not create a combined optimizer pool.
+
+- [ ] **Step 8: Extend comparison and `compareCandidates` without replacing `viabilityTier`**
+
+Keep the existing comparator prefix:
+
+```ts
+rightTier - leftTier || compareBenefit || shortage30 || shortage7 || importReduction || ...
+```
+
+Append first-shortage/delivery/transport evidence after existing viability/benefit/shortage/import semantics. Keep stable `actionKey` final.
+
+- [ ] **Step 9: Add immutability assertions**
+
+For each logistics family, deep-clone before planning and assert unchanged after:
+
+```ts
+game
+logistics.transferOrders
+logistics.recurringRoutes
+logistics.nextTransferSequence
+logistics.nextRouteSequence
+reports
+rngState
+```
+
+- [ ] **Step 10: Run GREEN tests and static checks**
+
+```bash
+bun run test:unit -- src/lib/game/supplyPlanner.spec.ts src/lib/game/supplyPlannerActions.spec.ts --run --project server
 bun run check
 bun run lint
 ```
 
-### Commit
+Expected: PASS.
 
-- [ ] Commit:
+- [ ] **Step 11: Commit**
 
-```text
-feat(supply): rank logistics planner actions
+```bash
+git add src/lib/game/supplyPlanner.ts src/lib/game/supplyPlanner.spec.ts src/lib/game/supplyPlannerActions.ts src/lib/game/supplyPlannerActions.spec.ts
+git commit -m "feat(supply): rank bounded logistics actions"
 ```
 
 ---
 
-## Task 5: Wire non-mutating planner handoffs into existing operations UI
+### Task 4: Wire handoffs after overlay clearing
 
 **Files:**
 - Modify: `src/routes/supplyPlannerRoute.ts`
@@ -310,44 +512,75 @@ feat(supply): rank logistics planner actions
 - Modify: `src/routes/+page.svelte`
 - Modify: `src/routes/page.svelte.spec.ts`
 
-### RED — route handoff contracts
+**Interfaces:**
+- Reuse `RecurringRouteInput` for route form preset.
+- Route-local state:
 
-- [ ] Extend `SupplyPlannerHandoffHost` tests so:
-  - `edit-route`/`resume-route` close planner overlays and open Logistics focused on the correct route;
-  - `create-route` opens Logistics with a route preset and does not call any mutation callback;
-  - `change-supply-source` opens Stores focused on the selected retail city and does not change the assignment;
-  - city-scoped warehouse switches to the action's target city before placement;
-  - stale/unavailable action capability causes a no-op handoff.
+```ts
+let logisticsRoutePreset: RecurringRouteInput | null = $state(null);
+let logisticsRoutePresetKey: string | null = $state(null);
+let focusedRetailSupplyCityId: WorldCityId | null = $state(null);
+```
 
-### RED — create-route preset
+- Extend `SupplyPlannerHandoffHost` with explicit UI-open methods rather than command methods, e.g.:
 
-- [ ] Add `LogisticsPanel.svelte.spec.ts` coverage for a `LogisticsRoutePreset`:
-  - seeds origin/destination/material/capacity/frequency/lead-time/cost/priority;
-  - focuses the existing route form;
-  - does not submit/create a route;
-  - applies a new preset once;
-  - reactive view rerenders do not overwrite player edits after the preset was applied;
-  - a distinct later preset can be applied.
-- [ ] Add a stable preset identity/key rather than comparing mutable form state.
+```ts
+openLogisticsManagement(input: {
+	focusedRouteId?: string;
+	routePreset?: RecurringRouteInput;
+	routePresetKey?: string;
+}): void;
+openStoresManagement(focusedRetailCityId: WorldCityId): void;
+```
 
-### RED — source focus
+- [ ] **Step 1: Write RED handoff ordering tests**
 
-- [ ] Add `RetailSupplySources.svelte.spec.ts` coverage for optional `focusedRetailCityId`:
-  - focuses/scrolls the correct existing row/select;
-  - does not call `onChange` merely because focus changed.
+In `supplyPlannerRoute.spec.ts`, record host call order and assert:
 
-### GREEN
+```text
+edit/resume: closeOverlays -> openLogisticsManagement(focusedRouteId)
+create: closeOverlays -> openLogisticsManagement(routePreset + stable key)
+source: closeOverlays -> openStoresManagement(retailCityId)
+warehouse: closeOverlays -> switchToSupplyCity(action.cityId) -> armIndustryPlacement('warehouse')
+```
 
-- [ ] Define route-local transient state in `+page.svelte` only:
-  - `focusedLogisticsRouteId` stays for existing-route actions;
-  - add `logisticsRoutePreset: LogisticsRoutePreset | null` for create-route handoff;
-  - add `focusedRetailSupplyCityId: WorldCityId | null` for source handoff.
-- [ ] Thread those props only through `ManagementPanelHost` to the existing concrete components.
-- [ ] Update `LogisticsPanel` to seed/focus the current create form once; do not create a second form or command path.
-- [ ] Update `RetailSupplySources` with focus-only behavior.
-- [ ] Extend `plannerHandoffHost()` to call route-local open/focus functions; do not expose `GameRouteController` commands to planner code.
-- [ ] Keep `SupplyPlannerUiContext` untouched when planner overlays close so category/horizon survive.
-- [ ] Re-run:
+Also assert stale availability returns without UI/mutation action.
+
+- [ ] **Step 2: Run RED route tests**
+
+```bash
+bun run test:unit -- src/routes/supplyPlannerRoute.spec.ts --run --project server
+```
+
+Expected: FAIL because host methods/actions are not wired.
+
+- [ ] **Step 3: Write RED `LogisticsPanel` preset tests**
+
+Pass `RecurringRouteInput` + key and assert:
+
+```text
+all existing create-route fields are seeded
+existing route form receives focus
+no create callback is called on preset application
+same key rerender does not overwrite user-edited capacity/frequency/etc.
+new key applies a later proposal once
+```
+
+Do not define a second route payload interface.
+
+- [ ] **Step 4: Write RED retail-source focus tests**
+
+Add optional `focusedRetailCityId`; focus/scroll the existing row/select and assert focus itself never calls `onChange`.
+
+- [ ] **Step 5: Implement route-local state and post-close ordering**
+
+`closePlannerOverlays()` may continue clearing current panel/focus. The handoff must set the destination panel/focus **after** that call. Do not weaken the general cleanup behavior merely to support HPA-297.
+
+- [ ] **Step 6: Keep planner context**
+
+Do not reset `SupplyPlannerUiContext.categoryId` or `.horizonDays` while closing/opening destination UI.
+
+- [ ] **Step 7: Run GREEN route/component tests**
 
 ```bash
 bun run test:unit -- src/routes/supplyPlannerRoute.spec.ts --run --project server
@@ -355,17 +588,18 @@ bun run test:unit -- src/lib/components/game/LogisticsPanel.svelte.spec.ts src/l
 bun run check
 ```
 
-### Commit
+Expected: PASS.
 
-- [ ] Commit:
+- [ ] **Step 8: Commit**
 
-```text
-feat(supply): hand off logistics recommendations
+```bash
+git add src/routes/supplyPlannerRoute.ts src/routes/supplyPlannerRoute.spec.ts src/lib/components/game/LogisticsPanel.svelte src/lib/components/game/LogisticsPanel.svelte.spec.ts src/lib/components/game/RetailSupplySources.svelte src/lib/components/game/RetailSupplySources.svelte.spec.ts src/routes/ManagementPanelHost.svelte src/routes/ManagementPanelHost.svelte.spec.ts src/routes/+page.svelte src/routes/page.svelte.spec.ts
+git commit -m "feat(supply): hand off logistics recommendations"
 ```
 
 ---
 
-## Task 6: Surface route-aware evidence and localized copy in Supply Advisor
+### Task 5: Surface route-aware evidence and localization
 
 **Files:**
 - Modify: `src/lib/components/game/SupplyAdvisor.svelte`
@@ -375,98 +609,133 @@ feat(supply): hand off logistics recommendations
 - Modify: `src/lib/i18n/messages/zh-Hant.ts`
 - Modify: `src/lib/i18n/locales.spec.ts`
 
-### RED
+**Interfaces:**
+- Consumes integrated projection/evidence/actions from Tasks 2–3.
+- Produces no new domain state.
 
-- [ ] Add component tests for:
-  - configured supply city and current warehouse stock/capacity;
-  - in-transit quantity + earliest arrival;
-  - route state/next dispatch/projected 7/30 delivery/transport cost;
-  - route capacity/frequency/lead-time/origin/destination/paused bottleneck copy;
-  - remote-origin limitation copy only when present;
-  - logistics action labels for create/edit/resume/source change;
-  - baseline-vs-action delivered units, shortage/import improvement, and incremental transport cost;
-  - city-scoped warehouse action label still reuses existing warehouse copy with target-city context;
-  - no old `active logistics not modeled` / `logistics contention not modeled` text.
-- [ ] Add locale parity expectations for every new `supplyAdvisor` key in EN/JA/zh-Hant.
-- [ ] Run and observe failures:
+- [ ] **Step 1: Write RED component tests**
+
+Cover:
+
+```text
+configured supply city + warehouse stock/capacity
+in-transit quantity + earliest arrival
+route state/next dispatch/7-day + 30-day delivery/transport cost
+paused/capacity/frequency/lead-time/origin/destination bottleneck copy
+remote-origin limitation only when present
+create/edit/resume/source action labels
+baseline-vs-action shortage/import/delivery/transport delta
+city-scoped warehouse target context
+no active-logistics-not-modeled or logistics-contention-not-modeled copy
+```
+
+- [ ] **Step 2: Write RED locale parity tests**
+
+Every new `supplyAdvisor` key must exist in EN/JA/zh-Hant. Keep day/currency/list and `/ day` / `/ unit` formatting through current helpers.
+
+- [ ] **Step 3: Run RED UI/i18n tests**
 
 ```bash
 bun run test:unit -- src/lib/components/game/SupplyAdvisor.svelte.spec.ts --run --project client
 bun run test:unit -- src/lib/i18n/locales.spec.ts --run --project server
 ```
 
-### GREEN
+Expected: FAIL on missing evidence/copy.
 
-- [ ] Keep one Supply Advisor dialog and current category/horizon controls.
-- [ ] Add one compact logistics evidence section; do not embed/reimplement the Logistics panel.
-- [ ] Add action/bottleneck/metric/limitation copy in all three locale files.
-- [ ] Remove old active-logistics limitation/no-op keys only after all code/tests stop referencing them.
-- [ ] Keep all `/ day`, `/ unit`, day/currency/list formatting through the existing i18n helpers.
-- [ ] Re-run component/localization tests.
-- [ ] Run:
+- [ ] **Step 4: Implement one compact logistics section**
+
+Extend the current Supply Advisor layout; do not embed `LogisticsPanel`, add charts, or add another modal/store.
+
+- [ ] **Step 5: Remove obsolete HPA-281 guard copy**
+
+Delete old localization keys only after all code/tests stop referencing them.
+
+- [ ] **Step 6: Run GREEN tests/static checks**
 
 ```bash
+bun run test:unit -- src/lib/components/game/SupplyAdvisor.svelte.spec.ts --run --project client
+bun run test:unit -- src/lib/i18n/locales.spec.ts --run --project server
 bun run check
 bun run lint
 ```
 
-### Commit
+Expected: PASS.
 
-- [ ] Commit:
+- [ ] **Step 7: Commit**
 
-```text
-feat(supply): show logistics forecast evidence
+```bash
+git add src/lib/components/game/SupplyAdvisor.svelte src/lib/components/game/SupplyAdvisor.svelte.spec.ts src/lib/i18n/messages/en.ts src/lib/i18n/messages/ja.ts src/lib/i18n/messages/zh-Hant.ts src/lib/i18n/locales.spec.ts
+git commit -m "feat(supply): show logistics forecast evidence"
 ```
 
 ---
 
-## Task 7: Add the shortage-to-route browser lifecycle and full verification
+### Task 6: Add browser lifecycle and run final verification
 
 **Files:**
 - Modify: `src/routes/retail-sim.e2e.ts`
-- Modify only if a regression requires it: files already touched in Tasks 1–6
+- Modify only for HPA-297 regressions: files already listed in Tasks 1–5
 
-### E2E RED
+- [ ] **Step 1: Add deterministic RED E2E fixture**
 
-- [ ] Add one targeted deterministic save-injection fixture containing:
-  - selected retail category with a destination shortage;
-  - configured destination supply city;
-  - another opened industry city with current stock of the shortage material;
-  - no useful inbound route;
-  - enough cash/capability for route management.
-- [ ] Add one lifecycle test:
-  1. open Supply Advisor;
-  2. assert route-aware shortage/configuration evidence;
-  3. choose the recommended create-route action;
-  4. assert Logistics opens with all proposed route fields prefilled;
-  5. assert no route exists before explicit form submission;
-  6. submit through the existing HPA-574 form;
-  7. assert the created route appears and normal controller commit completes;
-  8. close Logistics and reopen Supply Advisor;
-  9. assert category/horizon context is retained and route evidence now reflects the created route.
-- [ ] Run the targeted browser test and observe the initial failure before completing any last wiring:
+Inject current-schema state with:
+
+```text
+selected retail category shortage
+configured destination supply city
+second opened industry city with current shortage-material stock
+no useful inbound route
+enough cash and route-management capability
+```
+
+- [ ] **Step 2: Add shortage → route → explicit submit → reopen lifecycle**
+
+```text
+1. open Supply Advisor
+2. assert route-aware diagnosis
+3. click recommended create-route action
+4. assert Logistics opens with RecurringRouteInput fields prefilled
+5. assert no route exists yet
+6. submit the existing HPA-574 route form
+7. assert route creation/controller commit completes
+8. close Logistics
+9. reopen Supply Advisor
+10. assert category/horizon retained and created-route evidence appears
+```
+
+- [ ] **Step 3: Run targeted RED E2E**
 
 ```bash
 bunx playwright test src/routes/retail-sim.e2e.ts -g "supply planner logistics"
 ```
 
-### GREEN / regression
+Expected: FAIL before final wiring is complete.
 
-- [ ] Fix only HPA-297 wiring exposed by the E2E; do not broaden scope.
-- [ ] Re-run the targeted E2E.
-- [ ] Run focused planner/logistics server tests:
+- [ ] **Step 4: Fix only HPA-297 integration gaps and rerun targeted E2E**
+
+```bash
+bunx playwright test src/routes/retail-sim.e2e.ts -g "supply planner logistics"
+```
+
+Expected: PASS.
+
+- [ ] **Step 5: Run focused server suites**
 
 ```bash
 bun run test:unit -- src/lib/game/interCityLogistics.spec.ts src/lib/game/supplyPlannerLogistics.spec.ts src/lib/game/supplyPlanner.spec.ts src/lib/game/supplyPlannerActions.spec.ts src/routes/supplyPlannerRoute.spec.ts --run --project server
 ```
 
-- [ ] Run focused client tests:
+Expected: PASS.
+
+- [ ] **Step 6: Run focused client suites**
 
 ```bash
 bun run test:unit -- src/lib/components/game/SupplyAdvisor.svelte.spec.ts src/lib/components/game/LogisticsPanel.svelte.spec.ts src/lib/components/game/RetailSupplySources.svelte.spec.ts src/routes/ManagementPanelHost.svelte.spec.ts src/routes/page.svelte.spec.ts --run --project client
 ```
 
-- [ ] Run all static/build gates:
+Expected: PASS.
+
+- [ ] **Step 7: Run static/build gates**
 
 ```bash
 bun run check
@@ -475,58 +744,61 @@ bun run build
 git diff --check main...HEAD
 ```
 
-- [ ] Run the complete unit suite:
+Expected: PASS.
+
+- [ ] **Step 8: Run full unit and E2E suites**
 
 ```bash
 bun run test:unit -- --run
-```
-
-- [ ] Run the complete route/browser suite required by the repository before ready-for-review:
-
-```bash
 bun run test:e2e
 ```
 
-### Scope audits
+Expected: PASS.
 
-- [ ] Confirm no persistence/schema file changed:
+- [ ] **Step 9: Run scope audits**
 
 ```bash
 git diff --name-only main...HEAD | grep -E 'saveCodec|saveTypes|saveRepository|migration' && exit 1 || true
+rg "activeOutboundRouteIds|active-logistics-not-modeled|logistics-contention-not-modeled" src
 ```
 
-- [ ] Confirm the temporary HPA-281 guard is gone:
+Expected: no persistence/schema change and no production-code legacy guard match.
 
-```bash
-rg "activeOutboundRouteIds|active-logistics-not-modeled|logistics-contention-not-modeled" src docs/superpowers/specs/2026-08-14-city-local-logistics-supply-planner-design.md
-```
-
-Expected: no production-code match; the design may mention deleted legacy names only in explanatory/removal text.
-
-- [ ] Review `git diff main...HEAD` for unrelated refactors, generic abstractions, accidental live mutations, or HPA-296 event work.
-- [ ] Verify the new logistics module is planner-only and no second live scheduler has been introduced.
-
-### Commit
-
-- [ ] Commit final E2E/cleanup changes:
+Review the final diff for:
 
 ```text
-test(supply): cover logistics planner lifecycle
+no simulateDay replay
+no second live scheduler
+o remote production recursion
+no combined optimizer pool
+no replacement of viabilityTier
+no HPA-296 event framework work
+no planner-owned mutations
+```
+
+- [ ] **Step 10: Commit final test changes**
+
+```bash
+git add src/routes/retail-sim.e2e.ts
+git commit -m "test(supply): cover logistics planner lifecycle"
 ```
 
 ---
 
 ## Definition of Done
 
-- [ ] HPA-281 no longer suppresses recommendations merely because active logistics exists.
-- [ ] The 7/30 planner includes dated in-transit arrivals and recurring-route movements.
-- [ ] Projected route dispatches use HPA-294 destination-need, capacity, origin-stock, priority/raw-ID, cadence, lead-time, and cost contracts.
-- [ ] Required shortages diagnose concrete local/logistics causes with city/route/material/day evidence.
-- [ ] Candidate generation is bounded and deterministic; no search optimizer exists.
-- [ ] Transport cost participates in economic ranking.
-- [ ] Remote origin production uncertainty is explicit and cannot justify unsafe throughput recommendations.
-- [ ] Route/source/warehouse recommendations hand off to existing UI without planner-owned mutations.
-- [ ] Route creation is prefilled but requires explicit player submission.
-- [ ] Supply Planner category/horizon context survives handoff and reopen.
-- [ ] No save-schema or compatibility layer is added.
-- [ ] Focused tests, full unit suite, static gates, build, targeted lifecycle E2E, and full E2E all pass.
+- [ ] HPA-281 no longer suppresses planning merely because active logistics exists.
+- [ ] No-logistics results still use and match the current closed-form HPA-281 projection.
+- [ ] Logistics results use one 30-day trace with arrivals → selected-city HPA-281 day → HPA-294-compatible route dispatch.
+- [ ] Future arrivals cannot retroactively fix earlier shortages.
+- [ ] Selected-city outbound routes use post-local-step inventory and are not mislabeled as remote-production uncertainty.
+- [ ] Remote origin production uncertainty is explicit and blocks unsafe throughput proposals.
+- [ ] One-day planner route mechanics are parity-tested against live HPA-294 arrival/dispatch behavior.
+- [ ] Planner snapshot/preset payloads reuse `CityInventory`, `TransferOrder`, `RecurringRoute`, and `RecurringRouteInput`.
+- [ ] Logistics candidate generation is bounded and falls through once to existing local actions if no logistics candidate is viable.
+- [ ] `viabilityTier` remains the first candidate-ranking dimension.
+- [ ] Handoff focus/preset/source state is applied after `closePlannerOverlays()`.
+- [ ] Route/source/warehouse recommendations use existing UI and require explicit player confirmation.
+- [ ] Supply Planner category/horizon survives handoff and reopen.
+- [ ] No persistence/schema or compatibility layer is added.
+- [ ] Focused tests, full unit suite, static gates, build, targeted E2E, and full E2E pass.
