@@ -22,6 +22,7 @@ import {
 } from './rail';
 import { REPLENISHMENT_INTERVAL_DAYS } from './retailSupply';
 import { buildCityDemandPools, getFinishedMaterialIdForCategory } from './stock';
+import { compareRecurringRoutes } from './interCityLogistics';
 import { getWorldCityDefinition, WORLD_CITY_CATALOG } from './worldCatalog';
 import {
 	buildSupplyPlannerLogisticsSnapshot,
@@ -2326,18 +2327,26 @@ function projectSupplySnapshotWithLogistics(
 		const dispatchResult = processSupplyPlannerRouteDispatches(logisticsState, day);
 		logisticsState = dispatchResult.state;
 		for (const attempt of dispatchResult.attempts) {
+			projectedTransportCost30 = addProjectedTransportCost(
+				projectedTransportCost30,
+				attempt.transportCost
+			);
 			if (attempt.transferOrderId !== null) {
 				projectedRouteByOrderId.set(attempt.transferOrderId, attempt.routeId);
 			}
 			const attemptForecast = routeForecastState.get(attempt.routeId);
+			if (attemptForecast) {
+				attemptForecast.transportCost30 = addProjectedTransportCost(
+					attemptForecast.transportCost30,
+					attempt.transportCost
+				);
+			}
 			const isRelevantInboundRoute =
 				attempt.destinationCityId === snapshot.supplyCityId &&
 				requiredMaterialIds.has(attempt.materialId);
 			if (attemptForecast && isRelevantInboundRoute) {
 				attemptForecast.dispatched30 += attempt.dispatchedQuantity;
 				if (offset < 7) attemptForecast.dispatched7 += attempt.dispatchedQuantity;
-				attemptForecast.transportCost30 += attempt.transportCost;
-				projectedTransportCost30 += attempt.transportCost;
 				attemptForecast.peakUnmetNeed = Math.max(
 					attemptForecast.peakUnmetNeed,
 					attempt.unmetDestinationNeed
@@ -2350,7 +2359,7 @@ function projectSupplySnapshotWithLogistics(
 					attempt.dispatchedQuantity === attempt.capacity &&
 					!originStockConstrained;
 				const priorityBlocker =
-					attempt.destinationNeed === 0
+					attempt.destinationNeed < attempt.capacity
 						? dispatchResult.attempts.find((previous) => {
 								const previousForecast = routeForecastState.get(previous.routeId);
 								return (
@@ -2358,7 +2367,7 @@ function projectSupplySnapshotWithLogistics(
 									previous.destinationCityId === attempt.destinationCityId &&
 									previous.dispatchedQuantity > 0 &&
 									previousForecast !== undefined &&
-									previousForecast.route.priority < attemptForecast.route.priority
+									compareRecurringRoutes(previousForecast.route, attemptForecast.route) < 0
 								);
 							})
 						: undefined;
@@ -3008,4 +3017,12 @@ function isValidRequest(request: SupplyPlannerRequest): boolean {
 
 function compareCodeUnitStrings(left: string, right: string): number {
 	return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function addProjectedTransportCost(current: number, addition: number): number {
+	const total = current + addition;
+	if (!Number.isSafeInteger(total)) {
+		throw new RangeError('Projected transport cost exceeds the safe integer range');
+	}
+	return total;
 }

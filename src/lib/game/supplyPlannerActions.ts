@@ -474,32 +474,6 @@ function diagnoseLogistics(
 		};
 	}
 
-	const reservedUnits = logistics.inTransitOrders.reduce(
-		(total, order) =>
-			order.status === 'in-transit' && order.destinationCityId === snapshot.supplyCityId
-				? total + order.quantity
-				: total,
-		0
-	);
-	const destinationFree = Math.max(
-		0,
-		snapshot.warehouseCapacity - snapshot.warehouseUsed - reservedUnits
-	);
-	if (destinationFree <= 0) {
-		const route = inboundRoutes.find((candidate) => candidate.state === 'active');
-		if (route) {
-			return {
-				kind: 'destination-full',
-				routeId: route.id,
-				cityId: snapshot.supplyCityId,
-				materialId: route.materialId,
-				day: logistics.currentDay,
-				blockedUnits: Math.max(1, route.capacity),
-				amount: Math.max(1, route.capacity)
-			};
-		}
-	}
-
 	for (const route of inboundRoutes) {
 		if (route.state !== 'active') continue;
 		const forecast = forecasts.get(route.id);
@@ -509,7 +483,7 @@ function diagnoseLogistics(
 		const blocker = inboundRoutes.find(
 			(candidate) => candidate.id === forecast.priorityBlockedByRouteId
 		);
-		if (!blocker || blocker.priority <= 0 || blocker.priority >= route.priority) continue;
+		if (!blocker || compareRecurringRoutes(blocker, route) >= 0) continue;
 		return {
 			kind: 'route-priority-constrained',
 			routeId: route.id,
@@ -519,6 +493,31 @@ function diagnoseLogistics(
 			day: forecast.firstPriorityConstraintDay,
 			blockedUnits: Math.max(1, route.capacity),
 			amount: Math.max(1, route.capacity)
+		};
+	}
+
+	const destinationFullRoute = inboundRoutes.find((route) => {
+		if (route.state !== 'active') return false;
+		const forecast = forecasts.get(route.id);
+		return (
+			forecast?.firstDestinationCapacityConstraintDay !== null &&
+			forecast?.firstDestinationCapacityConstraintDay !== undefined
+		);
+	});
+	if (destinationFullRoute) {
+		const forecast = forecasts.get(destinationFullRoute.id);
+		const blockedUnits = Math.max(
+			1,
+			forecast?.peakUnmetDestinationNeed ?? destinationFullRoute.capacity
+		);
+		return {
+			kind: 'destination-full',
+			routeId: destinationFullRoute.id,
+			cityId: snapshot.supplyCityId,
+			materialId: destinationFullRoute.materialId,
+			day: forecast?.firstDestinationCapacityConstraintDay ?? logistics.currentDay,
+			blockedUnits,
+			amount: blockedUnits
 		};
 	}
 
@@ -646,7 +645,7 @@ function makeBoundedLogisticsPlan(
 		const withCause = { ...candidate, logisticsCause: cause };
 		return { snapshot, baseline, recommendation: withCause, alternatives: [withCause] };
 	}
-	if (!availability.canManageLogistics) return null;
+	if (cause.kind !== 'destination-configuration' && !availability.canManageLogistics) return null;
 
 	const generated: SupplyPlannerCandidate[] = [];
 	const route =
@@ -716,9 +715,9 @@ function makeBoundedLogisticsPlan(
 	}
 
 	if (cause.kind === 'destination-configuration') {
-		generated.push(
-			...createRouteCandidates(snapshot, baseline, cause, availability.canManageLogistics === true)
-		);
+		if (availability.canManageLogistics === true) {
+			generated.push(...createRouteCandidates(snapshot, baseline, cause));
+		}
 		if (availability.canSetRetailSupplySource === true) {
 			generated.push(...supplySourceCandidates(game, snapshot, baseline, cause));
 		}
@@ -788,10 +787,9 @@ function makeLogisticsCandidate(
 function createRouteCandidates(
 	snapshot: SupplyPlannerSnapshot,
 	baseline: SupplyPlanProjection,
-	cause: Extract<SupplyLogisticsBottleneck, { kind: 'destination-configuration' }>,
-	canManageLogistics: boolean
+	cause: Extract<SupplyLogisticsBottleneck, { kind: 'destination-configuration' }>
 ): SupplyPlannerCandidate[] {
-	if (!canManageLogistics || !snapshot.logistics) return [];
+	if (!snapshot.logistics) return [];
 	const shortageRow = baseline.materials.find((row) => row.materialId === cause.materialId);
 	if (!shortageRow) return [];
 	const peakDailyImportNeed = Math.max(
@@ -893,13 +891,14 @@ function findCategoryIdForFinishedMaterial(
 	game: GameState,
 	snapshot: SupplyPlannerSnapshot
 ): string | null {
-	const store = game.stores
+	const stores = game.stores
 		.filter((candidate) => candidate.cityId === snapshot.retailCityId)
-		.sort((left, right) => compareCodeUnits(left.id, right.id))[0];
-	if (!store) return null;
-	for (const category of getSupportedStoreChainCategories(store)) {
-		if (getFinishedMaterialIdForCategory(category.id) === snapshot.finishedMaterialId) {
-			return category.id;
+		.sort((left, right) => compareCodeUnits(left.id, right.id));
+	for (const store of stores) {
+		for (const category of getSupportedStoreChainCategories(store)) {
+			if (getFinishedMaterialIdForCategory(category.id) === snapshot.finishedMaterialId) {
+				return category.id;
+			}
 		}
 	}
 	return null;
@@ -1254,7 +1253,14 @@ function compareCandidate(
 		const baselineTransportCost30 = baseline.logisticsMetrics?.projectedTransportCost30 ?? 0;
 		const candidateTransportCost30 =
 			economicsProjection.logisticsMetrics?.projectedTransportCost30 ?? 0;
-		const incrementalTransportCost30 = candidateTransportCost30 - baselineTransportCost30;
+		// A source change leaves every live recurring route configured and active.
+		// Its transport charges therefore remain common live costs, not an
+		// incremental planner action cost (and must not become fictitious savings
+		// merely because the selected-city trace observes a different destination).
+		const incrementalTransportCost30 =
+			action.kind === 'change-supply-source'
+				? 0
+				: candidateTransportCost30 - baselineTransportCost30;
 		const firstShortageImprovementDays = improvementDays(
 			firstShortageDay(baseline),
 			firstShortageDay(economicsProjection)

@@ -721,6 +721,105 @@ describe('supply planner snapshot', () => {
 		expect(forecast?.firstPriorityConstraintDay).toBe(1);
 	});
 
+	it('attributes a priority blocker when only partial destination headroom remains', () => {
+		const snapshot = projectionSnapshot({
+			finishedMaterialId: 'pantry',
+			inventory: { water: 3 },
+			warehouseCapacity: 5,
+			logistics: {
+				currentDay: 1,
+				remoteCities: [
+					{
+						inventory: {
+							cityId: 'breadbasket-basin',
+							materials: { water: 100, pantry: 100 }
+						},
+						warehouseCapacity: 100
+					}
+				],
+				inTransitOrders: [],
+				routes: [
+					route({
+						id: 'route-blocker',
+						originCityId: 'breadbasket-basin',
+						destinationCityId: 'industry-city',
+						materialId: 'water',
+						capacity: 2,
+						priority: 0,
+						nextDispatchOnDay: 1
+					}),
+					route({
+						id: 'route-loser',
+						originCityId: 'breadbasket-basin',
+						destinationCityId: 'industry-city',
+						materialId: 'pantry',
+						capacity: 10,
+						priority: 1,
+						nextDispatchOnDay: 1
+					})
+				],
+				nextRouteSequence: 1,
+				nextTransferSequence: 1
+			}
+		});
+
+		const projection = projectSupplySnapshot(snapshot);
+		const forecast = projection.routeForecasts?.find((row) => row.route.id === 'route-loser');
+
+		expect(forecast?.projectedCondition).toBe('route-priority-constrained');
+		expect(forecast?.priorityBlockedByRouteId).toBe('route-blocker');
+		expect(forecast?.firstPriorityConstraintDay).toBe(1);
+	});
+
+	it('uses raw route ID order as the predecessor for equal-priority contention', () => {
+		const snapshot = projectionSnapshot({
+			finishedMaterialId: 'pantry',
+			warehouseCapacity: 2,
+			logistics: {
+				currentDay: 1,
+				remoteCities: [
+					{
+						inventory: {
+							cityId: 'breadbasket-basin',
+							materials: { water: 100, pantry: 100 }
+						},
+						warehouseCapacity: 100
+					}
+				],
+				inTransitOrders: [],
+				routes: [
+					route({
+						id: 'route-a-blocker',
+						originCityId: 'breadbasket-basin',
+						destinationCityId: 'industry-city',
+						materialId: 'water',
+						capacity: 2,
+						priority: 1,
+						nextDispatchOnDay: 1
+					}),
+					route({
+						id: 'route-z-loser',
+						originCityId: 'breadbasket-basin',
+						destinationCityId: 'industry-city',
+						materialId: 'pantry',
+						capacity: 10,
+						priority: 1,
+						nextDispatchOnDay: 1
+					})
+				],
+				nextRouteSequence: 1,
+				nextTransferSequence: 1
+			}
+		});
+
+		const projection = projectSupplySnapshot(snapshot);
+		const forecast = projection.routeForecasts?.find((row) => row.route.id === 'route-z-loser');
+
+		expect(forecast?.projectedCondition).toBe('route-priority-constrained');
+		expect(forecast?.priorityBlockedByRouteId).toBe('route-a-blocker');
+		expect(forecast?.firstPriorityConstraintDay).toBe(1);
+	});
+
 	it('counts an upstream producer connected directly to a usable downstream processor', () => {
 		const base = plannerGame(undefined, {
 			stores: [{ ...baseGame('grocery').stores[0]!, products: [product('pantry')] }],

@@ -223,6 +223,26 @@ function flourLogisticsPlannerGame(overrides: Partial<RecurringRoute> = {}): Gam
 	};
 }
 
+function sourceChangePlannerGame(): GameState {
+	const game = logisticsPlannerGame();
+	return {
+		...game,
+		cityInventories: game.cityInventories.map((inventory) =>
+			inventory.cityId === 'industry-city'
+				? { ...inventory, materials: { 'bottled-water': 100 } }
+				: { ...inventory, materials: { 'bottled-water': 800 } }
+		),
+		industrialBuildings: [
+			...game.industrialBuildings,
+			building('warehouse', 'breadbasket-warehouse-1', 1, 2, 2, 'breadbasket-basin'),
+			building('warehouse', 'breadbasket-warehouse-2', 1, 6, 2, 'breadbasket-basin'),
+			building('warehouse', 'breadbasket-warehouse-3', 1, 10, 2, 'breadbasket-basin'),
+			building('warehouse', 'breadbasket-warehouse-4', 1, 14, 2, 'breadbasket-basin')
+		],
+		logistics: { ...game.logistics, recurringRoutes: [] }
+	};
+}
+
 function readyPlan(game: GameState, actionAvailability = availability()) {
 	const result = buildSupplyPlan(
 		game,
@@ -619,6 +639,153 @@ describe('supply planner action noop branches', () => {
 			routeId: 'route-water',
 			materialId: 'bottled-water'
 		});
+	});
+
+	it('does not diagnose destination-full when local consumption frees day-zero warehouse space', () => {
+		const base = logisticsPlannerGame({ capacity: 50 });
+		const plan = readyPlan({
+			...base,
+			cityInventories: base.cityInventories.map((inventory) =>
+				inventory.cityId === 'industry-city'
+					? { ...inventory, materials: { 'bottled-water': 800 } }
+					: inventory
+			),
+			logistics: {
+				...base.logistics,
+				recurringRoutes: [
+					{
+						...base.logistics.recurringRoutes[0]!,
+						capacity: 50
+					}
+				]
+			}
+		});
+
+		expect(plan.recommendation.action.kind).not.toBe('build-warehouse');
+		expect(plan.recommendation.logisticsCause?.kind).not.toBe('destination-full');
+		const forecast = plan.baseline.routeForecasts?.find((row) => row.route.id === 'route-water');
+		expect(forecast?.projectedDispatchedUnits30).toBeGreaterThan(0);
+	});
+
+	it('reports a cross-material priority blocker through the action diagnosis', () => {
+		const base = logisticsPlannerGame();
+		const plan = readyPlan({
+			...base,
+			cityInventories: base.cityInventories.map((inventory) =>
+				inventory.cityId === 'industry-city'
+					? { ...inventory, materials: {} }
+					: { ...inventory, materials: { water: 800, 'bottled-water': 200 } }
+			),
+			logistics: {
+				...base.logistics,
+				recurringRoutes: [
+					{
+						...base.logistics.recurringRoutes[0]!,
+						id: 'route-blocker',
+						materialId: 'water',
+						capacity: 800,
+						priority: 1
+					},
+					{
+						...base.logistics.recurringRoutes[0]!,
+						id: 'route-loser',
+						materialId: 'bottled-water',
+						capacity: 10,
+						priority: 2
+					}
+				]
+			}
+		});
+
+		expect(plan.recommendation.action).toMatchObject({
+			kind: 'edit-route',
+			routeId: 'route-loser',
+			field: 'priority'
+		});
+		expect(plan.recommendation.logisticsCause).toMatchObject({
+			kind: 'route-priority-constrained',
+			routeId: 'route-loser',
+			blockingRouteId: 'route-blocker',
+			materialId: 'bottled-water'
+		});
+	});
+
+	it('offers source changes when only retail-source capability is available', () => {
+		const plan = readyPlan(
+			sourceChangePlannerGame(),
+			availability({
+				canManageLogistics: false,
+				canSetRetailSupplySource: true,
+				canBuildIndustry: false,
+				canUpgradeIndustry: false
+			})
+		);
+
+		expect(plan.recommendation.action.kind).toBe('change-supply-source');
+		expect(plan.alternatives.some((candidate) => candidate.action.kind === 'create-route')).toBe(
+			false
+		);
+	});
+
+	it('finds the selected source category on a non-first eligible store', () => {
+		const base = sourceChangePlannerGame();
+		const firstStore = { ...base.stores[0]!, id: 'store-a', products: [product('snacks')] };
+		const secondStore = {
+			...base.stores[0]!,
+			id: 'store-b',
+			products: [product('bottled-water', { targetStock: 350 })]
+		};
+		const result = buildSupplyPlan(
+			{ ...base, stores: [secondStore, firstStore] },
+			{ retailCityId: 'harbor-city', categoryId: 'bottled-water' },
+			availability({
+				canManageLogistics: false,
+				canSetRetailSupplySource: true,
+				canBuildIndustry: false,
+				canUpgradeIndustry: false
+			})
+		);
+
+		expect(result.status).toBe('ready');
+		if (result.status !== 'ready') return;
+		expect(result.plan.recommendation.action.kind).toBe('change-supply-source');
+		expect(result.plan.recommendation.action).toMatchObject({
+			retailCityId: 'harbor-city',
+			fromSupplyCityId: 'industry-city',
+			toSupplyCityId: 'breadbasket-basin'
+		});
+	});
+
+	it('keeps scheduled costs for an active route when evaluating a source change', () => {
+		const base = sourceChangePlannerGame();
+		const plan = readyPlan({
+			...base,
+			logistics: {
+				...base.logistics,
+				recurringRoutes: [
+					{
+						id: 'route-active-outbound',
+						originCityId: 'industry-city',
+						destinationCityId: 'breadbasket-basin',
+						materialId: 'bottled-water',
+						capacity: 10,
+						frequencyDays: 1,
+						leadTimeDays: 1,
+						transportCostPerUnit: 1,
+						priority: 1,
+						state: 'active',
+						nextDispatchOnDay: base.day
+					}
+				]
+			}
+		});
+		const source = plan.alternatives.find(
+			(candidate) => candidate.action.kind === 'change-supply-source'
+		);
+
+		expect(source).toBeDefined();
+		if (!source) return;
+		expect(source.comparison.incrementalTransportCost30).toBe(0);
 	});
 
 	it('creates one bounded route per stocked remote origin when no inbound route exists', () => {
