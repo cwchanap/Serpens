@@ -16,6 +16,7 @@ import type {
 	IndustrialBuildingTypeId,
 	RecurringRoute,
 	StoreProduct,
+	TransferOrder,
 	WorldCityId
 } from './types';
 import type { SupplyPlannerAction, SupplyPlannerActionAvailability } from './supplyPlannerActions';
@@ -807,6 +808,131 @@ describe('supply planner action noop branches', () => {
 			});
 			expect(plan.recommendation.action.input.capacity).toBeGreaterThan(0);
 		}
+	});
+
+	it('compares a create-route candidate against unrelated inbound transport costs', () => {
+		const base = flourLogisticsPlannerGame();
+		const unrelatedInboundRoute: RecurringRoute = {
+			...route({
+				id: 'route-unrelated-water',
+				originCityId: 'breadbasket-basin',
+				destinationCityId: 'industry-city',
+				materialId: 'water',
+				capacity: 50,
+				frequencyDays: 1,
+				leadTimeDays: 1,
+				transportCostPerUnit: 100,
+				priority: 0,
+				nextDispatchOnDay: base.day
+			})
+		};
+		const game = {
+			...base,
+			cityInventories: base.cityInventories.map((inventory) =>
+				inventory.cityId === 'breadbasket-basin'
+					? { ...inventory, materials: { flour: 200, water: 50 } }
+					: inventory
+			),
+			logistics: {
+				...base.logistics,
+				recurringRoutes: [unrelatedInboundRoute]
+			}
+		};
+
+		const plan = readyPlan(game);
+		const candidate = plan.alternatives.find((row) => row.action.kind === 'create-route');
+
+		expect(candidate).toBeDefined();
+		if (!candidate) return;
+		expect(candidate.comparison.incrementalTransportCost30).toBeGreaterThan(0);
+		expect(candidate.comparison.netCashBenefit30).toBeGreaterThan(0);
+		expect(plan.recommendation.action.kind).toBe('create-route');
+	});
+
+	it('uses each inbound route material row for timing diagnosis', () => {
+		const base = flourLogisticsPlannerGame();
+		const routePantry: RecurringRoute = {
+			...route({
+				id: 'route-pantry',
+				originCityId: 'breadbasket-basin',
+				destinationCityId: 'industry-city',
+				materialId: 'pantry',
+				capacity: 10_000,
+				frequencyDays: 20,
+				leadTimeDays: 0,
+				priority: 0,
+				nextDispatchOnDay: base.day
+			})
+		};
+		const routeGrain: RecurringRoute = {
+			...route({
+				id: 'route-grain',
+				originCityId: 'breadbasket-basin',
+				destinationCityId: 'industry-city',
+				materialId: 'grain',
+				capacity: 10_000,
+				frequencyDays: 100,
+				leadTimeDays: 1,
+				priority: 1,
+				nextDispatchOnDay: base.day + 100
+			})
+		};
+		const existingPantryOrder: TransferOrder = {
+			id: 'transfer-pantry-early',
+			source: { kind: 'recurring-route', routeId: routePantry.id },
+			originCityId: 'breadbasket-basin',
+			destinationCityId: 'industry-city',
+			materialId: 'pantry',
+			quantity: 100,
+			createdOnDay: base.day,
+			dispatchedOnDay: base.day,
+			arrivalOnDay: base.day,
+			transportCost: 200,
+			status: 'in-transit'
+		};
+		const game = {
+			...base,
+			industrialBuildings: [
+				...base.industrialBuildings,
+				...Array.from({ length: 5 }, (_, index) =>
+					building('warehouse', `timing-warehouse-${index}`, 1, 60 + index, 2)
+				)
+			],
+			cityInventories: base.cityInventories.map((inventory) =>
+				inventory.cityId === 'industry-city'
+					? { ...inventory, materials: { pantry: 400 } }
+					: { ...inventory, materials: { pantry: 100_000, grain: 1_000 } }
+			),
+			industryCities: base.industryCities.map((city) =>
+				city.id === 'industry-city'
+					? {
+							...city,
+							rails: [
+								...verticalRails(2, 22, 2),
+								...verticalRails(2, 22, 32),
+								...horizontalRails(2, 54, 22)
+							]
+						}
+					: city
+			),
+			logistics: {
+				...base.logistics,
+				recurringRoutes: [routePantry, routeGrain],
+				transferOrders: [existingPantryOrder]
+			}
+		};
+
+		const plan = readyPlan(game);
+		const pantryRow = plan.baseline.materials.find((row) => row.materialId === 'pantry');
+
+		expect(pantryRow?.thirtyDay.projectedStockoutDay).toBeGreaterThan(0);
+		expect(plan.recommendation.logisticsCause).toMatchObject({
+			kind: 'route-frequency',
+			routeId: 'route-pantry',
+			materialId: 'pantry',
+			stockoutDay: pantryRow?.thirtyDay.projectedStockoutDay,
+			nextArrivalDay: base.day + 20
+		});
 	});
 
 	it('falls back to the local plan when a route edit has negative complete value', () => {

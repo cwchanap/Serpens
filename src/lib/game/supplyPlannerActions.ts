@@ -560,40 +560,41 @@ function diagnoseLogistics(
 		logistics.remoteCities.some((city) => (city.inventory.materials[row.materialId] ?? 0) >= 1)
 	);
 	const primaryRow = stockedRemoteRow ?? shortageRows[0]!;
-	const stockoutDay = primaryRow.thirtyDay.projectedStockoutDay;
-	if (stockoutDay !== null) {
-		for (const route of inboundRoutes) {
-			if (route.state !== 'active') continue;
-			const forecast = forecasts.get(route.id);
-			const firstArrivalDay =
-				forecast?.firstProjectedArrivalDay ??
-				Math.max(logistics.currentDay, route.nextDispatchOnDay) + route.leadTimeDays;
-			const firstArrivalOffset = firstArrivalDay - logistics.currentDay;
-			if (firstArrivalOffset > stockoutDay) {
-				return {
-					kind: 'route-lead-time',
-					routeId: route.id,
-					cityId: snapshot.supplyCityId,
-					materialId: route.materialId,
-					day: logistics.currentDay + stockoutDay,
-					stockoutDay,
-					firstArrivalDay,
-					amount: Math.max(1, Math.ceil(primaryRow.requiredPerDay))
-				};
-			}
-			const nextArrivalDay = firstArrivalDay + route.frequencyDays;
-			if (route.frequencyDays > 1 && nextArrivalDay - logistics.currentDay > stockoutDay) {
-				return {
-					kind: 'route-frequency',
-					routeId: route.id,
-					cityId: snapshot.supplyCityId,
-					materialId: route.materialId,
-					day: logistics.currentDay + stockoutDay,
-					stockoutDay,
-					nextArrivalDay,
-					amount: Math.max(1, Math.ceil(primaryRow.requiredPerDay))
-				};
-			}
+	for (const route of inboundRoutes) {
+		if (route.state !== 'active') continue;
+		const materialRow = shortageRows.find((row) => row.materialId === route.materialId);
+		if (!materialRow) continue;
+		const stockoutDay = materialRow.thirtyDay.projectedStockoutDay;
+		if (stockoutDay === null) continue;
+		const forecast = forecasts.get(route.id);
+		const firstArrivalDay =
+			forecast?.firstProjectedArrivalDay ??
+			Math.max(logistics.currentDay, route.nextDispatchOnDay) + route.leadTimeDays;
+		const firstArrivalOffset = firstArrivalDay - logistics.currentDay;
+		if (firstArrivalOffset > stockoutDay) {
+			return {
+				kind: 'route-lead-time',
+				routeId: route.id,
+				cityId: snapshot.supplyCityId,
+				materialId: route.materialId,
+				day: logistics.currentDay + stockoutDay,
+				stockoutDay,
+				firstArrivalDay,
+				amount: Math.max(1, Math.ceil(materialRow.requiredPerDay))
+			};
+		}
+		const nextArrivalDay = firstArrivalDay + route.frequencyDays;
+		if (route.frequencyDays > 1 && nextArrivalDay - logistics.currentDay > stockoutDay) {
+			return {
+				kind: 'route-frequency',
+				routeId: route.id,
+				cityId: snapshot.supplyCityId,
+				materialId: route.materialId,
+				day: logistics.currentDay + stockoutDay,
+				stockoutDay,
+				nextArrivalDay,
+				amount: Math.max(1, Math.ceil(materialRow.requiredPerDay))
+			};
 		}
 	}
 
