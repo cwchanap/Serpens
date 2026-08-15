@@ -851,34 +851,73 @@ function supplySourceCandidates(
 	const categoryId = findCategoryIdForFinishedMaterial(game, snapshot);
 	if (!categoryId || !snapshot.logistics) return [];
 	const candidates: SupplyPlannerCandidate[] = [];
-	const baseGame = clone(game);
-	const originalAssignments = baseGame.retailSupplyAssignments;
+	const retailCityId = snapshot.retailCityId;
+	const fromSupplyCityId = snapshot.supplyCityId;
+
+	// Build a scoped baseline: only the selected retail city claims the current
+	// supply city.  This isolates the moved city's economics from other
+	// claimants' import spend.  buildSupplyPlannerSnapshot aggregates demand
+	// from every city assigned to the resolved supply city, so without scoping
+	// the baseline would include unrelated claimants (e.g. R2 on source A)
+	// while the candidate would include different unrelated claimants (e.g. R3
+	// on source B), contaminating importSpendReduction30 with cities the action
+	// never moves.
+	const scopedBaselineGame = isolateClaimant(game, retailCityId);
+	const scopedBaselineResult = buildSupplyPlannerSnapshot(scopedBaselineGame, {
+		retailCityId,
+		categoryId
+	});
+	if (scopedBaselineResult.status !== 'ready') return [];
+	const scopedBaselineSnapshot = clone(scopedBaselineResult.snapshot);
+	const scopedBaselineProjection = withTotals(projectSupplySnapshot(scopedBaselineSnapshot));
+
+	// The assignment is city-wide (not per-category), so a source switch
+	// affects every supported category in the moved retail city.  Sum
+	// importSpend30 across all categories so a bottled-water improvement
+	// cannot hide a regression in another category.
+	const scopedBaselineImportSpend30 = computeScopedImportSpend30(scopedBaselineGame, retailCityId);
+	const adjustedBaseline: SupplyPlanProjection = {
+		...scopedBaselineProjection,
+		totals: {
+			...scopedBaselineProjection.totals,
+			importSpend30: scopedBaselineImportSpend30
+		}
+	};
+
 	for (const remote of [...snapshot.logistics.remoteCities].sort((left, right) =>
 		compareCodeUnits(left.inventory.cityId, right.inventory.cityId)
 	)) {
 		const toSupplyCityId = remote.inventory.cityId;
-		if (toSupplyCityId === snapshot.supplyCityId) continue;
-		baseGame.retailSupplyAssignments = originalAssignments.map((assignment) =>
-			assignment.retailCityId === snapshot.retailCityId
-				? { ...assignment, supplyCityId: toSupplyCityId }
-				: assignment
-		);
-		const result = buildSupplyPlannerSnapshot(baseGame, {
-			retailCityId: snapshot.retailCityId,
+		if (toSupplyCityId === fromSupplyCityId) continue;
+
+		const scopedCandidateGame = isolateClaimant(game, retailCityId, toSupplyCityId);
+		const result = buildSupplyPlannerSnapshot(scopedCandidateGame, {
+			retailCityId,
 			categoryId
 		});
 		if (result.status !== 'ready') continue;
 		const candidateSnapshot = clone(result.snapshot);
 		const projection = withTotals(projectSupplySnapshot(candidateSnapshot));
+		const scopedCandidateImportSpend30 = computeScopedImportSpend30(
+			scopedCandidateGame,
+			retailCityId
+		);
+		const adjustedProjection: SupplyPlanProjection = {
+			...projection,
+			totals: {
+				...projection.totals,
+				importSpend30: scopedCandidateImportSpend30
+			}
+		};
 		candidates.push(
 			makeLogisticsCandidate(
 				snapshot,
-				baseline,
-				{ snapshot: candidateSnapshot, projection },
+				adjustedBaseline,
+				{ snapshot: candidateSnapshot, projection: adjustedProjection },
 				{
 					kind: 'change-supply-source',
-					retailCityId: snapshot.retailCityId,
-					fromSupplyCityId: snapshot.supplyCityId,
+					retailCityId,
+					fromSupplyCityId,
 					toSupplyCityId
 				},
 				cause
@@ -886,6 +925,55 @@ function supplySourceCandidates(
 		);
 	}
 	return candidates;
+}
+
+/**
+ * Return a copy of `game` where only `retailCityId` claims a supply city.
+ * Every other retail city's assignment is set to `null` so it drops out of
+ * `getClaimantCities`.  If `targetSupplyCityId` is provided, the selected
+ * city is assigned to it; otherwise its existing assignment is preserved.
+ */
+function isolateClaimant(
+	game: GameState,
+	retailCityId: WorldCityId,
+	targetSupplyCityId?: WorldCityId
+): GameState {
+	return {
+		...game,
+		retailSupplyAssignments: game.retailSupplyAssignments.map((assignment) =>
+			assignment.retailCityId === retailCityId
+				? { ...assignment, supplyCityId: targetSupplyCityId ?? assignment.supplyCityId }
+				: { ...assignment, supplyCityId: null }
+		)
+	};
+}
+
+/**
+ * Sum the 30-day import spend across every supported supply-chain category in
+ * the given retail city, using the provided (already-scoped) game state.  This
+ * captures cross-category effects of a city-wide assignment change that a
+ * single-category snapshot would miss.
+ */
+function computeScopedImportSpend30(game: GameState, retailCityId: WorldCityId): number {
+	const stores = game.stores
+		.filter((store) => store.cityId === retailCityId)
+		.sort((left, right) => compareCodeUnits(left.id, right.id));
+	const categoryIds = new Set<string>();
+	for (const store of stores) {
+		for (const category of getSupportedStoreChainCategories(store)) {
+			if (getFinishedMaterialIdForCategory(category.id)) {
+				categoryIds.add(category.id);
+			}
+		}
+	}
+	let totalImportSpend30 = 0;
+	for (const categoryId of categoryIds) {
+		const result = buildSupplyPlannerSnapshot(game, { retailCityId, categoryId });
+		if (result.status !== 'ready') continue;
+		const projection = withTotals(projectSupplySnapshot(result.snapshot));
+		totalImportSpend30 += projection.totals.importSpend30;
+	}
+	return totalImportSpend30;
 }
 
 function findCategoryIdForFinishedMaterial(
@@ -1254,14 +1342,12 @@ function compareCandidate(
 		const baselineTransportCost30 = baseline.logisticsMetrics?.projectedTransportCost30 ?? 0;
 		const candidateTransportCost30 =
 			economicsProjection.logisticsMetrics?.projectedTransportCost30 ?? 0;
-		// A source change leaves every live recurring route configured and active.
-		// Its transport charges therefore remain common live costs, not an
-		// incremental planner action cost (and must not become fictitious savings
-		// merely because the selected-city trace observes a different destination).
-		const incrementalTransportCost30 =
-			action.kind === 'change-supply-source'
-				? 0
-				: candidateTransportCost30 - baselineTransportCost30;
+		// A source change leaves every live recurring route configured and
+		// active, but dispatch quantities can still differ because moving retail
+		// consumption between cities changes origin stock and destination
+		// headroom.  The scoped projections capture those dispatch changes, so
+		// the modeled transport-cost delta is real and must not be discarded.
+		const incrementalTransportCost30 = candidateTransportCost30 - baselineTransportCost30;
 		const firstShortageImprovementDays = improvementDays(
 			firstShortageDay(baseline),
 			firstShortageDay(economicsProjection)

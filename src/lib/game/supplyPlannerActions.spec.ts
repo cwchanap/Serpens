@@ -761,7 +761,7 @@ describe('supply planner action noop branches', () => {
 		});
 	});
 
-	it('keeps scheduled costs for an active route when evaluating a source change', () => {
+	it('reflects real transport-cost delta for an active route when evaluating a source change', () => {
 		const base = sourceChangePlannerGame();
 		const plan = readyPlan({
 			...base,
@@ -790,7 +790,74 @@ describe('supply planner action noop branches', () => {
 
 		expect(source).toBeDefined();
 		if (!source) return;
-		expect(source.comparison.incrementalTransportCost30).toBe(0);
+		// Moving harbor-city from industry-city to breadbasket-basin frees
+		// industry-city's bottled-water stock for the outbound route, so the
+		// route dispatches more units at real transport cost.  The delta must
+		// be preserved, not zeroed.
+		expect(source.comparison.incrementalTransportCost30).toBeGreaterThan(0);
+	});
+
+	it('scopes source-change candidates to only the moved retail city', () => {
+		// Two retail cities (harbor-city, campus-junction) both claim
+		// industry-city.  A source change for harbor-city must be scored over
+		// harbor-city's economics alone — campus-junction's import
+		// spend/shortages must not contaminate the delta.
+		const base = sourceChangePlannerGame();
+		const harbor = base.cities[0]!;
+		const campus = {
+			...harbor,
+			id: 'campus-junction',
+			name: 'Campus Junction',
+			tiles: harbor.tiles.map((tile) => ({
+				...tile,
+				id: tile.id.replace('harbor-city', 'campus-junction'),
+				cityId: 'campus-junction'
+			}))
+		};
+		const campusStore = {
+			...base.stores[0]!,
+			id: 'store-campus',
+			cityId: 'campus-junction',
+			tileId: base.stores[0]!.tileId.replace('harbor-city', 'campus-junction'),
+			products: [product('bottled-water', { targetStock: 350 })]
+		};
+		const game: GameState = {
+			...base,
+			cities: [harbor, campus],
+			stores: [base.stores[0]!, campusStore],
+			world: {
+				...base.world,
+				revealedCityIds: [...base.world.revealedCityIds, 'campus-junction'],
+				openedCityIds: [...base.world.openedCityIds, 'campus-junction']
+			},
+			retailSupplyAssignments: [
+				{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' },
+				{ retailCityId: 'campus-junction', supplyCityId: 'industry-city' }
+			]
+		};
+		const plan = readyPlan(
+			game,
+			availability({
+				canManageLogistics: false,
+				canSetRetailSupplySource: true,
+				canBuildIndustry: false,
+				canUpgradeIndustry: false
+			})
+		);
+		const source = plan.alternatives.find(
+			(candidate) => candidate.action.kind === 'change-supply-source'
+		);
+
+		expect(source).toBeDefined();
+		if (!source) return;
+		// The plan-level baseline aggregates demand from both claimants
+		// (harbor-city + campus-junction).  The candidate's scoped baseline
+		// must reflect only harbor-city's demand so campus-junction's
+		// economics cannot masquerade as the benefit of moving harbor-city.
+		expect(source.baseline.snapshot.demandPerDay).toBeLessThan(plan.baseline.snapshot.demandPerDay);
+		expect(source.baseline.snapshot.demandContributors.map((row) => row.retailCityId)).toEqual([
+			'harbor-city'
+		]);
 	});
 
 	it('creates one bounded route per stocked remote origin when no inbound route exists', () => {
