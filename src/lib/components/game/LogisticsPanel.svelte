@@ -7,11 +7,16 @@
 		type RecurringRouteInput,
 		type RecurringRouteUpdateInput
 	} from '$lib/game/interCityLogistics';
-	import type { GameState, WorldCityId } from '$lib/game/types';
+	import type { GameState, MaterialId, WorldCityId } from '$lib/game/types';
 	import type { GameRouteCommitResult } from '$lib/game/commandResult';
 	import { localizeLogisticsFailure } from '$lib/i18n/gameCopy';
 	import type { I18nBundle } from '$lib/i18n';
-	import type { LogisticsPanelView, LogisticsRouteView } from './logisticsPanel';
+	import {
+		applyRoutePreset,
+		type LogisticsPanelView,
+		type LogisticsRouteFormValues,
+		type LogisticsRouteView
+	} from './logisticsPanel';
 
 	interface Props {
 		game: GameState;
@@ -20,6 +25,7 @@
 		canMutate: boolean;
 		disabledReason: string | null;
 		focusedRouteId: string | null;
+		routePreset?: RecurringRouteInput | null;
 		onDispatchManualTransfer: (input: ManualTransferInput) => Promise<GameRouteCommitResult>;
 		onCreateRecurringRoute: (input: RecurringRouteInput) => Promise<GameRouteCommitResult>;
 		onUpdateRecurringRoute: (
@@ -42,6 +48,7 @@
 		canMutate,
 		disabledReason,
 		focusedRouteId,
+		routePreset = null,
 		onDispatchManualTransfer,
 		onCreateRecurringRoute,
 		onUpdateRecurringRoute,
@@ -74,6 +81,7 @@
 		initialRouteQuote ? String(initialRouteQuote.transportCostPerUnit) : ''
 	);
 	let routePriority = $state('0');
+	let appliedRoutePresetKey: string | null = null;
 	let editingRouteId = $state<string | null>(null);
 	let priorityValues = $state<Record<string, string>>({});
 	let statusMessage = $state('');
@@ -101,6 +109,52 @@
 		routeDestinationCityId = value as WorldCityId;
 		seedRouteQuote(routeOriginCityId, value);
 	}
+
+	function currentRouteFormValues(): LogisticsRouteFormValues {
+		return {
+			originCityId: routeOriginCityId,
+			destinationCityId: routeDestinationCityId,
+			materialId: routeMaterialId,
+			capacity: routeCapacity,
+			frequencyDays: routeFrequencyDays,
+			leadTimeDays: routeLeadTimeDays,
+			transportCostPerUnit: routeTransportCostPerUnit,
+			priority: routePriority
+		};
+	}
+
+	function setRouteFormValues(values: LogisticsRouteFormValues): void {
+		routeOriginCityId = values.originCityId as WorldCityId;
+		routeDestinationCityId = values.destinationCityId as WorldCityId;
+		routeMaterialId = values.materialId as MaterialId;
+		routeCapacity = values.capacity;
+		routeFrequencyDays = values.frequencyDays;
+		routeLeadTimeDays = values.leadTimeDays;
+		routeTransportCostPerUnit = values.transportCostPerUnit;
+		routePriority = values.priority;
+	}
+
+	$effect(() => {
+		const preset = routePreset;
+		if (!preset) {
+			appliedRoutePresetKey = null;
+			return;
+		}
+		const applied = untrack(() =>
+			applyRoutePreset(currentRouteFormValues(), preset, appliedRoutePresetKey)
+		);
+		if (applied.appliedKey === appliedRoutePresetKey) return;
+		setRouteFormValues(applied.values);
+		appliedRoutePresetKey = applied.appliedKey;
+		let cancelled = false;
+		void tick().then(() => {
+			if (cancelled) return;
+			document.getElementById('logistics-route-form')?.focus();
+		});
+		return () => {
+			cancelled = true;
+		};
+	});
 
 	$effect(() => {
 		const routeId = focusedRouteId;
@@ -423,7 +477,7 @@
 
 	<section class="surface" aria-labelledby="recurring-routes-heading">
 		<h3 id="recurring-routes-heading">{i18n.t('logisticsPanel.sections.recurringRoutes')}</h3>
-		<form onsubmit={submitRoute}>
+		<form id="logistics-route-form" tabindex="-1" onsubmit={submitRoute}>
 			<label for="logistics-route-origin">{i18n.t('logisticsPanel.fields.origin')}</label>
 			<select
 				id="logistics-route-origin"

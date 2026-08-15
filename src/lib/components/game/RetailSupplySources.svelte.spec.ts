@@ -42,6 +42,7 @@ function renderSources(
 	overrides: Partial<{
 		retailCities: readonly RetailCitySupplyView[];
 		disabled: boolean;
+		focusedRetailCityId: string | null;
 		onChange: (retailCityId: string, supplyCityId: string | null) => void;
 	}> = {}
 ) {
@@ -173,6 +174,17 @@ describe('RetailSupplySources', () => {
 			.getByLabelText('Local supply source for Harbor City')
 			.selectOptions(RETAIL_SUPPLY_IMPORTS_ONLY_VALUE);
 
+		expect(onChange).not.toHaveBeenCalled();
+	});
+
+	it('focuses a planner-targeted supply source without changing it', async () => {
+		const onChange = vi.fn();
+		renderSources({ focusedRetailCityId: 'harbor-city', onChange });
+		const select = page.getByLabelText('Local supply source for Harbor City');
+
+		await vi.waitFor(() => {
+			expect(select.element()).toBe(document.activeElement);
+		});
 		expect(onChange).not.toHaveBeenCalled();
 	});
 

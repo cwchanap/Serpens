@@ -9,6 +9,7 @@ import type {
 	IndustrialBuildingTypeId,
 	WorldCityId
 } from '$lib/game/types';
+import type { RecurringRouteInput } from '$lib/game/interCityLogistics';
 import type {
 	SupplyPlannerAction,
 	SupplyPlannerActionAvailability,
@@ -38,12 +39,16 @@ export interface SupplyPlannerHandoffHost {
 	switchToSupplyCity(cityId: WorldCityId): Promise<boolean>;
 	armIndustryPlacement(buildingTypeId: IndustrialBuildingTypeId): void;
 	selectIndustryTile(tileId: string): void;
+	openLogistics(routeId: string | null, preset: RecurringRouteInput | null): void;
+	openStores(retailCityId: WorldCityId): void;
 	enterRailBuildMode(mode: {
 		step: 'routing';
 		originBuildingId: string;
 		waypoints: Array<{ x: number; y: number }>;
 	}): void;
 	canBuildRail: boolean;
+	canManageLogistics: boolean;
+	canSetRetailSupplySource: boolean;
 }
 
 export function resolveSupplyPlannerCategory(
@@ -86,17 +91,44 @@ export async function handoffSupplyPlannerAction(
 	if (!actionsMatch(result.plan.recommendation.action, action)) return;
 
 	const snapshot = result.plan.snapshot;
-	if (action.kind === 'build-producer' || action.kind === 'build-warehouse') {
+	if (action.kind === 'build-producer') {
 		host.closeOverlays();
 		if (!(await host.switchToSupplyCity(snapshot.supplyCityId))) return;
 		host.armIndustryPlacement(action.buildingTypeId);
 		return;
 	}
 
-	const building = findPlannerBuilding(host.getGame(), action.buildingId, snapshot.supplyCityId);
-	if (!building) return;
+	if (action.kind === 'build-warehouse') {
+		host.closeOverlays();
+		if (!(await host.switchToSupplyCity(action.cityId))) return;
+		host.armIndustryPlacement(action.buildingTypeId);
+		return;
+	}
+
+	if (action.kind === 'create-route') {
+		if (!host.canManageLogistics) return;
+		host.closeOverlays();
+		host.openLogistics(null, action.input);
+		return;
+	}
+
+	if (action.kind === 'edit-route' || action.kind === 'resume-route') {
+		if (!host.canManageLogistics) return;
+		host.closeOverlays();
+		host.openLogistics(action.routeId, null);
+		return;
+	}
+
+	if (action.kind === 'change-supply-source') {
+		if (!host.canSetRetailSupplySource) return;
+		host.closeOverlays();
+		host.openStores(action.retailCityId);
+		return;
+	}
 
 	if (action.kind === 'upgrade-building') {
+		const building = findPlannerBuilding(host.getGame(), action.buildingId, snapshot.supplyCityId);
+		if (!building) return;
 		host.closeOverlays();
 		if (!(await host.switchToSupplyCity(snapshot.supplyCityId))) return;
 		const currentBuilding = findPlannerBuilding(
@@ -109,6 +141,8 @@ export async function handoffSupplyPlannerAction(
 		return;
 	}
 
+	const building = findPlannerBuilding(host.getGame(), action.buildingId, snapshot.supplyCityId);
+	if (!building) return;
 	if (!host.canBuildRail || !snapshot.disconnectedBuildingIds.includes(building.id)) return;
 	host.closeOverlays();
 	if (!(await host.switchToSupplyCity(snapshot.supplyCityId))) return;

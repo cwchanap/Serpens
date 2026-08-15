@@ -286,7 +286,6 @@ function plannerSnapshot(overrides: Partial<SupplyPlannerSnapshot> = {}): Supply
 		usableBuildingIds: [],
 		disconnectedBuildingIds: [],
 		usableSinkBuildingIdsByMaterial: {},
-		activeOutboundRouteIds: [],
 		reachableDemandByMaterial: {},
 		reachableDemandByBuildingAndMaterial: {},
 		reachableBranchesByBuildingAndMaterial: {},
@@ -320,8 +319,12 @@ function handoffHost(game = createNewGame('convenience', 20260810)): SupplyPlann
 		switchToSupplyCity: vi.fn(async () => true),
 		armIndustryPlacement: vi.fn(),
 		selectIndustryTile: vi.fn(),
+		openLogistics: vi.fn(),
+		openStores: vi.fn(),
 		enterRailBuildMode: vi.fn(),
-		canBuildRail: true
+		canBuildRail: true,
+		canManageLogistics: true,
+		canSetRetailSupplySource: true
 	};
 }
 
@@ -385,6 +388,8 @@ describe('supply planner route composition', () => {
 			canBuildIndustry: true,
 			canUpgradeIndustry: true,
 			canBuildRail: true,
+			canManageLogistics: true,
+			canSetRetailSupplySource: true,
 			allowedIndustryBuildingTypeIds: [
 				'water-pump',
 				'water-filtration-plant',
@@ -416,6 +421,8 @@ describe('supply planner route composition', () => {
 			canBuildIndustry: true,
 			canUpgradeIndustry: true,
 			canBuildRail: true,
+			canManageLogistics: true,
+			canSetRetailSupplySource: true,
 			allowedIndustryBuildingTypeIds: []
 		};
 		const game = createNewGame('convenience', 20260810);
@@ -461,7 +468,10 @@ describe('supply planner route composition', () => {
 				cost: 500
 			}
 		],
-		['warehouse', { kind: 'build-warehouse', buildingTypeId: 'warehouse', cost: 500 }]
+		[
+			'warehouse',
+			{ kind: 'build-warehouse', cityId: 'industry-city', buildingTypeId: 'warehouse', cost: 500 }
+		]
 	] as const)('hands off %s builds through placement only', async (_label, action) => {
 		expect.assertions(4);
 		const host = handoffHost();
@@ -540,7 +550,12 @@ describe('supply planner route composition', () => {
 	it('does not mutate for stale or no-op recommendations', async () => {
 		expect.assertions(7);
 		const host = handoffHost();
-		const action = { kind: 'build-warehouse', buildingTypeId: 'warehouse', cost: 500 } as const;
+		const action = {
+			kind: 'build-warehouse',
+			cityId: 'industry-city',
+			buildingTypeId: 'warehouse',
+			cost: 500
+		} as const;
 		await handoffSupplyPlannerAction(
 			action,
 			plannerResult({ kind: 'none', reason: 'surplus' }),

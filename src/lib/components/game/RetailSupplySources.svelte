@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tick } from 'svelte';
 	import {
 		RETAIL_SUPPLY_IMPORTS_ONLY_VALUE,
 		type RetailCitySupplyView,
@@ -9,10 +10,28 @@
 	interface Props {
 		retailCities: readonly RetailCitySupplyView[];
 		disabled: boolean;
+		focusedRetailCityId?: string | null;
 		onChange: (retailCityId: string, supplyCityId: string | null) => void;
 	}
 
-	let { retailCities, disabled, onChange }: Props = $props();
+	let { retailCities, disabled, focusedRetailCityId = null, onChange }: Props = $props();
+
+	$effect(() => {
+		const retailCityId = focusedRetailCityId;
+		if (!retailCityId) return;
+		const city = retailCities.find((candidate) => candidate.retailCityId === retailCityId);
+		if (!city) return;
+		let cancelled = false;
+		void tick().then(() => {
+			if (cancelled) return;
+			const select = document.getElementById(city.selectId) as HTMLSelectElement | null;
+			select?.scrollIntoView({ block: 'nearest' });
+			select?.focus();
+		});
+		return () => {
+			cancelled = true;
+		};
+	});
 
 	function headingId(city: RetailCitySupplyView): string {
 		return `${city.selectId}-heading`;

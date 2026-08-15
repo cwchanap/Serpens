@@ -3,6 +3,7 @@ import {
 	getCityInventoryStats,
 	supportsCityInventory
 } from '$lib/game/cityInventory';
+import type { RecurringRouteInput } from '$lib/game/interCityLogistics';
 import { MATERIALS } from '$lib/game/industry';
 import {
 	selectInTransitInventory,
@@ -123,6 +124,55 @@ export interface LogisticsPanelView {
 	inTransit: readonly LogisticsInTransitView[];
 	recentTransfers: readonly LogisticsTransferView[];
 	totals: LogisticsTotalsView;
+}
+
+export interface LogisticsRouteFormValues {
+	originCityId: string;
+	destinationCityId: string;
+	materialId: string;
+	capacity: string;
+	frequencyDays: string;
+	leadTimeDays: string;
+	transportCostPerUnit: string;
+	priority: string;
+}
+
+export function routePresetKey(input: RecurringRouteInput): string {
+	return [
+		input.originCityId,
+		input.destinationCityId,
+		input.materialId,
+		input.capacity,
+		input.frequencyDays,
+		input.leadTimeDays,
+		input.transportCostPerUnit,
+		input.priority
+	].join('\u0000');
+}
+
+export function applyRoutePreset(
+	current: LogisticsRouteFormValues,
+	preset: RecurringRouteInput,
+	appliedKey: string | null
+): { values: LogisticsRouteFormValues; appliedKey: string } {
+	const nextKey = routePresetKey(preset);
+	if (appliedKey === nextKey) {
+		return { values: current, appliedKey: nextKey };
+	}
+
+	return {
+		values: {
+			originCityId: preset.originCityId,
+			destinationCityId: preset.destinationCityId,
+			materialId: preset.materialId,
+			capacity: String(preset.capacity),
+			frequencyDays: String(preset.frequencyDays),
+			leadTimeDays: String(preset.leadTimeDays),
+			transportCostPerUnit: String(preset.transportCostPerUnit),
+			priority: String(preset.priority)
+		},
+		appliedKey: nextKey
+	};
 }
 
 function scopedTranslation(

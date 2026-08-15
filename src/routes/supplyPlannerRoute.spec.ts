@@ -79,7 +79,6 @@ const baseSnapshot: SupplyPlannerSnapshot = {
 	usableBuildingIds: ['water-pump-1'],
 	disconnectedBuildingIds: [],
 	usableSinkBuildingIdsByMaterial: {},
-	activeOutboundRouteIds: [],
 	reachableDemandByMaterial: {},
 	reachableDemandByBuildingAndMaterial: {},
 	reachableBranchesByBuildingAndMaterial: {},
@@ -122,8 +121,12 @@ function mockHost(overrides: Partial<SupplyPlannerHandoffHost> = {}): SupplyPlan
 		switchToSupplyCity: overrides.switchToSupplyCity ?? vi.fn(async () => true),
 		armIndustryPlacement: overrides.armIndustryPlacement ?? vi.fn(),
 		selectIndustryTile: overrides.selectIndustryTile ?? vi.fn(),
+		openLogistics: overrides.openLogistics ?? vi.fn(),
+		openStores: overrides.openStores ?? vi.fn(),
 		enterRailBuildMode: overrides.enterRailBuildMode ?? vi.fn(),
-		canBuildRail: overrides.canBuildRail ?? true
+		canBuildRail: overrides.canBuildRail ?? true,
+		canManageLogistics: overrides.canManageLogistics ?? true,
+		canSetRetailSupplySource: overrides.canSetRetailSupplySource ?? true
 	};
 }
 
@@ -174,6 +177,8 @@ describe('deriveSupplyPlannerResult', () => {
 		canBuildIndustry: true,
 		canUpgradeIndustry: true,
 		canBuildRail: true,
+		canManageLogistics: true,
+		canSetRetailSupplySource: true,
 		allowedIndustryBuildingTypeIds: ['water-pump', 'water-bottler', 'warehouse']
 	};
 
@@ -352,13 +357,95 @@ describe('handoffSupplyPlannerAction', () => {
 		const host = mockHost();
 		const action: SupplyPlannerAction = {
 			kind: 'build-warehouse',
+			cityId: 'breadbasket-basin',
 			buildingTypeId: 'warehouse',
 			cost: 900
 		};
 		const result = readyResult({}, action);
 		await handoffSupplyPlannerAction(action, result, host);
-		expect(host.switchToSupplyCity).toHaveBeenCalledWith('industry-city');
+		expect(host.switchToSupplyCity).toHaveBeenCalledWith('breadbasket-basin');
 		expect(host.armIndustryPlacement).toHaveBeenCalledWith('warehouse');
+	});
+
+	it('closes overlays before opening a route preset without submitting it', async () => {
+		const calls: string[] = [];
+		const host = mockHost({
+			closeOverlays: () => calls.push('closeOverlays'),
+			openLogistics: (routeId, preset) => {
+				calls.push(routeId === null && preset ? 'openLogistics:preset' : 'openLogistics:route');
+			}
+		});
+		const action: SupplyPlannerAction = {
+			kind: 'create-route',
+			input: {
+				originCityId: 'breadbasket-basin',
+				destinationCityId: 'industry-city',
+				materialId: 'water',
+				capacity: 8,
+				frequencyDays: 1,
+				leadTimeDays: 2,
+				transportCostPerUnit: 1,
+				priority: 0
+			}
+		};
+
+		await handoffSupplyPlannerAction(action, readyResult({}, action), host);
+
+		expect(calls).toEqual(['closeOverlays', 'openLogistics:preset']);
+	});
+
+	it.each<Extract<SupplyPlannerAction, { kind: 'edit-route' | 'resume-route' }>>([
+		{ kind: 'edit-route', routeId: 'route-2', field: 'capacity', from: 2, to: 8 },
+		{ kind: 'resume-route', routeId: 'route-2' }
+	])('closes overlays before focusing a managed route for $kind', async (action) => {
+		const calls: string[] = [];
+		const host = mockHost({
+			closeOverlays: () => calls.push('closeOverlays'),
+			openLogistics: (routeId) => calls.push(`openLogistics:${routeId}`)
+		});
+
+		await handoffSupplyPlannerAction(action, readyResult({}, action), host);
+
+		expect(calls).toEqual(['closeOverlays', 'openLogistics:route-2']);
+	});
+
+	it('closes overlays before focusing the retail supply source', async () => {
+		const calls: string[] = [];
+		const host = mockHost({
+			closeOverlays: () => calls.push('closeOverlays'),
+			openStores: (retailCityId) => calls.push(`openStores:${retailCityId}`)
+		});
+		const action: SupplyPlannerAction = {
+			kind: 'change-supply-source',
+			retailCityId: 'harbor-city',
+			fromSupplyCityId: 'industry-city',
+			toSupplyCityId: 'breadbasket-basin'
+		};
+
+		await handoffSupplyPlannerAction(action, readyResult({}, action), host);
+
+		expect(calls).toEqual(['closeOverlays', 'openStores:harbor-city']);
+	});
+
+	it('keeps the advisor open when a logistics or source capability became unavailable', async () => {
+		const closeOverlays = vi.fn();
+		const logisticsHost = mockHost({ canManageLogistics: false, closeOverlays });
+		const routeAction: SupplyPlannerAction = {
+			kind: 'resume-route',
+			routeId: 'route-2'
+		};
+		await handoffSupplyPlannerAction(routeAction, readyResult({}, routeAction), logisticsHost);
+
+		const sourceHost = mockHost({ canSetRetailSupplySource: false, closeOverlays });
+		const sourceAction: SupplyPlannerAction = {
+			kind: 'change-supply-source',
+			retailCityId: 'harbor-city',
+			fromSupplyCityId: 'industry-city',
+			toSupplyCityId: 'breadbasket-basin'
+		};
+		await handoffSupplyPlannerAction(sourceAction, readyResult({}, sourceAction), sourceHost);
+
+		expect(closeOverlays).not.toHaveBeenCalled();
 	});
 
 	it('aborts an upgrade action when the building is not found in the game', async () => {

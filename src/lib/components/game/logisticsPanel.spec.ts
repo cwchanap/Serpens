@@ -10,7 +10,13 @@ import type {
 	TransferOrder
 } from '$lib/game/types';
 import { createTwoIndustryCityGame } from '$lib/game/interCityLogistics.testUtils';
-import { buildLogisticsPanelView } from './logisticsPanel';
+import type { RecurringRouteInput } from '$lib/game/interCityLogistics';
+import {
+	applyRoutePreset,
+	buildLogisticsPanelView,
+	routePresetKey,
+	type LogisticsRouteFormValues
+} from './logisticsPanel';
 
 function route(overrides: Partial<RecurringRoute> = {}): RecurringRoute {
 	return {
@@ -225,5 +231,49 @@ describe('buildLogisticsPanelView', () => {
 		const view = buildLogisticsPanelView(game, createI18n('en'));
 
 		expect(view.materialOptions.find((option) => option.materialId === 'water')?.stock).toBe(0);
+	});
+});
+
+describe('route presets', () => {
+	const emptyRouteForm = (): LogisticsRouteFormValues => ({
+		originCityId: '',
+		destinationCityId: '',
+		materialId: '',
+		capacity: '',
+		frequencyDays: '',
+		leadTimeDays: '',
+		transportCostPerUnit: '',
+		priority: ''
+	});
+
+	it('converts a typed route preset once without overwriting user edits', () => {
+		const preset: RecurringRouteInput = {
+			originCityId: 'breadbasket-basin',
+			destinationCityId: 'industry-city',
+			materialId: 'grain',
+			capacity: 12,
+			frequencyDays: 1,
+			leadTimeDays: 2,
+			transportCostPerUnit: 2,
+			priority: 0
+		};
+		const first = applyRoutePreset(emptyRouteForm(), preset, null);
+		expect(first.values).toMatchObject({
+			originCityId: 'breadbasket-basin',
+			capacity: '12',
+			leadTimeDays: '2'
+		});
+		expect(first.appliedKey).toBe(routePresetKey(preset));
+
+		const userEdited = { ...first.values, capacity: '9' };
+		const repeated = applyRoutePreset(userEdited, preset, first.appliedKey);
+		expect(repeated.values.capacity).toBe('9');
+
+		const changed = applyRoutePreset(
+			repeated.values,
+			{ ...preset, capacity: 16, priority: 1 },
+			repeated.appliedKey
+		);
+		expect(changed.values).toMatchObject({ capacity: '16', priority: '1' });
 	});
 });

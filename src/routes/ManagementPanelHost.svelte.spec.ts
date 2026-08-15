@@ -7,6 +7,7 @@ import {
 	buildLogisticsPanelView,
 	type LogisticsPanelView
 } from '$lib/components/game/logisticsPanel';
+import { createTwoIndustryCityGame } from '$lib/game/interCityLogistics.testUtils';
 import { decisionContextCashPressure } from '$lib/game/decisionContext';
 import { getFinanceMetrics, type FinanceMetrics } from '$lib/game/financeMetrics';
 import { getStaffXpForLevel } from '$lib/game/staffLeveling';
@@ -35,9 +36,11 @@ interface ManagementPanelHostProps {
 	mutations: MutationAvailability;
 	retailSupplyDisabled: boolean;
 	focusedFinanceLoanId: string | null;
+	focusedRetailSupplyCityId: string | null;
 	logisticsView: LogisticsPanelView;
 	manageLogistics: boolean;
 	focusedLogisticsRouteId: string | null;
+	logisticsRoutePreset: RecurringRouteInput | null;
 	i18n: I18nBundle;
 	disabledReason: string | null;
 
@@ -135,11 +138,13 @@ function hostProps(overrides: Partial<ManagementPanelHostProps> = {}): Managemen
 		mutations: mutationAvailability(),
 		retailSupplyDisabled: false,
 		focusedFinanceLoanId: null,
+		focusedRetailSupplyCityId: null,
 		i18n,
 		disabledReason: 'Unavailable in this challenge.',
 		logisticsView: buildLogisticsPanelView(panelGame, i18n),
 		manageLogistics: true,
 		focusedLogisticsRouteId: null,
+		logisticsRoutePreset: null,
 		onClose: vi.fn(),
 		onChangePolicy: vi.fn(),
 		onHireStaff: vi.fn(),
@@ -225,6 +230,23 @@ describe('ManagementPanelHost', () => {
 		await expect
 			.element(page.getByRole('combobox', { name: props.retailSupplyViews[0]!.selectLabel }))
 			.toBeDisabled();
+	});
+
+	it('forwards a planner source focus without changing the source', async () => {
+		const onSetRetailSupplySource = vi.fn();
+		const props = hostProps({
+			panelId: 'stores',
+			panelLabel: 'Stores',
+			focusedRetailSupplyCityId: 'harbor-city',
+			onSetRetailSupplySource
+		});
+		render(ManagementPanelHost, props);
+
+		const select = page.getByRole('combobox', { name: props.retailSupplyViews[0]!.selectLabel });
+		await vi.waitFor(() => {
+			expect(select.element()).toBe(document.activeElement);
+		});
+		expect(onSetRetailSupplySource).not.toHaveBeenCalled();
 	});
 
 	it('renders the decision queue and active modifiers in the decisions panel', async () => {
@@ -346,6 +368,36 @@ describe('ManagementPanelHost', () => {
 				page.getByRole('heading', { name: props.i18n.t('logisticsPanel.sections.recentTransfers') })
 			)
 			.toBeVisible();
+	});
+
+	it('forwards a planner route preset to the existing form without creating a route', async () => {
+		const panelGame = createTwoIndustryCityGame();
+		const i18n = createI18n('en');
+		const onCreateRecurringRoute = vi.fn(async () => ({ status: 'unavailable' }) as const);
+		const props = hostProps({
+			panelId: 'logistics',
+			panelLabel: 'Logistics',
+			panelGame,
+			summary: summarizeReports(panelGame.reports),
+			retailSupplyViews: buildRetailCitySupplyViews(panelGame, i18n),
+			logisticsView: buildLogisticsPanelView(panelGame, i18n),
+			i18n,
+			logisticsRoutePreset: {
+				originCityId: 'breadbasket-basin',
+				destinationCityId: 'industry-city',
+				materialId: 'grain',
+				capacity: 12,
+				frequencyDays: 1,
+				leadTimeDays: 2,
+				transportCostPerUnit: 2,
+				priority: 0
+			},
+			onCreateRecurringRoute
+		});
+		render(ManagementPanelHost, props);
+
+		await expect.element(page.getByLabelText('Capacity per dispatch')).toHaveValue(12);
+		expect(onCreateRecurringRoute).not.toHaveBeenCalled();
 	});
 
 	it('renders the reports panel branch', async () => {
