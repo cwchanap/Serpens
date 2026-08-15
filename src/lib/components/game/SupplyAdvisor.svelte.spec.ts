@@ -682,6 +682,112 @@ describe('SupplyAdvisor', () => {
 		await expect.element(page.getByText(`Condition: ${label}.`, { exact: true })).toBeVisible();
 	});
 
+	it('shows the supply-city empty state when only unrelated route forecasts are present', async () => {
+		expect.assertions(2);
+		renderPlanner(
+			readyResult({
+				snapshot: { logistics: logisticsSnapshot() },
+				baseline: {
+					routeForecasts: [
+						routeForecast({
+							route: {
+								id: 'route-unrelated',
+								originCityId: 'harbor-city',
+								destinationCityId: 'garden-borough',
+								materialId: 'bottled-water',
+								capacity: 8,
+								frequencyDays: 1,
+								leadTimeDays: 2,
+								transportCostPerUnit: 3,
+								priority: 0,
+								state: 'active',
+								nextDispatchOnDay: 13
+							}
+						})
+					]
+				}
+			})
+		);
+
+		const evidence = page.getByRole('region', { name: /logistics forecast evidence/i });
+		await expect
+			.element(evidence.getByText(/no route forecasts affect this supply city/i))
+			.toBeVisible();
+		await expect
+			.element(evidence.getByText(/harbor city.*garden borough.*bottled water/i))
+			.not.toBeInTheDocument();
+	});
+
+	it('renders only the relevant inbound route when an unrelated route is also present', async () => {
+		expect.assertions(2);
+		renderPlanner(
+			readyResult({
+				snapshot: { logistics: logisticsSnapshot() },
+				baseline: {
+					routeForecasts: [
+						routeForecast(),
+						routeForecast({
+							route: {
+								id: 'route-unrelated',
+								originCityId: 'harbor-city',
+								destinationCityId: 'garden-borough',
+								materialId: 'bottled-water',
+								capacity: 8,
+								frequencyDays: 1,
+								leadTimeDays: 2,
+								transportCostPerUnit: 3,
+								priority: 0,
+								state: 'active',
+								nextDispatchOnDay: 13
+							}
+						})
+					]
+				}
+			})
+		);
+
+		const evidence = page.getByRole('region', { name: /logistics forecast evidence/i });
+		await expect
+			.element(evidence.getByText(/breadbasket basin.*industry city.*bottled water/i))
+			.toBeVisible();
+		await expect
+			.element(evidence.getByText(/harbor city.*garden borough.*bottled water/i))
+			.not.toBeInTheDocument();
+	});
+
+	it('renders an outbound route whose origin matches the configured supply city', async () => {
+		expect.assertions(1);
+		renderPlanner(
+			readyResult({
+				snapshot: { logistics: logisticsSnapshot() },
+				baseline: {
+					routeForecasts: [
+						routeForecast({
+							route: {
+								id: 'route-outbound',
+								originCityId: 'industry-city',
+								destinationCityId: 'harbor-city',
+								materialId: 'bottled-water',
+								capacity: 8,
+								frequencyDays: 1,
+								leadTimeDays: 2,
+								transportCostPerUnit: 3,
+								priority: 0,
+								state: 'active',
+								nextDispatchOnDay: 13
+							}
+						})
+					]
+				}
+			})
+		);
+
+		const evidence = page.getByRole('region', { name: /logistics forecast evidence/i });
+		await expect
+			.element(evidence.getByText(/industry city.*harbor city.*bottled water/i))
+			.toBeVisible();
+	});
+
 	const logisticsCauseCases: readonly {
 		cause: SupplyLogisticsBottleneck;
 		action: SupplyPlannerAction;

@@ -1770,6 +1770,8 @@
 		selectedIndustryTileId = null;
 		selectedWorldCityId = null;
 		clearLogisticsRouteSelection();
+		logisticsRoutePreset = null;
+		focusedRetailSupplyCityId = null;
 		isStoreDetailOpen = false;
 		isBuildMenuOpen = false;
 		isSupplyAdvisorOpen = false;

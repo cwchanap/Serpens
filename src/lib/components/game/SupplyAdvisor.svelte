@@ -434,7 +434,11 @@
 				{@const inTransitRows = (snapshot.logistics?.inTransitInventory ?? []).filter(
 					(row) => row.destinationCityId === snapshot.supplyCityId
 				)}
-				{@const routeForecasts = plan.baseline.routeForecasts ?? []}
+				{@const routeForecasts = (plan.baseline.routeForecasts ?? []).filter(
+					(forecast) =>
+						forecast.route.originCityId === snapshot.supplyCityId ||
+						forecast.route.destinationCityId === snapshot.supplyCityId
+				)}
 				<section class="evidence overview" aria-label={i18n.t('supplyAdvisor.evidenceLabel')}>
 					<div class="section-heading">
 						<div>

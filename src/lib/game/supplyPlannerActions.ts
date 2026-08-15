@@ -5,7 +5,9 @@ import {
 import { INDUSTRIAL_BUILDING_TYPES, MATERIALS, PRODUCTION_RECIPES } from './industry';
 import {
 	compareRecurringRoutes,
+	getDestinationTransferNeedFromCapacity,
 	quoteInterCityRates,
+	sumReservedInTransitUnits,
 	type RecurringRouteInput
 } from './interCityLogistics';
 import {
@@ -450,26 +452,20 @@ function diagnoseLogistics(
 
 	const paused = inboundRoutes.find((route) => route.state === 'paused');
 	if (paused) {
+		const requiredUnits = Math.max(
+			1,
+			Math.ceil(
+				baseline.materials.find((row) => row.materialId === paused.materialId)?.requiredPerDay ?? 1
+			)
+		);
 		return {
 			kind: 'route-paused',
 			routeId: paused.id,
 			cityId: snapshot.supplyCityId,
 			materialId: paused.materialId,
 			day: logistics.currentDay,
-			blockedUnits: Math.max(
-				1,
-				Math.ceil(
-					baseline.materials.find((row) => row.materialId === paused.materialId)?.requiredPerDay ??
-						1
-				)
-			),
-			amount: Math.max(
-				1,
-				Math.ceil(
-					baseline.materials.find((row) => row.materialId === paused.materialId)?.requiredPerDay ??
-						1
-				)
-			)
+			blockedUnits: requiredUnits,
+			amount: requiredUnits
 		};
 	}
 
@@ -525,7 +521,15 @@ function diagnoseLogistics(
 			(city) => city.inventory.cityId === route.originCityId
 		);
 		const availableStock = Math.max(0, origin?.inventory.materials[route.materialId] ?? 0);
-		const deficitUnits = Math.max(0, Math.min(route.capacity, route.capacity) - availableStock);
+		const destinationNeed = getDestinationTransferNeedFromCapacity({
+			warehouseCapacity: snapshot.warehouseCapacity,
+			warehouseUsed: snapshot.warehouseUsed,
+			reservedInTransitUnits: sumReservedInTransitUnits(
+				logistics.inTransitOrders,
+				snapshot.supplyCityId
+			)
+		});
+		const deficitUnits = Math.max(0, Math.min(route.capacity, destinationNeed) - availableStock);
 		return {
 			kind: 'origin-stock-constrained',
 			routeId: route.id,
@@ -727,7 +731,7 @@ function makeBoundedLogisticsPlan(
 			candidate.comparison.netCashBenefit30 > 0
 	);
 	if (worthwhile.length === 0) return null;
-	const alternatives = sortCandidates(worthwhile).map((candidate) => candidate);
+	const alternatives = sortCandidates(worthwhile);
 	return {
 		snapshot,
 		baseline,
@@ -847,19 +851,19 @@ function supplySourceCandidates(
 	const categoryId = findCategoryIdForFinishedMaterial(game, snapshot);
 	if (!categoryId || !snapshot.logistics) return [];
 	const candidates: SupplyPlannerCandidate[] = [];
+	const baseGame = clone(game);
+	const originalAssignments = baseGame.retailSupplyAssignments;
 	for (const remote of [...snapshot.logistics.remoteCities].sort((left, right) =>
 		compareCodeUnits(left.inventory.cityId, right.inventory.cityId)
 	)) {
 		const toSupplyCityId = remote.inventory.cityId;
 		if (toSupplyCityId === snapshot.supplyCityId) continue;
-		const candidateGame = clone(game);
-		candidateGame.retailSupplyAssignments = candidateGame.retailSupplyAssignments.map(
-			(assignment) =>
-				assignment.retailCityId === snapshot.retailCityId
-					? { ...assignment, supplyCityId: toSupplyCityId }
-					: assignment
+		baseGame.retailSupplyAssignments = originalAssignments.map((assignment) =>
+			assignment.retailCityId === snapshot.retailCityId
+				? { ...assignment, supplyCityId: toSupplyCityId }
+				: assignment
 		);
-		const result = buildSupplyPlannerSnapshot(candidateGame, {
+		const result = buildSupplyPlannerSnapshot(baseGame, {
 			retailCityId: snapshot.retailCityId,
 			categoryId
 		});

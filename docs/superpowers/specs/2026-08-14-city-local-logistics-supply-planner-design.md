@@ -233,6 +233,7 @@ export interface SupplyPlannerLogisticsSnapshot {
 	inTransitOrders: readonly Readonly<TransferOrder>[];
 	routes: readonly Readonly<RecurringRoute>[];
 	nextRouteSequence: number;
+	nextTransferSequence: number;
 }
 ```
 
@@ -347,6 +348,9 @@ export interface SupplyPlannerRouteForecast {
 	peakUnmetDestinationNeed: number;
 	firstOriginStockConstraintDay: number | null;
 	firstDestinationCapacityConstraintDay: number | null;
+	firstRouteCapacityConstraintDay: number | null;
+	firstPriorityConstraintDay: number | null;
+	priorityBlockedByRouteId: string | null;
 }
 ```
 
@@ -375,14 +379,14 @@ The old `activeOutboundRouteIds` early bail is deleted rather than replaced in p
 
 ```ts
 export type SupplyLogisticsBottleneck =
-	| { kind: 'destination-full'; routeId: string; cityId: WorldCityId; materialId: MaterialId; day: number; blockedUnits: number }
-	| { kind: 'origin-stock-constrained'; routeId: string; cityId: WorldCityId; materialId: MaterialId; day: number; deficitUnits: number }
-	| { kind: 'route-capacity-constrained'; routeId: string; cityId: WorldCityId; materialId: MaterialId; day: number; unmetUnits: number }
-	| { kind: 'route-priority-constrained'; routeId: string; blockingRouteId: string; cityId: WorldCityId; materialId: MaterialId; day: number }
-	| { kind: 'route-frequency'; routeId: string; cityId: WorldCityId; materialId: MaterialId; stockoutDay: number; nextArrivalDay: number }
-	| { kind: 'route-lead-time'; routeId: string; cityId: WorldCityId; materialId: MaterialId; stockoutDay: number; firstArrivalDay: number }
-	| { kind: 'route-paused'; routeId: string; cityId: WorldCityId; materialId: MaterialId }
-	| { kind: 'destination-configuration'; retailCityId: WorldCityId; supplyCityId: WorldCityId; materialId: MaterialId };
+	| { kind: 'destination-full'; routeId: string; cityId: WorldCityId; materialId: MaterialId; day: number; blockedUnits: number; amount: number }
+	| { kind: 'origin-stock-constrained'; routeId: string; cityId: WorldCityId; materialId: MaterialId; day: number; deficitUnits: number; amount: number }
+	| { kind: 'route-capacity-constrained'; routeId: string; cityId: WorldCityId; materialId: MaterialId; day: number; unmetUnits: number; amount: number }
+	| { kind: 'route-priority-constrained'; routeId: string; blockingRouteId: string; cityId: WorldCityId; materialId: MaterialId; day: number; blockedUnits: number; amount: number }
+	| { kind: 'route-frequency'; routeId: string; cityId: WorldCityId; materialId: MaterialId; day: number; stockoutDay: number; nextArrivalDay: number; amount: number }
+	| { kind: 'route-lead-time'; routeId: string; cityId: WorldCityId; materialId: MaterialId; day: number; stockoutDay: number; firstArrivalDay: number; amount: number }
+	| { kind: 'route-paused'; routeId: string; cityId: WorldCityId; materialId: MaterialId; day: number; blockedUnits: number; amount: number }
+	| { kind: 'destination-configuration'; retailCityId: WorldCityId; supplyCityId: WorldCityId; materialId: MaterialId; day: number; amount: number };
 ```
 
 `remote-origin-production-not-modeled` remains a limitation, not a bottleneck. It never applies to the selected supply city's own outbound stock because selected-city local flow is modeled before dispatch.
