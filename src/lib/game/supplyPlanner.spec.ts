@@ -479,7 +479,8 @@ describe('supply planner snapshot', () => {
 			remoteCities: [],
 			inTransitOrders: [],
 			routes: [],
-			nextRouteSequence: 1
+			nextRouteSequence: 1,
+			nextTransferSequence: 1
 		};
 		const projection = projectSupplySnapshot(snapshot);
 		expect({
@@ -604,6 +605,37 @@ describe('supply planner snapshot', () => {
 				{ kind: 'store-sales-capacity-not-modeled' }
 			]
 		});
+	});
+
+	it('keeps logistics-trace raw inventory within warehouse processor caps', () => {
+		const base = splitMillPantrySnapshot(100);
+		const projection = projectSupplySnapshot({
+			...base,
+			logistics: {
+				currentDay: 5,
+				remoteCities: [
+					{ inventory: { cityId: 'breadbasket-basin', materials: {} }, warehouseCapacity: 20 }
+				],
+				inTransitOrders: [],
+				routes: [
+					route({
+						id: 'route-noop-grain',
+						originCityId: 'breadbasket-basin',
+						destinationCityId: 'industry-city',
+						materialId: 'grain',
+						capacity: 1,
+						nextDispatchOnDay: 5
+					})
+				],
+				nextRouteSequence: 1,
+				nextTransferSequence: 1
+			}
+		});
+		const grain = projection.materials.find((material) => material.materialId === 'grain')!;
+
+		expect(grain.usableCapacityPerDay).toBe(10);
+		expect(grain.sevenDay.importRequiredUnits).toBe(0);
+		expect(grain.thirtyDay.importRequiredUnits).toBe(50);
 	});
 
 	it('counts an upstream producer connected directly to a usable downstream processor', () => {
