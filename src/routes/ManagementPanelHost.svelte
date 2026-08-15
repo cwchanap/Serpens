@@ -36,9 +36,11 @@
 		mutations: MutationAvailability;
 		retailSupplyDisabled: boolean;
 		focusedFinanceLoanId: string | null;
+		focusedRetailSupplyCityId?: string | null;
 		logisticsView: LogisticsPanelView | null;
 		manageLogistics?: boolean;
 		focusedLogisticsRouteId?: string | null;
+		logisticsRoutePreset?: RecurringRouteInput | null;
 		i18n: I18nBundle;
 		disabledReason: string | null;
 
@@ -81,9 +83,11 @@
 		mutations,
 		retailSupplyDisabled,
 		focusedFinanceLoanId,
+		focusedRetailSupplyCityId = null,
 		logisticsView,
 		manageLogistics = false,
 		focusedLogisticsRouteId = null,
+		logisticsRoutePreset = null,
 		i18n,
 		disabledReason,
 		onClose,
@@ -198,6 +202,7 @@
 				<RetailSupplySources
 					retailCities={retailSupplyViews}
 					disabled={retailSupplyDisabled}
+					focusedRetailCityId={focusedRetailSupplyCityId}
 					onChange={onSetRetailSupplySource}
 				/>
 				<StoreOverview
@@ -229,6 +234,7 @@
 				view={requireLogisticsView()}
 				canMutate={manageLogistics}
 				focusedRouteId={focusedLogisticsRouteId}
+				routePreset={logisticsRoutePreset}
 				{disabledReason}
 				{i18n}
 				{onDispatchManualTransfer}

@@ -5,7 +5,8 @@ import { createI18n } from '$lib/i18n';
 import {
 	createRecurringRoute,
 	dispatchManualTransfer,
-	quoteInterCityRates
+	quoteInterCityRates,
+	type RecurringRouteInput
 } from '$lib/game/interCityLogistics';
 import { createTwoIndustryCityGame } from '$lib/game/interCityLogistics.testUtils';
 import type { GameRouteCommitResult } from '$lib/game/commandResult';
@@ -45,8 +46,7 @@ function renderPanel(overrides: Record<string, unknown> = {}) {
 		),
 		...overrides
 	};
-	render(LogisticsPanel, props);
-	return props;
+	return { ...props, rerender: render(LogisticsPanel, props).rerender };
 }
 
 function routePanelFixture() {
@@ -168,6 +168,35 @@ describe('LogisticsPanel', () => {
 			transportCostPerUnit: 2,
 			priority: 0
 		});
+	});
+
+	it('applies a planner route preset once without submitting or overwriting manual edits', async () => {
+		const preset: RecurringRouteInput = {
+			originCityId: 'breadbasket-basin',
+			destinationCityId: 'industry-city',
+			materialId: 'grain',
+			capacity: 12,
+			frequencyDays: 1,
+			leadTimeDays: 2,
+			transportCostPerUnit: 2,
+			priority: 0
+		};
+		const { rerender, ...props } = renderPanel({ routePreset: preset });
+		const capacity = page.getByLabelText('Capacity per dispatch');
+
+		await expect.element(capacity).toHaveValue(12);
+		await vi.waitFor(() => {
+			expect(document.getElementById('logistics-route-form')).toBe(document.activeElement);
+		});
+		expect(props.onCreateRecurringRoute).not.toHaveBeenCalled();
+
+		await capacity.fill('9');
+		await rerender({ ...props, routePreset: preset });
+		await expect.element(capacity).toHaveValue(9);
+
+		await rerender({ ...props, routePreset: { ...preset, capacity: 16, priority: 1 } });
+		await expect.element(capacity).toHaveValue(16);
+		expect(props.onCreateRecurringRoute).not.toHaveBeenCalled();
 	});
 
 	it('does not submit a route when city or material selections are unavailable', async () => {

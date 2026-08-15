@@ -376,6 +376,8 @@
 	let selectedIndustryTileId = $state<string | null>(null);
 	let selectedLogisticsRouteId = $state<string | null>(null);
 	let focusedLogisticsRouteId = $state<string | null>(null);
+	let logisticsRoutePreset = $state<RecurringRouteInput | null>(null);
+	let focusedRetailSupplyCityId = $state<WorldCityId | null>(null);
 	let isCheatSheetOpen = $state(false);
 	let isStoreDetailOpen = $state(false);
 	let isGameMenuOpen = $state(false);
@@ -553,6 +555,8 @@
 		canBuildIndustry: mutationAvailability.buildIndustrialBuilding,
 		canUpgradeIndustry: mutationAvailability.upgradeIndustrialBuilding,
 		canBuildRail: mutationAvailability.buildRail,
+		canManageLogistics: mutationAvailability.manageLogistics,
+		canSetRetailSupplySource: mutationAvailability.setRetailSupplySource,
 		allowedIndustryBuildingTypeIds,
 		allowedIndustrialPlacements
 	});
@@ -1707,20 +1711,35 @@
 		isBuildMenuOpen = false;
 		if (panelId !== 'logistics') {
 			focusedLogisticsRouteId = null;
+			logisticsRoutePreset = null;
+		}
+		if (panelId !== 'stores') {
+			focusedRetailSupplyCityId = null;
 		}
 		// Panels open even before a store is founded; they fall back to an empty
 		// starter state and their action handlers no-op until a game exists.
 		activeManagementPanelId = panelId;
 	}
 
-	function openLogisticsManagement(routeId?: string): void {
+	function openLogisticsManagement(
+		routeId: string | null = null,
+		preset: RecurringRouteInput | null = null
+	): void {
 		openManagementPanel('logistics');
-		focusedLogisticsRouteId = routeId ?? null;
+		focusedLogisticsRouteId = routeId;
+		logisticsRoutePreset = preset;
+	}
+
+	function openStoresManagement(retailCityId: WorldCityId): void {
+		openManagementPanel('stores');
+		focusedRetailSupplyCityId = retailCityId;
 	}
 
 	function closeManagementPanel(): void {
 		activeManagementPanelId = null;
 		focusedLogisticsRouteId = null;
+		logisticsRoutePreset = null;
+		focusedRetailSupplyCityId = null;
 	}
 
 	function unlockAudio(): void {
@@ -1951,6 +1970,8 @@
 		if (!plannerCategoryIds.includes(categoryId)) return;
 		activeManagementPanelId = null;
 		focusedLogisticsRouteId = null;
+		logisticsRoutePreset = null;
+		focusedRetailSupplyCityId = null;
 		openSupplyAdvisor(categoryId);
 	}
 
@@ -1965,6 +1986,8 @@
 		isScenarioCatalogOpen = false;
 		activeManagementPanelId = null;
 		focusedLogisticsRouteId = null;
+		logisticsRoutePreset = null;
+		focusedRetailSupplyCityId = null;
 		selectedTileId = null;
 		selectedIndustryTileId = null;
 		selectedWorldCityId = null;
@@ -1991,6 +2014,8 @@
 			switchToSupplyCity: switchToPlannerSupplyCity,
 			armIndustryPlacement,
 			selectIndustryTile,
+			openLogistics: openLogisticsManagement,
+			openStores: openStoresManagement,
 			enterRailBuildMode: (mode) => {
 				isSupplyAdvisorOpen = false;
 				isBuildMenuOpen = false;
@@ -2000,7 +2025,9 @@
 				railPreviewTargetBuildingId = null;
 				placementFeedback = null;
 			},
-			canBuildRail: mutationAvailability.buildRail
+			canBuildRail: mutationAvailability.buildRail,
+			canManageLogistics: mutationAvailability.manageLogistics,
+			canSetRetailSupplySource: mutationAvailability.setRetailSupplySource
 		};
 	}
 
@@ -2935,9 +2962,11 @@
 				mutations={mutationAvailability}
 				retailSupplyDisabled={game === null || !mutationAvailability.setRetailSupplySource}
 				{focusedFinanceLoanId}
+				{focusedRetailSupplyCityId}
 				logisticsView={logisticsPanelView}
 				manageLogistics={mutationAvailability.manageLogistics}
 				{focusedLogisticsRouteId}
+				{logisticsRoutePreset}
 				{i18n}
 				disabledReason={mutationDisabledReason}
 				onClose={closeManagementPanel}
