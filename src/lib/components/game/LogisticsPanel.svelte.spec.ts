@@ -149,6 +149,49 @@ describe('LogisticsPanel', () => {
 		expect(props.onCreateRecurringRoute).toHaveBeenCalledOnce();
 	});
 
+	it('submits a typed recurring route input for valid selections', async () => {
+		expect.assertions(1);
+		const props = renderPanel();
+
+		await page.getByLabelText('Origin city').nth(1).selectOptions('industry-city');
+		await page.getByLabelText('Destination city').nth(1).selectOptions('breadbasket-basin');
+		await page.getByLabelText('Material').nth(1).selectOptions('water');
+		await page.getByRole('button', { name: /create route/i }).click();
+
+		expect(props.onCreateRecurringRoute).toHaveBeenCalledWith({
+			originCityId: 'industry-city',
+			destinationCityId: 'breadbasket-basin',
+			materialId: 'water',
+			capacity: 1,
+			frequencyDays: 1,
+			leadTimeDays: 2,
+			transportCostPerUnit: 2,
+			priority: 0
+		});
+	});
+
+	it('does not submit a route when city or material selections are unavailable', async () => {
+		expect.assertions(1);
+		const game = createTwoIndustryCityGame();
+		const i18n = createI18n('en');
+		const onCreateRecurringRoute = vi.fn(
+			async () => ({ status: 'sandbox-committed', changed: true }) as const
+		);
+		renderPanel({
+			game,
+			view: {
+				...buildLogisticsPanelView(game, i18n),
+				cityOptions: [],
+				materialOptions: []
+			},
+			i18n,
+			onCreateRecurringRoute
+		});
+
+		await page.getByRole('button', { name: /create route/i }).click();
+		expect(onCreateRecurringRoute).not.toHaveBeenCalled();
+	});
+
 	it('hides the create-only priority field while editing a route', async () => {
 		expect.assertions(1);
 		const fixture = routePanelFixture();

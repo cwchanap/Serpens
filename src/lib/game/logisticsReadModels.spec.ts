@@ -6,6 +6,7 @@ import {
 	selectRecentTransfers,
 	selectRouteOperations
 } from './logisticsReadModels';
+import { compareRecurringRoutes } from './interCityLogistics';
 import { simulateDay } from './simulateDay';
 import { createNewGame } from './state';
 import type {
@@ -578,7 +579,7 @@ describe('logistics read models', () => {
 		expect(recoveredSummary?.utilization).toBe(1);
 	});
 
-	test('compareCurrentRoutes and compareRawIds return zero for equal IDs', () => {
+	test('route and raw-ID sorting preserve equal-ID branches', () => {
 		const route = recurringRoute({ id: 'route-1', priority: 1 });
 		const game = gameWithLogistics({
 			recurringRoutes: [route, { ...route }],
@@ -612,7 +613,7 @@ describe('logistics read models', () => {
 		]);
 	});
 
-	test('compareCurrentRoutes sorts equal-priority routes by ascending raw ID', () => {
+	test('shared route sorting orders equal-priority routes by ascending raw ID', () => {
 		const routeTen = recurringRoute({ id: 'route-10', priority: 1 });
 		const routeTwo = recurringRoute({ id: 'route-2', priority: 1 });
 		const game = gameWithLogistics({
@@ -625,6 +626,19 @@ describe('logistics read models', () => {
 
 		const summaries = selectRouteOperations(game);
 		expect(summaries.map((summary) => summary.route.id)).toEqual(['route-10', 'route-2']);
+	});
+
+	test('orders route operations with the shared recurring-route comparator', () => {
+		const routes = [
+			recurringRoute({ id: 'route-10', priority: 1 }),
+			recurringRoute({ id: 'route-2', priority: 1 }),
+			recurringRoute({ id: 'route-3', priority: 0 })
+		];
+		const game = gameWithLogistics({ recurringRoutes: routes });
+
+		expect(selectRouteOperations(game).map((row) => row.route.id)).toEqual(
+			[...routes].sort(compareRecurringRoutes).map((route) => route.id)
+		);
 	});
 
 	test('returns an empty map when the per-route limit is zero or negative', () => {

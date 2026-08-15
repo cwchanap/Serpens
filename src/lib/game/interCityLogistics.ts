@@ -55,9 +55,9 @@ export type ManualTransferResult =
 	| { ok: false; reason: ManualTransferFailure };
 
 export interface RecurringRouteInput {
-	originCityId: string;
-	destinationCityId: string;
-	materialId: string;
+	originCityId: WorldCityId;
+	destinationCityId: WorldCityId;
+	materialId: MaterialId;
 	capacity: number;
 	frequencyDays: number;
 	leadTimeDays: number;
@@ -357,21 +357,49 @@ export function compareRecurringRoutes(left: RecurringRoute, right: RecurringRou
 	return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
 }
 
-export function getDestinationTransferNeed(
-	game: GameState,
+export function sumReservedInTransitUnits(
+	orders: readonly TransferOrder[],
 	destinationCityId: WorldCityId
 ): number {
-	const destinationStats = getCityInventoryStats(game, destinationCityId);
-	const reservedInTransitUnits = game.logistics.transferOrders.reduce((reserved, order) => {
+	return orders.reduce((reserved, order) => {
 		if (order.status !== 'in-transit' || order.destinationCityId !== destinationCityId) {
 			return reserved;
 		}
 
 		return checkedAdd(reserved, order.quantity, 'Reserved destination transfer units');
 	}, 0);
-	const freeWarehouseCapacity = Math.max(0, destinationStats.capacity - destinationStats.used);
+}
 
-	return Math.max(0, freeWarehouseCapacity - reservedInTransitUnits);
+export function getDestinationTransferNeedFromCapacity(input: {
+	warehouseCapacity: number;
+	warehouseUsed: number;
+	reservedInTransitUnits: number;
+}): number {
+	const freeWarehouseCapacity = Math.max(0, input.warehouseCapacity - input.warehouseUsed);
+	return Math.max(0, freeWarehouseCapacity - input.reservedInTransitUnits);
+}
+
+export function getRecurringDispatchQuantity(input: {
+	destinationNeed: number;
+	routeCapacity: number;
+	availableOriginStock: number;
+}): number {
+	return Math.min(input.destinationNeed, input.routeCapacity, input.availableOriginStock);
+}
+
+export function getDestinationTransferNeed(
+	game: GameState,
+	destinationCityId: WorldCityId
+): number {
+	const destinationStats = getCityInventoryStats(game, destinationCityId);
+	return getDestinationTransferNeedFromCapacity({
+		warehouseCapacity: destinationStats.capacity,
+		warehouseUsed: destinationStats.used,
+		reservedInTransitUnits: sumReservedInTransitUnits(
+			game.logistics.transferOrders,
+			destinationCityId
+		)
+	});
 }
 
 export function processRecurringRouteDispatches(game: GameState): {
@@ -400,7 +428,11 @@ export function processRecurringRouteDispatches(game: GameState): {
 
 		const destinationNeed = getDestinationTransferNeed(nextGame, route.destinationCityId);
 		const availableOriginStock = origin.inventory.materials[route.materialId] ?? 0;
-		const dispatchedQuantity = Math.min(destinationNeed, route.capacity, availableOriginStock);
+		const dispatchedQuantity = getRecurringDispatchQuantity({
+			destinationNeed,
+			routeCapacity: route.capacity,
+			availableOriginStock
+		});
 		let transportCost = 0;
 		let transferOrderId: string | null = null;
 
