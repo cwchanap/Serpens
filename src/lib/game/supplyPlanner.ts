@@ -2401,8 +2401,14 @@ function projectSupplySnapshotWithLogistics(
 					attemptForecast.condition,
 					candidateCondition
 				);
-				if (attempt.transferOrderId && attemptForecast.firstArrivalDay === null) {
-					attemptForecast.firstArrivalDay = day + attemptForecast.route.leadTimeDays;
+				if (attempt.transferOrderId) {
+					const projectedArrivalDay = day + attemptForecast.route.leadTimeDays;
+					if (
+						attemptForecast.firstArrivalDay === null ||
+						projectedArrivalDay < attemptForecast.firstArrivalDay
+					) {
+						attemptForecast.firstArrivalDay = projectedArrivalDay;
+					}
 				}
 			}
 			if (
@@ -2536,6 +2542,19 @@ function hasRelevantPlannerLogistics(
 			knownCityIds.has(route.destinationCityId)
 	);
 	if (relevantRoutes.length > 0) return true;
+
+	// Any inbound route to the selected supply city shares its warehouse
+	// capacity with the requested materials, even when the route carries an
+	// unrelated material. Keep the baseline on the dated trace whenever that
+	// shared capacity (or its transport cost) can affect a candidate projection.
+	if (
+		logistics.routes.some(
+			(route) =>
+				route.destinationCityId === snapshot.supplyCityId && knownCityIds.has(route.originCityId)
+		)
+	) {
+		return true;
+	}
 
 	return logistics.inTransitOrders.some(
 		(order) =>

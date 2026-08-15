@@ -437,4 +437,45 @@ describe('supply planner logistics projection state', () => {
 		expect(row.thirtyDay.importRequiredUnits).toBeLessThan(45);
 		expect(row.projectedStockoutDay).toBe(0);
 	});
+
+	it('keeps the earliest arrival when a projected dispatch precedes an in-transit order', () => {
+		const base = projectionSnapshot({ inventory: { 'bottled-water': 4.75 } });
+		const projection = projectSupplySnapshot({
+			...base,
+			logistics: {
+				...base.logistics!,
+				remoteCities: [
+					{
+						inventory: inventory('breadbasket-basin', { 'bottled-water': 20 }),
+						warehouseCapacity: 20
+					}
+				],
+				routes: [
+					route({
+						id: 'route-early-dispatch',
+						originCityId: 'breadbasket-basin',
+						destinationCityId: 'industry-city',
+						materialId: 'bottled-water',
+						capacity: 3,
+						frequencyDays: 7,
+						leadTimeDays: 1,
+						nextDispatchOnDay: 5
+					})
+				],
+				inTransitOrders: [
+					order({
+						id: 'transfer-late',
+						source: { kind: 'recurring-route', routeId: 'route-early-dispatch' },
+						materialId: 'bottled-water',
+						arrivalOnDay: 20
+					})
+				]
+			}
+		});
+		const forecast = projection.routeForecasts?.find(
+			(row) => row.route.id === 'route-early-dispatch'
+		);
+
+		expect(forecast?.firstProjectedArrivalDay).toBe(6);
+	});
 });
