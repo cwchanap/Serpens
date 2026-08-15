@@ -1,4 +1,9 @@
-import { compareWorldCityIds, getCityInventoryStats } from './cityInventory';
+import {
+	canonicalQuantity,
+	compareWorldCityIds,
+	getCityInventoryStats,
+	getCityInventoryUsed
+} from './cityInventory';
 import { MATERIALS, PRODUCTION_RECIPES } from './industry';
 import {
 	buildingTypesForRecipe,
@@ -18,6 +23,14 @@ import {
 import { REPLENISHMENT_INTERVAL_DAYS } from './retailSupply';
 import { buildCityDemandPools, getFinishedMaterialIdForCategory } from './stock';
 import { getWorldCityDefinition, WORLD_CITY_CATALOG } from './worldCatalog';
+import {
+	buildSupplyPlannerLogisticsSnapshot,
+	createSupplyPlannerLogisticsState,
+	processSupplyPlannerRouteDispatches,
+	processSupplyPlannerTransferArrivals,
+	type SupplyPlannerLogisticsSnapshot,
+	type SupplyPlannerLogisticsState
+} from './supplyPlannerLogistics';
 import type {
 	City,
 	GameState,
@@ -126,6 +139,8 @@ export interface SupplyPlannerSnapshot {
 	warehouseConnectedProcessorsByMaterial: Partial<
 		Record<MaterialId, readonly ReachableProcessorEntry[]>
 	>;
+	/** Copied route/order state used only when dated logistics can affect projection. */
+	logistics?: SupplyPlannerLogisticsSnapshot;
 }
 
 export interface ReachableProcessorEntry {
@@ -382,7 +397,8 @@ export function buildSupplyPlannerSnapshot(
 		reachableProcessorsByBuildingAndMaterial: reachability.reachableProcessorsByBuildingAndMaterial,
 		warehouseConnectedConsumerCapacityByMaterial:
 			reachability.warehouseConnectedConsumerCapacityByMaterial,
-		warehouseConnectedProcessorsByMaterial: reachability.warehouseConnectedProcessorsByMaterial
+		warehouseConnectedProcessorsByMaterial: reachability.warehouseConnectedProcessorsByMaterial,
+		logistics: buildSupplyPlannerLogisticsSnapshot(game, industry.cityId)
 	};
 
 	return { status: 'ready', snapshot };
@@ -1655,7 +1671,7 @@ function inventoryFlowRatePerDay(allocation: BranchAllocationResult): number {
 }
 
 /** Project a ready snapshot using only rail-usable local production capacity. */
-export function projectSupplySnapshot(snapshot: SupplyPlannerSnapshot): SupplyPlannerProjection {
+function projectSupplySnapshotClosedForm(snapshot: SupplyPlannerSnapshot): SupplyPlannerProjection {
 	const requirements = buildSupplyMaterialRequirements(snapshot);
 	const usableIds = new Set(snapshot.usableBuildingIds);
 	// Branch allocations computed while projecting each material, threaded
@@ -1873,6 +1889,358 @@ export function projectSupplySnapshot(snapshot: SupplyPlannerSnapshot): SupplyPl
 		bottleneck: primaryBottleneck(snapshot, materials, warehouse, allocations),
 		limitations
 	};
+}
+
+/** Select the dated route-aware projection only when logistics can affect it. */
+export function projectSupplySnapshot(snapshot: SupplyPlannerSnapshot): SupplyPlannerProjection {
+	const requirements = buildSupplyMaterialRequirements(snapshot);
+	return snapshot.logistics && hasRelevantPlannerLogistics(snapshot, requirements)
+		? projectSupplySnapshotWithLogistics(snapshot, requirements)
+		: projectSupplySnapshotClosedForm(snapshot);
+}
+
+interface PreparedSupplyMaterial {
+	requirement: SupplyMaterialRequirement;
+	installed: readonly SupplyPlannerBuildingSnapshot[];
+	usable: readonly SupplyPlannerBuildingSnapshot[];
+	buildingLevels: readonly number[];
+	inventoryUnits: number;
+	accessibleInventory: number;
+	installedCapacityPerDay: number;
+	usableCapacityPerDay: number;
+	materialKind: (typeof MATERIALS)[MaterialId]['kind'] | undefined;
+	isRawOrIntermediate: boolean;
+	inventoryAccessible: boolean;
+	warehouseConnectedConsumerCapacity: number;
+	allocation: BranchAllocationResult | null;
+	useInventoryFlow: boolean;
+}
+
+interface SupplyMaterialDayStep {
+	materialId: MaterialId;
+	startingInventoryUnits: number;
+	localAvailableUnits: number;
+	importRequiredUnits: number;
+	endingInventoryUnits: number;
+}
+
+interface SupplyMaterialTrace {
+	localAvailableUnits: number[];
+	importRequiredUnits: number[];
+	endingInventoryUnits: number[];
+	stockoutDay: number | null;
+}
+
+/** Prepare all topology/capacity facts once, outside the 30-day trace. */
+function prepareSupplyMaterials(
+	snapshot: SupplyPlannerSnapshot,
+	requirements: readonly SupplyMaterialRequirement[]
+): PreparedSupplyMaterial[] {
+	const usableIds = new Set(snapshot.usableBuildingIds);
+	return requirements.map((requirement) => {
+		const installed = requirement.producerRecipeId
+			? buildingsForRecipe(snapshot.buildings, requirement.producerRecipeId)
+			: [];
+		const usable = installed.filter((building) => usableIds.has(building.id));
+		const buildingLevels = installed
+			.map((building) => building.level)
+			.sort((left, right) => left - right);
+		const inventoryUnits = Math.max(0, snapshot.inventory[requirement.materialId] ?? 0);
+		const materialKind = MATERIALS[requirement.materialId]?.kind;
+		let allocation: BranchAllocationResult | null = null;
+		let usableCapacityPerDay: number;
+		if (materialKind !== 'finished' && snapshot.reachableBranchesByBuildingAndMaterial) {
+			const hasBranchData = usable.some(
+				(building) =>
+					snapshot.reachableBranchesByBuildingAndMaterial?.[
+						`${building.id}\u0000${requirement.materialId}`
+					]
+			);
+			if (hasBranchData) {
+				allocation = allocateCapacityByBranch(usable, requirement.materialId, snapshot);
+				usableCapacityPerDay = allocation.totalFlow;
+			} else if (
+				(snapshot.warehouseConnectedProcessorsByMaterial[requirement.materialId]?.length ?? 0) > 0
+			) {
+				allocation = allocateCapacityByBranch(usable, requirement.materialId, snapshot);
+				usableCapacityPerDay = allocation.totalFlow;
+			} else {
+				usableCapacityPerDay = perProducerCappedCapacity(usable, requirement.materialId, snapshot);
+			}
+		} else {
+			usableCapacityPerDay = perProducerCappedCapacity(usable, requirement.materialId, snapshot);
+		}
+
+		const isRawOrIntermediate =
+			materialKind !== 'finished' && requirement.producerRecipeId !== null;
+		const warehouseConnectedConsumerCapacity = isRawOrIntermediate
+			? (snapshot.warehouseConnectedConsumerCapacityByMaterial[requirement.materialId] ?? 0)
+			: 0;
+		const inventoryAccessible = !isRawOrIntermediate || warehouseConnectedConsumerCapacity > 0;
+		const accessibleInventory = inventoryAccessible ? inventoryUnits : 0;
+		const useInventoryFlow =
+			isRawOrIntermediate &&
+			allocation !== null &&
+			allocation.hasProcessorData &&
+			allocation.processorCaps.length > 0;
+
+		return {
+			requirement,
+			installed,
+			usable,
+			buildingLevels,
+			inventoryUnits,
+			accessibleInventory,
+			installedCapacityPerDay: getMaterialOutputCapacityPerDay(installed, requirement.materialId),
+			usableCapacityPerDay,
+			materialKind,
+			isRawOrIntermediate,
+			inventoryAccessible,
+			warehouseConnectedConsumerCapacity,
+			allocation,
+			useInventoryFlow
+		};
+	});
+}
+
+/** Project one material for one day using the prepared HPA-281 flow facts. */
+function projectPreparedMaterialDay(
+	prepared: PreparedSupplyMaterial,
+	currentInventoryUnits: number
+): SupplyMaterialDayStep {
+	const startingInventoryUnits = Math.max(0, currentInventoryUnits);
+	const requiredPerDay = prepared.requirement.requiredPerDay;
+	let localAvailableUnits: number;
+	let endingInventoryUnits: number;
+
+	if (prepared.useInventoryFlow && prepared.allocation) {
+		const flow = localSupplyOverHorizon(prepared.allocation, 1, startingInventoryUnits);
+		localAvailableUnits = flow.totalLocalSupply;
+		endingInventoryUnits = Math.max(0, startingInventoryUnits - flow.inventoryConsumed);
+	} else if (prepared.isRawOrIntermediate) {
+		const productionUnits = prepared.usableCapacityPerDay;
+		const inventoryConsumed = prepared.inventoryAccessible
+			? Math.min(
+					startingInventoryUnits,
+					prepared.warehouseConnectedConsumerCapacity,
+					Math.max(0, requiredPerDay - productionUnits)
+				)
+			: 0;
+		localAvailableUnits = Math.min(productionUnits + inventoryConsumed, requiredPerDay);
+		endingInventoryUnits = Math.max(0, startingInventoryUnits - inventoryConsumed);
+	} else {
+		const totalAvailableUnits = startingInventoryUnits + prepared.usableCapacityPerDay;
+		localAvailableUnits = totalAvailableUnits;
+		endingInventoryUnits = Math.max(0, totalAvailableUnits - requiredPerDay);
+	}
+
+	return {
+		materialId: prepared.requirement.materialId,
+		startingInventoryUnits,
+		localAvailableUnits,
+		importRequiredUnits: Math.max(0, requiredPerDay - localAvailableUnits),
+		endingInventoryUnits
+	};
+}
+
+function projectSupplySnapshotWithLogistics(
+	snapshot: SupplyPlannerSnapshot,
+	requirements: readonly SupplyMaterialRequirement[]
+): SupplyPlannerProjection {
+	const logistics = snapshot.logistics;
+	if (!logistics) return projectSupplySnapshotClosedForm(snapshot);
+
+	const prepared = prepareSupplyMaterials(snapshot, requirements);
+	const selectedExpectedInventory: Partial<Record<MaterialId, number>> = {
+		...snapshot.inventory
+	};
+	const selectedIntegerInventory = {
+		cityId: snapshot.supplyCityId,
+		materials: Object.fromEntries(
+			Object.entries(snapshot.inventory).map(([materialId, quantity]) => [
+				materialId,
+				canonicalQuantity(quantity ?? 0)
+			])
+		) as Partial<Record<MaterialId, number>>
+	};
+	let logisticsState: SupplyPlannerLogisticsState = createSupplyPlannerLogisticsState({
+		selectedInventory: selectedIntegerInventory,
+		selectedWarehouseCapacity: snapshot.warehouseCapacity,
+		logistics
+	});
+	const requiredMaterialIds = new Set(requirements.map((requirement) => requirement.materialId));
+	const traces = new Map<MaterialId, SupplyMaterialTrace>();
+	for (const material of prepared) {
+		traces.set(material.requirement.materialId, {
+			localAvailableUnits: [],
+			importRequiredUnits: [],
+			endingInventoryUnits: [],
+			stockoutDay: null
+		});
+	}
+
+	const remoteOriginConstraintRouteIds = new Set<string>();
+	const horizonDays = 30;
+	for (let offset = 0; offset < horizonDays; offset += 1) {
+		const day = logistics.currentDay + offset;
+		const arrivalResult = processSupplyPlannerTransferArrivals(logisticsState, day);
+		logisticsState = arrivalResult.state;
+		for (const arrival of arrivalResult.arrivals) {
+			if (
+				arrival.destinationCityId === snapshot.supplyCityId &&
+				requiredMaterialIds.has(arrival.materialId)
+			) {
+				selectedExpectedInventory[arrival.materialId] =
+					(selectedExpectedInventory[arrival.materialId] ?? 0) + arrival.quantity;
+			}
+		}
+
+		for (const material of prepared) {
+			const materialId = material.requirement.materialId;
+			const step = projectPreparedMaterialDay(material, selectedExpectedInventory[materialId] ?? 0);
+			selectedExpectedInventory[materialId] = step.endingInventoryUnits;
+			const trace = traces.get(materialId)!;
+			trace.localAvailableUnits.push(
+				Math.min(step.localAvailableUnits, material.requirement.requiredPerDay)
+			);
+			trace.importRequiredUnits.push(step.importRequiredUnits);
+			if (trace.stockoutDay === null && step.importRequiredUnits > 0) {
+				trace.stockoutDay = offset;
+			}
+		}
+
+		// Expected-value stock crosses into route arithmetic only through the
+		// existing canonicalQuantity floor/safe-integer behavior.
+		for (const materialId of requiredMaterialIds) {
+			logisticsState.selectedIntegerInventory = {
+				...logisticsState.selectedIntegerInventory,
+				materials: {
+					...logisticsState.selectedIntegerInventory.materials,
+					[materialId]: canonicalQuantity(selectedExpectedInventory[materialId] ?? 0)
+				}
+			};
+		}
+		getCityInventoryUsed(logisticsState.selectedIntegerInventory);
+
+		const dispatchResult = processSupplyPlannerRouteDispatches(logisticsState, day);
+		logisticsState = dispatchResult.state;
+		for (const attempt of dispatchResult.attempts) {
+			if (
+				attempt.originCityId !== snapshot.supplyCityId &&
+				requiredMaterialIds.has(attempt.materialId) &&
+				attempt.availableOriginStock < Math.min(attempt.destinationNeed, attempt.capacity)
+			) {
+				remoteOriginConstraintRouteIds.add(attempt.routeId);
+			}
+			if (
+				attempt.originCityId === snapshot.supplyCityId &&
+				requiredMaterialIds.has(attempt.materialId) &&
+				attempt.dispatchedQuantity > 0
+			) {
+				selectedExpectedInventory[attempt.materialId] = Math.max(
+					0,
+					(selectedExpectedInventory[attempt.materialId] ?? 0) - attempt.dispatchedQuantity
+				);
+			}
+		}
+		for (const material of prepared) {
+			const materialId = material.requirement.materialId;
+			traces
+				.get(materialId)!
+				.endingInventoryUnits.push(Math.max(0, selectedExpectedInventory[materialId] ?? 0));
+		}
+	}
+
+	const materials: SupplyMaterialProjection[] = prepared.map((material) => {
+		const requirement = material.requirement;
+		const trace = traces.get(requirement.materialId)!;
+		const stockoutDay = trace.stockoutDay;
+		const daysOfCover = stockoutDay;
+		const horizon = (horizonDays: SupplyPlannerHorizonDays): SupplyMaterialHorizonProjection => {
+			const localAvailableUnits = trace.localAvailableUnits
+				.slice(0, horizonDays)
+				.reduce((total, value) => total + value, 0);
+			const importRequiredUnits = trace.importRequiredUnits
+				.slice(0, horizonDays)
+				.reduce((total, value) => total + value, 0);
+			const endingInventoryUnits =
+				trace.endingInventoryUnits[horizonDays - 1] ?? material.accessibleInventory;
+			return {
+				horizonDays,
+				requiredUnits: requirement.requiredPerDay * horizonDays,
+				startingInventoryUnits: material.accessibleInventory,
+				localAvailableUnits,
+				importRequiredUnits,
+				endingInventoryUnits,
+				daysOfCover,
+				projectedStockoutDay: stockoutDay
+			};
+		};
+
+		return {
+			...requirement,
+			buildingCount: material.installed.length,
+			maxBuildingLevel: material.buildingLevels.at(-1) ?? 0,
+			buildingLevels: material.buildingLevels,
+			inventoryUnits: material.inventoryUnits,
+			daysOfCover,
+			projectedStockoutDay: stockoutDay,
+			installedCapacityPerDay: material.installedCapacityPerDay,
+			usableCapacityPerDay: material.usableCapacityPerDay,
+			sevenDay: horizon(7),
+			thirtyDay: horizon(30)
+		};
+	});
+
+	const warehouse = warehouseEvidence(snapshot);
+	const limitations: SupplyPlannerLimitation[] = [
+		{ kind: 'rail-capacity-not-modeled' },
+		{ kind: 'store-sales-capacity-not-modeled' }
+	];
+	if (remoteOriginConstraintRouteIds.size > 0) {
+		limitations.unshift({
+			kind: 'remote-origin-production-not-modeled',
+			routeIds: [...remoteOriginConstraintRouteIds].sort(compareCodeUnitStrings)
+		} as unknown as SupplyPlannerLimitation);
+	}
+
+	return {
+		snapshot,
+		materials,
+		warehouse,
+		bottleneck: primaryBottleneck(snapshot, materials, warehouse, {}),
+		limitations
+	};
+}
+
+function hasRelevantPlannerLogistics(
+	snapshot: SupplyPlannerSnapshot,
+	requirements: readonly SupplyMaterialRequirement[]
+): boolean {
+	const logistics = snapshot.logistics;
+	if (!logistics) return false;
+	const requiredMaterialIds = new Set(requirements.map((requirement) => requirement.materialId));
+	const knownCityIds = new Set<WorldCityId>([
+		snapshot.supplyCityId,
+		...logistics.remoteCities.map((row) => row.inventory.cityId)
+	]);
+	const relevantRoutes = logistics.routes.filter(
+		(route) =>
+			requiredMaterialIds.has(route.materialId) &&
+			knownCityIds.has(route.originCityId) &&
+			knownCityIds.has(route.destinationCityId)
+	);
+	if (relevantRoutes.length > 0) return true;
+
+	return logistics.inTransitOrders.some(
+		(order) =>
+			requiredMaterialIds.has(order.materialId) &&
+			(order.destinationCityId === snapshot.supplyCityId ||
+				logistics.routes.some(
+					(route) =>
+						route.originCityId === order.destinationCityId && route.materialId === order.materialId
+				))
+	);
 }
 
 export const projectSupplyPlan = projectSupplySnapshot;
