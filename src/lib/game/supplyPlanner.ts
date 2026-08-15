@@ -2221,7 +2221,7 @@ function projectSupplySnapshotWithLogistics(
 	for (const order of logistics.inTransitOrders) {
 		if (order.source.kind !== 'recurring-route') continue;
 		const forecast = routeForecastState.get(order.source.routeId);
-		if (!forecast || order.destinationCityId !== snapshot.supplyCityId) continue;
+		if (!forecast) continue;
 		if (forecast.firstArrivalDay === null || order.arrivalOnDay < forecast.firstArrivalDay) {
 			forecast.firstArrivalDay = order.arrivalOnDay;
 		}
@@ -2251,11 +2251,15 @@ function projectSupplySnapshotWithLogistics(
 					? arrivalOrder.source.routeId
 					: (projectedRouteByOrderId.get(arrival.transferOrderId) ?? null);
 			const arrivalRoute = arrivalRouteId ? routeForecastState.get(arrivalRouteId) : undefined;
+			// Track per-route delivered counts for every arrival so outbound
+			// routes (destination ≠ supply city) also show delivered units
+			// rather than a misleading 0.  The aggregate selected-chain
+			// metrics below remain gated to the supply city.
+			if (arrivalRoute) {
+				arrivalRoute.delivered30 += arrival.quantity;
+				if (offset < 7) arrivalRoute.delivered7 += arrival.quantity;
+			}
 			if (arrival.destinationCityId === snapshot.supplyCityId) {
-				if (arrivalRoute) {
-					arrivalRoute.delivered30 += arrival.quantity;
-					if (offset < 7) arrivalRoute.delivered7 += arrival.quantity;
-				}
 				if (requiredMaterialIds.has(arrival.materialId)) {
 					projectedDeliveredUnits30 += arrival.quantity;
 					if (offset < 7) projectedDeliveredUnits7 += arrival.quantity;
@@ -2319,7 +2323,13 @@ function projectSupplySnapshotWithLogistics(
 			const isRelevantInboundRoute =
 				attempt.destinationCityId === snapshot.supplyCityId &&
 				requiredMaterialIds.has(attempt.materialId);
-			if (attemptForecast && isRelevantInboundRoute) {
+			// Populate per-route forecast fields for every modeled route, not
+			// only required-material inbound routes.  The Advisor intentionally
+			// displays outbound routes and unrelated-material inbound routes
+			// because they affect selected-city stock/headroom, so their
+			// dispatched counts, condition, and projected arrival must reflect
+			// what the trace actually does rather than staying at defaults.
+			if (attemptForecast) {
 				attemptForecast.dispatched30 += attempt.dispatchedQuantity;
 				if (offset < 7) attemptForecast.dispatched7 += attempt.dispatchedQuantity;
 				attemptForecast.peakUnmetNeed = Math.max(

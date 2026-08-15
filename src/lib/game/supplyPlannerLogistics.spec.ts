@@ -478,6 +478,94 @@ describe('supply planner logistics projection state', () => {
 
 		expect(forecast?.firstProjectedArrivalDay).toBe(6);
 	});
+
+	it('populates forecast fields for a selected-city outbound route', () => {
+		// An outbound route (origin = supply city, destination = other city)
+		// is displayed by the Advisor because it depletes selected-city stock.
+		// Its dispatched count, condition, and projected arrival must reflect
+		// what the trace actually does, not stay at defaults.
+		const base = projectionSnapshot({
+			inventory: { 'bottled-water': 100 },
+			warehouseCapacity: 200,
+			warehouseUsed: 100
+		});
+		const projection = projectSupplySnapshot({
+			...base,
+			logistics: {
+				...base.logistics!,
+				remoteCities: [
+					{
+						inventory: inventory('breadbasket-basin', {}),
+						warehouseCapacity: 100
+					}
+				],
+				routes: [
+					route({
+						id: 'route-outbound',
+						originCityId: 'industry-city',
+						destinationCityId: 'breadbasket-basin',
+						materialId: 'bottled-water',
+						capacity: 10,
+						frequencyDays: 1,
+						leadTimeDays: 1,
+						transportCostPerUnit: 1,
+						nextDispatchOnDay: 5
+					})
+				]
+			}
+		});
+		const forecast = projection.routeForecasts?.find((row) => row.route.id === 'route-outbound');
+
+		expect(forecast).toBeDefined();
+		if (!forecast) return;
+		expect(forecast.projectedDispatchedUnits30).toBeGreaterThan(0);
+		expect(forecast.projectedCondition).not.toBe('awaiting-dispatch');
+		expect(forecast.firstProjectedArrivalDay).not.toBeNull();
+	});
+
+	it('populates forecast fields for an unrelated-material inbound route', () => {
+		// An inbound route carrying a material not in the required chain is
+		// displayed by the Advisor as shared-capacity evidence.  Its dispatched
+		// count and condition must reflect the trace, not stay at defaults.
+		const base = projectionSnapshot({
+			inventory: { 'bottled-water': 4 },
+			warehouseCapacity: 100,
+			warehouseUsed: 4
+		});
+		const projection = projectSupplySnapshot({
+			...base,
+			logistics: {
+				...base.logistics!,
+				remoteCities: [
+					{
+						inventory: inventory('breadbasket-basin', { flour: 200 }),
+						warehouseCapacity: 100
+					}
+				],
+				routes: [
+					route({
+						id: 'route-unrelated-inbound',
+						originCityId: 'breadbasket-basin',
+						destinationCityId: 'industry-city',
+						materialId: 'flour',
+						capacity: 10,
+						frequencyDays: 1,
+						leadTimeDays: 1,
+						transportCostPerUnit: 1,
+						nextDispatchOnDay: 5
+					})
+				]
+			}
+		});
+		const forecast = projection.routeForecasts?.find(
+			(row) => row.route.id === 'route-unrelated-inbound'
+		);
+
+		expect(forecast).toBeDefined();
+		if (!forecast) return;
+		expect(forecast.projectedDispatchedUnits30).toBeGreaterThan(0);
+		expect(forecast.projectedCondition).not.toBe('awaiting-dispatch');
+	});
 });
 
 describe('supply planner logistics error and edge-case paths', () => {
