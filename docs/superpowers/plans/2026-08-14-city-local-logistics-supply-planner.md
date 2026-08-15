@@ -193,7 +193,7 @@ Run:
 bun run test:unit -- src/lib/game/logisticsReadModels.spec.ts --run --project server
 ```
 
-Expected: current test may pass behaviorally; the implementation cleanup is verified in GREEN by removing the duplicate comparator.
+Expected: current behavior may already pass; GREEN removes the duplicate implementation.
 
 - [ ] **Step 4: Pin narrowed `RecurringRouteInput` form construction**
 
@@ -330,7 +330,7 @@ interface SupplyMaterialDayStep {
 
 - [ ] **Step 1: Pin current no-logistics projection before refactoring**
 
-Use a current HPA-281 fixture with no routes/in-transit orders and assert:
+Use a current HPA-281 fixture with no routes/in-transit orders and record the concrete public output in the test, then assert the same output after the refactor:
 
 ```ts
 expect({
@@ -338,10 +338,15 @@ expect({
 	warehouse: projection.warehouse,
 	bottleneck: projection.bottleneck,
 	limitations: projection.limitations
-}).toEqual(EXISTING_EXPECTED_PROJECTION);
+}).toEqual({
+	materials: expectedMaterials,
+	warehouse: expectedWarehouse,
+	bottleneck: expectedBottleneck,
+	limitations: expectedLimitations
+});
 ```
 
-Use concrete values already produced by the fixture; do not rewrite them after implementation.
+`expectedMaterials`, `expectedWarehouse`, `expectedBottleneck`, and `expectedLimitations` are literal fixture values captured in the RED test before implementation; do not regenerate them from the production function under test.
 
 - [ ] **Step 2: Add remote-only snapshot test**
 
@@ -352,7 +357,9 @@ expect(snapshot.logistics.remoteCities.map((row) => row.inventory.cityId)).toEqu
 	'breadbasket-basin'
 ]);
 expect(snapshot.logistics.remoteCities.some((row) => row.inventory.cityId === snapshot.supplyCityId)).toBe(false);
-expect(snapshot.inventory).toEqual(game.cityInventories.find((row) => row.cityId === 'industry-city')!.materials);
+expect(snapshot.inventory).toEqual(
+	game.cityInventories.find((row) => row.cityId === 'industry-city')!.materials
+);
 ```
 
 Also assert orders/routes are copied and later source mutation does not affect snapshot values.
@@ -365,7 +372,7 @@ Fixture requirements:
 
 ```text
 one due in-transit arrival
-selected supply city expected stock becomes fractional (e.g. 4.75)
+selected supply city expected stock becomes fractional (for example 4.75)
 canonical route-visible selected stock is 4
 two active due routes contend
 one zero-quantity attempt
@@ -391,7 +398,7 @@ expect(planner.nextDispatchByRoute).toEqual(
 );
 ```
 
-Also explicitly assert:
+Also assert:
 
 ```ts
 expect(canonicalQuantity(4.75)).toBe(4);
@@ -653,20 +660,7 @@ firstShortageImprovementDays: number;
 
 - [ ] **Step 1: Prove no-demand and missing-producer still win before logistics**
 
-Add fixtures containing active/inbound logistics and assert:
-
-```ts
-expect(buildSupplyPlan(zeroDemandGame, request, availability).plan.recommendation.action).toEqual({
-	kind: 'none',
-	reason: 'no-demand'
-});
-
-expect(buildSupplyPlan(missingProducerGame, request, availability).plan.recommendation.action.kind).toBe(
-	'build-producer'
-);
-```
-
-The missing-producer assertion should pin the same upstream-first material HPA-281 currently chooses.
+Add fixtures containing active/inbound logistics and assert the zero-demand result remains `none/no-demand`, while the missing-producer case keeps the same upstream-first `build-producer` material HPA-281 currently selects.
 
 #### RED — Shared Condition Vocabulary
 
@@ -708,12 +702,9 @@ origin-stock-constrained remote with unknown production -> no unsafe larger/fast
 Create candidate capacity:
 
 ```ts
-const capacity = Math.min(
-	Math.ceil(peakDailyImportNeed),
-	availableWholeOriginStock
-);
+const capacity = Math.min(Math.ceil(peakDailyImportNeed), availableWholeOriginStock);
 if (!Number.isSafeInteger(capacity) || capacity < 1) {
-	// do not emit create-route
+	// candidate list remains unchanged
 }
 ```
 
@@ -747,8 +738,14 @@ Do not expand `compareCandidate` into invented warehouse savings.
 Expected shapes:
 
 ```ts
-expect(actionKey({ kind: 'build-warehouse', cityId: 'industry-city', buildingTypeId: 'warehouse', cost: 1 }))
-	.toBe('build-warehouse:industry-city');
+expect(
+	actionKey({
+		kind: 'build-warehouse',
+		cityId: 'industry-city',
+		buildingTypeId: 'warehouse',
+		cost: 1
+	})
+).toBe('build-warehouse:industry-city');
 
 expect(actionKey({ kind: 'resume-route', routeId: 'route-2' })).toBe('resume-route:route-2');
 ```
@@ -767,17 +764,25 @@ if (snapshot.demandPerDay <= 0) return planWithNoop(snapshot, baseline, 'no-dema
 const scopedGame = { ...clone(game), activeIndustryCityId: snapshot.supplyCityId };
 const missing = missingProducerMaterials(snapshot);
 if (missing.length > 0) {
-	return makeExistingMissingProducerPlan(...);
+	return makeExistingMissingProducerPlan(/* current missing-producer inputs */);
 }
 
-const logisticsCause = diagnoseLogistics(...);
+const logisticsCause = diagnoseLogistics(snapshot, baseline);
 if (logisticsCause) {
-	const logisticsPlan = makeBoundedLogisticsPlan(...);
+	const logisticsPlan = makeBoundedLogisticsPlan(
+		game,
+		snapshot,
+		baseline,
+		availability,
+		logisticsCause
+	);
 	if (logisticsPlan) return logisticsPlan;
 }
 
-return makeExistingLocalPlan(...);
+return makeExistingLocalPlan(game, snapshot, baseline, availability);
 ```
+
+`makeExistingMissingProducerPlan` and `makeExistingLocalPlan` are plan-level names for extracting the current `makePlan` branches only if that keeps the function readable; do not create them merely to match this pseudocode.
 
 Delete `activeOutboundRouteIds` and `logistics-contention-not-modeled`; no alias.
 
@@ -960,28 +965,19 @@ openStores(retailCityId: WorldCityId): void;
 Spy call order for `create-route`:
 
 ```ts
-expect(calls).toEqual([
-	'closeOverlays',
-	'openLogistics:preset'
-]);
+expect(calls).toEqual(['closeOverlays', 'openLogistics:preset']);
 ```
 
 For `resume-route` / `edit-route`:
 
 ```ts
-expect(calls).toEqual([
-	'closeOverlays',
-	'openLogistics:route-2'
-]);
+expect(calls).toEqual(['closeOverlays', 'openLogistics:route-2']);
 ```
 
 For source:
 
 ```ts
-expect(calls).toEqual([
-	'closeOverlays',
-	'openStores:harbor-city'
-]);
+expect(calls).toEqual(['closeOverlays', 'openStores:harbor-city']);
 ```
 
 Warehouse must close, switch to `action.cityId`, then arm placement.
@@ -999,8 +995,6 @@ Use a stable key from every typed preset field. On same key, return current valu
 #### GREEN — Route-Local Destination State
 
 - [ ] **Step 6: Extend `openLogisticsManagement` rather than create a new router/store**
-
-A minimal route-local shape is acceptable:
 
 ```ts
 function openLogisticsManagement(
@@ -1023,7 +1017,7 @@ Existing non-planner callers can continue passing only route ID/null.
 
 - [ ] **Step 8: Re-check action availability immediately before handoff**
 
-If route/source capability is stale/unavailable, handoff is a no-op and no panel state is changed after close.
+If route/source capability is stale/unavailable, return before `closeOverlays()` so the existing planner remains open and no panel state is destroyed.
 
 - [ ] **Step 9: Run focused server/client tests**
 
@@ -1110,7 +1104,7 @@ Do not embed/reimplement `LogisticsPanel`. Reuse current plan/evidence/candidate
 
 - [ ] **Step 4: Reuse current day-zero in-transit selector output**
 
-The route/controller layer can supply current `selectInTransitInventory(game)` evidence or the planner can attach the selector result at snapshot build time; do not duplicate its grouping implementation.
+Attach `selectInTransitInventory(game)` evidence at snapshot/plan construction time; do not duplicate its grouping implementation.
 
 - [ ] **Step 5: Add localized condition/action/metric strings in all three catalogs**
 
@@ -1311,7 +1305,7 @@ git commit -m "test(supply): cover logistics planner lifecycle"
 - [ ] Existing `viabilityTier` remains the first comparator dimension.
 - [ ] Branch/reachability preparation is hoisted outside the 30-day loop and the representative warmed planner smoke stays under 2,000 ms.
 - [ ] Route preset conversion/apply-once behavior lives in `logisticsPanel.ts`; component never auto-submits or overwrites edits on same preset.
-- [ ] Handoffs close first, then open/focus the target panel.
+- [ ] Handoffs validate capability, close first, then open/focus the target panel.
 - [ ] Route/source/warehouse recommendations mutate only through existing player-confirmed UI.
 - [ ] Category/horizon context survives handoff/reopen.
 - [ ] No save schema, migration, compatibility layer, optimizer, generic scheduler, recursive remote planner, or HPA-296 implementation is added.
