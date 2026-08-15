@@ -6,6 +6,8 @@ import {
 	createRecurringRoute,
 	dispatchManualTransfer,
 	getDestinationTransferNeed,
+	getDestinationTransferNeedFromCapacity,
+	getRecurringDispatchQuantity,
 	pauseRecurringRoute,
 	processTransferArrivals,
 	quoteInterCityRates,
@@ -14,6 +16,7 @@ import {
 	removeRecurringRoute,
 	reprioritizeRecurringRoute,
 	resumeRecurringRoute,
+	sumReservedInTransitUnits,
 	updateRecurringRoute,
 	type ManualTransferFailure,
 	type ManualTransferInput,
@@ -27,7 +30,7 @@ import {
 	withRecurringRoutes,
 	withWarehouses
 } from './interCityLogistics.testUtils';
-import type { GameState, RecurringRoute, TransferOrder, WorldCityId } from './types';
+import type { GameState, MaterialId, RecurringRoute, TransferOrder, WorldCityId } from './types';
 import { openWorldCity } from './world';
 
 function createThreeIndustryCityGame(): GameState {
@@ -217,6 +220,86 @@ describe('inter-city manual logistics', () => {
 		expect(quoteInterCityRates('industry-city', 'harbor-city')).toBeNull();
 	});
 
+	test('shares reservation, destination headroom, and dispatch arithmetic', () => {
+		const orders: TransferOrder[] = [
+			{
+				id: 'transfer-1',
+				source: { kind: 'manual' },
+				originCityId: 'industry-city',
+				destinationCityId: 'breadbasket-basin',
+				materialId: 'grain',
+				quantity: 7,
+				createdOnDay: 1,
+				dispatchedOnDay: 1,
+				arrivalOnDay: 2,
+				transportCost: 7,
+				status: 'in-transit'
+			},
+			{
+				id: 'transfer-2',
+				source: { kind: 'manual' },
+				originCityId: 'industry-city',
+				destinationCityId: 'breadbasket-basin',
+				materialId: 'water',
+				quantity: 5,
+				createdOnDay: 1,
+				dispatchedOnDay: 1,
+				arrivalOnDay: 1,
+				transportCost: 5,
+				status: 'delivered'
+			}
+		];
+
+		expect(sumReservedInTransitUnits(orders, 'breadbasket-basin')).toBe(7);
+		expect(sumReservedInTransitUnits([], 'breadbasket-basin')).toBe(0);
+		expect(
+			getDestinationTransferNeedFromCapacity({
+				warehouseCapacity: 100,
+				warehouseUsed: 60,
+				reservedInTransitUnits: 25
+			})
+		).toBe(15);
+		expect(
+			getDestinationTransferNeedFromCapacity({
+				warehouseCapacity: 0,
+				warehouseUsed: 1,
+				reservedInTransitUnits: 2
+			})
+		).toBe(0);
+		expect(
+			getRecurringDispatchQuantity({
+				destinationNeed: 30,
+				routeCapacity: 20,
+				availableOriginStock: 12
+			})
+		).toBe(12);
+		expect(
+			getRecurringDispatchQuantity({
+				destinationNeed: 0,
+				routeCapacity: 20,
+				availableOriginStock: 12
+			})
+		).toBe(0);
+	});
+
+	test('preserves safe aggregate behavior for shared route arithmetic', () => {
+		const overflowingOrders: TransferOrder[] = [
+			createTransferOrder({ quantity: Number.MAX_SAFE_INTEGER }),
+			createTransferOrder({ id: 'transfer-2', quantity: 1 })
+		];
+
+		expect(() => sumReservedInTransitUnits(overflowingOrders, 'breadbasket-basin')).toThrow(
+			RangeError
+		);
+		expect(
+			getRecurringDispatchQuantity({
+				destinationNeed: Number.MAX_SAFE_INTEGER,
+				routeCapacity: Number.MAX_SAFE_INTEGER,
+				availableOriginStock: Number.MAX_SAFE_INTEGER
+			})
+		).toBe(Number.MAX_SAFE_INTEGER);
+	});
+
 	test('quotes the current industry-city pairs with the pinned distance bands', () => {
 		const game = createThreeIndustryCityGame();
 
@@ -383,7 +466,7 @@ const recurringRouteFailureCases: readonly RecurringRouteFailureCase[] = [
 	{
 		name: 'an invalid origin',
 		reason: 'invalid-origin',
-		input: validRecurringRouteInput({ originCityId: 'unknown-city' })
+		input: validRecurringRouteInput({ originCityId: 'unknown-city' as WorldCityId })
 	},
 	{
 		name: 'an invalid destination',
@@ -398,7 +481,7 @@ const recurringRouteFailureCases: readonly RecurringRouteFailureCase[] = [
 	{
 		name: 'an unknown material',
 		reason: 'invalid-material',
-		input: validRecurringRouteInput({ materialId: 'unknown-material' })
+		input: validRecurringRouteInput({ materialId: 'unknown-material' as MaterialId })
 	},
 	{
 		name: 'a nonpositive capacity',
@@ -893,7 +976,11 @@ describe('inter-city recurring routes', () => {
 		const before = structuredClone(game);
 
 		expect(
-			updateRecurringRoute(game, 'route-1', validRecurringRouteInput({ originCityId: 'unknown' }))
+			updateRecurringRoute(
+				game,
+				'route-1',
+				validRecurringRouteInput({ originCityId: 'unknown' as WorldCityId })
+			)
 		).toEqual({ ok: false, reason: 'invalid-origin' });
 		expect(game).toEqual(before);
 	});

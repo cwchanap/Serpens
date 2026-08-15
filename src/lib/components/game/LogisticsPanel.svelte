@@ -197,7 +197,9 @@
 	}
 
 	function routeInput(): RecurringRouteInput | null {
-		if (routeOriginCityId && routeOriginCityId === routeDestinationCityId) {
+		if (!routeOriginCityId || !routeDestinationCityId || !routeMaterialId) return null;
+
+		if (routeOriginCityId === routeDestinationCityId) {
 			setFailure('same-city');
 			return null;
 		}

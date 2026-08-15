@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import {
 	addCityInventoryMaterial,
 	assertValidEntityCityOwnership,
+	canonicalQuantity,
 	compareWorldCityIds,
 	findEntityCityOwnershipIssues,
 	getCityInventory,
@@ -187,6 +188,14 @@ describe('city inventory helpers', () => {
 			quantityRemoved: 0,
 			shortage: 0
 		});
+	});
+
+	test('exports canonical integer crossing behavior', () => {
+		expect(canonicalQuantity(4.75)).toBe(4);
+		expect(canonicalQuantity(0.99)).toBe(0);
+		expect(canonicalQuantity(-1)).toBe(0);
+		expect(canonicalQuantity(Number.NaN)).toBe(0);
+		expect(canonicalQuantity(Number.MAX_SAFE_INTEGER)).toBe(Number.MAX_SAFE_INTEGER);
 	});
 
 	test('rejects arithmetic that would create unsafe inventory or pressure state', () => {

@@ -332,7 +332,7 @@ function supportsRetailSupplyAssignment(game: GameState, cityId: WorldCityId): b
 	);
 }
 
-function canonicalQuantity(quantity: number): number {
+export function canonicalQuantity(quantity: number): number {
 	if (!Number.isFinite(quantity)) {
 		return 0;
 	}

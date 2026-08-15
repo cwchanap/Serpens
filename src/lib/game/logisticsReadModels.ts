@@ -1,4 +1,5 @@
 import { compareWorldCityIds } from './cityInventory';
+import { compareRecurringRoutes } from './interCityLogistics';
 import type {
 	DailyRouteDispatchAttempt,
 	GameState,
@@ -205,7 +206,7 @@ export function selectRouteOperations(game: GameState): RouteOperationalSummary[
 		}
 	}
 
-	return [...game.logistics.recurringRoutes].sort(compareCurrentRoutes).map((route) => {
+	return [...game.logistics.recurringRoutes].sort(compareRecurringRoutes).map((route) => {
 		const totals = totalsByRouteId.get(route.id)!;
 		const latestAttempt = totals.latestAttempt;
 
@@ -257,14 +258,6 @@ export function selectLogisticsTotals(game: GameState): {
 	}
 
 	return { deliveredUnits, transportCost };
-}
-
-function compareCurrentRoutes(left: RecurringRoute, right: RecurringRoute): number {
-	if (left.priority !== right.priority) {
-		return left.priority < right.priority ? -1 : 1;
-	}
-
-	return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
 }
 
 function compareRawIds(left: string, right: string): number {
