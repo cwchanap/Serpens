@@ -330,6 +330,123 @@ function warehousePressurePlannerGame(): GameState {
 	};
 }
 
+function supplyPlannerLogisticsLifecycleGame(): GameState {
+	let game: GameState = {
+		...createNewGame('grocery', 20260503),
+		cash: 1_000_000,
+		decisions: []
+	};
+
+	const build = (
+		tileId: string,
+		buildingTypeId: Parameters<typeof buildIndustrialBuilding>[1]['buildingTypeId']
+	) => {
+		const before = game.industrialBuildings.length;
+		game = buildIndustrialBuilding(game, { tileId, buildingTypeId });
+		if (game.industrialBuildings.length !== before + 1) {
+			throw new Error(`Could not build ${buildingTypeId} for the planner logistics fixture.`);
+		}
+	};
+
+	build(`${game.activeIndustryCityId}-${GRAIN_FIELD_TILE.x}-${GRAIN_FIELD_TILE.y}`, 'grain-farm');
+	build(
+		`${game.activeIndustryCityId}-${INDUSTRIAL_BUILD_TILES[0]!.x}-${INDUSTRIAL_BUILD_TILES[0]!.y}`,
+		'flour-mill'
+	);
+	build(
+		`${game.activeIndustryCityId}-${INDUSTRIAL_BUILD_TILES[1]!.x}-${INDUSTRIAL_BUILD_TILES[1]!.y}`,
+		'pantry-works'
+	);
+	build(
+		`${game.activeIndustryCityId}-${INDUSTRIAL_BUILD_TILES[2]!.x}-${INDUSTRIAL_BUILD_TILES[2]!.y}`,
+		'warehouse'
+	);
+
+	const connect = (
+		originTypeId: Parameters<typeof buildIndustrialBuilding>[1]['buildingTypeId'],
+		destinationTypeId: Parameters<typeof buildIndustrialBuilding>[1]['buildingTypeId']
+	) => {
+		const origin = game.industrialBuildings.find((building) => building.typeId === originTypeId);
+		const destination = game.industrialBuildings.find(
+			(building) => building.typeId === destinationTypeId
+		);
+		if (!origin || !destination) {
+			throw new Error(
+				`Missing ${originTypeId} or ${destinationTypeId} in planner logistics fixture.`
+			);
+		}
+
+		const input = {
+			originBuildingId: origin.id,
+			waypoints: [],
+			destinationBuildingId: destination.id
+		};
+		const preview = buildRailPreview(game, input);
+		if (
+			preview.pathKeys.length === 0 ||
+			(preview.blockReason && preview.blockReason.code !== 'railAlreadyConnected')
+		) {
+			throw new Error(
+				`Could not connect ${originTypeId} to ${destinationTypeId} in planner fixture.`
+			);
+		}
+		if (preview.blockReason?.code !== 'railAlreadyConnected') {
+			game = buildRail(game, input);
+		}
+	};
+
+	// Keep the installed grain farm and flour mill disconnected. The planner
+	// then has a real local chain prerequisite without crediting it as usable
+	// flour capacity; a remote flour route can feed the warehouse-connected
+	// pantry branch and is therefore a positive, bounded recommendation.
+	connect('pantry-works', 'warehouse');
+
+	game = {
+		...game,
+		day: 7,
+		finance: {
+			...game.finance,
+			currentDayActivity: { ...game.finance.currentDayActivity, day: 7 }
+		},
+		world: {
+			...game.world,
+			revealedCityIds: [...game.world.revealedCityIds, 'breadbasket-basin']
+		},
+		decisions: []
+	};
+	game = openWorldCity(game, 'breadbasket-basin');
+	game = buildWarehouseInCity(game, 'breadbasket-basin');
+
+	const stores = game.stores.map((store) => {
+		const products = initializeStoreProducts(store.archetypeId, 4).map((product) =>
+			product.categoryId === 'pantry'
+				? { ...product, stock: 0, reorderThreshold: 1, targetStock: 10_000 }
+				: product
+		);
+		return { ...store, level: 4, products, stockHealth: calculateStockHealth(products) };
+	});
+	const cityInventories = game.cityInventories.map((inventory) => {
+		if (inventory.cityId === 'industry-city') {
+			return { ...inventory, materials: {} };
+		}
+		if (inventory.cityId === 'breadbasket-basin') {
+			return { ...inventory, materials: { flour: 200 } };
+		}
+		return inventory;
+	});
+
+	return {
+		...game,
+		cash: 1_000_000,
+		activeCityId: 'harbor-city',
+		activeIndustryCityId: 'industry-city',
+		stores,
+		cityInventories,
+		retailSupplyAssignments: [{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' }],
+		decisions: []
+	};
+}
+
 function openConvenienceStoreInCity(game: GameState, cityId: string): GameState {
 	const city = game.cities.find((candidate) => candidate.id === cityId);
 
@@ -568,6 +685,21 @@ interface SavedGame {
 		retailCityId: string;
 		supplyCityId: string | null;
 	}>;
+	logistics: {
+		recurringRoutes: Array<{
+			id: string;
+			originCityId: string;
+			destinationCityId: string;
+			materialId: string;
+			capacity: number;
+			frequencyDays: number;
+			leadTimeDays: number;
+			transportCostPerUnit: number;
+			priority: number;
+			state: 'active' | 'paused';
+			nextDispatchOnDay: number;
+		}>;
+	};
 	events: {
 		activeModifiers: Array<{
 			id: string;
@@ -3125,6 +3257,108 @@ test('supply planner warehouse', async ({ page }) => {
 	await expect(
 		reopenedAdvisor.getByRole('button', { name: '7 days', exact: true })
 	).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('supply planner logistics lifecycle hands off a route recommendation without mutating until submit', async ({
+	page
+}) => {
+	test.setTimeout(90_000);
+	await page.setViewportSize({ width: 1200, height: 1000 });
+	await installSandboxAutoSave(page, supplyPlannerLogisticsLifecycleGame());
+
+	await openMapMenuItem(page, /industry city map/i);
+	await expect(page.getByRole('heading', { name: /industry city/i })).toBeVisible();
+	await expectIndustryMapReady(page);
+
+	await page.getByRole('button', { name: /^build$/i }).click();
+	const buildMenu = page.getByRole('dialog', { name: /build menu/i });
+	await expect(buildMenu).toBeVisible();
+	await buildMenu.getByRole('button', { name: /supply advisor|what should i build/i }).click();
+
+	const advisor = page.getByRole('dialog', { name: /supply advisor/i });
+	await expect(advisor).toBeVisible();
+	const categorySelect = advisor.getByRole('combobox', { name: 'Category' });
+	await categorySelect.selectOption('pantry');
+	await expect(categorySelect).toHaveValue('pantry');
+	await advisor.getByRole('button', { name: '7 days', exact: true }).click();
+	await expect(advisor.getByRole('button', { name: '7 days', exact: true })).toHaveAttribute(
+		'aria-pressed',
+		'true'
+	);
+
+	const recommendation = advisor.getByRole('region', {
+		name: /supply planner recommendation/i
+	});
+	await expect(
+		recommendation.getByText(
+			/Harbor City is configured to use Industry City; select a better source or add an inbound route\./i
+		)
+	).toBeVisible();
+	const createRoute = recommendation.getByRole('button', { name: /^create flour route:/i });
+	await expect(createRoute).toBeVisible();
+	await expect((await readAutoSaveGame(page)).logistics.recurringRoutes).toHaveLength(0);
+	await createRoute.click();
+
+	await expect(advisor).toHaveCount(0);
+	const logistics = page.getByRole('dialog', { name: /^logistics$/i });
+	await expect(logistics).toBeVisible();
+	await expect(logistics.getByText(/no recurring routes yet/i)).toBeVisible();
+	await expect(logistics.locator('#logistics-route-origin')).toHaveValue('breadbasket-basin');
+	await expect(logistics.locator('#logistics-route-destination')).toHaveValue('industry-city');
+	await expect(logistics.locator('#logistics-route-material')).toHaveValue('flour');
+
+	const suggestedCapacity = Number(
+		await logistics.locator('#logistics-route-capacity').inputValue()
+	);
+	expect(suggestedCapacity).toBeGreaterThan(0);
+	const submittedCapacity = suggestedCapacity + 1;
+	await logistics.locator('#logistics-route-capacity').fill(String(submittedCapacity));
+	await expect((await readAutoSaveGame(page)).logistics.recurringRoutes).toHaveLength(0);
+
+	await logistics
+		.locator('#logistics-route-form')
+		.getByRole('button', { name: /^create route$/i })
+		.click();
+	await expect(logistics.getByRole('status')).toContainText(/Recurring route created\./i);
+	await expect(logistics.locator('#logistics-route-route-1')).toContainText(
+		/Breadbasket Basin → Industry City/i
+	);
+	await expect
+		.poll(async () => (await readAutoSaveGame(page)).logistics.recurringRoutes.length)
+		.toBe(1);
+	const savedRoute = (await readAutoSaveGame(page)).logistics.recurringRoutes[0];
+	expect(savedRoute).toEqual(
+		expect.objectContaining({
+			originCityId: 'breadbasket-basin',
+			destinationCityId: 'industry-city',
+			materialId: 'flour',
+			capacity: submittedCapacity,
+			state: 'active'
+		})
+	);
+
+	await logistics.getByRole('button', { name: 'Close Logistics' }).click();
+	await page.getByRole('button', { name: /^build$/i }).click();
+	const reopenedBuildMenu = page.getByRole('dialog', { name: /build menu/i });
+	await reopenedBuildMenu
+		.getByRole('button', { name: /supply advisor|what should i build/i })
+		.click();
+	const reopenedAdvisor = page.getByRole('dialog', { name: /supply advisor/i });
+	await expect(reopenedAdvisor.getByRole('combobox', { name: 'Category' })).toHaveValue('pantry');
+	await expect(
+		reopenedAdvisor.getByRole('button', { name: '7 days', exact: true })
+	).toHaveAttribute('aria-pressed', 'true');
+
+	const logisticsEvidence = reopenedAdvisor.getByRole('region', {
+		name: /logistics forecast evidence/i
+	});
+	await expect(
+		logisticsEvidence.getByText(/Breadbasket Basin → Industry City · Flour/i)
+	).toBeVisible();
+	await expect(logisticsEvidence.getByText(/Next dispatch: day 7\./i)).toBeVisible();
+	await expect(
+		logisticsEvidence.getByText(/No route forecasts affect this supply city\./i)
+	).toHaveCount(0);
 });
 
 test('rail-fed production connects two industrial buildings and records a rail shipment', async ({
