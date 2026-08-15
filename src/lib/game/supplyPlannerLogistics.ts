@@ -33,6 +33,7 @@ export interface SupplyPlannerLogisticsSnapshot {
 	inTransitOrders: readonly Readonly<TransferOrder>[];
 	routes: readonly Readonly<RecurringRoute>[];
 	nextRouteSequence: number;
+	nextTransferSequence: number;
 }
 
 /** Mutable, trace-local integer state used by the planner's route-day helpers. */
@@ -95,7 +96,8 @@ export function buildSupplyPlannerLogisticsSnapshot(
 			game.logistics.transferOrders.filter((order) => order.status === 'in-transit')
 		),
 		routes: structuredClone(game.logistics.recurringRoutes),
-		nextRouteSequence: game.logistics.nextRouteSequence
+		nextRouteSequence: game.logistics.nextRouteSequence,
+		nextTransferSequence: game.logistics.nextTransferSequence
 	};
 }
 
@@ -104,7 +106,6 @@ export function createSupplyPlannerLogisticsState(input: {
 	selectedInventory: CityInventory;
 	selectedWarehouseCapacity: number;
 	logistics: SupplyPlannerLogisticsSnapshot;
-	nextTransferSequence?: number;
 }): SupplyPlannerLogisticsState {
 	return {
 		selectedIntegerInventory: structuredClone(input.selectedInventory),
@@ -117,8 +118,7 @@ export function createSupplyPlannerLogisticsState(input: {
 		) as Partial<Record<WorldCityId, number>>,
 		inTransitOrders: input.logistics.inTransitOrders.map((order) => structuredClone(order)),
 		routes: input.logistics.routes.map((route) => structuredClone(route)),
-		nextTransferSequence:
-			input.nextTransferSequence ?? deriveNextTransferSequence(input.logistics.inTransitOrders)
+		nextTransferSequence: input.logistics.nextTransferSequence
 	};
 }
 
@@ -337,16 +337,6 @@ function findInventory(
 function getWarehouseCapacity(input: SupplyPlannerLogisticsState, cityId: WorldCityId): number {
 	if (input.selectedIntegerInventory.cityId === cityId) return input.selectedWarehouseCapacity;
 	return input.remoteWarehouseCapacities[cityId] ?? 0;
-}
-
-function deriveNextTransferSequence(orders: readonly TransferOrder[]): number {
-	let highest = 0;
-	for (const order of orders) {
-		if (!order.id.startsWith('transfer-')) continue;
-		const sequence = Number(order.id.slice('transfer-'.length));
-		if (Number.isSafeInteger(sequence) && sequence > highest) highest = sequence;
-	}
-	return checkedAdd(highest, 1, 'Next transfer sequence');
 }
 
 function compareTransferOrderIds(left: TransferOrder, right: TransferOrder): number {

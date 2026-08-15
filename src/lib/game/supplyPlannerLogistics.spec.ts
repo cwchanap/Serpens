@@ -100,7 +100,8 @@ function projectionSnapshot(overrides: Partial<SupplyPlannerSnapshot> = {}): Sup
 					nextDispatchOnDay: 5
 				})
 			],
-			nextRouteSequence: 2
+			nextRouteSequence: 2,
+			nextTransferSequence: 1
 		},
 		...overrides
 	};
@@ -127,6 +128,83 @@ describe('supply planner logistics projection state', () => {
 		withRoutes.logistics.recurringRoutes[0]!.capacity = 99;
 		expect(remote.inventory.materials.water).toBe(1);
 		expect(snapshot.routes[0]!.capacity).toBe(4);
+	});
+
+	it('isolates copied in-transit orders and preserves the authoritative sequence', () => {
+		const sourceOrder = order({ id: 'transfer-1', quantity: 2 });
+		const expectedOrder = structuredClone(sourceOrder);
+		const base = withWarehouses(createTwoIndustryCityGame({ day: 7 }), [
+			'industry-city',
+			'breadbasket-basin'
+		]);
+		const game = {
+			...base,
+			logistics: {
+				...base.logistics,
+				transferOrders: [sourceOrder],
+				nextTransferSequence: 42
+			}
+		};
+		const snapshot = buildSupplyPlannerLogisticsSnapshot(game, 'industry-city');
+
+		expect(snapshot.inTransitOrders).toEqual([expectedOrder]);
+		expect(snapshot.nextTransferSequence).toBe(42);
+
+		game.logistics.transferOrders[0]!.quantity = 99;
+		game.logistics.transferOrders[0]!.status = 'delivered';
+		expect(snapshot.inTransitOrders).toEqual([expectedOrder]);
+	});
+
+	it('uses the copied live transfer sequence after historical orders', () => {
+		let game = withWarehouses(createTwoIndustryCityGame({ day: 7 }), [
+			'industry-city',
+			'breadbasket-basin'
+		]);
+		game = withCityMaterials(
+			withCityMaterials(game, 'industry-city', { 'bottled-water': 4 }),
+			'breadbasket-basin',
+			{}
+		);
+		game = withRecurringRoutes(game, [
+			route({
+				id: 'route-historical-sequence',
+				originCityId: 'industry-city',
+				destinationCityId: 'breadbasket-basin',
+				materialId: 'bottled-water',
+				capacity: 3,
+				nextDispatchOnDay: 7
+			})
+		]);
+		game = {
+			...game,
+			logistics: {
+				...game.logistics,
+				transferOrders: [
+					order({
+						id: 'transfer-1',
+						materialId: 'bottled-water',
+						arrivalOnDay: 99
+					})
+				],
+				nextTransferSequence: 42
+			}
+		};
+
+		const logistics = buildSupplyPlannerLogisticsSnapshot(game, 'industry-city');
+		const selected = getCityInventory(game, 'industry-city');
+		expect(selected.ok).toBe(true);
+		if (!selected.ok) return;
+		const state = createSupplyPlannerLogisticsState({
+			selectedInventory: selected.inventory,
+			selectedWarehouseCapacity: getCityInventoryStats(game, 'industry-city').capacity,
+			logistics
+		});
+		const dispatched = processSupplyPlannerRouteDispatches(state, game.day);
+		const generated = dispatched.state.inTransitOrders.find(
+			(candidate) => candidate.source.kind === 'recurring-route'
+		);
+
+		expect(generated?.id).toBe('transfer-42');
 	});
 
 	it('matches route-day integer mechanics and preserves zero-quantity attempts', () => {
@@ -194,8 +272,7 @@ describe('supply planner logistics projection state', () => {
 		const plannerStarted = createSupplyPlannerLogisticsState({
 			selectedInventory: selected.inventory,
 			selectedWarehouseCapacity: getCityInventoryStats(game, 'industry-city').capacity,
-			logistics,
-			nextTransferSequence: game.logistics.nextTransferSequence
+			logistics
 		});
 		const plannerArrived = processSupplyPlannerTransferArrivals(plannerStarted, game.day);
 		const planner = processSupplyPlannerRouteDispatches(plannerArrived.state, game.day);
@@ -234,6 +311,69 @@ describe('supply planner logistics projection state', () => {
 		expect(projection.limitations).not.toContainEqual(
 			expect.objectContaining({ kind: 'remote-origin-production-not-modeled' })
 		);
+	});
+
+	it('crosses fractional selected outbound stock and matches live integer dispatch', () => {
+		let game = withWarehouses(createTwoIndustryCityGame({ day: 7 }), [
+			'industry-city',
+			'breadbasket-basin'
+		]);
+		game = withCityMaterials(
+			withCityMaterials(game, 'industry-city', { 'bottled-water': 4 }),
+			'breadbasket-basin',
+			{}
+		);
+		const outboundRoute = route({
+			id: 'route-selected-outbound',
+			originCityId: 'industry-city',
+			destinationCityId: 'breadbasket-basin',
+			materialId: 'bottled-water',
+			capacity: 3,
+			nextDispatchOnDay: 7
+		});
+		game = withRecurringRoutes(game, [outboundRoute]);
+		game = {
+			...game,
+			logistics: { ...game.logistics, transferOrders: [], nextTransferSequence: 42 }
+		};
+
+		const live = processRecurringRouteDispatches(game);
+		const logistics = buildSupplyPlannerLogisticsSnapshot(game, 'industry-city');
+		const selected = getCityInventory(game, 'industry-city');
+		expect(selected.ok).toBe(true);
+		if (!selected.ok) return;
+		const planner = processSupplyPlannerRouteDispatches(
+			createSupplyPlannerLogisticsState({
+				selectedInventory: selected.inventory,
+				selectedWarehouseCapacity: getCityInventoryStats(game, 'industry-city').capacity,
+				logistics
+			}),
+			game.day
+		);
+
+		expect(planner.attempts).toEqual(live.attempts);
+		expect(planner.state.selectedIntegerInventory).toEqual(
+			live.game.cityInventories.find((row) => row.cityId === 'industry-city')
+		);
+		expect(planner.attempts[0]!.dispatchedQuantity).toBe(3);
+		expect(canonicalQuantity(4.75)).toBe(4);
+		expect(4.75 - planner.attempts[0]!.dispatchedQuantity).toBe(1.75);
+
+		const projection = projectSupplySnapshot(
+			projectionSnapshot({
+				inventory: { 'bottled-water': 4.75 },
+				logistics: {
+					...projectionSnapshot().logistics!,
+					currentDay: 7,
+					remoteCities: [{ inventory: inventory('breadbasket-basin', {}), warehouseCapacity: 20 }],
+					routes: [outboundRoute],
+					nextTransferSequence: 42
+				}
+			})
+		);
+		const row = projection.materials.find((material) => material.materialId === 'bottled-water')!;
+		expect(row.sevenDay.importRequiredUnits).toBe(8.75);
+		expect(row.sevenDay.endingInventoryUnits).toBe(0);
 	});
 
 	it('reports remote-origin stock uncertainty only for a constrained remote route', () => {
