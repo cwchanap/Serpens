@@ -289,7 +289,7 @@ The trace never constructs a live `GameState`, report, event, save record, or RN
 
 ### No-logistics fast path
 
-If routes/orders cannot affect required-material projection or destination capacity, call today's closed-form `projectSupplySnapshot` implementation internally. A regression pins the public output.
+If routes/orders cannot affect required-material projection or destination capacity, call today's closed-form projection implementation internally. A regression pins the public `projectSupplySnapshot` output.
 
 ---
 
