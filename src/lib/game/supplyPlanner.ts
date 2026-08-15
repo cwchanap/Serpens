@@ -241,12 +241,26 @@ export type SupplyPlannerLimitation =
 	| { kind: 'rail-capacity-not-modeled' }
 	| { kind: 'store-sales-capacity-not-modeled' };
 
-export interface SupplyPlannerProjection {
+/**
+ * Projection limitations that can be produced by the Task 2 logistics trace.
+ * The remote-origin entry is intentionally typed here while downstream display
+ * consumers continue to use the legacy SupplyPlannerLimitation contract until
+ * their owning task adds presentation/copy support.
+ */
+export type SupplyPlannerTraceLimitation =
+	| SupplyPlannerLimitation
+	| { kind: 'remote-origin-production-not-modeled'; routeIds: readonly string[] };
+
+export type SupplyPlannerTraceProjection = SupplyPlannerProjection<SupplyPlannerTraceLimitation>;
+
+export interface SupplyPlannerProjection<
+	Limitation extends { kind: string } = SupplyPlannerLimitation
+> {
 	snapshot: SupplyPlannerSnapshot;
 	materials: readonly SupplyMaterialProjection[];
 	warehouse: SupplyWarehouseEvidence;
 	bottleneck: SupplyBottleneck;
-	limitations: readonly SupplyPlannerLimitation[];
+	limitations: readonly Limitation[];
 }
 
 export type SupplyPlannerSnapshotResult =
@@ -1892,7 +1906,13 @@ function projectSupplySnapshotClosedForm(snapshot: SupplyPlannerSnapshot): Suppl
 }
 
 /** Select the dated route-aware projection only when logistics can affect it. */
-export function projectSupplySnapshot(snapshot: SupplyPlannerSnapshot): SupplyPlannerProjection {
+export function projectSupplySnapshot(
+	snapshot: SupplyPlannerSnapshot & { logistics: SupplyPlannerLogisticsSnapshot }
+): SupplyPlannerTraceProjection;
+export function projectSupplySnapshot(snapshot: SupplyPlannerSnapshot): SupplyPlannerProjection;
+export function projectSupplySnapshot(
+	snapshot: SupplyPlannerSnapshot
+): SupplyPlannerProjection | SupplyPlannerTraceProjection {
 	const requirements = buildSupplyMaterialRequirements(snapshot);
 	return snapshot.logistics && hasRelevantPlannerLogistics(snapshot, requirements)
 		? projectSupplySnapshotWithLogistics(snapshot, requirements)
@@ -2046,7 +2066,7 @@ function projectPreparedMaterialDay(
 function projectSupplySnapshotWithLogistics(
 	snapshot: SupplyPlannerSnapshot,
 	requirements: readonly SupplyMaterialRequirement[]
-): SupplyPlannerProjection {
+): SupplyPlannerTraceProjection {
 	const logistics = snapshot.logistics;
 	if (!logistics) return projectSupplySnapshotClosedForm(snapshot);
 
@@ -2193,7 +2213,7 @@ function projectSupplySnapshotWithLogistics(
 	});
 
 	const warehouse = warehouseEvidence(snapshot);
-	const limitations: SupplyPlannerLimitation[] = [
+	const limitations: SupplyPlannerTraceLimitation[] = [
 		{ kind: 'rail-capacity-not-modeled' },
 		{ kind: 'store-sales-capacity-not-modeled' }
 	];
@@ -2201,7 +2221,7 @@ function projectSupplySnapshotWithLogistics(
 		limitations.unshift({
 			kind: 'remote-origin-production-not-modeled',
 			routeIds: [...remoteOriginConstraintRouteIds].sort(compareCodeUnitStrings)
-		} as unknown as SupplyPlannerLimitation);
+		});
 	}
 
 	return {
