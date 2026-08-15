@@ -16,7 +16,7 @@ import {
 import { processRecurringRouteDispatches, processTransferArrivals } from './interCityLogistics';
 import { createNewGame } from './state';
 import { projectSupplySnapshot, type SupplyPlannerSnapshot } from './supplyPlanner';
-import type { CityInventory, RecurringRoute, TransferOrder } from './types';
+import type { CityInventory, RecurringRoute, TransferOrder, WorldCityId } from './types';
 
 function route(overrides: Partial<RecurringRoute> = {}): RecurringRoute {
 	return {
@@ -477,5 +477,225 @@ describe('supply planner logistics projection state', () => {
 		);
 
 		expect(forecast?.firstProjectedArrivalDay).toBe(6);
+	});
+});
+
+describe('supply planner logistics error and edge-case paths', () => {
+	it('throws when a transfer arrival destination is invalid', () => {
+		const state: SupplyPlannerLogisticsState = {
+			selectedIntegerInventory: inventory('industry-city', { water: 4 }),
+			remoteIntegerInventories: [inventory('breadbasket-basin', { water: 4 })],
+			selectedWarehouseCapacity: 10,
+			remoteWarehouseCapacities: { 'breadbasket-basin': 10 },
+			inTransitOrders: [order({ destinationCityId: 'nonexistent-city' as WorldCityId })],
+			routes: [],
+			nextTransferSequence: 2
+		};
+
+		expect(() => processSupplyPlannerTransferArrivals(state, 7)).toThrow(
+			'Transfer arrival destination is invalid: nonexistent-city'
+		);
+	});
+
+	it('throws when a recurring route origin is invalid', () => {
+		const state: SupplyPlannerLogisticsState = {
+			selectedIntegerInventory: inventory('industry-city', { water: 4 }),
+			remoteIntegerInventories: [inventory('breadbasket-basin', { water: 4 })],
+			selectedWarehouseCapacity: 10,
+			remoteWarehouseCapacities: { 'breadbasket-basin': 10 },
+			inTransitOrders: [],
+			routes: [
+				route({
+					originCityId: 'nonexistent-city' as WorldCityId,
+					destinationCityId: 'industry-city',
+					nextDispatchOnDay: 7
+				})
+			],
+			nextTransferSequence: 2
+		};
+
+		expect(() => processSupplyPlannerRouteDispatches(state, 7)).toThrow(
+			'Recurring route origin is invalid: nonexistent-city'
+		);
+	});
+
+	it('throws when a recurring route destination is invalid', () => {
+		const state: SupplyPlannerLogisticsState = {
+			selectedIntegerInventory: inventory('industry-city', { water: 4 }),
+			remoteIntegerInventories: [inventory('breadbasket-basin', { water: 4 })],
+			selectedWarehouseCapacity: 10,
+			remoteWarehouseCapacities: { 'breadbasket-basin': 10 },
+			inTransitOrders: [],
+			routes: [
+				route({
+					originCityId: 'breadbasket-basin',
+					destinationCityId: 'nonexistent-city' as WorldCityId,
+					nextDispatchOnDay: 7
+				})
+			],
+			nextTransferSequence: 2
+		};
+
+		expect(() => processSupplyPlannerRouteDispatches(state, 7)).toThrow(
+			'Recurring route destination is invalid: nonexistent-city'
+		);
+	});
+
+	it('dispatches from a remote origin alongside other remote cities that do not match', () => {
+		// Multiple remote inventories exercise the false arm of the
+		// ternary at line 263 (inventory.cityId !== route.originCityId).
+		const state: SupplyPlannerLogisticsState = {
+			selectedIntegerInventory: inventory('industry-city', {}),
+			remoteIntegerInventories: [
+				inventory('breadbasket-basin', { water: 10 }),
+				inventory('harbor-city' as WorldCityId, { grain: 5 })
+			],
+			selectedWarehouseCapacity: 100,
+			remoteWarehouseCapacities: {
+				'breadbasket-basin': 100,
+				'harbor-city': 100
+			},
+			inTransitOrders: [],
+			routes: [
+				route({
+					originCityId: 'breadbasket-basin',
+					destinationCityId: 'industry-city',
+					capacity: 4,
+					nextDispatchOnDay: 7
+				})
+			],
+			nextTransferSequence: 2
+		};
+
+		const dispatched = processSupplyPlannerRouteDispatches(state, 7);
+		expect(dispatched.attempts[0]!.dispatchedQuantity).toBe(4);
+		// The non-matching remote city is preserved unchanged.
+		expect(
+			dispatched.state.remoteIntegerInventories.find((i) => i.cityId === 'harbor-city')
+		).toEqual(inventory('harbor-city' as WorldCityId, { grain: 5 }));
+		// The matching remote city's stock is decremented.
+		expect(
+			dispatched.state.remoteIntegerInventories.find((i) => i.cityId === 'breadbasket-basin')!
+				.materials.water
+		).toBe(6);
+	});
+
+	it('sorts transfer orders by id when multiple are due on the same day', () => {
+		// Multiple due orders with different ids exercise both arms of
+		// the compareTransferOrderIds comparator (line 347).
+		const state: SupplyPlannerLogisticsState = {
+			selectedIntegerInventory: inventory('industry-city', {}),
+			remoteIntegerInventories: [inventory('breadbasket-basin', {})],
+			selectedWarehouseCapacity: 100,
+			remoteWarehouseCapacities: { 'breadbasket-basin': 100 },
+			inTransitOrders: [
+				order({ id: 'transfer-z', quantity: 1, arrivalOnDay: 7 }),
+				order({ id: 'transfer-a', quantity: 1, arrivalOnDay: 7 }),
+				order({ id: 'transfer-m', quantity: 1, arrivalOnDay: 7 })
+			],
+			routes: [],
+			nextTransferSequence: 10
+		};
+
+		const arrived = processSupplyPlannerTransferArrivals(state, 7);
+		expect(arrived.arrivals.map((a) => a.transferOrderId)).toEqual([
+			'transfer-a',
+			'transfer-m',
+			'transfer-z'
+		]);
+	});
+
+	it('throws when the next transfer sequence overflows the safe integer range', () => {
+		const state: SupplyPlannerLogisticsState = {
+			selectedIntegerInventory: inventory('industry-city', {}),
+			remoteIntegerInventories: [inventory('breadbasket-basin', { water: 10 })],
+			selectedWarehouseCapacity: 100,
+			remoteWarehouseCapacities: { 'breadbasket-basin': 100 },
+			inTransitOrders: [],
+			routes: [
+				route({
+					originCityId: 'breadbasket-basin',
+					destinationCityId: 'industry-city',
+					capacity: 1,
+					nextDispatchOnDay: 7
+				})
+			],
+			nextTransferSequence: Number.MAX_SAFE_INTEGER
+		};
+
+		expect(() => processSupplyPlannerRouteDispatches(state, 7)).toThrow(
+			'Next transfer sequence exceeds the safe integer range'
+		);
+	});
+
+	it('throws when the scheduled transport cost overflows the safe integer range', () => {
+		const state: SupplyPlannerLogisticsState = {
+			selectedIntegerInventory: inventory('industry-city', {}),
+			remoteIntegerInventories: [inventory('breadbasket-basin', { water: 10 })],
+			selectedWarehouseCapacity: 100,
+			remoteWarehouseCapacities: { 'breadbasket-basin': 100 },
+			inTransitOrders: [],
+			routes: [
+				route({
+					originCityId: 'breadbasket-basin',
+					destinationCityId: 'industry-city',
+					capacity: 2,
+					transportCostPerUnit: Number.MAX_SAFE_INTEGER,
+					nextDispatchOnDay: 7
+				})
+			],
+			nextTransferSequence: 2
+		};
+
+		expect(() => processSupplyPlannerRouteDispatches(state, 7)).toThrow(
+			'Recurring route transport cost exceeds the safe integer range'
+		);
+	});
+
+	it('skips a remote city with no city inventory when building the logistics snapshot', () => {
+		// A city that is opened but has no cityInventory entry causes
+		// getCityInventory to return not-ok, exercising the early
+		// return at line 84.
+		const game = createTwoIndustryCityGame({ materials: false });
+		const withoutInventory = {
+			...game,
+			cityInventories: game.cityInventories.filter((i) => i.cityId !== 'breadbasket-basin')
+		};
+		const snapshot = buildSupplyPlannerLogisticsSnapshot(withoutInventory, 'industry-city');
+		expect(snapshot.remoteCities).toEqual([]);
+	});
+
+	it('sorts remote cities by world city id when multiple are opened', () => {
+		// With multiple industry cities opened as remote cities, the
+		// sort comparator at line 81 fires. 'breadbasket-basin' <
+		// 'industry-city' < 'quarry-works', so breadbasket-basin
+		// should come first.
+		let game = createTwoIndustryCityGame({ materials: false });
+		// Open quarry-works as a third industry city
+		game = {
+			...game,
+			world: {
+				...game.world,
+				revealedCityIds: [...game.world.revealedCityIds, 'quarry-works'],
+				openedCityIds: [...game.world.openedCityIds, 'quarry-works']
+			},
+			industryCities: [
+				...game.industryCities,
+				{
+					id: 'quarry-works',
+					name: 'Quarry Works',
+					width: 56,
+					height: 48,
+					tiles: [],
+					rails: []
+				}
+			],
+			cityInventories: [...game.cityInventories, { cityId: 'quarry-works', materials: {} }]
+		};
+		const snapshot = buildSupplyPlannerLogisticsSnapshot(game, 'industry-city');
+		expect(snapshot.remoteCities.map((r) => r.inventory.cityId)).toEqual([
+			'breadbasket-basin',
+			'quarry-works'
+		]);
 	});
 });

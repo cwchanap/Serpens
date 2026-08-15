@@ -1,9 +1,15 @@
 import { page } from 'vitest/browser';
 import { describe, expect, it, vi } from 'vitest';
+import { tick as svelteTick } from 'svelte';
 import { render } from 'vitest-browser-svelte';
 import RetailSupplySources from './RetailSupplySources.svelte';
 import { RETAIL_SUPPLY_IMPORTS_ONLY_VALUE } from './retailSupplySources';
 import type { RetailCitySupplyView } from './retailSupplySources';
+
+vi.mock('svelte', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('svelte')>();
+	return { ...actual, tick: vi.fn(actual.tick) };
+});
 
 const availableSources = [
 	{
@@ -195,6 +201,74 @@ describe('RetailSupplySources', () => {
 		await expect
 			.element(page.getByRole('region', { name: 'Retail supply sources' }))
 			.not.toBeInTheDocument();
+	});
+
+	it('does not focus when the focused retail city id does not match any city', async () => {
+		expect.assertions(1);
+		const onChange = vi.fn();
+		renderSources({ focusedRetailCityId: 'nonexistent-city', onChange });
+		const select = page.getByLabelText('Local supply source for Harbor City');
+
+		// Give the effect a chance to run — the select should not be focused
+		// because the focusedRetailCityId doesn't match any city.
+		await vi.waitFor(() => {
+			expect(select.element()).not.toBe(document.activeElement);
+		});
+	});
+
+	it('cancels a pending focus when the focused city changes before the tick resolves', async () => {
+		// Mock tick to return a deferred promise so we can control when the
+		// focus callback runs. The first effect run schedules a tick().then()
+		// that we hold unresolved. Rerendering with a new focusedRetailCityId
+		// triggers the cleanup (cancelled=true) before the deferred tick
+		// resolves, exercising the cancelled guard at line 26.
+		let resolveFirstTick: () => void = () => {};
+		const deferred = new Promise<void>((resolve) => {
+			resolveFirstTick = resolve;
+		});
+		vi.mocked(svelteTick).mockReturnValueOnce(deferred);
+
+		const onChange = vi.fn();
+		const campusCity = cityView({
+			retailCityId: 'campus-junction',
+			sectionHeading: 'Campus Junction supply source',
+			selectId: 'retail-supply-source-campus-junction',
+			selectLabel: 'Local supply source for Campus Junction',
+			descriptionId: 'retail-supply-source-campus-junction-description'
+		});
+		const { rerender } = render(RetailSupplySources, {
+			retailCities: [cityView(), campusCity],
+			disabled: false,
+			focusedRetailCityId: 'harbor-city',
+			onChange
+		});
+
+		// Let the effect run — it calls the mocked tick() which returns
+		// our deferred promise (not yet resolved), so the focus callback
+		// is pending.
+		await vi.waitFor(() => expect(vi.mocked(svelteTick)).toHaveBeenCalled());
+
+		// Switch focus to campus-junction — the cleanup from the first
+		// effect run sets cancelled=true.
+		rerender({
+			retailCities: [cityView(), campusCity],
+			disabled: false,
+			focusedRetailCityId: 'campus-junction',
+			onChange
+		});
+
+		// Now resolve the first deferred tick — the callback runs with
+		// cancelled=true and returns early (line 26).
+		resolveFirstTick();
+		await Promise.resolve();
+
+		// The harbor-city select should NOT be focused (the cancelled
+		// callback skipped it). The campus-junction select should be
+		// focused instead (from the second effect run with real tick).
+		const campusSelect = page.getByLabelText('Local supply source for Campus Junction');
+		await vi.waitFor(() => {
+			expect(campusSelect.element()).toBe(document.activeElement);
+		});
 	});
 
 	it('renders source options with empty inventory and overflow summaries', async () => {

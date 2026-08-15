@@ -677,6 +677,64 @@ describe('handoffSupplyPlannerAction', () => {
 		expect(host.enterRailBuildMode).not.toHaveBeenCalled();
 	});
 
+	it('aborts a build-warehouse action when the city switch fails', async () => {
+		const host = mockHost({ switchToSupplyCity: vi.fn(async () => false) });
+		const action: SupplyPlannerAction = {
+			kind: 'build-warehouse',
+			cityId: 'breadbasket-basin',
+			buildingTypeId: 'warehouse',
+			cost: 900
+		};
+		const result = readyResult({}, action);
+		await handoffSupplyPlannerAction(action, result, host);
+		expect(host.closeOverlays).toHaveBeenCalledTimes(1);
+		expect(host.armIndustryPlacement).not.toHaveBeenCalled();
+	});
+
+	it('aborts a create-route action when logistics management is unavailable', async () => {
+		const closeOverlays = vi.fn();
+		const host = mockHost({ canManageLogistics: false, closeOverlays });
+		const action: SupplyPlannerAction = {
+			kind: 'create-route',
+			input: {
+				originCityId: 'breadbasket-basin',
+				destinationCityId: 'industry-city',
+				materialId: 'water',
+				capacity: 8,
+				frequencyDays: 1,
+				leadTimeDays: 2,
+				transportCostPerUnit: 1,
+				priority: 0
+			}
+		};
+		await handoffSupplyPlannerAction(action, readyResult({}, action), host);
+		expect(closeOverlays).not.toHaveBeenCalled();
+		expect(host.openLogistics).not.toHaveBeenCalled();
+	});
+
+	it('aborts a connect-rail action when the building is not found in the game', async () => {
+		const game = baseGame();
+		const host = mockHost({ getGame: () => game });
+		const action: SupplyPlannerAction = {
+			kind: 'connect-rail',
+			buildingId: 'nonexistent-building',
+			materialId: 'bottled-water'
+		};
+		const result = readyResult(
+			{
+				buildings: [
+					...baseSnapshot.buildings,
+					{ id: 'nonexistent-building', cityId: 'industry-city', typeId: 'warehouse', level: 1 }
+				],
+				disconnectedBuildingIds: ['nonexistent-building']
+			},
+			action
+		);
+		await handoffSupplyPlannerAction(action, result, host);
+		expect(host.closeOverlays).not.toHaveBeenCalled();
+		expect(host.enterRailBuildMode).not.toHaveBeenCalled();
+	});
+
 	it('aborts a connect-rail action when the building disappears after the city switch', async () => {
 		const game = baseGame();
 		const gameWithBuilding = {
