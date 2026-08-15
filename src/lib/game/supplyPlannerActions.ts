@@ -4,9 +4,15 @@ import {
 } from './industryPlacement';
 import { INDUSTRIAL_BUILDING_TYPES, MATERIALS, PRODUCTION_RECIPES } from './industry';
 import {
+	compareRecurringRoutes,
+	quoteInterCityRates,
+	type RecurringRouteInput
+} from './interCityLogistics';
+import {
 	buildingTypesForRecipe,
 	buildingsForRecipe,
 	getRecipeThroughputUnits,
+	getSupportedStoreChainCategories,
 	MATERIAL_PRODUCER_RECIPES
 } from './productChainGraph';
 import {
@@ -26,7 +32,8 @@ import {
 	buildSupplyPlannerSnapshot,
 	projectSupplySnapshot,
 	type RailReachabilityBase,
-	type RequiredChainReachability
+	type RequiredChainReachability,
+	type SupplyLogisticsBottleneck
 } from './supplyPlanner';
 import type {
 	SupplyMaterialProjection,
@@ -43,13 +50,18 @@ import type {
 	IndustrialBuildingType,
 	IndustrialBuildingTypeId,
 	MaterialId,
-	ProductionRecipeId
+	ProductionRecipeId,
+	RecurringRoute,
+	WorldCityId
 } from './types';
+import { getFinishedMaterialIdForCategory } from './stock';
 
 export interface SupplyPlannerActionAvailability {
 	canBuildIndustry: boolean;
 	canUpgradeIndustry: boolean;
 	canBuildRail: boolean;
+	canManageLogistics: boolean;
+	canSetRetailSupplySource: boolean;
 	allowedIndustryBuildingTypeIds: readonly IndustrialBuildingTypeId[];
 	/**
 	 * Encoded `${cityId}\u0000${tileId}\u0000${buildingTypeId}` keys for
@@ -83,8 +95,28 @@ export type SupplyPlannerAction =
 			toLevel: number;
 			cost: number;
 	  }
-	| { kind: 'build-warehouse'; buildingTypeId: 'warehouse'; cost: number }
+	| {
+			kind: 'build-warehouse';
+			cityId: WorldCityId;
+			buildingTypeId: 'warehouse';
+			cost: number;
+	  }
 	| { kind: 'connect-rail'; buildingId: string; materialId: MaterialId }
+	| { kind: 'create-route'; input: RecurringRouteInput }
+	| {
+			kind: 'edit-route';
+			routeId: string;
+			field: 'capacity' | 'frequencyDays' | 'priority';
+			from: number;
+			to: number;
+	  }
+	| { kind: 'resume-route'; routeId: string }
+	| {
+			kind: 'change-supply-source';
+			retailCityId: WorldCityId;
+			fromSupplyCityId: WorldCityId;
+			toSupplyCityId: WorldCityId;
+	  }
 	| {
 			kind: 'none';
 			reason:
@@ -93,8 +125,7 @@ export type SupplyPlannerAction =
 				| 'unaffordable'
 				| 'ineffective'
 				| 'no-feasible-action'
-				| 'action-unavailable'
-				| 'logistics-contention-not-modeled';
+				| 'action-unavailable';
 	  };
 
 export type SupplyPlannerNoopReason = Extract<SupplyPlannerAction, { kind: 'none' }>['reason'];
@@ -104,6 +135,10 @@ export interface SupplyPlannerComparison {
 	shortageReduction30: number;
 	importReduction30: number;
 	importSpendReduction30: number;
+	projectedDeliveredUnits7: number;
+	projectedDeliveredUnits30: number;
+	incrementalTransportCost30: number;
+	firstShortageImprovementDays: number;
 	incrementalOperatingCost30: number;
 	incrementalInputImportSpend30: number;
 	preRailNetCashBenefit30: number | null;
@@ -133,6 +168,7 @@ export interface SupplyPlannerCandidate {
 	affordable: boolean;
 	feasible: boolean;
 	potentialProjectionAfterRail?: SupplyPlanProjection;
+	logisticsCause?: SupplyLogisticsBottleneck;
 }
 
 export interface SupplyPlan {
@@ -190,7 +226,11 @@ const ZERO_COMPARISON: SupplyPlannerComparison = {
 	requiresRailConnection: false,
 	requiresAdditionalProducerBuilds: false,
 	stockoutImprovementDays: 0,
-	warehouseFreeGain: 0
+	warehouseFreeGain: 0,
+	projectedDeliveredUnits7: 0,
+	projectedDeliveredUnits30: 0,
+	incrementalTransportCost30: 0,
+	firstShortageImprovementDays: 0
 };
 
 /** Build the actionable plan for a requested retail category. */
@@ -234,9 +274,6 @@ function makePlan(
 	baseline: SupplyPlanProjection,
 	availability: SupplyPlannerActionAvailability
 ): SupplyPlan {
-	if (snapshot.activeOutboundRouteIds.length > 0) {
-		return planWithNoop(snapshot, baseline, 'logistics-contention-not-modeled');
-	}
 	if (snapshot.demandPerDay <= 0) return planWithNoop(snapshot, baseline, 'no-demand');
 
 	const scopedGame: GameState = { ...clone(game), activeIndustryCityId: snapshot.supplyCityId };
@@ -266,6 +303,19 @@ function makePlan(
 		);
 		return chooseProducerPlan(snapshot, baseline, generated, true);
 	}
+
+	const logisticsCause = diagnoseLogistics(snapshot, baseline);
+	if (logisticsCause) {
+		const logisticsPlan = makeBoundedLogisticsPlan(
+			game,
+			snapshot,
+			baseline,
+			availability,
+			logisticsCause
+		);
+		if (logisticsPlan) return logisticsPlan;
+	}
+
 	if (baseline.bottleneck.kind === 'rail-disconnected') {
 		if (!availability.canBuildRail) return planWithNoop(snapshot, baseline, 'action-unavailable');
 		const action: SupplyPlannerAction = {
@@ -369,6 +419,489 @@ interface GeneratedCandidates {
 	candidates: SupplyPlannerCandidate[];
 	reason: 'action-unavailable' | 'no-feasible-action' | 'unaffordable';
 	hasAdditionalProducerBuilds: boolean;
+}
+
+/** Diagnose only the first actionable logistics blocker for the current ladder. */
+function diagnoseLogistics(
+	snapshot: SupplyPlannerSnapshot,
+	baseline: SupplyPlanProjection
+): SupplyLogisticsBottleneck | null {
+	const logistics = snapshot.logistics;
+	if (!logistics) return null;
+	const shortageRows = baseline.materials
+		.filter((row) => row.requiredPerDay > 0 && row.thirtyDay.importRequiredUnits > 0)
+		.sort(
+			(left, right) =>
+				right.chainDepth - left.chainDepth || compareCodeUnits(left.materialId, right.materialId)
+		);
+	if (shortageRows.length === 0) return null;
+
+	const requiredMaterialIds = new Set(shortageRows.map((row) => row.materialId));
+	const inboundRoutes = logistics.routes
+		.filter(
+			(route) =>
+				requiredMaterialIds.has(route.materialId) &&
+				route.destinationCityId === snapshot.supplyCityId
+		)
+		.sort(compareRecurringRoutes);
+	const forecasts = new Map(
+		(baseline.routeForecasts ?? []).map((forecast) => [forecast.route.id, forecast])
+	);
+
+	const paused = inboundRoutes.find((route) => route.state === 'paused');
+	if (paused) {
+		return {
+			kind: 'route-paused',
+			routeId: paused.id,
+			cityId: snapshot.supplyCityId,
+			materialId: paused.materialId,
+			day: logistics.currentDay,
+			blockedUnits: Math.max(
+				1,
+				Math.ceil(
+					baseline.materials.find((row) => row.materialId === paused.materialId)?.requiredPerDay ??
+						1
+				)
+			),
+			amount: Math.max(
+				1,
+				Math.ceil(
+					baseline.materials.find((row) => row.materialId === paused.materialId)?.requiredPerDay ??
+						1
+				)
+			)
+		};
+	}
+
+	const reservedUnits = logistics.inTransitOrders.reduce(
+		(total, order) =>
+			order.status === 'in-transit' && order.destinationCityId === snapshot.supplyCityId
+				? total + order.quantity
+				: total,
+		0
+	);
+	const destinationFree = Math.max(
+		0,
+		snapshot.warehouseCapacity - snapshot.warehouseUsed - reservedUnits
+	);
+	if (destinationFree <= 0) {
+		const route = inboundRoutes.find((candidate) => candidate.state === 'active');
+		if (route) {
+			return {
+				kind: 'destination-full',
+				routeId: route.id,
+				cityId: snapshot.supplyCityId,
+				materialId: route.materialId,
+				day: logistics.currentDay,
+				blockedUnits: Math.max(1, route.capacity),
+				amount: Math.max(1, route.capacity)
+			};
+		}
+	}
+
+	for (const route of inboundRoutes) {
+		if (route.state !== 'active') continue;
+		const forecast = forecasts.get(route.id);
+		if (!forecast?.priorityBlockedByRouteId || forecast.firstPriorityConstraintDay === null) {
+			continue;
+		}
+		const blocker = inboundRoutes.find(
+			(candidate) => candidate.id === forecast.priorityBlockedByRouteId
+		);
+		if (!blocker || blocker.priority <= 0 || blocker.priority >= route.priority) continue;
+		return {
+			kind: 'route-priority-constrained',
+			routeId: route.id,
+			blockingRouteId: blocker.id,
+			cityId: snapshot.supplyCityId,
+			materialId: route.materialId,
+			day: forecast.firstPriorityConstraintDay,
+			blockedUnits: Math.max(1, route.capacity),
+			amount: Math.max(1, route.capacity)
+		};
+	}
+
+	for (const route of inboundRoutes) {
+		if (route.state !== 'active' || route.originCityId === snapshot.supplyCityId) continue;
+		const forecast = forecasts.get(route.id);
+		if (forecast?.firstOriginStockConstraintDay === null || forecast === undefined) continue;
+		const origin = logistics.remoteCities.find(
+			(city) => city.inventory.cityId === route.originCityId
+		);
+		const availableStock = Math.max(0, origin?.inventory.materials[route.materialId] ?? 0);
+		const deficitUnits = Math.max(0, Math.min(route.capacity, route.capacity) - availableStock);
+		return {
+			kind: 'origin-stock-constrained',
+			routeId: route.id,
+			cityId: snapshot.supplyCityId,
+			materialId: route.materialId,
+			day: forecast.firstOriginStockConstraintDay,
+			deficitUnits,
+			amount: Math.max(1, deficitUnits)
+		};
+	}
+
+	for (const route of inboundRoutes) {
+		if (route.state !== 'active') continue;
+		const forecast = forecasts.get(route.id);
+		if (
+			forecast?.firstRouteCapacityConstraintDay !== null &&
+			forecast?.firstRouteCapacityConstraintDay !== undefined
+		) {
+			return {
+				kind: 'route-capacity-constrained',
+				routeId: route.id,
+				cityId: snapshot.supplyCityId,
+				materialId: route.materialId,
+				day: forecast.firstRouteCapacityConstraintDay,
+				unmetUnits: forecast.peakUnmetDestinationNeed,
+				amount: Math.max(1, forecast.peakUnmetDestinationNeed)
+			};
+		}
+	}
+
+	const stockedRemoteRow = shortageRows.find((row) =>
+		logistics.remoteCities.some((city) => (city.inventory.materials[row.materialId] ?? 0) >= 1)
+	);
+	const primaryRow = stockedRemoteRow ?? shortageRows[0]!;
+	const stockoutDay = primaryRow.thirtyDay.projectedStockoutDay;
+	if (stockoutDay !== null) {
+		for (const route of inboundRoutes) {
+			if (route.state !== 'active') continue;
+			const forecast = forecasts.get(route.id);
+			const firstArrivalDay =
+				forecast?.firstProjectedArrivalDay ??
+				Math.max(logistics.currentDay, route.nextDispatchOnDay) + route.leadTimeDays;
+			const firstArrivalOffset = firstArrivalDay - logistics.currentDay;
+			if (firstArrivalOffset > stockoutDay) {
+				return {
+					kind: 'route-lead-time',
+					routeId: route.id,
+					cityId: snapshot.supplyCityId,
+					materialId: route.materialId,
+					day: logistics.currentDay + stockoutDay,
+					stockoutDay,
+					firstArrivalDay,
+					amount: Math.max(1, Math.ceil(primaryRow.requiredPerDay))
+				};
+			}
+			const nextArrivalDay = firstArrivalDay + route.frequencyDays;
+			if (route.frequencyDays > 1 && nextArrivalDay - logistics.currentDay > stockoutDay) {
+				return {
+					kind: 'route-frequency',
+					routeId: route.id,
+					cityId: snapshot.supplyCityId,
+					materialId: route.materialId,
+					day: logistics.currentDay + stockoutDay,
+					stockoutDay,
+					nextArrivalDay,
+					amount: Math.max(1, Math.ceil(primaryRow.requiredPerDay))
+				};
+			}
+		}
+	}
+
+	const usefulInbound = inboundRoutes.some((route) => {
+		const forecast = forecasts.get(route.id);
+		return route.state === 'active' && (forecast?.projectedDeliveredUnits30 ?? 0) > 0;
+	});
+	if (!usefulInbound) {
+		const stockedRemote = logistics.remoteCities.some((city) =>
+			shortageRows.some((row) => (city.inventory.materials[row.materialId] ?? 0) >= 1)
+		);
+		if (stockedRemote) {
+			return {
+				kind: 'destination-configuration',
+				retailCityId: snapshot.retailCityId,
+				supplyCityId: snapshot.supplyCityId,
+				materialId: primaryRow.materialId,
+				day: logistics.currentDay,
+				amount: Math.max(1, Math.ceil(primaryRow.requiredPerDay))
+			};
+		}
+	}
+
+	return null;
+}
+
+function makeBoundedLogisticsPlan(
+	game: GameState,
+	snapshot: SupplyPlannerSnapshot,
+	baseline: SupplyPlanProjection,
+	availability: SupplyPlannerActionAvailability,
+	cause: SupplyLogisticsBottleneck
+): SupplyPlan | null {
+	if (cause.kind === 'destination-full') {
+		const generated = warehouseCandidates(
+			{ ...clone(game), activeIndustryCityId: snapshot.supplyCityId },
+			snapshot,
+			baseline,
+			availability
+		);
+		const candidate = generated.candidates.find(
+			(row) => row.affordable && row.feasible && row.comparison.warehouseFreeGain > 0
+		);
+		if (!candidate) return null;
+		const withCause = { ...candidate, logisticsCause: cause };
+		return { snapshot, baseline, recommendation: withCause, alternatives: [withCause] };
+	}
+	if (!availability.canManageLogistics) return null;
+
+	const generated: SupplyPlannerCandidate[] = [];
+	const route =
+		'routeId' in cause
+			? snapshot.logistics?.routes.find((row) => row.id === cause.routeId)
+			: undefined;
+	if (
+		(cause.kind === 'route-paused' ||
+			cause.kind === 'route-capacity-constrained' ||
+			cause.kind === 'route-priority-constrained' ||
+			cause.kind === 'route-frequency') &&
+		route
+	) {
+		let action: SupplyPlannerAction | null = null;
+		let candidateRoute: RecurringRoute | null = null;
+		if (cause.kind === 'route-paused') {
+			action = { kind: 'resume-route', routeId: route.id };
+			candidateRoute = { ...route, state: 'active' };
+		} else if (cause.kind === 'route-capacity-constrained') {
+			const to = Math.max(route.capacity + 1, Math.ceil(route.capacity + cause.unmetUnits));
+			if (Number.isSafeInteger(to)) {
+				action = {
+					kind: 'edit-route',
+					routeId: route.id,
+					field: 'capacity',
+					from: route.capacity,
+					to
+				};
+				candidateRoute = { ...route, capacity: to };
+			}
+		} else if (cause.kind === 'route-priority-constrained') {
+			const blocker = snapshot.logistics?.routes.find((row) => row.id === cause.blockingRouteId);
+			if (blocker && route.priority > 0) {
+				const to = Math.max(0, blocker.priority - 1);
+				if (to < route.priority) {
+					action = {
+						kind: 'edit-route',
+						routeId: route.id,
+						field: 'priority',
+						from: route.priority,
+						to
+					};
+					candidateRoute = { ...route, priority: to };
+				}
+			}
+		} else if (cause.kind === 'route-frequency') {
+			const to = Math.max(1, route.frequencyDays - 1);
+			if (to < route.frequencyDays) {
+				action = {
+					kind: 'edit-route',
+					routeId: route.id,
+					field: 'frequencyDays',
+					from: route.frequencyDays,
+					to
+				};
+				candidateRoute = { ...route, frequencyDays: to };
+			}
+		}
+		if (action && candidateRoute) {
+			const candidateSnapshot = routeCandidateSnapshot(snapshot, candidateRoute);
+			if (candidateSnapshot) {
+				generated.push(
+					makeLogisticsCandidate(snapshot, baseline, candidateSnapshot, action, cause)
+				);
+			}
+		}
+	}
+
+	if (cause.kind === 'destination-configuration') {
+		generated.push(
+			...createRouteCandidates(snapshot, baseline, cause, availability.canManageLogistics === true)
+		);
+		if (availability.canSetRetailSupplySource === true) {
+			generated.push(...supplySourceCandidates(game, snapshot, baseline, cause));
+		}
+	}
+
+	const worthwhile = generated.filter(
+		(candidate) =>
+			candidate.comparison.shortageReduction30 > 0 &&
+			candidate.comparison.netCashBenefit30 !== null &&
+			candidate.comparison.netCashBenefit30 > 0
+	);
+	if (worthwhile.length === 0) return null;
+	const alternatives = sortCandidates(worthwhile).map((candidate) => candidate);
+	return {
+		snapshot,
+		baseline,
+		recommendation: alternatives[0]!,
+		alternatives
+	};
+}
+
+function routeCandidateSnapshot(
+	snapshot: SupplyPlannerSnapshot,
+	route: RecurringRoute
+): { snapshot: SupplyPlannerSnapshot; projection: SupplyPlanProjection } | null {
+	if (!snapshot.logistics) return null;
+	const candidateSnapshot = clone(snapshot);
+	candidateSnapshot.logistics = {
+		...snapshot.logistics,
+		routes: snapshot.logistics.routes.map((current) =>
+			current.id === route.id ? { ...route } : current
+		)
+	};
+	return {
+		snapshot: candidateSnapshot,
+		projection: withTotals(projectSupplySnapshot(candidateSnapshot))
+	};
+}
+
+function makeLogisticsCandidate(
+	snapshot: SupplyPlannerSnapshot,
+	baseline: SupplyPlanProjection,
+	candidate: { snapshot: SupplyPlannerSnapshot; projection: SupplyPlanProjection },
+	action: SupplyPlannerAction,
+	logisticsCause: SupplyLogisticsBottleneck
+): SupplyPlannerCandidate {
+	const comparison = compareCandidate(
+		snapshot,
+		baseline,
+		candidate.projection,
+		candidate.projection,
+		action,
+		false,
+		false
+	);
+	return {
+		action,
+		baseline,
+		projection: candidate.projection,
+		comparison,
+		affordable: true,
+		feasible: true,
+		logisticsCause
+	};
+}
+
+function createRouteCandidates(
+	snapshot: SupplyPlannerSnapshot,
+	baseline: SupplyPlanProjection,
+	cause: Extract<SupplyLogisticsBottleneck, { kind: 'destination-configuration' }>,
+	canManageLogistics: boolean
+): SupplyPlannerCandidate[] {
+	if (!canManageLogistics || !snapshot.logistics) return [];
+	const shortageRow = baseline.materials.find((row) => row.materialId === cause.materialId);
+	if (!shortageRow) return [];
+	const peakDailyImportNeed = Math.max(
+		0,
+		shortageRow.requiredPerDay - shortageRow.usableCapacityPerDay
+	);
+	const candidates: SupplyPlannerCandidate[] = [];
+	for (const remote of [...snapshot.logistics.remoteCities].sort((left, right) =>
+		compareCodeUnits(left.inventory.cityId, right.inventory.cityId)
+	)) {
+		if (remote.inventory.cityId === snapshot.supplyCityId) continue;
+		const availableWholeOriginStock = Math.floor(remote.inventory.materials[cause.materialId] ?? 0);
+		const capacity = Math.min(Math.ceil(peakDailyImportNeed), availableWholeOriginStock);
+		if (!Number.isSafeInteger(capacity) || capacity < 1) continue;
+		const quote = quoteInterCityRates(remote.inventory.cityId, snapshot.supplyCityId);
+		if (!quote) continue;
+		const input: RecurringRouteInput = {
+			originCityId: remote.inventory.cityId,
+			destinationCityId: snapshot.supplyCityId,
+			materialId: cause.materialId,
+			capacity,
+			frequencyDays: 1,
+			leadTimeDays: quote.leadTimeDays,
+			transportCostPerUnit: quote.transportCostPerUnit,
+			priority: 0
+		};
+		const route: RecurringRoute = {
+			id: `route-${snapshot.logistics.nextRouteSequence}`,
+			...input,
+			state: 'active',
+			nextDispatchOnDay: snapshot.logistics.currentDay
+		};
+		const candidateSnapshot = clone(snapshot);
+		candidateSnapshot.logistics = {
+			...snapshot.logistics,
+			routes: [...snapshot.logistics.routes, route]
+		};
+		const projection = withTotals(projectSupplySnapshot(candidateSnapshot));
+		candidates.push(
+			makeLogisticsCandidate(
+				snapshot,
+				baseline,
+				{ snapshot: candidateSnapshot, projection },
+				{ kind: 'create-route', input },
+				cause
+			)
+		);
+	}
+	return candidates;
+}
+
+function supplySourceCandidates(
+	game: GameState,
+	snapshot: SupplyPlannerSnapshot,
+	baseline: SupplyPlanProjection,
+	cause: Extract<SupplyLogisticsBottleneck, { kind: 'destination-configuration' }>
+): SupplyPlannerCandidate[] {
+	const categoryId = findCategoryIdForFinishedMaterial(game, snapshot);
+	if (!categoryId || !snapshot.logistics) return [];
+	const candidates: SupplyPlannerCandidate[] = [];
+	for (const remote of [...snapshot.logistics.remoteCities].sort((left, right) =>
+		compareCodeUnits(left.inventory.cityId, right.inventory.cityId)
+	)) {
+		const toSupplyCityId = remote.inventory.cityId;
+		if (toSupplyCityId === snapshot.supplyCityId) continue;
+		const candidateGame = clone(game);
+		candidateGame.retailSupplyAssignments = candidateGame.retailSupplyAssignments.map(
+			(assignment) =>
+				assignment.retailCityId === snapshot.retailCityId
+					? { ...assignment, supplyCityId: toSupplyCityId }
+					: assignment
+		);
+		const result = buildSupplyPlannerSnapshot(candidateGame, {
+			retailCityId: snapshot.retailCityId,
+			categoryId
+		});
+		if (result.status !== 'ready') continue;
+		const candidateSnapshot = clone(result.snapshot);
+		const projection = withTotals(projectSupplySnapshot(candidateSnapshot));
+		candidates.push(
+			makeLogisticsCandidate(
+				snapshot,
+				baseline,
+				{ snapshot: candidateSnapshot, projection },
+				{
+					kind: 'change-supply-source',
+					retailCityId: snapshot.retailCityId,
+					fromSupplyCityId: snapshot.supplyCityId,
+					toSupplyCityId
+				},
+				cause
+			)
+		);
+	}
+	return candidates;
+}
+
+function findCategoryIdForFinishedMaterial(
+	game: GameState,
+	snapshot: SupplyPlannerSnapshot
+): string | null {
+	const store = game.stores
+		.filter((candidate) => candidate.cityId === snapshot.retailCityId)
+		.sort((left, right) => compareCodeUnits(left.id, right.id))[0];
+	if (!store) return null;
+	for (const category of getSupportedStoreChainCategories(store)) {
+		if (getFinishedMaterialIdForCategory(category.id) === snapshot.finishedMaterialId) {
+			return category.id;
+		}
+	}
+	return null;
 }
 
 function producerCandidates(
@@ -650,6 +1183,7 @@ function warehouseCandidates(
 	const candidateProjection = withTotals(projectSupplySnapshot(candidateSnapshot));
 	const action: SupplyPlannerAction = {
 		kind: 'build-warehouse',
+		cityId: snapshot.supplyCityId,
 		buildingTypeId: 'warehouse',
 		cost: buildingType.buildCost
 	};
@@ -707,6 +1241,39 @@ function compareCandidate(
 		requiresRailConnection,
 		requiresAdditionalProducerBuilds
 	};
+
+	if (
+		action.kind === 'create-route' ||
+		action.kind === 'edit-route' ||
+		action.kind === 'resume-route' ||
+		action.kind === 'change-supply-source'
+	) {
+		const importSpendReduction30 =
+			baseline.totals.importSpend30 - economicsProjection.totals.importSpend30;
+		const baselineTransportCost30 = baseline.logisticsMetrics?.projectedTransportCost30 ?? 0;
+		const candidateTransportCost30 =
+			economicsProjection.logisticsMetrics?.projectedTransportCost30 ?? 0;
+		const incrementalTransportCost30 = candidateTransportCost30 - baselineTransportCost30;
+		const firstShortageImprovementDays = improvementDays(
+			firstShortageDay(baseline),
+			firstShortageDay(economicsProjection)
+		);
+		return {
+			...base,
+			importReduction30: Math.max(
+				0,
+				baseline.totals.importUnits30 - economicsProjection.totals.importUnits30
+			),
+			importSpendReduction30,
+			projectedDeliveredUnits7: economicsProjection.logisticsMetrics?.projectedDeliveredUnits7 ?? 0,
+			projectedDeliveredUnits30:
+				economicsProjection.logisticsMetrics?.projectedDeliveredUnits30 ?? 0,
+			incrementalTransportCost30,
+			firstShortageImprovementDays,
+			preRailNetCashBenefit30: importSpendReduction30 - incrementalTransportCost30,
+			netCashBenefit30: importSpendReduction30 - incrementalTransportCost30
+		};
+	}
 
 	if (action.kind !== 'build-producer' && action.kind !== 'upgrade-building') return base;
 	const baselineTarget = materialRow(baseline, action.materialId);
@@ -773,7 +1340,10 @@ function compareCandidate(
 		incrementalInputImportSpend30,
 		preRailNetCashBenefit30,
 		netCashBenefit30: requiresRailConnection ? null : preRailNetCashBenefit30,
-		stockoutImprovementDays
+		stockoutImprovementDays,
+		projectedDeliveredUnits7: economicsProjection.logisticsMetrics?.projectedDeliveredUnits7 ?? 0,
+		projectedDeliveredUnits30: economicsProjection.logisticsMetrics?.projectedDeliveredUnits30 ?? 0,
+		firstShortageImprovementDays: stockoutImprovementDays
 	};
 }
 
@@ -1168,6 +1738,9 @@ function compareCandidates(left: SupplyPlannerCandidate, right: SupplyPlannerCan
 		right.comparison.shortageReduction7 - left.comparison.shortageReduction7 ||
 		right.comparison.importReduction30 - left.comparison.importReduction30 ||
 		right.comparison.stockoutImprovementDays - left.comparison.stockoutImprovementDays ||
+		right.comparison.firstShortageImprovementDays - left.comparison.firstShortageImprovementDays ||
+		right.comparison.projectedDeliveredUnits30 - left.comparison.projectedDeliveredUnits30 ||
+		left.comparison.incrementalTransportCost30 - right.comparison.incrementalTransportCost30 ||
 		actionCost(left.action) - actionCost(right.action) ||
 		compareCodeUnits(actionKey(left.action), actionKey(right.action))
 	);
@@ -1184,9 +1757,17 @@ export function actionKey(action: SupplyPlannerAction): string {
 		case 'upgrade-building':
 			return `upgrade-building:${action.materialId}:${action.buildingId}`;
 		case 'build-warehouse':
-			return 'build-warehouse';
+			return `build-warehouse:${action.cityId}`;
 		case 'connect-rail':
 			return `connect-rail:${action.materialId}:${action.buildingId}`;
+		case 'create-route':
+			return `create-route:${action.input.originCityId}:${action.input.destinationCityId}:${action.input.materialId}:${action.input.capacity}:${action.input.frequencyDays}:${action.input.leadTimeDays}:${action.input.transportCostPerUnit}:${action.input.priority}`;
+		case 'edit-route':
+			return `edit-route:${action.routeId}:${action.field}:${action.to}`;
+		case 'resume-route':
+			return `resume-route:${action.routeId}`;
+		case 'change-supply-source':
+			return `change-supply-source:${action.retailCityId}:${action.toSupplyCityId}`;
 		case 'none':
 			return `none:${action.reason}`;
 	}
@@ -1274,6 +1855,14 @@ function improvementDays(before: number | null, after: number | null): number {
 	if (before === null) return 0;
 	if (after === null) return Math.max(0, 30 - (before ?? 0));
 	return Math.max(0, after - before);
+}
+
+function firstShortageDay(projection: SupplyPlanProjection): number | null {
+	const days = projection.materials
+		.filter((row) => row.requiredPerDay > 0)
+		.map((row) => row.thirtyDay.projectedStockoutDay)
+		.filter((day): day is number => day !== null);
+	return days.length > 0 ? Math.min(...days) : null;
 }
 
 function getProducerRecipeId(materialId: MaterialId): ProductionRecipeId | null {

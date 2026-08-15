@@ -6,7 +6,9 @@ import {
 	getBuildFeasibility
 } from './supplyPlannerActions';
 import { INDUSTRIAL_BUILDING_TYPES } from './industry';
+import type { RecurringRouteInput } from './interCityLogistics';
 import { createNewGame } from './state';
+import { createTwoIndustryCityGame } from './interCityLogistics.testUtils';
 import type {
 	GameState,
 	IndustrialBuilding,
@@ -64,6 +66,8 @@ function availability(
 		canBuildIndustry: true,
 		canUpgradeIndustry: true,
 		canBuildRail: true,
+		canManageLogistics: true,
+		canSetRetailSupplySource: true,
 		allowedIndustryBuildingTypeIds: [
 			'grain-farm',
 			'water-pump',
@@ -126,6 +130,97 @@ function baseGame(
 
 function pantryGame(): GameState {
 	return baseGame('pantry', 'grocery');
+}
+
+function logisticsPlannerGame(overrides: Partial<RecurringRoute> = {}): GameState {
+	const game = createTwoIndustryCityGame({ materials: false });
+	const routeState: RecurringRoute = route({
+		originCityId: 'breadbasket-basin',
+		destinationCityId: 'industry-city',
+		materialId: 'bottled-water',
+		capacity: 10,
+		frequencyDays: 1,
+		leadTimeDays: 1,
+		transportCostPerUnit: 1,
+		nextDispatchOnDay: game.day,
+		...overrides
+	});
+	return {
+		...game,
+		cash: 1_000_000,
+		stores: [{ ...game.stores[0]!, products: [product('bottled-water', { targetStock: 350 })] }],
+		industrialBuildings: [
+			building('water-pump', 'water-pump-1', 100, 2, 6),
+			building('water-bottler', 'water-bottler-1', 1, 6, 6),
+			building('warehouse', 'warehouse-1', 1, 10, 6),
+			building('warehouse', 'warehouse-2', 1, 14, 6),
+			building('warehouse', 'warehouse-3', 1, 18, 6),
+			building('warehouse', 'warehouse-4', 1, 22, 6)
+		],
+		cityInventories: [
+			{ cityId: 'industry-city', materials: { water: 100 } },
+			{ cityId: 'breadbasket-basin', materials: { 'bottled-water': 200 } }
+		],
+		industryCities: game.industryCities.map((city) =>
+			city.id === 'industry-city' ? { ...city, rails: horizontalRails(2, 12, 8) } : city
+		),
+		logistics: { ...game.logistics, recurringRoutes: [routeState] }
+	};
+}
+
+function flourLogisticsPlannerGame(overrides: Partial<RecurringRoute> = {}): GameState {
+	const game = createTwoIndustryCityGame({ materials: false });
+	return {
+		...game,
+		cash: 1_000_000,
+		stores: [
+			{
+				...game.stores[0]!,
+				archetypeId: 'grocery',
+				products: [product('pantry', { targetStock: 10_000 })]
+			}
+		],
+		industrialBuildings: [
+			building('grain-farm', 'grain-farm-1', 1, 2, 2),
+			building('flour-mill', 'flour-mill-1', 1, 32, 6),
+			building('pantry-works', 'pantry-works-1', 1, 36, 20),
+			building('warehouse', 'warehouse-1', 1, 40, 20),
+			building('warehouse', 'warehouse-2', 1, 44, 20),
+			building('warehouse', 'warehouse-3', 1, 48, 20),
+			building('warehouse', 'warehouse-4', 1, 52, 20)
+		],
+		cityInventories: [
+			{ cityId: 'industry-city', materials: {} },
+			{ cityId: 'breadbasket-basin', materials: { flour: 200 } }
+		],
+		industryCities: game.industryCities.map((city) =>
+			city.id === 'industry-city'
+				? {
+						...city,
+						rails: [...verticalRails(4, 22, 2), ...horizontalRails(2, 54, 22)]
+					}
+				: city
+		),
+		logistics: {
+			...game.logistics,
+			recurringRoutes: [
+				{
+					...route({
+						id: 'route-flour',
+						originCityId: 'breadbasket-basin',
+						destinationCityId: 'industry-city',
+						materialId: 'flour',
+						capacity: 10,
+						frequencyDays: 1,
+						leadTimeDays: 2,
+						transportCostPerUnit: 1,
+						nextDispatchOnDay: game.day
+					}),
+					...overrides
+				}
+			]
+		}
+	};
 }
 
 function readyPlan(game: GameState, actionAvailability = availability()) {
@@ -433,7 +528,128 @@ describe('supply planner actions', () => {
 });
 
 describe('supply planner action noop branches', () => {
-	it('returns a logistics-contention noop when active outbound routes exist', () => {
+	it('resumes a paused route with a complete positive-value projection', () => {
+		const plan = readyPlan(logisticsPlannerGame({ state: 'paused' }));
+
+		expect(plan.recommendation.action).toEqual({ kind: 'resume-route', routeId: 'route-water' });
+		expect(plan.recommendation.logisticsCause).toMatchObject({
+			kind: 'route-paused',
+			cityId: 'industry-city',
+			routeId: 'route-water',
+			materialId: 'bottled-water'
+		});
+		expect(plan.recommendation.comparison.shortageReduction30).toBeGreaterThan(0);
+		expect(plan.recommendation.comparison.netCashBenefit30).toBeGreaterThan(0);
+	});
+
+	it('raises capacity only for a route whose projected route capacity binds', () => {
+		const plan = readyPlan(logisticsPlannerGame({ capacity: 1 }));
+
+		expect(plan.recommendation.action).toMatchObject({
+			kind: 'edit-route',
+			routeId: 'route-water',
+			field: 'capacity',
+			from: 1
+		});
+		expect(plan.recommendation.logisticsCause).toMatchObject({
+			kind: 'route-capacity-constrained',
+			cityId: 'industry-city',
+			routeId: 'route-water',
+			materialId: 'bottled-water'
+		});
+	});
+
+	it('does not make an origin-stock-constrained route larger or faster', () => {
+		const base = logisticsPlannerGame({ capacity: 1, frequencyDays: 3 });
+		const plan = readyPlan({
+			...base,
+			cityInventories: base.cityInventories.map((inventory) =>
+				inventory.cityId === 'breadbasket-basin' ? { ...inventory, materials: {} } : inventory
+			)
+		});
+
+		expect(plan.recommendation.action).not.toMatchObject({
+			kind: 'edit-route',
+			routeId: 'route-water'
+		});
+	});
+
+	it('does not mutate copied route state while ranking a logistics action', () => {
+		const game = logisticsPlannerGame({ capacity: 1 });
+		const before = structuredClone(game);
+
+		readyPlan(game);
+
+		expect(game).toEqual(before);
+	});
+
+	it('treats a full inbound destination as a city-scoped warehouse prerequisite', () => {
+		const base = logisticsPlannerGame();
+		const plan = readyPlan({
+			...base,
+			logistics: {
+				...base.logistics,
+				transferOrders: [
+					{
+						id: 'transfer-full-destination',
+						source: { kind: 'recurring-route', routeId: 'route-water' },
+						originCityId: 'breadbasket-basin',
+						destinationCityId: 'industry-city',
+						materialId: 'bottled-water',
+						quantity: 1_000,
+						createdOnDay: base.day,
+						dispatchedOnDay: base.day,
+						arrivalOnDay: base.day + 1,
+						transportCost: 1_000,
+						status: 'in-transit'
+					}
+				]
+			}
+		});
+
+		expect(plan.recommendation.action).toMatchObject({
+			kind: 'build-warehouse',
+			cityId: 'industry-city'
+		});
+		expect(plan.recommendation.comparison.warehouseFreeGain).toBeGreaterThan(0);
+		expect(plan.recommendation.comparison.netCashBenefit30).toBeNull();
+		expect(plan.recommendation.logisticsCause).toMatchObject({
+			kind: 'destination-full',
+			cityId: 'industry-city',
+			routeId: 'route-water',
+			materialId: 'bottled-water'
+		});
+	});
+
+	it('creates one bounded route per stocked remote origin when no inbound route exists', () => {
+		const game = flourLogisticsPlannerGame();
+		const noRoutes = { ...game, logistics: { ...game.logistics, recurringRoutes: [] } };
+		const plan = readyPlan(noRoutes);
+
+		expect(plan.recommendation.action.kind).toBe('create-route');
+		expect(plan.alternatives.filter((row) => row.action.kind === 'create-route')).toHaveLength(1);
+		if (plan.recommendation.action.kind === 'create-route') {
+			expect(plan.recommendation.action.input).toMatchObject({
+				originCityId: 'breadbasket-basin',
+				destinationCityId: 'industry-city',
+				materialId: 'flour',
+				frequencyDays: 1,
+				priority: 0
+			});
+			expect(plan.recommendation.action.input.capacity).toBeGreaterThan(0);
+		}
+	});
+
+	it('falls back to the local plan when a route edit has negative complete value', () => {
+		const plan = readyPlan(flourLogisticsPlannerGame({ transportCostPerUnit: 100 }));
+
+		expect(plan.recommendation.action.kind).not.toBe('edit-route');
+		expect(['build-producer', 'upgrade-building', 'connect-rail']).toContain(
+			plan.recommendation.action.kind
+		);
+	});
+
+	it('keeps the existing missing-producer guard ahead of active logistics', () => {
 		const game = {
 			...baseGame('bottled-water'),
 			logistics: {
@@ -442,9 +658,10 @@ describe('supply planner action noop branches', () => {
 			}
 		};
 		const plan = readyPlan(game);
-		expect(plan.recommendation.action).toEqual({
-			kind: 'none',
-			reason: 'logistics-contention-not-modeled'
+		expect(plan.baseline.bottleneck).toMatchObject({ kind: 'missing-producer' });
+		expect(plan.recommendation.action).toMatchObject({
+			kind: 'build-producer',
+			materialId: 'water'
 		});
 	});
 
@@ -461,7 +678,11 @@ describe('supply planner action noop branches', () => {
 						customerFit: 0
 					}))
 				}
-			]
+			],
+			logistics: {
+				...baseGame('bottled-water').logistics,
+				recurringRoutes: [route({ materialId: 'bottled-water' })]
+			}
 		};
 		const plan = readyPlan(game);
 		expect(plan.recommendation.action).toEqual({ kind: 'none', reason: 'no-demand' });
@@ -847,9 +1068,53 @@ describe('supply planner action helper coverage', () => {
 				cost: 100
 			})
 		).toBe('upgrade-building:water:b-1');
-		expect(actionKey({ kind: 'build-warehouse', buildingTypeId: 'warehouse', cost: 100 })).toBe(
-			'build-warehouse'
+		expect(
+			actionKey({
+				kind: 'build-warehouse',
+				cityId: 'industry-city',
+				buildingTypeId: 'warehouse',
+				cost: 100
+			})
+		).toBe('build-warehouse:industry-city');
+		expect(
+			actionKey({
+				kind: 'build-warehouse',
+				cityId: 'breadbasket-basin',
+				buildingTypeId: 'warehouse',
+				cost: 100
+			})
+		).toBe('build-warehouse:breadbasket-basin');
+		expect(actionKey({ kind: 'resume-route', routeId: 'route-2' })).toBe('resume-route:route-2');
+		expect(
+			actionKey({
+				kind: 'edit-route',
+				routeId: 'route-2',
+				field: 'capacity',
+				from: 1,
+				to: 2
+			})
+		).toBe('edit-route:route-2:capacity:2');
+		const input: RecurringRouteInput = {
+			originCityId: 'industry-city',
+			destinationCityId: 'harbor-city',
+			materialId: 'bottled-water',
+			capacity: 2,
+			frequencyDays: 1,
+			leadTimeDays: 1,
+			transportCostPerUnit: 1,
+			priority: 0
+		};
+		expect(actionKey({ kind: 'create-route', input })).toBe(
+			'create-route:industry-city:harbor-city:bottled-water:2:1:1:1:0'
 		);
+		expect(
+			actionKey({
+				kind: 'change-supply-source',
+				retailCityId: 'harbor-city',
+				fromSupplyCityId: 'industry-city',
+				toSupplyCityId: 'breadbasket-basin'
+			})
+		).toBe('change-supply-source:harbor-city:breadbasket-basin');
 		expect(actionKey({ kind: 'connect-rail', buildingId: 'b-1', materialId: 'water' })).toBe(
 			'connect-rail:water:b-1'
 		);
