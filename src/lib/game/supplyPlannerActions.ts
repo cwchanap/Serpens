@@ -438,13 +438,12 @@ function diagnoseLogistics(
 	if (shortageRows.length === 0) return null;
 
 	const requiredMaterialIds = new Set(shortageRows.map((row) => row.materialId));
-	const inboundRoutes = logistics.routes
-		.filter(
-			(route) =>
-				requiredMaterialIds.has(route.materialId) &&
-				route.destinationCityId === snapshot.supplyCityId
-		)
+	const allInboundRoutes = logistics.routes
+		.filter((route) => route.destinationCityId === snapshot.supplyCityId)
 		.sort(compareRecurringRoutes);
+	const inboundRoutes = allInboundRoutes.filter((route) =>
+		requiredMaterialIds.has(route.materialId)
+	);
 	const forecasts = new Map(
 		(baseline.routeForecasts ?? []).map((forecast) => [forecast.route.id, forecast])
 	);
@@ -480,7 +479,7 @@ function diagnoseLogistics(
 		if (!forecast?.priorityBlockedByRouteId || forecast.firstPriorityConstraintDay === null) {
 			continue;
 		}
-		const blocker = inboundRoutes.find(
+		const blocker = allInboundRoutes.find(
 			(candidate) => candidate.id === forecast.priorityBlockedByRouteId
 		);
 		if (!blocker || compareRecurringRoutes(blocker, route) >= 0) continue;
