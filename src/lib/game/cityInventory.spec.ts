@@ -196,6 +196,8 @@ describe('city inventory helpers', () => {
 		expect(canonicalQuantity(-1)).toBe(0);
 		expect(canonicalQuantity(Number.NaN)).toBe(0);
 		expect(canonicalQuantity(Number.MAX_SAFE_INTEGER)).toBe(Number.MAX_SAFE_INTEGER);
+		expect(canonicalQuantity(Number.POSITIVE_INFINITY)).toBe(0);
+		expect(canonicalQuantity(Number.MAX_SAFE_INTEGER + 1)).toBe(0);
 	});
 
 	test('rejects arithmetic that would create unsafe inventory or pressure state', () => {

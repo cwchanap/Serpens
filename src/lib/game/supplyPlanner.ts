@@ -1,9 +1,4 @@
-import {
-	canonicalQuantity,
-	compareWorldCityIds,
-	getCityInventoryStats,
-	getCityInventoryUsed
-} from './cityInventory';
+import { canonicalQuantity, compareWorldCityIds, getCityInventoryStats } from './cityInventory';
 import { MATERIALS, PRODUCTION_RECIPES } from './industry';
 import {
 	buildingTypesForRecipe,
@@ -39,6 +34,7 @@ import type {
 	IndustrialBuilding,
 	IndustrialBuildingTypeId,
 	MaterialId,
+	MaterialKind,
 	ProductionRecipeId,
 	RecurringRoute,
 	WorldCityId
@@ -153,7 +149,7 @@ export type SupplyPlannerRouteCondition =
 	| 'route-paused';
 
 const SUPPLY_PLANNER_ROUTE_CONDITION_RANK: Record<SupplyPlannerRouteCondition, number> = {
-	'awaiting-dispatch': 0,
+	'awaiting-dispatch': -1,
 	normal: 0,
 	'destination-full': 1,
 	'route-frequency': 2,
@@ -1825,52 +1821,12 @@ function projectSupplySnapshotClosedForm(snapshot: SupplyPlannerSnapshot): Suppl
 			requirement.materialId
 		);
 		const materialKind = MATERIALS[requirement.materialId]?.kind;
-		// Cap each producer's capacity by its own reachable demand, then sum.
-		// For non-finished materials with per-branch reachability data, the
-		// 3-layer max-flow (producer->processor->branch) caps each producer by
-		// the input capacity of the processor instances it can reach. For
-		// finished materials (single warehouse sink), per-producer cap +
-		// aggregate clamp is correct. When per-branch data is unavailable
-		// (e.g. manually constructed test snapshots), fall back to per-producer
-		// cap + aggregate clamp.
-		let allocation: BranchAllocationResult | null = null;
-		let usableCapacityPerDay: number;
-		if (materialKind !== 'finished' && snapshot.reachableBranchesByBuildingAndMaterial) {
-			const hasBranchData = usable.some(
-				(building) =>
-					snapshot.reachableBranchesByBuildingAndMaterial?.[
-						`${building.id}\u0000${requirement.materialId}`
-					]
-			);
-			if (hasBranchData) {
-				allocation = allocateCapacityByBranch(usable, requirement.materialId, snapshot);
-				usableCapacityPerDay = allocation.totalFlow;
-			} else {
-				// Use the 3-layer flow when warehouse-connected processors
-				// are recorded for this material, even with zero usable
-				// producers (e.g. the producer is missing). This lets
-				// localSupplyOverHorizon route inventory through
-				// warehouse-connected processors with branch scoping
-				// instead of the aggregate-capacity fallback that ignores
-				// branch topology and over-credits branches whose
-				// processors cannot reach the warehouse.
-				const hasWarehouseProcessors =
-					(snapshot.warehouseConnectedProcessorsByMaterial[requirement.materialId]?.length ?? 0) >
-					0;
-				if (hasWarehouseProcessors) {
-					allocation = allocateCapacityByBranch(usable, requirement.materialId, snapshot);
-					usableCapacityPerDay = allocation.totalFlow;
-				} else {
-					usableCapacityPerDay = perProducerCappedCapacity(
-						usable,
-						requirement.materialId,
-						snapshot
-					);
-				}
-			}
-		} else {
-			usableCapacityPerDay = perProducerCappedCapacity(usable, requirement.materialId, snapshot);
-		}
+		const { allocation, usableCapacityPerDay } = selectUsableCapacity(
+			usable,
+			requirement.materialId,
+			materialKind,
+			snapshot
+		);
 		if (allocation !== null) allocations[requirement.materialId] = allocation;
 
 		// City inventory is a warehouse source: a processor can only draw it
@@ -2064,6 +2020,43 @@ interface SupplyMaterialTrace {
 	stockoutDay: number | null;
 }
 
+/**
+ * Select the branch allocation and usable capacity for a material's usable
+ * producers. Shared by {@link prepareSupplyMaterials} and
+ * {@link projectSupplySnapshotClosedForm} so their no-logistics behavior is
+ * identical. When per-branch reachability data is available, the 3-layer
+ * max-flow caps each producer by the input capacity of the processor
+ * instances it can reach. When no branch data is available but
+ * warehouse-connected processors are recorded, the 3-layer flow is still used
+ * (e.g. the producer is missing). Otherwise falls back to per-producer cap +
+ * aggregate clamp.
+ */
+function selectUsableCapacity(
+	usable: readonly SupplyPlannerBuildingSnapshot[],
+	materialId: MaterialId,
+	materialKind: MaterialKind | undefined,
+	snapshot: SupplyPlannerSnapshot
+): { allocation: BranchAllocationResult | null; usableCapacityPerDay: number } {
+	if (materialKind !== 'finished' && snapshot.reachableBranchesByBuildingAndMaterial) {
+		const hasBranchData = usable.some(
+			(building) =>
+				snapshot.reachableBranchesByBuildingAndMaterial?.[`${building.id}\u0000${materialId}`]
+		);
+		if (hasBranchData) {
+			const allocation = allocateCapacityByBranch(usable, materialId, snapshot);
+			return { allocation, usableCapacityPerDay: allocation.totalFlow };
+		}
+		if ((snapshot.warehouseConnectedProcessorsByMaterial[materialId]?.length ?? 0) > 0) {
+			const allocation = allocateCapacityByBranch(usable, materialId, snapshot);
+			return { allocation, usableCapacityPerDay: allocation.totalFlow };
+		}
+	}
+	return {
+		allocation: null,
+		usableCapacityPerDay: perProducerCappedCapacity(usable, materialId, snapshot)
+	};
+}
+
 /** Prepare all topology/capacity facts once, outside the 30-day trace. */
 function prepareSupplyMaterials(
 	snapshot: SupplyPlannerSnapshot,
@@ -2080,29 +2073,12 @@ function prepareSupplyMaterials(
 			.sort((left, right) => left - right);
 		const inventoryUnits = Math.max(0, snapshot.inventory[requirement.materialId] ?? 0);
 		const materialKind = MATERIALS[requirement.materialId]?.kind;
-		let allocation: BranchAllocationResult | null = null;
-		let usableCapacityPerDay: number;
-		if (materialKind !== 'finished' && snapshot.reachableBranchesByBuildingAndMaterial) {
-			const hasBranchData = usable.some(
-				(building) =>
-					snapshot.reachableBranchesByBuildingAndMaterial?.[
-						`${building.id}\u0000${requirement.materialId}`
-					]
-			);
-			if (hasBranchData) {
-				allocation = allocateCapacityByBranch(usable, requirement.materialId, snapshot);
-				usableCapacityPerDay = allocation.totalFlow;
-			} else if (
-				(snapshot.warehouseConnectedProcessorsByMaterial[requirement.materialId]?.length ?? 0) > 0
-			) {
-				allocation = allocateCapacityByBranch(usable, requirement.materialId, snapshot);
-				usableCapacityPerDay = allocation.totalFlow;
-			} else {
-				usableCapacityPerDay = perProducerCappedCapacity(usable, requirement.materialId, snapshot);
-			}
-		} else {
-			usableCapacityPerDay = perProducerCappedCapacity(usable, requirement.materialId, snapshot);
-		}
+		const { allocation, usableCapacityPerDay } = selectUsableCapacity(
+			usable,
+			requirement.materialId,
+			materialKind,
+			snapshot
+		);
 
 		const isRawOrIntermediate =
 			materialKind !== 'finished' && requirement.producerRecipeId !== null;
@@ -2322,7 +2298,6 @@ function projectSupplySnapshotWithLogistics(
 				}
 			};
 		}
-		getCityInventoryUsed(logisticsState.selectedIntegerInventory);
 
 		const dispatchResult = processSupplyPlannerRouteDispatches(logisticsState, day);
 		logisticsState = dispatchResult.state;
@@ -2509,11 +2484,18 @@ function projectSupplySnapshotWithLogistics(
 			priorityBlockedByRouteId: row.priorityBlockedByRouteId
 		}));
 
+	const preparedAllocations: Partial<Record<MaterialId, BranchAllocationResult>> = {};
+	for (const material of prepared) {
+		if (material.allocation) {
+			preparedAllocations[material.requirement.materialId] = material.allocation;
+		}
+	}
+
 	return {
 		snapshot,
 		materials,
 		warehouse,
-		bottleneck: primaryBottleneck(snapshot, materials, warehouse, {}),
+		bottleneck: primaryBottleneck(snapshot, materials, warehouse, preparedAllocations),
 		limitations,
 		logisticsMetrics: {
 			projectedDeliveredUnits7,

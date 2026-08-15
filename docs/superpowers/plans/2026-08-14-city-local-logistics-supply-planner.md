@@ -315,6 +315,7 @@ export interface SupplyPlannerLogisticsSnapshot {
 	inTransitOrders: readonly Readonly<TransferOrder>[];
 	routes: readonly Readonly<RecurringRoute>[];
 	nextRouteSequence: number;
+	nextTransferSequence: number;
 }
 
 interface SupplyMaterialDayStep {
@@ -1079,7 +1080,10 @@ remote-origin-production-not-modeled only when present
 baseline-vs-candidate shortage/import/delivery/cost changes
 city-scoped warehouse target
 new action labels
+supply-city route filter: only unrelated routes produce no route rows and the "No route forecasts affect this supply city." empty state; a relevant inbound route alongside an unrelated route renders only the relevant route; an outbound route whose originCityId equals the selected supply city remains visible
 ```
+
+The planner's complete forecast set (including unrelated routes) stays unchanged for contention analysis — only the SupplyAdvisor display filters to routes whose origin or destination matches `snapshot.supplyCityId`.
 
 Assert old strings/keys for `active-logistics-not-modeled` and `logistics-contention-not-modeled` are absent once implementation references are removed.
 

@@ -81,7 +81,7 @@
 		initialRouteQuote ? String(initialRouteQuote.transportCostPerUnit) : ''
 	);
 	let routePriority = $state('0');
-	let appliedRoutePresetKey: string | null = null;
+	let appliedRoutePresetKey = $state<string | null>(null);
 	let editingRouteId = $state<string | null>(null);
 	let priorityValues = $state<Record<string, string>>({});
 	let statusMessage = $state('');
@@ -137,15 +137,14 @@
 	$effect(() => {
 		const preset = routePreset;
 		if (!preset) {
-			appliedRoutePresetKey = null;
+			untrack(() => (appliedRoutePresetKey = null));
 			return;
 		}
-		const applied = untrack(() =>
-			applyRoutePreset(currentRouteFormValues(), preset, appliedRoutePresetKey)
-		);
-		if (applied.appliedKey === appliedRoutePresetKey) return;
+		const currentKey = untrack(() => appliedRoutePresetKey);
+		const applied = untrack(() => applyRoutePreset(currentRouteFormValues(), preset, currentKey));
+		if (applied.appliedKey === currentKey) return;
 		setRouteFormValues(applied.values);
-		appliedRoutePresetKey = applied.appliedKey;
+		untrack(() => (appliedRoutePresetKey = applied.appliedKey));
 		let cancelled = false;
 		void tick().then(() => {
 			if (cancelled) return;
