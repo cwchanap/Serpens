@@ -12,7 +12,9 @@ import type {
 import type {
 	SupplyMaterialProjection,
 	SupplyDemandContributor,
+	SupplyLogisticsBottleneck,
 	SupplyPlannerHorizonDays,
+	SupplyPlannerRouteCondition,
 	SupplyPlannerSnapshot
 } from '$lib/game/supplyPlanner';
 import SupplyAdvisor from './SupplyAdvisor.svelte';
@@ -82,7 +84,6 @@ const baseSnapshot: SupplyPlannerSnapshot = {
 	usableBuildingIds: ['water-pump-1'],
 	disconnectedBuildingIds: [],
 	usableSinkBuildingIdsByMaterial: { 'bottled-water': ['warehouse-1'] },
-	activeOutboundRouteIds: [],
 	reachableDemandByMaterial: {},
 	reachableDemandByBuildingAndMaterial: {},
 	reachableBranchesByBuildingAndMaterial: {},
@@ -96,6 +97,10 @@ const baseComparison: SupplyPlannerComparison = {
 	shortageReduction30: 60,
 	importReduction30: 60,
 	importSpendReduction30: 120,
+	projectedDeliveredUnits7: 0,
+	projectedDeliveredUnits30: 0,
+	incrementalTransportCost30: 0,
+	firstShortageImprovementDays: 0,
 	incrementalOperatingCost30: 30,
 	incrementalInputImportSpend30: 10,
 	preRailNetCashBenefit30: 80,
@@ -112,6 +117,57 @@ const baseAction: SupplyPlannerAction = {
 	buildingTypeId: 'water-pump',
 	cost: 250
 };
+
+type SupplyPlannerRouteForecast = NonNullable<SupplyPlanProjection['routeForecasts']>[number];
+
+function logisticsSnapshot(
+	overrides: Partial<NonNullable<SupplyPlannerSnapshot['logistics']>> = {}
+): NonNullable<SupplyPlannerSnapshot['logistics']> {
+	return {
+		currentDay: 12,
+		remoteCities: [],
+		inTransitOrders: [],
+		inTransitInventory: [],
+		routes: [],
+		nextRouteSequence: 2,
+		nextTransferSequence: 2,
+		...overrides
+	};
+}
+
+function routeForecast(
+	overrides: Partial<SupplyPlannerRouteForecast> = {}
+): SupplyPlannerRouteForecast {
+	return {
+		route: {
+			id: 'route-1',
+			originCityId: 'breadbasket-basin',
+			destinationCityId: 'industry-city',
+			materialId: 'bottled-water',
+			capacity: 8,
+			frequencyDays: 1,
+			leadTimeDays: 2,
+			transportCostPerUnit: 3,
+			priority: 0,
+			state: 'active',
+			nextDispatchOnDay: 13
+		},
+		projectedCondition: 'normal',
+		projectedDispatchedUnits7: 5,
+		projectedDispatchedUnits30: 20,
+		projectedDeliveredUnits7: 5,
+		projectedDeliveredUnits30: 20,
+		projectedTransportCost30: 60,
+		firstProjectedArrivalDay: 15,
+		peakUnmetDestinationNeed: 0,
+		firstOriginStockConstraintDay: null,
+		firstDestinationCapacityConstraintDay: null,
+		firstRouteCapacityConstraintDay: null,
+		firstPriorityConstraintDay: null,
+		priorityBlockedByRouteId: null,
+		...overrides
+	};
+}
 
 function withoutSnapshot<T extends { snapshot?: unknown }>(
 	value: T | undefined
@@ -229,7 +285,7 @@ describe('SupplyAdvisor planner evidence additions', () => {
 		);
 		await expect.element(page.getByText(/retail city/i)).toBeVisible();
 		await expect.element(page.getByText('Harbor City', { exact: true })).toBeVisible();
-		await expect.element(page.getByText(/supply city/i)).toBeVisible();
+		await expect.element(page.getByText(/^supply city:/i)).toBeVisible();
 		await expect.element(page.getByText(/industry city/i)).toBeVisible();
 		await expect.element(page.getByText(/starting inventory/i)).toBeVisible();
 		await expect.element(page.getByText(/ending inventory/i)).toBeVisible();
@@ -346,6 +402,7 @@ describe('SupplyAdvisor', () => {
 			...result.plan.recommendation,
 			action: {
 				kind: 'build-warehouse',
+				cityId: 'industry-city',
 				buildingTypeId: 'warehouse',
 				cost: 900
 			}
@@ -492,6 +549,7 @@ describe('SupplyAdvisor', () => {
 		expect.assertions(3);
 		const action: SupplyPlannerAction = {
 			kind: 'build-warehouse',
+			cityId: 'industry-city',
 			buildingTypeId: 'warehouse',
 			cost: 900
 		};
@@ -512,25 +570,21 @@ describe('SupplyAdvisor', () => {
 		expect(onAction).toHaveBeenCalledWith(action);
 	});
 
-	it('shows the active-logistics no-op reason from planner output', async () => {
-		expect.assertions(3);
+	it('shows the remote-origin trace limitation from planner output', async () => {
+		expect.assertions(2);
 		renderPlanner(
 			readyResult({
-				snapshot: { activeOutboundRouteIds: ['route-1'] },
 				baseline: {
-					limitations: [{ kind: 'active-logistics-not-modeled', routeIds: ['route-1'] }],
+					limitations: [{ kind: 'remote-origin-production-not-modeled', routeIds: ['route-1'] }],
 					bottleneck: { kind: 'none' }
 				},
 				recommendation: {
-					action: { kind: 'none', reason: 'logistics-contention-not-modeled' },
+					action: { kind: 'none', reason: 'no-feasible-action' },
 					comparison: { ...baseComparison, netCashBenefit30: null, preRailNetCashBenefit30: null }
 				}
 			})
 		);
-		await expect.element(page.getByText(/active logistics are not modeled/i)).toBeVisible();
-		await expect
-			.element(page.getByText(/active logistics contention is not modeled/i))
-			.toBeVisible();
+		await expect.element(page.getByText(/remote-origin production is not modeled/i)).toBeVisible();
 		await expect
 			.element(
 				page
@@ -540,11 +594,11 @@ describe('SupplyAdvisor', () => {
 			.toBeVisible();
 	});
 
-	it('shows a no-demand no-op when no active logistics are present', async () => {
+	it('shows a no-demand no-op', async () => {
 		expect.assertions(2);
 		renderPlanner(
 			readyResult({
-				snapshot: { demandPerDay: 0, activeOutboundRouteIds: [] },
+				snapshot: { demandPerDay: 0 },
 				baseline: {
 					limitations: [],
 					bottleneck: { kind: 'none' }
@@ -561,6 +615,277 @@ describe('SupplyAdvisor', () => {
 				page
 					.getByRole('region', { name: /supply planner recommendation/i })
 					.getByRole('heading', { name: 'No action is recommended', exact: true })
+			)
+			.toBeVisible();
+	});
+
+	it('shows current logistics inventory and route forecast evidence', async () => {
+		expect.assertions(7);
+		const logistics = logisticsSnapshot({
+			inTransitInventory: [
+				{
+					destinationCityId: 'industry-city',
+					materialId: 'bottled-water',
+					quantity: 7,
+					orderIds: ['transfer-1'],
+					earliestArrivalOnDay: 14
+				}
+			]
+		});
+		renderPlanner(
+			readyResult({
+				snapshot: { logistics },
+				baseline: {
+					routeForecasts: [routeForecast({ projectedCondition: 'origin-stock-constrained' })]
+				}
+			})
+		);
+
+		const evidence = page.getByRole('region', { name: /logistics forecast evidence/i });
+		await expect.element(evidence.getByText('220 / 400', { exact: true })).toBeVisible();
+		await expect.element(evidence.getByText(/current in-transit inventory/i)).toBeVisible();
+		await expect
+			.element(evidence.getByText(/7 Bottled Water to Industry City; earliest arrival day 14/i))
+			.toBeVisible();
+		await expect
+			.element(evidence.getByText(/breadbasket basin.*industry city.*bottled water/i))
+			.toBeVisible();
+		await expect.element(evidence.getByText(/next dispatch: day 13/i)).toBeVisible();
+		await expect
+			.element(
+				evidence.getByText(/7-day delivery: 5; 30-day delivery: 20; 30-day transport cost: [$]60/i)
+			)
+			.toBeVisible();
+		await expect.element(evidence.getByText(/condition: origin stock constrained/i)).toBeVisible();
+	});
+
+	const routeConditions: readonly (readonly [SupplyPlannerRouteCondition, string])[] = [
+		['awaiting-dispatch', 'Awaiting dispatch'],
+		['normal', 'Normal'],
+		['destination-full', 'Destination full'],
+		['origin-stock-constrained', 'Origin stock constrained'],
+		['route-capacity-constrained', 'Route capacity constrained'],
+		['route-priority-constrained', 'Route priority constrained'],
+		['route-frequency', 'Route frequency constrained'],
+		['route-lead-time', 'Route lead time constrained'],
+		['route-paused', 'Route paused']
+	];
+
+	it.each(routeConditions)('renders the %s route condition', async (condition, label) => {
+		renderPlanner(
+			readyResult({
+				snapshot: { logistics: logisticsSnapshot() },
+				baseline: { routeForecasts: [routeForecast({ projectedCondition: condition })] }
+			})
+		);
+
+		await expect.element(page.getByText(`Condition: ${label}.`, { exact: true })).toBeVisible();
+	});
+
+	const logisticsCauseCases: readonly {
+		cause: SupplyLogisticsBottleneck;
+		action: SupplyPlannerAction;
+		actionLabel: string;
+		causeLabel: string;
+	}[] = [
+		{
+			cause: {
+				kind: 'destination-full',
+				routeId: 'route-1',
+				cityId: 'industry-city',
+				materialId: 'bottled-water',
+				day: 12,
+				blockedUnits: 8,
+				amount: 8
+			},
+			action: {
+				kind: 'build-warehouse',
+				cityId: 'industry-city',
+				buildingTypeId: 'warehouse',
+				cost: 500
+			},
+			actionLabel: 'Build warehouse in Industry City',
+			causeLabel: 'Industry City has no logistics-visible warehouse capacity for 8 units.'
+		},
+		{
+			cause: {
+				kind: 'origin-stock-constrained',
+				routeId: 'route-1',
+				cityId: 'industry-city',
+				materialId: 'bottled-water',
+				day: 12,
+				deficitUnits: 3,
+				amount: 3
+			},
+			action: { kind: 'edit-route', routeId: 'route-1', field: 'capacity', from: 8, to: 10 },
+			actionLabel: 'Edit route route-1: capacity 8 → 10',
+			causeLabel: 'Route route-1 is constrained by 3 units of origin stock.'
+		},
+		{
+			cause: {
+				kind: 'route-capacity-constrained',
+				routeId: 'route-1',
+				cityId: 'industry-city',
+				materialId: 'bottled-water',
+				day: 12,
+				unmetUnits: 4,
+				amount: 4
+			},
+			action: { kind: 'edit-route', routeId: 'route-1', field: 'capacity', from: 8, to: 12 },
+			actionLabel: 'Edit route route-1: capacity 8 → 12',
+			causeLabel: 'Route route-1 has 4 units beyond its capacity.'
+		},
+		{
+			cause: {
+				kind: 'route-priority-constrained',
+				routeId: 'route-1',
+				blockingRouteId: 'route-0',
+				cityId: 'industry-city',
+				materialId: 'bottled-water',
+				day: 12,
+				blockedUnits: 2,
+				amount: 2
+			},
+			action: { kind: 'edit-route', routeId: 'route-1', field: 'priority', from: 2, to: 0 },
+			actionLabel: 'Edit route route-1: priority 2 → 0',
+			causeLabel: 'Route route-1 is constrained by priority behind route route-0.'
+		},
+		{
+			cause: {
+				kind: 'route-frequency',
+				routeId: 'route-1',
+				cityId: 'industry-city',
+				materialId: 'bottled-water',
+				day: 12,
+				stockoutDay: 3,
+				nextArrivalDay: 18,
+				amount: 2
+			},
+			action: { kind: 'edit-route', routeId: 'route-1', field: 'frequencyDays', from: 3, to: 2 },
+			actionLabel: 'Edit route route-1: frequency 3 → 2',
+			causeLabel: 'Route route-1 cannot arrive before day 18.'
+		},
+		{
+			cause: {
+				kind: 'route-lead-time',
+				routeId: 'route-1',
+				cityId: 'industry-city',
+				materialId: 'bottled-water',
+				day: 12,
+				stockoutDay: 2,
+				firstArrivalDay: 16,
+				amount: 2
+			},
+			action: {
+				kind: 'create-route',
+				input: {
+					originCityId: 'breadbasket-basin',
+					destinationCityId: 'industry-city',
+					materialId: 'bottled-water',
+					capacity: 8,
+					frequencyDays: 1,
+					leadTimeDays: 2,
+					transportCostPerUnit: 3,
+					priority: 0
+				}
+			},
+			actionLabel: 'Create Bottled Water route: Breadbasket Basin → Industry City',
+			causeLabel: 'Route route-1 first arrives on day 16.'
+		},
+		{
+			cause: {
+				kind: 'route-paused',
+				routeId: 'route-1',
+				cityId: 'industry-city',
+				materialId: 'bottled-water',
+				day: 12,
+				blockedUnits: 8,
+				amount: 8
+			},
+			action: { kind: 'resume-route', routeId: 'route-1' },
+			actionLabel: 'Resume route route-1',
+			causeLabel: 'Route route-1 is paused.'
+		},
+		{
+			cause: {
+				kind: 'destination-configuration',
+				retailCityId: 'harbor-city',
+				supplyCityId: 'industry-city',
+				materialId: 'bottled-water',
+				day: 12,
+				amount: 8
+			},
+			action: {
+				kind: 'change-supply-source',
+				retailCityId: 'harbor-city',
+				fromSupplyCityId: 'industry-city',
+				toSupplyCityId: 'breadbasket-basin'
+			},
+			actionLabel: 'Use Breadbasket Basin for Harbor City',
+			causeLabel:
+				'Harbor City is configured to use Industry City; select a better source or add an inbound route.'
+		}
+	];
+
+	it.each(logisticsCauseCases)(
+		'renders the $cause.kind logistics cause and its city-scoped action',
+		async ({ cause, action, actionLabel, causeLabel }) => {
+			renderPlanner(
+				readyResult({
+					snapshot: { logistics: logisticsSnapshot() },
+					recommendation: { action, logisticsCause: cause }
+				})
+			);
+
+			await expect
+				.element(page.getByRole('heading', { name: actionLabel, exact: true }))
+				.toBeVisible();
+			await expect.element(page.getByText(causeLabel, { exact: true })).toBeVisible();
+		}
+	);
+
+	it('compares baseline and candidate delivery and transport forecasts for logistics actions', async () => {
+		expect.assertions(1);
+		renderPlanner(
+			readyResult({
+				snapshot: { logistics: logisticsSnapshot() },
+				baseline: {
+					logisticsMetrics: {
+						projectedDeliveredUnits7: 0,
+						projectedDeliveredUnits30: 0,
+						projectedTransportCost30: 0
+					}
+				},
+				projection: {
+					logisticsMetrics: {
+						projectedDeliveredUnits7: 5,
+						projectedDeliveredUnits30: 20,
+						projectedTransportCost30: 60
+					}
+				},
+				recommendation: {
+					action: {
+						kind: 'create-route',
+						input: {
+							originCityId: 'breadbasket-basin',
+							destinationCityId: 'industry-city',
+							materialId: 'bottled-water',
+							capacity: 8,
+							frequencyDays: 1,
+							leadTimeDays: 2,
+							transportCostPerUnit: 3,
+							priority: 0
+						}
+					}
+				}
+			})
+		);
+
+		await expect
+			.element(
+				page.getByText(
+					/Logistics forecast, baseline → action: delivered in 7 days 0 → 5; delivered in 30 days 0 → 20; 30-day transport cost [$]0 → [$]60/i
+				)
 			)
 			.toBeVisible();
 	});
@@ -956,16 +1281,18 @@ describe('SupplyAdvisor selection and action dispatch', () => {
 		expect(onSelectCategory).toHaveBeenCalledWith('produce');
 	});
 
-	it('renders a build-warehouse action label without calling actionBuildingName', async () => {
-		// Exercises the build-warehouse branch of actionLabel (L96-97):
-		// actionBuildingName is not called for build-warehouse, so the
-		// label is the simple buildWarehouse translation.
+	it('renders a city-scoped build-warehouse action label', async () => {
 		expect.assertions(1);
 		const result = readyResult();
 		if (result.status !== 'ready') throw new Error('Expected ready planner result');
 		const warehouseCandidate: SupplyPlannerCandidate = {
 			...result.plan.recommendation,
-			action: { kind: 'build-warehouse', buildingTypeId: 'warehouse', cost: 500 },
+			action: {
+				kind: 'build-warehouse',
+				cityId: 'industry-city',
+				buildingTypeId: 'warehouse',
+				cost: 500
+			},
 			affordable: true,
 			feasible: true
 		};

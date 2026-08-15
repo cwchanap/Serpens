@@ -550,6 +550,7 @@ export const en = {
 			perDay: '{value} / day',
 			perUnit: '{value} / unit',
 			warehouse: 'Warehouse used / capacity',
+			logisticsWarehouse: 'Current logistics-visible warehouse inventory',
 			buildings: 'Buildings',
 			installedCapacity: 'Installed capacity',
 			usableCapacity: 'Usable capacity',
@@ -587,7 +588,7 @@ export const en = {
 			none: 'No binding bottleneck.'
 		},
 		limitations: {
-			activeLogistics: 'Active logistics are not modeled for routes {routes}.',
+			remoteOriginProduction: 'Remote-origin production is not modeled for routes {routes}.',
 			railCapacity: 'Rail capacity contention is not modeled.',
 			storeSalesCapacity: 'Store-sales capacity is not modeled.'
 		},
@@ -597,9 +598,7 @@ export const en = {
 			unaffordable: 'No affordable action is available.',
 			ineffective: 'No action is projected to improve the plan.',
 			noFeasibleAction: 'No feasible action is available.',
-			actionUnavailable: 'No action is recommended because the required action is unavailable.',
-			logisticsContention:
-				'No action is recommended while active logistics contention is not modeled.'
+			actionUnavailable: 'No action is recommended because the required action is unavailable.'
 		},
 		economics: {
 			structuralPrerequisite:
@@ -617,6 +616,8 @@ export const en = {
 				'Forecast outcome ({horizon} days), baseline → action: imports {baselineImports} → {actionImports}; cover {baselineCover} → {actionCover}; stockout {baselineStockout} → {actionStockout}.',
 			shortageReduction:
 				'30-day shortage reduction: {units} units; stockout improvement: {stockoutDays} days.',
+			logisticsOutcome:
+				'Logistics forecast, baseline → action: delivered in 7 days {baselineDelivered7} → {actionDelivered7}; delivered in 30 days {baselineDelivered30} → {actionDelivered30}; 30-day transport cost {baselineTransportCost} → {actionTransportCost}.',
 			afterRailProjection: 'Potential projection shown only after rail connection.'
 		},
 		candidate: {
@@ -627,9 +628,59 @@ export const en = {
 		actions: {
 			buildProducer: 'Build {buildingName} for {materialName}',
 			upgradeBuilding: 'Upgrade {buildingName} to level {level}',
-			buildWarehouse: 'Build warehouse',
+			buildWarehouse: 'Build warehouse in {cityName}',
 			connectRail: 'Connect rail for {materialName}',
+			createRoute: 'Create {materialName} route: {originName} → {destinationName}',
+			editRoute: 'Edit route {routeId}: {fieldName} {from} → {to}',
+			resumeRoute: 'Resume route {routeId}',
+			changeSupplySource: 'Use {supplyCityName} for {retailCityName}',
+			fields: {
+				capacity: 'capacity',
+				frequencyDays: 'frequency',
+				priority: 'priority'
+			},
 			noAction: 'No action is recommended'
+		},
+		logistics: {
+			label: 'Logistics forecast evidence',
+			kicker: 'Logistics',
+			title: 'Routes and arrivals',
+			currentWarehouse: 'Current logistics-visible warehouse inventory',
+			warehouseValue: '{used} / {capacity}',
+			inTransitTitle: 'Current in-transit inventory',
+			inTransitRow: '{quantity} {materialName} to {cityName}; earliest arrival day {day}.',
+			noInTransit: 'No current in-transit inventory is headed to this supply city.',
+			routesTitle: 'Route forecasts',
+			noRoutes: 'No route forecasts affect this supply city.',
+			routeTitle: '{originName} → {destinationName} · {materialName}',
+			nextDispatch: 'Next dispatch: day {day}.',
+			forecast:
+				'7-day delivery: {delivered7}; 30-day delivery: {delivered30}; 30-day transport cost: {transportCost}.',
+			condition: 'Condition: {condition}.',
+			conditions: {
+				awaitingDispatch: 'Awaiting dispatch',
+				normal: 'Normal',
+				destinationFull: 'Destination full',
+				originStockConstrained: 'Origin stock constrained',
+				routeCapacityConstrained: 'Route capacity constrained',
+				routePriorityConstrained: 'Route priority constrained',
+				routeFrequency: 'Route frequency constrained',
+				routeLeadTime: 'Route lead time constrained',
+				routePaused: 'Route paused'
+			},
+			causes: {
+				destinationFull:
+					'{cityName} has no logistics-visible warehouse capacity for {units} units.',
+				originStockConstrained: 'Route {routeId} is constrained by {units} units of origin stock.',
+				routeCapacityConstrained: 'Route {routeId} has {units} units beyond its capacity.',
+				routePriorityConstrained:
+					'Route {routeId} is constrained by priority behind route {blockingRouteId}.',
+				routeFrequency: 'Route {routeId} cannot arrive before day {nextArrivalDay}.',
+				routeLeadTime: 'Route {routeId} first arrives on day {firstArrivalDay}.',
+				routePaused: 'Route {routeId} is paused.',
+				destinationConfiguration:
+					'{retailCityName} is configured to use {supplyCityName}; select a better source or add an inbound route.'
+			}
 		},
 		states: {
 			noSupportedProducts: 'No supported products are available for planning.',

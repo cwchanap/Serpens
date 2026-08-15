@@ -550,6 +550,7 @@ export const zhHant = {
 			perDay: '{value} / 日',
 			perUnit: '{value} / 單位',
 			warehouse: '倉庫使用量 / 容量',
+			logisticsWarehouse: '目前物流可見的倉庫庫存',
 			buildings: '建築',
 			installedCapacity: '已安裝產能',
 			usableCapacity: '可用產能',
@@ -584,7 +585,7 @@ export const zhHant = {
 			none: '沒有綁定中的瓶頸。'
 		},
 		limitations: {
-			activeLogistics: '路線 {routes} 的啟用物流尚未建模。',
+			remoteOriginProduction: '路線 {routes} 的遠端起點生產尚未建模。',
 			railCapacity: '鐵路容量競爭尚未建模。',
 			storeSalesCapacity: '店鋪銷售能力尚未建模。'
 		},
@@ -594,8 +595,7 @@ export const zhHant = {
 			unaffordable: '沒有負擔得起的行動。',
 			ineffective: '預測沒有行動能改善計畫。',
 			noFeasibleAction: '沒有可行的行動。',
-			actionUnavailable: '必要行動無法使用，因此沒有建議。',
-			logisticsContention: '啟用物流競爭尚未建模，因此沒有建議。'
+			actionUnavailable: '必要行動無法使用，因此沒有建議。'
 		},
 		economics: {
 			structuralPrerequisite: '結構性前置條件 — 剩餘生產階段完成前無法提供 ROI',
@@ -611,6 +611,8 @@ export const zhHant = {
 			forecastOutcome:
 				'預測結果（{horizon} 天），基線 → 行動：進口 {baselineImports} → {actionImports}；覆蓋 {baselineCover} → {actionCover}；庫存耗盡 {baselineStockout} → {actionStockout}。',
 			shortageReduction: '30 天短缺減少：{units} 單位；庫存耗盡改善：{stockoutDays} 天。',
+			logisticsOutcome:
+				'物流預測，基線 → 行動：7 天配送 {baselineDelivered7} → {actionDelivered7}；30 天配送 {baselineDelivered30} → {actionDelivered30}；30 天運輸成本 {baselineTransportCost} → {actionTransportCost}。',
 			afterRailProjection: '此預測僅在新生產者連接鐵路後才有效。'
 		},
 		candidate: {
@@ -621,9 +623,57 @@ export const zhHant = {
 		actions: {
 			buildProducer: '建設 {buildingName} 以供應 {materialName}',
 			upgradeBuilding: '將 {buildingName} 升級至第 {level} 級',
-			buildWarehouse: '建設倉庫',
+			buildWarehouse: '在 {cityName} 建設倉庫',
 			connectRail: '為 {materialName} 連接鐵路',
+			createRoute: '建立 {materialName} 路線：{originName} → {destinationName}',
+			editRoute: '編輯路線 {routeId}：{fieldName} {from} → {to}',
+			resumeRoute: '恢復路線 {routeId}',
+			changeSupplySource: '讓 {retailCityName} 使用 {supplyCityName}',
+			fields: {
+				capacity: '容量',
+				frequencyDays: '頻率',
+				priority: '優先度'
+			},
 			noAction: '沒有建議的行動'
+		},
+		logistics: {
+			label: '物流預測證據',
+			kicker: '物流',
+			title: '路線與抵達',
+			currentWarehouse: '目前物流可見的倉庫庫存',
+			warehouseValue: '{used} / {capacity}',
+			inTransitTitle: '目前運輸中的庫存',
+			inTransitRow: '{quantity} {materialName} 運往 {cityName}；最早於第 {day} 天抵達。',
+			noInTransit: '沒有運往此供應城市的運輸中庫存。',
+			routesTitle: '路線預測',
+			noRoutes: '沒有影響此供應城市的路線預測。',
+			routeTitle: '{originName} → {destinationName} · {materialName}',
+			nextDispatch: '下次發運：第 {day} 天。',
+			forecast:
+				'7 天配送：{delivered7}；30 天配送：{delivered30}；30 天運輸成本：{transportCost}。',
+			condition: '狀態：{condition}。',
+			conditions: {
+				awaitingDispatch: '等待發運',
+				normal: '正常',
+				destinationFull: '目的地已滿',
+				originStockConstrained: '起點庫存受限',
+				routeCapacityConstrained: '路線容量受限',
+				routePriorityConstrained: '路線優先度受限',
+				routeFrequency: '路線頻率受限',
+				routeLeadTime: '路線運輸時間受限',
+				routePaused: '路線已暫停'
+			},
+			causes: {
+				destinationFull: '{cityName} 沒有可供 {units} 單位使用的物流可見倉庫容量。',
+				originStockConstrained: '路線 {routeId} 的起點庫存少了 {units} 單位。',
+				routeCapacityConstrained: '路線 {routeId} 超出容量 {units} 單位。',
+				routePriorityConstrained: '路線 {routeId} 因排在路線 {blockingRouteId} 之後而受限。',
+				routeFrequency: '路線 {routeId} 無法在第 {nextArrivalDay} 天之前抵達。',
+				routeLeadTime: '路線 {routeId} 首次於第 {firstArrivalDay} 天抵達。',
+				routePaused: '路線 {routeId} 已暫停。',
+				destinationConfiguration:
+					'{retailCityName} 設定使用 {supplyCityName}；請選擇更好的來源或新增一條入站路線。'
+			}
 		},
 		states: {
 			noSupportedProducts: '沒有可供規劃的支援商品。',

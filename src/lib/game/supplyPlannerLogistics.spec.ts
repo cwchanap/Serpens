@@ -75,7 +75,6 @@ function projectionSnapshot(overrides: Partial<SupplyPlannerSnapshot> = {}): Sup
 		usableBuildingIds: [],
 		disconnectedBuildingIds: [],
 		usableSinkBuildingIdsByMaterial: {},
-		activeOutboundRouteIds: [],
 		reachableDemandByMaterial: {},
 		reachableDemandByBuildingAndMaterial: {},
 		reachableBranchesByBuildingAndMaterial: {},
@@ -120,6 +119,7 @@ describe('supply planner logistics projection state', () => {
 			false
 		);
 		expect(snapshot.inTransitOrders).toEqual([]);
+		expect(snapshot.inTransitInventory).toEqual([]);
 		expect(snapshot.routes).toEqual(routes);
 
 		const remote = snapshot.remoteCities[0]!;
@@ -148,6 +148,15 @@ describe('supply planner logistics projection state', () => {
 		const snapshot = buildSupplyPlannerLogisticsSnapshot(game, 'industry-city');
 
 		expect(snapshot.inTransitOrders).toEqual([expectedOrder]);
+		expect(snapshot.inTransitInventory).toEqual([
+			{
+				destinationCityId: 'industry-city',
+				materialId: 'water',
+				quantity: 2,
+				orderIds: ['transfer-1'],
+				earliestArrivalOnDay: 7
+			}
+		]);
 		expect(snapshot.nextTransferSequence).toBe(42);
 
 		game.logistics.transferOrders[0]!.quantity = 99;

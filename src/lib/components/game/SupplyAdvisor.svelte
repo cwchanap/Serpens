@@ -10,9 +10,11 @@
 	} from '$lib/game/supplyPlannerActions';
 	import type {
 		SupplyBottleneck,
+		SupplyLogisticsBottleneck,
 		SupplyMaterialProjection,
 		SupplyPlannerHorizonDays,
-		SupplyPlannerLimitation,
+		SupplyPlannerRouteCondition,
+		SupplyPlannerTraceLimitation,
 		SupplyPlannerSnapshot
 	} from '$lib/game/supplyPlanner';
 	import type { I18nBundle } from '$lib/i18n';
@@ -68,36 +70,61 @@
 		return building ? i18n.labels.industrialBuilding(building.typeId) : buildingId;
 	}
 
-	function actionBuildingName(
-		action: Exclude<SupplyPlannerAction, { kind: 'none' }>,
-		snapshot: SupplyPlannerSnapshot
-	): string {
-		if (action.kind === 'upgrade-building' || action.kind === 'connect-rail') {
-			return buildingName(snapshot, action.buildingId);
-		}
-		return i18n.labels.industrialBuilding(action.buildingTypeId);
-	}
-
 	function actionLabel(action: SupplyPlannerAction, snapshot: SupplyPlannerSnapshot): string {
 		switch (action.kind) {
 			case 'build-producer':
 				return i18n.t('supplyAdvisor.actions.buildProducer', {
-					buildingName: actionBuildingName(action, snapshot),
+					buildingName: i18n.labels.industrialBuilding(action.buildingTypeId),
 					materialName: materialName(action.materialId)
 				});
 			case 'upgrade-building':
 				return i18n.t('supplyAdvisor.actions.upgradeBuilding', {
-					buildingName: actionBuildingName(action, snapshot),
+					buildingName: buildingName(snapshot, action.buildingId),
 					level: action.toLevel
 				});
 			case 'build-warehouse':
-				return i18n.t('supplyAdvisor.actions.buildWarehouse');
+				return i18n.t('supplyAdvisor.actions.buildWarehouse', {
+					cityName: i18n.labels.worldCity(action.cityId).name
+				});
 			case 'connect-rail':
 				return i18n.t('supplyAdvisor.actions.connectRail', {
 					materialName: materialName(action.materialId)
 				});
+			case 'create-route':
+				return i18n.t('supplyAdvisor.actions.createRoute', {
+					materialName: materialName(action.input.materialId),
+					originName: i18n.labels.worldCity(action.input.originCityId).name,
+					destinationName: i18n.labels.worldCity(action.input.destinationCityId).name
+				});
+			case 'edit-route':
+				return i18n.t('supplyAdvisor.actions.editRoute', {
+					routeId: action.routeId,
+					fieldName: routeFieldLabel(action.field),
+					from: formatInteger(action.from),
+					to: formatInteger(action.to)
+				});
+			case 'resume-route':
+				return i18n.t('supplyAdvisor.actions.resumeRoute', { routeId: action.routeId });
+			case 'change-supply-source':
+				return i18n.t('supplyAdvisor.actions.changeSupplySource', {
+					retailCityName: i18n.labels.worldCity(action.retailCityId).name,
+					supplyCityName: i18n.labels.worldCity(action.toSupplyCityId).name
+				});
 			case 'none':
 				return i18n.t('supplyAdvisor.actions.noAction');
+		}
+	}
+
+	function routeFieldLabel(
+		field: Extract<SupplyPlannerAction, { kind: 'edit-route' }>['field']
+	): string {
+		switch (field) {
+			case 'capacity':
+				return i18n.t('supplyAdvisor.actions.fields.capacity');
+			case 'frequencyDays':
+				return i18n.t('supplyAdvisor.actions.fields.frequencyDays');
+			case 'priority':
+				return i18n.t('supplyAdvisor.actions.fields.priority');
 		}
 	}
 
@@ -155,10 +182,10 @@
 		}
 	}
 
-	function limitationText(limitation: SupplyPlannerLimitation): string {
+	function limitationText(limitation: SupplyPlannerTraceLimitation): string {
 		switch (limitation.kind) {
-			case 'active-logistics-not-modeled':
-				return i18n.t('supplyAdvisor.limitations.activeLogistics', {
+			case 'remote-origin-production-not-modeled':
+				return i18n.t('supplyAdvisor.limitations.remoteOriginProduction', {
 					routes: i18n.format.list(limitation.routeIds)
 				});
 			case 'rail-capacity-not-modeled':
@@ -182,9 +209,83 @@
 				return i18n.t('supplyAdvisor.noOpReasons.noFeasibleAction');
 			case 'action-unavailable':
 				return i18n.t('supplyAdvisor.noOpReasons.actionUnavailable');
-			case 'logistics-contention-not-modeled':
-				return i18n.t('supplyAdvisor.noOpReasons.logisticsContention');
 		}
+	}
+
+	function routeConditionText(condition: SupplyPlannerRouteCondition): string {
+		switch (condition) {
+			case 'awaiting-dispatch':
+				return i18n.t('supplyAdvisor.logistics.conditions.awaitingDispatch');
+			case 'normal':
+				return i18n.t('supplyAdvisor.logistics.conditions.normal');
+			case 'destination-full':
+				return i18n.t('supplyAdvisor.logistics.conditions.destinationFull');
+			case 'origin-stock-constrained':
+				return i18n.t('supplyAdvisor.logistics.conditions.originStockConstrained');
+			case 'route-capacity-constrained':
+				return i18n.t('supplyAdvisor.logistics.conditions.routeCapacityConstrained');
+			case 'route-priority-constrained':
+				return i18n.t('supplyAdvisor.logistics.conditions.routePriorityConstrained');
+			case 'route-frequency':
+				return i18n.t('supplyAdvisor.logistics.conditions.routeFrequency');
+			case 'route-lead-time':
+				return i18n.t('supplyAdvisor.logistics.conditions.routeLeadTime');
+			case 'route-paused':
+				return i18n.t('supplyAdvisor.logistics.conditions.routePaused');
+		}
+	}
+
+	function logisticsCauseText(cause: SupplyLogisticsBottleneck): string {
+		switch (cause.kind) {
+			case 'destination-full':
+				return i18n.t('supplyAdvisor.logistics.causes.destinationFull', {
+					cityName: i18n.labels.worldCity(cause.cityId).name,
+					units: formatInteger(cause.blockedUnits)
+				});
+			case 'origin-stock-constrained':
+				return i18n.t('supplyAdvisor.logistics.causes.originStockConstrained', {
+					routeId: cause.routeId,
+					units: formatInteger(cause.deficitUnits)
+				});
+			case 'route-capacity-constrained':
+				return i18n.t('supplyAdvisor.logistics.causes.routeCapacityConstrained', {
+					routeId: cause.routeId,
+					units: formatInteger(cause.unmetUnits)
+				});
+			case 'route-priority-constrained':
+				return i18n.t('supplyAdvisor.logistics.causes.routePriorityConstrained', {
+					routeId: cause.routeId,
+					blockingRouteId: cause.blockingRouteId
+				});
+			case 'route-frequency':
+				return i18n.t('supplyAdvisor.logistics.causes.routeFrequency', {
+					routeId: cause.routeId,
+					nextArrivalDay: formatInteger(cause.nextArrivalDay)
+				});
+			case 'route-lead-time':
+				return i18n.t('supplyAdvisor.logistics.causes.routeLeadTime', {
+					routeId: cause.routeId,
+					firstArrivalDay: formatInteger(cause.firstArrivalDay)
+				});
+			case 'route-paused':
+				return i18n.t('supplyAdvisor.logistics.causes.routePaused', {
+					routeId: cause.routeId
+				});
+			case 'destination-configuration':
+				return i18n.t('supplyAdvisor.logistics.causes.destinationConfiguration', {
+					retailCityName: i18n.labels.worldCity(cause.retailCityId).name,
+					supplyCityName: i18n.labels.worldCity(cause.supplyCityId).name
+				});
+		}
+	}
+
+	function isLogisticsAction(action: SupplyPlannerAction): boolean {
+		return (
+			action.kind === 'create-route' ||
+			action.kind === 'edit-route' ||
+			action.kind === 'resume-route' ||
+			action.kind === 'change-supply-source'
+		);
 	}
 
 	function projectionTarget(
@@ -330,6 +431,10 @@
 					recommendation.projection,
 					snapshot
 				)}
+				{@const inTransitRows = (snapshot.logistics?.inTransitInventory ?? []).filter(
+					(row) => row.destinationCityId === snapshot.supplyCityId
+				)}
+				{@const routeForecasts = plan.baseline.routeForecasts ?? []}
 				<section class="evidence overview" aria-label={i18n.t('supplyAdvisor.evidenceLabel')}>
 					<div class="section-heading">
 						<div>
@@ -356,10 +461,10 @@
 							</dd>
 						</div>
 						<div>
-							<dt>{i18n.t('supplyAdvisor.metrics.warehouse')}</dt>
+							<dt>{i18n.t('supplyAdvisor.metrics.logisticsWarehouse')}</dt>
 							<dd>
-								{formatNumber(plan.baseline.warehouse.used)} / {formatNumber(
-									plan.baseline.warehouse.capacity
+								{formatInteger(snapshot.warehouseUsed)} / {formatInteger(
+									snapshot.warehouseCapacity
 								)}
 							</dd>
 						</div>
@@ -484,6 +589,81 @@
 					</div>
 				</section>
 
+				<section
+					class="evidence logistics-evidence"
+					aria-label={i18n.t('supplyAdvisor.logistics.label')}
+				>
+					<div class="section-heading">
+						<div>
+							<p class="section-kicker">{i18n.t('supplyAdvisor.logistics.kicker')}</p>
+							<h3>{i18n.t('supplyAdvisor.logistics.title')}</h3>
+						</div>
+					</div>
+					<dl class="metric-grid compact">
+						<div>
+							<dt>{i18n.t('supplyAdvisor.logistics.currentWarehouse')}</dt>
+							<dd>
+								{i18n.t('supplyAdvisor.logistics.warehouseValue', {
+									used: formatInteger(snapshot.warehouseUsed),
+									capacity: formatInteger(snapshot.warehouseCapacity)
+								})}
+							</dd>
+						</div>
+					</dl>
+					<div class="logistics-list">
+						<h4>{i18n.t('supplyAdvisor.logistics.inTransitTitle')}</h4>
+						{#if inTransitRows.length > 0}
+							{#each inTransitRows as row (`${row.destinationCityId}-${row.materialId}`)}
+								<p>
+									{i18n.t('supplyAdvisor.logistics.inTransitRow', {
+										quantity: formatInteger(row.quantity),
+										materialName: materialName(row.materialId),
+										cityName: i18n.labels.worldCity(row.destinationCityId).name,
+										day: formatInteger(row.earliestArrivalOnDay)
+									})}
+								</p>
+							{/each}
+						{:else}
+							<p>{i18n.t('supplyAdvisor.logistics.noInTransit')}</p>
+						{/if}
+					</div>
+					<div class="logistics-list">
+						<h4>{i18n.t('supplyAdvisor.logistics.routesTitle')}</h4>
+						{#if routeForecasts.length > 0}
+							{#each routeForecasts as forecast (forecast.route.id)}
+								<article class="route-forecast">
+									<h4>
+										{i18n.t('supplyAdvisor.logistics.routeTitle', {
+											originName: i18n.labels.worldCity(forecast.route.originCityId).name,
+											destinationName: i18n.labels.worldCity(forecast.route.destinationCityId).name,
+											materialName: materialName(forecast.route.materialId)
+										})}
+									</h4>
+									<p>
+										{i18n.t('supplyAdvisor.logistics.nextDispatch', {
+											day: formatInteger(forecast.route.nextDispatchOnDay)
+										})}
+									</p>
+									<p>
+										{i18n.t('supplyAdvisor.logistics.forecast', {
+											delivered7: formatInteger(forecast.projectedDeliveredUnits7),
+											delivered30: formatInteger(forecast.projectedDeliveredUnits30),
+											transportCost: formatCurrency(forecast.projectedTransportCost30)
+										})}
+									</p>
+									<p>
+										{i18n.t('supplyAdvisor.logistics.condition', {
+											condition: routeConditionText(forecast.projectedCondition)
+										})}
+									</p>
+								</article>
+							{/each}
+						{:else}
+							<p>{i18n.t('supplyAdvisor.logistics.noRoutes')}</p>
+						{/if}
+					</div>
+				</section>
+
 				{#if plan.baseline.limitations.length > 0}
 					<section class="limitations" aria-label={i18n.t('supplyAdvisor.limitationsLabel')}>
 						<h3>{i18n.t('supplyAdvisor.limitationsTitle')}</h3>
@@ -510,12 +690,15 @@
 						{#if recommendation.action.kind === 'none'}
 							<p class="annotation">{noOpReason(recommendation.action.reason)}</p>
 						{:else}
+							{#if recommendation.logisticsCause}
+								<p class="annotation">{logisticsCauseText(recommendation.logisticsCause)}</p>
+							{/if}
 							{@const cost = actionCost(recommendation.action)}
 							{#if cost !== null}
 								<p>
 									{i18n.t('supplyAdvisor.economics.actionCost', { cost: formatCurrency(cost) })}
 								</p>
-							{:else}
+							{:else if recommendation.action.kind === 'connect-rail'}
 								<p>{i18n.t('supplyAdvisor.economics.railCostPending')}</p>
 							{/if}
 							<p>
@@ -549,6 +732,30 @@
 										actionCover: formatNullableNumber(projectionForecast.daysOfCover),
 										baselineStockout: formatNullableNumber(baselineForecast.projectedStockoutDay),
 										actionStockout: formatNullableNumber(projectionForecast.projectedStockoutDay)
+									})}
+								</p>
+							{/if}
+							{#if isLogisticsAction(recommendation.action)}
+								<p class="projection-comparison">
+									{i18n.t('supplyAdvisor.economics.logisticsOutcome', {
+										baselineDelivered7: formatInteger(
+											recommendation.baseline.logisticsMetrics?.projectedDeliveredUnits7 ?? 0
+										),
+										actionDelivered7: formatInteger(
+											recommendation.projection.logisticsMetrics?.projectedDeliveredUnits7 ?? 0
+										),
+										baselineDelivered30: formatInteger(
+											recommendation.baseline.logisticsMetrics?.projectedDeliveredUnits30 ?? 0
+										),
+										actionDelivered30: formatInteger(
+											recommendation.projection.logisticsMetrics?.projectedDeliveredUnits30 ?? 0
+										),
+										baselineTransportCost: formatCurrency(
+											recommendation.baseline.logisticsMetrics?.projectedTransportCost30 ?? 0
+										),
+										actionTransportCost: formatCurrency(
+											recommendation.projection.logisticsMetrics?.projectedTransportCost30 ?? 0
+										)
 									})}
 								</p>
 							{/if}
@@ -816,6 +1023,8 @@
 	.claimants,
 	.city-context,
 	.contributor p,
+	.logistics-list > p,
+	.route-forecast p,
 	.warehouse-evidence,
 	.candidate p {
 		margin: 0;
@@ -839,14 +1048,16 @@
 
 	.contributors,
 	.material-list,
-	.candidate-list {
+	.candidate-list,
+	.logistics-list {
 		display: grid;
 		gap: 0.5rem;
 	}
 
 	.contributor,
 	.material-row,
-	.candidate {
+	.candidate,
+	.route-forecast {
 		border: 1px solid var(--paper-edge);
 		background: rgba(255, 255, 255, 0.28);
 		padding: 0.65rem;

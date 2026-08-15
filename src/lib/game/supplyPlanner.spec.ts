@@ -3583,6 +3583,8 @@ describe('supply planner patch coverage', () => {
 			canBuildIndustry: false,
 			canUpgradeIndustry: false,
 			canBuildRail: false,
+			canManageLogistics: false,
+			canSetRetailSupplySource: false,
 			allowedIndustryBuildingTypeIds: [] as const
 		};
 
