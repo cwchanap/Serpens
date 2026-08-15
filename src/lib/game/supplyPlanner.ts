@@ -31,6 +31,7 @@ import {
 	type SupplyPlannerLogisticsSnapshot,
 	type SupplyPlannerLogisticsState
 } from './supplyPlannerLogistics';
+import type { RouteOperationalCondition } from './logisticsReadModels';
 import type {
 	City,
 	GameState,
@@ -38,6 +39,7 @@ import type {
 	IndustrialBuildingTypeId,
 	MaterialId,
 	ProductionRecipeId,
+	RecurringRoute,
 	WorldCityId
 } from './types';
 
@@ -78,7 +80,6 @@ export interface SupplyPlannerSnapshot {
 	usableBuildingIds: readonly string[];
 	disconnectedBuildingIds: readonly string[];
 	usableSinkBuildingIdsByMaterial: Partial<Record<MaterialId, readonly string[]>>;
-	activeOutboundRouteIds: readonly string[];
 	reachableDemandByMaterial: Partial<Record<MaterialId, number>>;
 	/**
 	 * Per-producer reachable demand caps, keyed by
@@ -141,6 +142,134 @@ export interface SupplyPlannerSnapshot {
 	>;
 	/** Copied route/order state used only when dated logistics can affect projection. */
 	logistics?: SupplyPlannerLogisticsSnapshot;
+}
+
+export type SupplyPlannerRouteCondition =
+	| RouteOperationalCondition
+	| 'route-priority-constrained'
+	| 'route-frequency'
+	| 'route-lead-time'
+	| 'route-paused';
+
+const SUPPLY_PLANNER_ROUTE_CONDITION_RANK: Record<SupplyPlannerRouteCondition, number> = {
+	'awaiting-dispatch': 0,
+	normal: 0,
+	'destination-full': 1,
+	'route-frequency': 2,
+	'route-lead-time': 2,
+	'route-capacity-constrained': 3,
+	'origin-stock-constrained': 3,
+	'route-priority-constrained': 4,
+	'route-paused': 4
+};
+
+function promoteSupplyPlannerRouteCondition(
+	current: SupplyPlannerRouteCondition,
+	candidate: SupplyPlannerRouteCondition
+): SupplyPlannerRouteCondition {
+	return SUPPLY_PLANNER_ROUTE_CONDITION_RANK[candidate] >
+		SUPPLY_PLANNER_ROUTE_CONDITION_RANK[current]
+		? candidate
+		: current;
+}
+
+export interface SupplyPlannerRouteForecast {
+	route: Readonly<RecurringRoute>;
+	projectedCondition: SupplyPlannerRouteCondition;
+	projectedDispatchedUnits7: number;
+	projectedDispatchedUnits30: number;
+	projectedDeliveredUnits7: number;
+	projectedDeliveredUnits30: number;
+	projectedTransportCost30: number;
+	firstProjectedArrivalDay: number | null;
+	peakUnmetDestinationNeed: number;
+	firstOriginStockConstraintDay: number | null;
+	firstDestinationCapacityConstraintDay: number | null;
+	firstRouteCapacityConstraintDay: number | null;
+	firstPriorityConstraintDay: number | null;
+	priorityBlockedByRouteId: string | null;
+}
+
+export type SupplyLogisticsBottleneck =
+	| {
+			kind: 'destination-full';
+			routeId: string;
+			cityId: WorldCityId;
+			materialId: MaterialId;
+			day: number;
+			blockedUnits: number;
+			amount: number;
+	  }
+	| {
+			kind: 'origin-stock-constrained';
+			routeId: string;
+			cityId: WorldCityId;
+			materialId: MaterialId;
+			day: number;
+			deficitUnits: number;
+			amount: number;
+	  }
+	| {
+			kind: 'route-capacity-constrained';
+			routeId: string;
+			cityId: WorldCityId;
+			materialId: MaterialId;
+			day: number;
+			unmetUnits: number;
+			amount: number;
+	  }
+	| {
+			kind: 'route-priority-constrained';
+			routeId: string;
+			blockingRouteId: string;
+			cityId: WorldCityId;
+			materialId: MaterialId;
+			day: number;
+			blockedUnits: number;
+			amount: number;
+	  }
+	| {
+			kind: 'route-frequency';
+			routeId: string;
+			cityId: WorldCityId;
+			materialId: MaterialId;
+			day: number;
+			stockoutDay: number;
+			nextArrivalDay: number;
+			amount: number;
+	  }
+	| {
+			kind: 'route-lead-time';
+			routeId: string;
+			cityId: WorldCityId;
+			materialId: MaterialId;
+			day: number;
+			stockoutDay: number;
+			firstArrivalDay: number;
+			amount: number;
+	  }
+	| {
+			kind: 'route-paused';
+			routeId: string;
+			cityId: WorldCityId;
+			materialId: MaterialId;
+			day: number;
+			blockedUnits: number;
+			amount: number;
+	  }
+	| {
+			kind: 'destination-configuration';
+			retailCityId: WorldCityId;
+			supplyCityId: WorldCityId;
+			materialId: MaterialId;
+			day: number;
+			amount: number;
+	  };
+
+export interface SupplyPlannerLogisticsMetrics {
+	projectedDeliveredUnits7: number;
+	projectedDeliveredUnits30: number;
+	projectedTransportCost30: number;
 }
 
 export interface ReachableProcessorEntry {
@@ -237,7 +366,6 @@ export type SupplyBottleneck =
 	| { kind: 'none' };
 
 export type SupplyPlannerLimitation =
-	| { kind: 'active-logistics-not-modeled'; routeIds: readonly string[] }
 	| { kind: 'rail-capacity-not-modeled' }
 	| { kind: 'store-sales-capacity-not-modeled' };
 
@@ -261,6 +389,8 @@ export interface SupplyPlannerProjection<
 	warehouse: SupplyWarehouseEvidence;
 	bottleneck: SupplyBottleneck;
 	limitations: readonly Limitation[];
+	logisticsMetrics?: SupplyPlannerLogisticsMetrics;
+	routeForecasts?: readonly SupplyPlannerRouteForecast[];
 }
 
 export type SupplyPlannerSnapshotResult =
@@ -368,7 +498,6 @@ export function buildSupplyPlannerSnapshot(
 		}))
 		.sort((left, right) => compareCodeUnitStrings(left.id, right.id));
 
-	const requirements = buildSupplyMaterialRequirements({ finishedMaterialId, demandPerDay });
 	const reachability = buildRequiredChainReachability(
 		game,
 		{
@@ -379,8 +508,6 @@ export function buildSupplyPlannerSnapshot(
 		},
 		industry.buildings
 	);
-	const requiredMaterialIds = new Set(requirements.map((requirement) => requirement.materialId));
-
 	const snapshot: SupplyPlannerSnapshot = {
 		retailCityId: retailCity.id as WorldCityId,
 		supplyCityId: industry.cityId,
@@ -396,15 +523,6 @@ export function buildSupplyPlannerSnapshot(
 		usableBuildingIds: [...reachability.usableBuildingIds].sort(compareCodeUnitStrings),
 		disconnectedBuildingIds: reachability.disconnectedBuildingIds,
 		usableSinkBuildingIdsByMaterial: reachability.usableSinkBuildingIdsByMaterial,
-		activeOutboundRouteIds: game.logistics.recurringRoutes
-			.filter(
-				(route) =>
-					route.state === 'active' &&
-					route.originCityId === industry.cityId &&
-					requiredMaterialIds.has(route.materialId)
-			)
-			.map((route) => route.id)
-			.sort(compareCodeUnitStrings),
 		reachableDemandByMaterial: reachability.reachableDemandByMaterial,
 		reachableDemandByBuildingAndMaterial: reachability.reachableDemandByBuildingAndMaterial,
 		reachableBranchesByBuildingAndMaterial: reachability.reachableBranchesByBuildingAndMaterial,
@@ -1889,12 +2007,6 @@ function projectSupplySnapshotClosedForm(snapshot: SupplyPlannerSnapshot): Suppl
 		{ kind: 'rail-capacity-not-modeled' },
 		{ kind: 'store-sales-capacity-not-modeled' }
 	];
-	if (snapshot.activeOutboundRouteIds.length > 0) {
-		limitations.unshift({
-			kind: 'active-logistics-not-modeled',
-			routeIds: snapshot.activeOutboundRouteIds
-		});
-	}
 
 	return {
 		snapshot,
@@ -2090,6 +2202,56 @@ function projectSupplySnapshotWithLogistics(
 	});
 	const requiredMaterialIds = new Set(requirements.map((requirement) => requirement.materialId));
 	const traces = new Map<MaterialId, SupplyMaterialTrace>();
+	const routeForecastState = new Map<
+		string,
+		{
+			route: Readonly<RecurringRoute>;
+			dispatched7: number;
+			dispatched30: number;
+			delivered7: number;
+			delivered30: number;
+			transportCost30: number;
+			firstArrivalDay: number | null;
+			peakUnmetNeed: number;
+			firstOriginConstraintDay: number | null;
+			firstDestinationConstraintDay: number | null;
+			firstRouteCapacityConstraintDay: number | null;
+			firstPriorityConstraintDay: number | null;
+			priorityBlockedByRouteId: string | null;
+			condition: SupplyPlannerRouteCondition;
+		}
+	>();
+	for (const route of logistics.routes) {
+		routeForecastState.set(route.id, {
+			route,
+			dispatched7: 0,
+			dispatched30: 0,
+			delivered7: 0,
+			delivered30: 0,
+			transportCost30: 0,
+			firstArrivalDay: null,
+			peakUnmetNeed: 0,
+			firstOriginConstraintDay: null,
+			firstDestinationConstraintDay: null,
+			firstRouteCapacityConstraintDay: null,
+			firstPriorityConstraintDay: null,
+			priorityBlockedByRouteId: null,
+			condition: route.state === 'paused' ? 'route-paused' : 'awaiting-dispatch'
+		});
+	}
+	const copiedOrdersById = new Map(logistics.inTransitOrders.map((order) => [order.id, order]));
+	const projectedRouteByOrderId = new Map<string, string>();
+	for (const order of logistics.inTransitOrders) {
+		if (order.source.kind !== 'recurring-route') continue;
+		const forecast = routeForecastState.get(order.source.routeId);
+		if (!forecast || order.destinationCityId !== snapshot.supplyCityId) continue;
+		if (forecast.firstArrivalDay === null || order.arrivalOnDay < forecast.firstArrivalDay) {
+			forecast.firstArrivalDay = order.arrivalOnDay;
+		}
+	}
+	let projectedDeliveredUnits7 = 0;
+	let projectedDeliveredUnits30 = 0;
+	let projectedTransportCost30 = 0;
 	for (const material of prepared) {
 		traces.set(material.requirement.materialId, {
 			localAvailableUnits: [],
@@ -2106,6 +2268,25 @@ function projectSupplySnapshotWithLogistics(
 		const arrivalResult = processSupplyPlannerTransferArrivals(logisticsState, day);
 		logisticsState = arrivalResult.state;
 		for (const arrival of arrivalResult.arrivals) {
+			const arrivalOrder = copiedOrdersById.get(arrival.transferOrderId);
+			const arrivalRouteId =
+				arrivalOrder?.source.kind === 'recurring-route'
+					? arrivalOrder.source.routeId
+					: (projectedRouteByOrderId.get(arrival.transferOrderId) ?? null);
+			const arrivalRoute = arrivalRouteId ? routeForecastState.get(arrivalRouteId) : undefined;
+			if (arrival.destinationCityId === snapshot.supplyCityId) {
+				if (arrivalRoute) {
+					arrivalRoute.delivered30 += arrival.quantity;
+					if (offset < 7) arrivalRoute.delivered7 += arrival.quantity;
+				}
+				if (requiredMaterialIds.has(arrival.materialId)) {
+					projectedDeliveredUnits30 += arrival.quantity;
+					if (offset < 7) projectedDeliveredUnits7 += arrival.quantity;
+				}
+			}
+			if (arrivalRoute && arrivalRoute.firstArrivalDay === null) {
+				arrivalRoute.firstArrivalDay = day;
+			}
 			if (
 				arrival.destinationCityId === snapshot.supplyCityId &&
 				requiredMaterialIds.has(arrival.materialId)
@@ -2145,9 +2326,79 @@ function projectSupplySnapshotWithLogistics(
 		const dispatchResult = processSupplyPlannerRouteDispatches(logisticsState, day);
 		logisticsState = dispatchResult.state;
 		for (const attempt of dispatchResult.attempts) {
+			if (attempt.transferOrderId !== null) {
+				projectedRouteByOrderId.set(attempt.transferOrderId, attempt.routeId);
+			}
+			const attemptForecast = routeForecastState.get(attempt.routeId);
+			const isRelevantInboundRoute =
+				attempt.destinationCityId === snapshot.supplyCityId &&
+				requiredMaterialIds.has(attempt.materialId);
+			if (attemptForecast && isRelevantInboundRoute) {
+				attemptForecast.dispatched30 += attempt.dispatchedQuantity;
+				if (offset < 7) attemptForecast.dispatched7 += attempt.dispatchedQuantity;
+				attemptForecast.transportCost30 += attempt.transportCost;
+				projectedTransportCost30 += attempt.transportCost;
+				attemptForecast.peakUnmetNeed = Math.max(
+					attemptForecast.peakUnmetNeed,
+					attempt.unmetDestinationNeed
+				);
+				const capacityNeed = Math.min(attempt.destinationNeed, attempt.capacity);
+				const originStockConstrained =
+					capacityNeed > 0 && attempt.availableOriginStock < capacityNeed;
+				const routeCapacityConstrained =
+					attempt.destinationNeed > attempt.capacity &&
+					attempt.dispatchedQuantity === attempt.capacity &&
+					!originStockConstrained;
+				const priorityBlocker =
+					attempt.destinationNeed === 0
+						? dispatchResult.attempts.find((previous) => {
+								const previousForecast = routeForecastState.get(previous.routeId);
+								return (
+									previous !== attempt &&
+									previous.destinationCityId === attempt.destinationCityId &&
+									previous.dispatchedQuantity > 0 &&
+									previousForecast !== undefined &&
+									previousForecast.route.priority < attemptForecast.route.priority
+								);
+							})
+						: undefined;
+				if (attemptForecast.firstOriginConstraintDay === null && originStockConstrained) {
+					attemptForecast.firstOriginConstraintDay = day;
+				}
+				if (
+					attemptForecast.firstDestinationConstraintDay === null &&
+					attempt.destinationNeed === 0 &&
+					!priorityBlocker
+				) {
+					attemptForecast.firstDestinationConstraintDay = day;
+				}
+				if (attemptForecast.firstRouteCapacityConstraintDay === null && routeCapacityConstrained) {
+					attemptForecast.firstRouteCapacityConstraintDay = day;
+				}
+				if (attemptForecast.firstPriorityConstraintDay === null && priorityBlocker) {
+					attemptForecast.firstPriorityConstraintDay = day;
+					attemptForecast.priorityBlockedByRouteId = priorityBlocker.routeId;
+				}
+				const candidateCondition: SupplyPlannerRouteCondition = priorityBlocker
+					? 'route-priority-constrained'
+					: originStockConstrained
+						? 'origin-stock-constrained'
+						: routeCapacityConstrained
+							? 'route-capacity-constrained'
+							: attempt.destinationNeed === 0
+								? 'destination-full'
+								: 'normal';
+				attemptForecast.condition = promoteSupplyPlannerRouteCondition(
+					attemptForecast.condition,
+					candidateCondition
+				);
+				if (attempt.transferOrderId && attemptForecast.firstArrivalDay === null) {
+					attemptForecast.firstArrivalDay = day + attemptForecast.route.leadTimeDays;
+				}
+			}
 			if (
+				isRelevantInboundRoute &&
 				attempt.originCityId !== snapshot.supplyCityId &&
-				requiredMaterialIds.has(attempt.materialId) &&
 				attempt.availableOriginStock < Math.min(attempt.destinationNeed, attempt.capacity)
 			) {
 				remoteOriginConstraintRouteIds.add(attempt.routeId);
@@ -2224,12 +2475,37 @@ function projectSupplySnapshotWithLogistics(
 		});
 	}
 
+	const routeForecasts: SupplyPlannerRouteForecast[] = [...routeForecastState.values()]
+		.sort((left, right) => compareCodeUnitStrings(left.route.id, right.route.id))
+		.map((row) => ({
+			route: row.route,
+			projectedCondition: row.condition,
+			projectedDispatchedUnits7: row.dispatched7,
+			projectedDispatchedUnits30: row.dispatched30,
+			projectedDeliveredUnits7: row.delivered7,
+			projectedDeliveredUnits30: row.delivered30,
+			projectedTransportCost30: row.transportCost30,
+			firstProjectedArrivalDay: row.firstArrivalDay,
+			peakUnmetDestinationNeed: row.peakUnmetNeed,
+			firstOriginStockConstraintDay: row.firstOriginConstraintDay,
+			firstDestinationCapacityConstraintDay: row.firstDestinationConstraintDay,
+			firstRouteCapacityConstraintDay: row.firstRouteCapacityConstraintDay,
+			firstPriorityConstraintDay: row.firstPriorityConstraintDay,
+			priorityBlockedByRouteId: row.priorityBlockedByRouteId
+		}));
+
 	return {
 		snapshot,
 		materials,
 		warehouse,
 		bottleneck: primaryBottleneck(snapshot, materials, warehouse, {}),
-		limitations
+		limitations,
+		logisticsMetrics: {
+			projectedDeliveredUnits7,
+			projectedDeliveredUnits30,
+			projectedTransportCost30
+		},
+		routeForecasts
 	};
 }
 
