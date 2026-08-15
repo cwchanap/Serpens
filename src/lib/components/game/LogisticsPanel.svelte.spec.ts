@@ -1,5 +1,6 @@
 import { page } from 'vitest/browser';
 import { describe, expect, it, vi } from 'vitest';
+import { tick as svelteTick } from 'svelte';
 import { render } from 'vitest-browser-svelte';
 import { createI18n } from '$lib/i18n';
 import {
@@ -12,6 +13,11 @@ import { createTwoIndustryCityGame } from '$lib/game/interCityLogistics.testUtil
 import type { GameRouteCommitResult } from '$lib/game/commandResult';
 import { buildLogisticsPanelView } from './logisticsPanel';
 import LogisticsPanel from './LogisticsPanel.svelte';
+
+vi.mock('svelte', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('svelte')>();
+	return { ...actual, tick: vi.fn(actual.tick) };
+});
 
 function renderPanel(overrides: Record<string, unknown> = {}) {
 	const game = createTwoIndustryCityGame();
@@ -197,6 +203,52 @@ describe('LogisticsPanel', () => {
 		await rerender({ ...props, routePreset: { ...preset, capacity: 16, priority: 1 } });
 		await expect.element(capacity).toHaveValue(16);
 		expect(props.onCreateRecurringRoute).not.toHaveBeenCalled();
+	});
+
+	it('cancels a pending preset focus when the preset changes before the tick resolves', async () => {
+		// Mock tick to return a deferred promise so we can control when the
+		// focus callback runs. The first preset effect schedules a
+		// tick().then() that we hold unresolved. Rerendering with a new
+		// preset triggers the cleanup (cancelled=true) before the deferred
+		// tick resolves, exercising the cancelled guard at line 150.
+		let resolveFirstTick: () => void = () => {};
+		const deferred = new Promise<void>((resolve) => {
+			resolveFirstTick = resolve;
+		});
+		vi.mocked(svelteTick).mockReturnValueOnce(deferred);
+
+		const preset: RecurringRouteInput = {
+			originCityId: 'breadbasket-basin',
+			destinationCityId: 'industry-city',
+			materialId: 'grain',
+			capacity: 12,
+			frequencyDays: 1,
+			leadTimeDays: 2,
+			transportCostPerUnit: 2,
+			priority: 0
+		};
+		const { rerender, ...props } = renderPanel({ routePreset: preset });
+
+		// Let the preset effect run — it calls the mocked tick() which
+		// returns our deferred promise (not yet resolved).
+		await vi.waitFor(() => expect(vi.mocked(svelteTick)).toHaveBeenCalled());
+
+		// Rerender with a different preset — the cleanup from the first
+		// effect run sets cancelled=true.
+		const secondPreset: RecurringRouteInput = { ...preset, capacity: 16, priority: 1 };
+		rerender({ ...props, routePreset: secondPreset });
+
+		// Resolve the first deferred tick — the callback runs with
+		// cancelled=true and returns early (line 150).
+		resolveFirstTick();
+		await Promise.resolve();
+
+		// The form should reflect the second preset's capacity, and the
+		// form element should eventually be focused by the second effect.
+		await expect.element(page.getByLabelText('Capacity per dispatch')).toHaveValue(16);
+		await vi.waitFor(() => {
+			expect(document.getElementById('logistics-route-form')).toBe(document.activeElement);
+		});
 	});
 
 	it('does not submit a route when city or material selections are unavailable', async () => {

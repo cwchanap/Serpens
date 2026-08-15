@@ -617,8 +617,8 @@ describe('supply planner snapshot', () => {
 				routes: [
 					route({
 						id: 'route-noop-grain',
-						originCityId: 'breadbasket-basin',
-						destinationCityId: 'industry-city',
+						originCityId: 'breadbasket-basin' as WorldCityId,
+						destinationCityId: 'industry-city' as WorldCityId,
 						materialId: 'grain',
 						capacity: 1,
 						nextDispatchOnDay: 5
@@ -651,8 +651,8 @@ describe('supply planner snapshot', () => {
 				routes: [
 					route({
 						id: 'route-pantry',
-						originCityId: 'breadbasket-basin',
-						destinationCityId: 'industry-city',
+						originCityId: 'breadbasket-basin' as WorldCityId,
+						destinationCityId: 'industry-city' as WorldCityId,
 						materialId: 'pantry',
 						capacity: 10,
 						frequencyDays: 1,
@@ -691,8 +691,8 @@ describe('supply planner snapshot', () => {
 				routes: [
 					route({
 						id: 'route-blocker',
-						originCityId: 'breadbasket-basin',
-						destinationCityId: 'industry-city',
+						originCityId: 'breadbasket-basin' as WorldCityId,
+						destinationCityId: 'industry-city' as WorldCityId,
 						materialId: 'water',
 						capacity: 100,
 						priority: 0,
@@ -700,8 +700,8 @@ describe('supply planner snapshot', () => {
 					}),
 					route({
 						id: 'route-loser',
-						originCityId: 'breadbasket-basin',
-						destinationCityId: 'industry-city',
+						originCityId: 'breadbasket-basin' as WorldCityId,
+						destinationCityId: 'industry-city' as WorldCityId,
 						materialId: 'pantry',
 						capacity: 10,
 						priority: 1,
@@ -741,8 +741,8 @@ describe('supply planner snapshot', () => {
 				routes: [
 					route({
 						id: 'route-blocker',
-						originCityId: 'breadbasket-basin',
-						destinationCityId: 'industry-city',
+						originCityId: 'breadbasket-basin' as WorldCityId,
+						destinationCityId: 'industry-city' as WorldCityId,
 						materialId: 'water',
 						capacity: 2,
 						priority: 0,
@@ -750,8 +750,8 @@ describe('supply planner snapshot', () => {
 					}),
 					route({
 						id: 'route-loser',
-						originCityId: 'breadbasket-basin',
-						destinationCityId: 'industry-city',
+						originCityId: 'breadbasket-basin' as WorldCityId,
+						destinationCityId: 'industry-city' as WorldCityId,
 						materialId: 'pantry',
 						capacity: 10,
 						priority: 1,
@@ -790,8 +790,8 @@ describe('supply planner snapshot', () => {
 				routes: [
 					route({
 						id: 'route-a-blocker',
-						originCityId: 'breadbasket-basin',
-						destinationCityId: 'industry-city',
+						originCityId: 'breadbasket-basin' as WorldCityId,
+						destinationCityId: 'industry-city' as WorldCityId,
 						materialId: 'water',
 						capacity: 2,
 						priority: 1,
@@ -799,8 +799,8 @@ describe('supply planner snapshot', () => {
 					}),
 					route({
 						id: 'route-z-loser',
-						originCityId: 'breadbasket-basin',
-						destinationCityId: 'industry-city',
+						originCityId: 'breadbasket-basin' as WorldCityId,
+						destinationCityId: 'industry-city' as WorldCityId,
 						materialId: 'pantry',
 						capacity: 10,
 						priority: 1,
@@ -3644,16 +3644,16 @@ describe('supply planner patch coverage', () => {
 				recurringRoutes: [
 					route({
 						id: 'route-grain',
-						originCityId: 'breadbasket-basin',
-						destinationCityId: 'industry-city',
+						originCityId: 'breadbasket-basin' as WorldCityId,
+						destinationCityId: 'industry-city' as WorldCityId,
 						materialId: 'grain',
 						capacity: 10,
 						nextDispatchOnDay: 7
 					}),
 					route({
 						id: 'route-flour',
-						originCityId: 'breadbasket-basin',
-						destinationCityId: 'industry-city',
+						originCityId: 'breadbasket-basin' as WorldCityId,
+						destinationCityId: 'industry-city' as WorldCityId,
 						materialId: 'flour',
 						capacity: 10,
 						nextDispatchOnDay: 7
@@ -3663,8 +3663,8 @@ describe('supply planner patch coverage', () => {
 					{
 						id: 'transfer-1',
 						source: { kind: 'manual' },
-						originCityId: 'breadbasket-basin',
-						destinationCityId: 'industry-city',
+						originCityId: 'breadbasket-basin' as WorldCityId,
+						destinationCityId: 'industry-city' as WorldCityId,
 						materialId: 'grain',
 						quantity: 3,
 						createdOnDay: 6,
@@ -3692,5 +3692,154 @@ describe('supply planner patch coverage', () => {
 		const result = buildSupplyPlan(game, request, availability);
 		expect(performance.now() - started).toBeLessThan(2_000);
 		expect(result.status).toBe('ready');
+	});
+});
+
+describe('supply planner projection edge-case coverage', () => {
+	it('tracks the earliest arrival day across multiple in-transit orders for the same route', () => {
+		// Two in-transit orders for the same route with different
+		// arrival days. The second order arrives earlier than the
+		// first, so the forecast's firstArrivalDay should be updated
+		// to the earlier value (line 2224).
+		const game = createTwoIndustryCityGame({ day: 7, materials: false });
+		const gameWithLogistics: GameState = {
+			...game,
+			stores: [{ ...game.stores[0]!, products: [product('bottled-water')] }],
+			industrialBuildings: [
+				building('water-pump', 'water-pump-1'),
+				building('water-bottler', 'water-bottler-1'),
+				building('warehouse', 'warehouse-1'),
+				...game.industrialBuildings
+			],
+			cityInventories: [
+				{ cityId: 'industry-city', materials: { water: 100 } },
+				{ cityId: 'breadbasket-basin', materials: { 'bottled-water': 10_000 } }
+			],
+			logistics: {
+				...game.logistics,
+				recurringRoutes: [
+					{
+						id: 'route-water',
+						originCityId: 'breadbasket-basin' as WorldCityId,
+						destinationCityId: 'industry-city' as WorldCityId,
+						materialId: 'bottled-water' as MaterialId,
+						capacity: 100,
+						frequencyDays: 1,
+						leadTimeDays: 1,
+						transportCostPerUnit: 1,
+						priority: 1,
+						state: 'active',
+						nextDispatchOnDay: 7
+					}
+				],
+				transferOrders: []
+			}
+		};
+		const snapshot = readySnapshot(gameWithLogistics);
+		// Add two in-transit orders for the same route with different
+		// arrival days. The first has arrivalOnDay 10, the second has
+		// arrivalOnDay 5. The forecast should track arrivalOnDay 5 as
+		// the first arrival.
+		snapshot.logistics = {
+			...snapshot.logistics!,
+			inTransitOrders: [
+				{
+					id: 'transfer-late',
+					source: { kind: 'recurring-route' as const, routeId: 'route-water' },
+					originCityId: 'breadbasket-basin' as WorldCityId,
+					destinationCityId: 'industry-city' as WorldCityId,
+					materialId: 'bottled-water' as MaterialId,
+					quantity: 50,
+					createdOnDay: 6,
+					dispatchedOnDay: 6,
+					arrivalOnDay: 10,
+					transportCost: 50,
+					status: 'in-transit'
+				},
+				{
+					id: 'transfer-early',
+					source: { kind: 'recurring-route' as const, routeId: 'route-water' },
+					originCityId: 'breadbasket-basin' as WorldCityId,
+					destinationCityId: 'industry-city' as WorldCityId,
+					materialId: 'bottled-water' as MaterialId,
+					quantity: 50,
+					createdOnDay: 3,
+					dispatchedOnDay: 3,
+					arrivalOnDay: 5,
+					transportCost: 50,
+					status: 'in-transit'
+				},
+				{
+					// This order goes to a different city, so the
+					// continue on line 2224 fires (destinationCityId
+					// !== supplyCityId).
+					id: 'transfer-other-dest',
+					source: { kind: 'recurring-route' as const, routeId: 'route-water' },
+					originCityId: 'industry-city' as WorldCityId,
+					destinationCityId: 'breadbasket-basin' as WorldCityId,
+					materialId: 'bottled-water' as MaterialId,
+					quantity: 10,
+					createdOnDay: 4,
+					dispatchedOnDay: 4,
+					arrivalOnDay: 6,
+					transportCost: 10,
+					status: 'in-transit'
+				}
+			]
+		};
+
+		const projection = projectSupplySnapshot(snapshot);
+		const forecast = projection.routeForecasts?.find((f) => f.route.id === 'route-water');
+		expect(forecast).toBeDefined();
+		expect(forecast?.firstProjectedArrivalDay).toBe(5);
+	});
+
+	it('throws when the projected transport cost overflows the safe integer range', () => {
+		// A route with high transport cost per unit that is individually
+		// safe but cumulatively overflows Number.MAX_SAFE_INTEGER over
+		// 30 daily dispatches, triggering the overflow check in
+		// addProjectedTransportCost (line 3026).
+		const game = createTwoIndustryCityGame({ day: 7, materials: false });
+		// Each dispatch costs capacity * transportCostPerUnit = 1 * floor(MAX/20).
+		// 30 dispatches would cost ~30 * floor(MAX/20) ≈ 1.5 * MAX, which overflows.
+		const perUnitCost = Math.floor(Number.MAX_SAFE_INTEGER / 20);
+		const gameWithLogistics: GameState = {
+			...game,
+			stores: [{ ...game.stores[0]!, products: [product('bottled-water')] }],
+			industrialBuildings: [
+				building('water-pump', 'water-pump-1'),
+				building('water-bottler', 'water-bottler-1'),
+				building('warehouse', 'warehouse-1', 'industry-city', 100),
+				...game.industrialBuildings
+			],
+			cityInventories: [
+				{ cityId: 'industry-city', materials: { water: 100 } },
+				{ cityId: 'breadbasket-basin', materials: { 'bottled-water': 100 } }
+			],
+			logistics: {
+				...game.logistics,
+				recurringRoutes: [
+					{
+						id: 'route-water',
+						originCityId: 'breadbasket-basin' as WorldCityId,
+						destinationCityId: 'industry-city' as WorldCityId,
+						materialId: 'bottled-water' as MaterialId,
+						capacity: 1,
+						frequencyDays: 1,
+						leadTimeDays: 1,
+						transportCostPerUnit: perUnitCost,
+						priority: 1,
+						state: 'active',
+						nextDispatchOnDay: 7
+					}
+				],
+				transferOrders: []
+			}
+		};
+		const snapshot = readySnapshot(gameWithLogistics);
+
+		expect(() => projectSupplySnapshot(snapshot)).toThrow(
+			'Projected transport cost exceeds the safe integer range'
+		);
 	});
 });

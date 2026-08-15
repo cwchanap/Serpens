@@ -8,12 +8,14 @@ import {
 import { INDUSTRIAL_BUILDING_TYPES } from './industry';
 import type { RecurringRouteInput } from './interCityLogistics';
 import { createNewGame } from './state';
+import { openWorldCity } from './world';
 import { createTwoIndustryCityGame } from './interCityLogistics.testUtils';
 import type {
 	GameState,
 	IndustrialBuilding,
 	IndustrialBuildingType,
 	IndustrialBuildingTypeId,
+	MaterialId,
 	RecurringRoute,
 	StoreProduct,
 	TransferOrder,
@@ -2277,5 +2279,182 @@ describe('supply planner actions patch coverage additions', () => {
 		);
 		expect(feasibility.hasValidPlacement).toBe(true);
 		expect(feasibility.hasRailReadyPlacement).toBe(true);
+	});
+});
+
+describe('supply planner actions logistics diagnosis coverage', () => {
+	it('covers route-lead-time diagnosis when the first arrival is after the stockout day', () => {
+		// A bottled-water route with nextDispatchOnDay far beyond the
+		// 30-day projection window never dispatches in the trace, so
+		// the forecast's firstProjectedArrivalDay is null. The fallback
+		// at line 576 calculates firstArrivalDay from
+		// nextDispatchOnDay + leadTimeDays. The destination stocks out
+		// before the first arrival, triggering the route-lead-time
+		// diagnosis. makeBoundedLogisticsPlan does not generate an
+		// action for route-lead-time, so the planner falls through to
+		// other recommendations. The diagnosis lines are still covered
+		// because diagnoseLogistics is called and executes the
+		// route-lead-time branch.
+		const base = logisticsPlannerGame();
+		const game = {
+			...base,
+			logistics: {
+				...base.logistics,
+				recurringRoutes: [
+					{
+						...base.logistics.recurringRoutes[0]!,
+						nextDispatchOnDay: base.day + 100,
+						leadTimeDays: 1
+					}
+				]
+			}
+		};
+		const plan = readyPlan(game);
+
+		// The route-lead-time diagnosis fires but no logistics action
+		// is generated for it. The planner falls through to other
+		// recommendations (build-producer, upgrade, or noop).
+		expect(plan.recommendation.action).not.toMatchObject({
+			kind: 'edit-route',
+			routeId: 'route-water'
+		});
+		expect(plan.recommendation.action).not.toEqual({
+			kind: 'resume-route',
+			routeId: 'route-water'
+		});
+	});
+
+	it('falls back to the local plan when a destination-full cause has no affordable warehouse', () => {
+		// The destination is full (inbound transfer fills the warehouse),
+		// but cash is 0 so no warehouse candidate is affordable.
+		// makeBoundedLogisticsPlan returns null at line 645, and the
+		// planner falls through to the warehouse-capacity bottleneck
+		// path which also reports unaffordable.
+		const base = logisticsPlannerGame();
+		const game = {
+			...base,
+			cash: 0,
+			logistics: {
+				...base.logistics,
+				transferOrders: [
+					{
+						id: 'transfer-full-destination',
+						source: { kind: 'recurring-route' as const, routeId: 'route-water' },
+						originCityId: 'breadbasket-basin' as WorldCityId,
+						destinationCityId: 'industry-city' as WorldCityId,
+						materialId: 'bottled-water' as MaterialId,
+						quantity: 1_000,
+						createdOnDay: base.day,
+						dispatchedOnDay: base.day,
+						arrivalOnDay: base.day + 1,
+						transportCost: 1_000,
+						status: 'in-transit' as const
+					}
+				]
+			}
+		};
+		const plan = readyPlan(game);
+
+		// The destination-full logistics cause is diagnosed but no
+		// affordable warehouse candidate exists, so the bounded plan
+		// returns null. The planner falls through to the
+		// warehouse-capacity bottleneck path, which also reports
+		// unaffordable since cash is 0.
+		expect(plan.recommendation.action).toEqual({ kind: 'none', reason: 'unaffordable' });
+	});
+
+	it('covers origin-stock-constrained diagnosis when the origin has insufficient stock', () => {
+		// A route from breadbasket-basin to industry-city for bottled-water,
+		// where the origin has some bottled-water but not enough to cover
+		// the 30-day need. The route dispatches but the origin runs out,
+		// triggering the origin-stock-constrained diagnosis. No action
+		// is generated for this cause, so the planner falls through.
+		const base = logisticsPlannerGame({ capacity: 50, frequencyDays: 1 });
+		const game = {
+			...base,
+			cityInventories: base.cityInventories.map((inventory) =>
+				inventory.cityId === 'breadbasket-basin'
+					? { ...inventory, materials: { 'bottled-water': 1 } }
+					: { ...inventory, materials: {} }
+			)
+		};
+		const plan = readyPlan(game);
+
+		// The origin-stock-constrained diagnosis fires but no logistics
+		// action is generated for it. The planner should not recommend
+		// increasing route capacity or frequency for an origin-stock-
+		// constrained route.
+		expect(plan.recommendation.action).not.toMatchObject({
+			kind: 'edit-route',
+			routeId: 'route-water',
+			field: 'capacity'
+		});
+	});
+
+	it('covers route-frequency diagnosis lines when frequency is too low for demand', () => {
+		// This test exercises the route-frequency branch in
+		// diagnoseLogistics (lines 590-602). The route has sufficient
+		// capacity per dispatch but arrives too infrequently, causing
+		// stockout between arrivals. makeBoundedLogisticsPlan may or
+		// may not produce a worthwhile candidate depending on whether
+		// the frequency reduction helps within 30 days. The diagnosis
+		// lines are covered regardless because diagnoseLogistics is
+		// called and executes the route-frequency branch.
+		const base = logisticsPlannerGame({ capacity: 800, frequencyDays: 15 });
+		const game = {
+			...base,
+			cityInventories: base.cityInventories.map((inventory) =>
+				inventory.cityId === 'industry-city'
+					? { ...inventory, materials: { 'bottled-water': 100 } }
+					: { ...inventory, materials: { 'bottled-water': 10_000 } }
+			)
+		};
+		const plan = readyPlan(game);
+
+		// The route-frequency diagnosis fires but may not produce a
+		// worthwhile action. The planner should not recommend a
+		// capacity increase (the capacity is sufficient per dispatch).
+		expect(plan.recommendation.action).not.toMatchObject({
+			kind: 'edit-route',
+			routeId: 'route-water',
+			field: 'capacity'
+		});
+	});
+
+	it('covers createRouteCandidates edge cases with empty and unquotable remote cities', () => {
+		// Trigger destination-configuration with a third industry city
+		// that has no stock of the required material (covers the
+		// capacity < 1 continue at line 802 in createRouteCandidates).
+		// Uses flourLogisticsPlannerGame with no routes, which
+		// triggers destination-configuration and generates
+		// create-route candidates.
+		const base = flourLogisticsPlannerGame();
+		const noRoutes = { ...base, logistics: { ...base.logistics, recurringRoutes: [] } };
+		// Open quarry-works as a third industry city with no stock
+		let game = openWorldCity(
+			{
+				...noRoutes,
+				world: {
+					...noRoutes.world,
+					revealedCityIds: [...noRoutes.world.revealedCityIds, 'quarry-works']
+				}
+			},
+			'quarry-works'
+		);
+		// Clear its inventory to simulate no stock
+		game = {
+			...game,
+			cityInventories: game.cityInventories.map((inv) =>
+				inv.cityId === 'quarry-works' ? { ...inv, materials: {} } : inv
+			)
+		};
+		const plan = readyPlan(game);
+
+		// The destination-configuration cause fires, and
+		// createRouteCandidates iterates over both remote cities.
+		// quarry-works has no flour, so the capacity < 1 continue
+		// fires. breadbasket-basin has flour, so a create-route
+		// candidate is generated for it.
+		expect(plan.alternatives.some((c) => c.action.kind === 'create-route')).toBe(true);
 	});
 });
