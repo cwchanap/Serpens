@@ -150,18 +150,30 @@ interface DequeEntry {
 	distance: number;
 }
 
+interface RailCellSearchResult {
+	/** Cell-key -> accumulated 0/1 cost for every explored cell. */
+	distance: Map<string, number>;
+	/** Cell-key -> predecessor key on the best path (null at the sources). */
+	cameFrom: Map<string, string | null>;
+	/** First popped target key, or null when no target was reached. */
+	targetKey: string | null;
+}
+
 /**
- * 0/1-cost BFS (Dijkstra with weights 0/1) over grid coordinates. Moving onto
- * an existing rail cell costs 0, onto a rail-legal empty tile costs 1. Sources
+ * Shared 0/1-cost BFS (Dijkstra with weights 0/1) over grid coordinates,
+ * used by both `findLegPath` and `findReachableRailCells`. Moving onto an
+ * existing rail cell costs 0, onto a rail-legal empty tile costs 1. Sources
  * are seeded with their own cell cost; cost-0 relaxations push to the FRONT of
- * the deque, cost-1 relaxations push to the BACK. Returns the shortest path of
- * cell keys from a source to any target, or null when none is reachable.
+ * the deque, cost-1 relaxations push to the BACK. When `targetKeys` is
+ * provided the search stops at the first target popped (returned for path
+ * reconstruction via `cameFrom`); otherwise it exhausts the reachable
+ * frontier so `distance.keys()` is the full reachable set.
  */
-function findLegPath(
+function searchRailCells(
 	ctx: RailPathContext,
 	sourceKeys: readonly string[],
-	targetKeys: ReadonlySet<string>
-): string[] | null {
+	targetKeys?: ReadonlySet<string>
+): RailCellSearchResult {
 	const distance = new Map<string, number>();
 	const cameFrom = new Map<string, string | null>();
 	const deque: DequeEntry[] = [];
@@ -186,15 +198,7 @@ function findLegPath(
 		const { key, distance: popped } = deque.shift()!;
 		if (popped > (distance.get(key) ?? Number.POSITIVE_INFINITY)) continue; // stale entry
 
-		if (targetKeys.has(key)) {
-			const path: string[] = [];
-			let cursor: string | null = key;
-			while (cursor !== null) {
-				path.unshift(cursor);
-				cursor = cameFrom.get(cursor) ?? null;
-			}
-			return path;
-		}
+		if (targetKeys?.has(key)) return { distance, cameFrom, targetKey: key };
 
 		const { x, y } = parseRailCellKey(key);
 		const zeroCostNeighbors: DequeEntry[] = [];
@@ -216,7 +220,28 @@ function findLegPath(
 		deque.unshift(...zeroCostNeighbors);
 	}
 
-	return null;
+	return { distance, cameFrom, targetKey: null };
+}
+
+/**
+ * Shortest 0/1-cost path of cell keys from any source to any target via
+ * `searchRailCells`, or null when none is reachable. Path reconstruction
+ * walks `cameFrom` back from the hit target.
+ */
+function findLegPath(
+	ctx: RailPathContext,
+	sourceKeys: readonly string[],
+	targetKeys: ReadonlySet<string>
+): string[] | null {
+	const { cameFrom, targetKey } = searchRailCells(ctx, sourceKeys, targetKeys);
+	if (targetKey === null) return null;
+	const path: string[] = [];
+	let cursor: string | null = targetKey;
+	while (cursor !== null) {
+		path.unshift(cursor);
+		cursor = cameFrom.get(cursor) ?? null;
+	}
+	return path;
 }
 
 /**
@@ -224,7 +249,7 @@ function findLegPath(
  * coordinates (through existing rail at cost 0 and rail-legal empty tiles
  * at cost 1). Returns the set of all reachable cell keys. This is the
  * multi-target variant of `findLegPath` — instead of stopping at the
- * first target, it exhausts the reachable frontier.
+ * first target, it exhausts the reachable frontier via `searchRailCells`.
  *
  * Used by the supply planner to do one BFS per sink building (instead of
  * one per (tile, sink) pair) when computing per-tile reachable-sink sets.
@@ -241,44 +266,9 @@ export function findReachableRailCells(
 	const railKeys = new Set(city.rails.map((cell) => railCellKey(cell.x, cell.y)));
 	const ctx: RailPathContext = { lookup, occupiedTileIds, railKeys: new Set(railKeys) };
 
-	const distance = new Map<string, number>();
-	const deque: DequeEntry[] = [];
-	const zeroCostSeeds: DequeEntry[] = [];
-	for (const coord of sourceCoords) {
-		const key = railCellKey(coord.x, coord.y);
-		const { x, y } = coord;
-		const seed = cellCost(ctx, x, y);
-		if (seed === null) continue;
-		if (seed < (distance.get(key) ?? Number.POSITIVE_INFINITY)) {
-			distance.set(key, seed);
-			if (seed === 0) zeroCostSeeds.push({ key, distance: seed });
-			else deque.push({ key, distance: seed });
-		}
-	}
-	deque.unshift(...zeroCostSeeds);
-
-	while (deque.length > 0) {
-		const { key, distance: popped } = deque.shift()!;
-		if (popped > (distance.get(key) ?? Number.POSITIVE_INFINITY)) continue;
-		const { x, y } = parseRailCellKey(key);
-		const zeroCostNeighbors: DequeEntry[] = [];
-		for (const offset of NEIGHBOR_OFFSETS) {
-			const nx = x + offset.dx;
-			const ny = y + offset.dy;
-			const step = cellCost(ctx, nx, ny);
-			if (step === null) continue;
-			const neighborKey = railCellKey(nx, ny);
-			const next = popped + step;
-			if (next < (distance.get(neighborKey) ?? Number.POSITIVE_INFINITY)) {
-				distance.set(neighborKey, next);
-				if (step === 0) zeroCostNeighbors.push({ key: neighborKey, distance: next });
-				else deque.push({ key: neighborKey, distance: next });
-			}
-		}
-		deque.unshift(...zeroCostNeighbors);
-	}
-
-	return distance.size > 0 ? new Set(distance.keys()) : new Set();
+	const sourceKeys = sourceCoords.map((coord) => railCellKey(coord.x, coord.y));
+	const { distance } = searchRailCells(ctx, sourceKeys);
+	return new Set(distance.keys());
 }
 
 /**

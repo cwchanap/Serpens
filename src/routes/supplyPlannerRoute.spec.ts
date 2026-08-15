@@ -452,12 +452,17 @@ describe('handoffSupplyPlannerAction', () => {
 				building('water-pump', 'missing-after-switch')
 			]
 		};
-		let callCount = 0;
+		// The building exists before the switch and disappears after it —
+		// modeled off the switch callback itself instead of getGame call
+		// order.
+		let switched = false;
+		const switchToSupplyCity = vi.fn(async () => {
+			switched = true;
+			return true;
+		});
 		const host = mockHost({
-			getGame: () => {
-				callCount++;
-				return callCount === 1 ? gameWithBuilding : game;
-			}
+			getGame: () => (switched ? game : gameWithBuilding),
+			switchToSupplyCity
 		});
 		const action: SupplyPlannerAction = {
 			kind: 'upgrade-building',
@@ -478,6 +483,7 @@ describe('handoffSupplyPlannerAction', () => {
 			action
 		);
 		await handoffSupplyPlannerAction(action, result, host);
+		expect(switchToSupplyCity).toHaveBeenCalled();
 		expect(host.selectIndustryTile).not.toHaveBeenCalled();
 	});
 
