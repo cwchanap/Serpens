@@ -609,6 +609,209 @@ describe('daily simulation', () => {
 		expect(result.logistics.recurringRoutes[0]?.nextDispatchOnDay).toBe(10);
 	});
 
+	test('records a recovery row when a route modifier expires after its final active day', () => {
+		const base = withCityMaterials(
+			withWarehouses(openTwoIndustryCityLogisticsGame(9), ['industry-city', 'breadbasket-basin'], {
+				mapXOffset: 10,
+				mapY: 2
+			}),
+			'industry-city',
+			{ water: 100 }
+		);
+		const expiringModifier: ActiveEventModifier = {
+			id: 'event-modifier-1',
+			source: {
+				eventId: 'freight-disruption',
+				instanceId: 'event-instance-1',
+				optionId: 'accept-delay'
+			},
+			target: { kind: 'recurring-route', routeId: 'route-1' },
+			startsOnDay: 7,
+			expiresOnDay: 10,
+			stackingKey: 'freight-capacity:route-1',
+			stackingRule: 'replace',
+			effect: { kind: 'route-capacity-multiplier', multiplier: 0.75 },
+			explanation: { key: 'events.freightDisruption.acceptDelay.capacity', params: {} },
+			importance: 'normal'
+		};
+		const result = simulateDay({
+			...base,
+			events: { ...base.events, activeModifiers: [expiringModifier] },
+			logistics: {
+				...base.logistics,
+				recurringRoutes: [createDueRoute({ capacity: 100, nextDispatchOnDay: 12 })]
+			}
+		});
+		const report = result.reports.at(-1)!;
+
+		expect(report.logistics.modifierRecoveries).toEqual([
+			{
+				routeId: 'route-1',
+				modifierId: 'event-modifier-1',
+				source: {
+					eventId: 'freight-disruption',
+					instanceId: 'event-instance-1',
+					optionId: 'accept-delay'
+				},
+				effectKind: 'route-capacity-multiplier',
+				disruptedCapacity: 75,
+				recoveredCapacity: 100
+			}
+		]);
+		expect(report.modifierLifecycle).toEqual([
+			{
+				status: 'expired',
+				modifier: expect.objectContaining({ id: 'event-modifier-1' })
+			}
+		]);
+		expect(result.events.activeModifiers).toEqual([]);
+	});
+
+	test('derives recovery against the edited base route during disruption', () => {
+		const base = withCityMaterials(
+			withWarehouses(openTwoIndustryCityLogisticsGame(9), ['industry-city', 'breadbasket-basin'], {
+				mapXOffset: 10,
+				mapY: 2
+			}),
+			'industry-city',
+			{ water: 100 }
+		);
+		const expiringModifier: ActiveEventModifier = {
+			id: 'event-modifier-1',
+			source: {
+				eventId: 'freight-disruption',
+				instanceId: 'event-instance-1',
+				optionId: 'accept-delay'
+			},
+			target: { kind: 'recurring-route', routeId: 'route-1' },
+			startsOnDay: 7,
+			expiresOnDay: 10,
+			stackingKey: 'freight-capacity:route-1',
+			stackingRule: 'replace',
+			effect: { kind: 'route-capacity-multiplier', multiplier: 0.75 },
+			explanation: { key: 'events.freightDisruption.acceptDelay.capacity', params: {} },
+			importance: 'normal'
+		};
+		const result = simulateDay({
+			...base,
+			events: { ...base.events, activeModifiers: [expiringModifier] },
+			logistics: {
+				...base.logistics,
+				recurringRoutes: [
+					createDueRoute({ capacity: 200, transportCostPerUnit: 2, nextDispatchOnDay: 12 })
+				]
+			}
+		});
+		const report = result.reports.at(-1)!;
+
+		expect(report.logistics.modifierRecoveries).toEqual([
+			{
+				routeId: 'route-1',
+				modifierId: 'event-modifier-1',
+				source: {
+					eventId: 'freight-disruption',
+					instanceId: 'event-instance-1',
+					optionId: 'accept-delay'
+				},
+				effectKind: 'route-capacity-multiplier',
+				disruptedCapacity: 150,
+				recoveredCapacity: 200
+			}
+		]);
+	});
+
+	test('emits no recovery row when the route was removed before expiry', () => {
+		const base = withCityMaterials(
+			withWarehouses(openTwoIndustryCityLogisticsGame(9), ['industry-city', 'breadbasket-basin'], {
+				mapXOffset: 10,
+				mapY: 2
+			}),
+			'industry-city',
+			{ water: 100 }
+		);
+		const expiringModifier: ActiveEventModifier = {
+			id: 'event-modifier-1',
+			source: {
+				eventId: 'freight-disruption',
+				instanceId: 'event-instance-1',
+				optionId: 'accept-delay'
+			},
+			target: { kind: 'recurring-route', routeId: 'route-removed' },
+			startsOnDay: 7,
+			expiresOnDay: 10,
+			stackingKey: 'freight-capacity:route-removed',
+			stackingRule: 'replace',
+			effect: { kind: 'route-capacity-multiplier', multiplier: 0.75 },
+			explanation: { key: 'events.freightDisruption.acceptDelay.capacity', params: {} },
+			importance: 'normal'
+		};
+		const result = simulateDay({
+			...base,
+			events: { ...base.events, activeModifiers: [expiringModifier] },
+			logistics: { ...base.logistics, recurringRoutes: [] }
+		});
+		const report = result.reports.at(-1)!;
+
+		expect(report.logistics.modifierRecoveries).toEqual([]);
+		expect(report.modifierLifecycle).toEqual([
+			{
+				status: 'expired',
+				modifier: expect.objectContaining({ id: 'event-modifier-1' })
+			}
+		]);
+	});
+
+	test('emits no recovery row when another modifier preserves the effective value', () => {
+		const base = withCityMaterials(
+			withWarehouses(openTwoIndustryCityLogisticsGame(9), ['industry-city', 'breadbasket-basin'], {
+				mapXOffset: 10,
+				mapY: 2
+			}),
+			'industry-city',
+			{ water: 100 }
+		);
+		const expiringSuspension: ActiveEventModifier = {
+			id: 'event-modifier-1',
+			source: {
+				eventId: 'freight-disruption',
+				instanceId: 'event-instance-1',
+				optionId: 'suspend-shipments'
+			},
+			target: { kind: 'recurring-route', routeId: 'route-1' },
+			startsOnDay: 7,
+			expiresOnDay: 10,
+			stackingKey: 'freight-suspension:route-1',
+			stackingRule: 'replace',
+			effect: { kind: 'route-dispatch-suspension' },
+			explanation: { key: 'events.freightDisruption.suspendShipments.suspension', params: {} },
+			importance: 'important'
+		};
+		const survivingSuspension: ActiveEventModifier = {
+			...expiringSuspension,
+			id: 'event-modifier-2',
+			startsOnDay: 8,
+			expiresOnDay: 12,
+			stackingKey: 'freight-suspension-alt:route-1'
+		};
+		const result = simulateDay({
+			...base,
+			events: {
+				...base.events,
+				activeModifiers: [expiringSuspension, survivingSuspension]
+			},
+			logistics: {
+				...base.logistics,
+				recurringRoutes: [createDueRoute({ nextDispatchOnDay: 12 })]
+			}
+		});
+		const report = result.reports.at(-1)!;
+
+		expect(report.logistics.modifierRecoveries).toEqual([]);
+		expect(result.events.activeModifiers.map((modifier) => modifier.id)).toEqual([
+			'event-modifier-2'
+		]);
+	});
+
 	test('charges only production-close overflow after a transfer arrival', () => {
 		const startingCash = 50_000;
 		const base = openTwoIndustryCityLogisticsGame();

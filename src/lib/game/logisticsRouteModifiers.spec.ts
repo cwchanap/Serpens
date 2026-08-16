@@ -1,5 +1,8 @@
 import { describe, expect, test } from 'vitest';
-import { resolveEffectiveRecurringRoute } from './logisticsRouteModifiers';
+import {
+	buildRouteModifierRecoveries,
+	resolveEffectiveRecurringRoute
+} from './logisticsRouteModifiers';
 import type { ActiveEventModifier, RecurringRoute } from './types';
 
 function route(overrides: Partial<RecurringRoute> = {}): RecurringRoute {
@@ -227,5 +230,276 @@ describe('resolveEffectiveRecurringRoute', () => {
 				9
 			)
 		).toThrow(RangeError);
+	});
+});
+
+describe('buildRouteModifierRecoveries', () => {
+	/** Expires after closingDay 9, so it stops affecting the route from day 10. */
+	function expiringModifier(overrides: Partial<ActiveEventModifier> = {}): ActiveEventModifier {
+		return routeModifier({ expiresOnDay: 10, ...overrides });
+	}
+
+	/** Still active after closingDay 9, so it survives expiry. */
+	function survivingModifier(overrides: Partial<ActiveEventModifier> = {}): ActiveEventModifier {
+		return routeModifier({ id: 'event-modifier-2', expiresOnDay: 12, ...overrides });
+	}
+
+	const freightSource = {
+		eventId: 'freight-disruption',
+		instanceId: 'event-instance-1',
+		optionId: 'accept-delay'
+	};
+
+	test('returns no rows when no modifiers expired', () => {
+		const modifiers = [survivingModifier()];
+
+		expect(
+			buildRouteModifierRecoveries({
+				routes: [route()],
+				beforeExpiry: modifiers,
+				afterExpiry: modifiers,
+				closingDay: 9
+			})
+		).toEqual([]);
+		expect(
+			buildRouteModifierRecoveries({
+				routes: [route()],
+				beforeExpiry: [],
+				afterExpiry: [],
+				closingDay: 9
+			})
+		).toEqual([]);
+	});
+
+	test('ignores an expiring modifier that is not active on the closing day', () => {
+		const result = buildRouteModifierRecoveries({
+			routes: [route()],
+			beforeExpiry: [expiringModifier({ startsOnDay: 9, expiresOnDay: 10 })],
+			afterExpiry: [],
+			closingDay: 8
+		});
+
+		expect(result).toEqual([]);
+	});
+
+	test('emits a capacity recovery row with the disrupted and recovered capacity', () => {
+		const result = buildRouteModifierRecoveries({
+			routes: [route({ capacity: 100 })],
+			beforeExpiry: [
+				expiringModifier({ effect: { kind: 'route-capacity-multiplier', multiplier: 0.75 } })
+			],
+			afterExpiry: [],
+			closingDay: 9
+		});
+
+		expect(result).toEqual([
+			{
+				routeId: 'route-1',
+				modifierId: 'event-modifier-1',
+				source: freightSource,
+				effectKind: 'route-capacity-multiplier',
+				disruptedCapacity: 75,
+				recoveredCapacity: 100
+			}
+		]);
+	});
+
+	test('emits a lead-time recovery row with the disrupted and recovered lead time', () => {
+		const result = buildRouteModifierRecoveries({
+			routes: [route({ leadTimeDays: 2 })],
+			beforeExpiry: [expiringModifier({ effect: { kind: 'route-lead-time-adjustment', days: 1 } })],
+			afterExpiry: [],
+			closingDay: 9
+		});
+
+		expect(result).toEqual([
+			{
+				routeId: 'route-1',
+				modifierId: 'event-modifier-1',
+				source: freightSource,
+				effectKind: 'route-lead-time-adjustment',
+				disruptedLeadTimeDays: 3,
+				recoveredLeadTimeDays: 2
+			}
+		]);
+	});
+
+	test('emits a suspension recovery row when dispatch recovers from being suspended', () => {
+		const result = buildRouteModifierRecoveries({
+			routes: [route()],
+			beforeExpiry: [expiringModifier({ effect: { kind: 'route-dispatch-suspension' } })],
+			afterExpiry: [],
+			closingDay: 9
+		});
+
+		expect(result).toEqual([
+			{
+				routeId: 'route-1',
+				modifierId: 'event-modifier-1',
+				source: freightSource,
+				effectKind: 'route-dispatch-suspension',
+				disruptedSuspended: true,
+				recoveredSuspended: false
+			}
+		]);
+	});
+
+	test('emits a transport-cost recovery row with the disrupted and recovered per-unit cost', () => {
+		const result = buildRouteModifierRecoveries({
+			routes: [route({ transportCostPerUnit: 2 })],
+			beforeExpiry: [
+				expiringModifier({ effect: { kind: 'route-transport-cost-multiplier', multiplier: 1.5 } })
+			],
+			afterExpiry: [],
+			closingDay: 9
+		});
+
+		expect(result).toEqual([
+			{
+				routeId: 'route-1',
+				modifierId: 'event-modifier-1',
+				source: freightSource,
+				effectKind: 'route-transport-cost-multiplier',
+				disruptedTransportCostPerUnit: 3,
+				recoveredTransportCostPerUnit: 2
+			}
+		]);
+	});
+
+	test('reveals an edited base route in both disrupted and recovered values', () => {
+		const result = buildRouteModifierRecoveries({
+			routes: [route({ capacity: 200, leadTimeDays: 5 })],
+			beforeExpiry: [
+				expiringModifier({ effect: { kind: 'route-capacity-multiplier', multiplier: 0.75 } }),
+				expiringModifier({
+					id: 'event-modifier-2',
+					effect: { kind: 'route-lead-time-adjustment', days: 1 }
+				})
+			],
+			afterExpiry: [],
+			closingDay: 9
+		});
+
+		expect(result).toEqual([
+			{
+				routeId: 'route-1',
+				modifierId: 'event-modifier-1',
+				source: freightSource,
+				effectKind: 'route-capacity-multiplier',
+				disruptedCapacity: 150,
+				recoveredCapacity: 200
+			},
+			{
+				routeId: 'route-1',
+				modifierId: 'event-modifier-2',
+				source: freightSource,
+				effectKind: 'route-lead-time-adjustment',
+				disruptedLeadTimeDays: 6,
+				recoveredLeadTimeDays: 5
+			}
+		]);
+	});
+
+	test('combines multiple same-kind contributors before expiry and survivors after', () => {
+		const result = buildRouteModifierRecoveries({
+			routes: [route({ capacity: 100 })],
+			beforeExpiry: [
+				expiringModifier({ effect: { kind: 'route-capacity-multiplier', multiplier: 0.75 } }),
+				survivingModifier({ effect: { kind: 'route-capacity-multiplier', multiplier: 0.5 } })
+			],
+			afterExpiry: [
+				survivingModifier({ effect: { kind: 'route-capacity-multiplier', multiplier: 0.5 } })
+			],
+			closingDay: 9
+		});
+
+		expect(result).toEqual([
+			{
+				routeId: 'route-1',
+				modifierId: 'event-modifier-1',
+				source: freightSource,
+				effectKind: 'route-capacity-multiplier',
+				disruptedCapacity: 37,
+				recoveredCapacity: 50
+			}
+		]);
+	});
+
+	test('emits one row per expired same-kind contributor with the same combined values', () => {
+		const result = buildRouteModifierRecoveries({
+			routes: [route({ capacity: 100 })],
+			beforeExpiry: [
+				expiringModifier({
+					id: 'event-modifier-10',
+					effect: { kind: 'route-capacity-multiplier', multiplier: 0.5 }
+				}),
+				expiringModifier({
+					id: 'event-modifier-2',
+					effect: { kind: 'route-capacity-multiplier', multiplier: 0.75 }
+				})
+			],
+			afterExpiry: [],
+			closingDay: 9
+		});
+
+		expect(result).toEqual([
+			{
+				routeId: 'route-1',
+				modifierId: 'event-modifier-10',
+				source: freightSource,
+				effectKind: 'route-capacity-multiplier',
+				disruptedCapacity: 37,
+				recoveredCapacity: 100
+			},
+			{
+				routeId: 'route-1',
+				modifierId: 'event-modifier-2',
+				source: freightSource,
+				effectKind: 'route-capacity-multiplier',
+				disruptedCapacity: 37,
+				recoveredCapacity: 100
+			}
+		]);
+	});
+
+	test('skips removed routes, other routes, and non-route targets', () => {
+		const result = buildRouteModifierRecoveries({
+			routes: [route()],
+			beforeExpiry: [
+				expiringModifier({
+					target: { kind: 'recurring-route', routeId: 'route-removed' }
+				}),
+				expiringModifier({
+					target: { kind: 'recurring-route', routeId: 'route-2' }
+				}),
+				expiringModifier({ target: { kind: 'company' } })
+			],
+			afterExpiry: [],
+			closingDay: 9
+		});
+
+		expect(result).toEqual([]);
+	});
+
+	test('emits no row when another same-kind modifier preserves the effective value', () => {
+		const result = buildRouteModifierRecoveries({
+			routes: [route()],
+			beforeExpiry: [
+				expiringModifier({ effect: { kind: 'route-dispatch-suspension' } }),
+				survivingModifier({
+					stackingKey: 'freight-suspension-alt:route-1',
+					effect: { kind: 'route-dispatch-suspension' }
+				})
+			],
+			afterExpiry: [
+				survivingModifier({
+					stackingKey: 'freight-suspension-alt:route-1',
+					effect: { kind: 'route-dispatch-suspension' }
+				})
+			],
+			closingDay: 9
+		});
+
+		expect(result).toEqual([]);
 	});
 });

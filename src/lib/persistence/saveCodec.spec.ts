@@ -1475,6 +1475,29 @@ describe('saveCodec', () => {
 					]
 				}
 			})
+		],
+		[
+			'a lead-time recovery row with a nonpositive disrupted lead time',
+			(report: DailyReport) => ({
+				...report,
+				logistics: {
+					...report.logistics,
+					modifierRecoveries: [
+						{
+							routeId: 'route-retired',
+							modifierId: 'event-modifier-1',
+							source: {
+								eventId: 'freight-disruption',
+								instanceId: 'event-instance-1',
+								optionId: 'accept-delay'
+							},
+							effectKind: 'route-lead-time-adjustment',
+							disruptedLeadTimeDays: 0,
+							recoveredLeadTimeDays: 2
+						}
+					]
+				}
+			})
 		]
 	] as const)('drops a historical report with %s logistics evidence', (_name, mutateReport) => {
 		const game = createCurrentMultiCityGame();
