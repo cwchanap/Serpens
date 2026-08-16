@@ -441,4 +441,34 @@ describe('recurring-route event selection', () => {
 		expect(eventAfterRemoval.copy).toEqual(event.copy);
 		expect(eventAfterRemoval.target).toEqual({ kind: 'recurring-route', routeId: 'route-2' });
 	});
+
+	it('materializes route-effect modifiers without injecting an effect target', () => {
+		const catalog = validateAndNormalizeEventCatalog([
+			routeEventDefinition({
+				options: [
+					{
+						id: 'accept',
+						effects: [],
+						modifiers: [
+							{
+								durationDays: 3,
+								stackingKey: 'route-disruption:route',
+								stackingRule: 'replace',
+								effect: { kind: 'route-dispatch-suspension' },
+								explanation: { key: 'events.test.modifier', params: {} },
+								importance: 'important'
+							}
+						]
+					}
+				]
+			})
+		]);
+		const selected = selectEventForDay(routeGame([route({ id: 'route-1' })], 7), catalog);
+		const event = selected.decisions.find((decision) => decision.kind === 'event')!;
+		expect(event.target).toEqual({ kind: 'recurring-route', routeId: 'route-1' });
+		expect(event.options[0].modifiers[0].effect).toEqual({
+			kind: 'route-dispatch-suspension'
+		});
+		expect(event.options[0].modifiers[0].effect).not.toHaveProperty('target');
+	});
 });

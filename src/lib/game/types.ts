@@ -45,12 +45,17 @@ export type EventImmediateEffect =
 			termDays: 28 | 56;
 	  };
 
-export type EventTimedEffect = {
-	kind: 'import-cost-multiplier';
-	scope: 'retail-product';
-	target: { kind: 'all' };
-	multiplier: number;
-};
+export type EventTimedEffect =
+	| {
+			kind: 'import-cost-multiplier';
+			scope: 'retail-product';
+			target: { kind: 'all' };
+			multiplier: number;
+	  }
+	| { kind: 'route-lead-time-adjustment'; days: number }
+	| { kind: 'route-capacity-multiplier'; multiplier: number }
+	| { kind: 'route-dispatch-suspension' }
+	| { kind: 'route-transport-cost-multiplier'; multiplier: number };
 
 export interface EventModifierTemplate {
 	durationDays: number;

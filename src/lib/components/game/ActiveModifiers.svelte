@@ -18,6 +18,7 @@
 	);
 
 	function discountPercent(modifier: ActiveEventModifier): number {
+		if (modifier.effect.kind !== 'import-cost-multiplier') return 0;
 		return Math.round((1 - modifier.effect.multiplier) * 100);
 	}
 
@@ -45,14 +46,16 @@
 					</div>
 					<p>{localizeStructuredCopy(modifier.explanation, i18n)}</p>
 					<dl>
-						<div>
-							<dt>{i18n.t('copy.modifiers.companyTarget')}</dt>
-							<dd>
-								{i18n.t('copy.modifiers.importCostDiscount', {
-									percent: i18n.format.integer(discountPercent(modifier))
-								})}
-							</dd>
-						</div>
+						{#if modifier.effect.kind === 'import-cost-multiplier'}
+							<div>
+								<dt>{i18n.t('copy.modifiers.companyTarget')}</dt>
+								<dd>
+									{i18n.t('copy.modifiers.importCostDiscount', {
+										percent: i18n.format.integer(discountPercent(modifier))
+									})}
+								</dd>
+							</div>
+						{/if}
 						<div>
 							<dt>
 								{i18n.t('copy.modifiers.startsOnDay', {

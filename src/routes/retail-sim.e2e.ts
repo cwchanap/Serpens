@@ -17,7 +17,7 @@ import { simulateDay } from '../lib/game/simulateDay';
 import { createNewGame } from '../lib/game/state';
 import { calculateStockHealth, initializeStoreProducts } from '../lib/game/stock';
 import { openWorldCity } from '../lib/game/world';
-import type { GameState, LoanInstrument } from '../lib/game/types';
+import type { EventTimedEffect, GameState, LoanInstrument } from '../lib/game/types';
 import { BROWSER_SAVE_STORAGE_KEY } from '../lib/persistence/browserSaveRepository';
 import { BROWSER_SCENARIO_STORAGE_KEY } from '../lib/persistence/browserScenarioRepository';
 import {
@@ -704,7 +704,7 @@ interface SavedGame {
 		activeModifiers: Array<{
 			id: string;
 			expiresOnDay: number;
-			effect: { multiplier: number };
+			effect: EventTimedEffect;
 		}>;
 	};
 	reports: SavedDailyReport[];

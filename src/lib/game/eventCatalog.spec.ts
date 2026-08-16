@@ -30,6 +30,16 @@ function definition(overrides: Partial<EventDefinition> = {}): EventDefinition {
 	};
 }
 
+function diagnosticsFor(definitions: readonly EventDefinition[]) {
+	try {
+		validateAndNormalizeEventCatalog(definitions);
+		throw new Error('Expected validation to fail.');
+	} catch (error) {
+		expect(error).toBeInstanceOf(EventCatalogValidationError);
+		return (error as EventCatalogValidationError).diagnostics;
+	}
+}
+
 describe('PRODUCTION_EVENT_CATALOG', () => {
 	it('contains only the three approved, versioned production definitions', () => {
 		expect(
@@ -201,6 +211,169 @@ describe('PRODUCTION_EVENT_CATALOG', () => {
 				explanation: { key: 'events.supplierTerms.bulkDiscount.modifier', params: {} },
 				importance: 'important'
 			}
+		]);
+	});
+});
+
+function routeTimedEffect(
+	kind:
+		| 'route-lead-time-adjustment'
+		| 'route-capacity-multiplier'
+		| 'route-transport-cost-multiplier',
+	value: number
+): EventTimedEffect {
+	if (kind === 'route-lead-time-adjustment') {
+		return { kind, days: value };
+	}
+	return { kind, multiplier: value };
+}
+
+function routeEffectModifier(
+	overrides: Partial<EventModifierTemplate> = {}
+): EventModifierTemplate {
+	return {
+		durationDays: 2,
+		stackingKey: 'route-disruption:route',
+		stackingRule: 'replace',
+		effect: { kind: 'route-dispatch-suspension' },
+		explanation: { key: 'events.route.suspension', params: {} },
+		importance: 'normal',
+		...overrides
+	};
+}
+
+describe('route timed effect validation', () => {
+	it('accepts each of the four route effects on a recurring-route definition', () => {
+		const effects: EventTimedEffect[] = [
+			{ kind: 'route-lead-time-adjustment', days: 2 },
+			{ kind: 'route-capacity-multiplier', multiplier: 0.75 },
+			{ kind: 'route-dispatch-suspension' },
+			{ kind: 'route-transport-cost-multiplier', multiplier: 1.25 }
+		];
+		for (const effect of effects) {
+			expect(() =>
+				validateAndNormalizeEventCatalog([
+					definition({
+						id: 'route-effect-event',
+						target: { kind: 'recurring-route', state: 'active' },
+						options: [
+							{
+								id: 'accept',
+								effects: [],
+								modifiers: [routeEffectModifier({ effect })]
+							}
+						]
+					})
+				])
+			).not.toThrow();
+		}
+	});
+
+	it('keeps the suspension variant payload-free in the closed union', () => {
+		expectTypeOf<Extract<EventTimedEffect, { kind: 'route-dispatch-suspension' }>>().toEqualTypeOf<{
+			kind: 'route-dispatch-suspension';
+		}>();
+		expect({ kind: 'route-dispatch-suspension' } satisfies EventTimedEffect).toEqual({
+			kind: 'route-dispatch-suspension'
+		});
+	});
+
+	it('rejects non-positive safe lead-time day adjustments', () => {
+		for (const days of [0, -1, 1.5, Number.NaN]) {
+			const diagnostics = diagnosticsFor([
+				definition({
+					id: 'bad-lead-time',
+					target: { kind: 'recurring-route', state: 'active' },
+					options: [
+						{
+							id: 'accept',
+							effects: [],
+							modifiers: [
+								routeEffectModifier({
+									effect: { kind: 'route-lead-time-adjustment', days }
+								})
+							]
+						}
+					]
+				})
+			]);
+			expect(diagnostics.map(({ eventId, path }) => `${eventId}:${path}`)).toEqual([
+				'bad-lead-time:options[0].modifiers[0].effect.days'
+			]);
+		}
+	});
+
+	it('rejects non-positive and non-finite route multipliers', () => {
+		for (const kind of ['route-capacity-multiplier', 'route-transport-cost-multiplier'] as const) {
+			for (const multiplier of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+				const diagnostics = diagnosticsFor([
+					definition({
+						id: 'bad-route-multiplier',
+						target: { kind: 'recurring-route', state: 'active' },
+						options: [
+							{
+								id: 'accept',
+								effects: [],
+								modifiers: [
+									routeEffectModifier({
+										effect: routeTimedEffect(kind, multiplier)
+									})
+								]
+							}
+						]
+					})
+				]);
+				expect(diagnostics.map(({ eventId, path }) => `${eventId}:${path}`)).toEqual([
+					'bad-route-multiplier:options[0].modifiers[0].effect.multiplier'
+				]);
+			}
+		}
+	});
+
+	it('rejects import-cost modifiers on recurring-route definitions', () => {
+		const diagnostics = diagnosticsFor([
+			definition({
+				id: 'bad-route-import-cost',
+				target: { kind: 'recurring-route', state: 'active' },
+				options: [
+					{
+						id: 'accept',
+						effects: [],
+						modifiers: [
+							routeEffectModifier({
+								effect: {
+									kind: 'import-cost-multiplier',
+									scope: 'retail-product',
+									target: { kind: 'all' },
+									multiplier: 0.9
+								}
+							})
+						]
+					}
+				]
+			})
+		]);
+		expect(diagnostics.map(({ eventId, path }) => `${eventId}:${path}`)).toEqual([
+			'bad-route-import-cost:options[0].modifiers[0].effect.kind'
+		]);
+	});
+
+	it('rejects route effects on company definitions', () => {
+		const diagnostics = diagnosticsFor([
+			definition({
+				id: 'bad-company-route-effect',
+				target: { kind: 'company' },
+				options: [
+					{
+						id: 'accept',
+						effects: [],
+						modifiers: [routeEffectModifier()]
+					}
+				]
+			})
+		]);
+		expect(diagnostics.map(({ eventId, path }) => `${eventId}:${path}`)).toEqual([
+			'bad-company-route-effect:options[0].modifiers[0].effect.kind'
 		]);
 	});
 });
