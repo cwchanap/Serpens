@@ -120,8 +120,11 @@ function validateDefinition(
 	validateCondition(definition.condition, 'condition', add);
 	validateCopy(definition.copy, 'copy', add);
 
-	if (definition.target?.kind !== 'company') {
-		add('target', 'must select the company target');
+	const target = definition.target;
+	const hasSupportedTarget =
+		target?.kind === 'company' || (target?.kind === 'recurring-route' && target.state === 'active');
+	if (!hasSupportedTarget) {
+		add('target', 'must select the company or an active recurring-route target');
 	}
 	if (definition.options.length === 0) {
 		add('options', 'must contain at least one option');
@@ -386,7 +389,7 @@ function cloneDefinition(definition: EventDefinition): EventDefinition {
 		...definition,
 		selection: { ...definition.selection },
 		condition: cloneCondition(definition.condition),
-		target: { ...definition.target },
+		target: cloneTargetSelector(definition.target),
 		copy: cloneCopy(definition.copy),
 		options: definition.options.map((option) => ({
 			...option,
@@ -398,6 +401,15 @@ function cloneDefinition(definition: EventDefinition): EventDefinition {
 			}))
 		}))
 	};
+}
+
+function cloneTargetSelector(selector: EventTargetSelector): EventTargetSelector {
+	switch (selector.kind) {
+		case 'company':
+			return { kind: 'company' };
+		case 'recurring-route':
+			return { kind: 'recurring-route', state: selector.state };
+	}
 }
 
 function cloneCondition(condition: EventCondition): EventCondition {

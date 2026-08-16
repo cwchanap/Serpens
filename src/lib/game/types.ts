@@ -15,8 +15,10 @@ export interface StructuredCopyRef {
 	params: StructuredCopyParams;
 }
 
-export type EventTarget = { kind: 'company' };
-export type EventTargetSelector = { kind: 'company' };
+export type EventTarget = { kind: 'company' } | { kind: 'recurring-route'; routeId: string };
+export type EventTargetSelector =
+	| { kind: 'company' }
+	| { kind: 'recurring-route'; state: 'active' };
 
 export type EventCondition =
 	| { kind: 'always' }

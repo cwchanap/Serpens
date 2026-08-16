@@ -1,13 +1,34 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 
 import { PRODUCTION_EVENT_CATALOG } from './eventCatalog';
+import {
+	EventCatalogValidationError,
+	validateAndNormalizeEventCatalog,
+	type EventDefinition
+} from './eventDefinitions';
 import type {
 	EventCondition,
 	EventImmediateEffect,
 	EventModifierTemplate,
 	EventTarget,
+	EventTargetSelector,
 	EventTimedEffect
 } from './types';
+
+function definition(overrides: Partial<EventDefinition> = {}): EventDefinition {
+	return {
+		id: 'route-event',
+		version: 1,
+		selection: { kind: 'forced', priority: 1 },
+		condition: { kind: 'always' },
+		target: { kind: 'company' },
+		expiresAfterDays: 2,
+		cooldownDays: 1,
+		copy: { key: 'events.route', params: {} },
+		options: [{ id: 'accept', effects: [], modifiers: [] }],
+		...overrides
+	};
+}
 
 describe('PRODUCTION_EVENT_CATALOG', () => {
 	it('contains only the three approved, versioned production definitions', () => {
@@ -31,6 +52,22 @@ describe('PRODUCTION_EVENT_CATALOG', () => {
 		>().toEqualTypeOf<never>();
 		expectTypeOf<Extract<EventTarget, { kind: 'store' }>>().toEqualTypeOf<never>();
 		expect(PRODUCTION_EVENT_CATALOG.definitions).toHaveLength(3);
+	});
+
+	it('exposes only the company and active recurring-route target variants', () => {
+		expectTypeOf<Extract<EventTarget, { kind: 'recurring-route' }>>().toEqualTypeOf<{
+			kind: 'recurring-route';
+			routeId: string;
+		}>();
+		expectTypeOf<Extract<EventTargetSelector, { kind: 'recurring-route' }>>().toEqualTypeOf<{
+			kind: 'recurring-route';
+			state: 'active';
+		}>();
+		expect(PRODUCTION_EVENT_CATALOG.definitions.map((definition) => definition.target)).toEqual([
+			{ kind: 'company' },
+			{ kind: 'company' },
+			{ kind: 'company' }
+		]);
 	});
 
 	it('preserves production eligibility, selection, expiry, and cooldown contracts', () => {
@@ -165,5 +202,38 @@ describe('PRODUCTION_EVENT_CATALOG', () => {
 				importance: 'important'
 			}
 		]);
+	});
+});
+
+describe('recurring-route selector validation', () => {
+	it('accepts company and active recurring-route selectors', () => {
+		expect(() =>
+			validateAndNormalizeEventCatalog([
+				definition({ id: 'company-event', target: { kind: 'company' } }),
+				definition({ id: 'route-event', target: { kind: 'recurring-route', state: 'active' } })
+			])
+		).not.toThrow();
+	});
+
+	it('rejects every other selector shape', () => {
+		const expectRejected = (target: unknown) =>
+			expect(() =>
+				validateAndNormalizeEventCatalog([definition({ target: target as never })])
+			).toThrow(EventCatalogValidationError);
+
+		expectRejected({ kind: 'recurring-route', state: 'paused' });
+		expectRejected({ kind: 'recurring-route' });
+		expectRejected({ kind: 'store' });
+	});
+
+	it('clones accepted selectors into the normalized catalog', () => {
+		const catalog = validateAndNormalizeEventCatalog([
+			definition({ id: 'route-event', target: { kind: 'recurring-route', state: 'active' } })
+		]);
+		expect(catalog.byId.get('route-event')?.target).toEqual({
+			kind: 'recurring-route',
+			state: 'active'
+		});
+		expect(Object.isFrozen(catalog.byId.get('route-event'))).toBe(true);
 	});
 });

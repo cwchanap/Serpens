@@ -2,10 +2,14 @@ import { describe, expect, it, vi } from 'vitest';
 import { validateAndNormalizeEventCatalog, type EventDefinition } from './eventDefinitions';
 import {
 	EVENT_DRAW_COUNT_PER_DAY,
+	EVENT_SELECTION_SCHEMA_VERSION,
 	createInitialEventRuntime,
 	selectEventForDay
 } from './eventSelection';
+import { removeRecurringRoute } from './interCityLogistics';
+import { createTwoIndustryCityGame, withRecurringRoutes } from './interCityLogistics.testUtils';
 import { createNewGame } from './state';
+import type { GameState, RecurringRoute } from './types';
 
 function definition(overrides: Partial<EventDefinition> = {}): EventDefinition {
 	return {
@@ -29,6 +33,53 @@ function game(seed: number) {
 function withEventRngState(state: number) {
 	const input = game(7);
 	return { ...input, events: { ...input.events, rngState: state } };
+}
+
+function route(overrides: Partial<RecurringRoute> = {}): RecurringRoute {
+	return {
+		id: 'route-1',
+		originCityId: 'industry-city',
+		destinationCityId: 'breadbasket-basin',
+		materialId: 'water',
+		capacity: 30,
+		frequencyDays: 3,
+		leadTimeDays: 2,
+		transportCostPerUnit: 2,
+		priority: 1,
+		state: 'active',
+		nextDispatchOnDay: 0,
+		...overrides
+	};
+}
+
+function routeGame(routes: readonly RecurringRoute[], rngState: number): GameState {
+	const base = withRecurringRoutes(createTwoIndustryCityGame({ seed: 7 }), [...routes]);
+	return { ...base, events: { ...base.events, rngState } };
+}
+
+function eventIdOf(game: GameState): string {
+	const events = game.decisions.filter((decision) => decision.kind === 'event');
+	const event = events[events.length - 1];
+	if (!event) throw new Error('Expected an event decision');
+	return event.eventId;
+}
+
+function targetRouteId(game: GameState): string {
+	const events = game.decisions.filter((decision) => decision.kind === 'event');
+	const event = events[events.length - 1];
+	if (!event || event.target.kind !== 'recurring-route') {
+		throw new Error('Expected a recurring-route event target');
+	}
+	return event.target.routeId;
+}
+
+function routeEventDefinition(overrides: Partial<EventDefinition> = {}): EventDefinition {
+	return definition({
+		id: 'route-event',
+		target: { kind: 'recurring-route', state: 'active' },
+		selection: { kind: 'forced', priority: 1 },
+		...overrides
+	});
 }
 
 describe('event selection packet', () => {
@@ -282,5 +333,112 @@ describe('event selection and materialization', () => {
 		const fullGame = { ...input, storeCap: input.stores.length };
 		const blocked = selectEventForDay(fullGame, eligibleCatalog);
 		expect(blocked.decisions.filter((d) => d.kind === 'event')).toHaveLength(0);
+	});
+});
+
+describe('recurring-route event selection', () => {
+	it('keeps one authored weight for a route definition regardless of route count', () => {
+		const definitions = () => [
+			definition({ id: 'company-event', selection: { kind: 'weighted', weight: 1 } }),
+			routeEventDefinition({ selection: { kind: 'weighted', weight: 1 } })
+		];
+		const oneRouteCatalog = validateAndNormalizeEventCatalog(definitions());
+		const fourRouteCatalog = validateAndNormalizeEventCatalog(definitions());
+
+		expect(oneRouteCatalog.byId.get('route-event')?.selection).toEqual({
+			kind: 'weighted',
+			weight: 1
+		});
+		expect(fourRouteCatalog.byId.get('route-event')?.selection).toEqual({
+			kind: 'weighted',
+			weight: 1
+		});
+
+		const one = selectEventForDay(routeGame([route({ id: 'route-1' })], 7), oneRouteCatalog);
+		const four = selectEventForDay(
+			routeGame(
+				[
+					route({ id: 'route-1' }),
+					route({ id: 'route-2' }),
+					route({ id: 'route-3' }),
+					route({ id: 'route-4' })
+				],
+				7
+			),
+			fourRouteCatalog
+		);
+
+		expect(eventIdOf(one)).toBe('route-event');
+		expect(eventIdOf(four)).toBe('route-event');
+		expect(targetRouteId(one)).toBe('route-1');
+		expect(targetRouteId(four)).toBe('route-1');
+	});
+
+	it('chooses the same concrete route from fixed rng state after structured cloning', () => {
+		const definitions = [routeEventDefinition()];
+		const catalog = validateAndNormalizeEventCatalog(definitions);
+		const clonedCatalog = validateAndNormalizeEventCatalog(structuredClone(definitions));
+		const routes = [route({ id: 'route-1' }), route({ id: 'route-2' })];
+
+		const first = selectEventForDay(routeGame(routes, 3), catalog);
+		const second = selectEventForDay(routeGame(routes, 3), clonedCatalog);
+
+		expect(targetRouteId(first)).toBe('route-2');
+		expect(targetRouteId(second)).toBe('route-2');
+	});
+
+	it('keeps other route targets selectable while a same-event decision pends on one route', () => {
+		const catalog = validateAndNormalizeEventCatalog([routeEventDefinition()]);
+		const routes = [route({ id: 'route-1' }), route({ id: 'route-2' })];
+		const first = selectEventForDay(routeGame(routes, 3), catalog);
+		expect(targetRouteId(first)).toBe('route-2');
+
+		const nextDay = { ...first, day: first.day + 1 };
+		const second = selectEventForDay(nextDay, catalog);
+		expect(targetRouteId(second)).toBe('route-1');
+		expect(second.decisions.filter((decision) => decision.kind === 'event')).toHaveLength(2);
+	});
+
+	it('keeps other route targets selectable while one route is on cooldown', () => {
+		const catalog = validateAndNormalizeEventCatalog([routeEventDefinition()]);
+		const routes = [route({ id: 'route-1' }), route({ id: 'route-2' })];
+		const first = selectEventForDay(routeGame(routes, 3), catalog);
+		expect(targetRouteId(first)).toBe('route-2');
+		expect(first.events.cooldowns.map((cooldown) => cooldown.target)).toEqual([
+			{ kind: 'recurring-route', routeId: 'route-2' }
+		]);
+
+		const sameDay = { ...first, decisions: [] };
+		const second = selectEventForDay(sameDay, catalog);
+		expect(targetRouteId(second)).toBe('route-1');
+	});
+
+	it('keeps three top-level draws and the selection schema version unchanged', () => {
+		expect(EVENT_DRAW_COUNT_PER_DAY).toBe(3);
+		expect(EVENT_SELECTION_SCHEMA_VERSION).toBe(1);
+	});
+
+	it('persists stable route copy context on materialized decisions and survives route removal', () => {
+		const catalog = validateAndNormalizeEventCatalog([routeEventDefinition()]);
+		const routes = [route({ id: 'route-1' }), route({ id: 'route-2' })];
+		const selected = selectEventForDay(routeGame(routes, 3), catalog);
+		const event = selected.decisions.find((decision) => decision.kind === 'event')!;
+		expect(event.target).toEqual({ kind: 'recurring-route', routeId: 'route-2' });
+		expect(event.copy).toEqual({
+			key: 'events.test',
+			params: {
+				routeId: 'route-2',
+				originCityId: 'industry-city',
+				destinationCityId: 'breadbasket-basin',
+				materialId: 'water'
+			}
+		});
+
+		const removed = removeRecurringRoute(selected, 'route-2');
+		expect(removed.ok).toBe(true);
+		if (!removed.ok) throw new Error(`Expected removal, received ${removed.reason}`);
+		const eventAfterRemoval = removed.game.decisions.find((decision) => decision.kind === 'event')!;
+		expect(eventAfterRemoval.copy).toEqual(event.copy);
+		expect(eventAfterRemoval.target).toEqual({ kind: 'recurring-route', routeId: 'route-2' });
 	});
 });

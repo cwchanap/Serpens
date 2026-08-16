@@ -1,7 +1,14 @@
 import type { EventDefinition, NormalizedEventCatalog } from './eventDefinitions';
 import { appendHistory } from './eventHistory';
 import { assessCredit } from './finance';
-import { createRngFromState, normalizeSeed } from './rng';
+import { createRngFromState, normalizeSeed, type Rng } from './rng';
+import {
+	cloneEventTarget,
+	getEventTargetCopyParams,
+	isEventTargetEligibleForSelection,
+	resolveEventTargets,
+	sameEventTarget
+} from './eventTargets';
 import type {
 	EventCondition,
 	EventCooldownRecord,
@@ -45,20 +52,26 @@ export function selectEventForDay(game: GameState, catalog: NormalizedEventCatal
 	const materializationRng = createRngFromState(
 		normalizeSeed(Math.floor(materializationSeedDraw * 2_147_483_646) + 1)
 	);
-	void materializationRng;
 
-	const candidates = catalog.definitions.filter((definition) =>
-		isEligible(game, definition, eventRuntime.cooldowns)
-	);
+	const candidates = catalog.definitions.flatMap((definition) => {
+		const targets = resolveEligibleTargets(game, definition, eventRuntime.cooldowns);
+		return targets.length === 0 ? [] : [{ definition, targets }];
+	});
 	const selected = selectCandidate(candidates, cadenceDraw, weightedDraw);
 	if (!selected) return { ...game, events: eventRuntime };
 
-	const instance = materializeEvent(game, selected, eventRuntime.nextInstanceSequence);
+	const target = materializeTarget(selected.definition, selected.targets, materializationRng);
+	const instance = materializeEvent(
+		game,
+		selected.definition,
+		eventRuntime.nextInstanceSequence,
+		target
+	);
 	const cooldown: EventCooldownRecord = {
-		eventId: selected.id,
-		target: cloneTarget(instance.target),
+		eventId: selected.definition.id,
+		target: cloneEventTarget(instance.target),
 		generatedOnDay: game.day,
-		eligibleOnDay: game.day + selected.cooldownDays
+		eligibleOnDay: game.day + selected.definition.cooldownDays
 	};
 
 	return {
@@ -70,41 +83,56 @@ export function selectEventForDay(game: GameState, catalog: NormalizedEventCatal
 			cooldowns: [
 				...eventRuntime.cooldowns.filter(
 					(candidate) =>
-						candidate.eventId !== cooldown.eventId || !sameTarget(candidate.target, cooldown.target)
+						candidate.eventId !== cooldown.eventId ||
+						!sameEventTarget(candidate.target, cooldown.target)
 				),
 				cooldown
 			],
 			history: appendHistory(eventRuntime.history, {
 				kind: 'event-generated',
 				day: game.day,
-				eventId: selected.id,
+				eventId: selected.definition.id,
 				instanceId: instance.id,
-				target: cloneTarget(instance.target)
+				target: cloneEventTarget(instance.target)
 			})
 		}
 	};
 }
 
-function isEligible(
+function resolveEligibleTargets(
 	game: GameState,
 	definition: EventDefinition,
 	cooldowns: readonly EventCooldownRecord[]
+): EventTarget[] {
+	if (!conditionMatches(definition.condition, game)) return [];
+	return resolveEventTargets(game, definition.target).filter(
+		(target) =>
+			isEventTargetEligibleForSelection(game, target) &&
+			!hasPendingEvent(game, definition.id, target) &&
+			!hasActiveCooldown(game.day, cooldowns, definition.id, target)
+	);
+}
+
+function hasPendingEvent(game: GameState, eventId: string, target: EventTarget): boolean {
+	return game.decisions.some(
+		(decision) =>
+			decision.kind === 'event' &&
+			decision.eventId === eventId &&
+			sameEventTarget(decision.target, target)
+	);
+}
+
+function hasActiveCooldown(
+	day: number,
+	cooldowns: readonly EventCooldownRecord[],
+	eventId: string,
+	target: EventTarget
 ): boolean {
-	if (!conditionMatches(definition.condition, game)) return false;
-	if (
-		game.decisions.some(
-			(decision) =>
-				decision.kind === 'event' &&
-				decision.eventId === definition.id &&
-				sameTarget(decision.target, definition.target)
-		)
-	)
-		return false;
-	return !cooldowns.some(
+	return cooldowns.some(
 		(cooldown) =>
-			cooldown.eventId === definition.id &&
-			sameTarget(cooldown.target, definition.target) &&
-			game.day < cooldown.eligibleOnDay
+			cooldown.eventId === eventId &&
+			sameEventTarget(cooldown.target, target) &&
+			day < cooldown.eligibleOnDay
 	);
 }
 
@@ -127,36 +155,47 @@ function conditionMatches(condition: EventCondition, game: GameState): boolean {
 	}
 }
 
+interface SelectionCandidate {
+	definition: EventDefinition;
+	targets: readonly EventTarget[];
+}
+
 function selectCandidate(
-	candidates: readonly EventDefinition[],
+	candidates: readonly SelectionCandidate[],
 	cadenceDraw: number,
 	weightedDraw: number
-): EventDefinition | undefined {
+): SelectionCandidate | undefined {
 	const forced = candidates
-		.filter((candidate) => candidate.selection.kind === 'forced')
+		.filter((candidate) => candidate.definition.selection.kind === 'forced')
 		.sort(
 			(first, second) =>
-				(second.selection.kind === 'forced' ? second.selection.priority : 0) -
-					(first.selection.kind === 'forced' ? first.selection.priority : 0) ||
-				compareCodeUnits(first.id, second.id)
+				(second.definition.selection.kind === 'forced' ? second.definition.selection.priority : 0) -
+					(first.definition.selection.kind === 'forced'
+						? first.definition.selection.priority
+						: 0) || compareCodeUnits(first.definition.id, second.definition.id)
 		);
 	if (forced[0]) return forced[0];
 	if (cadenceDraw >= WEIGHTED_EVENT_CADENCE) return undefined;
 
 	const weighted = candidates
 		.filter(
-			(candidate) => candidate.selection.kind === 'weighted' && candidate.selection.weight > 0
+			(candidate) =>
+				candidate.definition.selection.kind === 'weighted' &&
+				candidate.definition.selection.weight > 0
 		)
-		.sort((first, second) => compareCodeUnits(first.id, second.id));
+		.sort((first, second) => compareCodeUnits(first.definition.id, second.definition.id));
 	const totalWeight = weighted.reduce(
 		(total, candidate) =>
-			total + (candidate.selection.kind === 'weighted' ? candidate.selection.weight : 0),
+			total +
+			(candidate.definition.selection.kind === 'weighted'
+				? candidate.definition.selection.weight
+				: 0),
 		0
 	);
 	let threshold = weightedDraw * totalWeight;
 	for (const candidate of weighted) {
-		if (candidate.selection.kind !== 'weighted') continue;
-		threshold -= candidate.selection.weight;
+		if (candidate.definition.selection.kind !== 'weighted') continue;
+		threshold -= candidate.definition.selection.weight;
 		if (threshold < 0) return candidate;
 	}
 	return weighted[weighted.length - 1];
@@ -166,12 +205,24 @@ function compareCodeUnits(first: string, second: string): number {
 	return first < second ? -1 : first > second ? 1 : 0;
 }
 
+function materializeTarget(
+	definition: EventDefinition,
+	targets: readonly EventTarget[],
+	materializationRng: Rng
+): EventTarget {
+	if (definition.target.kind === 'company') {
+		return { kind: 'company' };
+	}
+	const draw = materializationRng.next();
+	return targets[Math.min(Math.floor(draw * targets.length), targets.length - 1)];
+}
+
 function materializeEvent(
 	game: GameState,
 	definition: EventDefinition,
-	sequence: number
+	sequence: number,
+	target: EventTarget
 ): EventDecisionItem {
-	const target: EventTarget = cloneTarget(definition.target);
 	return {
 		kind: 'event',
 		id: `event-instance-${sequence}`,
@@ -179,8 +230,11 @@ function materializeEvent(
 		definitionVersion: definition.version,
 		generatedOnDay: game.day,
 		expiresOnDay: game.day + definition.expiresAfterDays,
-		target,
-		copy: { ...definition.copy, params: { ...definition.copy.params } },
+		target: cloneEventTarget(target),
+		copy: {
+			...definition.copy,
+			params: { ...definition.copy.params, ...getEventTargetCopyParams(game, target) }
+		},
 		options: definition.options.map((option) => ({
 			id: option.id,
 			effects: option.effects.map((effect) => materializeEffect(game, effect)),
@@ -206,12 +260,4 @@ function materializeEffect(
 		...effect,
 		amount: Math.min(12_000, Math.max(4_000, roundedAvailableCredit))
 	};
-}
-
-function cloneTarget(target: EventTarget): EventTarget {
-	return { ...target };
-}
-
-function sameTarget(first: EventTarget, second: EventTarget): boolean {
-	return first.kind === second.kind;
 }
