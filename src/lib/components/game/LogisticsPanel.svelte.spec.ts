@@ -210,7 +210,9 @@ describe('LogisticsPanel', () => {
 		// focus callback runs. The first preset effect schedules a
 		// tick().then() that we hold unresolved. Rerendering with a new
 		// preset triggers the cleanup (cancelled=true) before the deferred
-		// tick resolves, exercising the cancelled guard at line 150.
+		// tick resolves, exercising the cancelled guard in the preset-focus
+		// effect.
+		vi.mocked(svelteTick).mockClear();
 		let resolveFirstTick: () => void = () => {};
 		const deferred = new Promise<void>((resolve) => {
 			resolveFirstTick = resolve;
@@ -239,7 +241,8 @@ describe('LogisticsPanel', () => {
 		rerender({ ...props, routePreset: secondPreset });
 
 		// Resolve the first deferred tick — the callback runs with
-		// cancelled=true and returns early (line 150).
+		// cancelled=true and returns early (cancelled guard in the
+		// preset-focus effect).
 		resolveFirstTick();
 		await Promise.resolve();
 

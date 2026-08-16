@@ -742,8 +742,8 @@ describe('supply planner logistics error and edge-case paths', () => {
 
 	it('skips a remote city with no city inventory when building the logistics snapshot', () => {
 		// A city that is opened but has no cityInventory entry causes
-		// getCityInventory to return not-ok, exercising the early
-		// return at line 84.
+		// getCityInventory to return not-ok, exercising the getCityInventory
+		// not-ok early return in the remote-city loop.
 		const game = createTwoIndustryCityGame({ materials: false });
 		const withoutInventory = {
 			...game,
@@ -755,9 +755,9 @@ describe('supply planner logistics error and edge-case paths', () => {
 
 	it('sorts remote cities by world city id when multiple are opened', () => {
 		// With multiple industry cities opened as remote cities, the
-		// sort comparator at line 81 fires. 'breadbasket-basin' <
-		// 'industry-city' < 'quarry-works', so breadbasket-basin
-		// should come first.
+		// compareWorldCityIds sort in the remote-city loop fires.
+		// 'breadbasket-basin' < 'industry-city' < 'quarry-works', so
+		// breadbasket-basin should come first.
 		let game = createTwoIndustryCityGame({ materials: false });
 		// Open quarry-works as a third industry city
 		game = {

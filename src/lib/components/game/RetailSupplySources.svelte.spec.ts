@@ -209,11 +209,13 @@ describe('RetailSupplySources', () => {
 		renderSources({ focusedRetailCityId: 'nonexistent-city', onChange });
 		const select = page.getByLabelText('Local supply source for Harbor City');
 
-		// Give the effect a chance to run — the select should not be focused
-		// because the focusedRetailCityId doesn't match any city.
-		await vi.waitFor(() => {
-			expect(select.element()).not.toBe(document.activeElement);
-		});
+		// Let the focus effect settle. The focusedRetailCityId doesn't
+		// match any city, so the effect returns before scheduling a focus
+		// tick. A single non-polling assertion then confirms the select is
+		// not the active element — a negated vi.waitFor would pass before
+		// the effect even runs, masking a regression.
+		await svelteTick();
+		expect(select.element()).not.toBe(document.activeElement);
 	});
 
 	it('cancels a pending focus when the focused city changes before the tick resolves', async () => {
@@ -221,7 +223,8 @@ describe('RetailSupplySources', () => {
 		// focus callback runs. The first effect run schedules a tick().then()
 		// that we hold unresolved. Rerendering with a new focusedRetailCityId
 		// triggers the cleanup (cancelled=true) before the deferred tick
-		// resolves, exercising the cancelled guard at line 26.
+		// resolves, exercising the cancelled guard in the focus effect.
+		vi.mocked(svelteTick).mockClear();
 		let resolveFirstTick: () => void = () => {};
 		const deferred = new Promise<void>((resolve) => {
 			resolveFirstTick = resolve;
@@ -258,13 +261,16 @@ describe('RetailSupplySources', () => {
 		});
 
 		// Now resolve the first deferred tick — the callback runs with
-		// cancelled=true and returns early (line 26).
+		// cancelled=true and returns early (cancelled guard in the focus
+		// effect).
 		resolveFirstTick();
 		await Promise.resolve();
 
 		// The harbor-city select should NOT be focused (the cancelled
 		// callback skipped it). The campus-junction select should be
 		// focused instead (from the second effect run with real tick).
+		const harborSelect = page.getByLabelText('Local supply source for Harbor City');
+		expect(harborSelect.element()).not.toBe(document.activeElement);
 		const campusSelect = page.getByLabelText('Local supply source for Campus Junction');
 		await vi.waitFor(() => {
 			expect(campusSelect.element()).toBe(document.activeElement);

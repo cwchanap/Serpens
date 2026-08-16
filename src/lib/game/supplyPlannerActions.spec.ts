@@ -2470,8 +2470,9 @@ describe('supply planner actions logistics diagnosis coverage', () => {
 	it('covers route-lead-time diagnosis when the first arrival is after the stockout day', () => {
 		// A bottled-water route with nextDispatchOnDay far beyond the
 		// 30-day projection window never dispatches in the trace, so
-		// the forecast's firstProjectedArrivalDay is null. The fallback
-		// at line 576 calculates firstArrivalDay from
+		// the forecast's firstProjectedArrivalDay is null. The
+		// firstArrivalDay fallback in diagnoseLogistics's
+		// route-lead-time branch calculates firstArrivalDay from
 		// nextDispatchOnDay + leadTimeDays. The destination stocks out
 		// before the first arrival, triggering the route-lead-time
 		// diagnosis. makeBoundedLogisticsPlan does not generate an
@@ -2511,8 +2512,9 @@ describe('supply planner actions logistics diagnosis coverage', () => {
 	it('falls back to the local plan when a destination-full cause has no affordable warehouse', () => {
 		// The destination is full (inbound transfer fills the warehouse),
 		// but cash is 0 so no warehouse candidate is affordable.
-		// makeBoundedLogisticsPlan returns null at line 645, and the
-		// planner falls through to the warehouse-capacity bottleneck
+		// makeBoundedLogisticsPlan returns null when no affordable
+		// warehouse candidate exists for a destination-full cause, and
+		// the planner falls through to the warehouse-capacity bottleneck
 		// path which also reports unaffordable.
 		const base = logisticsPlannerGame();
 		const game = {
@@ -2577,13 +2579,13 @@ describe('supply planner actions logistics diagnosis coverage', () => {
 
 	it('covers route-frequency diagnosis lines when frequency is too low for demand', () => {
 		// This test exercises the route-frequency branch in
-		// diagnoseLogistics (lines 590-602). The route has sufficient
-		// capacity per dispatch but arrives too infrequently, causing
-		// stockout between arrivals. makeBoundedLogisticsPlan may or
-		// may not produce a worthwhile candidate depending on whether
-		// the frequency reduction helps within 30 days. The diagnosis
-		// lines are covered regardless because diagnoseLogistics is
-		// called and executes the route-frequency branch.
+		// diagnoseLogistics. The route has sufficient capacity per
+		// dispatch but arrives too infrequently, causing stockout
+		// between arrivals. makeBoundedLogisticsPlan may or may not
+		// produce a worthwhile candidate depending on whether the
+		// frequency reduction helps within 30 days. The diagnosis lines
+		// are covered regardless because diagnoseLogistics is called and
+		// executes the route-frequency branch.
 		const base = logisticsPlannerGame({ capacity: 800, frequencyDays: 15 });
 		const game = {
 			...base,
@@ -2608,7 +2610,7 @@ describe('supply planner actions logistics diagnosis coverage', () => {
 	it('covers createRouteCandidates edge cases with empty and unquotable remote cities', () => {
 		// Trigger destination-configuration with a third industry city
 		// that has no stock of the required material (covers the
-		// capacity < 1 continue at line 802 in createRouteCandidates).
+		// capacity < 1 continue in createRouteCandidates).
 		// Uses flourLogisticsPlannerGame with no routes, which
 		// triggers destination-configuration and generates
 		// create-route candidates.
@@ -2636,9 +2638,20 @@ describe('supply planner actions logistics diagnosis coverage', () => {
 
 		// The destination-configuration cause fires, and
 		// createRouteCandidates iterates over both remote cities.
-		// quarry-works has no flour, so the capacity < 1 continue
-		// fires. breadbasket-basin has flour, so a create-route
+		// quarry-works has no flour, so the capacity < 1 continue in
+		// createRouteCandidates fires and no candidate uses it as an
+		// origin. breadbasket-basin has flour, so a create-route
 		// candidate is generated for it.
-		expect(plan.alternatives.some((c) => c.action.kind === 'create-route')).toBe(true);
+		const createRouteCandidates = plan.alternatives.filter(
+			(candidate) => candidate.action.kind === 'create-route'
+		);
+		expect(createRouteCandidates.length).toBeGreaterThan(0);
+		expect(
+			createRouteCandidates.every(
+				(candidate) =>
+					candidate.action.kind === 'create-route' &&
+					candidate.action.input.originCityId !== 'quarry-works'
+			)
+		).toBe(true);
 	});
 });

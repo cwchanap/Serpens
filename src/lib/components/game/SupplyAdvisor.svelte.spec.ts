@@ -719,7 +719,7 @@ describe('SupplyAdvisor', () => {
 	});
 
 	it('renders only the relevant inbound route when an unrelated route is also present', async () => {
-		expect.assertions(2);
+		expect.assertions(3);
 		renderPlanner(
 			readyResult({
 				snapshot: { logistics: logisticsSnapshot() },
@@ -740,6 +740,26 @@ describe('SupplyAdvisor', () => {
 								state: 'active',
 								nextDispatchOnDay: 13
 							}
+						}),
+						// A second relevant route that touches the supply
+						// city (industry-city) but carries a different
+						// material. It must still appear, proving the
+						// forecast filter is keyed on city relevance, not
+						// on matching the finished material.
+						routeForecast({
+							route: {
+								id: 'route-flour-inbound',
+								originCityId: 'industry-city',
+								destinationCityId: 'harbor-city',
+								materialId: 'flour',
+								capacity: 6,
+								frequencyDays: 1,
+								leadTimeDays: 2,
+								transportCostPerUnit: 3,
+								priority: 0,
+								state: 'active',
+								nextDispatchOnDay: 14
+							}
 						})
 					]
 				}
@@ -750,6 +770,7 @@ describe('SupplyAdvisor', () => {
 		await expect
 			.element(evidence.getByText(/breadbasket basin.*industry city.*bottled water/i))
 			.toBeVisible();
+		await expect.element(evidence.getByText(/industry city.*harbor city.*flour/i)).toBeVisible();
 		await expect
 			.element(evidence.getByText(/harbor city.*garden borough.*bottled water/i))
 			.not.toBeInTheDocument();
