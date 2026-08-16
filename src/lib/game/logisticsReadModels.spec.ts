@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from 'vitest';
+import { describe, expect, it, test, vi } from 'vitest';
 import {
 	attemptMatchesRoute,
 	selectInTransitInventory,
@@ -806,5 +806,28 @@ describe('logistics read models', () => {
 
 		expect(() => selectLogisticsTotals(game)).toThrow(RangeError);
 		expect(() => selectRouteOperations(game)).toThrow(RangeError);
+	});
+});
+
+describe('createRouteDispatchAttempt defaults', () => {
+	it('uses default capacity and baseline when no overrides are supplied', () => {
+		const attempt = createRouteDispatchAttempt();
+
+		expect(attempt.capacity).toBe(100);
+		expect(attempt.baselineCapacity).toBe(100);
+	});
+
+	it('mirrors an overridden capacity into the baseline when baseline is not set', () => {
+		const attempt = createRouteDispatchAttempt({ capacity: 50 });
+
+		expect(attempt.capacity).toBe(50);
+		expect(attempt.baselineCapacity).toBe(50);
+	});
+
+	it('preserves an explicit baseline override even when capacity differs', () => {
+		const attempt = createRouteDispatchAttempt({ capacity: 50, baselineCapacity: 80 });
+
+		expect(attempt.capacity).toBe(50);
+		expect(attempt.baselineCapacity).toBe(80);
 	});
 });

@@ -231,6 +231,33 @@ describe('resolveEffectiveRecurringRoute', () => {
 			)
 		).toThrow(RangeError);
 	});
+
+	test('skips an import-cost-multiplier effect that incorrectly targets a route', () => {
+		const result = resolveEffectiveRecurringRoute(
+			route(),
+			[
+				routeModifier({
+					effect: {
+						kind: 'import-cost-multiplier',
+						scope: 'retail-product',
+						target: { kind: 'all' },
+						multiplier: 0.9
+					} as never
+				})
+			],
+			9
+		);
+
+		expect(result).toEqual({
+			base: route(),
+			capacity: 100,
+			leadTimeDays: 2,
+			transportCostMultiplier: 1,
+			transportCostPerUnit: 2,
+			dispatchSuspended: false,
+			contributions: []
+		});
+	});
 });
 
 describe('buildRouteModifierRecoveries', () => {
@@ -497,6 +524,26 @@ describe('buildRouteModifierRecoveries', () => {
 					effect: { kind: 'route-dispatch-suspension' }
 				})
 			],
+			closingDay: 9
+		});
+
+		expect(result).toEqual([]);
+	});
+
+	test('skips an import-cost-multiplier effect that incorrectly targets a route', () => {
+		const result = buildRouteModifierRecoveries({
+			routes: [route()],
+			beforeExpiry: [
+				expiringModifier({
+					effect: {
+						kind: 'import-cost-multiplier',
+						scope: 'retail-product',
+						target: { kind: 'all' },
+						multiplier: 0.9
+					} as never
+				})
+			],
+			afterExpiry: [],
 			closingDay: 9
 		});
 

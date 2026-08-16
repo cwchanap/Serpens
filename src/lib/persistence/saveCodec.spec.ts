@@ -358,6 +358,130 @@ function createHistoricalLogisticsReport(): DailyReport['logistics'] {
 	};
 }
 
+function createLogisticsReportWithModifierEvidence(): DailyReport['logistics'] {
+	const contributorSource = {
+		eventId: 'freight-disruption',
+		instanceId: 'event-instance-1',
+		optionId: 'accept-delay'
+	};
+	const contributor = (modifierId: string, optionId = 'accept-delay') => ({
+		modifierId,
+		source: { eventId: 'freight-disruption', instanceId: 'event-instance-1', optionId },
+		explanation: { key: 'events.freightDisruption.acceptDelay.capacity', params: {} }
+	});
+	return {
+		arrivals: [
+			{
+				transferOrderId: 'transfer-1',
+				originCityId: 'industry-city',
+				destinationCityId: 'breadbasket-basin',
+				materialId: 'water',
+				quantity: 7
+			}
+		],
+		routeDispatchAttempts: [
+			{
+				routeId: 'route-1',
+				originCityId: 'industry-city',
+				destinationCityId: 'breadbasket-basin',
+				materialId: 'water',
+				destinationNeed: 10,
+				capacity: 10,
+				availableOriginStock: 7,
+				dispatchedQuantity: 7,
+				unusedCapacity: 3,
+				unmetDestinationNeed: 3,
+				transportCost: 21,
+				transferOrderId: 'transfer-1',
+				baselineCapacity: 10,
+				dispatchSuspended: false,
+				modifierImpacts: [
+					{
+						contributors: [contributor('event-modifier-1')],
+						effectKind: 'route-lead-time-adjustment',
+						baselineLeadTimeDays: 2,
+						effectiveLeadTimeDays: 3
+					},
+					{
+						contributors: [contributor('event-modifier-2')],
+						effectKind: 'route-capacity-multiplier',
+						baselineCapacity: 10,
+						effectiveCapacity: 8,
+						baselineDispatchedQuantity: 7,
+						effectiveDispatchedQuantity: 6
+					},
+					{
+						contributors: [contributor('event-modifier-3')],
+						effectKind: 'route-transport-cost-multiplier',
+						baselineTransportCost: 21,
+						effectiveTransportCost: 31
+					}
+				]
+			},
+			{
+				routeId: 'route-2',
+				originCityId: 'breadbasket-basin',
+				destinationCityId: 'industry-city',
+				materialId: 'grain',
+				destinationNeed: 10,
+				capacity: 10,
+				availableOriginStock: 10,
+				dispatchedQuantity: 0,
+				unusedCapacity: 10,
+				unmetDestinationNeed: 10,
+				transportCost: 0,
+				transferOrderId: null,
+				baselineCapacity: 10,
+				dispatchSuspended: true,
+				modifierImpacts: [
+					{
+						contributors: [contributor('event-modifier-4', 'suspend-shipments')],
+						effectKind: 'route-dispatch-suspension',
+						baselineDispatchedQuantity: 7,
+						effectiveDispatchedQuantity: 0
+					}
+				]
+			}
+		],
+		deliveredUnits: 7,
+		scheduledTransportCost: 21,
+		modifierRecoveries: [
+			{
+				routeId: 'route-1',
+				modifierId: 'event-modifier-1',
+				source: { ...contributorSource },
+				effectKind: 'route-lead-time-adjustment',
+				disruptedLeadTimeDays: 3,
+				recoveredLeadTimeDays: 2
+			},
+			{
+				routeId: 'route-1',
+				modifierId: 'event-modifier-2',
+				source: { ...contributorSource },
+				effectKind: 'route-capacity-multiplier',
+				disruptedCapacity: 75,
+				recoveredCapacity: 100
+			},
+			{
+				routeId: 'route-2',
+				modifierId: 'event-modifier-3',
+				source: { ...contributorSource, optionId: 'suspend-shipments' },
+				effectKind: 'route-dispatch-suspension',
+				disruptedSuspended: true,
+				recoveredSuspended: false
+			},
+			{
+				routeId: 'route-1',
+				modifierId: 'event-modifier-4',
+				source: { ...contributorSource },
+				effectKind: 'route-transport-cost-multiplier',
+				disruptedTransportCostPerUnit: 3,
+				recoveredTransportCostPerUnit: 2
+			}
+		]
+	};
+}
+
 function createDailyStoreReport(overrides: Partial<DailyStoreReport> = {}): DailyStoreReport {
 	return {
 		storeId: 'store-1',
@@ -1534,6 +1658,184 @@ describe('saveCodec', () => {
 					]
 				}
 			})
+		],
+		[
+			'a dispatch impact with a duplicate effect kind',
+			(report: DailyReport) => ({
+				...report,
+				logistics: {
+					...report.logistics,
+					routeDispatchAttempts: [
+						{
+							...report.logistics.routeDispatchAttempts[0]!,
+							modifierImpacts: [
+								{
+									contributors: [
+										{
+											modifierId: 'event-modifier-1',
+											source: {
+												eventId: 'freight-disruption',
+												instanceId: 'event-instance-1',
+												optionId: 'accept-delay'
+											},
+											explanation: {
+												key: 'events.freightDisruption.acceptDelay.capacity',
+												params: {}
+											}
+										}
+									],
+									effectKind: 'route-capacity-multiplier',
+									baselineCapacity: 10,
+									effectiveCapacity: 8,
+									baselineDispatchedQuantity: 7,
+									effectiveDispatchedQuantity: 6
+								},
+								{
+									contributors: [
+										{
+											modifierId: 'event-modifier-2',
+											source: {
+												eventId: 'freight-disruption',
+												instanceId: 'event-instance-1',
+												optionId: 'accept-delay'
+											},
+											explanation: {
+												key: 'events.freightDisruption.acceptDelay.capacity',
+												params: {}
+											}
+										}
+									],
+									effectKind: 'route-capacity-multiplier',
+									baselineCapacity: 10,
+									effectiveCapacity: 9,
+									baselineDispatchedQuantity: 7,
+									effectiveDispatchedQuantity: 7
+								}
+							]
+						},
+						report.logistics.routeDispatchAttempts[1]!
+					]
+				}
+			})
+		],
+		[
+			'a dispatch impact with empty contributors',
+			(report: DailyReport) => ({
+				...report,
+				logistics: {
+					...report.logistics,
+					routeDispatchAttempts: [
+						{
+							...report.logistics.routeDispatchAttempts[0]!,
+							modifierImpacts: [
+								{
+									contributors: [],
+									effectKind: 'route-lead-time-adjustment',
+									baselineLeadTimeDays: 2,
+									effectiveLeadTimeDays: 3
+								}
+							]
+						},
+						report.logistics.routeDispatchAttempts[1]!
+					]
+				}
+			})
+		],
+		[
+			'a dispatch impact with a duplicate contributor modifier id',
+			(report: DailyReport) => ({
+				...report,
+				logistics: {
+					...report.logistics,
+					routeDispatchAttempts: [
+						{
+							...report.logistics.routeDispatchAttempts[0]!,
+							modifierImpacts: [
+								{
+									contributors: [
+										{
+											modifierId: 'event-modifier-1',
+											source: {
+												eventId: 'freight-disruption',
+												instanceId: 'event-instance-1',
+												optionId: 'accept-delay'
+											},
+											explanation: {
+												key: 'events.freightDisruption.acceptDelay.capacity',
+												params: {}
+											}
+										},
+										{
+											modifierId: 'event-modifier-1',
+											source: {
+												eventId: 'freight-disruption',
+												instanceId: 'event-instance-1',
+												optionId: 'accept-delay'
+											},
+											explanation: {
+												key: 'events.freightDisruption.acceptDelay.capacity',
+												params: {}
+											}
+										}
+									],
+									effectKind: 'route-capacity-multiplier',
+									baselineCapacity: 10,
+									effectiveCapacity: 8,
+									baselineDispatchedQuantity: 7,
+									effectiveDispatchedQuantity: 6
+								}
+							]
+						},
+						report.logistics.routeDispatchAttempts[1]!
+					]
+				}
+			})
+		],
+		[
+			'a suspension recovery row with a true recovered flag',
+			(report: DailyReport) => ({
+				...report,
+				logistics: {
+					...report.logistics,
+					modifierRecoveries: [
+						{
+							routeId: 'route-retired',
+							modifierId: 'event-modifier-1',
+							source: {
+								eventId: 'freight-disruption',
+								instanceId: 'event-instance-1',
+								optionId: 'suspend-shipments'
+							},
+							effectKind: 'route-dispatch-suspension',
+							disruptedSuspended: true,
+							recoveredSuspended: true
+						}
+					]
+				}
+			})
+		],
+		[
+			'a transport-cost recovery row with a negative disrupted cost',
+			(report: DailyReport) => ({
+				...report,
+				logistics: {
+					...report.logistics,
+					modifierRecoveries: [
+						{
+							routeId: 'route-retired',
+							modifierId: 'event-modifier-1',
+							source: {
+								eventId: 'freight-disruption',
+								instanceId: 'event-instance-1',
+								optionId: 'accept-delay'
+							},
+							effectKind: 'route-transport-cost-multiplier',
+							disruptedTransportCostPerUnit: -1,
+							recoveredTransportCostPerUnit: 2
+						}
+					]
+				}
+			})
 		]
 	] as const)('drops a historical report with %s logistics evidence', (_name, mutateReport) => {
 		const game = createCurrentMultiCityGame();
@@ -1542,6 +1844,56 @@ describe('saveCodec', () => {
 		) as DailyReport;
 
 		expectHistoricalReportDropped(() => decodeHistoricalReport(game, report));
+	});
+
+	test('round-trips a historical report with valid route dispatch modifier impacts and recoveries', () => {
+		const game = createCurrentMultiCityGame();
+		const report = createDailyReport({ logistics: createLogisticsReportWithModifierEvidence() });
+
+		const decoded = expectHistoricalReportPreserved(() => decodeHistoricalReport(game, report));
+
+		expect(decoded.reports[0]).toEqual(report);
+	});
+
+	test('rejects a saved decision whose import-cost multiplier template is not positive', () => {
+		const game = createCompleteEventGame();
+		const decision = game.decisions.find((candidate) => candidate.kind === 'event')!;
+		const mutated: GameState = {
+			...game,
+			decisions: [
+				{
+					...decision,
+					options: [
+						{
+							...(decision as Extract<typeof decision, { kind: 'event' }>).options[0]!,
+							modifiers: [
+								{
+									...(decision as Extract<typeof decision, { kind: 'event' }>).options[0]!
+										.modifiers[0]!,
+									effect: {
+										kind: 'import-cost-multiplier',
+										scope: 'retail-product',
+										target: { kind: 'all' },
+										multiplier: 0
+									}
+								}
+							]
+						}
+					]
+				}
+			]
+		};
+
+		let caught: unknown;
+		try {
+			validateCurrentGameState(mutated);
+		} catch (error) {
+			caught = error;
+		}
+
+		expect(caught).toBeInstanceOf(SaveDataError);
+		expect((caught as SaveDataError).code).toBe('invariant-event-runtime');
+		expect((caught as SaveDataError).message).toContain('must be a positive finite number');
 	});
 
 	test('normalizes authoritative inventory and supply assignments to world-catalog order', () => {

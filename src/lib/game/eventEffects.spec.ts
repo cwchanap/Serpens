@@ -3,7 +3,13 @@ import { pauseRecurringRoute, removeRecurringRoute } from './interCityLogistics'
 import { createTwoIndustryCityGame, withRecurringRoutes } from './interCityLogistics.testUtils';
 import { calculateStockHealth } from './stock';
 import { createNewGame, getDecisionOptionAvailability, resolveDecision } from './state';
-import type { EventDecisionItem, GameState, RecurringRoute, SystemDecisionItem } from './types';
+import type {
+	EventDecisionItem,
+	EventTimedEffect,
+	GameState,
+	RecurringRoute,
+	SystemDecisionItem
+} from './types';
 
 function systemDecision(overrides: Partial<SystemDecisionItem> = {}): SystemDecisionItem {
 	return {
@@ -594,5 +600,98 @@ describe('atomic decision resolution', () => {
 		});
 		expect(result.game).toBe(game);
 		expect(game.events.activeModifiers).toEqual([]);
+	});
+
+	it.each([
+		{
+			effectKind: 'route-lead-time-adjustment',
+			effect: { kind: 'route-lead-time-adjustment', days: 1 } as EventTimedEffect
+		},
+		{
+			effectKind: 'route-capacity-multiplier',
+			effect: { kind: 'route-capacity-multiplier', multiplier: 0.8 } as EventTimedEffect
+		},
+		{
+			effectKind: 'route-transport-cost-multiplier',
+			effect: { kind: 'route-transport-cost-multiplier', multiplier: 1.5 } as EventTimedEffect
+		}
+	])(
+		'resolves a route event with a valid $effectKind modifier and stores the active modifier',
+		({ effect }) => {
+			const decision = eventDecision({
+				id: 'route-event-instance',
+				eventId: 'route-disruption',
+				expiresOnDay: 30,
+				target: { kind: 'recurring-route', routeId: 'route-1' },
+				copy: {
+					key: 'events.routeDisruption',
+					params: {
+						routeId: 'route-1',
+						originCityId: 'industry-city',
+						destinationCityId: 'breadbasket-basin',
+						materialId: 'water'
+					}
+				},
+				options: [
+					{
+						id: 'accept',
+						effects: [],
+						modifiers: [
+							{
+								durationDays: 3,
+								stackingKey: 'route-disruption:route',
+								stackingRule: 'replace',
+								effect,
+								explanation: { key: 'events.routeDisruption.modifier', params: {} },
+								importance: 'important'
+							}
+						]
+					}
+				]
+			});
+			const game = withDecision(routeGame(), decision);
+
+			expect(getDecisionOptionAvailability(game, decision, 'accept')).toEqual({
+				available: true
+			});
+			const result = resolveDecision(game, decision.id, 'accept');
+
+			expect(result.ok).toBe(true);
+			if (!result.ok) return;
+			expect(result.game.events.activeModifiers).toHaveLength(1);
+			expect(result.game.events.activeModifiers[0]).toMatchObject({
+				target: { kind: 'recurring-route', routeId: 'route-1' },
+				effect
+			});
+		}
+	);
+
+	it('rejects a company-targeted modifier whose effect kind is a route effect', () => {
+		const decision = eventDecision({
+			options: [
+				{
+					id: 'accept',
+					effects: [],
+					modifiers: [
+						{
+							durationDays: 3,
+							stackingKey: 'route-disruption:company',
+							stackingRule: 'replace',
+							effect: { kind: 'route-capacity-multiplier', multiplier: 0.8 },
+							explanation: { key: 'events.fixture.modifier', params: {} },
+							importance: 'important'
+						}
+					]
+				}
+			]
+		});
+		const game = withDecision(createNewGame('grocery', 55), decision);
+		const result = resolveDecision(game, decision.id, 'accept');
+
+		expect(result).toMatchObject({
+			ok: false,
+			code: 'effect-rejected',
+			context: { modifierIndex: 0, payload: 'modifier' }
+		});
 	});
 });
