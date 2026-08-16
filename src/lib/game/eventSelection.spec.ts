@@ -339,23 +339,12 @@ describe('event selection and materialization', () => {
 
 describe('recurring-route event selection', () => {
 	it('keeps one authored weight for a route definition regardless of route count', () => {
-		const definitions = () => [
+		const catalog = validateAndNormalizeEventCatalog([
 			definition({ id: 'company-event', selection: { kind: 'weighted', weight: 1 } }),
 			routeEventDefinition({ selection: { kind: 'weighted', weight: 1 } })
-		];
-		const oneRouteCatalog = validateAndNormalizeEventCatalog(definitions());
-		const fourRouteCatalog = validateAndNormalizeEventCatalog(definitions());
+		]);
 
-		expect(oneRouteCatalog.byId.get('route-event')?.selection).toEqual({
-			kind: 'weighted',
-			weight: 1
-		});
-		expect(fourRouteCatalog.byId.get('route-event')?.selection).toEqual({
-			kind: 'weighted',
-			weight: 1
-		});
-
-		const one = selectEventForDay(routeGame([route({ id: 'route-1' })], 7), oneRouteCatalog);
+		const one = selectEventForDay(routeGame([route({ id: 'route-1' })], 7), catalog);
 		const four = selectEventForDay(
 			routeGame(
 				[
@@ -366,7 +355,7 @@ describe('recurring-route event selection', () => {
 				],
 				7
 			),
-			fourRouteCatalog
+			catalog
 		);
 
 		expect(eventIdOf(one)).toBe('route-event');

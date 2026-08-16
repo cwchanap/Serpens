@@ -140,6 +140,26 @@ function createDueRoute(overrides: Partial<RecurringRoute> = {}): RecurringRoute
 	};
 }
 
+function routeModifier(overrides: Partial<ActiveEventModifier> = {}): ActiveEventModifier {
+	return {
+		id: 'event-modifier-1',
+		source: {
+			eventId: 'freight-disruption',
+			instanceId: 'event-instance-1',
+			optionId: 'accept-delay'
+		},
+		target: { kind: 'recurring-route', routeId: 'route-1' },
+		startsOnDay: 7,
+		expiresOnDay: 10,
+		stackingKey: 'freight-capacity:route-1',
+		stackingRule: 'replace',
+		effect: { kind: 'route-capacity-multiplier', multiplier: 0.75 },
+		explanation: { key: 'events.freightDisruption.acceptDelay.capacity', params: {} },
+		importance: 'normal',
+		...overrides
+	};
+}
+
 describe('daily simulation', () => {
 	test('rejects invalid entity ownership before starting a daily tick', () => {
 		expect.assertions(1);
@@ -502,22 +522,7 @@ describe('daily simulation', () => {
 			'industry-city',
 			{ water: 100 }
 		);
-		const capacityModifier: ActiveEventModifier = {
-			id: 'event-modifier-1',
-			source: {
-				eventId: 'freight-disruption',
-				instanceId: 'event-instance-1',
-				optionId: 'accept-delay'
-			},
-			target: { kind: 'recurring-route', routeId: 'route-1' },
-			startsOnDay: 7,
-			expiresOnDay: 10,
-			stackingKey: 'freight-capacity:route-1',
-			stackingRule: 'replace',
-			effect: { kind: 'route-capacity-multiplier', multiplier: 0.75 },
-			explanation: { key: 'events.freightDisruption.acceptDelay.capacity', params: {} },
-			importance: 'normal'
-		};
+		const capacityModifier = routeModifier();
 		const result = simulateDay({
 			...base,
 			events: { ...base.events, activeModifiers: [capacityModifier] },
@@ -560,22 +565,17 @@ describe('daily simulation', () => {
 			'industry-city',
 			{ water: 100 }
 		);
-		const suspensionModifier: ActiveEventModifier = {
-			id: 'event-modifier-1',
+		const suspensionModifier = routeModifier({
 			source: {
 				eventId: 'freight-disruption',
 				instanceId: 'event-instance-1',
 				optionId: 'suspend-shipments'
 			},
-			target: { kind: 'recurring-route', routeId: 'route-1' },
-			startsOnDay: 7,
-			expiresOnDay: 10,
 			stackingKey: 'freight-suspension:route-1',
-			stackingRule: 'replace',
 			effect: { kind: 'route-dispatch-suspension' },
 			explanation: { key: 'events.freightDisruption.suspendShipments.suspension', params: {} },
 			importance: 'important'
-		};
+		});
 		const result = simulateDay({
 			...base,
 			events: { ...base.events, activeModifiers: [suspensionModifier] },
@@ -618,22 +618,7 @@ describe('daily simulation', () => {
 			'industry-city',
 			{ water: 100 }
 		);
-		const expiringModifier: ActiveEventModifier = {
-			id: 'event-modifier-1',
-			source: {
-				eventId: 'freight-disruption',
-				instanceId: 'event-instance-1',
-				optionId: 'accept-delay'
-			},
-			target: { kind: 'recurring-route', routeId: 'route-1' },
-			startsOnDay: 7,
-			expiresOnDay: 10,
-			stackingKey: 'freight-capacity:route-1',
-			stackingRule: 'replace',
-			effect: { kind: 'route-capacity-multiplier', multiplier: 0.75 },
-			explanation: { key: 'events.freightDisruption.acceptDelay.capacity', params: {} },
-			importance: 'normal'
-		};
+		const expiringModifier = routeModifier();
 		const result = simulateDay({
 			...base,
 			events: { ...base.events, activeModifiers: [expiringModifier] },
@@ -676,22 +661,7 @@ describe('daily simulation', () => {
 			'industry-city',
 			{ water: 100 }
 		);
-		const expiringModifier: ActiveEventModifier = {
-			id: 'event-modifier-1',
-			source: {
-				eventId: 'freight-disruption',
-				instanceId: 'event-instance-1',
-				optionId: 'accept-delay'
-			},
-			target: { kind: 'recurring-route', routeId: 'route-1' },
-			startsOnDay: 7,
-			expiresOnDay: 10,
-			stackingKey: 'freight-capacity:route-1',
-			stackingRule: 'replace',
-			effect: { kind: 'route-capacity-multiplier', multiplier: 0.75 },
-			explanation: { key: 'events.freightDisruption.acceptDelay.capacity', params: {} },
-			importance: 'normal'
-		};
+		const expiringModifier = routeModifier();
 		const result = simulateDay({
 			...base,
 			events: { ...base.events, activeModifiers: [expiringModifier] },
@@ -770,22 +740,17 @@ describe('daily simulation', () => {
 			'industry-city',
 			{ water: 100 }
 		);
-		const expiringSuspension: ActiveEventModifier = {
-			id: 'event-modifier-1',
+		const expiringSuspension = routeModifier({
 			source: {
 				eventId: 'freight-disruption',
 				instanceId: 'event-instance-1',
 				optionId: 'suspend-shipments'
 			},
-			target: { kind: 'recurring-route', routeId: 'route-1' },
-			startsOnDay: 7,
-			expiresOnDay: 10,
 			stackingKey: 'freight-suspension:route-1',
-			stackingRule: 'replace',
 			effect: { kind: 'route-dispatch-suspension' },
 			explanation: { key: 'events.freightDisruption.suspendShipments.suspension', params: {} },
 			importance: 'important'
-		};
+		});
 		const survivingSuspension: ActiveEventModifier = {
 			...expiringSuspension,
 			id: 'event-modifier-2',

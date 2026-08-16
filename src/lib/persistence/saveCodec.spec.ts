@@ -921,6 +921,7 @@ function createCompleteRouteEventGame(): GameState {
 
 	return {
 		...base,
+		logistics: { ...base.logistics, nextRouteSequence: 3 },
 		events: {
 			...base.events,
 			nextInstanceSequence: 4,
@@ -1494,6 +1495,41 @@ describe('saveCodec', () => {
 							effectKind: 'route-lead-time-adjustment',
 							disruptedLeadTimeDays: 0,
 							recoveredLeadTimeDays: 2
+						}
+					]
+				}
+			})
+		],
+		[
+			'duplicate modifier recovery rows for the same route, modifier, and effect',
+			(report: DailyReport) => ({
+				...report,
+				logistics: {
+					...report.logistics,
+					modifierRecoveries: [
+						{
+							routeId: 'route-retired',
+							modifierId: 'event-modifier-1',
+							source: {
+								eventId: 'freight-disruption',
+								instanceId: 'event-instance-1',
+								optionId: 'accept-delay'
+							},
+							effectKind: 'route-capacity-multiplier',
+							disruptedCapacity: 10,
+							recoveredCapacity: 12
+						},
+						{
+							routeId: 'route-retired',
+							modifierId: 'event-modifier-1',
+							source: {
+								eventId: 'freight-disruption',
+								instanceId: 'event-instance-1',
+								optionId: 'accept-delay'
+							},
+							effectKind: 'route-capacity-multiplier',
+							disruptedCapacity: 10,
+							recoveredCapacity: 12
 						}
 					]
 				}
@@ -2530,6 +2566,39 @@ describe('saveCodec', () => {
 				};
 			},
 			path: 'Saved game decisions[0] target routeId'
+		},
+		{
+			name: 'an event decision target with a malformed routeId',
+			mutate: (game: GameState): GameState => {
+				const decision = game.decisions.find((candidate) => candidate.kind === 'event')!;
+				return {
+					...game,
+					decisions: [{ ...decision, target: { kind: 'recurring-route', routeId: 'route-x' } }]
+				};
+			},
+			path: 'Saved game decisions[0] target routeId must use route-'
+		},
+		{
+			name: 'an event decision target with a zero routeId',
+			mutate: (game: GameState): GameState => {
+				const decision = game.decisions.find((candidate) => candidate.kind === 'event')!;
+				return {
+					...game,
+					decisions: [{ ...decision, target: { kind: 'recurring-route', routeId: 'route-0' } }]
+				};
+			},
+			path: 'Saved game decisions[0] target routeId must use route-'
+		},
+		{
+			name: 'an event decision target with a routeId at or beyond nextRouteSequence',
+			mutate: (game: GameState): GameState => {
+				const decision = game.decisions.find((candidate) => candidate.kind === 'event')!;
+				return {
+					...game,
+					decisions: [{ ...decision, target: { kind: 'recurring-route', routeId: 'route-3' } }]
+				};
+			},
+			path: 'Saved game logistics nextRouteSequence must exceed generated route IDs'
 		},
 		{
 			name: 'an active modifier capacity effect missing its multiplier',

@@ -16,6 +16,7 @@ import type {
 	EventDecisionItem,
 	EventImmediateEffect,
 	EventRuntimeState,
+	EventSelectionPolicy,
 	EventTarget,
 	GameState
 } from './types';
@@ -161,41 +162,46 @@ interface SelectionCandidate {
 	targets: readonly EventTarget[];
 }
 
+type ForcedSelection = Extract<EventSelectionPolicy, { kind: 'forced' }>;
+type WeightedSelection = Extract<EventSelectionPolicy, { kind: 'weighted' }>;
+
+function isForcedCandidate(candidate: SelectionCandidate): candidate is SelectionCandidate & {
+	definition: EventDefinition & { selection: ForcedSelection };
+} {
+	return candidate.definition.selection.kind === 'forced';
+}
+
+function isWeightedCandidate(candidate: SelectionCandidate): candidate is SelectionCandidate & {
+	definition: EventDefinition & { selection: WeightedSelection };
+} {
+	const selection = candidate.definition.selection;
+	return selection.kind === 'weighted' && selection.weight > 0;
+}
+
 function selectCandidate(
 	candidates: readonly SelectionCandidate[],
 	cadenceDraw: number,
 	weightedDraw: number
 ): SelectionCandidate | undefined {
 	const forced = candidates
-		.filter((candidate) => candidate.definition.selection.kind === 'forced')
+		.filter(isForcedCandidate)
 		.sort(
 			(first, second) =>
-				(second.definition.selection.kind === 'forced' ? second.definition.selection.priority : 0) -
-					(first.definition.selection.kind === 'forced'
-						? first.definition.selection.priority
-						: 0) || compareCodeUnits(first.definition.id, second.definition.id)
+				second.definition.selection.priority - first.definition.selection.priority ||
+				compareCodeUnits(first.definition.id, second.definition.id)
 		);
 	if (forced[0]) return forced[0];
 	if (cadenceDraw >= WEIGHTED_EVENT_CADENCE) return undefined;
 
 	const weighted = candidates
-		.filter(
-			(candidate) =>
-				candidate.definition.selection.kind === 'weighted' &&
-				candidate.definition.selection.weight > 0
-		)
+		.filter(isWeightedCandidate)
 		.sort((first, second) => compareCodeUnits(first.definition.id, second.definition.id));
 	const totalWeight = weighted.reduce(
-		(total, candidate) =>
-			total +
-			(candidate.definition.selection.kind === 'weighted'
-				? candidate.definition.selection.weight
-				: 0),
+		(total, candidate) => total + candidate.definition.selection.weight,
 		0
 	);
 	let threshold = weightedDraw * totalWeight;
 	for (const candidate of weighted) {
-		if (candidate.definition.selection.kind !== 'weighted') continue;
 		threshold -= candidate.definition.selection.weight;
 		if (threshold < 0) return candidate;
 	}

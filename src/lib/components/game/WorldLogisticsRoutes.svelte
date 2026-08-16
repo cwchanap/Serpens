@@ -134,6 +134,14 @@
 		color: var(--wax-red);
 	}
 
+	/* Disrupted routes glow alert-red around whatever state color the line
+		already carries, so active/paused/selected styling (color, dashes,
+		stroke-width) is preserved and merely composed with. Placed before the
+		focus/hover rule so interaction feedback still wins. */
+	.world-logistics-route[data-disrupted='true'] .world-logistics-route-line {
+		filter: drop-shadow(0 0 0.24rem var(--wax-red-2));
+	}
+
 	.world-logistics-route:focus-visible .world-logistics-route-line,
 	.world-logistics-route:hover .world-logistics-route-line {
 		filter: drop-shadow(0 0 0.18rem var(--paper-50));

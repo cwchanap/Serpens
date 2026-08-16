@@ -79,6 +79,15 @@ export interface ActiveEventModifier {
 	importance: 'normal' | 'important';
 }
 
+/** The route-modifier fields the effective-route resolver reads: identity,
+ * target, activity window, effect, and evidence copy. Structural subset of
+ * {@link ActiveEventModifier} so planner projections can pass copied
+ * modifiers without widening casts. */
+export type RouteModifierInput = Pick<
+	ActiveEventModifier,
+	'id' | 'source' | 'target' | 'startsOnDay' | 'expiresOnDay' | 'effect' | 'explanation'
+>;
+
 export interface EventModifierSnapshot {
 	readonly id: string;
 	readonly source: Readonly<ActiveEventModifier['source']>;
@@ -476,7 +485,8 @@ export interface RouteRecoveryBase {
 
 /**
  * Discriminated per-effect evidence that a route modifier stopped affecting a
- * route after expiry. Emitted empty until recovery derivation lands.
+ * route after expiry. Derived by `buildRouteModifierRecoveries` when the
+ * effective value recovers; see `DailyLogisticsReport.modifierRecoveries`.
  */
 export type DailyRouteModifierRecovery =
 	| (RouteRecoveryBase & {
