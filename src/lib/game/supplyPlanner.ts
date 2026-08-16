@@ -2435,21 +2435,30 @@ function projectSupplySnapshotWithLogistics(
 					attemptForecast.firstPriorityConstraintDay = day;
 					attemptForecast.priorityBlockedByRouteId = priorityBlocker.routeId;
 				}
-				const candidateCondition: SupplyPlannerRouteCondition = priorityBlocker
-					? 'route-priority-constrained'
-					: originStockConstrained
-						? 'origin-stock-constrained'
-						: routeCapacityConstrained
-							? 'route-capacity-constrained'
-							: attempt.destinationNeed === 0
-								? 'destination-full'
-								: 'normal';
+				const candidateCondition: SupplyPlannerRouteCondition = attempt.dispatchSuspended
+					? 'route-event-suspended'
+					: priorityBlocker
+						? 'route-priority-constrained'
+						: originStockConstrained
+							? 'origin-stock-constrained'
+							: routeCapacityConstrained
+								? 'route-capacity-constrained'
+								: attempt.destinationNeed === 0
+									? 'destination-full'
+									: 'normal';
 				attemptForecast.condition = promoteSupplyPlannerRouteCondition(
 					attemptForecast.condition,
 					candidateCondition
 				);
 				if (attempt.transferOrderId) {
-					const projectedArrivalDay = day + attemptForecast.route.leadTimeDays;
+					// The dispatch evidence carries the effective lead time
+					// whenever a lead-time adjustment was applied; the base
+					// route value is the no-modifier fallback.
+					const leadTimeImpact = attempt.modifierImpacts.find(
+						(impact) => impact.effectKind === 'route-lead-time-adjustment'
+					);
+					const projectedArrivalDay =
+						day + (leadTimeImpact?.effectiveLeadTimeDays ?? attemptForecast.route.leadTimeDays);
 					if (
 						attemptForecast.firstArrivalDay === null ||
 						projectedArrivalDay < attemptForecast.firstArrivalDay

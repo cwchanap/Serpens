@@ -18,6 +18,7 @@ import {
 } from './supplyPlanner';
 import type { SupplyPlannerRequest, SupplyPlannerSnapshot } from './supplyPlanner';
 import type {
+	ActiveEventModifier,
 	GameState,
 	IndustrialBuilding,
 	MaterialId,
@@ -203,6 +204,26 @@ function baseGame(archetype: 'convenience' | 'grocery' = 'convenience'): GameSta
 		industrialBuildings: [building('warehouse')],
 		cityInventories: [{ cityId: 'industry-city', materials: { water: 20 } }],
 		logistics: { ...game.logistics, recurringRoutes: [] }
+	};
+}
+
+function routeModifier(overrides: Partial<ActiveEventModifier> = {}): ActiveEventModifier {
+	return {
+		id: 'event-modifier-1',
+		source: {
+			eventId: 'freight-disruption',
+			instanceId: 'event-instance-1',
+			optionId: 'accept-delay'
+		},
+		target: { kind: 'recurring-route', routeId: 'route-pantry' },
+		startsOnDay: 1,
+		expiresOnDay: 31,
+		stackingKey: 'freight-capacity:route-pantry',
+		stackingRule: 'replace',
+		effect: { kind: 'route-capacity-multiplier', multiplier: 0.5 },
+		explanation: { key: 'events.freightDisruption.acceptDelay.capacity', params: {} },
+		importance: 'normal',
+		...overrides
 	};
 }
 
@@ -476,6 +497,7 @@ describe('supply planner snapshot', () => {
 			remoteCities: [],
 			inTransitOrders: [],
 			routes: [],
+			routeModifiers: [],
 			nextRouteSequence: 1,
 			nextTransferSequence: 1
 		};
@@ -624,6 +646,7 @@ describe('supply planner snapshot', () => {
 						nextDispatchOnDay: 5
 					})
 				],
+				routeModifiers: [],
 				nextRouteSequence: 1,
 				nextTransferSequence: 1
 			}
@@ -660,6 +683,7 @@ describe('supply planner snapshot', () => {
 						nextDispatchOnDay: 1
 					})
 				],
+				routeModifiers: [],
 				nextRouteSequence: 1,
 				nextTransferSequence: 1
 			}
@@ -708,6 +732,7 @@ describe('supply planner snapshot', () => {
 						nextDispatchOnDay: 1
 					})
 				],
+				routeModifiers: [],
 				nextRouteSequence: 1,
 				nextTransferSequence: 1
 			}
@@ -758,6 +783,7 @@ describe('supply planner snapshot', () => {
 						nextDispatchOnDay: 1
 					})
 				],
+				routeModifiers: [],
 				nextRouteSequence: 1,
 				nextTransferSequence: 1
 			}
@@ -807,6 +833,7 @@ describe('supply planner snapshot', () => {
 						nextDispatchOnDay: 1
 					})
 				],
+				routeModifiers: [],
 				nextRouteSequence: 1,
 				nextTransferSequence: 1
 			}
@@ -869,6 +896,7 @@ describe('supply planner snapshot', () => {
 						nextDispatchOnDay: 1
 					})
 				],
+				routeModifiers: [],
 				nextRouteSequence: 1,
 				nextTransferSequence: 1
 			}
@@ -3957,6 +3985,7 @@ describe('supply planner projection edge-case coverage', () => {
 						nextDispatchOnDay: 7
 					})
 				],
+				routeModifiers: [],
 				nextRouteSequence: 2,
 				nextTransferSequence: 2
 			}
@@ -3970,5 +3999,119 @@ describe('supply planner projection edge-case coverage', () => {
 		// be attributed to the flour route's forecast.
 		expect(forecast?.firstProjectedArrivalDay).toBeNull();
 		expect(forecast?.projectedDeliveredUnits30).toBe(0);
+	});
+});
+
+describe('supply planner route modifier projection', () => {
+	function pantryRouteSnapshot(
+		routeModifiers: readonly ActiveEventModifier[]
+	): SupplyPlannerSnapshot {
+		return projectionSnapshot({
+			finishedMaterialId: 'pantry',
+			demandPerDay: 10,
+			warehouseCapacity: 1000,
+			logistics: {
+				currentDay: 1,
+				remoteCities: [
+					{
+						inventory: { cityId: 'breadbasket-basin', materials: { pantry: 1000 } },
+						warehouseCapacity: 1000
+					}
+				],
+				inTransitOrders: [],
+				routes: [
+					route({
+						id: 'route-pantry',
+						originCityId: 'breadbasket-basin',
+						destinationCityId: 'industry-city',
+						materialId: 'pantry',
+						capacity: 10,
+						frequencyDays: 1,
+						leadTimeDays: 1,
+						nextDispatchOnDay: 1
+					})
+				],
+				routeModifiers,
+				nextRouteSequence: 1,
+				nextTransferSequence: 1
+			}
+		});
+	}
+
+	it('projects an active suspension as the route-event-suspended condition with no dispatches', () => {
+		const projection = projectSupplySnapshot(
+			pantryRouteSnapshot([
+				routeModifier({
+					target: { kind: 'recurring-route', routeId: 'route-pantry' },
+					effect: { kind: 'route-dispatch-suspension' }
+				})
+			])
+		);
+		const forecast = projection.routeForecasts?.find((row) => row.route.id === 'route-pantry');
+
+		expect(forecast?.projectedCondition).toBe('route-event-suspended');
+		expect(forecast?.projectedDispatchedUnits30).toBe(0);
+		expect(forecast?.projectedTransportCost30).toBe(0);
+		expect(forecast?.firstProjectedArrivalDay).toBeNull();
+	});
+
+	it('stops projecting a suspension after it expires inside the 30-day horizon', () => {
+		const projection = projectSupplySnapshot(
+			pantryRouteSnapshot([
+				routeModifier({
+					target: { kind: 'recurring-route', routeId: 'route-pantry' },
+					startsOnDay: 1,
+					expiresOnDay: 4,
+					effect: { kind: 'route-dispatch-suspension' }
+				})
+			])
+		);
+		const forecast = projection.routeForecasts?.find((row) => row.route.id === 'route-pantry');
+
+		// Suspended on days 1-3 (three dispatches), then 10/day for the
+		// remaining 27 days of the horizon.
+		expect(forecast?.projectedDispatchedUnits30).toBe(270);
+		expect(forecast?.projectedDeliveredUnits30).toBeGreaterThan(0);
+		// The condition keeps the worst state seen across the horizon.
+		expect(forecast?.projectedCondition).toBe('route-event-suspended');
+	});
+
+	it('projects the effective lead time into the forecast arrival day', () => {
+		const projection = projectSupplySnapshot(
+			pantryRouteSnapshot([
+				routeModifier({
+					target: { kind: 'recurring-route', routeId: 'route-pantry' },
+					effect: { kind: 'route-lead-time-adjustment', days: 2 }
+				})
+			])
+		);
+		const forecast = projection.routeForecasts?.find((row) => row.route.id === 'route-pantry');
+
+		// First dispatch on day 1 with effective lead time 3 (1 + 2).
+		expect(forecast?.firstProjectedArrivalDay).toBe(4);
+	});
+
+	it('projects reduced capacity and cost for a capacity and cost multiplier pair', () => {
+		const projection = projectSupplySnapshot(
+			pantryRouteSnapshot([
+				routeModifier({
+					target: { kind: 'recurring-route', routeId: 'route-pantry' },
+					effect: { kind: 'route-capacity-multiplier', multiplier: 0.5 }
+				}),
+				routeModifier({
+					id: 'event-modifier-2',
+					target: { kind: 'recurring-route', routeId: 'route-pantry' },
+					effect: { kind: 'route-transport-cost-multiplier', multiplier: 2 }
+				})
+			])
+		);
+		const forecast = projection.routeForecasts?.find((row) => row.route.id === 'route-pantry');
+
+		// 30 dispatches of 5 units at 2 * 1 * 5 = 10 per dispatch.
+		expect(forecast?.projectedDispatchedUnits30).toBe(150);
+		expect(forecast?.projectedTransportCost30).toBe(300);
+		// Effective capacity 5 trails the destination need, so the route is
+		// capacity-constrained by the halved capacity.
+		expect(forecast?.projectedCondition).toBe('route-capacity-constrained');
 	});
 });

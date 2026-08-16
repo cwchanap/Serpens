@@ -6,14 +6,17 @@ import {
 	getCityInventoryUsed,
 	removeCityInventoryMaterial
 } from './cityInventory';
+import { cloneTimedEffect } from './eventModifiers';
 import {
+	buildRouteDispatchAttempt,
 	compareRecurringRoutes,
 	getDestinationTransferNeedFromCapacity,
-	getRecurringDispatchQuantity,
 	sumReservedInTransitUnits
 } from './interCityLogistics';
+import { resolveEffectiveRecurringRoute } from './logisticsRouteModifiers';
 import { selectInTransitInventory, type InTransitInventorySummary } from './logisticsReadModels';
 import type {
+	ActiveEventModifier,
 	CityInventory,
 	DailyRouteDispatchAttempt,
 	DailyTransferArrival,
@@ -22,6 +25,34 @@ import type {
 	TransferOrder,
 	WorldCityId
 } from './types';
+
+/** The route-modifier fields the projection copies: exactly the fields
+ * `resolveEffectiveRecurringRoute` reads (identity, target, activity window,
+ * effect, and evidence copy). Stacking/lifecycle bookkeeping and any
+ * non-route targets are deliberately not copied. */
+export type PlannerRouteModifier = Pick<
+	ActiveEventModifier,
+	'id' | 'source' | 'target' | 'startsOnDay' | 'expiresOnDay' | 'effect' | 'explanation'
+>;
+
+/** Deep-copy only route-targeted active modifiers, keeping only the fields the
+ * route resolver reads. Never copies company modifiers, event RNG/cooldowns,
+ * history, or precomputed effective routes. */
+export function copyRouteTargetedModifiers(
+	modifiers: readonly PlannerRouteModifier[]
+): PlannerRouteModifier[] {
+	return modifiers
+		.filter((modifier) => modifier.target.kind === 'recurring-route')
+		.map((modifier) => ({
+			id: modifier.id,
+			source: { ...modifier.source },
+			target: { ...modifier.target },
+			startsOnDay: modifier.startsOnDay,
+			expiresOnDay: modifier.expiresOnDay,
+			effect: cloneTimedEffect(modifier.effect),
+			explanation: { ...modifier.explanation, params: { ...modifier.explanation.params } }
+		}));
+}
 
 export interface SupplyPlannerRemoteLogisticsCitySnapshot {
 	inventory: Readonly<CityInventory>;
@@ -35,6 +66,8 @@ export interface SupplyPlannerLogisticsSnapshot {
 	/** Existing day-zero logistics read model for planner presentation only. */
 	inTransitInventory?: readonly InTransitInventorySummary[];
 	routes: readonly Readonly<RecurringRoute>[];
+	/** Route-targeted active modifiers copied for the projection horizon. */
+	routeModifiers: readonly PlannerRouteModifier[];
 	nextRouteSequence: number;
 	nextTransferSequence: number;
 }
@@ -47,6 +80,7 @@ export interface SupplyPlannerLogisticsState {
 	remoteWarehouseCapacities: Partial<Record<WorldCityId, number>>;
 	inTransitOrders: TransferOrder[];
 	routes: RecurringRoute[];
+	routeModifiers: readonly PlannerRouteModifier[];
 	nextTransferSequence: number;
 }
 
@@ -100,6 +134,7 @@ export function buildSupplyPlannerLogisticsSnapshot(
 		),
 		inTransitInventory: selectInTransitInventory(game),
 		routes: structuredClone(game.logistics.recurringRoutes),
+		routeModifiers: copyRouteTargetedModifiers(game.events.activeModifiers),
 		nextRouteSequence: game.logistics.nextRouteSequence,
 		nextTransferSequence: game.logistics.nextTransferSequence
 	};
@@ -122,6 +157,7 @@ export function createSupplyPlannerLogisticsState(input: {
 		) as Partial<Record<WorldCityId, number>>,
 		inTransitOrders: input.logistics.inTransitOrders.map((order) => structuredClone(order)),
 		routes: input.logistics.routes.map((route) => structuredClone(route)),
+		routeModifiers: copyRouteTargetedModifiers(input.logistics.routeModifiers),
 		nextTransferSequence: input.logistics.nextTransferSequence
 	};
 }
@@ -233,24 +269,28 @@ export function processSupplyPlannerRouteDispatches(
 			reservedInTransitUnits: sumReservedInTransitUnits(inTransitOrders, route.destinationCityId)
 		});
 		const availableOriginStock = origin.inventory.materials[route.materialId] ?? 0;
-		const dispatchedQuantity = getRecurringDispatchQuantity({
+		// Same shared resolver + builder the live loop uses. The planner's
+		// copied modifiers are a structural subset of ActiveEventModifier that
+		// carries exactly the fields the resolver reads, so widening the
+		// reference here is safe.
+		const effective = resolveEffectiveRecurringRoute(
+			route,
+			input.routeModifiers as readonly ActiveEventModifier[],
+			day
+		);
+		const built = buildRouteDispatchAttempt({
+			route,
+			effective,
 			destinationNeed,
-			routeCapacity: route.capacity,
 			availableOriginStock
 		});
 
-		let transportCost = 0;
 		let transferOrderId: string | null = null;
-		if (dispatchedQuantity > 0) {
-			transportCost = checkedMultiply(
-				route.transportCostPerUnit,
-				dispatchedQuantity,
-				'Recurring route transport cost'
-			);
+		if (built.dispatchedQuantity > 0) {
 			const removal = removeCityInventoryMaterial(
 				origin.inventory,
 				route.materialId,
-				dispatchedQuantity
+				built.dispatchedQuantity
 			);
 			if (removal.shortage !== 0) {
 				throw new Error('Transfer origin stock changed before dispatch');
@@ -272,11 +312,11 @@ export function processSupplyPlannerRouteDispatches(
 				originCityId: route.originCityId,
 				destinationCityId: route.destinationCityId,
 				materialId: route.materialId,
-				quantity: dispatchedQuantity,
+				quantity: built.dispatchedQuantity,
 				createdOnDay: day,
 				dispatchedOnDay: day,
-				arrivalOnDay: checkedAdd(day, route.leadTimeDays, 'Transfer arrival day'),
-				transportCost,
+				arrivalOnDay: checkedAdd(day, effective.leadTimeDays, 'Transfer arrival day'),
+				transportCost: built.attempt.transportCost,
 				status: 'in-transit'
 			};
 			inTransitOrders = [...inTransitOrders, order];
@@ -292,26 +332,10 @@ export function processSupplyPlannerRouteDispatches(
 		);
 		scheduledTransportCost = checkedAdd(
 			scheduledTransportCost,
-			transportCost,
+			built.attempt.transportCost,
 			'Scheduled transport cost'
 		);
-		attempts.push({
-			routeId: route.id,
-			originCityId: route.originCityId,
-			destinationCityId: route.destinationCityId,
-			materialId: route.materialId,
-			destinationNeed,
-			capacity: route.capacity,
-			availableOriginStock,
-			dispatchedQuantity,
-			unusedCapacity: route.capacity - dispatchedQuantity,
-			unmetDestinationNeed: destinationNeed === 0 ? 0 : destinationNeed - dispatchedQuantity,
-			transportCost,
-			transferOrderId,
-			baselineCapacity: route.capacity,
-			dispatchSuspended: false,
-			modifierImpacts: []
-		});
+		attempts.push({ ...built.attempt, transferOrderId });
 	}
 
 	return {
@@ -356,12 +380,4 @@ function checkedAdd(left: number, right: number, label: string): number {
 		throw new RangeError(`${label} exceeds the safe integer range`);
 	}
 	return sum;
-}
-
-function checkedMultiply(left: number, right: number, label: string): number {
-	const product = left * right;
-	if (!Number.isSafeInteger(product)) {
-		throw new RangeError(`${label} exceeds the safe integer range`);
-	}
-	return product;
 }

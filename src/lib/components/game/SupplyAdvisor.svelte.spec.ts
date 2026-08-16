@@ -129,6 +129,7 @@ function logisticsSnapshot(
 		inTransitOrders: [],
 		inTransitInventory: [],
 		routes: [],
+		routeModifiers: [],
 		nextRouteSequence: 2,
 		nextTransferSequence: 2,
 		...overrides
