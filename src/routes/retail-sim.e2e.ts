@@ -4255,6 +4255,24 @@ test('freight disruption lifecycle closes through dispatch, pause/edit/resume, a
 		state: 'active',
 		nextDispatchOnDay: 6
 	});
+
+	// The plan-mandated pause direction: pausing while the modifiers are
+	// already active must not purge the route-scoped modifiers, and a later
+	// resume keeps them active.
+	await editedRow.getByRole('button', { name: /^Pause route$/i }).click();
+	await expect(editedLogistics.getByRole('status')).toContainText(/Recurring route paused\./i);
+	saved = await readAutoSaveGame(page);
+	expect(saved.events.activeModifiers.map((modifier) => modifier.id)).toEqual([
+		'event-modifier-1',
+		'event-modifier-2'
+	]);
+	expect(saved.logistics.recurringRoutes[0]).toMatchObject({ state: 'paused' });
+	await editedRow.getByRole('button', { name: /^Resume route$/i }).click();
+	await expect(editedLogistics.getByRole('status')).toContainText(/Recurring route resumed\./i);
+	await expect
+		.poll(async () => (await readAutoSaveGame(page)).events.activeModifiers.length)
+		.toBe(2);
+
 	await editedLogistics.getByRole('button', { name: 'Close Logistics', exact: true }).click();
 
 	const resumedDecisions = await openManagementPanel(page, 'Decisions');
