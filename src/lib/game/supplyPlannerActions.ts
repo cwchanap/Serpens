@@ -32,6 +32,7 @@ import {
 	buildRequiredChainReachability,
 	buildSupplyMaterialRequirements,
 	buildSupplyPlannerSnapshot,
+	listSupplyPlannerCategories,
 	projectSupplySnapshot,
 	type RailReachabilityBase,
 	type RequiredChainReachability,
@@ -475,7 +476,9 @@ function diagnoseLogistics(
 		if (!forecast?.priorityBlockedByRouteId || forecast.firstPriorityConstraintDay === null) {
 			continue;
 		}
-		const blocker = allInboundRoutes.find(
+		// The blocker may share the origin + material but ship to a different
+		// destination, so search every route rather than only inbound routes.
+		const blocker = logistics.routes.find(
 			(candidate) => candidate.id === forecast.priorityBlockedByRouteId
 		);
 		if (!blocker || compareRecurringRoutes(blocker, route) >= 0) continue;
@@ -850,9 +853,22 @@ function supplySourceCandidates(
 ): SupplyPlannerCandidate[] {
 	const categoryId = findCategoryIdForFinishedMaterial(game, snapshot);
 	if (!categoryId || !snapshot.logistics) return [];
-	const candidates: SupplyPlannerCandidate[] = [];
 	const retailCityId = snapshot.retailCityId;
 	const fromSupplyCityId = snapshot.supplyCityId;
+	// The assignment is city-wide, so a source switch affects every supported
+	// category in the moved retail city.  Per-category import-spend projections
+	// are not additive: each starts from the full city inventory/production/
+	// logistics state while the real product chains share upstream capacity and
+	// materials.  Summing only importSpend30 also mixes city-wide import
+	// economics with the selected category's shortage/import/transport
+	// projection, which can make netCashBenefit30 pass the value gate when the
+	// combined city state does not.  Until a multi-category simulator exists,
+	// only emit a source-change candidate when the retail city has exactly one
+	// supported planner category (where the cross-category sum degenerates to
+	// the single category); otherwise leave source-change ROI unknown and fall
+	// through to route/local actions.
+	if (getRetailCityPlannerCategoryIds(game, retailCityId).size !== 1) return [];
+	const candidates: SupplyPlannerCandidate[] = [];
 
 	// Build a scoped baseline: only the selected retail city claims the current
 	// supply city.  This isolates the moved city's economics from other
@@ -949,23 +965,22 @@ function isolateClaimant(
 }
 
 /**
+ * Return the set of supply-chain category ids the given retail city actually
+ * carries products for (and that resolve to a finished material).  A source
+ * assignment is city-wide, so this is the scope a source change affects.
+ */
+function getRetailCityPlannerCategoryIds(game: GameState, retailCityId: WorldCityId): Set<string> {
+	return new Set(listSupplyPlannerCategories(game, retailCityId));
+}
+
+/**
  * Sum the 30-day import spend across every supported supply-chain category in
  * the given retail city, using the provided (already-scoped) game state.  This
  * captures cross-category effects of a city-wide assignment change that a
  * single-category snapshot would miss.
  */
 function computeScopedImportSpend30(game: GameState, retailCityId: WorldCityId): number {
-	const stores = game.stores
-		.filter((store) => store.cityId === retailCityId)
-		.sort((left, right) => compareCodeUnits(left.id, right.id));
-	const categoryIds = new Set<string>();
-	for (const store of stores) {
-		for (const category of getSupportedStoreChainCategories(store)) {
-			if (getFinishedMaterialIdForCategory(category.id)) {
-				categoryIds.add(category.id);
-			}
-		}
-	}
+	const categoryIds = getRetailCityPlannerCategoryIds(game, retailCityId);
 	let totalImportSpend30 = 0;
 	for (const categoryId of categoryIds) {
 		const result = buildSupplyPlannerSnapshot(game, { retailCityId, categoryId });

@@ -37,6 +37,7 @@ import type {
 	MaterialKind,
 	ProductionRecipeId,
 	RecurringRoute,
+	TransferOrder,
 	WorldCityId
 } from './types';
 
@@ -2152,6 +2153,27 @@ function projectPreparedMaterialDay(
 	};
 }
 
+/**
+ * An in-transit order is only valid evidence for a route's current configuration
+ * when its immutable shipment semantics (origin, destination, material) still
+ * match.  Editing a recurring route via {@link updateRecurringRoute} preserves
+ * the route ID while allowing any of these fields to change, so a routeId-only
+ * match would let a prior configuration's shipment become arrival/delivery
+ * evidence for the route's new material and corrupt lead-time/frequency
+ * diagnosis.  The order still arrives in the logistics trace regardless; this
+ * gate only controls per-route forecast attribution.
+ */
+function inTransitOrderMatchesRoute(
+	order: Readonly<TransferOrder>,
+	route: Readonly<RecurringRoute>
+): boolean {
+	return (
+		order.originCityId === route.originCityId &&
+		order.destinationCityId === route.destinationCityId &&
+		order.materialId === route.materialId
+	);
+}
+
 function projectSupplySnapshotWithLogistics(
 	snapshot: SupplyPlannerSnapshot,
 	requirements: readonly SupplyMaterialRequirement[]
@@ -2222,6 +2244,9 @@ function projectSupplySnapshotWithLogistics(
 		if (order.source.kind !== 'recurring-route') continue;
 		const forecast = routeForecastState.get(order.source.routeId);
 		if (!forecast) continue;
+		// Skip orders whose shipment semantics no longer match the current
+		// route configuration (the route may have been edited in transit).
+		if (!inTransitOrderMatchesRoute(order, forecast.route)) continue;
 		if (forecast.firstArrivalDay === null || order.arrivalOnDay < forecast.firstArrivalDay) {
 			forecast.firstArrivalDay = order.arrivalOnDay;
 		}
@@ -2251,13 +2276,25 @@ function projectSupplySnapshotWithLogistics(
 					? arrivalOrder.source.routeId
 					: (projectedRouteByOrderId.get(arrival.transferOrderId) ?? null);
 			const arrivalRoute = arrivalRouteId ? routeForecastState.get(arrivalRouteId) : undefined;
-			// Track per-route delivered counts for every arrival so outbound
-			// routes (destination ≠ supply city) also show delivered units
-			// rather than a misleading 0.  The aggregate selected-chain
+			// Only attribute an arrival to the current route forecast when the
+			// order's shipment semantics still match the route.  A route edited
+			// while the order was in transit keeps the old routeId, so a
+			// routeId-only match would credit the new material/destination with
+			// the old shipment.  Newly projected orders (no entry in
+			// copiedOrdersById) were dispatched by the current route config, so
+			// they always match.  The order still arrives in the logistics
+			// trace (inventory/aggregate effects below) regardless of this gate.
+			const arrivalRouteMatchesOrder =
+				arrivalRoute !== undefined &&
+				(arrivalOrder === undefined ||
+					inTransitOrderMatchesRoute(arrivalOrder, arrivalRoute.route));
+			// Track per-route delivered counts for every matching arrival so
+			// outbound routes (destination ≠ supply city) also show delivered
+			// units rather than a misleading 0.  The aggregate selected-chain
 			// metrics below remain gated to the supply city.
-			if (arrivalRoute) {
-				arrivalRoute.delivered30 += arrival.quantity;
-				if (offset < 7) arrivalRoute.delivered7 += arrival.quantity;
+			if (arrivalRouteMatchesOrder) {
+				arrivalRoute!.delivered30 += arrival.quantity;
+				if (offset < 7) arrivalRoute!.delivered7 += arrival.quantity;
 			}
 			if (arrival.destinationCityId === snapshot.supplyCityId) {
 				if (requiredMaterialIds.has(arrival.materialId)) {
@@ -2265,8 +2302,8 @@ function projectSupplySnapshotWithLogistics(
 					if (offset < 7) projectedDeliveredUnits7 += arrival.quantity;
 				}
 			}
-			if (arrivalRoute && arrivalRoute.firstArrivalDay === null) {
-				arrivalRoute.firstArrivalDay = day;
+			if (arrivalRouteMatchesOrder && arrivalRoute!.firstArrivalDay === null) {
+				arrivalRoute!.firstArrivalDay = day;
 			}
 			if (
 				arrival.destinationCityId === snapshot.supplyCityId &&
@@ -2343,7 +2380,16 @@ function projectSupplySnapshotWithLogistics(
 					attempt.destinationNeed > attempt.capacity &&
 					attempt.dispatchedQuantity === attempt.capacity &&
 					!originStockConstrained;
-				const priorityBlocker =
+				// Priority contention occurs through two shared resources: the
+				// destination's remaining headroom and the origin's available stock.
+				// An earlier-dispatched route sharing the destination can consume
+				// headroom this route would have used (destinationNeed < capacity),
+				// while an earlier route sharing the origin + material can consume
+				// the stock this route would have received even when the two
+				// destinations differ.  Detect both so the action layer can offer a
+				// reprioritization; the existing candidate re-projection/value gate
+				// decides whether the edit is actually worthwhile.
+				const sharedDestinationBlocker =
 					attempt.destinationNeed < attempt.capacity
 						? dispatchResult.attempts.find((previous) => {
 								const previousForecast = routeForecastState.get(previous.routeId);
@@ -2356,6 +2402,21 @@ function projectSupplySnapshotWithLogistics(
 								);
 							})
 						: undefined;
+				const sharedOriginBlocker =
+					originStockConstrained && !sharedDestinationBlocker
+						? dispatchResult.attempts.find((previous) => {
+								const previousForecast = routeForecastState.get(previous.routeId);
+								return (
+									previous !== attempt &&
+									previous.originCityId === attempt.originCityId &&
+									previous.materialId === attempt.materialId &&
+									previous.dispatchedQuantity > 0 &&
+									previousForecast !== undefined &&
+									compareRecurringRoutes(previousForecast.route, attemptForecast.route) < 0
+								);
+							})
+						: undefined;
+				const priorityBlocker = sharedDestinationBlocker ?? sharedOriginBlocker;
 				if (attemptForecast.firstOriginConstraintDay === null && originStockConstrained) {
 					attemptForecast.firstOriginConstraintDay = day;
 				}

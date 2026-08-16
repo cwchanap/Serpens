@@ -820,6 +820,68 @@ describe('supply planner snapshot', () => {
 		expect(forecast?.firstPriorityConstraintDay).toBe(1);
 	});
 
+	it('attributes shared-origin priority contention across different destinations', () => {
+		// Two routes share origin + material but ship to different
+		// destinations.  The earlier-priority route consumes all origin
+		// stock, so the later route is origin-stock-constrained.  The
+		// planner must still classify it as priority-constrained (with the
+		// shared-origin route as the blocker) so the action layer can offer a
+		// reprioritization rather than silently dropping it as
+		// origin-stock-constrained.
+		const snapshot = projectionSnapshot({
+			finishedMaterialId: 'pantry',
+			logistics: {
+				currentDay: 1,
+				remoteCities: [
+					{
+						inventory: {
+							cityId: 'breadbasket-basin',
+							materials: { pantry: 10 }
+						},
+						warehouseCapacity: 100
+					},
+					{
+						inventory: {
+							cityId: 'harbor-city',
+							materials: {}
+						},
+						warehouseCapacity: 100
+					}
+				],
+				inTransitOrders: [],
+				routes: [
+					route({
+						id: 'route-blocker',
+						originCityId: 'breadbasket-basin' as WorldCityId,
+						destinationCityId: 'harbor-city' as WorldCityId,
+						materialId: 'pantry',
+						capacity: 10,
+						priority: 0,
+						nextDispatchOnDay: 1
+					}),
+					route({
+						id: 'route-loser',
+						originCityId: 'breadbasket-basin' as WorldCityId,
+						destinationCityId: 'industry-city' as WorldCityId,
+						materialId: 'pantry',
+						capacity: 10,
+						priority: 1,
+						nextDispatchOnDay: 1
+					})
+				],
+				nextRouteSequence: 1,
+				nextTransferSequence: 1
+			}
+		});
+
+		const projection = projectSupplySnapshot(snapshot);
+		const forecast = projection.routeForecasts?.find((row) => row.route.id === 'route-loser');
+
+		expect(forecast?.projectedCondition).toBe('route-priority-constrained');
+		expect(forecast?.priorityBlockedByRouteId).toBe('route-blocker');
+		expect(forecast?.firstPriorityConstraintDay).toBe(1);
+	});
+
 	it('counts an upstream producer connected directly to a usable downstream processor', () => {
 		const base = plannerGame(undefined, {
 			stores: [{ ...baseGame('grocery').stores[0]!, products: [product('pantry')] }],
@@ -3841,5 +3903,70 @@ describe('supply planner projection edge-case coverage', () => {
 		expect(() => projectSupplySnapshot(snapshot)).toThrow(
 			'Projected transport cost exceeds the safe integer range'
 		);
+	});
+
+	it('does not attribute a stale in-transit order to an edited route forecast', () => {
+		// route-1 originally dispatched bottled water.  While that shipment
+		// was in transit, the player edited route-1 to carry flour
+		// (updateRecurringRoute preserves the route ID but replaces
+		// origin/destination/material).  The old bottled-water order must
+		// still arrive in the logistics trace, but it must NOT become
+		// route-1's firstProjectedArrivalDay or contribute to its
+		// projected delivered count, which would corrupt the flour route's
+		// lead-time/frequency diagnosis.
+		const snapshot = projectionSnapshot({
+			finishedMaterialId: 'pantry',
+			demandPerDay: 10,
+			warehouseCapacity: 1000,
+			logistics: {
+				currentDay: 1,
+				remoteCities: [
+					{
+						inventory: { cityId: 'breadbasket-basin', materials: {} },
+						warehouseCapacity: 100
+					}
+				],
+				inTransitOrders: [
+					{
+						id: 'transfer-stale',
+						source: { kind: 'recurring-route' as const, routeId: 'route-1' },
+						// Stale shipment semantics: bottled water, not flour.
+						originCityId: 'breadbasket-basin' as WorldCityId,
+						destinationCityId: 'industry-city' as WorldCityId,
+						materialId: 'bottled-water' as MaterialId,
+						quantity: 50,
+						createdOnDay: 0,
+						dispatchedOnDay: 0,
+						arrivalOnDay: 5,
+						transportCost: 50,
+						status: 'in-transit'
+					} satisfies TransferOrder
+				],
+				routes: [
+					route({
+						id: 'route-1',
+						originCityId: 'breadbasket-basin' as WorldCityId,
+						destinationCityId: 'industry-city' as WorldCityId,
+						materialId: 'flour',
+						capacity: 10,
+						frequencyDays: 1,
+						leadTimeDays: 1,
+						priority: 1,
+						nextDispatchOnDay: 7
+					})
+				],
+				nextRouteSequence: 2,
+				nextTransferSequence: 2
+			}
+		});
+
+		const projection = projectSupplySnapshot(snapshot);
+		const forecast = projection.routeForecasts?.find((row) => row.route.id === 'route-1');
+
+		expect(forecast).toBeDefined();
+		// The stale bottled-water order arrives on day 5, but it must not
+		// be attributed to the flour route's forecast.
+		expect(forecast?.firstProjectedArrivalDay).toBeNull();
+		expect(forecast?.projectedDeliveredUnits30).toBe(0);
 	});
 });
