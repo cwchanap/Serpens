@@ -1081,6 +1081,116 @@ describe('ReportsPanel', () => {
 		await expect.element(reports.getByText(/Local supply —/)).not.toBeInTheDocument();
 	});
 
+	it('renders persisted per-attempt modifier impacts and one recovery row per expired contributor without summing', async () => {
+		expect.assertions(7);
+		// Evidence is persisted on the report: it must render from these rows
+		// alone (valid after the modifiers expired), and same-day same-kind
+		// recovery rows must be shown as-is — never summed per route.
+		const attempt = createRouteDispatchAttempt({
+			routeId: 'route-1',
+			materialId: 'water',
+			destinationNeed: 20,
+			capacity: 15,
+			availableOriginStock: 30,
+			dispatchedQuantity: 15,
+			unusedCapacity: 0,
+			unmetDestinationNeed: 5,
+			transportCost: 30,
+			transferOrderId: 'transfer-9',
+			baselineCapacity: 20,
+			modifierImpacts: [
+				{
+					effectKind: 'route-capacity-multiplier',
+					contributors: [
+						{
+							modifierId: 'event-modifier-1',
+							source: {
+								eventId: 'supplier-terms',
+								instanceId: 'event-instance-1',
+								optionId: 'bulk-discount'
+							},
+							explanation: { key: 'events.supplierTerms.bulkDiscount.modifier', params: {} }
+						}
+					],
+					baselineCapacity: 20,
+					effectiveCapacity: 15,
+					baselineDispatchedQuantity: 20,
+					effectiveDispatchedQuantity: 15
+				},
+				{
+					effectKind: 'route-transport-cost-multiplier',
+					contributors: [],
+					baselineTransportCost: 20,
+					effectiveTransportCost: 30
+				}
+			]
+		});
+		const recoverySource = {
+			eventId: 'supplier-terms',
+			instanceId: 'event-instance-1',
+			optionId: 'bulk-discount'
+		};
+		render(ReportsPanel, {
+			i18n: createI18n('en'),
+			stores: [],
+			summary: {
+				...summary,
+				latest: {
+					...summary.latest!,
+					logistics: {
+						arrivals: [],
+						routeDispatchAttempts: [attempt],
+						deliveredUnits: 0,
+						scheduledTransportCost: 30,
+						modifierRecoveries: [
+							{
+								routeId: 'route-1',
+								modifierId: 'event-modifier-1',
+								source: recoverySource,
+								effectKind: 'route-lead-time-adjustment',
+								disruptedLeadTimeDays: 3,
+								recoveredLeadTimeDays: 2
+							},
+							{
+								routeId: 'route-1',
+								modifierId: 'event-modifier-2',
+								source: recoverySource,
+								effectKind: 'route-lead-time-adjustment',
+								disruptedLeadTimeDays: 3,
+								recoveredLeadTimeDays: 2
+							}
+						]
+					}
+				}
+			}
+		});
+
+		const logistics = page.getByRole('region', { name: 'Latest-day logistics' });
+		await expect
+			.element(logistics.getByText('Capacity: 20 → 15; dispatched: 20 → 15', { exact: true }))
+			.toBeVisible();
+		await expect
+			.element(logistics.getByText('Transport cost: $20 → $30', { exact: true }))
+			.toBeVisible();
+		await expect
+			.element(logistics.getByText('Source: Supplier terms', { exact: true }).first())
+			.toBeVisible();
+		await expect
+			.element(logistics.getByRole('heading', { name: 'Modifier recoveries' }))
+			.toBeVisible();
+		await expect
+			.element(logistics.getByText('Route route-1 lead time recovered: 3 days → 2 days').first())
+			.toBeVisible();
+		// One row per expired contributor, identical combined values — not summed.
+		expect(
+			Array.from(
+				document.querySelectorAll('.logistics-list li'),
+				(item) => item.textContent ?? ''
+			).filter((text) => text.includes('Route route-1 lead time recovered: 3 days → 2 days'))
+		).toHaveLength(2);
+		await expect.element(logistics.getByText('3 days → 4 days')).not.toBeInTheDocument();
+	});
+
 	it('renders zero utilization for a dispatch attempt with zero capacity', async () => {
 		expect.assertions(1);
 

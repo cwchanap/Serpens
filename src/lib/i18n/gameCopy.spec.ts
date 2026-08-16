@@ -196,6 +196,63 @@ describe('game copy builders', () => {
 		});
 	});
 
+	it('localizes route decision title, context, and option copy from persisted params without route lookup', () => {
+		expect.assertions(4);
+		// A materialized route decision must stay understandable after the live
+		// route is removed, so localization reads only the persisted copy ref
+		// (routeId/originCityId/destinationCityId/materialId params) — never a
+		// recurring-route lookup. Fixture copy keys stand in for the route event
+		// catalog entry this localization will ship with.
+		const templates: Record<string, string> = {
+			'copy.events.freightDisruption.title':
+				'Freight disruption on route {routeId} ({originCityId} → {destinationCityId})',
+			'copy.events.freightDisruption.context': 'Shipments of {materialId} are disrupted.',
+			'copy.events.freightDisruption.options.accept-delay.label': 'Accept delay on {routeId}',
+			'copy.events.freightDisruption.options.accept-delay.description':
+				'{originCityId} → {destinationCityId} {materialId} deliveries slow down.'
+		};
+		const base = createI18n('en');
+		const i18n = {
+			...base,
+			t: ((key: never, params?: Record<string, string | number>) => {
+				const template = templates[key as string];
+				if (template === undefined) return base.t(key, params);
+				return template.replace(/\{(\w+)\}/g, (_, name: string) =>
+					String(params?.[name] ?? `{${name}}`)
+				);
+			}) as typeof base.t
+		};
+		const decision: EventDecisionItem = {
+			kind: 'event',
+			id: 'event-instance-1',
+			eventId: 'freight-disruption',
+			definitionVersion: 1,
+			generatedOnDay: 1,
+			expiresOnDay: 3,
+			target: { kind: 'recurring-route', routeId: 'route-2' },
+			copy: {
+				key: 'events.freightDisruption',
+				params: {
+					routeId: 'route-2',
+					originCityId: 'industry-city',
+					destinationCityId: 'breadbasket-basin',
+					materialId: 'water'
+				}
+			},
+			options: [{ id: 'accept-delay', effects: [], modifiers: [] }]
+		};
+
+		const localized = localizeDecision(decision, i18n);
+		expect(localized.title).toBe(
+			'Freight disruption on route route-2 (industry-city → breadbasket-basin)'
+		);
+		expect(localized.context).toBe('Shipments of water are disrupted.');
+		expect(localized.options[0]?.label).toBe('Accept delay on route-2');
+		expect(localized.options[0]?.description).toBe(
+			'industry-city → breadbasket-basin water deliveries slow down.'
+		);
+	});
+
 	it('localizes stock status and stock-trouble summaries', () => {
 		expect.assertions(3);
 		const i18n = createI18n('en');

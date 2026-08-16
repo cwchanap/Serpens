@@ -38,6 +38,27 @@ describe('alert navigation', () => {
 		).toEqual({ kind: 'world-route', routeId: 'route-1' });
 	});
 
+	it('resolves an event-modifier alert with a routeId to its world route before panel navigation', () => {
+		expect(
+			resolveAlertNavigation({
+				id: 'event-modifier:event-modifier-4',
+				kind: 'event-modifier',
+				modifierId: 'event-modifier-4',
+				routeId: 'route-7'
+			})
+		).toEqual({ kind: 'world-route', routeId: 'route-7' });
+		// Route navigation wins even if a panel target is also present.
+		expect(
+			resolveAlertNavigation({
+				id: 'event-modifier:event-modifier-4',
+				kind: 'event-modifier',
+				modifierId: 'event-modifier-4',
+				routeId: 'route-7',
+				managementPanelId: 'decisions'
+			})
+		).toEqual({ kind: 'world-route', routeId: 'route-7' });
+	});
+
 	it('returns null for alerts without a management panel, decision kind, or route target', () => {
 		expect(
 			resolveAlertNavigation({

@@ -72,6 +72,7 @@
 		{@const routeId = connection.summary.route.id}
 		{@const paused = connection.summary.route.state === 'paused'}
 		{@const selected = selectedRouteId === routeId}
+		{@const disrupted = connection.summary.effective.contributions.length > 0}
 		<g
 			class={{
 				'world-logistics-route': true,
@@ -83,6 +84,7 @@
 			data-route-id={routeId}
 			data-state={connection.summary.route.state}
 			data-selected={selected ? 'true' : 'false'}
+			data-disrupted={disrupted ? 'true' : 'false'}
 			data-direction={directionLabel(connection)}
 			role="button"
 			tabindex="-1"

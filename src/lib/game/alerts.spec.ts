@@ -388,6 +388,88 @@ describe('collectGameAlerts', () => {
 		]);
 	});
 
+	it('reuses the event-modifier alert for an important route modifier whose route still exists', () => {
+		expect.assertions(2);
+		const routeModifier = modifier({
+			id: 'event-modifier-9',
+			target: { kind: 'recurring-route', routeId: 'route-1' },
+			stackingKey: 'freight-capacity:route-1',
+			effect: { kind: 'route-capacity-multiplier', multiplier: 0.75 },
+			explanation: { key: 'events.freightDisruption.acceptDelay.capacity', params: {} }
+		});
+
+		const alerts = collectGameAlerts({
+			...logisticsGame({}),
+			events: { ...createInitialEventRuntime(1), activeModifiers: [routeModifier] }
+		});
+
+		expect(alerts).toEqual([
+			{
+				id: 'event-modifier:event-modifier-9',
+				kind: 'event-modifier',
+				modifierId: 'event-modifier-9',
+				routeId: 'route-1'
+			}
+		]);
+		expect(alerts[0]?.managementPanelId).toBeUndefined();
+	});
+
+	it('emits no actionable event-modifier alert once the modifier route has been removed', () => {
+		expect.assertions(1);
+		const routeModifier = modifier({
+			id: 'event-modifier-9',
+			importance: 'important',
+			target: { kind: 'recurring-route', routeId: 'route-1' },
+			stackingKey: 'freight-capacity:route-1',
+			effect: { kind: 'route-capacity-multiplier', multiplier: 0.75 },
+			explanation: { key: 'events.freightDisruption.acceptDelay.capacity', params: {} }
+		});
+		const removed = {
+			...logisticsGame({}),
+			events: { ...createInitialEventRuntime(1), activeModifiers: [routeModifier] }
+		};
+
+		const alerts = collectGameAlerts({
+			...removed,
+			logistics: { ...removed.logistics, recurringRoutes: [] }
+		});
+
+		expect(alerts.filter((alert) => alert.kind === 'event-modifier')).toEqual([]);
+	});
+
+	it('keeps company modifier alerts on the decisions panel beside route modifier alerts', () => {
+		expect.assertions(1);
+		const company = modifier({ id: 'event-modifier-company', expiresOnDay: 9 });
+		const route = modifier({
+			id: 'event-modifier-route',
+			expiresOnDay: 8,
+			target: { kind: 'recurring-route', routeId: 'route-1' },
+			stackingKey: 'freight-capacity:route-1',
+			effect: { kind: 'route-capacity-multiplier', multiplier: 0.75 },
+			explanation: { key: 'events.freightDisruption.acceptDelay.capacity', params: {} }
+		});
+
+		const alerts = collectGameAlerts({
+			...logisticsGame({}),
+			events: { ...createInitialEventRuntime(1), activeModifiers: [company, route] }
+		}).filter((alert) => alert.kind === 'event-modifier');
+
+		expect(alerts).toEqual([
+			{
+				id: 'event-modifier:event-modifier-route',
+				kind: 'event-modifier',
+				modifierId: 'event-modifier-route',
+				routeId: 'route-1'
+			},
+			{
+				id: 'event-modifier:event-modifier-company',
+				kind: 'event-modifier',
+				modifierId: 'event-modifier-company',
+				managementPanelId: 'decisions'
+			}
+		]);
+	});
+
 	it('flags a blocked factory and deep-links to its tile', () => {
 		expect.assertions(3);
 		const alerts = collectGameAlerts(

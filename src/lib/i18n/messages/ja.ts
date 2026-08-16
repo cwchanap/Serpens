@@ -217,10 +217,17 @@ export const ja = {
 		attemptTransportCost: '試行時の輸送費',
 		operationalTotals: '運用累計',
 		utilization: '過去の稼働率',
+		utilizationNote: '実効容量に対する割合です。',
 		delivered: '納入済み',
 		inTransit: '輸送中',
 		transportCost: '輸送費',
-		manageRoute: '航路を管理'
+		manageRoute: '航路を管理',
+		effectiveCapacity: '実効輸送量（1回あたり）',
+		daysChanged: '{from} 日 → {to} 日',
+		currencyRange: '{from} → {to}',
+		dispatchSuspension: 'イベントによる停止',
+		dispatchSuspended: 'イベントにより停止中',
+		modifierImpactsTitle: 'この輸送へのイベント影響'
 	},
 	worldMap: {
 		ariaLabel: 'ワールドマップ',
@@ -374,7 +381,8 @@ export const ja = {
 			unmetDestinationNeed: '未充足の到着先需要: {units}',
 			utilization: '稼働率: {value}',
 			transportCost: '輸送費: {cost}',
-			destinationFull: '到着先が満杯'
+			destinationFull: '到着先が満杯',
+			recoveriesTitle: '修正効果の回復'
 		},
 		dailyWarnings: '日次警告',
 		empty: 'まだレポートがありません。最初の日を進めると結果が生成されます。'
@@ -1307,7 +1315,22 @@ export const ja = {
 			expired: '修正効果が失効しました。',
 			reportApplied: '{summary}を{count}件の輸入に適用しました。',
 			reportExpired: '{summary}は{day}日目終了後に失効しました。',
-			important: '重要'
+			important: '重要',
+			routeTarget: '航路: {origin} → {destination} · {material}',
+			removedRouteTarget: '航路: {routeId}（削除済み）',
+			routeLeadTime: '所要日数: {from} → {to} 日',
+			routeCapacity: '輸送量: {from} → {to} 単位',
+			routeSuspension: '輸送停止中',
+			routeTransportCost: '単位輸送費: {from} → {to}',
+			impactLeadTime: '所要日数: {from} 日 → {to} 日',
+			impactCapacity: '輸送量: {from} → {to}、配送量: {fromDispatched} → {toDispatched}',
+			impactSuspension: '輸送停止: {from} → {to} 単位',
+			impactTransportCost: '輸送費: {from} → {to}',
+			impactSource: '出典: {source}',
+			recoveryLeadTime: '航路 {routeId} の所要日数が回復: {from} 日 → {to} 日',
+			recoveryCapacity: '航路 {routeId} の輸送量が回復: {from} → {to}',
+			recoverySuspension: '航路 {routeId} の輸送が再開しました。',
+			recoveryTransportCost: '航路 {routeId} の単位輸送費が回復: {from} → {to}'
 		},
 		decisionFailures: {
 			decisionNotFound: 'この判断は利用できなくなりました。',

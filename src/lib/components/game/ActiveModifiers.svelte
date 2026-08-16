@@ -1,13 +1,23 @@
 <script lang="ts">
-	import type { ActiveEventModifier } from '$lib/game/types';
+	import {
+		resolveEffectiveRecurringRoute,
+		type EffectiveRecurringRoute
+	} from '$lib/game/logisticsRouteModifiers';
+	import type { ActiveEventModifier, RecurringRoute } from '$lib/game/types';
 	import type { I18nBundle } from '$lib/i18n';
 	import { localizeEventSourceTitle, localizeStructuredCopy } from '$lib/i18n/gameCopy';
 
 	let {
 		modifiers,
 		day,
-		i18n
-	}: { modifiers: ActiveEventModifier[]; day: number; i18n: I18nBundle } = $props();
+		i18n,
+		routes
+	}: {
+		modifiers: ActiveEventModifier[];
+		day: number;
+		i18n: I18nBundle;
+		routes: readonly RecurringRoute[];
+	} = $props();
 
 	const sortedModifiers = $derived(
 		[...modifiers].sort(
@@ -17,6 +27,23 @@
 		)
 	);
 
+	// Effective values are composed across all active modifiers of a route, so
+	// each card reports the combined value the route currently operates under.
+	const effectiveByRouteId = $derived.by(() => {
+		const byId: Record<string, EffectiveRecurringRoute> = {};
+		for (const route of routes) {
+			if (
+				modifiers.some(
+					(modifier) =>
+						modifier.target.kind === 'recurring-route' && modifier.target.routeId === route.id
+				)
+			) {
+				byId[route.id] = resolveEffectiveRecurringRoute(route, modifiers, day);
+			}
+		}
+		return byId;
+	});
+
 	function discountPercent(modifier: ActiveEventModifier): number {
 		if (modifier.effect.kind !== 'import-cost-multiplier') return 0;
 		return Math.round((1 - modifier.effect.multiplier) * 100);
@@ -24,6 +51,48 @@
 
 	function remainingDays(modifier: ActiveEventModifier): number {
 		return Math.max(0, modifier.expiresOnDay - day);
+	}
+
+	function routeTargetLabel(modifier: ActiveEventModifier, route: RecurringRoute | undefined) {
+		if (modifier.target.kind !== 'recurring-route') return '';
+		if (!route) {
+			return i18n.t('copy.modifiers.removedRouteTarget', { routeId: modifier.target.routeId });
+		}
+		return i18n.t('copy.modifiers.routeTarget', {
+			origin: i18n.labels.worldCity(route.originCityId).name,
+			destination: i18n.labels.worldCity(route.destinationCityId).name,
+			material: i18n.labels.material(route.materialId)
+		});
+	}
+
+	function routeEffectValue(
+		modifier: ActiveEventModifier,
+		effective: EffectiveRecurringRoute | undefined
+	): string {
+		const route = effective?.base;
+		if (!route || !effective) return '—';
+		switch (modifier.effect.kind) {
+			case 'route-lead-time-adjustment':
+				return i18n.t('copy.modifiers.routeLeadTime', {
+					from: i18n.format.integer(route.leadTimeDays),
+					to: i18n.format.integer(effective.leadTimeDays)
+				});
+			case 'route-capacity-multiplier':
+				return i18n.t('copy.modifiers.routeCapacity', {
+					from: i18n.format.integer(route.capacity),
+					to: i18n.format.integer(effective.capacity)
+				});
+			case 'route-dispatch-suspension':
+				return i18n.t('copy.modifiers.routeSuspension');
+			case 'route-transport-cost-multiplier':
+				return i18n.t('copy.modifiers.routeTransportCost', {
+					from: i18n.format.currency(route.transportCostPerUnit),
+					to: i18n.format.currency(effective.transportCostPerUnit)
+				});
+			case 'import-cost-multiplier':
+				// Unreachable: definitions reject import-cost effects on route targets.
+				return '—';
+		}
 	}
 </script>
 
@@ -37,6 +106,13 @@
 			{#each sortedModifiers as modifier (modifier.id)}
 				{@const title = localizeEventSourceTitle(modifier.source.eventId, i18n)}
 				{@const daysRemaining = remainingDays(modifier)}
+				{@const targetRouteId =
+					modifier.target.kind === 'recurring-route' ? modifier.target.routeId : null}
+				{@const targetRoute =
+					targetRouteId !== null
+						? routes.find((candidate) => candidate.id === targetRouteId)
+						: undefined}
+				{@const targetEffective = targetRoute ? effectiveByRouteId[targetRoute.id] : undefined}
 				<article aria-label={title}>
 					<div class="modifier-heading">
 						<h3>{title}</h3>
@@ -46,7 +122,12 @@
 					</div>
 					<p>{localizeStructuredCopy(modifier.explanation, i18n)}</p>
 					<dl>
-						{#if modifier.effect.kind === 'import-cost-multiplier'}
+						{#if modifier.target.kind === 'recurring-route'}
+							<div>
+								<dt>{routeTargetLabel(modifier, targetRoute)}</dt>
+								<dd>{routeEffectValue(modifier, targetEffective)}</dd>
+							</div>
+						{:else if modifier.effect.kind === 'import-cost-multiplier'}
 							<div>
 								<dt>{i18n.t('copy.modifiers.companyTarget')}</dt>
 								<dd>

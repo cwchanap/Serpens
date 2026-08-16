@@ -222,7 +222,12 @@
 					canResolve={mutations.resolveDecision}
 					{disabledReason}
 				/>
-				<ActiveModifiers {i18n} day={panelGame.day} modifiers={panelGame.events.activeModifiers} />
+				<ActiveModifiers
+					{i18n}
+					day={panelGame.day}
+					modifiers={panelGame.events.activeModifiers}
+					routes={panelGame.logistics.recurringRoutes}
+				/>
 			</div>
 		{:else if panelId === 'reports'}
 			<ReportsPanel {i18n} {summary} game={panelGame} stores={panelGame.stores} />

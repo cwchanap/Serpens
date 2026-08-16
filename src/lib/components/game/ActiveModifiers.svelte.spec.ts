@@ -1,9 +1,23 @@
 import { page } from 'vitest/browser';
 import { describe, expect, it } from 'vitest';
 import { render } from 'vitest-browser-svelte';
-import type { ActiveEventModifier } from '$lib/game/types';
+import type { ActiveEventModifier, RecurringRoute } from '$lib/game/types';
 import { createI18n } from '$lib/i18n';
 import ActiveModifiers from './ActiveModifiers.svelte';
+
+const route: RecurringRoute = {
+	id: 'route-1',
+	originCityId: 'industry-city',
+	destinationCityId: 'breadbasket-basin',
+	materialId: 'water',
+	capacity: 30,
+	frequencyDays: 3,
+	leadTimeDays: 2,
+	transportCostPerUnit: 2,
+	priority: 1,
+	state: 'active',
+	nextDispatchOnDay: 11
+};
 
 function modifier(overrides: Partial<ActiveEventModifier> = {}): ActiveEventModifier {
 	return {
@@ -30,13 +44,28 @@ function modifier(overrides: Partial<ActiveEventModifier> = {}): ActiveEventModi
 	};
 }
 
+function routeModifier(
+	effect: ActiveEventModifier['effect'],
+	overrides: Partial<ActiveEventModifier> = {}
+): ActiveEventModifier {
+	return modifier({
+		id: `event-modifier-${effect.kind}`,
+		target: { kind: 'recurring-route', routeId: route.id },
+		stackingKey: `${effect.kind}:${route.id}`,
+		effect,
+		explanation: { key: 'events.freightDisruption.acceptDelay.capacity', params: {} },
+		...overrides
+	});
+}
+
 describe('ActiveModifiers', () => {
 	it('renders an accessible localized card with exclusive expiry and current-day-inclusive remaining days', async () => {
 		expect.assertions(9);
 		render(ActiveModifiers, {
 			i18n: createI18n('en'),
 			day: 5,
-			modifiers: [modifier()]
+			modifiers: [modifier()],
+			routes: []
 		});
 
 		const region = page.getByRole('region', { name: 'Active modifiers' });
@@ -54,6 +83,62 @@ describe('ActiveModifiers', () => {
 		await expect.element(article.getByText('Important')).toBeVisible();
 		await expect.element(article.getByText('Expires after day 8')).not.toBeInTheDocument();
 		await expect.element(article.getByText(/three days/i)).toBeVisible();
+	});
+
+	it('shows all four route effects with route, material, base → effective value, and remaining duration', async () => {
+		expect.assertions(9);
+		render(ActiveModifiers, {
+			i18n: createI18n('en'),
+			day: 5,
+			modifiers: [
+				routeModifier({ kind: 'route-capacity-multiplier', multiplier: 0.75 }),
+				routeModifier({ kind: 'route-lead-time-adjustment', days: 1 }),
+				routeModifier({ kind: 'route-transport-cost-multiplier', multiplier: 1.5 }),
+				routeModifier({ kind: 'route-dispatch-suspension' })
+			],
+			routes: [route]
+		});
+
+		const region = page.getByRole('region', { name: 'Active modifiers' });
+		await expect
+			.element(
+				region
+					.getByText('Route: Industry City → Breadbasket Basin · Water', { exact: true })
+					.first()
+			)
+			.toBeVisible();
+		await expect
+			.element(region.getByText('Capacity: 30 → 22 units', { exact: true }))
+			.toBeVisible();
+		await expect.element(region.getByText('Lead time: 2 → 3 days', { exact: true })).toBeVisible();
+		await expect
+			.element(region.getByText('Transport cost per unit: $2 → $3', { exact: true }))
+			.toBeVisible();
+		await expect.element(region.getByText('Dispatch suspended', { exact: true })).toBeVisible();
+		await expect
+			.element(region.getByText('3 days remaining', { exact: true }).first())
+			.toBeVisible();
+		// Source titles still attribute every route card.
+		expect(await region.getByRole('article', { name: 'Supplier terms' }).all()).toHaveLength(4);
+		// Company copy stays off route cards.
+		await expect.element(region.getByText('Company-wide retail imports')).not.toBeInTheDocument();
+		await expect.element(region.getByText('% retail import discount')).not.toBeInTheDocument();
+	});
+
+	it('falls back to the raw route id when the modifier target no longer exists', async () => {
+		expect.assertions(2);
+		render(ActiveModifiers, {
+			i18n: createI18n('en'),
+			day: 5,
+			modifiers: [routeModifier({ kind: 'route-capacity-multiplier', multiplier: 0.5 })],
+			routes: []
+		});
+
+		const region = page.getByRole('region', { name: 'Active modifiers' });
+		await expect
+			.element(region.getByText('Route: route-1 (removed)', { exact: true }))
+			.toBeVisible();
+		await expect.element(region.getByText('Capacity: 30 → 15 units')).not.toBeInTheDocument();
 	});
 
 	it('sorts modifiers by exclusive expiry then locale-independent ID order', () => {
@@ -74,7 +159,8 @@ describe('ActiveModifiers', () => {
 					id: 'event-modifier-a',
 					source: { ...modifier().source, eventId: 'event-a' }
 				})
-			]
+			],
+			routes: []
 		});
 
 		expect(
@@ -84,7 +170,7 @@ describe('ActiveModifiers', () => {
 
 	it('shows a localized empty state', async () => {
 		expect.assertions(2);
-		render(ActiveModifiers, { i18n: createI18n('ja'), day: 5, modifiers: [] });
+		render(ActiveModifiers, { i18n: createI18n('ja'), day: 5, modifiers: [], routes: [] });
 
 		const region = page.getByRole('region', { name: '有効な修正効果' });
 		await expect.element(region.getByText('有効な修正効果はありません。')).toBeVisible();
@@ -96,7 +182,8 @@ describe('ActiveModifiers', () => {
 		render(ActiveModifiers, {
 			i18n: createI18n('en'),
 			day: 7,
-			modifiers: [modifier({ expiresOnDay: 8 })]
+			modifiers: [modifier({ expiresOnDay: 8 })],
+			routes: []
 		});
 
 		const region = page.getByRole('region', { name: 'Active modifiers' });
@@ -107,7 +194,8 @@ describe('ActiveModifiers', () => {
 		render(ActiveModifiers, {
 			i18n: createI18n('en'),
 			day: 5,
-			modifiers: [modifier({ importance: 'normal' })]
+			modifiers: [modifier({ importance: 'normal' })],
+			routes: []
 		});
 
 		const region = page.getByRole('region', { name: 'Active modifiers' });
@@ -118,7 +206,8 @@ describe('ActiveModifiers', () => {
 		render(ActiveModifiers, {
 			i18n: createI18n('en'),
 			day: 10,
-			modifiers: [modifier({ expiresOnDay: 8 })]
+			modifiers: [modifier({ expiresOnDay: 8 })],
+			routes: []
 		});
 
 		const region = page.getByRole('region', { name: 'Active modifiers' });

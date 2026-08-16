@@ -230,6 +230,22 @@ export function collectGameAlerts(game: GameState): GameAlert[] {
 				(left.id < right.id ? -1 : left.id > right.id ? 1 : 0)
 		);
 	for (const modifier of importantModifiers) {
+		if (modifier.target.kind === 'recurring-route') {
+			// Route modifiers surface through the existing event-modifier alert,
+			// but target the world route instead of the decisions panel. Once the
+			// route is removed the modifier is inert, so no actionable alert fires.
+			const routeId = modifier.target.routeId;
+			if (!game.logistics.recurringRoutes.some((route) => route.id === routeId)) {
+				continue;
+			}
+			alerts.push({
+				id: `event-modifier:${modifier.id}`,
+				kind: 'event-modifier',
+				modifierId: modifier.id,
+				routeId
+			});
+			continue;
+		}
 		alerts.push({
 			id: `event-modifier:${modifier.id}`,
 			kind: 'event-modifier',

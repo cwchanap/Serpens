@@ -169,6 +169,69 @@ describe('DecisionQueue', () => {
 		}
 	);
 
+	it('keeps a materialized route decision understandable from persisted copy params alone', async () => {
+		expect.assertions(4);
+		// The queue never receives routes: title, context, and option copy must
+		// interpolate the decision's persisted copy params, so the card stays
+		// readable even after the live route has been removed.
+		const templates: Record<string, string> = {
+			'copy.events.freightDisruption.title': 'Freight disruption on route {routeId}',
+			'copy.events.freightDisruption.context':
+				'{originCityId} → {destinationCityId} {materialId} shipments are disrupted.',
+			'copy.events.freightDisruption.options.accept-delay.label': 'Accept delay',
+			'copy.events.freightDisruption.options.accept-delay.description':
+				'Route {routeId} ({originCityId} → {destinationCityId}) slows {materialId} deliveries.'
+		};
+		const base = createI18n('en');
+		const i18n: I18nBundle = {
+			...base,
+			t: ((key: never, params?: Record<string, string | number>) => {
+				const template = templates[key as string];
+				if (template === undefined) return base.t(key, params);
+				return template.replace(/\{(\w+)\}/g, (_, name: string) =>
+					String(params?.[name] ?? `{${name}}`)
+				);
+			}) as typeof base.t
+		};
+		const routeEvent: DecisionItem = {
+			kind: 'event',
+			id: 'event-instance-77',
+			eventId: 'freight-disruption',
+			definitionVersion: 1,
+			generatedOnDay: 9,
+			expiresOnDay: 11,
+			target: { kind: 'recurring-route', routeId: 'route-2' },
+			copy: {
+				key: 'events.freightDisruption',
+				params: {
+					routeId: 'route-2',
+					originCityId: 'industry-city',
+					destinationCityId: 'breadbasket-basin',
+					materialId: 'water'
+				}
+			},
+			options: [{ id: 'accept-delay', effects: [], modifiers: [] }]
+		};
+
+		renderQueue({ decisions: [routeEvent], i18n });
+
+		await expect
+			.element(page.getByRole('heading', { level: 3, name: 'Freight disruption on route route-2' }))
+			.toBeVisible();
+		await expect
+			.element(page.getByText('industry-city → breadbasket-basin water shipments are disrupted.'))
+			.toBeVisible();
+		const option = page.getByRole('button', { name: /Accept delay/ });
+		await expect
+			.element(
+				option.getByText(
+					'Route route-2 (industry-city → breadbasket-basin) slows water deliveries.'
+				)
+			)
+			.toBeVisible();
+		await expect.element(option.getByText(/\{routeId\}/)).not.toBeInTheDocument();
+	});
+
 	it('calls onResolve with correct IDs when option is clicked', async () => {
 		expect.assertions(2);
 

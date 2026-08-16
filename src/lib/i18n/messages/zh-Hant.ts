@@ -217,10 +217,17 @@ export const zhHant = {
 		attemptTransportCost: '嘗試運輸費',
 		operationalTotals: '營運累計',
 		utilization: '歷史使用率',
+		utilizationNote: '相對於實際運輸容量。',
 		delivered: '已交付',
 		inTransit: '運輸中',
 		transportCost: '運輸費',
-		manageRoute: '管理航線'
+		manageRoute: '管理航線',
+		effectiveCapacity: '每次運輸實際容量',
+		daysChanged: '{from} 天 → {to} 天',
+		currencyRange: '{from} → {to}',
+		dispatchSuspension: '事件暫停',
+		dispatchSuspended: '因事件暫停',
+		modifierImpactsTitle: '事件對此運輸的影響'
 	},
 	worldMap: {
 		ariaLabel: '世界地圖',
@@ -374,7 +381,8 @@ export const zhHant = {
 			unmetDestinationNeed: '未滿足目的地需求：{units}',
 			utilization: '使用率：{value}',
 			transportCost: '運輸費：{cost}',
-			destinationFull: '目的地已滿'
+			destinationFull: '目的地已滿',
+			recoveriesTitle: '修正效果回復'
 		},
 		dailyWarnings: '每日警告',
 		empty: '尚未有報表。推進第一天後會產生結果。'
@@ -1293,7 +1301,22 @@ export const zhHant = {
 			expired: '修正效果已到期。',
 			reportApplied: '{summary}已套用至 {count} 筆進口。',
 			reportExpired: '{summary}於第 {day} 天結束後到期。',
-			important: '重要'
+			important: '重要',
+			routeTarget: '航線：{origin} → {destination} · {material}',
+			removedRouteTarget: '航線：{routeId}（已移除）',
+			routeLeadTime: '運輸天數：{from} → {to} 天',
+			routeCapacity: '運輸容量：{from} → {to} 單位',
+			routeSuspension: '運輸暫停中',
+			routeTransportCost: '每單位運輸費：{from} → {to}',
+			impactLeadTime: '運輸天數：{from} 天 → {to} 天',
+			impactCapacity: '運輸容量：{from} → {to}；派出數量：{fromDispatched} → {toDispatched}',
+			impactSuspension: '運輸暫停：{from} → {to} 單位',
+			impactTransportCost: '運輸費：{from} → {to}',
+			impactSource: '來源：{source}',
+			recoveryLeadTime: '航線 {routeId} 運輸天數已回復：{from} 天 → {to} 天',
+			recoveryCapacity: '航線 {routeId} 運輸容量已回復：{from} → {to}',
+			recoverySuspension: '航線 {routeId} 運輸已恢復。',
+			recoveryTransportCost: '航線 {routeId} 每單位運輸費已回復：{from} → {to}'
 		},
 		decisionFailures: {
 			decisionNotFound: '這項決策已無法使用。',

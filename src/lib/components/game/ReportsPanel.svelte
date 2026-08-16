@@ -4,6 +4,8 @@
 	import {
 		localizeEventSourceTitle,
 		localizeReportWarning,
+		localizeRouteModifierImpact,
+		localizeRouteModifierRecovery,
 		localizeStructuredCopy
 	} from '$lib/i18n/gameCopy';
 	import { getCityInventoryStats } from '$lib/game/cityInventory';
@@ -454,6 +456,24 @@
 											cost: i18n.format.currency(attempt.transportCost)
 										})}
 									</span>
+									{#if attempt.modifierImpacts.length > 0}
+										<!-- Persisted per-attempt evidence: rendered as-is so the report
+										stays valid and attributable after the modifiers expire. -->
+										<ul class="logistics-impact-list">
+											{#each attempt.modifierImpacts as impact, impactIndex (`${attempt.routeId}-${impact.effectKind}-${impactIndex}`)}
+												<li>
+													<span>{localizeRouteModifierImpact(impact, i18n)}</span>
+													{#each impact.contributors as contributor (contributor.modifierId)}
+														<span>
+															{i18n.t('copy.modifiers.impactSource', {
+																source: localizeEventSourceTitle(contributor.source.eventId, i18n)
+															})}
+														</span>
+													{/each}
+												</li>
+											{/each}
+										</ul>
+									{/if}
 								</li>
 							{/each}
 						</ul>
@@ -461,6 +481,26 @@
 						<p>{i18n.t('reportsPanel.logistics.noAttempts')}</p>
 					{/if}
 				</div>
+
+				{#if latestLogisticsReport.modifierRecoveries.length > 0}
+					<div class="logistics-subsection">
+						<h4>{i18n.t('reportsPanel.logistics.recoveriesTitle')}</h4>
+						<!-- Rows are per expired contributor and already carry combined
+						effective values; render as-is, never sum per route. -->
+						<ul class="logistics-list">
+							{#each latestLogisticsReport.modifierRecoveries as recovery, index (`${recovery.modifierId}-${index}`)}
+								<li>
+									<span>{localizeRouteModifierRecovery(recovery, i18n)}</span>
+									<span>
+										{i18n.t('copy.modifiers.impactSource', {
+											source: localizeEventSourceTitle(recovery.source.eventId, i18n)
+										})}
+									</span>
+								</li>
+							{/each}
+						</ul>
+					</div>
+				{/if}
 			</section>
 		{/if}
 
@@ -688,6 +728,23 @@
 		display: flex;
 		flex-wrap: wrap;
 		gap: 0.65rem 1rem;
+	}
+
+	.logistics-impact-list {
+		display: grid;
+		gap: 0.3rem;
+		margin: 0;
+		padding: 0;
+		list-style: none;
+	}
+
+	.logistics-impact-list li {
+		display: grid;
+		gap: 0.15rem;
+		border: 1px solid var(--paper-edge);
+		border-radius: 2px;
+		background: var(--paper-100);
+		padding: 0.4rem 0.5rem;
 	}
 
 	.logistics-list strong {

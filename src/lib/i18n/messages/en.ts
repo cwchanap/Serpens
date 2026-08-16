@@ -217,10 +217,17 @@ export const en = {
 		attemptTransportCost: 'Attempt transport cost',
 		operationalTotals: 'Operational totals',
 		utilization: 'Historical utilization',
+		utilizationNote: 'Relative to effective capacity.',
 		delivered: 'Delivered',
 		inTransit: 'In transit',
 		transportCost: 'Transport cost',
-		manageRoute: 'Manage route'
+		manageRoute: 'Manage route',
+		effectiveCapacity: 'Effective capacity per dispatch',
+		daysChanged: '{from} days → {to} days',
+		currencyRange: '{from} → {to}',
+		dispatchSuspension: 'Event suspension',
+		dispatchSuspended: 'Suspended by event',
+		modifierImpactsTitle: 'Event impacts on this dispatch'
 	},
 	worldMap: {
 		ariaLabel: 'World map',
@@ -375,7 +382,8 @@ export const en = {
 			unmetDestinationNeed: 'Unmet destination need: {units}',
 			utilization: 'Utilization: {value}',
 			transportCost: 'Transport cost: {cost}',
-			destinationFull: 'Destination full'
+			destinationFull: 'Destination full',
+			recoveriesTitle: 'Modifier recoveries'
 		},
 		dailyWarnings: 'Daily warnings',
 		empty: 'No reports yet. Advance the first day to generate results.'
@@ -1332,7 +1340,22 @@ export const en = {
 			expired: 'Modifier expired.',
 			reportApplied: '{summary} applied to {count} imports.',
 			reportExpired: '{summary} expired after day {day}.',
-			important: 'Important'
+			important: 'Important',
+			routeTarget: 'Route: {origin} → {destination} · {material}',
+			removedRouteTarget: 'Route: {routeId} (removed)',
+			routeLeadTime: 'Lead time: {from} → {to} days',
+			routeCapacity: 'Capacity: {from} → {to} units',
+			routeSuspension: 'Dispatch suspended',
+			routeTransportCost: 'Transport cost per unit: {from} → {to}',
+			impactLeadTime: 'Lead time: {from} days → {to} days',
+			impactCapacity: 'Capacity: {from} → {to}; dispatched: {fromDispatched} → {toDispatched}',
+			impactSuspension: 'Dispatch suspended: {from} → {to} units',
+			impactTransportCost: 'Transport cost: {from} → {to}',
+			impactSource: 'Source: {source}',
+			recoveryLeadTime: 'Route {routeId} lead time recovered: {from} days → {to} days',
+			recoveryCapacity: 'Route {routeId} capacity recovered: {from} → {to}',
+			recoverySuspension: 'Route {routeId} dispatch resumed.',
+			recoveryTransportCost: 'Route {routeId} transport cost per unit recovered: {from} → {to}'
 		},
 		decisionFailures: {
 			decisionNotFound: 'This decision is no longer available.',
