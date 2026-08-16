@@ -1275,6 +1275,36 @@ export const zhHant = {
 					pass: { label: '先跳過', description: '把資金集中在目前店面的營運上。' }
 				}
 			},
+			freightDisruption: {
+				title: '運輸中斷',
+				context:
+					'航線 {routeId}（{originCityId} → {destinationCityId}）的{materialId}運輸受到影響。請選擇如何處理此航線的配送。',
+				options: {
+					'accept-delay': {
+						label: '接受延誤',
+						description: '維持航線運作，但連續 3 天承受運送時間 +1 天與運量減少 25%。'
+					},
+					'charter-carriers': {
+						label: '包租承運商',
+						description: '立即支付 $2,000，連續 2 天運量增加 25%，但運輸成本提高 50%。'
+					},
+					'suspend-shipments': {
+						label: '暫停出貨',
+						description: '暫停此航線的所有配送，為期 2 天。'
+					}
+				},
+				acceptDelay: {
+					leadTime: '此航線的運送時間連續 3 天 +1 天。',
+					capacity: '此航線的運量連續 3 天 ×0.75。'
+				},
+				charterCarriers: {
+					capacity: '此航線的運量連續 2 天 ×1.25。',
+					transportCost: '此航線的運輸成本連續 2 天 ×1.5。'
+				},
+				suspendShipments: {
+					suspension: '此航線的配送暫停 2 天。'
+				}
+			},
 			supplierTerms: {
 				title: '供應條件',
 				context: '供應商願意在下一次補貨前重新協商訂購條件。',

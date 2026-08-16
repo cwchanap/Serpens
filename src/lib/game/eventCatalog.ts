@@ -90,6 +90,82 @@ const PRODUCTION_EVENT_DEFINITIONS = [
 		]
 	},
 	{
+		id: 'freight-disruption',
+		version: 1,
+		selection: { kind: 'weighted', weight: 1 },
+		condition: { kind: 'always' },
+		target: { kind: 'recurring-route', state: 'active' },
+		expiresAfterDays: 2,
+		cooldownDays: 7,
+		copy: { key: 'events.freightDisruption', params: {} },
+		options: [
+			{
+				id: 'accept-delay',
+				effects: [],
+				modifiers: [
+					{
+						durationDays: 3,
+						stackingKey: 'freight-disruption:accept-delay:lead-time',
+						stackingRule: 'replace',
+						effect: { kind: 'route-lead-time-adjustment', days: 1 },
+						explanation: { key: 'events.freightDisruption.acceptDelay.leadTime', params: {} },
+						importance: 'important'
+					},
+					{
+						durationDays: 3,
+						stackingKey: 'freight-disruption:accept-delay:capacity',
+						stackingRule: 'replace',
+						effect: { kind: 'route-capacity-multiplier', multiplier: 0.75 },
+						explanation: { key: 'events.freightDisruption.acceptDelay.capacity', params: {} },
+						importance: 'normal'
+					}
+				]
+			},
+			{
+				id: 'charter-carriers',
+				effects: [{ kind: 'cash-adjust', amount: -2_000 }],
+				modifiers: [
+					{
+						durationDays: 2,
+						stackingKey: 'freight-disruption:charter-carriers:capacity',
+						stackingRule: 'replace',
+						effect: { kind: 'route-capacity-multiplier', multiplier: 1.25 },
+						explanation: { key: 'events.freightDisruption.charterCarriers.capacity', params: {} },
+						importance: 'normal'
+					},
+					{
+						durationDays: 2,
+						stackingKey: 'freight-disruption:charter-carriers:transport-cost',
+						stackingRule: 'replace',
+						effect: { kind: 'route-transport-cost-multiplier', multiplier: 1.5 },
+						explanation: {
+							key: 'events.freightDisruption.charterCarriers.transportCost',
+							params: {}
+						},
+						importance: 'important'
+					}
+				]
+			},
+			{
+				id: 'suspend-shipments',
+				effects: [],
+				modifiers: [
+					{
+						durationDays: 2,
+						stackingKey: 'freight-disruption:suspend-shipments',
+						stackingRule: 'replace',
+						effect: { kind: 'route-dispatch-suspension' },
+						explanation: {
+							key: 'events.freightDisruption.suspendShipments.suspension',
+							params: {}
+						},
+						importance: 'important'
+					}
+				]
+			}
+		]
+	},
+	{
 		id: 'supplier-terms',
 		version: 2,
 		selection: { kind: 'weighted', weight: 1 },

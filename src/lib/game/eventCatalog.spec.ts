@@ -41,12 +41,13 @@ function diagnosticsFor(definitions: readonly EventDefinition[]) {
 }
 
 describe('PRODUCTION_EVENT_CATALOG', () => {
-	it('contains only the three approved, versioned production definitions', () => {
+	it('contains only the four approved, versioned production definitions', () => {
 		expect(
 			PRODUCTION_EVENT_CATALOG.definitions.map(({ id, version }) => ({ id, version }))
 		).toEqual([
 			{ id: 'cash-pressure', version: 1 },
 			{ id: 'expansion-opportunity', version: 1 },
+			{ id: 'freight-disruption', version: 1 },
 			{ id: 'supplier-terms', version: 2 }
 		]);
 	});
@@ -61,7 +62,7 @@ describe('PRODUCTION_EVENT_CATALOG', () => {
 			Extract<EventModifierTemplate, { stackingRule: 'stack' }>
 		>().toEqualTypeOf<never>();
 		expectTypeOf<Extract<EventTarget, { kind: 'store' }>>().toEqualTypeOf<never>();
-		expect(PRODUCTION_EVENT_CATALOG.definitions).toHaveLength(3);
+		expect(PRODUCTION_EVENT_CATALOG.definitions).toHaveLength(4);
 	});
 
 	it('exposes only the company and active recurring-route target variants', () => {
@@ -76,6 +77,7 @@ describe('PRODUCTION_EVENT_CATALOG', () => {
 		expect(PRODUCTION_EVENT_CATALOG.definitions.map((definition) => definition.target)).toEqual([
 			{ kind: 'company' },
 			{ kind: 'company' },
+			{ kind: 'recurring-route', state: 'active' },
 			{ kind: 'company' }
 		]);
 	});
@@ -107,12 +109,20 @@ describe('PRODUCTION_EVENT_CATALOG', () => {
 			expiresAfterDays: 2,
 			cooldownDays: 1
 		});
+		expect(PRODUCTION_EVENT_CATALOG.byId.get('freight-disruption')).toMatchObject({
+			selection: { kind: 'weighted', weight: 1 },
+			condition: { kind: 'always' },
+			target: { kind: 'recurring-route', state: 'active' },
+			expiresAfterDays: 2,
+			cooldownDays: 7
+		});
 	});
 
 	it('preserves current option and immediate-effect order and values', () => {
 		const cashPressure = PRODUCTION_EVENT_CATALOG.byId.get('cash-pressure')!;
 		const expansion = PRODUCTION_EVENT_CATALOG.byId.get('expansion-opportunity')!;
 		const supplier = PRODUCTION_EVENT_CATALOG.byId.get('supplier-terms')!;
+		const freight = PRODUCTION_EVENT_CATALOG.byId.get('freight-disruption')!;
 
 		expect(cashPressure.options.map((option) => option.id)).toEqual([
 			'short-loan',
@@ -123,6 +133,11 @@ describe('PRODUCTION_EVENT_CATALOG', () => {
 		expect(supplier.options.map((option) => option.id)).toEqual([
 			'negotiate-credit',
 			'bulk-discount'
+		]);
+		expect(freight.options.map((option) => option.id)).toEqual([
+			'accept-delay',
+			'charter-carriers',
+			'suspend-shipments'
 		]);
 		expect(cashPressure.options.map((option) => option.effects)).toEqual([
 			[
@@ -190,6 +205,11 @@ describe('PRODUCTION_EVENT_CATALOG', () => {
 			[],
 			supplier.options[1].modifiers
 		]);
+		expect(freight.options.map((option) => option.effects)).toEqual([
+			[],
+			[{ kind: 'cash-adjust', amount: -2_000 }],
+			[]
+		]);
 	});
 
 	it('adds only the approved supplier bulk-discount modifier payload', () => {
@@ -212,6 +232,69 @@ describe('PRODUCTION_EVENT_CATALOG', () => {
 				importance: 'important'
 			}
 		]);
+	});
+
+	it('adds only the approved freight-disruption modifier payloads with one important modifier per option', () => {
+		const freight = PRODUCTION_EVENT_CATALOG.byId.get('freight-disruption')!;
+
+		expect(freight.options.map((option) => option.modifiers)).toEqual([
+			[
+				{
+					durationDays: 3,
+					stackingKey: 'freight-disruption:accept-delay:lead-time',
+					stackingRule: 'replace',
+					effect: { kind: 'route-lead-time-adjustment', days: 1 },
+					explanation: { key: 'events.freightDisruption.acceptDelay.leadTime', params: {} },
+					importance: 'important'
+				},
+				{
+					durationDays: 3,
+					stackingKey: 'freight-disruption:accept-delay:capacity',
+					stackingRule: 'replace',
+					effect: { kind: 'route-capacity-multiplier', multiplier: 0.75 },
+					explanation: { key: 'events.freightDisruption.acceptDelay.capacity', params: {} },
+					importance: 'normal'
+				}
+			],
+			[
+				{
+					durationDays: 2,
+					stackingKey: 'freight-disruption:charter-carriers:capacity',
+					stackingRule: 'replace',
+					effect: { kind: 'route-capacity-multiplier', multiplier: 1.25 },
+					explanation: { key: 'events.freightDisruption.charterCarriers.capacity', params: {} },
+					importance: 'normal'
+				},
+				{
+					durationDays: 2,
+					stackingKey: 'freight-disruption:charter-carriers:transport-cost',
+					stackingRule: 'replace',
+					effect: { kind: 'route-transport-cost-multiplier', multiplier: 1.5 },
+					explanation: {
+						key: 'events.freightDisruption.charterCarriers.transportCost',
+						params: {}
+					},
+					importance: 'important'
+				}
+			],
+			[
+				{
+					durationDays: 2,
+					stackingKey: 'freight-disruption:suspend-shipments',
+					stackingRule: 'replace',
+					effect: { kind: 'route-dispatch-suspension' },
+					explanation: { key: 'events.freightDisruption.suspendShipments.suspension', params: {} },
+					importance: 'important'
+				}
+			]
+		]);
+
+		for (const option of freight.options) {
+			expect(
+				option.modifiers.filter((modifier) => modifier.importance === 'important'),
+				`${option.id} must surface exactly one important modifier alert`
+			).toHaveLength(1);
+		}
 	});
 });
 

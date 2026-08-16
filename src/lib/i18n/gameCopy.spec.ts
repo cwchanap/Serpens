@@ -196,32 +196,12 @@ describe('game copy builders', () => {
 		});
 	});
 
-	it('localizes route decision title, context, and option copy from persisted params without route lookup', () => {
+	it('localizes freight-disruption decision copy from persisted params without route lookup', () => {
 		expect.assertions(4);
 		// A materialized route decision must stay understandable after the live
 		// route is removed, so localization reads only the persisted copy ref
 		// (routeId/originCityId/destinationCityId/materialId params) — never a
-		// recurring-route lookup. Fixture copy keys stand in for the route event
-		// catalog entry this localization will ship with.
-		const templates: Record<string, string> = {
-			'copy.events.freightDisruption.title':
-				'Freight disruption on route {routeId} ({originCityId} → {destinationCityId})',
-			'copy.events.freightDisruption.context': 'Shipments of {materialId} are disrupted.',
-			'copy.events.freightDisruption.options.accept-delay.label': 'Accept delay on {routeId}',
-			'copy.events.freightDisruption.options.accept-delay.description':
-				'{originCityId} → {destinationCityId} {materialId} deliveries slow down.'
-		};
-		const base = createI18n('en');
-		const i18n = {
-			...base,
-			t: ((key: never, params?: Record<string, string | number>) => {
-				const template = templates[key as string];
-				if (template === undefined) return base.t(key, params);
-				return template.replace(/\{(\w+)\}/g, (_, name: string) =>
-					String(params?.[name] ?? `{${name}}`)
-				);
-			}) as typeof base.t
-		};
+		// recurring-route lookup.
 		const decision: EventDecisionItem = {
 			kind: 'event',
 			id: 'event-instance-1',
@@ -241,16 +221,117 @@ describe('game copy builders', () => {
 			},
 			options: [{ id: 'accept-delay', effects: [], modifiers: [] }]
 		};
+		Object.defineProperty(decision, 'title', {
+			get() {
+				throw new Error('event localization must not read decision.title');
+			}
+		});
 
-		const localized = localizeDecision(decision, i18n);
-		expect(localized.title).toBe(
-			'Freight disruption on route route-2 (industry-city → breadbasket-basin)'
+		const localized = localizeDecision(decision, createI18n('en'));
+		expect(localized.title).toBe('Freight disruption');
+		expect(localized.context).toBe(
+			'Shipments of water between industry-city and breadbasket-basin are disrupted. Choose how to handle deliveries on route route-2.'
 		);
-		expect(localized.context).toBe('Shipments of water are disrupted.');
-		expect(localized.options[0]?.label).toBe('Accept delay on route-2');
+		expect(localized.options[0]?.label).toBe('Accept delay');
 		expect(localized.options[0]?.description).toBe(
-			'industry-city → breadbasket-basin water deliveries slow down.'
+			'Keep the route running with +1 lead-time day and 25% less capacity for three days.'
 		);
+	});
+
+	it('localizes every freight-disruption option with its duration and trade-off in every locale', () => {
+		const decision: EventDecisionItem = {
+			kind: 'event',
+			id: 'event-instance-1',
+			eventId: 'freight-disruption',
+			definitionVersion: 1,
+			generatedOnDay: 1,
+			expiresOnDay: 3,
+			target: { kind: 'recurring-route', routeId: 'route-1' },
+			copy: {
+				key: 'events.freightDisruption',
+				params: {
+					routeId: 'route-1',
+					originCityId: 'industry-city',
+					destinationCityId: 'breadbasket-basin',
+					materialId: 'water'
+				}
+			},
+			options: [
+				{ id: 'accept-delay', effects: [], modifiers: [] },
+				{ id: 'charter-carriers', effects: [], modifiers: [] },
+				{ id: 'suspend-shipments', effects: [], modifiers: [] }
+			]
+		};
+
+		for (const locale of Object.keys(messagesByLocale) as Array<keyof typeof messagesByLocale>) {
+			const localized = localizeDecision(decision, createI18n(locale));
+			expect(localized.context, `${locale} context`).toContain('route-1');
+			for (const option of localized.options) {
+				expect(option.label, `${locale} ${option.id} label`).not.toBe(option.id);
+				expect(option.label, `${locale} ${option.id} label`).not.toBe('');
+				expect(option.description, `${locale} ${option.id} description`).not.toBe('');
+			}
+		}
+	});
+
+	it('localizes every freight-disruption modifier explanation in every locale', () => {
+		const keys = [
+			'events.freightDisruption.acceptDelay.leadTime',
+			'events.freightDisruption.acceptDelay.capacity',
+			'events.freightDisruption.charterCarriers.capacity',
+			'events.freightDisruption.charterCarriers.transportCost',
+			'events.freightDisruption.suspendShipments.suspension'
+		];
+
+		for (const locale of Object.keys(messagesByLocale) as Array<keyof typeof messagesByLocale>) {
+			for (const key of keys) {
+				const text = localizeStructuredCopy({ key, params: {} }, createI18n(locale));
+				expect(text, `${locale} ${key}`).not.toBe(key);
+				expect(text, `${locale} ${key}`).not.toBe('');
+			}
+		}
+	});
+
+	it('renders the freight-disruption modifier alert without unresolved placeholders', () => {
+		const base = createNewGame('convenience', 20260708);
+		const game = {
+			...base,
+			events: {
+				...base.events,
+				activeModifiers: [
+					{
+						id: 'event-modifier-4',
+						source: {
+							eventId: 'freight-disruption',
+							instanceId: 'event-instance-1',
+							optionId: 'accept-delay'
+						},
+						target: { kind: 'recurring-route' as const, routeId: 'route-1' },
+						startsOnDay: 5,
+						expiresOnDay: 8,
+						stackingKey: 'freight-disruption:accept-delay:lead-time',
+						stackingRule: 'replace' as const,
+						effect: { kind: 'route-lead-time-adjustment' as const, days: 1 },
+						explanation: { key: 'events.freightDisruption.acceptDelay.leadTime', params: {} },
+						importance: 'important' as const
+					}
+				]
+			}
+		};
+
+		const localized = localizeGameAlert(
+			game,
+			{
+				id: 'event-modifier:event-modifier-4',
+				kind: 'event-modifier',
+				modifierId: 'event-modifier-4',
+				routeId: 'route-1'
+			},
+			createI18n('en')
+		);
+
+		expect(localized.message).toBe('Active modifier: Freight disruption');
+		expect(localized.message).not.toContain('{');
 	});
 
 	it('localizes stock status and stock-trouble summaries', () => {
