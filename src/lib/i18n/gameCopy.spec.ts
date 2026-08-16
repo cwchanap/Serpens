@@ -18,7 +18,13 @@ import type { DecisionOptionAvailability } from '$lib/game/eventEffects';
 import type { LogisticsFailureCode } from '$lib/game/commandResult';
 import { getWorldCityDefinition, getWorldCityStatus, openWorldCity } from '$lib/game/world';
 import type { GameAlert } from '$lib/game/alerts';
-import type { DecisionItem, EventDecisionItem, Store, MaterialId } from '$lib/game/types';
+import type {
+	DailyRouteModifierRecovery,
+	DecisionItem,
+	EventDecisionItem,
+	MaterialId,
+	Store
+} from '$lib/game/types';
 import type {
 	ProductChainCategorySummary,
 	ProductChainGraph,
@@ -68,6 +74,7 @@ import {
 	localizeProductChainCategorySummary,
 	localizeProductChainGraph,
 	localizeReportWarning,
+	localizeRouteModifierRecovery,
 	localizeStockStatus,
 	localizeStockTrouble,
 	localizeStructuredCopy,
@@ -2715,5 +2722,57 @@ describe('game copy builders', () => {
 		};
 		const localized = localizeProductChainGraph(graph, en);
 		expect(localized.nodes[0]?.statLine).toContain(en.format.decimal(10.5));
+	});
+});
+
+describe('localizeRouteModifierRecovery', () => {
+	const en = createI18n('en');
+	const baseSource = {
+		eventId: 'freight-disruption',
+		instanceId: 'event-instance-1',
+		optionId: 'accept-delay'
+	};
+
+	it('localizes a route-capacity-multiplier recovery', () => {
+		const recovery: DailyRouteModifierRecovery = {
+			routeId: 'route-1',
+			modifierId: 'event-modifier-1',
+			source: baseSource,
+			effectKind: 'route-capacity-multiplier',
+			disruptedCapacity: 75,
+			recoveredCapacity: 100
+		};
+		const localized = localizeRouteModifierRecovery(recovery, en);
+		expect(localized).toContain('route-1');
+		expect(localized).toContain(en.format.integer(75));
+		expect(localized).toContain(en.format.integer(100));
+	});
+
+	it('localizes a route-dispatch-suspension recovery', () => {
+		const recovery: DailyRouteModifierRecovery = {
+			routeId: 'route-2',
+			modifierId: 'event-modifier-2',
+			source: { ...baseSource, optionId: 'suspend-shipments' },
+			effectKind: 'route-dispatch-suspension',
+			disruptedSuspended: true,
+			recoveredSuspended: false
+		};
+		const localized = localizeRouteModifierRecovery(recovery, en);
+		expect(localized).toContain('route-2');
+	});
+
+	it('localizes a route-transport-cost-multiplier recovery', () => {
+		const recovery: DailyRouteModifierRecovery = {
+			routeId: 'route-3',
+			modifierId: 'event-modifier-3',
+			source: baseSource,
+			effectKind: 'route-transport-cost-multiplier',
+			disruptedTransportCostPerUnit: 3,
+			recoveredTransportCostPerUnit: 2
+		};
+		const localized = localizeRouteModifierRecovery(recovery, en);
+		expect(localized).toContain('route-3');
+		expect(localized).toContain(en.format.currency(3));
+		expect(localized).toContain(en.format.currency(2));
 	});
 });
