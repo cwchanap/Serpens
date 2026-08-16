@@ -617,8 +617,8 @@ describe('supply planner snapshot', () => {
 				routes: [
 					route({
 						id: 'route-noop-grain',
-						originCityId: 'breadbasket-basin' as WorldCityId,
-						destinationCityId: 'industry-city' as WorldCityId,
+						originCityId: 'breadbasket-basin',
+						destinationCityId: 'industry-city',
 						materialId: 'grain',
 						capacity: 1,
 						nextDispatchOnDay: 5
@@ -651,8 +651,8 @@ describe('supply planner snapshot', () => {
 				routes: [
 					route({
 						id: 'route-pantry',
-						originCityId: 'breadbasket-basin' as WorldCityId,
-						destinationCityId: 'industry-city' as WorldCityId,
+						originCityId: 'breadbasket-basin',
+						destinationCityId: 'industry-city',
 						materialId: 'pantry',
 						capacity: 10,
 						frequencyDays: 1,
@@ -691,8 +691,8 @@ describe('supply planner snapshot', () => {
 				routes: [
 					route({
 						id: 'route-blocker',
-						originCityId: 'breadbasket-basin' as WorldCityId,
-						destinationCityId: 'industry-city' as WorldCityId,
+						originCityId: 'breadbasket-basin',
+						destinationCityId: 'industry-city',
 						materialId: 'water',
 						capacity: 100,
 						priority: 0,
@@ -700,8 +700,8 @@ describe('supply planner snapshot', () => {
 					}),
 					route({
 						id: 'route-loser',
-						originCityId: 'breadbasket-basin' as WorldCityId,
-						destinationCityId: 'industry-city' as WorldCityId,
+						originCityId: 'breadbasket-basin',
+						destinationCityId: 'industry-city',
 						materialId: 'pantry',
 						capacity: 10,
 						priority: 1,
@@ -741,8 +741,8 @@ describe('supply planner snapshot', () => {
 				routes: [
 					route({
 						id: 'route-blocker',
-						originCityId: 'breadbasket-basin' as WorldCityId,
-						destinationCityId: 'industry-city' as WorldCityId,
+						originCityId: 'breadbasket-basin',
+						destinationCityId: 'industry-city',
 						materialId: 'water',
 						capacity: 2,
 						priority: 0,
@@ -750,8 +750,8 @@ describe('supply planner snapshot', () => {
 					}),
 					route({
 						id: 'route-loser',
-						originCityId: 'breadbasket-basin' as WorldCityId,
-						destinationCityId: 'industry-city' as WorldCityId,
+						originCityId: 'breadbasket-basin',
+						destinationCityId: 'industry-city',
 						materialId: 'pantry',
 						capacity: 10,
 						priority: 1,
@@ -790,8 +790,8 @@ describe('supply planner snapshot', () => {
 				routes: [
 					route({
 						id: 'route-a-blocker',
-						originCityId: 'breadbasket-basin' as WorldCityId,
-						destinationCityId: 'industry-city' as WorldCityId,
+						originCityId: 'breadbasket-basin',
+						destinationCityId: 'industry-city',
 						materialId: 'water',
 						capacity: 2,
 						priority: 1,
@@ -799,8 +799,8 @@ describe('supply planner snapshot', () => {
 					}),
 					route({
 						id: 'route-z-loser',
-						originCityId: 'breadbasket-basin' as WorldCityId,
-						destinationCityId: 'industry-city' as WorldCityId,
+						originCityId: 'breadbasket-basin',
+						destinationCityId: 'industry-city',
 						materialId: 'pantry',
 						capacity: 10,
 						priority: 1,
@@ -852,8 +852,8 @@ describe('supply planner snapshot', () => {
 				routes: [
 					route({
 						id: 'route-blocker',
-						originCityId: 'breadbasket-basin' as WorldCityId,
-						destinationCityId: 'harbor-city' as WorldCityId,
+						originCityId: 'breadbasket-basin',
+						destinationCityId: 'harbor-city',
 						materialId: 'pantry',
 						capacity: 10,
 						priority: 0,
@@ -861,8 +861,8 @@ describe('supply planner snapshot', () => {
 					}),
 					route({
 						id: 'route-loser',
-						originCityId: 'breadbasket-basin' as WorldCityId,
-						destinationCityId: 'industry-city' as WorldCityId,
+						originCityId: 'breadbasket-basin',
+						destinationCityId: 'industry-city',
 						materialId: 'pantry',
 						capacity: 10,
 						priority: 1,
@@ -3706,16 +3706,16 @@ describe('supply planner patch coverage', () => {
 				recurringRoutes: [
 					route({
 						id: 'route-grain',
-						originCityId: 'breadbasket-basin' as WorldCityId,
-						destinationCityId: 'industry-city' as WorldCityId,
+						originCityId: 'breadbasket-basin',
+						destinationCityId: 'industry-city',
 						materialId: 'grain',
 						capacity: 10,
 						nextDispatchOnDay: 7
 					}),
 					route({
 						id: 'route-flour',
-						originCityId: 'breadbasket-basin' as WorldCityId,
-						destinationCityId: 'industry-city' as WorldCityId,
+						originCityId: 'breadbasket-basin',
+						destinationCityId: 'industry-city',
 						materialId: 'flour',
 						capacity: 10,
 						nextDispatchOnDay: 7
@@ -3725,8 +3725,8 @@ describe('supply planner patch coverage', () => {
 					{
 						id: 'transfer-1',
 						source: { kind: 'manual' },
-						originCityId: 'breadbasket-basin' as WorldCityId,
-						destinationCityId: 'industry-city' as WorldCityId,
+						originCityId: 'breadbasket-basin',
+						destinationCityId: 'industry-city',
 						materialId: 'grain',
 						quantity: 3,
 						createdOnDay: 6,
@@ -3762,7 +3762,8 @@ describe('supply planner projection edge-case coverage', () => {
 		// Two in-transit orders for the same route with different
 		// arrival days. The second order arrives earlier than the
 		// first, so the forecast's firstArrivalDay should be updated
-		// to the earlier value (line 2224).
+		// to the earlier value (the in-transit order firstArrivalDay
+		// update in the route-forecast loop).
 		const game = createTwoIndustryCityGame({ day: 7, materials: false });
 		const gameWithLogistics: GameState = {
 			...game,
@@ -3782,8 +3783,8 @@ describe('supply planner projection edge-case coverage', () => {
 				recurringRoutes: [
 					{
 						id: 'route-water',
-						originCityId: 'breadbasket-basin' as WorldCityId,
-						destinationCityId: 'industry-city' as WorldCityId,
+						originCityId: 'breadbasket-basin',
+						destinationCityId: 'industry-city',
 						materialId: 'bottled-water' as MaterialId,
 						capacity: 100,
 						frequencyDays: 1,
@@ -3808,8 +3809,8 @@ describe('supply planner projection edge-case coverage', () => {
 				{
 					id: 'transfer-late',
 					source: { kind: 'recurring-route' as const, routeId: 'route-water' },
-					originCityId: 'breadbasket-basin' as WorldCityId,
-					destinationCityId: 'industry-city' as WorldCityId,
+					originCityId: 'breadbasket-basin',
+					destinationCityId: 'industry-city',
 					materialId: 'bottled-water' as MaterialId,
 					quantity: 50,
 					createdOnDay: 6,
@@ -3821,8 +3822,8 @@ describe('supply planner projection edge-case coverage', () => {
 				{
 					id: 'transfer-early',
 					source: { kind: 'recurring-route' as const, routeId: 'route-water' },
-					originCityId: 'breadbasket-basin' as WorldCityId,
-					destinationCityId: 'industry-city' as WorldCityId,
+					originCityId: 'breadbasket-basin',
+					destinationCityId: 'industry-city',
 					materialId: 'bottled-water' as MaterialId,
 					quantity: 50,
 					createdOnDay: 3,
@@ -3833,12 +3834,13 @@ describe('supply planner projection edge-case coverage', () => {
 				},
 				{
 					// This order goes to a different city, so the
-					// continue on line 2224 fires (destinationCityId
-					// !== supplyCityId).
+					// destination-city filter in the route-forecast
+					// loop skips it (destinationCityId !==
+					// supplyCityId).
 					id: 'transfer-other-dest',
 					source: { kind: 'recurring-route' as const, routeId: 'route-water' },
-					originCityId: 'industry-city' as WorldCityId,
-					destinationCityId: 'breadbasket-basin' as WorldCityId,
+					originCityId: 'industry-city',
+					destinationCityId: 'breadbasket-basin',
 					materialId: 'bottled-water' as MaterialId,
 					quantity: 10,
 					createdOnDay: 4,
@@ -3883,8 +3885,8 @@ describe('supply planner projection edge-case coverage', () => {
 				recurringRoutes: [
 					{
 						id: 'route-water',
-						originCityId: 'breadbasket-basin' as WorldCityId,
-						destinationCityId: 'industry-city' as WorldCityId,
+						originCityId: 'breadbasket-basin',
+						destinationCityId: 'industry-city',
 						materialId: 'bottled-water' as MaterialId,
 						capacity: 1,
 						frequencyDays: 1,
@@ -3931,8 +3933,8 @@ describe('supply planner projection edge-case coverage', () => {
 						id: 'transfer-stale',
 						source: { kind: 'recurring-route' as const, routeId: 'route-1' },
 						// Stale shipment semantics: bottled water, not flour.
-						originCityId: 'breadbasket-basin' as WorldCityId,
-						destinationCityId: 'industry-city' as WorldCityId,
+						originCityId: 'breadbasket-basin',
+						destinationCityId: 'industry-city',
 						materialId: 'bottled-water' as MaterialId,
 						quantity: 50,
 						createdOnDay: 0,
@@ -3945,8 +3947,8 @@ describe('supply planner projection edge-case coverage', () => {
 				routes: [
 					route({
 						id: 'route-1',
-						originCityId: 'breadbasket-basin' as WorldCityId,
-						destinationCityId: 'industry-city' as WorldCityId,
+						originCityId: 'breadbasket-basin',
+						destinationCityId: 'industry-city',
 						materialId: 'flour',
 						capacity: 10,
 						frequencyDays: 1,
