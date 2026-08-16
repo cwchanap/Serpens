@@ -16,7 +16,13 @@ import {
 import { processRecurringRouteDispatches, processTransferArrivals } from './interCityLogistics';
 import { createNewGame } from './state';
 import { projectSupplySnapshot, type SupplyPlannerSnapshot } from './supplyPlanner';
-import type { CityInventory, RecurringRoute, TransferOrder, WorldCityId } from './types';
+import type {
+	ActiveEventModifier,
+	CityInventory,
+	RecurringRoute,
+	TransferOrder,
+	WorldCityId
+} from './types';
 
 function route(overrides: Partial<RecurringRoute> = {}): RecurringRoute {
 	return {
@@ -55,6 +61,26 @@ function order(overrides: Partial<TransferOrder> = {}): TransferOrder {
 		arrivalOnDay: 7,
 		transportCost: 6,
 		status: 'in-transit',
+		...overrides
+	};
+}
+
+function routeModifier(overrides: Partial<ActiveEventModifier> = {}): ActiveEventModifier {
+	return {
+		id: 'event-modifier-1',
+		source: {
+			eventId: 'freight-disruption',
+			instanceId: 'event-instance-1',
+			optionId: 'accept-delay'
+		},
+		target: { kind: 'recurring-route', routeId: 'route-1' },
+		startsOnDay: 1,
+		expiresOnDay: 30,
+		stackingKey: 'freight-capacity:route-1',
+		stackingRule: 'replace',
+		effect: { kind: 'route-capacity-multiplier', multiplier: 0.5 },
+		explanation: { key: 'events.freightDisruption.acceptDelay.capacity', params: {} },
+		importance: 'normal',
 		...overrides
 	};
 }
@@ -99,6 +125,7 @@ function projectionSnapshot(overrides: Partial<SupplyPlannerSnapshot> = {}): Sup
 					nextDispatchOnDay: 5
 				})
 			],
+			routeModifiers: [],
 			nextRouteSequence: 2,
 			nextTransferSequence: 1
 		},
@@ -164,6 +191,68 @@ describe('supply planner logistics projection state', () => {
 		expect(snapshot.inTransitOrders).toEqual([expectedOrder]);
 	});
 
+	it('copies only route-targeted active modifiers into the logistics snapshot', () => {
+		const game = withRecurringRoutes(createTwoIndustryCityGame({ day: 7 }), [route()]);
+		const withModifiers = {
+			...game,
+			events: {
+				...game.events,
+				activeModifiers: [
+					routeModifier(),
+					routeModifier({ id: 'event-modifier-2', target: { kind: 'company' } }),
+					routeModifier({
+						id: 'event-modifier-3',
+						target: { kind: 'recurring-route', routeId: 'route-other' }
+					})
+				]
+			}
+		};
+		const snapshot = buildSupplyPlannerLogisticsSnapshot(withModifiers, 'industry-city');
+
+		expect(snapshot.routeModifiers).toHaveLength(2);
+		expect(snapshot.routeModifiers.map((modifier) => modifier.id)).toEqual([
+			'event-modifier-1',
+			'event-modifier-3'
+		]);
+		expect(snapshot.routeModifiers[0]).toEqual(
+			expect.objectContaining({
+				id: 'event-modifier-1',
+				target: { kind: 'recurring-route', routeId: 'route-1' }
+			})
+		);
+		// Only the fields the route resolver reads are copied; stacking and
+		// lifecycle bookkeeping stays behind.
+		expect(snapshot.routeModifiers[0]).not.toHaveProperty('stackingKey');
+		expect(snapshot.routeModifiers[0]).not.toHaveProperty('stackingRule');
+		expect(snapshot.routeModifiers[0]).not.toHaveProperty('importance');
+	});
+
+	it('deep-copies route modifiers so later game mutation does not leak into the snapshot', () => {
+		const game = withRecurringRoutes(createTwoIndustryCityGame({ day: 7 }), [route()]);
+		const withModifier = {
+			...game,
+			events: { ...game.events, activeModifiers: [routeModifier()] }
+		};
+		const snapshot = buildSupplyPlannerLogisticsSnapshot(withModifier, 'industry-city');
+
+		withModifier.events.activeModifiers[0]!.effect = {
+			kind: 'route-capacity-multiplier',
+			multiplier: 0.25
+		};
+		withModifier.events.activeModifiers[0]!.explanation.params = { changed: 1 };
+		withModifier.events.activeModifiers[0]!.startsOnDay = 99;
+
+		expect(snapshot.routeModifiers[0]!.effect).toEqual({
+			kind: 'route-capacity-multiplier',
+			multiplier: 0.5
+		});
+		expect(snapshot.routeModifiers[0]!.explanation).toEqual({
+			key: 'events.freightDisruption.acceptDelay.capacity',
+			params: {}
+		});
+		expect(snapshot.routeModifiers[0]!.startsOnDay).toBe(1);
+	});
+
 	it('uses the copied live transfer sequence after historical orders', () => {
 		let game = withWarehouses(createTwoIndustryCityGame({ day: 7 }), [
 			'industry-city',
@@ -227,6 +316,7 @@ describe('supply planner logistics projection state', () => {
 				route({ id: 'route-2', capacity: 4, priority: 2 }),
 				route({ id: 'route-1', capacity: 4, priority: 1 })
 			],
+			routeModifiers: [],
 			nextTransferSequence: 2
 		};
 
@@ -287,7 +377,6 @@ describe('supply planner logistics projection state', () => {
 		const planner = processSupplyPlannerRouteDispatches(plannerArrived.state, game.day);
 
 		expect(plannerArrived.arrivals).toEqual(liveArrived.arrivals);
-		expect(planner.attempts).toEqual(live.attempts);
 		expect(planner.scheduledTransportCost).toBe(live.scheduledTransportCost);
 		expect(planner.state.routes.map((current) => [current.id, current.nextDispatchOnDay])).toEqual(
 			live.game.logistics.recurringRoutes.map((current) => [current.id, current.nextDispatchOnDay])
@@ -360,7 +449,6 @@ describe('supply planner logistics projection state', () => {
 			game.day
 		);
 
-		expect(planner.attempts).toEqual(live.attempts);
 		expect(planner.state.selectedIntegerInventory).toEqual(
 			live.game.cityInventories.find((row) => row.cityId === 'industry-city')
 		);
@@ -568,6 +656,213 @@ describe('supply planner logistics projection state', () => {
 	});
 });
 
+describe('supply planner route modifier dispatch projection', () => {
+	function disruptionState(
+		overrides: Partial<SupplyPlannerLogisticsState> = {}
+	): SupplyPlannerLogisticsState {
+		return {
+			selectedIntegerInventory: inventory('industry-city', { water: 4 }),
+			remoteIntegerInventories: [inventory('breadbasket-basin', { water: 100 })],
+			selectedWarehouseCapacity: 100,
+			remoteWarehouseCapacities: { 'breadbasket-basin': 100 },
+			inTransitOrders: [],
+			routes: [route({ capacity: 10, nextDispatchOnDay: 7 })],
+			routeModifiers: [],
+			nextTransferSequence: 1,
+			...overrides
+		};
+	}
+
+	it('projects effective capacity and quantity for a capacity multiplier', () => {
+		const dispatched = processSupplyPlannerRouteDispatches(
+			disruptionState({
+				routeModifiers: [
+					routeModifier({ effect: { kind: 'route-capacity-multiplier', multiplier: 0.5 } })
+				]
+			}),
+			7
+		);
+		const attempt = dispatched.attempts[0]!;
+
+		expect(attempt.capacity).toBe(5);
+		expect(attempt.baselineCapacity).toBe(10);
+		expect(attempt.dispatchedQuantity).toBe(5);
+		expect(attempt.dispatchSuspended).toBe(false);
+		expect(attempt.modifierImpacts).toEqual([
+			expect.objectContaining({
+				effectKind: 'route-capacity-multiplier',
+				baselineCapacity: 10,
+				effectiveCapacity: 5
+			})
+		]);
+		expect(dispatched.state.inTransitOrders[0]!.quantity).toBe(5);
+	});
+
+	it('projects the adjusted lead time onto the created transfer order', () => {
+		const dispatched = processSupplyPlannerRouteDispatches(
+			disruptionState({
+				routeModifiers: [routeModifier({ effect: { kind: 'route-lead-time-adjustment', days: 3 } })]
+			}),
+			7
+		);
+
+		expect(dispatched.state.inTransitOrders[0]!.arrivalOnDay).toBe(12);
+		expect(dispatched.attempts[0]!.modifierImpacts).toEqual([
+			expect.objectContaining({
+				effectKind: 'route-lead-time-adjustment',
+				baselineLeadTimeDays: 2,
+				effectiveLeadTimeDays: 5
+			})
+		]);
+	});
+
+	it('projects the effective transport cost for a cost multiplier', () => {
+		const dispatched = processSupplyPlannerRouteDispatches(
+			disruptionState({
+				routes: [route({ capacity: 10, transportCostPerUnit: 3, nextDispatchOnDay: 7 })],
+				routeModifiers: [
+					routeModifier({ effect: { kind: 'route-transport-cost-multiplier', multiplier: 1.5 } })
+				]
+			}),
+			7
+		);
+
+		expect(dispatched.attempts[0]!.transportCost).toBe(45);
+		expect(dispatched.scheduledTransportCost).toBe(45);
+		expect(dispatched.state.inTransitOrders[0]!.transportCost).toBe(45);
+		expect(dispatched.attempts[0]!.modifierImpacts).toEqual([
+			expect.objectContaining({
+				effectKind: 'route-transport-cost-multiplier',
+				baselineTransportCost: 30,
+				effectiveTransportCost: 45
+			})
+		]);
+	});
+
+	it('skips dispatch and orders while a suspension is active but keeps the cadence', () => {
+		const dispatched = processSupplyPlannerRouteDispatches(
+			disruptionState({
+				routeModifiers: [routeModifier({ effect: { kind: 'route-dispatch-suspension' } })]
+			}),
+			7
+		);
+
+		expect(dispatched.attempts).toHaveLength(1);
+		expect(dispatched.attempts[0]).toEqual(
+			expect.objectContaining({
+				dispatchedQuantity: 0,
+				transferOrderId: null,
+				dispatchSuspended: true,
+				transportCost: 0
+			})
+		);
+		expect(dispatched.scheduledTransportCost).toBe(0);
+		expect(dispatched.state.inTransitOrders).toHaveLength(0);
+		expect(dispatched.state.routes[0]!.nextDispatchOnDay).toBe(14);
+	});
+
+	it('resumes dispatch after a modifier expires inside the horizon', () => {
+		const state = disruptionState({
+			routes: [route({ capacity: 10, frequencyDays: 7, nextDispatchOnDay: 7 })],
+			routeModifiers: [
+				routeModifier({
+					startsOnDay: 7,
+					expiresOnDay: 10,
+					effect: { kind: 'route-dispatch-suspension' }
+				})
+			]
+		});
+
+		const suspended = processSupplyPlannerRouteDispatches(state, 7);
+		expect(suspended.attempts[0]!.dispatchSuspended).toBe(true);
+		expect(suspended.attempts[0]!.dispatchedQuantity).toBe(0);
+
+		const resumed = processSupplyPlannerRouteDispatches(suspended.state, 14);
+		expect(resumed.attempts[0]!.dispatchSuspended).toBe(false);
+		expect(resumed.attempts[0]!.dispatchedQuantity).toBe(10);
+	});
+
+	it('composes edited base values with active modifiers', () => {
+		const dispatched = processSupplyPlannerRouteDispatches(
+			disruptionState({
+				routes: [
+					route({
+						capacity: 20,
+						leadTimeDays: 4,
+						transportCostPerUnit: 5,
+						nextDispatchOnDay: 7
+					})
+				],
+				routeModifiers: [
+					routeModifier({ effect: { kind: 'route-capacity-multiplier', multiplier: 0.5 } })
+				]
+			}),
+			7
+		);
+		const attempt = dispatched.attempts[0]!;
+
+		expect(attempt.capacity).toBe(10);
+		expect(attempt.baselineCapacity).toBe(20);
+		expect(attempt.dispatchedQuantity).toBe(10);
+		const order = dispatched.state.inTransitOrders[0]!;
+		expect(order.arrivalOnDay).toBe(11);
+		expect(order.transportCost).toBe(50);
+	});
+
+	it('matches the live dispatch attempt for the same state and day under active modifiers', () => {
+		let game = withWarehouses(createTwoIndustryCityGame({ day: 7 }), [
+			'industry-city',
+			'breadbasket-basin'
+		]);
+		game = withCityMaterials(
+			withCityMaterials(game, 'industry-city', { water: 4 }),
+			'breadbasket-basin',
+			{ water: 100 }
+		);
+		const modifiers = [
+			routeModifier({ effect: { kind: 'route-capacity-multiplier', multiplier: 0.5 } }),
+			routeModifier({
+				id: 'event-modifier-2',
+				effect: { kind: 'route-transport-cost-multiplier', multiplier: 2 }
+			}),
+			routeModifier({
+				id: 'event-modifier-3',
+				effect: { kind: 'route-lead-time-adjustment', days: 1 }
+			})
+		];
+		game = { ...game, events: { ...game.events, activeModifiers: modifiers } };
+		game = withRecurringRoutes(game, [route({ capacity: 10, nextDispatchOnDay: 7 })]);
+		game = {
+			...game,
+			logistics: { ...game.logistics, transferOrders: [], nextTransferSequence: 1 }
+		};
+
+		const live = processRecurringRouteDispatches(game);
+		const logistics = buildSupplyPlannerLogisticsSnapshot(game, 'industry-city');
+		const selected = getCityInventory(game, 'industry-city');
+		expect(selected.ok).toBe(true);
+		if (!selected.ok) return;
+		const planner = processSupplyPlannerRouteDispatches(
+			createSupplyPlannerLogisticsState({
+				selectedInventory: selected.inventory,
+				selectedWarehouseCapacity: getCityInventoryStats(game, 'industry-city').capacity,
+				logistics
+			}),
+			game.day
+		);
+
+		expect(planner.attempts).toHaveLength(live.attempts.length);
+		const liveAttempt = live.attempts[0]!;
+		const plannerAttempt = planner.attempts[0]!;
+		expect(plannerAttempt.baselineCapacity).toBe(liveAttempt.baselineCapacity);
+		expect(plannerAttempt.capacity).toBe(liveAttempt.capacity);
+		expect(plannerAttempt.dispatchSuspended).toBe(liveAttempt.dispatchSuspended);
+		expect(plannerAttempt.dispatchedQuantity).toBe(liveAttempt.dispatchedQuantity);
+		expect(plannerAttempt.transportCost).toBe(liveAttempt.transportCost);
+		expect(plannerAttempt.modifierImpacts).toEqual(liveAttempt.modifierImpacts);
+	});
+});
+
 describe('supply planner logistics error and edge-case paths', () => {
 	it('throws when a transfer arrival destination is invalid', () => {
 		const state: SupplyPlannerLogisticsState = {
@@ -577,6 +872,7 @@ describe('supply planner logistics error and edge-case paths', () => {
 			remoteWarehouseCapacities: { 'breadbasket-basin': 10 },
 			inTransitOrders: [order({ destinationCityId: 'nonexistent-city' as WorldCityId })],
 			routes: [],
+			routeModifiers: [],
 			nextTransferSequence: 2
 		};
 
@@ -599,6 +895,7 @@ describe('supply planner logistics error and edge-case paths', () => {
 					nextDispatchOnDay: 7
 				})
 			],
+			routeModifiers: [],
 			nextTransferSequence: 2
 		};
 
@@ -621,6 +918,7 @@ describe('supply planner logistics error and edge-case paths', () => {
 					nextDispatchOnDay: 7
 				})
 			],
+			routeModifiers: [],
 			nextTransferSequence: 2
 		};
 
@@ -652,6 +950,7 @@ describe('supply planner logistics error and edge-case paths', () => {
 					nextDispatchOnDay: 7
 				})
 			],
+			routeModifiers: [],
 			nextTransferSequence: 2
 		};
 
@@ -682,6 +981,7 @@ describe('supply planner logistics error and edge-case paths', () => {
 				order({ id: 'transfer-m', quantity: 1, arrivalOnDay: 7 })
 			],
 			routes: [],
+			routeModifiers: [],
 			nextTransferSequence: 10
 		};
 
@@ -708,6 +1008,7 @@ describe('supply planner logistics error and edge-case paths', () => {
 					nextDispatchOnDay: 7
 				})
 			],
+			routeModifiers: [],
 			nextTransferSequence: Number.MAX_SAFE_INTEGER
 		};
 
@@ -732,6 +1033,7 @@ describe('supply planner logistics error and edge-case paths', () => {
 					nextDispatchOnDay: 7
 				})
 			],
+			routeModifiers: [],
 			nextTransferSequence: 2
 		};
 
