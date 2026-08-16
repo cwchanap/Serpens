@@ -16,6 +16,7 @@ import {
 	serviceFinanceForDay
 } from './finance';
 import { processRecurringRouteDispatches, processTransferArrivals } from './interCityLogistics';
+import { buildRouteModifierRecoveries } from './logisticsRouteModifiers';
 import { simulateIndustryProduction } from './industryProduction';
 import { clampScore } from './reports';
 import { createRngFromState, randomBetween } from './rng';
@@ -259,6 +260,12 @@ export function simulateDay(
 		? expireModifiersAfterDay(postServiceGame.events, closingDay)
 		: { state: postServiceGame.events, expired: [] };
 	const reconciledGame = { ...postServiceGame, events: expiry.state };
+	const modifierRecoveries = buildRouteModifierRecoveries({
+		routes: reconciledGame.logistics.recurringRoutes,
+		beforeExpiry: activeEventModifiers,
+		afterExpiry: reconciledGame.events.activeModifiers,
+		closingDay
+	});
 	const warnings = collectWarnings(storeReports, cashAfter);
 	const nextLoanPayment = getNextLoanPaymentSnapshot(reconciledGame);
 	const activity = serviced.finance.currentDayActivity;
@@ -297,7 +304,7 @@ export function simulateDay(
 			routeDispatchAttempts: routeResult.attempts,
 			deliveredUnits: arrivalResult.deliveredUnits,
 			scheduledTransportCost: routeResult.scheduledTransportCost,
-			modifierRecoveries: []
+			modifierRecoveries
 		},
 		storeReports,
 		modifierImpacts,

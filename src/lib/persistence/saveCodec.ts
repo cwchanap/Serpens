@@ -3530,11 +3530,11 @@ function validateSavedDailyRouteModifierRecovery(value: unknown, label: string):
 				],
 				label
 			);
-			requireHistoricalLogisticsNonNegativeSafeInteger(
+			requireHistoricalLogisticsPositiveSafeInteger(
 				recovery.disruptedLeadTimeDays,
 				`${label} disruptedLeadTimeDays`
 			);
-			requireHistoricalLogisticsNonNegativeSafeInteger(
+			requireHistoricalLogisticsPositiveSafeInteger(
 				recovery.recoveredLeadTimeDays,
 				`${label} recoveredLeadTimeDays`
 			);
