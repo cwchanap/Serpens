@@ -17,7 +17,14 @@ import { simulateDay } from '../lib/game/simulateDay';
 import { createNewGame } from '../lib/game/state';
 import { calculateStockHealth, initializeStoreProducts } from '../lib/game/stock';
 import { openWorldCity } from '../lib/game/world';
-import type { EventTimedEffect, GameState, LoanInstrument } from '../lib/game/types';
+import type {
+	DailyLogisticsReport,
+	DecisionItem,
+	EventTimedEffect,
+	GameState,
+	LoanInstrument,
+	TransferOrder
+} from '../lib/game/types';
 import { BROWSER_SAVE_STORAGE_KEY } from '../lib/persistence/browserSaveRepository';
 import { BROWSER_SCENARIO_STORAGE_KEY } from '../lib/persistence/browserScenarioRepository';
 import {
@@ -571,6 +578,92 @@ function logisticsRouteNavigationGame(): GameState {
 	return game;
 }
 
+/**
+ * Schema-16 freight-disruption sandbox: two opened industry cities, one
+ * active recurring route with enough origin stock and destination capacity,
+ * and an event RNG state whose day-5 selection materializes a
+ * `freight-disruption` decision targeting route-1. The event runtime is
+ * steered by brute-forcing the initial RNG seed over the real production
+ * selection logic — no E2E-only game command exists.
+ */
+function freightDisruptionLifecycleGame(): GameState {
+	const base = createNewGame('convenience', 20260815);
+	let game: GameState = {
+		...base,
+		day: 5,
+		cash: 1_000_000,
+		finance: {
+			...base.finance,
+			currentDayActivity: { ...base.finance.currentDayActivity, day: 5 }
+		},
+		world: {
+			...base.world,
+			revealedCityIds: [...base.world.revealedCityIds, 'breadbasket-basin']
+		},
+		decisions: []
+	};
+	game = openWorldCity(game, 'breadbasket-basin');
+	game = buildWarehouseInCity(game, 'industry-city');
+	game = buildWarehouseInCity(game, 'breadbasket-basin');
+
+	const cityInventories = game.cityInventories.map((inventory) =>
+		inventory.cityId === 'industry-city'
+			? { cityId: inventory.cityId, materials: { 'bottled-water': 30 } }
+			: inventory
+	);
+	game = {
+		...game,
+		activeCityId: 'harbor-city',
+		activeIndustryCityId: 'industry-city',
+		cityInventories,
+		// The starter harbor store would otherwise drain the route's origin
+		// stock on the day-7 retail replenishment cycle; route the store to
+		// external imports so the origin inventory is dispatch-only.
+		retailSupplyAssignments: [{ retailCityId: 'harbor-city', supplyCityId: null }]
+	};
+
+	const created = createRecurringRoute(game, {
+		originCityId: 'industry-city',
+		destinationCityId: 'breadbasket-basin',
+		materialId: 'bottled-water',
+		capacity: 2,
+		frequencyDays: 2,
+		leadTimeDays: 2,
+		transportCostPerUnit: 2,
+		priority: 0
+	});
+	if (!created.ok) throw new Error(`Could not create route fixture: ${created.reason}`);
+	game = created.game;
+	// The disruption resolves on day 5; the first affected dispatch closes on
+	// day 6 while the accept-delay modifiers are still active.
+	game = {
+		...game,
+		logistics: {
+			...game.logistics,
+			recurringRoutes: game.logistics.recurringRoutes.map((route) => ({
+				...route,
+				nextDispatchOnDay: 6
+			}))
+		}
+	};
+
+	for (let eventSeed = 1; eventSeed <= 200_000; eventSeed += 1) {
+		const selected = selectEventForDay(
+			{ ...game, events: createInitialEventRuntime(eventSeed), decisions: [] },
+			PRODUCTION_EVENT_CATALOG
+		);
+		const freight = selected.decisions.find(
+			(decision): decision is Extract<DecisionItem, { kind: 'event' }> =>
+				decision.kind === 'event' && decision.eventId === 'freight-disruption'
+		);
+		if (freight?.target.kind === 'recurring-route' && freight.target.routeId === 'route-1') {
+			return selected;
+		}
+	}
+
+	throw new Error('Could not find a deterministic freight disruption event seed.');
+}
+
 interface SavedMaterialMovement {
 	materialId: string;
 	quantity: number;
@@ -619,6 +712,7 @@ interface SavedDailyReport {
 		railShipments: SavedRailShipment[];
 		railUsage: Record<string, number>;
 	};
+	logistics: DailyLogisticsReport;
 	storeReports: Array<{
 		storeId: string;
 		importSpend: number;
@@ -686,6 +780,7 @@ interface SavedGame {
 		supplyCityId: string | null;
 	}>;
 	logistics: {
+		transferOrders: TransferOrder[];
 		recurringRoutes: Array<{
 			id: string;
 			originCityId: string;
@@ -4030,4 +4125,282 @@ test('logistics route navigation', async ({ page }) => {
 	await expect(logisticsPanel.getByText(/recurring route removed/i)).toBeVisible();
 	await expect(page.getByRole('dialog', { name: /logistics route inspector/i })).toHaveCount(0);
 	await expect(page.locator('#logistics-route-route-1')).toHaveCount(0);
+});
+
+function freightDecisionArticle(panel: Locator, page: Page): Locator {
+	return panel
+		.getByRole('region', { name: 'Decision Queue' })
+		.getByRole('article')
+		.filter({ has: page.getByRole('heading', { name: 'Freight disruption' }) });
+}
+
+function activeFreightModifierCard(panel: Locator, explanation: string): Locator {
+	return panel
+		.getByRole('region', { name: 'Active modifiers' })
+		.getByRole('article', { name: 'Freight disruption' })
+		.filter({ hasText: explanation });
+}
+
+test('freight disruption lifecycle closes through dispatch, pause/edit/resume, and recovery', async ({
+	page
+}) => {
+	test.setTimeout(120_000);
+	await page.setViewportSize({ width: 1200, height: 1000 });
+	await installSandboxAutoSave(page, freightDisruptionLifecycleGame());
+
+	// Step 2: the unresolved decision names the concrete route — origin,
+	// destination, material, and route id are all visible pre-resolution.
+	let decisions = await openManagementPanel(page, 'Decisions');
+	const freightDecision = freightDecisionArticle(decisions, page);
+	await expect(freightDecision).toContainText(
+		'Shipments of bottled-water between industry-city and breadbasket-basin are disrupted.'
+	);
+	await expect(freightDecision).toContainText('route route-1');
+	await expect(freightDecision.getByRole('button', { name: /^Accept delay/ })).toBeEnabled();
+	await decisions.getByRole('button', { name: 'Close Decisions', exact: true }).click();
+
+	// Step 5 (first half): pause the route first. The materialized decision
+	// targeting the now-paused route remains resolvable, and resolution
+	// activates the modifiers while the route is paused.
+	const logistics = await openManagementPanel(page, /logistics/i);
+	const routeRow = logistics.locator('#logistics-route-route-1');
+	await expect(routeRow).toContainText(/Industry City → Breadbasket Basin/i);
+	await routeRow.getByRole('button', { name: /^Pause route$/i }).click();
+	await expect(logistics.getByRole('status')).toContainText(/Recurring route paused\./i);
+	await expect(routeRow).toContainText(/Paused/i);
+	await logistics.getByRole('button', { name: 'Close Logistics', exact: true }).click();
+
+	decisions = await openManagementPanel(page, 'Decisions');
+	const pausedTargetDecision = freightDecisionArticle(decisions, page);
+	await expect(pausedTargetDecision).toBeVisible();
+	await expect(pausedTargetDecision.getByRole('button', { name: /^Accept delay/ })).toBeEnabled();
+	await pausedTargetDecision.getByRole('button', { name: /^Accept delay/ }).click();
+
+	// Pausing does not delete the modifier: both accept-delay modifiers are
+	// active and persisted while the route stays paused.
+	await expect
+		.poll(async () => (await readAutoSaveGame(page)).events.activeModifiers.length)
+		.toBe(2);
+	let saved = await readAutoSaveGame(page);
+	expect(saved.events.activeModifiers.map((modifier) => modifier.effect.kind).sort()).toEqual([
+		'route-capacity-multiplier',
+		'route-lead-time-adjustment'
+	]);
+	expect(saved.logistics.recurringRoutes[0]).toMatchObject({ state: 'paused' });
+
+	// Step 3: active presentation — Active Modifiers cards name the concrete
+	// route and the base → effective values; the world route is disrupted.
+	const leadCard = activeFreightModifierCard(
+		decisions,
+		'Lead time +1 day on this route for three days.'
+	);
+	await expect(leadCard).toContainText('Route: Industry City → Breadbasket Basin · Bottled Water');
+	await expect(leadCard).toContainText('Lead time: 2 → 3 days');
+	await expect(leadCard).toContainText('Starts day 5');
+	await expect(leadCard).toContainText('Expires after day 7');
+	await expect(leadCard).toContainText('3 days remaining');
+	const capacityCard = activeFreightModifierCard(
+		decisions,
+		'Capacity ×0.75 on this route for three days.'
+	);
+	await expect(capacityCard).toContainText('Capacity: 2 → 1 units');
+	await decisions.getByRole('button', { name: 'Close Decisions', exact: true }).click();
+
+	await openMapMenuItem(page, /world map/i);
+	const worldMap = page.getByRole('region', { name: /world map/i });
+	await expect(worldMap).toBeVisible();
+	const worldRoute = worldMap.getByTestId('world-logistics-route-route-1');
+	await expect(worldRoute).toHaveAttribute('data-disrupted', 'true');
+
+	// The existing event-modifier alert navigates to the world route inspector.
+	await page.getByRole('button', { name: /^\d+ alerts?$/i }).click();
+	const alertsList = page.getByRole('group', { name: 'Alerts list' });
+	const modifierAlert = alertsList.getByRole('button', {
+		name: 'Active modifier: Freight disruption',
+		exact: true
+	});
+	await expect(modifierAlert).toBeVisible();
+	await modifierAlert.click();
+	const routeInspector = page.getByRole('dialog', { name: /logistics route inspector/i });
+	await expect(routeInspector).toBeVisible();
+	await expect(routeInspector).toContainText(/Industry City → Breadbasket Basin/i);
+	await routeInspector.getByRole('button', { name: /close/i }).click();
+	await expect(routeInspector).toHaveCount(0);
+
+	// Step 5 (second half): edit the base route while the modifier is active,
+	// then resume. The Active Modifiers card re-derives against the edited
+	// base, and the next dispatch combines edited base × still-active modifier.
+	await openMapMenuItem(page, /retail city map/i);
+	await expect(page.getByRole('heading', { name: /harbor city/i })).toBeVisible();
+	const editedLogistics = await openManagementPanel(page, /logistics/i);
+	const editedRow = editedLogistics.locator('#logistics-route-route-1');
+	await expect(editedRow).toContainText(/Paused/i);
+	await editedRow.getByRole('button', { name: /^Edit route$/i }).click();
+	await expect(editedLogistics.locator('#logistics-route-capacity')).toHaveValue('2');
+	await editedLogistics.locator('#logistics-route-capacity').fill('4');
+	await editedLogistics
+		.locator('#logistics-route-form')
+		.getByRole('button', { name: /^Save route changes$/i })
+		.click();
+	await expect(editedLogistics.getByRole('status')).toContainText(/Recurring route updated\./i);
+	await editedRow.getByRole('button', { name: /^Resume route$/i }).click();
+	await expect(editedLogistics.getByRole('status')).toContainText(/Recurring route resumed\./i);
+	await expect
+		.poll(async () => (await readAutoSaveGame(page)).events.activeModifiers.length)
+		.toBe(2);
+	saved = await readAutoSaveGame(page);
+	expect(saved.logistics.recurringRoutes[0]).toMatchObject({
+		capacity: 4,
+		leadTimeDays: 2,
+		state: 'active',
+		nextDispatchOnDay: 6
+	});
+	await editedLogistics.getByRole('button', { name: 'Close Logistics', exact: true }).click();
+
+	const resumedDecisions = await openManagementPanel(page, 'Decisions');
+	await expect(
+		activeFreightModifierCard(resumedDecisions, 'Capacity ×0.75 on this route for three days.')
+	).toContainText('Capacity: 4 → 3 units');
+	await resumedDecisions.getByRole('button', { name: 'Close Decisions', exact: true }).click();
+
+	// Step 4: close through the affected dispatch. The order's arrival day and
+	// cost are fixed at dispatch and the attempt persists modifierImpacts with
+	// the edited baseline.
+	await page.getByRole('button', { name: 'Advance day', exact: true }).click();
+	saved = await waitForAutoSaveDay(page, 6);
+	expect(getLatestReport(saved).modifierLifecycle).toEqual([
+		{ status: 'activated', modifier: expect.objectContaining({ id: 'event-modifier-1' }) },
+		{ status: 'activated', modifier: expect.objectContaining({ id: 'event-modifier-2' }) }
+	]);
+	await page.getByRole('button', { name: 'Advance day', exact: true }).click();
+	saved = await waitForAutoSaveDay(page, 7);
+	const affectedReport = getLatestReport(saved);
+	expect(saved.logistics.transferOrders).toEqual([
+		expect.objectContaining({
+			id: 'transfer-1',
+			quantity: 3,
+			arrivalOnDay: 9,
+			transportCost: 6,
+			status: 'in-transit'
+		})
+	]);
+	const affectedAttempt = affectedReport.logistics.routeDispatchAttempts[0];
+	expect(affectedAttempt).toMatchObject({
+		routeId: 'route-1',
+		capacity: 3,
+		baselineCapacity: 4,
+		dispatchedQuantity: 3,
+		transportCost: 6,
+		transferOrderId: 'transfer-1',
+		dispatchSuspended: false
+	});
+	expect(affectedAttempt.modifierImpacts).toEqual([
+		expect.objectContaining({
+			effectKind: 'route-lead-time-adjustment',
+			baselineLeadTimeDays: 2,
+			effectiveLeadTimeDays: 3
+		}),
+		expect.objectContaining({
+			effectKind: 'route-capacity-multiplier',
+			baselineCapacity: 4,
+			effectiveCapacity: 3,
+			baselineDispatchedQuantity: 4,
+			effectiveDispatchedQuantity: 3
+		})
+	]);
+	expect(saved.events.activeModifiers.map((modifier) => modifier.id)).toEqual([
+		'event-modifier-1',
+		'event-modifier-2'
+	]);
+
+	// Step 6: close through expiry. The in-transit order stays unchanged, the
+	// report records the recovery rows, and the modifier list empties.
+	await page.getByRole('button', { name: 'Advance day', exact: true }).click();
+	saved = await waitForAutoSaveDay(page, 8);
+	const expiryReport = getLatestReport(saved);
+	expect(expiryReport.modifierLifecycle).toEqual([
+		{ status: 'expired', modifier: expect.objectContaining({ id: 'event-modifier-1' }) },
+		{ status: 'expired', modifier: expect.objectContaining({ id: 'event-modifier-2' }) }
+	]);
+	expect(expiryReport.logistics.modifierRecoveries).toEqual([
+		expect.objectContaining({
+			effectKind: 'route-lead-time-adjustment',
+			disruptedLeadTimeDays: 3,
+			recoveredLeadTimeDays: 2
+		}),
+		expect.objectContaining({
+			effectKind: 'route-capacity-multiplier',
+			disruptedCapacity: 3,
+			recoveredCapacity: 4
+		})
+	]);
+	expect(saved.events.activeModifiers).toEqual([]);
+	expect(saved.logistics.transferOrders[0]).toMatchObject({
+		id: 'transfer-1',
+		quantity: 3,
+		arrivalOnDay: 9,
+		transportCost: 6
+	});
+
+	const reports = await openManagementPanel(page, /reports/i);
+	await expect(reports.getByText('Modifier recoveries', { exact: true })).toBeVisible();
+	await expect(
+		reports.getByText('Route route-1 lead time recovered: 3 days → 2 days', { exact: true })
+	).toBeVisible();
+	await expect(
+		reports.getByText('Route route-1 capacity recovered: 3 → 4', { exact: true })
+	).toBeVisible();
+	await reports.getByRole('button', { name: 'Close Reports', exact: true }).click();
+
+	// The disrupted marker clears once no route modifier contributes.
+	await openMapMenuItem(page, /world map/i);
+	await expect(worldMap).toBeVisible();
+	await expect(worldMap.getByTestId('world-logistics-route-route-1')).toHaveAttribute(
+		'data-disrupted',
+		'false'
+	);
+
+	// The current route returns to the edited base behavior with no stale
+	// restoration: the next dispatch uses capacity 4 / lead 2 / cost 2 and
+	// carries no modifier impacts.
+	await openMapMenuItem(page, /retail city map/i);
+	await expect(page.getByRole('heading', { name: /harbor city/i })).toBeVisible();
+	await page.getByRole('button', { name: 'Advance day', exact: true }).click();
+	saved = await waitForAutoSaveDay(page, 9);
+	const recoveredAttempt = getLatestReport(saved).logistics.routeDispatchAttempts[0];
+	expect(saved.logistics.transferOrders[1]).toMatchObject({
+		id: 'transfer-2',
+		quantity: 4,
+		arrivalOnDay: 10,
+		transportCost: 8,
+		status: 'in-transit'
+	});
+	expect(recoveredAttempt).toMatchObject({
+		capacity: 4,
+		baselineCapacity: 4,
+		dispatchedQuantity: 4,
+		transportCost: 8,
+		dispatchSuspended: false
+	});
+	expect(recoveredAttempt.modifierImpacts).toEqual([]);
+	expect(getLatestReport(saved).logistics.modifierRecoveries).toEqual([]);
+	expect(saved.logistics.recurringRoutes[0]).toMatchObject({
+		capacity: 4,
+		leadTimeDays: 2,
+		transportCostPerUnit: 2
+	});
+
+	// The in-transit order from the disruption window still arrives with its
+	// immutable quantity and cost.
+	await page.getByRole('button', { name: 'Advance day', exact: true }).click();
+	saved = await waitForAutoSaveDay(page, 10);
+	expect(saved.logistics.transferOrders[0]).toMatchObject({
+		id: 'transfer-1',
+		status: 'delivered',
+		quantity: 3,
+		transportCost: 6
+	});
+	expect(getLatestReport(saved).logistics.arrivals).toContainEqual(
+		expect.objectContaining({ transferOrderId: 'transfer-1', quantity: 3 })
+	);
 });
