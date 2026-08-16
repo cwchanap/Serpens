@@ -7,7 +7,8 @@ import type {
 	EventModifierTemplate,
 	EventRuntimeState,
 	EventTarget,
-	EventTimedEffect
+	EventTimedEffect,
+	RouteModifierInput
 } from './types';
 
 export type EventModifierLifecycle = Extract<EventHistoryEntry, { kind: 'modifier-lifecycle' }>;
@@ -54,17 +55,11 @@ export function activateEventModifiers(
 		const modifier = createModifier(nextModifierSequence, source, target, day, template);
 		nextModifierSequence += 1;
 
-		const replaced = activeModifiers.filter(
-			(candidate) =>
-				candidate.stackingKey === modifier.stackingKey &&
-				sameEventTarget(candidate.target, modifier.target)
+		const replaced = activeModifiers.filter((candidate) =>
+			occupiesSameStackingSlot(candidate, modifier)
 		);
 		activeModifiers = activeModifiers.filter(
-			(candidate) =>
-				!(
-					candidate.stackingKey === modifier.stackingKey &&
-					sameEventTarget(candidate.target, modifier.target)
-				)
+			(candidate) => !occupiesSameStackingSlot(candidate, modifier)
 		);
 		for (const candidate of replaced) {
 			lifecycle.push({
@@ -98,8 +93,20 @@ export function activateEventModifiers(
 	};
 }
 
-export function isModifierActiveOnDay(modifier: ActiveEventModifier, closingDay: number): boolean {
+export function isModifierActiveOnDay(modifier: RouteModifierInput, closingDay: number): boolean {
 	return modifier.startsOnDay <= closingDay && closingDay < modifier.expiresOnDay;
+}
+
+/** True when two modifiers compete for the same replace-stacking slot: the
+ * same stacking key on the same event target. */
+function occupiesSameStackingSlot(
+	candidate: ActiveEventModifier,
+	incoming: ActiveEventModifier
+): boolean {
+	return (
+		candidate.stackingKey === incoming.stackingKey &&
+		sameEventTarget(candidate.target, incoming.target)
+	);
 }
 
 export function hasModifierExpiredAfterDay(

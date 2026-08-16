@@ -384,7 +384,12 @@ function validateCurrentGameStateInternal(value: unknown): GameState {
 	);
 	const decisionIds = new Set<string>();
 	decisions.forEach((decision, index) => {
-		const id = validateSavedDecision(decision, gameDay, `Saved game decisions[${index}]`);
+		const id = validateSavedDecision(
+			decision,
+			gameDay,
+			`Saved game decisions[${index}]`,
+			currentGame.logistics.nextRouteSequence
+		);
 		if (decisionIds.has(id)) {
 			throw new SaveDataError(
 				`Saved game decisions[${index}] id must be unique: ${id}`,
@@ -393,9 +398,16 @@ function validateCurrentGameStateInternal(value: unknown): GameState {
 		}
 		decisionIds.add(id);
 	});
-	const decodedReports = decodeHistoricalReports(reports);
+	const decodedReports = decodeHistoricalReports(reports, currentGame.logistics.nextRouteSequence);
 	currentGame.reports = decodedReports;
-	validateSavedEventRuntime(game.events, gameDay, decisions, decodedReports, 'Saved game events');
+	validateSavedEventRuntime(
+		game.events,
+		gameDay,
+		decisions,
+		decodedReports,
+		'Saved game events',
+		currentGame.logistics.nextRouteSequence
+	);
 	const storeCap = requireNumber(game.storeCap, 'Saved game storeCap');
 	if (!Number.isInteger(storeCap)) {
 		throw new SaveDataError('Saved game storeCap must be an integer', 'invariant-store-cap');
@@ -2277,7 +2289,12 @@ function validateSavedDecisionContext(value: unknown, label: string): DecisionCo
 	}
 }
 
-function validateSavedDecision(value: unknown, gameDay: number, label: string): string {
+function validateSavedDecision(
+	value: unknown,
+	gameDay: number,
+	label: string,
+	nextRouteSequence: number
+): string {
 	return withEventInvariant(() => {
 		const decision = requireRecord(value, label);
 		const kind = requireOneOf(decision.kind, `${label} kind`, ['system', 'event'] as const);
@@ -2331,7 +2348,7 @@ function validateSavedDecision(value: unknown, gameDay: number, label: string): 
 		if (expiresOnDay <= generatedOnDay) {
 			throw new SaveDataError(`${label} expiresOnDay must be after generatedOnDay`);
 		}
-		validateEventTarget(decision.target, `${label} target`);
+		validateEventTarget(decision.target, `${label} target`, nextRouteSequence);
 		validateStructuredCopyRef(decision.copy, `${label} copy`);
 		validateUniqueArrayIds(
 			requireArray(decision.options, `${label} options`),
@@ -2506,7 +2523,11 @@ function validateStructuredCopyRef(value: unknown, label: string): void {
 
 type ValidatedEventTarget = { kind: 'company' } | { kind: 'recurring-route'; routeId: string };
 
-function validateEventTarget(value: unknown, label: string): ValidatedEventTarget {
+function validateEventTarget(
+	value: unknown,
+	label: string,
+	nextRouteSequence: number
+): ValidatedEventTarget {
 	const target = requireRecord(value, label);
 	const kind = requireOneOf(target.kind, `${label} kind`, ['company', 'recurring-route'] as const);
 	if (kind === 'company') {
@@ -2514,9 +2535,16 @@ function validateEventTarget(value: unknown, label: string): ValidatedEventTarge
 		return { kind: 'company' };
 	}
 	requireExactKeys(target, ['kind', 'routeId'], label);
+	// Event targets may outlive the route they reference (the route can be
+	// removed after the event fired), so the routeId is validated against the
+	// canonical generated-ID space rather than current route existence.
 	return {
 		kind: 'recurring-route',
-		routeId: requireString(target.routeId, `${label} routeId`)
+		routeId: requireCanonicalRouteIdBeforeNextSequence(
+			target.routeId,
+			`${label} routeId`,
+			nextRouteSequence
+		)
 	};
 }
 
@@ -2532,7 +2560,8 @@ function validateSavedEventRuntime(
 	gameDay: number,
 	decisions: unknown[],
 	reports: unknown[],
-	label: string
+	label: string,
+	nextRouteSequence: number
 ): void {
 	withEventInvariant(() => {
 		const events = requireRecord(value, label);
@@ -2577,7 +2606,11 @@ function validateSavedEventRuntime(
 				cooldownLabel
 			);
 			const eventId = requireString(cooldown.eventId, `${cooldownLabel} eventId`);
-			const cooldownTarget = validateEventTarget(cooldown.target, `${cooldownLabel} target`);
+			const cooldownTarget = validateEventTarget(
+				cooldown.target,
+				`${cooldownLabel} target`,
+				nextRouteSequence
+			);
 			const generatedOnDay = requireNonNegativeInteger(
 				cooldown.generatedOnDay,
 				`${cooldownLabel} generatedOnDay`
@@ -2616,7 +2649,12 @@ function validateSavedEventRuntime(
 		requireArray(events.activeModifiers, `${label} activeModifiers`).forEach(
 			(modifierValue, index) => {
 				const modifierLabel = `${label} activeModifiers[${index}]`;
-				const modifier = validateSavedActiveModifier(modifierValue, gameDay, modifierLabel);
+				const modifier = validateSavedActiveModifier(
+					modifierValue,
+					gameDay,
+					modifierLabel,
+					nextRouteSequence
+				);
 				if (activeModifierIds.has(modifier.id)) {
 					throw new SaveDataError(`${modifierLabel} id must be unique: ${modifier.id}`);
 				}
@@ -2655,7 +2693,12 @@ function validateSavedEventRuntime(
 		let previousHistoryDay = -1;
 		for (const [index, entryValue] of history.entries()) {
 			const entryLabel = `${label} history[${index}]`;
-			const evidence = validateSavedEventHistoryEntry(entryValue, gameDay, entryLabel);
+			const evidence = validateSavedEventHistoryEntry(
+				entryValue,
+				gameDay,
+				entryLabel,
+				nextRouteSequence
+			);
 			if (evidence.day < previousHistoryDay) {
 				throw new SaveDataError(`${entryLabel} day must not be before the previous history day`);
 			}
@@ -2752,7 +2795,8 @@ function validateSavedEventRuntime(
 function validateSavedActiveModifier(
 	value: unknown,
 	gameDay: number,
-	label: string
+	label: string,
+	nextRouteSequence: number
 ): { id: string; instanceId: string; stackingKey: string; target: ValidatedEventTarget } {
 	const modifier = requireRecord(value, label);
 	requireExactKeys(
@@ -2771,7 +2815,7 @@ function validateSavedActiveModifier(
 		],
 		label
 	);
-	const base = validateSavedModifierFields(modifier, label);
+	const base = validateSavedModifierFields(modifier, label, nextRouteSequence);
 	requireOneOf(modifier.stackingRule, `${label} stackingRule`, ['replace'] as const);
 	if (!(base.startsOnDay <= gameDay && gameDay < base.expiresOnDay)) {
 		throw new SaveDataError(`${label} must be active on the current game day ${gameDay}`);
@@ -2786,7 +2830,8 @@ function validateSavedActiveModifier(
 
 function validateSavedModifierSnapshot(
 	value: unknown,
-	label: string
+	label: string,
+	nextRouteSequence: number
 ): { id: string; instanceId: string; startsOnDay: number; expiresOnDay: number } {
 	const modifier = requireRecord(value, label);
 	requireExactKeys(
@@ -2804,12 +2849,13 @@ function validateSavedModifierSnapshot(
 		],
 		label
 	);
-	return validateSavedModifierFields(modifier, label);
+	return validateSavedModifierFields(modifier, label, nextRouteSequence);
 }
 
 function validateSavedModifierFields(
 	modifier: Record<string, unknown>,
-	label: string
+	label: string,
+	nextRouteSequence: number
 ): {
 	id: string;
 	instanceId: string;
@@ -2821,7 +2867,7 @@ function validateSavedModifierFields(
 	const id = requireString(modifier.id, `${label} id`);
 	requireGeneratedId(id, 'event-modifier-', `${label} id`);
 	const source = validateSavedModifierSource(modifier.source, `${label} source`);
-	const target = validateEventTarget(modifier.target, `${label} target`);
+	const target = validateEventTarget(modifier.target, `${label} target`, nextRouteSequence);
 	const startsOnDay = requireNonNegativeInteger(modifier.startsOnDay, `${label} startsOnDay`);
 	const expiresOnDay = requireNonNegativeInteger(modifier.expiresOnDay, `${label} expiresOnDay`);
 	if (expiresOnDay <= startsOnDay) {
@@ -2857,7 +2903,8 @@ function validateSavedModifierSource(
 function validateSavedEventHistoryEntry(
 	value: unknown,
 	gameDay: number,
-	label: string
+	label: string,
+	nextRouteSequence: number
 ): { day: number; instanceSequence: number; modifierSequence: number } {
 	const entry = requireRecord(value, label);
 	const kind = requireOneOf(entry.kind, `${label} kind`, [
@@ -2871,7 +2918,7 @@ function validateSavedEventHistoryEntry(
 
 	if (kind === 'modifier-lifecycle') {
 		requireExactKeys(entry, ['kind', 'day', 'status', 'modifier', 'replacedByModifierId'], label);
-		const lifecycle = validateSavedModifierLifecycle(entry, label, true, day);
+		const lifecycle = validateSavedModifierLifecycle(entry, label, true, day, nextRouteSequence);
 		return {
 			day,
 			instanceSequence: requireGeneratedId(
@@ -2891,7 +2938,7 @@ function validateSavedEventHistoryEntry(
 		'event-instance-',
 		`${label} instanceId`
 	);
-	validateEventTarget(entry.target, `${label} target`);
+	validateEventTarget(entry.target, `${label} target`, nextRouteSequence);
 	if (kind === 'event-resolved') requireString(entry.optionId, `${label} optionId`);
 	return { day, instanceSequence, modifierSequence: 0 };
 }
@@ -2900,14 +2947,19 @@ function validateSavedModifierLifecycle(
 	value: Record<string, unknown>,
 	label: string,
 	hasHistoryFields: boolean,
-	lifecycleDay: number
+	lifecycleDay: number,
+	nextRouteSequence: number
 ): { instanceId: string; modifierSequence: number; replacedBySequence: number } {
 	const status = requireOneOf(value.status, `${label} status`, [
 		'activated',
 		'replaced',
 		'expired'
 	] as const);
-	const modifier = validateSavedModifierSnapshot(value.modifier, `${label} modifier`);
+	const modifier = validateSavedModifierSnapshot(
+		value.modifier,
+		`${label} modifier`,
+		nextRouteSequence
+	);
 	let replacedBySequence = 0;
 	if (status === 'replaced') {
 		if (!(modifier.startsOnDay <= lifecycleDay && lifecycleDay < modifier.expiresOnDay)) {
@@ -2954,12 +3006,15 @@ function withEventInvariant<T>(operation: () => T): T {
 	}
 }
 
-function decodeHistoricalReports(reports: unknown[]): GameState['reports'] {
+function decodeHistoricalReports(
+	reports: unknown[],
+	nextRouteSequence: number
+): GameState['reports'] {
 	const decoded: GameState['reports'] = [];
 
 	for (const [index, report] of reports.entries()) {
 		try {
-			validateSavedReport(report, `Saved game reports[${index}]`);
+			validateSavedReport(report, `Saved game reports[${index}]`, nextRouteSequence);
 			decoded.push(report as GameState['reports'][number]);
 		} catch (error) {
 			if (!(error instanceof SaveDataError)) throw error;
@@ -2970,7 +3025,7 @@ function decodeHistoricalReports(reports: unknown[]): GameState['reports'] {
 	return decoded;
 }
 
-function validateSavedReport(value: unknown, label: string): void {
+function validateSavedReport(value: unknown, label: string, nextRouteSequence: number): void {
 	const report = requireRecord(value, label);
 
 	const day = requireNonNegativeInteger(report.day, `${label} day`);
@@ -3015,17 +3070,26 @@ function validateSavedReport(value: unknown, label: string): void {
 		seenStoreIds.add(storeId);
 	});
 	withEventInvariant(() => {
-		validateSavedModifierImpacts(report.modifierImpacts, `${label} modifierImpacts`);
+		validateSavedModifierImpacts(
+			report.modifierImpacts,
+			`${label} modifierImpacts`,
+			nextRouteSequence
+		);
 		validateSavedReportModifierLifecycle(
 			report.modifierLifecycle,
 			`${label} modifierLifecycle`,
-			day
+			day,
+			nextRouteSequence
 		);
 	});
 	validateSavedWarningArray(report.warnings, `${label} warnings`, false);
 }
 
-function validateSavedModifierImpacts(value: unknown, label: string): void {
+function validateSavedModifierImpacts(
+	value: unknown,
+	label: string,
+	nextRouteSequence: number
+): void {
 	const modifierIds = new Set<string>();
 	let previousModifierId: string | undefined;
 	requireArray(value, label).forEach((impactValue, index) => {
@@ -3061,7 +3125,7 @@ function validateSavedModifierImpacts(value: unknown, label: string): void {
 		previousModifierId = modifierId;
 		const source = validateSavedModifierSource(impact.source, `${impactLabel} source`);
 		requireGeneratedId(source.instanceId, 'event-instance-', `${impactLabel} source instanceId`);
-		validateEventTarget(impact.target, `${impactLabel} target`);
+		validateEventTarget(impact.target, `${impactLabel} target`, nextRouteSequence);
 		requireOneOf(impact.effectKind, `${impactLabel} effectKind`, [
 			'import-cost-multiplier'
 		] as const);
@@ -3118,13 +3182,14 @@ function validateSavedModifierImpacts(value: unknown, label: string): void {
 function validateSavedReportModifierLifecycle(
 	value: unknown,
 	label: string,
-	reportDay: number
+	reportDay: number,
+	nextRouteSequence: number
 ): void {
 	requireArray(value, label).forEach((lifecycleValue, index) => {
 		const lifecycleLabel = `${label}[${index}]`;
 		const lifecycle = requireRecord(lifecycleValue, lifecycleLabel);
 		requireExactKeys(lifecycle, ['status', 'modifier', 'replacedByModifierId'], lifecycleLabel);
-		validateSavedModifierLifecycle(lifecycle, lifecycleLabel, false, reportDay);
+		validateSavedModifierLifecycle(lifecycle, lifecycleLabel, false, reportDay, nextRouteSequence);
 	});
 }
 
@@ -3142,12 +3207,20 @@ function validateSavedDailyLogisticsReport(value: unknown, label: string): void 
 		label
 	);
 
+	const seenRecoveryKeys = new Set<string>();
 	requireArray(report.modifierRecoveries, `${label} modifierRecoveries`).forEach(
 		(recoveryValue, index) => {
-			validateSavedDailyRouteModifierRecovery(
+			const recovery = validateSavedDailyRouteModifierRecovery(
 				recoveryValue,
 				`${label} modifierRecoveries[${index}]`
 			);
+			const recoveryKey = `${recovery.routeId}:${recovery.modifierId}:${recovery.effectKind}`;
+			if (seenRecoveryKeys.has(recoveryKey)) {
+				throw new SaveDataError(
+					`${label} modifierRecoveries[${index}] must be unique per route/modifier/effect: ${recoveryKey}`
+				);
+			}
+			seenRecoveryKeys.add(recoveryKey);
 		}
 	);
 
@@ -3503,15 +3576,27 @@ function validateSavedRouteDispatchModifierImpacts(value: unknown, label: string
 	});
 }
 
-function validateSavedDailyRouteModifierRecovery(value: unknown, label: string): void {
+const SAVED_ROUTE_MODIFIER_RECOVERY_KINDS = [
+	'route-lead-time-adjustment',
+	'route-capacity-multiplier',
+	'route-dispatch-suspension',
+	'route-transport-cost-multiplier'
+] as const;
+
+type SavedRouteModifierRecoveryKind = (typeof SAVED_ROUTE_MODIFIER_RECOVERY_KINDS)[number];
+
+function validateSavedDailyRouteModifierRecovery(
+	value: unknown,
+	label: string
+): { routeId: string; modifierId: string; effectKind: SavedRouteModifierRecoveryKind } {
 	const recovery = requireRecord(value, label);
-	const kind = requireOneOf(recovery.effectKind, `${label} effectKind`, [
-		'route-lead-time-adjustment',
-		'route-capacity-multiplier',
-		'route-dispatch-suspension',
-		'route-transport-cost-multiplier'
-	] as const);
-	requireString(recovery.routeId, `${label} routeId`);
+	const kind = requireOneOf(
+		recovery.effectKind,
+		`${label} effectKind`,
+		SAVED_ROUTE_MODIFIER_RECOVERY_KINDS
+	);
+	const routeId = requireString(recovery.routeId, `${label} routeId`);
+	const modifierId = requireString(recovery.modifierId, `${label} modifierId`);
 	requireGeneratedId(recovery.modifierId, 'event-modifier-', `${label} modifierId`);
 	const source = validateSavedModifierSource(recovery.source, `${label} source`);
 	requireGeneratedId(source.instanceId, 'event-instance-', `${label} source instanceId`);
@@ -3597,6 +3682,7 @@ function validateSavedDailyRouteModifierRecovery(value: unknown, label: string):
 			);
 			break;
 	}
+	return { routeId, modifierId, effectKind: kind };
 }
 
 function requireHistoricalLogisticsPositiveSafeInteger(value: unknown, label: string): number {

@@ -16,24 +16,21 @@ import {
 import { resolveEffectiveRecurringRoute } from './logisticsRouteModifiers';
 import { selectInTransitInventory, type InTransitInventorySummary } from './logisticsReadModels';
 import type {
-	ActiveEventModifier,
 	CityInventory,
 	DailyRouteDispatchAttempt,
 	DailyTransferArrival,
 	GameState,
 	RecurringRoute,
+	RouteModifierInput,
 	TransferOrder,
 	WorldCityId
 } from './types';
 
-/** The route-modifier fields the projection copies: exactly the fields
+/** The projection's copied route-modifier shape: exactly the fields
  * `resolveEffectiveRecurringRoute` reads (identity, target, activity window,
  * effect, and evidence copy). Stacking/lifecycle bookkeeping and any
  * non-route targets are deliberately not copied. */
-export type PlannerRouteModifier = Pick<
-	ActiveEventModifier,
-	'id' | 'source' | 'target' | 'startsOnDay' | 'expiresOnDay' | 'effect' | 'explanation'
->;
+export type PlannerRouteModifier = RouteModifierInput;
 
 /** Deep-copy only route-targeted active modifiers, keeping only the fields the
  * route resolver reads. Never copies company modifiers, event RNG/cooldowns,
@@ -269,15 +266,9 @@ export function processSupplyPlannerRouteDispatches(
 			reservedInTransitUnits: sumReservedInTransitUnits(inTransitOrders, route.destinationCityId)
 		});
 		const availableOriginStock = origin.inventory.materials[route.materialId] ?? 0;
-		// Same shared resolver + builder the live loop uses. The planner's
-		// copied modifiers are a structural subset of ActiveEventModifier that
-		// carries exactly the fields the resolver reads, so widening the
-		// reference here is safe.
-		const effective = resolveEffectiveRecurringRoute(
-			route,
-			input.routeModifiers as readonly ActiveEventModifier[],
-			day
-		);
+		// Same shared resolver + builder the live loop uses; the copied
+		// modifiers already satisfy the resolver's structural input type.
+		const effective = resolveEffectiveRecurringRoute(route, input.routeModifiers, day);
 		const built = buildRouteDispatchAttempt({
 			route,
 			effective,

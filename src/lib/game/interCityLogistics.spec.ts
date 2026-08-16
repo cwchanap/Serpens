@@ -1161,7 +1161,10 @@ describe('calculateEffectiveRouteTransportCost', () => {
 	test('rejects an effective total that exceeds the safe integer range', () => {
 		expect(() =>
 			calculateEffectiveRouteTransportCost({
-				baseTransportCostPerUnit: 2,
+				// Base total stays exactly at MAX_SAFE_INTEGER (safe), so the
+				// failure comes from the effective-total guard after the ×2
+				// multiplier, not from checkedMultiply.
+				baseTransportCostPerUnit: 1,
 				quantity: Number.MAX_SAFE_INTEGER,
 				transportCostMultiplier: 2
 			})

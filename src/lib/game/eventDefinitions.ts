@@ -332,8 +332,12 @@ function validateModifier(
 	if (modifier.stackingRule !== 'replace') {
 		add(`${path}.stackingRule`, 'must be replace');
 	}
+	if (modifier.effect) {
+		validateTimedEffect(modifier.effect, `${path}.effect`, add);
+	} else {
+		add(`${path}.effect`, 'must be a supported timed effect');
+	}
 	const effectKind = modifier.effect?.kind;
-	validateTimedEffect(modifier.effect, `${path}.effect`, add);
 	if (
 		effectKind === 'import-cost-multiplier' ||
 		effectKind === 'route-lead-time-adjustment' ||

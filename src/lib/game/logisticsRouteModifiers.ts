@@ -3,6 +3,7 @@ import type {
 	ActiveEventModifier,
 	DailyRouteModifierRecovery,
 	RecurringRoute,
+	RouteModifierInput,
 	StructuredCopyRef
 } from './types';
 
@@ -53,7 +54,7 @@ export interface EffectiveRecurringRoute {
  */
 export function resolveEffectiveRecurringRoute(
 	route: RecurringRoute,
-	modifiers: readonly ActiveEventModifier[],
+	modifiers: readonly RouteModifierInput[],
 	day: number
 ): EffectiveRecurringRoute {
 	const matchingModifiers = modifiers
@@ -125,7 +126,7 @@ export function resolveEffectiveRecurringRoute(
 	};
 }
 
-function compareModifierIds(left: ActiveEventModifier, right: ActiveEventModifier): number {
+function compareModifierIds(left: RouteModifierInput, right: RouteModifierInput): number {
 	return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
 }
 

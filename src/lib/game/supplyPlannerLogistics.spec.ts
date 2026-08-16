@@ -19,6 +19,7 @@ import { projectSupplySnapshot, type SupplyPlannerSnapshot } from './supplyPlann
 import type {
 	ActiveEventModifier,
 	CityInventory,
+	DailyRouteDispatchAttempt,
 	RecurringRoute,
 	TransferOrder,
 	WorldCityId
@@ -239,7 +240,12 @@ describe('supply planner logistics projection state', () => {
 			kind: 'route-capacity-multiplier',
 			multiplier: 0.25
 		};
-		withModifier.events.activeModifiers[0]!.explanation.params = { changed: 1 };
+		// Mutate the nested params object in place (not a reference swap) so the
+		// assertion proves copyRouteTargetedModifiers cloned the nested data.
+		// The cast just bypasses the readonly params view on the fixture input.
+		(
+			withModifier.events.activeModifiers[0]!.explanation.params as Record<string, string | number>
+		).changed = 1;
 		withModifier.events.activeModifiers[0]!.startsOnDay = 99;
 
 		expect(snapshot.routeModifiers[0]!.effect).toEqual({
@@ -376,8 +382,19 @@ describe('supply planner logistics projection state', () => {
 		const plannerArrived = processSupplyPlannerTransferArrivals(plannerStarted, game.day);
 		const planner = processSupplyPlannerRouteDispatches(plannerArrived.state, game.day);
 
+		const attemptEvidence = (attempt: DailyRouteDispatchAttempt) => ({
+			routeId: attempt.routeId,
+			availableOriginStock: attempt.availableOriginStock,
+			destinationNeed: attempt.destinationNeed,
+			dispatchedQuantity: attempt.dispatchedQuantity,
+			unusedCapacity: attempt.unusedCapacity,
+			unmetDestinationNeed: attempt.unmetDestinationNeed,
+			transferOrderId: attempt.transferOrderId
+		});
+
 		expect(plannerArrived.arrivals).toEqual(liveArrived.arrivals);
 		expect(planner.scheduledTransportCost).toBe(live.scheduledTransportCost);
+		expect(planner.attempts.map(attemptEvidence)).toEqual(live.attempts.map(attemptEvidence));
 		expect(planner.state.routes.map((current) => [current.id, current.nextDispatchOnDay])).toEqual(
 			live.game.logistics.recurringRoutes.map((current) => [current.id, current.nextDispatchOnDay])
 		);

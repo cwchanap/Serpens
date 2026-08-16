@@ -240,6 +240,34 @@ describe('validateAndNormalizeEventCatalog', () => {
 		]);
 	});
 
+	it('rejects a modifier template with a missing effect instead of dereferencing it', () => {
+		const diagnostics = diagnosticsFor([
+			definition({
+				id: 'missing-effect',
+				options: [
+					{
+						id: 'accept',
+						effects: [],
+						modifiers: [
+							{
+								durationDays: 1,
+								stackingKey: 'missing:retail-product',
+								stackingRule: 'replace',
+								effect: undefined as never,
+								explanation: { key: 'events.missing', params: {} },
+								importance: 'normal'
+							}
+						]
+					}
+				]
+			})
+		]);
+
+		expect(diagnostics.map(({ eventId, path }) => `${eventId}:${path}`)).toEqual([
+			'missing-effect:options[0].modifiers[0].effect'
+		]);
+	});
+
 	it('sorts definitions but preserves authored option, effect, and modifier order in a frozen lookup', () => {
 		const catalog = validateAndNormalizeEventCatalog([
 			definition({ id: 'zeta' }),
