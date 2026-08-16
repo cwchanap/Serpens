@@ -15,6 +15,7 @@ import type { DecisionContext } from '$lib/game/decisionContext';
 import { simulateDay } from '$lib/game/simulateDay';
 import { createFoundingFinanceState } from '$lib/game/finance';
 import { createInitialEventRuntime } from '$lib/game/eventSelection';
+import { cloneTimedEffect } from '$lib/game/eventModifiers';
 import { createNewGame, resolveDecision } from '$lib/game/state';
 import { calculateStockHealth, initializeStoreProducts } from '$lib/game/stock';
 import {
@@ -749,7 +750,7 @@ function createCompleteEventGame(): GameState {
 		startsOnDay: activeModifier.startsOnDay,
 		expiresOnDay: activeModifier.expiresOnDay,
 		stackingKey: activeModifier.stackingKey,
-		effect: { ...activeModifier.effect, target: { ...activeModifier.effect.target } },
+		effect: cloneTimedEffect(activeModifier.effect),
 		explanation: {
 			...activeModifier.explanation,
 			params: { ...activeModifier.explanation.params }

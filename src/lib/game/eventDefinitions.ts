@@ -1,9 +1,11 @@
+import { cloneTimedEffect } from './eventModifiers';
 import type {
 	EventCondition,
 	EventImmediateEffect,
 	EventModifierTemplate,
 	EventSelectionPolicy,
 	EventTargetSelector,
+	EventTimedEffect,
 	ScoreKey,
 	StructuredCopyRef
 } from './types';
@@ -140,7 +142,7 @@ function validateDefinition(
 		} else {
 			optionIds.add(option.id);
 		}
-		validateOption(option, path, add);
+		validateOption(option, path, add, target?.kind);
 	}
 }
 
@@ -239,7 +241,8 @@ function flattenAllConditions(conditions: readonly EventCondition[]): readonly E
 function validateOption(
 	option: EventOptionDefinition,
 	path: string,
-	add: (path: string, message: string) => void
+	add: (path: string, message: string) => void,
+	targetKind: EventTargetSelector['kind'] | undefined
 ): void {
 	let financeEffects = 0;
 	let cashEffects = 0;
@@ -310,14 +313,15 @@ function validateOption(
 	}
 
 	for (const [index, modifier] of option.modifiers.entries()) {
-		validateModifier(modifier, `${path}.modifiers[${index}]`, add);
+		validateModifier(modifier, `${path}.modifiers[${index}]`, add, targetKind);
 	}
 }
 
 function validateModifier(
 	modifier: EventModifierTemplate,
 	path: string,
-	add: (path: string, message: string) => void
+	add: (path: string, message: string) => void,
+	targetKind: EventTargetSelector['kind'] | undefined
 ): void {
 	if (!isPositiveInteger(modifier.durationDays)) {
 		add(`${path}.durationDays`, 'must be a positive integer');
@@ -328,21 +332,60 @@ function validateModifier(
 	if (modifier.stackingRule !== 'replace') {
 		add(`${path}.stackingRule`, 'must be replace');
 	}
-	if (modifier.effect.kind !== 'import-cost-multiplier') {
-		add(`${path}.effect.kind`, 'must be import-cost-multiplier');
-	}
-	if (modifier.effect.scope !== 'retail-product') {
-		add(`${path}.effect.scope`, 'must target retail products');
-	}
-	if (modifier.effect.target?.kind !== 'all') {
-		add(`${path}.effect.target`, 'must target all retail products');
-	}
-	if (!Number.isFinite(modifier.effect.multiplier) || modifier.effect.multiplier <= 0) {
-		add(`${path}.effect.multiplier`, 'must be a finite positive multiplier');
+	const effectKind = modifier.effect?.kind;
+	validateTimedEffect(modifier.effect, `${path}.effect`, add);
+	if (
+		effectKind === 'import-cost-multiplier' ||
+		effectKind === 'route-lead-time-adjustment' ||
+		effectKind === 'route-capacity-multiplier' ||
+		effectKind === 'route-dispatch-suspension' ||
+		effectKind === 'route-transport-cost-multiplier'
+	) {
+		if (targetKind === 'recurring-route' && effectKind === 'import-cost-multiplier') {
+			add(`${path}.effect.kind`, 'must be a route effect for a recurring-route target');
+		}
+		if (targetKind === 'company' && effectKind !== 'import-cost-multiplier') {
+			add(`${path}.effect.kind`, 'must be import-cost-multiplier for a company target');
+		}
 	}
 	validateCopy(modifier.explanation, `${path}.explanation`, add);
 	if (modifier.importance !== 'normal' && modifier.importance !== 'important') {
 		add(`${path}.importance`, 'must be normal or important');
+	}
+}
+
+function validateTimedEffect(
+	effect: EventTimedEffect,
+	path: string,
+	add: (path: string, message: string) => void
+): void {
+	switch (effect.kind) {
+		case 'import-cost-multiplier':
+			if (effect.scope !== 'retail-product') {
+				add(`${path}.scope`, 'must target retail products');
+			}
+			if (effect.target?.kind !== 'all') {
+				add(`${path}.target`, 'must target all retail products');
+			}
+			if (!Number.isFinite(effect.multiplier) || effect.multiplier <= 0) {
+				add(`${path}.multiplier`, 'must be a finite positive multiplier');
+			}
+			return;
+		case 'route-lead-time-adjustment':
+			if (!Number.isSafeInteger(effect.days) || effect.days <= 0) {
+				add(`${path}.days`, 'must be a positive safe integer');
+			}
+			return;
+		case 'route-capacity-multiplier':
+		case 'route-transport-cost-multiplier':
+			if (!Number.isFinite(effect.multiplier) || effect.multiplier <= 0) {
+				add(`${path}.multiplier`, 'must be a finite positive multiplier');
+			}
+			return;
+		case 'route-dispatch-suspension':
+			return;
+		default:
+			add(`${path}.kind`, 'must be a supported timed effect kind');
 	}
 }
 
@@ -396,7 +439,7 @@ function cloneDefinition(definition: EventDefinition): EventDefinition {
 			effects: option.effects.map((effect) => ({ ...effect })),
 			modifiers: option.modifiers.map((modifier) => ({
 				...modifier,
-				effect: { ...modifier.effect, target: { ...modifier.effect.target } },
+				effect: cloneTimedEffect(modifier.effect),
 				explanation: cloneCopy(modifier.explanation)
 			}))
 		}))

@@ -6,6 +6,7 @@ import {
 } from './finance';
 import { appendHistory } from './eventHistory';
 import { activateEventModifiers } from './eventModifiers';
+import { isEventTargetResolvable } from './eventTargets';
 import { clampScore } from './reports';
 import { calculateStockHealth } from './stock';
 import type {
@@ -13,6 +14,8 @@ import type {
 	EventDecisionItem,
 	EventImmediateEffect,
 	EventModifierTemplate,
+	EventTarget,
+	EventTimedEffect,
 	GameState,
 	ScoreKey
 } from './types';
@@ -134,7 +137,7 @@ function prepareDecision(
 	}
 	if (decision.kind === 'system') return { ok: true, game };
 	const option = decision.options.find((candidate) => candidate.id === optionId)!;
-	if (!isCompanyEvent(decision)) {
+	if (!isEventTargetResolvable(game, decision.target)) {
 		return failure(game, 'effect-rejected', {
 			decisionId: decision.id,
 			optionId,
@@ -254,7 +257,7 @@ function prepareModifiers(
 	templates: readonly EventModifierTemplate[]
 ): PreparedResolution {
 	for (const [modifierIndex, template] of templates.entries()) {
-		if (!isValidModifierTemplate(template)) {
+		if (!isValidModifierTemplate(template, decision.target)) {
 			return failure(originalGame, 'effect-rejected', {
 				decisionId: decision.id,
 				optionId,
@@ -267,6 +270,7 @@ function prepareModifiers(
 	const activated = activateEventModifiers(
 		tentativeGame.events,
 		{ eventId: decision.eventId, instanceId: decision.id, optionId },
+		decision.target,
 		tentativeGame.day,
 		templates
 	);
@@ -280,28 +284,45 @@ function prepareModifiers(
 	};
 }
 
-function isValidModifierTemplate(template: EventModifierTemplate): boolean {
-	return (
-		template !== null &&
-		typeof template === 'object' &&
-		Number.isSafeInteger(template.durationDays) &&
-		template.durationDays > 0 &&
-		typeof template.stackingKey === 'string' &&
-		template.stackingKey.length > 0 &&
-		template.stackingRule === 'replace' &&
-		template.effect?.kind === 'import-cost-multiplier' &&
-		template.effect.scope === 'retail-product' &&
-		template.effect.target?.kind === 'all' &&
-		Number.isFinite(template.effect.multiplier) &&
-		template.effect.multiplier > 0 &&
-		typeof template.explanation?.key === 'string' &&
-		template.explanation.key.length > 0 &&
-		(template.importance === 'normal' || template.importance === 'important')
-	);
+function isValidModifierTemplate(template: EventModifierTemplate, target: EventTarget): boolean {
+	if (
+		template === null ||
+		typeof template !== 'object' ||
+		!Number.isSafeInteger(template.durationDays) ||
+		template.durationDays <= 0 ||
+		typeof template.stackingKey !== 'string' ||
+		template.stackingKey.length === 0 ||
+		template.stackingRule !== 'replace' ||
+		typeof template.explanation?.key !== 'string' ||
+		template.explanation.key.length === 0 ||
+		(template.importance !== 'normal' && template.importance !== 'important')
+	) {
+		return false;
+	}
+	const effect = template.effect;
+	if (!effect || typeof effect !== 'object') return false;
+	if (target.kind === 'company' && effect.kind !== 'import-cost-multiplier') return false;
+	if (target.kind === 'recurring-route' && effect.kind === 'import-cost-multiplier') return false;
+	return isValidTimedEffect(effect);
 }
 
-function isCompanyEvent(decision: EventDecisionItem): boolean {
-	return decision.target?.kind === 'company';
+function isValidTimedEffect(effect: EventTimedEffect): boolean {
+	switch (effect.kind) {
+		case 'import-cost-multiplier':
+			return (
+				effect.scope === 'retail-product' &&
+				effect.target?.kind === 'all' &&
+				Number.isFinite(effect.multiplier) &&
+				effect.multiplier > 0
+			);
+		case 'route-lead-time-adjustment':
+			return Number.isSafeInteger(effect.days) && effect.days > 0;
+		case 'route-capacity-multiplier':
+		case 'route-transport-cost-multiplier':
+			return Number.isFinite(effect.multiplier) && effect.multiplier > 0;
+		case 'route-dispatch-suspension':
+			return true;
+	}
 }
 
 function failure(

@@ -1,10 +1,13 @@
 import { EVENT_HISTORY_LIMIT } from './eventHistory';
+import { cloneEventTarget, sameEventTarget } from './eventTargets';
 import type {
 	ActiveEventModifier,
 	EventHistoryEntry,
 	EventModifierSnapshot,
 	EventModifierTemplate,
-	EventRuntimeState
+	EventRuntimeState,
+	EventTarget,
+	EventTimedEffect
 } from './types';
 
 export type EventModifierLifecycle = Extract<EventHistoryEntry, { kind: 'modifier-lifecycle' }>;
@@ -15,9 +18,30 @@ export interface EventModifierActivationResult {
 	lifecycle: EventModifierLifecycle[];
 }
 
+export function cloneTimedEffect(effect: EventTimedEffect): EventTimedEffect {
+	switch (effect.kind) {
+		case 'import-cost-multiplier':
+			return {
+				kind: 'import-cost-multiplier',
+				scope: effect.scope,
+				target: { kind: 'all' },
+				multiplier: effect.multiplier
+			};
+		case 'route-lead-time-adjustment':
+			return { kind: 'route-lead-time-adjustment', days: effect.days };
+		case 'route-capacity-multiplier':
+			return { kind: 'route-capacity-multiplier', multiplier: effect.multiplier };
+		case 'route-dispatch-suspension':
+			return { kind: 'route-dispatch-suspension' };
+		case 'route-transport-cost-multiplier':
+			return { kind: 'route-transport-cost-multiplier', multiplier: effect.multiplier };
+	}
+}
+
 export function activateEventModifiers(
 	state: EventRuntimeState,
 	source: ActiveEventModifier['source'],
+	target: EventTarget,
 	day: number,
 	templates: readonly EventModifierTemplate[]
 ): EventModifierActivationResult {
@@ -27,14 +51,20 @@ export function activateEventModifiers(
 	const lifecycle: EventModifierLifecycle[] = [];
 
 	for (const template of templates) {
-		const modifier = createModifier(nextModifierSequence, source, day, template);
+		const modifier = createModifier(nextModifierSequence, source, target, day, template);
 		nextModifierSequence += 1;
 
 		const replaced = activeModifiers.filter(
-			(candidate) => candidate.stackingKey === modifier.stackingKey
+			(candidate) =>
+				candidate.stackingKey === modifier.stackingKey &&
+				sameEventTarget(candidate.target, modifier.target)
 		);
 		activeModifiers = activeModifiers.filter(
-			(candidate) => candidate.stackingKey !== modifier.stackingKey
+			(candidate) =>
+				!(
+					candidate.stackingKey === modifier.stackingKey &&
+					sameEventTarget(candidate.target, modifier.target)
+				)
 		);
 		for (const candidate of replaced) {
 			lifecycle.push({
@@ -110,18 +140,19 @@ export function expireModifiersAfterDay(
 function createModifier(
 	sequence: number,
 	source: ActiveEventModifier['source'],
+	target: EventTarget,
 	day: number,
 	template: EventModifierTemplate
 ): ActiveEventModifier {
 	return {
 		id: `event-modifier-${sequence}`,
 		source: { ...source },
-		target: { kind: 'company' },
+		target: cloneEventTarget(target),
 		startsOnDay: day,
 		expiresOnDay: day + template.durationDays,
 		stackingKey: template.stackingKey,
 		stackingRule: 'replace',
-		effect: { ...template.effect, target: { ...template.effect.target } },
+		effect: cloneTimedEffect(template.effect),
 		explanation: { ...template.explanation, params: { ...template.explanation.params } },
 		importance: template.importance
 	};
@@ -131,11 +162,11 @@ function snapshotModifier(modifier: ActiveEventModifier): EventModifierSnapshot 
 	return {
 		id: modifier.id,
 		source: { ...modifier.source },
-		target: { ...modifier.target },
+		target: cloneEventTarget(modifier.target),
 		startsOnDay: modifier.startsOnDay,
 		expiresOnDay: modifier.expiresOnDay,
 		stackingKey: modifier.stackingKey,
-		effect: { ...modifier.effect, target: { ...modifier.effect.target } },
+		effect: cloneTimedEffect(modifier.effect),
 		explanation: { ...modifier.explanation, params: { ...modifier.explanation.params } },
 		importance: modifier.importance
 	};

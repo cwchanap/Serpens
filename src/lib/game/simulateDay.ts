@@ -2,6 +2,7 @@ import { getArchetype } from './archetypes';
 import { assertValidEntityCityOwnership } from './cityInventory';
 import { generateDecisions, pruneExpiredDecisions } from './events';
 import {
+	cloneTimedEffect,
 	expireModifiersAfterDay,
 	hasModifierExpiredAfterDay,
 	isModifierActiveOnDay
@@ -51,6 +52,7 @@ import type {
 	EventHistoryEntry,
 	EventModifierImpact,
 	EventModifierLifecycle,
+	EventTimedEffect,
 	GameState,
 	RetailReplenishmentContext,
 	Scorecard,
@@ -313,7 +315,7 @@ export function simulateDay(
 
 function compileEventModifierRules(modifiers: readonly ActiveEventModifier[]): SimulationRules {
 	return {
-		importCostMultipliers: modifiers.map((modifier) => ({
+		importCostMultipliers: modifiers.filter(isImportCostModifier).map((modifier) => ({
 			source: {
 				kind: 'event-modifier',
 				sourceId: modifier.id,
@@ -330,6 +332,12 @@ function compileEventModifierRules(modifiers: readonly ActiveEventModifier[]): S
 			multiplier: modifier.effect.multiplier
 		}))
 	};
+}
+
+function isImportCostModifier(modifier: ActiveEventModifier): modifier is ActiveEventModifier & {
+	effect: Extract<EventTimedEffect, { kind: 'import-cost-multiplier' }>;
+} {
+	return modifier.effect.kind === 'import-cost-multiplier';
 }
 
 function buildEventModifierImpacts(
@@ -360,6 +368,7 @@ function buildEventModifierImpacts(
 
 		for (const [modifierId, multiplier] of eventContributions) {
 			const modifier = modifierById.get(modifierId)!;
+			if (modifier.effect.kind !== 'import-cost-multiplier') continue;
 			if (application.scope !== modifier.effect.scope) continue;
 			const impact = impacts.get(modifierId) ?? {
 				modifier,
@@ -424,7 +433,7 @@ function collectModifierLifecycle(
 				...entry.modifier,
 				source: { ...entry.modifier.source },
 				target: { ...entry.modifier.target },
-				effect: { ...entry.modifier.effect, target: { ...entry.modifier.effect.target } },
+				effect: cloneTimedEffect(entry.modifier.effect),
 				explanation: {
 					...entry.modifier.explanation,
 					params: { ...entry.modifier.explanation.params }

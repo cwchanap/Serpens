@@ -1,6 +1,7 @@
 import type { EventDefinition, NormalizedEventCatalog } from './eventDefinitions';
 import { appendHistory } from './eventHistory';
 import { assessCredit } from './finance';
+import { cloneTimedEffect } from './eventModifiers';
 import { createRngFromState, normalizeSeed, type Rng } from './rng';
 import {
 	cloneEventTarget,
@@ -240,7 +241,7 @@ function materializeEvent(
 			effects: option.effects.map((effect) => materializeEffect(game, effect)),
 			modifiers: option.modifiers.map((modifier) => ({
 				...modifier,
-				effect: { ...modifier.effect, target: { ...modifier.effect.target } },
+				effect: cloneTimedEffect(modifier.effect),
 				explanation: { ...modifier.explanation, params: { ...modifier.explanation.params } }
 			}))
 		}))
