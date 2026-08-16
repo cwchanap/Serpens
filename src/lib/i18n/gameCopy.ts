@@ -17,8 +17,10 @@ import { COVENANT_THRESHOLD, type GameAlert } from '$lib/game/alerts';
 import type { LogisticsFailureCode } from '$lib/game/commandResult';
 import type {
 	DailyReportWarning,
+	DailyRouteModifierRecovery,
 	GameState,
 	DecisionItem,
+	RouteDispatchModifierImpact,
 	Store,
 	SystemDecisionOption,
 	StoreLocation,
@@ -459,11 +461,14 @@ function localizeEventDecisionOption(
 	optionId: string,
 	i18n: I18nBundle
 ): LocalizedDecisionOption {
+	// Option copy shares the enriched params of the title/context so a
+	// materialized route decision stays understandable from its persisted copy
+	// reference alone — even after the live route is removed.
 	const key = `copy.${decision.copy.key}.options.${optionId}`;
 	return {
 		id: optionId,
-		label: translateMessage(i18n, `${key}.label`) ?? optionId,
-		description: translateMessage(i18n, `${key}.description`) ?? ''
+		label: translateMessage(i18n, `${key}.label`, decision.copy.params) ?? optionId,
+		description: translateMessage(i18n, `${key}.description`, decision.copy.params) ?? ''
 	};
 }
 
@@ -676,6 +681,72 @@ export function localizeEventSourceTitle(eventId: string, i18n: I18nBundle): str
 
 export function localizeStructuredCopy(ref: StructuredCopyRef, i18n: I18nBundle): string {
 	return translateMessage(i18n, `copy.${ref.key}`, ref.params) ?? ref.key;
+}
+
+/**
+ * Localize one persisted dispatch-attempt impact row. Reads only persisted
+ * fields, so historical evidence stays valid after the modifiers expire.
+ */
+export function localizeRouteModifierImpact(
+	impact: RouteDispatchModifierImpact,
+	i18n: I18nBundle
+): string {
+	switch (impact.effectKind) {
+		case 'route-lead-time-adjustment':
+			return i18n.t('copy.modifiers.impactLeadTime', {
+				from: i18n.format.integer(impact.baselineLeadTimeDays),
+				to: i18n.format.integer(impact.effectiveLeadTimeDays)
+			});
+		case 'route-capacity-multiplier':
+			return i18n.t('copy.modifiers.impactCapacity', {
+				from: i18n.format.integer(impact.baselineCapacity),
+				to: i18n.format.integer(impact.effectiveCapacity),
+				fromDispatched: i18n.format.integer(impact.baselineDispatchedQuantity),
+				toDispatched: i18n.format.integer(impact.effectiveDispatchedQuantity)
+			});
+		case 'route-dispatch-suspension':
+			return i18n.t('copy.modifiers.impactSuspension', {
+				from: i18n.format.integer(impact.baselineDispatchedQuantity),
+				to: i18n.format.integer(impact.effectiveDispatchedQuantity)
+			});
+		case 'route-transport-cost-multiplier':
+			return i18n.t('copy.modifiers.impactTransportCost', {
+				from: i18n.format.currency(impact.baselineTransportCost),
+				to: i18n.format.currency(impact.effectiveTransportCost)
+			});
+	}
+}
+
+/**
+ * Localize one persisted modifier-recovery row. Rows are rendered as-is: the
+ * same-day same-kind rows per route already carry combined effective values.
+ */
+export function localizeRouteModifierRecovery(
+	recovery: DailyRouteModifierRecovery,
+	i18n: I18nBundle
+): string {
+	switch (recovery.effectKind) {
+		case 'route-lead-time-adjustment':
+			return i18n.t('copy.modifiers.recoveryLeadTime', {
+				routeId: recovery.routeId,
+				from: i18n.format.integer(recovery.disruptedLeadTimeDays),
+				to: i18n.format.integer(recovery.recoveredLeadTimeDays)
+			});
+		case 'route-capacity-multiplier':
+			return i18n.t('copy.modifiers.recoveryCapacity', {
+				routeId: recovery.routeId,
+				from: i18n.format.integer(recovery.disruptedCapacity),
+				to: i18n.format.integer(recovery.recoveredCapacity)
+			});
+		case 'route-dispatch-suspension':
+			return i18n.t('copy.modifiers.recoverySuspension', { routeId: recovery.routeId });
+		case 'route-transport-cost-multiplier':
+			return i18n.t('copy.modifiers.recoveryTransportCost', {
+				routeId: recovery.routeId,
+				from: i18n.format.currency(recovery.disruptedTransportCostPerUnit),
+				to: i18n.format.currency(recovery.recoveredTransportCostPerUnit)
+			});
+	}
 }
 
 export function localizeDecision(decision: DecisionItem, i18n: I18nBundle): LocalizedDecision {

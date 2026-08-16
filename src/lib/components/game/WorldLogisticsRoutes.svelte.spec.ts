@@ -3,8 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { WORLD_CITY_CATALOG } from '$lib/game/worldCatalog';
 import { resolveEffectiveRecurringRoute } from '$lib/game/logisticsRouteModifiers';
+import type { ActiveEventModifier, RecurringRoute } from '$lib/game/types';
 import type { RouteOperationalSummary } from '$lib/game/logisticsReadModels';
-import type { RecurringRoute } from '$lib/game/types';
 import WorldLogisticsRoutes from './WorldLogisticsRoutes.svelte';
 
 function route(overrides: Partial<RecurringRoute> = {}): RouteOperationalSummary {
@@ -144,6 +144,55 @@ describe('WorldLogisticsRoutes', () => {
 			group.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 			group.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
 		}).not.toThrow();
+	});
+
+	it('marks routes with active modifiers as disrupted without changing geometry or selection', async () => {
+		expect.assertions(6);
+		const capacityModifier: ActiveEventModifier = {
+			id: 'event-modifier-1',
+			source: {
+				eventId: 'supplier-terms',
+				instanceId: 'event-instance-1',
+				optionId: 'bulk-discount'
+			},
+			target: { kind: 'recurring-route', routeId: 'route-1' },
+			startsOnDay: 5,
+			expiresOnDay: 9,
+			stackingKey: 'route-capacity-multiplier:route-1',
+			stackingRule: 'replace',
+			effect: { kind: 'route-capacity-multiplier', multiplier: 0.75 },
+			explanation: { key: 'events.supplierTerms.bulkDiscount.modifier', params: {} },
+			importance: 'normal'
+		};
+		const disrupted = route();
+		render(WorldLogisticsRoutes, {
+			routes: [
+				{
+					...disrupted,
+					effective: resolveEffectiveRecurringRoute(disrupted.route, [capacityModifier], 7)
+				},
+				route({ id: 'route-2' })
+			],
+			cities: WORLD_CITY_CATALOG,
+			selectedRouteId: 'route-1',
+			onSelectRoute: vi.fn()
+		});
+
+		const disruptedGroup = page.getByTestId('world-logistics-route-route-1');
+		await expect.element(disruptedGroup).toHaveAttribute('data-disrupted', 'true');
+		await expect
+			.element(page.getByTestId('world-logistics-route-route-2'))
+			.toHaveAttribute('data-disrupted', 'false');
+		// Geometry and selection semantics are retained, not replaced by color.
+		await expect.element(disruptedGroup).toHaveAttribute('data-selected', 'true');
+		await expect
+			.element(disruptedGroup)
+			.toHaveAttribute('data-direction', 'industry-city-to-breadbasket-basin');
+		const line = disruptedGroup.element().querySelector('line');
+		expect(line?.getAttribute('x1')).toBe(
+			String(WORLD_CITY_CATALOG.find((city) => city.id === 'industry-city')?.worldX)
+		);
+		expect(line?.getAttribute('marker-end')).toBe('url(#world-logistics-route-arrow)');
 	});
 
 	it('skips routes whose origin or destination city is not in the catalog', () => {

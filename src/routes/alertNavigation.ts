@@ -13,8 +13,13 @@ export interface AlertWorldRouteNavigation {
 export type AlertNavigation = AlertPanelNavigation | AlertWorldRouteNavigation;
 
 export function resolveAlertNavigation(alert: GameAlert): AlertNavigation | null {
+	// Route-targeted alerts resolve to the world route before generic panel
+	// navigation: a route event-modifier may carry a stale decisions-panel
+	// target, but its routeId is the actionable destination.
 	if (
-		(alert.kind === 'logistics-origin-stock' || alert.kind === 'logistics-route-capacity') &&
+		(alert.kind === 'logistics-origin-stock' ||
+			alert.kind === 'logistics-route-capacity' ||
+			(alert.kind === 'event-modifier' && alert.routeId)) &&
 		alert.routeId
 	) {
 		return { kind: 'world-route', routeId: alert.routeId };

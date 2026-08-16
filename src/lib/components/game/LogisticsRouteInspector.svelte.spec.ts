@@ -4,7 +4,7 @@ import { render } from 'vitest-browser-svelte';
 import { createI18n } from '$lib/i18n';
 import { createRouteDispatchAttempt } from '$lib/game/logisticsReport.testUtils';
 import { resolveEffectiveRecurringRoute } from '$lib/game/logisticsRouteModifiers';
-import type { RecurringRoute } from '$lib/game/types';
+import type { ActiveEventModifier, RecurringRoute } from '$lib/game/types';
 import type { RouteOperationalSummary } from '$lib/game/logisticsReadModels';
 import LogisticsRouteInspector from './LogisticsRouteInspector.svelte';
 
@@ -50,6 +50,28 @@ function summary(overrides: Partial<RouteOperationalSummary> = {}): RouteOperati
 		transportCost: 84,
 		condition: 'route-capacity-constrained',
 		...overrides
+	};
+}
+
+function disruptedRouteModifier(
+	effect: ActiveEventModifier['effect'],
+	id: string
+): ActiveEventModifier {
+	return {
+		id,
+		source: {
+			eventId: 'supplier-terms',
+			instanceId: 'event-instance-1',
+			optionId: 'bulk-discount'
+		},
+		target: { kind: 'recurring-route', routeId: 'route-1' },
+		startsOnDay: 5,
+		expiresOnDay: 9,
+		stackingKey: `${effect.kind}:route-1`,
+		stackingRule: 'replace',
+		effect,
+		explanation: { key: 'events.supplierTerms.bulkDiscount.modifier', params: {} },
+		importance: 'normal'
 	};
 }
 
@@ -121,6 +143,94 @@ describe('LogisticsRouteInspector', () => {
 			.toBeVisible();
 		await expect.element(page.getByTestId('route-utilization')).toHaveTextContent('—');
 		await expect.element(page.getByText('Awaiting dispatch', { exact: true })).toBeVisible();
+	});
+
+	it('shows configured versus effective schedule values, suspension, and utilization-relative copy while disrupted', async () => {
+		expect.assertions(8);
+		const base = summary();
+		const modifiers = [
+			disruptedRouteModifier({ kind: 'route-capacity-multiplier', multiplier: 0.75 }, 'm-cap'),
+			disruptedRouteModifier({ kind: 'route-lead-time-adjustment', days: 1 }, 'm-lead'),
+			disruptedRouteModifier(
+				{ kind: 'route-transport-cost-multiplier', multiplier: 1.5 },
+				'm-cost'
+			),
+			disruptedRouteModifier({ kind: 'route-dispatch-suspension' }, 'm-susp')
+		];
+		render(LogisticsRouteInspector, {
+			route: {
+				...base,
+				effective: resolveEffectiveRecurringRoute(base.route, modifiers, 7)
+			},
+			i18n: createI18n('en'),
+			onManageRoute: vi.fn(),
+			onClose: vi.fn()
+		});
+
+		await expect.element(page.getByTestId('route-configured-capacity')).toHaveTextContent('30');
+		await expect.element(page.getByTestId('route-effective-capacity')).toHaveTextContent('22');
+		await expect.element(page.getByText('2 days → 3 days', { exact: true })).toBeVisible();
+		await expect.element(page.getByText('$2 → $3', { exact: true })).toBeVisible();
+		await expect.element(page.getByTestId('route-dispatch-suspended')).toBeVisible();
+		await expect
+			.element(page.getByText('Relative to effective capacity.', { exact: true }))
+			.toBeVisible();
+		// Exactly one utilization figure: the note is copy, never a second ratio.
+		expect(document.querySelectorAll('[data-testid="route-utilization"]')).toHaveLength(1);
+		await expect.element(page.getByTestId('route-utilization')).toHaveTextContent('100%');
+	});
+
+	it('renders the latest historical modifier impacts from the persisted dispatch attempt', async () => {
+		expect.assertions(4);
+		const base = summary();
+		render(LogisticsRouteInspector, {
+			route: {
+				...base,
+				latestAttempt: createRouteDispatchAttempt({
+					...base.latestAttempt!,
+					modifierImpacts: [
+						{
+							effectKind: 'route-lead-time-adjustment',
+							contributors: [
+								{
+									modifierId: 'm-lead',
+									source: {
+										eventId: 'supplier-terms',
+										instanceId: 'event-instance-1',
+										optionId: 'bulk-discount'
+									},
+									explanation: {
+										key: 'events.supplierTerms.bulkDiscount.modifier',
+										params: {}
+									}
+								}
+							],
+							baselineLeadTimeDays: 2,
+							effectiveLeadTimeDays: 3
+						},
+						{
+							effectKind: 'route-dispatch-suspension',
+							contributors: [],
+							baselineDispatchedQuantity: 16,
+							effectiveDispatchedQuantity: 0
+						}
+					]
+				})
+			},
+			i18n: createI18n('en'),
+			onManageRoute: vi.fn(),
+			onClose: vi.fn()
+		});
+
+		await expect
+			.element(page.getByText('Lead time: 2 days → 3 days', { exact: true }))
+			.toBeVisible();
+		await expect
+			.element(page.getByText('Dispatch suspended: 16 → 0 units', { exact: true }))
+			.toBeVisible();
+		await expect.element(page.getByText('Source: Supplier terms', { exact: true })).toBeVisible();
+		// Historical evidence renders even though no modifier is live anymore.
+		await expect.element(page.getByText('Relative to effective capacity.')).toBeVisible();
 	});
 
 	it('forwards Close with the close button', async () => {

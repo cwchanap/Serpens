@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { RouteOperationalSummary } from '$lib/game/logisticsReadModels';
 	import type { I18nBundle } from '$lib/i18n';
+	import { localizeEventSourceTitle, localizeRouteModifierImpact } from '$lib/i18n/gameCopy';
 	import type { Attachment } from 'svelte/attachments';
 	import { on } from 'svelte/events';
 
@@ -18,6 +19,10 @@
 	const materialName = $derived(i18n.labels.material(route.route.materialId));
 	const stateLabel = $derived(i18n.t(`logisticsPanel.states.${route.route.state}` as never));
 	const conditionLabel = $derived(i18n.t(`logisticsPanel.conditions.${route.condition}` as never));
+	const leadTimeChanged = $derived(route.effective.leadTimeDays !== route.route.leadTimeDays);
+	const transportCostChanged = $derived(
+		route.effective.transportCostPerUnit !== route.route.transportCostPerUnit
+	);
 
 	function stopMapInteraction(event: Event): void {
 		event.stopPropagation();
@@ -74,6 +79,14 @@
 				<dt>{i18n.t('logisticsRouteInspector.condition')}</dt>
 				<dd>{conditionLabel}</dd>
 			</div>
+			{#if route.effective.dispatchSuspended}
+				<div>
+					<dt>{i18n.t('logisticsRouteInspector.dispatchSuspension')}</dt>
+					<dd data-testid="route-dispatch-suspended">
+						{i18n.t('logisticsRouteInspector.dispatchSuspended')}
+					</dd>
+				</div>
+			{/if}
 		</dl>
 	</section>
 
@@ -91,9 +104,16 @@
 			<div>
 				<dt>{i18n.t('logisticsRouteInspector.leadTime')}</dt>
 				<dd>
-					{i18n.t('logisticsRouteInspector.days', {
-						days: i18n.format.integer(route.route.leadTimeDays)
-					})}
+					{#if leadTimeChanged}
+						{i18n.t('logisticsRouteInspector.daysChanged', {
+							from: i18n.format.integer(route.route.leadTimeDays),
+							to: i18n.format.integer(route.effective.leadTimeDays)
+						})}
+					{:else}
+						{i18n.t('logisticsRouteInspector.days', {
+							days: i18n.format.integer(route.route.leadTimeDays)
+						})}
+					{/if}
 				</dd>
 			</div>
 			<div>
@@ -106,11 +126,28 @@
 			</div>
 			<div>
 				<dt>{i18n.t('logisticsRouteInspector.capacity')}</dt>
-				<dd>{i18n.format.integer(route.route.capacity)}</dd>
+				<dd data-testid="route-configured-capacity">
+					{i18n.format.integer(route.route.capacity)}
+				</dd>
+			</div>
+			<div>
+				<dt>{i18n.t('logisticsRouteInspector.effectiveCapacity')}</dt>
+				<dd data-testid="route-effective-capacity">
+					{i18n.format.integer(route.effective.capacity)}
+				</dd>
 			</div>
 			<div>
 				<dt>{i18n.t('logisticsRouteInspector.transportCostPerUnit')}</dt>
-				<dd>{i18n.format.currency(route.route.transportCostPerUnit)}</dd>
+				<dd>
+					{#if transportCostChanged}
+						{i18n.t('logisticsRouteInspector.currencyRange', {
+							from: i18n.format.currency(route.route.transportCostPerUnit),
+							to: i18n.format.currency(route.effective.transportCostPerUnit)
+						})}
+					{:else}
+						{i18n.format.currency(route.route.transportCostPerUnit)}
+					{/if}
+				</dd>
 			</div>
 		</dl>
 	</section>
@@ -154,6 +191,23 @@
 					<dd>{i18n.format.currency(route.latestAttempt.transportCost)}</dd>
 				</div>
 			</dl>
+			{#if route.latestAttempt.modifierImpacts.length > 0}
+				<p class="muted">{i18n.t('logisticsRouteInspector.modifierImpactsTitle')}</p>
+				<ul class="impact-list">
+					{#each route.latestAttempt.modifierImpacts as impact, index (`${impact.effectKind}-${index}`)}
+						<li>
+							<span>{localizeRouteModifierImpact(impact, i18n)}</span>
+							{#each impact.contributors as contributor (contributor.modifierId)}
+								<span>
+									{i18n.t('copy.modifiers.impactSource', {
+										source: localizeEventSourceTitle(contributor.source.eventId, i18n)
+									})}
+								</span>
+							{/each}
+						</li>
+					{/each}
+				</ul>
+			{/if}
 		{:else}
 			<p class="muted">{i18n.t('logisticsRouteInspector.noLatestAttempt')}</p>
 		{/if}
@@ -183,6 +237,7 @@
 				<dd>{i18n.format.currency(route.transportCost)}</dd>
 			</div>
 		</dl>
+		<p class="muted">{i18n.t('logisticsRouteInspector.utilizationNote')}</p>
 	</section>
 
 	<div class="actions">
@@ -310,6 +365,29 @@
 	}
 
 	.muted {
+		color: var(--ink-500);
+		font-family: var(--font-body);
+		font-size: 0.85rem;
+	}
+
+	.impact-list {
+		display: grid;
+		gap: 0.4rem;
+		margin: 0.6rem 0 0;
+		padding: 0;
+		list-style: none;
+	}
+
+	.impact-list li {
+		display: grid;
+		gap: 0.2rem;
+		border: 1px solid var(--paper-edge);
+		border-radius: 2px;
+		background: var(--paper-50);
+		padding: 0.5rem 0.6rem;
+	}
+
+	.impact-list span {
 		color: var(--ink-500);
 		font-family: var(--font-body);
 		font-size: 0.85rem;
