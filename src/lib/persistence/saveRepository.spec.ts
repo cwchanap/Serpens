@@ -14,6 +14,7 @@ import { formatLocation } from '$lib/game/placement';
 import { simulateDay } from '$lib/game/simulateDay';
 import { setRetailSupplySource } from '$lib/game/retailSupply';
 import { createNewGame } from '$lib/game/state';
+import { emptyLogisticsReport } from '$lib/game/logisticsReport.testUtils';
 import {
 	STARTER_STORE_CAP,
 	WORLD_CITY_CATALOG,
@@ -22,7 +23,6 @@ import {
 	refreshWorldProgress
 } from '$lib/game/world';
 import type {
-	DailyLogisticsReport,
 	DailyProductReport,
 	DailyProductionReport,
 	DailyReport,
@@ -462,15 +462,6 @@ function createDailyProductionReport(
 			}
 		],
 		...overrides
-	};
-}
-
-function emptyLogisticsReport(): DailyLogisticsReport {
-	return {
-		arrivals: [],
-		routeDispatchAttempts: [],
-		deliveredUnits: 0,
-		scheduledTransportCost: 0
 	};
 }
 

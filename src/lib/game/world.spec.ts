@@ -5,6 +5,7 @@ import { generateIndustryCity } from './industry';
 import { createEmptyFinanceState } from './finance';
 import { createInitialEventRuntime } from './eventSelection';
 import { createNewGame } from './state';
+import { emptyLogisticsReport } from './logisticsReport.testUtils';
 import {
 	STARTER_STORE_CAP,
 	WORLD_CITY_CATALOG,
@@ -19,7 +20,7 @@ import {
 	refreshWorldProgress,
 	selectWorldCity
 } from './world';
-import type { DailyLogisticsReport, GameState } from './types';
+import type { GameState } from './types';
 import { systemDecision } from './testHelpers';
 
 function gameStub(overrides: Partial<GameState> = {}): GameState {
@@ -64,15 +65,6 @@ function gameStub(overrides: Partial<GameState> = {}): GameState {
 		world: createInitialWorldProgress(),
 		storeCap: STARTER_STORE_CAP,
 		...overrides
-	};
-}
-
-function emptyLogisticsReport(): DailyLogisticsReport {
-	return {
-		arrivals: [],
-		routeDispatchAttempts: [],
-		deliveredUnits: 0,
-		scheduledTransportCost: 0
 	};
 }
 

@@ -1,3 +1,5 @@
+import type { RouteOperationalCondition } from '$lib/game/logisticsReadModels';
+
 export const en = {
 	app: {
 		title: 'Serpens'
@@ -663,6 +665,7 @@ export const en = {
 				destinationFull: 'Destination full',
 				originStockConstrained: 'Origin stock constrained',
 				routeCapacityConstrained: 'Route capacity constrained',
+				routeEventSuspended: 'Suspended by event',
 				routePriorityConstrained: 'Route priority constrained',
 				routeFrequency: 'Route frequency constrained',
 				routeLeadTime: 'Route lead time constrained',
@@ -860,8 +863,9 @@ export const en = {
 			'destination-full': 'Destination full',
 			'origin-stock-constrained': 'Origin stock constrained',
 			'route-capacity-constrained': 'Route capacity constrained',
+			'route-event-suspended': 'Suspended by event',
 			normal: 'Normal'
-		},
+		} satisfies Record<RouteOperationalCondition, string>,
 		states: {
 			active: 'Active',
 			paused: 'Paused'

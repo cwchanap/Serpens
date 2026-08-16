@@ -142,7 +142,8 @@ describe('inter-city logistics lifecycle', () => {
 			arrivals: [],
 			routeDispatchAttempts: [],
 			deliveredUnits: 0,
-			scheduledTransportCost: 0
+			scheduledTransportCost: 0,
+			modifierRecoveries: []
 		});
 
 		currentGame = simulateDay(currentGame);
@@ -166,7 +167,8 @@ describe('inter-city logistics lifecycle', () => {
 			],
 			routeDispatchAttempts: [],
 			deliveredUnits: 10,
-			scheduledTransportCost: 0
+			scheduledTransportCost: 0,
+			modifierRecoveries: []
 		});
 		expect(manualArrivalReport.productionReport.overflowCost).toBe(0);
 		expect(getOrder(currentGame, 'transfer-1').status).toBe('delivered');
@@ -207,11 +209,15 @@ describe('inter-city logistics lifecycle', () => {
 					unusedCapacity: 0,
 					unmetDestinationNeed: 170,
 					transportCost: 60,
-					transferOrderId: 'transfer-2'
+					transferOrderId: 'transfer-2',
+					baselineCapacity: 20,
+					dispatchSuspended: false,
+					modifierImpacts: []
 				}
 			],
 			deliveredUnits: 0,
-			scheduledTransportCost: 60
+			scheduledTransportCost: 60,
+			modifierRecoveries: []
 		});
 		const firstScheduledBaselineReport = getLatestReport(firstScheduledBaseline);
 		expect(firstScheduledReport.operatingCosts).toBe(
@@ -288,7 +294,8 @@ describe('inter-city logistics lifecycle', () => {
 			arrivals: [],
 			routeDispatchAttempts: [],
 			deliveredUnits: 0,
-			scheduledTransportCost: 0
+			scheduledTransportCost: 0,
+			modifierRecoveries: []
 		});
 
 		const secondScheduledBaseline = simulateDay(withoutRecurringRoutes(currentGame));
@@ -318,11 +325,15 @@ describe('inter-city logistics lifecycle', () => {
 					unusedCapacity: 0,
 					unmetDestinationNeed: 163,
 					transportCost: 35,
-					transferOrderId: 'transfer-3'
+					transferOrderId: 'transfer-3',
+					baselineCapacity: 7,
+					dispatchSuspended: false,
+					modifierImpacts: []
 				}
 			],
 			deliveredUnits: 20,
-			scheduledTransportCost: 35
+			scheduledTransportCost: 35,
+			modifierRecoveries: []
 		});
 		const secondScheduledBaselineReport = getLatestReport(secondScheduledBaseline);
 		expect(secondScheduledReport.operatingCosts).toBe(
@@ -404,7 +415,8 @@ describe('inter-city logistics lifecycle', () => {
 			],
 			routeDispatchAttempts: [],
 			deliveredUnits: 7,
-			scheduledTransportCost: 0
+			scheduledTransportCost: 0,
+			modifierRecoveries: []
 		});
 		expect(getWater(currentGame, 'industry-city')).toBe(63);
 		expect(getWater(currentGame, 'breadbasket-basin')).toBe(37);

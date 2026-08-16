@@ -294,7 +294,8 @@ function createDailyReport(overrides: Partial<DailyReport> = {}): DailyReport {
 			arrivals: [],
 			routeDispatchAttempts: [],
 			deliveredUnits: 0,
-			scheduledTransportCost: 0
+			scheduledTransportCost: 0,
+			modifierRecoveries: []
 		},
 		storeReports: [],
 		modifierImpacts: [],
@@ -328,7 +329,10 @@ function createHistoricalLogisticsReport(): DailyReport['logistics'] {
 				unusedCapacity: 3,
 				unmetDestinationNeed: 3,
 				transportCost: 21,
-				transferOrderId: 'transfer-retired'
+				transferOrderId: 'transfer-retired',
+				baselineCapacity: 10,
+				dispatchSuspended: false,
+				modifierImpacts: []
 			},
 			{
 				routeId: 'route-removed',
@@ -342,11 +346,15 @@ function createHistoricalLogisticsReport(): DailyReport['logistics'] {
 				unusedCapacity: 5,
 				unmetDestinationNeed: 0,
 				transportCost: 0,
-				transferOrderId: null
+				transferOrderId: null,
+				baselineCapacity: 5,
+				dispatchSuspended: false,
+				modifierImpacts: []
 			}
 		],
 		deliveredUnits: 4,
-		scheduledTransportCost: 21
+		scheduledTransportCost: 21,
+		modifierRecoveries: []
 	};
 }
 
@@ -874,6 +882,84 @@ function createCompleteEventGame(): GameState {
 	});
 }
 
+function createCompleteRouteEventGame(): GameState {
+	const base = createCompleteEventGame();
+	const routeTarget = { kind: 'recurring-route' as const, routeId: 'route-1' };
+	const routeModifier: GameState['events']['activeModifiers'][number] = {
+		...base.events.activeModifiers[0]!,
+		id: 'event-modifier-2',
+		source: {
+			eventId: 'freight-disruption',
+			instanceId: 'event-instance-2',
+			optionId: 'accept-delay'
+		},
+		target: routeTarget,
+		stackingKey: 'freight-capacity:route-1',
+		effect: { kind: 'route-capacity-multiplier', multiplier: 0.75 },
+		explanation: { key: 'events.freightDisruption.acceptDelay.capacity', params: {} }
+	};
+	const secondRouteModifier: GameState['events']['activeModifiers'][number] = {
+		...routeModifier,
+		id: 'event-modifier-3',
+		target: { kind: 'recurring-route', routeId: 'route-2' },
+		stackingKey: 'freight-capacity:route-1'
+	};
+	const routeModifierSnapshot = {
+		id: routeModifier.id,
+		source: { ...routeModifier.source },
+		target: { ...routeModifier.target },
+		startsOnDay: routeModifier.startsOnDay,
+		expiresOnDay: routeModifier.expiresOnDay,
+		stackingKey: routeModifier.stackingKey,
+		effect: cloneTimedEffect(routeModifier.effect),
+		explanation: {
+			...routeModifier.explanation,
+			params: { ...routeModifier.explanation.params }
+		},
+		importance: routeModifier.importance
+	};
+
+	return {
+		...base,
+		events: {
+			...base.events,
+			nextInstanceSequence: 4,
+			nextModifierSequence: 4,
+			cooldowns: [
+				{
+					eventId: 'freight-disruption',
+					target: routeTarget,
+					generatedOnDay: 3,
+					eligibleOnDay: 4
+				}
+			],
+			activeModifiers: [routeModifier, secondRouteModifier],
+			history: base.events.history.map((entry) =>
+				entry.kind === 'modifier-lifecycle' ? entry : { ...entry, target: routeTarget }
+			)
+		},
+		decisions: base.decisions.map((decision) =>
+			decision.kind === 'event' ? { ...decision, target: routeTarget } : decision
+		),
+		reports: [
+			{
+				...base.reports[0]!,
+				modifierLifecycle: [
+					{ status: 'activated', modifier: routeModifierSnapshot },
+					{
+						status: 'activated',
+						modifier: {
+							...routeModifierSnapshot,
+							id: 'event-modifier-3',
+							target: { kind: 'recurring-route', routeId: 'route-2' }
+						}
+					}
+				]
+			}
+		]
+	};
+}
+
 describe('saveCodec', () => {
 	test('round-trips a current v15 multi-city save with city-scoped inventory and replenishment evidence', () => {
 		expect.assertions(8);
@@ -886,8 +972,8 @@ describe('saveCodec', () => {
 		const validated = validateSaveRecord(structuredClone(record));
 		const report = validated.game.reports[0]!;
 
-		expect(SAVE_SCHEMA_VERSION).toBe(15);
-		expect(validated.schemaVersion).toBe(15);
+		expect(SAVE_SCHEMA_VERSION).toBe(16);
+		expect(validated.schemaVersion).toBe(16);
 		expect(validated.game.cityInventories).toEqual([
 			{
 				cityId: 'industry-city',
@@ -1219,6 +1305,176 @@ describe('saveCodec', () => {
 					deliveredUnits: Number.MAX_SAFE_INTEGER
 				}
 			})
+		],
+		[
+			'a suspended dispatch with a nonzero quantity',
+			(report: DailyReport) => ({
+				...report,
+				logistics: {
+					...report.logistics,
+					routeDispatchAttempts: [
+						{
+							...report.logistics.routeDispatchAttempts[0]!,
+							dispatchSuspended: true
+						},
+						report.logistics.routeDispatchAttempts[1]!
+					]
+				}
+			})
+		],
+		[
+			'an attempt with a nonpositive baseline capacity',
+			(report: DailyReport) => ({
+				...report,
+				logistics: {
+					...report.logistics,
+					routeDispatchAttempts: [
+						{
+							...report.logistics.routeDispatchAttempts[0]!,
+							baselineCapacity: 0
+						},
+						report.logistics.routeDispatchAttempts[1]!
+					]
+				}
+			})
+		],
+		[
+			'an attempt with an unsorted modifier contributor list',
+			(report: DailyReport) => ({
+				...report,
+				logistics: {
+					...report.logistics,
+					routeDispatchAttempts: [
+						{
+							...report.logistics.routeDispatchAttempts[0]!,
+							modifierImpacts: [
+								{
+									contributors: [
+										{
+											modifierId: 'event-modifier-2',
+											source: {
+												eventId: 'freight-disruption',
+												instanceId: 'event-instance-1',
+												optionId: 'accept-delay'
+											},
+											explanation: {
+												key: 'events.freightDisruption.acceptDelay.capacity',
+												params: {}
+											}
+										},
+										{
+											modifierId: 'event-modifier-1',
+											source: {
+												eventId: 'freight-disruption',
+												instanceId: 'event-instance-1',
+												optionId: 'accept-delay'
+											},
+											explanation: {
+												key: 'events.freightDisruption.acceptDelay.capacity',
+												params: {}
+											}
+										}
+									],
+									effectKind: 'route-capacity-multiplier',
+									baselineCapacity: 10,
+									effectiveCapacity: 8,
+									baselineDispatchedQuantity: 7,
+									effectiveDispatchedQuantity: 6
+								}
+							]
+						},
+						report.logistics.routeDispatchAttempts[1]!
+					]
+				}
+			})
+		],
+		[
+			'a suspension impact with a nonzero effective quantity',
+			(report: DailyReport) => ({
+				...report,
+				logistics: {
+					...report.logistics,
+					routeDispatchAttempts: [
+						{
+							...report.logistics.routeDispatchAttempts[0]!,
+							dispatchSuspended: true,
+							dispatchedQuantity: 0,
+							unusedCapacity: 10,
+							unmetDestinationNeed: 10,
+							transportCost: 0,
+							transferOrderId: null,
+							modifierImpacts: [
+								{
+									contributors: [
+										{
+											modifierId: 'event-modifier-1',
+											source: {
+												eventId: 'freight-disruption',
+												instanceId: 'event-instance-1',
+												optionId: 'suspend-shipments'
+											},
+											explanation: {
+												key: 'events.freightDisruption.suspendShipments.suspension',
+												params: {}
+											}
+										}
+									],
+									effectKind: 'route-dispatch-suspension',
+									baselineDispatchedQuantity: 7,
+									effectiveDispatchedQuantity: 1
+								}
+							]
+						},
+						report.logistics.routeDispatchAttempts[1]!
+					]
+				}
+			})
+		],
+		[
+			'a recovery row with an unknown effect kind',
+			(report: DailyReport) => ({
+				...report,
+				logistics: {
+					...report.logistics,
+					modifierRecoveries: [
+						{
+							routeId: 'route-retired',
+							modifierId: 'event-modifier-1',
+							source: {
+								eventId: 'freight-disruption',
+								instanceId: 'event-instance-1',
+								optionId: 'accept-delay'
+							},
+							effectKind: 'route-unknown-effect',
+							disruptedCapacity: 10,
+							recoveredCapacity: 12
+						}
+					]
+				}
+			})
+		],
+		[
+			'a suspension recovery row with a false disrupted flag',
+			(report: DailyReport) => ({
+				...report,
+				logistics: {
+					...report.logistics,
+					modifierRecoveries: [
+						{
+							routeId: 'route-retired',
+							modifierId: 'event-modifier-1',
+							source: {
+								eventId: 'freight-disruption',
+								instanceId: 'event-instance-1',
+								optionId: 'suspend-shipments'
+							},
+							effectKind: 'route-dispatch-suspension',
+							disruptedSuspended: false,
+							recoveredSuspended: false
+						}
+					]
+				}
+			})
 		]
 	] as const)('drops a historical report with %s logistics evidence', (_name, mutateReport) => {
 		const game = createCurrentMultiCityGame();
@@ -1334,6 +1590,14 @@ describe('saveCodec', () => {
 
 		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
 		expect(() => validateSaveRecord(record)).toThrow('Unsupported save schema version: 13');
+	});
+
+	test('rejects schema 15 records with no migration path', () => {
+		expect.assertions(2);
+		const record = { ...createManualSaveRecord(), schemaVersion: 15 };
+
+		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+		expect(() => validateSaveRecord(record)).toThrow('Unsupported save schema version: 15');
 	});
 
 	test.each([
@@ -2134,19 +2398,183 @@ describe('saveCodec', () => {
 			createManualSaveRecord({ game: withCurrentReports(game, [noAttemptReport]) })
 		);
 
-		expect(SAVE_SCHEMA_VERSION).toBe(15);
+		expect(SAVE_SCHEMA_VERSION).toBe(16);
 		expect(validated.game.reports[0]!.storeReports[0]!.replenishment).toBeNull();
 	});
 
-	test('round-trips the complete event schema v15 without dropping materialized evidence', () => {
+	test('round-trips the complete event schema v16 without dropping materialized evidence', () => {
 		expect.assertions(3);
 		const record = createManualSaveRecord({ game: createCompleteEventGame() });
 
 		const validated = validateSaveRecord(structuredClone(record));
 
-		expect(SAVE_SCHEMA_VERSION).toBe(15);
+		expect(SAVE_SCHEMA_VERSION).toBe(16);
 		expect(validated).toEqual(record);
 		expect(validated).not.toBe(record);
+	});
+
+	test('round-trips route-targeted event evidence with target-scoped stacking keys', () => {
+		expect.assertions(3);
+		const record = createManualSaveRecord({ game: createCompleteRouteEventGame() });
+
+		const validated = validateSaveRecord(structuredClone(record));
+
+		expect(SAVE_SCHEMA_VERSION).toBe(16);
+		expect(validated).toEqual(record);
+		expect(validated).not.toBe(record);
+	});
+
+	test('rejects duplicate stacking keys on the same route target while allowing cross-route coexistence', () => {
+		const game = createCompleteRouteEventGame();
+		const modifiers = game.events.activeModifiers;
+		const duplicateOnRouteTwo = {
+			...game,
+			events: {
+				...game.events,
+				nextModifierSequence: 5,
+				activeModifiers: [
+					...modifiers,
+					{
+						...modifiers[1]!,
+						id: 'event-modifier-4',
+						source: {
+							eventId: 'freight-disruption',
+							instanceId: 'event-instance-3',
+							optionId: 'accept-delay'
+						}
+					}
+				]
+			}
+		};
+		let caught: unknown;
+		try {
+			validateCurrentGameState(duplicateOnRouteTwo);
+		} catch (error) {
+			caught = error;
+		}
+		expect(caught).toBeInstanceOf(SaveDataError);
+		expect((caught as SaveDataError).code).toBe('invariant-event-runtime');
+		expect((caught as SaveDataError).message).toContain('stackingKey must be unique per target');
+	});
+
+	test('rejects cooldown duplicates for the same event and route while allowing cross-route coexistence', () => {
+		const game = createCompleteRouteEventGame();
+		const duplicateCooldown = {
+			...game,
+			events: {
+				...game.events,
+				cooldowns: [
+					...game.events.cooldowns,
+					{
+						eventId: 'freight-disruption',
+						target: { kind: 'recurring-route', routeId: 'route-1' },
+						generatedOnDay: 3,
+						eligibleOnDay: 4
+					}
+				]
+			}
+		};
+		expect(() => validateCurrentGameState(duplicateCooldown)).toThrow(
+			'unique event/target key: freight-disruption:route:route-1'
+		);
+
+		const crossRouteCooldowns = {
+			...game,
+			events: {
+				...game.events,
+				cooldowns: [
+					...game.events.cooldowns,
+					{
+						eventId: 'freight-disruption',
+						target: { kind: 'recurring-route', routeId: 'route-2' },
+						generatedOnDay: 3,
+						eligibleOnDay: 4
+					}
+				]
+			}
+		};
+		expect(() => validateCurrentGameState(crossRouteCooldowns)).not.toThrow();
+	});
+
+	test.each([
+		{
+			name: 'an event decision target missing its routeId',
+			mutate: (game: GameState): GameState => {
+				const decision = game.decisions.find((candidate) => candidate.kind === 'event')!;
+				return {
+					...game,
+					decisions: [{ ...decision, target: { kind: 'recurring-route' } as never }]
+				};
+			},
+			path: 'Saved game decisions[0] target routeId'
+		},
+		{
+			name: 'an active modifier capacity effect missing its multiplier',
+			mutate: (game: GameState): GameState => {
+				const modifier = game.events.activeModifiers[0]!;
+				return {
+					...game,
+					events: {
+						...game.events,
+						activeModifiers: [
+							{ ...modifier, effect: { kind: 'route-capacity-multiplier' } as never }
+						]
+					}
+				};
+			},
+			path: 'Saved game events activeModifiers[0] effect multiplier'
+		},
+		{
+			name: 'a lead-time effect with a nonpositive day count',
+			mutate: (game: GameState): GameState => {
+				const modifier = game.events.activeModifiers[0]!;
+				return {
+					...game,
+					events: {
+						...game.events,
+						activeModifiers: [
+							{
+								...modifier,
+								effect: { kind: 'route-lead-time-adjustment', days: 0 }
+							}
+						]
+					}
+				};
+			},
+			path: 'Saved game events activeModifiers[0] effect days'
+		},
+		{
+			name: 'a suspension effect carrying an extra payload key',
+			mutate: (game: GameState): GameState => {
+				const modifier = game.events.activeModifiers[0]!;
+				return {
+					...game,
+					events: {
+						...game.events,
+						activeModifiers: [
+							{
+								...modifier,
+								effect: { kind: 'route-dispatch-suspension', extra: 1 } as never
+							}
+						]
+					}
+				};
+			},
+			path: 'Saved game events activeModifiers[0] effect contains an unknown field'
+		}
+	])('rejects %s', ({ mutate, path }) => {
+		const game = createCompleteRouteEventGame();
+
+		let caught: unknown;
+		try {
+			validateCurrentGameState(mutate(game));
+		} catch (error) {
+			caught = error;
+		}
+
+		expect(caught).toBeInstanceOf(SaveDataError);
+		expect((caught as SaveDataError).code).toBe('invariant-event-runtime');
+		expect((caught as SaveDataError).message).toContain(path);
 	});
 
 	test('rejects an unsafe whole-dollar event finance amount', () => {

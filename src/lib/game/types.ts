@@ -409,12 +409,52 @@ export interface DailyTransferArrival {
 	quantity: number;
 }
 
+export interface RouteDispatchModifierContributor {
+	modifierId: string;
+	source: ActiveEventModifier['source'];
+	explanation: StructuredCopyRef;
+}
+
+interface RouteDispatchImpactBase {
+	contributors: RouteDispatchModifierContributor[];
+}
+
+/**
+ * Compact persisted evidence of how active route modifiers changed one
+ * dispatch attempt. Unaffected attempts store `[]`. Contributors are ordered
+ * by modifier ID; multiple modifiers of one effect kind share one impact row.
+ */
+export type RouteDispatchModifierImpact =
+	| (RouteDispatchImpactBase & {
+			effectKind: 'route-lead-time-adjustment';
+			baselineLeadTimeDays: number;
+			effectiveLeadTimeDays: number;
+	  })
+	| (RouteDispatchImpactBase & {
+			effectKind: 'route-capacity-multiplier';
+			baselineCapacity: number;
+			effectiveCapacity: number;
+			baselineDispatchedQuantity: number;
+			effectiveDispatchedQuantity: number;
+	  })
+	| (RouteDispatchImpactBase & {
+			effectKind: 'route-dispatch-suspension';
+			baselineDispatchedQuantity: number;
+			effectiveDispatchedQuantity: 0;
+	  })
+	| (RouteDispatchImpactBase & {
+			effectKind: 'route-transport-cost-multiplier';
+			baselineTransportCost: number;
+			effectiveTransportCost: number;
+	  });
+
 export interface DailyRouteDispatchAttempt {
 	routeId: string;
 	originCityId: WorldCityId;
 	destinationCityId: WorldCityId;
 	materialId: MaterialId;
 	destinationNeed: number;
+	/** Effective capacity: base capacity composed with active route modifiers. */
 	capacity: number;
 	availableOriginStock: number;
 	dispatchedQuantity: number;
@@ -422,13 +462,50 @@ export interface DailyRouteDispatchAttempt {
 	unmetDestinationNeed: number;
 	transportCost: number;
 	transferOrderId: string | null;
+	/** Base-configured capacity; owns route-configuration matching. */
+	baselineCapacity: number;
+	dispatchSuspended: boolean;
+	modifierImpacts: RouteDispatchModifierImpact[];
 }
+
+export interface RouteRecoveryBase {
+	routeId: string;
+	modifierId: string;
+	source: ActiveEventModifier['source'];
+}
+
+/**
+ * Discriminated per-effect evidence that a route modifier stopped affecting a
+ * route after expiry. Emitted empty until recovery derivation lands.
+ */
+export type DailyRouteModifierRecovery =
+	| (RouteRecoveryBase & {
+			effectKind: 'route-lead-time-adjustment';
+			disruptedLeadTimeDays: number;
+			recoveredLeadTimeDays: number;
+	  })
+	| (RouteRecoveryBase & {
+			effectKind: 'route-capacity-multiplier';
+			disruptedCapacity: number;
+			recoveredCapacity: number;
+	  })
+	| (RouteRecoveryBase & {
+			effectKind: 'route-dispatch-suspension';
+			disruptedSuspended: true;
+			recoveredSuspended: false;
+	  })
+	| (RouteRecoveryBase & {
+			effectKind: 'route-transport-cost-multiplier';
+			disruptedTransportCostPerUnit: number;
+			recoveredTransportCostPerUnit: number;
+	  });
 
 export interface DailyLogisticsReport {
 	arrivals: DailyTransferArrival[];
 	routeDispatchAttempts: DailyRouteDispatchAttempt[];
 	deliveredUnits: number;
 	scheduledTransportCost: number;
+	modifierRecoveries: DailyRouteModifierRecovery[];
 }
 
 export interface RecurringRoute {

@@ -143,7 +143,7 @@ function collectLogisticsAlerts(game: GameState): GameAlert[] {
 		}
 
 		if (summary.condition === 'origin-stock-constrained') {
-			const threshold = Math.min(summary.latestAttempt.destinationNeed, summary.route.capacity);
+			const threshold = Math.min(summary.latestAttempt.destinationNeed, summary.effective.capacity);
 			const currentOriginStock =
 				game.cityInventories.find((inventory) => inventory.cityId === summary.route.originCityId)
 					?.materials[summary.route.materialId] ?? 0;
@@ -181,10 +181,15 @@ function collectLogisticsAlerts(game: GameState): GameAlert[] {
 function isRouteCapacityConstrainedAttempt(
 	attempt: NonNullable<RouteOperationalSummary['latestAttempt']>
 ): boolean {
+	// Structural capacity pressure describes persistent configured route
+	// undersizing, not a temporary disruption: suspended attempts and attempts
+	// limited by the effective (modifier-composed) capacity must not create or
+	// extend the structural capacity-streak alert.
 	return (
-		attempt.availableOriginStock >= Math.min(attempt.destinationNeed, attempt.capacity) &&
+		!attempt.dispatchSuspended &&
+		attempt.availableOriginStock >= Math.min(attempt.destinationNeed, attempt.baselineCapacity) &&
 		attempt.unmetDestinationNeed > 0 &&
-		attempt.dispatchedQuantity === attempt.capacity
+		attempt.dispatchedQuantity === attempt.baselineCapacity
 	);
 }
 

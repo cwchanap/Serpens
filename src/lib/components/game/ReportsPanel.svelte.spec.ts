@@ -2,10 +2,12 @@ import { page } from 'vitest/browser';
 import { describe, expect, it } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import type { ReportSummary } from '$lib/game/reports';
-import { emptyLogisticsReport } from '$lib/game/logisticsReport.testUtils';
+import {
+	createRouteDispatchAttempt,
+	emptyLogisticsReport
+} from '$lib/game/logisticsReport.testUtils';
 import type {
 	DailyProductionReport,
-	DailyRouteDispatchAttempt,
 	DailyStoreReport,
 	DailyTransferArrival,
 	EventModifierSnapshot,
@@ -398,10 +400,8 @@ describe('ReportsPanel', () => {
 			materialId: 'water',
 			quantity: 12
 		};
-		const attempt: DailyRouteDispatchAttempt = {
+		const attempt = createRouteDispatchAttempt({
 			routeId: 'route-1',
-			originCityId: 'industry-city',
-			destinationCityId: 'breadbasket-basin',
 			materialId: 'water',
 			destinationNeed: 10,
 			capacity: 20,
@@ -410,17 +410,19 @@ describe('ReportsPanel', () => {
 			unusedCapacity: 10,
 			unmetDestinationNeed: 0,
 			transportCost: 20,
-			transferOrderId: 'transfer-9'
-		};
-		const fullAttempt: DailyRouteDispatchAttempt = {
+			transferOrderId: 'transfer-9',
+			baselineCapacity: 20
+		});
+		const fullAttempt = createRouteDispatchAttempt({
 			...attempt,
 			routeId: 'route-2',
 			destinationNeed: 0,
 			capacity: 40,
 			dispatchedQuantity: 0,
 			unusedCapacity: 40,
-			transferOrderId: null
-		};
+			transferOrderId: null,
+			baselineCapacity: 40
+		});
 
 		render(ReportsPanel, {
 			i18n: createI18n('en'),
@@ -433,7 +435,8 @@ describe('ReportsPanel', () => {
 						arrivals: [arrival],
 						routeDispatchAttempts: [attempt, fullAttempt],
 						deliveredUnits: 12,
-						scheduledTransportCost: 20
+						scheduledTransportCost: 20,
+						modifierRecoveries: []
 					}
 				}
 			}
@@ -1081,10 +1084,8 @@ describe('ReportsPanel', () => {
 	it('renders zero utilization for a dispatch attempt with zero capacity', async () => {
 		expect.assertions(1);
 
-		const zeroCapacityAttempt: DailyRouteDispatchAttempt = {
+		const zeroCapacityAttempt = createRouteDispatchAttempt({
 			routeId: 'route-zero',
-			originCityId: 'industry-city',
-			destinationCityId: 'breadbasket-basin',
 			materialId: 'water',
 			destinationNeed: 10,
 			capacity: 0,
@@ -1093,8 +1094,9 @@ describe('ReportsPanel', () => {
 			unusedCapacity: 0,
 			unmetDestinationNeed: 10,
 			transportCost: 0,
-			transferOrderId: null
-		};
+			transferOrderId: null,
+			baselineCapacity: 0
+		});
 
 		render(ReportsPanel, {
 			i18n: createI18n('en'),
@@ -1107,7 +1109,8 @@ describe('ReportsPanel', () => {
 						arrivals: [],
 						routeDispatchAttempts: [zeroCapacityAttempt],
 						deliveredUnits: 0,
-						scheduledTransportCost: 0
+						scheduledTransportCost: 0,
+						modifierRecoveries: []
 					}
 				}
 			}

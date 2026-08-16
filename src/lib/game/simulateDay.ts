@@ -296,7 +296,8 @@ export function simulateDay(
 			arrivals: arrivalResult.arrivals,
 			routeDispatchAttempts: routeResult.attempts,
 			deliveredUnits: arrivalResult.deliveredUnits,
-			scheduledTransportCost: routeResult.scheduledTransportCost
+			scheduledTransportCost: routeResult.scheduledTransportCost,
+			modifierRecoveries: []
 		},
 		storeReports,
 		modifierImpacts,

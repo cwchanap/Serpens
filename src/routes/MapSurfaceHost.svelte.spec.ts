@@ -4,6 +4,7 @@ import { render } from 'vitest-browser-svelte';
 import type { CityMapSnapshot } from '$lib/game/mapRender';
 import type { IndustryMapSnapshot } from '$lib/game/industryMapRender';
 import type { RouteOperationalSummary } from '$lib/game/logisticsReadModels';
+import { resolveEffectiveRecurringRoute } from '$lib/game/logisticsRouteModifiers';
 import type { RecurringRoute } from '$lib/game/types';
 import type { MapViewId, VisitedMapViews } from '$lib/game/mapViewKeepAlive';
 import { WORLD_CITY_CATALOG, type WorldCityStatus } from '$lib/game/world';
@@ -114,6 +115,7 @@ function surfaceProps(overrides: Partial<SurfaceProps> = {}): SurfaceProps {
 		logisticsRouteSummaries: [
 			{
 				route,
+				effective: resolveEffectiveRecurringRoute(route, [], 7),
 				inTransitQuantity: 0,
 				latestAttempt: null,
 				utilization: null,

@@ -2,6 +2,7 @@ import { page } from 'vitest/browser';
 import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { WORLD_CITY_CATALOG } from '$lib/game/worldCatalog';
+import { resolveEffectiveRecurringRoute } from '$lib/game/logisticsRouteModifiers';
 import type { RouteOperationalSummary } from '$lib/game/logisticsReadModels';
 import type { RecurringRoute } from '$lib/game/types';
 import WorldLogisticsRoutes from './WorldLogisticsRoutes.svelte';
@@ -24,6 +25,7 @@ function route(overrides: Partial<RecurringRoute> = {}): RouteOperationalSummary
 
 	return {
 		route: definition,
+		effective: resolveEffectiveRecurringRoute(definition, [], 7),
 		inTransitQuantity: 8,
 		latestAttempt: null,
 		utilization: null,

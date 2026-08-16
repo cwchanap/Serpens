@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from 'vitest';
 import {
+	attemptMatchesRoute,
 	selectInTransitInventory,
 	selectLogisticsTotals,
 	selectRecentRouteDispatchAttempts,
@@ -7,6 +8,7 @@ import {
 	selectRouteOperations
 } from './logisticsReadModels';
 import { compareRecurringRoutes } from './interCityLogistics';
+import { createRouteDispatchAttempt } from './logisticsReport.testUtils';
 import { simulateDay } from './simulateDay';
 import { createNewGame } from './state';
 import type {
@@ -58,10 +60,8 @@ function recurringRoute(overrides: Partial<RecurringRoute> = {}): RecurringRoute
 function routeAttempt(
 	overrides: Partial<DailyRouteDispatchAttempt> = {}
 ): DailyRouteDispatchAttempt {
-	return {
+	return createRouteDispatchAttempt({
 		routeId: 'route-1',
-		originCityId: 'industry-city',
-		destinationCityId: 'breadbasket-basin',
 		materialId: 'water',
 		destinationNeed: 20,
 		capacity: 20,
@@ -71,8 +71,9 @@ function routeAttempt(
 		unmetDestinationNeed: 15,
 		transportCost: 10,
 		transferOrderId: 'transfer-1',
+		baselineCapacity: overrides.capacity ?? 20,
 		...overrides
-	};
+	});
 }
 
 function report(day: number, routeDispatchAttempts: DailyRouteDispatchAttempt[]): DailyReport {
@@ -389,6 +390,102 @@ describe('logistics read models', () => {
 		});
 	});
 
+	test('classifies an event-suspended attempt before stock or capacity constraints', () => {
+		const suspendedAttempt = routeAttempt({
+			routeId: 'route-suspended',
+			destinationNeed: 40,
+			capacity: 30,
+			availableOriginStock: 30,
+			dispatchedQuantity: 0,
+			unusedCapacity: 30,
+			unmetDestinationNeed: 40,
+			transportCost: 0,
+			transferOrderId: null,
+			dispatchSuspended: true,
+			modifierImpacts: [
+				{
+					contributors: [
+						{
+							modifierId: 'event-modifier-1',
+							source: {
+								eventId: 'freight-disruption',
+								instanceId: 'event-instance-1',
+								optionId: 'suspend-shipments'
+							},
+							explanation: {
+								key: 'events.freightDisruption.suspendShipments.suspension',
+								params: {}
+							}
+						}
+					],
+					effectKind: 'route-dispatch-suspension',
+					baselineDispatchedQuantity: 30,
+					effectiveDispatchedQuantity: 0
+				}
+			]
+		});
+		const game = gameWithLogistics({
+			recurringRoutes: [recurringRoute({ id: 'route-suspended', capacity: 30 })],
+			reports: [report(9, [suspendedAttempt])]
+		});
+
+		const summaries = selectRouteOperations(game);
+
+		expect(summaries.find((summary) => summary.route.id === 'route-suspended')).toMatchObject({
+			condition: 'route-event-suspended',
+			utilization: 0,
+			unusedCapacity: 30,
+			unmetDestinationNeed: 40
+		});
+	});
+
+	test('keeps utilization relative to the effective capacity of a disrupted attempt', () => {
+		// A ×0.75 capacity modifier saturates at 75 of a 100 base capacity;
+		// utilization is 100% of the currently available effective capacity.
+		const reducedAttempt = routeAttempt({
+			routeId: 'route-reduced',
+			destinationNeed: 100,
+			capacity: 75,
+			availableOriginStock: 100,
+			dispatchedQuantity: 75,
+			unusedCapacity: 0,
+			unmetDestinationNeed: 25,
+			transportCost: 150,
+			transferOrderId: 'transfer-reduced',
+			baselineCapacity: 100
+		});
+		const game = gameWithLogistics({
+			recurringRoutes: [recurringRoute({ id: 'route-reduced', capacity: 100 })],
+			reports: [report(9, [reducedAttempt])]
+		});
+
+		const summaries = selectRouteOperations(game);
+
+		const summary = summaries.find((current) => current.route.id === 'route-reduced')!;
+		expect(summary.utilization).toBe(1);
+		expect(summary.condition).toBe('route-capacity-constrained');
+		expect(summary.effective.capacity).toBe(100);
+		expect(summary.effective.base.capacity).toBe(100);
+		expect(summary.latestAttempt?.capacity).toBe(75);
+		expect(summary.latestAttempt?.baselineCapacity).toBe(100);
+	});
+
+	test('exposes the current base and effective route in the operational summary', () => {
+		const game = gameWithLogistics({
+			recurringRoutes: [recurringRoute({ id: 'route-1', capacity: 30 })],
+			reports: []
+		});
+
+		const summaries = selectRouteOperations(game);
+
+		const summary = summaries.find((current) => current.route.id === 'route-1')!;
+		expect(summary.effective.base).toBe(summary.route);
+		expect(summary.effective.capacity).toBe(30);
+		expect(summary.effective.leadTimeDays).toBe(2);
+		expect(summary.effective.dispatchSuspended).toBe(false);
+		expect(summary.effective.contributions).toEqual([]);
+	});
+
 	test('groups recent route attempts newest-first with a per-route limit', () => {
 		const routeOneDaySeven = routeAttempt({ routeId: 'route-1', transferOrderId: 'transfer-7' });
 		const routeTwoDaySeven = routeAttempt({ routeId: 'route-2', transferOrderId: 'transfer-2-7' });
@@ -577,6 +674,38 @@ describe('logistics read models', () => {
 		expect(recoveredSummary?.latestAttempt).toEqual(matchingAttempt);
 		expect(recoveredSummary?.condition).toBe('route-capacity-constrained');
 		expect(recoveredSummary?.utilization).toBe(1);
+	});
+
+	test('attemptMatchesRoute compares the persisted baseline capacity, not the effective capacity', () => {
+		const route = recurringRoute({ id: 'route-1', capacity: 100 });
+		// A temporary ×0.75 disruption changes only the effective capacity, so
+		// the attempt must still match the current base configuration.
+		const disruptedAttempt = routeAttempt({
+			routeId: 'route-1',
+			capacity: 75,
+			availableOriginStock: 100,
+			dispatchedQuantity: 75,
+			unusedCapacity: 0,
+			unmetDestinationNeed: 25,
+			transportCost: 150,
+			transferOrderId: 'transfer-disrupted',
+			baselineCapacity: 100
+		});
+		// Editing the base capacity does make the attempt stale.
+		const editedAttempt = routeAttempt({
+			routeId: 'route-1',
+			capacity: 75,
+			availableOriginStock: 100,
+			dispatchedQuantity: 75,
+			unusedCapacity: 0,
+			unmetDestinationNeed: 25,
+			transportCost: 150,
+			transferOrderId: 'transfer-edited',
+			baselineCapacity: 75
+		});
+
+		expect(attemptMatchesRoute(disruptedAttempt, route)).toBe(true);
+		expect(attemptMatchesRoute(editedAttempt, route)).toBe(false);
 	});
 
 	test('route and raw-ID sorting preserve equal-ID branches', () => {

@@ -2331,7 +2331,7 @@ function validateSavedDecision(value: unknown, gameDay: number, label: string): 
 		if (expiresOnDay <= generatedOnDay) {
 			throw new SaveDataError(`${label} expiresOnDay must be after generatedOnDay`);
 		}
-		validateCompanyTarget(decision.target, `${label} target`);
+		validateEventTarget(decision.target, `${label} target`);
 		validateStructuredCopyRef(decision.copy, `${label} copy`);
 		validateUniqueArrayIds(
 			requireArray(decision.options, `${label} options`),
@@ -2448,14 +2448,45 @@ function validateSavedModifierTemplate(value: unknown, label: string): void {
 
 function validateSavedTimedEffect(value: unknown, label: string): void {
 	const effect = requireRecord(value, label);
-	requireExactKeys(effect, ['kind', 'scope', 'target', 'multiplier'], label);
-	requireOneOf(effect.kind, `${label} kind`, ['import-cost-multiplier'] as const);
-	requireOneOf(effect.scope, `${label} scope`, ['retail-product'] as const);
-	const target = requireRecord(effect.target, `${label} target`);
-	requireExactKeys(target, ['kind'], `${label} target`);
-	requireOneOf(target.kind, `${label} target kind`, ['all'] as const);
-	const multiplier = requireNumber(effect.multiplier, `${label} multiplier`);
-	if (multiplier <= 0) throw new SaveDataError(`${label} multiplier must be positive`);
+	const kind = requireOneOf(effect.kind, `${label} kind`, [
+		'import-cost-multiplier',
+		'route-lead-time-adjustment',
+		'route-capacity-multiplier',
+		'route-dispatch-suspension',
+		'route-transport-cost-multiplier'
+	] as const);
+
+	switch (kind) {
+		case 'import-cost-multiplier': {
+			requireExactKeys(effect, ['kind', 'scope', 'target', 'multiplier'], label);
+			requireOneOf(effect.scope, `${label} scope`, ['retail-product'] as const);
+			const target = requireRecord(effect.target, `${label} target`);
+			requireExactKeys(target, ['kind'], `${label} target`);
+			requireOneOf(target.kind, `${label} target kind`, ['all'] as const);
+			requirePositiveFiniteMultiplier(effect.multiplier, `${label} multiplier`);
+			break;
+		}
+		case 'route-lead-time-adjustment':
+			requireExactKeys(effect, ['kind', 'days'], label);
+			requirePositiveSafeInteger(effect.days, `${label} days`);
+			break;
+		case 'route-capacity-multiplier':
+		case 'route-transport-cost-multiplier':
+			requireExactKeys(effect, ['kind', 'multiplier'], label);
+			requirePositiveFiniteMultiplier(effect.multiplier, `${label} multiplier`);
+			break;
+		case 'route-dispatch-suspension':
+			requireExactKeys(effect, ['kind'], label);
+			break;
+	}
+}
+
+function requirePositiveFiniteMultiplier(value: unknown, label: string): number {
+	const multiplier = requireNumber(value, label);
+	if (multiplier <= 0) {
+		throw new SaveDataError(`${label} must be a positive finite number`);
+	}
+	return multiplier;
 }
 
 function validateStructuredCopyRef(value: unknown, label: string): void {
@@ -2473,10 +2504,27 @@ function validateStructuredCopyRef(value: unknown, label: string): void {
 	}
 }
 
-function validateCompanyTarget(value: unknown, label: string): void {
+type ValidatedEventTarget = { kind: 'company' } | { kind: 'recurring-route'; routeId: string };
+
+function validateEventTarget(value: unknown, label: string): ValidatedEventTarget {
 	const target = requireRecord(value, label);
-	requireExactKeys(target, ['kind'], label);
-	requireOneOf(target.kind, `${label} kind`, ['company'] as const);
+	const kind = requireOneOf(target.kind, `${label} kind`, ['company', 'recurring-route'] as const);
+	if (kind === 'company') {
+		requireExactKeys(target, ['kind'], label);
+		return { kind: 'company' };
+	}
+	requireExactKeys(target, ['kind', 'routeId'], label);
+	return {
+		kind: 'recurring-route',
+		routeId: requireString(target.routeId, `${label} routeId`)
+	};
+}
+
+function eventTargetKey(eventId: string, target: ValidatedEventTarget): string {
+	if (target.kind === 'company') {
+		return eventId ? `${eventId}:company` : 'company';
+	}
+	return eventId ? `${eventId}:route:${target.routeId}` : `route:${target.routeId}`;
 }
 
 function validateSavedEventRuntime(
@@ -2529,7 +2577,7 @@ function validateSavedEventRuntime(
 				cooldownLabel
 			);
 			const eventId = requireString(cooldown.eventId, `${cooldownLabel} eventId`);
-			validateCompanyTarget(cooldown.target, `${cooldownLabel} target`);
+			const cooldownTarget = validateEventTarget(cooldown.target, `${cooldownLabel} target`);
 			const generatedOnDay = requireNonNegativeInteger(
 				cooldown.generatedOnDay,
 				`${cooldownLabel} generatedOnDay`
@@ -2544,7 +2592,7 @@ function validateSavedEventRuntime(
 			if (eligibleOnDay <= generatedOnDay) {
 				throw new SaveDataError(`${cooldownLabel} eligibleOnDay must be after generatedOnDay`);
 			}
-			const key = `${eventId}:company`;
+			const key = eventTargetKey(eventId, cooldownTarget);
 			if (cooldownKeys.has(key)) {
 				throw new SaveDataError(`${cooldownLabel} must have a unique event/target key: ${key}`);
 			}
@@ -2572,13 +2620,17 @@ function validateSavedEventRuntime(
 				if (activeModifierIds.has(modifier.id)) {
 					throw new SaveDataError(`${modifierLabel} id must be unique: ${modifier.id}`);
 				}
-				if (activeStackingKeys.has(modifier.stackingKey)) {
+				// Replacement is target-scoped, so the same stacking key may
+				// coexist on different concrete targets (e.g. the same
+				// disruption on two routes) but never twice on one target.
+				const stackingKeyWithTarget = `${modifier.stackingKey}:${eventTargetKey('', modifier.target)}`;
+				if (activeStackingKeys.has(stackingKeyWithTarget)) {
 					throw new SaveDataError(
-						`${modifierLabel} stackingKey must be unique among active modifiers: ${modifier.stackingKey}`
+						`${modifierLabel} stackingKey must be unique per target among active modifiers: ${modifier.stackingKey}`
 					);
 				}
 				activeModifierIds.add(modifier.id);
-				activeStackingKeys.add(modifier.stackingKey);
+				activeStackingKeys.add(stackingKeyWithTarget);
 				highestInstanceSequence = Math.max(
 					highestInstanceSequence,
 					requireGeneratedId(
@@ -2701,7 +2753,7 @@ function validateSavedActiveModifier(
 	value: unknown,
 	gameDay: number,
 	label: string
-): { id: string; instanceId: string; stackingKey: string } {
+): { id: string; instanceId: string; stackingKey: string; target: ValidatedEventTarget } {
 	const modifier = requireRecord(value, label);
 	requireExactKeys(
 		modifier,
@@ -2724,7 +2776,12 @@ function validateSavedActiveModifier(
 	if (!(base.startsOnDay <= gameDay && gameDay < base.expiresOnDay)) {
 		throw new SaveDataError(`${label} must be active on the current game day ${gameDay}`);
 	}
-	return { id: base.id, instanceId: base.instanceId, stackingKey: base.stackingKey };
+	return {
+		id: base.id,
+		instanceId: base.instanceId,
+		stackingKey: base.stackingKey,
+		target: base.target
+	};
 }
 
 function validateSavedModifierSnapshot(
@@ -2759,11 +2816,12 @@ function validateSavedModifierFields(
 	stackingKey: string;
 	startsOnDay: number;
 	expiresOnDay: number;
+	target: ValidatedEventTarget;
 } {
 	const id = requireString(modifier.id, `${label} id`);
 	requireGeneratedId(id, 'event-modifier-', `${label} id`);
 	const source = validateSavedModifierSource(modifier.source, `${label} source`);
-	validateCompanyTarget(modifier.target, `${label} target`);
+	const target = validateEventTarget(modifier.target, `${label} target`);
 	const startsOnDay = requireNonNegativeInteger(modifier.startsOnDay, `${label} startsOnDay`);
 	const expiresOnDay = requireNonNegativeInteger(modifier.expiresOnDay, `${label} expiresOnDay`);
 	if (expiresOnDay <= startsOnDay) {
@@ -2773,7 +2831,14 @@ function validateSavedModifierFields(
 	validateSavedTimedEffect(modifier.effect, `${label} effect`);
 	validateStructuredCopyRef(modifier.explanation, `${label} explanation`);
 	requireOneOf(modifier.importance, `${label} importance`, ['normal', 'important'] as const);
-	return { id, instanceId: source.instanceId, stackingKey, startsOnDay, expiresOnDay };
+	return {
+		id,
+		instanceId: source.instanceId,
+		stackingKey,
+		startsOnDay,
+		expiresOnDay,
+		target
+	};
 }
 
 function validateSavedModifierSource(
@@ -2826,7 +2891,7 @@ function validateSavedEventHistoryEntry(
 		'event-instance-',
 		`${label} instanceId`
 	);
-	validateCompanyTarget(entry.target, `${label} target`);
+	validateEventTarget(entry.target, `${label} target`);
 	if (kind === 'event-resolved') requireString(entry.optionId, `${label} optionId`);
 	return { day, instanceSequence, modifierSequence: 0 };
 }
@@ -2996,7 +3061,7 @@ function validateSavedModifierImpacts(value: unknown, label: string): void {
 		previousModifierId = modifierId;
 		const source = validateSavedModifierSource(impact.source, `${impactLabel} source`);
 		requireGeneratedId(source.instanceId, 'event-instance-', `${impactLabel} source instanceId`);
-		validateCompanyTarget(impact.target, `${impactLabel} target`);
+		validateEventTarget(impact.target, `${impactLabel} target`);
 		requireOneOf(impact.effectKind, `${impactLabel} effectKind`, [
 			'import-cost-multiplier'
 		] as const);
@@ -3067,8 +3132,23 @@ function validateSavedDailyLogisticsReport(value: unknown, label: string): void 
 	const report = requireRecord(value, label);
 	requireExactKeys(
 		report,
-		['arrivals', 'routeDispatchAttempts', 'deliveredUnits', 'scheduledTransportCost'],
+		[
+			'arrivals',
+			'routeDispatchAttempts',
+			'deliveredUnits',
+			'scheduledTransportCost',
+			'modifierRecoveries'
+		],
 		label
+	);
+
+	requireArray(report.modifierRecoveries, `${label} modifierRecoveries`).forEach(
+		(recoveryValue, index) => {
+			validateSavedDailyRouteModifierRecovery(
+				recoveryValue,
+				`${label} modifierRecoveries[${index}]`
+			);
+		}
 	);
 
 	const seenArrivalOrderIds = new Set<string>();
@@ -3189,7 +3269,10 @@ function validateSavedDailyRouteDispatchAttempt(
 			'unusedCapacity',
 			'unmetDestinationNeed',
 			'transportCost',
-			'transferOrderId'
+			'transferOrderId',
+			'baselineCapacity',
+			'dispatchSuspended',
+			'modifierImpacts'
 		],
 		label
 	);
@@ -3216,6 +3299,10 @@ function validateSavedDailyRouteDispatchAttempt(
 		attempt.capacity,
 		`${label} capacity`
 	);
+	requireHistoricalLogisticsPositiveSafeInteger(
+		attempt.baselineCapacity,
+		`${label} baselineCapacity`
+	);
 	const availableOriginStock = requireHistoricalLogisticsNonNegativeSafeInteger(
 		attempt.availableOriginStock,
 		`${label} availableOriginStock`
@@ -3224,6 +3311,7 @@ function validateSavedDailyRouteDispatchAttempt(
 		attempt.dispatchedQuantity,
 		`${label} dispatchedQuantity`
 	);
+	const dispatchSuspended = requireBoolean(attempt.dispatchSuspended, `${label} dispatchSuspended`);
 	const unusedCapacity = requireHistoricalLogisticsNonNegativeSafeInteger(
 		attempt.unusedCapacity,
 		`${label} unusedCapacity`
@@ -3236,7 +3324,11 @@ function validateSavedDailyRouteDispatchAttempt(
 		attempt.transportCost,
 		`${label} transportCost`
 	);
+	validateSavedRouteDispatchModifierImpacts(attempt.modifierImpacts, `${label} modifierImpacts`);
 
+	if (dispatchSuspended && dispatchedQuantity !== 0) {
+		throw new SaveDataError(`${label} suspended dispatch must have zero dispatchedQuantity`);
+	}
 	if (dispatchedQuantity > destinationNeed) {
 		throw new SaveDataError(`${label} dispatchedQuantity must not exceed destinationNeed`);
 	}
@@ -3274,6 +3366,237 @@ function validateSavedDailyRouteDispatchAttempt(
 		transferOrderId: requireString(attempt.transferOrderId, `${label} transferOrderId`),
 		transportCost
 	};
+}
+
+function validateSavedRouteDispatchModifierImpacts(value: unknown, label: string): void {
+	const seenEffectKinds = new Set<string>();
+	requireArray(value, label).forEach((impactValue, index) => {
+		const impactLabel = `${label}[${index}]`;
+		const impact = requireRecord(impactValue, impactLabel);
+		const kind = requireOneOf(impact.effectKind, `${impactLabel} effectKind`, [
+			'route-lead-time-adjustment',
+			'route-capacity-multiplier',
+			'route-dispatch-suspension',
+			'route-transport-cost-multiplier'
+		] as const);
+		if (seenEffectKinds.has(kind)) {
+			throw new SaveDataError(`${impactLabel} effectKind must be unique: ${kind}`);
+		}
+		seenEffectKinds.add(kind);
+
+		const contributors = requireArray(impact.contributors, `${impactLabel} contributors`);
+		if (contributors.length === 0) {
+			throw new SaveDataError(`${impactLabel} contributors must not be empty`);
+		}
+		const seenModifierIds = new Set<string>();
+		let previousModifierId: string | undefined;
+		contributors.forEach((contributorValue, contributorIndex) => {
+			const contributorLabel = `${impactLabel} contributors[${contributorIndex}]`;
+			const contributor = requireRecord(contributorValue, contributorLabel);
+			requireExactKeys(contributor, ['modifierId', 'source', 'explanation'], contributorLabel);
+			const modifierId = requireString(contributor.modifierId, `${contributorLabel} modifierId`);
+			requireGeneratedId(modifierId, 'event-modifier-', `${contributorLabel} modifierId`);
+			if (seenModifierIds.has(modifierId)) {
+				throw new SaveDataError(
+					`${contributorLabel} modifierId must be unique within the impact: ${modifierId}`
+				);
+			}
+			if (previousModifierId !== undefined && modifierId <= previousModifierId) {
+				throw new SaveDataError(
+					`${contributorLabel} modifierId must be in ascending code-unit order`
+				);
+			}
+			seenModifierIds.add(modifierId);
+			previousModifierId = modifierId;
+			const source = validateSavedModifierSource(contributor.source, `${contributorLabel} source`);
+			requireGeneratedId(
+				source.instanceId,
+				'event-instance-',
+				`${contributorLabel} source instanceId`
+			);
+			validateStructuredCopyRef(contributor.explanation, `${contributorLabel} explanation`);
+		});
+
+		switch (kind) {
+			case 'route-lead-time-adjustment':
+				requireExactKeys(
+					impact,
+					['contributors', 'effectKind', 'baselineLeadTimeDays', 'effectiveLeadTimeDays'],
+					impactLabel
+				);
+				requireHistoricalLogisticsPositiveSafeInteger(
+					impact.baselineLeadTimeDays,
+					`${impactLabel} baselineLeadTimeDays`
+				);
+				requireHistoricalLogisticsPositiveSafeInteger(
+					impact.effectiveLeadTimeDays,
+					`${impactLabel} effectiveLeadTimeDays`
+				);
+				break;
+			case 'route-capacity-multiplier':
+				requireExactKeys(
+					impact,
+					[
+						'contributors',
+						'effectKind',
+						'baselineCapacity',
+						'effectiveCapacity',
+						'baselineDispatchedQuantity',
+						'effectiveDispatchedQuantity'
+					],
+					impactLabel
+				);
+				requireHistoricalLogisticsPositiveSafeInteger(
+					impact.baselineCapacity,
+					`${impactLabel} baselineCapacity`
+				);
+				requireHistoricalLogisticsPositiveSafeInteger(
+					impact.effectiveCapacity,
+					`${impactLabel} effectiveCapacity`
+				);
+				requireHistoricalLogisticsNonNegativeSafeInteger(
+					impact.baselineDispatchedQuantity,
+					`${impactLabel} baselineDispatchedQuantity`
+				);
+				requireHistoricalLogisticsNonNegativeSafeInteger(
+					impact.effectiveDispatchedQuantity,
+					`${impactLabel} effectiveDispatchedQuantity`
+				);
+				break;
+			case 'route-dispatch-suspension':
+				requireExactKeys(
+					impact,
+					[
+						'contributors',
+						'effectKind',
+						'baselineDispatchedQuantity',
+						'effectiveDispatchedQuantity'
+					],
+					impactLabel
+				);
+				requireHistoricalLogisticsNonNegativeSafeInteger(
+					impact.baselineDispatchedQuantity,
+					`${impactLabel} baselineDispatchedQuantity`
+				);
+				if (impact.effectiveDispatchedQuantity !== 0) {
+					throw new SaveDataError(
+						`${impactLabel} effectiveDispatchedQuantity must be 0 for a suspension`
+					);
+				}
+				break;
+			case 'route-transport-cost-multiplier':
+				requireExactKeys(
+					impact,
+					['contributors', 'effectKind', 'baselineTransportCost', 'effectiveTransportCost'],
+					impactLabel
+				);
+				requireHistoricalLogisticsNonNegativeSafeInteger(
+					impact.baselineTransportCost,
+					`${impactLabel} baselineTransportCost`
+				);
+				requireHistoricalLogisticsNonNegativeSafeInteger(
+					impact.effectiveTransportCost,
+					`${impactLabel} effectiveTransportCost`
+				);
+				break;
+		}
+	});
+}
+
+function validateSavedDailyRouteModifierRecovery(value: unknown, label: string): void {
+	const recovery = requireRecord(value, label);
+	const kind = requireOneOf(recovery.effectKind, `${label} effectKind`, [
+		'route-lead-time-adjustment',
+		'route-capacity-multiplier',
+		'route-dispatch-suspension',
+		'route-transport-cost-multiplier'
+	] as const);
+	requireString(recovery.routeId, `${label} routeId`);
+	requireGeneratedId(recovery.modifierId, 'event-modifier-', `${label} modifierId`);
+	const source = validateSavedModifierSource(recovery.source, `${label} source`);
+	requireGeneratedId(source.instanceId, 'event-instance-', `${label} source instanceId`);
+
+	switch (kind) {
+		case 'route-lead-time-adjustment':
+			requireExactKeys(
+				recovery,
+				[
+					'routeId',
+					'modifierId',
+					'source',
+					'effectKind',
+					'disruptedLeadTimeDays',
+					'recoveredLeadTimeDays'
+				],
+				label
+			);
+			requireHistoricalLogisticsNonNegativeSafeInteger(
+				recovery.disruptedLeadTimeDays,
+				`${label} disruptedLeadTimeDays`
+			);
+			requireHistoricalLogisticsNonNegativeSafeInteger(
+				recovery.recoveredLeadTimeDays,
+				`${label} recoveredLeadTimeDays`
+			);
+			break;
+		case 'route-capacity-multiplier':
+			requireExactKeys(
+				recovery,
+				['routeId', 'modifierId', 'source', 'effectKind', 'disruptedCapacity', 'recoveredCapacity'],
+				label
+			);
+			requireHistoricalLogisticsPositiveSafeInteger(
+				recovery.disruptedCapacity,
+				`${label} disruptedCapacity`
+			);
+			requireHistoricalLogisticsPositiveSafeInteger(
+				recovery.recoveredCapacity,
+				`${label} recoveredCapacity`
+			);
+			break;
+		case 'route-dispatch-suspension':
+			requireExactKeys(
+				recovery,
+				[
+					'routeId',
+					'modifierId',
+					'source',
+					'effectKind',
+					'disruptedSuspended',
+					'recoveredSuspended'
+				],
+				label
+			);
+			if (recovery.disruptedSuspended !== true) {
+				throw new SaveDataError(`${label} disruptedSuspended must be true`);
+			}
+			if (recovery.recoveredSuspended !== false) {
+				throw new SaveDataError(`${label} recoveredSuspended must be false`);
+			}
+			break;
+		case 'route-transport-cost-multiplier':
+			requireExactKeys(
+				recovery,
+				[
+					'routeId',
+					'modifierId',
+					'source',
+					'effectKind',
+					'disruptedTransportCostPerUnit',
+					'recoveredTransportCostPerUnit'
+				],
+				label
+			);
+			requireNonNegativeFiniteNumber(
+				recovery.disruptedTransportCostPerUnit,
+				`${label} disruptedTransportCostPerUnit`
+			);
+			requireNonNegativeFiniteNumber(
+				recovery.recoveredTransportCostPerUnit,
+				`${label} recoveredTransportCostPerUnit`
+			);
+			break;
+	}
 }
 
 function requireHistoricalLogisticsPositiveSafeInteger(value: unknown, label: string): number {
@@ -3941,6 +4264,15 @@ function requireNumber(value: unknown, label: string): number {
 	}
 
 	return value;
+}
+
+function requireNonNegativeFiniteNumber(value: unknown, label: string): number {
+	const number = requireNumber(value, label);
+	if (number < 0) {
+		throw new SaveDataError(`${label} must be a non-negative finite number`);
+	}
+
+	return number;
 }
 
 function validateStoreLocation(value: unknown, label: string): void {

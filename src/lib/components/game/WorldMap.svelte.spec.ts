@@ -2,6 +2,7 @@ import { page, userEvent } from 'vitest/browser';
 import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { createI18n } from '$lib/i18n';
+import { resolveEffectiveRecurringRoute } from '$lib/game/logisticsRouteModifiers';
 import type { RouteOperationalSummary } from '$lib/game/logisticsReadModels';
 import type { RecurringRoute } from '$lib/game/types';
 import { WORLD_CITY_CATALOG, type WorldCityStatus } from '$lib/game/world';
@@ -25,21 +26,23 @@ function status(cityId: string, state: WorldCityStatus['state']): WorldCityStatu
 }
 
 function routeSummary(overrides: Partial<RecurringRoute> = {}): RouteOperationalSummary {
+	const route: RecurringRoute = {
+		id: 'route-1',
+		originCityId: 'industry-city',
+		destinationCityId: 'breadbasket-basin',
+		materialId: 'water',
+		capacity: 30,
+		frequencyDays: 3,
+		leadTimeDays: 2,
+		transportCostPerUnit: 2,
+		priority: 1,
+		state: 'active',
+		nextDispatchOnDay: 7,
+		...overrides
+	};
 	return {
-		route: {
-			id: 'route-1',
-			originCityId: 'industry-city',
-			destinationCityId: 'breadbasket-basin',
-			materialId: 'water',
-			capacity: 30,
-			frequencyDays: 3,
-			leadTimeDays: 2,
-			transportCostPerUnit: 2,
-			priority: 1,
-			state: 'active',
-			nextDispatchOnDay: 7,
-			...overrides
-		},
+		route,
+		effective: resolveEffectiveRecurringRoute(route, [], 7),
 		inTransitQuantity: 8,
 		latestAttempt: null,
 		utilization: null,

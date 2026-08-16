@@ -158,7 +158,8 @@ const SUPPLY_PLANNER_ROUTE_CONDITION_RANK: Record<SupplyPlannerRouteCondition, n
 	'route-capacity-constrained': 3,
 	'origin-stock-constrained': 3,
 	'route-priority-constrained': 4,
-	'route-paused': 4
+	'route-paused': 4,
+	'route-event-suspended': 5
 };
 
 function promoteSupplyPlannerRouteCondition(

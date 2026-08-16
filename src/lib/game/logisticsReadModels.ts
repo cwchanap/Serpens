@@ -1,5 +1,9 @@
 import { compareWorldCityIds } from './cityInventory';
 import { compareRecurringRoutes } from './interCityLogistics';
+import {
+	resolveEffectiveRecurringRoute,
+	type EffectiveRecurringRoute
+} from './logisticsRouteModifiers';
 import type {
 	DailyRouteDispatchAttempt,
 	GameState,
@@ -22,10 +26,13 @@ export type RouteOperationalCondition =
 	| 'destination-full'
 	| 'origin-stock-constrained'
 	| 'route-capacity-constrained'
+	| 'route-event-suspended'
 	| 'normal';
 
 export interface RouteOperationalSummary {
 	route: RecurringRoute;
+	/** Current effective route resolved from base route plus active modifiers. */
+	effective: EffectiveRecurringRoute;
 	inTransitQuantity: number;
 	latestAttempt: DailyRouteDispatchAttempt | null;
 	utilization: number | null;
@@ -122,11 +129,13 @@ export function selectRecentRouteDispatchAttempts(
 
 /**
  * A dispatch attempt is only valid evidence for a route's current configuration
- * when its origin, destination, material, and capacity still match. Editing a
- * recurring route via {@link updateRecurringRoute} preserves the route ID while
- * allowing any of these fields to change, so a routeId-only match would let a
- * prior configuration's attempts bleed into the route inspector's latest
- * attempt, utilization, condition, and capacity-streak alerts.
+ * when its origin, destination, material, and base capacity still match.
+ * Editing a recurring route via {@link updateRecurringRoute} preserves the
+ * route ID while allowing any of these fields to change, so a routeId-only
+ * match would let a prior configuration's attempts bleed into the route
+ * inspector's latest attempt, utilization, condition, and capacity-streak
+ * alerts. Temporary route modifiers change only the effective capacity, so
+ * configuration matching compares the persisted baseline capacity.
  */
 export function attemptMatchesRoute(
 	attempt: DailyRouteDispatchAttempt,
@@ -136,7 +145,7 @@ export function attemptMatchesRoute(
 		attempt.originCityId === route.originCityId &&
 		attempt.destinationCityId === route.destinationCityId &&
 		attempt.materialId === route.materialId &&
-		attempt.capacity === route.capacity
+		attempt.baselineCapacity === route.capacity
 	);
 }
 
@@ -212,6 +221,7 @@ export function selectRouteOperations(game: GameState): RouteOperationalSummary[
 
 		return {
 			route,
+			effective: resolveEffectiveRecurringRoute(route, game.events.activeModifiers, game.day),
 			inTransitQuantity: totals.inTransitQuantity,
 			latestAttempt,
 			utilization: latestAttempt ? latestAttempt.dispatchedQuantity / latestAttempt.capacity : null,
@@ -229,6 +239,9 @@ function classifyRouteOperationalCondition(
 ): RouteOperationalCondition {
 	if (!attempt) {
 		return 'awaiting-dispatch';
+	}
+	if (attempt.dispatchSuspended) {
+		return 'route-event-suspended';
 	}
 	if (attempt.destinationNeed === 0) {
 		return 'destination-full';
