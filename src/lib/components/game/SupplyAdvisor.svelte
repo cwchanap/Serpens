@@ -212,27 +212,21 @@
 		}
 	}
 
+	const ROUTE_CONDITION_MESSAGE_KEY = {
+		'awaiting-dispatch': 'supplyAdvisor.logistics.conditions.awaitingDispatch',
+		normal: 'supplyAdvisor.logistics.conditions.normal',
+		'destination-full': 'supplyAdvisor.logistics.conditions.destinationFull',
+		'origin-stock-constrained': 'supplyAdvisor.logistics.conditions.originStockConstrained',
+		'route-capacity-constrained': 'supplyAdvisor.logistics.conditions.routeCapacityConstrained',
+		'route-event-suspended': 'supplyAdvisor.logistics.conditions.routeEventSuspended',
+		'route-priority-constrained': 'supplyAdvisor.logistics.conditions.routePriorityConstrained',
+		'route-frequency': 'supplyAdvisor.logistics.conditions.routeFrequency',
+		'route-lead-time': 'supplyAdvisor.logistics.conditions.routeLeadTime',
+		'route-paused': 'supplyAdvisor.logistics.conditions.routePaused'
+	} as const satisfies Record<SupplyPlannerRouteCondition, string>;
+
 	function routeConditionText(condition: SupplyPlannerRouteCondition): string {
-		switch (condition) {
-			case 'awaiting-dispatch':
-				return i18n.t('supplyAdvisor.logistics.conditions.awaitingDispatch');
-			case 'normal':
-				return i18n.t('supplyAdvisor.logistics.conditions.normal');
-			case 'destination-full':
-				return i18n.t('supplyAdvisor.logistics.conditions.destinationFull');
-			case 'origin-stock-constrained':
-				return i18n.t('supplyAdvisor.logistics.conditions.originStockConstrained');
-			case 'route-capacity-constrained':
-				return i18n.t('supplyAdvisor.logistics.conditions.routeCapacityConstrained');
-			case 'route-priority-constrained':
-				return i18n.t('supplyAdvisor.logistics.conditions.routePriorityConstrained');
-			case 'route-frequency':
-				return i18n.t('supplyAdvisor.logistics.conditions.routeFrequency');
-			case 'route-lead-time':
-				return i18n.t('supplyAdvisor.logistics.conditions.routeLeadTime');
-			case 'route-paused':
-				return i18n.t('supplyAdvisor.logistics.conditions.routePaused');
-		}
+		return i18n.t(ROUTE_CONDITION_MESSAGE_KEY[condition]);
 	}
 
 	function logisticsCauseText(cause: SupplyLogisticsBottleneck): string {

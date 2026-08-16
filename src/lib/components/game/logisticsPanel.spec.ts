@@ -3,6 +3,7 @@ import { createI18n } from '$lib/i18n';
 import { MATERIALS } from '$lib/game/industry';
 import { simulateDay } from '$lib/game/simulateDay';
 import { createNewGame } from '$lib/game/state';
+import { createRouteDispatchAttempt } from '$lib/game/logisticsReport.testUtils';
 import type {
 	DailyReport,
 	DailyRouteDispatchAttempt,
@@ -157,10 +158,8 @@ describe('buildLogisticsPanelView', () => {
 	it('localizes the latest dispatch attempt when a route has matching report evidence', () => {
 		const base = createTwoIndustryCityGame();
 		const activeRoute = route({ nextDispatchOnDay: 10 });
-		const attempt: DailyRouteDispatchAttempt = {
+		const attempt = createRouteDispatchAttempt({
 			routeId: 'route-1',
-			originCityId: 'industry-city',
-			destinationCityId: 'breadbasket-basin',
 			materialId: 'water',
 			destinationNeed: 20,
 			capacity: 30,
@@ -169,8 +168,9 @@ describe('buildLogisticsPanelView', () => {
 			unusedCapacity: 10,
 			unmetDestinationNeed: 0,
 			transportCost: 40,
-			transferOrderId: 'transfer-dispatch-1'
-		};
+			transferOrderId: 'transfer-dispatch-1',
+			baselineCapacity: 30
+		});
 		let reportTemplate: DailyReport | null = null;
 		function reportWithAttempt(day: number, attempts: DailyRouteDispatchAttempt[]): DailyReport {
 			if (!reportTemplate) {

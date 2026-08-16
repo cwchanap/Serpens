@@ -307,7 +307,10 @@ export function processSupplyPlannerRouteDispatches(
 			unusedCapacity: route.capacity - dispatchedQuantity,
 			unmetDestinationNeed: destinationNeed === 0 ? 0 : destinationNeed - dispatchedQuantity,
 			transportCost,
-			transferOrderId
+			transferOrderId,
+			baselineCapacity: route.capacity,
+			dispatchSuspended: false,
+			modifierImpacts: []
 		});
 	}
 

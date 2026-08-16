@@ -405,7 +405,8 @@ describe('daily simulation', () => {
 			arrivals: [],
 			routeDispatchAttempts: [],
 			deliveredUnits: 0,
-			scheduledTransportCost: 0
+			scheduledTransportCost: 0,
+			modifierRecoveries: []
 		});
 	});
 
@@ -490,6 +491,122 @@ describe('daily simulation', () => {
 		expect(report.operatingCashFlow).toBe(baseOperatingCashFlow - sumAttemptCosts);
 		expect(preFinanceCash).toBe(manual.game.cash + report.operatingCashFlow);
 		expect(report.cashAfter).toBe(report.cashBefore + report.netCashChange);
+	});
+
+	test('applies an active route capacity modifier to a live dispatch with baseline/effective evidence', () => {
+		const base = withCityMaterials(
+			withWarehouses(openTwoIndustryCityLogisticsGame(), ['industry-city', 'breadbasket-basin'], {
+				mapXOffset: 10,
+				mapY: 2
+			}),
+			'industry-city',
+			{ water: 100 }
+		);
+		const capacityModifier: ActiveEventModifier = {
+			id: 'event-modifier-1',
+			source: {
+				eventId: 'freight-disruption',
+				instanceId: 'event-instance-1',
+				optionId: 'accept-delay'
+			},
+			target: { kind: 'recurring-route', routeId: 'route-1' },
+			startsOnDay: 7,
+			expiresOnDay: 10,
+			stackingKey: 'freight-capacity:route-1',
+			stackingRule: 'replace',
+			effect: { kind: 'route-capacity-multiplier', multiplier: 0.75 },
+			explanation: { key: 'events.freightDisruption.acceptDelay.capacity', params: {} },
+			importance: 'normal'
+		};
+		const result = simulateDay({
+			...base,
+			events: { ...base.events, activeModifiers: [capacityModifier] },
+			logistics: {
+				...base.logistics,
+				recurringRoutes: [createDueRoute({ capacity: 100, transportCostPerUnit: 2 })]
+			}
+		});
+		const attempt = result.reports.at(-1)!.logistics.routeDispatchAttempts[0]!;
+
+		expect(attempt).toMatchObject({
+			capacity: 75,
+			baselineCapacity: 100,
+			dispatchedQuantity: 75,
+			unusedCapacity: 0,
+			unmetDestinationNeed: 125,
+			transportCost: 150,
+			transferOrderId: 'transfer-1'
+		});
+		expect(attempt.modifierImpacts).toContainEqual(
+			expect.objectContaining({
+				effectKind: 'route-capacity-multiplier',
+				baselineCapacity: 100,
+				effectiveCapacity: 75,
+				baselineDispatchedQuantity: 100,
+				effectiveDispatchedQuantity: 75
+			})
+		);
+		expect(
+			result.logistics.transferOrders.find((order) => order.source.kind === 'recurring-route')
+		).toMatchObject({ quantity: 75, arrivalOnDay: 9, transportCost: 150 });
+	});
+
+	test('suspends a due route dispatch without creating an order while advancing cadence', () => {
+		const base = withCityMaterials(
+			withWarehouses(openTwoIndustryCityLogisticsGame(), ['industry-city', 'breadbasket-basin'], {
+				mapXOffset: 10,
+				mapY: 2
+			}),
+			'industry-city',
+			{ water: 100 }
+		);
+		const suspensionModifier: ActiveEventModifier = {
+			id: 'event-modifier-1',
+			source: {
+				eventId: 'freight-disruption',
+				instanceId: 'event-instance-1',
+				optionId: 'suspend-shipments'
+			},
+			target: { kind: 'recurring-route', routeId: 'route-1' },
+			startsOnDay: 7,
+			expiresOnDay: 10,
+			stackingKey: 'freight-suspension:route-1',
+			stackingRule: 'replace',
+			effect: { kind: 'route-dispatch-suspension' },
+			explanation: { key: 'events.freightDisruption.suspendShipments.suspension', params: {} },
+			importance: 'important'
+		};
+		const result = simulateDay({
+			...base,
+			events: { ...base.events, activeModifiers: [suspensionModifier] },
+			logistics: {
+				...base.logistics,
+				recurringRoutes: [createDueRoute({ capacity: 100, transportCostPerUnit: 2 })]
+			}
+		});
+		const report = result.reports.at(-1)!;
+		const attempt = report.logistics.routeDispatchAttempts[0]!;
+
+		expect(attempt).toMatchObject({
+			capacity: 100,
+			baselineCapacity: 100,
+			dispatchedQuantity: 0,
+			unusedCapacity: 100,
+			unmetDestinationNeed: 200,
+			transportCost: 0,
+			transferOrderId: null,
+			dispatchSuspended: true
+		});
+		expect(attempt.modifierImpacts).toContainEqual(
+			expect.objectContaining({
+				effectKind: 'route-dispatch-suspension',
+				baselineDispatchedQuantity: 100,
+				effectiveDispatchedQuantity: 0
+			})
+		);
+		expect(report.logistics.scheduledTransportCost).toBe(0);
+		expect(result.logistics.transferOrders).toHaveLength(0);
+		expect(result.logistics.recurringRoutes[0]?.nextDispatchOnDay).toBe(10);
 	});
 
 	test('charges only production-close overflow after a transfer arrival', () => {

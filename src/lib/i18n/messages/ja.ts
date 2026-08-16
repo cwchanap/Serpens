@@ -660,6 +660,7 @@ export const ja = {
 				destinationFull: '配送先が満杯',
 				originStockConstrained: '出発地在庫の制約',
 				routeCapacityConstrained: 'ルート容量の制約',
+				routeEventSuspended: 'イベントにより停止中',
 				routePriorityConstrained: 'ルート優先度の制約',
 				routeFrequency: 'ルート頻度の制約',
 				routeLeadTime: 'ルート所要時間の制約',
@@ -856,6 +857,7 @@ export const ja = {
 			'destination-full': '到着先が満杯',
 			'origin-stock-constrained': '出発元在庫が制約',
 			'route-capacity-constrained': '航路容量が制約',
+			'route-event-suspended': 'イベントにより停止中',
 			normal: '正常'
 		},
 		states: {

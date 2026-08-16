@@ -5,6 +5,7 @@ import * as finance from './finance';
 import * as financeMetrics from './financeMetrics';
 import { createInitialEventRuntime } from './eventSelection';
 import { decisionContextLocationGeneric } from './decisionContext';
+import { createRouteDispatchAttempt } from './logisticsReport.testUtils';
 import { simulateDay } from './simulateDay';
 import { createNewGame } from './state';
 import type {
@@ -184,10 +185,8 @@ function recurringRoute(overrides: Partial<RecurringRoute> = {}): RecurringRoute
 function routeAttempt(
 	overrides: Partial<DailyRouteDispatchAttempt> = {}
 ): DailyRouteDispatchAttempt {
-	return {
+	return createRouteDispatchAttempt({
 		routeId: 'route-1',
-		originCityId: 'industry-city',
-		destinationCityId: 'breadbasket-basin',
 		materialId: 'water',
 		destinationNeed: 10,
 		capacity: 5,
@@ -197,8 +196,9 @@ function routeAttempt(
 		unmetDestinationNeed: 10,
 		transportCost: 0,
 		transferOrderId: null,
+		baselineCapacity: overrides.capacity ?? 5,
 		...overrides
-	};
+	});
 }
 
 let logisticsReportTemplate: DailyReport | null = null;
@@ -773,6 +773,87 @@ describe('collectGameAlerts', () => {
 		).toBe(false);
 	});
 
+	it('does not extend the structural capacity alert across temporary ×0.75 saturated attempts', () => {
+		// A ×0.75 capacity disruption saturates the effective capacity at 75 of
+		// the 100 base capacity. Two such attempts describe temporary pressure,
+		// not persistent configured undersizing, so no logistics-route-capacity
+		// alert may fire. Two undisrupted base-capacity-saturated attempts still
+		// fire (covered by the streak test above).
+		const reducedAttempt = {
+			destinationNeed: 100,
+			capacity: 75,
+			availableOriginStock: 100,
+			dispatchedQuantity: 75,
+			unusedCapacity: 0,
+			unmetDestinationNeed: 25,
+			transportCost: 150,
+			baselineCapacity: 100
+		};
+		const game = logisticsGame({
+			route: { capacity: 100 },
+			stock: 100,
+			attempts: [
+				{ day: 8, attempt: reducedAttempt },
+				{ day: 9, attempt: reducedAttempt }
+			]
+		});
+
+		expect(collectGameAlerts(game).filter((alert) => alert.routeId === 'route-1')).toEqual([]);
+	});
+
+	it('uses the current effective capacity for the origin-stock alert threshold', () => {
+		// The self-clearing origin-stock threshold follows the route's current
+		// effective capacity: with a ×0.75 modifier the route needs only 75
+		// units, so 80 units of origin stock keeps the alert clear.
+		const baseRoute = recurringRoute({ capacity: 100 });
+		const reducedAttempt = {
+			destinationNeed: 100,
+			capacity: 75,
+			availableOriginStock: 70,
+			dispatchedQuantity: 70,
+			unusedCapacity: 5,
+			unmetDestinationNeed: 30,
+			transportCost: 140,
+			baselineCapacity: 100
+		};
+		const capacityModifier: ActiveEventModifier = {
+			id: 'event-modifier-1',
+			source: {
+				eventId: 'freight-disruption',
+				instanceId: 'event-instance-1',
+				optionId: 'accept-delay'
+			},
+			target: { kind: 'recurring-route', routeId: 'route-1' },
+			startsOnDay: 1,
+			expiresOnDay: 20,
+			stackingKey: 'freight-capacity:route-1',
+			stackingRule: 'replace',
+			effect: { kind: 'route-capacity-multiplier', multiplier: 0.75 },
+			explanation: { key: 'events.freightDisruption.acceptDelay.capacity', params: {} },
+			importance: 'normal'
+		};
+		const game = {
+			...logisticsGame({
+				route: baseRoute,
+				stock: 80,
+				attempts: [{ day: 9, attempt: reducedAttempt }]
+			}),
+			events: { ...createInitialEventRuntime(1), activeModifiers: [capacityModifier] }
+		};
+
+		expect(collectGameAlerts(game).filter((alert) => alert.routeId === 'route-1')).toEqual([]);
+
+		const belowThresholdGame = {
+			...game,
+			cityInventories: [{ cityId: 'industry-city' as const, materials: { water: 74 } }]
+		};
+		expect(
+			collectGameAlerts(belowThresholdGame).some(
+				(alert) => alert.kind === 'logistics-origin-stock' && alert.routeId === 'route-1'
+			)
+		).toBe(true);
+	});
+
 	it('does not alert for destination-full, paused, or deleted routes', () => {
 		const destinationFull = logisticsGame({
 			stock: 0,
@@ -868,7 +949,8 @@ describe('collectGameAlerts', () => {
 			availableOriginStock: 30,
 			dispatchedQuantity: 30,
 			unusedCapacity: 0,
-			unmetDestinationNeed: 10
+			unmetDestinationNeed: 10,
+			baselineCapacity: 30
 		};
 		const oneMatchingGame = {
 			...editedGame,

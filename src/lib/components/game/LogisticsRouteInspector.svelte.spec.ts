@@ -2,7 +2,9 @@ import { page } from 'vitest/browser';
 import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { createI18n } from '$lib/i18n';
-import type { DailyRouteDispatchAttempt, RecurringRoute } from '$lib/game/types';
+import { createRouteDispatchAttempt } from '$lib/game/logisticsReport.testUtils';
+import { resolveEffectiveRecurringRoute } from '$lib/game/logisticsRouteModifiers';
+import type { RecurringRoute } from '$lib/game/types';
 import type { RouteOperationalSummary } from '$lib/game/logisticsReadModels';
 import LogisticsRouteInspector from './LogisticsRouteInspector.svelte';
 
@@ -20,7 +22,7 @@ function summary(overrides: Partial<RouteOperationalSummary> = {}): RouteOperati
 		state: 'active',
 		nextDispatchOnDay: 11
 	};
-	const latestAttempt: DailyRouteDispatchAttempt = {
+	const latestAttempt = createRouteDispatchAttempt({
 		routeId: route.id,
 		originCityId: route.originCityId,
 		destinationCityId: route.destinationCityId,
@@ -32,11 +34,13 @@ function summary(overrides: Partial<RouteOperationalSummary> = {}): RouteOperati
 		unusedCapacity: 0,
 		unmetDestinationNeed: 4,
 		transportCost: 32,
-		transferOrderId: 'transfer-1'
-	};
+		transferOrderId: 'transfer-1',
+		baselineCapacity: 16
+	});
 
 	return {
 		route,
+		effective: resolveEffectiveRecurringRoute(route, [], 7),
 		inTransitQuantity: 8,
 		latestAttempt,
 		utilization: 1,

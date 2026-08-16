@@ -665,6 +665,7 @@ describe('SupplyAdvisor', () => {
 		['destination-full', 'Destination full'],
 		['origin-stock-constrained', 'Origin stock constrained'],
 		['route-capacity-constrained', 'Route capacity constrained'],
+		['route-event-suspended', 'Suspended by event'],
 		['route-priority-constrained', 'Route priority constrained'],
 		['route-frequency', 'Route frequency constrained'],
 		['route-lead-time', 'Route lead time constrained'],

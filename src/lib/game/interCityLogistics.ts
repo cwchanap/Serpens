@@ -5,6 +5,11 @@ import {
 	removeCityInventoryMaterial
 } from './cityInventory';
 import { MATERIALS } from './industry';
+import {
+	resolveEffectiveRecurringRoute,
+	type EffectiveRecurringRoute,
+	type RouteModifierContribution
+} from './logisticsRouteModifiers';
 import { getWorldCityDefinition } from './worldCatalog';
 import type {
 	DailyRouteDispatchAttempt,
@@ -12,6 +17,8 @@ import type {
 	GameState,
 	MaterialId,
 	RecurringRoute,
+	RouteDispatchModifierContributor,
+	RouteDispatchModifierImpact,
 	TransferOrder,
 	TransferOrderSource,
 	WorldCityId
@@ -387,6 +394,167 @@ export function getRecurringDispatchQuantity(input: {
 	return Math.min(input.destinationNeed, input.routeCapacity, input.availableOriginStock);
 }
 
+export function calculateEffectiveRouteTransportCost(input: {
+	baseTransportCostPerUnit: number;
+	quantity: number;
+	transportCostMultiplier: number;
+}): number {
+	const baseTotal = checkedMultiply(input.baseTransportCostPerUnit, input.quantity);
+	if (baseTotal === null) {
+		throw new RangeError('Recurring route transport cost exceeds the safe integer range');
+	}
+	const effectiveTotal = Math.round(baseTotal * input.transportCostMultiplier);
+	if (!Number.isSafeInteger(effectiveTotal) || effectiveTotal < 0) {
+		throw new RangeError('Recurring route transport cost exceeds the safe integer range');
+	}
+	return effectiveTotal;
+}
+
+/**
+ * Pure dispatch derivation shared by the live and planner loops. Owns the
+ * baseline/effective quantity split, suspension forcing, cost arithmetic, and
+ * compact modifier-impact evidence. The caller attaches `transferOrderId`
+ * after creating an order.
+ */
+export function buildRouteDispatchAttempt(input: {
+	route: RecurringRoute;
+	effective: EffectiveRecurringRoute;
+	destinationNeed: number;
+	availableOriginStock: number;
+}): {
+	dispatchedQuantity: number;
+	attempt: Omit<DailyRouteDispatchAttempt, 'transferOrderId'>;
+} {
+	const { route, effective, destinationNeed, availableOriginStock } = input;
+	const baselineDispatchedQuantity = getRecurringDispatchQuantity({
+		destinationNeed,
+		routeCapacity: route.capacity,
+		availableOriginStock
+	});
+	const dispatchedQuantity = effective.dispatchSuspended
+		? 0
+		: getRecurringDispatchQuantity({
+				destinationNeed,
+				routeCapacity: effective.capacity,
+				availableOriginStock
+			});
+	const transportCost =
+		dispatchedQuantity > 0
+			? calculateEffectiveRouteTransportCost({
+					baseTransportCostPerUnit: route.transportCostPerUnit,
+					quantity: dispatchedQuantity,
+					transportCostMultiplier: effective.transportCostMultiplier
+				})
+			: 0;
+
+	return {
+		dispatchedQuantity,
+		attempt: {
+			routeId: route.id,
+			originCityId: route.originCityId,
+			destinationCityId: route.destinationCityId,
+			materialId: route.materialId,
+			destinationNeed,
+			capacity: effective.capacity,
+			availableOriginStock,
+			dispatchedQuantity,
+			unusedCapacity: effective.capacity - dispatchedQuantity,
+			unmetDestinationNeed: destinationNeed === 0 ? 0 : destinationNeed - dispatchedQuantity,
+			transportCost,
+			baselineCapacity: route.capacity,
+			dispatchSuspended: effective.dispatchSuspended,
+			modifierImpacts: buildModifierImpacts({
+				route,
+				effective,
+				dispatchedQuantity,
+				baselineDispatchedQuantity
+			})
+		}
+	};
+}
+
+function buildModifierImpacts(input: {
+	route: RecurringRoute;
+	effective: EffectiveRecurringRoute;
+	dispatchedQuantity: number;
+	baselineDispatchedQuantity: number;
+}): RouteDispatchModifierImpact[] {
+	const { route, effective, dispatchedQuantity, baselineDispatchedQuantity } = input;
+	const contributorsByKind = groupContributorsByEffectKind(effective.contributions);
+	const impacts: RouteDispatchModifierImpact[] = [];
+
+	const leadTimeContributors = contributorsByKind.get('route-lead-time-adjustment') ?? [];
+	if (leadTimeContributors.length > 0 && dispatchedQuantity > 0) {
+		impacts.push({
+			contributors: leadTimeContributors,
+			effectKind: 'route-lead-time-adjustment',
+			baselineLeadTimeDays: route.leadTimeDays,
+			effectiveLeadTimeDays: effective.leadTimeDays
+		});
+	}
+
+	const capacityContributors = contributorsByKind.get('route-capacity-multiplier') ?? [];
+	if (capacityContributors.length > 0) {
+		impacts.push({
+			contributors: capacityContributors,
+			effectKind: 'route-capacity-multiplier',
+			baselineCapacity: route.capacity,
+			effectiveCapacity: effective.capacity,
+			baselineDispatchedQuantity,
+			effectiveDispatchedQuantity: dispatchedQuantity
+		});
+	}
+
+	const suspensionContributors = contributorsByKind.get('route-dispatch-suspension') ?? [];
+	if (suspensionContributors.length > 0) {
+		impacts.push({
+			contributors: suspensionContributors,
+			effectKind: 'route-dispatch-suspension',
+			baselineDispatchedQuantity,
+			effectiveDispatchedQuantity: 0
+		});
+	}
+
+	const costContributors = contributorsByKind.get('route-transport-cost-multiplier') ?? [];
+	if (costContributors.length > 0 && dispatchedQuantity > 0) {
+		impacts.push({
+			contributors: costContributors,
+			effectKind: 'route-transport-cost-multiplier',
+			baselineTransportCost: calculateEffectiveRouteTransportCost({
+				baseTransportCostPerUnit: route.transportCostPerUnit,
+				quantity: dispatchedQuantity,
+				transportCostMultiplier: 1
+			}),
+			effectiveTransportCost: calculateEffectiveRouteTransportCost({
+				baseTransportCostPerUnit: route.transportCostPerUnit,
+				quantity: dispatchedQuantity,
+				transportCostMultiplier: effective.transportCostMultiplier
+			})
+		});
+	}
+
+	return impacts;
+}
+
+function groupContributorsByEffectKind(
+	contributions: readonly RouteModifierContribution[]
+): Map<RouteDispatchModifierImpact['effectKind'], RouteDispatchModifierContributor[]> {
+	const byKind = new Map<
+		RouteDispatchModifierImpact['effectKind'],
+		RouteDispatchModifierContributor[]
+	>();
+	for (const contribution of contributions) {
+		const contributors = byKind.get(contribution.effectKind) ?? [];
+		contributors.push({
+			modifierId: contribution.modifierId,
+			source: { ...contribution.source },
+			explanation: { ...contribution.explanation, params: { ...contribution.explanation.params } }
+		});
+		byKind.set(contribution.effectKind, contributors);
+	}
+	return byKind;
+}
+
 export function getDestinationTransferNeed(
 	game: GameState,
 	destinationCityId: WorldCityId
@@ -426,36 +594,32 @@ export function processRecurringRouteDispatches(game: GameState): {
 			throw new Error(`Recurring route origin is invalid: ${origin.reason}`);
 		}
 
+		const effective = resolveEffectiveRecurringRoute(
+			route,
+			nextGame.events.activeModifiers,
+			closingDay
+		);
 		const destinationNeed = getDestinationTransferNeed(nextGame, route.destinationCityId);
 		const availableOriginStock = origin.inventory.materials[route.materialId] ?? 0;
-		const dispatchedQuantity = getRecurringDispatchQuantity({
+		const built = buildRouteDispatchAttempt({
+			route,
+			effective,
 			destinationNeed,
-			routeCapacity: route.capacity,
 			availableOriginStock
 		});
-		let transportCost = 0;
 		let transferOrderId: string | null = null;
 
-		if (dispatchedQuantity > 0) {
-			const calculatedTransportCost = checkedMultiply(
-				route.transportCostPerUnit,
-				dispatchedQuantity
-			);
-			if (calculatedTransportCost === null) {
-				throw new RangeError('Recurring route transport cost exceeds the safe integer range');
-			}
-
+		if (built.dispatchedQuantity > 0) {
 			const created = createDispatchedTransfer(nextGame, {
 				source: { kind: 'recurring-route', routeId: route.id },
 				originCityId: route.originCityId,
 				destinationCityId: route.destinationCityId,
 				materialId: route.materialId,
-				quantity: dispatchedQuantity,
-				leadTimeDays: route.leadTimeDays,
-				transportCost: calculatedTransportCost
+				quantity: built.dispatchedQuantity,
+				leadTimeDays: effective.leadTimeDays,
+				transportCost: built.attempt.transportCost
 			});
 			nextGame = created.game;
-			transportCost = created.transportCost;
 			transferOrderId = created.order.id;
 		}
 
@@ -467,23 +631,10 @@ export function processRecurringRouteDispatches(game: GameState): {
 		nextGame = replaceRecurringRoute(nextGame, { ...route, nextDispatchOnDay });
 		scheduledTransportCost = checkedAdd(
 			scheduledTransportCost,
-			transportCost,
+			built.attempt.transportCost,
 			'Scheduled transport cost'
 		);
-		attempts.push({
-			routeId: route.id,
-			originCityId: route.originCityId,
-			destinationCityId: route.destinationCityId,
-			materialId: route.materialId,
-			destinationNeed,
-			capacity: route.capacity,
-			availableOriginStock,
-			dispatchedQuantity,
-			unusedCapacity: route.capacity - dispatchedQuantity,
-			unmetDestinationNeed: destinationNeed === 0 ? 0 : destinationNeed - dispatchedQuantity,
-			transportCost,
-			transferOrderId
-		});
+		attempts.push({ ...built.attempt, transferOrderId });
 	}
 
 	return { game: nextGame, attempts, scheduledTransportCost };

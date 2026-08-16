@@ -658,6 +658,7 @@ export const zhHant = {
 				destinationFull: '目的地已滿',
 				originStockConstrained: '起點庫存受限',
 				routeCapacityConstrained: '路線容量受限',
+				routeEventSuspended: '因事件暫停',
 				routePriorityConstrained: '路線優先度受限',
 				routeFrequency: '路線頻率受限',
 				routeLeadTime: '路線運輸時間受限',
@@ -853,6 +854,7 @@ export const zhHant = {
 			'destination-full': '目的地已滿',
 			'origin-stock-constrained': '起點庫存受限',
 			'route-capacity-constrained': '航線容量受限',
+			'route-event-suspended': '因事件暫停',
 			normal: '正常'
 		},
 		states: {

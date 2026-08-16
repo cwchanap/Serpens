@@ -2,6 +2,7 @@ import { page } from 'vitest/browser';
 import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { getIndustryTilesByResource } from '$lib/game/industry';
+import { resolveEffectiveRecurringRoute } from '$lib/game/logisticsRouteModifiers';
 import type { RouteOperationalSummary } from '$lib/game/logisticsReadModels';
 import type { RailSegment } from '$lib/game/rail';
 import { createNewGame } from '$lib/game/state';
@@ -98,6 +99,23 @@ function inspectorProps(overrides: Partial<InspectorProps> = {}): InspectorProps
 			state: 'active',
 			nextDispatchOnDay: 11
 		},
+		effective: resolveEffectiveRecurringRoute(
+			{
+				id: 'route-1',
+				originCityId: 'industry-city',
+				destinationCityId: 'breadbasket-basin',
+				materialId: 'water',
+				capacity: 30,
+				frequencyDays: 3,
+				leadTimeDays: 2,
+				transportCostPerUnit: 2,
+				priority: 1,
+				state: 'active',
+				nextDispatchOnDay: 11
+			},
+			[],
+			11
+		),
 		inTransitQuantity: 8,
 		latestAttempt: null,
 		utilization: null,

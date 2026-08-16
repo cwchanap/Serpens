@@ -1,7 +1,11 @@
 import { describe, expect, test, vi } from 'vitest';
 import { getCityInventoryStats } from './cityInventory';
+import { createRouteDispatchAttempt } from './logisticsReport.testUtils';
+import { resolveEffectiveRecurringRoute } from './logisticsRouteModifiers';
 import {
 	INTER_CITY_DISTANCE_PER_BAND,
+	buildRouteDispatchAttempt,
+	calculateEffectiveRouteTransportCost,
 	compareRecurringRoutes,
 	createRecurringRoute,
 	dispatchManualTransfer,
@@ -30,7 +34,14 @@ import {
 	withRecurringRoutes,
 	withWarehouses
 } from './interCityLogistics.testUtils';
-import type { GameState, MaterialId, RecurringRoute, TransferOrder, WorldCityId } from './types';
+import type {
+	ActiveEventModifier,
+	GameState,
+	MaterialId,
+	RecurringRoute,
+	TransferOrder,
+	WorldCityId
+} from './types';
 import { openWorldCity } from './world';
 
 function createThreeIndustryCityGame(): GameState {
@@ -758,10 +769,8 @@ describe('inter-city recurring routes', () => {
 			const result = processRecurringRouteDispatches(game);
 
 			expect(result.attempts).toEqual([
-				{
+				createRouteDispatchAttempt({
 					routeId: 'route-3',
-					originCityId: 'industry-city',
-					destinationCityId: 'breadbasket-basin',
 					materialId: 'water',
 					destinationNeed: 60,
 					capacity: 10,
@@ -770,12 +779,11 @@ describe('inter-city recurring routes', () => {
 					unusedCapacity: 0,
 					unmetDestinationNeed: 50,
 					transportCost: 30,
-					transferOrderId: 'transfer-1'
-				},
-				{
+					transferOrderId: 'transfer-1',
+					baselineCapacity: 10
+				}),
+				createRouteDispatchAttempt({
 					routeId: 'route-10',
-					originCityId: 'industry-city',
-					destinationCityId: 'breadbasket-basin',
 					materialId: 'water',
 					destinationNeed: 50,
 					capacity: 30,
@@ -784,12 +792,11 @@ describe('inter-city recurring routes', () => {
 					unusedCapacity: 0,
 					unmetDestinationNeed: 20,
 					transportCost: 60,
-					transferOrderId: 'transfer-2'
-				},
-				{
+					transferOrderId: 'transfer-2',
+					baselineCapacity: 30
+				}),
+				createRouteDispatchAttempt({
 					routeId: 'route-2',
-					originCityId: 'industry-city',
-					destinationCityId: 'breadbasket-basin',
 					materialId: 'water',
 					destinationNeed: 20,
 					capacity: 30,
@@ -798,8 +805,9 @@ describe('inter-city recurring routes', () => {
 					unusedCapacity: 10,
 					unmetDestinationNeed: 0,
 					transportCost: 40,
-					transferOrderId: 'transfer-3'
-				}
+					transferOrderId: 'transfer-3',
+					baselineCapacity: 30
+				})
 			]);
 			expect(result.scheduledTransportCost).toBe(130);
 			expect(result.game.cash).toBe(game.cash);
@@ -882,10 +890,8 @@ describe('inter-city recurring routes', () => {
 		const result = processRecurringRouteDispatches(game);
 
 		expect(result.attempts).toEqual([
-			{
+			createRouteDispatchAttempt({
 				routeId: 'route-1',
-				originCityId: 'industry-city',
-				destinationCityId: 'breadbasket-basin',
 				materialId: 'water',
 				destinationNeed: 200,
 				capacity: 50,
@@ -894,12 +900,11 @@ describe('inter-city recurring routes', () => {
 				unusedCapacity: 43,
 				unmetDestinationNeed: 193,
 				transportCost: 14,
-				transferOrderId: 'transfer-1'
-			},
-			{
+				transferOrderId: 'transfer-1',
+				baselineCapacity: 50
+			}),
+			createRouteDispatchAttempt({
 				routeId: 'route-2',
-				originCityId: 'industry-city',
-				destinationCityId: 'breadbasket-basin',
 				materialId: 'water',
 				destinationNeed: 193,
 				capacity: 20,
@@ -908,11 +913,11 @@ describe('inter-city recurring routes', () => {
 				unusedCapacity: 20,
 				unmetDestinationNeed: 193,
 				transportCost: 0,
-				transferOrderId: null
-			},
-			{
+				transferOrderId: null,
+				baselineCapacity: 20
+			}),
+			createRouteDispatchAttempt({
 				routeId: 'route-3',
-				originCityId: 'industry-city',
 				destinationCityId: 'quarry-works',
 				materialId: 'water',
 				destinationNeed: 0,
@@ -922,8 +927,9 @@ describe('inter-city recurring routes', () => {
 				unusedCapacity: 20,
 				unmetDestinationNeed: 0,
 				transportCost: 0,
-				transferOrderId: null
-			}
+				transferOrderId: null,
+				baselineCapacity: 20
+			})
 		]);
 		expect(result.scheduledTransportCost).toBe(14);
 		expect(result.game.cash).toBe(game.cash);
@@ -1118,5 +1124,279 @@ describe('inter-city recurring routes', () => {
 		};
 
 		expect(() => createRecurringRoute(game, validRecurringRouteInput())).toThrow(RangeError);
+	});
+});
+
+describe('calculateEffectiveRouteTransportCost', () => {
+	test('multiplies the checked base total by the combined multiplier and rounds once', () => {
+		const result = calculateEffectiveRouteTransportCost({
+			baseTransportCostPerUnit: 2,
+			quantity: 100,
+			transportCostMultiplier: 1.5
+		});
+
+		expect(result).toBe(300);
+	});
+
+	test('rounds the final effective total to a whole dollar', () => {
+		const result = calculateEffectiveRouteTransportCost({
+			baseTransportCostPerUnit: 2,
+			quantity: 5,
+			transportCostMultiplier: 1.5
+		});
+
+		expect(result).toBe(15);
+	});
+
+	test('rejects a base total that exceeds the safe integer range', () => {
+		expect(() =>
+			calculateEffectiveRouteTransportCost({
+				baseTransportCostPerUnit: Number.MAX_SAFE_INTEGER,
+				quantity: 2,
+				transportCostMultiplier: 1
+			})
+		).toThrow(RangeError);
+	});
+
+	test('rejects an effective total that exceeds the safe integer range', () => {
+		expect(() =>
+			calculateEffectiveRouteTransportCost({
+				baseTransportCostPerUnit: 2,
+				quantity: Number.MAX_SAFE_INTEGER,
+				transportCostMultiplier: 2
+			})
+		).toThrow(RangeError);
+	});
+});
+
+describe('buildRouteDispatchAttempt', () => {
+	function routeModifier(overrides: Partial<ActiveEventModifier> = {}): ActiveEventModifier {
+		return {
+			id: 'event-modifier-1',
+			source: {
+				eventId: 'freight-disruption',
+				instanceId: 'event-instance-1',
+				optionId: 'accept-delay'
+			},
+			target: { kind: 'recurring-route', routeId: 'route-1' },
+			startsOnDay: 8,
+			expiresOnDay: 11,
+			stackingKey: 'freight-capacity:route-1',
+			stackingRule: 'replace',
+			effect: { kind: 'route-capacity-multiplier', multiplier: 0.75 },
+			explanation: { key: 'events.freightDisruption.acceptDelay.capacity', params: {} },
+			importance: 'normal',
+			...overrides
+		};
+	}
+
+	test('records base capacity 100 and effective capacity 75 for a ×0.75 modifier', () => {
+		const route = createRecurringRouteDefinition({ capacity: 100, transportCostPerUnit: 2 });
+		const effective = resolveEffectiveRecurringRoute(
+			route,
+			[routeModifier({ effect: { kind: 'route-capacity-multiplier', multiplier: 0.75 } })],
+			9
+		);
+
+		const built = buildRouteDispatchAttempt({
+			route,
+			effective,
+			destinationNeed: 100,
+			availableOriginStock: 100
+		});
+
+		expect(built.dispatchedQuantity).toBe(75);
+		expect(built.attempt.capacity).toBe(75);
+		expect(built.attempt.baselineCapacity).toBe(100);
+		expect(built.attempt.dispatchSuspended).toBe(false);
+		expect(built.attempt.unusedCapacity).toBe(0);
+		expect(built.attempt.unmetDestinationNeed).toBe(25);
+	});
+
+	test('capacity impact records baseline and effective shipped quantity', () => {
+		const route = createRecurringRouteDefinition({ capacity: 100, transportCostPerUnit: 2 });
+		const effective = resolveEffectiveRecurringRoute(
+			route,
+			[routeModifier({ effect: { kind: 'route-capacity-multiplier', multiplier: 0.75 } })],
+			9
+		);
+
+		const built = buildRouteDispatchAttempt({
+			route,
+			effective,
+			destinationNeed: 100,
+			availableOriginStock: 100
+		});
+
+		expect(built.attempt.modifierImpacts).toEqual([
+			{
+				contributors: [
+					{
+						modifierId: 'event-modifier-1',
+						source: {
+							eventId: 'freight-disruption',
+							instanceId: 'event-instance-1',
+							optionId: 'accept-delay'
+						},
+						explanation: { key: 'events.freightDisruption.acceptDelay.capacity', params: {} }
+					}
+				],
+				effectKind: 'route-capacity-multiplier',
+				baselineCapacity: 100,
+				effectiveCapacity: 75,
+				baselineDispatchedQuantity: 100,
+				effectiveDispatchedQuantity: 75
+			}
+		]);
+	});
+
+	test('suspension records the baseline quantity to zero with zero actual cost', () => {
+		const route = createRecurringRouteDefinition({ capacity: 100, transportCostPerUnit: 2 });
+		const effective = resolveEffectiveRecurringRoute(
+			route,
+			[routeModifier({ effect: { kind: 'route-dispatch-suspension' } })],
+			9
+		);
+
+		const built = buildRouteDispatchAttempt({
+			route,
+			effective,
+			destinationNeed: 100,
+			availableOriginStock: 100
+		});
+
+		expect(built.dispatchedQuantity).toBe(0);
+		expect(built.attempt.transportCost).toBe(0);
+		expect(built.attempt.dispatchSuspended).toBe(true);
+		expect(built.attempt.unusedCapacity).toBe(100);
+		expect(built.attempt.unmetDestinationNeed).toBe(100);
+		expect(built.attempt.modifierImpacts).toContainEqual({
+			contributors: [
+				{
+					modifierId: 'event-modifier-1',
+					source: {
+						eventId: 'freight-disruption',
+						instanceId: 'event-instance-1',
+						optionId: 'accept-delay'
+					},
+					explanation: { key: 'events.freightDisruption.acceptDelay.capacity', params: {} }
+				}
+			],
+			effectKind: 'route-dispatch-suspension',
+			baselineDispatchedQuantity: 100,
+			effectiveDispatchedQuantity: 0
+		});
+	});
+
+	test('cost multiplier compares totals using the actual dispatched quantity', () => {
+		const route = createRecurringRouteDefinition({ capacity: 100, transportCostPerUnit: 2 });
+		const effective = resolveEffectiveRecurringRoute(
+			route,
+			[routeModifier({ effect: { kind: 'route-transport-cost-multiplier', multiplier: 1.5 } })],
+			9
+		);
+
+		const built = buildRouteDispatchAttempt({
+			route,
+			effective,
+			destinationNeed: 100,
+			availableOriginStock: 50
+		});
+
+		expect(built.dispatchedQuantity).toBe(50);
+		expect(built.attempt.transportCost).toBe(150);
+		expect(built.attempt.modifierImpacts).toContainEqual({
+			contributors: [
+				{
+					modifierId: 'event-modifier-1',
+					source: {
+						eventId: 'freight-disruption',
+						instanceId: 'event-instance-1',
+						optionId: 'accept-delay'
+					},
+					explanation: { key: 'events.freightDisruption.acceptDelay.capacity', params: {} }
+				}
+			],
+			effectKind: 'route-transport-cost-multiplier',
+			baselineTransportCost: 100,
+			effectiveTransportCost: 150
+		});
+	});
+
+	test('stores an empty impact array when no modifier affects the route', () => {
+		const route = createRecurringRouteDefinition({ capacity: 100, transportCostPerUnit: 2 });
+		const effective = resolveEffectiveRecurringRoute(route, [], 9);
+
+		const built = buildRouteDispatchAttempt({
+			route,
+			effective,
+			destinationNeed: 100,
+			availableOriginStock: 100
+		});
+
+		expect(built.dispatchedQuantity).toBe(100);
+		expect(built.attempt.capacity).toBe(100);
+		expect(built.attempt.baselineCapacity).toBe(100);
+		expect(built.attempt.modifierImpacts).toEqual([]);
+	});
+
+	test('lead-time impact is recorded when a lead-time adjustment dispatches an order', () => {
+		const route = createRecurringRouteDefinition({ capacity: 100, transportCostPerUnit: 2 });
+		const effective = resolveEffectiveRecurringRoute(
+			route,
+			[routeModifier({ effect: { kind: 'route-lead-time-adjustment', days: 1 } })],
+			9
+		);
+
+		const built = buildRouteDispatchAttempt({
+			route,
+			effective,
+			destinationNeed: 100,
+			availableOriginStock: 100
+		});
+
+		expect(built.attempt.modifierImpacts).toEqual([
+			{
+				contributors: [
+					{
+						modifierId: 'event-modifier-1',
+						source: {
+							eventId: 'freight-disruption',
+							instanceId: 'event-instance-1',
+							optionId: 'accept-delay'
+						},
+						explanation: { key: 'events.freightDisruption.acceptDelay.capacity', params: {} }
+					}
+				],
+				effectKind: 'route-lead-time-adjustment',
+				baselineLeadTimeDays: 2,
+				effectiveLeadTimeDays: 3
+			}
+		]);
+	});
+
+	test('lead-time and cost impacts stay absent when nothing dispatches', () => {
+		const route = createRecurringRouteDefinition({ capacity: 100, transportCostPerUnit: 2 });
+		const effective = resolveEffectiveRecurringRoute(
+			route,
+			[
+				routeModifier({ effect: { kind: 'route-lead-time-adjustment', days: 1 } }),
+				routeModifier({
+					id: 'event-modifier-2',
+					effect: { kind: 'route-transport-cost-multiplier', multiplier: 1.5 }
+				})
+			],
+			9
+		);
+
+		const built = buildRouteDispatchAttempt({
+			route,
+			effective,
+			destinationNeed: 100,
+			availableOriginStock: 0
+		});
+
+		expect(built.dispatchedQuantity).toBe(0);
+		expect(built.attempt.modifierImpacts).toEqual([]);
 	});
 });
