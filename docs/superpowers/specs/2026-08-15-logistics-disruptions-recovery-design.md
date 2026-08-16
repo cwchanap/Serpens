@@ -4,7 +4,7 @@
 
 **Linear:** HPA-296 — Integrate event-driven logistics disruptions and recovery
 
-**Status:** Revised after codebase review; normative design for the HPA-296 implementation plan
+**Status:** Revised after two codebase review passes; normative design for implementation
 
 ## Outcome
 
@@ -15,46 +15,50 @@ The first slice stays deliberately small:
 - one new event target family: active recurring routes;
 - four route modifier effects: lead-time adjustment, capacity multiplier, dispatch suspension, and transport-cost multiplier;
 - one authoritative editable `RecurringRoute`;
-- one pure effective-route resolver shared by live logistics, route read models, and the Supply Planner;
-- explicit baseline/effective dispatch evidence;
+- one pure effective-route resolver;
+- one shared pure dispatch-attempt builder used by live logistics and the Supply Planner;
+- compact historical disruption evidence that still satisfies HPA-296 attribution requirements;
 - one production `freight-disruption` event;
 - strict save schema 16 with no schema-15 migration;
-- no copied effective-route state, pre-disruption snapshot, reliability RNG, shipment failure, rerouting, in-transit mutation, generic target DSL, or modifier registry.
+- no copied effective-route state, pre-disruption snapshot, reliability RNG, shipment failure, rerouting, in-transit mutation, generic target DSL, modifier registry, or second incident scheduler.
 
 ## Why HPA-296 is actionable
 
-The dependencies are complete:
+The dependency seams are already shipped:
 
-- HPA-278 owns event selection, materialized decisions, isolated event RNG, timed modifiers, history, alerts, reports, and expiry;
+- HPA-278 owns event selection, materialized decisions, isolated event RNG, timed modifiers, lifecycle history, alerts, reports, and expiry;
 - HPA-294 owns authoritative transfer orders, recurring routes, dispatch cadence, accounting, and logistics evidence;
 - HPA-574 owns route management, inspector, reports, alerts, navigation, and world-map route presentation;
-- HPA-297 owns the dated 7/30-day logistics projection used by the Supply Planner.
+- HPA-297 owns the dated 7/30-day route projection used by the Supply Planner.
 
-HPA-296 extends those seams instead of introducing a second incident or logistics scheduler.
+HPA-296 extends those seams instead of introducing parallel infrastructure.
 
 ## Reuse survey
 
 | Need | Decision |
 | --- | --- |
 | Route event target | Extend `EventTarget` / `EventTargetSelector` in `types.ts`. |
-| Target clone/equality/eligibility | Move company-only logic out of `eventSelection.ts` into focused `eventTargets.ts`. |
-| Timed route effects | Extend the closed `EventTimedEffect` union. |
-| Modifier activation | Extend `eventModifiers.ts` with a concrete target parameter and target-scoped replacement. |
-| Effective route values | Add one focused `logisticsRouteModifiers.ts`; do not use `SimulationRules` for route effects. |
-| Dispatch evidence | Extend `DailyRouteDispatchAttempt`; do not add a generic property bag. |
-| Live condition | Extend `RouteOperationalCondition` with `route-event-suspended`. |
-| Planner projection | Copy only active route-targeted modifiers into `SupplyPlannerLogisticsSnapshot` and reuse the resolver by projected day. |
-| Cost rounding | Keep the shared total-cost function in `interCityLogistics.ts`, built on its existing checked integer helpers; planner imports it. |
+| Target clone/equality/selection eligibility | Extract company-only logic from `eventSelection.ts` into focused `eventTargets.ts`. |
+| Route timed effects | Extend the closed `EventTimedEffect` union. |
+| Target-scoped replacement | Extend `eventModifiers.ts`; replacement remains `replace`, now keyed by stacking key + concrete target. |
+| Effective route values | Add one focused `logisticsRouteModifiers.ts`; do not route logistics through `SimulationRules`. |
+| Dispatch derivation | Extend `interCityLogistics.ts` with one pure `buildRouteDispatchAttempt`; both live and planner loops reuse it. |
+| Transport-cost arithmetic | Extend the existing checked arithmetic in `interCityLogistics.ts`; no generic arithmetic helper. |
+| Live suspension condition | Extend `RouteOperationalCondition` with `route-event-suspended`. |
+| Historical attribution | Persist a compact discriminated `modifierImpacts` array on affected attempts; do not depend on live modifiers after expiry. |
+| Attempt fixtures | Extend `logisticsReport.testUtils.ts` with one shared attempt factory before widening the type. |
+| Disruption alert | Reuse the existing `event-modifier` alert kind; route-targeted important modifiers navigate to the world route. |
 | Recovery | Extend `DailyLogisticsReport` with a discriminated per-effect recovery union. |
-| Persistence/UI | Extend the existing strict codec, alerts, route inspector, Active Modifiers, Reports, and world-route rendering. |
+| Planner | Copy only route-targeted modifiers into the planner snapshot and reuse resolver + attempt builder by projected day. |
+| Persistence | Strict schema 16, introduced when the first persisted attempt shape changes; no migration. |
 
 ## Design approaches
 
-### Approach A — focused event extension plus one route resolver
+### Approach A — focused event extension + one route resolver + one attempt builder
 
-Add the minimum route target/effect contracts to the existing event framework and derive current effective route behavior from base route plus active modifiers.
+Add the minimum route target/effect contracts to the existing event framework. Derive current effective route behavior from the base route plus active modifiers, and centralize the new dispatch math/evidence in a pure builder shared by the two existing dispatch loops.
 
-This is the selected approach because it preserves one route owner and gives live dispatch, read models, and planner projection one interpretation of disruption state.
+This is the selected approach. It does **not** attempt to merge the live and planner inventory/order loops; it only prevents new HPA-296 rules from being implemented twice.
 
 ### Approach B — persist effective fields on `RecurringRoute`
 
@@ -62,106 +66,119 @@ Rejected. Route edits during a disruption would require synchronized base/effect
 
 ### Approach C — separate logistics incident scheduler
 
-Rejected. HPA-278 already owns the exact RNG, materialization, duration, replacement, reporting, and alert machinery HPA-296 needs.
+Rejected. HPA-278 already owns the RNG, materialization, duration, replacement, reporting, and alert machinery this feature needs.
 
-## Event target contract
+## Event targets
 
-Extend the target union only as far as production content requires:
+Extend only the target variants used by production content:
 
 ```ts
 export type EventTarget =
-	| { kind: 'company' }
-	| { kind: 'recurring-route'; routeId: string };
+  | { kind: 'company' }
+  | { kind: 'recurring-route'; routeId: string };
 
 export type EventTargetSelector =
-	| { kind: 'company' }
-	| { kind: 'recurring-route'; state: 'active' };
+  | { kind: 'company' }
+  | { kind: 'recurring-route'; state: 'active' };
 ```
 
 Create `src/lib/game/eventTargets.ts` with explicit switches:
 
 ```ts
 export function resolveEventTargets(
-	game: GameState,
-	selector: EventTargetSelector
+  game: GameState,
+  selector: EventTargetSelector
 ): EventTarget[];
 
-export function isEventTargetEligible(game: GameState, target: EventTarget): boolean;
+export function isEventTargetEligibleForSelection(
+  game: GameState,
+  target: EventTarget
+): boolean;
+
+export function isEventTargetResolvable(
+  game: GameState,
+  target: EventTarget
+): boolean;
+
 export function sameEventTarget(left: EventTarget, right: EventTarget): boolean;
 export function cloneEventTarget(target: EventTarget): EventTarget;
 ```
 
-A recurring-route target is eligible only when:
+### Selection eligibility
+
+A recurring-route target is selectable only when:
 
 - the route exists;
-- its base state is `active`;
+- its base route state is `active`;
 - both endpoints are opened world cities.
 
-Eligible routes are sorted by raw route ID before random selection. Priority, list insertion order, next-dispatch day, and material do not affect target ordering.
+Eligible routes are sorted by raw route ID. Priority, insertion order, material, and next-dispatch day do not affect target ordering.
+
+### Resolution eligibility
+
+Resolution is intentionally less strict than selection.
+
+A materialized recurring-route decision remains resolvable as long as the route still exists. Pausing the route after the event appears does **not** invalidate the decision. A paused route is not due, so an activated modifier is inert until the player resumes it; it may also expire harmlessly while paused.
+
+A removed/missing route is rejected atomically with the existing `effect-rejected` / `payload: 'target'` path. No immediate effect or modifier is committed.
+
+This avoids dead-ending the natural player response of pausing a disrupted route while preserving deterministic target identity.
 
 ## Definition selection and materialization RNG
 
-Keep the existing three top-level event RNG draws:
+Keep the current three top-level event RNG draws:
 
 1. cadence;
 2. weighted event selection;
 3. materialization seed.
 
-For each definition, derive eligible concrete targets after pending-instance and cooldown exclusion. A definition is one candidate when at least one target remains; route count never multiplies the definition's weight.
+For each definition, derive eligible concrete targets after pending-instance and cooldown exclusion. The event definition contributes **one** selection candidate when at least one concrete target is eligible; route count never multiplies its weight.
 
-After the event definition wins:
+After the definition wins:
 
 - company selectors materialize the company target directly;
-- recurring-route selectors spend one draw from the already-created `materializationRng` over the sorted eligible route IDs.
+- recurring-route selectors spend one draw from the already-created `materializationRng` over sorted eligible route IDs.
 
-Do not bump `EVENT_SELECTION_SCHEMA_VERSION`: the top-level RNG advancement remains unchanged.
+Do not bump `EVENT_SELECTION_SCHEMA_VERSION`; top-level RNG advancement is unchanged.
 
 ## Persisted route copy context
 
-The player must know which route a materialized decision refers to before choosing an option, and the copy must survive route removal after materialization.
+The unresolved decision must name its route even if the route is later removed.
 
-When a route target is materialized, merge these stable IDs into the persisted decision copy params:
+At materialization, merge stable IDs into `decision.copy.params`:
 
 ```ts
 {
-	routeId,
-	originCityId,
-	destinationCityId,
-	materialId
+  routeId,
+  originCityId,
+  destinationCityId,
+  materialId
 }
 ```
 
-`gameCopy.ts` derives localized `originCityName`, `destinationCityName`, and `materialName` from those persisted IDs when translating event title/context/options. `localizeEventDecisionOption` receives the same enriched params as title/context localization.
+`gameCopy.ts` derives localized city/material names from these persisted IDs and passes the same enriched params through event title, context, and option localization.
 
-This avoids storing localized strings and avoids requiring the live route to still exist. `DecisionQueue.svelte` remains a renderer of `LocalizedDecision`; its focused test must prove the concrete route is visible in the decision and option copy.
-
-## Resolution-time target revalidation
-
-Before applying any immediate effect or activating modifiers, `eventEffects.ts` revalidates the persisted concrete target.
-
-If the route was removed, paused, or otherwise became ineligible, option preparation returns the existing atomic `effect-rejected` result with `payload: 'target'`. No immediate effect or modifier is committed.
-
-A route edit that leaves the route active remains valid.
+Do not persist localized strings. `DecisionQueue.svelte` remains a renderer of `LocalizedDecision`; its focused test proves that the route appears before resolution.
 
 ## Timed route effects
 
-Extend the closed `EventTimedEffect` union:
+Extend the closed union with exactly four route effects:
 
 ```ts
 export type EventTimedEffect =
-	| {
-			kind: 'import-cost-multiplier';
-			scope: 'retail-product';
-			target: { kind: 'all' };
-			multiplier: number;
-	  }
-	| { kind: 'route-lead-time-adjustment'; days: number }
-	| { kind: 'route-capacity-multiplier'; multiplier: number }
-	| { kind: 'route-dispatch-suspension' }
-	| { kind: 'route-transport-cost-multiplier'; multiplier: number };
+  | {
+      kind: 'import-cost-multiplier';
+      scope: 'retail-product';
+      target: { kind: 'all' };
+      multiplier: number;
+    }
+  | { kind: 'route-lead-time-adjustment'; days: number }
+  | { kind: 'route-capacity-multiplier'; multiplier: number }
+  | { kind: 'route-dispatch-suspension' }
+  | { kind: 'route-transport-cost-multiplier'; multiplier: number };
 ```
 
-Validation is explicit:
+Validation remains explicit:
 
 - lead-time adjustment is a positive safe integer;
 - capacity and cost multipliers are finite and greater than zero;
@@ -170,7 +187,7 @@ Validation is explicit:
 - recurring-route definitions may use only route effect kinds;
 - stacking remains `replace` only.
 
-Do not normalize the union into property paths, callbacks, registries, or scripts.
+All clone sites switch on effect kind. In particular, `eventSelection.ts#materializeEvent` and `eventModifiers.ts` must stop assuming every timed effect owns an `effect.target` field.
 
 ## Target-scoped modifier replacement
 
@@ -180,7 +197,7 @@ Current replacement is keyed only by `stackingKey`. Route targets require:
 same stackingKey AND same concrete EventTarget
 ```
 
-The same disruption type may therefore coexist on different routes, while a replacement on one route does not touch another route.
+The same disruption type may coexist on different routes. Replacing a modifier on one route cannot remove the same stacking key from another route.
 
 Company supplier-discount behavior remains unchanged.
 
@@ -190,19 +207,19 @@ Create `src/lib/game/logisticsRouteModifiers.ts` as the only owner of modifier f
 
 ```ts
 export interface EffectiveRecurringRoute {
-	base: RecurringRoute;
-	capacity: number;
-	leadTimeDays: number;
-	transportCostMultiplier: number;
-	transportCostPerUnit: number;
-	dispatchSuspended: boolean;
-	contributions: RouteModifierContribution[];
+  base: RecurringRoute;
+  capacity: number;
+  leadTimeDays: number;
+  transportCostMultiplier: number;
+  transportCostPerUnit: number;
+  dispatchSuspended: boolean;
+  contributions: RouteModifierContribution[];
 }
 
 export function resolveEffectiveRecurringRoute(
-	route: RecurringRoute,
-	modifiers: readonly ActiveEventModifier[],
-	day: number
+  route: RecurringRoute,
+  modifiers: readonly ActiveEventModifier[],
+  day: number
 ): EffectiveRecurringRoute;
 ```
 
@@ -218,133 +235,212 @@ transportCostMultiplier = product(active cost multipliers)
 transportCostPerUnit = base cost per unit × transportCostMultiplier
 ```
 
-`RouteModifierContribution` is itself discriminated by effect kind and carries modifier/source attribution plus only the value relevant to that effect. It is not a string/value bag.
+`RouteModifierContribution` is discriminated by effect kind and contains modifier/source attribution plus the authored value relevant to that effect. It is an in-memory resolver result, not the persisted daily-report shape.
 
 The resolver never mutates the route.
 
 ## Shared transport-cost arithmetic
 
-Keep total transport-cost calculation in `interCityLogistics.ts`, where the existing checked integer arithmetic already lives:
+Keep total cost calculation in `interCityLogistics.ts`, next to the existing checked integer arithmetic:
 
 ```ts
 export function calculateEffectiveRouteTransportCost(input: {
-	baseTransportCostPerUnit: number;
-	quantity: number;
-	transportCostMultiplier: number;
+  baseTransportCostPerUnit: number;
+  quantity: number;
+  transportCostMultiplier: number;
 }): number;
 ```
 
-Implementation rules:
+Rules:
 
-1. use the existing `checkedMultiply(baseTransportCostPerUnit, quantity)` for the integer base total;
-2. multiply that base total by the combined route multiplier;
+1. calculate the integer base total with the existing checked multiplication;
+2. multiply the base total by the combined event multiplier;
 3. round once with `Math.round`;
-4. reject a non-finite, negative, or non-safe-integer result with the same `RangeError` style used by the logistics core.
+4. reject non-finite, negative, or non-safe-integer results with the existing logistics `RangeError` style.
 
-Do not add a generic `checkedRoundedProduct` or a second transport-cost calculation in the planner. `supplyPlannerLogistics.ts` imports this helper.
+Do not add `checkedRoundedProduct`. The Supply Planner imports the same route-specific function.
 
-## Live dispatch
+## One shared dispatch-attempt builder
 
-`processRecurringRouteDispatches` preserves HPA-294 due-route ordering:
+The live and planner dispatch loops already duplicate inventory/order plumbing. HPA-296 does not refactor those loops wholesale, but new disruption derivation must be born once.
 
-```text
-route.state === active && route.nextDispatchOnDay <= closingDay
-```
-
-For each due base route, resolve effective values for `closingDay`.
-
-Derive:
-
-- `baselineDispatchedQuantity` from destination need, origin stock, and base capacity;
-- `dispatchedQuantity` from destination need, origin stock, and effective capacity, or zero when event-suspended.
-
-A positive transfer order uses effective lead time, effective quantity, and the shared effective transport-cost helper. Once created, the order is immutable.
-
-### Event suspension cadence
-
-A due event-suspended route:
-
-- records a zero-quantity attempt;
-- advances `nextDispatchOnDay = closingDay + frequencyDays`;
-- does not create an empty transfer order.
-
-A player-paused route remains outside the due set and keeps existing cadence behavior.
-
-## Dispatch evidence
-
-Extend `DailyRouteDispatchAttempt` with explicit baseline/effective evidence:
+Add to `interCityLogistics.ts`:
 
 ```ts
-baselineCapacity: number;
-capacity: number; // effective capacity
-baselineLeadTimeDays: number;
-leadTimeDays: number;
-baselineTransportCostPerUnit: number;
-transportCostPerUnit: number;
-baselineDispatchedQuantity: number;
-baselineTransportCost: number;
-dispatchSuspended: boolean;
-modifierContributions: RouteModifierContribution[];
+export function buildRouteDispatchAttempt(input: {
+  route: RecurringRoute;
+  effective: EffectiveRecurringRoute;
+  destinationNeed: number;
+  availableOriginStock: number;
+}): {
+  dispatchedQuantity: number;
+  attempt: Omit<DailyRouteDispatchAttempt, 'transferOrderId'>;
+};
 ```
 
-Existing `dispatchedQuantity`, `transportCost`, `unusedCapacity`, and `unmetDestinationNeed` remain effective-attempt values.
+The builder owns:
 
-`attemptMatchesRoute` compares the route definition with `attempt.baselineCapacity`, not effective `attempt.capacity`, plus the existing origin/destination/material checks.
+- baseline quantity from base capacity;
+- effective quantity from effective capacity;
+- suspension forcing effective quantity to zero;
+- effective unused capacity / unmet destination need;
+- baseline/effective cost comparison;
+- compact modifier-impact evidence;
+- `dispatchSuspended` and `baselineCapacity`.
 
-No route revision counter is added.
+Each loop keeps only its own mutable inventory, transfer-order creation, sequence, and cadence plumbing. After creating an order when `dispatchedQuantity > 0`, the caller attaches `transferOrderId` to the returned attempt.
 
-## Live route conditions and alerts
+This is deliberately smaller than a generic route engine and removes the need to hand-maintain two copies of every future route-effect rule.
 
-Add the suspension state to the shared live condition union:
+## Compact persisted dispatch evidence
+
+HPA-296's Linear contract explicitly requires every affected dispatch to record the responsible event/modifier and baseline-versus-effective impact. Historical reports cannot derive that from `game.events.activeModifiers`, because the modifier disappears after expiry.
+
+The first draft over-expanded `DailyRouteDispatchAttempt` with many always-present baseline fields. Keep the persisted surface smaller:
+
+```ts
+export interface DailyRouteDispatchAttempt {
+  // existing fields remain
+  baselineCapacity: number;
+  dispatchSuspended: boolean;
+  modifierImpacts: RouteDispatchModifierImpact[];
+}
+```
+
+`capacity` keeps its existing position and now means **effective capacity**.
+
+`RouteDispatchModifierImpact` is a discriminated union. Each row contains `contributors` with modifier ID, event/instance/option source, and structured explanation, plus only the baseline/effective values needed by that effect:
+
+```ts
+type RouteDispatchModifierImpact =
+  | (RouteDispatchImpactBase & {
+      effectKind: 'route-lead-time-adjustment';
+      baselineLeadTimeDays: number;
+      effectiveLeadTimeDays: number;
+    })
+  | (RouteDispatchImpactBase & {
+      effectKind: 'route-capacity-multiplier';
+      baselineCapacity: number;
+      effectiveCapacity: number;
+      baselineDispatchedQuantity: number;
+      effectiveDispatchedQuantity: number;
+    })
+  | (RouteDispatchImpactBase & {
+      effectKind: 'route-dispatch-suspension';
+      baselineDispatchedQuantity: number;
+      effectiveDispatchedQuantity: 0;
+    })
+  | (RouteDispatchImpactBase & {
+      effectKind: 'route-transport-cost-multiplier';
+      baselineTransportCost: number;
+      effectiveTransportCost: number;
+    });
+```
+
+Rules:
+
+- unaffected attempts store `modifierImpacts: []`;
+- capacity impacts can record equal baseline/effective shipped quantity when only available capacity changed;
+- suspension records the blocked baseline quantity versus zero;
+- lead-time impact is recorded when an order is actually dispatched;
+- transport-cost impact is recorded only when a positive quantity makes the multiplier materially applicable;
+- multiple modifiers of one effect kind may be represented by one impact row whose `contributors` lists every responsible modifier in deterministic modifier-ID order.
+
+This retains historical provenance and concrete impact while avoiding nine new top-level fields on every route attempt.
+
+Before widening the type, add a shared `createRouteDispatchAttempt(overrides)` factory to `logisticsReport.testUtils.ts`. Replace private/direct attempt literals in affected specs with that factory instead of making every future field a repository-wide fixture edit.
+
+## Stale-attempt matching
+
+`attemptMatchesRoute` currently compares `attempt.capacity` with current configured capacity. Once `capacity` is effective, configuration matching must use `attempt.baselineCapacity` plus origin/destination/material.
+
+A disruption does not make an otherwise-current attempt stale; editing the base route capacity still does.
+
+No route revision counter is introduced.
+
+## Live route conditions
+
+Add suspension to the shared condition union:
 
 ```ts
 export type RouteOperationalCondition =
-	| 'awaiting-dispatch'
-	| 'destination-full'
-	| 'origin-stock-constrained'
-	| 'route-capacity-constrained'
-	| 'route-event-suspended'
-	| 'normal';
+  | 'awaiting-dispatch'
+  | 'destination-full'
+  | 'origin-stock-constrained'
+  | 'route-capacity-constrained'
+  | 'route-event-suspended'
+  | 'normal';
 ```
 
-Classification order is explicit:
+Classification order:
 
 1. no attempt → `awaiting-dispatch`;
-2. `attempt.dispatchSuspended` → `route-event-suspended`;
+2. `dispatchSuspended` → `route-event-suspended`;
 3. destination full;
-4. origin stock constrained using effective capacity;
-5. route capacity constrained using effective capacity;
+4. origin stock constrained against effective capacity;
+5. route capacity constrained against effective capacity;
 6. normal.
 
-`selectRouteOperations(game)` also calls `resolveEffectiveRecurringRoute(route, game.events.activeModifiers, game.day)` and exposes current effective values for the inspector/alerts. Historic attempt evidence stays recorded and immutable.
+`selectRouteOperations` also resolves the current route through `resolveEffectiveRecurringRoute(route, activeModifiers, game.day)` so the inspector can show current base and effective values without mutating route state.
 
-### Origin-stock alerts
+### Utilization meaning
 
-The self-clearing current-stock threshold uses the route's **current effective capacity**, not blindly the base or historic effective capacity. This keeps the alert truthful while a disruption activates or expires.
+Keep utilization **effective-relative**:
 
-### Structural route-capacity alerts
+```text
+utilization = dispatchedQuantity / latestAttempt.capacity
+```
 
-The existing multi-attempt capacity alert means the configured base route is persistently undersized. Temporary event effects must not manufacture that signal.
+A route that fully uses a temporary ×0.75 capacity therefore reads 100% utilization of currently available capacity. This is intentional. The inspector must show configured/base capacity beside current effective capacity and a disruption explanation so 100% is not misread as 100% of normal throughput.
 
-A recent attempt may satisfy the structural capacity streak only when:
+Do not add a second utilization metric in this slice.
+
+## Normal logistics alerts
+
+### Origin stock
+
+The self-clearing current-stock threshold uses the route's **current effective capacity**.
+
+### Structural capacity pressure
+
+The existing multi-attempt capacity alert describes persistent configured route undersizing, not temporary disruption.
+
+An attempt satisfies that streak only when:
 
 - `dispatchSuspended === false`;
 - origin stock can satisfy `min(destinationNeed, baselineCapacity)`;
-- `unmetDestinationNeed > 0`;
+- unmet destination need is positive;
 - `dispatchedQuantity === baselineCapacity`.
 
-Thus a temporary ×0.75 capacity disruption may classify the latest attempt as effective `route-capacity-constrained` for the inspector, but it cannot by itself trigger or extend the structural capacity-pressure alert.
+A ×0.75 disruption can still classify the latest attempt as effective `route-capacity-constrained` for inspection, but it cannot create or extend the structural capacity-pressure alert.
 
-## Route edits, removal, and expiry
+## Disruption alert: reuse `event-modifier`
 
-Route edits mutate only base `RecurringRoute`. Effective state is recalculated from the edited base plus active modifiers.
+Do not add a new disruption alert kind.
+
+`collectGameAlerts` already emits `event-modifier` for important active modifiers. Extend that branch:
+
+- company-targeted important modifiers keep `managementPanelId: 'decisions'`;
+- recurring-route-targeted important modifiers whose route still exists carry `routeId` and omit the decisions-panel target;
+- a route-targeted modifier whose route was removed emits no actionable alert because no navigation target remains.
+
+`resolveAlertNavigation` routes `event-modifier + routeId` to the existing world-route navigation result.
+
+The production event uses the existing modifier importance mechanism; no parallel suppression or disruption-alert subsystem is added.
+
+## Route edits, pause, removal, and expiry
+
+Route edits mutate only base `RecurringRoute`; effective state is recalculated from the edited base plus active modifiers.
+
+Pausing a route does not cancel a materialized decision or active modifier. A paused route simply does not enter the due dispatch set.
 
 Removing a route:
 
-- removes it from future event eligibility;
+- removes it from future selection eligibility;
+- makes an unresolved decision fail atomic resolution because the target no longer exists;
 - leaves in-transit/historical orders unchanged;
 - leaves modifier history to expire normally;
-- suppresses route-targeted alert/recovery UI because no navigation target remains;
+- suppresses route navigation/recovery UI when no route remains;
 - creates no tombstone or recovery snapshot.
 
 ## Discriminated recovery evidence
@@ -355,64 +451,77 @@ Removing a route:
 modifierRecoveries: DailyRouteModifierRecovery[];
 ```
 
-Lock the recovery shape now instead of using `number | 'suspended'` bags:
+Use a fixed discriminated union:
 
 ```ts
 type DailyRouteModifierRecovery =
-	| (RouteRecoveryBase & {
-			effectKind: 'route-lead-time-adjustment';
-			disruptedLeadTimeDays: number;
-			recoveredLeadTimeDays: number;
-	  })
-	| (RouteRecoveryBase & {
-			effectKind: 'route-capacity-multiplier';
-			disruptedCapacity: number;
-			recoveredCapacity: number;
-	  })
-	| (RouteRecoveryBase & {
-			effectKind: 'route-dispatch-suspension';
-			disruptedSuspended: true;
-			recoveredSuspended: false;
-	  })
-	| (RouteRecoveryBase & {
-			effectKind: 'route-transport-cost-multiplier';
-			disruptedTransportCostPerUnit: number;
-			recoveredTransportCostPerUnit: number;
-	  });
+  | (RouteRecoveryBase & {
+      effectKind: 'route-lead-time-adjustment';
+      disruptedLeadTimeDays: number;
+      recoveredLeadTimeDays: number;
+    })
+  | (RouteRecoveryBase & {
+      effectKind: 'route-capacity-multiplier';
+      disruptedCapacity: number;
+      recoveredCapacity: number;
+    })
+  | (RouteRecoveryBase & {
+      effectKind: 'route-dispatch-suspension';
+      disruptedSuspended: true;
+      recoveredSuspended: false;
+    })
+  | (RouteRecoveryBase & {
+      effectKind: 'route-transport-cost-multiplier';
+      disruptedTransportCostPerUnit: number;
+      recoveredTransportCostPerUnit: number;
+    });
 ```
 
 `RouteRecoveryBase` contains route ID, modifier ID, and source event/instance/option.
 
-A pure helper in `logisticsRouteModifiers.ts` compares the still-existing route under pre-expiry and post-expiry modifier sets and emits only rows whose relevant value changes. Removed routes produce no recovery row. `simulateDay.ts` only attaches the returned rows to the daily report.
+A pure helper in `logisticsRouteModifiers.ts` compares a still-existing route under pre-expiry and post-expiry modifier sets. Removed routes produce no recovery row. `simulateDay.ts` only attaches the rows.
 
 ## Supply Planner integration
 
-`SupplyPlannerLogisticsSnapshot` copies only active route-targeted modifiers needed by the projection. It does not copy the entire event runtime or one precomputed effective route.
+`SupplyPlannerLogisticsSnapshot` copies only active route-targeted modifiers needed by the projection; it does not copy the entire event runtime or one precomputed effective route.
 
-On each projected day, `processSupplyPlannerRouteDispatches`:
+On every projected due route/day, `processSupplyPlannerRouteDispatches`:
 
-1. resolves each due route with `resolveEffectiveRecurringRoute(route, copiedModifiers, projectedDay)`;
-2. uses the shared `calculateEffectiveRouteTransportCost` helper;
-3. writes the same baseline/effective `DailyRouteDispatchAttempt` fields as live dispatch;
-4. advances cadence on event suspension exactly like live dispatch.
+1. resolves the route with `resolveEffectiveRecurringRoute`;
+2. calls shared `buildRouteDispatchAttempt`;
+3. applies only planner-specific inventory/order mutations;
+4. attaches the projected transfer-order ID;
+5. advances cadence on event suspension exactly like live dispatch.
 
-`SupplyPlannerRouteCondition` continues to extend `RouteOperationalCondition`; it does **not** define a second suspension spelling. The planner rank table adds the inherited `route-event-suspended` condition as a blocking condition.
+Modifier expiry inside the 7/30-day horizon therefore follows the resolver's day predicate automatically.
 
-Modifier expiry inside a 7/30-day horizon therefore happens naturally through the resolver's day check.
+`SupplyPlannerRouteCondition` continues to extend `RouteOperationalCondition`; it does not invent a planner-only suspension spelling.
 
-## Persistence
+## Condition exhaustiveness and copy
 
-Bump `SAVE_SCHEMA_VERSION` from 15 to 16.
+Widening `RouteOperationalCondition` must keep every checkpoint type-correct.
 
-Schema 16 validates:
+The same implementation checkpoint that adds `route-event-suspended` also updates:
 
-- recurring-route event targets/selectors where persisted;
-- all four timed route effects;
-- discriminated route modifier contributions;
-- all new required dispatch-attempt keys;
-- discriminated recovery rows.
+- `SUPPLY_PLANNER_ROUTE_CONDITION_RANK` with the new inherited key;
+- `SupplyAdvisor.svelte#routeConditionText` with its message mapping;
+- the English `logisticsPanel.conditions` object so it `satisfies Record<RouteOperationalCondition, string>`;
+- a typed `Record<SupplyPlannerRouteCondition, string>` message-key map used by `SupplyAdvisor.svelte` (the current Supply Advisor locale keys are camelCase, so the domain-to-message map is the compile-time boundary rather than forcing an unrelated locale-key rename).
 
-`validateSavedDailyRouteDispatchAttempt` uses exact keys today, so its key list and all report fixtures must change in the same implementation checkpoint as the attempt type.
+Japanese and Traditional Chinese remain structurally checked against English through the existing message type.
+
+## Persistence and checkpoint versioning
+
+Schema 16 begins in the same checkpoint that first changes the persisted route-attempt/report shape.
+
+That checkpoint introduces the **complete schema-16 structure**, including:
+
+- recurring-route event targets/effects;
+- `baselineCapacity`, `dispatchSuspended`, and discriminated `modifierImpacts` on attempts;
+- `modifierRecoveries` on `DailyLogisticsReport` (initially emitted as `[]` until recovery behavior lands in the next checkpoint);
+- exact-key validation for every new discriminated shape.
+
+Later tasks populate already-declared schema-16 fields but do not add another required persisted key under the same version.
 
 Schema 15 is rejected. No migration, aliases, or repair framework is added.
 
@@ -420,53 +529,46 @@ Schema 15 is rejected. No migration, aliases, or repair framework is added.
 
 ### Active Modifiers
 
-`ActiveModifiers.svelte` switches on target/effect kind. It must stop assuming every modifier is a company import-cost discount.
+`ActiveModifiers.svelte` switches on target/effect kind instead of assuming every modifier is a company import-cost discount.
 
-For route modifiers it shows:
-
-- event source;
-- concrete route endpoints/material from persisted target/copy context or current route when available;
-- effect-specific value;
-- remaining duration.
+For a route modifier it shows event source, endpoints/material, effect, current base → effective value, and remaining duration.
 
 ### Route inspector
 
-`RouteOperationalSummary` exposes current effective route values. `LogisticsRouteInspector.svelte` shows base → effective differences for capacity, lead time, cost, and suspension plus latest-attempt evidence.
+The existing inspector remains the one route-detail surface. It adds:
+
+- current configured/base capacity and effective capacity;
+- current base/effective lead time and cost when affected;
+- event-suspended condition copy;
+- latest persisted `modifierImpacts` for historical dispatch attribution;
+- effective-relative utilization with explicit copy.
 
 ### World map
 
-`WorldLogisticsRoutes.svelte` keeps existing geometry. A disrupted route gets a non-color-only disrupted visual treatment and:
+`WorldLogisticsRoutes.svelte` keeps existing geometry/selection. It adds a non-color disruption cue and `data-disrupted="true"` for active route modifiers.
 
-```html
-data-disrupted="true"
-```
+### Reports
 
-The accessible route list/inspector copy states the disruption; SVG color is not the sole signal.
-
-### Reports and alerts
-
-Reports render dispatch contribution evidence and discriminated recovery rows. Disruption alerts reuse existing route navigation and include remaining duration.
+Reports render persisted `modifierImpacts` for affected attempts and discriminated recovery rows. Historical attribution therefore remains visible after modifiers expire.
 
 ## Production event
 
-Add one weighted production event:
+Add one weighted production definition:
 
 ```text
 id: freight-disruption
 version: 1
-selection: weighted weight 1
+selection: weighted, weight 1
 condition: always
 target: active recurring route
 expiresAfterDays: 2
 cooldownDays: 7 per concrete route target
 ```
 
-It is ineligible when no active route target exists. The reserved materialization RNG selects one eligible route deterministically.
-
 Options:
 
 1. `accept-delay`
-   - 3 days: lead time +1;
+   - 3 days: lead time +1 day;
    - 3 days: capacity ×0.75.
 2. `charter-carriers`
    - immediate cash -2,000;
@@ -475,108 +577,85 @@ Options:
 3. `suspend-shipments`
    - 2 days: dispatch suspension.
 
-Effect-specific stacking keys are target-scoped by lifecycle logic:
+Stable stacking keys remain effect-specific and target-scoped.
 
-```text
-freight-disruption:lead-time
-freight-disruption:capacity
-freight-disruption:transport-cost
-freight-disruption:suspension
-```
+### Weighted-event balance decision
 
-The materialized decision title/context/options must visibly name the concrete route before resolution.
+Today `supplier-terms` is the only weighted production event at weight 1. When at least one route is eligible, adding `freight-disruption` at weight 1 intentionally splits weighted selections evenly between the two definitions. The global weighted-event cadence remains unchanged; supplier terms becomes less frequent only after logistics exists.
+
+This is a deliberate later-game content-mix change, not an accidental probability multiplication by route count.
 
 ## Verification strategy
 
-### Domain coverage
+Focused tests cover:
 
-Cover:
-
-- definition-level weighting independent of route count;
-- deterministic route target choice with fixed RNG state;
-- concrete-target cooldown/pending exclusion;
+- definition-level weighting and deterministic concrete target selection;
+- selection active-only vs resolution existence-only behavior;
 - target-scoped replacement;
-- paused/removed target atomic rejection;
-- all four resolver effects and multi-key composition;
-- base/effective dispatch evidence;
+- all four effect calculations and clone paths;
+- shared builder parity by construction (both live and planner use the same builder);
 - suspension cadence;
-- immutable already-dispatched order arrival/cost;
-- route edit + expiry behavior;
-- removed-route expiry with no recovery row;
-- shared `route-event-suspended` condition;
-- structural capacity alerts ignoring temporary capacity/suspension effects;
-- planner/live attempt parity and projected expiry;
-- schema-16 exact-key validation and schema-15 rejection;
-- localized decision/option route identity.
+- compact historical modifier impacts and exact-key codec validation;
+- stale-attempt matching with `baselineCapacity`;
+- structural capacity alerts ignoring temporary disruption;
+- effective-relative utilization;
+- reuse of `event-modifier` route navigation;
+- planner expiry across dated horizons;
+- route edit/remove/expiry recovery;
+- compile-time condition/copy completeness;
+- schema 16 rejection of 15.
 
-### End-to-end lifecycle
+One targeted Playwright lifecycle must prove:
 
-One targeted Playwright lifecycle should:
+1. an unresolved freight-disruption decision names its concrete route;
+2. resolving it exposes Active Modifier copy;
+3. the world route exposes `data-disrupted="true"`;
+4. an affected dispatch records historical impact evidence;
+5. its transfer order keeps its original adjusted arrival/cost;
+6. editing/pausing the base route does not create restoration state;
+7. expiry reveals current base behavior and records recovery;
+8. route navigation from the existing event-modifier alert works.
 
-1. inject a deterministic schema-16 sandbox save with an active route;
-2. materialize `freight-disruption` and assert the decision names that route;
-3. resolve one option;
-4. assert Active Modifiers and `data-disrupted="true"` on the world route;
-5. close through an affected dispatch and verify baseline/effective evidence;
-6. edit the base route while disrupted;
-7. close through expiry;
-8. assert recovery reflects the edited base route;
-9. verify the already-dispatched order kept its original adjusted arrival/cost.
+## Risks and containment
 
-## Risks and mitigations
+### Live/planner semantic drift
 
-### Effective capacity vs HPA-574 alerts
+Containment: both loops call `resolveEffectiveRecurringRoute` and `buildRouteDispatchAttempt`; only inventory/order plumbing remains duplicated.
 
-**Risk:** treating effective capacity as configured capacity creates false structural capacity alerts and stale attempt mismatches.
+### Historical evidence bloat
 
-**Mitigation:** `capacity` remains effective for attempt presentation; `baselineCapacity` owns configuration matching and structural alert gating; suspension is a first-class live condition.
+Containment: only `baselineCapacity`, `dispatchSuspended`, and discriminated impact rows are added. Unaffected attempts carry an empty impact array instead of many baseline fields.
 
-### Materialized decision copy
+### Exact-key save churn
 
-**Risk:** the event resolves against a concrete route but player copy does not identify it, or later route removal makes the decision opaque.
+Containment: introduce the attempt test factory first and land the complete schema-16 shape in one checkpoint.
 
-**Mitigation:** persist route/origin/destination/material IDs in `decision.copy.params`; localize title/context/options from those persisted IDs.
+### Alert duplication
 
-### Exact-key persistence
+Containment: reuse `event-modifier`; do not introduce a second disruption alert kind.
 
-**Risk:** adding required dispatch fields before codec fixtures makes intermediate checkpoints uncompilable or causes encode/decode failures.
+### Utilization ambiguity
 
-**Mitigation:** update `validateSavedDailyRouteDispatchAttempt` and all direct attempt fixtures in the same checkpoint as the attempt type; schema number and recovery keys move in the next persistence checkpoint.
+Containment: keep effective-relative utilization and show base/effective capacity beside it.
 
-### Cost arithmetic drift
+### Event copy loses its target
 
-**Risk:** live and planner round or overflow differently.
+Containment: persist stable route context in the materialized decision before resolution.
 
-**Mitigation:** one exported route-specific cost helper in `interCityLogistics.ts` uses the existing checked integer base multiplication and one final round; planner imports it.
+### Route pause invalidates a decision unexpectedly
+
+Containment: selection requires active; resolution requires existence only.
 
 ## Non-goals
 
-- random reliability/failure probabilities;
-- delayed mutation of already-dispatched transfer orders;
-- rerouting or recall;
-- city closure simulation;
+- random route failures or reliability percentages;
 - vehicle/path simulation;
-- arbitrary effect scripting;
-- generic entity-target registry;
-- route recovery snapshots;
-- route tombstones;
-- pre-release save migration;
-- a second logistics or event UI subsystem.
-
-## Acceptance criteria
-
-- Route-target selection is deterministic and definition-level weighting is independent of route count.
-- Materialized freight-disruption copy identifies the concrete route before resolution.
-- Lead-time, capacity, suspension, and cost effects apply only to due recurring-route dispatches while active.
-- Already-dispatched transfer orders remain immutable.
-- Effective state derives from current base route plus active modifiers; no synchronized copy exists.
-- Target-scoped replacement permits identical stacking keys on different routes.
-- `route-event-suspended` is a shared live/planner operational condition.
-- Structural route-capacity alerts use baseline capacity and ignore event-suspended attempts.
-- Route edits during disruption survive expiry automatically.
-- Removed routes produce no stale recovery/alert repair.
-- Live dispatch, `selectRouteOperations`, and the Supply Planner use the same route resolver.
-- Recovery evidence is discriminated by effect kind.
-- Schema 16 validates exact new shapes and rejects 15 without migration.
-- Active Modifiers, route inspector, world route, reports, alerts, and decision copy expose disruption without relying on color alone.
-- Focused unit/persistence/component coverage and the targeted multi-day Playwright lifecycle pass.
+- rerouting or transfer recall;
+- mutation of in-transit transfer orders;
+- copied effective routes or recovery snapshots;
+- generic effect/property registries;
+- scenario authoring changes;
+- a second alert kind or incident system;
+- a second utilization metric;
+- full consolidation of the live/planner dispatch loops;
+- pre-release save migration.
