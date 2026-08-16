@@ -715,6 +715,84 @@ describe('supply planner action noop branches', () => {
 		});
 	});
 
+	it('reports a shared-origin priority blocker across different destinations', () => {
+		// Two routes share origin + material (breadbasket-basin →
+		// bottled-water) but ship to different destinations.  The
+		// earlier-priority route drains the shared origin stock, leaving the
+		// inbound route to the supply city origin-stock-constrained.  The
+		// planner must diagnose this as priority-constrained and recommend
+		// reprioritizing the inbound route ahead of the cross-destination
+		// blocker.
+		const base = logisticsPlannerGame();
+		let game = openWorldCity(
+			{
+				...base,
+				world: {
+					...base.world,
+					revealedCityIds: [...base.world.revealedCityIds, 'quarry-works']
+				}
+			},
+			'quarry-works'
+		);
+		game = {
+			...game,
+			// Keep the full bottled-water production chain installed (so the
+			// bottleneck is logistical, not a missing producer) but leave the
+			// supply city dry so the route is the meaningful source.  Add a
+			// warehouse to quarry-works so the cross-destination blocker route
+			// can actually dispatch and consume the shared origin stock.
+			industrialBuildings: [
+				...base.industrialBuildings,
+				building('warehouse', 'quarry-warehouse-1', 1, 2, 2, 'quarry-works')
+			],
+			cityInventories: game.cityInventories.map((inventory) =>
+				inventory.cityId === 'industry-city'
+					? { ...inventory, materials: {} }
+					: inventory.cityId === 'breadbasket-basin'
+						? { ...inventory, materials: { 'bottled-water': 10 } }
+						: inventory
+			),
+			logistics: {
+				...game.logistics,
+				recurringRoutes: [
+					{
+						...base.logistics.recurringRoutes[0]!,
+						id: 'route-blocker',
+						originCityId: 'breadbasket-basin',
+						destinationCityId: 'quarry-works',
+						materialId: 'bottled-water',
+						capacity: 10,
+						priority: 1,
+						nextDispatchOnDay: game.day
+					},
+					{
+						...base.logistics.recurringRoutes[0]!,
+						id: 'route-loser',
+						originCityId: 'breadbasket-basin',
+						destinationCityId: 'industry-city',
+						materialId: 'bottled-water',
+						capacity: 10,
+						priority: 2,
+						nextDispatchOnDay: game.day
+					}
+				]
+			}
+		};
+		const plan = readyPlan(game);
+
+		expect(plan.recommendation.action).toMatchObject({
+			kind: 'edit-route',
+			routeId: 'route-loser',
+			field: 'priority'
+		});
+		expect(plan.recommendation.logisticsCause).toMatchObject({
+			kind: 'route-priority-constrained',
+			routeId: 'route-loser',
+			blockingRouteId: 'route-blocker',
+			materialId: 'bottled-water'
+		});
+	});
+
 	it('offers source changes when only retail-source capability is available', () => {
 		const plan = readyPlan(
 			sourceChangePlannerGame(),
@@ -734,7 +812,11 @@ describe('supply planner action noop branches', () => {
 
 	it('finds the selected source category on a non-first eligible store', () => {
 		const base = sourceChangePlannerGame();
-		const firstStore = { ...base.stores[0]!, id: 'store-a', products: [product('snacks')] };
+		// The distractor store carries a non-planner category (household does
+		// not resolve to a finished material) so the retail city still has
+		// exactly one supported planner category and source-change remains
+		// eligible.
+		const firstStore = { ...base.stores[0]!, id: 'store-a', products: [product('household')] };
 		const secondStore = {
 			...base.stores[0]!,
 			id: 'store-b',
@@ -759,6 +841,41 @@ describe('supply planner action noop branches', () => {
 			fromSupplyCityId: 'industry-city',
 			toSupplyCityId: 'breadbasket-basin'
 		});
+	});
+
+	it('does not offer a source change when the retail city has multiple planner categories', () => {
+		// A source assignment is city-wide, so a switch affects every
+		// supported planner category.  Per-category import-spend projections
+		// are not additive (each starts from the full city state while the
+		// real chains share upstream capacity), and summing only
+		// importSpend30 mixes scopes in netCashBenefit30.  With more than one
+		// planner category the planner must not emit a source-change
+		// candidate; it falls through to route/local actions instead.
+		const base = sourceChangePlannerGame();
+		const plan = readyPlan(
+			{
+				...base,
+				stores: [
+					{
+						...base.stores[0]!,
+						products: [
+							product('bottled-water', { targetStock: 350 }),
+							product('snacks', { targetStock: 350 })
+						]
+					}
+				]
+			},
+			availability({
+				canManageLogistics: false,
+				canSetRetailSupplySource: true,
+				canBuildIndustry: false,
+				canUpgradeIndustry: false
+			})
+		);
+
+		expect(
+			plan.alternatives.some((candidate) => candidate.action.kind === 'change-supply-source')
+		).toBe(false);
 	});
 
 	it('reflects real transport-cost delta for an active route when evaluating a source change', () => {
