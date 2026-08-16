@@ -2,29 +2,31 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Implement HPA-296 so strategic events deterministically target recurring logistics routes, temporarily alter future route dispatches, explain their impact and recovery, and project the same behavior through the Supply Planner.
+**Goal:** Implement HPA-296 so strategic events deterministically target recurring logistics routes, temporarily alter future scheduled dispatches, preserve historical attribution, recover cleanly, and project the same behavior through the Supply Planner.
 
-**Architecture:** `RecurringRoute` remains the only editable route state. `eventTargets.ts` owns concrete route target semantics; `logisticsRouteModifiers.ts` owns day-aware modifier composition; live dispatch, `selectRouteOperations`, and planner projection all resolve through that seam. Historical dispatch attempts persist explicit baseline/effective evidence, while the existing logistics core owns shared integer cost arithmetic and cadence.
+**Architecture:** `RecurringRoute` remains the only editable route state. `eventTargets.ts` owns route target semantics; `logisticsRouteModifiers.ts` owns day-aware modifier composition; `interCityLogistics.ts` owns shared checked transport-cost arithmetic and a pure `buildRouteDispatchAttempt` used by both live and planner loops. Historical attempts persist only `baselineCapacity`, `dispatchSuspended`, and discriminated modifier-impact rows; schema 16 is introduced when that persisted shape first changes.
 
 **Tech Stack:** TypeScript 6, Svelte 5, Vitest 4, Playwright, Bun, existing HPA-278 event framework, HPA-294 logistics core, HPA-574 logistics UI, HPA-297 Supply Planner.
 
 ## Global Constraints
 
-- Keep one authoritative `RecurringRoute`; never persist copied effective route fields or a pre-disruption snapshot.
+- Keep one authoritative `RecurringRoute`; never persist copied effective-route fields or a pre-disruption snapshot.
 - Support exactly four route effects: lead-time adjustment, capacity multiplier, dispatch suspension, transport-cost multiplier.
-- Manual transfers and already-dispatched orders are unaffected.
+- Manual transfers and already-dispatched transfer orders are unaffected.
 - Replacement remains `stackingRule: 'replace'`, scoped by stacking key **and** concrete target.
-- Keep the existing three top-level event RNG draws; route selection uses only the reserved materialization RNG.
-- Route count never multiplies event-definition selection weight.
-- Event suspension advances a due recurring route's normal cadence; player pause keeps existing behavior.
+- Keep exactly three top-level event RNG draws; route target selection uses only the reserved materialization RNG.
+- Route count never multiplies an event definition's weight.
+- Event selection requires an active/open route; resolution requires only that the materialized route still exists.
+- A due event-suspended route records a zero-quantity attempt and advances normal cadence; a player-paused route stays out of the due set.
 - `DailyRouteDispatchAttempt.capacity` means effective capacity; `baselineCapacity` owns configuration matching and structural capacity-alert semantics.
-- `route-event-suspended` is one shared `RouteOperationalCondition` used by live read models and the planner.
-- Live dispatch, `selectRouteOperations`, and 7/30-day planner projection call the same effective-route resolver.
-- Transport cost uses one shared route-specific function in `interCityLogistics.ts`, built on existing checked integer multiplication and one final round.
-- Recovery rows are a discriminated per-effect union.
-- Persist route/origin/destination/material IDs in materialized decision copy params so the decision remains understandable if the route is later removed.
-- Strict save schema becomes 16; schema 15 is rejected with no migration or compatibility aliases.
-- No reliability RNG, shipment failures, rerouting, recall, vehicle/path simulation, generic target DSL, modifier registry, or scripting layer.
+- Persist historical modifier attribution; do not reconstruct expired dispatches from live `activeModifiers`.
+- Live and planner dispatch loops both call `resolveEffectiveRecurringRoute` and `buildRouteDispatchAttempt`.
+- Transport cost uses one route-specific helper in `interCityLogistics.ts`: checked integer base multiplication, one combined multiplier, one final round.
+- `route-event-suspended` is one shared `RouteOperationalCondition` inherited by the planner.
+- Utilization remains effective-relative and the inspector must expose base/effective capacity beside it.
+- Reuse the existing `event-modifier` alert kind; do not add a disruption alert kind.
+- Schema 16 is the first schema containing any changed persisted attempt/report shape; schema 15 is rejected with no migration.
+- No reliability RNG, shipment failures, rerouting, recall, vehicle/path simulation, generic target DSL, modifier registry, scripting layer, or full live/planner loop refactor.
 
 ---
 
@@ -32,21 +34,21 @@
 
 ### New focused files
 
-- `src/lib/game/eventTargets.ts` — target clone/equality/eligibility/resolution plus route copy-context materialization.
-- `src/lib/game/eventTargets.spec.ts` — company/route target and route-context tests.
-- `src/lib/game/logisticsRouteModifiers.ts` — active route modifier filtering/composition plus discriminated contribution/recovery derivation.
-- `src/lib/game/logisticsRouteModifiers.spec.ts` — resolver, contribution, expiry, and recovery tests.
+- `src/lib/game/eventTargets.ts` — target clone/equality, selection eligibility, resolution existence, concrete target resolution, and route copy context.
+- `src/lib/game/eventTargets.spec.ts` — target semantics and copy-context tests.
+- `src/lib/game/logisticsRouteModifiers.ts` — active route modifier filtering/composition, resolver contributions, compact persisted impact derivation, and recovery derivation.
+- `src/lib/game/logisticsRouteModifiers.spec.ts` — resolver/impact/recovery arithmetic and expiry tests.
 
 ### Existing owners to extend
 
-- Event contracts/materialization: `src/lib/game/types.ts`, `eventDefinitions.ts`, `eventSelection.ts`, `eventCatalog.ts`.
+- Event contracts/catalog/materialization: `src/lib/game/types.ts`, `eventDefinitions.ts`, `eventSelection.ts`, `eventCatalog.ts`.
 - Modifier lifecycle/resolution: `eventModifiers.ts`, `eventEffects.ts`, `simulateDay.ts`.
-- Logistics: `interCityLogistics.ts`, `logisticsReadModels.ts`, `alerts.ts`, `logisticsReport.testUtils.ts`.
-- Persistence: `src/lib/persistence/saveTypes.ts`, `saveCodec.ts`, `saveCodec.spec.ts`.
-- Planner: `supplyPlannerLogistics.ts`, `supplyPlanner.ts` and their specs.
-- Presentation: `ActiveModifiers.svelte`, `LogisticsRouteInspector.svelte`, `WorldLogisticsRoutes.svelte`, `ReportsPanel.svelte`, `DecisionQueue.svelte.spec.ts`.
+- Logistics dispatch/read models: `interCityLogistics.ts`, `logisticsReadModels.ts`, `alerts.ts`, `logisticsReport.testUtils.ts`.
+- Planner: `supplyPlannerLogistics.ts`, `supplyPlanner.ts`, their focused specs, `SupplyAdvisor.svelte`.
+- Persistence: `src/lib/persistence/saveTypes.ts`, `saveCodec.ts`, `saveCodec.spec.ts`, repository specs that use current-schema fixtures.
+- Presentation: `ActiveModifiers.svelte`, `LogisticsRouteInspector.svelte`, `WorldLogisticsRoutes.svelte`, `ReportsPanel.svelte` and focused component specs.
 - Localization: `src/lib/i18n/gameCopy.ts`, `gameCopy.spec.ts`, `messages/en.ts`, `messages/ja.ts`, `messages/zh-Hant.ts`.
-- Navigation/E2E: `src/routes/alertNavigation.ts`, `retail-sim.e2e.ts`.
+- Navigation/E2E: `src/routes/alertNavigation.ts`, its spec, `retail-sim.e2e.ts`.
 
 ---
 
@@ -65,76 +67,78 @@
 
 ```ts
 export function resolveEventTargets(
-	game: GameState,
-	selector: EventTargetSelector
+  game: GameState,
+  selector: EventTargetSelector
 ): EventTarget[];
 
-export function isEventTargetEligible(game: GameState, target: EventTarget): boolean;
+export function isEventTargetEligibleForSelection(
+  game: GameState,
+  target: EventTarget
+): boolean;
+
+export function isEventTargetResolvable(
+  game: GameState,
+  target: EventTarget
+): boolean;
+
 export function sameEventTarget(left: EventTarget, right: EventTarget): boolean;
 export function cloneEventTarget(target: EventTarget): EventTarget;
 
 export function getEventTargetCopyParams(
-	game: GameState,
-	target: EventTarget
+  game: GameState,
+  target: EventTarget
 ): StructuredCopyParams;
 ```
 
-`EventTarget` / `EventTargetSelector` become:
+- [ ] **Step 1: Write target-resolution tests**
+
+Cover company, active route, paused route, removed route, unopened endpoint, and raw route-ID ordering.
 
 ```ts
-export type EventTarget =
-	| { kind: 'company' }
-	| { kind: 'recurring-route'; routeId: string };
+it('selects only active routes with opened endpoints in raw id order', () => {
+  const game = gameWithRoutes([
+    route({ id: 'route-20', state: 'active', priority: 0 }),
+    route({ id: 'route-3', state: 'active', priority: 99 }),
+    route({ id: 'route-1', state: 'paused', priority: 0 })
+  ]);
 
-export type EventTargetSelector =
-	| { kind: 'company' }
-	| { kind: 'recurring-route'; state: 'active' };
-```
-
-- [ ] **Step 1: Write target resolution tests**
-
-Cover active, paused, missing, unopened-endpoint, company, and raw-ID ordering.
-
-```ts
-it('resolves active recurring routes in raw route-id order', () => {
-	const game = withRecurringRoutes(createInitialGame(7), [
-		createRoute({ id: 'route-20', state: 'active', priority: 0 }),
-		createRoute({ id: 'route-3', state: 'active', priority: 99 }),
-		createRoute({ id: 'route-1', state: 'paused', priority: 0 })
-	]);
-
-	expect(resolveEventTargets(game, { kind: 'recurring-route', state: 'active' })).toEqual([
-		{ kind: 'recurring-route', routeId: 'route-20' },
-		{ kind: 'recurring-route', routeId: 'route-3' }
-	]);
+  expect(resolveEventTargets(game, { kind: 'recurring-route', state: 'active' })).toEqual([
+    { kind: 'recurring-route', routeId: 'route-20' },
+    { kind: 'recurring-route', routeId: 'route-3' }
+  ]);
 });
 ```
 
-- [ ] **Step 2: Run target tests and verify RED**
+- [ ] **Step 2: Run the focused target test and verify RED**
 
 ```bash
 bun run test:unit -- --run src/lib/game/eventTargets.spec.ts
 ```
 
-Expected: module/route target types do not exist yet.
+Expected: fail because route target helpers/types do not exist.
 
-- [ ] **Step 3: Implement explicit target helpers**
+- [ ] **Step 3: Implement the minimum target union and explicit helpers**
 
-`resolveEventTargets` must:
+```ts
+export type EventTarget =
+  | { kind: 'company' }
+  | { kind: 'recurring-route'; routeId: string };
 
-- return company directly for company selector;
-- inspect `game.logistics.recurringRoutes` for route selector;
-- require base state `active`;
-- require opened origin and destination;
-- sort by raw `routeId` comparison.
+export type EventTargetSelector =
+  | { kind: 'company' }
+  | { kind: 'recurring-route'; state: 'active' };
+```
 
-`sameEventTarget` compares kind and route ID. `cloneEventTarget` uses a switch, not object-shape assumptions.
+`isEventTargetEligibleForSelection` requires active route + opened endpoints. `isEventTargetResolvable` requires only route existence for recurring-route targets. Company is always resolvable.
 
-- [ ] **Step 4: Write definition-level selection tests**
+- [ ] **Step 4: Write definition-level weighting/materialization tests**
 
-Add fixture definitions for one company event and one route event. Prove adding three more eligible routes does not change the route event's definition-level weight.
+Create fixture definitions for one weighted company event and one weighted route event. Assert:
 
-Also prove fixed event RNG state chooses a deterministic concrete route and pending/cooldown exclusion is target-specific.
+- one route and four routes give the route definition the same authored weight;
+- a fixed event RNG state chooses the same concrete route after structured cloning;
+- pending/cooldown exclusion is concrete-target-specific;
+- `EVENT_SELECTION_SCHEMA_VERSION` and top-level draw count remain unchanged.
 
 - [ ] **Step 5: Refactor `eventSelection.ts` around eligible target sets**
 
@@ -146,30 +150,26 @@ const weightedDraw = packet.next();
 const materializationSeedDraw = packet.next();
 ```
 
-Build eligible target sets before definition selection. Select the definition once. Only after a route definition wins, use one `materializationRng.next()` draw over sorted route targets.
+Select the event definition once. Only after a route definition wins, call `materializationRng.next()` once over sorted concrete route targets.
 
-Use `sameEventTarget` for pending and cooldown comparisons. Do not bump `EVENT_SELECTION_SCHEMA_VERSION`.
+- [ ] **Step 6: Persist stable route copy params during materialization**
 
-- [ ] **Step 6: Materialize stable route copy params**
-
-After choosing the concrete target, persist these IDs in `decision.copy.params`:
+Merge:
 
 ```ts
 {
-	routeId,
-	originCityId,
-	destinationCityId,
-	materialId
+  routeId,
+  originCityId,
+  destinationCityId,
+  materialId
 }
 ```
 
-Merge them with authored copy params. Company targets add no new params.
-
-Write a test that removes the route after materialization and asserts the persisted decision still carries all four IDs.
+into `decision.copy.params`. Test that removing the route after materialization does not erase these IDs.
 
 - [ ] **Step 7: Extend selector validation/cloning**
 
-`eventDefinitions.ts` accepts exactly company and active-recurring-route selectors. Clone with a discriminated switch.
+`eventDefinitions.ts` accepts exactly company and `{ kind: 'recurring-route', state: 'active' }`. Clone through explicit switches.
 
 - [ ] **Step 8: Run focused tests/check and commit**
 
@@ -191,7 +191,7 @@ git commit -m "feat(events): add recurring route targets"
 - Modify: `src/lib/game/eventEffects.ts`
 - Modify: `src/lib/game/eventSelection.ts`
 - Modify: `src/lib/game/simulateDay.ts`
-- Modify: `src/lib/components/game/ActiveModifiers.svelte`
+- Modify: `src/lib/components/game/ActiveModifiers.svelte` only enough to compile across the widened union
 - Test: `src/lib/game/eventModifiers.spec.ts`
 - Test: `src/lib/game/eventEffects.spec.ts`
 - Test: `src/lib/game/eventCatalog.spec.ts`
@@ -201,11 +201,11 @@ git commit -m "feat(events): add recurring route targets"
 
 ```ts
 activateEventModifiers(
-	state: EventRuntimeState,
-	source: ActiveEventModifier['source'],
-	target: EventTarget,
-	day: number,
-	templates: readonly EventModifierTemplate[]
+  state: EventRuntimeState,
+  source: ActiveEventModifier['source'],
+  target: EventTarget,
+  day: number,
+  templates: readonly EventModifierTemplate[]
 ): EventModifierActivationResult;
 ```
 
@@ -218,15 +218,9 @@ Route effects:
 | { kind: 'route-transport-cost-multiplier'; multiplier: number }
 ```
 
-- [ ] **Step 1: Write validation tests for all four effect kinds and target compatibility**
+- [ ] **Step 1: Write catalog/runtime validation tests**
 
-Assert:
-
-- lead-time days is a positive safe integer;
-- multipliers are finite and > 0;
-- suspension has no payload;
-- company + route effect is rejected;
-- recurring-route + import-cost effect is rejected.
+Assert positive safe lead-time days, positive finite multipliers, parameterless suspension, company/import compatibility, and recurring-route/route-effect compatibility.
 
 - [ ] **Step 2: Run validation tests and verify RED**
 
@@ -234,15 +228,15 @@ Assert:
 bun run test:unit -- --run src/lib/game/eventCatalog.spec.ts src/lib/game/eventEffects.spec.ts
 ```
 
-- [ ] **Step 3: Extend `EventTimedEffect` and validator switches**
+- [ ] **Step 3: Extend `EventTimedEffect` and validation switches**
 
-Keep explicit switches. Do not add `effect.target` to route effects: the concrete route is `ActiveEventModifier.target`.
+Do not add `effect.target` to route effects; concrete route identity lives in `ActiveEventModifier.target`.
 
 - [ ] **Step 4: Write target-scoped replacement tests**
 
-Activate the same stacking key on route-1 and route-2 and assert both survive. Reapply only route-1 and assert only its old modifier receives a `replaced` lifecycle row.
+The same stacking key on `route-1` and `route-2` must coexist. Reapplying it on `route-1` replaces only the old `route-1` modifier.
 
-- [ ] **Step 5: Pass and clone the concrete target through activation/snapshots**
+- [ ] **Step 5: Pass concrete target through modifier activation/snapshots**
 
 Replacement predicate:
 
@@ -251,33 +245,40 @@ candidate.stackingKey === modifier.stackingKey &&
 sameEventTarget(candidate.target, modifier.target)
 ```
 
-Use discriminated cloning for `EventTimedEffect` and `EventTarget`.
+Use discriminated cloning for both `EventTarget` and `EventTimedEffect`.
 
-- [ ] **Step 6: Fix every materialization clone site now**
+- [ ] **Step 6: Fix every union-unsafe materialization clone site**
 
-`eventSelection.ts#materializeEvent` currently assumes every timed effect has `.target`. Replace:
+Replace `eventSelection.ts#materializeEvent`'s current assumption:
 
 ```ts
 { ...modifier.effect, target: { ...modifier.effect.target } }
 ```
 
-with the same discriminated timed-effect clone used by the lifecycle path.
+with the same discriminated timed-effect clone used by the lifecycle path. Add a route-event materialization regression test.
 
-Add a route-event materialization test that reaches this clone path.
+- [ ] **Step 7: Write resolution-time route existence tests**
 
-- [ ] **Step 7: Write atomic resolution tests for stale route targets**
+Materialize a route decision, then:
 
-Materialize a route decision, then pause/remove the route. `resolveDecision` must return `effect-rejected` and leave cash/modifiers unchanged.
+1. pause the route — resolution **succeeds**, modifier is stored, route remains paused;
+2. remove the route — resolution returns `effect-rejected`, immediate cash/modifier state stays unchanged.
 
-- [ ] **Step 8: Replace company-only resolution guard with target eligibility**
+```ts
+expect(resolveDecision(pausedGame, decision.id, option.id).ok).toBe(true);
+expect(resolveDecision(removedGame, decision.id, option.id)).toMatchObject({
+  ok: false,
+  code: 'effect-rejected'
+});
+```
 
-Validate `decision.target` before immediate effects. Pass `decision.target` into `activateEventModifiers`.
+- [ ] **Step 8: Replace company-only resolution guard with `isEventTargetResolvable`**
+
+Selection remains active-only. Resolution checks existence only and passes `decision.target` into `activateEventModifiers`.
 
 - [ ] **Step 9: Narrow existing import-cost consumers**
 
-In `simulateDay.ts`, `compileEventModifierRules` includes only `import-cost-multiplier`. Lifecycle/snapshot cloning switches by effect kind.
-
-`ActiveModifiers.svelte` must compile safely across the union now; full route-specific presentation is Task 6.
+`simulateDay.ts#compileEventModifierRules` includes only `effect.kind === 'import-cost-multiplier'`. Lifecycle cloning and temporary Active Modifiers rendering switch on effect kind rather than reading `.multiplier` unconditionally.
 
 - [ ] **Step 10: Run focused suites/check and commit**
 
@@ -290,7 +291,7 @@ git commit -m "feat(events): support route modifier effects"
 
 ---
 
-### Task 3: Build the effective-route resolver, integrate live dispatch, fix live condition/alerts, and keep attempt persistence runnable
+### Task 3: Centralize disruption dispatch derivation, widen live conditions, and land the complete schema-16 shape
 
 **Files:**
 - Create: `src/lib/game/logisticsRouteModifiers.ts`
@@ -300,136 +301,183 @@ git commit -m "feat(events): support route modifier effects"
 - Modify: `src/lib/game/logisticsReadModels.ts`
 - Modify: `src/lib/game/alerts.ts`
 - Modify: `src/lib/game/logisticsReport.testUtils.ts`
+- Modify: `src/lib/game/supplyPlanner.ts` (condition rank only)
+- Modify: `src/lib/components/game/SupplyAdvisor.svelte` (condition mapping only)
+- Modify: `src/lib/i18n/messages/en.ts` (compile-time condition completeness + new copy key)
+- Modify: `src/lib/i18n/messages/ja.ts`
+- Modify: `src/lib/i18n/messages/zh-Hant.ts`
+- Modify: `src/lib/persistence/saveTypes.ts`
 - Modify: `src/lib/persistence/saveCodec.ts`
 - Modify: `src/lib/persistence/saveCodec.spec.ts`
 - Test: `src/lib/game/interCityLogistics.integration.spec.ts`
 - Test: `src/lib/game/logisticsReadModels.spec.ts`
 - Test: `src/lib/game/alerts.spec.ts`
-- Test: relevant cases in `src/lib/game/simulateDay.spec.ts`
+- Test: relevant `src/lib/game/simulateDay.spec.ts` cases
 
 **Interfaces:**
 
 ```ts
 export interface EffectiveRecurringRoute {
-	base: RecurringRoute;
-	capacity: number;
-	leadTimeDays: number;
-	transportCostMultiplier: number;
-	transportCostPerUnit: number;
-	dispatchSuspended: boolean;
-	contributions: RouteModifierContribution[];
+  base: RecurringRoute;
+  capacity: number;
+  leadTimeDays: number;
+  transportCostMultiplier: number;
+  transportCostPerUnit: number;
+  dispatchSuspended: boolean;
+  contributions: RouteModifierContribution[];
 }
 
 export function resolveEffectiveRecurringRoute(
-	route: RecurringRoute,
-	modifiers: readonly ActiveEventModifier[],
-	day: number
+  route: RecurringRoute,
+  modifiers: readonly ActiveEventModifier[],
+  day: number
 ): EffectiveRecurringRoute;
+
+export function calculateEffectiveRouteTransportCost(input: {
+  baseTransportCostPerUnit: number;
+  quantity: number;
+  transportCostMultiplier: number;
+}): number;
+
+export function buildRouteDispatchAttempt(input: {
+  route: RecurringRoute;
+  effective: EffectiveRecurringRoute;
+  destinationNeed: number;
+  availableOriginStock: number;
+}): {
+  dispatchedQuantity: number;
+  attempt: Omit<DailyRouteDispatchAttempt, 'transferOrderId'>;
+};
 ```
 
-Shared cost function stays in `interCityLogistics.ts`:
+- [ ] **Step 1: Add the shared test attempt factory before changing the type**
+
+Extend `logisticsReport.testUtils.ts`:
 
 ```ts
-export function calculateEffectiveRouteTransportCost(input: {
-	baseTransportCostPerUnit: number;
-	quantity: number;
-	transportCostMultiplier: number;
-}): number;
+export function createRouteDispatchAttempt(
+  overrides: Partial<DailyRouteDispatchAttempt> = {}
+): DailyRouteDispatchAttempt {
+  return {
+    routeId: 'route-1',
+    originCityId: 'industry-city',
+    destinationCityId: 'breadbasket-basin',
+    materialId: 'grain',
+    destinationNeed: 100,
+    capacity: 100,
+    availableOriginStock: 100,
+    dispatchedQuantity: 100,
+    unusedCapacity: 0,
+    unmetDestinationNeed: 0,
+    transportCost: 200,
+    transferOrderId: 'transfer-1',
+    baselineCapacity: 100,
+    dispatchSuspended: false,
+    modifierImpacts: [],
+    ...overrides
+  };
+}
 ```
 
-`RouteOperationalCondition` gains `route-event-suspended`.
+Move affected spec-local attempt builders/literals to this helper as they are touched.
 
-- [ ] **Step 1: Write resolver tests**
+- [ ] **Step 2: Write resolver tests and verify RED**
 
-Cover unrelated targets, inactive-day modifiers, additive lead time, multiplicative capacity with one final floor/minimum 1, suspension OR, cost multiplier composition, deterministic modifier-ID order, and overflow rejection.
-
-- [ ] **Step 2: Run resolver tests and verify RED**
+Cover unrelated target, inactive day, additive lead time, multiplicative capacity with one final floor/minimum 1, suspension OR, cost multiplier composition, modifier-ID ordering, and overflow rejection.
 
 ```bash
 bun run test:unit -- --run src/lib/game/logisticsRouteModifiers.spec.ts
 ```
 
-- [ ] **Step 3: Implement `logisticsRouteModifiers.ts`**
+Expected: fail because resolver does not exist.
 
-Filter with existing `isModifierActiveOnDay`, require matching recurring-route target, sort by modifier ID, and reduce explicit effect-kind accumulators.
+- [ ] **Step 3: Implement the pure resolver and discriminated in-memory contributions**
 
-Use a discriminated `RouteModifierContribution` union so persistence/i18n can validate concrete keys.
+Filter route-targeted active modifiers using existing day lifecycle semantics; sort by modifier ID; reduce explicit accumulators. No route mutation and no generic registry.
 
-- [ ] **Step 4: Add the shared route transport-cost helper in `interCityLogistics.ts`**
+- [ ] **Step 4: Add shared checked route transport-cost calculation**
 
-Reuse its existing private `checkedMultiply` for the integer base total:
+Reuse the existing `checkedMultiply` for the base total, then one final round:
 
 ```ts
 const baseTotal = checkedMultiply(baseTransportCostPerUnit, quantity);
 if (baseTotal === null) {
-	throw new RangeError('Recurring route transport cost exceeds the safe integer range');
+  throw new RangeError('Recurring route transport cost exceeds the safe integer range');
 }
-
 const effectiveTotal = Math.round(baseTotal * transportCostMultiplier);
 if (!Number.isSafeInteger(effectiveTotal) || effectiveTotal < 0) {
-	throw new RangeError('Recurring route transport cost exceeds the safe integer range');
+  throw new RangeError('Recurring route transport cost exceeds the safe integer range');
 }
 return effectiveTotal;
 ```
 
-Do not add `checkedRoundedProduct`.
+Do not add another generic arithmetic dialect.
 
-- [ ] **Step 5: Write live dispatch tests before changing dispatch**
+- [ ] **Step 5: Define compact persisted modifier impacts**
 
-Assert:
-
-- ×0.75 capacity affects actual quantity but records base quantity/capacity;
-- +1 lead time changes only the new order's arrival;
-- ×1.5 cost rounds once from base total;
-- suspension creates no order, records an attempt, and advances cadence;
-- player pause still creates no due attempt;
-- an existing in-transit order remains unchanged after modifier activation/expiry.
-
-- [ ] **Step 6: Extend `DailyRouteDispatchAttempt` and integrate live dispatch**
-
-Required new fields:
+`DailyRouteDispatchAttempt` adds only:
 
 ```ts
 baselineCapacity: number;
-baselineLeadTimeDays: number;
-leadTimeDays: number;
-baselineTransportCostPerUnit: number;
-transportCostPerUnit: number;
-baselineDispatchedQuantity: number;
-baselineTransportCost: number;
 dispatchSuspended: boolean;
-modifierContributions: RouteModifierContribution[];
+modifierImpacts: RouteDispatchModifierImpact[];
 ```
 
-Keep existing `capacity` as effective capacity.
+Keep `capacity` as effective capacity.
 
-Compute baseline and effective quantities from the same destination need/origin stock snapshot before removing stock.
+Define a discriminated `RouteDispatchModifierImpact` union whose common `contributors` list stores modifier ID, source event/instance/option, and explanation. Effect rows store:
 
-- [ ] **Step 7: Add `route-event-suspended` to the live condition and resolver-backed summary**
+- lead time: baseline/effective lead-time days;
+- capacity: baseline/effective capacity and baseline/effective dispatched quantity;
+- suspension: baseline quantity and effective zero;
+- transport cost: baseline/effective total cost.
 
-`classifyRouteOperationalCondition` checks `dispatchSuspended` before stock/capacity classifications.
+Unaffected attempts store `[]`. Group multiple same-kind contributors in deterministic modifier-ID order.
 
-`selectRouteOperations(game)` resolves the current effective route with:
+- [ ] **Step 6: Write builder tests, then implement `buildRouteDispatchAttempt`**
+
+Tests prove:
+
+- base route 100 + ×0.75 resolves `baselineCapacity=100`, `capacity=75`;
+- the capacity impact records baseline/effective shipped units;
+- suspension records baseline shipped units → 0 and zero actual cost;
+- cost multiplier compares totals using the actual dispatched quantity;
+- no modifiers returns `modifierImpacts=[]`;
+- live/planner callers no longer need to duplicate baseline/effective/suspension derivation.
+
+- [ ] **Step 7: Integrate live recurring dispatch through resolver + builder**
+
+Keep due-route ordering and inventory/order plumbing in `processRecurringRouteDispatches`. Replace route-specific quantity/cost/evidence derivation with:
 
 ```ts
-resolveEffectiveRecurringRoute(route, game.events.activeModifiers, game.day)
+const effective = resolveEffectiveRecurringRoute(route, nextGame.events.activeModifiers, closingDay);
+const built = buildRouteDispatchAttempt({
+  route,
+  effective,
+  destinationNeed,
+  availableOriginStock
+});
 ```
 
-Expose that effective state on `RouteOperationalSummary` for inspector and alert consumers.
+When `built.dispatchedQuantity > 0`, create the immutable transfer order with `effective.leadTimeDays`, then attach its ID to `built.attempt`. Event suspension still advances cadence.
 
-- [ ] **Step 8: Fix stale-attempt matching and logistics alert semantics**
+- [ ] **Step 8: Widen live condition/read-model semantics and lock utilization meaning**
 
-`attemptMatchesRoute` compares:
+Add `route-event-suspended` to `RouteOperationalCondition` and classify it before stock/capacity conditions.
+
+Change `attemptMatchesRoute` to compare current base capacity with `attempt.baselineCapacity`.
+
+Keep:
 
 ```ts
-attempt.baselineCapacity === route.capacity
+utilization = latestAttempt.dispatchedQuantity / latestAttempt.capacity;
 ```
 
-plus current origin/destination/material fields.
+Add tests proving a fully saturated ×0.75 attempt is 100% utilized **relative to effective capacity**, while the summary exposes base/effective capacity separately for presentation.
 
-Origin-stock alert threshold uses current effective route capacity.
+- [ ] **Step 9: Keep normal structural capacity alerts disruption-safe**
 
-Structural capacity-streak evidence requires:
+Capacity-streak evidence requires:
 
 ```ts
 !attempt.dispatchSuspended &&
@@ -438,144 +486,144 @@ attempt.unmetDestinationNeed > 0 &&
 attempt.dispatchedQuantity === attempt.baselineCapacity
 ```
 
-Write alert tests proving two ×0.75 disruption attempts do **not** create `logistics-route-capacity`, while two undisrupted base-capacity-saturated attempts still do.
+Write tests proving two ×0.75 saturated disruption attempts do not emit `logistics-route-capacity`, while two undisrupted base-capacity-saturated attempts still do.
 
-- [ ] **Step 9: Update exact-key attempt persistence in the same checkpoint**
+Origin-stock alerts use current effective capacity from the resolved route summary.
 
-`saveCodec.ts#validateSavedDailyRouteDispatchAttempt` currently calls `requireExactKeys`; extend that exact key list and validate every new field/contribution.
+- [ ] **Step 10: Widen planner/UI condition exhaustiveness in the same checkpoint**
 
-Update all direct `DailyRouteDispatchAttempt` literals and `logisticsReport.testUtils.ts` fixtures in the same commit. Keep `SAVE_SCHEMA_VERSION` at 15 in this intermediate checkpoint; Task 4 performs the single 15 → 16 bump together with recovery persistence.
+Add `'route-event-suspended'` to `SUPPLY_PLANNER_ROUTE_CONDITION_RANK` **now**, before Task 5 planner behavior.
 
-- [ ] **Step 10: Run focused suites/check and commit**
+Add the `SupplyAdvisor.svelte` route-condition message mapping/case now so `bun run check` remains green.
 
-```bash
-bun run test:unit -- --run src/lib/game/logisticsRouteModifiers.spec.ts src/lib/game/interCityLogistics.integration.spec.ts src/lib/game/logisticsReadModels.spec.ts src/lib/game/alerts.spec.ts src/lib/persistence/saveCodec.spec.ts src/lib/game/simulateDay.spec.ts
-bun run check
-git add src/lib/game/logisticsRouteModifiers.ts src/lib/game/logisticsRouteModifiers.spec.ts src/lib/game/types.ts src/lib/game/interCityLogistics.ts src/lib/game/logisticsReadModels.ts src/lib/game/alerts.ts src/lib/game/logisticsReport.testUtils.ts src/lib/persistence/saveCodec.ts src/lib/persistence/saveCodec.spec.ts src/lib/game/interCityLogistics.integration.spec.ts src/lib/game/logisticsReadModels.spec.ts src/lib/game/alerts.spec.ts src/lib/game/simulateDay.spec.ts
-git commit -m "feat(logistics): apply event modifiers to dispatches"
-```
-
----
-
-### Task 4: Add discriminated recovery evidence and strict schema 16
-
-**Files:**
-- Modify: `src/lib/game/types.ts`
-- Modify: `src/lib/game/logisticsRouteModifiers.ts`
-- Modify: `src/lib/game/logisticsRouteModifiers.spec.ts`
-- Modify: `src/lib/game/simulateDay.ts`
-- Modify: `src/lib/persistence/saveTypes.ts`
-- Modify: `src/lib/persistence/saveCodec.ts`
-- Modify: `src/lib/persistence/saveCodec.spec.ts`
-- Test: `src/lib/game/simulateDay.spec.ts`
-
-**Interfaces:**
+Bind copy to the domain at compile time:
 
 ```ts
-interface RouteRecoveryBase {
-	routeId: string;
-	modifierId: string;
-	source: ActiveEventModifier['source'];
-}
-
-export type DailyRouteModifierRecovery =
-	| (RouteRecoveryBase & {
-			effectKind: 'route-lead-time-adjustment';
-			disruptedLeadTimeDays: number;
-			recoveredLeadTimeDays: number;
-	  })
-	| (RouteRecoveryBase & {
-			effectKind: 'route-capacity-multiplier';
-			disruptedCapacity: number;
-			recoveredCapacity: number;
-	  })
-	| (RouteRecoveryBase & {
-			effectKind: 'route-dispatch-suspension';
-			disruptedSuspended: true;
-			recoveredSuspended: false;
-	  })
-	| (RouteRecoveryBase & {
-			effectKind: 'route-transport-cost-multiplier';
-			disruptedTransportCostPerUnit: number;
-			recoveredTransportCostPerUnit: number;
-	  });
+conditions: {
+  'awaiting-dispatch': 'Awaiting dispatch',
+  'destination-full': 'Destination full',
+  'origin-stock-constrained': 'Origin stock constrained',
+  'route-capacity-constrained': 'Route capacity constrained',
+  'route-event-suspended': 'Suspended by event',
+  normal: 'Normal'
+} satisfies Record<RouteOperationalCondition, string>
 ```
 
-- [ ] **Step 1: Write recovery derivation tests**
-
-Cover one case per effect kind, edited base values, two simultaneous effects, and removed route.
+Because Supply Advisor's existing locale keys are camelCase, use a typed message-key map rather than renaming all locale keys:
 
 ```ts
-expect(
-	collectRouteModifierRecoveries(routes, activeBeforeExpiry, activeAfterExpiry, closingDay)
-).toContainEqual({
-	effectKind: 'route-capacity-multiplier',
-	routeId: 'route-1',
-	modifierId: 'event-modifier-7',
-	source,
-	disruptedCapacity: 75,
-	recoveredCapacity: 120
-});
+const ROUTE_CONDITION_MESSAGE_KEY = {
+  'awaiting-dispatch': 'supplyAdvisor.logistics.conditions.awaitingDispatch',
+  normal: 'supplyAdvisor.logistics.conditions.normal',
+  'destination-full': 'supplyAdvisor.logistics.conditions.destinationFull',
+  'origin-stock-constrained': 'supplyAdvisor.logistics.conditions.originStockConstrained',
+  'route-capacity-constrained': 'supplyAdvisor.logistics.conditions.routeCapacityConstrained',
+  'route-event-suspended': 'supplyAdvisor.logistics.conditions.routeEventSuspended',
+  'route-priority-constrained': 'supplyAdvisor.logistics.conditions.routePriorityConstrained',
+  'route-frequency': 'supplyAdvisor.logistics.conditions.routeFrequency',
+  'route-lead-time': 'supplyAdvisor.logistics.conditions.routeLeadTime',
+  'route-paused': 'supplyAdvisor.logistics.conditions.routePaused'
+} satisfies Record<SupplyPlannerRouteCondition, string>;
 ```
 
-The `120` base demonstrates that an edit made during disruption is what recovery reveals.
+Add matching en/ja/zh-Hant copy.
 
-- [ ] **Step 2: Run recovery tests and verify RED**
+- [ ] **Step 11: Land the complete strict schema-16 structure now**
 
-```bash
-bun run test:unit -- --run src/lib/game/logisticsRouteModifiers.spec.ts
-```
-
-- [ ] **Step 3: Implement pure recovery comparison**
-
-Compare each still-existing affected route under the active pre-expiry modifier set and the post-expiry modifier set. Emit only the discriminated effect row whose relevant value changed.
-
-Removed routes return no row.
-
-- [ ] **Step 4: Attach recovery rows in `simulateDay.ts`**
-
-Derive recoveries from pre-expiry vs post-expiry modifier sets around existing `expireModifiersAfterDay`. `simulateDay` does not interpret effect values itself.
-
-Add `modifierRecoveries` to `DailyLogisticsReport`.
-
-- [ ] **Step 5: Bump strict save schema 15 → 16 once**
-
-Change:
+Set:
 
 ```ts
 export const SAVE_SCHEMA_VERSION = 16;
 ```
 
-Update exact-key validation for:
+Update current-schema codec validation for:
 
-- event route targets;
-- route timed effects;
-- discriminated route contributions;
-- `modifierRecoveries` and each recovery variant.
+- route event target/selector payloads that can be persisted;
+- all four route timed effects;
+- `baselineCapacity`, `dispatchSuspended`, `modifierImpacts` exact keys and discriminated invariants;
+- `modifierRecoveries` on every `DailyLogisticsReport`.
 
-Do not add migration code for 15.
+Introduce the recovery union/codec shape now and have `simulateDay` emit `modifierRecoveries: []` until Task 4 fills it. Do **not** add a new required persisted key later under the same schema version.
 
-- [ ] **Step 6: Add schema rejection/round-trip tests**
+Schema 15 fixtures must be rejected; no migration helper is added.
 
-Assert:
+- [ ] **Step 12: Run focused persistence/live suites, check, then commit**
 
-- schema-16 active route modifier round-trips;
-- schema-16 dispatch contribution/recovery evidence round-trips;
-- malformed discriminated fields reject;
-- schema 15 rejects as unsupported.
+```bash
+bun run test:unit -- --run \
+  src/lib/game/logisticsRouteModifiers.spec.ts \
+  src/lib/game/interCityLogistics.integration.spec.ts \
+  src/lib/game/logisticsReadModels.spec.ts \
+  src/lib/game/alerts.spec.ts \
+  src/lib/game/simulateDay.spec.ts \
+  src/lib/persistence/saveCodec.spec.ts \
+  src/lib/components/game/SupplyAdvisor.svelte.spec.ts
+bun run check
+git add src/lib/game src/lib/components/game/SupplyAdvisor.svelte src/lib/i18n/messages src/lib/persistence
+git commit -m "feat(logistics): apply route disruptions"
+```
 
-- [ ] **Step 7: Run focused persistence/simulation suites and commit**
+This checkpoint must be independently type-correct and must write truthful schema-16 saves.
+
+---
+
+### Task 4: Derive and report deterministic recovery without changing the schema shape
+
+**Files:**
+- Modify: `src/lib/game/logisticsRouteModifiers.ts`
+- Modify: `src/lib/game/logisticsRouteModifiers.spec.ts`
+- Modify: `src/lib/game/simulateDay.ts`
+- Modify: relevant `src/lib/game/simulateDay.spec.ts` cases
+- Test: persistence round-trip remains in `saveCodec.spec.ts`
+
+**Interfaces:**
+
+```ts
+export function buildRouteModifierRecoveries(input: {
+  routes: readonly RecurringRoute[];
+  beforeExpiry: readonly ActiveEventModifier[];
+  afterExpiry: readonly ActiveEventModifier[];
+  closingDay: number;
+}): DailyRouteModifierRecovery[];
+```
+
+- [ ] **Step 1: Write recovery tests**
+
+Cover each effect kind, multiple same-kind contributors, edited base route, removed route, and no-op expiry where another modifier leaves the same effective value.
+
+- [ ] **Step 2: Run focused recovery tests and verify RED**
+
+```bash
+bun run test:unit -- --run src/lib/game/logisticsRouteModifiers.spec.ts
+```
+
+- [ ] **Step 3: Implement pure discriminated recovery derivation**
+
+Compare each still-existing route with pre-expiry and post-expiry modifier sets. Emit one row only when that effect-kind value changes. Never restore route state.
+
+- [ ] **Step 4: Attach recovery rows in `simulateDay.ts`**
+
+Capture active modifiers before expiry, run the existing expiry lifecycle, then call `buildRouteModifierRecoveries`. Set the already-present schema-16 `report.logistics.modifierRecoveries` field.
+
+- [ ] **Step 5: Verify route edit/removal behavior**
+
+Tests must prove:
+
+- edit during disruption → recovery reveals the edited base;
+- removed route → generic modifier lifecycle expires but logistics recovery array has no fabricated row.
+
+- [ ] **Step 6: Run focused suites/check and commit**
 
 ```bash
 bun run test:unit -- --run src/lib/game/logisticsRouteModifiers.spec.ts src/lib/game/simulateDay.spec.ts src/lib/persistence/saveCodec.spec.ts
 bun run check
-git add src/lib/game/types.ts src/lib/game/logisticsRouteModifiers.ts src/lib/game/logisticsRouteModifiers.spec.ts src/lib/game/simulateDay.ts src/lib/persistence/saveTypes.ts src/lib/persistence/saveCodec.ts src/lib/persistence/saveCodec.spec.ts src/lib/game/simulateDay.spec.ts
-git commit -m "feat(logistics): persist disruption recovery evidence"
+git add src/lib/game/logisticsRouteModifiers.ts src/lib/game/logisticsRouteModifiers.spec.ts src/lib/game/simulateDay.ts src/lib/game/simulateDay.spec.ts
+git commit -m "feat(logistics): report disruption recovery"
 ```
 
 ---
 
-### Task 5: Project active disruptions through the Supply Planner with the same attempt contract
+### Task 5: Project route modifiers through the Supply Planner using the shared builder
 
 **Files:**
 - Modify: `src/lib/game/supplyPlannerLogistics.ts`
@@ -584,70 +632,77 @@ git commit -m "feat(logistics): persist disruption recovery evidence"
 - Modify: `src/lib/game/supplyPlanner.spec.ts`
 
 **Interfaces:**
+- Consumes `resolveEffectiveRecurringRoute`, `buildRouteDispatchAttempt`, and `calculateEffectiveRouteTransportCost` from Tasks 3–4.
+- `SupplyPlannerLogisticsSnapshot` copies only active route-targeted modifiers needed for dated projection.
 
-`SupplyPlannerLogisticsSnapshot` gains only copied active recurring-route modifiers.
+- [ ] **Step 1: Write planner snapshot tests**
 
-`SupplyPlannerRouteCondition` continues to extend `RouteOperationalCondition`; `route-event-suspended` comes from that live union.
+Assert the snapshot copies route-targeted active modifiers but not company import-cost modifiers, event RNG/cooldowns/history, or precomputed effective routes.
 
-- [ ] **Step 1: Write snapshot isolation tests**
-
-Build a game containing one company import-cost modifier and one route modifier. Assert the planner snapshot copies only the route-targeted modifier and cloning/mutating the planner state cannot mutate `game.events`.
-
-- [ ] **Step 2: Write dated projection tests before implementation**
+- [ ] **Step 2: Write projected dispatch tests**
 
 Cover:
 
-- capacity reduction active on projected day 1 and expired on day 4;
-- lead-time adjustment changing only orders dispatched while active;
-- suspension advancing projected route cadence;
-- cost multiplier using `calculateEffectiveRouteTransportCost`;
-- planner attempts carrying every baseline/effective field from the live attempt contract.
+- capacity ×0.75;
+- +1 lead time;
+- ×1.5 transport cost;
+- suspension advances projected cadence with zero order;
+- modifier expiry inside 30 days restores base behavior;
+- route edit/base fields remain the projection's authoritative route state.
 
-- [ ] **Step 3: Run planner tests and verify RED**
+- [ ] **Step 3: Run focused planner tests and verify RED**
 
 ```bash
 bun run test:unit -- --run src/lib/game/supplyPlannerLogistics.spec.ts src/lib/game/supplyPlanner.spec.ts
 ```
 
-- [ ] **Step 4: Copy route modifiers into the planner snapshot**
+- [ ] **Step 4: Extend planner snapshot with copied route modifiers**
 
-Copy only active modifiers where `target.kind === 'recurring-route'`. Do not copy cooldowns/history/RNG/decisions.
+Deep-copy only route-targeted modifier fields used by the resolver. Do not copy the entire `EventRuntimeState`.
 
-- [ ] **Step 5: Resolve effective routes by projected day**
+- [ ] **Step 5: Replace planner-local disruption derivation with shared resolver + builder**
 
-Inside `processSupplyPlannerRouteDispatches`, call:
+Inside `processSupplyPlannerRouteDispatches`:
 
 ```ts
-resolveEffectiveRecurringRoute(route, state.routeModifiers, day)
+const effective = resolveEffectiveRecurringRoute(route, state.routeModifiers, day);
+const built = buildRouteDispatchAttempt({
+  route,
+  effective,
+  destinationNeed,
+  availableOriginStock
+});
 ```
 
-Use the same baseline/effective quantity rules as live dispatch and import `calculateEffectiveRouteTransportCost` from `interCityLogistics.ts`.
+Keep planner-local integer inventories, order creation, sequence, and warehouse bookkeeping. Attach the projected transfer ID to the shared attempt result.
 
-Fill the complete `DailyRouteDispatchAttempt` shape, including `baselineCapacity`, `dispatchSuspended`, and contribution evidence.
+- [ ] **Step 6: Remove duplicate planner transport-cost math if now unused**
 
-- [ ] **Step 6: Reuse the shared suspension condition**
+Delete the private planner copy of checked route cost calculation only after all callers use `calculateEffectiveRouteTransportCost` through the shared builder.
 
-Do not define a planner-only spelling. Add `route-event-suspended` to the planner condition rank as a blocking state.
+- [ ] **Step 7: Assert planner/live structural parity by shared output shape**
 
-Reduced capacity may still classify forecast rows as route-capacity constrained; structural live alert semantics remain separate and are already fixed in Task 3.
+Tests compare representative live/planner attempts for the same route/modifier/day and assert matching `baselineCapacity`, effective `capacity`, suspension, quantity, cost, and `modifierImpacts`. This is a regression check on integration, not the primary mechanism for keeping two derivations synchronized—the shared builder is.
 
-- [ ] **Step 7: Run planner suites/check and commit**
+- [ ] **Step 8: Run planner + live suites/check and commit**
 
 ```bash
-bun run test:unit -- --run src/lib/game/supplyPlannerLogistics.spec.ts src/lib/game/supplyPlanner.spec.ts
+bun run test:unit -- --run \
+  src/lib/game/supplyPlannerLogistics.spec.ts \
+  src/lib/game/supplyPlanner.spec.ts \
+  src/lib/game/interCityLogistics.integration.spec.ts
 bun run check
 git add src/lib/game/supplyPlannerLogistics.ts src/lib/game/supplyPlannerLogistics.spec.ts src/lib/game/supplyPlanner.ts src/lib/game/supplyPlanner.spec.ts
-git commit -m "feat(supply): project active route disruptions"
+git commit -m "feat(supply): project route disruptions"
 ```
 
 ---
 
-### Task 6: Surface route identity, active effects, dispatch impact, and recovery through existing UI
+### Task 6: Surface route disruption through existing UI, report, alert, and navigation seams
 
 **Files:**
 - Modify: `src/lib/i18n/gameCopy.ts`
 - Modify: `src/lib/i18n/gameCopy.spec.ts`
-- Modify: `src/lib/components/game/DecisionQueue.svelte.spec.ts`
 - Modify: `src/lib/components/game/ActiveModifiers.svelte`
 - Modify: `src/lib/components/game/ActiveModifiers.svelte.spec.ts`
 - Modify: `src/lib/components/game/LogisticsRouteInspector.svelte`
@@ -656,98 +711,103 @@ git commit -m "feat(supply): project active route disruptions"
 - Modify: `src/lib/components/game/WorldLogisticsRoutes.svelte.spec.ts`
 - Modify: `src/lib/components/game/ReportsPanel.svelte`
 - Modify: `src/lib/components/game/ReportsPanel.svelte.spec.ts`
+- Modify: `src/lib/components/game/DecisionQueue.svelte.spec.ts`
 - Modify: `src/lib/game/alerts.ts`
 - Modify: `src/lib/game/alerts.spec.ts`
 - Modify: `src/routes/alertNavigation.ts`
-- Modify: `src/routes/ManagementPanelHost.svelte` if needed to pass current routes into Active Modifiers
+- Modify: `src/routes/alertNavigation.spec.ts`
 - Modify: `src/lib/i18n/messages/en.ts`
 - Modify: `src/lib/i18n/messages/ja.ts`
 - Modify: `src/lib/i18n/messages/zh-Hant.ts`
 
-- [ ] **Step 1: Write localization tests proving the decision and options name the concrete route**
+- [ ] **Step 1: Write decision localization tests for concrete route copy**
 
-`gameCopy.ts` must enrich persisted IDs:
+Use a materialized route decision whose route has been removed from live state. Assert title/context/option description still include localized origin, destination, and material derived from persisted IDs.
 
-```ts
-{
-	...decision.copy.params,
-	originCityName: i18n.labels.worldCity(originCityId).name,
-	destinationCityName: i18n.labels.worldCity(destinationCityId).name,
-	materialName: i18n.labels.material(materialId)
-}
-```
+- [ ] **Step 2: Pass event copy params through option localization**
 
-Pass these params to title, context, **and** `localizeEventDecisionOption` label/description translations.
+`localizeEventDecisionOption` must use the same enriched params as event title/context translation. Do not make `DecisionQueue.svelte` query route state directly.
 
-Test after the live route has been removed; localization must still use persisted IDs rather than require a route lookup.
+- [ ] **Step 3: Write Active Modifiers route-effect tests**
 
-- [ ] **Step 2: Add a DecisionQueue rendering assertion**
+Cover all four effect kinds. Route modifiers show endpoints/material, base → effective value, event source, and remaining duration. Company import-cost modifier rendering remains unchanged.
 
-Mount the localized freight-disruption decision fixture and assert visible text contains origin, destination, and material. No DecisionQueue domain logic is added.
-
-- [ ] **Step 3: Make Active Modifiers effect/target-discriminated**
-
-Switch by modifier target/effect. Keep existing company import-cost presentation unchanged.
-
-For route modifiers, display route ID plus live endpoint/material names when the route still exists; fall back to persisted route ID when removed. Pass only the current recurring-route list from `ManagementPanelHost` if the component needs this lookup.
-
-- [ ] **Step 4: Extend route inspector with base/effective evidence**
+- [ ] **Step 4: Extend route inspector while keeping utilization effective-relative**
 
 Show:
 
-- base → effective capacity;
-- base → effective lead time;
-- base → effective transport cost per unit;
-- suspension state and remaining modifier duration;
-- latest attempt baseline vs actual quantity/cost.
+- configured/base capacity;
+- current effective capacity;
+- current base/effective lead time/cost when changed;
+- `route-event-suspended` condition;
+- latest historical `modifierImpacts`;
+- explicit copy that utilization is relative to available/effective capacity.
 
-Use `RouteOperationalSummary.effectiveRoute`; do not recompute effect math in Svelte.
+Do not add a second utilization ratio.
 
-- [ ] **Step 5: Add world-route disrupted hook and non-color-only treatment**
+- [ ] **Step 5: Add non-color world-route disruption state**
 
 Set:
 
-```html
-data-disrupted="true"
+```svelte
+data-disrupted={summary.disruptionActive ? 'true' : 'false'}
 ```
 
-when the summary has active route contributions. Preserve existing route geometry. Add a dashed/double-stroke or similar existing-token treatment plus accessible route-list/inspector text so color is not the only signal.
+and add a visual cue independent of color. Keep existing geometry and route selection.
 
-- [ ] **Step 6: Render report impact and discriminated recovery rows**
+- [ ] **Step 6: Render persisted disruption impacts and recoveries in Reports**
 
-`ReportsPanel.svelte` switches on contribution/recovery `effectKind` and uses specific fields. Do not inspect `unknown` values.
+Switch on the discriminated unions. Historical report rows use persisted attribution and never require the modifier to remain active.
 
-- [ ] **Step 7: Add actionable disruption alert copy/navigation**
+- [ ] **Step 7: Reuse `event-modifier` for actionable route alerts**
 
-Important active route modifiers produce one route-targeted disruption alert with remaining duration. Reuse existing world-route alert navigation and suppress it if the route no longer exists.
+Do **not** add a new alert kind.
 
-Keep Task 3's structural capacity alert policy unchanged.
+In the existing important-modifier branch:
 
-- [ ] **Step 8: Add English/Japanese/Traditional Chinese copy**
+```ts
+if (modifier.target.kind === 'recurring-route') {
+  const routeExists = game.logistics.recurringRoutes.some(
+    (route) => route.id === modifier.target.routeId
+  );
+  if (!routeExists) continue;
 
-Add keys for:
+  alerts.push({
+    id: `event-modifier:${modifier.id}`,
+    kind: 'event-modifier',
+    modifierId: modifier.id,
+    routeId: modifier.target.routeId
+  });
+  continue;
+}
+```
 
-- freight-disruption target-aware title/context/options;
-- each active route effect;
-- shared `route-event-suspended` condition;
-- inspector base/effective labels;
-- report impact/recovery rows;
-- disruption alert.
+Company important modifiers retain `managementPanelId: 'decisions'`.
 
-Run `gameCopy.spec.ts` completeness checks after all three locale files change.
+- [ ] **Step 8: Route existing event-modifier alerts to the world route**
 
-- [ ] **Step 9: Run component/i18n/alert suites and commit**
+Extend `resolveAlertNavigation` so `alert.kind === 'event-modifier' && alert.routeId` returns the existing `{ kind: 'world-route', routeId }` result before panel navigation.
+
+- [ ] **Step 9: Run focused UI/i18n/alert tests and commit**
 
 ```bash
-bun run test:unit -- --run src/lib/i18n/gameCopy.spec.ts src/lib/components/game/DecisionQueue.svelte.spec.ts src/lib/components/game/ActiveModifiers.svelte.spec.ts src/lib/components/game/LogisticsRouteInspector.svelte.spec.ts src/lib/components/game/WorldLogisticsRoutes.svelte.spec.ts src/lib/components/game/ReportsPanel.svelte.spec.ts src/lib/game/alerts.spec.ts
+bun run test:unit -- --run \
+  src/lib/i18n/gameCopy.spec.ts \
+  src/lib/components/game/ActiveModifiers.svelte.spec.ts \
+  src/lib/components/game/LogisticsRouteInspector.svelte.spec.ts \
+  src/lib/components/game/WorldLogisticsRoutes.svelte.spec.ts \
+  src/lib/components/game/ReportsPanel.svelte.spec.ts \
+  src/lib/components/game/DecisionQueue.svelte.spec.ts \
+  src/lib/game/alerts.spec.ts \
+  src/routes/alertNavigation.spec.ts
 bun run check
-git add src/lib/i18n/gameCopy.ts src/lib/i18n/gameCopy.spec.ts src/lib/components/game/DecisionQueue.svelte.spec.ts src/lib/components/game/ActiveModifiers.svelte src/lib/components/game/ActiveModifiers.svelte.spec.ts src/lib/components/game/LogisticsRouteInspector.svelte src/lib/components/game/LogisticsRouteInspector.svelte.spec.ts src/lib/components/game/WorldLogisticsRoutes.svelte src/lib/components/game/WorldLogisticsRoutes.svelte.spec.ts src/lib/components/game/ReportsPanel.svelte src/lib/components/game/ReportsPanel.svelte.spec.ts src/lib/game/alerts.ts src/lib/game/alerts.spec.ts src/routes/alertNavigation.ts src/routes/ManagementPanelHost.svelte src/lib/i18n/messages/en.ts src/lib/i18n/messages/ja.ts src/lib/i18n/messages/zh-Hant.ts
-git commit -m "feat(logistics): surface active route disruptions"
+git add src/lib/i18n src/lib/components/game src/lib/game/alerts.ts src/lib/game/alerts.spec.ts src/routes/alertNavigation.ts src/routes/alertNavigation.spec.ts
+git commit -m "feat(logistics): surface route disruptions"
 ```
 
 ---
 
-### Task 7: Add the production `freight-disruption` event
+### Task 7: Add the production freight-disruption event and own the event-mix change
 
 **Files:**
 - Modify: `src/lib/game/eventCatalog.ts`
@@ -755,133 +815,143 @@ git commit -m "feat(logistics): surface active route disruptions"
 - Modify: `src/lib/i18n/messages/en.ts`
 - Modify: `src/lib/i18n/messages/ja.ts`
 - Modify: `src/lib/i18n/messages/zh-Hant.ts`
-- Test: `src/lib/game/eventSelection.spec.ts`
-- Test: `src/lib/i18n/gameCopy.spec.ts`
+- Modify: `src/lib/i18n/gameCopy.spec.ts` as needed for production copy
 
 **Production definition:**
 
-```text
-id: freight-disruption
-version: 1
-selection: weighted weight 1
-condition: always
-target: active recurring route
-expiresAfterDays: 2
-cooldownDays: 7 per concrete route
+```ts
+{
+  id: 'freight-disruption',
+  version: 1,
+  selection: { kind: 'weighted', weight: 1 },
+  condition: { kind: 'always' },
+  target: { kind: 'recurring-route', state: 'active' },
+  expiresAfterDays: 2,
+  cooldownDays: 7,
+  // localized copy + three options below
+}
 ```
 
 Options:
 
-```text
-accept-delay
-  3 days: lead time +1
-  3 days: capacity ×0.75
+1. `accept-delay`: +1 lead-time day and ×0.75 capacity for 3 days.
+2. `charter-carriers`: immediate cash -2,000, ×1.25 capacity and ×1.5 transport cost for 2 days.
+3. `suspend-shipments`: dispatch suspension for 2 days.
 
-charter-carriers
-  immediate cash -2,000
-  2 days: capacity ×1.25
-  2 days: transport cost ×1.5
+- [ ] **Step 1: Write production catalog tests**
 
-suspend-shipments
-  2 days: dispatch suspension
-```
+Assert exact production IDs now include `freight-disruption`, route selector is active-only, cooldown is 7, all stacking keys are stable, and no unsupported effect kind enters the bundle.
 
-- [ ] **Step 1: Write production-catalog tests**
+- [ ] **Step 2: Write production option tests**
 
-Assert exact production ID allowlist now includes `freight-disruption`, its target is recurring-route, all effect/stacking keys are valid, and it is ineligible with no active route.
+Assert exact option ordering/payloads and that each option has one primary `importance: 'important'` route modifier for the existing actionable alert path. Secondary modifiers in multi-effect options are `normal`, preventing duplicate top-bar alerts from the same response while still appearing in Active Modifiers.
 
-- [ ] **Step 2: Add the definition with stable keys**
+Recommended importance ownership:
 
-```text
-freight-disruption:lead-time
-freight-disruption:capacity
-freight-disruption:transport-cost
-freight-disruption:suspension
-```
+- `accept-delay`: lead-time important, capacity normal;
+- `charter-carriers`: transport-cost important, capacity normal;
+- `suspend-shipments`: suspension important.
 
-The lifecycle implementation scopes replacement by target; do not interpolate route ID into authored stacking keys.
+Durations inside each option are identical, so the one important modifier covers the whole response window.
 
-- [ ] **Step 3: Add target-aware localized copy**
+- [ ] **Step 3: Encode the deliberate weighted-event balance in a test/comment**
 
-Use the persisted/enriched route params from Tasks 1 and 6 so title/context/options name the concrete origin → destination and material before resolution.
+When a route is eligible, `supplier-terms` weight 1 and `freight-disruption` weight 1 share the existing weighted-event selection evenly. The global cadence is unchanged. Route count does not alter either definition's weight.
 
-- [ ] **Step 4: Add deterministic selection/materialization test**
+Add a selection test demonstrating one eligible route versus several eligible routes leaves the 1:1 definition weights unchanged.
 
-With two active routes and a fixed event RNG state, assert the selected event target is the expected route and `copy.params` matches it.
+- [ ] **Step 4: Add route-aware decision/modifier copy in all locales**
 
-- [ ] **Step 5: Run catalog/selection/i18n suites and commit**
+Copy names the concrete origin → destination/material and makes each option's duration/trade-off clear before resolution.
+
+- [ ] **Step 5: Run catalog/i18n/selection suites and commit**
 
 ```bash
 bun run test:unit -- --run src/lib/game/eventCatalog.spec.ts src/lib/game/eventSelection.spec.ts src/lib/i18n/gameCopy.spec.ts
 bun run check
-git add src/lib/game/eventCatalog.ts src/lib/game/eventCatalog.spec.ts src/lib/game/eventSelection.spec.ts src/lib/i18n/gameCopy.spec.ts src/lib/i18n/messages/en.ts src/lib/i18n/messages/ja.ts src/lib/i18n/messages/zh-Hant.ts
+git add src/lib/game/eventCatalog.ts src/lib/game/eventCatalog.spec.ts src/lib/game/eventSelection.spec.ts src/lib/i18n
 git commit -m "feat(events): add freight disruption event"
 ```
 
 ---
 
-### Task 8: Prove the full disruption/recovery lifecycle and run release gates
+### Task 8: Cover the complete lifecycle and run final gates
 
 **Files:**
 - Modify: `src/routes/retail-sim.e2e.ts`
-- Modify only focused test helpers required by the deterministic save fixture.
+- Modify only focused fixture/helper files required by the deterministic current-schema save injection
 
-- [ ] **Step 1: Add deterministic schema-16 E2E save setup**
+- [ ] **Step 1: Add deterministic current-schema E2E setup**
 
-Create a sandbox state with:
+Inject a schema-16 sandbox state with:
 
-- opened origin/destination industry cities;
-- warehouse capacity and origin stock sufficient for a real dispatch;
-- one active due route;
+- two opened industry cities;
+- a valid active recurring route;
+- enough origin stock/destination capacity/cash;
 - deterministic event runtime state that materializes `freight-disruption` for that route.
 
-Do not add a production debug command solely for the test.
+Do not add an E2E-only production command.
 
-- [ ] **Step 2: Assert the unresolved decision visibly identifies the route**
+- [ ] **Step 2: Assert the unresolved decision names its concrete route**
 
-Before resolution, assert DecisionQueue text contains the route's origin, destination, and material. This is the regression gate for materialized route copy params.
+Before resolving, verify visible decision/option copy includes the expected origin, destination, and material.
 
-- [ ] **Step 3: Resolve a disruption and inspect active UI**
+- [ ] **Step 3: Resolve a disruption and assert active presentation**
 
-Choose `accept-delay` or `charter-carriers`. Assert:
+Verify Active Modifiers shows the effect and the world route exposes:
 
-- Active Modifiers names the route/effect;
-- world route has `data-disrupted="true"`;
-- route inspector shows base → effective values;
-- disruption alert navigates to that route.
+```text
+data-disrupted="true"
+```
+
+Verify the existing event-modifier alert navigates to that route.
 
 - [ ] **Step 4: Close through an affected dispatch**
 
-Assert the latest attempt exposes baseline/effective capacity/lead-time/cost evidence and the created transfer order uses the adjusted arrival/cost.
+Assert the resulting order uses adjusted arrival/cost as appropriate and the latest report carries the compact historical `modifierImpacts` evidence.
 
-- [ ] **Step 5: Edit the base route while the modifier is active**
+- [ ] **Step 5: Edit and pause/resume while the modifier is active**
 
-Change base capacity or lead time through the existing route-management flow. Confirm active inspector values derive from edited base + modifier.
+Assert pausing does not delete the modifier or create restoration state; resuming reuses current base route + still-active modifier. An unresolved decision paused before resolution remains resolvable.
 
 - [ ] **Step 6: Close through expiry and assert recovery**
 
 Assert:
 
-- recovery report reflects the edited base value;
+- existing in-transit order stays immutable;
+- current effective route returns to the **edited** base route;
+- recovery row appears for the still-existing route;
 - `data-disrupted` clears;
-- disruption alert clears;
-- previously dispatched order retains its original adjusted arrival/cost.
+- no stale route restoration occurs.
 
-- [ ] **Step 7: Run the targeted E2E first**
+- [ ] **Step 7: Run targeted E2E first**
 
 ```bash
-bunx playwright test src/routes/retail-sim.e2e.ts -g "freight disruption"
+bunx playwright test src/routes/retail-sim.e2e.ts --grep "freight disruption"
 ```
 
 Expected: targeted lifecycle passes.
 
-- [ ] **Step 8: Run focused regression groups**
+- [ ] **Step 8: Run all focused unit/component suites**
 
 ```bash
-bun run test:unit -- --run src/lib/game/eventTargets.spec.ts src/lib/game/eventSelection.spec.ts src/lib/game/eventCatalog.spec.ts src/lib/game/eventModifiers.spec.ts src/lib/game/eventEffects.spec.ts src/lib/game/logisticsRouteModifiers.spec.ts src/lib/game/interCityLogistics.integration.spec.ts src/lib/game/logisticsReadModels.spec.ts src/lib/game/alerts.spec.ts src/lib/game/supplyPlannerLogistics.spec.ts src/lib/game/supplyPlanner.spec.ts src/lib/persistence/saveCodec.spec.ts src/lib/i18n/gameCopy.spec.ts src/lib/components/game/ActiveModifiers.svelte.spec.ts src/lib/components/game/LogisticsRouteInspector.svelte.spec.ts src/lib/components/game/WorldLogisticsRoutes.svelte.spec.ts src/lib/components/game/ReportsPanel.svelte.spec.ts
+bun run test:unit -- --run \
+  src/lib/game/eventTargets.spec.ts \
+  src/lib/game/eventSelection.spec.ts \
+  src/lib/game/eventCatalog.spec.ts \
+  src/lib/game/eventModifiers.spec.ts \
+  src/lib/game/eventEffects.spec.ts \
+  src/lib/game/logisticsRouteModifiers.spec.ts \
+  src/lib/game/interCityLogistics.integration.spec.ts \
+  src/lib/game/logisticsReadModels.spec.ts \
+  src/lib/game/alerts.spec.ts \
+  src/lib/game/supplyPlannerLogistics.spec.ts \
+  src/lib/game/supplyPlanner.spec.ts \
+  src/lib/persistence/saveCodec.spec.ts \
+  src/lib/i18n/gameCopy.spec.ts
 ```
 
-Expected: zero failures.
+Expected: all focused suites pass.
 
 - [ ] **Step 9: Run full repository gates**
 
@@ -896,57 +966,56 @@ git diff --check origin/main...HEAD
 
 Expected:
 
-- check: 0 errors/warnings;
+- Svelte/TypeScript check: zero errors/warnings;
 - lint/format: pass;
-- full unit suite: pass;
-- full Playwright suite: pass;
-- build: pass;
+- complete unit suite: pass;
+- complete Playwright suite: pass;
+- production build: pass;
 - diff whitespace check: pass.
 
-- [ ] **Step 10: Run explicit scope audits**
+- [ ] **Step 10: Run explicit scope/consistency audits**
 
 ```bash
-git grep -n "effective.*Route\|effectiveRoute" -- src/lib/game src/routes
-git grep -n "Math.random\|rngState" -- src/lib/game/logisticsRouteModifiers.ts src/lib/game/interCityLogistics.ts
+git grep -n "event-suspend" -- src docs
 git grep -n "checkedRoundedProduct" -- src/lib/game
-git grep -n "troute-event-suspended" -- src docs
-git grep -n "schemaVersion.*15\|SAVE_SCHEMA_VERSION.*15" -- src/lib src/routes
+git grep -n "Math.random\|rngState" -- src/lib/game/logisticsRouteModifiers.ts src/lib/game/interCityLogistics.ts
+git grep -n "effectiveRoute\|effective.*Route" -- src/lib/game src/routes
+git grep -n "SAVE_SCHEMA_VERSION.*15\|schemaVersion.*15" -- src/lib src/routes
 ```
 
-Expected review:
+Review expectations:
 
-- no persisted duplicate effective route state;
-- no logistics RNG path;
-- no `checkedRoundedProduct` helper;
-- no misspelled suspension condition;
-- remaining schema-15 references are rejection fixtures only.
+- every suspension spelling is `route-event-suspended` / `route-dispatch-suspension`; no accidental alternate domain ID exists;
+- no generic rounded-product helper exists;
+- no logistics RNG path was introduced;
+- any `effectiveRoute` match is a derived local/read model, never persisted authoritative state;
+- schema-15 references are rejection fixtures only, not migration support.
 
-Also inspect the final diff for route recovery snapshots, generic target/effect registries, manual-transfer changes, or disruption-specific planner recommendation machinery.
+- [ ] **Step 11: Perform final whole-branch review**
 
-- [ ] **Step 11: Commit lifecycle coverage**
+Verify against the design acceptance criteria:
+
+- definition-level weighting and reserved materialization RNG;
+- selection active-only, resolution existence-only;
+- target-scoped replacement;
+- shared resolver **and** shared dispatch-attempt builder;
+- event suspension advances cadence;
+- compact historical modifier attribution survives expiry;
+- `baselineCapacity` protects structural capacity alerts;
+- utilization remains effective-relative and is explained in the inspector;
+- route event alerts reuse `event-modifier` + world-route navigation;
+- schema 16 is introduced once, with the complete required shape and no migration;
+- planner expires modifiers by projected day;
+- route edits survive expiry without restoration snapshots;
+- production weight-1 freight disruption deliberately shares weighted-event selections 1:1 with supplier terms when eligible.
+
+- [ ] **Step 12: Commit final lifecycle/gate work**
 
 ```bash
 git add src/routes/retail-sim.e2e.ts
+# Add only deterministic fixture/helper files intentionally changed for this lifecycle.
 git commit -m "test(logistics): cover disruption recovery lifecycle"
 ```
-
-- [ ] **Step 12: Final whole-branch requirement review**
-
-Verify each design acceptance criterion against `origin/main...HEAD`, especially:
-
-- one event candidate regardless of route count;
-- concrete route visible before option resolution;
-- target-scoped replacement;
-- suspension advances cadence;
-- `route-event-suspended` shared live/planner;
-- structural capacity alert uses baseline capacity and ignores suspension;
-- route edit + expiry reveals edited base;
-- planner expires modifiers on projected dates;
-- removed route creates no repair/recovery target;
-- Active Modifiers discriminates effect kinds;
-- schema 16 rejects 15 without migration.
-
-Only then mark the implementation PR ready for review.
 
 ---
 
@@ -954,11 +1023,11 @@ Only then mark the implementation PR ready for review.
 
 1. `feat(events): add recurring route targets`
 2. `feat(events): support route modifier effects`
-3. `feat(logistics): apply event modifiers to dispatches`
-4. `feat(logistics): persist disruption recovery evidence`
-5. `feat(supply): project active route disruptions`
-6. `feat(logistics): surface active route disruptions`
+3. `feat(logistics): apply route disruptions`
+4. `feat(logistics): report disruption recovery`
+5. `feat(supply): project route disruptions`
+6. `feat(logistics): surface route disruptions`
 7. `feat(events): add freight disruption event`
 8. `test(logistics): cover disruption recovery lifecycle`
 
-Each checkpoint runs its focused tests plus `bun run check`; full lint/unit/E2E/build gates run in Task 8.
+Each checkpoint must pass its focused suites and `bun run check` before the next checkpoint. Full lint/unit/E2E/build gates run at the end.
