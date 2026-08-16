@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { PRODUCTION_EVENT_CATALOG } from './eventCatalog';
 import { validateAndNormalizeEventCatalog, type EventDefinition } from './eventDefinitions';
 import {
 	EVENT_DRAW_COUNT_PER_DAY,
@@ -411,6 +412,54 @@ describe('recurring-route event selection', () => {
 		const sameDay = { ...first, decisions: [] };
 		const second = selectEventForDay(sameDay, catalog);
 		expect(targetRouteId(second)).toBe('route-1');
+	});
+
+	it('keeps the production weighted mix at 1:1 between supplier-terms and freight-disruption regardless of route count', () => {
+		// rngState 6 draws cadence 0.000135 (< 0.12) and weighted 0.510195.
+		// With both weights at 1 the threshold 2 × 0.510 = 1.020 crosses the
+		// freight-disruption slot and lands in supplier-terms. If route count
+		// multiplied the route weight, two eligible routes (threshold 3 × 0.510
+		// = 1.531) would land in freight-disruption instead — the seed is
+		// deliberately discriminating.
+		const oneRoute = selectEventForDay(
+			routeGame([route({ id: 'route-1' })], 6),
+			PRODUCTION_EVENT_CATALOG
+		);
+		const twoRoutes = selectEventForDay(
+			routeGame([route({ id: 'route-1' }), route({ id: 'route-2' })], 6),
+			PRODUCTION_EVENT_CATALOG
+		);
+
+		expect(eventIdOf(oneRoute)).toBe('supplier-terms');
+		expect(eventIdOf(twoRoutes)).toBe('supplier-terms');
+	});
+
+	it('lets freight-disruption win its half of the production weighted split on any route count', () => {
+		// rngState 1 draws cadence 0.000022 (< 0.12) and weighted 0.085 (< 0.5)
+		// — the freight-disruption slot of the 1:1 split, for one and for two
+		// routes alike.
+		const oneRoute = selectEventForDay(
+			routeGame([route({ id: 'route-1' })], 1),
+			PRODUCTION_EVENT_CATALOG
+		);
+		const twoRoutes = selectEventForDay(
+			routeGame([route({ id: 'route-1' }), route({ id: 'route-2' })], 1),
+			PRODUCTION_EVENT_CATALOG
+		);
+
+		expect(eventIdOf(oneRoute)).toBe('freight-disruption');
+		expect(eventIdOf(twoRoutes)).toBe('freight-disruption');
+	});
+
+	it('keeps the global 12% weighted cadence when a route is eligible', () => {
+		// rngState 5339 draws cadence 0.12001 — over the 12% weighted cadence,
+		// so no weighted production event fires even with an eligible route.
+		const selected = selectEventForDay(
+			routeGame([route({ id: 'route-1' })], 5339),
+			PRODUCTION_EVENT_CATALOG
+		);
+
+		expect(selected.decisions.filter((decision) => decision.kind === 'event')).toHaveLength(0);
 	});
 
 	it('keeps three top-level draws and the selection schema version unchanged', () => {

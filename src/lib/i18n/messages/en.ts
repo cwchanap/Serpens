@@ -1311,6 +1311,38 @@ export const en = {
 					}
 				}
 			},
+			freightDisruption: {
+				title: 'Freight disruption',
+				context:
+					'Shipments of {materialId} between {originCityId} and {destinationCityId} are disrupted. Choose how to handle deliveries on route {routeId}.',
+				options: {
+					'accept-delay': {
+						label: 'Accept delay',
+						description:
+							'Keep the route running with +1 lead-time day and 25% less capacity for three days.'
+					},
+					'charter-carriers': {
+						label: 'Charter carriers',
+						description:
+							'Pay $2,000 now for 25% more capacity, with 50% higher transport cost for two days.'
+					},
+					'suspend-shipments': {
+						label: 'Suspend shipments',
+						description: 'Pause all dispatches on the route for two days.'
+					}
+				},
+				acceptDelay: {
+					leadTime: 'Lead time +1 day on this route for three days.',
+					capacity: 'Capacity ×0.75 on this route for three days.'
+				},
+				charterCarriers: {
+					capacity: 'Capacity ×1.25 on this route for two days.',
+					transportCost: 'Transport cost ×1.5 on this route for two days.'
+				},
+				suspendShipments: {
+					suspension: 'Dispatch suspended on this route for two days.'
+				}
+			},
 			supplierTerms: {
 				title: 'Supplier terms',
 				context:

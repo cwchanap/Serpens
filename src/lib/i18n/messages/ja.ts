@@ -1289,6 +1289,37 @@ export const ja = {
 					pass: { label: '見送る', description: '資金を既存店の運営に集中させます。' }
 				}
 			},
+			freightDisruption: {
+				title: '輸送障害',
+				context:
+					'航路 {routeId}（{originCityId} → {destinationCityId}）の{materialId}の輸送が混乱しています。対応方法を選んでください。',
+				options: {
+					'accept-delay': {
+						label: '遅延を受け入れる',
+						description: '航路を維持しつつ、3日間、リードタイム+1日と輸送量25%減を受け入れます。'
+					},
+					'charter-carriers': {
+						label: '臨時運送を手配',
+						description:
+							'今すぐ$2,000を支払い、2日間、輸送量を25%増やす代わりに輸送費が50%上がります。'
+					},
+					'suspend-shipments': {
+						label: '輸送を停止',
+						description: '2日間、この航路の配送をすべて停止します。'
+					}
+				},
+				acceptDelay: {
+					leadTime: 'この航路のリードタイムが3日間+1日になります。',
+					capacity: 'この航路の輸送量が3日間×0.75になります。'
+				},
+				charterCarriers: {
+					capacity: 'この航路の輸送量が2日間×1.25になります。',
+					transportCost: 'この航路の輸送費が2日間×1.5になります。'
+				},
+				suspendShipments: {
+					suspension: 'この航路の配送が2日間停止します。'
+				}
+			},
 			supplierTerms: {
 				title: '仕入条件',
 				context: '次の補充サイクル前に、仕入先が取引条件の見直しに応じる構えです。',
