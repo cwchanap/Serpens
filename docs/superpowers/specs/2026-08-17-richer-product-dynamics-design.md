@@ -155,7 +155,6 @@ export interface ProductDynamics {
   trend?: { amplitude: number; periodDays: number; phaseDays: number };
   obsolescence?: { startsAfterDays: number; demandFloor: number };
   markdown?: { startsAtAgeDays: number; priceMultiplier: number };
-  stockoutSensitivity?: number;
   reputationSensitivity?: number;
 }
 ```
@@ -227,6 +226,9 @@ stockoutLostDemand = max(0, sellableDemand - availableStock)
 unitsSold = min(sellableDemand, availableStock)
 demandMissed = max(0, desiredUnits - unitsSold)
 ```
+
+The convenience proof uses this exact beverage stockout attribution; no
+product-specific multiplier changes the reported lost demand.
 
 ## Report/accounting contract
 

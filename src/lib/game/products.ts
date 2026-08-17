@@ -10,7 +10,7 @@ export const PRODUCTS: Readonly<Record<ProductId, ProductDefinition>> = {
 		defaultSellingPrice: 3,
 		priceSensitivity: 0.7,
 		productionMaterialId: 'bottled-water',
-		dynamics: { stockoutSensitivity: 1.15 }
+		dynamics: {}
 	},
 	'soft-drinks': {
 		id: 'soft-drinks',
@@ -21,7 +21,7 @@ export const PRODUCTS: Readonly<Record<ProductId, ProductDefinition>> = {
 		defaultSellingPrice: 4,
 		priceSensitivity: 0.8,
 		productionMaterialId: 'drinks',
-		dynamics: { stockoutSensitivity: 1.1 }
+		dynamics: {}
 	},
 	snacks: {
 		id: 'snacks',
