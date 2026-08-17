@@ -1,6 +1,30 @@
 import type { DecisionContext } from './decisionContext';
 
 export type ArchetypeId = 'convenience' | 'boutique' | 'electronics' | 'grocery';
+export type ProductFamilyId =
+	| 'beverages'
+	| 'convenience-goods'
+	| 'fashion'
+	| 'electronics'
+	| 'grocery-food';
+export type ProductId =
+	| 'bottled-water'
+	| 'soft-drinks'
+	| 'snacks'
+	| 'essentials'
+	| 'household'
+	| 'apparel'
+	| 'home-goods'
+	| 'gifts'
+	| 'fashion-accessories'
+	| 'games'
+	| 'accessories'
+	| 'devices'
+	| 'peripherals'
+	| 'produce'
+	| 'pantry'
+	| 'prepared'
+	| 'bakery';
 export type PricingPosture = 'discount' | 'competitive' | 'standard' | 'premium';
 export type InventoryBuffer = 'lean' | 'balanced' | 'generous';
 export type StaffingPosture = 'minimal' | 'efficient' | 'service';
@@ -599,6 +623,28 @@ export interface ProductCategory {
 	importCost: number;
 	defaultSellingPrice: number;
 	priceSensitivity: number;
+}
+
+export interface ProductDynamics {
+	shelfLifeDays?: number;
+	shrinkRate?: number;
+	trend?: { amplitude: number; periodDays: number; phaseDays: number };
+	obsolescence?: { startsAfterDays: number; demandFloor: number };
+	markdown?: { startsAtAgeDays: number; priceMultiplier: number };
+	stockoutSensitivity?: number;
+	reputationSensitivity?: number;
+}
+
+export interface ProductDefinition {
+	id: ProductId;
+	familyId: ProductFamilyId;
+	name: string;
+	demandWeight: number;
+	importCost: number;
+	defaultSellingPrice: number;
+	priceSensitivity: number;
+	productionMaterialId: MaterialId | null;
+	dynamics: ProductDynamics;
 }
 
 export interface StoreProduct {
