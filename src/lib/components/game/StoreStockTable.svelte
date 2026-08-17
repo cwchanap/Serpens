@@ -12,6 +12,7 @@
 		DailyStoreReport,
 		ProductId,
 		Store,
+		StoreProduct,
 		StoreProductPatch
 	} from '$lib/game/types';
 
@@ -86,18 +87,33 @@
 		| 'markdown'
 		| 'obsolescence'
 		| 'freshness'
+		| 'live-stockout'
+		| 'live-reorder'
 		| 'neutral';
 
-	function getPressureKind(productId: string, report: DailyProductReport | null): PressureKind {
-		if (!report) return 'neutral';
-		if ((report.stockoutLostDemand ?? 0) > 0) return 'stockout';
-		if ((report.wasteUnits ?? 0) > 0) return 'waste';
-		if ((report.shrinkUnits ?? 0) > 0) return 'shrink';
-		if ((report.markdownAmount ?? 0) > 0) return 'markdown';
-		if ((report.obsolescenceMultiplier ?? 1) < 1) return 'obsolescence';
-		const freshnessPercent = getFreshnessPercent(productId, report);
-		if (freshnessPercent !== null && freshnessPercent < 100) return 'freshness';
-		return 'neutral';
+	function getPressureKind(
+		productId: string,
+		product: StoreProduct,
+		report: DailyProductReport | null
+	): PressureKind {
+		if (report) {
+			if ((report.stockoutLostDemand ?? 0) > 0) return 'stockout';
+			if ((report.wasteUnits ?? 0) > 0) return 'waste';
+			if ((report.shrinkUnits ?? 0) > 0) return 'shrink';
+			if ((report.markdownAmount ?? 0) > 0) return 'markdown';
+			if ((report.obsolescenceMultiplier ?? 1) < 1) return 'obsolescence';
+			const freshnessPercent = getFreshnessPercent(productId, report);
+			if (freshnessPercent !== null && freshnessPercent < 100) return 'freshness';
+		}
+
+		switch (getStoreProductStatus(product)) {
+			case 'Out of stock':
+				return 'live-stockout';
+			case 'Needs import':
+				return 'live-reorder';
+			default:
+				return 'neutral';
+		}
 	}
 
 	function pressureLabel(
@@ -130,6 +146,10 @@
 				return i18n.t('storeStockTable.pressure.freshness', {
 					percent: i18n.format.integer(getFreshnessPercent(productId, report) ?? 100)
 				});
+			case 'live-stockout':
+				return i18n.t('storeStockTable.pressure.liveStockout');
+			case 'live-reorder':
+				return i18n.t('storeStockTable.pressure.liveReorder');
 			case 'neutral':
 				return i18n.t('storeStockTable.pressure.neutral');
 		}
@@ -183,7 +203,7 @@
 					{@const productArt = getProductArt(product.productId)}
 					{@const report = getProductReport(product.productId)}
 					{@const freshnessPercent = getFreshnessPercent(product.productId, report)}
-					{@const pressureKind = getPressureKind(product.productId, report)}
+					{@const pressureKind = getPressureKind(product.productId, product, report)}
 					<tr>
 						<td>
 							<div class="product-cell">

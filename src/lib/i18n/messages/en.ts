@@ -512,7 +512,9 @@ export const en = {
 			shrink: 'Shrink: {units} units',
 			markdown: 'Markdown: {amount}',
 			obsolescence: 'Obsolescence: {percent} demand',
-			stockout: 'Stockout loss: {units} units'
+			stockout: 'Stockout loss: {units} units',
+			liveStockout: 'Out of stock now',
+			liveReorder: 'Needs import now'
 		},
 		evidence: {
 			freshness: 'Freshness: {percent}%',

@@ -433,4 +433,37 @@ describe('StoreStockTable', () => {
 			.element(page.getByTestId('product-pressure-snacks'))
 			.not.toHaveAttribute('role', 'alert');
 	});
+
+	it('surfaces live stock pressure without inventing report loss evidence', async () => {
+		expect.assertions(6);
+		const outOfStock = productWithStock('bottled-water', 1, 1, { lots: [] });
+		const needsImport = productWithStock('snacks', 2);
+
+		render(StoreStockTable, {
+			i18n: createI18n('en'),
+			store: { ...store, products: [outOfStock, needsImport] },
+			ordinal: 1,
+			latestReport: { ...latestReport, productReports: [] },
+			onUpdate: vi.fn()
+		});
+
+		await expect
+			.element(page.getByTestId('product-pressure-bottled-water'))
+			.toHaveTextContent('Out of stock now');
+		await expect
+			.element(page.getByTestId('product-pressure-bottled-water'))
+			.toHaveAttribute('data-pressure-kind', 'live-stockout');
+		await expect
+			.element(page.getByTestId('product-pressure-bottled-water'))
+			.not.toHaveTextContent('Stockout loss');
+		await expect
+			.element(page.getByTestId('product-pressure-snacks'))
+			.toHaveTextContent('Needs import now');
+		await expect
+			.element(page.getByTestId('product-pressure-snacks'))
+			.toHaveAttribute('data-pressure-kind', 'live-reorder');
+		await expect
+			.element(page.getByTestId('product-pressure-snacks'))
+			.not.toHaveTextContent('No current pressure');
+	});
 });
