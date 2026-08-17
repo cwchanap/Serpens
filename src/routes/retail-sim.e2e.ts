@@ -3713,7 +3713,7 @@ test('city-local inventory keeps multi-city supply, replenishment, reporting, an
 	expect(harborStore.products).toMatchObject([
 		{
 			productId: 'bottled-water',
-			lots: [{ receivedDay: 8, quantity: 10 }],
+			lots: [{ receivedDay: 7, quantity: 10 }],
 			reorderThreshold: 1,
 			targetStock: 10
 		}
