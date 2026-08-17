@@ -84,14 +84,15 @@ describe('product catalog', () => {
 		).toBe(true);
 	});
 
-	it('authors one conservative pressure profile for each starting archetype', () => {
+	it('authors the intended pressure profiles without stockout multipliers', () => {
 		expect(PRODUCTS.produce.dynamics.shelfLifeDays).toEqual(expect.any(Number));
 		expect(PRODUCTS.produce.dynamics.shrinkRate).toEqual(expect.any(Number));
 		expect(PRODUCTS.devices.dynamics.trend).toEqual(expect.any(Object));
 		expect(PRODUCTS.devices.dynamics.obsolescence).toEqual(expect.any(Object));
 		expect(PRODUCTS.devices.dynamics.markdown).toEqual(expect.any(Object));
-		expect(PRODUCTS['bottled-water'].dynamics.stockoutSensitivity).toEqual(expect.any(Number));
 		expect(PRODUCTS.apparel.dynamics.trend).toEqual(expect.any(Object));
 		expect(PRODUCTS.apparel.dynamics.reputationSensitivity).toEqual(expect.any(Number));
+		expect(PRODUCTS['bottled-water'].dynamics).toEqual({});
+		expect(PRODUCTS['soft-drinks'].dynamics).toEqual({});
 	});
 });

@@ -620,7 +620,6 @@ export interface ProductDynamics {
 	trend?: { amplitude: number; periodDays: number; phaseDays: number };
 	obsolescence?: { startsAfterDays: number; demandFloor: number };
 	markdown?: { startsAtAgeDays: number; priceMultiplier: number };
-	stockoutSensitivity?: number;
 	reputationSensitivity?: number;
 }
 
