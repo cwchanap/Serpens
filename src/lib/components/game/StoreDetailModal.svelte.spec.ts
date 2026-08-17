@@ -1,7 +1,8 @@
 import { page } from 'vitest/browser';
 import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
-import type { GameState, Store } from '$lib/game/types';
+import { getProductDefinition } from '$lib/game/products';
+import type { DailyProductReport, DailyStoreReport, GameState, Store } from '$lib/game/types';
 import { createEmptyFinanceState } from '$lib/game/finance';
 import { createNewGame } from '$lib/game/state';
 import { createI18n } from '$lib/i18n';
@@ -66,6 +67,52 @@ function props() {
 		onUnassignStaff: vi.fn(),
 		onClose: vi.fn(),
 		onClickFeedback: vi.fn()
+	};
+}
+
+function pressureReport(): DailyStoreReport {
+	const definition = getProductDefinition('devices');
+	const productReport: DailyProductReport = {
+		productId: 'devices',
+		name: definition.name,
+		unitsSold: 2,
+		demandMissed: 1,
+		revenue: 408,
+		costOfGoods: 360,
+		grossMargin: 48,
+		endingStock: 8,
+		warehouseUnits: 0,
+		warehouseValue: 0,
+		importedUnits: 0,
+		importCost: definition.importCost,
+		importSpend: 0,
+		oldestSellableAgeDays: 30,
+		obsolescenceMultiplier: 0.55,
+		baseSellingPrice: 240,
+		effectiveSellingPrice: 204,
+		markdownAmount: 72
+	};
+
+	return {
+		storeId: 'store-1',
+		revenue: 408,
+		costOfGoods: 360,
+		grossMargin: 48,
+		operatingCosts: 120,
+		importSpend: 0,
+		netIncome: -72,
+		customersServed: 2,
+		demandMissed: 1,
+		staffingCoverage: 100,
+		staffingShortage: { manager: 0, general: 0 },
+		stockHealth: 50,
+		staffMorale: 70,
+		reputation: 60,
+		marketPosition: 50,
+		productReports: [productReport],
+		inventoryLossExpense: 0,
+		warnings: [],
+		replenishment: null
 	};
 }
 
@@ -202,5 +249,34 @@ describe('StoreDetailModal', () => {
 			'Unavailable in this challenge.'
 		);
 		await expect.element(page.getByRole('tab', { name: /stock/i })).toBeVisible();
+	});
+
+	it('summarizes markdown and obsolescence pressure in the detail warning area', async () => {
+		expect.assertions(4);
+		const pressureStore: Store = {
+			...store(),
+			products: [
+				{
+					productId: 'devices',
+					lots: [{ receivedDay: 1, quantity: 10 }],
+					reorderThreshold: 3,
+					targetStock: 12,
+					sellingPrice: 240
+				}
+			]
+		};
+		const p = props();
+		render(StoreDetailModal, {
+			...p,
+			store: pressureStore,
+			game: { ...p.game, stores: [pressureStore] },
+			latestStoreReport: pressureReport()
+		});
+
+		const summary = page.getByTestId('product-pressure-summary');
+		await expect.element(summary).toBeVisible();
+		await expect.element(summary).toHaveTextContent(/Devices.*obsolescence.*55%/i);
+		await expect.element(summary).toHaveTextContent(/Devices.*markdown.*\$72/i);
+		await expect.element(summary).toHaveAttribute('role', 'status');
 	});
 });

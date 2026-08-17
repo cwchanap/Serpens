@@ -3,10 +3,12 @@
 	import StoreStaffPanel from '$lib/components/game/StoreStaffPanel.svelte';
 	import StoreStockTable from '$lib/components/game/StoreStockTable.svelte';
 	import { focusTrap } from '$lib/a11y/focusTrap';
+	import { getProductDefinition } from '$lib/game/products';
 	import type { I18nBundle } from '$lib/i18n';
 	import { storeDisplayName } from '$lib/i18n/gameCopy';
 	import { getStoreOrdinal } from '$lib/game/state';
 	import type {
+		DailyProductReport,
 		DailyStoreReport,
 		GameState,
 		HiringCandidate,
@@ -61,6 +63,103 @@
 
 	let storeOrdinal = $derived(getStoreOrdinal(game.stores, store.id));
 	let displayName = $derived(storeDisplayName(store, storeOrdinal, i18n));
+
+	interface PressureMessage {
+		id: string;
+		text: string;
+	}
+
+	function getFreshnessPercent(report: DailyProductReport): number | null {
+		const averageAgeDays = report.averageAgeDays;
+		const shelfLifeDays = getProductDefinition(report.productId)?.dynamics.shelfLifeDays;
+		if (
+			averageAgeDays === null ||
+			averageAgeDays === undefined ||
+			!Number.isFinite(averageAgeDays) ||
+			shelfLifeDays === undefined ||
+			!Number.isFinite(shelfLifeDays) ||
+			shelfLifeDays <= 0
+		) {
+			return null;
+		}
+
+		return Math.max(0, Math.min(100, Math.round((1 - averageAgeDays / shelfLifeDays) * 100)));
+	}
+
+	function buildPressureMessages(): PressureMessage[] {
+		const messages: PressureMessage[] = [];
+		for (const report of latestStoreReport?.productReports ?? []) {
+			const productName = i18n.labels.productCategory(report.productId);
+			if ((report.wasteUnits ?? 0) > 0) {
+				messages.push({
+					id: `${report.productId}-waste`,
+					text: i18n.t('storeDetail.pressureSummary.waste', {
+						productName,
+						units: i18n.format.integer(report.wasteUnits ?? 0)
+					})
+				});
+			}
+			if ((report.shrinkUnits ?? 0) > 0) {
+				messages.push({
+					id: `${report.productId}-shrink`,
+					text: i18n.t('storeDetail.pressureSummary.shrink', {
+						productName,
+						units: i18n.format.integer(report.shrinkUnits ?? 0)
+					})
+				});
+			}
+			if ((report.stockoutLostDemand ?? 0) > 0) {
+				messages.push({
+					id: `${report.productId}-stockout`,
+					text: i18n.t('storeDetail.pressureSummary.stockout', {
+						productName,
+						units: i18n.format.integer(report.stockoutLostDemand ?? 0)
+					})
+				});
+			}
+			if ((report.markdownAmount ?? 0) > 0) {
+				messages.push({
+					id: `${report.productId}-markdown`,
+					text: i18n.t('storeDetail.pressureSummary.markdown', {
+						productName,
+						amount: i18n.format.currency(report.markdownAmount ?? 0)
+					})
+				});
+			}
+			if ((report.obsolescenceMultiplier ?? 1) < 1) {
+				messages.push({
+					id: `${report.productId}-obsolescence`,
+					text: i18n.t('storeDetail.pressureSummary.obsolescence', {
+						productName,
+						percent: i18n.format.percent(report.obsolescenceMultiplier ?? 1)
+					})
+				});
+			}
+			const freshnessPercent = getFreshnessPercent(report);
+			if (freshnessPercent !== null && freshnessPercent < 100) {
+				messages.push({
+					id: `${report.productId}-freshness`,
+					text: i18n.t('storeDetail.pressureSummary.freshness', {
+						productName,
+						percent: i18n.format.integer(freshnessPercent)
+					})
+				});
+			}
+		}
+
+		const inventoryLossExpense = latestStoreReport?.inventoryLossExpense ?? 0;
+		if (inventoryLossExpense > 0) {
+			messages.push({
+				id: 'inventory-loss',
+				text: i18n.t('storeDetail.pressureSummary.inventoryLoss', {
+					amount: i18n.format.currency(inventoryLossExpense)
+				})
+			});
+		}
+		return messages;
+	}
+
+	const pressureMessages = $derived.by(buildPressureMessages);
 
 	type DetailTab = 'stock' | 'chain' | 'staff';
 
@@ -124,6 +223,25 @@
 				onclick={onClose}>{i18n.t('storeDetail.close')}</button
 			>
 		</header>
+
+		<section
+			class="pressure-summary"
+			class:neutral={pressureMessages.length === 0}
+			aria-labelledby={`${store.id}-pressure-heading`}
+			data-testid="product-pressure-summary"
+			role="status"
+		>
+			<h3 id={`${store.id}-pressure-heading`}>{i18n.t('storeDetail.pressureSummary.title')}</h3>
+			{#if pressureMessages.length > 0}
+				<ul>
+					{#each pressureMessages as message (message.id)}
+						<li>{message.text}</li>
+					{/each}
+				</ul>
+			{:else}
+				<p>{i18n.t('storeDetail.pressureSummary.neutral')}</p>
+			{/if}
+		</section>
 
 		<div
 			class="detail-tabs"
@@ -301,5 +419,43 @@
 
 	.detail-panel.active {
 		display: block;
+	}
+
+	.pressure-summary {
+		display: grid;
+		gap: 0.35rem;
+		border: 1px solid color-mix(in srgb, var(--wax-red) 55%, var(--paper-edge));
+		border-radius: 2px;
+		background: color-mix(in srgb, var(--wax-red) 7%, var(--paper-50));
+		padding: 0.65rem 0.75rem;
+		color: var(--wax-red);
+	}
+
+	.pressure-summary.neutral {
+		border-color: var(--paper-edge);
+		background: var(--paper-50);
+		color: var(--ink-500);
+	}
+
+	.pressure-summary h3 {
+		margin: 0;
+		font-family: var(--font-ui);
+		font-size: 0.7rem;
+		font-weight: 700;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+	}
+
+	.pressure-summary p,
+	.pressure-summary ul {
+		margin: 0;
+		font-family: var(--font-body);
+		font-size: 0.85rem;
+	}
+
+	.pressure-summary ul {
+		display: grid;
+		gap: 0.2rem;
+		padding-left: 1rem;
 	}
 </style>

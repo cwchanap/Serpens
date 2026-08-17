@@ -58,6 +58,83 @@
 		return latestReport?.productReports.find((report) => report.productId === categoryId) ?? null;
 	}
 
+	function getFreshnessPercent(
+		productId: string,
+		report: DailyProductReport | null
+	): number | null {
+		const averageAgeDays = report?.averageAgeDays;
+		const shelfLifeDays = getProductDefinition(productId as ProductId)?.dynamics.shelfLifeDays;
+		if (
+			report === null ||
+			averageAgeDays === null ||
+			averageAgeDays === undefined ||
+			!Number.isFinite(averageAgeDays) ||
+			shelfLifeDays === undefined ||
+			!Number.isFinite(shelfLifeDays) ||
+			shelfLifeDays <= 0
+		) {
+			return null;
+		}
+
+		return Math.max(0, Math.min(100, Math.round((1 - averageAgeDays / shelfLifeDays) * 100)));
+	}
+
+	type PressureKind =
+		| 'stockout'
+		| 'waste'
+		| 'shrink'
+		| 'markdown'
+		| 'obsolescence'
+		| 'freshness'
+		| 'neutral';
+
+	function getPressureKind(productId: string, report: DailyProductReport | null): PressureKind {
+		if (!report) return 'neutral';
+		if ((report.stockoutLostDemand ?? 0) > 0) return 'stockout';
+		if ((report.wasteUnits ?? 0) > 0) return 'waste';
+		if ((report.shrinkUnits ?? 0) > 0) return 'shrink';
+		if ((report.markdownAmount ?? 0) > 0) return 'markdown';
+		if ((report.obsolescenceMultiplier ?? 1) < 1) return 'obsolescence';
+		const freshnessPercent = getFreshnessPercent(productId, report);
+		if (freshnessPercent !== null && freshnessPercent < 100) return 'freshness';
+		return 'neutral';
+	}
+
+	function pressureLabel(
+		productId: string,
+		report: DailyProductReport | null,
+		kind: PressureKind
+	): string {
+		switch (kind) {
+			case 'stockout':
+				return i18n.t('storeStockTable.pressure.stockout', {
+					units: i18n.format.integer(report?.stockoutLostDemand ?? 0)
+				});
+			case 'waste':
+				return i18n.t('storeStockTable.pressure.waste', {
+					units: i18n.format.integer(report?.wasteUnits ?? 0)
+				});
+			case 'shrink':
+				return i18n.t('storeStockTable.pressure.shrink', {
+					units: i18n.format.integer(report?.shrinkUnits ?? 0)
+				});
+			case 'markdown':
+				return i18n.t('storeStockTable.pressure.markdown', {
+					amount: i18n.format.currency(report?.markdownAmount ?? 0)
+				});
+			case 'obsolescence':
+				return i18n.t('storeStockTable.pressure.obsolescence', {
+					percent: i18n.format.percent(report?.obsolescenceMultiplier ?? 1)
+				});
+			case 'freshness':
+				return i18n.t('storeStockTable.pressure.freshness', {
+					percent: i18n.format.integer(getFreshnessPercent(productId, report) ?? 100)
+				});
+			case 'neutral':
+				return i18n.t('storeStockTable.pressure.neutral');
+		}
+	}
+
 	function updateNumber(categoryId: string, field: keyof StoreProductPatch, event: Event): void {
 		const allowed =
 			allowedProductSet.has(categoryId) &&
@@ -93,7 +170,7 @@
 					<th scope="col">{i18n.t('storeStockTable.headings.product')}</th>
 					<th scope="col">{i18n.t('storeStockTable.headings.stock')}</th>
 					<th scope="col">{i18n.t('storeStockTable.headings.importCost')}</th>
-					<th scope="col">{i18n.t('storeStockTable.headings.sellingPrice')}</th>
+					<th scope="col">{i18n.t('storeStockTable.headings.configuredPrice')}</th>
 					<th scope="col">{i18n.t('storeStockTable.headings.reorder')}</th>
 					<th scope="col">{i18n.t('storeStockTable.headings.target')}</th>
 					<th scope="col">{i18n.t('storeStockTable.headings.status')}</th>
@@ -105,6 +182,8 @@
 					{@const categoryName = getCategoryName(product.productId)}
 					{@const productArt = getProductArt(product.productId)}
 					{@const report = getProductReport(product.productId)}
+					{@const freshnessPercent = getFreshnessPercent(product.productId, report)}
+					{@const pressureKind = getPressureKind(product.productId, report)}
 					<tr>
 						<td>
 							<div class="product-cell">
@@ -122,7 +201,9 @@
 								<span>{categoryName}</span>
 							</div>
 						</td>
-						<td>{i18n.format.integer(getStoreProductStock(product))}</td>
+						<td data-testid={`derived-stock-${product.productId}`}>
+							{i18n.format.integer(getStoreProductStock(product))}
+						</td>
 						<td>{i18n.format.currency(getImportCost(product.productId))}</td>
 						<td>
 							<input
@@ -163,13 +244,69 @@
 								onchange={(event) => updateNumber(product.productId, 'targetStock', event)}
 							/>
 						</td>
-						<td>{localizeStockStatus(getStoreProductStatus(product), i18n)}</td>
+						<td>
+							<span
+								class="pressure-badge"
+								class:neutral={pressureKind === 'neutral'}
+								data-pressure-kind={pressureKind}
+								data-testid={`product-pressure-${product.productId}`}
+							>
+								{pressureLabel(product.productId, report, pressureKind)}
+							</span>
+							<div class="stock-status">
+								{localizeStockStatus(getStoreProductStatus(product), i18n)}
+							</div>
+						</td>
 						<td>
 							{#if report}
 								{i18n.t('storeStockTable.latestReport', {
 									sold: i18n.format.integer(report.unitsSold),
 									missed: i18n.format.integer(report.demandMissed)
 								})}
+								<div class="report-evidence">
+									{#if freshnessPercent !== null}
+										<span data-testid={`freshness-${product.productId}`}>
+											{i18n.t('storeStockTable.evidence.freshness', {
+												percent: i18n.format.integer(freshnessPercent)
+											})}
+										</span>
+									{/if}
+									{#if (report.stockoutLostDemand ?? 0) > 0}
+										<span data-testid={`stockout-loss-${product.productId}`}>
+											{i18n.t('storeStockTable.evidence.stockout', {
+												units: i18n.format.integer(report.stockoutLostDemand ?? 0)
+											})}
+										</span>
+									{/if}
+									{#if (report.wasteUnits ?? 0) > 0}
+										<span>
+											{i18n.t('storeStockTable.evidence.waste', {
+												units: i18n.format.integer(report.wasteUnits ?? 0)
+											})}
+										</span>
+									{/if}
+									{#if (report.shrinkUnits ?? 0) > 0}
+										<span>
+											{i18n.t('storeStockTable.evidence.shrink', {
+												units: i18n.format.integer(report.shrinkUnits ?? 0)
+											})}
+										</span>
+									{/if}
+									{#if (report.obsolescenceMultiplier ?? 1) < 1}
+										<span>
+											{i18n.t('storeStockTable.evidence.obsolescence', {
+												percent: i18n.format.percent(report.obsolescenceMultiplier ?? 1)
+											})}
+										</span>
+									{/if}
+									{#if (report.markdownAmount ?? 0) > 0}
+										<span>
+											{i18n.t('storeStockTable.evidence.markdown', {
+												amount: i18n.format.currency(report.markdownAmount ?? 0)
+											})}
+										</span>
+									{/if}
+								</div>
 							{:else}
 								{i18n.t('storeStockTable.noReport')}
 							{/if}
@@ -269,5 +406,37 @@
 	input:focus {
 		border-color: var(--brass-500);
 		outline: none;
+	}
+
+	.pressure-badge {
+		display: inline-block;
+		border: 1px solid color-mix(in srgb, var(--wax-red) 55%, var(--paper-edge));
+		border-radius: 999px;
+		padding: 0.18rem 0.4rem;
+		color: var(--wax-red);
+		font-family: var(--font-ui);
+		font-size: 0.65rem;
+		font-weight: 700;
+		letter-spacing: 0.04em;
+		white-space: normal;
+	}
+
+	.pressure-badge.neutral {
+		border-color: var(--paper-edge);
+		color: var(--ink-500);
+	}
+
+	.stock-status,
+	.report-evidence {
+		margin-top: 0.25rem;
+		color: var(--ink-500);
+		font-family: var(--font-body);
+		font-size: 0.72rem;
+		white-space: normal;
+	}
+
+	.report-evidence {
+		display: grid;
+		gap: 0.15rem;
 	}
 </style>

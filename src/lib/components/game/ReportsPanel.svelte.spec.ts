@@ -7,6 +7,7 @@ import {
 	emptyLogisticsReport
 } from '$lib/game/logisticsReport.testUtils';
 import type {
+	DailyProductReport,
 	DailyProductionReport,
 	DailyStoreReport,
 	DailyTransferArrival,
@@ -218,6 +219,58 @@ function replenishedStoreReport(): DailyStoreReport {
 			configuredSupplyCityId: 'industry-city',
 			resolvedSupplyCityId: 'industry-city'
 		}
+	};
+}
+
+function pressureStoreReport(): DailyStoreReport {
+	const product: DailyProductReport = {
+		productId: 'produce',
+		name: 'Produce',
+		unitsSold: 6,
+		demandMissed: 3,
+		revenue: 18,
+		costOfGoods: 12,
+		grossMargin: 6,
+		endingStock: 8,
+		warehouseUnits: 0,
+		warehouseValue: 0,
+		importedUnits: 0,
+		importCost: 2,
+		importSpend: 0,
+		wasteUnits: 2,
+		wasteValue: 4,
+		shrinkUnits: 1,
+		shrinkValue: 2,
+		stockoutLostDemand: 3,
+		averageAgeDays: 4,
+		oldestSellableAgeDays: 6,
+		trendMultiplier: 1,
+		obsolescenceMultiplier: 1,
+		baseSellingPrice: 4,
+		effectiveSellingPrice: 3,
+		markdownAmount: 6
+	};
+
+	return {
+		storeId: store.id,
+		revenue: 18,
+		costOfGoods: 12,
+		grossMargin: 6,
+		operatingCosts: 10,
+		importSpend: 0,
+		netIncome: -6,
+		customersServed: 6,
+		demandMissed: 3,
+		staffingCoverage: 100,
+		staffingShortage: { manager: 0, general: 0 },
+		stockHealth: 50,
+		staffMorale: 75,
+		reputation: 50,
+		marketPosition: 50,
+		productReports: [product],
+		inventoryLossExpense: 6,
+		warnings: [],
+		replenishment: null
 	};
 }
 
@@ -562,6 +615,31 @@ describe('ReportsPanel', () => {
 			.element(reportsRegion.getByText('External imports', { exact: true }))
 			.toBeVisible();
 		await expect.element(reportsRegion.getByText('$456')).toBeVisible();
+	});
+
+	it('surfaces product waste, shrink, markdown, stockout, and inventory-loss evidence', async () => {
+		expect.assertions(7);
+		render(ReportsPanel, {
+			i18n: createI18n('en'),
+			stores: [store],
+			summary: {
+				...summary,
+				latest: {
+					...summary.latest!,
+					storeReports: [pressureStoreReport()],
+					inventoryLossExpense: 6
+				}
+			}
+		});
+
+		const pressure = page.getByRole('region', { name: 'Product pressure evidence' });
+		await expect.element(pressure.getByText('Waste: 2 units ($4)')).toBeVisible();
+		await expect.element(pressure.getByText('Shrink: 1 unit ($2)')).toBeVisible();
+		await expect.element(pressure.getByText('Stockout lost demand: 3 units')).toBeVisible();
+		await expect.element(pressure.getByText('Markdown: $6')).toBeVisible();
+		await expect.element(pressure.getByText('Base price: $4')).toBeVisible();
+		await expect.element(pressure.getByText('Effective price: $3')).toBeVisible();
+		await expect.element(pressure.getByText('Inventory loss expense: $6')).toBeVisible();
 	});
 
 	it('labels reconciled operating and financing movements without calling principal amount due', async () => {

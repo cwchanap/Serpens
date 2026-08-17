@@ -6,12 +6,15 @@
 		localizeReportWarning,
 		localizeRouteModifierImpact,
 		localizeRouteModifierRecovery,
-		localizeStructuredCopy
+		localizeStructuredCopy,
+		storeDisplayName
 	} from '$lib/i18n/gameCopy';
 	import { getCityInventoryStats } from '$lib/game/cityInventory';
+	import { getProductDefinition } from '$lib/game/products';
 	import { getRetailReplenishmentOutcome } from '$lib/game/retailSupply';
 	import type {
 		DailyMaterialMovement,
+		DailyProductReport,
 		DailyProductionReport,
 		DailyStoreReport,
 		EventModifierLifecycle,
@@ -31,6 +34,14 @@
 		text: string;
 	}
 
+	interface ProductPressureRow {
+		id: string;
+		storeName: string;
+		productName: string;
+		report: DailyProductReport;
+		freshnessPercent: number | null;
+	}
+
 	let { i18n, summary, stores, game }: Props = $props();
 
 	const railShipmentUnits = $derived(
@@ -45,6 +56,19 @@
 	const attributionRows = $derived.by(() =>
 		buildAttributionRows(summary.latest?.productionReport, summary.latest?.storeReports ?? [])
 	);
+	const productPressureRows = $derived.by(() =>
+		buildProductPressureRows(summary.latest?.storeReports ?? [])
+	);
+	const inventoryLossExpense = $derived.by(() => {
+		if (!summary.latest) return 0;
+		return (
+			summary.latest.inventoryLossExpense ??
+			summary.latest.storeReports.reduce(
+				(total, report) => total + (report.inventoryLossExpense ?? 0),
+				0
+			)
+		);
+	});
 
 	function cityName(cityId: string): string {
 		return i18n.labels.worldCity(cityId).name;
@@ -56,6 +80,62 @@
 		}
 
 		return getCityInventoryStats(game, cityId);
+	}
+
+	function getFreshnessPercent(report: DailyProductReport): number | null {
+		const averageAgeDays = report.averageAgeDays;
+		const shelfLifeDays = getProductDefinition(report.productId)?.dynamics.shelfLifeDays;
+		if (
+			averageAgeDays === null ||
+			averageAgeDays === undefined ||
+			!Number.isFinite(averageAgeDays) ||
+			shelfLifeDays === undefined ||
+			!Number.isFinite(shelfLifeDays) ||
+			shelfLifeDays <= 0
+		) {
+			return null;
+		}
+
+		return Math.max(0, Math.min(100, Math.round((1 - averageAgeDays / shelfLifeDays) * 100)));
+	}
+
+	function hasProductPressure(
+		report: DailyProductReport,
+		freshnessPercent: number | null
+	): boolean {
+		return (
+			(report.wasteUnits ?? 0) > 0 ||
+			(report.shrinkUnits ?? 0) > 0 ||
+			(report.stockoutLostDemand ?? 0) > 0 ||
+			(report.markdownAmount ?? 0) > 0 ||
+			(report.obsolescenceMultiplier ?? 1) < 1 ||
+			(freshnessPercent !== null && freshnessPercent < 100)
+		);
+	}
+
+	function buildProductPressureRows(storeReports: DailyStoreReport[]): ProductPressureRow[] {
+		return storeReports.flatMap((storeReport) => {
+			const storeIndex = stores.findIndex((store) => store.id === storeReport.storeId);
+			const storeRecord = stores[storeIndex];
+			const storeName = storeRecord
+				? storeDisplayName(storeRecord, storeIndex + 1, i18n)
+				: storeReport.storeId;
+
+			return storeReport.productReports.flatMap((report) => {
+				const freshnessPercent = getFreshnessPercent(report);
+				return hasProductPressure(report, freshnessPercent)
+					? [
+							{
+								id: `${storeReport.storeId}-${report.productId}`,
+								storeName,
+								productName: i18n.labels.productCategory(report.productId),
+								report,
+								freshnessPercent
+							}
+						]
+					: [];
+			});
+		});
 	}
 
 	function buildAttributionRows(
@@ -257,6 +337,10 @@
 				<strong>{i18n.format.currency(summary.latest.importSpend)}</strong>
 			</div>
 			<div>
+				<span>{i18n.t('reportsPanel.metrics.inventoryLoss')}</span>
+				<strong>{i18n.format.currency(inventoryLossExpense)}</strong>
+			</div>
+			<div>
 				<span>{i18n.t('reportsPanel.metrics.productionImports')}</span>
 				<strong>{i18n.format.currency(summary.latest.productionReport.importSpend)}</strong>
 			</div>
@@ -277,6 +361,90 @@
 				<strong>{i18n.format.currency(summary.thirtyDay.operatingCashFlow)}</strong>
 			</div>
 		</div>
+
+		{#if productPressureRows.length > 0 || inventoryLossExpense > 0}
+			<section class="product-pressure-evidence" aria-labelledby="product-pressure-heading">
+				<h3 id="product-pressure-heading">{i18n.t('reportsPanel.productPressure.title')}</h3>
+				{#if productPressureRows.length > 0}
+					<div class="evidence-list">
+						{#each productPressureRows as row (row.id)}
+							<article data-testid={`product-pressure-${row.id}`}>
+								<h4>{row.storeName} · {row.productName}</h4>
+								<ul>
+									{#if row.freshnessPercent !== null}
+										<li>
+											{i18n.t('reportsPanel.productPressure.freshness', {
+												percent: i18n.format.integer(row.freshnessPercent)
+											})}
+										</li>
+									{/if}
+									{#if (row.report.wasteUnits ?? 0) > 0}
+										<li>
+											{i18n.t('reportsPanel.productPressure.waste', {
+												units: i18n.format.integer(row.report.wasteUnits ?? 0),
+												value: i18n.format.currency(row.report.wasteValue ?? 0)
+											})}
+										</li>
+									{/if}
+									{#if (row.report.shrinkUnits ?? 0) > 0}
+										<li>
+											{i18n.t('reportsPanel.productPressure.shrink', {
+												units: i18n.format.integer(row.report.shrinkUnits ?? 0),
+												value: i18n.format.currency(row.report.shrinkValue ?? 0)
+											})}
+										</li>
+									{/if}
+									{#if (row.report.stockoutLostDemand ?? 0) > 0}
+										<li>
+											{i18n.t('reportsPanel.productPressure.stockout', {
+												units: i18n.format.integer(row.report.stockoutLostDemand ?? 0)
+											})}
+										</li>
+									{/if}
+									{#if (row.report.obsolescenceMultiplier ?? 1) < 1}
+										<li>
+											{i18n.t('reportsPanel.productPressure.obsolescence', {
+												percent: i18n.format.percent(row.report.obsolescenceMultiplier ?? 1)
+											})}
+										</li>
+									{/if}
+									{#if (row.report.markdownAmount ?? 0) > 0}
+										<li>
+											{i18n.t('reportsPanel.productPressure.markdown', {
+												amount: i18n.format.currency(row.report.markdownAmount ?? 0)
+											})}
+										</li>
+										{#if row.report.baseSellingPrice !== undefined}
+											<li>
+												{i18n.t('reportsPanel.productPressure.basePrice', {
+													price: i18n.format.currency(row.report.baseSellingPrice)
+												})}
+											</li>
+										{/if}
+										{#if row.report.effectiveSellingPrice !== undefined}
+											<li>
+												{i18n.t('reportsPanel.productPressure.effectivePrice', {
+													price: i18n.format.currency(row.report.effectiveSellingPrice)
+												})}
+											</li>
+										{/if}
+									{/if}
+								</ul>
+							</article>
+						{/each}
+					</div>
+				{:else}
+					<p>{i18n.t('reportsPanel.productPressure.empty')}</p>
+				{/if}
+				{#if inventoryLossExpense > 0}
+					<p data-testid="inventory-loss-expense">
+						{i18n.t('reportsPanel.productPressure.inventoryLoss', {
+							amount: i18n.format.currency(inventoryLossExpense)
+						})}
+					</p>
+				{/if}
+			</section>
+		{/if}
 
 		<section class="inventory-evidence" aria-labelledby="production-close-inventory-heading">
 			<h3 id="production-close-inventory-heading">
@@ -686,6 +854,7 @@
 
 	.modifier-evidence,
 	.inventory-evidence,
+	.product-pressure-evidence,
 	.logistics-evidence,
 	.logistics-subsection,
 	.evidence-list,
@@ -696,6 +865,7 @@
 
 	.modifier-evidence,
 	.inventory-evidence,
+	.product-pressure-evidence,
 	.logistics-evidence {
 		margin-top: 1rem;
 	}

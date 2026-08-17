@@ -331,6 +331,7 @@ export const ja = {
 			endingPrincipal: '期末元本',
 			payroll: '給与',
 			imports: '外部輸入',
+			inventoryLoss: '在庫損失費用',
 			productionImports: '生産の外部輸入',
 			warehouseOverflow: '都市在庫の超過',
 			railShipments: '鉄路出荷',
@@ -338,6 +339,19 @@ export const ja = {
 			thirtyDayNet: '30日純益',
 			sevenDayOperatingCashFlow: '7日営業キャッシュフロー',
 			thirtyDayOperatingCashFlow: '30日営業キャッシュフロー'
+		},
+		productPressure: {
+			title: '商品圧力の証拠',
+			empty: '商品圧力の記録はありません。',
+			freshness: '鮮度: {percent}%',
+			waste: '廃棄: {units} 単位（{value}）',
+			shrink: '縮小: {units} 単位（{value}）',
+			stockout: '在庫切れによる需要損失: {units} 単位',
+			obsolescence: '陳腐化: 需要 {percent}',
+			markdown: '値下げ: {amount}',
+			basePrice: '基準価格: {price}',
+			effectivePrice: '実効価格: {price}',
+			inventoryLoss: '在庫損失費用: {amount}'
 		},
 		inventory: {
 			productionCloseTitle: '生産終了時の在庫（小売補充前）',
@@ -476,6 +490,7 @@ export const ja = {
 			product: '商品',
 			stock: '在庫',
 			importCost: '輸入単価',
+			configuredPrice: '設定価格',
 			sellingPrice: '販売価格',
 			reorder: '再発注',
 			target: '目標',
@@ -488,7 +503,24 @@ export const ja = {
 			targetStock: '{categoryName}の目標在庫'
 		},
 		latestReport: '販売 {sold} / 機会損失 {missed}',
-		noReport: 'レポートなし'
+		noReport: 'レポートなし',
+		pressure: {
+			neutral: '現在の圧力なし',
+			freshness: '鮮度: {percent}%',
+			waste: '廃棄: {units} 単位',
+			shrink: '縮小: {units} 単位',
+			markdown: '値下げ: {amount}',
+			obsolescence: '陳腐化: 需要 {percent}',
+			stockout: '在庫切れ損失: {units} 単位'
+		},
+		evidence: {
+			freshness: '鮮度: {percent}%',
+			waste: '廃棄: {units} 単位',
+			shrink: '縮小: {units} 単位',
+			markdown: '値下げ: {amount}',
+			obsolescence: '陳腐化: 需要 {percent}',
+			stockout: '在庫切れによる需要損失: {units} 単位'
+		}
 	},
 	storeDetail: {
 		dismiss: '店舗詳細を閉じる',
@@ -497,6 +529,17 @@ export const ja = {
 		close: '閉じる',
 		closeLabel: '店舗詳細を閉じる',
 		sections: '{storeName}のセクション',
+		pressureSummary: {
+			title: '商品圧力',
+			neutral: '商品圧力は検出されませんでした。',
+			waste: '{productName}: {units} 単位を廃棄。',
+			shrink: '{productName}: {units} 単位の縮小。',
+			stockout: '{productName}: 在庫切れで {units} 単位の需要を損失。',
+			markdown: '{productName}: 値下げにより {amount} の売上を損失。',
+			obsolescence: '{productName}: 陳腐化により需要が {percent} に低下。',
+			freshness: '{productName}: 鮮度は {percent}%。',
+			inventoryLoss: '在庫損失費用: {amount}。'
+		},
 		tabs: {
 			stock: '在庫',
 			chain: '商品チェーン',
