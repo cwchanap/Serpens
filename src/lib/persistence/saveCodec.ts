@@ -3111,7 +3111,7 @@ function validateSavedReport(value: unknown, label: string, nextRouteSequence: n
 		seenStoreIds.add(storeId);
 		storeInventoryLossExpense += storeLoss;
 	});
-	if (inventoryLossExpense !== storeInventoryLossExpense) {
+	if (!numbersMatchWithinTolerance(inventoryLossExpense, storeInventoryLossExpense)) {
 		throw new SaveDataError(
 			`${label} inventoryLossExpense must equal the sum of store inventory loss expenses`,
 			'invariant-report-attribution'
@@ -3876,7 +3876,7 @@ function validateSavedStoreReport(
 		attemptedReplenishment ||= product.warehouseUnits > 0 || product.importedUnits > 0;
 		productInventoryLossExpense += product.wasteValue + product.shrinkValue;
 	});
-	if (inventoryLossExpense !== productInventoryLossExpense) {
+	if (!numbersMatchWithinTolerance(inventoryLossExpense, productInventoryLossExpense)) {
 		throw new SaveDataError(
 			`${label} inventoryLossExpense must equal the sum of product waste and shrink values`,
 			'invariant-report-attribution'
@@ -4487,6 +4487,11 @@ function requireNonNegativeFiniteNumber(value: unknown, label: string): number {
 	}
 
 	return number;
+}
+
+function numbersMatchWithinTolerance(left: number, right: number): boolean {
+	const scale = Math.max(1, Math.abs(left), Math.abs(right));
+	return Math.abs(left - right) <= Number.EPSILON * 16 * scale;
 }
 
 function requireNullableNonNegativeFiniteNumber(value: unknown, label: string): number | null {
