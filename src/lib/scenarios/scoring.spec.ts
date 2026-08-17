@@ -39,7 +39,7 @@ function definition(scoreComponents: readonly ScenarioScoreComponent[] = []): Sc
 		content: {
 			cityIds: ['harbor-city'],
 			archetypeIds: ['convenience'],
-			productCategoryIds: ['bottled-water'],
+			productIds: ['bottled-water'],
 			materialIds: [],
 			buildingTypeIds: [],
 			retailPlacements: [

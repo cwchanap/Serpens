@@ -81,13 +81,13 @@ export type ScenarioCommand =
 	| {
 			kind: 'updateStoreSellingPrice';
 			storeId: string;
-			categoryId: ProductId;
+			productId: ProductId;
 			sellingPrice: number;
 	  }
 	| {
 			kind: 'updateStoreInventoryTargets';
 			storeId: string;
-			categoryId: ProductId;
+			productId: ProductId;
 			reorderThreshold: number;
 			targetStock: number;
 	  }
@@ -142,7 +142,7 @@ export interface ScenarioStartBlueprint {
 			storeRef: string;
 			targetLevel?: number;
 			products?: readonly {
-				categoryId: ProductId;
+				productId: ProductId;
 				stock: number;
 				reorderThreshold: number;
 				targetStock: number;
@@ -182,12 +182,12 @@ export type ScenarioMetricQuery =
 	| { metric: 'cumulative-net-income' }
 	| { metric: 'consecutive-positive-net-income-reports' }
 	| { metric: 'completed-retail-import-cycles' }
-	| { metric: 'retail-import-spend'; categoryIds: readonly ProductId[] }
-	| { metric: 'retail-imported-units'; categoryIds: readonly ProductId[] }
-	| { metric: 'retail-local-units'; categoryIds: readonly ProductId[] }
-	| { metric: 'retail-local-share'; categoryIds: readonly ProductId[] }
-	| { metric: 'units-sold'; categoryIds: readonly ProductId[] }
-	| { metric: 'demand-missed'; categoryIds: readonly ProductId[] }
+	| { metric: 'retail-import-spend'; productIds: readonly ProductId[] }
+	| { metric: 'retail-imported-units'; productIds: readonly ProductId[] }
+	| { metric: 'retail-local-units'; productIds: readonly ProductId[] }
+	| { metric: 'retail-local-share'; productIds: readonly ProductId[] }
+	| { metric: 'units-sold'; productIds: readonly ProductId[] }
+	| { metric: 'demand-missed'; productIds: readonly ProductId[] }
 	| { metric: 'scorecard'; score: ScoreKey }
 	| { metric: 'store-count' }
 	| { metric: 'industrial-building-count'; buildingTypeIds: readonly IndustrialBuildingTypeId[] }
@@ -232,7 +232,7 @@ export type ScenarioModifier = {
 export interface ScenarioContentRules {
 	cityIds: readonly WorldCityId[];
 	archetypeIds: readonly ArchetypeId[];
-	productCategoryIds: readonly ProductId[];
+	productIds: readonly ProductId[];
 	materialIds: readonly MaterialId[];
 	buildingTypeIds: readonly IndustrialBuildingTypeId[];
 	retailPlacements: readonly {

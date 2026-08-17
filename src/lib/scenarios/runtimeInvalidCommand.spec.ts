@@ -84,7 +84,7 @@ function openStoreDefinition(): ScenarioDefinition {
 		content: {
 			cityIds: ['harbor-city'],
 			archetypeIds: ['convenience', 'boutique', 'electronics', 'grocery'],
-			productCategoryIds: [
+			productIds: [
 				'bottled-water',
 				'snacks',
 				'soft-drinks',

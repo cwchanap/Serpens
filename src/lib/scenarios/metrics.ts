@@ -116,12 +116,12 @@ function averageOperatingCashFlow(reports: readonly DailyReport[], neutral: numb
 	};
 }
 
-function categoryIds(query: ScenarioMetricQuery): ReadonlySet<ProductId> {
-	return new Set('categoryIds' in query ? query.categoryIds : []);
+function productIds(query: ScenarioMetricQuery): ReadonlySet<ProductId> {
+	return new Set('productIds' in query ? query.productIds : []);
 }
 
 function productContributions(context: MetricContext): ProductContribution[] {
-	const included = categoryIds(context.query);
+	const included = productIds(context.query);
 	const contributions: ProductContribution[] = [];
 
 	for (const report of context.reports) {
@@ -528,10 +528,10 @@ export function validateScenarioReportInvariants(
 			for (const [productIndex, productReport] of storeReport.productReports.entries()) {
 				if (productIds.has(productReport.productId)) {
 					diagnostics.push({
-						code: 'duplicate-product-report-category-id',
-						path: `reports[${reportIndex}].storeReports[${storeIndex}].productReports[${productIndex}].categoryId`,
+						code: 'duplicate-product-report-product-id',
+						path: `reports[${reportIndex}].storeReports[${storeIndex}].productReports[${productIndex}].productId`,
 						value: productReport.productId,
-						detail: 'Product category IDs must be unique within each store report.'
+						detail: 'Product IDs must be unique within each store report.'
 					});
 				} else {
 					productIds.add(productReport.productId);

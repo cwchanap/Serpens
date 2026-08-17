@@ -28,7 +28,7 @@ function definition(): ScenarioDefinition {
 		content: {
 			cityIds: ['harbor-city'],
 			archetypeIds: ['convenience'],
-			productCategoryIds: ['snacks'],
+			productIds: ['snacks'],
 			materialIds: [],
 			buildingTypeIds: [],
 			retailPlacements: [],

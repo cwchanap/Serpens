@@ -4,7 +4,7 @@ import type { ProductId } from '$lib/game/types';
 import { getWorldCityDefinition } from '$lib/game/world';
 import type { AuthoredBuilding, JsonObject, ValidationContext, WindowKind } from './shared';
 import {
-	CATEGORY_METRICS,
+	PRODUCT_METRICS,
 	COMPARATORS,
 	CONDITION_KEYS,
 	KNOWN_BUILDING_TYPE_IDS,
@@ -121,33 +121,33 @@ function validateMetricQuery(
 		return undefined;
 	}
 	let allowedKeys: readonly string[] = ['metric'];
-	if (CATEGORY_METRICS.has(metric)) allowedKeys = ['metric', 'categoryIds'];
+	if (PRODUCT_METRICS.has(metric)) allowedKeys = ['metric', 'productIds'];
 	else if (metric === 'scorecard') allowedKeys = ['metric', 'score'];
 	else if (metric === 'industrial-building-count') allowedKeys = ['metric', 'buildingTypeIds'];
 	else if (metric === 'city-inventory-quantity') allowedKeys = ['metric', 'cityId', 'materialId'];
 	const query = closedObject(context, value, path, allowedKeys);
 	if (!query) return metric;
-	if (CATEGORY_METRICS.has(metric)) {
+	if (PRODUCT_METRICS.has(metric)) {
 		const ids = validateReferenceArray(
 			context,
-			query.categoryIds,
-			`${path}.categoryIds`,
+			query.productIds,
+			`${path}.productIds`,
 			KNOWN_PRODUCT_IDS,
-			'product category'
+			'product'
 		);
-		if (Array.isArray(query.categoryIds) && query.categoryIds.length === 0)
+		if (Array.isArray(query.productIds) && query.productIds.length === 0)
 			diagnostic(
 				context,
-				`${path}.categoryIds`,
+				`${path}.productIds`,
 				'missing-reference',
-				query.categoryIds,
-				'Category metric queries require at least one category.'
+				query.productIds,
+				'Product metric queries require at least one product.'
 			);
 		for (const id of ids)
 			validateIncluded(
 				context,
 				id,
-				`${path}.categoryIds[${(query.categoryIds as readonly unknown[]).indexOf(id)}]`,
+				`${path}.productIds[${(query.productIds as readonly unknown[]).indexOf(id)}]`,
 				context.content.products
 			);
 		if (LOCAL_PRODUCTION_METRICS.has(metric) && !hasLocalProductionPath(context, ids))
@@ -156,7 +156,7 @@ function validateMetricQuery(
 				path,
 				'unavailable-local-production-path',
 				value,
-				'The content allowlist does not permit a producer-to-warehouse path for every local-production category.'
+				'The content allowlist does not permit a producer-to-warehouse path for every local-production product.'
 			);
 	} else if (metric === 'scorecard') {
 		if (!SCORE_KEYS.has(query.score as string))
@@ -307,9 +307,9 @@ function validateMetricWindowPair(
 
 function hasLocalProductionPath(
 	context: ValidationContext,
-	categoryIds: ReadonlySet<ProductId>
+	productIds: ReadonlySet<ProductId>
 ): boolean {
-	for (const productId of categoryIds) {
+	for (const productId of productIds) {
 		const materialId = getProductDefinition(productId).productionMaterialId;
 		if (!materialId || MATERIALS[materialId].kind !== 'finished') return false;
 		const requiredTypes = getIndustrialBuildingTypesForProductChain(materialId).map(

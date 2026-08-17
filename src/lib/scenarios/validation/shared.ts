@@ -57,7 +57,7 @@ const OVERRIDE_KEYS = [
 const POLICY_KEYS = ['pricing', 'inventory', 'staffing', 'marketing', 'service'] as const;
 const STORE_OVERRIDE_KEYS = ['storeRef', 'targetLevel', 'products'] as const;
 const PRODUCT_OVERRIDE_KEYS = [
-	'categoryId',
+	'productId',
 	'stock',
 	'reorderThreshold',
 	'targetStock',
@@ -75,7 +75,7 @@ const WORLD_OVERRIDE_KEYS = [
 const CONTENT_KEYS = [
 	'cityIds',
 	'archetypeIds',
-	'productCategoryIds',
+	'productIds',
 	'materialIds',
 	'buildingTypeIds',
 	'retailPlacements',
@@ -133,7 +133,7 @@ const METRIC_WINDOWS: Readonly<Record<string, ReadonlySet<WindowKind>>> = {
 	'city-inventory-quantity': new Set(['current'])
 };
 
-const CATEGORY_METRICS = new Set([
+const PRODUCT_METRICS = new Set([
 	'retail-import-spend',
 	'retail-imported-units',
 	'retail-local-units',
@@ -494,7 +494,7 @@ export {
 	SCORE_KEYS,
 	POLICY_VALUES,
 	METRIC_WINDOWS,
-	CATEGORY_METRICS,
+	PRODUCT_METRICS,
 	LOCAL_PRODUCTION_METRICS
 };
 

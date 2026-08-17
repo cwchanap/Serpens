@@ -302,14 +302,14 @@ function applyAuthoredOverrides(
 		}
 		const store = stores[storeIndex]!;
 		const productPatches = new Map(
-			(override.products ?? []).map((product) => [product.categoryId, product])
+			(override.products ?? []).map((product) => [product.productId, product])
 		);
 		for (const [productIndex, product] of (override.products ?? []).entries()) {
-			if (!store.products.some((candidate) => candidate.productId === product.categoryId)) {
+			if (!store.products.some((candidate) => candidate.productId === product.productId)) {
 				diagnostics.push({
-					path: `start.overrides.stores[${overrideIndex}].products[${productIndex}].categoryId`,
+					path: `start.overrides.stores[${overrideIndex}].products[${productIndex}].productId`,
 					code: 'invalid-reference',
-					value: product.categoryId,
+					value: product.productId,
 					detail: 'Product override did not resolve to a materialized store product.'
 				});
 			}
@@ -318,7 +318,7 @@ function applyAuthoredOverrides(
 			const patch = productPatches.get(product.productId);
 			return patch
 				? {
-						productId: patch.categoryId,
+						productId: patch.productId,
 						stock: patch.stock,
 						reorderThreshold: patch.reorderThreshold,
 						targetStock: patch.targetStock,

@@ -11,7 +11,7 @@ import type { ScenarioCommand, ScenarioDefinition, ScenarioRun } from './types';
 export type ScenarioContentQuery =
 	| { kind: 'city'; cityId: WorldCityId }
 	| { kind: 'archetype'; archetypeId: ArchetypeId }
-	| { kind: 'product'; categoryId: ProductId }
+	| { kind: 'product'; productId: ProductId }
 	| { kind: 'material'; materialId: MaterialId }
 	| { kind: 'building'; buildingTypeId: IndustrialBuildingTypeId }
 	| {
@@ -45,7 +45,7 @@ export function isScenarioContentAllowed(
 		case 'archetype':
 			return definition.content.archetypeIds.includes(query.archetypeId);
 		case 'product':
-			return definition.content.productCategoryIds.includes(query.categoryId);
+			return definition.content.productIds.includes(query.productId);
 		case 'material':
 			return definition.content.materialIds.includes(query.materialId);
 		case 'building':
@@ -153,10 +153,10 @@ export function isScenarioCommandAllowed(
 		case 'updateStoreInventoryTargets':
 			return isScenarioContentAllowed(definition, {
 				kind: 'product',
-				categoryId: command.categoryId
+				productId: command.productId
 			})
 				? { allowed: true }
-				: forbiddenContent(`command.${command.kind}.categoryId`);
+				: forbiddenContent(`command.${command.kind}.productId`);
 		case 'buildIndustrialBuilding': {
 			if (
 				!isScenarioContentAllowed(definition, {

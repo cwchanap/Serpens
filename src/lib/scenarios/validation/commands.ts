@@ -175,7 +175,7 @@ function validateModifierTarget(
 	if (!target) return;
 	const registry = scope === 'retail-product' ? KNOWN_PRODUCT_IDS : KNOWN_MATERIAL_IDS;
 	const allowed = scope === 'retail-product' ? context.content.products : context.content.materials;
-	const kind = scope === 'retail-product' ? 'product category' : 'material';
+	const kind = scope === 'retail-product' ? 'product' : 'material';
 	const ids = validateReferenceArray(context, target.ids, `${path}.ids`, registry, kind);
 	for (const id of ids) {
 		const raw = target.ids as readonly unknown[];

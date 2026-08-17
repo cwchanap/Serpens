@@ -126,7 +126,7 @@ function scenarioDefinition(): ScenarioDefinition {
 						targetLevel: 1,
 						products: [
 							{
-								categoryId: 'bottled-water',
+								productId: 'bottled-water',
 								stock: 5,
 								reorderThreshold: 2,
 								targetStock: 10,
@@ -152,7 +152,7 @@ function scenarioDefinition(): ScenarioDefinition {
 		content: {
 			cityIds: ['harbor-city', 'industry-city', 'campus-junction'],
 			archetypeIds: ['convenience'],
-			productCategoryIds: ['bottled-water'],
+			productIds: ['bottled-water'],
 			materialIds: ['water', 'bottled-water'],
 			buildingTypeIds: ['water-bottler', 'warehouse'],
 			retailPlacements: [
@@ -217,7 +217,7 @@ function importSqueezeFixture(): ScenarioDefinition {
 	};
 	definition.content.cityIds = ['harbor-city'];
 	definition.content.archetypeIds = ['electronics'];
-	definition.content.productCategoryIds = ['games', 'accessories'];
+	definition.content.productIds = ['games', 'accessories'];
 	definition.content.materialIds = [];
 	definition.content.buildingTypeIds = [];
 	definition.content.retailPlacements = [
@@ -481,7 +481,7 @@ describe('buildScenarioGame', { timeout: 30_000 }, () => {
 		definition.start.overrides.cash = 0;
 		definition.start.overrides.debt = 0;
 		definition.start.overrides.stores = [{ storeRef: 'founder', targetLevel: 4 }];
-		definition.content.productCategoryIds = ['bottled-water', 'snacks'];
+		definition.content.productIds = ['bottled-water', 'snacks'];
 
 		const result = buildScenarioGame(definition, 280_002);
 
@@ -498,7 +498,7 @@ describe('buildScenarioGame', { timeout: 30_000 }, () => {
 		delete definition.start.overrides.cash;
 		delete definition.start.overrides.debt;
 		definition.start.overrides.stores = [{ storeRef: 'founder', targetLevel: 4 }];
-		definition.content.productCategoryIds = ['bottled-water', 'snacks'];
+		definition.content.productIds = ['bottled-water', 'snacks'];
 		const ordinary = createFoundingFixtureGame('convenience', 280_002);
 
 		const result = buildScenarioGame(definition, 280_002);

@@ -149,7 +149,7 @@ export function buildScenarioCatalogCards(
 			allowedContentSummary: i18n.t('scenarioCatalog.allowedContent', {
 				cities: definition.content.cityIds.length,
 				stores: definition.content.archetypeIds.length,
-				products: definition.content.productCategoryIds.length
+				products: definition.content.productIds.length
 			}),
 			seedLabel: i18n.t(
 				seed === definition.officialSeed

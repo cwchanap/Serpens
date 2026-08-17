@@ -1181,7 +1181,12 @@ export class GameRouteController {
 	): Promise<GameRouteCommitResult> {
 		return this.commitMutation({
 			transition: (game) => updateStoreProduct(game!, storeId, categoryId, { sellingPrice }),
-			scenarioCommand: { kind: 'updateStoreSellingPrice', storeId, categoryId, sellingPrice },
+			scenarioCommand: {
+				kind: 'updateStoreSellingPrice',
+				storeId,
+				productId: categoryId,
+				sellingPrice
+			},
 			cueId: 'sfx.stock.edit'
 		});
 	}
@@ -1198,7 +1203,7 @@ export class GameRouteController {
 			scenarioCommand: {
 				kind: 'updateStoreInventoryTargets',
 				storeId,
-				categoryId,
+				productId: categoryId,
 				reorderThreshold,
 				targetStock
 			},

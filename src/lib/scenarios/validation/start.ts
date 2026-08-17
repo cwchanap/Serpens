@@ -231,33 +231,33 @@ function validateProductOverrides(
 		const path = `${storePath}.products[${index}]`;
 		const product = closedObject(context, candidate, path, PRODUCT_OVERRIDE_KEYS);
 		if (!product) continue;
-		const categoryId = product.categoryId as ProductId;
-		const validCategory = validateKnownReference(
+		const productId = product.productId as ProductId;
+		const validProduct = validateKnownReference(
 			context,
-			categoryId,
-			`${path}.categoryId`,
+			productId,
+			`${path}.productId`,
 			KNOWN_PRODUCT_IDS,
-			'product category'
+			'product'
 		);
-		if (validCategory) {
-			if (seen.has(categoryId))
+		if (validProduct) {
+			if (seen.has(productId))
 				diagnostic(
 					context,
-					`${path}.categoryId`,
+					`${path}.productId`,
 					'duplicate-reference',
-					categoryId,
-					`Duplicate product override for ${categoryId}.`
+					productId,
+					`Duplicate product override for ${productId}.`
 				);
-			seen.add(categoryId);
-			if (!unlockedIds.has(categoryId))
+			seen.add(productId);
+			if (!unlockedIds.has(productId))
 				diagnostic(
 					context,
-					`${path}.categoryId`,
+					`${path}.productId`,
 					'product-locked',
-					categoryId,
-					`Product ${categoryId} is not unlocked at target level ${targetLevel}.`
+					productId,
+					`Product ${productId} is not unlocked at target level ${targetLevel}.`
 				);
-			validateIncluded(context, categoryId, `${path}.categoryId`, context.content.products);
+			validateIncluded(context, productId, `${path}.productId`, context.content.products);
 		}
 		for (const key of ['stock', 'reorderThreshold', 'targetStock'] as const) {
 			nonNegativeNumber(context, product[key], `${path}.${key}`);
@@ -737,11 +737,11 @@ function validateAllowlistedProductUnlocks(
 			if (index < getUnlockedCategoryCount(instance.reachableLevel)) available = true;
 		}
 		if (!available) {
-			const values = contentObject(context)?.productCategoryIds;
+			const values = contentObject(context)?.productIds;
 			const index = Array.isArray(values) ? values.indexOf(productId) : -1;
 			diagnostic(
 				context,
-				`content.productCategoryIds[${Math.max(0, index)}]`,
+				`content.productIds[${Math.max(0, index)}]`,
 				'product-locked',
 				productId,
 				`No allowed archetype can unlock ${productId} under the permitted commands.`
@@ -751,7 +751,7 @@ function validateAllowlistedProductUnlocks(
 
 	// Reverse check: every product a reachable archetype materializes must
 	// be in the content allowlist. Without this, an upgradeStore path could
-	// materialize a milestone category (e.g. snacks at level 4) that the
+	// materialize a milestone product (e.g. snacks at level 4) that the
 	// scenario never allowlisted, and simulateDay would still process it.
 	const reported = new Set<string>();
 	for (const instance of reachable) {
@@ -767,7 +767,7 @@ function validateAllowlistedProductUnlocks(
 				instance.path,
 				'product-not-allowlisted',
 				productId,
-				`Upgrade path materializes ${productId}, which is not in content.productCategoryIds.`
+				`Upgrade path materializes ${productId}, which is not in content.productIds.`
 			);
 		}
 	}
