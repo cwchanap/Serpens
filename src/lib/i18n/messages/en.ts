@@ -331,6 +331,7 @@ export const en = {
 			endingPrincipal: 'Ending principal',
 			payroll: 'Payroll',
 			imports: 'External imports',
+			inventoryLoss: 'Inventory loss expense',
 			productionImports: 'Production external imports',
 			warehouseOverflow: 'City inventory overflow',
 			railShipments: 'Rail shipments',
@@ -338,6 +339,19 @@ export const en = {
 			thirtyDayNet: '30-day net',
 			sevenDayOperatingCashFlow: '7-day operating cash flow',
 			thirtyDayOperatingCashFlow: '30-day operating cash flow'
+		},
+		productPressure: {
+			title: 'Product pressure evidence',
+			empty: 'No product pressure evidence recorded.',
+			freshness: 'Freshness: {percent}%',
+			waste: 'Waste: {units} units ({value})',
+			shrink: 'Shrink: {units} unit ({value})',
+			stockout: 'Stockout lost demand: {units} units',
+			obsolescence: 'Obsolescence: {percent} demand',
+			markdown: 'Markdown: {amount}',
+			basePrice: 'Base price: {price}',
+			effectivePrice: 'Effective price: {price}',
+			inventoryLoss: 'Inventory loss expense: {amount}'
 		},
 		inventory: {
 			productionCloseTitle: 'Production-close inventory (before retail replenishment)',
@@ -477,6 +491,7 @@ export const en = {
 			product: 'Product',
 			stock: 'Stock',
 			importCost: 'Import cost',
+			configuredPrice: 'Configured price',
 			sellingPrice: 'Selling price',
 			reorder: 'Reorder',
 			target: 'Target',
@@ -489,7 +504,24 @@ export const en = {
 			targetStock: 'Target stock for {categoryName}'
 		},
 		latestReport: '{sold} sold / {missed} missed',
-		noReport: 'No report'
+		noReport: 'No report',
+		pressure: {
+			neutral: 'No current pressure',
+			freshness: 'Freshness: {percent}%',
+			waste: 'Waste: {units} units',
+			shrink: 'Shrink: {units} units',
+			markdown: 'Markdown: {amount}',
+			obsolescence: 'Obsolescence: {percent} demand',
+			stockout: 'Stockout loss: {units} units'
+		},
+		evidence: {
+			freshness: 'Freshness: {percent}%',
+			waste: 'Waste: {units} units',
+			shrink: 'Shrink: {units} units',
+			markdown: 'Markdown: {amount}',
+			obsolescence: 'Obsolescence: {percent} demand',
+			stockout: 'Stockout lost demand: {units} units'
+		}
 	},
 	storeDetail: {
 		dismiss: 'Dismiss store details',
@@ -498,6 +530,17 @@ export const en = {
 		close: 'Close',
 		closeLabel: 'Close store details',
 		sections: '{storeName} sections',
+		pressureSummary: {
+			title: 'Product pressure',
+			neutral: 'No product pressure detected.',
+			waste: '{productName}: {units} units of waste.',
+			shrink: '{productName}: {units} units of shrink.',
+			stockout: '{productName}: {units} units of demand lost to stockout.',
+			markdown: '{productName}: markdown reduced revenue by {amount}.',
+			obsolescence: '{productName}: obsolescence reduced demand to {percent}.',
+			freshness: '{productName}: freshness is {percent}%.',
+			inventoryLoss: 'Inventory loss expense: {amount}.'
+		},
 		tabs: {
 			stock: 'Stock',
 			chain: 'Product Chain',

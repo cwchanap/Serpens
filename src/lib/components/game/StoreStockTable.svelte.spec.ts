@@ -3,9 +3,16 @@ import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import StoreStockTable from './StoreStockTable.svelte';
 import { getProductArt } from '$lib/assets/gameArt';
+import { getProductDefinition } from '$lib/game/products';
 import { initializeStoreProducts } from '$lib/game/stock';
 import { createI18n } from '$lib/i18n';
-import type { DailyStoreReport, Store } from '$lib/game/types';
+import type {
+	DailyProductReport,
+	DailyStoreReport,
+	ProductId,
+	Store,
+	StoreProduct
+} from '$lib/game/types';
 
 const store: Store = {
 	id: 'store-1',
@@ -64,6 +71,46 @@ const latestReport: DailyStoreReport = {
 	replenishment: null,
 	warnings: []
 };
+
+function productWithStock(
+	productId: ProductId,
+	quantity = 10,
+	receivedDay = 1,
+	overrides: Partial<StoreProduct> = {}
+): StoreProduct {
+	const definition = getProductDefinition(productId);
+	return {
+		productId,
+		lots: [{ receivedDay, quantity }],
+		reorderThreshold: 4,
+		targetStock: 16,
+		sellingPrice: definition.defaultSellingPrice,
+		...overrides
+	};
+}
+
+function productReport(
+	productId: ProductId,
+	overrides: Partial<DailyProductReport> = {}
+): DailyProductReport {
+	const definition = getProductDefinition(productId);
+	return {
+		productId,
+		name: definition.name,
+		unitsSold: 0,
+		demandMissed: 0,
+		revenue: 0,
+		costOfGoods: 0,
+		grossMargin: 0,
+		endingStock: 10,
+		warehouseUnits: 0,
+		warehouseValue: 0,
+		importedUnits: 0,
+		importCost: definition.importCost,
+		importSpend: 0,
+		...overrides
+	};
+}
 
 describe('StoreStockTable', () => {
 	it('renders product stock rows with fixed cost and latest report demand', async () => {
@@ -301,5 +348,89 @@ describe('StoreStockTable', () => {
 
 		await expect.element(page.getByText('This category is locked.')).toBeVisible();
 		await expect.element(page.getByRole('cell', { name: 'apparel' })).toBeVisible();
+	});
+
+	it('derives historical freshness and keeps one waste pressure label per product', async () => {
+		expect.assertions(5);
+		const produce = productWithStock('produce');
+		const report: DailyStoreReport = {
+			...latestReport,
+			productReports: [
+				productReport('produce', {
+					wasteUnits: 2,
+					wasteValue: 4,
+					averageAgeDays: 4,
+					endingStock: 10
+				})
+			]
+		};
+
+		render(StoreStockTable, {
+			i18n: createI18n('en'),
+			store: { ...store, products: [produce] },
+			ordinal: 1,
+			latestReport: report,
+			onUpdate: vi.fn()
+		});
+
+		await expect
+			.element(page.getByRole('columnheader', { name: 'Configured price' }))
+			.toBeVisible();
+		await expect.element(page.getByTestId('derived-stock-produce')).toHaveTextContent('10');
+		await expect.element(page.getByTestId('freshness-produce')).toHaveTextContent('Freshness: 60%');
+		await expect
+			.element(page.getByTestId('product-pressure-produce'))
+			.toHaveTextContent('Waste: 2 units');
+		expect(document.querySelectorAll('[data-testid="product-pressure-produce"]')).toHaveLength(1);
+	});
+
+	it('shows stockout loss as the single pressure label for an otherwise neutral product', async () => {
+		expect.assertions(3);
+		const bottledWater = productWithStock('bottled-water', 2);
+		const report: DailyStoreReport = {
+			...latestReport,
+			productReports: [productReport('bottled-water', { stockoutLostDemand: 4, endingStock: 0 })]
+		};
+
+		render(StoreStockTable, {
+			i18n: createI18n('en'),
+			store: { ...store, products: [bottledWater] },
+			ordinal: 1,
+			latestReport: report,
+			onUpdate: vi.fn()
+		});
+
+		await expect
+			.element(page.getByTestId('product-pressure-bottled-water'))
+			.toHaveTextContent('Stockout loss: 4 units');
+		await expect.element(page.getByTestId('stockout-loss-bottled-water')).toHaveTextContent('4');
+		await expect.element(page.getByTestId('derived-stock-bottled-water')).toHaveTextContent('2');
+	});
+
+	it('keeps a neutral product visibly non-alarming when no pressure evidence exists', async () => {
+		expect.assertions(3);
+		const snacks = productWithStock('snacks');
+		const report: DailyStoreReport = {
+			...latestReport,
+			productReports: [productReport('snacks')]
+		};
+
+		render(StoreStockTable, {
+			i18n: createI18n('en'),
+			store: { ...store, products: [snacks] },
+			ordinal: 1,
+			latestReport: report,
+			onUpdate: vi.fn()
+		});
+
+		await expect
+			.element(page.getByTestId('product-pressure-snacks'))
+			.toHaveTextContent('No current pressure');
+		await expect
+			.element(page.getByTestId('product-pressure-snacks'))
+			.toHaveAttribute('data-pressure-kind', 'neutral');
+		await expect
+			.element(page.getByTestId('product-pressure-snacks'))
+			.not.toHaveAttribute('role', 'alert');
 	});
 });

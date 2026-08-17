@@ -331,6 +331,7 @@ export const zhHant = {
 			endingPrincipal: '期末本金',
 			payroll: '薪資',
 			imports: '外部進口',
+			inventoryLoss: '庫存損失費用',
 			productionImports: '生產外部進口',
 			warehouseOverflow: '城市庫存溢出',
 			railShipments: '鐵路出貨',
@@ -338,6 +339,19 @@ export const zhHant = {
 			thirtyDayNet: '30 日淨利',
 			sevenDayOperatingCashFlow: '7 日營業現金流',
 			thirtyDayOperatingCashFlow: '30 日營業現金流'
+		},
+		productPressure: {
+			title: '商品壓力證據',
+			empty: '沒有商品壓力記錄。',
+			freshness: '新鮮度：{percent}%',
+			waste: '浪費：{units} 單位（{value}）',
+			shrink: '耗損：{units} 單位（{value}）',
+			stockout: '缺貨損失需求：{units} 單位',
+			obsolescence: '過時：需求 {percent}',
+			markdown: '降價：{amount}',
+			basePrice: '基準價格：{price}',
+			effectivePrice: '有效價格：{price}',
+			inventoryLoss: '庫存損失費用：{amount}'
 		},
 		inventory: {
 			productionCloseTitle: '生產結束時庫存（零售補貨前）',
@@ -476,6 +490,7 @@ export const zhHant = {
 			product: '商品',
 			stock: '庫存',
 			importCost: '進口成本',
+			configuredPrice: '設定價格',
 			sellingPrice: '售價',
 			reorder: '補貨點',
 			target: '目標',
@@ -488,7 +503,24 @@ export const zhHant = {
 			targetStock: '{categoryName}目標庫存'
 		},
 		latestReport: '售出 {sold} / 錯失 {missed}',
-		noReport: '沒有報表'
+		noReport: '沒有報表',
+		pressure: {
+			neutral: '目前沒有壓力',
+			freshness: '新鮮度：{percent}%',
+			waste: '浪費：{units} 單位',
+			shrink: '耗損：{units} 單位',
+			markdown: '降價：{amount}',
+			obsolescence: '過時：需求 {percent}',
+			stockout: '缺貨損失：{units} 單位'
+		},
+		evidence: {
+			freshness: '新鮮度：{percent}%',
+			waste: '浪費：{units} 單位',
+			shrink: '耗損：{units} 單位',
+			markdown: '降價：{amount}',
+			obsolescence: '過時：需求 {percent}',
+			stockout: '缺貨損失需求：{units} 單位'
+		}
 	},
 	storeDetail: {
 		dismiss: '關閉店鋪詳情',
@@ -497,6 +529,17 @@ export const zhHant = {
 		close: '關閉',
 		closeLabel: '關閉店鋪詳情',
 		sections: '{storeName}區段',
+		pressureSummary: {
+			title: '商品壓力',
+			neutral: '沒有偵測到商品壓力。',
+			waste: '{productName}：浪費 {units} 單位。',
+			shrink: '{productName}：耗損 {units} 單位。',
+			stockout: '{productName}：缺貨造成 {units} 單位需求損失。',
+			markdown: '{productName}：降價使營收減少 {amount}。',
+			obsolescence: '{productName}：過時使需求降至 {percent}。',
+			freshness: '{productName}：新鮮度為 {percent}%。',
+			inventoryLoss: '庫存損失費用：{amount}。'
+		},
 		tabs: {
 			stock: '庫存',
 			chain: '商品鏈',
