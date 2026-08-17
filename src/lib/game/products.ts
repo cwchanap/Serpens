@@ -67,7 +67,7 @@ export const PRODUCTS: Readonly<Record<ProductId, ProductDefinition>> = {
 		productionMaterialId: null,
 		dynamics: {
 			trend: { amplitude: 0.18, periodDays: 28, phaseDays: 7 },
-			reputationSensitivity: 1.25
+			reputationSensitivity: 1.5
 		}
 	},
 	'home-goods': {
