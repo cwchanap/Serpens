@@ -218,10 +218,11 @@ export function selectRouteOperations(game: GameState): RouteOperationalSummary[
 	return [...game.logistics.recurringRoutes].sort(compareRecurringRoutes).map((route) => {
 		const totals = totalsByRouteId.get(route.id)!;
 		const latestAttempt = totals.latestAttempt;
+		const effective = resolveEffectiveRecurringRoute(route, game.events.activeModifiers, game.day);
 
 		return {
 			route,
-			effective: resolveEffectiveRecurringRoute(route, game.events.activeModifiers, game.day),
+			effective,
 			inTransitQuantity: totals.inTransitQuantity,
 			latestAttempt,
 			utilization: latestAttempt ? latestAttempt.dispatchedQuantity / latestAttempt.capacity : null,
@@ -229,19 +230,29 @@ export function selectRouteOperations(game: GameState): RouteOperationalSummary[
 			unmetDestinationNeed: latestAttempt?.unmetDestinationNeed ?? 0,
 			deliveredUnits: totals.deliveredUnits,
 			transportCost: totals.transportCost,
-			condition: classifyRouteOperationalCondition(latestAttempt)
+			condition: classifyRouteOperationalCondition(latestAttempt, effective)
 		};
 	});
 }
 
+/**
+ * Classify the route's live operational condition. Suspension is decided by
+ * the current {@link EffectiveRecurringRoute} (resolved from active modifiers
+ * on the current day), not by the historical {@link DailyRouteDispatchAttempt}
+ * flag: once a dispatch-suspension modifier expires the route recovers, even
+ * if the latest recorded attempt was a suspended zero-quantity dispatch and
+ * the next due day has not arrived yet. The remaining conditions fall back to
+ * the latest attempt's recorded dispatch economics.
+ */
 function classifyRouteOperationalCondition(
-	attempt: DailyRouteDispatchAttempt | null
+	attempt: DailyRouteDispatchAttempt | null,
+	effective: EffectiveRecurringRoute
 ): RouteOperationalCondition {
+	if (effective.dispatchSuspended) {
+		return 'route-event-suspended';
+	}
 	if (!attempt) {
 		return 'awaiting-dispatch';
-	}
-	if (attempt.dispatchSuspended) {
-		return 'route-event-suspended';
 	}
 	if (attempt.destinationNeed === 0) {
 		return 'destination-full';

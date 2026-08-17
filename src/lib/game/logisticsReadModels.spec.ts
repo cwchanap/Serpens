@@ -12,6 +12,7 @@ import { createRouteDispatchAttempt } from './logisticsReport.testUtils';
 import { simulateDay } from './simulateDay';
 import { createNewGame } from './state';
 import type {
+	ActiveEventModifier,
 	DailyRouteDispatchAttempt,
 	DailyReport,
 	GameState,
@@ -97,17 +98,51 @@ function gameWithLogistics(input: {
 	transferOrders?: TransferOrder[];
 	recurringRoutes?: RecurringRoute[];
 	reports?: DailyReport[];
+	activeModifiers?: ActiveEventModifier[];
+	day?: number;
 }): GameState {
 	const game = createNewGame('convenience', 20260806);
 
 	return {
 		...game,
+		day: input.day ?? game.day,
 		logistics: {
 			...game.logistics,
 			transferOrders: input.transferOrders ?? [],
 			recurringRoutes: input.recurringRoutes ?? []
 		},
+		events: {
+			...game.events,
+			activeModifiers: input.activeModifiers ?? game.events.activeModifiers
+		},
 		reports: input.reports ?? []
+	};
+}
+
+function routeDispatchSuspensionModifier(input: {
+	routeId: string;
+	startsOnDay: number;
+	expiresOnDay: number;
+	id?: string;
+}): ActiveEventModifier {
+	return {
+		id: input.id ?? 'event-modifier-1',
+		source: {
+			eventId: 'freight-disruption',
+			instanceId: 'event-instance-1',
+			optionId: 'suspend-shipments'
+		},
+		target: { kind: 'recurring-route', routeId: input.routeId },
+		startsOnDay: input.startsOnDay,
+		expiresOnDay: input.expiresOnDay,
+		stackingKey: `suspend:${input.routeId}`,
+		stackingRule: 'replace',
+		effect: { kind: 'route-dispatch-suspension' },
+		explanation: {
+			key: 'events.freightDisruption.suspendShipments.suspension',
+			params: {}
+		},
+		importance: 'important'
 	};
 }
 
@@ -426,7 +461,18 @@ describe('logistics read models', () => {
 		});
 		const game = gameWithLogistics({
 			recurringRoutes: [recurringRoute({ id: 'route-suspended', capacity: 30 })],
-			reports: [report(9, [suspendedAttempt])]
+			reports: [report(9, [suspendedAttempt])],
+			// The suspension modifier must still be active on the current day for
+			// the route to be classified as suspended; the historical attempt flag
+			// alone is not sufficient evidence of a current suspension.
+			activeModifiers: [
+				routeDispatchSuspensionModifier({
+					routeId: 'route-suspended',
+					startsOnDay: 9,
+					expiresOnDay: 12
+				})
+			],
+			day: 10
 		});
 
 		const summaries = selectRouteOperations(game);
@@ -437,6 +483,75 @@ describe('logistics read models', () => {
 			unusedCapacity: 30,
 			unmetDestinationNeed: 40
 		});
+	});
+
+	test('clears the suspended condition once the dispatch-suspension modifier expires before the next due day', () => {
+		// Route is due on day 9 while a 2-day suspension (active days 9-10,
+		// expires on day 11) is in effect. A zero-quantity suspended attempt is
+		// recorded and cadence advances to the next dispatch on day 16. The
+		// current day is 13: the modifier has expired, but no new dispatch has
+		// run yet, so the latest attempt is still the suspended one. The
+		// condition must reflect the recovered effective route, not the stale
+		// historical suspension flag.
+		const suspendedAttempt = routeAttempt({
+			routeId: 'route-suspended',
+			destinationNeed: 40,
+			capacity: 30,
+			availableOriginStock: 30,
+			dispatchedQuantity: 0,
+			unusedCapacity: 30,
+			unmetDestinationNeed: 40,
+			transportCost: 0,
+			transferOrderId: null,
+			dispatchSuspended: true,
+			modifierImpacts: [
+				{
+					contributors: [
+						{
+							modifierId: 'event-modifier-1',
+							source: {
+								eventId: 'freight-disruption',
+								instanceId: 'event-instance-1',
+								optionId: 'suspend-shipments'
+							},
+							explanation: {
+								key: 'events.freightDisruption.suspendShipments.suspension',
+								params: {}
+							}
+						}
+					],
+					effectKind: 'route-dispatch-suspension',
+					baselineDispatchedQuantity: 30,
+					effectiveDispatchedQuantity: 0
+				}
+			]
+		});
+		const game = gameWithLogistics({
+			recurringRoutes: [
+				recurringRoute({
+					id: 'route-suspended',
+					capacity: 30,
+					frequencyDays: 7,
+					nextDispatchOnDay: 16
+				})
+			],
+			reports: [report(9, [suspendedAttempt])],
+			activeModifiers: [
+				routeDispatchSuspensionModifier({
+					routeId: 'route-suspended',
+					startsOnDay: 9,
+					expiresOnDay: 11
+				})
+			],
+			day: 13
+		});
+
+		const summaries = selectRouteOperations(game);
+		const summary = summaries.find((current) => current.route.id === 'route-suspended')!;
+
+		expect(summary.effective.dispatchSuspended).toBe(false);
+		expect(summary.latestAttempt?.dispatchSuspended).toBe(true);
+		expect(summary.condition).not.toBe('route-event-suspended');
 	});
 
 	test('keeps utilization relative to the effective capacity of a disrupted attempt', () => {
