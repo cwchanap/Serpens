@@ -2463,7 +2463,14 @@ function validateSavedModifierTemplate(value: unknown, label: string): void {
 	requireOneOf(modifier.importance, `${label} importance`, ['normal', 'important'] as const);
 }
 
-function validateSavedTimedEffect(value: unknown, label: string): void {
+type SavedTimedEffectKind =
+	| 'import-cost-multiplier'
+	| 'route-lead-time-adjustment'
+	| 'route-capacity-multiplier'
+	| 'route-dispatch-suspension'
+	| 'route-transport-cost-multiplier';
+
+function validateSavedTimedEffect(value: unknown, label: string): SavedTimedEffectKind {
 	const effect = requireRecord(value, label);
 	const kind = requireOneOf(effect.kind, `${label} kind`, [
 		'import-cost-multiplier',
@@ -2496,6 +2503,7 @@ function validateSavedTimedEffect(value: unknown, label: string): void {
 			requireExactKeys(effect, ['kind'], label);
 			break;
 	}
+	return kind;
 }
 
 function requirePositiveFiniteMultiplier(value: unknown, label: string): number {
@@ -2874,7 +2882,27 @@ function validateSavedModifierFields(
 		throw new SaveDataError(`${label} expiresOnDay must be after startsOnDay`);
 	}
 	const stackingKey = requireString(modifier.stackingKey, `${label} stackingKey`);
-	validateSavedTimedEffect(modifier.effect, `${label} effect`);
+	const effectKind = validateSavedTimedEffect(modifier.effect, `${label} effect`);
+	// Mirror the authored/runtime invariant from eventDefinitions.ts: a
+	// company target may only carry import-cost-multiplier, and a
+	// recurring-route target may only carry a route effect. The shape
+	// validators above check target and effect independently, so without
+	// this pairing check a route-targeted import-cost multiplier (or a
+	// company-targeted route effect) would decode cleanly and then be
+	// applied globally by compileEventModifierRules, which selects
+	// import-cost modifiers by effect kind alone.
+	if (target.kind === 'recurring-route' && effectKind === 'import-cost-multiplier') {
+		throw new SaveDataError(
+			`${label} effect must be a route effect for a recurring-route target`,
+			'invariant-event-runtime'
+		);
+	}
+	if (target.kind === 'company' && effectKind !== 'import-cost-multiplier') {
+		throw new SaveDataError(
+			`${label} effect must be import-cost-multiplier for a company target`,
+			'invariant-event-runtime'
+		);
+	}
 	validateStructuredCopyRef(modifier.explanation, `${label} explanation`);
 	requireOneOf(modifier.importance, `${label} importance`, ['normal', 'important'] as const);
 	return {

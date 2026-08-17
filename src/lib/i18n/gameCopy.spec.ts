@@ -237,7 +237,7 @@ describe('game copy builders', () => {
 		const localized = localizeDecision(decision, createI18n('en'));
 		expect(localized.title).toBe('Freight disruption');
 		expect(localized.context).toBe(
-			'Shipments of water between industry-city and breadbasket-basin are disrupted. Choose how to handle deliveries on route route-2.'
+			'Shipments of Water between Industry City and Breadbasket Basin are disrupted. Choose how to handle deliveries on route route-2.'
 		);
 		expect(localized.options[0]?.label).toBe('Accept delay');
 		expect(localized.options[0]?.description).toBe(

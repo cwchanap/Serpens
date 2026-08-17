@@ -1278,7 +1278,7 @@ export const zhHant = {
 			freightDisruption: {
 				title: '運輸中斷',
 				context:
-					'航線 {routeId}（{originCityId} → {destinationCityId}）的{materialId}運輸受到影響。請選擇如何處理此航線的配送。',
+					'航線 {routeId}（{origin} → {destination}）的{material}運輸受到影響。請選擇如何處理此航線的配送。',
 				options: {
 					'accept-delay': {
 						label: '接受延誤',
