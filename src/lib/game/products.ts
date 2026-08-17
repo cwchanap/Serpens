@@ -10,7 +10,7 @@ export const PRODUCTS: Readonly<Record<ProductId, ProductDefinition>> = {
 		defaultSellingPrice: 3,
 		priceSensitivity: 0.7,
 		productionMaterialId: 'bottled-water',
-		dynamics: {}
+		dynamics: { stockoutSensitivity: 1.15 }
 	},
 	'soft-drinks': {
 		id: 'soft-drinks',
@@ -21,7 +21,7 @@ export const PRODUCTS: Readonly<Record<ProductId, ProductDefinition>> = {
 		defaultSellingPrice: 4,
 		priceSensitivity: 0.8,
 		productionMaterialId: 'drinks',
-		dynamics: {}
+		dynamics: { stockoutSensitivity: 1.1 }
 	},
 	snacks: {
 		id: 'snacks',
@@ -65,7 +65,10 @@ export const PRODUCTS: Readonly<Record<ProductId, ProductDefinition>> = {
 		defaultSellingPrice: 38,
 		priceSensitivity: 1.05,
 		productionMaterialId: null,
-		dynamics: {}
+		dynamics: {
+			trend: { amplitude: 0.18, periodDays: 28, phaseDays: 7 },
+			reputationSensitivity: 1.25
+		}
 	},
 	'home-goods': {
 		id: 'home-goods',
@@ -131,7 +134,11 @@ export const PRODUCTS: Readonly<Record<ProductId, ProductDefinition>> = {
 		defaultSellingPrice: 240,
 		priceSensitivity: 0.5,
 		productionMaterialId: null,
-		dynamics: {}
+		dynamics: {
+			trend: { amplitude: 0.15, periodDays: 14, phaseDays: 0 },
+			obsolescence: { startsAfterDays: 21, demandFloor: 0.55 },
+			markdown: { startsAtAgeDays: 14, priceMultiplier: 0.85 }
+		}
 	},
 	peripherals: {
 		id: 'peripherals',
@@ -153,7 +160,7 @@ export const PRODUCTS: Readonly<Record<ProductId, ProductDefinition>> = {
 		defaultSellingPrice: 4,
 		priceSensitivity: 0.7,
 		productionMaterialId: 'produce',
-		dynamics: {}
+		dynamics: { shelfLifeDays: 10, shrinkRate: 0.02 }
 	},
 	pantry: {
 		id: 'pantry',
@@ -175,7 +182,7 @@ export const PRODUCTS: Readonly<Record<ProductId, ProductDefinition>> = {
 		defaultSellingPrice: 10,
 		priceSensitivity: 0.85,
 		productionMaterialId: null,
-		dynamics: {}
+		dynamics: { shelfLifeDays: 12, shrinkRate: 0.03 }
 	},
 	bakery: {
 		id: 'bakery',

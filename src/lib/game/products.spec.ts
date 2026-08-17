@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { ARCHETYPES, getArchetype } from './archetypes';
 import { MATERIALS } from './industry';
 import { getProductDefinition, PRODUCTS } from './products';
+import { REPLENISHMENT_INTERVAL_DAYS } from './retailSupply';
 import type { MaterialId, ProductId } from './types';
 
 describe('product catalog', () => {
@@ -76,6 +77,21 @@ describe('product catalog', () => {
 			product.dynamics.obsolescence?.startsAfterDays
 		]);
 
-		expect(thresholds.every((threshold) => threshold === undefined || threshold > 7)).toBe(true);
+		expect(
+			thresholds.every(
+				(threshold) => threshold === undefined || threshold > REPLENISHMENT_INTERVAL_DAYS
+			)
+		).toBe(true);
+	});
+
+	it('authors one conservative pressure profile for each starting archetype', () => {
+		expect(PRODUCTS.produce.dynamics.shelfLifeDays).toEqual(expect.any(Number));
+		expect(PRODUCTS.produce.dynamics.shrinkRate).toEqual(expect.any(Number));
+		expect(PRODUCTS.devices.dynamics.trend).toEqual(expect.any(Object));
+		expect(PRODUCTS.devices.dynamics.obsolescence).toEqual(expect.any(Object));
+		expect(PRODUCTS.devices.dynamics.markdown).toEqual(expect.any(Object));
+		expect(PRODUCTS['bottled-water'].dynamics.stockoutSensitivity).toEqual(expect.any(Number));
+		expect(PRODUCTS.apparel.dynamics.trend).toEqual(expect.any(Object));
+		expect(PRODUCTS.apparel.dynamics.reputationSensitivity).toEqual(expect.any(Number));
 	});
 });

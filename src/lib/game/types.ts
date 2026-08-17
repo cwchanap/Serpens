@@ -624,6 +624,12 @@ export interface ProductDynamics {
 	reputationSensitivity?: number;
 }
 
+export interface ProductMarketDynamics {
+	trendMultiplier: number;
+	obsolescenceMultiplier: number;
+	markdownMultiplier: number;
+}
+
 export interface ProductDefinition {
 	id: ProductId;
 	familyId: ProductFamilyId;
@@ -647,6 +653,17 @@ export interface StoreProduct {
 	reorderThreshold: number;
 	targetStock: number;
 	sellingPrice: number;
+}
+
+export interface ProductInventoryAgingResult {
+	product: StoreProduct;
+	wasteUnits: number;
+	wasteValue: number;
+	shrinkUnits: number;
+	shrinkValue: number;
+	averageAgeDays: number | null;
+	freshnessPercent: number | null;
+	oldestSellableAgeDays: number | null;
 }
 
 export interface StoreProductPatch {
