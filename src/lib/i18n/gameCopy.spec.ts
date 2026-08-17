@@ -788,6 +788,22 @@ describe('game copy builders', () => {
 		);
 	});
 
+	it('localizes product-chain titles with the retail product label', () => {
+		expect.assertions(2);
+		const graph: ProductChainGraph = {
+			id: 'chain:soft-drinks',
+			title: 'Soft Drinks chain',
+			nodes: [],
+			edges: [],
+			details: {},
+			warnings: [],
+			emptyReason: null
+		};
+
+		expect(localizeProductChainGraph(graph, createI18n('ja')).title).toBe('ソフトドリンクチェーン');
+		expect(localizeProductChainGraph(graph, createI18n('zh-Hant')).title).toBe('軟性飲料鏈');
+	});
+
 	it('labels recipe nodes with the building name, not the output material', () => {
 		expect.assertions(2);
 		const english = createI18n('en');

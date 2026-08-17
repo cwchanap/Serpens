@@ -2,6 +2,7 @@ import { INDUSTRIAL_BUILDING_TYPES } from '$lib/game/industry';
 import { PRODUCTION_EVENT_CATALOG } from '$lib/game/eventCatalog';
 import { estimateNextLoanPayment, getLoanArrearsAmount, hasLoanArrears } from '$lib/game/finance';
 import { getFinanceMetrics } from '$lib/game/financeMetrics';
+import { PRODUCTS } from '$lib/game/products';
 import type { PlacementBlockReason } from '$lib/game/placementPreview';
 import type {
 	BottleneckInfo,
@@ -266,9 +267,11 @@ function localizeGraphTitle(graph: ProductChainGraph, i18n: I18nBundle): string 
 	}
 
 	if (graph.id.startsWith('chain:')) {
-		const materialId = graph.id.slice('chain:'.length);
+		const chainId = graph.id.slice('chain:'.length);
 		return i18n.t('copy.productChainGraph.title.productChain', {
-			label: i18n.labels.material(materialId)
+			label: Object.hasOwn(PRODUCTS, chainId)
+				? i18n.labels.productCategory(chainId)
+				: i18n.labels.material(chainId)
 		});
 	}
 
