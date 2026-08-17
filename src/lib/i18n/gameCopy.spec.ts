@@ -2733,6 +2733,21 @@ describe('localizeRouteModifierRecovery', () => {
 		optionId: 'accept-delay'
 	};
 
+	it('localizes a route-lead-time-adjustment recovery', () => {
+		const recovery: DailyRouteModifierRecovery = {
+			routeId: 'route-1',
+			modifierId: 'event-modifier-1',
+			source: baseSource,
+			effectKind: 'route-lead-time-adjustment',
+			disruptedLeadTimeDays: 3,
+			recoveredLeadTimeDays: 2
+		};
+		const localized = localizeRouteModifierRecovery(recovery, en);
+		expect(localized).toContain('route-1');
+		expect(localized).toContain(en.format.integer(3));
+		expect(localized).toContain(en.format.integer(2));
+	});
+
 	it('localizes a route-capacity-multiplier recovery', () => {
 		const recovery: DailyRouteModifierRecovery = {
 			routeId: 'route-1',
