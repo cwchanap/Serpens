@@ -1097,6 +1097,63 @@ describe('daily simulation', () => {
 		expect(first.staff).toEqual(second.staff);
 	});
 
+	test('repeats the complete daily report for the same state and seed', () => {
+		const game = createNewGame('grocery', 20260821);
+		const first = simulateDay(game);
+		const second = simulateDay(game);
+
+		expect(first.reports[0]).toEqual(second.reports[0]);
+		expect(first.rngState).toBe(second.rngState);
+	});
+
+	test('ages retail inventory before sales and reconciles inventory loss outside cash flow', () => {
+		const base = createNewGame('grocery', 20260822);
+		const game: GameState = {
+			...base,
+			day: 11,
+			stores: base.stores.map((store) => ({
+				...store,
+				products: [
+					{
+						productId: 'produce',
+						lots: [
+							{ receivedDay: 1, quantity: 4 },
+							{ receivedDay: 2, quantity: 1_000 }
+						],
+						reorderThreshold: 0,
+						targetStock: 1_000,
+						sellingPrice: 4
+					}
+				]
+			}))
+		};
+		const result = simulateDay(game);
+		const report = result.reports[0]!;
+		const storeReport = report.storeReports[0]!;
+		const productReport = storeReport.productReports[0]!;
+
+		expect(productReport).toMatchObject({
+			wasteUnits: 4,
+			wasteValue: 8,
+			stockoutLostDemand: 0,
+			oldestSellableAgeDays: 9
+		});
+		expect(productReport.shrinkValue).toBeGreaterThan(0);
+		expect(storeReport.inventoryLossExpense).toBe(
+			productReport.wasteValue! + productReport.shrinkValue!
+		);
+		expect(report.inventoryLossExpense).toBe(storeReport.inventoryLossExpense);
+		expect(storeReport.netIncome).toBe(
+			storeReport.grossMargin - storeReport.operatingCosts - storeReport.inventoryLossExpense!
+		);
+		expect(report.operatingIncome).toBe(
+			report.grossMargin - report.operatingCosts - report.inventoryLossExpense!
+		);
+		expect(report.operatingCashFlow).toBe(
+			report.revenue - report.operatingCosts - report.importSpend
+		);
+	});
+
 	test('reconciles the founding loan day-8 tick and resets finance activity for day 9', () => {
 		expect.assertions(14);
 		let beforeClosingDay = createNewGame('grocery', 277_008);
@@ -1113,7 +1170,9 @@ describe('daily simulation', () => {
 		expect(report.cashBefore).toBe(
 			beforeClosingDay.cash - beforeClosingDay.finance.currentDayActivity.financingCashFlow
 		);
-		expect(report.operatingIncome).toBe(report.grossMargin - report.operatingCosts);
+		expect(report.operatingIncome).toBe(
+			report.grossMargin - report.operatingCosts - report.inventoryLossExpense!
+		);
 		expect(report.netIncome).toBe(report.operatingCashFlow);
 		expect(report.interestAccrued).toBeGreaterThan(0);
 		expect(report.interestAccrued % 1).not.toBe(0);
@@ -1317,8 +1376,8 @@ describe('daily simulation', () => {
 			grocery: [
 				{
 					day: 8,
-					cashBefore: 40_350,
-					cashAfter: 39_186,
+					cashBefore: 40_346,
+					cashAfter: 39_182,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,
@@ -1326,8 +1385,8 @@ describe('daily simulation', () => {
 				},
 				{
 					day: 15,
-					cashBefore: 37_582,
-					cashAfter: 36_417,
+					cashBefore: 37_574,
+					cashAfter: 36_409,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,
@@ -1335,8 +1394,8 @@ describe('daily simulation', () => {
 				},
 				{
 					day: 22,
-					cashBefore: 34_817,
-					cashAfter: 33_642,
+					cashBefore: 34_805,
+					cashAfter: 33_630,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,

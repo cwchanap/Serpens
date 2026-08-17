@@ -265,6 +265,146 @@ describe('stock rules', () => {
 		expect(pools['soft-drinks']).toBeUndefined();
 	});
 
+	test('expires old lots before sales while preserving newer sellable stock', () => {
+		const base = createNewGame('grocery', 20260817);
+		const store = {
+			...base.stores[0]!,
+			products: [
+				{
+					productId: 'produce' as const,
+					lots: [
+						{ receivedDay: 1, quantity: 4 },
+						{ receivedDay: 2, quantity: 1_000 }
+					],
+					reorderThreshold: 1,
+					targetStock: 100,
+					sellingPrice: 4
+				}
+			]
+		};
+		const result = simulateProductSalesForCity({
+			game: { ...base, day: 11, stores: [store] },
+			city: base.cities[0]!,
+			rng: createRng(7),
+			storeCapacity: new Map([[store.id, 100]])
+		});
+		const product = result.stores[0]!.products[0]!;
+		const report = result.productReports.get(store.id)?.[0];
+		if (!report) throw new Error('expected produce sales report');
+
+		expect(product.lots[0]?.receivedDay).toBe(2);
+		expect(getStoreProductStock(product)).toBeGreaterThan(0);
+		expect(report).toMatchObject({ wasteUnits: 4, wasteValue: 8 });
+	});
+
+	test('applies trend to the sales pool once while leaving the baseline demand pool stable', () => {
+		const base = createNewGame('boutique', 20260818);
+		const store = {
+			...base.stores[0]!,
+			products: [
+				{
+					productId: 'apparel' as const,
+					lots: [{ receivedDay: 1, quantity: 500 }],
+					reorderThreshold: 1,
+					targetStock: 500,
+					sellingPrice: 38
+				}
+			]
+		};
+		const daySeven = { ...base, day: 7, stores: [store] };
+		const dayFourteen = { ...base, day: 14, stores: [store] };
+		const baselineSeven = buildCityDemandPools(daySeven, base.cities[0]!);
+		const baselineFourteen = buildCityDemandPools(dayFourteen, base.cities[0]!);
+		const salesSeven = simulateProductSalesForCity({
+			game: daySeven,
+			city: base.cities[0]!,
+			rng: createRng(11),
+			storeCapacity: new Map([[store.id, 500]])
+		});
+		const salesFourteen = simulateProductSalesForCity({
+			game: dayFourteen,
+			city: base.cities[0]!,
+			rng: createRng(11),
+			storeCapacity: new Map([[store.id, 500]])
+		});
+
+		expect(baselineSeven).toEqual(baselineFourteen);
+		expect(salesFourteen.initialDemand.apparel).toBeGreaterThan(
+			salesSeven.initialDemand.apparel ?? 0
+		);
+	});
+
+	test('applies markdown to revenue without changing configured price or price demand', () => {
+		const base = createNewGame('electronics', 20260819);
+		const createStore = (receivedDay: number) => ({
+			...base.stores[0]!,
+			products: [
+				{
+					productId: 'devices' as const,
+					lots: [{ receivedDay, quantity: 500 }],
+					reorderThreshold: 1,
+					targetStock: 500,
+					sellingPrice: 240
+				}
+			]
+		});
+		const freshStore = createStore(15);
+		const agedStore = createStore(1);
+		const fresh = simulateProductSalesForCity({
+			game: { ...base, day: 15, stores: [freshStore] },
+			city: base.cities[0]!,
+			rng: createRng(13),
+			storeCapacity: new Map([[freshStore.id, 500]])
+		});
+		const aged = simulateProductSalesForCity({
+			game: { ...base, day: 15, stores: [agedStore] },
+			city: base.cities[0]!,
+			rng: createRng(13),
+			storeCapacity: new Map([[agedStore.id, 500]])
+		});
+		const freshReport = fresh.productReports.get(freshStore.id)?.[0];
+		const agedReport = aged.productReports.get(agedStore.id)?.[0];
+		if (!freshReport || !agedReport) throw new Error('expected device sales reports');
+
+		expect(agedReport.baseSellingPrice).toBe(240);
+		expect(agedReport.effectiveSellingPrice).toBe(204);
+		expect(agedReport.unitsSold).toBe(freshReport.unitsSold);
+		expect(agedReport.revenue).toBeLessThan(freshReport.revenue);
+		expect(agedReport.markdownAmount).toBeGreaterThan(0);
+		expect(aged.stores[0]!.products[0]!.sellingPrice).toBe(240);
+	});
+
+	test('attributes stockout loss only to demand that stock could have served', () => {
+		const base = createNewGame('convenience', 20260820);
+		const store = {
+			...base.stores[0]!,
+			products: [
+				{
+					productId: 'bottled-water' as const,
+					lots: [],
+					reorderThreshold: 1,
+					targetStock: 100,
+					sellingPrice: 3
+				}
+			]
+		};
+		const noCapacity = simulateProductSalesForCity({
+			game: { ...base, stores: [store] },
+			city: base.cities[0]!,
+			rng: createRng(17),
+			storeCapacity: new Map([[store.id, 0]])
+		});
+		const capacity = simulateProductSalesForCity({
+			game: { ...base, stores: [store] },
+			city: base.cities[0]!,
+			rng: createRng(17),
+			storeCapacity: new Map([[store.id, 100]])
+		});
+
+		expect(noCapacity.productReports.get(store.id)?.[0]?.stockoutLostDemand).toBe(0);
+		expect(capacity.productReports.get(store.id)?.[0]?.stockoutLostDemand).toBeGreaterThan(0);
+	});
+
 	test('applies retail city demand multipliers to city demand pools', () => {
 		expect.assertions(5);
 		const game = createNewGame('electronics', 20260508);

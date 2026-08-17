@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MATERIALS, PRODUCTION_RECIPES } from './industry';
+import { getProductDefinition } from './products';
 import { buildSupplyPlan } from './supplyPlannerActions';
 import {
 	createTwoIndustryCityGame,
@@ -198,7 +199,9 @@ function route(overrides: Partial<RecurringRoute> = {}): RecurringRoute {
 	};
 }
 
-function baseGame(archetype: 'convenience' | 'grocery' = 'convenience'): GameState {
+function baseGame(
+	archetype: 'convenience' | 'grocery' | 'boutique' | 'electronics' = 'convenience'
+): GameState {
 	const game = createNewGame(archetype, 20260810);
 	return {
 		...game,
@@ -231,9 +234,10 @@ function routeModifier(overrides: Partial<ActiveEventModifier> = {}): ActiveEven
 
 function plannerGame(
 	products: StoreProduct[] = [product('bottled-water')],
-	options: Partial<GameState> = {}
+	options: Partial<GameState> = {},
+	archetype: 'convenience' | 'grocery' | 'boutique' | 'electronics' = 'convenience'
 ): GameState {
-	const game = baseGame();
+	const game = baseGame(archetype);
 	return {
 		...game,
 		stores: [{ ...game.stores[0]!, products }],
@@ -331,6 +335,33 @@ describe('supply planner snapshot', () => {
 		expect(row.effectiveDemandPerDay).toBe(
 			Math.min(row.potentialDemandPerDay, row.replenishmentCeilingPerDay)
 		);
+	});
+
+	it('keeps planner potential demand stable when only a trend phase day changes', () => {
+		const request = { retailCityId: 'harbor-city' as const, productId: 'bottled-water' as const };
+		const definition = getProductDefinition('bottled-water');
+		const originalDynamics = definition.dynamics;
+		definition.dynamics = {
+			...originalDynamics,
+			trend: { amplitude: 0.25, periodDays: 14, phaseDays: 0 }
+		};
+
+		try {
+			const daySeven = readySnapshot(
+				plannerGame([product('bottled-water')], { day: 7 }, 'convenience'),
+				request
+			);
+			const dayFourteen = readySnapshot(
+				plannerGame([product('bottled-water')], { day: 14 }, 'convenience'),
+				request
+			);
+			const daySevenDemand = daySeven.demandContributors[0]!.potentialDemandPerDay;
+			const dayFourteenDemand = dayFourteen.demandContributors[0]!.potentialDemandPerDay;
+
+			expect(daySevenDemand).toBe(dayFourteenDemand);
+		} finally {
+			definition.dynamics = originalDynamics;
+		}
 	});
 
 	it('keeps a sold zero-target category as a zero-draw contributor', () => {
