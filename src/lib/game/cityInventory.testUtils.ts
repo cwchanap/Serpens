@@ -1,4 +1,5 @@
 import { createNewGame } from './state';
+import { getStoreProductStock } from './stock';
 import { openWorldCity } from './world';
 import type { GameState, IndustrialBuilding, MaterialId, RailCell } from './types';
 
@@ -64,7 +65,7 @@ export function createOneCityInventoryFixture(): GameState {
 				products: [
 					{
 						productId: 'bottled-water',
-						stock: 0,
+						lots: [],
 						reorderThreshold: 20,
 						targetStock: 20,
 						sellingPrice: 3
@@ -103,7 +104,7 @@ export function projectOneCityParity(game: GameState) {
 			id: store.id,
 			products: store.products.map((product) => ({
 				productId: product.productId,
-				stock: product.stock
+				stock: getStoreProductStock(product)
 			}))
 		})),
 		report: latest

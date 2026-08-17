@@ -28,7 +28,7 @@ import {
 import type { SupplyPlannerActionAvailability } from '$lib/game/supplyPlannerActions';
 
 function product(productId: ProductId): StoreProduct {
-	return { productId, stock: 0, reorderThreshold: 0, targetStock: 70, sellingPrice: 3 };
+	return { productId, lots: [], reorderThreshold: 0, targetStock: 70, sellingPrice: 3 };
 }
 
 function building(

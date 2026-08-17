@@ -137,6 +137,7 @@ export function createNewGame(archetypeId: ArchetypeId, seed = Date.now()): Game
 		archetypeId,
 		location: { neighborhoodId: fallbackTile.neighborhood, x: fallbackTile.x, y: fallbackTile.y },
 		daysOpen: 1,
+		day: 1,
 		rng
 	});
 	const placedOpeningStore = {
@@ -234,6 +235,7 @@ export function openStore(game: GameState, input: OpenStoreInput): GameState {
 		archetypeId,
 		location: input.location,
 		daysOpen: 0,
+		day: game.day,
 		rng
 	});
 	const placedStore = placeStore(store, tile);
@@ -297,7 +299,7 @@ export function upgradeStore(game: GameState, storeId: string): GameState {
 		// Cap at unlockedCount: a store only catches up to its level's unlock
 		// budget — never gains more categories than its milestones allow.
 		if (newProductId && products.length < unlockedCount) {
-			products = [...products, createStoreProduct(newProductId)];
+			products = [...products, createStoreProduct(newProductId, game.day)];
 		}
 
 		staffCapacity = clampScore(
@@ -330,10 +332,11 @@ function createStore(input: {
 	archetypeId: ArchetypeId;
 	location: StoreLocation;
 	daysOpen: number;
+	day: number;
 	rng: ReturnType<typeof createRng>;
 }): Store {
 	const archetype = getArchetype(input.archetypeId);
-	const products = initializeStoreProducts(input.archetypeId);
+	const products = initializeStoreProducts(input.archetypeId, 1, input.day);
 
 	return {
 		id: input.id,

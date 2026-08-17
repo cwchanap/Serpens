@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { pauseRecurringRoute, removeRecurringRoute } from './interCityLogistics';
 import { createTwoIndustryCityGame, withRecurringRoutes } from './interCityLogistics.testUtils';
-import { calculateStockHealth } from './stock';
+import { calculateStockHealth, getStoreProductStock } from './stock';
 import { createNewGame, getDecisionOptionAvailability, resolveDecision } from './state';
 import type {
 	EventDecisionItem,
@@ -135,7 +135,10 @@ describe('atomic decision resolution', () => {
 			staffMorale: 98,
 			products: base.stores[0]!.products.map((product) => ({
 				...product,
-				stock: 100,
+				lots: [
+					{ receivedDay: 1, quantity: 50 },
+					{ receivedDay: 3, quantity: 50 }
+				],
 				targetStock: 200
 			}))
 		};
@@ -169,7 +172,11 @@ describe('atomic decision resolution', () => {
 			game.scorecard.customerSatisfaction - 4
 		);
 		expect(result.game.stores[0]?.staffMorale).toBe(100);
-		expect(result.game.stores[0]?.products[0]?.stock).toBe(84);
+		expect(getStoreProductStock(result.game.stores[0]!.products[0]!)).toBe(84);
+		expect(result.game.stores[0]!.products[0]!.lots).toEqual([
+			{ receivedDay: 1, quantity: 34 },
+			{ receivedDay: 3, quantity: 50 }
+		]);
 		expect(result.game.stores[0]?.stockHealth).toBe(
 			calculateStockHealth(result.game.stores[0]!.products)
 		);
@@ -181,6 +188,41 @@ describe('atomic decision resolution', () => {
 			optionId: 'accept',
 			target: { kind: 'company' }
 		});
+	});
+
+	it('appends a game-day lot for a positive stock adjustment', () => {
+		const base = createNewGame('grocery', 56);
+		const firstStore = {
+			...base.stores[0]!,
+			products: base.stores[0]!.products.map((product) => ({
+				...product,
+				lots: [{ receivedDay: 1, quantity: 100 }],
+				targetStock: 200
+			}))
+		};
+		const decision = eventDecision({
+			id: 'event-positive-stock',
+			options: [
+				{
+					id: 'accept',
+					effects: [
+						{ kind: 'store-stock-adjust-by-target-percent', scope: 'all-stores', percent: 8 }
+					],
+					modifiers: []
+				}
+			]
+		});
+		const game = withDecision({ ...base, stores: [firstStore] }, decision);
+		const result = resolveDecision(game, decision.id, 'accept');
+
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		const product = result.game.stores[0]!.products[0]!;
+		expect(product.lots).toEqual([
+			{ receivedDay: 1, quantity: 100 },
+			{ receivedDay: game.day, quantity: 16 }
+		]);
+		expect(getStoreProductStock(product)).toBe(116);
 	});
 
 	it('borrows at the effect position and applies later score effects', () => {

@@ -1143,8 +1143,8 @@ describe('saveCodec', () => {
 		const validated = validateSaveRecord(structuredClone(record));
 		const report = validated.game.reports[0]!;
 
-		expect(SAVE_SCHEMA_VERSION).toBe(16);
-		expect(validated.schemaVersion).toBe(16);
+		expect(SAVE_SCHEMA_VERSION).toBe(17);
+		expect(validated.schemaVersion).toBe(17);
 		expect(validated.game.cityInventories).toEqual([
 			{
 				cityId: 'industry-city',
@@ -2054,6 +2054,14 @@ describe('saveCodec', () => {
 		expect(() => validateSaveRecord(record)).toThrow('Unsupported save schema version: 15');
 	});
 
+	test('rejects schema 16 records with no migration path', () => {
+		expect.assertions(2);
+		const record = { ...createManualSaveRecord(), schemaVersion: 16 };
+
+		expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+		expect(() => validateSaveRecord(record)).toThrow('Unsupported save schema version: 16');
+	});
+
 	test.each([
 		[
 			'negative warehouse units hidden by a null no-attempt context',
@@ -2852,7 +2860,7 @@ describe('saveCodec', () => {
 			createManualSaveRecord({ game: withCurrentReports(game, [noAttemptReport]) })
 		);
 
-		expect(SAVE_SCHEMA_VERSION).toBe(16);
+		expect(SAVE_SCHEMA_VERSION).toBe(17);
 		expect(validated.game.reports[0]!.storeReports[0]!.replenishment).toBeNull();
 	});
 
@@ -2862,7 +2870,7 @@ describe('saveCodec', () => {
 
 		const validated = validateSaveRecord(structuredClone(record));
 
-		expect(SAVE_SCHEMA_VERSION).toBe(16);
+		expect(SAVE_SCHEMA_VERSION).toBe(17);
 		expect(validated).toEqual(record);
 		expect(validated).not.toBe(record);
 	});
@@ -2873,7 +2881,7 @@ describe('saveCodec', () => {
 
 		const validated = validateSaveRecord(structuredClone(record));
 
-		expect(SAVE_SCHEMA_VERSION).toBe(16);
+		expect(SAVE_SCHEMA_VERSION).toBe(17);
 		expect(validated).toEqual(record);
 		expect(validated).not.toBe(record);
 	});

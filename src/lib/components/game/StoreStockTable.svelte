@@ -3,7 +3,7 @@
 	import { getProductArt } from '$lib/assets/gameArt';
 	import { getArchetype } from '$lib/game/archetypes';
 	import { getProductDefinition } from '$lib/game/products';
-	import { getStoreProductStatus } from '$lib/game/stock';
+	import { getStoreProductStatus, getStoreProductStock } from '$lib/game/stock';
 	import { localizeStockStatus } from '$lib/i18n/gameCopy';
 	import type { I18nBundle } from '$lib/i18n';
 	import { storeDisplayName } from '$lib/i18n/gameCopy';
@@ -122,7 +122,7 @@
 								<span>{categoryName}</span>
 							</div>
 						</td>
-						<td>{i18n.format.integer(product.stock)}</td>
+						<td>{i18n.format.integer(getStoreProductStock(product))}</td>
 						<td>{i18n.format.currency(getImportCost(product.productId))}</td>
 						<td>
 							<input

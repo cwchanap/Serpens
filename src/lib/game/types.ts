@@ -636,9 +636,14 @@ export interface ProductDefinition {
 	dynamics: ProductDynamics;
 }
 
+export interface ProductStockLot {
+	receivedDay: number;
+	quantity: number;
+}
+
 export interface StoreProduct {
 	productId: ProductId;
-	stock: number;
+	lots: ProductStockLot[];
 	reorderThreshold: number;
 	targetStock: number;
 	sellingPrice: number;

@@ -348,8 +348,8 @@ describe('game copy builders', () => {
 		expect(
 			localizeStockTrouble(
 				[
-					{ stock: 0, reorderThreshold: 4 },
-					{ stock: 2, reorderThreshold: 4 }
+					{ lots: [], reorderThreshold: 4 },
+					{ lots: [{ receivedDay: 1, quantity: 2 }], reorderThreshold: 4 }
 				],
 				i18n
 			)
@@ -2094,8 +2094,8 @@ describe('game copy builders', () => {
 		expect(
 			localizeStockTrouble(
 				[
-					{ stock: 10, reorderThreshold: 4 },
-					{ stock: 20, reorderThreshold: 5 }
+					{ lots: [{ receivedDay: 1, quantity: 10 }], reorderThreshold: 4 },
+					{ lots: [{ receivedDay: 1, quantity: 20 }], reorderThreshold: 5 }
 				],
 				en
 			)
@@ -2104,8 +2104,8 @@ describe('game copy builders', () => {
 		expect(
 			localizeStockTrouble(
 				[
-					{ stock: 0, reorderThreshold: 4 },
-					{ stock: 0, reorderThreshold: 4 }
+					{ lots: [], reorderThreshold: 4 },
+					{ lots: [], reorderThreshold: 4 }
 				],
 				en
 			)
@@ -2119,8 +2119,8 @@ describe('game copy builders', () => {
 		const zh = createI18n('zh-Hant');
 
 		const products = [
-			{ stock: 0, reorderThreshold: 4 },
-			{ stock: 2, reorderThreshold: 4 }
+			{ lots: [], reorderThreshold: 4 },
+			{ lots: [{ receivedDay: 1, quantity: 2 }], reorderThreshold: 4 }
 		];
 
 		// English Intl.ListFormat conjunction joins two items with " and ".

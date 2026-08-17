@@ -319,7 +319,7 @@ function applyAuthoredOverrides(
 			return patch
 				? {
 						productId: patch.productId,
-						stock: patch.stock,
+						lots: patch.stock > 0 ? [{ receivedDay: upgradedGame.day, quantity: patch.stock }] : [],
 						reorderThreshold: patch.reorderThreshold,
 						targetStock: patch.targetStock,
 						sellingPrice: patch.sellingPrice

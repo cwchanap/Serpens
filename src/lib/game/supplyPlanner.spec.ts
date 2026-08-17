@@ -32,15 +32,16 @@ import type {
 
 function product(
 	productId: ProductId,
-	options: Partial<Omit<StoreProduct, 'productId'>> = {}
+	options: Partial<Omit<StoreProduct, 'productId'>> & { initialQuantity?: number } = {}
 ): StoreProduct {
+	const { initialQuantity = 0, ...productOptions } = options;
 	return {
 		productId,
-		stock: 0,
+		lots: initialQuantity > 0 ? [{ receivedDay: 1, quantity: initialQuantity }] : [],
 		reorderThreshold: 0,
 		targetStock: 70,
 		sellingPrice: 3,
-		...options
+		...productOptions
 	};
 }
 
@@ -334,7 +335,7 @@ describe('supply planner snapshot', () => {
 
 	it('keeps a sold zero-target category as a zero-draw contributor', () => {
 		const snapshot = readySnapshot(
-			plannerGame([product('bottled-water', { targetStock: 0, stock: 2 })])
+			plannerGame([product('bottled-water', { targetStock: 0, initialQuantity: 2 })])
 		);
 		const row = snapshot.demandContributors.find((item) => item.retailCityId === 'harbor-city')!;
 
@@ -2418,11 +2419,11 @@ describe('supply planner snapshot edge cases', () => {
 	});
 
 	it('returns empty when the retail city has no supported products', () => {
-		const game = plannerGame([product('bottled-water', { targetStock: 0, stock: 0 })], {
+		const game = plannerGame([product('bottled-water', { targetStock: 0, initialQuantity: 0 })], {
 			stores: [
 				{
 					...baseGame().stores[0]!,
-					products: [product('bottled-water', { targetStock: 0, stock: 0 })]
+					products: [product('bottled-water', { targetStock: 0, initialQuantity: 0 })]
 				}
 			]
 		});

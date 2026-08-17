@@ -306,7 +306,7 @@ function createDaySevenReplenishmentFromIndustryCity(): GameState {
 				products: [
 					{
 						productId: 'bottled-water' as const,
-						stock: 0,
+						lots: [],
 						reorderThreshold: 1,
 						targetStock: 20,
 						sellingPrice: 3
@@ -789,14 +789,14 @@ describe('save records', () => {
 					products: [
 						{
 							productId: 'apparel' as const,
-							stock: 10,
+							lots: [{ receivedDay: 1, quantity: 10 }],
 							targetStock: 20,
 							sellingPrice: 38,
 							reorderThreshold: 5
 						},
 						{
 							productId: 'apparel' as const,
-							stock: 15,
+							lots: [{ receivedDay: 1, quantity: 15 }],
 							targetStock: 25,
 							sellingPrice: 40,
 							reorderThreshold: 5
@@ -975,7 +975,7 @@ describe('save records', () => {
 				product.productId === 'apparel'
 					? {
 							...product,
-							stock: 0,
+							lots: [],
 							reorderThreshold: 5,
 							targetStock: 20
 						}
@@ -1006,7 +1006,7 @@ describe('save records', () => {
 		const record = createSaveRecordWithProducts([
 			{
 				productId: '' as ProductId,
-				stock: Number.NaN,
+				lots: [{ receivedDay: 1, quantity: Number.NaN }],
 				reorderThreshold: 1,
 				targetStock: 1,
 				sellingPrice: 1
@@ -1019,52 +1019,53 @@ describe('save records', () => {
 
 	test.each([
 		{
-			name: 'negative stock',
+			name: 'non-positive lot quantity',
 			products: [
 				{
 					productId: 'snacks' as const,
-					stock: -1,
+					lots: [{ receivedDay: 1, quantity: -1 }],
 					reorderThreshold: 1,
 					targetStock: 2,
 					sellingPrice: 5
 				},
 				{
 					productId: 'soft-drinks' as const,
-					stock: 10,
+					lots: [{ receivedDay: 1, quantity: 10 }],
 					reorderThreshold: 1,
 					targetStock: 2,
 					sellingPrice: 4
 				},
 				{
 					productId: 'essentials' as const,
-					stock: 10,
+					lots: [{ receivedDay: 1, quantity: 10 }],
 					reorderThreshold: 1,
 					targetStock: 2,
 					sellingPrice: 8
 				}
 			],
-			message: 'Saved game stores[0] products[0] stock must be at least 0'
+			message:
+				'Saved game stores[0] products[0] lots[0] quantity must be a positive safe integer that can advance safely'
 		},
 		{
 			name: 'negative reorder threshold',
 			products: [
 				{
 					productId: 'snacks' as const,
-					stock: 10,
+					lots: [{ receivedDay: 1, quantity: 10 }],
 					reorderThreshold: -1,
 					targetStock: 2,
 					sellingPrice: 5
 				},
 				{
 					productId: 'soft-drinks' as const,
-					stock: 10,
+					lots: [{ receivedDay: 1, quantity: 10 }],
 					reorderThreshold: 1,
 					targetStock: 2,
 					sellingPrice: 4
 				},
 				{
 					productId: 'essentials' as const,
-					stock: 10,
+					lots: [{ receivedDay: 1, quantity: 10 }],
 					reorderThreshold: 1,
 					targetStock: 2,
 					sellingPrice: 8
@@ -1077,21 +1078,21 @@ describe('save records', () => {
 			products: [
 				{
 					productId: 'snacks' as const,
-					stock: 10,
+					lots: [{ receivedDay: 1, quantity: 10 }],
 					reorderThreshold: 5,
 					targetStock: 4,
 					sellingPrice: 5
 				},
 				{
 					productId: 'soft-drinks' as const,
-					stock: 10,
+					lots: [{ receivedDay: 1, quantity: 10 }],
 					reorderThreshold: 1,
 					targetStock: 2,
 					sellingPrice: 4
 				},
 				{
 					productId: 'essentials' as const,
-					stock: 10,
+					lots: [{ receivedDay: 1, quantity: 10 }],
 					reorderThreshold: 1,
 					targetStock: 2,
 					sellingPrice: 8
@@ -1105,21 +1106,21 @@ describe('save records', () => {
 			products: [
 				{
 					productId: 'snacks' as const,
-					stock: 10,
+					lots: [{ receivedDay: 1, quantity: 10 }],
 					reorderThreshold: 1,
 					targetStock: 2,
 					sellingPrice: 0
 				},
 				{
 					productId: 'soft-drinks' as const,
-					stock: 10,
+					lots: [{ receivedDay: 1, quantity: 10 }],
 					reorderThreshold: 1,
 					targetStock: 2,
 					sellingPrice: 4
 				},
 				{
 					productId: 'essentials' as const,
-					stock: 10,
+					lots: [{ receivedDay: 1, quantity: 10 }],
 					reorderThreshold: 1,
 					targetStock: 2,
 					sellingPrice: 8
@@ -1134,26 +1135,60 @@ describe('save records', () => {
 	});
 
 	test.each([
+		[
+			'zero lot quantity',
+			[{ receivedDay: 1, quantity: 0 }],
+			'lots[0] quantity must be a positive safe integer that can advance safely'
+		],
+		[
+			'future lot day',
+			[{ receivedDay: 2, quantity: 1 }],
+			'lots[0] receivedDay must not be after the game day'
+		],
+		[
+			'out-of-order lot days',
+			[
+				{ receivedDay: 1, quantity: 1 },
+				{ receivedDay: 0, quantity: 1 }
+			],
+			'lots must be ordered by receivedDay'
+		]
+	] as const)('rejects saved product lots with %s', (_name, lots, message) => {
+		expect.assertions(1);
+		const product: StoreProduct = {
+			productId: 'bottled-water',
+			lots: [...lots],
+			reorderThreshold: 1,
+			targetStock: 2,
+			sellingPrice: 3
+		};
+
+		expect(() => validateSaveRecord(createSaveRecordWithProducts([product]))).toThrow(
+			`Saved game stores[0] products[0] ${message}`
+		);
+	});
+
+	test.each([
 		{
 			name: 'duplicate categories',
 			products: [
 				{
 					productId: 'snacks' as const,
-					stock: 10,
+					lots: [{ receivedDay: 1, quantity: 10 }],
 					reorderThreshold: 1,
 					targetStock: 2,
 					sellingPrice: 5
 				},
 				{
 					productId: 'snacks' as const,
-					stock: 10,
+					lots: [{ receivedDay: 1, quantity: 10 }],
 					reorderThreshold: 1,
 					targetStock: 2,
 					sellingPrice: 5
 				},
 				{
 					productId: 'essentials' as const,
-					stock: 10,
+					lots: [{ receivedDay: 1, quantity: 10 }],
 					reorderThreshold: 1,
 					targetStock: 2,
 					sellingPrice: 8
@@ -1166,21 +1201,21 @@ describe('save records', () => {
 			products: [
 				{
 					productId: 'snacks' as const,
-					stock: 10,
+					lots: [{ receivedDay: 1, quantity: 10 }],
 					reorderThreshold: 1,
 					targetStock: 2,
 					sellingPrice: 5
 				},
 				{
 					productId: 'soft-drinks' as const,
-					stock: 10,
+					lots: [{ receivedDay: 1, quantity: 10 }],
 					reorderThreshold: 1,
 					targetStock: 2,
 					sellingPrice: 4
 				},
 				{
 					productId: 'unknown' as ProductId,
-					stock: 10,
+					lots: [{ receivedDay: 1, quantity: 10 }],
 					reorderThreshold: 1,
 					targetStock: 2,
 					sellingPrice: 8

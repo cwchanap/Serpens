@@ -361,7 +361,7 @@ describe('buildScenarioGame', { timeout: 30_000 }, () => {
 		const store = result.game.stores[0]!;
 		expect(store.products[0]).toEqual({
 			productId: 'bottled-water',
-			stock: 5,
+			lots: [{ receivedDay: result.game.day, quantity: 5 }],
 			reorderThreshold: 2,
 			targetStock: 10,
 			sellingPrice: 1

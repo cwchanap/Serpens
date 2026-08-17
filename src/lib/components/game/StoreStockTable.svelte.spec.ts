@@ -145,7 +145,7 @@ describe('StoreStockTable', () => {
 				...store.products,
 				{
 					productId: 'apparel',
-					stock: 10,
+					lots: [{ receivedDay: 1, quantity: 10 }],
 					reorderThreshold: 4,
 					targetStock: 16,
 					sellingPrice: 9
@@ -279,7 +279,7 @@ describe('StoreStockTable', () => {
 				...store.products,
 				{
 					productId: 'apparel',
-					stock: 10,
+					lots: [{ receivedDay: 1, quantity: 10 }],
 					reorderThreshold: 4,
 					targetStock: 16,
 					sellingPrice: 9

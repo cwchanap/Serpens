@@ -22,7 +22,13 @@ function store(): Store {
 		reputation: 60,
 		stockHealth: 80,
 		products: [
-			{ productId: 'snacks', stock: 40, reorderThreshold: 10, targetStock: 50, sellingPrice: 5 }
+			{
+				productId: 'snacks',
+				lots: [{ receivedDay: 1, quantity: 40 }],
+				reorderThreshold: 10,
+				targetStock: 50,
+				sellingPrice: 5
+			}
 		],
 		staffMorale: 70,
 		staffCapacity: 2,

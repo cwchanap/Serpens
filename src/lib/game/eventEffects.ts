@@ -8,7 +8,7 @@ import { appendHistory } from './eventHistory';
 import { activateEventModifiers } from './eventModifiers';
 import { isEventTargetResolvable } from './eventTargets';
 import { clampScore } from './reports';
-import { calculateStockHealth } from './stock';
+import { addStoreProductStockLot, calculateStockHealth, consumeStoreProductStock } from './stock';
 import type {
 	DecisionItem,
 	EventDecisionItem,
@@ -210,13 +210,16 @@ function applyEffect(
 				game: {
 					...tentativeGame,
 					stores: tentativeGame.stores.map((store) => {
-						const products = store.products.map((product) => ({
-							...product,
-							stock: Math.max(
-								0,
-								product.stock + Math.round(product.targetStock * effect.percent * 0.01)
-							)
-						}));
+						const products = store.products.map((product) => {
+							const units = Math.abs(Math.round(product.targetStock * effect.percent * 0.01));
+							if (units === 0) return { ...product, lots: product.lots.map((lot) => ({ ...lot })) };
+							return effect.percent > 0
+								? addStoreProductStockLot(product, {
+										receivedDay: tentativeGame.day,
+										quantity: units
+									})
+								: consumeStoreProductStock(product, units);
+						});
 						return { ...store, products, stockHealth: calculateStockHealth(products) };
 					})
 				}

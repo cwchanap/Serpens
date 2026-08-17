@@ -217,7 +217,7 @@ function productionSupplierLifecycleGame(): GameState {
 		stores: base.stores.map((store) => {
 			const products = store.products.map((product) => ({
 				...product,
-				stock: 0,
+				lots: [],
 				reorderThreshold: 1,
 				targetStock: 10
 			}));
@@ -313,7 +313,7 @@ function warehousePressurePlannerGame(): GameState {
 		const products = initializeStoreProducts(store.archetypeId, 4)
 			.map((product) =>
 				product.productId === 'bottled-water'
-					? { ...product, stock: 0, reorderThreshold: 1, targetStock: 70 }
+					? { ...product, lots: [], reorderThreshold: 1, targetStock: 70 }
 					: product
 			)
 			.sort((left, right) =>
@@ -427,7 +427,7 @@ function supplyPlannerLogisticsLifecycleGame(): GameState {
 	const stores = game.stores.map((store) => {
 		const products = initializeStoreProducts(store.archetypeId, 4).map((product) =>
 			product.productId === 'pantry'
-				? { ...product, stock: 0, reorderThreshold: 1, targetStock: 10_000 }
+				? { ...product, lots: [], reorderThreshold: 1, targetStock: 10_000 }
 				: product
 		);
 		return { ...store, level: 4, products, stockHealth: calculateStockHealth(products) };
@@ -505,7 +505,7 @@ function cityLocalInventoryLifecycleGame(): GameState {
 			if (store.cityId === 'harbor-city') {
 				return {
 					...product,
-					stock: 0,
+					lots: [],
 					reorderThreshold: 1,
 					targetStock: 10
 				};
@@ -513,7 +513,7 @@ function cityLocalInventoryLifecycleGame(): GameState {
 
 			return {
 				...product,
-				stock: 50,
+				lots: [{ receivedDay: 1, quantity: 50 }],
 				reorderThreshold: 1,
 				targetStock: 50
 			};
@@ -766,7 +766,7 @@ interface SavedGame {
 		mapY: number;
 		products: Array<{
 			productId: string;
-			stock: number;
+			lots: Array<{ receivedDay: number; quantity: number }>;
 			reorderThreshold: number;
 			targetStock: number;
 		}>;
@@ -1266,6 +1266,10 @@ function getSavedProduct(game: SavedGame, categoryId: string) {
 	return product;
 }
 
+function getSavedProductStock(product: SavedGame['stores'][number]['products'][number]): number {
+	return product.lots.reduce((total, lot) => total + lot.quantity, 0);
+}
+
 function getSavedStoreInCity(game: SavedGame, cityId: string) {
 	const store = game.stores.find((candidate) => candidate.cityId === cityId);
 
@@ -1421,7 +1425,7 @@ test('production supplier bulk discount stays active through its final import an
 	if (!startingProduct) throw new Error('Supplier lifecycle game has no retail product.');
 	expect(startingProduct).toMatchObject({
 		productId: 'bottled-water',
-		stock: 0,
+		lots: [],
 		targetStock: 10
 	});
 
@@ -1448,14 +1452,14 @@ test('production supplier bulk discount stays active through its final import an
 			return {
 				cash: saved.cash,
 				profit: saved.scorecard.profit,
-				stock: getSavedProduct(saved, startingProduct.productId).stock,
+				inventory: getSavedProductStock(getSavedProduct(saved, startingProduct.productId)),
 				modifierCount: saved.events.activeModifiers.length
 			};
 		})
 		.toEqual({
 			cash: 17_500,
 			profit: 65,
-			stock: 1,
+			inventory: 1,
 			modifierCount: 1
 		});
 	const resolvedGame = await readAutoSaveGame(page);
@@ -2357,7 +2361,10 @@ test('player builds convenience production and refills from city inventory', asy
 		throw new Error('Missing latest Bottled Water report');
 	}
 
-	const stockBeforeRefill = Math.max(0, preWeeklyBottledWater.stock - bottledWaterReport.unitsSold);
+	const stockBeforeRefill = Math.max(
+		0,
+		getSavedProductStock(preWeeklyBottledWater) - bottledWaterReport.unitsSold
+	);
 	const neededUnits =
 		stockBeforeRefill < preWeeklyBottledWater.reorderThreshold
 			? Math.max(0, preWeeklyBottledWater.targetStock - stockBeforeRefill)
@@ -2842,7 +2849,7 @@ test('cross-city stock alert deep-links to the origin city and tile', async ({ p
 			throw new Error('Missing campus-junction store');
 		}
 		for (const product of campusStore.products) {
-			product.stock = 0;
+			product.lots = [];
 		}
 		campusStore.stockHealth = 0;
 		window.localStorage.setItem('serpens.saves.v2', JSON.stringify(saveStore));
@@ -3652,10 +3659,20 @@ test('city-local inventory keeps multi-city supply, replenishment, reporting, an
 		importSpend: 8
 	});
 	expect(harborStore.products).toMatchObject([
-		{ productId: 'bottled-water', stock: 10, reorderThreshold: 1, targetStock: 10 }
+		{
+			productId: 'bottled-water',
+			lots: [{ receivedDay: 8, quantity: 10 }],
+			reorderThreshold: 1,
+			targetStock: 10
+		}
 	]);
 	expect(campusStore.products).toMatchObject([
-		{ productId: 'bottled-water', stock: 50, reorderThreshold: 1, targetStock: 50 }
+		{
+			productId: 'bottled-water',
+			lots: [{ receivedDay: 1, quantity: 50 }],
+			reorderThreshold: 1,
+			targetStock: 50
+		}
 	]);
 	expect(getSavedCityInventory(postCycle, 'industry-city')).toEqual({
 		cityId: 'industry-city',
