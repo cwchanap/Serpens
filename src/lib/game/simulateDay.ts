@@ -18,6 +18,7 @@ import {
 import { processRecurringRouteDispatches, processTransferArrivals } from './interCityLogistics';
 import { buildRouteModifierRecoveries } from './logisticsRouteModifiers';
 import { simulateIndustryProduction } from './industryProduction';
+import { resolveProductMarketDynamics } from './productDynamics';
 import { clampScore } from './reports';
 import { getProductDefinition } from './products';
 import { createRngFromState, randomBetween } from './rng';
@@ -52,6 +53,8 @@ import type {
 	EventModifierLifecycle,
 	EventTimedEffect,
 	GameState,
+	ProductId,
+	ProductInventoryAgingResult,
 	RetailReplenishmentContext,
 	Scorecard,
 	StaffingRequirement,
@@ -92,7 +95,12 @@ const SERVICE = {
 	highTouch: { throughput: 0.9, satisfaction: 4, morale: 1 }
 } as const;
 
-type SummedStoreReportKey = 'revenue' | 'costOfGoods' | 'operatingCosts' | 'importSpend';
+type SummedStoreReportKey =
+	| 'revenue'
+	| 'costOfGoods'
+	| 'operatingCosts'
+	| 'importSpend'
+	| 'inventoryLossExpense';
 
 interface StoreOperationProfile {
 	store: Store;
@@ -152,10 +160,15 @@ export function simulateDay(
 
 				return {
 					stores: sales.stores,
-					productReports: mergeProductReportMaps(result.productReports, sales.productReports)
+					productReports: mergeProductReportMaps(result.productReports, sales.productReports),
+					productAging: mergeProductAgingMaps(result.productAging, sales.productAging)
 				};
 			},
-			{ stores: pricedSalesGame.stores, productReports: new Map<string, DailyProductReport[]>() }
+			{
+				stores: pricedSalesGame.stores,
+				productReports: new Map<string, DailyProductReport[]>(),
+				productAging: new Map<string, Map<ProductId, ProductInventoryAgingResult>>()
+			}
 		);
 	const stockGame = {
 		...productionGame,
@@ -180,7 +193,12 @@ export function simulateDay(
 	const storeResults = replenishmentResult.stores.map((store) =>
 		buildDailyStoreReport(
 			{ ...profileByStoreId.get(store.id)!, store },
-			getStoreProductReports(store, replenishmentResult.productReports),
+			getStoreProductReports(
+				store,
+				replenishmentResult.productReports,
+				citySales.productAging,
+				productionGame.day
+			),
 			replenishmentResult.storeReplenishmentContexts.get(store.id) ?? null
 		)
 	);
@@ -190,6 +208,7 @@ export function simulateDay(
 	const revenue = sum(storeReports, 'revenue');
 	const costOfGoods = sum(storeReports, 'costOfGoods');
 	const grossMargin = revenue - costOfGoods;
+	const inventoryLossExpense = sum(storeReports, 'inventoryLossExpense');
 	const payrollCost = isPayrollDay(productionGame.day)
 		? calculateMonthlyPayroll(productionGame.staff)
 		: 0;
@@ -226,7 +245,7 @@ export function simulateDay(
 	}
 	const operatingCosts = baseOperatingCosts + routeResult.scheduledTransportCost;
 	const operatingCashFlow = baseOperatingCashFlow - routeResult.scheduledTransportCost;
-	const operatingIncome = Math.round(grossMargin - operatingCosts);
+	const operatingIncome = Math.round(grossMargin - operatingCosts - inventoryLossExpense);
 	const scorecard = buildScorecard(game.scorecard, storeReports, operatingCashFlow);
 	const preFinanceGame = {
 		...routeResult.game,
@@ -282,6 +301,7 @@ export function simulateDay(
 		cashBefore,
 		operatingIncome,
 		operatingCashFlow,
+		inventoryLossExpense,
 		interestAccrued: serviced.interestAccruedThisDayMicros / 1_000_000,
 		interestPaid: activity.interestPaid,
 		interestCapitalized: activity.interestCapitalized,
@@ -579,6 +599,10 @@ function buildDailyStoreReport(
 	const revenue = productReports.reduce((total, report) => total + report.revenue, 0);
 	const costOfGoods = productReports.reduce((total, report) => total + report.costOfGoods, 0);
 	const importSpend = productReports.reduce((total, report) => total + report.importSpend, 0);
+	const inventoryLossExpense = productReports.reduce(
+		(total, report) => total + (report.wasteValue ?? 0) + (report.shrinkValue ?? 0),
+		0
+	);
 	const customersServed = productReports.reduce((total, report) => total + report.unitsSold, 0);
 	const demandMissed = productReports.reduce((total, report) => total + report.demandMissed, 0);
 	const stockHealth = calculateStockHealth(profile.store.products);
@@ -610,7 +634,8 @@ function buildDailyStoreReport(
 			grossMargin,
 			operatingCosts,
 			importSpend,
-			netIncome: revenue - operatingCosts - importSpend,
+			inventoryLossExpense,
+			netIncome: grossMargin - operatingCosts - inventoryLossExpense,
 			customersServed,
 			demandMissed,
 			staffingCoverage: Math.round(profile.staffingCoverage),
@@ -730,7 +755,7 @@ function collectWarnings(
 
 function sum(reports: DailyStoreReport[], key: SummedStoreReportKey): number {
 	return reports.reduce((total, report) => {
-		return total + report[key];
+		return total + (report[key] ?? 0);
 	}, 0);
 }
 
@@ -793,9 +818,24 @@ function mergeProductReportMaps(
 	return merged;
 }
 
+function mergeProductAgingMaps(
+	left: Map<string, Map<ProductId, ProductInventoryAgingResult>>,
+	right: Map<string, Map<ProductId, ProductInventoryAgingResult>>
+): Map<string, Map<ProductId, ProductInventoryAgingResult>> {
+	const merged = new Map(left);
+
+	for (const [storeId, evidence] of right.entries()) {
+		merged.set(storeId, new Map([...(merged.get(storeId) ?? new Map()), ...evidence]));
+	}
+
+	return merged;
+}
+
 function getStoreProductReports(
 	store: Store,
-	productReports: Map<string, DailyProductReport[]>
+	productReports: Map<string, DailyProductReport[]>,
+	productAging: Map<string, Map<ProductId, ProductInventoryAgingResult>>,
+	day: number
 ): DailyProductReport[] {
 	const reports = productReports.get(store.id) ?? [];
 
@@ -821,9 +861,30 @@ function getStoreProductReports(
 				warehouseValue: 0,
 				importedUnits: 0,
 				importCost: 0,
-				importSpend: 0
+				importSpend: 0,
+				wasteUnits: 0,
+				wasteValue: 0,
+				shrinkUnits: 0,
+				shrinkValue: 0,
+				stockoutLostDemand: 0,
+				averageAgeDays: null,
+				oldestSellableAgeDays: null,
+				trendMultiplier: 1,
+				obsolescenceMultiplier: 1,
+				baseSellingPrice: product.sellingPrice,
+				effectiveSellingPrice: product.sellingPrice,
+				markdownAmount: 0
 			};
 		}
+
+		const aging = productAging.get(store.id)?.get(product.productId);
+		const marketDynamics = resolveProductMarketDynamics({
+			product,
+			definition: productDefinition,
+			day,
+			storeReputation: store.reputation
+		});
+		const effectiveSellingPrice = product.sellingPrice * marketDynamics.markdownMultiplier;
 
 		return {
 			productId: product.productId,
@@ -838,7 +899,19 @@ function getStoreProductReports(
 			warehouseValue: 0,
 			importedUnits: 0,
 			importCost: productDefinition.importCost,
-			importSpend: 0
+			importSpend: 0,
+			wasteUnits: aging?.wasteUnits ?? 0,
+			wasteValue: aging?.wasteValue ?? 0,
+			shrinkUnits: aging?.shrinkUnits ?? 0,
+			shrinkValue: aging?.shrinkValue ?? 0,
+			stockoutLostDemand: 0,
+			averageAgeDays: aging?.averageAgeDays ?? null,
+			oldestSellableAgeDays: aging?.oldestSellableAgeDays ?? null,
+			trendMultiplier: marketDynamics.trendMultiplier,
+			obsolescenceMultiplier: marketDynamics.obsolescenceMultiplier,
+			baseSellingPrice: product.sellingPrice,
+			effectiveSellingPrice,
+			markdownAmount: 0
 		};
 	});
 }

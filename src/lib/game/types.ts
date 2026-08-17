@@ -796,6 +796,19 @@ export interface DailyProductReport {
 	importedUnits: number;
 	importCost: number;
 	importSpend: number;
+	/** Product-dynamics evidence is present on reports produced by daily simulation; legacy fixtures omit it until strict Task 6 decoding. */
+	wasteUnits?: number;
+	wasteValue?: number;
+	shrinkUnits?: number;
+	shrinkValue?: number;
+	stockoutLostDemand?: number;
+	averageAgeDays?: number | null;
+	oldestSellableAgeDays?: number | null;
+	trendMultiplier?: number;
+	obsolescenceMultiplier?: number;
+	baseSellingPrice?: number;
+	effectiveSellingPrice?: number;
+	markdownAmount?: number;
 }
 
 export type StoreReportWarning =
@@ -825,6 +838,8 @@ export interface DailyStoreReport {
 	reputation: number;
 	marketPosition: number;
 	productReports: DailyProductReport[];
+	/** Sum of product waste and shrink valued at import cost. */
+	inventoryLossExpense?: number;
 	warnings: StoreReportWarning[];
 	/** Explicit context when a replenishment attempt occurred, otherwise null. */
 	replenishment: RetailReplenishmentContext | null;
@@ -857,6 +872,8 @@ export interface DailyReport {
 	productionReport: DailyProductionReport;
 	logistics: DailyLogisticsReport;
 	storeReports: DailyStoreReport[];
+	/** Sum of store inventory loss expenses; excluded from operating cash flow. */
+	inventoryLossExpense?: number;
 	modifierImpacts: EventModifierImpact[];
 	modifierLifecycle: EventModifierLifecycle[];
 	warnings: DailyReportWarning[];

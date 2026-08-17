@@ -1,6 +1,11 @@
 import { getArchetype } from './archetypes';
 import { getTilePlacementBlockReason } from './city';
 import { getStoreRevenueMultiplier, getUnlockedCategoryCount } from './leveling';
+import {
+	applyProductInventoryAging,
+	resolveProductMarketDynamics,
+	resolveTrendMultiplier
+} from './productDynamics';
 import { getProductDefinition } from './products';
 import { clampScore } from './reports';
 import { randomBetween, type Rng } from './rng';
@@ -13,6 +18,7 @@ import type {
 	GameState,
 	ProductDefinition,
 	ProductId,
+	ProductInventoryAgingResult,
 	ProductStockLot,
 	RetailDemandProfile,
 	Store,
@@ -25,8 +31,11 @@ export type StoreProductStatus = 'Out of stock' | 'Needs import' | 'Healthy';
 export interface ProductSalesResult {
 	stores: Store[];
 	productReports: Map<string, DailyProductReport[]>;
+	/** Sales-effective city demand after applying each product's trend once. */
 	initialDemand: RetailDemandProfile;
 	remainingDemand: RetailDemandProfile;
+	/** Derived aging evidence carried into the daily report composition. */
+	productAging: Map<string, Map<ProductId, ProductInventoryAgingResult>>;
 }
 
 export function createStoreProduct(productId: ProductId, receivedDay = 1): StoreProduct {
@@ -244,7 +253,14 @@ export function simulateProductSalesForCity(input: {
 	rng: Rng;
 	storeCapacity: Map<string, number>;
 }): ProductSalesResult {
-	const initialDemand = buildCityDemandPools(input.game, input.city, input.game.policy);
+	const baselineDemand = buildCityDemandPools(input.game, input.city, input.game.policy);
+	const initialDemand = Object.fromEntries(
+		Object.entries(baselineDemand).map(([productId, demand]) => {
+			const definition = getProductDefinition(productId as ProductId);
+			const trendMultiplier = resolveTrendMultiplier(definition?.dynamics.trend, input.game.day);
+			return [productId, Math.max(0, Math.round((demand ?? 0) * trendMultiplier))];
+		})
+	) as RetailDemandProfile;
 	const remainingDemand = { ...initialDemand };
 	const productReports = new Map<string, DailyProductReport[]>();
 	const capacityRemaining = new Map(input.storeCapacity);
@@ -254,6 +270,28 @@ export function simulateProductSalesForCity(input: {
 	const storesById = new Map(
 		input.game.stores.map((store) => [store.id, cloneStoreForStock(store)])
 	);
+	const productAging = new Map<string, Map<ProductId, ProductInventoryAgingResult>>();
+
+	for (const storeId of cityStoreIds) {
+		const store = storesById.get(storeId)!;
+		const agingByProduct = new Map<ProductId, ProductInventoryAgingResult>();
+		const products = store.products.map((product) => {
+			const definition = getProductDefinition(product.productId);
+			if (!definition) {
+				return product;
+			}
+
+			const aging = applyProductInventoryAging({
+				product,
+				definition,
+				closingDay: input.game.day
+			});
+			agingByProduct.set(product.productId, aging);
+			return aging.product;
+		});
+		store.products = products;
+		productAging.set(storeId, agingByProduct);
+	}
 
 	for (const productId of Object.keys(initialDemand).sort() as ProductId[]) {
 		const sellers = input.game.stores
@@ -281,30 +319,38 @@ export function simulateProductSalesForCity(input: {
 			const currentStore = storesById.get(store.id)!;
 			const product = currentStore.products.find((candidate) => candidate.productId === productId)!;
 			const demandShare = scoreStoreForCategory(store, productId) / totalScore;
+			const marketDynamics = resolveProductMarketDynamics({
+				product,
+				definition: productDefinition,
+				day: input.game.day,
+				storeReputation: store.reputation
+			});
 			const priceMultiplier = priceDemandMultiplier(productDefinition, product.sellingPrice);
 			const desiredUnits = Math.max(
 				0,
 				Math.round(
 					(initialDemand[productId] ?? 0) *
 						demandShare *
+						marketDynamics.obsolescenceMultiplier *
 						priceMultiplier *
 						randomBetween(input.rng, 0.94, 1.06)
 				)
 			);
 			const capacity = Math.max(0, Math.floor(capacityRemaining.get(store.id) ?? 0));
 			const availableDemand = Math.max(0, remainingDemand[productId] ?? 0);
-			const unitsSold = Math.min(
-				desiredUnits,
-				getStoreProductStock(product),
-				capacity,
-				availableDemand
-			);
+			const sellableDemand = Math.min(desiredUnits, capacity, availableDemand);
+			const stock = getStoreProductStock(product);
+			const stockoutLostDemand = Math.max(0, sellableDemand - stock);
+			const unitsSold = Math.min(sellableDemand, stock);
 			const demandMissed = Math.max(0, desiredUnits - unitsSold);
 			const soldProduct = consumeStoreProductStock(product, unitsSold);
 			const endingStock = getStoreProductStock(soldProduct);
 			const revenueMultiplier = getStoreRevenueMultiplier(store.level);
-			const revenue = Math.round(unitsSold * product.sellingPrice * revenueMultiplier);
+			const baseRevenue = Math.round(unitsSold * product.sellingPrice * revenueMultiplier);
+			const effectiveSellingPrice = product.sellingPrice * marketDynamics.markdownMultiplier;
+			const revenue = Math.round(unitsSold * effectiveSellingPrice * revenueMultiplier);
 			const costOfGoods = Math.round(unitsSold * productDefinition.importCost);
+			const aging = productAging.get(store.id)?.get(productId);
 
 			currentStore.products = currentStore.products.map((candidate) =>
 				candidate.productId === productId ? soldProduct : candidate
@@ -316,6 +362,7 @@ export function simulateProductSalesForCity(input: {
 				name: productDefinition.name,
 				unitsSold,
 				demandMissed,
+				stockoutLostDemand,
 				revenue,
 				costOfGoods,
 				grossMargin: revenue - costOfGoods,
@@ -324,7 +371,18 @@ export function simulateProductSalesForCity(input: {
 				warehouseValue: 0,
 				importedUnits: 0,
 				importCost: productDefinition.importCost,
-				importSpend: 0
+				importSpend: 0,
+				wasteUnits: aging?.wasteUnits ?? 0,
+				wasteValue: aging?.wasteValue ?? 0,
+				shrinkUnits: aging?.shrinkUnits ?? 0,
+				shrinkValue: aging?.shrinkValue ?? 0,
+				averageAgeDays: aging?.averageAgeDays ?? null,
+				oldestSellableAgeDays: aging?.oldestSellableAgeDays ?? null,
+				trendMultiplier: marketDynamics.trendMultiplier,
+				obsolescenceMultiplier: marketDynamics.obsolescenceMultiplier,
+				baseSellingPrice: product.sellingPrice,
+				effectiveSellingPrice,
+				markdownAmount: Math.max(0, baseRevenue - revenue)
 			});
 		}
 	}
@@ -334,7 +392,7 @@ export function simulateProductSalesForCity(input: {
 		stockHealth: calculateStockHealth(store.products)
 	}));
 
-	return { stores, productReports, initialDemand, remainingDemand };
+	return { stores, productReports, initialDemand, remainingDemand, productAging };
 }
 
 function roundedFiniteOrFallback(value: number | undefined, fallback: number): number {
@@ -428,10 +486,16 @@ function scoreStoreForCategory(store: Store, productId: string): number {
 		return 0;
 	}
 
-	return Math.max(
-		1,
-		store.reputation * 0.55 + store.staffCapacity * 0.25 + (100 - store.competition) * 0.2
-	);
+	const reputation = Number.isFinite(store.reputation) ? store.reputation : 50;
+	const authoredSensitivity = getProductDefinition(productId as ProductId)?.dynamics
+		.reputationSensitivity;
+	const reputationSensitivity =
+		authoredSensitivity === undefined || !Number.isFinite(authoredSensitivity)
+			? 1
+			: Math.max(0, authoredSensitivity);
+	const reputationTerm = 50 * 0.55 + (reputation - 50) * 0.55 * reputationSensitivity;
+
+	return Math.max(1, reputationTerm + store.staffCapacity * 0.25 + (100 - store.competition) * 0.2);
 }
 
 function compareCodeUnitStrings(left: string, right: string): number {

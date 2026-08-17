@@ -190,7 +190,8 @@ export function applyWeeklyReplenishment(
 					warehouseUnits: replenishment.warehouseUnits,
 					warehouseValue: replenishment.warehouseValue,
 					importedUnits: replenishment.importedUnits,
-					importSpend: spend
+					importSpend: spend,
+					baseSellingPrice: product.sellingPrice
 				});
 
 				return addStoreProductStockLot(product, {
@@ -336,6 +337,7 @@ function mergeReplenishmentReport(
 		warehouseValue: number;
 		importedUnits: number;
 		importSpend: number;
+		baseSellingPrice?: number;
 	}
 ): void {
 	const storeReports = reports.get(storeId) ?? [];
@@ -365,6 +367,18 @@ function mergeReplenishmentReport(
 			revenue: 0,
 			costOfGoods: 0,
 			grossMargin: 0,
+			wasteUnits: 0,
+			wasteValue: 0,
+			shrinkUnits: 0,
+			shrinkValue: 0,
+			stockoutLostDemand: 0,
+			averageAgeDays: null,
+			oldestSellableAgeDays: null,
+			trendMultiplier: 1,
+			obsolescenceMultiplier: 1,
+			baseSellingPrice: refill.baseSellingPrice ?? product.defaultSellingPrice,
+			effectiveSellingPrice: refill.baseSellingPrice ?? product.defaultSellingPrice,
+			markdownAmount: 0,
 			...replenishedFields
 		}
 	]);
