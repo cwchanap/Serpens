@@ -366,7 +366,7 @@ function createLogisticsReportWithModifierEvidence(): DailyReport['logistics'] {
 	};
 	const contributor = (modifierId: string, optionId = 'accept-delay') => ({
 		modifierId,
-		source: { eventId: 'freight-disruption', instanceId: 'event-instance-1', optionId },
+		source: { ...contributorSource, optionId },
 		explanation: { key: 'events.freightDisruption.acceptDelay.capacity', params: {} }
 	});
 	return {
@@ -459,12 +459,12 @@ function createLogisticsReportWithModifierEvidence(): DailyReport['logistics'] {
 				modifierId: 'event-modifier-2',
 				source: { ...contributorSource },
 				effectKind: 'route-capacity-multiplier',
-				disruptedCapacity: 75,
-				recoveredCapacity: 100
+				disruptedCapacity: 8,
+				recoveredCapacity: 10
 			},
 			{
 				routeId: 'route-2',
-				modifierId: 'event-modifier-3',
+				modifierId: 'event-modifier-4',
 				source: { ...contributorSource, optionId: 'suspend-shipments' },
 				effectKind: 'route-dispatch-suspension',
 				disruptedSuspended: true,
@@ -472,7 +472,7 @@ function createLogisticsReportWithModifierEvidence(): DailyReport['logistics'] {
 			},
 			{
 				routeId: 'route-1',
-				modifierId: 'event-modifier-4',
+				modifierId: 'event-modifier-3',
 				source: { ...contributorSource },
 				effectKind: 'route-transport-cost-multiplier',
 				disruptedTransportCostPerUnit: 3,
@@ -818,6 +818,27 @@ function expectSaveRecordErrorCode(record: unknown, expectedCode: SaveDataError[
 	expect(caught).toBeInstanceOf(SaveDataError);
 	if (caught instanceof SaveDataError) {
 		expect(caught.code).toBe(expectedCode);
+	}
+}
+
+function expectGameStateErrorCode(
+	game: GameState,
+	expectedCode: SaveDataError['code'],
+	messageFragment?: string
+): void {
+	let caught: unknown;
+	try {
+		validateCurrentGameState(game);
+	} catch (error) {
+		caught = error;
+	}
+
+	expect(caught).toBeInstanceOf(SaveDataError);
+	if (caught instanceof SaveDataError) {
+		expect(caught.code).toBe(expectedCode);
+		if (messageFragment !== undefined) {
+			expect(caught.message).toContain(messageFragment);
+		}
 	}
 }
 
@@ -1858,6 +1879,9 @@ describe('saveCodec', () => {
 	test('rejects a saved decision whose import-cost multiplier template is not positive', () => {
 		const game = createCompleteEventGame();
 		const decision = game.decisions.find((candidate) => candidate.kind === 'event')!;
+		const eventDecision = decision as Extract<typeof decision, { kind: 'event' }>;
+		const option = eventDecision.options[0]!;
+		const modifier = option.modifiers[0]!;
 		const mutated: GameState = {
 			...game,
 			decisions: [
@@ -1865,11 +1889,10 @@ describe('saveCodec', () => {
 					...decision,
 					options: [
 						{
-							...(decision as Extract<typeof decision, { kind: 'event' }>).options[0]!,
+							...option,
 							modifiers: [
 								{
-									...(decision as Extract<typeof decision, { kind: 'event' }>).options[0]!
-										.modifiers[0]!,
+									...modifier,
 									effect: {
 										kind: 'import-cost-multiplier',
 										scope: 'retail-product',
@@ -1884,16 +1907,11 @@ describe('saveCodec', () => {
 			]
 		};
 
-		let caught: unknown;
-		try {
-			validateCurrentGameState(mutated);
-		} catch (error) {
-			caught = error;
-		}
-
-		expect(caught).toBeInstanceOf(SaveDataError);
-		expect((caught as SaveDataError).code).toBe('invariant-event-runtime');
-		expect((caught as SaveDataError).message).toContain('must be a positive finite number');
+		expectGameStateErrorCode(
+			mutated,
+			'invariant-event-runtime',
+			'must be a positive finite number'
+		);
 	});
 
 	test('normalizes authoritative inventory and supply assignments to world-catalog order', () => {
