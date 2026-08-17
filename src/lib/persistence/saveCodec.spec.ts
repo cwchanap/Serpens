@@ -7364,6 +7364,35 @@ describe('saveCodec', () => {
 			expectHistoricalReportDropped(() => decodeHistoricalReport(game, updatedReport));
 		});
 
+		test('preserves a valid fractional inventory-loss reconciliation', () => {
+			const game = createCurrentMultiCityGame();
+			const report = createCurrentReport(game);
+			const storeReport = report.storeReports[0]!;
+			const productReport = {
+				...storeReport.productReports[0]!,
+				wasteUnits: 1,
+				wasteValue: 0.1,
+				shrinkUnits: 1,
+				shrinkValue: 0.2
+			};
+			const updatedReport: DailyReport = {
+				...report,
+				inventoryLossExpense: 0.3,
+				storeReports: [
+					{
+						...storeReport,
+						productReports: [productReport],
+						inventoryLossExpense: 0.3
+					}
+				]
+			};
+
+			expect(
+				expectHistoricalReportPreserved(() => decodeHistoricalReport(game, updatedReport))
+					.reports[0]
+			).toEqual(updatedReport);
+		});
+
 		test('drops a report missing the persisted daily inventory loss total', () => {
 			const game = createCurrentMultiCityGame();
 			const report = createCurrentReport(game);
