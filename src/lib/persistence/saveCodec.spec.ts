@@ -2866,7 +2866,7 @@ describe('saveCodec', () => {
 		expect(validated.game.reports[0]!.storeReports[0]!.replenishment).toBeNull();
 	});
 
-	test('round-trips the complete event schema v16 without dropping materialized evidence', () => {
+	test('round-trips the complete event schema v17 without dropping materialized evidence', () => {
 		expect.assertions(3);
 		const record = createManualSaveRecord({ game: createCompleteEventGame() });
 
