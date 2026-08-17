@@ -405,7 +405,7 @@ describe('game copy builders', () => {
 							...store,
 							products: store.products.map((product) => ({
 								...product,
-								stock: 0,
+								lots: [],
 								reorderThreshold: 4
 							}))
 						}
