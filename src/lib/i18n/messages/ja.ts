@@ -511,7 +511,9 @@ export const ja = {
 			shrink: '縮小: {units} 単位',
 			markdown: '値下げ: {amount}',
 			obsolescence: '陳腐化: 需要 {percent}',
-			stockout: '在庫切れ損失: {units} 単位'
+			stockout: '在庫切れ損失: {units} 単位',
+			liveStockout: '現在在庫切れ',
+			liveReorder: '現在補充が必要'
 		},
 		evidence: {
 			freshness: '鮮度: {percent}%',

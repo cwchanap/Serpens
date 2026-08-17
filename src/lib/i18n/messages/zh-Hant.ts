@@ -511,7 +511,9 @@ export const zhHant = {
 			shrink: '耗損：{units} 單位',
 			markdown: '降價：{amount}',
 			obsolescence: '過時：需求 {percent}',
-			stockout: '缺貨損失：{units} 單位'
+			stockout: '缺貨損失：{units} 單位',
+			liveStockout: '目前缺貨',
+			liveReorder: '目前需要補貨'
 		},
 		evidence: {
 			freshness: '新鮮度：{percent}%',
