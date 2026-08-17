@@ -31,6 +31,7 @@ import { MAX_STAFF_LEVEL } from '$lib/game/staffLeveling';
 import { FINANCE_TRANSACTION_LIMIT, getInstallmentCount } from '$lib/game/finance';
 import { EVENT_SELECTION_SCHEMA_VERSION } from '$lib/game/eventSelection';
 import { EVENT_HISTORY_LIMIT } from '$lib/game/eventHistory';
+import { PRODUCTS } from '$lib/game/products';
 import { calculateStockHealth } from '$lib/game/stock';
 import type {
 	City,
@@ -128,6 +129,7 @@ const INDUSTRIAL_BUILDING_STATUSES = [
 const MATERIAL_MOVEMENT_SOURCES = ['local', 'import', 'warehouse', 'overflow', 'rail'] as const;
 const RAIL_SHIPMENT_KINDS = ['pull-producer', 'pull-warehouse', 'push-warehouse'] as const;
 const MATERIAL_ID_SET = new Set<string>(Object.keys(MATERIALS));
+const PRODUCT_ID_SET = new Set<string>(Object.keys(PRODUCTS));
 const INDUSTRIAL_BUILDING_TYPE_ID_SET = new Set<string>(Object.keys(INDUSTRIAL_BUILDING_TYPES));
 const INDUSTRY_RESOURCE_ID_SET = new Set<string>(
 	Object.values(INDUSTRIAL_BUILDING_TYPES).flatMap((buildingType) =>
@@ -3088,19 +3090,33 @@ function validateSavedReport(value: unknown, label: string, nextRouteSequence: n
 	}
 	requireNumber(report.netIncome, `${label} netIncome`);
 	requireNumber(report.cashAfter, `${label} cashAfter`);
+	const inventoryLossExpense = requireNonNegativeFiniteNumber(
+		report.inventoryLossExpense,
+		`${label} inventoryLossExpense`
+	);
 	validateSavedScorecard(report.scorecard, `${label} scorecard`);
 	validateSavedProductionReport(report.productionReport, `${label} productionReport`);
 	validateSavedDailyLogisticsReport(report.logistics, `${label} logistics`);
 	const seenStoreIds = new Set<string>();
+	let storeInventoryLossExpense = 0;
 	requireArray(report.storeReports, `${label} storeReports`).forEach((storeReport, index) => {
-		const storeId = validateSavedStoreReport(storeReport, `${label} storeReports[${index}]`);
+		const storeReportLabel = `${label} storeReports[${index}]`;
+		const { storeId, inventoryLossExpense: storeLoss } = validateSavedStoreReport(
+			storeReport,
+			storeReportLabel
+		);
 		if (seenStoreIds.has(storeId)) {
-			throw new SaveDataError(
-				`${label} storeReports[${index}] storeId must be unique within its daily report`
-			);
+			throw new SaveDataError(`${storeReportLabel} storeId must be unique within its daily report`);
 		}
 		seenStoreIds.add(storeId);
+		storeInventoryLossExpense += storeLoss;
 	});
+	if (inventoryLossExpense !== storeInventoryLossExpense) {
+		throw new SaveDataError(
+			`${label} inventoryLossExpense must equal the sum of store inventory loss expenses`,
+			'invariant-report-attribution'
+		);
+	}
 	withEventInvariant(() => {
 		validateSavedModifierImpacts(
 			report.modifierImpacts,
@@ -3822,7 +3838,10 @@ function validateSavedRailShipment(value: unknown, label: string): void {
 	requireString(shipment.toId, `${label} toId`);
 }
 
-function validateSavedStoreReport(value: unknown, label: string): string {
+function validateSavedStoreReport(
+	value: unknown,
+	label: string
+): { storeId: string; inventoryLossExpense: number } {
 	const report = requireRecord(value, label);
 
 	const storeId = requireString(report.storeId, `${label} storeId`);
@@ -3840,25 +3859,36 @@ function validateSavedStoreReport(value: unknown, label: string): string {
 	requireNumber(report.staffMorale, `${label} staffMorale`);
 	requireNumber(report.reputation, `${label} reputation`);
 	requireNumber(report.marketPosition, `${label} marketPosition`);
+	const inventoryLossExpense = requireNonNegativeFiniteNumber(
+		report.inventoryLossExpense,
+		`${label} inventoryLossExpense`
+	);
 	const seenCategoryIds = new Set<string>();
 	let attemptedReplenishment = false;
+	let productInventoryLossExpense = 0;
 	requireArray(report.productReports, `${label} productReports`).forEach((productReport, index) => {
-		const product = validateSavedProductReport(productReport, `${label} productReports[${index}]`);
+		const productLabel = `${label} productReports[${index}]`;
+		const product = validateSavedProductReport(productReport, productLabel);
 		if (seenCategoryIds.has(product.productId)) {
-			throw new SaveDataError(
-				`${label} productReports[${index}] productId must be unique within its store report`
-			);
+			throw new SaveDataError(`${productLabel} productId must be unique within its store report`);
 		}
 		seenCategoryIds.add(product.productId);
 		attemptedReplenishment ||= product.warehouseUnits > 0 || product.importedUnits > 0;
+		productInventoryLossExpense += product.wasteValue + product.shrinkValue;
 	});
+	if (inventoryLossExpense !== productInventoryLossExpense) {
+		throw new SaveDataError(
+			`${label} inventoryLossExpense must equal the sum of product waste and shrink values`,
+			'invariant-report-attribution'
+		);
+	}
 	validateSavedHistoricalReplenishment(
 		report.replenishment,
 		attemptedReplenishment,
 		`${label} replenishment`
 	);
 	validateSavedWarningArray(report.warnings, `${label} warnings`, true);
-	return storeId;
+	return { storeId, inventoryLossExpense };
 }
 
 function validateSavedStoreProducts(
@@ -3979,10 +4009,21 @@ function validateSavedProductLots(
 function validateSavedProductReport(
 	value: unknown,
 	label: string
-): { productId: ProductId; warehouseUnits: number; importedUnits: number } {
+): {
+	productId: ProductId;
+	warehouseUnits: number;
+	importedUnits: number;
+	wasteValue: number;
+	shrinkValue: number;
+} {
 	const report = requireRecord(value, label);
 
-	const productId = requireString(report.productId, `${label} productId`) as ProductId;
+	const productId = requireKnownId(
+		report.productId,
+		`${label} productId`,
+		PRODUCT_ID_SET,
+		'product'
+	) as ProductId;
 	requireString(report.name, `${label} name`);
 	requireNumber(report.unitsSold, `${label} unitsSold`);
 	requireNumber(report.demandMissed, `${label} demandMissed`);
@@ -4007,7 +4048,37 @@ function validateSavedProductReport(
 	if (importSpend < 0) {
 		throw new SaveDataError(`${label} importSpend must be non-negative`);
 	}
-	return { productId, warehouseUnits, importedUnits };
+
+	if (Object.hasOwn(report, 'freshnessPercent')) {
+		throw new SaveDataError(`${label} freshnessPercent must not be persisted`);
+	}
+	requireNonNegativeInteger(report.wasteUnits, `${label} wasteUnits`);
+	const wasteValue = requireNonNegativeFiniteNumber(report.wasteValue, `${label} wasteValue`);
+	requireNonNegativeInteger(report.shrinkUnits, `${label} shrinkUnits`);
+	const shrinkValue = requireNonNegativeFiniteNumber(report.shrinkValue, `${label} shrinkValue`);
+	requireNonNegativeFiniteNumber(report.stockoutLostDemand, `${label} stockoutLostDemand`);
+	const averageAgeDays = requireNullableNonNegativeFiniteNumber(
+		report.averageAgeDays,
+		`${label} averageAgeDays`
+	);
+	const oldestSellableAgeDays = requireNullableNonNegativeFiniteNumber(
+		report.oldestSellableAgeDays,
+		`${label} oldestSellableAgeDays`
+	);
+	if (
+		averageAgeDays !== null &&
+		oldestSellableAgeDays !== null &&
+		averageAgeDays > oldestSellableAgeDays
+	) {
+		throw new SaveDataError(`${label} averageAgeDays must not exceed oldestSellableAgeDays`);
+	}
+	requireNonNegativeFiniteNumber(report.trendMultiplier, `${label} trendMultiplier`);
+	requireNonNegativeFiniteNumber(report.obsolescenceMultiplier, `${label} obsolescenceMultiplier`);
+	requireNonNegativeFiniteNumber(report.baseSellingPrice, `${label} baseSellingPrice`);
+	requireNonNegativeFiniteNumber(report.effectiveSellingPrice, `${label} effectiveSellingPrice`);
+	requireNonNegativeFiniteNumber(report.markdownAmount, `${label} markdownAmount`);
+
+	return { productId, warehouseUnits, importedUnits, wasteValue, shrinkValue };
 }
 
 function validateSavedHistoricalReplenishment(
@@ -4416,6 +4487,11 @@ function requireNonNegativeFiniteNumber(value: unknown, label: string): number {
 	}
 
 	return number;
+}
+
+function requireNullableNonNegativeFiniteNumber(value: unknown, label: string): number | null {
+	if (value === null) return null;
+	return requireNonNegativeFiniteNumber(value, label);
 }
 
 function validateStoreLocation(value: unknown, label: string): void {

@@ -27,6 +27,7 @@ import {
 } from '$lib/game/world';
 import type {
 	DailyMaterialMovement,
+	DailyProductReport,
 	DailyProductionReport,
 	DailyReport,
 	DailyReportWarning,
@@ -272,6 +273,7 @@ function createDailyReport(overrides: Partial<DailyReport> = {}): DailyReport {
 		cashBefore: 0,
 		operatingIncome: 0,
 		operatingCashFlow: 400,
+		inventoryLossExpense: 0,
 		interestAccrued: 0,
 		interestPaid: 0,
 		interestCapitalized: 0,
@@ -525,9 +527,41 @@ function createDailyStoreReport(overrides: Partial<DailyStoreReport> = {}): Dail
 		reputation: 60,
 		marketPosition: 50,
 		productReports: [],
+		inventoryLossExpense: 0,
 		warnings: [],
 		...overrides,
 		replenishment: overrides.replenishment ?? null
+	};
+}
+
+function createDailyProductReport(overrides: Partial<DailyProductReport> = {}): DailyProductReport {
+	return {
+		productId: 'snacks',
+		name: 'Snacks',
+		unitsSold: 1,
+		demandMissed: 0,
+		revenue: 10,
+		costOfGoods: 6,
+		grossMargin: 4,
+		endingStock: 5,
+		warehouseUnits: 2,
+		warehouseValue: 4,
+		importedUnits: 0,
+		importCost: 3,
+		importSpend: 0,
+		wasteUnits: 0,
+		wasteValue: 0,
+		shrinkUnits: 0,
+		shrinkValue: 0,
+		stockoutLostDemand: 0,
+		averageAgeDays: null,
+		oldestSellableAgeDays: null,
+		trendMultiplier: 1,
+		obsolescenceMultiplier: 1,
+		baseSellingPrice: 10,
+		effectiveSellingPrice: 10,
+		markdownAmount: 0,
+		...overrides
 	};
 }
 
@@ -700,23 +734,7 @@ function createCurrentReport(game: GameState): DailyReport {
 					configuredSupplyCityId: 'industry-city',
 					resolvedSupplyCityId: 'industry-city'
 				},
-				productReports: [
-					{
-						productId,
-						name: 'Starter product',
-						unitsSold: 1,
-						demandMissed: 0,
-						revenue: 10,
-						costOfGoods: 6,
-						grossMargin: 4,
-						endingStock: 5,
-						warehouseUnits: 2,
-						warehouseValue: 4,
-						importedUnits: 0,
-						importCost: 3,
-						importSpend: 0
-					}
-				]
+				productReports: [createDailyProductReport({ productId, name: 'Starter product' })]
 			})
 		]
 	});
@@ -810,23 +828,7 @@ function createCurrentBreadbasketOnlyReport(game: GameState): DailyReport {
 					configuredSupplyCityId: 'breadbasket-basin',
 					resolvedSupplyCityId: 'breadbasket-basin'
 				},
-				productReports: [
-					{
-						productId,
-						name: 'Starter product',
-						unitsSold: 1,
-						demandMissed: 0,
-						revenue: 10,
-						costOfGoods: 6,
-						grossMargin: 4,
-						endingStock: 5,
-						warehouseUnits: 2,
-						warehouseValue: 4,
-						importedUnits: 0,
-						importCost: 3,
-						importSpend: 0
-					}
-				]
+				productReports: [createDailyProductReport({ productId, name: 'Starter product' })]
 			})
 		]
 	});
@@ -7225,6 +7227,155 @@ describe('saveCodec', () => {
 		});
 	});
 
+	describe('schema-17 product dynamics report validation', () => {
+		test.each([
+			[
+				'an unknown product ID',
+				(product: Record<string, unknown>) => ({ ...product, productId: 'unknown-product' })
+			],
+			[
+				'a negative waste value',
+				(product: Record<string, unknown>) => ({ ...product, wasteValue: -1 })
+			],
+			[
+				'a negative shrink unit count',
+				(product: Record<string, unknown>) => ({ ...product, shrinkUnits: -1 })
+			],
+			[
+				'a negative average age',
+				(product: Record<string, unknown>) => ({ ...product, averageAgeDays: -1 })
+			],
+			[
+				'a negative oldest sellable age',
+				(product: Record<string, unknown>) => ({ ...product, oldestSellableAgeDays: -1 })
+			],
+			[
+				'a non-finite trend multiplier',
+				(product: Record<string, unknown>) => ({
+					...product,
+					trendMultiplier: Number.POSITIVE_INFINITY
+				})
+			],
+			[
+				'a non-finite obsolescence multiplier',
+				(product: Record<string, unknown>) => ({
+					...product,
+					obsolescenceMultiplier: Number.NaN
+				})
+			],
+			[
+				'a non-finite base selling price',
+				(product: Record<string, unknown>) => ({
+					...product,
+					baseSellingPrice: Number.NaN
+				})
+			],
+			[
+				'a non-finite effective selling price',
+				(product: Record<string, unknown>) => ({
+					...product,
+					effectiveSellingPrice: Number.POSITIVE_INFINITY
+				})
+			],
+			[
+				'a negative markdown amount',
+				(product: Record<string, unknown>) => ({ ...product, markdownAmount: -1 })
+			]
+		] as const)('drops a report with %s', (_name, mutateProduct) => {
+			const game = createCurrentMultiCityGame();
+			const report = createCurrentReport(game);
+			const storeReport = report.storeReports[0]!;
+			const productReport = mutateProduct(
+				storeReport.productReports[0]! as unknown as Record<string, unknown>
+			);
+			const updatedReport: DailyReport = {
+				...report,
+				storeReports: [
+					{
+						...storeReport,
+						productReports: [productReport as unknown as DailyProductReport]
+					}
+				]
+			};
+
+			expectHistoricalReportDropped(() => decodeHistoricalReport(game, updatedReport));
+		});
+
+		test('drops a report with persisted freshness instead of accepting a derived field', () => {
+			const game = createCurrentMultiCityGame();
+			const report = createCurrentReport(game);
+			const storeReport = report.storeReports[0]!;
+			const productReport = {
+				...storeReport.productReports[0]!,
+				freshnessPercent: 65
+			} as unknown as DailyProductReport;
+			const updatedReport: DailyReport = {
+				...report,
+				storeReports: [{ ...storeReport, productReports: [productReport] }]
+			};
+
+			expectHistoricalReportDropped(() => decodeHistoricalReport(game, updatedReport));
+		});
+
+		test('drops a report when store inventory loss does not equal product loss', () => {
+			const game = createCurrentMultiCityGame();
+			const report = createCurrentReport(game);
+			const storeReport = report.storeReports[0]!;
+			const productReport = {
+				...storeReport.productReports[0]!,
+				wasteUnits: 1,
+				wasteValue: 2
+			};
+			const updatedReport: DailyReport = {
+				...report,
+				storeReports: [
+					{
+						...storeReport,
+						productReports: [productReport],
+						inventoryLossExpense: 0
+					}
+				]
+			};
+
+			expectHistoricalReportDropped(() => decodeHistoricalReport(game, updatedReport));
+		});
+
+		test('drops a report when daily inventory loss does not equal store loss', () => {
+			const game = createCurrentMultiCityGame();
+			const report = createCurrentReport(game);
+			const storeReport = report.storeReports[0]!;
+			const productReport = {
+				...storeReport.productReports[0]!,
+				wasteUnits: 1,
+				wasteValue: 2
+			};
+			const updatedReport: DailyReport = {
+				...report,
+				inventoryLossExpense: 0,
+				storeReports: [
+					{
+						...storeReport,
+						productReports: [productReport],
+						inventoryLossExpense: 2
+					}
+				]
+			};
+
+			expectHistoricalReportDropped(() => decodeHistoricalReport(game, updatedReport));
+		});
+
+		test('drops a report missing the persisted daily inventory loss total', () => {
+			const game = createCurrentMultiCityGame();
+			const report = createCurrentReport(game);
+			const { inventoryLossExpense: _inventoryLossExpense, ...withoutLoss } = report;
+			void _inventoryLossExpense;
+
+			expectHistoricalReportDropped(() =>
+				decodeHistoricalReport(game, withoutLoss as unknown as DailyReport)
+			);
+		});
+	});
+
 	describe('historical report decoding defensive paths', () => {
 		test('preserves a production movement cityId referencing a known but closed industry city', () => {
 			const game = createCurrentMultiCityGame();
@@ -7466,7 +7617,7 @@ describe('saveCodec', () => {
 			).toEqual(updatedReport);
 		});
 
-		test('preserves a raw-material productId with nonzero warehouse units', () => {
+		test('drops a raw-material productId with nonzero warehouse units', () => {
 			const game = createCurrentMultiCityGame();
 			const report = createCurrentReport(game);
 			const storeReport = report.storeReports[0]!;
@@ -7489,10 +7640,7 @@ describe('saveCodec', () => {
 				]
 			};
 
-			expect(
-				expectHistoricalReportPreserved(() => decodeHistoricalReport(game, updatedReport))
-					.reports[0]
-			).toEqual(updatedReport);
+			expectHistoricalReportDropped(() => decodeHistoricalReport(game, updatedReport));
 		});
 
 		test('preserves a store report referencing an unknown current storeId', () => {
