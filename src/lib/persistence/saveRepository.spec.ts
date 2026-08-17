@@ -411,6 +411,7 @@ function createDailyStoreReport(overrides: Partial<DailyStoreReport> = {}): Dail
 		reputation: 60,
 		marketPosition: 50,
 		productReports: [],
+		inventoryLossExpense: 0,
 		warnings: [],
 		replenishment: null,
 		...overrides
@@ -432,6 +433,18 @@ function createDailyProductReport(overrides: Partial<DailyProductReport> = {}): 
 		importedUnits: 0,
 		importCost: 3,
 		importSpend: 0,
+		wasteUnits: 0,
+		wasteValue: 0,
+		shrinkUnits: 0,
+		shrinkValue: 0,
+		stockoutLostDemand: 0,
+		averageAgeDays: null,
+		oldestSellableAgeDays: null,
+		trendMultiplier: 1,
+		obsolescenceMultiplier: 1,
+		baseSellingPrice: 5,
+		effectiveSellingPrice: 5,
+		markdownAmount: 0,
 		...overrides
 	};
 }
@@ -478,6 +491,7 @@ function createDailyReport(overrides: Partial<DailyReport> = {}): DailyReport {
 		cashBefore: 0,
 		operatingIncome: 0,
 		operatingCashFlow: 400,
+		inventoryLossExpense: 0,
 		interestAccrued: 0,
 		interestPaid: 0,
 		interestCapitalized: 0,
