@@ -109,6 +109,24 @@ describe('CategoryStampIndex', () => {
 		expect(stamp?.textContent).toContain('Tier 1');
 	});
 
+	it('resolves soft-drinks stamp art through its drinks material', async () => {
+		expect.assertions(1);
+		const onSelectCategory = vi.fn();
+
+		render(CategoryStampIndex, {
+			i18n: createI18n('en'),
+			summaries: [summary({ productId: 'soft-drinks', name: 'Soft Drinks', tier: 1 })],
+			activeCategoryId: null,
+			mode: 'store-categories',
+			onSelectCategory
+		});
+
+		const stamp = document.querySelector('[data-testid="category-stamp-soft-drinks"]');
+		expect(stamp?.querySelector('img')?.getAttribute('src')).toBe(
+			'/assets/game/industry/materials/drinks.png'
+		);
+	});
+
 	it('formats metric quantities with the active locale formatter', async () => {
 		expect.assertions(2);
 		const onSelectCategory = vi.fn();

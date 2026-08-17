@@ -1,8 +1,9 @@
 <script lang="ts">
 	import { INDUSTRY_MATERIAL_ART } from '$lib/assets/gameArt';
+	import { getProductDefinition } from '$lib/game/products';
 	import type { LocalizedProductChainCategorySummary } from '$lib/i18n/localizedTypes';
 	import type { I18nBundle } from '$lib/i18n';
-	import type { MaterialId } from '$lib/game/types';
+	import type { ProductId } from '$lib/game/types';
 
 	interface Props {
 		i18n: I18nBundle;
@@ -14,8 +15,9 @@
 
 	let { i18n, summaries, activeCategoryId, mode, onSelectCategory }: Props = $props();
 
-	function iconFor(categoryId: string): string | null {
-		return INDUSTRY_MATERIAL_ART[categoryId as MaterialId] ?? null;
+	function iconFor(productId: ProductId): string | null {
+		const materialId = getProductDefinition(productId).productionMaterialId;
+		return materialId ? (INDUSTRY_MATERIAL_ART[materialId] ?? null) : null;
 	}
 </script>
 
