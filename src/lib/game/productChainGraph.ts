@@ -2,6 +2,7 @@ import { getArchetype } from './archetypes';
 import { getCityInventory, getCityInventoryStats, getCityInventoryUsed } from './cityInventory';
 import { INDUSTRIAL_BUILDING_TYPES, MATERIALS, PRODUCTION_RECIPES } from './industry';
 import { getBuildingThroughputMultiplier } from './leveling';
+import { getProductDefinition } from './products';
 import type {
 	BuildingTier,
 	CityInventory,
@@ -13,7 +14,8 @@ import type {
 	IndustrialBuildingType,
 	MaterialId,
 	MaterialKind,
-	ProductCategory,
+	ProductDefinition,
+	ProductId,
 	ProductionRecipe,
 	ProductionRecipeId,
 	Store,
@@ -121,7 +123,7 @@ export interface ProductChainGraph {
 }
 
 export interface ProductChainCategorySummary {
-	categoryId: string;
+	productId: ProductId;
 	name: string;
 	tier: BuildingTier | null;
 	health: ProductChainHealth;
@@ -143,12 +145,15 @@ export interface ChainInputWeight {
 export const MATERIAL_PRODUCER_RECIPES = createMaterialProducerRecipeMap();
 export const SUPPORTED_FINISHED_MATERIALS = createSupportedFinishedMaterials();
 
-export function getSupportedStoreChainCategories(store: Store): ProductCategory[] {
+export function getSupportedStoreChainCategories(store: Store): ProductDefinition[] {
 	const supported = new Set<string>(SUPPORTED_FINISHED_MATERIALS);
 
-	return getArchetype(store.archetypeId).startingCategories.filter((category) =>
-		supported.has(category.id)
-	);
+	return getArchetype(store.archetypeId)
+		.startingProductIds.map((productId) => getProductDefinition(productId))
+		.filter(
+			(product) =>
+				product.productionMaterialId !== null && supported.has(product.productionMaterialId)
+		);
 }
 
 export function buildWarehouseFlowGraph(game: GameState): ProductChainGraph {
@@ -461,8 +466,11 @@ function inferRecipeCycles(
 	return cycles;
 }
 
-export function isSupportedFinishedMaterial(categoryId: string): categoryId is MaterialId {
-	return (SUPPORTED_FINISHED_MATERIALS as readonly string[]).includes(categoryId);
+export function isSupportedFinishedMaterial(productId: ProductId): boolean {
+	const materialId = getProductDefinition(productId).productionMaterialId;
+	return (
+		materialId !== null && (SUPPORTED_FINISHED_MATERIALS as readonly string[]).includes(materialId)
+	);
 }
 
 export function latestProductionReport(game: GameState): DailyProductionReport | null {
@@ -472,7 +480,7 @@ export function latestProductionReport(game: GameState): DailyProductionReport |
 export function latestStoreProductReport(
 	game: GameState,
 	store: Store | null,
-	categoryId: string,
+	productId: ProductId,
 	allowedStoreIds?: ReadonlySet<string>
 ): DailyProductReport | null {
 	const storeReports = (game.reports.at(-1)?.storeReports ?? []).filter(
@@ -481,9 +489,9 @@ export function latestStoreProductReport(
 
 	if (!store) {
 		return aggregateProductReports(
-			categoryId,
+			productId,
 			storeReports.flatMap((report) =>
-				report.productReports.filter((productReport) => productReport.categoryId === categoryId)
+				report.productReports.filter((productReport) => productReport.productId === productId)
 			)
 		);
 	}
@@ -494,12 +502,12 @@ export function latestStoreProductReport(
 	return (
 		storeReports
 			.find((report) => report.storeId === store.id)
-			?.productReports.find((report) => report.categoryId === categoryId) ?? null
+			?.productReports.find((report) => report.productId === productId) ?? null
 	);
 }
 
 export function aggregateProductReports(
-	categoryId: string,
+	productId: ProductId,
 	productReports: DailyProductReport[]
 ): DailyProductReport | null {
 	if (productReports.length === 0) {
@@ -509,7 +517,7 @@ export function aggregateProductReports(
 	const firstReport = productReports[0]!;
 
 	return {
-		categoryId,
+		productId,
 		name: firstReport.name,
 		unitsSold: sumProductReports(productReports, (report) => report.unitsSold),
 		demandMissed: sumProductReports(productReports, (report) => report.demandMissed),
@@ -545,7 +553,7 @@ function sumProductReports(
 
 export function latestCategoryUnitsSold(
 	game: GameState,
-	categoryId: string,
+	productId: ProductId,
 	allowedStoreIds?: ReadonlySet<string>
 ): number {
 	return (
@@ -553,7 +561,7 @@ export function latestCategoryUnitsSold(
 			.at(-1)
 			?.storeReports.filter((report) => !allowedStoreIds || allowedStoreIds.has(report.storeId))
 			.flatMap((report) => report.productReports)
-			.filter((report) => report.categoryId === categoryId)
+			.filter((report) => report.productId === productId)
 			.reduce((total, report) => total + report.unitsSold, 0) ?? 0
 	);
 }

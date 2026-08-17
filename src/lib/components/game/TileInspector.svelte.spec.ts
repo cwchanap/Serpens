@@ -67,7 +67,7 @@ const latestStoreReport: DailyStoreReport = {
 	marketPosition: 40,
 	productReports: [
 		{
-			categoryId: 'bottled-water',
+			productId: 'bottled-water',
 			name: 'Bottled Water',
 			unitsSold: 12,
 			demandMissed: 2,
@@ -159,7 +159,7 @@ describe('TileInspector basic card', () => {
 			...store,
 			id: 'store-basic',
 			products: [
-				{ categoryId: 'snacks', stock: 0, reorderThreshold: 10, targetStock: 50, sellingPrice: 5 }
+				{ productId: 'snacks', stock: 0, reorderThreshold: 10, targetStock: 50, sellingPrice: 5 }
 			]
 		};
 

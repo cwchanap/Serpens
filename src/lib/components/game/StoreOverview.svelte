@@ -85,9 +85,9 @@
 							storeName: storeDisplayName(store, storeIndex + 1, i18n)
 						})}
 					>
-						{#each productSourceReports as product (product.categoryId)}
+						{#each productSourceReports as product (product.productId)}
 							<li>
-								<span>{i18n.labels.productCategory(product.categoryId)}</span>
+								<span>{i18n.labels.productCategory(product.productId)}</span>
 								<small>
 									{i18n.t('storeOverview.warehouseUnits', {
 										count: i18n.format.integer(product.warehouseUnits)

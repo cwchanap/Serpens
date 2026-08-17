@@ -16,7 +16,8 @@ import {
 	getBuildingAttachCellKeys
 } from './rail';
 import { REPLENISHMENT_INTERVAL_DAYS } from './retailSupply';
-import { buildCityDemandPools, getFinishedMaterialIdForCategory } from './stock';
+import { buildCityDemandPools } from './stock';
+import { getProductDefinition } from './products';
 import { compareRecurringRoutes } from './interCityLogistics';
 import { getWorldCityDefinition, WORLD_CITY_CATALOG } from './worldCatalog';
 import {
@@ -35,6 +36,7 @@ import type {
 	IndustrialBuildingTypeId,
 	MaterialId,
 	MaterialKind,
+	ProductId,
 	ProductionRecipeId,
 	RecurringRoute,
 	TransferOrder,
@@ -45,7 +47,7 @@ export type SupplyPlannerHorizonDays = 7 | 30;
 
 export interface SupplyPlannerRequest {
 	retailCityId: WorldCityId;
-	categoryId: string;
+	productId: ProductId;
 }
 
 export interface SupplyDemandContributor {
@@ -399,18 +401,18 @@ export type SupplyPlannerSnapshotResult =
 	| { status: 'unsupported'; reason: 'unsupported-category' | 'missing-producer-recipe' }
 	| { status: 'invalid'; reason: 'invalid-request' };
 
-export function listSupplyPlannerCategories(game: GameState, retailCityId: string): string[] {
+export function listSupplyPlannerCategories(game: GameState, retailCityId: string): ProductId[] {
 	const city = findAvailableRetailCity(game, retailCityId);
 	if (!city) return [];
 
-	const ids = new Set<string>();
+	const ids = new Set<ProductId>();
 	const stores = game.stores
 		.filter((store) => store.cityId === city.id)
 		.sort((left, right) => compareCodeUnitStrings(left.id, right.id));
 	for (const store of stores) {
-		for (const category of getSupportedStoreChainCategories(store)) {
-			if (store.products.some((product) => product.categoryId === category.id)) {
-				ids.add(category.id);
+		for (const product of getSupportedStoreChainCategories(store)) {
+			if (store.products.some((candidate) => candidate.productId === product.id)) {
+				ids.add(product.id);
 			}
 		}
 	}
@@ -431,16 +433,16 @@ export function buildSupplyPlannerSnapshot(
 		return { status: 'unavailable', reason: 'retail-city-unavailable' };
 	}
 
-	const categories = listSupplyPlannerCategories(game, request.retailCityId);
-	if (categories.length === 0) {
+	const products = listSupplyPlannerCategories(game, request.retailCityId);
+	if (products.length === 0) {
 		return { status: 'empty', reason: 'no-supported-products' };
 	}
-	if (!categories.includes(request.categoryId)) {
+	if (!products.includes(request.productId)) {
 		return { status: 'unsupported', reason: 'unsupported-category' };
 	}
 
-	const finishedMaterialId = getFinishedMaterialIdForCategory(request.categoryId);
-	if (!finishedMaterialId) {
+	const finishedMaterialId = getProductDefinition(request.productId).productionMaterialId;
+	if (!finishedMaterialId || MATERIALS[finishedMaterialId].kind !== 'finished') {
 		return { status: 'unsupported', reason: 'unsupported-category' };
 	}
 	if (!MATERIAL_PRODUCER_RECIPES.has(finishedMaterialId)) {
@@ -466,7 +468,7 @@ export function buildSupplyPlannerSnapshot(
 
 	const claimantCities = getClaimantCities(game, industry.cityId);
 	const demandContributors = claimantCities
-		.map((city) => buildDemandContributor(game, city, request.categoryId))
+		.map((city) => buildDemandContributor(game, city, request.productId))
 		.filter((contributor): contributor is SupplyDemandContributor => contributor !== null);
 	const selectedContributor = demandContributors.find(
 		(contributor) => contributor.retailCityId === retailCity.id
@@ -3011,30 +3013,29 @@ function buildingsForMaterial(
 function buildDemandContributor(
 	game: GameState,
 	city: City,
-	categoryId: string
+	productId: ProductId
 ): SupplyDemandContributor | null {
 	const stores = game.stores
 		.filter(
 			(store) =>
 				store.cityId === city.id &&
-				store.products.some((product) => product.categoryId === categoryId)
+				store.products.some((product) => product.productId === productId)
 		)
 		.sort((left, right) => compareCodeUnitStrings(left.id, right.id));
 	if (stores.length === 0) return null;
 
-	const potentialDemandPerDay = buildCityDemandPools(game, city)[categoryId] ?? 0;
+	const potentialDemandPerDay = buildCityDemandPools(game, city)[productId] ?? 0;
 	let targetUnits = 0;
 	let weightedImportCost = 0;
 	const fallbackImportCosts: number[] = [];
 
 	for (const store of stores) {
-		const product = store.products.find((item) => item.categoryId === categoryId);
+		const product = store.products.find((item) => item.productId === productId);
 		if (!product) continue;
-		const category = getSupportedStoreChainCategories(store).find((item) => item.id === categoryId);
-		if (!category) continue;
+		const productDefinition = getProductDefinition(productId);
 		targetUnits += product.targetStock;
-		weightedImportCost += product.targetStock * category.importCost;
-		fallbackImportCosts.push(category.importCost);
+		weightedImportCost += product.targetStock * productDefinition.importCost;
+		fallbackImportCosts.push(productDefinition.importCost);
 	}
 	if (fallbackImportCosts.length === 0) return null;
 
@@ -3092,8 +3093,8 @@ function isValidRequest(request: SupplyPlannerRequest): boolean {
 		request !== null &&
 		typeof request.retailCityId === 'string' &&
 		request.retailCityId.length > 0 &&
-		typeof request.categoryId === 'string' &&
-		request.categoryId.length > 0
+		typeof request.productId === 'string' &&
+		request.productId.length > 0
 	);
 }
 

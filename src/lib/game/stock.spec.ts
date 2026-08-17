@@ -4,7 +4,6 @@ import { createNewGame } from './state';
 import {
 	buildCityDemandPools,
 	calculateStockHealth,
-	getFinishedMaterialIdForCategory,
 	getStoreProductStatus,
 	initializeStoreProducts,
 	simulateProductSalesForCity,
@@ -29,11 +28,11 @@ function withOneStoreProducts(products: StoreProduct[]): GameState {
 
 function createEqualSellerGame(storeIds: string[]): GameState {
 	const game = createNewGame('convenience', 20260508);
-	const baseStore = {
+	const baseStore: GameState['stores'][number] = {
 		...game.stores[0]!,
 		products: [
 			{
-				categoryId: 'bottled-water',
+				productId: 'bottled-water',
 				stock: 100,
 				reorderThreshold: 10,
 				targetStock: 100,
@@ -62,40 +61,34 @@ describe('stock rules', () => {
 		expect.assertions(2);
 		const products = initializeStoreProducts('convenience');
 
-		expect(products.map((product) => product.categoryId)).toEqual(['bottled-water']);
+		expect(products.map((product) => product.productId)).toEqual(['bottled-water']);
 		expect(products[0]!.sellingPrice).toBe(3);
 	});
 
 	test('initializes unlocked categories for a given level', () => {
 		expect.assertions(3);
-		expect(initializeStoreProducts('convenience', 4).map((p) => p.categoryId)).toEqual([
+		expect(initializeStoreProducts('convenience', 4).map((p) => p.productId)).toEqual([
 			'bottled-water',
 			'snacks'
 		]);
-		expect(initializeStoreProducts('convenience', 7).map((p) => p.categoryId)).toEqual([
+		expect(initializeStoreProducts('convenience', 7).map((p) => p.productId)).toEqual([
 			'bottled-water',
 			'snacks',
-			'drinks'
+			'soft-drinks'
 		]);
-		expect(initializeStoreProducts('convenience', 10).map((p) => p.categoryId)).toEqual([
+		expect(initializeStoreProducts('convenience', 10).map((p) => p.productId)).toEqual([
 			'bottled-water',
 			'snacks',
-			'drinks',
+			'soft-drinks',
 			'essentials'
 		]);
-	});
-
-	test('maps boutique gifts to a locally producible finished material', () => {
-		expect.assertions(1);
-
-		expect(getFinishedMaterialIdForCategory('gifts')).toBe('gifts');
 	});
 
 	test('updates a store product immutably and clamps numeric input', () => {
 		expect.assertions(8);
 		const game = withOneStoreProducts([
 			{
-				categoryId: 'snacks',
+				productId: 'snacks',
 				stock: 8,
 				reorderThreshold: 12,
 				targetStock: 30,
@@ -124,7 +117,7 @@ describe('stock rules', () => {
 		expect.assertions(4);
 		const game = withOneStoreProducts([
 			{
-				categoryId: 'snacks',
+				productId: 'snacks',
 				stock: 8,
 				reorderThreshold: 12,
 				targetStock: 30,
@@ -149,7 +142,7 @@ describe('stock rules', () => {
 		expect.assertions(2);
 		const game = withOneStoreProducts([
 			{
-				categoryId: 'snacks',
+				productId: 'snacks',
 				stock: 8,
 				reorderThreshold: 12,
 				targetStock: 30,
@@ -176,14 +169,14 @@ describe('stock rules', () => {
 		expect(
 			calculateStockHealth([
 				{
-					categoryId: 'snacks',
+					productId: 'snacks',
 					stock: 50,
 					reorderThreshold: 20,
 					targetStock: 100,
 					sellingPrice: 5
 				},
 				{
-					categoryId: 'drinks',
+					productId: 'soft-drinks',
 					stock: 100,
 					reorderThreshold: 20,
 					targetStock: 100,
@@ -194,7 +187,7 @@ describe('stock rules', () => {
 		expect(
 			calculateStockHealth([
 				{
-					categoryId: 'snacks',
+					productId: 'snacks',
 					stock: 125,
 					reorderThreshold: 20,
 					targetStock: 100,
@@ -204,7 +197,7 @@ describe('stock rules', () => {
 		).toBe(100);
 		expect(
 			calculateStockHealth([
-				{ categoryId: 'snacks', stock: 0, reorderThreshold: 20, targetStock: 100, sellingPrice: 5 }
+				{ productId: 'snacks', stock: 0, reorderThreshold: 20, targetStock: 100, sellingPrice: 5 }
 			])
 		).toBe(0);
 	});
@@ -214,8 +207,8 @@ describe('stock rules', () => {
 		const game = createNewGame('convenience', 20260508);
 		const pools = buildCityDemandPools(game, game.cities[0]!);
 
-		expect(pools['bottled-water']).toBeGreaterThan(0);
-		expect(pools.drinks).toBeUndefined();
+		expect(pools['bottled-water']!).toBeGreaterThan(0);
+		expect(pools['soft-drinks']).toBeUndefined();
 	});
 
 	test('applies retail city demand multipliers to city demand pools', () => {
@@ -234,7 +227,7 @@ describe('stock rules', () => {
 		expect(campusCity.id).toContain('campus-junction');
 		expect(campusCity.tiles.every((t) => t.cityId === 'campus-junction')).toBe(true);
 
-		const campusGame = {
+		const campusGame: GameState = {
 			...game,
 			cities: [campusCity],
 			activeCityId: 'campus-junction',
@@ -256,12 +249,12 @@ describe('stock rules', () => {
 	test('shared city demand is consumed across stores selling the same category', () => {
 		expect.assertions(4);
 		const game = createNewGame('convenience', 20260508);
-		const firstStore = {
+		const firstStore: GameState['stores'][number] = {
 			...game.stores[0]!,
 			stockHealth: 100,
 			products: [
 				{
-					categoryId: 'snacks',
+					productId: 'snacks',
 					stock: 100,
 					reorderThreshold: 10,
 					targetStock: 100,
@@ -269,7 +262,7 @@ describe('stock rules', () => {
 				}
 			]
 		};
-		const secondStore = {
+		const secondStore: GameState['stores'][number] = {
 			...firstStore,
 			id: 'store-2',
 			name: 'Second Store',
@@ -330,11 +323,11 @@ describe('stock rules', () => {
 	test('higher selling price reduces category units sold under stable conditions', () => {
 		expect.assertions(1);
 		const game = createNewGame('convenience', 20260508);
-		const baseStore = {
+		const baseStore: GameState['stores'][number] = {
 			...game.stores[0]!,
 			products: [
 				{
-					categoryId: 'snacks',
+					productId: 'snacks',
 					stock: 100,
 					reorderThreshold: 10,
 					targetStock: 100,
@@ -342,7 +335,7 @@ describe('stock rules', () => {
 				}
 			]
 		};
-		const premiumStore = {
+		const premiumStore: GameState['stores'][number] = {
 			...baseStore,
 			products: [{ ...baseStore.products[0]!, sellingPrice: 10 }]
 		};
@@ -411,8 +404,8 @@ describe('stock rules', () => {
 			level: 10,
 			products: initializeStoreProducts('electronics', 10)
 		};
-		const boutiqueIds = boutiqueStore.products.map((product) => product.categoryId);
-		const electronicsIds = electronicsStore.products.map((product) => product.categoryId);
+		const boutiqueIds = boutiqueStore.products.map((product) => product.productId);
+		const electronicsIds = electronicsStore.products.map((product) => product.productId);
 
 		expect(boutiqueIds).toContain('fashion-accessories');
 		expect(electronicsIds).toContain('accessories');
@@ -454,14 +447,7 @@ describe('tier 1 store products', () => {
 	test('gives a new level-1 convenience store only bottled water', () => {
 		expect.assertions(1);
 		const products = initializeStoreProducts('convenience');
-		expect(products.map((product) => product.categoryId)).toEqual(['bottled-water']);
-	});
-
-	test('maps the new categories to finished materials', () => {
-		expect.assertions(3);
-		expect(getFinishedMaterialIdForCategory('bottled-water')).toBe('bottled-water');
-		expect(getFinishedMaterialIdForCategory('produce')).toBe('produce');
-		expect(getFinishedMaterialIdForCategory('pantry')).toBe('pantry');
+		expect(products.map((product) => product.productId)).toEqual(['bottled-water']);
 	});
 });
 
@@ -470,11 +456,11 @@ describe('sales loop guards', () => {
 		expect.assertions(4);
 		const game = createNewGame('convenience', 20260508);
 		const city = game.cities[0]!;
-		const lowScoreStore = {
+		const lowScoreStore: GameState['stores'][number] = {
 			...game.stores[0]!,
 			products: [
 				{
-					categoryId: 'snacks',
+					productId: 'snacks',
 					stock: 100,
 					reorderThreshold: 10,
 					targetStock: 100,
@@ -485,7 +471,7 @@ describe('sales loop guards', () => {
 			staffCapacity: 10,
 			competition: 50
 		};
-		const highScoreStore = {
+		const highScoreStore: GameState['stores'][number] = {
 			...game.stores[0]!,
 			id: 'store-electronics',
 			name: 'Electronics Store',
@@ -496,7 +482,7 @@ describe('sales loop guards', () => {
 			competition: 0,
 			products: [
 				{
-					categoryId: 'snacks',
+					productId: 'snacks',
 					stock: 100,
 					reorderThreshold: 10,
 					targetStock: 100,
@@ -526,12 +512,12 @@ describe('demand multipliers and stock ratios', () => {
 		expect.assertions(2);
 		expect(
 			calculateStockHealth([
-				{ categoryId: 'snacks', stock: 0, reorderThreshold: 0, targetStock: 0, sellingPrice: 5 }
+				{ productId: 'snacks', stock: 0, reorderThreshold: 0, targetStock: 0, sellingPrice: 5 }
 			])
 		).toBe(100);
 		expect(
 			calculateStockHealth([
-				{ categoryId: 'snacks', stock: 0, reorderThreshold: 0, targetStock: -5, sellingPrice: 5 }
+				{ productId: 'snacks', stock: 0, reorderThreshold: 0, targetStock: -5, sellingPrice: 5 }
 			])
 		).toBe(100);
 	});
@@ -541,7 +527,7 @@ describe('demand multipliers and stock ratios', () => {
 		const game = createNewGame('convenience', 20260508);
 		const city = game.cities[0]!;
 		const pool = (marketing: CompanyPolicy['marketing'], pricing: CompanyPolicy['pricing']) =>
-			buildCityDemandPools(game, city, { marketing, pricing })['bottled-water'];
+			buildCityDemandPools(game, city, { marketing, pricing })['bottled-water']!;
 		const standard = pool('awareness', 'standard');
 		const none = pool('none', 'standard');
 		const loyalty = pool('loyalty', 'standard');
@@ -561,17 +547,17 @@ describe('branch coverage edge cases', () => {
 	test('updateStoreProduct leaves sibling products untouched when updating one of many', () => {
 		expect.assertions(3);
 		const game = withOneStoreProducts([
-			{ categoryId: 'snacks', stock: 8, reorderThreshold: 12, targetStock: 30, sellingPrice: 5 },
-			{ categoryId: 'drinks', stock: 10, reorderThreshold: 5, targetStock: 40, sellingPrice: 4 }
+			{ productId: 'snacks', stock: 8, reorderThreshold: 12, targetStock: 30, sellingPrice: 5 },
+			{ productId: 'soft-drinks', stock: 10, reorderThreshold: 5, targetStock: 40, sellingPrice: 4 }
 		]);
 
 		const updated = updateStoreProduct(game, 'store-1', 'snacks', { sellingPrice: 7 });
-		const snacks = updated.stores[0]!.products.find((p) => p.categoryId === 'snacks')!;
-		const drinks = updated.stores[0]!.products.find((p) => p.categoryId === 'drinks')!;
+		const snacks = updated.stores[0]!.products.find((p) => p.productId === 'snacks')!;
+		const drinks = updated.stores[0]!.products.find((p) => p.productId === 'soft-drinks')!;
 
 		expect(snacks.sellingPrice).toBe(7);
 		expect(drinks.sellingPrice).toBe(4);
-		expect(drinks).toBe(game.stores[0]!.products.find((p) => p.categoryId === 'drinks'));
+		expect(drinks).toBe(game.stores[0]!.products.find((p) => p.productId === 'soft-drinks'));
 	});
 
 	test('updateStoreProduct leaves sibling stores untouched when updating one of many', () => {
@@ -581,14 +567,14 @@ describe('branch coverage edge cases', () => {
 			(tile) => !tile.locked && tile.feature === null && tile.id !== baseGame.stores[0]!.tileId
 		)!;
 		const game = { ...baseGame, cash: 100_000 };
-		const gameWithTwoStores = {
+		const gameWithTwoStores: GameState = {
 			...game,
 			stores: [
 				{
 					...game.stores[0]!,
 					products: [
 						{
-							categoryId: 'snacks',
+							productId: 'snacks',
 							stock: 8,
 							reorderThreshold: 12,
 							targetStock: 30,
@@ -603,7 +589,7 @@ describe('branch coverage edge cases', () => {
 					tileId: expansionTile.id,
 					products: [
 						{
-							categoryId: 'snacks',
+							productId: 'snacks',
 							stock: 8,
 							reorderThreshold: 12,
 							targetStock: 30,
@@ -623,21 +609,14 @@ describe('branch coverage edge cases', () => {
 		expect(updated.stores[1]).toBe(gameWithTwoStores.stores[1]);
 	});
 
-	test('getFinishedMaterialIdForCategory returns null for non-finished materials', () => {
-		expect.assertions(3);
-		expect(getFinishedMaterialIdForCategory('water')).toBeNull();
-		expect(getFinishedMaterialIdForCategory('flour')).toBeNull();
-		expect(getFinishedMaterialIdForCategory('packaging')).toBeNull();
-	});
-
 	test('simulateProductSalesForCity treats a missing store capacity as zero', () => {
 		expect.assertions(2);
 		const game = createNewGame('convenience', 20260508);
-		const store = {
+		const store: GameState['stores'][number] = {
 			...game.stores[0]!,
 			products: [
 				{
-					categoryId: 'snacks',
+					productId: 'snacks',
 					stock: 100,
 					reorderThreshold: 10,
 					targetStock: 100,

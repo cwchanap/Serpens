@@ -39,6 +39,7 @@ import type {
 	IndustrialBuilding,
 	IndustrialBuildingTypeId,
 	IndustryCity,
+	ProductId,
 	StoreProduct,
 	WorldCityId
 } from '$lib/game/types';
@@ -3840,12 +3841,12 @@ function validateSavedStoreReport(value: unknown, label: string): string {
 	let attemptedReplenishment = false;
 	requireArray(report.productReports, `${label} productReports`).forEach((productReport, index) => {
 		const product = validateSavedProductReport(productReport, `${label} productReports[${index}]`);
-		if (seenCategoryIds.has(product.categoryId)) {
+		if (seenCategoryIds.has(product.productId)) {
 			throw new SaveDataError(
-				`${label} productReports[${index}] categoryId must be unique within its store report`
+				`${label} productReports[${index}] productId must be unique within its store report`
 			);
 		}
-		seenCategoryIds.add(product.categoryId);
+		seenCategoryIds.add(product.productId);
 		attemptedReplenishment ||= product.warehouseUnits > 0 || product.importedUnits > 0;
 	});
 	validateSavedHistoricalReplenishment(
@@ -3861,14 +3862,10 @@ function validateSavedStoreProducts(store: Record<string, unknown>, label: strin
 	const archetypeId = requireOneOf(store.archetypeId, `${label} archetypeId`, ARCHETYPE_IDS);
 	const storeLevel = requireNumber(store.level, `${label} level`);
 	const unlockedCount = getUnlockedCategoryCount(storeLevel);
-	const archetypeCategoryIds = getArchetype(archetypeId).startingCategories.map(
-		(category) => category.id
-	);
-	const archetypeCategories = new Set(archetypeCategoryIds);
-	const unlockedCategoryIds = getArchetype(archetypeId)
-		.startingCategories.slice(0, unlockedCount)
-		.map((category) => category.id);
-	const unlockedCategories = new Set(unlockedCategoryIds);
+	const archetypeProductIds = getArchetype(archetypeId).startingProductIds;
+	const archetypeProducts = new Set(archetypeProductIds);
+	const unlockedProductIds = getArchetype(archetypeId).startingProductIds.slice(0, unlockedCount);
+	const unlockedProducts = new Set(unlockedProductIds);
 	const seenCategories = new Set<string>();
 	const products = requireArray(store.products, `${label} products`);
 	const validatedProducts: StoreProduct[] = [];
@@ -3876,21 +3873,21 @@ function validateSavedStoreProducts(store: Record<string, unknown>, label: strin
 	for (const [index, productValue] of products.entries()) {
 		const product = validateSavedStoreProduct(productValue, `${label} products[${index}]`);
 
-		if (!archetypeCategories.has(product.categoryId)) {
+		if (!archetypeProducts.has(product.productId)) {
 			throw new SaveDataError(
-				`${label} products[${index}] categoryId must belong to archetype ${archetypeId}`,
+				`${label} products[${index}] productId must belong to archetype ${archetypeId}`,
 				'invariant-products'
 			);
 		}
 
-		if (seenCategories.has(product.categoryId)) {
+		if (seenCategories.has(product.productId)) {
 			throw new SaveDataError(
-				`${label} products[${index}] categoryId must be unique for archetype ${archetypeId}`,
+				`${label} products[${index}] productId must be unique for archetype ${archetypeId}`,
 				'invariant-products'
 			);
 		}
 
-		seenCategories.add(product.categoryId);
+		seenCategories.add(product.productId);
 		validatedProducts.push(product);
 	}
 
@@ -3906,9 +3903,9 @@ function validateSavedStoreProducts(store: Record<string, unknown>, label: strin
 	}
 
 	for (const [index, product] of validatedProducts.entries()) {
-		if (!unlockedCategories.has(product.categoryId)) {
+		if (!unlockedProducts.has(product.productId)) {
 			throw new SaveDataError(
-				`${label} products[${index}] categoryId must be unlocked at level ${storeLevel} for archetype ${archetypeId}`,
+				`${label} products[${index}] productId must be unlocked at level ${storeLevel} for archetype ${archetypeId}`,
 				'invariant-products'
 			);
 		}
@@ -3920,7 +3917,7 @@ function validateSavedStoreProducts(store: Record<string, unknown>, label: strin
 function validateSavedStoreProduct(value: unknown, label: string): StoreProduct {
 	const product = requireRecord(value, label);
 
-	const categoryId = requireString(product.categoryId, `${label} categoryId`);
+	const productId = requireString(product.productId, `${label} productId`) as ProductId;
 	const stock = requireNumber(product.stock, `${label} stock`);
 	const reorderThreshold = requireNumber(product.reorderThreshold, `${label} reorderThreshold`);
 	const targetStock = requireNumber(product.targetStock, `${label} targetStock`);
@@ -3944,16 +3941,16 @@ function validateSavedStoreProduct(value: unknown, label: string): StoreProduct 
 		throw new SaveDataError(`${label} sellingPrice must be greater than 0`);
 	}
 
-	return { categoryId, stock, reorderThreshold, targetStock, sellingPrice };
+	return { productId, stock, reorderThreshold, targetStock, sellingPrice };
 }
 
 function validateSavedProductReport(
 	value: unknown,
 	label: string
-): { categoryId: string; warehouseUnits: number; importedUnits: number } {
+): { productId: ProductId; warehouseUnits: number; importedUnits: number } {
 	const report = requireRecord(value, label);
 
-	const categoryId = requireString(report.categoryId, `${label} categoryId`);
+	const productId = requireString(report.productId, `${label} productId`) as ProductId;
 	requireString(report.name, `${label} name`);
 	requireNumber(report.unitsSold, `${label} unitsSold`);
 	requireNumber(report.demandMissed, `${label} demandMissed`);
@@ -3978,7 +3975,7 @@ function validateSavedProductReport(
 	if (importSpend < 0) {
 		throw new SaveDataError(`${label} importSpend must be non-negative`);
 	}
-	return { categoryId, warehouseUnits, importedUnits };
+	return { productId, warehouseUnits, importedUnits };
 }
 
 function validateSavedHistoricalReplenishment(

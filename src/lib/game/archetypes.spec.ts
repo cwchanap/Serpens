@@ -12,14 +12,14 @@ describe('retail archetypes', () => {
 		]);
 	});
 
-	test('each archetype has economic inputs and product categories', () => {
+	test('each archetype has economic inputs and starting products', () => {
 		expect.assertions(ARCHETYPES.length * 5);
 		for (const archetype of ARCHETYPES) {
 			expect(archetype.startingCash).toBeGreaterThan(0);
 			expect(archetype.baseRent).toBeGreaterThan(0);
 			expect(archetype.baseWage).toBeGreaterThan(0);
 			expect(archetype.baseTraffic).toBeGreaterThan(0);
-			expect(archetype.startingCategories.length).toBeGreaterThan(0);
+			expect(archetype.startingProductIds.length).toBeGreaterThan(0);
 		}
 	});
 
@@ -28,29 +28,27 @@ describe('retail archetypes', () => {
 		expect(getArchetype('electronics').name).toBe('Electronics & Games');
 	});
 
-	test('each archetype defines exactly four product categories', () => {
+	test('each archetype defines exactly four starting products', () => {
 		expect.assertions(ARCHETYPES.length);
 		for (const archetype of ARCHETYPES) {
 			// Convenience carries a 5th (unreachable) category, `household`, for
 			// legacy-save compatibility — see archetypes.ts and stock.ts.
 			const expectedLength = archetype.id === 'convenience' ? 5 : 4;
-			expect(archetype.startingCategories).toHaveLength(expectedLength);
+			expect(archetype.startingProductIds).toHaveLength(expectedLength);
 		}
 	});
 
-	test('category ids are unique within each archetype', () => {
+	test('product ids are unique within each archetype', () => {
 		expect.assertions(ARCHETYPES.length);
 		for (const archetype of ARCHETYPES) {
-			const ids = archetype.startingCategories.map((category) => category.id);
+			const ids = archetype.startingProductIds;
 			expect(new Set(ids).size).toBe(ids.length);
 		}
 	});
 
-	test('category ids are unique across all archetypes', () => {
+	test('product ids are unique across all archetypes', () => {
 		expect.assertions(1);
-		const allIds = ARCHETYPES.flatMap((archetype) =>
-			archetype.startingCategories.map((category) => category.id)
-		);
+		const allIds = ARCHETYPES.flatMap((archetype) => archetype.startingProductIds);
 		expect(new Set(allIds).size).toBe(allIds.length);
 	});
 
@@ -59,15 +57,15 @@ describe('retail archetypes', () => {
 		const returned = getArchetype('electronics');
 
 		returned.name = 'Mutated Electronics';
-		returned.startingCategories[0]!.name = 'Mutated Category';
+		(returned.startingProductIds as string[])[0] = 'snacks';
 		returned.risks.push('Mutated Risk');
 
 		expect(ARCHETYPES.find((archetype) => archetype.id === 'electronics')?.name).toBe(
 			'Electronics & Games'
 		);
 		expect(
-			ARCHETYPES.find((archetype) => archetype.id === 'electronics')?.startingCategories[0]?.name
-		).toBe('Games');
+			ARCHETYPES.find((archetype) => archetype.id === 'electronics')?.startingProductIds[0]
+		).toBe('games');
 		expect(ARCHETYPES.find((archetype) => archetype.id === 'electronics')?.risks).not.toContain(
 			'Mutated Risk'
 		);
@@ -83,10 +81,10 @@ describe('retail archetypes', () => {
 describe('convenience tier 1 lineup', () => {
 	it('starts with bottled water so a level-1 store gets a tier 1 chain', () => {
 		const convenience = getArchetype('convenience');
-		expect(convenience.startingCategories.map((category) => category.id)).toEqual([
+		expect(convenience.startingProductIds).toEqual([
 			'bottled-water',
 			'snacks',
-			'drinks',
+			'soft-drinks',
 			'essentials',
 			'household'
 		]);

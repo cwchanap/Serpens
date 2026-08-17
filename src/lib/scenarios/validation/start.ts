@@ -1,7 +1,7 @@
 import { ARCHETYPES } from '$lib/game/archetypes';
 import { INDUSTRIAL_BUILDING_TYPES } from '$lib/game/industry';
 import { MAX_STORE_LEVEL, getUnlockedCategoryCount } from '$lib/game/leveling';
-import type { IndustrialBuildingTypeId } from '$lib/game/types';
+import type { IndustrialBuildingTypeId, ProductId } from '$lib/game/types';
 import { STARTER_STORE_CAP, getWorldCityDefinition } from '$lib/game/world';
 import type { AuthoredBuilding, JsonObject, ValidationContext } from './shared';
 import {
@@ -224,16 +224,14 @@ function validateProductOverrides(
 	if (!products) return;
 	const archetype = ARCHETYPES.find((candidate) => candidate.id === foundingStore?.archetypeId);
 	const unlockedIds = new Set(
-		archetype?.startingCategories
-			.slice(0, getUnlockedCategoryCount(targetLevel))
-			.map((category) => category.id) ?? []
+		archetype?.startingProductIds.slice(0, getUnlockedCategoryCount(targetLevel)) ?? []
 	);
 	const seen = new Set<string>();
 	for (const [index, candidate] of products.entries()) {
 		const path = `${storePath}.products[${index}]`;
 		const product = closedObject(context, candidate, path, PRODUCT_OVERRIDE_KEYS);
 		if (!product) continue;
-		const categoryId = product.categoryId;
+		const categoryId = product.categoryId as ProductId;
 		const validCategory = validateKnownReference(
 			context,
 			categoryId,
@@ -734,7 +732,7 @@ function validateAllowlistedProductUnlocks(
 		let available = false;
 		for (const instance of reachable) {
 			const archetype = ARCHETYPES.find((candidate) => candidate.id === instance.archetypeId)!;
-			const index = archetype.startingCategories.findIndex((category) => category.id === productId);
+			const index = archetype.startingProductIds.indexOf(productId);
 			if (index < 0) continue;
 			if (index < getUnlockedCategoryCount(instance.reachableLevel)) available = true;
 		}
@@ -759,17 +757,17 @@ function validateAllowlistedProductUnlocks(
 	for (const instance of reachable) {
 		const archetype = ARCHETYPES.find((candidate) => candidate.id === instance.archetypeId)!;
 		const unlockedCount = getUnlockedCategoryCount(instance.reachableLevel);
-		for (const category of archetype.startingCategories.slice(0, unlockedCount)) {
-			if (context.content.products.has(category.id)) continue;
-			const key = `${instance.path}:${category.id}`;
+		for (const productId of archetype.startingProductIds.slice(0, unlockedCount)) {
+			if (context.content.products.has(productId)) continue;
+			const key = `${instance.path}:${productId}`;
 			if (reported.has(key)) continue;
 			reported.add(key);
 			diagnostic(
 				context,
 				instance.path,
 				'product-not-allowlisted',
-				category.id,
-				`Upgrade path materializes ${category.id}, which is not in content.productCategoryIds.`
+				productId,
+				`Upgrade path materializes ${productId}, which is not in content.productCategoryIds.`
 			);
 		}
 	}

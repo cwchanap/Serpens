@@ -64,7 +64,7 @@ export const WORLD_CITY_CATALOG: readonly WorldCityDefinition[] = [
 			prepared: 1.18,
 			essentials: 1.25,
 			snacks: 1.12,
-			drinks: 1.08,
+			'soft-drinks': 1.08,
 			games: 0.9,
 			devices: 0.88
 		},

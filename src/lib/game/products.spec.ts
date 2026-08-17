@@ -44,17 +44,29 @@ describe('product catalog', () => {
 	it('does not repeat a product id within an archetype', () => {
 		expect.assertions(ARCHETYPES.length);
 		for (const archetype of ARCHETYPES) {
-			const productIds = archetype.startingCategories.map((category) => category.id);
+			const productIds = archetype.startingProductIds;
 			expect(new Set(productIds).size).toBe(productIds.length);
 		}
 	});
 
 	it('keeps convenience stocked with the two beverage products', () => {
-		const convenienceIds = getArchetype('convenience').startingCategories.map((category) =>
-			category.id === 'drinks' ? 'soft-drinks' : category.id
-		);
+		const convenienceIds = getArchetype('convenience').startingProductIds;
 
 		expect(convenienceIds).toEqual(expect.arrayContaining(['bottled-water', 'soft-drinks']));
+	});
+
+	it('uses one catalog definition for shared product economics', () => {
+		const product = getProductDefinition('soft-drinks');
+
+		expect(product).toMatchObject({
+			name: 'Soft Drinks',
+			demandWeight: 1.15,
+			importCost: 2,
+			defaultSellingPrice: 4,
+			priceSensitivity: 0.8,
+			productionMaterialId: 'drinks'
+		});
+		expect(PRODUCTS['soft-drinks']).toBe(product);
 	});
 
 	it('keeps every authored age threshold beyond the seven-day replenishment cadence', () => {

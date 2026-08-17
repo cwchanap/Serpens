@@ -57,7 +57,7 @@ const definition = {
 					targetLevel: 2,
 					products: [
 						{
-							categoryId: 'drinks',
+							categoryId: 'soft-drinks',
 							stock: 20,
 							reorderThreshold: 5,
 							targetStock: 25,
@@ -80,7 +80,7 @@ const definition = {
 	content: {
 		cityIds: ['harbor-city', 'industry-city'],
 		archetypeIds: ['convenience'],
-		productCategoryIds: ['drinks'],
+		productCategoryIds: ['soft-drinks'],
 		materialIds: ['water'],
 		buildingTypeIds: ['water-pump'],
 		retailPlacements: [{ cityId: 'harbor-city', tileId: 'harbor-1-1', archetypeId: 'convenience' }],
@@ -93,7 +93,7 @@ const definition = {
 		{
 			kind: 'import-cost-multiplier',
 			scope: 'retail-product',
-			target: { kind: 'ids', ids: ['drinks'] },
+			target: { kind: 'ids', ids: ['soft-drinks'] },
 			multiplier: 1.2
 		}
 	],
@@ -111,7 +111,7 @@ const definition = {
 		{
 			id: 'local-share',
 			labelKey: 'store.defaultName',
-			query: { metric: 'retail-local-share', categoryIds: ['drinks'] },
+			query: { metric: 'retail-local-share', categoryIds: ['soft-drinks'] },
 			comparator: 'gte',
 			target: 0.5,
 			window: { kind: 'trailing-reports', count: 3 },
@@ -160,11 +160,16 @@ const commands = [
 	{ kind: 'assignStaff', staffId: 'staff-1', storeId: 'store-1' },
 	{ kind: 'unassignStaff', staffId: 'staff-1' },
 	{ kind: 'promoteStaff', staffId: 'staff-1' },
-	{ kind: 'updateStoreSellingPrice', storeId: 'store-1', categoryId: 'drinks', sellingPrice: 5 },
+	{
+		kind: 'updateStoreSellingPrice',
+		storeId: 'store-1',
+		categoryId: 'soft-drinks',
+		sellingPrice: 5
+	},
 	{
 		kind: 'updateStoreInventoryTargets',
 		storeId: 'store-1',
-		categoryId: 'drinks',
+		categoryId: 'soft-drinks',
 		reorderThreshold: 5,
 		targetStock: 20
 	},

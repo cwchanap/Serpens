@@ -16,6 +16,7 @@ import type {
 	IndustrialBuildingType,
 	IndustrialBuildingTypeId,
 	MaterialId,
+	ProductId,
 	RecurringRoute,
 	StoreProduct,
 	TransferOrder,
@@ -24,11 +25,11 @@ import type {
 import type { SupplyPlannerAction, SupplyPlannerActionAvailability } from './supplyPlannerActions';
 
 function product(
-	categoryId: string,
-	options: Partial<Omit<StoreProduct, 'categoryId'>> = {}
+	productId: ProductId,
+	options: Partial<Omit<StoreProduct, 'productId'>> = {}
 ): StoreProduct {
 	return {
-		categoryId,
+		productId,
 		stock: 0,
 		reorderThreshold: 0,
 		targetStock: 70,
@@ -117,7 +118,7 @@ function route(overrides: Partial<RecurringRoute> = {}): RecurringRoute {
 }
 
 function baseGame(
-	categoryId: string,
+	productId: ProductId,
 	archetype: 'convenience' | 'grocery' = 'convenience'
 ): GameState {
 	const game = createNewGame(archetype, 20260810);
@@ -126,7 +127,7 @@ function baseGame(
 		cash: 42_000,
 		industrialBuildings: [building('warehouse', 'warehouse-1', 1, 2, 6)],
 		cityInventories: [{ cityId: 'industry-city', materials: {} }],
-		stores: [{ ...game.stores[0]!, products: [product(categoryId)] }],
+		stores: [{ ...game.stores[0]!, products: [product(productId)] }],
 		logistics: { ...game.logistics, recurringRoutes: [] }
 	};
 }
@@ -249,7 +250,7 @@ function sourceChangePlannerGame(): GameState {
 function readyPlan(game: GameState, actionAvailability = availability()) {
 	const result = buildSupplyPlan(
 		game,
-		{ retailCityId: 'harbor-city', categoryId: game.stores[0]!.products[0]!.categoryId },
+		{ retailCityId: 'harbor-city', productId: game.stores[0]!.products[0]!.productId },
 		actionAvailability
 	);
 	expect(result.status).toBe('ready');
@@ -824,7 +825,7 @@ describe('supply planner action noop branches', () => {
 		};
 		const result = buildSupplyPlan(
 			{ ...base, stores: [secondStore, firstStore] },
-			{ retailCityId: 'harbor-city', categoryId: 'bottled-water' },
+			{ retailCityId: 'harbor-city', productId: 'bottled-water' },
 			availability({
 				canManageLogistics: false,
 				canSetRetailSupplySource: true,
@@ -1483,7 +1484,7 @@ describe('supply planner action material-specific structural exception', () => {
 		// The old code used missing.length > 1 as structuralChainIncomplete,
 		// which bypassed the rail gate. The fix checks the selected
 		// material's own downstream sink state.
-		const base = baseGame('drinks', 'convenience');
+		const base = baseGame('soft-drinks', 'convenience');
 		const game = {
 			...base,
 			cash: 100_000,
@@ -1608,7 +1609,7 @@ describe('supply planner action helper coverage', () => {
 			game,
 			{
 				retailCityId: 'harbor-city',
-				categoryId: 'bottled-water'
+				productId: 'bottled-water'
 			},
 			availability()
 		);
@@ -1628,7 +1629,7 @@ describe('supply planner action helper coverage', () => {
 			game,
 			{
 				retailCityId: 'harbor-city',
-				categoryId: 'bottled-water'
+				productId: 'bottled-water'
 			},
 			availability()
 		);
@@ -1646,7 +1647,7 @@ describe('supply planner action helper coverage', () => {
 			game,
 			{
 				retailCityId: 'harbor-city',
-				categoryId: 'bottled-water'
+				productId: 'bottled-water'
 			},
 			availability()
 		);
@@ -1771,7 +1772,7 @@ describe('supply planner actions patch coverage', () => {
 	it('returns the non-ready snapshot result directly for an invalid request', () => {
 		const result = buildSupplyPlan(
 			baseGame('bottled-water'),
-			{ retailCityId: '' as WorldCityId, categoryId: 'bottled-water' },
+			{ retailCityId: '' as WorldCityId, productId: 'bottled-water' },
 			availability()
 		);
 		expect(result.status).toBe('invalid');
@@ -1783,7 +1784,7 @@ describe('supply planner actions patch coverage', () => {
 	it('returns the non-ready snapshot result for an unsupported category', () => {
 		const result = buildSupplyPlan(
 			baseGame('bottled-water'),
-			{ retailCityId: 'harbor-city', categoryId: 'snacks' },
+			{ retailCityId: 'harbor-city', productId: 'snacks' },
 			availability()
 		);
 		expect(result.status).toBe('unsupported');
@@ -2307,7 +2308,7 @@ describe('supply planner actions patch coverage additions', () => {
 		const game = baseGame('bottled-water');
 		const result = buildSupplyPlan(
 			game,
-			{ retailCityId: 'harbor-city', categoryId: 'bottled-water' },
+			{ retailCityId: 'harbor-city', productId: 'bottled-water' },
 			availability()
 		);
 		if (result.status !== 'ready') throw new Error('Expected ready plan');
@@ -2326,7 +2327,7 @@ describe('supply planner actions patch coverage additions', () => {
 		const game = baseGame('bottled-water');
 		const result = buildSupplyPlan(
 			game,
-			{ retailCityId: 'harbor-city', categoryId: 'bottled-water' },
+			{ retailCityId: 'harbor-city', productId: 'bottled-water' },
 			availability()
 		);
 		if (result.status !== 'ready') throw new Error('Expected ready plan');
@@ -2345,7 +2346,7 @@ describe('supply planner actions patch coverage additions', () => {
 		const game = baseGame('bottled-water');
 		const result = buildSupplyPlan(
 			game,
-			{ retailCityId: 'harbor-city', categoryId: 'bottled-water' },
+			{ retailCityId: 'harbor-city', productId: 'bottled-water' },
 			availability()
 		);
 		if (result.status !== 'ready') throw new Error('Expected ready plan');
@@ -2370,7 +2371,7 @@ describe('supply planner actions patch coverage additions', () => {
 		const game = pantryGame();
 		const result = buildSupplyPlan(
 			game,
-			{ retailCityId: 'harbor-city', categoryId: 'pantry' },
+			{ retailCityId: 'harbor-city', productId: 'pantry' },
 			availability({ allowedIndustryBuildingTypeIds: ['grain-farm', 'flour-mill', 'pantry-works'] })
 		);
 		expect(result.status).toBe('ready');
@@ -2445,7 +2446,7 @@ describe('supply planner actions patch coverage additions', () => {
 		};
 		const result = buildSupplyPlan(
 			game,
-			{ retailCityId: 'harbor-city', categoryId: 'bottled-water' },
+			{ retailCityId: 'harbor-city', productId: 'bottled-water' },
 			availability()
 		);
 		expect(result.status).toBe('ready');

@@ -1,7 +1,7 @@
 import { getArchetype } from './archetypes';
 import { getTilePlacementBlockReason } from './city';
-import { MATERIALS } from './industry';
 import { getStoreRevenueMultiplier, getUnlockedCategoryCount } from './leveling';
+import { getProductDefinition } from './products';
 import { clampScore } from './reports';
 import { randomBetween, type Rng } from './rng';
 import { getRetailCityDemandMultiplier } from './world';
@@ -11,8 +11,9 @@ import type {
 	CompanyPolicy,
 	DailyProductReport,
 	GameState,
-	MaterialId,
-	ProductCategory,
+	ProductDefinition,
+	ProductId,
+	RetailDemandProfile,
 	Store,
 	StoreProduct,
 	StoreProductPatch
@@ -23,17 +24,18 @@ export type StoreProductStatus = 'Out of stock' | 'Needs import' | 'Healthy';
 export interface ProductSalesResult {
 	stores: Store[];
 	productReports: Map<string, DailyProductReport[]>;
-	initialDemand: Record<string, number>;
-	remainingDemand: Record<string, number>;
+	initialDemand: RetailDemandProfile;
+	remainingDemand: RetailDemandProfile;
 }
 
-export function createStoreProduct(category: ProductCategory): StoreProduct {
+export function createStoreProduct(productId: ProductId): StoreProduct {
+	const product = getProductDefinition(productId);
 	return {
-		categoryId: category.id,
-		stock: Math.max(1, roundStockDefault(category.demandWeight * 70)),
-		reorderThreshold: Math.max(0, roundStockDefault(category.demandWeight * 25)),
-		targetStock: Math.max(1, roundStockDefault(category.demandWeight * 90)),
-		sellingPrice: category.defaultSellingPrice
+		productId,
+		stock: Math.max(1, roundStockDefault(product.demandWeight * 70)),
+		reorderThreshold: Math.max(0, roundStockDefault(product.demandWeight * 25)),
+		targetStock: Math.max(1, roundStockDefault(product.demandWeight * 90)),
+		sellingPrice: product.defaultSellingPrice
 	};
 }
 
@@ -41,13 +43,13 @@ export function initializeStoreProducts(archetypeId: ArchetypeId, level = 1): St
 	const archetype = getArchetype(archetypeId);
 	const unlockedCount = getUnlockedCategoryCount(level);
 
-	return archetype.startingCategories.slice(0, unlockedCount).map(createStoreProduct);
+	return archetype.startingProductIds.slice(0, unlockedCount).map(createStoreProduct);
 }
 
 export function updateStoreProduct(
 	game: GameState,
 	storeId: string,
-	categoryId: string,
+	productId: string,
 	patch: StoreProductPatch
 ): GameState {
 	const storeIndex = game.stores.findIndex((store) => store.id === storeId);
@@ -57,7 +59,7 @@ export function updateStoreProduct(
 	}
 
 	const store = game.stores[storeIndex]!;
-	const productIndex = store.products.findIndex((product) => product.categoryId === categoryId);
+	const productIndex = store.products.findIndex((product) => product.productId === productId);
 
 	if (productIndex === -1) {
 		return game;
@@ -155,45 +157,31 @@ export function calculateStockHealth(products: StoreProduct[]): number {
 	return clampScore(averageRatio * 100);
 }
 
-export function getFinishedMaterialIdForCategory(categoryId: string): MaterialId | null {
-	if (!isMaterialId(categoryId)) {
-		return null;
-	}
-
-	return MATERIALS[categoryId].kind === 'finished' ? categoryId : null;
-}
-
-function isMaterialId(value: string): value is MaterialId {
-	return Object.hasOwn(MATERIALS, value);
-}
-
 export function buildCityDemandPools(
 	game: Pick<GameState, 'stores' | 'policy' | 'world'>,
 	city: City,
 	policy: Pick<CompanyPolicy, 'marketing' | 'pricing'> = game.policy
-): Record<string, number> {
+): RetailDemandProfile {
 	const buildableTiles = city.tiles.filter((tile) => getTilePlacementBlockReason(tile) === null);
 	const cityDemand =
 		buildableTiles.reduce(
 			(sum, tile) => sum + tile.demand + tile.footTraffic * 0.6 + tile.customerFit * 0.35,
 			0
 		) / Math.max(1, buildableTiles.length);
-	const categories = getCityStoreCategories(
-		game.stores.filter((store) => store.cityId === city.id)
-	);
+	const products = getCityStoreProducts(game.stores.filter((store) => store.cityId === city.id));
 	const marketingMultiplier = getMarketingDemandMultiplier(policy.marketing);
 	const pricingMultiplier = getPricingDemandMultiplier(policy.pricing);
 
 	return Object.fromEntries(
-		categories.map((category) => {
-			const cityMultiplier = getRetailCityDemandMultiplier(game, city.id, category.id);
+		products.map((product) => {
+			const cityMultiplier = getRetailCityDemandMultiplier(game, city.id, product.id);
 			return [
-				category.id,
+				product.id,
 				Math.max(
 					0,
 					Math.round(
 						cityDemand *
-							category.demandWeight *
+							product.demandWeight *
 							marketingMultiplier *
 							pricingMultiplier *
 							cityMultiplier
@@ -221,59 +209,57 @@ export function simulateProductSalesForCity(input: {
 		input.game.stores.map((store) => [store.id, cloneStoreForStock(store)])
 	);
 
-	for (const categoryId of Object.keys(initialDemand).sort()) {
+	for (const productId of Object.keys(initialDemand).sort() as ProductId[]) {
 		const sellers = input.game.stores
 			.filter(
 				(store) =>
 					cityStoreIds.has(store.id) &&
-					store.products.some((product) => product.categoryId === categoryId)
+					store.products.some((product) => product.productId === productId)
 			)
 			.sort(
 				(left, right) =>
-					scoreStoreForCategory(right, categoryId) - scoreStoreForCategory(left, categoryId) ||
+					scoreStoreForCategory(right, productId) - scoreStoreForCategory(left, productId) ||
 					compareCodeUnitStrings(left.id, right.id)
 			);
 		const totalScore = sellers.reduce(
-			(sum, store) => sum + scoreStoreForCategory(store, categoryId),
+			(sum, store) => sum + scoreStoreForCategory(store, productId),
 			0
 		);
-		const category = findStoreCategory(sellers[0], categoryId);
+		const productDefinition = findStoreProduct(sellers[0], productId);
 
-		if (!category || totalScore <= 0) {
+		if (!productDefinition || totalScore <= 0) {
 			continue;
 		}
 
 		for (const store of sellers) {
 			const currentStore = storesById.get(store.id)!;
-			const product = currentStore.products.find(
-				(candidate) => candidate.categoryId === categoryId
-			)!;
-			const demandShare = scoreStoreForCategory(store, categoryId) / totalScore;
-			const priceMultiplier = priceDemandMultiplier(category, product.sellingPrice);
+			const product = currentStore.products.find((candidate) => candidate.productId === productId)!;
+			const demandShare = scoreStoreForCategory(store, productId) / totalScore;
+			const priceMultiplier = priceDemandMultiplier(productDefinition, product.sellingPrice);
 			const desiredUnits = Math.max(
 				0,
 				Math.round(
-					(initialDemand[categoryId] ?? 0) *
+					(initialDemand[productId] ?? 0) *
 						demandShare *
 						priceMultiplier *
 						randomBetween(input.rng, 0.94, 1.06)
 				)
 			);
 			const capacity = Math.max(0, Math.floor(capacityRemaining.get(store.id) ?? 0));
-			const availableDemand = Math.max(0, remainingDemand[categoryId] ?? 0);
+			const availableDemand = Math.max(0, remainingDemand[productId] ?? 0);
 			const unitsSold = Math.min(desiredUnits, product.stock, capacity, availableDemand);
 			const demandMissed = Math.max(0, desiredUnits - unitsSold);
 			const endingStock = product.stock - unitsSold;
 			const revenueMultiplier = getStoreRevenueMultiplier(store.level);
 			const revenue = Math.round(unitsSold * product.sellingPrice * revenueMultiplier);
-			const costOfGoods = Math.round(unitsSold * category.importCost);
+			const costOfGoods = Math.round(unitsSold * productDefinition.importCost);
 
 			product.stock = endingStock;
 			capacityRemaining.set(store.id, capacity - unitsSold);
-			remainingDemand[categoryId] = availableDemand - unitsSold;
+			remainingDemand[productId] = availableDemand - unitsSold;
 			appendProductReport(productReports, store.id, {
-				categoryId,
-				name: category.name,
+				productId,
+				name: productDefinition.name,
 				unitsSold,
 				demandMissed,
 				revenue,
@@ -283,7 +269,7 @@ export function simulateProductSalesForCity(input: {
 				warehouseUnits: 0,
 				warehouseValue: 0,
 				importedUnits: 0,
-				importCost: category.importCost,
+				importCost: productDefinition.importCost,
 				importSpend: 0
 			});
 		}
@@ -345,18 +331,21 @@ function getPricingDemandMultiplier(pricing: CompanyPolicy['pricing']): number {
 	return 1;
 }
 
-function getCityStoreCategories(stores: Store[]): ProductCategory[] {
-	const categories = new Map<string, ProductCategory>();
+function getCityStoreProducts(stores: Store[]): ProductDefinition[] {
+	const products = new Map<ProductId, ProductDefinition>();
 
 	for (const store of stores) {
-		for (const category of getArchetype(store.archetypeId).startingCategories) {
-			if (store.products.some((product) => product.categoryId === category.id)) {
-				categories.set(category.id, category);
+		const startingProductIds = getArchetype(store.archetypeId).startingProductIds;
+		for (const product of store.products) {
+			if (!startingProductIds.includes(product.productId)) continue;
+			const definition = getProductDefinition(product.productId);
+			if (definition) {
+				products.set(product.productId, definition);
 			}
 		}
 	}
 
-	return [...categories.values()];
+	return [...products.values()];
 }
 
 function cloneStoreForStock(store: Store): Store {
@@ -366,19 +355,19 @@ function cloneStoreForStock(store: Store): Store {
 	};
 }
 
-function findStoreCategory(
+function findStoreProduct(
 	store: Store | undefined,
-	categoryId: string
-): ProductCategory | undefined {
-	return store
-		? getArchetype(store.archetypeId).startingCategories.find(
-				(category) => category.id === categoryId
-			)
-		: undefined;
+	productId: string
+): ProductDefinition | undefined {
+	if (!store?.products.some((product) => product.productId === productId)) return undefined;
+	if (!getArchetype(store.archetypeId).startingProductIds.includes(productId as ProductId)) {
+		return undefined;
+	}
+	return getProductDefinition(productId as ProductId);
 }
 
-function scoreStoreForCategory(store: Store, categoryId: string): number {
-	if (!store.products.some((product) => product.categoryId === categoryId)) {
+function scoreStoreForCategory(store: Store, productId: string): number {
+	if (!store.products.some((product) => product.productId === productId)) {
 		return 0;
 	}
 
@@ -392,9 +381,9 @@ function compareCodeUnitStrings(left: string, right: string): number {
 	return left < right ? -1 : left > right ? 1 : 0;
 }
 
-function priceDemandMultiplier(category: ProductCategory, sellingPrice: number): number {
-	const ratio = sellingPrice / Math.max(1, category.defaultSellingPrice);
-	const penalty = (ratio - 1) * category.priceSensitivity;
+function priceDemandMultiplier(product: ProductDefinition, sellingPrice: number): number {
+	const ratio = sellingPrice / Math.max(1, product.defaultSellingPrice);
+	const penalty = (ratio - 1) * product.priceSensitivity;
 
 	return Math.max(0.18, Math.min(1.35, 1 - penalty));
 }

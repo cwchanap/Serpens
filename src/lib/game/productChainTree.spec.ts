@@ -32,9 +32,9 @@ vi.mock('./productChainGraph', async (importOriginal) => {
 	return {
 		...actual,
 		MATERIAL_PRODUCER_RECIPES: new Map(actual.MATERIAL_PRODUCER_RECIPES as Map<string, string>),
-		isSupportedFinishedMaterial: (categoryId: string): categoryId is MaterialId => {
-			if (categoryId === 'fake-finished') return true;
-			return (actual.isSupportedFinishedMaterial as (id: string) => boolean)(categoryId);
+		isSupportedFinishedMaterial: (productId: string): productId is MaterialId => {
+			if (productId === 'fake-finished') return true;
+			return (actual.isSupportedFinishedMaterial as (id: string) => boolean)(productId);
 		},
 		getIndustryInventoryScope: vi.fn(
 			actual.getIndustryInventoryScope as (...args: never[]) => unknown
@@ -119,7 +119,7 @@ function emptyProductionReport(
 
 function snackProductReport(overrides: Partial<DailyProductReport> = {}): DailyProductReport {
 	return {
-		categoryId: 'snacks',
+		productId: 'snacks',
 		name: 'Snacks',
 		unitsSold: 8,
 		demandMissed: 2,
@@ -155,7 +155,7 @@ function latestStoreReport(overrides: Partial<DailyStoreReport> = {}): DailyStor
 		marketPosition: 48,
 		productReports: [
 			{
-				categoryId: 'snacks',
+				productId: 'snacks',
 				name: 'Snacks',
 				unitsSold: 8,
 				demandMissed: 2,
@@ -245,7 +245,7 @@ describe('buildProductChainTree', () => {
 			)
 		};
 
-		const configured = buildProductChainTree({ game, store: campusStore, categoryId: 'snacks' });
+		const configured = buildProductChainTree({ game, store: campusStore, productId: 'snacks' });
 		const importsOnly = buildProductChainTree({
 			game: {
 				...game,
@@ -256,7 +256,7 @@ describe('buildProductChainTree', () => {
 				)
 			},
 			store: campusStore,
-			categoryId: 'snacks'
+			productId: 'snacks'
 		});
 		expect(configured.details['product:snacks']?.warehouseStock).toBe(7);
 		expect(configured.supplyState).toEqual({
@@ -277,7 +277,7 @@ describe('buildProductChainTree', () => {
 					)
 				},
 				store: campusStore,
-				categoryId: 'snacks'
+				productId: 'snacks'
 			})
 		).toThrow('City inventory invariant: city-closed for quarry-works');
 	});
@@ -356,7 +356,7 @@ describe('buildProductChainTree', () => {
 			})
 		);
 
-		const configured = buildProductChainTree({ game, store: campusStore, categoryId: 'snacks' });
+		const configured = buildProductChainTree({ game, store: campusStore, productId: 'snacks' });
 		const importsOnlyGame: GameState = {
 			...game,
 			retailSupplyAssignments: game.retailSupplyAssignments!.map((assignment) =>
@@ -368,7 +368,7 @@ describe('buildProductChainTree', () => {
 		const importsOnly = buildProductChainTree({
 			game: importsOnlyGame,
 			store: campusStore,
-			categoryId: 'snacks'
+			productId: 'snacks'
 		});
 		expect(configured.details['product:snacks']?.actual.produced).toBe(8);
 		// Campus has no product report in this latest report (its store has no
@@ -378,7 +378,7 @@ describe('buildProductChainTree', () => {
 		expect(configured.details['product:snacks']?.actual.warehousePulled).toBe(0);
 		expect(configured.details['product:snacks']?.actual.shopImported).toBe(4);
 		expect(
-			buildStoreCategoryChainSummaries(game).find((summary) => summary.categoryId === 'snacks')
+			buildStoreCategoryChainSummaries(game).find((summary) => summary.productId === 'snacks')
 				?.imported
 		).toBe(4);
 		expect(importsOnly.supplyState).toEqual({ code: 'imports-only' });
@@ -389,7 +389,7 @@ describe('buildProductChainTree', () => {
 		});
 		expect(
 			buildStoreCategoryChainSummaries(importsOnlyGame).find(
-				(summary) => summary.categoryId === 'snacks'
+				(summary) => summary.productId === 'snacks'
 			)?.imported
 		).toBe(4);
 	});
@@ -496,14 +496,14 @@ describe('buildProductChainTree', () => {
 		const campusTree = buildProductChainTree({
 			game: { ...game, activeCityId: 'campus-junction' },
 			store: null,
-			categoryId: 'snacks'
+			productId: 'snacks'
 		});
 		expect(campusTree.details['product:snacks']?.actual.warehousePulled).toBe(5);
 
 		const harborTree = buildProductChainTree({
 			game: { ...game, activeCityId: 'harbor-city' },
 			store: null,
-			categoryId: 'snacks'
+			productId: 'snacks'
 		});
 		expect(harborTree.details['product:snacks']?.actual.warehousePulled).toBe(3);
 
@@ -511,13 +511,13 @@ describe('buildProductChainTree', () => {
 			...game,
 			activeCityId: 'campus-junction'
 		});
-		expect(campusSummaries.find((summary) => summary.categoryId === 'snacks')?.produced).toBe(0);
+		expect(campusSummaries.find((summary) => summary.productId === 'snacks')?.produced).toBe(0);
 
 		const harborSummaries = buildStoreCategoryChainSummaries({
 			...game,
 			activeCityId: 'harbor-city'
 		});
-		expect(harborSummaries.find((summary) => summary.categoryId === 'snacks')?.produced).toBe(0);
+		expect(harborSummaries.find((summary) => summary.productId === 'snacks')?.produced).toBe(0);
 	});
 
 	it('does not fall back to shared-source warehouse pulls when the active retail city has no product report yet', () => {
@@ -606,7 +606,7 @@ describe('buildProductChainTree', () => {
 		const campusTree = buildProductChainTree({
 			game: { ...game, activeCityId: 'campus-junction' },
 			store: null,
-			categoryId: 'snacks'
+			productId: 'snacks'
 		});
 
 		expect(campusTree.details['product:snacks']?.actual.warehousePulled).toBe(0);
@@ -617,7 +617,7 @@ describe('buildProductChainTree', () => {
 		const harborTree = buildProductChainTree({
 			game: { ...game, activeCityId: 'harbor-city' },
 			store: null,
-			categoryId: 'snacks'
+			productId: 'snacks'
 		});
 		expect(harborTree.details['product:snacks']?.actual.warehousePulled).toBe(3);
 	});
@@ -649,14 +649,14 @@ describe('buildProductChainTree', () => {
 			buildProductChainTree({
 				game: importsOnlyGame,
 				store: campusStore,
-				categoryId: 'snacks'
+				productId: 'snacks'
 			}).supplyState
 		).toEqual({ code: 'imports-only' });
 		expect(() =>
 			buildProductChainTree({
 				game: missingAssignmentGame,
 				store: campusStore,
-				categoryId: 'snacks'
+				productId: 'snacks'
 			})
 		).toThrow('Retail supply invariant: missing assignment for campus-junction');
 	});
@@ -669,7 +669,7 @@ describe('buildProductChainTree', () => {
 			buildProductChainTree({
 				game: { ...game, activeCityId: 'industry-city' },
 				store: game.stores[0]!,
-				categoryId: 'snacks'
+				productId: 'snacks'
 			})
 		).toThrow('Retail supply invariant: invalid retail city industry-city');
 
@@ -677,7 +677,7 @@ describe('buildProductChainTree', () => {
 			buildProductChainTree({
 				game: { ...game, activeCityId: 'breadbasket-basin' },
 				store: game.stores[0]!,
-				categoryId: 'snacks'
+				productId: 'snacks'
 			})
 		).toThrow('Retail supply invariant: invalid retail city breadbasket-basin');
 	});
@@ -708,7 +708,7 @@ describe('buildProductChainTree', () => {
 				buildProductChainTree({
 					game,
 					store: campusStore,
-					categoryId: 'snacks'
+					productId: 'snacks'
 				})
 			).toThrow('Retail supply invariant: unavailable source breadbasket-basin');
 		} finally {
@@ -721,7 +721,7 @@ describe('buildProductChainTree', () => {
 		const tree = buildProductChainTree({
 			game,
 			store: game.stores[0]!,
-			categoryId: 'bottled-water'
+			productId: 'bottled-water'
 		});
 
 		expect(tree.id).toBe('chain:bottled-water');
@@ -772,7 +772,7 @@ describe('buildProductChainTree', () => {
 			})
 		);
 
-		const tree = buildProductChainTree({ game, store: game.stores[0]!, categoryId: 'snacks' });
+		const tree = buildProductChainTree({ game, store: game.stores[0]!, productId: 'snacks' });
 		const snackFactory = tree.details['recipe:snack-production']!;
 		const packagingNode = tree.details['recipe:packaging-production@snack-production']!;
 		const packagingEdge = tree.edges.find(
@@ -794,7 +794,7 @@ describe('buildProductChainTree', () => {
 
 	it('gives every non-root node exactly one outgoing edge (tree property)', () => {
 		const game = convenienceGame();
-		const tree = buildProductChainTree({ game, store: null, categoryId: 'snacks' });
+		const tree = buildProductChainTree({ game, store: null, productId: 'snacks' });
 
 		const sourceCounts = new Map<string, number>();
 		for (const edge of tree.edges) {
@@ -808,7 +808,7 @@ describe('buildProductChainTree', () => {
 
 	it('duplicates shared sub-chains per branch with unique path-suffixed ids', () => {
 		const game = convenienceGame();
-		const tree = buildProductChainTree({ game, store: null, categoryId: 'snacks' });
+		const tree = buildProductChainTree({ game, store: null, productId: 'snacks' });
 
 		const ids = tree.nodes.map((node) => node.id);
 		expect(new Set(ids).size).toBe(ids.length);
@@ -820,7 +820,7 @@ describe('buildProductChainTree', () => {
 
 	it('marks duplicated producers with a shared branch count', () => {
 		const game = convenienceGame();
-		const tree = buildProductChainTree({ game, store: null, categoryId: 'drinks' });
+		const tree = buildProductChainTree({ game, store: null, productId: 'soft-drinks' });
 
 		// Water pumping feeds filtration directly and syrup production in the drinks chain.
 		const waterCopies = tree.nodes.filter((node) => node.recipeId === 'water-pumping');
@@ -832,7 +832,7 @@ describe('buildProductChainTree', () => {
 
 	it('lays out a planar tree: each parent row sits within its children rows', () => {
 		const game = convenienceGame();
-		const tree = buildProductChainTree({ game, store: null, categoryId: 'snacks' });
+		const tree = buildProductChainTree({ game, store: null, productId: 'snacks' });
 
 		const byId = tree.details;
 		const childrenOf = new Map<string, string[]>();
@@ -855,7 +855,7 @@ describe('buildProductChainTree', () => {
 
 	it('labels merged cards with the building name and output material', () => {
 		const game = convenienceGame();
-		const tree = buildProductChainTree({ game, store: null, categoryId: 'pantry' });
+		const tree = buildProductChainTree({ game, store: null, productId: 'pantry' });
 
 		const mill = tree.nodes.find(
 			(node) => node.id === 'recipe:flour-milling@pantry-goods-production'
@@ -873,7 +873,7 @@ describe('buildProductChainTree', () => {
 		const tree = buildProductChainTree({
 			game,
 			store: game.stores[0]!,
-			categoryId: 'bottled-water'
+			productId: 'bottled-water'
 		});
 
 		expect(tree.warnings).toContainEqual({ code: 'noDailyReport' });
@@ -885,7 +885,7 @@ describe('buildProductChainTree', () => {
 
 	it('returns an empty graph for categories without chains', () => {
 		const game = convenienceGame();
-		const tree = buildProductChainTree({ game, store: null, categoryId: 'apparel' });
+		const tree = buildProductChainTree({ game, store: null, productId: 'apparel' });
 
 		expect(tree.nodes).toEqual([]);
 		expect(tree.emptyReason).toBe('noLocalChain');
@@ -943,7 +943,7 @@ describe('buildProductChainTree', () => {
 			]
 		};
 
-		const tree = buildProductChainTree({ game, store: game.stores[0]!, categoryId: 'snacks' });
+		const tree = buildProductChainTree({ game, store: game.stores[0]!, productId: 'snacks' });
 		const root = tree.details['product:snacks']!;
 
 		expect(root.actual.demandMissed).toBe(12);
@@ -992,12 +992,12 @@ describe('buildProductChainTree', () => {
 		const level1Tree = buildProductChainTree({
 			game: level1Game,
 			store: level1Game.stores[0]!,
-			categoryId: 'snacks'
+			productId: 'snacks'
 		});
 		const level3Tree = buildProductChainTree({
 			game: level3Game,
 			store: level3Game.stores[0]!,
-			categoryId: 'snacks'
+			productId: 'snacks'
 		});
 
 		const level1Recipe = level1Tree.details['recipe:snack-production']!;
@@ -1049,7 +1049,7 @@ describe('buildProductChainTree', () => {
 			})
 		);
 
-		const tree = buildProductChainTree({ game, store: game.stores[0]!, categoryId: 'drinks' });
+		const tree = buildProductChainTree({ game, store: game.stores[0]!, productId: 'soft-drinks' });
 		const filtrationInput = tree.edges.find(
 			(edge) =>
 				edge.id ===
@@ -1118,7 +1118,7 @@ describe('buildProductChainTree', () => {
 			})
 		);
 
-		const tree = buildProductChainTree({ game, store: game.stores[0]!, categoryId: 'drinks' });
+		const tree = buildProductChainTree({ game, store: game.stores[0]!, productId: 'soft-drinks' });
 		const filtrationInput = tree.edges.find(
 			(edge) =>
 				edge.id ===
@@ -1185,12 +1185,12 @@ describe('buildProductChainTree', () => {
 		const snacksTree = buildProductChainTree({
 			game,
 			store: game.stores[0]!,
-			categoryId: 'snacks'
+			productId: 'snacks'
 		});
 		const drinksTree = buildProductChainTree({
 			game,
 			store: game.stores[0]!,
-			categoryId: 'drinks'
+			productId: 'soft-drinks'
 		});
 		const snacksPackaging = snacksTree.edges.find(
 			(edge) => edge.id === 'recipe:packaging-production@snack-production->recipe:snack-production'
@@ -1263,7 +1263,7 @@ describe('buildStoreCategoryChainSummaries (tree)', () => {
 		};
 
 		const snacks = buildStoreCategoryChainSummaries(game).find(
-			(summary) => summary.categoryId === 'snacks'
+			(summary) => summary.productId === 'snacks'
 		);
 
 		expect(snacks?.warehouseStock).toBe(7);
@@ -1274,10 +1274,10 @@ describe('buildStoreCategoryChainSummaries (tree)', () => {
 		const game = convenienceGame();
 		const summaries = buildStoreCategoryChainSummaries(game);
 
-		expect(summaries[0]?.categoryId).toBe('bottled-water');
+		expect(summaries[0]?.productId).toBe('bottled-water');
 		expect(summaries[0]?.tier).toBe(1);
-		expect(summaries.map((summary) => summary.categoryId)).toContain('snacks');
-		const snacks = summaries.find((summary) => summary.categoryId === 'snacks');
+		expect(summaries.map((summary) => summary.productId)).toContain('snacks');
+		const snacks = summaries.find((summary) => summary.productId === 'snacks');
 		expect(snacks?.tier).toBe(3);
 		const tiers = summaries.map((summary) => summary.tier ?? 99);
 		expect(tiers).toEqual([...tiers].sort((a, b) => a - b));
@@ -1317,7 +1317,7 @@ describe('buildStoreCategoryChainSummaries (tree)', () => {
 		);
 
 		const summaries = buildStoreCategoryChainSummaries(game);
-		const snacks = summaries.find((summary) => summary.categoryId === 'snacks');
+		const snacks = summaries.find((summary) => summary.productId === 'snacks');
 
 		expect(snacks?.produced).toBe(8);
 		expect(snacks?.consumed).toBe(8);
@@ -1399,7 +1399,7 @@ describe('buildStoreCategoryChainSummaries (tree)', () => {
 			]
 		};
 
-		const tree = buildProductChainTree({ game, store: null, categoryId: 'snacks' });
+		const tree = buildProductChainTree({ game, store: null, productId: 'snacks' });
 		const root = tree.details['product:snacks']!;
 
 		expect(root.actual.unitsSold).toBe(13);
@@ -1457,7 +1457,7 @@ describe('buildStoreCategoryChainSummaries (tree)', () => {
 		};
 
 		const snacks = buildStoreCategoryChainSummaries(game).find(
-			(summary) => summary.categoryId === 'snacks'
+			(summary) => summary.productId === 'snacks'
 		);
 
 		expect(snacks?.produced).toBe(8);
@@ -1468,22 +1468,32 @@ describe('buildStoreCategoryChainSummaries (tree)', () => {
 
 describe('buildProductChainTree defensive branches', () => {
 	const producerMap = MATERIAL_PRODUCER_RECIPES as Map<string, string>;
+	const originalBottledWaterRecipe = producerMap.get('bottled-water');
 	const originalWaterRecipe = producerMap.get('water');
 
 	afterEach(() => {
+		if (originalBottledWaterRecipe !== undefined) {
+			producerMap.set('bottled-water', originalBottledWaterRecipe);
+		}
 		if (originalWaterRecipe !== undefined) {
 			producerMap.set('water', originalWaterRecipe);
 		}
 	});
 
 	it('returns an empty graph when a supported finished material has no producer recipe', () => {
-		expect.assertions(3);
+		expect.assertions(4);
+		producerMap.delete('bottled-water');
 		const game = convenienceGame();
-		const tree = buildProductChainTree({ game, store: null, categoryId: 'fake-finished' });
+		const tree = buildProductChainTree({
+			game,
+			store: null,
+			productId: 'bottled-water'
+		});
 
 		expect(tree.nodes).toEqual([]);
+		expect(tree.id).toBe('chain:bottled-water');
 		expect(tree.emptyReason).toBe('noLocalChain');
-		expect(tree.title).toBe('fake-finished');
+		expect(tree.title).toBe('Bottled Water');
 	});
 
 	it('warns when a recipe input material has no producer recipe', () => {
@@ -1493,7 +1503,7 @@ describe('buildProductChainTree defensive branches', () => {
 		// noProductionRecipe warning branch.
 		producerMap.delete('water');
 		const game = convenienceGame();
-		const tree = buildProductChainTree({ game, store: null, categoryId: 'bottled-water' });
+		const tree = buildProductChainTree({ game, store: null, productId: 'bottled-water' });
 		expect(tree.warnings).toContainEqual({ code: 'noProductionRecipe', materialId: 'water' });
 	});
 });

@@ -25,7 +25,7 @@ describe('StoreProductChainPanel', () => {
 
 		await expect.element(page.getByLabelText('Product category')).toBeVisible();
 		await expect.element(page.getByRole('option', { name: 'Snacks' })).toBeInTheDocument();
-		await expect.element(page.getByRole('option', { name: 'Drinks' })).toBeInTheDocument();
+		await expect.element(page.getByRole('option', { name: 'Soft Drinks' })).toBeInTheDocument();
 		await expect.element(page.getByTestId('product-chain-graph-chain:bottled-water')).toBeVisible();
 	});
 
@@ -35,10 +35,10 @@ describe('StoreProductChainPanel', () => {
 
 		renderProductChainPanel(game, game.stores[0]!);
 
-		await page.getByLabelText('Product category').selectOptions('drinks');
+		await page.getByLabelText('Product category').selectOptions('soft-drinks');
 
-		await expect.element(page.getByTestId('product-chain-graph-chain:drinks')).toBeVisible();
-		expect(document.querySelector('.chain-title')?.textContent).toBe('Drinks chain');
+		await expect.element(page.getByTestId('product-chain-graph-chain:soft-drinks')).toBeVisible();
+		expect(document.querySelector('.chain-title')?.textContent).toBe('Soft Drinks chain');
 	});
 
 	it('fires interaction feedback for category and node selection clicks', async () => {
@@ -48,11 +48,11 @@ describe('StoreProductChainPanel', () => {
 
 		renderProductChainPanel(game, game.stores[0]!, { onInteractionFeedback });
 
-		await page.getByLabelText('Product category').selectOptions('drinks');
+		await page.getByLabelText('Product category').selectOptions('soft-drinks');
 
 		expect(onInteractionFeedback).toHaveBeenCalledOnce();
 
-		const graph = page.getByTestId('product-chain-graph-chain:drinks');
+		const graph = page.getByTestId('product-chain-graph-chain:soft-drinks');
 		await graph.getByRole('button').first().click();
 
 		expect(onInteractionFeedback).toHaveBeenCalledTimes(2);
@@ -81,7 +81,7 @@ describe('StoreProductChainPanel', () => {
 		};
 		const view = renderProductChainPanel(game, game.stores[0]!);
 
-		await page.getByLabelText('Product category').selectOptions('drinks');
+		await page.getByLabelText('Product category').selectOptions('soft-drinks');
 
 		view.rerender({ game, i18n: createI18n('en'), store: secondStore });
 

@@ -22,7 +22,9 @@ import type {
 	EventDecisionItem,
 	GameState,
 	RecurringRoute,
+	ProductId,
 	StaffMember,
+	StoreProduct,
 	SystemDecisionItem,
 	TransferOrder
 } from './types';
@@ -295,7 +297,7 @@ describe('daily simulation', () => {
 			      "id": "store-1",
 			      "products": [
 			        {
-			          "categoryId": "bottled-water",
+			          "productId": "bottled-water",
 			          "stock": 20,
 			        },
 			      ],
@@ -377,7 +379,7 @@ describe('daily simulation', () => {
 					...base.stores[0]!,
 					products: [
 						{
-							categoryId: 'bottled-water',
+							productId: 'bottled-water',
 							stock: 0,
 							reorderThreshold: 1,
 							targetStock: 10,
@@ -919,23 +921,23 @@ describe('daily simulation', () => {
 	test('merges scenario and event rules while aggregating only deterministic event impacts', () => {
 		const closingDay = 7;
 		const base = createNewGame('convenience', 280_279);
-		const products = [
+		const products: StoreProduct[] = [
 			{
-				categoryId: 'snacks',
+				productId: 'snacks',
 				stock: 0,
 				reorderThreshold: 1,
 				targetStock: 10,
 				sellingPrice: 5
 			},
 			{
-				categoryId: 'bottled-water',
+				productId: 'bottled-water',
 				stock: 0,
 				reorderThreshold: 1,
 				targetStock: 10,
 				sellingPrice: 3
 			}
 		];
-		const firstStore = { ...base.stores[0]!, products };
+		const firstStore: GameState['stores'][number] = { ...base.stores[0]!, products };
 		const rules: SimulationRules = {
 			importCostMultipliers: [
 				{
@@ -1007,11 +1009,11 @@ describe('daily simulation', () => {
 	test('sums each rounded import application instead of rounding aggregate baseline cost', () => {
 		const closingDay = 7;
 		const base = createNewGame('convenience', 280_280);
-		const store = {
+		const store: GameState['stores'][number] = {
 			...base.stores[0]!,
 			products: [
 				{
-					categoryId: 'snacks',
+					productId: 'snacks',
 					stock: 0,
 					reorderThreshold: 1,
 					targetStock: 1,
@@ -1047,7 +1049,7 @@ describe('daily simulation', () => {
 
 	test('changes weekly retail import spend without changing sales cost or rng', () => {
 		const base = createNewGame('electronics', 280_003);
-		const game = {
+		const game: GameState = {
 			...base,
 			day: 7,
 			stores: base.stores.map((store) => ({
@@ -1138,7 +1140,7 @@ describe('daily simulation', () => {
 	test('uses plain ID ordering for equal-date next-loan-payment snapshots', () => {
 		const base = createNewGame('convenience', 277_281);
 		const [foundingLoan] = base.finance.loans;
-		const game = {
+		const game: GameState = {
 			...base,
 			finance: {
 				...base.finance,
@@ -1188,7 +1190,7 @@ describe('daily simulation', () => {
 		expect.assertions(7);
 		const base = createNewGame('convenience', 277_210);
 		const loan = base.finance.loans[0]!;
-		const game = {
+		const game: GameState = {
 			...base,
 			day: 210,
 			finance: {
@@ -1405,7 +1407,7 @@ describe('daily simulation', () => {
 		const assigned = base.staff.filter((member) => member.assignedStoreId !== null)[0]!;
 		const cap = getStaffXpForLevel(assigned.level);
 		const nearCap = { ...assigned, xp: cap - 1 };
-		const game = {
+		const game: GameState = {
 			...base,
 			staff: base.staff.map((member) => (member.id === nearCap.id ? nearCap : member))
 		};
@@ -1741,7 +1743,7 @@ describe('daily simulation', () => {
 			'campus-junction'
 		);
 		const secondCity = game.cities.find((city) => city.id === 'campus-junction')!;
-		const firstStore = {
+		const firstStore: GameState['stores'][number] = {
 			...game.stores[0]!,
 			products: game.stores[0]!.products.map((product) => ({
 				...product,
@@ -1753,7 +1755,7 @@ describe('daily simulation', () => {
 			staffMorale: 90
 		};
 		const secondTile = secondCity.tiles.find((tile) => !tile.locked && tile.feature === null)!;
-		const secondStore = {
+		const secondStore: GameState['stores'][number] = {
 			...firstStore,
 			id: 'store-2',
 			name: 'Second City Store',
@@ -1781,12 +1783,12 @@ describe('daily simulation', () => {
 
 	test('weekly imports subtract cash even when cash goes negative', () => {
 		expect.assertions(5);
-		const game = {
+		const game: GameState = {
 			...createNewGame('convenience', 20260508),
 			day: 7,
 			cash: 10
 		};
-		const store = {
+		const store: GameState['stores'][number] = {
 			...game.stores[0]!,
 			products: game.stores[0]!.products.map((product) => ({
 				...product,
@@ -1814,11 +1816,11 @@ describe('daily simulation', () => {
 			day: 7,
 			cash: 50_000
 		};
-		const store = {
+		const store: GameState['stores'][number] = {
 			...baseGame.stores[0]!,
 			products: [
 				{
-					categoryId: 'snacks',
+					productId: 'snacks',
 					stock: 0,
 					reorderThreshold: 5,
 					targetStock: 20,
@@ -1862,18 +1864,18 @@ describe('daily simulation', () => {
 			day: 7,
 			cash: startingCash
 		};
-		const store = {
+		const store: GameState['stores'][number] = {
 			...baseGame.stores[0]!,
 			products: [
 				{
-					categoryId: 'snacks',
+					productId: 'snacks',
 					stock: 0,
 					reorderThreshold: 5,
 					targetStock: 20,
 					sellingPrice: 5
 				},
 				{
-					categoryId: 'bottled-water',
+					productId: 'bottled-water',
 					stock: 100,
 					reorderThreshold: 5,
 					targetStock: 100,
@@ -1893,9 +1895,9 @@ describe('daily simulation', () => {
 		});
 		const report = result.reports[0]!;
 		const storeReport = report.storeReports[0]!;
-		const snacks = storeReport.productReports.find((product) => product.categoryId === 'snacks')!;
+		const snacks = storeReport.productReports.find((product) => product.productId === 'snacks')!;
 		const bottledWater = storeReport.productReports.find(
-			(product) => product.categoryId === 'bottled-water'
+			(product) => product.productId === 'bottled-water'
 		)!;
 
 		expect(report.productionReport.cityInventories).toEqual([
@@ -1960,7 +1962,7 @@ describe('daily simulation', () => {
 					...baseGame.stores[0]!,
 					products: [
 						{
-							categoryId: 'snacks',
+							productId: 'snacks',
 							stock: 0,
 							reorderThreshold: 1,
 							targetStock: 20,
@@ -1998,11 +2000,11 @@ describe('daily simulation', () => {
 			tileId: industrialTiles[1]!.id,
 			buildingTypeId: 'warehouse'
 		});
-		const store = {
+		const store: GameState['stores'][number] = {
 			...game.stores[0]!,
 			products: [
 				{
-					categoryId: 'snacks',
+					productId: 'snacks',
 					stock: 0,
 					reorderThreshold: 5,
 					targetStock: 20,
@@ -2111,7 +2113,7 @@ describe('daily simulation', () => {
 			products: [
 				...store.products,
 				{
-					categoryId: 'unknown-category',
+					productId: 'unknown-category' as ProductId,
 					stock: 10,
 					reorderThreshold: 5,
 					targetStock: 20,
@@ -2121,7 +2123,7 @@ describe('daily simulation', () => {
 		};
 		const result = simulateDay({ ...game, stores: [storeWithExtraProduct] });
 		const productReport = result.reports[0]!.storeReports[0]!.productReports.find(
-			(report) => report.categoryId === 'unknown-category'
+			(report) => report.productId === ('unknown-category' as ProductId)
 		);
 
 		expect(productReport).toBeDefined();
@@ -2172,7 +2174,7 @@ describe('daily simulation', () => {
 	test('assigns zero utilization when a store has zero staff capacity', () => {
 		expect.assertions(1);
 		const base = createNewGame('grocery', 20260615);
-		const store = {
+		const store: GameState['stores'][number] = {
 			...base.stores[0]!,
 			staffCapacity: 0,
 			products: base.stores[0]!.products.map((p) => ({
@@ -2193,7 +2195,7 @@ describe('daily simulation', () => {
 		const assigned = base.staff.filter((member) => member.assignedStoreId !== null)[0]!;
 		const cap = getStaffXpForLevel(assigned.level);
 		const maxedOut = { ...assigned, xp: cap };
-		const game = {
+		const game: GameState = {
 			...base,
 			staff: base.staff.map((member) => (member.id === maxedOut.id ? maxedOut : member))
 		};
@@ -2221,11 +2223,11 @@ describe('daily simulation', () => {
 	test('creates default product reports for stores with no sales or import reports', () => {
 		expect.assertions(3);
 		const game = createNewGame('convenience', 20260508);
-		const store = {
+		const store: GameState['stores'][number] = {
 			...game.stores[0]!,
 			products: [
 				{
-					categoryId: 'unknown-category',
+					productId: 'unknown-category' as ProductId,
 					stock: 100,
 					reorderThreshold: 5,
 					targetStock: 100,
@@ -2235,7 +2237,7 @@ describe('daily simulation', () => {
 		};
 		const result = simulateDay({ ...game, stores: [store] });
 		const productReport = result.reports[0]!.storeReports[0]!.productReports.find(
-			(report) => report.categoryId === 'unknown-category'
+			(report) => report.productId === ('unknown-category' as ProductId)
 		);
 
 		expect(productReport).toBeDefined();
@@ -2245,15 +2247,15 @@ describe('daily simulation', () => {
 
 	test('omits shop imports for non-finished-material categories from the production report', () => {
 		expect.assertions(2);
-		const game = {
+		const game: GameState = {
 			...createNewGame('boutique', 20260508),
 			day: 7,
 			cash: 100_000
 		};
-		const store = {
+		const store: GameState['stores'][number] = {
 			...game.stores[0]!,
 			products: [
-				{ categoryId: 'apparel', stock: 0, reorderThreshold: 5, targetStock: 20, sellingPrice: 38 }
+				{ productId: 'apparel', stock: 0, reorderThreshold: 5, targetStock: 20, sellingPrice: 38 }
 			]
 		};
 		const result = simulateDay({ ...game, stores: [store] });
@@ -2344,11 +2346,11 @@ describe('daily simulation', () => {
 	test('skips import contributions from event-modifier sources not in active modifiers', () => {
 		const closingDay = 7;
 		const base = createNewGame('convenience', 280_301);
-		const store = {
+		const store: GameState['stores'][number] = {
 			...base.stores[0]!,
 			products: [
 				{
-					categoryId: 'snacks',
+					productId: 'snacks',
 					stock: 0,
 					reorderThreshold: 1,
 					targetStock: 10,

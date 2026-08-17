@@ -273,7 +273,7 @@ const strictFailureCases: readonly {
 		message: 'Products invalid',
 		path: 'start.overrides.stores',
 		expectedValue: (game) =>
-			game.stores.flatMap((store) => store.products.map((product) => product.categoryId))
+			game.stores.flatMap((store) => store.products.map((product) => product.productId))
 	},
 	{
 		label: 'stock health',
@@ -360,7 +360,7 @@ describe('buildScenarioGame', { timeout: 30_000 }, () => {
 
 		const store = result.game.stores[0]!;
 		expect(store.products[0]).toEqual({
-			categoryId: 'bottled-water',
+			productId: 'bottled-water',
 			stock: 5,
 			reorderThreshold: 2,
 			targetStock: 10,
@@ -587,7 +587,7 @@ describe('buildScenarioGame', { timeout: 30_000 }, () => {
 		const scenarioStore = result.game.stores[0]!;
 		const ordinaryStore = ordinary.stores[0]!;
 		expect(scenarioStore.level).toBe(4);
-		expect(scenarioStore.products.map((product) => product.categoryId)).toEqual([
+		expect(scenarioStore.products.map((product) => product.productId)).toEqual([
 			'games',
 			'accessories'
 		]);

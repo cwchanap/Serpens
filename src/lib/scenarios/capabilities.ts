@@ -2,6 +2,7 @@ import type {
 	ArchetypeId,
 	IndustrialBuildingTypeId,
 	MaterialId,
+	ProductId,
 	WorldCityId
 } from '$lib/game/types';
 import { isWorldCityId } from '$lib/game/world';
@@ -10,7 +11,7 @@ import type { ScenarioCommand, ScenarioDefinition, ScenarioRun } from './types';
 export type ScenarioContentQuery =
 	| { kind: 'city'; cityId: WorldCityId }
 	| { kind: 'archetype'; archetypeId: ArchetypeId }
-	| { kind: 'product'; categoryId: string }
+	| { kind: 'product'; categoryId: ProductId }
 	| { kind: 'material'; materialId: MaterialId }
 	| { kind: 'building'; buildingTypeId: IndustrialBuildingTypeId }
 	| {

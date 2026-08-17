@@ -1,5 +1,6 @@
 import { MATERIALS, getIndustrialBuildingTypesForProductChain } from '$lib/game/industry';
-import type { MaterialId } from '$lib/game/types';
+import { getProductDefinition } from '$lib/game/products';
+import type { ProductId } from '$lib/game/types';
 import { getWorldCityDefinition } from '$lib/game/world';
 import type { AuthoredBuilding, JsonObject, ValidationContext, WindowKind } from './shared';
 import {
@@ -306,15 +307,12 @@ function validateMetricWindowPair(
 
 function hasLocalProductionPath(
 	context: ValidationContext,
-	categoryIds: ReadonlySet<string>
+	categoryIds: ReadonlySet<ProductId>
 ): boolean {
-	for (const categoryId of categoryIds) {
-		if (
-			!KNOWN_MATERIAL_IDS.has(categoryId) ||
-			MATERIALS[categoryId as MaterialId].kind !== 'finished'
-		)
-			return false;
-		const requiredTypes = getIndustrialBuildingTypesForProductChain(categoryId).map(
+	for (const productId of categoryIds) {
+		const materialId = getProductDefinition(productId).productionMaterialId;
+		if (!materialId || MATERIALS[materialId].kind !== 'finished') return false;
+		const requiredTypes = getIndustrialBuildingTypesForProductChain(materialId).map(
 			(type) => type.id
 		);
 		if (

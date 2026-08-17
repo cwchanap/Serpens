@@ -49,8 +49,8 @@
 	);
 	const activeCategory = $derived.by(
 		() =>
-			summaries.find((summary) => summary.categoryId === selectedCategoryId) ??
-			summaries.find((summary) => summary.categoryId === defaultCategoryId) ??
+			summaries.find((summary) => summary.productId === selectedCategoryId) ??
+			summaries.find((summary) => summary.productId === defaultCategoryId) ??
 			summaries[0] ??
 			null
 	);
@@ -60,7 +60,7 @@
 					buildProductChainTree({
 						game,
 						store: null,
-						categoryId: activeCategory.categoryId
+						productId: activeCategory.productId
 					}),
 					i18n
 				)
@@ -77,7 +77,7 @@
 		mode === 'warehouse-flow'
 			? i18n.t('productChainsPanel.cityInventoryFlow')
 			: activeCategory
-				? i18n.labels.productCategory(activeCategory.categoryId)
+				? i18n.labels.productCategory(activeCategory.productId)
 				: i18n.t('productChainsPanel.ariaLabel')
 	);
 	function cityName(cityId: string): string {
@@ -179,8 +179,8 @@
 				type="button"
 				class="plan-category"
 				aria-label={i18n.t('supplyAdvisor.dialog')}
-				disabled={!plannerCategoryIds.includes(activeCategory.categoryId)}
-				onclick={() => onPlanCategory(activeCategory.categoryId)}
+				disabled={!plannerCategoryIds.includes(activeCategory.productId)}
+				onclick={() => onPlanCategory(activeCategory.productId)}
 			>
 				{i18n.t('supplyAdvisor.title')}
 			</button>
@@ -218,7 +218,7 @@
 		<CategoryStampIndex
 			{summaries}
 			{i18n}
-			activeCategoryId={activeCategory?.categoryId ?? null}
+			activeCategoryId={activeCategory?.productId ?? null}
 			{mode}
 			onSelectCategory={selectCategory}
 		/>

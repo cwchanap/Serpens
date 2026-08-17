@@ -54,11 +54,12 @@ import type {
 	IndustrialBuildingType,
 	IndustrialBuildingTypeId,
 	MaterialId,
+	ProductId,
 	ProductionRecipeId,
 	RecurringRoute,
 	WorldCityId
 } from './types';
-import { getFinishedMaterialIdForCategory } from './stock';
+import { getProductDefinition } from './products';
 
 export interface SupplyPlannerActionAvailability {
 	canBuildIndustry: boolean;
@@ -851,8 +852,8 @@ function supplySourceCandidates(
 	baseline: SupplyPlanProjection,
 	cause: Extract<SupplyLogisticsBottleneck, { kind: 'destination-configuration' }>
 ): SupplyPlannerCandidate[] {
-	const categoryId = findCategoryIdForFinishedMaterial(game, snapshot);
-	if (!categoryId || !snapshot.logistics) return [];
+	const productId = findProductIdForFinishedMaterial(game, snapshot);
+	if (!productId || !snapshot.logistics) return [];
 	const retailCityId = snapshot.retailCityId;
 	const fromSupplyCityId = snapshot.supplyCityId;
 	// The assignment is city-wide, so a source switch affects every supported
@@ -881,7 +882,7 @@ function supplySourceCandidates(
 	const scopedBaselineGame = isolateClaimant(game, retailCityId);
 	const scopedBaselineResult = buildSupplyPlannerSnapshot(scopedBaselineGame, {
 		retailCityId,
-		categoryId
+		productId
 	});
 	if (scopedBaselineResult.status !== 'ready') return [];
 	const scopedBaselineSnapshot = clone(scopedBaselineResult.snapshot);
@@ -909,7 +910,7 @@ function supplySourceCandidates(
 		const scopedCandidateGame = isolateClaimant(game, retailCityId, toSupplyCityId);
 		const result = buildSupplyPlannerSnapshot(scopedCandidateGame, {
 			retailCityId,
-			categoryId
+			productId
 		});
 		if (result.status !== 'ready') continue;
 		const candidateSnapshot = clone(result.snapshot);
@@ -969,7 +970,10 @@ function isolateClaimant(
  * carries products for (and that resolve to a finished material).  A source
  * assignment is city-wide, so this is the scope a source change affects.
  */
-function getRetailCityPlannerCategoryIds(game: GameState, retailCityId: WorldCityId): Set<string> {
+function getRetailCityPlannerCategoryIds(
+	game: GameState,
+	retailCityId: WorldCityId
+): Set<ProductId> {
 	return new Set(listSupplyPlannerCategories(game, retailCityId));
 }
 
@@ -980,10 +984,10 @@ function getRetailCityPlannerCategoryIds(game: GameState, retailCityId: WorldCit
  * single-category snapshot would miss.
  */
 function computeScopedImportSpend30(game: GameState, retailCityId: WorldCityId): number {
-	const categoryIds = getRetailCityPlannerCategoryIds(game, retailCityId);
+	const productIds = getRetailCityPlannerCategoryIds(game, retailCityId);
 	let totalImportSpend30 = 0;
-	for (const categoryId of categoryIds) {
-		const result = buildSupplyPlannerSnapshot(game, { retailCityId, categoryId });
+	for (const productId of productIds) {
+		const result = buildSupplyPlannerSnapshot(game, { retailCityId, productId });
 		if (result.status !== 'ready') continue;
 		const projection = withTotals(projectSupplySnapshot(result.snapshot));
 		totalImportSpend30 += projection.totals.importSpend30;
@@ -991,17 +995,17 @@ function computeScopedImportSpend30(game: GameState, retailCityId: WorldCityId):
 	return totalImportSpend30;
 }
 
-function findCategoryIdForFinishedMaterial(
+function findProductIdForFinishedMaterial(
 	game: GameState,
 	snapshot: SupplyPlannerSnapshot
-): string | null {
+): ProductId | null {
 	const stores = game.stores
 		.filter((candidate) => candidate.cityId === snapshot.retailCityId)
 		.sort((left, right) => compareCodeUnits(left.id, right.id));
 	for (const store of stores) {
-		for (const category of getSupportedStoreChainCategories(store)) {
-			if (getFinishedMaterialIdForCategory(category.id) === snapshot.finishedMaterialId) {
-				return category.id;
+		for (const product of getSupportedStoreChainCategories(store)) {
+			if (getProductDefinition(product.id).productionMaterialId === snapshot.finishedMaterialId) {
+				return product.id;
 			}
 		}
 	}

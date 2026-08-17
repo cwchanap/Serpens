@@ -20,17 +20,17 @@
 </script>
 
 <div class="stamp-index" role="group" aria-label={i18n.t('atlas.categoryIndex.ariaLabel')}>
-	{#each summaries as summary (summary.categoryId)}
-		{@const active = mode === 'store-categories' && activeCategoryId === summary.categoryId}
-		{@const icon = iconFor(summary.categoryId)}
-		{@const categoryName = i18n.labels.productCategory(summary.categoryId)}
+	{#each summaries as summary (summary.productId)}
+		{@const active = mode === 'store-categories' && activeCategoryId === summary.productId}
+		{@const icon = iconFor(summary.productId)}
+		{@const categoryName = i18n.labels.productCategory(summary.productId)}
 		<button
 			type="button"
 			class={['stamp', `stamp-${summary.health}`, active && 'is-active']}
-			data-category-id={summary.categoryId}
-			data-testid={`category-stamp-${summary.categoryId}`}
+			data-category-id={summary.productId}
+			data-testid={`category-stamp-${summary.productId}`}
 			aria-pressed={active}
-			onclick={() => onSelectCategory(summary.categoryId)}
+			onclick={() => onSelectCategory(summary.productId)}
 		>
 			<span class={['seal', `seal-${summary.health}`]}>
 				{i18n.t(`copy.productChainGraph.health.${summary.health}`)}

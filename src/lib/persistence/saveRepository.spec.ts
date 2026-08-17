@@ -32,6 +32,7 @@ import type {
 	IndustrialBuildingTypeId,
 	IndustryResourceId,
 	MaterialId,
+	ProductId,
 	StoreProduct
 } from '$lib/game/types';
 import { SAVE_SCHEMA_VERSION, type SaveRecord, type SaveStoreSnapshot } from './saveTypes';
@@ -304,7 +305,7 @@ function createDaySevenReplenishmentFromIndustryCity(): GameState {
 				...store,
 				products: [
 					{
-						categoryId: 'bottled-water',
+						productId: 'bottled-water' as const,
 						stock: 0,
 						reorderThreshold: 1,
 						targetStock: 20,
@@ -418,7 +419,7 @@ function createDailyStoreReport(overrides: Partial<DailyStoreReport> = {}): Dail
 
 function createDailyProductReport(overrides: Partial<DailyProductReport> = {}): DailyProductReport {
 	return {
-		categoryId: 'snacks',
+		productId: 'snacks' as const,
 		name: 'Snacks',
 		unitsSold: 4,
 		demandMissed: 1,
@@ -787,14 +788,14 @@ describe('save records', () => {
 					...createGame().stores[0]!,
 					products: [
 						{
-							categoryId: 'apparel',
+							productId: 'apparel' as const,
 							stock: 10,
 							targetStock: 20,
 							sellingPrice: 38,
 							reorderThreshold: 5
 						},
 						{
-							categoryId: 'apparel',
+							productId: 'apparel' as const,
 							stock: 15,
 							targetStock: 25,
 							sellingPrice: 40,
@@ -808,7 +809,7 @@ describe('save records', () => {
 
 		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
 		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
-			'Saved game stores[0] products[1] categoryId must be unique for archetype boutique'
+			'Saved game stores[0] products[1] productId must be unique for archetype boutique'
 		);
 	});
 
@@ -971,7 +972,7 @@ describe('save records', () => {
 		const store = {
 			...game.stores[0]!,
 			products: game.stores[0]!.products.map((product) =>
-				product.categoryId === 'apparel'
+				product.productId === 'apparel'
 					? {
 							...product,
 							stock: 0,
@@ -986,7 +987,7 @@ describe('save records', () => {
 		};
 		const simulated = simulateDay({ ...game, stores: [store] });
 		const apparelReport = simulated.reports[0]?.storeReports[0]?.productReports.find(
-			(report) => report.categoryId === 'apparel'
+			(report) => report.productId === 'apparel'
 		);
 		const record = createSaveRecord(simulated, {
 			id: 'manual-boutique-imports',
@@ -1004,7 +1005,7 @@ describe('save records', () => {
 		expect.assertions(2);
 		const record = createSaveRecordWithProducts([
 			{
-				categoryId: '',
+				productId: '' as ProductId,
 				stock: Number.NaN,
 				reorderThreshold: 1,
 				targetStock: 1,
@@ -1020,10 +1021,22 @@ describe('save records', () => {
 		{
 			name: 'negative stock',
 			products: [
-				{ categoryId: 'snacks', stock: -1, reorderThreshold: 1, targetStock: 2, sellingPrice: 5 },
-				{ categoryId: 'drinks', stock: 10, reorderThreshold: 1, targetStock: 2, sellingPrice: 4 },
 				{
-					categoryId: 'essentials',
+					productId: 'snacks' as const,
+					stock: -1,
+					reorderThreshold: 1,
+					targetStock: 2,
+					sellingPrice: 5
+				},
+				{
+					productId: 'soft-drinks' as const,
+					stock: 10,
+					reorderThreshold: 1,
+					targetStock: 2,
+					sellingPrice: 4
+				},
+				{
+					productId: 'essentials' as const,
 					stock: 10,
 					reorderThreshold: 1,
 					targetStock: 2,
@@ -1035,10 +1048,22 @@ describe('save records', () => {
 		{
 			name: 'negative reorder threshold',
 			products: [
-				{ categoryId: 'snacks', stock: 10, reorderThreshold: -1, targetStock: 2, sellingPrice: 5 },
-				{ categoryId: 'drinks', stock: 10, reorderThreshold: 1, targetStock: 2, sellingPrice: 4 },
 				{
-					categoryId: 'essentials',
+					productId: 'snacks' as const,
+					stock: 10,
+					reorderThreshold: -1,
+					targetStock: 2,
+					sellingPrice: 5
+				},
+				{
+					productId: 'soft-drinks' as const,
+					stock: 10,
+					reorderThreshold: 1,
+					targetStock: 2,
+					sellingPrice: 4
+				},
+				{
+					productId: 'essentials' as const,
 					stock: 10,
 					reorderThreshold: 1,
 					targetStock: 2,
@@ -1050,10 +1075,22 @@ describe('save records', () => {
 		{
 			name: 'target below reorder threshold',
 			products: [
-				{ categoryId: 'snacks', stock: 10, reorderThreshold: 5, targetStock: 4, sellingPrice: 5 },
-				{ categoryId: 'drinks', stock: 10, reorderThreshold: 1, targetStock: 2, sellingPrice: 4 },
 				{
-					categoryId: 'essentials',
+					productId: 'snacks' as const,
+					stock: 10,
+					reorderThreshold: 5,
+					targetStock: 4,
+					sellingPrice: 5
+				},
+				{
+					productId: 'soft-drinks' as const,
+					stock: 10,
+					reorderThreshold: 1,
+					targetStock: 2,
+					sellingPrice: 4
+				},
+				{
+					productId: 'essentials' as const,
 					stock: 10,
 					reorderThreshold: 1,
 					targetStock: 2,
@@ -1066,10 +1103,22 @@ describe('save records', () => {
 		{
 			name: 'zero selling price',
 			products: [
-				{ categoryId: 'snacks', stock: 10, reorderThreshold: 1, targetStock: 2, sellingPrice: 0 },
-				{ categoryId: 'drinks', stock: 10, reorderThreshold: 1, targetStock: 2, sellingPrice: 4 },
 				{
-					categoryId: 'essentials',
+					productId: 'snacks' as const,
+					stock: 10,
+					reorderThreshold: 1,
+					targetStock: 2,
+					sellingPrice: 0
+				},
+				{
+					productId: 'soft-drinks' as const,
+					stock: 10,
+					reorderThreshold: 1,
+					targetStock: 2,
+					sellingPrice: 4
+				},
+				{
+					productId: 'essentials' as const,
 					stock: 10,
 					reorderThreshold: 1,
 					targetStock: 2,
@@ -1088,27 +1137,56 @@ describe('save records', () => {
 		{
 			name: 'duplicate categories',
 			products: [
-				{ categoryId: 'snacks', stock: 10, reorderThreshold: 1, targetStock: 2, sellingPrice: 5 },
-				{ categoryId: 'snacks', stock: 10, reorderThreshold: 1, targetStock: 2, sellingPrice: 5 },
 				{
-					categoryId: 'essentials',
+					productId: 'snacks' as const,
+					stock: 10,
+					reorderThreshold: 1,
+					targetStock: 2,
+					sellingPrice: 5
+				},
+				{
+					productId: 'snacks' as const,
+					stock: 10,
+					reorderThreshold: 1,
+					targetStock: 2,
+					sellingPrice: 5
+				},
+				{
+					productId: 'essentials' as const,
 					stock: 10,
 					reorderThreshold: 1,
 					targetStock: 2,
 					sellingPrice: 8
 				}
 			],
-			message:
-				'Saved game stores[0] products[1] categoryId must be unique for archetype convenience'
+			message: 'Saved game stores[0] products[1] productId must be unique for archetype convenience'
 		},
 		{
 			name: 'unknown category',
 			products: [
-				{ categoryId: 'snacks', stock: 10, reorderThreshold: 1, targetStock: 2, sellingPrice: 5 },
-				{ categoryId: 'drinks', stock: 10, reorderThreshold: 1, targetStock: 2, sellingPrice: 4 },
-				{ categoryId: 'unknown', stock: 10, reorderThreshold: 1, targetStock: 2, sellingPrice: 8 }
+				{
+					productId: 'snacks' as const,
+					stock: 10,
+					reorderThreshold: 1,
+					targetStock: 2,
+					sellingPrice: 5
+				},
+				{
+					productId: 'soft-drinks' as const,
+					stock: 10,
+					reorderThreshold: 1,
+					targetStock: 2,
+					sellingPrice: 4
+				},
+				{
+					productId: 'unknown' as ProductId,
+					stock: 10,
+					reorderThreshold: 1,
+					targetStock: 2,
+					sellingPrice: 8
+				}
 			],
-			message: 'Saved game stores[0] products[2] categoryId must belong to archetype convenience'
+			message: 'Saved game stores[0] products[2] productId must belong to archetype convenience'
 		}
 	])('rejects saved store products with $name', ({ products, message }) => {
 		expect.assertions(1);

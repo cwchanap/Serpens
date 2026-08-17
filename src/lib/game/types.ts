@@ -218,7 +218,7 @@ export interface WorldProgress {
 	claimedMilestoneIds: WorldMilestoneId[];
 }
 
-export type RetailDemandProfile = Partial<Record<string, number>>;
+export type RetailDemandProfile = Partial<Record<ProductId, number>>;
 
 export interface IndustryResourceProfile {
 	resourceIds: IndustryResourceId[];
@@ -614,17 +614,6 @@ export interface Scorecard {
 	marketPosition: number;
 }
 
-export interface ProductCategory {
-	id: string;
-	name: string;
-	baseDemand: number;
-	margin: number;
-	demandWeight: number;
-	importCost: number;
-	defaultSellingPrice: number;
-	priceSensitivity: number;
-}
-
 export interface ProductDynamics {
 	shelfLifeDays?: number;
 	shrinkRate?: number;
@@ -648,7 +637,7 @@ export interface ProductDefinition {
 }
 
 export interface StoreProduct {
-	categoryId: string;
+	productId: ProductId;
 	stock: number;
 	reorderThreshold: number;
 	targetStock: number;
@@ -671,7 +660,7 @@ export interface StoreArchetype {
 	baseWage: number;
 	baseTraffic: number;
 	customerExpectation: number;
-	startingCategories: ProductCategory[];
+	startingProductIds: readonly ProductId[];
 	risks: string[];
 }
 
@@ -772,7 +761,7 @@ export interface OpeningOption {
 }
 
 export interface DailyProductReport {
-	categoryId: string;
+	productId: ProductId;
 	name: string;
 	unitsSold: number;
 	demandMissed: number;

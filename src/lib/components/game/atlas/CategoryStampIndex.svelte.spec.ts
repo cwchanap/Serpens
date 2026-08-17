@@ -9,7 +9,7 @@ function summary(
 	overrides: Partial<LocalizedProductChainCategorySummary>
 ): LocalizedProductChainCategorySummary {
 	return {
-		categoryId: 'snacks',
+		productId: 'snacks',
 		name: 'Snacks',
 		tier: 3,
 		health: 'healthy',
@@ -31,12 +31,12 @@ describe('CategoryStampIndex', () => {
 			i18n: createI18n('en'),
 			summaries: [
 				summary({
-					categoryId: 'snacks',
+					productId: 'snacks',
 					name: 'Snacks',
 					health: 'shortage',
 					healthLabel: 'Shortage'
 				}),
-				summary({ categoryId: 'drinks', name: 'Drinks' })
+				summary({ productId: 'soft-drinks', name: 'Drinks' })
 			],
 			activeCategoryId: 'snacks',
 			mode: 'store-categories',
@@ -52,7 +52,7 @@ describe('CategoryStampIndex', () => {
 		const onSelectCategory = vi.fn();
 		render(CategoryStampIndex, {
 			i18n: createI18n('en'),
-			summaries: [summary({ categoryId: 'snacks', name: 'Snacks' })],
+			summaries: [summary({ productId: 'snacks', name: 'Snacks' })],
 			activeCategoryId: 'snacks',
 			mode: 'store-categories',
 			onSelectCategory
@@ -68,7 +68,7 @@ describe('CategoryStampIndex', () => {
 		const onSelectCategory = vi.fn();
 		render(CategoryStampIndex, {
 			i18n: createI18n('en'),
-			summaries: [summary({ categoryId: 'snacks', name: 'Snacks' })],
+			summaries: [summary({ productId: 'snacks', name: 'Snacks' })],
 			activeCategoryId: 'snacks',
 			mode: 'warehouse-flow',
 			onSelectCategory
@@ -84,7 +84,7 @@ describe('CategoryStampIndex', () => {
 		const onSelectCategory = vi.fn();
 		render(CategoryStampIndex, {
 			i18n: createI18n('en'),
-			summaries: [summary({ categoryId: 'snacks', name: 'Snacks' })],
+			summaries: [summary({ productId: 'snacks', name: 'Snacks' })],
 			activeCategoryId: null,
 			mode: 'store-categories',
 			onSelectCategory
@@ -99,7 +99,7 @@ describe('CategoryStampIndex', () => {
 		const onSelectCategory = vi.fn();
 		render(CategoryStampIndex, {
 			i18n: createI18n('en'),
-			summaries: [summary({ categoryId: 'bottled-water', name: 'Bottled Water', tier: 1 })],
+			summaries: [summary({ productId: 'bottled-water', name: 'Bottled Water', tier: 1 })],
 			activeCategoryId: null,
 			mode: 'store-categories',
 			onSelectCategory
@@ -117,7 +117,7 @@ describe('CategoryStampIndex', () => {
 			i18n: createI18n('zh-Hant'),
 			summaries: [
 				summary({
-					categoryId: 'snacks',
+					productId: 'snacks',
 					name: 'Snacks',
 					warehouseStock: 1234.5,
 					produced: 9876,
@@ -139,7 +139,7 @@ describe('CategoryStampIndex', () => {
 		const onSelectCategory = vi.fn();
 		render(CategoryStampIndex, {
 			i18n: createI18n('en'),
-			summaries: [summary({ categoryId: 'snacks', name: 'Snacks', tier: null })],
+			summaries: [summary({ productId: 'snacks', name: 'Snacks', tier: null })],
 			activeCategoryId: null,
 			mode: 'store-categories',
 			onSelectCategory
@@ -155,7 +155,7 @@ describe('CategoryStampIndex', () => {
 
 		render(CategoryStampIndex, {
 			i18n: createI18n('en'),
-			summaries: [summary({ categoryId: 'apparel', name: 'Apparel' })],
+			summaries: [summary({ productId: 'apparel', name: 'Apparel' })],
 			activeCategoryId: null,
 			mode: 'store-categories',
 			onSelectCategory

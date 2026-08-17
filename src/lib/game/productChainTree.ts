@@ -1,4 +1,5 @@
 import { getCategoryTier, MATERIALS, PRODUCTION_RECIPES } from './industry';
+import { getProductDefinition } from './products';
 import {
 	MATERIAL_PRODUCER_RECIPES,
 	allocateInputMovement,
@@ -36,6 +37,7 @@ import type {
 	DailyProductionReport,
 	GameState,
 	MaterialId,
+	ProductId,
 	ProductionRecipeId,
 	Store,
 	WorldCityId
@@ -151,18 +153,21 @@ function buildRetailCategoryReport(
 export function buildProductChainTree(input: {
 	game: GameState;
 	store: Store | null;
-	categoryId: string;
+	productId: ProductId;
 }): ProductChainGraph {
-	if (!isSupportedFinishedMaterial(input.categoryId)) {
-		return emptyGraph(`chain:${input.categoryId}`, 'Product chain', 'noLocalChain');
+	if (!isSupportedFinishedMaterial(input.productId)) {
+		return emptyGraph(`chain:${input.productId}`, 'Product chain', 'noLocalChain');
 	}
 
-	const rootMaterialId = input.categoryId as MaterialId;
+	const rootMaterialId = getProductDefinition(input.productId).productionMaterialId;
+	if (!rootMaterialId) {
+		return emptyGraph(`chain:${input.productId}`, 'Product chain', 'noLocalChain');
+	}
 	const rootRecipeId = MATERIAL_PRODUCER_RECIPES.get(rootMaterialId);
 
 	if (!rootRecipeId) {
 		return emptyGraph(
-			`chain:${rootMaterialId}`,
+			`chain:${input.productId}`,
 			MATERIALS[rootMaterialId]?.name ?? rootMaterialId,
 			'noLocalChain'
 		);
@@ -184,7 +189,7 @@ export function buildProductChainTree(input: {
 	const productReport = latestStoreProductReport(
 		input.game,
 		selectedStore,
-		rootMaterialId,
+		input.productId,
 		activeStoreIds
 	);
 	const inventory = retailScope.industry?.inventory;
@@ -321,7 +326,7 @@ export function buildProductChainTree(input: {
 	const { actual: rootActual, health: rootHealth } = materialMetrics(rootMaterialId);
 	const rootLabel = MATERIALS[rootMaterialId].name;
 	const rootNode: ProductChainNode = {
-		id: `product:${rootMaterialId}`,
+		id: `product:${input.productId}`,
 		kind: 'material',
 		label: rootLabel,
 		materialId: rootMaterialId,
@@ -373,7 +378,7 @@ export function buildProductChainTree(input: {
 	const details = Object.fromEntries(nodes.map((node) => [node.id, node]));
 
 	return {
-		id: `chain:${rootMaterialId}`,
+		id: `chain:${input.productId}`,
 		title: `${rootLabel} chain`,
 		nodes,
 		edges: sortEdges(edges),
@@ -395,7 +400,7 @@ export function buildStoreCategoryChainSummaries(game: GameState): ProductChainC
 				continue;
 			}
 
-			const tree = buildProductChainTree({ game, store: null, categoryId: category.id });
+			const tree = buildProductChainTree({ game, store: null, productId: category.id });
 			const rootNode = tree.nodes.find((node) => node.id === `product:${category.id}`);
 
 			if (!rootNode) {
@@ -403,9 +408,9 @@ export function buildStoreCategoryChainSummaries(game: GameState): ProductChainC
 			}
 
 			summaries.set(category.id, {
-				categoryId: category.id,
+				productId: category.id,
 				name: category.name,
-				tier: getCategoryTier(category.id),
+				tier: category.productionMaterialId ? getCategoryTier(category.productionMaterialId) : null,
 				health: rootNode.health,
 				healthLabel: rootNode.healthLabel,
 				bottleneck: rootNode.bottleneck,

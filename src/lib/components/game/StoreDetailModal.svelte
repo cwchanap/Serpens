@@ -30,7 +30,7 @@
 		onClickFeedback?: () => void;
 		canUpdateSellingPrice?: boolean;
 		canUpdateInventoryTargets?: boolean;
-		allowedProductCategoryIds?: string[];
+		allowedProductIds?: string[];
 		canHireStaff?: boolean;
 		canAssignStaff?: boolean;
 		canUnassignStaff?: boolean;
@@ -52,7 +52,7 @@
 		onClickFeedback = () => {},
 		canUpdateSellingPrice = true,
 		canUpdateInventoryTargets = true,
-		allowedProductCategoryIds = store.products.map((product) => product.categoryId),
+		allowedProductIds = store.products.map((product) => product.productId),
 		canHireStaff = true,
 		canAssignStaff = true,
 		canUnassignStaff = true,
@@ -167,7 +167,7 @@
 					onUpdate={onUpdateStoreProduct}
 					{canUpdateSellingPrice}
 					{canUpdateInventoryTargets}
-					{allowedProductCategoryIds}
+					{allowedProductIds}
 					{disabledReason}
 				/>
 			</div>

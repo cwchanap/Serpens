@@ -11,7 +11,7 @@ import {
 	MATERIALS,
 	generateIndustryCity
 } from '$lib/game/industry';
-import type { City, IndustryCity, RailCell } from '$lib/game/types';
+import type { City, IndustryCity, ProductId, RailCell } from '$lib/game/types';
 import { WORLD_CITY_CATALOG, getWorldCityDefinition } from '$lib/game/world';
 import { SCENARIO_COMMAND_KINDS, type ScenarioDiagnostic } from '../types';
 import { citySeed } from '../setup';
@@ -98,8 +98,8 @@ const KNOWN_ARCHETYPE_IDS = new Set<string>(ARCHETYPES.map((archetype) => archet
 const KNOWN_CITY_IDS = new Set<string>(WORLD_CITY_CATALOG.map((city) => city.id));
 const KNOWN_MATERIAL_IDS = new Set<string>(Object.keys(MATERIALS));
 const KNOWN_BUILDING_TYPE_IDS = new Set<string>(Object.keys(INDUSTRIAL_BUILDING_TYPES));
-const KNOWN_PRODUCT_IDS = new Set<string>(
-	ARCHETYPES.flatMap((archetype) => archetype.startingCategories.map((category) => category.id))
+const KNOWN_PRODUCT_IDS = new Set<ProductId>(
+	ARCHETYPES.flatMap((archetype) => archetype.startingProductIds)
 );
 const KNOWN_COMMANDS = new Set<string>(SCENARIO_COMMAND_KINDS);
 const COMPARATORS = new Set(['lt', 'lte', 'eq', 'gte', 'gt']);
@@ -153,7 +153,7 @@ interface ValidationContext {
 	content: {
 		cities: Set<string>;
 		archetypes: Set<string>;
-		products: Set<string>;
+		products: Set<ProductId>;
 		materials: Set<string>;
 		buildingTypes: Set<string>;
 	};
@@ -386,29 +386,30 @@ export function validateKnownReference(
 	return true;
 }
 
-export function validateReferenceArray(
+export function validateReferenceArray<T extends string>(
 	context: ValidationContext,
 	value: unknown,
 	path: string,
-	registry: ReadonlySet<string>,
+	registry: ReadonlySet<T>,
 	kind: string
-): Set<string> {
-	const result = new Set<string>();
+): Set<T> {
+	const result = new Set<T>();
 	const values = arrayValue(context, value, path);
 	if (!values) return result;
 	for (const [index, candidate] of values.entries()) {
 		const itemPath = `${path}[${index}]`;
 		if (!validateKnownReference(context, candidate, itemPath, registry, kind)) continue;
-		if (result.has(candidate)) {
+		const typedCandidate = candidate as T;
+		if (result.has(typedCandidate)) {
 			diagnostic(
 				context,
 				itemPath,
 				'duplicate-reference',
-				candidate,
-				`Duplicate ${kind} reference: ${candidate}.`
+				typedCandidate,
+				`Duplicate ${kind} reference: ${typedCandidate}.`
 			);
 		}
-		result.add(candidate);
+		result.add(typedCandidate);
 	}
 	return result;
 }

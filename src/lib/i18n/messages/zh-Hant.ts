@@ -1050,7 +1050,7 @@ export const zhHant = {
 		products: {
 			'bottled-water': '瓶裝水',
 			snacks: '零食',
-			drinks: '飲料',
+			'soft-drinks': '軟性飲料',
 			essentials: '生活必需品',
 			household: '家用用品',
 			apparel: '服飾',

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createNewGame } from '$lib/game/state';
-import type { GameState } from '$lib/game/types';
+import type { GameState, ProductId } from '$lib/game/types';
 import {
 	SCENARIO_COMMAND_KINDS,
 	type ScenarioCommand,
@@ -493,9 +493,12 @@ describe('scenario content capabilities', () => {
 		expect(isScenarioContentAllowed(scenario, { kind: 'archetype', archetypeId: 'grocery' })).toBe(
 			true
 		);
-		expect(isScenarioContentAllowed(scenario, { kind: 'product', categoryId: 'not-allowed' })).toBe(
-			false
-		);
+		expect(
+			isScenarioContentAllowed(scenario, {
+				kind: 'product',
+				categoryId: 'not-allowed' as ProductId
+			})
+		).toBe(false);
 		expect(
 			isScenarioContentAllowed(scenario, {
 				kind: 'retail-placement',

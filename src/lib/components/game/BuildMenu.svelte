@@ -12,6 +12,7 @@
 		getIndustrialBuildingTypesForProductChain
 	} from '$lib/game/industry';
 	import { MATERIAL_PRODUCER_RECIPES } from '$lib/game/productChainGraph';
+	import { getProductDefinition } from '$lib/game/products';
 	import { focusTrap } from '$lib/a11y/focusTrap';
 	import { formatPlacementBlockReason } from '$lib/i18n/gameCopy';
 	import type { I18nBundle } from '$lib/i18n/index';
@@ -21,10 +22,15 @@
 		PlacementBlockReason,
 		RetailBuildMenuOption
 	} from '$lib/game/placementPreview';
-	import type { ArchetypeId, IndustrialBuildingTypeId, MaterialId } from '$lib/game/types';
+	import type {
+		ArchetypeId,
+		IndustrialBuildingTypeId,
+		MaterialId,
+		ProductId
+	} from '$lib/game/types';
 
 	interface ProductChainFilter {
-		id: string;
+		id: ProductId;
 		name: string;
 		buildingCount: number;
 	}
@@ -75,7 +81,7 @@
 		onClose
 	}: Props = $props();
 
-	let selectedProductFilterId = $state<string | null>(null);
+	let selectedProductFilterId = $state<ProductId | null>(null);
 	let productFilterOpen = $state(false);
 	let productFilterSearch = $state('');
 	const productFilters = $derived.by(() => getProductChainFilters());
@@ -104,8 +110,13 @@
 		);
 	});
 	const visibleIndustryBuildingTypes = $derived.by(() => {
+		const productionMaterialId = selectedProductFilterId
+			? getProductDefinition(selectedProductFilterId).productionMaterialId
+			: null;
 		const types = selectedProductFilterId
-			? getIndustrialBuildingTypesForProductChain(selectedProductFilterId)
+			? productionMaterialId
+				? getIndustrialBuildingTypesForProductChain(productionMaterialId)
+				: []
 			: Object.values(INDUSTRIAL_BUILDING_TYPES);
 		return [...types].sort(
 			(first, second) =>
@@ -193,22 +204,28 @@
 	}
 
 	function getProductChainFilters(): ProductChainFilter[] {
-		const categories: Array<{ id: string; name: string }> = [];
+		const products: Array<{ id: ProductId; name: string }> = [];
 
 		for (const archetype of ARCHETYPES) {
-			for (const category of archetype.startingCategories) {
-				if (!categories.some((candidate) => candidate.id === category.id)) {
-					categories.push({ id: category.id, name: category.name });
+			for (const productId of archetype.startingProductIds) {
+				const product = getProductDefinition(productId);
+				if (!products.some((candidate) => candidate.id === product.id)) {
+					products.push({ id: product.id, name: product.name });
 				}
 			}
 		}
 
-		return categories
-			.map((category) => ({
-				id: category.id,
-				name: i18n.labels.productCategory(category.id),
-				buildingCount: getIndustrialBuildingTypesForProductChain(category.id).length
-			}))
+		return products
+			.map((product) => {
+				const productionMaterialId = getProductDefinition(product.id).productionMaterialId;
+				return {
+					id: product.id,
+					name: i18n.labels.productCategory(product.id),
+					buildingCount: productionMaterialId
+						? getIndustrialBuildingTypesForProductChain(productionMaterialId).length
+						: 0
+				};
+			})
 			.sort((first, second) => first.name.localeCompare(second.name));
 	}
 
@@ -220,7 +237,7 @@
 		productFilterOpen = false;
 	}
 
-	function selectProductFilter(filterId: string | null): void {
+	function selectProductFilter(filterId: ProductId | null): void {
 		selectedProductFilterId = filterId;
 		productFilterOpen = false;
 		productFilterSearch = '';

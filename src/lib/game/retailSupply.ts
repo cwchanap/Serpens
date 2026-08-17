@@ -8,19 +8,20 @@ import {
 } from './cityInventory';
 import { getArchetype } from './archetypes';
 import { MATERIALS } from './industry';
+import { getProductDefinition } from './products';
 import {
 	DEFAULT_SIMULATION_RULES,
 	resolveImportCostMultiplier,
 	type ImportCostApplicationEvidence,
 	type SimulationRules
 } from './simulationRules';
-import { calculateStockHealth, getFinishedMaterialIdForCategory } from './stock';
+import { calculateStockHealth } from './stock';
 import { getWorldCityDefinition } from './world';
 import type {
 	CityInventory,
 	DailyProductReport,
 	GameState,
-	ProductCategory,
+	ProductDefinition,
 	RetailReplenishmentContext,
 	RetailReplenishmentOutcome,
 	RetailSupplyAssignment,
@@ -136,27 +137,35 @@ export function applyWeeklyReplenishment(
 
 		for (const store of cityStores) {
 			let attemptedReplenishment = false;
-			const categories = getArchetype(store.archetypeId).startingCategories;
+			const startingProductIds = getArchetype(store.archetypeId).startingProductIds;
 			const products = store.products.map((product) => {
 				if (product.stock >= product.reorderThreshold) {
 					return product;
 				}
 
-				const category = categories.find((candidate) => candidate.id === product.categoryId);
+				if (!startingProductIds.includes(product.productId)) {
+					return product;
+				}
+
+				const productDefinition = getProductDefinition(product.productId);
 				const neededUnits = Math.max(0, product.targetStock - product.stock);
-				if (!category || neededUnits === 0) {
+				if (neededUnits === 0) {
 					return product;
 				}
 
 				attemptedReplenishment = true;
 				const replenishment = replenishProduct({
 					context,
-					category,
+					product: productDefinition,
 					neededUnits,
 					cityInventoriesByCityId
 				});
-				const baselineCost = replenishment.importedUnits * category.importCost;
-				const costResolution = resolveImportCostMultiplier(rules, 'retail-product', category.id);
+				const baselineCost = replenishment.importedUnits * productDefinition.importCost;
+				const costResolution = resolveImportCostMultiplier(
+					rules,
+					'retail-product',
+					productDefinition.id
+				);
 				const spend = Math.round(baselineCost * costResolution.multiplier);
 
 				if (
@@ -166,7 +175,7 @@ export function applyWeeklyReplenishment(
 				) {
 					importCostApplications.push({
 						scope: 'retail-product',
-						targetId: category.id,
+						targetId: productDefinition.id,
 						baselineCost,
 						resolvedMultiplier: costResolution.multiplier,
 						actualCost: spend,
@@ -175,7 +184,7 @@ export function applyWeeklyReplenishment(
 				}
 
 				importSpend += spend;
-				mergeReplenishmentReport(productReports, store.id, category, {
+				mergeReplenishmentReport(productReports, store.id, productDefinition, {
 					endingStock: product.targetStock,
 					warehouseUnits: replenishment.warehouseUnits,
 					warehouseValue: replenishment.warehouseValue,
@@ -273,7 +282,7 @@ function resolveRetailSupplyContext(
 
 function replenishProduct(input: {
 	context: RetailReplenishmentContext;
-	category: ProductCategory;
+	product: ProductDefinition;
 	neededUnits: number;
 	cityInventoriesByCityId: Map<WorldCityId, CityInventory>;
 }): {
@@ -281,7 +290,7 @@ function replenishProduct(input: {
 	warehouseValue: number;
 	importedUnits: number;
 } {
-	const materialId = getFinishedMaterialIdForCategory(input.category.id);
+	const materialId = input.product.productionMaterialId;
 	const sourceCityId = input.context.resolvedSupplyCityId;
 	if (sourceCityId && materialId) {
 		const sourceInventory = input.cityInventoriesByCityId.get(sourceCityId)!;
@@ -316,7 +325,7 @@ function cloneProductReports(
 function mergeReplenishmentReport(
 	reports: Map<string, DailyProductReport[]>,
 	storeId: string,
-	category: ProductCategory,
+	product: ProductDefinition,
 	refill: {
 		endingStock: number;
 		warehouseUnits: number;
@@ -326,13 +335,13 @@ function mergeReplenishmentReport(
 	}
 ): void {
 	const storeReports = reports.get(storeId) ?? [];
-	const existingIndex = storeReports.findIndex((report) => report.categoryId === category.id);
+	const existingIndex = storeReports.findIndex((report) => report.productId === product.id);
 	const replenishedFields = {
 		endingStock: refill.endingStock,
 		warehouseUnits: refill.warehouseUnits,
 		warehouseValue: refill.warehouseValue,
 		importedUnits: refill.importedUnits,
-		importCost: category.importCost,
+		importCost: product.importCost,
 		importSpend: refill.importSpend
 	};
 
@@ -345,8 +354,8 @@ function mergeReplenishmentReport(
 	reports.set(storeId, [
 		...storeReports,
 		{
-			categoryId: category.id,
-			name: category.name,
+			productId: product.id,
+			name: product.name,
 			unitsSold: 0,
 			demandMissed: 0,
 			revenue: 0,

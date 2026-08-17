@@ -793,8 +793,8 @@ export function getIndustrialBuildingTypesForProductChain(
 	);
 }
 
-export function getCategoryTier(categoryId: string): BuildingTier | null {
-	if (!isMaterialId(categoryId) || MATERIALS[categoryId].kind !== 'finished') {
+export function getCategoryTier(materialId: string): BuildingTier | null {
+	if (!isMaterialId(materialId) || MATERIALS[materialId].kind !== 'finished') {
 		return null;
 	}
 
@@ -806,7 +806,7 @@ export function getCategoryTier(categoryId: string): BuildingTier | null {
 			(buildingType) =>
 				buildingType.recipeId !== null &&
 				PRODUCTION_RECIPES[buildingType.recipeId].outputs.some(
-					(output) => output.materialId === categoryId
+					(output) => output.materialId === materialId
 				)
 		)
 		.map((buildingType) => buildingType.tier);

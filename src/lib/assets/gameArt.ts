@@ -7,6 +7,7 @@ import type {
 	IndustryTerrainId,
 	MaterialId,
 	NeighborhoodId,
+	ProductId,
 	ProductionRecipeId,
 	TerrainId
 } from '$lib/game/types';
@@ -77,114 +78,97 @@ export const SHOP_STOREFRONT_PATH = ARCHETYPE_STORE_ART.convenience.path;
 export const SHOP_STOREFRONT_TEXTURE_KEY = ARCHETYPE_STORE_ART.convenience.textureKey;
 export const SHOP_STOREFRONT_ALT = 'Anime-style storefront for an owned shop';
 
-export type ProductArtCategoryId =
-	| 'snacks'
-	| 'drinks'
-	| 'essentials'
-	| 'apparel'
-	| 'home-goods'
-	| 'gifts'
-	| 'games'
-	| 'accessories'
-	| 'fashion-accessories'
-	| 'devices'
-	| 'produce'
-	| 'pantry'
-	| 'prepared'
-	| 'household'
-	| 'peripherals'
-	| 'bakery'
-	| 'bottled-water';
+export type ProductArtProductId = ProductId;
 
 export interface ProductArt {
-	categoryId: ProductArtCategoryId;
+	productId: ProductArtProductId;
 	path: string;
 	alt: string;
 }
 
-export const PRODUCT_ART: Readonly<Record<ProductArtCategoryId, ProductArt>> = Object.freeze({
+export const PRODUCT_ART: Readonly<Record<ProductArtProductId, ProductArt>> = Object.freeze({
 	snacks: Object.freeze({
-		categoryId: 'snacks',
+		productId: 'snacks',
 		path: '/assets/game/products/snacks.png',
 		alt: 'Product icon for snacks'
 	}),
-	drinks: Object.freeze({
-		categoryId: 'drinks',
+	'soft-drinks': Object.freeze({
+		productId: 'soft-drinks',
 		path: '/assets/game/products/drinks.png',
 		alt: 'Product icon for drinks'
 	}),
 	essentials: Object.freeze({
-		categoryId: 'essentials',
+		productId: 'essentials',
 		path: '/assets/game/products/essentials.png',
 		alt: 'Product icon for essentials'
 	}),
 	apparel: Object.freeze({
-		categoryId: 'apparel',
+		productId: 'apparel',
 		path: '/assets/game/products/apparel.png',
 		alt: 'Product icon for apparel'
 	}),
 	'home-goods': Object.freeze({
-		categoryId: 'home-goods',
+		productId: 'home-goods',
 		path: '/assets/game/products/home-goods.png',
 		alt: 'Product icon for home goods'
 	}),
 	gifts: Object.freeze({
-		categoryId: 'gifts',
+		productId: 'gifts',
 		path: '/assets/game/products/gifts.png',
 		alt: 'Product icon for gifts'
 	}),
 	games: Object.freeze({
-		categoryId: 'games',
+		productId: 'games',
 		path: '/assets/game/products/games.png',
 		alt: 'Product icon for games'
 	}),
 	accessories: Object.freeze({
-		categoryId: 'accessories',
+		productId: 'accessories',
 		path: '/assets/game/products/accessories.png',
 		alt: 'Product icon for accessories'
 	}),
 	'fashion-accessories': Object.freeze({
-		categoryId: 'fashion-accessories',
+		productId: 'fashion-accessories',
 		path: '/assets/game/products/fashion-accessories.png',
 		alt: 'Product icon for fashion accessories'
 	}),
 	devices: Object.freeze({
-		categoryId: 'devices',
+		productId: 'devices',
 		path: '/assets/game/products/devices.png',
 		alt: 'Product icon for devices'
 	}),
 	produce: Object.freeze({
-		categoryId: 'produce',
+		productId: 'produce',
 		path: '/assets/game/products/produce.png',
 		alt: 'Product icon for produce'
 	}),
 	pantry: Object.freeze({
-		categoryId: 'pantry',
+		productId: 'pantry',
 		path: '/assets/game/products/pantry.png',
 		alt: 'Product icon for pantry'
 	}),
 	prepared: Object.freeze({
-		categoryId: 'prepared',
+		productId: 'prepared',
 		path: '/assets/game/products/prepared.png',
 		alt: 'Product icon for prepared food'
 	}),
 	bakery: Object.freeze({
-		categoryId: 'bakery',
+		productId: 'bakery',
 		path: '/assets/game/products/bakery.png',
 		alt: 'Product icon for bakery'
 	}),
 	household: Object.freeze({
-		categoryId: 'household',
+		productId: 'household',
 		path: '/assets/game/products/household.png',
 		alt: 'Product icon for household'
 	}),
 	peripherals: Object.freeze({
-		categoryId: 'peripherals',
+		productId: 'peripherals',
 		path: '/assets/game/products/peripherals.png',
 		alt: 'Product icon for peripherals'
 	}),
 	'bottled-water': Object.freeze({
-		categoryId: 'bottled-water',
+		productId: 'bottled-water',
 		path: '/assets/game/products/bottled-water.png',
 		alt: 'Product icon for bottled water'
 	})
@@ -580,11 +564,11 @@ export function getStoreArt(archetypeId: ArchetypeId): StoreArt {
 	return ARCHETYPE_STORE_ART[archetypeId];
 }
 
-export function getProductArt(categoryId: string): ProductArt {
-	const productArt = PRODUCT_ART[categoryId as ProductArtCategoryId];
+export function getProductArt(productId: string): ProductArt {
+	const productArt = PRODUCT_ART[productId as ProductArtProductId];
 
 	if (!productArt) {
-		throw new Error(`Unknown product art category: ${categoryId}`);
+		throw new Error(`Unknown product art category: ${productId}`);
 	}
 
 	return productArt;

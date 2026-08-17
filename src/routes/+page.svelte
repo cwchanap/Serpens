@@ -148,6 +148,7 @@
 		IndustrialBuildingTypeId,
 		LoanTermDays,
 		MaterialId,
+		ProductId,
 		StoreProductPatch,
 		WorldCityId
 	} from '$lib/game/types';
@@ -385,7 +386,7 @@
 	let isBuildMenuOpen = $state(false);
 	let isSupplyAdvisorOpen = $state(false);
 	let supplyPlannerUiContext = $state<SupplyPlannerUiContext>({
-		categoryId: null,
+		productId: null,
 		horizonDays: 30
 	});
 	let activeManagementPanelId = $state<ManagementPanelId | null>(null);
@@ -525,10 +526,10 @@
 			)
 		);
 	});
-	let allowedProductCategoryIds = $derived.by(() => {
+	let allowedProductIds = $derived.by(() => {
 		const categoryIds = [
 			...new Set(
-				(game?.stores ?? []).flatMap((store) => store.products.map((product) => product.categoryId))
+				(game?.stores ?? []).flatMap((store) => store.products.map((product) => product.productId))
 			)
 		];
 		return categoryIds.filter(
@@ -542,7 +543,7 @@
 		);
 	});
 	let plannerCategoryIds = $derived.by(() =>
-		getSupplyPlannerCategoryIds(game, activeCity.id as WorldCityId, allowedProductCategoryIds)
+		getSupplyPlannerCategoryIds(game, activeCity.id as WorldCityId, allowedProductIds)
 	);
 	let effectivePlannerCategoryId = $derived(
 		resolveSupplyPlannerCategory(supplyPlannerUiContext, plannerCategoryIds)
@@ -952,7 +953,7 @@
 		if (!isSupplyAdvisorOpen || !game || !effectivePlannerCategoryId) return null;
 		return buildSupplyPlan(
 			snapshotPlannerGame(game),
-			{ retailCityId: activeCity.id as WorldCityId, categoryId: effectivePlannerCategoryId },
+			{ retailCityId: activeCity.id as WorldCityId, productId: effectivePlannerCategoryId },
 			plannerActionAvailability
 		);
 	});
@@ -1948,8 +1949,11 @@
 	}
 
 	function openSupplyAdvisor(categoryId?: string): void {
-		if (categoryId && plannerCategoryIds.includes(categoryId)) {
-			supplyPlannerUiContext = { ...supplyPlannerUiContext, categoryId };
+		if (categoryId && plannerCategoryIds.includes(categoryId as ProductId)) {
+			supplyPlannerUiContext = {
+				...supplyPlannerUiContext,
+				productId: categoryId as ProductId
+			};
 		}
 		isBuildMenuOpen = false;
 		isSupplyAdvisorOpen = true;
@@ -1960,8 +1964,11 @@
 	}
 
 	function selectSupplyPlannerCategory(categoryId: string): void {
-		if (!plannerCategoryIds.includes(categoryId)) return;
-		supplyPlannerUiContext = { ...supplyPlannerUiContext, categoryId };
+		if (!plannerCategoryIds.includes(categoryId as ProductId)) return;
+		supplyPlannerUiContext = {
+			...supplyPlannerUiContext,
+			productId: categoryId as ProductId
+		};
 	}
 
 	function selectSupplyPlannerHorizon(horizonDays: SupplyPlannerHorizonDays): void {
@@ -1969,7 +1976,7 @@
 	}
 
 	function planSupplyCategory(categoryId: string): void {
-		if (!plannerCategoryIds.includes(categoryId)) return;
+		if (!plannerCategoryIds.includes(categoryId as ProductId)) return;
 		activeManagementPanelId = null;
 		focusedLogisticsRouteId = null;
 		logisticsRoutePreset = null;
@@ -2043,7 +2050,7 @@
 				isOpen: true,
 				game,
 				retailCityId: activeCity.id as WorldCityId,
-				categoryId: effectivePlannerCategoryId,
+				productId: effectivePlannerCategoryId,
 				availability: plannerActionAvailability
 			},
 			buildSupplyPlan,
@@ -2206,20 +2213,24 @@
 		}
 		const product = game.stores
 			.find((store) => store.id === storeId)
-			?.products.find((candidate) => candidate.categoryId === categoryId);
+			?.products.find((candidate) => candidate.productId === categoryId);
 		if (!product) {
 			return;
 		}
 
 		if (patch.sellingPrice !== undefined) {
 			if (!mutationAvailability.updateStoreSellingPrice) return;
-			void gameRouteController.updateStoreSellingPrice(storeId, categoryId, patch.sellingPrice);
+			void gameRouteController.updateStoreSellingPrice(
+				storeId,
+				categoryId as ProductId,
+				patch.sellingPrice
+			);
 			return;
 		}
 		if (!mutationAvailability.updateStoreInventoryTargets) return;
 		void gameRouteController.updateStoreInventoryTargets(
 			storeId,
-			categoryId,
+			categoryId as ProductId,
 			patch.reorderThreshold ?? product.reorderThreshold,
 			patch.targetStock ?? product.targetStock
 		);
@@ -2940,7 +2951,7 @@
 			onUnassignStaff={unassignStoreStaff}
 			canUpdateSellingPrice={mutationAvailability.updateStoreSellingPrice}
 			canUpdateInventoryTargets={mutationAvailability.updateStoreInventoryTargets}
-			{allowedProductCategoryIds}
+			{allowedProductIds}
 			canHireStaff={mutationAvailability.hireStaff}
 			canAssignStaff={mutationAvailability.assignStaff}
 			canUnassignStaff={mutationAvailability.unassignStaff}

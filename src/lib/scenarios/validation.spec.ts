@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { SCENARIO_COMMAND_KINDS, type ScenarioDefinition } from './types';
+import type { ProductId } from '$lib/game/types';
 import {
 	assertValidScenarioDefinition,
 	sortScenarioDiagnostics,
@@ -481,7 +482,7 @@ describe('validateScenarioDefinition', () => {
 		definition.content.productCategoryIds = [
 			'bottled-water',
 			'snacks',
-			'drinks',
+			'soft-drinks',
 			'essentials',
 			'devices'
 		];
@@ -508,7 +509,7 @@ describe('validateScenarioDefinition', () => {
 		definition.content.productCategoryIds = [
 			'bottled-water',
 			'snacks',
-			'drinks',
+			'soft-drinks',
 			'essentials',
 			'games',
 			'accessories',
@@ -532,7 +533,7 @@ describe('validateScenarioDefinition', () => {
 		definition.content.productCategoryIds = [
 			'bottled-water',
 			'snacks',
-			'drinks',
+			'soft-drinks',
 			'essentials',
 			'devices'
 		];
@@ -559,7 +560,7 @@ describe('validateScenarioDefinition', () => {
 		definition.content.productCategoryIds = [
 			'bottled-water',
 			'snacks',
-			'drinks',
+			'soft-drinks',
 			'essentials',
 			'games',
 			'accessories',
@@ -610,7 +611,7 @@ describe('validateScenarioDefinition', () => {
 		definition.content.productCategoryIds = [
 			'bottled-water',
 			'snacks',
-			'drinks',
+			'soft-drinks',
 			'essentials',
 			'devices'
 		];
@@ -2422,7 +2423,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 				targetLevel: 1,
 				products: [
 					{
-						categoryId: 'missing-category',
+						categoryId: 'missing-category' as ProductId,
 						stock: 10,
 						reorderThreshold: 2,
 						targetStock: 12,
