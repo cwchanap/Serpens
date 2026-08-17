@@ -159,7 +159,13 @@ describe('TileInspector basic card', () => {
 			...store,
 			id: 'store-basic',
 			products: [
-				{ productId: 'snacks', stock: 0, reorderThreshold: 10, targetStock: 50, sellingPrice: 5 }
+				{
+					productId: 'snacks',
+					lots: [],
+					reorderThreshold: 10,
+					targetStock: 50,
+					sellingPrice: 5
+				}
 			]
 		};
 

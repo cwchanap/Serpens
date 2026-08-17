@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest';
 import { getArchetype } from './archetypes';
 import { createFoundingGameAtTile } from './placement';
 import { isTileInStoreFootprint } from './storeFootprint';
-import { calculateStockHealth, createStoreProduct } from './stock';
+import { calculateStockHealth, createStoreProduct, getStoreProductStock } from './stock';
 import {
 	createNewGame,
 	getExpansionSetupCost,
@@ -121,12 +121,13 @@ describe('game state', () => {
 	});
 
 	test('creates product stock rows for the founding store', () => {
-		expect.assertions(3);
+		expect.assertions(4);
 		const game = createNewGame('grocery', 20260508);
 		const store = game.stores[0]!;
 
 		expect(store.products.map((product) => product.productId)).toEqual(['produce']);
-		expect(store.products.every((product) => product.stock > 0)).toBe(true);
+		expect(store.products.every((product) => getStoreProductStock(product) > 0)).toBe(true);
+		expect(store.products[0]!.lots[0]!.receivedDay).toBe(game.day);
 		expect(store.stockHealth).toBe(calculateStockHealth(store.products));
 	});
 
@@ -270,7 +271,7 @@ describe('game state', () => {
 	});
 
 	test('direct store opening uses the selected expansion archetype', () => {
-		expect.assertions(3);
+		expect.assertions(4);
 		const game = createNewGame('boutique', 44);
 
 		const result = openStore(game, {
@@ -281,6 +282,7 @@ describe('game state', () => {
 		expect(game.stores[0]?.archetypeId).toBe('boutique');
 		expect(result.stores.at(-1)?.archetypeId).toBe('electronics');
 		expect(result.stores.at(-1)?.products.map((product) => product.productId)).toEqual(['games']);
+		expect(result.stores.at(-1)?.products[0]?.lots[0]?.receivedDay).toBe(game.day);
 	});
 
 	test('does not duplicate same-day blocked expansion decisions', () => {
@@ -321,7 +323,7 @@ describe('game state', () => {
 	});
 
 	test('upgradeStore at a milestone unlocks a product and raises capacity', () => {
-		expect.assertions(3);
+		expect.assertions(4);
 		let game = { ...createNewGame('convenience', 20260603), cash: 1_000_000 };
 		const storeId = game.stores[0]!.id;
 		const startCapacity = game.stores[0]!.staffCapacity;
@@ -332,6 +334,7 @@ describe('game state', () => {
 		const store = game.stores.find((candidate) => candidate.id === storeId)!;
 		expect(store.level).toBe(4);
 		expect(store.products.map((product) => product.productId)).toEqual(['bottled-water', 'snacks']);
+		expect(store.products[1]!.lots[0]!.receivedDay).toBe(game.day);
 		expect(store.staffCapacity).toBeGreaterThan(startCapacity);
 	});
 
@@ -662,7 +665,7 @@ describe('game state', () => {
 
 	describe('milestone category unlock with reordered lineups', () => {
 		test('adds the first starting category the store does not already stock', () => {
-			expect.assertions(2);
+			expect.assertions(3);
 			// Legacy store: saved before bottled water existed — level 3, stocking snacks only.
 			let game = createNewGame('convenience', 20260611);
 			const legacyStore = {
@@ -678,6 +681,9 @@ describe('game state', () => {
 			expect(upgraded.stores[0]!.products.map((product) => product.productId)).toEqual([
 				'snacks',
 				'bottled-water'
+			]);
+			expect(upgraded.stores[0]!.products[1]!.lots).toEqual([
+				{ receivedDay: game.day, quantity: getStoreProductStock(upgraded.stores[0]!.products[1]!) }
 			]);
 		});
 

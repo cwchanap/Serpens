@@ -15,6 +15,7 @@ import { createNewGame, resolveDecision, updatePolicy } from './state';
 import { getStaffXpForLevel } from './staffLeveling';
 import { DEFAULT_SIMULATION_RULES, type SimulationRules } from './simulationRules';
 import { simulateDay } from './simulateDay';
+import { getStoreProductStock } from './stock';
 import { createOneCityInventoryFixture, projectOneCityParity } from './cityInventory.testUtils';
 import { openWorldCity } from './world';
 import type {
@@ -380,7 +381,7 @@ describe('daily simulation', () => {
 					products: [
 						{
 							productId: 'bottled-water',
-							stock: 0,
+							lots: [],
 							reorderThreshold: 1,
 							targetStock: 10,
 							sellingPrice: 3
@@ -831,7 +832,7 @@ describe('daily simulation', () => {
 				...store,
 				products: store.products.map((product) => ({
 					...product,
-					stock: 0,
+					lots: [],
 					reorderThreshold: 1,
 					targetStock: 10
 				}))
@@ -924,14 +925,14 @@ describe('daily simulation', () => {
 		const products: StoreProduct[] = [
 			{
 				productId: 'snacks',
-				stock: 0,
+				lots: [],
 				reorderThreshold: 1,
 				targetStock: 10,
 				sellingPrice: 5
 			},
 			{
 				productId: 'bottled-water',
-				stock: 0,
+				lots: [],
 				reorderThreshold: 1,
 				targetStock: 10,
 				sellingPrice: 3
@@ -1014,7 +1015,7 @@ describe('daily simulation', () => {
 			products: [
 				{
 					productId: 'snacks',
-					stock: 0,
+					lots: [],
 					reorderThreshold: 1,
 					targetStock: 1,
 					sellingPrice: 5
@@ -1056,7 +1057,7 @@ describe('daily simulation', () => {
 				...store,
 				products: store.products.map((product) => ({
 					...product,
-					stock: 20,
+					lots: [{ receivedDay: 1, quantity: 20 }],
 					reorderThreshold: 100,
 					targetStock: 100
 				}))
@@ -1698,8 +1699,8 @@ describe('daily simulation', () => {
 		expect(report.importSpend).toBe(productTotals.importSpend);
 		expect(report.customersServed).toBe(productTotals.unitsSold);
 		expect(report.demandMissed).toBe(productTotals.demandMissed);
-		expect(result.stores[0]!.products[0]!.stock).toBeLessThanOrEqual(
-			game.stores[0]!.products[0]!.stock
+		expect(getStoreProductStock(result.stores[0]!.products[0]!)).toBeLessThanOrEqual(
+			getStoreProductStock(game.stores[0]!.products[0]!)
 		);
 		expect(report.stockHealth).toBe(result.stores[0]!.stockHealth);
 	});
@@ -1711,7 +1712,7 @@ describe('daily simulation', () => {
 			...store,
 			products: store.products.map((product) => ({
 				...product,
-				stock: 500,
+				lots: [{ receivedDay: 1, quantity: 500 }],
 				targetStock: 500
 			})),
 			stockHealth: 100,
@@ -1747,7 +1748,7 @@ describe('daily simulation', () => {
 			...game.stores[0]!,
 			products: game.stores[0]!.products.map((product) => ({
 				...product,
-				stock: 500,
+				lots: [{ receivedDay: 1, quantity: 500 }],
 				targetStock: 500
 			})),
 			stockHealth: 100,
@@ -1792,7 +1793,7 @@ describe('daily simulation', () => {
 			...game.stores[0]!,
 			products: game.stores[0]!.products.map((product) => ({
 				...product,
-				stock: 0,
+				lots: [],
 				reorderThreshold: 5,
 				targetStock: 20
 			}))
@@ -1802,7 +1803,9 @@ describe('daily simulation', () => {
 
 		expect(report.importSpend).toBeGreaterThan(10);
 		expect(result.cash).toBeLessThan(0);
-		expect(result.stores[0]!.products.every((product) => product.stock >= 20)).toBe(true);
+		expect(result.stores[0]!.products.every((product) => getStoreProductStock(product) >= 20)).toBe(
+			true
+		);
 		expect(
 			report.storeReports[0]?.productReports.some((product) => product.importedUnits > 0)
 		).toBe(true);
@@ -1821,7 +1824,7 @@ describe('daily simulation', () => {
 			products: [
 				{
 					productId: 'snacks',
-					stock: 0,
+					lots: [],
 					reorderThreshold: 5,
 					targetStock: 20,
 					sellingPrice: 5
@@ -1869,14 +1872,14 @@ describe('daily simulation', () => {
 			products: [
 				{
 					productId: 'snacks',
-					stock: 0,
+					lots: [],
 					reorderThreshold: 5,
 					targetStock: 20,
 					sellingPrice: 5
 				},
 				{
 					productId: 'bottled-water',
-					stock: 100,
+					lots: [{ receivedDay: 1, quantity: 100 }],
 					reorderThreshold: 5,
 					targetStock: 100,
 					sellingPrice: 3
@@ -1963,7 +1966,7 @@ describe('daily simulation', () => {
 					products: [
 						{
 							productId: 'snacks',
-							stock: 0,
+							lots: [],
 							reorderThreshold: 1,
 							targetStock: 20,
 							sellingPrice: 5
@@ -2005,7 +2008,7 @@ describe('daily simulation', () => {
 			products: [
 				{
 					productId: 'snacks',
-					stock: 0,
+					lots: [],
 					reorderThreshold: 5,
 					targetStock: 20,
 					sellingPrice: 5
@@ -2043,7 +2046,7 @@ describe('daily simulation', () => {
 		expect(productReport.warehouseUnits).toBe(0);
 		expect(productReport.importedUnits).toBe(20);
 		expect(productReport.importSpend).toBe(60);
-		expect(result.stores[0]!.products[0]!.stock).toBe(20);
+		expect(getStoreProductStock(result.stores[0]!.products[0]!)).toBe(20);
 		expect(
 			result.cityInventories.find((inventory) => inventory.cityId === 'industry-city')?.materials
 				.snacks ?? 0
@@ -2114,7 +2117,7 @@ describe('daily simulation', () => {
 				...store.products,
 				{
 					productId: 'unknown-category' as ProductId,
-					stock: 10,
+					lots: [{ receivedDay: 1, quantity: 10 }],
 					reorderThreshold: 5,
 					targetStock: 20,
 					sellingPrice: 5
@@ -2179,7 +2182,7 @@ describe('daily simulation', () => {
 			staffCapacity: 0,
 			products: base.stores[0]!.products.map((p) => ({
 				...p,
-				stock: 500,
+				lots: [{ receivedDay: 1, quantity: 500 }],
 				targetStock: 500
 			}))
 		};
@@ -2228,7 +2231,7 @@ describe('daily simulation', () => {
 			products: [
 				{
 					productId: 'unknown-category' as ProductId,
-					stock: 100,
+					lots: [{ receivedDay: 1, quantity: 100 }],
 					reorderThreshold: 5,
 					targetStock: 100,
 					sellingPrice: 5
@@ -2255,7 +2258,13 @@ describe('daily simulation', () => {
 		const store: GameState['stores'][number] = {
 			...game.stores[0]!,
 			products: [
-				{ productId: 'apparel', stock: 0, reorderThreshold: 5, targetStock: 20, sellingPrice: 38 }
+				{
+					productId: 'apparel',
+					lots: [],
+					reorderThreshold: 5,
+					targetStock: 20,
+					sellingPrice: 38
+				}
 			]
 		};
 		const result = simulateDay({ ...game, stores: [store] });
@@ -2276,7 +2285,7 @@ describe('daily simulation', () => {
 				...store,
 				products: store.products.map((product) => ({
 					...product,
-					stock: 0,
+					lots: [],
 					reorderThreshold: 1,
 					targetStock: 10
 				}))
@@ -2351,7 +2360,7 @@ describe('daily simulation', () => {
 			products: [
 				{
 					productId: 'snacks',
-					stock: 0,
+					lots: [],
 					reorderThreshold: 1,
 					targetStock: 10,
 					sellingPrice: 5

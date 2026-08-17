@@ -30,7 +30,7 @@ import type {
 import type { DecisionOptionAvailability } from '$lib/game/eventEffects';
 import type { DecisionContext } from '$lib/game/decisionContext';
 import type { WorldCityStatus } from '$lib/game/world';
-import type { StoreProductStatus } from '$lib/game/stock';
+import { getStoreProductStatus, type StoreProductStatus } from '$lib/game/stock';
 import type { I18nBundle } from './index';
 import type {
 	LocalizedDecision,
@@ -562,7 +562,7 @@ export function localizeStockStatus(status: StoreProductStatus, i18n: I18nBundle
 
 export function localizeStockTrouble(
 	products: Array<
-		Pick<GameState['stores'][number]['products'][number], 'stock' | 'reorderThreshold'>
+		Pick<GameState['stores'][number]['products'][number], 'lots' | 'reorderThreshold'>
 	>,
 	i18n: I18nBundle
 ): string | null {
@@ -570,12 +570,7 @@ export function localizeStockTrouble(
 	let needsImport = 0;
 
 	for (const product of products) {
-		const status =
-			product.stock <= 0
-				? 'Out of stock'
-				: product.stock < product.reorderThreshold
-					? 'Needs import'
-					: 'Healthy';
+		const status = getStoreProductStatus(product);
 		if (status === 'Out of stock') {
 			outOfStock += 1;
 		} else if (status === 'Needs import') {

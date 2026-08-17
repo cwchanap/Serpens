@@ -15,7 +15,7 @@ import {
 	type ImportCostApplicationEvidence,
 	type SimulationRules
 } from './simulationRules';
-import { calculateStockHealth } from './stock';
+import { addStoreProductStockLot, calculateStockHealth, getStoreProductStock } from './stock';
 import { getWorldCityDefinition } from './world';
 import type {
 	CityInventory,
@@ -139,7 +139,8 @@ export function applyWeeklyReplenishment(
 			let attemptedReplenishment = false;
 			const startingProductIds = getArchetype(store.archetypeId).startingProductIds;
 			const products = store.products.map((product) => {
-				if (product.stock >= product.reorderThreshold) {
+				const stock = getStoreProductStock(product);
+				if (stock >= product.reorderThreshold) {
 					return product;
 				}
 
@@ -148,7 +149,7 @@ export function applyWeeklyReplenishment(
 				}
 
 				const productDefinition = getProductDefinition(product.productId);
-				const neededUnits = Math.max(0, product.targetStock - product.stock);
+				const neededUnits = Math.max(0, product.targetStock - stock);
 				if (neededUnits === 0) {
 					return product;
 				}
@@ -192,7 +193,10 @@ export function applyWeeklyReplenishment(
 					importSpend: spend
 				});
 
-				return { ...product, stock: product.targetStock };
+				return addStoreProductStockLot(product, {
+					receivedDay: input.game.day,
+					quantity: neededUnits
+				});
 			});
 
 			updatedStores.set(store.id, {

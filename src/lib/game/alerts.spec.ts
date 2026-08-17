@@ -72,14 +72,17 @@ function loan(overrides: Partial<LoanInstrument> = {}): LoanInstrument {
 	};
 }
 
-function product(overrides: Partial<StoreProduct> = {}): StoreProduct {
+function product(
+	overrides: Partial<StoreProduct> & { initialQuantity?: number } = {}
+): StoreProduct {
+	const { initialQuantity = 50, ...productOverrides } = overrides;
 	return {
 		productId: 'snacks',
-		stock: 50,
+		lots: initialQuantity > 0 ? [{ receivedDay: 1, quantity: initialQuantity }] : [],
 		reorderThreshold: 10,
 		targetStock: 60,
 		sellingPrice: 5,
-		...overrides
+		...productOverrides
 	};
 }
 
@@ -257,7 +260,7 @@ describe('collectGameAlerts', () => {
 	it('flags a store with out-of-stock products and deep-links to its tile', () => {
 		expect.assertions(5);
 		const alerts = collectGameAlerts(
-			baseGame({ stores: [store({ products: [product({ stock: 0 })] })] })
+			baseGame({ stores: [store({ products: [product({ initialQuantity: 0 })] })] })
 		);
 		expect(alerts).toHaveLength(1);
 		expect(alerts[0].kind).toBe('store-stock');
@@ -269,7 +272,9 @@ describe('collectGameAlerts', () => {
 	it('flags a store that needs import (below reorder threshold)', () => {
 		expect.assertions(2);
 		const alerts = collectGameAlerts(
-			baseGame({ stores: [store({ products: [product({ stock: 5, reorderThreshold: 10 })] })] })
+			baseGame({
+				stores: [store({ products: [product({ initialQuantity: 5, reorderThreshold: 10 })] })]
+			})
 		);
 		expect(alerts).toHaveLength(1);
 		expect(alerts[0]).toMatchObject({ kind: 'store-stock', storeId: 'store-1' });
@@ -282,9 +287,9 @@ describe('collectGameAlerts', () => {
 				stores: [
 					store({
 						products: [
-							product({ stock: 0, reorderThreshold: 10 }),
-							product({ stock: 5, reorderThreshold: 10 }),
-							product({ stock: 3, reorderThreshold: 10 })
+							product({ initialQuantity: 0, reorderThreshold: 10 }),
+							product({ initialQuantity: 5, reorderThreshold: 10 }),
+							product({ initialQuantity: 3, reorderThreshold: 10 })
 						]
 					})
 				]
@@ -325,7 +330,7 @@ describe('collectGameAlerts', () => {
 		};
 		const alerts = collectGameAlerts(
 			baseGame({
-				stores: [store({ products: [product({ stock: 0 })] })],
+				stores: [store({ products: [product({ initialQuantity: 0 })] })],
 				decisions: [decision],
 				events: {
 					...createInitialEventRuntime(1),
@@ -520,7 +525,7 @@ describe('collectGameAlerts', () => {
 		const alerts = collectGameAlerts(
 			baseGame({
 				cash: -1,
-				stores: [store({ products: [product({ stock: 0 })] })],
+				stores: [store({ products: [product({ initialQuantity: 0 })] })],
 				decisions: [
 					{
 						kind: 'system',

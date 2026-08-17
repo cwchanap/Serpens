@@ -13,6 +13,7 @@ import type {
 	GameState,
 	ProductDefinition,
 	ProductId,
+	ProductStockLot,
 	RetailDemandProfile,
 	Store,
 	StoreProduct,
@@ -28,22 +29,33 @@ export interface ProductSalesResult {
 	remainingDemand: RetailDemandProfile;
 }
 
-export function createStoreProduct(productId: ProductId): StoreProduct {
+export function createStoreProduct(productId: ProductId, receivedDay = 1): StoreProduct {
 	const product = getProductDefinition(productId);
 	return {
 		productId,
-		stock: Math.max(1, roundStockDefault(product.demandWeight * 70)),
+		lots: [
+			{
+				receivedDay,
+				quantity: Math.max(1, roundStockDefault(product.demandWeight * 70))
+			}
+		],
 		reorderThreshold: Math.max(0, roundStockDefault(product.demandWeight * 25)),
 		targetStock: Math.max(1, roundStockDefault(product.demandWeight * 90)),
 		sellingPrice: product.defaultSellingPrice
 	};
 }
 
-export function initializeStoreProducts(archetypeId: ArchetypeId, level = 1): StoreProduct[] {
+export function initializeStoreProducts(
+	archetypeId: ArchetypeId,
+	level = 1,
+	receivedDay = 1
+): StoreProduct[] {
 	const archetype = getArchetype(archetypeId);
 	const unlockedCount = getUnlockedCategoryCount(level);
 
-	return archetype.startingProductIds.slice(0, unlockedCount).map(createStoreProduct);
+	return archetype.startingProductIds
+		.slice(0, unlockedCount)
+		.map((productId) => createStoreProduct(productId, receivedDay));
 }
 
 export function updateStoreProduct(
@@ -82,6 +94,7 @@ export function updateStoreProduct(
 		index === productIndex
 			? {
 					...candidate,
+					lots: candidate.lots.map((lot) => ({ ...lot })),
 					sellingPrice,
 					reorderThreshold,
 					targetStock
@@ -101,13 +114,14 @@ export function updateStoreProduct(
 }
 
 export function getStoreProductStatus(
-	product: Pick<StoreProduct, 'stock' | 'reorderThreshold'>
+	product: Pick<StoreProduct, 'lots' | 'reorderThreshold'>
 ): StoreProductStatus {
-	if (product.stock <= 0) {
+	const stock = getStoreProductStock(product);
+	if (stock <= 0) {
 		return 'Out of stock';
 	}
 
-	if (product.stock < product.reorderThreshold) {
+	if (stock < product.reorderThreshold) {
 		return 'Needs import';
 	}
 
@@ -121,7 +135,7 @@ export function getStoreProductStatus(
  * message never overstates how many are actually at zero stock.
  */
 export function summarizeStockTrouble(
-	products: Pick<StoreProduct, 'stock' | 'reorderThreshold'>[]
+	products: Pick<StoreProduct, 'lots' | 'reorderThreshold'>[]
 ): string | null {
 	let outOfStock = 0;
 	let needImport = 0;
@@ -155,6 +169,38 @@ export function calculateStockHealth(products: StoreProduct[]): number {
 		products.reduce((total, product) => total + getStockTargetRatio(product), 0) / products.length;
 
 	return clampScore(averageRatio * 100);
+}
+
+export function getStoreProductStock(product: Pick<StoreProduct, 'lots'>): number {
+	return product.lots.reduce((total, lot) => total + lot.quantity, 0);
+}
+
+export function consumeStoreProductStock(product: StoreProduct, quantity: number): StoreProduct {
+	let remaining = Math.max(0, quantity);
+	const lots: ProductStockLot[] = [];
+
+	for (const lot of product.lots) {
+		if (remaining <= 0) {
+			lots.push({ ...lot });
+			continue;
+		}
+
+		const consumed = Math.min(lot.quantity, remaining);
+		const nextQuantity = lot.quantity - consumed;
+		remaining -= consumed;
+		if (nextQuantity > 0) {
+			lots.push({ ...lot, quantity: nextQuantity });
+		}
+	}
+
+	return { ...product, lots };
+}
+
+export function addStoreProductStockLot(product: StoreProduct, lot: ProductStockLot): StoreProduct {
+	return {
+		...product,
+		lots: [...product.lots.map((existingLot) => ({ ...existingLot })), { ...lot }]
+	};
 }
 
 export function buildCityDemandPools(
@@ -247,14 +293,22 @@ export function simulateProductSalesForCity(input: {
 			);
 			const capacity = Math.max(0, Math.floor(capacityRemaining.get(store.id) ?? 0));
 			const availableDemand = Math.max(0, remainingDemand[productId] ?? 0);
-			const unitsSold = Math.min(desiredUnits, product.stock, capacity, availableDemand);
+			const unitsSold = Math.min(
+				desiredUnits,
+				getStoreProductStock(product),
+				capacity,
+				availableDemand
+			);
 			const demandMissed = Math.max(0, desiredUnits - unitsSold);
-			const endingStock = product.stock - unitsSold;
+			const soldProduct = consumeStoreProductStock(product, unitsSold);
+			const endingStock = getStoreProductStock(soldProduct);
 			const revenueMultiplier = getStoreRevenueMultiplier(store.level);
 			const revenue = Math.round(unitsSold * product.sellingPrice * revenueMultiplier);
 			const costOfGoods = Math.round(unitsSold * productDefinition.importCost);
 
-			product.stock = endingStock;
+			currentStore.products = currentStore.products.map((candidate) =>
+				candidate.productId === productId ? soldProduct : candidate
+			);
 			capacityRemaining.set(store.id, capacity - unitsSold);
 			remainingDemand[productId] = availableDemand - unitsSold;
 			appendProductReport(productReports, store.id, {
@@ -300,7 +354,7 @@ function getStockTargetRatio(product: StoreProduct): number {
 		return 1;
 	}
 
-	return product.stock / product.targetStock;
+	return getStoreProductStock(product) / product.targetStock;
 }
 
 function getMarketingDemandMultiplier(marketing: CompanyPolicy['marketing']): number {
@@ -351,7 +405,10 @@ function getCityStoreProducts(stores: Store[]): ProductDefinition[] {
 function cloneStoreForStock(store: Store): Store {
 	return {
 		...store,
-		products: store.products.map((product) => ({ ...product }))
+		products: store.products.map((product) => ({
+			...product,
+			lots: product.lots.map((lot) => ({ ...lot }))
+		}))
 	};
 }
 

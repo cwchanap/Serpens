@@ -40,6 +40,7 @@ import type {
 	IndustrialBuildingTypeId,
 	IndustryCity,
 	ProductId,
+	ProductStockLot,
 	StoreProduct,
 	WorldCityId
 } from '$lib/game/types';
@@ -364,7 +365,9 @@ function validateCurrentGameStateInternal(value: unknown): GameState {
 	industrialBuildings.forEach((building, index) =>
 		validateSavedIndustrialBuilding(building, `Saved game industrialBuildings[${index}]`)
 	);
-	stores.forEach((store, index) => validateSavedStore(store, `Saved game stores[${index}]`));
+	stores.forEach((store, index) =>
+		validateSavedStore(store, `Saved game stores[${index}]`, gameDay)
+	);
 	const currentGame = game as unknown as GameState;
 	validateCurrentEntityCityOwnership(currentGame);
 	validateCurrentWorldCityReferences(
@@ -2129,7 +2132,7 @@ function validateSavedFinanceDayActivity(value: unknown, gameDay: number, label:
 		throw new SaveDataError(`${label} financingCashFlow must reconcile with cash transactions`);
 }
 
-function validateSavedStore(value: unknown, label: string): void {
+function validateSavedStore(value: unknown, label: string, gameDay: number): void {
 	const store = requireRecord(value, label);
 
 	requireString(store.id, `${label} id`);
@@ -2147,7 +2150,7 @@ function validateSavedStore(value: unknown, label: string): void {
 	requireNumber(store.daysOpen, `${label} daysOpen`);
 	requireNumber(store.reputation, `${label} reputation`);
 	const stockHealth = requireNumber(store.stockHealth, `${label} stockHealth`);
-	const products = validateSavedStoreProducts(store, label);
+	const products = validateSavedStoreProducts(store, label, gameDay);
 	if (stockHealth !== calculateStockHealth(products)) {
 		throw new SaveDataError(
 			`${label} stockHealth must match its products`,
@@ -3858,7 +3861,11 @@ function validateSavedStoreReport(value: unknown, label: string): string {
 	return storeId;
 }
 
-function validateSavedStoreProducts(store: Record<string, unknown>, label: string): StoreProduct[] {
+function validateSavedStoreProducts(
+	store: Record<string, unknown>,
+	label: string,
+	gameDay: number
+): StoreProduct[] {
 	const archetypeId = requireOneOf(store.archetypeId, `${label} archetypeId`, ARCHETYPE_IDS);
 	const storeLevel = requireNumber(store.level, `${label} level`);
 	const unlockedCount = getUnlockedCategoryCount(storeLevel);
@@ -3871,7 +3878,7 @@ function validateSavedStoreProducts(store: Record<string, unknown>, label: strin
 	const validatedProducts: StoreProduct[] = [];
 
 	for (const [index, productValue] of products.entries()) {
-		const product = validateSavedStoreProduct(productValue, `${label} products[${index}]`);
+		const product = validateSavedStoreProduct(productValue, `${label} products[${index}]`, gameDay);
 
 		if (!archetypeProducts.has(product.productId)) {
 			throw new SaveDataError(
@@ -3914,18 +3921,14 @@ function validateSavedStoreProducts(store: Record<string, unknown>, label: strin
 	return validatedProducts;
 }
 
-function validateSavedStoreProduct(value: unknown, label: string): StoreProduct {
+function validateSavedStoreProduct(value: unknown, label: string, gameDay: number): StoreProduct {
 	const product = requireRecord(value, label);
 
 	const productId = requireString(product.productId, `${label} productId`) as ProductId;
-	const stock = requireNumber(product.stock, `${label} stock`);
+	const lots = validateSavedProductLots(product.lots, `${label} lots`, gameDay);
 	const reorderThreshold = requireNumber(product.reorderThreshold, `${label} reorderThreshold`);
 	const targetStock = requireNumber(product.targetStock, `${label} targetStock`);
 	const sellingPrice = requireNumber(product.sellingPrice, `${label} sellingPrice`);
-
-	if (stock < 0) {
-		throw new SaveDataError(`${label} stock must be at least 0`);
-	}
 
 	if (reorderThreshold < 0) {
 		throw new SaveDataError(`${label} reorderThreshold must be at least 0`);
@@ -3941,7 +3944,36 @@ function validateSavedStoreProduct(value: unknown, label: string): StoreProduct 
 		throw new SaveDataError(`${label} sellingPrice must be greater than 0`);
 	}
 
-	return { productId, stock, reorderThreshold, targetStock, sellingPrice };
+	return { productId, lots, reorderThreshold, targetStock, sellingPrice };
+}
+
+function validateSavedProductLots(
+	value: unknown,
+	label: string,
+	gameDay: number
+): ProductStockLot[] {
+	const lots = requireArray(value, label);
+	let previousReceivedDay = -1;
+	const validated: ProductStockLot[] = [];
+
+	for (const [index, lotValue] of lots.entries()) {
+		const lot = requireRecord(lotValue, `${label}[${index}]`);
+		const receivedDay = requireNonNegativeInteger(
+			lot.receivedDay,
+			`${label}[${index}] receivedDay`
+		);
+		if (receivedDay > gameDay) {
+			throw new SaveDataError(`${label}[${index}] receivedDay must not be after the game day`);
+		}
+		if (receivedDay < previousReceivedDay) {
+			throw new SaveDataError(`${label} must be ordered by receivedDay`);
+		}
+		const quantity = requirePositiveSafeInteger(lot.quantity, `${label}[${index}] quantity`);
+		validated.push({ receivedDay, quantity });
+		previousReceivedDay = receivedDay;
+	}
+
+	return validated;
 }
 
 function validateSavedProductReport(

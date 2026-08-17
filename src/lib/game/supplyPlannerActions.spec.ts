@@ -26,15 +26,16 @@ import type { SupplyPlannerAction, SupplyPlannerActionAvailability } from './sup
 
 function product(
 	productId: ProductId,
-	options: Partial<Omit<StoreProduct, 'productId'>> = {}
+	options: Partial<Omit<StoreProduct, 'productId'>> & { initialQuantity?: number } = {}
 ): StoreProduct {
+	const { initialQuantity = 0, ...productOptions } = options;
 	return {
 		productId,
-		stock: 0,
+		lots: initialQuantity > 0 ? [{ receivedDay: 1, quantity: initialQuantity }] : [],
 		reorderThreshold: 0,
 		targetStock: 70,
 		sellingPrice: 3,
-		...options
+		...productOptions
 	};
 }
 

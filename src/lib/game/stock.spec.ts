@@ -2,8 +2,11 @@ import { describe, expect, test, vi } from 'vitest';
 import { createRng, createRngFromState } from './rng';
 import { createNewGame } from './state';
 import {
+	addStoreProductStockLot,
 	buildCityDemandPools,
 	calculateStockHealth,
+	consumeStoreProductStock,
+	getStoreProductStock,
 	getStoreProductStatus,
 	initializeStoreProducts,
 	simulateProductSalesForCity,
@@ -33,7 +36,7 @@ function createEqualSellerGame(storeIds: string[]): GameState {
 		products: [
 			{
 				productId: 'bottled-water',
-				stock: 100,
+				lots: [{ receivedDay: 1, quantity: 100 }],
 				reorderThreshold: 10,
 				targetStock: 100,
 				sellingPrice: 3
@@ -57,6 +60,50 @@ function equalSellerCapacity(game: GameState): Map<string, number> {
 }
 
 describe('stock rules', () => {
+	test('derives FIFO stock totals, consumes oldest lots, and removes empty lots', () => {
+		expect.assertions(4);
+		const product = {
+			productId: 'snacks',
+			lots: [
+				{ receivedDay: 1, quantity: 5 },
+				{ receivedDay: 3, quantity: 7 }
+			],
+			reorderThreshold: 2,
+			targetStock: 20,
+			sellingPrice: 5
+		} as StoreProduct;
+
+		const consumed = consumeStoreProductStock(product, 6);
+
+		expect(getStoreProductStock(product)).toBe(12);
+		expect(consumed.lots).toEqual([{ receivedDay: 3, quantity: 6 }]);
+		expect(getStoreProductStock(consumed)).toBe(6);
+		expect(product.lots).toEqual([
+			{ receivedDay: 1, quantity: 5 },
+			{ receivedDay: 3, quantity: 7 }
+		]);
+	});
+
+	test('adds a lot without sharing the lot array or lot object', () => {
+		expect.assertions(3);
+		const product = {
+			productId: 'snacks',
+			lots: [{ receivedDay: 1, quantity: 4 }],
+			reorderThreshold: 2,
+			targetStock: 20,
+			sellingPrice: 5
+		} as StoreProduct;
+		const added = addStoreProductStockLot(product, { receivedDay: 7, quantity: 8 });
+
+		expect(added.lots).toEqual([
+			{ receivedDay: 1, quantity: 4 },
+			{ receivedDay: 7, quantity: 8 }
+		]);
+		expect(added.lots).not.toBe(product.lots);
+		added.lots[0]!.quantity = 99;
+		expect(product.lots[0]!.quantity).toBe(4);
+	});
+
 	test('initializes a single product at level 1', () => {
 		expect.assertions(2);
 		const products = initializeStoreProducts('convenience');
@@ -85,11 +132,11 @@ describe('stock rules', () => {
 	});
 
 	test('updates a store product immutably and clamps numeric input', () => {
-		expect.assertions(8);
+		expect.assertions(10);
 		const game = withOneStoreProducts([
 			{
 				productId: 'snacks',
-				stock: 8,
+				lots: [{ receivedDay: 1, quantity: 8 }],
 				reorderThreshold: 12,
 				targetStock: 30,
 				sellingPrice: 5
@@ -111,6 +158,9 @@ describe('stock rules', () => {
 		expect(updated.stores[0]!.stockHealth).toBe(calculateStockHealth(updated.stores[0]!.products));
 		expect(game.stores[0]!.products[0]!.sellingPrice).toBe(5);
 		expect(game.stores[0]!.stockHealth).not.toBe(updated.stores[0]!.stockHealth);
+		expect(product.lots).not.toBe(game.stores[0]!.products[0]!.lots);
+		product.lots[0]!.quantity = 99;
+		expect(game.stores[0]!.products[0]!.lots[0]!.quantity).toBe(8);
 	});
 
 	test('keeps existing values when product updates receive non-finite numbers', () => {
@@ -118,7 +168,7 @@ describe('stock rules', () => {
 		const game = withOneStoreProducts([
 			{
 				productId: 'snacks',
-				stock: 8,
+				lots: [{ receivedDay: 1, quantity: 8 }],
 				reorderThreshold: 12,
 				targetStock: 30,
 				sellingPrice: 5
@@ -143,7 +193,7 @@ describe('stock rules', () => {
 		const game = withOneStoreProducts([
 			{
 				productId: 'snacks',
-				stock: 8,
+				lots: [{ receivedDay: 1, quantity: 8 }],
 				reorderThreshold: 12,
 				targetStock: 30,
 				sellingPrice: 5
@@ -157,9 +207,13 @@ describe('stock rules', () => {
 	test('describes stock status from current threshold and stock', () => {
 		expect.assertions(3);
 
-		expect(getStoreProductStatus({ stock: 0, reorderThreshold: 10 })).toBe('Out of stock');
-		expect(getStoreProductStatus({ stock: 9, reorderThreshold: 10 })).toBe('Needs import');
-		expect(getStoreProductStatus({ stock: 10, reorderThreshold: 10 })).toBe('Healthy');
+		expect(getStoreProductStatus({ lots: [], reorderThreshold: 10 })).toBe('Out of stock');
+		expect(
+			getStoreProductStatus({ lots: [{ receivedDay: 1, quantity: 9 }], reorderThreshold: 10 })
+		).toBe('Needs import');
+		expect(
+			getStoreProductStatus({ lots: [{ receivedDay: 1, quantity: 10 }], reorderThreshold: 10 })
+		).toBe('Healthy');
 	});
 
 	test('calculates stock health from product stock ratios', () => {
@@ -170,14 +224,14 @@ describe('stock rules', () => {
 			calculateStockHealth([
 				{
 					productId: 'snacks',
-					stock: 50,
+					lots: [{ receivedDay: 1, quantity: 50 }],
 					reorderThreshold: 20,
 					targetStock: 100,
 					sellingPrice: 5
 				},
 				{
 					productId: 'soft-drinks',
-					stock: 100,
+					lots: [{ receivedDay: 1, quantity: 100 }],
 					reorderThreshold: 20,
 					targetStock: 100,
 					sellingPrice: 4
@@ -188,7 +242,7 @@ describe('stock rules', () => {
 			calculateStockHealth([
 				{
 					productId: 'snacks',
-					stock: 125,
+					lots: [{ receivedDay: 1, quantity: 125 }],
 					reorderThreshold: 20,
 					targetStock: 100,
 					sellingPrice: 5
@@ -197,7 +251,7 @@ describe('stock rules', () => {
 		).toBe(100);
 		expect(
 			calculateStockHealth([
-				{ productId: 'snacks', stock: 0, reorderThreshold: 20, targetStock: 100, sellingPrice: 5 }
+				{ productId: 'snacks', lots: [], reorderThreshold: 20, targetStock: 100, sellingPrice: 5 }
 			])
 		).toBe(0);
 	});
@@ -255,7 +309,7 @@ describe('stock rules', () => {
 			products: [
 				{
 					productId: 'snacks',
-					stock: 100,
+					lots: [{ receivedDay: 1, quantity: 100 }],
 					reorderThreshold: 10,
 					targetStock: 100,
 					sellingPrice: 5
@@ -328,7 +382,7 @@ describe('stock rules', () => {
 			products: [
 				{
 					productId: 'snacks',
-					stock: 100,
+					lots: [{ receivedDay: 1, quantity: 100 }],
 					reorderThreshold: 10,
 					targetStock: 100,
 					sellingPrice: 5
@@ -461,7 +515,7 @@ describe('sales loop guards', () => {
 			products: [
 				{
 					productId: 'snacks',
-					stock: 100,
+					lots: [{ receivedDay: 1, quantity: 100 }],
 					reorderThreshold: 10,
 					targetStock: 100,
 					sellingPrice: 5
@@ -483,7 +537,7 @@ describe('sales loop guards', () => {
 			products: [
 				{
 					productId: 'snacks',
-					stock: 100,
+					lots: [{ receivedDay: 1, quantity: 100 }],
 					reorderThreshold: 10,
 					targetStock: 100,
 					sellingPrice: 5
@@ -512,12 +566,12 @@ describe('demand multipliers and stock ratios', () => {
 		expect.assertions(2);
 		expect(
 			calculateStockHealth([
-				{ productId: 'snacks', stock: 0, reorderThreshold: 0, targetStock: 0, sellingPrice: 5 }
+				{ productId: 'snacks', lots: [], reorderThreshold: 0, targetStock: 0, sellingPrice: 5 }
 			])
 		).toBe(100);
 		expect(
 			calculateStockHealth([
-				{ productId: 'snacks', stock: 0, reorderThreshold: 0, targetStock: -5, sellingPrice: 5 }
+				{ productId: 'snacks', lots: [], reorderThreshold: 0, targetStock: -5, sellingPrice: 5 }
 			])
 		).toBe(100);
 	});
@@ -547,8 +601,20 @@ describe('branch coverage edge cases', () => {
 	test('updateStoreProduct leaves sibling products untouched when updating one of many', () => {
 		expect.assertions(3);
 		const game = withOneStoreProducts([
-			{ productId: 'snacks', stock: 8, reorderThreshold: 12, targetStock: 30, sellingPrice: 5 },
-			{ productId: 'soft-drinks', stock: 10, reorderThreshold: 5, targetStock: 40, sellingPrice: 4 }
+			{
+				productId: 'snacks',
+				lots: [{ receivedDay: 1, quantity: 8 }],
+				reorderThreshold: 12,
+				targetStock: 30,
+				sellingPrice: 5
+			},
+			{
+				productId: 'soft-drinks',
+				lots: [{ receivedDay: 1, quantity: 10 }],
+				reorderThreshold: 5,
+				targetStock: 40,
+				sellingPrice: 4
+			}
 		]);
 
 		const updated = updateStoreProduct(game, 'store-1', 'snacks', { sellingPrice: 7 });
@@ -575,7 +641,7 @@ describe('branch coverage edge cases', () => {
 					products: [
 						{
 							productId: 'snacks',
-							stock: 8,
+							lots: [{ receivedDay: 1, quantity: 8 }],
 							reorderThreshold: 12,
 							targetStock: 30,
 							sellingPrice: 5
@@ -590,7 +656,7 @@ describe('branch coverage edge cases', () => {
 					products: [
 						{
 							productId: 'snacks',
-							stock: 8,
+							lots: [{ receivedDay: 1, quantity: 8 }],
 							reorderThreshold: 12,
 							targetStock: 30,
 							sellingPrice: 5
@@ -617,7 +683,7 @@ describe('branch coverage edge cases', () => {
 			products: [
 				{
 					productId: 'snacks',
-					stock: 100,
+					lots: [{ receivedDay: 1, quantity: 100 }],
 					reorderThreshold: 10,
 					targetStock: 100,
 					sellingPrice: 5
@@ -640,29 +706,31 @@ describe('branch coverage edge cases', () => {
 describe('summarizeStockTrouble', () => {
 	test('returns null when every product is healthy', () => {
 		expect.assertions(1);
-		expect(summarizeStockTrouble([{ stock: 50, reorderThreshold: 10 }])).toBeNull();
+		expect(
+			summarizeStockTrouble([{ lots: [{ receivedDay: 1, quantity: 50 }], reorderThreshold: 10 }])
+		).toBeNull();
 	});
 
 	test('reports a single out-of-stock product', () => {
 		expect.assertions(1);
-		expect(summarizeStockTrouble([{ stock: 0, reorderThreshold: 10 }])).toBe(
+		expect(summarizeStockTrouble([{ lots: [], reorderThreshold: 10 }])).toBe(
 			'1 product out of stock'
 		);
 	});
 
 	test('uses singular subject-verb agreement for one needs-import product', () => {
 		expect.assertions(1);
-		expect(summarizeStockTrouble([{ stock: 5, reorderThreshold: 10 }])).toBe(
-			'1 product needs import'
-		);
+		expect(
+			summarizeStockTrouble([{ lots: [{ receivedDay: 1, quantity: 5 }], reorderThreshold: 10 }])
+		).toBe('1 product needs import');
 	});
 
 	test('counts out-of-stock and needs-import separately in mixed cases', () => {
 		expect.assertions(1);
 		const summary = summarizeStockTrouble([
-			{ stock: 0, reorderThreshold: 10 },
-			{ stock: 5, reorderThreshold: 10 },
-			{ stock: 3, reorderThreshold: 10 }
+			{ lots: [], reorderThreshold: 10 },
+			{ lots: [{ receivedDay: 1, quantity: 5 }], reorderThreshold: 10 },
+			{ lots: [{ receivedDay: 1, quantity: 3 }], reorderThreshold: 10 }
 		]);
 		expect(summary).toBe('1 product out of stock, 2 products need import');
 	});
@@ -670,8 +738,8 @@ describe('summarizeStockTrouble', () => {
 	test('uses plural "products out of stock" when more than one is at zero stock', () => {
 		expect.assertions(1);
 		const summary = summarizeStockTrouble([
-			{ stock: 0, reorderThreshold: 10 },
-			{ stock: 0, reorderThreshold: 10 }
+			{ lots: [], reorderThreshold: 10 },
+			{ lots: [], reorderThreshold: 10 }
 		]);
 		expect(summary).toBe('2 products out of stock');
 	});

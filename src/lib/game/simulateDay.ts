@@ -37,7 +37,7 @@ import {
 	summarizeStoreStaffing
 } from './staffing';
 import { getStaffDailyXp, getStaffXpForLevel, MAX_STAFF_LEVEL } from './staffLeveling';
-import { calculateStockHealth, simulateProductSalesForCity } from './stock';
+import { calculateStockHealth, getStoreProductStock, simulateProductSalesForCity } from './stock';
 import { refreshWorldProgress } from './world';
 import type {
 	ActiveEventModifier,
@@ -743,6 +743,7 @@ function applyPolicyPricingToStores(stores: Store[], priceMultiplier: number): S
 		...store,
 		products: store.products.map((product) => ({
 			...product,
+			lots: product.lots.map((lot) => ({ ...lot })),
 			sellingPrice: product.sellingPrice * priceMultiplier
 		}))
 	}));
@@ -760,7 +761,15 @@ function restoreProductSettings(soldStores: Store[], originalStores: Store[]): S
 		const products = store.products.map((product) => {
 			const originalProduct = originalProductsByStoreId.get(store.id)?.get(product.productId);
 
-			return originalProduct ? { ...originalProduct, stock: product.stock } : product;
+			return originalProduct
+				? {
+						...originalProduct,
+						lots: product.lots.map((lot) => ({ ...lot }))
+					}
+				: {
+						...product,
+						lots: product.lots.map((lot) => ({ ...lot }))
+					};
 		});
 
 		return {
@@ -807,7 +816,7 @@ function getStoreProductReports(
 				revenue: 0,
 				costOfGoods: 0,
 				grossMargin: 0,
-				endingStock: product.stock,
+				endingStock: getStoreProductStock(product),
 				warehouseUnits: 0,
 				warehouseValue: 0,
 				importedUnits: 0,
@@ -824,7 +833,7 @@ function getStoreProductReports(
 			revenue: 0,
 			costOfGoods: 0,
 			grossMargin: 0,
-			endingStock: product.stock,
+			endingStock: getStoreProductStock(product),
 			warehouseUnits: 0,
 			warehouseValue: 0,
 			importedUnits: 0,

@@ -17,6 +17,7 @@ import type {
 	StoreProduct
 } from './types';
 import { createOpenedMultiCityFixture } from './cityInventory.testUtils';
+import { getStoreProductStock } from './stock';
 import { openWorldCity } from './world';
 
 const scenarioSource: SimulationRuleSource = {
@@ -36,7 +37,7 @@ const eventSource: SimulationRuleSource = {
 function withOneReplenishmentProduct(game: GameState): GameState {
 	const product: StoreProduct = {
 		productId: 'snacks',
-		stock: 4,
+		lots: [{ receivedDay: 1, quantity: 4 }],
 		reorderThreshold: 10,
 		targetStock: 25,
 		sellingPrice: 5
@@ -83,7 +84,7 @@ function createReplenishmentStore(
 		products: [
 			{
 				productId: 'bottled-water',
-				stock: 0,
+				lots: [],
 				reorderThreshold: 1,
 				targetStock: 10,
 				sellingPrice: 3
@@ -396,7 +397,7 @@ describe('weekly retail replenishment', () => {
 			(candidate) => candidate.cityId === 'industry-city'
 		)!;
 
-		expect(store.products[0]!.stock).toBe(25);
+		expect(getStoreProductStock(store.products[0]!)).toBe(25);
 		expect(report.warehouseUnits).toBe(expected.warehouseUnits);
 		expect(report.warehouseValue).toBe(expected.warehouseValue);
 		expect(report.importedUnits).toBe(expected.importedUnits);
@@ -449,7 +450,7 @@ describe('weekly retail replenishment', () => {
 	});
 
 	test('merges replenishment fields onto the existing daily sales row', () => {
-		expect.assertions(12);
+		expect.assertions(13);
 		const game = withOneReplenishmentProduct(
 			withIndustrySnacks(createNewGame('convenience', 292_515), 12)
 		);
@@ -491,6 +492,10 @@ describe('weekly retail replenishment', () => {
 		expect(report.importedUnits).toBe(9);
 		expect(report.importCost).toBe(3);
 		expect(report.importSpend).toBe(27);
+		expect(result.stores[0]!.products[0]!.lots).toEqual([
+			{ receivedDay: 1, quantity: 4 },
+			{ receivedDay: game.day, quantity: 21 }
+		]);
 		expect(report).not.toHaveProperty('replenishmentOutcome');
 	});
 
@@ -550,7 +555,7 @@ describe('weekly retail replenishment', () => {
 					...base.stores[0]!,
 					products: base.stores[0]!.products.map((product) => ({
 						...product,
-						stock: 0,
+						lots: [],
 						reorderThreshold: 5,
 						targetStock: 10
 					}))
@@ -575,7 +580,7 @@ describe('weekly retail replenishment', () => {
 					products: [
 						{
 							productId: 'accessories',
-							stock: 0,
+							lots: [],
 							reorderThreshold: 1,
 							targetStock: 3,
 							sellingPrice: 22
@@ -609,7 +614,7 @@ describe('weekly retail replenishment', () => {
 				{
 					...base.stores[0]!,
 					products: [
-						{ productId: 'games', stock: 0, reorderThreshold: 1, targetStock: 3, sellingPrice: 48 }
+						{ productId: 'games', lots: [], reorderThreshold: 1, targetStock: 3, sellingPrice: 48 }
 					]
 				}
 			]
@@ -714,14 +719,14 @@ describe('weekly retail replenishment', () => {
 					products: [
 						{
 							productId: 'snacks',
-							stock: 0,
+							lots: [],
 							reorderThreshold: 1,
 							targetStock: 2,
 							sellingPrice: 5
 						},
 						{
 							productId: 'bottled-water',
-							stock: 0,
+							lots: [],
 							reorderThreshold: 1,
 							targetStock: 2,
 							sellingPrice: 3
@@ -760,7 +765,7 @@ describe('weekly retail replenishment', () => {
 					products: [
 						{
 							productId: 'apparel',
-							stock: 4,
+							lots: [{ receivedDay: 1, quantity: 4 }],
 							reorderThreshold: 10,
 							targetStock: 25,
 							sellingPrice: 38
@@ -773,7 +778,7 @@ describe('weekly retail replenishment', () => {
 		const result = applyWeeklyReplenishment({ game, storeReports: new Map() });
 		const report = result.productReports.get(game.stores[0]!.id)![0]!;
 
-		expect(result.stores[0]!.products[0]!.stock).toBe(25);
+		expect(getStoreProductStock(result.stores[0]!.products[0]!)).toBe(25);
 		expect(result.cityInventories[0]!.materials.snacks).toBe(12);
 		expect('apparel' in result.cityInventories[0]!.materials).toBe(false);
 		expect(report.warehouseUnits).toBe(0);
@@ -792,7 +797,7 @@ describe('weekly retail replenishment', () => {
 					products: [
 						{
 							productId: 'snacks',
-							stock: 30,
+							lots: [{ receivedDay: 1, quantity: 30 }],
 							reorderThreshold: 10,
 							targetStock: 100,
 							sellingPrice: 5
@@ -804,7 +809,7 @@ describe('weekly retail replenishment', () => {
 
 		const result = applyWeeklyReplenishment({ game, storeReports: new Map() });
 
-		expect(result.stores[0]!.products[0]!.stock).toBe(30);
+		expect(getStoreProductStock(result.stores[0]!.products[0]!)).toBe(30);
 		expect(result.importSpend).toBe(0);
 		expect(result.productReports.size).toBe(0);
 		expect(result.storeReplenishmentContexts.get(game.stores[0]!.id)).toBeNull();
@@ -821,7 +826,7 @@ describe('weekly retail replenishment', () => {
 					products: [
 						{
 							productId: 'nonexistent-category' as ProductId,
-							stock: 4,
+							lots: [{ receivedDay: 1, quantity: 4 }],
 							reorderThreshold: 10,
 							targetStock: 25,
 							sellingPrice: 5
@@ -833,7 +838,7 @@ describe('weekly retail replenishment', () => {
 
 		const result = applyWeeklyReplenishment({ game, storeReports: new Map() });
 
-		expect(result.stores[0]!.products[0]!.stock).toBe(4);
+		expect(getStoreProductStock(result.stores[0]!.products[0]!)).toBe(4);
 		expect(result.importSpend).toBe(0);
 		expect(result.productReports.size).toBe(0);
 	});
@@ -849,7 +854,7 @@ describe('weekly retail replenishment', () => {
 					products: [
 						{
 							productId: 'snacks',
-							stock: 5,
+							lots: [{ receivedDay: 1, quantity: 5 }],
 							reorderThreshold: 10,
 							targetStock: 5,
 							sellingPrice: 5
@@ -861,7 +866,7 @@ describe('weekly retail replenishment', () => {
 
 		const result = applyWeeklyReplenishment({ game, storeReports: new Map() });
 
-		expect(result.stores[0]!.products[0]!.stock).toBe(5);
+		expect(getStoreProductStock(result.stores[0]!.products[0]!)).toBe(5);
 		expect(result.importSpend).toBe(0);
 		expect(result.productReports.size).toBe(0);
 	});
