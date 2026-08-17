@@ -230,6 +230,38 @@ function productionSupplierLifecycleGame(): GameState {
 	return selectProductionSupplierEvent(prepared, 3);
 }
 
+function groceryProductPressureGame(): GameState {
+	const closingDay = 11;
+	let base = createNewGame('grocery', 280_381);
+	while (base.day < closingDay) {
+		base = simulateDay(base);
+	}
+	const stores = base.stores.map((store) => {
+		const products = store.products.map((product) =>
+			product.productId === 'produce'
+				? {
+						...product,
+						lots: [
+							{ receivedDay: 1, quantity: 4 },
+							{ receivedDay: 2, quantity: 1_000 }
+						],
+						reorderThreshold: 0,
+						targetStock: 1_000,
+						sellingPrice: 4
+					}
+				: product
+		);
+
+		return { ...store, products, stockHealth: calculateStockHealth(products) };
+	});
+
+	return {
+		...base,
+		decisions: [],
+		stores
+	};
+}
+
 function buildWarehouseInCity(game: GameState, cityId: string): GameState {
 	const city = game.industryCities.find((candidate) => candidate.id === cityId);
 
@@ -2982,6 +3014,26 @@ test('manage selected store stock and see weekly imports', async ({ page }) => {
 		.locator('.metrics > div')
 		.filter({ hasText: /^External imports\s+\$[1-9][\d,]*$/ });
 	await expect(importsMetric).toBeVisible();
+});
+
+test('grocery product pressure surfaces produce waste and surviving stock', async ({ page }) => {
+	const seededGame = groceryProductPressureGame();
+	const store = seededGame.stores[0]!;
+
+	await installSandboxAutoSave(page, seededGame);
+	await page.getByRole('button', { name: /^advance day$/i }).click();
+	await waitForAutoSaveDay(page, seededGame.day + 1);
+	await clickMapTile(page, store.mapX, store.mapY);
+
+	const storeDetails = await openStoreDetail(page);
+	const pressureSummary = storeDetails.getByTestId('product-pressure-summary');
+	await expect(pressureSummary).toBeVisible();
+	await expect(pressureSummary).toContainText('Produce: 4 units of waste.');
+	await expect(storeDetails.getByTestId('product-pressure-produce')).toHaveAttribute(
+		'data-pressure-kind',
+		'waste'
+	);
+	await expect(storeDetails.getByRole('cell', { name: 'Produce' })).toBeVisible();
 });
 
 test('player can save to a manual slot and load it after reload', async ({ page }) => {

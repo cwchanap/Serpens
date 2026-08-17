@@ -265,7 +265,7 @@ describe('stock rules', () => {
 		expect(pools['soft-drinks']).toBeUndefined();
 	});
 
-	test('expires old lots before sales while preserving newer sellable stock', () => {
+	test('grocery produce pressure wastes old lots while newer stock remains sellable', () => {
 		const base = createNewGame('grocery', 20260817);
 		const store = {
 			...base.stores[0]!,
@@ -294,7 +294,12 @@ describe('stock rules', () => {
 
 		expect(product.lots[0]?.receivedDay).toBe(2);
 		expect(getStoreProductStock(product)).toBeGreaterThan(0);
-		expect(report).toMatchObject({ wasteUnits: 4, wasteValue: 8 });
+		expect(report).toMatchObject({
+			wasteUnits: 4,
+			wasteValue: 8,
+			oldestSellableAgeDays: 9
+		});
+		expect(report.endingStock).toBeGreaterThan(0);
 	});
 
 	test('applies trend to the sales pool once while leaving the baseline demand pool stable', () => {
@@ -334,7 +339,7 @@ describe('stock rules', () => {
 		);
 	});
 
-	test('applies markdown to revenue without changing configured price or price demand', () => {
+	test('electronics devices show obsolescence and markdown without changing configured price or demand', () => {
 		const base = createNewGame('electronics', 20260819);
 		const createStore = (receivedDay: number) => ({
 			...base.stores[0]!,
@@ -362,9 +367,19 @@ describe('stock rules', () => {
 			rng: createRng(13),
 			storeCapacity: new Map([[agedStore.id, 500]])
 		});
+		const obsoleteStore = createStore(1);
+		const obsolete = simulateProductSalesForCity({
+			game: { ...base, day: 28, stores: [obsoleteStore] },
+			city: base.cities[0]!,
+			rng: createRng(13),
+			storeCapacity: new Map([[obsoleteStore.id, 500]])
+		});
 		const freshReport = fresh.productReports.get(freshStore.id)?.[0];
 		const agedReport = aged.productReports.get(agedStore.id)?.[0];
-		if (!freshReport || !agedReport) throw new Error('expected device sales reports');
+		const obsoleteReport = obsolete.productReports.get(obsoleteStore.id)?.[0];
+		if (!freshReport || !agedReport || !obsoleteReport) {
+			throw new Error('expected device sales reports');
+		}
 
 		expect(agedReport.baseSellingPrice).toBe(240);
 		expect(agedReport.effectiveSellingPrice).toBe(204);
@@ -372,9 +387,11 @@ describe('stock rules', () => {
 		expect(agedReport.revenue).toBeLessThan(freshReport.revenue);
 		expect(agedReport.markdownAmount).toBeGreaterThan(0);
 		expect(aged.stores[0]!.products[0]!.sellingPrice).toBe(240);
+		expect(obsoleteReport.obsolescenceMultiplier).toBeLessThan(1);
+		expect(obsoleteReport.markdownAmount).toBeGreaterThan(0);
 	});
 
-	test('attributes stockout loss only to demand that stock could have served', () => {
+	test('convenience beverage pressure attributes only stock-serviceable demand to stockout', () => {
 		const base = createNewGame('convenience', 20260820);
 		const store = {
 			...base.stores[0]!,
@@ -403,6 +420,44 @@ describe('stock rules', () => {
 
 		expect(noCapacity.productReports.get(store.id)?.[0]?.stockoutLostDemand).toBe(0);
 		expect(capacity.productReports.get(store.id)?.[0]?.stockoutLostDemand).toBeGreaterThan(0);
+	});
+
+	test('boutique reputation sensitivity changes apparel seller share', () => {
+		const base = createNewGame('boutique', 20260823);
+		const createSeller = (id: string, reputation: number) => ({
+			...base.stores[0]!,
+			id,
+			name: id,
+			reputation,
+			products: [
+				{
+					productId: 'apparel' as const,
+					lots: [{ receivedDay: 1, quantity: 500 }],
+					reorderThreshold: 1,
+					targetStock: 500,
+					sellingPrice: 38
+				}
+			]
+		});
+		const lowReputation = createSeller('boutique-low', 20);
+		const highReputation = createSeller('boutique-high', 90);
+		const result = simulateProductSalesForCity({
+			game: { ...base, day: 7, stores: [lowReputation, highReputation] },
+			city: base.cities[0]!,
+			rng: createRng(23),
+			storeCapacity: new Map([
+				[lowReputation.id, 500],
+				[highReputation.id, 500]
+			])
+		});
+		const lowReport = result.productReports.get(lowReputation.id)?.[0];
+		const highReport = result.productReports.get(highReputation.id)?.[0];
+		if (!lowReport || !highReport) throw new Error('expected boutique seller reports');
+
+		expect(highReport.unitsSold).toBeGreaterThan(lowReport.unitsSold);
+		expect(highReport.unitsSold / (highReport.unitsSold + lowReport.unitsSold)).toBeGreaterThan(
+			0.7
+		);
 	});
 
 	test('applies retail city demand multipliers to city demand pools', () => {
