@@ -105,7 +105,7 @@ const firstProfit = {
 					storeRef: 'founding-store',
 					products: [
 						{
-							categoryId: 'bottled-water',
+							productId: 'bottled-water',
 							stock: 250,
 							reorderThreshold: 30,
 							targetStock: 108,
@@ -119,7 +119,7 @@ const firstProfit = {
 	content: {
 		cityIds: ['harbor-city', 'industry-city'],
 		archetypeIds: ['convenience'],
-		productCategoryIds: ['bottled-water'],
+		productIds: ['bottled-water'],
 		materialIds: [],
 		buildingTypeIds: [],
 		retailPlacements: [],
@@ -207,14 +207,14 @@ const importSqueeze = {
 					targetLevel: 4,
 					products: [
 						{
-							categoryId: 'games',
+							productId: 'games',
 							stock: 50,
 							reorderThreshold: 20,
 							targetStock: 70,
 							sellingPrice: 48
 						},
 						{
-							categoryId: 'accessories',
+							productId: 'accessories',
 							stock: 60,
 							reorderThreshold: 24,
 							targetStock: 80,
@@ -228,7 +228,7 @@ const importSqueeze = {
 	content: {
 		cityIds: ['harbor-city', 'industry-city'],
 		archetypeIds: ['electronics'],
-		productCategoryIds: ['games', 'accessories'],
+		productIds: ['games', 'accessories'],
 		materialIds: [],
 		buildingTypeIds: [],
 		retailPlacements: [],
@@ -275,7 +275,7 @@ const importSqueeze = {
 	scoreComponents: [
 		{
 			kind: 'metric',
-			query: { metric: 'retail-import-spend', categoryIds: ['games', 'accessories'] },
+			query: { metric: 'retail-import-spend', productIds: ['games', 'accessories'] },
 			window: { kind: 'run-to-date' },
 			zeroBonusAt: 12_000,
 			fullBonusAt: 7_100,
@@ -291,7 +291,7 @@ const importSqueeze = {
 		},
 		{
 			kind: 'metric',
-			query: { metric: 'demand-missed', categoryIds: ['games', 'accessories'] },
+			query: { metric: 'demand-missed', productIds: ['games', 'accessories'] },
 			window: { kind: 'run-to-date' },
 			zeroBonusAt: 1_000,
 			fullBonusAt: 0,
@@ -351,7 +351,7 @@ const localLifeline = {
 					targetLevel: 1,
 					products: [
 						{
-							categoryId: 'bottled-water',
+							productId: 'bottled-water',
 							stock: 10,
 							reorderThreshold: 25,
 							targetStock: 50,
@@ -365,7 +365,7 @@ const localLifeline = {
 	content: {
 		cityIds: ['harbor-city', 'industry-city'],
 		archetypeIds: ['convenience'],
-		productCategoryIds: ['bottled-water'],
+		productIds: ['bottled-water'],
 		materialIds: ['water', 'bottled-water'],
 		buildingTypeIds: ['water-pump', 'water-bottler', 'warehouse'],
 		retailPlacements: [],
@@ -394,7 +394,7 @@ const localLifeline = {
 		{
 			id: 'local-units',
 			labelKey: 'scenarioDefinitions.localLifeline.objectives.localUnits',
-			query: { metric: 'retail-local-units', categoryIds: ['bottled-water'] },
+			query: { metric: 'retail-local-units', productIds: ['bottled-water'] },
 			comparator: 'gte',
 			target: 40,
 			window: { kind: 'run-to-date' }
@@ -402,7 +402,7 @@ const localLifeline = {
 		{
 			id: 'local-share',
 			labelKey: 'scenarioDefinitions.localLifeline.objectives.localShare',
-			query: { metric: 'retail-local-share', categoryIds: ['bottled-water'] },
+			query: { metric: 'retail-local-share', productIds: ['bottled-water'] },
 			comparator: 'gte',
 			target: 0.5,
 			window: { kind: 'run-to-date' }
@@ -422,7 +422,7 @@ const localLifeline = {
 	scoreComponents: [
 		{
 			kind: 'metric',
-			query: { metric: 'retail-local-share', categoryIds: ['bottled-water'] },
+			query: { metric: 'retail-local-share', productIds: ['bottled-water'] },
 			window: { kind: 'run-to-date' },
 			zeroBonusAt: 0.5,
 			fullBonusAt: 0.8,
@@ -430,7 +430,7 @@ const localLifeline = {
 		},
 		{
 			kind: 'metric',
-			query: { metric: 'retail-imported-units', categoryIds: ['bottled-water'] },
+			query: { metric: 'retail-imported-units', productIds: ['bottled-water'] },
 			window: { kind: 'run-to-date' },
 			zeroBonusAt: 80,
 			fullBonusAt: 0,

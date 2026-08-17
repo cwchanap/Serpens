@@ -538,7 +538,7 @@
 				(activeScenarioDefinition !== null &&
 					isScenarioContentAllowed(activeScenarioDefinition, {
 						kind: 'product',
-						categoryId
+						productId: categoryId
 					}))
 		);
 	});

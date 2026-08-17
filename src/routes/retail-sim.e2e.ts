@@ -82,13 +82,13 @@ const FIRST_PROFIT_REFERENCE_OPENING: ScenarioCommand[] = [
 	{
 		kind: 'updateStoreSellingPrice',
 		storeId: 'store-1',
-		categoryId: 'bottled-water',
+		productId: 'bottled-water',
 		sellingPrice: 6
 	},
 	{
 		kind: 'updateStoreInventoryTargets',
 		storeId: 'store-1',
-		categoryId: 'bottled-water',
+		productId: 'bottled-water',
 		reorderThreshold: 200,
 		targetStock: 280
 	}

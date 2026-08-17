@@ -37,7 +37,7 @@ function definition(overrides: Partial<ScenarioDefinition> = {}): ScenarioDefini
 		content: {
 			cityIds: ['harbor-city', 'industry-city', 'campus-junction'],
 			archetypeIds: ['convenience', 'boutique', 'electronics', 'grocery'],
-			productCategoryIds: ['bottled-water', 'snacks', 'games'],
+			productIds: ['bottled-water', 'snacks', 'games'],
 			materialIds: ['water', 'bottled-water'],
 			buildingTypeIds: ['water-pump', 'water-bottler', 'warehouse'],
 			retailPlacements: [
@@ -109,13 +109,13 @@ const commands = [
 	{
 		kind: 'updateStoreSellingPrice',
 		storeId: 'missing-store',
-		categoryId: 'bottled-water',
+		productId: 'bottled-water',
 		sellingPrice: 5
 	},
 	{
 		kind: 'updateStoreInventoryTargets',
 		storeId: 'missing-store',
-		categoryId: 'bottled-water',
+		productId: 'bottled-water',
 		reorderThreshold: 5,
 		targetStock: 20
 	},
@@ -222,13 +222,13 @@ describe('scenario command capabilities', () => {
 		const price = {
 			kind: 'updateStoreSellingPrice',
 			storeId: 'store-1',
-			categoryId: 'bottled-water',
+			productId: 'bottled-water',
 			sellingPrice: 6
 		} as const;
 		const inventory = {
 			kind: 'updateStoreInventoryTargets',
 			storeId: 'store-1',
-			categoryId: 'bottled-water',
+			productId: 'bottled-water',
 			reorderThreshold: 10,
 			targetStock: 40
 		} as const;
@@ -463,7 +463,7 @@ describe('scenario content capabilities', () => {
 	const allowedQueries = [
 		{ kind: 'city', cityId: 'harbor-city' },
 		{ kind: 'archetype', archetypeId: 'convenience' },
-		{ kind: 'product', categoryId: 'bottled-water' },
+		{ kind: 'product', productId: 'bottled-water' },
 		{ kind: 'material', materialId: 'water' },
 		{ kind: 'building', buildingTypeId: 'water-pump' },
 		{
@@ -496,7 +496,7 @@ describe('scenario content capabilities', () => {
 		expect(
 			isScenarioContentAllowed(scenario, {
 				kind: 'product',
-				categoryId: 'not-allowed' as ProductId
+				productId: 'not-allowed' as ProductId
 			})
 		).toBe(false);
 		expect(

@@ -31,7 +31,7 @@ function definition(
 		content: {
 			cityIds: ['harbor-city'],
 			archetypeIds: ['convenience'],
-			productCategoryIds: ['snacks'],
+			productIds: ['snacks'],
 			materialIds: [],
 			buildingTypeIds: [],
 			retailPlacements: [],

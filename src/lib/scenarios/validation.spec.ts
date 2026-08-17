@@ -36,7 +36,7 @@ function validDefinition(): ScenarioDefinition {
 						targetLevel: 1,
 						products: [
 							{
-								categoryId: 'bottled-water',
+								productId: 'bottled-water',
 								stock: 10,
 								reorderThreshold: 2,
 								targetStock: 12,
@@ -50,7 +50,7 @@ function validDefinition(): ScenarioDefinition {
 		content: {
 			cityIds: ['harbor-city'],
 			archetypeIds: ['convenience'],
-			productCategoryIds: ['bottled-water'],
+			productIds: ['bottled-water'],
 			materialIds: [],
 			buildingTypeIds: [],
 			retailPlacements: [
@@ -136,7 +136,7 @@ function localProductionDefinition(): ScenarioDefinition {
 	definition.requiredObjectives = [
 		{
 			...definition.requiredObjectives[0]!,
-			query: { metric: 'retail-local-units', categoryIds: ['bottled-water'] },
+			query: { metric: 'retail-local-units', productIds: ['bottled-water'] },
 			window: { kind: 'run-to-date' }
 		}
 	];
@@ -370,7 +370,7 @@ describe('validateScenarioDefinition', () => {
 			{
 				...base,
 				id: 'run-to-date',
-				query: withExtra({ metric: 'retail-import-spend', categoryIds: ['bottled-water'] }),
+				query: withExtra({ metric: 'retail-import-spend', productIds: ['bottled-water'] }),
 				window: withExtra({ kind: 'run-to-date' })
 			},
 			{
@@ -476,10 +476,10 @@ describe('validateScenarioDefinition', () => {
 		const definition = validDefinition();
 		definition.content.archetypeIds = ['convenience', 'electronics'];
 		// Convenience is the founding archetype and upgradeStore is allowed, so
-		// the full convenience category set must be allowlisted to satisfy the
+		// the full convenience product set must be allowlisted to satisfy the
 		// reverse check; devices stays unallowlisted-reachable to test the
 		// forward product-locked diagnostic.
-		definition.content.productCategoryIds = [
+		definition.content.productIds = [
 			'bottled-water',
 			'snacks',
 			'soft-drinks',
@@ -488,9 +488,7 @@ describe('validateScenarioDefinition', () => {
 		];
 		definition.allowedCommands = ['advanceDay', 'upgradeStore'];
 
-		expect(codes(definition)).toEqual([
-			{ path: 'content.productCategoryIds[4]', code: 'product-locked' }
-		]);
+		expect(codes(definition)).toEqual([{ path: 'content.productIds[4]', code: 'product-locked' }]);
 
 		definition.allowedCommands = ['advanceDay', 'openStore', 'upgradeStore'];
 		definition.start.overrides.storeCap = 2;
@@ -498,15 +496,13 @@ describe('validateScenarioDefinition', () => {
 			...definition.content.retailPlacements,
 			{ cityId: 'harbor-city', tileId: 'harbor-city-1-1', archetypeId: 'electronics' }
 		];
-		expect(codes(definition)).toEqual([
-			{ path: 'content.productCategoryIds[4]', code: 'product-locked' }
-		]);
+		expect(codes(definition)).toEqual([{ path: 'content.productIds[4]', code: 'product-locked' }]);
 	});
 
 	it('allows upgradeStore unlocks through an actually openable archetype placement', () => {
 		const definition = validDefinition();
 		definition.content.archetypeIds = ['convenience', 'electronics'];
-		definition.content.productCategoryIds = [
+		definition.content.productIds = [
 			'bottled-water',
 			'snacks',
 			'soft-drinks',
@@ -530,7 +526,7 @@ describe('validateScenarioDefinition', () => {
 		const definition = validDefinition();
 		definition.content.cityIds = ['harbor-city', 'campus-junction'];
 		definition.content.archetypeIds = ['convenience', 'electronics'];
-		definition.content.productCategoryIds = [
+		definition.content.productIds = [
 			'bottled-water',
 			'snacks',
 			'soft-drinks',
@@ -548,16 +544,14 @@ describe('validateScenarioDefinition', () => {
 		definition.allowedCommands = ['advanceDay', 'openStore', 'upgradeStore'];
 		definition.start.overrides.storeCap = 2;
 
-		expect(codes(definition)).toEqual([
-			{ path: 'content.productCategoryIds[4]', code: 'product-locked' }
-		]);
+		expect(codes(definition)).toEqual([{ path: 'content.productIds[4]', code: 'product-locked' }]);
 	});
 
 	it('accepts openable placements in opened or revealed retail cities with the matching command', () => {
 		const definition = validDefinition();
 		definition.content.cityIds = ['harbor-city', 'industry-city', 'campus-junction'];
 		definition.content.archetypeIds = ['convenience', 'electronics'];
-		definition.content.productCategoryIds = [
+		definition.content.productIds = [
 			'bottled-water',
 			'snacks',
 			'soft-drinks',
@@ -592,7 +586,7 @@ describe('validateScenarioDefinition', () => {
 
 	it('flags products materialized by an allowed upgradeStore path that are not in the content allowlist', () => {
 		const definition = validDefinition();
-		definition.content.productCategoryIds = ['bottled-water'];
+		definition.content.productIds = ['bottled-water'];
 		definition.allowedCommands = ['advanceDay', 'upgradeStore'];
 
 		expect(codes(definition)).toEqual([
@@ -608,7 +602,7 @@ describe('validateScenarioDefinition', () => {
 		// Convenience founding store is fully allowlisted, but the openable
 		// electronics placement's upgrade path materializes categories that
 		// are not allowlisted.
-		definition.content.productCategoryIds = [
+		definition.content.productIds = [
 			'bottled-water',
 			'snacks',
 			'soft-drinks',
@@ -994,7 +988,7 @@ describe('validateScenarioDefinition', () => {
 
 	it('rejects overlapping import-cost-multiplier targets within the same scope', () => {
 		const definition = malformedDefinition();
-		definition.content.productCategoryIds = ['bottled-water', 'produce'];
+		definition.content.productIds = ['bottled-water', 'produce'];
 		definition.modifiers = [
 			{
 				kind: 'import-cost-multiplier',
@@ -1026,7 +1020,7 @@ describe('validateScenarioDefinition', () => {
 
 	it('does not flag overlapping import-cost-multiplier targets across different scopes', () => {
 		const definition = malformedDefinition();
-		definition.content.productCategoryIds = ['bottled-water'];
+		definition.content.productIds = ['bottled-water'];
 		definition.content.materialIds = ['water'];
 		definition.modifiers = [
 			{
@@ -1128,12 +1122,12 @@ describe('validateScenarioDefinition', () => {
 	it('rejects starting and objective references excluded by content rules', () => {
 		const definition = validDefinition();
 		definition.content.archetypeIds = [];
-		definition.content.productCategoryIds = [];
+		definition.content.productIds = [];
 		expect(codes(definition)).toEqual(
 			expect.arrayContaining([
 				{ path: 'start.foundingStore.archetypeId', code: 'excluded-content' },
 				{
-					path: 'start.overrides.stores[0].products[0].categoryId',
+					path: 'start.overrides.stores[0].products[0].productId',
 					code: 'excluded-content'
 				}
 			])
@@ -1145,7 +1139,7 @@ describe('validateScenarioDefinition', () => {
 		definition.requiredObjectives = [
 			{
 				...definition.requiredObjectives[0]!,
-				query: { metric: 'retail-local-units', categoryIds: ['bottled-water'] },
+				query: { metric: 'retail-local-units', productIds: ['bottled-water'] },
 				window: { kind: 'run-to-date' }
 			}
 		];
@@ -1529,17 +1523,17 @@ describe('validateScenarioDefinition coverage gaps', () => {
 		});
 	});
 
-	it('rejects a category metric query with an empty categoryIds array', () => {
+	it('rejects a product metric query with an empty productIds array', () => {
 		const definition = malformedDefinition();
 		definition.requiredObjectives = [
 			{
 				...definition.requiredObjectives[0],
-				query: { metric: 'retail-import-spend', categoryIds: [] },
+				query: { metric: 'retail-import-spend', productIds: [] },
 				window: { kind: 'run-to-date' }
 			}
 		];
 		expect(codes(definition)).toContainEqual({
-			path: 'requiredObjectives[0].query.categoryIds',
+			path: 'requiredObjectives[0].query.productIds',
 			code: 'missing-reference'
 		});
 	});
@@ -1615,13 +1609,13 @@ describe('validateScenarioDefinition coverage gaps', () => {
 		});
 	});
 
-	it('rejects a local-production category that is not a finished material', () => {
+	it('rejects a local-production product that is not a finished material', () => {
 		const definition = malformedDefinition();
-		definition.content.productCategoryIds = ['bottled-water', 'household'];
+		definition.content.productIds = ['bottled-water', 'household'];
 		definition.requiredObjectives = [
 			{
 				...definition.requiredObjectives[0],
-				query: { metric: 'retail-local-units', categoryIds: ['household'] },
+				query: { metric: 'retail-local-units', productIds: ['household'] },
 				window: { kind: 'run-to-date' }
 			}
 		];
@@ -1710,7 +1704,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 		});
 	});
 
-	it('rejects a duplicate product category in store overrides', () => {
+	it('rejects a duplicate product in store overrides', () => {
 		const definition = validDefinition();
 		definition.start.overrides.stores = [
 			{
@@ -1718,14 +1712,14 @@ describe('validateScenarioDefinition coverage gaps', () => {
 				targetLevel: 1,
 				products: [
 					{
-						categoryId: 'bottled-water',
+						productId: 'bottled-water',
 						stock: 10,
 						reorderThreshold: 2,
 						targetStock: 12,
 						sellingPrice: 3
 					},
 					{
-						categoryId: 'bottled-water',
+						productId: 'bottled-water',
 						stock: 5,
 						reorderThreshold: 2,
 						targetStock: 8,
@@ -1735,7 +1729,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 			}
 		];
 		expect(codes(definition)).toContainEqual({
-			path: 'start.overrides.stores[0].products[1].categoryId',
+			path: 'start.overrides.stores[0].products[1].productId',
 			code: 'duplicate-reference'
 		});
 	});
@@ -1748,7 +1742,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 				targetLevel: 1,
 				products: [
 					{
-						categoryId: 'bottled-water',
+						productId: 'bottled-water',
 						stock: 10,
 						reorderThreshold: 20,
 						targetStock: 10,
@@ -1957,7 +1951,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 
 	it('validates inclusion of ids-target product references against content rules', () => {
 		const definition = malformedDefinition();
-		definition.content.productCategoryIds = ['bottled-water'];
+		definition.content.productIds = ['bottled-water'];
 		definition.modifiers = [
 			{
 				kind: 'import-cost-multiplier',
@@ -2054,7 +2048,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 		definition.requiredObjectives = [
 			{
 				...definition.requiredObjectives[0]!,
-				query: { metric: 'retail-local-units', categoryIds: ['bottled-water'] },
+				query: { metric: 'retail-local-units', productIds: ['bottled-water'] },
 				window: { kind: 'run-to-date' }
 			}
 		];
@@ -2104,7 +2098,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 		definition.requiredObjectives = [
 			{
 				...definition.requiredObjectives[0]!,
-				query: { metric: 'retail-local-units', categoryIds: ['bottled-water'] },
+				query: { metric: 'retail-local-units', productIds: ['bottled-water'] },
 				window: { kind: 'run-to-date' }
 			}
 		];
@@ -2415,7 +2409,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 		});
 	});
 
-	it('rejects a product override with an unknown category reference', () => {
+	it('rejects a product override with an unknown product reference', () => {
 		const definition = validDefinition();
 		definition.start.overrides.stores = [
 			{
@@ -2423,7 +2417,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 				targetLevel: 1,
 				products: [
 					{
-						categoryId: 'missing-category' as ProductId,
+						productId: 'missing-category' as ProductId,
 						stock: 10,
 						reorderThreshold: 2,
 						targetStock: 12,
@@ -2433,7 +2427,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 			}
 		];
 		expect(codes(definition)).toContainEqual({
-			path: 'start.overrides.stores[0].products[0].categoryId',
+			path: 'start.overrides.stores[0].products[0].productId',
 			code: 'invalid-reference'
 		});
 	});
@@ -2446,7 +2440,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 				targetLevel: 1,
 				products: [
 					{
-						categoryId: 'bottled-water',
+						productId: 'bottled-water',
 						stock: 10,
 						reorderThreshold: 2,
 						targetStock: 12,
@@ -2469,7 +2463,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 				targetLevel: 1,
 				products: [
 					{
-						categoryId: 'bottled-water',
+						productId: 'bottled-water',
 						stock: -5,
 						reorderThreshold: 2,
 						targetStock: 12,
@@ -2581,16 +2575,16 @@ describe('validateScenarioDefinition coverage gaps', () => {
 		});
 	});
 
-	it('rejects a product override for a category not unlocked at target level', () => {
+	it('rejects a product override for a product not unlocked at target level', () => {
 		const definition = validDefinition();
-		definition.content.productCategoryIds = ['bottled-water', 'snacks'];
+		definition.content.productIds = ['bottled-water', 'snacks'];
 		definition.start.overrides.stores = [
 			{
 				storeRef: 'founder',
 				targetLevel: 1,
 				products: [
 					{
-						categoryId: 'snacks',
+						productId: 'snacks',
 						stock: 10,
 						reorderThreshold: 2,
 						targetStock: 12,
@@ -2600,7 +2594,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 			}
 		];
 		expect(codes(definition)).toContainEqual({
-			path: 'start.overrides.stores[0].products[0].categoryId',
+			path: 'start.overrides.stores[0].products[0].productId',
 			code: 'product-locked'
 		});
 	});
@@ -2655,7 +2649,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 
 	it('rejects a modifier target ids array with a non-string entry', () => {
 		const definition = malformedDefinition();
-		definition.content.productCategoryIds = ['bottled-water'];
+		definition.content.productIds = ['bottled-water'];
 		definition.modifiers = [
 			{
 				kind: 'import-cost-multiplier',
@@ -2738,7 +2732,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 
 	it('tracks overlapping ids-target modifiers within the same scope', () => {
 		const definition = malformedDefinition();
-		definition.content.productCategoryIds = ['bottled-water', 'produce'];
+		definition.content.productIds = ['bottled-water', 'produce'];
 		definition.modifiers = [
 			{
 				kind: 'import-cost-multiplier',
@@ -2761,7 +2755,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 
 	it('tracks an all-target modifier followed by an ids-target modifier in the same scope', () => {
 		const definition = malformedDefinition();
-		definition.content.productCategoryIds = ['bottled-water'];
+		definition.content.productIds = ['bottled-water'];
 		definition.modifiers = [
 			{
 				kind: 'import-cost-multiplier',
@@ -3062,33 +3056,33 @@ describe('validateScenarioDefinition coverage gaps', () => {
 		});
 	});
 
-	it('rejects a category metric query with an unknown category reference', () => {
+	it('rejects a product metric query with an unknown product reference', () => {
 		const definition = malformedDefinition();
 		definition.requiredObjectives = [
 			{
 				...definition.requiredObjectives[0],
-				query: { metric: 'retail-import-spend', categoryIds: ['missing-product'] },
+				query: { metric: 'retail-import-spend', productIds: ['missing-product'] },
 				window: { kind: 'run-to-date' }
 			}
 		];
 		expect(codes(definition)).toContainEqual({
-			path: 'requiredObjectives[0].query.categoryIds[0]',
+			path: 'requiredObjectives[0].query.productIds[0]',
 			code: 'invalid-reference'
 		});
 	});
 
-	it('rejects a category metric query with a duplicate category reference', () => {
+	it('rejects a product metric query with a duplicate product reference', () => {
 		const definition = malformedDefinition();
-		definition.content.productCategoryIds = ['bottled-water'];
+		definition.content.productIds = ['bottled-water'];
 		definition.requiredObjectives = [
 			{
 				...definition.requiredObjectives[0],
-				query: { metric: 'retail-import-spend', categoryIds: ['bottled-water', 'bottled-water'] },
+				query: { metric: 'retail-import-spend', productIds: ['bottled-water', 'bottled-water'] },
 				window: { kind: 'run-to-date' }
 			}
 		];
 		expect(codes(definition)).toContainEqual({
-			path: 'requiredObjectives[0].query.categoryIds[1]',
+			path: 'requiredObjectives[0].query.productIds[1]',
 			code: 'duplicate-reference'
 		});
 	});
@@ -3357,7 +3351,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 		});
 	});
 
-	it('rejects a product override with a non-string categoryId', () => {
+	it('rejects a product override with a non-string productId', () => {
 		const definition = malformedDefinition();
 		definition.start.overrides.stores = [
 			{
@@ -3365,7 +3359,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 				targetLevel: 1,
 				products: [
 					{
-						categoryId: 123,
+						productId: 123,
 						stock: 10,
 						reorderThreshold: 2,
 						targetStock: 12,
@@ -3375,7 +3369,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 			}
 		];
 		expect(codes(definition)).toContainEqual({
-			path: 'start.overrides.stores[0].products[0].categoryId',
+			path: 'start.overrides.stores[0].products[0].productId',
 			code: 'invalid-string'
 		});
 	});
@@ -3388,7 +3382,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 				targetLevel: 1,
 				products: [
 					{
-						categoryId: 'bottled-water',
+						productId: 'bottled-water',
 						stock: 10,
 						reorderThreshold: -2,
 						targetStock: 12,
@@ -3411,7 +3405,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 				targetLevel: 1,
 				products: [
 					{
-						categoryId: 'bottled-water',
+						productId: 'bottled-water',
 						stock: 10,
 						reorderThreshold: 2,
 						targetStock: -12,

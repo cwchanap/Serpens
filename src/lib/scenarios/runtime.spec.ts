@@ -72,13 +72,13 @@ const FIRST_PROFIT_REFERENCE_OPENING: ScenarioCommand[] = [
 	{
 		kind: 'updateStoreSellingPrice',
 		storeId: 'store-1',
-		categoryId: 'bottled-water',
+		productId: 'bottled-water',
 		sellingPrice: 6
 	},
 	{
 		kind: 'updateStoreInventoryTargets',
 		storeId: 'store-1',
-		categoryId: 'bottled-water',
+		productId: 'bottled-water',
 		reorderThreshold: 200,
 		targetStock: 280
 	}
@@ -98,26 +98,26 @@ const IMPORT_SQUEEZE_REFERENCE_OPENING: ScenarioCommand[] = [
 	{
 		kind: 'updateStoreSellingPrice',
 		storeId: 'store-1',
-		categoryId: 'games',
+		productId: 'games',
 		sellingPrice: 72
 	},
 	{
 		kind: 'updateStoreSellingPrice',
 		storeId: 'store-1',
-		categoryId: 'accessories',
+		productId: 'accessories',
 		sellingPrice: 32
 	},
 	{
 		kind: 'updateStoreInventoryTargets',
 		storeId: 'store-1',
-		categoryId: 'games',
+		productId: 'games',
 		reorderThreshold: 10,
 		targetStock: 45
 	},
 	{
 		kind: 'updateStoreInventoryTargets',
 		storeId: 'store-1',
-		categoryId: 'accessories',
+		productId: 'accessories',
 		reorderThreshold: 12,
 		targetStock: 50
 	}
@@ -142,7 +142,7 @@ const LOCAL_LIFELINE_REFERENCE_OPENING: ScenarioCommand[] = [
 	{
 		kind: 'updateStoreSellingPrice',
 		storeId: 'store-1',
-		categoryId: 'bottled-water',
+		productId: 'bottled-water',
 		sellingPrice: 4
 	}
 ];
@@ -218,7 +218,7 @@ function commandDefinition(
 		content: {
 			cityIds: ALL_CITY_IDS,
 			archetypeIds: ['convenience', 'boutique', 'electronics', 'grocery'],
-			productCategoryIds: [
+			productIds: [
 				'bottled-water',
 				'snacks',
 				'soft-drinks',
@@ -381,7 +381,7 @@ function startableDefinition(
 						targetLevel: 1,
 						products: [
 							{
-								categoryId: 'bottled-water',
+								productId: 'bottled-water',
 								stock: 50,
 								reorderThreshold: 10,
 								targetStock: 70,
@@ -395,7 +395,7 @@ function startableDefinition(
 		content: {
 			cityIds: ['harbor-city'],
 			archetypeIds: ['convenience'],
-			productCategoryIds: ['bottled-water'],
+			productIds: ['bottled-water'],
 			materialIds: [],
 			buildingTypeIds: [],
 			retailPlacements: [
@@ -719,7 +719,7 @@ describe('executeScenarioCommand dispatch', { timeout: 30_000 }, () => {
 		const next = changedRun(activeRun(definition, game), definition, {
 			kind: 'updateStoreSellingPrice',
 			storeId: store.id,
-			categoryId: product.productId,
+			productId: product.productId,
 			sellingPrice: product.sellingPrice + 3
 		});
 
@@ -743,7 +743,7 @@ describe('executeScenarioCommand dispatch', { timeout: 30_000 }, () => {
 		const next = changedRun(activeRun(definition, game), definition, {
 			kind: 'updateStoreInventoryTargets',
 			storeId: store.id,
-			categoryId: product.productId,
+			productId: product.productId,
 			reorderThreshold: product.reorderThreshold + 2,
 			targetStock: product.targetStock + 4
 		});
@@ -1307,7 +1307,7 @@ describe('scenario runtime lifecycle order', { timeout: 30_000 }, () => {
 			executeScenarioCommand(run, definition, {
 				kind: 'updateStoreSellingPrice',
 				storeId: game.stores[0]!.id,
-				categoryId: 'not-allowed' as ProductId,
+				productId: 'not-allowed' as ProductId,
 				sellingPrice: 9
 			})
 		).toEqual({ ok: false, code: 'forbidden-command' });
@@ -1318,7 +1318,7 @@ describe('scenario runtime lifecycle order', { timeout: 30_000 }, () => {
 			executeScenarioCommand(run, contentDefinition, {
 				kind: 'updateStoreSellingPrice',
 				storeId: game.stores[0]!.id,
-				categoryId: 'not-allowed' as ProductId,
+				productId: 'not-allowed' as ProductId,
 				sellingPrice: 9
 			})
 		).toEqual({ ok: false, code: 'forbidden-content' });
@@ -1371,7 +1371,7 @@ describe('scenario runtime lifecycle order', { timeout: 30_000 }, () => {
 			command: {
 				kind: 'updateStoreSellingPrice',
 				storeId: 'store-1',
-				categoryId: 'bottled-water',
+				productId: 'bottled-water',
 				sellingPrice: 9
 			} as const
 		},
@@ -1388,7 +1388,7 @@ describe('scenario runtime lifecycle order', { timeout: 30_000 }, () => {
 			command.kind === 'hireStaff'
 				? { ...command, candidateId }
 				: command.kind === 'updateStoreSellingPrice'
-					? { ...command, storeId: store.id, categoryId: product.productId }
+					? { ...command, storeId: store.id, productId: product.productId }
 					: command;
 		const definition = commandDefinition([resolvedCommand.kind], {
 			requiredObjectives: [cashCondition('cash-preserved', 'gte', 0)],
@@ -1531,7 +1531,7 @@ describe('scenario runtime lifecycle order', { timeout: 30_000 }, () => {
 			{
 				kind: 'updateStoreSellingPrice',
 				storeId: store.id,
-				categoryId: product.productId,
+				productId: product.productId,
 				sellingPrice: product.sellingPrice + 2
 			},
 			{ kind: 'advanceDay' }

@@ -48,10 +48,10 @@ function validateContent(context: ValidationContext, value: unknown): void {
 	);
 	context.content.products = validateReferenceArray(
 		context,
-		content.productCategoryIds,
-		'content.productCategoryIds',
+		content.productIds,
+		'content.productIds',
 		KNOWN_PRODUCT_IDS,
-		'product category'
+		'product'
 	);
 	context.content.materials = validateReferenceArray(
 		context,

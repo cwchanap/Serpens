@@ -7,6 +7,7 @@ import {
 	type ScenarioRun,
 	type ScenarioStartBlueprint
 } from './types';
+import { isScenarioContentAllowed } from './capabilities';
 
 type HasStringIndex<T> = string extends keyof T ? true : false;
 type HasRemovedAggregateOverride =
@@ -57,7 +58,7 @@ const definition = {
 					targetLevel: 2,
 					products: [
 						{
-							categoryId: 'soft-drinks',
+							productId: 'soft-drinks',
 							stock: 20,
 							reorderThreshold: 5,
 							targetStock: 25,
@@ -80,7 +81,7 @@ const definition = {
 	content: {
 		cityIds: ['harbor-city', 'industry-city'],
 		archetypeIds: ['convenience'],
-		productCategoryIds: ['soft-drinks'],
+		productIds: ['soft-drinks'],
 		materialIds: ['water'],
 		buildingTypeIds: ['water-pump'],
 		retailPlacements: [{ cityId: 'harbor-city', tileId: 'harbor-1-1', archetypeId: 'convenience' }],
@@ -111,7 +112,7 @@ const definition = {
 		{
 			id: 'local-share',
 			labelKey: 'store.defaultName',
-			query: { metric: 'retail-local-share', categoryIds: ['soft-drinks'] },
+			query: { metric: 'retail-local-share', productIds: ['soft-drinks'] },
 			comparator: 'gte',
 			target: 0.5,
 			window: { kind: 'trailing-reports', count: 3 },
@@ -163,13 +164,13 @@ const commands = [
 	{
 		kind: 'updateStoreSellingPrice',
 		storeId: 'store-1',
-		categoryId: 'soft-drinks',
+		productId: 'soft-drinks',
 		sellingPrice: 5
 	},
 	{
 		kind: 'updateStoreInventoryTargets',
 		storeId: 'store-1',
-		categoryId: 'soft-drinks',
+		productId: 'soft-drinks',
 		reorderThreshold: 5,
 		targetStock: 20
 	},
@@ -258,6 +259,9 @@ describe('scenario contracts', () => {
 		expect(blueprintHasNoCatchAllIndex).toBe(false);
 		expect(blueprintHasNoRemovedAggregateOverride).toBe(false);
 		expect(definition.start.foundingStore.ref).toBe('founder');
+		expect(
+			isScenarioContentAllowed(definition, { kind: 'product', productId: 'soft-drinks' })
+		).toBe(true);
 		expect(run.status).toBe('active');
 	});
 

@@ -373,7 +373,7 @@ function definition(overrides: Partial<ScenarioDefinition> = {}): ScenarioDefini
 		content: {
 			cityIds: ['harbor-city'],
 			archetypeIds: ['convenience'],
-			productCategoryIds: ['bottled-water'],
+			productIds: ['bottled-water'],
 			materialIds: ['water'],
 			buildingTypeIds: ['water-pump'],
 			retailPlacements: [],
@@ -430,7 +430,7 @@ describe('scenario metric evidence IDs', () => {
 		expect(
 			evaluateMetric(
 				state,
-				{ metric: 'retail-imported-units', categoryIds: ['bottled-water'] },
+				{ metric: 'retail-imported-units', productIds: ['bottled-water'] },
 				{ kind: 'run-to-date' }
 			).contributingIds
 		).toEqual([
@@ -473,23 +473,19 @@ describe('registered scenario metrics', () => {
 		[{ metric: 'consecutive-positive-net-income-reports' }, { kind: 'current' }, 1, ['report:8']],
 		[{ metric: 'completed-retail-import-cycles' }, { kind: 'run-to-date' }, 1, ['report:7']],
 		[
-			{ metric: 'retail-import-spend', categoryIds: ['bottled-water'] },
+			{ metric: 'retail-import-spend', productIds: ['bottled-water'] },
 			{ kind: 'run-to-date' },
 			100
 		],
 		[
-			{ metric: 'retail-imported-units', categoryIds: ['bottled-water'] },
+			{ metric: 'retail-imported-units', productIds: ['bottled-water'] },
 			{ kind: 'run-to-date' },
 			20
 		],
-		[{ metric: 'retail-local-units', categoryIds: ['bottled-water'] }, { kind: 'run-to-date' }, 20],
-		[
-			{ metric: 'retail-local-share', categoryIds: ['bottled-water'] },
-			{ kind: 'run-to-date' },
-			0.5
-		],
-		[{ metric: 'units-sold', categoryIds: ['bottled-water'] }, { kind: 'run-to-date' }, 25],
-		[{ metric: 'demand-missed', categoryIds: ['bottled-water'] }, { kind: 'run-to-date' }, 10],
+		[{ metric: 'retail-local-units', productIds: ['bottled-water'] }, { kind: 'run-to-date' }, 20],
+		[{ metric: 'retail-local-share', productIds: ['bottled-water'] }, { kind: 'run-to-date' }, 0.5],
+		[{ metric: 'units-sold', productIds: ['bottled-water'] }, { kind: 'run-to-date' }, 25],
+		[{ metric: 'demand-missed', productIds: ['bottled-water'] }, { kind: 'run-to-date' }, 10],
 		[{ metric: 'scorecard', score: 'profit' }, { kind: 'current' }, 61, []],
 		[{ metric: 'store-count' }, { kind: 'current' }, 3],
 		[
@@ -518,12 +514,12 @@ describe('registered scenario metrics', () => {
 		[{ metric: 'cumulative-net-income' }, { kind: 'run-to-date' }],
 		[{ metric: 'consecutive-positive-net-income-reports' }, { kind: 'current' }],
 		[{ metric: 'completed-retail-import-cycles' }, { kind: 'run-to-date' }],
-		[{ metric: 'retail-import-spend', categoryIds: ['bottled-water'] }, { kind: 'run-to-date' }],
-		[{ metric: 'retail-imported-units', categoryIds: ['bottled-water'] }, { kind: 'run-to-date' }],
-		[{ metric: 'retail-local-units', categoryIds: ['bottled-water'] }, { kind: 'run-to-date' }],
-		[{ metric: 'retail-local-share', categoryIds: ['bottled-water'] }, { kind: 'run-to-date' }],
-		[{ metric: 'units-sold', categoryIds: ['bottled-water'] }, { kind: 'run-to-date' }],
-		[{ metric: 'demand-missed', categoryIds: ['bottled-water'] }, { kind: 'run-to-date' }]
+		[{ metric: 'retail-import-spend', productIds: ['bottled-water'] }, { kind: 'run-to-date' }],
+		[{ metric: 'retail-imported-units', productIds: ['bottled-water'] }, { kind: 'run-to-date' }],
+		[{ metric: 'retail-local-units', productIds: ['bottled-water'] }, { kind: 'run-to-date' }],
+		[{ metric: 'retail-local-share', productIds: ['bottled-water'] }, { kind: 'run-to-date' }],
+		[{ metric: 'units-sold', productIds: ['bottled-water'] }, { kind: 'run-to-date' }],
+		[{ metric: 'demand-missed', productIds: ['bottled-water'] }, { kind: 'run-to-date' }]
 	] as const)('uses zero and no IDs for an empty report window: $0', (query, window) => {
 		expect(evaluateMetric(game(), query, window)).toEqual({
 			actual: 0,
@@ -632,7 +628,7 @@ describe('registered scenario metrics', () => {
 		expect(
 			evaluateMetric(
 				state,
-				{ metric: 'retail-local-share', categoryIds: ['bottled-water'] },
+				{ metric: 'retail-local-share', productIds: ['bottled-water'] },
 				{ kind: 'run-to-date' }
 			)
 		).toEqual({
@@ -905,8 +901,8 @@ describe('scenario report invariants', () => {
 			}))
 		).toEqual([
 			{
-				code: 'duplicate-product-report-category-id',
-				path: 'reports[0].storeReports[0].productReports[1].categoryId',
+				code: 'duplicate-product-report-product-id',
+				path: 'reports[0].storeReports[0].productReports[1].productId',
 				value: 'water/large'
 			},
 			{

@@ -251,11 +251,11 @@ function dispatchScenarioCommand(
 		case 'promoteStaff':
 			return promoteStaff(game, command.staffId);
 		case 'updateStoreSellingPrice':
-			return updateStoreProduct(game, command.storeId, command.categoryId, {
+			return updateStoreProduct(game, command.storeId, command.productId, {
 				sellingPrice: command.sellingPrice
 			});
 		case 'updateStoreInventoryTargets':
-			return updateStoreProduct(game, command.storeId, command.categoryId, {
+			return updateStoreProduct(game, command.storeId, command.productId, {
 				reorderThreshold: command.reorderThreshold,
 				targetStock: command.targetStock
 			});

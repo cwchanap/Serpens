@@ -34,7 +34,7 @@ const FIXTURE_DEFINITION: ScenarioDefinition = {
 	content: {
 		cityIds: ['harbor-city'],
 		archetypeIds: ['convenience'],
-		productCategoryIds: ['bottled-water'],
+		productIds: ['bottled-water'],
 		materialIds: [],
 		buildingTypeIds: [],
 		retailPlacements: [],
