@@ -4153,7 +4153,7 @@ test('freight disruption lifecycle closes through dispatch, pause/edit/resume, a
 	let decisions = await openManagementPanel(page, 'Decisions');
 	const freightDecision = freightDecisionArticle(decisions, page);
 	await expect(freightDecision).toContainText(
-		'Shipments of bottled-water between industry-city and breadbasket-basin are disrupted.'
+		'Shipments of Bottled Water between Industry City and Breadbasket Basin are disrupted.'
 	);
 	await expect(freightDecision).toContainText('route route-1');
 	await expect(freightDecision.getByRole('button', { name: /^Accept delay/ })).toBeEnabled();

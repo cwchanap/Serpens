@@ -177,10 +177,10 @@ describe('DecisionQueue', () => {
 		const templates: Record<string, string> = {
 			'copy.events.freightDisruption.title': 'Freight disruption on route {routeId}',
 			'copy.events.freightDisruption.context':
-				'{originCityId} → {destinationCityId} {materialId} shipments are disrupted.',
+				'{origin} → {destination} {material} shipments are disrupted.',
 			'copy.events.freightDisruption.options.accept-delay.label': 'Accept delay',
 			'copy.events.freightDisruption.options.accept-delay.description':
-				'Route {routeId} ({originCityId} → {destinationCityId}) slows {materialId} deliveries.'
+				'Route {routeId} ({origin} → {destination}) slows {material} deliveries.'
 		};
 		const base = createI18n('en');
 		const i18n: I18nBundle = {
@@ -219,13 +219,13 @@ describe('DecisionQueue', () => {
 			.element(page.getByRole('heading', { level: 3, name: 'Freight disruption on route route-2' }))
 			.toBeVisible();
 		await expect
-			.element(page.getByText('industry-city → breadbasket-basin water shipments are disrupted.'))
+			.element(page.getByText('Industry City → Breadbasket Basin Water shipments are disrupted.'))
 			.toBeVisible();
 		const option = page.getByRole('button', { name: /Accept delay/ });
 		await expect
 			.element(
 				option.getByText(
-					'Route route-2 (industry-city → breadbasket-basin) slows water deliveries.'
+					'Route route-2 (Industry City → Breadbasket Basin) slows Water deliveries.'
 				)
 			)
 			.toBeVisible();

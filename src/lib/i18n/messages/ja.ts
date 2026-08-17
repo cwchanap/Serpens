@@ -1292,7 +1292,7 @@ export const ja = {
 			freightDisruption: {
 				title: '輸送障害',
 				context:
-					'航路 {routeId}（{originCityId} → {destinationCityId}）の{materialId}の輸送が混乱しています。対応方法を選んでください。',
+					'航路 {routeId}（{origin} → {destination}）の{material}の輸送が混乱しています。対応方法を選んでください。',
 				options: {
 					'accept-delay': {
 						label: '遅延を受け入れる',

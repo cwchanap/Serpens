@@ -1314,7 +1314,7 @@ export const en = {
 			freightDisruption: {
 				title: 'Freight disruption',
 				context:
-					'Shipments of {materialId} between {originCityId} and {destinationCityId} are disrupted. Choose how to handle deliveries on route {routeId}.',
+					'Shipments of {material} between {origin} and {destination} are disrupted. Choose how to handle deliveries on route {routeId}.',
 				options: {
 					'accept-delay': {
 						label: 'Accept delay',

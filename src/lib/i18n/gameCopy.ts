@@ -123,6 +123,35 @@ function translateMessage(
 }
 
 /**
+ * Resolves persisted route-context IDs in event decision copy params to
+ * localized labels. The persisted params intentionally store stable IDs
+ * (originCityId, destinationCityId, materialId) so a materialized decision
+ * survives route deletion, but those IDs must not reach the player-facing
+ * message directly. This derives localized `origin`/`destination`/`material`
+ * params from the IDs (via the i18n label catalog — no route lookup) while
+ * passing every other param (e.g. `routeId`) through unchanged. The IDs
+ * themselves are kept in the returned object so message templates that still
+ * reference them remain valid, but the freight-disruption templates use the
+ * localized names.
+ */
+function resolveEventCopyParams(
+	params: Record<string, string | number>,
+	i18n: I18nBundle
+): Record<string, string | number> {
+	const resolved: Record<string, string | number> = { ...params };
+	if (typeof params.originCityId === 'string') {
+		resolved.origin = i18n.labels.worldCity(params.originCityId).name;
+	}
+	if (typeof params.destinationCityId === 'string') {
+		resolved.destination = i18n.labels.worldCity(params.destinationCityId).name;
+	}
+	if (typeof params.materialId === 'string') {
+		resolved.material = i18n.labels.material(params.materialId);
+	}
+	return resolved;
+}
+
+/**
  * Looks up a translation key built from a fixed prefix plus a dynamic suffix
  * (e.g. a union-valued enum). Centralises the `as never` cast so it lives in
  * one place rather than at every call site.
@@ -418,8 +447,11 @@ function localizeDecisionContextValue(ctx: DecisionContext, i18n: I18nBundle): s
 function localizeDecisionTitle(decision: DecisionItem, i18n: I18nBundle): string {
 	if (decision.kind === 'event') {
 		return (
-			translateMessage(i18n, `copy.${decision.copy.key}.title`, decision.copy.params) ??
-			decision.copy.key
+			translateMessage(
+				i18n,
+				`copy.${decision.copy.key}.title`,
+				resolveEventCopyParams(decision.copy.params, i18n)
+			) ?? decision.copy.key
 		);
 	}
 	const family = classifyDecision(decision);
@@ -449,8 +481,11 @@ function localizeDecisionTitle(decision: DecisionItem, i18n: I18nBundle): string
 function localizeDecisionContext(decision: DecisionItem, i18n: I18nBundle): string {
 	if (decision.kind === 'event') {
 		return (
-			translateMessage(i18n, `copy.${decision.copy.key}.context`, decision.copy.params) ??
-			decision.copy.key
+			translateMessage(
+				i18n,
+				`copy.${decision.copy.key}.context`,
+				resolveEventCopyParams(decision.copy.params, i18n)
+			) ?? decision.copy.key
 		);
 	}
 	return localizeDecisionContextValue(decision.context, i18n);
@@ -465,10 +500,11 @@ function localizeEventDecisionOption(
 	// materialized route decision stays understandable from its persisted copy
 	// reference alone — even after the live route is removed.
 	const key = `copy.${decision.copy.key}.options.${optionId}`;
+	const params = resolveEventCopyParams(decision.copy.params, i18n);
 	return {
 		id: optionId,
-		label: translateMessage(i18n, `${key}.label`, decision.copy.params) ?? optionId,
-		description: translateMessage(i18n, `${key}.description`, decision.copy.params) ?? ''
+		label: translateMessage(i18n, `${key}.label`, params) ?? optionId,
+		description: translateMessage(i18n, `${key}.description`, params) ?? ''
 	};
 }
 

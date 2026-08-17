@@ -3005,6 +3005,51 @@ describe('saveCodec', () => {
 				};
 			},
 			path: 'Saved game events activeModifiers[0] effect contains an unknown field'
+		},
+		{
+			name: 'a recurring-route target carrying an import-cost-multiplier effect',
+			mutate: (game: GameState): GameState => {
+				const modifier = game.events.activeModifiers[0]!;
+				return {
+					...game,
+					events: {
+						...game.events,
+						activeModifiers: [
+							{
+								...modifier,
+								effect: {
+									kind: 'import-cost-multiplier',
+									scope: 'retail-product',
+									target: { kind: 'all' },
+									multiplier: 0.5
+								}
+							}
+						]
+					}
+				};
+			},
+			path: 'Saved game events activeModifiers[0] effect must be a route effect for a recurring-route target'
+		},
+		{
+			name: 'a company target carrying a route-capacity-multiplier effect',
+			mutate: (game: GameState): GameState => {
+				const modifier = game.events.activeModifiers[0]!;
+				return {
+					...game,
+					events: {
+						...game.events,
+						activeModifiers: [
+							{
+								...modifier,
+								target: { kind: 'company' },
+								stackingKey: 'freight-capacity:company',
+								effect: { kind: 'route-capacity-multiplier', multiplier: 0.75 }
+							}
+						]
+					}
+				};
+			},
+			path: 'Saved game events activeModifiers[0] effect must be import-cost-multiplier for a company target'
 		}
 	])('rejects %s', ({ mutate, path }) => {
 		const game = createCompleteRouteEventGame();
